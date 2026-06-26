@@ -39,6 +39,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from shared.config import get_vault_path
 from shared.log import get_logger
 from thousand_sunny.routers import promotion_review, writing_assist
 
@@ -66,27 +67,31 @@ class PromotionWiringConfig:
 def load_promotion_wiring_config() -> PromotionWiringConfig:
     """Read vault + ``NAKAMA_*`` env vars + apply documented defaults.
 
-    Required:
-    - ``VAULT_PATH`` — absolute path to the Obsidian vault root. The
-      canonical, repo-wide vault var used by ``shared.config``,
-      ``kb_writer``, ``discard_service`` etc.
+    Vault path resolves via :func:`shared.config.get_vault_path` — the
+    canonical, repo-wide resolver (``VAULT_PATH`` env override → else
+    ``config.yaml`` ``vault_path``). Reading ``VAULT_PATH`` env *only* here was
+    a bug: the VPS keeps ``vault_path`` in ``config.yaml`` and leaves the env
+    unset, so this lone bypass of config.yaml crashed startup with a 502.
 
     Optional:
     - ``NAKAMA_PROMOTION_MANIFEST_ROOT`` (default ``{vault}/.promotion-manifests``)
     - ``NAKAMA_READING_CONTEXT_PACKAGE_ROOT`` (default ``{vault}/.reading-context-packages``)
     - ``NAKAMA_PROMOTION_MODE`` (default ``"dry_run"``)
 
-    Raises ``RuntimeError`` when ``VAULT_PATH`` is missing — startup must
-    surface bad config loudly so operator visibility is preserved (W4 /
-    brief §6 boundary 7).
+    Raises ``RuntimeError`` when the vault is unresolvable (neither env nor
+    config.yaml provides it) — startup must surface bad config loudly so
+    operator visibility is preserved (W4 / brief §6 boundary 7).
     """
-    vault_raw = os.environ.get("VAULT_PATH")
-    if not vault_raw:
+    # 用 get_vault_path()（VAULT_PATH env 覆寫 → 否則 config.yaml vault_path）解析 vault，
+    # 與全系統一致。原本只讀 VAULT_PATH env、繞過 config.yaml，使 VPS（vault 設在
+    # config.yaml、env 不設）啟動硬爆 502。仍保留「真的解析不到 → 大聲失敗」。
+    try:
+        vault_root = get_vault_path()
+    except (KeyError, FileNotFoundError) as exc:
         raise RuntimeError(
-            "VAULT_PATH is required when Robin/promotion wiring is enabled. "
-            "Set it in .env or unset DISABLE_ROBIN to skip wiring."
-        )
-    vault_root = Path(vault_raw)
+            "Vault path unresolved: set vault_path in config.yaml or VAULT_PATH in .env "
+            "(or set DISABLE_ROBIN=1 to skip Robin/promotion wiring)."
+        ) from exc
     # TODO(N518c-or-decision): confirm with 修修 whether the manifest +
     # reading-context-package roots should remain under the vault
     # (current default: {vault}/.promotion-manifests and
