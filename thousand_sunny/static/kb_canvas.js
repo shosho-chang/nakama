@@ -76,6 +76,34 @@
     return CANDS[centerIdx] || null;
   }
 
+  // 標題是 textarea（才能換行），依內容自動長高，不再截斷長宣告句。
+  function autogrowTitle() {
+    var t = $("#kbc-title");
+    if (!t) return;
+    t.style.height = "auto";
+    t.style.height = t.scrollHeight + "px";
+  }
+
+  // 開卡 context：把這張候選的「來源畫線 + 你的註解」帶到眼前（唯讀）。
+  // adhoc / fleeting 無 source_refs → 整塊隱藏。
+  function renderSrcContext(cand) {
+    var box = $("#kbc-src");
+    if (!box) return;
+    var ref = cand && cand.source_refs && cand.source_refs[0];
+    var quote = ref && ref.quote ? String(ref.quote).trim() : "";
+    var note = ref && ref.note ? String(ref.note).trim() : "";
+    if (!quote && !note) {
+      box.hidden = true;
+      return;
+    }
+    box.hidden = false;
+    var qWrap = box.querySelector(".kbc-src-quote");
+    $("#kbc-src-quote").textContent = quote;
+    if (qWrap) qWrap.hidden = !quote;
+    $("#kbc-src-note").textContent = note;
+    $("#kbc-src-note-row").hidden = !note;
+  }
+
   /* ================= field render ================= */
   function render() {
     var cand = curCand();
@@ -86,6 +114,8 @@
       emptyAll.hidden = false;
       $("#kbc-title").value = "";
       $("#kbc-body").value = "";
+      autogrowTitle();
+      renderSrcContext(null);
       $("#kbc-edges-box").hidden = true;
       $("#kbc-i").textContent = CANDS.length;
       $("#kbc-n").textContent = CANDS.length;
@@ -95,6 +125,8 @@
     }
     emptyAll.hidden = true;
     if (!$("#kbc-title").dataset.dirty) $("#kbc-title").value = cand.suggested_title || "";
+    autogrowTitle();
+    renderSrcContext(cand);
     $("#kbc-i").textContent = centerIdx + 1;
     $("#kbc-n").textContent = CANDS.length;
     $("#kbc-done").textContent = doneCount;
@@ -760,7 +792,7 @@
   function saveCard() {
     var cand = curCand();
     if (!cand) return;
-    var title = $("#kbc-title").value.trim();
+    var title = $("#kbc-title").value.replace(/\s*\n\s*/g, " ").trim();
     var body = $("#kbc-body").value.trim();
     if (!title) {
       toast("檔名不能是空的——一句宣告句");
@@ -962,8 +994,41 @@
     $("#kbc-mocbox").addEventListener("click", openMocIndex);
     $("#kbc-back").addEventListener("click", closeCanvas);
     $("#kbc-title").addEventListener("input", function () {
-      $("#kbc-title").dataset.dirty = "1";
+      var t = $("#kbc-title");
+      // 檔名不能有換行：貼上/輸入的換行就地壓成空白。
+      if (t.value.indexOf("\n") !== -1) {
+        var pos = t.selectionStart;
+        t.value = t.value.replace(/\n+/g, " ");
+        try {
+          t.setSelectionRange(pos, pos);
+        } catch (e) {}
+      }
+      t.dataset.dirty = "1";
+      autogrowTitle();
     });
+    // 檔名是一句話：Enter 不換行，直接跳到正文。
+    $("#kbc-title").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        $("#kbc-body").focus();
+      }
+    });
+    // 「用註解當草稿」：把你的 annotation 灌進正文當起點（你說卡片內容常就是註解本身）。
+    var useBtn = $("#kbc-src-use");
+    if (useBtn)
+      useBtn.addEventListener("click", function () {
+        var c = curCand();
+        var ref = c && c.source_refs && c.source_refs[0];
+        var note = ref && ref.note ? String(ref.note).trim() : "";
+        if (!note) {
+          toast("這張沒有註解可用");
+          return;
+        }
+        var body = $("#kbc-body");
+        body.value = body.value.trim() ? body.value.trim() + "\n\n" + note : note;
+        body.focus();
+        toast("已放進正文——記得改寫成你自己的話");
+      });
 
     // ＋開新卡 / ingest 完直達開卡（缺口 A）：空白 adhoc 畫布；
     // ?open=adhoc&slug=<source> → 從剛 ingest 的來源預填 source_ref 開卡。

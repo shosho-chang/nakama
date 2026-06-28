@@ -426,6 +426,7 @@ def _build_p1_prompt(items: list[dict], index_text: str, max_candidates: int) ->
 3. note 只是同意或複述（「沒錯」「就是這樣」）→ 不選。
 4. 純 highlight 無 note → 不選。
 5. 多條 annotation 指向同一概念 → 合併為一條候選，列出全部錨點。
+6. 同一個錨點（anchor）最多輸出一條候選——不要為同一條劃線生多個標題變體。
 
 每條候選輸出：
 - suggested_title：一句宣告句（是主張不是主題；「意志力要用在對齊的任務」
@@ -548,6 +549,20 @@ def build_candidates(
                 strong_signal=strong,
             )
         )
+
+    # 去重：同一條劃線（primary anchor）只留第一張，避免 LLM 對同錨點生多個標題
+    # 變體、或多次 re-ingest 累積近似重複（修修回報）。用 primary anchor 而非
+    # candidate_id 當 key——candidate_id 雜湊「整組 sorted anchors」，LLM 跨次選的
+    # anchor 集合只要微異就漏接；primary anchor（劃線本身的 cfi）才是穩定身分。
+    seen_keys: set[str] = set()
+    deduped: list[CandidateCard] = []
+    for card in cards:
+        key = (card.source_refs[0].anchor if card.source_refs else "") or card.candidate_id
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        deduped.append(card)
+    cards = deduped
 
     # 強訊號置頂（穩定排序：strong 先，再保留 P-1 原序）。
     cards.sort(key=lambda c: (0 if c.strong_signal else 1, c.priority))

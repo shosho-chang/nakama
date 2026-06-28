@@ -422,6 +422,47 @@ def test_build_candidates_caps_at_max(vault: Path, monkeypatch):
     assert len(cards) == 7
 
 
+def test_build_candidates_dedups_same_primary_anchor(vault: Path, monkeypatch):
+    """同一條劃線（primary anchor）只留一張——LLM 對同錨點吐多個標題變體要被收斂
+    （修修回報的近似重複建議）。"""
+    items = [
+        {
+            "slug": "財富階梯",
+            "anchor": "^cfi-6-16-78",
+            "quote": "縱使你目前落在財富階梯上的較低階，你也可以採行較高階的策略！",
+            "note": "花錢的 mindset 停在低階，賺錢的 mindset 要往高階。",
+            "type": "annotation",
+            "literature_path": "KB/Literature/財富階梯",
+        },
+    ]
+
+    def _fake_p1(prompt):  # noqa: ARG001
+        # 同一個 anchor，兩個措辭略異的標題變體 → 應收斂成一張。
+        return [
+            {
+                "suggested_title": "花錢的 mindset 留在低階，賺錢的 mindset 要往高階",
+                "why": "原創主張",
+                "anchors": ["^cfi-6-16-78"],
+                "source_quote": items[0]["quote"],
+                "user_note": items[0]["note"],
+                "strong_signal": False,
+            },
+            {
+                "suggested_title": "花錢的 mindset 停在低階，賺錢的 mindset 要往高階",
+                "why": "同一條劃線的另一個措辭",
+                "anchors": ["^cfi-6-16-78"],
+                "source_quote": items[0]["quote"],
+                "user_note": items[0]["note"],
+                "strong_signal": False,
+            },
+        ]
+
+    monkeypatch.setattr(dr, "_ask_p1_llm", _fake_p1)
+    cards, _ = dr.build_candidates(items, "idx")
+    assert len(cards) == 1  # 兩個變體收斂成一張
+    assert cards[0].source_refs[0].anchor == "^cfi-6-16-78"
+
+
 def test_build_candidates_empty_items():
     cards, warnings = dr.build_candidates([], "idx")
     assert cards == []
