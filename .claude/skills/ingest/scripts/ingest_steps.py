@@ -139,6 +139,7 @@ def _phase_execute(args: argparse.Namespace) -> None:
     pipeline = IngestPipeline()
     pipeline._execute_plan(plan, summary_path)
     pipeline._update_index(data["title"], data["slug"], data["source_type"])
+    pipeline._index_plan_pages(plan)  # Concepts/Entities 也進 index.md
 
     concepts = plan.get("concepts", [])
     entities = plan.get("entities", [])
