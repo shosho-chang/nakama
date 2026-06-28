@@ -49,8 +49,9 @@ STATUS_CARDED = "carded"
 # 待有對應 endpoint hook 再寫）；其餘四類在每日回顧 / 開卡 / skip / defer 落點寫入。
 EVENT_TYPES = frozenset({"proposed", "card", "skip", "defer", "expire", "open"})
 
-# 每日回顧顯示上限：超過此數的未處理候選**留在收件匣不丟**，僅在 bundle warnings
-# 警示（避免一面牆淹沒人，也別讓 5am edge 重算無上限）。清掉一些後其餘自動浮現。
+# 每日回顧「edge 富化」上限：超過此數的未處理候選**全部仍會顯示**——顯示一律來自即時
+# list_open()（候選持久化，只有開卡 / 忽略才消失，見 kb_review._merge_live_open_candidates）；
+# 5am 快照只為前 N 名算 P-2 edges（別讓重算無上限），其餘照常顯示、edges 留空。
 MAX_INBOX_DISPLAY = 30
 
 

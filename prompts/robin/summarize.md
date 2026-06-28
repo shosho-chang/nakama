@@ -7,8 +7,8 @@
    - 來源標注（cited-research = 有引用研究 / author-assertion = 作者主張 / anecdote = 軼事）
 2. **重要數據（Key Data）**：提取具體數字、研究結果、統計資料
 3. **關鍵觀點（Key Insights）**：作者的獨特見解或論述
-4. **相關概念（Related Concepts）**：列出此來源涉及的抽象概念，使用 `[[概念名稱]]` 格式
-5. **相關實體（Related Entities）**：提及的人物、工具、書籍、公司，使用 `[[實體名稱]]` 格式
+4. **相關概念（Related Concepts）**：列出此來源涉及的抽象概念（以純文字列出名稱即可，不要寫成 wiki 連結，避免指向不存在頁面的死連結）
+5. **相關實體（Related Entities）**：提及的人物、工具、書籍、公司（同上，純文字列名，不要寫成 wiki 連結）
 6. **不確定處（Uncertainties）**：來源中未解決的問題、需要更多證據的部分
 7. **行動建議（Actionable Takeaways）**：可直接應用的建議或行動
 

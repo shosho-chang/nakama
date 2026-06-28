@@ -116,7 +116,31 @@ def _compute_bundle(*, weekly: bool = False) -> DailyReviewBundle:
         # 無快照 / 隔日（cron 沒跑成功）→ 即時補算並持久化，與卡片同源、之後開頁不再重跑
         bundle = run_daily_review(weekly=weekly, notify=False)
         save_review_bundle(vault, bundle)
+    # 顯示一律以收件匣即時 list_open() 為準（候選持久化），快照只當 edge 快取。
+    bundle = _merge_live_open_candidates(bundle, vault)
     return _filter_actioned(bundle, vault)
+
+
+def _merge_live_open_candidates(bundle: DailyReviewBundle, vault: Path) -> DailyReviewBundle:
+    """顯示一律以收件匣即時 ``list_open()`` 為準——候選持久化:只有開卡 / 忽略才消失。
+
+    快照（``daily_review_latest.json``）整天凍結,且 5am 只富化前 ``MAX_INBOX_DISPLAY`` 名:
+    舊的未處理卡會被擠出顯示、當天 ingest 的新卡也浮不出來(修修 回饋:候選一直在除非按忽略)。
+    這裡把顯示集換成全部 ``status='open'`` 的候選,並 by ``candidate_id`` 併回快照已算好的
+    edges/related。收件匣為空或讀取失敗 → 退回快照(避免 DB 被清空那種異常反而整頁空白)。
+    """
+    try:
+        from shared import candidate_inbox
+
+        live = candidate_inbox.list_open()
+    except Exception:  # noqa: BLE001 — 收件匣讀取失敗 → 退回快照（degraded 不空頁）
+        logger.exception("list_open failed; falling back to snapshot candidates")
+        return bundle
+    if not live:
+        return bundle
+    enriched = {c.candidate_id: c for c in bundle.candidates}
+    bundle.candidates = [enriched.get(c.candidate_id, c) for c in live]
+    return bundle
 
 
 def _filter_actioned(bundle: DailyReviewBundle, vault: Path) -> DailyReviewBundle:

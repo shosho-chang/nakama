@@ -504,6 +504,29 @@ def test_map_reduce_progress_cb_error_does_not_abort(pipeline, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# _strip_summary_wikilinks — Source Summary 不留 wiki 死連結（修修 回饋 item B）
+# ---------------------------------------------------------------------------
+
+
+def test_strip_summary_wikilinks():
+    assert (
+        mod._strip_summary_wikilinks("見 [[槓桿]] 與 [[複利|複利效應]]。")
+        == "見 槓桿 與 複利效應。"
+    )
+    assert mod._strip_summary_wikilinks("沒有連結") == "沒有連結"
+
+
+def test_generate_summary_strips_wikilinks_small_doc(pipeline, monkeypatch):
+    """小文件摘要輸出的 [[wiki 連結]] 攤成純文字（retrieval-first，不留死連結）。"""
+    monkeypatch.setattr(mod, "load_prompt", lambda *a, **k: "p")
+    monkeypatch.setattr(mod, "_build_robin_system_prompt", lambda *a, **k: "sys")
+    monkeypatch.setattr(mod, "ask", lambda *a, **k: "相關概念：[[槓桿]]、[[複利|複利效應]]")
+    out = pipeline._generate_summary(content="short", title="T", author="A", source_type="article")
+    assert "[[" not in out
+    assert "槓桿" in out and "複利效應" in out
+
+
+# ---------------------------------------------------------------------------
 # estimate_ingest_seconds / _format_duration_range — 按 Ingest 前的時長預估
 # ---------------------------------------------------------------------------
 
