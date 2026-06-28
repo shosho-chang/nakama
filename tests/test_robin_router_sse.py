@@ -146,6 +146,12 @@ def _mock_full_pipeline(monkeypatch, mod, *, summary="fake summary", plan=None, 
     _fake_propose.calls = []
     monkeypatch.setattr(mod, "_propose_source_cards", _fake_propose)
 
+    # summarizing 階段現在會算預估時長（estimate_ingest_seconds → is_server_available
+    # 同步網路探測）。stub 成「本地不可用」讓所有流程測試 hermetic + 不打網路。
+    import shared.local_llm as _llm
+
+    monkeypatch.setattr(_llm, "is_server_available", lambda *a, **k: False)
+
     return {
         "generate_summary": gen,
         "get_concept_plan": get_plan,
@@ -611,3 +617,52 @@ def test_propose_source_cards_swallows_exceptions(client, monkeypatch):
 
     monkeypatch.setattr(dr, "collect_source_items", _boom)
     assert asyncio.run(mod._propose_source_cards("vid1")) is False
+
+
+# ---------------------------------------------------------------------------
+# Progress UX：estimate 事件（進度頁定速）+ progress 事件（map-reduce 真實段數）
+# ---------------------------------------------------------------------------
+
+
+def test_events_emits_estimate_event(client, vault, monkeypatch):
+    """summarizing 開工即送一個 estimate 事件（low/high/label）給進度頁。"""
+    tc, mod = client
+    sid = _article_session(mod, vault)
+    _mock_full_pipeline(monkeypatch, mod)
+
+    r = tc.get(f"/robin/events/{sid}")
+    assert r.status_code == 200
+    events = _parse_sse(r.text)
+    est = [e for e in events if e["event"] == "estimate"]
+    assert len(est) == 1
+    assert "label" in est[0]["data"]
+    assert est[0]["data"]["high"] >= est[0]["data"]["low"]
+
+
+def test_events_emits_progress_events_during_map_reduce(client, vault, monkeypatch):
+    """大文件摘要：progress_cb → 逐段 progress 事件（step/done/total）餵進度條。"""
+    tc, mod = client
+    big = "x" * (mod.pipeline.LARGE_DOC_THRESHOLD + 100)
+    sid = _article_session(mod, vault, name="big.md", body=big)
+    _mock_full_pipeline(monkeypatch, mod)
+
+    from agents.robin import chunker
+
+    monkeypatch.setattr(chunker, "chunk_document", MagicMock(return_value=["c1", "c2", "c3"]))
+
+    def _summary_with_progress(**kw):
+        cb = kw.get("progress_cb")
+        if cb:
+            for i in (1, 2, 3):
+                cb(i, 3)
+        return "fake summary"
+
+    monkeypatch.setattr(mod.pipeline, "_generate_summary", _summary_with_progress)
+
+    r = tc.get(f"/robin/events/{sid}")
+    assert r.status_code == 200
+    events = _parse_sse(r.text)
+    prog = [e["data"] for e in events if e["event"] == "progress"]
+    assert {(p["done"], p["total"]) for p in prog} == {(1, 3), (2, 3), (3, 3)}
+    assert all(p["step"] == 1 for p in prog)
+    assert events[-1]["event"] == "done"  # 流程照常跑完

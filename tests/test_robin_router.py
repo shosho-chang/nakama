@@ -786,6 +786,111 @@ def test_start_book_happy_path_creates_session(client, vault, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# GET /robin/estimate — 按 Ingest 前的時長預估（餵 ingest-confirm.js 確認框）
+# ---------------------------------------------------------------------------
+
+
+def test_estimate_unauth_returns_403(auth_client):
+    tc, _, _ = auth_client
+    r = tc.get("/robin/estimate?source_type=article&source_id=x.md")
+    assert r.status_code == 403
+
+
+def test_estimate_article_returns_label_and_detail(client, vault, monkeypatch):
+    """文章：讀 Inbox 檔（strip frontmatter）→ 回字數 + 時長範圍。"""
+    tc, mod = client
+    import shared.local_llm as _llm
+
+    monkeypatch.setattr(_llm, "is_server_available", lambda *a, **k: False)
+    inbox = mod._get_inbox()
+    inbox.mkdir(parents=True, exist_ok=True)
+    (inbox / "a.md").write_text("---\ntitle: A\n---\n" + ("字" * 2000), encoding="utf-8")
+
+    r = tc.get("/robin/estimate?source_type=article&source_id=a.md")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert data["char_count"] == 2000  # frontmatter 已剝除
+    assert data["is_large"] is False
+    assert data["time_label"].startswith("約")
+    assert "字" in data["detail"]
+
+
+def test_estimate_article_missing_file_404(client, vault):
+    tc, mod = client
+    r = tc.get("/robin/estimate?source_type=article&source_id=ghost.md")
+    assert r.status_code == 404
+
+
+def test_estimate_book_extracts_without_writing(client, vault, monkeypatch):
+    """書本：走 extract_book_text（不寫 KB/Raw）→ 大文件回段數 + 分鐘範圍。"""
+    tc, mod = client
+    import shared.local_llm as _llm
+    from agents.robin import chunker
+
+    monkeypatch.setattr(_llm, "is_server_available", lambda *a, **k: False)
+    monkeypatch.setattr(mod, "extract_book_text", lambda bid: ("書", "作者", "字" * 50000))
+    monkeypatch.setattr(chunker, "chunk_document", lambda content: ["c"] * 4)
+
+    r = tc.get("/robin/estimate?source_type=book&source_id=bk1")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["is_large"] is True
+    assert data["n_chunks"] == 4
+    assert "分 4 段" in data["detail"]
+    assert "分鐘" in data["time_label"]
+    assert not (vault / "KB" / "Raw" / "Books").exists()  # 估算不落 raw 檔
+
+
+def test_estimate_book_missing_returns_404(client, vault, monkeypatch):
+    tc, mod = client
+
+    def _raise(bid):
+        raise LookupError("no book")
+
+    monkeypatch.setattr(mod, "extract_book_text", _raise)
+    r = tc.get("/robin/estimate?source_type=book&source_id=ghost")
+    assert r.status_code == 404
+
+
+def test_estimate_book_unextractable_returns_422(client, vault, monkeypatch):
+    tc, mod = client
+    from shared.epub_text import EPUBTextError
+
+    def _raise(bid):
+        raise EPUBTextError("no text")
+
+    monkeypatch.setattr(mod, "extract_book_text", _raise)
+    r = tc.get("/robin/estimate?source_type=book&source_id=empty")
+    assert r.status_code == 422
+
+
+def test_estimate_video_missing_transcript_404(client, vault):
+    tc, mod = client
+    r = tc.get("/robin/estimate?source_type=video&source_id=novid")
+    assert r.status_code == 404
+
+
+def test_estimate_video_vtt_transcript_returns_estimate(client, vault, monkeypatch):
+    """影片逐字稿（.vtt）存在 → _read_ingest_source 走 webvtt_to_prose → 回估算。"""
+    tc, mod = client
+    import shared.local_llm as _llm
+
+    monkeypatch.setattr(_llm, "is_server_available", lambda *a, **k: False)
+    vdir = vault / "KB" / "Raw" / "Videos"
+    vdir.mkdir(parents=True, exist_ok=True)
+    (vdir / "vid9.vtt").write_text(
+        "WEBVTT\n\n00:00:00.000 --> 00:00:02.000\n這是一段逐字稿內容，用來估算時間。\n",
+        encoding="utf-8",
+    )
+    r = tc.get("/robin/estimate?source_type=video&source_id=vid9")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert data["char_count"] > 0
+
+
+# ---------------------------------------------------------------------------
 # POST /cancel
 # ---------------------------------------------------------------------------
 

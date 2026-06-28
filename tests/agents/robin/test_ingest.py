@@ -454,6 +454,112 @@ def test_map_reduce_chunk_failure_does_not_abort(pipeline, monkeypatch):
     assert "此段落摘要失敗" in reduce_kwargs["chunk_summaries"]
 
 
+def test_map_reduce_calls_progress_cb_per_chunk(pipeline, monkeypatch):
+    """progress_cb 每段完成回呼一次，done 由 1 數到 total（餵 SSE 進度條的真實段數）。"""
+    _install_fake_chunker(
+        monkeypatch,
+        [
+            {"index": 1, "heading": "A", "text": "a"},
+            {"index": 2, "heading": "B", "text": "b"},
+            {"index": 3, "heading": "C", "text": "c"},
+        ],
+    )
+    monkeypatch.setattr(mod, "load_prompt", lambda *a, **k: "p")
+    monkeypatch.setattr(mod, "_build_robin_system_prompt", lambda *a, **k: "sys")
+    fake_llm = types.ModuleType("shared.local_llm")
+    fake_llm.ask_local = lambda *a, **k: "seg"
+    fake_llm.is_server_available = lambda: False
+    monkeypatch.setitem(sys.modules, "shared.local_llm", fake_llm)
+    monkeypatch.setattr(mod, "ask", lambda *a, **k: "reduced")
+
+    seen = []
+    pipeline._map_reduce_summary(
+        content="big",
+        title="T",
+        author="A",
+        source_type="book",
+        progress_cb=lambda done, total: seen.append((done, total)),
+    )
+    assert seen == [(1, 3), (2, 3), (3, 3)]
+
+
+def test_map_reduce_progress_cb_error_does_not_abort(pipeline, monkeypatch):
+    """progress_cb 自己拋例外不沉摘要主流程（best-effort 回報）。"""
+    _install_fake_chunker(monkeypatch, [{"index": 1, "heading": "A", "text": "a"}])
+    monkeypatch.setattr(mod, "load_prompt", lambda *a, **k: "p")
+    monkeypatch.setattr(mod, "_build_robin_system_prompt", lambda *a, **k: "sys")
+    fake_llm = types.ModuleType("shared.local_llm")
+    fake_llm.ask_local = lambda *a, **k: "seg"
+    fake_llm.is_server_available = lambda: False
+    monkeypatch.setitem(sys.modules, "shared.local_llm", fake_llm)
+    monkeypatch.setattr(mod, "ask", lambda *a, **k: "reduced")
+
+    def _boom(done, total):
+        raise RuntimeError("cb blew up")
+
+    out = pipeline._map_reduce_summary(
+        content="big", title="T", author="A", source_type="book", progress_cb=_boom
+    )
+    assert out == "reduced"
+
+
+# ---------------------------------------------------------------------------
+# estimate_ingest_seconds / _format_duration_range — 按 Ingest 前的時長預估
+# ---------------------------------------------------------------------------
+
+
+def test_format_duration_range_seconds_and_minutes():
+    assert mod._format_duration_range(10, 40) == "約 10–40 秒"
+    assert "分鐘" in mod._format_duration_range(60, 200)
+
+
+def test_estimate_small_doc_not_large():
+    est = mod.estimate_ingest_seconds(5000, local_available=False)
+    assert est["is_large"] is False
+    assert est["n_chunks"] == 1
+    assert est["low_seconds"] < est["high_seconds"]
+    assert est["time_label"].startswith("約")
+
+
+def test_estimate_large_doc_cloud_slower_than_local():
+    cloud = mod.estimate_ingest_seconds(200_000, n_chunks=8, local_available=False)
+    local = mod.estimate_ingest_seconds(200_000, n_chunks=8, local_available=True)
+    assert cloud["is_large"] is True
+    assert cloud["n_chunks"] == 8
+    # 雲端每段慢約 3 倍 → 估時上限明顯比本地大
+    assert cloud["high_seconds"] > local["high_seconds"]
+    assert "分鐘" in cloud["time_label"]
+
+
+def test_estimate_large_doc_derives_chunks_when_unknown():
+    est = mod.estimate_ingest_seconds(180_000, local_available=False)
+    assert est["is_large"] is True
+    assert est["n_chunks"] >= 2  # 由字數推回段數
+
+
+def test_estimate_autodetect_local_via_is_server_available(monkeypatch):
+    fake = types.ModuleType("shared.local_llm")
+    fake.is_server_available = lambda: True
+    monkeypatch.setitem(sys.modules, "shared.local_llm", fake)
+    auto = mod.estimate_ingest_seconds(200_000, n_chunks=8)  # local_available=None → 偵測
+    local = mod.estimate_ingest_seconds(200_000, n_chunks=8, local_available=True)
+    assert auto["high_seconds"] == local["high_seconds"]
+
+
+def test_estimate_autodetect_swallows_probe_error(monkeypatch):
+    """偵測本地 LLM 失敗 → 當雲端，不爆。"""
+    fake = types.ModuleType("shared.local_llm")
+
+    def _boom():
+        raise RuntimeError("probe failed")
+
+    fake.is_server_available = _boom
+    monkeypatch.setitem(sys.modules, "shared.local_llm", fake)
+    auto = mod.estimate_ingest_seconds(200_000, n_chunks=8)
+    cloud = mod.estimate_ingest_seconds(200_000, n_chunks=8, local_available=False)
+    assert auto["high_seconds"] == cloud["high_seconds"]
+
+
 # ---------------------------------------------------------------------------
 # _get_concept_plan
 # ---------------------------------------------------------------------------

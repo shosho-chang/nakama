@@ -7,6 +7,8 @@
 <script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/shosho/av-reader.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/ingest-confirm.css?v={{ asset_version }}">
+<script defer src="/static/shosho/ingest-confirm.js?v={{ asset_version }}"></script>
 </head>
 <body class="sho">
 
@@ -33,7 +35,9 @@
       </span>
       <button class="header-btn" id="syncBtn" type="button" title="同步註解到 KB Promotion Review">同步到 KB</button>
       <a class="header-btn" href="/robin/literature/{{ source.annotation_key }}" target="_blank" rel="noopener" title="觀看文獻筆記（由你的劃線整理）">📖 觀看筆記</a>
-      <form method="post" action="/start-video" style="display: contents;">
+      <form method="post" action="/start-video" style="display: contents;"
+            data-ingest-confirm data-est-type="video" data-est-id-field="video_id"
+            data-est-name="{{ source.title }}">
         <input type="hidden" name="video_id" value="{{ video_id }}">
         <button class="header-btn" type="submit" title="讓 Robin 讀完整逐字稿、產出 Source Summary 與概念候選，交給你審核（HITL）">⚙️ Ingest 這支</button>
       </form>

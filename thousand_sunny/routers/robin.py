@@ -5,6 +5,7 @@ import datetime
 import json
 import os
 import platform
+import queue
 import re
 import shutil
 import subprocess
@@ -23,7 +24,7 @@ from agents.robin.agent import (
     SOURCE_TYPE_TO_RAW_DIR,
 )
 from agents.robin.image_fetcher import fetch_images
-from agents.robin.ingest import IngestPipeline
+from agents.robin.ingest import IngestPipeline, estimate_ingest_seconds
 from agents.robin.kb_search import search_kb
 from shared.annotation_store import (
     AnnotationSet,
@@ -32,7 +33,7 @@ from shared.annotation_store import (
     get_annotation_store,
     upgrade_to_v3,
 )
-from shared.book_raw import prepare_book_raw
+from shared.book_raw import extract_book_text, prepare_book_raw
 from shared.book_storage import list_books
 from shared.config import get_agent_config, get_vault_path
 from shared.discard_service import DiscardService
@@ -103,6 +104,8 @@ def _shosho_asset_version() -> str:
         "robin.css",
         "av-reader.css",
         "av-reader.js",
+        "ingest-confirm.css",
+        "ingest-confirm.js",
         "theme.js",
     ):
         path = static_dir / css
@@ -1180,6 +1183,79 @@ async def processing(
     )
 
 
+def _read_ingest_source(raw_path: Path) -> tuple[str, str, str]:
+    """Resolve the ``(title, author, body)`` the summarizer will actually process for
+    a raw file. Mirrors the summarizing-step resolution (``.md`` → strip frontmatter,
+    ``.vtt`` → prose) so the pre-ingest time estimate sees the exact same text the
+    ingest will. One helper → estimate and ingest never drift."""
+    content = read_text(raw_path)
+    title = raw_path.stem
+    author = ""
+    if raw_path.suffix == ".md":
+        fm, body = extract_frontmatter(content)
+        title = fm.get("title", title)
+        author = fm.get("author", "")
+        content = body if body else content
+    elif raw_path.suffix.lower() == ".vtt":
+        content = webvtt_to_prose(content) or content
+    return title, author, content
+
+
+@robin_router.get("/estimate")
+async def estimate_ingest(
+    source_type: str,
+    source_id: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """按 Ingest 前的時長預估（餵確認框）。依 ``source_type`` 解析「摘要實際會吃到的文字」
+    字數 → 段數 → 時間範圍。唯讀:書本走 ``extract_book_text``(不寫 KB/Raw,使用者還沒
+    確認)。回傳 JSON 給 ingest-confirm.js。
+    """
+    if not check_auth(nakama_auth):
+        raise HTTPException(403)
+
+    try:
+        if source_type == "book":
+            _title, _author, text = await asyncio.to_thread(extract_book_text, source_id)
+        elif source_type == "video":
+            videos_dir = get_vault_path() / "KB" / "Raw" / "Videos"
+            raw_md = videos_dir / f"{source_id}.md"
+            raw = raw_md if raw_md.exists() else videos_dir / f"{source_id}.vtt"
+            if not raw.exists():
+                raise HTTPException(404, detail=f"找不到影片逐字稿：{source_id}")
+            _title, _author, text = await asyncio.to_thread(_read_ingest_source, raw)
+        else:  # article / paper：Inbox 檔
+            raw = safe_resolve(_get_inbox(), source_id)
+            if not raw.exists():
+                raise HTTPException(404, detail=f"找不到檔案：{source_id}")
+            _title, _author, text = await asyncio.to_thread(_read_ingest_source, raw)
+    except LookupError:
+        raise HTTPException(404, detail=f"找不到書本：{source_id}") from None
+    except EPUBTextError as exc:
+        raise HTTPException(422, detail=f"這本書無法抽取文字：{exc}") from exc
+
+    char_count = len(text)
+    n_chunks = 1
+    if char_count > pipeline.LARGE_DOC_THRESHOLD:
+        from agents.robin.chunker import chunk_document
+
+        n_chunks = len(await asyncio.to_thread(chunk_document, text))
+
+    est = estimate_ingest_seconds(char_count, n_chunks=n_chunks)
+    size = f"{char_count / 10000:.1f} 萬字" if char_count >= 10000 else f"{char_count} 字"
+    detail = f"{size}，分 {n_chunks} 段" if est["is_large"] else size
+    return {
+        "ok": True,
+        "char_count": char_count,
+        "n_chunks": est["n_chunks"],
+        "is_large": est["is_large"],
+        "low_seconds": est["low_seconds"],
+        "high_seconds": est["high_seconds"],
+        "time_label": est["time_label"],
+        "detail": detail,
+    }
+
+
 async def _propose_source_cards(annotation_slug: str) -> bool:
     """Ingest 完成「當下」：從這個來源的劃線生永久卡候選 → 寫進收件匣（KB Review 顯示）。
 
@@ -1243,24 +1319,13 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
                     yield sse("status", {"msg": "Robin 正在閱讀文件..."})
 
                     raw = Path(sess["raw_path"])
-                    content = read_text(raw)
-                    title = raw.stem
-                    author = ""
-                    if Path(sess["raw_path"]).suffix == ".md":
-                        fm, body = extract_frontmatter(content)
-                        title = fm.get("title", title)
-                        author = fm.get("author", "")
-                        content = body if body else content
-                    elif raw.suffix.lower() == ".vtt":
-                        # 影片逐字稿：WebVTT → 段落化正文（與 CLI ingest 同一條洗法），
-                        # 否則 LLM 摘要會吃到滿屏時間碼、is_large 也會被時間碼灌爆。
-                        content = webvtt_to_prose(content) or content
-
+                    title, author, content = _read_ingest_source(raw)
                     sess["_title"] = title
                     sess["_author"] = author
                     sess["_content"] = content
 
                     is_large = len(content) > pipeline.LARGE_DOC_THRESHOLD
+                    n_chunks = 1
                     if is_large:
                         from agents.robin.chunker import chunk_document
 
@@ -1275,11 +1340,27 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
                     else:
                         yield sse("status", {"msg": "正在呼叫 Claude 產出摘要（約 10-30 秒）..."})
 
-                    # 大文件 map-reduce 摘要可達數分鐘（13 萬字的書 ≈ 7 段、~5 分鐘）。
-                    # 這期間若 SSE 靜默 >~100s，反向代理（Cloudflare / nginx idle timeout）
-                    # 會把連線切掉，前端就誤判成 fatal「發生錯誤」。摘要丟背景 task 跑，
-                    # 每 15s 送一個 heartbeat status 事件保活；task 完成才取結果（底層例外
-                    # 照樣往上拋 → 進 except → error 事件）。
+                    # 開工就把預估時長推給進度頁（與按 Ingest 前確認框同一個 helper，數字一致），
+                    # 進度條據此抓節奏、底下顯示「預計 約 N 分鐘」。is_server_available() 是同步
+                    # 網路探測 → to_thread 不擋事件迴圈。
+                    est = await asyncio.to_thread(estimate_ingest_seconds, len(content), n_chunks)
+                    yield sse(
+                        "estimate",
+                        {
+                            "low": est["low_seconds"],
+                            "high": est["high_seconds"],
+                            "n_chunks": est["n_chunks"],
+                            "is_large": est["is_large"],
+                            "label": est["time_label"],
+                        },
+                    )
+
+                    # 大文件 map-reduce 摘要可達數分鐘（13 萬字的書 ≈ 7 段、~5 分鐘）。這期間若
+                    # SSE 靜默 >~100s，反向代理（Cloudflare / nginx idle timeout）會切線、前端
+                    # 誤判 fatal。摘要丟背景 task：progress_cb 把「第 i/N 段」經 thread-safe
+                    # queue 即時推回 → progress 事件餵進度條；無進度時每 _SSE_HEARTBEAT_SECONDS
+                    # 送 status heartbeat 保活。task 完成才取結果（例外照樣往上拋 → except）。
+                    progress_q: queue.Queue = queue.Queue()
                     summary_task = asyncio.ensure_future(
                         asyncio.to_thread(
                             pipeline._generate_summary,
@@ -1288,18 +1369,44 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
                             author=author,
                             source_type=sess["source_type"],
                             content_nature=sess.get("content_nature", ""),
+                            progress_cb=lambda done, total: progress_q.put((done, total)),
                         )
                     )
+                    # 短輪詢（≤3s）讓「第 i/N 段」進度即時送出；heartbeat 仍以
+                    # _SSE_HEARTBEAT_SECONDS（依經過時間）為準，兩者解耦。
+                    poll_timeout = min(3.0, _SSE_HEARTBEAT_SECONDS)
+                    last_emit = time.monotonic()
                     while not summary_task.done():
-                        done_set, _ = await asyncio.wait(
-                            {summary_task}, timeout=_SSE_HEARTBEAT_SECONDS
-                        )
-                        if not done_set:
+                        done_set, _ = await asyncio.wait({summary_task}, timeout=poll_timeout)
+                        drained = False
+                        while True:
+                            try:
+                                done_n, total_n = progress_q.get_nowait()
+                            except queue.Empty:
+                                break
+                            drained = True
+                            yield sse("progress", {"step": 1, "done": done_n, "total": total_n})
+                            yield sse(
+                                "status",
+                                {"msg": f"摘要進度：第 {done_n}/{total_n} 段（分段閱讀中）..."},
+                            )
+                        now = time.monotonic()
+                        if drained:
+                            last_emit = now
+                        elif not done_set and now - last_emit >= _SSE_HEARTBEAT_SECONDS:
                             yield sse(
                                 "status",
                                 {"msg": "Robin 仍在閱讀（大文件分段摘要中，請稍候）..."},
                             )
+                            last_emit = now
                     summary = summary_task.result()
+                    # 收尾把最後一段（done == total）的進度也補送出去。
+                    while True:
+                        try:
+                            done_n, total_n = progress_q.get_nowait()
+                        except queue.Empty:
+                            break
+                        yield sse("progress", {"step": 1, "done": done_n, "total": total_n})
                     sess["summary_body"] = summary
 
                     from datetime import date
@@ -1342,7 +1449,15 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
 
                 if step == "planning":
                     yield sse("phase", {"step": 2, "total": 4})
-                    yield sse("status", {"msg": "Robin 正在分析概念與實體（約 10-20 秒）..."})
+                    yield sse(
+                        "status",
+                        {
+                            "msg": (
+                                "Robin 正在分析概念與實體"
+                                "（通常 20–60 秒，視知識庫規模與雲端負載）..."
+                            )
+                        },
+                    )
 
                     plan = await asyncio.to_thread(
                         pipeline._get_concept_plan,

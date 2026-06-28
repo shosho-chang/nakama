@@ -8,6 +8,8 @@
 <script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/shosho/reader.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/ingest-confirm.css?v={{ asset_version }}">
+<script defer src="/static/shosho/ingest-confirm.js?v={{ asset_version }}"></script>
 </head>
 <body class="sho">
 
@@ -85,7 +87,9 @@
       {% if is_read %}已完成閱讀 ✓{% else %}完成閱讀{% endif %}
     </button>
     {% if base == "inbox" %}
-    <form method="post" action="/start" class="ingest-form">
+    <form method="post" action="/start" class="ingest-form"
+          data-ingest-confirm data-est-type="article" data-est-id-field="filename"
+          data-est-name="{{ frontmatter.title if frontmatter and frontmatter.title else filename }}">
       <input type="hidden" name="filename" value="{{ filename }}">
       <input type="hidden" name="source_type" value="{{ source_type }}">
       <input type="hidden" name="content_nature" value="{{ content_nature }}">
