@@ -1056,6 +1056,67 @@ def test_update_index_chinese_heading_falls_through_to_append(pipeline, stub_vau
 
 
 # ---------------------------------------------------------------------------
+# _add_index_entries / _index_plan_pages
+# ---------------------------------------------------------------------------
+
+
+def _write_index(stub_vault: Path, content: str) -> None:
+    (stub_vault / "KB").mkdir(parents=True, exist_ok=True)
+    (stub_vault / "KB" / "index.md").write_text(content, encoding="utf-8")
+
+
+def test_add_index_entries_replaces_empty_placeholder(pipeline, stub_vault):
+    """寫第一筆真條目時，該 section 的 *(empty…)* 佔位被清掉；後面 section 不受影響。"""
+    _write_index(
+        stub_vault,
+        "## Concepts\n\n*(empty — 待新 ingest)*\n\n## Entities\n\n*(empty)*\n",
+    )
+    pipeline._add_index_entries("Concepts", [("財富等級", "財富等級")])
+    content = (stub_vault / "KB" / "index.md").read_text("utf-8")
+    assert "- [[財富等級]]" in content
+    assert "*(empty" not in content.split("## Entities")[0]  # Concepts 佔位清掉
+    assert "*(empty)*" in content.split("## Entities")[1]  # Entities 佔位保留
+
+
+def test_add_index_entries_idempotent(pipeline, stub_vault):
+    _write_index(stub_vault, "## Concepts\n\n- [[財富等級]]\n")
+    pipeline._add_index_entries("Concepts", [("財富等級", "財富等級")])
+    content = (stub_vault / "KB" / "index.md").read_text("utf-8")
+    assert content.count("[[財富等級]]") == 1
+
+
+def test_add_index_entries_alias_form_when_title_differs(pipeline, stub_vault):
+    _write_index(stub_vault, "## Concepts\n\n*(empty)*\n")
+    pipeline._add_index_entries("Concepts", [("creatine metabolism", "Creatine Metabolism")])
+    content = (stub_vault / "KB" / "index.md").read_text("utf-8")
+    assert "[[creatine metabolism|Creatine Metabolism]]" in content
+
+
+def test_add_index_entries_appends_section_when_missing(pipeline, stub_vault):
+    _write_index(stub_vault, "# Index\n")
+    pipeline._add_index_entries("Concepts", [("x", "x")])
+    content = (stub_vault / "KB" / "index.md").read_text("utf-8")
+    assert "## Concepts" in content
+    assert "- [[x]]" in content
+
+
+def test_index_plan_pages_indexes_concepts_and_entities(pipeline, stub_vault):
+    _write_index(stub_vault, "## Concepts\n\n*(empty)*\n\n## Entities\n\n*(empty)*\n")
+    plan = {
+        "concepts": [
+            {"slug": "財富等級", "title": "財富等級", "action": "create"},
+            {"slug": "略過我", "title": "略過我", "action": "bogus"},  # 無效 action → 跳過
+        ],
+        "entities": [{"title": "Nick Maggiulli", "entity_type": "person"}],
+    }
+    pipeline._index_plan_pages(plan)
+    content = (stub_vault / "KB" / "index.md").read_text("utf-8")
+    assert "[[財富等級]]" in content
+    assert "Maggiulli" in content  # entity 進 Entities 區
+    assert "略過我" not in content  # 無效 action 不索引
+
+
+# ---------------------------------------------------------------------------
 # _execute_plan
 # ---------------------------------------------------------------------------
 

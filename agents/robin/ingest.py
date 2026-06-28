@@ -290,8 +290,9 @@ class IngestPipeline:
         # Step 6: 執行計畫（建立/更新頁面）
         self._execute_plan(plan, summary_path)
 
-        # Step 7: 更新 index.md
+        # Step 7: 更新 index.md（Source + 這次寫出的 Concepts / Entities）
         self._update_index(title, slug, source_type)
+        self._index_plan_pages(plan)
 
         # Step 8: 記錄事件到 Tier 3 記憶
         concepts = plan.get("concepts", [])
@@ -787,3 +788,82 @@ class IngestPipeline:
         target = vault_path("KB", "index.md")
         target.write_text(index_content, encoding="utf-8")
         logger.info(f"已更新 KB/index.md：加入 {slug}")
+
+    def _add_index_entries(self, section: str, entries: list[tuple[str, str]]) -> None:
+        """在 KB/index.md 的 ``## {section}`` 區塊插入 wikilink 條目（idempotent）。
+
+        - 每筆寫成 ``- [[slug]]``（slug ≠ title 時用 ``- [[slug|title]]`` 保留顯示名）。
+        - 已存在同 ``[[slug]]`` 的條目跳過。
+        - 寫入第一筆真資料時，移除該 section 的 ``*(empty…)*`` 佔位行。
+        - section 不存在 → 在檔尾新增。
+        """
+        if not entries:
+            return
+        index_content = read_page("KB/index.md") or ""
+
+        pending: list[str] = []
+        added: set[str] = set()
+        for slug, title in entries:
+            if not slug or slug in added:
+                continue
+            if f"[[{slug}]]" in index_content or f"[[{slug}|" in index_content:
+                continue
+            added.add(slug)
+            if not title or title == slug:
+                pending.append(f"- [[{slug}]]")
+            else:
+                pending.append(f"- [[{slug}|{title}]]")
+        if not pending:
+            return
+        block = "\n".join(pending)
+
+        section_re = re.compile(
+            rf"(##\s+{re.escape(section)}[^\n]*\n)(.*?)(?=\n##\s|\Z)",
+            re.DOTALL,
+        )
+
+        def _repl(m: re.Match) -> str:
+            head, body = m.group(1), m.group(2)
+            # 丟掉佔位行與純空白行，保留既有真條目（新條目排在最前）。
+            kept = [
+                ln for ln in body.split("\n") if ln.strip() and not ln.strip().startswith("*(empty")
+            ]
+            return head + "\n".join([block, *kept]) + "\n"
+
+        if section_re.search(index_content):
+            index_content = section_re.sub(_repl, index_content, count=1)
+        else:
+            index_content = index_content.rstrip() + f"\n\n## {section}\n{block}\n"
+
+        vault_path("KB", "index.md").write_text(index_content, encoding="utf-8")
+        logger.info(f"已更新 KB/index.md：{section} +{len(pending)}")
+
+    def _index_plan_pages(self, plan: dict) -> None:
+        """把這次 ingest 寫出的 concept / entity 頁同步進 KB/index.md。
+
+        Source 由 :meth:`_update_index` 處理；CLAUDE.md vault 規則要求新增 Wiki
+        頁面後必須同步 KB/index.md，但原本只索引了 Source，導致 index 的
+        Concepts / Entities 兩區長期顯示 ``*(empty)*``。這裡補上兩區（slug 走
+        ``canonicalize`` 與 :func:`kb_writer.upsert_concept_page` 寫檔用的 slug 對齊，
+        確保連結指得到檔案）。
+        """
+        from shared.concept_canonicalize import canonicalize  # noqa: PLC0415
+
+        valid_actions = {"create", "update_merge", "update_conflict", "noop"}
+        concept_entries: list[tuple[str, str]] = []
+        for c in plan.get("concepts", []):
+            if c.get("action") not in valid_actions:
+                continue
+            raw = c.get("slug") or slugify(c.get("title", ""))
+            if not raw:
+                continue
+            concept_entries.append((canonicalize(raw), c.get("title") or raw))
+
+        entity_entries: list[tuple[str, str]] = []
+        for e in plan.get("entities", []):
+            title = e.get("title")
+            if title:
+                entity_entries.append((slugify(title), title))
+
+        self._add_index_entries("Concepts", concept_entries)
+        self._add_index_entries("Entities", entity_entries)

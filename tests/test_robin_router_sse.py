@@ -125,12 +125,14 @@ def _mock_full_pipeline(monkeypatch, mod, *, summary="fake summary", plan=None, 
     )
     execute = MagicMock()
     update_index = MagicMock()
+    index_pages = MagicMock()
     mark_processed = MagicMock()
     recycle = MagicMock()
     monkeypatch.setattr(mod.pipeline, "_generate_summary", gen)
     monkeypatch.setattr(mod.pipeline, "_get_concept_plan", get_plan)
     monkeypatch.setattr(mod.pipeline, "_execute_plan", execute)
     monkeypatch.setattr(mod.pipeline, "_update_index", update_index)
+    monkeypatch.setattr(mod.pipeline, "_index_plan_pages", index_pages)
     monkeypatch.setattr(mod, "mark_file_processed", mark_processed)
     monkeypatch.setattr(mod, "_send_to_recycle_bin", recycle)
 
@@ -157,6 +159,7 @@ def _mock_full_pipeline(monkeypatch, mod, *, summary="fake summary", plan=None, 
         "get_concept_plan": get_plan,
         "execute_plan": execute,
         "update_index": update_index,
+        "index_pages": index_pages,
         "mark_processed": mark_processed,
         "recycle": recycle,
         "write_page": write_page,
@@ -238,6 +241,7 @@ def test_events_full_autonomous_flow_no_candidates_opens_adhoc(client, vault, mo
     mocks["get_concept_plan"].assert_called_once()
     mocks["execute_plan"].assert_called_once()
     mocks["update_index"].assert_called_once()
+    mocks["index_pages"].assert_called_once()  # Concepts/Entities 也進 index.md
     # 文章來源檔被回收（file_path 非空）
     mocks["mark_processed"].assert_called_once()
     mocks["recycle"].assert_called_once()
@@ -445,6 +449,7 @@ def test_events_resume_at_executing(client, vault, monkeypatch):
     assert phases == [3, 4]
     mocks["execute_plan"].assert_called_once()
     mocks["update_index"].assert_called_once()
+    mocks["index_pages"].assert_called_once()
     # 寫入訊息提示「2 個 Wiki 頁面」(1 concept create + 1 entity)
     status_msgs = [e["data"].get("msg", "") for e in events if e["event"] == "status"]
     assert any("2 個" in m for m in status_msgs)

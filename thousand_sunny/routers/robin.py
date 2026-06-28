@@ -1532,6 +1532,9 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
                     await asyncio.to_thread(
                         pipeline._update_index, title, slug, sess["source_type"]
                     )
+                    # Source 之外，這次寫出的 Concepts / Entities 也同步進 index.md
+                    # （否則 index 兩區永遠 *(empty)*）。
+                    await asyncio.to_thread(pipeline._index_plan_pages, sess["plan"])
 
                     # file_path 為空 = 無 Inbox 來源檔（影片 ingest）：raw_path 指向
                     # canonical 逐字稿，不可回收。只有文章 / Inbox 來源才清理原檔。
