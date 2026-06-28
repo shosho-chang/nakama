@@ -478,9 +478,9 @@ def test_map_reduce_calls_progress_cb_per_chunk(pipeline, monkeypatch):
         title="T",
         author="A",
         source_type="book",
-        progress_cb=lambda done, total: seen.append((done, total)),
+        progress_cb=lambda done, total, heading="": seen.append((done, total, heading)),
     )
-    assert seen == [(1, 3), (2, 3), (3, 3)]
+    assert seen == [(1, 3, "A"), (2, 3, "B"), (3, 3, "C")]
 
 
 def test_map_reduce_progress_cb_error_does_not_abort(pipeline, monkeypatch):
@@ -494,13 +494,35 @@ def test_map_reduce_progress_cb_error_does_not_abort(pipeline, monkeypatch):
     monkeypatch.setitem(sys.modules, "shared.local_llm", fake_llm)
     monkeypatch.setattr(mod, "ask", lambda *a, **k: "reduced")
 
-    def _boom(done, total):
+    def _boom(*_a):
         raise RuntimeError("cb blew up")
 
     out = pipeline._map_reduce_summary(
         content="big", title="T", author="A", source_type="book", progress_cb=_boom
     )
     assert out == "reduced"
+
+
+def test_ingest_summary_and_concept_pass_high_max_tokens(pipeline, monkeypatch):
+    """大書修復：摘要 + 概念 plan 的 ask() 帶高 max_tokens（預設 4096 會截斷大書的完整
+    摘要與帶 body 的 concept JSON → 摘要斷段 + 概念抽取 parse 失敗）。"""
+    seen: dict[str, int] = {}
+
+    def _cap(**k):
+        seen[k.get("task")] = k.get("max_tokens")
+        return '{"concepts": [], "entities": []}'
+
+    monkeypatch.setattr(mod, "load_prompt", lambda *a, **k: "p")
+    monkeypatch.setattr(mod, "_build_robin_system_prompt", lambda *a, **k: "sys")
+    monkeypatch.setattr(mod, "list_files", lambda p: [])
+    monkeypatch.setattr(mod, "ask", _cap)
+
+    pipeline._generate_summary(content="short", title="T", author="A", source_type="article")
+    pipeline._get_concept_plan("summary body", "KB/Wiki/Sources/x.md")
+
+    assert mod._INGEST_MAX_TOKENS >= 8192
+    assert seen["ingest_summary"] == mod._INGEST_MAX_TOKENS
+    assert seen["concept_merge"] == mod._INGEST_MAX_TOKENS
 
 
 # ---------------------------------------------------------------------------
