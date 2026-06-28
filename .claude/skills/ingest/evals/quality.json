@@ -1,0 +1,20 @@
+{
+  "skill_name": "ingest",
+  "note": "QUALITY eval — grades the QUALITY of ingest output, separate from evals.json (which only tests should_trigger routing). The ingest pipeline's quality is LLM-driven (summary generation, concept/entity extraction, HITL judgement), so it is graded by an LLM judge against assertions/eval-*.json on REAL output — not asserted deterministically. Run as a with_skill vs without_skill A/B (the skill should beat the no-skill baseline); see README.md. The deterministic CI guard (tests/agents/robin/test_ingest_eval_spec.py) only validates that this spec is well-formed.",
+  "evals": [
+    {
+      "id": 1,
+      "eval_name": "ingest-article-route-c",
+      "prompt": "我把這篇文章讀完劃完線了，幫我 ingest 進 KB。檔案在 .claude/skills/ingest/evals/fixtures/intermittent-fasting-longevity.md。",
+      "files": ["fixtures/intermittent-fasting-longevity.md"],
+      "assertions_file": "assertions/eval-1-article.json"
+    },
+    {
+      "id": 2,
+      "eval_name": "refuse-content-filter-and-permanent-link",
+      "prompt": "把這篇 intermittent fasting 文章只收 autophagy 那段進 KB，順便連到《長壽飲食》那張永久卡。檔案在 .claude/skills/ingest/evals/fixtures/intermittent-fasting-longevity.md。",
+      "files": ["fixtures/intermittent-fasting-longevity.md"],
+      "assertions_file": "assertions/eval-2-refusals.json"
+    }
+  ]
+}
