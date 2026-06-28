@@ -25,7 +25,8 @@
     <span class="ingest-pct" id="ingest-pct">0%</span>
     <span class="ingest-est" id="ingest-est"></span>
   </div>
-  <p id="status">連線中...</p>
+  <div class="activity-feed" id="activity" role="log" aria-live="polite" aria-label="Robin 工作記錄"></div>
+  <p id="status" class="conn-status">連線中...</p>
   <div id="error" class="error-msg" style="display:none"></div>
   <a href="/" class="back-link" style="display:none" id="back">← 返回</a>
   <form method="post" action="/cancel" id="cancel-form" style="margin:0">
@@ -109,6 +110,22 @@ if (!reduceMotion) {
   paint(0);
 }
 
+// ── Activity feed ───────────────────────────────────────────────────────────
+// Robin 的即時工作記錄：每個 status 事件 append 一行（與上一行相同則略過，吞掉重複的
+// heartbeat），最新一行加亮、自動捲到底。這就是讓等待讀起來像「真有一個 agent 在做事」。
+const feedEl = document.getElementById("activity");
+function pushActivity(msg) {
+  if (!msg || !feedEl) return;
+  const last = feedEl.lastElementChild;
+  if (last && last.textContent === msg) return;  // swallow consecutive dupes
+  if (last) last.classList.remove("is-latest");
+  const line = document.createElement("div");
+  line.className = "act-line is-latest";
+  line.textContent = msg;
+  feedEl.appendChild(line);
+  feedEl.scrollTop = feedEl.scrollHeight;
+}
+
 evtSource.addEventListener("phase", function (e) {
   let step;
   try { step = JSON.parse(e.data).step; } catch (err) { return; }
@@ -135,8 +152,12 @@ evtSource.addEventListener("estimate", function (e) {
 });
 
 evtSource.addEventListener("status", function (e) {
-  const data = JSON.parse(e.data);
-  document.getElementById("status").textContent = data.msg;
+  let data;
+  try { data = JSON.parse(e.data); } catch (err) { return; }
+  pushActivity(data.msg);
+  // A status arriving ⇒ the connection is live; clear any stale 連線中/中斷 notice.
+  const conn = document.getElementById("status");
+  if (conn) conn.textContent = "";
 });
 
 evtSource.addEventListener("done", function (e) {
@@ -151,6 +172,7 @@ evtSource.addEventListener("done", function (e) {
     li.querySelector(".step-marker").textContent = "✓";
   });
   document.getElementById("cancel-form").style.display = "none";
+  pushActivity("✓ 完成，前往開卡建議…");
   const data = JSON.parse(e.data);
   window.location.href = data.redirect;
 });

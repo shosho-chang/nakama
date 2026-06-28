@@ -654,7 +654,7 @@ def test_events_emits_progress_events_during_map_reduce(client, vault, monkeypat
         cb = kw.get("progress_cb")
         if cb:
             for i in (1, 2, 3):
-                cb(i, 3)
+                cb(i, 3, f"第{i}章")
         return "fake summary"
 
     monkeypatch.setattr(mod.pipeline, "_generate_summary", _summary_with_progress)
@@ -665,4 +665,27 @@ def test_events_emits_progress_events_during_map_reduce(client, vault, monkeypat
     prog = [e["data"] for e in events if e["event"] == "progress"]
     assert {(p["done"], p["total"]) for p in prog} == {(1, 3), (2, 3), (3, 3)}
     assert all(p["step"] == 1 for p in prog)
+    # 工作記錄：每段帶章名的敘事行
+    status_msgs = [e["data"].get("msg", "") for e in events if e["event"] == "status"]
+    assert any("讀完第 1/3 段：第1章" in m for m in status_msgs)
     assert events[-1]["event"] == "done"  # 流程照常跑完
+
+
+def test_events_narrates_concepts_and_per_page_writes(client, vault, monkeypatch):
+    """工作記錄（L1）：planning 播報抽到的候選、executing 逐頁播報寫入——讓使用者看到
+    Robin「想到什麼、正在寫什麼」，像真的有 agent 在做事。"""
+    tc, mod = client
+    sid = _article_session(mod, vault)
+    plan = {
+        "concepts": [{"slug": "lev", "action": "create", "title": "槓桿"}],
+        "entities": [{"title": "Nick Maggiulli", "entity_type": "person"}],
+    }
+    _mock_full_pipeline(monkeypatch, mod, plan=plan, proposed=False)
+
+    r = tc.get(f"/robin/events/{sid}")
+    assert r.status_code == 200
+    events = _parse_sse(r.text)
+    blob = "\n".join(e["data"].get("msg", "") for e in events if e["event"] == "status")
+    assert "抽出候選" in blob and "槓桿" in blob  # planning 敘事
+    assert "寫入概念：槓桿" in blob  # executing 逐頁
+    assert "寫入實體：Nick Maggiulli" in blob

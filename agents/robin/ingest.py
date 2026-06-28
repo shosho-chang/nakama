@@ -112,6 +112,13 @@ def estimate_ingest_seconds(
     }
 
 
+# Ingest 的摘要 / 概念抽取輸出上限。``ask()`` 預設 max_tokens=4096 對大書太小：13 萬字
+# 書的完整 7 段摘要、以及「帶完整 8 段 body 的概念 plan JSON」都會超過 → reduce / concept
+# 那次 LLM 輸出被硬切（摘要斷在中段缺後兩節；concept JSON 截斷 → json.loads 失敗 → 空
+# plan → 概念/實體頁沒長出來）。拉到 8192（現代 Claude 安全下限）。極大書的 concept plan
+# 若仍截斷，正解是把 body 分開生（另案），這裡先給安全 headroom。
+_INGEST_MAX_TOKENS = 8192
+
 _WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
 
 
@@ -402,7 +409,12 @@ class IngestPipeline:
                 date=str(date.today()),
                 content=content,
             )
-            summary = ask(prompt=prompt, system=_build_robin_system_prompt(), task="ingest_summary")
+            summary = ask(
+                prompt=prompt,
+                system=_build_robin_system_prompt(),
+                task="ingest_summary",
+                max_tokens=_INGEST_MAX_TOKENS,
+            )
         else:
             # 大文件：Map-Reduce
             summary = self._map_reduce_summary(
@@ -430,8 +442,9 @@ class IngestPipeline:
     ) -> str:
         """Map-Reduce 摘要：分段用本地模型，合併走 facade（task=ingest_summary）。
 
-        ``progress_cb(done, total)``（optional）：每段 Map 完成（含失敗 fallback）後
-        回呼一次，``done`` 由 1 數到 ``total``，給 SSE 進度條報「第 i/N 段」。
+        ``progress_cb(done, total, heading)``（optional）：每段 Map 完成（含失敗 fallback）後
+        回呼一次，``done`` 由 1 數到 ``total``、``heading`` 是該段章節名，給 SSE 進度條 + 工作
+        記錄報「讀完第 i/N 段：〈章名〉」。
         """
         set_current_agent("robin")
         from agents.robin.chunker import chunk_document
@@ -466,7 +479,7 @@ class IngestPipeline:
             if progress_cb is not None:
                 # ``pos``（1..total，本地計數）而非 chunk["index"]，回呼絕不沉摘要主流程。
                 try:
-                    progress_cb(pos, total)
+                    progress_cb(pos, total, chunk["heading"])
                 except Exception:  # noqa: BLE001 — 進度回報是 best-effort
                     logger.debug("progress_cb 失敗（忽略）", exc_info=True)
 
@@ -486,7 +499,12 @@ class IngestPipeline:
             chunk_summaries=combined,
         )
 
-        return ask(prompt=reduce_prompt, system=system, task="ingest_summary")
+        return ask(
+            prompt=reduce_prompt,
+            system=system,
+            task="ingest_summary",
+            max_tokens=_INGEST_MAX_TOKENS,
+        )
 
     @staticmethod
     def _get_map_ask_fn():
@@ -545,6 +563,7 @@ class IngestPipeline:
             prompt=prompt,
             system=_build_robin_system_prompt(centaur=True) + "\n\n回傳純 JSON，不要包含其他文字。",
             task="concept_merge",
+            max_tokens=_INGEST_MAX_TOKENS,
         )
 
         try:

@@ -1369,7 +1369,9 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
                             author=author,
                             source_type=sess["source_type"],
                             content_nature=sess.get("content_nature", ""),
-                            progress_cb=lambda done, total: progress_q.put((done, total)),
+                            progress_cb=lambda done, total, heading="": progress_q.put(
+                                (done, total, heading)
+                            ),
                         )
                     )
                     # 短輪詢（≤3s）讓「第 i/N 段」進度即時送出；heartbeat 仍以
@@ -1381,15 +1383,15 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
                         drained = False
                         while True:
                             try:
-                                done_n, total_n = progress_q.get_nowait()
+                                done_n, total_n, heading_n = progress_q.get_nowait()
                             except queue.Empty:
                                 break
                             drained = True
                             yield sse("progress", {"step": 1, "done": done_n, "total": total_n})
-                            yield sse(
-                                "status",
-                                {"msg": f"摘要進度：第 {done_n}/{total_n} 段（分段閱讀中）..."},
-                            )
+                            label = f"讀完第 {done_n}/{total_n} 段"
+                            if heading_n:
+                                label += f"：{heading_n}"
+                            yield sse("status", {"msg": label})
                         now = time.monotonic()
                         if drained:
                             last_emit = now
@@ -1403,10 +1405,14 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
                     # 收尾把最後一段（done == total）的進度也補送出去。
                     while True:
                         try:
-                            done_n, total_n = progress_q.get_nowait()
+                            done_n, total_n, heading_n = progress_q.get_nowait()
                         except queue.Empty:
                             break
                         yield sse("progress", {"step": 1, "done": done_n, "total": total_n})
+                        label = f"讀完第 {done_n}/{total_n} 段"
+                        if heading_n:
+                            label += f"：{heading_n}"
+                        yield sse("status", {"msg": label})
                     sess["summary_body"] = summary
 
                     from datetime import date
@@ -1467,6 +1473,22 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
                         content_nature=sess.get("content_nature", ""),
                     )
                     sess["plan"] = plan or {"concepts": [], "entities": []}
+                    # 工作記錄：把抽到的候選概念/實體用人話播報，讓使用者看到 Robin「想到什麼」。
+                    _cs = sess["plan"].get("concepts", [])
+                    _es = sess["plan"].get("entities", [])
+                    if _cs or _es:
+                        _parts = []
+                        if _cs:
+                            _names = "、".join(
+                                (c.get("title") or c.get("slug") or "?") for c in _cs[:6]
+                            )
+                            _parts.append(f"{len(_cs)} 個概念：{_names}")
+                        if _es:
+                            _enames = "、".join((e.get("title") or "?") for e in _es[:4])
+                            _parts.append(f"{len(_es)} 個實體：{_enames}")
+                        yield sse("status", {"msg": "Robin 抽出候選 " + "；".join(_parts)})
+                    else:
+                        yield sse("status", {"msg": "這篇沒有夠強的概念候選，純摘要入庫"})
                     sess["step"] = "executing"
                     continue
 
@@ -1484,6 +1506,22 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
                     if noop_count:
                         msg += f"，並補充 {noop_count} 個既有頁面的引用"
                     yield sse("status", {"msg": msg + "..."})
+
+                    # 工作記錄：逐頁播報要寫什麼（pre-announce，_execute_plan 隨後實際寫）。
+                    _act_label = {
+                        "create": "建立",
+                        "update_merge": "合併既有",
+                        "update_conflict": "標記衝突",
+                        "noop": "補充引用",
+                    }
+                    for c in concepts:
+                        _name = c.get("title") or c.get("slug") or "?"
+                        _act = c.get("action", "create")
+                        yield sse(
+                            "status", {"msg": f"寫入概念：{_name}（{_act_label.get(_act, _act)}）"}
+                        )
+                    for e in entities:
+                        yield sse("status", {"msg": f"寫入實體：{e.get('title') or '?'}"})
 
                     await asyncio.to_thread(
                         pipeline._execute_plan, sess["plan"], sess["summary_path"]

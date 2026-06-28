@@ -602,6 +602,54 @@ body.sho .ingest-est {
   letter-spacing: 0.02em;
 }
 
+/* Robin 工作記錄 feed (processing.html) — 即時敘事工作流（L1）：每個 status 事件 append
+   一行，最新一行加亮 + accent 箭頭、舊行轉淡，固定高度可捲動 → 像「agent 正在做事」的活動
+   流。hairline / mono / tokens；空的時候不顯示。 */
+body.sho .activity-feed {
+  width: 100%;
+  max-width: 340px;
+  max-height: 168px;
+  overflow-y: auto;
+  margin: 0 auto 12px;
+  padding: 10px 12px;
+  text-align: left;
+  background: var(--sho-bg-2, var(--sho-bg));
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  scrollbar-width: thin;
+}
+body.sho .activity-feed:empty {
+  display: none;
+}
+body.sho .act-line {
+  position: relative;
+  padding: 2px 0 2px 14px;
+  color: var(--sho-muted);
+  word-break: break-word;
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .act-line::before {
+  content: "›";
+  position: absolute;
+  left: 2px;
+  color: var(--sho-line-2, var(--sho-muted));
+}
+body.sho .act-line.is-latest {
+  color: var(--sho-text);
+}
+body.sho .act-line.is-latest::before {
+  content: "▸";
+  color: var(--sho-accent);
+}
+@media (prefers-reduced-motion: reduce) {
+  body.sho .act-line {
+    transition: none;
+  }
+}
+
 /* ── done.html — ingest result summary ──────────────────────────────────── */
 body.sho .icon {
   font-size: 48px;
