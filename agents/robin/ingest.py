@@ -112,6 +112,16 @@ def estimate_ingest_seconds(
     }
 
 
+_WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
+
+
+def _strip_summary_wikilinks(text: str) -> str:
+    """攤平 Source Summary 裡的 ``[[wiki 連結]]`` 成純文字（``[[X]]``→``X``、
+    ``[[X|Y]]``→``Y``）。Source Summary 是 retrieval-first（ADR-043），不該帶內文
+    wiki 連結——它們指向摘要產出當下尚未建立的 concept/entity 頁，全是死連結。"""
+    return _WIKILINK_RE.sub(lambda m: m.group(2) or m.group(1), text)
+
+
 def _truncate_at_boundary(text: str, max_chars: int) -> str:
     """Truncate text at the last paragraph break before max_chars."""
     if len(text) <= max_chars:
@@ -392,17 +402,22 @@ class IngestPipeline:
                 date=str(date.today()),
                 content=content,
             )
-            return ask(prompt=prompt, system=_build_robin_system_prompt(), task="ingest_summary")
-
-        # 大文件：Map-Reduce
-        return self._map_reduce_summary(
-            content=content,
-            title=title,
-            author=author or "未知",
-            source_type=source_type,
-            content_nature=content_nature,
-            progress_cb=progress_cb,
-        )
+            summary = ask(prompt=prompt, system=_build_robin_system_prompt(), task="ingest_summary")
+        else:
+            # 大文件：Map-Reduce
+            summary = self._map_reduce_summary(
+                content=content,
+                title=title,
+                author=author or "未知",
+                source_type=source_type,
+                content_nature=content_nature,
+                progress_cb=progress_cb,
+            )
+        # Source Summary 是 retrieval-first（ADR-043）：不留內文 [[wiki 連結]]。摘要產出
+        # 當下對應的 concept/entity 頁還沒建（候選模型不在此刻落頁），那些連結 100% dangling。
+        # 在這個單一出口把 [[X]]→X、[[X|Y]]→Y 攤成純文字——涵蓋所有 category prompt 與
+        # web/CLI 兩條流，比逐一改 12 個 summarize/reduce prompt 更穩（修修 回饋 item B）。
+        return _strip_summary_wikilinks(summary)
 
     def _map_reduce_summary(
         self,
