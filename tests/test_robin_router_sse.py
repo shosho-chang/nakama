@@ -357,6 +357,33 @@ def test_events_summarizing_large_doc_announces_chunking(client, vault, monkeypa
     assert any("分 3 段" in m for m in status_msgs)
 
 
+def test_events_summarizing_emits_heartbeat_when_slow(client, vault, monkeypatch):
+    """摘要跑超過 heartbeat 間隔 → 期間送 status heartbeat 保活（防反向代理 idle 切線）。
+
+    回歸守門:13 萬字的書 map-reduce ~5 分鐘,SSE 靜默 >~100s 會被 Cloudflare/nginx
+    切線、前端誤判 fatal。摘要丟背景 task + 每 _SSE_HEARTBEAT_SECONDS 送 heartbeat。
+    """
+    import time
+
+    tc, mod = client
+    sid = _article_session(mod, vault)
+    _mock_full_pipeline(monkeypatch, mod)
+    monkeypatch.setattr(mod, "_SSE_HEARTBEAT_SECONDS", 0.05)
+
+    def _slow_summary(**kw):  # 在 to_thread 裡睡比 heartbeat 間隔久
+        time.sleep(0.3)
+        return "fake summary"
+
+    monkeypatch.setattr(mod.pipeline, "_generate_summary", _slow_summary)
+
+    r = tc.get(f"/robin/events/{sid}")
+    assert r.status_code == 200
+    events = _parse_sse(r.text)
+    status_msgs = [e["data"].get("msg", "") for e in events if e["event"] == "status"]
+    assert any("仍在閱讀" in m for m in status_msgs)  # heartbeat 有送出
+    assert events[-1]["event"] == "done"  # 且流程照常跑完
+
+
 # ---------------------------------------------------------------------------
 # Resume：連線中斷後從各階段續跑（step 持久化於 session）
 # ---------------------------------------------------------------------------
