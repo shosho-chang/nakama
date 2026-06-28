@@ -7,6 +7,8 @@
 <script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/shosho/book_reader.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/ingest-confirm.css?v={{ asset_version }}">
+<script defer src="/static/shosho/ingest-confirm.js?v={{ asset_version }}"></script>
 </head>
 <body class="sho" data-book-version-hash="{{ book.book_version_hash }}" data-book-mode="{{ book.mode }}">
 <div class="reader-bar">
@@ -26,7 +28,9 @@
        流程，3–5 分鐘 + 進度條，取代舊的 ingest 佇列）。中譯-only 書讀中文 blob 跑同一條，
        不限英文原檔（修修 回饋 item 5）。標籤由 book_reader.js 依 ingest_status 設定
        （ingested → 重新 ingest）。 #}
-    <form method="post" action="/start-book" class="ingest-wrap" id="ingestForm">
+    <form method="post" action="/start-book" class="ingest-wrap" id="ingestForm"
+          data-ingest-confirm data-est-type="book" data-est-id-field="book_id"
+          data-est-name="{{ book.title }}">
       <input type="hidden" name="book_id" value="{{ book.book_id }}">
       <button type="submit" class="icon-btn" id="ingestBtn" aria-label="Ingest 整本書（約 3–5 分鐘）">📥 <span class="btn-label">Ingest 整本書</span></button>
     </form>

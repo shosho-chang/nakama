@@ -46,14 +46,16 @@ def _write_raw(vault: Path, slug: str, title: str, author: str, text: str) -> Pa
     return path
 
 
-def prepare_book_raw(book_id: str, *, vault: Path | None = None) -> Path:
-    """Read book ``book_id``'s EPUB → flatten → write ``KB/Raw/Books/{slug}.md``.
+def extract_book_text(book_id: str) -> tuple[str, str, str]:
+    """Extract a book's flattened text **without** writing ``KB/Raw`` — for the
+    pre-ingest time estimate, which needs the char count (and chunk count) the
+    summarizer will see but should not create a raw file for an ingest the user
+    might still cancel.
 
-    Returns the raw_path (fed to the ingest summarizer as ``raw_path``). Raises
-    ``LookupError`` if the book is unknown, ``EPUBTextError`` if it yields no text —
-    the caller maps these to an HTTP error so the user sees why it didn't start.
+    Returns ``(title, author, text)``. Raises ``LookupError`` if the book is
+    unknown, ``EPUBTextError`` if it yields no text — same contract as
+    :func:`prepare_book_raw`, which is implemented on top of this.
     """
-    vault = vault or get_vault_path()
     book = get_book(book_id)
     if book is None:
         raise LookupError(f"book {book_id!r} not in books table")
@@ -63,8 +65,19 @@ def prepare_book_raw(book_id: str, *, vault: Path | None = None) -> Path:
     text = extract_text(blob, max_chars=_MAX_BOOK_CHARS)
     if not text.strip():
         raise EPUBTextError(f"book {book_id!r} produced no extractable text")
+    return book.title, book.author or "", text
 
-    slug = slugify(book.title) or book_id
-    raw_path = _write_raw(vault, slug, book.title, book.author or "", text)
-    logger.info("book raw written: %s (%s) → %s", book_id, book.title, raw_path)
+
+def prepare_book_raw(book_id: str, *, vault: Path | None = None) -> Path:
+    """Read book ``book_id``'s EPUB → flatten → write ``KB/Raw/Books/{slug}.md``.
+
+    Returns the raw_path (fed to the ingest summarizer as ``raw_path``). Raises
+    ``LookupError`` if the book is unknown, ``EPUBTextError`` if it yields no text —
+    the caller maps these to an HTTP error so the user sees why it didn't start.
+    """
+    vault = vault or get_vault_path()
+    title, author, text = extract_book_text(book_id)
+    slug = slugify(title) or book_id
+    raw_path = _write_raw(vault, slug, title, author, text)
+    logger.info("book raw written: %s (%s) → %s", book_id, title, raw_path)
     return raw_path

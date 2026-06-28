@@ -54,6 +54,64 @@ CENTAUR_SYSTEM_PREFIX = """你在 Shosho 的 Centaur Zettelkasten 知識系統�
 7. 不確定就標 confidence: low，不要把猜測寫成事實。"""
 
 
+def _format_duration_range(low: float, high: float) -> str:
+    """繁中時長範圍：<90 秒給秒，否則給分鐘（low 向下取整、high 向上取整）。"""
+    if high < 90:
+        return f"約 {int(low)}–{int(high)} 秒"
+    low_min = max(1, int(low // 60))
+    high_min = max(low_min + 1, -(-int(high) // 60))  # ceil
+    return f"約 {low_min}–{high_min} 分鐘"
+
+
+def estimate_ingest_seconds(
+    char_count: int, n_chunks: int = 0, *, local_available: bool | None = None
+) -> dict:
+    """Ingest 預估時長（秒，low/high）給按 Ingest 前的確認框 + 進度頁。
+
+    這不是保證，是一個校準過的範圍，讓使用者決定要不要等。大文件由「摘要 Map 階段」
+    主導：雲端每段約是本地的 3 倍慢，而本地 LLM 又常掛（→ 雲端），所以預設偏雲端範圍，
+    修掉舊寫死「約 10-20 秒」造成的低估（修修 回饋 item 3）。
+
+    ``local_available=None`` → 自行偵測本地 LLM（偵測失敗當作雲端）；測試可顯式傳入。
+    """
+    threshold = IngestPipeline.LARGE_DOC_THRESHOLD
+    is_large = char_count > threshold
+
+    if local_available is None:
+        try:
+            from shared.local_llm import is_server_available
+
+            local_available = bool(is_server_available())
+        except Exception:  # noqa: BLE001 — 偵測失敗就保守當雲端（較慢）
+            local_available = False
+
+    # 概念 / 寫入 / 開卡三階段不分大小都要跑。
+    concept_low, concept_high = 20, 60
+    write_low, write_high = 8, 30
+    cards_low, cards_high = 8, 25
+
+    if not is_large:
+        # 小文件：單次摘要呼叫。
+        low = 15 + concept_low + write_low + cards_low
+        high = 40 + concept_high + write_high + cards_high
+    else:
+        if n_chunks <= 0:
+            n_chunks = max(2, (char_count + 17999) // 18000)
+        per_low, per_high = (6, 15) if local_available else (25, 50)
+        reduce_low, reduce_high = 20, 45
+        low = n_chunks * per_low + reduce_low + concept_low + write_low + cards_low
+        high = n_chunks * per_high + reduce_high + concept_high + write_high + cards_high
+
+    return {
+        "char_count": char_count,
+        "n_chunks": n_chunks if is_large else 1,
+        "is_large": is_large,
+        "low_seconds": int(low),
+        "high_seconds": int(high),
+        "time_label": _format_duration_range(low, high),
+    }
+
+
 def _truncate_at_boundary(text: str, max_chars: int) -> str:
     """Truncate text at the last paragraph break before max_chars."""
     if len(text) <= max_chars:
@@ -306,10 +364,14 @@ class IngestPipeline:
         author: str,
         source_type: str,
         content_nature: str = "",
+        progress_cb=None,
     ) -> str:
         """產出 Source Summary。小文件直接用 facade，大文件走 Map-Reduce。
 
         走 ``task="ingest_summary"``，model 由 registry/override 路由決定（不吃 MODEL_ROBIN）。
+
+        ``progress_cb(done, total)``（optional）：大文件 Map 階段每段完成時回呼，讓 SSE
+        層把「第 i/N 段」推給進度條。小文件單次呼叫，不回呼（無分段可報）。
         """
         set_current_agent("robin")  # Web UI 也會呼叫此 method，重設 thread-local
         if len(content) <= self.LARGE_DOC_THRESHOLD:
@@ -339,6 +401,7 @@ class IngestPipeline:
             author=author or "未知",
             source_type=source_type,
             content_nature=content_nature,
+            progress_cb=progress_cb,
         )
 
     def _map_reduce_summary(
@@ -348,8 +411,13 @@ class IngestPipeline:
         author: str,
         source_type: str,
         content_nature: str = "",
+        progress_cb=None,
     ) -> str:
-        """Map-Reduce 摘要：分段用本地模型，合併走 facade（task=ingest_summary）。"""
+        """Map-Reduce 摘要：分段用本地模型，合併走 facade（task=ingest_summary）。
+
+        ``progress_cb(done, total)``（optional）：每段 Map 完成（含失敗 fallback）後
+        回呼一次，``done`` 由 1 數到 ``total``，給 SSE 進度條報「第 i/N 段」。
+        """
         set_current_agent("robin")
         from agents.robin.chunker import chunk_document
 
@@ -362,12 +430,13 @@ class IngestPipeline:
         # Map：每個 chunk 獨立摘要（單一 chunk 失敗不中斷整個流程）
         system = _build_robin_system_prompt()
         chunk_summaries = []
-        for chunk in chunks:
+        total = len(chunks)
+        for pos, chunk in enumerate(chunks, start=1):
             prompt = load_prompt(
                 "robin",
                 "summarize_chunk",
                 chunk_index=str(chunk["index"]),
-                total_chunks=str(len(chunks)),
+                total_chunks=str(total),
                 title=title,
                 heading=chunk["heading"],
                 content=chunk["text"],
@@ -375,10 +444,16 @@ class IngestPipeline:
             try:
                 summary = ask_fn(prompt, system=system)
             except Exception as e:
-                logger.error(f"  chunk {chunk['index']}/{len(chunks)} 失敗：{e}")
+                logger.error(f"  chunk {chunk['index']}/{total} 失敗：{e}")
                 summary = f"（此段落摘要失敗：{chunk['heading']}）"
             chunk_summaries.append(summary)
-            logger.info(f"  chunk {chunk['index']}/{len(chunks)} 完成（{len(summary)} 字元）")
+            logger.info(f"  chunk {chunk['index']}/{total} 完成（{len(summary)} 字元）")
+            if progress_cb is not None:
+                # ``pos``（1..total，本地計數）而非 chunk["index"]，回呼絕不沉摘要主流程。
+                try:
+                    progress_cb(pos, total)
+                except Exception:  # noqa: BLE001 — 進度回報是 best-effort
+                    logger.debug("progress_cb 失敗（忽略）", exc_info=True)
 
         # Reduce：合併所有 chunk 摘要（走 facade，task=ingest_summary 路由）
         combined = "\n\n---\n\n".join(

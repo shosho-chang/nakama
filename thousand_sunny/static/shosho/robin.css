@@ -560,6 +560,48 @@ body.sho .step.is-done .step-label {
   }
 }
 
+/* Ingest progress bar (processing.html) — smoothly-eased fill + numeric %.
+   JS (requestAnimationFrame) drives the width, so no CSS width transition here;
+   real chunk fraction fills phase 1, phase events floor it forward, a slow creep
+   keeps it moving between events. Single PANTONE 165 accent on a hairline track. */
+body.sho .ingest-bar {
+  width: 100%;
+  max-width: 340px;
+  height: 6px;
+  margin: 0 auto 10px;
+  background: var(--sho-line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+body.sho .ingest-bar-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--sho-accent);
+  border-radius: 999px;
+}
+body.sho .ingest-bar-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
+  max-width: 340px;
+  margin: 0 auto 16px;
+}
+body.sho .ingest-pct {
+  font-family: var(--sho-font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sho-accent);
+  letter-spacing: 0.02em;
+}
+body.sho .ingest-est {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  color: var(--sho-muted);
+  letter-spacing: 0.02em;
+}
+
 /* ── done.html — ingest result summary ──────────────────────────────────── */
 body.sho .icon {
   font-size: 48px;

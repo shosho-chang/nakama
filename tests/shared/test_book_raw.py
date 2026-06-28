@@ -118,3 +118,28 @@ def test_prepare_bilingual_reads_en_blob(wired, monkeypatch):
     _make_book("bi", has_original=True)
     br.prepare_book_raw("bi", vault=wired)
     assert seen["lang"] == "en"
+
+
+# ── extract_book_text — length-only (for the pre-ingest time estimate) ────────
+
+
+def test_extract_book_text_returns_fields_without_writing(wired):
+    """估算路徑：抽出 (title, author, text) 但不寫 KB/Raw（使用者還沒確認）。"""
+    _make_book("bk-ex", title="抽取書")
+    title, author, text = br.extract_book_text("bk-ex")
+    assert title == "抽取書"
+    assert author == "某作者"
+    assert "書本內容第一段" in text
+    assert not (wired / "KB" / "Raw" / "Books").exists()
+
+
+def test_extract_book_text_missing_raises_lookup(wired):
+    with pytest.raises(LookupError):
+        br.extract_book_text("ghost")
+
+
+def test_extract_book_text_bad_epub_raises_epubtext(wired, monkeypatch):
+    monkeypatch.setattr(br, "read_book_blob", lambda book_id, *, lang: b"not an epub")
+    _make_book("bad-ex")
+    with pytest.raises(EPUBTextError):
+        br.extract_book_text("bad-ex")
