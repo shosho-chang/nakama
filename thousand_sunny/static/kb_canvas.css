@@ -63,17 +63,45 @@ body.sho.kbc-active { overflow: hidden; }
 }
 .kbc-lbl .q { margin-left: auto; color: var(--sho-muted); font-weight: 500; }
 .kbc-lbl .done-n { color: var(--sho-success); font-weight: 700; }
+/* 標題：textarea（非 input）才能換行——長宣告句不再被截斷。JS 依內容自動長高。 */
 .kbc-title {
   width: 100%; border: 0; border-bottom: 1px solid var(--sho-line); background: none; color: var(--sho-ink);
   font-family: inherit; font-size: 20px; font-weight: 800; padding: 10px 0 9px; outline: none; line-height: 1.4;
+  resize: none; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; display: block;
 }
 .kbc-title:focus { border-bottom-color: var(--sho-accent); }
 .kbc-title:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
-.kbc-desk textarea {
+/* 正文：用 id 鎖定，避免命中標題 textarea（否則標題會被撐成 flex:1）。 */
+#kbc-body {
   flex: 1; min-height: 120px; width: 100%; border: 0; background: none; color: var(--sho-text); resize: none;
   font-family: inherit; font-size: 15.5px; line-height: 1.85; outline: none; margin-top: 12px;
 }
-.kbc-desk textarea:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+#kbc-body:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+
+/* 來源畫線 + 你的註解（唯讀參考；開卡時把 context 帶到眼前。ADR-017 annotation）。 */
+.kbc-src { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; max-height: 26vh; overflow-y: auto; }
+.kbc-src-item {
+  padding: 8px 10px 9px 12px; border-radius: var(--sho-r-1);
+  background: var(--sho-bg-2); border-left: 2px solid var(--sho-line-2);
+}
+.kbc-src-note { border-left-color: var(--sho-accent-line); }
+.kbc-src-tag {
+  display: block; font-family: var(--sho-font-mono); font-size: 10px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--sho-muted); margin-bottom: 3px;
+}
+.kbc-src-note .kbc-src-tag { color: var(--sho-accent); }
+.kbc-src-item p {
+  margin: 0; font-size: 13px; line-height: 1.7; color: var(--sho-text-2);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.kbc-src-use {
+  margin-top: 7px; border: 1px solid var(--sho-line-2); background: none; color: var(--sho-accent);
+  border-radius: 999px; font-family: var(--sho-font-mono); font-size: 11px; letter-spacing: .04em;
+  padding: 3px 11px; cursor: pointer;
+  transition: color var(--sho-t-fast) var(--sho-ease), border-color var(--sho-t-fast) var(--sho-ease);
+}
+.kbc-src-use:hover { color: var(--sho-ink); border-color: var(--sho-accent); }
+.kbc-src-use:focus-visible { outline: none; box-shadow: var(--sho-focus); }
 
 /* 連結清單 */
 .kbc-edges { border-top: 1px solid var(--sho-line); padding-top: 10px; max-height: 38vh; overflow-y: auto; }
