@@ -132,6 +132,10 @@ def _send_to_recycle_bin(path: Path) -> None:
 sessions: dict[str, dict] = {}
 SESSION_TTL = 7200
 
+# 長 ingest 步驟（書本 map-reduce 摘要可達數分鐘）期間每隔這麼久送一個 SSE
+# heartbeat，讓反向代理（Cloudflare / nginx ~100s idle）不切線。<100s 即可。
+_SSE_HEARTBEAT_SECONDS = 15
+
 
 def _new_session(**kwargs) -> str:
     sid = str(uuid.uuid4())
@@ -1271,14 +1275,31 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
                     else:
                         yield sse("status", {"msg": "正在呼叫 Claude 產出摘要（約 10-30 秒）..."})
 
-                    summary = await asyncio.to_thread(
-                        pipeline._generate_summary,
-                        content=content,
-                        title=title,
-                        author=author,
-                        source_type=sess["source_type"],
-                        content_nature=sess.get("content_nature", ""),
+                    # 大文件 map-reduce 摘要可達數分鐘（13 萬字的書 ≈ 7 段、~5 分鐘）。
+                    # 這期間若 SSE 靜默 >~100s，反向代理（Cloudflare / nginx idle timeout）
+                    # 會把連線切掉，前端就誤判成 fatal「發生錯誤」。摘要丟背景 task 跑，
+                    # 每 15s 送一個 heartbeat status 事件保活；task 完成才取結果（底層例外
+                    # 照樣往上拋 → 進 except → error 事件）。
+                    summary_task = asyncio.ensure_future(
+                        asyncio.to_thread(
+                            pipeline._generate_summary,
+                            content=content,
+                            title=title,
+                            author=author,
+                            source_type=sess["source_type"],
+                            content_nature=sess.get("content_nature", ""),
+                        )
                     )
+                    while not summary_task.done():
+                        done_set, _ = await asyncio.wait(
+                            {summary_task}, timeout=_SSE_HEARTBEAT_SECONDS
+                        )
+                        if not done_set:
+                            yield sse(
+                                "status",
+                                {"msg": "Robin 仍在閱讀（大文件分段摘要中，請稍候）..."},
+                            )
+                    summary = summary_task.result()
                     sess["summary_body"] = summary
 
                     from datetime import date
@@ -1398,7 +1419,17 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
             sess["error"] = str(e)
             yield sse("error", {"msg": str(e)})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    # no-store + X-Accel-Buffering:no → 叫 nginx 別緩衝這條 SSE（否則 heartbeat 卡在
+    # 緩衝區出不去，保活失效）。Cache-Control 也擋中間層快取串流。
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-store, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.post("/kb/research")

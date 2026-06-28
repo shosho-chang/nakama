@@ -74,9 +74,16 @@ evtSource.addEventListener("done", function (e) {
 });
 
 evtSource.addEventListener("error", function (e) {
+  // A SERVER-SENT error event carries data (our sse("error", {msg})). A bare
+  // transport error — proxy idle-timeout on a long ingest, or a network blip —
+  // fires this event with NO data: don't treat it as fatal. Let onerror show the
+  // reconnect notice and EventSource auto-reconnect (the flow resumes from the
+  // step persisted in the session). Without this guard a 100s proxy cut during a
+  // multi-minute book summary looked like a hard failure.
+  if (!e.data) return;
   evtSource.close();
   let msg = "發生錯誤，請重試";
-  try { msg = JSON.parse(e.data).msg; } catch (err) { /* no payload */ }
+  try { msg = JSON.parse(e.data).msg; } catch (err) { /* keep fallback */ }
   document.getElementById("error").textContent = msg;
   document.getElementById("error").style.display = "block";
   document.getElementById("back").style.display = "inline-block";
