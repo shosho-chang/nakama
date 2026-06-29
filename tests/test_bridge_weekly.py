@@ -1654,7 +1654,9 @@ class TestRowChips:
         # SAMPLE_TASK has no category/priority → misc + normal(Medium)
         assert "wk-cat-misc" in body
         assert "wk-pri-normal" in body and "Medium" in body
-        assert "wk-chips" in body
+        # N541: chips are now standalone grid cells (no .wk-chips wrapper) so they align
+        # into columns; the cat/pri chip classes above are the contract now.
+        assert "wk-cat-chip" in body and "wk-pri-chip" in body
 
 
 class TestDayDone:

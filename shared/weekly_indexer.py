@@ -312,6 +312,15 @@ class WeeklyTask:
             return any(a.date == d for a in self.plan)
         return self.scheduled == d
 
+    def schedule_dates(self) -> list[date]:
+        """Every concrete date this task is placed on — ``plan[]`` entry dates plus a
+        bare task-level ``scheduled`` — sorted ascending and de-duped. Empty list ⇒ the
+        task has no time yet (the 全部 view buckets it under 還沒排定時間)."""
+        ds = {a.date for a in self.plan}
+        if self.scheduled is not None:
+            ds.add(self.scheduled)
+        return sorted(ds)
+
     def done_on(self, d: date) -> bool:
         """Per-DAY completion for the daily bullet (v3-I follow-up, 修修): the plan[]
         entry's own ``done`` flag for ``d``. A scheduled-only task (no plan entry) falls
@@ -426,8 +435,12 @@ class WeeklyView:
     tasks: tuple[WeeklyTask, ...]  # tasks with allocation/scheduled in week
     today_tasks: tuple[WeeklyTask, ...]  # subset scheduled today (current week only)
     incomplete: tuple[WeeklyTask, ...]  # not done, due on/before week end
-    backlog_by_project: dict[str, list[WeeklyTask]]  # ALL not-done tasks (not week-bounded, 41c)
-    backlog_count: int  # total open tasks in the backlog (across all projects)
+    # 全部 view (N541) — ALL not-done tasks split by scheduling status, not by project.
+    # 1+2 are sorted nearest→furthest by date; 3 by name.
+    all_this_week: tuple[WeeklyTask, ...]  # has a plan/scheduled date inside this week
+    all_other_scheduled: tuple[WeeklyTask, ...]  # scheduled, but every date is outside this week
+    all_unscheduled: tuple[WeeklyTask, ...]  # no plan/scheduled date yet
+    backlog_count: int  # total open tasks in the backlog (across all three buckets)
     by_project: dict[str, list[WeeklyTask]]
     planned_by_task: dict[str, int]  # slug -> planned 🍅 this week (work only)
     days: tuple[dict, ...]  # 5 day-cards Mon..Fri (the bullet section)
@@ -791,15 +804,31 @@ class WeeklyIndexer:
         incomplete = [
             t for t in all_tasks if not t.done and t.scheduled is not None and t.scheduled <= wk.end
         ]
-        # backlog (41c) = EVERY not-done task, regardless of scheduling — the full
-        # "待排程" pool the calendar picker schedules from. Grouped by project,
-        # unscheduled tasks first within each group (they need attention most),
-        # then by earliest scheduled date so already-placed tasks sort sensibly.
+        # backlog (41c) = EVERY not-done task, regardless of scheduling. The 全部 view
+        # (N541) splits it into three scheduling buckets instead of by project:
+        #   1. 排定本週的       — has a plan/scheduled date inside this week
+        #   2. 已排程，非本週   — scheduled, but every date falls outside this week
+        #   3. 還沒排定時間     — no plan/scheduled date yet
+        # Buckets 1+2 sort nearest→furthest by date (修修); 3 sorts by name.
         backlog = [t for t in all_tasks if not t.done]
-        backlog.sort(key=lambda t: (t.scheduled is not None, t.scheduled or date.max, t.name))
-        backlog_by_project: dict[str, list[WeeklyTask]] = {}
+        all_this_week: list[WeeklyTask] = []
+        all_other_scheduled: list[WeeklyTask] = []
+        all_unscheduled: list[WeeklyTask] = []
         for t in backlog:
-            backlog_by_project.setdefault(t.project or "（無專案）", []).append(t)
+            ds = t.schedule_dates()
+            if not ds:
+                all_unscheduled.append(t)
+            elif any(wk.contains(d) for d in ds):
+                all_this_week.append(t)
+            else:
+                all_other_scheduled.append(t)
+
+        def _earliest_in_week(t: WeeklyTask) -> date:
+            return min(d for d in t.schedule_dates() if wk.contains(d))
+
+        all_this_week.sort(key=lambda t: (_earliest_in_week(t), t.name))
+        all_other_scheduled.sort(key=lambda t: (t.schedule_dates()[0], t.name))
+        all_unscheduled.sort(key=lambda t: t.name)
 
         # 🍅 = work hours: only `work`-category tasks count toward planned/actual.
         planned = sum(t.planned_in(wk) for t in all_tasks if t.is_work)
@@ -877,7 +906,9 @@ class WeeklyIndexer:
             tasks=tuple(in_week),
             today_tasks=today_tasks,
             incomplete=tuple(incomplete),
-            backlog_by_project=backlog_by_project,
+            all_this_week=tuple(all_this_week),
+            all_other_scheduled=tuple(all_other_scheduled),
+            all_unscheduled=tuple(all_unscheduled),
             backlog_count=len(backlog),
             by_project=by_project,
             planned_by_task={t.slug: t.planned_in(wk) for t in in_week},
