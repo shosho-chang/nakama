@@ -822,6 +822,7 @@ class WeeklyIndexer:
                 all_this_week.append(t)
             else:
                 all_other_scheduled.append(t)
+
         def _earliest_in_week(t: WeeklyTask) -> date:
             return min(d for d in t.schedule_dates() if wk.contains(d))
 
