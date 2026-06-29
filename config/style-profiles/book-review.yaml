@@ -1,4 +1,4 @@
-profile_id: book-review@0.1.0
+profile_id: book-review@0.2.0
 category: book-review
 # DraftV1.primary_category 值（publishing.py Literal 列表）
 primary_category: book-review
@@ -7,8 +7,9 @@ style_profile_md: agents/brook/style-profiles/book-review.md
 word_count:
   min: 5000
   max: 12500
-# 硬規則：書評類禁 emoji（_extraction-notes.md §2）
-forbid_emoji: true
+# 正文不撒 emoji，但 CTA/購書連結附近偶見（👉🥰）。v2 盲抽修正 v1「完全禁止」
+# 誤判——證據：designing-your-life 購書段確有 emoji（見 _extraction-notes.md v2 更新）。
+forbid_emoji: false
 # Brook 產稿時的候選 tag hint（tag_filter 會做白名單交集）
 default_tag_hints:
   - book-review
