@@ -354,12 +354,19 @@ _TASK_PRIORITIES = ("low", "normal", "high")
 
 
 def set_task_meta(
-    vault_root: Path, task_slug: str, *, category: str | None = None, priority: str | None = None
+    vault_root: Path,
+    task_slug: str,
+    *,
+    category: str | None = None,
+    priority: str | None = None,
+    est_pomodoros: int | None = None,
 ) -> str:
-    """Update a task's ``category`` / ``priority`` frontmatter from the dashboard /
-    task-page dropdowns (v3-I follow-up, 修修). Only the given, valid fields are
-    written; plan[]/timeEntries/status/body are preserved. Unknown values are ignored
-    (the dropdowns only emit valid ones). Returns the task slug. Raises
+    """Update a task's ``category`` / ``priority`` / ``預估🍅`` frontmatter from the
+    dashboard / task-page editors (v3-I follow-up, 修修). Only the given fields are
+    written; plan[]/timeEntries/status/body are preserved. ``None`` means "leave as-is"
+    (the field wasn't in the form). ``est_pomodoros`` lets 修修 set the estimate by hand
+    — useful for non-work tasks (whose 🍅 is otherwise hidden) and unscheduled ones (no
+    plan[] to auto-sync from, N541). Returns the task slug. Raises
     :class:`TaskNotFoundError` if the file is gone."""
     path = _task_path(vault_root, task_slug)
     if not path.exists():
@@ -369,6 +376,8 @@ def set_task_meta(
         fm["category"] = category
     if priority in _TASK_PRIORITIES:
         fm["priority"] = priority
+    if est_pomodoros is not None:
+        fm["預估🍅"] = est_pomodoros
     _write_task(path, fm, body)
     return task_slug
 

@@ -577,14 +577,16 @@ async def weekly_task_meta(
     slug: str = PathParam(..., min_length=1),
     category: str = Form(""),
     priority: str = Form(""),
+    est_pomodoros: int = Form(-1),  # -1 = field absent (dashboard row form omits it)
     week: str = Form(""),
     from_task: int = Form(0),
     from_project: str = Form(""),
     nakama_auth: str | None = Cookie(None),
 ):
-    """v3-I follow-up (修修): edit a task's category + priority from the dashboard row /
-    task page dropdowns. Writes only the valid fields; stays in place (the row's #anchor
-    + save-state, or the task page / Brief tab when fired from there)."""
+    """v3-I follow-up (修修): edit a task's category + priority + 預估🍅 from the dashboard
+    row / task page editors. Writes only the valid fields; stays in place (the row's
+    #anchor + save-state, or the task page / Brief tab when fired from there). The task
+    page carries ``est_pomodoros`` (0–40, 0 clears the estimate); the row omits it."""
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
     _FROM_PROJECT.set(from_project.strip())
@@ -596,6 +598,7 @@ async def weekly_task_meta(
             slug,
             category=category if category in CATEGORY_LABELS else None,
             priority=priority if priority in {"low", "normal", "high"} else None,
+            est_pomodoros=est_pomodoros if 0 <= est_pomodoros <= 40 else None,
         )
     except TaskNotFoundError:
         return _back(wk_key, "task")

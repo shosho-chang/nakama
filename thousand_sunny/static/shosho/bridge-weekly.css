@@ -174,7 +174,6 @@ body.sho .wk-tsection-n {
   font-variant-numeric: tabular-nums;
   border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-1); padding: 0 5px;
 }
-body.sho .wk-tsection-sub { margin-left: auto; font-size: 11px; color: var(--sho-muted); }
 
 /* ── daily cards (Mon–Fri): today open, others collapse to a thin agenda row ── */
 body.sho .wk-days { display: flex; flex-direction: column; gap: 8px; }
@@ -877,6 +876,22 @@ body.sho .wk-meta-sel:focus-visible { outline: none; border-color: var(--sho-acc
 /* task page: sits inline in the meta row, no top margin; selects more compact */
 body.sho .tk-meta .wk-meta-form { margin-top: 0; gap: 8px; }
 body.sho .tk-meta .wk-meta-sel { padding: 3px 7px; min-width: 0; font-size: 12px; }
+/* 預估🍅 editor: a number input + unit caption, matching the compact select chrome */
+body.sho .wk-meta-est {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  padding: 3px 8px; background: var(--sho-bg);
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-meta-est:focus-within { border-color: var(--sho-accent); box-shadow: var(--sho-focus); }
+body.sho .wk-meta-estnum {
+  width: 2.5rem; font: inherit; font-size: 12px; color: var(--sho-text);
+  border: 0; background: transparent; outline: none; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+body.sho .wk-meta-est-unit {
+  font-family: var(--sho-font-mono); font-size: 11px; letter-spacing: 0.04em; color: var(--sho-muted);
+}
 
 /* N529 — 今日回顧卡（5am Centaur daily review；dashboard 起床即見，連到 /kb/review）*/
 body.sho .wk-review {

@@ -62,6 +62,14 @@
               <option value="{{ p }}" {{ 'selected' if p == task.priority }}>{{ lbl }}</option>
             {% endfor %}
           </select>
+          {# 預估🍅 editor (修修): editable for ANY task — non-work tasks hide the 🍅 stat
+             block above, and unscheduled tasks have no plan[] to auto-sync from, so this
+             is the only place to set the estimate by hand. 0 clears it. 1🍅 ≈ 30 分。 #}
+          <label class="wk-meta-est" title="預估番茄數（1🍅 ≈ 30 分）">
+            <input class="wk-meta-estnum" type="number" name="est_pomodoros" min="0" max="40"
+                   inputmode="numeric" value="{{ task.est_pomodoros }}" aria-label="預估番茄數">
+            <span class="wk-meta-est-unit" aria-hidden="true">🍅 預估</span>
+          </label>
         </form>
         {% if task.project %}<span class="tk-proj">{{ task.project }}</span>{% endif %}
         <span class="sho-chip sho-chip--{{ 'online' if task.status == 'done' else 'offline' }}">{{ task.status }}</span>
@@ -439,13 +447,16 @@
     if (cancel) cancel.addEventListener('click', closeEditor);
   })();
 
-  /* v3-I follow-up (修修): 分類/優先 dropdowns auto-submit on change. */
+  /* v3-I follow-up (修修): 分類/優先/預估🍅 editors auto-submit on change (number input
+     fires 'change' on blur / Enter, not per keystroke — so it saves when 修修 leaves it). */
   (function () {
-    document.querySelectorAll('.wk-meta-form select').forEach(function (sel) {
-      sel.addEventListener('change', function () {
-        if (sel.form) (sel.form.requestSubmit ? sel.form.requestSubmit() : sel.form.submit());
-      });
-    });
+    document.querySelectorAll('.wk-meta-form select, .wk-meta-form input[type="number"]').forEach(
+      function (el) {
+        el.addEventListener('change', function () {
+          if (el.form) (el.form.requestSubmit ? el.form.requestSubmit() : el.form.submit());
+        });
+      }
+    );
   })();
   </script>
 </body>
