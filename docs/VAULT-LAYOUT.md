@@ -171,7 +171,8 @@ E:\Shosho LifeOS\
 │   │   ├── notes/          ad-hoc Nami notes
 │   │   └── research/       Nami research handler output
 │   └── brook/
-│       └── seo-audit/      Brook SEO audit task outputs (per ADR-027)
+│       ├── seo-audit/      Brook SEO audit task outputs (per ADR-027)
+│       └── drafts/         draft-article 原子文章初稿 (NON-KB; provenance 單向)
 │
 ├── Templates/            🔒 Human only (Templater plugin owns)
 └── Scripts/              🔒 Human only (Templater user scripts + nakama-config.md)
@@ -251,6 +252,7 @@ data/agent_reports/franky/
 | `AgentOutputs/nami/notes/` | 🤖 | `gateway/handlers/nami.py:458-525,:1773` (Nami write_vault_note); whitelisted by `shared/vault_rules.py:14-20` | Nami handler reads for context | — |
 | `AgentOutputs/nami/research/` | 🤖 | Nami research handler | 修修 | — |
 | `AgentOutputs/brook/seo-audit/{YYYY-MM-DD}/` | 🤖 | Brook SEO audit + enrich runners (ADR-027) | 修修 | — |
+| `AgentOutputs/brook/drafts/{slug}-draft-{YYYY-MM-DD}.md` | 🤖 | `.claude/skills/draft-article` (Composer skill) | 修修 拿去大改 | 原子文章初稿；**不回寫 KB**（紅線⑤ provenance 單向） |
 | (repo) `data/agent_reports/franky/weekly/` | 🤖 | `agents/franky/reporter.py:277` (post-path-migration) | 修修, Franky weekly digest | Franky weekly format |
 | (repo) `data/agent_reports/franky/dev-backlog.md` | 👤+🤖 | 修修 writes; `agents/franky/agent.py:33` reads | Franky weekly digest input | — |
 | (repo) `data/agent_reports/franky/vault-audit/` | 🤖 | `scripts/vault_layout_audit.py` (Phase 3 PR-C1) | 修修, Franky weekly | — |
