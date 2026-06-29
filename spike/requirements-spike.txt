@@ -1,0 +1,6 @@
+# Phase 0 spike ONLY — do NOT merge into requirements.txt / pyproject.toml.
+# garminconnect 0.3.x replaced the now-dead `garth` lib with a native DI OAuth
+# client (curl_cffi TLS impersonation) and requires Python >= 3.12.
+# Pin the version the Phase 0 research was grounded against; bump only after
+# re-checking the upstream example.py (auth surface changes between releases).
+garminconnect==0.3.6

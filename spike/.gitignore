@@ -1,0 +1,7 @@
+# Personal Garmin data + local spike artifacts — never commit.
+# (data/ tokens are already covered by the repo-root .gitignore `data/*`.)
+# Keep ONLY the public forum fixture; ignore real dumped activities, reports, probe log, venv, caches.
+samples/*.json
+!samples/exercise_sets_forum_196039.json
+token_probe.jsonl
+__pycache__/
