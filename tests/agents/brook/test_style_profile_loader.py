@@ -48,10 +48,14 @@ def test_load_each_seed_profile(category):
     assert profile.word_count_max >= profile.word_count_min
 
 
-def test_book_review_forbids_emoji():
-    """_extraction-notes.md §2 硬規則：書評類完全不用 emoji。"""
+def test_book_review_allows_cta_emoji():
+    """書評正文不撒 emoji，但 CTA/購書連結附近偶見 → forbid_emoji=False。
+
+    v2 盲抽修正 v1「完全禁止（硬規則）」的誤判：designing-your-life 購書段落
+    確有 emoji（👉🥰），v1 當年 10 篇樣本未收錄該篇 → 過度概化。
+    """
     profile = load_style_profile("book-review")
-    assert profile.forbid_emoji is True
+    assert profile.forbid_emoji is False
 
 
 def test_load_unknown_category_raises():
