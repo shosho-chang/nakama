@@ -1,0 +1,55 @@
+{
+  "activityId": 99999999999,
+  "exerciseSets": [
+    {
+      "exercises": [{"category": "BENCH_PRESS", "name": "DUMBBELL_BENCH_PRESS", "probability": 99.6}],
+      "duration": 30.0,
+      "repetitionCount": 10,
+      "weight": 20000.0,
+      "setType": "ACTIVE",
+      "startTime": "2026-06-24T13:00:00.0",
+      "wktStepIndex": 2,
+      "messageIndex": 0
+    },
+    {
+      "exercises": [],
+      "duration": 60.0,
+      "repetitionCount": null,
+      "weight": null,
+      "setType": "REST",
+      "startTime": "2026-06-24T13:00:30.0",
+      "wktStepIndex": 3,
+      "messageIndex": 1
+    },
+    {
+      "exercises": [{"category": "BENCH_PRESS", "name": null, "probability": 99.6}],
+      "duration": 28.0,
+      "repetitionCount": 8,
+      "weight": 22500.0,
+      "setType": "ACTIVE",
+      "startTime": "2026-06-24T13:01:30.0",
+      "wktStepIndex": 2,
+      "messageIndex": 2
+    },
+    {
+      "exercises": [{"category": "WARM_UP", "name": "STRETCH_SHOULDER", "probability": 99.6}],
+      "duration": 40.0,
+      "repetitionCount": null,
+      "weight": 0.0,
+      "setType": "ACTIVE",
+      "startTime": "2026-06-24T13:02:30.0",
+      "wktStepIndex": 5,
+      "messageIndex": 3
+    },
+    {
+      "exercises": [{"category": "UNKNOWN", "name": null, "probability": 99.6}],
+      "duration": 5.0,
+      "repetitionCount": 0,
+      "weight": null,
+      "setType": "ACTIVE",
+      "startTime": "2026-06-24T13:03:30.0",
+      "wktStepIndex": null,
+      "messageIndex": 4
+    }
+  ]
+}

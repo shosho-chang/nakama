@@ -78,6 +78,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+coach = [
+    # Zoro fitness coach (WP1): unofficial Garmin Connect read-back.
+    # Requires Python >=3.12 (garminconnect 0.3.x dropped 3.11; native DI OAuth
+    # replaced the deprecated garth). Install only on the coach host:
+    #   pip install 'nakama[coach]'   (or: pip install 'garminconnect>=0.3.6')
+    "garminconnect>=0.3.6",
+]
 transcription = [
     # WhisperX: Whisper Large V3 ASR + word-level alignment + (optional) speaker
     # diarization via pyannote.audio

@@ -65,6 +65,10 @@ slack-sdk>=3.27.0
 google-auth-oauthlib>=1.2.0        # OAuth consent flow（user-consent, not service account）
 filelock>=3.13.0                   # Token file rotate 時的併發保護
 
+# Zoro: Garmin Fitness Coach (optional extra `coach`; pyproject only) —
+# garminconnect 0.3.x needs Python >=3.12, so it is NOT in this base list.
+# Install on the coach host: pip install 'garminconnect>=0.3.6'
+
 # Script-Driven Video (ADR-015): clap-marker detection audio processing
 scipy>=1.11
 

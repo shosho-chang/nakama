@@ -495,6 +495,38 @@ def _init_tables(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_news_score_shadow_item
             ON news_score_shadow(item_id, scored_at DESC);
+
+        -- Zoro coach WP1 — per-set strength log read back from Garmin.
+        -- Canonical DDL: migrations/018_strength_sets.sql.
+        -- Owned by shared/strength_sets_store.py; written by agents/zoro/coach.
+        -- Natural key (activity_id, set_index = raw messageIndex / array position)
+        -- → re-sync is idempotent INSERT OR IGNORE. weight in kg (grams/1000;
+        -- NULL or 0.0 = no load); reps NULL on REST / 0 on aborted; WARM_UP flagged.
+        CREATE TABLE IF NOT EXISTS strength_sets (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            activity_id    TEXT    NOT NULL,
+            set_index      INTEGER NOT NULL,
+            set_type       TEXT    NOT NULL CHECK (set_type IN ('active', 'rest')),
+            exercise_key   TEXT,
+            category       TEXT,
+            exercise_name  TEXT,
+            reps           INTEGER,
+            weight_kg      REAL,
+            duration_sec   REAL,
+            is_warmup      INTEGER NOT NULL DEFAULT 0 CHECK (is_warmup IN (0, 1)),
+            performed_at   TEXT    NOT NULL,
+            wkt_step_index INTEGER,
+            source         TEXT    NOT NULL CHECK (source IN ('garmin', 'manual')),
+            operation_id   TEXT    NOT NULL,
+            created_at     TEXT    NOT NULL,
+            UNIQUE (activity_id, set_index)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_strength_sets_activity
+            ON strength_sets(activity_id, set_index);
+
+        CREATE INDEX IF NOT EXISTS idx_strength_sets_exercise
+            ON strength_sets(exercise_key, performed_at DESC);
     """)
 
     # Migration: api_calls 曾經沒有 cache token 欄位（Phase 4 前）。

@@ -20,6 +20,7 @@ from shared.heartbeat import record_failure, record_success
 # Phase 5B-2 — heartbeat key consumed by probe_cron_freshness via CRON_SCHEDULES.
 # Stable across releases (changing breaks the probe's prior-state continuity).
 _JOB_NAME_SCOUT = "zoro-brainstorm-scout"
+_JOB_NAME_COACH_SYNC = "zoro-coach-sync"
 
 
 def _cmd_scout(args: argparse.Namespace) -> int:
@@ -48,6 +49,20 @@ def _cmd_scout(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_coach_sync(args: argparse.Namespace) -> int:
+    from agents.zoro.coach.sync import run
+
+    try:
+        result = run(since=args.since)
+    except Exception as exc:
+        record_failure(_JOB_NAME_COACH_SYNC, f"{type(exc).__name__}: {exc}"[:200])
+        raise
+
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    record_success(_JOB_NAME_COACH_SYNC)
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="agents.zoro", description="Zoro scout agent")
     sub = parser.add_subparsers(dest="command")
@@ -57,6 +72,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="Run pipeline but don't publish to Slack or record to pushed_topics",
+    )
+
+    coach = sub.add_parser(
+        "coach-sync", help="Read back Garmin strength sets into strength_sets (WP1)"
+    )
+    coach.add_argument(
+        "--since",
+        default="8w",
+        help="Window to sync: '8w' / '30d' / ISO date YYYY-MM-DD (default 8w)",
     )
     return parser
 
@@ -71,6 +95,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "scout":
         return _cmd_scout(args)
+    if args.command == "coach-sync":
+        return _cmd_coach_sync(args)
 
     # 無 subcommand → print help + exit 2，不自動 scout（避免誤打觸發真 publish）
     parser.print_help()
