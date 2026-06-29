@@ -16,7 +16,13 @@ from agents.zoro.coach.profile import CoachProfile
 
 
 def exercise_keys(sets: Iterable[dict]) -> list[str]:
-    keys = {s.get("exercise_key") for s in sets if P.is_working_set(s) and s.get("exercise_key")}
+    # Exclude the UNKNOWN auto-detect bucket — it's unclassified noise, not a
+    # trackable exercise (still counted in raw sets, just not a headline card).
+    keys = {
+        s.get("exercise_key")
+        for s in sets
+        if P.is_working_set(s) and s.get("exercise_key") and s.get("exercise_key") != "UNKNOWN"
+    }
     return sorted(keys)
 
 
@@ -60,11 +66,15 @@ def progress_summary(sets: Iterable[dict], profile: Optional[CoachProfile] = Non
     exercises = {}
     for key in exercise_keys(sets):
         e1rm_tr = P.e1rm_trend(sets, key)
+        vol_tr = volume_trend(sets, key)
         cat = next((s.get("category") for s in P.working_sets_for(sets, key)), None)
         exercises[key] = {
             "muscle": muscle_group(cat, key),
             "e1rm_trend": e1rm_tr,
-            "volume_trend": volume_trend(sets, key),
+            "latest_e1rm": next((e for _, e in reversed(e1rm_tr) if e is not None), None),
+            "volume_trend": vol_tr,
+            "volume_values": [v for _, v in vol_tr],   # template-friendly sparkline data
+            "volume_max": max([v for _, v in vol_tr], default=0.0),
             "is_pr": is_pr(e1rm_tr),
             "recommendation": asdict(P.recommend(sets, key, profile)),
         }

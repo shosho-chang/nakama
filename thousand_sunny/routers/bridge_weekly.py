@@ -73,6 +73,7 @@ def _shosho_asset_version() -> str:
         "bridge-pages.css",
         "pomodoro-dock.css",
         "bridge-weekly.css",
+        "bridge-fitness.css",
         "theme.js",
     ):
         path = static_dir / css
@@ -184,12 +185,24 @@ async def weekly_landing(
         else None
     )
 
+    # 💪 Zoro coach (WP6) — strength progress + 補登 inbox from strength_sets.
+    # Defensive: a coach-data error must never 500 the dashboard → None hides the zone.
+    try:
+        from agents.zoro.coach.progress import progress_summary  # noqa: PLC0415
+        from shared.strength_sets_store import query_sets  # noqa: PLC0415
+
+        coach_summary = progress_summary(query_sets())
+    except Exception:  # noqa: BLE001
+        logger.exception("weekly coach summary failed")
+        coach_summary = None
+
     return _templates.TemplateResponse(
         request,
         "weekly.html",
         {
             "view": view,
             "daily_review": review_summary,
+            "coach": coach_summary,
             # If-Match token for the weekly-file forms (ADR-040 Slice 2)
             "weekly_token": weekly_file_token(vault, wk.file_key),
             "asset_version": _SHOSHO_ASSET_VERSION,
