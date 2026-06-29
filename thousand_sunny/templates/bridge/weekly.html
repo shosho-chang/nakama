@@ -366,16 +366,15 @@
           {# N541: 全部 grouped by scheduling status, not project. 1+2 sorted nearest→
              furthest by date (view builder); empty sections are omitted. #}
           {% if view.backlog_count %}
-            {% for label, sub, tasks in [
-                 ('排定本週的', '本週已安排時間', view.all_this_week),
-                 ('已排程・非本週', '有時間，但不在本週', view.all_other_scheduled),
-                 ('還沒排定時間', '點開可排入計畫或行事曆', view.all_unscheduled)] %}
+            {% for label, tasks in [
+                 ('排定本週的', view.all_this_week),
+                 ('已排程・非本週', view.all_other_scheduled),
+                 ('還沒排定時間', view.all_unscheduled)] %}
               {% if tasks %}
                 <section class="wk-tsection">
                   <div class="wk-tsection-head">
                     <span class="wk-tsection-label">{{ label }}</span>
                     <span class="wk-tsection-n">{{ tasks | length }}</span>
-                    <span class="wk-tsection-sub">{{ sub }}</span>
                   </div>
                   {% for t in tasks %}{{ task_row(t, view) }}{% endfor %}
                 </section>

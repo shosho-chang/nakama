@@ -1719,3 +1719,27 @@ class TestTaskMeta:
         # SAMPLE_TASK had no category (→ misc default at read) / no priority; bad values ignored
         assert fm.get("category") not in ("bogus",)
         assert fm.get("priority") not in ("urgent",)
+
+    def test_meta_sets_estimate(self, client, tmp_path):
+        """修修: the task page can set 預估🍅 by hand (any task). 0 clears it."""
+        r = client.post(
+            "/bridge/weekly/task/測試任務/meta",
+            data={"category": "growth", "est_pomodoros": "5", "week": WEEK_KEY, "from_task": "1"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert self._fm(tmp_path)["預估🍅"] == 5
+        # out-of-range is ignored (not written); the row form omitting it leaves est intact
+        client.post(
+            "/bridge/weekly/task/測試任務/meta",
+            data={"priority": "high", "est_pomodoros": "99", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert self._fm(tmp_path)["預估🍅"] == 5  # 99 > 40 → ignored
+        # 0 clears the estimate
+        client.post(
+            "/bridge/weekly/task/測試任務/meta",
+            data={"est_pomodoros": "0", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert self._fm(tmp_path)["預估🍅"] == 0
