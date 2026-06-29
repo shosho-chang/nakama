@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""§10 self-lint — 交稿前檢查一篇草稿「像不像修修本人」。
+"""理性骨架 lint — 守住 draft-article 的草稿「保持理性、別讓聲音跑進來」。
 
-把風格側寫 §10 的硬規格固化成確定性檢查，讓 draft-article 在交稿前自動 gate：
-正文撒 emoji、台味助詞太少、字數越界、H2 過多 —— 任一硬傷就擋下、要求重寫。
-這是這個 skill 的差異化價值：不是「會寫」，是「會自我檢查像不像你」。
+draft-article 只出理性骨架（書的論點 ＋ 使用者的論據，低修飾）；情緒、口語、
+起承轉合是使用者後面自己加的。所以這支 lint 的職責跟「成品聲音檢查」相反：
+它防的是 **ornament creep** —— 台味句尾助詞、emoji、過多驚嘆號滲進草稿，代表
+compose 又退回去模仿聲音了，違反「骨架交給人去加肉」的分工。
 
-純 stdlib，UTF-8 安全（不依賴 PyYAML / repo import；word_count 邊界用 regex 撈 yaml）。
+覆蓋度與不虛構是語意問題，無法用字串確定性檢查，列成 checklist 由 Claude 交稿前自審。
+
+純 stdlib、UTF-8。退出碼 0 = 無硬傷；1 = 有 ornament 硬傷（要清掉再交）。
 
 用法：
-    python lint_draft.py <draft.md> [--category book-review] [--repo-root .]
-
-退出碼：0 = 沒有 FAIL（可交稿）；1 = 至少一個 FAIL（要重寫）。
+    python lint_draft.py <draft.md>
 """
 
 from __future__ import annotations
@@ -20,16 +21,9 @@ import re
 import sys
 from pathlib import Path
 
-# 正文不可、CTA 可偶見的 emoji（涵蓋 👉🥰🤍🔥💯✨ 等常見區段）
+# 聲音 ornament 偵測：emoji 與台味句尾助詞在理性草稿應趨近 0
 _EMOJI = re.compile(r"[\U0001F1E6-\U0001FAFF☀-⛿✀-➿⬀-⯿️←-⇿]")
-# 台味句尾助詞（profile §10 的 8 個）
 _PARTICLES = "啦喔耶嘛囉吧吼啊"
-# CTA / 收尾區起點標記（emoji 只允許出現在這之後）
-_CTA_MARKERS = ("購書連結", "電子報", "shosho.tw/free", "博客來", "訂閱我的", "shosho.cc")
-# 招牌斷然短收束句（節奏頓點）
-_SHORT_CLOSERS = re.compile(r"(講完。|沒了。|就這麼簡單。|屢試不爽。|故事講完了。)")
-
-_DEFAULTS = {"min": 5000, "max": 12500, "forbid_emoji": False}
 
 
 def _strip_frontmatter(text: str) -> str:
@@ -40,112 +34,64 @@ def _strip_frontmatter(text: str) -> str:
     return text
 
 
-def _load_bounds(category: str | None, repo_root: Path) -> dict:
-    """撈 <category>.yaml 的 word_count / forbid_emoji 邊界（regex，免 PyYAML）。"""
-    if not category:
-        return dict(_DEFAULTS)
-    yaml_path = repo_root / "config" / "style-profiles" / f"{category}.yaml"
-    if not yaml_path.exists():
-        print(f"  ⚠ 找不到 {yaml_path}，用預設邊界", file=sys.stderr)
-        return dict(_DEFAULTS)
-    raw = yaml_path.read_text(encoding="utf-8")
-    out = dict(_DEFAULTS)
-    if m := re.search(r"(?m)^\s*min:\s*(\d+)", raw):
-        out["min"] = int(m.group(1))
-    if m := re.search(r"(?m)^\s*max:\s*(\d+)", raw):
-        out["max"] = int(m.group(1))
-    if m := re.search(r"(?m)^\s*forbid_emoji:\s*(true|false)", raw):
-        out["forbid_emoji"] = m.group(1) == "true"
-    return out
-
-
-def lint(draft_path: Path, category: str | None, repo_root: Path) -> int:
-    text = draft_path.read_text(encoding="utf-8")
-    body = _strip_frontmatter(text)
-    bounds = _load_bounds(category, repo_root)
-
+def lint(draft_path: Path) -> int:
+    body = _strip_frontmatter(draft_path.read_text(encoding="utf-8"))
     total = len(re.sub(r"\s", "", body))
     cjk = len(re.findall(r"[一-鿿]", body))
     h2 = len(re.findall(r"(?m)^##\s", body))
     particles = sum(body.count(p) for p in _PARTICLES)
-    asides = body.count("（")  # 含數字括號雜訊，僅作下限參考
-    short_closers = len(_SHORT_CLOSERS.findall(body))
-
-    # emoji 位置：CTA 區之前出現 = 正文 emoji = 硬傷。
-    # CTA 區從「含最早 CTA 標記那一行的行首」算起 —— 否則行首 emoji（👉 購書連結）
-    # 會被切到正文側誤判。
-    marker_idxs = [body.find(m) for m in _CTA_MARKERS if body.find(m) != -1]
-    if marker_idxs:
-        cta_start = body.rfind("\n", 0, min(marker_idxs)) + 1
-    else:
-        cta_start = len(body)
-    emoji_all = [m.start() for m in _EMOJI.finditer(body)]
-    body_emoji = [i for i in emoji_all if i < cta_start]
-    cta_emoji = [i for i in emoji_all if i >= cta_start]
+    emoji = len(_EMOJI.findall(body))
+    bangs = body.count("！") + body.count("!")
 
     checks: list[tuple[str, str, str]] = []
 
     def add(name: str, ok: bool, warn: bool, detail: str) -> None:
-        status = "PASS" if ok else ("WARN" if warn else "FAIL")
-        checks.append((name, status, detail))
+        checks.append((name, "PASS" if ok else ("WARN" if warn else "FAIL"), detail))
 
-    add(
-        "字數",
-        bounds["min"] <= total <= bounds["max"],
-        False,
-        f"{total}（CJK {cjk}） · 區間 {bounds['min']}–{bounds['max']}",
-    )
-    add(
-        "H2 區塊數",
-        4 <= h2 <= 8,
-        1 <= h2 <= 3 or 9 <= h2 <= 10,
-        f"{h2} · 最佳 4–8、絕不 >10",
-    )
-    # 修修明確要求 gate：正文 emoji / 助詞 <8 直接擋下重寫
-    add(
-        "正文 emoji",
-        len(body_emoji) == 0,
-        False,
-        f"正文 {len(body_emoji)}（必須 0） · CTA 區 {len(cta_emoji)}（允許）",
-    )
+    # 硬傷：emoji 與大量台味助詞 = 聲音滲入理性草稿
+    add("emoji", emoji == 0, False, f"{emoji} 個（理性骨架應為 0；emoji 是成品 CTA 才有的）")
     add(
         "台味句尾助詞",
-        8 <= particles <= 15,
-        particles > 15,
-        f"{particles} 次（{_PARTICLES}） · 門檻 8–15，<8 會飄成翻譯腔",
+        particles <= 4,
+        particles <= 8,
+        f"{particles} 次（{_PARTICLES}）· 理性應趨近 0，>8 = 聲音滲入",
     )
-    add("括號吐槽", asides >= 3, False, f"{asides} 個「（」（含數字括號，僅看下限 ≥3）")
-    add("招牌短收束句", short_closers >= 1, True, f"{short_closers} 句（講完。/沒了。…，建議 ≥1）")
+    add("驚嘆號", bangs <= 3, bangs <= 8, f"{bangs} 個（！/!）· 理性陳述少用驚嘆")
+    add("篇幅", total >= 1500, total >= 800, f"{total} 字（CJK {cjk}）· 太短可能覆蓋不足")
+    checks.append(("H2 區塊", "INFO", f"{h2}"))
 
     width = max(len(n) for n, _, _ in checks)
-    print(f"\n§10 self-lint · {draft_path.name}" + (f" · {category}" if category else ""))
-    print("─" * 56)
+    print(f"\n理性骨架 lint · {draft_path.name}")
+    print("─" * 60)
     fails = 0
     for name, status, detail in checks:
-        mark = {"PASS": "✓", "WARN": "▲", "FAIL": "✗"}[status]
+        mark = {"PASS": "✓", "WARN": "▲", "FAIL": "✗", "INFO": "·"}[status]
         if status == "FAIL":
             fails += 1
         print(f"  {mark} {name.ljust(width)}  {status:4}  {detail}")
-    print("─" * 56)
+    print("─" * 60)
+    print("  語意自審（Claude 交稿前逐項確認，lint 無法代驗）：")
+    print("    □ 書的每個主要論點都在")
+    print("    □ 使用者每條 note:: 論據都 surface 了，沒漏")
+    print("    □ 沒有虛構任何數字 / 經歷（每個個人立場都對得到某條 note::）")
+    print("    □ 沒有情緒鋪陳或起承轉合銜接語（那是使用者的工作）")
     if fails:
-        print(f"  {fails} 個硬傷 → 重寫後再 lint。\n")
+        print(f"\n  {fails} 個 ornament 硬傷 → 清掉聲音、回到理性，再交。\n")
         return 1
-    print("  無硬傷。WARN 項是聲音微調，由你判斷。\n")
+    print("\n  無 ornament 硬傷。WARN 項由你判斷。\n")
     return 0
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="§10 self-lint for a draft article")
+    ap = argparse.ArgumentParser(description="rational-scaffold lint for draft-article")
     ap.add_argument("draft", type=Path)
-    ap.add_argument("--category", default=None, help="book-review / science / people")
-    ap.add_argument("--repo-root", type=Path, default=Path.cwd())
     args = ap.parse_args()
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")  # Windows cp1252 console 安全
     if not args.draft.exists():
         print(f"draft not found: {args.draft}", file=sys.stderr)
         return 2
-    return lint(args.draft, args.category, args.repo_root)
+    return lint(args.draft)
 
 
 if __name__ == "__main__":
