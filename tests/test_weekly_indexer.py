@@ -534,3 +534,26 @@ def test_plan_entry_done_drives_daily_crossout(tmp_path, monkeypatch):
     mon = next(d for d in v.days if d["date"] == "2026-06-01")
     item = next(c for c in mon["categories"] if c["slug"] == "work")["items"][0]
     assert item["done"] is True  # daily item crosses out
+
+
+def test_all_view_buckets_by_schedule(tmp_path):
+    """N541: 全部 splits not-done tasks into this-week / other-scheduled / unscheduled,
+    with 1+2 sorted nearest→furthest by date. Week of 2026-06-01..06-07."""
+    base = {"status": "to-do", "category": "work", "tags": ["task"]}
+
+    def mk(fname: str, title: str, **extra):
+        _task(tmp_path, fname, {**base, "title": title, **extra})
+
+    mk("A 本週.md", "A 本週", plan=[{"date": "2026-06-05", "pomodoros": 2}])
+    mk("B 本週早.md", "B 本週早", plan=[{"date": "2026-06-02", "pomodoros": 1}])
+    mk("C 未來.md", "C 未來", plan=[{"date": "2026-06-20", "pomodoros": 1}])
+    mk("D 過去.md", "D 過去", scheduled="2026-05-20")
+    mk("E 未排.md", "E 未排")
+    mk("F 完成.md", "F 完成", status="done")  # excluded
+
+    v = WeeklyIndexer(tmp_path).view(week_for_date(date(2026, 6, 1)))
+    assert [t.name for t in v.all_this_week] == ["B 本週早", "A 本週"]  # nearest date first
+    # other-scheduled sorts by earliest date: 過去(05-20) before 未來(06-20)
+    assert [t.name for t in v.all_other_scheduled] == ["D 過去", "C 未來"]
+    assert [t.name for t in v.all_unscheduled] == ["E 未排"]
+    assert v.backlog_count == 5  # all not-done; F excluded

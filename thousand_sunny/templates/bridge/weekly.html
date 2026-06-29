@@ -363,14 +363,27 @@
         </div>
         <div class="wk-tabpane is-hidden" data-pane="all">
           <p class="wk-mut wk-all-hint">所有未完成任務（{{ view.backlog_count }} 項）· 點開可排計畫或排到行事曆。</p>
-          {% for proj, tasks in view.backlog_by_project.items() %}
-            <div class="wk-projgroup">
-              <div class="wk-projname">{{ proj }} <span class="wk-mut">{{ tasks | length }} 項</span></div>
-              {% for t in tasks %}{{ task_row(t, view) }}{% endfor %}
-            </div>
+          {# N541: 全部 grouped by scheduling status, not project. 1+2 sorted nearest→
+             furthest by date (view builder); empty sections are omitted. #}
+          {% if view.backlog_count %}
+            {% for label, sub, tasks in [
+                 ('排定本週的', '本週已安排時間', view.all_this_week),
+                 ('已排程・非本週', '有時間，但不在本週', view.all_other_scheduled),
+                 ('還沒排定時間', '點開可排入計畫或行事曆', view.all_unscheduled)] %}
+              {% if tasks %}
+                <section class="wk-tsection">
+                  <div class="wk-tsection-head">
+                    <span class="wk-tsection-label">{{ label }}</span>
+                    <span class="wk-tsection-n">{{ tasks | length }}</span>
+                    <span class="wk-tsection-sub">{{ sub }}</span>
+                  </div>
+                  {% for t in tasks %}{{ task_row(t, view) }}{% endfor %}
+                </section>
+              {% endif %}
+            {% endfor %}
           {% else %}
             <p class="wk-empty">沒有未完成的任務 🎉</p>
-          {% endfor %}
+          {% endif %}
         </div>
       </div>
 
