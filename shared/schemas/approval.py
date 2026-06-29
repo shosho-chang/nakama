@@ -15,6 +15,7 @@ from typing import Annotated, Literal, Union
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, TypeAdapter
 
+from shared.schemas.coach import CoachComplianceV1, StrengthBuilderStepV1
 from shared.schemas.publishing import DraftV1, PublishComplianceGateV1
 
 
@@ -74,9 +75,73 @@ class UpdateWpPostV1(BaseModel):
         return str(self.wp_post_id)
 
 
+class WriteGarminWorkoutV1(BaseModel):
+    """重訓課表入隊待審 → 核可後使用者一鍵在 Garmin Connect Strength Builder 建立。
+
+    `compliance_flags` 帶 WP3 guardrail 結果（block/warn 摘要）；claim 端可再驗一次
+    （defense in depth）。DB `target_platform`/`action_type` 無 CHECK，故新增 action_type
+    不需 migration（ADR-006 grounding）。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, use_enum_values=True)
+    schema_version: Literal[1] = 1
+    action_type: Literal["write_garmin_workout"]
+    target_site: Literal["garmin"]
+    workout_title: str
+    steps: list[StrengthBuilderStepV1]
+    notes: str = ""
+    supports_target_weight: bool = True
+    compliance_flags: CoachComplianceV1
+    reviewer_compliance_ack: bool = False
+
+    @property
+    def target_platform(self) -> str:
+        return "garmin"
+
+    @property
+    def title(self) -> str:
+        return self.workout_title
+
+    @property
+    def diff_target_id(self) -> str | None:
+        return None  # 新建課表，無對齊的既有 workout
+
+
+class ScheduleTrainingBlockV1(BaseModel):
+    """把運動／恢復 block 排進行事曆（category:health task）待審；核可後走
+    `shared.calendar_scheduler.schedule_entry`（vault=SoT，Google best-effort）。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, use_enum_values=True)
+    schema_version: Literal[1] = 1
+    action_type: Literal["schedule_training_block"]
+    target_site: Literal["calendar"]
+    task_slug: str
+    block_title: str
+    start: AwareDatetime
+    duration_min: int
+    category: Literal["health"] = "health"
+    reason: str = ""
+
+    @property
+    def target_platform(self) -> str:
+        return "calendar"
+
+    @property
+    def title(self) -> str:
+        return self.block_title
+
+    @property
+    def diff_target_id(self) -> str | None:
+        return self.task_slug  # idempotency: {slug}@{date}
+
+
 # Pydantic v2 discriminated union：新增 action_type 時在此擴充，Pydantic 會自動依 action_type 分派
 ApprovalPayloadV1 = Annotated[
-    Union[PublishWpPostV1, UpdateWpPostV1],
+    Union[
+        PublishWpPostV1,
+        UpdateWpPostV1,
+        WriteGarminWorkoutV1,
+        ScheduleTrainingBlockV1,
+    ],
     Field(discriminator="action_type"),
 ]
 
