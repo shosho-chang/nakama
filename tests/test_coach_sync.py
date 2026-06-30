@@ -34,6 +34,7 @@ def _patch_garmin(monkeypatch, raw, *, activities=None):
         lambda client, since, until=None: activities or [{"activityId": raw["activityId"]}],
     )
     monkeypatch.setattr(garmin_read, "fetch_exercise_sets", lambda client, aid: raw)
+    monkeypatch.setattr(garmin_read, "fetch_cardio_activities", lambda client, since, until=None: [])
 
 
 def test_sync_lands_sets(mem_db, monkeypatch):

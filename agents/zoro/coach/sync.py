@@ -13,6 +13,7 @@ from datetime import date, timedelta
 from typing import Optional
 
 from shared.alerts import alert
+from shared.cardio_sessions_store import upsert_sessions as upsert_cardio_sessions
 from shared.strength_sets_store import upsert_sets
 
 
@@ -55,11 +56,29 @@ def run(since: Optional[str] = None) -> dict:
         sets_total += len(sets)
         sets_new += upsert_sets(sets, operation_id=operation_id)
 
+    # 有氧一覽 — summary-level cardio (running / cycling / swimming).
+    cardio_activities = garmin_read.fetch_cardio_activities(client, since_date)
+    cardio_parsed = []
+    for act in cardio_activities:
+        try:
+            cardio_parsed.append(garmin_read.parse_cardio_activity(act))
+        except garmin_read.SchemaValidationError as exc:
+            schema_errors += 1
+            alert(
+                "error",
+                "garmin-coach",
+                f"cardio activity parse failed: {exc}",
+                dedupe_key="garmin-cardio-schema",
+            )
+    cardio_new = upsert_cardio_sessions(cardio_parsed, operation_id=operation_id)
+
     return {
         "since": since_date.isoformat(),
         "activities": len(activities),
         "sets_total": sets_total,
         "sets_new": sets_new,
+        "cardio_activities": len(cardio_activities),
+        "cardio_new": cardio_new,
         "schema_errors": schema_errors,
         "operation_id": operation_id,
     }

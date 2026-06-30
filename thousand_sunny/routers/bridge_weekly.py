@@ -196,6 +196,16 @@ async def weekly_landing(
         logger.exception("weekly coach summary failed")
         coach_summary = None
 
+    # 🚴 有氧一覽 — summary cardio (running/cycling/swimming). Same defensive guard.
+    try:
+        from agents.zoro.coach.cardio import cardio_overview  # noqa: PLC0415
+        from shared.cardio_sessions_store import query_sessions as _query_cardio  # noqa: PLC0415
+
+        cardio_summary = cardio_overview(_query_cardio())
+    except Exception:  # noqa: BLE001
+        logger.exception("weekly cardio summary failed")
+        cardio_summary = None
+
     return _templates.TemplateResponse(
         request,
         "weekly.html",
@@ -203,6 +213,7 @@ async def weekly_landing(
             "view": view,
             "daily_review": review_summary,
             "coach": coach_summary,
+            "cardio": cardio_summary,
             # If-Match token for the weekly-file forms (ADR-040 Slice 2)
             "weekly_token": weekly_file_token(vault, wk.file_key),
             "asset_version": _SHOSHO_ASSET_VERSION,

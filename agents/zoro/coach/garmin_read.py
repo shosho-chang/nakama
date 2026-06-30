@@ -22,11 +22,18 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
+from shared.cardio_sessions_store import CardioSession
 from shared.strength_sets_store import StrengthSet
 
 _TAIPEI = timezone(timedelta(hours=8))
 _VALID_SET_TYPES = {"ACTIVE", "REST"}
 _STRENGTH_TYPE_KEY = "strength_training"
+# Garmin activityType.typeKey values treated as cardio for 有氧一覽.
+CARDIO_TYPE_KEYS = {
+    "running", "treadmill_running", "trail_running", "indoor_running",
+    "cycling", "indoor_cycling", "virtual_ride", "road_biking", "mountain_biking",
+    "lap_swimming", "open_water_swimming",
+}
 
 
 class SchemaValidationError(Exception):
@@ -111,6 +118,30 @@ def parse_exercise_sets(
     return out
 
 
+def _opt_int(v) -> Optional[int]:
+    return int(v) if v is not None else None
+
+
+def parse_cardio_activity(raw: dict) -> CardioSession:
+    """Parse one Garmin activity-list entry into a summary CardioSession."""
+    if not isinstance(raw, dict) or "activityId" not in raw:
+        raise SchemaValidationError("cardio activity missing activityId")
+    type_key = (raw.get("activityType") or {}).get("typeKey")
+    if not type_key:
+        raise SchemaValidationError("cardio activity missing activityType.typeKey")
+    return CardioSession(
+        activity_id=str(raw["activityId"]),
+        activity_type=type_key,
+        performed_at=_to_aware_iso(raw.get("startTimeLocal")),
+        duration_sec=raw.get("duration"),
+        distance_m=raw.get("distance"),
+        avg_speed_mps=raw.get("averageSpeed"),
+        avg_hr=_opt_int(raw.get("averageHR")),
+        max_hr=_opt_int(raw.get("maxHR")),
+        calories=_opt_int(raw.get("calories")),
+    )
+
+
 # --------------------------------------------------------------------------- #
 # IO layer — lazy garminconnect import (optional dep, Python >=3.12).          #
 # --------------------------------------------------------------------------- #
@@ -154,3 +185,13 @@ def fetch_strength_activities(client, since: date, until: Optional[date] = None)
 def fetch_exercise_sets(client, activity_id) -> dict:
     """Raw passthrough read of one activity's exerciseSets."""
     return client.get_activity_exercise_sets(activity_id)
+
+
+def fetch_cardio_activities(client, since: date, until: Optional[date] = None) -> list[dict]:
+    """List cardio activities (running / cycling / swimming) in [since, until]."""
+    until = until or date.today()
+    activities = client.get_activities_by_date(since.isoformat(), until.isoformat())
+    return [
+        a for a in activities
+        if (a.get("activityType") or {}).get("typeKey") in CARDIO_TYPE_KEYS
+    ]

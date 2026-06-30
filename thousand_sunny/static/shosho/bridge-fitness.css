@@ -78,6 +78,21 @@
 .wk-fit-bf-name { font-size: 12px; color: var(--sho-text); flex: 1; }
 .wk-fit-bf .sho-chip { margin-left: auto; }
 
+/* ── 有氧一覽 ─────────────────────────────────────────────────────── */
+.wk-fit-cardio-tot {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--sho-s-3);
+  margin-bottom: var(--sho-s-3);
+}
+.wk-fit-cmod { display: flex; align-items: center; gap: var(--sho-s-3); padding: var(--sho-s-2) var(--sho-s-3); }
+.wk-fit-cmod-icon { font-size: 20px; line-height: 1; }
+.wk-fit-cmod-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.wk-fit-cmod-name { font-size: 13px; font-weight: 600; color: var(--sho-ink); }
+.wk-fit-cmod-sub { font-size: 11px; white-space: nowrap; }
+.wk-fit-cmod .wk-fit-readout { margin-left: auto; }
+.wk-fit-cardio-list .wk-fit-bf-name { flex: 0 0 auto; min-width: 84px; }
+
 @media (prefers-reduced-motion: reduce) {
   .wk-fit-gauge-fill { transition: none; }
 }

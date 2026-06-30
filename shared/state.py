@@ -527,6 +527,32 @@ def _init_tables(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_strength_sets_exercise
             ON strength_sets(exercise_key, performed_at DESC);
+
+        -- Zoro coach — summary-level cardio sessions (有氧一覽). Canonical DDL:
+        -- migrations/019_cardio_sessions.sql. Owned by shared/cardio_sessions_store.py.
+        -- Natural key (activity_id) → idempotent INSERT OR IGNORE re-sync.
+        CREATE TABLE IF NOT EXISTS cardio_sessions (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            activity_id    TEXT    NOT NULL,
+            activity_type  TEXT    NOT NULL,
+            performed_at   TEXT    NOT NULL,
+            duration_sec   REAL,
+            distance_m     REAL,
+            avg_speed_mps  REAL,
+            avg_hr         INTEGER,
+            max_hr         INTEGER,
+            calories       INTEGER,
+            source         TEXT    NOT NULL CHECK (source IN ('garmin', 'manual')),
+            operation_id   TEXT    NOT NULL,
+            created_at     TEXT    NOT NULL,
+            UNIQUE (activity_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_cardio_sessions_time
+            ON cardio_sessions(performed_at DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_cardio_sessions_type
+            ON cardio_sessions(activity_type, performed_at DESC);
     """)
 
     # Migration: api_calls 曾經沒有 cache token 欄位（Phase 4 前）。
