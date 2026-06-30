@@ -322,7 +322,7 @@
       {# ── 💪 重訓進度（Zoro coach, WP6）— E1RM · 每肌群週量 · 缺值補登 ── #}
       <div class="wk-zone">
         <div class="wk-zone-head"><span class="wk-h">💪 重訓進度</span>
-          <span class="wk-mut">E1RM · 每肌群週量 · 缺值補登</span></div>
+          <span class="wk-mut">估計最大重量 · 每肌群週量 · 缺值補登</span></div>
         {% if coach and coach.exercises %}
           <div class="wk-fit-exgrid">
             {% set rlabel = {'add_weight':'加重','add_reps':'加 reps','hold':'維持','insufficient_data':'資料不足'} %}
@@ -336,9 +336,10 @@
                 </div>
                 <div class="wk-fit-ex-stats">
                   {% if ex.latest_e1rm %}
-                    <span class="wk-fit-readout"><span class="wk-fit-val">{{ ex.latest_e1rm }}</span><span class="wk-fit-unit">kg E1RM</span></span>
+                    <span class="wk-fit-readout" title="估計最大重量（E1RM）：從這個動作最近一次的重量×次數推算出「只能舉一下的重量」。看它隨週數變大 = 變強了。">
+                      <span class="wk-fit-val">{{ ex.latest_e1rm }}</span><span class="wk-fit-unit">kg 估1RM</span></span>
                   {% else %}
-                    <span class="wk-fit-na">高 rep（E1RM 不適用）</span>
+                    <span class="wk-fit-na" title="這個動作做的次數偏高（>10 下），估1RM 在高次數不準，改看訓練量趨勢。">高次數（估1RM 不適用）</span>
                   {% endif %}
                   {% if ex.volume_values %}
                     <span class="wk-fit-spark" aria-label="近期每次訓練量趨勢">
