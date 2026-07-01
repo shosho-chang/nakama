@@ -1820,19 +1820,31 @@ class NamiHandler(BaseHandler):
         calendar_event_id）的 task，這次同步就地遷移成 plan entry。"""
         linked = self._find_task_by_calendar_id(event.id)
         if linked is None:
-            return ""
+            # N544: no task carries this event id — the task and event drifted apart (created
+            # separately, or a title mismatch at create time). Fall back to matching by title
+            # so the sync HEALS the link instead of silently no-op-ing — the root of the
+            # recurring 「事件改了、任務沒連上」 bug (0724/0731). find_task_by_title is fuzzy, so we
+            # only adopt the match when it also lines up on the event's date (below).
+            linked = self._find_task_by_title(event.title)
+            if linked is None:
+                return ""
 
         rel_path, fm, body = linked
         new_entry = _event_to_plan_entry(event)
+        new_date = str(new_entry.get("date") or "")[:10]
         plan = _plan_entries(fm)
         matched = False
         for i, e in enumerate(plan):
-            if e.get("calendar_event_id") == event.id:
+            # match by event id; else adopt a same-date entry that isn't yet linked (the
+            # title-fallback path — update it in place + attach the id, never append a dup)
+            if e.get("calendar_event_id") == event.id or (
+                new_date and not e.get("calendar_event_id") and str(e.get("date"))[:10] == new_date
+            ):
                 preserved = {k: e[k] for k in ("done", "reason") if k in e}
                 plan[i] = {**new_entry, **preserved}
                 matched = True
                 break
-        if not matched:  # legacy task-level link → migrate into plan[] now
+        if not matched:  # legacy task-level link OR bare `scheduled` → migrate into plan[] now
             plan.append(new_entry)
         fm["plan"] = _stringify_plan(plan)
         # retire the legacy task-level mirror (v3-D)
