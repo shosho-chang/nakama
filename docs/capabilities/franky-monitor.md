@@ -15,6 +15,7 @@ Franky is Nakama's infrastructure watchdog. It probes VPS resources, WordPress s
 | `agents/franky/health_check.py` | 5-min cron probe: VPS / WP×2 / Nakama gateway / nakama-backup freshness, 3-consecutive-fail state machine + sustained-state inline Critical |
 | `agents/franky/alert_router.py` | Dedup via `alert_state` table (ADR-007 §4), dispatch to Slack |
 | `agents/franky/r2_backup_verify.py` | Daily probe of xCloud R2 backups; 連 2 日失敗 → Critical |
+| `agents/franky/jobs/calendar_reconcile_daily.py` | N543 daily task↔Google Calendar drift sweep — auto-links unlinked tasks, Slacks 修修 on drift. Cron: `python -m agents.franky calendar-reconcile` (VPS crontab, ~1×/day). `shared/calendar_reconcile.sweep` is the engine (matches by title+date; `reconcile_scheduled_tasks` is the narrower idempotency-key backfill). |
 | `agents/franky/slack_bot.py` | `slack_sdk` wrapper, DM to `SLACK_USER_ID_SHOSHO`, no-op stub when env missing; `post_alert` + `post_plain` surfaces |
 | `agents/franky/weekly_digest.py` | Monday 10:00 Slack DM — 5 sections (VPS / cron / alerts / backup / cost), pure template, no LLM |
 | `thousand_sunny/routers/franky.py` | `GET /healthz` (Slice 1) + `GET /bridge/franky` dashboard (Slice 3) |
