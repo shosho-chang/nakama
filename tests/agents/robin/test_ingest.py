@@ -10,7 +10,6 @@ Goal: 0% → ~100% coverage. LLM / file-IO / interactive input 全 stub。
 
 from __future__ import annotations
 
-import builtins
 import functools
 import sys
 import types
@@ -260,38 +259,9 @@ def test_set_current_agent_called_in_map_reduce_path(pipeline, set_current_agent
 # ---------------------------------------------------------------------------
 
 
-def test_get_map_ask_fn_local_available(monkeypatch):
-    fake = types.ModuleType("shared.local_llm")
-    fake.ask_local = lambda *a, **k: "local"
-    fake.is_server_available = lambda: True
-    monkeypatch.setitem(sys.modules, "shared.local_llm", fake)
-    fn = IngestPipeline._get_map_ask_fn()
-    assert fn is fake.ask_local
-
-
-def test_get_map_ask_fn_server_down_falls_back_to_facade(monkeypatch):
-    fake = types.ModuleType("shared.local_llm")
-    fake.ask_local = lambda *a, **k: "local"
-    fake.is_server_available = lambda: False
-    monkeypatch.setitem(sys.modules, "shared.local_llm", fake)
-    fn = IngestPipeline._get_map_ask_fn()
-    # 雲端 fallback 綁 task="ingest_summary"（partial），不再是裸 ask
-    assert isinstance(fn, functools.partial)
-    assert fn.func is mod.ask
-    assert fn.keywords.get("task") == "ingest_summary"
-
-
-def test_get_map_ask_fn_import_error_falls_back_to_facade(monkeypatch):
-    """ImportError 時 fallback 到 facade。"""
-    monkeypatch.delitem(sys.modules, "shared.local_llm", raising=False)
-    real_import = builtins.__import__
-
-    def blocked(name, globals_=None, locals_=None, fromlist=(), level=0):
-        if name == "shared.local_llm":
-            raise ImportError("simulated")
-        return real_import(name, globals_, locals_, fromlist, level)
-
-    monkeypatch.setattr(builtins, "__import__", blocked)
+def test_get_map_ask_fn_returns_cloud_facade():
+    """VPS 無本機 LLM（ADR-044）→ Map 階段一律回雲端 facade（task=ingest_summary），
+    不再探 localhost Qwen。"""
     fn = IngestPipeline._get_map_ask_fn()
     assert isinstance(fn, functools.partial)
     assert fn.func is mod.ask

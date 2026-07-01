@@ -509,21 +509,13 @@ class IngestPipeline:
 
     @staticmethod
     def _get_map_ask_fn():
-        """取得 Map 階段的推理函式：優先本地模型，fallback 到雲端 facade。
+        """Map 階段推理函式：一律走雲端 facade（``task="ingest_summary"``）。
 
-        雲端 fallback 綁 ``task="ingest_summary"``，model 由 registry/override 路由決定，
-        與小文件摘要 / Reduce 同一格，不再吃 agent 層級的 ``MODEL_ROBIN`` 預設。
+        VPS 無 GPU、無本機 LLM（ADR-044），故不再探 ``localhost:8080`` Qwen——
+        在 VPS 上那個探測必然失敗，只是每次 ingest 白等 5 秒 timeout、再 log 一行
+        誤導的「費用較高 fallback」。雲端就是既定路徑，model 由 registry/override
+        路由決定，與小文件摘要 / Reduce 同一格（不吃 agent 層級 ``MODEL_ROBIN``）。
         """
-        try:
-            from shared.local_llm import ask_local, is_server_available
-
-            if is_server_available():
-                logger.info("Map 階段使用本地 LLM")
-                return ask_local
-        except ImportError:
-            pass
-
-        logger.warning("本地 LLM 不可用，Map 階段改走雲端 facade（費用較高）")
         return partial(ask, task="ingest_summary")
 
     def _get_concept_plan(
