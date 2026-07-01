@@ -1150,6 +1150,59 @@ def test_update_calendar_event_syncs_linked_task():
     assert entry["end"] == "2026-04-26T15:00:00+08:00"
 
 
+def test_update_calendar_event_links_by_title_fallback():
+    """N544: event id 沒連到任何 task，但有同名任務（含裸 scheduled、無 event_id）→ 以
+    title+date 補配對並寫回 calendar_event_id，而不是靜默跳過（0724/0731 根因）。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "update_calendar_event",
+                    {"title": "讀書會", "end": "2026-04-26T15:00:00"},
+                    id_="toolu_uce_fallback",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("done")]),
+    ]
+
+    existing = _fake_cal_event(id_="evtX", title="讀書會")
+    updated = _fake_cal_event(
+        id_="evtX",
+        title="讀書會",
+        start="2026-04-26T14:00:00+08:00",
+        end="2026-04-26T15:00:00+08:00",
+    )
+    # task exists by (fuzzy) title but has only a bare `scheduled` — no plan[], no event id
+    fake_task_file = SimpleNamespace(name="讀書會 上午場.md", stem="讀書會 上午場")
+    task_content = "---\ntitle: 讀書會 上午場\nstatus: to-do\nscheduled: 2026-04-26T14:00:00\n---\n"
+
+    with (
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.find_events_by_title", return_value=[existing]
+        ),
+        patch("gateway.handlers.nami.google_calendar.find_conflicts", return_value=[]),
+        patch("gateway.handlers.nami.google_calendar.update_event", return_value=updated),
+        patch("gateway.handlers.nami.list_files", return_value=[fake_task_file]),
+        patch("gateway.handlers.nami.read_page", return_value=task_content),
+        patch("gateway.handlers.nami.write_page") as mock_write,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "讀書會結束時間改 15:00", "U1")
+
+    mock_write.assert_called_once()
+    new_fm = mock_write.call_args.args[1]
+    assert "scheduled" not in new_fm  # bare mirror retired
+    entry = new_fm["plan"][0]
+    assert entry["calendar_event_id"] == "evtX"  # link healed
+    assert entry["date"] == "2026-04-26"
+    assert entry["end"] == "2026-04-26T15:00:00+08:00"
+
+
 def test_update_calendar_event_no_linked_task_silent():
     """Calendar event 沒有對應 task 時，update 不應錯誤也不寫檔。"""
     iter_responses = [
