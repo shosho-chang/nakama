@@ -110,6 +110,12 @@ def _isolated_incidents_pending(tmp_path: Path, monkeypatch):
 
 _LLM_FACADE_FUNCS = ("ask", "ask_multi", "ask_with_tools", "ask_with_audio")
 
+# caller-binding sweep 只掃 repo 自己的 top-level packages（全部
+# `from shared.llm import ...` 的檔案都在這些底下 — 加新 top-level package
+# 且其中有 facade caller 時要同步補）。全掃 sys.modules（~1400 模組）每次
+# install 要 ~7ms，這個 filter 砍掉 ~98% 純浪費。
+_LLM_SWEEP_TOP_PACKAGES = ("agents", "gateway", "scripts", "shared", "tests", "thousand_sunny")
+
 
 @pytest.fixture
 def mock_llm_response(monkeypatch):
@@ -131,7 +137,9 @@ def mock_llm_response(monkeypatch):
             assert llm.ask.call_args.kwargs["model"] == "..."
 
     - ``text``：``ask`` / ``ask_multi`` / ``ask_with_audio`` 的回傳值；
-      ``ask_with_tools`` 回傳一個 content=[text block] 的 stub Message。
+      ``ask_with_tools`` 每次呼叫回傳一個「新的」stub Message
+      （content=[text block]、stop_reason="end_turn"、usage 全 0）—
+      per-call fresh 避免 production code mutate 後污染同測試內後續呼叫。
     - ``side_effect``：exception（或 callable / list）模擬 LLM 失敗，
       四個介面共用。
     - ``from shared.llm import ask`` 的 caller 持有自己的 module-level
@@ -143,20 +151,33 @@ def mock_llm_response(monkeypatch):
 
     def _install(text: str = "", *, side_effect=None) -> SimpleNamespace:
         originals = {name: getattr(llm_module, name) for name in _LLM_FACADE_FUNCS}
-        tool_message = SimpleNamespace(
-            content=[SimpleNamespace(type="text", text=text)],
-            stop_reason="end_turn",
-        )
+
+        def _fresh_tool_message(*_args, **_kwargs) -> SimpleNamespace:
+            return SimpleNamespace(
+                content=[SimpleNamespace(type="text", text=text)],
+                stop_reason="end_turn",
+                usage=SimpleNamespace(
+                    input_tokens=0,
+                    output_tokens=0,
+                    cache_read_input_tokens=0,
+                    cache_creation_input_tokens=0,
+                ),
+            )
+
         mocks = SimpleNamespace(
             ask=MagicMock(return_value=text, side_effect=side_effect),
             ask_multi=MagicMock(return_value=text, side_effect=side_effect),
-            ask_with_tools=MagicMock(return_value=tool_message, side_effect=side_effect),
+            ask_with_tools=MagicMock(
+                side_effect=side_effect if side_effect is not None else _fresh_tool_message
+            ),
             ask_with_audio=MagicMock(return_value=text, side_effect=side_effect),
         )
         for name in _LLM_FACADE_FUNCS:
             monkeypatch.setattr(llm_module, name, getattr(mocks, name))
-        for module in list(sys.modules.values()):
+        for mod_name, module in list(sys.modules.items()):
             if module is None or module is llm_module:
+                continue
+            if mod_name.split(".", 1)[0] not in _LLM_SWEEP_TOP_PACKAGES:
                 continue
             module_dict = getattr(module, "__dict__", None)
             if not module_dict:

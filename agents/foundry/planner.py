@@ -18,6 +18,7 @@ import re
 from pathlib import Path
 
 import yaml
+from pydantic import ValidationError
 
 from agents.foundry.schemas.storyboard import Beat
 from shared.llm import ask
@@ -156,26 +157,28 @@ def plan_episode(
 
     Raises:
         ValueError: if LLM response cannot be parsed as a valid beat list after retries.
+            API/auth 錯誤不走這層 retry，直接 propagate（facade 內已做 transient retry）。
     """
     prompt = _build_prompt(flat_text, episode_meta, hints=hints)
 
     # Route via shared.llm.ask facade（不直呼 SDK client）— retry / auth
     # dispatch / cost tracking 的 wiring 都在 facade 後面（2026-07-03 架構
-    # 審計）。這層 3-attempt loop 管的是「回應 parse 得出合法 beat list」，
-    # 與 facade 內的 transient API retry 不同層。
+    # 審計）。這層 3-attempt loop 只管「回應 parse 得出合法 beat list」；
+    # transient API 錯誤由 facade 內 with_retry 處理，這裡不重複 catch —
+    # 否則兩層 retry 相乘會把持續性 API 故障放大成數十次呼叫。
     last_exc: Exception | None = None
     for attempt in range(3):
+        raw = ask(
+            prompt,
+            model=_MODEL,
+            max_tokens=_MAX_TOKENS,
+        )
         try:
-            raw = ask(
-                prompt,
-                model=_MODEL,
-                max_tokens=_MAX_TOKENS,
-            )
             beats_data = _extract_beats(raw)
             beats = [Beat.model_validate(b) for b in beats_data]
             logger.info("planner produced %d beats (attempt %d)", len(beats), attempt + 1)
             return beats
-        except Exception as exc:
+        except (ValueError, yaml.YAMLError, ValidationError) as exc:
             last_exc = exc
             logger.warning("planner attempt %d/3 failed: %s", attempt + 1, exc)
 
