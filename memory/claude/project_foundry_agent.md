@@ -4,6 +4,8 @@ description: 新 agent 寄居 agents/foundry/，獨立於 Brook（ADR-027 narrow
 type: project
 ---
 
+> **⚠️ SUPERSEDED（ownership 部分）by ADR-050，2026-07-03**：修修裁決「Video Script Pipeline 給 Brook 來做」— foundry 自 agent map 退場，機器整樹遷移 `agents/brook/script_video/`（PR-3 進行中，見 issues #974-#977）。本檔的技術架構描述仍有效，「獨立於 Brook」的 ownership 敘述已反轉。
+
 ADR-032 引入新 agent `foundry`，**獨立於 Brook**（ADR-001 amendment）。
 
 **Why**：ADR-027 narrow Brook 到 Scaffold + Repurpose + SEO Audit 後，video pipeline 的複雜度（multi-worker render queue + realtime Bridge UI + 跨 episode learning corpus + Hyperframes/Playwright 兩個重 stack）超出 Brook mandate。Panel（Gemini）push-back：「forcing it into agents/brook/ risks bloating Brook into a monolith」。
