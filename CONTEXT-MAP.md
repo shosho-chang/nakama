@@ -18,7 +18,7 @@ presentation layer（Web UI）。
 - **Usopp** — Publisher：發布到 WordPress / YouTube / Fluent CRM；core community publisher 待開
 
 ### Cross-cutting contexts
-- **Shared kernel** (`shared/`、`agents/base.py`) — Agent / Run / Memory / Event / API call / Token cost；任何 agent 必經介面
+- **Shared kernel** (`shared/`、`agents/base.py`) — Agent / Run / Memory / Event / API call / Token cost；任何 agent 必經介面。**ADR-050 邊界規則：`shared/` 只收 2+ agent 共用的基礎設施**；單一 agent 的 domain logic 住該 agent 的 package（首例：Source Promotion 19 模組 → `agents/robin/promotion/`）。跨層 contract types（`shared/schemas/`）留 kernel
 - **Thousand Sunny** (`thousand_sunny/`) — Web presentation 平台 / chassis：所有 web UI、Bridge dashboard、各 agent router；HMAC cookie + API key auth；**Sunny 是船本身（platform），不是 agent crew member**（ADR-029 §2 凍結）；glossary [thousand_sunny/CONTEXT.md](thousand_sunny/CONTEXT.md)；參見 [reference_bridge_ui_mutation_pattern](memory/claude/reference_bridge_ui_mutation_pattern.md)
 - **video** (`video/`) — Script-Driven Video Production 的 Node.js + Hyperframes + TypeScript subproject；6 Hyperframes HTML compositions + DSL parser + B-roll segment renderer；process boundary 跟 Python 主 repo 切開；Brook orchestrator (`agents/brook/script_video/`) 透過 Node.js CLI 呼叫；參見 ADR-015
 

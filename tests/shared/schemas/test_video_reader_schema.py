@@ -361,7 +361,7 @@ def test_compose_manifest_derives_v2_for_timestamp_only_items() -> None:
     """Regression — schema_version factory must consider timestamp_range
     anchors, not just entity items, or V13 will reject every video manifest.
     """
-    from shared.promotion_review_service import PromotionReviewService
+    from agents.robin.promotion.promotion_review_service import PromotionReviewService
 
     # Construct a minimal service for the private helper; deps unused by _compose_manifest.
     svc = PromotionReviewService.__new__(PromotionReviewService)
@@ -384,7 +384,7 @@ def test_compose_manifest_stays_v1_for_legacy_chapter_items() -> None:
     """Backward compat — concept/source-only manifests with chapter_quote
     anchors still ship as v=1.
     """
-    from shared.promotion_review_service import PromotionReviewService
+    from agents.robin.promotion.promotion_review_service import PromotionReviewService
 
     svc = PromotionReviewService.__new__(PromotionReviewService)
     svc._recommender_model_name = "claude-opus-4-7"

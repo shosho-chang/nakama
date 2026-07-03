@@ -441,19 +441,19 @@ def test_rt8_start_review_runs_builder_and_engine(
 
 def test_rt9_route_handlers_use_service_only():
     """U1: thousand_sunny/routers/promotion_review.py must NOT import
-    shared.promotion_preflight, shared.source_map_builder,
-    shared.concept_promotion_engine, shared.promotion_commit. Only the
-    service facade (shared.promotion_review_service) is allowed.
+    agents.robin.promotion.promotion_preflight, agents.robin.promotion.source_map_builder,
+    agents.robin.promotion.concept_promotion_engine, agents.robin.promotion.promotion_commit. Only the
+    service facade (agents.robin.promotion.promotion_review_service) is allowed.
     """
     routes_path = (
         Path(__file__).resolve().parents[2] / "thousand_sunny" / "routers" / "promotion_review.py"
     )
     text = routes_path.read_text(encoding="utf-8")
     forbidden_modules = [
-        "shared.promotion_preflight",
-        "shared.source_map_builder",
-        "shared.concept_promotion_engine",
-        "shared.promotion_commit",
+        "agents.robin.promotion.promotion_preflight",
+        "agents.robin.promotion.source_map_builder",
+        "agents.robin.promotion.concept_promotion_engine",
+        "agents.robin.promotion.promotion_commit",
     ]
     offenders = []
     for line in text.splitlines():
@@ -471,7 +471,7 @@ def test_rt9_route_handlers_use_service_only():
     assert offenders == [], (
         f"thousand_sunny/routers/promotion_review.py imports forbidden upstream "
         f"modules directly (U1 violation): {offenders}. Routes must only call "
-        f"shared.promotion_review_service."
+        f"agents.robin.promotion.promotion_review_service."
     )
 
 

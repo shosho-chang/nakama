@@ -1,9 +1,9 @@
 """Thousand Sunny routes for ADR-024 Promotion Review (issue #516).
 
 Thin handlers — every domain operation calls
-``shared.promotion_review_service.PromotionReviewService``. Routes never
-import ``shared.promotion_preflight`` / ``shared.source_map_builder`` /
-``shared.concept_promotion_engine`` / ``shared.promotion_commit`` directly
+``agents.robin.promotion.promotion_review_service.PromotionReviewService``. Routes never
+import ``agents.robin.promotion.promotion_preflight`` / ``agents.robin.promotion.source_map_builder`` /
+``agents.robin.promotion.concept_promotion_engine`` / ``agents.robin.promotion.promotion_commit`` directly
 (that's U1 in the Brief, asserted by the static-grep test RT9).
 
 Routes:
@@ -42,7 +42,7 @@ from fastapi.templating import Jinja2Templates
 
 from shared.config import get_vault_path
 from shared.log import get_logger
-from shared.promotion_review_service import PromotionReviewService
+from agents.robin.promotion.promotion_review_service import PromotionReviewService
 from shared.schemas.promotion_manifest import HumanDecisionKind
 from thousand_sunny.auth import check_auth
 

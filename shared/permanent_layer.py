@@ -11,7 +11,7 @@ Centaur 規格 v0.2 §7 紅線 1：**AI 絕不寫 ``KB/Permanent/`` 正文與 st
    search / promotion guard 共用）。
 2. :func:`assert_not_permanent_target` — 負向 tripwire 用：任何 agent 寫入路徑
    解析若落在 ``KB/Permanent/`` 一律 raise（promotion resolver 在 chokepoint
-   呼叫，見 ``shared/promotion_targets.py``）。
+   呼叫，見 ``agents/robin/promotion/promotion_targets.py``）。
 3. :func:`update_permanent_bookkeeping` — AI 對永久卡的**唯一**寫入口，白名單
    key、正文逐字保留。
 
