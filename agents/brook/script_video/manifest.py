@@ -3,6 +3,44 @@
 The Manifest is the shared contract between the TypeScript DSL parser and the
 Python FCPXML/SRT emitters.  It is serialised to ``manifest.json`` inside the
 episode data directory.
+
+Schema sync
+-----------
+``video/src/parser/types.ts`` is the authoritative definition; this module is
+the Python mirror.  Drift between the two (field names, types, optionality,
+nullability) is caught in CI by
+``tests/brook/script_video/test_manifest_schema_sync.py`` — a mismatch fails
+at test time instead of at runtime deserialisation.
+
+Manifest lifecycle: parse → augment → enrich → final
+----------------------------------------------------
+1. **Parse** (``video/src/parser/parse.ts``, pipeline Stage 2).  The TS parser
+   emits the *raw* manifest.  Guaranteed populated at this point:
+   ``episode_id``, ``fps`` and every scene's ``type`` / ``id`` /
+   ``start_frame`` / ``duration_frames`` plus the per-scene payload fields.
+   Placeholders at this point: ``aroll_audio=""``, ``aroll_video=""``,
+   ``cuts=[]``, and ``total_frames`` (word-count estimate).
+2. **Augment** (``pipeline._stage2_parse``).  Python fills ``aroll_audio`` /
+   ``aroll_video`` / ``cuts`` and overrides ``total_frames`` with the
+   source-media duration, then re-validates and rewrites ``manifest.json``.
+3. **Enrich** (Slice 4 ``robin_metadata`` adapter, ADR-015 §Q4-2/§Q4-3).
+   ``DocumentQuoteScene.source_id`` is only a real Robin KB join key after
+   this step — at parse time it is empty, and the Slice 3 exact-match path
+   may emit a synthetic id on KB miss.  ``match_index`` stays ``None`` except
+   on the Slice 4 fuzzy-match path.  Consumers must not rely on either field
+   before enrichment has run.
+4. **Final manifest** — consumed by ``fcpxml_emitter`` / ``srt_emitter`` and
+   the Hyperframes renderer.
+
+Versioning
+----------
+There is deliberately no ``manifest_version`` field yet:
+``pipeline._stage2_parse`` re-serialises ``manifest.json`` via
+``model_dump_json``, so adding a defaulted field would change the on-disk
+artifact (a runtime behaviour change).  When the schema next changes for real
+(e.g. the Slice 2 ``Slide`` type), add ``manifest_version`` on both sides in
+that PR and have the TS parser emit it.  Until then the sync test above
+covers the drift risk a version field would have guarded against.
 """
 
 from __future__ import annotations

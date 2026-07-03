@@ -1,7 +1,10 @@
 /**
  * Manifest schema — shared contract between the TypeScript DSL parser and
  * the Python FCPXML/SRT emitters.  Changes here must be mirrored in
- * agents/brook/script_video/manifest.py.
+ * agents/brook/script_video/manifest.py — the mirror is enforced in CI by
+ * tests/brook/script_video/test_manifest_schema_sync.py (extraction script:
+ * video/scripts/emit-manifest-schema.mjs).  Field lifecycle (parse → augment
+ * → enrich) is documented in the manifest.py module docstring.
  */
 
 // ---------------------------------------------------------------------------
