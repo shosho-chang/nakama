@@ -10,6 +10,8 @@ metadata:
 ADR-032 Phase 1（Hyperframes 基底 script-to-B-roll pipeline）全部上線。SUPERSEDES
 [[project-foundry-agent]] 內 #715/#716 in-flight 描述。
 
+> **⚠️ Ownership 更新（ADR-050，2026-07-03）**：video production line 歸 Brook，foundry 自 agent map 退場、機器遷移 `agents/brook/script_video/`；FCPXML 統一 `shared/fcpxml/` builder、ADR-015 殘留退役（mistake removal 存活為 cleanup stage）、episode.yaml 加 stages provenance。實施 issues #974-#977。技術成果（本檔以下）不變。
+
 ## Ship 紀錄
 
 | PR  | 內容                                                            | Merged commit |
