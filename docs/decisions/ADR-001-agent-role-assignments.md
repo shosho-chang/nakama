@@ -27,8 +27,8 @@ Nakama 在 v0.1.0 初始設計時，7 個 Agent 的職責是概略草擬的，�
 | Usopp | Community Monitor | **Publisher**：發布至 WordPress、YouTube、社群媒體；電子報管理（Fluent CRM）|
 | Sanji | Producer（選題/大綱）| **Community Manager**：Fluent Community 社群營運、成員互動、活動策劃 |
 | Franky | Repurpose（SEO/改寫）| **System Maintenance + Evolution Watch**：套件更新、CVE 掃描、API key 驗證、系統健康檢查；AI 工具情報蒐集、跨期 synthesis、proposal 草擬（analyst 角色，非 decision-maker — 戰略拍板仍由修修 + Claude 主線負責）— *Amended by ADR-023 (2026-05-07)* |
-| Brook | Publish | **Composer**：內容重組，將文章/影片腳本轉換為各平台格式（Blog/YouTube/IG/Newsletter）— *Amended by ADR-027 (2026-05-17): narrowed to Scaffold (synthesize) + Repurpose + SEO Audit; LLM from-scratch composition removed; RCP scaffold remains with Robin* |
-| Foundry | — | **Video Production Line**（NEW — *Added by ADR-032 2026-05-25*）：script + SRT → DaVinci-importable broll timeline。Stage 5 production agent: srt_flattener / chinese_normalizer / planner LLM / beat_aligner / render_dispatcher（hyperframes + reader-playwright + web-playwright）/ fcpxml_emitter。**Independent from Brook**（ADR-027 narrow Brook 後，video pipeline complexity 不適合再寄居 Brook）。Brook 仍可在 RepurposeEngine 鏈中 invoke foundry，pattern 為 call-not-host。|
+| Brook | Publish | **Composer**：內容重組，將文章/影片腳本轉換為各平台格式（Blog/YouTube/IG/Newsletter）— *Amended by ADR-027 (2026-05-17): narrowed to Scaffold (synthesize) + Repurpose + SEO Audit; LLM from-scratch composition removed; RCP scaffold remains with Robin* — *Amended by ADR-050 (2026-07-03): + 第 4 sub-responsibility **Video Production Line**（`agents/brook/script_video/` sub-package 硬邊界：SRT-first storyboard → Hyperframes render → FCPXML；選配拍掌 marker cleanup 前置 stage；含 ADR-033 thumbnails）* |
+| ~~Foundry~~ | — | **Retired as agent by ADR-050 (2026-07-03)** — 原 ADR-032 (2026-05-25) 新增之 Video Production Line agent。修修裁決 video line 歸 Brook：機器整樹遷移 `agents/brook/script_video/`，foundry 名稱自 agent map 退場。歷史脈絡見 ADR-032 §0.1。|
 
 ## Consequences
 
@@ -43,3 +43,4 @@ Nakama 在 v0.1.0 初始設計時，7 個 Agent 的職責是概略草擬的，�
 - 此決策在 2026-04-09 與 Owner 討論後確認
 - README.md 與 ARCHITECTURE.md 應依此更新
 - 2026-05-25 amendment: ADR-032 introduces new `Foundry` agent for video production line (separate from Brook per ADR-027 narrow)
+- 2026-07-03 amendment: ADR-050 retires `Foundry` as agent; Video Production Line ownership → Brook（機器遷移 `agents/brook/script_video/`）

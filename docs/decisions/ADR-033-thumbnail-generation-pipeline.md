@@ -5,6 +5,8 @@
 **Owner:** 修修
 **Related:** [ADR-030](ADR-030-vault-as-substrate-read-strategy.md) (vault-substrate) · [ADR-031](ADR-031-project-workspace-migration.md) (Tier C project workspace) · [ADR-032](ADR-032-hyperframes-broll-pipeline.md) (Hyperframes B-roll)
 
+> **Path amendment（[ADR-050](ADR-050-video-production-line-brook-ownership.md)，2026-07-03）**：本 ADR 內所有 `agents/foundry/` 路徑（thumbnail_worker、render_workers、ruff scope 等）隨 video production line 歸 Brook 遷移為 `agents/brook/script_video/`。決策內容不變。
+
 > **v1 → v2 change log** — v1 went through a 3-way panel (Codex GPT-5 + Gemini 2.5 Pro). Panel verbatim audits at:
 > - [`docs/research/2026-05-26-codex-adr033-audit.md`](../research/2026-05-26-codex-adr033-audit.md)
 > - [`docs/research/2026-05-26-gemini-adr033-audit.md`](../research/2026-05-26-gemini-adr033-audit.md)

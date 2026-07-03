@@ -1,7 +1,7 @@
 # ADR-032: Hyperframes-based Script-to-B-roll Pipeline
 
 **Date:** 2026-05-25
-**Status:** Draft v2（post multi-agent-panel review 2026-05-25；待修修最終 sign-off）
+**Status:** Accepted as amended by [ADR-050](ADR-050-video-production-line-brook-ownership.md)（2026-07-03 — §0.1 ownership 反轉：video production line 歸 Brook，機器遷移 `agents/brook/script_video/`，foundry 自 agent map 退場；其餘技術設計全數沿用。v2 原為 Draft 待 sign-off，實作已 ship，隨 ADR-050 裁決一併定案）
 **Supersedes:** [ADR-015](ADR-015-script-driven-video-production.md)
 **Related:** ADR-001（agent role）→ ADR-027（Brook narrow）/ ADR-014（RepurposeEngine — orthogonal）/ ADR-028（VAULT-LAYOUT）/ [ADR-033](ADR-033-thumbnail-generation-pipeline.md)（extends Hyperframes render layer to thumbnail stills, PR4 onward — see D10）
 
@@ -56,6 +56,8 @@ ADR-001 把 agent role 凍結，但 ADR-027（2026-05）把 Brook 從「Composer
 ## Decision
 
 ### 0.1 新 agent `agents/foundry/`（取代寄居 Brook）
+
+> **⚠️ Superseded by ADR-050（2026-07-03）**：修修裁決 video production line 歸 Brook — 本節機器整樹遷移 `agents/brook/script_video/`、foundry 自 agent map 退場、Bridge route 改 `/brook/video`。當年 panel 反對寄居的 monolith 顧慮以 sub-package 硬邊界緩解。本節以下保留為歷史脈絡。
 
 ADR-027 narrow Brook 後，本 pipeline 的特性 — multi-worker render queue、realtime UI（Bridge route）、依賴 Hyperframes + Playwright 兩個重 stack、跨 episode learning corpus — 已**遠超 Brook 的 Scaffold/Repurpose/SEO Audit 範疇**。Gemini panel 直接點出：「forcing it into agents/brook/ risks bloating Brook into a monolith」。
 
