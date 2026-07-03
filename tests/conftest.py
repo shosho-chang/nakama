@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -104,6 +106,68 @@ def _isolated_incidents_pending(tmp_path: Path, monkeypatch):
     into the repo's `data/incidents-pending/` and pollutes git status.
     """
     monkeypatch.setenv("NAKAMA_INCIDENTS_PENDING_DIR", str(tmp_path / "_incidents-pending"))
+
+
+_LLM_FACADE_FUNCS = ("ask", "ask_multi", "ask_with_tools", "ask_with_audio")
+
+
+@pytest.fixture
+def mock_llm_response(monkeypatch):
+    """Facade-level LLM mock — patch ``shared.llm.ask*`` 而非 provider client 內部。
+
+    2026-07-03 架構審計：業務測試 mock 在 ``shared.anthropic_client.get_client``
+    （實作層）會讓 LLM stack 內部 refactor（router / auth dispatch / transport）
+    弄壞不相干的測試，而該測的 wiring 反而測不到。``shared.llm`` facade 才是
+    test surface — 業務邏輯測試一律用這個 fixture；只有刻意測 client / router
+    層本身的測試（test_llm_*, test_*_client*）才 mock provider 內部。
+
+    用法::
+
+        def test_x(mock_llm_response):
+            llm = mock_llm_response("回應文字")
+            run_production_code()
+            llm.ask.assert_called_once()
+            assert "關鍵詞" in llm.ask.call_args.args[0]          # prompt
+            assert llm.ask.call_args.kwargs["model"] == "..."
+
+    - ``text``：``ask`` / ``ask_multi`` / ``ask_with_audio`` 的回傳值；
+      ``ask_with_tools`` 回傳一個 content=[text block] 的 stub Message。
+    - ``side_effect``：exception（或 callable / list）模擬 LLM 失敗，
+      四個介面共用。
+    - ``from shared.llm import ask`` 的 caller 持有自己的 module-level
+      binding（feedback_facade_mock_caller_binding.md）— 這裡以 identity
+      掃 ``sys.modules`` 一併 patch；install 之後才 import 的模組拿到的
+      是已 patch 的 ``shared.llm`` attr，兩種順序都安全。
+    """
+    import shared.llm as llm_module
+
+    def _install(text: str = "", *, side_effect=None) -> SimpleNamespace:
+        originals = {name: getattr(llm_module, name) for name in _LLM_FACADE_FUNCS}
+        tool_message = SimpleNamespace(
+            content=[SimpleNamespace(type="text", text=text)],
+            stop_reason="end_turn",
+        )
+        mocks = SimpleNamespace(
+            ask=MagicMock(return_value=text, side_effect=side_effect),
+            ask_multi=MagicMock(return_value=text, side_effect=side_effect),
+            ask_with_tools=MagicMock(return_value=tool_message, side_effect=side_effect),
+            ask_with_audio=MagicMock(return_value=text, side_effect=side_effect),
+        )
+        for name in _LLM_FACADE_FUNCS:
+            monkeypatch.setattr(llm_module, name, getattr(mocks, name))
+        for module in list(sys.modules.values()):
+            if module is None or module is llm_module:
+                continue
+            module_dict = getattr(module, "__dict__", None)
+            if not module_dict:
+                continue
+            for attr, value in list(module_dict.items()):
+                for name in _LLM_FACADE_FUNCS:
+                    if value is originals[name]:
+                        monkeypatch.setattr(module, attr, getattr(mocks, name))
+        return mocks
+
+    return _install
 
 
 @pytest.fixture(autouse=True)

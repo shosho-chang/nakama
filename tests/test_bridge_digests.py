@@ -247,20 +247,8 @@ class TestAsk:
         assert r.status_code == 200
         assert "天數" in r.text
 
-    def test_post_dispatches_to_llm_and_renders(self, client, monkeypatch):
-        import shared.digest_ask as ask_module
-
-        def fake_llm(prompt, *, system, model, max_tokens):
-            assert "Nature 研究" in prompt  # PubMed digest body in context
-            assert model == "claude-sonnet-4-6"
-            return "LLM 模擬回答：找到 1 篇相關研究"
-
-        monkeypatch.setattr(ask_module, "ask_claude", fake_llm, raising=False)
-        # ask() imports ask_claude lazily — patch via monkeypatching the module
-        # function path that ask() resolves to.
-        import shared.anthropic_client as anth
-
-        monkeypatch.setattr(anth, "ask_claude", fake_llm)
+    def test_post_dispatches_to_llm_and_renders(self, client, mock_llm_response):
+        llm = mock_llm_response("LLM 模擬回答：找到 1 篇相關研究")
 
         r = client.post(
             "/bridge/digests/ask",
@@ -270,14 +258,12 @@ class TestAsk:
         assert "LLM 模擬回答" in r.text
         assert "今天 PubMed 有什麼" in r.text
         assert "引用來源" in r.text
+        prompt = llm.ask.call_args.args[0]
+        assert "Nature 研究" in prompt  # PubMed digest body in context
+        assert llm.ask.call_args.kwargs["model"] == "claude-sonnet-4-6"
 
-    def test_post_llm_failure_renders_error(self, client, monkeypatch):
-        import shared.anthropic_client as anth
-
-        def boom(*a, **kw):
-            raise RuntimeError("simulated outage")
-
-        monkeypatch.setattr(anth, "ask_claude", boom)
+    def test_post_llm_failure_renders_error(self, client, mock_llm_response):
+        mock_llm_response(side_effect=RuntimeError("simulated outage"))
 
         r = client.post(
             "/bridge/digests/ask",
@@ -286,11 +272,10 @@ class TestAsk:
         assert r.status_code == 200
         assert "查詢失敗" in r.text
 
-    def test_post_empty_scope_no_llm_call(self, client, monkeypatch, tmp_path):
+    def test_post_empty_scope_no_llm_call(self, client, monkeypatch, tmp_path, mock_llm_response):
         # Re-build empty vault client
         monkeypatch.setenv("VAULT_PATH", str(tmp_path / "empty"))
         (tmp_path / "empty").mkdir()
-        import shared.anthropic_client as anth
         import thousand_sunny.app as app_module
         import thousand_sunny.routers.bridge_digests as bd_module
 
@@ -298,12 +283,11 @@ class TestAsk:
         importlib.reload(app_module)
         c = TestClient(app_module.app)
 
-        called = []
-        monkeypatch.setattr(anth, "ask_claude", lambda *a, **kw: called.append(1) or "x")
+        llm = mock_llm_response("x")
 
         r = c.post("/bridge/digests/ask", data={"question": "q", "days": "7"})
         assert r.status_code == 200
-        assert called == []
+        llm.ask.assert_not_called()
         assert "無 digest 可查" in r.text
 
     def test_post_shows_truncation_date_range_and_drop_count(self, client, monkeypatch):
@@ -341,13 +325,8 @@ class TestAsk:
         assert "9" in r.text
         assert "已捨棄" in r.text
 
-    def test_post_answer_rendered_as_markdown(self, client, monkeypatch):
-        import shared.anthropic_client as anth
-
-        def fake_llm(prompt, *, system, model, max_tokens):
-            return "**bold** text\n\n- list item"
-
-        monkeypatch.setattr(anth, "ask_claude", fake_llm)
+    def test_post_answer_rendered_as_markdown(self, client, mock_llm_response):
+        mock_llm_response("**bold** text\n\n- list item")
 
         r = client.post(
             "/bridge/digests/ask",
@@ -361,10 +340,8 @@ class TestAsk:
         r = client.get("/bridge/digests")
         assert "/bridge/digests/ask" in r.text
 
-    def test_post_renders_scope_audit_details(self, client, monkeypatch):
-        import shared.anthropic_client as anth
-
-        monkeypatch.setattr(anth, "ask_claude", lambda *a, **kw: "answer text")
+    def test_post_renders_scope_audit_details(self, client, mock_llm_response):
+        mock_llm_response("answer text")
 
         r = client.post(
             "/bridge/digests/ask",

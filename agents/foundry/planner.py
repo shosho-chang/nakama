@@ -20,7 +20,7 @@ from pathlib import Path
 import yaml
 
 from agents.foundry.schemas.storyboard import Beat
-from shared.anthropic_client import get_client
+from shared.llm import ask
 
 logger = logging.getLogger(__name__)
 
@@ -157,18 +157,20 @@ def plan_episode(
     Raises:
         ValueError: if LLM response cannot be parsed as a valid beat list after retries.
     """
-    client = get_client()
     prompt = _build_prompt(flat_text, episode_meta, hints=hints)
 
+    # Route via shared.llm.ask facade（不直呼 SDK client）— retry / auth
+    # dispatch / cost tracking 的 wiring 都在 facade 後面（2026-07-03 架構
+    # 審計）。這層 3-attempt loop 管的是「回應 parse 得出合法 beat list」，
+    # 與 facade 內的 transient API retry 不同層。
     last_exc: Exception | None = None
     for attempt in range(3):
         try:
-            response = client.messages.create(
+            raw = ask(
+                prompt,
                 model=_MODEL,
                 max_tokens=_MAX_TOKENS,
-                messages=[{"role": "user", "content": prompt}],
             )
-            raw = response.content[0].text
             beats_data = _extract_beats(raw)
             beats = [Beat.model_validate(b) for b in beats_data]
             logger.info("planner produced %d beats (attempt %d)", len(beats), attempt + 1)
