@@ -1,6 +1,7 @@
 """Integration test for foundry plan pipeline (PR-3).
 
-No real LLM calls — Anthropic client is mocked throughout.
+No real LLM calls — mocked at the ``shared.llm`` facade（conftest
+``mock_llm_response``；2026-07-03 架構審計）。
 Manual smoke test: `python -m agents.foundry --episode <real-episode> plan`
 with a real ANTHROPIC_API_KEY.
 """
@@ -10,7 +11,7 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -80,16 +81,12 @@ _CANNED_BEATS = [
 ]
 
 
-def _make_mock_client(beats: list[dict] | None = None) -> MagicMock:
-    """Return a mock Anthropic client whose messages.create returns canned beats."""
+def _canned_llm_text(beats: list[dict] | None = None) -> str:
+    """Render canned beats as the fenced-YAML text the planner LLM returns."""
     if beats is None:
         beats = _CANNED_BEATS
-    mock_client = MagicMock()
-    mock_response = MagicMock()
     yaml_text = yaml.dump(beats, allow_unicode=True)
-    mock_response.content = [MagicMock(text=f"```yaml\n{yaml_text}\n```")]
-    mock_client.messages.create.return_value = mock_response
-    return mock_client
+    return f"```yaml\n{yaml_text}\n```"
 
 
 def _write_episode_fixture(ep_dir: Path) -> None:
@@ -100,7 +97,7 @@ def _write_episode_fixture(ep_dir: Path) -> None:
     )
 
 
-def test_plan_produces_valid_storyboard(tmp_path, monkeypatch):
+def test_plan_produces_valid_storyboard(tmp_path, monkeypatch, mock_llm_response):
     """End-to-end: mock SRT + mock LLM → storyboard.yaml validates against schema."""
     from agents.foundry.pipeline import _cmd_plan
     from agents.foundry.schemas.storyboard import Beat
@@ -110,8 +107,8 @@ def test_plan_produces_valid_storyboard(tmp_path, monkeypatch):
 
     monkeypatch.chdir(tmp_path)
 
-    with patch("agents.foundry.planner.get_client", return_value=_make_mock_client()):
-        result = _cmd_plan(argparse.Namespace(episode="test-001"))
+    mock_llm_response(_canned_llm_text())
+    result = _cmd_plan(argparse.Namespace(episode="test-001"))
 
     assert result == 0
 
@@ -132,7 +129,7 @@ def test_plan_produces_valid_storyboard(tmp_path, monkeypatch):
     assert beats[1].broll.component == "bigstat"
 
 
-def test_storyboard_beat_anchors_aligned(tmp_path, monkeypatch):
+def test_storyboard_beat_anchors_aligned(tmp_path, monkeypatch, mock_llm_response):
     """Beats with exact-copy anchors get timing filled in by align_beat."""
     from agents.foundry.pipeline import _cmd_plan
     from agents.foundry.schemas.storyboard import Beat
@@ -141,8 +138,8 @@ def test_storyboard_beat_anchors_aligned(tmp_path, monkeypatch):
     _write_episode_fixture(ep_dir)
     monkeypatch.chdir(tmp_path)
 
-    with patch("agents.foundry.planner.get_client", return_value=_make_mock_client()):
-        _cmd_plan(argparse.Namespace(episode="test-002"))
+    mock_llm_response(_canned_llm_text())
+    _cmd_plan(argparse.Namespace(episode="test-002"))
 
     raw = yaml.safe_load((ep_dir / "storyboard.yaml").read_text(encoding="utf-8"))
     beat1 = Beat.model_validate(raw[0])
@@ -151,7 +148,7 @@ def test_storyboard_beat_anchors_aligned(tmp_path, monkeypatch):
     assert beat1.timing.start == pytest.approx(0.0)
 
 
-def test_duration_check_warns_on_missing_mp4(tmp_path, caplog, monkeypatch):
+def test_duration_check_warns_on_missing_mp4(tmp_path, caplog, monkeypatch, mock_llm_response):
     """Warning emitted when raw_recording.mp4 is absent."""
     from agents.foundry.pipeline import _cmd_plan
 
@@ -159,14 +156,14 @@ def test_duration_check_warns_on_missing_mp4(tmp_path, caplog, monkeypatch):
     _write_episode_fixture(ep_dir)
     monkeypatch.chdir(tmp_path)
 
+    mock_llm_response(_canned_llm_text())
     with caplog.at_level(logging.WARNING, logger="agents.foundry.pipeline"):
-        with patch("agents.foundry.planner.get_client", return_value=_make_mock_client()):
-            _cmd_plan(argparse.Namespace(episode="test-003"))
+        _cmd_plan(argparse.Namespace(episode="test-003"))
 
     assert any("raw_recording.mp4" in r.message for r in caplog.records)
 
 
-def test_duration_check_warns_on_large_delta(tmp_path, caplog, monkeypatch):
+def test_duration_check_warns_on_large_delta(tmp_path, caplog, monkeypatch, mock_llm_response):
     """Warning emitted when SRT and mp4 durations differ by more than 1s."""
     from agents.foundry.pipeline import _cmd_plan
 
@@ -176,10 +173,10 @@ def test_duration_check_warns_on_large_delta(tmp_path, caplog, monkeypatch):
     (ep_dir / "raw_recording.mp4").write_bytes(b"")
     monkeypatch.chdir(tmp_path)
 
+    mock_llm_response(_canned_llm_text())
     # SRT ends at 30.0s; mock mp4 duration as 45.0s → delta = 15s > 1s
     with patch("agents.foundry.pipeline._get_mp4_duration", return_value=45.0):
         with caplog.at_level(logging.WARNING, logger="agents.foundry.pipeline"):
-            with patch("agents.foundry.planner.get_client", return_value=_make_mock_client()):
-                _cmd_plan(argparse.Namespace(episode="test-004"))
+            _cmd_plan(argparse.Namespace(episode="test-004"))
 
     assert any("delta" in r.message for r in caplog.records)
