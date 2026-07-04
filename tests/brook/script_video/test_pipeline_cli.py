@@ -9,6 +9,7 @@ Covers:
 
 from __future__ import annotations
 
+import json
 import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -156,3 +157,107 @@ def test_cleanup_errors_when_raw_recording_missing(tmp_path, monkeypatch) -> Non
     (ep_dir / "episode.yaml").write_text("id: ep-norec\n", encoding="utf-8")
     rc = pipeline.main(["--episode", "ep-norec", "cleanup"])
     assert rc == 1
+
+
+# ---------------------------------------------------------------------------
+# cleanup — script-anchored mode（words.json + script.md 存在時）
+# ---------------------------------------------------------------------------
+
+_SCRIPT_TEXT = "今天想跟大家聊三個增肌的觀念。第一個觀念是蛋白質要吃夠，不是吃多。"
+
+
+def _char_words(text: str, start: float, end: float) -> list[dict]:
+    span = end - start
+    n = len(text)
+    return [
+        {
+            "word": ch,
+            "start": round(start + span * i / n, 3),
+            "end": round(start + span * (i + 1) / n, 3),
+        }
+        for i, ch in enumerate(text)
+    ]
+
+
+def _make_script_anchored_episode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """clap fixture（events @ 2.0s / 5.0s）＋合成 words ＋逐字稿。
+
+    words 佈局對齊 fixture 的兩個拍手事件：
+      失敗 take1（0.3–1.8s）→ 👏@2.0 → 失敗 take2（2.6–4.6s）→ 👏@5.0 →
+      retake 成功（5.8–7.8s）
+    """
+    ep_dir = _make_episode(tmp_path, monkeypatch)
+    words = (
+        _char_words("第一個觀念是蛋白質要", 0.3, 1.8)
+        + _char_words("第一個觀念是蛋白質要吃", 2.6, 4.6)
+        + _char_words("第一個觀念是蛋白質要吃夠不是吃多", 5.8, 7.8)
+    )
+    (ep_dir / "words.json").write_text(
+        json.dumps({"words": words}, ensure_ascii=False), encoding="utf-8"
+    )
+    (ep_dir / "script.md").write_text(_SCRIPT_TEXT, encoding="utf-8")
+    return ep_dir
+
+
+def test_cleanup_script_anchored_emits_fcpxml_and_corrected_srt(tmp_path, monkeypatch) -> None:
+    ep_dir = _make_script_anchored_episode(tmp_path, monkeypatch)
+
+    rc = pipeline.main(["--episode", "ep-clap", "cleanup"])
+
+    assert rc == 0
+    root = ET.parse(ep_dir / "out" / "cleanup.fcpxml").getroot()
+    clips = root.findall("library/event/project/sequence/spine/asset-clip")
+    assert len(clips) >= 1
+    # corrected SRT：文字全對（含逐字稿的「不是吃多」）、失敗 take 已剔除
+    srt = (ep_dir / "transcript.srt").read_text(encoding="utf-8")
+    assert "不是吃多" in srt
+    assert srt.count("第一個觀念") == 1
+    meta = yaml.safe_load((ep_dir / "episode.yaml").read_text(encoding="utf-8"))
+    assert "cleanup" in meta.get("stages", {})
+
+
+def test_cleanup_script_anchored_without_script_skips_srt(tmp_path, monkeypatch) -> None:
+    ep_dir = _make_script_anchored_episode(tmp_path, monkeypatch)
+    (ep_dir / "script.md").unlink()
+
+    rc = pipeline.main(["--episode", "ep-clap", "cleanup"])
+
+    assert rc == 0
+    assert (ep_dir / "out" / "cleanup.fcpxml").exists()
+    assert not (ep_dir / "transcript.srt").exists()
+
+
+# ---------------------------------------------------------------------------
+# correct-srt subcommand
+# ---------------------------------------------------------------------------
+
+
+def test_correct_srt_subcommand_writes_corrected_srt(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(pipeline, "_DATA_ROOT", tmp_path)
+    ep_dir = tmp_path / "ep-srt"
+    ep_dir.mkdir()
+    (ep_dir / "episode.yaml").write_text("id: ep-srt\n", encoding="utf-8")
+    # ASR 錯字：「蛋白值」
+    words = _char_words("今天想跟大家聊三個增肌的觀念", 0.5, 3.3) + _char_words(
+        "第一個觀念是蛋白值要吃夠不是吃多", 5.0, 8.2
+    )
+    (ep_dir / "words.json").write_text(
+        json.dumps({"words": words}, ensure_ascii=False), encoding="utf-8"
+    )
+    (ep_dir / "script.md").write_text(_SCRIPT_TEXT, encoding="utf-8")
+
+    rc = pipeline.main(["--episode", "ep-srt", "correct-srt"])
+
+    assert rc == 0
+    srt = (ep_dir / "transcript.srt").read_text(encoding="utf-8")
+    assert "蛋白質" in srt
+    assert "蛋白值" not in srt
+
+
+def test_correct_srt_errors_without_words_json(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(pipeline, "_DATA_ROOT", tmp_path)
+    ep_dir = tmp_path / "ep-nowords"
+    ep_dir.mkdir()
+    (ep_dir / "episode.yaml").write_text("id: ep-nowords\n", encoding="utf-8")
+    (ep_dir / "script.md").write_text(_SCRIPT_TEXT, encoding="utf-8")
+    assert pipeline.main(["--episode", "ep-nowords", "correct-srt"]) == 1

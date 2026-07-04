@@ -22,10 +22,11 @@ Primary path (α): audio spike detection
   - Short-time energy peak detection
   - Group pairs of peaks < ``max_clap_gap_sec`` apart → double-clap marker
 
-Alignment fallback (β): Slice 2+ — `detect_alignment_cuts()` will run
-Needleman-Wunsch over WhisperX words ↔ script words and standalone-emit
-review markers (ADR-015 §Q3). Phase 1 only ships α; β attempt raises so
-callers cannot silently lose the WhisperX input.
+Alignment path (β): 已由 ``script_align.detect_script_anchored_cuts`` 實現
+（單擊掌 + retake 指紋回溯，2026-07-04 起為主線；ADR-015 §Q3 的
+Needleman-Wunsch 全對齊構想以更簡單的區域指紋比對取代）。本模組的
+double-clap α 模式保留為無逐字稿時的 legacy fallback；
+``detect_single_claps`` 供 β 模式取 marker 時間點。
 """
 
 from __future__ import annotations
@@ -144,6 +145,46 @@ def detect_clap_markers(
         audio_path.name,
     )
     return cuts
+
+
+def detect_single_claps(
+    audio_path: Path,
+    *,
+    hp_cutoff_hz: float = 3000.0,
+    threshold_ratio: float = 0.3,
+    merge_gap_sec: float = 0.5,
+) -> list[float]:
+    """Detect single-clap events; return event times (seconds) ascending.
+
+    修修 2026-07-04 起的新習慣：講錯後只擊掌**一次**。這裡不做 double-clap
+    配對 — 相鄰 ``merge_gap_sec`` 內的 peaks（回音、雙重偵測、殘留的舊習慣
+    double-clap）合併成同一個事件，取第一個 peak 的時間。
+
+    單擊掌誤判率天然比 double-clap 高（關門、敲桌），下游
+    ``script_align.detect_script_anchored_cuts`` 以「前後找不到重複文字就
+    不產 cut」過濾 false positives — 所以這裡寧可多報不漏報。
+    """
+    audio, sr = _load_wav(audio_path)
+    filtered = _highpass_filter(audio, sr, hp_cutoff_hz)
+    peak_times = _detect_energy_peaks(filtered, sr, threshold_ratio)
+
+    events: list[float] = []
+    last_peak = float("-inf")
+    for t in peak_times:
+        t = float(t)
+        if t - last_peak <= merge_gap_sec:
+            last_peak = t
+            continue
+        events.append(t)
+        last_peak = t
+
+    logger.info(
+        "Detected %d single-clap event(s) (%d raw peaks) in %s",
+        len(events),
+        len(peak_times),
+        audio_path.name,
+    )
+    return events
 
 
 def detect_alignment_cuts(
