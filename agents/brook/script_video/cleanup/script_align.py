@@ -184,7 +184,8 @@ def detect_script_anchored_cuts(
 
     1. 取 t 之後前 ``fingerprint_chars`` 個 normalized 字元當 retake 指紋
     2. 在「上一個拍手（或 0 秒）→ t」的字元流上滑動視窗做模糊比對，
-       找**最早**一個 ratio ≥ ``match_threshold`` 的位置 = 失敗 take 起點
+       取**全窗最佳** ratio（同分取最早、需 ≥ ``match_threshold``）的位置
+       = 失敗 take 起點
     3. cut = [失敗 take 起點, retake 第一個字 − lead-in]（拍手聲必在區間內）
 
     找不到重複文字的拍手（誤偵測或特例）→ 不產 cut，log warning 留給
