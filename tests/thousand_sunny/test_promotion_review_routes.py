@@ -440,10 +440,11 @@ def test_rt8_start_review_runs_builder_and_engine(
 
 
 def test_rt9_route_handlers_use_service_only():
-    """U1: thousand_sunny/routers/promotion_review.py must NOT import
-    agents.robin.promotion.promotion_preflight, agents.robin.promotion.source_map_builder,
-    agents.robin.promotion.concept_promotion_engine, agents.robin.promotion.promotion_commit. Only the
-    service facade (agents.robin.promotion.promotion_review_service) is allowed.
+    """U1: thousand_sunny/routers/promotion_review.py must NOT import the
+    pipeline collaborators (promotion_preflight / source_map_builder /
+    concept_promotion_engine / promotion_commit under agents.robin.promotion).
+    Only the service facade (agents.robin.promotion.promotion_review_service)
+    is allowed.
     """
     routes_path = (
         Path(__file__).resolve().parents[2] / "thousand_sunny" / "routers" / "promotion_review.py"

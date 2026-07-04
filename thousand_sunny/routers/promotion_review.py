@@ -1,10 +1,11 @@
 """Thousand Sunny routes for ADR-024 Promotion Review (issue #516).
 
 Thin handlers — every domain operation calls
-``agents.robin.promotion.promotion_review_service.PromotionReviewService``. Routes never
-import ``agents.robin.promotion.promotion_preflight`` / ``agents.robin.promotion.source_map_builder`` /
-``agents.robin.promotion.concept_promotion_engine`` / ``agents.robin.promotion.promotion_commit`` directly
-(that's U1 in the Brief, asserted by the static-grep test RT9).
+``agents.robin.promotion.promotion_review_service.PromotionReviewService``.
+Routes never import the pipeline collaborators (``promotion_preflight`` /
+``source_map_builder`` / ``concept_promotion_engine`` / ``promotion_commit``
+under ``agents.robin.promotion``) directly — that's U1 in the Brief,
+asserted by the static-grep test RT9.
 
 Routes:
 
@@ -40,9 +41,9 @@ from fastapi import APIRouter, Cookie, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
+from agents.robin.promotion.promotion_review_service import PromotionReviewService
 from shared.config import get_vault_path
 from shared.log import get_logger
-from agents.robin.promotion.promotion_review_service import PromotionReviewService
 from shared.schemas.promotion_manifest import HumanDecisionKind
 from thousand_sunny.auth import check_auth
 
