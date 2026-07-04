@@ -59,8 +59,10 @@ async def _legacy_foundry_redirect(path: str) -> RedirectResponse:
 _TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "brook_video"
 _templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
 
-# Default data root; tests override via _set_data_root().
-_DATA_ROOT = Path("data/script_video")
+# Default data root — repo-root anchored (cwd-relative would break when
+# uvicorn runs from another directory, ADR-050 D4); tests override via
+# _set_data_root().
+_DATA_ROOT = Path(__file__).resolve().parents[2] / "data" / "script_video"
 
 
 def _set_data_root(path: Path) -> None:

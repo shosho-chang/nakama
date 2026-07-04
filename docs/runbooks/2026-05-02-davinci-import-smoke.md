@@ -1,6 +1,6 @@
 ---
 title: DaVinci import smoke — Script-Driven Video FCPXML acceptance gate
-status: superseded-paths（ADR-050 — 原 CLI `python -m agents.brook.script_video` 與 `video/src/parser/` 已退役；FCPXML 生成改走 `shared/fcpxml/` builder + `cleanup/ripple_fcpxml.py`，smoke 步驟精神不變，指令待 PR-5 cleanup subcommand 接通後更新）
+status: active（ADR-050 全案落地後更新 2026-07-04 — FCPXML 生成走 `shared/fcpxml/` builder；cleanup subcommand 已接通，指令見 §3）
 created: 2026-05-02
 updated: 2026-07-04
 owner: 修修（Mac DaVinci Resolve operator）
@@ -70,24 +70,25 @@ ffmpeg -i tests/fixtures/script_video/clap_marker_audio.wav \
 
 ---
 
-## 3. 跑 pipeline
+## 3. 跑 pipeline（指令已隨 ADR-050 更新，2026-07-04）
 
 ```bash
-# Dry-run 驗 input 路徑
-python -m agents.brook.script_video --episode smoke-001 --dry-run
-# 預期: "Episode 'smoke-001': inputs OK"
+# cleanup（拍掌 marker → ripple-delete FCPXML；episode 目錄需有 episode.yaml，缺會 fail loud 附建立指引）
+python -m agents.brook.script_video --episode smoke-001 cleanup
+# 預期: "cleanup: N ripple-delete cuts → .../out/cleanup.fcpxml"
 
-# 真跑
-python -m agents.brook.script_video --episode smoke-001
-# 預期: "Done: /Users/shosho/Documents/nakama/data/script_video/smoke-001/out/episode.fcpxml"
+# storyboard 主線（乾淨錄影 + transcript.srt 就緒後）
+python -m agents.brook.script_video --episode <id> run
+# 預期: out/episode.fcpxml + out/b_roll_<hash>.mp4
 ```
 
 **自動檢查**：
 
 ```bash
-xmllint --noout data/script_video/smoke-001/out/episode.fcpxml && echo "XML well-formed ✓"
+xmllint --noout data/script_video/smoke-001/out/cleanup.fcpxml && echo "XML well-formed ✓"
 ls -lh data/script_video/smoke-001/out/
-# 預期看到 episode.fcpxml + episode.srt
+# cleanup 產 cleanup.fcpxml；storyboard 主線產 episode.fcpxml（檔名區隔，ADR-050 D4）
+# 各 stage 完成時間戳寫入 episode.yaml 的 stages: map
 ```
 
 ---

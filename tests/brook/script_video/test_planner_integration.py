@@ -99,13 +99,14 @@ def _write_episode_fixture(ep_dir: Path) -> None:
 
 def test_plan_produces_valid_storyboard(tmp_path, monkeypatch, mock_llm_response):
     """End-to-end: mock SRT + mock LLM → storyboard.yaml validates against schema."""
+    from agents.brook.script_video import pipeline
     from agents.brook.script_video.pipeline import _cmd_plan
     from agents.brook.script_video.schemas.storyboard import Beat
 
     ep_dir = tmp_path / "data" / "script_video" / "test-001"
     _write_episode_fixture(ep_dir)
 
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pipeline, "_DATA_ROOT", tmp_path / "data" / "script_video")
 
     mock_llm_response(_canned_llm_text())
     result = _cmd_plan(argparse.Namespace(episode="test-001"))
@@ -131,12 +132,13 @@ def test_plan_produces_valid_storyboard(tmp_path, monkeypatch, mock_llm_response
 
 def test_storyboard_beat_anchors_aligned(tmp_path, monkeypatch, mock_llm_response):
     """Beats with exact-copy anchors get timing filled in by align_beat."""
+    from agents.brook.script_video import pipeline
     from agents.brook.script_video.pipeline import _cmd_plan
     from agents.brook.script_video.schemas.storyboard import Beat
 
     ep_dir = tmp_path / "data" / "script_video" / "test-002"
     _write_episode_fixture(ep_dir)
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pipeline, "_DATA_ROOT", tmp_path / "data" / "script_video")
 
     mock_llm_response(_canned_llm_text())
     _cmd_plan(argparse.Namespace(episode="test-002"))
@@ -150,11 +152,12 @@ def test_storyboard_beat_anchors_aligned(tmp_path, monkeypatch, mock_llm_respons
 
 def test_duration_check_warns_on_missing_mp4(tmp_path, caplog, monkeypatch, mock_llm_response):
     """Warning emitted when raw_recording.mp4 is absent."""
+    from agents.brook.script_video import pipeline
     from agents.brook.script_video.pipeline import _cmd_plan
 
     ep_dir = tmp_path / "data" / "script_video" / "test-003"
     _write_episode_fixture(ep_dir)
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pipeline, "_DATA_ROOT", tmp_path / "data" / "script_video")
 
     mock_llm_response(_canned_llm_text())
     with caplog.at_level(logging.WARNING, logger="agents.brook.script_video.pipeline"):
@@ -165,13 +168,14 @@ def test_duration_check_warns_on_missing_mp4(tmp_path, caplog, monkeypatch, mock
 
 def test_duration_check_warns_on_large_delta(tmp_path, caplog, monkeypatch, mock_llm_response):
     """Warning emitted when SRT and mp4 durations differ by more than 1s."""
+    from agents.brook.script_video import pipeline
     from agents.brook.script_video.pipeline import _cmd_plan
 
     ep_dir = tmp_path / "data" / "script_video" / "test-004"
     _write_episode_fixture(ep_dir)
     # Create a fake mp4 placeholder so the exists() check passes
     (ep_dir / "raw_recording.mp4").write_bytes(b"")
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pipeline, "_DATA_ROOT", tmp_path / "data" / "script_video")
 
     mock_llm_response(_canned_llm_text())
     # SRT ends at 30.0s; mock mp4 duration as 45.0s → delta = 15s > 1s

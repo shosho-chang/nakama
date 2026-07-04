@@ -1,6 +1,8 @@
-"""foundry pipeline entry — orchestrates planning / dispatching / FCPXML emit.
+"""Brook video line pipeline entry — orchestrates cleanup / planning / dispatching / FCPXML emit.
 
 Subcommands:
+- cleanup: raw_recording.mp4 → 拍掌 marker 偵測 → out/cleanup.fcpxml
+  ripple-delete timeline（選配前置 stage，ADR-050 D3）
 - plan: SRT → storyboard.yaml (PR-3); ``--use-hints`` consumes
   ``storyboard_hints.yaml`` if present (ADR-038 §D5)
 - hint-beats: raw_recording.mp4 → storyboard_hints.yaml via silencedetect
@@ -10,6 +12,9 @@ Subcommands:
 - run: plan → render → emit end-to-end
 - diff: storyboard A vs storyboard B → Myers-style LCS +/-/= rows (ADR-038 §D7)
 - replan-beat: single-beat LLM tool-call re-plan (ADR-038 §D3 + §D6)
+
+Episode dirs require an ``episode.yaml``; every completed stage is stamped
+into its ``stages:`` map as provenance (ADR-050 D4).
 """
 
 from __future__ import annotations
@@ -19,17 +24,52 @@ import json
 import logging
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
 
 logger = logging.getLogger(__name__)
 
-_DATA_ROOT = Path("data/script_video")
+# Repo-root anchored — a cwd-relative root would silently write to the wrong
+# place when the CLI is invoked from outside the repo (ADR-050 D4 bug fix).
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_DATA_ROOT = _REPO_ROOT / "data" / "script_video"
 
 
 def _episode_dir(episode_id: str) -> Path:
     return _DATA_ROOT / episode_id
+
+
+def _require_episode(ep_dir: Path) -> dict:
+    """Fail loud unless the episode dir has an episode.yaml (ADR-050 D4).
+
+    Returns the parsed episode metadata. The guidance message doubles as the
+    directory-creation recipe so a typo'd episode id never silently spawns a
+    half-formed directory tree.
+    """
+    episode_yaml = ep_dir / "episode.yaml"
+    if not episode_yaml.exists():
+        raise SystemExit(
+            f"episode.yaml not found: {episode_yaml}\n"
+            f"每個 episode 目錄必須有 episode.yaml（provenance anchor，ADR-050 D4）。建立方式：\n"
+            f"  mkdir -p {ep_dir}/out\n"
+            f"  printf 'id: {ep_dir.name}\\ntitle: \"<標題>\"\\n' > {episode_yaml}\n"
+            f"其餘輸入：raw_recording.mp4（talking head）+ transcript.srt（/transcribe 輸出）"
+        )
+    return yaml.safe_load(episode_yaml.read_text(encoding="utf-8")) or {}
+
+
+def _record_stage(ep_dir: Path, stage: str) -> None:
+    """Stamp a completed stage into episode.yaml ``stages:`` (ADR-050 D4)."""
+    episode_yaml = ep_dir / "episode.yaml"
+    meta = yaml.safe_load(episode_yaml.read_text(encoding="utf-8")) or {}
+    stages = meta.setdefault("stages", {})
+    stages[stage] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    episode_yaml.write_text(
+        yaml.dump(meta, allow_unicode=True, default_flow_style=False, sort_keys=False),
+        encoding="utf-8",
+    )
 
 
 def _get_mp4_duration(mp4_path: Path) -> float:
@@ -89,8 +129,8 @@ def _cmd_plan(args: argparse.Namespace) -> int:
     from agents.brook.script_video.srt_flattener import flatten_cues, parse_srt
 
     ep_dir = _episode_dir(args.episode)
+    episode_meta = _require_episode(ep_dir)
     srt_path = ep_dir / "transcript.srt"
-    episode_yaml_path = ep_dir / "episode.yaml"
     mp4_path = ep_dir / "raw_recording.mp4"
     hints_path = ep_dir / "storyboard_hints.yaml"
     out_path = ep_dir / "storyboard.yaml"
@@ -103,10 +143,6 @@ def _cmd_plan(args: argparse.Namespace) -> int:
     # Normalize for LLM consumption (char_to_time positions may shift for numbers,
     # but timestamp granularity is at cue level so the approximation is acceptable)
     normalized = normalize_numbers(normalize_punctuation(raw_flat))
-
-    episode_meta: dict = {}
-    if episode_yaml_path.exists():
-        episode_meta = yaml.safe_load(episode_yaml_path.read_text(encoding="utf-8")) or {}
 
     # ADR-038 §D5: opt-in silence hints. Default behavior unchanged when the
     # flag is absent or the file does not exist.
@@ -145,6 +181,7 @@ def _cmd_plan(args: argparse.Namespace) -> int:
         encoding="utf-8",
     )
     logger.info("storyboard written to %s (%d beats)", out_path, len(beats))
+    _record_stage(ep_dir, "plan")
     return 0
 
 
@@ -165,6 +202,7 @@ def _cmd_hint_beats(args: argparse.Namespace) -> int:
     from agents.brook.script_video.silence_detection import find_speaking_spans
 
     ep_dir = _episode_dir(args.episode)
+    _require_episode(ep_dir)
     mp4_path = ep_dir / "raw_recording.mp4"
     out_path = ep_dir / "storyboard_hints.yaml"
 
@@ -196,6 +234,7 @@ def _cmd_hint_beats(args: argparse.Namespace) -> int:
         args.noise_db,
         args.min_silence_s,
     )
+    _record_stage(ep_dir, "hint-beats")
     return 0
 
 
@@ -206,6 +245,7 @@ def _cmd_render(args: argparse.Namespace) -> int:
     from agents.brook.script_video.render_dispatcher import run_queue
 
     ep_dir = _episode_dir(args.episode)
+    _require_episode(ep_dir)
     storyboard_path = ep_dir / "storyboard.yaml"
     out_dir = ep_dir / "out"
 
@@ -249,6 +289,7 @@ def _cmd_render(args: argparse.Namespace) -> int:
         len(results),
         cache_hits,
     )
+    _record_stage(ep_dir, "render")
     return 0
 
 
@@ -257,9 +298,58 @@ def _cmd_emit(args: argparse.Namespace) -> int:
     from agents.brook.script_video.fcpxml_emitter import emit
 
     ep_dir = _episode_dir(args.episode)
+    _require_episode(ep_dir)
     storyboard = yaml.safe_load((ep_dir / "storyboard.yaml").read_text(encoding="utf-8"))
     fcpxml_path = emit(storyboard, ep_dir, fcpxml_version=args.fcpxml_version)
     logger.info("FCPXML emitted: %s", fcpxml_path)
+    _record_stage(ep_dir, "emit")
+    return 0
+
+
+def _cmd_cleanup(args: argparse.Namespace) -> int:
+    """raw_recording.mp4 → 拍掌 marker 偵測 → out/cleanup.fcpxml（ADR-050 D3）.
+
+    選配前置 stage：DaVinci import cleanup.fcpxml 接管實際 razor cut +
+    ripple delete（不另出乾淨 mp4 — ADR-015 凍結語意；talking head 原檔
+    不 re-encode 保 grade latitude）。修修在 DaVinci 出乾淨檔後再走
+    /transcribe → plan。
+    """
+    import wave
+
+    from agents.brook.script_video.cleanup import detect_clap_markers, emit_ripple_timeline
+
+    ep_dir = _episode_dir(args.episode)
+    _require_episode(ep_dir)
+    raw_mp4 = ep_dir / "raw_recording.mp4"
+    wav_path = ep_dir / "aroll-audio.wav"
+    out_path = ep_dir / "out" / "cleanup.fcpxml"
+
+    if not raw_mp4.exists():
+        logger.error("cleanup: raw_recording.mp4 not found at %s", raw_mp4)
+        return 1
+
+    # detect_clap_markers reads via stdlib `wave` — PCM WAV only, so extract
+    # first unless a previous run already left one behind.
+    if not wav_path.exists():
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", str(raw_mp4), "-vn", "-acodec", "pcm_s16le", str(wav_path)],
+            check=True,
+            capture_output=True,
+        )
+        logger.info("cleanup: extracted PCM audio to %s", wav_path)
+
+    cuts = detect_clap_markers(wav_path)
+    with wave.open(str(wav_path), "rb") as wf:
+        total_sec = wf.getnframes() / wf.getframerate()
+
+    emit_ripple_timeline(raw_mp4, total_sec, cuts, args.episode, out_path)
+    logger.info(
+        "cleanup: %d ripple-delete cuts → %s (source %.1fs)",
+        len(cuts),
+        out_path,
+        total_sec,
+    )
+    _record_stage(ep_dir, "cleanup")
     return 0
 
 
@@ -290,6 +380,7 @@ def _cmd_replan_beat(args: argparse.Namespace) -> int:
     from agents.brook.script_video import beat_editor, edit_log, replan_agent
 
     ep_dir = _episode_dir(args.episode)
+    _require_episode(ep_dir)
     storyboard_path = ep_dir / "storyboard.yaml"
     storyboard = yaml.safe_load(storyboard_path.read_text(encoding="utf-8")) or []
     if not isinstance(storyboard, list):
@@ -362,6 +453,11 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     plan_sub.set_defaults(fn=_cmd_plan)
+    cleanup_sub = sub.add_parser(
+        "cleanup",
+        help="拍掌 marker 偵測 → out/cleanup.fcpxml ripple-delete timeline（ADR-050 D3 選配前置）",
+    )
+    cleanup_sub.set_defaults(fn=_cmd_cleanup)
     hint_sub = sub.add_parser(
         "hint-beats",
         help="Detect speaking spans via silencedetect → storyboard_hints.yaml",

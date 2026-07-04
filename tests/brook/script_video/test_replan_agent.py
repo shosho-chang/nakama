@@ -211,9 +211,10 @@ def test_cli_replan_beat_runs_end_to_end(tmp_path, monkeypatch):
     from agents.brook.script_video import edit_log, pipeline, replan_agent
     from agents.brook.script_video.beat_editor import ReplaceQuote
 
-    # Seed an episode dir.
+    # Seed an episode dir (episode.yaml required since ADR-050 D4).
     ep_root = tmp_path / "data" / "script_video" / "ep-cli-1"
     ep_root.mkdir(parents=True)
+    (ep_root / "episode.yaml").write_text("id: ep-cli-1\ntitle: replan smoke\n", encoding="utf-8")
     storyboard = _sb()
     (ep_root / "storyboard.yaml").write_text(
         yaml.dump(storyboard, allow_unicode=True, default_flow_style=False, sort_keys=False),
