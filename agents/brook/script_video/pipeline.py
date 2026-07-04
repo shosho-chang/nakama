@@ -306,30 +306,57 @@ def _cmd_emit(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_cleanup(args: argparse.Namespace) -> int:
-    """raw_recording.mp4 → 拍掌 marker 偵測 → out/cleanup.fcpxml（ADR-050 D3）.
+def _find_script(ep_dir: Path, override: str | None) -> Path | None:
+    """逐字稿路徑解析：--script 優先，否則 ep_dir 下 script.md / script.txt."""
+    if override:
+        return Path(override)
+    for name in ("script.md", "script.txt"):
+        candidate = ep_dir / name
+        if candidate.exists():
+            return candidate
+    return None
 
-    選配前置 stage：DaVinci import cleanup.fcpxml 接管實際 razor cut +
-    ripple delete（不另出乾淨 mp4 — ADR-015 凍結語意；talking head 原檔
-    不 re-encode 保 grade latitude）。修修在 DaVinci 出乾淨檔後再走
-    /transcribe → plan。
+
+def _cmd_cleanup(args: argparse.Namespace) -> int:
+    """raw_recording.mp4 → 擊掌 marker 偵測 → out/cleanup.fcpxml（ADR-050 D3）.
+
+    兩種模式（自動選擇）：
+
+    - **script-anchored（主線）**：episode 目錄有 words.json（WhisperX 字級
+      timestamps，`scripts/run_whisperx_words.py` 產出）時啟用。單擊掌 +
+      retake 指紋回溯決定刪除範圍；若逐字稿（script.md）也在，另產文字
+      全對、時間軸已重映射到乾淨 timeline 的 transcript.srt。
+    - **audio-only（legacy fallback）**：無 words.json 時退回 double-clap
+      音訊 VAD 模式。
+
+    DaVinci import cleanup.fcpxml 接管實際 razor cut + ripple delete（不另
+    出乾淨 mp4 — ADR-015 凍結語意；talking head 原檔不 re-encode 保 grade
+    latitude）。
     """
     import wave
 
-    from agents.brook.script_video.cleanup import detect_clap_markers, emit_ripple_timeline
+    from agents.brook.script_video.cleanup import (
+        correct_srt,
+        detect_clap_markers,
+        detect_script_anchored_cuts,
+        detect_single_claps,
+        emit_ripple_timeline,
+        load_words,
+    )
 
     ep_dir = _episode_dir(args.episode)
     _require_episode(ep_dir)
     raw_mp4 = ep_dir / "raw_recording.mp4"
     wav_path = ep_dir / "aroll-audio.wav"
     out_path = ep_dir / "out" / "cleanup.fcpxml"
+    words_path = Path(args.words) if getattr(args, "words", None) else ep_dir / "words.json"
+    script_path = _find_script(ep_dir, getattr(args, "script", None))
 
     if not raw_mp4.exists():
         logger.error("cleanup: raw_recording.mp4 not found at %s", raw_mp4)
         return 1
 
-    # detect_clap_markers reads via stdlib `wave` — PCM WAV only, so extract
-    # first unless a previous run already left one behind.
+    # marker 偵測讀 stdlib `wave` — PCM WAV only，先抽（前次殘留可重用）。
     if not wav_path.exists():
         subprocess.run(
             ["ffmpeg", "-y", "-i", str(raw_mp4), "-vn", "-acodec", "pcm_s16le", str(wav_path)],
@@ -338,9 +365,48 @@ def _cmd_cleanup(args: argparse.Namespace) -> int:
         )
         logger.info("cleanup: extracted PCM audio to %s", wav_path)
 
-    cuts = detect_clap_markers(wav_path)
     with wave.open(str(wav_path), "rb") as wf:
         total_sec = wf.getnframes() / wf.getframerate()
+
+    if words_path.exists():
+        # ── script-anchored 模式（單擊掌 + 文字回溯）──
+        words = load_words(words_path)
+        claps = detect_single_claps(wav_path)
+        cuts = detect_script_anchored_cuts(words, claps)
+        logger.info(
+            "cleanup[script-anchored]: %d clap(s) → %d cut(s)（words: %s）",
+            len(claps),
+            len(cuts),
+            words_path.name,
+        )
+        if script_path is not None:
+            srt = correct_srt(
+                words,
+                script_path.read_text(encoding="utf-8"),
+                cuts=cuts,
+                total_duration_sec=total_sec,
+            )
+            srt_path = ep_dir / "transcript.srt"
+            srt_path.write_text(srt, encoding="utf-8")
+            logger.info(
+                "cleanup: corrected SRT（乾淨 timeline 時間軸）→ %s。"
+                "注意：若在 DaVinci 手動增刪切點，此 SRT 時間軸即失效，"
+                "需對乾淨檔重跑 /transcribe",
+                srt_path,
+            )
+        else:
+            logger.warning(
+                "cleanup: 找不到逐字稿（script.md / script.txt / --script）— "
+                "跳過 corrected SRT，之後走 /transcribe"
+            )
+    else:
+        # ── legacy audio-only 模式（double-clap + VAD）──
+        logger.info(
+            "cleanup[audio-only legacy]: %s 不存在 — 用 double-clap 音訊模式。"
+            "已知限制：失敗 take 前只隔靜音的正確內容會被誤刪",
+            words_path.name,
+        )
+        cuts = detect_clap_markers(wav_path)
 
     emit_ripple_timeline(raw_mp4, total_sec, cuts, args.episode, out_path)
     logger.info(
@@ -350,6 +416,33 @@ def _cmd_cleanup(args: argparse.Namespace) -> int:
         total_sec,
     )
     _record_stage(ep_dir, "cleanup")
+    return 0
+
+
+def _cmd_correct_srt(args: argparse.Namespace) -> int:
+    """words.json + 逐字稿 → 文字全對的 SRT（standalone，不做 cut 重映射）.
+
+    給「字幕檔錯字全換成稿上正確寫法」的獨立用途 — 時間軸沿用 words.json
+    的 timeline（即產生它的那個音檔）。
+    """
+    from agents.brook.script_video.cleanup import correct_srt, load_words
+
+    ep_dir = _episode_dir(args.episode)
+    _require_episode(ep_dir)
+    words_path = Path(args.words) if args.words else ep_dir / "words.json"
+    script_path = _find_script(ep_dir, args.script)
+    out_path = Path(args.out) if args.out else ep_dir / "transcript.srt"
+
+    if not words_path.exists():
+        logger.error("correct-srt: words.json not found at %s", words_path)
+        return 1
+    if script_path is None:
+        logger.error("correct-srt: 找不到逐字稿（script.md / script.txt / --script）")
+        return 1
+
+    srt = correct_srt(load_words(words_path), script_path.read_text(encoding="utf-8"))
+    out_path.write_text(srt, encoding="utf-8")
+    logger.info("correct-srt: %s × %s → %s", words_path.name, script_path.name, out_path)
     return 0
 
 
@@ -455,9 +548,38 @@ def _build_parser() -> argparse.ArgumentParser:
     plan_sub.set_defaults(fn=_cmd_plan)
     cleanup_sub = sub.add_parser(
         "cleanup",
-        help="拍掌 marker 偵測 → out/cleanup.fcpxml ripple-delete timeline（ADR-050 D3 選配前置）",
+        help=(
+            "擊掌 marker 偵測 → out/cleanup.fcpxml ripple-delete timeline"
+            "（ADR-050 D3 選配前置；有 words.json 走 script-anchored 單擊掌模式）"
+        ),
+    )
+    cleanup_sub.add_argument(
+        "--words",
+        default=None,
+        help=(
+            "WhisperX 字級 timestamps JSON（預設 <episode>/words.json；"
+            "存在即啟用 script-anchored 模式）"
+        ),
+    )
+    cleanup_sub.add_argument(
+        "--script",
+        default=None,
+        help=(
+            "完整逐字稿路徑（預設 <episode>/script.md 或 script.txt；"
+            "有則另產 corrected transcript.srt）"
+        ),
     )
     cleanup_sub.set_defaults(fn=_cmd_cleanup)
+    correct_srt_sub = sub.add_parser(
+        "correct-srt",
+        help="words.json × 逐字稿 → 文字全對的 SRT（standalone，不做 cut 重映射）",
+    )
+    correct_srt_sub.add_argument("--words", default=None, help="預設 <episode>/words.json")
+    correct_srt_sub.add_argument(
+        "--script", default=None, help="預設 <episode>/script.md 或 script.txt"
+    )
+    correct_srt_sub.add_argument("--out", default=None, help="預設 <episode>/transcript.srt")
+    correct_srt_sub.set_defaults(fn=_cmd_correct_srt)
     hint_sub = sub.add_parser(
         "hint-beats",
         help="Detect speaking spans via silencedetect → storyboard_hints.yaml",

@@ -73,9 +73,19 @@ ffmpeg -i tests/fixtures/script_video/clap_marker_audio.wav \
 ## 3. 跑 pipeline（指令已隨 ADR-050 更新，2026-07-04）
 
 ```bash
-# cleanup（拍掌 marker → ripple-delete FCPXML；episode 目錄需有 episode.yaml，缺會 fail loud 附建立指引）
+# （script-anchored 主線，2026-07-04 起）先產 WhisperX 字級 timestamps（GPU，修修本機跑）
+python scripts/run_whisperx_words.py data/script_video/<id>/aroll-audio.wav \
+       --output data/script_video/<id>/words.json
+
+# cleanup：words.json 存在 → 單擊掌 + retake 指紋回溯模式；
+# 逐字稿（script.md）也在 → 另產文字全對、時間軸已重映射的 transcript.srt。
+# 無 words.json → 退回 legacy double-clap 音訊模式。
+# episode 目錄需有 episode.yaml，缺會 fail loud 附建立指引。
 python -m agents.brook.script_video --episode smoke-001 cleanup
 # 預期: "cleanup: N ripple-delete cuts → .../out/cleanup.fcpxml"
+
+# 獨立字幕校正（不做 cut 重映射；時間軸沿用 words.json 的音檔）
+python -m agents.brook.script_video --episode <id> correct-srt
 
 # storyboard 主線（乾淨錄影 + transcript.srt 就緒後）
 python -m agents.brook.script_video --episode <id> run
@@ -171,3 +181,5 @@ dummy episode 不需 commit；`data/script_video/` 已在 `.gitignore`（PR #320
 | 日期 | Slice / PR | 變更 |
 |---|---|---|
 | 2026-05-02 | Slice 1 / PR #320 | 初版（V1 軌道 + razor cut + ripple delete，無 B-roll） |
+| 2026-07-04 | ADR-050 全案 | 指令改 `python -m agents.brook.script_video`；FCPXML 走 `shared/fcpxml/` builder |
+| 2026-07-04 | script-anchored cleanup | 單擊掌 + WhisperX 字級對稿回溯（ADR-015 §Q3 β 實現）；`correct-srt` 子命令；§3 指令更新 |
