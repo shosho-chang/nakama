@@ -82,3 +82,6 @@ cookie.txt
 cookies.txt
 *.cookies.txt
 .panel/
+
+# Cowork session outputs (local only)
+cowork-outputs/
