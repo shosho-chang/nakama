@@ -229,9 +229,7 @@ def test_correct_srt_raises_on_empty_inputs() -> None:
 def test_remap_drops_cut_words_and_shifts_later_words() -> None:
     words = _chars_as_words("前段", 0.0, 1.0) + _chars_as_words("後段", 5.0, 6.0)
     cuts = [
-        CutPoint(
-            type="ripple-delete", start_sec=1.5, end_sec=4.5, reason="marker", confidence=1.0
-        )
+        CutPoint(type="ripple-delete", start_sec=1.5, end_sec=4.5, reason="marker", confidence=1.0)
     ]
     out = remap_words_through_cuts(words, cuts, total_duration_sec=6.0)
     assert [w.text for w in out] == ["前", "段", "後", "段"]

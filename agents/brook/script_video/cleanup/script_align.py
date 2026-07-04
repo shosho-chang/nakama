@@ -54,9 +54,7 @@ _MAX_SUBTITLE_CHARS = 14
 _MAX_SUBTITLE_HARD = 22
 
 # 標點處理（house style 同 shared/transcriber.py：句中 → 空格、句尾 → 刪）。
-_ZH_MID_PUNCTUATION = re.compile(
-    "[，、；：（）《》【】…—～·,;:()\\[\\]<>\"'“”‘’「」『』]"
-)
+_ZH_MID_PUNCTUATION = re.compile("[，、；：（）《》【】…—～·,;:()\\[\\]<>\"'“”‘’「」『』]")
 _ZH_END_PUNCTUATION = re.compile(r"[。！？!?]|(?<=\S)\.(?=\s|$)")
 _SENTENCE_SPLIT = re.compile(r"(?<=[。！？!?\n])")
 _CLAUSE_SPLIT = re.compile(r"(?<=[，、；：,;:])")
@@ -200,9 +198,7 @@ def detect_script_anchored_cuts(
         prev_boundary = claps[i - 1] if i > 0 else 0.0
 
         after = _word_char_stream([w for w in words if w.start > t])
-        before = _word_char_stream(
-            [w for w in words if w.end <= t and w.start >= prev_boundary]
-        )
+        before = _word_char_stream([w for w in words if w.end <= t and w.start >= prev_boundary])
 
         fingerprint = "".join(c.char for c in after[:fingerprint_chars])
         if len(fingerprint) < _MIN_FINGERPRINT_CHARS:
@@ -282,8 +278,10 @@ def remap_words_through_cuts(
     """Drop words inside ripple-delete regions；其餘時間戳映射到乾淨 timeline."""
     if not cuts:
         return list(words)
-    total = total_duration_sec if total_duration_sec is not None else max(
-        (w.end for w in words), default=0.0
+    total = (
+        total_duration_sec
+        if total_duration_sec is not None
+        else max((w.end for w in words), default=0.0)
     )
     kept = merge_ripple_segments(
         total, ((c.start_sec, c.end_sec) for c in cuts if c.type == "ripple-delete")
@@ -296,9 +294,7 @@ def remap_words_through_cuts(
             mid = (w.start + w.end) / 2
             if seg_start <= mid < seg_end:
                 shift = cursor - seg_start
-                remapped.append(
-                    Word(text=w.text, start=w.start + shift, end=w.end + shift)
-                )
+                remapped.append(Word(text=w.text, start=w.start + shift, end=w.end + shift))
         cursor += seg_end - seg_start
     remapped.sort(key=lambda w: w.start)
     return remapped
@@ -380,8 +376,7 @@ def correct_srt(
     coverage = matched / len(script_norm)
     if coverage < 0.5:
         logger.warning(
-            "correct_srt: script 對齊覆蓋率僅 %.0f%% — 逐字稿跟錄音內容差異大，"
-            "輸出時間軸可信度低",
+            "correct_srt: script 對齊覆蓋率僅 %.0f%% — 逐字稿跟錄音內容差異大，輸出時間軸可信度低",
             coverage * 100,
         )
 
@@ -410,9 +405,7 @@ def correct_srt(
         cursor = idx + len(cue_text)
 
         norm_indices = [
-            orig_to_norm[i]
-            for i in range(idx, idx + len(cue_text))
-            if i in orig_to_norm
+            orig_to_norm[i] for i in range(idx, idx + len(cue_text)) if i in orig_to_norm
         ]
         display = _clean_cue_text(cue_text)
         if not norm_indices or not display:
