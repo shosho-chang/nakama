@@ -13,8 +13,9 @@ Cut semantics for each double-clap marker M:
   cut.end   = voice onset AFTER M  − 4 frames (lead-in buffer for the retake)
 
 Consecutive close markers (e.g. retake also failed → another clap pair)
-produce overlapping cuts that ``fcpxml_emitter._build_segments`` merges
-into one continuous ripple-delete spanning the whole failed sequence.
+produce overlapping cuts that ``ripple_fcpxml.build_kept_segments``
+(backed by ``shared.fcpxml.merge_ripple_segments``) merges into one
+continuous ripple-delete spanning the whole failed sequence.
 
 Primary path (α): audio spike detection
   - High-pass filter at 3 kHz to isolate clap burst frequencies
@@ -37,7 +38,7 @@ from typing import Sequence
 
 import numpy as np
 
-from agents.brook.script_video.cuts import CutPoint
+from agents.brook.script_video.cleanup.cuts import CutPoint
 
 logger = logging.getLogger(__name__)
 

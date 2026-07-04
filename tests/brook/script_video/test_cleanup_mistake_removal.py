@@ -1,4 +1,4 @@
-"""Tests for agents.brook.script_video.mistake_removal.
+"""Tests for agents.brook.script_video.cleanup.mistake_removal.
 
 Cut semantics (Slice 1, 修修 workflow 2026-05-02):
   cut.start = voice onset BEFORE marker (start of failed take's speech)
@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from agents.brook.script_video.mistake_removal import (
+from agents.brook.script_video.cleanup.mistake_removal import (
     _find_voice_onset,
     _group_double_claps,
     _highpass_filter,
@@ -293,7 +293,7 @@ def test_find_voice_onset_respects_search_window() -> None:
 
 
 def test_alignment_cuts_raises_not_implemented() -> None:
-    from agents.brook.script_video.mistake_removal import detect_alignment_cuts
+    from agents.brook.script_video.cleanup.mistake_removal import detect_alignment_cuts
 
     with pytest.raises(NotImplementedError, match="Slice 2"):
         detect_alignment_cuts([{"word": "x", "start": 0.0, "end": 0.1}], ["x"])

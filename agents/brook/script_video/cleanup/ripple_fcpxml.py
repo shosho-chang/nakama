@@ -1,13 +1,12 @@
-"""FCPXML emitter — ripple-delete A-roll timeline (ADR-015 Slice 1, ADR-050 D2).
+"""Ripple-delete FCPXML — cleanup stage 的 DaVinci timeline 輸出（ADR-050 D3）.
 
-Thin adapter over :mod:`shared.fcpxml`: this module owns the Manifest/CutPoint
-domain mapping (which cut types ripple, per-episode UID seeds); XML shape and
-DaVinci quirk knowledge live in the shared builder.
+Thin adapter over :mod:`shared.fcpxml`: maps detected :class:`CutPoint`
+regions onto a kept-segment V1 timeline. DaVinci applies the actual razor
+cuts + ripple deletes on import — the talking head file itself is never
+re-encoded (grade latitude invariant, ADR-032 §3a).
 
-Emits a document containing:
-  - V1 track: A-roll clips with CutPoints applied as ripple deletes
-  - Resources: asset reference + 1080p 30fps format
-  - No V2-V4 B-roll tracks (overlay shape is the storyboard pipeline's job)
+Formerly ``agents/brook/script_video/fcpxml_emitter.py`` (ADR-015 Slice 1,
+Manifest-based); the Manifest/DSL layer retired with ADR-050 D3.
 """
 
 from __future__ import annotations
@@ -15,27 +14,20 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Sequence
 
-from agents.brook.script_video.cuts import CutPoint
-from agents.brook.script_video.manifest import Manifest
+from agents.brook.script_video.cleanup.cuts import CutPoint
 from shared.fcpxml import (
     Asset,
     Clip,
     Timeline,
     build_fcpxml,
     merge_ripple_segments,
-    rational_duration,
     write_fcpxml,
 )
 
 _FPS = 30  # frames per second (exact, not 29.97)
 
 
-def _dur(seconds: float) -> str:
-    """Convert seconds to FCPXML rational duration string (N/30s)."""
-    return rational_duration(seconds, _FPS)
-
-
-def _build_segments(
+def build_kept_segments(
     total_duration_sec: float,
     cuts: Sequence[CutPoint],
 ) -> list[tuple[float, float]]:
@@ -50,19 +42,22 @@ def _build_segments(
     )
 
 
-def emit(manifest: Manifest, output_path: Path) -> None:
-    """Write FCPXML 1.10 to *output_path*."""
-    aroll_path = Path(manifest.aroll_video)
-    total_src_sec = manifest.total_frames / manifest.fps
-
-    segments = _build_segments(total_src_sec, manifest.cuts)
+def emit_ripple_timeline(
+    aroll_video: Path,
+    total_duration_sec: float,
+    cuts: Sequence[CutPoint],
+    episode_id: str,
+    output_path: Path,
+) -> None:
+    """Write a V1-only FCPXML with *cuts* applied as ripple deletes."""
+    segments = build_kept_segments(total_duration_sec, cuts)
     timeline_duration = sum(e - s for s, e in segments)
 
     asset = Asset(
         id="r2",
-        path=aroll_path,
-        duration_sec=total_src_sec,
-        uid_seed=f"asset-{manifest.episode_id}",
+        path=aroll_video,
+        duration_sec=total_duration_sec,
+        uid_seed=f"asset-{episode_id}",
         has_audio=True,
     )
 
@@ -73,7 +68,7 @@ def emit(manifest: Manifest, output_path: Path) -> None:
         clips.append(
             Clip(
                 asset_id="r2",
-                name=aroll_path.stem,
+                name=aroll_video.stem,
                 offset_sec=timeline_cursor,
                 duration_sec=seg_dur,
                 start_sec=src_start,
@@ -82,12 +77,12 @@ def emit(manifest: Manifest, output_path: Path) -> None:
         timeline_cursor += seg_dur
 
     timeline = Timeline(
-        name=manifest.episode_id,
-        event_name=manifest.episode_id,
+        name=episode_id,
+        event_name=episode_id,
         duration_sec=timeline_duration,
         spine=tuple(clips),
-        event_uid_seed=f"event-{manifest.episode_id}",
-        project_uid_seed=f"project-{manifest.episode_id}",
+        event_uid_seed=f"event-{episode_id}",
+        project_uid_seed=f"project-{episode_id}",
     )
 
     tree = build_fcpxml(timeline, [asset], version="1.10", fps=_FPS)

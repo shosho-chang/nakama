@@ -1,10 +1,10 @@
 ---
 title: DaVinci import smoke — Script-Driven Video FCPXML acceptance gate
-status: active
+status: superseded-paths（ADR-050 — 原 CLI `python -m agents.brook.script_video` 與 `video/src/parser/` 已退役；FCPXML 生成改走 `shared/fcpxml/` builder + `cleanup/ripple_fcpxml.py`，smoke 步驟精神不變，指令待 PR-5 cleanup subcommand 接通後更新）
 created: 2026-05-02
-updated: 2026-05-02
+updated: 2026-07-04
 owner: 修修（Mac DaVinci Resolve operator）
-applies_to: PR #320 (Slice 1) onwards — every PR that touches `agents/brook/script_video/fcpxml_emitter.py` 或 `video/src/parser/`
+applies_to: every PR that touches `shared/fcpxml/` 或 `agents/brook/script_video/cleanup/ripple_fcpxml.py`
 related:
   - ADR-015 docs/decisions/ADR-015-script-driven-video-production.md
   - Plan docs/plans/2026-05-02-script-driven-video-production.md
