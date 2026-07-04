@@ -20,7 +20,7 @@ presentation layer（Web UI）。
 ### Cross-cutting contexts
 - **Shared kernel** (`shared/`、`agents/base.py`) — Agent / Run / Memory / Event / API call / Token cost；任何 agent 必經介面
 - **Thousand Sunny** (`thousand_sunny/`) — Web presentation 平台 / chassis：所有 web UI、Bridge dashboard、各 agent router；HMAC cookie + API key auth；**Sunny 是船本身（platform），不是 agent crew member**（ADR-029 §2 凍結）；glossary [thousand_sunny/CONTEXT.md](thousand_sunny/CONTEXT.md)；參見 [reference_bridge_ui_mutation_pattern](memory/claude/reference_bridge_ui_mutation_pattern.md)
-- **video** (`video/`) — Video Production Line 的 Node.js + Hyperframes + TypeScript subproject；Hyperframes HTML compositions（bigstat / thumbnail 等）+ B-roll per-beat renderer；process boundary 跟 Python 主 repo 切開；Brook video line orchestrator（原 `agents/foundry/`，ADR-050 遷移 → `agents/brook/script_video/`）透過 Node.js CLI 呼叫；`src/parser/` markdown DSL parser 已退役（storyboard.yaml 取代，ADR-050 D3）；參見 ADR-032 + ADR-050
+- **video** (`video/`) — Video Production Line 的 Node.js + Hyperframes + TypeScript subproject；Hyperframes HTML compositions（bigstat / thumbnail 等）+ B-roll per-beat renderer；process boundary 跟 Python 主 repo 切開；Brook video line orchestrator（`agents/brook/script_video/`，原 `agents/foundry/`，ADR-050 已遷入）透過 Node.js CLI 呼叫；`src/parser/` markdown DSL parser 已退役（storyboard.yaml 取代，ADR-050 D3）；參見 ADR-032 + ADR-050
 
 ## Relationships
 

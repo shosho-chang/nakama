@@ -88,8 +88,8 @@
             <td><span class="cm ship">✓</span>article-compose</td></tr>
           <tr><td class="row-label">Foundry<span class="sub">工坊 · 影像</span></td>
             <td>B-roll storyboard → FCPXML</td><td>5 製作</td>
-            <td><code>python -m agents.foundry</code></td>
-            <td><span class="cm ship">✓</span>foundry-replan</td></tr>
+            <td><code>python -m agents.brook.script_video</code></td>
+            <td><span class="cm ship">✓</span>brook-replan-beat</td></tr>
           <tr><td class="row-label">Usopp<span class="sub">狙擊手 · 發布</span></td>
             <td>發佈到 WordPress (HITL)</td><td>6 發布</td>
             <td><code>python -m agents.usopp</code> · systemd daemon</td>
@@ -296,7 +296,7 @@
           <p class="inv-tagline">ADR-032：吃乾淨 SRT + 講者影片，產出 DaVinci Resolve 可匯入的 FCPXML timeline + content-addressed B-roll 片段。</p>
           <span class="inv-skillflag has">1 skill</span>
         </div>
-        <div class="inv-cli">python -m agents.foundry --episode &lt;id&gt; {plan | hint-beats | render | emit | run | diff | replan-beat}</div>
+        <div class="inv-cli">python -m agents.brook.script_video --episode &lt;id&gt; {plan | hint-beats | render | emit | run | diff | replan-beat}</div>
         <div class="inv-body">
           <div class="inv-block inv-block--fns">
             <p class="inv-block-label">核心功能模組</p>
@@ -327,7 +327,7 @@
           <div class="inv-block">
             <p class="inv-block-label">已 skill 化</p>
             <div class="inv-chips">
-              <span class="inv-chip skill">foundry-replan<span class="wrap">→ 單 beat re-plan 對話逃生口</span></span>
+              <span class="inv-chip skill">brook-replan-beat<span class="wrap">→ 單 beat re-plan 對話逃生口</span></span>
             </div>
             <p class="inv-empty" style="margin-top:8px">＊canonical 邏輯在 Python，skill 為 escape hatch</p>
           </div>
@@ -459,7 +459,7 @@
           <tr><td class="row-label">project-bootstrap</td><td>Nami</td><td><code>run_project_bootstrap.py</code></td><td><span class="skill-type thin">薄包 script</span></td></tr>
           <tr><td class="row-label">transcribe</td><td>Nami</td><td><code>run_transcribe.py</code>（Auphonic+FunASR+Opus+Gemini）</td><td><span class="skill-type thin">薄包 script</span></td></tr>
           <tr><td class="row-label">article-compose</td><td>Brook</td><td>互動式撰稿流程</td><td><span class="skill-type">純對話 wrapper</span></td></tr>
-          <tr><td class="row-label">foundry-replan</td><td>Foundry</td><td>單 beat re-plan（escape hatch）</td><td><span class="skill-type">純對話 wrapper</span></td></tr>
+          <tr><td class="row-label">brook-replan-beat</td><td>Brook</td><td>單 beat re-plan（escape hatch）</td><td><span class="skill-type">純對話 wrapper</span></td></tr>
         </tbody>
       </table>
     </div>

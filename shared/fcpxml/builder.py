@@ -1,8 +1,9 @@
 """Single FCPXML builder — every DaVinci quirk lives here (ADR-050 D2).
 
 Consolidates the two sibling emitters that used to drift independently
-(``agents/brook/script_video/fcpxml_emitter.py`` ripple-delete shape and
-``agents/foundry/fcpxml_emitter.py`` B-roll overlay shape). Callers construct
+(``agents/brook/script_video/cleanup/ripple_fcpxml.py`` ripple-delete shape
+and ``agents/brook/script_video/fcpxml_emitter.py`` B-roll overlay shape,
+both now thin adapters). Callers construct
 a :class:`Timeline` of :class:`Clip` referencing :class:`Asset` entries and
 hand them to :func:`build_fcpxml` / :func:`write_fcpxml`.
 
