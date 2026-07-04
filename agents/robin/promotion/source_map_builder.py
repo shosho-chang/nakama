@@ -831,5 +831,3 @@ def _quotes_to_evidence(
         )
         remaining -= len(truncated)
     return evidence
-
-
