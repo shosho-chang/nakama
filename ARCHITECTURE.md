@@ -127,7 +127,7 @@ FastAPI + Jinja2，部署為 systemd service（`thousand-sunny.service`）。
 - `robin.py` — KB ingest UI、Reader、KB search（38 routes）
 - `zoro.py` / `bridge_zoro.py` — Keyword research
 - `brook.py` / `repurpose.py` — Article composition、多 channel render
-- `foundry.py` — B-roll storyboard / FCPXML preview（Brook Video Production Line surface；route `/foundry` → `/brook/video` 遷移中，ADR-050 PR-3）
+- `brook_video.py` — B-roll storyboard / FCPXML preview（Brook Video Production Line surface；route `/brook/video`，舊 `/foundry/*` 301 redirect，ADR-050）
 - `franky.py` — `/healthz` 探針 + `/bridge/franky` 健康儀表板
 - `bridge*.py` — Bridge ops 主控台（weekly / projects / digests / models / cost / logs / memory）
 - `progress.py` / `architecture.py` / `inventory.py` — Ops 文件頁（chassis nav，cookie-authed）

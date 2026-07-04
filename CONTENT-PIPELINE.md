@@ -56,7 +56,7 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 
 | Channel | 製作工具 | 適用 line |
 |---|---|---|
-| 影片 | **Video Production Line**（Brook own — ADR-032 技術設計 + [ADR-050](docs/decisions/ADR-050-video-production-line-brook-ownership.md) 歸屬；`agents/brook/script_video/` + `video/` Hyperframes compositions；機器自 `agents/foundry/` 遷移中，ADR-050 PR-3） | Line 2 / Line 3 / Line 1 訪問新書作者 |
+| 影片 | **Video Production Line**（Brook own — ADR-032 技術設計 + [ADR-050](docs/decisions/ADR-050-video-production-line-brook-ownership.md) 歸屬；`agents/brook/script_video/` + `video/` Hyperframes compositions；機器已自 `agents/foundry/` 遷入完成，ADR-050 PR-3） | Line 2 / Line 3 / Line 1 訪問新書作者 |
 | 部落格 | Brook compose + Blog renderer | Line 1/2/3 |
 | FB post | Brook FB renderer（4 tonal variants） | Line 1/2/3 |
 | IG carousel | Brook IG renderer（5/7/5/10 卡 episode_type routing） | Line 1/2/3 |

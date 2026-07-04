@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brook Video · {{ episode_id }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version | default('') }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/brook_video/storyboard.css?v={{ asset_version | default('') }}">
+</head>
+<body class="sho">
+  <main class="foundry-shell" data-episode-id="{{ episode_id }}">
+    <header class="foundry-head">
+      <div class="sho-kicker">
+        <span class="sho-kicker-n">[ BROOK · VIDEO ]</span>
+        <span class="sho-mono-up">EPISODE · {{ episode_id }}</span>
+      </div>
+      <div class="foundry-batch">
+        <form method="post" action="/brook/video/{{ episode_id }}/batch/approve-all-text">
+          <button class="sho-btn" type="submit">approve all text</button>
+        </form>
+        <form method="post" action="/brook/video/{{ episode_id }}/batch/render-approved">
+          <button class="sho-btn sho-btn--ghost" type="submit">render approved</button>
+        </form>
+        <form method="post" action="/brook/video/{{ episode_id }}/batch/finalize-passing">
+          <button class="sho-btn sho-btn--ghost" type="submit">finalize passing</button>
+        </form>
+      </div>
+    </header>
+
+    <table class="foundry-table">
+      <thead>
+        <tr>
+          <th class="col-bid">#</th>
+          <th class="col-seg">segment</th>
+          <th class="col-layout">layout</th>
+          <th class="col-comp">component</th>
+          <th class="col-chip">📝</th>
+          <th class="col-chip">🎬</th>
+          <th class="col-chip">✅</th>
+          <th class="col-mp4">mp4</th>
+          <th class="col-actions">actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr data-beat-id="{{ row.beat_id }}">
+          <td class="col-bid sho-mono">{{ row.beat_id }}</td>
+          <td class="col-seg">{{ row.segment_text }}</td>
+          <td class="col-layout sho-mono">{{ row.layout }}</td>
+          <td class="col-comp sho-mono">{{ row.component or '—' }}</td>
+          <td class="col-chip">
+            <span class="sho-chip {{ 'sho-chip--active' if row.text_approved else 'sho-chip--offline' }}"
+                  data-chip="text">{{ '✓' if row.text_approved else '·' }}</span>
+          </td>
+          <td class="col-chip">
+            <span class="sho-chip
+              {% if row.render_status == 'done' %}sho-chip--online
+              {% elif row.render_status == 'rendering' %}sho-chip--hold
+              {% elif row.render_status == 'failed' %}sho-chip--failed
+              {% else %}sho-chip--offline{% endif %}"
+              data-chip="render">{{ row.render_status }}</span>
+          </td>
+          <td class="col-chip">
+            <span class="sho-chip {{ 'sho-chip--online' if row.visual_approved else 'sho-chip--offline' }}"
+                  data-chip="visual">{{ '✓' if row.visual_approved else '·' }}</span>
+          </td>
+          <td class="col-mp4 sho-mono">
+            {% if row.mp4_uri %}
+              <a class="sho-lk" href="{{ row.mp4_uri }}">mp4</a>
+            {% else %}
+              <span class="sho-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="col-actions">
+            <details class="foundry-actions">
+              <summary class="sho-mono-up">actions</summary>
+              <div class="foundry-actions-body">
+                <form method="post" action="/brook/video/{{ episode_id }}/beat/{{ row.beat_id }}/approve">
+                  <button class="sho-btn" type="submit">approve</button>
+                </form>
+                <form method="post" action="/brook/video/{{ episode_id }}/beat/{{ row.beat_id }}/edit"
+                      class="foundry-form-edit">
+                  <input type="text" name="layout" value="{{ row.layout }}" placeholder="layout">
+                  <input type="text" name="component" value="{{ row.component or '' }}" placeholder="component">
+                  <input type="text" name="params" value='{{ row.params_json }}' placeholder="params JSON">
+                  <button class="sho-btn sho-btn--ghost" type="submit">edit</button>
+                </form>
+                <form method="post" action="/brook/video/{{ episode_id }}/beat/{{ row.beat_id }}/replan"
+                      class="foundry-form-replan">
+                  <input type="text" name="note" placeholder="replan note">
+                  <button class="sho-btn sho-btn--ghost" type="submit">replan</button>
+                </form>
+                {% if row.render_status == 'done' %}
+                <hr class="sho-rule">
+                <form method="post" action="/brook/video/{{ episode_id }}/beat/{{ row.beat_id }}/visual/approve">
+                  <button class="sho-btn" type="submit">visual approve</button>
+                </form>
+                <form method="post" action="/brook/video/{{ episode_id }}/beat/{{ row.beat_id }}/visual/edit"
+                      class="foundry-form-edit">
+                  <input type="text" name="params" value='{{ row.params_json }}' placeholder="params JSON">
+                  <button class="sho-btn sho-btn--ghost" type="submit">visual edit</button>
+                </form>
+                <form method="post" action="/brook/video/{{ episode_id }}/beat/{{ row.beat_id }}/visual/replan"
+                      class="foundry-form-replan">
+                  <input type="text" name="note" placeholder="visual replan note">
+                  <button class="sho-btn sho-btn--ghost" type="submit">visual replan</button>
+                </form>
+                {% endif %}
+              </div>
+            </details>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if edit_entries %}
+    <section class="foundry-editlog">
+      <h2 class="sho-kicker"><span class="sho-kicker-n">[ EDIT LOG ]</span></h2>
+      <ol class="foundry-editlog-list">
+        {% for entry in edit_entries %}
+        <li class="foundry-editlog-item">
+          <span class="sho-mono">{{ entry.timestamp }}</span>
+          <span class="sho-tag">beat {{ entry.beat_id }}</span>
+          <span class="sho-tag">{{ entry.action }}</span>
+          <span class="foundry-editlog-note">{{ entry.user_note or '(no note)' }}</span>
+          <form method="post" action="/brook/video/{{ episode_id }}/edit-log/{{ loop.index0 }}/promote"
+                class="foundry-promote-form">
+            <input type="text" name="tag" placeholder="tag">
+            <button class="sho-btn sho-btn--ghost" type="submit">⭐ promote</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ol>
+    </section>
+    {% endif %}
+  </main>
+
+  <script src="/static/brook_video/storyboard.js?v={{ asset_version | default('') }}"></script>
+</body>
+</html>

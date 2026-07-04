@@ -44,10 +44,10 @@ from fastapi import APIRouter, Cookie, Form, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from agents.foundry.render_workers.thumbnail_worker import (
+from agents.brook.script_video.render_workers.thumbnail_worker import (
     DEFAULT_VIDEO_DIR as _HYPERFRAMES_VIDEO_DIR,
 )
-from agents.foundry.render_workers.thumbnail_worker import (
+from agents.brook.script_video.render_workers.thumbnail_worker import (
     ThumbnailRenderError,
     render_podcast_still,
     render_youtube_still,
