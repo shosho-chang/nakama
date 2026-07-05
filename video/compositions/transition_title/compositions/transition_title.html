@@ -1,0 +1,188 @@
+<!-- nakama:component transition_title（滿版章節卡，ADR-051 D2 / panel v2 §6） -->
+<!doctype html>
+<html
+  lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"kicker","type":"string","label":"章節序（如 第一點）","default":"第一點"},
+    {"id":"title","type":"string","label":"章節標題","default":"蛋白質要吃夠"}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 400;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Rg.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 700;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Bd.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 900;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Eb.woff2") format("woff2");
+      }
+
+      :root {
+        --sho-bg: oklch(0.988 0.003 80);
+        --sho-fg: oklch(0.145 0.005 80);
+        --sho-accent: oklch(0.71 0.135 41);
+        --sho-mute: oklch(0.55 0.01 80);
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--sho-bg);
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--sho-bg);
+        color: var(--sho-fg);
+        font-family: "LINE Seed TW", sans-serif;
+      }
+
+      /* 字幕禁飛區：底部 200px 不放內容（STYLE.md video visual grammar） */
+      .stage {
+        position: absolute;
+        inset: 0 160px 200px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 36px;
+      }
+
+      .kicker-row {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+      }
+
+      .kicker-bar {
+        width: 0;
+        height: 12px;
+        background: var(--sho-accent);
+        border-radius: 6px;
+        will-change: width;
+      }
+
+      .kicker {
+        font-size: 52px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        color: var(--sho-mute);
+        opacity: 0;
+        will-change: transform, opacity;
+      }
+
+      .title-clip {
+        overflow: hidden;
+        padding-bottom: 0.08em; /* 避免中文下緣被 clip */
+      }
+
+      .title {
+        font-size: 168px;
+        font-weight: 900;
+        line-height: 1.12;
+        letter-spacing: 0.01em;
+        max-width: 1600px;
+        will-change: transform;
+      }
+
+      .title.long {
+        font-size: 128px;
+      }
+
+      .underline {
+        width: 0;
+        height: 16px;
+        margin-top: 8px;
+        background: var(--sho-accent);
+        border-radius: 8px;
+        will-change: width;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="transition_title"
+      data-root="true"
+      data-start="0"
+      data-duration="3"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="stage">
+        <div class="kicker-row">
+          <div id="kickerBar" class="kicker-bar"></div>
+          <div id="kicker" class="kicker">第一點</div>
+        </div>
+        <div class="title-clip">
+          <div id="title" class="title">蛋白質要吃夠</div>
+        </div>
+        <div id="underline" class="underline"></div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      const vars =
+        (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const kickerText = vars.kicker ?? "第一點";
+      const titleText = vars.title ?? "蛋白質要吃夠";
+
+      const kickerEl = document.querySelector("#kicker");
+      const titleEl = document.querySelector("#title");
+      kickerEl.textContent = kickerText;
+      titleEl.textContent = titleText;
+      // 長標題降級字級（>9 字換 128px，仍超寬交給換行；panel v2 §6 可讀性）
+      if (titleText.length > 9) titleEl.classList.add("long");
+
+      const tl = gsap.timeline({
+        paused: true,
+        defaults: { ease: "power3.out", overwrite: "auto" },
+      });
+
+      tl.to("#kickerBar", { width: 96, duration: 0.35 }, 0);
+      tl.fromTo(
+        "#kicker",
+        { x: -18, opacity: 0 },
+        { x: 0, opacity: 1, duration: 0.4, ease: "power2.out" },
+        0.12,
+      );
+      tl.fromTo(
+        "#title",
+        { yPercent: 108 },
+        { yPercent: 0, duration: 0.55, ease: "power4.out" },
+        0.22,
+      );
+      tl.to("#underline", { width: 420, duration: 0.45 }, 0.55);
+      // 收尾不做 fade-out — 章節卡以硬切回 talking head（頻道既有節奏）
+
+      window.__timelines["transition_title"] = tl;
+    </script>
+  </body>
+</html>

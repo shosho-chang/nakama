@@ -1,0 +1,199 @@
+<!-- nakama:component quote_card（名人金句卡，ADR-051 D8；中英混排規則見 STYLE.md） -->
+<!doctype html>
+<html
+  lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"quote","type":"string","label":"金句本文","default":"致富跟你聰不聰明無關，跟你的行為有關。"},
+    {"id":"attribution","type":"string","label":"出處人名","default":"Morgan Housel"},
+    {"id":"source","type":"string","label":"出處作品（可空）","default":""}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 400;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Rg.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 700;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Bd.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 900;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Eb.woff2") format("woff2");
+      }
+
+      :root {
+        --sho-bg: oklch(0.988 0.003 80);
+        --sho-fg: oklch(0.145 0.005 80);
+        --sho-accent: oklch(0.71 0.135 41);
+        --sho-mute: oklch(0.55 0.01 80);
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--sho-bg);
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--sho-bg);
+        color: var(--sho-fg);
+        font-family: "LINE Seed TW", sans-serif;
+      }
+
+      /* 字幕禁飛區：底部 200px 留空 */
+      .stage {
+        position: absolute;
+        inset: 0 200px 200px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 40px;
+      }
+
+      .quote-mark {
+        font-size: 120px;
+        font-weight: 900;
+        line-height: 0.9;
+        margin-bottom: -16px;
+        color: var(--sho-accent);
+        opacity: 0;
+        will-change: transform, opacity;
+      }
+
+      .quote {
+        font-size: 88px;
+        font-weight: 700;
+        line-height: 1.45;
+        max-width: 1440px;
+        will-change: transform, opacity;
+        opacity: 0;
+      }
+
+      .quote.long {
+        font-size: 68px;
+      }
+
+      .attribution-row {
+        display: flex;
+        align-items: baseline;
+        gap: 20px;
+        opacity: 0;
+        will-change: transform, opacity;
+      }
+
+      .attribution-dash {
+        width: 56px;
+        height: 8px;
+        border-radius: 4px;
+        background: var(--sho-accent);
+        align-self: center;
+      }
+
+      /* 中英混排：出處字級 = 本文 80%、mute 色（panel v2 §4 typography 規則） */
+      .attribution {
+        font-size: 52px;
+        font-weight: 700;
+        color: var(--sho-mute);
+        letter-spacing: 0.02em;
+      }
+
+      .source {
+        font-size: 40px;
+        font-weight: 400;
+        color: var(--sho-mute);
+        opacity: 0.85;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="quote_card"
+      data-root="true"
+      data-start="0"
+      data-duration="5"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="stage">
+        <div id="quoteMark" class="quote-mark">「</div>
+        <div id="quote" class="quote"></div>
+        <div id="attributionRow" class="attribution-row">
+          <div class="attribution-dash"></div>
+          <div id="attribution" class="attribution"></div>
+          <div id="source" class="source"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      const vars =
+        (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const quoteText = vars.quote ?? "致富跟你聰不聰明無關，跟你的行為有關。";
+      const attributionText = vars.attribution ?? "Morgan Housel";
+      const sourceText = vars.source ?? "";
+
+      const quoteEl = document.querySelector("#quote");
+      quoteEl.textContent = quoteText;
+      if (quoteText.length > 24) quoteEl.classList.add("long");
+      document.querySelector("#attribution").textContent = attributionText;
+      const sourceEl = document.querySelector("#source");
+      sourceEl.textContent = sourceText ? `《${sourceText}》` : "";
+      // 無出處人名時整列隱藏（避免孤懸的 dash）
+      if (!attributionText) {
+        document.querySelector("#attributionRow").style.display = "none";
+      }
+
+      const tl = gsap.timeline({
+        paused: true,
+        defaults: { ease: "power3.out", overwrite: "auto" },
+      });
+
+      tl.fromTo(
+        "#quoteMark",
+        { y: -30, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.45, ease: "power2.out" },
+        0,
+      );
+      tl.fromTo(
+        "#quote",
+        { y: 36, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.6, ease: "power4.out" },
+        0.18,
+      );
+      tl.fromTo(
+        "#attributionRow",
+        { y: 20, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.5, ease: "power2.out" },
+        0.75,
+      );
+
+      window.__timelines["quote_card"] = tl;
+    </script>
+  </body>
+</html>
