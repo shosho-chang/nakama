@@ -324,3 +324,87 @@ def test_promote_to_example_writes_yaml_and_index(client, isolated_root):
 def test_storyboard_404_when_missing(client, isolated_root):
     res = client.get("/brook/video/does-not-exist")
     assert res.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# asset 類 beat 顯示（ADR-051 D9 / PR-F）
+# ---------------------------------------------------------------------------
+
+
+def _asset_beat(beat_id: int, asset: dict, **over) -> dict:
+    kind = asset.get("kind", "stock")
+    return _beat(
+        beat_id,
+        broll={
+            "render_target": "asset",
+            "component": kind,
+            "params": {},
+            "transitions": {"in_transition": None, "out_transition": None},
+            "asset": asset,
+        },
+        **over,
+    )
+
+
+def test_asset_beat_shows_source_candidates_attribution(client, isolated_root):
+    asset = {
+        "kind": "stock",
+        "source_url": "https://elements.envato.com/item-a",
+        "candidates": [
+            {"url": "https://elements.envato.com/item-a", "note": "光線暖"},
+            {"url": "https://elements.envato.com/item-b", "note": None},
+            {"url": "https://elements.envato.com/item-c", "note": "備援"},
+        ],
+    }
+    _seed_storyboard(isolated_root, "ep-a1", [_asset_beat(1, asset)])
+    res = client.get("/brook/video/ep-a1")
+    assert res.status_code == 200
+    assert 'data-asset-for="1"' in res.text
+    assert "asset · stock" in res.text
+    assert "https://elements.envato.com/item-a" in res.text
+    assert "https://elements.envato.com/item-b" in res.text
+    assert "首選" in res.text
+    assert "備選 1" in res.text
+    assert "備選 2" in res.text
+    assert "待下載" in res.text  # path 未填 → pending
+    assert "光線暖" in res.text
+
+
+def test_kol_asset_beat_ready_file_links_and_attribution(client, isolated_root):
+    asset = {
+        "kind": "kol",
+        "path": "assets/kol/huberman_clip.mp4",
+        "source_url": "https://youtube.com/watch?v=x",
+        "source_span": "00:12:03-00:12:15",
+        "attribution": "Andrew Huberman — Huberman Lab",
+    }
+    _seed_storyboard(isolated_root, "ep-a2", [_asset_beat(2, asset)])
+    ep_dir = isolated_root / "data" / "ep-a2"
+    clip = ep_dir / "assets" / "kol" / "huberman_clip.mp4"
+    clip.parent.mkdir(parents=True)
+    clip.write_bytes(b"stub")
+    res = client.get("/brook/video/ep-a2")
+    assert "檔案就緒" in res.text
+    assert "00:12:03-00:12:15" in res.text
+    assert "Andrew Huberman — Huberman Lab" in res.text
+    assert "youtube.com/watch?v=x" in res.text
+
+
+def test_asset_beat_path_set_but_file_missing_fails_loud(client, isolated_root):
+    asset = {"kind": "stock", "path": "assets/stock/gone.mp4", "source_url": "https://e.com/a"}
+    _seed_storyboard(isolated_root, "ep-a3", [_asset_beat(3, asset)])
+    res = client.get("/brook/video/ep-a3")
+    assert "檔案不存在" in res.text
+
+
+def test_screen_recording_slot_shows_supplied_pending(client, isolated_root):
+    asset = {"kind": "screen_recording"}
+    _seed_storyboard(isolated_root, "ep-a4", [_asset_beat(4, asset)])
+    res = client.get("/brook/video/ep-a4")
+    assert "外供待補" in res.text
+
+
+def test_hyperframes_beat_has_no_asset_row(client, isolated_root):
+    _seed_storyboard(isolated_root, "ep-a5", [_beat(9)])
+    res = client.get("/brook/video/ep-a5")
+    assert "data-asset-for" not in res.text
