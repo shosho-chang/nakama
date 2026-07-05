@@ -279,7 +279,9 @@ def _cmd_render(args: argparse.Namespace) -> int:
             cached_hash, _was_hit = by_beat_id[beat["beat_id"]]
             status = beat.setdefault("status", {})
             status["render_status"] = "done"
-            status["cached_hash"] = cached_hash
+            # asset 類 beat 不走 content-addressed render，dispatcher 回空
+            # hash — 保持 None，emit 走 broll.asset.path（ADR-051 D8）。
+            status["cached_hash"] = cached_hash or None
     storyboard_path.write_text(
         yaml.dump(storyboard, allow_unicode=True, default_flow_style=False, sort_keys=False),
         encoding="utf-8",
