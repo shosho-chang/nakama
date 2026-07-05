@@ -540,7 +540,12 @@ async def batch_finalize_passing(
 # ── promote-to-example ───────────────────────────────────────────────────────
 
 
-_EXAMPLES_DIR = Path(__file__).resolve().parents[2] / "agents" / "foundry" / "examples"
+# ADR-050 遷移漏網（Codex panel 2026-07-05 抓出）：原指 agents/foundry/examples
+# （死目錄），planner 讀的是 agents/brook/script_video/examples — promote 的
+# example 永遠到不了 few-shot 5 檔門檻。
+_EXAMPLES_DIR = (
+    Path(__file__).resolve().parents[2] / "agents" / "brook" / "script_video" / "examples"
+)
 
 
 @page_router.post("/{episode_id}/edit-log/{entry_idx}/promote")
