@@ -37,9 +37,13 @@ if hasattr(sys.stdout, "reconfigure"):
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("ledger", type=Path)
-    parser.add_argument("--plateau-delta", type=float, default=2.0,
-                        help="版本平均分差 ≤ 此值視為無明顯差異（plateau）。"
-                             "依 rubric 量表挑：100 分制約 2、0-10 制約 0.5")
+    parser.add_argument(
+        "--plateau-delta",
+        type=float,
+        default=2.0,
+        help="版本平均分差 ≤ 此值視為無明顯差異（plateau）。"
+        "依 rubric 量表挑：100 分制約 2、0-10 制約 0.5",
+    )
     args = parser.parse_args()
 
     ledger = json.loads(args.ledger.read_text(encoding="utf-8"))
@@ -134,8 +138,10 @@ def main() -> int:
     # 6. 結論
     print("\n## 結論")
     if plateau:
-        print(f"- **plateau**：前兩名平均分差 ≤ {args.plateau_delta:g}，"
-              "兩版無明顯差異——如實回報，不硬選。")
+        print(
+            f"- **plateau**：前兩名平均分差 ≤ {args.plateau_delta:g}，"
+            "兩版無明顯差異——如實回報，不硬選。"
+        )
     else:
         print(f"- argmax 勝者：**{argmax_winner}**")
     if pairwise_tied:

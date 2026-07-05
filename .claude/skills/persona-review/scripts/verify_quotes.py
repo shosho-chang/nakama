@@ -56,8 +56,8 @@ def extract_sections(text: str, section_re: re.Pattern, filter_scores: bool) -> 
     sections = set()
     for m in section_re.finditer(text):
         if filter_scores:
-            before = text[max(0, m.start() - 1):m.start()]
-            after = text[m.end():m.end() + 1]
+            before = text[max(0, m.start() - 1) : m.start()]
+            after = text[m.end() : m.end() + 1]
             if before == "/" or after in ("/", "%", "％", "倍"):
                 continue
         sections.add(m.group())
@@ -110,8 +110,11 @@ def main() -> int:
     parser.add_argument("--source", required=True, type=Path, action="append")
     parser.add_argument("--min-len", type=int, default=6, help="引句最短長度門檻（過短誤報率高）")
     parser.add_argument("--fuzzy-threshold", type=float, default=90.0)
-    parser.add_argument("--section-pattern", default=r"\d+\.\d+(?:\.\d+)*",
-                        help="小節編號 regex（非 X.Y 制的 artifact 如 card-\\d+ 可換）")
+    parser.add_argument(
+        "--section-pattern",
+        default=r"\d+\.\d+(?:\.\d+)*",
+        help="小節編號 regex（非 X.Y 制的 artifact 如 card-\\d+ 可換）",
+    )
     args = parser.parse_args()
     section_re = re.compile(args.section_pattern)
 
@@ -135,8 +138,10 @@ def main() -> int:
     print(f"# verify_quotes｜{args.review.name}")
     print(f"引句總數（≥{args.min_len} 字）：{total}")
     if total == 0:
-        print("⚠️ 0 個引句被抽出——「全過」不成立。檢查 persona 輸出的引號格式"
-              "（偵測集：「」『』“”；straight quotes \"...\" 不在內），生死線改人工執行。")
+        print(
+            "⚠️ 0 個引句被抽出——「全過」不成立。檢查 persona 輸出的引號格式"
+            '（偵測集：「」『』“”；straight quotes "..." 不在內），生死線改人工執行。'
+        )
         return 1
     print(f"  pass（原文完全命中）：{len(results['pass'])}")
     print(f"  近似（模糊比對 ≥{args.fuzzy_threshold:g}，{SCORER_NAME}）：{len(results['near'])}")
