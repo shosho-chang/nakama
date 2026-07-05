@@ -113,6 +113,44 @@
             </details>
           </td>
         </tr>
+        {% if row.asset %}
+        <tr class="foundry-asset-row" data-asset-for="{{ row.beat_id }}">
+          <td class="col-bid"></td>
+          <td colspan="8">
+            <div class="foundry-asset">
+              <span class="sho-tag foundry-asset-kind">asset · {{ row.asset.kind }}</span>
+              {% if row.asset.file_state == 'ready' %}
+                <a class="sho-lk sho-mono" href="{{ row.asset.file_uri }}">{{ row.asset.path }}</a>
+                <span class="sho-chip sho-chip--online" data-chip="asset-file">✓ 檔案就緒</span>
+              {% elif row.asset.file_state == 'missing' %}
+                <span class="sho-mono">{{ row.asset.path }}</span>
+                <span class="sho-chip sho-chip--failed" data-chip="asset-file">檔案不存在</span>
+              {% elif row.asset.supplied_slot %}
+                <span class="sho-chip sho-chip--hold" data-chip="asset-file">外供待補（修修供檔）</span>
+              {% else %}
+                <span class="sho-chip sho-chip--hold" data-chip="asset-file">待下載</span>
+              {% endif %}
+              {% if row.asset.source_url %}
+                <a class="sho-lk" href="{{ row.asset.source_url }}" target="_blank" rel="noopener">來源 ↗</a>
+              {% endif %}
+              {% if row.asset.source_span %}
+                <span class="sho-mono sho-muted">{{ row.asset.source_span }}</span>
+              {% endif %}
+              {% if row.asset.attribution %}
+                <span class="foundry-asset-attribution">{{ row.asset.attribution }}</span>
+              {% endif %}
+            </div>
+            {% if row.asset.candidates %}
+            <div class="foundry-asset-candidates">
+              {% for cand in row.asset.candidates %}
+                <a class="sho-lk" href="{{ cand.url }}" target="_blank" rel="noopener">
+                  {{ '首選' if loop.first else '備選 ' ~ loop.index0 }} ↗</a>{% if cand.note %}<span class="sho-muted">（{{ cand.note }}）</span>{% endif %}
+              {% endfor %}
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endif %}
         {% endfor %}
       </tbody>
     </table>

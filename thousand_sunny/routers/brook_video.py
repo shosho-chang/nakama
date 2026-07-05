@@ -111,11 +111,12 @@ def _shosho_asset_version() -> str:
         path = static_dir / css
         if path.exists():
             h.update(path.read_bytes())
-    storyboard_js = (
-        Path(__file__).resolve().parent.parent / "static" / "brook_video" / "storyboard.js"
-    )
-    if storyboard_js.exists():
-        h.update(storyboard_js.read_bytes())
+    brook_static = Path(__file__).resolve().parent.parent / "static" / "brook_video"
+    # storyboard.css 原本漏在 hash 外 — CSS 改版時 ?v= 不變、瀏覽器吃舊快取
+    for name in ("storyboard.js", "storyboard.css"):
+        path = brook_static / name
+        if path.exists():
+            h.update(path.read_bytes())
     return h.hexdigest()[:8]
 
 
@@ -169,6 +170,38 @@ def _auth_or_redirect(nakama_auth: str | None, episode_id: str) -> RedirectRespo
     return RedirectResponse(f"/login?next=/brook/video/{episode_id}", status_code=302)
 
 
+def _asset_row(broll: dict[str, Any], ep_dir: Path) -> dict[str, Any] | None:
+    """asset 類 beat 的審核顯示 payload（ADR-051 D9 / PR-F）.
+
+    file_state 三態：
+    - ``ready``   — path 已填且檔案存在（驗收過，可 emit）
+    - ``missing`` — path 已填但檔案不在（下載/搬移失事，fail loud 給審核者看）
+    - ``pending`` — path 未填（stock/kol=待下載；screen_recording/supplied=外供待補）
+    """
+    asset = broll.get("asset") if broll else None
+    if not asset:
+        return None
+    path = asset.get("path")
+    file_path = (ep_dir / path) if path else None
+    if path and file_path is not None and file_path.exists():
+        file_state, file_uri = "ready", file_path.resolve().as_uri()
+    elif path:
+        file_state, file_uri = "missing", None
+    else:
+        file_state, file_uri = "pending", None
+    return {
+        "kind": asset.get("kind") or "—",
+        "source_url": asset.get("source_url"),
+        "source_span": asset.get("source_span"),
+        "attribution": asset.get("attribution"),
+        "candidates": asset.get("candidates") or [],
+        "path": path,
+        "file_state": file_state,
+        "file_uri": file_uri,
+        "supplied_slot": asset.get("kind") in ("screen_recording", "supplied"),
+    }
+
+
 # ── GET: storyboard page ─────────────────────────────────────────────────────
 
 
@@ -207,6 +240,7 @@ async def storyboard_page(
                 "visual_approved": bool(status.get("visual_approved")),
                 "mp4_uri": mp4_uri,
                 "broll_decision": beat.get("broll_decision") or "none",
+                "asset": _asset_row(broll, ep_dir),
             }
         )
 
