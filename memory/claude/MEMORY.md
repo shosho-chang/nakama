@@ -1,5 +1,8 @@
 # Memory Index
 
+- [reference_shoshotw_youtube_channel.md](reference_shoshotw_youtube_channel.md) — **修修頻道 = https://www.youtube.com/@shoshotw，不要再問網址**；兩型內容（創業書 A / 健康 B）節奏差 2.5–3 倍（2026-07-05 前 10 分析，規則已入 ADR-051）
+- [feedback_explain_choices_in_plain_language.md](feedback_explain_choices_in_plain_language.md) — **給修修選項前必先在正文白話展開每個選項的後果**（2026-07-05 push back）：option 卡片只當投票按鈕，論述、類比、失敗成本放正文
+
 - [feedback_adr_signoff_and_toplevel_doc_sync.md](feedback_adr_signoff_and_toplevel_doc_sync.md) — **ADR 引入 agent / 改 ownership：必拿 explicit sign-off 才 ship + 同 PR 更新 CONTENT-PIPELINE / CONTEXT-MAP / ARCHITECTURE**（2026-07-03 ADR-050 教訓：ADR-032 Draft-shipped + 頂層文件 6 週未同步 → 修修「Foundry 跑出來很奇怪」）；agent 命名守 One Piece 慣例
 - [reference_nami_calendar_task_drift.md](reference_nami_calendar_task_drift.md) — **Nami 任務↔Google Calendar 只靠 `calendar_event_id` 單鍵匹配、找不到就靜默 no-op → 任務永久脫鉤**（2026-07-01 知識衛星 正課/募資 reschedule：有些任務沒建、有些沒連 GCal）。除錯：`python -m agents.franky calendar-reconcile --dry-run`（權威稽核，別信 Nami Slack 摘要）。防護 #968 每日偵測網（`shared/calendar_reconcile.sweep` title+date 配對）+ #969 根因（update 找不到連結退回 title+date 補配對）
 - [feedback_vps_deploy_always_use_script.md](feedback_vps_deploy_always_use_script.md) — **VPS deploy 一律走 `./scripts/deploy_vps.sh`，禁止手動 git pull + systemctl restart**（2026-05-28 雙連環事故：4 天 stale code 404 + 重啟後 ModuleNotFoundError crash loop）。Script 無條件 pip install + diff-driven 只重啟受影響 service + 用 127.0.0.1 而非 CF-fronted host 做 healthz 驗證
