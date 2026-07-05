@@ -104,23 +104,41 @@ def emit(
         timing = beat.get("timing")
         if not timing:
             raise ValueError(f"cutaway beat {beat.get('beat_id')} missing timing")
-        # ADR-038 §D2: rendered mp4 is content-addressed by cached_hash.
-        # Dispatcher writes cached_hash to status before/after render; if it
-        # is missing (legacy storyboard or out-of-band edit), recompute it
-        # so emit() stays self-contained.
-        status = beat.get("status") or {}
-        cached_hash = status.get("cached_hash")
-        if not cached_hash:
-            from agents.brook.script_video.export_hash import compute_beat_hash
+        broll = beat.get("broll") or {}
+        if broll.get("render_target") == "asset":
+            # ADR-051 D5/D6/D8: 外部素材 beat 直接引用落地檔案，不走
+            # content-addressed render 輸出。dispatcher 已做存在＋digest 驗收。
+            rel = (broll.get("asset") or {}).get("path")
+            if not rel:
+                raise ValueError(f"cutaway beat {beat['beat_id']} asset beat 缺 broll.asset.path")
+            broll_mp4 = Path(rel)
+            if not broll_mp4.is_absolute():
+                broll_mp4 = episode_dir / rel
+            if not broll_mp4.exists():
+                raise ValueError(
+                    f"cutaway beat {beat['beat_id']} asset 檔案不存在 {broll_mp4} — 素材尚未落地"
+                )
+            clip_name = broll_mp4.stem
+        else:
+            # ADR-038 §D2: rendered mp4 is content-addressed by cached_hash.
+            # Dispatcher writes cached_hash to status before/after render; if it
+            # is missing (legacy storyboard or out-of-band edit), recompute it
+            # so emit() stays self-contained.
+            status = beat.get("status") or {}
+            cached_hash = status.get("cached_hash")
+            if not cached_hash:
+                from agents.brook.script_video.export_hash import compute_beat_hash
 
-            cached_hash = compute_beat_hash(beat)
-        broll_mp4 = out_dir / f"b_roll_{cached_hash}.mp4"
-        if not broll_mp4.exists():
-            raise ValueError(
-                f"cutaway beat {beat['beat_id']} mp4 not found at {broll_mp4} (hash={cached_hash})"
-            )
+                cached_hash = compute_beat_hash(beat)
+            broll_mp4 = out_dir / f"b_roll_{cached_hash}.mp4"
+            if not broll_mp4.exists():
+                raise ValueError(
+                    f"cutaway beat {beat['beat_id']} mp4 not found at {broll_mp4}"
+                    f" (hash={cached_hash})"
+                )
+            clip_name = f"b_roll_{cached_hash}"
         broll_duration = _mp4_duration(broll_mp4)
-        cutaways.append((beat, broll_mp4, broll_duration, cached_hash))
+        cutaways.append((beat, broll_mp4, broll_duration, clip_name))
 
     assets = [
         Asset(
@@ -135,12 +153,18 @@ def emit(
         )
     ]
     overlays = []
-    for idx, (beat, mp4, dur, cached_hash) in enumerate(cutaways, start=3):
-        assets.append(Asset(id=f"r{idx}", path=mp4, duration_sec=dur))
+    for idx, (beat, mp4, dur, clip_name) in enumerate(cutaways, start=3):
+        # B-roll assets 一律無聲（has_audio 預設 False）— KOL / stock 素材的
+        # 原始音軌不進 timeline（ADR-051 D6：B-roll 純畫面輔助 talking head）。
+        assets.append(
+            Asset(
+                id=f"r{idx}", path=mp4, duration_sec=dur, uid_seed=f"{episode_dir.name}/{clip_name}"
+            )
+        )
         overlays.append(
             Clip(
                 asset_id=f"r{idx}",
-                name=f"b_roll_{cached_hash}",
+                name=clip_name,
                 offset_sec=beat["timing"]["start"],
                 duration_sec=dur,
                 lane=1,
