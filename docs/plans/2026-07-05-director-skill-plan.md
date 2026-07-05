@@ -18,7 +18,7 @@
 ## E2E（修修 RAW 到位後）
 
 cleanup（單擊掌＋對稿）→ transcript.srt → **Director skill 首跑** →
-Bridge 兩層審核 → assets_queue 交接 Codex → 驗收 → render → emit → DaVinci import smoke。
+Bridge 兩層審核 → asset_requests/asset_manifest 交接下載 → 驗收 → render → emit → DaVinci import smoke。
 完成即產出手冊 v1 的第一批教訓與 few-shot example #1。
 
 ## 明確不做（本輪）

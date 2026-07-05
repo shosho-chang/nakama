@@ -28,8 +28,12 @@ _Avoid_: 轉場（泛稱）、chapter card
 **外供素材槽位（external asset slot）**:
 Director 不自動產製、由修修丟檔進 `assets/` 的 beat 類型（目前：螢幕錄影）。
 
-**assets_queue**:
-`assets_queue.yaml` — Director 批次交接 Codex 下載的素材清單（Envato URL、目標路徑、對應 beat）。
+**asset_requests / asset_manifest（素材交接雙檔）**:
+`asset_requests.yaml`（意圖：搜尋詞、首選 URL、目標路徑、氛圍/負面約束）＋
+`asset_manifest.yaml`（履約：落地路徑、license 註記、失敗原因）。Director 寫
+requests、下載方（預設 Codex computer use，可換人工）回 manifest、Director 逐項
+驗收（存在＋sha256＋幀率 conform）後素材才算就緒。
+_Avoid_: assets_queue（panel v2 §2 前的舊單檔名，已拆雙檔）
 
 **候選（primary / alternates）**:
 stock 類 beat 帶一個首選＋兩個備選預覽連結，修修審核時圈選。
@@ -54,12 +58,12 @@ v1.5 預留：`keypoint_overlay`（透明疊加字卡，卡 alpha 輸出驗證�
 
 - 一個 **Beat** 至多一個 **B-roll**；`asset` 類 beat 可帶多個**候選**
 - **Director** 產 **Storyboard**；**Bridge UI** 兩層審核（text / visual）後才 render/emit
-- **assets_queue** 由 **Director** 產出、Codex 消化、Director 驗收後 storyboard 才算素材就緒
+- **asset_requests** 由 **Director** 產出、下載方履約回 **asset_manifest**、Director 驗收後 storyboard 才算素材就緒
 
 ## Example dialogue
 
 > **Dev:** 「這個 beat 的 stock 影片是誰去 render 的？」
-> **修修:** 「`asset` 類不 render — **Director** 搜 Envato 挑好候選寫進 **storyboard**，下載走 **assets_queue** 交接 Codex，回來驗收就緒才進 emit。會 render 的只有 `hyperframes` 類。」
+> **修修:** 「`asset` 類不 render — **Director** 搜 Envato 挑好候選寫進 **storyboard**，下載走 **asset_requests** 交接、**asset_manifest** 回報，驗收就緒才進 emit。會 render 的只有 `hyperframes` 類。」
 
 ## Flagged ambiguities
 
