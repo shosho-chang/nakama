@@ -1,6 +1,13 @@
 <!-- nakama:component bigstat (fork of hyperframes apple-money-count) -->
 <!doctype html>
-<html lang="zh-Hant">
+<html
+  lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"label","type":"string","label":"標籤","default":"每日步行"},
+    {"id":"value","type":"string","label":"數值（可含小數）","default":"10000"},
+    {"id":"unit","type":"string","label":"單位","default":"步"}
+  ]'
+>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
@@ -180,9 +187,20 @@
     <script>
       window.__timelines = window.__timelines || {};
 
+      // planner params（--variables）→ 內容；缺值退預設（ADR-051 PR-C 前
+      // params 一直被忽略 — composition 硬編內容的 Phase 1 gap）。
+      const vars =
+        (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const labelText = vars.label ?? "每日步行";
+      const unitText = vars.unit ?? "步";
+      const parsedValue = parseFloat(String(vars.value ?? "10000").replace(/[^0-9.]/g, ""));
+      const TARGET = Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 10000;
+
+      document.querySelector("#label").textContent = labelText;
+      document.querySelector("#suffix").textContent = unitText;
+
       const amount = document.querySelector("#amount");
       const burst = document.querySelector("#burst");
-      const TARGET = 10000;
       const countState = { value: 0 };
 
       function formatNumber(value) {
