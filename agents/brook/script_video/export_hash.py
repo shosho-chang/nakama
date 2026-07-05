@@ -30,11 +30,12 @@ from pathlib import Path
 from shared.video_line_versions import EXPORT_VERSION
 
 # repo_root/agents/brook/script_video/export_hash.py → repo_root
-_REPO_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
-DEFAULT_LAYOUTS_DIR = _REPO_ROOT / "agents" / "foundry" / "layouts"
+_SCRIPT_VIDEO_DIR = _REPO_ROOT / "agents" / "brook" / "script_video"
+DEFAULT_LAYOUTS_DIR = _SCRIPT_VIDEO_DIR / "layouts"
 DEFAULT_COMPOSITIONS_DIR = _REPO_ROOT / "video" / "compositions"
-DEFAULT_GUARDRAILS_PATH = _REPO_ROOT / "agents" / "foundry" / "guardrails.yaml"
+DEFAULT_GUARDRAILS_PATH = _SCRIPT_VIDEO_DIR / "guardrails.yaml"
 
 # Beat fields that participate in the hash. Order in this tuple is irrelevant
 # because we sort_keys=True when serialising; the tuple just documents intent.

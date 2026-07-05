@@ -18,13 +18,26 @@ allowed_layouts:
 
 allowed_render_targets:
   - hyperframes
+  - asset          # ADR-051 D8: 外部素材（stock / kol / screen_recording / supplied）
   # Phase 1.5: reader-playwright, web-playwright
 
 allowed_components:
   hyperframes:
     - bigstat
-    # Phase 1.5: TransitionTitle
+    # ADR-051 v1（compositions 落地於 PR-C，落地前 render 會 fail loud）:
+    - transition_title
+    - book_cover
+    - quote_card
+    - doc_highlight
+    # v1.5（卡 alpha 輸出驗證）: keypoint_overlay
     # Phase 2: data-chart, world-map, us-map, flowchart, caption-*
+
+# ADR-051 D8: asset 類 beat 的素材種類（broll.asset.kind）
+allowed_asset_kinds:
+  - stock            # Envato（批次交接下載，D5）
+  - kol              # YouTube 名人片段（yt-dlp 指定秒數 + 護欄，D6）
+  - screen_recording # 修修外供螢幕錄影
+  - supplied         # 其他外供檔
 
 # Hyperframes catalog deny-list（anti-hype/anti-slop — see STYLE.md）
 denied_hyperframes_blocks:
