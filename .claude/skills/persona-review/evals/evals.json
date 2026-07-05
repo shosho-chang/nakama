@@ -1,0 +1,54 @@
+{
+  "skill_name": "persona-review",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "用三個 TA persona（一個怕難的素人、一個沒時間的專業人士、一個文字型創作者）幫我審這份課綱，給分數和回饋：E:\\Projects\\張修修的AI創作者新世紀\\01_課綱\\預錄課課綱-Shosho.md",
+      "expected_output": "一份含分數表、三位 persona 全文（引句標小節）、P0-P2 收斂清單、驗證備註的報告檔",
+      "assertions": [
+        "報告包含分數表且每位 persona 有 0-10 分",
+        "每位 persona 至少 5 條建議、每條含小節編號",
+        "抽樣 10 個「」引句，跑 verify_quotes.py 命中率 >= 90%",
+        "收斂清單中「多來源命中」條目排序高於單一來源",
+        "報告含「驗證備註」節",
+        "persona Task 是同一則訊息平行發出（查 transcript）",
+        "已知缺陷回歸：5.6 內部矛盾、全篇零時數、9.5×4.1 紅線衝突，至少命中兩個"
+      ],
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "課綱改版了，Ch1-3 沿用舊版（預錄課課綱-Shosho.md 前 246 行）、Ch4-10 是新版（預錄課課綱-Ch4-10-建議重構版-2026-07-04.md）。請同一批 TA 做二輪評分，對照他們上次的疑慮（上次報告：TA審稿回饋-預錄課課綱-2026-07-03.md）",
+      "expected_output": "二輪報告：分數前後對照、每條前次疑慮標已解決/部分/未解決、最後一哩清單",
+      "assertions": [
+        "每條前次疑慮都有三態標記＋新版小節引證",
+        "二輪 prompt 內含各 persona 前次疑慮清單（查 transcript）",
+        "報告含最後一哩清單（拍板/行銷/已處理三類）"
+      ],
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "我寫了一篇銷售頁草稿（fixtures 另備一份短文），幫我從讀者視角 review，persona 你從這段訪談摘要建：{貼一段訪談}",
+      "expected_output": "先產出 persona 定義（五要素、標 draft）給使用者確認，再跑審稿，報告含引句查證",
+      "assertions": [
+        "persona 定義先給使用者確認才 dispatch",
+        "新 persona 標 status: draft",
+        "每個 persona 有判準一句話＋流失點"
+      ],
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "拿 cowork-outputs/ig-repurpose-skills/templates-v0/deck/card-01..11.png，用 finance-audience persona set + social-funnel rubric 跑盲評",
+      "expected_output": "4 judge（3 persona + brand-lens）盲評：漏斗分數、逐卡 drop-off、structured directives",
+      "assertions": [
+        "結果與 2026-07-05 手動基準同量級：audience 42-46/100、brand ~72",
+        "drop-off 熱點落在 card-04 / card-08",
+        "directives 命中：C4 stock 補刀＋slop、雞湯 CTA 壓分享、缺 actionable、C8 62歲反效果",
+        "rubric 權重只從 rubrics/social-funnel.md 讀取，prompt 內無另一份權重"
+      ],
+      "files": []
+    }
+  ]
+}
