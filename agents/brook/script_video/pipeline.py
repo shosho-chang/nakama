@@ -10,6 +10,8 @@ Subcommands:
 - render: storyboard.yaml → b_roll_*.mp4 (PR-4)
 - emit: storyboard.yaml + rendered mp4s → episode.fcpxml (PR-4)
 - run: plan → render → emit end-to-end
+- validate-storyboard: storyboard.yaml 對 guardrails hard limits 的 code 強制
+  (ADR-051 panel v2 §11)；errors → exit 1
 - diff: storyboard A vs storyboard B → Myers-style LCS +/-/= rows (ADR-038 §D7)
 - replan-beat: single-beat LLM tool-call re-plan (ADR-038 §D3 + §D6)
 
@@ -448,6 +450,38 @@ def _cmd_correct_srt(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_validate_storyboard(args: argparse.Namespace) -> int:
+    """storyboard.yaml × guardrails.yaml → 違規報告（ADR-051 panel v2 §11）.
+
+    Errors → exit 1（不得送 Bridge 審核）；僅 warnings → exit 0 但全部列印。
+    集長來源：raw_recording.mp4（ffprobe）→ beats timing fallback。
+    """
+    from agents.brook.script_video.storyboard_validator import (
+        format_report,
+        load_guardrails,
+        validate_storyboard,
+    )
+
+    ep_dir = _episode_dir(args.episode)
+    _require_episode(ep_dir)
+    storyboard_path = ep_dir / "storyboard.yaml"
+    if not storyboard_path.exists():
+        logger.error("validate-storyboard: %s 不存在", storyboard_path)
+        return 1
+    storyboard = yaml.safe_load(storyboard_path.read_text(encoding="utf-8")) or []
+    if not isinstance(storyboard, list):
+        raise ValueError(f"{storyboard_path}: expected list of beats, got {type(storyboard)}")
+
+    duration = _get_mp4_duration(ep_dir / "raw_recording.mp4") or None
+    violations = validate_storyboard(storyboard, load_guardrails(), duration_sec=duration)
+    print(format_report(violations))
+
+    if any(v.severity == "error" for v in violations):
+        return 1
+    _record_stage(ep_dir, "validate-storyboard")
+    return 0
+
+
 def _cmd_diff(args: argparse.Namespace) -> int:
     """Storyboard A vs Storyboard B → Myers-style LCS diff to stdout (ADR-038 §D7)."""
     from agents.brook.script_video.storyboard_diff import diff_storyboards, format_diff
@@ -609,6 +643,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Force re-render even if content-addressed mp4 already exists (ADR-038 §D2)",
     )
     run_sub.set_defaults(fn=_cmd_run)
+    validate_sub = sub.add_parser(
+        "validate-storyboard",
+        help="storyboard.yaml 對 guardrails hard limits 的 code 強制（ADR-051 panel v2 §11）",
+    )
+    validate_sub.set_defaults(fn=_cmd_validate_storyboard)
     diff_sub = sub.add_parser(
         "diff", help="LCS diff between two storyboard.yaml files (ADR-038 §D7)"
     )

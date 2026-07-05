@@ -54,8 +54,9 @@ description: >
 | 首個 B-roll | 開場 ~15s 內 | 可至 30s+ |
 | 高頻視覺 | 書封卡、金句卡、章節卡 | 文獻來源、stock 實拍、大數字卡 |
 
-硬上限永遠是 guardrails 的 4 cutaway/分；預算超過先砍最弱的 beat（anti-literal
-名詞畫、資訊量最低者先死）。把分型判斷與預算寫進 run log 開頭。
+硬上限是 guardrails 的 2.5 cutaway/分（＝prompt 預算上限，panel v2 §8 對齊，
+`validate-storyboard` 強制）；預算超過先砍最弱的 beat（anti-literal 名詞畫、
+資訊量最低者先死）。把分型判斷與預算寫進 run log 開頭。
 
 ## Step 1 — 初稿（可選）
 
@@ -218,8 +219,9 @@ not listed. If an item is unavailable, mark failed with reason and move on.
 - `asset.kind` ∈ stock / kol / screen_recording / supplied
 - 每 beat `status` 初始：`text_approved: false`、`render_status: pending`、`visual_approved: false`
 
-送審前自檢 guardrails（`validate-storyboard` CLI 落地〔PR-G〕前手動過一遍）：
-cutaway ≤4/分、無連續同 component、KOL 單源 ≤20s、asset 類出處欄位齊全。
+送審前必跑 `python -m agents.brook.script_video --episode <ep> validate-storyboard`
+（errors 擋送審；warnings 逐條看過再放行）：cutaway ≤2.5/分、無連續同
+component、KOL 單源 ≤20s、asset 類出處欄位齊全、詞彙全在 guardrails allow list。
 
 ## Step 7 — Bridge 審核（HITL）
 
