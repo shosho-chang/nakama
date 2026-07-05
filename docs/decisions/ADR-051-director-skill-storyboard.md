@@ -60,3 +60,40 @@ render / emit / cache / Bridge 審核等既有 pipeline 程式維持不動，由
   resume 點與驗收步驟。
 - Bridge UI 需認得 `asset` 類 beat（顯示來源連結、候選預覽、出處）。
 - KOL footage 的編輯責任（引用分寸）屬修修編輯決策；系統責任＝護欄與出處留痕。
+
+## Panel review v2 修訂（2026-07-05，Codex + Gemini 3-way）
+
+兩份外部審計皆 approve-with-modifications（原文：`docs/research/2026-07-05-codex-adr051-audit.md`、
+`2026-07-05-gemini-adr051-audit.md`；整合矩陣：`2026-07-05-adr051-panel-integration.md`）。
+修修逐項簽核後的修訂：
+
+1. **D1 重framing（選擇不變）**：skill 是導演（orchestrator + 品味載體），但契約歸
+   deterministic 工具 — 每集跑完必寫 run log（搜尋詞、候選、否決理由、skill 版本），
+   schema/檔名慣例只能經 PR 建立、skill 不可即席發明。（Codex #1；Gemini 反對其
+   嚴重度但接受紀律）
+2. **D5 交接物拆雙檔**：`asset_requests.yaml`（意圖：搜尋詞/時長/氛圍/負面約束）＋
+   `asset_manifest.yaml`（履約：落地路徑/sha256/幀率檢查/license 註記）。
+   Codex-computer-use 下載降為實作細節，可換人工/別的工具。（Codex #3、Gemini #4）
+3. **D7 跨語言修正（3-way 共識）**：撤回「PyMuPDF 對中文引用句全自動定位」——稿是
+   中文改述、論文是英文，精確比對不成立。改為：Director 讀論文**選定英文原句** →
+   PyMuPDF 定位該句 bbox → Bridge 審核顯示「中文改述 ↔ 英文原句」配對供修修確認。
+   **doc_highlight composition 緩到 v1.1**（修修裁決）。
+4. **D8 v1 範圍居中版（修修裁決）**：schema 七類維持；PR-C compositions =
+   `transition_title`＋`book_cover`＋`quote_card`；doc_highlight 延後。
+   Gemini「縮到三類」否決 — 頻道分析顯示書封卡/金句卡為書籍型最高頻視覺。
+5. **新增 video visual grammar 前置（Gemini #2）**：PR-C 開工前在 STYLE.md 增訂 —
+   外部素材處理規則（KOL 片段固定邊框、stock 調色原則）、動效節奏、
+   **字幕禁飛區**（常駐繁中字幕區域不放關鍵視覺資訊）、幀率 conform 到 30fps。
+6. **章節卡時長規則修正（Gemini）**：`duration = max(語音時長, 標題最低可讀時間)`，
+   不是單純錨定語音。
+7. **跨語言搜尋詞生成入手冊（Gemini #3）**：中文概念 → 英文 Envato/YouTube 搜尋詞
+   是必要步驟，SKILL.md 須含查詢擴展指引（一個概念出多組不同切面的英文詞）。
+8. **節奏數字降為 heuristic（Codex）**：兩支影片 15 秒抽樣是假設不是政策；另修
+   guardrail(4/min) 與 planner prompt(1.5–2.5/min) 的數字互斥 — 以 prompt 預算為準。
+9. **明寫授權假設（Gemini）**：D5 假設 Envato **Elements 訂閱制**（吃到飽，candidates
+   多下載零邊際成本）；若改單購模式需重審 D5 挑選流程。
+10. **已修 bug（Codex 抓出，PR #988）**：export_hash 預設路徑 ADR-050 搬遷後全斷；
+    Bridge promote-to-example 寫進死目錄 `agents/foundry/examples`；
+    AssetSpec.sha256 digest 驗收堵 asset 檔案替換 staleness 洞。
+11. **guardrails enforcement 缺口（Codex）**：`validate-storyboard` CLI 列入實施計畫
+    （hard limits 目前無 code 強制，僅 prompt 約定）。
