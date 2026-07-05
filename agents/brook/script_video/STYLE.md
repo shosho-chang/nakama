@@ -33,6 +33,40 @@ Planner prompt 必須 enforce 這個 vocabulary subset（產出 layout / compone
 
 ---
 
+## Video visual grammar（ADR-051 panel v2 §5；PR-C 前置，2026-07-05）
+
+七種 B-roll 來自四種視覺來源（Hyperframes 品牌動畫 / stock 實拍 / KOL 截取 /
+螢幕錄影）— 沒有統一規則會剪成拼裝怪。以下對 compositions 與 Director 皆有效：
+
+### 版面
+
+- **字幕禁飛區**：常駐繁中字幕佔畫面底部 ~200px（1080p）。所有 composition 的
+  關鍵內容（文字、highlight、數字）不得進入此區；`.stage` 一律 `bottom: 200px`。
+- **章節卡時長**：`duration = max(該句語音時長, 最低可讀時間)`；最低可讀時間
+  ≈ 1.5s + 標題每字 0.12s。標題 >9 字自動降字級（168 → 128px）。
+
+### Hyperframes compositions
+
+- tokens 同 `docs/design-system.md`（暖灰底 oklch(0.988 0.003 80)、PANTONE 165
+  accent、LINE Seed TW）；**不硬編其他色碼字型**。
+- 動效節奏：進場 ≤0.65s、power2/3/4.out 家族；accent 元素（bar / tick /
+  underline）wipe-in 0.35–0.45s；章節卡結尾**硬切**不 fade（頻道既有節奏）。
+- **中英混排（quote_card / book_cover）**：出處/原文字級 = 中文本文的 ~60–80%、
+  mute 色、Rg/Bd 字重；中文 Eb 大字當視覺主角。
+- **variables 資料衛生**：選填欄位宣告 `default: ""` — demo 預設值會滲進正式
+  render（planner 漏給 source 時畫面出現錯的書名，2026-07-05 實測）。空值時
+  對應元素整個隱藏，不留孤懸裝飾（dash、書名號）。
+
+### 外部素材（asset 類）
+
+- **stock**：優先選色溫偏暖、非 corporate 假笑的素材；同一集內 stock 調性一致
+  （都實拍或都動畫，不混）。
+- **KOL 截取**：一律 `full_broll` 滿版（不縮放不加框 — 縮放需 transform，
+  Phase 1.5 blocked）；單一來源總長 ≤20s；出處必記（`asset.attribution`）。
+- **幀率**：一律 conform 到 30fps 再進 timeline（manifest 驗收步驟 ffprobe 檢
+  查；非 30fps 用 ffmpeg 轉）— 混幀率在 DaVinci 會 judder。
+- **螢幕錄影（修修外供）**：錄製解析度 ≥1080p，系統 UI 語言與內容一致。
+
 ## Long-form 編輯哲學（隨 edit_log 累積長大）
 
 （此節由 edit_log 提煉的固化教訓填入。Phase 1 留空作 placeholder。）
