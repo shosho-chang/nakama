@@ -80,5 +80,8 @@
       "C:\\Users\\Shosho\\.claude\\skills\\article-compose",
       "C:\\Users\\Shosho\\.claude\\skills\\article-compose-workspace\\iteration-1\\eval-1-new-article"
     ]
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true
   }
 }

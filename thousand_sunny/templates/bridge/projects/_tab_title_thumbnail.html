@@ -1,121 +1,58 @@
 <div class="pj-tab-panel" id="title-thumbnail" data-tab="title-thumbnail" {% if tab != 'title-thumbnail' %}hidden{% endif %}>
   <header class="pj-section-header">
     <h2 class="pj-section-title">🎯 Title &amp; Thumbnail</h2>
-    <p class="pj-section-hint">
-      Stage 4：CTR pair。Title + Thumbnail 重要性甚至比 Hook 還高 — 在 youtube feed
-      / podcast 列表是讀者第一個看到的東西。Zoro 抓關鍵字、LLM brainstorm 候選、
-      渲縮圖、commit 為最終 — 一條龍在這個 tab 做完。
-    </p>
   </header>
 
-  {# ── Zoro keyword research (PR3, unchanged) ───────────────────────────── #}
+  {# ── Keywords summary (read-only; Zoro lives in Research tab now) ──────── #}
   {% set raw_topic = (entry.raw_frontmatter.get('search_topic') or '') | trim %}
   {% set raw_keywords = entry.raw_frontmatter.get('keywords') or [] %}
-  <section class="pj-tt-research">
-    <header class="pj-section-header">
-      <h3 class="pj-section-subtitle">🗝 Zoro 關鍵字 / 趨勢影片</h3>
-    </header>
-
-    <div class="pj-research-actions" data-project-slug="{{ entry.slug }}" data-actions-scope="title-thumbnail">
-      <button class="pj-btn-primary" type="button"
-              data-research-action="keyword"
-              {% if not raw_topic %}disabled title="先到 Brief 填 search_topic"{% endif %}>
-        🗝 Zoro 關鍵字研究
-        <span class="pj-research-hint">topic：<code>{{ raw_topic or '（未填）' }}</code></span>
-      </button>
-    </div>
-
-    {% if entry.raw_frontmatter.keyword_research_at %}
-    <div class="pj-research-prior">
-      <span class="pj-research-meta">
-        上次 Zoro 研究：{{ entry.raw_frontmatter.keyword_research_at }}
-        {% if raw_keywords %}
-          · {{ raw_keywords | length }} 個 keywords
-          ({%- for k in raw_keywords[:5] -%}
-            {%- if k is mapping -%}{{ k.keyword or k.keyword_en or '' }}{%- else -%}{{ k }}{%- endif -%}
-            {%- if not loop.last %}、{% endif -%}
-          {%- endfor -%}
-          {%- if raw_keywords | length > 5 %}…{% endif -%})
-        {% endif %}
-      </span>
-      <span class="pj-research-meta-note">點按鈕重跑會覆寫 marker section。</span>
-    </div>
+  <section class="pj-tt-keywords-ref">
+    {% if raw_keywords %}
+      <header class="pj-tt-keywords-head">
+        <h3 class="pj-tt-keywords-title">
+          🗝 來自 Research 的 keywords
+          <span class="pj-tt-keywords-count">{{ raw_keywords | length }} 個</span>
+        </h3>
+      </header>
+      <ul class="pj-tt-keywords-list">
+        {% for k in raw_keywords %}
+          <li class="pj-tt-keyword">
+            {% if k is mapping %}
+              <span class="pj-tt-keyword-zh">{{ k.keyword or '—' }}</span>
+              {% if k.keyword_en %}<span class="pj-tt-keyword-en">{{ k.keyword_en }}</span>{% endif %}
+            {% else %}
+              <span class="pj-tt-keyword-zh">{{ k }}</span>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="pj-callout pj-callout--info">
+        ⚠ 還沒 Zoro keywords — 建議先到
+        <a href="/bridge/projects/{{ entry.slug }}?tab=research">Research tab</a>
+        跑 Zoro 拿關鍵字 + Robin 抓 KB 素材，title brainstorm 的命中質量會大幅提升。
+      </p>
     {% endif %}
-
-    <div class="pj-research-status" data-research-status hidden>
-      <div class="pj-spinner" aria-hidden="true"></div>
-      <span class="pj-research-status-label">研究中…</span>
-      <span class="pj-research-status-timer" data-timer>0s</span>
-    </div>
-
-    <div class="pj-research-results" id="research-zoro-result" data-research-slot="zoro"
-         {% if not cached_zoro %}hidden{% endif %}>
-      {% if cached_zoro %}
-        {% with result=cached_zoro.result, timestamp=cached_zoro.timestamp, topic=cached_zoro.topic, content_type=cached_zoro.content_type %}
-          {% include "projects/_research_zoro_result.html" %}
-        {% endwith %}
-      {% endif %}
-    </div>
   </section>
 
   {# ── Title brainstorm (ADR-033 D6 half-symmetric — textarea + LLM button) ─── #}
   <section class="pj-tt-titles">
     <header class="pj-section-header">
       <h3 class="pj-section-subtitle">📝 標題候選</h3>
-      <p class="pj-section-hint">
-        每行一個 A/B test 變體，1-3 條。發布時 Usopp 可把這幾條丟給 YT 的
-        Test &amp; Compare 同時測（D2 panel-fixed — YT 從 2023 起支援 3-way 標題 A/B）。
-      </p>
     </header>
 
-    <form id="title-brainstorm-form" class="pj-inline-form"
-          hx-post="/bridge/projects/{{ entry.slug }}/thumbnail/brainstorm-titles"
-          hx-target="#title-candidates-textarea-wrap"
-          hx-swap="innerHTML"
-          hx-indicator="#title-brainstorm-spinner">
-      <button type="submit" class="pj-btn-primary">
-        🪄 LLM 給我 3 個 A/B 候選
-      </button>
-      <span class="pj-spinner" id="title-brainstorm-spinner" aria-hidden="true" hidden></span>
-    </form>
-
-    <form class="pj-inline-form" id="title-candidates-form" method="post"
-          action="/bridge/projects/{{ entry.slug }}/frontmatter">
-      <input type="hidden" name="field" value="title_candidates">
-      <input type="hidden" name="tab" value="title-thumbnail">
-      <label class="pj-label">標題候選（每行一個，1-3 條）</label>
-      <div id="title-candidates-textarea-wrap">
-        <textarea name="value" rows="6" placeholder="例：
-肌酸不只練肌肉：3 個你沒聽過的妙用
-65 歲開始吃肌酸？最新研究說：來得及
-每天 5g，改變你大腦的化學反應"
->{% for t in entry.title_candidates %}{{ t }}{% if not loop.last %}
-{% endif %}{% endfor %}</textarea>
-      </div>
-      <div class="pj-inline-form-actions">
-        <button type="submit" class="pj-btn-primary pj-btn--save">💾 儲存標題</button>
-      </div>
-    </form>
-
-    {# Individual title re-roll buttons (B-min.3). Each posts current textarea
-       value + idx to the re-roll endpoint; response swaps the textarea-wrap. #}
-    {% if entry.title_candidates %}
-    <div class="pj-title-reroll-row">
-      <span class="pj-research-hint">只重抽某一行（保留其他不變）：</span>
-      {% for t in entry.title_candidates %}
-        {% if loop.index <= 3 %}
-        <button type="button" class="pj-btn-secondary pj-btn--small"
-                hx-post="/bridge/projects/{{ entry.slug }}/thumbnail/brainstorm-titles/idea/{{ loop.index0 }}"
-                hx-include="#title-candidates-form textarea"
-                hx-target="#title-candidates-textarea-wrap"
-                hx-swap="innerHTML"
-                hx-confirm="只重抽第 {{ loop.index }} 行，其他保留不變。確定？">
-          🔁 重抽第 {{ loop.index }} 行
-        </button>
-        {% endif %}
-      {% endfor %}
-    </div>
-    {% endif %}
+    {# Divergent title pool grid (ADR-033 + Playbook v1.1).
+       10 archetype sections × 2-3 candidate cards each. Pool persists in
+       data/title_brainstorm/{slug}.json sidecar so refresh + iterate flows
+       survive page reload. Each card has 3 promote buttons (→ A/B/C) that
+       fill the final slot at the bottom of the grid. #}
+    {% with slug=entry.slug,
+            iteration=title_pool_iteration,
+            archetype_groups=title_pool_groups,
+            checked_ids=title_pool_checked,
+            final_slots=final_slots %}
+      {% include "projects/_title_pool_grid.html" %}
+    {% endwith %}
   </section>
 
   {# ── Thumbnail brainstorm + render (ADR-033 D6 — 3 idea cards) ───────────── #}
@@ -123,9 +60,9 @@
     <header class="pj-section-header">
       <h3 class="pj-section-subtitle">🖼 縮圖 idea 與渲圖</h3>
       <p class="pj-section-hint">
-        LLM 出 3 個 idea 文字描述（5-line format：大字 / 我的表情 / 視覺 / 數字圖示 / 背景），
-        每個 idea 旁有獨立的 [🎨 渲此縮圖] 按鈕。渲完挑一張 commit 為最終 thumbnail
-        → 寫入 vault，Syncthing 同步到手機。
+        LLM 會先讀上方勾選的 title pool（約 8-12 條；若沒勾選則用已儲存 title_candidates），
+        再用 Ali / Jeff focused workflow 先選 1 個 publish title，產出 3 張最值得上 YouTube 測試的縮圖 recipe。
+        每個 idea 可獨立編輯、重抽、試做與 commit。
       </p>
     </header>
 
@@ -173,7 +110,11 @@
                       {% endif %}>
                 🎬 抽 {{ role }} 候選幀
               </button>
-              <span class="pj-spinner" id="funnel-spinner-{{ role }}" aria-hidden="true" hidden></span>
+              <span class="pj-progress htmx-indicator" id="funnel-spinner-{{ role }}" aria-hidden="true">
+                <span class="pj-progress-circle"></span>
+                <span class="pj-progress-label">抽幀中</span>
+                <span class="pj-progress-timer" data-timer>0s</span>
+              </span>
             </form>
             <div id="funnel-results-{{ role }}" class="pj-podcast-funnel-slot"></div>
             <div id="thumb-podcast-active-{{ role }}" class="pj-thumb-podcast-active-slot">
@@ -198,20 +139,25 @@
     </section>
     {% endif %}
 
+    {% set has_thumb_title_inputs = entry.title_candidates or title_pool_checked %}
     <form id="thumb-brainstorm-form" class="pj-inline-form"
           hx-post="/bridge/projects/{{ entry.slug }}/thumbnail/brainstorm"
           hx-target="#thumb-ideas-container"
           hx-swap="innerHTML"
           hx-indicator="#thumb-brainstorm-spinner">
       <button type="submit" class="pj-btn-primary"
-              {% if not entry.title_candidates %}
-                disabled title="先填至少一個 title candidate 再 brainstorm — LLM 需要主題上下文"
+              {% if not has_thumb_title_inputs %}
+                disabled title="先在上方勾選 title pool，或填至少一個 title candidate"
               {% endif %}>
-        🪄 LLM 給我 3 個 idea
+        🪄 選 1 個標題並產生 3 張縮圖
       </button>
-      <span class="pj-spinner" id="thumb-brainstorm-spinner" aria-hidden="true" hidden></span>
+      <span class="pj-progress htmx-indicator" id="thumb-brainstorm-spinner" aria-hidden="true">
+        <span class="pj-progress-circle"></span>
+        <span class="pj-progress-label">LLM 思考中</span>
+        <span class="pj-progress-timer" data-timer>0s</span>
+      </span>
       <span class="pj-research-hint">
-        會附上 <code>Attachments/cutouts/reference/{{ entry.content_type }}/</code> 的參考圖讓 LLM 對齊品味。
+        若上方有勾選 title pool，會優先用勾選項；否則使用 frontmatter 的 <code>title_candidates</code>。
       </span>
     </form>
 
@@ -231,6 +177,20 @@
         <p class="pj-empty-state">尚未 brainstorm — 點上面的按鈕讓 LLM 出 3 個 idea。</p>
       {% endif %}
     </div>
+
+    <section class="pj-thumb-assets" aria-labelledby="thumb-assets-heading">
+      <header class="pj-section-header">
+        <h3 class="pj-section-subtitle" id="thumb-assets-heading">素材清單</h3>
+      </header>
+      <div id="thumb-asset-manifest"
+           hx-get="/bridge/projects/{{ entry.slug }}/thumbnail/assets"
+           hx-trigger="thumbnail-assets-changed from:body"
+           hx-swap="innerHTML">
+        {% with slug=entry.slug, asset_manifest=thumbnail_asset_manifest %}
+          {% include "projects/_thumbnail_asset_manifest.html" %}
+        {% endwith %}
+      </div>
+    </section>
     {% endif %}
   </section>
 

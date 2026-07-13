@@ -93,47 +93,9 @@
   </section>
   {% endif %}
 
-  {% set yt_titles = result.youtube_titles or [] %}
-  {% if yt_titles %}
-  <section class="pj-research-block">
-    <h4 class="pj-research-block-title">YouTube 標題建議 <span class="pj-count">({{ yt_titles | length }})</span></h4>
-    <div class="pj-table-wrap">
-      <table class="pj-kw-table pj-title-table">
-        <thead><tr><th class="pj-title-num">#</th><th>標題</th><th class="pj-title-len">字數</th></tr></thead>
-        <tbody>
-          {% for t in yt_titles %}
-          <tr>
-            <td class="pj-title-num">{{ loop.index }}</td>
-            <td class="pj-title-cell">{{ t }}</td>
-            <td class="pj-title-len {% if t | length > 60 %}pj-title-len--over{% endif %}">{{ t | length }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </section>
-  {% endif %}
-
-  {% set blog_titles = result.blog_titles or [] %}
-  {% if blog_titles %}
-  <section class="pj-research-block">
-    <h4 class="pj-research-block-title">Blog 標題建議 <span class="pj-count">({{ blog_titles | length }})</span></h4>
-    <div class="pj-table-wrap">
-      <table class="pj-kw-table pj-title-table">
-        <thead><tr><th class="pj-title-num">#</th><th>標題</th><th class="pj-title-len">字數</th></tr></thead>
-        <tbody>
-          {% for t in blog_titles %}
-          <tr>
-            <td class="pj-title-num">{{ loop.index }}</td>
-            <td class="pj-title-cell">{{ t }}</td>
-            <td class="pj-title-len {% if t | length > 70 %}pj-title-len--over{% endif %}">{{ t | length }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </section>
-  {% endif %}
+  {# YouTube + Blog title suggestions removed (2026-05-27) — title brainstorm
+     moved to the dedicated Title & Thumbnail tab where playbook archetypes
+     drive the candidates. Zoro stays focused on keywords / videos / social. #}
 
   {% set summary = result.analysis_summary or '' %}
   {% if summary %}
@@ -195,13 +157,26 @@
     <ul class="pj-research-list pj-research-list--linky pj-social-list">
       {% for p in social[:12] %}
       <li class="pj-social-item">
-        <span class="pj-chip pj-chip--platform pj-chip--platform-{{ p.platform }}">{{ p.platform }}</span>
-        <span class="pj-social-handle">{{ p.username and ('@' ~ p.username) or (p.subreddit and ('r/' ~ p.subreddit)) or '' }}</span>
-        {% if p.url %}
-        <a href="{{ p.url }}" target="_blank" rel="noopener" class="pj-social-text">{{ (p.text or p.title or '')[:160] }}</a>
-        {% else %}
-        <span class="pj-social-text">{{ (p.text or p.title or '')[:160] }}</span>
-        {% endif %}
+        <div class="pj-social-left">
+          <div class="pj-social-meta">
+            <span class="pj-chip pj-chip--platform pj-chip--platform-{{ p.platform }}">{{ p.platform }}</span>
+            <span class="pj-social-handle">{{ p.username and ('@' ~ p.username) or (p.subreddit and ('r/' ~ p.subreddit)) or '' }}</span>
+          </div>
+          {% if p.url %}
+          <a href="{{ p.url }}" target="_blank" rel="noopener" class="pj-social-text">{{ (p.text or p.title or '')[:200] }}</a>
+          {% else %}
+          <span class="pj-social-text">{{ (p.text or p.title or '')[:200] }}</span>
+          {% endif %}
+        </div>
+        <div class="pj-social-right">
+          {# Chinese summary — populated by Zoro post-processing LLM pass.
+             Falls back to a "pending" hint if missing (older runs / batch failures). #}
+          {% if p.summary_zh %}
+          <div class="pj-social-summary">{{ p.summary_zh }}</div>
+          {% else %}
+          <div class="pj-social-summary pj-social-summary--pending">（中文摘要未產出 — 舊資料或單篇 LLM 失敗，下次重跑 Zoro 會自動補上）</div>
+          {% endif %}
+        </div>
       </li>
       {% endfor %}
     </ul>

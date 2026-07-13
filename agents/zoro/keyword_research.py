@@ -191,11 +191,69 @@ def _research_keywords_inner(
 
     result["en_topic"] = en_topic
     result["trending_videos"] = trending_videos[:20]
-    result["social_posts"] = social_posts[:20]
+    result["social_posts"] = _attach_summary_zh(social_posts[:20])
     result["sources_used"] = sources_used
     result["sources_failed"] = sources_failed
 
     return result
+
+
+def _attach_summary_zh(posts: list[dict]) -> list[dict]:
+    """Add a one-sentence 中文 summary to each social post (best effort).
+
+    Single batched LLM call for all posts — for each post we extract the
+    title/text snippet, send to Claude, and ask for a numbered list of 1-line
+    繁中 summaries. Posts where the LLM can't parse back get a None summary
+    (template falls back to a "未產出" hint, doesn't break the render).
+
+    Cost: ~$0.02-0.05 per Zoro run (20 posts × ~100 chars input).
+    Failure is silently swallowed — Zoro's primary value is keywords + videos,
+    summary is the bonus.
+    """
+    if not posts:
+        return posts
+
+    lines = []
+    for i, p in enumerate(posts):
+        snippet = (p.get("text") or p.get("title") or "").strip()
+        snippet = snippet[:400]  # cap to keep prompt token budget bounded
+        lines.append(f"{i + 1}. [{p.get('platform', '?')}] {snippet}")
+    bulk = "\n".join(lines)
+
+    prompt = (
+        "下面是 {n} 則 social media post 片段（含 platform）。"
+        "為每則寫繁體中文摘要說明這則 post 在討論什麼、有什麼觀點或經驗、為什麼觀眾會關心它的 takeaway。"
+        "**80-150 字**，2-3 句話，不要只是 paraphrase 原文，要把 context / 為什麼有趣寫出來。"
+        "\n\n格式：每則一行（行內可有逗號句號，但不要 hard newline），純數字編號開頭，例如：\n"
+        "1. （摘要）\n"
+        "2. （摘要）\n"
+        "\n## Posts\n\n{bulk}"
+    ).format(n=len(posts), bulk=bulk)
+
+    try:
+        raw = ask(prompt, max_tokens=4096, temperature=0.3)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("social-post summary LLM call failed (non-fatal): %s", exc)
+        return posts
+
+    # Parse: lines like "1. xxx" or "1) xxx"
+    summary_re = re.compile(r"^\s*(\d+)[\.\)]\s*(.+?)\s*$", re.MULTILINE)
+    out_map: dict[int, str] = {}
+    for m in summary_re.finditer(raw):
+        try:
+            idx = int(m.group(1)) - 1
+            text = m.group(2).strip()
+            if 0 <= idx < len(posts) and text:
+                out_map[idx] = text
+        except (ValueError, IndexError):
+            continue
+
+    for i, p in enumerate(posts):
+        if i in out_map:
+            p["summary_zh"] = out_map[i]
+    if not out_map:
+        logger.info("social-post summary parse yielded 0 entries; raw[:200]=%r", raw[:200])
+    return posts
 
 
 def _format_youtube(data: dict) -> str:

@@ -1,8 +1,17 @@
 """Thousand Sunny — Nakama web server entry point."""
 
+import asyncio
 import os
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+# Windows: uvicorn --reload spawns the app under WatchFiles, which can install
+# WindowsSelectorEventLoopPolicy in the worker. Selector loop has no subprocess
+# support (NotImplementedError on create_subprocess_*). Force Proactor so
+# hyperframes/npx renders work in --reload mode.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, RedirectResponse

@@ -11,9 +11,11 @@ from __future__ import annotations
 import pytest
 
 from shared.thumbnail_playbook import (
+    TITLE_ARCHETYPE_EMOTION_MAP,
     PlaybookIndex,
     _parse_grade,
     format_playbook_index_for_prompt,
+    format_title_pool_system_prompt,
     load_playbook_index,
     valid_archetype_ids,
 )
@@ -40,6 +42,7 @@ def test_load_playbook_index_returns_expected_archetype_counts():
     assert len(idx.title_archetypes) == 10
     assert len(idx.thumbnail_archetypes) == 10
     assert len(idx.joint_pairings) == 8
+    assert idx.row_count == 140
 
 
 def test_load_playbook_index_assigns_brand_fit_grades_from_md():
@@ -92,3 +95,33 @@ def test_valid_archetype_ids_includes_all_types():
     assert "T-V6" in ids
     assert "JP-3" in ids
     assert len(ids) == 28  # 10 + 10 + 8
+
+
+def test_format_title_pool_system_prompt_is_generated_from_playbook():
+    text = format_title_pool_system_prompt()
+
+    assert "Dynamic Playbook Prompt" in text
+    assert "prompts/thumbnail/playbook_data_v1.json" in text
+    assert "source_rows: 140" in text
+    assert "Numbered Listicle Promise" in text
+    assert "Cost-Risk-Reframe / Loss Aversion Lead" in text
+    assert "Corpus examples:" in text
+    assert "修修 adaptation:" in text
+
+    # The title-pool prompt should be title-only; thumbnail visual tags belong
+    # in the later thumbnail-idea brainstorm.
+    assert "T-A1" in text and "T-A10" in text
+    assert "T-V1" not in text
+    assert "JP-1" not in text
+
+
+def test_format_title_pool_system_prompt_covers_ui_emotion_map():
+    text = format_title_pool_system_prompt()
+    for title_arch in load_playbook_index().title_archetypes:
+        assert title_arch.id in TITLE_ARCHETYPE_EMOTION_MAP
+        assert f"### {title_arch.id} - {title_arch.name}" in text
+
+
+def test_format_title_pool_system_prompt_size_budget():
+    text = format_title_pool_system_prompt()
+    assert len(text) < 20000, f"title pool prompt grew too large: {len(text)} chars"

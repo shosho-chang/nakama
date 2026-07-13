@@ -1,85 +1,344 @@
-{# ADR-033 PR4-A v1.1 — single editable idea card with save + re-roll + render forms.
-   Used by the brainstorm endpoint (loop in _thumbnail_idea_cards.html) AND by the
-   save-edit endpoint (single-card swap target).
+{# ADR-033 PR4-A v2 — single thumbnail idea card. Used by:
+   - brainstorm endpoint (rendered inside a loop in _thumbnail_idea_cards.html)
+   - save-edit endpoint (replaces this card via outerHTML swap)
+   - re-roll endpoint (swaps the parent #thumb-ideas-container)
+
+   Layout (2026-05-27 redesign):
+   ┌──────────────────────────────────────────────────┐
+   │ Idea N · [T-A1] [T-V2] [JP-3]      🔁 重抽       │
+   ├──────────────────────────────────────────────────┤
+   │ [render slot — image OR placeholder, 16:9]       │
+   ├──────────────────────────────────────────────────┤
+   │ 大字   ▸ 500 篇研究                              │
+   │ 表情   ▸ surprised                               │
+   │ 視覺   ▸ 修修面部緊貼鏡頭…                       │
+   │ 圖示   ▸ 500                                     │
+   │ 背景   ▸ 乾淨實驗室白牆…                         │
+   ├──────────────────────────────────────────────────┤
+   │ ▸ 編輯原始 idea 文字 (折疊)                      │
+   ├──────────────────────────────────────────────────┤
+   │ 🪶 調整指示: [input]                              │
+   │ [Step 1：產生人像版位]     ⊙ 0s                 │
+   └──────────────────────────────────────────────────┘
 
    Required context:
      - slug: project slug (str)
-     - idea: dict with keys {index: int, raw: str, parsed: dict|None, parse_error: str|None}
+     - idea: dict with keys {index: int, raw: str, parsed: dict|None,
+       parse_error: str|None}
 
-   Parsed dict shape (from ParsedIdea.__dict__): hook / emotion_key / emotion_input /
-   visual / decoration / bg / archetype_tags. #}
-<div class="pj-thumb-idea-card" data-idea-index="{{ idea.index }}" id="thumb-idea-card-{{ idea.index }}">
-  <header class="pj-thumb-idea-header">
-    <h4>Idea {{ idea.index + 1 }}</h4>
+    Parsed dict shape (from ParsedIdea.__dict__): hook / emotion_key /
+    emotion_input / visual / decoration / bg / archetype_tags plus optional
+    lane / recipe_id / title_pairing / asset_queries. #}
+<div class="pj-thumb-card" data-idea-index="{{ idea.index }}" id="thumb-idea-card-{{ idea.index }}">
+
+  {# ── Header: Idea N + archetype chips + re-roll ────────────────────── #}
+  <header class="pj-thumb-card-head">
+    <span class="pj-thumb-card-num">Idea {{ idea.index + 1 }}</span>
     {% if idea.parsed and idea.parsed.archetype_tags %}
-      <span class="pj-thumb-idea-archetype-tags">
+      <span class="pj-thumb-card-tags">
         {% for tag in idea.parsed.archetype_tags %}
           <code class="pj-archetype-tag">{{ tag }}</code>
         {% endfor %}
       </span>
     {% endif %}
-  </header>
-
-  {# Edit form — textarea is editable, save button writes to frontmatter via HTMX. #}
-  <form
-    class="pj-thumb-idea-edit-form"
-    hx-post="/bridge/projects/{{ slug }}/thumbnail/idea/{{ idea.index }}"
-    hx-target="#thumb-idea-card-{{ idea.index }}"
-    hx-swap="outerHTML">
-    <textarea
-      class="pj-thumb-idea-textarea"
-      rows="7"
-      name="value"
-      data-original="{{ idea.raw | e }}">{{ idea.raw }}</textarea>
-    <div class="pj-thumb-idea-actions">
-      <button type="submit" class="pj-btn-secondary pj-btn--small">💾 儲存編輯</button>
-      <button type="button" class="pj-btn-secondary pj-btn--small"
+    <span class="pj-thumb-card-corner">
+      <button type="button" class="pj-btn-tiny"
               hx-post="/bridge/projects/{{ slug }}/thumbnail/brainstorm/idea/{{ idea.index }}"
               hx-target="#thumb-ideas-container"
               hx-swap="innerHTML"
+              hx-indicator="#idea-reroll-spin-{{ idea.index }}"
               hx-confirm="只重抽這條 idea，其他 2 條保留不變。確定？"
               title="保留其他 2 條，只用 LLM 重抽這條">
-        🔁 只重抽這條
+        🔁 重抽
       </button>
-    </div>
-  </form>
+      <span class="pj-progress htmx-indicator" id="idea-reroll-spin-{{ idea.index }}" aria-hidden="true">
+        <span class="pj-progress-circle"></span>
+        <span class="pj-progress-label">重抽中</span>
+        <span class="pj-progress-timer" data-timer>0s</span>
+      </span>
+    </span>
+  </header>
 
-  {# Parse preview — surface either the structured fields or an inline error. #}
+  {# ── Render slot: image after render, or placeholder before ──────── #}
+  <div id="thumb-render-{{ idea.index }}" class="pj-thumb-card-render">
+    <div class="pj-thumb-card-render-placeholder">
+      <span class="pj-thumb-card-render-emoji">🖼</span>
+      <span>還沒試做 — 按下方按鈕讓 hyperframes 渲一張</span>
+    </div>
+  </div>
+
+  {# ── Parsed fields (5-line decomposition) ─────────────────────────── #}
   {% if idea.parse_error %}
-    <p class="pj-callout pj-callout--warning pj-thumb-idea-parse-error">
+    <p class="pj-callout pj-callout--warning pj-thumb-card-parse-error">
       ⚠ 解析失敗：<code>{{ idea.parse_error }}</code><br>
-      改 textarea 內容 → 按「儲存編輯」重試。
+      展開下方「編輯原始」修內容 → 儲存後重試。
     </p>
   {% elif idea.parsed %}
-    <dl class="pj-thumb-idea-parse">
-      <div><dt>大字</dt><dd>{{ idea.parsed.hook }}</dd></div>
-      <div><dt>表情</dt><dd><code>{{ idea.parsed.emotion_key }}</code></dd></div>
-      <div><dt>視覺</dt><dd>{{ idea.parsed.visual }}</dd></div>
-      {% if idea.parsed.decoration %}
-      <div><dt>數字/圖示</dt><dd>{{ idea.parsed.decoration }}</dd></div>
+    <dl class="pj-thumb-card-fields">
+      {% if idea.parsed.title_pairing %}
+      <div class="pj-thumb-card-field">
+        <dt>搭配標題</dt>
+        <dd>{{ idea.parsed.title_pairing }}</dd>
+      </div>
       {% endif %}
-      <div><dt>背景</dt><dd>{{ idea.parsed.bg }}</dd></div>
+      {% if idea.parsed.lane or idea.parsed.recipe_id %}
+      <div class="pj-thumb-card-field">
+        <dt>配方</dt>
+        <dd>
+          {% if idea.parsed.lane %}<span>{{ idea.parsed.lane }}</span>{% endif %}
+          {% if idea.parsed.recipe_id %}<code>{{ idea.parsed.recipe_id }}</code>{% endif %}
+        </dd>
+      </div>
+      {% endif %}
+      {% if idea.parsed.reference_template_id %}
+      <div class="pj-thumb-card-field">
+        <dt>參考模板</dt>
+        <dd><code>{{ idea.parsed.reference_template_id }}</code></dd>
+      </div>
+      {% endif %}
+      {% if idea.parsed.component_type or idea.parsed.component_text %}
+      <div class="pj-thumb-card-field">
+        <dt>元件</dt>
+        <dd>
+          {% if idea.parsed.component_type %}<code>{{ idea.parsed.component_type }}</code>{% endif %}
+          {% if idea.parsed.component_text %}<span>{{ idea.parsed.component_text | join(' / ') }}</span>{% endif %}
+        </dd>
+      </div>
+      {% endif %}
+      {% if idea.parsed.host_directive %}
+      <div class="pj-thumb-card-field">
+        <dt>人像</dt>
+        <dd>{{ idea.parsed.host_directive }}</dd>
+      </div>
+      {% endif %}
+      {% if idea.parsed.viewer_promise %}
+      <div class="pj-thumb-card-field">
+        <dt>觀眾承諾</dt>
+        <dd>{{ idea.parsed.viewer_promise }}</dd>
+      </div>
+      {% endif %}
+      {% if idea.parsed.evidence_fit %}
+      <div class="pj-thumb-card-field">
+        <dt>證據貼合</dt>
+        <dd>{{ idea.parsed.evidence_fit }}</dd>
+      </div>
+      {% endif %}
+      {% if idea.parsed.trust_risk %}
+      <div class="pj-thumb-card-field">
+        <dt>信任風險</dt>
+        <dd>{{ idea.parsed.trust_risk }}</dd>
+      </div>
+      {% endif %}
+      <div class="pj-thumb-card-field">
+        <dt>大字</dt>
+        <dd>{{ idea.parsed.hook }}</dd>
+      </div>
+      <div class="pj-thumb-card-field">
+        <dt>表情</dt>
+        <dd><code>{{ idea.parsed.emotion_key }}</code></dd>
+      </div>
+      <div class="pj-thumb-card-field">
+        <dt>視覺</dt>
+        <dd>{{ idea.parsed.visual }}</dd>
+      </div>
+      {% if idea.parsed.decoration %}
+      <div class="pj-thumb-card-field">
+        <dt>圖示</dt>
+        <dd>{{ idea.parsed.decoration }}</dd>
+      </div>
+      {% endif %}
+      <div class="pj-thumb-card-field">
+        <dt>背景</dt>
+        <dd>{{ idea.parsed.bg }}</dd>
+      </div>
+      {% if idea.parsed.asset_queries %}
+      <div class="pj-thumb-card-field">
+        <dt>素材</dt>
+        <dd>{{ idea.parsed.asset_queries | join(' / ') }}</dd>
+      </div>
+      {% endif %}
     </dl>
   {% endif %}
 
-  {# Render form — submits idea_index + director_notes; render endpoint reads
-     idea text from frontmatter (so save-edit before render uses latest text). #}
+  {% if idea.parsed and idea.parsed.prompt_package %}
+  {% set pkg = idea.parsed.prompt_package %}
+  <details class="pj-thumb-v3-prompt-package">
+    <summary>
+      <span>GPT Image Prompt Package</span>
+      <code>{{ pkg.model }}</code>
+    </summary>
+
+    <div class="pj-thumb-v3-meta">
+      <span>model <code>{{ pkg.model }}</code></span>
+      <span>size <code>{{ pkg.size }}</code></span>
+      <span>quality <code>{{ pkg.quality }}</code></span>
+      <span>text <code>{{ pkg.visual_strategy.text_rendering_policy }}</code></span>
+    </div>
+
+    <div class="pj-thumb-v3-overlay-note">
+      Nakama overlay text: <strong>{{ pkg.overlay_text }}</strong>
+    </div>
+
+    <div class="pj-thumb-v3-bindings">
+      <div class="pj-thumb-v3-section-title">Reference upload order</div>
+      <ol>
+        {% for binding in pkg.reference_bindings %}
+        <li>
+          <div class="pj-thumb-v3-binding-main">
+            <code>{{ binding.provider_label }}</code>
+            <span>{{ binding.role }}</span>
+            <em class="pj-thumb-v3-status pj-thumb-v3-status--{{ binding.status }}">
+              {{ binding.readiness_label or binding.status }}
+            </em>
+          </div>
+          <small>{{ binding.usage }}</small>
+          {% if binding.local_path %}
+          <small class="pj-thumb-v3-binding-path">{{ binding.local_path }}</small>
+          {% elif binding.asset_need_id %}
+          <small class="pj-thumb-v3-binding-path">
+            {{ binding.asset_need_id }}{% if binding.search_query %} · {{ binding.search_query }}{% endif %}
+          </small>
+          {% elif binding.path_hint %}
+          <small class="pj-thumb-v3-binding-path">{{ binding.path_hint }}</small>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ol>
+    </div>
+
+    <label class="pj-thumb-v3-copy-block">
+      <span>Prompt</span>
+      <textarea id="thumb-v3-prompt-{{ idea.index }}" readonly rows="12">{{ pkg.prompt_text }}</textarea>
+    </label>
+    <button type="button"
+            class="pj-btn-secondary pj-btn--small"
+            data-copy-target="thumb-v3-prompt-{{ idea.index }}">
+      Copy prompt
+    </button>
+
+    <label class="pj-thumb-v3-copy-block">
+      <span>Negative prompt</span>
+      <textarea id="thumb-v3-negative-{{ idea.index }}" readonly rows="4">{{ pkg.negative_prompt }}</textarea>
+    </label>
+    <button type="button"
+            class="pj-btn-secondary pj-btn--small"
+            data-copy-target="thumb-v3-negative-{{ idea.index }}">
+      Copy negative prompt
+    </button>
+
+    <form
+      class="pj-thumb-v3-openai-form"
+      method="post"
+      action="/bridge/projects/{{ slug }}/thumbnail/generate-openai"
+      hx-post="/bridge/projects/{{ slug }}/thumbnail/generate-openai"
+      hx-target="#thumb-render-{{ idea.index }}"
+      hx-swap="innerHTML"
+      hx-indicator="#thumb-v3-openai-spin-{{ idea.index }}">
+      <input type="hidden" name="idea_index" value="{{ idea.index }}">
+      <input type="hidden" name="reference_mode" value="host_only">
+      <label>
+        <span>Quality</span>
+        <select name="quality">
+          <option value="medium" selected>Medium - candidate</option>
+          <option value="low">Low - cheap exploration</option>
+          <option value="high">High - final polish</option>
+        </select>
+      </label>
+      <label>
+        <span>Feedback / iteration note</span>
+        <input type="text" name="feedback" placeholder="例：臉再大、元件少一點、文字更像 Ali/Jeff">
+      </label>
+      <button type="submit" class="pj-btn-primary pj-btn--small">
+        Generate with OpenAI
+      </button>
+      <span class="pj-progress htmx-indicator" id="thumb-v3-openai-spin-{{ idea.index }}" aria-hidden="true">
+        <span class="pj-progress-circle"></span>
+        <span class="pj-progress-label">OpenAI 生成中</span>
+        <span class="pj-progress-timer" data-timer>0s</span>
+      </span>
+    </form>
+
+    <form
+      class="pj-thumb-v3-import-form"
+      method="post"
+      action="/bridge/projects/{{ slug }}/thumbnail/import"
+      hx-post="/bridge/projects/{{ slug }}/thumbnail/import"
+      hx-target="#thumb-render-{{ idea.index }}"
+      hx-swap="innerHTML"
+      hx-encoding="multipart/form-data"
+      enctype="multipart/form-data">
+      <input type="hidden" name="idea_index" value="{{ idea.index }}">
+      <input type="hidden" name="provider_model" value="{{ pkg.model }}">
+      <label>
+        <span>Import generated image</span>
+        <input type="file" name="generated_image" accept="image/png,image/jpeg,image/webp" required>
+      </label>
+      <label>
+        <span>Feedback / iteration note</span>
+        <input type="text" name="feedback" placeholder="例：first GPT Image 2 test, text area too crowded">
+      </label>
+      <button type="submit" class="pj-btn-primary pj-btn--small">
+        Import as candidate
+      </button>
+    </form>
+  </details>
+  {% elif idea.parsed and idea.parsed.prompt_package_error %}
+    <p class="pj-callout pj-callout--warning">
+      GPT Image prompt package unavailable: {{ idea.parsed.prompt_package_error }}
+    </p>
+  {% endif %}
+
+  {# ── Edit raw idea text — collapsed by default ────────────────────── #}
+  <details class="pj-thumb-card-edit-raw">
+    <summary>✏️ 編輯原始 idea 文字</summary>
+    <form
+      class="pj-thumb-card-edit-form"
+      hx-post="/bridge/projects/{{ slug }}/thumbnail/idea/{{ idea.index }}"
+      hx-target="#thumb-idea-card-{{ idea.index }}"
+      hx-swap="outerHTML"
+      hx-indicator="#idea-save-spin-{{ idea.index }}">
+      <textarea
+        class="pj-thumb-card-edit-textarea"
+        rows="7"
+        name="value"
+        data-original="{{ idea.raw | e }}">{{ idea.raw }}</textarea>
+      <div class="pj-thumb-card-edit-actions">
+        <button type="submit" class="pj-btn-secondary pj-btn--small">💾 儲存編輯</button>
+        <span class="pj-progress htmx-indicator" id="idea-save-spin-{{ idea.index }}" aria-hidden="true">
+          <span class="pj-progress-circle"></span>
+          <span class="pj-progress-label">存中</span>
+          <span class="pj-progress-timer" data-timer>0s</span>
+        </span>
+      </div>
+    </form>
+  </details>
+
+  {# ── Render form: director notes + 試做按鈕 ──────────────────────── #}
   <form
-    class="pj-thumb-idea-render-form"
+    class="pj-thumb-card-render-form"
     method="post"
     action="/bridge/projects/{{ slug }}/thumbnail/render"
     hx-post="/bridge/projects/{{ slug }}/thumbnail/render"
     hx-target="#thumb-render-{{ idea.index }}"
-    hx-swap="innerHTML">
+    hx-swap="innerHTML"
+    hx-indicator="#idea-render-spin-{{ idea.index }}">
     <input type="hidden" name="idea_index" value="{{ idea.index }}">
-    <label class="pj-label pj-label--small">
-      🪶 Director's Notes（可選 — 渲完不滿意時加幾句調整指示）
-      <textarea name="director_notes" rows="2" placeholder="例：背景再暗一點 / 字體再粗一點"></textarea>
+    <input type="hidden" name="stage" value="person">
+    <label class="pj-thumb-card-render-notes">
+      <span class="pj-thumb-card-render-notes-label">🪶 調整指示（可選）</span>
+      <input type="text" name="director_notes"
+             placeholder="例：背景再暗一點 / 字體粗一點 / 表情換 thoughtful">
     </label>
-    <button type="submit" class="pj-btn-primary"
-            {% if idea.parse_error %}disabled title="先修好 5-line 格式才能渲縮圖"{% endif %}>
-      🎨 渲此縮圖
-    </button>
+    <div class="pj-thumb-card-render-actions">
+      <button type="submit" class="pj-btn-primary"
+              {% if idea.parse_error %}disabled title="先修好 5-line 格式才能渲縮圖"{% endif %}>
+        Step 1：產生人像版位
+      </button>
+      <span class="pj-progress htmx-indicator" id="idea-render-spin-{{ idea.index }}" aria-hidden="true">
+        <span class="pj-progress-circle"></span>
+        <span class="pj-progress-label">產生人像版位中</span>
+        <span class="pj-progress-timer" data-timer>0s</span>
+      </span>
+    </div>
   </form>
-  <div id="thumb-render-{{ idea.index }}" class="pj-thumb-render-slot"></div>
 </div>

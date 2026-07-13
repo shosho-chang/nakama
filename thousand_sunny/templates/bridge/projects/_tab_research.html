@@ -2,48 +2,120 @@
   <header class="pj-section-header">
     <h2 class="pj-section-title">🔍 Research</h2>
     <p class="pj-section-hint">
-      Robin 從 KB 抓素材 → compile 摘要 → 用 ChatGPT/Claude.ai 跑 Deep Research 補不足。
-      結果就地顯示，並寫回此 project.md 的 marker section。
-      <br><em>關鍵字 / 標題 / 趨勢影片在前一個「Title &amp; Thumbnail」tab — 建議先跑完 Zoro 拿到 keywords 再回來，Robin 命中質量會更好。</em>
+      Zoro 關鍵字 / 趨勢影片 → Robin 從 KB 抓素材（用 Zoro keywords） → 摘要 → Deep Research 補不足。
+      順序：<strong>🗝 Zoro → 📚 Robin → 📝 摘要 → 🌐 DR</strong>。
+      結果寫回此 project.md 的 marker section，下一步「Title &amp; Thumbnail」會用這些素材 brainstorm。
     </p>
   </header>
 
   {% set raw_topic = (entry.raw_frontmatter.get('search_topic') or '') | trim %}
   {% set raw_keywords = entry.raw_frontmatter.get('keywords') or [] %}
-  <div class="pj-research-actions" data-project-slug="{{ entry.slug }}" data-actions-scope="research">
-    <button class="pj-btn-primary" type="button"
-            data-research-action="kb"
-            {% if not raw_topic and not raw_keywords %}disabled title="先到前一個 Title &amp; Thumbnail tab 跑 Zoro，或到 Brief 填 search_topic"{% endif %}>
-      📚 Robin 從 KB 抓素材
-      <span class="pj-research-hint">
+
+  {# ── Step 1: Zoro keyword research (moved from T&T tab to fix pipeline order) ─── #}
+  <section class="pj-research-step">
+    <header class="pj-section-header">
+      <h3 class="pj-section-subtitle">🗝 Step 1 — Zoro 關鍵字 / 趨勢影片</h3>
+    </header>
+    <div class="pj-research-actions" data-project-slug="{{ entry.slug }}" data-actions-scope="research-zoro">
+      <button class="pj-btn-primary" type="button"
+              data-research-action="keyword"
+              {% if not raw_topic %}disabled title="先到 Brief 填 search_topic"{% endif %}>
+        {% if cached_zoro %}<span class="pj-action-done" aria-label="已完成">✓</span>{% endif %}
+        🗝 Zoro 關鍵字研究
+        <span class="pj-research-hint">topic：<code>{{ raw_topic or '（未填）' }}</code></span>
+      </button>
+    </div>
+
+    {# Spinner status local to this step (Step 1 Zoro). #}
+    <div class="pj-research-status" data-research-status hidden>
+      <div class="pj-spinner" aria-hidden="true"></div>
+      <span class="pj-research-status-label">研究中…</span>
+      <span class="pj-research-status-timer" data-timer>0s</span>
+    </div>
+
+    {% if entry.raw_frontmatter.keyword_research_at %}
+    <div class="pj-research-prior">
+      <span class="pj-research-meta">
+        上次 Zoro 研究：{{ entry.raw_frontmatter.keyword_research_at }}
         {% if raw_keywords %}
-          query：keywords ({{ raw_keywords | length }})
-        {% elif raw_topic %}
-          <span class="pj-research-hint--warn">⚠ query：只用 search_topic（沒 keywords）— 建議回到前一個 Title &amp; Thumbnail tab 跑 Zoro 拿關鍵字再來，命中質量會差很多</span>
-        {% else %}
-          （需要 keywords 或 search_topic）
+          · {{ raw_keywords | length }} 個 keywords
+          ({%- for k in raw_keywords[:5] -%}
+            {%- if k is mapping -%}{{ k.keyword or k.keyword_en or '' }}{%- else -%}{{ k }}{%- endif -%}
+            {%- if not loop.last %}、{% endif -%}
+          {%- endfor -%}
+          {%- if raw_keywords | length > 5 %}…{% endif -%})
         {% endif %}
       </span>
-    </button>
-    <button class="pj-btn-secondary" type="button"
-            data-research-action="synthesis"
-            {% if not cached_kb %}disabled title="先按 Robin 從 KB 抓素材"{% endif %}>
-      📝 Robin 摘要
-      <span class="pj-research-hint">把 KB 命中 compile 成可讀摘要</span>
-    </button>
-    <button class="pj-btn-secondary" type="button"
-            data-research-action="dr-prompt"
-            data-dr-target="chatgpt"
-            {% if not raw_topic %}disabled title="先填 search_topic"{% endif %}>
-      🌐 Deep Research
-      <span class="pj-research-hint">複製 prompt + 開 ChatGPT</span>
-    </button>
-  </div>
+      <span class="pj-research-meta-note">點按鈕重跑會覆寫 marker section。</span>
+    </div>
+    {% endif %}
 
-  <div class="pj-research-status" data-research-status hidden>
-    <div class="pj-spinner" aria-hidden="true"></div>
-    <span class="pj-research-status-label">研究中…</span>
-    <span class="pj-research-status-timer" data-timer>0s</span>
+    <div class="pj-research-results" id="research-zoro-result" data-research-slot="zoro"
+         {% if not cached_zoro %}hidden{% endif %}>
+      {% if cached_zoro %}
+        {% with result=cached_zoro.result, timestamp=cached_zoro.timestamp, topic=cached_zoro.topic, content_type=cached_zoro.content_type %}
+          {% include "projects/_research_zoro_result.html" %}
+        {% endwith %}
+      {% endif %}
+    </div>
+  </section>
+
+  {# ── Step 2-4: Robin + Synthesis + Deep Research ──────────────────────── #}
+  <section class="pj-research-step">
+    <header class="pj-section-header">
+      <h3 class="pj-section-subtitle">📚 Step 2-4 — Robin / 摘要 / Deep Research</h3>
+    </header>
+    <div class="pj-research-actions" data-project-slug="{{ entry.slug }}" data-actions-scope="research">
+      <button class="pj-btn-primary" type="button"
+              data-research-action="kb"
+              {% if not raw_topic and not raw_keywords %}disabled title="先到 Brief 填 search_topic，或先在上面跑 Zoro 拿 keywords"{% endif %}>
+        {% if cached_kb %}<span class="pj-action-done" aria-label="已完成">✓</span>{% endif %}
+        📚 Robin 從 KB 抓素材
+        <span class="pj-research-hint">
+          {% if raw_topic %}
+            query：search_topic「<code>{{ raw_topic }}</code>」（短詞廣搜）
+            {% if raw_keywords %}· {{ raw_keywords | length }} keywords 之後給摘要當 context{% endif %}
+          {% elif raw_keywords %}
+            <span class="pj-research-hint--warn">⚠ query：fallback 用 keywords ({{ raw_keywords | length }}) — 建議填 search_topic 拿更廣的命中</span>
+          {% else %}
+            （需要 search_topic 或 keywords）
+          {% endif %}
+        </span>
+      </button>
+      <button class="pj-btn-primary" type="button"
+              data-research-action="synthesis"
+              {% if not cached_kb %}disabled title="先按 Robin 從 KB 抓素材"{% endif %}>
+        {% if cached_synth %}<span class="pj-action-done" aria-label="已完成">✓</span>{% endif %}
+        📝 Robin 摘要
+        <span class="pj-research-hint">把 KB 命中 compile 成可讀摘要</span>
+      </button>
+      <button class="pj-btn-primary" type="button"
+              data-research-action="dr-prompt"
+              data-dr-target="chatgpt"
+              {% if not raw_topic %}disabled title="先填 search_topic"{% endif %}>
+        {% if cached_dr %}<span class="pj-action-done" aria-label="已完成">✓</span>{% endif %}
+        🌐 Deep Research
+        <span class="pj-research-hint">複製 prompt + 開 ChatGPT</span>
+      </button>
+    </div>
+
+    {# Spinner status local to this step (Step 2-4 Robin / 摘要 / DR). #}
+    <div class="pj-research-status" data-research-status hidden>
+      <div class="pj-spinner" aria-hidden="true"></div>
+      <span class="pj-research-status-label">研究中…</span>
+      <span class="pj-research-status-timer" data-timer>0s</span>
+    </div>
+  </section>
+
+  {# Result panels in display order: KB hits → Robin synthesis → DR report →
+     DR paste form (last because it's the input action for next external run). #}
+  <div class="pj-research-results" id="research-kb-result" data-research-slot="kb"
+       {% if not cached_kb %}hidden{% endif %}>
+    {% if cached_kb %}
+      {% with hits=cached_kb.hits, timestamp=cached_kb.timestamp, query_label=cached_kb.query_label, used_keywords=cached_kb.used_keywords %}
+        {% include "projects/_research_kb_result.html" %}
+      {% endwith %}
+    {% endif %}
   </div>
 
   <div class="pj-research-results" id="research-synthesis-result" data-research-slot="synthesis"
@@ -51,6 +123,15 @@
     {% if cached_synth %}
       {% with synthesis_html=cached_synth.synthesis_html, synthesis_md=cached_synth.synthesis_md, timestamp=cached_synth.timestamp, hits_used=cached_synth.hits_used %}
         {% include "projects/_research_synthesis_result.html" %}
+      {% endwith %}
+    {% endif %}
+  </div>
+
+  <div class="pj-research-results" id="research-dr-result" data-research-slot="dr"
+       {% if not cached_dr %}hidden{% endif %}>
+    {% if cached_dr %}
+      {% with report_html=cached_dr.report_html, report_md=cached_dr.report_md, timestamp=cached_dr.timestamp, source=cached_dr.source %}
+        {% include "projects/_research_dr_result.html" %}
       {% endwith %}
     {% endif %}
   </div>
@@ -77,29 +158,12 @@
     </details>
   </div>
 
-  <div class="pj-research-results" id="research-dr-result" data-research-slot="dr"
-       {% if not cached_dr %}hidden{% endif %}>
-    {% if cached_dr %}
-      {% with report_html=cached_dr.report_html, report_md=cached_dr.report_md, timestamp=cached_dr.timestamp, source=cached_dr.source %}
-        {% include "projects/_research_dr_result.html" %}
-      {% endwith %}
-    {% endif %}
-  </div>
-
-  <div class="pj-research-results" id="research-kb-result" data-research-slot="kb"
-       {% if not cached_kb %}hidden{% endif %}>
-    {% if cached_kb %}
-      {% with hits=cached_kb.hits, timestamp=cached_kb.timestamp, query_label=cached_kb.query_label, used_keywords=cached_kb.used_keywords %}
-        {% include "projects/_research_kb_result.html" %}
-      {% endwith %}
-    {% endif %}
-  </div>
-
   <details class="pj-research-tip">
     <summary>💡 Research 工作流提示</summary>
     <ul>
-      <li>建議順序：先在前一個 Title &amp; Thumbnail tab 跑 Zoro 拿關鍵字 → 來這裡 Robin 從 KB 抓素材 → 📝 摘要 compile → 🌐 DR 補不足。若直接在這跑 Robin 也行（用 search_topic fallback），只是命中會比較粗。</li>
-      <li>Robin 自動拿 frontmatter 裡的 <code>keywords[]</code> 當 query，沒有時 fallback 用 <code>search_topic</code>。</li>
+      <li>建議順序：<strong>Step 1 Zoro 拿關鍵字 → Step 2 Robin 從 KB 抓素材 → Step 3 📝 摘要 compile → Step 4 🌐 DR 補不足</strong>。若直接跑 Robin 也行（用 <code>search_topic</code> fallback），但命中會比較粗。</li>
+      <li>Robin 自動拿 frontmatter 裡的 <code>keywords[]</code> 當 query（Zoro 寫進去的），沒有時 fallback 用 <code>search_topic</code>。</li>
+      <li>跑完整套 Research 再到下一個 <em>Title &amp; Thumbnail</em> tab，brainstorm 才有充足上下文 — title candidates 命中、thumbnail idea 才精準。</li>
       <li>結果寫進 body 的 <code>&lt;!-- nakama:research:kb --&gt;</code> / <code>:kb-synthesis</code> / <code>:dr</code> marker section，再跑會覆寫同一塊（其他段落不動）。</li>
       <li>Robin 5-30 秒；摘要 30-60 秒（Opus 4.7）；DR 是外部 5-15 分鐘人工跑後貼回。</li>
     </ul>

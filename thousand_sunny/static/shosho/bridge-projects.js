@@ -348,10 +348,15 @@
       synthesis: '📝 Robin 摘要已寫回 project.md',
     };
 
-    // Status spinners + buttons are per-tab; lookups scope to the panel
-    // owning the clicked button.
+    // Status spinners + buttons are per-step (within a tab). Scope lookups
+    // to the nearest `.pj-research-step` so multi-step tabs (e.g. Research:
+    // Step 1 Zoro / Step 2-4 Robin) don't share one spinner — the bug where
+    // clicking Zoro showed the spinner under Robin's section.
     function panelOf(el) { return el.closest('.pj-tab-panel'); }
-    function statusOf(panel) { return panel ? panel.querySelector('[data-research-status]') : null; }
+    function statusOfBtn(btn) {
+      var scope = btn && (btn.closest('.pj-research-step') || btn.closest('.pj-tab-panel'));
+      return scope ? scope.querySelector('[data-research-status]') : null;
+    }
 
     var timerInterval = null;
     var activeStatus = null;
@@ -394,6 +399,38 @@
       });
     }
 
+    // After a research kind succeeds, unblock the next step that was waiting on
+    // its cache. Server-rendered template marks buttons disabled when cache is
+    // missing on page load; here we clear that without a reload.
+    function enableNextStepAfter(kind) {
+      var next = { keyword: 'kb', kb: 'synthesis' }[kind];
+      if (!next) return;
+      document
+        .querySelectorAll('button[data-research-action="' + next + '"]')
+        .forEach(function (b) {
+          b.disabled = false;
+          b.removeAttribute('data-original-disabled');
+          b.removeAttribute('title');
+        });
+    }
+
+    // Stick a green ✓ badge onto the just-completed button so it's obvious
+    // at a glance which steps still need running. Idempotent — won't double-add
+    // if the badge is already there (server-rendered at page load).
+    function markActionDone(kind) {
+      document
+        .querySelectorAll('button[data-research-action="' + kind + '"]')
+        .forEach(function (b) {
+          if (!b.querySelector('.pj-action-done')) {
+            var span = document.createElement('span');
+            span.className = 'pj-action-done';
+            span.setAttribute('aria-label', '已完成');
+            span.textContent = '✓';
+            b.insertBefore(span, b.firstChild);
+          }
+        });
+    }
+
     function handlePartialFetch(kind, btn) {
       var slot = document.getElementById(SLOT_IDS[kind]);
       if (!slot) return;
@@ -401,7 +438,7 @@
       lockAll();
       slot.removeAttribute('hidden');
       slot.innerHTML = '';
-      startTimer(statusOf(panelOf(btn)), LABEL_MAP[kind] || '研究中…');
+      startTimer(statusOfBtn(btn), LABEL_MAP[kind] || '研究中…');
 
       var endpoint = '/bridge/projects/' + encodeURIComponent(slug) + '/research/' + kind;
       fetch(endpoint, {
@@ -416,6 +453,8 @@
         return r.text();
       }).then(function (html) {
         slot.innerHTML = html;
+        enableNextStepAfter(kind);
+        markActionDone(kind);
         showToast(TOAST_DONE[kind] || '✓ 完成');
       }).catch(function (err) {
         slot.innerHTML = '<div class="pj-research-error">⚠ ' + (err.message || err) + '</div>';
@@ -438,7 +477,7 @@
       var target = btn.getAttribute('data-dr-target') || 'chatgpt';
       var slug = btn.closest('.pj-research-actions').getAttribute('data-project-slug') || '';
       lockAll();
-      startTimer(statusOf(panelOf(btn)), LABEL_MAP['dr-prompt']);
+      startTimer(statusOfBtn(btn), LABEL_MAP['dr-prompt']);
       var endpoint = '/bridge/projects/' + encodeURIComponent(slug) + '/research/dr-prompt';
       fetch(endpoint, {
         method: 'POST',
@@ -542,6 +581,21 @@
         // Close the <details> wrapper so it doesn't keep taking up space
         var details = form.closest('details');
         if (details) details.open = false;
+        // Mark the DR action button done — cached_dr now exists. Same shape as
+        // markActionDone inside bindResearchActions; duplicated here because
+        // that function is closure-scoped and this form lives in a sibling
+        // binding.
+        document
+          .querySelectorAll('button[data-research-action="dr-prompt"]')
+          .forEach(function (b) {
+            if (!b.querySelector('.pj-action-done')) {
+              var span = document.createElement('span');
+              span.className = 'pj-action-done';
+              span.setAttribute('aria-label', '已完成');
+              span.textContent = '✓';
+              b.insertBefore(span, b.firstChild);
+            }
+          });
         showToast('🌐 DR 報告已寫回 project.md');
       }).catch(function (err) {
         showToast('⚠ DR 報告儲存失敗：' + (err.message || err));
@@ -657,6 +711,132 @@
     });
   }
 
+  // ── HTMX progress timer (unified .pj-progress component) ──────────────
+  //
+  // Every HTMX request whose source has hx-indicator="#some-id" attached to
+  // a .pj-progress span gets a JS-driven seconds counter. Mirrors the
+  // Research tab's status panel (circle + label + timer) so all in-flight
+  // LLM/render actions look the same.
+  //
+  // Robustness: we resolve the indicator from hx-indicator OR (fallback) the
+  // closest `.pj-progress` sibling — covers cases where the attribute lives
+  // on a parent form.
+  function bindHtmxProgressTimers() {
+    var activeIntervals = new Map();
+
+    function resolveIndicator(elt) {
+      if (!elt) return null;
+      var sel = elt.getAttribute && elt.getAttribute('hx-indicator');
+      if (!sel) {
+        var parent = elt.closest && elt.closest('[hx-indicator]');
+        if (parent) sel = parent.getAttribute('hx-indicator');
+      }
+      if (!sel) return null;
+      try {
+        return document.querySelector(sel);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function startTimer(indicator) {
+      if (!indicator) return;
+      var timerEl = indicator.querySelector('[data-timer]');
+      if (!timerEl) return;
+      // Clear any leftover interval for this indicator (defensive: re-clicks).
+      var prev = activeIntervals.get(indicator);
+      if (prev) clearInterval(prev);
+      var startedAt = Date.now();
+      timerEl.textContent = '0s';
+      var iv = setInterval(function () {
+        timerEl.textContent = Math.floor((Date.now() - startedAt) / 1000) + 's';
+      }, 250);
+      activeIntervals.set(indicator, iv);
+    }
+
+    function stopTimer(indicator) {
+      if (!indicator) return;
+      var iv = activeIntervals.get(indicator);
+      if (iv) {
+        clearInterval(iv);
+        activeIntervals.delete(indicator);
+      }
+    }
+
+    document.body.addEventListener('htmx:beforeRequest', function (evt) {
+      var ind = resolveIndicator(evt.detail && evt.detail.elt);
+      startTimer(ind);
+    });
+    // htmx:afterRequest fires whether 2xx or error — stop the timer either way.
+    document.body.addEventListener('htmx:afterRequest', function (evt) {
+      var ind = resolveIndicator(evt.detail && evt.detail.elt);
+      stopTimer(ind);
+    });
+    document.body.addEventListener('htmx:sendError', function (evt) {
+      var ind = resolveIndicator(evt.detail && evt.detail.elt);
+      stopTimer(ind);
+    });
+  }
+
+  // ── HTMX error → toast ─────────────────────────────────────────────────
+  //
+  // HTMX silently ignores 4xx/5xx responses by default — no swap, no UI hint.
+  // Surface the server's detail message via showToast so the user knows what
+  // went wrong (e.g. Iterate-without-checking returns 400 with helpful text).
+
+  function bindHtmxErrors() {
+    document.body.addEventListener('htmx:responseError', function (e) {
+      var xhr = e.detail && e.detail.xhr;
+      if (!xhr) return;
+      var status = xhr.status || 0;
+      var msg = '';
+      try {
+        var body = JSON.parse(xhr.responseText || '{}');
+        msg = body.detail || body.error || '';
+      } catch (parseErr) {
+        msg = (xhr.responseText || '').slice(0, 240);
+      }
+      if (!msg) msg = 'HTTP ' + status;
+      showToast('⚠ ' + msg);
+    });
+    // Network failure (server down / CORS): different event.
+    document.body.addEventListener('htmx:sendError', function () {
+      showToast('⚠ 網路錯誤 — 連不上 server，檢查 dev server 是不是還活著。');
+    });
+  }
+
+  function bindCopyTargets() {
+    document.body.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest && e.target.closest('[data-copy-target]');
+      if (!btn) return;
+      var targetId = btn.getAttribute('data-copy-target');
+      var target = targetId ? document.getElementById(targetId) : null;
+      if (!target) {
+        showToast('⚠ Copy target not found');
+        return;
+      }
+      var value = target.value || target.textContent || '';
+      if (!value.trim()) {
+        showToast('⚠ Nothing to copy');
+        return;
+      }
+      function fallbackSelect() {
+        if (typeof target.select === 'function') {
+          target.focus();
+          target.select();
+        }
+        showToast('Clipboard unavailable — selected text for manual copy');
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(value).then(function () {
+          showToast('Copied');
+        }).catch(fallbackSelect);
+      } else {
+        fallbackSelect();
+      }
+    });
+  }
+
   function bootAll() {
     bindTabs();
     bindPomodoroDock();
@@ -668,6 +848,9 @@
     bindStatusDropdown();
     bindDeleteTask();
     bindDockTasksClickOutside();
+    bindHtmxErrors();
+    bindHtmxProgressTimers();
+    bindCopyTargets();
   }
 
   if (document.readyState === 'loading') {

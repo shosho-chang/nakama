@@ -30,10 +30,34 @@ import asyncio
 import base64
 import json
 import logging
+import os
 import shutil
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def _npx_cmd() -> str:
+    """Resolve the npx binary path. On Windows ``npx`` is ``%APPDATA%\\npm\\npx.cmd``
+    — bare ``"npx"`` passed to ``asyncio.create_subprocess_exec`` raises
+    ``FileNotFoundError [WinError 2]`` because the Python launcher doesn't apply
+    ``PATHEXT`` resolution to ``.cmd`` files. Falls back to ``"npx"`` on POSIX.
+
+    See parallel fix in ``scripts/import_shosho_cutouts.py`` (2026-05-27).
+    """
+    if os.name == "nt":
+        candidates = [
+            Path(os.environ.get("APPDATA", "")) / "npm" / "npx.cmd",
+            shutil.which("npx.cmd"),
+            shutil.which("npx"),
+        ]
+        for candidate in candidates:
+            if not candidate:
+                continue
+            path = Path(candidate)
+            if path.exists():
+                return str(path)
+    return "npx"
 
 # repo_root/agents/foundry/render_workers/thumbnail_worker.py → repo_root
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -73,7 +97,7 @@ def _build_argv(
     actually spawning hyperframes.
     """
     return [
-        "npx",
+        _npx_cmd(),
         "hyperframes",
         "render",
         composition,
@@ -163,6 +187,7 @@ async def render_youtube_still(
     bg_path: Path | None = None,
     out_png: Path,
     accent_decoration: str = "",
+    archetype: str = "default",
     palette: dict | None = None,
     video_dir: Path | None = None,
 ) -> Path:
@@ -201,6 +226,7 @@ async def render_youtube_still(
         "cutout_data_url": _to_data_url(cutout_path),
         "bg_data_url": _to_data_url(bg_path) if bg_path is not None else "",
         "accent_decoration": accent_decoration,
+        "archetype": archetype,
         "palette": palette or {},
     }
 

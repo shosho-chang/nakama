@@ -36,6 +36,7 @@
           <li class="pj-kb-hit pj-kb-hit--{{ hit.relevance_tier or 'unknown' }}">
             <div class="pj-kb-hit-head">
               <span class="pj-chip pj-chip--type pj-chip--type-{{ hit.type }}">{{ hit.type }}</span>
+              {% if hit.source_book %}<span class="pj-kb-hit-book">📖 {{ hit.source_book }}</span>{% endif %}
               <strong class="pj-kb-hit-name">{{ hit.title }}</strong>
               {% if hit.heading %}<span class="pj-kb-hit-heading">§ {{ hit.heading }}</span>{% endif %}
               {% if hit.relevance_tier == 'weak' %}<span class="pj-kb-hit-tier pj-kb-hit-tier--weak">弱相關</span>{% endif %}

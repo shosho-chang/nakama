@@ -1,26 +1,181 @@
-{# ADR-033 PR4-A — single rendered thumbnail (HTMX swap target for one idea card). #}
+{# Thumbnail render result. Staged previews are primary until final render. #}
 <figure class="pj-thumb-render-result">
+  {% set primary_filename = stage_preview_filename or filename %}
   <img
-    src="/bridge/projects/{{ slug }}/thumbnail/candidate/{{ run_ts }}/{{ filename }}"
-    alt="thumbnail candidate for idea {{ idea_index + 1 }}"
+    src="/bridge/projects/{{ slug }}/thumbnail/candidate/{{ run_ts }}/{{ primary_filename }}"
+    alt="{% if stage_preview_filename %}{{ stage_label }}{% else %}thumbnail candidate{% endif %} for idea {{ idea_index + 1 }}"
     class="pj-thumb-render-img"
     width="1280"
     height="720">
   <figcaption class="pj-thumb-render-meta">
-    <span class="pj-thumb-render-ts">渲於 {{ run_ts }}</span>
-    <span class="pj-thumb-render-emotion">表情：<code>{{ parsed.emotion_key }}</code></span>
+    <span class="pj-thumb-render-ts">
+      {% if stage_preview_filename %}{{ stage_label }}{% else %}Rendered {{ run_ts }}{% endif %}
+    </span>
+    <span class="pj-thumb-render-emotion">emotion: <code>{{ parsed.emotion_key }}</code></span>
   </figcaption>
+
+  {% if stage_preview_filename %}
+  <div class="pj-thumb-stage-note">
+    {% if stage == "background" and background_plate %}
+      {% set bg_spec = background_plate.background_spec %}
+      <span>{{ bg_spec.style }} / {{ bg_spec.detail_density }}</span>
+    {% elif stage == "components" and component_plan %}
+      {% set selected = component_plan.selected_variant %}
+      <span>{{ selected.reference_template_id }} / score {{ selected.score }}</span>
+    {% elif stage == "type" and typography %}
+      {% set type_spec = typography.typography_spec %}
+      {% set first_line = type_spec.lines[0] if type_spec.lines else none %}
+      <span>{{ type_spec.mode }}{% if first_line %} / {{ first_line.font_size }}px / {{ first_line.fill }}{% endif %}</span>
+    {% elif stage == "layout" and layout_blocking %}
+      <span>{{ layout_blocking.content_side }} content / headline + asset blocking</span>
+    {% elif person_placement %}
+      <span>{{ person_placement.spec.archetype }} / box {{ person_placement.cutout_box }}</span>
+    {% endif %}
+    {% if full_render_filename %}
+    <a
+      href="/bridge/projects/{{ slug }}/thumbnail/candidate/{{ run_ts }}/{{ full_render_filename }}"
+      target="_blank"
+      rel="noopener">
+      experimental full render
+    </a>
+    {% elif stage == "components" %}
+      <span>component map ready - run Step 6 for the actual candidate</span>
+    {% else %}
+      <span>full render not run</span>
+    {% endif %}
+  </div>
+
+  {% if stage == "person" %}
   <form
-    class="pj-thumb-commit-form"
+    class="pj-thumb-stage-next-form"
+    method="post"
+    action="/bridge/projects/{{ slug }}/thumbnail/render"
+    hx-post="/bridge/projects/{{ slug }}/thumbnail/render"
+    hx-target="#thumb-render-{{ idea_index }}"
+    hx-swap="innerHTML">
+    <input type="hidden" name="idea_index" value="{{ idea_index }}">
+    <input type="hidden" name="stage" value="layout">
+    <input
+      type="text"
+      name="director_notes"
+      placeholder="feedback for layout, e.g. bigger text area / card lower / person more left">
+    <button type="submit" class="pj-btn-secondary pj-btn--small">Step 2: layout blocking</button>
+  </form>
+  {% elif stage == "layout" %}
+  <form
+    class="pj-thumb-stage-next-form"
+    method="post"
+    action="/bridge/projects/{{ slug }}/thumbnail/render"
+    hx-post="/bridge/projects/{{ slug }}/thumbnail/render"
+    hx-target="#thumb-render-{{ idea_index }}"
+    hx-swap="innerHTML">
+    <input type="hidden" name="idea_index" value="{{ idea_index }}">
+    <input type="hidden" name="stage" value="type">
+    <input
+      type="text"
+      name="director_notes"
+      placeholder="feedback for type, e.g. bigger / warmer / cyan second line / no text">
+    <button type="submit" class="pj-btn-secondary pj-btn--small">Step 3: typography</button>
+  </form>
+  {% elif stage == "type" %}
+  <form
+    class="pj-thumb-stage-next-form"
+    method="post"
+    action="/bridge/projects/{{ slug }}/thumbnail/render"
+    hx-post="/bridge/projects/{{ slug }}/thumbnail/render"
+    hx-target="#thumb-render-{{ idea_index }}"
+    hx-swap="innerHTML">
+    <input type="hidden" name="idea_index" value="{{ idea_index }}">
+    <input type="hidden" name="stage" value="background">
+    <input
+      type="text"
+      name="director_notes"
+      placeholder="feedback for background, e.g. warmer study / less busy / darker bottom">
+    <button type="submit" class="pj-btn-secondary pj-btn--small">Step 4: background plate</button>
+  </form>
+  {% elif stage == "background" %}
+  <form
+    class="pj-thumb-stage-next-form"
+    method="post"
+    action="/bridge/projects/{{ slug }}/thumbnail/render"
+    hx-post="/bridge/projects/{{ slug }}/thumbnail/render"
+    hx-target="#thumb-render-{{ idea_index }}"
+    hx-swap="innerHTML">
+    <input type="hidden" name="idea_index" value="{{ idea_index }}">
+    <input type="hidden" name="stage" value="components">
+    <input
+      type="text"
+      name="director_notes"
+      placeholder="feedback for components, e.g. list card larger / icon lower / fewer items">
+    <button type="submit" class="pj-btn-secondary pj-btn--small">Step 5: component plan</button>
+  </form>
+  {% elif stage == "components" %}
+  <form
+    class="pj-thumb-stage-next-form"
+    method="post"
+    action="/bridge/projects/{{ slug }}/thumbnail/render"
+    hx-post="/bridge/projects/{{ slug }}/thumbnail/render"
+    hx-target="#thumb-render-{{ idea_index }}"
+    hx-swap="innerHTML">
+    <input type="hidden" name="idea_index" value="{{ idea_index }}">
+    <input type="hidden" name="stage" value="full">
+    <input
+      type="text"
+      name="director_notes"
+      placeholder="final render feedback, e.g. keep this layout / card larger / fewer icons">
+    <button type="submit" class="pj-btn-primary pj-btn--small">Step 6: render candidate</button>
+  </form>
+  {% endif %}
+  {% endif %}
+
+  {% if component_plan %}
+  {% set selected = component_plan.selected_variant %}
+  <div class="pj-thumb-render-qa pj-thumb-render-qa--{% if selected.score >= 80 %}pass{% else %}warn{% endif %}{% if stage_preview_filename %} pj-thumb-render-qa--inline{% endif %}">
+    <strong>Component Plan: {{ selected.reference_template_id }} - {{ selected.score }}</strong>
+    <ul>
+      {% for item in selected.critique %}
+        <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if visual_qa and not stage_preview_filename %}
+  <div class="pj-thumb-render-qa pj-thumb-render-qa--{{ visual_qa.status }} pj-thumb-render-qa--inline">
+    <strong>Visual QA: {{ visual_qa.status }}</strong>
+    {% if visual_qa.width and visual_qa.height %}
+      <span>{{ visual_qa.width }}x{{ visual_qa.height }}</span>
+    {% endif %}
+    {% if visual_qa.status == 'pass' %}
+      <span>basic render checks passed</span>
+    {% else %}
+      <ul>
+        {% for check in visual_qa.checks if check.status != 'pass' %}
+          <li><code>{{ check.check_id }}</code>: {{ check.message }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if not stage_preview_filename %}
+  <form
+    class="pj-thumb-commit-form pj-thumb-commit-form--inline"
     method="post"
     action="/bridge/projects/{{ slug }}/thumbnail/commit"
     hx-post="/bridge/projects/{{ slug }}/thumbnail/commit"
     hx-target="#thumb-commit-{{ idea_index }}"
     hx-swap="innerHTML"
-    hx-confirm="commit 為最終 thumbnail？舊的會 archive。">
+    hx-confirm="Commit this as the final thumbnail? Existing final will be archived.">
     <input type="hidden" name="run_ts" value="{{ run_ts }}">
     <input type="hidden" name="filename" value="{{ filename }}">
-    <button type="submit" class="pj-btn-primary pj-btn--save">✓ commit 為最終 thumbnail</button>
+    <button type="submit" class="pj-btn-primary pj-btn--save"
+            {% if visual_qa and visual_qa.status == 'fail' %}
+              disabled title="Visual QA failed. Re-render or adjust the idea first."
+            {% endif %}>
+      Commit final thumbnail
+    </button>
   </form>
+  {% endif %}
   <div id="thumb-commit-{{ idea_index }}" class="pj-thumb-commit-slot"></div>
 </figure>

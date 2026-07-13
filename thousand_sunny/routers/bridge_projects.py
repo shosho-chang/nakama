@@ -70,6 +70,14 @@ from shared.project_writer import (
 )
 from thousand_sunny.auth import check_auth
 from thousand_sunny.routers.bridge_project_thumbnails import (
+    _group_pool_by_archetype as _title_pool_group_by_archetype,
+)
+from thousand_sunny.routers.bridge_project_thumbnails import (
+    _load_title_pool as _title_pool_load,
+)
+from thousand_sunny.routers.bridge_project_thumbnails import (
+    get_title_archetypes_for_ui,
+    load_thumbnail_asset_manifest_for_ui,
     prepare_existing_ideas_for_template,
 )
 
@@ -86,8 +94,8 @@ _templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
 # Robin's KB query and DR prompt, so Zoro precedes Research.
 TABS: tuple[tuple[str, str, str], ...] = (
     ("brief", "Brief", "簡介"),
-    ("title-thumbnail", "Title & Thumbnail", "標題與縮圖"),
     ("research", "Research", "研究"),
+    ("title-thumbnail", "Title & Thumbnail", "標題與縮圖"),
     ("hook", "Hook", "鉤子"),
     ("script", "Script", "腳本"),
     ("review", "Review", "審查"),
@@ -323,8 +331,25 @@ async def projects_detail(
     # editable-card partial that HTMX swaps target. Each entry has shape
     # {index, raw, parsed: dict|None, parse_error: str|None}.
     existing_thumb_ideas = prepare_existing_ideas_for_template(
-        entry.raw_frontmatter if isinstance(entry.raw_frontmatter, dict) else {}
+        entry.raw_frontmatter if isinstance(entry.raw_frontmatter, dict) else {},
+        slug=slug,
     )
+
+    # 10 title archetypes + 修修 emotion tags for the T&T tab chip selector.
+    # Cached via load_playbook_index() — cheap to call per render.
+    title_archetypes = get_title_archetypes_for_ui()
+
+    # ADR-033 divergent title pool — load sidecar state for initial render so
+    # the grid + checked state survives page refresh.
+    title_pool_state = _title_pool_load(slug)
+    title_pool_groups = _title_pool_group_by_archetype(title_pool_state.get("pool", []))
+    title_pool_checked = set(title_pool_state.get("checked_ids", []))
+    thumbnail_asset_manifest = load_thumbnail_asset_manifest_for_ui(slug)
+
+    # Final 3 slots from frontmatter title_candidates (padded to 3).
+    final_slots = [str(t) for t in (entry.title_candidates or [])]
+    while len(final_slots) < 3:
+        final_slots.append("")
 
     return _templates.TemplateResponse(
         request,
@@ -342,6 +367,12 @@ async def projects_detail(
             "cached_synth": cached_synth,
             "cached_dr": cached_dr,
             "existing_thumb_ideas": existing_thumb_ideas,
+            "title_archetypes": title_archetypes,
+            "title_pool_iteration": title_pool_state.get("iteration", 0),
+            "title_pool_groups": title_pool_groups,
+            "title_pool_checked": title_pool_checked,
+            "thumbnail_asset_manifest": thumbnail_asset_manifest,
+            "final_slots": final_slots,
             "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
@@ -1099,31 +1130,37 @@ async def projects_research_kb(
             if label:
                 keywords_list.append(label)
 
-    if keywords_list:
-        query = " ".join(keywords_list)
-        query_label = "、".join(keywords_list)
-    else:
-        # Mirror the keyword endpoint: use raw_frontmatter, not the indexer's
-        # slug-fallback search_topic — otherwise an unfilled Brief still
-        # passes through with the slug as bogus query.
-        raw_topic = str(raw_fm.get("search_topic") or "").strip()
+    # Prefer search_topic when present — short broad query gives wider hybrid
+    # recall. Joining all 10 Zoro long-tail keywords as one string narrowed
+    # results to 2 hits on 肌酸的妙用 (2026-05-27), where a single-word
+    # search_topic returned 8 usable hits. Keywords still feed synthesis via
+    # the zoro cache, just not the hybrid query itself.
+    raw_topic = str(raw_fm.get("search_topic") or "").strip()
+    if raw_topic:
         query = raw_topic
         query_label = raw_topic
-
-    if not query:
+        used_keywords = False
+    elif keywords_list:
+        query = " ".join(keywords_list)
+        query_label = "、".join(keywords_list)
+        used_keywords = True
+    else:
         raise HTTPException(
             status_code=400,
             detail="沒有可搜尋的關鍵字；先跑 Zoro 或在 Brief 填 search_topic。",
         )
 
     try:
-        # Over-fetch (top_k=20) so the post-filter still has enough hits to
-        # show after dropping nav/dup/wikilink-only chunks.
+        # Over-fetch (top_k=40) so the post-filter still has enough hits to
+        # show after dropping nav/dup/wikilink-only chunks. Bumped from 20
+        # because broad single-word search_topic queries (e.g. "肌酸") were
+        # leaving too few hits after the off-topic + dedupe passes — user
+        # reported 2 hits on 2026-05-27 where they expected 8+.
         raw_hits = await asyncio.to_thread(
             search_kb,
             query,
             get_vault_path(),
-            top_k=20,
+            top_k=40,
             purpose="youtube",
             engine="hybrid",
         )
@@ -1132,7 +1169,7 @@ async def projects_research_kb(
         raise HTTPException(status_code=500, detail=f"Robin 失敗：{exc}") from exc
 
     # Drop "Related Concepts" / wikilink-only chunks + dedupe by page.
-    hits = _filter_low_value_hits(raw_hits)[:12]
+    hits = _filter_low_value_hits(raw_hits)[:20]
 
     # Hybrid hits don't include LLM-generated relevance_reason. For Tier C
     # research the user wants angle suggestions, so we batch-call Haiku once
@@ -1146,6 +1183,10 @@ async def projects_research_kb(
 
     # Drop LLM-tagged off-topic hits. weak ones survive but get a UI marker.
     hits = [h for h in hits if h.get("relevance_tier") != "off-topic"]
+
+    # Decorate source-Book hits with a humanized book name so the UI can
+    # surface "from <book> · Chapter 4" rather than just "Chapter 4".
+    _decorate_source_book(hits)
 
     timestamp = datetime.now(ZoneInfo("Asia/Taipei")).isoformat(timespec="seconds")
     md_block = _render_kb_markdown(hits, timestamp, query_label)
@@ -1168,7 +1209,7 @@ async def projects_research_kb(
             "hits": hits,
             "timestamp": timestamp,
             "query_label": query_label,
-            "used_keywords": bool(keywords_list),
+            "used_keywords": used_keywords,
         },
     )
 
@@ -1179,7 +1220,7 @@ async def projects_research_kb(
             "hits": hits,
             "timestamp": timestamp,
             "query_label": query_label,
-            "used_keywords": bool(keywords_list),
+            "used_keywords": used_keywords,
         },
     )
 
@@ -1445,6 +1486,26 @@ _LOW_VALUE_HEADINGS = frozenset(
         "延伸閱讀",
     }
 )
+
+
+def _decorate_source_book(hits: list[dict]) -> None:
+    """In-place: derive a humanized book name for KB/Wiki/Sources/Books/<slug>/
+    hits and attach as ``hit['source_book']`` so the UI can render a book
+    title alongside the chapter (otherwise "Chapter 4: Protein" reads with
+    no provenance). Non-Books paths get no decoration.
+    """
+    for h in hits:
+        path = str(h.get("path") or "")
+        if "/Books/" not in path:
+            continue
+        try:
+            tail = path.split("/Books/", 1)[1]
+            book_slug = tail.split("/", 1)[0]
+        except (IndexError, ValueError):
+            continue
+        if not book_slug:
+            continue
+        h["source_book"] = book_slug.replace("-", " ").strip()
 
 
 def _filter_low_value_hits(hits: list[dict]) -> list[dict]:

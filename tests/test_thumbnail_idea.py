@@ -281,3 +281,66 @@ def test_parse_archetype_tags_case_normalised():
 背景：實驗室桌面"""
     parsed = parse_idea(sample)
     assert parsed.archetype_tags == ("T-A2", "T-V4")
+
+
+def test_parse_workflow_metadata_lines():
+    sample = """\
+Idea 1
+archetype: [T-A2, T-V4, JP-3]
+lane: Jeff Clean Tutorial
+recipe: jeff_clean_tutorial_dual_zone
+reference_template: jeff_tool_header_panel
+title_pairing: 13 分鐘學會 80% 的長壽飲食法則
+component: ui_panel
+component_text: 80% 重點 / 三步驟
+host: one third, explaining, gaze toward panel
+viewer_promise: 快速抓到長壽飲食最重要的少數原則
+evidence_fit: 影片會引用研究和可執行步驟，不承諾治療效果
+trust_risk: 避免把 80% 說成精準醫療數字
+大字：80% 重點
+我的表情：解釋
+視覺：template=jeff_tool_header_panel; component=ui_panel; text=80%重點/三步驟; host=one third
+數字/圖示：80%
+背景：白色教學 UI 面板
+素材需求：minimal timer icon; clean dashboard UI kit; checklist vector
+"""
+    parsed = parse_idea(sample)
+    assert parsed.lane == "Jeff Clean Tutorial"
+    assert parsed.recipe_id == "jeff_clean_tutorial_dual_zone"
+    assert parsed.reference_template_id == "jeff_tool_header_panel"
+    assert parsed.title_pairing == "13 分鐘學會 80% 的長壽飲食法則"
+    assert parsed.component_type == "ui_panel"
+    assert parsed.component_text == ("80% 重點", "三步驟")
+    assert parsed.host_directive == "one third, explaining, gaze toward panel"
+    assert parsed.viewer_promise == "快速抓到長壽飲食最重要的少數原則"
+    assert parsed.evidence_fit == "影片會引用研究和可執行步驟，不承諾治療效果"
+    assert parsed.trust_risk == "避免把 80% 說成精準醫療數字"
+    assert parsed.asset_queries == (
+        "minimal timer icon",
+        "clean dashboard UI kit",
+        "checklist vector",
+    )
+
+
+def test_parse_reference_template_strips_title_row_suffix():
+    sample = """\
+hook: test
+emotion: explaining
+visual: template=shosho_benefit_list_card; component=benefit_list_card; host=right
+background: blurred studio
+reference_template: shosho_benefit_list_card (T01)
+"""
+    parsed = parse_idea(sample)
+    assert parsed.reference_template_id == "shosho_benefit_list_card"
+
+
+def test_parse_reference_template_extracts_id_from_title_prefix():
+    sample = """\
+hook: test
+emotion: explaining
+visual: template=shosho_benefit_list_card; component=benefit_list_card; host=right
+background: blurred studio
+reference_template: T01 / shosho_benefit_list_card
+"""
+    parsed = parse_idea(sample)
+    assert parsed.reference_template_id == "shosho_benefit_list_card"

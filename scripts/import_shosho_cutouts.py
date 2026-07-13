@@ -57,16 +57,30 @@ class CutoutImportError(RuntimeError):
     """Raised when a single image fails u2net processing."""
 
 
+def _npx_cmd() -> str:
+    """Locate the npx executable. On Windows it lives at ``npx.cmd`` under
+    ``%APPDATA%\\npm`` (per nodejs installer convention); bare ``npx`` fails
+    from Python subprocess because Windows resolves ``.cmd`` only via shell.
+    Falls back to bare ``npx`` on POSIX where it resolves via PATH.
+    """
+    if os.name == "nt":
+        candidate = Path(os.environ.get("APPDATA", "")) / "npm" / "npx.cmd"
+        if candidate.exists():
+            return str(candidate)
+    return "npx"
+
+
 async def _remove_bg(src: Path, dst: Path) -> None:
     """Call ``npx hyperframes remove-background`` for one image.
 
     Output is written to ``dst``. The CLI's output flag name varies by
     hyperframes version (``-o`` accepted in v0.6.46+); we pass via argv so
-    a shell isn't involved.
+    a shell isn't involved (except on Windows where ``.cmd`` resolution
+    requires ``shell=True`` — see :func:`_npx_cmd`).
     """
     dst.parent.mkdir(parents=True, exist_ok=True)
     argv = [
-        "npx",
+        _npx_cmd(),
         "hyperframes",
         "remove-background",
         str(src),
@@ -74,12 +88,22 @@ async def _remove_bg(src: Path, dst: Path) -> None:
         str(dst),
     ]
     logger.info("u2net %s → %s", src.name, dst)
-    proc = await asyncio.create_subprocess_exec(
-        *argv,
-        cwd=str(_HYPERFRAMES_VIDEO_DIR),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    if os.name == "nt":
+        # Windows: spawn via cmd.exe so .cmd batch resolution works.
+        cmdline = " ".join(f'"{a}"' if " " in a else a for a in argv)
+        proc = await asyncio.create_subprocess_shell(
+            cmdline,
+            cwd=str(_HYPERFRAMES_VIDEO_DIR),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    else:
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            cwd=str(_HYPERFRAMES_VIDEO_DIR),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
     _, stderr_bytes = await proc.communicate()
     if proc.returncode != 0:
         tail = stderr_bytes.decode(errors="replace")[-500:]

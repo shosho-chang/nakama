@@ -45,7 +45,8 @@ def test_build_argv_uses_variables_file_not_inline_variables():
     variables_file = Path("/some/path/v1.variables.json")
     frames_dir = Path("/some/path/_frames_v1")
     argv = _build_argv(YOUTUBE_COMPOSITION, variables_file, frames_dir)
-    assert argv[:3] == ["npx", "hyperframes", "render"]
+    assert Path(argv[0]).name in {"npx", "npx.cmd"}
+    assert argv[1:3] == ["hyperframes", "render"]
     assert YOUTUBE_COMPOSITION in argv
     assert "--variables-file" in argv
     assert str(variables_file) in argv
@@ -154,11 +155,8 @@ def test_render_success_writes_variables_json_and_copies_first_frame(
     # argv shape correctness — cwd was video_dir
     assert len(written_argv) == 1
     argv = written_argv[0]
-    assert argv[0:3] == ("npx", "hyperframes", "render") or argv[0:3] == [
-        "npx",
-        "hyperframes",
-        "render",
-    ]
+    assert Path(argv[0]).name in {"npx", "npx.cmd"}
+    assert argv[1:3] == ["hyperframes", "render"]
 
 
 def test_render_success_variables_json_contains_data_urls(assets: dict[str, Path]):
