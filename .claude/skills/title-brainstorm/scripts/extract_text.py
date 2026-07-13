@@ -14,6 +14,7 @@
     .docx       : 解 zip 讀 word/document.xml，依 <w:p> 分段抽 <w:t> 文字。
     .txt / .md  : 原樣讀入（.md 去掉圖片語法雜訊，保留文字與連結文字）。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -134,10 +135,18 @@ def main() -> int:
         return 2
     text, ext, has_ts = extract(args.path)
     if args.json:
-        print(json.dumps(
-            {"path": args.path, "type": ext, "chars": len(text),
-             "has_timestamps": has_ts, "text": text},
-            ensure_ascii=False))
+        print(
+            json.dumps(
+                {
+                    "path": args.path,
+                    "type": ext,
+                    "chars": len(text),
+                    "has_timestamps": has_ts,
+                    "text": text,
+                },
+                ensure_ascii=False,
+            )
+        )
     else:
         sys.stderr.write(f"[extract_text] type={ext} chars={len(text)} timestamps={has_ts}\n")
         sys.stdout.write(text)
