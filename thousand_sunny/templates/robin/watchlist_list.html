@@ -8,9 +8,14 @@ when the promotion preflight filter would defer them. Linked detail page
 404 until that ships.
 
 Visual chassis: shares ``_chassis_nav`` + Robin header pattern with
-``index.html`` and ``books_library.html``. Reuses ``.file-card`` /
-``.file-name`` / ``.file-meta`` / ``.empty`` from ``robin.css`` so no new
-CSS is introduced — all tokens still resolve to ``--sho-*``. #}
+``index.html`` and ``books_library.html``. Videos render as a YouTube-style
+3-up thumbnail grid (``.watch-grid`` / ``.watch-card`` in ``robin.css``):
+each cell is a 16:9 thumbnail with a duration chip, plus title + channel
+below. Thumbnails are derived from ``video_id`` via YouTube's
+``i.ytimg.com/vi/{id}/hqdefault.jpg`` CDN URL — no new backend field. View
+count is intentionally NOT shown: the watchlist manifest doesn't store it,
+and an add-time snapshot would go stale (operator decision 2026-07-13).
+All colours resolve through ``--sho-*`` tokens. #}
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
@@ -26,7 +31,7 @@ CSS is introduced — all tokens still resolve to ``--sho-*``. #}
 {% from "_chassis_nav.html" import chassis_nav %}
 {% from "_reader_nav.html" import reader_nav %}
 {{ chassis_nav(nav_active='robin') }}
-<div class="container is-narrow">
+<div class="container watch-wide">
 <div class="header">
   <h1><span>🎬</span>Robin · 影片</h1>
 </div>
@@ -35,29 +40,25 @@ CSS is introduced — all tokens still resolve to ``--sho-*``. #}
   <a href="/robin/watchlist/add" class="hub-action">➕ 加影片</a>
 </div>
 {% if rows %}
+  <ul class="watch-grid">
   {% for row in rows %}
-  <article class="file-card" data-video-id="{{ row.video_id }}">
-    <div class="file-top">
-      <div class="file-info">
-        <div class="file-name">
-          <a href="/robin/watchlist/{{ row.video_id }}"
-             class="file-title-link"
-             title="{{ row.title }}">{{ row.title }}</a>
-        </div>
-        <div class="file-meta">
-          {% if row.channel %}<span class="status-source">{{ row.channel }}</span>{% endif %}
-          {% if row.duration %}<span class="sho-mono" aria-label="duration">{{ row.duration }}</span>{% endif %}
-          {% if row.primary_lang and row.primary_lang != 'unknown' %}
-            <span class="sho-tag">{{ row.primary_lang }}</span>
-          {% endif %}
-          {% if row.cast_preview %}
-            <span class="sho-mono" aria-label="cast">{{ row.cast_preview }}</span>
-          {% endif %}
-        </div>
+    <li class="watch-card" data-video-id="{{ row.video_id }}">
+      <a href="/robin/watchlist/{{ row.video_id }}"
+         class="watch-thumb"
+         aria-label="{{ row.title }}{% if row.duration %} · {{ row.duration }}{% endif %}">
+        <img src="https://i.ytimg.com/vi/{{ row.video_id }}/hqdefault.jpg"
+             alt="" loading="lazy" width="480" height="270">
+        {% if row.duration %}<span class="watch-duration" aria-hidden="true">{{ row.duration }}</span>{% endif %}
+      </a>
+      <div class="watch-body">
+        <a href="/robin/watchlist/{{ row.video_id }}"
+           class="watch-title"
+           title="{{ row.title }}">{{ row.title }}</a>
+        {% if row.channel %}<span class="watch-channel">{{ row.channel }}</span>{% endif %}
       </div>
-    </div>
-  </article>
+    </li>
   {% endfor %}
+  </ul>
 {% else %}
   <div class="empty">
     <div style="font-size:2.5rem">🎬</div>
