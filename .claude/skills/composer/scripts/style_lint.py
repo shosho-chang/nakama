@@ -101,7 +101,6 @@ def lint(path: Path, genre: str) -> int:
     bangs = body.count("！")
     semis = body.count("；")
     ni = body.count("你")
-    emoji_hits = [m for m in _EMOJI.finditer(body)]
     bold_pairs = body.count("**") // 2
     dashes = body.count("——")
 

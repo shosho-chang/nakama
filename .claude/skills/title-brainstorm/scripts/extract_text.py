@@ -21,9 +21,9 @@ import html
 import json
 import os
 import re
+import signal
 import sys
 import zipfile
-import signal
 
 try:
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)

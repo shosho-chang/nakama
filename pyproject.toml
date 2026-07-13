@@ -142,6 +142,10 @@ select = ["E", "F", "I", "W"]
 "scripts/fix_playbook_v1_to_v1_1.py" = ["E501"]
 "scripts/splice_playbook_v1.py" = ["E501"]
 
+# composer skill 的 style_lint.py 內嵌簡體字偵測常數與繁中檢查訊息 f-string，
+# 斷行會破壞常數/訊息語意，與上述嵌入型檔案同類——允許 E501。
+".claude/skills/composer/scripts/style_lint.py" = ["E501"]
+
 # Coverage 設定（Phase 6 Slice 1）
 # 預設不在 pytest 加 --cov（避免本地 dev 變慢 ~30%）；CI 額外開
 # 量法：pytest --cov=shared --cov=thousand_sunny --cov=agents --cov-report=term-missing
