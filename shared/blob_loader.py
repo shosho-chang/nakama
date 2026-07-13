@@ -1,8 +1,8 @@
 """Sandboxed file blob loader (ADR-024 Slice 10 / issue #540 — N518a).
 
 Production implementation of the ``BlobLoader`` Protocol consumed by
-``shared.promotion_preflight`` (#511) and ``shared.source_map_builder``
-(#513). Both upstream services declare a ``BlobLoader = Callable[[str],
+``promotion_preflight`` (#511) and ``source_map_builder`` (#513), both under
+``agents.robin.promotion``. Both declare a ``BlobLoader = Callable[[str],
 bytes]`` alias and read variant bytes through it; this module provides the
 production class.
 

@@ -1,253 +1,56 @@
-"""ADR-024 promotion-surface wiring (extracted from ``thousand_sunny.app``).
+"""ADR-024 promotion-surface wiring — thin presentation-side shim.
 
-This module owns the env → adapter construction → service injection path
-for the Promotion Review (#516) and Writing Assist (#517) surfaces.
-``thousand_sunny.app`` calls :func:`load_promotion_wiring_config` and
-:func:`wire_promotion_surfaces` from its FastAPI ``lifespan`` so cold-start
-remains a single function call from the top-level module's perspective.
+ADR-050：組裝知識（env 解析、mode 分支、9-service collaborator graph）下沉到
+Robin 的 composition root ``agents.robin.promotion.factory``。這裡只剩
+presentation 責任：載入 config → 呼叫 factory → 把 service 注入 router
+（``set_service``）。``thousand_sunny.app`` 的 lifespan 介面不變：
+:func:`load_promotion_wiring_config` ＋ :func:`wire_promotion_surfaces`。
 
-**Why this lives here, not in ``app.py``** (N518b C2 carry-over): the
-wiring concern grew to ~150 LOC during N518a. Keeping it inside ``app.py``
-made the file hard to read and impossible to test in isolation without
-spinning up the entire FastAPI lifespan. Moving it to its own module:
+歷史：N518a/b 時代這裡自持 ~120 行 adapter 建構（見 git history）。那使
+``PromotionReviewService`` 的組裝知識被鎖在 web 層，CLI / 未來 agent 無法
+重用 — 與 Robin CONTEXT.md 的 ownership boundary 相違。工廠化後這個檔案
+的存在理由只剩「router 注入是 Sunny 的事」。
 
-- gives the wiring its own home for unit testing the config loader
-  + service constructor independently of the lifespan context manager;
-- makes ``app.py`` focus on routing + middleware, matching its name;
-- mirrors the pattern other Thousand Sunny services use
-  (e.g. ``thousand_sunny.helpers``).
-
-Public surface (no leading underscore — these are intended to be imported
-from ``app.py`` and exercised by tests):
-
-- :class:`PromotionWiringConfig` — frozen dataclass with the resolved env
-  values.
-- :func:`load_promotion_wiring_config` — reads env + applies defaults.
-- :func:`wire_promotion_surfaces` — constructs adapters + services and
-  injects them via ``set_service`` on both routers.
-
-Boundary 5 (W6 / brief §6): all ``os.environ`` / ``os.getenv`` reads happen
-inside :func:`load_promotion_wiring_config`. Adapters NEVER call
-``os.getenv`` themselves; they receive resolved values via constructor
-arguments. The lifespan calls the loader once at startup; tests can call
-the loader directly with a monkeypatched env.
+Backward-compat re-exports：``PromotionWiringConfig`` /
+``load_promotion_wiring_config`` 是既有 lifespan + 測試的公開名，保留為
+factory 對應物的別名。
 """
 
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass
-from pathlib import Path
-
-from shared.config import get_vault_path
+from agents.robin.promotion import factory as _factory
+from agents.robin.promotion.factory import (
+    PromotionConfig as PromotionWiringConfig,
+)
 from shared.log import get_logger
 from thousand_sunny.routers import promotion_review, writing_assist
+
+__all__ = [
+    "PromotionWiringConfig",
+    "load_promotion_wiring_config",
+    "wire_promotion_surfaces",
+]
 
 _logger = get_logger("nakama.web.promotion_wiring")
 
 
-@dataclass(frozen=True)
-class PromotionWiringConfig:
-    """Resolved env-driven config for the ADR-024 promotion surfaces.
-
-    All env reads happen in :func:`load_promotion_wiring_config` (W6 /
-    N518 brief §6 boundary 5); adapter classes themselves never call
-    ``os.getenv``.
-
-    Frozen so accidental mutation in the lifespan body can't invalidate
-    the wiring contract mid-request.
-    """
-
-    vault_root: Path
-    manifest_root: Path
-    reading_context_package_root: Path
-    promotion_mode: str  # "dry_run" | "llm"
-
-
 def load_promotion_wiring_config() -> PromotionWiringConfig:
-    """Read vault + ``NAKAMA_*`` env vars + apply documented defaults.
+    """Delegate to :func:`agents.robin.promotion.factory.load_promotion_config`.
 
-    Vault path resolves via :func:`shared.config.get_vault_path` — the
-    canonical, repo-wide resolver (``VAULT_PATH`` env override → else
-    ``config.yaml`` ``vault_path``). Reading ``VAULT_PATH`` env *only* here was
-    a bug: the VPS keeps ``vault_path`` in ``config.yaml`` and leaves the env
-    unset, so this lone bypass of config.yaml crashed startup with a 502.
-
-    Optional:
-    - ``NAKAMA_PROMOTION_MANIFEST_ROOT`` (default ``{vault}/.promotion-manifests``)
-    - ``NAKAMA_READING_CONTEXT_PACKAGE_ROOT`` (default ``{vault}/.reading-context-packages``)
-    - ``NAKAMA_PROMOTION_MODE`` (default ``"dry_run"``)
-
-    Raises ``RuntimeError`` when the vault is unresolvable (neither env nor
-    config.yaml provides it) — startup must surface bad config loudly so
-    operator visibility is preserved (W4 / brief §6 boundary 7).
+    Kept as a module-level function (not a bare re-export) so the lifespan's
+    import surface stays on this module.
     """
-    # 用 get_vault_path()（VAULT_PATH env 覆寫 → 否則 config.yaml vault_path）解析 vault，
-    # 與全系統一致。原本只讀 VAULT_PATH env、繞過 config.yaml，使 VPS（vault 設在
-    # config.yaml、env 不設）啟動硬爆 502。仍保留「真的解析不到 → 大聲失敗」。
-    try:
-        vault_root = get_vault_path()
-    except (KeyError, FileNotFoundError) as exc:
-        raise RuntimeError(
-            "Vault path unresolved: set vault_path in config.yaml or VAULT_PATH in .env "
-            "(or set DISABLE_ROBIN=1 to skip Robin/promotion wiring)."
-        ) from exc
-    # TODO(N518c-or-decision): confirm with 修修 whether the manifest +
-    # reading-context-package roots should remain under the vault
-    # (current default: {vault}/.promotion-manifests and
-    # {vault}/.reading-context-packages) or move to a sibling
-    # ``data/promotion-manifests`` / ``data/reading-context-packages``
-    # alongside ``data/books``. Vault-local keeps everything in one tree
-    # (good for backup); ``data/`` keeps non-content state out of the
-    # Obsidian sync surface (good for index hygiene). Surfaced as an
-    # open question in PR #540 — do not change defaults without an
-    # explicit decision.
-    manifest_root = Path(
-        os.environ.get(
-            "NAKAMA_PROMOTION_MANIFEST_ROOT",
-            str(vault_root / ".promotion-manifests"),
-        )
-    )
-    package_root = Path(
-        os.environ.get(
-            "NAKAMA_READING_CONTEXT_PACKAGE_ROOT",
-            str(vault_root / ".reading-context-packages"),
-        )
-    )
-    mode = os.environ.get("NAKAMA_PROMOTION_MODE", "dry_run")
-    return PromotionWiringConfig(
-        vault_root=vault_root,
-        manifest_root=manifest_root,
-        reading_context_package_root=package_root,
-        promotion_mode=mode,
-    )
+    return _factory.load_promotion_config()
 
 
 def wire_promotion_surfaces(config: PromotionWiringConfig) -> None:
-    """Construct adapters + services and inject them into both routers.
+    """Build services via the Robin factory and inject them into both routers.
 
     Called from the FastAPI lifespan when Robin is enabled. After this
     helper returns, both ``promotion_review`` and ``writing_assist``
     routers have a wired service and will return 200 (not 503).
-
-    N518b: claim extractor + concept matcher are the deterministic
-    dry-run bodies in ``shared.dry_run_extractor`` /
-    ``shared.dry_run_matcher``. ``POST /promotion-review/.../start`` runs
-    end-to-end against fixture / vault data without any LLM call.
-
-    Raises ``RuntimeError`` for ``NAKAMA_PROMOTION_MODE=llm`` — the LLM
-    adapter is N519, not N518.
     """
-    # Imports are local so the cost (sqlite-backed registry init, schema
-    # parsing) stays out of cold-start when ``DISABLE_ROBIN=1``.
-    from shared.blob_loader import VaultBlobLoader
-    from shared.book_storage import books_root as _books_root
-    from shared.concept_promotion_engine import ConceptPromotionEngine
-    from shared.dry_run_entity_matcher import DryRunEntityMatcher
-    from shared.dry_run_extractor import DryRunClaimExtractor
-    from shared.dry_run_matcher import DryRunConceptMatcher
-    from shared.entity_promotion_engine import EntityPromotionEngine
-    from shared.kb_concept_index_default import VaultKBConceptIndex
-    from shared.kb_entity_index_default import VaultKBEntityIndex
-    from shared.promotion_commit import PromotionCommitService
-    from shared.promotion_preflight import PromotionPreflight
-    from shared.promotion_review_service import (
-        FilesystemManifestStore,
-        PromotionReviewService,
-    )
-    from shared.reading_source_lister import RegistryReadingSourceLister
-    from shared.reading_source_registry import ReadingSourceRegistry
-    from shared.source_map_builder import SourceMapBuilder
-    from shared.source_resolver import RegistrySourceResolver
-    from shared.video_speaker_entity_extractor import VideoSpeakerEntityExtractor
-
-    if config.promotion_mode == "dry_run":
-        extractor = DryRunClaimExtractor()
-        matcher = DryRunConceptMatcher()
-        # ADR-034 v2 PR4 — entity pipeline always uses dry-run placeholders
-        # in this branch. When LLM-backed entity matcher / NER extractor
-        # lands, the "llm" branch below can swap these out independently of
-        # the concept side.
-        # ADR-035 PR4 — VideoSpeakerEntityExtractor surfaces speaker chips
-        # on youtube_video sources as Person EntityCandidates. Returns []
-        # for ebook / inbox_document, so behavior on those kinds is
-        # identical to DryRunEntityExtractor until LLM-backed NER lands.
-        # When that LLM extractor arrives, compose the two (video path +
-        # LLM path) rather than replacing this one.
-        entity_extractor = VideoSpeakerEntityExtractor()
-        entity_matcher = DryRunEntityMatcher()
-    elif config.promotion_mode == "llm":
-        # N519 — LLM-backed claim extraction for ebook / inbox_document. The
-        # concept matcher + entity pipeline stay on their dry-run / video bodies
-        # for now (swapped in independently by later slices, per the dry_run
-        # branch comments above). This is safe because Promotion Review is HITL:
-        # real LLM claims are reviewed alongside placeholder concept/entity
-        # candidates, and nothing is written to KB until 修修 approves each item.
-        from agents.robin.source_map_extractor import LlmClaimExtractor  # noqa: PLC0415
-
-        extractor = LlmClaimExtractor()
-        matcher = DryRunConceptMatcher()
-        entity_extractor = VideoSpeakerEntityExtractor()
-        entity_matcher = DryRunEntityMatcher()
-    else:
-        raise RuntimeError(
-            f"Unknown NAKAMA_PROMOTION_MODE={config.promotion_mode!r}; expected 'dry_run' or 'llm'"
-        )
-
-    registry = ReadingSourceRegistry(vault_root=config.vault_root)
-    # Books live outside the vault (cwd-relative or NAKAMA_BOOKS_DIR) —
-    # see shared.book_storage docstring for the rationale (F06 fix
-    # 2026-05-10). Both the lister (which enumerates {book_id}/ subdirs)
-    # and the blob loader (which resolves data/books/{book_id}/... path
-    # strings emitted by ReadingSourceRegistry) must source the same
-    # books root, otherwise list-view + variant-read see different trees.
-    books_root_path = _books_root()
-    blob_loader = VaultBlobLoader(
-        vault_root=config.vault_root,
-        books_root=books_root_path,
-    )
-    source_resolver = RegistrySourceResolver(registry=registry)
-    source_lister = RegistryReadingSourceLister(
-        registry=registry,
-        inbox_root=config.vault_root / "Inbox" / "web",
-        books_root=books_root_path,
-        watchlist_youtube_root=config.vault_root / "Watchlist" / "youtube",
-    )
-    kb_index = VaultKBConceptIndex(
-        concepts_root=config.vault_root / "KB" / "Wiki" / "Concepts",
-    )
-    kb_entity_index = VaultKBEntityIndex(
-        entities_root=config.vault_root / "KB" / "Wiki" / "Entities",
-    )
-
-    preflight = PromotionPreflight(blob_loader=blob_loader)
-    builder = SourceMapBuilder(blob_loader=blob_loader)
-    concept_engine = ConceptPromotionEngine()
-    entity_engine = EntityPromotionEngine()
-    commit_service = PromotionCommitService()
-    manifest_store = FilesystemManifestStore(config.manifest_root)
-
-    review_service = PromotionReviewService(
-        manifest_store=manifest_store,
-        preflight=preflight,
-        builder=builder,
-        concept_engine=concept_engine,
-        commit_service=commit_service,
-        # Placeholder-only pipeline until N519 — committing the dry-run
-        # extractor's claims would pollute the vault, so the commit path is
-        # disabled in every non-LLM mode. (dry_run is the only currently
-        # runnable mode; "llm" raises above until N519 lands.)
-        commit_enabled=(config.promotion_mode == "llm"),
-        extractor=extractor,
-        matcher=matcher,
-        kb_index=kb_index,
-        source_lister=source_lister,
-        source_resolver=source_resolver,
-        entity_engine=entity_engine,
-        entity_extractor=entity_extractor,
-        entity_matcher=entity_matcher,
-        kb_entity_index=kb_entity_index,
-    )
+    review_service = _factory.build_promotion_review_service(config)
     promotion_review.set_service(review_service)
 
     writing_assist_service = writing_assist._build_default_service(

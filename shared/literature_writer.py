@@ -143,15 +143,15 @@ def _book_chapter_titles(book_id: str) -> dict[str, str]:
         from pathlib import PurePosixPath  # noqa: PLC0415
 
         from shared import book_storage  # noqa: PLC0415
-        from shared.epub_metadata import extract_metadata  # noqa: PLC0415
-        from shared.source_map_builder import (  # noqa: PLC0415
-            _build_toc_title_map,
-            _extract_epub_spine_items,
+        from shared.epub_metadata import (  # noqa: PLC0415
+            build_toc_title_map,
+            extract_metadata,
+            extract_spine_items,
         )
 
         blob = book_storage.read_book_blob(book_id, lang="bilingual")
-        toc = _build_toc_title_map(extract_metadata(blob).toc)
-        spine = _extract_epub_spine_items(blob)
+        toc = build_toc_title_map(extract_metadata(blob).toc)
+        spine = extract_spine_items(blob)
         return {
             f"spine-{i * 2}": toc[PurePosixPath(href).name]
             for i, (href, _xhtml) in enumerate(spine, start=1)

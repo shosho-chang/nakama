@@ -154,7 +154,7 @@ def _split_h2_sections(content: str) -> list[tuple[str, str]]:
 def _strict_load_frontmatter(content: str) -> tuple[dict[str, Any], str]:
     """Return ``(frontmatter_dict, body)`` for a YAML-frontmatter file.
 
-    Mirrors the strict-parse pattern in ``shared.promotion_preflight`` /
+    Mirrors the strict-parse pattern in ``agents.robin.promotion.promotion_preflight`` /
     ``shared.reading_source_registry``: malformed YAML raises
     ``yaml.YAMLError`` so the caller can route to a documented error
     envelope. Empty / missing frontmatter returns ``({}, content)``.

@@ -13,7 +13,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from shared.promotion_preflight import PromotionPreflight
+from agents.robin.promotion.promotion_preflight import PromotionPreflight
+from agents.robin.promotion.source_map_builder import SourceMapBuilder
 from shared.reading_source_lister import RegistryReadingSourceLister
 from shared.reading_source_registry import (
     ReadingSourceRegistry,
@@ -21,7 +22,6 @@ from shared.reading_source_registry import (
 )
 from shared.schemas.reading_source import ReadingSource, SourceVariant
 from shared.schemas.youtube_watchlist import YouTubeWatchlistEntry
-from shared.source_map_builder import SourceMapBuilder
 
 # ── Fixtures ───────────────────────────────────────────────────────────────
 
