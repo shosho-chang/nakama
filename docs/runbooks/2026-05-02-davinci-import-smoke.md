@@ -1,10 +1,10 @@
 ---
 title: DaVinci import smoke — Script-Driven Video FCPXML acceptance gate
-status: active
+status: active（ADR-050 全案落地後更新 2026-07-04 — FCPXML 生成走 `shared/fcpxml/` builder；cleanup subcommand 已接通，指令見 §3）
 created: 2026-05-02
-updated: 2026-05-02
+updated: 2026-07-04
 owner: 修修（Mac DaVinci Resolve operator）
-applies_to: PR #320 (Slice 1) onwards — every PR that touches `agents/brook/script_video/fcpxml_emitter.py` 或 `video/src/parser/`
+applies_to: every PR that touches `shared/fcpxml/` 或 `agents/brook/script_video/cleanup/ripple_fcpxml.py`
 related:
   - ADR-015 docs/decisions/ADR-015-script-driven-video-production.md
   - Plan docs/plans/2026-05-02-script-driven-video-production.md
@@ -70,24 +70,35 @@ ffmpeg -i tests/fixtures/script_video/clap_marker_audio.wav \
 
 ---
 
-## 3. 跑 pipeline
+## 3. 跑 pipeline（指令已隨 ADR-050 更新，2026-07-04）
 
 ```bash
-# Dry-run 驗 input 路徑
-python -m agents.brook.script_video --episode smoke-001 --dry-run
-# 預期: "Episode 'smoke-001': inputs OK"
+# （script-anchored 主線，2026-07-04 起）先產 WhisperX 字級 timestamps（GPU，修修本機跑）
+python scripts/run_whisperx_words.py data/script_video/<id>/aroll-audio.wav \
+       --output data/script_video/<id>/words.json
 
-# 真跑
-python -m agents.brook.script_video --episode smoke-001
-# 預期: "Done: /Users/shosho/Documents/nakama/data/script_video/smoke-001/out/episode.fcpxml"
+# cleanup：words.json 存在 → 單擊掌 + retake 指紋回溯模式；
+# 逐字稿（script.md）也在 → 另產文字全對、時間軸已重映射的 transcript.srt。
+# 無 words.json → 退回 legacy double-clap 音訊模式。
+# episode 目錄需有 episode.yaml，缺會 fail loud 附建立指引。
+python -m agents.brook.script_video --episode smoke-001 cleanup
+# 預期: "cleanup: N ripple-delete cuts → .../out/cleanup.fcpxml"
+
+# 獨立字幕校正（不做 cut 重映射；時間軸沿用 words.json 的音檔）
+python -m agents.brook.script_video --episode <id> correct-srt
+
+# storyboard 主線（乾淨錄影 + transcript.srt 就緒後）
+python -m agents.brook.script_video --episode <id> run
+# 預期: out/episode.fcpxml + out/b_roll_<hash>.mp4
 ```
 
 **自動檢查**：
 
 ```bash
-xmllint --noout data/script_video/smoke-001/out/episode.fcpxml && echo "XML well-formed ✓"
+xmllint --noout data/script_video/smoke-001/out/cleanup.fcpxml && echo "XML well-formed ✓"
 ls -lh data/script_video/smoke-001/out/
-# 預期看到 episode.fcpxml + episode.srt
+# cleanup 產 cleanup.fcpxml；storyboard 主線產 episode.fcpxml（檔名區隔，ADR-050 D4）
+# 各 stage 完成時間戳寫入 episode.yaml 的 stages: map
 ```
 
 ---
@@ -170,3 +181,5 @@ dummy episode 不需 commit；`data/script_video/` 已在 `.gitignore`（PR #320
 | 日期 | Slice / PR | 變更 |
 |---|---|---|
 | 2026-05-02 | Slice 1 / PR #320 | 初版（V1 軌道 + razor cut + ripple delete，無 B-roll） |
+| 2026-07-04 | ADR-050 全案 | 指令改 `python -m agents.brook.script_video`；FCPXML 走 `shared/fcpxml/` builder |
+| 2026-07-04 | script-anchored cleanup | 單擊掌 + WhisperX 字級對稿回溯（ADR-015 §Q3 β 實現）；`correct-srt` 子命令；§3 指令更新 |

@@ -129,7 +129,7 @@ select = ["E", "F", "I", "W"]
 # web_highlight_record.py embeds JS strings (Playwright page.evaluate). Breaking
 # long lines would break JS syntax; the alternative is extracting to .js files.
 # ADR-032 Phase 1.5 may refactor; for now allow E501 on this single file.
-"agents/foundry/lib/web_highlight_record.py" = ["E501"]
+"agents/brook/script_video/lib/web_highlight_record.py" = ["E501"]
 
 # Playbook pipeline scripts embed long multi-line LLM prompts where forced
 # wrapping hurts readability. The prompts are the primary work product — fluff

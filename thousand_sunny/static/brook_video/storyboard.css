@@ -1,0 +1,163 @@
+/* Foundry storyboard table — Bridge UI Tier 2 (ADR-032 §7).
+   Tokens only; no hardcoded colors. Engineering ops density, 1px hairline
+   layout, mono-driven metadata.
+*/
+
+body.sho .foundry-shell {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--sho-s-5) var(--sho-s-4);
+}
+
+body.sho .foundry-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sho-s-4);
+  margin-bottom: var(--sho-s-4);
+  flex-wrap: wrap;
+}
+
+body.sho .foundry-batch {
+  display: flex;
+  gap: var(--sho-s-2);
+  flex-wrap: wrap;
+}
+body.sho .foundry-batch form { margin: 0; }
+
+body.sho .foundry-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--sho-line);
+  background: var(--sho-bg);
+  font-size: 12.5px;
+}
+body.sho .foundry-table th,
+body.sho .foundry-table td {
+  border-bottom: 1px solid var(--sho-line);
+  padding: var(--sho-s-2) var(--sho-s-3);
+  text-align: left;
+  vertical-align: top;
+}
+body.sho .foundry-table th {
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sho-muted);
+  border-bottom: 1px solid var(--sho-line-2);
+  background: var(--sho-bg-2);
+}
+body.sho .foundry-table .col-bid    { width: 36px;  text-align: right; }
+body.sho .foundry-table .col-seg    { width: auto; }
+body.sho .foundry-table .col-layout { width: 110px; }
+body.sho .foundry-table .col-comp   { width: 110px; }
+body.sho .foundry-table .col-chip   { width: 64px; text-align: center; }
+body.sho .foundry-table .col-mp4    { width: 56px; }
+body.sho .foundry-table .col-actions { width: 200px; }
+
+/* Per-row failed state — re-use chip vocabulary; cannot rely on existing
+   --offline color because failed semantics require error red. */
+body.sho .sho-chip--failed {
+  background: color-mix(in oklch, var(--sho-error) 18%, transparent);
+  color: var(--sho-error);
+  border: 1px solid color-mix(in oklch, var(--sho-error) 40%, transparent);
+}
+
+body.sho .foundry-actions summary {
+  cursor: pointer;
+  color: var(--sho-muted);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+body.sho .foundry-actions[open] summary { color: var(--sho-text); }
+
+body.sho .foundry-actions-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sho-s-2);
+  margin-top: var(--sho-s-2);
+  padding-top: var(--sho-s-2);
+  border-top: 1px solid var(--sho-line);
+}
+body.sho .foundry-actions-body form {
+  display: flex;
+  gap: var(--sho-s-1);
+  align-items: stretch;
+  flex-wrap: wrap;
+  margin: 0;
+}
+body.sho .foundry-actions-body input[type=text] {
+  flex: 1;
+  min-width: 60px;
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  padding: 4px 6px;
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+}
+body.sho .foundry-actions-body input[type=text]:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+
+body.sho .foundry-editlog {
+  margin-top: var(--sho-s-6);
+  padding-top: var(--sho-s-4);
+  border-top: 1px solid var(--sho-line);
+}
+body.sho .foundry-editlog-list { list-style: none; padding: 0; margin: var(--sho-s-3) 0 0; }
+body.sho .foundry-editlog-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sho-s-2);
+  padding: var(--sho-s-2) 0;
+  border-bottom: 1px solid var(--sho-line);
+  flex-wrap: wrap;
+}
+body.sho .foundry-editlog-note {
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--sho-text-2);
+}
+body.sho .foundry-promote-form { display: flex; gap: var(--sho-s-1); }
+body.sho .foundry-promote-form input[type=text] {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  padding: 4px 6px;
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+}
+
+/* asset 類 beat 子列（ADR-051 D9 / PR-F）— 來源/候選/出處審核資訊。
+   視覺上屬於上一列 beat：淡底、無上邊線、縮排從 segment 欄起算。 */
+body.sho .foundry-asset-row td {
+  border-top: none;
+  background: var(--sho-bg-2);
+  padding-top: var(--sho-s-1);
+  padding-bottom: var(--sho-s-2);
+}
+body.sho .foundry-asset {
+  display: flex;
+  align-items: center;
+  gap: var(--sho-s-3);
+  flex-wrap: wrap;
+  font-size: 11.5px;
+}
+body.sho .foundry-asset-kind { flex: 0 0 auto; }
+body.sho .foundry-asset-attribution {
+  color: var(--sho-text-2);
+  font-size: 11.5px;
+}
+body.sho .foundry-asset-candidates {
+  display: flex;
+  align-items: center;
+  gap: var(--sho-s-3);
+  flex-wrap: wrap;
+  margin-top: var(--sho-s-1);
+  font-size: 11.5px;
+}

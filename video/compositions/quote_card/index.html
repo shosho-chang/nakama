@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-Hant" data-resolution="landscape">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #000; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="5"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div
+        id="quote_card-host"
+        data-composition-id="quote_card"
+        data-composition-src="compositions/quote_card.html"
+        data-variable-values='{"quote":"致富跟你聰不聰明無關，跟你的行為有關。","attribution":"Morgan Housel","source":"致富心態"}'
+        data-start="0"
+        data-duration="5"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>
