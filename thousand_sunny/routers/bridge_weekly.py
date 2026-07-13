@@ -15,7 +15,7 @@ import contextvars
 import hashlib
 import re
 import unicodedata
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Cookie, Form, Query, Request
@@ -1232,6 +1232,7 @@ async def weekly_task_log(
     # actual elapsed from the live timer; 0/absent → manual full block
     elapsed_seconds: int = Form(0),
     manual: int = Form(0),
+    entry_date: str = Form(""),  # 手動補記：這 block 是哪一天做的（YYYY-MM-DD）；空/今天 = 現在
     week: str = Form(""),
     nakama_auth: str | None = Cookie(None),
 ):
@@ -1244,6 +1245,12 @@ async def weekly_task_log(
         return _task_back(slug, wk_key, err="mode")
 
     end = _now_taipei()
+    # 手動補記可指定「哪一天做的」(entry_date)：週儀表板用 endTime 歸屬週次，不給日期就一律記
+    # 今天，補上週的工作會漏進本週 (修修回報的 bug)。給了過去的日期就把 block 錨在那天的 23:59，
+    # 讓 log_time_entry 的「往回堆疊」把連續 N 顆疊在當天內、不跨到前一天。未來/今天 → 用現在。
+    ed = _parse_entry_date(entry_date) if entry_date.strip() else None
+    if ed is not None and ed < end.date():
+        end = datetime.combine(ed, time(23, 59), tzinfo=TAIPEI)
     # Live timer → actual elapsed (capped at the nominal block, floored at 1 min so
     # a stray 0 doesn't make a non-positive span); manual button → full nominal block.
     if elapsed_seconds and elapsed_seconds > 0:

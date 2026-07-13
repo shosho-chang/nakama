@@ -147,3 +147,24 @@
 /* inside the dock the rollup follows the timer; don't let its auto-margin
  * fight the .tk-dock-right group */
 .tk-dock-right .pj-dock-rollup { margin-left: 0; }
+
+/* 補記日期 — the manual +1 backfill date picker (修修 bug fix: backfill a past-day block
+ * so it lands in the right week). Sits inline with the +1 buttons; caption matches the
+ * .tk-dock-sched-label mono cap, the field matches the ghost .pj-timer-secondary chrome. */
+.tk-backfill { display: inline-flex; align-items: center; gap: 6px; }
+.tk-backfill-cap {
+  font-family: var(--sho-font-mono, ui-monospace, monospace);
+  font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--sho-muted, #888);
+}
+.tk-backfill input[type="date"] {
+  font-family: var(--sho-font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  padding: 5px 8px;
+  border: 1px solid var(--sho-line-2, #555);
+  background: transparent;
+  color: var(--sho-text-2, var(--sho-text));
+  border-radius: var(--sho-r-1, 4px);
+}
+.tk-backfill input[type="date"]:hover { border-color: var(--sho-accent-line, var(--sho-accent)); }
+.tk-backfill input[type="date"]:focus-visible { outline: none; box-shadow: var(--sho-focus); }
