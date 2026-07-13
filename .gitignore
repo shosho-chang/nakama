@@ -85,3 +85,6 @@ cookies.txt
 
 # Cowork session outputs (local only)
 cowork-outputs/
+
+# Playwright MCP page snapshots (tool output, regenerates)
+.playwright-mcp/
