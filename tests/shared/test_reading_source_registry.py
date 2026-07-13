@@ -58,6 +58,7 @@ def _make_book(
     has_original: bool = True,
     title: str = "Alpha",
     author: str | None = "Anon",
+    mode: str = "bilingual-en-zh",
 ) -> Book:
     return Book(
         book_id=book_id,
@@ -68,19 +69,22 @@ def _make_book(
         isbn="9780000000001",
         published_year=2024,
         has_original=has_original,
+        mode=mode,  # type: ignore[arg-type]
         book_version_hash="a" * 64,
         created_at="2026-05-05T00:00:00+00:00",
     )
 
 
-def _store_book(book_id: str, *, has_original: bool, language: str) -> Book:
+def _store_book(
+    book_id: str, *, has_original: bool, language: str, mode: str = "bilingual-en-zh"
+) -> Book:
     """Insert a Book row + write blobs with the given OPF dc:language."""
     from shared.book_storage import insert_book, store_book_files
 
     bilingual_blob = make_epub_blob(EPUBSpec(language=language))
     original_blob = make_epub_blob(EPUBSpec(language=language)) if has_original else None
     store_book_files(book_id, bilingual=bilingual_blob, original=original_blob)
-    book = _make_book(book_id=book_id, has_original=has_original)
+    book = _make_book(book_id=book_id, has_original=has_original, mode=mode)
     insert_book(book)
     return book
 
@@ -136,15 +140,22 @@ def test_resolve_ebook_bilingual_only_true_bilingual(
 
 def test_resolve_ebook_phase1_monolingual_zh(registry: ReadingSourceRegistry, books_dir: Path):
     book_id = "gamma-book"
-    _store_book(book_id, has_original=False, language="zh-TW")
+    _store_book(book_id, has_original=False, language="zh-TW", mode="monolingual-zh")
 
     rs = registry.resolve(BookKey(book_id))
 
     assert rs is not None
     assert rs.primary_lang == "zh-Hant"
     assert rs.variants[0].lang == "zh-Hant"
-    assert rs.has_evidence_track is False
-    assert rs.evidence_reason == "no_original_uploaded"
+    # ADR-024 evidence-track amendment: a monolingual original-language book's
+    # single EPUB IS its authoritative evidence, so it gets an evidence track
+    # and a role="original" variant (unblocks N519 claim extraction for zh
+    # originals). Contrast the bilingual-only case below, which has none.
+    assert rs.has_evidence_track is True
+    assert rs.evidence_reason is None
+    assert len(rs.variants) == 1
+    assert rs.variants[0].role == "original"
+    assert rs.variants[0].path == f"data/books/{book_id}/bilingual.epub"
     assert "lang_pair" not in rs.metadata
 
 

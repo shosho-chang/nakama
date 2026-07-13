@@ -22,6 +22,7 @@ from __future__ import annotations
 import os
 import signal
 import socket
+import sqlite3
 import time
 from types import FrameType
 from typing import Any
@@ -212,6 +213,20 @@ class UsoppDaemon:
                         processed,
                         self.worker_id,
                     )
+            except sqlite3.OperationalError as exc:
+                # Transient state.db contention: Usopp's claim is a writer, and
+                # when a concurrent long writer (Robin's daily ingest) holds
+                # state.db past busy_timeout during the 21:30 UTC cron burst the
+                # claim loses the lock. Benign — the next poll retries and
+                # self-heals. Log WARNING + skip so it neither reads as a daemon
+                # crash nor trips Franky's error_rate_spike every single day.
+                if "database is locked" in str(exc).lower():
+                    logger.warning(
+                        "usopp cycle skipped: state.db locked, retry next poll worker_id=%s",
+                        self.worker_id,
+                    )
+                else:
+                    logger.exception("usopp daemon cycle crashed; backing off")
             except Exception:  # noqa: BLE001 — top-level guard; each row's error already caught
                 logger.exception("usopp daemon cycle crashed; backing off")
             self._sleep_interruptible()

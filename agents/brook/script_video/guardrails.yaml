@@ -1,0 +1,62 @@
+# foundry guardrails — machine-readable allow/deny for planner LLM
+# Loaded by planner.py and enforced by validator before storyboard.yaml write.
+# Human-readable narrative in STYLE.md.
+
+# Phase 1 hard limits（validate-storyboard CLI 強制，ADR-051 panel v2 §11）
+hard_limits:
+  max_cutaways_per_minute: 2.5       # 對齊 planner prompt 預算 ~15-25/10min（panel v2 §8；原 4 與 prompt 互斥）
+  no_consecutive_same_component: true  # 連續兩 beat 不同 component
+  max_consecutive_no_decision: 8     # 連續 8 beat 都 broll_decision=none → 警告太靜
+  kol_max_total_sec_per_source: 20   # ADR-051 D6 護欄：單一 KOL 來源取用總長上限（秒）
+  fcpxml_version_default: "1.10"     # Phase 1 PR-4 DaVinci import fixture 驗
+  fcpxml_version_fallback: ["1.11", "1.9"]
+
+# Phase 1 vocabulary (planner 產出落入此 set 才合法)
+allowed_layouts:
+  - full_aroll
+  - full_broll
+  # Phase 1.5: side_overlay_left, side_overlay_right, pip_corner_br
+
+allowed_render_targets:
+  - hyperframes
+  - asset          # ADR-051 D8: 外部素材（stock / kol / screen_recording / supplied）
+  # Phase 1.5: reader-playwright, web-playwright
+
+allowed_components:
+  hyperframes:
+    - bigstat
+    # ADR-051 v1（compositions 落地於 PR-C，落地前 render 會 fail loud）:
+    - transition_title
+    - book_cover
+    - quote_card
+    - doc_highlight
+    # v1.5（卡 alpha 輸出驗證）: keypoint_overlay
+    # Phase 2: data-chart, world-map, us-map, flowchart, caption-*
+
+# ADR-051 D8: asset 類 beat 的素材種類（broll.asset.kind）
+allowed_asset_kinds:
+  - stock            # Envato（批次交接下載，D5）
+  - kol              # YouTube 名人片段（yt-dlp 指定秒數 + 護欄，D6）
+  - screen_recording # 修修外供螢幕錄影
+  - supplied         # 其他外供檔
+
+# Hyperframes catalog deny-list（anti-hype/anti-slop — see STYLE.md）
+denied_hyperframes_blocks:
+  - apple-money-count       # BigStat fork OK, raw apple-money-count not
+  - instagram-follow
+  - tiktok-follow
+  - yt-lower-third
+  - caption-glitch-rgb
+  - caption-neon-glow
+  - caption-particle-burst
+  - shimmer-sweep           # ok when sparingly used; planner default deny
+  - ridged-burn
+  - cinematic-zoom
+
+# Sentence-level patterns that should NOT trigger B-roll
+none_triggers:
+  - 連接句:                # 「然後」「不過」「但是」開頭、結尾無新資訊
+      pattern: '^(然後|不過|但是|另外|還有|所以)'
+      decision: none
+  - 抽象概念:              # 「身分認同」「動機」「自我」這類無視覺載體的詞
+      decision_default: stay_talking_head

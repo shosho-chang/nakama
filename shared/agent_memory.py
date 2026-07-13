@@ -67,8 +67,33 @@ def _ensure_schema() -> None:
         CREATE INDEX IF NOT EXISTS idx_user_memories_lookup
             ON user_memories(agent, user_id);
     """)
+    # Memory v2 bi-temporal columns (additive migration; safe on existing DBs).
+    # A memory is ACTIVE iff superseded_by IS NULL AND invalidated_at IS NULL.
+    # The reflection pass (shared.memory_reflection) soft-invalidates merged /
+    # contradicted / dropped memories instead of hard-deleting, keeping history
+    # and provenance (superseded_by → the memory that replaced it).
+    existing_cols = {r["name"] for r in conn.execute("PRAGMA table_info(user_memories)")}
+    for col, ddl in (
+        ("superseded_by", "ALTER TABLE user_memories ADD COLUMN superseded_by INTEGER"),
+        ("invalidated_at", "ALTER TABLE user_memories ADD COLUMN invalidated_at TEXT"),
+        ("last_reflected_at", "ALTER TABLE user_memories ADD COLUMN last_reflected_at TEXT"),
+    ):
+        if col not in existing_cols:
+            conn.execute(ddl)
     conn.commit()
     _SCHEMA_INITIALIZED = True
+
+
+# A memory is live (eligible for retrieval / extraction-merge) only when it has
+# not been superseded or invalidated by the reflection pass.
+_ACTIVE_CLAUSE = "superseded_by IS NULL AND invalidated_at IS NULL"
+
+# Fleet-shared scope. Memories about the *person* (not an agent's task) get
+# promoted here by the reflection pass (`share` op) so every agent reads them —
+# the whole fleet "knows you", not just the agent that happened to learn it.
+# Stored as a reserved ``agent`` value; reads for agent X include (X, _FLEET),
+# with X-specific rows overriding fleet rows of the same subject.
+FLEET_AGENT = "_fleet"
 
 
 @dataclass
@@ -135,7 +160,11 @@ def add(
               content = excluded.content,
               confidence = excluded.confidence,
               source_thread = COALESCE(excluded.source_thread, user_memories.source_thread),
-              last_accessed_at = excluded.last_accessed_at""",
+              last_accessed_at = excluded.last_accessed_at,
+              -- Re-asserting a subject revives it: a previously superseded /
+              -- invalidated memory becomes active again (the user said it anew).
+              superseded_by = NULL,
+              invalidated_at = NULL""",
         (agent, user_id, type, subject, content, confidence, source_thread, now, now),
     )
     conn.commit()
@@ -154,18 +183,26 @@ def search(
     query: str | None = None,
     type: MemoryType | None = None,
     limit: int = 20,
+    include_fleet: bool = True,
 ) -> list[UserMemory]:
     """按 confidence × recency 排序回傳記憶。
 
     - ``query``：若給，對 subject/content 做 LIKE 關鍵字匹配
     - ``type``：若給，過濾類型；不在 ``VALID_TYPES`` 內 raise ``ValueError``
+    - ``include_fleet``：預設一併讀 ``FLEET_AGENT`` 共享層，同 subject 時
+      agent 私有的覆蓋 fleet 的（override）。設 False 只看自己（reflection 用）。
     - 命中的記憶 ``last_accessed_at`` 會被更新
     """
     _ensure_schema()
     conn = _get_conn()
 
-    conditions = ["agent = ?", "user_id = ?"]
-    params: list = [agent, user_id]
+    agents = [agent, FLEET_AGENT] if (include_fleet and agent != FLEET_AGENT) else [agent]
+    conditions = [
+        f"agent IN ({','.join('?' * len(agents))})",
+        "user_id = ?",
+        _ACTIVE_CLAUSE,
+    ]
+    params: list = [*agents, user_id]
 
     if type is not None:
         _validate_type(type)
@@ -188,12 +225,25 @@ def search(
                    source_thread, created_at, last_accessed_at
             FROM user_memories
             WHERE {where}
-            ORDER BY {order_expr} DESC
-            LIMIT ?""",
-        [*params, limit],
+            ORDER BY {order_expr} DESC""",
+        params,
     ).fetchall()
 
-    memories = [_row_to_memory(r) for r in rows]
+    # Dedup by subject, preferring the requesting agent's own row over the fleet
+    # copy (X-specific overrides shared), preserving score order. Then apply limit.
+    own_subjects = {r["subject"] for r in rows if r["agent"] == agent}
+    deduped: list = []
+    seen: set[str] = set()
+    for r in rows:
+        subj = r["subject"]
+        if subj in seen:
+            continue
+        if r["agent"] == FLEET_AGENT and subj in own_subjects:
+            continue  # overridden by the agent-specific row
+        seen.add(subj)
+        deduped.append(r)
+
+    memories = [_row_to_memory(r) for r in deduped[:limit]]
 
     if memories:
         now = datetime.now(timezone.utc).isoformat()
@@ -318,7 +368,10 @@ def list_agents_with_memory() -> list[str]:
     """回傳目前有記憶資料的 agent 清單（供 Bridge UI 產 tab 列表）。"""
     _ensure_schema()
     conn = _get_conn()
-    rows = conn.execute("SELECT DISTINCT agent FROM user_memories ORDER BY agent").fetchall()
+    rows = conn.execute(
+        "SELECT DISTINCT agent FROM user_memories WHERE agent != ? ORDER BY agent",
+        (FLEET_AGENT,),
+    ).fetchall()
     return [r["agent"] for r in rows]
 
 
@@ -346,7 +399,8 @@ def list_subjects(agent: str, user_id: str) -> list[str]:
     _ensure_schema()
     conn = _get_conn()
     rows = conn.execute(
-        "SELECT subject FROM user_memories WHERE agent = ? AND user_id = ? ORDER BY subject",
+        f"SELECT subject FROM user_memories WHERE agent = ? AND user_id = ? "
+        f"AND {_ACTIVE_CLAUSE} ORDER BY subject",
         (agent, user_id),
     ).fetchall()
     return [r["subject"] for r in rows]
@@ -357,8 +411,8 @@ def list_subjects_with_content(agent: str, user_id: str) -> list[tuple[str, str]
     _ensure_schema()
     conn = _get_conn()
     rows = conn.execute(
-        """SELECT subject, content FROM user_memories
-           WHERE agent = ? AND user_id = ? ORDER BY subject""",
+        f"""SELECT subject, content FROM user_memories
+           WHERE agent = ? AND user_id = ? AND {_ACTIVE_CLAUSE} ORDER BY subject""",
         (agent, user_id),
     ).fetchall()
     return [(r["subject"], r["content"]) for r in rows]
@@ -405,6 +459,92 @@ def prune(*, confidence_threshold: float = 0.1) -> int:
     cur = conn.execute(
         "DELETE FROM user_memories WHERE confidence < ?",
         (confidence_threshold,),
+    )
+    conn.commit()
+    return cur.rowcount
+
+
+# ── Memory v2: reflection / consolidation primitives ──────────────────────────
+
+
+def list_active(agent: str, user_id: str, *, limit: int = 200) -> list[UserMemory]:
+    """List ACTIVE memories without touching ``last_accessed_at``.
+
+    Used by the reflection pass (``shared.memory_reflection``) — unlike
+    ``search``, it must not bump recency just by reviewing memories, and unlike
+    ``list_all`` it excludes already superseded/invalidated rows.
+    """
+    _ensure_schema()
+    conn = _get_conn()
+    rows = conn.execute(
+        f"""SELECT id, agent, user_id, type, subject, content, confidence,
+                   source_thread, created_at, last_accessed_at
+            FROM user_memories
+            WHERE agent = ? AND user_id = ? AND {_ACTIVE_CLAUSE}
+            ORDER BY created_at ASC
+            LIMIT ?""",
+        (agent, user_id, limit),
+    ).fetchall()
+    return [_row_to_memory(r) for r in rows]
+
+
+def supersede(memory_id: int, *, replaced_by: int | None = None) -> bool:
+    """Soft-invalidate a memory (bi-temporal): keep the row, stamp
+    ``invalidated_at = now`` and point ``superseded_by`` at the memory that
+    replaced it (``None`` = a plain drop / forget). Returns whether a row was hit.
+
+    The reflection pass uses this for all three destructive ops — merge (mark the
+    absorbed duplicates), supersede (contradiction), and drop (noise) — so history
+    and provenance survive instead of being hard-deleted.
+    """
+    _ensure_schema()
+    conn = _get_conn()
+    now = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
+        "UPDATE user_memories SET invalidated_at = ?, superseded_by = ? WHERE id = ?",
+        (now, replaced_by, memory_id),
+    )
+    conn.commit()
+    return cur.rowcount > 0
+
+
+def share(memory_id: int) -> int | None:
+    """Promote a memory to fleet scope so every agent sees it.
+
+    Copies the memory's fields under ``FLEET_AGENT`` (upsert on subject) and
+    supersedes the original — so the fact moves from one agent's private store
+    into the shared layer without duplication (the origin agent still reads it
+    back via the fleet scope). Returns the fleet memory id, or None if the id is
+    missing or already fleet-scoped. Used by the reflection ``share`` op.
+    """
+    m = get(memory_id)
+    if m is None or m.agent == FLEET_AGENT:
+        return None
+    fleet_id = add(
+        FLEET_AGENT,
+        m.user_id,
+        m.type,  # type: ignore[arg-type]  # already validated when first stored
+        m.subject,
+        m.content,
+        confidence=m.confidence,
+    )
+    if fleet_id != memory_id:
+        supersede(memory_id, replaced_by=fleet_id)
+    return fleet_id
+
+
+def mark_reflected(ids: list[int]) -> int:
+    """Stamp ``last_reflected_at = now`` on the given memory ids (audit: when a
+    memory was last reviewed by the consolidation pass). Returns rows affected."""
+    if not ids:
+        return 0
+    _ensure_schema()
+    conn = _get_conn()
+    now = datetime.now(timezone.utc).isoformat()
+    placeholders = ",".join("?" * len(ids))
+    cur = conn.execute(
+        f"UPDATE user_memories SET last_reflected_at = ? WHERE id IN ({placeholders})",
+        [now, *ids],
     )
     conn.commit()
     return cur.rowcount

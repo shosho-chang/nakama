@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>每日回顧 · Centaur KB</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+{# bridge.css 提供 chassis 導覽列 + .sho-btn base。版面 shell 是 body.sho.bridge-page
+   限定，本頁 body 只有 .sho，不會被劫持；只活化 .chassis* 與 .sho-btn*。 #}
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/kb_review.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/kb_canvas.css?v={{ asset_version }}">
+</head>
+<body class="sho">
+{# 全站導覽列（chassis）—— 修補「KB 回顧頁沒有出口、回不去」。KB 高亮；
+   bridge.css 已在 <head> 載入提供樣式，下拉行為走外部 chassis_nav.js（CSP-safe）。 #}
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='kb') }}
+<div class="kb-shell">
+  <main class="kb-main">
+    <div class="vhead">
+      <h1>每日回顧</h1>
+      <span class="meta">{{ review_label }}</span>
+      {% if weekly_sweep %}<span class="sho-tag sho-tag--warning">每週清掃日</span>{% endif %}
+      <button type="button" class="sho-btn sho-btn--ghost kb-newcard" id="kb-newcard">＋ 開新卡</button>
+    </div>
+
+    {% if warnings %}
+    <div class="kb-warn" role="status">
+      <span class="kb-warn-h">資料產生時有提醒</span>
+      <ul>{% for w in warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+
+    {# ===== 待處理靈感卡 ===== #}
+    <div class="sho-kicker">
+      <span class="sho-kicker-t">待處理靈感卡</span>
+      <span class="ln"></span>
+      <span class="c">{{ fleeting|length }} 條</span>
+    </div>
+    <div id="fleet-list">
+      {% if not fleeting %}
+      <div class="kb-empty">
+        <div class="kb-empty-mk">∅</div>
+        <p>沒有待處理的靈感卡。</p>
+      </div>
+      {% endif %}
+    </div>
+
+    {# ===== 候選永久卡 ===== #}
+    <div class="sho-kicker">
+      <span class="sho-kicker-t">候選永久卡</span>
+      <span class="ln"></span>
+      <span class="c">{{ candidates|length }} 條</span>
+    </div>
+    <div id="cand-list">
+      {% if not candidates %}
+      <div class="kb-empty">
+        <div class="kb-empty-mk">🌱</div>
+        <p>昨天沒有夠強的劃線浮上來。</p>
+        <p class="kb-empty-sub">休息日也算數 — 卡片盒長得慢，但複利。</p>
+      </div>
+      {% endif %}
+    </div>
+
+    {# ===== 區 003：每週清掃 ===== #}
+    {% if weekly_sweep %}
+    <div class="sho-kicker">
+      <span class="sho-kicker-t">每週清掃</span>
+      <span class="ln"></span>
+      <span class="c">{{ sweep|length }} 項</span>
+    </div>
+    <div id="sweep-list">
+      {% if not sweep %}
+      <div class="kb-empty"><div class="kb-empty-mk">✓</div><p>沒有需要清掃的卡 — 卡片盒很乾淨。</p></div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </main>
+</div>
+
+<div class="kb-toast" id="toast" role="status" aria-live="polite"></div>
+
+{# ===== 畫布模式（N528）— 全螢幕工作桌 + 卡片場，預設隱藏，開卡時開啟 ===== #}
+<div class="kbc-root" id="kbc-root" hidden>
+  {# 拖曳頂層：正在拖的卡渲染於此，z-index 高於寫作桌四格落點（避免被擋住） #}
+  <div class="kbc-draglayer" id="kbc-draglayer"></div>
+
+  {# 返回候選清單（navbar 移除後唯一可見的退出口；esc 亦可） #}
+  <button type="button" class="kbc-back" id="kbc-back" title="返回候選清單（esc）" aria-label="返回候選清單">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7"/></svg>
+    <span>返回清單</span>
+  </button>
+
+  {# 左：寫作桌 #}
+  <aside class="kbc-desk" id="kbc-desk">
+    <div class="kbc-dz kbc-dz-sup" data-z="support">支持</div>
+    <div class="kbc-dz kbc-dz-ref" data-z="refute">反駁</div>
+    <div class="kbc-dz kbc-dz-ext" data-z="extend">延伸</div>
+    <div class="kbc-dz kbc-dz-src" data-z="src">來源</div>
+    <div class="kbc-lbl">永久卡草稿<span class="q">今日候選 <b id="kbc-i">0</b>/<b id="kbc-n">0</b> · 已寫 <span class="done-n" id="kbc-done">0</span></span></div>
+    <textarea class="kbc-title" id="kbc-title" rows="1" spellcheck="false" aria-label="永久卡檔名（一句宣告句）"></textarea>
+    <div class="kbc-src" id="kbc-src" hidden>
+      <div class="kbc-src-item kbc-src-quote">
+        <span class="kbc-src-tag">畫線</span>
+        <p id="kbc-src-quote"></p>
+      </div>
+      <div class="kbc-src-item kbc-src-note" id="kbc-src-note-row">
+        <span class="kbc-src-tag">你的註解</span>
+        <p id="kbc-src-note"></p>
+        <button type="button" class="kbc-src-use" id="kbc-src-use">用註解當草稿 →</button>
+      </div>
+    </div>
+    <textarea id="kbc-body" aria-label="永久卡正文" placeholder=""></textarea>
+    <div class="kbc-edges" id="kbc-edges-box" hidden>
+      <div class="eh">連結與關係<span class="n" id="kbc-e-n"></span></div>
+      <div id="kbc-edges"></div>
+    </div>
+    <div class="kbc-foot"><span class="n" id="kbc-fn"></span><button class="sho-btn sho-btn--primary" id="kbc-save" type="button">存入 Vault</button></div>
+  </aside>
+
+  {# 右：卡片場 #}
+  <div class="kbc-field" id="kbc-field"></div>
+
+  {# MOC 盒（兜底入口：Robin 沒判定相關的 MOC 都住這裡） #}
+  <button class="kbc-mocbox" id="kbc-mocbox" type="button" title="打開全部 MOC 索引">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true" focusable="false">
+      <path d="M3 8l2-4h14l2 4"/><rect x="3" y="8" width="18" height="12" rx="1.5"/><path d="M9 12h6"/>
+    </svg>
+    <span class="mlbl">MOC 盒</span><span class="mn" id="kbc-mocbox-n"></span>
+  </button>
+
+  {# 回收卡片盒（session-scoped，只記 UI 狀態） #}
+  <div class="kbc-inbox" id="kbc-inbox"><div class="bly">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true" focusable="false">
+      <path d="M3 14l2.5 4h13l2.5-4"/><path d="M3 14h5l1.2 2h5.6l1.2-2h5"/><path d="M12 3v7"/><path d="M9 7.5l3 3 3-3"/>
+    </svg>
+    <span class="blbl">收回</span><span class="bn" id="kbc-bin-n"></span></div></div>
+
+  {# 改關係類型 popover #}
+  <div class="kbc-popover" id="kbc-popover" role="dialog" aria-label="修改關係類型">
+    <div class="ph" id="kbc-pop-name"></div>
+    <div class="types">
+      <button type="button" class="ptype" data-t="support">支持</button><button type="button" class="ptype" data-t="refute">反駁</button>
+      <button type="button" class="ptype" data-t="extend">延伸</button><button type="button" class="ptype" data-t="src">來源</button>
+    </div>
+  </div>
+
+  <div class="kbc-empty-all" id="kbc-empty-all" hidden>今日候選都處理完了 🎉</div>
+</div>
+
+{# CSP-safe data island: non-executable JSON consumed by /static/kb_review.js + kb_canvas.js #}
+<script id="kb-data" type="application/json">{{ bundle_json | safe }}</script>
+<script src="/static/kb_review.js?v={{ asset_version }}"></script>
+<script src="/static/kb_canvas.js?v={{ asset_version }}"></script>
+</body>
+</html>

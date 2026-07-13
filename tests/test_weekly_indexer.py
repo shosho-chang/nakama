@@ -378,3 +378,182 @@ def test_bridge_weekly_route_renders(vault, monkeypatch):
     assert "W23" in r.text
     assert "wk-days" in r.text  # daily cards container rendered
     assert "nav_active" not in r.text  # macro expanded, not literal
+
+
+def test_priority_surfaced_with_label(tmp_path, monkeypatch):
+    # v3-I follow-up (修修): WeeklyTask now reads `priority`; label maps low/normal/high.
+    monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
+    for fn, pri in (("高.md", "high"), ("低.md", "low"), ("未.md", None)):
+        fm = {
+            "title": fn[:-3],
+            "category": "work",
+            "預估🍅": 1,
+            "scheduled": "2026-06-01",
+            "status": "to-do",
+            "tags": ["task"],
+        }
+        if pri:
+            fm["priority"] = pri
+        _task(tmp_path, fn, fm)
+    by = {t.name: t for t in WeeklyIndexer(tmp_path).read_tasks()}
+    assert by["高"].priority == "high" and by["高"].priority_label == "High"
+    assert by["低"].priority == "low" and by["低"].priority_label == "Low"
+    assert by["未"].priority == "normal" and by["未"].priority_label == "Medium"  # default
+
+
+def test_important_tasks_uncapped(tmp_path, monkeypatch):
+    # 修修: 本週重要任務 no longer capped at 3 — 4 weekly_priority tasks all surface.
+    monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
+    for i in range(4):
+        _task(
+            tmp_path,
+            f"要事{i}.md",
+            {
+                "title": f"要事{i}",
+                "category": "work",
+                "預估🍅": 1,
+                "scheduled": "2026-06-01",
+                "weekly_priority": "2026-05-31",
+                "status": "to-do",
+                "tags": ["task"],
+            },
+        )
+    v = WeeklyIndexer(tmp_path).view(week_for_date(date(2026, 6, 1)))
+    assert len(v.top3) == 4
+    assert len(v.important_slugs) == 4
+
+
+def test_daily_merges_growth_into_other_and_carries_meta(tmp_path, monkeypatch):
+    # 修修: daily card has 3 columns work/health/其他; 自我進修(growth) folds into 其他(misc);
+    # items carry priority + project.
+    monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
+    _task(
+        tmp_path,
+        "讀書.md",
+        {
+            "title": "讀書",
+            "category": "growth",
+            "預估🍅": 1,
+            "scheduled": "2026-06-01",
+            "status": "to-do",
+            "tags": ["task"],
+        },
+    )
+    _task(
+        tmp_path,
+        "專案A - 寫稿.md",
+        {
+            "title": "專案A - 寫稿",
+            "projects": ["[[專案A]]"],
+            "category": "work",
+            "預估🍅": 2,
+            "scheduled": "2026-06-01",
+            "priority": "high",
+            "status": "to-do",
+            "tags": ["task"],
+        },
+    )
+    v = WeeklyIndexer(tmp_path).view(week_for_date(date(2026, 6, 1)))
+    mon = next(d for d in v.days if d["date"] == "2026-06-01")
+    cats = {c["slug"]: c for c in mon["categories"]}
+    assert set(cats) == {"work", "health", "misc"}  # no standalone growth column
+    other = cats["misc"]
+    assert other["label"] == "其他"  # misc column relabelled
+    assert "讀書" in [it["name"] for it in other["items"]]  # growth task folded in
+    item = cats["work"]["items"][0]
+    assert item["priority"] == "high" and item["priority_label"] == "High"
+    assert item["project"] == "專案A"
+
+
+def test_est_pomodoros_falls_back_to_plan_sum(tmp_path):
+    """A calendar-linked task created without 預估🍅 carries its estimate only on
+    plan[] — find_task should sum those so 預估 shows a real number, not 0/"-"
+    (regression: 知識衛星試錄課程影片 had plan pomodoros 12 but no 預估🍅 → 預估 "-")."""
+    _task(
+        tmp_path,
+        "知識衛星試錄課程影片.md",
+        {
+            "title": "知識衛星試錄課程影片",
+            "status": "to-do",
+            "category": "work",
+            "plan": [
+                {
+                    "date": "2026-06-16",
+                    "pomodoros": 12,
+                    "start": "2026-06-16T10:30:00+08:00",
+                    "end": "2026-06-16T16:30:00+08:00",
+                    "calendar_event_id": "evt123",
+                }
+            ],
+            "tags": ["task"],
+        },
+    )
+    t = WeeklyIndexer(tmp_path).find_task("知識衛星試錄課程影片")
+    assert t.est_pomodoros == 12
+
+
+def test_explicit_estimate_wins_over_plan_sum(tmp_path):
+    """An explicit 預估🍅 must not be overridden by the plan-sum fallback."""
+    _task(
+        tmp_path,
+        "estimate-task.md",
+        {
+            "title": "estimate-task",
+            "status": "to-do",
+            "category": "work",
+            "預估🍅": 3,
+            "plan": [{"date": "2026-06-16", "pomodoros": 12}],
+            "tags": ["task"],
+        },
+    )
+    t = WeeklyIndexer(tmp_path).find_task("estimate-task")
+    assert t.est_pomodoros == 3
+
+
+def test_plan_entry_done_drives_daily_crossout(tmp_path, monkeypatch):
+    # Regression (修修): a plan entry's `done: true` must surface as done_on(d) / the
+    # daily item's done — _as_int treats bool as 0, so `done` is parsed truthily instead.
+    monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
+    _task(
+        tmp_path,
+        "肌酸的妙用 - Film.md",
+        {
+            "title": "肌酸的妙用 - Film",
+            "projects": ["[[肌酸的妙用]]"],
+            "category": "work",
+            "預估🍅": 1,
+            "status": "to-do",
+            "plan": [{"date": "2026-06-01", "pomodoros": 1, "done": True}],
+            "tags": ["task"],
+        },
+    )
+    t = WeeklyIndexer(tmp_path).find_task("肌酸的妙用 - Film")
+    assert t.done_on(date(2026, 6, 1)) is True  # per-day done
+    assert t.done is False  # whole task still open
+    v = WeeklyIndexer(tmp_path).view(week_for_date(date(2026, 6, 1)))
+    mon = next(d for d in v.days if d["date"] == "2026-06-01")
+    item = next(c for c in mon["categories"] if c["slug"] == "work")["items"][0]
+    assert item["done"] is True  # daily item crosses out
+
+
+def test_all_view_buckets_by_schedule(tmp_path):
+    """N541: 全部 splits not-done tasks into this-week / other-scheduled / unscheduled,
+    with 1+2 sorted nearest→furthest by date. Week of 2026-06-01..06-07."""
+    base = {"status": "to-do", "category": "work", "tags": ["task"]}
+
+    def mk(fname: str, title: str, **extra):
+        _task(tmp_path, fname, {**base, "title": title, **extra})
+
+    mk("A 本週.md", "A 本週", plan=[{"date": "2026-06-05", "pomodoros": 2}])
+    mk("B 本週早.md", "B 本週早", plan=[{"date": "2026-06-02", "pomodoros": 1}])
+    mk("C 未來.md", "C 未來", plan=[{"date": "2026-06-20", "pomodoros": 1}])
+    mk("D 過去.md", "D 過去", scheduled="2026-05-20")
+    mk("E 未排.md", "E 未排")
+    mk("F 完成.md", "F 完成", status="done")  # excluded
+
+    v = WeeklyIndexer(tmp_path).view(week_for_date(date(2026, 6, 1)))
+    assert [t.name for t in v.all_this_week] == ["B 本週早", "A 本週"]  # nearest date first
+    # other-scheduled sorts by earliest date: 過去(05-20) before 未來(06-20)
+    assert [t.name for t in v.all_other_scheduled] == ["D 過去", "C 未來"]
+    assert [t.name for t in v.all_unscheduled] == ["E 未排"]
+    assert v.backlog_count == 5  # all not-done; F excluded

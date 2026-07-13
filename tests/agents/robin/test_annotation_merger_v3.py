@@ -5,8 +5,8 @@ with discriminated items: ``HighlightV3`` / ``AnnotationV3`` / ``ReflectionV3``.
 The merger must route V3 sets correctly:
 
 - V3 book set (``book_id is not None``):
-  * ``ReflectionV3`` → ``KB/Wiki/Sources/Books/{book_id}/notes.md``
-    via ``book_notes_writer.write_notes``
+  * whole set → ``KB/Literature/{slug}.md`` via ``literature_writer`` (N521;
+    replaces the legacy ``book_notes_writer`` notes.md path)
   * ``AnnotationV3`` → Concept page ``## 讀者註記`` via _ask_merger_llm_v2
   * ``HighlightV3`` → skipped (ADR-017 §Q4)
 - V3 paper set (``book_id is None``):
@@ -32,6 +32,15 @@ def vault(tmp_path: Path, monkeypatch) -> Path:
     (tmp_path / "KB" / "Wiki" / "Concepts").mkdir(parents=True)
     (tmp_path / "KB" / "Annotations").mkdir(parents=True)
     return tmp_path
+
+
+@pytest.fixture(autouse=True)
+def _stub_kb_search(monkeypatch):
+    """literature_writer 的 ``🔗 KB 相關`` 段呼叫 search_kb；測試環境 stub 掉避免
+    依賴 kb_index.db。"""
+    import agents.robin.kb_search as kb
+
+    monkeypatch.setattr(kb, "search_kb", lambda *a, **k: [], raising=False)
 
 
 def _write_concept_stub(vault: Path, slug: str = "anchoring-effect") -> Path:
@@ -150,8 +159,12 @@ def _write_v3_paper_set(vault: Path, slug: str = "paper-x") -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_n3_v3_book_routes_reflections_to_notes_md(vault: Path, monkeypatch):
-    """V3 book set: reflections land in notes.md grouped by chapter_ref."""
+def test_n3_v3_book_routes_reflections_to_literature_note(vault: Path, monkeypatch):
+    """V3 book set: whole set renders into KB/Literature/{slug}.md (N521).
+
+    Replaces the legacy notes.md assertion — reflections now appear as 章末心得
+    in the unified Literature Note, grouped by chapter.
+    """
     import agents.robin.annotation_merger as merger_mod
 
     _write_concept_stub(vault, "anchoring-effect")
@@ -165,12 +178,15 @@ def test_n3_v3_book_routes_reflections_to_notes_md(vault: Path, monkeypatch):
     )
     merger_mod.sync_annotations_for_slug("how-to-live")
 
-    notes_path = vault / "KB" / "Wiki" / "Sources" / "Books" / "how-to-live" / "notes.md"
-    assert notes_path.exists(), f"notes.md not written at {notes_path}"
-    body = notes_path.read_text(encoding="utf-8")
+    lit_path = vault / "KB" / "Literature" / "how-to-live.md"
+    assert lit_path.exists(), f"Literature Note not written at {lit_path}"
+    body = lit_path.read_text(encoding="utf-8")
+    assert "type: literature" in body
     assert "Long V3 reflection prose" in body
-    assert "ch03.xhtml" in body
-    assert "book_id: how-to-live" in body
+    assert "**章末心得**" in body
+    # legacy notes.md must NOT be written anymore
+    notes_path = vault / "KB" / "Wiki" / "Sources" / "Books" / "how-to-live" / "notes.md"
+    assert not notes_path.exists(), "legacy notes.md should be retired (N521)"
 
 
 def test_n3_v3_book_routes_annotations_to_dukezhuji_section(vault: Path, monkeypatch):
@@ -221,8 +237,9 @@ def test_n3_v3_book_skips_highlights(vault: Path, monkeypatch):
     assert types_seen == {"annotation"} or types_seen == set()
 
 
-def test_n3_v3_book_drops_reflections_without_chapter_ref(vault: Path, monkeypatch, caplog):
-    """ReflectionV3 with chapter_ref=None is dropped + logged warning before write_notes."""
+def test_n3_v3_book_keeps_reflections_without_chapter_ref(vault: Path, monkeypatch):
+    """N521: reflections without chapter_ref are no longer dropped — the Literature
+    writer groups them under an ``unknown`` chapter section (no data loss)."""
     import agents.robin.annotation_merger as merger_mod
     from shared.annotation_store import AnnotationStore
     from shared.schemas.annotations import AnnotationSetV3, ReflectionV3
@@ -239,7 +256,7 @@ def test_n3_v3_book_drops_reflections_without_chapter_ref(vault: Path, monkeypat
                 ReflectionV3(
                     chapter_ref=None,
                     cfi_anchor=None,
-                    body="reflection without chapter — should be dropped",
+                    body="reflection without chapter — kept under unknown",
                     created_at=ts,
                     modified_at=ts,
                 ),
@@ -256,16 +273,16 @@ def test_n3_v3_book_drops_reflections_without_chapter_ref(vault: Path, monkeypat
     )
     monkeypatch.setattr(merger_mod, "_ask_merger_llm_v2", lambda items, _slugs: {}, raising=False)
 
-    with caplog.at_level(logging.WARNING, logger="nakama.robin.annotation_merger"):
-        merger_mod.sync_annotations_for_slug("book-orphan")
+    merger_mod.sync_annotations_for_slug("book-orphan")
 
-    notes_path = vault / "KB" / "Wiki" / "Sources" / "Books" / "book-orphan" / "notes.md"
-    body = notes_path.read_text(encoding="utf-8")
+    lit_path = vault / "KB" / "Literature" / "book-orphan.md"
+    body = lit_path.read_text(encoding="utf-8")
     assert "kept reflection" in body
-    assert "without chapter" not in body
+    assert "reflection without chapter — kept under unknown" in body
+    # 章節 heading 用乾淨的「章節 N」，不外露 raw key（book-orphan 無 EPUB → fallback）
+    assert "### ch01.xhtml" not in body
+    assert "### 章節" in body
     assert "## None" not in body
-    # Warning surfaced
-    assert any("dropping reflections without chapter_ref" in r.getMessage() for r in caplog.records)
 
 
 # ---------------------------------------------------------------------------
@@ -435,16 +452,18 @@ def test_n2_v2_book_set_unchanged_after_v3_branch(vault: Path, monkeypatch):
     )
     merger_mod.sync_annotations_for_slug("v2-book")
 
-    # V2 still produces the ## 讀者註記 + notes.md outputs unchanged.
+    # V2 still produces the ## 讀者註記 output; the comment prose now lands in
+    # the unified Literature Note (N521) instead of the retired notes.md.
     body = (vault / "KB" / "Wiki" / "Concepts" / "anchoring-effect.md").read_text(encoding="utf-8")
     assert "## 讀者註記" in body
     assert "<!-- annotation-from: v2-book -->" in body
 
-    notes_path = vault / "KB" / "Wiki" / "Sources" / "Books" / "v2-book" / "notes.md"
-    assert notes_path.exists()
-    notes_body = notes_path.read_text(encoding="utf-8")
-    assert "V2 comment prose" in notes_body
-    assert "ch01.xhtml" in notes_body
+    lit_path = vault / "KB" / "Literature" / "v2-book.md"
+    assert lit_path.exists()
+    lit_body = lit_path.read_text(encoding="utf-8")
+    assert "V2 comment prose" in lit_body
+    assert "**章末心得**" in lit_body
+    assert not (vault / "KB" / "Wiki" / "Sources" / "Books" / "v2-book" / "notes.md").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -510,10 +529,10 @@ def test_v3_book_set_missing_book_id_returns_error_not_paper_route(vault: Path, 
 # ---------------------------------------------------------------------------
 
 
-def test_v3_book_empty_string_chapter_ref_passed_through_not_dropped(
-    vault: Path, monkeypatch, caplog
-):
-    """Empty-string chapter_ref reaches notes.md (V2 parity); only None drops."""
+def test_v3_book_all_reflections_survive_in_literature_note(vault: Path, monkeypatch):
+    """N521: both empty-string and None chapter_ref reflections survive into the
+    Literature Note (no data loss). None-chapter reflections group under the
+    ``unknown`` chapter section rather than being dropped."""
     import agents.robin.annotation_merger as merger_mod
     from shared.annotation_store import AnnotationStore
     from shared.schemas.annotations import AnnotationSetV3, ReflectionV3
@@ -537,7 +556,7 @@ def test_v3_book_empty_string_chapter_ref_passed_through_not_dropped(
                 ReflectionV3(
                     chapter_ref=None,
                     cfi_anchor=None,
-                    body="None-chapter reflection should be dropped",
+                    body="None-chapter reflection also survives now",
                     created_at=ts,
                     modified_at=ts,
                 ),
@@ -547,13 +566,9 @@ def test_v3_book_empty_string_chapter_ref_passed_through_not_dropped(
     )
     monkeypatch.setattr(merger_mod, "_ask_merger_llm_v2", lambda items, _slugs: {}, raising=False)
 
-    with caplog.at_level(logging.WARNING, logger="nakama.robin.annotation_merger"):
-        merger_mod.sync_annotations_for_slug("emptychap-book")
+    merger_mod.sync_annotations_for_slug("emptychap-book")
 
-    notes_path = vault / "KB" / "Wiki" / "Sources" / "Books" / "emptychap-book" / "notes.md"
-    body = notes_path.read_text(encoding="utf-8")
-    # Empty-string chapter_ref survived (V2 parity — degenerate '## ' heading is OK)
+    lit_path = vault / "KB" / "Literature" / "emptychap-book.md"
+    body = lit_path.read_text(encoding="utf-8")
     assert "empty-chapter reflection must survive" in body
-    # None-chapter dropped + warned
-    assert "None-chapter reflection should be dropped" not in body
-    assert any("dropping reflections without chapter_ref" in r.getMessage() for r in caplog.records)
+    assert "None-chapter reflection also survives now" in body

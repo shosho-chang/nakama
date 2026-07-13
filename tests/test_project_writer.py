@@ -326,12 +326,33 @@ class TestCreateTask:
         assert fm["title"] == "t - Filming"
         assert fm["status"] == "to-do"
         assert fm["priority"] == "high"
+        assert fm["category"] == "work"  # default
         assert fm["projects"] == ["[[t]]"]
         assert fm["tags"] == ["task"]
         assert fm["預估🍅"] == 6
         assert fm["✅"] is False
         assert "dateCreated" in fm
         assert "dateModified" in fm
+
+    def test_standalone_task_no_project(self, vault: Path):
+        # v3-G: project_slug=None → bare {title}.md, no filename prefix, no projects key.
+        path = create_task(vault_root=vault, project_slug=None, task_name="獨立任務")
+        assert path.name == "獨立任務.md"
+        fm = yaml.safe_load(path.read_text(encoding="utf-8").split("---")[1])
+        assert fm["title"] == "獨立任務"
+        assert "projects" not in fm
+        assert fm["category"] == "work"
+
+    def test_blank_project_is_standalone(self, vault: Path):
+        path = create_task(vault_root=vault, project_slug="", task_name="也是獨立")
+        assert path.name == "也是獨立.md"
+        fm = yaml.safe_load(path.read_text(encoding="utf-8").split("---")[1])
+        assert "projects" not in fm
+
+    def test_category_written(self, vault: Path):
+        path = create_task(vault_root=vault, project_slug="t", task_name="冥想", category="health")
+        fm = yaml.safe_load(path.read_text(encoding="utf-8").split("---")[1])
+        assert fm["category"] == "health"
 
     def test_default_priority_and_pomodoros(self, vault: Path):
         path = create_task(vault_root=vault, project_slug="t", task_name="後製校色")
@@ -368,6 +389,109 @@ class TestCreateTask:
         path = create_task(vault_root=vault, project_slug="t", task_name="腳本初稿")
         assert path.exists()
         assert path.name == "t - 腳本初稿.md"
+
+
+class TestRenameTask:
+    """v3-I.3: a true rename — frontmatter title + filename (slug) + linked Google
+    event summaries — preserving the project prefix."""
+
+    def _fm(self, path: Path) -> dict:
+        return yaml.safe_load(path.read_text(encoding="utf-8").split("---")[1])
+
+    def test_rename_standalone(self, vault: Path):
+        from shared.project_writer import rename_task
+
+        old = create_task(vault_root=vault, project_slug=None, task_name="打錯字")
+        new_path, errs = rename_task(vault_root=vault, old_slug="打錯字", new_title="正確標題")
+        assert errs == 0
+        assert new_path.name == "正確標題.md"
+        assert not old.exists()
+        fm = self._fm(new_path)
+        assert fm["title"] == "正確標題"
+        assert "projects" not in fm
+
+    def test_rename_keeps_project_prefix(self, vault: Path):
+        from shared.project_writer import rename_task
+
+        create_task(vault_root=vault, project_slug="t", task_name="Filming")
+        new_path, _ = rename_task(vault_root=vault, old_slug="t - Filming", new_title="Filming v2")
+        assert new_path.name == "t - Filming v2.md"
+        fm = self._fm(new_path)
+        assert fm["title"] == "t - Filming v2"
+        assert fm["projects"] == ["[[t]]"]
+
+    def test_rename_legacy_filename_prefix_no_frontmatter(self, vault: Path):
+        # Pre-v3-H tasks: filename has "{project} - " but projects: is absent — the
+        # prefix must survive a rename (it's the only project link they have).
+        from shared.project_writer import rename_task
+
+        legacy = vault / "TaskNotes" / "Tasks" / "t - Pre-production.md"  # from the fixture
+        new_path, _ = rename_task(
+            vault_root=vault, old_slug="t - Pre-production", new_title="前期製作"
+        )
+        assert new_path.name == "t - 前期製作.md"
+        assert not legacy.exists()
+
+    def test_rename_duplicate_raises(self, vault: Path):
+        from shared.project_writer import rename_task
+
+        create_task(vault_root=vault, project_slug="t", task_name="A")
+        create_task(vault_root=vault, project_slug="t", task_name="B")
+        with pytest.raises(ProjectWriteError, match="already exists"):
+            rename_task(vault_root=vault, old_slug="t - A", new_title="B")
+
+    def test_rename_empty_raises(self, vault: Path):
+        from shared.project_writer import rename_task
+
+        create_task(vault_root=vault, project_slug="t", task_name="X")
+        with pytest.raises(ProjectWriteError, match="empty"):
+            rename_task(vault_root=vault, old_slug="t - X", new_title="   ")
+
+    def test_rename_retitles_linked_events(self, vault: Path, monkeypatch):
+        from shared.project_writer import rename_task
+
+        path = create_task(vault_root=vault, project_slug="t", task_name="老名字")
+        # inject a linked plan entry (as the 排入 flow would write)
+        text = path.read_text(encoding="utf-8")
+        fm, body = text.split("---")[1], "---".join(text.split("---")[2:])
+        data = yaml.safe_load(fm)
+        data["plan"] = [{"date": "2026-06-09", "pomodoros": 2, "calendar_event_id": "evt_1"}]
+        path.write_text(
+            "---\n" + yaml.dump(data, allow_unicode=True) + "---" + body, encoding="utf-8"
+        )
+
+        calls = []
+        monkeypatch.setattr(
+            "shared.google_calendar.update_event",
+            lambda eid, **kw: calls.append((eid, kw)),
+        )
+        new_path, errs = rename_task(vault_root=vault, old_slug="t - 老名字", new_title="新名字")
+        assert errs == 0
+        assert new_path.name == "t - 新名字.md"
+        assert calls == [
+            ("evt_1", {"title": "t - 新名字", "idempotency_key": "t - 新名字@2026-06-09"})
+        ]
+
+    def test_rename_calendar_failure_is_soft(self, vault: Path, monkeypatch):
+        from shared.project_writer import rename_task
+
+        path = create_task(vault_root=vault, project_slug="t", task_name="會掛")
+        text = path.read_text(encoding="utf-8")
+        fm, body = text.split("---")[1], "---".join(text.split("---")[2:])
+        data = yaml.safe_load(fm)
+        data["plan"] = [{"date": "2026-06-09", "pomodoros": 2, "calendar_event_id": "evt_x"}]
+        path.write_text(
+            "---\n" + yaml.dump(data, allow_unicode=True) + "---" + body, encoding="utf-8"
+        )
+
+        def _boom(eid, **kw):
+            raise RuntimeError("calendar down")
+
+        monkeypatch.setattr("shared.google_calendar.update_event", _boom)
+        new_path, errs = rename_task(vault_root=vault, old_slug="t - 會掛", new_title="改好了")
+        # vault rename is authoritative — it proceeds despite the calendar failure
+        assert new_path.name == "t - 改好了.md"
+        assert errs == 1
 
 
 class TestPopLastTimeentry:

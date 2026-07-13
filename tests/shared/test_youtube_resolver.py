@@ -51,8 +51,10 @@ def _make_entry(
     write_transcript: bool = True,
     manifest_video_id: str | None = None,
 ) -> Path:
-    """Build ``Watchlist/youtube/{video_id}/`` with manifest.json + optional
-    transcript stub. Returns the entry directory."""
+    """Build ``Watchlist/youtube/{video_id}/manifest.json`` + (optional)
+    transcript stub at ``KB/Raw/Videos/{video_id}.vtt`` (ADR-046 Slice 0A —
+    raw content in the unified raw layer, manifest stays in Watchlist).
+    Returns the entry directory."""
     entry_dir = vault / "Watchlist" / "youtube" / video_id
     entry_dir.mkdir(parents=True, exist_ok=True)
     manifest = {
@@ -71,7 +73,11 @@ def _make_entry(
         json.dumps(manifest, ensure_ascii=False), encoding="utf-8"
     )
     if write_transcript:
-        (entry_dir / transcript_path).write_text(
+        # Raw content lands in KB/Raw/Videos/{video_id}.vtt (by convention,
+        # not the manifest transcript_path which is now vestigial).
+        raw_videos = vault / "KB" / "Raw" / "Videos"
+        raw_videos.mkdir(parents=True, exist_ok=True)
+        (raw_videos / f"{video_id}.vtt").write_text(
             "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nhello world\n",
             encoding="utf-8",
         )
@@ -96,7 +102,7 @@ def test_resolve_youtube_happy_path(registry: ReadingSourceRegistry, vault: Path
     variant = rs.variants[0]
     assert variant.role == "original"
     assert variant.format == "vtt"
-    assert variant.path == "Watchlist/youtube/dQw4w9WgXcQ/transcript.vtt"
+    assert variant.path == "KB/Raw/Videos/dQw4w9WgXcQ.vtt"
     # metadata payload
     assert rs.metadata["video_id"] == "dQw4w9WgXcQ"
     assert rs.metadata["channel"] == "Huberman Lab"
@@ -187,9 +193,13 @@ def test_resolve_youtube_cast_roundtrips_as_list(registry: ReadingSourceRegistry
     assert "cast" not in rs.metadata
 
 
-def test_resolve_youtube_custom_transcript_path(registry: ReadingSourceRegistry, vault: Path):
-    """Phase 2 may produce e.g. ``transcript.whisper.vtt``; that path
-    surfaces in the variant unchanged.
+def test_resolve_youtube_transcript_path_is_convention_not_manifest(
+    registry: ReadingSourceRegistry, vault: Path
+):
+    """ADR-046 Slice 0A: the variant path is built by convention
+    (``KB/Raw/Videos/{video_id}.vtt``), NOT from the manifest's
+    ``transcript_path`` field (now vestigial). Even a custom manifest value
+    does not change where the resolver looks.
     """
     _make_entry(
         vault,
@@ -198,7 +208,7 @@ def test_resolve_youtube_custom_transcript_path(registry: ReadingSourceRegistry,
     )
     rs = registry.resolve(YouTubeKey(video_id="alt_id"))
     assert rs is not None
-    assert rs.variants[0].path == "Watchlist/youtube/alt_id/transcript.whisper.vtt"
+    assert rs.variants[0].path == "KB/Raw/Videos/alt_id.vtt"
 
 
 # ── Lister ─────────────────────────────────────────────────────────────────

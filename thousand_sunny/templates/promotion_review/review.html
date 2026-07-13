@@ -75,20 +75,35 @@
             last batch · {{ last_commit_outcome.batch.batch_id }} · {{ last_commit_outcome.batch.promotion_status }}
           </div>
         {% endif %}
-        <form method="post" action="/robin/promotion/source/{{ encoded_id }}/commit">
-          <input type="hidden" name="batch_id"
-                 value="batch_{{ manifest.manifest_id }}_{{ manifest.commit_batches | length + 1 }}" />
-          <button type="submit"
+        {% if commit_enabled is defined and not commit_enabled %}
+          <div class="prom-progress__preview" role="status">
+            <span class="prom-caps">預覽模式</span>
+            <p class="prom-progress__preview-note">
+              抽取為 placeholder claim，commit 已停用至 N519（LLM 抽取）上線 —— 不會寫入 KB。
+            </p>
+          </div>
+          <button type="button"
                   class="prom-btn prom-btn--primary"
-                  {% if approved_count == 0 %}disabled aria-disabled="true"{% endif %}
-                  aria-label="Commit approved items">
-            {% if approved_count == 0 %}
-              commit (no approvals yet)
-            {% else %}
-              commit {{ approved_count }} approved
-            {% endif %}
+                  disabled aria-disabled="true"
+                  aria-label="Commit disabled in preview mode">
+            commit 已停用（預覽）
           </button>
-        </form>
+        {% else %}
+          <form method="post" action="/robin/promotion/source/{{ encoded_id }}/commit">
+            <input type="hidden" name="batch_id"
+                   value="batch_{{ manifest.manifest_id }}_{{ manifest.commit_batches | length + 1 }}" />
+            <button type="submit"
+                    class="prom-btn prom-btn--primary"
+                    {% if approved_count == 0 %}disabled aria-disabled="true"{% endif %}
+                    aria-label="Commit approved items">
+              {% if approved_count == 0 %}
+                commit (no approvals yet)
+              {% else %}
+                commit {{ approved_count }} approved
+              {% endif %}
+            </button>
+          </form>
+        {% endif %}
       </div>
     </section>
 

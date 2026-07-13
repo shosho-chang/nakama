@@ -13,8 +13,9 @@
 - Book entity: `KB/Wiki/Entities/Books/{book_id}.md`
 - Backup: `{repo_root}/data/kb_backup/{slug}-{utc-ts}.md`（retain 24h）
 
-LLM call 走 `shared.llm.ask(model="claude-opus-4-7")` — ingest 強制 Opus 4.7
-（ADR-011 §2 P2 LLM-readable deep extract）。測試環境 monkeypatch `_ask_llm`。
+LLM call 走 `shared.llm.ask`，model 由 router 解析（N531：`get_model("robin",
+"concept_merge")`，registry 預設 Opus 4.7，可經 Bridge /bridge/models override）。
+ADR-011 §2 P2 LLM-readable deep extract。測試環境 monkeypatch `_ask_llm`。
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ import yaml
 
 from shared.config import get_vault_path
 from shared.log import get_logger
+from shared.provenance_linter import ProvenanceLinter, ProvenanceViolation
 from shared.schemas.kb import (
     ChapterSourcePageV2,
     ConflictBlock,
@@ -143,16 +145,18 @@ _DIFF_MERGE_PROMPT = """你是知識庫 aggregator。
 
 
 def _ask_llm(prompt: str, *, system: str = "", max_tokens: int = 16000) -> str:
-    """Diff-merge / 內部 LLM call 邊界。預設走 Opus 4.7。
+    """Diff-merge / 內部 LLM call 邊界。model 由 router 解析（N531：registry 預設
+    Opus 4.7，可經 Bridge /bridge/models override）。
 
     為什麼包一層：unit test monkeypatch 這個 function 即可，不必動 shared.llm.ask。
     """
     from shared.llm import ask
+    from shared.llm_router import get_model
 
     return ask(
         prompt=prompt,
         system=system,
-        model="claude-opus-4-7",
+        model=get_model(agent="robin", task="concept_merge"),
         max_tokens=max_tokens,
     )
 
@@ -232,6 +236,34 @@ def _serialize_page(fm: dict, body: str) -> str:
 def _write_page_file(abs_path: Path, fm: dict, body: str) -> None:
     abs_path.parent.mkdir(parents=True, exist_ok=True)
     abs_path.write_text(_serialize_page(fm, body), encoding="utf-8")
+
+
+def _enforce_concept_provenance(slug: str, fm: dict, body: str) -> None:
+    """紅線 5 enforcement：concept 寫入前 lint 終端證據（N524）.
+
+    在 :func:`_write_page_file` 之前呼叫。若 ``## Sources`` / ``## Evidence`` 區塊
+    或 frontmatter ``mentioned_in`` 的 citation 指向另一個 Concept/Output → raise
+    :class:`ProvenanceViolation`，**整個寫入被 reject**（含先前已 backup 的舊檔
+    保持不動，因為 raise 發生在 ``_write_page_file`` 之前）。
+
+    這是 N520 留給 N524 的掛載點：``ProvenanceLinter.lint_page`` 從 deferred stub
+    升級成真 enforcement，所有走 :func:`upsert_concept_page` 的寫入路徑都過此關。
+    """
+    mentioned_in = fm.get("mentioned_in") or []
+    if not isinstance(mentioned_in, list):
+        mentioned_in = []
+    report = ProvenanceLinter().lint_page(
+        _concept_rel_path(slug),
+        body,
+        mentioned_in=[str(m) for m in mentioned_in],
+    )
+    if report.status == "violations":
+        for finding in report.findings:
+            logger.error(
+                "concept provenance violation (red line 5)",
+                extra={"slug": slug, "citation": finding.citation, "detail": finding.message},
+            )
+        raise ProvenanceViolation(report)
 
 
 # ---------------------------------------------------------------------------
@@ -472,6 +504,27 @@ def _split_h2_sections(body: str) -> dict[str, str]:
     return {k: "\n".join(v).strip() for k, v in sections.items()}
 
 
+def _render_h2_sections(sections: dict[str, str]) -> str:
+    """Render a ``{heading: content}`` map (from :func:`_split_h2_sections`) back
+    to markdown: ``__prefix__`` first, then canonical ``H2_ORDER``, then any
+    leftover H2 (forward-compat for user-added / future-schema sections)."""
+    out: list[str] = []
+    prefix = sections.get("__prefix__", "").strip()
+    if prefix:
+        out.append(prefix)
+    seen = {"__prefix__"}
+    for h2 in H2_ORDER:
+        if h2 in sections:
+            seen.add(h2)
+            out.append(f"{h2}\n\n{sections[h2].strip() or PLACEHOLDER}")
+    # Any leftover H2 (forward-compat for future v3 sections); preserve doc order.
+    for h2, content in sections.items():
+        if h2 in seen or not h2.startswith("## "):
+            continue
+        out.append(f"{h2}\n\n{content.strip() or PLACEHOLDER}")
+    return "\n\n".join(out) + "\n"
+
+
 def _append_to_section(body: str, heading: str, new_block: str) -> str:
     """Append `new_block` (str) under `heading` (e.g. "## Sources")."""
     if heading not in body:
@@ -484,20 +537,31 @@ def _append_to_section(body: str, heading: str, new_block: str) -> str:
         sections[heading] = new_block.strip()
     else:
         sections[heading] = f"{existing}\n\n{new_block.strip()}"
+    return _render_h2_sections(sections)
 
-    # Re-render (preserve order: prefix, then H2_ORDER, then any unknown H2 tail)
-    out: list[str] = []
-    prefix = sections.pop("__prefix__", "").strip()
-    if prefix:
-        out.append(prefix)
-    for h2 in H2_ORDER:
-        if h2 in sections:
-            out.append(f"{h2}\n\n{sections.pop(h2).strip() or PLACEHOLDER}")
-    # Any leftover H2 (forward-compat for future v3 sections)
-    for h2, content in sections.items():
-        if h2.startswith("## "):
-            out.append(f"{h2}\n\n{content.strip() or PLACEHOLDER}")
-    return "\n\n".join(out) + "\n"
+
+def _normalize_concept_sources(body: str, mentioned_in: list[str]) -> str:
+    """Rewrite the body ``## Sources`` block to mirror frontmatter ``mentioned_in``.
+
+    ``prompts/robin/extract_concepts.md`` ships a ``## Sources`` template whose
+    line is ``- [[Sources/...]]``, so the LLM fills it by guessing a slug from
+    the title/author (e.g. ``[[Sources/財富階梯-Nick-Maggiulli]]``) that points at
+    no real Source page — a dead link. ``mentioned_in`` is the pipeline-injected
+    authoritative provenance list; we overwrite the human-readable ``## Sources``
+    block with it so body and frontmatter never drift and no fabricated link
+    survives. Idempotent; no-op when ``mentioned_in`` is empty.
+    """
+    if not mentioned_in:
+        return body
+    seen: set[str] = set()
+    links: list[str] = []
+    for link in mentioned_in:
+        if link not in seen:
+            seen.add(link)
+            links.append(link)
+    sections = _split_h2_sections(body)
+    sections["## Sources"] = "\n".join(f"- {link}" for link in links)
+    return _render_h2_sections(sections)
 
 
 def _conflict_block_to_md(topic: str, source_link: str, c: ConflictBlock) -> str:
@@ -612,6 +676,16 @@ def aggregate_conflict(
     _write_page_file(page_path, fm, body)
 
 
+def _mark_concept_candidate(fm: dict) -> None:
+    """ADR-043 §決策 3 — AI 寫的 Concept 頁是「候選草稿」，標 ``status: candidate``
+    + ``ai-draft`` tag，與人寫的 canonical ``KB/Permanent/`` 區隔。所有 upsert
+    action（create / update_merge / update_conflict / noop）共用。"""
+    fm.setdefault("status", "candidate")
+    tags = fm.get("tags") or []
+    if "ai-draft" not in tags:
+        fm["tags"] = [*tags, "ai-draft"]
+
+
 def upsert_concept_page(
     slug: str,
     action: Literal["create", "update_merge", "update_conflict", "noop"],
@@ -632,10 +706,11 @@ def upsert_concept_page(
         slug: page slug (filename minus .md)
         action: one of create / update_merge / update_conflict / noop
             - create / update_conflict / noop: pure file I/O (no LLM call)
-            - update_merge: 1× Claude Opus 4.7 diff-merge call via `_ask_llm`
-              (max_tokens=16000, temperature=0.2; ~$0.15–$1.00 per call —
+            - update_merge: 1× diff-merge call via `_ask_llm`（model 由 router 解析，
+              registry 預設 Opus 4.7、可經 Bridge override；以下成本估算以 Opus 4.7 為準：
+              max_tokens=16000, temperature=0.2; ~$0.15–$1.00 per call —
               depends on existing body size; mature pages with full max_tokens
-              output reach ~$1.20 edge case). Caller should batch-budget
+              output reach ~$1.20 edge case）。Caller should batch-budget
               accordingly when ingesting many sources.
         source_link: wikilink form, e.g. "[[Sources/Books/foo/ch1]]"
         title: required for action=create
@@ -680,7 +755,13 @@ def upsert_concept_page(
                 "created": today,
                 "updated": today,
             }
+            _mark_concept_candidate(fm)
             body = _ensure_h2_skeleton(extracted_body)
+            # 順序要點：先 lint LLM 原始輸出（紅線 5 抓 concept→concept 洗來源），
+            # 再清理 body ## Sources 的死連結（對齊 mentioned_in）。顛倒會把違規
+            # 連結 silently scrub 掉、繞過紅線 5。
+            _enforce_concept_provenance(slug, fm, body)
+            body = _normalize_concept_sources(body, fm["mentioned_in"])
             _write_page_file(abs_path, fm, body)
             logger.info(
                 "concept created",
@@ -696,6 +777,8 @@ def upsert_concept_page(
 
     # Lazy migrate v1 → v2 if needed
     fm, body, mig_changes = _v1_to_v2_in_memory(raw_fm, raw_body)
+    # ADR-043 §決策 3 — 既有候選頁 re-touch 時補/保持 candidate 標記。
+    _mark_concept_candidate(fm)
 
     needs_legacy_strip = "## 更新（" in body
 
@@ -774,6 +857,9 @@ def upsert_concept_page(
             mentioned.append(source_link)
             fm["mentioned_in"] = mentioned
         fm["updated"] = today
+        # Lint raw merge output first (red line 5), then scrub dead Sources links.
+        _enforce_concept_provenance(slug, fm, body)
+        body = _normalize_concept_sources(body, fm.get("mentioned_in") or [])
         _write_page_file(abs_path, fm, body)
         logger.info(
             "concept update_merge complete",
@@ -807,6 +893,9 @@ def upsert_concept_page(
             fm["mentioned_in"] = mentioned
 
         fm["updated"] = today
+        # Lint raw body first (red line 5), then scrub dead Sources links.
+        _enforce_concept_provenance(slug, fm, body)
+        body = _normalize_concept_sources(body, fm.get("mentioned_in") or [])
         _write_page_file(abs_path, fm, body)
         logger.info(
             "concept update_conflict complete",

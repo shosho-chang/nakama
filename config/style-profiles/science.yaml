@@ -1,4 +1,4 @@
-profile_id: science@0.1.0
+profile_id: science@0.2.0
 category: science
 # 科普預設走 neuroscience；若主題明確偏 nutrition / sport 等，compose 呼叫時可 override
 primary_category: neuroscience

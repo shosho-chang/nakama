@@ -1,0 +1,158 @@
+/* Centaur 每日回顧 (N523) — 照 prototype v2，全走 --sho-* token.
+   tokens.css 已提供所有 --sho-* 變數 + .sho-mono / .sho-tag / .sho-kicker /
+   .sho-btn / .sho-theme-toggle / focus ring。此檔只補本 surface 專屬 component。 */
+
+*{box-sizing:border-box}
+body.sho{margin:0;background:var(--sho-bg);color:var(--sho-text);font-family:var(--sho-font-sans);font-size:15px;line-height:1.7;-webkit-font-smoothing:antialiased}
+
+.kb-shell{min-height:100vh}
+.kb-main{max-width:840px;margin:0 auto;padding:40px clamp(18px,4vw,48px) 120px;min-width:0}
+
+.vhead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+.vhead h1{font-size:24px;font-weight:800;color:var(--sho-ink);margin:0;letter-spacing:-.01em}
+.vhead .meta{font-size:12.5px;color:var(--sho-muted);font-variant-numeric:tabular-nums}
+/* 隨手開新卡（缺口 A）：header 右側鈕。本頁現在載入 bridge.css（為了 chassis 導覽列），
+   設計系統的 .sho-btn / .sho-btn--ghost base 已可用 → 改用設計系統按鈕（見
+   daily_review.html），此處只補在 .vhead 內靠右 + 垂直置中。 */
+.kb-newcard{margin-left:auto;align-self:center}
+.vsub{font-size:13px;color:var(--sho-text-2);margin:0 0 28px}
+
+/* warnings banner */
+.kb-warn{border:1px solid color-mix(in oklch,var(--sho-warning) 55%,transparent);border-left:2px solid var(--sho-warning);border-radius:var(--sho-r-2);background:color-mix(in oklch,var(--sho-warning) 8%,transparent);padding:10px 14px;margin-bottom:24px;font-size:12.5px;color:var(--sho-text-2)}
+.kb-warn-h{font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;color:var(--sho-warning)}
+.kb-warn ul{margin:6px 0 0;padding-left:18px}
+
+/* kicker (mirror prototype) */
+.sho-kicker{display:flex;align-items:baseline;gap:10px;margin:36px 0 14px}
+/* 區段標題放大成真正的 heading（修修：字太小）。正常大小寫，不 uppercase。 */
+.sho-kicker .sho-kicker-t{font-size:17px;font-weight:800;color:var(--sho-ink);text-transform:none;letter-spacing:0}
+.sho-kicker .ln{flex:1;height:1px;background:var(--sho-line)}
+.sho-kicker .c{font-size:11.5px;color:var(--sho-muted);font-variant-numeric:tabular-nums}
+
+/* panels */
+.panel{border:1px solid var(--sho-line);border-radius:var(--sho-r-2);background:var(--sho-bg);margin-bottom:12px;transition:border-color var(--sho-t-fast) var(--sho-ease),opacity var(--sho-t-base) var(--sho-ease)}
+.panel:hover{border-color:var(--sho-line-2)}
+.panel.done{opacity:.5}
+.panel-in{padding:16px 22px}
+.rowline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+.wikilink{font-size:12.5px;border:1px solid var(--sho-line-2);border-radius:var(--sho-r-1);padding:1px 8px;color:var(--sho-text-2);background:var(--sho-bg-2);white-space:nowrap}
+.cite{font-size:10.5px;color:var(--sho-muted);border:1px solid var(--sho-line);border-radius:var(--sho-r-1);padding:0 5px;white-space:nowrap;font-variant-numeric:tabular-nums}
+
+/* empty states */
+.kb-empty{border:1px dashed var(--sho-line);border-radius:var(--sho-r-2);padding:28px 24px;text-align:center;color:var(--sho-muted)}
+.kb-empty-mk{font-size:24px;color:var(--sho-line-2);margin-bottom:8px;line-height:1}
+.kb-empty p{margin:0;font-size:13.5px;color:var(--sho-text-2)}
+.kb-empty-sub{margin-top:4px !important;font-size:12px !important;color:var(--sho-muted) !important}
+
+/* candidate / fleeting card (v2 引文視覺語言) */
+.cand-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+.cand-head .tt{font-size:15.5px;font-weight:800;color:var(--sho-ink)}
+.cand-head .why{font-size:12px;color:var(--sho-muted)}
+.cand-head .sho-tag{margin-left:auto}
+.cand-meta{font-size:11.5px;color:var(--sho-muted);margin-bottom:12px;font-variant-numeric:tabular-nums}
+.cand-rel{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:12px 0 14px}
+.cand-rel .sl{font-size:10.5px;color:var(--sho-muted);text-transform:uppercase;letter-spacing:.05em}
+/* 分段式動作控制（開卡 | 略過 | 之後再說 連成一顆按鈕；修修回饋） */
+.cand-seg{display:flex;margin-top:14px;padding-top:14px;border-top:1px solid var(--sho-line)}
+.cand-seg .seg{font-family:var(--sho-font-mono);font-size:12px;letter-spacing:.08em;padding:7px 18px;cursor:pointer;background:var(--sho-bg);color:var(--sho-text-2);border:1px solid var(--sho-line-2);border-left-width:0;transition:background var(--sho-t-fast) var(--sho-ease),color var(--sho-t-fast) var(--sho-ease),border-color var(--sho-t-fast) var(--sho-ease)}
+.cand-seg .seg:first-child{border-left-width:1px;border-radius:var(--sho-r-1) 0 0 var(--sho-r-1)}
+.cand-seg .seg:last-child{border-radius:0 var(--sho-r-1) var(--sho-r-1) 0}
+.cand-seg .seg-go{background:var(--sho-text);color:var(--sho-bg);border-color:var(--sho-text);font-weight:700}
+.cand-seg .seg-go:hover{background:var(--sho-accent);border-color:var(--sho-accent)}
+.cand-seg .seg:not(.seg-go):hover{color:var(--sho-accent);border-color:var(--sho-accent)}
+.cand-seg .seg:focus-visible{outline:none;box-shadow:var(--sho-focus);position:relative;z-index:1}
+
+.ex{border:1px solid var(--sho-line);border-radius:var(--sho-r-2);overflow:hidden;margin:0 0 4px}
+.ex-q{background:var(--sho-bg-2);padding:10px 16px;font-size:13.5px;color:var(--sho-text-2);line-height:1.75;display:flex;gap:10px;align-items:baseline}
+.ex-q .qm{color:var(--sho-line-2);font-size:18px;font-weight:800;line-height:1;user-select:none}
+.ex-n{padding:10px 16px 10px 14px;border-top:1px solid var(--sho-line);border-left:2px solid var(--sho-accent);font-size:14.5px;color:var(--sho-text);line-height:1.75}
+.ex-n .who{font-size:10.5px;color:var(--sho-accent);font-weight:700;letter-spacing:.05em;margin-right:8px;vertical-align:1px}
+
+.fleet-text{margin:0 0 14px;font-size:14.5px}
+.fleet-text.struck{text-decoration:line-through;color:var(--sho-muted)}
+
+/* sweep item */
+.sweep-reason{margin:6px 0 12px;font-size:13.5px;color:var(--sho-text-2)}
+
+/* ===== drawer ===== */
+.kb-scrim{position:fixed;inset:0;background:oklch(0.1 0 0/0.25);z-index:40;opacity:0;pointer-events:none;transition:opacity var(--sho-t-base) var(--sho-ease)}
+.kb-scrim.on{opacity:1;pointer-events:auto}
+.kb-drawer{position:fixed;top:0;right:0;bottom:0;width:min(580px,100vw);z-index:50;background:var(--sho-bg);border-left:1px solid var(--sho-line);transform:translateX(102%);transition:transform var(--sho-t-slow) var(--sho-ease);display:flex;flex-direction:column}
+.kb-drawer.on{transform:translateX(0)}
+.kb-drawer[hidden]{display:flex}
+/* 抽屜開啟時隱藏浮動主題切換鈕——否則它（fixed bottom-right）會蓋住 drawer-foot
+   的「存入 Vault」鈕、攔截點擊（瀏覽器走查抓到的 z-index 重疊）。 */
+body:has(.kb-drawer.on) .sho-theme-toggle{display:none}
+.drawer-head{display:flex;align-items:center;gap:10px;padding:14px 24px;border-bottom:1px solid var(--sho-line)}
+.drawer-head .t{font-weight:800;font-size:14px;color:var(--sho-ink)}
+.drawer-head .x{margin-left:auto}
+.drawer-body{flex:1;overflow-y:auto;padding:24px}
+.fld{margin-bottom:24px}
+.fld>.lbl{display:flex;align-items:baseline;gap:8px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;font-weight:700;color:var(--sho-text-2);margin-bottom:6px}
+.fld>.lbl .who{margin-left:auto;font-size:10.5px;font-weight:500;color:var(--sho-muted);text-transform:none;letter-spacing:0}
+.fld>.lbl .who.human{color:var(--sho-accent)}
+.fld-err{margin-top:6px;font-size:12px;color:var(--sho-error)}
+
+.titlewrap{display:flex;align-items:center;border:1px solid var(--sho-line-2);border-radius:var(--sho-r-2);overflow:hidden}
+.titlewrap:focus-within{box-shadow:var(--sho-focus)}
+.titlewrap .prefix{font-size:12px;color:var(--sho-muted);padding:8px 0 8px 12px;white-space:nowrap}
+.titlewrap input{flex:1;border:0;outline:none;background:transparent;color:var(--sho-ink);font-family:inherit;font-size:14.5px;font-weight:700;padding:8px 12px 8px 4px;min-width:0}
+textarea.body{width:100%;min-height:140px;resize:vertical;border:1px solid var(--sho-line-2);border-radius:var(--sho-r-2);background:var(--sho-bg);color:var(--sho-text);font-family:inherit;font-size:14.5px;line-height:1.75;padding:10px 12px;outline:none}
+textarea.body:focus-visible{box-shadow:var(--sho-focus);border-color:transparent}
+textarea.body.invalid{border-color:var(--sho-error)}
+
+.edgegroup{border:1px solid var(--sho-line);border-radius:var(--sho-r-2);padding:10px 12px;margin-bottom:12px}
+.edgegroup .gh{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.edgegroup .gname{font-size:13px;font-weight:800}
+.edgegroup .gname.support{color:var(--sho-success)}
+.edgegroup .gname.refute{color:var(--sho-error)}
+.edgegroup .gname.extend{color:var(--sho-info)}
+.edgegroup .gdesc{font-size:11.5px;color:var(--sho-muted)}
+.sugg-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.sugg-row .sl{font-size:10.5px;color:var(--sho-muted);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+.suggchip{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;border:1px solid var(--sho-accent-line);color:var(--sho-accent);border-radius:var(--sho-r-pill);padding:2px 10px;background:none;cursor:pointer;font-family:inherit;transition:background var(--sho-t-fast) var(--sho-ease)}
+.suggchip:hover{background:var(--sho-accent-soft)}
+.suggchip:focus-visible{outline:none;box-shadow:var(--sho-focus)}
+.suggchip[disabled]{opacity:.35;pointer-events:none}
+.suggchip .dir{font-size:10px;color:var(--sho-muted)}
+
+.searchall{margin-top:8px;position:relative}
+.searchall input{width:100%;border:1px solid var(--sho-line);border-radius:var(--sho-r-1);background:var(--sho-bg);color:var(--sho-text);font-family:inherit;font-size:12.5px;padding:5px 9px;outline:none}
+.searchall input:focus-visible{box-shadow:var(--sho-focus)}
+.searchall .results{position:absolute;left:0;right:0;top:calc(100% + 2px);z-index:10;background:var(--sho-bg);border:1px solid var(--sho-line-2);border-radius:var(--sho-r-2);max-height:180px;overflow-y:auto;display:none}
+.searchall .results.on{display:block}
+.searchall .ritem{padding:6px 10px;font-size:12.5px;cursor:pointer;color:var(--sho-text-2)}
+.searchall .ritem:hover{background:var(--sho-bg-2);color:var(--sho-ink)}
+.searchall .ritem .st{font-size:10.5px;color:var(--sho-muted);margin-left:6px}
+
+.edgerow{display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap}
+.edgerow .ecard{font-size:12.5px;border:1px solid var(--sho-line-2);border-radius:var(--sho-r-1);padding:3px 8px;background:var(--sho-bg-2);color:var(--sho-text-2);white-space:nowrap}
+.edgerow input.reason{flex:1;min-width:140px;border:1px solid var(--sho-line-2);border-radius:var(--sho-r-1);background:var(--sho-bg);color:var(--sho-text);font-family:inherit;font-size:12.5px;padding:5px 8px;outline:none}
+.edgerow input.reason:focus-visible{box-shadow:var(--sho-focus)}
+.edgerow .rm{border:0;background:none;color:var(--sho-muted);cursor:pointer;font-size:14px;padding:2px 6px;font-family:inherit}
+.edgerow .rm:hover{color:var(--sho-error)}
+
+details.preview{border:1px solid var(--sho-line);border-radius:var(--sho-r-2);overflow:hidden}
+details.preview summary{cursor:pointer;list-style:none;padding:8px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;font-weight:700;color:var(--sho-text-2);background:var(--sho-bg-2)}
+details.preview summary::-webkit-details-marker{display:none}
+details.preview pre{margin:0;padding:12px 14px;font-size:12px;line-height:1.65;overflow-x:auto;color:var(--sho-text-2);border-top:1px solid var(--sho-line);font-family:var(--sho-font-sans);white-space:pre-wrap;word-break:break-word}
+
+.drawer-foot{display:flex;align-items:center;gap:12px;padding:14px 24px;border-top:1px solid var(--sho-line)}
+.drawer-foot .note{font-size:11.5px;color:var(--sho-muted);margin-right:auto;flex:1 1 auto;min-width:0}
+/* modal 按鈕（關閉 / 取消）：給 surface 填色 + 較實邊框，讀起來明確是按鈕而非
+   文字連結（修修 feedback）。primary「存入 Vault」維持實心，三者層級分明。 */
+.kb-drawer .sho-btn--ghost{background:var(--sho-bg-2);border-color:var(--sho-line-2)}
+.kb-drawer .sho-btn--ghost:hover{background:var(--sho-bg-3);border-color:var(--sho-accent)}
+/* footer 三欄在 580px 抽屜裡會擠壓按鈕，鎖死不縮、不換行。 */
+.drawer-foot .sho-btn{padding:9px 18px;flex:0 0 auto;white-space:nowrap}
+
+/* toast */
+.kb-toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,16px);z-index:60;background:var(--sho-ink);color:var(--sho-bg);border-radius:var(--sho-r-2);padding:9px 18px;font-size:13px;opacity:0;pointer-events:none;transition:opacity var(--sho-t-base) var(--sho-ease),transform var(--sho-t-base) var(--sho-ease);max-width:80vw}
+.kb-toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* footer 99/1 bolt stamp */
+.kb-footer{display:flex;align-items:center;gap:10px;margin-top:56px;padding-top:16px;border-top:1px solid var(--sho-line)}
+.kb-bolt{width:1.4em;height:.85em;color:var(--sho-accent)}
+
+@media (max-width:600px){.kb-main{padding:28px 16px 100px}}

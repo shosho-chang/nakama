@@ -1,0 +1,242 @@
+<!-- nakama:component book_cover（書封卡，ADR-051 D8；書籍型影片最高頻視覺） -->
+<!doctype html>
+<html
+  lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"cover_src","type":"string","label":"封面圖路徑（專案內相對路徑，空 = 灰卡 fallback）","default":""},
+    {"id":"title_zh","type":"string","label":"中文書名","default":"致富心態"},
+    {"id":"title_en","type":"string","label":"原文書名（可空）","default":""},
+    {"id":"author","type":"string","label":"作者（可空）","default":""}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 400;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Rg.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 700;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Bd.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 900;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Eb.woff2") format("woff2");
+      }
+
+      :root {
+        --sho-bg: oklch(0.988 0.003 80);
+        --sho-fg: oklch(0.145 0.005 80);
+        --sho-accent: oklch(0.71 0.135 41);
+        --sho-mute: oklch(0.55 0.01 80);
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--sho-bg);
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--sho-bg);
+        color: var(--sho-fg);
+        font-family: "LINE Seed TW", sans-serif;
+      }
+
+      /* 字幕禁飛區：底部 200px 留空 */
+      .stage {
+        position: absolute;
+        inset: 0 160px 200px;
+        display: flex;
+        align-items: center;
+        gap: 120px;
+      }
+
+      .cover-wrap {
+        position: relative;
+        flex: 0 0 auto;
+        will-change: transform, opacity;
+        opacity: 0;
+      }
+
+      .cover {
+        display: block;
+        width: 440px;
+        height: 640px;
+        object-fit: cover;
+        border-radius: 8px;
+        box-shadow:
+          0 40px 80px oklch(0.145 0.005 80 / 0.22),
+          0 12px 28px oklch(0.145 0.005 80 / 0.16);
+        background: oklch(0.92 0.005 80);
+      }
+
+      .cover-fallback {
+        display: none;
+        width: 440px;
+        height: 640px;
+        border-radius: 8px;
+        background: oklch(0.92 0.005 80);
+        box-shadow:
+          0 40px 80px oklch(0.145 0.005 80 / 0.22),
+          0 12px 28px oklch(0.145 0.005 80 / 0.16);
+        align-items: center;
+        justify-content: center;
+        padding: 48px;
+        text-align: center;
+        font-size: 56px;
+        font-weight: 700;
+        color: var(--sho-mute);
+        line-height: 1.4;
+      }
+
+      .meta {
+        display: flex;
+        flex-direction: column;
+        gap: 28px;
+        max-width: 900px;
+      }
+
+      .meta-tick {
+        width: 96px;
+        height: 12px;
+        border-radius: 6px;
+        background: var(--sho-accent);
+        will-change: width;
+        width: 0;
+      }
+
+      .title-zh {
+        font-size: 132px;
+        font-weight: 900;
+        line-height: 1.15;
+        will-change: transform, opacity;
+        opacity: 0;
+      }
+
+      .title-en {
+        font-size: 52px;
+        font-weight: 400;
+        color: var(--sho-mute);
+        letter-spacing: 0.01em;
+        will-change: transform, opacity;
+        opacity: 0;
+      }
+
+      .author {
+        font-size: 46px;
+        font-weight: 700;
+        color: var(--sho-fg);
+        will-change: transform, opacity;
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="book_cover"
+      data-root="true"
+      data-start="0"
+      data-duration="4.5"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="stage">
+        <div id="coverWrap" class="cover-wrap">
+          <img id="cover" class="cover" alt="" />
+          <div id="coverFallback" class="cover-fallback"></div>
+        </div>
+        <div class="meta">
+          <div id="metaTick" class="meta-tick"></div>
+          <div id="titleZh" class="title-zh"></div>
+          <div id="titleEn" class="title-en"></div>
+          <div id="author" class="author"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      const vars =
+        (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const coverSrc = vars.cover_src ?? "";
+      const titleZh = vars.title_zh ?? "致富心態";
+      const titleEn = vars.title_en ?? "";
+      const author = vars.author ?? "";
+
+      document.querySelector("#titleZh").textContent = titleZh;
+      document.querySelector("#titleEn").textContent = titleEn;
+      document.querySelector("#author").textContent = author;
+
+      const cover = document.querySelector("#cover");
+      const fallback = document.querySelector("#coverFallback");
+      function useFallback() {
+        cover.style.display = "none";
+        fallback.style.display = "flex";
+        fallback.textContent = titleZh;
+      }
+      if (coverSrc) {
+        cover.src = coverSrc;
+        cover.addEventListener("error", useFallback);
+      } else {
+        useFallback();
+      }
+
+      const tl = gsap.timeline({
+        paused: true,
+        defaults: { ease: "power3.out", overwrite: "auto" },
+      });
+
+      tl.fromTo(
+        "#coverWrap",
+        { y: 60, opacity: 0, scale: 0.96 },
+        { y: 0, opacity: 1, scale: 1, duration: 0.65, ease: "power4.out" },
+        0,
+      );
+      tl.to("#metaTick", { width: 96, duration: 0.35 }, 0.35);
+      tl.fromTo(
+        "#titleZh",
+        { y: 30, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.5, ease: "power2.out" },
+        0.45,
+      );
+      tl.fromTo(
+        "#titleEn",
+        { y: 24, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.45, ease: "power2.out" },
+        0.6,
+      );
+      tl.fromTo(
+        "#author",
+        { y: 20, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.45, ease: "power2.out" },
+        0.72,
+      );
+
+      window.__timelines["book_cover"] = tl;
+    </script>
+  </body>
+</html>

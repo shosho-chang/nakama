@@ -30,10 +30,11 @@ from ._constants import BROOK_SYNTHESIZE_ENGINE, BROOK_SYNTHESIZE_TOP_K, MULTI_Q
 logger = get_logger("nakama.brook.synthesize.search")
 
 
-# Engine → kb_hybrid_search.search lanes mapping. Kept here so ADR-022 can
-# add a "multilingual_dense" engine without touching call sites.
+# Engine → kb_hybrid_search.search lanes mapping. ADR-042 removed the dense-vec
+# lane, so "hybrid" now resolves to BM25-only; the key is kept so the existing
+# BROOK_SYNTHESIZE_ENGINE="hybrid" config still resolves without a flag day.
 _ENGINE_LANES: dict[str, tuple[str, ...]] = {
-    "hybrid": ("bm25", "vec"),
+    "hybrid": ("bm25",),
 }
 
 

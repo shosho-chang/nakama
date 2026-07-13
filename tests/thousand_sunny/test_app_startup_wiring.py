@@ -8,9 +8,9 @@ Brief §5 wiring tests:
 - WT3  ``GET /robin/promotion/`` returns 200 (not 503) after wiring.
 - WT4  ``GET /robin/writing-assist/{id_b64}`` for missing package → 404 (not 503).
 - WT5  ``DISABLE_ROBIN=1`` skips wiring.
-- WT6  Missing ``VAULT_PATH`` → startup raises.
-- WT7  ``NAKAMA_PROMOTION_MODE=llm`` → startup raises ``RuntimeError``
-        mentioning N519.
+- WT6  Vault resolves via ``get_vault_path`` (config.yaml ∪ env); WT6b raises if unresolvable.
+- WT7  ``NAKAMA_PROMOTION_MODE=llm`` → startup wires the LLM-backed claim
+        extractor (N519) and the promotion service (no raise).
 - WT8  Adapter modules expose no top-level instances.
 - WT9  Adapter modules don't import ``fastapi`` / ``thousand_sunny.*``.
 - WT10 No module under ``shared.*`` (within N518's surface) imports
@@ -184,42 +184,92 @@ def test_wt5_app_disable_robin_skips_wiring(tmp_path: Path, monkeypatch):
         assert wa_module._service is None
 
 
-# ── WT6 — bad config raises ─────────────────────────────────────────────────
+# ── WT6 — vault resolves via get_vault_path (config.yaml ∪ env); VPS 502 fix ──
 
 
-def test_wt6_app_bad_config_raises_when_vault_root_missing(tmp_path: Path, monkeypatch):
-    """Missing ``VAULT_PATH`` (with Robin enabled) must crash the
-    lifespan — silent fallback is forbidden by W4."""
-    monkeypatch.delenv("DISABLE_ROBIN", raising=False)
-    monkeypatch.delenv("VAULT_PATH", raising=False)
+def test_wt6_loader_resolves_vault_from_config_when_env_unset(tmp_path: Path, monkeypatch):
+    """Regression: ``load_promotion_wiring_config`` resolves the vault via
+    ``get_vault_path`` (``VAULT_PATH`` env OR ``config.yaml`` ``vault_path``),
+    NOT env-only. The VPS keeps ``vault_path`` in config.yaml and leaves the env
+    unset; the old env-only read crashed startup with a 502."""
+    from thousand_sunny import promotion_wiring
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.delenv("VAULT_PATH", raising=False)  # rely on config.yaml, like the VPS
     monkeypatch.setenv("NAKAMA_PROMOTION_MODE", "dry_run")
-    _disable_auth(monkeypatch)
+    # Stand in for "config.yaml vault_path set, env unset".
+    monkeypatch.setattr(promotion_wiring, "get_vault_path", lambda: vault)
 
-    app_module = _reload_app_modules()
-
-    with pytest.raises(RuntimeError, match="VAULT_PATH"):
-        with TestClient(app_module.app):
-            pass
+    cfg = promotion_wiring.load_promotion_wiring_config()
+    assert cfg.vault_root == vault
 
 
-# ── WT7 — NAKAMA_PROMOTION_MODE=llm raises in N518 ─────────────────────────
+def test_wt6b_loader_raises_when_vault_unresolvable(monkeypatch):
+    """Safety (W4): if neither env nor config.yaml yields a vault, the loader
+    must raise loudly — no silent fallback to a guessed path."""
+    from thousand_sunny import promotion_wiring
+
+    monkeypatch.delenv("VAULT_PATH", raising=False)
+
+    def _unresolvable():
+        raise KeyError("vault_path")
+
+    monkeypatch.setattr(promotion_wiring, "get_vault_path", _unresolvable)
+
+    with pytest.raises(RuntimeError, match="Vault path unresolved"):
+        promotion_wiring.load_promotion_wiring_config()
 
 
-def test_wt7_app_llm_mode_raises_in_n518a(tmp_path: Path, monkeypatch):
-    """``NAKAMA_PROMOTION_MODE=llm`` is not yet wired — must raise with a
-    clear message pointing at N519."""
+# ── WT7 — NAKAMA_PROMOTION_MODE=llm wires the LLM extractor (N519) ──────────
+
+
+def test_wt7_app_llm_mode_wires_service(tmp_path: Path, monkeypatch):
+    """``NAKAMA_PROMOTION_MODE=llm`` now wires the LLM-backed claim extractor
+    (N519) and constructs the promotion service — no raise. Constructing the
+    extractor is lazy (no LLM call / API key needed at startup)."""
     vault = _make_minimal_vault(tmp_path / "vault")
     monkeypatch.setenv("NAKAMA_BOOKS_DIR", str(vault / "data" / "books"))
     monkeypatch.setenv("VAULT_PATH", str(vault))
     monkeypatch.delenv("DISABLE_ROBIN", raising=False)
     monkeypatch.setenv("NAKAMA_PROMOTION_MODE", "llm")
+    monkeypatch.setenv("NAKAMA_PROMOTION_MANIFEST_ROOT", str(vault / ".promotion-manifests"))
+    monkeypatch.setenv(
+        "NAKAMA_READING_CONTEXT_PACKAGE_ROOT", str(vault / ".reading-context-packages")
+    )
     _disable_auth(monkeypatch)
 
     app_module = _reload_app_modules()
+    import thousand_sunny.routers.promotion_review as pr_module
 
-    with pytest.raises(RuntimeError, match="N519"):
-        with TestClient(app_module.app):
-            pass
+    with TestClient(app_module.app) as client:
+        _ = client.get("/healthz")
+        assert pr_module._service is not None
+
+
+def test_wt7b_llm_mode_uses_llm_claim_extractor(tmp_path: Path, monkeypatch):
+    """Confirm the wired service's source-map builder is driven by the
+    LlmClaimExtractor (not the dry-run twin) under llm mode."""
+    from thousand_sunny.promotion_wiring import (
+        PromotionWiringConfig,
+        wire_promotion_surfaces,
+    )
+
+    vault = _make_minimal_vault(tmp_path / "vault")
+    monkeypatch.setenv("NAKAMA_BOOKS_DIR", str(vault / "data" / "books"))
+
+    import thousand_sunny.routers.promotion_review as pr_module
+    from agents.robin.source_map_extractor import LlmClaimExtractor
+
+    wire_promotion_surfaces(
+        PromotionWiringConfig(
+            vault_root=vault,
+            manifest_root=vault / ".promotion-manifests",
+            reading_context_package_root=vault / ".reading-context-packages",
+            promotion_mode="llm",
+        )
+    )
+    assert isinstance(pr_module._service._extractor, LlmClaimExtractor)
 
 
 def test_app_unknown_promotion_mode_raises(tmp_path: Path, monkeypatch):
@@ -403,3 +453,62 @@ def test_dry_run_matcher_returns_no_match_in_n518b():
     outcome = m.match(candidate, kb_index=None, primary_lang="en")
     assert outcome.canonical_match.match_basis == "none"
     assert outcome.canonical_match.confidence <= 0.1
+
+
+# ── Preflight — WEB_PASSWORD fail-to-start (ADR-044 §B2/B3) ─────────────────
+
+
+def test_preflight_raises_when_web_secret_set_but_password_empty(monkeypatch):
+    """WEB_SECRET set + WEB_PASSWORD empty → app must refuse to start."""
+    monkeypatch.setenv("DISABLE_ROBIN", "1")
+    monkeypatch.setenv("WEB_SECRET", "somesecret")
+    monkeypatch.delenv("WEB_PASSWORD", raising=False)
+    monkeypatch.delenv("NAKAMA_DEV_AUTH_BYPASS", raising=False)
+
+    app_module = _reload_app_modules()
+
+    with pytest.raises(RuntimeError, match="WEB_PASSWORD"):
+        with TestClient(app_module.app):
+            pass
+
+
+def test_preflight_skips_when_dev_bypass_set(monkeypatch):
+    """NAKAMA_DEV_AUTH_BYPASS=1 lets the app start even without WEB_PASSWORD."""
+    monkeypatch.setenv("DISABLE_ROBIN", "1")
+    monkeypatch.setenv("WEB_SECRET", "somesecret")
+    monkeypatch.delenv("WEB_PASSWORD", raising=False)
+    monkeypatch.setenv("NAKAMA_DEV_AUTH_BYPASS", "1")
+
+    app_module = _reload_app_modules()
+
+    with TestClient(app_module.app) as client:
+        r = client.get("/healthz")
+        assert r.status_code != 500
+
+
+def test_preflight_passes_when_both_credentials_set(monkeypatch):
+    """WEB_SECRET + WEB_PASSWORD both present — preflight allows startup."""
+    monkeypatch.setenv("DISABLE_ROBIN", "1")
+    monkeypatch.setenv("WEB_SECRET", "somesecret")
+    monkeypatch.setenv("WEB_PASSWORD", "somepassword")
+    monkeypatch.delenv("NAKAMA_DEV_AUTH_BYPASS", raising=False)
+
+    app_module = _reload_app_modules()
+
+    with TestClient(app_module.app) as client:
+        r = client.get("/healthz")
+        assert r.status_code != 500
+
+
+def test_preflight_skips_when_neither_credential_set(monkeypatch):
+    """No WEB_SECRET + no WEB_PASSWORD (dev/test mode) — preflight is silent."""
+    monkeypatch.setenv("DISABLE_ROBIN", "1")
+    monkeypatch.delenv("WEB_SECRET", raising=False)
+    monkeypatch.delenv("WEB_PASSWORD", raising=False)
+    monkeypatch.delenv("NAKAMA_DEV_AUTH_BYPASS", raising=False)
+
+    app_module = _reload_app_modules()
+
+    with TestClient(app_module.app) as client:
+        r = client.get("/healthz")
+        assert r.status_code != 500

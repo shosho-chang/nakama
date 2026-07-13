@@ -20,7 +20,7 @@ presentation layer（Web UI）。
 ### Cross-cutting contexts
 - **Shared kernel** (`shared/`、`agents/base.py`) — Agent / Run / Memory / Event / API call / Token cost；任何 agent 必經介面
 - **Thousand Sunny** (`thousand_sunny/`) — Web presentation 平台 / chassis：所有 web UI、Bridge dashboard、各 agent router；HMAC cookie + API key auth；**Sunny 是船本身（platform），不是 agent crew member**（ADR-029 §2 凍結）；glossary [thousand_sunny/CONTEXT.md](thousand_sunny/CONTEXT.md)；參見 [reference_bridge_ui_mutation_pattern](memory/claude/reference_bridge_ui_mutation_pattern.md)
-- **video** (`video/`) — Script-Driven Video Production 的 Node.js + Hyperframes + TypeScript subproject；6 Hyperframes HTML compositions + DSL parser + B-roll segment renderer；process boundary 跟 Python 主 repo 切開；Brook orchestrator (`agents/brook/script_video/`) 透過 Node.js CLI 呼叫；參見 ADR-015
+- **video** (`video/`) — Video Production Line 的 Node.js + Hyperframes + TypeScript subproject；Hyperframes HTML compositions（bigstat / thumbnail 等）+ B-roll per-beat renderer；process boundary 跟 Python 主 repo 切開；Brook video line orchestrator（`agents/brook/script_video/`，原 `agents/foundry/`，ADR-050 已遷入）透過 Node.js CLI 呼叫；`src/parser/` markdown DSL parser 已退役（storyboard.yaml 取代，ADR-050 D3）；創意分鏡層＝Director skill（ADR-051）；glossary [agents/brook/script_video/CONTEXT.md](agents/brook/script_video/CONTEXT.md)；參見 ADR-032 + ADR-050 + ADR-051
 
 ## Relationships
 
@@ -30,8 +30,8 @@ presentation layer（Web UI）。
 - **Brook ← Zoro** (`SEOContextV1`)：Zoro 跑 keyword-research + seo-keyword-enrich 產出 SEO context block，Brook compose 時 consume
 - **Robin ← Brook** (KB lookup)：Brook compose 時可呼叫 KB search 拉素材
 - **Usopp ← Brook + Sanji**：Brook 產長文輸出、Sanji 產社群素材，Usopp 排程發布；含 ADR-006 HITL approval gate
-- **Brook script_video ↔ video subproject**：Brook orchestrator (`agents/brook/script_video/`) 透過 `Manifest` JSON 跟 `video/` subproject 雙向溝通；Python 端負責 ASR / mistake removal / PDF / embedding，Node.js 端負責 Hyperframes render B-roll segments（headless Chrome + GSAP timeline）；最終 Python 端 emit FCPXML 1.10 + 中文 SRT；DaVinci import 後修修微調 → YT
-- **Brook script_video ← Robin metadata**（read-only）：textbook ingest 過的書，Brook 自動抓 title / author / book_id / pdf_path 補進 Manifest，省修修每集重填
+- **Brook video line ↔ video subproject**（ADR-032/ADR-050）：pipeline 吃 `/transcribe` 產的 SRT → chinese_normalizer + LLM planner 產 `storyboard.yaml`（exact-copy anchor + 兩層 HITL approve）→ render_dispatcher 呼叫 `video/compositions/` Hyperframes render per-beat B-roll mp4（headless Chrome）→ Python 端 emit FCPXML 1.10（V1 talking head + lane-1 B-roll）；DaVinci import 後修修微調 → YT；選配前置：拍掌 marker `cleanup` stage（ADR-050 D3）
+- **Brook video line ← Robin**（Phase 1.5，read-only）：`refs.yaml` 的 `book_slug_robin` 對 Robin Reader URL scheme，書內引用 B-roll 走 reader-playwright 錄真實書頁（ADR-032 Phase 1.5 接通）
 
 ## Per-context glossary
 
@@ -52,16 +52,16 @@ presentation layer（Web UI）。
 - **「chassis-nav」** = bridge surface 頂層 nav bar（`templates/bridge/_chassis_nav.html` partial 是 single source of truth）。**ADR-029 v2 凍結 dual-axis 原則**（取代 2026-04-29 的「agent-rooted 頂層直到擠爆才 dropdown」原則）：nav 依 task frequency × semantic similarity 組織 — 高頻 cross-agent workflow 拿 top-level slot（DRAFTS、SEO）；agent 收進單一 Fleet ▾ dropdown（dashboard grid 為主要視覺入口）；低頻 cross-cutting ops 收進 Ops ▾ dropdown（COST / LOGS / MEMORY / DOCS）。原則 component-agnostic（橫向 dropdown 目前；左 sidebar 為視覺探索階段已知候選）。`aria-current` 嚴格對齊 URL，不表 user journey trail
 - **「dual-axis nav」** = ADR-029 v2 凍結的 Bridge IA 心智模型。**Agent axis**（Fleet ▾ + dashboard grid）：每個 agent 有單一 canonical home（console）；single-agent function 收進該 agent console（如 HEALTH → Franky、REPURPOSE → Brook）。**Workflow axis**（top-level slots）：跨 agent 的 work 拿獨立 top-level surface（DRAFTS、SEO）；分界線：「這 work 需不需要跨 agent 協調」。**Ops axis**（Ops ▾）：cross-cutting 觀測 surface 不屬於任何 agent。雙軸並存，不是 agent-first 也不是 task-first
 - **「breadcrumb」** = page-header 之上一行的 user journey trail（如 `← /bridge/seo · 找新關鍵字 → ZORO · KEYWORD RESEARCH`），用來補位 chassis-nav 失去的「從哪來」資訊。Always 顯示（不 referrer-detect），用既有 `nk-caps` token
-- **「script-driven video」/「腳本式影片」** = ADR-015 凍結的新 cross-cutting context。修修最高價值 content workflow：寫好中文逐字稿 → 照稿錄 A-roll → 程式自動 mistake removal + B-roll 視覺化 → 出 DaVinci FCPXML → 修修微調 ≤30 分鐘上 YT。**不是** Line 1/2/3（podcast/book/literature → 多 channel 文字）的延伸——input/output shape 不同，是 sibling 不是 extension
-- **「Manifest」** = `script-driven video` workflow 的 single source of truth JSON schema（Python ↔ TypeScript shared）。modeling 場景 sequence、cut points、A-roll 時間戳、quote 視覺化指令；DSL parser 產出，pipeline / Hyperframes / FCPXML emitter 三方共用
+- **「script-driven video」/「腳本式影片」/「Video Production Line」** = ADR-015 開題、ADR-032 重寫技術、ADR-050 歸屬 Brook 的 cross-cutting context。修修最高價值 content workflow：照稿錄 A-roll →（選配）拍掌 marker cleanup → `/transcribe` SRT → LLM storyboard plan（兩層 HITL）→ Hyperframes B-roll render → 出 DaVinci FCPXML → 修修微調 ≤30 分鐘上 YT。**不是** Line 1/2/3（podcast/book/literature → 多 channel 文字）的延伸——input/output shape 不同，是 sibling 不是 extension
+- **「Manifest」** = ~~ADR-015 workflow 的 single source of truth JSON schema~~ **Superseded（ADR-032/ADR-050）**：single source of truth 現為 `storyboard.yaml`（planner 輸出 + Bridge UI 就地編輯）；Manifest JSON 隨 markdown DSL parser 退役
 - **「LLM Router」** = `shared/llm_router.py` 解析 `(agent, task) → model_id`、`shared/llm.py` facade 跨 provider dispatch；ADR-026 加 auth 維度後，router 同時解析 `(agent, task) → auth_policy`。**不是**新建，是 2026-04-20 起的 Q1 hybrid 方案延伸
 - **「Auth policy」** = ADR-026 凍結的一次 LLM call 計費路徑語意，**三元值** `api` / `subscription_preferred` / `subscription_required`。`subscription_*` = 走 provider 訂閱 quota（Anthropic = Max Plan via `claude` CLI subprocess）；`api` = bare SDK + API key 計費。`_preferred` = 條件不滿足軟降 api + warn；`_required` = 條件不滿足 raise。預設 `subscription_preferred`（修修長期 Max Plan）
 - **「Hard-lock override」** = `NAKAMA_REQUIRE_MAX_PLAN=1` env，process-wide 最高優先序，**映射為 `subscription_required`**（不是獨立語意層）；保留給 sandcastle / textbook ingest 必須 100% 走訂閱的場景
 - **「Fallback reason」** = ADR-026 凍結的軟降 / raise enum，落 `api_calls.fallback_reason` column；值：`NO_OAUTH_TOKEN` / `PROVIDER_NOT_SUPPORTED` / `CLI_BINARY_NOT_FOUND` / `CLI_SUBPROCESS_ERROR` / `TOOL_USE_NOT_SUPPORTED_VIA_CLI`
-- **「mistake removal」** = ADR-015 stage 1，A-roll 拍掌 marker primary + alignment fallback（修修錄錯時拍兩下手做 marker）。**不另出乾淨 mp4**——razor cut + ripple delete instructions 寫進 FCPXML，由 DaVinci 接管實際切點
-- **「B-roll segment」** = ADR-015 凍結概念。Hyperframes **不 render 整支影片**，只 render 各 scene 為個別 mp4 clips（per-segment file），FCPXML 把它們塞進 V2-V4 軌道；A-roll 留 V1。架構反轉的核心
-- **「Mode A / Mode B」** = ADR-015 引用視覺化雙模式。**Mode A** = `<DocumentQuote>` 真實 PDF 頁 + 螢光筆動畫（PyMuPDF bbox + 三變體 highlighter-sweep / ken-burns / spotlight）；**Mode B** = `<QuoteCard>` 風格化引文卡（紙質背景 + 思源宋體 + 頁碼引註）。markdown DSL `mode=` 切換
-- **「per-episode 目錄」** = `data/script_video/<episode-id>/` 自包含結構：script.md + raw_recording.mp4 + refs/ (PDF) + out/ (FCPXML / SRT / b_roll mp4)。跨集共享：`_cache/embeddings/<sha256>.npy`（同 PDF 第二次用直接讀）
+- **「mistake removal」/「cleanup stage」** = 拍掌 marker 偵測（修修錄錯時拍兩下手做 marker）→ ripple-delete。ADR-015 原 stage 1；ADR-050 D3 refit 為單一 video pipeline 的**選配前置 `cleanup` stage**（輸出形狀 — ripple-delete FCPXML vs 直接剪乾淨 mp4 — 於 ADR-050 實施 PR-4 跟修修確認後定）
+- **「B-roll segment」** = ADR-015 凍結、ADR-032 沿用的概念。Hyperframes **不 render 整支影片**，只 render 各 beat 為個別 mp4 clips（content-addressed `b_roll_<hash>.mp4`），FCPXML 把它們塞進 lane-1（V2）；A-roll 留 V1。架構反轉的核心
+- **「Mode A / Mode B」** = ~~ADR-015 引用視覺化雙模式（PyMuPDF bbox DocumentQuote / QuoteCard）~~ **Superseded（ADR-032）**：書/網頁引用改走 reader-playwright / web-playwright 錄真實頁面 + highlight 動畫（保留「引用真的來自這本書」的視覺契約），非書頁類走 Hyperframes；見 `memory/claude/project_broll_dual_path_architecture.md`
+- **「per-episode 目錄」** = `data/script_video/<episode-id>/` 自包含結構（ADR-032 §5 + ADR-050 D4）：episode.yaml（含 `stages:` provenance 欄位）+ raw_recording.mp4 + transcript.srt + refs.yaml（選配）+ storyboard.yaml + out/（content-addressed b_roll mp4 + episode.fcpxml）。~~跨集 embedding cache~~（BGE-M3 fuzzy match 路線已廢棄，ADR-032）
 
 ## ADR location
 

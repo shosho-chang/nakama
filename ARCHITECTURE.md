@@ -2,21 +2,29 @@
 
 ## 系統概覽
 
-Nakama 是一個多 Agent AI 系統，為單一內容創作者（Owner）設計。每個 Agent 負責工作流程的一個環節，透過共用的基礎設施協同運作。
+Nakama 是一個多 Agent AI 系統，為單一內容創作者（Owner）設計。每個 Agent 負責工作流程的一個環節，透過共用的基礎設施協同運作。八個 agent 沿內容流程七階段協作（見 [`CONTENT-PIPELINE.md`](CONTENT-PIPELINE.md)）。
 
 ```
-Owner
+Owner（修修 · 船長）
   │
-  ├── Thousand Sunny ──► Robin ──► Obsidian Vault (KB/)
-  │                                    │
-  ├── Cron ──► Zoro ───────────────────┤
-  │        ──► Nami ───────────────────┤
-  │        ──► Sanji ──────────────────┤
-  │        ──► Franky ─────────────────┤
-  │                                    │
-  └── Manual ──► Usopp ──► WordPress / YouTube / Fluent CRM
-              ──► Brook ──► 各平台格式輸出
+  ├── Thousand Sunny（FastAPI web）──► Robin ──► Obsidian Vault (KB/)
+  │                                       │
+  ├── Cron ──► Zoro（05:00 情報）─────────┤
+  │        ──► Franky（監控/備份/新聞/週報）┤
+  │                                       │
+  ├── Slack Gateway ──► Nami（秘書 · 30+ tools）
+  │                                       │
+  ├── systemd daemon ──► Usopp ──► WordPress（shosho.tw / fleet）
+  │                                       │
+  └── Manual / Bridge UI
+           ├── Brook ──► blog / FB / IG / 電子報 各平台格式輸出
+           │        └──► Video Production Line：B-roll storyboard → FCPXML（DaVinci）（原 Foundry，ADR-050 歸 Brook）
+           └── Sanji（社群 · 規劃中）
 ```
+
+> **逐 agent 的功能模組 / 用到的 `scripts/` / 已 skill 化能力**，見 Bridge 內部頁
+> [`/bridge/inventory`](thousand_sunny/templates/bridge/inventory.html)（Agent 能力盤點），
+> 系統 readiness 三 lens 見 [`/progress`](thousand_sunny/templates/bridge/progress.html)。
 
 ---
 
@@ -81,7 +89,7 @@ Obsidian vault 的讀寫介面：
 
 ## Robin：Knowledge Base Agent
 
-目前唯一完成的 Agent，也是系統最核心的部分。
+系統最核心、最成熟的 Agent。（其餘 agent 多數已有實作 — Zoro / Nami / Brook（含 Video Production Line，原 Foundry，ADR-050）/ Franky / Usopp 皆已 ship 部分能力，Sanji 仍為規劃中 stub；完整狀態見 [`/bridge/inventory`](thousand_sunny/templates/bridge/inventory.html) 與 [`/progress`](thousand_sunny/templates/bridge/progress.html)。）
 
 ### 工作流程
 
@@ -115,13 +123,17 @@ Claude: 建立/更新 Concept & Entity 頁面 → KB/Wiki/
 
 ### Thousand Sunny — Web Server（`thousand_sunny/`）
 FastAPI + Jinja2，部署為 systemd service（`thousand-sunny.service`）。
-獨立 web server 模組，每個 agent 有自己的 router：
-- `routers/robin.py` — KB ingest UI、Reader、KB search（16 routes）
-- `routers/zoro.py` — Keyword research（1 route）
-- `routers/brook.py` — Article composition chat（6 routes）
-- `auth.py` — 共用認證（HMAC cookie + API key）
-- SSE 即時進度回饋
-- Reader UI：支援 `==highlight==` 標記與 `> [!annotation]` 筆記
+獨立 web server 模組，每個 agent / surface 有自己的 router（`thousand_sunny/routers/`）：
+- `robin.py` — KB ingest UI、Reader、KB search（38 routes）
+- `zoro.py` / `bridge_zoro.py` — Keyword research
+- `brook.py` / `repurpose.py` — Article composition、多 channel render
+- `brook_video.py` — B-roll storyboard / FCPXML preview（Brook Video Production Line surface；route `/brook/video`，舊 `/foundry/*` 301 redirect，ADR-050）
+- `franky.py` — `/healthz` 探針 + `/bridge/franky` 健康儀表板
+- `bridge*.py` — Bridge ops 主控台（weekly / projects / digests / models / cost / logs / memory）
+- `progress.py` / `architecture.py` / `inventory.py` — Ops 文件頁（chassis nav，cookie-authed）
+- `auth.py` — 共用認證（HMAC cookie + API key；`NAKAMA_DEV_AUTH_BYPASS=1` 本機開發跳過）
+- 共用 chassis 導覽列：`templates/bridge/_chassis_nav.html`（Fleet / direct / Ops 三軸）
+- SSE 即時進度回饋；Reader UI 支援 `==highlight==` 與 `> [!annotation]`
 
 ---
 
@@ -155,7 +167,7 @@ VPS /home/nakama/data/state.db
 
 | 項目 | 選擇 | 原因 |
 |------|------|------|
-| LLM | Claude Sonnet（claude-sonnet-4-6） | 品質與成本平衡 |
+| LLM | Claude 家族（依任務分層：Opus 創意/規劃、Sonnet 一般、Haiku ranker） | 品質與成本平衡；模型 id 統一走 `shared/anthropic_client.py` |
 | Web Framework | FastAPI + Uvicorn | 異步、型別安全、SSE 支援 |
 | 資料庫 | SQLite | 單機部署，零額外依賴 |
 | 設定 | YAML + dotenv | 組態與密鑰分離 |

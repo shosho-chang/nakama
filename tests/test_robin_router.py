@@ -4,10 +4,10 @@ Scope：
 - Auth gates（redirect to /login when cookie 無效）
 - Helper functions: _send_to_recycle_bin, session store, _get_inbox_files, _resolve_reader_base
 - Non-SSE routes：index / read / files / save-annotations / mark-read /
-  start / cancel / processing / review-summary /
-  submit-guidance / review-plan / execute / done / kb/research
-- SSE `events` route 留下一輪測（session state × async stream 交互複雜，
-  獨立 PR 處理）
+  start / cancel / processing / kb/research（review-summary / submit-guidance /
+  review-plan / execute / done 等中途 HITL gate 已隨自動化 ingest 移除，ADR-043）
+- SSE `events` 自動流程（summarizing→planning→executing→開卡建議）見
+  test_robin_router_sse.py
 
 依 feedback_pytest_monkeypatch_where_used — monkeypatch 到 robin router 模組
 本身讀名字的 namespace，不是原始定義處。
@@ -327,16 +327,20 @@ def test_resolve_reader_base_rejects_unknown(client):
 # ---------------------------------------------------------------------------
 
 
-def test_index_dev_mode_returns_html(client):
+def test_index_redirects_to_weekly(client):
+    """`/` 一律重導到週看板（首頁＝修修每日落點）。Robin 收件匣改住 /robin，
+    所以這裡無條件 302 不會孤兒。與 VPS 模式（app.py else 分支）對齊。"""
     tc, _ = client
     r = tc.get("/")
-    assert r.status_code == 200
-    assert "text/html" in r.headers.get("content-type", "")
+    assert r.status_code == 302
+    assert r.headers["location"] == "/bridge/weekly"
 
 
-def test_index_redirects_when_auth_required_no_cookie(auth_client):
+def test_robin_inbox_redirects_when_auth_required_no_cookie(auth_client):
+    """登入守門：`/` 已改為無條件重導 /bridge/weekly，所以未登入的 /login 守門
+    移到各實際頁面 —— Robin 收件匣 /robin 未登入應帶 ?next=/robin redirect 到 /login。"""
     tc, _, _ = auth_client
-    r = tc.get("/")
+    r = tc.get("/robin")
     assert r.status_code == 302
     assert "/login" in r.headers["location"]
 
@@ -722,6 +726,171 @@ def test_start_happy_path_creates_session(client, vault):
 
 
 # ---------------------------------------------------------------------------
+# POST /start-book  (Centaur route B — 同步書本 ingest 入口；EPUB→KB/Raw/Books→
+# /processing 自動流程。prepare_book_raw 單元測試見 tests/shared/test_book_raw.py)
+# ---------------------------------------------------------------------------
+
+
+def test_start_book_unauth_redirect(auth_client):
+    tc, _, _ = auth_client
+    r = tc.post("/start-book", data={"book_id": "bk1"})
+    assert r.status_code == 302
+    assert "/login" in r.headers["location"]
+
+
+def test_start_book_missing_book_404(client, monkeypatch):
+    """書不在 books 表 → prepare_book_raw 拋 LookupError → 404。"""
+    tc, mod = client
+
+    def _raise(book_id):
+        raise LookupError("no such book")
+
+    monkeypatch.setattr(mod, "prepare_book_raw", _raise)
+    r = tc.post("/start-book", data={"book_id": "ghost"})
+    assert r.status_code == 404
+
+
+def test_start_book_unextractable_422(client, monkeypatch):
+    """EPUB 抽不出文字 → EPUBTextError → 422。"""
+    tc, mod = client
+    from shared.epub_text import EPUBTextError
+
+    def _raise(book_id):
+        raise EPUBTextError("no extractable text")
+
+    monkeypatch.setattr(mod, "prepare_book_raw", _raise)
+    r = tc.post("/start-book", data={"book_id": "empty-bk"})
+    assert r.status_code == 422
+
+
+def test_start_book_happy_path_creates_session(client, vault, monkeypatch):
+    """書本 raw 就緒 → 建 session（source_type=book、annotation_slug=book_id、
+    keep_raw、無 Inbox 來源檔）→ /processing。"""
+    tc, mod = client
+    raw = vault / "KB" / "Raw" / "Books" / "my-book.md"
+    raw.parent.mkdir(parents=True, exist_ok=True)
+    raw.write_text("---\ntitle: My Book\nsource_type: book\n---\nbook body", encoding="utf-8")
+    monkeypatch.setattr(mod, "prepare_book_raw", lambda book_id: raw)
+
+    r = tc.post("/start-book", data={"book_id": "my-book-id"})
+    assert r.status_code == 302
+    assert r.headers["location"] == "/processing"
+    assert "robin_session" in r.headers.get("set-cookie", "")
+
+    sess = next(s for s in mod.sessions.values() if s.get("source_type") == "book")
+    assert sess["raw_path"] == str(raw)  # 直指 KB/Raw/Books，未從 Inbox 複製
+    assert sess["annotation_slug"] == "my-book-id"  # 整本劃線提案用
+    assert sess["file_path"] == ""  # 無 Inbox 來源檔 → execute 不回收
+    assert sess["keep_raw"] is True  # 衍生檔，cancel 不回收
+    assert sess["step"] == "summarizing"
+
+
+# ---------------------------------------------------------------------------
+# GET /robin/estimate — 按 Ingest 前的時長預估（餵 ingest-confirm.js 確認框）
+# ---------------------------------------------------------------------------
+
+
+def test_estimate_unauth_returns_403(auth_client):
+    tc, _, _ = auth_client
+    r = tc.get("/robin/estimate?source_type=article&source_id=x.md")
+    assert r.status_code == 403
+
+
+def test_estimate_article_returns_label_and_detail(client, vault, monkeypatch):
+    """文章：讀 Inbox 檔（strip frontmatter）→ 回字數 + 時長範圍。"""
+    tc, mod = client
+    import shared.local_llm as _llm
+
+    monkeypatch.setattr(_llm, "is_server_available", lambda *a, **k: False)
+    inbox = mod._get_inbox()
+    inbox.mkdir(parents=True, exist_ok=True)
+    (inbox / "a.md").write_text("---\ntitle: A\n---\n" + ("字" * 2000), encoding="utf-8")
+
+    r = tc.get("/robin/estimate?source_type=article&source_id=a.md")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert data["char_count"] == 2000  # frontmatter 已剝除
+    assert data["is_large"] is False
+    assert data["time_label"].startswith("約")
+    assert "字" in data["detail"]
+
+
+def test_estimate_article_missing_file_404(client, vault):
+    tc, mod = client
+    r = tc.get("/robin/estimate?source_type=article&source_id=ghost.md")
+    assert r.status_code == 404
+
+
+def test_estimate_book_extracts_without_writing(client, vault, monkeypatch):
+    """書本：走 extract_book_text（不寫 KB/Raw）→ 大文件回段數 + 分鐘範圍。"""
+    tc, mod = client
+    import shared.local_llm as _llm
+    from agents.robin import chunker
+
+    monkeypatch.setattr(_llm, "is_server_available", lambda *a, **k: False)
+    monkeypatch.setattr(mod, "extract_book_text", lambda bid: ("書", "作者", "字" * 50000))
+    monkeypatch.setattr(chunker, "chunk_document", lambda content: ["c"] * 4)
+
+    r = tc.get("/robin/estimate?source_type=book&source_id=bk1")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["is_large"] is True
+    assert data["n_chunks"] == 4
+    assert "分 4 段" in data["detail"]
+    assert "分鐘" in data["time_label"]
+    assert not (vault / "KB" / "Raw" / "Books").exists()  # 估算不落 raw 檔
+
+
+def test_estimate_book_missing_returns_404(client, vault, monkeypatch):
+    tc, mod = client
+
+    def _raise(bid):
+        raise LookupError("no book")
+
+    monkeypatch.setattr(mod, "extract_book_text", _raise)
+    r = tc.get("/robin/estimate?source_type=book&source_id=ghost")
+    assert r.status_code == 404
+
+
+def test_estimate_book_unextractable_returns_422(client, vault, monkeypatch):
+    tc, mod = client
+    from shared.epub_text import EPUBTextError
+
+    def _raise(bid):
+        raise EPUBTextError("no text")
+
+    monkeypatch.setattr(mod, "extract_book_text", _raise)
+    r = tc.get("/robin/estimate?source_type=book&source_id=empty")
+    assert r.status_code == 422
+
+
+def test_estimate_video_missing_transcript_404(client, vault):
+    tc, mod = client
+    r = tc.get("/robin/estimate?source_type=video&source_id=novid")
+    assert r.status_code == 404
+
+
+def test_estimate_video_vtt_transcript_returns_estimate(client, vault, monkeypatch):
+    """影片逐字稿（.vtt）存在 → _read_ingest_source 走 webvtt_to_prose → 回估算。"""
+    tc, mod = client
+    import shared.local_llm as _llm
+
+    monkeypatch.setattr(_llm, "is_server_available", lambda *a, **k: False)
+    vdir = vault / "KB" / "Raw" / "Videos"
+    vdir.mkdir(parents=True, exist_ok=True)
+    (vdir / "vid9.vtt").write_text(
+        "WEBVTT\n\n00:00:00.000 --> 00:00:02.000\n這是一段逐字稿內容，用來估算時間。\n",
+        encoding="utf-8",
+    )
+    r = tc.get("/robin/estimate?source_type=video&source_id=vid9")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert data["char_count"] > 0
+
+
+# ---------------------------------------------------------------------------
 # POST /cancel
 # ---------------------------------------------------------------------------
 
@@ -802,185 +971,6 @@ def test_processing_unknown_step_uses_default_label(client):
     r = tc.get("/processing")
     assert r.status_code == 200
     assert "處理中" in r.text
-
-
-# ---------------------------------------------------------------------------
-# GET /review-summary
-# ---------------------------------------------------------------------------
-
-
-def test_review_summary_unauth_redirect(auth_client):
-    tc, _, _ = auth_client
-    r = tc.get("/review-summary")
-    assert r.status_code == 302
-
-
-def test_review_summary_wrong_step_redirects_home(client):
-    tc, mod = client
-    sid = mod._new_session(step="summarizing")
-    tc.cookies.set("robin_session", sid)
-    r = tc.get("/review-summary")
-    assert r.status_code == 302
-    assert r.headers["location"] == "/robin"
-
-
-def test_review_summary_happy_path(client):
-    tc, mod = client
-    sid = mod._new_session(
-        step="awaiting_guidance", file_name="foo.md", summary_body="This is the summary"
-    )
-    tc.cookies.set("robin_session", sid)
-    r = tc.get("/review-summary")
-    assert r.status_code == 200
-    assert "This is the summary" in r.text
-
-
-# ---------------------------------------------------------------------------
-# POST /submit-guidance
-# ---------------------------------------------------------------------------
-
-
-def test_submit_guidance_unauth_redirect(auth_client):
-    tc, _, _ = auth_client
-    r = tc.post("/submit-guidance", data={"guidance": "focus on X"})
-    assert r.status_code == 302
-
-
-def test_submit_guidance_no_session_redirects_home(client):
-    tc, _ = client
-    r = tc.post("/submit-guidance", data={"guidance": "focus"})
-    assert r.status_code == 302
-    assert r.headers["location"] == "/robin"
-
-
-def test_submit_guidance_transitions_to_planning(client):
-    tc, mod = client
-    sid = mod._new_session(step="awaiting_guidance")
-    tc.cookies.set("robin_session", sid)
-    r = tc.post("/submit-guidance", data={"guidance": "  my guidance  "})
-    assert r.status_code == 302
-    assert r.headers["location"] == "/processing"
-    assert mod.sessions[sid]["step"] == "planning"
-    assert mod.sessions[sid]["user_guidance"] == "my guidance"  # stripped
-
-
-# ---------------------------------------------------------------------------
-# GET /review-plan
-# ---------------------------------------------------------------------------
-
-
-def test_review_plan_unauth_redirect(auth_client):
-    tc, _, _ = auth_client
-    r = tc.get("/review-plan")
-    assert r.status_code == 302
-
-
-def test_review_plan_wrong_step_redirects_home(client):
-    tc, mod = client
-    sid = mod._new_session(step="summarizing")
-    tc.cookies.set("robin_session", sid)
-    r = tc.get("/review-plan")
-    assert r.status_code == 302
-
-
-def test_review_plan_happy_path(client):
-    tc, mod = client
-    plan = {
-        "concepts": [{"slug": "concept-a", "action": "create", "title": "Concept A"}],
-        "entities": [{"title": "Existing", "entity_type": "person"}],
-    }
-    sid = mod._new_session(step="awaiting_approval", file_name="foo.md", plan=plan)
-    tc.cookies.set("robin_session", sid)
-    r = tc.get("/review-plan")
-    assert r.status_code == 200
-    assert "Concept A" in r.text
-
-
-# ---------------------------------------------------------------------------
-# POST /execute
-# ---------------------------------------------------------------------------
-
-
-def test_execute_unauth_redirect(auth_client):
-    tc, _, _ = auth_client
-    r = tc.post("/execute", data={})
-    assert r.status_code == 302
-
-
-def test_execute_no_session_redirects_home(client):
-    tc, _ = client
-    r = tc.post("/execute", data={})
-    assert r.status_code == 302
-    assert r.headers["location"] == "/robin"
-
-
-def test_execute_filters_selected_items(client):
-    tc, mod = client
-    plan = {
-        "concepts": [
-            {"slug": "a", "action": "create", "title": "A"},
-            {"slug": "b", "action": "update_merge", "title": "B"},
-            {"slug": "c", "action": "noop", "title": "C"},
-        ],
-        "entities": [
-            {"title": "U1", "entity_type": "person"},
-            {"title": "U2", "entity_type": "tool"},
-        ],
-    }
-    sid = mod._new_session(step="awaiting_approval", plan=plan)
-    tc.cookies.set("robin_session", sid)
-    r = tc.post("/execute", data={"concept": ["0", "2"], "entity": ["1"]})
-    assert r.status_code == 302
-    assert r.headers["location"] == "/processing"
-    final_plan = mod.sessions[sid]["plan"]
-    assert [c["title"] for c in final_plan["concepts"]] == ["A", "C"]
-    assert [e["title"] for e in final_plan["entities"]] == ["U2"]
-    assert mod.sessions[sid]["step"] == "executing"
-
-
-def test_execute_ignores_invalid_indices(client):
-    """非數字或超界 index 應被略過。"""
-    tc, mod = client
-    plan = {"concepts": [{"slug": "a", "action": "create", "title": "A"}], "entities": []}
-    sid = mod._new_session(step="awaiting_approval", plan=plan)
-    tc.cookies.set("robin_session", sid)
-    r = tc.post(
-        "/execute",
-        data={"concept": ["0", "99", "abc"]},
-    )
-    assert r.status_code == 302
-    assert len(mod.sessions[sid]["plan"]["concepts"]) == 1  # only "A"
-
-
-# ---------------------------------------------------------------------------
-# GET /done
-# ---------------------------------------------------------------------------
-
-
-def test_done_unauth_redirect(auth_client):
-    tc, _, _ = auth_client
-    r = tc.get("/done")
-    assert r.status_code == 302
-
-
-def test_done_wrong_step_redirects_home(client):
-    tc, mod = client
-    sid = mod._new_session(step="executing")
-    tc.cookies.set("robin_session", sid)
-    r = tc.get("/done")
-    assert r.status_code == 302
-
-
-def test_done_happy_path(client):
-    tc, mod = client
-    sid = mod._new_session(
-        step="done",
-        file_name="foo.md",
-        result={"created": ["A", "B"], "updated": ["U1"]},
-    )
-    tc.cookies.set("robin_session", sid)
-    r = tc.get("/done")
-    assert r.status_code == 200
 
 
 # ---------------------------------------------------------------------------
@@ -1071,3 +1061,271 @@ def test_legacy_translate_returns_308_with_query_string(client):
     r = tc.post("/translate?file=x.md")
     assert r.status_code == 308
     assert r.headers["location"] == "/robin/translate?file=x.md"
+
+
+# ---------------------------------------------------------------------------
+# Reading hub (/robin/home) — unified 3-source entry
+# ---------------------------------------------------------------------------
+
+
+def test_reading_hub_renders_three_sources(client):
+    """/robin/home renders the unified hub with all three source panels and
+    their add/ingest actions, even when every source is empty."""
+    tc, _ = client
+    r = tc.get("/robin/home")
+    assert r.status_code == 200
+    body = r.text
+    assert "Robin · 首頁" in body
+    # three source panels
+    assert "文章" in body and "影片" in body and "書" in body
+    # actions present (video add button is the gap this slice fixes)
+    assert "/robin/watchlist/add" in body  # ➕ 加影片
+    assert "/robin/books/upload" in body  # 📤 上傳新書
+
+
+def test_reading_hub_requires_auth(auth_client):
+    """When WEB_PASSWORD is set, the hub redirects unauthenticated callers to
+    /login with a next param (same gate as the other Robin surfaces)."""
+    tc, _, _cookies = auth_client
+    r = tc.get("/robin/home")
+    assert r.status_code == 302
+    assert r.headers["location"] == "/login?next=/robin/home"
+
+
+# ---------------------------------------------------------------------------
+# POST /start-video  (Centaur route E — 影片 ingest 入口；逐字稿已 canonical
+# 落在 KB/Raw/Videos，不從 Inbox 複製，故不可回收原檔)
+# ---------------------------------------------------------------------------
+
+
+def _make_video_transcript(vault: Path, video_id: str) -> Path:
+    vtt = vault / "KB" / "Raw" / "Videos" / f"{video_id}.vtt"
+    vtt.parent.mkdir(parents=True, exist_ok=True)
+    vtt.write_text(
+        "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nHello from the video.\n",
+        encoding="utf-8",
+    )
+    return vtt
+
+
+def test_start_video_unauth_redirect(auth_client):
+    tc, _, _ = auth_client
+    r = tc.post("/start-video", data={"video_id": "Ch4Sl0POBhU"})
+    assert r.status_code == 302
+    assert "/login" in r.headers["location"]
+
+
+def test_start_video_invalid_id_400(client, vault):
+    """video_id 走 regex 白名單擋路徑穿越 — 含 / 或 .. 一律 400。"""
+    tc, _ = client
+    r = tc.post("/start-video", data={"video_id": "../../etc/passwd"})
+    assert r.status_code == 400
+
+
+def test_start_video_missing_transcript_404(client, vault):
+    """合法 id 但 KB/Raw/Videos 沒有對應逐字稿 → 404。"""
+    tc, _ = client
+    r = tc.post("/start-video", data={"video_id": "no_such_vid"})
+    assert r.status_code == 404
+
+
+def test_start_video_happy_path_creates_session(client, vault):
+    """逐字稿就地存在 → 建 session（直指逐字稿、keep_raw、不複製）→ /processing。"""
+    tc, mod = client
+    vtt = _make_video_transcript(vault, "Ch4Sl0POBhU")
+
+    r = tc.post("/start-video", data={"video_id": "Ch4Sl0POBhU"})
+    assert r.status_code == 302
+    assert r.headers["location"] == "/processing"
+    assert "robin_session" in r.headers.get("set-cookie", "")
+
+    sess = next(s for s in mod.sessions.values() if s.get("source_type") == "video")
+    assert sess["raw_path"] == str(vtt)  # 直指 canonical 逐字稿，未複製
+    assert sess["file_path"] == ""  # 無 Inbox 來源檔 → execute 不回收
+    assert sess["keep_raw"] is True  # cancel 也不回收
+    assert sess["annotation_slug"] == "youtube_Ch4Sl0POBhU"
+    assert sess["step"] == "summarizing"
+
+
+def test_start_video_does_not_copy_or_delete_transcript(client, vault):
+    """canonical 逐字稿留在原處（不像文章從 Inbox 複製到 KB/Raw）。"""
+    tc, _ = client
+    vtt = _make_video_transcript(vault, "v6MWNrVbM4E")
+    before = vtt.read_text(encoding="utf-8")
+
+    r = tc.post("/start-video", data={"video_id": "v6MWNrVbM4E"})
+    assert r.status_code == 302
+    assert vtt.exists()
+    assert vtt.read_text(encoding="utf-8") == before
+
+
+def test_cancel_keeps_raw_for_video_ingest(client, vault, monkeypatch):
+    """keep_raw=True（影片 ingest）→ cancel 不回收 canonical 逐字稿。"""
+    tc, mod = client
+    vtt = _make_video_transcript(vault, "Ch4Sl0POBhU")
+    sid = mod._new_session(step="summarizing", raw_path=str(vtt), summary_path="", keep_raw=True)
+    monkeypatch.setattr(mod.platform, "system", lambda: "Linux")
+    tc.cookies.set("robin_session", sid)
+
+    r = tc.post("/cancel")
+    assert r.status_code == 302
+    assert mod.sessions[sid]["step"] == "cancelled"
+    assert vtt.exists()  # keep_raw 守門 → 逐字稿仍在
+
+
+# ---------------------------------------------------------------------------
+# GET /robin/watchlist/{id}  (video reader — av_reader.html，含 Ingest 按鈕)
+# + DELETE /robin/watchlist/{id}/annotation 邊界
+# ---------------------------------------------------------------------------
+
+
+def _setup_video(vault: Path, video_id: str = "Ch4Sl0POBhU") -> Path:
+    """Watchlist manifest（讓 resolver 認得影片）+ KB/Raw/Videos 逐字稿
+    （ADR-046 canonical 位置，watch_video 從這裡讀 cue）。"""
+    import json
+
+    entry = vault / "Watchlist" / "youtube" / video_id
+    entry.mkdir(parents=True, exist_ok=True)
+    (entry / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "video_id": video_id,
+                "title": "Sample Talk",
+                "channel": "Sample Channel",
+                "url": f"https://youtube.com/watch?v={video_id}",
+                "duration_s": 600,
+                "primary_lang": "en",
+                "cast": ["host", "Guest A"],
+                "transcript_path": "transcript.vtt",
+                "added_at": "2026-06-01T00:00:00Z",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    vtt = vault / "KB" / "Raw" / "Videos" / f"{video_id}.vtt"
+    vtt.parent.mkdir(parents=True, exist_ok=True)
+    vtt.write_text(
+        "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nWelcome to the show.\n\n"
+        "00:00:05.000 --> 00:00:07.000\nToday we discuss sleep.\n",
+        encoding="utf-8",
+    )
+    return vtt
+
+
+def test_watch_video_renders_reader_with_ingest_button(client, vault):
+    """av_reader 渲染逐字稿 cue + 新的「⚙️ Ingest 這支」按鈕（POST /start-video）。"""
+    tc, _ = client
+    _setup_video(vault)
+
+    r = tc.get("/robin/watchlist/Ch4Sl0POBhU")
+    assert r.status_code == 200
+    assert "Welcome to the show." in r.text  # 逐字稿洗出的 cue
+    # 新 ingest 入口存在且接到 /start-video，帶 video_id。
+    assert 'action="/start-video"' in r.text
+    assert "Ingest 這支" in r.text
+    assert 'value="Ch4Sl0POBhU"' in r.text
+
+
+def test_watch_video_renders_annotations_including_unanchored(client, vault):
+    """劃線清單渲染：有 t= 定位的命中 cue marker；無 t= 定位的（start=None）
+    走 ``continue`` 分支不算 marker，但仍渲染在清單。"""
+    from shared.schemas.annotations import AnnotationSetV3, HighlightV3
+
+    tc, mod = client
+    _setup_video(vault)
+
+    store = mod.get_annotation_store()
+    store.save(
+        AnnotationSetV3(
+            slug="youtube_Ch4Sl0POBhU",
+            base="youtube",
+            items=[
+                HighlightV3(
+                    cfi="t=1.0-3.0",
+                    text_excerpt="Welcome to the show.",
+                    text="Welcome to the show.",
+                ),
+                # 無 t= 定位（start 解析為 None）→ 觸發 marker 迴圈的 continue 分支。
+                HighlightV3(
+                    cfi="epubcfi(/6/4!/4/2:0)",
+                    text_excerpt="orphan mark",
+                    text="orphan mark",
+                ),
+            ],
+        )
+    )
+
+    r = tc.get("/robin/watchlist/Ch4Sl0POBhU")
+    assert r.status_code == 200
+    assert "Welcome to the show." in r.text
+    assert "orphan mark" in r.text
+
+
+def test_delete_video_highlight_invalid_id_404(client, vault):
+    """Path-traversal 形狀的 video_id 在碰 vault 前就被 regex 擋成 404。"""
+    tc, _ = client
+    r = tc.delete("/robin/watchlist/bad!id/annotation", params={"cue_start": 1.0})
+    assert r.status_code == 404
+
+
+def test_delete_video_highlight_no_match_keeps_item(client, vault):
+    """在沒有 mark 的 cue 刪除 → 既有 item 全保留、removed=0。"""
+    from shared.schemas.annotations import AnnotationSetV3, HighlightV3
+
+    tc, mod = client
+    _setup_video(vault)
+    mod.get_annotation_store().save(
+        AnnotationSetV3(
+            slug="youtube_Ch4Sl0POBhU",
+            base="youtube",
+            items=[HighlightV3(cfi="t=1.0-3.0", text_excerpt="hi", text="hi")],
+        )
+    )
+
+    r = tc.delete("/robin/watchlist/Ch4Sl0POBhU/annotation", params={"cue_start": 99.0})
+    assert r.status_code == 200
+    assert r.json()["removed"] == 0
+
+
+def test_create_video_annotation_resolver_valueerror_404(client, vault, monkeypatch):
+    """Resolver 丟 ValueError（registry 層偵測 path-traversal/symlink-escape）→
+    端點映成 404，不是 500（defence-in-depth）。"""
+    tc, mod = client
+    _setup_video(vault)
+
+    def boom(self, key):
+        raise ValueError("traversal at registry layer")
+
+    monkeypatch.setattr(mod.ReadingSourceRegistry, "resolve", boom)
+    r = tc.post(
+        "/robin/watchlist/Ch4Sl0POBhU/annotation",
+        json={"cue_start": 1.0, "cue_end": 3.0, "excerpt": "x"},
+    )
+    assert r.status_code == 404
+
+
+def test_delete_video_highlight_resolver_valueerror_404(client, vault, monkeypatch):
+    """同上，DELETE 路徑的 resolver ValueError → 404。"""
+    tc, mod = client
+
+    def boom(self, key):
+        raise ValueError("traversal at registry layer")
+
+    monkeypatch.setattr(mod.ReadingSourceRegistry, "resolve", boom)
+    r = tc.delete("/robin/watchlist/Ch4Sl0POBhU/annotation", params={"cue_start": 1.0})
+    assert r.status_code == 404
+
+
+def test_start_video_prefers_cleaned_md_over_vtt(client, vault):
+    """既有清理過的 .md 時,/start-video 拿 .md 當 ingest 輸入(不是 .vtt)。"""
+    tc, mod = client
+    _make_video_transcript(vault, "Ch4Sl0POBhU")  # writes the .vtt
+    md = vault / "KB" / "Raw" / "Videos" / "Ch4Sl0POBhU.md"
+    md.write_text("---\ntitle: T\n---\n**[00:01]** clean prose.\n", encoding="utf-8")
+
+    r = tc.post("/start-video", data={"video_id": "Ch4Sl0POBhU"})
+    assert r.status_code == 302
+    sess = next(s for s in mod.sessions.values() if s.get("source_type") == "video")
+    assert sess["raw_path"].endswith("Ch4Sl0POBhU.md")

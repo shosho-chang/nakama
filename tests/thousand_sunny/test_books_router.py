@@ -579,20 +579,6 @@ def test_legacy_api_progress_put_redirects_308(app_client):
     assert r.headers["location"] == "/robin/api/books/any-id/progress"
 
 
-def test_legacy_api_ingest_request_post_redirects_308(app_client):
-    tc, _ = app_client
-    r = tc.post("/api/books/any-id/ingest-request")
-    assert r.status_code == 308
-    assert r.headers["location"] == "/robin/api/books/any-id/ingest-request"
-
-
-def test_legacy_api_ingest_request_delete_redirects_308(app_client):
-    tc, _ = app_client
-    r = tc.delete("/api/books/any-id/ingest-request")
-    assert r.status_code == 308
-    assert r.headers["location"] == "/robin/api/books/any-id/ingest-request"
-
-
 def test_legacy_api_delete_book_redirects_308(app_client):
     tc, _ = app_client
     r = tc.delete("/api/books/any-id")

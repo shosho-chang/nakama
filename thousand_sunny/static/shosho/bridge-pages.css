@@ -2716,3 +2716,35 @@ body.sho .r2-strip-val.is-fail {
     transition: none;
   }
 }
+
+/* ── Robin reading sub-nav (_reader_nav.html macro) ─────────────────────
+   Identical cross-links on every reading surface (hub + articles/videos/
+   books). Hairline tabs, accent underline on the active surface. */
+body.sho .reader-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 20px;
+  border-bottom: 1px solid var(--sho-line);
+}
+body.sho .reader-nav a {
+  padding: 8px 12px;
+  font-size: 0.875rem;
+  color: var(--sho-muted);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .reader-nav a:hover { color: var(--sho-text); }
+body.sho .reader-nav a.active {
+  color: var(--sho-ink);
+  font-weight: 600;
+  border-bottom-color: var(--sho-accent);
+}
+body.sho .reader-nav a:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+  border-radius: 4px;
+}

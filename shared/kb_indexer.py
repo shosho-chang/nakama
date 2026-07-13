@@ -1,9 +1,17 @@
-"""KB vault 索引器 — vault walker → H2 chunker → FTS5 + vec0 writer.
+"""KB vault 索引器 — vault walker → H2 chunker → FTS5 writer.
+
+ADR-042: dense-vector (vec0 / embeddings) writes removed — FTS5 BM25 is the
+only retrieval lane now. The indexer writes `kb_chunks` (FTS5) + `kb_wikilinks`
++ `kb_index_meta` only.
 
 `index_vault(vault_path, db)` 接受已初始化的 SQLite connection
-（sqlite-vec 已 load，kb_* tables 已存在），
+（kb_* tables 已存在），
 掃 KB/Wiki/{Sources,Concepts,Entities}（recursive，含 nested Books/{book_id}/）
-+ KB/Annotations/，按 H2 切 chunk，mtime_ns 增量跳過未改檔案。
++ KB/Annotations/ + KB/Permanent/，按 H2 切 chunk，mtime_ns 增量跳過未改檔案。
+
+Centaur N520：KB/Permanent/（人寫永久卡）走獨立 `_index_permanent` 路徑——卡片
+正文進 FTS5（可被檢索、排序置頂），typed edges（支持/反駁/延伸）進結構化
+`kb_typed_edges` 表（directed graph，不靠 CJK text tokenization）。
 
 Annotation 檔（KB/Annotations/{slug}.md，ADR-021 §2）走獨立路徑：
 parse JSON code block 為 v1/v2/v3 items，每個 highlight.text / annotation.note /
@@ -27,8 +35,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from shared import kb_embedder
 from shared.annotation_store import upgrade_to_v3
+from shared.log import get_logger
 from shared.schemas.annotations import (
     AnnotationSetV3,
     AnnotationV3,
@@ -37,11 +45,23 @@ from shared.schemas.annotations import (
 )
 from shared.utils import extract_frontmatter
 
+logger = get_logger("nakama.shared.kb_indexer")
+
 # H2 heading marker (e.g. "## 定義")
 _H2_RE = re.compile(r"^## (.+)$", re.MULTILINE)
 
 # Wikilink capture (e.g. [[Concepts/overtraining]])
 _WIKILINK_RE = re.compile(r"\[\[([^\[\]]+)\]\]")
+
+# Centaur N520 — typed edges in KB/Permanent/ card bodies (Dataview inline field).
+# Format (v0.2 §3):  支持:: [[卡片標題]] — 理由
+# Direction is always 本卡 → 對方 (v0.2 §3「方向定死」); reverse comes free from
+# kb_typed_edges(dst_path) / Obsidian backlinks, so we never mirror-write.
+_TYPED_EDGE_RE = re.compile(
+    r"^(支持|反駁|延伸)::\s*\[\[([^\[\]]+)\]\]\s*(?:[—–-]\s*(.*?))?\s*$",
+    re.MULTILINE,
+)
+_EDGE_TYPE_MAP = {"支持": "support", "反駁": "refute", "延伸": "extend"}
 
 # H2 sections that are structural boilerplate and not useful for retrieval
 _SKIP_SECTIONS = frozenset(
@@ -82,6 +102,7 @@ class IndexStats:
     files_skipped: int = 0  # mtime_ns unchanged — fast path
     chunks_added: int = 0
     chunks_removed: int = 0
+    annotation_conflicts: int = 0  # Syncthing *.sync-conflict-* files seen (ADR-044 §B8)
     wikilinks: list[str] = field(default_factory=list)
 
 
@@ -139,11 +160,11 @@ def _split_h2_chunks(body: str, page_title: str, page_path: str) -> list[dict]:
 
 
 def index_vault(vault_path: Path, db: sqlite3.Connection) -> IndexStats:
-    """Scan KB/Wiki vault and write chunks + embeddings into `db`.
+    """Scan KB/Wiki vault and write FTS5 chunks into `db` (ADR-042: no embeddings).
 
     Args:
         vault_path: Obsidian vault root (KB/Wiki/{Sources,Concepts,Entities} live here).
-        db:         SQLite connection with sqlite-vec loaded and kb_* tables initialized.
+        db:         SQLite connection with kb_* tables initialized.
                     Obtain via ``shared.kb_hybrid_search.make_conn()`` or
                     ``shared.kb_hybrid_search.get_kb_conn()``.
 
@@ -210,35 +231,23 @@ def index_vault(vault_path: Path, db: sqlite3.Connection) -> IndexStats:
                 ).fetchall()
             ]
             if old_rowids:
-                placeholders = ",".join("?" * len(old_rowids))
-                db.execute(
-                    f"DELETE FROM kb_vectors WHERE rowid IN ({placeholders})",
-                    old_rowids,
-                )
                 db.execute("DELETE FROM kb_chunks WHERE path = ?", (page_path,))
                 stats.chunks_removed += len(old_rowids)
 
-            # Chunk + embed + insert
+            # Chunk + insert (FTS5 only; ADR-042 removed the dense-vec lane)
             chunks = _split_h2_chunks(body, page_title, page_path)
-            if chunks:
-                embeddings = kb_embedder.embed_batch([c["chunk_text"] for c in chunks])
-                for chunk, emb in zip(chunks, embeddings):
-                    cur = db.execute(
-                        "INSERT INTO kb_chunks (chunk_text, section, heading_context, path) "
-                        "VALUES (?, ?, ?, ?)",
-                        (
-                            chunk["chunk_text"],
-                            chunk["section"],
-                            chunk["heading_context"],
-                            chunk["path"],
-                        ),
-                    )
-                    rowid: int = cur.lastrowid  # type: ignore[assignment]
-                    db.execute(
-                        "INSERT INTO kb_vectors(rowid, embedding) VALUES (?, ?)",
-                        (rowid, emb.tobytes()),
-                    )
-                    stats.chunks_added += 1
+            for chunk in chunks:
+                db.execute(
+                    "INSERT INTO kb_chunks (chunk_text, section, heading_context, path) "
+                    "VALUES (?, ?, ?, ?)",
+                    (
+                        chunk["chunk_text"],
+                        chunk["section"],
+                        chunk["heading_context"],
+                        chunk["path"],
+                    ),
+                )
+                stats.chunks_added += 1
 
             # Update incremental-index bookmark
             db.execute(
@@ -251,6 +260,9 @@ def index_vault(vault_path: Path, db: sqlite3.Connection) -> IndexStats:
         db.commit()
 
     _index_annotations(vault_path, db, stats, now)
+    db.commit()
+
+    _index_permanent(vault_path, db, stats, now)
     db.commit()
 
     return stats
@@ -321,13 +333,26 @@ def _index_annotations(
     """
     # Local import to avoid a module-load-time circular: annotation_store imports
     # shared.config (vault path), and we don't want kb_indexer importing config either.
-    from shared.annotation_store import _parse  # noqa: PLC0415
+    from shared.annotation_store import (  # noqa: PLC0415
+        ANNOTATION_SYNC_CONFLICT_RE,
+        _parse,
+    )
 
     annotations_dir = vault_path / "KB" / "Annotations"
     if not annotations_dir.exists():
         return
 
     for md_file in sorted(annotations_dir.glob("*.md")):
+        # Syncthing conflict copies are reported, not indexed as real annotation
+        # files (ADR-044 §B8) — their stem would otherwise become a junk slug.
+        if ANNOTATION_SYNC_CONFLICT_RE.match(md_file.name):
+            stats.annotation_conflicts += 1
+            logger.warning(
+                "annotation sync-conflict file detected — needs manual merge: %s",
+                md_file.name,
+            )
+            continue
+
         slug = md_file.stem
         page_path = f"KB/Annotations/{slug}"
         mtime_ns = md_file.stat().st_mtime_ns
@@ -363,34 +388,130 @@ def _index_annotations(
             ).fetchall()
         ]
         if old_rowids:
-            placeholders = ",".join("?" * len(old_rowids))
-            db.execute(
-                f"DELETE FROM kb_vectors WHERE rowid IN ({placeholders})",
-                old_rowids,
-            )
             db.execute("DELETE FROM kb_chunks WHERE path = ?", (page_path,))
             stats.chunks_removed += len(old_rowids)
 
         chunks = _annotation_chunks(ann_set, page_path)
-        if chunks:
-            embeddings = kb_embedder.embed_batch([c["chunk_text"] for c in chunks])
-            for chunk, emb in zip(chunks, embeddings):
-                cur = db.execute(
-                    "INSERT INTO kb_chunks (chunk_text, section, heading_context, path) "
-                    "VALUES (?, ?, ?, ?)",
-                    (
-                        chunk["chunk_text"],
-                        chunk["section"],
-                        chunk["heading_context"],
-                        chunk["path"],
-                    ),
-                )
-                rowid: int = cur.lastrowid  # type: ignore[assignment]
-                db.execute(
-                    "INSERT INTO kb_vectors(rowid, embedding) VALUES (?, ?)",
-                    (rowid, emb.tobytes()),
-                )
-                stats.chunks_added += 1
+        for chunk in chunks:
+            db.execute(
+                "INSERT INTO kb_chunks (chunk_text, section, heading_context, path) "
+                "VALUES (?, ?, ?, ?)",
+                (
+                    chunk["chunk_text"],
+                    chunk["section"],
+                    chunk["heading_context"],
+                    chunk["path"],
+                ),
+            )
+            stats.chunks_added += 1
+
+        db.execute(
+            """INSERT OR REPLACE INTO kb_index_meta (path, mtime_ns, file_hash, indexed_at)
+               VALUES (?, ?, ?, ?)""",
+            (page_path, mtime_ns, fhash, now),
+        )
+        stats.files_indexed += 1
+
+
+def _normalize_permanent_link(raw: str) -> str:
+    """Normalize a typed-edge target wikilink to a canonical KB path.
+
+    Permanent cards mostly link to other Permanent cards by title (filename =
+    declaration sentence), e.g. ``[[好系統讓你不需要意志力]]`` →
+    ``KB/Permanent/好系統讓你不需要意志力``. A target that already carries a Wiki
+    subdir prefix (``Concepts/X``) or ``KB/`` is normalized via the Wiki rule.
+    """
+    raw = raw.split("|")[0].strip()
+    wiki = _normalize_wikilink(raw)
+    if wiki is not None:
+        return wiki
+    if raw.startswith("KB/"):
+        return raw
+    # Bare title → Permanent sibling card
+    return f"KB/Permanent/{raw}"
+
+
+def _index_permanent(
+    vault_path: Path,
+    db: sqlite3.Connection,
+    stats: IndexStats,
+    now: str,
+) -> None:
+    """Scan KB/Permanent/*.md — FTS-index card bodies + extract typed edges.
+
+    Two complementary writes per card (Centaur N520):
+      1. card body → ``kb_chunks`` (FTS5), so永久卡 are keyword-searchable and can
+         be ranked first by ``kb_hybrid_search.search`` (handoff fork 2).
+      2. ``支持::`` / ``反駁::`` / ``延伸::`` lines → ``kb_typed_edges`` (structured),
+         so directed-graph queries don't depend on CJK text tokenization
+         (panel Gemini §2).
+
+    KB/Permanent/ is NOT a KB/Wiki/ subdir, so this is a dedicated path (same
+    shape as ``_index_annotations``), never added to ``_KB_SUBDIRS``.
+    """
+    permanent_dir = vault_path / "KB" / "Permanent"
+    if not permanent_dir.exists():
+        return
+
+    for md_file in sorted(permanent_dir.rglob("*.md")):
+        rel = md_file.relative_to(vault_path).with_suffix("").as_posix()
+        page_path = rel  # already "KB/Permanent/..."
+        mtime_ns = md_file.stat().st_mtime_ns
+
+        meta_row = db.execute(
+            "SELECT mtime_ns FROM kb_index_meta WHERE path = ?",
+            (page_path,),
+        ).fetchone()
+        if meta_row is not None and meta_row[0] == mtime_ns:
+            stats.files_skipped += 1
+            continue
+
+        try:
+            content = md_file.read_text(encoding="utf-8")
+        except Exception:
+            continue
+
+        fhash = _file_hash(md_file)
+        fm, body = extract_frontmatter(content)
+        page_title: str = fm.get("title") or md_file.stem
+
+        # Refresh structured typed edges for this card
+        db.execute("DELETE FROM kb_typed_edges WHERE src_path = ?", (page_path,))
+        for m in _TYPED_EDGE_RE.finditer(body):
+            edge_type = _EDGE_TYPE_MAP[m.group(1)]
+            dst = _normalize_permanent_link(m.group(2))
+            reason = (m.group(3) or "").strip() or None
+            db.execute(
+                "INSERT INTO kb_typed_edges(src_path, edge_type, dst_path, reason) "
+                "VALUES (?, ?, ?, ?)",
+                (page_path, edge_type, dst, reason),
+            )
+
+        # Refresh FTS chunks for this card (cards are short — usually 1 preamble chunk)
+        old_rowids: list[int] = [
+            r[0]
+            for r in db.execute(
+                "SELECT rowid FROM kb_chunks WHERE path = ?",
+                (page_path,),
+            ).fetchall()
+        ]
+        if old_rowids:
+            db.execute("DELETE FROM kb_chunks WHERE path = ?", (page_path,))
+            stats.chunks_removed += len(old_rowids)
+
+        chunks = _split_h2_chunks(body, page_title, page_path)
+        for chunk in chunks:
+            db.execute(
+                "INSERT INTO kb_chunks (chunk_text, section, heading_context, path) "
+                "VALUES (?, ?, ?, ?)",
+                (
+                    chunk["chunk_text"],
+                    chunk["section"],
+                    chunk["heading_context"],
+                    chunk["path"],
+                ),
+            )
+            stats.chunks_added += 1
 
         db.execute(
             """INSERT OR REPLACE INTO kb_index_meta (path, mtime_ns, file_hash, indexed_at)
@@ -401,26 +522,24 @@ def _index_annotations(
 
 
 # ---------------------------------------------------------------------------
-# Rebuild: drop kb_vectors + kb_chunks + kb_index_meta, recreate at current
-# embedder dim, full re-embed. ADR-022 — needed when embedder dim changes
-# (e.g. potion 256 → bge-m3 1024).
+# Rebuild: wipe kb_chunks + kb_index_meta + kb_wikilinks and re-walk from
+# scratch. ADR-042 — also drops the legacy kb_vectors vtab if a pre-removal
+# DB still carries it (the dense-vec lane is gone; the table is never recreated).
 # ---------------------------------------------------------------------------
 
 
 def rebuild_index(vault_path: Path, db: sqlite3.Connection) -> IndexStats:
-    """Drop & recreate kb_vectors at the current embedder dim, full re-embed.
+    """Wipe FTS5 chunks + bookkeeping and re-walk every page from scratch.
 
-    Wipes kb_chunks / kb_vectors / kb_index_meta / kb_wikilinks rows so the
-    follow-up ``index_vault`` walks every page from scratch. The vec0 vtab
-    is dropped + recreated at ``kb_embedder.current_dim()``.
+    Clears kb_chunks / kb_index_meta / kb_wikilinks so the follow-up
+    ``index_vault`` reindexes everything. Drops the legacy ``kb_vectors`` vtab
+    if present (ADR-042) — it is no longer recreated.
     """
-    # FTS5 + vec0 tables can't be ALTERed — drop + recreate.
-    db.execute("DROP TABLE IF EXISTS kb_vectors")
+    db.execute("DROP TABLE IF EXISTS kb_vectors")  # legacy dense-vec lane (ADR-042)
     db.execute("DELETE FROM kb_chunks")
     db.execute("DELETE FROM kb_index_meta")
     db.execute("DELETE FROM kb_wikilinks")
-    target_dim = kb_embedder.current_dim()
-    db.execute(f"CREATE VIRTUAL TABLE kb_vectors USING vec0(embedding float[{target_dim}])")
+    db.execute("DELETE FROM kb_typed_edges")  # Centaur N520 typed edges
     db.commit()
     return index_vault(vault_path, db)
 
@@ -458,8 +577,8 @@ def _main() -> None:
         "--rebuild",
         action="store_true",
         help=(
-            "Drop kb_vectors + clear kb_chunks/kb_index_meta/kb_wikilinks, "
-            "recreate vec0 at the current embedder dim, full re-embed."
+            "Clear kb_chunks/kb_index_meta/kb_wikilinks (and drop any legacy "
+            "kb_vectors vtab), then re-walk every page from scratch."
         ),
     )
     parser.add_argument(
@@ -474,20 +593,16 @@ def _main() -> None:
     if not vault.exists():
         raise SystemExit(f"Vault path does not exist: {vault}")
 
-    # ADR-022: skip dim assertion on --rebuild — that's the path that fixes
-    # the very mismatch the assertion would refuse to open the conn for.
-    conn = get_kb_conn(check_dim=not args.rebuild)
+    conn = get_kb_conn()
     if args.rebuild:
-        print(
-            f"[rebuild] backend={kb_embedder.current_backend()} "
-            f"dim={kb_embedder.current_dim()} vault={vault}"
-        )
+        print(f"[rebuild] FTS5-only (ADR-042) vault={vault}")
         stats = rebuild_index(vault, conn)
     else:
         stats = index_vault(vault, conn)
     print(
         f"files_indexed={stats.files_indexed} files_skipped={stats.files_skipped} "
-        f"chunks_added={stats.chunks_added} chunks_removed={stats.chunks_removed}"
+        f"chunks_added={stats.chunks_added} chunks_removed={stats.chunks_removed} "
+        f"annotation_conflicts={stats.annotation_conflicts}"
     )
 
 

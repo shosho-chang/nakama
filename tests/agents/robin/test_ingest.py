@@ -10,7 +10,7 @@ Goal: 0% → ~100% coverage. LLM / file-IO / interactive input 全 stub。
 
 from __future__ import annotations
 
-import builtins
+import functools
 import sys
 import types
 from pathlib import Path
@@ -259,37 +259,13 @@ def test_set_current_agent_called_in_map_reduce_path(pipeline, set_current_agent
 # ---------------------------------------------------------------------------
 
 
-def test_get_map_ask_fn_local_available(monkeypatch):
-    fake = types.ModuleType("shared.local_llm")
-    fake.ask_local = lambda *a, **k: "local"
-    fake.is_server_available = lambda: True
-    monkeypatch.setitem(sys.modules, "shared.local_llm", fake)
+def test_get_map_ask_fn_returns_cloud_facade():
+    """VPS 無本機 LLM（ADR-044）→ Map 階段一律回雲端 facade（task=ingest_summary），
+    不再探 localhost Qwen。"""
     fn = IngestPipeline._get_map_ask_fn()
-    assert fn is fake.ask_local
-
-
-def test_get_map_ask_fn_server_down_falls_back_to_facade(monkeypatch):
-    fake = types.ModuleType("shared.local_llm")
-    fake.ask_local = lambda *a, **k: "local"
-    fake.is_server_available = lambda: False
-    monkeypatch.setitem(sys.modules, "shared.local_llm", fake)
-    fn = IngestPipeline._get_map_ask_fn()
-    assert fn is mod.ask
-
-
-def test_get_map_ask_fn_import_error_falls_back_to_facade(monkeypatch):
-    """ImportError 時 fallback 到 facade。"""
-    monkeypatch.delitem(sys.modules, "shared.local_llm", raising=False)
-    real_import = builtins.__import__
-
-    def blocked(name, globals_=None, locals_=None, fromlist=(), level=0):
-        if name == "shared.local_llm":
-            raise ImportError("simulated")
-        return real_import(name, globals_, locals_, fromlist, level)
-
-    monkeypatch.setattr(builtins, "__import__", blocked)
-    fn = IngestPipeline._get_map_ask_fn()
-    assert fn is mod.ask
+    assert isinstance(fn, functools.partial)
+    assert fn.func is mod.ask
+    assert fn.keywords.get("task") == "ingest_summary"
 
 
 # ---------------------------------------------------------------------------
@@ -317,6 +293,25 @@ def test_generate_summary_small_doc_uses_facade(pipeline, monkeypatch):
     )
     assert result == "小文件摘要"
     assert "robin:summarize" in captured["prompt"]
+
+
+def test_generate_summary_routes_ingest_summary_task(pipeline, monkeypatch):
+    """小文件摘要走 task='ingest_summary'（registry/override 控得到，不再吃 MODEL_ROBIN）。"""
+    captured: dict = {}
+    monkeypatch.setattr(mod, "ask", lambda **k: captured.update(k) or "s")
+    pipeline._generate_summary(
+        content="short", title="T", author="A", source_type="article", content_nature=""
+    )
+    assert captured.get("task") == "ingest_summary"
+
+
+def test_concept_plan_routes_concept_merge_task(pipeline, monkeypatch):
+    """概念抽取 / dedup 走 task='concept_merge'（registry 預設那格，原意較強的 model）。"""
+    captured: dict = {}
+    monkeypatch.setattr(mod, "ask", lambda **k: captured.update(k) or "{}")
+    monkeypatch.setattr(mod, "list_files", lambda p: [])
+    pipeline._get_concept_plan(summary_body="x", source_path="KB/Raw/x.md")
+    assert captured.get("task") == "concept_merge"
 
 
 def test_generate_summary_large_doc_triggers_map_reduce(pipeline, monkeypatch):
@@ -427,6 +422,157 @@ def test_map_reduce_chunk_failure_does_not_abort(pipeline, monkeypatch):
     # 別讓 exception handler 悄悄吞成空字串 — 這是 commit 7884f79 的用意）
     assert "壞段" in reduce_kwargs["chunk_summaries"]
     assert "此段落摘要失敗" in reduce_kwargs["chunk_summaries"]
+
+
+def test_map_reduce_calls_progress_cb_per_chunk(pipeline, monkeypatch):
+    """progress_cb 每段完成回呼一次，done 由 1 數到 total（餵 SSE 進度條的真實段數）。"""
+    _install_fake_chunker(
+        monkeypatch,
+        [
+            {"index": 1, "heading": "A", "text": "a"},
+            {"index": 2, "heading": "B", "text": "b"},
+            {"index": 3, "heading": "C", "text": "c"},
+        ],
+    )
+    monkeypatch.setattr(mod, "load_prompt", lambda *a, **k: "p")
+    monkeypatch.setattr(mod, "_build_robin_system_prompt", lambda *a, **k: "sys")
+    fake_llm = types.ModuleType("shared.local_llm")
+    fake_llm.ask_local = lambda *a, **k: "seg"
+    fake_llm.is_server_available = lambda: False
+    monkeypatch.setitem(sys.modules, "shared.local_llm", fake_llm)
+    monkeypatch.setattr(mod, "ask", lambda *a, **k: "reduced")
+
+    seen = []
+    pipeline._map_reduce_summary(
+        content="big",
+        title="T",
+        author="A",
+        source_type="book",
+        progress_cb=lambda done, total, heading="": seen.append((done, total, heading)),
+    )
+    assert seen == [(1, 3, "A"), (2, 3, "B"), (3, 3, "C")]
+
+
+def test_map_reduce_progress_cb_error_does_not_abort(pipeline, monkeypatch):
+    """progress_cb 自己拋例外不沉摘要主流程（best-effort 回報）。"""
+    _install_fake_chunker(monkeypatch, [{"index": 1, "heading": "A", "text": "a"}])
+    monkeypatch.setattr(mod, "load_prompt", lambda *a, **k: "p")
+    monkeypatch.setattr(mod, "_build_robin_system_prompt", lambda *a, **k: "sys")
+    fake_llm = types.ModuleType("shared.local_llm")
+    fake_llm.ask_local = lambda *a, **k: "seg"
+    fake_llm.is_server_available = lambda: False
+    monkeypatch.setitem(sys.modules, "shared.local_llm", fake_llm)
+    monkeypatch.setattr(mod, "ask", lambda *a, **k: "reduced")
+
+    def _boom(*_a):
+        raise RuntimeError("cb blew up")
+
+    out = pipeline._map_reduce_summary(
+        content="big", title="T", author="A", source_type="book", progress_cb=_boom
+    )
+    assert out == "reduced"
+
+
+def test_ingest_summary_and_concept_pass_high_max_tokens(pipeline, monkeypatch):
+    """大書修復：摘要 + 概念 plan 的 ask() 帶高 max_tokens（預設 4096 會截斷大書的完整
+    摘要與帶 body 的 concept JSON → 摘要斷段 + 概念抽取 parse 失敗）。"""
+    seen: dict[str, int] = {}
+
+    def _cap(**k):
+        seen[k.get("task")] = k.get("max_tokens")
+        return '{"concepts": [], "entities": []}'
+
+    monkeypatch.setattr(mod, "load_prompt", lambda *a, **k: "p")
+    monkeypatch.setattr(mod, "_build_robin_system_prompt", lambda *a, **k: "sys")
+    monkeypatch.setattr(mod, "list_files", lambda p: [])
+    monkeypatch.setattr(mod, "ask", _cap)
+
+    pipeline._generate_summary(content="short", title="T", author="A", source_type="article")
+    pipeline._get_concept_plan("summary body", "KB/Wiki/Sources/x.md")
+
+    assert mod._INGEST_MAX_TOKENS >= 8192
+    assert seen["ingest_summary"] == mod._INGEST_MAX_TOKENS
+    assert seen["concept_merge"] == mod._INGEST_MAX_TOKENS
+
+
+# ---------------------------------------------------------------------------
+# _strip_summary_wikilinks — Source Summary 不留 wiki 死連結（修修 回饋 item B）
+# ---------------------------------------------------------------------------
+
+
+def test_strip_summary_wikilinks():
+    assert (
+        mod._strip_summary_wikilinks("見 [[槓桿]] 與 [[複利|複利效應]]。")
+        == "見 槓桿 與 複利效應。"
+    )
+    assert mod._strip_summary_wikilinks("沒有連結") == "沒有連結"
+
+
+def test_generate_summary_strips_wikilinks_small_doc(pipeline, monkeypatch):
+    """小文件摘要輸出的 [[wiki 連結]] 攤成純文字（retrieval-first，不留死連結）。"""
+    monkeypatch.setattr(mod, "load_prompt", lambda *a, **k: "p")
+    monkeypatch.setattr(mod, "_build_robin_system_prompt", lambda *a, **k: "sys")
+    monkeypatch.setattr(mod, "ask", lambda *a, **k: "相關概念：[[槓桿]]、[[複利|複利效應]]")
+    out = pipeline._generate_summary(content="short", title="T", author="A", source_type="article")
+    assert "[[" not in out
+    assert "槓桿" in out and "複利效應" in out
+
+
+# ---------------------------------------------------------------------------
+# estimate_ingest_seconds / _format_duration_range — 按 Ingest 前的時長預估
+# ---------------------------------------------------------------------------
+
+
+def test_format_duration_range_seconds_and_minutes():
+    assert mod._format_duration_range(10, 40) == "約 10–40 秒"
+    assert "分鐘" in mod._format_duration_range(60, 200)
+
+
+def test_estimate_small_doc_not_large():
+    est = mod.estimate_ingest_seconds(5000, local_available=False)
+    assert est["is_large"] is False
+    assert est["n_chunks"] == 1
+    assert est["low_seconds"] < est["high_seconds"]
+    assert est["time_label"].startswith("約")
+
+
+def test_estimate_large_doc_cloud_slower_than_local():
+    cloud = mod.estimate_ingest_seconds(200_000, n_chunks=8, local_available=False)
+    local = mod.estimate_ingest_seconds(200_000, n_chunks=8, local_available=True)
+    assert cloud["is_large"] is True
+    assert cloud["n_chunks"] == 8
+    # 雲端每段慢約 3 倍 → 估時上限明顯比本地大
+    assert cloud["high_seconds"] > local["high_seconds"]
+    assert "分鐘" in cloud["time_label"]
+
+
+def test_estimate_large_doc_derives_chunks_when_unknown():
+    est = mod.estimate_ingest_seconds(180_000, local_available=False)
+    assert est["is_large"] is True
+    assert est["n_chunks"] >= 2  # 由字數推回段數
+
+
+def test_estimate_autodetect_local_via_is_server_available(monkeypatch):
+    fake = types.ModuleType("shared.local_llm")
+    fake.is_server_available = lambda: True
+    monkeypatch.setitem(sys.modules, "shared.local_llm", fake)
+    auto = mod.estimate_ingest_seconds(200_000, n_chunks=8)  # local_available=None → 偵測
+    local = mod.estimate_ingest_seconds(200_000, n_chunks=8, local_available=True)
+    assert auto["high_seconds"] == local["high_seconds"]
+
+
+def test_estimate_autodetect_swallows_probe_error(monkeypatch):
+    """偵測本地 LLM 失敗 → 當雲端，不爆。"""
+    fake = types.ModuleType("shared.local_llm")
+
+    def _boom():
+        raise RuntimeError("probe failed")
+
+    fake.is_server_available = _boom
+    monkeypatch.setitem(sys.modules, "shared.local_llm", fake)
+    auto = mod.estimate_ingest_seconds(200_000, n_chunks=8)
+    cloud = mod.estimate_ingest_seconds(200_000, n_chunks=8, local_available=False)
+    assert auto["high_seconds"] == cloud["high_seconds"]
 
 
 # ---------------------------------------------------------------------------
@@ -877,6 +1023,67 @@ def test_update_index_chinese_heading_falls_through_to_append(pipeline, stub_vau
     assert "[[the-title]]" in content
     # 原中文 heading 保留（append 分支會另外新增 '## Sources' section）
     assert "## 來源（Sources）" in content
+
+
+# ---------------------------------------------------------------------------
+# _add_index_entries / _index_plan_pages
+# ---------------------------------------------------------------------------
+
+
+def _write_index(stub_vault: Path, content: str) -> None:
+    (stub_vault / "KB").mkdir(parents=True, exist_ok=True)
+    (stub_vault / "KB" / "index.md").write_text(content, encoding="utf-8")
+
+
+def test_add_index_entries_replaces_empty_placeholder(pipeline, stub_vault):
+    """寫第一筆真條目時，該 section 的 *(empty…)* 佔位被清掉；後面 section 不受影響。"""
+    _write_index(
+        stub_vault,
+        "## Concepts\n\n*(empty — 待新 ingest)*\n\n## Entities\n\n*(empty)*\n",
+    )
+    pipeline._add_index_entries("Concepts", [("財富等級", "財富等級")])
+    content = (stub_vault / "KB" / "index.md").read_text("utf-8")
+    assert "- [[財富等級]]" in content
+    assert "*(empty" not in content.split("## Entities")[0]  # Concepts 佔位清掉
+    assert "*(empty)*" in content.split("## Entities")[1]  # Entities 佔位保留
+
+
+def test_add_index_entries_idempotent(pipeline, stub_vault):
+    _write_index(stub_vault, "## Concepts\n\n- [[財富等級]]\n")
+    pipeline._add_index_entries("Concepts", [("財富等級", "財富等級")])
+    content = (stub_vault / "KB" / "index.md").read_text("utf-8")
+    assert content.count("[[財富等級]]") == 1
+
+
+def test_add_index_entries_alias_form_when_title_differs(pipeline, stub_vault):
+    _write_index(stub_vault, "## Concepts\n\n*(empty)*\n")
+    pipeline._add_index_entries("Concepts", [("creatine metabolism", "Creatine Metabolism")])
+    content = (stub_vault / "KB" / "index.md").read_text("utf-8")
+    assert "[[creatine metabolism|Creatine Metabolism]]" in content
+
+
+def test_add_index_entries_appends_section_when_missing(pipeline, stub_vault):
+    _write_index(stub_vault, "# Index\n")
+    pipeline._add_index_entries("Concepts", [("x", "x")])
+    content = (stub_vault / "KB" / "index.md").read_text("utf-8")
+    assert "## Concepts" in content
+    assert "- [[x]]" in content
+
+
+def test_index_plan_pages_indexes_concepts_and_entities(pipeline, stub_vault):
+    _write_index(stub_vault, "## Concepts\n\n*(empty)*\n\n## Entities\n\n*(empty)*\n")
+    plan = {
+        "concepts": [
+            {"slug": "財富等級", "title": "財富等級", "action": "create"},
+            {"slug": "略過我", "title": "略過我", "action": "bogus"},  # 無效 action → 跳過
+        ],
+        "entities": [{"title": "Nick Maggiulli", "entity_type": "person"}],
+    }
+    pipeline._index_plan_pages(plan)
+    content = (stub_vault / "KB" / "index.md").read_text("utf-8")
+    assert "[[財富等級]]" in content
+    assert "Maggiulli" in content  # entity 進 Entities 區
+    assert "略過我" not in content  # 無效 action 不索引
 
 
 # ---------------------------------------------------------------------------

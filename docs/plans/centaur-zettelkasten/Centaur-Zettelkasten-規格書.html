@@ -1,0 +1,887 @@
+<!doctype html><html lang="zh-Hant"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Centaur Zettelkasten — 規格書</title><style>
+:root{--bg:#faf8f3;--paper:#fffdf8;--ink:#262219;--ink2:#5f5a4e;--ink3:#928c7c;
+--line:#e6e1d5;--accent:#b5562f;--accent2:#3b6db5;--codebg:#f1eee5;--mark:#fbeae6;}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);
+font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,-apple-system,"Segoe UI",sans-serif;
+line-height:1.78;font-size:16px;-webkit-font-smoothing:antialiased;}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.wrap{display:grid;grid-template-columns:280px minmax(0,1fr);gap:0;max-width:1180px;margin:0 auto}
+/* sidebar */
+.side{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;
+padding:28px 20px 60px;border-right:1px solid var(--line);background:var(--bg)}
+.side .brand{font-weight:800;font-size:15px;letter-spacing:.02em;margin-bottom:4px}
+.side .sub{color:var(--ink3);font-size:12px;margin-bottom:20px}
+.navgroup{margin-bottom:18px;display:flex;flex-direction:column}
+.navgroup a{padding:3px 0;font-size:12.5px;color:var(--ink2);border:0}
+.navgroup a.d{font-weight:800;font-size:13.5px;color:var(--ink);margin-bottom:4px}
+.navgroup a.h2{padding-left:10px}
+.navgroup a.h3{padding-left:22px;color:var(--ink3);font-size:12px}
+.navgroup a:hover{color:var(--accent)}
+/* main */
+main{padding:46px clamp(20px,5vw,72px) 120px;min-width:0}
+.doc{max-width:780px;margin:0 auto 70px}
+.doc+ .doc{border-top:1px dashed var(--line);padding-top:40px}
+h1{font-size:30px;line-height:1.3;font-weight:800;margin:.2em 0 .6em;letter-spacing:-.01em}
+h2{font-size:22px;font-weight:800;margin:2.2em 0 .7em;padding-top:.5em;border-top:1px solid var(--line)}
+h3{font-size:17px;font-weight:700;margin:1.6em 0 .5em;color:var(--ink)}
+p{margin:.7em 0}
+strong{font-weight:800}
+ul,ol{padding-left:1.4em;margin:.6em 0}
+li{margin:.3em 0}
+/* lead blockquote = the doc front-matter notes */
+blockquote{margin:1em 0;padding:.7em 1.1em;background:var(--paper);
+border-left:3px solid var(--accent);border-radius:0 8px 8px 0;color:var(--ink2);font-size:14.5px}
+blockquote p{margin:.35em 0}
+/* code */
+code{background:var(--codebg);padding:.12em .4em;border-radius:5px;font-size:.86em;
+font-family:"SFMono-Regular",ui-monospace,Menlo,Consolas,monospace}
+pre{background:var(--paper);border:1px solid var(--line);border-left:3px solid var(--ink3);
+border-radius:10px;padding:14px 16px;overflow-x:auto;font-size:13px;line-height:1.6}
+pre code{background:none;padding:0;font-size:13px;color:var(--ink)}
+/* tables */
+.tw{overflow-x:auto;margin:1.1em 0;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:8px 12px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);text-align:left;vertical-align:top}
+th{background:#f3efe5;font-weight:700;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+th:last-child,td:last-child{border-right:0}
+tbody tr:nth-child(even){background:#fbf9f3}
+hr{border:0;border-top:1px solid var(--line);margin:2em 0}
+.diagram{margin:1.5em 0;text-align:center}
+.diagram svg.flow{max-width:560px;width:100%;height:auto;background:var(--paper);
+border:1px solid var(--line);border-radius:12px;padding:10px}
+.topbar{display:none}
+@media(max-width:880px){
+.wrap{grid-template-columns:1fr}
+.side{display:none}
+.topbar{display:flex;position:sticky;top:0;z-index:5;background:var(--bg);
+border-bottom:1px solid var(--line);padding:12px 18px;gap:14px;font-size:13px;font-weight:700}
+main{padding:24px 18px 90px}
+h1{font-size:24px}h2{font-size:19px}
+}
+</style></head>
+<body>
+<div class="topbar"><a href="#lit-top">Literature Note</a><a href="#ingest-top">Ingest 流程</a></div>
+<div class="wrap">
+<aside class="side">
+<div class="brand">Centaur Zettelkasten</div>
+<div class="sub">規格書 · 工作草稿 v0.1</div>
+<div class="navgroup"><a class="d" href="#lit-top">Literature Note 統一規格 v0.1</a>
+<a class="h2" href="#lit-1">0. 一句話</a>
+<a class="h2" href="#lit-2">1. 為什麼要做（現況的問題）</a>
+<a class="h2" href="#lit-3">2. 已拍板的決定</a>
+<a class="h2" href="#lit-4">3. 儲存位置與每來源的四個檔</a>
+<a class="h2" href="#lit-5">4. 統一 frontmatter（canonical）</a>
+<a class="h2" href="#lit-6">5. body 結構（三路共用骨架，證據段微調）</a>
+<a class="h3" href="#lit-7">5.1 書（按章分組，CFI 錨 ＋ 章末心得）— 用《財富階梯》真實內容示意</a>
+<a class="h3" href="#lit-8">5.2 文章／論文（平鋪或按段，段落錨 ^p-N ← 本次新增）</a>
+<a class="h3" href="#lit-9">5.3 影片（按時間軸，講者 ＋ 時間錨 t=）</a>
+<a class="h3" href="#lit-10">5.4 ## 🔗 KB 相關（升級自 digest，三路共用）</a>
+<a class="h2" href="#lit-11">6. 退役 notes.md / digest.md 的 migration（含 consumer 清單）</a>
+<a class="h2" href="#lit-12">7. 三路現狀對照（grounded，供實作參考）</a>
+<a class="h2" href="#lit-13">8. 本規格的邊界（這份只管 Literature Note）</a>
+<a class="h2" href="#lit-14">9. 待修修拍板 / 下一步</a></div><div class="navgroup"><a class="d" href="#ingest-top">Ingest 流程規格 v0.1</a>
+<a class="h2" href="#ingest-1">0. 一句話與第一性原理</a>
+<a class="h2" href="#ingest-2">1. 七個 Phase 總覽</a>
+<a class="h2" href="#ingest-3">2. Phase 0 — 閱讀期間（持續，非 ingest 觸發）🤖</a>
+<a class="h2" href="#ingest-4">3. Phase 1 — 凍結 + 產生 Literature Note 🤖（自動，純機械）</a>
+<a class="h2" href="#ingest-5">4. Phase 2 — LLM 編 Wiki 🤖（自動，Karpathy loop，順序鎖）</a>
+<a class="h2" href="#ingest-6">5. Phase 3 — 提示 + 處理座艙 ⚙️（系統）</a>
+<a class="h2" href="#ingest-7">6. ═══ 🚧 紅線 🚧 ═══</a>
+<a class="h2" href="#ingest-8">7. Phase 4 — 寫永久筆記 🧑（人，趁熱 or 每週）</a>
+<a class="h2" href="#ingest-9">8. Phase 5 — 記帳善後 🤖（自動，你寫完後）</a>
+<a class="h2" href="#ingest-10">9. Phase 6 — MOC / Home 🧑+🤖（擠壓點才做，非 ingest 觸發）</a>
+<a class="h2" href="#ingest-11">10. 永久卡的一生（end-to-end，用你真實的《財富階梯》）</a>
+<a class="h2" href="#ingest-12">11. 映照機制落在哪幾個 Phase（Q3 四接點對照）</a>
+<a class="h2" href="#ingest-13">11.5 互動與複利（Karpathy 複利引擎）</a>
+<a class="h3" href="#ingest-14">根本分工：覆蓋率 vs 意義</a>
+<a class="h3" href="#ingest-15">互動目錄（哪些會複利、記哪）</a>
+<a class="h3" href="#ingest-16">兩條複利曲線（分清楚很重要）</a>
+<a class="h3" href="#ingest-17">write-back 原則 + 儲存四層</a>
+<a class="h3" href="#ingest-18">待拍板（互動與複利）</a>
+<a class="h2" href="#ingest-19">12. 每條路線現在能做什麼 vs 待補（grounded 現實）</a>
+<a class="h2" href="#ingest-20">13. 真實 code 接點（供之後拆 task prompt）</a>
+<a class="h2" href="#ingest-21">14. 邊界 / 待拍板</a></div>
+</aside>
+<main><section id="lit-top" class="doc"><h1>統一 Literature Note 規格書 v0.1</h1>
+<blockquote>
+<p><strong>這份是什麼</strong>：把「三條 ingest 路線（書／文章・論文／影片）的文獻筆記收斂成單一格式」這件事，從討論收斂成一份規格。grounded 在實際 codebase（<code>E:\nakama</code>）與實際 vault（<code>E:\Shosho LifeOS</code>）。
+<strong>這份不是什麼</strong>：還不是給 Claude Code 的 task prompt。是設計凍結前的工作稿，供後續疊代。
+<strong>狀態</strong>：草稿 · 待修修 review。延續 ADR-043（永久筆記層），但<strong>以最新討論為準</strong>——凡與 ADR-043 衝突處，以本文件 + 後續討論為準。
+<strong>日期</strong>：2026-06-10</p>
+</blockquote>
+<hr />
+<h2 id="lit-1">0. 一句話</h2>
+<p>三條路線閱讀時的劃線／註解，底層<strong>已經</strong>統一存進 <code>KB/Annotations/{slug}.md</code>（V3 schema，機器格式）。本規格新增的是「按下 ingest 後，從那份機器資料 render 出一份<strong>人也讀得懂、可被知識庫連結</strong>的 Literature Note」，三路共用一套 frontmatter、body 依證據形狀微調。</p>
+<hr />
+<h2 id="lit-2">1. 為什麼要做（現況的問題）</h2>
+<p>核對 codebase 後的真實狀況：</p>
+<p><strong>已經統一的（好消息）</strong>：三條路線的劃線／註解全部寫進 <code>KB/Annotations/{slug}.md</code>，用<strong>同一個 V3 schema</strong>（<code>shared/schemas/annotations.py</code>）。三種 item：</p>
+<ul>
+<li><code>HighlightV3</code> — 純劃線（body=劃線文字）</li>
+<li><code>AnnotationV3</code> — 劃線＋你的短註（body=note）</li>
+<li><code>ReflectionV3</code> — 章末／整體長心得（body=prose；此欄特地從 <code>CommentV2</code> 改名 reflection 對齊使用者詞彙）</li>
+</ul>
+<p>差別只在填哪個錨點欄與 <code>base</code>：書＝<code>cfi</code>、文章／論文＝<code>text_excerpt</code>/<code>ref</code>、影片＝<code>cfi</code> 欄裝 <code>t=&lt;起&gt;-&lt;迄&gt;</code> 秒數＋<code>speaker</code>。</p>
+<p><strong>還沒統一的（要做的）</strong>：「人讀的那一份」目前散成<strong>四種方言</strong>：</p>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>來源</th>
+<th>現有人讀產物</th>
+<th>frontmatter <code>type</code></th>
+<th>producer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>書</td>
+<td><code>Sources/Books/{id}/notes.md</code></td>
+<td><code>book_notes</code></td>
+<td><code>agents/robin/book_notes_writer.py</code></td>
+</tr>
+<tr>
+<td>書</td>
+<td><code>Sources/Books/{id}/digest.md</code></td>
+<td><code>book_digest</code></td>
+<td><code>agents/robin/book_digest_writer.py</code></td>
+</tr>
+<tr>
+<td>文章（舊路徑）</td>
+<td><code>Sources/{slug}.md</code></td>
+<td><code>source</code></td>
+<td><code>agents/robin/ingest.py</code></td>
+</tr>
+<tr>
+<td>文章／影片（promotion）</td>
+<td><code>Sources/{slug}/whole.md</code></td>
+<td><code>source_page</code></td>
+<td><code>shared/promotion_renderer.py</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>四種 frontmatter 互不相同、body 結構也不同——這就是「之前三條各自做」的後果。本規格把這層收斂成一個 <code>type: literature</code>。</p>
+<p><strong>真實樣本</strong>：《財富階梯》已讀完，<code>KB/Annotations/財富階梯.md</code>（56KB）內有 <strong>70 條 highlight ＋ 8 條 annotation</strong>（真實 note，如「這就是刻意練習的理論」「就是練等典技能樹啦!」）、<strong>0 條 reflection</strong>（所以它只有 <code>digest.md</code>、沒有 <code>notes.md</code>）。<code>KB/Wiki/Concepts/</code> 為 <strong>0 檔</strong>。<code>Permanent/</code>、<code>Fleeting/</code>、<code>MOCs/</code>、<code>Literature/</code> 皆<strong>不存在</strong>（greenfield）。</p>
+<hr />
+<h2 id="lit-3">2. 已拍板的決定</h2>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>決定</th>
+<th>備註</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>D1</td>
+<td><strong>雙檔制</strong></td>
+<td><code>KB/Annotations/{slug}.md</code>（機器 JSON，Reader 擁有、閱讀期間動態更新，<strong>不動</strong>）＋ <code>KB/Literature/{slug}.md</code>（人讀，ingest 當下 render 的快照）</td>
+</tr>
+<tr>
+<td>D2</td>
+<td><strong>統一 frontmatter</strong></td>
+<td>見 §4。三路共用 <code>type: literature</code></td>
+</tr>
+<tr>
+<td>D3</td>
+<td><strong>body 依路線微調</strong></td>
+<td>見 §5。書按章＋CFI、文章平鋪＋段落錨、影片按時間軸＋講者</td>
+</tr>
+<tr>
+<td>D4</td>
+<td><strong>digest 的撈卡功能升級為三路共用</strong></td>
+<td>把 <code>book_digest</code> 的「<code>📚 KB 相關</code> ＋ 👍/👎 回饋 ＋ 開回 Reader 深連結」抽出來，變成 Literature Note 的共用 <code>## 🔗 KB 相關</code> 段（不再書專屬）</td>
+</tr>
+<tr>
+<td>D5</td>
+<td><strong>退役兩個舊 book writer</strong></td>
+<td><code>book_notes_writer</code> ＋ <code>book_digest_writer</code> 停用；<code>notes.md</code>/<code>digest.md</code> 退場（見 §6 migration）</td>
+</tr>
+<tr>
+<td>D6</td>
+<td><strong>文章補位置錨</strong></td>
+<td>文章／論文目前只記劃線文字、無位置錨；這次補段落錨 <code>^p-N</code>，讓文章劃線也能穩定被引回原文</td>
+</tr>
+<tr>
+<td>D7</td>
+<td><strong>《財富階梯》當第一個 pilot 樣本</strong></td>
+<td>migration 時從它的 annotation store 重 render 出第一份 Literature Note</td>
+</tr>
+</tbody>
+</table></div>
+<p>選雙檔的理由：Reader 存註解時會把整個 <code>KB/Annotations/{slug}.md</code> 重寫成「frontmatter + JSON 區塊」（<code>shared/annotation_store.py:_serialize</code>）。人讀 prose 塞同檔會被這個寫入路徑蓋掉、且逼改 Reader。雙檔讓機器檔零改動、人讀版是純下游 render，可隨時重畫不碰資料源。</p>
+<hr />
+<h2 id="lit-4">3. 儲存位置與每來源的四個檔</h2>
+<p>統一後，每個來源最多有四個各司其職的檔（單一擁有者、單一目的）：</p>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>檔</th>
+<th>角色</th>
+<th>擁有者</th>
+<th>動態？</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>KB/Raw/{類}/{slug}.md</code> 或 EPUB</td>
+<td>原文（不可變證據）</td>
+<td>🤖 ingest 帶入，之後唯讀</td>
+<td>否</td>
+</tr>
+<tr>
+<td><code>KB/Annotations/{slug}.md</code></td>
+<td>劃線／註解<strong>資料源</strong>（機器 JSON）</td>
+<td>🤖 Reader</td>
+<td>閱讀期間動態</td>
+</tr>
+<tr>
+<td><strong><code>KB/Literature/{slug}.md</code></strong> ← 本規格新增</td>
+<td><strong>人讀的文獻筆記</strong>（ingest 快照）</td>
+<td>🤖 render，🧑 閱讀</td>
+<td>ingest 當下凍結</td>
+</tr>
+<tr>
+<td><code>KB/Wiki/Sources/{slug}.md</code></td>
+<td>AI 的來源摘要（它的話）</td>
+<td>🤖 promotion</td>
+<td>ingest 後</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote>
+<p>Literature Note 與永久卡的關係留待下一份規格：永久卡 <code>KB/Permanent/{概念}.md</code> 是<strong>你</strong>從 Literature Note 提煉、用自己的話寫的（紅線：AI 不寫）。Literature Note 的 <code>mined_concepts</code> 欄回填你寫出的永久卡連結。</p>
+</blockquote>
+<hr />
+<h2 id="lit-5">4. 統一 frontmatter（canonical）</h2>
+<pre><code class="language-yaml">---
+type: literature                          # 統一名詞，取代 book_notes/book_digest/source 四方言
+source_kind: book | article | paper | video
+slug: 財富階梯
+title: 財富階梯
+author: &quot;[[Entities/...]]&quot;                # 向上溯源（ingest 自動建，若可辨識）
+annotations: &quot;[[Annotations/財富階梯]]&quot;     # ← 雙檔連結：指回機器資料源
+source_digest: &quot;[[Wiki/Sources/...]]&quot;     # 連到 AI 的來源摘要（若已 promote）
+source_url:                               # article / video
+status: capturing                         # capturing → digested → mined
+mined_concepts: []                        # 你提煉成永久卡後 AI 回填 [[Permanent/...]]
+anchor_type: cfi | excerpt | timestamp    # 證據錨點型別（per route）
+book_version_hash:                        # 僅書：偵測改版斷錨
+captured: 2026-05-25                      # 第一次劃線日
+ingested: 2026-06-10                      # 按下 ingest 日
+schema_version: 3                         # 對齊 annotation store
+tags: []
+---
+</code></pre>
+<p><strong>兩個關鍵新欄</strong>（把 Literature Note 接進永久卡流程）：</p>
+<ul>
+<li><code>status</code>：<code>capturing</code>（還在讀／標）→ <code>digested</code>（ingest 完、AI 摘要寫好、本筆記 render 好）→ <code>mined</code>（你已從中提煉 ≥1 張永久卡）。</li>
+<li><code>mined_concepts</code>：你寫完永久卡後，AI 回填 <code>[[Permanent/...]]</code> 連結（記帳型，AI 可寫）。</li>
+</ul>
+<blockquote>
+<p>frontmatter 先這樣；之後需要再加（例如 <code>area:</code> 對應健康/工作/專注四象限、<code>reading_completed</code> 旗標）。</p>
+</blockquote>
+<hr />
+<h2 id="lit-6">5. body 結構（三路共用骨架，證據段微調）</h2>
+<p>共用骨架：</p>
+<pre><code class="language-markdown"># 文獻筆記：{title}
+
+&gt; 來源：[[Wiki/Sources/{slug}]] · 作者 [[Entities/{author}]] · {source_kind}
+
+## 劃線與心得
+&lt;per-route 呈現 highlights + annotations + reflections&gt;
+
+## 🔗 KB 相關（AI 撈，你回饋）
+&lt;升級自 digest：每條劃線撈相關卡 + 👍/👎 + 開回 Reader 深連結；三路共用&gt;
+</code></pre>
+<p>機器 JSON <strong>不</strong>進這個檔（在 <code>KB/Annotations/</code>，雙檔分離）。</p>
+<h3 id="lit-7">5.1 書（按章分組，CFI 錨 ＋ 章末心得）— 用《財富階梯》真實內容示意</h3>
+<pre><code class="language-markdown">## 劃線與心得
+
+### 第 2 章
+&gt; 財富階梯更像一種大致的判斷藝術，而非精確的科學。 ^cfi-6-14-122
+
+&gt; 到底算哪一階？是根據流動淨資產算第 3 階，還是總淨資產算第 4 階？ ^cfi-6-14-116
+**note::** 雖然理論上落在第 4 階，但根據資產組成，我會建議以第 3 階標準支出。
+
+&gt; （累積財富的步驟…） ^cfi-...
+**note::** 這就是刻意練習的理論。 ← 候選永久卡
+
+**章末心得**：（若有 ReflectionV3 則放這；《財富階梯》目前無）
+
+📖 [開回 Reader](/robin/books/財富階梯#cfi=epubcfi(/6/14!/4[A-6]/2/116,/1:3,/3:68))
+</code></pre>
+<h3 id="lit-8">5.2 文章／論文（平鋪或按段，段落錨 ^p-N ← 本次新增）</h3>
+<pre><code class="language-markdown">## 劃線與心得
+&gt; 久坐與全因死亡率的關聯，在校正運動量後仍顯著。 ^p-12
+**note::** 所以「有運動就抵銷久坐」是錯的——要寫進影片。
+
+&gt; 每多坐 1 小時，風險增加約 X%。 ^p-13
+**note::** 想連到 [[Permanent/久坐是獨立風險因子]]（還沒寫）。
+</code></pre>
+<h3 id="lit-9">5.3 影片（按時間軸，講者 ＋ 時間錨 t=）</h3>
+<pre><code class="language-markdown">## 劃線與心得
+**[12:30] Huberman**
+&gt; 多巴胺的 peak 之後一定伴隨基線回落。
+**note::** 解釋了為什麼爽完反而更空虛——可做一支短影片。
+▶ [跳到此刻](https://youtu.be/{id}?t=750)
+
+**[28:05] Huberman**
+&gt; 間歇性給予獎勵會拉高動機。
+**note::** 跟內容節奏的不確定性有關。
+</code></pre>
+<blockquote>
+<p>影片的 <code>t=750</code> 時間錨在 code 裡<strong>已存在</strong>（<code>t=&lt;start&gt;-&lt;end&gt;</code>，<code>robin.py</code> <code>_format_t_locator</code>），目前只是沒 render 出來——這次補上「跳到此刻」連結即可。</p>
+</blockquote>
+<h3 id="lit-10">5.4 <code>## 🔗 KB 相關</code>（升級自 digest，三路共用）</h3>
+<p>沿用現有 <code>book_digest</code> 的呈現（<code>shared</code> 化後三路共用）：每條劃線去搜 KB → 列相關卡 → 每項配 <code>- [ ] 👍 相關</code> / <code>- [ ] 👎 不相關</code>（帶 <code>&lt;!-- fb: ... --&gt;</code> 機器可讀標記）＋ 開回 Reader 深連結。</p>
+<blockquote>
+<p>註：實測《財富階梯》digest 的撈卡品質還有雜訊（財富相關劃線撈到 wingate test / sprint training 等運動概念），但<strong>功能結構</strong>完整。這塊是日後 Connection Discovery／draft-map 的雛形，值得保留並改進。</p>
+</blockquote>
+<hr />
+<h2 id="lit-11">6. 退役 notes.md / digest.md 的 migration（含 consumer 清單）</h2>
+<p><strong>不是一刀刪</strong>——三個地方還在讀它們，得先接到新檔。但因 Brook 寫作 context 尚未正式使用，可直接改掉那幾處 read、不需保留舊行為。</p>
+<p><strong>現有 consumer（read）</strong>：</p>
+<ul>
+<li><code>agents/brook/context_bridge.py:138-145</code> — Brook synthesize 讀 <code>digest.md</code> + <code>notes.md</code></li>
+<li><code>agents/robin/reading_context_package.py:17-19</code> — RCP 讀 <code>digest.md</code>→EvidenceItem、<code>notes.md</code>→同</li>
+<li><code>agents/robin/kb_search.py:178</code> — kb_search 掃 <code>notes.md</code></li>
+</ul>
+<p><strong>現有 producer（write，需改）</strong>：</p>
+<ul>
+<li><code>agents/robin/annotation_merger.py</code> — 目前把章末心得灌進 <code>book_notes_writer</code>；改流進 Literature Note</li>
+</ul>
+<p><strong>退役順序</strong>：</p>
+<ol>
+<li>建統一 Literature Note writer（涵蓋 notes 章末心得 + digest 逐條 + <code>🔗 KB 相關</code>）。</li>
+<li>consumer 改指向 <code>KB/Literature/{slug}.md</code>（Brook context_bridge、RCP、kb_search）。</li>
+<li>改 <code>annotation_merger</code>：reflection 不再進 <code>book_notes_writer</code>。</li>
+<li>停 <code>book_notes_writer</code>、<code>book_digest_writer</code>。</li>
+<li>既讀書本（《財富階梯》《發現我的多重職涯組合》《讓你的思緒平靜下來安然入睡》）從 annotation store 重 render → <code>KB/Literature/</code>；舊 <code>notes.md</code>/<code>digest.md</code> 丟回收桶（PowerShell recycle bin，<strong>不用 <code>rm</code></strong>）。</li>
+<li>同 PR 更新 <code>docs/VAULT-LAYOUT.md</code>（登記 <code>KB/Literature/</code>、移除 notes/digest 列）。</li>
+</ol>
+<p><strong>不會丟失任何內容</strong>：你標的東西真相在 <code>KB/Annotations/</code>，migration 是拿同一份資料源重畫。</p>
+<hr />
+<h2 id="lit-12">7. 三路現狀對照（grounded，供實作參考）</h2>
+<div class="tw"><table>
+<thead>
+<tr>
+<th></th>
+<th>書／EPUB</th>
+<th>文章／論文</th>
+<th>影片／YouTube</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Reader 頁</td>
+<td><code>GET /robin/books/{id}</code></td>
+<td><code>GET /robin/read?file=&amp;base=</code></td>
+<td><code>GET /robin/watchlist/{id}</code></td>
+</tr>
+<tr>
+<td>存註解 endpoint</td>
+<td><code>POST /robin/api/books/{id}/annotations</code></td>
+<td><code>POST /robin/save-annotations</code></td>
+<td><code>POST /robin/watchlist/{id}/annotation</code></td>
+</tr>
+<tr>
+<td>機器檔</td>
+<td><code>KB/Annotations/{slug}.md</code></td>
+<td>同</td>
+<td><code>KB/Annotations/youtube_{id}.md</code></td>
+</tr>
+<tr>
+<td>錨點</td>
+<td>EPUB <code>cfi</code> + <code>chapter_ref</code></td>
+<td><code>text_excerpt</code>（<strong>無位置錨</strong>→D6 補 <code>^p-N</code>）</td>
+<td><code>cfi</code>=<code>t=&lt;起&gt;-&lt;迄&gt;</code> 秒 + <code>speaker</code></td>
+</tr>
+<tr>
+<td>ingest 進入點</td>
+<td><code>…/ingest-request</code>→<code>book_queue</code>→<code>SourceMapBuilder</code></td>
+<td><code>/start</code>→<code>IngestPipeline.ingest</code> + promotion</td>
+<td><code>PromotionReviewService</code>→<code>build_video_source_map</code></td>
+</tr>
+<tr>
+<td>anchor_type 值</td>
+<td><code>cfi</code></td>
+<td><code>excerpt</code></td>
+<td><code>timestamp</code></td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="lit-13">8. 本規格的邊界（這份只管 Literature Note）</h2>
+<p><strong>包含</strong>：雙檔制、<code>type: literature</code> frontmatter、三路 body 版型、<code>🔗 KB 相關</code> 共用化、退役舊 writer、文章段落錨。</p>
+<p><strong>不包含（後續各自開規格）</strong>：</p>
+<ul>
+<li><strong>ingest 流程怎麼接</strong>（Phase 1–6 編排、按鈕觸發 → render 時機）</li>
+<li><strong>永久卡層</strong>（<code>KB/Permanent/</code> 怎麼從 Literature Note 長出來、語意鎖、<code>update_permanent_bookkeeping</code>、tripwire）— ADR-043 主體</li>
+<li><strong>Connection Discovery / <code>/draft-map</code></strong>（<code>🔗 KB 相關</code> 的進化版）</li>
+<li><strong>MOC / home.md / index.md</strong> 三種目錄物件</li>
+<li><strong>kb_indexer 索引 Permanent + Permanent 排序提前</strong>（fork 2，修修之後細 review 搜尋／合成層）</li>
+<li><code>KB/Wiki/Concepts/</code> 是否維持 LLM 平行權威層（已定：維持，不降級為候選——推翻 ADR-043 decision 3）</li>
+</ul>
+<hr />
+<h2 id="lit-14">9. 待修修拍板 / 下一步</h2>
+<ol>
+<li>本規格 §1–§7 是否有要改的？</li>
+<li>接下來談哪個：<strong>(a) ingest 流程編排</strong>（怎麼從讀完 → 按 ingest → 各檔產出），還是 <strong>(b) 永久卡怎麼從 Literature Note 長出來</strong>？</li>
+<li>全部討論收斂後，再決定切成幾份 N 系列 task prompt 丟給 Claude Code。</li>
+</ol></section><section id="ingest-top" class="doc"><h1>Ingest 流程規格書 v0.1</h1>
+<figure class='diagram'><svg viewBox="0 0 700 1010" xmlns="http://www.w3.org/2000/svg" role="img" font-family="inherit" class="flow">
+<title>Ingest 流程 v0.1</title>
+<defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9a968d"/></marker></defs>
+<text x="350" y="28" text-anchor="middle" font-size="19" font-weight="700" fill="#1d1d1b">Ingest 流程 v0.1</text>
+<text x="350" y="47" text-anchor="middle" font-size="12" fill="#6b685f">按下「Ingest」後，從閱讀痕跡到永久卡的一生</text>
+<rect x="120" y="62" width="460" height="54" rx="9" fill="#f4f3f0" stroke="#d9d6cf"/>
+<text x="138" y="86" font-size="13.5" font-weight="700" fill="#1d1d1b">Phase 0 · 閱讀期間</text>
+<text x="138" y="105" font-size="11.5" fill="#6b685f">劃線/註解持續存進 KB/Annotations（機器 JSON）</text>
+<text x="562" y="92" text-anchor="end" font-size="11" font-weight="700" fill="#9a968d">🤖 持續</text>
+<line x1="350" y1="116" x2="350" y2="140" stroke="#9a968d" marker-end="url(#ar)"/>
+<rect x="270" y="140" width="160" height="26" rx="13" fill="#1d1d1b"/>
+<text x="350" y="157" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">▼ 按下 Ingest</text>
+<rect x="92" y="180" width="516" height="244" rx="12" fill="none" stroke="#d9d6cf" stroke-dasharray="4 4"/>
+<text x="100" y="197" font-size="10.5" font-weight="700" fill="#9a968d">ingest 自動流程（AI 全程記帳）</text>
+<rect x="120" y="205" width="460" height="56" rx="9" fill="#f4f3f0" stroke="#d9d6cf"/>
+<text x="138" y="229" font-size="13.5" font-weight="700" fill="#1d1d1b">Phase 1 · 凍結 + 產生 Literature Note</text>
+<text x="138" y="248" font-size="11.5" fill="#6b685f">render KB/Literature/{slug}.md ＋ 🔗 KB 相關（LLM 過濾）</text>
+<text x="562" y="235" text-anchor="end" font-size="11" font-weight="700" fill="#9a968d">🤖 機械</text>
+<line x1="350" y1="261" x2="350" y2="271" stroke="#9a968d" marker-end="url(#ar)"/>
+<rect x="120" y="271" width="460" height="56" rx="9" fill="#f4f3f0" stroke="#d9d6cf"/>
+<text x="138" y="295" font-size="13.5" font-weight="700" fill="#1d1d1b">Phase 2 · LLM 編 Wiki（Karpathy loop）</text>
+<text x="138" y="314" font-size="11.5" fill="#6b685f">Sources → Entities → Concepts → Index/Log，整合非新增</text>
+<text x="562" y="301" text-anchor="end" font-size="11" font-weight="700" fill="#9a968d">🤖 自動</text>
+<line x1="350" y1="327" x2="350" y2="337" stroke="#9a968d" marker-end="url(#ar)"/>
+<rect x="120" y="337" width="460" height="56" rx="9" fill="#f4f3f0" stroke="#d9d6cf"/>
+<text x="138" y="361" font-size="13.5" font-weight="700" fill="#1d1d1b">Phase 3 · 提示 + 處理座艙</text>
+<text x="138" y="380" font-size="11.5" fill="#6b685f">「值得做成永久卡」nudge ＋ 趁熱 / 留到每週</text>
+<text x="562" y="367" text-anchor="end" font-size="11" font-weight="700" fill="#9a968d">⚙️ 系統</text>
+<line x1="350" y1="424" x2="350" y2="446" stroke="#9a968d" marker-end="url(#ar)"/>
+<rect x="120" y="446" width="460" height="30" rx="15" fill="#fbeae6" stroke="#c0392b"/>
+<text x="350" y="466" text-anchor="middle" font-size="12.5" font-weight="700" fill="#c0392b">🚧 紅線 · AI 不寫 KB/Permanent 正文與 status 🚧</text>
+<line x1="350" y1="476" x2="350" y2="492" stroke="#9a968d" marker-end="url(#ar)"/>
+<rect x="120" y="492" width="460" height="56" rx="9" fill="#eaf1fb" stroke="#3b6db5" stroke-width="1.5"/>
+<text x="138" y="516" font-size="13.5" font-weight="700" fill="#1d1d1b">Phase 4 · 寫永久筆記</text>
+<text x="138" y="535" font-size="11.5" fill="#6b685f">用自己的話寫卡 ＋ 定關係（支持/矛盾/延伸）</text>
+<text x="562" y="522" text-anchor="end" font-size="11" font-weight="700" fill="#3b6db5">🧑 人</text>
+<line x1="350" y1="548" x2="350" y2="558" stroke="#9a968d" marker-end="url(#ar)"/>
+<rect x="120" y="558" width="460" height="56" rx="9" fill="#f4f3f0" stroke="#d9d6cf"/>
+<text x="138" y="582" font-size="13.5" font-weight="700" fill="#1d1d1b">Phase 5 · 記帳善後</text>
+<text x="138" y="601" font-size="11.5" fill="#6b685f">鏡像反向連結 ＋ 回填 mined_concepts ＋ status→mined</text>
+<text x="562" y="588" text-anchor="end" font-size="11" font-weight="700" fill="#9a968d">🤖 自動</text>
+<line x1="350" y1="614" x2="350" y2="624" stroke="#9a968d" marker-end="url(#ar)"/>
+<rect x="120" y="624" width="460" height="56" rx="9" fill="#eaf1fb" stroke="#3b6db5" stroke-width="1.5"/>
+<text x="138" y="648" font-size="13.5" font-weight="700" fill="#1d1d1b">Phase 6 · MOC / Home（擠壓點才做）</text>
+<text x="138" y="667" font-size="11.5" fill="#6b685f">人定主題邊界與分組，AI 撈骨架、標孤兒</text>
+<text x="562" y="654" text-anchor="end" font-size="11" font-weight="700" fill="#3b6db5">🧑+🤖</text>
+<line x1="120" y1="708" x2="580" y2="708" stroke="#d9d6cf"/>
+<rect x="120" y="724" width="16" height="16" rx="4" fill="#f4f3f0" stroke="#d9d6cf"/>
+<text x="144" y="736" font-size="11.5" fill="#6b685f">🤖 AI 自動 / 記帳</text>
+<rect x="300" y="724" width="16" height="16" rx="4" fill="#eaf1fb" stroke="#3b6db5" stroke-width="1.5"/>
+<text x="324" y="736" font-size="11.5" fill="#6b685f">🧑 人寫（紅線內側）</text>
+<text x="478" y="736" font-size="11.5" fill="#c0392b">— 紅線分界</text>
+</svg></figure>
+<blockquote>
+<p><strong>這份是什麼</strong>：你在 Reader 按下「Ingest」之後，從頭到尾發生什麼事的初版設計。把先前討論全部收斂：Literature Note 雙檔（規格 v0.1）、AI Wiki = Karpathy LLM Wiki、永久層紅線、Q3 映照四接點、社群的兩段式連結探勘 / nudge / provenance / typed edges / lint。
+<strong>這份不是什麼</strong>：還不是 Claude Code 的 task prompt。是流程設計稿，供你改。
+<strong>延續</strong>：Literature Note 規格 v0.1、ADR-043、AI 增強的卡片盒綜述。<strong>凡與 ADR-043 衝突以最新討論為準</strong>（concepts 維持 LLM 平行層、不降級）。
+<strong>日期</strong>：2026-06-10</p>
+</blockquote>
+<hr />
+<h2 id="ingest-1">0. 一句話與第一性原理</h2>
+<p>按 Ingest = <strong>凍結你讀的痕跡 → AI 做所有記帳與編纂 → 在紅線前停下 → 把「寫永久卡」這個會產生理解的動作交還給你</strong>。</p>
+<p>貫穿全程的判準（摩擦篩選）：<strong>會產生新判斷的動作留給人（寫永久卡、定關係、選邊），純損耗的動作交給 AI（搬運、摘要、抽實體、撈相關、補記帳、標矛盾）。</strong></p>
+<p>擁有者標記：🤖 AI 自動 ・ 🧑 人 ・ ⚙️ 系統 ・ 🚧 紅線</p>
+<hr />
+<h2 id="ingest-2">1. 七個 Phase 總覽</h2>
+<pre><code>閱讀中 ─ Phase 0：劃線/註解持續存進機器檔（KB/Annotations，JSON）   🤖 持續
+
+   ┌──────────────── 按下「Ingest」 ────────────────┐
+   │                                                │
+   Phase 1  凍結 + 產生 Literature Note              🤖 自動・機械
+   Phase 2  LLM 編 Wiki（Sources→Entities→Concepts→Index/Log）  🤖 自動・Karpathy loop
+   Phase 3  提示 + 處理座艙（要不要趁熱寫永久卡？）   ⚙️ 系統
+   │                                                │
+   └──────── ingest 自動流程到此為止 ────────────────┘
+
+══════════════════ 🚧 紅線 🚧 ══════════════════
+
+   Phase 4  寫永久筆記（用自己的話 + 定關係）        🧑 人（趁熱 or 每週）
+   Phase 5  記帳善後（鏡像反向連結、回填 mined_concepts）  🤖 自動・你寫完後
+   Phase 6  MOC / Home（擠壓點才做，非 ingest 觸發）  🧑 定邊界 + 🤖 骨架
+</code></pre>
+<p><strong>四條演算法紅線</strong>（寫進 CLAUDE.md）：① AI 絕不寫 <code>KB/Permanent/</code> 正文與 status；② 每個事實宣稱附 citation 溯源回 raw/annotation 錨點；③ Concept 可寫可 merge，但不冒充永久卡（provenance 分離）；④ ingest 不建 MOC。</p>
+<hr />
+<h2 id="ingest-3">2. Phase 0 — 閱讀期間（持續，非 ingest 觸發）🤖</h2>
+<p>你在 Reader 邊讀邊劃線/註解，每一筆即時存進機器檔。<strong>這已經在運作，不變。</strong></p>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>路線</th>
+<th>Reader 頁</th>
+<th>存註解 endpoint</th>
+<th>機器檔</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>書</td>
+<td><code>GET /robin/books/{id}</code></td>
+<td><code>POST /robin/api/books/{id}/annotations</code></td>
+<td><code>KB/Annotations/{slug}.md</code></td>
+</tr>
+<tr>
+<td>文章/論文</td>
+<td><code>GET /robin/read?file=&amp;base=</code></td>
+<td><code>POST /robin/save-annotations</code></td>
+<td>同上</td>
+</tr>
+<tr>
+<td>影片</td>
+<td><code>GET /robin/watchlist/{id}</code></td>
+<td><code>POST /robin/watchlist/{id}/annotation</code></td>
+<td><code>KB/Annotations/youtube_{id}.md</code></td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li>格式：V3 schema（<code>HighlightV3</code> / <code>AnnotationV3</code> / <code>ReflectionV3</code>），frontmatter + <code>json</code> 區塊。</li>
+<li>概念上 <code>status: capturing</code>。</li>
+<li>錨點型別：書 <code>cfi</code>、文章 <code>text_excerpt</code>（+ 本輪補段落錨 <code>^p-N</code>）、影片 <code>cfi="t=&lt;起&gt;-&lt;迄&gt;"</code> + <code>speaker</code>。</li>
+</ul>
+<hr />
+<h2 id="ingest-4">3. Phase 1 — 凍結 + 產生 Literature Note 🤖（自動，純機械）</h2>
+<p><strong>觸發</strong>：按 Ingest。<strong>動作</strong>：</p>
+<ol>
+<li><strong>凍結</strong>該來源的 annotation set（此後 ingest 流程以這份快照為準）。</li>
+<li>從機器檔 <strong>render 人讀的 <code>KB/Literature/{slug}.md</code></strong>（依 Literature Note 規格 v0.1）：
+   - frontmatter：<code>type: literature</code>、<code>source_kind</code>、<code>anchor_type</code>、<code>status: digested</code>、<code>annotations: [[Annotations/{slug}]]</code>、<code>mined_concepts: []</code>、<code>author</code>、<code>captured</code>、<code>ingested</code>…
+   - body：<code>## 劃線與心得</code>（依路線版型：書按章+CFI、文章+段落錨、影片+時間軸/講者）+ <code>## 🔗 KB 相關</code>（見下）。</li>
+<li><strong>機器檔不動</strong>（雙檔分離，零蓋寫風險）。</li>
+</ol>
+<p><strong><code>## 🔗 KB 相關</code> 的產生（吃社群的「兩段式連結探勘」）</strong>：對每條劃線/概念，先用 <code>kb_search</code>(FTS5) 撈候選 → <strong>再讓 LLM 判斷「真概念關係 vs 表面相似」過濾</strong>（擋掉你實測 digest 那種「財富劃線撈到 wingate test」的雜訊）→ 列出相關的既有 Permanent/Concept 卡，每項配 👍/👎 + 開回 Reader 深連結。<strong>檢索排序把 Permanent 提到最前</strong>（你親手寫的優先，fork 2）。</p>
+<p><strong>真實接點</strong>：取代現有 <code>book_digest_writer</code> / <code>book_notes_writer</code>（退役見 Literature Note 規格 §6）；文章路線從 <code>IngestPipeline</code> 既有的 annotation 讀取改吐 Literature Note。</p>
+<hr />
+<h2 id="ingest-5">4. Phase 2 — LLM 編 Wiki 🤖（自動，Karpathy loop，順序鎖）</h2>
+<p>這一段就是 <strong>Karpathy 的 ingest → 整合 → lint</strong>，落到你的 codebase。<strong>核心精神：每個來源「整合進既有頁面」，不是只新增一頁</strong>（更新 entity、改寫摘要、標矛盾）。順序鎖：Sources → Entities → Concepts → Index/Log。</p>
+<p><strong>ⓐ Source digest</strong> → <code>KB/Wiki/Sources/{slug}.md</code>
+AI 讀 Literature Note + raw → 寫/更新「這個來源」的綜整摘要，<strong>每個事實宣稱附 citation <code>^錨點</code> 回 raw/annotation</strong>（🚧 紅線②）。真實接點：<code>shared/promotion_renderer.render_source_page</code> / <code>kb_writer.write_source_page</code>。</p>
+<p><strong>ⓑ Entities</strong> → <code>KB/Wiki/Entities/{name}.md</code>
+抽專有名詞（人/組織/產品）→ upsert（新建 or append「在此來源被提及」，<strong>不覆寫</strong>舊內容）→ 在 Source 頁連 <code>[[Entities/...]]</code>。<strong>Entities 是兩層映照的共用底料</strong>（你的 Permanent 與 AI 的 Concept 講同一人時都指向它）。</p>
+<p><strong>ⓒ Concepts</strong> → <code>KB/Wiki/Concepts/{slug}.md</code>
+LLM 寫/merge <strong>它自己的</strong>概念理解（自由寫 + Opus diff-merge，<strong>維持平行權威層、不降級為候選</strong>——推翻 ADR-043 decision 3）。cite 回 sources/raw。
+→ <strong>映照動作</strong>：若某 Concept 對到一張既有的人寫 <code>Permanent/X</code>，AI <strong>加雙向連結並 defer</strong>（在 Concept 頁標「對應永久卡 [[Permanent/X]]，以人寫版為『修修怎麼想』的權威」）。AI <strong>不</strong>改寫 Permanent。</p>
+<p><strong>ⓓ Index + Log</strong>
+- <code>KB/index.md</code>：更新/新增 Source、Concept、Entity 條目，<strong>並同步列出該主題的 Permanent 卡</strong>（一份 index 蓋住兩層，Q3 接點①）。
+- <code>KB/log.md</code>：append 一筆 <code>## [YYYY-MM-DD] ingest | {標題}</code>（grep 友善）。</p>
+<p><strong>inline lint</strong>：寫入時若與既有頁面矛盾，<strong>標記矛盾</strong>（不靜默覆蓋）。完整 lint（孤兒、過時、缺概念頁、CJK 錨點斷鏈、prompt-injection 健檢）走 Phase 6 後的排程，不卡 ingest。</p>
+<hr />
+<h2 id="ingest-6">5. Phase 3 — 提示 + 處理座艙 ⚙️（系統）</h2>
+<p>AI 自動工作做完，系統<strong>提示</strong>：「要不要趁熱寫永久筆記？」並開出<strong>處理座艙</strong>（pilot 期 = Obsidian 側欄 / CLI context；過 gate 才做完整 Bridge UI）。座艙一次顯示：</p>
+<ul>
+<li>你的 <strong>Literature Note</strong>（劃線 + 心得）；</li>
+<li>AI 剛寫的 <strong>Concept 頁</strong>（它的理解，當參考、<strong>不一鍵採用</strong>）；</li>
+<li><code>## 🔗 KB 相關</code>（LLM-judged 的相關既有卡）；</li>
+<li><strong>Nudge 清單</strong>（社群的「nudge not ghostwrite」）：</li>
+<li>「這幾條劃線/概念<strong>值得做成永久卡</strong>」；</li>
+<li>「可連到這些既有卡——<strong>支持 / 矛盾 / 延伸</strong>？」（給候選 typed edge，理由留你補）。</li>
+<li>兩個時機：<strong>趁熱</strong>（現在進 Phase 4）或 <strong>留到每週 review</strong>。</li>
+</ul>
+<p><strong>🚧 ingest 自動流程到此為止。AI 不再往下。</strong></p>
+<hr />
+<h2 id="ingest-7">6. ═══ 🚧 紅線 🚧 ═══</h2>
+<p>以下 Phase 4 起，正文與關係由<strong>人</strong>寫。AI 路徑的 target resolver <strong>永遠解析不到</strong> <code>KB/Permanent/</code>；AI 唯一能碰永久卡的入口是只改記帳型 key 的 <code>update_permanent_bookkeeping()</code>。每筆寫入帶 <code>author: human | agent_*</code>。tripwire 測試斷言：promotion target 永不回 <code>KB/Permanent/</code>、永久卡正文寫入只來自 human 路徑。</p>
+<hr />
+<h2 id="ingest-8">7. Phase 4 — 寫永久筆記 🧑（人，趁熱 or 每週）</h2>
+<p>在座艙/Obsidian 裡，你看 Literature Note + AI Concept + 證據 + 建議連結 → <strong>用自己的話寫</strong> <code>KB/Permanent/{概念}.md</code>：</p>
+<pre><code class="language-yaml">---
+type: permanent
+status: seedling            # seedling → budding → evergreen（成熟度晉級＝你的判斷，AI 不得改）
+author: human
+source_refs: [&quot;[[Annotations/財富階梯]] ^cfi-...&quot;]   # 記帳型，AI 可代補錨點
+created: 2026-06-10
+---
+</code></pre>
+<ul>
+<li>正文：一卡一概念、用自己的話（原子規格）。</li>
+<li><strong>採納連結並寫關係</strong>：<code>&gt; 支持 [[Permanent/...]]</code> / <code>&gt; 矛盾 [[...]]</code> / <code>&gt; 延伸 [[...]]</code>——這個 <strong>typed edge + 理由</strong>就是「理解的痕跡」，是紅線、留人（也正好補上 Karpathy 原版「untyped edges」的缺口）。</li>
+<li>你看 AI 的 Concept 當參考，但<strong>不一鍵採用</strong>（🚧 紅線③）。</li>
+</ul>
+<blockquote>
+<p>技術上是「authoring surface 寫磁碟」，但那算<strong>你的</strong> authorship。pilot 期 surface = Obsidian；之後 = Bridge。</p>
+</blockquote>
+<hr />
+<h2 id="ingest-9">8. Phase 5 — 記帳善後 🤖（自動，你寫完後）</h2>
+<p>你存檔後，AI 做純記帳（全是記帳型，<strong>不碰正文/status</strong>）：</p>
+<ol>
+<li><strong>鏡像反向連結</strong>：你建了 <code>Permanent/X</code>，AI 在對應的 AI Concept 頁、Literature Note、被引的 Source 頁補上 backlink（Q3 接點②）。</li>
+<li><strong>回填 Literature Note</strong>：<code>mined_concepts: [[Permanent/X]]</code>，並把該 Literature 的 <code>status → mined</code>（Q3 接點④，Literature 是來源層的鉸鏈）。</li>
+<li><strong>回填永久卡記帳欄</strong>：<code>source_refs</code> 錨點、<code>created/modified</code>、<code>aliases</code>（跨語 卡片盒↔Zettelkasten）——經 <code>update_permanent_bookkeeping()</code>。</li>
+<li><strong>更新 <code>KB/index.md</code></strong>：讓新永久卡出現在共用 index（Q3 接點①）。</li>
+</ol>
+<hr />
+<h2 id="ingest-10">9. Phase 6 — MOC / Home 🧑+🤖（擠壓點才做，非 ingest 觸發）</h2>
+<p>不由 ingest 觸發。當某主題的永久卡多到「找不到了」（mental squeeze point），你把它加進 <code>KB/home.md</code>，或某區擠爆抽成 <code>KB/MOCs/{主題}.md</code>。AI 維護骨架（撈相關卡、列清單、標孤兒），<strong>你定主題邊界與分組、寫關係</strong>。一張卡可掛多個 MOC。</p>
+<hr />
+<h2 id="ingest-11">10. 永久卡的一生（end-to-end，用你真實的《財富階梯》）</h2>
+<pre><code>閱讀《財富階梯》，劃線「累積財富的步驟…」並註：「這就是刻意練習的理論」
+        │  Phase 0 → 存進 KB/Annotations/財富階梯.md（機器，AnnotationV3）
+        ▼
+按 Ingest
+        │  Phase 1 → render KB/Literature/財富階梯.md：
+        │            該條成為 &gt; 引文 + note:: + 「← 候選永久卡」
+        │            🔗 KB 相關（LLM-judged）：可能撈到 [[Concepts/deliberate-practice]]
+        ▼
+        │  Phase 2 → AI 寫 Wiki/Sources/財富階梯（摘要+citation）、
+        │            upsert Entities、寫 Concepts/deliberate-practice（它的理解）、
+        │            更新 index.md（含 Permanent 區）、log.md append
+        ▼
+        │  Phase 3 → 座艙提示：「『刻意練習』值得做成永久卡，要趁熱寫嗎？」
+        ▼
+══ 🚧 ══
+        │  Phase 4（人）→ 你寫 KB/Permanent/刻意練習要有立即回饋.md（status: seedling）
+        │                正文用自己的話；加 &gt; 延伸 [[Permanent/深度工作是可訓練的稀缺技能]]
+        ▼
+        │  Phase 5（AI）→ Literature 的 mined_concepts += [[Permanent/刻意練習要有立即回饋]]，
+        │                status → mined；Concepts/deliberate-practice 補 backlink + defer 標記；
+        │                永久卡 source_refs 補錨點；index 更新
+        ▼
+（數週後，專注力主題卡變多）
+        │  Phase 6（人+AI）→ 抽成 KB/MOCs/專注力.md，這張卡掛進去
+        ▼
+（你要寫一篇關於專注的文章）
+        │  /draft-map 專注 → 掃 KB/Permanent 撈相關卡、按你寫的支持/矛盾/延伸排出論證地圖
+        │                   （Permanent 排最前），交付地圖給你寫——理解式合成仍在你這側
+</code></pre>
+<hr />
+<h2 id="ingest-12">11. 映照機制落在哪幾個 Phase（Q3 四接點對照）</h2>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Q3 接點</th>
+<th>機制</th>
+<th>落在</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>① 共用 index</td>
+<td><code>index.md</code> 同列 Wiki 頁 + Permanent + Literature</td>
+<td>Phase 2ⓓ、Phase 5</td>
+</tr>
+<tr>
+<td>② Concept↔Permanent 雙向連結</td>
+<td>AI 鏡像 backlink、提候選連結；人採納寫關係</td>
+<td>Phase 2ⓒ（提）、Phase 4（採納）、Phase 5（鏡像）</td>
+</tr>
+<tr>
+<td>③ Entities 共用底料</td>
+<td>兩層都指 <code>[[Entities/...]]</code></td>
+<td>Phase 2ⓑ</td>
+</tr>
+<tr>
+<td>④ Literature 是來源鉸鏈</td>
+<td><code>source_digest</code> 連 AI 摘要、<code>mined_concepts</code> 連永久卡</td>
+<td>Phase 1（建）、Phase 5（回填）</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="ingest-13">11.5 互動與複利（Karpathy 複利引擎）</h2>
+<h3 id="ingest-14">根本分工：覆蓋率 vs 意義</h3>
+<p>LLM ingest = <strong>全文、無差別、巨細靡遺（覆蓋率）</strong>；人 = <strong>選擇性、有感才記（意義）</strong>。兩種互補的理解，是 AI 能同時當<strong>秘書（圖書館員）+ 寫作教練</strong>的根據：</p>
+<ul>
+<li><strong>秘書</strong>：它握著你只掃過的全文，所以你問「那本書有沒有講到 X」它撈得到——即使你當時沒劃線。</li>
+<li><strong>教練</strong>：把你散落的永久卡攤開、排好、標張力與缺口——<strong>攤開你的材料，不替你寫</strong>（🚧 紅線）。</li>
+</ul>
+<h3 id="ingest-15">互動目錄（哪些會複利、記哪）</h3>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>互動</th>
+<th>會複利？</th>
+<th>紀錄</th>
+<th>放哪</th>
+<th>對應 agent</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>按 Ingest</td>
+<td>✅</td>
+<td>Source/Concept/Entity 頁 + log</td>
+<td><code>KB/Wiki/*</code>、<code>log.md</code></td>
+<td>Robin</td>
+</tr>
+<tr>
+<td>問問題 / 比較 / 跨全部摘要</td>
+<td>✅ 核心</td>
+<td>蒸餾答案</td>
+<td><code>KB/Wiki/Outputs/{slug}.md</code>（大）/ 併進 Concept（小）+ log</td>
+<td>—</td>
+</tr>
+<tr>
+<td>追問 / 修正</td>
+<td>✅</td>
+<td>更新同一 Output 頁</td>
+<td>同上</td>
+<td>—</td>
+</tr>
+<tr>
+<td>查詢中 web-search 補洞</td>
+<td>✅ reflux</td>
+<td>新來源頁</td>
+<td><code>KB/Wiki/Sources/</code> + log</td>
+<td>Nami</td>
+</tr>
+<tr>
+<td>定期 lint 健檢</td>
+<td>✅ 維護</td>
+<td>孤兒/過時/矛盾/缺概念/斷錨/放太久的種子</td>
+<td>健檢 digest + log</td>
+<td>Franky / schedule</td>
+</tr>
+<tr>
+<td>推薦讀什麼</td>
+<td>✅ 讀了→ingest</td>
+<td>reading list</td>
+<td>fleeting / output + log</td>
+<td>Nami</td>
+</tr>
+<tr>
+<td>「我該寫什麼」</td>
+<td>✅</td>
+<td>選題建議（哪些主題卡夠多）</td>
+<td>output / fleeting</td>
+<td>—</td>
+</tr>
+<tr>
+<td>接住未解問題</td>
+<td>✅</td>
+<td>fleeting 佇列，答了→output</td>
+<td><code>KB/Fleeting/</code></td>
+<td>Nami</td>
+</tr>
+<tr>
+<td>把現在連回過去</td>
+<td>✅</td>
+<td>「你 3 個月前的卡跟現在相關」</td>
+<td>即時提示 + 候選連結</td>
+<td>—</td>
+</tr>
+<tr>
+<td>👍/👎 回饋</td>
+<td>⚠️ 訓練訊號</td>
+<td><code>&lt;!-- fb --&gt;</code> 收割</td>
+<td>回饋 sidecar（非 wiki 內容）</td>
+<td>—</td>
+</tr>
+<tr>
+<td>寫永久卡</td>
+<td>↗ 你的層</td>
+<td>卡 + AI 鏡像 backlink</td>
+<td><code>KB/Permanent/</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>閒聊 / 再解釋</td>
+<td>❌</td>
+<td>無</td>
+<td>ephemeral</td>
+<td>—</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="ingest-16">兩條複利曲線（分清楚很重要）</h3>
+<ol>
+<li><strong>領域知識複利（wiki）</strong>：關於主題知道了什麼。每個來源、每次查詢都長。<strong>這條要架構化</strong>——wiki / Outputs / log。</li>
+<li><strong>「它越來越懂你」複利</strong>：靠它<strong>每次開工讀你的具體痕跡</strong>（<code>log.md</code>、👍/👎、fleeting、<strong>尤其你的永久卡＝你最高解析度的聲音</strong>）重建對你的理解——<strong>不自建偏好引擎</strong>（記憶引擎交模型底層，見 handoff §8「你要存的是領域內容，不是記憶引擎」）。</li>
+</ol>
+<blockquote>
+<p><strong>關鍵收尾</strong>：寫永久卡（紅線那側、最費神的人類工作）<strong>同時做兩件事</strong>——既是你的知識複利，也是在教 AI 你的聲音。兩條複利曲線靠同一個動作餵養。</p>
+</blockquote>
+<h3 id="ingest-17">write-back 原則 + 儲存四層</h3>
+<ul>
+<li><strong>寫回的是「蒸餾後的答案」，不是原始對話</strong>（避免被動 append-log 反模式 + prompt-injection 攻擊面）。</li>
+<li>每筆 write-back 帶 <strong>provenance</strong>（<code>author: agent_query</code>、<code>from query [date]</code>、citation）。</li>
+<li>query 答案寫進 <strong>AI wiki 層（Outputs / Concepts）</strong>，<strong>永不自動寫 <code>KB/Permanent/</code></strong>（🚧 紅線）；想當自己的理解 → 你 card 它（Phase 4）。</li>
+<li>儲存四層：① <code>KB/log.md</code>（帳本，一行/互動，greppable）② <code>KB/Wiki/Outputs/{slug}.md</code>（有份量答案；<strong>需復活此資料夾</strong>，ADR-028 曾刪）③ 就地更新既有 Concept/Source（小洞見，避免 page explosion）④ 回饋 sidecar（👍/👎 訊號，非 wiki 內容）。</li>
+</ul>
+<h3 id="ingest-18">待拍板（互動與複利）</h3>
+<ul>
+<li><strong>write-back 主動度</strong>：確認式（AI 問你才存，pilot 建議；log 一律寫）vs 自動。</li>
+<li><strong>是否復活 <code>KB/Wiki/Outputs/</code></strong> 當寫回的家，還是只併進既有 Concept 頁。</li>
+</ul>
+<hr />
+<h2 id="ingest-19">12. 每條路線現在能做什麼 vs 待補（grounded 現實）</h2>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>文章/論文（route C）</th>
+<th>書（route B）</th>
+<th>影片（route E）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1 Literature Note</td>
+<td>✅ 可接</td>
+<td>✅ 可接（取代 notes/digest）</td>
+<td>✅ 可接（補時間軸 render）</td>
+</tr>
+<tr>
+<td>2ⓐ Source digest</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅（source-page）</td>
+</tr>
+<tr>
+<td>2ⓑ Entities</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅（speaker chips）</td>
+</tr>
+<tr>
+<td>2ⓒ Concepts</td>
+<td>✅（<code>upsert_concept_page</code>）</td>
+<td>🚧 <strong>卡在 N519</strong>（claim 抽取器未 merge，main 對 <code>llm</code> 模式 raise）</td>
+<td>❌ 目前<strong>無 concept 路徑</strong></td>
+</tr>
+<tr>
+<td>3–5 永久卡路線</td>
+<td>✅ 可先驗</td>
+<td>⚠️ 需 N519 才有 concept 候選餵</td>
+<td>⚠️ 需先補 concept 路</td>
+</tr>
+</tbody>
+</table></div>
+<p>→ <strong>pilot 先走 route C（文章）端到端驗證</strong>（與 ADR-043 一致）；B 等 N519、E 補概念路，留後。</p>
+<hr />
+<h2 id="ingest-20">13. 真實 code 接點（供之後拆 task prompt）</h2>
+<ul>
+<li>觸發：book <code>POST …/ingest-request</code>→<code>book_queue</code>；article <code>POST /start</code>→<code>agents/robin/ingest.py:IngestPipeline.ingest</code> + promotion；video <code>PromotionReviewService</code>→<code>build_video_source_map</code>。</li>
+<li>Literature Note writer：<strong>新增</strong>（取代 <code>book_notes_writer</code>/<code>book_digest_writer</code>）。</li>
+<li>Source/Concept/Entity 寫入：<code>shared/promotion_renderer.py</code>、<code>shared/kb_writer.py</code>（<code>upsert_concept_page</code>、<code>write_source_page</code>）。</li>
+<li>索引/檢索：<code>shared/kb_indexer.py</code>（<strong>需新增索引 <code>KB/Permanent/</code> + 排序提前</strong>）、<code>agents/robin/kb_search.py</code>。</li>
+<li>消費端 repoint：<code>agents/brook/context_bridge.py</code>、<code>agents/robin/reading_context_package.py</code>（從 notes/digest 改指 Literature）。</li>
+</ul>
+<hr />
+<h2 id="ingest-21">14. 邊界 / 待拍板</h2>
+<ol>
+<li>本流程 Phase 1–6 的順序、紅線位置，有沒有要改的？</li>
+<li><strong>處理座艙</strong>在 pilot 期具體長怎樣——純 Obsidian（你手動開 Literature Note + 旁邊 Smart Connections 側欄）？還是要一個最小 CLI/側欄把「Literature + Concept + nudge 清單」並排？</li>
+<li><code>## 🔗 KB 相關</code> 的 LLM-judge 過濾，pilot 期要不要先做，還是先用純 FTS5（接受一點雜訊）快速上線？</li>
+<li>趁熱 vs 每週：Phase 3 的提示要不要預設「趁熱」，還是兩個都平等列出？</li>
+<li>write-back 主動度（確認式 vs 自動）、是否復活 <code>KB/Wiki/Outputs/</code>（見 §11.5）。</li>
+<li>收斂後，這份 + Literature Note 規格要拆成幾份 N 系列 task prompt 丟 Claude Code。</li>
+</ol></section></main>
+</div></body></html>

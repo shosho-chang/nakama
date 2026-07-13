@@ -2,14 +2,15 @@
 
 Two endpoints:
 
-- ``GET /robin/api/books/{book_id}/annotations`` returns the current
-  ``AnnotationSetV2`` JSON, or 404 when the book is not registered. An
-  unwritten book returns an empty set (200 with ``items: []``), not 404 — only
-  the book row's existence gates the route.
+- ``GET /robin/api/books/{book_id}/annotations`` returns the stored annotation
+  set (v3 on disk; a fabricated empty v3 set for an unwritten book), or 404 when
+  the book is not registered. An unwritten book returns an empty set (200 with
+  ``items: []``), not 404 — only the book row's existence gates the route.
 
 - ``POST /robin/api/books/{book_id}/annotations`` does a full-replace write of an
-  ``AnnotationSetV2`` JSON body. Per-slug ``threading.Lock`` in
-  ``AnnotationStore`` prevents lost updates under concurrent POST.
+  ``AnnotationSetV2`` or ``AnnotationSetV3`` JSON body (normalised to v3 on
+  disk). Per-slug ``threading.Lock`` in ``AnnotationStore`` prevents lost
+  updates under concurrent POST.
 
 These tests share the ``app_client`` fixture from ``test_books_router.py`` so
 they exercise the real CSP middleware + auth gating + DB + filesystem stack.
@@ -98,9 +99,27 @@ def test_get_annotations_empty_set_for_unwritten_book(app_client):
     r = app_client.get("/robin/api/books/empty-book/annotations")
     assert r.status_code == 200
     body = r.json()
-    assert body["schema_version"] == 2
+    # Must be v3: the reader mutates this set in place and POSTs it back, and its
+    # action handlers build v3-shaped items. A fabricated v2 set routed the POST
+    # to AnnotationSetV2 validation, which 422'd every first save on a fresh book.
+    assert body["schema_version"] == 3
     assert body["book_id"] == "empty-book"
     assert body["items"] == []
+    # ADR-044 §B8: conflicts key is always present, empty in the common case.
+    assert body["conflicts"] == []
+
+
+def test_get_annotations_surfaces_sync_conflicts(app_client, vault_dir: Path):
+    _upload(app_client, "alpha")
+    ann_dir = vault_dir / "KB" / "Annotations"
+    ann_dir.mkdir(parents=True, exist_ok=True)
+    (ann_dir / "alpha.sync-conflict-20260525-143000-ABC123.md").write_text("{}", encoding="utf-8")
+    body = app_client.get("/robin/api/books/alpha/annotations").json()
+    assert len(body["conflicts"]) == 1
+    conflict = body["conflicts"][0]
+    assert conflict["slug"] == "alpha"
+    assert conflict["device"] == "ABC123"
+    assert conflict["conflict_timestamp"] == "20260525-143000"
 
 
 def test_get_annotations_404_when_book_missing(app_client):
@@ -278,17 +297,18 @@ def test_csp_header_present_on_annotations_api(app_client):
 # ---------------------------------------------------------------------------
 
 
-def test_post_annotations_dispatches_digest_background_task(app_client, monkeypatch):
+def test_post_annotations_dispatches_literature_background_task(app_client, monkeypatch):
     """POST annotations must immediately return 200 with digest_status='queued'
-    and dispatch write_digest as a background task exactly once."""
+    and dispatch the Literature Note render (N521) as a background task exactly
+    once, keyed by the annotation-set slug."""
     calls: list[str] = []
 
-    def fake_write_digest(book_id: str):
-        calls.append(book_id)
+    def fake_render(slug: str, **kwargs):
+        calls.append(slug)
 
-    import agents.robin.book_digest_writer as bdw
+    import shared.literature_writer as lw
 
-    monkeypatch.setattr(bdw, "write_digest", fake_write_digest)
+    monkeypatch.setattr(lw, "write_literature_note", fake_render)
 
     _upload(app_client, "digest-book")
     payload = _v2_payload("digest-book")
@@ -297,15 +317,15 @@ def test_post_annotations_dispatches_digest_background_task(app_client, monkeypa
     assert r.status_code == 200, r.text
     body = r.json()
     assert body.get("digest_status") == "queued"
-    # TestClient runs background tasks synchronously; write_digest must have been called
-    assert calls == ["digest-book"], f"expected write_digest called once, got: {calls}"
+    # TestClient runs background tasks synchronously; the render must have fired once.
+    assert calls == ["digest-book"], f"expected literature render once, got: {calls}"
 
 
 def test_post_annotations_digest_status_queued_in_response(app_client, monkeypatch):
-    """Response must include digest_status='queued' regardless of digest outcome."""
+    """Response must include digest_status='queued' regardless of render outcome."""
     monkeypatch.setattr(
-        "agents.robin.book_digest_writer.write_digest",
-        lambda book_id: None,
+        "shared.literature_writer.write_literature_note",
+        lambda slug, **kwargs: None,
     )
     _upload(app_client, "status-check")
     r = app_client.post(
@@ -389,6 +409,71 @@ def test_post_v3_first_highlight_on_fresh_book_succeeds(app_client):
     assert len(body["items"]) == 1
     assert body["items"][0]["type"] == "highlight"
     assert body["items"][0]["text"] == "first highlight on fresh book"
+
+
+def test_post_v3_set_with_reflection_item_succeeds(app_client):
+    """The C 反思 flow on a v3 set — book_reader.js posts a ``reflection`` item
+    (the v3 wire name; ``comment`` was v2-only and 422s against the v3 union).
+    Pins the payload shape submitComment() sends since the 2026-06-10 fix."""
+    _upload(app_client, "refl-book")
+    payload = _v3_empty_set("refl-book")
+    payload["items"] = [
+        {
+            "type": "reflection",
+            "chapter_ref": "ch01.xhtml",
+            "cfi_anchor": "epubcfi(/6/4!/4/2,/1:0,/1:8)",
+            "body": "chapter-level thought",
+            "book_version_hash": _HASH,
+            "created_at": _TS,
+            "modified_at": _TS,
+        }
+    ]
+    r = app_client.post("/robin/api/books/refl-book/annotations", json=payload)
+    assert r.status_code == 200, r.text
+    got = app_client.get("/robin/api/books/refl-book/annotations").json()
+    assert [it["type"] for it in got["items"]] == ["reflection"]
+    assert got["items"][0]["body"] == "chapter-level thought"
+
+
+def test_fresh_book_get_mutate_post_roundtrip(app_client):
+    """The reader's actual save flow: GET the set, append an item to the returned
+    body verbatim (book_reader.js does ``{...currentSet, items: [...]}``), POST it
+    back. This is the seam where both 2026-06-10 regressions lived:
+
+    - GET fabricated a v2 set for a book with no annotation file, so the POST was
+      validated as AnnotationSetV2 and the v3-shaped item 422'd, and
+    - GET decorates the body with the read-only ``conflicts`` key (ADR-044 §B8),
+      which the reader round-trips and set-level extra="forbid" rejected — this
+      one broke saves on ALL books, not just fresh ones.
+    """
+    _upload(app_client, "fresh-book")
+    body = app_client.get("/robin/api/books/fresh-book/annotations").json()
+    body["items"] = [*body["items"], _v3_highlight_item("round-trip highlight")]
+    body["updated_at"] = _TS
+    r = app_client.post("/robin/api/books/fresh-book/annotations", json=body)
+    assert r.status_code == 200, r.text
+
+    got = app_client.get("/robin/api/books/fresh-book/annotations").json()
+    assert got["schema_version"] == 3
+    assert len(got["items"]) == 1
+    assert got["items"][0]["text"] == "round-trip highlight"
+
+
+def test_existing_book_get_mutate_post_roundtrip(app_client):
+    """Same round-trip for a book that already has annotations on disk — pins the
+    ``conflicts`` regression independently of the fresh-book v2/v3 one."""
+    _upload(app_client, "alpha")
+    seed = _v3_empty_set("alpha")
+    seed["items"] = [_v3_highlight_item("first")]
+    assert app_client.post("/robin/api/books/alpha/annotations", json=seed).status_code == 200
+
+    body = app_client.get("/robin/api/books/alpha/annotations").json()
+    assert body["conflicts"] == []  # decoration present — the reader will echo it
+    body["items"] = [*body["items"], _v3_highlight_item("second")]
+    r = app_client.post("/robin/api/books/alpha/annotations", json=body)
+    assert r.status_code == 200, r.text
+    got = app_client.get("/robin/api/books/alpha/annotations").json()
+    assert [it["text"] for it in got["items"]] == ["first", "second"]
 
 
 def test_post_v2_set_with_v3_shaped_item_still_422s(app_client):

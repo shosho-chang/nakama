@@ -71,8 +71,9 @@ class YouTubeKey:
     Resolution reads ``Watchlist/youtube/{video_id}/manifest.json``
     (validated by :class:`YouTubeWatchlistEntry`) and emits a
     ``ReadingSource(kind='youtube_video', schema_version=2)``. The variant
-    points at ``Watchlist/youtube/{video_id}/{transcript_path}`` (default
-    ``transcript.vtt``) as the original-track evidence.
+    points at the unified raw layer ``KB/Raw/Videos/{video_id}.vtt`` as the
+    original-track evidence (ADR-046 §Slice 0A; built by convention, not from
+    the manifest ``transcript_path`` field which is now vestigial).
     """
 
     video_id: str
@@ -200,6 +201,17 @@ class ReadingSourceRegistry:
 
         primary_lang = _normalize_primary_lang(metadata.lang)
 
+        # A monolingual original-language book's single EPUB IS its
+        # authoritative original text, so it carries an evidence track (its own
+        # words). The historical ``has_original`` gate only fits the bilingual
+        # case: there the display copy is a *translation*, factual claims must
+        # come from the EN original, and a missing original genuinely means "no
+        # evidence track". Conflating the two wrongly routed monolingual books
+        # to defer/annotation-only (ADR-024 evidence-track semantics amendment
+        # 2026-06; unblocks N519 claim extraction for zh originals).
+        is_monolingual_original = book.mode == "monolingual-zh"
+        has_evidence_track = book.has_original or is_monolingual_original
+
         variants: list[SourceVariant] = []
         if book.has_original:
             variants.append(
@@ -218,6 +230,18 @@ class ReadingSourceRegistry:
                     path=f"data/books/{book_id}/bilingual.epub",
                 )
             )
+        elif is_monolingual_original:
+            # Display copy == original; mark role="original" so the #509
+            # invariant (has_evidence_track=True ⇒ exactly one role="original")
+            # holds and preflight/builder select it as the evidence variant.
+            variants.append(
+                SourceVariant(
+                    role="original",
+                    format="epub",
+                    lang=primary_lang,
+                    path=f"data/books/{book_id}/bilingual.epub",
+                )
+            )
         else:
             variants.append(
                 SourceVariant(
@@ -228,7 +252,7 @@ class ReadingSourceRegistry:
                 )
             )
 
-        evidence_reason = None if book.has_original else "no_original_uploaded"
+        evidence_reason = None if has_evidence_track else "no_original_uploaded"
 
         # NB3 contract — Book.lang_pair is deliberately NOT passed through.
         meta_dict: dict[str, str] = {}
@@ -246,7 +270,7 @@ class ReadingSourceRegistry:
             title=book.title,
             author=book.author,
             primary_lang=primary_lang,
-            has_evidence_track=book.has_original,
+            has_evidence_track=has_evidence_track,
             evidence_reason=evidence_reason,
             variants=variants,
             metadata=meta_dict,
@@ -466,7 +490,15 @@ class ReadingSourceRegistry:
             )
             return None
 
-        transcript_rel = f"{entry_rel}/{entry.transcript_path}"
+        # Transcript (raw content) lives in the unified raw layer
+        # ``KB/Raw/Videos/{video_id}.vtt`` — alongside ``KB/Raw/Articles/`` —
+        # NOT under the Watchlist entry dir (ADR-046 Slice 0A). Built by
+        # convention from ``video_id`` so every read site (reader, promotion
+        # preflight, video source-map) follows automatically via this single
+        # ``SourceVariant.path``. The manifest stays under ``Watchlist/youtube/``
+        # as the "videos I've added" registry; ``entry.transcript_path`` is now
+        # vestigial (kept for record, no longer authoritative for location).
+        transcript_rel = f"KB/Raw/Videos/{video_id}.vtt"
         variant = SourceVariant(
             role="original",
             format="vtt",

@@ -22,9 +22,9 @@
   └────────────────────────────────────────────────────────────────────┘
 
   `nav_active` slugs (v3, ADR-029 + ADR-031):
-    direct:  bridge / weekly / projects / drafts / digests / seo
+    direct:  bridge / weekly / kb / projects / drafts / digests / seo
     fleet:   robin / nami / zoro / brook / sanji / franky / usopp / chopper
-    ops:     cost / logs / memory / docs / progress
+    ops:     cost / logs / memory / docs / models / architecture / progress / inventory
   Backward compat (deprecated, auto-normalized):
     health → franky · repurpose → brook · vault → (silent, no highlight)
 
@@ -38,7 +38,7 @@
 {% if nav_active == 'vault' %}{% set nav_active = '' %}{% endif %}
 {#-- active-group helpers --#}
 {% set _fleet = ['robin','nami','zoro','brook','sanji','franky','usopp','chopper'] %}
-{% set _ops   = ['cost','logs','memory','docs','progress'] %}
+{% set _ops   = ['cost','logs','memory','docs','progress','models','architecture','inventory'] %}
 {% set _in_fleet = nav_active in _fleet %}
 {% set _in_ops   = nav_active in _ops %}
 <header class="chassis" role="banner">
@@ -64,7 +64,7 @@
         Fleet <span class="chassis-caret" aria-hidden="true">▾</span>
       </button>
       <div class="chassis-dropdown-menu" role="menu">
-        <a href="/robin" role="menuitem"{% if nav_active == 'robin' %} class="active" aria-current="page"{% endif %}>ROBIN <span class="zh">知識</span></a>
+        <a href="/robin/home" role="menuitem"{% if nav_active == 'robin' %} class="active" aria-current="page"{% endif %}>ROBIN <span class="zh">知識</span></a>
         <span class="chassis-dropdown-item is-disabled" role="menuitem" aria-disabled="true"
               title="此 agent 介面尚在規劃 / Under Construction">NAMI <span class="zh">秘書</span></span>
         <a href="/bridge/zoro/keyword-research" role="menuitem"{% if nav_active == 'zoro' %} class="active" aria-current="page"{% endif %}>ZORO <span class="zh">偵察</span></a>
@@ -80,6 +80,7 @@
     </div>
 
     <a href="/bridge/weekly"{% if nav_active == 'weekly' %} class="active" aria-current="page"{% endif %}>WEEKLY <span class="zh">週計畫</span></a>
+    <a href="/kb"{% if nav_active == 'kb' %} class="active" aria-current="page"{% endif %}>KB <span class="zh">卡片盒</span></a>
     <a href="/bridge/projects"{% if nav_active == 'projects' %} class="active" aria-current="page"{% endif %}>PROJECTS <span class="zh">專案</span></a>
     <a href="/bridge/drafts"{% if nav_active == 'drafts' %} class="active" aria-current="page"{% endif %}>DRAFTS <span class="zh">待審</span></a>
     <a href="/bridge/digests"{% if nav_active == 'digests' %} class="active" aria-current="page"{% endif %}>DIGESTS <span class="zh">情報</span></a>
@@ -96,7 +97,10 @@
         <a href="/bridge/logs" role="menuitem"{% if nav_active == 'logs' %} class="active" aria-current="page"{% endif %}>LOGS <span class="zh">日誌</span></a>
         <a href="/bridge/memory" role="menuitem"{% if nav_active == 'memory' %} class="active" aria-current="page"{% endif %}>MEMORY <span class="zh">記憶</span></a>
         <a href="/bridge/docs" role="menuitem"{% if nav_active == 'docs' %} class="active" aria-current="page"{% endif %}>DOCS <span class="zh">文件搜尋</span></a>
+        <a href="/bridge/models" role="menuitem"{% if nav_active == 'models' %} class="active" aria-current="page"{% endif %}>MODELS <span class="zh">模型</span></a>
+        <a href="/architecture" role="menuitem"{% if nav_active == 'architecture' %} class="active" aria-current="page"{% endif %}>ARCHITECTURE <span class="zh">架構</span></a>
         <a href="/progress" role="menuitem"{% if nav_active == 'progress' %} class="active" aria-current="page"{% endif %}>PROGRESS <span class="zh">系統進度</span></a>
+        <a href="/bridge/inventory" role="menuitem"{% if nav_active == 'inventory' %} class="active" aria-current="page"{% endif %}>INVENTORY <span class="zh">能力盤點</span></a>
       </div>
     </div>
 
@@ -110,48 +114,9 @@
     {%- endif %}
   </div>
 </header>
-<script>
-(function () {
-  /* Dropdown toggle: toggle aria-expanded + CSS class on click, close on outside click. */
-  var dropdowns = document.querySelectorAll('.chassis-dropdown');
-  dropdowns.forEach(function (dd) {
-    var trigger = dd.querySelector('.chassis-nav-trigger');
-    var menu = dd.querySelector('.chassis-dropdown-menu');
-    if (!trigger || !menu) return;
-    trigger.addEventListener('click', function (e) {
-      e.stopPropagation();
-      var open = trigger.getAttribute('aria-expanded') === 'true';
-      /* Close all other dropdowns first */
-      dropdowns.forEach(function (other) {
-        var t = other.querySelector('.chassis-nav-trigger');
-        var m = other.querySelector('.chassis-dropdown-menu');
-        if (t) t.setAttribute('aria-expanded', 'false');
-        if (m) m.classList.remove('open');
-      });
-      if (!open) {
-        trigger.setAttribute('aria-expanded', 'true');
-        menu.classList.add('open');
-      }
-    });
-  });
-  document.addEventListener('click', function () {
-    dropdowns.forEach(function (dd) {
-      var t = dd.querySelector('.chassis-nav-trigger');
-      var m = dd.querySelector('.chassis-dropdown-menu');
-      if (t) t.setAttribute('aria-expanded', 'false');
-      if (m) m.classList.remove('open');
-    });
-  });
-  /* Close on Escape */
-  document.addEventListener('keydown', function (e) {
-    if (e.key !== 'Escape') return;
-    dropdowns.forEach(function (dd) {
-      var t = dd.querySelector('.chassis-nav-trigger');
-      var m = dd.querySelector('.chassis-dropdown-menu');
-      if (t) t.setAttribute('aria-expanded', 'false');
-      if (m) m.classList.remove('open');
-    });
-  });
-})();
-</script>
+{#-- Dropdown behaviour lives in an external file so the shared chassis header
+     carries NO inline <script> — required to reuse it on the Reader / KB
+     surfaces (script-src 'self', no-inline convention; see middleware/csp.py
+     + routers/kb_review.py). `defer` so the chassis DOM is parsed first. --#}
+<script defer src="/static/chassis_nav.js"></script>
 {%- endmacro %}

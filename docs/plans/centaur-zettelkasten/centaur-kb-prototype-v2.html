@@ -1,0 +1,894 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Centaur Zettelkasten — Web UI Prototype v2</title>
+<script>(function(){try{var t=localStorage.getItem('sho-theme');if(t==='light'||t==='dark'){document.documentElement.setAttribute('data-theme',t);}}catch(e){}})();</script>
+<style>
+.sho{
+  --sho-bg:oklch(0.988 0.003 80);--sho-bg-2:oklch(0.967 0.003 80);--sho-bg-3:oklch(0.925 0.003 80);
+  --sho-line:oklch(0.875 0.003 80);--sho-line-2:oklch(0.820 0.003 80);
+  --sho-muted:oklch(0.550 0.005 80);--sho-text-2:oklch(0.360 0.005 80);
+  --sho-text:oklch(0.200 0.005 80);--sho-ink:oklch(0.100 0.005 80);
+  --sho-accent:oklch(0.71 0.135 41);--sho-accent-2:oklch(0.66 0.155 38);
+  --sho-accent-soft:oklch(0.71 0.135 41 / 0.10);--sho-accent-line:oklch(0.71 0.135 41 / 0.45);
+  --sho-success:oklch(0.58 0.115 150);--sho-warning:oklch(0.72 0.140 75);
+  --sho-error:oklch(0.58 0.180 28);--sho-info:oklch(0.62 0.090 235);
+  --sho-r-1:4px;--sho-r-2:8px;--sho-r-3:12px;--sho-r-pill:999px;
+  --sho-t-fast:120ms;--sho-t-base:180ms;--sho-t-slow:280ms;
+  --sho-ease:cubic-bezier(0.22,1,0.36,1);
+  --sho-focus:0 0 0 2px var(--sho-bg),0 0 0 4px var(--sho-accent);
+  --sho-font:"LINE Seed TW","Noto Sans TC","PingFang TC","Microsoft JhengHei UI","Microsoft JhengHei",ui-sans-serif,system-ui,sans-serif;
+}
+html[data-theme="dark"] .sho{
+  --sho-bg:oklch(0.145 0.005 80);--sho-bg-2:oklch(0.180 0.005 80);--sho-bg-3:oklch(0.235 0.005 80);
+  --sho-line:oklch(0.295 0.005 80);--sho-line-2:oklch(0.355 0.005 80);
+  --sho-muted:oklch(0.600 0.005 80);--sho-text-2:oklch(0.760 0.004 80);
+  --sho-text:oklch(0.880 0.003 80);--sho-ink:oklch(0.960 0.002 80);
+  --sho-accent:oklch(0.78 0.130 48);--sho-accent-2:oklch(0.82 0.125 48);
+  --sho-accent-soft:oklch(0.78 0.130 48 / 0.12);--sho-accent-line:oklch(0.78 0.130 48 / 0.50);
+}
+@media (prefers-color-scheme: dark){
+  html:not([data-theme="light"]) .sho{
+    --sho-bg:oklch(0.145 0.005 80);--sho-bg-2:oklch(0.180 0.005 80);--sho-bg-3:oklch(0.235 0.005 80);
+    --sho-line:oklch(0.295 0.005 80);--sho-line-2:oklch(0.355 0.005 80);
+    --sho-muted:oklch(0.600 0.005 80);--sho-text-2:oklch(0.760 0.004 80);
+    --sho-text:oklch(0.880 0.003 80);--sho-ink:oklch(0.960 0.002 80);
+    --sho-accent:oklch(0.78 0.130 48);--sho-accent-2:oklch(0.82 0.125 48);
+    --sho-accent-soft:oklch(0.78 0.130 48 / 0.12);--sho-accent-line:oklch(0.78 0.130 48 / 0.50);
+  }
+}
+@media (prefers-reduced-motion: reduce){.sho{--sho-t-fast:0ms;--sho-t-base:0ms;--sho-t-slow:0ms;}}
+
+*{box-sizing:border-box}
+body.sho{margin:0;background:var(--sho-bg);color:var(--sho-text);font-family:var(--sho-font);font-size:15px;line-height:1.7;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit}
+.sho-mono{font-size:12.5px;color:var(--sho-muted);font-variant-numeric:tabular-nums}
+.sho-mono-up{font-size:11px;color:var(--sho-muted);text-transform:uppercase;letter-spacing:.06em;font-weight:500}
+.sho-lk{cursor:pointer;background-image:linear-gradient(currentColor,currentColor);background-size:100% 1px;background-position:0 100%;background-repeat:no-repeat;transition:color var(--sho-t-fast) var(--sho-ease)}
+.sho-lk:hover{color:var(--sho-accent)}
+
+/* shell */
+.shell{display:grid;grid-template-columns:228px minmax(0,1fr);min-height:100vh}
+.sidenav{border-right:1px solid var(--sho-line);padding:18px 14px 80px;position:sticky;top:0;height:100vh;overflow-y:auto;display:flex;flex-direction:column;gap:2px;background:var(--sho-bg)}
+.sidenav .brand{display:flex;align-items:center;gap:8px;padding:4px 10px 14px}
+.sidenav .brand .nm{font-weight:800;font-size:14px;color:var(--sho-ink)}
+.sidenav .brand .sub{font-size:10.5px;color:var(--sho-muted);text-transform:uppercase;letter-spacing:.07em}
+.navsec{margin-top:14px;padding:0 10px 4px;display:flex;align-items:center;gap:6px}
+.navsec .t{font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--sho-muted)}
+.navsec .ln{flex:1;height:1px;background:var(--sho-line)}
+.navitem{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--sho-r-1);font-size:13.5px;font-weight:500;letter-spacing:.01em;color:var(--sho-text-2);cursor:pointer;transition:color var(--sho-t-fast) var(--sho-ease),background var(--sho-t-fast) var(--sho-ease)}
+.navitem:hover{color:var(--sho-ink);background:var(--sho-bg-2)}
+.navitem.active{color:var(--sho-accent);background:var(--sho-accent-soft);font-weight:700}
+.navitem .cnt{margin-left:auto;font-size:11px;color:var(--sho-muted);font-variant-numeric:tabular-nums;opacity:.8}
+.navitem.active .cnt{color:var(--sho-accent)}
+.redline-nav{margin:16px 10px 0;border-top:1px dashed var(--sho-error);padding-top:8px;font-size:10.5px;color:var(--sho-muted);line-height:1.5}
+.redline-nav b{color:var(--sho-error)}
+
+main{padding:32px clamp(18px,4vw,48px) 120px;min-width:0}
+.view{display:none;max-width:840px}
+.view.on{display:block}
+.vhead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+.vhead h1{font-size:21px;font-weight:800;color:var(--sho-ink);margin:0;letter-spacing:-.01em}
+.vhead .meta{font-size:12.5px;color:var(--sho-muted)}
+.vsub{font-size:13px;color:var(--sho-text-2);margin:0 0 24px}
+.sho-kicker{display:flex;align-items:center;gap:8px;margin:36px 0 14px}
+.sho-kicker-n{font-size:11px;border:1px solid var(--sho-line-2);border-radius:var(--sho-r-1);padding:1px 6px;color:var(--sho-muted)}
+.sho-kicker-t{font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--sho-text-2)}
+.sho-kicker .ln{flex:1;height:1px;background:var(--sho-line)}
+.sho-kicker .c{font-size:11px;color:var(--sho-muted)}
+
+.panel{border:1px solid var(--sho-line);border-radius:var(--sho-r-2);background:var(--sho-bg);margin-bottom:12px;transition:border-color var(--sho-t-fast) var(--sho-ease),opacity var(--sho-t-base) var(--sho-ease)}
+.panel:hover{border-color:var(--sho-line-2)}
+.panel.click{cursor:pointer}
+.panel-in{padding:16px 22px}
+.rowline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sho-tag{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--sho-line-2);border-radius:var(--sho-r-pill);padding:1px 9px;font-size:11.5px;color:var(--sho-muted);white-space:nowrap}
+.sho-tag--accent{color:var(--sho-accent);border-color:var(--sho-accent-line)}
+.sho-tag--success{color:var(--sho-success);border-color:color-mix(in oklch,var(--sho-success) 45%,transparent)}
+.sho-tag--warning{color:var(--sho-warning);border-color:color-mix(in oklch,var(--sho-warning) 55%,transparent)}
+.sho-tag--info{color:var(--sho-info);border-color:color-mix(in oklch,var(--sho-info) 50%,transparent)}
+.wikilink{font-size:12.5px;border:1px solid var(--sho-line-2);border-radius:var(--sho-r-1);padding:1px 8px;color:var(--sho-text-2);background:var(--sho-bg-2);white-space:nowrap;cursor:pointer;transition:border-color var(--sho-t-fast) var(--sho-ease),color var(--sho-t-fast) var(--sho-ease)}
+.wikilink:hover{border-color:var(--sho-accent-line);color:var(--sho-accent)}
+.sho-btn{appearance:none;border:1px solid var(--sho-line-2);background:var(--sho-bg);color:var(--sho-text);border-radius:var(--sho-r-2);padding:6px 16px;font-size:13px;font-weight:700;cursor:pointer;transition:border-color var(--sho-t-fast) var(--sho-ease),color var(--sho-t-fast) var(--sho-ease),background var(--sho-t-fast) var(--sho-ease)}
+.sho-btn:hover{border-color:var(--sho-accent-line);color:var(--sho-accent-2)}
+.sho-btn:focus-visible{outline:none;box-shadow:var(--sho-focus)}
+.sho-btn--primary{border-color:var(--sho-accent-line);color:var(--sho-accent)}
+.sho-btn--primary:hover{background:var(--sho-accent-soft)}
+.sho-btn--ghost{border-color:transparent;color:var(--sho-muted);padding:6px 10px;font-weight:500}
+.sho-btn--ghost:hover{color:var(--sho-text-2);border-color:var(--sho-line)}
+.empty{border:1px dashed var(--sho-line);border-radius:var(--sho-r-2);padding:24px;text-align:center;color:var(--sho-muted);font-size:13px}
+.ownerbar{display:flex;align-items:center;gap:8px;border:1px solid var(--sho-line);border-radius:var(--sho-r-2);background:var(--sho-bg-2);padding:6px 14px;font-size:12px;color:var(--sho-text-2);margin-bottom:24px}
+.ownerbar.human{border-left:2px solid var(--sho-accent)}
+.ownerbar.ai{border-left:2px solid var(--sho-info)}
+.statusflow{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--sho-muted)}
+.statusflow .st{border:1px solid var(--sho-line-2);border-radius:var(--sho-r-pill);padding:0 8px}
+.statusflow .st.now{color:var(--sho-accent);border-color:var(--sho-accent-line);font-weight:700}
+.cite{font-size:10.5px;color:var(--sho-muted);border:1px solid var(--sho-line);border-radius:var(--sho-r-1);padding:0 5px;white-space:nowrap;font-variant-numeric:tabular-nums}
+
+/* ===== v2: 引文/註解視覺語言（共用於 Literature + 每日回顧） ===== */
+.ex{border:1px solid var(--sho-line);border-radius:var(--sho-r-2);overflow:hidden;margin:0 0 12px}
+.ex-q{background:var(--sho-bg-2);padding:10px 16px;font-size:13.5px;color:var(--sho-text-2);line-height:1.75;display:flex;gap:10px;align-items:baseline}
+.ex-q .qm{color:var(--sho-line-2);font-size:18px;font-weight:800;line-height:1;user-select:none}
+.ex-q .cite{margin-left:auto;flex-shrink:0;align-self:center}
+.ex-n{padding:10px 16px 10px 14px;border-top:1px solid var(--sho-line);border-left:2px solid var(--sho-accent);font-size:14.5px;color:var(--sho-text);line-height:1.75}
+.ex-n .who{font-size:10.5px;color:var(--sho-accent);font-weight:700;letter-spacing:.05em;margin-right:8px;vertical-align:1px}
+.ex-s{padding:7px 16px;border-top:1px solid var(--sho-line);background:var(--sho-bg);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* cockpit candidate v2 */
+.cand-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+.cand-head .tt{font-size:15.5px;font-weight:800;color:var(--sho-ink)}
+.cand-head .why{font-size:12px;color:var(--sho-muted)}
+.cand-meta{font-size:11.5px;color:var(--sho-muted);margin-bottom:12px;font-variant-numeric:tabular-nums}
+.cand-rel{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:12px 0 14px}
+.cand-rel .sl{font-size:10.5px;color:var(--sho-muted);text-transform:uppercase;letter-spacing:.05em}
+.cand-act{display:flex;gap:8px;align-items:center;border-top:1px solid var(--sho-line);padding-top:12px}
+
+/* permanent */
+.cardbody{font-size:15.5px;line-height:1.85;margin:16px 0}
+.edgeline{display:flex;gap:8px;align-items:baseline;margin:6px 0;font-size:14px;flex-wrap:wrap}
+.edgeline .etype{font-weight:800;font-size:12.5px;white-space:nowrap}
+.edgeline .etype.sup{color:var(--sho-success)}
+.edgeline .etype.ref{color:var(--sho-error)}
+.edgeline .etype.ext{color:var(--sho-info)}
+.edgeline .ereason{color:var(--sho-text-2);font-size:13.5px}
+.backlink-row{display:flex;gap:8px;align-items:baseline;margin:5px 0;font-size:13px;color:var(--sho-text-2);flex-wrap:wrap}
+.fm-grid{display:grid;grid-template-columns:auto 1fr;gap:3px 16px;font-size:12.5px;margin:12px 0}
+.fm-grid .k{color:var(--sho-muted)}
+.fm-grid .v{color:var(--sho-text-2)}
+
+/* literature chapter */
+.litch{margin-bottom:28px}
+.litch-h{display:flex;align-items:baseline;gap:10px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--sho-line)}
+.litch-h .t{font-weight:800;font-size:14px;color:var(--sho-ink)}
+.litch-h .sp{font-size:11px;color:var(--sho-muted);font-variant-numeric:tabular-nums}
+.litch-h .n{margin-left:auto;font-size:11px;color:var(--sho-muted)}
+
+/* MOC */
+.mocrow .panel-in{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.mocrow .nm{font-weight:800;font-size:15px;color:var(--sho-ink)}
+.mocrow .stats{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.mocx{border-top:1px solid var(--sho-line);padding:14px 22px 18px;display:none}
+.mocx.on{display:block}
+.mocx .xh{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;font-weight:700;color:var(--sho-muted);margin:14px 0 7px}
+.mocx .xh:first-child{margin-top:0}
+.mocx .xh.inf{color:var(--sho-info)}
+.mocx .xh.wrn{color:var(--sho-warning)}
+.mocx .xh .hint{font-weight:400;text-transform:none;letter-spacing:0;margin-left:6px;color:var(--sho-muted)}
+.mocx .xchips{display:flex;gap:6px;flex-wrap:wrap}
+.mocrow .chev{transition:transform var(--sho-t-fast) var(--sho-ease)}
+.mocrow.open .chev{transform:rotate(180deg)}
+.moc-sec h3{font-size:15px;font-weight:800;color:var(--sho-ink);margin:24px 0 4px}
+.moc-sec .why{font-size:12.5px;color:var(--sho-muted);margin:0 0 8px}
+.marker-sec{border:1px dashed var(--sho-info);border-radius:var(--sho-r-2);padding:16px;margin-top:24px}
+.marker-sec .mh{font-size:11px;color:var(--sho-info);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+
+/* tabs / system */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--sho-line);margin-bottom:16px}
+.tab{padding:7px 16px;font-size:13px;font-weight:700;color:var(--sho-muted);cursor:pointer;border:0;background:none;border-bottom:2px solid transparent;transition:color var(--sho-t-fast) var(--sho-ease)}
+.tab:hover{color:var(--sho-text-2)}
+.tab.active{color:var(--sho-accent);border-bottom-color:var(--sho-accent)}
+.defer-box{border:1px solid var(--sho-accent-line);border-radius:var(--sho-r-2);background:var(--sho-accent-soft);padding:10px 14px;font-size:13px;margin:16px 0}
+pre.filelike{border:1px solid var(--sho-line);border-radius:var(--sho-r-2);background:var(--sho-bg-2);padding:12px 16px;font-size:12.5px;line-height:1.7;overflow-x:auto;color:var(--sho-text-2);font-family:var(--sho-font);font-variant-numeric:tabular-nums;margin:0}
+.redline-list{counter-reset:rl;display:flex;flex-direction:column;gap:8px}
+.redline-item{display:flex;gap:10px;align-items:baseline;font-size:13.5px}
+.redline-item::before{counter-increment:rl;content:counter(rl);font-size:11px;color:var(--sho-error);border:1px solid color-mix(in oklch,var(--sho-error) 45%,transparent);border-radius:var(--sho-r-1);padding:0 6px;white-space:nowrap}
+
+/* drawer */
+.scrim{position:fixed;inset:0;background:oklch(0.1 0 0/0.25);z-index:40;opacity:0;pointer-events:none;transition:opacity var(--sho-t-base) var(--sho-ease)}
+.scrim.on{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(580px,100vw);z-index:50;background:var(--sho-bg);border-left:1px solid var(--sho-line);transform:translateX(102%);transition:transform var(--sho-t-slow) var(--sho-ease);display:flex;flex-direction:column}
+.drawer.on{transform:translateX(0)}
+.drawer-head{display:flex;align-items:center;gap:10px;padding:14px 24px;border-bottom:1px solid var(--sho-line)}
+.drawer-head .t{font-weight:800;font-size:14px;color:var(--sho-ink)}
+.drawer-head .x{margin-left:auto}
+.drawer-body{flex:1;overflow-y:auto;padding:24px}
+.fld{margin-bottom:24px}
+.fld>.lbl{display:flex;align-items:baseline;gap:8px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;font-weight:700;color:var(--sho-text-2);margin-bottom:6px}
+.fld>.lbl .who{margin-left:auto;font-size:10.5px;font-weight:500;color:var(--sho-muted)}
+.fld>.lbl .who.human{color:var(--sho-accent)}
+.titlewrap{display:flex;align-items:center;border:1px solid var(--sho-line-2);border-radius:var(--sho-r-2);overflow:hidden}
+.titlewrap:focus-within{box-shadow:var(--sho-focus)}
+.titlewrap .prefix{font-size:12px;color:var(--sho-muted);padding:8px 0 8px 12px;white-space:nowrap}
+.titlewrap input{flex:1;border:0;outline:none;background:transparent;color:var(--sho-ink);font-family:inherit;font-size:14.5px;font-weight:700;padding:8px 12px 8px 4px;min-width:0}
+textarea.body{width:100%;min-height:140px;resize:vertical;border:1px solid var(--sho-line-2);border-radius:var(--sho-r-2);background:var(--sho-bg);color:var(--sho-text);font-family:inherit;font-size:14.5px;line-height:1.75;padding:10px 12px;outline:none}
+textarea.body:focus-visible{box-shadow:var(--sho-focus);border-color:transparent}
+.edgegroup{border:1px solid var(--sho-line);border-radius:var(--sho-r-2);padding:10px 12px;margin-bottom:12px}
+.edgegroup .gh{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.edgegroup .gname{font-size:13px;font-weight:800}
+.edgegroup .gname.sup{color:var(--sho-success)}
+.edgegroup .gname.ref{color:var(--sho-error)}
+.edgegroup .gname.ext{color:var(--sho-info)}
+.edgegroup .gdesc{font-size:11.5px;color:var(--sho-muted)}
+.sugg-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.sugg-row .sl{font-size:10.5px;color:var(--sho-muted);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+.suggchip{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;border:1px solid var(--sho-accent-line);color:var(--sho-accent);border-radius:var(--sho-r-pill);padding:2px 10px;background:none;cursor:pointer;transition:background var(--sho-t-fast) var(--sho-ease)}
+.suggchip:hover{background:var(--sho-accent-soft)}
+.suggchip:focus-visible{outline:none;box-shadow:var(--sho-focus)}
+.suggchip[disabled]{opacity:.35;pointer-events:none}
+.searchall{margin-top:8px;position:relative}
+.searchall input{width:100%;border:1px solid var(--sho-line);border-radius:var(--sho-r-1);background:var(--sho-bg);color:var(--sho-text);font-family:inherit;font-size:12.5px;padding:5px 9px;outline:none}
+.searchall input:focus-visible{box-shadow:var(--sho-focus)}
+.searchall .results{position:absolute;left:0;right:0;top:calc(100% + 2px);z-index:10;background:var(--sho-bg);border:1px solid var(--sho-line-2);border-radius:var(--sho-r-2);max-height:160px;overflow-y:auto;display:none}
+.searchall .results.on{display:block}
+.searchall .ritem{padding:6px 10px;font-size:12.5px;cursor:pointer;color:var(--sho-text-2)}
+.searchall .ritem:hover{background:var(--sho-bg-2);color:var(--sho-ink)}
+.searchall .ritem .st{font-size:10.5px;color:var(--sho-muted);margin-left:6px}
+.edgerow{display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap}
+.edgerow .ecard{font-size:12.5px;border:1px solid var(--sho-line-2);border-radius:var(--sho-r-1);padding:3px 8px;background:var(--sho-bg-2);color:var(--sho-text-2);white-space:nowrap}
+.edgerow input.reason{flex:1;min-width:140px;border:1px solid var(--sho-line-2);border-radius:var(--sho-r-1);background:var(--sho-bg);color:var(--sho-text);font-family:inherit;font-size:12.5px;padding:5px 8px;outline:none}
+.edgerow input.reason:focus-visible{box-shadow:var(--sho-focus)}
+.edgerow .rm{border:0;background:none;color:var(--sho-muted);cursor:pointer;font-size:14px;padding:2px 6px}
+.edgerow .rm:hover{color:var(--sho-error)}
+details.preview{border:1px solid var(--sho-line);border-radius:var(--sho-r-2);overflow:hidden}
+details.preview summary{cursor:pointer;list-style:none;padding:8px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;font-weight:700;color:var(--sho-text-2);background:var(--sho-bg-2)}
+details.preview summary::-webkit-details-marker{display:none}
+details.preview pre{margin:0;padding:12px 14px;font-size:12px;line-height:1.65;overflow-x:auto;color:var(--sho-text-2);border-top:1px solid var(--sho-line);font-family:var(--sho-font)}
+.drawer-foot{display:flex;align-items:center;gap:12px;padding:14px 24px;border-top:1px solid var(--sho-line)}
+.drawer-foot .note{font-size:11.5px;color:var(--sho-muted);margin-right:auto}
+.toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,16px);z-index:60;background:var(--sho-ink);color:var(--sho-bg);border-radius:var(--sho-r-2);padding:9px 18px;font-size:13px;opacity:0;pointer-events:none;transition:opacity var(--sho-t-base) var(--sho-ease),transform var(--sho-t-base) var(--sho-ease);max-width:80vw}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.sho-theme-toggle{position:fixed;right:18px;bottom:18px;z-index:35;border:1px solid var(--sho-line-2);background:var(--sho-bg);border-radius:var(--sho-r-pill);padding:6px 14px;font-size:11.5px;color:var(--sho-muted);cursor:pointer;letter-spacing:.05em;text-transform:uppercase;font-weight:500}
+.sho-theme-toggle:hover{color:var(--sho-accent);border-color:var(--sho-accent-line)}
+.footer-stamp{display:flex;align-items:center;gap:10px;margin-top:48px;padding-top:16px;border-top:1px solid var(--sho-line)}
+.footer-stamp svg{width:1em;height:.6em;color:var(--sho-accent)}
+@media(max-width:760px){.shell{grid-template-columns:1fr}.sidenav{position:static;height:auto;flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--sho-line)}.navsec,.redline-nav{display:none}.sidenav .brand{width:100%}}
+</style>
+</head>
+<body class="sho">
+<div class="shell">
+
+<nav class="sidenav">
+  <div class="brand"><span class="nm">NAKAMA</span><span class="sub">Centaur KB</span></div>
+  <a class="navitem" data-v="cockpit">每日回顧 <span class="cnt" id="nav-cnt">5</span></a>
+  <div class="navsec"><span class="t">人層</span><span class="ln"></span></div>
+  <a class="navitem" data-v="permanent">Permanent <span class="cnt">7</span></a>
+  <a class="navitem" data-v="literature">Literature <span class="cnt">4</span></a>
+  <a class="navitem" data-v="moc">MOC <span class="cnt">8</span></a>
+  <div class="navsec"><span class="t">AI 層</span><span class="ln"></span></div>
+  <a class="navitem" data-v="wiki">Wiki</a>
+  <a class="navitem" data-v="system">系統</a>
+</nav>
+
+<main>
+
+<!-- ============ COCKPIT ============ -->
+<section class="view" id="v-cockpit">
+  <div class="vhead"><h1>每日回顧</h1><span class="meta">2026-06-11（四） · 回顧 06-10 · 來源 1 · annotation 50 條</span></div>
+  <p class="vsub">Robin 已完成記帳與篩選；以下交給你判斷。「之後再說」14 天未動自動歸檔。</p>
+  <div class="sho-kicker"><span class="sho-kicker-n">[ 001 ]</span><span class="sho-kicker-t">Fleeting 待處理</span><span class="ln"></span></div>
+  <div id="fleet-list"></div>
+  <div class="sho-kicker"><span class="sho-kicker-n">[ 002 ]</span><span class="sho-kicker-t">候選永久卡 — 昨日劃線</span><span class="ln"></span></div>
+  <div id="cand-list"></div>
+  <div class="sho-kicker"><span class="sho-kicker-n">[ 003 ]</span><span class="sho-kicker-t">種子卡重訪（>30 天）</span><span class="c">每週清掃日列出</span><span class="ln"></span></div>
+  <div class="panel"><div class="panel-in">
+    <div class="cand-head"><span class="tt sho-lk" data-card="寫作產出靠的是紀律">寫作產出靠的是紀律</span><span class="sho-tag sho-tag--warning">🌱 30 天未動</span></div>
+    <p style="margin:6px 0 12px;font-size:13.5px;color:var(--sho-text-2)">你最近的兩張卡（降低摩擦力、意志力對齊）都與它形成「反駁」。重訪、改寫，還是留著當對照？</p>
+    <div class="cand-act"><button class="sho-btn" data-card="寫作產出靠的是紀律">打開重訪</button><button class="sho-btn sho-btn--ghost">下週再說</button></div>
+  </div></div>
+</section>
+
+<!-- ============ PERMANENT ============ -->
+<section class="view" id="v-permanent">
+  <div class="vhead"><h1>卡片盒 KB/Permanent/</h1><span class="meta">7 張 · 2 evergreen · 5 seedling</span></div>
+  <div class="ownerbar human">🧑 <b>人層</b> — 正文與 status 只有你能寫。AI 僅維護記帳欄，經 <span class="sho-mono">update_permanent_bookkeeping()</span>。</div>
+  <div class="rowline" style="margin-bottom:16px">
+    <button class="sho-btn sho-btn--ghost pfilter active" data-f="all">全部</button>
+    <button class="sho-btn sho-btn--ghost pfilter" data-f="seedling">🌱 seedling</button>
+    <button class="sho-btn sho-btn--ghost pfilter" data-f="evergreen">🌳 evergreen</button>
+    <span class="sho-mono" style="margin-left:auto">排序：modified ↓</span>
+  </div>
+  <div id="perm-list"></div>
+</section>
+
+<section class="view" id="v-card">
+  <button class="sho-btn sho-btn--ghost" onclick="go('permanent')">← 卡片盒</button>
+  <div id="card-detail"></div>
+</section>
+
+<!-- ============ LITERATURE ============ -->
+<section class="view" id="v-literature">
+  <div class="vhead"><h1>Literature KB/Literature/</h1><span class="meta">4 份 · 機器 render 的閱讀快照</span></div>
+  <div class="ownerbar human">🧑 <b>你的閱讀痕跡</b> — 劃線與 note 都是你的原話；AI 只負責從 <span class="sho-mono">KB/Annotations/</span> render 與記帳，不改一個字。</div>
+  <div id="lit-list"></div>
+</section>
+
+<section class="view" id="v-litdetail">
+  <button class="sho-btn sho-btn--ghost" onclick="go('literature')">← Literature</button>
+  <div class="vhead" style="margin-top:12px"><h1>文獻筆記：卡片盒筆記</h1></div>
+  <div class="rowline" style="margin-bottom:6px">
+    <span class="sho-tag">type: literature</span><span class="sho-tag">book</span><span class="sho-tag">anchor: cfi</span>
+    <span class="statusflow"><span class="st">capturing</span>→<span class="st">digested</span>→<span class="st now">mined</span></span>
+  </div>
+  <div class="fm-grid">
+    <span class="k">author</span><span class="v"><span class="wikilink" onclick="go('wiki');wikiTab('entities')">[[Entities/Sönke Ahrens]]</span></span>
+    <span class="k">annotations</span><span class="v sho-mono">[[Annotations/卡片盒筆記]] · 機器資料源，Reader 擁有</span>
+    <span class="k">source_digest</span><span class="v"><span class="wikilink" onclick="go('wiki');wikiTab('sources')">[[Wiki/Sources/卡片盒筆記]]</span></span>
+    <span class="k">mined_concepts</span><span class="v" id="lit-mined"></span>
+    <span class="k">captured / ingested</span><span class="v sho-mono">2026-06-10 / 2026-06-11</span>
+  </div>
+  <div class="sho-kicker"><span class="sho-kicker-n">[ 001 ]</span><span class="sho-kicker-t">劃線與心得 — 全文 50 條</span><span class="c">依章分組 · 章名正式版由 EPUB TOC 帶入</span><span class="ln"></span></div>
+  <div id="lit-body"></div>
+  <div class="sho-kicker"><span class="sho-kicker-n">[ 002 ]</span><span class="sho-kicker-t">🔗 KB 相關</span><span class="c">Robin judged</span><span class="ln"></span></div>
+  <div class="panel"><div class="panel-in">
+    <div class="rowline" style="margin-bottom:6px"><span class="sho-mono">「不需要用到意志力」 ↔</span><span class="wikilink" data-card="好系統讓你不需要意志力">[[Permanent/好系統讓你不需要意志力]]</span><span class="sho-tag sho-tag--accent">Permanent 排最前</span></div>
+    <div class="rowline"><span class="sho-mono">「一卡住就去做別的事」 ↔</span><span class="wikilink" data-card="Hell yeah or no">[[Permanent/Hell yeah or no]]</span><span class="wikilink" onclick="go('wiki');wikiTab('concepts')">[[Concepts/摩擦力與行為設計]]</span></div>
+  </div></div>
+</section>
+
+<!-- ============ WIKI ============ -->
+<section class="view" id="v-wiki">
+  <div class="vhead"><h1>Wiki KB/Wiki/</h1><span class="meta">AI 的平行權威層 · Karpathy loop</span></div>
+  <div class="ownerbar ai">🤖 <b>AI 層</b> — LLM 自由寫、自由 merge。終端證據只 cite Sources / Raw / Annotations（紅線⑤）。此介面唯讀。</div>
+  <div class="tabs"><button class="tab active" data-t="concepts">Concepts 2</button><button class="tab" data-t="sources">Sources 16</button><button class="tab" data-t="entities">Entities 4</button></div>
+  <div id="wiki-pane"></div>
+</section>
+
+<!-- ============ MOC ============ -->
+<section class="view" id="v-moc">
+  <div class="vhead"><h1>MOC KB/MOCs/</h1><span class="meta">8 個主題 · 你定邊界與分組，AI 撈骨架</span></div>
+  <div class="ownerbar human">🧑 <b>人層目錄</b> — 擠壓點才建。AI 只在 marker section 維護「未歸位」與孤兒標記，並在 lint 時建議新 MOC。</div>
+  <div id="moc-list"></div>
+  <div class="sho-kicker"><span class="sho-kicker-n">[ 002 ]</span><span class="sho-kicker-t">AI 建議</span><span class="c">lint 產出 · 你決定要不要建</span><span class="ln"></span></div>
+  <div class="panel" style="border-style:dashed"><div class="panel-in">
+    <div class="rowline" style="margin-bottom:8px"><span class="sho-tag sho-tag--info">建議新 MOC</span><span style="font-weight:800;color:var(--sho-ink)">寫作方法</span></div>
+    <p style="margin:0 0 12px;font-size:13px;color:var(--sho-text-2)">「用自己的話寫是檢驗真懂的唯一方法」等 4 張卡互鏈密集、且都不在任何 MOC — 找東西開始費力了嗎？</p>
+    <div class="rowline"><button class="sho-btn" onclick="toast('正式版：建立 KB/MOCs/寫作方法.md，AI 先鋪未歸位區')">建立 MOC</button><button class="sho-btn sho-btn--ghost" onclick="toast('已忽略 — 30 天後若再擠壓會重新建議')">還不需要</button></div>
+  </div></div>
+</section>
+
+<section class="view" id="v-mocdetail">
+  <button class="sho-btn sho-btn--ghost" onclick="go('moc')">← MOC</button>
+  <div class="vhead" style="margin-top:12px"><h1>MOCs/專注力與生產力.md</h1><span class="meta">5 卡已歸位 · 2 未歸位 · updated 06-11</span></div>
+  <div class="panel"><div class="panel-in">
+    <div class="moc-sec">
+      <h3>① 意志力是稀缺資源</h3>
+      <div class="why">🧑 這組講「省著用」：意志力不該花在強迫，該花在對齊。</div>
+      <div class="rowline"><span class="wikilink" data-card="意志力要用在與目標對齊的艱難任務">意志力要用在與目標對齊的艱難任務</span><span class="wikilink" data-card="好系統讓你不需要意志力">好系統讓你不需要意志力</span><span class="wikilink" data-card="Hell yeah or no">Hell yeah or no</span></div>
+      <h3>② 系統取代意志力</h3>
+      <div class="why">🧑 這組講「怎麼省」：摩擦力工程。</div>
+      <div class="rowline"><span class="wikilink" data-card="降低摩擦力是高產出的前提">降低摩擦力是高產出的前提</span><span class="wikilink" data-card="可信任的系統讓大腦敢放手">可信任的系統讓大腦敢放手</span></div>
+    </div>
+    <div class="marker-sec">
+      <div class="mh">%%agent-robin-unfiled%% — 連到此主題但未歸位</div>
+      <div class="rowline">
+        <span class="wikilink" data-card="用自己的話寫是檢驗真懂的唯一方法">用自己的話寫是檢驗真懂的唯一方法</span>
+        <span class="wikilink" data-card="寫作產出靠的是紀律">寫作產出靠的是紀律</span><span class="sho-tag sho-tag--warning">孤兒 · 無入鏈</span>
+      </div>
+      <div class="sho-mono" style="margin-top:8px">拖進你的分組並寫一句為什麼 — 分組與理由是你的判斷。</div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ============ SYSTEM ============ -->
+<section class="view" id="v-system">
+  <div class="vhead"><h1>系統</h1><span class="meta">index.md · log.md · 演算法紅線</span></div>
+  <div class="sho-kicker"><span class="sho-kicker-n">[ 001 ]</span><span class="sho-kicker-t">KB/index.md — 總目錄</span><span class="c">🤖 AI 維護 · 不用 embedding 的導航底座</span><span class="ln"></span></div>
+  <pre class="filelike"># KB Index
+## Permanent（人層 · 檢索排最前）
+- [[Permanent/意志力要用在與目標對齊的艱難任務]] — 意志力花在對齊不花在強迫 🌱
+- [[Permanent/降低摩擦力是高產出的前提]] — 魯曼式無強迫工作法 🌱
+- [[Permanent/好系統讓你不需要意志力]] — 行為改變靠環境設計 🌳
+…（7 張）
+## Literature
+- [[Literature/卡片盒筆記]] — Ahrens · mined · 50 annotations
+- [[Literature/財富階梯]] — mined · 70 highlights
+## Concepts（AI 層）
+- [[Concepts/刻意練習]] · [[Concepts/摩擦力與行為設計]]
+## Sources / Entities — 16 · 4（節錄）</pre>
+  <div class="sho-kicker"><span class="sho-kicker-n">[ 002 ]</span><span class="sho-kicker-t">KB/log.md — 帳本</span><span class="c">append-only</span><span class="ln"></span></div>
+  <pre class="filelike">## [2026-06-11] daily-review | 候選 3 · fleeting 2 · 已開卡 4
+## [2026-06-11] ingest | 卡片盒筆記 — Literature render ✓ · Source digest ✓ · Concepts ×2 · Entities ×3
+## [2026-06-10] capture | 卡片盒筆記 — annotation +50（Phase 0）
+## [2026-06-05] ingest | 財富階梯 — migration pilot</pre>
+  <div class="sho-kicker"><span class="sho-kicker-n">[ 003 ]</span><span class="sho-kicker-t">演算法紅線</span><span class="c">CLAUDE.md + tripwire</span><span class="ln"></span></div>
+  <div class="panel"><div class="panel-in"><div class="redline-list">
+    <div class="redline-item">AI 絕不寫 <b>KB/Permanent/</b> 正文與 status；唯一入口 <span class="sho-mono">update_permanent_bookkeeping()</span></div>
+    <div class="redline-item">每個事實宣稱附 citation，溯源回 raw / annotation 錨點</div>
+    <div class="redline-item">Concept 可寫可 merge，但不冒充永久卡（provenance 分離）</div>
+    <div class="redline-item">ingest 不建 MOC — MOC 等你的擠壓點</div>
+    <div class="redline-item">Concept / Output 終端證據只能是 Sources / Raw / Annotations（防 wiki 自我餵食）</div>
+  </div></div></div>
+  <div class="footer-stamp">
+    <svg viewBox="0 0 24 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polyline points="1,8 8,2 6,7 14,2 12,9 23,4"/></svg>
+    <span class="sho-mono-up">研究編號 N°0611 · vault 為唯一真相，本 UI 僅是 renderer</span>
+  </div>
+</section>
+
+</main>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="建立永久筆記">
+  <div class="drawer-head"><span class="t">建立永久筆記</span><span class="sho-tag">status: seedling</span><span class="x"><button class="sho-btn sho-btn--ghost" id="btn-close">關閉 esc</button></span></div>
+  <div class="drawer-body">
+    <div class="fld"><div class="lbl">檔名（一句宣告句）<span class="who human">🧑 你的判斷</span></div>
+      <div class="titlewrap"><span class="prefix">KB/Permanent/</span><input id="f-title" type="text" autocomplete="off" spellcheck="false"></div></div>
+    <div class="fld"><div class="lbl">來源 source_refs<span class="who">🤖 AI 預填</span></div><div id="f-srcrefs" class="sho-mono"></div></div>
+    <div class="fld"><div class="lbl">正文 — 用自己的話<span class="who human">🧑 紅線內側 · AI 不代筆</span></div>
+      <textarea class="body" id="f-body" placeholder="一卡一概念。寫下你的主張，以及它為什麼重要……"></textarea></div>
+    <div class="fld"><div class="lbl">連結與關係 typed edges<span class="who human">🧑 關係與理由是你的 · 候選由 Robin 篩</span></div><div id="f-edges"></div></div>
+    <div class="fld"><details class="preview"><summary>檔案預覽 — 實際寫入 vault 的內容</summary><pre id="f-preview"></pre></details></div>
+  </div>
+  <div class="drawer-foot"><span class="note">存檔後 Phase 5：回填 mined_concepts · 更新 index · log append</span>
+    <button class="sho-btn sho-btn--ghost" id="btn-cancel">取消</button>
+    <button class="sho-btn sho-btn--primary" id="btn-save">存入 Vault</button></div>
+</aside>
+
+<div class="toast" id="toast"></div>
+<button class="sho-theme-toggle" id="theme-toggle">theme: auto</button>
+
+<script>
+/* ================= DATA ================= */
+const CARDS = {
+  "好系統讓你不需要意志力":{status:"evergreen",created:"2026-04-02",modified:"2026-05-30",
+    body:"行為能不能持續，九成取決於環境與系統的設計，不是個人意志。好的系統把「對的行為」變成阻力最小的路徑——你不需要勉強自己，因為根本沒有需要對抗的東西。",
+    edges:[["ext","Hell yeah or no","它把同一原則用在選擇的入口"]],refs:["[[Literature/原子習慣]] ^cfi-…"]},
+  "Hell yeah or no":{status:"evergreen",created:"2026-04-15",modified:"2026-05-21",
+    body:"如果一個機會不能讓你說出「Hell yeah!」，答案就是 no。把猶豫本身當成否決票，意志力與時間只留給真正對齊的事。",edges:[],refs:["[[Literature/發現我的多重職涯組合]]"]},
+  "意志力要用在與目標對齊的艱難任務":{status:"seedling",created:"2026-06-11",modified:"2026-06-11",
+    body:"意志力是稀缺資源。它不該被花在「強迫自己做不想做的事」，而該花在與目標對齊、但本身艱難的任務上——那種做起來費力、回頭看卻興致勃勃的事。對齊在前，意志力在後。",
+    edges:[["sup","好系統讓你不需要意志力","因為系統把消耗意志力的環節先自動化，剩下的才輪到意志力"],["ext","Hell yeah or no","同一原則從任務執行延伸到任務選擇"],["ref","寫作產出靠的是紀律","紀律敘事把意志力放錯位置——它假設人人都是村上春樹"]],
+    refs:["[[Literature/卡片盒筆記]] ^cfi-6-26-106"]},
+  "降低摩擦力是高產出的前提":{status:"seedling",created:"2026-06-11",modified:"2026-06-11",
+    body:"魯曼的高產出不是來自紀律，是來自「從不強迫自己」：一卡住就去做別的。把摩擦力降到最低，讓每個時刻都有一件你想做的事可做——產出是這個狀態的副產品。",
+    edges:[["sup","好系統讓你不需要意志力","摩擦力工程就是系統設計的具體手段"],["ref","寫作產出靠的是紀律","它假設人人都是村上春樹"]],
+    refs:["[[Literature/卡片盒筆記]] ^cfi-6-26-12"],concept:"摩擦力與行為設計"},
+  "用自己的話寫是檢驗真懂的唯一方法":{status:"seedling",created:"2026-06-11",modified:"2026-06-11",
+    body:"讀到的東西若不能用自己的話重述，就還不是你的。寫永久筆記是強迫檢驗：矇混的理解在轉寫的瞬間會露餡。所以這個動作絕對不能外包給 AI——外包等於放棄檢驗。",
+    edges:[],refs:["[[Literature/卡片盒筆記]] ^cfi-6-42-34"]},
+  "可信任的系統讓大腦敢放手":{status:"seedling",created:"2026-06-11",modified:"2026-06-11",
+    body:"大腦只有在相信「東西不會丟」時才肯放手不再掛念。系統的第一要務不是強大，是可信任——進去的東西找得回來。信任建立後，工作記憶才空出來思考。",
+    edges:[["sup","好系統讓你不需要意志力","可信任是系統發揮作用的前提條件"]],
+    refs:["[[Literature/卡片盒筆記]] ^cfi-6-26-14"]},
+  "寫作產出靠的是紀律":{status:"seedling",created:"2026-05-12",modified:"2026-05-12",
+    body:"（舊卡，待重訪）穩定的寫作產出來自固定時段與字數紀律，像村上春樹那樣。",edges:[],refs:["[[Literature/某訪談]]"],stale:true}
+};
+const CARD_ORDER=["意志力要用在與目標對齊的艱難任務","降低摩擦力是高產出的前提","用自己的話寫是檢驗真懂的唯一方法","可信任的系統讓大腦敢放手","好系統讓你不需要意志力","Hell yeah or no","寫作產出靠的是紀律"];
+const ETYPE={sup:["支持","sup"],ref:["反駁","ref"],ext:["延伸","ext"]};
+
+const FLEETING=[
+  {id:"fl1",time:"06-10 21:14",via:"slack",text:"影片選題：「專注的注意力一次只能維持幾秒」——專注其實是光譜不是開關？可以連到番茄鐘為什麼有效。",suggTitle:"專注是光譜而非開關",robinSugg:{sup:[],ref:[],ext:["意志力要用在與目標對齊的艱難任務"]}},
+  {id:"fl2",time:"06-10 22:47",via:"slack",text:"和學員聊到：大家卡在「不知道要寫什麼」，其實是輸入端沒有系統，不是輸出端沒有靈感。",suggTitle:"選題枯竭是輸入問題不是輸出問題",robinSugg:{sup:["可信任的系統讓大腦敢放手"],ref:[],ext:[]}}
+];
+const CANDIDATES=[
+  {id:"c1",time:"08:43",anchor:"cfi-6-40-40",
+   quote:"當最後到了真正決定要寫什麼主題的時刻，其實你早已經做好了決定，因為你在整個過程中的每一步，每天一而再再而三都在做確認，並且逐漸修正。",
+   note:"這段實在太重要了，必須重複三次！這個就是即將變成我建議學員如何決定頻道方向的一個心法。",
+   suggTitle:"主題不是選出來的，是從素材中浮現的",why:"你標了「必須重複三次」— 最強評價訊號",
+   robinSugg:{sup:[],ref:[],ext:["降低摩擦力是高產出的前提"]}},
+  {id:"c2",time:"12:08",anchor:"cfi-6-48-146",
+   quote:"只要我們嘗試用自己的文字來解說「我讀了什麼」的話，這種美好的感覺會迅速消失。",
+   note:"除了可以測試自己懂不懂以外，其實在寫下來的過程，還會對知識產生更深的理解。所以理解也是分層次的。",
+   suggTitle:"理解是分層次的，寫作把你推向更深層",why:"延伸了你今天已開的卡",
+   robinSugg:{sup:["用自己的話寫是檢驗真懂的唯一方法"],ref:[],ext:[]}},
+  {id:"c3",time:"10:09",anchor:"cfi-6-48-80",
+   quote:"最經典的例子便是達爾文。他強迫自己要寫下（且加以詳細闡明）對他的學說批判最嚴厲的論述。",
+   note:"這點就是 AI 能夠做到最大的貢獻：以反面的論點來挑戰我們既有的思維模型以及論述。",
+   suggTitle:"AI 的最大貢獻是當你的反方",why:"連到你的 AI 協作哲學",
+   robinSugg:{sup:[],ref:[],ext:["用自己的話寫是檢驗真懂的唯一方法"]}}
+];
+
+const LITERATURE=[
+  {slug:"卡片盒筆記",kind:"book",status:"mined",n:"50 annotations · 已開 4 卡",captured:"06-10",detail:true},
+  {slug:"財富階梯",kind:"book",status:"mined",n:"70 highlights · 8 annotations",captured:"05-25"},
+  {slug:"發現我的多重職涯組合",kind:"book",status:"digested",n:"31 annotations",captured:"06-01"},
+  {slug:"讓你的思緒平靜下來安然入睡",kind:"book",status:"capturing",n:"2 annotations",captured:"06-04"}
+];
+
+/* 全文 50 條（你的原話） · h=純劃線 c=候選 m=已開卡名 */
+const LIT=[
+{ch:"章 ①",sp:"/6/24",items:[
+ {t:"05:00",q:"無法理解為什麼有些人可以一方面寫出很多高品質的東西，一方面每次約他喝咖啡都有時間。",n:"這就是我想要成為的樣子，感覺瓦基就是這樣的人"},
+ {t:"05:01",q:"「有些人就是那麼厲害啦」、「寫東西本來就很難嘛」、「過程難免都是痛苦的」等等說法只會阻撓我們去探究「到底成功的寫作策略跟不良的方法有什麼不同」。",n:"樊登在《主角模式》也講到。普通人只要掌握學習方法、實踐、等複利效應產生，就會變成大家眼中很厲害的高手。"},
+ {t:"05:03",q:"在學術界成功的最重要因素，跟頭腦智商無關，而是跟每天怎麼進行工作的方式有關。智商超過 120 就沒什麼相關了。",n:"《刻意練習》講到很多。天才跟天賦這件事情，很可能是 overrated",c:1},
+ {t:"05:04",q:"不是叫你「要有意志力」，而是「你根本不需要用到意志力」，這樣才代表你已經做好成功的準備。",n:"意志力是稀缺的資源，一定要用在刀口上。",c:1}]},
+{ch:"章 ②",sp:"/6/26",items:[
+ {t:"06:23",q:"他的心得是：「我從來沒有強迫自己去做任何不想做的事情。只要一卡住，我就去做別的事。」",n:"這個太重要了，所以要把摩擦力降到最低。這也驗證了 Naval Ravikant 的主張⋯⋯Chris Williamson 把這個 idea 命名成 holistic selfishness。如果我們每時每刻都讓自己活得很開心，那我們就不會被負面情緒吸引並陷在裡面。",m:"降低摩擦力是高產出的前提"},
+ {t:"06:25",q:"一個好的系統，必須是你可以信任的系統。",h:1},
+ {t:"06:25",q:"如果你可以信任這個系統，你就能夠放手，不必費心想要在腦袋裡彙整所有資料，反而可以開始專注在真正重要的事情上面。",n:"這就是打造系統的重要性",m:"可信任的系統讓大腦敢放手"},
+ {t:"06:28",q:"如果你制定了一個計劃，等於是為自己強加一個計劃，那就可能會把自己限制住了：必須強迫自己寫作，且會耗用你的意志力。",n:"很多人都說村上春樹的寫作紀律，但絕大多數人不是村上春樹，適合他的方法並不適合絕大多數的人"},
+ {t:"06:30",q:"我們就需要一個系統，可以掌握一直不斷在增加的訊息，用聰明的方式把不同的想法組合起來，目的是產生出新的想法。",h:1},
+ {t:"06:31",q:"不只是在蒐集想法，而且還要產生連結，激發新的想法。",n:"這某種程度可以說是從底層的湧現嗎？"},
+ {t:"06:32",q:"採用卡片盒筆記法之後，卻不需要太多事前準備的時間。",n:"這裡可以想辦法用一個 AI agent 驅動的 starter script or pack"},
+ {t:"06:35",q:"而是強迫我們做出明智的選擇，規律地檢視我們此刻手上的任務是否符合整體的計劃。",n:"就是 align 到我們的年度 OKR 跟 weekly bullet journal，這可能是另外一個課程的範圍了。"},
+ {t:"06:37",q:"一個想法、一條筆記的價值在於「你把它放置在什麼樣的語境（上下文脈絡）裡面」，未必是因為它的出處而有價值。",h:1},
+ {t:"06:39",q:"「我只做容易做的事。我只寫我當下知道怎麼進行的東西。如果我有片刻猶豫，我會先擱在旁邊，去做別的事。」",h:1},
+ {t:"06:40",q:"正因為魯曼從不勉強自己去做不想做的事，所以才有如此高的產能",n:"呼應到「Hell yeah or no」的哲學"},
+ {t:"06:41",q:"即使是再艱難的工作，只要跟我們真正的目標一致，而且我們覺得情況在掌控之中，那麼我們做起來就會興致勃勃了。",n:"「意志力應該要用在跟我們的目標 Align 的艱難任務上，而不是強迫自己去做自己不願意的事情。」這句是我想的，應該要記起來。",m:"意志力要用在與目標對齊的艱難任務"}]},
+{ch:"章 ③",sp:"/6/28",items:[
+ {t:"07:22",q:"想像你寫作的起點不是一張完全空白的紙，而是有幾個熱心的小精靈（或領高薪的個人助理）來幫你準備報告的草稿。",n:"這就是目前 AI Agent 的工作職責"},
+ {t:"07:25",q:"如果「寫」這件事可以改善思考、閱讀、學習、理解等，你便會有一股強勁的順風來幫助你往前。",h:1},
+ {t:"07:26",q:"隨時記錄「靈感筆記」（fleeting notes）。你必須隨身攜帶書寫的工具。",n:"現在就是用手機來做這件事"},
+ {t:"07:37",q:"請瀏覽你在第一個或第二個步驟做的筆記（最好每天瀏覽一次），想想看這些筆記可以如何與你研究、思考或有興趣的主題產生連結。",n:"這就是實作卡片盒筆記的重點了，每天做一次。我覺得可以在每天的一大早來做，把前一天的 Fleeting Note 跟 Literature Note 進行整合。",c:1},
+ {t:"07:39",q:"你發展出的新見解，跟你已經有的訊息是互相矛盾，還是可以修正、支持這些既有的訊息？",n:"經由把筆記整合成永久筆記時，在做索引的時候，就會發現是否已有現存的永久筆記存在，這時候就可以把現存的拿出來檢視。"},
+ {t:"07:40",q:"把暫時性筆記扔了，把文獻筆記歸檔放進參考系統裡，然後就可以把它們全給忘了。因為所有重要的東西，現在都已放進了卡片盒裡。",n:"所以這時候 Ingest 就分成兩個部分：1. 由 LLM 做它自己的 Ingest 2. 由我來做 Permanent note 的產出。做完之後 Fleeting note 就可以丟掉，Literature note 則改成「已經經過人類的 Ingest 了」"},
+ {t:"07:43",q:"把新的筆記放在一個或多個相關筆記的後面⋯⋯確認一下日後你能不能找到這條筆記。",n:"第四步是我目前卡住的一點，等一下再回來看看有沒有解決"},
+ {t:"07:54",q:"最後卡片筆記的質與量達到臨界質量（群聚效應），這時你蒐集想法的卡片盒，就變成源源不絕的點子產生器了。",n:"這就是 emergence，湧現",c:1},
+ {t:"08:16",q:"透過「由下往上」的方法，發展出你的主題、問題與研究計劃。看看現在擁有的資料是什麼，還缺哪些。",n:"這點現在 LLM 真的幫助很大。把一段論述丟給他，問他還有什麼缺漏，馬上就可以找到可以補足自己論點的原始資料。"}]},
+{ch:"章 ④",sp:"/6/30",items:[
+ {t:"07:56",q:"你現在有一個專注的大腦可以好好思考，還有一個可以信賴的筆記系統幫助思考。其他的都是廢物。",n:"所以去背那些框架，其實都沒什麼多大的作用"},
+ {t:"07:57",q:"我們需要以下四種工具：書寫工具、參考書目管理系統、卡片盒、編輯器。",n:"目前我們的企圖，是先用 Obsidian 跟 AI Agent 來做這四個工具做的事情。"},
+ {t:"07:58",q:"我建議大家隨身攜帶紙跟筆，這是最簡便的東西。",n:"目前這個東西會是手機，每個人都會隨身攜帶手機。"}]},
+{ch:"章 ⑤",sp:"/6/36",items:[
+ {t:"08:00",q:"原則一：寫下來是唯一重要的事",n:"所以要讓「寫下來」這件事情的摩擦力越小越好",c:1},
+ {t:"08:08",q:"讀書，如果是以正確方式去讀，即等同於做研究。",n:"讀書加上做筆記才算是研究吧，當然最後還得輸出。寫筆記就是強迫思考；把筆記做連結，就是強迫大腦去 connecting the dots。"},
+ {t:"08:11",q:"專注於寫作上，也會改變你閱讀的方式：你會更專注在最相關的領域上。",n:"卡片盒筆記最重要的心法：心裡要有一個我們關注、想深究的領域。這可以拿來當作頻道選題的好方向。",c:1},
+ {t:"08:12",q:"當你有明確的寫作目標，刻意練習是唯一真正讓我們可以更精進自己的方法",n:"這裡再次強調刻意練習的重要性"}]},
+{ch:"章 ⑥",sp:"/6/38",items:[
+ {t:"08:18",q:"舊系統的問題是：我要把這條筆記放在哪個題目下面？新系統的問題是：我想要在哪個脈絡中再次看到它？",n:"那麼，要如何建立脈絡，並且看出脈絡，找到符合自己需求的脈絡呢？"},
+ {t:"08:23",q:"專案筆記，這些筆記只跟某個特定的專案計劃有關，在專案結束後會被捨棄或存檔。",n:"永久筆記會越來越朝向專案筆記前進。可能漸漸變得越來越豐富變成專案筆記；也可能由多個永久筆記組合起來變成一個專案筆記。",c:1},
+ {t:"08:27",q:"能夠永久存在的只有：參考書目系統裡的文獻筆記，以及卡片盒裡的主要筆記。",n:"所以專案筆記可能就是魯曼發表的論文。當它變成最終產出並被發表後，就會移出卡片盒了"},
+ {t:"08:29",q:"有些筆記也許默默消失，而有些則可能成為連接點，經常重新出現在各種不同的脈絡中。",n:"這跟大腦運作很像。唯有重複看到、跟原有系統產生連結的東西，才會真正被記起來。他 maintain 卡片盒的方法，跟大腦產生記憶的方式相當雷同。",c:1},
+ {t:"08:31",q:"與特定專案相關的筆記會是：評述與註記、文獻收集、大綱、待辦清單、初稿本身。",n:"他這裡的「專案筆記」跟我定義的可能又不一樣了。我想像中的專案筆記，應該就是最終產出。"}]},
+{ch:"章 ⑦",sp:"/6/40",items:[
+ {t:"08:37",q:"每一次的動腦都是從已經存在的「先入之見」開始的⋯⋯這即是伽達默爾所謂的「詮釋循環」。",n:"所以也是先有一個方向，或者對於某個領域的好奇開始的。原來這整個流程有一個學術上的名稱。"},
+ {t:"08:37",q:"只要專注在自己有興趣的領域，主題、問題和論述不需要費力，自然會從素材中浮現。",n:"這就是我剛剛講的，一定要有一個大方向"},
+ {t:"08:43",q:"當最後到了真正決定要寫什麼主題的時刻，其實你早已經做好了決定，因為你在過程中的每一步，每天都在做確認，並且逐漸修正。",n:"這段實在太重要了，必須重複三次！這個就是即將變成我建議學員如何決定頻道方向的一個心法。",c:1}]},
+{ch:"章 ⑧",sp:"/6/42",items:[
+ {t:"08:49",q:"正向的經驗激勵我們放輕鬆地去做接下來的任務，然後回過頭來，我們更有可能樂在工作中。",n:"這就是 Naval 講的，快樂跟成功是相輔相成的，不需要為了成功而犧牲快樂，這是走不遠的"},
+ {t:"08:55",q:"創造出令人感到滿足、會一直想重複的運動經驗。",n:"這就是運動教練的聖杯吧？一開始可能還是得從外在動機做起，慢慢增加強度，加上同儕激勵，讓學員慢慢產生內在動機。"},
+ {t:"08:59",q:"最能激勵我們的事，就是體驗到自己愈做愈棒。而把某件事情做得更好的關鍵，就是即時獲得具體的回饋。",n:"這就是經營自媒體可以得到的一個很大的 benefit，回饋都是相當直接、快速的。"},
+ {t:"09:00",q:"擁有成長型心態當然重要，但同樣重要的是要有一個「能讓反饋以切合實際的方式產生循環」的學習系統。",h:1},
+ {t:"09:01",q:"如果我們試圖矇騙自己，寫下自己根本也沒看懂的語句，當我們要把文獻筆記轉換為永久筆記時，我們便會發覺自己並沒有真正瞭解。",n:"所以撰寫永久筆記，就是一個考驗自己有沒有真懂的必要動作。這件事情絕對不能外包給 AI。",m:"用自己的話寫是檢驗真懂的唯一方法"},
+ {t:"09:03",q:"當我們想要把它們與其他筆記連結起來時，這個系統會毫不含糊地向我們顯現出其中的矛盾、不一致、重複之處。",n:"同樣的，建立連結這件事情，也要由自己思考之後來執行"},
+ {t:"09:03",q:"隨著規模增長，卡片盒筆記的功能不僅是線性增加，還是指數性擴增。",n:"指數性擴增不是數量的擴增，而是效益的擴增，這就是複利效應的展現。",c:1}]},
+{ch:"章 ⑨",sp:"/6/46",items:[
+ {t:"09:07",q:"我們只會想到「專注」的注意力，這種注意力需要靠意志力才能持續。",n:"這就是意志力要用的地方"},
+ {t:"09:17",q:"「專注的注意力」每次只能使用在一件事情上，而且每次僅能維持幾秒鐘。",n:"這真的還蠻顛覆認知的。但專注的定義到底是什麼？會不會專注的程度也是一個光譜？",c:1},
+ {t:"09:20",q:"「寫作」底下其實還有好多個不同的工作項目，這些工作項目所需要的專注力也各有不同",n:"所以專注力真的是有分程度的"},
+ {t:"09:23",q:"「校稿」所需要的心力，完全不同於「思索正確的字句」。我們必須刻意拉開自己與稿子內容之間的距離。",n:"讓 AI 來充當寫作教練，會讓產出變得更好，也會讓我們對主題有更好的理解。但前提是我對這個陳述要有主見，並且能夠跟 AI 來辯論。",c:1},
+ {t:"09:50",q:"具有創造力的人，要能夠在極為開放、玩耍的心態，跟狹隘、分析性的框架之間轉換著。",n:"就是我"}]},
+{ch:"章 ⑩",sp:"/6/48",items:[
+ {t:"10:09",q:"最經典的例子便是達爾文。他強迫自己要寫下對他的學說批判最嚴厲的論述。",n:"這點就是 AI 能夠做到最大的貢獻：以反面的論點來挑戰我們既有的思維模型以及論述。",c:1},
+ {t:"10:11",q:"篩選的唯一標準即是，是否可以讓卡片盒裡的論述更豐富。關鍵在於：這條筆記與現有的筆記有關聯性，還是在等待關聯性。",n:"讓新的筆記跟原有的 Permanent Note 做互動，是至關重要的一步。我們現在要想辦法做一個系統，讓這件事在最沒有摩擦力的情況下進行。",c:1},
+ {t:"11:01",q:"區別「相關與不相關的資訊」的能力，只能透過實際操作才能學會。",n:"這個就是主動閱讀"},
+ {t:"12:08",q:"只要我們嘗試用自己的文字來解說「我讀了什麼」的話，這種美好的感覺會迅速消失。",n:"在寫下來的過程，還會對知識產生更深的理解。所以理解也是分層次的。",c:1}]},
+{ch:"章 ⑪",sp:"/6/50",items:[
+ {t:"12:43",q:"寫永久筆記比較像是利用「寫作」這個媒介來思考，並且跟已經存在於卡片盒裡的筆記進行對話。",n:"這個概念在書裡面一再地強調"},
+ {t:"13:21",q:"要將一個想法嵌入卡片盒內既有的脈絡當中，有個常見的方式是針對你自己的某個思維，寫出它為什麼重要的理由。",h:1},
+ {t:"13:40",q:"卡片盒並不是根據主題分類，原因是為了讓筆記之間可以積極建立連結。",n:"所以連結看起來就是一個網狀的結構，這應該可以從 Obsidian 的 Graph 看出來。"}]}
+];
+
+const MOCS=[
+ {name:"專注力與生產力",cards:5,unfiled:2,orphan:1,updated:"06-11",detail:true,
+  filed:["意志力要用在與目標對齊的艱難任務","好系統讓你不需要意志力","Hell yeah or no","降低摩擦力是高產出的前提","可信任的系統讓大腦敢放手"],
+  unfiledL:["用自己的話寫是檢驗真懂的唯一方法","寫作產出靠的是紀律"],orphanL:["寫作產出靠的是紀律"]},
+ {name:"長壽與健康",cards:12,unfiled:3,orphan:0,updated:"06-02",
+  filed:["Zone 2 是長壽訓練的地基","肌肉量是老年的保險","睡眠是合法的增強劑","…共 12 張"],
+  unfiledL:["蛋白質攝取的時間窗被高估了","久坐是獨立風險因子","HRV 是恢復的儀表板"]},
+ {name:"自媒體經營",cards:8,unfiled:2,orphan:1,updated:"05-28",
+  filed:["回饋循環是自媒體最大的紅利","一個頻道只能有一個承諾","…共 8 張"],
+  unfiledL:["選題枯竭是輸入問題不是輸出問題","主題不是選出來的，是從素材中浮現的"],orphanL:["演算法是放大器不是裁判"]},
+ {name:"學習與刻意練習",cards:5,unfiled:1,orphan:0,updated:"06-08",
+  filed:["刻意練習需要立即回饋","天賦被高估了","…共 5 張"],unfiledL:["理解是分層次的，寫作把你推向更深層"]},
+ {name:"創作與選題",cards:6,unfiled:0,orphan:0,updated:"05-30",filed:["靈感是輸入的函數","…共 6 張"]},
+ {name:"財務階梯",cards:5,unfiled:0,orphan:0,updated:"05-18",filed:["財富階梯是判斷藝術不是精確科學","…共 5 張"]},
+ {name:"內在動機",cards:4,unfiled:1,orphan:0,updated:"05-22",filed:["外在獎勵是內在動機的鷹架","…共 4 張"],unfiledL:["快樂與成功相輔相成"]},
+ {name:"睡眠",cards:3,unfiled:1,orphan:1,updated:"05-11",filed:["睡前儀式是給大腦的下班通知","…共 3 張"],unfiledL:["咖啡因半衰期比直覺長"],orphanL:["午睡超過 30 分鐘是負債"]}
+];
+
+/* ================= helpers ================= */
+let carded=4,currentCtx=null;
+const $=s=>document.querySelector(s);
+const esc=s=>s?s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])):"";
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),2600);}
+function go(v){document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));$('#v-'+v).classList.add('on');
+  const navmap={card:'permanent',litdetail:'literature',mocdetail:'moc'};
+  const nv=navmap[v]||v;
+  document.querySelectorAll('.navitem').forEach(n=>n.classList.toggle('active',n.dataset.v===nv));
+  window.scrollTo({top:0});}
+document.querySelectorAll('.navitem').forEach(n=>n.addEventListener('click',()=>go(n.dataset.v)));
+
+/* ================= cockpit ================= */
+function relChips(rs){
+  const all=[...new Set([...rs.sup,...rs.ref,...rs.ext])];
+  if(!all.length)return `<span class="sho-mono">KB 尚無相關卡（冷啟動）</span>`;
+  return all.map(r=>`<span class="wikilink" data-card="${esc(r)}">[[${esc(r)}]]</span>`).join('');
+}
+function renderCockpit(){
+  const fw=$('#fleet-list');fw.innerHTML='';
+  FLEETING.forEach(f=>{
+    const el=document.createElement('div');el.className='panel';el.id='panel-'+f.id;
+    el.innerHTML=`<div class="panel-in">
+      <div class="cand-meta">fleeting · via ${f.via} · ${f.time}</div>
+      <p style="margin:0 0 14px;font-size:14.5px" id="body-${f.id}">${esc(f.text)}</p>
+      <div class="cand-act" id="act-${f.id}">
+        <button class="sho-btn sho-btn--primary" data-open="${f.id}" data-kind="fleet">➕ 開卡</button>
+        <button class="sho-btn sho-btn--ghost" data-trash="${f.id}">丟掉 → 回收桶</button></div></div>`;
+    fw.appendChild(el);
+  });
+  const cw=$('#cand-list');cw.innerHTML='';
+  CANDIDATES.forEach(c=>{
+    const el=document.createElement('div');el.className='panel';el.id='panel-'+c.id;
+    el.innerHTML=`<div class="panel-in">
+      <div class="cand-head"><span class="tt">${esc(c.suggTitle)}</span><span class="why">｜ ${esc(c.why)}</span></div>
+      <div class="cand-meta">AI 建議卡名（可改） · [[Literature/卡片盒筆記]] ${c.time} · ^${c.anchor}</div>
+      <div class="ex" style="margin-bottom:0">
+        <div class="ex-q"><span class="qm">“</span><span>${esc(c.quote)}</span></div>
+        <div class="ex-n"><span class="who">你 NOTE</span>${esc(c.note)}</div>
+      </div>
+      <div class="cand-rel"><span class="sl">相關既有卡</span>${relChips(c.robinSugg)}</div>
+      <div class="cand-act" id="act-${c.id}">
+        <button class="sho-btn sho-btn--primary" data-open="${c.id}" data-kind="cand">➕ 開卡</button>
+        <button class="sho-btn sho-btn--ghost" data-skip="${c.id}">略過</button>
+        <button class="sho-btn sho-btn--ghost" data-later="${c.id}">之後再說</button></div></div>`;
+    cw.appendChild(el);
+  });
+  refreshCounts();
+}
+function refreshCounts(){
+  const n=document.querySelectorAll('#cand-list .panel:not(.done)').length+document.querySelectorAll('#fleet-list .panel:not(.done)').length;
+  $('#nav-cnt').textContent=n||'✓';
+}
+
+/* ================= permanent ================= */
+function statusTag(s,stale){
+  if(s==='evergreen')return `<span class="sho-tag sho-tag--success">🌳 evergreen</span>`;
+  return stale?`<span class="sho-tag sho-tag--warning">🌱 seedling · 30 天未動</span>`:`<span class="sho-tag">🌱 seedling</span>`;
+}
+function renderPerm(filter='all'){
+  const w=$('#perm-list');w.innerHTML='';
+  CARD_ORDER.forEach(name=>{
+    const c=CARDS[name];
+    if(filter!=='all'&&c.status!==filter)return;
+    const el=document.createElement('div');el.className='panel click';
+    el.innerHTML=`<div class="panel-in">
+      <div class="rowline" style="margin-bottom:6px">${statusTag(c.status,c.stale)}<span class="sho-mono">modified ${c.modified}${c.edges.length?` · ${c.edges.length} 條出鏈`:''}</span></div>
+      <div style="font-weight:800;font-size:15.5px;color:var(--sho-ink)">${esc(name)}</div>
+      <div style="font-size:13px;color:var(--sho-text-2);margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(c.body)}</div></div>`;
+    el.addEventListener('click',()=>openCard(name));
+    w.appendChild(el);
+  });
+}
+document.querySelectorAll('.pfilter').forEach(b=>b.addEventListener('click',e=>{
+  e.stopPropagation();document.querySelectorAll('.pfilter').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');renderPerm(b.dataset.f);
+}));
+function backlinksOf(name){
+  const out=[];
+  for(const [n,c] of Object.entries(CARDS)){c.edges.forEach(([t,target,r])=>{if(target===name)out.push([t,n,r]);});}
+  return out;
+}
+function openCard(name){
+  const c=CARDS[name];if(!c)return;
+  const bl=backlinksOf(name);let k=0;
+  $('#card-detail').innerHTML=`
+    <div class="vhead" style="margin-top:12px"><h1>${esc(name)}</h1></div>
+    <div class="rowline" style="margin-bottom:4px">${statusTag(c.status,c.stale)}<span class="sho-tag">author: human</span><span class="sho-mono">created ${c.created} · modified ${c.modified}</span></div>
+    <div class="cardbody">${esc(c.body)}</div>
+    ${c.edges.length?`<div class="sho-kicker"><span class="sho-kicker-n">[ 00${++k} ]</span><span class="sho-kicker-t">關係（本卡 → 對方）</span><span class="c">🧑 你寫的</span><span class="ln"></span></div>`+
+      c.edges.map(([t,target,r])=>`<div class="edgeline"><span class="etype ${ETYPE[t][1]}">${ETYPE[t][0]}::</span><span class="wikilink" data-card="${esc(target)}">[[${esc(target)}]]</span><span class="ereason">— ${esc(r)}</span></div>`).join(''):''}
+    ${bl.length?`<div class="sho-kicker"><span class="sho-kicker-n">[ 00${++k} ]</span><span class="sho-kicker-t">反向連結</span><span class="c">免費的 — 不用你寫</span><span class="ln"></span></div>`+
+      bl.map(([t,from,r])=>`<div class="backlink-row"><span class="wikilink" data-card="${esc(from)}">[[${esc(from)}]]</span><span class="sho-mono">${ETYPE[t][0]}了本卡 — ${esc(r)}</span></div>`).join(''):''}
+    <div class="sho-kicker"><span class="sho-kicker-n">[ 00${++k} ]</span><span class="sho-kicker-t">記帳 provenance</span><span class="c">🤖 AI 維護</span><span class="ln"></span></div>
+    <div class="fm-grid"><span class="k">source_refs</span><span class="v">${c.refs.map(esc).join(' · ')}</span>
+      ${c.concept?`<span class="k">對應 AI Concept</span><span class="v"><span class="wikilink" onclick="go('wiki');wikiTab('concepts')">[[Concepts/${esc(c.concept)}]]</span> <span class="sho-mono">— defer：以本卡為權威</span></span>`:''}</div>
+    <div class="rowline" style="margin-top:20px">
+      ${c.status==='seedling'?`<button class="sho-btn" onclick="toast('🌱 → 🌳 升級是你的判斷 — prototype 模擬完成')">升級為 evergreen</button>`:''}
+      <button class="sho-btn sho-btn--ghost" onclick="toast('正式版可在此或 Obsidian 編輯 — 都是你的 authoring surface')">編輯正文</button></div>`;
+  go('card');
+}
+document.addEventListener('click',e=>{
+  const w=e.target.closest('[data-card]');
+  if(w){e.stopPropagation();openCard(w.dataset.card);}
+});
+
+/* ================= literature ================= */
+function renderLitList(){
+  const w=$('#lit-list');w.innerHTML='';
+  LITERATURE.forEach(l=>{
+    const st={capturing:'sho-tag',digested:'sho-tag sho-tag--info',mined:'sho-tag sho-tag--success'}[l.status];
+    const el=document.createElement('div');el.className='panel'+(l.detail?' click':'');
+    el.innerHTML=`<div class="panel-in rowline">
+      <span style="font-weight:800;color:var(--sho-ink)">${esc(l.slug)}</span>
+      <span class="${st}">${l.status}</span><span class="sho-tag">${l.kind}</span>
+      <span class="sho-mono" style="margin-left:auto">${l.n} · captured ${l.captured}</span>${l.detail?'<span class="sho-mono">→</span>':''}</div>`;
+    if(l.detail)el.addEventListener('click',()=>go('litdetail'));
+    w.appendChild(el);
+  });
+  renderLitBody();renderMined();
+}
+function renderLitBody(){
+  const b=$('#lit-body');b.innerHTML='';
+  LIT.forEach(ch=>{
+    const sec=document.createElement('div');sec.className='litch';
+    const items=ch.items.map(it=>{
+      let statusRow='';
+      if(it.m){statusRow=`<div class="ex-s"><span class="sho-tag sho-tag--success">✓ 已開卡</span><span class="wikilink" data-card="${esc(it.m)}">[[Permanent/${esc(it.m)}]]</span></div>`;}
+      else if(it.c){statusRow=`<div class="ex-s"><span class="sho-tag sho-tag--accent">← 候選永久卡</span><span class="sho-mono">每日回顧會提醒</span></div>`;}
+      return `<div class="ex">
+        <div class="ex-q"><span class="qm">“</span><span>${esc(it.q)}</span><span class="cite">^${it.t}</span></div>
+        ${it.n?`<div class="ex-n"><span class="who">你 NOTE</span>${esc(it.n)}</div>`:''}
+        ${statusRow}</div>`;
+    }).join('');
+    sec.innerHTML=`<div class="litch-h"><span class="t">${esc(ch.ch)}</span><span class="sp">spine ${esc(ch.sp)}</span><span class="n">${ch.items.length} 條</span></div>${items}
+      <div class="rowline"><button class="sho-btn sho-btn--ghost" onclick="toast('正式版開回 Reader：/robin/books/卡片盒筆記#cfi=…')">📖 開回 Reader</button></div>`;
+    b.appendChild(sec);
+  });
+}
+function renderMined(){
+  const mined=["降低摩擦力是高產出的前提","可信任的系統讓大腦敢放手","意志力要用在與目標對齊的艱難任務","用自己的話寫是檢驗真懂的唯一方法"];
+  $('#lit-mined').innerHTML=mined.map(m=>`<span class="wikilink" data-card="${esc(m)}">[[Permanent/${esc(m)}]]</span>`).join(' ')+` <span class="sho-mono">← Phase 5 回填</span>`;
+}
+
+/* ================= wiki ================= */
+const WIKI={
+  concepts:`
+    <div class="panel"><div class="panel-in">
+      <div class="rowline" style="margin-bottom:6px"><span style="font-weight:800;font-size:15.5px;color:var(--sho-ink)">摩擦力與行為設計</span><span class="sho-tag sho-tag--info">author: agent_robin</span><span class="sho-mono">Opus diff-merge · 2 來源</span></div>
+      <p style="font-size:14px;color:var(--sho-text-2)">行為的發生率主要由其啟動成本決定。Ahrens 記載 Luhmann「從不強迫自己」的工作方式 <span class="cite">^Sources/卡片盒筆記 ^cfi-6-26-12</span>；《原子習慣》以環境設計達成同一目標 <span class="cite">^Sources/原子習慣</span>。<b>張力</b>：「紀律敘事」與本概念表面衝突，可能的整合是：紀律本身也是一種降低決策摩擦的設計。</p>
+      <div class="defer-box">↔ 對應永久卡 <span class="wikilink" data-card="降低摩擦力是高產出的前提">[[Permanent/降低摩擦力是高產出的前提]]</span> — defer：以人寫版為「修修怎麼想」的權威。</div>
+    </div></div>
+    <div class="panel"><div class="panel-in">
+      <div class="rowline" style="margin-bottom:6px"><span style="font-weight:800;font-size:15.5px;color:var(--sho-ink)">刻意練習</span><span class="sho-tag sho-tag--info">author: agent_robin</span><span class="sho-mono">3 來源</span></div>
+      <p style="font-size:14px;color:var(--sho-text-2)">專家表現來自有結構、有即時回饋的練習，而非天賦 <span class="cite">^Sources/卡片盒筆記 ^cfi-6-24-36</span> <span class="cite">^Sources/財富階梯</span>。修修在兩本書都標註了此概念的呼應——跨來源出現頻率最高的概念之一。</p>
+      <div class="defer-box" style="border-style:dashed">尚無對應永久卡 — 已連續 2 個來源出現，每日回顧會再提醒。</div>
+    </div></div>`,
+  sources:`
+    <div class="panel"><div class="panel-in">
+      <div class="rowline" style="margin-bottom:6px"><span style="font-weight:800;font-size:15.5px;color:var(--sho-ink)">卡片盒筆記 — How to Take Smart Notes</span><span class="sho-tag sho-tag--info">author: agent_robin</span><span class="sho-mono">ingested 2026-06-11</span></div>
+      <p style="font-size:14px;color:var(--sho-text-2)"><b>核心主張</b>：寫作不是研究的產出端，而是思考的媒介本身 <span class="cite">^cfi-6-28-34</span>。系統的可信任度決定大腦是否放手 <span class="cite">^cfi-6-26-14</span>。筆記的價值取決於放入的脈絡，而非出處 <span class="cite">^cfi-6-26-88</span>。<b>方法論</b>：fleeting → literature → permanent 三層，每日整合、由下而上長出主題 <span class="cite">^cfi-6-28-44</span>。</p>
+      <div class="rowline"><span class="sho-mono-up">連結</span><span class="wikilink" onclick="wikiTab('entities')">[[Entities/Niklas Luhmann]]</span><span class="wikilink" onclick="wikiTab('entities')">[[Entities/Sönke Ahrens]]</span><span class="wikilink" onclick="wikiTab('concepts')">[[Concepts/摩擦力與行為設計]]</span></div>
+    </div></div>
+    <div class="empty">其餘 15 份 sources 略（pubmed ×11、書 ×3、文章 ×1）</div>`,
+  entities:`
+    <div class="panel"><div class="panel-in rowline"><span style="font-weight:800;color:var(--sho-ink)">Niklas Luhmann</span><span class="sho-tag">person</span><span class="sho-mono" style="margin-left:auto">1 來源 · 卡片盒原創者</span></div></div>
+    <div class="panel"><div class="panel-in rowline"><span style="font-weight:800;color:var(--sho-ink)">Sönke Ahrens</span><span class="sho-tag">person</span><span class="sho-mono" style="margin-left:auto">1 來源 · 《卡片盒筆記》作者</span></div></div>
+    <div class="panel"><div class="panel-in rowline"><span style="font-weight:800;color:var(--sho-ink)">Naval Ravikant</span><span class="sho-tag">person</span><span class="sho-mono" style="margin-left:auto">2 來源 · holistic selfishness（你的 annotation 引入）</span></div></div>
+    <div class="panel"><div class="panel-in rowline"><span style="font-weight:800;color:var(--sho-ink)">瓦基（閱讀前哨站）</span><span class="sho-tag">person</span><span class="sho-mono" style="margin-left:auto">1 來源 · 你的 role model 註記</span></div></div>`
+};
+function wikiTab(t){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.t===t));$('#wiki-pane').innerHTML=WIKI[t];}
+document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>wikiTab(b.dataset.t)));
+
+/* ================= MOC ================= */
+function mocLink(n){return `<span class="wikilink"${CARDS[n]?` data-card="${esc(n)}"`:''}>${esc(n)}</span>`;}
+function renderMocs(){
+  const w=$('#moc-list');w.innerHTML='';
+  MOCS.forEach(m=>{
+    const el=document.createElement('div');el.className='panel mocrow click';
+    el.innerHTML=`<div class="panel-in">
+      <span class="nm">${esc(m.name)}</span>
+      <span class="stats">
+        <span class="sho-mono">${m.cards} 卡</span>
+        ${m.unfiled?`<span class="sho-tag sho-tag--info">未歸位 ${m.unfiled}</span>`:''}
+        ${m.orphan?`<span class="sho-tag sho-tag--warning">孤兒 ${m.orphan}</span>`:''}
+        <span class="sho-mono">${m.updated}</span><span class="sho-mono chev">▾</span>
+      </span></div>
+      <div class="mocx">
+        <div class="xh">已歸位 ${m.cards}</div>
+        <div class="xchips">${(m.filed||[]).map(mocLink).join('')}</div>
+        ${m.unfiled?`<div class="xh inf">未歸位 ${m.unfiled}<span class="hint">Robin 撈到、等你分組</span></div>
+        <div class="xchips">${(m.unfiledL||[]).map(mocLink).join('')}</div>`:''}
+        ${m.orphan?`<div class="xh wrn">孤兒 ${m.orphan}<span class="hint">沒有任何卡連到它</span></div>
+        <div class="xchips">${(m.orphanL||[]).map(mocLink).join('')}</div>`:''}
+        ${m.detail?`<div style="margin-top:14px"><button class="sho-btn" data-mocfull="1">打開完整頁 →</button></div>`:''}
+      </div>`;
+    el.addEventListener('click',e=>{
+      if(e.target.closest('[data-card]'))return;
+      if(e.target.closest('[data-mocfull]')){go('mocdetail');return;}
+      el.classList.toggle('open');
+      el.querySelector('.mocx').classList.toggle('on');
+    });
+    w.appendChild(el);
+  });
+}
+
+/* ================= drawer ================= */
+function edgeGroup(key,cls,name,desc,suggs){
+  const chips=suggs.length?suggs.map(s=>`<button class="suggchip" data-sg="${key}" data-card="${esc(s)}">＋ ${esc(s)}</button>`).join(''):`<span class="sho-mono">Robin 此方向無建議</span>`;
+  return `<div class="edgegroup" data-g="${key}">
+    <div class="gh"><span class="gname ${cls}">${name}::</span><span class="gdesc">${desc}</span></div>
+    <div class="sugg-row"><span class="sl">✦ Robin 建議</span>${chips}</div>
+    <div class="searchall"><input type="text" placeholder="或搜尋全部 7 張卡片…（FTS 兜底）" data-sk="${key}"><div class="results"></div></div>
+    <div class="rows"></div></div>`;
+}
+function addEdgeRow(key,card){
+  const g=document.querySelector(`.edgegroup[data-g="${key}"] .rows`);
+  if([...g.querySelectorAll('.ecard')].some(x=>x.textContent===`[[${card}]]`)){toast('這條關係已經加過了');return;}
+  const row=document.createElement('div');row.className='edgerow';
+  row.innerHTML=`<span class="ecard">[[${esc(card)}]]</span><input class="reason" type="text" placeholder="— 因為…（理由是你的判斷）"><button class="rm" aria-label="移除">✕</button>`;
+  row.querySelector('.rm').addEventListener('click',()=>{row.remove();updatePreview();});
+  row.querySelector('input').addEventListener('input',updatePreview);
+  g.appendChild(row);
+  document.querySelectorAll(`.suggchip[data-sg="${key}"]`).forEach(c=>{if(c.dataset.card===card)c.setAttribute('disabled','');});
+  updatePreview();row.querySelector('input').focus();
+}
+function collectEdges(){
+  const out=[];const names={sup:'支持',ref:'反駁',ext:'延伸'};
+  for(const key of['sup','ref','ext']){
+    document.querySelectorAll(`.edgegroup[data-g="${key}"] .edgerow`).forEach(r=>{
+      const card=r.querySelector('.ecard').textContent.replace(/^\[\[|\]\]$/g,'');
+      const reason=r.querySelector('input').value.trim();
+      out.push(`${names[key]}:: [[${card}]]${reason?' — '+reason:''}`);});}
+  return out;
+}
+function updatePreview(){
+  if(!currentCtx)return;
+  const title=$('#f-title').value.trim()||'（未命名）';
+  const body=$('#f-body').value.trim()||'（正文待寫）';
+  const ref=currentCtx.kind==='cand'?`  - "[[Literature/卡片盒筆記]] ^${currentCtx.item.anchor}"`:`  - "[[Fleeting/${currentCtx.item.time.replace(' ','-')}]]"`;
+  const el=collectEdges();
+  $('#f-preview').textContent=`--- KB/Permanent/${title}.md ---
+type: permanent
+status: seedling
+author: human
+created: 2026-06-11
+modified: 2026-06-11
+source_refs:
+${ref}
+aliases: []
+---
+
+${body}
+${el.length?'\n'+el.join('\n'):''}`;
+}
+function openDrawer(ctx){
+  currentCtx=ctx;
+  $('#f-title').value=ctx.item.suggTitle;$('#f-body').value='';
+  $('#f-srcrefs').innerHTML=ctx.kind==='cand'
+    ?`<span class="wikilink">[[Literature/卡片盒筆記]]</span> <span class="cite">^${esc(ctx.item.anchor)}</span> 引文錨點已綁定`
+    :`<span class="wikilink">[[Fleeting/${esc(ctx.item.time.replace(' ','-'))}]]</span> via ${esc(ctx.item.via)} · 開卡後原檔送回收桶`;
+  const rs=ctx.item.robinSugg||{sup:[],ref:[],ext:[]};
+  $('#f-edges').innerHTML=edgeGroup('sup','sup','支持','本卡支持它',rs.sup)+edgeGroup('ref','ref','反駁','本卡反駁它',rs.ref)+edgeGroup('ext','ext','延伸','本卡把它延伸到新脈絡',rs.ext);
+  document.querySelectorAll('.suggchip').forEach(c=>c.addEventListener('click',()=>addEdgeRow(c.dataset.sg,c.dataset.card)));
+  document.querySelectorAll('.searchall input').forEach(inp=>{
+    const res=inp.nextElementSibling;
+    inp.addEventListener('input',()=>{
+      const q=inp.value.trim();
+      if(!q){res.classList.remove('on');return;}
+      const hits=CARD_ORDER.filter(n=>n.includes(q));
+      res.innerHTML=hits.length?hits.map(h=>`<div class="ritem" data-h="${esc(h)}">${esc(h)}<span class="st">${CARDS[h].status}</span></div>`).join(''):`<div class="ritem" style="cursor:default;color:var(--sho-muted)">沒有符合的卡</div>`;
+      res.classList.add('on');
+      res.querySelectorAll('[data-h]').forEach(r=>r.addEventListener('click',()=>{addEdgeRow(inp.dataset.sk,r.dataset.h);inp.value='';res.classList.remove('on');}));
+    });
+    inp.addEventListener('blur',()=>setTimeout(()=>res.classList.remove('on'),200));
+  });
+  updatePreview();
+  $('#scrim').classList.add('on');$('#drawer').classList.add('on');
+  setTimeout(()=>$('#f-body').focus(),300);
+}
+function closeDrawer(){$('#scrim').classList.remove('on');$('#drawer').classList.remove('on');currentCtx=null;}
+function saveCard(){
+  if(!currentCtx)return;
+  const title=$('#f-title').value.trim(),body=$('#f-body').value.trim();
+  if(!title){toast('檔名不能是空的——一句宣告句');$('#f-title').focus();return;}
+  if(!body){toast('正文是紅線內側——這段要你自己寫');$('#f-body').focus();return;}
+  const ctx=currentCtx;closeDrawer();carded++;
+  const p=$('#panel-'+ctx.item.id);
+  if(p){p.classList.add('done');p.style.opacity=.55;
+    $('#act-'+ctx.item.id).innerHTML=`<span class="sho-tag sho-tag--success">已開卡</span><span class="sho-mono">KB/Permanent/${esc(title)}.md · author: human · Phase 5 善後排程中</span>`;}
+  refreshCounts();toast(`✓ 已存入 vault：${title}`);
+}
+document.addEventListener('click',e=>{
+  const t=e.target.closest('button');if(!t)return;
+  if(t.dataset.open){const kind=t.dataset.kind;
+    const item=kind==='cand'?CANDIDATES.find(c=>c.id===t.dataset.open):FLEETING.find(f=>f.id===t.dataset.open);
+    openDrawer({kind,item});}
+  if(t.dataset.skip){$('#panel-'+t.dataset.skip).style.opacity=.4;$('#panel-'+t.dataset.skip).classList.add('done');$('#act-'+t.dataset.skip).innerHTML=`<span class="sho-tag">已略過</span>`;refreshCounts();}
+  if(t.dataset.later){$('#panel-'+t.dataset.later).style.opacity=.4;$('#panel-'+t.dataset.later).classList.add('done');$('#act-'+t.dataset.later).innerHTML=`<span class="sho-tag sho-tag--warning">之後再說 — 06-25 過期歸檔</span>`;refreshCounts();}
+  if(t.dataset.trash){$('#panel-'+t.dataset.trash).style.opacity=.4;$('#panel-'+t.dataset.trash).classList.add('done');$('#body-'+t.dataset.trash).style.textDecoration='line-through';$('#act-'+t.dataset.trash).innerHTML=`<span class="sho-tag">已送回收桶</span>`;refreshCounts();}
+});
+$('#btn-close').addEventListener('click',closeDrawer);
+$('#btn-cancel').addEventListener('click',closeDrawer);
+$('#btn-save').addEventListener('click',saveCard);
+$('#scrim').addEventListener('click',closeDrawer);
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();});
+$('#f-title').addEventListener('input',updatePreview);
+$('#f-body').addEventListener('input',updatePreview);
+
+/* theme */
+(function(){
+  const btn=$('#theme-toggle');
+  function cur(){try{return localStorage.getItem('sho-theme')||'auto';}catch(e){return 'auto';}}
+  function apply(m){if(m==='auto'){document.documentElement.removeAttribute('data-theme');}else{document.documentElement.setAttribute('data-theme',m);}btn.textContent='theme: '+m;}
+  btn.addEventListener('click',()=>{const o=['auto','light','dark'];const n=o[(o.indexOf(cur())+1)%3];try{localStorage.setItem('sho-theme',n);}catch(e){}apply(n);});
+  apply(cur());
+})();
+
+renderCockpit();renderPerm();renderLitList();renderMocs();wikiTab('concepts');go('cockpit');
+</script>
+</body>
+</

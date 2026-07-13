@@ -18,6 +18,7 @@ from shared.log import force_utf8_console, get_logger
 force_utf8_console()
 
 from thousand_sunny.middleware.csp import add_csp_middleware  # noqa: E402
+from thousand_sunny.preflight import run_preflight  # noqa: E402
 from thousand_sunny.promotion_wiring import (  # noqa: E402
     load_promotion_wiring_config,
     wire_promotion_surfaces,
@@ -27,14 +28,18 @@ from thousand_sunny.routers import (  # noqa: E402
     auth,
     bridge,
     bridge_digests,
+    bridge_models,
     bridge_project_thumbnails,
     bridge_projects,
     bridge_weekly,
     bridge_zoro,
     brook,
+    brook_video,
+    centaur_zettel,
     crew,
-    foundry,
     franky,
+    inventory,
+    kb_review,
     progress,
     projects,
     promotion_review,
@@ -64,9 +69,11 @@ async def _lifespan(app_: FastAPI):
     elsewhere still works.
 
     Startup failures (missing ``VAULT_PATH``, unknown promotion
-    mode) propagate as ``RuntimeError`` so uvicorn / systemd surface the
-    crash to the operator (W4) — silent fallback would mask the misconfig.
+    mode, empty ``WEB_PASSWORD`` in production) propagate as ``RuntimeError``
+    so uvicorn / systemd surface the crash to the operator (W4) — silent
+    fallback would mask the misconfig.
     """
+    run_preflight()
     if not os.getenv("DISABLE_ROBIN"):
         config = load_promotion_wiring_config()
         wire_promotion_surfaces(config)
@@ -83,24 +90,30 @@ app.include_router(auth.router)
 app.include_router(bridge.router)
 app.include_router(bridge.page_router)
 app.include_router(bridge_digests.page_router)
+app.include_router(bridge_models.router)
 app.include_router(bridge_projects.page_router)
 app.include_router(bridge_project_thumbnails.page_router)
 app.include_router(bridge_weekly.page_router)
 app.include_router(bridge_zoro.page_router)
-app.include_router(foundry.page_router)
+app.include_router(brook_video.page_router)
+app.include_router(brook_video.legacy_router)
 app.include_router(repurpose.page_router)
 # Franky /healthz must be mounted unconditionally — UptimeRobot probes this regardless of
 # DISABLE_ROBIN or any other feature flag (ADR-007 §2).
 app.include_router(franky.router)
 app.include_router(franky.page_router)
 
-# Partner-facing /progress is public (no auth) — readiness summary for
-# external partners. Mirrors the /healthz precedent of breaking the
-# all-authenticated pattern for a deliberately public surface.
+# /progress + /architecture are now cookie-authed internal Bridge docs
+# (chassis nav, reachable via the Ops dropdown) — they redirect to /login
+# when unauthenticated. /bridge/inventory (agent capability inventory) joins
+# them. Their routers self-gate via check_auth; registration order is moot.
 app.include_router(progress.router)
 app.include_router(architecture.router)
+app.include_router(inventory.page_router)
 # Public, indexable crew/system-architecture showcase (linked from shosho.tw).
 app.include_router(crew.router)
+# Public, indexable Centaur Zettelkasten methodology doc (shareable, iterated).
+app.include_router(centaur_zettel.router)
 
 # /static must mount unconditionally — public surfaces (/progress,
 # /architecture) and every authenticated page pull /static/shosho/*.css +
@@ -134,6 +147,8 @@ if not os.getenv("DISABLE_ROBIN"):
     app.include_router(robin.legacy_router)
     app.include_router(books.router)
     app.include_router(books.legacy_router)
+    # Centaur 每日回顧 Web UI + 開卡 endpoint (N523) — KB surface, vault-backed.
+    app.include_router(kb_review.router)
 
     # foliate-js must be served from the same origin as /robin/books/* so
     # CSP ``script-src 'self'`` allows it. Mount the vendored submodule
@@ -152,7 +167,9 @@ else:
 
     @app.get("/")
     async def root_redirect():
-        return RedirectResponse("/brook/handoff", status_code=302)
+        # Home = the weekly dashboard (修修's daily surface). Was /brook/handoff (the
+        # Brook→Claude.ai context handoff), which is a niche tool, not a landing page.
+        return RedirectResponse("/bridge/weekly", status_code=302)
 
 
 app.include_router(zoro.router)

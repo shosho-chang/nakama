@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Robin · Inbox</title>
+<title>Robin · 文章</title>
 <script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
@@ -12,6 +12,7 @@
 </head>
 <body class="sho robin-page">
 {% from "_chassis_nav.html" import chassis_nav %}
+{% from "_reader_nav.html" import reader_nav %}
 {% call chassis_nav(nav_active='robin') %}
   <form method="post" action="/logout" style="margin:0">
     <button type="submit" class="logout-btn">登出</button>
@@ -19,11 +20,9 @@
 {% endcall %}
 <div class="container is-narrow">
 <div class="header">
-  <h1><span>🏴‍☠️</span>Robin · Inbox</h1>
-  <nav class="header-nav">
-    <a href="/robin/books">📚 書架</a>
-  </nav>
+  <h1><span>🏴‍☠️</span>Robin · 文章</h1>
 </div>
+{{ reader_nav(active='articles') }}
   {% if files %}
     {% for file in files %}
     <div class="file-card" data-filename="{{ file.name }}">
@@ -52,8 +51,8 @@
   {% else %}
   <div class="empty">
     <div style="font-size:2.5rem">📭</div>
-    <strong>Inbox 是空的</strong>
-    <p>把檔案放入 Inbox/kb/ 資料夾後重新整理</p>
+    <strong>還沒有文章</strong>
+    <p>收集到的文章會出現在這裡。</p>
   </div>
   {% endif %}
 </div>

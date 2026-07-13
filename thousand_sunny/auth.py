@@ -12,7 +12,6 @@ logger = get_logger("nakama.web.auth")
 
 WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "")
 WEB_SECRET = os.environ.get("WEB_SECRET", "")
-_DEV_MODE = not WEB_SECRET
 _DEV_AUTH_BYPASS = os.environ.get("NAKAMA_DEV_AUTH_BYPASS", "").strip().lower() in (
     "1",
     "true",
@@ -30,6 +29,30 @@ def make_token(password: str) -> str:
     return hmac.new(WEB_SECRET.encode(), password.encode(), hashlib.sha256).hexdigest()
 
 
+# Persistent auth cookie: 90 days. The token is a static HMAC(WEB_SECRET,
+# WEB_PASSWORD) (no per-session state), so persisting it just spares users —
+# especially mobile/iPad behind Cloudflare Access — from re-entering
+# WEB_PASSWORD every time the browser drops the session cookie. WEB_PASSWORD
+# stays the second defense-in-depth layer behind Access per ADR-044.
+AUTH_COOKIE_MAX_AGE = 90 * 24 * 60 * 60  # seconds
+
+
+def set_auth_cookie(response, token: str) -> None:
+    """Set the nakama_auth cookie with consistent persistent flags.
+
+    Single source of truth for the cookie attributes so every place that
+    issues it (login route, upload redirect) stays in lockstep.
+    """
+    response.set_cookie(
+        "nakama_auth",
+        token,
+        max_age=AUTH_COOKIE_MAX_AGE,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+    )
+
+
 def check_auth(auth_cookie: str | None) -> bool:
     if _DEV_AUTH_BYPASS:
         return True
@@ -44,9 +67,8 @@ def check_key(key: str | None) -> bool:
     """Accept X-Robin-Key header as alternative to cookie auth."""
     if _DEV_AUTH_BYPASS:
         return True
-    if _DEV_MODE:
-        logger.warning("WEB_SECRET not set — API key auth disabled (dev mode)")
-        return True
+    if not WEB_SECRET:
+        return False
     return bool(key and hmac.compare_digest(key, WEB_SECRET))
 
 

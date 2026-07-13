@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文獻筆記 · {{ title }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/literature-view.css?v={{ asset_version }}">
+</head>
+<body class="sho lit-page">
+  <header class="lit-head">
+    <a class="lit-back" href="javascript:history.back()">← 返回</a>
+    <div class="lit-titlewrap">
+      <span class="lit-kicker">文獻筆記</span>
+      <h1 class="lit-title">{{ title }}</h1>
+    </div>
+  </header>
+
+  <main class="lit-main">
+    {% if exists %}
+      <article class="lit-prose">{{ body_html | safe }}</article>
+    {% else %}
+      <div class="lit-empty">
+        <div class="lit-empty-icon" aria-hidden="true">📝</div>
+        <p class="lit-empty-title">尚無文獻筆記</p>
+        <p class="lit-empty-sub">在 Reader 裡劃線或寫註解、存檔後，系統會自動把你的劃線整理成這份筆記。</p>
+      </div>
+    {% endif %}
+  </main>
+</body>
+</html>

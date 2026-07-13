@@ -1,0 +1,344 @@
+/* Centaur 卡片畫布 (N528) — 照 prototype v4，全走 --sho-* token.
+   tokens.css 已提供 --sho-* 變數 + reduced-motion 降 dur + focus ring。此檔只補
+   畫布模式專屬 component（全部 kbc- 前綴，與線性版 .kb-* 並存、互不污染）。
+   畫布是 opt-in：.kbc-root 預設 hidden，由 kb_canvas.js 切換。 */
+
+.kbc-root {
+  /* 畫布專屬區域變數（prototype v4 同名，不覆寫全域 token） */
+  --kbc-card-shadow: 0 1px 2px oklch(0.1 0 0 / 0.06), 0 4px 10px oklch(0.1 0 0 / 0.05);
+  --kbc-deskw: clamp(430px, 40vw, 580px);
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  font-family: var(--sho-font);
+  overflow: hidden;
+}
+html[data-theme="dark"] .kbc-root {
+  --kbc-card-shadow: 0 1px 2px oklch(0 0 0 / 0.4), 0 4px 12px oklch(0 0 0 / 0.3);
+}
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .kbc-root {
+    --kbc-card-shadow: 0 1px 2px oklch(0 0 0 / 0.4), 0 4px 12px oklch(0 0 0 / 0.3);
+  }
+}
+
+/* 開畫布時鎖住底層候選清單頁捲動 */
+body.sho.kbc-active { overflow: hidden; }
+
+/* 拖曳頂層：.kbc-root 直屬，z-index 高於寫作桌四格落點（.kbc-dz=12）與寫作桌（10）。
+   正在拖的卡移進這層，永遠渲染在落點之上、跟手清楚（修修回饋②）。
+   layer 本身不吃事件，只當座標容器（卡片自身 touch-action:none 仍可拖）。 */
+.kbc-draglayer { position: absolute; inset: 0; z-index: 40; pointer-events: none; }
+.kbc-draglayer .kbc-card,
+.kbc-draglayer .kbc-stack { pointer-events: auto; }
+
+/* 返回候選清單（navbar 移除後唯一可見退出口；修修回饋）。左上角小 pill，克制。 */
+.kbc-back {
+  position: absolute; top: 16px; left: 16px; z-index: 45;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 12px 6px 8px;
+  background: var(--sho-bg-2); color: var(--sho-text-2);
+  border: 1px solid var(--sho-line-2); border-radius: 999px;
+  font-family: var(--sho-font-mono); font-size: 11px; letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: color var(--sho-t-fast) var(--sho-ease), border-color var(--sho-t-fast) var(--sho-ease);
+}
+.kbc-back svg { width: 15px; height: 15px; }
+.kbc-back:hover { color: var(--sho-accent); border-color: var(--sho-accent); }
+.kbc-back:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+
+/* ===== desk（左側寫作桌） ===== */
+.kbc-desk {
+  position: absolute; left: 0; top: 0; bottom: 0; width: var(--kbc-deskw); z-index: 10;
+  background: var(--sho-bg); border-right: 1.5px solid var(--sho-accent-line);
+  display: flex; flex-direction: column; padding: 52px 26px 18px;
+  transition: transform var(--sho-t-slow) var(--sho-ease), opacity var(--sho-t-slow) var(--sho-ease);
+}
+.kbc-desk.flyout { transform: translateX(-30%) scale(.6); opacity: 0; }
+.kbc-lbl {
+  display: flex; gap: 10px; align-items: baseline;
+  font-size: 11.5px; letter-spacing: .05em; font-weight: 700; color: var(--sho-accent);
+}
+.kbc-lbl .q { margin-left: auto; color: var(--sho-muted); font-weight: 500; }
+.kbc-lbl .done-n { color: var(--sho-success); font-weight: 700; }
+/* 標題：textarea（非 input）才能換行——長宣告句不再被截斷。JS 依內容自動長高。 */
+.kbc-title {
+  width: 100%; border: 0; border-bottom: 1px solid var(--sho-line); background: none; color: var(--sho-ink);
+  font-family: inherit; font-size: 20px; font-weight: 800; padding: 10px 0 9px; outline: none; line-height: 1.4;
+  resize: none; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; display: block;
+}
+.kbc-title:focus { border-bottom-color: var(--sho-accent); }
+.kbc-title:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+/* 正文：用 id 鎖定，避免命中標題 textarea（否則標題會被撐成 flex:1）。 */
+#kbc-body {
+  flex: 1; min-height: 120px; width: 100%; border: 0; background: none; color: var(--sho-text); resize: none;
+  font-family: inherit; font-size: 15.5px; line-height: 1.85; outline: none; margin-top: 12px;
+}
+#kbc-body:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+
+/* 來源畫線 + 你的註解（唯讀參考；開卡時把 context 帶到眼前。ADR-017 annotation）。 */
+.kbc-src { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; max-height: 26vh; overflow-y: auto; }
+.kbc-src-item {
+  padding: 8px 10px 9px 12px; border-radius: var(--sho-r-1);
+  background: var(--sho-bg-2); border-left: 2px solid var(--sho-line-2);
+}
+.kbc-src-note { border-left-color: var(--sho-accent-line); }
+.kbc-src-tag {
+  display: block; font-family: var(--sho-font-mono); font-size: 10px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--sho-muted); margin-bottom: 3px;
+}
+.kbc-src-note .kbc-src-tag { color: var(--sho-accent); }
+.kbc-src-item p {
+  margin: 0; font-size: 13px; line-height: 1.7; color: var(--sho-text-2);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.kbc-src-use {
+  margin-top: 7px; border: 1px solid var(--sho-line-2); background: none; color: var(--sho-accent);
+  border-radius: 999px; font-family: var(--sho-font-mono); font-size: 11px; letter-spacing: .04em;
+  padding: 3px 11px; cursor: pointer;
+  transition: color var(--sho-t-fast) var(--sho-ease), border-color var(--sho-t-fast) var(--sho-ease);
+}
+.kbc-src-use:hover { color: var(--sho-ink); border-color: var(--sho-accent); }
+.kbc-src-use:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+
+/* 連結清單 */
+.kbc-edges { border-top: 1px solid var(--sho-line); padding-top: 10px; max-height: 38vh; overflow-y: auto; }
+.kbc-edges .eh {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .07em; font-weight: 700;
+  color: var(--sho-text-2); margin-bottom: 6px; display: flex; gap: 8px;
+}
+.kbc-edges .eh .n { color: var(--sho-muted); font-weight: 500; text-transform: none; letter-spacing: 0; }
+.kbc-edgeitem { display: flex; gap: 8px; align-items: center; font-size: 13.5px; margin: 6px 0; }
+.kbc-ebadge {
+  flex-shrink: 0; border: 1.5px solid; border-radius: var(--sho-r-1); font-size: 11.5px; font-weight: 800;
+  padding: 1px 9px; cursor: pointer; background: none;
+}
+.kbc-ebadge:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+.kbc-ebadge.support { color: var(--sho-success); border-color: var(--sho-success); }
+.kbc-ebadge.refute { color: var(--sho-error); border-color: var(--sho-error); }
+.kbc-ebadge.extend { color: var(--sho-info); border-color: var(--sho-info); }
+.kbc-ebadge.src { color: var(--sho-muted); border-color: var(--sho-line-2); }
+.kbc-edgeitem .tg {
+  color: var(--sho-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%;
+  border: 1px solid var(--sho-line-2); background: var(--sho-bg-2); border-radius: var(--sho-r-1);
+  padding: 1px 8px; font-size: 12.5px;
+}
+.kbc-edgeitem .reason-in {
+  flex: 1; min-width: 80px; border: 0; border-bottom: 1px dashed var(--sho-line-2); background: none;
+  font-family: inherit; font-size: 13px; color: var(--sho-text-2); outline: none; padding: 1px 2px;
+}
+.kbc-edgeitem .reason-in:focus { border-bottom-color: var(--sho-accent); }
+.kbc-edgeitem .reason-in:focus-visible { box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+.kbc-edgeitem .rm {
+  border: 0; background: none; color: var(--sho-muted); cursor: pointer; font-size: 14px; padding: 0 4px; flex-shrink: 0;
+}
+.kbc-edgeitem .rm:hover { color: var(--sho-error); }
+.kbc-edgeitem .rm:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+
+.kbc-foot {
+  display: flex; align-items: center; gap: 10px; margin-top: 12px;
+  border-top: 1px solid var(--sho-line); padding-top: 12px;
+}
+.kbc-foot .n { font-size: 12px; color: var(--sho-muted); margin-right: auto; }
+
+/* desk drop zones（拖卡時在卡片內部浮現 2×2 大格，放手即消失） */
+.kbc-dz {
+  position: absolute; border: 1.5px dashed; border-radius: var(--sho-r-2);
+  display: none; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  font-size: 19px; font-weight: 800; letter-spacing: .08em; opacity: .85; z-index: 12;
+  background: color-mix(in oklch, var(--sho-bg) 93%, transparent);
+  transition: opacity var(--sho-t-fast) var(--sho-ease), background var(--sho-t-fast) var(--sho-ease);
+}
+.kbc-dz small { font-size: 13px; font-weight: 500; letter-spacing: 0; color: var(--sho-muted); }
+.kbc-desk.dz-on .kbc-dz { display: flex; }
+.kbc-dz.hot { opacity: 1; }
+.kbc-dz-sup { top: 128px; left: 12px; width: calc(50% - 18px); height: calc(50% - 130px); color: var(--sho-success); border-color: var(--sho-success); }
+.kbc-dz-sup.hot { background: color-mix(in oklch, var(--sho-success) 16%, var(--sho-bg)); }
+.kbc-dz-ref { top: 128px; right: 12px; width: calc(50% - 18px); height: calc(50% - 130px); color: var(--sho-error); border-color: var(--sho-error); }
+.kbc-dz-ref.hot { background: color-mix(in oklch, var(--sho-error) 16%, var(--sho-bg)); }
+.kbc-dz-ext { bottom: 76px; left: 12px; width: calc(50% - 18px); height: calc(50% - 80px); color: var(--sho-info); border-color: var(--sho-info); }
+.kbc-dz-ext.hot { background: color-mix(in oklch, var(--sho-info) 16%, var(--sho-bg)); }
+.kbc-dz-src { bottom: 76px; right: 12px; width: calc(50% - 18px); height: calc(50% - 80px); color: var(--sho-muted); border-color: var(--sho-line-2); }
+.kbc-dz-src.hot { background: var(--sho-bg-3); }
+
+/* ===== field（右側卡片場） ===== */
+.kbc-field {
+  position: absolute; top: 0; right: 0; bottom: 0; left: var(--kbc-deskw); overflow: hidden;
+  background-image: radial-gradient(color-mix(in oklch, var(--sho-line) 55%, transparent) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+.kbc-bandlbl {
+  /* 不 uppercase——否則人名 Robin 會被強制成 ROBIN，看起來像在吼（修修回饋）。 */
+  position: absolute; top: 10px; font-size: 11px; letter-spacing: .04em;
+  font-weight: 700; color: var(--sho-muted); background: var(--sho-bg);
+  padding: 1px 8px; border: 1px solid var(--sho-line); border-radius: var(--sho-r-pill); z-index: 3; pointer-events: none;
+}
+.kbc-bandsep { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed var(--sho-line-2); opacity: .7; pointer-events: none; }
+.kbc-fieldempty { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); color: var(--sho-muted); font-size: 14px; }
+
+/* cards */
+.kbc-card {
+  position: absolute; width: 204px; background: var(--sho-bg); border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-2); box-shadow: var(--kbc-card-shadow); padding: 12px 14px; cursor: grab;
+  user-select: none; touch-action: none;
+  transition: box-shadow var(--sho-t-fast) var(--sho-ease), border-color var(--sho-t-fast) var(--sho-ease);
+}
+.kbc-card:hover { border-color: var(--sho-accent-line); }
+/* 高關聯（Robin 判定）卡：加粗 accent 邊框標示，不用 ✦Robin 文字、不填色（克制）。 */
+.kbc-card.robin {
+  border-width: 2px;
+  border-color: var(--sho-accent-line);
+}
+.kbc-card.robin:hover { border-color: var(--sho-accent); }
+.kbc-card.dragging { cursor: grabbing; box-shadow: 0 8px 24px oklch(0.1 0 0 / 0.18); }
+.kbc-card .t { font-size: 14px; font-weight: 700; color: var(--sho-ink); line-height: 1.5; margin-bottom: 6px; padding-right: 22px; }
+/* 展開圖示（看內容，修修回饋 #3）：卡片右上角，hover 顯現。點它＝預覽；點卡身＝換角度。 */
+.kbc-peek {
+  position: absolute; top: 7px; right: 7px; width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 50%; background: var(--sho-bg); color: var(--sho-muted);
+  cursor: pointer; opacity: 0; transition: opacity var(--sho-t-fast) var(--sho-ease), color var(--sho-t-fast) var(--sho-ease);
+}
+.kbc-peek svg { width: 15px; height: 15px; }
+.kbc-card:hover .kbc-peek { opacity: .65; }
+.kbc-peek:hover { opacity: 1; color: var(--sho-accent); }
+.kbc-peek:focus-visible { outline: none; box-shadow: var(--sho-focus); opacity: 1; }
+/* 永久卡內容預覽面板 */
+.kbc-peekpop {
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  z-index: 60; width: min(440px, 86vw); max-height: 64vh; display: flex; flex-direction: column;
+  background: var(--sho-bg); border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-3);
+  box-shadow: 0 12px 44px oklch(0.2 0.01 80 / 0.22);
+}
+.kbc-peekpop .pk-h { display: flex; align-items: baseline; gap: 10px; padding: 14px 18px 11px; border-bottom: 1px solid var(--sho-line); }
+.kbc-peekpop .pk-h b { font-size: 15px; font-weight: 800; color: var(--sho-ink); }
+.kbc-peekpop .pk-x { margin-left: auto; border: 0; background: none; color: var(--sho-muted); cursor: pointer; font-size: 14px; line-height: 1; }
+.kbc-peekpop .pk-x:hover { color: var(--sho-accent); }
+.kbc-peekpop .pk-body { padding: 14px 18px 18px; overflow-y: auto; font-size: 14px; line-height: 1.85; color: var(--sho-text); white-space: pre-wrap; word-break: break-word; }
+.kbc-card .m { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+.kbc-minitag { font-size: 11px; border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-pill); padding: 0 8px; color: var(--sho-muted); white-space: nowrap; }
+.kbc-minitag.hi { color: var(--sho-accent); border-color: var(--sho-accent-line); }
+.kbc-minitag.support { color: var(--sho-success); border-color: color-mix(in oklch, var(--sho-success) 45%, transparent); }
+.kbc-minitag.refute { color: var(--sho-error); border-color: color-mix(in oklch, var(--sho-error) 45%, transparent); }
+.kbc-minitag.extend { color: var(--sho-info); border-color: color-mix(in oklch, var(--sho-info) 50%, transparent); }
+/* 既有卡成熟度（修修回饋：用顏色+填充辨別）。seedling=幼苗(琥珀)、evergreen=常青(綠)。 */
+.kbc-minitag.st-seedling {
+  color: var(--sho-warning); border-color: color-mix(in oklch, var(--sho-warning) 50%, transparent);
+  background: color-mix(in oklch, var(--sho-warning) 12%, transparent);
+}
+.kbc-minitag.st-evergreen {
+  color: var(--sho-success); border-color: color-mix(in oklch, var(--sho-success) 50%, transparent);
+  background: color-mix(in oklch, var(--sho-success) 14%, transparent);
+}
+
+/* 存入 Vault：base .sho-btn 樣式在未載入的 bridge.css，這頁無樣式→純文字。補 primary 按鈕（修修回饋③）。 */
+#kbc-save {
+  font-family: var(--sho-font-mono); font-size: 12px; letter-spacing: .1em; white-space: nowrap;
+  padding: 8px 20px; cursor: pointer;
+  background: var(--sho-text); color: var(--sho-bg);
+  border: 1px solid var(--sho-text); border-radius: var(--sho-r-1);
+  transition: background var(--sho-t-fast) var(--sho-ease), border-color var(--sho-t-fast) var(--sho-ease);
+}
+#kbc-save:hover { background: var(--sho-accent); border-color: var(--sho-accent); }
+#kbc-save:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+
+/* 畫布開啟時隱藏右下角浮動主題切換鈕——否則會蓋住 MOC 盒 / 回收盒（修修回饋④截圖）。 */
+body.kbc-active .sho-theme-toggle { display: none; }
+
+/* stacks */
+.kbc-stack { position: absolute; width: 188px; cursor: pointer; user-select: none; touch-action: none; }
+.kbc-stack .layers { position: relative; height: 70px; }
+.kbc-stack .ly { position: absolute; inset: 0; background: var(--sho-bg); border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-2); box-shadow: var(--kbc-card-shadow); }
+.kbc-stack .ly:nth-child(1) { transform: rotate(-2.5deg) translate(-3px, 4px); }
+.kbc-stack .ly:nth-child(2) { transform: rotate(1.8deg) translate(3px, 2px); }
+.kbc-stack .ly:nth-child(3) { display: flex; flex-direction: column; justify-content: center; padding: 9px 13px; gap: 1px; }
+.kbc-stack .ly .t { font-size: 14px; font-weight: 800; color: var(--sho-ink); }
+.kbc-stack .ly .n { font-size: 11.5px; color: var(--sho-muted); }
+.kbc-stack:hover .ly:nth-child(3) { border-color: var(--sho-accent-line); }
+.kbc-stack.rel .ly:nth-child(3) { border-color: var(--sho-accent-line); }
+.kbc-stack .relbadge {
+  position: absolute; top: -10px; right: 8px; font-size: 10.5px; font-weight: 700; color: var(--sho-accent);
+  background: var(--sho-bg); border: 1px solid var(--sho-accent-line); border-radius: var(--sho-r-pill); padding: 0 8px; z-index: 2;
+}
+.kbc-stack.dragging { opacity: .85; }
+
+/* MOC 盒 */
+.kbc-mocbox {
+  position: absolute; right: 18px; bottom: 114px; z-index: 20; width: 148px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  background: var(--sho-bg); border: 1.5px solid var(--sho-line-2); border-radius: var(--sho-r-3);
+  padding: 12px 0 10px; cursor: pointer; box-shadow: var(--kbc-card-shadow); font-family: inherit;
+  transition: border-color var(--sho-t-fast) var(--sho-ease), color var(--sho-t-fast) var(--sho-ease);
+}
+.kbc-mocbox svg { width: 26px; height: 26px; color: var(--sho-text-2); }
+.kbc-mocbox .mlbl { font-size: 12px; font-weight: 800; color: var(--sho-ink); letter-spacing: .04em; }
+.kbc-mocbox .mn { font-size: 10.5px; color: var(--sho-muted); }
+.kbc-mocbox:hover { border-color: var(--sho-accent-line); }
+.kbc-mocbox:hover svg, .kbc-mocbox:hover .mlbl { color: var(--sho-accent); }
+.kbc-mocbox:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+
+/* 回收卡片盒 */
+.kbc-inbox { position: absolute; right: 18px; bottom: 16px; z-index: 20; width: 148px; height: 84px; pointer-events: none; }
+.kbc-inbox .bly {
+  position: absolute; inset: 0; background: var(--sho-bg-2); border: 1.5px dashed var(--sho-line-2); border-radius: var(--sho-r-3);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  transition: border-color var(--sho-t-fast) var(--sho-ease), background var(--sho-t-fast) var(--sho-ease);
+}
+.kbc-inbox .ic { width: 24px; height: 24px; color: var(--sho-text-2); }
+.kbc-inbox.hot .ic { color: var(--sho-accent); }
+.kbc-inbox .blbl { font-size: 11px; font-weight: 700; color: var(--sho-muted); text-transform: uppercase; letter-spacing: .06em; }
+.kbc-inbox .bn { font-size: 10.5px; color: var(--sho-muted); }
+.kbc-inbox.hot .bly { border-color: var(--sho-accent); background: var(--sho-accent-soft); }
+.kbc-inbox.hot .blbl { color: var(--sho-accent); }
+
+/* overlay（疊卡攤平 / MOC 索引） */
+.kbc-overlay {
+  position: fixed; inset: 0; z-index: 55; background: oklch(0.12 0.005 80 / 0.45);
+  display: flex; flex-direction: column; animation: kbc-ovin var(--sho-t-base) var(--sho-ease);
+}
+@keyframes kbc-ovin { from { opacity: 0; } to { opacity: 1; } }
+.kbc-ov-head { display: flex; align-items: baseline; gap: 12px; padding: 18px 28px 10px; }
+.kbc-ov-head b { font-size: 17px; color: #fff; }
+.kbc-ov-head span { font-size: 12.5px; color: oklch(0.9 0 0 / 0.8); }
+.kbc-ov-head button {
+  margin-left: auto; border: 1px solid oklch(1 0 0 / 0.4); background: none; color: #fff; border-radius: var(--sho-r-pill);
+  padding: 4px 14px; font-size: 12px; cursor: pointer; font-family: inherit;
+}
+.kbc-ov-head button:focus-visible { outline: none; box-shadow: 0 0 0 2px oklch(0.12 0.005 80), 0 0 0 4px var(--sho-accent); }
+.kbc-ov-grid { flex: 1; overflow-y: auto; display: flex; flex-wrap: wrap; gap: 14px; align-content: flex-start; padding: 14px 28px 40px; }
+.kbc-gcard {
+  width: 204px; background: var(--sho-bg); border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-2);
+  box-shadow: var(--kbc-card-shadow); padding: 12px 14px; cursor: grab; user-select: none; touch-action: none;
+}
+.kbc-gcard:hover { border-color: var(--sho-accent-line); }
+.kbc-gcard .t { font-size: 14px; font-weight: 700; color: var(--sho-ink); line-height: 1.5; margin-bottom: 6px; }
+.kbc-gcard .m { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+.kbc-ov-empty { color: oklch(0.9 0 0 / 0.7); font-size: 13px; padding: 8px 28px; }
+
+/* popover（改關係類型） */
+.kbc-popover {
+  position: absolute; z-index: 60; background: var(--sho-bg); border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-3);
+  box-shadow: 0 10px 30px oklch(0.1 0 0 / 0.18); padding: 13px 15px; width: 280px; display: none;
+}
+.kbc-popover.on { display: block; }
+.kbc-popover .ph { font-size: 12.5px; font-weight: 700; color: var(--sho-ink); margin-bottom: 9px; }
+.kbc-popover .types { display: flex; gap: 6px; }
+.kbc-popover .ptype {
+  flex: 1; border: 1px solid var(--sho-line-2); background: none; border-radius: var(--sho-r-1); padding: 5px 0;
+  font-size: 12.5px; font-weight: 700; cursor: pointer; color: var(--sho-muted); font-family: inherit;
+}
+.kbc-popover .ptype:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+.kbc-popover .ptype[data-t="support"].sel { color: var(--sho-success); border-color: var(--sho-success); background: color-mix(in oklch, var(--sho-success) 10%, transparent); }
+.kbc-popover .ptype[data-t="refute"].sel { color: var(--sho-error); border-color: var(--sho-error); background: color-mix(in oklch, var(--sho-error) 10%, transparent); }
+.kbc-popover .ptype[data-t="extend"].sel { color: var(--sho-info); border-color: var(--sho-info); background: color-mix(in oklch, var(--sho-info) 10%, transparent); }
+.kbc-popover .ptype[data-t="src"].sel { color: var(--sho-text-2); border-color: var(--sho-text-2); background: var(--sho-bg-2); }
+
+.kbc-empty-all { position: absolute; left: calc(var(--kbc-deskw) + 50%); top: 50%; transform: translate(-50%, -50%); color: var(--sho-muted); font-size: 15px; z-index: 5; }
+
+/* reduced-motion：所有動畫歸零（含微旋轉 ±2.2° 與疊卡 rotate） */
+@media (prefers-reduced-motion: reduce) {
+  .kbc-card, .kbc-desk, .kbc-overlay { transform: none !important; transition: none !important; animation: none !important; }
+  .kbc-stack .ly:nth-child(1), .kbc-stack .ly:nth-child(2) { transform: none !important; }
+}

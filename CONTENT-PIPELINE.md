@@ -56,12 +56,12 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 
 | Channel | 製作工具 | 適用 line |
 |---|---|---|
-| 影片 | **Script-Driven Video pipeline**（`agents/brook/script_video/` + `video/` Hyperframes） | Line 2 / Line 3 / Line 1 訪問新書作者 |
+| 影片 | **Video Production Line**（Brook own — ADR-032 技術設計 + [ADR-050](docs/decisions/ADR-050-video-production-line-brook-ownership.md) 歸屬；`agents/brook/script_video/` + `video/` Hyperframes compositions；機器已自 `agents/foundry/` 遷入完成，ADR-050 PR-3） | Line 2 / Line 3 / Line 1 訪問新書作者 |
 | 部落格 | Brook compose + Blog renderer | Line 1/2/3 |
 | FB post | Brook FB renderer（4 tonal variants） | Line 1/2/3 |
 | IG carousel | Brook IG renderer（5/7/5/10 卡 episode_type routing） | Line 1/2/3 |
 
-**Script-Driven Video 不是獨立 line**，是 Stage 5 影片 channel 的製作管線。三條 line 都可走它出影片（CONTEXT-MAP.md「Line N vs script-driven video」段已凍結為 sibling）。
+**Video Production Line 不是獨立 line**，是 Stage 5 影片 channel 的製作管線。三條 line 都可走它出影片（CONTEXT-MAP.md「Line N vs script-driven video」段已凍結為 sibling）。單一 workflow（ADR-050 D3）：錄影 →（選配）cleanup mistake removal（單擊掌 marker + WhisperX 字級對稿回溯；有完整逐字稿時直出 corrected transcript.srt，可省 `/transcribe`）→ storyboard plan（LLM + 兩層 HITL）→ Hyperframes render → FCPXML 進 DaVinci。無逐字稿時 cleanup 走 legacy double-clap 音訊模式、SRT 走 `/transcribe`。
 
 ---
 
@@ -129,7 +129,7 @@ Line 2 不再只視為「書」；ebook、inbox document、web document 都是 R
 | **Nami** (Secretary) | ✅ pubmed_lookup tool (Robin pass-through) + Gmail / Calendar / Vault notes | n/a | n/a | n/a | n/a | n/a | ⬜ daily briefing 接 SEO/cost data |
 | **Zoro** (Scout) | ✅ keyword research + autocomplete + trends + reddit + youtube + twitter | n/a | n/a | n/a | n/a | n/a | ⬜ topic discovery 接 SEO 反向 feed |
 | **Sanji** (Community) | ⬜ community FAQ discovery (從會員問題抽主題) | n/a | ⬜ member memory ingest | n/a | n/a | ❌ Fluent Community publisher | ⬜ engagement insight |
-| **Brook** (Scaffold + Repurpose + SEO Audit, ADR-027) | n/a | n/a | ✅ synthesize（outline + evidence pool, ADR-021）；RCP 由 Robin own | scaffold only — outline / evidence 給修修自寫，**LLM 不代寫正文**（ADR-027 reminders not enforcement） | ✅ FB/IG/Blog renderer + repurpose engine + **script_video pipeline**；🚧 Line 1b 訪談+research_pack 2b mode（ADR-027） | n/a | ✅ SEO audit + enrich (對既有文章) |
+| **Brook** (Scaffold + Repurpose + SEO Audit + Video Production, ADR-027/ADR-050) | n/a | n/a | ✅ synthesize（outline + evidence pool, ADR-021）；RCP 由 Robin own | scaffold only — outline / evidence 給修修自寫，**LLM 不代寫正文**（ADR-027 reminders not enforcement） | ✅ FB/IG/Blog renderer + repurpose engine + **Video Production Line**（SRT-first storyboard → Hyperframes → FCPXML，原 foundry，ADR-050）；🚧 Line 1b 訪談+research_pack 2b mode（ADR-027） | n/a | ✅ SEO audit + enrich (對既有文章) |
 | **Franky** (Maintenance) | ✅ AI news digest cron | n/a | n/a | n/a | n/a | n/a | ✅ probe panel + R2 backup verify + GSC daily + cost tracking |
 | **Usopp** (Publisher) | n/a | n/a | n/a | n/a | n/a | ✅ WP publisher + approval queue HITL；❌ YT/IG/FB/Newsletter | n/a |
 

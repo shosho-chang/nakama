@@ -40,9 +40,9 @@ from shared.log import get_logger
 logger = get_logger("nakama.shared.repurpose.closed_pool")
 
 
-# Lanes intentionally fixed to BM25 + dense vec only — never `wikilink`.
-# See module docstring for rationale.
-_CLOSED_POOL_LANES: tuple[str, ...] = ("bm25", "vec")
+# Lanes intentionally fixed to BM25 only — never `wikilink`.
+# (ADR-042 removed the dense-vec lane.) See module docstring for rationale.
+_CLOSED_POOL_LANES: tuple[str, ...] = ("bm25",)
 
 
 def closed_pool_search(

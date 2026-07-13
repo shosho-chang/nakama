@@ -1,16 +1,14 @@
 """Tests for shared/kb_indexer.py.
 
 Uses in-memory SQLite (via kb_hybrid_search.make_conn) + fake vault fixtures.
-kb_embedder is mocked to return deterministic 256-dim vectors without loading
-the real model.
+ADR-042: the dense-vector lane was removed, so the indexer writes FTS5 chunks
+only — no embedder to mock.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
 
-import numpy as np
 import pytest
 
 from shared.kb_hybrid_search import make_conn
@@ -19,15 +17,6 @@ from shared.kb_indexer import _split_h2_chunks, index_vault
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _fixed_embed_batch(texts: list[str]) -> list[np.ndarray]:
-    """Deterministic fake embedder — one unique vector per text (hash-seeded)."""
-    out = []
-    for t in texts:
-        rng = np.random.default_rng(abs(hash(t)) % (2**31))
-        out.append(rng.random(256).astype(np.float32))
-    return out
 
 
 def _make_page(
@@ -156,9 +145,8 @@ def test_split_h2_chunks_path_stored():
 
 def test_index_vault_10_pages(vault_10):
     """index_vault on 10-page fixture produces correct files_indexed count."""
-    conn = make_conn(dim=256)
-    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
-        stats = index_vault(vault_10, conn)
+    conn = make_conn()
+    stats = index_vault(vault_10, conn)
 
     assert stats.files_indexed == 10
     assert stats.files_skipped == 0
@@ -167,9 +155,8 @@ def test_index_vault_10_pages(vault_10):
 
 def test_index_vault_frontmatter_title_stored(vault_10):
     """Frontmatter title should appear as heading_context in kb_chunks."""
-    conn = make_conn(dim=256)
-    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
-        index_vault(vault_10, conn)
+    conn = make_conn()
+    index_vault(vault_10, conn)
 
     rows = conn.execute(
         "SELECT heading_context FROM kb_chunks WHERE path = 'KB/Wiki/Concepts/concept-0'"
@@ -180,9 +167,8 @@ def test_index_vault_frontmatter_title_stored(vault_10):
 
 def test_index_vault_references_section_not_indexed(vault_10):
     """Source pages have ## References — those chunks must NOT be indexed."""
-    conn = make_conn(dim=256)
-    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
-        index_vault(vault_10, conn)
+    conn = make_conn()
+    index_vault(vault_10, conn)
 
     # Verify that there are no chunks with section="References"
     rows = conn.execute("SELECT section FROM kb_chunks WHERE section = 'References'").fetchall()
@@ -191,22 +177,24 @@ def test_index_vault_references_section_not_indexed(vault_10):
 
 def test_index_vault_wikilinks_extracted(vault_10):
     """Wikilinks [[...]] appear in IndexStats.wikilinks."""
-    conn = make_conn(dim=256)
-    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
-        stats = index_vault(vault_10, conn)
+    conn = make_conn()
+    stats = index_vault(vault_10, conn)
 
     assert any("related_" in wl for wl in stats.wikilinks)
 
 
-def test_index_vault_chunk_and_vector_rowids_match(vault_10):
-    """Every rowid in kb_chunks should have a matching rowid in kb_vectors."""
-    conn = make_conn(dim=256)
-    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
-        index_vault(vault_10, conn)
+def test_index_vault_writes_chunks_and_no_vectors_table(vault_10):
+    """ADR-042: indexing writes FTS5 chunks and never creates a kb_vectors table."""
+    conn = make_conn()
+    index_vault(vault_10, conn)
 
     chunk_rowids = {r[0] for r in conn.execute("SELECT rowid FROM kb_chunks").fetchall()}
-    vec_rowids = {r[0] for r in conn.execute("SELECT rowid FROM kb_vectors").fetchall()}
-    assert chunk_rowids == vec_rowids
+    assert chunk_rowids, "indexer must write FTS5 chunks"
+
+    tables = {
+        r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
+    }
+    assert not any("kb_vectors" in t for t in tables)
 
 
 # ---------------------------------------------------------------------------
@@ -220,10 +208,9 @@ def test_index_vault_incremental_skips_unchanged_files(tmp_path):
     wiki.mkdir(parents=True)
     _make_page(wiki, "stable", title="Stable Page", body="## Section\n" + "x" * 60)
 
-    conn = make_conn(dim=256)
-    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
-        stats1 = index_vault(tmp_path, conn)
-        stats2 = index_vault(tmp_path, conn)
+    conn = make_conn()
+    stats1 = index_vault(tmp_path, conn)
+    stats2 = index_vault(tmp_path, conn)
 
     assert stats1.files_indexed == 1
     assert stats1.files_skipped == 0
@@ -238,9 +225,8 @@ def test_index_vault_reindexes_changed_file(tmp_path):
     page = wiki / "mutable.md"
     page.write_text("---\ntitle: Mutable\n---\n## Section\n" + "x" * 60, encoding="utf-8")
 
-    conn = make_conn(dim=256)
-    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
-        index_vault(tmp_path, conn)
+    conn = make_conn()
+    index_vault(tmp_path, conn)
 
     chunks_after_first = conn.execute("SELECT count(*) FROM kb_chunks").fetchone()[0]
 
@@ -253,8 +239,7 @@ def test_index_vault_reindexes_changed_file(tmp_path):
         encoding="utf-8",
     )
 
-    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
-        stats2 = index_vault(tmp_path, conn)
+    stats2 = index_vault(tmp_path, conn)
 
     assert stats2.files_indexed == 1
     assert stats2.files_skipped == 0
@@ -270,9 +255,8 @@ def test_index_vault_reindexes_changed_file(tmp_path):
 
 def test_index_vault_sources_concepts_entities_all_indexed(vault_10):
     """All 3 subdirectory types produce chunks with correct path prefixes."""
-    conn = make_conn(dim=256)
-    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
-        index_vault(vault_10, conn)
+    conn = make_conn()
+    index_vault(vault_10, conn)
 
     for subdir in ("Sources", "Concepts", "Entities"):
         rows = conn.execute(
@@ -302,9 +286,8 @@ def test_index_vault_wikilinks_persisted_to_db(tmp_path):
         ),
     )
 
-    conn = make_conn(dim=256)
-    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
-        index_vault(tmp_path, conn)
+    conn = make_conn()
+    index_vault(tmp_path, conn)
 
     rows = conn.execute("SELECT src_path, dst_path FROM kb_wikilinks").fetchall()
     assert rows, "kb_wikilinks must have at least one row"
@@ -329,9 +312,8 @@ def test_index_vault_mentioned_in_frontmatter_persisted(tmp_path):
         ),
     )
 
-    conn = make_conn(dim=256)
-    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
-        index_vault(tmp_path, conn)
+    conn = make_conn()
+    index_vault(tmp_path, conn)
 
     dst_paths = {r[0] for r in conn.execute("SELECT dst_path FROM kb_wikilinks").fetchall()}
     assert "KB/Wiki/Sources/paper-one" in dst_paths
@@ -348,9 +330,8 @@ def test_index_vault_wikilinks_removed_on_reindex(tmp_path):
         encoding="utf-8",
     )
 
-    conn = make_conn(dim=256)
-    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
-        index_vault(tmp_path, conn)
+    conn = make_conn()
+    index_vault(tmp_path, conn)
 
     old_rows = conn.execute("SELECT dst_path FROM kb_wikilinks").fetchall()
     assert any("old-target" in r[0] for r in old_rows)
@@ -363,8 +344,7 @@ def test_index_vault_wikilinks_removed_on_reindex(tmp_path):
         encoding="utf-8",
     )
 
-    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
-        index_vault(tmp_path, conn)
+    index_vault(tmp_path, conn)
 
     new_rows = conn.execute("SELECT dst_path FROM kb_wikilinks").fetchall()
     dst_set = {r[0] for r in new_rows}
@@ -393,9 +373,8 @@ def test_index_vault_indexes_nested_books_dir(tmp_path):
         encoding="utf-8",
     )
 
-    conn = make_conn(dim=256)
-    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
-        stats = index_vault(tmp_path, conn)
+    conn = make_conn()
+    stats = index_vault(tmp_path, conn)
 
     assert stats.files_indexed == 1
     rows = conn.execute(
@@ -473,9 +452,8 @@ updated_at: "2026-05-07T00:00:00Z"
 """
     _write_annotation_file(tmp_path, "atomic-habits", annotation_md)
 
-    conn = make_conn(dim=256)
-    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
-        stats = index_vault(tmp_path, conn)
+    conn = make_conn()
+    stats = index_vault(tmp_path, conn)
 
     assert stats.files_indexed == 1
     rows = conn.execute(
@@ -537,9 +515,8 @@ updated_at: "2026-05-07T00:00:00Z"
 """
     _write_annotation_file(tmp_path, "creatine-paper", annotation_md)
 
-    conn = make_conn(dim=256)
-    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
-        index_vault(tmp_path, conn)
+    conn = make_conn()
+    index_vault(tmp_path, conn)
 
     rows = conn.execute(
         "SELECT chunk_text, section, heading_context FROM kb_chunks "
@@ -577,9 +554,8 @@ updated_at: "2026-05-07T00:00:00Z"
 """
     _write_annotation_file(tmp_path, "longevity-book", annotation_md)
 
-    conn = make_conn(dim=256)
-    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
-        index_vault(tmp_path, conn)
+    conn = make_conn()
+    index_vault(tmp_path, conn)
 
     rows = conn.execute(
         "SELECT chunk_text, section, path FROM kb_chunks WHERE kb_chunks MATCH ?",
@@ -615,10 +591,9 @@ updated_at: "2026-05-07T00:00:00Z"
 """
     _write_annotation_file(tmp_path, "stable", annotation_md)
 
-    conn = make_conn(dim=256)
-    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
-        s1 = index_vault(tmp_path, conn)
-        s2 = index_vault(tmp_path, conn)
+    conn = make_conn()
+    s1 = index_vault(tmp_path, conn)
+    s2 = index_vault(tmp_path, conn)
 
     assert s1.files_indexed == 1
     assert s2.files_indexed == 0
@@ -642,3 +617,23 @@ def test_resolve_vault_path_honors_VAULT_PATH_env(tmp_path, monkeypatch):
 
     resolved = _resolve_vault_path()
     assert resolved == tmp_path
+
+
+# ── Sync-conflict files are reported, not indexed (ADR-044 §B8) ───────────────
+
+
+def test_index_vault_skips_and_counts_annotation_conflicts(tmp_path):
+    (tmp_path / "KB" / "Wiki" / "Concepts").mkdir(parents=True)
+    ann = tmp_path / "KB" / "Annotations"
+    ann.mkdir(parents=True)
+    (ann / "財富階梯.sync-conflict-20260525-143000-ABC123.md").write_text(
+        "not a real annotation set", encoding="utf-8"
+    )
+
+    conn = make_conn()
+    stats = index_vault(tmp_path, conn)
+
+    assert stats.annotation_conflicts == 1
+    # The conflict file's bogus stem must never have been indexed as a slug.
+    rows = conn.execute("SELECT path FROM kb_index_meta").fetchall()
+    assert all("sync-conflict" not in r[0] for r in rows)

@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Agent 能力盤點 · Nakama Bridge</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v={{ asset_version }}">
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/progress/progress.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/inventory/inventory.css?v={{ asset_version }}">
+</head>
+<body class="sho">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="sho-bolt-shape" viewBox="0 0 26 20">
+    <polyline points="2,16 6,10 9,14 13,8 16,12 20,6 24,10"
+              fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+</svg>
+
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='inventory') }}
+
+<main class="page">
+
+  <header class="page-header" style="margin-bottom: var(--sho-s-7);">
+    <div class="header-body">
+      <div class="sho-kicker">
+        <span class="sho-kicker-n">000</span>
+        <span>nakama · agent capability inventory</span>
+      </div>
+      <h1 class="page-title">
+        八個 agent ×<br>
+        <span class="page-title-2">functions · scripts · skills 盤點</span>
+      </h1>
+      <p class="page-subtitle">
+        每個 agent 的核心功能模組、它在 <code>scripts/</code> 內會跑的腳本、
+        以及哪些能力已經被 <strong>/skill</strong> 化（可在對話中直接呼叫）。
+        資料由 code 盤點而來，手動維護於此頁；agent 角色取自《航海王》船員。
+      </p>
+    </div>
+
+    <hr class="sho-rule legend-rule">
+
+    <div class="legend" aria-label="skill 化狀態圖例">
+      <span class="legend-item"><span class="inv-skillflag has" style="padding:1px 7px">SKILL</span> 已 skill 化</span>
+      <span class="legend-item"><span class="inv-skillflag stub" style="padding:1px 7px">STUB</span> 規劃中 / 未實裝</span>
+      <span class="legend-item"><span class="inv-skillflag none" style="padding:1px 7px">—</span> 無對應 skill</span>
+      <span class="legend-item"><span class="skill-type thin">薄包</span> wrapper over Python/HTTP</span>
+      <span class="legend-item"><span class="skill-type">對話</span> 純對話 wrapper</span>
+    </div>
+  </header>
+
+  <!-- ── 01 · 總覽 ──────────────────────────────────────────────────── -->
+  <section aria-labelledby="overview-heading">
+    <div class="section-head">
+      <div class="sho-kicker"><span class="sho-kicker-n">01</span><span>roster · 一覽</span></div>
+      <h2 class="section-title" id="overview-heading">八個 agent × 啟動方式 × skill 化</h2>
+    </div>
+    <div class="table-wrap">
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th class="row-label">agent</th>
+            <th>角色</th><th>pipeline stage</th><th>啟動方式</th><th>已 skill 化</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="row-label">Robin<span class="sub">考古學家</span></td>
+            <td>知識庫攝入 / PubMed / 每日回顧</td><td>1 收集 → 3 整合</td>
+            <td><code>python -m agents.robin</code> · cron · HTTP 38 routes</td>
+            <td><span class="cm ship">✓</span>kb-ingest · kb-search · textbook-ingest</td></tr>
+          <tr><td class="row-label">Zoro<span class="sub">劍士 · 偵察</span></td>
+            <td>KOL / Trends / 關鍵字情報</td><td>1 收集</td>
+            <td><code>python -m agents.zoro scout</code> · cron 05:00</td>
+            <td><span class="cm ship">✓</span>keyword-research</td></tr>
+          <tr><td class="row-label">Nami<span class="sub">航海士 · 秘書</span></td>
+            <td>Project/Task/Calendar/Gmail 秘書</td><td>跨 stage 協調</td>
+            <td>Slack DM · <code>gateway/handlers/nami.py</code></td>
+            <td><span class="cm ship">✓</span>project-bootstrap · transcribe</td></tr>
+          <tr><td class="row-label">Brook<span class="sub">音樂家 · 撰稿</span></td>
+            <td>內容 repurpose / 撰稿 / 影片腳本</td><td>4 輸出</td>
+            <td><code>python -m agents.brook.synthesize</code></td>
+            <td><span class="cm ship">✓</span>article-compose</td></tr>
+          <tr><td class="row-label">Foundry<span class="sub">工坊 · 影像</span></td>
+            <td>B-roll storyboard → FCPXML</td><td>5 製作</td>
+            <td><code>python -m agents.brook.script_video</code></td>
+            <td><span class="cm ship">✓</span>brook-replan-beat</td></tr>
+          <tr><td class="row-label">Usopp<span class="sub">狙擊手 · 發布</span></td>
+            <td>發佈到 WordPress (HITL)</td><td>6 發布</td>
+            <td><code>python -m agents.usopp</code> · systemd daemon</td>
+            <td><span class="cm na">—</span>daemon 不合 skill 模式</td></tr>
+          <tr><td class="row-label">Sanji<span class="sub">廚師 · 社群</span></td>
+            <td>社群營運（Fluent Community）</td><td>6 發布後互動</td>
+            <td><code>python -m agents.sanji</code>（stub）</td>
+            <td><span class="cm none">×</span>尚未實裝</td></tr>
+          <tr><td class="row-label">Franky<span class="sub">船匠 · 維運</span></td>
+            <td>Ops 監控 / 備份 / 新聞 / 週報</td><td>7 監控</td>
+            <td><code>python -m agents.franky &lt;cmd&gt;</code> · 多 cron</td>
+            <td><span class="cm gap">○</span>無（SEO skills 屬同類）</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── 02 · 逐 agent 盤點 ─────────────────────────────────────────── -->
+  <section aria-labelledby="agents-heading">
+    <div class="section-head">
+      <div class="sho-kicker"><span class="sho-kicker-n">02</span><span>per-agent · functions / scripts / skills</span></div>
+      <h2 class="section-title" id="agents-heading">逐 agent 功能拆解</h2>
+      <p class="section-blurb">
+        左欄是 <code>agents/&lt;name&gt;/</code> 內的功能模組；右上是它在 <code>scripts/</code>
+        會跑或操作其資料的腳本；右下是已 skill 化的能力。
+      </p>
+    </div>
+
+    <div class="inv-roster">
+
+      <!-- Robin -->
+      <article class="inv-agent">
+        <div class="inv-agent-head">
+          <h3 class="inv-agent-name">Robin <span class="role">KB · 考古學家</span></h3>
+          <p class="inv-tagline">掃 Inbox → 攝入知識庫（摘要 → 概念/實體頁），每日從 PubMed 抓精選論文，並做每日回顧候選卡。</p>
+          <span class="inv-skillflag has">3 skills</span>
+        </div>
+        <div class="inv-cli">python -m agents.robin [--interactive | --mode pubmed_digest | --mode daily_review [--weekly]]   ·   HTTP: thousand_sunny/routers/robin.py (38 routes)</div>
+        <div class="inv-body">
+          <div class="inv-block inv-block--fns">
+            <p class="inv-block-label">核心功能模組 <span class="n">17</span></p>
+            <ul class="inv-fns">
+              <li><code>agent.py</code><span class="desc">掃 Inbox/web/ → 完整 ingest pipeline</span></li>
+              <li><code>ingest.py</code><span class="desc">來源摘要 → Concept/Entity 識別與頁面更新</span></li>
+              <li><code>kb_search.py</code><span class="desc">KB 查詢（BM25+wikilink RRF / Haiku ranker）</span></li>
+              <li><code>daily_review.py</code><span class="desc">每日回顧：Annotations delta → LLM 候選篩選</span></li>
+              <li><code>annotation_merger.py</code><span class="desc">註記 → Concept 頁 / Literature Note</span></li>
+              <li><code>annotation_weave.py</code><span class="desc">純字串：callout 編織進雙語 MD body</span></li>
+              <li><code>chunker.py</code><span class="desc">按 heading 優先的文件分段器</span></li>
+              <li><code>categories.py</code><span class="desc">source_type → content_nature 兩層分類</span></li>
+              <li><code>image_fetcher.py</code><span class="desc">外部圖片本地化 + 改寫 wikilink</span></li>
+              <li><code>pubmed_digest.py</code><span class="desc">PubMed 每日 digest（21:30 UTC）+ 6 維評分</span></li>
+              <li><code>pubmed_fulltext.py</code><span class="desc">全文擷取 fallback</span></li>
+              <li><code>pubmed_html.py</code><span class="desc">publisher 網頁抓取 → markdown</span></li>
+              <li><code>reading_context_package.py</code><span class="desc">Stage 3→4 交接包組裝</span></li>
+              <li><code>source_map_extractor.py</code><span class="desc">ADR-024 LLM claim 提取</span></li>
+              <li><code>style_extractor.py</code><span class="desc">既有文章 → 寫作風格 profile</span></li>
+              <li><code>book_digest_writer.py</code><span class="desc retired"><span class="tag-retired">退役</span>N521 由 Literature Note 取代</span></li>
+              <li><code>book_notes_writer.py</code><span class="desc retired"><span class="tag-retired">退役</span>N521 由 literature_writer 接管</span></li>
+            </ul>
+          </div>
+          <div class="inv-block">
+            <p class="inv-block-label">用到的 scripts</p>
+            <div class="inv-chips">
+              <span class="inv-chip">ab_ingest_bench.py</span>
+              <span class="inv-chip">update_scimago.py</span>
+            </div>
+          </div>
+          <div class="inv-block">
+            <p class="inv-block-label">已 skill 化</p>
+            <div class="inv-chips">
+              <span class="inv-chip skill">kb-ingest<span class="wrap">→ ingest.IngestPipeline</span></span>
+              <span class="inv-chip skill">kb-search<span class="wrap">→ POST /kb/research</span></span>
+              <span class="inv-chip skill">textbook-ingest<span class="wrap">→ 教科書章節攝入</span></span>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <!-- Zoro -->
+      <article class="inv-agent">
+        <div class="inv-agent-head">
+          <h3 class="inv-agent-name">Zoro <span class="role">偵察 · 劍士</span></h3>
+          <p class="inv-tagline">中英雙語平行 10 源情報蒐集（YouTube / Trends / Autocomplete / Reddit / X）+ Claude 合成，產出 brainstorm 報告。</p>
+          <span class="inv-skillflag has">1 skill</span>
+        </div>
+        <div class="inv-cli">python -m agents.zoro scout [--dry-run]   ·   cron 台北 05:00   ·   Nami ask_zoro tool</div>
+        <div class="inv-body">
+          <div class="inv-block inv-block--fns">
+            <p class="inv-block-label">核心功能模組 <span class="n">8</span></p>
+            <ul class="inv-fns">
+              <li><code>keyword_research.py</code><span class="desc">雙語 10 源蒐集 + Claude 合成</span></li>
+              <li><code>brainstorm_scout.py</code><span class="desc">領域信號評分與頂篇選擇</span></li>
+              <li><code>autocomplete.py</code><span class="desc">Google 自動完成熱搜</span></li>
+              <li><code>reddit_api.py</code><span class="desc">健康 subreddit 24–48h hot post</span></li>
+              <li><code>trends_api.py</code><span class="desc">Google Trends 趨勢方向</span></li>
+              <li><code>twitter_api.py</code><span class="desc">Twitter/X KOL 動態</span></li>
+              <li><code>youtube_api.py</code><span class="desc">YouTube 影片搜尋</span></li>
+              <li><code>report_renderer.py</code><span class="desc">Markdown frontmatter 結構化輸出</span></li>
+            </ul>
+          </div>
+          <div class="inv-block">
+            <p class="inv-block-label">用到的 scripts</p>
+            <div class="inv-chips"><span class="inv-chip">run_keyword_research.py</span></div>
+          </div>
+          <div class="inv-block">
+            <p class="inv-block-label">已 skill 化</p>
+            <div class="inv-chips">
+              <span class="inv-chip skill">keyword-research<span class="wrap">→ research_keywords() + render_markdown()</span></span>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <!-- Nami -->
+      <article class="inv-agent">
+        <div class="inv-agent-head">
+          <h3 class="inv-agent-name">Nami <span class="role">秘書 · 航海士</span></h3>
+          <p class="inv-tagline">Slack DM 驅動的對話型秘書：LLM tool-use 迴圈，30+ 工具涵蓋 Project/Task、Calendar、Gmail、Vault、學術檢索與跨 agent 協作。</p>
+          <span class="inv-skillflag has">2 skills</span>
+        </div>
+        <div class="inv-cli">真引擎在 gateway/handlers/nami.py（nakama-gateway service）· 本體 agents/nami/__main__.py 為 stub · Morning Brief cron 07:00 已禁用</div>
+        <div class="inv-body">
+          <div class="inv-block inv-block--fns">
+            <p class="inv-block-label">核心功能（30+ tools）</p>
+            <ul class="inv-fns">
+              <li><code>gateway/handlers/nami.py</code><span class="desc">主引擎：LLM tool-use 迴圈</span></li>
+              <li><code>project / task</code><span class="desc">create / update / delete / list</span></li>
+              <li><code>calendar</code><span class="desc">建/列/改事件 · schedule_task_entry</span></li>
+              <li><code>gmail</code><span class="desc">未讀/讀取/搜尋/草稿/寄送</span></li>
+              <li><code>vault notes</code><span class="desc">write / read / list</span></li>
+              <li><code>web / academic</code><span class="desc">web_search · pubmed · arxiv · YT transcript</span></li>
+              <li><code>ask_zoro</code><span class="desc">轉派 Zoro（trend / social / keyword）</span></li>
+              <li><code>ask_user</code><span class="desc">暫停迴圈等使用者回覆</span></li>
+            </ul>
+          </div>
+          <div class="inv-block">
+            <p class="inv-block-label">用到的 scripts</p>
+            <div class="inv-chips">
+              <span class="inv-chip">run_project_bootstrap.py</span>
+              <span class="inv-chip">google_calendar_auth.py</span>
+              <span class="inv-chip">google_gmail_auth.py</span>
+            </div>
+          </div>
+          <div class="inv-block">
+            <p class="inv-block-label">已 skill 化</p>
+            <div class="inv-chips">
+              <span class="inv-chip skill">project-bootstrap<span class="wrap">→ run_project_bootstrap.py</span></span>
+              <span class="inv-chip skill">transcribe<span class="wrap">→ run_transcribe.py</span></span>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <!-- Brook -->
+      <article class="inv-agent">
+        <div class="inv-agent-head">
+          <h3 class="inv-agent-name">Brook <span class="role">撰稿 · 音樂家</span></h3>
+          <p class="inv-tagline">把 podcast / 影片腳本依風格 profile 轉成多平台格式（blog / FB / IG / 電子報），並做 scaffold 與 SEO audit。ADR-027 已 narrow，B-roll 移交 Foundry。</p>
+          <span class="inv-skillflag has">1 skill</span>
+        </div>
+        <div class="inv-cli">python -m agents.brook.synthesize &lt;slug&gt; --topic … --keyword …   ·   python -m agents.brook 為 stub</div>
+        <div class="inv-body">
+          <div class="inv-block inv-block--fns">
+            <p class="inv-block-label">核心功能模組</p>
+            <ul class="inv-fns">
+              <li><code>repurpose_engine.py</code><span class="desc">多平台 fan-out 編排（blog/FB/IG）</span></li>
+              <li><code>blog_renderer.py</code><span class="desc">YAML frontmatter + LLM blog body</span></li>
+              <li><code>fb_renderer.py</code><span class="desc">4 種語氣 FB post（並行）</span></li>
+              <li><code>ig_renderer.py</code><span class="desc">IG carousel JSON（5–10 卡）</span></li>
+              <li><code>line1_extractor.py</code> / <code>line1b</code><span class="desc">diarized SRT → 8 段敘事 JSON</span></li>
+              <li><code>seo_block.py</code> / <code>seo_narrow.py</code><span class="desc">SEO context 注入 + token 預算裁剪</span></li>
+              <li><code>style_profile_loader.py</code><span class="desc">凍結的 StyleProfile 載入</span></li>
+              <li><code>context_bridge.py</code><span class="desc">Claude.ai 可貼上的 prompt 包</span></li>
+              <li><code>audit_runner.py</code><span class="desc">包 seo-audit-post skill 子程序</span></li>
+              <li><code>synthesize/</code><span class="desc">研究 + 大綱撰稿 CLI</span></li>
+              <li><code>script_video/</code><span class="desc">影片腳本 → SRT/FCPXML（Phase 1）</span></li>
+            </ul>
+          </div>
+          <div class="inv-block">
+            <p class="inv-block-label">用到的 scripts</p>
+            <div class="inv-chips">
+              <span class="inv-chip">run_repurpose.py</span>
+              <span class="inv-chip">brook_posts_inventory.py</span>
+              <span class="inv-chip">compose_playbook_v1.py</span>
+              <span class="inv-chip">splice_playbook_v1.py</span>
+              <span class="inv-chip">dispatch_*_playbook_audit.py</span>
+            </div>
+          </div>
+          <div class="inv-block">
+            <p class="inv-block-label">已 skill 化</p>
+            <div class="inv-chips">
+              <span class="inv-chip skill">article-compose<span class="wrap">→ 對話型撰稿（大綱→逐段→匯出）</span></span>
+            </div>
+            <p class="inv-empty" style="margin-top:8px">＊對話 wrapper，不直接呼叫 Python pipeline</p>
+          </div>
+        </div>
+      </article>
+
+      <!-- Foundry -->
+      <article class="inv-agent">
+        <div class="inv-agent-head">
+          <h3 class="inv-agent-name">Foundry <span class="role">影像 · 工坊</span></h3>
+          <p class="inv-tagline">ADR-032：吃乾淨 SRT + 講者影片，產出 DaVinci Resolve 可匯入的 FCPXML timeline + content-addressed B-roll 片段。</p>
+          <span class="inv-skillflag has">1 skill</span>
+        </div>
+        <div class="inv-cli">python -m agents.brook.script_video --episode &lt;id&gt; {plan | hint-beats | render | emit | run | diff | replan-beat}</div>
+        <div class="inv-body">
+          <div class="inv-block inv-block--fns">
+            <p class="inv-block-label">核心功能模組</p>
+            <ul class="inv-fns">
+              <li><code>pipeline.py</code><span class="desc">編排：plan / render / emit / run / diff</span></li>
+              <li><code>planner.py</code><span class="desc">LLM 創意 planner（opus）→ beats</span></li>
+              <li><code>beat_aligner.py</code><span class="desc">確定性 substring 對齊（anchor 合約）</span></li>
+              <li><code>beat_editor.py</code><span class="desc">套用 11 種 BeatEdit ops</span></li>
+              <li><code>replan_agent.py</code><span class="desc">單 beat re-plan LLM tool agent</span></li>
+              <li><code>fcpxml_emitter.py</code><span class="desc">FCPXML 1.10 writer（V1/V2/A1）</span></li>
+              <li><code>render_dispatcher.py</code><span class="desc">內容定址輸出 + cache（ADR-038）</span></li>
+              <li><code>render_workers/</code><span class="desc">hyperframes / playwright / thumbnail</span></li>
+              <li><code>silence_detection.py</code><span class="desc">ffmpeg silencedetect → speaking spans</span></li>
+              <li><code>srt_flattener.py</code><span class="desc">SRT → flat prose + char↔time index</span></li>
+              <li><code>chinese_normalizer.py</code><span class="desc">全半形 / 中文數字正規化</span></li>
+              <li><code>storyboard_diff.py</code> · <code>export_hash.py</code> · <code>edit_log.py</code><span class="desc">diff / 內容定址 hash / re-plan 歷史</span></li>
+            </ul>
+          </div>
+          <div class="inv-block">
+            <p class="inv-block-label">用到的 scripts</p>
+            <div class="inv-chips">
+              <span class="inv-chip">align_srt.py</span>
+              <span class="inv-chip">analyze_srt_cuts.py</span>
+              <span class="inv-chip">compare_srt.py</span>
+              <span class="inv-chip">analyze_qwen_srt.py</span>
+            </div>
+          </div>
+          <div class="inv-block">
+            <p class="inv-block-label">已 skill 化</p>
+            <div class="inv-chips">
+              <span class="inv-chip skill">brook-replan-beat<span class="wrap">→ 單 beat re-plan 對話逃生口</span></span>
+            </div>
+            <p class="inv-empty" style="margin-top:8px">＊canonical 邏輯在 Python，skill 為 escape hatch</p>
+          </div>
+        </div>
+      </article>
+
+      <!-- Usopp -->
+      <article class="inv-agent">
+        <div class="inv-agent-head">
+          <h3 class="inv-agent-name">Usopp <span class="role">發布 · 狙擊手</span></h3>
+          <p class="inv-tagline">輪詢 approval_queue，把已審核草稿經 8 階 state machine 發佈到 WordPress（含 SEOPress meta、LiteSpeed cache、合規攔截、雙層 idempotency）。</p>
+          <span class="inv-skillflag none">—</span>
+        </div>
+        <div class="inv-cli">python -m agents.usopp（UsoppDaemon · systemd · poll approval_queue 預設 30s）</div>
+        <div class="inv-body">
+          <div class="inv-block inv-block--fns">
+            <p class="inv-block-label">核心功能模組 <span class="n">2</span></p>
+            <ul class="inv-fns">
+              <li><code>publisher.py</code><span class="desc">8 階 state machine → WordPress；雙層 idempotency</span></li>
+              <li><code>__main__.py</code><span class="desc">UsoppDaemon poll/claim/dispatch · graceful SIGTERM</span></li>
+            </ul>
+          </div>
+          <div class="inv-block">
+            <p class="inv-block-label">用到的 scripts</p>
+            <p class="inv-empty">無 — 由 systemd 拉起</p>
+          </div>
+          <div class="inv-block">
+            <p class="inv-block-label">已 skill 化</p>
+            <p class="inv-empty">無 — daemon 無互動，不合 skill 模式</p>
+          </div>
+        </div>
+      </article>
+
+      <!-- Sanji -->
+      <article class="inv-agent">
+        <div class="inv-agent-head">
+          <h3 class="inv-agent-name">Sanji <span class="role">社群 · 廚師</span></h3>
+          <p class="inv-tagline">規劃中的社群營運 agent（Fluent Community）：監控未回覆問題、追蹤成員活躍、建議活動主題。目前僅 smoke test。</p>
+          <span class="inv-skillflag stub">STUB</span>
+        </div>
+        <div class="inv-cli">python -m agents.sanji（載 persona prompt + shared.llm.ask() 自介；社群監控功能未上線）</div>
+        <div class="inv-body">
+          <div class="inv-block inv-block--fns">
+            <p class="inv-block-label">核心功能模組 <span class="n">1</span></p>
+            <ul class="inv-fns">
+              <li><code>__main__.py</code><span class="desc">第一版 smoke test；實際功能留待 Q3</span></li>
+            </ul>
+          </div>
+          <div class="inv-block">
+            <p class="inv-block-label">用到的 scripts</p>
+            <p class="inv-empty">無</p>
+          </div>
+          <div class="inv-block">
+            <p class="inv-block-label">已 skill 化</p>
+            <p class="inv-empty">無 — Phase 1 stub</p>
+          </div>
+        </div>
+      </article>
+
+      <!-- Franky -->
+      <article class="inv-agent">
+        <div class="inv-agent-head">
+          <h3 class="inv-agent-name">Franky <span class="role">維運 · 船匠</span></h3>
+          <p class="inv-tagline">全棧 ops：5 分鐘健康探針、15 分鐘異常偵測、每日備份驗證、AI 新聞摘要、週報 / 月回顧合成、GSC 排名追蹤。</p>
+          <span class="inv-skillflag none">—</span>
+        </div>
+        <div class="inv-cli">python -m agents.franky {health | alert | backup-verify | digest | news | anomaly | gsc-daily | synthesis | retrospective}</div>
+        <div class="inv-body">
+          <div class="inv-block inv-block--fns">
+            <p class="inv-block-label">核心功能模組</p>
+            <ul class="inv-fns">
+              <li><code>agent.py</code> / <code>reporter.py</code><span class="desc">週報產生（讀 backlog → Claude → repo/KB）</span></li>
+              <li><code>health_check.py</code><span class="desc">5 分鐘探針 · N-fail 計數 + alert 升降</span></li>
+              <li><code>anomaly_daemon.py</code><span class="desc">15 分鐘 cost/latency/error/cron 偵測</span></li>
+              <li><code>alert_router.py</code><span class="desc">去重 + Slack DM 分派</span></li>
+              <li><code>news_digest.py</code><span class="desc">每日 06:30 AI 新聞摘要</span></li>
+              <li><code>news_synthesis.py</code> / <code>news_retrospective.py</code><span class="desc">週報合成 / 月末回顧</span></li>
+              <li><code>r2_backup_verify.py</code><span class="desc">每日 R2 備份驗證</span></li>
+              <li><code>weekly_digest.py</code><span class="desc">週一 5 區 Slack 摘要</span></li>
+              <li><code>cron_dispatcher.py</code><span class="desc">週日智能路由（synthesis vs retrospective）</span></li>
+              <li><code>jobs/gsc_daily.py</code><span class="desc">每日 GSC 7 天 ranking pull</span></li>
+              <li><code>news/*</code><span class="desc">RSS / HTML / awesome-diff / trending</span></li>
+              <li><code>state/*</code><span class="desc">context snapshot · proposal FSM</span></li>
+            </ul>
+          </div>
+          <div class="inv-block">
+            <p class="inv-block-label">用到的 scripts</p>
+            <div class="inv-chips">
+              <span class="inv-chip">backup_nakama_state.py</span>
+              <span class="inv-chip">restore_from_r2.py</span>
+              <span class="inv-chip">mirror_backup_to_secondary.py</span>
+              <span class="inv-chip">verify_backup_integrity.py</span>
+              <span class="inv-chip">vps_baseline_monitor.py</span>
+              <span class="inv-chip">cleanup_logs.py</span>
+              <span class="inv-chip">maintain_user_memories.py</span>
+            </div>
+          </div>
+          <div class="inv-block">
+            <p class="inv-block-label">已 skill 化</p>
+            <p class="inv-empty">無（全自動 cron，本就不需互動）</p>
+          </div>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ── 03 · skill 目錄 ───────────────────────────────────────────── -->
+  <section aria-labelledby="skills-heading">
+    <div class="section-head">
+      <div class="sho-kicker"><span class="sho-kicker-n">03</span><span>skills · catalog</span></div>
+      <h2 class="section-title" id="skills-heading">nakama 專屬 skills</h2>
+      <p class="section-blurb">
+        綁定 agent 能力的 skills。另有獨立 SEO skills（<code>seo-audit-post</code>、
+        <code>seo-keyword-enrich</code>，偏 Franky/ops）與通用工程 skills
+        （tdd · to-issues · to-prd · diagnose · github-triage · zoom-out · grill-with-docs · improve-codebase-architecture）不在此表。
+      </p>
+    </div>
+    <div class="table-wrap">
+      <table class="matrix">
+        <thead>
+          <tr><th class="row-label">skill</th><th>歸屬 agent</th><th>包裝對象</th><th>類型</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="row-label">kb-ingest</td><td>Robin</td><td><code>ingest.IngestPipeline</code></td><td><span class="skill-type thin">薄包 Python</span></td></tr>
+          <tr><td class="row-label">kb-search</td><td>Robin</td><td>HTTP <code>POST /kb/research</code></td><td><span class="skill-type thin">薄包 HTTP</span></td></tr>
+          <tr><td class="row-label">textbook-ingest</td><td>Robin</td><td>教科書章節批次攝入</td><td><span class="skill-type thin">薄包 Python</span></td></tr>
+          <tr><td class="row-label">keyword-research</td><td>Zoro</td><td><code>run_keyword_research.py</code></td><td><span class="skill-type thin">薄包 script</span></td></tr>
+          <tr><td class="row-label">project-bootstrap</td><td>Nami</td><td><code>run_project_bootstrap.py</code></td><td><span class="skill-type thin">薄包 script</span></td></tr>
+          <tr><td class="row-label">transcribe</td><td>Nami</td><td><code>run_transcribe.py</code>（Auphonic+FunASR+Opus+Gemini）</td><td><span class="skill-type thin">薄包 script</span></td></tr>
+          <tr><td class="row-label">article-compose</td><td>Brook</td><td>互動式撰稿流程</td><td><span class="skill-type">純對話 wrapper</span></td></tr>
+          <tr><td class="row-label">brook-replan-beat</td><td>Brook</td><td>單 beat re-plan（escape hatch）</td><td><span class="skill-type">純對話 wrapper</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── 04 · scripts 目錄 ─────────────────────────────────────────── -->
+  <section aria-labelledby="scripts-heading">
+    <div class="section-head">
+      <div class="sho-kicker"><span class="sho-kicker-n">04</span><span>scripts · by purpose</span></div>
+      <h2 class="section-title" id="scripts-heading"><code>scripts/</code> 依用途分組</h2>
+      <p class="section-blurb">約 80 個腳本；下表按擁有 agent / 用途歸類，省略一次性 migration 與 eval 雜項。</p>
+    </div>
+    <div class="table-wrap">
+      <table class="matrix">
+        <thead><tr><th class="row-label">分組</th><th>主要 scripts</th></tr></thead>
+        <tbody>
+          <tr><td class="row-label">Robin · KB</td><td><code>ab_ingest_bench.py</code> · <code>update_scimago.py</code> · <code>vault_layout_audit.py</code> · <code>migrate_*_concept_frontmatter.py</code></td></tr>
+          <tr><td class="row-label">Brook · repurpose</td><td><code>run_repurpose.py</code> · <code>brook_posts_inventory.py</code> · playbook 系列（<code>compose / splice / fix / dispatch_*_audit</code>）</td></tr>
+          <tr><td class="row-label">Foundry · video</td><td><code>align_srt.py</code> · <code>analyze_srt_cuts.py</code> · <code>compare_srt.py</code> · <code>analyze_qwen_srt.py</code></td></tr>
+          <tr><td class="row-label">Zoro · keyword</td><td><code>run_keyword_research.py</code></td></tr>
+          <tr><td class="row-label">Nami · setup</td><td><code>run_project_bootstrap.py</code> · <code>google_calendar_auth.py</code> · <code>google_gmail_auth.py</code></td></tr>
+          <tr><td class="row-label">transcribe · ASR</td><td><code>run_transcribe.py</code> · <code>run_qwen3_asr.py</code> · <code>srt_refine.py</code> · <code>debug_auphonic*.py</code></td></tr>
+          <tr><td class="row-label">Franky · ops/backup</td><td><code>backup_nakama_state.py</code> · <code>restore_from_r2.py</code> · <code>mirror_backup_to_secondary.py</code> · <code>verify_backup_integrity.py</code> · <code>vps_baseline_monitor.py</code> · <code>cleanup_logs.py</code> · <code>maintain_user_memories.py</code></td></tr>
+          <tr><td class="row-label">ADR · 多模型審查</td><td><code>adr_multi_model_review.py</code> · <code>dispatch_gemini_*.py</code> · <code>panel_gemini_adr021.py</code> · <code>audit_adr_035_gemini.py</code></td></tr>
+          <tr><td class="row-label">deploy · release</td><td><code>release.py</code> · <code>deploy_vps.sh</code> · <code>start_thousand_sunny.ps1</code> · <code>start_*_server.bat</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="page-footer">
+    <span class="sho-mono">
+      <span class="sho-bolt footer-bolt" aria-hidden="true"><svg><use href="#sho-bolt-shape"/></svg></span>
+      nakama · agent capability inventory · 手動維護
+    </span>
+    <span>
+      <a class="sho-lk sho-mono" href="https://github.com/shosho-chang/nakama" rel="noopener">github.com/shosho-chang/nakama</a>
+    </span>
+  </footer>
+
+</main>
+
+</body>
+</html>

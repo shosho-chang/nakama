@@ -7,6 +7,8 @@
 <script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/shosho/book_reader.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/ingest-confirm.css?v={{ asset_version }}">
+<script defer src="/static/shosho/ingest-confirm.js?v={{ asset_version }}"></script>
 </head>
 <body class="sho" data-book-version-hash="{{ book.book_version_hash }}" data-book-mode="{{ book.mode }}">
 <div class="reader-bar">
@@ -21,17 +23,27 @@
     {% endif %}
   </div>
   <nav class="right">
-    <a href="/" class="icon-btn back-inbox">📥 Inbox</a>
-    {% if book.mode != "monolingual-zh" %}
-    <span class="ingest-wrap" id="ingestWrap">
-      <button type="button" class="icon-btn" id="ingestBtn" aria-label="送出整本書 ingest 請求" disabled>📥 Ingest 整本書</button>
-    </span>
-    {% endif %}
-    <button type="button" class="icon-btn" id="tocToggle" aria-label="切換目錄" aria-pressed="false">📑 目錄</button>
-    <button type="button" class="icon-btn" id="commentsToggle" aria-label="切換反思側欄" aria-pressed="false">💬 反思</button>
+    <a href="/robin/home" class="icon-btn back-inbox">🏠 <span class="btn-label">首頁</span></a>
+    {# Ingest 整本書 → 同步 POST /start-book → /processing（與文章/影片同一條 SSE 自動
+       流程，3–5 分鐘 + 進度條，取代舊的 ingest 佇列）。中譯-only 書讀中文 blob 跑同一條，
+       不限英文原檔（修修 回饋 item 5）。標籤由 book_reader.js 依 ingest_status 設定
+       （ingested → 重新 ingest）。 #}
+    <form method="post" action="/start-book" class="ingest-wrap" id="ingestForm"
+          data-ingest-confirm data-est-type="book" data-est-id-field="book_id"
+          data-est-name="{{ book.title }}">
+      <input type="hidden" name="book_id" value="{{ book.book_id }}">
+      <button type="submit" class="icon-btn" id="ingestBtn" aria-label="Ingest 整本書（約 3–5 分鐘）">📥 <span class="btn-label">Ingest 整本書</span></button>
+    </form>
+    <a href="/robin/literature/{{ book.book_id }}" target="_blank" rel="noopener" class="icon-btn" title="觀看這本書的文獻筆記（由你的劃線整理）">📖 <span class="btn-label">觀看筆記</span></a>
+    <button type="button" class="icon-btn" id="tocToggle" aria-label="切換目錄" aria-pressed="false">📑 <span class="btn-label">目錄</span></button>
+    <button type="button" class="icon-btn" id="commentsToggle" aria-label="切換反思側欄" aria-pressed="false">💬 <span class="btn-label">反思</span></button>
     <button type="button" class="icon-btn" id="kbdHelpBtn" aria-label="鍵盤快捷鍵" title="鍵盤快捷鍵（按 ?）">⌨️</button>
     <button type="button" class="icon-btn" id="deleteBookBtn" aria-label="刪除整本書" title="刪除整本書">🗑️</button>
   </nav>
+</div>
+<div id="conflictBanner" class="reader-conflict-banner" role="alert" hidden>
+  <span class="rcb-icon" aria-hidden="true">⚠</span>
+  <span class="rcb-text" id="conflictBannerText"></span>
 </div>
 <div id="reader-progress" class="reader-progress" data-state="empty" role="progressbar" aria-label="閱讀進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
   <span class="bar"></span>
@@ -51,6 +63,9 @@
   <div class="ann-bubble-excerpt" data-excerpt></div>
   <div class="ann-bubble-note" data-note hidden></div>
   <div class="ann-bubble-meta" data-meta></div>
+  <div class="ann-bubble-actions">
+    <button type="button" class="ann-bubble-edit" id="annBubbleEdit">編輯</button>
+  </div>
 </div>
 
 <!-- Reading progress footer —章節 X / Y · NN% · CFI tooltip. Fixed bottom
@@ -66,7 +81,6 @@
 <div id="ann-popup" class="ann-popup" hidden role="toolbar" aria-label="標註選單">
   <button type="button" class="h-btn" data-action="highlight">H 螢光</button>
   <button type="button" class="a-btn" data-action="annotation">A 註解</button>
-  <button type="button" class="c-btn" data-action="comment">C 反思</button>
 </div>
 
 <dialog id="ann-note-modal" class="ann-dialog" aria-labelledby="ann-note-title">
@@ -86,14 +100,10 @@
 
 <dialog id="ann-comment-modal" class="ann-dialog" aria-labelledby="ann-comment-title">
   <form method="dialog">
-    <h2 id="ann-comment-title">C 反思 · 章節層級的長段思考</h2>
+    <h2 id="ann-comment-title">反思 · 章節層級的長段思考</h2>
     <div class="row">
       <label for="ann-comment-chapter">章節</label>
       <select id="ann-comment-chapter"></select>
-    </div>
-    <div class="row checkbox-row" id="ann-comment-anchor-row" hidden>
-      <input type="checkbox" id="ann-comment-anchor">
-      <label for="ann-comment-anchor">綁到剛選取的段落（除了章節之外，也記住確切位置）</label>
     </div>
     <div class="row">
       <label for="ann-comment-body">反思內容</label>
@@ -123,7 +133,7 @@
     <button type="button" class="icon-btn" id="commentsClose" aria-label="關閉側欄">×</button>
   </header>
   <div class="body" id="comments-list">
-    <div class="empty">尚無反思。點上方 + 新增章節反思，或選取文字後按「C 反思」錨定到具體段落。</div>
+    <div class="empty">尚無反思。點上方「+ 新增」選擇章節，寫下這一章的長段思考。</div>
   </div>
 </aside>
 
@@ -142,6 +152,9 @@
       <span class="rm-time" id="reflectionModalTime">—</span>
     </div>
     <div class="reflection-modal-body" id="reflectionModalBody"></div>
+    <div class="ann-bubble-actions">
+      <button type="button" class="ann-bubble-edit" id="reflectionModalEdit">編輯</button>
+    </div>
   </form>
 </dialog>
 

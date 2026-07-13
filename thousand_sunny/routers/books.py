@@ -17,6 +17,7 @@ import hashlib
 import io
 import threading
 import zipfile
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
@@ -24,6 +25,7 @@ from fastapi import (
     APIRouter,
     BackgroundTasks,
     Cookie,
+    Depends,
     File,
     Form,
     HTTPException,
@@ -37,16 +39,8 @@ from shared.annotation_store import (
     AnnotationSetV2,
     AnnotationSetV3,
     get_annotation_store,
+    list_annotation_conflicts,
     upgrade_to_v3,
-)
-from shared.book_queue import (
-    cancel as cancel_book,
-)
-from shared.book_queue import (
-    delete_queue_row,
-)
-from shared.book_queue import (
-    enqueue as enqueue_book,
 )
 from shared.book_storage import (
     BookStorageError,
@@ -61,6 +55,7 @@ from shared.book_storage import (
 from shared.book_storage import (
     delete_book as delete_book_row,
 )
+from shared.config import get_vault_path
 from shared.epub_metadata import MalformedEPUBError, extract_metadata
 from shared.epub_sanitizer import EPUBStructureError, sanitize_epub
 from shared.log import get_logger
@@ -68,7 +63,7 @@ from shared.schemas.books import Book, BookProgress
 from shared.source_mode import Mode, detect_book_mode
 from shared.state import _get_conn
 from shared.utils import slugify
-from thousand_sunny.auth import check_auth
+from thousand_sunny.auth import check_auth, require_auth_or_key, set_auth_cookie
 
 # Allowed values for the upload form ``mode`` parameter. ``"auto"`` triggers
 # server-side detection from EPUB metadata.lang + body sample.
@@ -167,16 +162,6 @@ async def _legacy_book_reader_redirect(book_id: str):
 @legacy_router.get("/api/books/{book_id}")
 async def _legacy_book_metadata_redirect(book_id: str):
     return RedirectResponse(f"/robin/api/books/{book_id}", status_code=301)
-
-
-@legacy_router.post("/api/books/{book_id}/ingest-request")
-async def _legacy_ingest_request_redirect(book_id: str):
-    return RedirectResponse(f"/robin/api/books/{book_id}/ingest-request", status_code=308)
-
-
-@legacy_router.delete("/api/books/{book_id}/ingest-request")
-async def _legacy_delete_ingest_request_redirect(book_id: str):
-    return RedirectResponse(f"/robin/api/books/{book_id}/ingest-request", status_code=308)
 
 
 @legacy_router.get("/api/books/{book_id}/cover")
@@ -411,7 +396,9 @@ async def books_upload(
 
     response = RedirectResponse(f"/robin/books/{book_id}", status_code=303)
     if nakama_auth:
-        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+        # Re-issue with the full persistent flags so the upload redirect does
+        # not silently downgrade the 90-day login cookie back to a session one.
+        set_auth_cookie(response, nakama_auth)
     return response
 
 
@@ -437,16 +424,19 @@ async def book_reader(
 
 
 def _ingest_status(book_id: str) -> str:
-    row = (
-        _get_conn()
-        .execute("SELECT status FROM book_ingest_queue WHERE book_id = ?", (book_id,))
-        .fetchone()
-    )
-    return row["status"] if row else "never"
+    """書本是否已 ingest。同步流程（/start-book → /processing）跑完會寫
+    KB/Wiki/Sources/{slug}.md，以該頁是否存在當權威（取代舊 ingest 佇列狀態，
+    PR 拆掉佇列後不再有 queued/ingesting/partial）。回 "ingested" / "never"。"""
+    book = get_book(book_id)
+    if book is None:
+        return "never"
+    slug = slugify(book.title) or book_id
+    src = get_vault_path() / "KB" / "Wiki" / "Sources" / f"{slug}.md"
+    return "ingested" if src.exists() else "never"
 
 
 @router.get("/api/books/{book_id}")
-async def book_metadata(book_id: str):
+async def book_metadata(book_id: str, _auth=Depends(require_auth_or_key)):
     book = get_book(book_id)
     if book is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
@@ -455,29 +445,8 @@ async def book_metadata(book_id: str):
     return data
 
 
-@router.post("/api/books/{book_id}/ingest-request")
-async def post_ingest_request(book_id: str):
-    book = get_book(book_id)
-    if book is None:
-        raise HTTPException(404, detail=f"book not found: {book_id}")
-    if not book.has_original:
-        raise HTTPException(400, detail="book has no original EN file to ingest")
-    enqueue_book(book_id)
-    return {"ok": True}
-
-
-@router.delete("/api/books/{book_id}/ingest-request")
-async def delete_ingest_request(book_id: str):
-    """Cancel a queued ingest. 409 if the book is already ingesting/done."""
-    if get_book(book_id) is None:
-        raise HTTPException(404, detail=f"book not found: {book_id}")
-    if not cancel_book(book_id):
-        raise HTTPException(409, detail="ingest cannot be cancelled (not queued)")
-    return {"ok": True}
-
-
 @router.get("/api/books/{book_id}/cover")
-async def book_cover(book_id: str):
+async def book_cover(book_id: str, _auth=Depends(require_auth_or_key)):
     if get_book(book_id) is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
     blob = read_cover_blob(book_id)
@@ -493,14 +462,12 @@ async def book_cover(book_id: str):
 
 @router.delete("/api/books/{book_id}")
 async def delete_book_endpoint(book_id: str, nakama_auth: str | None = Cookie(None)):
-    """Remove the book entirely — DB rows (books / queue / progress), EPUB blobs,
-    and the annotation file. Idempotent on partial state."""
+    """Remove the book entirely — DB rows (books / progress), EPUB blobs, and the
+    annotation file. Idempotent on partial state."""
     if not check_auth(nakama_auth):
         raise HTTPException(403, detail="not authenticated")
     if get_book(book_id) is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
-
-    delete_queue_row(book_id)
 
     conn = _get_conn()
     with _progress_write_lock, conn:
@@ -534,29 +501,40 @@ async def book_file(
 
 
 @router.get("/api/books/{book_id}/annotations")
-async def get_annotations(book_id: str):
+async def get_annotations(book_id: str, _auth=Depends(require_auth_or_key)):
     book = get_book(book_id)
     if book is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
     store = get_annotation_store()
     ann_set = store.load(book_id)
     if ann_set is None:
-        ann_set = AnnotationSetV2(
+        # Fabricate a v3 set, not v2: the reader mutates this object in place and
+        # POSTs it back, and its action handlers build v3-shaped items (`text`,
+        # `speaker`). A v2 schema_version routed that POST to AnnotationSetV2
+        # validation, so the first save on a freshly uploaded book always 422'd.
+        ann_set = AnnotationSetV3(
             slug=book_id,
+            base="books",
             book_id=book_id,
             book_version_hash=book.book_version_hash,
             items=[],
         )
-    return ann_set.model_dump()
+    # ADR-044 §B8: surface Syncthing conflict copies of this annotation file so
+    # the reader can warn the user to merge them, instead of losing edits silently.
+    conflicts = [asdict(c) for c in list_annotation_conflicts(book_id)]
+    return {**ann_set.model_dump(), "conflicts": conflicts}
 
 
-def _write_digest_in_background(book_id: str) -> None:
+def _render_literature_in_background(slug: str) -> None:
+    """N521: render the unified human-readable Literature Note from the book's
+    annotation set, replacing the retired ``book_digest_writer.write_digest``
+    background task. ``slug`` is the annotation-set slug (= Literature filename)."""
     try:
-        from agents.robin.book_digest_writer import write_digest  # noqa: PLC0415
+        from shared.literature_writer import write_literature_note  # noqa: PLC0415
 
-        write_digest(book_id)
+        write_literature_note(slug, source_kind="book")
     except Exception:
-        logger.exception("book digest background task failed for book_id=%s", book_id)
+        logger.exception("book literature render background task failed for slug=%s", slug)
 
 
 @router.post("/api/books/{book_id}/annotations")
@@ -564,12 +542,18 @@ async def post_annotations(
     book_id: str,
     payload: dict,
     background_tasks: BackgroundTasks,
+    _auth=Depends(require_auth_or_key),
 ):
     """Accept either an ``AnnotationSetV2`` (legacy book reader payloads) or an
     ``AnnotationSetV3`` (post ADR-021 §1 round-trip from a Reader that already
     received a v3 GET response). Both are upgraded/normalised to v3 on disk.
     """
     from pydantic import ValidationError
+
+    # The GET response decorates the set with a read-only ``conflicts`` key
+    # (ADR-044 §B8) and the reader POSTs the whole object back verbatim; both
+    # set schemas are extra="forbid", so drop the decoration before validating.
+    payload.pop("conflicts", None)
 
     schema_version = payload.get("schema_version")
     try:
@@ -592,13 +576,15 @@ async def post_annotations(
     # boundary so the on-disk store is uniformly v3 (existing BackgroundTasks digest
     # writer pattern is preserved — only ADR-021 v1's prose regenerate hook was
     # cancelled, and that hook never landed in code).
-    get_annotation_store().save(upgrade_to_v3(ann_set))
-    background_tasks.add_task(_write_digest_in_background, book_id)
+    v3_set = upgrade_to_v3(ann_set)
+    get_annotation_store().save(v3_set)
+    # N521: render the unified Literature Note (replaces the retired digest writer).
+    background_tasks.add_task(_render_literature_in_background, v3_set.slug)
     return {"ok": True, "digest_status": "queued"}
 
 
 @router.get("/api/books/{book_id}/progress")
-async def get_book_progress(book_id: str):
+async def get_book_progress(book_id: str, _auth=Depends(require_auth_or_key)):
     if get_book(book_id) is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
     conn = _get_conn()
@@ -617,7 +603,11 @@ async def get_book_progress(book_id: str):
 
 
 @router.put("/api/books/{book_id}/progress")
-async def put_book_progress(book_id: str, payload: BookProgress):
+async def put_book_progress(
+    book_id: str,
+    payload: BookProgress,
+    _auth=Depends(require_auth_or_key),
+):
     if payload.book_id != book_id:
         raise HTTPException(422, detail="book_id in URL does not match payload")
     if get_book(book_id) is None:

@@ -31,12 +31,21 @@ function pushReaderStyles() {
 }
 
 const wideMQ = window.matchMedia('(min-width: 1500px)');
+const mobileMQ = window.matchMedia('(max-width: 768px)');
 function applyColumns() {
   if (!view.renderer) return;
-  view.renderer.setAttribute('flow', 'paginated');
-  view.renderer.setAttribute('max-column-count', wideMQ.matches ? '2' : '1');
+  // Mobile → continuous vertical scroll (smoother on touch; paginated columns
+  // clip the last lines behind the fixed footer on a phone). Desktop keeps
+  // paginated columns (1, or 2 on very wide screens).
+  if (mobileMQ.matches) {
+    view.renderer.setAttribute('flow', 'scrolled');
+  } else {
+    view.renderer.setAttribute('flow', 'paginated');
+    view.renderer.setAttribute('max-column-count', wideMQ.matches ? '2' : '1');
+  }
 }
 wideMQ.addEventListener('change', applyColumns);
+mobileMQ.addEventListener('change', applyColumns);
 
 // ── Annotation state ──────────────────────────────────────────────────────────
 //
@@ -52,8 +61,10 @@ wideMQ.addEventListener('change', applyColumns);
 // selection is lost (modals steal focus).
 
 const ANN_HIGHLIGHT_COLOR = 'yellow';   // H button (highlight)
-const ANN_NOTE_COLOR = 'orange';        // A button (annotation w/ note)
-const ANN_COMMENT_ANCHOR_COLOR = 'blue'; // C button when cfi_anchor is set
+// A button (annotation w/ note) — brand orange (tokens.css --sho-accent,
+// PANTONE 165). Literal because overlays draw inside the sandboxed EPUB
+// iframe where --sho-* custom properties don't cascade.
+const ANN_NOTE_COLOR = 'oklch(0.71 0.135 41)';
 
 const popup = document.getElementById('ann-popup');
 const noteModal = document.getElementById('ann-note-modal');
@@ -61,8 +72,6 @@ const noteExcerpt = document.getElementById('ann-note-excerpt');
 const noteText = document.getElementById('ann-note-text');
 const commentModal = document.getElementById('ann-comment-modal');
 const commentChapter = document.getElementById('ann-comment-chapter');
-const commentAnchor = document.getElementById('ann-comment-anchor');
-const commentAnchorRow = document.getElementById('ann-comment-anchor-row');
 const commentBody = document.getElementById('ann-comment-body');
 const commentsSidebar = document.getElementById('comments-sidebar');
 const commentsList = document.getElementById('comments-list');
@@ -80,6 +89,15 @@ const annBubbleKind = annBubble ? annBubble.querySelector('[data-kind]') : null;
 const annBubbleExcerpt = annBubble ? annBubble.querySelector('[data-excerpt]') : null;
 const annBubbleNote = annBubble ? annBubble.querySelector('[data-note]') : null;
 const annBubbleMeta = annBubble ? annBubble.querySelector('[data-meta]') : null;
+const annBubbleEdit = document.getElementById('annBubbleEdit');
+const noteModalTitle = document.getElementById('ann-note-title');
+const NOTE_MODAL_DEFAULT_TITLE = noteModalTitle ? noteModalTitle.textContent : '';
+
+// Edit-in-place state (η.1) — `bubbleItem` is the item the detail bubble is
+// currently showing; `editingItem` is non-null while the note modal is open in
+// edit mode (opened from the bubble's edit button instead of a fresh selection).
+let bubbleItem = null;
+let editingItem = null;
 
 // Reading-progress footer (δ.2).
 const rpfChapter = document.getElementById('rpfChapter');
@@ -231,7 +249,6 @@ async function fetchBookMetadata() {
     const meta = await r.json();
     if (meta.book_version_hash) bookVersionHash = meta.book_version_hash;
     applyIngestState({
-      has_original: meta.has_original === true,
       ingest_status: typeof meta.ingest_status === 'string' ? meta.ingest_status : 'never',
     });
   } catch (err) {
@@ -252,6 +269,29 @@ async function fetchAnnotations() {
     console.warn('annotations fetch failed', err);
     currentSet = emptyAnnotationSet();
   }
+}
+
+// ADR-044 §B8 — surface Syncthing conflict copies of this book's annotation
+// file (VPS Robin write vs mobile Obsidian edit) so the user merges them
+// manually, instead of the divergence being silently dropped.
+function renderConflictBanner() {
+  const banner = document.getElementById('conflictBanner');
+  if (!banner) return;
+  const conflicts = currentSet && Array.isArray(currentSet.conflicts)
+    ? currentSet.conflicts
+    : [];
+  if (conflicts.length === 0) {
+    banner.hidden = true;
+    return;
+  }
+  const textEl = document.getElementById('conflictBannerText');
+  if (textEl) {
+    const devices = [...new Set(conflicts.map((c) => c.device))].join('、');
+    textEl.textContent =
+      `偵測到 ${conflicts.length} 個同步衝突檔（${devices}）—— 此來源的標註在不同裝置上分歧，`
+      + '請到 KB/Annotations 手動合併。新標註仍會存進主檔。';
+  }
+  banner.hidden = false;
 }
 
 async function persistSet(nextSet) {
@@ -296,7 +336,6 @@ function renderHighlight(item) {
   // Best-effort: invalid CFI throws; bump the broken counter and move on.
   let color = ANN_HIGHLIGHT_COLOR;
   if (item.type === 'annotation') color = ANN_NOTE_COLOR;
-  else if (isReflection(item)) color = ANN_COMMENT_ANCHOR_COLOR;
   try {
     view.addAnnotation({ value: item.cfi || item.cfi_anchor, color });
     return true;
@@ -312,12 +351,9 @@ function renderAllExisting() {
   for (const item of currentSet.items) {
     if (item.type === 'highlight' || item.type === 'annotation') {
       if (!renderHighlight(item)) broken += 1;
-    } else if (isReflection(item)) {
-      // Only render an overlay if the reflection carries a cfi_anchor.
-      if (item.cfi_anchor) {
-        if (!renderHighlight(item)) broken += 1;
-      }
     }
+    // θ.1（修修 2026-06-10）：反思是章節層級，不再畫段落 overlay —
+    // legacy item 的 cfi_anchor 資料保留，只是不渲染。反思入口在側欄。
   }
   rebuildCommentsSidebar();
   return broken;
@@ -331,7 +367,7 @@ function rebuildCommentsSidebar() {
   if (comments.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'empty';
-    empty.textContent = '尚無反思。點上方 + 新增章節反思，或選取文字後按「C 反思」錨定到具體段落。';
+    empty.textContent = '尚無反思。點上方「+ 新增」選擇章節，寫下這一章的長段思考。';
     commentsList.appendChild(empty);
     return;
   }
@@ -376,13 +412,28 @@ const reflectionModal = document.getElementById('reflection-modal');
 const reflectionModalChapter = document.getElementById('reflectionModalChapter');
 const reflectionModalTime = document.getElementById('reflectionModalTime');
 const reflectionModalBody = document.getElementById('reflectionModalBody');
+const reflectionModalEdit = document.getElementById('reflectionModalEdit');
+
+// θ.1 — the viewer is now also the reflection edit entry point（反思沒有
+// 段落 overlay 了，bubble 編輯路徑到不了它）。
+let reflectionModalItem = null;
 
 function openReflectionModal(item) {
   if (!reflectionModal) return;
+  reflectionModalItem = item;
   reflectionModalChapter.textContent = _labelForChapterRef(item.chapter_ref);
   reflectionModalTime.textContent = item.created_at || '';
   reflectionModalBody.textContent = item.body || '';
   reflectionModal.showModal();
+}
+
+if (reflectionModalEdit) {
+  reflectionModalEdit.addEventListener('click', () => {
+    if (!reflectionModalItem) return;
+    const item = reflectionModalItem;
+    reflectionModal.close('edit');
+    openEditModal(item);
+  });
 }
 
 // δ.3 / ε.3 — walk view.book.toc (recursive children) and build a href →
@@ -691,6 +742,7 @@ async function submitNote() {
     showToast('請輸入註解內容');
     return false;
   }
+  if (editingItem) return submitNoteEdit(note);
   if (!lastSelection || !lastSelection.cfi) {
     showToast('找不到選取位置');
     return false;
@@ -706,19 +758,78 @@ async function submitNote() {
     modified_at: ts,
   };
   try { view.addAnnotation({ value: item.cfi, color: ANN_NOTE_COLOR }); } catch (_) { /* ignore */ }
-  await appendItemAndPersist(item);
+  // Honest return: on a failed save the modal stays open so the typed note is
+  // not silently discarded (2026-06-10 data-loss lesson).
+  return appendItemAndPersist(item);
+}
+
+// η.1 — edit-in-place save. Replaces `editingItem` inside currentSet instead
+// of appending. A highlight gaining a note becomes an annotation (v3 highlights
+// have no note field), so its overlay is repainted in the annotation color.
+async function submitNoteEdit(note) {
+  const target = editingItem;
+  const ts = nowIso();
+  let updated;
+  if (target.type === 'highlight') {
+    updated = {
+      type: 'annotation',
+      schema_version: 3,
+      cfi: target.cfi,
+      text_excerpt: target.text_excerpt,
+      book_version_hash: target.book_version_hash,
+      note,
+      speaker: target.speaker || '',
+      created_at: target.created_at,
+      modified_at: ts,
+    };
+  } else if (isReflection(target)) {
+    updated = { ...target, body: note, modified_at: ts };
+  } else {
+    updated = { ...target, note, modified_at: ts };
+  }
+  const next = {
+    ...currentSet,
+    items: currentSet.items.map(it => (it === target ? updated : it)),
+    updated_at: ts,
+  };
+  const ok = await persistSet(next);
+  if (!ok) return false;
+  if (target.type === 'highlight') {
+    try {
+      view.deleteAnnotation({ value: updated.cfi });
+      view.addAnnotation({ value: updated.cfi, color: ANN_NOTE_COLOR });
+    } catch (_) { /* ignore */ }
+  }
+  if (isReflection(target)) rebuildCommentsSidebar();
   return true;
+}
+
+// η.1 — open the note modal in edit mode from the bubble's edit button.
+// Reuses the same modal for all three item kinds; the reflection variant
+// hides the excerpt strip (reflections carry no text_excerpt in v3).
+function openEditModal(item) {
+  editingItem = item;
+  if (noteModalTitle) {
+    noteModalTitle.textContent = item.type === 'highlight' ? '新增註解 · 為這段螢光加上想法'
+      : isReflection(item) ? '編輯反思'
+        : '編輯註解';
+  }
+  if (isReflection(item)) {
+    noteExcerpt.hidden = true;
+    noteExcerpt.textContent = '';
+  } else {
+    noteExcerpt.hidden = false;
+    noteExcerpt.textContent = item.text_excerpt || '';
+  }
+  noteText.value = item.type === 'highlight' ? '' : (item.note || item.body || '');
+  hideAnnotationBubble();
+  noteModal.showModal();
+  setTimeout(() => noteText.focus(), 0);
 }
 
 function openCommentModal() {
   populateChapterSelect();
   commentBody.value = '';
-  commentAnchor.checked = false;
-  // δ.4 — only show the "綁到剛選取的段落" toggle when there is a live
-  // selection; otherwise the row is irrelevant noise.
-  const hasSelection = !!(lastSelection && lastSelection.cfi);
-  commentAnchor.disabled = !hasSelection;
-  if (commentAnchorRow) commentAnchorRow.hidden = !hasSelection;
   hidePopup();
   commentModal.showModal();
   setTimeout(() => commentBody.focus(), 0);
@@ -731,22 +842,20 @@ async function submitComment() {
     return false;
   }
   const chapterRef = commentChapter.value || currentChapter || '';
-  const anchor = commentAnchor.checked && lastSelection && lastSelection.cfi
-    ? lastSelection.cfi
-    : null;
   const ts = nowIso();
   const item = {
-    type: 'comment',
+    // v3 wire name. ``comment`` was the v2 name — since #870 every set the
+    // server hands out is v3, whose item union only accepts ``reflection``,
+    // so posting ``comment`` 422s. isReflection() keeps reading both.
+    // θ.1: reflections are chapter-level only — no paragraph anchor.
+    type: 'reflection',
     chapter_ref: chapterRef,
-    cfi_anchor: anchor,
+    cfi_anchor: null,
     body,
     book_version_hash: bookVersionHash,
     created_at: ts,
     modified_at: ts,
   };
-  if (anchor) {
-    try { view.addAnnotation({ value: anchor, color: ANN_COMMENT_ANCHOR_COLOR }); } catch (_) { /* ignore */ }
-  }
   const ok = await appendItemAndPersist(item);
   if (ok) rebuildCommentsSidebar();
   return ok;
@@ -759,7 +868,21 @@ popup.addEventListener('click', e => {
   const action = btn.dataset.action;
   if (action === 'highlight') actionHighlight();
   else if (action === 'annotation') openNoteModal();
-  else if (action === 'comment') openCommentModal();
+});
+
+// η.1 — bubble edit button → note modal in edit mode.
+if (annBubbleEdit) {
+  annBubbleEdit.addEventListener('click', () => {
+    if (bubbleItem) openEditModal(bubbleItem);
+  });
+}
+
+// η.1 — whatever way the note modal closes (save / cancel / Escape), drop the
+// edit state and restore the create-mode chrome so the next H/A flow is clean.
+noteModal.addEventListener('close', () => {
+  editingItem = null;
+  if (noteModalTitle) noteModalTitle.textContent = NOTE_MODAL_DEFAULT_TITLE;
+  noteExcerpt.hidden = false;
 });
 
 // Modal cancel buttons
@@ -795,123 +918,42 @@ commentsToggle.addEventListener('click', () => {
 commentsClose.addEventListener('click', () => setSidebarOpen(false));
 addCommentBtn.addEventListener('click', openCommentModal);
 
-// ── Ingest button (Slice 4D) ─────────────────────────────────────────────────
+// θ.2（修修 2026-06-10）— 點側欄以外的地方就收起側欄（反思 + 目錄）。
+// toggle 按鈕本身除外：開啟的那一下 click 會冒泡到 document，
+// 不排除的話側欄一開就被同一個 click 關掉。
+function dismissSidebarsOnOutsideClick(target) {
+  // Clicks inside an open <dialog>（編輯/反思/新增 modal）不算「點到畫面
+  // 其他地方」— 否則在 modal 裡按儲存會順手把背後的側欄關掉。
+  if (target && target.closest && target.closest('dialog')) return;
+  if (commentsSidebar && !commentsSidebar.hidden
+      && !commentsSidebar.contains(target)
+      && !(commentsToggle && commentsToggle.contains(target))) {
+    setSidebarOpen(false);
+  }
+  if (tocSidebar && !tocSidebar.hidden
+      && !tocSidebar.contains(target)
+      && !(tocToggle && tocToggle.contains(target))) {
+    setTocSidebarOpen(false);
+  }
+}
+document.addEventListener('click', e => dismissSidebarsOnOutsideClick(e.target));
+
+// ── Ingest button label ──────────────────────────────────────────────────────
 //
-// Reader-side trigger for the whole-book ingest pipeline (Slices 4A–4C). The
-// button is gated on `has_original` — uploads without an EN original cannot be
-// ingested, so we surface an inline tooltip instead of a silent disabled state.
-// On 200 we lock the button into the "Queued" state; the badge on the library
-// page is the source of truth for downstream status (ingesting / ingested /
-// partial / failed). Single user, manual refresh — no polling here.
+// The button is a <form method="post" action="/start-book"> submit (book_reader.html):
+// clicking POSTs synchronously → /processing runs the SAME SSE autonomous flow as
+// articles/videos (摘要→概念→寫入→開卡建議), 3–5 min + progress bar. No ingest queue,
+// no async fetch here — the form navigates. We only relabel: an already-ingested book
+// (ingest_status='ingested', i.e. its KB/Wiki/Sources page exists) offers "重新 ingest".
 
 const ingestBtn = document.getElementById('ingestBtn');
-const ingestWrap = document.getElementById('ingestWrap');
 
-// The ingest button is a state-machine: its current text + dataset.mode tell the
-// click handler which API to call. queued is the only cancellable state — once
-// the LLM ingest starts (status='ingesting') the API refuses (409) since the
-// background job can't be aborted mid-run.
-function applyIngestState({ has_original, ingest_status }) {
-  if (!ingestBtn || !ingestWrap) return;
-  ingestBtn.classList.remove('is-queued');
-  ingestBtn.dataset.mode = 'ingest';
-  if (!has_original) {
-    ingestBtn.disabled = true;
-    ingestBtn.textContent = '📥 Ingest 整本書';
-    ingestWrap.setAttribute('data-disabled-reason', '上傳 EN 原檔以啟用 ingest');
-    return;
-  }
-  ingestWrap.removeAttribute('data-disabled-reason');
-  if (ingest_status === 'queued') {
-    ingestBtn.disabled = false;
-    ingestBtn.classList.add('is-queued');
-    ingestBtn.dataset.mode = 'cancel';
-    ingestBtn.textContent = '📥 取消 Queued';
-    return;
-  }
-  if (ingest_status === 'ingesting') {
-    ingestBtn.disabled = true;
-    ingestBtn.classList.add('is-queued');
-    ingestBtn.textContent = '📥 Ingesting';
-    return;
-  }
-  if (ingest_status === 'ingested') {
-    ingestBtn.disabled = true;
-    ingestBtn.classList.add('is-queued');
-    ingestBtn.textContent = '📥 Ingested';
-    return;
-  }
-  if (ingest_status === 'partial' || ingest_status === 'failed') {
-    ingestBtn.disabled = false;
-    ingestBtn.textContent = '📥 重試 ingest';
-    return;
-  }
-  ingestBtn.disabled = false;
-  ingestBtn.textContent = '📥 Ingest 整本書';
-}
-
-async function requestIngest() {
+function applyIngestState({ ingest_status }) {
   if (!ingestBtn) return;
-  const prevText = ingestBtn.textContent;
-  ingestBtn.disabled = true;
-  ingestBtn.textContent = '📥 送出中⋯';
-  try {
-    const r = await fetch(
-      `/robin/api/books/${encodeURIComponent(BOOK_ID)}/ingest-request`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' } },
-    );
-    if (!r.ok) {
-      const detail = await r.text().catch(() => '');
-      console.error('ingest request failed', r.status, detail);
-      showToast(`Ingest 送出失敗 (HTTP ${r.status})`);
-      ingestBtn.disabled = false;
-      ingestBtn.textContent = prevText;
-      return;
-    }
-    applyIngestState({ has_original: true, ingest_status: 'queued' });
-  } catch (err) {
-    console.error('ingest request error', err);
-    showToast(`Ingest 送出失敗：${String(err.message || err)}`);
-    ingestBtn.disabled = false;
-    ingestBtn.textContent = prevText;
+  const label = ingestBtn.querySelector('.btn-label');
+  if (label) {
+    label.textContent = ingest_status === 'ingested' ? '重新 ingest' : 'Ingest 整本書';
   }
-}
-
-async function cancelIngest() {
-  if (!ingestBtn) return;
-  const prevText = ingestBtn.textContent;
-  ingestBtn.disabled = true;
-  ingestBtn.textContent = '📥 取消中⋯';
-  try {
-    const r = await fetch(
-      `/robin/api/books/${encodeURIComponent(BOOK_ID)}/ingest-request`,
-      { method: 'DELETE' },
-    );
-    if (!r.ok) {
-      const detail = await r.text().catch(() => '');
-      console.error('ingest cancel failed', r.status, detail);
-      showToast(`取消失敗 (HTTP ${r.status})`);
-      ingestBtn.disabled = false;
-      ingestBtn.textContent = prevText;
-      return;
-    }
-    applyIngestState({ has_original: true, ingest_status: 'never' });
-  } catch (err) {
-    console.error('ingest cancel error', err);
-    showToast(`取消失敗：${String(err.message || err)}`);
-    ingestBtn.disabled = false;
-    ingestBtn.textContent = prevText;
-  }
-}
-
-if (ingestBtn) {
-  ingestBtn.addEventListener('click', () => {
-    if (ingestBtn.dataset.mode === 'cancel') {
-      cancelIngest();
-    } else {
-      requestIngest();
-    }
-  });
 }
 
 const deleteBookBtn = document.getElementById('deleteBookBtn');
@@ -1332,6 +1374,9 @@ view.addEventListener('load', e => {
     // here. The deferred check leaves the bubble alone if a fresh
     // show-annotation just (re-)opened it for a different annotation.
     doc.addEventListener('click', _maybeDismissBubble);
+    // θ.2 — same mirroring for the sidebars: a click on the book content is
+    // by definition outside both sidebars and toggles.
+    doc.addEventListener('click', () => dismissSidebarsOnOutsideClick(doc.body));
   }
 });
 
@@ -1390,9 +1435,10 @@ function updateProgressFooter(detail) {
   rpfPercent.textContent = `${Math.round(pct * 100)}%`;
 }
 
-// δ.1 / ζ.1 / ζ.3 — annotation detail bubble. Behaviours:
-// - Highlights (no note) DO NOT pop the bubble — there's nothing extra to
-//   show beyond the colored overlay itself.
+// δ.1 / ζ.1 / ζ.3 / η.1 — annotation detail bubble. Behaviours:
+// - Highlights pop a minimal bubble too (η.1 revises ζ.1): no content beyond
+//   the overlay itself, but the edit button lets the user add a note in place,
+//   upgrading the highlight to an annotation.
 // - Annotations show only the note (skip the redundant excerpt — the user
 //   already sees the highlighted text on the page).
 // - Reflections with a cfi_anchor show the body text.
@@ -1403,15 +1449,21 @@ function showAnnotationBubble(value) {
   if (!annBubble || !currentSet || !Array.isArray(currentSet.items)) return;
   const item = currentSet.items.find(it => (it.cfi || it.cfi_anchor) === value);
   if (!item) return;
-  // ζ.1 — highlights have nothing to add beyond the overlay color.
-  if (item.type === 'highlight') return;
+  bubbleItem = item;
 
   const kind = item.type === 'comment' ? 'reflection' : item.type;
   annBubbleKind.textContent = ({
+    highlight: '螢光',
     annotation: '註解',
     reflection: '反思',
   })[kind] || kind;
   annBubbleKind.dataset.kind = kind;
+
+  if (annBubbleEdit) {
+    // 修修 2026-06-10：編輯就寫「編輯」兩個字。螢光還沒有註解，
+    // 動作是「新增」不是「編輯」，所以保留全名。
+    annBubbleEdit.textContent = item.type === 'highlight' ? '新增註解' : '編輯';
+  }
 
   // ζ.3 — annotations: show ONLY the note (skip the excerpt; user already
   // sees the highlighted text on the page). Reflections: show the body
@@ -1532,6 +1584,7 @@ view.addEventListener('draw-annotation', e => {
     // available for chapter <select> population.
     await fetchBookMetadata();
     await fetchAnnotations();
+    renderConflictBanner();
 
     if (currentSet && currentSet.book_version_hash &&
         bookVersionHash && currentSet.book_version_hash !== bookVersionHash) {

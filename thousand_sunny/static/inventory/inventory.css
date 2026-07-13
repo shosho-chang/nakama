@@ -1,0 +1,209 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Agent capability inventory — internal (authed) ops doc.
+   Extends progress.css (shared doc vocabulary: .page, .matrix, kicker, legend,
+   footer) with agent-card + chip primitives specific to this page.
+   Single orange accent ≤ 4% of any frame; mono-led meta; no slop card grid
+   (agents stack in a single editorial column, not grid-cols-N).
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* The chassis nav owns the top band, so the doc column starts a touch tighter
+   than the public progress page (which carried its own logo header). */
+.page { padding-top: var(--sho-s-7); }
+
+/* ── agent roster ───────────────────────────────────────────────────────── */
+
+.inv-roster {
+  display: grid;
+  gap: var(--sho-s-5);
+  margin-top: var(--sho-s-6);
+}
+
+.inv-agent {
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  background: var(--sho-bg-2);
+  overflow: hidden;
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+.inv-agent:hover { border-color: var(--sho-accent-line); }
+
+.inv-agent-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--sho-s-3) var(--sho-s-5);
+  padding: var(--sho-s-5) var(--sho-s-6);
+  border-bottom: 1px solid var(--sho-line);
+}
+
+.inv-agent-name {
+  font-family: var(--sho-font-sans);
+  font-weight: 600;
+  font-size: 19px;
+  letter-spacing: -0.01em;
+  color: var(--sho-ink);
+  margin: 0;
+}
+.inv-agent-name .role {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--sho-muted);
+  margin-left: var(--sho-s-3);
+}
+
+.inv-tagline {
+  flex: 1 1 240px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--sho-text-2);
+  margin: 0;
+}
+
+/* skill-status pill on the right of the head row */
+.inv-skillflag {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: var(--sho-r-pill);
+  border: 1px solid var(--sho-line-2);
+  white-space: nowrap;
+}
+.inv-skillflag.has   { color: var(--sho-success); border-color: var(--sho-success); }
+.inv-skillflag.none  { color: var(--sho-muted); }
+.inv-skillflag.stub  { color: var(--sho-warning); border-color: var(--sho-warning); }
+
+/* ── three labelled blocks inside each card ─────────────────────────────── */
+
+.inv-body {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+}
+@media (min-width: 880px) {
+  .inv-body { grid-template-columns: 1.6fr 1fr; }
+  .inv-block--fns { grid-row: span 2; border-right: 1px solid var(--sho-line); }
+}
+
+.inv-block {
+  padding: var(--sho-s-5) var(--sho-s-6);
+  border-bottom: 1px solid var(--sho-line);
+}
+.inv-block:last-child { border-bottom: none; }
+
+.inv-block-label {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sho-muted);
+  margin: 0 0 var(--sho-s-4);
+  display: flex;
+  align-items: center;
+  gap: var(--sho-s-3);
+}
+.inv-block-label .n {
+  font-variant-numeric: tabular-nums;
+  color: var(--sho-text-2);
+  background: var(--sho-bg-3);
+  border-radius: var(--sho-r-pill);
+  padding: 1px 7px;
+  font-size: 10px;
+}
+
+/* function list — module name (mono) + one-line role */
+.inv-fns { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sho-s-3); }
+.inv-fns li {
+  display: grid;
+  grid-template-columns: minmax(140px, max-content) 1fr;
+  gap: var(--sho-s-4);
+  font-size: 13.5px;
+  line-height: 1.5;
+  align-items: baseline;
+}
+@media (max-width: 620px) { .inv-fns li { grid-template-columns: 1fr; gap: 2px; } }
+.inv-fns code {
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  color: var(--sho-text);
+  background: var(--sho-bg-3);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+.inv-fns .desc { color: var(--sho-text-2); }
+.inv-fns .desc.retired { color: var(--sho-muted); }
+.inv-fns .tag-retired {
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sho-error);
+  margin-right: 5px;
+}
+
+/* chip rows for scripts + skills */
+.inv-chips { display: flex; flex-wrap: wrap; gap: var(--sho-s-3); }
+.inv-chip {
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  color: var(--sho-text);
+  background: var(--sho-bg-3);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  padding: 3px 9px;
+  line-height: 1.4;
+}
+.inv-chip.skill {
+  border-color: var(--sho-accent-line);
+  color: var(--sho-ink);
+}
+.inv-chip.skill::before {
+  content: "/";
+  color: var(--sho-accent);
+  margin-right: 1px;
+}
+.inv-chip .wrap {
+  color: var(--sho-muted);
+  font-size: 10.5px;
+  margin-left: 5px;
+}
+
+.inv-empty {
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  color: var(--sho-muted);
+  letter-spacing: 0.02em;
+}
+
+/* cli line under the tagline */
+.inv-cli {
+  font-family: var(--sho-font-mono);
+  font-size: 11.5px;
+  color: var(--sho-text-2);
+  background: var(--sho-bg-3);
+  border: 1px solid var(--sho-line);
+  border-left: 2px solid var(--sho-accent-line);
+  border-radius: var(--sho-r-1);
+  padding: 6px 10px;
+  margin: 0 var(--sho-s-6) var(--sho-s-5);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* skill catalog type tag */
+.skill-type {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--sho-muted);
+}
+.skill-type.thin { color: var(--sho-accent); }

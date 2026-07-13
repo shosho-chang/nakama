@@ -76,6 +76,8 @@ class FakePromotionReviewService:
         self.states: list[PromotionReviewState] = []
         self.commit_calls: list[tuple[str, str, list[str]]] = []
         self.start_calls: list[str] = []
+        # Mirrors PromotionReviewService.commit_enabled — route guards on it.
+        self.commit_enabled: bool = True
         # When set, commit_approved returns this CommitOutcome and sticks the
         # batch into the manifest.
         self.next_commit_outcome: CommitOutcome | None = None
@@ -376,6 +378,28 @@ def test_rt6_commit_invokes_commit_service(
     assert approved == ["src_ch1_001"]
     body = r.text
     assert "batch_test_001" in body
+
+
+def test_rt6b_commit_disabled_skips_write_and_renders_preview(
+    app_client: TestClient, fake_service: FakePromotionReviewService
+):
+    """When the service's commit path is disabled (placeholder-only pipeline
+    until N519), POST /commit must NOT call the commit service and must render
+    the preview-mode state instead of a fake success."""
+    fake_service.commit_enabled = False
+    manifest = _load_mixed_manifest()
+    fake_service.manifests[manifest.source_id] = manifest
+    encoded = _b64(manifest.source_id)
+    r = app_client.post(
+        f"/robin/promotion/source/{encoded}/commit",
+        data={"batch_id": "batch_test_001"},
+    )
+    assert r.status_code == 200
+    # The commit service was never invoked — nothing written to the vault.
+    assert fake_service.commit_calls == []
+    body = r.text
+    assert "預覽模式" in body
+    assert "commit 已停用" in body
 
 
 # ── RT7 — commit disabled when no approvals ─────────────────────────────────

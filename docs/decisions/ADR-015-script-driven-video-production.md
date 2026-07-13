@@ -2,6 +2,7 @@
 
 **Date:** 2026-05-02
 **Status:** Superseded by [ADR-032](ADR-032-hyperframes-broll-pipeline.md)（2026-05-25 — Hyperframes 取代 Remotion、Reader+Playwright 取代 PyMuPDF DocumentQuote、SRT-first input、Tier 3 Bridge UI、3-path dispatcher、layout YAML、2-layer feedback。本 ADR 仍記錄為什麼選 Remotion 的脈絡，但實作不再依本 ADR）
+> **殘留 code 處置（[ADR-050](ADR-050-video-production-line-brook-ownership.md)，2026-07-03）**：本 ADR Slice 1 骨架（`agents/brook/script_video/` 五階段殼 + markdown DSL + `video/src/parser/` TS parser + manifest / srt_emitter / fcpxml_emitter）退役；唯一存活資產 `mistake_removal.py`（拍掌 marker 偵測）refit 為單一 video pipeline 的選配 `cleanup` 前置 stage。Slice 2–5 issues #314–#317 關閉。
 
 ---
 

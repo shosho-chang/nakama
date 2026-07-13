@@ -126,6 +126,50 @@ def test_overlaps_handles_different_timezones():
     )
 
 
+# ── find_conflicts ───────────────────────────────────────────────────
+
+
+def test_find_conflicts_skips_all_day_event(monkeypatch):
+    """Regression: a timed event on a day that already has an all-day event must
+    NOT crash and must NOT report a conflict. The all-day event's ``start`` is
+    date-only (naive); before the fix it hit ``_overlaps`` and raised
+    ``can't compare offset-naive and offset-aware datetimes`` — and even parsed,
+    an all-day marker shouldn't block a timed sub-event in that day."""
+    from shared import google_calendar
+    from shared.google_calendar import CalendarEvent
+
+    evs = [
+        CalendarEvent(
+            id="allday", title="知識衛星拍片", start="2026-07-04", end="2026-07-05", html_link="h"
+        ),
+    ]
+    monkeypatch.setattr(google_calendar, "list_events", lambda **kw: evs)
+    conflicts = google_calendar.find_conflicts("2026-07-04T08:30:00", "2026-07-04T22:00:00")
+    assert conflicts == []
+
+
+def test_find_conflicts_still_detects_timed_overlap(monkeypatch):
+    """A genuinely overlapping timed event is still returned (fix didn't over-filter)."""
+    from shared import google_calendar
+    from shared.google_calendar import CalendarEvent
+
+    evs = [
+        CalendarEvent(
+            id="allday", title="整天", start="2026-07-04", end="2026-07-05", html_link="h"
+        ),
+        CalendarEvent(
+            id="timed",
+            title="會議",
+            start="2026-07-04T09:00:00+08:00",
+            end="2026-07-04T10:00:00+08:00",
+            html_link="h",
+        ),
+    ]
+    monkeypatch.setattr(google_calendar, "list_events", lambda **kw: evs)
+    conflicts = google_calendar.find_conflicts("2026-07-04T08:30:00", "2026-07-04T22:00:00")
+    assert [c.id for c in conflicts] == ["timed"]
+
+
 # ── _parse_event ─────────────────────────────────────────────────────
 
 
@@ -213,3 +257,105 @@ def test_create_event_dedupes_on_idempotency_key(monkeypatch):
         idempotency_key="slug@2026-06-03",
     )
     assert out is existing
+
+
+class _FakeService:
+    """Minimal Google Calendar service double that records the inserted/patched body."""
+
+    def __init__(self):
+        self.inserted = None
+        self.patched = None
+
+    def events(self):
+        return self
+
+    def insert(self, *, calendarId, body):
+        self.inserted = body
+        return _FakeExec({"id": "evt_new", **body})
+
+    def patch(self, *, calendarId, eventId, body):
+        self.patched = body
+        return _FakeExec({"id": eventId, **body})
+
+
+class _FakeExec:
+    def __init__(self, ret):
+        self._ret = ret
+
+    def execute(self):
+        return self._ret
+
+
+def test_create_event_all_day_uses_date_not_datetime(monkeypatch):
+    """ADR-041 v3-E: a date-only start/end → an all-day Google event (start.date /
+    end.date, no dateTime), and conflict detection is skipped (no time slot)."""
+    from shared import google_calendar
+
+    svc = _FakeService()
+    monkeypatch.setattr(google_calendar, "_get_service", lambda: svc)
+    monkeypatch.setattr(
+        google_calendar,
+        "find_conflicts",
+        lambda s, e: (_ for _ in ()).throw(AssertionError("all-day must not conflict-check")),
+    )
+    google_calendar.create_event(title="整天任務", start="2026-06-05", end="2026-06-06")
+    assert svc.inserted["start"] == {"date": "2026-06-05"}
+    assert svc.inserted["end"] == {"date": "2026-06-06"}
+    assert "dateTime" not in svc.inserted["start"]
+
+
+def test_update_event_all_day_patches_date(monkeypatch):
+    """v3-E: patching with a date-only start/end keeps the event all-day."""
+    from shared import google_calendar
+
+    svc = _FakeService()
+    monkeypatch.setattr(google_calendar, "_get_service", lambda: svc)
+    google_calendar.update_event("evt1", start="2026-06-07", end="2026-06-08")
+    assert svc.patched["start"] == {"date": "2026-06-07"}
+    assert svc.patched["end"] == {"date": "2026-06-08"}
+
+
+def test_is_date_only():
+    from shared.google_calendar import _is_date_only
+
+    assert _is_date_only("2026-06-05") is True
+    assert _is_date_only("2026-06-05T09:00:00") is False
+    assert _is_date_only("2026-06-05T09:00:00+08:00") is False
+    assert _is_date_only("") is False
+
+
+def test_find_free_slots_gaps_ordered_by_proximity(monkeypatch):
+    """v3-F: free-slot suggestions skip all-day events and order by closeness to the
+    requested time. Busy 09–10 & 14–15 on 6/5 ⇒ gaps starting 08:00 / 10:00 / 15:00;
+    nearest to a 14:00 request is the 15:00 gap."""
+    from datetime import date
+
+    from shared import google_calendar
+    from shared.google_calendar import CalendarEvent
+
+    evs = [
+        CalendarEvent(
+            id="a",
+            title="x",
+            start="2026-06-05T09:00:00+08:00",
+            end="2026-06-05T10:00:00+08:00",
+            html_link="h",
+        ),
+        CalendarEvent(
+            id="b",
+            title="y",
+            start="2026-06-05T14:00:00+08:00",
+            end="2026-06-05T15:00:00+08:00",
+            html_link="h",
+        ),
+        CalendarEvent(
+            id="c", title="整天", start="2026-06-05", end="2026-06-06", html_link="h"
+        ),  # all-day → ignored
+    ]
+    monkeypatch.setattr(google_calendar, "list_events", lambda **kw: evs)
+    slots = google_calendar.find_free_slots(
+        date(2026, 6, 5), 60, near="2026-06-05T14:00:00+08:00", max_slots=3
+    )
+    assert slots[0] == ("2026-06-05T15:00:00+08:00", "2026-06-05T16:00:00+08:00")
+    starts = {s for s, _ in slots}
+    assert "2026-06-05T08:00:00+08:00" in starts and "2026-06-05T10:00:00+08:00" in starts

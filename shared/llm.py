@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 from shared.anthropic_client import ask_claude, ask_claude_multi, call_claude_with_tools
 from shared.llm_context import _local
 from shared.llm_router import get_auth_policy, get_model, get_provider
+from shared.llm_transport import openrouter_enabled
 
 if TYPE_CHECKING:
     import anthropic
@@ -91,6 +92,23 @@ def ask(
             temperature=temperature,
             **extra,
         )
+    if provider == "openai":
+        # OpenAI 沒有原生 client（無 SDK 接線）；只在 OpenRouter transport 下可用
+        # （BYOK 消化既有 OpenAI credit）。native 時 fail loud，不 silent。
+        if openrouter_enabled():
+            from shared.openrouter_client import ask_openrouter
+
+            return ask_openrouter(
+                prompt,
+                system=system,
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+        raise NotImplementedError(
+            f"OpenAI model '{model}' 只在 LLM_TRANSPORT=openrouter 時可用"
+            f"（無原生 OpenAI SDK；BYOK 經 OpenRouter）。"
+        )
     raise NotImplementedError(
         f"Provider '{provider}' (model={model}) not yet wired. "
         f"Add a wrapper to shared/ and dispatch here."
@@ -153,6 +171,21 @@ def ask_multi(
             max_tokens=max_tokens,
             temperature=temperature,
             **extra,
+        )
+    if provider == "openai":
+        if openrouter_enabled():
+            from shared.openrouter_client import ask_openrouter_multi
+
+            return ask_openrouter_multi(
+                messages,
+                system=system,
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+        raise NotImplementedError(
+            f"OpenAI model '{model}' 只在 LLM_TRANSPORT=openrouter 時可用"
+            f"（無原生 OpenAI SDK；BYOK 經 OpenRouter）。"
         )
     raise NotImplementedError(f"Provider '{provider}' (model={model}) not yet wired for ask_multi.")
 

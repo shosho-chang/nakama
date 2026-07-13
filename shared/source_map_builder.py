@@ -570,6 +570,7 @@ class SourceMapBuilder:
             reader_salience=0.0,
             target_kb_path=f"KB/Wiki/Sources/{slug}/whole.md",
             chapter_ref="whole",
+            chapter_title=title,
         )
         return [item]
 
@@ -611,6 +612,7 @@ class SourceMapBuilder:
             reader_salience=0.0,
             target_kb_path=f"KB/Wiki/Sources/{slug}/index.md",
             chapter_ref="index",
+            chapter_title=reading_source.title,
         )
 
         items: list[SourcePageReviewItem] = [index_item]
@@ -641,6 +643,7 @@ class SourceMapBuilder:
                     reader_salience=0.0,
                     target_kb_path=f"KB/Wiki/Sources/{slug}/{chapter.chapter_ref}.md",
                     chapter_ref=chapter.chapter_ref,
+                    chapter_title=chapter.chapter_title,
                 )
             )
 
@@ -781,12 +784,14 @@ def _slugify(source_id: str) -> str:
 def _synthesize_reason(*, claims: list[str], chapter_title: str, cap: int) -> str:
     """Build the ``SourcePageReviewItem.reason`` string.
 
-    Format: ``"{chapter_title}: {claims[0]}"`` truncated to ``cap`` chars.
-    When claims is empty, returns ``"{chapter_title}: low signal"`` (still ≤ cap).
+    The chapter title now lives in its own ``SourcePageReviewItem.chapter_title``
+    field (rendered as the page H1), so the reason carries the claim ONLY —
+    no ``"{title}: "`` prefix. Returns ``claims[0]`` truncated to ``cap``
+    chars, or ``"low signal"`` when no claims were extracted. ``chapter_title``
+    is kept in the signature (callers still pass it) for forward compatibility
+    but is no longer prepended.
     """
-    head = chapter_title.strip() or "Untitled"
-    body = claims[0].strip() if claims else "low signal"
-    text = f"{head}: {body}"
+    text = (claims[0].strip() if claims else "low signal") or "low signal"
     if len(text) > cap:
         # Reserve 1 char for ``…`` ellipsis so callers see truncation.
         text = text[: max(0, cap - 1)] + "…"

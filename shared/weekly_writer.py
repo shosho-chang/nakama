@@ -168,6 +168,18 @@ def _plan_list(fm: dict[str, Any]) -> list[dict[str, Any]]:
     return [e for e in raw if isinstance(e, dict)]
 
 
+def _sync_estimate_to_plan(fm: dict[str, Any]) -> None:
+    """Keep ``預估🍅`` in step with the scheduled ``plan[]`` (修修 option 1): the
+    task-level estimate follows the total pomodoros committed to the calendar, so the
+    task page (reads ``預估🍅``) and the dashboard / daily bullet (read the plan sum)
+    never diverge. Called by the plan-mutating scheduling writes only — NOT by
+    timeEntries / body saves (those must not touch the estimate). No-op when there is
+    no plan yet (a bare estimate stands until the task is actually scheduled)."""
+    plan = _plan_list(fm)
+    if plan:
+        fm["預估🍅"] = sum(int(e.get("pomodoros") or 0) for e in plan)
+
+
 # ── Task note body (ADR-040 A7 — scoped writing surface, Slice W) ───────────────
 # The task page is a scoped draft surface: 修修 writes the note BODY on the page
 # (his ask: drafting 本週電子報 on the task). TaskNotes is already 🟡 — no red line —
@@ -337,6 +349,66 @@ def set_task_done(vault_root: Path, task_slug: str, done: bool) -> str:
     return str(fm.get("status") or "to-do")
 
 
+_TASK_CATEGORIES = ("work", "health", "growth", "misc")
+_TASK_PRIORITIES = ("low", "normal", "high")
+
+
+def set_task_meta(
+    vault_root: Path,
+    task_slug: str,
+    *,
+    category: str | None = None,
+    priority: str | None = None,
+    est_pomodoros: int | None = None,
+) -> str:
+    """Update a task's ``category`` / ``priority`` / ``預估🍅`` frontmatter from the
+    dashboard / task-page editors (v3-I follow-up, 修修). Only the given fields are
+    written; plan[]/timeEntries/status/body are preserved. ``None`` means "leave as-is"
+    (the field wasn't in the form). ``est_pomodoros`` lets 修修 set the estimate by hand
+    — useful for non-work tasks (whose 🍅 is otherwise hidden) and unscheduled ones (no
+    plan[] to auto-sync from, N541). Returns the task slug. Raises
+    :class:`TaskNotFoundError` if the file is gone."""
+    path = _task_path(vault_root, task_slug)
+    if not path.exists():
+        raise TaskNotFoundError(f"task not found: {path}")
+    fm, body = _read_task(path)
+    if category in _TASK_CATEGORIES:
+        fm["category"] = category
+    if priority in _TASK_PRIORITIES:
+        fm["priority"] = priority
+    if est_pomodoros is not None:
+        fm["預估🍅"] = est_pomodoros
+    _write_task(path, fm, body)
+    return task_slug
+
+
+def set_plan_entry_done(vault_root: Path, task_slug: str, day: date, done: bool) -> str:
+    """Toggle the DAY's plan[] entry done flag (v3-I follow-up, 修修).
+
+    The daily-bullet checkbox means 'that day's work on this task is done' — distinct
+    from the task-list checkbox (``set_task_done``), which marks the WHOLE task done.
+    Only the matching plan[] entry's ``done`` is touched; task ``status`` is untouched,
+    so the task stays open while a day's slice is crossed out. Returns the task slug.
+    Raises :class:`TaskNotFoundError` if the file is gone."""
+    path = _task_path(vault_root, task_slug)
+    if not path.exists():
+        raise TaskNotFoundError(f"task not found: {path}")
+    fm, body = _read_task(path)
+    plan = fm.get("plan")
+    if isinstance(plan, list):
+        iso = day.isoformat()
+        for e in plan:
+            if isinstance(e, dict) and str(e.get("date"))[:10] == iso:
+                if done:
+                    e["done"] = True
+                else:
+                    e.pop("done", None)
+                break
+        fm["plan"] = plan
+    _write_task(path, fm, body)
+    return task_slug
+
+
 # ── Calendar-block scheduling (ADR-041 — vault is the source of truth) ──────────
 # A scheduled block is, authoritatively, a ``plan[]`` entry (effort intent — D1).
 # The calendar event is a downstream projection; this writer only touches the VAULT:
@@ -408,6 +480,7 @@ def schedule_task_block(
     if calendar_event_id is not None:
         fm["calendar_event_id"] = calendar_event_id
 
+    _sync_estimate_to_plan(fm)  # 修修 option 1: 預估🍅 follows the schedule
     _write_task(path, fm, body)
     return scheduled, scheduled_end, task_file_token(vault_root, task_slug)
 
@@ -434,14 +507,17 @@ def upsert_plan_entry(
     day: date,
     pomodoros: int,
     start: Optional[datetime] = None,
+    all_day: bool = False,
     reason: Optional[str] = None,
     calendar_event_id: Optional[str] = None,
     expected_token: Optional[str] = None,
 ) -> tuple[str, str, str]:
     """The v3 merged 「排入」 write: upsert the ``plan[]`` entry for ``day`` with
-    ``pomodoros`` and, when ``start`` is given, a timed projection (``start``/``end``
-    = start + pomodoros×30, ISO with +08:00). No ``start`` ⇒ plan-only. Only the
-    one entry is touched; ``done`` is preserved, and an existing ``start``/``end``/
+    ``pomodoros`` and a projection. With ``start`` ⇒ a timed block (``start``/``end``
+    = start + pomodoros×30, ISO with +08:00). With ``all_day`` ⇒ a date-only span
+    (``start`` = ``day``, ``end`` = next day, exclusive — ADR-041 v3-E, the new
+    blank-time mode). Neither ⇒ plan-only (legacy / internal). Only the one entry is
+    touched; ``done`` is preserved, and an existing ``start``/``end``/
     ``calendar_event_id`` is kept when this call doesn't override it (so a plan-only
     re-pomodoro of a linked entry doesn't silently unlink it). ``calendar_event_id``
     is the scheduler's write-back. Returns ``(start_iso, end_iso, new_token)``
@@ -463,7 +539,11 @@ def upsert_plan_entry(
     if reason:
         new_entry["reason"] = reason
     start_iso = end_iso = ""
-    if start is not None:
+    if all_day:  # date-only span (v3-E blank-time mode); end exclusive next day
+        start_iso = day.isoformat()
+        end_iso = (day + timedelta(days=1)).isoformat()
+        new_entry["start"], new_entry["end"] = start_iso, end_iso
+    elif start is not None:
         start_iso = _iso_with_offset(start)
         end_iso = _iso_with_offset(
             start + timedelta(minutes=pomodoros * CALENDAR_BLOCK_MINUTES_PER_POMODORO)
@@ -477,7 +557,7 @@ def upsert_plan_entry(
         if _entry_date(e) == day:
             if "done" in e:
                 new_entry["done"] = e["done"]
-            if start is None:  # plan-only edit — keep an existing projection
+            if start is None and not all_day:  # plan-only edit — keep an existing projection
                 for k in ("start", "end"):
                     if e.get(k):
                         new_entry[k] = e[k]
@@ -490,6 +570,7 @@ def upsert_plan_entry(
     if not replaced:
         entries.append(new_entry)
     fm["plan"] = entries
+    _sync_estimate_to_plan(fm)  # 修修 option 1: 預估🍅 follows the schedule
     _write_task(path, fm, body)
     return start_iso, end_iso, task_file_token(vault_root, task_slug)
 
@@ -813,6 +894,19 @@ def _time_entry_list(fm: dict[str, Any]) -> list[dict[str, Any]]:
     return [e for e in raw if isinstance(e, dict)]
 
 
+def _entry_start_dt(entry: dict[str, Any]) -> Optional[datetime]:
+    """A timeEntry's ``startTime`` as a tz-aware datetime (naive ⇒ assume Taipei),
+    or ``None`` when missing/unparseable."""
+    v = entry.get("startTime")
+    if not isinstance(v, str) or not v.strip():
+        return None
+    try:
+        dt = datetime.fromisoformat(v.strip())
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=TAIPEI_TZ)
+
+
 def log_time_entry(
     vault_root: Path,
     task_slug: str,
@@ -856,6 +950,28 @@ def log_time_entry(
 
     path = _task_path(vault_root, task_slug)
     fm, body = _read_task(path)
+    entries = _time_entry_list(fm)
+
+    if manual:
+        # The +1 button asserts a discrete nominal block. Stamping every click at
+        # `now` makes rapid clicks overlap, and the per-task union merge
+        # (pomodoro_aggregator._merge_per_task) then collapses them into a single
+        # 🍅 — so three +1 clicks read as one. Anchor each manual block immediately
+        # BEFORE the earliest block already logged for the same day, so N clicks
+        # stack into N non-overlapping blocks (union == sum == N). When nothing is
+        # logged yet that day, the passed [start, end] is used as-is.
+        block = end - start
+        anchor = end if end.tzinfo else end.replace(tzinfo=TAIPEI_TZ)
+        earliest = anchor
+        for e in entries:
+            est_dt = _entry_start_dt(e)
+            if est_dt is None or est_dt.date() != anchor.date():
+                continue
+            if est_dt < earliest:
+                earliest = est_dt
+        end = earliest
+        start = end - block
+        span = (end - start).total_seconds()
 
     entry: dict[str, Any] = {
         "startTime": start.isoformat(),
@@ -870,7 +986,6 @@ def log_time_entry(
     if manual:
         entry["manual"] = True
 
-    entries = _time_entry_list(fm)
     entries.append(entry)
     fm["timeEntries"] = entries
     _write_task(path, fm, body)

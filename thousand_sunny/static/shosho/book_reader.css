@@ -95,6 +95,22 @@ body.sho .mode-badge-zh {
 }
 body.sho .mode-badge-bi { background: transparent; }
 
+/* ── Sync-conflict banner (ADR-044 §B8) ─────────────────────────────── */
+body.sho .reader-conflict-banner {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sho-s-2);
+  padding: var(--sho-s-2) var(--sho-s-5);
+  background: var(--sho-accent-soft);
+  border-bottom: 1px solid var(--sho-accent);
+  font-family: var(--sho-font-zh);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--sho-text-2);
+}
+body.sho .reader-conflict-banner[hidden] { display: none; }
+body.sho .reader-conflict-banner .rcb-icon { color: var(--sho-accent); }
+
 /* ── Progress rail (top hairline bar) ───────────────────────────────── */
 body.sho .reader-progress {
   position: sticky;
@@ -296,6 +312,39 @@ body.sho .ann-bubble-meta {
   font-size: 11px;
   color: var(--sho-muted);
 }
+body.sho .ann-bubble-actions {
+  margin-top: var(--sho-s-2);
+  padding-top: var(--sho-s-2);
+  border-top: 1px solid var(--sho-line);
+  display: flex;
+  justify-content: flex-end;
+}
+body.sho .ann-bubble-edit {
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--sho-text-2);
+  background: transparent;
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease),
+              background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .ann-bubble-edit:hover {
+  color: var(--sho-accent);
+  border-color: var(--sho-accent-line);
+}
+body.sho .ann-bubble-edit:active {
+  background: var(--sho-accent-soft);
+}
+body.sho .ann-bubble-edit:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
 
 /* ── Reading progress footer ────────────────────────────────────────── */
 body.sho .reader-progress-footer {
@@ -394,6 +443,7 @@ body.sho dialog.ann-dialog .excerpt {
   line-height: 1.5;
   border-radius: 0 var(--sho-r-1) var(--sho-r-1) 0;
 }
+body.sho dialog.ann-dialog .excerpt[hidden] { display: none; }
 body.sho dialog.ann-dialog .row {
   display: flex;
   flex-direction: column;
@@ -758,4 +808,23 @@ body.sho .kbd-help-foot {
 body.sho .kbd-help-foot kbd {
   font-size: 11px;
   padding: 1px 6px;
+}
+
+/* ── Mobile reader layout (≤768px) ──────────────────────────────────────
+   Phone fixes (修修 feedback 2026-06-08): the desktop bar crams title + six
+   labelled buttons into one row and overlaps the title on a phone. Here we
+   drop title/meta/badge, hide desktop-only / destructive actions, collapse
+   the remaining buttons to icon-only, and add bottom room so the last lines
+   clear the fixed progress footer in scrolled mode (flow set in book_reader.js). */
+@media (max-width: 768px) {
+  body.sho .reader-bar { padding: var(--sho-s-2) var(--sho-s-3); gap: var(--sho-s-2); }
+  body.sho .reader-bar .title,
+  body.sho .reader-bar .meta,
+  body.sho .reader-bar .mode-badge { display: none; }
+  body.sho .reader-bar .right { gap: var(--sho-s-1); }
+  body.sho .icon-btn .btn-label { display: none; }       /* icon-only buttons */
+  body.sho .reader-bar #kbdHelpBtn,                        /* keyboard help = desktop only */
+  body.sho .reader-bar #deleteBookBtn { display: none; }   /* declutter; delete from desktop */
+  body.sho .icon-btn { padding: 6px 9px; }
+  body.sho .reader-shell { padding-bottom: 3.2rem; }       /* clear the fixed footer */
 }

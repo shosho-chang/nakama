@@ -51,6 +51,12 @@ CATEGORY_ORDER = ("work", "health", "growth", "misc")
 WORK_CATEGORY = "work"
 DEFAULT_CATEGORY = "misc"
 
+# Task priority (TaskNotes frontmatter `priority`). 3 stored values; the chip adds a
+# 4th visual tier "First" (紫) for tasks in the week's 本週重要任務 list (weekly top3),
+# computed at view time — not a stored priority value. (v3-I follow-up, 修修)
+PRIORITY_LABELS = {"low": "Low", "normal": "Medium", "high": "High"}
+PRIORITY_ORDER = ("low", "normal", "high")
+
 UFO_WEEKLY_TARGET = 5  # planned super-focus (75-min) sessions per week (ADR-039 E)
 UFO_MIN_MINUTES = 70  # a `deep` block counts as 1 UFO only if it ran ≥ this (ADR-040 A2)
 
@@ -229,9 +235,12 @@ class TaskAllocation:
 
     @property
     def time_label(self) -> str:
-        """``HH:MM`` of ``start`` for the chip, or "" if plan-only / unparseable."""
+        """``HH:MM`` for a timed entry, "整天" for an all-day entry (date-only start —
+        ADR-041 v3-E), or "" when plan-only / unparseable."""
         if not self.start:
             return ""
+        if "T" not in self.start:  # date-only ⇒ all-day event
+            return "整天"
         try:
             return datetime.fromisoformat(self.start).strftime("%H:%M")
         except ValueError:
@@ -254,6 +263,7 @@ class WeeklyTask:
     relative_path: str
     weekly_priority: str = ""  # week file_key this task is a top-3 priority for ("" = none)
     calendar_event_id: str = ""  # set once projected to Google Calendar (41b); "" = not linked
+    priority: str = "normal"  # task priority frontmatter: low | normal | high (TaskNotes)
 
     def planned_in(self, wk: WeekRef) -> int:
         if self.plan:
@@ -292,11 +302,33 @@ class WeeklyTask:
     def category_label(self) -> str:
         return CATEGORY_LABELS.get(self.category, self.category)
 
+    @property
+    def priority_label(self) -> str:
+        return PRIORITY_LABELS.get(self.priority, "Medium")
+
     def is_on(self, d: date) -> bool:
         """True if this task is assigned to day ``d`` (plan entry or scheduled)."""
         if self.plan:
             return any(a.date == d for a in self.plan)
         return self.scheduled == d
+
+    def schedule_dates(self) -> list[date]:
+        """Every concrete date this task is placed on — ``plan[]`` entry dates plus a
+        bare task-level ``scheduled`` — sorted ascending and de-duped. Empty list ⇒ the
+        task has no time yet (the 全部 view buckets it under 還沒排定時間)."""
+        ds = {a.date for a in self.plan}
+        if self.scheduled is not None:
+            ds.add(self.scheduled)
+        return sorted(ds)
+
+    def done_on(self, d: date) -> bool:
+        """Per-DAY completion for the daily bullet (v3-I follow-up, 修修): the plan[]
+        entry's own ``done`` flag for ``d``. A scheduled-only task (no plan entry) falls
+        back to the task-level done. Distinct from ``done`` (whole-task completion)."""
+        for a in self.plan:
+            if a.date == d:
+                return bool(a.done)
+        return self.done
 
     def is_priority_for(self, wk: WeekRef) -> bool:
         return self.weekly_priority == wk.file_key
@@ -396,14 +428,19 @@ class WeeklyView:
     # the plan form binds to this so a blank field is never the machine default
     pomodoro_target: int  # weekly 🍅 goal — targets.pomodoro (A3); 0 = unset
     pomodoro_goal: int  # the hero denominator: pomodoro_target if set, else planned
-    top3: tuple[Top3Item, ...]  # this week's ≤3 resolved 三大要事 (hero strip)
-    top3_options: tuple[dict, ...]  # {group, value, label} for the top3 dropdowns
-    top3_values: tuple[str, ...]  # current ≤3 selected option values (padded to 3)
+    top3: tuple[Top3Item, ...]  # this week's resolved 本週重要任務 (hero strip; uncapped — 修修)
+    top3_options: tuple[dict, ...]  # {group, value, label} for the 重要任務 dropdowns
+    top3_values: tuple[str, ...]  # current selected option values (task slug | project raw)
+    important_slugs: frozenset  # task slugs in 本週重要任務 → drives the "First" (紫) chip
     tasks: tuple[WeeklyTask, ...]  # tasks with allocation/scheduled in week
     today_tasks: tuple[WeeklyTask, ...]  # subset scheduled today (current week only)
     incomplete: tuple[WeeklyTask, ...]  # not done, due on/before week end
-    backlog_by_project: dict[str, list[WeeklyTask]]  # ALL not-done tasks (not week-bounded, 41c)
-    backlog_count: int  # total open tasks in the backlog (across all projects)
+    # 全部 view (N541) — ALL not-done tasks split by scheduling status, not by project.
+    # 1+2 are sorted nearest→furthest by date; 3 by name.
+    all_this_week: tuple[WeeklyTask, ...]  # has a plan/scheduled date inside this week
+    all_other_scheduled: tuple[WeeklyTask, ...]  # scheduled, but every date is outside this week
+    all_unscheduled: tuple[WeeklyTask, ...]  # no plan/scheduled date yet
+    backlog_count: int  # total open tasks in the backlog (across all three buckets)
     by_project: dict[str, list[WeeklyTask]]
     planned_by_task: dict[str, int]  # slug -> planned 🍅 this week (work only)
     days: tuple[dict, ...]  # 5 day-cards Mon..Fri (the bullet section)
@@ -497,7 +534,9 @@ class WeeklyIndexer:
                         date=ad,
                         pomodoros=_as_int(a.get("pomodoros")),
                         reason=str(a.get("reason") or ""),
-                        done=_as_int(a.get("done")),
+                        # `done` is a YAML bool — _as_int treats bool as 0 (for pomodoros),
+                        # so parse truthiness directly, else the daily cross-out never shows.
+                        done=1 if a.get("done") else 0,
                         start=str(a.get("start") or ""),
                         end=str(a.get("end") or ""),
                         event_id=str(a.get("calendar_event_id") or a.get("event_id") or "").strip(),
@@ -553,6 +592,13 @@ class WeeklyIndexer:
                         )
                     )
 
+        # 預估🍅 fallback: a calendar-linked task (Nami's _write_calendar_linked_task
+        # before it wrote 預估🍅) carries its estimate only on the plan[] entries.
+        # Sum them so the task page shows a real 預估 instead of "-". An explicit
+        # 預估🍅 in frontmatter always wins.
+        if not est and plan:
+            est = sum(a.pomodoros for a in plan)
+
         return WeeklyTask(
             slug=slug,
             title=title,
@@ -568,6 +614,7 @@ class WeeklyIndexer:
             relative_path=f"{TASKS_DIR}/{path.name}",
             weekly_priority=weekly_priority,
             calendar_event_id=cal_event_id,
+            priority=str(fm.get("priority") or "normal").strip().lower() or "normal",
         )
 
     # -- habits --
@@ -757,15 +804,31 @@ class WeeklyIndexer:
         incomplete = [
             t for t in all_tasks if not t.done and t.scheduled is not None and t.scheduled <= wk.end
         ]
-        # backlog (41c) = EVERY not-done task, regardless of scheduling — the full
-        # "待排程" pool the calendar picker schedules from. Grouped by project,
-        # unscheduled tasks first within each group (they need attention most),
-        # then by earliest scheduled date so already-placed tasks sort sensibly.
+        # backlog (41c) = EVERY not-done task, regardless of scheduling. The 全部 view
+        # (N541) splits it into three scheduling buckets instead of by project:
+        #   1. 排定本週的       — has a plan/scheduled date inside this week
+        #   2. 已排程，非本週   — scheduled, but every date falls outside this week
+        #   3. 還沒排定時間     — no plan/scheduled date yet
+        # Buckets 1+2 sort nearest→furthest by date (修修); 3 sorts by name.
         backlog = [t for t in all_tasks if not t.done]
-        backlog.sort(key=lambda t: (t.scheduled is not None, t.scheduled or date.max, t.name))
-        backlog_by_project: dict[str, list[WeeklyTask]] = {}
+        all_this_week: list[WeeklyTask] = []
+        all_other_scheduled: list[WeeklyTask] = []
+        all_unscheduled: list[WeeklyTask] = []
         for t in backlog:
-            backlog_by_project.setdefault(t.project or "（無專案）", []).append(t)
+            ds = t.schedule_dates()
+            if not ds:
+                all_unscheduled.append(t)
+            elif any(wk.contains(d) for d in ds):
+                all_this_week.append(t)
+            else:
+                all_other_scheduled.append(t)
+
+        def _earliest_in_week(t: WeeklyTask) -> date:
+            return min(d for d in t.schedule_dates() if wk.contains(d))
+
+        all_this_week.sort(key=lambda t: (_earliest_in_week(t), t.name))
+        all_other_scheduled.sort(key=lambda t: (t.schedule_dates()[0], t.name))
+        all_unscheduled.sort(key=lambda t: t.name)
 
         # 🍅 = work hours: only `work`-category tasks count toward planned/actual.
         planned = sum(t.planned_in(wk) for t in all_tasks if t.is_work)
@@ -785,6 +848,7 @@ class WeeklyIndexer:
         # 本週三大要事 (A4): canonical source = weekly-file top3 (wikilink → task|
         # project). Transitional fallback (A5): task-frontmatter weekly_priority
         # flags, used only while no weekly file / no top3 exists yet.
+        # v3-I follow-up (修修): 本週重要任務 — no longer capped at 3 (a week can have >3).
         if review is not None and review.top3:
             top3 = self._resolve_top3(review.top3, all_tasks)
         else:
@@ -792,7 +856,7 @@ class WeeklyIndexer:
                 Top3Item(raw=t.title, kind="task", title=t.title, slug=t.slug, done=t.done)
                 for t in all_tasks
                 if t.is_priority_for(wk)
-            )[:3]
+            )
 
         # targets (A3): 修修-set weekly goals from the weekly file; UFO falls back
         # to the default constant, 🍅 goal falls back to the planned-sum.
@@ -838,10 +902,13 @@ class WeeklyIndexer:
             top3=top3,
             top3_options=tuple(top3_options),
             top3_values=top3_values,
+            important_slugs=frozenset(it.slug for it in top3 if it.kind == "task" and it.slug),
             tasks=tuple(in_week),
             today_tasks=today_tasks,
             incomplete=tuple(incomplete),
-            backlog_by_project=backlog_by_project,
+            all_this_week=tuple(all_this_week),
+            all_other_scheduled=tuple(all_other_scheduled),
+            all_unscheduled=tuple(all_unscheduled),
             backlog_count=len(backlog),
             by_project=by_project,
             planned_by_task={t.slug: t.planned_in(wk) for t in in_week},
@@ -878,10 +945,16 @@ class WeeklyIndexer:
             on = [t for t in tasks if t.is_on(d)]
             work_pom = sum(t.pomodoros_on(d) for t in on if t.is_work)
             # weekend never reaches here (Mon-Fri only), so no D9 reason marker needed
+            # v3-I follow-up (修修): the daily card has 3 columns — 工作(½) / 身心健康 / 其他.
+            # 其他 folds 自我進修(growth) into 雜事(misc): both bucket under "misc" and the
+            # column is labelled 其他. (The task-list category chip still shows the real
+            # category.) Unknown categories also fall into 其他.
+            DAILY_OTHER = "misc"
             by_cat: dict[str, list[WeeklyTask]] = {}
             for t in on:
-                by_cat.setdefault(t.category, []).append(t)
-            ordered = list(CATEGORY_ORDER) + [c for c in by_cat if c not in CATEGORY_ORDER]
+                cat_key = t.category if t.category in ("work", "health") else DAILY_OTHER
+                by_cat.setdefault(cat_key, []).append(t)
+            ordered = ["work", "health", DAILY_OTHER]
             seen: set[str] = set()
             categories: list[dict] = []
             for slug in ordered:
@@ -895,15 +968,22 @@ class WeeklyIndexer:
                         "slug": t.slug,
                         "pomodoros": t.pomodoros_on(d) if is_work else 0,
                         "actual": t.actual_pomodoros_on(d) if is_work else 0,
-                        "done": t.done,
+                        # v3-I follow-up: daily done = the DAY's plan-entry done (per-day),
+                        # NOT the whole-task done — the daily checkbox is a different action.
+                        "done": t.done_on(d),
                         "relative_path": t.relative_path,
+                        # v3-I follow-up: daily items also carry priority + project (修修)
+                        "priority": t.priority,
+                        "priority_label": t.priority_label,
+                        "project": t.project,
                     }
                     for t in by_cat.get(slug, [])
                 ]
                 categories.append(
                     {
                         "slug": slug,
-                        "label": CATEGORY_LABELS.get(slug, slug),
+                        # the misc column is the merged 其他 bucket (misc + growth) — 修修
+                        "label": "其他" if slug == DAILY_OTHER else CATEGORY_LABELS.get(slug, slug),
                         "is_work": is_work,
                         "items": items,
                     }

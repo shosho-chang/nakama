@@ -1,9 +1,30 @@
 # Vault Layout — Canonical Reference
 
 **Status:** **Target (post-ADR-028 Phase 3)** — current vault has drift relative to this doc; see §7 Known Drift
-**Last updated:** 2026-05-19 (v2 post-panel)
+**Last updated:** 2026-06-05 (ADR-042 textbook-lane dormancy)
 **Authority:** Changes require PR review. Code that affects vault contracts MUST update this doc in the same PR.
 **Audit:** Monthly via `scripts/vault_layout_audit.py` (cron via Franky, Phase 3 PR-C1). Discrepancies append to §7.
+
+---
+
+> ## ⚠️ ADR-042 — textbook-ingest lane DORMANT (2026-06-05)
+>
+> The **textbook-ingest lane** and the **dense-vector KB search lane** were retired
+> ([ADR-042](decisions/ADR-042-retire-textbook-lane-lighten-kb.md)). Until the lane is
+> revived, every row below tagged *textbook-ingest* describes a **dormant contract** —
+> no live code writes it, and the corresponding vault data was cold-backed-up out of the
+> live vault (`E:\LifeOS-archive\textbook-ingest-2026-06-05`).
+>
+> **Dormant paths** (kept here as the restore spec, not as live contracts):
+> - `Inbox/books/`, `KB/Raw/Books/`, `Attachments/Books/{book-id}/` — textbook EPUB + Phase 0 figures
+> - `KB/Wiki/Sources/Books/{book-id}/ch{n}.md` — Phase 1 chapter pages
+> - `KB/Wiki/Concepts/` (textbook concept pages), `KB/Wiki/Entities/Books/` — concept/entity库
+> - `KB/Wiki/_alias_map.md` — L1 alias index (writer `concept_classifier.py` removed)
+>
+> **Still live:** `KB/Wiki/Sources/Books/{book-id}/{digest,notes}.md` (ADR-024 reading
+> overlay), `KB/Wiki/Concepts/{slug}.md` via `kb_writer.upsert_concept_page` (route C
+> article ingest — the dispatcher, not the textbook bypass). **Removed:** the dense-vec
+> lane — KB search is now FTS5/BM25 only (`kb_vectors`/sqlite-vec/embeddings gone).
 
 ---
 
@@ -95,24 +116,34 @@ E:\Shosho LifeOS\
 │   ├── Raw/                原始證據層 (禁改 body)
 │   │   ├── Articles/         Robin ingest from Inbox/web
 │   │   ├── Papers/           Robin ingest (manual `Inbox/papers/` flow)
-│   │   ├── Books/            textbook-ingest Phase 0
+│   │   ├── Books/            route B 書本 ingest（{slug}.md：EPUB→text → IngestPipeline）
 │   │   ├── Podcasts/         (reserved, currently empty)
-│   │   ├── Videos/           (reserved)
+│   │   ├── Videos/           Robin watchlist `{video_id}.vtt` (機器原始) + `{video_id}.md` (清理人讀稿, ADR-046 §Slice 0A)
 │   │   ├── Repos/            (reserved)
 │   │   └── Data/             (reserved)
 │   │
 │   ├── Wiki/               AI 加工層 (free write)
 │   │   ├── Sources/          Robin promotion (ADR-024) + textbook-ingest + PubMed digest (pubmed-{pmid}.md)
 │   │   │   └── Books/          textbook-ingest Phase 1 chapter pages
-│   │   ├── Concepts/         textbook-ingest + annotation_merger + 4-action dispatcher (ADR-011 §3.3 — see drift D1)
+│   │   ├── Concepts/         textbook-ingest + annotation_merger + 4-action dispatcher (ADR-011 §3.3 — see drift D1); 紅線⑤ citation lint at write (N524)
 │   │   ├── Entities/         textbook-ingest book entities (v1 schema; see drift D2)
 │   │   │   └── Books/          book entity index pages
+│   │   ├── Outputs/          🤖 查詢 write-back (Centaur v0.2 D-19 復活 / D-18 確認式; N524 storage layer = shared/output_writer.py)
 │   │   ├── Digests/          Daily digests
 │   │   │   ├── AI/             Nami daily AI news
 │   │   │   └── PubMed/         agents/robin/pubmed_digest.py daily digest
 │   │   └── _alias_map.md     L1 alias index — see §4 lifecycle subsection
 │   │
 │   ├── Annotations/{slug}.md   Robin Reader `POST /save-annotations` (ADR-017 v1/v2 + v3 code addition)
+│   │
+│   ├── Permanent/{宣告句}.md   🔒 Human only 正文 — 人寫永久卡 (Centaur v0.2 §3, N520).
+│   │                           AI 唯一寫入口 = `shared/permanent_layer.py:update_permanent_bookkeeping`
+│   │                           (白名單 frontmatter: source_refs/modified/aliases). typed edges
+│   │                           (支持/反駁/延伸) → kb_typed_edges 表. body human-authoring surface 寫
+│   │                           (N523 `POST /kb/api/permanent`)
+│   ├── Fleeting/{ts}-{前幾字}.md  人 + Nami 寫 — 即時捕捉 (Centaur v0.2 §4, N526). AI 只翻 status
+│   ├── Literature/{slug}.md    🤖 render — 人讀文獻筆記快照 (Centaur v0.2, N521 writer)
+│   ├── MOCs/{topic}.md         🟡 marker convention — 人寫分組 + AI `%%agent-robin-unfiled%%` (v0.2 §10)
 │   │
 │   ├── Attachments/{source-slug}/   flat per-source; News Coo (post-Phase A migration) + pubmed digest
 │   │
@@ -140,7 +171,8 @@ E:\Shosho LifeOS\
 │   │   ├── notes/          ad-hoc Nami notes
 │   │   └── research/       Nami research handler output
 │   └── brook/
-│       └── seo-audit/      Brook SEO audit task outputs (per ADR-027)
+│       ├── seo-audit/      Brook SEO audit task outputs (per ADR-027)
+│       └── drafts/         draft-article 原子文章初稿 (NON-KB; provenance 單向)
 │
 ├── Templates/            🔒 Human only (Templater plugin owns)
 └── Scripts/              🔒 Human only (Templater user scripts + nakama-config.md)
@@ -157,7 +189,7 @@ data/agent_reports/franky/
 **Notable absences** (intentionally not in vault):
 - `Schemas/` — declared in legacy CLAUDE.md, never had a producer; deleted (ADR-028 §3).
 - `Files/` — flat image dumping ground; migrated (ADR-028 §8). Until Phase B lands, see drift D-files-pending.
-- `KB/Wiki/Outputs/`, `Syntheses/`, `Comparisons/` — orphan folders, deleted (ADR-028 §3).
+- `Syntheses/`, `Comparisons/` — orphan folders, deleted (ADR-028 §3). (`KB/Wiki/Outputs/` was also deleted then, but **revived by Centaur v0.2 D-19** as the query write-back落點 — N524; see tree + matrix.)
 - `Nami/`, `AgentBriefs/`, `AgentReports/` — consolidated to `AgentOutputs/` + repo `data/agent_reports/` (ADR-028 §4).
 - `Case Studies/`, `Incidents/` — Nakama dev artifacts moved to repo `docs/case-studies/` + `docs/incidents/` (ADR-028 §9).
 
@@ -182,22 +214,30 @@ data/agent_reports/franky/
 | `Inbox/snapshots/` | 🤖 | 修修 drops .mhtml | (reserved, future mhtml ingest) | — |
 | `KB/Raw/Articles/{slug}.md` | 🤖 | Robin ingest from `Inbox/web/` | KB consumers, RCP builder | ADR-019 |
 | `KB/Raw/Papers/{slug}.md` | 🤖 | Robin manual ingest from `Inbox/papers/` | KB, Brook synthesize | ADR-019 |
-| `KB/Raw/Books/{book-id}.md` | 🤖 | textbook-ingest Phase 0 (lossless EPUB→md via ebooklib) | textbook-ingest Phase 1 LLM | ADR-020 §Phase 0 |
+| `KB/Raw/Books/{slug}.md` | 🤖 | route B 書本 ingest（同步）：Reader「Ingest 整本書」→ `POST /robin/start-book` → `shared/book_raw.py`（EPUB→text via `shared/epub_text`）→ 走 `/processing` SSE 自動流程（與文章/影片同一條）。佇列 + cron consumer 已移除 | `/processing` 摘要 → `KB/Wiki/Sources/{slug}` + concepts | route B v2（同步） |
+| `KB/Raw/Videos/{video_id}.vtt` | 🤖 | Robin watchlist confirm `thousand_sunny/routers/robin.py` (yt-dlp caption moved here); path built by `shared/reading_source_registry.py:_resolve_youtube` (convention, not manifest) | AV reader `/robin/watchlist/{id}`, promotion preflight, `shared/video_source_map_builder.py` | ADR-046 §Slice 0A |
+| `KB/Raw/Videos/{video_id}.md` | 🤖 | Robin watchlist confirm + `scripts/backfill_video_transcript_md.py` → `shared/video_transcript_writer.py`（清理 `.vtt` 成時間碼段落人讀稿） | 人讀逐字稿；`/start-video` ingest 優先輸入（無則退回 `.vtt`） | ADR-046 + transcript cleaning |
+| `Watchlist/youtube/{video_id}/manifest.json` | 🤖 | Robin watchlist confirm (video registry entry: title/channel/cast/`transcript_path`) | `/robin/watchlist` lister `RegistryReadingSourceLister`, `ReadingSourceRegistry._resolve_youtube` | `shared/schemas/youtube_watchlist.py` |
 | `KB/Wiki/Sources/{slug}.md` | 🤖 | Robin promotion `shared/promotion_commit.py` + textbook-ingest | Brook synthesize, RCP, `/writing-assist/` | ADR-024 + `shared/promotion_renderer.py` |
 | `KB/Wiki/Sources/pubmed-{pmid}.md` | 🤖 | `agents/robin/pubmed_digest.py:476-477` (NOT KB/Raw/Papers as previously documented) | Brook synthesize, KB consumers | PubMed Source schema |
 | `KB/Wiki/Sources/Books/{book-id}/ch{n}.md` | 🤖 | textbook-ingest Phase 1 via `shared/kb_writer.write_source_page` | Brook context_bridge, Reader | ADR-020 §Phase 1 |
-| `KB/Wiki/Sources/Books/{book-id}/digest.md` | 🤖 | `agents/robin/book_digest_writer.py:211` | Brook synthesize, Reader | ADR-020 §Phase 2 digest |
-| `KB/Wiki/Sources/Books/{book-id}/notes.md` | 🤖 | `agents/robin/book_notes_writer.py:26` | 修修 reader, kb_search | ADR-020 §Phase 2 notes |
+| `KB/Wiki/Sources/Books/{book-id}/digest.md` | ⛔ retired | **RETIRED (N521)** — superseded by `KB/Literature/{slug}.md`. `book_digest_writer.write_digest` 退役樁 (raise)；既有檔由 `scripts/migrate_books_to_literature.py` 重 render 後送回收桶 | (none — consumers repointed to Literature) | Centaur Literature 規格 §6 / D5 |
+| `KB/Wiki/Sources/Books/{book-id}/notes.md` | ⛔ retired | **RETIRED (N521)** — superseded by `KB/Literature/{slug}.md`. `book_notes_writer.write_notes` 退役樁 (raise)；既有檔由 migration script 重 render 後送回收桶 | (none — consumers repointed to Literature) | Centaur Literature 規格 §6 / D5 |
 | `KB/Wiki/Sources/{slug}/whole.md` | 🤖 | `shared/source_map_builder.py:557` (single-block whole source map) | Reader, Brook synthesize | source-map schema |
 | `KB/Wiki/Sources/{slug}/index.md` | 🤖 | `shared/source_map_builder.py:598` (multi-block index) | source-map navigation | source-map schema |
 | `KB/Wiki/Sources/{slug}/{chapter_ref}.md` | 🤖 | `shared/source_map_builder.py:628` (per-chapter block) | Reader, Brook synthesize | source-map schema |
 | `KB/Wiki/Concepts/{slug}.md` | 🤖 | `shared/kb_writer.upsert_concept_page` (4-action dispatcher, ADR-011 §3.3 — but textbook-ingest Phase B bypasses, drift D1) + `agents/robin/annotation_merger.py` | kb_search, Brook synthesize, RCP | ADR-011 §3.3 v2 schema |
 | `KB/Wiki/Entities/{slug}.md` | 🤖 | textbook-ingest book entity writer (v1 schema, drift D2) | kb_search | ADR-011 §3.1 v1 (frozen) |
+| `KB/Wiki/Outputs/{slug}.md` | 🤖 | `shared/output_writer.py:write_output_page` (Centaur v0.2 D-19 復活 / D-18 確認式 write-back; N524 storage layer — query workflow 另開 task) | KB consumers, future query UI | Centaur v0.2 §8 (P-9 蒸餾); 紅線⑤ enforced at write via `shared/provenance_linter.py` |
 | `KB/Wiki/Entities/Books/{book-id}.md` | 🤖 | textbook-ingest book entity index | 修修, kb_search | ADR-020 §Phase 2 |
 | `KB/Wiki/Digests/AI/{YYYY-MM-DD}.md` | 🤖 | Nami daily AI digest | 修修 | — |
 | `KB/Wiki/Digests/PubMed/{YYYY-MM-DD}.md` | 🤖 | `agents/robin/pubmed_digest.py:521-522` | 修修, Brook synthesize | — |
 | `KB/Wiki/_alias_map.md` | 🤖 | `shared/concept_classifier.py` + `scripts/run_s8_preflight.py` (staging patches) | textbook-ingest re-evaluation | ADR-020 v3 maturity model — see §4 lifecycle |
 | `KB/Annotations/{slug}.md` | 🤖 | `shared/annotation_store.AnnotationStore.save` ← Robin Reader `POST /save-annotations` | Reader render, `annotation_merger`, RCP builder | ADR-017 (v1/v2) + v3 code addition |
+| `KB/Permanent/{宣告句}.md` | 🔒 body | **正文 + status：human only** (N523 `POST /kb/api/permanent`). AI 唯一寫入口 = `shared/permanent_layer.py:update_permanent_bookkeeping` — 白名單 frontmatter `source_refs`/`modified`/`aliases`，**永不**碰正文/status/其他 key。`shared/promotion_targets.resolve_target_path` 在 chokepoint `assert_not_permanent_target` 攔截 (紅線 1 negative tripwire) | `kb_hybrid_search.search` (排序置頂)、Obsidian、N523 Web UI | Centaur v0.2 §3 (frontmatter + typed edges) + `shared/permanent_layer.py` |
+| `KB/Fleeting/{ts}-{前幾字}.md` | 🟡 人+Nami | 人 (Obsidian) + Nami Slack bot 寫正文 (N526); AI 只翻 `status: open→processed` + 善後送回收桶 | 每日回顧 (N522) | Centaur v0.2 §4 |
+| `KB/Literature/{slug}.md` | 🤖 render | `shared/literature_writer.py:write_literature_note` (N521) — 從 `KB/Annotations/{slug}.md` (V3) render 人讀快照；三路版型 (書/文章/影片)；idempotent re-render (記帳區 + frontmatter `status`/`mined_concepts` 保留)。書 ingest 觸發點：`thousand_sunny/routers/books.py:_render_literature_in_background`；reflection 流向：`agents/robin/annotation_merger.py` | RCP builder, Brook context_bridge | Centaur v0.2 (Literature Note 統一規格 §4–6) |
+| `KB/MOCs/{topic}.md` | 🟡 marker | 人寫分組標題 + 「為什麼放這」; AI 維護 `%%agent-robin-unfiled%%` marker section + 孤兒標記 (建 MOC 永遠人決定) | Obsidian, N525 MOC view | Centaur v0.2 §10 |
 | `KB/Attachments/{source-slug}/` | 🤖 | News Coo image fetcher (post-Phase A migration) + `agents/robin/pubmed_digest.py:210` | source-page image refs | binary |
 | `KB/index.md` | 🤖 | `agents/robin/ingest.py:583,600` + `pubmed_digest.py:539` (append) | 修修 manual reads | drift D3: no enforcement |
 | `KB/log.md` | 🤖 | `agents/robin/ingest.py` + `pubmed_digest.py:527` (append-only) | 修修 manual reads | append-only |
@@ -212,6 +252,7 @@ data/agent_reports/franky/
 | `AgentOutputs/nami/notes/` | 🤖 | `gateway/handlers/nami.py:458-525,:1773` (Nami write_vault_note); whitelisted by `shared/vault_rules.py:14-20` | Nami handler reads for context | — |
 | `AgentOutputs/nami/research/` | 🤖 | Nami research handler | 修修 | — |
 | `AgentOutputs/brook/seo-audit/{YYYY-MM-DD}/` | 🤖 | Brook SEO audit + enrich runners (ADR-027) | 修修 | — |
+| `AgentOutputs/brook/drafts/{slug}-draft-{YYYY-MM-DD}.md` | 🤖 | `.claude/skills/draft-article` (Composer skill) | 修修 拿去大改 | 原子文章初稿；**不回寫 KB**（紅線⑤ provenance 單向） |
 | (repo) `data/agent_reports/franky/weekly/` | 🤖 | `agents/franky/reporter.py:277` (post-path-migration) | 修修, Franky weekly digest | Franky weekly format |
 | (repo) `data/agent_reports/franky/dev-backlog.md` | 👤+🤖 | 修修 writes; `agents/franky/agent.py:33` reads | Franky weekly digest input | — |
 | (repo) `data/agent_reports/franky/vault-audit/` | 🤖 | `scripts/vault_layout_audit.py` (Phase 3 PR-C1) | 修修, Franky weekly | — |
@@ -219,6 +260,30 @@ data/agent_reports/franky/
 | `Scripts/nakama-config.md` | 🔒 | 修修 | dataviewjs (reads `robin_url`, `robin_key`) | — |
 
 **Reader UI scope contract:** `thousand_sunny/routers/robin.py:135 _get_inbox_files` reads ONE folder (`inbox.iterdir()`, no recursion). `config.yaml.agents.robin.inbox_path = Inbox/web` (post-Phase A). Reader UI lists only `Inbox/web/*.md`. Books/papers/snapshots in sibling Inbox subfolders are invoked by their own ingest tools via absolute path; intentionally not in Reader UI scope.
+
+### Centaur Permanent layer — 演算法紅線 (canonical, v0.2 §7)
+
+These five red lines are the **repo-side canonical** governance for the Centaur
+permanent layer (N520). The vault's own `CLAUDE.md` mirrors this table for the
+in-Obsidian agent; because the vault is not a git repo, the vault edit ships as a
+PR-description checklist, not a committed file (see §5 boundary). When the two
+drift, **this section wins** and the vault copy is re-synced.
+
+1. **AI 絕不寫 `KB/Permanent/` 正文與 status。** 唯一寫入口
+   `shared/permanent_layer.py:update_permanent_bookkeeping`（白名單 key
+   `source_refs`/`modified`/`aliases`）。enforced by `assert_not_permanent_target`
+   at the promotion resolver chokepoint + bookkeeping whitelist. ✅ N520 tripwire.
+2. **每個事實宣稱附 citation**，溯源回 `KB/Raw/` 或 `KB/Annotations/` 錨點.
+   🟡 N520 scaffolding (`shared/provenance_linter.py`), enforcement N524.
+3. **Concept 可寫可 merge，但不冒充永久卡**（provenance 分離，`author` 欄必填）.
+   ✅ N520 — Permanent body 走 human path，`author: human`；Concept 仍由 AI 自由寫.
+4. **ingest 不建 MOC** — MOC 等人的擠壓點 (v0.2 §10). ✅ N520 — 無 ingest-time MOC writer.
+5. **Concept / Output 的終端證據只能是 Sources / Raw / Annotations**，不得以另一個
+   Concept / Output 作為事實來源（防 citation laundering / wiki 自我餵食）.
+   🟡 N520 scaffolding (`provenance_linter.is_terminal_evidence`), enforcement N524.
+
+> ✅ = N520 機械 enforce；🟡 = N520 凍結介面 + placeholder，真檢查延 N524。
+> CJK 全層檢索精度（query-side jieba / FTS5 ICU tokenizer）是獨立 backlog，不綁 N520。
 
 ---
 

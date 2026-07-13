@@ -18,6 +18,7 @@ PR2 (per ADR-034 v2) extends this with an ``EntityReviewItem`` arm.
 
 from __future__ import annotations
 
+from shared.permanent_layer import assert_not_permanent_target
 from shared.schemas.promotion_manifest import (
     ConceptReviewItem,
     EntityMetadata,
@@ -57,25 +58,36 @@ def resolve_target_path(
             ``ReviewItem`` subtype, or when ``EntityMetadata`` variant has
             no registered arm. Defensive — `case _: raise` enforces
             register hygiene (ADR-034 v2 §D3).
+        PermanentWriteViolation: when a resolved target would land under
+            ``KB/Permanent/`` (Centaur v0.2 §7 紅線 1). This is the negative
+            tripwire — even a manifest that maliciously sets
+            ``target_kb_path="KB/Permanent/..."`` cannot route an agent write
+            into the human-only permanent layer. Both consumers of this
+            resolver (``promotion_acceptance_gate.validate`` and
+            ``promotion_commit.commit``) inherit the guard at this chokepoint.
     """
     match item:
         case SourcePageReviewItem(target_kb_path=p) if p and p.strip():
-            return p
+            resolved: str | None = p
         case SourcePageReviewItem():
-            return None
+            resolved = None
         case ConceptReviewItem(canonical_match=cm) if cm and cm.matched_concept_path:
-            return cm.matched_concept_path
+            resolved = cm.matched_concept_path
         case ConceptReviewItem():
-            return None
+            resolved = None
         case EntityReviewItem(canonical_match=cm) if cm and cm.matched_entity_path:
-            return cm.matched_entity_path
+            resolved = cm.matched_entity_path
         case EntityReviewItem(entity_label=label, metadata=meta):
-            return _entity_target_path(label, meta)
+            resolved = _entity_target_path(label, meta)
         case _:
             raise NotImplementedError(
                 f"resolve_target_path: no arm for ReviewItem subtype "
                 f"{type(item).__name__!r}. Add a `case` per ADR-034 v2 §D3."
             )
+
+    # 紅線 1 negative tripwire — agent promotion 永不寫永久層（Centaur v0.2 §7）.
+    assert_not_permanent_target(resolved)
+    return resolved
 
 
 def _entity_target_path(label: str, metadata: EntityMetadata) -> str:

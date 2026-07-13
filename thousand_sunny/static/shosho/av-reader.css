@@ -51,6 +51,32 @@ body.sho .header-left h1 {
   letter-spacing: -0.005em;
   margin: 0;
 }
+/* Back-to-watchlist — top-left, mirrors reader.html「← 返回」placement. */
+body.sho .header-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  color: var(--sho-muted);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .header-back:hover {
+  color: var(--sho-accent);
+}
+body.sho .header-back:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+  border-radius: var(--sho-r-1);
+}
+body.sho .header-back-arrow {
+  font-size: 14px;
+  line-height: 1;
+}
 body.sho .header-right {
   display: flex;
   align-items: center;
@@ -470,13 +496,13 @@ body.sho .ann-empty-hint {
   letter-spacing: 0.04em;
 }
 
-/* ── Footer (mirrors reader.html chassis) ───────────────────────────── */
+/* ── Footer (keyboard-shortcut status bar; back-link moved to header) ── */
 body.sho .footer {
   background: var(--sho-bg);
   padding: 8px 24px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   border-top: 1px solid var(--sho-line);
   flex-shrink: 0;
 }
@@ -514,10 +540,25 @@ body.sho .shortcuts-hint {
   }
 }
 @media (max-width: 720px) {
-  body.sho .header,
-  body.sho .footer {
+  body.sho .header {
     padding-left: 16px;
     padding-right: 16px;
+    /* Narrow viewport can't fit back + title + 4 controls on one row.
+       Wrap: row 1 = back + title (full width), controls reflow below. */
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  body.sho .header-left {
+    flex-basis: 100%;
+  }
+  body.sho .header-right {
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  /* Arrow alone on mobile — the title gets the row's full width. */
+  body.sho .header-back-label {
+    display: none;
   }
   body.sho .pane-head,
   body.sho .ann-list,
@@ -526,7 +567,8 @@ body.sho .shortcuts-hint {
     padding-left: 14px;
     padding-right: 14px;
   }
-  body.sho .shortcuts-hint {
+  /* Footer holds only the shortcut hint now — hide the empty bar on phones. */
+  body.sho .footer {
     display: none;
   }
   body.sho .ann-row {

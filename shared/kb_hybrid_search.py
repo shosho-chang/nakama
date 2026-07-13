@@ -1,14 +1,21 @@
-"""KB hybrid retrieval — BM25 + dense-vec + RRF k=60 fusion.
+"""KB retrieval — BM25 (FTS5) + wikilink expansion, RRF k=60 fusion.
+
+ADR-042: the dense-vector lane (vec0 / sqlite-vec / BGE-M3 embeddings) was
+removed when the textbook corpus left the vault — the small card-box corpus
+is well served by keyword search, so BM25 is the only ranking lane now. The
+``wikilink`` lane still expands hits with 1-hop structural neighbours. RRF
+fusion is retained (it degenerates gracefully to a single lane) so the
+``SearchHit`` shape — including ``rrf_score`` and ``lane_ranks`` — is
+unchanged for downstream evidence-card builders (Brook synthesize).
 
 DB schema (canonical reference: migrations/012_kb_hybrid.sql):
   kb_chunks   — FTS5(chunk_text, section, heading_context, path UNINDEXED)
-  kb_vectors  — vec0(embedding float[1024])  # ADR-022: BGE-M3 default
   kb_index_meta — (path, mtime_ns, file_hash, indexed_at)
+  kb_wikilinks  — (src_path, dst_path)
 
-The index DB lives in kb_index.db (separate from state.db) because sqlite-vec
-must be loaded as a SQLite extension.  The module-level `get_kb_conn()` manages
-a single lazy-opened connection.  Tests inject their own in-memory connection
-via the `db=` parameter in `search()`.
+The index DB lives in kb_index.db (separate from state.db).  The module-level
+`get_kb_conn()` manages a single lazy-opened connection.  Tests inject their
+own in-memory connection via the `db=` parameter in `search()`.
 
 Path resolution for kb_index.db (first match wins):
   1. NAKAMA_KB_INDEX_DB_PATH env override (full path) — for tests / CI
@@ -22,10 +29,6 @@ import os
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-
-import sqlite_vec
-
-from shared import kb_embedder
 
 _RRF_K = 60
 _CANDIDATES_PER_LANE = 30
@@ -49,21 +52,18 @@ def _get_kb_db_path() -> Path:
     return Path(__file__).resolve().parent.parent / "data" / "kb_index.db"
 
 
-def _open_conn(db_path: Path, *, dim: int = kb_embedder.DIM_BGE_M3) -> sqlite3.Connection:
+def _open_conn(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
-    conn.enable_load_extension(True)
-    sqlite_vec.load(conn)
-    conn.enable_load_extension(False)
-    _init_schema(conn, dim=dim)
+    _init_schema(conn)
     return conn
 
 
-def _init_schema(conn: sqlite3.Connection, *, dim: int = kb_embedder.DIM_BGE_M3) -> None:
-    """Create kb_* tables if they don't exist yet. `dim` controls vec0 column width."""
+def _init_schema(conn: sqlite3.Connection) -> None:
+    """Create kb_* tables if they don't exist yet (FTS5 + bookkeeping only)."""
     conn.execute("""
         CREATE TABLE IF NOT EXISTS kb_index_meta (
             path       TEXT PRIMARY KEY,
@@ -80,6 +80,21 @@ def _init_schema(conn: sqlite3.Connection, *, dim: int = kb_embedder.DIM_BGE_M3)
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_wikilinks_src ON kb_wikilinks(src_path)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_wikilinks_dst ON kb_wikilinks(dst_path)")
+    # Centaur N520: typed edges (支持/反駁/延伸) from KB/Permanent/ cards live in a
+    # structured table, NOT only in FTS text. The edges form a directed knowledge
+    # graph; storing them structurally keeps "show all cards that 反駁 X" a cheap
+    # path query instead of a fragile CJK text-parse (panel Gemini §2). The card
+    # *body* is still FTS-indexed for keyword search — the two are complementary.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS kb_typed_edges (
+            src_path  TEXT NOT NULL,
+            edge_type TEXT NOT NULL,   -- 'support' | 'refute' | 'extend'
+            dst_path  TEXT NOT NULL,
+            reason    TEXT             -- 人的判斷理由（edge 行 '—' 之後）
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_typed_edges_src ON kb_typed_edges(src_path)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_typed_edges_dst ON kb_typed_edges(dst_path)")
     # FTS5 virtual tables don't support IF NOT EXISTS — use try/except
     try:
         conn.execute("""
@@ -93,86 +108,28 @@ def _init_schema(conn: sqlite3.Connection, *, dim: int = kb_embedder.DIM_BGE_M3)
         """)
     except sqlite3.OperationalError:
         pass  # already exists
-    try:
-        conn.execute(f"CREATE VIRTUAL TABLE kb_vectors USING vec0(embedding float[{dim}])")
-    except sqlite3.OperationalError:
-        pass  # already exists
     conn.commit()
 
 
-def kb_vectors_dim(conn: sqlite3.Connection) -> int:
-    """Inspect kb_vectors vec0 schema → declared embedding dim."""
-    row = conn.execute(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name='kb_vectors'"
-    ).fetchone()
-    if row is None or row[0] is None:
-        raise RuntimeError("kb_vectors table not present in DB")
-    sql = row[0]
-    # Format: "... vec0(embedding float[1024])"
-    import re as _re
-
-    m = _re.search(r"float\[(\d+)\]", sql)
-    if m is None:
-        raise RuntimeError(f"Cannot parse kb_vectors dim from SQL: {sql!r}")
-    return int(m.group(1))
-
-
-def assert_dim_alignment(conn: sqlite3.Connection) -> None:
-    """ADR-022: fail loudly if embedder dim != kb_vectors dim.
-
-    Catches the silent miscompare where kb_vectors was built with a different
-    backend than the one currently active. Run this once at connection open.
-    """
-    table_dim = kb_vectors_dim(conn)
-    model_dim = kb_embedder.current_dim()
-    if model_dim != table_dim:
-        raise RuntimeError(
-            f"Embedding dim mismatch: kb_embedder backend "
-            f"'{kb_embedder.current_backend()}' produces {model_dim}-d vectors but "
-            f"kb_vectors table is float[{table_dim}]. Re-index with "
-            f"`python -m shared.kb_indexer --rebuild` or set "
-            f"NAKAMA_EMBED_BACKEND to match the table dim."
-        )
-
-
-def get_kb_conn(*, check_dim: bool = True) -> sqlite3.Connection:
-    """Return the module-level kb_index DB connection (lazy-opened).
-
-    Asserts ``kb_embedder.current_dim() == kb_vectors_dim`` on first open
-    (ADR-022). Mismatch raises RuntimeError immediately.
-
-    Args:
-        check_dim: When True (default), run ``assert_dim_alignment`` after open.
-                   The ``kb_indexer --rebuild`` CLI passes False because the
-                   rebuild path is precisely what fixes the dim mismatch — the
-                   assertion would otherwise block the only recovery route.
-    """
+def get_kb_conn() -> sqlite3.Connection:
+    """Return the module-level kb_index DB connection (lazy-opened)."""
     global _conn
     if _conn is None:
         _conn = _open_conn(_get_kb_db_path())
-        if check_dim:
-            assert_dim_alignment(_conn)
     return _conn
 
 
-def make_conn(
-    db_path: str | Path = ":memory:", *, dim: int = kb_embedder.DIM_BGE_M3
-) -> sqlite3.Connection:
+def make_conn(db_path: str | Path = ":memory:") -> sqlite3.Connection:
     """Create and initialize a fresh connection — for tests or CLI use.
 
     Passing ":memory:" creates an in-memory DB (no file, lost on close).
-    `dim` controls the vec0 embedding column width (default 1024 for BGE-M3;
-    legacy potion tests pass dim=256).
     """
     if str(db_path) == ":memory:":
         conn = sqlite3.connect(":memory:", check_same_thread=False)
         conn.row_factory = sqlite3.Row
-        conn.enable_load_extension(True)
-        sqlite_vec.load(conn)
-        conn.enable_load_extension(False)
-        _init_schema(conn, dim=dim)
+        _init_schema(conn)
         return conn
-    return _open_conn(Path(db_path), dim=dim)
+    return _open_conn(Path(db_path))
 
 
 # ---------------------------------------------------------------------------
@@ -182,18 +139,36 @@ def make_conn(
 
 @dataclass(frozen=True)
 class SearchHit:
-    chunk_id: int  # FTS5 rowid (same as kb_vectors rowid)
+    chunk_id: int  # FTS5 rowid
     path: str  # e.g. "KB/Wiki/Concepts/overtraining"
     heading: str  # H2 section heading; empty string for preamble chunks
     page_title: str  # page title from frontmatter (heading_context column)
     chunk_text: str  # body, truncated to TOKEN_BUDGET_CHARS
     rrf_score: float
-    lane_ranks: dict  # e.g. {"bm25": 1, "vec": 3}
+    lane_ranks: dict  # e.g. {"bm25": 1, "wikilink": 3}
 
 
 # ---------------------------------------------------------------------------
 # Core search
 # ---------------------------------------------------------------------------
+
+
+def _is_permanent_path(path: str) -> bool:
+    """True if a chunk path lives under KB/Permanent/ (canonical guard, N520)."""
+    from shared.permanent_layer import is_permanent_path
+
+    return bool(path) and is_permanent_path(path)
+
+
+def _resolve_candidate_paths(conn: sqlite3.Connection, rowids: list[int]) -> dict[int, str]:
+    """Fetch path for each candidate rowid in one query (for Permanent tiering)."""
+    if not rowids:
+        return {}
+    ph = ",".join("?" * len(rowids))
+    rows = conn.execute(
+        f"SELECT rowid, path FROM kb_chunks WHERE rowid IN ({ph})", rowids
+    ).fetchall()
+    return {r[0]: r["path"] for r in rows}
 
 
 def _wikilink_lane(
@@ -269,17 +244,18 @@ def search(
     query: str,
     top_k: int = 10,
     *,
-    lanes: tuple[str, ...] = ("bm25", "vec"),
+    lanes: tuple[str, ...] = ("bm25",),
     db: sqlite3.Connection | None = None,
 ) -> list[SearchHit]:
-    """BM25 + dense-vec + wikilink RRF-k=60 hybrid search.
+    """BM25 + wikilink RRF-k=60 search (ADR-042: dense-vec lane removed).
 
     Args:
         query:  free-text query (supports both Latin and CJK text).
         top_k:  maximum number of results to return.
-        lanes:  active retrieval lanes; subset of ("bm25", "vec", "wikilink").
-                "wikilink" expands BM25/vec hits with 1-hop structural neighbors.
-                Pass lanes=("bm25",) or lanes=("vec",) to run a single lane.
+        lanes:  active retrieval lanes; subset of ("bm25", "wikilink").
+                "wikilink" expands BM25 hits with 1-hop structural neighbors.
+                A legacy "vec" entry is accepted but ignored (the dense lane
+                was removed in ADR-042) so existing callers don't break.
         db:     connection override for tests; uses module-level conn if None.
 
     Returns:
@@ -303,26 +279,30 @@ def search(
         for rank, row in enumerate(rows):
             candidates.setdefault(row[0], {})["bm25"] = rank + 1
 
-    if "vec" in lanes:
-        emb = kb_embedder.embed(query)
-        rows = conn.execute(
-            """SELECT rowid, distance FROM kb_vectors
-               WHERE embedding MATCH ?
-               AND k = ?""",
-            (emb.tobytes(), _CANDIDATES_PER_LANE),
-        ).fetchall()
-        for rank, row in enumerate(rows):
-            candidates.setdefault(row[0], {})["vec"] = rank + 1
-
     if "wikilink" in lanes:
         _wikilink_lane(conn, candidates)
+
+    # Permanent-first authority tier (Centaur v0.2 / handoff fork 2): 永久卡是
+    # 修修「怎麼想」的權威層，檢索排最前。We resolve candidate paths once, then
+    # sort with a (is_permanent, score) key so any Permanent card that MATCHED
+    # the query surfaces ahead of comparable Wiki hits — and critically, this
+    # runs BEFORE the `[:top_k]` truncation below, so a relevant Permanent hit is
+    # never lost in truncation (panel Codex §5: do the boost pre-top_k, not in a
+    # wrapper post-sort). Only candidates that already matched are in the pool —
+    # an irrelevant Permanent card is never conjured up.
+    path_by_rowid = _resolve_candidate_paths(conn, list(candidates))
+
+    def _is_permanent(rowid: int) -> bool:
+        return _is_permanent_path(path_by_rowid.get(rowid, ""))
 
     # Reciprocal Rank Fusion: score = Σ 1/(k + rank_in_lane)
     scored: list[tuple[int, float, dict[str, int]]] = []
     for rowid, lane_ranks in candidates.items():
         score = sum(1.0 / (_RRF_K + r) for r in lane_ranks.values())
         scored.append((rowid, score, lane_ranks))
-    scored.sort(key=lambda x: -x[1])
+    # tier 0 = Permanent (sorts first), tier 1 = everything else; within a tier,
+    # higher RRF score wins.
+    scored.sort(key=lambda x: (0 if _is_permanent(x[0]) else 1, -x[1]))
 
     results: list[SearchHit] = []
     for rowid, rrf_score, lane_ranks in scored[:top_k]:

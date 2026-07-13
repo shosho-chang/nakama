@@ -1,0 +1,189 @@
+/* N531 — Bridge /bridge/models 模型路由面板。全 --sho-* token，PANTONE 165 橘為單一強調。 */
+body.sho .mdl-main {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 24px 20px 64px;
+}
+body.sho .mdl-head {
+  padding: 8px 0 18px;
+  border-bottom: 1px solid var(--sho-line);
+  margin-bottom: 20px;
+}
+body.sho .mdl-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--sho-text);
+  margin: 0;
+}
+body.sho .mdl-sub {
+  color: var(--sho-muted);
+  font-size: 13px;
+  margin: 4px 0 0;
+}
+body.sho .mdl-toast {
+  padding: 10px 14px;
+  border-radius: var(--sho-r-1);
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+body.sho .mdl-toast--ok {
+  border: 1px solid color-mix(in oklch, var(--sho-success) 40%, transparent);
+  background: color-mix(in oklch, var(--sho-success) 8%, transparent);
+  color: var(--sho-text);
+}
+body.sho .mdl-toast--err {
+  border: 1px solid color-mix(in oklch, var(--sho-warning) 45%, transparent);
+  background: color-mix(in oklch, var(--sho-warning) 10%, transparent);
+  color: var(--sho-text);
+}
+
+body.sho .mdl-tablewrap {
+  overflow-x: auto;
+}
+body.sho .mdl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+body.sho .mdl-table thead th {
+  text-align: left;
+  padding: 8px 12px;
+  color: var(--sho-muted);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--sho-line);
+  white-space: nowrap;
+}
+body.sho .mdl-table tbody td {
+  padding: 12px;
+  border-bottom: 1px solid var(--sho-line-2, var(--sho-line));
+  vertical-align: top;
+}
+body.sho .mdl-agent {
+  font-weight: 600;
+  color: var(--sho-text);
+  text-transform: capitalize;
+}
+body.sho .mdl-purpose {
+  color: var(--sho-text-2);
+  min-width: 180px;
+}
+body.sho .mdl-task {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  color: var(--sho-muted);
+}
+body.sho .mdl-model {
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  color: var(--sho-text);
+}
+body.sho .mdl-prov {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--sho-line);
+  color: var(--sho-muted);
+  margin-left: 4px;
+}
+body.sho .mdl-prov--anthropic { border-color: var(--sho-accent-line); color: var(--sho-accent); }
+body.sho .mdl-prov--google { border-color: color-mix(in oklch, var(--sho-success) 50%, var(--sho-line)); }
+body.sho .mdl-prov--xai,
+body.sho .mdl-prov--unknown { border-color: var(--sho-line); }
+
+/* 來源 badge：override 用橘（強調，代表「人為覆寫」），其餘中性遞減 */
+body.sho .mdl-src {
+  display: inline-block;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+body.sho .mdl-src--override {
+  background: var(--sho-accent-soft);
+  color: var(--sho-accent);
+  border: 1px solid var(--sho-accent-line);
+}
+body.sho .mdl-src--env { background: color-mix(in oklch, var(--sho-warning) 12%, transparent); color: var(--sho-text-2); }
+body.sho .mdl-src--registry { background: var(--sho-bg-2); color: var(--sho-text-2); border: 1px solid var(--sho-line); }
+body.sho .mdl-src--default { background: transparent; color: var(--sho-muted); }
+
+/* Transport indicator — 全域 banner + 逐列 chip（Slice 5）。OpenRouter 用 --sho-info
+   區隔（中性藍），不動橘色 accent 預算（保留給 override 的人為覆寫標示）。 */
+body.sho .mdl-transport {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0 0;
+  font-size: 11px;
+  color: var(--sho-muted);
+}
+body.sho .mdl-transport-label {
+  font-family: var(--sho-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--sho-text-2);
+}
+body.sho .mdl-trans {
+  display: inline-block;
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--sho-line);
+  color: var(--sho-muted);
+  white-space: nowrap;
+}
+body.sho .mdl-trans--openrouter {
+  border-color: color-mix(in oklch, var(--sho-info) 50%, var(--sho-line));
+  color: var(--sho-info);
+}
+body.sho .mdl-trans--native { border-color: var(--sho-line); color: var(--sho-muted); }
+
+body.sho .mdl-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 240px;
+}
+body.sho .mdl-form {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+body.sho .mdl-select {
+  font: inherit;
+  font-size: 12px;
+  color: var(--sho-text);
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  padding: 5px 8px;
+  flex: 1;
+  min-width: 0;
+}
+body.sho .mdl-select:focus-visible { outline: none; border-color: var(--sho-accent); box-shadow: var(--sho-focus); }
+body.sho .mdl-apply { font-size: 12px; padding: 5px 12px; white-space: nowrap; }
+body.sho .mdl-form--reset { justify-content: flex-start; }
+body.sho .mdl-reset {
+  font: inherit;
+  font-size: 11px;
+  color: var(--sho-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+body.sho .mdl-reset:hover { color: var(--sho-accent); }
+body.sho .mdl-reset:focus-visible { outline: none; color: var(--sho-accent); box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+
+body.sho .mdl-legend {
+  margin-top: 18px;
+  font-size: 11px;
+  color: var(--sho-muted);
+  line-height: 1.9;
+}

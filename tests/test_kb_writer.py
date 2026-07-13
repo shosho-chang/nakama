@@ -375,6 +375,24 @@ class TestUpsertCreate:
         for h2 in kb_writer.H2_ORDER:
             assert h2 in body
 
+    def test_create_overrides_fabricated_sources_link(self, vault):
+        """LLM 在 extracted_body 自己猜的 `[[Sources/...]]` 死連結要被真實
+        source_link 覆寫（body ## Sources 對齊 frontmatter mentioned_in）。"""
+        path = kb_writer.upsert_concept_page(
+            slug="財富等級",
+            action="create",
+            source_link="[[財富階梯]]",
+            title="財富等級",
+            extracted_body=(
+                "## Definition\n\nfoo\n\n## Sources\n\n- [[Sources/財富階梯-Nick-Maggiulli]]\n"
+            ),
+        )
+        fm, body = _read_page(path)
+        sources_block = body.split("## Sources", 1)[1]
+        assert "[[財富階梯]]" in sources_block
+        assert "財富階梯-Nick-Maggiulli" not in body  # 杜撰連結整頁清掉
+        assert fm["mentioned_in"] == ["[[財富階梯]]"]
+
     def test_create_requires_title(self, vault):
         with pytest.raises(ValueError, match="title"):
             kb_writer.upsert_concept_page(
@@ -437,6 +455,9 @@ class TestUpsertUpdateMerge:
         assert "[[Sources/Books/foo/ch1]]" in fm["mentioned_in"]
         assert "## 更新" not in body  # legacy stripped
         assert "MERGED definition" in body  # LLM result written
+        # ADR-043 §決策 3 — re-touch of a page stamps candidate + ai-draft.
+        assert fm["status"] == "candidate"
+        assert "ai-draft" in fm["tags"]
 
     def test_idempotent_mentioned_in(self, vault, mock_llm):
         path = _make_v1_concept(vault, "x")
@@ -513,6 +534,28 @@ class TestUpsertNoop:
         kb_writer.upsert_concept_page(slug="x", action="noop", source_link="[[Sources/new]]")
         fm, _ = _read_page(path)
         assert fm["mentioned_in"].count("[[Sources/new]]") == 1
+
+
+class TestNormalizeConceptSources:
+    def test_overwrites_with_mentioned_in(self):
+        body = "## Definition\n\nfoo\n\n## Sources\n\n- [[Sources/guessed-bad-link]]\n"
+        out = kb_writer._normalize_concept_sources(body, ["[[real]]"])
+        sources = out.split("## Sources", 1)[1]
+        assert "- [[real]]" in sources
+        assert "guessed-bad-link" not in out
+        assert "## Definition" in out  # 其他 section 不動
+
+    def test_lists_all_sources_deduped(self):
+        body = "## Sources\n\n- [[old]]\n"
+        out = kb_writer._normalize_concept_sources(body, ["[[a]]", "[[b]]", "[[a]]"])
+        sources = out.split("## Sources", 1)[1]
+        assert "- [[a]]" in sources
+        assert "- [[b]]" in sources
+        assert sources.count("[[a]]") == 1  # dedup
+
+    def test_empty_mentioned_in_is_noop(self):
+        body = "## Definition\n\nfoo\n\n## Sources\n\n- [[keep]]\n"
+        assert kb_writer._normalize_concept_sources(body, []) == body
 
 
 # ---------------------------------------------------------------------------
@@ -958,3 +1001,78 @@ class TestConfidenceMigrationEdgeCases:
         v2_fm, _body, changes = kb_writer._v1_to_v2_in_memory(v1_fm, "## Definition\n\nfoo\n")
         assert v2_fm["confidence"] == 0.9
         assert any("'high'" in c and "0.9" in c for c in changes)
+
+
+# ---------------------------------------------------------------------------
+# Red line 5 enforcement (N524) — concept writes reject Concept/Output terminal cites
+# ---------------------------------------------------------------------------
+
+
+class TestRedLine5Enforcement:
+    """upsert_concept_page rejects bodies whose ## Sources cites Concept/Output."""
+
+    def test_create_with_concept_cite_in_sources_rejected(self, vault):
+        from shared.provenance_linter import ProvenanceViolation
+
+        body = "## Definition\n\nx\n\n## Sources\n\n- [[Concepts/laundered]]\n"
+        with pytest.raises(ProvenanceViolation):
+            kb_writer.upsert_concept_page(
+                slug="sleep-pressure",
+                action="create",
+                source_link="[[Sources/real]]",
+                title="Sleep Pressure",
+                extracted_body=body,
+            )
+        # rejected => no page written
+        assert not (vault / "KB" / "Wiki" / "Concepts" / "sleep-pressure.md").exists()
+
+    def test_create_with_source_cite_passes(self, vault):
+        body = "## Definition\n\nx ^p-1\n\n## Sources\n\n- [[Sources/colleen-carney]]\n"
+        path = kb_writer.upsert_concept_page(
+            slug="sleep-pressure",
+            action="create",
+            source_link="[[Sources/colleen-carney]]",
+            title="Sleep Pressure",
+            extracted_body=body,
+        )
+        assert path.exists()
+
+    def test_create_with_related_concepts_link_passes(self, vault):
+        """Concept->Concept link in ## Related Concepts is a relation, not evidence."""
+        body = (
+            "## Definition\n\nx\n\n"
+            "## Related Concepts\n\n- [[Concepts/adenosine]]\n\n"
+            "## Sources\n\n- [[Sources/real]]\n"
+        )
+        path = kb_writer.upsert_concept_page(
+            slug="sleep-pressure",
+            action="create",
+            source_link="[[Sources/real]]",
+            title="Sleep Pressure",
+            extracted_body=body,
+        )
+        assert path.exists()
+
+    def test_update_merge_rejects_concept_cite(self, vault, monkeypatch):
+        """If the LLM merge emits a Concept cite in ## Sources, reject the write."""
+        from shared.provenance_linter import ProvenanceViolation
+
+        kb_writer.upsert_concept_page(
+            slug="topic",
+            action="create",
+            source_link="[[Sources/real]]",
+            title="Topic",
+            extracted_body="## Definition\n\nx\n\n## Sources\n\n- [[Sources/real]]\n",
+        )
+
+        def bad_merge(prompt, *, system="", max_tokens=16000):
+            return "## Definition\n\nmerged\n\n## Sources\n\n- [[Concepts/laundered]]\n"
+
+        monkeypatch.setattr(kb_writer, "_ask_llm", bad_merge)
+        with pytest.raises(ProvenanceViolation):
+            kb_writer.upsert_concept_page(
+                slug="topic",
+                action="update_merge",
+                source_link="[[Sources/another]]",
+                extracted_body="new material",
+            )

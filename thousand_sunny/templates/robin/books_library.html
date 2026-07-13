@@ -12,15 +12,13 @@
 </head>
 <body class="sho">
 {% from "_chassis_nav.html" import chassis_nav %}
+{% from "_reader_nav.html" import reader_nav %}
 {{ chassis_nav(nav_active='robin') }}
 <div class="header">
   <h1><span>📚</span>Robin · 書架</h1>
-  <nav class="nav">
-    <a href="/">📥 Inbox</a>
-    <a href="/robin/books" class="active">📚 書架</a>
-  </nav>
 </div>
 <div class="container">
+  {{ reader_nav(active='books') }}
   <div class="toolbar">
     <a href="/robin/books/upload" class="btn-upload">📤 上傳新書</a>
   </div>
@@ -43,22 +41,13 @@
             <span class="badge">{{ book.lang_pair }}</span>
           {% endif %}
           {% if book.genre %}<span class="badge">{{ book.genre }}</span>{% endif %}
-          {% if book.mode == "monolingual-zh" %}
-            {# Monolingual zh: no EN ingest pipeline applies — skip the EN/ingest badge. #}
-          {% elif not book.has_original %}
-            <span class="badge-ingest" data-status="no-original" title="尚未上傳 EN 原檔，無法 ingest">未上傳 EN</span>
-          {% elif book.ingest_status == "queued" %}
-            <span class="badge-ingest" data-status="queued" title="已排入 ingest 佇列">queued</span>
-          {% elif book.ingest_status == "ingesting" %}
-            <span class="badge-ingest" data-status="ingesting" title="正在 ingest">ingesting</span>
-          {% elif book.ingest_status == "ingested" %}
-            <span class="badge-ingest" data-status="ingested" title="ingest 完成">ingested</span>
-          {% elif book.ingest_status == "partial" %}
-            <span class="badge-ingest" data-status="partial" title="部分章節 ingest 失敗">partial</span>
-          {% elif book.ingest_status == "failed" %}
-            <span class="badge-ingest" data-status="failed" title="ingest 失敗">failed</span>
+          {# 同步 ingest（/start-book → /processing）後會寫 KB/Wiki/Sources，以該頁存在
+             與否當 ingested/never（佇列已拆，不再有 queued/ingesting/partial）。每本書都
+             可 ingest——雙語讀 EN 原檔、中譯-only 讀中文 blob（修修 回饋 item 5）。 #}
+          {% if book.ingest_status == "ingested" %}
+            <span class="badge-ingest" data-status="ingested" title="已 ingest（KB 已有此書的 Source 頁）">已 ingest</span>
           {% else %}
-            <span class="badge-ingest" data-status="never" title="EN 原檔已上傳，尚未送出 ingest 請求（章節抽取／KB 入庫）">未 ingest</span>
+            <span class="badge-ingest" data-status="never" title="尚未 ingest——開書後按「Ingest 整本書」（約 3–5 分鐘）">未 ingest</span>
           {% endif %}
         </div>
       </a>

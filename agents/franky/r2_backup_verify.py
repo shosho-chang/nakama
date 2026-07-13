@@ -75,6 +75,30 @@ def _resolve_prefixes() -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+def _sample_sibling_prefixes(client: R2Client, *, exclude: str, limit: int = 200) -> list[str]:
+    """Distinct top-level prefixes present in the bucket, minus ``exclude``.
+
+    When a configured prefix yields 0 objects we use this to tell prefix drift
+    apart from a genuinely empty bucket: if the bucket *does* hold objects under
+    other prefixes, the alert can say "likely FRANKY_R2_PREFIXES misconfig"
+    instead of the misleading "bucket empty?". Recurring footgun — see the
+    2026-05-13 (PR #333) and 2026-06-07 incidents where site-name prefixes
+    (``shosho/``) were configured against ``-tw`` folders (``shosho-tw/``).
+
+    Best-effort: any R2 error returns [] so diagnosis never masks the alert.
+    """
+    try:
+        objs = client.list_objects(prefix="", max_keys=limit)
+    except R2Unavailable:
+        return []
+    seen: list[str] = []
+    for o in objs:
+        head = o.key.split("/", 1)[0] + "/" if "/" in o.key else o.key
+        if head != exclude and head not in seen:
+            seen.append(head)
+    return seen
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -289,9 +313,17 @@ def verify_once(*, prefix: str | None = None, operation_id: str | None = None) -
         return _result(status="missing", detail=detail)
 
     if not objects:
-        detail = (
-            f"R2 bucket={client.bucket} prefix={effective_prefix!r}: no objects (bucket empty?)"
-        )
+        siblings = _sample_sibling_prefixes(client, exclude=effective_prefix)
+        if siblings:
+            detail = (
+                f"R2 bucket={client.bucket} prefix={effective_prefix!r}: 0 objects, "
+                f"但 bucket 在其他 prefix 有物件 {siblings} — 極可能是 FRANKY_R2_PREFIXES "
+                f"設定漂移（prefix 對不上實際 folder），不是真的備份失敗。"
+            )
+        else:
+            detail = (
+                f"R2 bucket={client.bucket} prefix={effective_prefix!r}: no objects (bucket empty?)"
+            )
         _record_check(
             now=now,
             latest_object_key=None,

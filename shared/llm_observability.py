@@ -30,6 +30,7 @@ def record_call(
     auth_requested: str | None = None,
     auth_actual: str | None = None,
     fallback_reason: str | None = None,
+    cost_usd: float | None = None,
 ) -> None:
     """記錄一次 LLM call 的 usage。
 
@@ -55,6 +56,8 @@ def record_call(
             ``PROVIDER_NOT_SUPPORTED`` / ``CLI_BINARY_NOT_FOUND`` /
             ``CLI_SUBPROCESS_ERROR`` / ``CLI_AUTH_EXPIRED`` /
             ``TOOL_USE_NOT_SUPPORTED_VIA_CLI``）。沒降級時 ``None``。
+        cost_usd: provider 回報的『實際』USD 花費（目前只有 OpenRouter transport
+            帶值）。``None`` 表示無實際 cost，cost panel 改用 ``pricing.calc_cost`` 估算。
 
     Side effects:
         - 若 thread-local ``usage_buffer`` 已啟用（opt-in tracking），append
@@ -71,6 +74,7 @@ def record_call(
                 "output_tokens": output_tokens,
                 "cache_read_tokens": cache_read_tokens,
                 "cache_write_tokens": cache_write_tokens,
+                "cost_usd": cost_usd,
             }
         )
 
@@ -97,6 +101,7 @@ def record_call(
             auth_actual=auth_actual,
             fallback_reason=fallback_reason,
             scope_json=scope_json,
+            cost_usd=cost_usd,
         )
     except Exception as e:
         logger.debug("cost tracking 失敗（忽略）：%s", e)

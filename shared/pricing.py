@@ -113,6 +113,41 @@ _FAMILY_DEFAULTS: dict[str, ModelPricing] = {
         cache_read_usd_per_mtok=0.3125,
         cache_write_usd_per_mtok=0.0,
     ),
+    # OpenAI — fallback 估算用。OpenRouter 回報的 usage.cost 才是權威，這裡只在
+    # 取不到實際 cost 時兜底。OpenAI 自動 cache、無 cache_write 計費 → 固定 0。
+    # 具名前綴需排在通用 "gpt-" 之前（get_pricing 取第一個 prefix 命中）。
+    "gpt-5-mini": ModelPricing(
+        input_usd_per_mtok=0.25,
+        output_usd_per_mtok=2.0,
+        cache_read_usd_per_mtok=0.025,
+        cache_write_usd_per_mtok=0.0,
+    ),
+    "gpt-5-nano": ModelPricing(
+        input_usd_per_mtok=0.05,
+        output_usd_per_mtok=0.40,
+        cache_read_usd_per_mtok=0.005,
+        cache_write_usd_per_mtok=0.0,
+    ),
+    "gpt-5": ModelPricing(
+        input_usd_per_mtok=1.25,
+        output_usd_per_mtok=10.0,
+        cache_read_usd_per_mtok=0.125,
+        cache_write_usd_per_mtok=0.0,
+    ),
+    # 刻意不放通用 "gpt-" 兜底：未列名的 OpenAI model（如 gpt-4o）保持「未知 → $0」
+    # 慣例（不亂猜價，且 OpenRouter 實際 cost 已涵蓋真正用到的 model）。
+    "o3-": ModelPricing(
+        input_usd_per_mtok=2.0,
+        output_usd_per_mtok=8.0,
+        cache_read_usd_per_mtok=0.50,
+        cache_write_usd_per_mtok=0.0,
+    ),
+    "o1-": ModelPricing(
+        input_usd_per_mtok=15.0,
+        output_usd_per_mtok=60.0,
+        cache_read_usd_per_mtok=7.50,
+        cache_write_usd_per_mtok=0.0,
+    ),
 }
 
 
