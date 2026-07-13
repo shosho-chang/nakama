@@ -152,6 +152,12 @@ omit = [
     "*/tests/*",
     "*/__pycache__/*",
     "*/.venv/*",
+    # 非 Python 資產：coverage 7.6+ 的 code_regions() 會對回報清單裡的每個檔
+    # 做 ast.parse，撞到 HTML（如 login.html 的 "·" U+00B7）就 SyntaxError →
+    # 整個 coverage 報告 INTERNALERROR、CI exit 3。templates/static 排除量測即可。
+    "*/templates/*",
+    "*/static/*",
+    "*.html",
 ]
 
 [tool.coverage.report]
