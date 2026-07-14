@@ -46,3 +46,9 @@ ADR-001 line 38 預留了「SEO / Repurpose 功能未來可由 Brook 擴展承�
 - Franky（對外監控 RSS / news）vs Robin（對內整理 KB）— 同向外/對內對應
 
 此 framing 不是僵化規則，是判斷起點；遇到模糊 case（如 Phase 2 的 `seo-optimize-draft` 結合 SEO 數據與 compose）時仍以個案判斷為準。
+
+---
+
+## Amendment (2026-06-29, ADR-050): Zoro 多領域 — 對內健身教練 carve-out
+
+Zoro 除「向外搜尋」外，新增一條 **Owner personal-ops 能力：對內健身教練**（`agents/zoro/coach/` — Garmin 連動的重訓監控 + 漸進負荷 + 課表生成）。此能力**不套用本 ADR 的「向外 / 對內」framing**：它既非向外偵察、也非對既有內容加工，而是 Owner 個人健身領域的工具，與內容七層 pipeline 正交。歸入 Zoro 是務實選擇（複用既有 argparse 分發 / 成本歸因 / heartbeat toolchain），不改變上方 SEO 三件套的 Zoro / Brook 分界。詳見 **ADR-050**。

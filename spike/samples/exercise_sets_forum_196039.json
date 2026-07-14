@@ -1,0 +1,49 @@
+{
+  "activityId": 4172875329,
+  "exerciseSets": [
+    {
+      "exercises": [],
+      "duration": 4.416,
+      "repetitionCount": null,
+      "weight": null,
+      "setType": "REST",
+      "startTime": "2019-10-19T12:46:29.0",
+      "wktStepIndex": null
+    },
+    {
+      "exercises": [
+        { "category": "UNKNOWN", "name": null, "probability": 99.609375 },
+        { "category": "CURL", "name": null, "probability": 0.0 },
+        { "category": "BENCH_PRESS", "name": null, "probability": 0.0 }
+      ],
+      "duration": 26.901,
+      "repetitionCount": 20,
+      "weight": 39000.0,
+      "setType": "ACTIVE",
+      "startTime": "2019-10-19T12:46:33.0",
+      "wktStepIndex": null
+    },
+    {
+      "exercises": [],
+      "duration": 59.56,
+      "repetitionCount": null,
+      "weight": null,
+      "setType": "REST",
+      "startTime": "2019-10-19T12:47:00.0",
+      "wktStepIndex": null
+    },
+    {
+      "exercises": [
+        { "category": "UNKNOWN", "name": null, "probability": 99.609375 },
+        { "category": "CURL", "name": null, "probability": 0.0 },
+        { "category": "BENCH_PRESS", "name": null, "probability": 0.0 }
+      ],
+      "duration": 35.358,
+      "repetitionCount": 15,
+      "weight": 45000.0,
+      "setType": "ACTIVE",
+      "startTime": "2019-10-19T12:47:59.0",
+      "wktStepIndex": null
+    }
+  ]
+}

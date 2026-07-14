@@ -126,6 +126,7 @@
 <link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge-weekly.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge-fitness.css?v={{ asset_version | default('') }}">
 </head>
 <body class="sho bridge-page bridge-page--scroll">
   {% from "_chassis_nav.html" import chassis_nav %}
@@ -316,6 +317,111 @@
             </details>
           {% endfor %}
         </div>
+      </div>
+
+      {# ── 💪 重訓進度（Zoro coach, WP6）— E1RM · 每肌群週量 · 缺值補登 ── #}
+      <div class="wk-zone">
+        <div class="wk-zone-head"><span class="wk-h">💪 重訓進度</span>
+          <span class="wk-mut">估計最大重量 · 每肌群週量 · 缺值補登</span></div>
+        {% if coach and coach.exercises %}
+          <div class="wk-fit-exgrid">
+            {% set rlabel = {'add_weight':'加重','add_reps':'加 reps','hold':'維持','insufficient_data':'資料不足'} %}
+            {% set rchip = {'add_weight':'active','add_reps':'idle','hold':'offline','insufficient_data':'offline'} %}
+            {% for key, ex in coach.exercises.items() %}
+              <div class="sho-panel wk-fit-ex">
+                <div class="wk-fit-ex-head">
+                  <span class="wk-fit-ex-name">{{ key }}</span>
+                  <span class="wk-fit-ex-mus sho-mono-up">{{ ex.muscle }}</span>
+                  {% if ex.is_pr %}<span class="sho-chip sho-chip--active">PR</span>{% endif %}
+                </div>
+                <div class="wk-fit-ex-stats">
+                  {% if ex.latest_e1rm %}
+                    <span class="wk-fit-readout" title="估計最大重量（E1RM）：從這個動作最近一次的重量×次數推算出「只能舉一下的重量」。看它隨週數變大 = 變強了。">
+                      <span class="wk-fit-val">{{ ex.latest_e1rm }}</span><span class="wk-fit-unit">kg 估1RM</span></span>
+                  {% else %}
+                    <span class="wk-fit-na" title="這個動作做的次數偏高（>10 下），估1RM 在高次數不準，改看訓練量趨勢。">高次數（估1RM 不適用）</span>
+                  {% endif %}
+                  {% if ex.volume_values %}
+                    <span class="wk-fit-spark" aria-label="近期每次訓練量趨勢">
+                      {% for v in ex.volume_values %}<span class="wk-fit-bar" style="--h: {{ ((v / ex.volume_max * 100) | round) if ex.volume_max else 2 }}%"></span>{% endfor %}
+                    </span>
+                  {% endif %}
+                  <span class="wk-fit-rec sho-chip sho-chip--{{ rchip[ex.recommendation.action] }}" title="{{ ex.recommendation.rationale }}">{{ rlabel[ex.recommendation.action] }}{% if ex.recommendation.action == 'add_weight' and ex.recommendation.suggested_weight_kg %} → {{ ex.recommendation.suggested_weight_kg }}kg{% endif %}</span>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+
+          {% if coach.muscles %}
+            <div class="wk-mut wk-fit-sub">每肌群每週 hard sets / MRV</div>
+            <div class="wk-fit-muscles">
+              {% set mstatus = {'below_mev':'未達 MEV','in_range':'區間內','over_mrv':'超 MRV'} %}
+              {% set mchip = {'below_mev':'offline','in_range':'active','over_mrv':'hold'} %}
+              {% for m, d in coach.muscles.items() %}
+                <div class="wk-fit-mus">
+                  <span class="wk-fit-mus-name">{{ m }}</span>
+                  <span class="wk-fit-gauge"><span class="wk-fit-gauge-fill {{ 'is-over' if d.status == 'over_mrv' }}" style="width: {{ [(d.hard_sets / d.mrv * 100) | round, 100] | min if d.mrv else 0 }}%"></span></span>
+                  <span class="wk-fit-mus-n sho-mono">{{ d.hard_sets }}<span class="wk-mut">/{{ d.mrv }}</span></span>
+                  <span class="sho-chip sho-chip--{{ mchip[d.status] }}">{{ mstatus[d.status] }}</span>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% if coach.missing_weight %}
+            <div class="wk-fit-backfill">
+              <div class="wk-zone-head"><span class="wk-h">缺值補登</span>
+                <span class="wk-mut">{{ coach.missing_weight | length }} 組漏了重量</span></div>
+              <ul class="wk-fit-bf-list">
+                {% for s in coach.missing_weight %}
+                  <li class="wk-fit-bf">
+                    <span class="wk-fit-bf-name">{{ s.exercise_key or '未知動作' }}</span>
+                    <span class="sho-mono">{{ s.reps }} reps</span>
+                    <span class="wk-mut sho-mono">{{ s.performed_at[:10] }}</span>
+                    <span class="sho-chip sho-chip--hold">待登</span>
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+        {% else %}
+          <p class="wk-empty">尚無重訓資料 — 跑 <span class="sho-mono">python -m agents.zoro coach-sync</span> 讀回 Garmin。</p>
+        {% endif %}
+      </div>
+
+      {# ── 🚴 有氧一覽（Zoro coach）— 近期 車 / 跑 / 泳 ── #}
+      <div class="wk-zone">
+        <div class="wk-zone-head"><span class="wk-h">🚴 有氧一覽</span>
+          <span class="wk-mut">近期 車 / 跑 / 泳</span></div>
+        {% if cardio and cardio.modalities %}
+          <div class="wk-fit-cardio-tot">
+            {% for t, d in cardio.modalities.items() %}
+              <div class="sho-panel wk-fit-cmod">
+                <span class="wk-fit-cmod-icon" aria-hidden="true">{{ d.icon }}</span>
+                <span class="wk-fit-cmod-body">
+                  <span class="wk-fit-cmod-name">{{ d.label }}</span>
+                  <span class="wk-mut sho-mono wk-fit-cmod-sub">{{ d.distance_km }}km · {{ d.duration_min }}min</span>
+                </span>
+                <span class="wk-fit-readout"><span class="wk-fit-val">{{ d.count }}</span><span class="wk-fit-unit">次</span></span>
+              </div>
+            {% endfor %}
+          </div>
+          {% if cardio.recent %}
+            <ul class="wk-fit-bf-list wk-fit-cardio-list">
+              {% for s in cardio.recent %}
+                <li class="wk-fit-bf">
+                  <span class="wk-fit-bf-name">{{ s.icon }} {{ s.label }}</span>
+                  {% if s.distance_km %}<span class="sho-mono">{{ s.distance_km }}km</span>{% endif %}
+                  <span class="sho-mono">{{ s.duration_min }}min</span>
+                  {% if s.avg_hr %}<span class="wk-mut sho-mono" title="平均心率">♡{{ s.avg_hr }}</span>{% endif %}
+                  <span class="wk-mut sho-mono">{{ s.performed_at[:10] }}</span>
+                </li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        {% else %}
+          <p class="wk-empty">尚無有氧資料 — <span class="sho-mono">coach-sync</span> 會讀回你的車 / 跑 / 泳。</p>
+        {% endif %}
       </div>
 
       {# ── task list + scheduler (below the daily cards) ──────────────────────

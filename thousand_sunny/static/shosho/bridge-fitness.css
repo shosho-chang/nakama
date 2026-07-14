@@ -1,0 +1,98 @@
+/* bridge-fitness.css — Zoro coach progress section in /bridge/weekly (WP6).
+   Aligned to the --sho-* ops vocabulary: hairline-driven, tabular-nums, orange
+   only as a thin accent (latest-session bar + PR/over-MRV chips). Self-contained
+   gauge (bridge-dashboard's .sho-gauge isn't loaded on the weekly page). */
+
+/* ── exercise cards ───────────────────────────────────────────────── */
+.wk-fit-exgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--sho-s-3);
+  margin-bottom: var(--sho-s-4);
+}
+.wk-fit-ex { padding: var(--sho-s-3) var(--sho-s-4); }
+.wk-fit-ex-head {
+  display: flex; align-items: center; gap: var(--sho-s-2);
+  margin-bottom: var(--sho-s-3);
+}
+.wk-fit-ex-name {
+  font-size: 13px; font-weight: 600; color: var(--sho-ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wk-fit-ex-mus { font-size: 10px; color: var(--sho-muted); }
+.wk-fit-ex-head .sho-chip { margin-left: auto; }
+
+.wk-fit-ex-stats { display: flex; align-items: center; gap: var(--sho-s-3); flex-wrap: wrap; }
+.wk-fit-readout { display: inline-flex; align-items: baseline; gap: 3px; }
+.wk-fit-val {
+  font-size: 20px; font-weight: 500; color: var(--sho-text);
+  font-variant-numeric: tabular-nums;
+}
+.wk-fit-unit { font-size: 10px; color: var(--sho-muted); }
+.wk-fit-na { font-size: 11px; color: var(--sho-muted); }
+
+/* volume sparkline — static CSS bars; latest = accent (thin line, ≤4%) */
+.wk-fit-spark { display: inline-flex; align-items: flex-end; gap: 2px; height: 24px; }
+.wk-fit-bar {
+  width: 5px; min-height: 2px; height: var(--h, 2px);
+  background: var(--sho-text-2); border-radius: 1px;
+}
+.wk-fit-bar:last-child { background: var(--sho-accent); }
+
+.wk-fit-rec { margin-left: auto; }
+
+/* ── per-muscle weekly hard sets vs landmarks ─────────────────────── */
+.wk-fit-sub { font-size: 11px; margin-bottom: var(--sho-s-2); }
+.wk-fit-muscles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: var(--sho-s-3) var(--sho-s-6);
+  margin-bottom: var(--sho-s-4);
+}
+.wk-fit-mus { display: flex; align-items: center; gap: var(--sho-s-2); min-width: 0; }
+.wk-fit-mus + .wk-fit-mus { /* hairline divider handled by grid gap; keep cells distinct */ }
+.wk-fit-mus-name { font-size: 12px; color: var(--sho-text-2); min-width: 96px; }
+.wk-fit-gauge {
+  flex: 1; min-width: 48px; height: 4px;
+  background: var(--sho-line); border-radius: var(--sho-r-pill); overflow: hidden;
+}
+.wk-fit-gauge-fill {
+  display: block; height: 100%;
+  background: var(--sho-text-2);
+  transition: width var(--sho-t-slow) var(--sho-ease);
+}
+.wk-fit-gauge-fill.is-over { background: var(--sho-warning); }
+.wk-fit-mus-n { font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* ── 補登 inbox ───────────────────────────────────────────────────── */
+.wk-fit-backfill { margin-top: var(--sho-s-3); }
+.wk-fit-bf-list {
+  list-style: none; margin: var(--sho-s-2) 0 0; padding: 0;
+  display: flex; flex-direction: column; gap: var(--sho-s-1);
+}
+.wk-fit-bf {
+  display: flex; align-items: center; gap: var(--sho-s-3);
+  padding: 6px var(--sho-s-2);
+  border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+}
+.wk-fit-bf-name { font-size: 12px; color: var(--sho-text); flex: 1; }
+.wk-fit-bf .sho-chip { margin-left: auto; }
+
+/* ── 有氧一覽 ─────────────────────────────────────────────────────── */
+.wk-fit-cardio-tot {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--sho-s-3);
+  margin-bottom: var(--sho-s-3);
+}
+.wk-fit-cmod { display: flex; align-items: center; gap: var(--sho-s-3); padding: var(--sho-s-2) var(--sho-s-3); }
+.wk-fit-cmod-icon { font-size: 20px; line-height: 1; }
+.wk-fit-cmod-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.wk-fit-cmod-name { font-size: 13px; font-weight: 600; color: var(--sho-ink); }
+.wk-fit-cmod-sub { font-size: 11px; white-space: nowrap; }
+.wk-fit-cmod .wk-fit-readout { margin-left: auto; }
+.wk-fit-cardio-list .wk-fit-bf-name { flex: 0 0 auto; min-width: 84px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .wk-fit-gauge-fill { transition: none; }
+}
