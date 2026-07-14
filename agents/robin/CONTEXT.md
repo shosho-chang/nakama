@@ -109,14 +109,21 @@ _Avoid_: finished concept page、canonical concept
 永久卡的 frontmatter 拆兩類。**判斷型**（人寫，AI 不得改）：`status`、正文、連結關係描述。**記帳型**（AI 可代寫）：`source_refs`、`created`、`modified`、`aliases`、`mentioned_in`/backlinks 鏡像、`tags`。判準同 Friction Selection：填這欄會不會產生新判斷？
 
 **Maturity（成熟度 / `status`）**：
-永久卡四級：種子 seedling → 發展中 budding → 成熟 evergreen → 已取代 superseded。**每個向上箭頭都是修修動手**；AI 只能經 lint 提示晉級時機，不得自行改 `status`。
+永久卡四級：種子 seedling → 發展中 budding → 成熟 evergreen → 已取代 superseded（**canonical enum；code 內 `growing` 為漂移，ADR-052 決策 11 正規化為 `budding`**）。**每個向上箭頭都是修修動手**；AI 只能經 lint 提示晉級時機，不得自行改 `status`。
+_Avoid_: 把 fleeting／收件匣狀態塞進這條成熟度階梯——**fleeting 是獨立筆記類型（Nami/機器人可代寫、`KB/Fleeting/`、時間戳命名、triage 生命週期），與永久卡 by-construction 紅線衝突**；成熟度是「概念發展度」、fleeting 是「收件匣待處理」，兩條不同軸（ADR-052 決策 12）。
 
 **Link relationship（連結關係）**：
-採納一條連結時人寫下的型別化關係：支持 / 矛盾 / 延伸 / 舉例。連結三節點——**AI 提候選連結（可）→ 修修採納並寫關係（僅人，紅線）→ AI 鏡像反向連結（可）**。正向連結與關係寫在永久卡**正文**（故受 by-construction 保護）。
-_Avoid_: 把「加連結」當單一動作（它是三節點，只有中間是紅線）
+採納一條連結時人寫下的型別化關係。**持久邊固定三種：支持 / 反駁 / 延伸**（support / refute / extend，凍結，對齊 `EdgeType` schema、canvas 四格落點、`_EDGE_LABELS`）。連結三節點——**AI 提候選連結（可）→ 修修採納並寫關係與理由（僅人，紅線）→ AI 鏡像反向連結（可）**。正向連結與關係寫在永久卡**正文**（故受 by-construction 保護）。
+- **粗骨架 + 細語意分層（2026-07-14 grilling 凍結）**：三種類型是**粗粒度知識骨架**；具體味道（**因果 A→B**、時序、舉例…）寫在**人手寫的「理由」自由欄**，不升成新 enum。因果 = 類型`延伸` + 理由「A 導致 B」。meta 規則：想加新類型前先問「能不能改用理由欄承接？」——幾乎都可以。**抗拒類型增生**（經典 Zettelkasten 連結多為無類型；三種已慷慨）。
+- **`類似（可合併）`不是邊**：兩張卡類似到可合併時，正確動作是**合併成一張**（原子性：一卡一概念），不是永久掛「類似」線。它是 **Candidate Link Ghost / lint 偵測到的合併提示**，不進 `EdgeType`。
+_Avoid_: 把「加連結」當單一動作（它是三節點，只有中間是紅線）；把因果／類似當成第四、五種持久邊
 
 **Connection Discovery（連結探勘）**：
 AI 對（趨近全量的）小型 permanent 語料**直接 LLM 推理**，找出修修一時連不起來的連結、pattern 與跨卡矛盾。corpus selector **只餵 `KB/Permanent/` 正文 + 精簡 metadata**，每次 all-corpus call 前做 **token-budget preflight**。**不靠向量檢索**（ADR-042 已移除 dense lane）——規模小到能塞進 context、LLM 推理即可做概念類比；撞方法論規模煞車（200–500 文件）才升級，**且屆時只對 `KB/Permanent/` 建小向量索引**（非 raw vault）。這是 AI 的核心貢獻之一，與「損耗代工」並列，不是附屬。
+
+**Candidate Link Ghost（候選連結 ghost）**：
+卡片盒 Graph View（Slice 1）裡 **Connection Discovery 的視覺化呈現**——AI 在既有永久卡之間畫的**虛線**，只說「這兩張**也許**有關係」，**不標類型、不標方向**（type-less）。落在紅線的檢索側：**找出可能相關的對 = AI（檢索/損耗摩擦）；這是什麼關係、要不要連 = 修修（理解摩擦，紅線）**。修修點 ghost → 自己選 支持/反駁/延伸 + 寫理由 → 邊由虛變實。刻意**不做** P-2 `judge_edges` 的類型+方向判斷（那是 ghost 最易錯、也最越線的部分）。可附**一行極中性的「為什麼被標」線索**（如「都談到槓桿」）幫決策，但不下關係判斷。近重複對被標出時，正解常是**合併**而非連線。
+_Avoid_: 讓 ghost 預選關係類型（越線）；把 ghost 當成已定的邊（它是待人裁決的候選）
 
 **Retrieval Synthesis vs Understanding Synthesis（檢索式合成 vs 理解式合成）**：
 「合成」拆兩種，落在紅線兩邊。**檢索式合成**＝撈相關材料 + 聚攏 + 按關係排 + 標張力缺口（**備料**）：交 AI，且要做得比 Karpathy 更兇。**理解式合成**＝想通、形成觀點、串成只有修修寫得出的論證（**寫作**）：留人（紅線，同 **Writing Assist Surface**「scaffolds not ghostwrite」）。Karpathy 的 LLM wiki 把兩者都給 AI（故快但產出是 AI 的詮釋）；Centaur 只把第二種留人。**Connection Discovery 是這條的對外延伸**，但要分清防守/進攻兩面（見 Draft Map）。
