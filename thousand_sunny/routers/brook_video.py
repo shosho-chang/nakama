@@ -227,7 +227,9 @@ async def storyboard_page(
         try:
             cue_by_id = {c.index: c for c in parse_srt(srt_path.read_text(encoding="utf-8"))}
         except (ValueError, OSError):
-            logger.warning("transcript.srt unreadable for %s — beat transcripts omitted", episode_id)
+            logger.warning(
+                "transcript.srt unreadable for %s — beat transcripts omitted", episode_id
+            )
 
     rows: list[dict[str, Any]] = []
     for beat in storyboard:
