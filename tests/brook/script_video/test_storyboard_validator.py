@@ -155,8 +155,8 @@ def test_consecutive_component_separated_by_none_is_ok() -> None:
     assert [v for v in violations if v.rule == "consecutive_component"] == []
 
 
-def test_consecutive_same_asset_kind_is_error() -> None:
-    """asset 類的視覺重複比對用 kind（兩個相鄰 stock = 重複）."""
+def test_consecutive_same_stock_footage_is_error() -> None:
+    """asset 類的視覺重複比對用 source_url（同一支 footage 相鄰 = 重複）."""
     stock = {"kind": "stock", "source_url": "https://elements.envato.com/a"}
     beats = [
         _beat(1, target="asset", component="stock", asset=dict(stock), start=0),
@@ -164,6 +164,28 @@ def test_consecutive_same_asset_kind_is_error() -> None:
     ]
     violations = validate_storyboard(beats, _GUARDRAILS, duration_sec=600.0)
     assert [v for v in violations if v.rule == "consecutive_component"]
+
+
+def test_consecutive_different_stock_footage_is_ok() -> None:
+    """相鄰兩個「不同 footage」的 stock 是合法快切（修修 2026-07-17 hook 段回饋）."""
+    beats = [
+        _beat(
+            1,
+            target="asset",
+            component="stock",
+            asset={"kind": "stock", "source_url": "https://elements.envato.com/a"},
+            start=0,
+        ),
+        _beat(
+            2,
+            target="asset",
+            component="stock",
+            asset={"kind": "stock", "source_url": "https://elements.envato.com/b"},
+            start=30,
+        ),
+    ]
+    violations = validate_storyboard(beats, _GUARDRAILS, duration_sec=600.0)
+    assert [v for v in violations if v.rule == "consecutive_component"] == []
 
 
 def test_long_none_streak_is_warning_not_error() -> None:

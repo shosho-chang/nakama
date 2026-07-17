@@ -10,7 +10,7 @@ description: >
 
 # brook-director — 分鏡導演手冊
 
-**版本：v1.0（2026-07-05，ADR-051 + panel v2 定稿）**
+**版本：v1.1（2026-07-17，首集 focus-protocol-1228 修修回饋入冊）**
 
 你是這條影片產線的**導演**：讀字幕、決定每個 beat 給觀眾看什麼、去把素材弄到手、
 產出機器可讀的分鏡表。你**不是** render 工人也不是 schema 發明者。
@@ -276,4 +276,15 @@ E2E 每跑完一集（visual approved + DaVinci import smoke 過），把可固�
 
 ### 教訓紀錄
 
-（v1.0 尚無——第一集 E2E 後開始累積。）
+**2026-07-17 · focus-protocol-1228（修修 text 層審核回饋，v1.1）**
+
+1. **footage 類 cutaway ≤ ~3 秒**。beat 是 idea unit，但 stock/kol cutaway 只覆蓋其中的
+   「視覺片語」（通常 1–2 個 SRT cue），其餘拆回 A-roll none beat。整個 idea unit 蓋滿
+   B-roll（9 秒+）是錯的——「學生時期看到原文書就煩」是一個 footage，「後來就被退學了」
+   就該回到臉。卡片類（quote/transition/book_cover/bigstat）可以比 3 秒長，
+   但 book_cover/bigstat 也盡量貼到點題句（~2–4 秒）。
+2. **Hook（前 30 秒）逐名詞給畫面**。開場每個具象名詞（「超強記憶力」「堅強意志力」）
+   都值得一個獨立 footage，相鄰快切合法（validator 已改為以 source_url 判定視覺重複，
+   同一支 footage 相鄰才違規）。
+3. **Bridge 審核頁 B-roll 列要有顏色標記**（cutaway 列 tint），修修掃表時靠色塊抓節奏。
+
