@@ -76,13 +76,45 @@ def main() -> None:
     for r in broll:
         by_type.setdefault(r["type"], []).append(r["duration"])
     total_min = shots[-1]["end"] / 60 if shots else 0
+
+    # B-roll「事件」：連續 B-roll 鏡合併為一個 cutaway 事件（audit 2026-07-18：
+    # 與 guardrail 的 cutaway 決策同單位；「一事件多鏡快切」另計 shots_per_event）
+    events: list[list[dict]] = []
+    aroll_runs: list[float] = []
+    run = 0.0
+    for r in rows:
+        if r["type"] == "aroll":
+            run += r["duration"]
+            continue
+        if run > 0:
+            aroll_runs.append(run)
+            run = 0.0
+        if events and abs(events[-1][-1]["end"] - r["start"]) < 0.05:
+            events[-1].append(r)
+        else:
+            events.append([r])
+    if run > 0:
+        aroll_runs.append(run)
+    ev_shot_counts = sorted(len(e) for e in events)
+    runs_sorted = sorted(aroll_runs)
+
     stats = {
         "total_shots": len(rows),
         "broll_shots": len(broll),
-        "broll_per_minute": round(len(broll) / total_min, 2) if total_min else 0,
+        "broll_shots_per_minute": round(len(broll) / total_min, 2) if total_min else 0,
+        "broll_events": len(events),
+        "broll_events_per_minute": round(len(events) / total_min, 2) if total_min else 0,
+        "shots_per_event_p50": ev_shot_counts[len(ev_shot_counts) // 2] if events else None,
+        "shots_per_event_max": ev_shot_counts[-1] if events else None,
         "broll_duration_p50": round(statistics.median(durs), 2) if durs else None,
         "broll_duration_p90": round(durs[int(len(durs) * 0.9)], 2) if durs else None,
         "broll_time_share": round(sum(durs) / shots[-1]["end"], 3) if durs else 0,
+        "aroll_runs": {
+            "n": len(runs_sorted),
+            "p50": round(statistics.median(runs_sorted), 1) if runs_sorted else None,
+            "p90": round(runs_sorted[int(len(runs_sorted) * 0.9)], 1) if runs_sorted else None,
+            "max": round(runs_sorted[-1], 1) if runs_sorted else None,
+        },
         "by_type": {k: {"n": len(v), "p50": round(statistics.median(v), 2),
                         "max": round(max(v), 2)}
                     for k, v in sorted(by_type.items())},

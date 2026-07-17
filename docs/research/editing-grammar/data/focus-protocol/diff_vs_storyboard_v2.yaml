@@ -1,10 +1,14 @@
 summary:
   gt_broll_shots: 117
   sb_cutaways: 36
-  hits: 23
-  recall: 0.2
-  misses: 94
-  false_positives: 15
+  hits: 24
+  hits_type_match: 15
+  near_misses: 38
+  true_misses: 55
+  recall_position: 0.21
+  recall_with_near: 0.53
+  fp_near: 8
+  fp_true: 6
 hits:
 - gt:
     shot_id: 8
@@ -25,8 +29,9 @@ hits:
     end: 39.706
     component: book_cover
     text: 叫做《專注力協定》
-  iou: 0.35
+  coverage: 1.0
   type_match: true
+  offset_s: 0.0
 - gt:
     shot_id: 17
     start: 74.575
@@ -45,8 +50,9 @@ hits:
     end: 76.951
     component: stock
     text: 學生時期看到原文書就煩
-  iou: 0.43
+  coverage: 1.0
   type_match: true
+  offset_s: 0.0
 - gt:
     shot_id: 18
     start: 80.122
@@ -59,14 +65,15 @@ hits:
     - 49
     - 50
     text: 要不然就是上 battle net連線個幾場然後就天亮了
-  beat:
+  beat: &id003
     beat_id: 14
     start: 78.62
     end: 82.58200000000001
     component: stock
     text: 開個 ptt 逛一下
-  iou: 0.47
+  coverage: 0.66
   type_match: true
+  offset_s: 1.5
 - gt:
     shot_id: 33
     start: 126.877
@@ -82,14 +89,15 @@ hits:
     - 82
     - 83
     text: 這本 Daniel Goleman在 2013 年出版的《專注的力量》FOCUS:The Hidden Driver of Excellence
-  beat:
+  beat: &id004
     beat_id: 19
     start: 129.295
     end: 133.04899999999998
     component: book_cover
     text: 《專注的力量》
-  iou: 0.61
+  coverage: 1.0
   type_match: true
+  offset_s: -2.4
 - gt:
     shot_id: 40
     start: 157.24
@@ -109,8 +117,9 @@ hits:
     end: 160.368
     component: stock
     text: 沒錯 正念和冥想
-  iou: 0.52
+  coverage: 1.0
   type_match: false
+  offset_s: 0.0
 - gt:
     shot_id: 42
     start: 168.418
@@ -126,14 +135,15 @@ hits:
     - 108
     - 109
     text: 他的 Deep Work《深度工作力》Digital Minimalism《深度數位大掃除》
-  beat:
+  beat: &id005
     beat_id: 25
     start: 168.418
     end: 170.92000000000002
     component: book_cover
     text: 他的 Deep Work
-  iou: 0.43
+  coverage: 1.0
   type_match: true
+  offset_s: 0.0
 - gt:
     shot_id: 50
     start: 193.902
@@ -150,8 +160,9 @@ hits:
     end: 197.61399999999998
     component: stock
     text: 我高中可是把超任的
-  iou: 0.51
+  coverage: 1.0
   type_match: false
+  offset_s: 0.0
 - gt:
     shot_id: 51
     start: 195.779
@@ -163,8 +174,9 @@ hits:
     - 122
     text: 瑪利歐賽車玩到出神入化耶
   beat: *id001
-  iou: 0.49
+  coverage: 1.0
   type_match: false
+  offset_s: 1.9
 - gt:
     shot_id: 52
     start: 197.614
@@ -178,34 +190,15 @@ hits:
     - 124
     - 125
     text: 還有 2022 年Johann Hari 出的 Stolen Focus他也講得不錯
-  beat:
+  beat: &id006
     beat_id: 29
     start: 197.614
     end: 200.86700000000002
     component: book_cover
     text: 還有 2022 年
-  iou: 0.73
+  coverage: 1.0
   type_match: true
-- gt:
-    shot_id: 61
-    start: 236.611
-    end: 239.865
-    duration: 3.253
-    type: book_cover
-    note: 《鉤癮效應》黃色書封在瀏覽器視窗框中滑入、佔畫面右半，疊在 aroll 上；文字：鉤癮效應 創造習慣新商機 HOOKED How to Build
-      Habit-Forming Products 天下文化。
-    cues:
-    - 146
-    - 147
-    text: 他的成名作 Hooked《鉤癮效應》這本書
-  beat:
-    beat_id: 34
-    start: 238.279
-    end: 241.82399999999998
-    component: book_cover
-    text: 《鉤癮效應》這本書
-  iou: 0.3
-  type_match: true
+  offset_s: 0.0
 - gt:
     shot_id: 74
     start: 277.486
@@ -219,14 +212,15 @@ hits:
     - 176
     - 177
     text: 但是作者正在用手機回訊息就只能含糊地回答說：「等一下我回完這個訊息就好」
-  beat:
+  beat: &id008
     beat_id: 39
     start: 277.485
     end: 281.48900000000003
     component: stock
     text: 但是作者正在用手機回訊息
-  iou: 0.63
+  coverage: 1.0
   type_match: true
+  offset_s: 0.0
 - gt:
     shot_id: 118
     start: 502.502
@@ -237,14 +231,15 @@ hits:
     cues:
     - 304
     text: 或者是⋯⋯不斷地滑手機
-  beat:
+  beat: &id011
     beat_id: 67
     start: 501.292
     end: 504.04499999999996
     component: stock
     text: 像是暴飲暴食
-  iou: 0.56
+  coverage: 1.0
   type_match: true
+  offset_s: 1.2
 - gt:
     shot_id: 127
     start: 543.752
@@ -256,14 +251,15 @@ hits:
     - 331
     - 332
     text: 可能就會感到一股焦慮讓我想要去拿手機
-  beat:
+  beat: &id012
     beat_id: 73
     start: 543.543
     end: 547.129
     component: stock
     text: 可能就會感到一股焦慮
-  iou: 0.94
+  coverage: 1.0
   type_match: true
+  offset_s: 0.2
 - gt:
     shot_id: 134
     start: 574.199
@@ -285,8 +281,9 @@ hits:
     end: 581.664
     component: stock
     text: 接著想像有片樹葉
-  iou: 0.31
+  coverage: 1.0
   type_match: false
+  offset_s: -3.9
 - gt:
     shot_id: 154
     start: 671.087
@@ -298,14 +295,15 @@ hits:
     - 404
     - 405
     text: 首先要提到一個很重要的概念：
-  beat:
+  beat: &id014
     beat_id: 87
     start: 674.09
     end: 676.133
     component: transition_title
     text: 首先要提到一個
-  iou: 0.4
+  coverage: 1.0
   type_match: false
+  offset_s: -3.0
 - gt:
     shot_id: 159
     start: 689.564
@@ -326,8 +324,9 @@ hits:
     end: 705.371
     component: quote_card
     text: 「人們在保護個人財產的時候
-  iou: 0.58
+  coverage: 1.0
   type_match: false
+  offset_s: 0.0
 - gt:
     shot_id: 160
     start: 698.74
@@ -342,8 +341,9 @@ hits:
     - 420
     text: 而時間卻是唯一一樣東西應該光明正大地保持吝嗇小氣的態度」
   beat: *id002
-  iou: 0.42
+  coverage: 1.0
   type_match: false
+  offset_s: 9.2
 - gt:
     shot_id: 180
     start: 781.155
@@ -357,14 +357,15 @@ hits:
     - 470
     - 471
     text: 所有試過這種方式的人都會在一天裡面塞太多事情導致很多事會被一天又一天地往後延
-  beat:
+  beat: &id016
     beat_id: 102
     start: 781.155
     end: 785.534
     component: stock
     text: 所有試過這種方式的人
-  iou: 0.56
+  coverage: 1.0
   type_match: true
+  offset_s: 0.0
 - gt:
     shot_id: 201
     start: 858.775
@@ -377,14 +378,38 @@ hits:
     - 514
     - 515
     text: 我每一天早上起床之後的兩小時一定是運動加冥想
-  beat:
+  beat: &id017
     beat_id: 111
     start: 859.608
     end: 862.9449999999999
     component: stock
     text: 起床之後的兩小時
-  iou: 0.8
+  coverage: 1.0
   type_match: true
+  offset_s: -0.8
+- gt:
+    shot_id: 222
+    start: 930.054
+    end: 943.693
+    duration: 13.639
+    type: stock
+    note: 實拍素材：留鬍男子在沙發專注握遊戲手把打電動，後方橘衣女子滑手機；a 幀仍是主持人 aroll（轉場切點），以佔多數的 stock 分類，無文字。
+    cues:
+    - 559
+    - 560
+    - 561
+    - 562
+    - 563
+    text: 以及用協定來預防分心了現代人越來愈容易分心的其中一個原因就是外在誘因越來越多而且是無處不在 無孔不入啊！
+  beat:
+    beat_id: 125
+    start: 935.225
+    end: 938.437
+    component: transition_title
+    text: 現代人越來愈容易分心的
+  coverage: 1.0
+  type_match: false
+  offset_s: -5.2
 - gt:
     shot_id: 224
     start: 948.948
@@ -396,14 +421,15 @@ hits:
     - 568
     - 569
     text: 從一天早上的鬧鐘開始就打斷你睡覺了嘛
-  beat:
+  beat: &id019
     beat_id: 128
     start: 948.948
     end: 952.576
     component: stock
     text: 從一天早上的鬧鐘開始
-  iou: 1.0
+  coverage: 1.0
   type_match: true
+  offset_s: 0.0
 - gt:
     shot_id: 228
     start: 966.549
@@ -418,14 +444,15 @@ hits:
     - 581
     - 582
     text: 一邊開車 車上電話就響了營業員打電話來說帳戶的錢不夠了要再補二十萬進去要不然被斷頭了
-  beat:
+  beat: &id020
     beat_id: 132
     start: 970.135
     end: 973.097
     component: bigstat
     text: 帳戶的錢不夠了
-  iou: 0.38
+  coverage: 1.0
   type_match: false
+  offset_s: -3.6
 - gt:
     shot_id: 229
     start: 974.348
@@ -438,14 +465,15 @@ hits:
     - 584
     - 585
     text: 到了公司還是不得安寧即時通訊 email會議通知一直跳出來
-  beat:
+  beat: &id021
     beat_id: 134
     start: 976.35
     end: 980.229
     component: stock
     text: 即時通訊 email
-  iou: 0.66
+  coverage: 1.0
   type_match: true
+  offset_s: -2.0
 - gt:
     shot_id: 244
     start: 1032.406
@@ -457,15 +485,627 @@ hits:
     - 619
     - 620
     text: 像是把手機鎖起來讓自己比較難拿到
-  beat:
+  beat: &id022
     beat_id: 143
     start: 1032.406
     end: 1035.325
     component: stock
     text: 像是把手機鎖起來
-  iou: 1.0
+  coverage: 1.0
   type_match: true
-misses:
+  offset_s: 0.0
+- gt:
+    shot_id: 248
+    start: 1046.837
+    end: 1050.091
+    duration: 3.253
+    type: book_cover
+    note: 《原子習慣 細微改變帶來巨大成就的實證法則 Atomic Habits》書封視窗放大疊在 aroll 上，主持人同時手持實體書《原子習慣》入鏡；首幀書封尚在滑入。
+    cues:
+    - 628
+    - 629
+    text: 一定要算是《原子習慣》這本世紀暢銷書了
+  beat: &id023
+    beat_id: 146
+    start: 1045.502
+    end: 1048.172
+    component: book_cover
+    text: 一定要算是《原子習慣》
+  coverage: 0.5
+  type_match: true
+  offset_s: 1.3
+near_misses:
+- gt:
+    shot_id: 21
+    start: 87.17
+    end: 91.633
+    duration: 4.463
+    type: stock
+    note: 實拍素材：藍西裝男子的手握白色滑鼠、旁有筆電，明亮辦公室淺景深，畫面無文字
+    cues:
+    - 53
+    - 54
+    - 55
+    text: 每當下定決心要坐下來好好寫篇文章或者看一本書
+  nearest_beat: *id003
+  gap_s: 4.6
+- gt:
+    shot_id: 35
+    start: 136.678
+    end: 143.143
+    duration: 6.465
+    type: quote_card
+    note: 引文大字疊在 stock 素材上（女子在客廳書桌用筆電寫筆記），b/c 幀畫面刷白、白色大字「如果要通往卓越，專注力是個被低估的關鍵能力。」為主體；a
+      幀為尚未出字的純 stock（以佔多數內容分類）。
+    cues:
+    - 86
+    - 87
+    - 88
+    text: 這本書開宗明義地指出如果要通往卓越專注力是個被低估的關鍵能力
+  nearest_beat: *id004
+  gap_s: 3.6
+- gt:
+    shot_id: 43
+    start: 174.216
+    end: 177.803
+    duration: 3.587
+    type: book_cover
+    note: 書封圖卡疊在 aroll 上（主持人在左側說話，書封從右側放大進場）：「A World Without Email — Reimagining
+      Work in an Age of Communication Overload」「沒有Email的世界 過度溝通時代—的—深度工作法」「降低過動訊息的干擾，每天只需工作5小時」。
+    cues:
+    - 110
+    - 111
+    text: 以及 A World without Email就是《沒有 Email 的世界》
+  nearest_beat: *id005
+  gap_s: 3.3
+- gt:
+    shot_id: 47
+    start: 187.729
+    end: 189.439
+    duration: 1.71
+    type: book_cover
+    note: 疊在 aroll 上：主持人手持實體書《分心不上癮》，右側同時放大英文版書封圖卡「THE DISTRACTION ADDICTION — Getting
+      the Information You Need and the Communication You Want... ALEX SOOJUNG-KIM
+      PANG」。
+    cues:
+    - 117
+    text: The Distraction Addiction
+  nearest_beat: *id001
+  gap_s: 4.5
+- gt:
+    shot_id: 53
+    start: 202.077
+    end: 206.164
+    duration: 4.087
+    type: book_cover
+    note: 疊在 aroll 上（上下黑邊構圖）：左側書封圖卡「MAGIC PILL — The Extraordinary Benefits and Disturbing
+      Risks of the New Weight-Loss Drugs — JOHANN HARI」；幀 a 圖卡尚未進場（純 aroll），以圖卡為主分類。
+    cues:
+    - 126
+    - 127
+    - 128
+    text: 喔對了 他 2024 年有出一本有關瘦瘦針的書還蠻有意思的 有人想聽嗎？
+  nearest_beat: *id006
+  gap_s: 1.2
+- gt:
+    shot_id: 61
+    start: 236.611
+    end: 239.865
+    duration: 3.253
+    type: book_cover
+    note: 《鉤癮效應》黃色書封在瀏覽器視窗框中滑入、佔畫面右半，疊在 aroll 上；文字：鉤癮效應 創造習慣新商機 HOOKED How to Build
+      Habit-Forming Products 天下文化。
+    cues:
+    - 146
+    - 147
+    text: 他的成名作 Hooked《鉤癮效應》這本書
+  nearest_beat:
+    beat_id: 34
+    start: 238.279
+    end: 241.82399999999998
+    component: book_cover
+    text: 《鉤癮效應》這本書
+  gap_s: 0.0
+- gt:
+    shot_id: 64
+    start: 247.706
+    end: 254.796
+    duration: 7.09
+    type: diagram
+    note: 白底 Hook 模型概念圖（滿版、無主持人）：黃底標題 The Hook，四象限文字 Trigger / Action / External /
+      Internal / Variable Reward / Investment，右下署名 NIR EYAL NirAndFar.com @nireyal。
+    cues:
+    - 153
+    - 154
+    - 155
+    - 156
+    text: 他發想出來的這個鉤癮模式四大步驟每一個做 app 的一定都會知道因為這模式太有用了
+  nearest_beat: &id007
+    beat_id: 37
+    start: 254.796
+    end: 258.591
+    component: stock
+    text: 越來越多人的大腦
+  gap_s: 0.0
+- gt:
+    shot_id: 68
+    start: 263.346
+    end: 267.184
+    duration: 3.837
+    type: stock
+    note: 實拍素材：白色帳篷內父親與穿條紋襪的小女孩親暱聊天玩耍，無文字。
+    cues:
+    - 162
+    - 163
+    - 164
+    text: 某天他和女兒正在玩一本親子遊戲書中提供的小遊戲
+  nearest_beat: *id007
+  gap_s: 4.8
+- gt:
+    shot_id: 71
+    start: 273.148
+    end: 275.4
+    duration: 2.252
+    type: stock
+    note: 實拍：綁辮子的小女孩對著鐵罐傳聲筒說話，背景有地球儀、非洲鼓與三角旗，無文字。
+    cues:
+    - 170
+    - 171
+    text: 他女兒機哩瓜啦地先說她的答案了
+  nearest_beat: *id008
+  gap_s: 2.1
+- gt:
+    shot_id: 90
+    start: 370.37
+    end: 376.334
+    duration: 5.964
+    type: stock
+    note: 實拍素材：深藍西裝男子在白色辦公室電腦前沉思、手托下巴，無文字。
+    cues:
+    - 229
+    - 230
+    - 231
+    - 232
+    text: 但是當我一打開空白的 notion page就會有另外一個內在誘因把我往左邊拉
+  nearest_beat: &id009
+    beat_id: 50
+    start: 378.002
+    end: 380.838
+    component: book_cover
+    text: The War of Art
+  gap_s: 1.7
+- gt:
+    shot_id: 92
+    start: 380.839
+    end: 389.472
+    duration: 8.634
+    type: quote_card
+    note: 引文卡疊在壓暗的實拍素材（辦公室苦惱抱頭男子）上，大字「『阿抗』是一種無形的阻力，當人想要從基本的狀態往進階的狀態前進時，它就會出現，讓人分心去做別的事。」首幀文字尚在逐行浮現。
+    cues:
+    - 236
+    - 237
+    - 238
+    - 239
+    - 240
+    text: 「阿抗」是一種無形的阻力當你想要從基本的狀態往進階的狀態前進時它就會出現讓我分心去做別的事
+  nearest_beat: *id009
+  gap_s: 0.0
+- gt:
+    shot_id: 95
+    start: 398.148
+    end: 416.916
+    duration: 18.769
+    type: diagram
+    note: 白底十字箭頭模型圖，標題「心無旁鶩的模型」，四端為「內在誘因」（大腦）「外在誘因」（鈴鐺）「分心」（磁鐵）「引力」（齒輪），中間幀出現橘底大字條「心無旁鶩模式」並
+      highlight「引力」，末幀 highlight「分心」。
+    cues:
+    - 247
+    - 248
+    - 249
+    - 250
+    - 251
+    - 252
+    - 253
+    - 254
+    - 255
+    - 256
+    - 257
+    text: 這個強大的「外在誘因」也會把我往 distraction那個方向拉過去這個就是作者歸納出來的相當好記的「心無旁鶩模型」我們要做的就是讓右邊的 traction
+      變得很大左邊的 distraction 變得很小如此一來就可以讓我們朝向人生的願
+  nearest_beat:
+    beat_id: 53
+    start: 393.518
+    end: 396.27
+    component: bigstat
+    text: 終於公開了
+  gap_s: 1.9
+- gt:
+    shot_id: 109
+    start: 462.879
+    end: 466.257
+    duration: 3.378
+    type: quote_card
+    note: 金句「如果說分心的代價是付出時間，那麼時間管理就等於痛苦管理。」疊在深夜辦公室男子講電話持紅鉛筆的實拍素材上；首幀引文尚未浮現（純實拍），以引文卡計。
+    cues:
+    - 283
+    - 284
+    text: 「如果說分心的代價就是付出時間
+  nearest_beat: &id010
+    beat_id: 63
+    start: 469.343
+    end: 476.559
+    component: quote_card
+    text: 再強調一次：
+  gap_s: 3.1
+- gt:
+    shot_id: 110
+    start: 466.257
+    end: 469.344
+    duration: 3.086
+    type: quote_card
+    note: 同一金句「如果說分心的代價是付出時間，那麼時間管理就等於痛苦管理。」疊在會議中男子手持圖表講解的實拍素材上（畫面壓暗）。
+    cues:
+    - 285
+    text: 那時間管理就等於痛苦管理」
+  nearest_beat: *id010
+  gap_s: 0.0
+- gt:
+    shot_id: 112
+    start: 476.518
+    end: 481.856
+    duration: 5.339
+    type: quote_card
+    note: 金句「分心的動機來自想要逃避痛苦的渴望。如果一個行為曾經有效地紓解痛苦，就很可能會繼續把它當成逃避不適感的工具。」疊在窗邊雙手滑手機的實拍素材上（首幀文字進場中，僅見「的動機來自想要逃避痛苦的」）。
+    cues:
+    - 290
+    - 291
+    text: 作者說：所有分心的動機都是來自於想要逃避痛苦的渴望
+  nearest_beat: *id010
+  gap_s: 0.0
+- gt:
+    shot_id: 116
+    start: 494.035
+    end: 496.913
+    duration: 2.878
+    type: stock
+    note: 實拍：男子深夜躺在床上滑手機，臉被螢幕光照亮，無畫面文字。
+    cues:
+    - 298
+    - 299
+    text: 為了逃避無聊我們會不斷地滑手機
+  nearest_beat: *id011
+  gap_s: 4.4
+- gt:
+    shot_id: 117
+    start: 496.913
+    end: 502.502
+    duration: 5.589
+    type: stock
+    note: 實拍：西裝男子坐在辦公桌前吃漢堡，桌上有筆電與薯條漢堡餐盤，無畫面文字。
+    cues:
+    - 300
+    - 301
+    - 302
+    - 303
+    text: 那為了逃避焦慮和壓力我們會尋求一些治標不治本的方法像是暴飲暴食
+  nearest_beat: *id011
+  gap_s: 0.0
+- gt:
+    shot_id: 120
+    start: 506.464
+    end: 509.384
+    duration: 2.92
+    type: stock
+    note: 實拍特寫：一堆舊式按鍵功能手機（Nokia 式）堆疊，鏡頭緩慢移動，無畫面文字。
+    cues:
+    - 307
+    - 308
+    text: 但就算你把智慧型手機換成智障型手機
+  nearest_beat: *id011
+  gap_s: 2.4
+- gt:
+    shot_id: 126
+    start: 540.206
+    end: 543.752
+    duration: 3.545
+    type: stock
+    note: 實拍：男子深夜在辦公室電腦前工作後打大哈欠，桌面文件印有「ANNUAL REPORT」（場景內文件字，非 overlay），首幀有一條橘色細線轉場痕跡。
+    cues:
+    - 328
+    - 329
+    - 330
+    - 331
+    text: 舉例來說當我打開空白檔案開始寫文章前可能就會感到一股焦慮
+  nearest_beat: *id012
+  gap_s: 0.0
+- gt:
+    shot_id: 146
+    start: 633.508
+    end: 636.761
+    duration: 3.253
+    type: stock
+    note: 昏暗辦公室裡男子端白色馬克杯喝咖啡、若有所思，無畫面文字。
+    cues:
+    - 381
+    - 382
+    text: 或者是電子閱讀器一感到無聊就拿起來看
+  nearest_beat: &id013
+    beat_id: 83
+    start: 638.554
+    end: 642.0989999999999
+    component: stock
+    text: 我就索性把眼睛閉起來
+  gap_s: 1.8
+- gt:
+    shot_id: 148
+    start: 642.1
+    end: 645.228
+    duration: 3.128
+    type: stock
+    note: 灰色帽T男子在海邊藍天下閉眼仰頭深呼吸，無畫面文字。
+    cues:
+    - 386
+    - 387
+    text: 這些事情都比上網打發時間好很多
+  nearest_beat: *id013
+  gap_s: 0.0
+- gt:
+    shot_id: 153
+    start: 662.245
+    end: 671.087
+    duration: 8.842
+    type: diagram
+    note: 白底概念圖「心無旁騖的模型」：十字箭頭連四象限——内在誘因、外在誘因、分心、引力，黃色高亮從「内在誘因」移到「引力」。
+    cues:
+    - 398
+    - 399
+    - 400
+    - 401
+    - 402
+    - 403
+    text: 搞定了把我們往左拉的內在誘因後接下來我們就是要好好計畫最重要的能把我們人生往正軌拉的 traction 了
+  nearest_beat: *id014
+  gap_s: 3.0
+- gt:
+    shot_id: 155
+    start: 676.134
+    end: 681.598
+    duration: 5.464
+    type: quote_card
+    note: 黃昏海邊剪影實拍上疊滿版金句文字，逐行浮現「如果你不知道專心的時候 要做什麼事情, 就不能稱某些事物讓你分心。」，引文文字為主體、疊在 stock
+      剪影畫面上
+    cues:
+    - 406
+    - 407
+    - 408
+    text: 如果你不知道專心的時候要做些什麼事情就不能稱某些事物讓你分心
+  nearest_beat: *id014
+  gap_s: 0.0
+- gt:
+    shot_id: 171
+    start: 742.283
+    end: 748.164
+    duration: 5.881
+    type: stock
+    note: 辦公室會議實拍：綠襯衫大鬍子男子與多位同事圍桌討論，背後白板貼滿圖表，無畫面文字。
+    cues:
+    - 446
+    - 447
+    - 448
+    text: 接著他會把你的行事曆中一些沒那麼重要的事情或會議換成他覺得比較重要的
+  nearest_beat: &id015
+    beat_id: 97
+    start: 749.874
+    end: 754.754
+    component: stock
+    text: 每周二早上十點到十二點
+  gap_s: 1.7
+- gt:
+    shot_id: 174
+    start: 754.754
+    end: 762.303
+    duration: 7.549
+    type: stock
+    note: 辦公室實拍：黑人女性與灰髮西裝男子看著筆記本討論；首幀延續橘底白字 overlay「心無旁騖時刻」，後續幀無文字。
+    cues:
+    - 452
+    - 453
+    - 454
+    - 455
+    text: 如果可以的話這段時間請不要找我好讓我自己有塊完整的時間可以做需要深度思考的工作
+  nearest_beat: *id015
+  gap_s: 0.0
+- gt:
+    shot_id: 178
+    start: 773.481
+    end: 778.987
+    duration: 5.505
+    type: stock
+    note: 俯拍實拍：西裝男子坐在辦公桌前寫筆記，桌面擺滿筆電、圖表文件與手機，無畫面文字。
+    cues:
+    - 463
+    - 464
+    - 465
+    - 466
+    text: 一般人會弄一個長長的 to-do list然後安排某一天要做表上的某些事情
+  nearest_beat: *id016
+  gap_s: 2.2
+- gt:
+    shot_id: 181
+    start: 788.913
+    end: 793.71
+    duration: 4.796
+    type: stock
+    note: 兩幀不同的用電腦實拍：前幀為夜間辦公室藍毛衣男子敲筆電，後幀為沙發上灰帽 T 男子手放筆電旁特寫；皆為無主持人實拍素材，無畫面文字。
+    cues:
+    - 472
+    - 473
+    - 474
+    - 475
+    text: 可能是低估了做這些事情的時間也有可能是有些事自己根本就不想做
+  nearest_beat: *id016
+  gap_s: 3.4
+- gt:
+    shot_id: 200
+    start: 854.103
+    end: 858.775
+    duration: 4.671
+    type: diagram
+    note: '同心圓概念圖，標題「LIFE DOMAINS」，三圈由外至內為「WORK / RELATIONSHIPS / YOU」，下方註解「The three
+      life domains: you, relationships, and work.」；a 幀黃色高亮 YOU、b 幀高亮 RELATIONSHIPS。'
+    cues:
+    - 511
+    - 512
+    text: 所以我會把一整天的時間依照這三個領域的重要性排滿
+  nearest_beat: *id017
+  gap_s: 0.8
+- gt:
+    shot_id: 202
+    start: 862.945
+    end: 865.656
+    duration: 2.711
+    type: stock
+    note: 背影鏡頭：穿黃衣的小女孩坐在父親肩上、雙手張開牽著父親走在綠蔭步道，實拍畫面，無文字。
+    cues:
+    - 516
+    - 517
+    text: 接下來準備女兒的早餐送她上課
+  nearest_beat: *id017
+  gap_s: 0.0
+- gt:
+    shot_id: 203
+    start: 865.656
+    end: 872.288
+    duration: 6.632
+    type: stock
+    note: 戴 AirPods 的男子近距離盯著筆電螢幕、神情專注憂慮的特寫，實拍畫面，無文字。
+    cues:
+    - 518
+    - 519
+    - 520
+    - 521
+    text: 回來之後兩個時段90 分鐘的高強度工作我會拿來寫文章看書或者閱讀論文
+  nearest_beat: *id017
+  gap_s: 2.7
+- gt:
+    shot_id: 213
+    start: 897.021
+    end: 901.526
+    duration: 4.505
+    type: diagram
+    note: 黑底概念動畫圖：左白框「暫存區」、右橘框「現役區」，五個彩色橫條「專案 A」「專案 B」「專案 C」「專案 D」「專案 E」，b 幀中專案 A/B/C
+      動畫移入現役區。
+    cues:
+    - 539
+    - 540
+    text: 這種 pull based 的工作邏輯可以有效避免過勞和工作倦怠
+  nearest_beat: &id018
+    beat_id: 119
+    start: 902.526
+    end: 905.404
+    component: book_cover
+    text: 我之前分享的
+  gap_s: 1.0
+- gt:
+    shot_id: 215
+    start: 905.404
+    end: 911.41
+    duration: 6.006
+    type: stock
+    note: 實拍素材：三位朋友（亞裔男、女子、黑人男）在起霧公園開心自拍合照，三幀間表情動作變化（微笑、扮鬼臉、依偎），無文字。
+    cues:
+    - 544
+    - 545
+    - 546
+    - 547
+    text: 除了工作天以外我也會把周末留給家人和朋友定期安排聚會和出遊
+  nearest_beat: *id018
+  gap_s: 0.0
+- gt:
+    shot_id: 225
+    start: 952.577
+    end: 955.705
+    duration: 3.128
+    type: stock
+    note: 特寫實拍：男子雙手握著黑色智慧型手機（背面朝鏡頭）滑動，無畫面文字。
+    cues:
+    - 570
+    text: 到手機上滿滿的新消息通知
+  nearest_beat: *id019
+  gap_s: 0.0
+- gt:
+    shot_id: 226
+    start: 955.705
+    end: 962.17
+    duration: 6.465
+    type: stock
+    note: 實拍：男子在浴室鏡前一邊用電動牙刷刷牙一邊低頭看手機，無畫面文字。
+    cues:
+    - 571
+    - 572
+    - 573
+    text: 一邊刷牙 一邊滑一邊看到昨天美股又大跌了心情也跟著沉到谷底
+  nearest_beat: *id019
+  gap_s: 3.1
+- gt:
+    shot_id: 227
+    start: 962.17
+    end: 966.549
+    duration: 4.379
+    type: stock
+    note: 實拍：捲髮小男孩坐在餐桌旁放聲大哭，無畫面文字。
+    cues:
+    - 574
+    - 575
+    - 576
+    - 577
+    text: 這時候小孩起床了吵著要喝奶然後終於全部弄好狼狽地出門
+  nearest_beat: *id020
+  gap_s: 3.6
+- gt:
+    shot_id: 230
+    start: 980.229
+    end: 986.319
+    duration: 6.089
+    type: stock
+    note: 實拍：西裝男子在辦公桌前低頭滑手機，背景有紅髮女同事工作，無畫面文字。
+    cues:
+    - 586
+    - 587
+    - 588
+    - 589
+    text: 每次手機一震動感覺心跳就會漏了半拍有時候真的覺得想要逃離這一切
+  nearest_beat: *id021
+  gap_s: 0.0
+- gt:
+    shot_id: 245
+    start: 1035.326
+    end: 1041.791
+    duration: 6.465
+    type: stock
+    note: 實拍素材：戴黑帽白長鬍老先生拿大聲公對鏡頭喊話，無文字。
+    cues:
+    - 621
+    - 622
+    - 623
+    - 624
+    text: 或者向大眾公布自己的減肥目標如果沒有達成燃脂的任務那就燃燒鈔票
+  nearest_beat: *id022
+  gap_s: 0.0
+- gt:
+    shot_id: 250
+    start: 1052.176
+    end: 1054.512
+    duration: 2.336
+    type: book_cover
+    note: 《專注力協定 INDISTRACTABLE》書封視窗放大疊在 aroll 上，封面文字「分心，是想要逃離正在做的事」；首幀為右側縮小手機卡（僅見大字「定」）。
+    cues:
+    - 631
+    - 632
+    text: 以上就是這本《專注力協定》的
+  nearest_beat: *id023
+  gap_s: 4.0
+true_misses:
 - shot_id: 11
   start: 54.888
   end: 59.393
@@ -476,17 +1116,6 @@ misses:
   - 34
   - 35
   text: 嗨大家！歡迎回到我的頻道
-- shot_id: 21
-  start: 87.17
-  end: 91.633
-  duration: 4.463
-  type: stock
-  note: 實拍素材：藍西裝男子的手握白色滑鼠、旁有筆電，明亮辦公室淺景深，畫面無文字
-  cues:
-  - 53
-  - 54
-  - 55
-  text: 每當下定決心要坐下來好好寫篇文章或者看一本書
 - shot_id: 22
   start: 91.633
   end: 97.931
@@ -521,18 +1150,6 @@ misses:
   - 68
   - 69
   text: 然後一整天就這樣過了每次都讓我自責不已
-- shot_id: 35
-  start: 136.678
-  end: 143.143
-  duration: 6.465
-  type: quote_card
-  note: 引文大字疊在 stock 素材上（女子在客廳書桌用筆電寫筆記），b/c 幀畫面刷白、白色大字「如果要通往卓越，專注力是個被低估的關鍵能力。」為主體；a
-    幀為尚未出字的純 stock（以佔多數內容分類）。
-  cues:
-  - 86
-  - 87
-  - 88
-  text: 這本書開宗明義地指出如果要通往卓越專注力是個被低估的關鍵能力
 - shot_id: 37
   start: 146.521
   end: 151.234
@@ -544,39 +1161,6 @@ misses:
   - 92
   - 93
   text: 把專注力分為對內對他人以及對外在環境這三種
-- shot_id: 43
-  start: 174.216
-  end: 177.803
-  duration: 3.587
-  type: book_cover
-  note: 書封圖卡疊在 aroll 上（主持人在左側說話，書封從右側放大進場）：「A World Without Email — Reimagining Work
-    in an Age of Communication Overload」「沒有Email的世界 過度溝通時代—的—深度工作法」「降低過動訊息的干擾，每天只需工作5小時」。
-  cues:
-  - 110
-  - 111
-  text: 以及 A World without Email就是《沒有 Email 的世界》
-- shot_id: 47
-  start: 187.729
-  end: 189.439
-  duration: 1.71
-  type: book_cover
-  note: 疊在 aroll 上：主持人手持實體書《分心不上癮》，右側同時放大英文版書封圖卡「THE DISTRACTION ADDICTION — Getting
-    the Information You Need and the Communication You Want... ALEX SOOJUNG-KIM PANG」。
-  cues:
-  - 117
-  text: The Distraction Addiction
-- shot_id: 53
-  start: 202.077
-  end: 206.164
-  duration: 4.087
-  type: book_cover
-  note: 疊在 aroll 上（上下黑邊構圖）：左側書封圖卡「MAGIC PILL — The Extraordinary Benefits and Disturbing
-    Risks of the New Weight-Loss Drugs — JOHANN HARI」；幀 a 圖卡尚未進場（純 aroll），以圖卡為主分類。
-  cues:
-  - 126
-  - 127
-  - 128
-  text: 喔對了 他 2024 年有出一本有關瘦瘦針的書還蠻有意思的 有人想聽嗎？
 - shot_id: 55
   start: 211.545
   end: 216.925
@@ -589,40 +1173,6 @@ misses:
   - 134
   - 135
   text: 甚至這本《專注力協定》在 2019 年英文版剛出版的時候
-- shot_id: 64
-  start: 247.706
-  end: 254.796
-  duration: 7.09
-  type: diagram
-  note: 白底 Hook 模型概念圖（滿版、無主持人）：黃底標題 The Hook，四象限文字 Trigger / Action / External / Internal
-    / Variable Reward / Investment，右下署名 NIR EYAL NirAndFar.com @nireyal。
-  cues:
-  - 153
-  - 154
-  - 155
-  - 156
-  text: 他發想出來的這個鉤癮模式四大步驟每一個做 app 的一定都會知道因為這模式太有用了
-- shot_id: 68
-  start: 263.346
-  end: 267.184
-  duration: 3.837
-  type: stock
-  note: 實拍素材：白色帳篷內父親與穿條紋襪的小女孩親暱聊天玩耍，無文字。
-  cues:
-  - 162
-  - 163
-  - 164
-  text: 某天他和女兒正在玩一本親子遊戲書中提供的小遊戲
-- shot_id: 71
-  start: 273.148
-  end: 275.4
-  duration: 2.252
-  type: stock
-  note: 實拍：綁辮子的小女孩對著鐵罐傳聲筒說話，背景有地球儀、非洲鼓與三角旗，無文字。
-  cues:
-  - 170
-  - 171
-  text: 他女兒機哩瓜啦地先說她的答案了
 - shot_id: 77
   start: 291.958
   end: 297.339
@@ -705,52 +1255,6 @@ misses:
   - 223
   - 224
   text: 舉例來說想要建立一個不受時間和空間限制又能夠發揮我專長並且能夠幫助到別人的快樂事業是我人生的 traction
-- shot_id: 90
-  start: 370.37
-  end: 376.334
-  duration: 5.964
-  type: stock
-  note: 實拍素材：深藍西裝男子在白色辦公室電腦前沉思、手托下巴，無文字。
-  cues:
-  - 229
-  - 230
-  - 231
-  - 232
-  text: 但是當我一打開空白的 notion page就會有另外一個內在誘因把我往左邊拉
-- shot_id: 92
-  start: 380.839
-  end: 389.472
-  duration: 8.634
-  type: quote_card
-  note: 引文卡疊在壓暗的實拍素材（辦公室苦惱抱頭男子）上，大字「『阿抗』是一種無形的阻力，當人想要從基本的狀態往進階的狀態前進時，它就會出現，讓人分心去做別的事。」首幀文字尚在逐行浮現。
-  cues:
-  - 236
-  - 237
-  - 238
-  - 239
-  - 240
-  text: 「阿抗」是一種無形的阻力當你想要從基本的狀態往進階的狀態前進時它就會出現讓我分心去做別的事
-- shot_id: 95
-  start: 398.148
-  end: 416.916
-  duration: 18.769
-  type: diagram
-  note: 白底十字箭頭模型圖，標題「心無旁鶩的模型」，四端為「內在誘因」（大腦）「外在誘因」（鈴鐺）「分心」（磁鐵）「引力」（齒輪），中間幀出現橘底大字條「心無旁鶩模式」並
-    highlight「引力」，末幀 highlight「分心」。
-  cues:
-  - 247
-  - 248
-  - 249
-  - 250
-  - 251
-  - 252
-  - 253
-  - 254
-  - 255
-  - 256
-  - 257
-  text: 這個強大的「外在誘因」也會把我往 distraction那個方向拉過去這個就是作者歸納出來的相當好記的「心無旁鶩模型」我們要做的就是讓右邊的 traction
-    變得很大左邊的 distraction 變得很小如此一來就可以讓我們朝向人生的願
 - shot_id: 104
   start: 449.908
   end: 452.077
@@ -770,35 +1274,6 @@ misses:
   cues:
   - 276
   text: 但有時候就直接被打趴了
-- shot_id: 109
-  start: 462.879
-  end: 466.257
-  duration: 3.378
-  type: quote_card
-  note: 金句「如果說分心的代價是付出時間，那麼時間管理就等於痛苦管理。」疊在深夜辦公室男子講電話持紅鉛筆的實拍素材上；首幀引文尚未浮現（純實拍），以引文卡計。
-  cues:
-  - 283
-  - 284
-  text: 「如果說分心的代價就是付出時間
-- shot_id: 110
-  start: 466.257
-  end: 469.344
-  duration: 3.086
-  type: quote_card
-  note: 同一金句「如果說分心的代價是付出時間，那麼時間管理就等於痛苦管理。」疊在會議中男子手持圖表講解的實拍素材上（畫面壓暗）。
-  cues:
-  - 285
-  text: 那時間管理就等於痛苦管理」
-- shot_id: 112
-  start: 476.518
-  end: 481.856
-  duration: 5.339
-  type: quote_card
-  note: 金句「分心的動機來自想要逃避痛苦的渴望。如果一個行為曾經有效地紓解痛苦，就很可能會繼續把它當成逃避不適感的工具。」疊在窗邊雙手滑手機的實拍素材上（首幀文字進場中，僅見「的動機來自想要逃避痛苦的」）。
-  cues:
-  - 290
-  - 291
-  text: 作者說：所有分心的動機都是來自於想要逃避痛苦的渴望
 - shot_id: 113
   start: 481.856
   end: 488.405
@@ -820,38 +1295,6 @@ misses:
   cues:
   - 297
   text: 包括無聊 焦慮 壓力 疲勞等等
-- shot_id: 116
-  start: 494.035
-  end: 496.913
-  duration: 2.878
-  type: stock
-  note: 實拍：男子深夜躺在床上滑手機，臉被螢幕光照亮，無畫面文字。
-  cues:
-  - 298
-  - 299
-  text: 為了逃避無聊我們會不斷地滑手機
-- shot_id: 117
-  start: 496.913
-  end: 502.502
-  duration: 5.589
-  type: stock
-  note: 實拍：西裝男子坐在辦公桌前吃漢堡，桌上有筆電與薯條漢堡餐盤，無畫面文字。
-  cues:
-  - 300
-  - 301
-  - 302
-  - 303
-  text: 那為了逃避焦慮和壓力我們會尋求一些治標不治本的方法像是暴飲暴食
-- shot_id: 120
-  start: 506.464
-  end: 509.384
-  duration: 2.92
-  type: stock
-  note: 實拍特寫：一堆舊式按鍵功能手機（Nokia 式）堆疊，鏡頭緩慢移動，無畫面文字。
-  cues:
-  - 307
-  - 308
-  text: 但就算你把智慧型手機換成智障型手機
 - shot_id: 121
   start: 509.384
   end: 513.179
@@ -883,18 +1326,6 @@ misses:
   - 316
   - 317
   text: 除了 Daniel Goleman推薦的正念冥想以外
-- shot_id: 126
-  start: 540.206
-  end: 543.752
-  duration: 3.545
-  type: stock
-  note: 實拍：男子深夜在辦公室電腦前工作後打大哈欠，桌面文件印有「ANNUAL REPORT」（場景內文件字，非 overlay），首幀有一條橘色細線轉場痕跡。
-  cues:
-  - 328
-  - 329
-  - 330
-  - 331
-  text: 舉例來說當我打開空白檔案開始寫文章前可能就會感到一股焦慮
 - shot_id: 130
   start: 553.553
   end: 557.223
@@ -981,26 +1412,6 @@ misses:
   - 376
   - 377
   text: 之後總得花好長一段時間才能再拉回正事上
-- shot_id: 146
-  start: 633.508
-  end: 636.761
-  duration: 3.253
-  type: stock
-  note: 昏暗辦公室裡男子端白色馬克杯喝咖啡、若有所思，無畫面文字。
-  cues:
-  - 381
-  - 382
-  text: 或者是電子閱讀器一感到無聊就拿起來看
-- shot_id: 148
-  start: 642.1
-  end: 645.228
-  duration: 3.128
-  type: stock
-  note: 灰色帽T男子在海邊藍天下閉眼仰頭深呼吸，無畫面文字。
-  cues:
-  - 386
-  - 387
-  text: 這些事情都比上網打發時間好很多
 - shot_id: 152
   start: 658.283
   end: 662.245
@@ -1012,32 +1423,6 @@ misses:
   - 396
   - 397
   text: 越能夠自我疼惜的人就會有越好的自癒能力
-- shot_id: 153
-  start: 662.245
-  end: 671.087
-  duration: 8.842
-  type: diagram
-  note: 白底概念圖「心無旁騖的模型」：十字箭頭連四象限——内在誘因、外在誘因、分心、引力，黃色高亮從「内在誘因」移到「引力」。
-  cues:
-  - 398
-  - 399
-  - 400
-  - 401
-  - 402
-  - 403
-  text: 搞定了把我們往左拉的內在誘因後接下來我們就是要好好計畫最重要的能把我們人生往正軌拉的 traction 了
-- shot_id: 155
-  start: 676.134
-  end: 681.598
-  duration: 5.464
-  type: quote_card
-  note: 黃昏海邊剪影實拍上疊滿版金句文字，逐行浮現「如果你不知道專心的時候 要做什麼事情, 就不能稱某些事物讓你分心。」，引文文字為主體、疊在 stock
-    剪影畫面上
-  cues:
-  - 406
-  - 407
-  - 408
-  text: 如果你不知道專心的時候要做些什麼事情就不能稱某些事物讓你分心
 - shot_id: 168
   start: 724.307
   end: 730.855
@@ -1063,29 +1448,6 @@ misses:
   - 441
   - 442
   text: 然後這邊有一份你要我做的事情的清單可以請你幫我安排優先順序嗎？」
-- shot_id: 171
-  start: 742.283
-  end: 748.164
-  duration: 5.881
-  type: stock
-  note: 辦公室會議實拍：綠襯衫大鬍子男子與多位同事圍桌討論，背後白板貼滿圖表，無畫面文字。
-  cues:
-  - 446
-  - 447
-  - 448
-  text: 接著他會把你的行事曆中一些沒那麼重要的事情或會議換成他覺得比較重要的
-- shot_id: 174
-  start: 754.754
-  end: 762.303
-  duration: 7.549
-  type: stock
-  note: 辦公室實拍：黑人女性與灰髮西裝男子看著筆記本討論；首幀延續橘底白字 overlay「心無旁騖時刻」，後續幀無文字。
-  cues:
-  - 452
-  - 453
-  - 454
-  - 455
-  text: 如果可以的話這段時間請不要找我好讓我自己有塊完整的時間可以做需要深度思考的工作
 - shot_id: 175
   start: 762.303
   end: 766.933
@@ -1108,30 +1470,6 @@ misses:
   - 460
   - 461
   text: 因為如果你不事先規劃一周的每天要做什麼那就會有別人來幫你規劃
-- shot_id: 178
-  start: 773.481
-  end: 778.987
-  duration: 5.505
-  type: stock
-  note: 俯拍實拍：西裝男子坐在辦公桌前寫筆記，桌面擺滿筆電、圖表文件與手機，無畫面文字。
-  cues:
-  - 463
-  - 464
-  - 465
-  - 466
-  text: 一般人會弄一個長長的 to-do list然後安排某一天要做表上的某些事情
-- shot_id: 181
-  start: 788.913
-  end: 793.71
-  duration: 4.796
-  type: stock
-  note: 兩幀不同的用電腦實拍：前幀為夜間辦公室藍毛衣男子敲筆電，後幀為沙發上灰帽 T 男子手放筆電旁特寫；皆為無主持人實拍素材，無畫面文字。
-  cues:
-  - 472
-  - 473
-  - 474
-  - 475
-  text: 可能是低估了做這些事情的時間也有可能是有些事自己根本就不想做
 - shot_id: 186
   start: 810.101
   end: 814.981
@@ -1263,39 +1601,6 @@ misses:
   cues:
   - 510
   text: 好爸爸 好兒子 和好朋友
-- shot_id: 200
-  start: 854.103
-  end: 858.775
-  duration: 4.671
-  type: diagram
-  note: '同心圓概念圖，標題「LIFE DOMAINS」，三圈由外至內為「WORK / RELATIONSHIPS / YOU」，下方註解「The three
-    life domains: you, relationships, and work.」；a 幀黃色高亮 YOU、b 幀高亮 RELATIONSHIPS。'
-  cues:
-  - 511
-  - 512
-  text: 所以我會把一整天的時間依照這三個領域的重要性排滿
-- shot_id: 202
-  start: 862.945
-  end: 865.656
-  duration: 2.711
-  type: stock
-  note: 背影鏡頭：穿黃衣的小女孩坐在父親肩上、雙手張開牽著父親走在綠蔭步道，實拍畫面，無文字。
-  cues:
-  - 516
-  - 517
-  text: 接下來準備女兒的早餐送她上課
-- shot_id: 203
-  start: 865.656
-  end: 872.288
-  duration: 6.632
-  type: stock
-  note: 戴 AirPods 的男子近距離盯著筆電螢幕、神情專注憂慮的特寫，實拍畫面，無文字。
-  cues:
-  - 518
-  - 519
-  - 520
-  - 521
-  text: 回來之後兩個時段90 分鐘的高強度工作我會拿來寫文章看書或者閱讀論文
 - shot_id: 206
   start: 878.211
   end: 879.796
@@ -1337,29 +1642,6 @@ misses:
   - 537
   - 538
   text: 我會從我目前執行的三個專案中挑出一個出來做
-- shot_id: 213
-  start: 897.021
-  end: 901.526
-  duration: 4.505
-  type: diagram
-  note: 黑底概念動畫圖：左白框「暫存區」、右橘框「現役區」，五個彩色橫條「專案 A」「專案 B」「專案 C」「專案 D」「專案 E」，b 幀中專案 A/B/C
-    動畫移入現役區。
-  cues:
-  - 539
-  - 540
-  text: 這種 pull based 的工作邏輯可以有效避免過勞和工作倦怠
-- shot_id: 215
-  start: 905.404
-  end: 911.41
-  duration: 6.006
-  type: stock
-  note: 實拍素材：三位朋友（亞裔男、女子、黑人男）在起霧公園開心自拍合照，三幀間表情動作變化（微笑、扮鬼臉、依偎），無文字。
-  cues:
-  - 544
-  - 545
-  - 546
-  - 547
-  text: 除了工作天以外我也會把周末留給家人和朋友定期安排聚會和出遊
 - shot_id: 220
   start: 920.419
   end: 927.051
@@ -1372,63 +1654,6 @@ misses:
   - 555
   - 556
   text: 如果安排自己星期四晚上打電動一小時那就打好打滿這才是最有生產力的表現
-- shot_id: 222
-  start: 930.054
-  end: 943.693
-  duration: 13.639
-  type: stock
-  note: 實拍素材：留鬍男子在沙發專注握遊戲手把打電動，後方橘衣女子滑手機；a 幀仍是主持人 aroll（轉場切點），以佔多數的 stock 分類，無文字。
-  cues:
-  - 559
-  - 560
-  - 561
-  - 562
-  - 563
-  text: 以及用協定來預防分心了現代人越來愈容易分心的其中一個原因就是外在誘因越來越多而且是無處不在 無孔不入啊！
-- shot_id: 225
-  start: 952.577
-  end: 955.705
-  duration: 3.128
-  type: stock
-  note: 特寫實拍：男子雙手握著黑色智慧型手機（背面朝鏡頭）滑動，無畫面文字。
-  cues:
-  - 570
-  text: 到手機上滿滿的新消息通知
-- shot_id: 226
-  start: 955.705
-  end: 962.17
-  duration: 6.465
-  type: stock
-  note: 實拍：男子在浴室鏡前一邊用電動牙刷刷牙一邊低頭看手機，無畫面文字。
-  cues:
-  - 571
-  - 572
-  - 573
-  text: 一邊刷牙 一邊滑一邊看到昨天美股又大跌了心情也跟著沉到谷底
-- shot_id: 227
-  start: 962.17
-  end: 966.549
-  duration: 4.379
-  type: stock
-  note: 實拍：捲髮小男孩坐在餐桌旁放聲大哭，無畫面文字。
-  cues:
-  - 574
-  - 575
-  - 576
-  - 577
-  text: 這時候小孩起床了吵著要喝奶然後終於全部弄好狼狽地出門
-- shot_id: 230
-  start: 980.229
-  end: 986.319
-  duration: 6.089
-  type: stock
-  note: 實拍：西裝男子在辦公桌前低頭滑手機，背景有紅髮女同事工作，無畫面文字。
-  cues:
-  - 586
-  - 587
-  - 588
-  - 589
-  text: 每次手機一震動感覺心跳就會漏了半拍有時候真的覺得想要逃離這一切
 - shot_id: 233
   start: 992.366
   end: 996.329
@@ -1469,38 +1694,6 @@ misses:
   - 600
   - 601
   text: 提出相對應的策略來將影響降到最小
-- shot_id: 245
-  start: 1035.326
-  end: 1041.791
-  duration: 6.465
-  type: stock
-  note: 實拍素材：戴黑帽白長鬍老先生拿大聲公對鏡頭喊話，無文字。
-  cues:
-  - 621
-  - 622
-  - 623
-  - 624
-  text: 或者向大眾公布自己的減肥目標如果沒有達成燃脂的任務那就燃燒鈔票
-- shot_id: 248
-  start: 1046.837
-  end: 1050.091
-  duration: 3.253
-  type: book_cover
-  note: 《原子習慣 細微改變帶來巨大成就的實證法則 Atomic Habits》書封視窗放大疊在 aroll 上，主持人同時手持實體書《原子習慣》入鏡；首幀書封尚在滑入。
-  cues:
-  - 628
-  - 629
-  text: 一定要算是《原子習慣》這本世紀暢銷書了
-- shot_id: 250
-  start: 1052.176
-  end: 1054.512
-  duration: 2.336
-  type: book_cover
-  note: 《專注力協定 INDISTRACTABLE》書封視窗放大疊在 aroll 上，封面文字「分心，是想要逃離正在做的事」；首幀為右側縮小手機卡（僅見大字「定」）。
-  cues:
-  - 631
-  - 632
-  text: 以上就是這本《專注力協定》的
 - shot_id: 252
   start: 1058.432
   end: 1062.645
@@ -1512,79 +1705,89 @@ misses:
   - 635
   - 636
   text: 強烈建議配合影片中提到的這些書一起服用
-false_positives:
-- beat_id: 2
-  start: 9.009
-  end: 11.302
-  component: stock
-  text: 是過目不忘的超強記憶力
-- beat_id: 3
-  start: 11.302
-  end: 14.806
-  component: stock
-  text: 或者是八風吹不動的
-- beat_id: 5
-  start: 20.77
-  end: 24.314999999999998
-  component: stock
-  text: 100% 相符的
+fp_near:
+- beat_id: 34
+  start: 238.279
+  end: 241.82399999999998
+  component: book_cover
+  text: 《鉤癮效應》這本書
+  nearest_gt_gap_s: 0.0
 - beat_id: 37
   start: 254.796
   end: 258.591
   component: stock
   text: 越來越多人的大腦
+  nearest_gt_gap_s: 0.0
 - beat_id: 50
   start: 378.002
   end: 380.838
   component: book_cover
   text: The War of Art
+  nearest_gt_gap_s: 0.0
 - beat_id: 53
   start: 393.518
   end: 396.27
   component: bigstat
   text: 終於公開了
-- beat_id: 57
-  start: 428.97
-  end: 432.97400000000005
-  component: transition_title
-  text: 首先 我們要先來深入看看
+  nearest_gt_gap_s: 1.9
 - beat_id: 63
   start: 469.343
   end: 476.559
   component: quote_card
   text: 再強調一次：
+  nearest_gt_gap_s: 0.0
 - beat_id: 83
   start: 638.554
   end: 642.0989999999999
   component: stock
   text: 我就索性把眼睛閉起來
+  nearest_gt_gap_s: 0.0
 - beat_id: 97
   start: 749.874
   end: 754.754
   component: stock
   text: 每周二早上十點到十二點
+  nearest_gt_gap_s: 0.0
 - beat_id: 119
   start: 902.526
   end: 905.404
   component: book_cover
   text: 我之前分享的
-- beat_id: 125
-  start: 935.225
-  end: 938.437
+  nearest_gt_gap_s: 0.0
+fp_true:
+- beat_id: 2
+  start: 9.009
+  end: 11.302
+  component: stock
+  text: 是過目不忘的超強記憶力
+  nearest_gt_gap_s: 26.4
+- beat_id: 3
+  start: 11.302
+  end: 14.806
+  component: stock
+  text: 或者是八風吹不動的
+  nearest_gt_gap_s: 22.9
+- beat_id: 5
+  start: 20.77
+  end: 24.314999999999998
+  component: stock
+  text: 100% 相符的
+  nearest_gt_gap_s: 13.4
+- beat_id: 57
+  start: 428.97
+  end: 432.97400000000005
   component: transition_title
-  text: 現代人越來愈容易分心的
+  text: 首先 我們要先來深入看看
+  nearest_gt_gap_s: 12.1
 - beat_id: 139
   start: 1013.929
   end: 1017.057
   component: book_cover
   text: 我認為 Cal Newport 這本
+  nearest_gt_gap_s: 7.5
 - beat_id: 141
   start: 1022.896
   end: 1024.69
   component: transition_title
   text: 「用協定來預防分心」
-- beat_id: 146
-  start: 1045.502
-  end: 1048.172
-  component: book_cover
-  text: 一定要算是《原子習慣》
+  nearest_gt_gap_s: 7.7

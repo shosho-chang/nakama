@@ -1,10 +1,19 @@
 stats:
   total_shots: 268
   broll_shots: 117
-  broll_per_minute: 6.35
+  broll_shots_per_minute: 6.35
+  broll_events: 60
+  broll_events_per_minute: 3.26
+  shots_per_event_p50: 1
+  shots_per_event_max: 10
   broll_duration_p50: 4.38
   broll_duration_p90: 7.59
   broll_time_share: 0.529
+  aroll_runs:
+    n: 61
+    p50: 6.0
+    p90: 16.4
+    max: 42.4
   by_type:
     book_cover:
       n: 13
