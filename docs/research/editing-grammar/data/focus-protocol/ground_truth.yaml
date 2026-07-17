@@ -1,0 +1,2880 @@
+stats:
+  total_shots: 268
+  broll_shots: 117
+  broll_per_minute: 6.35
+  broll_duration_p50: 4.38
+  broll_duration_p90: 7.59
+  broll_time_share: 0.529
+  by_type:
+    book_cover:
+      n: 13
+      p50: 4.09
+      max: 6.17
+    diagram:
+      n: 8
+      p50: 6.76
+      max: 18.77
+    motion_graphic:
+      n: 12
+      p50: 6.17
+      max: 23.23
+    quote_card:
+      n: 12
+      p50: 5.4
+      max: 8.63
+    screen_recording:
+      n: 2
+      p50: 1.86
+      max: 1.88
+    stock:
+      n: 67
+      p50: 3.92
+      max: 13.64
+    title_card:
+      n: 3
+      p50: 3.67
+      max: 5.05
+shots:
+- shot_id: 1
+  start: 0.0
+  end: 2.794
+  duration: 2.794
+  type: aroll
+  note: 主持人紅色羽絨外套在暖色書房對鏡頭開場說話，中景，畫面無文字。
+  cues:
+  - 1
+  - 2
+  text: 如果 2025 年你可以獲得一個能力
+- shot_id: 2
+  start: 2.794
+  end: 7.633
+  duration: 4.838
+  type: aroll
+  note: 主持人近景對鏡頭說話並舉起食指強調，畫面無文字。
+  cues:
+  - 3
+  - 4
+  - 5
+  text: 就一個喔！那個能力是最能夠幫助你完成目標 達成夢想的
+- shot_id: 3
+  start: 7.633
+  end: 9.009
+  duration: 1.376
+  type: aroll
+  note: 主持人特寫皺眉苦臉說話（後段抬手指），畫面無文字。
+  cues:
+  - 6
+  text: 你會選擇哪一個？
+- shot_id: 4
+  start: 9.009
+  end: 14.806
+  duration: 5.797
+  type: aroll
+  note: 主持人中景說話、挑眉再抿嘴聳肩，畫面無文字。
+  cues:
+  - 7
+  - 8
+  - 9
+  text: 是過目不忘的超強記憶力或者是八風吹不動的堅強意志力呢？
+- shot_id: 5
+  start: 14.806
+  end: 30.113
+  duration: 15.307
+  type: aroll
+  note: 主持人中景長段說話；b 幀左右兩個橘色方框文字動畫疊在 aroll 上，動畫中僅見「訂」「行」二字（應為詞語進場中），a、c 幀無文字。
+  cues:
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 16
+  - 17
+  - 18
+  - 19
+  text: 如果是我的話我會選擇能夠讓我「預計要做的事情」跟「實際的行動」100% 相符的極致專注力相信這個技能是在這個有無數來源會吸引你注意力讓你分心的現代世界中
+- shot_id: 6
+  start: 30.113
+  end: 32.699
+  duration: 2.586
+  type: aroll
+  note: 主持人特寫說話、比手勢，畫面無文字。
+  cues:
+  - 20
+  text: 最珍貴而且最稀缺的能力
+- shot_id: 7
+  start: 32.699
+  end: 37.704
+  duration: 5.005
+  type: aroll
+  note: 主持人中景說話並舉起食指，畫面無文字。
+  cues:
+  - 21
+  - 22
+  - 23
+  text: 今天我要來分享一本好書是講這個主題我覺得寫得最有架構的
+- shot_id: 8
+  start: 37.704
+  end: 43.418
+  duration: 5.714
+  type: book_cover
+  note: 《專注力協定》書封圖卡從左側滑入疊在 aroll 上（主持人佔右半），封面文字「專注力協定 INDISTRACTABLE How to Control
+    Your Attention and Choose Your Life NIR EYAL 分心，是想要逃離正在做的事」。
+  cues:
+  - 24
+  - 25
+  - 26
+  text: 叫做《專注力協定》我相信你只要弄懂了這本書裡面講的理論和邏輯
+- shot_id: 9
+  start: 43.418
+  end: 46.88
+  duration: 3.462
+  type: aroll
+  note: 主持人中景抿嘴、嘟嘴說話，畫面無文字。
+  cues:
+  - 27
+  - 28
+  text: 並且將書中介紹的各種策略付諸實踐的話
+- shot_id: 10
+  start: 46.88
+  end: 54.888
+  duration: 8.008
+  type: aroll
+  note: 主持人中景到近景（緩慢 zoom in）持續說話，畫面無文字。
+  cues:
+  - 29
+  - 30
+  - 31
+  - 32
+  - 33
+  text: 一定能夠增加你的專注力大大地增加你達成目標的機率讓你的新年新希望能夠一一實現
+- shot_id: 11
+  start: 54.888
+  end: 59.393
+  duration: 4.505
+  type: motion_graphic
+  note: 橘色碎片放射背景上白色卡片、左側黑色線條人臉插圖（無文字）；b 幀為圖卡淡出轉場回 aroll，以動畫圖卡為主分類。
+  cues:
+  - 34
+  - 35
+  text: 嗨大家！歡迎回到我的頻道
+- shot_id: 12
+  start: 59.393
+  end: 61.562
+  duration: 2.169
+  type: aroll
+  note: 主持人中景微笑說話，畫面無文字。
+  cues:
+  - 36
+  text: 如果你是新朋友 我叫做修修
+- shot_id: 13
+  start: 61.562
+  end: 64.982
+  duration: 3.42
+  type: aroll
+  note: 主持人中景對鏡頭說話，畫面無文字。
+  cues:
+  - 37
+  - 38
+  text: 這個頻道我會跟大家分享科學的方法與工具
+- shot_id: 14
+  start: 64.982
+  end: 68.11
+  duration: 3.128
+  type: aroll
+  note: 主持人近景（較緊構圖）張嘴強調說話，畫面無文字。
+  cues:
+  - 39
+  - 40
+  text: 來幫助大家工作更有效率身心更健康
+- shot_id: 15
+  start: 68.11
+  end: 70.988
+  duration: 2.878
+  type: aroll
+  note: 主持人穿紅色羽絨外套在暖色書房對鏡頭說話（先嘟嘴後皺眉閉眼），畫面無任何文字 overlay
+  cues:
+  - 41
+  - 42
+  text: 「專注力」是我一直很關注的主題
+- shot_id: 16
+  start: 70.988
+  end: 74.575
+  duration: 3.587
+  type: aroll
+  note: 主持人略近景對鏡頭說話、表情驚訝挑眉並比手勢，畫面無文字
+  cues:
+  - 43
+  - 44
+  text: 因為我一直覺得我就是個專注力低落的人
+- shot_id: 17
+  start: 74.575
+  end: 80.122
+  duration: 5.547
+  type: stock
+  note: 實拍素材：白襯衫年輕男子坐在書桌前，桌上一疊書與筆電，表情疲倦抓頭，畫面無文字
+  cues:
+  - 45
+  - 46
+  - 47
+  text: 學生時期看到原文書就煩看沒幾段就會想要開個 ptt 逛一下
+- shot_id: 18
+  start: 80.122
+  end: 83.875
+  duration: 3.754
+  type: stock
+  note: 實拍素材：手部特寫在黑色鍵盤（含紅色按鍵）上敲打，背景昏暗，畫面無文字
+  cues:
+  - 48
+  - 49
+  - 50
+  text: 要不然就是上 battle net連線個幾場然後就天亮了
+- shot_id: 19
+  start: 83.875
+  end: 85.627
+  duration: 1.752
+  type: aroll
+  note: 主持人閉眼苦惱狀說話，畫面四周有黑色 letterbox 邊框（縮小畫框效果），無文字
+  cues:
+  - 51
+  text: 後來就被退學了嗚嗚）
+- shot_id: 20
+  start: 85.627
+  end: 87.17
+  duration: 1.543
+  type: aroll
+  note: 主持人回到滿版正面對鏡頭說話，先嘟嘴後閉眼講述，畫面無文字
+  cues:
+  - 52
+  text: 創業的前幾年也是
+- shot_id: 21
+  start: 87.17
+  end: 91.633
+  duration: 4.463
+  type: stock
+  note: 實拍素材：藍西裝男子的手握白色滑鼠、旁有筆電，明亮辦公室淺景深，畫面無文字
+  cues:
+  - 53
+  - 54
+  - 55
+  text: 每當下定決心要坐下來好好寫篇文章或者看一本書
+- shot_id: 22
+  start: 91.633
+  end: 97.931
+  duration: 6.298
+  type: stock
+  note: 實拍素材：黃色T恤男子坐沙發上滑平板電腦、露出微笑，客廳場景，畫面無文字
+  cues:
+  - 56
+  - 57
+  - 58
+  - 59
+  text: 總是會想要先逛個 FB看看朋友在幹嘛或者是開 gmail看看有沒有人寄信給我
+- shot_id: 23
+  start: 97.931
+  end: 99.975
+  duration: 2.044
+  type: aroll
+  note: 主持人誇張苦臉張嘴抱怨狀對鏡頭說話並揮手，畫面無文字
+  cues:
+  - 60
+  text: 好不容易決定一定要開工了
+- shot_id: 24
+  start: 99.975
+  end: 103.103
+  duration: 3.128
+  type: aroll
+  note: 主持人閉眼再睜眼嘟嘴對鏡頭說話，畫面無文字
+  cues:
+  - 61
+  - 62
+  - 63
+  text: 先上個網或者在 YouTube 上蒐集資訊吧
+- shot_id: 25
+  start: 103.103
+  end: 108.483
+  duration: 5.38
+  type: stock
+  note: 實拍素材：戴眼鏡的丹寧襯衫男子深夜在電腦前捏鼻樑揉眼、扶額疲憊，畫面無文字
+  cues:
+  - 64
+  - 65
+  - 66
+  - 67
+  text: 3 分鐘之後我就一定會開始看一些和一開始的目的毫不相干的東西
+- shot_id: 26
+  start: 108.483
+  end: 112.404
+  duration: 3.921
+  type: stock
+  note: 實拍素材：淺綠上衣男子側臉特寫，下巴靠在手臂上放空發呆凝視遠方，畫面無文字
+  cues:
+  - 68
+  - 69
+  text: 然後一整天就這樣過了每次都讓我自責不已
+- shot_id: 27
+  start: 112.404
+  end: 115.157
+  duration: 2.753
+  type: aroll
+  note: 主持人嘟嘴後睜大眼睛對鏡頭說話，畫面無文字
+  cues:
+  - 70
+  - 71
+  text: 我真心覺得這樣下去我會一事無成
+- shot_id: 28
+  start: 115.157
+  end: 117.034
+  duration: 1.877
+  type: aroll
+  note: 主持人正面對鏡頭繼續講述、表情由嘟嘴轉為平緩，畫面無文字
+  cues:
+  - 72
+  text: 所以開始買了許多書來看
+- shot_id: 29
+  start: 117.034
+  end: 118.66
+  duration: 1.627
+  type: aroll
+  note: 主持人紅色羽絨外套在暖色書房對鏡頭說話，中景，無畫面文字。
+  cues:
+  - 73
+  text: 看了之後才知道
+- shot_id: 30
+  start: 118.66
+  end: 122.998
+  duration: 4.338
+  type: aroll
+  note: 主持人特寫（比前一鏡更近的 zoom in）對鏡頭說話，無畫面文字。
+  cues:
+  - 74
+  - 75
+  - 76
+  text: 我並不孤單全世界的人都有這種困擾
+- shot_id: 31
+  start: 122.998
+  end: 124.583
+  duration: 1.585
+  type: aroll
+  note: 主持人對鏡頭說話，畫面上下加黑色電影 letterbox 邊框做強調，無畫面文字。
+  cues:
+  - 77
+  text: 我只是比較嚴重而已
+- shot_id: 32
+  start: 124.583
+  end: 126.877
+  duration: 2.294
+  type: aroll
+  note: 主持人近景說話，b 幀身體轉向、手伸出畫面像在拿東西（銜接下一鏡拿書），無畫面文字。
+  cues:
+  - 78
+  - 79
+  text: 來看一下我看了哪些書喔這本 Daniel Goleman
+- shot_id: 33
+  start: 126.877
+  end: 133.05
+  duration: 6.173
+  type: book_cover
+  note: 《專注的力量》書封圖卡疊在 aroll 上（左側大書封、主持人在右側並手持實體書），文字：「FOCUS 專注的力量」「不再分心的自我鍛鍊，讓你掌握
+    AI 世代的卓越關鍵」「丹尼爾·高曼 DANIEL GOLEMAN」，a 幀書封正滑入中。
+  cues:
+  - 79
+  - 80
+  - 81
+  - 82
+  - 83
+  text: 這本 Daniel Goleman在 2013 年出版的《專注的力量》FOCUS:The Hidden Driver of Excellence
+- shot_id: 34
+  start: 133.05
+  end: 136.678
+  duration: 3.629
+  type: aroll
+  note: 主持人中近景對鏡頭說話，無畫面文字。
+  cues:
+  - 84
+  - 85
+  text: 算是針對這個現象有深入探討的重要著作
+- shot_id: 35
+  start: 136.678
+  end: 143.143
+  duration: 6.465
+  type: quote_card
+  note: 引文大字疊在 stock 素材上（女子在客廳書桌用筆電寫筆記），b/c 幀畫面刷白、白色大字「如果要通往卓越，專注力是個被低估的關鍵能力。」為主體；a
+    幀為尚未出字的純 stock（以佔多數內容分類）。
+  cues:
+  - 86
+  - 87
+  - 88
+  text: 這本書開宗明義地指出如果要通往卓越專注力是個被低估的關鍵能力
+- shot_id: 36
+  start: 143.143
+  end: 146.521
+  duration: 3.378
+  type: aroll
+  note: 主持人中近景對鏡頭說話，無畫面文字。
+  cues:
+  - 89
+  - 90
+  text: 他依舊是以心理學和腦神經科學的角度來切入
+- shot_id: 37
+  start: 146.521
+  end: 151.234
+  duration: 4.713
+  type: motion_graphic
+  note: 動畫條列圖卡疊在 aroll 上（左半橘色列表逐項彈入，主持人在右側），文字：「1 對內」「2 對他人」「3 對外在環境」，a 幀為文字未出現的色條動畫進場。
+  cues:
+  - 91
+  - 92
+  - 93
+  text: 把專注力分為對內對他人以及對外在環境這三種
+- shot_id: 38
+  start: 151.234
+  end: 154.696
+  duration: 3.462
+  type: aroll
+  note: 主持人對鏡頭說話並握拳手勢；a 幀可見上一鏡條列「1 對內 2 對他人 3 對外在環境」淡出殘影（轉場），以佔多數的 aroll 分類。
+  cues:
+  - 94
+  - 95
+  text: 他認為專注力就像肌肉一樣是可以鍛鍊的
+- shot_id: 39
+  start: 154.696
+  end: 157.24
+  duration: 2.544
+  type: aroll
+  note: 主持人近景對鏡頭說話，無畫面文字。
+  cues:
+  - 96
+  - 97
+  text: 書中也舉了幾個鍛鍊專注力的訓練
+- shot_id: 40
+  start: 157.24
+  end: 163.288
+  duration: 6.048
+  type: motion_graphic
+  note: Headspace 品牌冥想動畫（藍綠色卡通角色在橘色沙漠中打坐、伸展、倚石休息），置於橘框播放器與粒子暗底版型內，左上角文字「Headspace」。
+  cues:
+  - 98
+  - 99
+  - 100
+  - 101
+  text: 沒錯 正念和冥想還是排在第一個這已經是經過相當多科學實驗證實的
+- shot_id: 41
+  start: 163.288
+  end: 168.418
+  duration: 5.13
+  type: aroll
+  note: 主持人對鏡頭說話，b 幀視線轉向側邊（銜接下一鏡書封），無畫面文字。
+  cues:
+  - 102
+  - 103
+  - 104
+  - 105
+  text: 接下來這個領域最有影響力的應該就是我常提到的Cal Newport
+- shot_id: 42
+  start: 168.418
+  end: 174.216
+  duration: 5.797
+  type: book_cover
+  note: '兩張書封圖卡先後疊在 aroll 上（主持人低頭在右側）：a 幀黃綠斜紋《深度工作力》書封滑入（可見直排字「深」「度」「作」「力」）；b 幀《深度數位大掃除》書封，文字：「App」（黑底附
+    X 圖示）「深度數位大掃除」「3分飽連線方案，在喧囂世界過專注人生。」「卡爾·紐波特Cal Newport」「Digital Minimalism: Choosing
+    a Focused Life in a Noisy World」。'
+  cues:
+  - 106
+  - 107
+  - 108
+  - 109
+  text: 他的 Deep Work《深度工作力》Digital Minimalism《深度數位大掃除》
+- shot_id: 43
+  start: 174.216
+  end: 177.803
+  duration: 3.587
+  type: book_cover
+  note: 書封圖卡疊在 aroll 上（主持人在左側說話，書封從右側放大進場）：「A World Without Email — Reimagining Work
+    in an Age of Communication Overload」「沒有Email的世界 過度溝通時代—的—深度工作法」「降低過動訊息的干擾，每天只需工作5小時」。
+  cues:
+  - 110
+  - 111
+  text: 以及 A World without Email就是《沒有 Email 的世界》
+- shot_id: 44
+  start: 177.803
+  end: 181.431
+  duration: 3.629
+  type: aroll
+  note: 主持人（紅色羽絨外套、暖色書房）正面對鏡頭說話，無 overlay 文字。
+  cues:
+  - 112
+  - 113
+  text: 都很有邏輯而且淺顯地將專注力的重要性
+- shot_id: 45
+  start: 181.431
+  end: 185.227
+  duration: 3.795
+  type: aroll
+  note: 主持人正面近景對鏡頭說話，較前一鏡稍微 zoom in，無 overlay 文字。
+  cues:
+  - 114
+  - 115
+  text: 以及正確使用數位工具的策略講得相當清楚
+- shot_id: 46
+  start: 185.227
+  end: 187.729
+  duration: 2.502
+  type: aroll
+  note: 主持人對鏡頭說話後視線轉向側下方，無 overlay 文字。
+  cues:
+  - 116
+  text: 其他寫得不錯的還有這本
+- shot_id: 47
+  start: 187.729
+  end: 189.439
+  duration: 1.71
+  type: book_cover
+  note: 疊在 aroll 上：主持人手持實體書《分心不上癮》，右側同時放大英文版書封圖卡「THE DISTRACTION ADDICTION — Getting
+    the Information You Need and the Communication You Want... ALEX SOOJUNG-KIM PANG」。
+  cues:
+  - 117
+  text: The Distraction Addiction
+- shot_id: 48
+  start: 189.439
+  end: 192.359
+  duration: 2.92
+  type: aroll
+  note: 主持人對鏡頭說話為主體；幀 a 右側殘留縮小收合中的《The Distraction Addiction》書封小卡（轉場尾），幀 b 為乾淨 aroll，以多數內容歸
+    aroll。
+  cues:
+  - 118
+  - 119
+  text: 作者說玩瑪利歐賽車可以訓練專注力
+- shot_id: 49
+  start: 192.359
+  end: 193.902
+  duration: 1.543
+  type: aroll
+  note: 主持人近景對鏡頭說話（閉眼再睜眼、表情變化），無 overlay 文字。
+  cues:
+  - 120
+  text: 這真是深得我心
+- shot_id: 50
+  start: 193.902
+  end: 195.779
+  duration: 1.877
+  type: screen_recording
+  note: 瑪利歐賽車遊戲畫面（Splatoon 角色與瑪利歐競速），置於橘色粒子框內，左上角來源標示文字「Nintendo of America」。
+  cues:
+  - 121
+  text: 我高中可是把超任的
+- shot_id: 51
+  start: 195.779
+  end: 197.614
+  duration: 1.835
+  type: screen_recording
+  note: 瑪利歐賽車遊戲畫面（瑪利歐與耀西駕黃色賽車），橘色粒子外框，左上角文字「Nintendo of America」。
+  cues:
+  - 122
+  text: 瑪利歐賽車玩到出神入化耶
+- shot_id: 52
+  start: 197.614
+  end: 202.077
+  duration: 4.463
+  type: book_cover
+  note: 書封圖卡疊在 aroll 上（主持人在左側說話，書封從右側放大進場）：「STOLEN FOCUS — Why You Can't Pay Attention—and
+    How to Think Deeply Again — JOHANN HARI」。
+  cues:
+  - 123
+  - 124
+  - 125
+  text: 還有 2022 年Johann Hari 出的 Stolen Focus他也講得不錯
+- shot_id: 53
+  start: 202.077
+  end: 206.164
+  duration: 4.087
+  type: book_cover
+  note: 疊在 aroll 上（上下黑邊構圖）：左側書封圖卡「MAGIC PILL — The Extraordinary Benefits and Disturbing
+    Risks of the New Weight-Loss Drugs — JOHANN HARI」；幀 a 圖卡尚未進場（純 aroll），以圖卡為主分類。
+  cues:
+  - 126
+  - 127
+  - 128
+  text: 喔對了 他 2024 年有出一本有關瘦瘦針的書還蠻有意思的 有人想聽嗎？
+- shot_id: 54
+  start: 206.164
+  end: 211.545
+  duration: 5.38
+  type: aroll
+  note: 主持人正面對鏡頭說話（嘟嘴、挑眉表情），無 overlay 文字。
+  cues:
+  - 129
+  - 130
+  - 131
+  - 132
+  text: 我看了這麼多書這樣你們知道我「專注力不足」這個症狀有多困擾我了吧？
+- shot_id: 55
+  start: 211.545
+  end: 216.925
+  duration: 5.38
+  type: book_cover
+  note: 書封圖卡疊在 aroll 上（幀 a 圖卡縮小進場中、幀 b 滿幅）：「專注力協定」「INDISTRACTABLE — How to Control
+    Your Attention and Choose Your Life — NIR EYAL」「分心，是想要逃離正在做的事」。
+  cues:
+  - 133
+  - 134
+  - 135
+  text: 甚至這本《專注力協定》在 2019 年英文版剛出版的時候
+- shot_id: 56
+  start: 216.925
+  end: 221.346
+  duration: 4.421
+  type: aroll
+  note: 主持人手持黃色英文版實體書（Indistractable，封面書名經模糊處理）對鏡頭展示後放下，主體始終是主持人，無 overlay 文字。
+  cues:
+  - 136
+  - 137
+  text: 我是直接把英文版買來看啊因為我實在太需要這個能力了
+- shot_id: 57
+  start: 221.346
+  end: 224.015
+  duration: 2.669
+  type: aroll
+  note: 主持人於暖色書房對鏡頭說話，手中開始舉起一本黃色書（畫面下緣露出書角），無 overlay 文字。
+  cues:
+  - 138
+  - 139
+  text: 接下來就讓我來幫大家一一拆解
+- shot_id: 58
+  start: 224.015
+  end: 228.186
+  duration: 4.171
+  type: aroll
+  note: 主持人 zoom in 近景，胸前出現橘底白字大型 overlay「心無旁鶩超能力」（首幀為文字動畫進場的白色細條）。
+  cues:
+  - 140
+  - 141
+  - 142
+  text: 這本書講的「心無旁鶩的超能力」是怎麼一回事
+- shot_id: 59
+  start: 228.186
+  end: 229.813
+  duration: 1.627
+  type: aroll
+  note: 主持人中景說話，首幀胸前有小型白橘色細條（文字 overlay 動畫收場殘影），無可讀文字。
+  cues:
+  - 143
+  text: 要怎麼樣才可以獲得
+- shot_id: 60
+  start: 229.813
+  end: 236.611
+  duration: 6.798
+  type: aroll
+  note: 主持人近景說話，左側疊瀏覽器視窗框照片（白襯衫講者站台演講，似 Nir Eyal）；首幀為滿版橘色轉場，以佔多數的 aroll 分類。
+  cues:
+  - 144
+  - 145
+  text: 這本書的作者 Nir Eyal之前已經介紹蠻多次了
+- shot_id: 61
+  start: 236.611
+  end: 239.865
+  duration: 3.253
+  type: book_cover
+  note: 《鉤癮效應》黃色書封在瀏覽器視窗框中滑入、佔畫面右半，疊在 aroll 上；文字：鉤癮效應 創造習慣新商機 HOOKED How to Build
+    Habit-Forming Products 天下文化。
+  cues:
+  - 146
+  - 147
+  text: 他的成名作 Hooked《鉤癮效應》這本書
+- shot_id: 62
+  start: 239.865
+  end: 243.702
+  duration: 3.837
+  type: aroll
+  note: 主持人手持《鉤癮效應》（HOOKED）黃色實體書對鏡頭展示說話，書封文字：鉤癮效應 HOOKED。
+  cues:
+  - 148
+  - 149
+  text: 講的是要如何做出一個會讓使用者上癮的產品
+- shot_id: 63
+  start: 243.702
+  end: 247.706
+  duration: 4.004
+  type: aroll
+  note: 主持人近景對鏡頭說話，乾淨畫面無 overlay 文字。
+  cues:
+  - 150
+  - 151
+  - 152
+  text: 聽說出版之後那些矽谷新創公司的PM 桌上都有這本書
+- shot_id: 64
+  start: 247.706
+  end: 254.796
+  duration: 7.09
+  type: diagram
+  note: 白底 Hook 模型概念圖（滿版、無主持人）：黃底標題 The Hook，四象限文字 Trigger / Action / External / Internal
+    / Variable Reward / Investment，右下署名 NIR EYAL NirAndFar.com @nireyal。
+  cues:
+  - 153
+  - 154
+  - 155
+  - 156
+  text: 他發想出來的這個鉤癮模式四大步驟每一個做 app 的一定都會知道因為這模式太有用了
+- shot_id: 65
+  start: 254.796
+  end: 258.592
+  duration: 3.795
+  type: aroll
+  note: 主持人中景對鏡頭說話（比手勢），無 overlay 文字。
+  cues:
+  - 157
+  - 158
+  text: 越來越多人的大腦被這些精心設計的 app 給綁架
+- shot_id: 66
+  start: 258.592
+  end: 260.802
+  duration: 2.211
+  type: aroll
+  note: 主持人 zoom in 近景對鏡頭說話，無 overlay 文字。
+  cues:
+  - 159
+  text: 其實就連他自己也中招了
+- shot_id: 67
+  start: 260.802
+  end: 263.346
+  duration: 2.544
+  type: aroll
+  note: 主持人中景對鏡頭說話，乾淨畫面無 overlay 文字。
+  cues:
+  - 160
+  - 161
+  text: 他在書的開頭就講了自己的一個小故事
+- shot_id: 68
+  start: 263.346
+  end: 267.184
+  duration: 3.837
+  type: stock
+  note: 實拍素材：白色帳篷內父親與穿條紋襪的小女孩親暱聊天玩耍，無文字。
+  cues:
+  - 162
+  - 163
+  - 164
+  text: 某天他和女兒正在玩一本親子遊戲書中提供的小遊戲
+- shot_id: 69
+  start: 267.184
+  end: 269.644
+  duration: 2.461
+  type: aroll
+  note: 主持人中景對鏡頭說話，無 overlay 文字。
+  cues:
+  - 165
+  - 166
+  text: 其中一個遊戲是回答以下這個問題：
+- shot_id: 70
+  start: 269.644
+  end: 273.148
+  duration: 3.503
+  type: aroll
+  note: 主持人近景對鏡頭說話（嘟嘴表情），無 overlay 文字。
+  cues:
+  - 167
+  - 168
+  - 169
+  text: 「如果你可以有任何一種超能力那會是什麼？」
+- shot_id: 71
+  start: 273.148
+  end: 275.4
+  duration: 2.252
+  type: stock
+  note: 實拍：綁辮子的小女孩對著鐵罐傳聲筒說話，背景有地球儀、非洲鼓與三角旗，無文字。
+  cues:
+  - 170
+  - 171
+  text: 他女兒機哩瓜啦地先說她的答案了
+- shot_id: 72
+  start: 275.4
+  end: 276.526
+  duration: 1.126
+  type: aroll
+  note: 主持人（紅色羽絨外套）在暖色書房對鏡頭說話，中景，無文字 overlay。
+  cues:
+  - 172
+  text: 然後問爸爸說：
+- shot_id: 73
+  start: 276.526
+  end: 277.486
+  duration: 0.959
+  type: aroll
+  note: 主持人對鏡頭說話，鏡頭 zoom in 至臉部特寫，無文字 overlay。
+  cues:
+  - 173
+  text: 「那你的勒？」
+- shot_id: 74
+  start: 277.486
+  end: 283.867
+  duration: 6.381
+  type: stock
+  note: 實拍：穿深紫襯衫的男子坐在木桌前單手滑手機特寫，桌上有青蘋果碗，無文字。
+  cues:
+  - 174
+  - 175
+  - 176
+  - 177
+  text: 但是作者正在用手機回訊息就只能含糊地回答說：「等一下我回完這個訊息就好」
+- shot_id: 75
+  start: 283.867
+  end: 286.828
+  duration: 2.961
+  type: aroll
+  note: 主持人在書房對鏡頭說話，中景，無文字 overlay。
+  cues:
+  - 178
+  - 179
+  text: 等他抬起頭之後他的女兒已經不見了
+- shot_id: 76
+  start: 286.828
+  end: 291.958
+  duration: 5.13
+  type: aroll
+  note: 主持人對鏡頭說話，稍微 zoom in 的近景，表情驚訝，無文字 overlay。
+  cues:
+  - 180
+  - 181
+  - 182
+  text: 他們兩人之間一個獨一無二的魔法時刻也就這麼告吹了
+- shot_id: 77
+  start: 291.958
+  end: 297.339
+  duration: 5.38
+  type: stock
+  note: 實拍：男子手持手機拇指滑動特寫，背景為青蘋果碗與咖啡店黑板牆，無文字。
+  cues:
+  - 183
+  - 184
+  text: 只為了一個當時看似重要但絕對可以等一下再做的事情
+- shot_id: 78
+  start: 297.339
+  end: 300.175
+  duration: 2.836
+  type: aroll
+  note: 主持人近景說話為主體，左側疊一個瀏覽器視窗框 inset，內為白襯衫男性講者（作者 Nir Eyal）舞台演講照，無大型文字。
+  cues:
+  - 185
+  - 186
+  text: 這就是促使他寫下這本書的最大動機
+- shot_id: 79
+  start: 300.175
+  end: 303.887
+  duration: 3.712
+  type: aroll
+  note: 主持人對鏡頭說話；a 幀左側講者照片 inset 正縮小退場（轉場殘留），b 幀為乾淨 aroll，以主持人為多數內容，無文字。
+  cues:
+  - 187
+  - 188
+  text: 身為有一個可愛女兒的爸爸完全感同身受啊！
+- shot_id: 80
+  start: 303.887
+  end: 327.118
+  duration: 23.232
+  type: motion_graphic
+  note: 黑底星塵動態字卡拆解單字：大字「indistractable」，後出現彩色註解「代表否定」「轉移注意力」「代表能力」與三色底線，末幀切為「distract」橘底線。
+  cues:
+  - 189
+  - 190
+  - 191
+  - 192
+  - 193
+  - 194
+  - 195
+  - 196
+  - 197
+  - 198
+  - 199
+  - 200
+  - 201
+  - 202
+  text: Indistractable這個字是他自己發明的你在字典上查不到distract 原本是有轉移注意力的意思前面加上 in 代表否定後面加上 able
+    代表能力所以整個字的意思是「不被轉移注意力的能力」而 distract 這個字也可以繼續拆
+- shot_id: 81
+  start: 327.118
+  end: 328.411
+  duration: 1.293
+  type: aroll
+  note: 主持人對鏡頭說話並比手勢，中景，無文字 overlay。
+  cues:
+  - 203
+  text: 牽引我們去哪？
+- shot_id: 82
+  start: 328.411
+  end: 330.83
+  duration: 2.419
+  type: aroll
+  note: 主持人近景說話、抬手比劃，無文字 overlay。
+  cues:
+  - 204
+  text: 就是往我們人生的願景前進
+- shot_id: 83
+  start: 330.83
+  end: 337.128
+  duration: 6.298
+  type: motion_graphic
+  note: 黑底動態字卡續拆單字：「牽引、拉」＋大字「distract」，再出現「事業成長的動能」＋「traction」並以黃色手繪圈圈起 traction。
+  cues:
+  - 205
+  - 206
+  - 207
+  - 208
+  text: 它的名詞 traction就是常常被用來形容事業成長的動能這個就是我們想要看到的結果
+- shot_id: 84
+  start: 337.128
+  end: 343.885
+  duration: 6.757
+  type: aroll
+  note: 主持人在書房對鏡頭說話，中景帶手勢，無文字 overlay。
+  cues:
+  - 209
+  - 210
+  - 211
+  - 212
+  text: 但是書中講到自古以來就是會有一堆事情來干擾我們把我們往反方向拉
+- shot_id: 85
+  start: 343.885
+  end: 346.263
+  duration: 2.377
+  type: motion_graphic
+  note: 黑底星點背景的動態文字動畫，白色大字「distraction」，第二幀出現紫色橢圓圈選描邊動畫。
+  cues:
+  - 213
+  text: 這些事情就叫做 distraction
+- shot_id: 86
+  start: 346.263
+  end: 354.229
+  duration: 7.966
+  type: diagram
+  note: 白底雙向箭頭概念圖：左「分心」磁鐵 icon、右「引力」齒輪 icon，下方文字「一個行為，會讓我們遠離我們真正想要的」與「一個行為，會讓我們接近我們真正想要的」，中間幀對「分心」加黃色
+    highlight。
+  cues:
+  - 214
+  - 215
+  - 216
+  - 217
+  text: 用一張圖表示就像是這樣不論是向右 或者是向左都是因為某些「內在」或「外在」誘因所驅使的
+- shot_id: 87
+  start: 354.229
+  end: 364.03
+  duration: 9.801
+  type: stock
+  note: 實拍素材：粉紅襯衫男子在明亮辦公室電腦桌前工作、吃蘋果、翻閱筆記本，無文字。
+  cues:
+  - 218
+  - 219
+  - 220
+  - 221
+  - 222
+  - 223
+  - 224
+  text: 舉例來說想要建立一個不受時間和空間限制又能夠發揮我專長並且能夠幫助到別人的快樂事業是我人生的 traction
+- shot_id: 88
+  start: 364.03
+  end: 366.992
+  duration: 2.961
+  type: aroll
+  note: 主持人（紅色羽絨外套、暖色書房）近景對鏡頭說話，無文字 overlay。
+  cues:
+  - 225
+  - 226
+  text: 為了達到這個願景我就有一個內在誘因
+- shot_id: 89
+  start: 366.992
+  end: 370.37
+  duration: 3.378
+  type: aroll
+  note: 主持人近景對鏡頭說話，表情較誇張，無文字 overlay。
+  cues:
+  - 227
+  - 228
+  text: 讓我願意坐下來好好寫這集影片的腳本
+- shot_id: 90
+  start: 370.37
+  end: 376.334
+  duration: 5.964
+  type: stock
+  note: 實拍素材：深藍西裝男子在白色辦公室電腦前沉思、手托下巴，無文字。
+  cues:
+  - 229
+  - 230
+  - 231
+  - 232
+  text: 但是當我一打開空白的 notion page就會有另外一個內在誘因把我往左邊拉
+- shot_id: 91
+  start: 376.334
+  end: 380.839
+  duration: 4.505
+  type: aroll
+  note: 主持人比手勢說話，右上飛入 YouTube 縮圖小卡（《The War of Art》書封＋頻道主照片），卡上大字「全球創作者必讀神書」，小卡疊在
+    aroll 上但主持人仍為主體。
+  cues:
+  - 233
+  - 234
+  - 235
+  text: 這個就是之前介紹的The War of Art這本書中講到的「阿抗」
+- shot_id: 92
+  start: 380.839
+  end: 389.472
+  duration: 8.634
+  type: quote_card
+  note: 引文卡疊在壓暗的實拍素材（辦公室苦惱抱頭男子）上，大字「『阿抗』是一種無形的阻力，當人想要從基本的狀態往進階的狀態前進時，它就會出現，讓人分心去做別的事。」首幀文字尚在逐行浮現。
+  cues:
+  - 236
+  - 237
+  - 238
+  - 239
+  - 240
+  text: 「阿抗」是一種無形的阻力當你想要從基本的狀態往進階的狀態前進時它就會出現讓我分心去做別的事
+- shot_id: 93
+  start: 389.472
+  end: 391.6
+  duration: 2.127
+  type: aroll
+  note: 主持人近景對鏡頭說話，無文字 overlay。
+  cues:
+  - 241
+  - 242
+  text: 這時候如果我手機出現一個通知
+- shot_id: 94
+  start: 391.6
+  end: 398.148
+  duration: 6.548
+  type: aroll
+  note: 主持人近景對鏡頭說話，鏡頭略微 zoom in，無文字 overlay。
+  cues:
+  - 243
+  - 244
+  - 245
+  - 246
+  text: 告訴我柯文哲的起訴書終於公開了竟然長達 190 頁而且大家已經討論到爆了
+- shot_id: 95
+  start: 398.148
+  end: 416.916
+  duration: 18.769
+  type: diagram
+  note: 白底十字箭頭模型圖，標題「心無旁鶩的模型」，四端為「內在誘因」（大腦）「外在誘因」（鈴鐺）「分心」（磁鐵）「引力」（齒輪），中間幀出現橘底大字條「心無旁鶩模式」並
+    highlight「引力」，末幀 highlight「分心」。
+  cues:
+  - 247
+  - 248
+  - 249
+  - 250
+  - 251
+  - 252
+  - 253
+  - 254
+  - 255
+  - 256
+  - 257
+  text: 這個強大的「外在誘因」也會把我往 distraction那個方向拉過去這個就是作者歸納出來的相當好記的「心無旁鶩模型」我們要做的就是讓右邊的 traction
+    變得很大左邊的 distraction 變得很小如此一來就可以讓我們朝向人生的願
+- shot_id: 96
+  start: 416.916
+  end: 419.628
+  duration: 2.711
+  type: aroll
+  note: 主持人近景對鏡頭說話，無文字 overlay。
+  cues:
+  - 258
+  text: 而這可以經由四管齊下來達成
+- shot_id: 97
+  start: 419.628
+  end: 421.129
+  duration: 1.502
+  type: aroll
+  note: 主持人近景對鏡頭說話，無文字 overlay。
+  cues:
+  - 259
+  text: 書中順序分別為：
+- shot_id: 98
+  start: 421.129
+  end: 428.97
+  duration: 7.841
+  type: aroll
+  note: 主持人偏右側說話，左側逐條彈出橘色編號清單 overlay（疊在 aroll 上）：「1 精通內在誘因」「2 為引力空出時間」「3 反擊外在誘因」「4
+    用協定預防分心」，首幀清單膠囊尚未填入文字。
+  cues:
+  - 260
+  - 261
+  - 262
+  - 263
+  text: 精通內在誘因為 traction 空出時間反擊外在誘因以及用協定來預防 distraction
+- shot_id: 99
+  start: 428.97
+  end: 432.974
+  duration: 4.004
+  type: aroll
+  note: 主持人書房對鏡頭講話，左側疊四點清單 overlay「1 精通內在誘因／2 為引力空出時間／3 反擊外在誘因／4 用協定預防分心」，第二幀清單已消失。
+  cues:
+  - 264
+  - 265
+  text: 首先 我們要先來深入看看「阿抗」到底是怎麼來的
+- shot_id: 100
+  start: 432.974
+  end: 441.483
+  duration: 8.509
+  type: aroll
+  note: 幀不一致：首幀與末幀為主持人講話（末幀右上疊瀏覽器式視窗縮圖，內為 The War of Art 書封＋主持人照片，文字「全球創作者必讀神書」），中幀短暫切滿版橘色章節卡「精通內在誘因」（人頭齒輪跳出箱子
+    icon）；以多數 aroll 計。
+  cues:
+  - 266
+  - 267
+  - 268
+  text: 有沒有對付它的好辦法在 The War of Art 這本書中作者用來擊敗阿抗的做法
+- shot_id: 101
+  start: 441.483
+  end: 445.487
+  duration: 4.004
+  type: aroll
+  note: 主持人講話，胸前疊橘底白字 overlay「專業人士」（首幀為文字進場動畫的細白條）。
+  cues:
+  - 269
+  - 270
+  text: 就是成為「專業人士」不管阿抗的力量有多強大
+- shot_id: 102
+  start: 445.487
+  end: 447.364
+  duration: 1.877
+  type: aroll
+  note: 主持人書房講話；首幀胸前殘留文字轉場的小橘白色條動畫，無可讀文字。
+  cues:
+  - 271
+  text: 坐下來工作就對了！
+- shot_id: 103
+  start: 447.364
+  end: 449.908
+  duration: 2.544
+  type: aroll
+  note: 主持人書房對鏡頭講話（一幀閉眼陳述），畫面無文字。
+  cues:
+  - 272
+  - 273
+  text: 但阿抗的攻擊力道太猛了啊！
+- shot_id: 104
+  start: 449.908
+  end: 452.077
+  duration: 2.169
+  type: stock
+  note: 實拍素材：戴眼鏡灰西裝男子在明亮辦公室桌前用筆電打字，畫面無文字。
+  cues:
+  - 274
+  - 275
+  text: 有時候自己狀況好還可以擋得住
+- shot_id: 105
+  start: 452.077
+  end: 454.037
+  duration: 1.96
+  type: stock
+  note: 實拍素材：男子趴在床上枕著枕頭滑手機，畫面無文字。
+  cues:
+  - 276
+  text: 但有時候就直接被打趴了
+- shot_id: 106
+  start: 454.037
+  end: 456.873
+  duration: 2.836
+  type: aroll
+  note: 主持人書房對鏡頭講話（表情驚訝、閉眼），畫面無文字。
+  cues:
+  - 277
+  - 278
+  text: 有沒有增加戰勝阿抗機率的方法呢？
+- shot_id: 107
+  start: 456.873
+  end: 459.459
+  duration: 2.586
+  type: aroll
+  note: 主持人對鏡頭講話並舉手比劃，畫面無文字。
+  cues:
+  - 279
+  - 280
+  text: 書中的這個部分就是教你如何做
+- shot_id: 108
+  start: 459.459
+  end: 462.879
+  duration: 3.42
+  type: aroll
+  note: 主持人書房對鏡頭講話，畫面無文字。
+  cues:
+  - 281
+  - 282
+  text: 作者再次提到了一句金玉良言真的要記好：
+- shot_id: 109
+  start: 462.879
+  end: 466.257
+  duration: 3.378
+  type: quote_card
+  note: 金句「如果說分心的代價是付出時間，那麼時間管理就等於痛苦管理。」疊在深夜辦公室男子講電話持紅鉛筆的實拍素材上；首幀引文尚未浮現（純實拍），以引文卡計。
+  cues:
+  - 283
+  - 284
+  text: 「如果說分心的代價就是付出時間
+- shot_id: 110
+  start: 466.257
+  end: 469.344
+  duration: 3.086
+  type: quote_card
+  note: 同一金句「如果說分心的代價是付出時間，那麼時間管理就等於痛苦管理。」疊在會議中男子手持圖表講解的實拍素材上（畫面壓暗）。
+  cues:
+  - 285
+  text: 那時間管理就等於痛苦管理」
+- shot_id: 111
+  start: 469.344
+  end: 476.518
+  duration: 7.174
+  type: aroll
+  note: 主持人對鏡頭講話，中幀胸前疊橘底白字橫幅「時間管理等於痛苦管理」（滑入動畫，首幀僅細白條、末幀已消失）。
+  cues:
+  - 286
+  - 287
+  - 288
+  - 289
+  text: 再強調一次：時間管理就等於痛苦管理而「痛苦」恰恰就是阿抗的能量來源
+- shot_id: 112
+  start: 476.518
+  end: 481.856
+  duration: 5.339
+  type: quote_card
+  note: 金句「分心的動機來自想要逃避痛苦的渴望。如果一個行為曾經有效地紓解痛苦，就很可能會繼續把它當成逃避不適感的工具。」疊在窗邊雙手滑手機的實拍素材上（首幀文字進場中，僅見「的動機來自想要逃避痛苦的」）。
+  cues:
+  - 290
+  - 291
+  text: 作者說：所有分心的動機都是來自於想要逃避痛苦的渴望
+- shot_id: 113
+  start: 481.856
+  end: 488.405
+  duration: 6.548
+  type: quote_card
+  note: 引文卡疊在垃圾食物實拍畫面上（薯條、漢堡、甜甜圈、爆米花），大字引文：「分心的動機來自想要逃避痛苦的渴望。如果一個行為曾經有效地紓解痛苦，就很可能會繼續把它當成逃避不適感的工具。」
+  cues:
+  - 292
+  - 293
+  - 294
+  - 295
+  text: 如果一個行為曾經有效地紓緩痛苦那我們就可能繼續把它當成逃避不適感的工具
+- shot_id: 114
+  start: 488.405
+  end: 490.115
+  duration: 1.71
+  type: aroll
+  note: 主持人穿紅色羽絨外套在暖色書房對鏡頭說話，無畫面文字。
+  cues:
+  - 296
+  text: 這種情緒上的不適感
+- shot_id: 115
+  start: 490.115
+  end: 494.035
+  duration: 3.921
+  type: stock
+  note: 實拍特寫：一名男子在電腦前雙手掩面揉眼、顯露疲憊壓力，無畫面文字。
+  cues:
+  - 297
+  text: 包括無聊 焦慮 壓力 疲勞等等
+- shot_id: 116
+  start: 494.035
+  end: 496.913
+  duration: 2.878
+  type: stock
+  note: 實拍：男子深夜躺在床上滑手機，臉被螢幕光照亮，無畫面文字。
+  cues:
+  - 298
+  - 299
+  text: 為了逃避無聊我們會不斷地滑手機
+- shot_id: 117
+  start: 496.913
+  end: 502.502
+  duration: 5.589
+  type: stock
+  note: 實拍：西裝男子坐在辦公桌前吃漢堡，桌上有筆電與薯條漢堡餐盤，無畫面文字。
+  cues:
+  - 300
+  - 301
+  - 302
+  - 303
+  text: 那為了逃避焦慮和壓力我們會尋求一些治標不治本的方法像是暴飲暴食
+- shot_id: 118
+  start: 502.502
+  end: 504.045
+  duration: 1.543
+  type: stock
+  note: 實拍特寫：連帽衫鬍子男子雙手滑手機，無畫面文字。
+  cues:
+  - 304
+  text: 或者是⋯⋯不斷地滑手機
+- shot_id: 119
+  start: 504.045
+  end: 506.464
+  duration: 2.419
+  type: aroll
+  note: 主持人對鏡頭說話並做出痛苦皺眉表情，畫面上下加黑邊（letterbox 電影框），無畫面文字。
+  cues:
+  - 305
+  - 306
+  text: 就說了手機真的很可怕因為它太萬用了
+- shot_id: 120
+  start: 506.464
+  end: 509.384
+  duration: 2.92
+  type: stock
+  note: 實拍特寫：一堆舊式按鍵功能手機（Nokia 式）堆疊，鏡頭緩慢移動，無畫面文字。
+  cues:
+  - 307
+  - 308
+  text: 但就算你把智慧型手機換成智障型手機
+- shot_id: 121
+  start: 509.384
+  end: 513.179
+  duration: 3.795
+  type: stock
+  note: 實拍特寫：手指夾著點燃冒煙的香菸，背景戶外虛化，無畫面文字。
+  cues:
+  - 309
+  - 310
+  text: 你還是可能對別的讓你能減少痛苦的東西上癮
+- shot_id: 122
+  start: 513.179
+  end: 518.977
+  duration: 5.797
+  type: stock
+  note: 實拍：昏暗藍調臥室裡襯衫領帶男子坐在床邊低頭，後段雙手抱頭苦惱，無畫面文字。
+  cues:
+  - 311
+  - 312
+  - 313
+  text: 所以作者不認為智慧型手機是讓我們分心的罪魁禍首痛苦才是
+- shot_id: 123
+  start: 518.977
+  end: 521.896
+  duration: 2.92
+  type: aroll
+  note: 主持人穿紅色羽絨外套在書房對鏡頭說話，鏡頭稍近，無畫面文字。
+  cues:
+  - 314
+  - 315
+  text: 那要怎麼有效緩解這些內心的不適感呢？
+- shot_id: 124
+  start: 521.896
+  end: 524.649
+  duration: 2.753
+  type: motion_graphic
+  note: Headspace 冥想 app 的卡通動畫（藍綠色角色在沙漠跳躍後站定），置於橘色邊框卡內，左上角文字「Headspace」。
+  cues:
+  - 316
+  - 317
+  text: 除了 Daniel Goleman推薦的正念冥想以外
+- shot_id: 125
+  start: 524.649
+  end: 540.206
+  duration: 15.557
+  type: aroll
+  note: 主持人對鏡頭說話為主；末幀被滿版橘色標題橫幅覆蓋，大字「步驟二：把誘因寫下來。」（疊在 aroll 上），以多數幀 aroll 分類。
+  cues:
+  - 318
+  - 319
+  - 320
+  - 321
+  - 322
+  - 323
+  - 324
+  - 325
+  - 326
+  - 327
+  text: 作者舉了一個有四個步驟的做法步驟一：有意識地察覺分心前的不適感並且思考背後的誘因步驟二：把誘因寫下來包括發生的時間當時你是做什麼事情以及你的感受等等都記錄下來
+- shot_id: 126
+  start: 540.206
+  end: 543.752
+  duration: 3.545
+  type: stock
+  note: 實拍：男子深夜在辦公室電腦前工作後打大哈欠，桌面文件印有「ANNUAL REPORT」（場景內文件字，非 overlay），首幀有一條橘色細線轉場痕跡。
+  cues:
+  - 328
+  - 329
+  - 330
+  - 331
+  text: 舉例來說當我打開空白檔案開始寫文章前可能就會感到一股焦慮
+- shot_id: 127
+  start: 543.752
+  end: 547.13
+  duration: 3.378
+  type: stock
+  note: 夜間辦公室裡穿藍綠色襯衫的男子對著電腦打呵欠、舉手掩嘴，無畫面文字。
+  cues:
+  - 331
+  - 332
+  text: 可能就會感到一股焦慮讓我想要去拿手機
+- shot_id: 128
+  start: 547.13
+  end: 550.717
+  duration: 3.587
+  type: aroll
+  note: 主持人（紅色羽絨外套、暖色書房）對鏡頭說話，表情誇張嘟嘴，無畫面文字。
+  cues:
+  - 333
+  - 334
+  text: 有可能是怕自己寫不好或者是單純覺得很累等等
+- shot_id: 129
+  start: 550.717
+  end: 553.553
+  duration: 2.836
+  type: aroll
+  note: 主持人近距離特寫（zoom in）對鏡頭說話，無畫面文字。
+  cues:
+  - 335
+  text: 先把這些過程和細節寫下來
+- shot_id: 130
+  start: 553.553
+  end: 557.223
+  duration: 3.67
+  type: title_card
+  note: 滿版橘色章節標題卡「步驟三：探索你的感受。」疊在 aroll 上（背景壓暗）；幀 a 為橘色橫線進場轉場。
+  cues:
+  - 336
+  - 337
+  text: 步驟三：探索你的感受這個方法之前在介紹
+- shot_id: 131
+  start: 557.223
+  end: 559.684
+  duration: 2.461
+  type: aroll
+  note: 主持人對鏡頭說話，左上疊入瀏覽器視窗式縮圖：手持平板顯示《Dopamine Nation》封面，縮圖文字「多巴胺 完全攻略」。
+  cues:
+  - 338
+  - 339
+  text: 《多巴胺國度》這本書的時候有提過
+- shot_id: 132
+  start: 559.684
+  end: 567.233
+  duration: 7.549
+  type: quote_card
+  note: 大字引文「在做出衝動行為之前，先等個五到十分鐘，讓自己跟這個體驗在一起。」疊在壓暗的 stock 素材（黑人男子在筆電前閉眼冥想手勢）上；幀 a 為文字逐行進場轉場。
+  cues:
+  - 340
+  - 341
+  - 342
+  text: 就是在做出衝動行為之前先等個五到十分鐘然後讓自己跟這個體驗在一起
+- shot_id: 133
+  start: 567.233
+  end: 574.199
+  duration: 6.965
+  type: aroll
+  note: 主持人對鏡頭說話；幀 b 出現橘底白字 overlay「水流上的樹葉」，主持人仍為畫面主體。
+  cues:
+  - 343
+  - 344
+  - 345
+  - 346
+  text: 書中講到一個技巧叫做「水流上的樹葉」當你又感受到阿抗的攻擊想要做出不該做的事情前
+- shot_id: 134
+  start: 574.199
+  end: 585.752
+  duration: 11.553
+  type: motion_graphic
+  note: 平面風格動畫：綠色樹葉漂浮在深藍綠色水流上，橘色邊框包覆，左上角出處字樣「Flow Neuroscience」。
+  cues:
+  - 347
+  - 348
+  - 349
+  - 350
+  - 351
+  - 352
+  text: 先想像你坐在一條緩緩流動的小溪旁接著想像有片樹葉慢慢地漂過水面把你現在心裡的每一個念頭分別放在一片葉子上
+- shot_id: 135
+  start: 585.752
+  end: 590.465
+  duration: 4.713
+  type: aroll
+  note: 主持人對鏡頭說話並比手勢，無畫面文字。
+  cues:
+  - 353
+  - 354
+  - 355
+  text: 這個念頭可以是一段記憶一個影像或者是一個想法等等
+- shot_id: 136
+  start: 590.465
+  end: 597.138
+  duration: 6.673
+  type: motion_graphic
+  note: 平面風格動畫：藍綠色波浪流動抽象畫面（樹葉已漂出鏡），橘色邊框，左上角出處字樣「Flow Neuroscience」。
+  cues:
+  - 356
+  - 357
+  - 358
+  text: 然後讓這些葉子一片一片順著水流往下漂跟著捲入水中消失
+- shot_id: 137
+  start: 597.138
+  end: 600.183
+  duration: 3.045
+  type: motion_graphic
+  note: 卡通動畫：沙漠中藍色角色坐在岩石上冥想、下方各種表情的車流角色，橘色邊框，左上角出處字樣「Headspace」。
+  cues:
+  - 359
+  - 360
+  text: 而這個期間你就只是坐在河邊觀看
+- shot_id: 138
+  start: 600.183
+  end: 603.978
+  duration: 3.795
+  type: aroll
+  note: 主持人對鏡頭說話並比手勢，無畫面文字。
+  cues:
+  - 361
+  - 362
+  text: 其實這就是個很棒的安撫阿抗的冥想方法
+- shot_id: 139
+  start: 603.978
+  end: 606.439
+  duration: 2.461
+  type: title_card
+  note: 滿版橘色章節標題卡「步驟四：提防臨界時刻。」疊在 aroll 上（背景壓暗）；幀 a 為橘色橫線進場轉場。
+  cues:
+  - 363
+  text: 步驟四：提防臨界時刻
+- shot_id: 140
+  start: 606.439
+  end: 614.03
+  duration: 7.591
+  type: quote_card
+  note: 大字引文「臨界時刻指的是生活中從一件事情轉換到另一件事情的時間點，這時很容易因為無聊而分心。」疊在壓暗的 stock 素材（窗邊黑衣男子用筆電喝咖啡）上；幀
+    a 為文字與橘線進場轉場。
+  cues:
+  - 364
+  - 365
+  - 366
+  - 367
+  - 368
+  text: 臨界時刻指的是生活中從一件事情轉換到另一件事情的時間點這時候會很容易因為無聊而分心
+- shot_id: 141
+  start: 614.03
+  end: 619.744
+  duration: 5.714
+  type: aroll
+  note: 主持人（紅色羽絨外套、暖色書房）對鏡頭說話，無畫面文字。
+  cues:
+  - 369
+  - 370
+  - 371
+  text: 對我來說就是等影片輸出或者用音訊處理軟體在去除雜音或回音時
+- shot_id: 142
+  start: 619.744
+  end: 621.579
+  duration: 1.835
+  type: aroll
+  note: 主持人閉眼、皺眉帶情緒地說話（近景），無畫面文字。
+  cues:
+  - 372
+  text: 這時候都花很多時間
+- shot_id: 143
+  start: 621.579
+  end: 625.166
+  duration: 3.587
+  type: stock
+  note: 西裝男子站在玻璃帷幕辦公大樓內低頭滑平板，無畫面文字。
+  cues:
+  - 373
+  - 374
+  - 375
+  text: 我就很容易開 Gmail或者 YouTube來打發這些時間
+- shot_id: 144
+  start: 625.166
+  end: 629.129
+  duration: 3.962
+  type: stock
+  note: 西裝男子坐辦公桌前雙手拿平板閱讀、桌上有筆電，b 幀抬頭思考，無畫面文字。
+  cues:
+  - 376
+  - 377
+  text: 之後總得花好長一段時間才能再拉回正事上
+- shot_id: 145
+  start: 629.129
+  end: 633.508
+  duration: 4.379
+  type: aroll
+  note: 主持人對鏡頭說話，無畫面文字。
+  cues:
+  - 378
+  - 379
+  - 380
+  text: 我目前應對的方式是在手邊擺一兩本看到一半的書
+- shot_id: 146
+  start: 633.508
+  end: 636.761
+  duration: 3.253
+  type: stock
+  note: 昏暗辦公室裡男子端白色馬克杯喝咖啡、若有所思，無畫面文字。
+  cues:
+  - 381
+  - 382
+  text: 或者是電子閱讀器一感到無聊就拿起來看
+- shot_id: 147
+  start: 636.761
+  end: 642.1
+  duration: 5.339
+  type: aroll
+  note: 主持人對鏡頭說話，b 幀轉為平靜聆聽神情，無畫面文字。
+  cues:
+  - 383
+  - 384
+  - 385
+  text: 如果當時感到壓力有點大我就索性把眼睛閉起來練呼吸
+- shot_id: 148
+  start: 642.1
+  end: 645.228
+  duration: 3.128
+  type: stock
+  note: 灰色帽T男子在海邊藍天下閉眼仰頭深呼吸，無畫面文字。
+  cues:
+  - 386
+  - 387
+  text: 這些事情都比上網打發時間好很多
+- shot_id: 149
+  start: 645.228
+  end: 649.399
+  duration: 4.171
+  type: aroll
+  note: 主持人近景對鏡頭說話（嘟嘴、張口表情），無畫面文字。
+  cues:
+  - 388
+  - 389
+  - 390
+  text: 最後作者提到我們對自己說什麼是至關重要的
+- shot_id: 150
+  start: 649.399
+  end: 655.071
+  duration: 5.672
+  type: aroll
+  note: 主持人說話，胸前疊橘底白字關鍵字條「自我疼惜」（a 幀動畫展開中僅見「我疼」）。
+  cues:
+  - 391
+  - 392
+  - 393
+  text: 要練習自我疼惜千萬不要將自己貼上缺乏自制力的標籤
+- shot_id: 151
+  start: 655.071
+  end: 658.283
+  duration: 3.212
+  type: aroll
+  note: 主持人更近景（zoom in）對鏡頭說話，無畫面文字。
+  cues:
+  - 394
+  - 395
+  text: 因為你並不孤單每個人都一樣
+- shot_id: 152
+  start: 658.283
+  end: 662.245
+  duration: 3.962
+  type: quote_card
+  note: 海邊夕陽下冥想女子的 stock 畫面，b 幀壓暗疊上滿版金句「越能夠自我疼惜的人，就會有越好的自癒能力。」（a 幀文字尚未出現，疊在 stock
+    上）。
+  cues:
+  - 396
+  - 397
+  text: 越能夠自我疼惜的人就會有越好的自癒能力
+- shot_id: 153
+  start: 662.245
+  end: 671.087
+  duration: 8.842
+  type: diagram
+  note: 白底概念圖「心無旁騖的模型」：十字箭頭連四象限——内在誘因、外在誘因、分心、引力，黃色高亮從「内在誘因」移到「引力」。
+  cues:
+  - 398
+  - 399
+  - 400
+  - 401
+  - 402
+  - 403
+  text: 搞定了把我們往左拉的內在誘因後接下來我們就是要好好計畫最重要的能把我們人生往正軌拉的 traction 了
+- shot_id: 154
+  start: 671.087
+  end: 676.134
+  duration: 5.047
+  type: title_card
+  note: 橘色滿版章節標題卡「替引力製造時間」配時鐘 icon（a 幀為橘白色塊轉場動畫展開中）。
+  cues:
+  - 404
+  - 405
+  text: 首先要提到一個很重要的概念：
+- shot_id: 155
+  start: 676.134
+  end: 681.598
+  duration: 5.464
+  type: quote_card
+  note: 黃昏海邊剪影實拍上疊滿版金句文字，逐行浮現「如果你不知道專心的時候 要做什麼事情, 就不能稱某些事物讓你分心。」，引文文字為主體、疊在 stock
+    剪影畫面上
+  cues:
+  - 406
+  - 407
+  - 408
+  text: 如果你不知道專心的時候要做些什麼事情就不能稱某些事物讓你分心
+- shot_id: 156
+  start: 681.598
+  end: 684.809
+  duration: 3.212
+  type: aroll
+  note: 主持人紅色羽絨外套在暖色書房對鏡頭說話，無畫面文字
+  cues:
+  - 409
+  - 410
+  text: 所以我們要先弄清楚自己的 traction 到底是什麼
+- shot_id: 157
+  start: 684.809
+  end: 686.769
+  duration: 1.96
+  type: aroll
+  note: 主持人對鏡頭說話，較近景微 zoom，無畫面文字
+  cues:
+  - 411
+  text: 然後把時間空出來去做
+- shot_id: 158
+  start: 686.769
+  end: 689.564
+  duration: 2.794
+  type: aroll
+  note: 主持人對鏡頭說話，標準中景，無畫面文字
+  cues:
+  - 412
+  - 413
+  text: 斯多葛學派的哲學家賽內卡曾經說：
+- shot_id: 159
+  start: 689.564
+  end: 698.74
+  duration: 9.176
+  type: motion_graphic
+  note: TED-Ed 動畫：披白袍的哲學家站在人群中演說，疊字「人們在保護個人財產時 很小心翼翼而且斤斤計較, 但是一旦說到時間的浪費, 卻又變得揮霍奢侈;」，左上角
+    TED-Ed logo
+  cues:
+  - 414
+  - 415
+  - 416
+  - 417
+  text: 「人們在保護個人財產的時候是很小心翼翼而且斤斤計較的但是一旦說到時間的浪費卻又變得揮霍奢侈
+- shot_id: 160
+  start: 698.74
+  end: 705.371
+  duration: 6.632
+  type: motion_graphic
+  note: TED-Ed 動畫：深紫底黃色網絡線條與粉紅手掌，疊字「時間卻是唯一一樣東西, 應該正大光明地保持 吝嗇小氣的態度。」（首幀尚未出字），左上角 TED-Ed
+    logo
+  cues:
+  - 418
+  - 419
+  - 420
+  text: 而時間卻是唯一一樣東西應該光明正大地保持吝嗇小氣的態度」
+- shot_id: 161
+  start: 705.371
+  end: 709.334
+  duration: 3.962
+  type: aroll
+  note: 主持人對鏡頭說話，無畫面文字
+  cues:
+  - 421
+  - 422
+  text: 所以我現在對保護自己的時間是一點都不會感到不好意思的
+- shot_id: 162
+  start: 709.334
+  end: 712.17
+  duration: 2.836
+  type: aroll
+  note: 主持人對鏡頭說話，胸前橘底白字 overlay 動畫展開出現「hell yeah or no」
+  cues:
+  - 423
+  - 424
+  text: 一直秉持著hell yeah or no 的態度
+- shot_id: 163
+  start: 712.17
+  end: 713.796
+  duration: 1.627
+  type: aroll
+  note: 主持人對鏡頭說話，橘底文字「hell yeah or no」正在收合轉場（幀間見「ll yeah or」與白色短槓），以 aroll 為主體
+  cues:
+  - 425
+  text: 但如果是打工仔怎麼辦？
+- shot_id: 164
+  start: 713.796
+  end: 717.467
+  duration: 3.67
+  type: aroll
+  note: 主持人對鏡頭說話，鏡頭較近的特寫，無畫面文字
+  cues:
+  - 426
+  - 427
+  - 428
+  text: 老闆丟一堆工作給你讓你做不完你還是得吞下去啊！
+- shot_id: 165
+  start: 717.467
+  end: 720.47
+  duration: 3.003
+  type: aroll
+  note: 主持人右側說話，左上疊入 PiP 視窗縮圖：「Talks at Google」logo 與男性講者（Nir Eyal）照片，疊在 aroll 上
+  cues:
+  - 429
+  - 430
+  text: 作者在 Talks at Google分享一個很棒的策略
+- shot_id: 166
+  start: 720.47
+  end: 723.097
+  duration: 2.628
+  type: aroll
+  note: 主持人對鏡頭說話，中景，無畫面文字
+  cues:
+  - 431
+  - 432
+  text: 請你跟你老闆訂一個 10 分鐘的會議
+- shot_id: 167
+  start: 723.097
+  end: 724.307
+  duration: 1.21
+  type: aroll
+  note: 主持人對鏡頭說話，無畫面文字
+  cues:
+  - 433
+  text: 然後跟你老闆說：
+- shot_id: 168
+  start: 724.307
+  end: 730.855
+  duration: 6.548
+  type: stock
+  note: 實拍素材：明亮辦公室內男女兩人隔桌討論文件與平板，無畫面文字
+  cues:
+  - 434
+  - 435
+  - 436
+  - 437
+  - 438
+  text: 「這是我接下來一周的行事曆你看 我星期一幾點到幾點要幹嘛然後星期二要開哪些會等等
+- shot_id: 169
+  start: 730.855
+  end: 737.695
+  duration: 6.84
+  type: stock
+  note: 辦公室實拍：西裝男與灰西裝外套捲髮女俯身在桌前一起看文件討論，無畫面文字。
+  cues:
+  - 439
+  - 440
+  - 441
+  - 442
+  text: 然後這邊有一份你要我做的事情的清單可以請你幫我安排優先順序嗎？」
+- shot_id: 170
+  start: 737.695
+  end: 742.283
+  duration: 4.588
+  type: aroll
+  note: 主持人（紅色羽絨外套、暖色書房、右側書櫃）對鏡頭說話，無畫面文字。
+  cues:
+  - 443
+  - 444
+  - 445
+  text: 如果是個正常的老闆他會很感激你讓他知道你平常都把時間花在哪
+- shot_id: 171
+  start: 742.283
+  end: 748.164
+  duration: 5.881
+  type: stock
+  note: 辦公室會議實拍：綠襯衫大鬍子男子與多位同事圍桌討論，背後白板貼滿圖表，無畫面文字。
+  cues:
+  - 446
+  - 447
+  - 448
+  text: 接著他會把你的行事曆中一些沒那麼重要的事情或會議換成他覺得比較重要的
+- shot_id: 172
+  start: 748.164
+  end: 749.874
+  duration: 1.71
+  type: aroll
+  note: 主持人對鏡頭說話，無畫面文字。
+  cues:
+  - 449
+  text: 這時候你也可以順勢跟他說
+- shot_id: 173
+  start: 749.874
+  end: 754.754
+  duration: 4.88
+  type: aroll
+  note: 主持人對鏡頭說話；兩幀不一致——後半幀下方出現橘底白字 overlay「心無旁騖時刻」，疊在 aroll 上，以主持人為主體分類。
+  cues:
+  - 450
+  - 451
+  text: 每周二早上十點到十二點是我的「心無旁鶩時刻」
+- shot_id: 174
+  start: 754.754
+  end: 762.303
+  duration: 7.549
+  type: stock
+  note: 辦公室實拍：黑人女性與灰髮西裝男子看著筆記本討論；首幀延續橘底白字 overlay「心無旁騖時刻」，後續幀無文字。
+  cues:
+  - 452
+  - 453
+  - 454
+  - 455
+  text: 如果可以的話這段時間請不要找我好讓我自己有塊完整的時間可以做需要深度思考的工作
+- shot_id: 175
+  start: 762.303
+  end: 766.933
+  duration: 4.63
+  type: quote_card
+  note: 大段白色引文文字為主體，疊在調暗的辦公桌寫字實拍上：「有個妥善安排的一周至關重要，因為如果你不事先規劃一周的每天要做什麼，那就會有別人來幫你規劃。」（首幀文字尚在打入中，僅顯示前段）。
+  cues:
+  - 456
+  - 457
+  - 458
+  text: 作者認為有一個妥善安排的一周是至關重要的事情
+- shot_id: 176
+  start: 766.933
+  end: 772.105
+  duration: 5.172
+  type: quote_card
+  note: 同一段白色引文延續，疊在另一段調暗的男子伏案寫筆記實拍上：「有個妥善安排的一周至關重要，因為如果你不事先規劃一周的每天要做什麼，那就會有別人來幫你規劃。」
+  cues:
+  - 459
+  - 460
+  - 461
+  text: 因為如果你不事先規劃一周的每天要做什麼那就會有別人來幫你規劃
+- shot_id: 177
+  start: 772.105
+  end: 773.481
+  duration: 1.376
+  type: aroll
+  note: 主持人對鏡頭說話，無畫面文字。
+  cues:
+  - 462
+  text: 但是要怎麼規劃呢？
+- shot_id: 178
+  start: 773.481
+  end: 778.987
+  duration: 5.505
+  type: stock
+  note: 俯拍實拍：西裝男子坐在辦公桌前寫筆記，桌面擺滿筆電、圖表文件與手機，無畫面文字。
+  cues:
+  - 463
+  - 464
+  - 465
+  - 466
+  text: 一般人會弄一個長長的 to-do list然後安排某一天要做表上的某些事情
+- shot_id: 179
+  start: 778.987
+  end: 781.155
+  duration: 2.169
+  type: aroll
+  note: 主持人對鏡頭說話（鏡位較近的 zoom in），無畫面文字。
+  cues:
+  - 467
+  text: 但是作者覺得這個方法很爛
+- shot_id: 180
+  start: 781.155
+  end: 788.913
+  duration: 7.758
+  type: stock
+  note: 職場過載實拍：紅襯衫大鬍子男子坐在辦公桌前被多位同事包圍遞文件、講電話般轟炸，顯露疲憊壓力；三幀為同組不同構圖，無畫面文字。
+  cues:
+  - 468
+  - 469
+  - 470
+  - 471
+  text: 所有試過這種方式的人都會在一天裡面塞太多事情導致很多事會被一天又一天地往後延
+- shot_id: 181
+  start: 788.913
+  end: 793.71
+  duration: 4.796
+  type: stock
+  note: 兩幀不同的用電腦實拍：前幀為夜間辦公室藍毛衣男子敲筆電，後幀為沙發上灰帽 T 男子手放筆電旁特寫；皆為無主持人實拍素材，無畫面文字。
+  cues:
+  - 472
+  - 473
+  - 474
+  - 475
+  text: 可能是低估了做這些事情的時間也有可能是有些事自己根本就不想做
+- shot_id: 182
+  start: 793.71
+  end: 797.005
+  duration: 3.295
+  type: aroll
+  note: 主持人對鏡頭說話，無畫面文字。
+  cues:
+  - 476
+  - 477
+  text: 所以他認為與其從我們要做「什麼」開始
+- shot_id: 183
+  start: 797.005
+  end: 799.924
+  duration: 2.92
+  type: aroll
+  note: 主持人特寫對鏡頭說話，第二幀下方出現橘底白字 overlay「為什麼」。
+  cues:
+  - 478
+  - 479
+  text: 應該先問問我們「為什麼」要做這些事
+- shot_id: 184
+  start: 799.924
+  end: 803.469
+  duration: 3.545
+  type: aroll
+  note: 主持人中景對鏡頭說話（較廣角），第一幀仍有橘底白字「為什麼」，第二幀文字消失。
+  cues:
+  - 480
+  - 481
+  text: 而要做到這點就必須從我們的價值觀開始
+- shot_id: 185
+  start: 803.469
+  end: 810.101
+  duration: 6.632
+  type: aroll
+  note: 主持人對鏡頭說話；第一幀為滿版橘色轉場圖形（切到轉場），第二幀橘色上下色塊擦出、第三幀畫面乾淨，以多數幀 aroll 分類，無文字。
+  cues:
+  - 482
+  - 483
+  - 484
+  text: 作者舉出了我們需要花最多時間的三個生活領域
+- shot_id: 186
+  start: 810.101
+  end: 814.981
+  duration: 4.88
+  type: diagram
+  note: '白底同心圓概念圖，標題「LIFE DOMAINS」，三層圓標「WORK / RELATIONSHIPS / YOU」，下方註「The three
+    life domains: you, relationships, and work.」，黃色 highlight 由 YOU 移到 RELATIONSHIPS。'
+  cues:
+  - 485
+  - 486
+  - 487
+  text: 依序是你自己再來是你的人際關係最外圈才是工作
+- shot_id: 187
+  start: 814.981
+  end: 817.191
+  duration: 2.211
+  type: stock
+  note: 實拍：女子在湖邊夕陽下盤腿打坐冥想的背影，無文字。
+  cues:
+  - 488
+  - 489
+  text: 你有沒有好好照顧自己的身心靈？
+- shot_id: 188
+  start: 817.191
+  end: 819.986
+  duration: 2.794
+  type: stock
+  note: 實拍：男子躺在床上白色枕頭棉被間安睡微笑的特寫，無文字。
+  cues:
+  - 490
+  text: 有沒有吃好 睡飽 多運動呢？
+- shot_id: 189
+  start: 819.986
+  end: 823.948
+  duration: 3.962
+  type: stock
+  note: 實拍：四位朋友並肩坐在湖畔堤岸看夕陽的背影，無文字。
+  cues:
+  - 491
+  - 492
+  - 493
+  text: 有沒有把精華時光花在自己最愛的家人和朋友身上？
+- shot_id: 190
+  start: 823.948
+  end: 826.993
+  duration: 3.045
+  type: stock
+  note: 實拍：紅髮女子在家中窗邊書架前用筆電工作，桌上有攤開的書，無文字。
+  cues:
+  - 494
+  - 495
+  text: 有沒有去做那些真正對事業有幫助的事情？
+- shot_id: 191
+  start: 826.993
+  end: 830.455
+  duration: 3.462
+  type: stock
+  note: 實拍：穿黑西裝外套的女子在摩天大樓前張開雙臂仰天伸展，無文字。
+  cues:
+  - 496
+  - 497
+  text: 最重要的是你有沒有花時間好好想清楚
+- shot_id: 192
+  start: 830.455
+  end: 833.666
+  duration: 3.212
+  type: stock
+  note: 實拍：穿風衣與黃色毛衣的黑人女子在城市街道上雙手抱胸微笑看鏡頭，無文字。
+  cues:
+  - 498
+  - 499
+  text: 自己想成為什麼樣的人過什麼樣的人生？
+- shot_id: 193
+  start: 833.666
+  end: 835.668
+  duration: 2.002
+  type: aroll
+  note: 主持人中景對鏡頭說話，背景書房書櫃與吉他，無文字。
+  cues:
+  - 500
+  text: 唯有把以上的事情弄清楚
+- shot_id: 194
+  start: 835.668
+  end: 842.091
+  duration: 6.423
+  type: diagram
+  note: 白底十字箭頭概念圖，標題「心無旁騖的模型」，四端標「內在誘因（大腦 icon）／外在誘因（鈴鐺 icon）／分心（磁鐵 icon）／引力（齒輪 icon）」，右側「引力」以黃色方塊
+    highlight。
+  cues:
+  - 501
+  - 502
+  - 503
+  - 504
+  text: 你才知道自己的 traction 是什麼東西也才能夠把騰出來的時間拿來做這些重要的事
+- shot_id: 195
+  start: 842.091
+  end: 844.135
+  duration: 2.044
+  type: stock
+  note: 實拍：男子在室內明亮落地窗前手持平板電腦、看鏡頭微笑，無文字。
+  cues:
+  - 505
+  text: 除了建立自己的快樂事業以外
+- shot_id: 196
+  start: 844.135
+  end: 847.513
+  duration: 3.378
+  type: stock
+  note: 實拍：男子在廚房用果汁機打綠色蔬果昔，檯面有香蕉與草莓，無文字。
+  cues:
+  - 506
+  - 507
+  text: 我想要自己是一個身心靈健康 精力充沛
+- shot_id: 197
+  start: 847.513
+  end: 849.849
+  duration: 2.336
+  type: stock
+  note: 戴白色毛帽、背橘色背包的年輕男子在森林中仰頭張望，實拍健行畫面，無文字。
+  cues:
+  - 508
+  text: 隨時都能上山下海的人
+- shot_id: 198
+  start: 849.849
+  end: 851.559
+  duration: 1.71
+  type: stock
+  note: 一對情侶在海邊逆光下額頭相抵擁抱微笑，實拍畫面，無文字。
+  cues:
+  - 509
+  text: 我也想要成為一個好丈夫
+- shot_id: 199
+  start: 851.559
+  end: 854.103
+  duration: 2.544
+  type: stock
+  note: 父親在廚房與坐在流理台上的小女兒對視並擁抱，實拍溫馨親子畫面，無文字。
+  cues:
+  - 510
+  text: 好爸爸 好兒子 和好朋友
+- shot_id: 200
+  start: 854.103
+  end: 858.775
+  duration: 4.671
+  type: diagram
+  note: '同心圓概念圖，標題「LIFE DOMAINS」，三圈由外至內為「WORK / RELATIONSHIPS / YOU」，下方註解「The three
+    life domains: you, relationships, and work.」；a 幀黃色高亮 YOU、b 幀高亮 RELATIONSHIPS。'
+  cues:
+  - 511
+  - 512
+  text: 所以我會把一整天的時間依照這三個領域的重要性排滿
+- shot_id: 201
+  start: 858.775
+  end: 862.945
+  duration: 4.171
+  type: stock
+  note: 男子在明亮客廳盤腿冥想、手結手印，實拍畫面，無文字。
+  cues:
+  - 513
+  - 514
+  - 515
+  text: 我每一天早上起床之後的兩小時一定是運動加冥想
+- shot_id: 202
+  start: 862.945
+  end: 865.656
+  duration: 2.711
+  type: stock
+  note: 背影鏡頭：穿黃衣的小女孩坐在父親肩上、雙手張開牽著父親走在綠蔭步道，實拍畫面，無文字。
+  cues:
+  - 516
+  - 517
+  text: 接下來準備女兒的早餐送她上課
+- shot_id: 203
+  start: 865.656
+  end: 872.288
+  duration: 6.632
+  type: stock
+  note: 戴 AirPods 的男子近距離盯著筆電螢幕、神情專注憂慮的特寫，實拍畫面，無文字。
+  cues:
+  - 518
+  - 519
+  - 520
+  - 521
+  text: 回來之後兩個時段90 分鐘的高強度工作我會拿來寫文章看書或者閱讀論文
+- shot_id: 204
+  start: 872.288
+  end: 874.499
+  duration: 2.211
+  type: aroll
+  note: 主持人穿紅色羽絨外套在暖色書房（左吉他、右書櫃）對鏡頭說話，無文字。
+  cues:
+  - 522
+  text: 接下來有兩個小時的午休時間
+- shot_id: 205
+  start: 874.499
+  end: 878.211
+  duration: 3.712
+  type: aroll
+  note: 主持人繼續對鏡頭說話，鏡位稍微拉近，背景同暖色書房，無文字。
+  cues:
+  - 523
+  - 524
+  text: 除了吃午餐以外我會花十分鐘把 inbox 清光
+- shot_id: 206
+  start: 878.211
+  end: 879.796
+  duration: 1.585
+  type: stock
+  note: 穿深青色襯衫、戴手錶的男子雙手在白色鍵盤上打字的特寫，實拍畫面，無文字。
+  cues:
+  - 525
+  - 526
+  text: 接下來會再安排一個90 分鐘的高強度工作
+- shot_id: 207
+  start: 879.796
+  end: 881.547
+  duration: 1.752
+  type: stock
+  note: 夜間辦公室裡男子手托下巴沉思的特寫，背景燈光虛化，實拍畫面，無文字。
+  cues:
+  - 526
+  text: 90 分鐘的高強度工作
+- shot_id: 208
+  start: 881.547
+  end: 885.76
+  duration: 4.213
+  type: stock
+  note: 穿紅 T 恤、戴 AirPod 的男子在廚房餐桌用筆電視訊、桌上有文件，實拍畫面，無文字。
+  cues:
+  - 527
+  - 528
+  - 529
+  text: 最後會安排開會或者是回 email這種比較低強度的工作
+- shot_id: 209
+  start: 885.76
+  end: 887.095
+  duration: 1.335
+  type: aroll
+  note: 主持人穿紅色羽絨外套在暖色書房對鏡頭講話，表情誇張張嘴，無文字。
+  cues:
+  - 530
+  text: 然後去接女兒下課
+- shot_id: 210
+  start: 887.095
+  end: 890.223
+  duration: 3.128
+  type: aroll
+  note: 主持人對鏡頭說話後抿嘴停頓，鏡位比前一鏡更近，背景同暖色書房，無文字。
+  cues:
+  - 531
+  - 532
+  text: 而晚上的時間就是保留給家人和自己
+- shot_id: 211
+  start: 890.223
+  end: 893.768
+  duration: 3.545
+  type: aroll
+  note: 主持人穿紅色羽絨外套在暖色書房對鏡頭說話，畫面無 overlay 文字。
+  cues:
+  - 533
+  - 534
+  - 535
+  text: 至於當天的高強度和低強度工作時段要安排什麼
+- shot_id: 212
+  start: 893.768
+  end: 897.021
+  duration: 3.253
+  type: stock
+  note: 實拍素材：留鬍男子側臉用白板筆在玻璃牆的便利貼上書寫，便利貼為素材內手寫字「PROFIT REPORT」「Sales」，非後製 overlay。
+  cues:
+  - 536
+  - 537
+  - 538
+  text: 我會從我目前執行的三個專案中挑出一個出來做
+- shot_id: 213
+  start: 897.021
+  end: 901.526
+  duration: 4.505
+  type: diagram
+  note: 黑底概念動畫圖：左白框「暫存區」、右橘框「現役區」，五個彩色橫條「專案 A」「專案 B」「專案 C」「專案 D」「專案 E」，b 幀中專案 A/B/C
+    動畫移入現役區。
+  cues:
+  - 539
+  - 540
+  text: 這種 pull based 的工作邏輯可以有效避免過勞和工作倦怠
+- shot_id: 214
+  start: 901.526
+  end: 905.404
+  duration: 3.879
+  type: aroll
+  note: 主持人對鏡頭說話為主體，右側疊入自己另一支影片縮圖 PIP 視窗：《慢速工作力 Slow Productivity》書封與人臉，縮圖文字「原來我之前錯了...」。
+  cues:
+  - 541
+  - 542
+  - 543
+  text: 有興趣可以參考我之前分享的《慢速工作力》這本書
+- shot_id: 215
+  start: 905.404
+  end: 911.41
+  duration: 6.006
+  type: stock
+  note: 實拍素材：三位朋友（亞裔男、女子、黑人男）在起霧公園開心自拍合照，三幀間表情動作變化（微笑、扮鬼臉、依偎），無文字。
+  cues:
+  - 544
+  - 545
+  - 546
+  - 547
+  text: 除了工作天以外我也會把周末留給家人和朋友定期安排聚會和出遊
+- shot_id: 216
+  start: 911.41
+  end: 913.704
+  duration: 2.294
+  type: aroll
+  note: 主持人在書房對鏡頭說話（略 zoom in），無 overlay 文字。
+  cues:
+  - 548
+  text: 只要能夠說出做到
+- shot_id: 217
+  start: 913.704
+  end: 915.54
+  duration: 1.835
+  type: aroll
+  note: 主持人對鏡頭說話並舉起手指、手勢比劃，無 overlay 文字。
+  cues:
+  - 549
+  text: 安排什麼就做什麼
+- shot_id: 218
+  start: 915.54
+  end: 917.792
+  duration: 2.252
+  type: aroll
+  note: 主持人臉部特寫（zoom in 較緊）對鏡頭說話，無 overlay 文字。
+  cues:
+  - 550
+  text: 那就是心無旁鶩的一天
+- shot_id: 219
+  start: 917.792
+  end: 920.419
+  duration: 2.628
+  type: aroll
+  note: 主持人對鏡頭說話為主體，右側疊入自己另一支影片縮圖 PIP 視窗：《上線時間管理術》書封，縮圖文字「上線時間管理術」「Google時間管理一姐的高效秘訣，找到工作／生活／自己的平衡與幸福」「上班族
+    必學!!!」。
+  cues:
+  - 551
+  - 552
+  text: 就像《上線時間管理術》這本書講的
+- shot_id: 220
+  start: 920.419
+  end: 927.051
+  duration: 6.632
+  type: stock
+  note: 實拍素材：金髮女子在霓虹燈電競房玩賽車模擬方向盤，螢幕顯示賽車遊戲畫面，c 幀開心大笑，無 overlay 文字。
+  cues:
+  - 553
+  - 554
+  - 555
+  - 556
+  text: 如果安排自己星期四晚上打電動一小時那就打好打滿這才是最有生產力的表現
+- shot_id: 221
+  start: 927.051
+  end: 930.054
+  duration: 3.003
+  type: aroll
+  note: 主持人在書房對鏡頭說話，無 overlay 文字。
+  cues:
+  - 557
+  - 558
+  text: 接下來就要來講講如何對付外在誘因
+- shot_id: 222
+  start: 930.054
+  end: 943.693
+  duration: 13.639
+  type: stock
+  note: 實拍素材：留鬍男子在沙發專注握遊戲手把打電動，後方橘衣女子滑手機；a 幀仍是主持人 aroll（轉場切點），以佔多數的 stock 分類，無文字。
+  cues:
+  - 559
+  - 560
+  - 561
+  - 562
+  - 563
+  text: 以及用協定來預防分心了現代人越來愈容易分心的其中一個原因就是外在誘因越來越多而且是無處不在 無孔不入啊！
+- shot_id: 223
+  start: 943.693
+  end: 948.948
+  duration: 5.255
+  type: aroll
+  note: 主持人在書房對鏡頭說話（表情驚訝再繼續講），無 overlay 文字。
+  cues:
+  - 564
+  - 565
+  - 566
+  - 567
+  text: 就想想我們一天要受到多少外在誘因的影響而打斷我們本來在做的事情好了
+- shot_id: 224
+  start: 948.948
+  end: 952.577
+  duration: 3.629
+  type: stock
+  note: 實拍素材：女子趴睡床上，前景白色雙鈴鬧鐘指向約 7 點，b 幀伸手要按掉鬧鐘，無文字。
+  cues:
+  - 568
+  - 569
+  text: 從一天早上的鬧鐘開始就打斷你睡覺了嘛
+- shot_id: 225
+  start: 952.577
+  end: 955.705
+  duration: 3.128
+  type: stock
+  note: 特寫實拍：男子雙手握著黑色智慧型手機（背面朝鏡頭）滑動，無畫面文字。
+  cues:
+  - 570
+  text: 到手機上滿滿的新消息通知
+- shot_id: 226
+  start: 955.705
+  end: 962.17
+  duration: 6.465
+  type: stock
+  note: 實拍：男子在浴室鏡前一邊用電動牙刷刷牙一邊低頭看手機，無畫面文字。
+  cues:
+  - 571
+  - 572
+  - 573
+  text: 一邊刷牙 一邊滑一邊看到昨天美股又大跌了心情也跟著沉到谷底
+- shot_id: 227
+  start: 962.17
+  end: 966.549
+  duration: 4.379
+  type: stock
+  note: 實拍：捲髮小男孩坐在餐桌旁放聲大哭，無畫面文字。
+  cues:
+  - 574
+  - 575
+  - 576
+  - 577
+  text: 這時候小孩起床了吵著要喝奶然後終於全部弄好狼狽地出門
+- shot_id: 228
+  start: 966.549
+  end: 974.348
+  duration: 7.799
+  type: stock
+  note: 實拍：藍襯衫男子坐在特斯拉駕駛座拿著手機講話並比手勢（未看路），無畫面文字。
+  cues:
+  - 578
+  - 579
+  - 580
+  - 581
+  - 582
+  text: 一邊開車 車上電話就響了營業員打電話來說帳戶的錢不夠了要再補二十萬進去要不然被斷頭了
+- shot_id: 229
+  start: 974.348
+  end: 980.229
+  duration: 5.881
+  type: stock
+  note: 實拍：戴耳機眼鏡的男子在電腦前打字，隨後分心拿起綠色手機查看，無畫面文字。
+  cues:
+  - 583
+  - 584
+  - 585
+  text: 到了公司還是不得安寧即時通訊 email會議通知一直跳出來
+- shot_id: 230
+  start: 980.229
+  end: 986.319
+  duration: 6.089
+  type: stock
+  note: 實拍：西裝男子在辦公桌前低頭滑手機，背景有紅髮女同事工作，無畫面文字。
+  cues:
+  - 586
+  - 587
+  - 588
+  - 589
+  text: 每次手機一震動感覺心跳就會漏了半拍有時候真的覺得想要逃離這一切
+- shot_id: 231
+  start: 986.319
+  end: 988.529
+  duration: 2.211
+  type: aroll
+  note: 主持人（紅色羽絨外套、暖色書房）對鏡頭說話並比手勢，無畫面文字。
+  cues:
+  - 590
+  text: 就算自己已經將內在安頓好
+- shot_id: 232
+  start: 988.529
+  end: 992.366
+  duration: 3.837
+  type: aroll
+  note: 主持人對鏡頭說話，鏡頭較前一顆更近（zoom in），無畫面文字。
+  cues:
+  - 591
+  - 592
+  - 593
+  text: 也安排好時間準備要來做那些有 traction 的事情
+- shot_id: 233
+  start: 992.366
+  end: 996.329
+  duration: 3.962
+  type: stock
+  note: 實拍特寫：落腮鬍男子坐在車內駕駛座側臉低頭滑手機，無畫面文字。
+  cues:
+  - 594
+  - 595
+  text: 但總是會有無數的外在誘因將我們拉出正軌
+- shot_id: 234
+  start: 996.329
+  end: 999.207
+  duration: 2.878
+  type: book_cover
+  note: 《專注力協定》書封圖卡從左側滑入疊在 aroll 上，封面文字「專注力協定 INDISTRACTABLE / NIR EYAL / 分心，是想要逃離正在做的事」。
+  cues:
+  - 596
+  - 597
+  text: 書中針對許多現代人會面臨的外在誘因
+- shot_id: 235
+  start: 999.207
+  end: 1002.835
+  duration: 3.629
+  type: stock
+  note: 實拍：辦公桌前女性雙手滑手機（桌上有眼鏡、平板、圖表文件）；首幀左側殘留縮小中的書封小卡（轉場），可見「定」字。
+  cues:
+  - 598
+  - 599
+  text: 像是 email 聊天群組手機和會議等等
+- shot_id: 236
+  start: 1002.835
+  end: 1006.464
+  duration: 3.629
+  type: stock
+  note: 實拍：白西裝女子在明亮綠意辦公室邊講手機邊用筆電，無畫面文字。
+  cues:
+  - 600
+  - 601
+  text: 提出相對應的策略來將影響降到最小
+- shot_id: 237
+  start: 1006.464
+  end: 1009.55
+  duration: 3.086
+  type: aroll
+  note: 主持人對鏡頭說話，表情皺眉強調，無畫面文字。
+  cues:
+  - 602
+  - 603
+  text: 但我自己讀起來有點見樹不見林的感覺
+- shot_id: 238
+  start: 1009.55
+  end: 1013.93
+  duration: 4.379
+  type: aroll
+  note: 主持人對鏡頭繼續說話（近景），無畫面文字。
+  cues:
+  - 604
+  - 605
+  text: 比較像是單點擊破的戰術沒有形成完整的戰略
+- shot_id: 239
+  start: 1013.93
+  end: 1020.77
+  duration: 6.84
+  type: aroll
+  note: 主持人對鏡頭說話，右側先疊入《數位大掃除》書封（含 App 圖示），後切換成自己舊影片視窗（畫面中他手持《上線時間管理術》書），疊字「上班族 必學!!!」；幀間
+    overlay 內容切換，主持人始終為主體。
+  cues:
+  - 606
+  - 607
+  - 608
+  - 609
+  - 610
+  text: 我認為 Cal Newport 這本《深度數位大掃除》以及之前介紹的《上線時間管理術》講得比較完整
+- shot_id: 240
+  start: 1020.77
+  end: 1022.104
+  duration: 1.335
+  type: aroll
+  note: 主持人正面對鏡頭說話，無任何文字或圖卡。
+  cues:
+  - 611
+  text: 大家可以找來看看
+- shot_id: 241
+  start: 1022.104
+  end: 1024.69
+  duration: 2.586
+  type: aroll
+  note: 主持人說話，左側動畫滑入四點清單：「1 精通內在誘因 2 為引力空出時間 3 反擊外在誘因 4 用協定預防分心」（首幀為橘色色塊 placeholder
+    進場動畫）。
+  cues:
+  - 612
+  - 613
+  text: 而最後一個「用協定來預防分心」
+- shot_id: 242
+  start: 1024.69
+  end: 1027.735
+  duration: 3.045
+  type: aroll
+  note: 主持人說話拉遠鏡頭，前半仍見四點清單「1 精通內在誘因 2 為引力空出時間 3 反擊外在誘因 4 用協定預防分心」，後半清單淡出無文字。
+  cues:
+  - 614
+  - 615
+  text: 作者舉了幾個能夠增加分心行為的難度
+- shot_id: 243
+  start: 1027.735
+  end: 1032.406
+  duration: 4.671
+  type: aroll
+  note: 主持人對鏡頭說話並比手勢，無文字 overlay。
+  cues:
+  - 616
+  - 617
+  - 618
+  text: 或者需要付出額外代價的策略來防止我們衝動行事
+- shot_id: 244
+  start: 1032.406
+  end: 1035.326
+  duration: 2.92
+  type: stock
+  note: 實拍素材：一隻手把黑色手機放進白色編織籃（遠離手機情境），無文字。
+  cues:
+  - 619
+  - 620
+  text: 像是把手機鎖起來讓自己比較難拿到
+- shot_id: 245
+  start: 1035.326
+  end: 1041.791
+  duration: 6.465
+  type: stock
+  note: 實拍素材：戴黑帽白長鬍老先生拿大聲公對鏡頭喊話，無文字。
+  cues:
+  - 621
+  - 622
+  - 623
+  - 624
+  text: 或者向大眾公布自己的減肥目標如果沒有達成燃脂的任務那就燃燒鈔票
+- shot_id: 246
+  start: 1041.791
+  end: 1042.959
+  duration: 1.168
+  type: aroll
+  note: 主持人誇張演出（比手勢、皺臉苦相），畫面上下加黑邊 letterbox 做戲劇化效果，無文字。
+  cues:
+  - 625
+  text: 欸這犯法吧⋯⋯
+- shot_id: 247
+  start: 1042.959
+  end: 1046.837
+  duration: 3.879
+  type: aroll
+  note: 主持人正面對鏡頭說話，無文字 overlay。
+  cues:
+  - 626
+  - 627
+  - 628
+  text: 我覺得這類型的策略寫得最好的一定要算是《原子習慣》
+- shot_id: 248
+  start: 1046.837
+  end: 1050.091
+  duration: 3.253
+  type: book_cover
+  note: 《原子習慣 細微改變帶來巨大成就的實證法則 Atomic Habits》書封視窗放大疊在 aroll 上，主持人同時手持實體書《原子習慣》入鏡；首幀書封尚在滑入。
+  cues:
+  - 628
+  - 629
+  text: 一定要算是《原子習慣》這本世紀暢銷書了
+- shot_id: 249
+  start: 1050.091
+  end: 1052.176
+  duration: 2.085
+  type: aroll
+  note: 主持人說話，首幀左側有縮小成手機卡的《原子習慣》書封退場動畫，後幀無 overlay。
+  cues:
+  - 630
+  text: 大家也可以拿出來複習
+- shot_id: 250
+  start: 1052.176
+  end: 1054.512
+  duration: 2.336
+  type: book_cover
+  note: 《專注力協定 INDISTRACTABLE》書封視窗放大疊在 aroll 上，封面文字「分心，是想要逃離正在做的事」；首幀為右側縮小手機卡（僅見大字「定」）。
+  cues:
+  - 631
+  - 632
+  text: 以上就是這本《專注力協定》的
+- shot_id: 251
+  start: 1054.512
+  end: 1058.432
+  duration: 3.921
+  type: aroll
+  note: 主持人說話，橘底大字標題「心無旁騖模型」打在畫面下方；首幀另有縮小的書封手機卡與橘色暫停符號殘影。
+  cues:
+  - 633
+  - 634
+  text: 「心無旁鶩模型」的四大策略希望對你有幫助
+- shot_id: 252
+  start: 1058.432
+  end: 1062.645
+  duration: 4.213
+  type: book_cover
+  note: 三本 Cal Newport 書封視窗疊在 aroll 上佔據左半：「深度工作力」「數位大掃除 3分鐘連線方案，在喧囂世界過專注人生」「A World
+    Without Email 沒有Email的世界 過度溝通時代的深度工作法 每天只需工作5小時」。
+  cues:
+  - 635
+  - 636
+  text: 強烈建議配合影片中提到的這些書一起服用
+- shot_id: 253
+  start: 1062.645
+  end: 1064.146
+  duration: 1.501
+  type: aroll
+  note: 主持人紅色羽絨外套於暖色書房對鏡頭說話（近景），無畫面文字
+  cues:
+  - 637
+  text: 並且親身實踐
+- shot_id: 254
+  start: 1064.146
+  end: 1069.11
+  duration: 4.963
+  type: aroll
+  note: 主持人對鏡頭說話並舉起食指強調（稍廣景，可見右側書櫃與左側吉他），無畫面文字
+  cues:
+  - 638
+  - 639
+  - 640
+  text: 假以時日一定可以讓你練成這個本世紀最重要的超能力
+- shot_id: 255
+  start: 1069.11
+  end: 1071.07
+  duration: 1.96
+  type: aroll
+  note: 主持人近景對鏡頭說話，無畫面文字
+  cues:
+  - 641
+  text: 幫助你完成人生的願景
+- shot_id: 256
+  start: 1071.07
+  end: 1074.365
+  duration: 3.295
+  type: aroll
+  note: 主持人對鏡頭說話（中景），無畫面文字
+  cues:
+  - 642
+  - 643
+  text: 如果你喜歡這樣的內容希望支持我們繼續做下去
+- shot_id: 257
+  start: 1074.365
+  end: 1078.536
+  duration: 4.171
+  type: aroll
+  note: 主持人對鏡頭說話，右側疊上訂閱按鈕動畫 overlay，文字由「SUBSCRIBE!」被游標點擊變成「SUBSCRIBED」附讚與鈴鐺 icon
+  cues:
+  - 644
+  - 645
+  - 646
+  text: 真的 訂閱按讚留言是幫助我們頻道最簡單的方法
+- shot_id: 258
+  start: 1078.536
+  end: 1081.789
+  duration: 3.253
+  type: aroll
+  note: 主持人對鏡頭說話，右側「SUBSCRIBED」訂閱按鈕 overlay 淡出消失（後幀僅剩一小段橘色線條）
+  cues:
+  - 647
+  - 648
+  text: 也推薦你訂閱我的電子報張修修的自由之路
+- shot_id: 259
+  start: 1081.789
+  end: 1086.877
+  duration: 5.088
+  type: aroll
+  note: 主持人近景對鏡頭說話，前幀下方疊橘底白字 banner「張修修的自由之路」，後幀文字已消失，以 aroll 為主
+  cues:
+  - 649
+  - 650
+  - 651
+  - 652
+  text: 我每個禮拜都會分享我在通往自由這條偉大航道上的探索和學習
+- shot_id: 260
+  start: 1086.877
+  end: 1091.34
+  duration: 4.463
+  type: aroll
+  note: 主持人近景對鏡頭說話，後幀下方疊橘底白字 banner「shosho.tw/free」
+  cues:
+  - 653
+  text: 網址是 shosho.tw/free
+- shot_id: 261
+  start: 1091.34
+  end: 1092.925
+  duration: 1.585
+  type: aroll
+  note: 主持人對鏡頭說話（中景），無畫面文字
+  cues:
+  - 654
+  text: 最後 我要跟你說
+- shot_id: 262
+  start: 1092.925
+  end: 1094.927
+  duration: 2.002
+  type: aroll
+  note: 主持人對鏡頭說話並比手勢（前幀舉拳），無畫面文字
+  cues:
+  - 655
+  text: 你很棒 放輕鬆
+- shot_id: 263
+  start: 1094.927
+  end: 1096.262
+  duration: 1.335
+  type: aroll
+  note: 主持人對鏡頭說話，雙手張開比手勢，無畫面文字
+  cues:
+  - 656
+  text: 別太逼自己了
+- shot_id: 264
+  start: 1096.262
+  end: 1098.723
+  duration: 2.461
+  type: aroll
+  note: 主持人近景對鏡頭說話（後幀閉眼講述），無畫面文字
+  cues:
+  - 657
+  text: 專注力真的和肌肉一樣
+- shot_id: 265
+  start: 1098.723
+  end: 1100.141
+  duration: 1.418
+  type: aroll
+  note: 主持人對鏡頭說話（中景），無畫面文字
+  cues:
+  - 658
+  text: 給自己一點時間
+- shot_id: 266
+  start: 1100.141
+  end: 1103.019
+  duration: 2.878
+  type: aroll
+  note: 主持人近景對鏡頭說話（前幀閉眼皺眉、舉手指做表情），無畫面文字
+  cues:
+  - 659
+  - 660
+  text: 每天練一下一定可以練得起來的！
+- shot_id: 267
+  start: 1103.019
+  end: 1104.27
+  duration: 1.251
+  type: aroll
+  note: 主持人（紅色羽絨外套）在暖色書房正面對鏡頭說話，背景右側書櫃、左側吉他與工作桌，畫面無任何大型文字。
+  cues:
+  - 661
+  text: 我們下集節目見
+- shot_id: 268
+  start: 1104.27
+  end: 1105.02
+  duration: 0.75
+  type: aroll
+  note: 主持人稍微更近的鏡位對鏡頭說話並舉起右手比手勢，背景同一暖色書房，畫面無任何大型文字。
+  cues:
+  - 662
+  text: 掰掰！
