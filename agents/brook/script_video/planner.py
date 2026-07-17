@@ -33,7 +33,8 @@ _GUARDRAILS = Path(__file__).parent / "guardrails.yaml"
 _EXAMPLES_INDEX = Path(__file__).parent / "examples" / "_index.yaml"
 
 _MODEL = "claude-opus-4-7"
-_MAX_TOKENS = 16000  # ~80 tokens/beat; 18min+ episodes exceed the old 4000 cap and truncate mid-YAML
+# ~80 tokens/beat; 18min+ episodes exceeded the old 4000 cap and truncated mid-YAML
+_MAX_TOKENS = 16000
 
 
 def _load_examples() -> list[dict]:
