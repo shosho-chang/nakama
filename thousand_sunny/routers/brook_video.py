@@ -39,6 +39,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from agents.brook.script_video import edit_log
+from agents.brook.script_video.srt_flattener import parse_srt
 from shared.log import get_logger
 from thousand_sunny.auth import check_auth
 
@@ -219,10 +220,27 @@ async def storyboard_page(
     ep_dir = _episode_dir(episode_id)
     out_dir = ep_dir / "out"
 
+    # transcript.srt → cue map（beat 逐字稿 toggle 用；檔案缺失時 graceful 降級）
+    cue_by_id: dict[int, Any] = {}
+    srt_path = ep_dir / "transcript.srt"
+    if srt_path.exists():
+        try:
+            cue_by_id = {c.index: c for c in parse_srt(srt_path.read_text(encoding="utf-8"))}
+        except (ValueError, OSError):
+            logger.warning("transcript.srt unreadable for %s — beat transcripts omitted", episode_id)
+
     rows: list[dict[str, Any]] = []
     for beat in storyboard:
         status = beat.get("status") or {}
         bid = beat["beat_id"]
+        timing = beat.get("timing") or {}
+        start_s = timing.get("start")
+        duration_s = timing.get("duration")
+        start_tc = f"{int(start_s // 60):02d}:{start_s % 60:04.1f}" if start_s is not None else None
+        line_ids = beat.get("srt_line_ids") or []
+        transcript_text = "".join(
+            cue_by_id[i].text.replace("\n", " ") for i in line_ids if i in cue_by_id
+        )
         # ADR-038 §D2: rendered mp4 is content-addressed via status.cached_hash.
         cached_hash = status.get("cached_hash")
         mp4_path = out_dir / f"b_roll_{cached_hash}.mp4" if cached_hash else None
@@ -232,6 +250,9 @@ async def storyboard_page(
             {
                 "beat_id": bid,
                 "segment_text": (beat.get("start_quote") or "")[:80],
+                "transcript_text": transcript_text,
+                "start_tc": start_tc,
+                "duration_s": duration_s,
                 "layout": beat.get("layout") or "—",
                 "component": broll.get("component") if broll else "—",
                 "params_json": json.dumps(broll.get("params") or {}, ensure_ascii=False),
