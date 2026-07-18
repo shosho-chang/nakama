@@ -1,0 +1,279 @@
+shots_scanned: 179
+events:
+- shot_id: 2
+  kind: book_cover
+  text: The Psychology of Money — Timeless Lessons on Wealth, Greed, and Happiness
+    / Morgan Housel（英文版書封，左側滑入，第二幀加上瀏覽器視窗框與 OVER TWO MILLION COPIES SOLD 橫條）
+  t_start: 5.54
+  t_end: 6.54
+- shot_id: 3
+  kind: book_cover
+  text: 致富心態：關於財富、貪婪與幸福的20堂理財課 — 摩根・豪瑟（MORGAN HOUSEL）著（中文版書封，右側滑入含瀏覽器視窗框，末幀縮小退場）
+  t_start: 7.42
+  t_end: 9.42
+- shot_id: 4
+  kind: keyword_text
+  text: 金錢心理學
+  t_start: 14.67
+  t_end: 14.67
+- shot_id: 5
+  kind: book_cover
+  text: 致富心態：關於財富、貪婪與幸福的20堂理財課 — 摩根・豪瑟（MORGAN HOUSEL）著（右側書封 inset，含瀏覽器視窗框）
+  t_start: 15.67
+  t_end: 17.67
+- shot_id: 9
+  kind: book_cover
+  text: 致富心態：關於財富、貪婪與幸福的20堂理財課 — 摩根・豪瑟（MORGAN HOUSEL）著（右側書封 inset，含瀏覽器視窗框）
+  t_start: 29.9
+  t_end: 31.9
+- shot_id: 13
+  kind: book_cover
+  text: 致富心態：關於財富、貪婪與幸福的20堂理財課 — 摩根・豪瑟（MORGAN HOUSEL）著（左側書封 inset，含瀏覽器視窗框）
+  t_start: 39.16
+  t_end: 41.16
+- shot_id: 25
+  kind: book_cover
+  text: 致富心態：關於財富、貪婪與幸福的20堂理財課 — 摩根・豪瑟（MORGAN HOUSEL）著（右側書封 inset，含瀏覽器視窗框；74.65 縮小退場殘留於
+    shot026 開頭）
+  t_start: 72.9
+  t_end: 74.65
+- shot_id: 26
+  kind: keyword_text
+  text: 7個投資致富的真相
+  t_start: 75.65
+  t_end: 77.65
+- shot_id: 32
+  kind: other
+  text: 張修修的不正常人生（全螢幕白底手繪風頻道片頭動畫，含相機/吉他/單車/蜜蜂塗鴉，95.42 為白色淡出過場幀）
+  t_start: 93.42
+  t_end: 95.42
+- shot_id: 35
+  kind: book_cover
+  text: 致富心態 The Psychology of Money 關於財富、貪婪與幸福的20堂理財課 摩根・豪瑟（MORGAN HOUSEL）著（中文版書封，瀏覽器視窗框樣式，右側滑入）
+  t_start: 105.56
+  t_end: 106.56
+- shot_id: 38
+  kind: photo_inset
+  text: THE PSYCHOLOGY OF MONEY / Morgan Housel ✓ / THE TIM FERRISS SHOW（podcast 節目縮圖，左側瀏覽器視窗框
+    inset）
+  t_start: 112.44
+  t_end: 114.44
+- shot_id: 46
+  kind: photo_inset
+  text: Morgan Housel 本人西裝照（左上瀏覽器視窗框 inset，無文字）
+  t_start: 152.48
+  t_end: 153.48
+- shot_id: 50
+  kind: photo_inset
+  text: Morgan Housel 本人西裝照（左上瀏覽器視窗框 inset，無文字）
+  t_start: 172.54
+  t_end: 176.54
+- shot_id: 52
+  kind: book_cover
+  text: The Psychology of Money — Timeless Lessons on Wealth, Greed and Happiness
+    / MORGAN HOUSEL（英文版書封，右側 inset）
+  t_start: 183.88
+  t_end: 183.88
+- shot_id: 53
+  kind: book_cover
+  text: OVER TWO MILLION COPIES SOLD / The Psychology of Money / Timeless Lessons
+    on Wealth, Greed, and Happiness / MORGAN HOUSEL / "One of the best and most original
+    finance books in years." —JASON ZWEIG Wall Street Journal（英文版書封，右側瀏覽器視窗框 inset）
+  t_start: 186.59
+  t_end: 186.59
+- shot_id: 54
+  kind: title_banner
+  text: 我的 20 年老韭經驗（橘底全屏章節卡，錢包＋金幣 icon；前後含橘/米色圓角色塊滑動轉場）
+  t_start: 189.6
+  t_end: 192.6
+- shot_id: 58
+  kind: keyword_text
+  text: 白忙一場
+  t_start: 228.84
+  t_end: 229.84
+- shot_id: 58
+  kind: letterbox
+  text: 畫面縮框效果：整個畫面縮小、四周黑邊（伴隨「白忙一場」字卡出現）
+  t_start: 228.84
+  t_end: 228.84
+- shot_id: 65
+  kind: letterbox
+  text: 畫面縮框效果：整個畫面縮小、四周黑邊（無文字，強調轉折句「那我把錢拿去幹嘛了？」）
+  t_start: 280.48
+  t_end: 281.48
+- shot_id: 88
+  kind: photo_inset
+  text: 超級數字力 一生受用的財務思維課（三張課程封面卡以瀏覽器視窗框層疊滑入，黃黑設計、林明樟老師肖像）
+  t_start: 380.25
+  t_end: 383.25
+- shot_id: 89
+  kind: book_cover
+  text: 致富心態 關於財富、貪婪與幸福的20堂理財課 The Psychology of Money 摩根．豪瑟（MORGAN HOUSEL）著（瀏覽器視窗框書封
+    inset，左側）
+  t_start: 389.63
+  t_end: 392.63
+- shot_id: 98
+  kind: title_banner
+  text: 投資致富的真相（橘底全屏章節卡，中央鈔票 $ 圖示；前後接米白/淡橘斜向圓角色塊 wipe 轉場）
+  t_start: 438.09
+  t_end: 441.09
+- shot_id: 98
+  kind: keyword_text
+  text: 第一：投資這門技術是極少數不用專業能力就能成功的（橘色大字置中字卡，背景畫面壓暗，出場時文字放大掃出）
+  t_start: 442.09
+  t_end: 445.09
+- shot_id: 101
+  kind: photo_inset
+  text: 作者 Morgan Housel 西裝肖像照（瀏覽器視窗框 inset，左側，無文字）
+  t_start: 461.83
+  t_end: 463.83
+- shot_id: 102
+  kind: photo_inset
+  text: Ronald Read 老先生照片（白眉白鬍、紅格紋衫），橘色頂條瀏覽器視窗框，畫面右側
+  t_start: 464.58
+  t_end: 465.58
+- shot_id: 117
+  kind: photo_inset
+  text: Ronald Read 老先生照片，橘色頂條瀏覽器視窗框，畫面左側滑入
+  t_start: 518.76
+  t_end: 520.76
+- shot_id: 118
+  kind: photo_inset
+  text: Richard Fuscone 西裝男子照片，橘色頂條瀏覽器視窗框，畫面右側
+  t_start: 521.26
+  t_end: 522.26
+- shot_id: 124
+  kind: photo_inset
+  text: 雙照片並列：左側 Ronald Read 老先生照片、右側 Richard Fuscone 西裝男子照片，皆為橘色頂條瀏覽器視窗框
+  t_start: 536.15
+  t_end: 541.15
+- shot_id: 134
+  kind: keyword_text
+  text: '第二：
+
+    在股市上賺到錢的人
+
+    大部分是因為運氣好'
+  t_start: 579.57
+  t_end: 581.57
+- shot_id: 137
+  kind: letterbox
+  text: 上下黑邊縮框效果（畫面上下出現黑色橫條）
+  t_start: 597.25
+  t_end: 598.25
+- shot_id: 149
+  kind: photo_inset
+  text: Robert Shiller 人像照，橙色頂欄瀏覽器視窗框 inset（畫面左側）
+  t_start: 644.38
+  t_end: 646.38
+- shot_id: 156
+  kind: photo_inset
+  text: Benjamin Graham 人像照，橙色頂欄瀏覽器視窗框 inset（畫面右側）
+  t_start: 671.08
+  t_end: 673.08
+- shot_id: 159
+  kind: photo_inset
+  text: Shiller 與 Graham 兩張人像照瀏覽器視窗框 inset 左右並列（691.64 幀正在縮小滑出）
+  t_start: 688.64
+  t_end: 691.64
+- shot_id: 174
+  kind: title_banner
+  text: 第三：美好的事物都要付出代價，好的投資也是
+  t_start: 745.23
+  t_end: 747.23
+- shot_id: 175
+  kind: book_cover
+  text: 致富心態 The Psychology of Money 關於財富、貪婪與幸福的20堂理財課 摩根・豪瑟（MORGAN HOUSEL）著
+  t_start: 750.24
+  t_end: 752.24
+- shot_id: 217
+  kind: title_banner
+  text: 第四：尾巴驅動一切，讓你大賺的股票和交易日都很稀少
+  t_start: 937.88
+  t_end: 941.88
+- shot_id: 236
+  kind: photo_inset
+  text: 瀏覽器視窗框 inset：前一支影片縮圖＋書封「STEVEN BARTLETT 執行長日記 THE DIARY OF A CEO THE 33 LAWS
+    OF BUSINESS AND LIFE」＋黃字「白手起家必看8大心法」
+  t_start: 1016.97
+  t_end: 1019.97
+- shot_id: 259
+  kind: keyword_text
+  text: 一股不賣 奇蹟自來
+  t_start: 1110.93
+  t_end: 1112.93
+- shot_id: 260
+  kind: title_banner
+  text: 第五：金錢帶給你的最高紅利 就是掌控時間
+  t_start: 1114.15
+  t_end: 1118.15
+- shot_id: 263
+  kind: photo_inset
+  text: 黑白人物肖像（Angus Campbell，西裝坐姿）置於橘色頂欄瀏覽器視窗框，左側滑入後於 shot264 縮小退場；框上無文字
+  t_start: 1135.29
+  t_end: 1138.63
+- shot_id: 277
+  kind: letterbox
+  text: 上下黑邊縮框效果（畫面上下加黑條、主畫面縮小），無文字
+  t_start: 1189.26
+  t_end: 1190.26
+- shot_id: 282
+  kind: photo_inset
+  text: 右上角瀏覽器視窗框 inset：Derek Sivers 本人照片（光頭、鬍子、黑衣），橘色視窗頂條含三個圓點
+  t_start: 1214.96
+  t_end: 1215.96
+- shot_id: 308
+  kind: title_banner
+  text: 第六：致富最重要的技能是存錢和謙虛
+  t_start: 1308.75
+  t_end: 1310.75
+- shot_id: 318
+  kind: book_cover
+  text: 致富心態 關於財富、貪婪與幸福的20堂理財課 The Psychology of Money（摩根・豪瑟 MORGAN HOUSEL 著，橘色瀏覽器視窗框書封）
+  t_start: 1354.68
+  t_end: 1356.72
+- shot_id: 319
+  kind: keyword_text
+  text: 存錢
+  t_start: 1364.72
+  t_end: 1365.72
+- shot_id: 333
+  kind: photo_inset
+  text: 作者 Morgan Housel 西裝肖像照（橘色瀏覽器視窗框 inset，左側）
+  t_start: 1414.7
+  t_end: 1415.7
+- shot_id: 334
+  kind: keyword_text
+  text: 致富和守財是兩種完全不同的技能
+  t_start: 1420.41
+  t_end: 1422.41
+- shot_id: 336
+  kind: letterbox
+  text: 畫面縮框效果：整個 talking head 畫面縮小置中，四周黑邊（題外話插敘段落）
+  t_start: 1434.3
+  t_end: 1438.3
+- shot_id: 352
+  kind: title_banner
+  text: 第七：要賺到真正的財富，你需要真正的奇蹟——複利
+  t_start: 1497.82
+  t_end: 1503.82
+- shot_id: 361
+  kind: photo_inset
+  text: 巴菲特（Warren Buffett）肖像照，置於左上角橘色瀏覽器視窗框 inset
+  t_start: 1537.61
+  t_end: 1540.28
+- shot_id: 371
+  kind: book_cover
+  text: 致富心態 The Psychology of Money 關於財富、貪婪與幸福的20堂理財課 摩根．豪瑟（MORGAN HOUSEL）著（書封 inset，右側，後兩幀外加橘色視窗框）
+  t_start: 1577.28
+  t_end: 1579.28
+- shot_id: 373
+  kind: keyword_text
+  text: 張修修的自由之路
+  t_start: 1595.79
+  t_end: 1596.79
+- shot_id: 373
+  kind: keyword_text
+  text: shosho.tw/free
+  t_start: 1603.79
+  t_end: 1605.79
