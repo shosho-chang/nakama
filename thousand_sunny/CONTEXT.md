@@ -31,7 +31,7 @@ Robin / Franky 每日產出的 vault markdown 檔，per day per type。Tier A �
 _Avoid_: Daily Brief（Nami `AgentBriefs/`，是不同 pipeline）, Book digest（不同形狀，跟 Reader 整合）
 
 **Digest viewer**:
-Tier A 第一刀的 Bridge surface — `/bridge/digests` unified landing（today snapshot + 7d timeline）+ `/bridge/digests/{type}/{date}` detail + `/bridge/digests/ask` 自然語言跨日 query。走 FS-direct read + LLM-over-vault。
+Tier A 第一刀的 Bridge surface — `/bridge/digests` unified landing（today snapshot + 7d timeline）+ `/bridge/digests/{type}/{date}` detail + `/bridge/digests/pubmed/{date}/{pmid}` 單篇 study detail（PubMed abstract efetch + zh-TW 翻譯，快取進 `state.db` `pubmed_abstract_cache`）+ `/bridge/digests/ask` 自然語言跨日 query。走 FS-direct read + LLM-over-vault；study detail 額外走 NCBI efetch（非 vault，快取落 State layer，不寫 KB）。
 
 **Bridge surface**:
 Thousand Sunny 上認證後的 ops console 頁面（`/bridge/*` route 子集）。**單一使用者**（HMAC cookie + WEB_PASSWORD），mutation pattern 鎖定 form POST + 303 + native `<dialog>`，零 JS framework。

@@ -567,10 +567,154 @@
   font-size: 11px;
 }
 
+/* ── Card title link (→ PubMed study detail, or → AI source) ───────────── */
+
+.digest-card-title-lk {
+  color: inherit;
+  text-decoration: none;
+  transition: color var(--sho-t-fast, 100ms);
+}
+.digest-card-title-lk:hover {
+  color: var(--sho-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.digest-card-title-lk:focus-visible {
+  outline: 2px solid var(--sho-accent);
+  outline-offset: 2px;
+}
+
+/* ── Study detail page (PubMed abstract + zh-TW translation) ───────────── */
+
+.study-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sho-s-4);
+}
+.study-detail-title {
+  font-size: 26px;
+  line-height: 1.3;
+  font-weight: 650;
+  margin: 0;
+  color: var(--sho-ink, var(--sho-text));
+}
+.study-detail-metarow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sho-s-2) var(--sho-s-3);
+  font-size: 13px;
+  color: var(--sho-text-2);
+}
+.study-detail-meta-item { display: inline-flex; align-items: center; gap: 6px; }
+.study-detail-authors {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--sho-muted);
+}
+
+.study-detail-framing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sho-s-3);
+  padding: var(--sho-s-4);
+  border: 1px solid var(--sho-line);
+  background: var(--sho-bg-2);
+}
+
+.study-detail-abstract {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sho-s-3);
+  padding-top: var(--sho-s-4);
+  border-top: 1px solid var(--sho-line);
+}
+.study-detail-abstract-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sho-s-3);
+}
+.study-detail-abstract-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--sho-text);
+}
+.study-detail-abstract-note {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sho-muted);
+  white-space: nowrap;
+}
+/* Abstracts carry structured labels (背景/方法…) separated by newlines —
+   pre-wrap preserves that paragraphing without a markdown pass. */
+.study-detail-abstract-text {
+  font-size: 14.5px;
+  line-height: 1.75;
+  color: var(--sho-text);
+  white-space: pre-wrap;
+}
+.study-detail-abstract--source .study-detail-abstract-text {
+  font-size: 13.5px;
+  color: var(--sho-text-2);
+}
+
+.study-detail-notice {
+  padding: var(--sho-s-3) var(--sho-s-4);
+  border: 1px dashed var(--sho-line);
+  font-size: 13px;
+  color: var(--sho-muted);
+}
+.study-detail-notice--warn {
+  border-style: solid;
+  border-color: var(--sho-error);
+  border-left-width: 3px;
+  background: color-mix(in oklch, var(--sho-error) 6%, transparent);
+  color: var(--sho-text);
+}
+
+.study-detail-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sho-s-3);
+  padding-top: var(--sho-s-4);
+  border-top: 1px solid var(--sho-line);
+  font-size: 13px;
+}
+/* Primary "go to the paper on the publisher's own site" affordance — the
+   DOI resolver lands on Nature / Lancet / NEJM / etc. */
+.study-detail-source-lk {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--sho-accent);
+  padding: 6px 12px;
+  border: 1px solid var(--sho-accent);
+  transition: background var(--sho-t-fast, 100ms), color var(--sho-t-fast, 100ms);
+}
+.study-detail-source-lk:hover {
+  background: var(--sho-accent);
+  color: var(--sho-bg);
+}
+.study-detail-source-lk:focus-visible {
+  outline: 2px solid var(--sho-accent);
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .digest-hero,
   .digest-timeline-row,
   .digest-card,
+  .digest-card-title-lk,
+  .study-detail-source-lk,
   .digest-ask-cta {
     transition: none;
   }
