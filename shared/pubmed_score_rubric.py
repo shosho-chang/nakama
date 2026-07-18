@@ -107,8 +107,6 @@ PUBMED_DIMENSIONS: tuple[ScoreDimension, ...] = (
     ),
 )
 
-_BY_CODE: dict[str, ScoreDimension] = {d.code: d for d in PUBMED_DIMENSIONS}
-
 
 @dataclass(frozen=True)
 class ScoreRow:
