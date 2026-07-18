@@ -1,0 +1,3828 @@
+stats:
+  total_shots: 264
+  broll_shots: 158
+  broll_shots_per_minute: 6.2
+  broll_events: 66
+  broll_events_per_minute: 2.59
+  shots_per_event_p50: 2
+  shots_per_event_max: 8
+  broll_duration_p50: 3.42
+  broll_duration_p90: 9.56
+  broll_time_share: 0.493
+  aroll_runs:
+    n: 67
+    p50: 7.1
+    p90: 26.1
+    max: 69.7
+  by_type:
+    book_cover:
+      n: 1
+      p50: 2.84
+      max: 2.84
+    diagram:
+      n: 13
+      p50: 5.52
+      max: 12.04
+    doc_screenshot:
+      n: 30
+      p50: 4.36
+      max: 29.04
+    kol:
+      n: 8
+      p50: 3.18
+      max: 26.24
+    motion_graphic:
+      n: 8
+      p50: 4.44
+      max: 11.0
+    other:
+      n: 1
+      p50: 5.84
+      max: 5.84
+    quote_card:
+      n: 1
+      p50: 2.24
+      max: 2.24
+    screen_recording:
+      n: 21
+      p50: 4.0
+      max: 22.6
+    stock:
+      n: 70
+      p50: 2.04
+      max: 26.8
+    title_card:
+      n: 5
+      p50: 5.0
+      max: 16.08
+shots:
+- shot_id: 1
+  start: 0.0
+  end: 6.88
+  duration: 6.88
+  type: aroll
+  note: Ali 在明亮房間對鏡頭開場說話；b 幀頭頂彈出 1–6 六個綠圈數字 app-icon 式 overlay（文字：「1 2 3 4 5 6」）；c
+    幀切入他本人穿手術 scrub 在醫院辦公室用 MacBook 打字的檔案實拍——多幀不一致，c 疑似已跨到 B-roll，但以 a-roll 為主體分類
+  cues:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  text: In this video, I wanna break downsix side hustle ideas for students,although
+    I'm hoping these will applyeven if you're n
+- shot_id: 2
+  start: 6.88
+  end: 10.12
+  duration: 3.24
+  type: aroll
+  note: Ali 對鏡頭說話；b 幀上方浮出白色圓角搜尋列 overlay，文字僅打出「To」（打字動畫進行中）
+  cues:
+  - 5
+  - 6
+  - 7
+  text: But before we go there,I wanna do my usual philosophizing about side hustlesbecause
+    I think one way of watching these so
+- shot_id: 3
+  start: 10.12
+  end: 13.52
+  duration: 3.4
+  type: motion_graphic
+  note: 白底 YouTube logo 動畫（文字「YouTube」）轉場到 YouTube 首頁 mockup 動態圖卡：側欄「Home / Shorts
+    / Subscriptions / Library / History」，12 格 side-hustle 縮圖牆（可讀文字：「$1000 $400 $200
+    $6000」「$500/day」「$750/DAY SIDE HUSTLES」「$100」「15 side hustles that actually work」「$1000/DAY」「$1320
+    / Day work from home」「$1000 A DAY」「$29,910/MONTH FROM HOME!」「$3,849.04」「SIDE HUSTLES
+    THAT WORK Revenue $5,061.16」「$500/DAY」）；a 幀還帶 Ali 露臉，多幀不一致
+  cues:
+  - 7
+  - 8
+  - 9
+  text: because I think one way of watching these sorts of videos,I do these videos,a
+    bunch of other YouTubers do these sorts of
+- shot_id: 4
+  start: 13.52
+  end: 40.44
+  duration: 26.92
+  type: aroll
+  note: Ali 對鏡頭說話、雙手比劃（a 幀畫面左側有一個游標箭頭 overlay）；b 幀切成粉彩漸層金句卡，文字：「"The only way to make
+    money is by providing value to people who can pay for that value."」（紫色 highlight
+    在 providing value to people）——長鏡頭中段插金句卡，多幀不一致，以 a-roll 為主體，c 幀回到 Ali
+  cues:
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 16
+  - 17
+  - 18
+  - 19
+  - 20
+  - 21
+  - 22
+  - 23
+  - 24
+  - 25
+  - 26
+  - 27
+  text: 'a bunch of other YouTubers do these sorts of videos.One way of watching these
+    is to just be like,oh, I just wanna click '
+- shot_id: 5
+  start: 40.44
+  end: 54.76
+  duration: 14.32
+  type: aroll
+  note: Ali 對鏡頭說話；b 幀疊滿版白色大標題文字：「Making Money is a Skill」（此時麥克風海綿為黑色，收音鏡位微差）；a、c 幀無文字
+  cues:
+  - 27
+  - 28
+  - 29
+  - 30
+  - 31
+  - 32
+  - 33
+  - 34
+  text: And you'll continue to be brokebecause you don't understand how making money
+    actually works.And the thing is, making mon
+- shot_id: 6
+  start: 54.76
+  end: 56.8
+  duration: 2.04
+  type: stock
+  note: 粉彩漸層卡片式 layout：大卡為 Ali 本人檔案實拍——穿藍色 scrub 掛聽診器與識別證，在醫院診間打 MacBook；右側圓角 host
+    PIP 說話。無畫面文字
+  cues:
+  - 35
+  - 36
+  text: Instead, you'll be able to apply the principlesto your own skills in your
+    own life,
+- shot_id: 7
+  start: 56.8
+  end: 59.24
+  duration: 2.44
+  type: stock
+  note: 同款卡片 layout：大卡為 Ali 本人檔案實拍——穿條紋上衣在工作室對黑色 Shure 麥克風講話（podcast/錄影側拍）；右側 host
+    PIP。無畫面文字。素材是本人檔案畫面非圖庫
+  cues:
+  - 36
+  - 37
+  text: to your own skills in your own life,in your own context.
+- shot_id: 8
+  start: 59.24
+  end: 73.96
+  duration: 14.72
+  type: aroll
+  note: Ali 對鏡頭說話；b 幀底部有白色雲霧/漸層 overlay 動畫；c 幀上方疊 YouTube 留言卡截圖，文字：「@petekadenz9465
+    · 1 month ago / He seems obsessed by money / REPLY 0 re… （讚/倒讚/愛心 icon）」——多幀不一致，主體仍為
+    a-roll
+  cues:
+  - 37
+  - 38
+  - 39
+  - 40
+  - 41
+  - 42
+  - 43
+  - 44
+  - 45
+  - 46
+  text: in your own context.And maybe a few years from now,you might be making videos
+    like this,teaching people how to make mone
+- shot_id: 9
+  start: 73.96
+  end: 75.24
+  duration: 1.28
+  type: screen_recording
+  note: 橘色 macOS 桌布上 Safari 視窗瀏覽 YouTube「Latest from Ali Abdaal」頻道頁；可讀文字：「8 Powerful
+    Laws of Success That Changed My Life」「8 Surprising Habits to Get Millions of Subscribers」「I
+    Tried 137 Productivity Tools, These Are The Best」「How To Remember Everything You
+    Learn」「THE DIARY OF A CEO」「The McDonald's Habit」
+  cues:
+  - 46
+  - 47
+  text: It's like, no, it's not the only videos I make.I also make videos about productivity
+    and about health
+- shot_id: 10
+  start: 75.24
+  end: 78.48
+  duration: 3.24
+  type: screen_recording
+  note: Safari/YouTube 搜尋結果放大畫面，搜尋字串「ali abdaal productivity」；結果：「I Read 107 Productivity
+    Books. Here's What Actually Works.」「Productivity Club」「12 Productivity Myths Wasting
+    Your Time」「How to Build the Ultimate Productivity System (2023)」；b 幀變成搜尋「ali abdaal
+    sleep」：「My Evidence-Based Sleep Routine」「How Much Sleep Do You Need? - Professor
+    Of Neuroscience, Russel Foster」——多幀為連續捲動/切換
+  cues:
+  - 47
+  - 48
+  - 49
+  text: I also make videos about productivity and about healthand about sleep and
+    about relationshipsand about dating and all th
+- shot_id: 11
+  start: 78.48
+  end: 79.52
+  duration: 1.04
+  type: screen_recording
+  note: 同一 YouTube 搜尋錄影，搜尋字串「ali abdaal dating」；結果：「6 Lessons I've Learned About Online
+    Dating」（縮圖字「Start Chatting Fast」）「How to Not Die Alone - A Dating Expert's Guide」（縮圖字「IMPROVE
+    YOUR LOVE LIFE」）；上方 filter 列「All / Shorts / Unwatched / Watched / For you / Recently
+    uploaded / Live / Under 4 mins / 4–20 mins / Over 20 mins / Filters」
+  cues:
+  - 49
+  text: and about dating and all this.
+- shot_id: 12
+  start: 79.52
+  end: 85.8
+  duration: 6.28
+  type: aroll
+  note: Ali 對鏡頭說話；a 幀畫面下緣有橘/藍色條碼狀 audio-waveform 轉場 overlay 掃過；b、c 幀為乾淨 a-roll（黑海綿麥克風）
+  cues:
+  - 50
+  - 51
+  - 52
+  - 53
+  - 54
+  text: But I do enjoy making videosabout side hustles and passive income.Why?Because
+    side hustles have completelyand utterly ch
+- shot_id: 13
+  start: 85.8
+  end: 99.92
+  duration: 14.12
+  type: aroll
+  note: Ali 對鏡頭說話比手勢；b 幀切成粉彩漸層金句卡，文字：「"It's not really about the money. It's about
+    the freedom that money can buy you."」（紫色 highlight 在 It's about）——長鏡頭中段插金句卡，多幀不一致，a、c
+    幀為 a-roll 主體
+  cues:
+  - 55
+  - 56
+  - 57
+  - 58
+  - 59
+  - 60
+  - 61
+  text: And I'm hoping that if you're watching this,then you're potentially interestedin
+    building another source of income,becau
+- shot_id: 14
+  start: 99.92
+  end: 102.64
+  duration: 2.72
+  type: stock
+  note: 卡片式 layout：大卡為圖庫實拍——戴白色工地安全帽與黑口罩的男子在工地舉紙板牌，牌上手寫「LOST MY JOB DUE COVID-19」；host
+    PIP 右側。
+  cues:
+  - 62
+  - 63
+  - 64
+  text: A lot of people found that they lost their jobsduring the pandemic,and there
+    was this whole boom in people realising,
+- shot_id: 15
+  start: 102.64
+  end: 115.24
+  duration: 12.6
+  type: stock
+  note: 卡片式 layout：大卡為圖庫實拍——戴口罩與面罩的女子抱著裝滿文件資料夾的紙箱離開公寓（失業意象）；host PIP 右側。畫面無其他文字。
+  cues:
+  - 64
+  - 65
+  - 66
+  - 67
+  - 68
+  - 69
+  - 70
+  text: and there was this whole boom in people realising,oh crap, reliance on a single
+    source of incomeis actually not a partic
+- shot_id: 16
+  start: 115.24
+  end: 117.48
+  duration: 2.24
+  type: quote_card
+  note: 滿版粉彩漸層金句卡，紫色 highlight："Reliance on a single source of income is not a particularly
+    anti-fragile way of living."
+  cues:
+  - 71
+  - 72
+  text: And if you enjoy the job,and it brings you meaning and fulfilment and joy,
+- shot_id: 17
+  start: 117.48
+  end: 119.36
+  duration: 1.88
+  type: aroll
+  note: 主持人全畫面在明亮房間對鏡頭說話、比手勢（白麥克風、書架、植物）。無畫面文字。
+  cues:
+  - 72
+  - 73
+  text: and it brings you meaning and fulfilment and joy,and you love hanging out
+    with your coworkers,
+- shot_id: 18
+  start: 119.36
+  end: 120.72
+  duration: 1.36
+  type: stock
+  note: 卡片式 layout：大卡為主持人本人檔案實拍——他在辦公室內站在書桌/植物旁走動（非說話 B-roll）；host PIP 右側。無文字。
+  cues:
+  - 73
+  - 74
+  text: and you love hanging out with your coworkers,and you look forward to Mondays,
+- shot_id: 19
+  start: 120.72
+  end: 127.2
+  duration: 6.48
+  type: stock
+  note: 卡片式 layout：大卡為主持人本人檔案實拍——他穿橘色T恤站著對餐桌旁一群朋友講話，b 幀眾人鼓掌；host PIP 右側。無文字。
+  cues:
+  - 74
+  - 75
+  - 76
+  - 77
+  - 78
+  text: and you look forward to Mondays,then great, fantastic.But you are in the lucky
+    1% of peoplewho have those boxes ticked w
+- shot_id: 20
+  start: 127.2
+  end: 129.84
+  duration: 2.64
+  type: stock
+  note: 卡片式 layout：大卡為主持人本人檔案實拍——穿灰帽T坐在麥克風與 MacBook 前錄 podcast（非對本片鏡頭說話）；host PIP
+    右側。無文字。
+  cues:
+  - 78
+  - 79
+  - 80
+  text: For most of the rest of us,yes, we might enjoy our jobs,and I certainly enjoyed
+    my day job
+- shot_id: 21
+  start: 129.84
+  end: 132.24
+  duration: 2.4
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，雙手攤開比手勢，同一明亮房間場景。無畫面文字。
+  cues:
+  - 80
+  - 81
+  - 82
+  text: and I certainly enjoyed my day jobwhen I was working as a doctor.You might
+    enjoy the job,
+- shot_id: 22
+  start: 132.24
+  end: 134.08
+  duration: 1.84
+  type: stock
+  note: 卡片式 layout：大卡為主持人本人檔案實拍——穿藍色手術服與同事在模擬病人（假人）上練習 CPR/急救（醫院檔案畫面）；host PIP 右側。無文字。
+  cues:
+  - 82
+  - 83
+  text: You might enjoy the job,but you still would appreciate an extra 2K a month
+- shot_id: 23
+  start: 134.08
+  end: 135.52
+  duration: 1.44
+  type: stock
+  note: 卡片式 layout：大卡為主持人本人檔案實拍——穿深藍手術服在診間鋪檢查床的紙巾（醫生工作檔案畫面）；host PIP 右側。無文字。
+  cues:
+  - 83
+  - 84
+  text: but you still would appreciate an extra 2K a monthcoming in the bank account.
+- shot_id: 24
+  start: 135.52
+  end: 151.0
+  duration: 15.48
+  type: stock
+  note: 卡片式 layout：大卡為主持人本人檔案實拍——穿手術服在醫院與金髮女同事於推車旁交談（a），及側面在診間電腦打字（b、c）；host PIP 右側。多幀為同場景不同醫院畫面。無文字。
+  cues:
+  - 84
+  - 85
+  - 86
+  - 87
+  - 88
+  - 89
+  - 90
+  - 91
+  text: coming in the bank account.All of this means that if you can get to a pointwhere
+    you've got one or two or three,or maybe
+- shot_id: 25
+  start: 151.0
+  end: 157.04
+  duration: 6.04
+  type: aroll
+  note: 主持人全畫面對鏡頭說話。b 幀疊出動態圖形 overlay：白色圓角 icon「1」「2」「3」加箭頭指向鈔票 icon（三種 side hustle
+    導向金錢的視覺化）；a、c 幀無 overlay。
+  cues:
+  - 91
+  - 92
+  - 93
+  - 94
+  text: and you get freedom to do the things that you do want to do.In my case, I
+    started out doing side hustleswhen I was 13 ye
+- shot_id: 26
+  start: 157.04
+  end: 159.36
+  duration: 2.32
+  type: title_card
+  note: 品牌感章節卡（藍黃粉彩漸層＋左側藍色刻度邊條）：標題「Side Hustle 1」、標籤框「Designing Websites」，卡內嵌筆電上食物網站畫面（網站內文字「Fresh
+    Eats」「About Us」）；host PIP 右側。a 幀為卡片載入中僅背景＋PIP。
+  cues:
+  - 94
+  - 95
+  - 96
+  text: 'That was my first side hustle that I did for about six years.And that was
+    how I made my first few hundred dollarson the '
+- shot_id: 27
+  start: 159.36
+  end: 163.28
+  duration: 3.92
+  type: title_card
+  note: 卡片式章節版面收尾/轉場：a 幀左上「Side Hustle 1」＋標籤框（部分被裁，可見「esignin / Vebsite」＝Designing
+    Websites），右側圓角 host PIP；b 幀已轉為「Side Hustle 2」標題浮現、標籤框尚未出現。兩幀不一致：a=SH1 收尾、b=SH2
+    開頭。文字：「Side Hustle 1」「Designing Websites」「Side Hustle 2」
+  cues:
+  - 96
+  - 97
+  - 98
+  - 99
+  text: on the internet.My second side hustle was private tutoring,and I was helping
+    people in real life.I was teaching them mat
+- shot_id: 28
+  start: 163.28
+  end: 164.68
+  duration: 1.4
+  type: stock
+  note: 卡片版面：大卡為主持人本人檔案實拍——與另一男學生在閣樓房間木桌對坐教學（家教場景），右側 host PIP。文字：「Side Hustle 2」「Private
+    Tutoring」
+  cues:
+  - 99
+  text: I was teaching them maths and science for their exams.
+- shot_id: 29
+  start: 164.68
+  end: 170.84
+  duration: 6.16
+  type: aroll
+  note: 主持人全畫面對鏡頭說話（明亮房間、書架、白麥克風）；b 幀中央疊大字 overlay「$5-20 / Hour」，a/c 幀無文字
+  cues:
+  - 99
+  - 100
+  - 101
+  - 102
+  text: I was teaching them maths and science for their exams.I was making somewhere
+    between five and $20 an hourfrom the age of
+- shot_id: 30
+  start: 170.84
+  end: 176.76
+  duration: 5.92
+  type: title_card
+  note: 粉彩漸層卡片版面過場：a 幀「Side Hustle 2」＋標籤框「Private Tutoring」、大卡區留白，b 幀轉為「Side Hustle
+    3」標題浮現；右側 host PIP。文字：「Side Hustle 2」「Private Tutoring」「Side Hustle 3」
+  cues:
+  - 102
+  - 103
+  - 104
+  - 105
+  - 106
+  text: 'when I was doing private tutoring.My third side hustle was when I was in
+    medical school,I started a company that helped '
+- shot_id: 31
+  start: 176.76
+  end: 183.28
+  duration: 6.52
+  type: aroll
+  note: 主持人全畫面對鏡頭說話；b 幀中央疊大字 overlay「$40,000 / Year」（c 幀僅殘留「Year」動畫出場），a 幀無文字
+  cues:
+  - 107
+  - 108
+  - 109
+  text: And this side hustle, which I did while I was a student,made around $40,000
+    a year in profit for me personally.So that w
+- shot_id: 32
+  start: 183.28
+  end: 194.28
+  duration: 11.0
+  type: aroll
+  note: 主持人全畫面對鏡頭說話、雙手比劃；三幀皆無畫面文字
+  cues:
+  - 110
+  - 111
+  - 112
+  - 113
+  - 114
+  - 115
+  - 116
+  text: 'Now this was amazing because it meant that A,I didn''t have to worry about
+    moneywhile I was at university.But B, it also '
+- shot_id: 33
+  start: 194.28
+  end: 199.28
+  duration: 5.0
+  type: title_card
+  note: 卡片版面章節轉場：a 幀「Side Hustle 3」＋標籤框「Medical Courses」，b 幀轉為「Side Hustle 4」標題浮現。兩幀不一致（SH3
+    收尾→SH4 開頭）；右側 host PIP。文字：「Side Hustle 3」「Medical Courses」「Side Hustle 4」
+  cues:
+  - 116
+  - 117
+  - 118
+  - 119
+  text: and we managed to get a mortgage on a flat.And then my most recent side hustlewas
+    starting this YouTube channel way back
+- shot_id: 34
+  start: 199.28
+  end: 201.36
+  duration: 2.08
+  type: stock
+  note: 卡片版面：大卡為主持人本人檔案實拍——舊房間內超寬螢幕上剪輯軟體與 YouTube 頻道畫面（早期做 YouTube 的 vlog 素材），右側 host
+    PIP。文字：「Side Hustle 4」「YouTube Channel」
+  cues:
+  - 119
+  - 120
+  - 121
+  text: And after three years of doing it,this YouTube channel started makingover
+    a million dollars a year.
+- shot_id: 35
+  start: 201.36
+  end: 203.36
+  duration: 2.0
+  type: stock
+  note: 卡片版面：大卡為本人檔案實拍——公寓內拍片場景（大環形燈、鋼琴、對麥克風講話），右側 host PIP。文字：「Side Hustle 4」「YouTube
+    Channel」
+  cues:
+  - 121
+  - 122
+  text: over a million dollars a year.While it was a side hustle, while I was a student,
+- shot_id: 36
+  start: 203.36
+  end: 205.4
+  duration: 2.04
+  type: stock
+  note: 卡片版面：大卡為本人檔案實拍——書桌前對超寬螢幕剪片（螢幕顯示字典特寫畫面與剪輯時間軸），右側 host PIP；大卡內含原片浮水印時間「10:45」。文字：「Side
+    Hustle 4」「YouTube Channel」
+  cues:
+  - 122
+  - 123
+  text: While it was a side hustle, while I was a student,and while I was working
+    full-time as a doctor,
+- shot_id: 37
+  start: 205.4
+  end: 212.56
+  duration: 7.16
+  type: screen_recording
+  note: a/b 幀為主持人全畫面說話（無文字），c 幀切為橘色桌布上的瀏覽器視窗：YouTube 播放頁「Why I Left Medicine... Forever」Ali
+    Abdaal 影片。多幀不一致：前段 aroll、尾段轉螢幕畫面。文字（c 幀）：「Why I Left Medicine... Forever」「Ali
+    Abdaal」「Subscribe」「8,05,125 views 30-Nov-2021」
+  cues:
+  - 123
+  - 124
+  - 125
+  - 126
+  - 127
+  - 128
+  text: and while I was working full-time as a doctor,and the fact that the YouTube
+    channelwas making so much money and the busi
+- shot_id: 38
+  start: 212.56
+  end: 214.28
+  duration: 1.72
+  type: screen_recording
+  note: 同前 YouTube 頁面推近特寫，標題被藍色 highlight 動畫逐步劃過（a 幀只 highlight「Why」，b 幀整句「Why I Left
+    Medicine... Forever」）。文字：「Why I Left Medicine... Forever」「Ali Abdaal 47 lakh subscribers」「Subscribe」「35K」「Share」「8,05,125
+    views 30-Nov-2021」＋影片描述文字
+  cues:
+  - 128
+  - 129
+  text: I'm gonna take a break from full-time medicineand I'm gonna go all in on this
+    YouTube channel.
+- shot_id: 39
+  start: 214.28
+  end: 222.24
+  duration: 7.96
+  type: aroll
+  note: 主持人全畫面對鏡頭說話；a 幀有前一鏡橘色畫面的轉場模糊殘影，b/c 幀乾淨；無畫面文字
+  cues:
+  - 129
+  - 130
+  - 131
+  - 132
+  - 133
+  text: and I'm gonna go all in on this YouTube channel.And so the reason I'm so passionateabout
+    talking about side hustlesis be
+- shot_id: 40
+  start: 222.24
+  end: 237.0
+  duration: 14.76
+  type: aroll
+  note: 主持人對鏡頭說話，畫面左側逐一彈出灰色 iMessage 式對話泡泡 overlay（a 幀尚未出現，b/c 幀累積至四則）：「Ali! You're
+    obsessed with money!」「You need to stop being a a greedy pig!」「Ali, Why can't you
+    just enjoy your job?」「You need to learn to appreciate the simpler things in life
+    Ali!」
+  cues:
+  - 133
+  - 134
+  - 135
+  - 136
+  - 137
+  - 138
+  - 139
+  - 140
+  - 141
+  - 142
+  text: from the age of 13 up to the age of 26 when I quit medicine.And I'm hoping
+    that you'll think, you know what,I'm gonna ma
+- shot_id: 41
+  start: 237.0
+  end: 239.08
+  duration: 2.08
+  type: aroll
+  note: 主持人稍微靠近鏡頭、雙手比劃對鏡頭說話，無畫面文字。
+  cues:
+  - 142
+  - 143
+  text: And you'll think, I do appreciate all those things,but I also like the idea
+    of living life on my own terms.
+- shot_id: 42
+  start: 239.08
+  end: 250.4
+  duration: 11.32
+  type: aroll
+  note: 多幀不一致：a/b 幀為主持人對鏡頭說話（無文字）；c 幀已切到粉彩漸層滿版問題卡——困惑男孩 app icon 插圖＋紫藍漸層大字「How to
+    Make Money as a Side Hustle?」（幀取樣跨到下一畫面）。
+  cues:
+  - 143
+  - 144
+  - 145
+  - 146
+  - 147
+  - 148
+  - 149
+  text: but I also like the idea of living life on my own terms.And therefore, I'm
+    gonna create an alternative streamof income t
+- shot_id: 43
+  start: 250.4
+  end: 254.44
+  duration: 4.04
+  type: stock
+  note: 卡片式 layout：大卡為主持人本人俯拍手寫筆記本實拍（非說話 B-roll），右側圓角 host PIP。筆記本文字：「THE FIRST LAW
+    OF MONEY / You make money when you provide value to people」（b 幀寫完整句，a 幀寫到一半）。
+  cues:
+  - 149
+  - 150
+  - 151
+  text: So we talked about the first law of making money.You make money when you provide
+    valueto people who are delighted to pay
+- shot_id: 44
+  start: 254.44
+  end: 256.0
+  duration: 1.56
+  type: stock
+  note: 同上卡片式 layout 續寫，本人手寫實拍＋host PIP。筆記本文字全句：「THE FIRST LAW OF MONEY / You make
+    money when you provide value to people who are delighted to pay for that value.」
+  cues:
+  - 151
+  - 152
+  text: to people who are delighted to pay for that value.And I'm gonna underline
+    the word delighted
+- shot_id: 45
+  start: 256.0
+  end: 258.56
+  duration: 2.56
+  type: aroll
+  note: 主持人全畫面對鏡頭說話、手勢比劃，無畫面文字。
+  cues:
+  - 152
+  - 153
+  - 154
+  text: And I'm gonna underline the word delightedbecause that's a good frame of mind
+    to be inwhen it comes to making money.
+- shot_id: 46
+  start: 258.56
+  end: 262.84
+  duration: 4.28
+  type: stock
+  note: 卡片式 layout：大卡為本人俯拍空白筆記本、手持筆準備書寫的實拍，右側 host PIP；此鏡頭頁面尚無文字。
+  cues:
+  - 154
+  - 155
+  - 156
+  - 157
+  text: when it comes to making money.Now, there are broadly three vehiclesfor providing
+    this value.One, two, three.
+- shot_id: 47
+  start: 262.84
+  end: 267.64
+  duration: 4.8
+  type: stock
+  note: 卡片式 layout：大卡為本人手寫實拍畫三個編號箭頭項目，右側 host PIP。文字：「(1) SERVICES / (2) PRODUCTS
+    / (3) CONTENT」（a 幀 CONTENT 寫到一半，b 幀完成）。
+  cues:
+  - 157
+  - 158
+  - 159
+  - 160
+  text: One, two, three.And we're gonna say that number one is services,number two
+    is products, and number three is content.So w
+- shot_id: 48
+  start: 267.64
+  end: 272.04
+  duration: 4.4
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，無畫面文字。
+  cues:
+  - 161
+  - 162
+  - 163
+  text: you're providing a service to someonewho's willing to pay for that service,someone
+    who's delighted to pay for that servi
+- shot_id: 49
+  start: 272.04
+  end: 279.24
+  duration: 7.2
+  type: stock
+  note: 卡片式 layout：大卡為本人實拍、手指依序指向筆記本上「(1) SERVICES / (2) PRODUCTS / (3) CONTENT」三項，右側
+    host PIP。
+  cues:
+  - 163
+  - 164
+  - 165
+  - 166
+  - 167
+  text: someone who's delighted to pay for that service.With a product business, you're
+    creating a productand selling it to peop
+- shot_id: 50
+  start: 279.24
+  end: 284.76
+  duration: 5.52
+  type: aroll
+  note: 主持人全畫面對鏡頭說話、手勢比劃，無畫面文字。
+  cues:
+  - 167
+  - 168
+  - 169
+  - 170
+  text: which sort of takes a little bit of both,you're essentially creating free
+    contentand then you're putting it on platforms
+- shot_id: 51
+  start: 284.76
+  end: 289.24
+  duration: 4.48
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，無畫面文字。
+  cues:
+  - 170
+  - 171
+  - 172
+  - 173
+  text: where the monetization happens through the platform.And so essentially advertisersare
+    the ones who are delighted to payf
+- shot_id: 52
+  start: 289.24
+  end: 298.96
+  duration: 9.72
+  type: stock
+  note: 卡片式 layout：大卡為本人手寫實拍在三項下加註排序，右側 host PIP。文字：「(1) SERVICES → (4) / (2) PRODUCTS（底線）/
+    (3) CONTENT → (2)」——SERVICES 下箭頭指到圈起的 4，CONTENT 下箭頭指到圈起的 2。
+  cues:
+  - 173
+  - 174
+  - 175
+  - 176
+  - 177
+  - 178
+  - 179
+  text: for the attention you're generating through your content.Now, in this video,
+    the side hustle ideas,we've got two when it
+- shot_id: 53
+  start: 298.96
+  end: 301.28
+  duration: 2.32
+  type: aroll
+  note: Ali 全畫面對鏡頭說話，低頭看桌面再抬手比劃；畫面無文字。
+  cues:
+  - 179
+  text: because products is an interesting kind of category.
+- shot_id: 54
+  start: 301.28
+  end: 305.68
+  duration: 4.4
+  type: stock
+  note: 卡片式 layout：大卡俯拍本人手在空白線圈筆記本上用 Sharpee 寫下圈起的「1」；host PIP 在右側。本人檔案實拍（手寫 B-roll）。畫面文字：手寫「(1)」。
+  cues:
+  - 179
+  - 180
+  - 181
+  - 182
+  - 183
+  text: because products is an interesting kind of category.And then the final thing
+    is that generallywhen it comes to side hust
+- shot_id: 55
+  start: 305.68
+  end: 307.36
+  duration: 1.68
+  type: aroll
+  note: Ali 全畫面對鏡頭說話，手持筆；畫面無文字。
+  cues:
+  - 183
+  text: three specific needs for us.
+- shot_id: 56
+  start: 307.36
+  end: 310.08
+  duration: 2.72
+  type: stock
+  note: 卡片式 layout：俯拍筆記本，手寫清單「(1) FLEXIB…」（b 幀寫到 FLEXIB）、下方已有圈起的「(2)」「(3)」；host PIP
+    右側。本人檔案實拍。
+  cues:
+  - 183
+  - 184
+  text: three specific needs for us.We want our side hustles to ideally give us flexibility.
+- shot_id: 57
+  start: 310.08
+  end: 314.0
+  duration: 3.92
+  type: aroll
+  note: Ali 全畫面對鏡頭說話、手勢比劃；畫面無文字。
+  cues:
+  - 184
+  - 185
+  - 186
+  text: We want our side hustles to ideally give us flexibility.For example, you probably
+    don't want your side hustleto be worki
+- shot_id: 58
+  start: 314.0
+  end: 316.72
+  duration: 2.72
+  type: stock
+  note: 卡片式 layout：大卡為超市場景圖庫實拍——店員把整盒橘子放進黑色購物籃；host PIP 右側。圖庫素材，畫面無文字。
+  cues:
+  - 186
+  - 187
+  - 188
+  text: to be working shifts at the local supermarketbecause if you do, that's not
+    very flexible.You are tied to a specific loca
+- shot_id: 59
+  start: 316.72
+  end: 319.32
+  duration: 2.6
+  type: stock
+  note: 卡片式 layout：大卡為超市收銀台圖庫實拍——戴口罩面罩的收銀員（圍裙有 Cashier 名牌）掃青蘋果結帳；host PIP 右側。圖庫素材。
+  cues:
+  - 188
+  - 189
+  text: You are tied to a specific locationand you're generally tied to a specific
+    time.
+- shot_id: 60
+  start: 319.32
+  end: 324.36
+  duration: 5.04
+  type: stock
+  note: 卡片式 layout：俯拍筆記本手寫清單「(1) FLEXIBILITY」，b 幀寫到「(2) FU…」，「(3)」已圈好；host PIP 右側。本人檔案實拍。
+  cues:
+  - 190
+  - 191
+  text: Secondly, ideally, we want our side hustles to be fun.We want them to be things
+    that ideally don't feel like work.
+- shot_id: 61
+  start: 324.36
+  end: 334.64
+  duration: 10.28
+  type: aroll
+  note: Ali 全畫面對鏡頭說話；a/b 幀無文字，c 幀切換較近的另一機位並疊白色大字 overlay「Enjoyable Sustainable」（多幀不一致：文字僅出現在後段）。
+  cues:
+  - 191
+  - 192
+  - 193
+  - 194
+  - 195
+  - 196
+  - 197
+  text: We want them to be things that ideally don't feel like work.If you can find
+    the thing that feels like play to youbut loo
+- shot_id: 62
+  start: 334.64
+  end: 338.2
+  duration: 3.56
+  type: stock
+  note: 卡片式 layout：俯拍筆記本手寫「(1) FLEXIBILITY (2) FUN (3) FI…」→ b 幀寫到「FINANC」；host PIP
+    右側。本人檔案實拍。
+  cues:
+  - 197
+  - 198
+  - 199
+  text: as a result of the thing.And then the third F is obviously we want our side
+    hustleto generate some kind of finance.
+- shot_id: 63
+  start: 338.2
+  end: 341.76
+  duration: 3.56
+  type: aroll
+  note: Ali 全畫面對鏡頭說話、手勢比劃；畫面無文字。
+  cues:
+  - 200
+  - 201
+  text: So we want the return on investmentto be at least reasonable over the longterm.
+- shot_id: 64
+  start: 341.76
+  end: 368.56
+  duration: 26.8
+  type: stock
+  note: 卡片式 layout：俯拍筆記本完成清單「(1) FLEXIBILITY (2) FUN (3) FINANCE」，b/c 幀加上三條箭頭匯聚指向手寫「INTERNET」；host
+    PIP 右側。本人檔案實拍（手寫 diagram 式 B-roll）。
+  cues:
+  - 201
+  - 202
+  - 203
+  - 204
+  - 205
+  - 206
+  - 207
+  - 208
+  - 209
+  - 210
+  - 211
+  - 212
+  - 213
+  - 214
+  - 215
+  - 216
+  text: 'to be at least reasonable over the longterm.Generally, the side hustles that
+    people like mewould recommend, and I still '
+- shot_id: 65
+  start: 368.56
+  end: 372.0
+  duration: 3.44
+  type: aroll
+  note: Ali 全畫面對鏡頭說話（略近機位）；畫面無文字。
+  cues:
+  - 216
+  - 217
+  - 218
+  text: 'rather than just in your specific geographical area.I''m gonna be showing
+    you lots of examples of peoplewho''ve done this '
+- shot_id: 66
+  start: 372.0
+  end: 377.56
+  duration: 5.56
+  type: aroll
+  note: 主持人 Ali 全畫面對鏡頭說話，明亮房間書架＋白麥克風，無畫面文字。
+  cues:
+  - 218
+  - 219
+  - 220
+  - 221
+  - 222
+  text: 'who''ve done this sort of side hustle thing.The idea is not, hey, let me
+    do exactlywhat this person did.The idea is that '
+- shot_id: 67
+  start: 377.56
+  end: 385.96
+  duration: 8.4
+  type: motion_graphic
+  note: 粉彩漸層卡片式清單逐條彈出＋右側主持人 PIP；文字逐字：「What principles can we learn from what they
+    did?」「How can we apply it in our context?」「How can we turn that into a source」（a
+    幀僅空白卡＋天平 icon，卡片隨時間增加）。
+  cues:
+  - 222
+  - 223
+  - 224
+  - 225
+  - 226
+  - 227
+  text: and we figure out, cool, what are the principleswe can learn from what they
+    didand how can we apply it to our own lifean
+- shot_id: 68
+  start: 385.96
+  end: 394.48
+  duration: 8.52
+  type: aroll
+  note: 主持人對鏡頭說話，頭頂疊出編號圓形圖示動畫 1–6（a 幀 1–4、b/c 幀 1–6），無其他文字。
+  cues:
+  - 227
+  - 228
+  - 229
+  - 230
+  - 231
+  - 232
+  - 233
+  - 234
+  text: into some kind of extra source of income?So having said all of that,and I
+    have literally no ideahow long this video is g
+- shot_id: 69
+  start: 394.48
+  end: 401.6
+  duration: 7.12
+  type: motion_graphic
+  note: 編號圖示動畫收攏至頂部、背景轉粉彩，出現桌前寫作者 icon 卡與紫色大字「Writer」；a 幀為 aroll 背景漸白的過渡（多幀不一致：a 過渡、b
+    純圖形）。
+  cues:
+  - 234
+  - 235
+  - 236
+  - 237
+  text: So let's start with side hustle idea number one,which is to be a writer.And
+    this fits very nicely into the content branc
+- shot_id: 70
+  start: 401.6
+  end: 410.96
+  duration: 9.36
+  type: aroll
+  note: 主持人對鏡頭說話；b/c 幀左側疊入手機形推文式照片卡，藍色標籤「@Jack_Raines」（人物於夕陽前比 V 的照片）。
+  cues:
+  - 238
+  - 239
+  - 240
+  - 241
+  - 242
+  text: And the example I wanna use hereis a guy called Jack Rains, who has a fantastic
+    newsletterthat he started while he was a
+- shot_id: 71
+  start: 410.96
+  end: 416.8
+  duration: 5.84
+  type: other
+  note: 多幀不一致：a 幀是俯拍筆記本實拍大卡（手寫「CONTENT / SERVICES / 1) WRITER」）＋host PIP，b 幀切成主持人全畫面
+    aroll；若以起始幀為準屬本人手寫筆記 B-roll（stock、本人檔案）。
+  cues:
+  - 243
+  - 244
+  - 245
+  text: So around two years ago, Jack decided to start a newslettertalking about finance
+    and talking about travel,basically topi
+- shot_id: 72
+  start: 416.8
+  end: 420.96
+  duration: 4.16
+  type: screen_recording
+  note: 大卡為 Jack Raines 部落格「Young Money by Jack Raines」網頁捲動，host PIP 右側；文字逐字：「The
+    Case for Traveling More — Some not-career-advice for you 20-somethings.」「Six Types
+    of Wealth — Being rich isn't just a money thing.」nav：「Categories / About Me /
+    What I'm Doing Now / Travel Blog / Consulting Calls / Advertise with Me!」。
+  cues:
+  - 246
+  - 247
+  - 248
+  text: And at this point, now that he's been doing thisfor over two years, he's got
+    a few tens of thousandsof readers on his bl
+- shot_id: 73
+  start: 420.96
+  end: 425.4
+  duration: 4.44
+  type: doc_screenshot
+  note: '贊助說明簡報/文件截圖大卡＋host PIP，b 幀放大並黃色 highlight；文字逐字（節錄）：「Primary Ad Slot Sponsorships」「Each
+    post has a primary ad slot before the article begins」「Placement at the top of
+    blog posts, mirroring the format here →」「Includes linked image, ~150 word write
+    up, linked call-to-action at the conclusion」「Average 2.5 – 3.5% CTR on sponsored
+    content」「Blog posts average 50% open rate, plus 5,000+ additional web views through
+    Twitter and LinkedIn」「Impressions can now be tracked on Twitter and LinkedIn too」「All
+    of this impression data (on the next page) benefits *you*」「Price: $1,400 (discounts
+    for bundles)」。'
+  cues:
+  - 248
+  - 249
+  - 250
+  text: of readers on his blog.And every time he sends a newsletter,he's able to charge
+    around $1,400 per ad.
+- shot_id: 74
+  start: 425.4
+  end: 433.96
+  duration: 8.56
+  type: aroll
+  note: 主持人對鏡頭說話，b/c 幀疊白色大字算式 overlay：「4 (Issues) * $1400 = $5600」，c 幀僅剩「$5600」。
+  cues:
+  - 251
+  - 252
+  - 253
+  text: And so if he does four newsletter issues a week,that's 1,400 times four, which
+    is $5,600 a monthby writing on the intern
+- shot_id: 75
+  start: 433.96
+  end: 437.24
+  duration: 3.28
+  type: aroll
+  note: 主持人全畫面對鏡頭說話（稍廣角度），無畫面文字。
+  cues:
+  - 254
+  - 255
+  text: But essentially what Jack is doingis following the classic content model of
+    a writer,
+- shot_id: 76
+  start: 437.24
+  end: 448.24
+  duration: 11.0
+  type: motion_graphic
+  note: 粉彩漸層卡片式清單逐條彈出＋右側主持人 PIP；文字逐字：「Start writing about your interests regularly」「Build
+    an audience interested in your work」「Start monetising through sponsorships, for
+    example」（a 幀僅空白卡＋icon）。
+  cues:
+  - 255
+  - 256
+  - 257
+  - 258
+  - 259
+  - 260
+  - 261
+  - 262
+  text: is following the classic content model of a writer,which is that you write
+    things regularly,and over time you build an a
+- shot_id: 77
+  start: 448.24
+  end: 452.4
+  duration: 4.16
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，無畫面文字。
+  cues:
+  - 263
+  - 264
+  - 265
+  text: But Jack isn't just limited to making moneyfrom his newsletter, he also makes
+    moneyfrom consulting calls.
+- shot_id: 78
+  start: 452.4
+  end: 456.4
+  duration: 4.0
+  type: screen_recording
+  note: Jack Raines 部落格頁尾捲動大卡＋host PIP 右側；文字逐字（節錄）：「Young Money by Jack Raines — The
+    best finance blog you've never heard of. 10/10 stories, 5/10 art. Join 43,000
+    readers」「Load More」「Subscribe here!」「The Upside to Delayed Success」footer nav：「Home
+    / Posts / Newsletters / Authors / Account / Upgrade / About Me / What I'm Doing
+    Now / Travel Blog / Consulting Calls / Advertise with Me!」＋Cloudflare「Verify you
+    are human」。
+  cues:
+  - 266
+  - 267
+  - 268
+  text: So he has a little tab on his websitecalled Consulting Calls, and you can
+    booka 45 minute meeting with him for $300.
+- shot_id: 79
+  start: 456.4
+  end: 460.6
+  duration: 4.2
+  type: screen_recording
+  note: 卡片式 layout：大卡為 Calendly 預約頁截圖捲動畫面，右側 host PIP。b 幀在價格上加黃色 highlight。畫面文字：「Jack
+    Raines / 45 Minute Meeting / 45 min / $300 USD / A 45-minute call with me to chat
+    about whatever. Newsletters, writing, social media growth, or anything else. It's
+    up to you! / Date & Time / September 2023 / Time zone / India Standard Time (4:44pm)」
+  cues:
+  - 268
+  - 269
+  - 270
+  text: a 45 minute meeting with him for $300.And honestly, this is a really solid
+    business modelin total.
+- shot_id: 80
+  start: 460.6
+  end: 469.44
+  duration: 8.84
+  type: aroll
+  note: 主持人全畫面對鏡頭說話、比手勢，明亮房間書架背景。無畫面文字。
+  cues:
+  - 270
+  - 271
+  - 272
+  - 273
+  - 274
+  - 275
+  text: in total.It's all about writers and making money on the internet.And if you
+    want a way more detailed diveinto the five d
+- shot_id: 81
+  start: 469.44
+  end: 471.4
+  duration: 1.96
+  type: kol
+  note: 卡片式 layout：大卡為 Deep Dive podcast 訪談雙人畫面（Ali 與來賓 Nicolas Cole），右側 host PIP。b
+    幀左下出現節目封面卡：「DEEP DIVE with Ali Abdaal」
+  cues:
+  - 276
+  - 277
+  text: which is an episode of my deep dive podcastthat I did with Nicholas Cole.
+- shot_id: 82
+  start: 471.4
+  end: 474.88
+  duration: 3.48
+  type: kol
+  note: 同上訪談片段，來賓 Nicolas Cole 單人說話鏡頭＋節目資訊卡，host PIP（b 幀 PIP 中 Ali 舉起書）。畫面文字：「DEEP
+    DIVE with Ali Abdaal / Deep Dive with Ali Abdaal / S6 E2 - Nicolas Cole」＋Google/Apple
+    Podcasts、Spotify 圖示
+  cues:
+  - 277
+  - 278
+  - 279
+  text: that I did with Nicholas Cole.And Cole has literally written the bookon how
+    to make money as a writer.
+- shot_id: 83
+  start: 474.88
+  end: 479.28
+  duration: 4.4
+  type: stock
+  note: 卡片式 layout：大卡為手持書本特寫實拍（本人/檔案 B-roll），host PIP。書封文字：「Nicolas Cole / Author
+    - Viral Writer - 100M+ Views / The Art and Business of Online Writing / How to
+    Beat the Game of Capturing and Keeping Attention / 77K 1.2K / Dr. Benjamin Hardy…」
+  cues:
+  - 279
+  - 280
+  - 281
+  text: on how to make money as a writer.It's called "The Art and Business of Online
+    Writing,How to Beat the Game of Capturing a
+- shot_id: 84
+  start: 479.28
+  end: 484.84
+  duration: 5.56
+  type: aroll
+  note: 主持人全畫面對鏡頭說話。無畫面文字。
+  cues:
+  - 282
+  - 283
+  - 284
+  - 285
+  text: And one of the really nice thingsabout writing as a side hustleis that the
+    barrier to entry is so low.It's basically zer
+- shot_id: 85
+  start: 484.84
+  end: 486.88
+  duration: 2.04
+  type: screen_recording
+  note: 滿版 Substack 網站捲動錄影，左下疊 app 圖示標籤卡「Substack」。畫面文字：「Do your best work, supported
+    by your subscribers / Substack lets independent writers and podcasters publish
+    directly to their audience and get paid through subscriptions / Find Substacks
+    to read / The home for great writers & podcasters / Featured Culture Politics
+    Technology…」
+  cues:
+  - 285
+  - 286
+  text: It's basically zero.You can create an account on Substack or Beehive
+- shot_id: 86
+  start: 486.88
+  end: 489.44
+  duration: 2.56
+  type: screen_recording
+  note: 滿版 beehiiv 網站捲動錄影，左下疊標籤卡「Beehiiv」。畫面文字：「beehiiv / The newsletter platform
+    built for growth / The most successful newsletters in the world have access to
+    the best tools — and now so do you. / Start a newsletter / Solutions Resources
+    Pricing Careers Course / Login / Get started」
+  cues:
+  - 286
+  - 287
+  - 288
+  text: You can create an account on Substack or Beehivecompletely for free, and so
+    you'll get a website.You won't have to pay a
+- shot_id: 87
+  start: 489.44
+  end: 492.04
+  duration: 2.6
+  type: stock
+  note: 卡片式 layout：大卡為主持人本人檔案實拍——戴耳機在海邊露天咖啡座用筆電工作，host PIP。無 overlay 文字。
+  cues:
+  - 288
+  - 289
+  text: You won't have to pay a penny for it.All you need is like a computer or a
+    phone
+- shot_id: 88
+  start: 492.04
+  end: 495.6
+  duration: 3.56
+  type: stock
+  note: 卡片式 layout：大卡為本人檔案實拍——雙手在 iPad Magic Keyboard 打字特寫，host PIP。無畫面文字。
+  cues:
+  - 289
+  - 290
+  - 291
+  text: All you need is like a computer or a phonewith an internet connection,and
+    you can start writing from anywhere in the wor
+- shot_id: 89
+  start: 495.6
+  end: 499.64
+  duration: 4.04
+  type: stock
+  note: 卡片式 layout：大卡為本人檔案實拍——在咖啡廳窗邊用 iPad 鍵盤打字，前景水瓶與馬克杯，host PIP。無畫面文字。
+  cues:
+  - 291
+  - 292
+  - 293
+  text: and you can start writing from anywhere in the world,and you can reach an
+    audience of peopleanywhere in the world, again
+- shot_id: 90
+  start: 499.64
+  end: 505.24
+  duration: 5.6
+  type: aroll
+  note: 主持人全畫面對鏡頭說話、比手勢。無畫面文字。
+  cues:
+  - 294
+  - 295
+  - 296
+  text: And good doesn't necessarily meanyou need to write like Ernest Hemingway or
+    whatever.Good just means that people get val
+- shot_id: 91
+  start: 505.24
+  end: 516.32
+  duration: 11.08
+  type: aroll
+  note: 主持人全畫面對鏡頭說話（三幀皆同一 aroll，手勢變化）。無畫面文字。
+  cues:
+  - 296
+  - 297
+  - 298
+  - 299
+  - 300
+  - 301
+  - 302
+  text: Good just means that people get value from your content.And to be honest,
+    if you wanna go down this path,here is a top t
+- shot_id: 92
+  start: 516.32
+  end: 518.36
+  duration: 2.04
+  type: aroll
+  note: Ali 全畫面對鏡頭說話，明亮房間書架背景，無畫面文字。
+  cues:
+  - 302
+  - 303
+  - 304
+  text: or whatever, however many there are.And then you could drop him an email being
+    like,"Hey, Jack, I've binged everything y
+- shot_id: 93
+  start: 518.36
+  end: 533.88
+  duration: 15.52
+  type: screen_recording
+  note: '卡片式 layout：大卡是 Gmail 撰寫視窗動畫逐步打字，右側 host PIP。文字：「New Message / Jack Raines
+    / Cc Bcc / From Inspiration to Action: My Journey After Your Newsletter / Hey
+    Jack, This is Ali, a doctor turned entrepreneur and the world''s most followed
+    productivity expert. I''ve binged everything you''ve ever written and because
+    of that I was inspired to start my own. I''ve written 10 issues of my own blog,
+    check it out here. But I''ve encountered a few challenges along the way. Here''s
+    where I could use your advice: A) How do you balance evergreen content with trending
+    topics? B) Could you share some tips on fostering a sense of community with the
+    readers? C) What are some of the key monetization methods you''ve found successful
+    for your blog in the finance and travel niches? I''d love to hop on a quick 20
+    minute call with you to get more clarity on these. What do you say? / Send」（文字隨幀逐步增加）'
+  cues:
+  - 304
+  - 305
+  - 306
+  - 307
+  - 308
+  - 309
+  - 310
+  - 311
+  - 312
+  - 313
+  - 314
+  - 315
+  text: '"Hey, Jack, I''ve binged everything you''ve ever written,and because of that,
+    I was inspired to start my own.And I''ve writ'
+- shot_id: 94
+  start: 533.88
+  end: 551.84
+  duration: 17.96
+  type: aroll
+  note: Ali 對鏡頭說話，中後段疊左右兩側白色大字 overlay：「Read all Stuff」「Done the work」（a 幀無文字）。
+  cues:
+  - 315
+  - 316
+  - 317
+  - 318
+  - 319
+  - 320
+  - 321
+  - 322
+  - 323
+  - 324
+  - 325
+  text: they'd probably think, "Damn, this guy's pretty cool.A, they've read all my
+    stuff."So, you know, automatically that filt
+- shot_id: 95
+  start: 551.84
+  end: 557.48
+  duration: 5.64
+  type: aroll
+  note: Ali 對鏡頭說話，無畫面文字。
+  cues:
+  - 326
+  - 327
+  - 328
+  - 329
+  text: By the way, in case you didn't know,I also have a weekly newsletterthat I've
+    been writing for the last five and a half y
+- shot_id: 96
+  start: 557.48
+  end: 562.32
+  duration: 4.84
+  type: screen_recording
+  note: 卡片式 layout：Ali 自己網站的 newsletter 註冊頁截圖/錄影，右側 host PIP。文字：「ABOUT ARTICLES COURSES
+    PODCAST BOOK NOTES TECH NEWSLETTER / Free Weekly Productivity Insights / Sign
+    up for Sunday Snippets - my weekly newsletter where I share actionable productivity
+    tips, practical life advice, and high-quality insights from across the web, directly
+    to your inbox. / Join over 400,000 friendly readers / First Name / Email Address
+    / SUBSCRIBE / "Your emails always warm the cockles of my heart"」（手機 mockup 內含
+    My Favourite Things / Quote of the Week 內文）
+  cues:
+  - 330
+  - 331
+  - 332
+  - 333
+  - 334
+  text: And I've been writing that every week.It's called Sunday Snippets.You can
+    check it out completely for freedown in the vi
+- shot_id: 97
+  start: 562.32
+  end: 566.88
+  duration: 4.56
+  type: screen_recording
+  note: 卡片式 layout：newsletter 存檔清單捲動，右側 host PIP。文字：「JUL 10 2022 How I Design My Life
+    / JUL 3 2022 The Odyssey Plan Revisited / JUN 26 2022 The most productive week
+    of my life / JUN 19 2022 Would I save my brother from a burning bu… / JUN 12 2022
+    Selfish Goals vs Service Goals / MAY 29 2022 The Hedonic Treadmill / MAY 22 2022
+    I've Been Having Doubts / MAY 15 2022 The Challenges of Daily Vlogging / MAY 8
+    2022 My Talk at the Cambridge Union / The Dangers of Delegating」
+  cues:
+  - 334
+  - 335
+  - 336
+  - 337
+  text: or you can go to alibdahl.com/sunday,and that will let you sign up.Basically,
+    every week I share some thoughtsand some l
+- shot_id: 98
+  start: 566.88
+  end: 570.48
+  duration: 3.6
+  type: doc_screenshot
+  note: 卡片式 layout：newsletter 文章內文捲動截圖，右側 host PIP。文字節錄：「Bill very kindly invited
+    me to his house (thanks to a connection made by Chris Williamson)… there are 3
+    interesting takeaways… / 1 – Invest in your health / Investing in your health
+    is one of the highest ROI things you can do with your money… / 2 – Get a relationship
+    coach / Getting a relationship coach is also well worth investing in… If we want
+    to improve our tennis, we get a tennis coach…」
+  cues:
+  - 337
+  - 338
+  - 339
+  text: and some lessons that I've learnedand some books I'm readingand some recommended
+    articles and stuff.
+- shot_id: 99
+  start: 570.48
+  end: 576.84
+  duration: 6.36
+  type: aroll
+  note: Ali 對鏡頭說話；a 幀有 RGB 色差 glitch 轉場效果（右側模糊彩色物件），b/c 幀為正常 aroll。無畫面文字。
+  cues:
+  - 339
+  - 340
+  - 341
+  - 342
+  text: and some recommended articles and stuff.And people generally find it quite
+    helpful.I think we've got about 400,000 peopl
+- shot_id: 100
+  start: 576.84
+  end: 585.72
+  duration: 8.88
+  type: aroll
+  note: Ali 對鏡頭說話，稍近景另一機位（暖色調），手勢豐富，無畫面文字。
+  cues:
+  - 343
+  - 344
+  - 345
+  - 346
+  - 347
+  text: Now, once you've started making some moneywith these side hustles or anything
+    else,then you're gonna need a place to inv
+- shot_id: 101
+  start: 585.72
+  end: 591.64
+  duration: 5.92
+  type: screen_recording
+  note: 卡片式 layout：手機 mockup 內 Trading 212 App 錄影（開屏 logo「TRADING 212」→ 帳戶頁「£1,068.99
+    / My watchlist / Top winners / Top losers / GraniteShares 3x Sho… / Kanabo / Ascential
+    / Arundel / Biotechnology Assets / Open Orphan…」），右側 host PIP。sponsor 段。
+  cues:
+  - 347
+  - 348
+  - 349
+  - 350
+  text: and that is Trading212.Trading212 is a fantastic appthat allows you to invest
+    in stocks and shares and fundsin a commiss
+- shot_id: 102
+  start: 591.64
+  end: 596.04
+  duration: 4.4
+  type: aroll
+  note: Ali 對鏡頭說話（暖色近景機位），手勢大，無畫面文字。sponsor 口播段。
+  cues:
+  - 350
+  - 351
+  - 352
+  - 353
+  text: in a commission-free fashion.And they've got a bunch of really cool features,which
+    is why I personally use themto manage
+- shot_id: 103
+  start: 596.04
+  end: 618.64
+  duration: 22.6
+  type: screen_recording
+  note: 卡片式 layout：Trading 212 App「Pies」社群功能手機錄影，右側 host PIP。文字節錄：「Social / Feed Communities
+    Pies / (Almost) Daily Dividends 47.2K / ARKK - Innovation 5K / Income / Start
+    investing now / Vanguard / Slices · 5 / Vanguard FTSE 100 (Dist) 28% / Vanguard
+    S&P 500 (Dist) 28% / Vanguard FTSE Emerging Markets 20% / Vanguard FTSE All-World
+    (Dist) 12% / Vanguard FTSE All-World High Div 12% / Investing options / Choose
+    how to invest / AutoInvest / Manually / Next」
+  cues:
+  - 353
+  - 354
+  - 355
+  - 356
+  - 357
+  - 358
+  - 359
+  - 360
+  - 361
+  - 362
+  - 363
+  - 364
+  text: to manage a portion of my portfolio.So firstly, they've got a great pies and
+    auto-invest feature.So the pies thing is ba
+- shot_id: 104
+  start: 618.64
+  end: 624.08
+  duration: 5.44
+  type: aroll
+  note: Ali 對鏡頭說話（暖色近景機位），雙手比劃，無畫面文字。
+  cues:
+  - 364
+  - 365
+  - 366
+  - 367
+  text: and you can just copy and paste it into your own account.And then however
+    much money you want to invest,you can invest i
+- shot_id: 105
+  start: 624.08
+  end: 631.96
+  duration: 7.88
+  type: screen_recording
+  note: Trading 212 app 手機錄影（大卡＋host PIP 右側）：a 幀「Build your pie / Pick your favourite
+    stocks and ETFs. They will appear as slices in the pie above. / Add Instruments」；b/c
+    幀顯示「Build your pie / 9.88% → 16.94% Avg. annual return / LEARN MORE / MIN INVESTMENT
+    £2.00 / Slices・2 / Vanguard S&P 500 (Dist) 50%→100% / Vanguard FTSE All-World
+    High… 50% / Next」
+  cues:
+  - 368
+  - 369
+  - 370
+  - 371
+  - 372
+  - 373
+  text: And you can also create your own piewith your own asset allocation,and then
+    you can see how that's performingagainst the
+- shot_id: 106
+  start: 631.96
+  end: 634.52
+  duration: 2.56
+  type: aroll
+  note: 主持人全畫面在明亮房間對鏡頭說話、手勢比劃，無畫面文字
+  cues:
+  - 373
+  - 374
+  - 375
+  text: It's a really cool feature.They've also recently added supportfor multi-currency
+    accounts.
+- shot_id: 107
+  start: 634.52
+  end: 643.64
+  duration: 9.12
+  type: screen_recording
+  note: 'Trading 212 app 手機錄影（host PIP 右側）：a 幀帳戶幣別清單「TRADING 212 INVEST / HUF Ft 0.00
+    / NOK kr 0.00 / PLN zł 0.00 / RON lei 0.00 / SEK kr 0.00 / Convert / Deposit funds
+    / Start investing now」；b 幀「Hot / My watchlist / Top winners / Orcadian Energy
+    p4.9 +1.9 (63.33%) / Algreen €0.00020 / USD - US dollar $0.00 / Deposit / Convert
+    / Interest / Bank account details」；c 幀入金銀行資訊「Don''t forget to add the following
+    code as a payment reference: 2 2 9 9 1 6 7 6 / BANK NAME JPMorgan Chase Bank /
+    BANK ADDRESS 25 Bank Street, Canary Wharf, London, E14 5JP, UK / BENEFICIARY NAME
+    Trading 212 UK Limited / BENEFICIARY ADDRESS London, England / IBAN GB84 CHAS
+    6092 4271 0037 05 / BIC CHASGB2L / ACCOUNT NUMBER 71003705 / CURRENCY USD」'
+  cues:
+  - 375
+  - 376
+  - 377
+  - 378
+  - 379
+  - 380
+  text: for multi-currency accounts.And this is really helpful because if, like me,you
+    invest a lot of your moneyin a US stock m
+- shot_id: 108
+  start: 643.64
+  end: 657.48
+  duration: 13.84
+  type: aroll
+  note: 主持人全畫面說話，下方疊白色免責聲明卡（a 幀淡入中、c 幀已消失）：「This is not financial advice. When investing,
+    your capital is at risk. Investments can rise and fall and you may get back less
+    than you invested. Past performance is no guarantee of future results. Other fees
+    may apply*.」
+  cues:
+  - 380
+  - 381
+  - 382
+  - 383
+  - 384
+  - 385
+  - 386
+  - 387
+  - 388
+  text: that you get when you're investing from Europe.And if you have an Invest or
+    an ISA account,then Trading212 will also pay
+- shot_id: 109
+  start: 657.48
+  end: 661.52
+  duration: 4.04
+  type: doc_screenshot
+  note: Trading 212 推薦連結網頁截圖大卡（host PIP 右側）：「Your free shares are waiting for you
+    / Ali Abdaal has invited you to Trading 212 / Sign up to claim shares / How it
+    works 1. Sign up for a Trading 212 Invest account. 2. Verify your identity. 3.
+    Fund your account. 4. Get free shares worth up to €100! / Terms & conditions /
+    FAQ / Shares value probability」旁有手機 mockup 顯示 Tesla $208.85 / Netflix $339.67
+    / Amazon $1,870.68
+  cues:
+  - 388
+  - 389
+  - 390
+  - 391
+  text: 'then check out the link in the video description,and that will guide you
+    through this pageon exactly how you can set up '
+- shot_id: 110
+  start: 661.52
+  end: 674.4
+  duration: 12.88
+  type: aroll
+  note: 多幀不一致：a 幀主持人全畫面說話；b 幀切到粉彩背景動態圖形章節轉場（白色圓角方塊數字「2」，上方一排小圖示 3 4 5 6 與人物工作圖示）→
+    motion_graphic 轉場；c 幀俯拍筆記本手寫實拍（host PIP 右側）「CONTENT | SERVICES / ① WRITER / ②
+    CONTENT CURA…」— 以主體看是 aroll 開場後接章節動畫與本人手寫 B-roll 的複合鏡頭
+  cues:
+  - 391
+  - 392
+  - 393
+  - 394
+  - 395
+  - 396
+  - 397
+  - 398
+  text: and how you can claim your free share.So thank you so much, Trading212,for
+    sponsoring this video and continuingto suppor
+- shot_id: 111
+  start: 674.4
+  end: 681.16
+  duration: 6.76
+  type: aroll
+  note: 主持人全畫面對鏡頭說話（新機位：白色麥克風入鏡、白T恤），無畫面文字
+  cues:
+  - 398
+  - 399
+  - 400
+  - 401
+  - 402
+  text: Content creator, I mean, it's all semantics,but a content creator, I would
+    say,someone who creates content,whereas a con
+- shot_id: 112
+  start: 681.16
+  end: 687.64
+  duration: 6.48
+  type: aroll
+  note: 主持人全畫面說話；c 幀左上疊入人物照片卡「@Pinlord」（紫紅漸層 name tag）介紹他人帳號，仍以 aroll 為主
+  cues:
+  - 402
+  - 403
+  - 404
+  - 405
+  text: what other people have already created.So there's a bunch of interesting ways
+    of doing this.And one example is this guy,
+- shot_id: 113
+  start: 687.64
+  end: 691.48
+  duration: 3.84
+  type: doc_screenshot
+  note: Instagram 個人頁截圖大卡（host PIP 右側）：「pinlord / Follow / Message / 9,363 posts /
+    116K followers / 2,595 following / Pin Lord / Best Enamel Pins around the 🌍 /
+    DM for an IG feature / Ethically manufacture your custom products / Buy + learn
+    how to make pins / linktr.ee/pinlord / Announc… / Get featured! / Make pins!」；b
+    幀為其貼文 grid（enamel pin 圖片，含「Hansel is so hot right now…」meme、「THE VOID IS…」）
+  cues:
+  - 405
+  - 406
+  - 407
+  text: 'who has an Instagram account called Pinlord,and basically decided to create
+    a businesswhere he curates and sells enamel '
+- shot_id: 114
+  start: 691.48
+  end: 692.32
+  duration: 0.84
+  type: aroll
+  note: 主持人全畫面說話、單手張開手勢（麥克風機位），無畫面文字
+  cues:
+  - 407
+  - 408
+  text: where he curates and sells enamel pins.Yeah, it's kind of weird.
+- shot_id: 115
+  start: 692.32
+  end: 697.88
+  duration: 5.56
+  type: doc_screenshot
+  note: 再回 pinlord Instagram 頁截圖大卡（host PIP 右側），b 幀 zoom 進 bio 區：「pinlord / Follow
+    / Message / 9,363 posts / 116K followers / 2,595 following / Pin Lord / Best Enamel
+    Pins around the 🌍 / DM for an IG feature / Ethically manufacture your custom products
+    / Buy + learn how to make pins / linktr.ee/pinlord」
+  cues:
+  - 408
+  - 409
+  - 410
+  - 411
+  text: 'Yeah, it''s kind of weird.Eduardo grew his Instagram account, Pinlord,from
+    zero to over 100,000 followers on Instagramin '
+- shot_id: 116
+  start: 697.88
+  end: 702.44
+  duration: 4.56
+  type: doc_screenshot
+  note: Medium 文章截圖大卡（host PIP 右側）：「How I Make $3,500 a Month From My Instagram Account
+    / Eduardo Morales・Follow / Published in Mission.org・14 min read・Aug 21, 2018 /
+    1.94K claps・22 comments / Last month, I made over $3,500 from my Instagram. /
+    Before starting @pinlord — the repost account where I curate and sell enamel pins
+    — I had no experience building a social media or online business. I'm also not
+    an 'influencer', I'm not particularly 'social', and I definitely don't have a
+    fun and exciting life to show off on Instagram.」（a 幀已捲到內文、b 幀顯示標題）
+  cues:
+  - 411
+  - 412
+  - 413
+  text: in less than two years.And according to this article,he makes $3,500 a month
+    from this business that he's got.
+- shot_id: 117
+  start: 702.44
+  end: 713.24
+  duration: 10.8
+  type: aroll
+  note: 主持人全畫面對鏡頭說話（麥克風機位），手勢比劃，無畫面文字
+  cues:
+  - 413
+  - 414
+  - 415
+  - 416
+  - 417
+  - 418
+  - 419
+  text: he makes $3,500 a month from this business that he's got.Now, first point
+    to say hereis that two years is pretty quick.I
+- shot_id: 118
+  start: 713.24
+  end: 721.2
+  duration: 7.96
+  type: aroll
+  note: 主持人 Ali 全畫面對鏡頭說話，明亮房間、書架、白色麥克風，無畫面文字。
+  cues:
+  - 419
+  - 420
+  - 421
+  - 422
+  - 423
+  - 424
+  - 425
+  text: then you have got the whole money thing completely wrong.It's gonna take time,especially
+    if you are trying to make stuff
+- shot_id: 119
+  start: 721.2
+  end: 724.04
+  duration: 2.84
+  type: stock
+  note: 卡片式 layout：大卡為檔案實拍——閣樓房間木桌旁多人低頭讀書寫筆記（疑似 Ali 的學習小組檔案畫面），右側圓角 host PIP 主持人說話。無
+    overlay 文字。
+  cues:
+  - 425
+  - 426
+  - 427
+  - 428
+  text: It does take time to do this stuff.Let's take medicine, for example.That is
+    a six-year degreeand then a 10-year training
+- shot_id: 120
+  start: 724.04
+  end: 725.24
+  duration: 1.2
+  type: stock
+  note: 卡片式 layout：大卡為檔案實拍——穿藍色醫護 scrubs 的男子（疑似 Ali 本人）在醫院休息區用 MacBook，桌上 Costa 咖啡杯；host
+    PIP 右側。無 overlay 文字。
+  cues:
+  - 428
+  text: and then a 10-year training pathway, at least in the UK,
+- shot_id: 121
+  start: 725.24
+  end: 728.56
+  duration: 3.32
+  type: stock
+  note: 卡片式 layout：大卡為檔案實拍——穿紫藍 scrubs、戴聽診器的 Ali 在醫院護理站邊講電話邊看 Dell 螢幕；host PIP 右側。無
+    overlay 文字。
+  cues:
+  - 428
+  - 429
+  text: and then a 10-year training pathway, at least in the UK,to then be making
+    3K a month, 4K a month, 5K a month.
+- shot_id: 122
+  start: 728.56
+  end: 733.2
+  duration: 4.64
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，同一房間場景。無畫面文字。
+  cues:
+  - 429
+  - 430
+  - 431
+  - 432
+  - 433
+  text: 'to then be making 3K a month, 4K a month, 5K a month.So you can''t really
+    have the audacityto say that you want all this '
+- shot_id: 123
+  start: 733.2
+  end: 735.4
+  duration: 2.2
+  type: aroll
+  note: 主持人全畫面對鏡頭說話（微笑、點頭）。無畫面文字。
+  cues:
+  - 433
+  - 434
+  - 435
+  text: and flexibility and stuffwithout also putting in the workfor a very long period
+    of time.
+- shot_id: 124
+  start: 735.4
+  end: 764.44
+  duration: 29.04
+  type: doc_screenshot
+  note: 卡片式 layout：大卡為 Medium 文章截圖，host PIP 右側。文字：「How I Make $3,500 a Month From
+    My Instagram Account / Eduardo Morales · Follow / Published in Mission.org · 14
+    min read · Aug 21, 2018 / 1.94K 22」；b/c 幀捲到內文並逐步加黃色 highlight：「Last month, I made
+    over $3,500 from my Instagram. / Before starting @pinlord — the repost account
+    where I curate and sell enamel pins — I had no experience building a social media
+    or online business. I'm also not an "influencer", I'm not particularly "social",
+    and I definitely don't have a fun and exciting life to show off on Instagram.
+    / I learned how to monetize my Instagram account by making an effort to understand
+    how the platform works and putting in the work required to execute the right activities
+    at a high level, for a long period of time. / Trust me when I say, if I can do
+    it, anyone can!」
+  cues:
+  - 435
+  - 436
+  - 437
+  - 438
+  - 439
+  - 440
+  - 441
+  - 442
+  - 443
+  - 444
+  - 445
+  - 446
+  - 447
+  - 448
+  - 449
+  - 450
+  - 451
+  text: for a very long period of time.But anyway, I just wanna read you a quote from
+    Eduardo."Last month, I made over $3,500 fr
+- shot_id: 125
+  start: 764.44
+  end: 770.88
+  duration: 6.44
+  type: aroll
+  note: 主持人全畫面對鏡頭說話。無畫面文字。
+  cues:
+  - 451
+  - 452
+  - 453
+  - 454
+  - 455
+  text: '"Trust me when I say it, if I can do it, anyone can."Now, I''m not telling
+    you this exampleto say go and make an Instagra'
+- shot_id: 126
+  start: 770.88
+  end: 776.48
+  duration: 5.6
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，雙手大幅比劃、身體前傾。無畫面文字。
+  cues:
+  - 455
+  - 456
+  - 457
+  - 458
+  text: selling enamel pins, like that's not the vibe.The point of this video is to
+    give you some inspirationand to show you a f
+- shot_id: 127
+  start: 776.48
+  end: 786.04
+  duration: 9.56
+  type: doc_screenshot
+  note: '卡片式 layout：大卡為 Twitter/X 個人頁截圖（Alex & Books），host PIP 右側，鏡頭內逐步下捲。文字：「READ
+    BETTER. LIVE BETTER. / Alex & Books 📚 ✓ / @AlexAndBooks_ / 📖 I''ll help you find
+    amazing books & develop a reading habit. / 🎙 Host of "The Reader''s Journey" podcast.
+    / ✉ Get a new book summary every week (link in bio): / New York, NY / alexandbooks.beehiiv.com/subscribe
+    / Joined March 2017 / 301 Following 310.6K Followers / Follow」'
+  cues:
+  - 458
+  - 459
+  - 460
+  - 461
+  - 462
+  - 463
+  text: so that you can apply them to your own context.Another guy that I follow is
+    called Alex and Books,and essentially, he ha
+- shot_id: 128
+  start: 786.04
+  end: 789.96
+  duration: 3.92
+  type: doc_screenshot
+  note: '卡片式 layout：大卡為 Alex & Books 推文截圖，host PIP 右側；a、b 兩幀是不同推文。a：「8 Books that
+    will massively improve your life: -Mindset -Atomic Habits -The Daily Stoic -12
+    Rules for Life -Discipline Equals Freedom -Man''s Search For Meaning -I Will Teach
+    You To Get Rich -How To Win Friends & Influence People / Subscribe」。b：「Stop wasting
+    hours looking for the perfect book, just pick one of… / Startups: Zero To One
+    / Persuasion: Influence / Social Skills: Small Talk / Writing: On Writing Well
+    / Productivity: Indistractable / Creativity: Steal Like An Artist / Emotional
+    Control: The Daily Stoic / Memoir: When Breath Becomes Air / Psychology: Man''s
+    Search For Meaning」'
+  cues:
+  - 463
+  - 464
+  - 465
+  - 466
+  - 467
+  - 468
+  text: from books that he read.And it's really good.I follow him for book recommendations.It's
+    great.He posts on Instagram.He p
+- shot_id: 129
+  start: 789.96
+  end: 791.48
+  duration: 1.52
+  type: doc_screenshot
+  note: '卡片式 layout：大卡為 Alex & Books 附圖推文截圖（書架與《The Founders》書頁照片），host PIP 右側。文字：「Alex
+    & Books 📚 ✓ @AlexAndBooks_ / 15 Key lessons from "The Founders" by @jimmyasoni:
+    / Subscribe」，圖內書籤標「Alex & Books / Read. Learn. Share.」。'
+  cues:
+  - 468
+  - 469
+  text: He posts some of the highlights from the booksthat he's read, but he's not
+    really creating anything,
+- shot_id: 130
+  start: 791.48
+  end: 800.32
+  duration: 8.84
+  type: aroll
+  note: 主持人全畫面對鏡頭說話收尾本段。無畫面文字。
+  cues:
+  - 469
+  - 470
+  - 471
+  - 472
+  - 473
+  - 474
+  - 475
+  text: that he's read, but he's not really creating anything,which is not a bad thing,
+    by the way, Alex,if you're watching this
+- shot_id: 131
+  start: 800.32
+  end: 807.2
+  duration: 6.88
+  type: aroll
+  note: Ali 全畫面對鏡頭說話並比手勢，明亮房間、白色麥克風。畫面無文字。
+  cues:
+  - 475
+  - 476
+  - 477
+  - 478
+  - 479
+  - 480
+  text: You can be a content curator,but he's got a large enough audience nowthat
+    he can basically monetizethrough whatever mean
+- shot_id: 132
+  start: 807.2
+  end: 816.04
+  duration: 8.84
+  type: stock
+  note: 卡片式 layout：大卡為俯拍筆記本，手指著手寫兩欄清單；host PIP 右側。手寫字：「CONTENT」「SERVICES」「1 WRITER」「2
+    CONTE...(被手遮住)」。本人檔案實拍。
+  cues:
+  - 480
+  - 481
+  - 482
+  - 483
+  - 484
+  - 485
+  text: rather than content creation.Now, there is a problem.There is a problem with
+    content businesses,and that is that content
+- shot_id: 133
+  start: 816.04
+  end: 817.24
+  duration: 1.2
+  type: stock
+  note: 卡片式 layout：大卡為俯拍空白筆記本翻頁/開始用 Sharpie 畫線；host PIP 右側。b 幀開始畫直角軸線。無可讀文字。本人檔案實拍。
+  cues:
+  - 485
+  text: which is that at the start,
+- shot_id: 134
+  start: 817.24
+  end: 822.84
+  duration: 5.6
+  type: diagram
+  note: 卡片式 layout：大卡為手繪 $-vs-TIME 座標圖進行中，手持 Sharpie 畫上升曲線；host PIP 右側。手寫字：「TIME」（$
+    軸稍後可見）。手繪概念圖。
+  cues:
+  - 486
+  - 487
+  - 488
+  text: for an unspecified length of time,you're kind of in the negativebecause you've
+    put in time and effort into doing this th
+- shot_id: 135
+  start: 822.84
+  end: 828.24
+  duration: 5.4
+  type: diagram
+  note: 卡片式 layout：大卡為完成的手繪圖——$ 軸、TIME 軸、J 型曲線，b 幀在曲線低於軸線的谷底畫斜線陰影（前期虧損）；host PIP 右側。手寫字：「$」「TIME」。
+  cues:
+  - 488
+  - 489
+  - 490
+  - 491
+  text: 'because you''ve put in time and effort into doing this thing.So for example,
+    YouTube is a content business.It took me 52 '
+- shot_id: 136
+  start: 828.24
+  end: 831.72
+  duration: 3.48
+  type: diagram
+  note: 卡片式 layout：大卡為同一張手繪 $/TIME 曲線圖，在曲線與軸交點下方標註「12 MONTHS」（a 幀寫到「12 M」）；host PIP
+    右側。手寫字：「$」「TIME」「12 MONTHS」。
+  cues:
+  - 491
+  - 492
+  - 493
+  text: to get my first 1,000 subscribers,and I wasn't even monetized until 12 monthsinto
+    my YouTube journey, where every single
+- shot_id: 137
+  start: 831.72
+  end: 840.28
+  duration: 8.56
+  type: aroll
+  note: Ali 全畫面對鏡頭說話，手持筆比手勢；b 幀視線稍偏。畫面無文字。
+  cues:
+  - 493
+  - 494
+  - 495
+  - 496
+  - 497
+  - 498
+  text: into my YouTube journey, where every single week,I was making one or two videos,and
+    those videos were getting a few doze
+- shot_id: 138
+  start: 840.28
+  end: 840.68
+  duration: 0.4
+  type: stock
+  note: 卡片式 layout：大卡為早期宿舍房間檔案畫面——Ali 在床邊架著攝影機、燈與剪輯螢幕前忙碌；host PIP 右側。本人檔案實拍（vlog BTS）。無文字。
+  cues:
+  - 498
+  text: It was a pure sinking of time and effort
+- shot_id: 139
+  start: 840.68
+  end: 841.76
+  duration: 1.08
+  type: stock
+  note: 卡片式 layout：大卡為同宿舍房間檔案畫面，Ali 背對鏡頭坐在剪輯螢幕與三腳架相機前；host PIP 右側。本人檔案實拍。無文字。
+  cues:
+  - 498
+  text: It was a pure sinking of time and effort
+- shot_id: 140
+  start: 841.76
+  end: 842.88
+  duration: 1.12
+  type: stock
+  note: 卡片式 layout：大卡為工作室檔案畫面——Ali 坐在大型環形燈、桌面道具與鍵盤樂器旁布置拍攝場景；host PIP 右側。本人檔案實拍（studio
+    BTS）。無文字。
+  cues:
+  - 498
+  - 499
+  text: It was a pure sinking of time and effortand blood, sweat, and tears into this
+    YouTube channel.
+- shot_id: 141
+  start: 842.88
+  end: 843.4
+  duration: 0.52
+  type: stock
+  note: 卡片式 layout：同一工作室檔案畫面延續，a 幀 Ali 起身跨過設備、b 幀坐下整理桌面道具；host PIP 右側。本人檔案實拍。無文字。
+  cues:
+  - 499
+  text: and blood, sweat, and tears into this YouTube channel.
+- shot_id: 142
+  start: 843.4
+  end: 843.76
+  duration: 0.36
+  type: stock
+  note: 卡片式 layout：大卡為桌面特寫檔案畫面——Sony A7 III 相機在滑軌上，手在調整前景綠色植栽構圖；host PIP 右側。畫面內相機螢幕顯示拍攝參數（1/50、F2.8、ISO
+    250）。本人檔案實拍。
+  cues:
+  - 499
+  text: and blood, sweat, and tears into this YouTube channel.
+- shot_id: 143
+  start: 843.76
+  end: 844.24
+  duration: 0.48
+  type: stock
+  note: 卡片式 layout：同相機特寫延續，手扶植栽盆、Sony 相機翻轉螢幕顯示取景；host PIP 右側。相機螢幕參數：「1/50 F2.8 ISO250」。本人檔案實拍。無設計
+    overlay 文字。
+  cues:
+  - 499
+  text: and blood, sweat, and tears into this YouTube channel.
+- shot_id: 144
+  start: 844.24
+  end: 846.16
+  duration: 1.92
+  type: stock
+  note: 本人檔案 B-roll：Ali 背對鏡頭坐在多螢幕工作站前調整相機設備，卡片式 layout 大卡＋右側 host PIP，粉彩漸層背景。畫面無文字。
+  cues:
+  - 499
+  - 500
+  - 501
+  text: and blood, sweat, and tears into this YouTube channel.It was also fun.I found
+    a way to make it fun,
+- shot_id: 145
+  start: 846.16
+  end: 850.0
+  duration: 3.84
+  type: aroll
+  note: 主持人全畫面對鏡頭說話、雙手張開比劃，明亮房間書架與白色麥克風。畫面無文字。
+  cues:
+  - 501
+  - 502
+  - 503
+  - 504
+  - 505
+  text: I found a way to make it fun,which is my whole philosophy,that my book is
+    around feel-good productivity.Wait, where is i
+- shot_id: 146
+  start: 850.0
+  end: 851.96
+  duration: 1.96
+  type: stock
+  note: 本人檔案 B-roll 全畫面：Ali 從藍色椅子起身（a 幀）、走到書架前拿一本粉彩色書（b 幀，前景麥克風失焦）。畫面無文字。
+  cues:
+  - 505
+  - 506
+  text: I wanna show it off.My book, "Feel-Good Productivity,
+- shot_id: 147
+  start: 851.96
+  end: 854.8
+  duration: 2.84
+  type: book_cover
+  note: 卡片大卡是《Feel Good Productivity》書封實拍特寫，host PIP 手上也拿著同書。書封文字逐字：「The world's most-followed
+    productivity expert / Ali Abdaal / Feel Good Productivity / How to Do More of
+    What Matters to You」。
+  cues:
+  - 506
+  - 507
+  - 508
+  text: My book, "Feel-Good Productivity,How to Do More of What Matters to You."It'll
+    be linked down below, feelgoodproductivity
+- shot_id: 148
+  start: 854.8
+  end: 856.76
+  duration: 1.96
+  type: aroll
+  note: 主持人全畫面手舉《Feel Good Productivity》書對鏡頭說話，下方疊白色圓角橫幅 overlay，文字逐字：「www.feelgoodproductivity.com」。
+  cues:
+  - 508
+  - 509
+  text: It'll be linked down below, feelgoodproductivity.comif you wanna check it
+    out.
+- shot_id: 149
+  start: 856.76
+  end: 865.4
+  duration: 8.64
+  type: diagram
+  note: 卡片大卡：筆記本手繪 J-curve 圖（$ 對 TIME 軸、初期負值斜線區、12 MONTHS 標記），b/c 幀手持麥克筆指圖並加畫，右側 host
+    PIP。圖上文字逐字：「$ / TIME / 12 MONTHS / J」。
+  cues:
+  - 509
+  - 510
+  - 511
+  - 512
+  - 513
+  - 514
+  text: if you wanna check it out.But my point is this is a J-curve businessbecause
+    it looks like a J.You're in the negative for
+- shot_id: 150
+  start: 865.4
+  end: 869.8
+  duration: 4.4
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，手持麥克筆比劃。畫面無文字。
+  cues:
+  - 514
+  - 515
+  - 516
+  - 517
+  text: and the hope is that you will then go into the positive.This is the same thing
+    with Jack Reigns, for example,and also Al
+- shot_id: 151
+  start: 869.8
+  end: 879.44
+  duration: 9.64
+  type: diagram
+  note: 卡片大卡：同一手繪 J-curve 筆記本圖，手用麥克筆把負值區加畫交叉網底，host PIP。圖上文字逐字：「$ / TIME / 12 MONTHS
+    / J」。
+  cues:
+  - 517
+  - 518
+  - 519
+  - 520
+  - 521
+  - 522
+  text: and any of these writer type people.You tend not to make money immediately.You
+    tend to have to put in this period of neg
+- shot_id: 152
+  start: 879.44
+  end: 882.04
+  duration: 2.6
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，手持麥克筆。畫面無文字。
+  cues:
+  - 522
+  - 523
+  - 524
+  - 525
+  text: and you're hoping for a payoff over time.That's not to say that this is a
+    bad wayof starting a side hustle.It's just you
+- shot_id: 153
+  start: 882.04
+  end: 886.24
+  duration: 4.2
+  type: diagram
+  note: 卡片大卡：手在 J-curve 圖上書寫標題，由「J-」寫到「J-curve」（a/b 幀進度不同），host PIP。圖上文字逐字：「$ / TIME
+    / 12 MONTHS / J-curve」。
+  cues:
+  - 525
+  - 526
+  - 527
+  text: It's just you have to recognize the factthat it is a J-curve.And in the game
+    of content,
+- shot_id: 154
+  start: 886.24
+  end: 892.52
+  duration: 6.28
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，低頭在桌上紙本寫字後抬頭比劃（多幀動作不同但皆為本人說話）。畫面無文字。
+  cues:
+  - 527
+  - 528
+  - 529
+  - 530
+  - 531
+  text: And in the game of content,there actually aren't really any guarantees'cause
+    your work also has to be good,and it has to
+- shot_id: 155
+  start: 892.52
+  end: 899.28
+  duration: 6.76
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，稍近景，手持筆比劃、翻動桌上筆記本。畫面無文字。
+  cues:
+  - 531
+  - 532
+  - 533
+  - 534
+  text: and you might not necessarily know that,but this is not a very quick way of
+    making money.If you want a quicker way of ma
+- shot_id: 156
+  start: 899.28
+  end: 901.6
+  duration: 2.32
+  type: diagram
+  note: 卡片大卡：俯拍手在空白筆記本用麥克筆畫新圖表座標軸（縱軸＋帶箭頭橫軸），host PIP。畫面暫無文字（僅線條）。
+  cues:
+  - 534
+  - 535
+  text: what you're looking for is a non J-curve business,which is, for example, let's
+    say this is time,
+- shot_id: 157
+  start: 901.6
+  end: 907.84
+  duration: 6.24
+  type: diagram
+  note: 卡片式 layout：大卡為俯拍手持 Sharpie 在螺旋筆記本上畫圖表（host PIP 右側說話）。a 幀正寫「S…」，b/c 幀畫出座標軸；畫面文字：「$」（Y
+    軸）、「TIME」（X 軸）。手繪概念圖進行中。
+  cues:
+  - 535
+  - 536
+  - 537
+  - 538
+  - 539
+  text: which is, for example, let's say this is time,let's say this is money,and
+    you're starting over here.You're looking for s
+- shot_id: 158
+  start: 907.84
+  end: 919.88
+  duration: 12.04
+  type: diagram
+  note: 同一手繪筆記本座標圖續畫（host PIP）：加上兩條上升曲線並標註。畫面文字：「$」「TIME」「NON-J-CURVE」（a 幀只寫到「NO M…」，b/c
+    幀完成）。
+  cues:
+  - 539
+  - 540
+  - 541
+  - 542
+  - 543
+  - 544
+  - 545
+  - 546
+  - 547
+  text: that lets you make money basically immediately.This is a non J-curve business.And
+    then it could look like this,or it cou
+- shot_id: 159
+  start: 919.88
+  end: 925.44
+  duration: 5.56
+  type: diagram
+  note: 手繪座標圖續（host PIP）：曲線起點畫出先下彎再上的箭頭（J 曲線示意），開始寫新標註。畫面文字：「$」「TIME」「NON-J-CURVE」，b
+    幀正寫「SERVI…」。
+  cues:
+  - 547
+  - 548
+  - 549
+  text: and it's not getting you a return just yet.And non J-curve businessestend
+    to be service-based businesses.
+- shot_id: 160
+  start: 925.44
+  end: 928.2
+  duration: 2.76
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，手上拿著剛畫的筆記本比劃後放下。無畫面文字。
+  cues:
+  - 549
+  - 550
+  - 551
+  text: tend to be service-based businesses.Actually, let's add some more nuance here.They,
+    okay, so we've got service,
+- shot_id: 161
+  start: 928.2
+  end: 931.52
+  duration: 3.32
+  type: diagram
+  note: 俯拍筆記本新頁（host PIP）：手寫三個欄位標題。畫面文字：a 幀「SERVI…」，b 幀完成「SERVICE PRODUCT CONTEN(T)」。
+  cues:
+  - 551
+  - 552
+  - 553
+  text: They, okay, so we've got service,we've got product, and we've got content.We've
+    got those three different types of busin
+- shot_id: 162
+  start: 931.52
+  end: 935.52
+  duration: 4.0
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，手持 Sharpie 比手勢。無畫面文字。
+  cues:
+  - 553
+  - 554
+  - 555
+  - 556
+  text: 'We''ve got those three different types of business.Within service, product,
+    and content,you can have J-curve,and you can '
+- shot_id: 163
+  start: 935.52
+  end: 941.04
+  duration: 5.52
+  type: diagram
+  note: 俯拍筆記本（host PIP）：三欄標題下方開始寫新字。畫面文字：「SERVICE PRODUCT CONTENT」，b 幀正寫「FRI…」（a 幀畫面失焦）。
+  cues:
+  - 556
+  - 557
+  - 558
+  - 559
+  text: and you can have non J-curve businesses.The crucial determining factoris the
+    sort of the friction of sales process.And s
+- shot_id: 164
+  start: 941.04
+  end: 947.8
+  duration: 6.76
+  type: kol
+  note: 大卡為 Deep Dive podcast 訪談片段——酒紅色襯衫的落腮鬍男性來賓（Daniel Priestly）坐在麥克風前（host PIP
+    右側）。b/c 幀左下角出現節目名牌：「DEEP DIVE」「Deep Dive with Ali Abdaal」「S4 E6 - Daniel Priestly」＋Google
+    Podcasts/Apple Podcasts/Spotify 圖示。
+  cues:
+  - 559
+  - 560
+  - 561
+  - 562
+  - 563
+  text: And shout out to my friend and mentor, Daniel Priestley,who we also had on
+    the "Deep Dive" podcast,link up there and dow
+- shot_id: 165
+  start: 947.8
+  end: 949.4
+  duration: 1.6
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，雙手張開比手勢。無畫面文字。
+  cues:
+  - 563
+  - 564
+  text: of thinking about business.Let's say you go into the local supermarket,
+- shot_id: 166
+  start: 949.4
+  end: 949.84
+  duration: 0.44
+  type: stock
+  note: 大卡為主持人本人檔案實拍——穿灰色連帽衫走在超市蔬果區（host PIP 右側）。背景超市招牌文字（威爾斯語/英語）：「Ffrwythau Fruit」「Llysiau
+    Vegetables」「Tatws Potatoes」「Moron Carrots」等。
+  cues:
+  - 564
+  - 565
+  text: Let's say you go into the local supermarket,and you wanna buy some chocolate,
+- shot_id: 167
+  start: 949.84
+  end: 950.88
+  duration: 1.04
+  type: stock
+  note: 同上超市檔案實拍延續（本人 B-roll，host PIP）：主持人在蔬果貨架旁側面近景。背景招牌文字：「Becws」「Moron Carrots」等。
+  cues:
+  - 565
+  text: and you wanna buy some chocolate,
+- shot_id: 168
+  start: 950.88
+  end: 952.48
+  duration: 1.6
+  type: stock
+  note: 大卡為圖庫實拍（host PIP）：收銀台前顧客用手機 NFC 感應刷卡機付款，紅衣店員手持機器。無設計文字。
+  cues:
+  - 566
+  - 567
+  text: and then you go to the checkout,you buy the thing, and it's done.
+- shot_id: 169
+  start: 952.48
+  end: 952.84
+  duration: 0.36
+  type: stock
+  note: 大卡為檔案實拍（host PIP）：推著裝滿購物袋的購物車走出結帳區（第一人稱/本人視角 handheld）。無畫面文字。
+  cues:
+  - 567
+  text: you buy the thing, and it's done.
+- shot_id: 170
+  start: 952.84
+  end: 953.56
+  duration: 0.72
+  type: stock
+  note: 卡片式 layout：大卡為超市內第一人稱推購物車實拍（車內裝滿購物袋、遠處花束攤位），右側圓角 host PIP 說話。畫面無文字。
+  cues:
+  - 567
+  - 568
+  text: you buy the thing, and it's done.Cool, that's a fairly low friction sales
+    process.
+- shot_id: 171
+  start: 953.56
+  end: 956.84
+  duration: 3.28
+  type: aroll
+  note: 主持人全畫面對鏡頭說話並比手勢，白色麥克風、書架與檯燈背景。畫面無文字。
+  cues:
+  - 568
+  - 569
+  text: Cool, that's a fairly low friction sales process.You just walk in, you pick
+    the thing, and you walk out.
+- shot_id: 172
+  start: 956.84
+  end: 963.32
+  duration: 6.48
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，雙手交替比劃。畫面無文字。
+  cues:
+  - 569
+  - 570
+  - 571
+  - 572
+  - 573
+  text: You just walk in, you pick the thing, and you walk out.Or alternatively, let's
+    say you wanna buy somethingon Amazon, aga
+- shot_id: 173
+  start: 963.32
+  end: 967.08
+  duration: 3.76
+  type: diagram
+  note: 卡片式 layout：大卡為手繪筆記本手指指向手繪框圖，文字「SERVICE / PRODUCT / CONTENT」與框內「FRICTION ↑
+    THE SALES PROCESS」；右側 host PIP 低頭看筆記說話。
+  cues:
+  - 573
+  - 574
+  - 575
+  text: and it arrives at your door.When you have a low friction sales process,you
+    tend to get a J-curve business.
+- shot_id: 174
+  start: 967.08
+  end: 971.72
+  duration: 4.64
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，手持筆、戴手錶。畫面無文字。
+  cues:
+  - 576
+  - 577
+  text: So for example, a supermarket is a very, very,very J-curve business in that
+    you have to invest
+- shot_id: 175
+  start: 971.72
+  end: 973.68
+  duration: 1.96
+  type: stock
+  note: 卡片式 layout：大卡為圖庫實拍——藍天下多座紅白塔式起重機與興建中大樓工地；右側 host PIP 說話。畫面無文字。
+  cues:
+  - 577
+  - 578
+  text: very J-curve business in that you have to investa lot of time, money, effort,
+    loads and loads of money
+- shot_id: 176
+  start: 973.68
+  end: 975.4
+  duration: 1.72
+  type: stock
+  note: 卡片式 layout：大卡為圖庫實拍——大型廠房/倉庫內部（藍色鋼構、黃色欄杆、天車吊具）；右側 host PIP 說話。畫面無文字。
+  cues:
+  - 578
+  - 579
+  text: a lot of time, money, effort, loads and loads of moneyinto building the premises,
+    getting the stuff,
+- shot_id: 177
+  start: 975.4
+  end: 976.92
+  duration: 1.52
+  type: stock
+  note: 卡片式 layout：大卡為圖庫實拍——超市入口成排紅色購物推車（背景賣場燈光散景）；右側 host PIP 說話。畫面無文字。
+  cues:
+  - 579
+  - 580
+  - 581
+  text: into building the premises, getting the stuff,getting the stock, and everything,
+    and everything,and everything, and then
+- shot_id: 178
+  start: 976.92
+  end: 978.56
+  duration: 1.64
+  type: stock
+  note: 卡片式 layout：大卡為圖庫實拍——超市蔬果區番茄貨架與黑板價牌（西里爾文字「44-50」等，非設計 overlay，為場景內文字）；右側 host
+    PIP 說話。
+  cues:
+  - 581
+  text: and everything, and then at some point,
+- shot_id: 179
+  start: 978.56
+  end: 981.32
+  duration: 2.76
+  type: stock
+  note: 卡片式 layout：大卡為圖庫實拍——購物車內第一人稱廣角視角，車內滿載蔬果、推車者在後方，動態模糊；右側 host PIP 說話。畫面無文字。
+  cues:
+  - 581
+  - 582
+  - 583
+  text: 'and everything, and then at some point,you''re hoping that the low friction
+    sales processmeans that loads of people will '
+- shot_id: 180
+  start: 981.32
+  end: 982.48
+  duration: 1.16
+  type: stock
+  note: 卡片式 layout：大卡為圖庫實拍——超市玻璃自動門入口外觀，b 幀有紅衣長者推購物車；右側 host PIP 說話並比手勢。畫面無 overlay
+    文字。
+  cues:
+  - 583
+  text: means that loads of people will buy from your supermarket,
+- shot_id: 181
+  start: 982.48
+  end: 983.84
+  duration: 1.36
+  type: stock
+  note: 卡片式 layout：大卡為同一超市入口的縮時/長曝光實拍（顧客動態模糊進出）；右側 host PIP 說話。畫面無文字。
+  cues:
+  - 583
+  - 584
+  text: means that loads of people will buy from your supermarket,and eventually you'll
+    start to make money.
+- shot_id: 182
+  start: 983.84
+  end: 984.72
+  duration: 0.88
+  type: stock
+  note: 卡片式 layout：大卡延續同一超市入口縮時實拍（模糊人影進出自動門）；右側 host PIP 說話。畫面無文字。
+  cues:
+  - 584
+  text: and eventually you'll start to make money.
+- shot_id: 183
+  start: 984.72
+  end: 987.2
+  duration: 2.48
+  type: aroll
+  note: Ali 全畫面對鏡頭說話，明亮房間書架背景，白色麥克風；無畫面文字。
+  cues:
+  - 584
+  - 585
+  - 586
+  text: and eventually you'll start to make money.But now imagine, what does a high
+    friction sales processlook like?
+- shot_id: 184
+  start: 987.2
+  end: 991.8
+  duration: 4.6
+  type: aroll
+  note: Ali 全畫面對鏡頭說話並比手勢，同一房間場景；無畫面文字。
+  cues:
+  - 586
+  - 587
+  - 588
+  - 589
+  text: look like?A high friction sales process is when a businesshas to try and actually
+    convince someoneto part with their mon
+- shot_id: 185
+  start: 991.8
+  end: 996.16
+  duration: 4.36
+  type: motion_graphic
+  note: 粉彩漸層卡片式 layout：大卡為扁平風動畫（黃衣卡通人物＋齒輪＋桃紅色文字框，文字為抽象線條不可讀），右側圓角 host PIP 說話。
+  cues:
+  - 589
+  - 590
+  - 591
+  - 592
+  text: to part with their money.So for example, let's say I'm a web designer,and
+    I need to get clients.I have friction to my sa
+- shot_id: 186
+  start: 996.16
+  end: 1000.68
+  duration: 4.52
+  type: motion_graphic
+  note: 卡片式 layout：大卡為扁平動畫——黃衣女子用筆電，旁邊兩張五星評價卡（星星＋頭像＋圓餅圖），host PIP 說話；無可讀文字。
+  cues:
+  - 592
+  - 593
+  - 594
+  text: I have friction to my sales process,because I need to go out and find the
+    clients,and I need to hop on a call with them,
+- shot_id: 187
+  start: 1000.68
+  end: 1004.92
+  duration: 4.24
+  type: motion_graphic
+  note: 卡片式 layout：大卡為扁平動畫——戴耳機女子在筆電前客服/通話場景，周圍頭像對話卡、月曆、郵件圖示，host PIP 說話；無可讀文字。
+  cues:
+  - 594
+  - 595
+  - 596
+  - 597
+  text: and I need to hop on a call with them,and I need to see what they want,and
+    I need to understand their requirements,and t
+- shot_id: 188
+  start: 1004.92
+  end: 1008.6
+  duration: 3.68
+  type: motion_graphic
+  note: 卡片式 layout：大卡為扁平動畫——紫髮男子盤腿用筆電、背後網頁版面，b 幀加入燈泡與工具 icon（T、</>、齒輪、鋼筆），host PIP
+    說話；無可讀文字。
+  cues:
+  - 597
+  - 598
+  text: and then once I've done that, I can give them a proposal,and then they can
+    choose to pay me for my services.
+- shot_id: 189
+  start: 1008.6
+  end: 1014.88
+  duration: 6.28
+  type: aroll
+  note: Ali 全畫面對鏡頭說話，雙手比劃手勢；無畫面文字。
+  cues:
+  - 598
+  - 599
+  - 600
+  - 601
+  text: and then they can choose to pay me for my services.Loads of friction in that
+    particular sales process,because someone is
+- shot_id: 190
+  start: 1014.88
+  end: 1030.36
+  duration: 15.48
+  type: stock
+  note: 卡片式 layout：大卡為 Ali 本人檔案實拍——俯拍手在筆記本上寫字，寫「SERVICE / PRODUCT / CONTENT」及「…ON
+    A …ROCESS」（a 幀）、「CONTENT：1 WRITER 2 CONTENT CURATOR｜SERVICES：3 THUMBNAIL DES…」（c
+    幀），host PIP。b 幀（中段）短暫切為滿版 motion graphic：白底圓角方塊內綠色圓圈數字 3，上方小方塊 4、5、6 與 icon。
+  cues:
+  - 601
+  - 602
+  - 603
+  - 604
+  - 605
+  - 606
+  - 607
+  - 608
+  - 609
+  text: 'or like an easy product, it''s a conversation.And that brings us to this
+    whole services stuff,because service businesses '
+- shot_id: 191
+  start: 1030.36
+  end: 1037.04
+  duration: 6.68
+  type: aroll
+  note: Ali 全畫面對鏡頭說話，手勢比劃；無畫面文字。
+  cues:
+  - 609
+  - 610
+  - 611
+  - 612
+  - 613
+  text: 'or people who are delighted to pay for that value.Now one category of those
+    sorts of peopleis YouTubers like me.We have '
+- shot_id: 192
+  start: 1037.04
+  end: 1040.16
+  duration: 3.12
+  type: screen_recording
+  note: 卡片式 layout：大卡為 YouTube 首頁縮圖牆滾動螢幕錄影（可見「13 LIFE LESSONS」「INSIDE APPLE PARK」「A
+    day in my life | Lex Fridman」等縮圖標題），host PIP 說話。
+  cues:
+  - 613
+  - 614
+  text: because we know about the importance of thumbnails.And so if you can be a
+    thumbnail designer for YouTubers,
+- shot_id: 193
+  start: 1040.16
+  end: 1043.32
+  duration: 3.16
+  type: screen_recording
+  note: 卡片式 layout：大卡為 MrBeast 頻道影片列表滾動螢幕錄影（縮圖標題如「Would You Swim With Sharks For $100,000?」「$456,000
+    Squid Game In Real Life!」「I Cleaned The World's Dirtiest Beach」），host PIP 說話。
+  cues:
+  - 614
+  - 615
+  - 616
+  text: And so if you can be a thumbnail designer for YouTubers,that is a very reasonable
+    way of making moneythrough the interne
+- shot_id: 194
+  start: 1043.32
+  end: 1046.76
+  duration: 3.44
+  type: screen_recording
+  note: 卡片式 layout：大卡為 Ali 自家 Deep Dive podcast 頻道影片列表滾動螢幕錄影（縮圖如「The science of compassion」「Your
+    life is a game」「@mkbhd Gives His Opinion On YouTube Shorts」），host PIP 說話。
+  cues:
+  - 616
+  - 617
+  - 618
+  text: through the internet in a way that's funand freedom and flexibility and financesand
+    all this kind of fun stuff.
+- shot_id: 195
+  start: 1046.76
+  end: 1049.56
+  duration: 2.8
+  type: aroll
+  note: Ali 全畫面對鏡頭說話，手放桌上放鬆姿態；無畫面文字。
+  cues:
+  - 618
+  - 619
+  - 620
+  text: and all this kind of fun stuff.And I wanna share a couple of examples here.So
+    there's this guy Dil Tomer,
+- shot_id: 196
+  start: 1049.56
+  end: 1055.2
+  duration: 5.64
+  type: doc_screenshot
+  note: Business Insider 式新聞頁截圖大卡＋host PIP，逐步黃色 highlight 標題；文字：「Premium HOME > MEDIA」「A
+    19-year-old has turned designing YouTube thumbnails into a full-time job. Here's
+    what he earns.」「Marta Biino Aug 15, 2022, 11:04 PM GMT+5:30」；a 幀僅 highlight「A
+    19-year-old」，b 幀整句 highlight。照片為戴墨鏡青年於城市背景。
+  cues:
+  - 620
+  - 621
+  - 622
+  - 623
+  - 624
+  text: So there's this guy Dil Tomer,and there's this article that talks abouthow
+    this guy at the age of 19turned designing thu
+- shot_id: 197
+  start: 1055.2
+  end: 1058.92
+  duration: 3.72
+  type: doc_screenshot
+  note: 同篇文章內文卡＋host PIP，逐步黃 highlight；文字（節錄）：「YouTube has always been my passion...
+    I started my own YouTube channel at the age of 13, in 2016, focused on gaming...
+    I kept making thumbnails for other gaming YouTubers... My breakthrough in the
+    world of thumbnail designing came in December 2021... I would need a "real life"
+    job.」a→b 幀 highlight 範圍擴大。
+  cues:
+  - 624
+  - 625
+  - 626
+  - 627
+  text: into a full-time job.He began making thumbnails for gaming YouTuberswhen he
+    was still in school.And when he started off,
+- shot_id: 198
+  start: 1058.92
+  end: 1061.56
+  duration: 2.64
+  type: doc_screenshot
+  note: 同文章下一段卡＋host PIP；文字（節錄）：「When I started off, one thumbnail would cost about
+    $15. Now I charge $250... I make $5,000 to $6,000 a month. This is a dream job...
+    A thumbnail can literally determine whether a user will click on a video...」b
+    幀 highlight「When I started off, one thumbnail would cost」。
+  cues:
+  - 628
+  - 629
+  text: he would sell one of these thumbnails to his clientsfor about $15.
+- shot_id: 199
+  start: 1061.56
+  end: 1072.04
+  duration: 10.48
+  type: aroll
+  note: 主持人 Ali 全畫面對鏡頭說話，明亮房間、白色麥克風、書架背景；無畫面文字。
+  cues:
+  - 629
+  - 630
+  - 631
+  - 632
+  - 633
+  - 634
+  - 635
+  text: for about $15.But after graduating high school,he was looking for opportunitiesand
+    he realised that some other big YouTu
+- shot_id: 200
+  start: 1072.04
+  end: 1080.44
+  duration: 8.4
+  type: doc_screenshot
+  note: 延續 shot 198 文章卡＋host PIP，highlight 逐步推進：a 幀游標式小 highlight，b 幀「Now I charge
+    $250,」，c 幀加上「With the clients that I have, I make $5,000 to $6,000 a month.」皆黃
+    highlight。
+  cues:
+  - 635
+  - 636
+  - 637
+  - 638
+  - 639
+  text: and had done the thing, he managed to land that job.And now he charges over
+    $250 for a single thumbnail.And he's got mul
+- shot_id: 201
+  start: 1080.44
+  end: 1086.4
+  duration: 5.96
+  type: aroll
+  note: 主持人全畫面對鏡頭說話；無畫面文字。
+  cues:
+  - 639
+  - 640
+  - 641
+  - 642
+  text: and he's probably making a stupidly insane amount of money.And so this thing
+    that started off as a side hustle,him in sc
+- shot_id: 202
+  start: 1086.4
+  end: 1088.84
+  duration: 2.44
+  type: aroll
+  note: 主持人全畫面對鏡頭說話、手勢豐富；無畫面文字。
+  cues:
+  - 642
+  - 643
+  text: probably a pirated version of Photoshop, not gonna lie.No shade, I pirated
+    Photoshop as well back in the day.
+- shot_id: 203
+  start: 1088.84
+  end: 1096.32
+  duration: 7.48
+  type: aroll
+  note: 主持人全畫面說話，低頭停頓後繼續；無畫面文字。
+  cues:
+  - 643
+  - 644
+  - 645
+  - 646
+  - 647
+  text: No shade, I pirated Photoshop as well back in the day.But he probably just
+    started this off as a side hustle,and now he'
+- shot_id: 204
+  start: 1096.32
+  end: 1104.12
+  duration: 7.8
+  type: aroll
+  note: 主持人全畫面說話；b/c 幀左上彈出圓角人物照 overlay（棕髮微笑男子）＋藍色標籤「@mattbrighton_」（a 幀尚未出現，b 幀標籤動畫中）。
+  cues:
+  - 647
+  - 648
+  - 649
+  - 650
+  - 651
+  - 652
+  text: doing thumbnail design as a service.The other example here is one of the alumnifrom
+    my part-time YouTuber Academy.His na
+- shot_id: 205
+  start: 1104.12
+  end: 1112.44
+  duration: 8.32
+  type: doc_screenshot
+  note: 'Medium 文章截圖大卡＋host PIP；a 幀標題頁：「Make Money on Fiverr: What I Learnt from Making
+    over $10,000 Designing YouTube Thumbnails」「Matt Brighton · Follow · 5 min read
+    · Sep 16, 2020」；b/c 幀切至 Fiverr Earnings 後台截圖：「Earnings」「Net Income $10,219.70」「Withdrawn
+    $9,173.50」「Used for Purchases $40」「Pending Clearance $642.40」「Available for Withdrawal
+    $363.80」「Export to CSV」及多列「Funds Pending Clearance (view order) / Early Payout」。多幀內容不同但同屬該文章/後台截圖序列。'
+  cues:
+  - 652
+  - 653
+  - 654
+  - 655
+  - 656
+  - 657
+  - 658
+  text: he made money on Fiverr designing thumbnails.And in this article, he talks
+    abouthow he made over $10,000from designing t
+- shot_id: 206
+  start: 1112.44
+  end: 1117.2
+  duration: 4.76
+  type: aroll
+  note: 主持人全畫面對鏡頭說話、比手勢；無畫面文字。
+  cues:
+  - 658
+  - 659
+  - 660
+  text: but it is to say that it is an example of a servicethat you can provide to
+    someone who is willing to pay,who is delighte
+- shot_id: 207
+  start: 1117.2
+  end: 1129.96
+  duration: 12.76
+  type: aroll
+  note: 主持人全畫面說話，動作誇張（雙手張開、扮鬼臉式表情）；無畫面文字。
+  cues:
+  - 660
+  - 661
+  - 662
+  - 663
+  - 664
+  - 665
+  - 666
+  - 667
+  - 668
+  text: 'who is delighted to pay money for that service.I''ve mentioned this thumbnail
+    design thinga couple of times in videos in '
+- shot_id: 208
+  start: 1129.96
+  end: 1132.28
+  duration: 2.32
+  type: aroll
+  note: 主持人全畫面對鏡頭說話、手勢指向左側；無畫面文字。
+  cues:
+  - 668
+  - 669
+  text: Mostly, they're not very good.If you want to land a YouTuber client as a thumbnail
+    designer
+- shot_id: 209
+  start: 1132.28
+  end: 1133.2
+  duration: 0.92
+  type: stock
+  note: 卡片式 layout：大卡是 Ali 本人在工作室書桌前調整器材/坐下打鍵盤的檔案 B-roll（螢幕、鍵盤、Throne of Glass 書箱），右側
+    host PIP 說話。無文字。
+  cues:
+  - 669
+  - 670
+  text: If you want to land a YouTuber client as a thumbnail designerjust recreate
+    some of their thumbnails
+- shot_id: 210
+  start: 1133.2
+  end: 1134.08
+  duration: 0.88
+  type: stock
+  note: 同版式：大卡是 Ali 本人檔案 B-roll，站著伸手調整頭頂柔光燈/相機，b 幀改為手持大張灰色背景板。host PIP。無文字。
+  cues:
+  - 670
+  text: just recreate some of their thumbnails
+- shot_id: 211
+  start: 1134.08
+  end: 1135.6
+  duration: 1.52
+  type: stock
+  note: 大卡是 Ali 本人檔案 B-roll：在書桌前鋪白色大理石紋背景紙、擺鍵盤佈置拍攝場景。host PIP。無文字。
+  cues:
+  - 670
+  - 671
+  text: just recreate some of their thumbnailsand do a better job
+- shot_id: 212
+  start: 1135.6
+  end: 1137.6
+  duration: 2.0
+  type: stock
+  note: 大卡是 Ali 本人檔案 B-roll：站在佈置好的桌前講電話/低頭看手中小物，然後站定看向桌面。host PIP。無文字。
+  cues:
+  - 671
+  - 672
+  text: and do a better jobthan what their current thumbnails are already.
+- shot_id: 213
+  start: 1137.6
+  end: 1138.68
+  duration: 1.08
+  type: stock
+  note: 大卡是俯拍特寫檔案 B-roll：雙手把 MacBook 擺到大理石紋桌面正中（旁有機械鍵盤、Stream Deck）。host PIP。無文字。
+  cues:
+  - 672
+  - 673
+  text: than what their current thumbnails are already.Keep in mind kind of the vibiness
+- shot_id: 214
+  start: 1138.68
+  end: 1140.44
+  duration: 1.76
+  type: stock
+  note: 大卡是相機取景器畫面的檔案 B-roll：MacBook 俯拍構圖，帶對焦水平線 overlay 與參數列「1/160 F2.8 ±0.0 ISO
+    AUTO」。host PIP。
+  cues:
+  - 673
+  - 674
+  text: Keep in mind kind of the vibinessand the brand that they're trying to create.
+- shot_id: 215
+  start: 1140.44
+  end: 1143.96
+  duration: 3.52
+  type: aroll
+  note: Ali 滿版對鏡頭說話，白麥克風、書架背景，雙手張開比劃。無畫面文字。
+  cues:
+  - 674
+  - 675
+  - 676
+  - 677
+  - 678
+  text: and the brand that they're trying to create.And if you can do that,you're
+    basically guaranteed to get a job.Still to thi
+- shot_id: 216
+  start: 1143.96
+  end: 1150.12
+  duration: 6.16
+  type: doc_screenshot
+  note: '大卡是 Notion 徵才頁截圖，host PIP。文字：「We''re Hiring a Thumbnail Designer / Type:
+    Part-time or full-time (open to either) / Location: Remote / Pay: £34,000 - £45,000
+    / Hey friends, We''re looking for a thumbnail designer to join our team for a
+    minimum of 3 days per week… / What You''ll Be Doing…（含 my YouTube channel、my podcast
+    Deep Dive、A/B test、Click-Through Rate、small team of 13 people 等 bullet）」。b/c 幀向下捲動。'
+  cues:
+  - 678
+  - 679
+  - 680
+  - 681
+  - 682
+  text: we are still looking for thumbnail designers,and still to this day,anytime
+    someone emails us and says,"Hey, I've redesig
+- shot_id: 217
+  start: 1150.12
+  end: 1154.64
+  duration: 4.52
+  type: aroll
+  note: Ali 滿版對鏡頭說話，手勢比劃。無畫面文字。
+  cues:
+  - 682
+  - 683
+  - 684
+  - 685
+  - 686
+  text: '"What do you think?"We look at them and we decide,do we wanna hire this person
+    or not?Usually the answer is nobecause us'
+- shot_id: 218
+  start: 1154.64
+  end: 1181.56
+  duration: 26.92
+  type: aroll
+  note: 主體是 Ali 滿版對鏡頭說話；b 幀切為粉彩背景 motion graphic（人物工作 icon＋4/5/6 數字 icon 列），c 幀左側疊入人物照片卡
+    overlay 標「@DrewBirnie」。多幀不一致：中段插入圖形卡，整鏡以 aroll 為主。
+  cues:
+  - 686
+  - 687
+  - 688
+  - 689
+  - 690
+  - 691
+  - 692
+  - 693
+  - 694
+  - 695
+  - 696
+  - 697
+  - 698
+  - 699
+  - 700
+  - 701
+  - 702
+  - 703
+  text: 'because usually they''re not very good,but the opportunity is thereand it''s
+    definitely a skill that anyone can learn.You '
+- shot_id: 219
+  start: 1181.56
+  end: 1207.8
+  duration: 26.24
+  type: kol
+  note: 他人影片片段：Zoom 式左右分割訪談，左為長髮男（Drew Birnie）、右為白衣鬍子男。左下 overlay 標籤：「Backstage Careers」。
+  cues:
+  - 703
+  - 704
+  - 705
+  - 706
+  - 707
+  - 708
+  - 709
+  - 710
+  - 711
+  - 712
+  - 713
+  - 714
+  text: And here's a clip where he talks about how he did it.- I was actually, I was
+    in my PhD program.I was taking this class t
+- shot_id: 220
+  start: 1207.8
+  end: 1221.4
+  duration: 13.6
+  type: kol
+  note: 他人影片片段續：白衣鬍子男滿版說話（客廳沙發背景），左下 overlay：「Backstage Careers」。
+  cues:
+  - 714
+  - 715
+  - 716
+  - 717
+  - 718
+  - 719
+  - 720
+  - 721
+  text: 'And I read the description and it''s like,I need somebody who can research.I
+    need somebody who can write.I need somebody '
+- shot_id: 221
+  start: 1221.4
+  end: 1227.08
+  duration: 5.68
+  type: aroll
+  note: Ali 滿版對鏡頭說話；b 幀左右疊入兩張人物照片卡 overlay，標籤「@bpoppenheimer」「@RyanHoliday」。仍以 aroll
+    為主，note 註明 overlay。
+  cues:
+  - 721
+  - 722
+  - 723
+  text: '- Similarly, there''s a friend of ours called Billy Oppenheimerwho is Ryan
+    Holiday''s research assistant.And he landed tha'
+- shot_id: 222
+  start: 1227.08
+  end: 1230.04
+  duration: 2.96
+  type: doc_screenshot
+  note: Billy Oppenheimer 寫給 Ryan Holiday 的 email 截圖大卡，host PIP 在右側說話。文字（節錄可見部分）：「Billy
+    Oppenheimer / to ryan.holiday / Hi Ryan, First, thank you for the work you do.
+    Your books, dailystoic.com. ryanholiday.net have been a huge influence. Second,
+    I wouldn't call myself a writer but I love books, always have. … Third, I'm flummoxed
+    by your output. follow you on Strava, and geez, thought was an active dude! …
+    Last, if you ever need help in that devouring of material, I'm here, hand in the
+    air, to be your guy. don't need a cent, the way I see it, your books already send
+    me into a rabbit hole of research so if could concentrate that research at your
+    direction to help you get a book out, that'd be plenty compensation」
+  cues:
+  - 723
+  - 724
+  - 725
+  text: And he landed that gig through a cold email.This is the cold email that Billy
+    sent to Ryanto land that job.
+- shot_id: 223
+  start: 1230.04
+  end: 1236.68
+  duration: 6.64
+  type: doc_screenshot
+  note: 同一封 Billy Oppenheimer email 截圖放大成滿版（無 PIP），全文可讀。文字同 shot 222 全文，含「My freshman
+    year philosophy survey's professor said…‘the value in this material is not in
+    the novelty, it's in the utility’. You call Meditations a "quake book"…‘this stuff
+    is actionable; apply it to your life.’…a daily 6-miler.」
+  cues:
+  - 725
+  - 726
+  - 727
+  - 728
+  - 729
+  text: to land that job.Now I'd recommend you pause the videoand read this in its
+    entiretybecause there are a lot of lessons yo
+- shot_id: 224
+  start: 1236.68
+  end: 1242.8
+  duration: 6.12
+  type: aroll
+  note: Ali 在明亮房間（書架、白麥克風、落地燈）全畫面對鏡頭說話，無畫面文字。
+  cues:
+  - 729
+  - 730
+  - 731
+  - 732
+  - 733
+  text: from this cold email about how to send a good cold email.And this email just
+    makes it so easyfor someone like Ryan Holid
+- shot_id: 225
+  start: 1242.8
+  end: 1244.04
+  duration: 1.24
+  type: kol
+  note: 大卡：另一位穿白立領襯衫戴細框眼鏡的男子與長髮女子看筆電交談的實拍片段（他人/團隊片段，非 Ali），host PIP 右側。無畫面文字。
+  cues:
+  - 733
+  - 734
+  - 735
+  text: for I don't know how long, but it's been quite a while.And similarly, we've
+    got peoplewho do this sort of research assis
+- shot_id: 226
+  start: 1244.04
+  end: 1246.92
+  duration: 2.88
+  type: kol
+  note: 大卡：同前景男子與亞裔女子並肩坐木桌前用 MacBook（粉彩貼皮）工作的實拍片段，host PIP 右側。無畫面文字。與 shot 225 為同場景不同機位。
+  cues:
+  - 735
+  - 736
+  - 737
+  text: who do this sort of research assistancy type stuffon our team.We've got Inez,
+    we've got Alex, we've got Mike.
+- shot_id: 227
+  start: 1246.92
+  end: 1249.6
+  duration: 2.68
+  type: kol
+  note: 大卡：三人（前述男子、女子、紅髮男子）在會議桌前看筆電工作的實拍片段，host PIP 右側。無畫面文字。
+  cues:
+  - 737
+  - 738
+  text: We've got Inez, we've got Alex, we've got Mike.They do a few different things,
+- shot_id: 228
+  start: 1249.6
+  end: 1267.4
+  duration: 17.8
+  type: aroll
+  note: Ali 全畫面對鏡頭說話，手勢比劃（後段指向手錶）。無畫面文字。
+  cues:
+  - 738
+  - 739
+  - 740
+  - 741
+  - 742
+  - 743
+  - 744
+  - 745
+  - 746
+  - 747
+  - 748
+  text: They do a few different things,but essentially any big content creatorand
+    especially any author who writes multiple book
+- shot_id: 229
+  start: 1267.4
+  end: 1279.76
+  duration: 12.36
+  type: aroll
+  note: '多幀不一致：a 幀為 Ali 全畫面舉手說話（aroll）；b 幀切入粉彩背景動態圖形——白色圓角 icon 卡片列＋大「5」號圓圈 icon 與「6」icon（章節過場
+    motion graphic）；c 幀為手寫筆記本俯拍大卡＋host PIP，筆記文字：「CONTENT: 1 WRITER 2 CONTENT CURATOR
+    / SERVICES: 3 THUMBNAIL DESIGNER 4 RESEARCH ASSISTANT 5 REMOTE SALES」。以起始 aroll
+    為主分類，實為 aroll→章節動畫→筆記卡的複合鏡頭。'
+  cues:
+  - 748
+  - 749
+  - 750
+  - 751
+  - 752
+  - 753
+  - 754
+  - 755
+  - 756
+  text: that is an incredibly high value skill,which you can provide as a serviceto
+    people who are very willing and very ableand
+- shot_id: 230
+  start: 1279.76
+  end: 1287.8
+  duration: 8.04
+  type: aroll
+  note: Ali 全畫面對鏡頭說話。無畫面文字。
+  cues:
+  - 756
+  - 757
+  - 758
+  - 759
+  - 760
+  text: 'but it''s actually pretty legit.The idea behind being a remote sales repis
+    that there are lots of companies out therewho '
+- shot_id: 231
+  start: 1287.8
+  end: 1291.0
+  duration: 3.2
+  type: stock
+  note: 大卡：Ali 本人檔案實拍——穿灰帽T坐在 iMac 前工作、後段對螢幕舉手笑（本人非說話 B-roll），host PIP 右側。無畫面文字。
+  cues:
+  - 760
+  - 761
+  - 762
+  text: to be able to sell their product to their customers.And if you can be the
+    person to field those phone callsor those Zoom
+- shot_id: 232
+  start: 1291.0
+  end: 1293.64
+  duration: 2.64
+  type: stock
+  note: 大卡：過肩拍筆電上進行中的 Zoom 多人視訊會議（戴耳機年輕男子為主畫面）實拍，host PIP 右側。畫面僅 Zoom UI 細小文字，不可辨讀。偏檔案/情境實拍。
+  cues:
+  - 762
+  - 763
+  text: or those Zoom calls, to be able to talk to customers,to be able to talk them
+    through the process
+- shot_id: 233
+  start: 1293.64
+  end: 1296.72
+  duration: 3.08
+  type: stock
+  note: 大卡：白襯衫男子（shot 225 同人）與紅髮男子在攝影燈旁看筆電、桌上擺保養品產品的實拍片段（拍攝現場側拍），host PIP 右側。無可讀畫面文字。
+  cues:
+  - 763
+  - 764
+  text: to be able to talk them through the processand educate them on whether the
+    product is right for them,
+- shot_id: 234
+  start: 1296.72
+  end: 1301.28
+  duration: 4.56
+  type: aroll
+  note: Ali 全畫面對鏡頭說話，手勢比劃。無畫面文字。
+  cues:
+  - 764
+  - 765
+  - 766
+  - 767
+  text: and educate them on whether the product is right for them,then every time
+    you sell the product,you'll get some kind of c
+- shot_id: 235
+  start: 1301.28
+  end: 1308.56
+  duration: 7.28
+  type: doc_screenshot
+  note: 卡片式 layout：Twitter 個人檔案截圖（host PIP 右側），逐幀慢慢下捲。文字：「Wouter Teunissen 🥛 @WouterTeunissen
+    / I sell ads for @milkroaddaily Sold $250,000k+ worth of ads in 60 days (whilst
+    Studying full time) / 🍿Subscribe to This Week In Newsletters👇 / San Francisco,
+    CA / thisweekinnewsletters.beehiiv.com/subscribe / Joined February 2013 / 1,360
+    Following 1,563 Followers / Follow」
+  cues:
+  - 767
+  - 768
+  - 769
+  - 770
+  - 771
+  text: That is what a remote sales rep does.And this is a great example of this guy,Wouter
+    Tuynessen, I don't know how you pron
+- shot_id: 236
+  start: 1308.56
+  end: 1313.72
+  duration: 5.16
+  type: doc_screenshot
+  note: '卡片式 layout：Twitter 討論串截圖（host PIP）。a 幀：「Wouter Teunissen: This series is
+    going to blow up the Milk Road, great video! Thumbnail needs work but awesome
+    vid! @ShaanVP / youtube.com How I lost $1 Million in 1 hour from Luna / Shaan
+    Puri @ShaanVP: What should we have done for the thumbnail?」；b 幀捲到下一則、藍色 highlight「A
+    few」：「A few things i would''ve done differently: -> Get rid of your glasses (eyes
+    contain crucial emotional info for humans!). This also goes for the video itself.
+    -> Background makes image "blur too much" you aren''t standing out, instead you
+    and the two girls from the meme are.. (1/」＋縮圖「TELLING MY WIFE I JUST LOST $1 MILLION..」'
+  cues:
+  - 771
+  - 772
+  - 773
+  text: who tweeted at Sean Puri,being basically giving him some free thumbnail advice.And
+    then Sean loved the free value that h
+- shot_id: 237
+  start: 1313.72
+  end: 1314.12
+  duration: 0.4
+  type: doc_screenshot
+  note: '卡片式 layout：同討論串續捲（host PIP），附眼動熱區分析縮圖對比。a 幀：「Also」＋兩張縮圖疊綠色 heatmap（「Summary
+    / 6 USD / (-88.87%)」「ING MY WIFE I JUST / $1 MIL」）；b 幀推文：「Similarly the text is
+    in white. this doesn''t stand out. / A rule of thumb for youtube. If you have
+    text in your thumbnail, it should directly support your title. Notice the lack
+    of text in Mr Beasts thumbnail. / So for your text, if you want it to stand out
+    i recommend using..」＋MrBeast 縮圖「#20 $10,00 60M views」與「TELLING MY WIFE I JUST
+    LOST $1 MILLION.. 12:53 Milk Road Gone Wild: I just lost $1m on LUNA」'
+  cues:
+  - 773
+  - 774
+  text: And then Sean loved the free value that he provided,so he offered him an internship
+    with his company.
+- shot_id: 238
+  start: 1314.12
+  end: 1314.48
+  duration: 0.36
+  type: doc_screenshot
+  note: 卡片式 layout：推文內嵌的 YouTube 縮圖特寫截圖（host PIP）——Graham Stephan 風格哭臉縮圖。文字：「12:55
+    / I Just Lost $1.5 Million In Stocks」
+  cues:
+  - 774
+  text: so he offered him an internship with his company.
+- shot_id: 239
+  start: 1314.48
+  end: 1314.92
+  duration: 0.44
+  type: doc_screenshot
+  note: 與 238 幾乎同畫面再往下捲一點：「I Just Lost $1.5 Million In Stocks / 337K views · 5 days
+    ago / 12:55」（host PIP）
+  cues:
+  - 774
+  text: so he offered him an internship with his company.
+- shot_id: 240
+  start: 1314.92
+  end: 1317.84
+  duration: 2.92
+  type: doc_screenshot
+  note: '卡片式 layout：討論串續捲（host PIP），紅色手繪箭頭指向縮圖比較。文字：「Milk Road Gone Wild: I just lost
+    $1m on LUNA / TELLING MY WIFE I JUST LOST $1 MILLION.. / "Anyoe Who Gets This
+    Now Is Set For Life" / My Biggest Crypto Buy EVER (Expecting 110 Million Back)
+    / Wouter Teunissen: The vid was awesome, recommend adding a CTA at the end though.
+    / Also not sure how much retention is lost during the intro and outro. / Currently
+    the only people who have seen the video are probably MilkRoad fans so might not
+    be ultra representitive.」'
+  cues:
+  - 774
+  - 775
+  text: so he offered him an internship with his company.And now this guy sells ads
+    for Milk Road Daily
+- shot_id: 241
+  start: 1317.84
+  end: 1324.04
+  duration: 6.2
+  type: doc_screenshot
+  note: 卡片式 layout：討論串續捲三則（host PIP）。文字含：「Worth looking into it though / Looking at
+    balancing the branding with video rentention in regard to shortening/changing
+    the intro. / I would remove the outro completely and replace it with a CTA from
+    you to either subscribe or where you say something like (see next tweet) / That
+    being said I'm just a 20 year old guy who loves anything youtube and business
+    related. / So take everything with a grain of salt, but definitely stand by the
+    fact that the thumbnail quality DOESN'T match the quality of your commentary,
+    the editing and humour!Btw Love MFM pod! / Shaan Puri @ShaanVP:（藍 highlight）this
+    is great! if you want an internship to help us with milk road productions...dm!
+    / 10:03 PM · Jun 2, 2022 / 3 Likes」
+  cues:
+  - 775
+  - 776
+  - 777
+  - 778
+  text: And now this guy sells ads for Milk Road Dailyand has sold $250,000 worth
+    of ads in 60 dayswhile studying full-time.He's
+- shot_id: 242
+  start: 1324.04
+  end: 1330.2
+  duration: 6.16
+  type: doc_screenshot
+  note: 卡片式 layout：回捲到 Wouter Twitter 個人檔案 bio 截圖（host PIP），bio 重點句加藍色 highlight：「Sold
+    $250,000k+ worth of ads in 60 days」。其餘文字同 shot 235
+  cues:
+  - 778
+  - 779
+  - 780
+  - 781
+  - 782
+  text: 'He''s basically being a remote sales rep.This isn''t really a traditional
+    remote sales rep job,but it''s close enough that '
+- shot_id: 243
+  start: 1330.2
+  end: 1335.24
+  duration: 5.04
+  type: aroll
+  note: 主持人 Ali 全畫面對鏡頭說話，雙手攤開手勢，無畫面文字
+  cues:
+  - 782
+  - 783
+  - 784
+  - 785
+  - 786
+  text: 'which is just a cool example.But essentially he''s selling all these sponsorshipson
+    this newsletter,and he probably gets '
+- shot_id: 244
+  start: 1335.24
+  end: 1338.92
+  duration: 3.68
+  type: aroll
+  note: 主持人 Ali 全畫面對鏡頭說話（jump cut 續接），無畫面文字
+  cues:
+  - 786
+  - 787
+  - 788
+  - 789
+  text: of some of the sponsors that he sells.So if you're the sort of personwho enjoys
+    talking to people,if you like the idea o
+- shot_id: 245
+  start: 1338.92
+  end: 1341.92
+  duration: 3.0
+  type: stock
+  note: 卡片式 layout：主持人本人檔案實拍 B-roll——Ali 坐著比手勢講話（非對鏡頭、領夾麥），host PIP 右側。無畫面文字
+  cues:
+  - 789
+  - 790
+  - 791
+  text: 'if you like the idea of like picking up the phoneor going on Zoom calls and
+    selling things to people,and you think that '
+- shot_id: 246
+  start: 1341.92
+  end: 1345.28
+  duration: 3.36
+  type: stock
+  note: 卡片式 layout：實拍 B-roll——過肩拍某人用筆電開 Zoom 視訊會議（螢幕上是光頭男子），host PIP 右側；b 幀續接同景。無畫面文字，判斷為本人團隊檔案/圖庫視訊通話畫面
+  cues:
+  - 791
+  - 792
+  text: and you think that you might be good at that,you can make tons and tons of
+    money as a remote sales rep.
+- shot_id: 247
+  start: 1345.28
+  end: 1352.68
+  duration: 7.4
+  type: stock
+  note: 卡片式 layout：檔案實拍 B-roll——Ali 躺沙發上用筆電（穿條紋襪），host PIP 右側；c 幀切回主持人全畫面 aroll 說話（鏡頭尾端已切回
+    A-roll），多幀不一致
+  cues:
+  - 792
+  - 793
+  - 794
+  - 795
+  - 796
+  text: you can make tons and tons of money as a remote sales rep.And this video is
+    not gonna teach you how to do it.There are l
+- shot_id: 248
+  start: 1352.68
+  end: 1368.76
+  duration: 16.08
+  type: title_card
+  note: 多幀不一致（疑漏切）：a=主持人 aroll 對鏡頭說話；b=粉彩漸層章節卡，中央女性設計師 icon app 圖示、上方一排 5 個小 icon
+    卡，紫色大字「Web Designer」；c=筆記本手寫清單特寫＋右側圓角 host PIP，文字「CONTENT / 1 WRITER / 2 CONTENT
+    CURATOR / SERVICES / 3 THUMBNAIL DESIGNER / 4 RESEARCH ASSISTANT / 5 REMOTE SALES
+    REP / 6 WEB DES…」。以中點的 Web Designer 章節卡定型。
+  cues:
+  - 796
+  - 797
+  - 798
+  - 799
+  - 800
+  - 801
+  - 802
+  - 803
+  - 804
+  - 805
+  text: and actually teach you the ins and outs of how to do it.But it's an interesting
+    way of making moneyif you think that you
+- shot_id: 249
+  start: 1368.76
+  end: 1388.84
+  duration: 20.08
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，明亮房間書架背景，無畫面文字。
+  cues:
+  - 805
+  - 806
+  - 807
+  - 808
+  - 809
+  - 810
+  - 811
+  - 812
+  - 813
+  - 814
+  - 815
+  text: and how much startups are willing to pay for designers too.Like I was at this
+    business conferencea couple of weeks ago,a
+- shot_id: 250
+  start: 1388.84
+  end: 1401.08
+  duration: 12.24
+  type: aroll
+  note: 主持人全畫面對鏡頭說話、比手勢，無畫面文字。
+  cues:
+  - 815
+  - 816
+  - 817
+  - 818
+  - 819
+  - 820
+  - 821
+  - 822
+  - 823
+  text: to just be a web designer full-time for their startup.But if you wanna do
+    it as a side hustle initially,then A, you gott
+- shot_id: 251
+  start: 1401.08
+  end: 1424.04
+  duration: 22.96
+  type: doc_screenshot
+  note: 粉彩漸層卡片式 layout，大卡為 Side Hustle Nation 文章截圖＋滾動，右側 host PIP。標題文字「The Path from
+    "No Skills" to $3k a Month on the Side」、podcast 播放器「Nick Loper and Chris Misterek
+    / From "No Skills" to $3k」「Send me more money-making ideas」；後段捲到「Why Did You Decide
+    to Become a Self-Made Web Designer?」及「How Did You Land Your First Clients?」，黃色
+    highlight「Chris's first clients were all friends and family.」。
+  cues:
+  - 823
+  - 824
+  - 825
+  - 826
+  - 827
+  - 828
+  - 829
+  - 830
+  - 831
+  - 832
+  - 833
+  - 834
+  - 835
+  - 836
+  text: and provided you find the right sorts of people.And the example here is this
+    guy called Chris Misterek.Now around six ye
+- shot_id: 252
+  start: 1424.04
+  end: 1438.36
+  duration: 14.32
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，無畫面文字。
+  cues:
+  - 836
+  - 837
+  - 838
+  - 839
+  - 840
+  - 841
+  - 842
+  - 843
+  - 844
+  text: And now apparently he's earning over $3,000 a month.I don't know if this is
+    fully up to date,and I'm pretty sure Chris c
+- shot_id: 253
+  start: 1438.36
+  end: 1446.76
+  duration: 8.4
+  type: aroll
+  note: 主持人全畫面對鏡頭說話；a 幀左上角浮出一張黑白人物小照（戴帽微笑男子，指 Hen 本人）作 overlay，b/c 幀無 overlay、無其他文字。
+  cues:
+  - 844
+  - 845
+  - 846
+  - 847
+  - 848
+  - 849
+  text: and it's quite hard to stand out.The path I would take is what my friend Henry
+    didwhere he decided that he was gonna lea
+- shot_id: 254
+  start: 1446.76
+  end: 1450.68
+  duration: 3.92
+  type: screen_recording
+  note: 卡片式 layout：大卡為 Hen³ 作品集網站（hencubed）深紫星空風頁面滾動，右側 host PIP。文字「There's a new
+    Web Dev in town.」「Hen³」「The Wizard / The Wordsmith / The Webmaster」「Weaving Winning
+    Websites」「Because good things come in threes.」。
+  cues:
+  - 849
+  - 850
+  - 851
+  - 852
+  text: and then became so good at designing websitesthat he designed his own personal
+    portfolio website.With that went big on T
+- shot_id: 255
+  start: 1450.68
+  end: 1452.64
+  duration: 1.96
+  type: doc_screenshot
+  note: 卡片式 layout：大卡為 X/Twitter 貼文截圖（滾動），右側 host PIP。Batuhan Kara：「This week's template
+    is called nova. (Saas Template) Very soon with you @framer. I'm already excited」，圖內「Simplify
+    The Design Process Faster.」；Hen³ 回覆「The buttons & colour pick are sensational.
+    Beautiful work man!」。
+  cues:
+  - 852
+  - 853
+  text: He started engaging with all the web designers on Twitter.They started to
+    respect his work as well.
+- shot_id: 256
+  start: 1452.64
+  end: 1453.8
+  duration: 1.16
+  type: doc_screenshot
+  note: 卡片式 layout：大卡為 X/Twitter 影片貼文截圖（Highbeam Fintech / Figma Design tool 畫面，0:00/0:10
+    播放器），右側 host PIP。Hen³ 回覆「So so sick」，數據「30 / 49 / 862 / 73.7K」。
+  cues:
+  - 853
+  text: They started to respect his work as well.
+- shot_id: 257
+  start: 1453.8
+  end: 1456.0
+  duration: 2.2
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，無畫面文字。
+  cues:
+  - 853
+  - 854
+  - 855
+  text: They started to respect his work as well.And then he managed to land a bunchof
+    really high paying clients, including me,
+- shot_id: 258
+  start: 1456.0
+  end: 1460.28
+  duration: 4.28
+  type: doc_screenshot
+  note: 卡片式 layout：大卡為 X/Twitter 完整 Post 頁截圖，右側 host PIP。Hen³：「My latest project.
+    feelgoodproductivity.com / Created for @AliAbdaal's excellent new book, Feel-Good
+    Productivity. A few highlights」，右欄「Relevant people：Hen³ / Ali Abdaal」，數據「13 Reposts
+    5 Quotes 236 Likes 54 Bookmarks / 32K Views」。
+  cues:
+  - 855
+  - 856
+  - 857
+  text: of really high paying clients, including me,where I paid him a lot of money
+    to design the websitefor my book, feelgoodpr
+- shot_id: 259
+  start: 1460.28
+  end: 1464.96
+  duration: 4.68
+  type: aroll
+  note: 主持人全畫面對鏡頭說話、比手勢，無畫面文字。
+  cues:
+  - 857
+  - 858
+  - 859
+  - 860
+  text: for my book, feelgoodproductivity.com.And for Henry, this thing that started
+    off as a side hustle,he had no background i
+- shot_id: 260
+  start: 1464.96
+  end: 1472.28
+  duration: 7.32
+  type: aroll
+  note: 主持人全畫面對鏡頭說話；c 幀疊白色大字 overlay「$10,000」，a/b 幀無文字。
+  cues:
+  - 860
+  - 861
+  - 862
+  - 863
+  - 864
+  text: 'he had no experience in web design,and with dedication and practice, over
+    six months,he taught himself the skill to the '
+- shot_id: 261
+  start: 1472.28
+  end: 1484.12
+  duration: 11.84
+  type: aroll
+  note: 主持人對鏡頭說話，畫面中央疊大型白色文字 overlay；a 幀無文字，b 幀「What did you take away?」，c 幀「What
+    action point will you take?」（多幀文字不同，同一鏡頭內連續換兩句提問字卡）
+  cues:
+  - 864
+  - 865
+  - 866
+  - 867
+  - 868
+  - 869
+  - 870
+  - 871
+  text: every time he was designing a website for them.Now, if you go to the end of
+    this incredibly long video,I would love it i
+- shot_id: 262
+  start: 1484.12
+  end: 1498.6
+  duration: 14.48
+  type: aroll
+  note: 主持人全畫面對鏡頭說話並比手勢，畫面無任何文字 overlay
+  cues:
+  - 871
+  - 872
+  - 873
+  - 874
+  - 875
+  - 876
+  - 877
+  - 878
+  - 879
+  text: '''Cause you''ve watched this video for a very long time now.Most people who
+    clicked on this videowould have clicked off in'
+- shot_id: 263
+  start: 1498.6
+  end: 1516.04
+  duration: 17.44
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，c 幀雙手一攤的手勢，畫面無文字 overlay
+  cues:
+  - 879
+  - 880
+  - 881
+  - 882
+  - 883
+  - 884
+  - 885
+  - 886
+  - 887
+  - 888
+  - 889
+  text: will actually get to this point in the video.But I think without an action
+    point,stuff like this is actually totally poi
+- shot_id: 264
+  start: 1516.04
+  end: 1529.986
+  duration: 13.946
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，b/c 幀舉手指向畫面左側（似指向即將出現的元素），畫面無文字 overlay
+  cues:
+  - 889
+  - 890
+  - 891
+  - 892
+  - 893
+  - 894
+  - 895
+  - 896
+  - 897
+  - 898
+  - 899
+  - 900
+  text: as a result of this video?Now, once you've done that, in this video,we talked
+    about content and servicesas a way of maki

@@ -1,0 +1,243 @@
+shots_scanned: 130
+events:
+- shot_id: 2
+  kind: photo_inset
+  text: Steven Bartlett 黑衣肖像照，置於橙色頂欄瀏覽器視窗框內（右側），無文字
+  t_start: 1.66
+  t_end: 3.66
+- shot_id: 4
+  kind: book_cover
+  text: STEVEN BARTLETT / THE DIARY OF A CEO / THE 33 LAWS OF BUSINESS & LIFE
+  t_start: 6.67
+  t_end: 7.67
+- shot_id: 6
+  kind: book_cover
+  text: 關於事業與人生的 33 條法則 / 執行長日記 / THE DIARY OF A CEO / 史蒂文·巴列特——著 張嘉倫——譯 / THE 33
+    LAWS OF BUSINESS AND LIFE
+  t_start: 9.21
+  t_end: 12.21
+- shot_id: 25
+  kind: book_cover
+  text: STEVEN BARTLETT / THE DIARY OF A CEO / THE 33 LAWS OF BUSINESS & LIFE
+  t_start: 59.68
+  t_end: 65.68
+- shot_id: 27
+  kind: other
+  text: 頻道片頭動畫全屏卡：手繪塗鴉風「張修修的不正常人生」黑字＋灰色線稿小圖示（相機、吉他、紡車等），白底，結尾轉白場淡出
+  t_start: 70.27
+  t_end: 72.27
+- shot_id: 29
+  kind: letterbox
+  text: 畫面縮框、上下左右黑邊（letterbox 效果）
+  t_start: 86.08
+  t_end: 88.08
+- shot_id: 29
+  kind: keyword_text
+  text: Video Podcast
+  t_start: 87.08
+  t_end: 88.08
+- shot_id: 38
+  kind: photo_inset
+  text: DOAC — Steven Bartlett 黑底肖像＋白底黑字 DOAC logo，置於橙色頂欄瀏覽器視窗框內（右側）
+  t_start: 111.89
+  t_end: 113.89
+- shot_id: 44
+  kind: book_cover
+  text: STEVEN BARTLETT / THE DIARY OF A CEO / THE 33 LAWS OF BUSINESS & LIFE
+  t_start: 128.66
+  t_end: 130.66
+- shot_id: 46
+  kind: photo_inset
+  text: 無文字——橘色頂欄瀏覽器視窗框 inset，內為黑衣混血男子（Steven Bartlett）灰底肖像照，右側畫面
+  t_start: 133.79
+  t_end: 137.79
+- shot_id: 77
+  kind: letterbox
+  text: 無文字——畫面縮框、上下左右黑邊效果
+  t_start: 315.1
+  t_end: 316.1
+- shot_id: 88
+  kind: other
+  text: 無文字——奶油白＋橘黃斜向膠囊形色塊 wipe 轉場（出現於 344.58 與 351.58 兩次掃過）
+  t_start: 344.58
+  t_end: 351.58
+- shot_id: 88
+  kind: title_banner
+  text: 法則二：想精通一件事情，就逼自己教會別人
+  t_start: 344.58
+  t_end: 349.58
+- shot_id: 88
+  kind: photo_inset
+  text: 看得更多 記得更牢 翻轉人生／張修修高效閱讀法（橘頂欄視窗框 inset，內為修修拿書閱讀的影片縮圖）
+  t_start: 350.58
+  t_end: 352.58
+- shot_id: 101
+  kind: photo_inset
+  text: 三張 YouTube 縮圖 inset（橘色瀏覽器視窗框、依序滑入堆疊於左側）：① 「真心不騙」「一天3分鐘改變你一生」② 「Zone 2」「低心率跑
+    有氧打底 超慢跑」③ 「6年賺3億的秘密」（含《高效原力 Feel Good Productivity》書封）
+  t_start: 410.44
+  t_end: 413.44
+- shot_id: 105
+  kind: keyword_text
+  text: 張修修的自由之路
+  t_start: 425.04
+  t_end: 426.04
+- shot_id: 105
+  kind: title_banner
+  text: 法則三：荒謬比實用更能定義你（全屏橘底章節卡，附白色圓形笑臉插圖；前後 429.04/433.04 各有一幀橘白斜向圓角條 wipe 轉場）
+  t_start: 430.04
+  t_end: 431.04
+- shot_id: 106
+  kind: photo_inset
+  text: Steven Bartlett 黑衣肖像照 inset（橘色頂欄瀏覽器視窗框，右側）
+  t_start: 434.76
+  t_end: 435.76
+- shot_id: 111
+  kind: photo_inset
+  text: BBC logo 卡（黑底白字 BBC，橘頂欄視窗框，左側滑入）；451.56 起右側加入 BuzzFeed logo 卡（紅底白字 Buzz Feed）
+  t_start: 449.56
+  t_end: 452.56
+- shot_id: 126
+  kind: letterbox
+  text: 上下黑邊縮框效果（畫面縮小成寬銀幕 letterbox，主持人置中）
+  t_start: 478.8
+  t_end: 478.8
+- shot_id: 146
+  kind: keyword_text
+  text: 快快做 快快錯
+  t_start: 549.08
+  t_end: 550.08
+- shot_id: 150
+  kind: keyword_text
+  text: 團隊的失敗率
+  t_start: 569.81
+  t_end: 571.81
+- shot_id: 172
+  kind: letterbox
+  text: 上下黑邊 cinematic 縮框效果（畫面縮成寬銀幕，台詞字幕改置於下方黑邊內：「每次講到 pressure / 就想到 Queen 的 / Under
+    Pressure」）
+  t_start: 670.87
+  t_end: 672.87
+- shot_id: 196
+  kind: book_cover
+  text: STEVEN BARTLETT / THE DIARY OF A CEO / THE 33 LAWS OF BUSINESS & LIFE（左側書封
+    inset，滑入後轉為橘色瀏覽器視窗框樣式，末幀縮小滑出）
+  t_start: 734.93
+  t_end: 737.93
+- shot_id: 197
+  kind: photo_inset
+  text: 右上角橘色瀏覽器視窗框 inset：過往影片縮圖（卡通大腦舉啞鈴＋主持人），縮圖上文字「破解意志力」
+  t_start: 738.27
+  t_end: 741.27
+- shot_id: 225
+  kind: photo_inset
+  text: 新。晨間習慣（左上角瀏覽器視窗框 inset：主持人自己頻道影片縮圖，TSUBASA 上衣、手指比向藍色問號圈，右側直排字「新。晨間習慣」）
+  t_start: 871.07
+  t_end: 873.07
+- shot_id: 232
+  kind: title_banner
+  text: 法則六：價值取決於情境，而非技能（全螢幕橘色章節卡＋白色天平 icon；919.36 為斜條紋轉場 wipe）
+  t_start: 919.36
+  t_end: 922.36
+- shot_id: 235
+  kind: photo_inset
+  text: 無文字——右側圓角視窗框 inset：Steven Bartlett 黑衣肖像照（棚拍灰背景），配合台詞「Steven Bartlett」滑入
+  t_start: 934.72
+  t_end: 935.72
+- shot_id: 243
+  kind: keyword_text
+  text: 具有多樣技能和好奇心的人（白底橘框橫向字卡，畫面中下方滑入）
+  t_start: 954.94
+  t_end: 955.94
+- shot_id: 252
+  kind: other
+  text: 影片來源：Big Think（整個 shot 為全幅外部引用畫面：黑色格線背景、兩個圓角直式畫框內為腦部 MRI／迷幻色墨水影像，右上 Big Think「B
+    T」logo，左上白字來源標註）
+  t_start: 980.39
+  t_end: 983.39
+- shot_id: 276
+  kind: keyword_text
+  text: 腳踏車旅行
+  t_start: 1061.09
+  t_end: 1062.09
+- shot_id: 285
+  kind: letterbox
+  text: 上下黑邊縮框效果（主持人畫面縮小置中，上下黑邊）
+  t_start: 1079.78
+  t_end: 1080.78
+- shot_id: 292
+  kind: title_banner
+  text: 法則七：事前驗屍法
+  t_start: 1105.51
+  t_end: 1106.51
+- shot_id: 292
+  kind: other
+  text: 無文字：米白＋橘黃斜向圓角色塊轉場圖形（全畫面過場動畫）
+  t_start: 1107.51
+  t_end: 1107.51
+- shot_id: 292
+  kind: photo_inset
+  text: 影片來源：CNBC Television（查理蒙格 CNBC 訪談片段，黑色格紋背景框內嵌，右下 CNBC logo）
+  t_start: 1108.51
+  t_end: 1109.51
+- shot_id: 294
+  kind: photo_inset
+  text: BIG THINGS GET DONE 超級專案管理／PM, 老闆, 政治人物必看（YouTube 影片縮圖卡，含書封與兩位人像，橘色視窗框）
+  t_start: 1116.77
+  t_end: 1118.77
+- shot_id: 296
+  kind: photo_inset
+  text: 無文字：Steven Bartlett 黑衣肖像照，橘頂視窗框 inset 於畫面左側
+  t_start: 1131.21
+  t_end: 1132.21
+- shot_id: 309
+  kind: photo_inset
+  text: 無文字——左上角瀏覽器視窗框 inset：《The Office》Michael Scott 穿西裝講電話的劇照
+  t_start: 1164.9
+  t_end: 1166.9
+- shot_id: 311
+  kind: photo_inset
+  text: 無文字——右上角瀏覽器視窗框 inset：Steven Bartlett 黑色上衣半身肖像照
+  t_start: 1172.29
+  t_end: 1173.29
+- shot_id: 329
+  kind: book_cover
+  text: STEVEN BARTLETT THE DIARY OF A CEO THE 33 LAWS OF BUSINESS & LIFE
+  t_start: 1243.28
+  t_end: 1246.28
+- shot_id: 332
+  kind: title_banner
+  text: 法則八：顧好你的第一基礎（全螢幕橘色章節卡，中央白色心臟插圖 icon，滑入/滑出動畫）
+  t_start: 1259.46
+  t_end: 1261.46
+- shot_id: 333
+  kind: photo_inset
+  text: 無文字——左側橘色瀏覽器視窗框 inset，內為巴菲特（Warren Buffett）西裝坐姿肖像照
+  t_start: 1264.05
+  t_end: 1267.05
+- shot_id: 355
+  kind: photo_inset
+  text: 無文字——右側橘色瀏覽器視窗框 inset，內為 Steven Bartlett 黑衣肖像照
+  t_start: 1341
+  t_end: 1343
+- shot_id: 362
+  kind: letterbox
+  text: 上下黑邊 letterbox 縮框效果（畫面縮小置中，四周黑邊）
+  t_start: 1354.51
+  t_end: 1354.51
+- shot_id: 363
+  kind: book_cover
+  text: STEVEN BARTLETT / THE DIARY OF A CEO / THE 33 LAWS OF BUSINESS & LIFE（右側橘色視窗框書封
+    inset，滑入動畫）
+  t_start: 1355.26
+  t_end: 1356.26
+- shot_id: 375
+  kind: keyword_text
+  text: 張修修的自由之路
+  t_start: 1411.32
+  t_end: 1412.32
+- shot_id: 376
+  kind: keyword_text
+  text: shosho.tw/free
+  t_start: 1418.28
+  t_end: 1420.28

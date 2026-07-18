@@ -35,6 +35,7 @@
         <tr>
           <th class="col-bid">#</th>
           <th class="col-seg">segment</th>
+          <th class="col-dur">秒數</th>
           <th class="col-layout">layout</th>
           <th class="col-comp">component</th>
           <th class="col-chip">📝</th>
@@ -48,7 +49,24 @@
         {% for row in rows %}
         <tr data-beat-id="{{ row.beat_id }}">
           <td class="col-bid sho-mono">{{ row.beat_id }}</td>
-          <td class="col-seg">{{ row.segment_text }}</td>
+          <td class="col-seg">
+            {% if row.transcript_text %}
+            <details class="seg-transcript">
+              <summary>{{ row.segment_text }}</summary>
+              <p class="seg-transcript-body">{{ row.transcript_text }}</p>
+            </details>
+            {% else %}
+            {{ row.segment_text }}
+            {% endif %}
+          </td>
+          <td class="col-dur sho-mono">
+            {% if row.duration_s is not none %}
+              <span class="seg-dur">{{ '%.1f' % row.duration_s }}s</span>
+              {% if row.start_tc %}<span class="seg-start sho-muted">{{ row.start_tc }}</span>{% endif %}
+            {% else %}
+              <span class="sho-muted">—</span>
+            {% endif %}
+          </td>
           <td class="col-layout sho-mono">{{ row.layout }}</td>
           <td class="col-comp sho-mono">{{ row.component or '—' }}</td>
           <td class="col-chip">
@@ -116,7 +134,7 @@
         {% if row.asset %}
         <tr class="foundry-asset-row" data-asset-for="{{ row.beat_id }}">
           <td class="col-bid"></td>
-          <td colspan="8">
+          <td colspan="9">
             <div class="foundry-asset">
               <span class="sho-tag foundry-asset-kind">asset · {{ row.asset.kind }}</span>
               {% if row.asset.file_state == 'ready' %}

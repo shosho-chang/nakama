@@ -1,0 +1,501 @@
+shots_scanned: 188
+events:
+- shot_id: 1
+  kind: keyword_text
+  text: You want to get started with investing
+  t_start: 1.2
+  t_end: 2.2
+- shot_id: 2
+  kind: photo_inset
+  text: Savings — Current Balance $8,547.23 — Withdraw / Deposit (banking-app style
+    UI card, upper right)
+  t_start: 3.04
+  t_end: 5.04
+- shot_id: 2
+  kind: photo_inset
+  text: Property — Open for Sale — $385,000 (house photo card, upper left)
+  t_start: 4.04
+  t_end: 5.04
+- shot_id: 3
+  kind: keyword_text
+  text: Invest
+  t_start: 6.8
+  t_end: 6.8
+- shot_id: 6
+  kind: other
+  text: Bitcoin (pill badge with Bitcoin logo) + 2013
+  t_start: 16.52
+  t_end: 18.52
+- shot_id: 6
+  kind: other
+  text: Nvidia (pill badge with Nvidia logo) + 2015
+  t_start: 17.52
+  t_end: 18.52
+- shot_id: 8
+  kind: keyword_text
+  text: Mega Rich (plus falling dollar-bill graphics)
+  t_start: 23.28
+  t_end: 23.28
+- shot_id: 10
+  kind: keyword_text
+  text: Fear
+  t_start: 28.32
+  t_end: 28.32
+- shot_id: 12
+  kind: title_banner
+  text: UPDATED (large blue) / Ultimate Guide to Investing (white serif)
+  t_start: 32.92
+  t_end: 33.92
+- shot_id: 18
+  kind: list_card
+  text: 'Part 1: The Basics and Philosophy of Investing / Part 2: Why and How to Invest
+    / Part 3: Common Fears, Concerns, and Questions / Part 4: Full-time Investing:
+    The Alternative Approach (full-screen 4-card grid, body text motion-blurred)'
+  t_start: 59.36
+  t_end: 59.36
+- shot_id: 28
+  kind: keyword_text
+  text: How does investing make you money?
+  t_start: 121.16
+  t_end: 124.16
+- shot_id: 32
+  kind: keyword_text
+  text: Inflation / Property taxes (two white pill cards)
+  t_start: 168.16
+  t_end: 170.16
+- shot_id: 37
+  kind: keyword_text
+  text: Investing
+  t_start: 187.44
+  t_end: 187.44
+- shot_id: 37
+  kind: keyword_text
+  text: Property ladder
+  t_start: 188.44
+  t_end: 189.44
+- shot_id: 40
+  kind: keyword_text
+  text: Alternative asset classes
+  t_start: 199.92
+  t_end: 202.92
+- shot_id: 48
+  kind: keyword_text
+  text: What even is the point of owning a stock?
+  t_start: 258.08
+  t_end: 260.08
+- shot_id: 56
+  kind: keyword_text
+  text: You should not try to pick stocks
+  t_start: 312
+  t_end: 314
+- shot_id: 59
+  kind: keyword_text
+  text: Buy an Index Fund
+  t_start: 327.64
+  t_end: 329.64
+- shot_id: 61
+  kind: keyword_text
+  text: S&P 500
+  t_start: 343.08
+  t_end: 344.08
+- shot_id: 70
+  kind: keyword_text
+  text: Index Fund
+  t_start: 434.32
+  t_end: 434.32
+- shot_id: 76
+  kind: keyword_text
+  text: NVIDIA (white rounded pill with green NVIDIA eye logo + wordmark, upper-left;
+    fading in at 466.84, fully visible at 467.84)
+  t_start: 466.84
+  t_end: 467.84
+- shot_id: 84
+  kind: other
+  text: Entire shot rendered in black-and-white grade (flashback/aside treatment),
+    no burned-in text
+  t_start: 508.48
+  t_end: 528.48
+- shot_id: 84
+  kind: photo_inset
+  text: The Campbell's COMPANY (rounded white app-icon style logo card, left side)
+  t_start: 511.48
+  t_end: 514.48
+- shot_id: 84
+  kind: photo_inset
+  text: RALPH LAUREN (rounded white app-icon style logo card with polo rider mark,
+    right side)
+  t_start: 512.48
+  t_end: 514.48
+- shot_id: 84
+  kind: photo_inset
+  text: NVIDIA logo (rounded white app-icon card, upper right)
+  t_start: 519.48
+  t_end: 523.48
+- shot_id: 84
+  kind: photo_inset
+  text: Apple logo (rounded white app-icon card, left side)
+  t_start: 520.48
+  t_end: 523.48
+- shot_id: 84
+  kind: photo_inset
+  text: TESLA logo (rounded white app-icon card, lower right)
+  t_start: 521.48
+  t_end: 523.48
+- shot_id: 85
+  kind: keyword_text
+  text: 7-9% / year
+  t_start: 531.08
+  t_end: 533.08
+- shot_id: 85
+  kind: keyword_text
+  text: Double
+  t_start: 535.08
+  t_end: 536.08
+- shot_id: 85
+  kind: keyword_text
+  text: Triple
+  t_start: 536.08
+  t_end: 536.08
+- shot_id: 88
+  kind: keyword_text
+  text: 20% / year
+  t_start: 552.6
+  t_end: 553.6
+- shot_id: 89
+  kind: keyword_text
+  text: 20% / year
+  t_start: 553.96
+  t_end: 553.96
+- shot_id: 97
+  kind: list_card
+  text: Reading financial reports / Tracking the news / Analysing charts / Constant
+    anxiety (four rounded white cards stacking in sequentially at frame left)
+  t_start: 601.08
+  t_end: 606.08
+- shot_id: 103
+  kind: keyword_text
+  text: Individual stocks
+  t_start: 622.32
+  t_end: 623.32
+- shot_id: 105
+  kind: keyword_text
+  text: Top 500 companies in US
+  t_start: 643.68
+  t_end: 644.68
+- shot_id: 106
+  kind: keyword_text
+  text: Top 1000 companies in the world
+  t_start: 649.4
+  t_end: 649.4
+- shot_id: 108
+  kind: other
+  text: Full black-and-white desaturation grade applied to the entire talking-head
+    shot (no text; whole shot rendered monochrome as a stylistic effect)
+  t_start: 653.44
+  t_end: 668.44
+- shot_id: 110
+  kind: photo_inset
+  text: Bitcoin coin photo (gold physical BTC coin) inside a white rounded-square
+    card, left side of frame
+  t_start: 677.36
+  t_end: 678.36
+- shot_id: 111
+  kind: photo_inset
+  text: Disney+ (app icon logo inside a white rounded-square card, left side of frame;
+    shrinks away by 681.64)
+  t_start: 679.64
+  t_end: 681.64
+- shot_id: 117
+  kind: keyword_text
+  text: I knew it was going to do well
+  t_start: 699.12
+  t_end: 701.12
+- shot_id: 118
+  kind: keyword_text
+  text: When would (start of a phrase card animating in; 'would' in italic — only
+    caught on this frame)
+  t_start: 705.24
+  t_end: 705.24
+- shot_id: 122
+  kind: other
+  text: Full-frame black-and-white desaturation grade applied over the talking-head
+    shot (flashback/regret effect), no text
+  t_start: 721.84
+  t_end: 728.84
+- shot_id: 151
+  kind: list_card
+  text: 'Civil War
+
+    World Wars
+
+    The Great Depression'
+  t_start: 821.28
+  t_end: 823.28
+- shot_id: 170
+  kind: keyword_text
+  text: Stock broker
+  t_start: 875.2
+  t_end: 875.2
+- shot_id: 175
+  kind: keyword_text
+  text: Online platforms
+  t_start: 884.84
+  t_end: 885.84
+- shot_id: 177
+  kind: other
+  text: Vanguard logo card (red 'Vanguard' wordmark on white rounded pill, right side
+    of frame)
+  t_start: 890.08
+  t_end: 894.08
+- shot_id: 178
+  kind: other
+  text: TRADING 212 logo card (black wordmark on white rounded pill, left side); at
+    901.12 the Vanguard logo card reappears on the right so both logos are shown together
+  t_start: 896.12
+  t_end: 901.12
+- shot_id: 182
+  kind: other
+  text: 'Sponsor segment layout (Trading 212 sponsor): host video shrunk to rounded
+    photo inset at left on cream background; center ''Sponsored content'' + ''TRADING
+    212'' logo pill (910.60), later replaced by phone-app screenshots of the Trading
+    212 app (watchlists: Top winners / Top losers / Popular / UK stocks with tickers
+    like GraniteShares 3x, Kanabo, Barclays, Tesla, Apple); persistent black disclaimer
+    card at right: ''When investing, your capital is at risk. Past performance is
+    no guarantee of future results. This information is not investment advice. Do
+    your own research. Sponsored Content. Terms Apply'''
+  t_start: 908.6
+  t_end: 915.6
+- shot_id: 184
+  kind: keyword_text
+  text: Practise money
+  t_start: 933.88
+  t_end: 934.88
+- shot_id: 186
+  kind: keyword_text
+  text: Dividend reinvesting
+  t_start: 976.48
+  t_end: 978.48
+- shot_id: 186
+  kind: keyword_text
+  text: Asset rebalancing
+  t_start: 977.48
+  t_end: 978.48
+- shot_id: 188
+  kind: other
+  text: trading212.com/join/ALI (sponsor 橫幅，白色圓角膠囊，畫面下方置中)
+  t_start: 989.68
+  t_end: 993.68
+- shot_id: 192
+  kind: title_banner
+  text: Part 2 — Why and How to Invest (全螢幕綠色章節卡片，Part 4 卡片局部可見；僅出現於單幀 t=1014.96，為快速掃過的章節總覽動畫)
+  t_start: 1014.96
+  t_end: 1014.96
+- shot_id: 201
+  kind: keyword_text
+  text: Realised the loss
+  t_start: 1075.52
+  t_end: 1075.52
+- shot_id: 217
+  kind: keyword_text
+  text: Apocalypse
+  t_start: 1192.68
+  t_end: 1193.68
+- shot_id: 222
+  kind: list_card
+  text: NVIDIA / Apple / Amazon / Meta / Microsoft / Alphabet (white pill badges with
+    company logos, sliding in one by one on right side)
+  t_start: 1216.6
+  t_end: 1221.6
+- shot_id: 227
+  kind: keyword_text
+  text: The value of a company is a real thing
+  t_start: 1248.28
+  t_end: 1250.28
+- shot_id: 227
+  kind: list_card
+  text: ↑ Revenue / ↑ Profit / ↑ Products (left column, white pill badges with green
+    up arrows, added one per beat) + ↑ Value (right side pill)
+  t_start: 1251.28
+  t_end: 1255.28
+- shot_id: 230
+  kind: list_card
+  text: ↑ People (peach pill, left) / ↑ Customers / ↑ Transcations (white pills, right;
+    'Transcations' is the on-screen spelling)
+  t_start: 1269.52
+  t_end: 1271.52
+- shot_id: 237
+  kind: keyword_text
+  text: Best of Spotify playlist
+  t_start: 1316.68
+  t_end: 1318.68
+- shot_id: 238
+  kind: list_card
+  text: '[red X icon] Betting on a single company will not last forever'
+  t_start: 1322.96
+  t_end: 1327.96
+- shot_id: 238
+  kind: list_card
+  text: '[red X icon] Betting on top 500 companies will last forever'
+  t_start: 1325.96
+  t_end: 1327.96
+- shot_id: 239
+  kind: list_card
+  text: '[green check icon] Top companies in the U.S. will continue to grow over time'
+  t_start: 1328.76
+  t_end: 1336.76
+- shot_id: 243
+  kind: keyword_text
+  text: Vanguard FTSE All-World
+  t_start: 1361.96
+  t_end: 1362.96
+- shot_id: 251
+  kind: keyword_text
+  text: 'How do I get started? (builds word-by-word: "How do" first, then full line;
+    white serif text, "started?" in orange)'
+  t_start: 1428.52
+  t_end: 1430.52
+- shot_id: 251
+  kind: list_card
+  text: '$1 / $10 / $100 (three white rounded cards stacked vertically on left, appearing
+    one by one: $1 and $10 first, then $100)'
+  t_start: 1437.52
+  t_end: 1439.52
+- shot_id: 255
+  kind: keyword_text
+  text: What has been your biggest concern about getting started with investing? And
+    if you haven't yet, what's the thing that's holding you back?
+  t_start: 1457.8
+  t_end: 1461.8
+- shot_id: 258
+  kind: keyword_text
+  text: 30-40 Years
+  t_start: 1469.8
+  t_end: 1470.8
+- shot_id: 258
+  kind: keyword_text
+  text: 5-10 Years
+  t_start: 1472.8
+  t_end: 1472.8
+- shot_id: 258
+  kind: keyword_text
+  text: 15 Years
+  t_start: 1473.8
+  t_end: 1473.8
+- shot_id: 258
+  kind: keyword_text
+  text: 30-40 Years
+  t_start: 1475.8
+  t_end: 1477.12
+- shot_id: 259
+  kind: title_banner
+  text: Part 3 — Common Fears, Questions, and Concerns (full-screen green mind-map
+    chapter card; adjacent blurred nodes 'Investing' and a partially blurred card
+    visible)
+  t_start: 1478.12
+  t_end: 1478.12
+- shot_id: 263
+  kind: keyword_text
+  text: Slow form of investing
+  t_start: 1504.88
+  t_end: 1507.48
+- shot_id: 264
+  kind: keyword_text
+  text: Balanced portfolio
+  t_start: 1510.48
+  t_end: 1512.48
+- shot_id: 264
+  kind: keyword_text
+  text: Balanced life
+  t_start: 1511.48
+  t_end: 1512.48
+- shot_id: 265
+  kind: keyword_text
+  text: Reframing what investing actually means
+  t_start: 1516.36
+  t_end: 1518.36
+- shot_id: 268
+  kind: keyword_text
+  text: What is the point of investing money?
+  t_start: 1528.36
+  t_end: 1529.36
+- shot_id: 272
+  kind: keyword_text
+  text: 7% Returns
+  t_start: 1547.28
+  t_end: 1548.28
+- shot_id: 275
+  kind: keyword_text
+  text: Hell Yes!
+  t_start: 1566.04
+  t_end: 1567.04
+- shot_id: 279
+  kind: keyword_text
+  text: 4 hrs of work = $60
+  t_start: 1598.6
+  t_end: 1607.6
+- shot_id: 279
+  kind: keyword_text
+  text: 40 hrs of work = $600
+  t_start: 1601.6
+  t_end: 1607.6
+- shot_id: 280
+  kind: keyword_text
+  text: Own ability to make more money (builds word-by-word; 'make more' in orange)
+  t_start: 1617.52
+  t_end: 1618.52
+- shot_id: 281
+  kind: keyword_text
+  text: Skills
+  t_start: 1621.2
+  t_end: 1624.2
+- shot_id: 281
+  kind: keyword_text
+  text: Education
+  t_start: 1622.2
+  t_end: 1624.2
+- shot_id: 293
+  kind: keyword_text
+  text: Apple ( white rounded pill badge with Apple logo, upper-left)
+  t_start: 1688.52
+  t_end: 1691.52
+- shot_id: 295
+  kind: keyword_text
+  text: $1,000 (white rounded card, center, black serif text)
+  t_start: 1699.92
+  t_end: 1702.92
+- shot_id: 295
+  kind: keyword_text
+  text: $10,000 (green rounded card, center)
+  t_start: 1703.92
+  t_end: 1703.92
+- shot_id: 295
+  kind: keyword_text
+  text: $100,000 (green rounded card, center)
+  t_start: 1704.92
+  t_end: 1705.92
+- shot_id: 295
+  kind: other
+  text: Lifestyle Business Academy (white rounded logo card with green gear icon,
+    lower center — Ali's own product/sponsor-style plug)
+  t_start: 1706.92
+  t_end: 1709.92
+- shot_id: 297
+  kind: keyword_text
+  text: $10,000 (green rounded card, center)
+  t_start: 1714.96
+  t_end: 1715.96
+- shot_id: 297
+  kind: keyword_text
+  text: $100,000 (green rounded card, center)
+  t_start: 1716.96
+  t_end: 1717.96
+- shot_id: 299
+  kind: title_banner
+  text: Starting your own business
+  t_start: 1739.6
+  t_end: 1739.6
+- shot_id: 300
+  kind: keyword_text
+  text: $100k revenue in 12 months
+  t_start: 1744.16
+  t_end: 1746.16

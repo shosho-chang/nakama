@@ -44,7 +44,7 @@ Emitting any other value causes a validation hard-fail.
 
 ## Restraint budget
 
-- ~15-25 cutaway beats per 10-minute episode
+- ~25-35 cutaway beats per 10-minute episode
 - No two consecutive beats with the same component
 - Prefer `broll_decision: none` for abstract concepts, connective sentences, or emotional
   sections
