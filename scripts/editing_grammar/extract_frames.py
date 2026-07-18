@@ -7,6 +7,7 @@ shot is longer than 6s). 960px-wide JPEGs named shot{NNN}_{a|b|c}_{t}.jpg.
 Usage:
   python extract_frames.py <video> <shots.yaml> <out_dir> [--workers 8]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -21,9 +22,26 @@ def grab(video: str, t: float, out: Path) -> None:
     if out.exists():
         return
     subprocess.run(
-        ["ffmpeg", "-hide_banner", "-v", "error", "-ss", f"{t:.3f}", "-i", video,
-         "-frames:v", "1", "-vf", "scale=960:-2", "-q:v", "4", str(out)],
-        check=True, timeout=120)
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-v",
+            "error",
+            "-ss",
+            f"{t:.3f}",
+            "-i",
+            video,
+            "-frames:v",
+            "1",
+            "-vf",
+            "scale=960:-2",
+            "-q:v",
+            "4",
+            str(out),
+        ],
+        check=True,
+        timeout=120,
+    )
 
 
 def main() -> None:
@@ -41,8 +59,7 @@ def main() -> None:
     jobs: list[tuple[float, Path]] = []
     for s in shots:
         sid, start, end, dur = s["shot_id"], s["start"], s["end"], s["duration"]
-        points = [("a", min(start + 0.15, end - 0.05)),
-                  ("b", start + dur / 2)]
+        points = [("a", min(start + 0.15, end - 0.05)), ("b", start + dur / 2)]
         if dur > 6.0:
             points.append(("c", start + dur * 0.8))
         for tag, t in points:

@@ -14,6 +14,7 @@ Usage:
 Threshold calibration: run with --histogram to print the score distribution
 before committing to a threshold.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -47,14 +48,19 @@ def main() -> None:
     ap.add_argument("duration", type=float)
     ap.add_argument("out", nargs="?")
     ap.add_argument("--threshold", type=float, default=0.30)
-    ap.add_argument("--min-shot", type=float, default=0.30,
-                    help="merge cuts closer than this (flash/transition debounce)")
+    ap.add_argument(
+        "--min-shot",
+        type=float,
+        default=0.30,
+        help="merge cuts closer than this (flash/transition debounce)",
+    )
     ap.add_argument("--histogram", action="store_true")
     args = ap.parse_args()
 
     events = parse_scores(Path(args.scores))
     if args.histogram:
         import collections
+
         buckets = collections.Counter()
         for _, s in events:
             buckets[round(s, 1)] += 1
@@ -75,16 +81,21 @@ def main() -> None:
     shots = []
     for i in range(len(bounds) - 1):
         start, end = bounds[i], bounds[i + 1]
-        shots.append({
-            "shot_id": i + 1,
-            "start": round(start, 3),
-            "end": round(end, 3),
-            "duration": round(end - start, 3),
-        })
+        shots.append(
+            {
+                "shot_id": i + 1,
+                "start": round(start, 3),
+                "end": round(end, 3),
+                "duration": round(end - start, 3),
+            }
+        )
     Path(args.out).write_text(
-        yaml.dump(shots, allow_unicode=True, sort_keys=False), encoding="utf-8")
-    print(f"cuts={len(merged)} shots={len(shots)} "
-          f"median={sorted(s['duration'] for s in shots)[len(shots)//2]:.2f}s")
+        yaml.dump(shots, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+    print(
+        f"cuts={len(merged)} shots={len(shots)} "
+        f"median={sorted(s['duration'] for s in shots)[len(shots) // 2]:.2f}s"
+    )
 
 
 if __name__ == "__main__":

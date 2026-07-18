@@ -12,6 +12,7 @@ Usage:
   python extract_overlay_frames.py <video> <ground_truth.yaml> <out_dir>
          [--interval 1.0] [--workers 6]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,9 +27,26 @@ def grab(video: str, t: float, out: Path) -> None:
     if out.exists():
         return
     subprocess.run(
-        ["ffmpeg", "-hide_banner", "-v", "error", "-ss", f"{t:.3f}", "-i", video,
-         "-frames:v", "1", "-vf", "scale=960:-2", "-q:v", "4", str(out)],
-        check=True, timeout=120)
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-v",
+            "error",
+            "-ss",
+            f"{t:.3f}",
+            "-i",
+            video,
+            "-frames:v",
+            "1",
+            "-vf",
+            "scale=960:-2",
+            "-q:v",
+            "4",
+            str(out),
+        ],
+        check=True,
+        timeout=120,
+    )
 
 
 def main() -> None:

@@ -14,6 +14,7 @@ run-length of consecutive aroll).
 Usage:
   python merge_ground_truth.py <shots.yaml> <classes.yaml> <srt> <out.yaml>
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,8 +40,14 @@ def parse_srt(text: str):
         if len(lines) < 3 or "-->" not in lines[1]:
             continue
         a, _, b = lines[1].partition("-->")
-        cues.append({"id": int(lines[0]), "start": _ts(a), "end": _ts(b),
-                     "text": " ".join(x.strip() for x in lines[2:])})
+        cues.append(
+            {
+                "id": int(lines[0]),
+                "start": _ts(a),
+                "end": _ts(b),
+                "text": " ".join(x.strip() for x in lines[2:]),
+            }
+        )
     return cues
 
 
@@ -53,22 +60,24 @@ def main() -> None:
     args = ap.parse_args()
 
     shots = yaml.safe_load(Path(args.shots).read_text(encoding="utf-8"))
-    classes = {c["shot_id"]: c for c in
-               yaml.safe_load(Path(args.classes).read_text(encoding="utf-8"))}
+    classes = {
+        c["shot_id"]: c for c in yaml.safe_load(Path(args.classes).read_text(encoding="utf-8"))
+    }
     cues = parse_srt(Path(args.srt).read_text(encoding="utf-8-sig"))
 
     rows = []
     for s in shots:
         c = classes.get(s["shot_id"], {})
-        overlap = [q for q in cues
-                   if q["end"] > s["start"] + 0.05 and q["start"] < s["end"] - 0.05]
-        rows.append({
-            **s,
-            "type": c.get("type", "UNCLASSIFIED"),
-            "note": c.get("note"),
-            "cues": [q["id"] for q in overlap],
-            "text": "".join(q["text"] for q in overlap)[:120],
-        })
+        overlap = [q for q in cues if q["end"] > s["start"] + 0.05 and q["start"] < s["end"] - 0.05]
+        rows.append(
+            {
+                **s,
+                "type": c.get("type", "UNCLASSIFIED"),
+                "note": c.get("note"),
+                "cues": [q["id"] for q in overlap],
+                "text": "".join(q["text"] for q in overlap)[:120],
+            }
+        )
 
     broll = [r for r in rows if r["type"] not in ("aroll", "UNCLASSIFIED")]
     durs = sorted(r["duration"] for r in broll)
@@ -115,13 +124,15 @@ def main() -> None:
             "p90": round(runs_sorted[int(len(runs_sorted) * 0.9)], 1) if runs_sorted else None,
             "max": round(runs_sorted[-1], 1) if runs_sorted else None,
         },
-        "by_type": {k: {"n": len(v), "p50": round(statistics.median(v), 2),
-                        "max": round(max(v), 2)}
-                    for k, v in sorted(by_type.items())},
+        "by_type": {
+            k: {"n": len(v), "p50": round(statistics.median(v), 2), "max": round(max(v), 2)}
+            for k, v in sorted(by_type.items())
+        },
     }
     Path(args.out).write_text(
         yaml.dump({"stats": stats, "shots": rows}, allow_unicode=True, sort_keys=False),
-        encoding="utf-8")
+        encoding="utf-8",
+    )
     print(yaml.dump(stats, allow_unicode=True, sort_keys=False))
 
 

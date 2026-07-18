@@ -9,6 +9,7 @@ with narration text, so the lesson extraction can cite concrete lines.
 Usage:
   python diff_vs_storyboard.py <ground_truth.yaml> <storyboard.yaml> <out.yaml>
 """
+
 from __future__ import annotations
 
 import argparse
@@ -46,12 +47,15 @@ def main() -> None:
         if b.get("broll_decision") != "cutaway" or not b.get("timing"):
             continue
         t = b["timing"]
-        sb_cut.append({
-            "beat_id": b["beat_id"], "start": t["start"],
-            "end": t["start"] + t["duration"],
-            "component": (b.get("broll") or {}).get("component"),
-            "text": (b.get("start_quote") or "")[:60],
-        })
+        sb_cut.append(
+            {
+                "beat_id": b["beat_id"],
+                "start": t["start"],
+                "end": t["start"] + t["duration"],
+                "component": (b.get("broll") or {}).get("component"),
+                "text": (b.get("start_quote") or "")[:60],
+            }
+        )
 
     # 判準（audit 2026-07-18 改版）：雙向覆蓋率 max(inter/len_sb, inter/len_gt)
     # ≥ coverage 判位置命中 — 解決長短懸殊區間 IoU 失效（完全包含卻落榜）。
@@ -81,14 +85,25 @@ def main() -> None:
                 best, best_cov = c, v
         if best and best_cov >= args.min_coverage:
             matched_beats.add(best["beat_id"])
-            hits.append({"gt": g, "beat": best, "coverage": round(best_cov, 2),
-                         "type_match": best["component"] == g["type"],
-                         "offset_s": round(g["start"] - best["start"], 1)})
+            hits.append(
+                {
+                    "gt": g,
+                    "beat": best,
+                    "coverage": round(best_cov, 2),
+                    "type_match": best["component"] == g["type"],
+                    "offset_s": round(g["start"] - best["start"], 1),
+                }
+            )
             continue
         nearest = min(sb_cut, key=lambda c: gap(gi, (c["start"], c["end"]))) if sb_cut else None
         if nearest and gap(gi, (nearest["start"], nearest["end"])) <= args.near_sec:
-            near.append({"gt": g, "nearest_beat": nearest,
-                         "gap_s": round(gap(gi, (nearest["start"], nearest["end"])), 1)})
+            near.append(
+                {
+                    "gt": g,
+                    "nearest_beat": nearest,
+                    "gap_s": round(gap(gi, (nearest["start"], nearest["end"])), 1),
+                }
+            )
         else:
             misses.append(g)
 
@@ -114,9 +129,20 @@ def main() -> None:
         "fp_true": len(fp_true),
     }
     Path(args.out).write_text(
-        yaml.dump({"summary": summary, "hits": hits, "near_misses": near,
-                   "true_misses": misses, "fp_near": fp_near, "fp_true": fp_true},
-                  allow_unicode=True, sort_keys=False), encoding="utf-8")
+        yaml.dump(
+            {
+                "summary": summary,
+                "hits": hits,
+                "near_misses": near,
+                "true_misses": misses,
+                "fp_near": fp_near,
+                "fp_true": fp_true,
+            },
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
     print(yaml.dump(summary, sort_keys=False))
 
 
