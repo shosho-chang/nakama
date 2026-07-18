@@ -194,3 +194,10 @@ body.sho .seg-transcript-body {
   max-width: 62ch;
   white-space: normal;
 }
+
+/* B-roll（cutaway）列色標 — 修修掃表抓節奏用。
+   Orange = line 不是 fill（design system 99/1）：2px 橘左線 + 極淡暖底。 */
+body.sho .foundry-table tr.row-cutaway td { background: var(--sho-bg-2); }
+body.sho .foundry-table tr.row-cutaway td:first-child {
+  box-shadow: inset 2px 0 0 var(--sho-accent);
+}
