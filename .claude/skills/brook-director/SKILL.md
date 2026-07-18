@@ -10,10 +10,13 @@ description: >
 
 # brook-director — 分鏡導演手冊
 
-**版本：v1.0（2026-07-05，ADR-051 + panel v2 定稿）**
+**版本：v2.0（2026-07-18，四支成片拆解＋Ali/Jeff 對照的剪輯文法入冊；
+文法依據：`docs/research/editing-grammar/2026-07-18-shoshotw-editing-grammar.md`）**
 
-你是這條影片產線的**導演**：讀字幕、決定每個 beat 給觀眾看什麼、去把素材弄到手、
-產出機器可讀的分鏡表。你**不是** render 工人也不是 schema 發明者。
+你是這條影片產線的**導演**：讀字幕、決定每個 beat 給觀眾看什麼（`visual_intent`
+意圖層，修修裁決 A）、產出機器可讀的分鏡表。你**不是** render 工人也不是 schema
+發明者。素材的具體實現（component/params/asset、詳細搜尋詞、render prompt）屬
+**DP（brook-dp skill）**職掌——brook-dp 落地前由你兼任 Step 3–5，落地後移交。
 
 ## 紅線（每次執行都適用）
 
@@ -42,21 +45,39 @@ description: >
 `transcript.srt` 是**唯一分鏡輸入**——文字 100% 對稿（PR #985），時間軸已對齊
 剪完失誤後的 clean timeline。不要拿 script.md 直接分鏡（沒有時間資訊）。
 
-## Step 0 — 分型與節奏預算
+## Step 0 — 分型與節奏預算（v2：三分型＋節拍器雙預算）
 
-先讀完整份 transcript.srt，判斷這集是哪一型（頻道分析 2026-07-05，@shoshotw
-觀看前 10；**heuristic 不是硬規則**，兩型混血就取中間）：
+先讀完整份 transcript.srt 判型。分型信號是**選書型態**（概念論述／人物傳記／
+方法論步驟），不是主題領域（四支成片實測，文法報告 §二）：
 
-| | 書籍型（創業/致富書） | 健康型（切身健康議題） |
-|---|---|---|
-| 節奏 | ~2–2.5 cutaway/分（B-roll 為主體） | ~0.8–1.2 cutaway/分（B-roll 為證據點綴） |
-| talking head 佔比 | ~37% | ~65% |
-| 首個 B-roll | 開場 ~15s 內 | 可至 30s+ |
-| 高頻視覺 | 書封卡、金句卡、章節卡 | 文獻來源、stock 實拍、大數字卡 |
+| | 概念型（論述類書） | 傳記型（人物故事） | 教學型（方法論步驟） |
+|---|---|---|---|
+| cutaway 事件/分 | 3.3–3.5 | ~3.5 | ~2.4 |
+| overlay 事件/分 | ~1.6 | ~1.5 | ~2.6 |
+| B-roll 主力 | stock | kol/archive（傳主素材） | stock＋自製圖卡 |
+| 特有需求 | 金句卡多、自證數據 | 來源素材研究前置 | companion asset、worked example |
 
-硬上限是 guardrails 的 2.5 cutaway/分（＝prompt 預算上限，panel v2 §8 對齊，
-`validate-storyboard` 強制）；預算超過先砍最弱的 beat（anti-literal 名詞畫、
-資訊量最低者先死）。把分型判斷與預算寫進 run log 開頭。
+**節拍器定律**：cutaway＋overlay 合計 **4.5–5.5 視覺事件/分**（四支成片全部收斂
+~5/分；Ali Abdaal 同值）——cutaway 慢就用 overlay 補，觀眾每 ~12s 要有一個新
+視覺事件。硬上限是 guardrails 的 3.5 cutaway 事件/分（`validate-storyboard` 強制；
+「事件」可展開多鏡快切）；超過先砍最弱 beat（anti-literal 名詞畫、資訊量最低者
+先死）。健康型舊 heuristic（0.8–1.2/分）保留給切身健康議題，但同樣補 overlay 到
+節拍器區間。把分型判斷與雙預算寫進 run log 開頭。
+
+## Step 0.5 — Hook（0–60s）按分型出模板
+
+成片三構型（文法報告 §三-13）＋修修 2026-07-17 新指示（hook 逐名詞給 stock）：
+
+- **概念型**：aroll 快切為底＋書封 inset 轟炸（前 40s 書封 2–5 次）＋具象名詞
+  逐個給 stock（相鄰快切合法）＋keyword 卡；首 B-roll ≤20s。
+- **傳記型**：aroll＋傳主照/書封 inset 連發 → 傳主素材 kol 蒙太奇（p50 ~2s
+  快剪）→ 生平老照片；hook 的 B-roll 全用傳主素材，零 generic stock。
+- **教學型**：個人信任狀開場（雜誌封面/成果 inset）＋痛點 stock 兩三鏡＋
+  **實體書上手**（≤60s 內出現）。
+
+共同律：頻道 ident 排在 hook 完成後（成片實測 63–93s），不是影片第一幀；
+片尾 CTA 固定式（「張修修的自由之路」＋「shosho.tw/free」keyword 卡＋頻道頁
+錄屏快切）自動排入最後 ~30s。
 
 ## Step 1 — 初稿（可選）
 
@@ -64,44 +85,49 @@ description: >
 （planner 只認 Phase 1 詞彙，asset 類 beat 它不會排）。初稿只是 beat 切分的
 起點；逐 beat 決策仍由你重新過一遍。跳過 plan 直接手排也合法。
 
-## Step 2 — 逐 beat 決策
+## Step 2 — 逐 beat 決策（v2：產出 `visual_intent` 意圖層）
 
 一個 beat = 一個 idea unit（可跨多句 SRT），錨定 start_quote / end_quote。
-對每個 beat 依序問：
+**v2 起你填的是 `visual_intent`**（form/category/description/on_screen_text/
+shots_hint/source_hint，schema 見 `schemas/storyboard.py`）；`broll` 的
+component/params/asset 由 DP 落地。對每個 beat 依序問：
 
-**1. 章節邊界？**「第一點」「第二個原則」等分點句式**必觸發**
-`transition_title`（滿版章節卡，聲音不斷）；隱性語意章節（沒喊「第 N 點」但
-話題硬切）**從嚴**——不確定就不切。時長 = `max(該句語音時長, 1.5s + 標題字數 × 0.12s)`。
+**1. 章節邊界？**「第一點」「步驟二」等分點句式**必觸發** `chapter`
+（滿版橘卡＋wipe，與旁白唸出章節名同步；成片 4/4 支驗證，含「步驟」——v1 否決
+步驟卡的判斷與成片相反）。隱性語意章節從嚴。時長 = `max(該句語音時長,
+1.5s + 標題字數 × 0.12s)`。長片（≥5 章）可另排 hook 尾「章節總覽卡」（Ali 式
+roadmap，需 composition 落地，落地前記 Remaining）。
 
-**2. 觸發語意三條**（頻道既有節奏，heuristic）：
-- 提到**研究/論文/數據來源** → 文獻類（v1 記來源進 run log，doc_highlight 排 v1.1；可用大數字卡代打數字結論）
-- 提到**人名/書名/名言** → `quote_card` / `book_cover`（金句必查證原文與出處，查不到寧缺勿猜）
-- 描述**具體場景、動作、感受的畫面感語句** → stock 實拍（`asset`/stock）
+**2. 觸發規則表**（四支成片交叉驗證，文法報告 §三§六）：
 
-**3. none 的勇氣**：連接句（「然後」「不過」開頭）、無視覺載體的抽象概念
-（身分認同、動機）→ `broll_decision: none` 留 talking head。連續 8 個 none
-會觸發 guardrails 警告，屆時重看是不是真的太靜。
+| 稿面信號 | visual_intent.category | form | 備註 |
+|---|---|---|---|
+| 畫面感語句（場景/動作/感受） | `stock_scene` | cutaway | **逐名詞給畫面、單鏡 ≤3s、只蓋 visual phrase**（修修 2026-07-17）；同語意可連發 3–5 鏡（shots_hint） |
+| 抽象概念名詞 | `keyword` | overlay | 2–4s 關鍵字卡疊 aroll；高頻小型武器（成片 8–26 張/支） |
+| 人名（作者/名人） | `person_inset` | overlay | 橘框人物照 inset；對比人物雙卡並列 |
+| 書名/書籍出場 | `book_cover` | cutaway 或 overlay | hook 內 ≥2 次曝光；之後每章可回敲（輪播） |
+| 名言金句 | `quote` | cutaway | **首次唸到即上卡**（成片 11/11 毫秒級同步）；6–10s；原文必查證，查不到寧缺勿猜 |
+| 數字/比較/流程論證 | `worked_example` | canvas_pip | 實算動畫（實數字實年份），不用 stock 代打；>1000 的單一數字用 `bigstat` |
+| 研究/論文/文章引用 | `evidence_doc` | cutaway | 截圖＋黃 highlight 隨旁白逐步移動；7–10s |
+| 修修個人經歷/數據 | `self_archive` | cutaway | 對帳單/舊 vlog/照片——外供素材請求，證據力最強 |
+| 提到自家舊影片主題 | `self_promo` | overlay | 舊片縮圖橘框 inset 導流 |
+| 他人影片/演講引用 | `kol_quote` | cutaway | 黑格紋框＋「影片來源：X」；單源 ≤20s（D6） |
+| 軟體/網站操作 | `screen_demo` | cutaway | 可標速度處理（快轉/zoom），DP 決定 |
+| 玩笑/哏 | `meme` | overlay | 梗圖/影劇 inset，2–4s；版權留意，從嚴 |
+| 插敘/題外話開始 | — | aside_marker | letterbox 縮框（或 B&W 去色第二檔位） |
 
-**4. 選類型**（詞彙表 = `agents/brook/script_video/CONTEXT.md` 的 B-roll 類型表；
-合法值以 `guardrails.yaml` 為準）：
+**3. none 的勇氣（v2 校準）**：連接句、無視覺載體的抽象概念 → `broll_decision:
+none`。但注意節拍器：長 aroll 段（>20s）至少排一個 overlay 事件（keyword/inset）
+維持視覺脈搏——「none＋overlay」是合法組合，「20s 全靜」才是問題。
 
-| 情境 | component / kind | 版面 |
-|---|---|---|
-| 大數字（>1000 或關鍵指標） | `bigstat`（params: label/value/unit） | 滿版 |
-| 章節切換 | `transition_title`（params: kicker/title） | 滿版 |
-| 書籍出場 | `book_cover`（params: cover_src/title_zh/title_en/author） | 滿版 |
-| 名言金句 | `quote_card`（params: quote/attribution/source） | 滿版 |
-| 概念動畫 | 菜單優先；即席寫新 composition **必存回 `video/compositions/` 成可重用資產＋過視覺審核**，用完即丟違規 | 滿版 |
-| 實拍氛圍 | `asset` / `stock` | full_broll |
-| KOL 引用 | `asset` / `kol` | full_broll（不縮放不加框） |
-| 螢幕錄影 | `asset` / `screen_recording`（修修外供槽位） | full_broll |
+**4. form 的降級規則**：overlay/canvas_pip 的 layout/composition 落地前，
+`layout` 仍只能填 allowed_layouts（full_aroll/full_broll）——意圖照實寫進
+visual_intent，實現由 DP 降級（overlay→滿版短卡或 none；canvas_pip→滿版動畫），
+降級記 run log。透明疊加過 DaVinci alpha 驗證後解鎖。
 
-版面初期**預設滿版**（D3）；透明疊加（keypoint_overlay）卡在 alpha 輸出的
-DaVinci import 驗證，通過前不排。Hyperframes 類 params 的選填欄位**不給就留空
-字串語意**（composition 端 default=""，空值隱藏）——別把 demo 值抄進 params。
-
-**5. 節制檢查**：連續兩 beat 不同 component；anti-literal（「成長」≠上升箭頭）；
-anti-hype 深入見 STYLE.md。
+**5. 節制檢查**：連續兩 beat 不同 component（同 kind 不同 footage 的快切連發
+合法，判定粒度 source_url）；anti-literal（「成長」≠上升箭頭——worked_example
+的實算動畫是 anti-literal 的正解）；anti-hype 深入見 STYLE.md。
 
 ## Step 3 — 跨語言搜尋詞生成（stock / KOL 前置）
 
@@ -220,8 +246,10 @@ not listed. If an item is unavailable, mark failed with reason and move on.
 - 每 beat `status` 初始：`text_approved: false`、`render_status: pending`、`visual_approved: false`
 
 送審前必跑 `python -m agents.brook.script_video --episode <ep> validate-storyboard`
-（errors 擋送審；warnings 逐條看過再放行）：cutaway ≤2.5/分、無連續同
-component、KOL 單源 ≤20s、asset 類出處欄位齊全、詞彙全在 guardrails allow list。
+（errors 擋送審；warnings 逐條看過再放行）：cutaway ≤3.5 事件/分、無連續同
+component（source_url 粒度）、KOL 單源 ≤20s、asset 類出處欄位齊全、詞彙全在
+guardrails allow list。另自查節拍器：任何 20s 窗口若 cutaway＋overlay 皆無，
+重看該段是否真的該靜（validator 尚未管 overlay 層，先人工檢查）。
 
 ## Step 7 — Bridge 審核（HITL）
 
@@ -257,8 +285,8 @@ render 失敗 fail loud 不吞；emit 後提醒修修做 DaVinci import smoke。
 
 ```markdown
 # Run log — <ep>
-- skill: brook-director v1.0
-- 分型: 書籍型（依據：…）；預算 N cutaway/分
+- skill: brook-director v2.0
+- 分型: 概念型（依據：…）；預算 cutaway N/分 + overlay M/分（合計 4.5–5.5）
 ## 素材決策
 - beat 12 stock：搜 "snowball rolling growing"（切面：視覺隱喻）；
   候選 A/B/C（URL）；選 A 因光線暖；否決 B 因 corporate 擺拍
@@ -276,4 +304,30 @@ E2E 每跑完一集（visual approved + DaVinci import smoke 過），把可固�
 
 ### 教訓紀錄
 
-（v1.0 尚無——第一集 E2E 後開始累積。）
+**2026-07-17 · focus-protocol-1228（修修 text 層審核回饋，v1.1）**
+
+1. **footage 類 cutaway ≤ ~3 秒**。beat 是 idea unit，但 stock/kol cutaway 只覆蓋其中的
+   「視覺片語」（通常 1–2 個 SRT cue），其餘拆回 A-roll none beat。整個 idea unit 蓋滿
+   B-roll（9 秒+）是錯的——「學生時期看到原文書就煩」是一個 footage，「後來就被退學了」
+   就該回到臉。卡片類（quote/transition/book_cover/bigstat）可以比 3 秒長，
+   但 book_cover/bigstat 也盡量貼到點題句（~2–4 秒）。
+2. **Hook（前 30 秒）逐名詞給畫面**。開場每個具象名詞（「超強記憶力」「堅強意志力」）
+   都值得一個獨立 footage，相鄰快切合法（validator 已改為以 source_url 判定視覺重複，
+   同一支 footage 相鄰才違規）。
+3. **Bridge 審核頁 B-roll 列要有顏色標記**（cutaway 列 tint），修修掃表時靠色塊抓節奏。
+
+**2026-07-18 · 四支成片拆解＋Ali/Jeff 對照（v2.0，修修委託的剪輯文法研究）**
+
+1. **節拍器定律**：cutaway＋overlay 合計 ~5 視覺事件/分（四支成片全中）——Step 0
+   改雙預算、三分型；guardrail re-baseline 2.5→3.5 事件/分（同 PR）。
+2. **意圖/實現分離落地**（修修裁決 A）：Beat 新增 `visual_intent`，Director 出意圖、
+   DP 出實現；觸發規則表 13 條入冊（Step 2）。
+3. **金句卡=首唸即上卡**從單例升級為定律（致富心態 11/11 毫秒級同步）；配方兩檔位
+   （stock 底壓暗／kinetic text——後者待 composition）。
+4. **章節卡**：滿版橘卡＋wipe、與唸出同步、「步驟」也有卡；overlay 層（keyword/
+   inset/banner）是 v1 完全缺席的 vocabulary，現為 Step 2 一級公民。
+5. **傳記型警訊**：KOL 單源 ≤20s 紅線與傳主素材用法（成片單源 ~130s+）根本衝突
+   ——遇傳記型選書，開工前先把素材策略拿去給修修裁決，不要排完才發現全違規。
+6. **從 Ali/Jeff 引入**：canvas_pip 版面（意圖層先記錄，等 composition）、
+   worked-example 實算動畫取代論證段 stock、章節 grid 總覽卡、錄屏速度標記。
+

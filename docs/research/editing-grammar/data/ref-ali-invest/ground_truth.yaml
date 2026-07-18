@@ -1,0 +1,4228 @@
+stats:
+  total_shots: 301
+  broll_shots: 113
+  broll_shots_per_minute: 3.83
+  broll_events: 75
+  broll_events_per_minute: 2.54
+  shots_per_event_p50: 1
+  shots_per_event_max: 8
+  broll_duration_p50: 4.76
+  broll_duration_p90: 17.28
+  broll_time_share: 0.467
+  aroll_runs:
+    n: 76
+    p50: 7.0
+    p90: 27.0
+    max: 83.6
+  by_type:
+    diagram:
+      n: 4
+      p50: 13.18
+      max: 21.88
+    kol:
+      n: 19
+      p50: 1.96
+      max: 5.96
+    motion_graphic:
+      n: 45
+      p50: 9.6
+      max: 29.52
+    quote_card:
+      n: 7
+      p50: 5.36
+      max: 7.56
+    screen_recording:
+      n: 5
+      p50: 6.64
+      max: 19.24
+    stock:
+      n: 23
+      p50: 1.84
+      max: 4.88
+    title_card:
+      n: 10
+      p50: 4.7
+      max: 10.52
+shots:
+- shot_id: 1
+  start: 0.0
+  end: 2.84
+  duration: 2.84
+  type: aroll
+  note: 主持人 Ali 在明亮房間對鏡頭說話開場；frame a 無文字，frame b 大字 overlay 滑入："You want to get started"（白＋淺灰
+    serif 大字橫貫畫面下半）。
+  cues:
+  - 1
+  - 2
+  text: Okay, so let's say you wanna get startedwith this investing thing.
+- shot_id: 2
+  start: 2.84
+  end: 5.6
+  duration: 2.76
+  type: aroll
+  note: 主持人說話，右側疊 app 風格 Savings UI 卡："Savings / Current Balance / $8,547.23 / Withdraw
+    / Deposit"；frame b 左側再滑入 Property 卡："Property / Open for Sale / $385,000"（房屋照片縮圖）。多幀差異：Property
+    卡在 b 才出現。
+  cues:
+  - 2
+  - 3
+  - 4
+  - 5
+  text: with this investing thing.You might have a bit of money saved.It's probably
+    not enough for a house,but you decide you sh
+- shot_id: 3
+  start: 5.6
+  end: 7.36
+  duration: 1.76
+  type: aroll
+  note: 主持人雙手張開對鏡頭說話，無任何 overlay 文字。
+  cues:
+  - 5
+  text: but you decide you should probably invest in something.
+- shot_id: 4
+  start: 7.36
+  end: 8.36
+  duration: 1.0
+  type: aroll
+  note: 主持人對鏡頭說話並比手勢，無 overlay 文字（極短鏡頭）。
+  cues:
+  - 5
+  - 6
+  text: but you decide you should probably invest in something.You could invest in
+    stocks and shares,
+- shot_id: 5
+  start: 8.36
+  end: 14.32
+  duration: 5.96
+  type: motion_graphic
+  note: 淺綠畫布動畫＋主持人 PIP 疊左側；彩色虛線框標籤逐一彈入："Stocks & Shares"（frame a 僅此一枚），frame b 增至五枚："Foreign
+    Exchange" "Corporate Bonds" "Real Estate" "Stocks & Shares" "Government Bonds"。
+  cues:
+  - 6
+  - 7
+  - 8
+  text: You could invest in stocks and shares,government bonds, corporate bonds, real
+    estate,foreign exchange, crypto, NFTs, fut
+- shot_id: 6
+  start: 14.32
+  end: 18.6
+  duration: 4.28
+  type: aroll
+  note: 主持人揮手說話；frame a 無文字，frame b 疊白色藥丸形 Bitcoin 標籤（橘色 ₿ 圖示）："Bitcoin"，下方部分露出年份字樣
+    "…013"（應為 2013，滑入中）。多幀差異：overlay 在 b 才出現。
+  cues:
+  - 8
+  - 9
+  - 10
+  text: foreign exchange, crypto, NFTs, futures, fine art, watches,or maybe you've
+    got that one friendwho bought Bitcoin in 2013
+- shot_id: 7
+  start: 18.6
+  end: 20.08
+  duration: 1.48
+  type: motion_graphic
+  note: 淺綠畫布手繪曲線動畫＋主持人 PIP 左側；frame a 上升箭頭標 "+30%"（箭頭往左下彎），frame b 曲線爬升標 "+805%"（綠色大字）。
+  cues:
+  - 10
+  - 11
+  - 12
+  text: who bought Bitcoin in 2013 or Nvidia in like 2015,and then that person got
+    super rich,and you're like, "Whoa, like, man,
+- shot_id: 8
+  start: 20.08
+  end: 24.2
+  duration: 4.12
+  type: aroll
+  note: 主持人雙手高舉誇張手勢對鏡頭說話，無 overlay 文字。
+  cues:
+  - 12
+  - 13
+  text: and you're like, "Whoa, like, man, if only I'd done that,"I'd have been like
+    mega rich without having to do any work."
+- shot_id: 9
+  start: 24.2
+  end: 27.12
+  duration: 2.92
+  type: motion_graphic
+  note: 延續淺綠畫布動畫＋主持人 PIP 左側；frame a 為 "+30%" 下彎箭頭圖，frame b 換成五枚彩色虛線資產標籤："Foreign Exchange"
+    "Corporate Bonds" "Real Estate" "Stocks & Shares" "Government Bonds"。
+  cues:
+  - 13
+  - 14
+  - 15
+  text: '"I''d have been like mega rich without having to do any work."So there''s
+    all these dreams, there''s all this confusion,and'
+- shot_id: 10
+  start: 27.12
+  end: 28.52
+  duration: 1.4
+  type: aroll
+  note: 主持人雙手前伸比手勢對鏡頭說話，無 overlay 文字。
+  cues:
+  - 15
+  - 16
+  text: and then on top of all of this,there is the very real fear
+- shot_id: 11
+  start: 28.52
+  end: 31.72
+  duration: 3.2
+  type: motion_graphic
+  note: 淺綠畫布圖表動畫＋主持人 PIP 左側；frame a 座標軸上短上升線標 "+10%"（綠字），frame b 變成陡降曲線與粉紅色下跌區域標 "-68%"（紅色大字）。
+  cues:
+  - 16
+  - 17
+  - 18
+  text: there is the very real fearthat you might actually lose all of this moneythat
+    you've worked so hard to save.
+- shot_id: 12
+  start: 31.72
+  end: 35.88
+  duration: 4.16
+  type: aroll
+  note: 主持人激動比手勢說話；frame a 無文字，frame b 疊超大藍色 serif 字 "UPDATED" 橫貫上方＋白色字 "Ultimate"
+    於左下（標題 overlay 進場中）。
+  cues:
+  - 19
+  - 20
+  - 21
+  text: So in light of all of this,this is my updated ultimate guideto investing for
+    beginners.
+- shot_id: 13
+  start: 35.88
+  end: 40.24
+  duration: 4.36
+  type: title_card
+  note: '滿版淺綠章節總覽卡：四張深綠圓角卡片動畫浮現（frame a 僅 Part 1 淡入，frame b 四張齊全，內文帶模糊/像素化過場效果）："Part
+    1 The Basics and Philosophy of Investing" "Part 2 Why and How to Invest" "Part
+    3 Common Fears, Concerns, and Questions" "Part 4 Fastlane Investing: The Alternative
+    Approach"。'
+  cues:
+  - 21
+  - 22
+  - 23
+  - 24
+  text: 'to investing for beginners.And so we''re gonna split this video up into four
+    parts,which are timestamped,so you can skip '
+- shot_id: 14
+  start: 40.24
+  end: 44.68
+  duration: 4.44
+  type: title_card
+  note: 綠色系章節卡 grid，聚焦 Part 1 卡片（柱＋書 icon），旁邊 Part 3 與右側模糊的 Part 2 卡片可見。文字："Part 1
+    / The Basics and Philosophy of Investing"（下方部分可見 "Part 3"）。兩幀間卡片微幅放大移動。
+  cues:
+  - 24
+  - 25
+  - 26
+  - 27
+  text: so you can skip around if you feel like it.In part one, we're gonna talk about
+    the basicsand the philosophy behind inves
+- shot_id: 15
+  start: 44.68
+  end: 47.8
+  duration: 3.12
+  type: title_card
+  note: 同一綠色章節卡 grid 滑動聚焦 Part 2 卡片（植物＋錢幣 icon）。文字："Part 2 / Why and How to Invest"，下方部分可見
+    "Part 4"。
+  cues:
+  - 27
+  - 28
+  text: Then we're gonna talk about why and how to invest your moneyand some nuances
+    around that.
+- shot_id: 16
+  start: 47.8
+  end: 52.2
+  duration: 4.4
+  type: title_card
+  note: 章節卡 grid 聚焦 Part 3 卡片（問號 icon），上方殘留 "Investing" 字尾、右側模糊 Part 4。文字："Part 3
+    / Common Fears, Questions, and Concerns"。
+  cues:
+  - 28
+  - 29
+  - 30
+  - 31
+  text: 'and some nuances around that.Thirdly, we''re gonna talk about common fearsand
+    questions and concerns,like what if I lose '
+- shot_id: 17
+  start: 52.2
+  end: 57.16
+  duration: 4.96
+  type: title_card
+  note: '章節卡 grid 聚焦 Part 4 卡片（公路 icon）。文字："Part 4 / Fastlane Investing: The Alternative
+    Approach"。'
+  cues:
+  - 31
+  - 32
+  - 33
+  - 34
+  text: like what if I lose all my money?And then in part four,we're gonna talk about
+    fast lane investing,which is an alternativ
+- shot_id: 18
+  start: 57.16
+  end: 59.76
+  duration: 2.6
+  type: aroll
+  note: Ali 於明亮房間（LONDON 海報、植物、書堆、白色麥克風）對鏡頭說話；a 幀舉手比劃、b 幀正面直視鏡頭。畫面無文字 overlay。
+  cues:
+  - 35
+  - 36
+  text: So with that said, let's dive in.Part one, the philosophy and the basics of
+    investing.
+- shot_id: 19
+  start: 59.76
+  end: 68.04
+  duration: 8.28
+  type: title_card
+  note: 以 Part 1 章節卡開場（文字："Part 1 / The Basics and Philosophy of Investing"、下方 "Part
+    3"），b/c 幀切為 Ali 在昏暖檯燈書房桌前 wide 機位講話，c 幀畫面下方疊大字 serif overlay 文字："What's actually
+    the point of"（overlay 僅 c 幀出現）。混合鏡頭：title_card 開頭轉 aroll。
+  cues:
+  - 36
+  - 37
+  - 38
+  - 39
+  text: 'Part one, the philosophy and the basics of investing.Okay, so let''s start
+    with the basics,and let''s start by asking the '
+- shot_id: 20
+  start: 68.04
+  end: 78.12
+  duration: 10.08
+  type: motion_graphic
+  note: 米白背景卡通動畫：橘衣男性角色與逐漸堆高的美元鈔票金字塔，左側 Ali 實拍 PIP 圓角框全程存在。文字："£15,000"（b 幀出現，a 幀無、c
+    幀已消失，鈔票持續堆疊）。
+  cues:
+  - 39
+  - 40
+  - 41
+  - 42
+  - 43
+  - 44
+  - 45
+  text: 'what''s actually the point of investing in the first place?Now, a lot of
+    people I speak to have the experiencewhere they '
+- shot_id: 21
+  start: 78.12
+  end: 80.36
+  duration: 2.24
+  type: aroll
+  note: Ali 在昏暖書房桌前（檯燈、鍵盤、麥克風）對鏡頭比手勢說話。畫面無文字。
+  cues:
+  - 45
+  - 46
+  - 47
+  text: and they're being financially responsible.But if you are interested in investing,then
+    you probably know that if that mon
+- shot_id: 22
+  start: 80.36
+  end: 84.88
+  duration: 4.52
+  type: motion_graphic
+  note: 延續卡通動畫：橘衣角色比讚站在鈔票金字塔旁，b 幀頂端鈔票逐張淡出（表示錢減少），左側 Ali 實拍 PIP 全程存在。畫面除鈔票 $ 符號外無文字。
+  cues:
+  - 47
+  - 48
+  - 49
+  text: then you probably know that if that moneyis just sitting there in your bank
+    account,it's actually losing value every sin
+- shot_id: 23
+  start: 84.88
+  end: 87.04
+  duration: 2.16
+  type: aroll
+  note: Ali 在昏暖書房 wide 機位對鏡頭說話，a 幀側身講話、b 幀正面。畫面無文字。
+  cues:
+  - 49
+  - 50
+  text: it's actually losing value every single day.And that is thanks to a wonderful
+    thing called inflation,
+- shot_id: 24
+  start: 87.04
+  end: 102.48
+  duration: 15.44
+  type: motion_graphic
+  note: 米白動畫背景＋左側 Ali PIP：a 幀近乎空白（僅曲線圖形開始繪製），b/c 幀出現 "Purchasing Power" 座標圖，x 軸 "2006
+    / 2016 / 2026"，各年一張美鈔對上逐年縮小的購物車（購物車由 c 幀補齊 2006 大車）。文字："Purchasing Power", "2006",
+    "2016", "2026"。圖表逐步 build-in，多幀內容遞增。
+  cues:
+  - 50
+  - 51
+  - 52
+  - 53
+  - 54
+  - 55
+  - 56
+  - 57
+  - 58
+  - 59
+  text: And that is thanks to a wonderful thing called inflation,where essentially
+    over time,your money loses its purchasing pow
+- shot_id: 25
+  start: 102.48
+  end: 106.56
+  duration: 4.08
+  type: aroll
+  note: Ali 在昏暖書房桌前雙手張開比劃、對鏡頭說話。畫面無文字。
+  cues:
+  - 59
+  - 60
+  - 61
+  - 62
+  text: with the same amount of money.Now, the whole point of investingis to be able
+    to put our money somewherewhere it makes mo
+- shot_id: 26
+  start: 106.56
+  end: 116.16
+  duration: 9.6
+  type: motion_graphic
+  note: 米白背景資訊圖卡＋左側 Ali PIP：橘色標題膠囊 "Purpose of Investing"，藍色圓 "1" 與紫色圓 "2" 條列逐步 build-in（a
+    幀僅標題與 1 的圓點，b/c 幀全出）。文字："Purpose of Investing", "1 To counteract the effects of
+    inflation", "2 Grow and compound wealth over time"。
+  cues:
+  - 63
+  - 64
+  - 65
+  - 66
+  - 67
+  text: Firstly, to counteract the effects of inflation.And secondly, if we can beat
+    inflation,then it means like the more you i
+- shot_id: 27
+  start: 116.16
+  end: 120.96
+  duration: 4.8
+  type: aroll
+  note: 主持人 Ali 在書桌前對鏡頭說話並用雙手比劃，無任何文字 overlay。
+  cues:
+  - 67
+  - 68
+  - 69
+  - 70
+  text: And then that is one of the strategies for building wealth.So if the point
+    of investing is to magically grow your money,
+- shot_id: 28
+  start: 120.96
+  end: 124.44
+  duration: 3.48
+  type: aroll
+  note: 主持人置中對鏡頭說話，畫面下方疊大字標題 overlay；a 幀文字打字進行中只出現「How」，b 幀完整顯示「How does investing
+    make you money?」— overlay 逐字進場，兩幀不一致。
+  cues:
+  - 70
+  - 71
+  text: okay, but like how does investing actually make you money?And here we're gonna
+    introduce the term asset.
+- shot_id: 29
+  start: 124.44
+  end: 145.32
+  duration: 20.88
+  type: motion_graphic
+  note: 米白底動畫版面，主持人縮成左側圓角直式 PIP；a 幀出現橘色標籤「Asset」，b 幀換成兩棟紅磚建築 3D 切片插圖（無字），c 幀在上棟建築旁標註「Rental
+    Income」— 元素依序切換，多幀不一致。
+  cues:
+  - 71
+  - 72
+  - 73
+  - 74
+  - 75
+  - 76
+  - 77
+  - 78
+  - 79
+  - 80
+  - 81
+  - 82
+  - 83
+  text: 'And here we''re gonna introduce the term asset.An asset is a thing that puts
+    money in your pocket.So for example, if you '
+- shot_id: 30
+  start: 145.32
+  end: 147.68
+  duration: 2.36
+  type: aroll
+  note: 回到主持人書桌全景，對鏡頭說話比手勢，無文字 overlay。
+  cues:
+  - 83
+  - 84
+  - 85
+  text: 'This is called capital appreciation.So let''s say you win a million dollars
+    in the lotteryand you put all of it into buy '
+- shot_id: 31
+  start: 147.68
+  end: 164.96
+  duration: 17.28
+  type: motion_graphic
+  note: '米白底動畫，主持人左側 PIP；a 幀單棟紅磚建築插圖，b 幀加上三張白色卡片「Buy: $1,000,000 house」「Rent: $2,000/month」「Rental
+    income: $24,000/year」與吊牌「$1,000,000」，c 幀增第四張卡「Capital appreciation: +$500,000」且吊牌變「$1,500,000」—
+    資訊逐步堆疊。'
+  cues:
+  - 85
+  - 86
+  - 87
+  - 88
+  - 89
+  - 90
+  - 91
+  - 92
+  - 93
+  text: and you put all of it into buy a house in cashand you're able to rent out
+    that house for,I don't know, $2,000 a month.Ev
+- shot_id: 32
+  start: 164.96
+  end: 170.64
+  duration: 5.68
+  type: aroll
+  note: 主持人書桌全景說話；a 幀無 overlay，b 幀右下疊白色圓角標籤「Property taxes」— overlay 中途進場。
+  cues:
+  - 93
+  - 94
+  - 95
+  - 96
+  - 97
+  - 98
+  text: from the capital appreciation of the property.In reality, of course, you probably
+    use a mortgage.In reality, there's pro
+- shot_id: 33
+  start: 170.64
+  end: 175.48
+  duration: 4.84
+  type: motion_graphic
+  note: '延續米白底動畫（主持人左側 PIP）：四張卡片「Buy: $1,000,000 house」「Rent: $2,000/month」「Rental
+    income: $24,000/year」「Capital appreciation: +$500,000」＋建築與「$1,500,000」吊牌；b 幀在
+    Rent 卡旁加綠色勾勾 ✓。'
+  cues:
+  - 98
+  - 99
+  - 100
+  text: But essentially in this context,you are earning money through rental incomeand
+    through appreciation of the asset itself.
+- shot_id: 34
+  start: 175.48
+  end: 178.4
+  duration: 2.92
+  type: aroll
+  note: 主持人書桌全景對鏡頭說話比手勢，無文字 overlay。
+  cues:
+  - 100
+  - 101
+  - 102
+  text: and through appreciation of the asset itself.Now, houses are an interesting
+    examplebecause they're quite easy to visuali
+- shot_id: 35
+  start: 178.4
+  end: 182.84
+  duration: 4.44
+  type: stock
+  note: 圖庫實拍：兩名男子在售出房屋前握手（西裝長者與白衣買家），背景立牌「HOUSE SALE / SOLD」；主持人縮左側 PIP 持續講解。
+  cues:
+  - 102
+  - 103
+  - 104
+  - 105
+  text: because they're quite easy to visualise.Like you can imagine theoretically
+    owning a houseand then theoretically becoming
+- shot_id: 36
+  start: 182.84
+  end: 185.24
+  duration: 2.4
+  type: stock
+  note: 圖庫實拍：一隻手遞出一疊美鈔（b 幀另一隻手伸來接），廚房背景虛化；主持人左側 PIP；畫面無設計文字。
+  cues:
+  - 105
+  - 106
+  text: and having someone pay you rentbecause you probably pay rent to someone else.
+- shot_id: 37
+  start: 185.24
+  end: 192.2
+  duration: 6.96
+  type: aroll
+  note: 主持人書桌全景說話；a 幀無 overlay，b 幀畫面中央疊白色圓角標籤「Property ladder」，c 幀標籤消失、主持人舉手 — overlay
+    中途進出。
+  cues:
+  - 106
+  - 107
+  - 108
+  - 109
+  - 110
+  text: because you probably pay rent to someone else.And so most people, when they
+    think of investing,they think I should get o
+- shot_id: 38
+  start: 192.2
+  end: 193.04
+  duration: 0.84
+  type: aroll
+  note: 主持人近景對鏡頭說話、雙手張開比劃，無文字 overlay。
+  cues:
+  - 110
+  - 111
+  text: were into that sort of stuff many decades ago.But for the most part, for most
+    people,
+- shot_id: 39
+  start: 193.04
+  end: 198.72
+  duration: 5.68
+  type: quote_card
+  note: 米白底滿版大字引言卡（襯線字逐字浮現）：a 幀僅「For」，b 幀顯示「For most people, owning a house is actually
+    a relatively inaccessible thing if you're just」（owning a house 為橘色強調，句子尚在進行中）；無署名。
+  cues:
+  - 111
+  - 112
+  - 113
+  text: But for the most part, for most people,owning a house is actually a relatively
+    inaccessible thingif you were just gettin
+- shot_id: 40
+  start: 198.72
+  end: 205.28
+  duration: 6.56
+  type: aroll
+  note: 主持人 Ali 在書桌前對鏡頭說話（白麥克風、綠植、LONDON 海報）。b 幀出現滿版白色大字 overlay："Alternative asset
+    classes"（a、c 幀無文字）。
+  cues:
+  - 113
+  - 114
+  - 115
+  - 116
+  - 117
+  text: 'if you were just getting started with investing.And so we wanna be looking
+    to alternative asset classes.Now, there is a '
+- shot_id: 41
+  start: 205.28
+  end: 220.84
+  duration: 15.56
+  type: motion_graphic
+  note: 米白背景動態資訊圖：中央橘色虛線圓 "Asset Classes"，逐幀輻射出泡泡節點："Stocks & Shares" "Hedge Funds"
+    "Index Funds" "Government Bonds" "Corporate Bonds" "Fancy Watches" "Fine Art"
+    "Crypto"；左側主持人直式 PIP 卡全程在畫面。a 幀僅中心圓，b/c 幀節點陸續滑入（Fine Art 淡入中、Crypto 最後出現）。
+  cues:
+  - 117
+  - 118
+  - 119
+  - 120
+  - 121
+  - 122
+  - 123
+  - 124
+  - 125
+  - 126
+  text: There's stocks, shares and equities,which is sort of the same thing.There
+    are hedge funds, there are index funds,there a
+- shot_id: 42
+  start: 220.84
+  end: 223.24
+  duration: 2.4
+  type: aroll
+  note: 主持人對鏡頭說話比手勢，b 幀轉頭看向側邊（跳切變化角度）。畫面無文字。
+  cues:
+  - 126
+  - 127
+  - 128
+  text: 'and we are gonna be focusing on stocks and shares.The reason we''re gonna
+    be talking about stocks and shares,and this is '
+- shot_id: 43
+  start: 223.24
+  end: 226.36
+  duration: 3.12
+  type: aroll
+  note: 主持人較近景雙手張開比手勢對鏡頭說話，a 幀動作模糊。畫面無文字。
+  cues:
+  - 128
+  - 129
+  text: and this is most sensible people's recommendationwhen it comes to investing
+    your money.
+- shot_id: 44
+  start: 226.36
+  end: 242.6
+  duration: 16.24
+  type: motion_graphic
+  note: 米白背景編號清單卡逐條滑入，左側主持人直式 PIP。文字："1 Accessible to normal people" "2 Low capital
+    needed to get started" "3 Low risk compared to crypto" "4 No special investor
+    status required"。a 幀僅編號 1 圓點出現，b 幀有 1–3 條，c 幀四條齊。
+  cues:
+  - 129
+  - 130
+  - 131
+  - 132
+  - 133
+  - 134
+  - 135
+  - 136
+  - 137
+  - 138
+  - 139
+  - 140
+  text: when it comes to investing your money.Firstly, because it is very accessibleto
+    normal people like you and me.Secondly, y
+- shot_id: 45
+  start: 242.6
+  end: 245.88
+  duration: 3.28
+  type: title_card
+  note: 綠色系滿版章節卡："Part 2 / Why and How to Invest"（含小樹苗金幣 icon），下緣露出 "Part 4" 卡一角；a→b
+    卡片滑動定位中。
+  cues:
+  - 140
+  text: Part two, why and how to invest in stocks and shares.
+- shot_id: 46
+  start: 245.88
+  end: 250.28
+  duration: 4.4
+  type: motion_graphic
+  note: 米白背景綠色膠囊標題條 + 左側主持人直式 PIP。文字："1 What Does It Mean to Buy a Stock or Share?"；a
+    幀標題滑入中僅顯示 "1 What"，b 幀完整。
+  cues:
+  - 140
+  - 141
+  - 142
+  text: 'Part two, why and how to invest in stocks and shares.So what does it actually
+    mean to buy a stock or a share?Well, when '
+- shot_id: 47
+  start: 250.28
+  end: 257.88
+  duration: 7.6
+  type: motion_graphic
+  note: 深綠背景方塊網格動畫（一格白色代表持股比例），左側主持人直式 PIP。b/c 幀出現文字："Small percentage of ownership
+    in a company"；c 幀底部加 Apple logo 徽章 "+0.3%"。a 幀僅網格無文字。
+  cues:
+  - 142
+  - 143
+  - 144
+  - 145
+  - 146
+  text: Well, when you're investing in stocks and shares,you are basically buying
+    a small percentage ownershipin the company tha
+- shot_id: 48
+  start: 257.88
+  end: 260.8
+  duration: 2.92
+  type: aroll
+  note: 主持人對鏡頭說話，疊滿版白色大字 overlay 逐字浮現：a 幀 "What even"，b 幀完整 "What even is the point
+    of owning a stock?"（stock? 為橘色）。
+  cues:
+  - 147
+  - 148
+  text: of what even is the point of owning,for example, Apple stock.
+- shot_id: 49
+  start: 260.8
+  end: 286.56
+  duration: 25.76
+  type: motion_graphic
+  note: 米白背景兩張深綠比較卡 + 左側主持人直式 PIP。a 幀僅空白卡滑入；b 幀左卡："Number 1 / Increase in stock price
+    / Investment value $2,000"（Apple logo）＋折線圖（x 軸 26 27 28 29 30 31）；c 幀加右卡："Number
+    2 / Dividends / Investment value $2,000"（BT logo）＋平坦線圖（26–31）。
+  cues:
+  - 148
+  - 149
+  - 150
+  - 151
+  - 152
+  - 153
+  - 154
+  - 155
+  - 156
+  - 157
+  - 158
+  - 159
+  - 160
+  - 161
+  - 162
+  - 163
+  text: for example, Apple stock.And the point is that there are two waysto make money
+    from stock.The first way you make money f
+- shot_id: 50
+  start: 286.56
+  end: 289.32
+  duration: 2.76
+  type: aroll
+  note: 主持人雙手舉起對鏡頭說話。畫面無文字。
+  cues:
+  - 163
+  - 164
+  - 165
+  text: to their shareholders.So we've established that there are two waysto make
+    money from stocks and shares.
+- shot_id: 51
+  start: 289.32
+  end: 291.2
+  duration: 1.88
+  type: aroll
+  note: 主持人另一機位（稍偏側、書架背景較多）對鏡頭微笑說話。畫面無文字。
+  cues:
+  - 165
+  - 166
+  text: to make money from stocks and shares.The next question we have to get to is,
+- shot_id: 52
+  start: 291.2
+  end: 305.56
+  duration: 14.36
+  type: motion_graphic
+  note: 米白背景動畫 + 左側主持人直式 PIP。a 幀回到章節標題條 "1 What Does It Mean to Buy a Stock or Share?"（下方淡出的
+    "2" 膠囊）；b/c 幀切為卡通人物插畫＋股票漲幅徽章："+0.3%"（Apple logo）、c 幀再加 "+0.25%"（Tesla logo）與 "+0.5%"（Nvidia
+    logo）。
+  cues:
+  - 166
+  - 167
+  - 168
+  - 169
+  - 170
+  - 171
+  - 172
+  - 173
+  - 174
+  - 175
+  text: 'The next question we have to get to is,how do you choose which companies
+    you want to invest in?Maybe you have an iPhone '
+- shot_id: 53
+  start: 305.56
+  end: 308.68
+  duration: 3.12
+  type: aroll
+  note: 主持人在書桌旁側身轉向鏡頭、手扶白色麥克風，正要拿書；背景 LONDON 海報、Ravenclaw 掛畫、書牆。b 幀他已拿起一本書捧在手上對鏡頭說話。畫面無文字。
+  cues:
+  - 175
+  - 176
+  - 177
+  text: '"Man, I should invest in Netflix."Now here are the advice from most sensible
+    peoplewho give advice about this stuff.'
+- shot_id: 54
+  start: 308.68
+  end: 310.04
+  duration: 1.36
+  type: aroll
+  note: 主持人正面對鏡頭近景，a 幀舉起食指比「1」手勢，b 幀手放下講話中（手部動態模糊）。畫面無文字。
+  cues:
+  - 177
+  - 178
+  - 179
+  text: who give advice about this stuff.Not me, I'm not a financial advisor,but sensible
+    people who are,
+- shot_id: 55
+  start: 310.04
+  end: 311.8
+  duration: 1.76
+  type: aroll
+  note: 主持人拿起書《The Simple Path to Wealth》展示給鏡頭；a 幀正把書立起，b 幀舉到胸前正面展示。書封可讀文字："The Simple
+    Path to Wealth" / "JL Collins"。無其他 overlay。
+  cues:
+  - 179
+  - 180
+  text: but sensible people who are,basically say you should not try and pick stocks.
+- shot_id: 56
+  start: 311.8
+  end: 314.52
+  duration: 2.72
+  type: aroll
+  note: 主持人手持書講話，身上疊大字 serif 白色文字 overlay，逐步打出：a 幀 "You should"，b 幀（他側頭看手上的書）"You
+    should not try to pick stocks"。
+  cues:
+  - 180
+  - 181
+  text: basically say you should not try and pick stocks.This is a wonderful book
+    by a chap called J.L. Collins.
+- shot_id: 57
+  start: 314.52
+  end: 320.04
+  duration: 5.52
+  type: kol
+  note: JL Collins podcast 訪談片段為主畫面（米色底圓角卡框），左側疊主持人 PIP（直式圓角小窗、舉著書），中間疊書封圖："The Simple
+    Path to Wealth / YOUR ROAD MAP TO FINANCIAL INDEPENDENCE AND A RICH, FREE LIFE
+    / JL Collins / with foreword by MR. MONEY MUSTACHE"；左下署名 "JL Collins"。兩幀構圖一致。
+  cues:
+  - 181
+  - 182
+  - 183
+  - 184
+  text: This is a wonderful book by a chap called J.L. Collins.This is like how I
+    got started with investinglike 10 plus years a
+- shot_id: 58
+  start: 320.04
+  end: 323.44
+  duration: 3.4
+  type: kol
+  note: Warren Buffett 在 FORTUNE 論壇的片段為主畫面（同一米色卡框版式），左側主持人 PIP，左下署名 "Warren Buffet"；背景牆面重複字樣
+    "FORTUNE"。b 幀多出白色對話泡泡引言 "You should not try to actively pick stocks"（a 幀尚未出現）。
+  cues:
+  - 184
+  - 185
+  - 186
+  text: He says, "You should not try and stock pick."Warren Buffett himself says,"You
+    should not try and actively pick stocks."
+- shot_id: 59
+  start: 323.44
+  end: 329.76
+  duration: 6.32
+  type: aroll
+  note: 主持人對鏡頭講話比手勢；a、b 幀畫面無文字，c 幀疊大字 overlay：白字 "Buy an" + 橘字 "Index Fund"。桌上可見 Simple
+    Path to Wealth 書。
+  cues:
+  - 186
+  - 187
+  - 188
+  - 189
+  - 190
+  text: '"You should not try and actively pick stocks."In general, there is a better
+    and safer approachto investing and that is t'
+- shot_id: 60
+  start: 329.76
+  end: 339.88
+  duration: 10.12
+  type: motion_graphic
+  note: 米色簡報式動畫版面，左側主持人直式 PIP，右側元素逐步進場：a 幀僅橘色標籤 "Index"；b 幀出現 "Index" "Fund" 兩標籤及
+    "Fund" 下方註解 "A group of stocks and shares"；c 幀再加上方文字 "A fund tracks a"（打字進行中）。多幀
+    overlay 遞增。
+  cues:
+  - 190
+  - 191
+  - 192
+  - 193
+  - 194
+  - 195
+  text: Well, index fund can be divided into two words,index and fund.So a fund is
+    basically just like a groupof stocks and shar
+- shot_id: 61
+  start: 339.88
+  end: 346.76
+  duration: 6.88
+  type: aroll
+  note: 主持人對鏡頭雙手比劃講解；a 幀無文字，b 幀身前疊白色圓角膠囊標籤 "S&P 500"，c 幀標籤消失。
+  cues:
+  - 195
+  - 196
+  - 197
+  - 198
+  - 199
+  text: tracks a particular stock market index.So for example, in the US,there is
+    a very famous stock market indexcalled the S&P
+- shot_id: 62
+  start: 346.76
+  end: 348.72
+  duration: 1.96
+  type: aroll
+  note: 主持人近景對鏡頭講話（推近的 jump cut），兩幀皆無畫面文字。
+  cues:
+  - 199
+  - 200
+  text: which is basically the top 500 biggest companies in the US.For example, at
+    the time that I'm recording this video,
+- shot_id: 63
+  start: 348.72
+  end: 370.28
+  duration: 21.56
+  type: motion_graphic
+  note: 深色圓角卡片上的甜甜圈圖動畫，標題 "S&P 500 Companies"，左側主持人 PIP。a 幀僅綠色扇形＋NVIDIA 標籤浮現；b 幀標籤齊："NVIDIA
+    7.18% / Apple 6% / Microsoft 4% / Amazon 3.6% / Alphabet 4.2% / Meta 2.5%"；c 幀再加
+    "Match Group 0.01%"。overlay 逐幀遞增。
+  cues:
+  - 200
+  - 201
+  - 202
+  - 203
+  - 204
+  - 205
+  - 206
+  - 207
+  - 208
+  - 209
+  - 210
+  text: For example, at the time that I'm recording this video,Nvidia makes up 7.18%
+    of the S&P 500.Apple makes up six and a bit
+- shot_id: 64
+  start: 370.28
+  end: 373.12
+  duration: 2.84
+  type: aroll
+  note: 主持人對鏡頭講話、單手在頭側比劃，b 幀雙手向下比動作（動態模糊）。畫面無文字。
+  cues:
+  - 210
+  - 211
+  - 212
+  text: which also makes up around 0.01% of the index.Now the point of the S&P 500
+    indexis that it gives you a single number
+- shot_id: 65
+  start: 373.12
+  end: 378.68
+  duration: 5.56
+  type: aroll
+  note: 主持人近景對鏡頭講話，a 幀單手掠過臉前（動態模糊），b 幀雙手張開比大範圍手勢。畫面無文字。
+  cues:
+  - 212
+  - 213
+  - 214
+  text: is that it gives you a single numberthat you can track over timeto see how
+    valuable as a whole the US stock market is.
+- shot_id: 66
+  start: 378.68
+  end: 382.4
+  duration: 3.72
+  type: aroll
+  note: Ali 在書桌前對鏡頭說話、手勢比劃（麥克風、綠植、LONDON 海報、烏鴉畫背景）。畫面無文字 overlay。
+  cues:
+  - 214
+  - 215
+  - 216
+  text: to see how valuable as a whole the US stock market is.And the vast majority
+    of the value in the US stock marketis in the
+- shot_id: 67
+  start: 382.4
+  end: 404.28
+  duration: 21.88
+  type: diagram
+  note: 米白底滿版圖表：S&P 500 歷史對數線圖逐步繪入，左側 Ali 圓角 PIP 直式視窗持續說話。文字："S&P 500"（a 幀標題打字中顯示
+    "S&P 5 0"，線圖僅畫到 1940s）；b/c 幀線圖畫滿至 2020s，b 幀出現標註卡 "2008 FINANCIAL CRISIS / −57%
+    / Oct 2007 — Mar 2009"。軸標籤 1930–2020、5–8K。
+  cues:
+  - 216
+  - 217
+  - 218
+  - 219
+  - 220
+  - 221
+  - 222
+  - 223
+  - 224
+  - 225
+  - 226
+  - 227
+  - 228
+  text: is in these 500 companies.Now, if you look at a graph of the S&P 500 over
+    time,you will see that for the most part,it go
+- shot_id: 68
+  start: 404.28
+  end: 409.32
+  duration: 5.04
+  type: aroll
+  note: Ali 對鏡頭說話，雙手手勢。畫面無文字 overlay。
+  cues:
+  - 228
+  - 229
+  - 230
+  - 231
+  text: 'and then generally kind of continues going back up slowly.So that is what
+    the S&P 500 index is.Now, if you invest in an '
+- shot_id: 69
+  start: 409.32
+  end: 434.12
+  duration: 24.8
+  type: motion_graphic
+  note: 米白底動畫段落，左側 Ali PIP 直式視窗。a 幀：橘紅標題 "How an Index Fund Works"（模糊滑入中）；b 幀：滿版假想
+    $1000 美鈔插圖，鈔票上文字 "FEDERAL RESERVE NOTE / THE UNITED STATES OF AMERICA / A 30116104
+    A / ONE THREASAND DOLLARS / 1000"；c 幀：鈔票被分割成色條並標註 "Apple" "Microsoft" "NVIDIA"（含
+    logo）。多幀為同一動畫序列的不同階段。
+  cues:
+  - 231
+  - 232
+  - 233
+  - 234
+  - 235
+  - 236
+  - 237
+  - 238
+  - 239
+  - 240
+  - 241
+  - 242
+  - 243
+  text: what basically happens is that the money you putinto the fund gets distributedamongst
+    the companies in the index.And cru
+- shot_id: 70
+  start: 434.12
+  end: 435.76
+  duration: 1.64
+  type: aroll
+  note: Ali 對鏡頭說話，雙手手勢。畫面無文字 overlay。
+  cues:
+  - 243
+  text: recommend in terms of how to get started with investing.
+- shot_id: 71
+  start: 435.76
+  end: 438.52
+  duration: 2.76
+  type: kol
+  note: Warren Buffett 訪談片段（圓角卡片置於米白底上），底部設計字幕逐字亮起："I think it's the same thing that
+    makes most sense"（a 幀僅 "I think" 亮、b 幀幾乎全亮——karaoke 式高亮推進）。
+  cues:
+  - 243
+  - 244
+  text: recommend in terms of how to get started with investing.- I think it's the
+    same thing that makes most sense
+- shot_id: 72
+  start: 438.52
+  end: 444.28
+  duration: 5.76
+  type: kol
+  note: 同一 Buffett 訪談的雙人 wide shot（紅衣女主持人與 Buffett 對坐），底部字幕 "practically all of the
+    time, and that is to consistently"（兩幀高亮進度不同）。
+  cues:
+  - 244
+  - 245
+  - 246
+  text: '- I think it''s the same thing that makes most sensepractically all of the
+    time.And that is to consistently buy an S&P 50'
+- shot_id: 73
+  start: 444.28
+  end: 450.24
+  duration: 5.96
+  type: kol
+  note: Buffett 特寫繼續說話，底部字幕 "buy an S&P 500 low-cost index fund, keep buying it"（karaoke
+    高亮逐字推進，兩幀進度不同）。
+  cues:
+  - 246
+  - 247
+  - 248
+  text: And that is to consistently buy an S&P 500low cost index fund, keep buying
+    it through thick and thin,and especially thro
+- shot_id: 74
+  start: 450.24
+  end: 453.36
+  duration: 3.12
+  type: aroll
+  note: Ali 對鏡頭說話，雙手張開手勢。畫面無文字 overlay。
+  cues:
+  - 248
+  - 249
+  - 250
+  text: and especially through thin.- Now, the great thing here is that over time,your
+    money is gonna track the market.
+- shot_id: 75
+  start: 453.36
+  end: 460.64
+  duration: 7.28
+  type: aroll
+  note: Ali 較近景（punch-in）對鏡頭說話，手勢大幅揮動（a 幀雙手於胸前、b 幀雙手高舉、c 幀鏡頭微移）。畫面無文字 overlay。
+  cues:
+  - 250
+  - 251
+  - 252
+  - 253
+  - 254
+  text: your money is gonna track the market.So the money you invest grows at the
+    same rateas the stock market as a whole,if you
+- shot_id: 76
+  start: 460.64
+  end: 468.8
+  duration: 8.16
+  type: aroll
+  note: Ali 對鏡頭說話。a/b 幀無 overlay；c 幀左上滑入白色圓角 pill overlay，文字 "NVIDIA"（含綠色 NVIDIA logo）——overlay
+    僅在鏡頭後段出現。
+  cues:
+  - 254
+  - 255
+  - 256
+  - 257
+  - 258
+  - 259
+  text: which is the US stock market as a whole.You're not trying to come up with
+    like some crucial,like game-changing insight t
+- shot_id: 77
+  start: 468.8
+  end: 471.6
+  duration: 2.8
+  type: stock
+  note: 圖庫實拍：交易室內多名男子盯著多螢幕行情（疑似電影/紀錄片式 trading floor 畫面），左側 Ali PIP 直式視窗持續說話。畫面無文字。
+  cues:
+  - 259
+  - 260
+  - 261
+  text: or anything like that.You're not trying to do all of this researchinto all
+    these companies to figure out
+- shot_id: 78
+  start: 471.6
+  end: 475.8
+  duration: 4.2
+  type: stock
+  note: 圖庫實拍：夜間辦公室一名男子在雙螢幕前分析股票圖表（螢幕顯示金融 dashboard），左側 Ali PIP 直式視窗持續說話。畫面無可辨識文字（螢幕上為模糊金融數據）。
+  cues:
+  - 261
+  - 262
+  - 263
+  - 264
+  text: into all these companies to figure outwhich companies are like, you know,
+    mispricedand like what their price to earnings
+- shot_id: 79
+  start: 475.8
+  end: 486.92
+  duration: 11.12
+  type: aroll
+  note: 主持人站在書桌後對鏡頭說話，雙手大幅比劃（白色麥克風、綠植、LONDON 海報、烏鴉黑板畫）。畫面無文字 overlay。
+  cues:
+  - 264
+  - 265
+  - 266
+  - 267
+  - 268
+  - 269
+  - 270
+  text: and any of this sort of stuff.You're just saying, you know what,I'm gonna
+    make a bet that as a whole,the US stock market
+- shot_id: 80
+  start: 486.92
+  end: 492.24
+  duration: 5.32
+  type: aroll
+  note: 較近景：主持人半身對鏡頭說話、雙手握拳再張開比劃。畫面無文字 overlay。
+  cues:
+  - 270
+  - 271
+  - 272
+  - 273
+  - 274
+  text: I'm not gonna think about it too hard.I'm just gonna set it and forget it.And
+    I'm gonna do better things with my timerat
+- shot_id: 81
+  start: 492.24
+  end: 496.04
+  duration: 3.8
+  type: aroll
+  note: 主持人身體前傾對鏡頭說話，單手在桌面前比劃、後又叉腰。畫面無文字 overlay。
+  cues:
+  - 274
+  - 275
+  - 276
+  text: and try and research companies.And if we take a historical average over the
+    last, like,I don't know, 100 years or someth
+- shot_id: 82
+  start: 496.04
+  end: 501.72
+  duration: 5.68
+  type: motion_graphic
+  note: 米白底動畫圖卡：S&P 500 折線圖逐步繪出（log 軸，1930–2020），左側有主持人 PIP 圓角小窗（兩幀皆在）。文字："S&P 500
+    100 Year Returns"；軸標籤 5/10/20/50/100/200/500/1K/2K/5K 與年份 1930–2020。a 幀曲線只畫到 1940s，b
+    幀畫滿至 2020（動畫進行中）。
+  cues:
+  - 276
+  - 277
+  - 278
+  text: I don't know, 100 years or something,the S&P 500 grows roughly by somewhere
+    betweenseven and 9% on average every year.
+- shot_id: 83
+  start: 501.72
+  end: 508.28
+  duration: 6.56
+  type: aroll
+  note: 主持人邊說話邊轉身伸手到桌右側拿/指桌上的書（The Simple Path to Wealth）。畫面無文字 overlay。
+  cues:
+  - 278
+  - 279
+  - 280
+  - 281
+  - 282
+  text: seven and 9% on average every year.Now at this point, whenever someone hears
+    the adviceof index funds for the first time
+- shot_id: 84
+  start: 508.28
+  end: 528.88
+  duration: 20.6
+  type: aroll
+  note: 黑白分級（flashback/強調式 b&w）近景，主持人對鏡頭說話、雙手舉起比劃；a 幀側身、b 幀正面、c 幀更近雙手抬起。畫面無文字 overlay。
+  cues:
+  - 282
+  - 283
+  - 284
+  - 285
+  - 286
+  - 287
+  - 288
+  - 289
+  - 290
+  - 291
+  - 292
+  - 293
+  - 294
+  text: 'I was like, okay, but like,why would I invest in like fricking Campbell''s
+    Soup Company?Why would I invest in like Ralph '
+- shot_id: 85
+  start: 528.88
+  end: 536.36
+  duration: 7.48
+  type: aroll
+  note: 主持人對鏡頭說話，白色圓角文字 pill overlay 滑入：a 幀無文字，b 幀 "7-9% / year"（畫面中央），c 幀換成 "Double"（畫面左側）。
+  cues:
+  - 294
+  - 295
+  - 296
+  - 297
+  - 298
+  - 299
+  text: that like outperform the market.Now this makes a lot of sense'cause you might
+    be thinking that seven to 9%,like that's n
+- shot_id: 86
+  start: 536.36
+  end: 546.08
+  duration: 9.72
+  type: aroll
+  note: 近景主持人對鏡頭說話，表情誇張大笑、後指向鏡頭。畫面無文字 overlay。
+  cues:
+  - 299
+  - 300
+  - 301
+  - 302
+  - 303
+  - 304
+  text: I wanna triple my money.And in general, when it comes to the world of investing,you
+    should not expect to double or tripl
+- shot_id: 87
+  start: 546.08
+  end: 549.4
+  duration: 3.32
+  type: aroll
+  note: 主持人站在桌後對鏡頭說話，b 幀轉頭望向右側。畫面無文字 overlay。
+  cues:
+  - 304
+  - 305
+  - 306
+  text: which we're gonna talk about at the end of this video.Having a seven to 9%
+    return rateis actually considered really soli
+- shot_id: 88
+  start: 549.4
+  end: 553.76
+  duration: 4.36
+  type: aroll
+  note: 近景主持人叉腰對鏡頭說話，b 幀低頭視線向下。畫面無文字 overlay。
+  cues:
+  - 306
+  - 307
+  - 308
+  text: is actually considered really solid.The best private equity firms in the world,I
+    think aim for like 20% returns,
+- shot_id: 89
+  start: 553.76
+  end: 561.52
+  duration: 7.76
+  type: aroll
+  note: 主持人對鏡頭說話比劃；a 幀白色 pill overlay "20% / year"（畫面中央），b、c 幀 overlay 消失（滑出）。
+  cues:
+  - 308
+  - 309
+  - 310
+  - 311
+  - 312
+  text: I think aim for like 20% returns,but normal people like you and megenerally
+    can't access private equity anyway.And so mo
+- shot_id: 90
+  start: 561.52
+  end: 570.28
+  duration: 8.76
+  type: motion_graphic
+  note: 米白底 agenda 清單圖卡，綠色 pill 列點逐條出現，左側主持人 PIP 圓角小窗。文字："1 What Does It Mean to Buy
+    a Stock or Share?" "2 How to Choose Which Company to Invest In?" "3 Why You Shouldn't
+    Try To Pick Individual Stocks"；c 幀切換為大字 kinetic text 逐字浮現："Unless you get really
+    lucky, chances are you are not actually going"（"really lucky," 橘色強調，句子尚在動畫中未完）。
+  cues:
+  - 312
+  - 313
+  - 314
+  - 315
+  - 316
+  - 317
+  text: 'with seven to 9% annual compounding returns.Now I wanna talk a little bit
+    moreabout why you should generallynot try and '
+- shot_id: 91
+  start: 570.28
+  end: 573.04
+  duration: 2.76
+  type: aroll
+  note: 近景主持人對鏡頭說話，雙手先在胸前比劃後向兩側攤開。畫面無文字 overlay。
+  cues:
+  - 317
+  - 318
+  - 319
+  text: chances are you are not actually gonna beat the market.There have been a bunch
+    of studies and surveyswhere people have t
+- shot_id: 92
+  start: 573.04
+  end: 578.24
+  duration: 5.2
+  type: kol
+  note: Warren Buffett 訪談片段（白髮長者、西裝紅領帶、電視訪談場景）置於畫面右側大框，Ali 直式 PIP 疊在左側對鏡頭說話。畫面無文字。
+  cues:
+  - 319
+  - 320
+  - 321
+  - 322
+  text: 'where people have tried this over time.Warren Buffett even did a challengewhere
+    he challenged like fund pickerswho were '
+- shot_id: 93
+  start: 578.24
+  end: 589.28
+  duration: 11.04
+  type: diagram
+  note: 米白背景動畫長條圖：五檔基金 vs 對沖基金平均 vs 指數基金報酬比較，Ali 直式 PIP 在左側。a 幀圖表尚未載入（僅空白背景），b/c 幀完整。文字逐字：Year
+    / 2008 - 2016 / Fund A / Fund B / Fund C / Fund D / Fund E / Hedge fund average
+    / Index fund / 8.7% / 28.3% / 62.8% / 2.9% / 7.5% / 22.0% / 85.4% / The funds
+    have not been named publicly; the index fund is Vanguard's S&P 500 Admiral fund
+  cues:
+  - 322
+  - 323
+  - 324
+  - 325
+  - 326
+  - 327
+  - 328
+  text: who were like literally specialists at picking stocksand basically compared
+    the performanceof these like professionals w
+- shot_id: 94
+  start: 589.28
+  end: 593.2
+  duration: 3.92
+  type: aroll
+  note: Ali 中近景對鏡頭說話、手勢比劃，明亮房間（LONDON 海報、植物、書架、白色麥克風）。畫面無文字。
+  cues:
+  - 328
+  - 329
+  - 330
+  text: if you take a long enough time horizon.There is also a hidden cost of stock
+    pickingbecause even if you could theoretical
+- shot_id: 95
+  start: 593.2
+  end: 594.56
+  duration: 1.36
+  type: aroll
+  note: Ali 對鏡頭說話，較廣角度（可見書桌、鍵盤、檯燈）。畫面無文字。
+  cues:
+  - 330
+  - 331
+  text: because even if you could theoretically beat the market,the way you do that
+    is by investing loads and loads
+- shot_id: 96
+  start: 594.56
+  end: 598.88
+  duration: 4.32
+  type: stock
+  note: 實拍畫面：男子在書桌前握拳抵著額頭、對著筆記本苦惱（呈現投資壓力），Ali 直式 PIP 疊在左側說話。畫面無文字。
+  cues:
+  - 331
+  - 332
+  - 333
+  text: 'the way you do that is by investing loads and loadsand loads and loads of
+    time in actually doing the researchto be able '
+- shot_id: 97
+  start: 598.88
+  end: 606.28
+  duration: 7.4
+  type: aroll
+  note: Ali 對鏡頭說話，左側依序滑入白底文字卡片。a 幀無文字；b 幀已出現前兩張、第三張滑入中；c 幀四張齊全。文字逐字：Reading financial
+    reports / Tracking the news / Analysing charts / Constant anxiety
+  cues:
+  - 333
+  - 334
+  - 335
+  - 336
+  - 337
+  - 338
+  text: to be able to know what you're talking about.So like spending hours every
+    week,reading financial reports and tracking th
+- shot_id: 98
+  start: 606.28
+  end: 608.52
+  duration: 2.24
+  type: aroll
+  note: Ali 中近景對鏡頭說話、雙手張開比劃。畫面無文字。
+  cues:
+  - 338
+  - 339
+  - 340
+  text: at each individual moment.Now that is time that you probablyhave better things
+    to do with.
+- shot_id: 99
+  start: 608.52
+  end: 609.92
+  duration: 1.4
+  type: stock
+  note: 實拍畫面：四人在餐桌一起用餐聊天（居家聚餐場景），Ali 直式 PIP 疊在左側說話。畫面無文字。
+  cues:
+  - 340
+  - 341
+  text: have better things to do with.You could probably spend it with your family
+- shot_id: 100
+  start: 609.92
+  end: 611.16
+  duration: 1.24
+  type: stock
+  note: 實拍畫面：男子站著彈木吉他（客廳、鋼琴與植物背景），Ali 直式 PIP 疊在左側，右側白底標籤卡滑入。a 幀僅一張、b 幀兩張。文字逐字：Family
+    / Hobbies
+  cues:
+  - 342
+  text: or your hobbies or building a business.
+- shot_id: 101
+  start: 611.16
+  end: 614.88
+  duration: 3.72
+  type: aroll
+  note: Ali 對鏡頭說話、雙手比劃，桌面廣角視角。畫面無文字。
+  cues:
+  - 342
+  - 343
+  - 344
+  text: 'or your hobbies or building a business.If you invest in an index fund,it
+    basically takes like 30 minutes or less to get '
+- shot_id: 102
+  start: 614.88
+  end: 619.12
+  duration: 4.24
+  type: aroll
+  note: Ali 中近景對鏡頭說話。畫面無文字。
+  cues:
+  - 344
+  - 345
+  - 346
+  - 347
+  text: 'it basically takes like 30 minutes or less to get startedand then you don''t
+    have to put any time into it,thinking about '
+- shot_id: 103
+  start: 619.12
+  end: 624.16
+  duration: 5.04
+  type: aroll
+  note: Ali 對鏡頭說話；a 幀無文字，b 幀左側有一張白底文字卡滑入中（動態模糊）。文字逐字：Individual stocks
+  cues:
+  - 347
+  - 348
+  - 349
+  - 350
+  text: whereas stock picking is quite different.For me personally, I have a bunch
+    of friendswho have invested in individual sto
+- shot_id: 104
+  start: 624.16
+  end: 639.48
+  duration: 15.32
+  type: diagram
+  note: 米白背景動畫折線概念圖：Returns vs Time，指數基金與個股報酬曲線比較，Ali 直式 PIP 在左側。a 幀圖表僅開始繪製（只有兩個圓點與軸線片段），b/c
+    幀完整（藍線上揚最高、橘線居中、紅色虛線下跌）。文字逐字：Index fund / Individual stocks / Returns / $1000
+    / Time
+  cues:
+  - 350
+  - 351
+  - 352
+  - 353
+  - 354
+  - 355
+  - 356
+  - 357
+  - 358
+  - 359
+  - 360
+  text: rather than an index fund.Basically all of them have made less moneythan they
+    would have done if they just investedin th
+- shot_id: 105
+  start: 639.48
+  end: 646.2
+  duration: 6.72
+  type: aroll
+  note: 主持人在書桌前對鏡頭說話；a 幀無文字，b 幀滑入白底圓角文字卡「Top 500 companies in US」，c 幀換成右側文字卡「Top 1000
+    companies in the world」。overlay 文字內容在鏡頭內切換。
+  cues:
+  - 360
+  - 361
+  - 362
+  - 363
+  - 364
+  text: 'in which you can actually lose money,but you''re very unlikely to lose moneyif
+    you just spread it outamongst the top 500 '
+- shot_id: 106
+  start: 646.2
+  end: 651.4
+  duration: 5.2
+  type: aroll
+  note: 主持人較近景舉手比 OK 手勢對鏡頭說話；b 幀轉頭看向側面。畫面無 overlay 文字（僅背景 LONDON 海報）。
+  cues:
+  - 364
+  - 365
+  - 366
+  - 367
+  - 368
+  text: or amongst the top 1,000 companies in the world.Now I do wanna hammer home
+    this pointbecause at this point,if you're sti
+- shot_id: 107
+  start: 651.4
+  end: 653.24
+  duration: 1.84
+  type: aroll
+  note: 主持人在書桌前對鏡頭說話並比手勢，b 幀低頭看向桌面。無 overlay 文字。
+  cues:
+  - 368
+  - 369
+  - 370
+  text: you might be thinking,but like surely stock picking is easy.I mean, man, five
+    years ago,
+- shot_id: 108
+  start: 653.24
+  end: 669.36
+  duration: 16.12
+  type: aroll
+  note: 整鏡黑白（去飽和）處理的主持人近景，模擬回憶/自嘲橋段；鏡頭內有推近感（b、c 幀更近、角度晃動）。無 overlay 文字。
+  cues:
+  - 370
+  - 371
+  - 372
+  - 373
+  - 374
+  - 375
+  - 376
+  - 377
+  - 378
+  text: I mean, man, five years ago,I knew that Apple would do well.And if I just
+    invested in Apple five years ago,I'd be rich r
+- shot_id: 109
+  start: 669.36
+  end: 672.16
+  duration: 2.8
+  type: aroll
+  note: 恢復彩色的主持人近景對鏡頭說話、比手勢。無 overlay 文字。
+  cues:
+  - 378
+  - 379
+  - 380
+  - 381
+  text: it would have gone to the moon.And so what people dois that they get this
+    sort of false senseof like thinking of themsel
+- shot_id: 110
+  start: 672.16
+  end: 678.44
+  duration: 6.28
+  type: aroll
+  note: 主持人對鏡頭說話；a 幀無 overlay，b、c 幀左側滑入白底圓角 app 圖示卡（Bitcoin 金幣 logo）。圖卡無文字。
+  cues:
+  - 381
+  - 382
+  - 383
+  - 384
+  - 385
+  text: of like thinking of themselvesas being very good investors,because at one
+    point, maybe in 2013,you considered buying Bit
+- shot_id: 111
+  start: 678.44
+  end: 683.56
+  duration: 5.12
+  type: aroll
+  note: 主持人近景對鏡頭說話；a 幀無 overlay，b 幀左側白底圓角 app 圖示卡出現，內為「Disney+」logo。文字逐字：Disney+。
+  cues:
+  - 385
+  - 386
+  - 387
+  - 388
+  - 389
+  text: and never actually did it.Or like, I don't know,when Disney Plus was announced
+    in,I don't know, five years ago,I was lik
+- shot_id: 112
+  start: 683.56
+  end: 684.2
+  duration: 0.64
+  type: aroll
+  note: 主持人大特寫直視鏡頭說話。無 overlay 文字。
+  cues:
+  - 389
+  - 390
+  text: I was like, huh, maybe I should invest in Disney stock.And I never did.
+- shot_id: 113
+  start: 684.2
+  end: 689.76
+  duration: 5.56
+  type: aroll
+  note: 主持人中近景對鏡頭說話，b 幀側身看向桌面/側面。無 overlay 文字。
+  cues:
+  - 390
+  - 391
+  - 392
+  - 393
+  text: And I never did.And I'm like, oh man, Disney stock is so up.Man, if only I'd
+    invested in Disney stock,I'd have made so m
+- shot_id: 114
+  start: 689.76
+  end: 691.08
+  duration: 1.32
+  type: aroll
+  note: 主持人在書桌前雙手張開比劃對鏡頭說話。無 overlay 文字。
+  cues:
+  - 393
+  - 394
+  - 395
+  text: I'd have made so much money, et cetera, et cetera.The thing to keep in mindis
+    that unless you actually invested in Bitco
+- shot_id: 115
+  start: 691.08
+  end: 692.16
+  duration: 1.08
+  type: aroll
+  note: 主持人近景伸手向鏡頭比劃說話。無 overlay 文字。
+  cues:
+  - 395
+  text: is that unless you actually invested in Bitcoin in 2013,
+- shot_id: 116
+  start: 692.16
+  end: 694.92
+  duration: 2.76
+  type: screen_recording
+  note: Bitcoin 價格走勢圖表卡（TradingView 式線圖）滿版，左側主持人 PIP 圓角視窗說話。畫面文字逐字：Bitcoin/USD、20.4
+    USD（黃色標籤），右軸價格刻度約 -10000.0 至 120000.0，橫軸年份 2011–2025、Feb。兩幀構圖一致。
+  cues:
+  - 395
+  - 396
+  - 397
+  text: is that unless you actually invested in Bitcoin in 2013,you can't say that
+    like,man, I'm such a good investor.
+- shot_id: 117
+  start: 694.92
+  end: 702.04
+  duration: 7.12
+  type: aroll
+  note: 主持人在書桌前對鏡頭說話、雙手張開；a、b 幀無 overlay，c 幀畫面下方疊入大字白色 serif 文字「I knew it was going
+    to do well」。
+  cues:
+  - 397
+  - 398
+  - 399
+  - 400
+  - 401
+  - 402
+  text: man, I'm such a good investor.I knew Bitcoin was gonna do well,because like,
+    everyone's like,I knew it was gonna do well
+- shot_id: 118
+  start: 702.04
+  end: 707.16
+  duration: 5.12
+  type: aroll
+  note: Ali 對鏡頭說話、比出兩指手勢，明亮房間（LONDON 海報、植物、書架、白色麥克風），畫面無文字 overlay。
+  cues:
+  - 402
+  - 403
+  - 404
+  text: it really doesn't count.Secondly, if you did invest in Bitcoin in 2013or Nvidia
+    in 2013, when would you have sold?
+- shot_id: 119
+  start: 707.16
+  end: 715.8
+  duration: 8.64
+  type: motion_graphic
+  note: 米白底資訊圖卡：Bitcoin/USD 長期價格面積圖，主持人 PIP 圓角框在左側對鏡頭說話。文字："Bitcoin/USD"、"20.4 USD"；b/c
+    幀陸續滑入三個橘色標籤 "here?" "here?" "here?"（a 幀尚未出現）。
+  cues:
+  - 404
+  - 405
+  - 406
+  - 407
+  - 408
+  - 409
+  text: 'or Nvidia in 2013, when would you have sold?Would you have sold when the
+    price 5Xs or 10Xs or 100Xs?Like, how would you '
+- shot_id: 120
+  start: 715.8
+  end: 717.32
+  duration: 1.52
+  type: aroll
+  note: Ali 在書桌前（暖色燈、鳥圖海報、鍵盤入鏡）雙手張開對鏡頭說話，無文字 overlay。與 118 不同機位/時段（較廣、暖光）。
+  cues:
+  - 409
+  - 410
+  text: and ultimately up.Let's say you own Nvidia stock right now.
+- shot_id: 121
+  start: 717.32
+  end: 721.64
+  duration: 4.32
+  type: motion_graphic
+  note: 米白底股價面積圖卡（2020–2026 走勢，右軸價格刻度，藍色標籤 "174.40"），主持人 PIP 在左側；b 幀圖表 zoom in 放大近期區段。畫面文字僅軸標數字與
+    "174.40"。
+  cues:
+  - 410
+  - 411
+  - 412
+  text: Let's say you own Nvidia stock right now.Nvidia is at an all time high in
+    its stock price.Do you keep on holding or do y
+- shot_id: 122
+  start: 721.64
+  end: 729.36
+  duration: 7.72
+  type: aroll
+  note: 同書桌機位但整段轉黑白（灰階調色）表現戲劇/自嘲語氣，Ali 說話並在 c 幀雙手舉起，無文字 overlay。
+  cues:
+  - 412
+  - 413
+  - 414
+  - 415
+  - 416
+  - 417
+  text: Do you keep on holding or do you sell?Do you think, man, this AI boom is a
+    bubble,so do you sell Nvidia because you're l
+- shot_id: 123
+  start: 729.36
+  end: 735.36
+  duration: 6.0
+  type: motion_graphic
+  note: 米白底股價圖卡＋主持人 PIP；a 幀橘字 "Why" 出現，b 幀完整句子 "Why didn't you sell here?" 配弧形箭頭指向圖上回檔低點（文字逐步打出，兩幀不一致）。
+  cues:
+  - 417
+  - 418
+  - 419
+  - 420
+  - 421
+  - 422
+  text: and it's gonna pop.Why didn't you sell six months agowhen everyone was like,
+    oh my God,Nvidia is dying and stock price i
+- shot_id: 124
+  start: 735.36
+  end: 737.56
+  duration: 2.2
+  type: aroll
+  note: Ali 在暖光書桌機位對鏡頭說話、比手勢，無文字 overlay。
+  cues:
+  - 422
+  - 423
+  text: Like, what is it about youthat would have kept you holding onto the stock?
+- shot_id: 125
+  start: 737.56
+  end: 741.24
+  duration: 3.68
+  type: quote_card
+  note: 滿版米白金句卡，橘/黑大字逐字打出動畫：a 幀僅 "It"，b 幀 "It is so easy to delude ourselves into
+    thinking that we"（delude 為橘色強調，句子仍在打出中，無署名）。
+  cues:
+  - 423
+  - 424
+  - 425
+  text: that would have kept you holding onto the stock?It is so easy to delude ourselvesinto
+    thinking that we are good investor
+- shot_id: 126
+  start: 741.24
+  end: 745.68
+  duration: 4.44
+  type: aroll
+  note: Ali 在暖光書桌機位對鏡頭說話、單手比劃，無文字 overlay。
+  cues:
+  - 425
+  - 426
+  - 427
+  - 428
+  text: into thinking that we are good investors.Just because we had a thought a few
+    years agothat like, I should probably buy N
+- shot_id: 127
+  start: 745.68
+  end: 752.8
+  duration: 7.12
+  type: aroll
+  note: Ali 對鏡頭說話（明亮日光機位，同 118 場景），雙手比出捏合手勢，無文字 overlay。
+  cues:
+  - 428
+  - 429
+  - 430
+  - 431
+  - 432
+  text: and then didn't actually do it.Or even if you did buy Nvidia a few years ago,you
+    maybe just got lucky.And it has nothing
+- shot_id: 128
+  start: 752.8
+  end: 757.48
+  duration: 4.68
+  type: kol
+  note: 電影片段（疑為 The Big Short：交易員盯著多螢幕行情、b 幀白襯衫男子講電話）置於圓角卡框內，主持人 PIP 在左側說話。畫面無可讀 overlay
+    文字。
+  cues:
+  - 432
+  - 433
+  - 434
+  text: '''Cause there are literally full time professionalswhose job it is to pick
+    stocks.They do it for 60 to 80 hours a week.'
+- shot_id: 129
+  start: 757.48
+  end: 758.72
+  duration: 1.24
+  type: aroll
+  note: Ali 在暖光書桌機位雙手舉起對鏡頭說話，無文字 overlay。
+  cues:
+  - 434
+  - 435
+  text: They do it for 60 to 80 hours a week.And in general, over time,
+- shot_id: 130
+  start: 758.72
+  end: 764.08
+  duration: 5.36
+  type: quote_card
+  note: 滿版米白金句卡逐字打出：a 幀全空白（文字尚未出現），b 幀 "Index funds outperform even those people who
+    are putting their entire life's work"（Index funds 與 entire life's 為橘色強調，句子仍在打出中，無署名）。
+  cues:
+  - 435
+  - 436
+  - 437
+  - 438
+  - 439
+  text: And in general, over time,index funds outperform even those peoplewho are
+    putting their entire life's workinto trying to
+- shot_id: 131
+  start: 764.08
+  end: 770.04
+  duration: 5.96
+  type: aroll
+  note: Ali 在書桌前對鏡頭說話（中景，白麥克風、書架、LONDON 海報、鳥圖掛畫），a 幀手放桌面、b 幀雙手在麥克風前比劃；畫面無文字。
+  cues:
+  - 439
+  - 440
+  - 441
+  - 442
+  text: Generally, the younger you are,the more prone you are to wantingto do individual
+    stock pickingbecause your memory is jus
+- shot_id: 132
+  start: 770.04
+  end: 775.64
+  duration: 5.6
+  type: aroll
+  note: Ali 較近景對鏡頭說話，b 幀鏡頭略推近；背景 LONDON 海報與植物；畫面無文字。
+  cues:
+  - 442
+  - 443
+  - 444
+  - 445
+  - 446
+  text: 'because your memory is just not long enough.For example, if you happen to
+    be one of the,I don''t know, 20% of people who '
+- shot_id: 133
+  start: 775.64
+  end: 777.44
+  duration: 1.8
+  type: kol
+  note: 復古 Kodak Gold 底片盒電視廣告畫面置於圓角卡片，左側 Ali 圓角直式 PIP 同步講話；畫面文字："Kodak Gold"。
+  cues:
+  - 446
+  text: you probably remember Kodak in the 1990s.
+- shot_id: 134
+  start: 777.44
+  end: 779.4
+  duration: 1.96
+  type: kol
+  note: 復古廣告片段：兩個小孩趴在沙地上玩（低畫質 VHS 質感），左側 Ali PIP 持續；畫面無文字。
+  cues:
+  - 446
+  - 447
+  - 448
+  text: you probably remember Kodak in the 1990s.They were absolutely huge.No one
+    could have imagined a world without Kodak
+- shot_id: 135
+  start: 779.4
+  end: 781.2
+  duration: 1.8
+  type: kol
+  note: 復古廣告片段：兩個穿條紋球衣（背號 2、7）的小孩在泥地走動，左側 Ali PIP；畫面文字：球衣背號 "2" "7"。
+  cues:
+  - 448
+  - 449
+  text: No one could have imagined a world without Kodakbecause they were absolutely
+    massive.
+- shot_id: 136
+  start: 781.2
+  end: 781.72
+  duration: 0.52
+  type: kol
+  note: Kodak 廣告片段：Drake 穿黑皮夾克在夜晚街頭低頭看手上裝置微笑，左側 Ali PIP；畫面無 overlay 文字。
+  cues:
+  - 449
+  text: because they were absolutely massive.
+- shot_id: 137
+  start: 781.72
+  end: 784.4
+  duration: 2.68
+  type: kol
+  note: 同 Kodak 廣告：a 幀手持白色 Kodak 相機特寫（動態模糊），b 幀 Drake 在 Radio City Music Hall 霓虹招牌前跳動；畫面文字（場景招牌）："RADIO
+    CITY MUSIC HALL"、跑馬燈 "DRAKE SOLD OUT"。
+  cues:
+  - 449
+  - 450
+  - 451
+  text: because they were absolutely massive.Like they actually invented digital camerasback
+    in 1975,
+- shot_id: 138
+  start: 784.4
+  end: 785.2
+  duration: 0.8
+  type: kol
+  note: Kodak 廣告：Drake 在 Radio City 霓虹前對鏡頭微笑近景，左側 Ali PIP 比手勢；畫面文字（場景招牌）："RADIO CITY"
+    "MUS…"。
+  cues:
+  - 451
+  - 452
+  text: back in 1975,but they didn't wanna market the digital camera
+- shot_id: 139
+  start: 785.2
+  end: 786.68
+  duration: 1.48
+  type: kol
+  note: Kodak 廣告：手持 Kodak 相機特寫，a 幀螢幕顯示 Drake 照片，b 幀螢幕顯示分享清單；畫面文字（相機螢幕）："Pitbull /
+    Trey Songz / Rihanna / FACEBOOK / Share"。左側 Ali PIP。
+  cues:
+  - 452
+  - 453
+  text: but they didn't wanna market the digital camerabecause it would cannibalize
+- shot_id: 140
+  start: 786.68
+  end: 788.12
+  duration: 1.44
+  type: kol
+  note: Kodak 廣告：Drake 面前舉起銀色 Kodak 相機特寫（臉部失焦），左側 Ali PIP；畫面文字（相機機身）："Kodak 12 MEGAPIXELS"
+    "5X" "KODAK AF 5x Optical"。
+  cues:
+  - 453
+  - 454
+  text: because it would cannibalizetheir like film camera business.
+- shot_id: 141
+  start: 788.12
+  end: 791.0
+  duration: 2.88
+  type: aroll
+  note: 回到 Ali 全畫面中景對鏡頭說話，a 幀雙手張開比劃、b 幀手放桌上；畫面無文字。
+  cues:
+  - 454
+  - 455
+  - 456
+  text: their like film camera business.And now no one uses a Kodak anymore.It's kind
+    of like retro nostalgic tech
+- shot_id: 142
+  start: 791.0
+  end: 793.76
+  duration: 2.76
+  type: aroll
+  note: Ali 近景對鏡頭說話，a 幀低頭看向側邊、b 幀舉左手比劃；畫面無文字。
+  cues:
+  - 456
+  - 457
+  text: It's kind of like retro nostalgic techbecause they filed for bankruptcy in
+    like 2012.
+- shot_id: 143
+  start: 793.76
+  end: 795.68
+  duration: 1.92
+  type: aroll
+  note: Ali 中景在書桌前對鏡頭說話並比手勢，b 幀視線瞥向側邊；畫面無文字。
+  cues:
+  - 457
+  - 458
+  text: because they filed for bankruptcy in like 2012.Or if you have the memory of
+    like 20 years ago,
+- shot_id: 144
+  start: 795.68
+  end: 797.52
+  duration: 1.84
+  type: stock
+  note: 懷舊錄影帶出租店（Blockbuster 店內）檔案畫面為主畫面，顧客在滿牆錄影帶貨架間瀏覽；左側直式圓角 inset 為主持人 Ali 對鏡頭說話（PIP）。畫面上無文字。
+  cues:
+  - 458
+  - 459
+  - 460
+  text: 'Or if you have the memory of like 20 years ago,Blockbuster was like absolutely
+    massive.People would go to a Blockbuster '
+- shot_id: 145
+  start: 797.52
+  end: 800.48
+  duration: 2.96
+  type: stock
+  note: Blockbuster Video 店面外觀檔案畫面（夜間霓虹藍色門面），店內顧客可見；左側主持人 PIP 持續。畫面文字（店招）："BLOCKBUSTER
+    VIDEO"。
+  cues:
+  - 460
+  - 461
+  text: People would go to a Blockbuster store on a Friday nightand like rent a movie.
+- shot_id: 146
+  start: 800.48
+  end: 805.8
+  duration: 5.32
+  type: motion_graphic
+  note: 米白背景動態圖卡：左側主持人直式 PIP，中央白色圓角 app 卡內 Blockbuster 票券 logo（文字 "BLOCKBUSTER ENTERTAINMENT"）；b
+    幀滑入右側 Netflix "N" logo 卡與紅色對話泡泡，文字："Hey, do you want to buy us for $50 million?"。a
+    幀時 Netflix 卡尚未完全進場、泡泡未出現（滑入動畫）。
+  cues:
+  - 461
+  - 462
+  - 463
+  - 464
+  text: and like rent a movie.Netflix literally went to Blockbuster and said,"Hey,
+    do you wanna buy us for $50 million?"And Bloc
+- shot_id: 147
+  start: 805.8
+  end: 809.56
+  duration: 3.76
+  type: aroll
+  note: 主持人在書桌前對鏡頭說話（暖光檯燈、烏鴉海報、LONDON 海報背景），手勢豐富、b 幀笑著指自己。無疊加文字。
+  cues:
+  - 464
+  - 465
+  - 466
+  text: And Blockbuster's CEO laughed in their face.And now there is one Blockbuster
+    left on the planetand Netflix is worth hund
+- shot_id: 148
+  start: 809.56
+  end: 813.72
+  duration: 4.16
+  type: aroll
+  note: 主持人近景對鏡頭說話，舉手比三的手勢、b 幀歪頭。無疊加文字。
+  cues:
+  - 466
+  - 467
+  - 468
+  - 469
+  text: and Netflix is worth hundreds of billions of dollars.If you speak to your
+    parents or your grandparents,there is no way t
+- shot_id: 149
+  start: 813.72
+  end: 818.44
+  duration: 4.72
+  type: stock
+  note: 新聞/實拍畫面：兩名男子抬著拆下的 "LEHMAN BROTHERS" 金屬招牌（Christie's 拍賣行門口）；左側主持人 PIP。畫面文字（招牌）："LEHMAN
+    BROTHERS"。
+  cues:
+  - 469
+  - 470
+  - 471
+  text: that Lehman Brothers,the 158 year old investment bank,would never not be around
+- shot_id: 150
+  start: 818.44
+  end: 820.08
+  duration: 1.64
+  type: stock
+  note: 新聞檔案畫面：Lehman Brothers 大樓玻璃門前員工進出、鏡頭平移；左側主持人 PIP。畫面文字（大樓招牌）："LEHMAN BROTHERS"、門上
+    "AUTOMATIC DOORS"。
+  cues:
+  - 471
+  - 472
+  text: would never not be around'cause it was just too big to fail.
+- shot_id: 151
+  start: 820.08
+  end: 823.64
+  duration: 3.56
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，a 幀雙拳舉起手勢；b 幀左側滑入兩個白底文字 pill overlay，文字："Civil War" / "World Wars"。同鏡頭內
+    overlay 由無到有。
+  cues:
+  - 472
+  - 473
+  - 474
+  - 475
+  text: '''cause it was just too big to fail.It survived the civil war,it survived
+    two world wars,it survived the great depression'
+- shot_id: 152
+  start: 823.64
+  end: 826.32
+  duration: 2.68
+  type: stock
+  note: 新聞檔案畫面：辦公大樓前穿粉紅襯衫的上班族與行人走過（Lehman 倒閉相關離職畫面）；左側主持人 PIP。畫面上無可讀文字。
+  cues:
+  - 475
+  - 476
+  - 477
+  text: it survived the great depression in the US.But then in September, 2008,it
+    just collapses in a single weekend.
+- shot_id: 153
+  start: 826.32
+  end: 829.0
+  duration: 2.68
+  type: stock
+  note: 新聞檔案畫面：女子抱著紙箱走出金融區大樓（離職員工），b 幀更多抱箱行人；左側主持人 PIP。畫面上無可讀文字。
+  cues:
+  - 477
+  - 478
+  - 479
+  text: it just collapses in a single weekend.And people who have worked there for
+    decades,who have their entire retirement savi
+- shot_id: 154
+  start: 829.0
+  end: 830.28
+  duration: 1.28
+  type: stock
+  note: 新聞檔案畫面：紐約街頭西裝男抱紙箱走出大樓、人群圍觀（Lehman 倒閉日）；左側主持人 PIP。背景有街頭霓虹招牌但無可辨識逐字文字。
+  cues:
+  - 479
+  text: who have their entire retirement savings in the bank,
+- shot_id: 155
+  start: 830.28
+  end: 832.08
+  duration: 1.8
+  type: stock
+  note: 新聞檔案畫面：離職員工拖著行李箱走在街上（背影），b 幀可見攝影記者在旁拍攝；左側主持人 PIP。畫面上無可讀文字。
+  cues:
+  - 479
+  - 480
+  text: who have their entire retirement savings in the bank,who have their entire
+    like stock portfolio
+- shot_id: 156
+  start: 832.08
+  end: 833.16
+  duration: 1.08
+  type: stock
+  note: 新聞檔案畫面：員工抱著紙箱、文件夾走出大樓門口，保全站在旁邊；左側主持人 PIP。畫面上無可讀文字。
+  cues:
+  - 480
+  - 481
+  text: who have their entire like stock portfolioin like the Lehman stock,
+- shot_id: 157
+  start: 833.16
+  end: 834.6
+  duration: 1.44
+  type: aroll
+  note: 主持人 Ali 近景中央構圖對鏡頭說話、手勢比劃，白色麥克風、LONDON 海報與書架背景；畫面無文字。
+  cues:
+  - 481
+  - 482
+  text: in like the Lehman stock,those people lost everything overnight.
+- shot_id: 158
+  start: 834.6
+  end: 841.24
+  duration: 6.64
+  type: aroll
+  note: 換到較廣的側角度：Ali 坐在木桌後（暖色落地燈、鍵盤、桌上書本入鏡）對鏡頭說話比手勢；畫面無文字。
+  cues:
+  - 482
+  - 483
+  - 484
+  - 485
+  - 486
+  text: those people lost everything overnight.Now the point is the more life experience
+    you have,the more you know that these a
+- shot_id: 159
+  start: 841.24
+  end: 844.0
+  duration: 2.76
+  type: aroll
+  note: 回到正面近景，Ali 雙手在麥克風前比劃說話（a 幀抬頭望上、b 幀直視鏡頭）；畫面無文字。
+  cues:
+  - 486
+  - 487
+  text: of companies that were too big to fail.Right now, I cannot imagine a world
+    without Apple
+- shot_id: 160
+  start: 844.0
+  end: 845.4
+  duration: 1.4
+  type: stock
+  note: 圓角卡片式圖庫畫面：戴耳機、穿粉紅襯衫的男子在戶外桌前盯著手機，左側疊主持人 A-roll PIP 小窗（Ali 在書房說話）；畫面無文字。
+  cues:
+  - 487
+  text: Right now, I cannot imagine a world without Apple
+- shot_id: 161
+  start: 845.4
+  end: 846.32
+  duration: 0.92
+  type: stock
+  note: 實拍第一人稱開 Tesla 車內畫面（方向盤 Tesla 標誌、儀表顯示 32），同樣左側主持人 PIP 小窗持續說話；畫面上文字僅車機儀表數字「32」。
+  cues:
+  - 487
+  - 488
+  text: Right now, I cannot imagine a world without Appleor without Tesla or without
+    Netflix.
+- shot_id: 162
+  start: 846.32
+  end: 847.36
+  duration: 1.04
+  type: stock
+  note: 實拍男子躺沙發看平板、旁有 Coca-Cola 瓶與條紋馬克杯，左側主持人 PIP 小窗持續；畫面文字僅瓶身商標「Coca-Cola」。
+  cues:
+  - 488
+  text: or without Tesla or without Netflix.
+- shot_id: 163
+  start: 847.36
+  end: 850.88
+  duration: 3.52
+  type: aroll
+  note: 回到桌後廣角 A-roll，Ali 對鏡頭說話、手在桌面比劃；畫面無文字。
+  cues:
+  - 488
+  - 489
+  - 490
+  text: or without Tesla or without Netflix.But neither could the chaps in 2008.They
+    could not imagine a world without Lehman Br
+- shot_id: 164
+  start: 850.88
+  end: 853.6
+  duration: 2.72
+  type: aroll
+  note: 正面近景 A-roll，Ali 揮手比劃說話（a 幀手部動態模糊）；畫面無文字。
+  cues:
+  - 490
+  - 491
+  - 492
+  text: They could not imagine a world without Lehman Brothers.The point isn't that
+    you don't wanna invest in Netflixand Apple a
+- shot_id: 165
+  start: 853.6
+  end: 857.12
+  duration: 3.52
+  type: aroll
+  note: 桌後廣角 A-roll，Ali 雙手在麥克風上方比劃說話；畫面無文字。
+  cues:
+  - 492
+  - 493
+  - 494
+  - 495
+  text: and Apple and Nvidia.The point is you don't wanna only invest in Netflixand
+    Apple and Nvidia.You wanna try and diversify
+- shot_id: 166
+  start: 857.12
+  end: 862.72
+  duration: 5.6
+  type: quote_card
+  note: 米白底＋波浪形淺灰色塊的滿版金句卡：a 幀僅空白背景（文字尚未進場），b 幀文字逐字動畫進場，抄錄：「Diversify your holdings
+    across multiple different companies rather than betting your entire」（句子尚在打出中，Diversify
+    為橘色強調）。無署名。
+  cues:
+  - 495
+  - 496
+  - 497
+  - 498
+  text: You wanna try and diversify your holdingsacross multiple different companiesrather
+    than betting your entire financial fu
+- shot_id: 167
+  start: 862.72
+  end: 865.0
+  duration: 2.28
+  type: aroll
+  note: 桌後廣角 A-roll，Ali 張開雙臂比大手勢後放下（a 幀雙臂全張、b 幀收回）；畫面無文字。
+  cues:
+  - 498
+  - 499
+  text: on a single company.Okay, so at this point, if you are sold on index funds,
+- shot_id: 168
+  start: 865.0
+  end: 868.2
+  duration: 3.2
+  type: motion_graphic
+  note: 米白底章節列表資訊圖卡，左側主持人 PIP 小窗；綠色膠囊列表逐項出現（a 幀 3 項、b 幀第 4 項加入），抄錄：「1 What Does It
+    Mean to Buy a Stock or Share?」「2 How to Choose Which Company to Invest In?」「3
+    Why You Shouldn't Try To Pick Individual Stocks」「4 How Do I Buy Index Funds?」。
+  cues:
+  - 499
+  - 500
+  - 501
+  text: 'Okay, so at this point, if you are sold on index funds,then you might be
+    asking the practical question of like,how do I '
+- shot_id: 169
+  start: 868.2
+  end: 872.0
+  duration: 3.8
+  type: aroll
+  note: 桌後廣角 A-roll，Ali 攤手、後手插腰對鏡頭說話；畫面無文字。
+  cues:
+  - 501
+  - 502
+  - 503
+  text: how do I actually buy them?Unfortunately, you cannot just go toS&P 500 indexfund.com/buy.
+- shot_id: 170
+  start: 872.0
+  end: 875.72
+  duration: 3.72
+  type: aroll
+  note: Ali 對鏡頭說話，明亮房間（LONDON 海報、植物、書架、白色麥克風），手勢比劃。畫面無文字。
+  cues:
+  - 503
+  - 504
+  - 505
+  - 506
+  text: S&P 500 indexfund.com/buy.You have to go through a middlemanand that middleman
+    is generally referred toas a stock broker
+- shot_id: 171
+  start: 875.72
+  end: 878.28
+  duration: 2.56
+  type: kol
+  note: 電影《The Wolf of Wall Street》片段：Matthew McConaughey 等券商在辦公室講電話，Ali 以圓角 PIP 疊在左側繼續說話。畫面無
+    overlay 文字。
+  cues:
+  - 506
+  - 507
+  - 508
+  text: as a stock broker.Back in the day, it was a real life personthat you would
+    phone up to buy and sell stocks
+- shot_id: 172
+  start: 878.28
+  end: 880.0
+  duration: 1.72
+  type: kol
+  note: 同部華爾街電影片段續：多名穿襯衫打領帶的男子在交易所辦公室講電話，左側 Ali PIP。畫面無文字。
+  cues:
+  - 508
+  - 509
+  text: that you would phone up to buy and sell stockson your behalf on the New York
+    Stock Exchange
+- shot_id: 173
+  start: 880.0
+  end: 881.72
+  duration: 1.72
+  type: kol
+  note: 電影片段續：打領結的男子（Will Arnett 造型）拿著電話講話，辦公室背景，左側 Ali PIP。畫面無文字。
+  cues:
+  - 509
+  - 510
+  text: on your behalf on the New York Stock Exchangeor the London Stock Exchange
+    or whatever.
+- shot_id: 174
+  start: 881.72
+  end: 882.64
+  duration: 0.92
+  type: kol
+  note: 電影片段續：穿條紋襯衫紅領帶的男子講電話，辦公室內其他人走動，左側 Ali PIP。畫面無文字。
+  cues:
+  - 510
+  text: or the London Stock Exchange or whatever.
+- shot_id: 175
+  start: 882.64
+  end: 886.96
+  duration: 4.32
+  type: aroll
+  note: Ali 回到全畫面書桌場景（暖色立燈、鳥圖海報、鍵盤）說話；b 幀出現黑字白底膠囊 overlay，逐字："Online platforms"（a
+    幀尚未出現，overlay 中途滑入）。
+  cues:
+  - 510
+  - 511
+  - 512
+  - 513
+  - 514
+  text: 'or the London Stock Exchange or whatever.Nowadays, it''s not a real person.It''s
+    just online platforms.There are loads of '
+- shot_id: 176
+  start: 886.96
+  end: 889.88
+  duration: 2.92
+  type: screen_recording
+  note: Google 首頁深色模式螢幕錄影，左側 Ali PIP。逐字："Google"、按鈕 "Google Search"、"I'm Feeling Lucky"、"AI
+    Mode"；b 幀輸入 "Stock p"，下拉建議："stock market today / stock market / stock futures
+    / stock market holidays / stock market holidays 2026 / stock market crash / stock
+    images / stock market news / stock split / stock news"。
+  cues:
+  - 514
+  - 515
+  - 516
+  text: on which country you're in.So you just Google like stock platformand then
+    insert your country name.
+- shot_id: 177
+  start: 889.88
+  end: 895.92
+  duration: 6.04
+  type: aroll
+  note: Ali 全畫面書桌場景說話，右側疊白底紅字 Vanguard logo 圖卡。逐字："Vanguard®"。c 幀 logo 已消失（overlay
+    滑出）。
+  cues:
+  - 516
+  - 517
+  - 518
+  - 519
+  - 520
+  text: and then insert your country name.Like Vanguard is one of the big global onesthat's
+    available in lots of different count
+- shot_id: 178
+  start: 895.92
+  end: 902.12
+  duration: 6.2
+  type: aroll
+  note: Ali 全畫面對鏡頭講 sponsor，左側疊白底膠囊 sponsor 橫幅，逐字："TRADING 212"（T R ^ DING 212 樣式）；c
+    幀右側另滑入小型 "Vanguard" logo 卡（轉場中，帶模糊）。
+  cues:
+  - 520
+  - 521
+  - 522
+  - 523
+  - 524
+  text: So I have a lot of my holdings in Vanguard.Trading 212 is another app that
+    me and my wife,Niu have been using for years.
+- shot_id: 179
+  start: 902.12
+  end: 904.84
+  duration: 2.72
+  type: aroll
+  note: Ali 全畫面書桌場景，舉起食指強調說話。畫面無文字。
+  cues:
+  - 524
+  - 525
+  - 526
+  - 527
+  text: and Trading 212.Speaking of, we should reach out to Trading 212to sponsor
+    this video.So if that deal goes through,
+- shot_id: 180
+  start: 904.84
+  end: 907.36
+  duration: 2.52
+  type: aroll
+  note: Ali 全畫面（較近景、明亮牆面場景）雙手張開比劃說話。畫面無文字。
+  cues:
+  - 527
+  - 528
+  text: So if that deal goes through,you will hear a sponsored message now.
+- shot_id: 181
+  start: 907.36
+  end: 908.4
+  duration: 1.04
+  type: aroll
+  note: Ali 在不同場景（辦公室，背景牆貼滿粉橘色便利貼、有其他人與電腦螢幕）對鏡頭說話，領口夾無線麥。畫面無文字（便利貼字跡過小不可辨）。
+  cues:
+  - 528
+  - 529
+  text: you will hear a sponsored message now.All right, so I'm gonna tell you about
+    Trading 212
+- shot_id: 182
+  start: 908.4
+  end: 916.84
+  duration: 8.44
+  type: aroll
+  note: Sponsor 段：左側 Ali 圓角 PIP（辦公室場景）持續說話；a 幀中央大 "TRADING 212" logo 卡，b/c 幀換成 Trading
+    212 手機 app 畫面（持股列表：GraniteShares 3x Sho… $0.044 / Kanabo p2.4 / Ascential p254.9
+    / Arundel Fr0.445 / Biotechnology Assets €0.291 / Open Orphan p17.1 / GraniteShares
+    3x Lon… $0.0123 / Caerus Mineral Resour… p4.5；c 幀 Popular 分頁：Tesla $143.94 / Apple
+    $142.51 / NIO $11.70 / Coinbase $53.55 / Peloton Interactive $11.05 / Netflix
+    $363.94 / Meta Platforms $143.15 / Alphabet (Class A) $97.67；上方 £1,068.99）。右側黑底免責文字，逐字："When
+    investing, your capital is at risk. Past performance is no guarantee of future
+    results. This information is not investment advice. Do your own research. Sponsored
+    Content. Terms Apply"。
+  cues:
+  - 529
+  - 530
+  - 531
+  - 532
+  - 533
+  text: All right, so I'm gonna tell you about Trading 212who are very kindly sponsoring
+    this video.Trading 212 is a fantastic o
+- shot_id: 183
+  start: 916.84
+  end: 929.68
+  duration: 12.84
+  type: screen_recording
+  note: Trading 212 app 手機錄影展示（Vanguard S&P 500 買入流程），主持人 PIP 圓角卡在左側。a 幀：手機顯示「Vanguard
+    S&P 500 (Dist) / VUSA · ETF · IE / £63.5299 / +3.2896 (5.46%) Last month / MARKET
+    OPEN / 1D 1W 1M 3M 1Y MAX / Price alerts / Switch to Real money」，右側黑色 disclaimer
+    卡：「When investing, your capital is at risk. Past performance is no guarantee of
+    future results. This information is not investment advice. Do your own research.
+    Sponsored Content. Terms Apply」。b/c 幀 disclaimer 換成左下「Other fees may apply」；b
+    幀下單畫面：「Vanguard S&P 500 (Dist) / ORDER TYPE Market Buy / SHARES VALUE £2,000.00
+    / NUMBER OF SHARES ~31.481 / COMMISSION Free / TOTAL £2,000.00 / Indicative data.
+    Actual execution values may differ / Send buy order」；c 幀 Portfolio：「£5,000.63
+    / Portfolio £2,000.63 / INVESTED £2,000.00 / RETURN +£0.63 (0.03%) / Investments
+    / Pies / Search investments / Vanguard S&P 500 (Dist) £2,000.63 31.491102 SHARES
+    +£0.63 (0.03%) / Switch to Real money」。
+  cues:
+  - 533
+  - 534
+  - 535
+  - 536
+  - 537
+  - 538
+  - 539
+  - 540
+  - 541
+  text: and have been for years,even way before they started sponsoring the channel.The
+    platform makes investing super easy,supe
+- shot_id: 184
+  start: 929.68
+  end: 955.04
+  duration: 25.36
+  type: aroll
+  note: 主持人在明亮辦公室（便利貼牆、綠植、白麥克風）對鏡頭比手勢說話，全畫面無文字疊加。
+  cues:
+  - 541
+  - 542
+  - 543
+  - 544
+  - 545
+  - 546
+  - 547
+  - 548
+  - 549
+  - 550
+  - 551
+  - 552
+  - 553
+  - 554
+  - 555
+  - 556
+  text: that stops people from ever getting started.If you're really scared of investing,they
+    even let you get started trading w
+- shot_id: 185
+  start: 955.04
+  end: 974.28
+  duration: 19.24
+  type: screen_recording
+  note: 'Trading 212 app Pies 功能錄影，主持人 PIP 圓角卡在右側，左側黑色 disclaimer 卡（三幀皆在）：「Pies &
+    Auto-invest is an execution-only service. Not investment advice or portfolio management.
+    Automatic investing refers to executing scheduled deposits. You are responsible
+    for all investment and rebalancing decisions.」app 內文字：a 幀「Social / Feed Communities
+    Pies / Top New Dividends / (Almost) Daily Dividends by TheDividendExperiment 47.2K
+    / Klickeer: Im ~0.50% to ~1% for about a month… / ARKK - Innovation by Treeba
+    5K / WARRIORS / Income by Briscoe / Start investing now」；b 幀「Vanguard / Views
+    7K / AAR 7.70% / Comments · 5 / Melly888: Why only 10% vwrl. Too much exposure
+    to USA. Could add some VHLY for dividends cheers / Read all comments / Slices
+    · 5 / Vanguard FTSE 100 (Dist) VUKE 28% / Vanguard S&P 500 (Dist) VUSA 28%」；c
+    幀「Edit pie / AAR 9.49% · MIN £50.00 / 100% / Realty Income 2% / Johnson & Johnson
+    2% / Canadian Natural Resources 2% / PepsiCo 2% / AT&T 2% / Procter & Gamble 2%
+    / Next」。'
+  cues:
+  - 556
+  - 557
+  - 558
+  - 559
+  - 560
+  - 561
+  - 562
+  - 563
+  - 564
+  - 565
+  - 566
+  - 567
+  text: You can buy a fraction of a shareand their pies and auto invest featuresare
+    also really good.So the pies feature is esse
+- shot_id: 186
+  start: 974.28
+  end: 982.84
+  duration: 8.56
+  type: aroll
+  note: 主持人對鏡頭比手勢說話；a 幀無文字，b 幀滑入兩個白色圓角標籤 overlay：「Asset rebalancing」「Dividend reinvesting」，c
+    幀 overlay 已消失（鏡位略拉遠）。
+  cues:
+  - 567
+  - 568
+  - 569
+  - 570
+  - 571
+  text: into whatever stocks or funds or whatever you want.And they handle everything
+    else,including dividend reinvesting and as
+- shot_id: 187
+  start: 982.84
+  end: 989.48
+  duration: 6.64
+  type: screen_recording
+  note: 'Trading 212 sponsor 網頁畫面，主持人 PIP 圓角卡在右側。a 幀 landing page：「TRADING 212 / Build
+    wealth every day / EN / Your free fractional shares are waiting for you / Sign
+    up to claim shares」（含 Amazon/Google/NVIDIA/McDonald''s/Apple 圖標）。b/c 幀 How it
+    works 頁＋下方黑色橫幅「Sponsored code. Terms apply.」：「How it works / 1 Sign up for a Trading
+    212 Invest or Stocks ISA account. / 2 Verify your identity. / 3 Fund your account.
+    / 4 Get fractional shares worth up to £100! / FAQ / Terms & conditions / Shares
+    value probability / Sign up to claim shares / £250 / Deposit to Main pot / Fee:
+    £0.00 / Recurring: Off / Deposit」；b→c 幀第 4 點的青色 highlight 從「Get fractional」掃到整句。'
+  cues:
+  - 571
+  - 572
+  - 573
+  - 574
+  - 575
+  text: 'in the past be only available to high net worth individuals.As a bonus, if
+    you sign up to TradingTubeusing my link, you '
+- shot_id: 188
+  start: 989.48
+  end: 997.32
+  duration: 7.84
+  type: aroll
+  note: 主持人對鏡頭說話（sponsor 收尾）；a 幀無文字；b 幀滑入白色大圓角 overlay：「trading212.com/join/ALI」；c
+    幀 overlay 消失，主持人低頭看錶。
+  cues:
+  - 575
+  - 576
+  - 577
+  - 578
+  - 579
+  - 580
+  text: So it's free money, you might as well.There'll be a link down belowor you
+    can go to trading212.com/join/alito get your f
+- shot_id: 189
+  start: 997.32
+  end: 1001.64
+  duration: 4.32
+  type: aroll
+  note: 場景切回家中書房（LONDON 海報、深色鳥圖掛畫、書架、白麥克風），主持人近景對鏡頭說話，無文字疊加。
+  cues:
+  - 580
+  - 581
+  - 582
+  - 583
+  - 584
+  - 585
+  text: and let's get back to it.Oh, that worked well.It's pretty good.Seamless integration.Fingers
+    crossed.But anyway, even wit
+- shot_id: 190
+  start: 1001.64
+  end: 1007.16
+  duration: 5.52
+  type: aroll
+  note: 家中書房較廣鏡位（可見書桌、鍵盤、暖色立燈），主持人雙手張開對鏡頭說話，無文字疊加。
+  cues:
+  - 585
+  - 586
+  - 587
+  - 588
+  - 589
+  text: But anyway, even with all this information,there are probably some fears and
+    concernsin the back of your mind.So let's t
+- shot_id: 191
+  start: 1007.16
+  end: 1013.76
+  duration: 6.6
+  type: title_card
+  note: 滿版綠色系章節卡，深綠圓角卡片配黃綠大字，鏡頭從模糊推近到清晰再帶出下一卡：「Part 3 / Common Fears, Questions, and
+    Concerns」（上方部分可見「Investing」，右側相鄰卡片文字被模糊化，僅見「Pa…」與問號/道路圖標）。
+  cues:
+  - 589
+  - 590
+  text: Part three, common fears and concerns and questions.Fear number one, what
+    if I lose all my money by investing?
+- shot_id: 192
+  start: 1013.76
+  end: 1017.8
+  duration: 4.04
+  type: aroll
+  note: 回到家中書房廣鏡位，主持人雙手舉起比手勢說話，無文字疊加（過場後承接章節內容）。
+  cues:
+  - 590
+  - 591
+  - 592
+  - 593
+  - 594
+  text: Fear number one, what if I lose all my money by investing?This is the big
+    one.This is the thing that stops most peoplefr
+- shot_id: 193
+  start: 1017.8
+  end: 1019.56
+  duration: 1.76
+  type: aroll
+  note: 主持人更近鏡位、雙手大幅張開激動說話（演出恐慌情緒），無文字疊加。
+  cues:
+  - 594
+  text: because like, oh my God, what if I lose all my money?
+- shot_id: 194
+  start: 1019.56
+  end: 1025.44
+  duration: 5.88
+  type: title_card
+  note: 米白底滿版標題卡（Fear 卡），左側主持人 PIP 圓角卡（望向右側文字）。文字：橘色標籤「Fear 1」＋黑色大 serif 字「What if
+    I lose all my money」（字色由深到淺漸層）。b 幀切到 B-roll 式插圖：新聞畫面風格的實拍——女子抱紙箱走出金融區大樓（PIP 仍在左側，仍屬同一鏡頭段落，note：b
+    幀為 stock 新聞footage 疊在同版式上）。
+  cues:
+  - 594
+  - 595
+  - 596
+  - 597
+  - 598
+  text: 'because like, oh my God, what if I lose all my money?What if something like
+    2008 happensand like you had all your money '
+- shot_id: 195
+  start: 1025.44
+  end: 1034.52
+  duration: 9.08
+  type: aroll
+  note: 家中書房鏡位；a 幀主持人比手勢說話無文字；b 幀拿起一本書展示書封《The Simple Path to Wealth》JL COLLINS（書封為手持、非滿版）；c
+    幀把書放回桌上。同一鏡頭內含 stock/相片式插入前後的手持書展示；另 shot 194 b 幀亦含「Evening Standard / RYDER CUP
+    2008 / 8-PAGE SPECIAL PULL-OUT INSIDE / BLACK MONDAY / 5,000 City staff axed as
+    US banks crash / Lehman goes bust, Merrill is taken over / Wall Street crisis
+    sends shares plunging」報紙特寫。
+  cues:
+  - 598
+  - 599
+  - 600
+  - 601
+  - 602
+  - 603
+  text: Oh my God, that would be terrible.Now this actually is a totally legitimate
+    concern.I was worried about this until 2015w
+- shot_id: 196
+  start: 1034.52
+  end: 1035.44
+  duration: 0.92
+  type: aroll
+  note: Ali 對鏡頭說話、雙手在胸前比劃（動作模糊），明亮房間背景（LONDON 海報、植物、書架、白麥克風）。畫面無文字。
+  cues:
+  - 603
+  - 604
+  text: and realised that I didn't need to worry about it too much.So let's put some
+    numbers on this.
+- shot_id: 197
+  start: 1035.44
+  end: 1060.32
+  duration: 24.88
+  type: motion_graphic
+  note: 米白底動畫圖卡：左側 Ali 講話畫面縮成圓角小卡（PIP），右側繪出 S&P 500 曲線圖。a 幀僅 PIP＋空白底（圖表尚未畫出）、b 幀圖表已出現。文字逐字："S&P
+    500" / "$1,000" / "-34%"（b 幀才出現）/ 軸標 "Jan 2020 / Mar 2020 / Aug 2020 / 2021 /
+    End 2025"。
+  cues:
+  - 604
+  - 605
+  - 606
+  - 607
+  - 608
+  - 609
+  - 610
+  - 611
+  - 612
+  - 613
+  - 614
+  - 615
+  text: So let's put some numbers on this.The biggest crash in recent memorywas the
+    crash of March, 2020 when COVID was happenin
+- shot_id: 198
+  start: 1060.32
+  end: 1061.2
+  duration: 0.88
+  type: aroll
+  note: 換景別：Ali 站在書桌前較廣角側面機位（暖色立燈、鍵盤、書、烏鴉掛畫），對鏡頭說話並比手勢。畫面無疊加文字。
+  cues:
+  - 615
+  - 616
+  text: Oh my goodness.At this point you're thinking, oh my God,
+- shot_id: 199
+  start: 1061.2
+  end: 1069.48
+  duration: 8.28
+  type: aroll
+  note: 黑白調色的 Ali 特寫，雙手扶頭、閉眼仰頭再張手說話——戲劇化黑白處理表現市場崩盤的痛苦情緒。三幀姿勢變化（扶頭→仰頭→攤手）。畫面無文字。
+  cues:
+  - 616
+  - 617
+  - 618
+  - 619
+  - 620
+  - 621
+  text: At this point you're thinking, oh my God,I knew I shouldn't have done this
+    investing thing.I'm losing so much money.My m
+- shot_id: 200
+  start: 1069.48
+  end: 1074.32
+  duration: 4.84
+  type: aroll
+  note: 回到彩色、書桌廣角機位，Ali 舉手指強調說話；b 幀手臂快速揮動（動作模糊）。畫面無文字。
+  cues:
+  - 621
+  - 622
+  - 623
+  - 624
+  text: Oh my God.Now, if at that point you decide, screw it,I'm just gonna sell.I
+    don't wanna lose any more money.
+- shot_id: 201
+  start: 1074.32
+  end: 1075.96
+  duration: 1.64
+  type: aroll
+  note: 正面近景機位 Ali 伸食指說話；b 幀出現大型 kinetic text overlay 滑入，逐字："Realised the"（文字動畫中，句子未完整顯示）。
+  cues:
+  - 624
+  - 625
+  text: I don't wanna lose any more money.Then you have realised the loss
+- shot_id: 202
+  start: 1075.96
+  end: 1088.52
+  duration: 12.56
+  type: motion_graphic
+  note: 同 shot197 的 S&P 500 動畫圖卡（左側 Ali PIP），顯示 2020 崩盤段。文字逐字："S&P 500" / "$1,000"
+    / "-34%" / "$660" / "Jan 2020 / Mar 2020 / Aug 2020 / 2021 / End 2025"。三幀圖表相同，PIP
+    內 Ali 手勢變化。
+  cues:
+  - 625
+  - 626
+  - 627
+  - 628
+  - 629
+  - 630
+  - 631
+  - 632
+  - 633
+  text: Then you have realised the lossbecause you bought the index at a thousand
+    dollars,you sold it at 660.So you have literal
+- shot_id: 203
+  start: 1088.52
+  end: 1094.96
+  duration: 6.44
+  type: aroll
+  note: 正面近景機位 Ali 對鏡頭說話，雙手比劃（合掌→捧狀→雙手攤開）。畫面無文字。
+  cues:
+  - 633
+  - 634
+  - 635
+  - 636
+  - 637
+  text: I'm just gonna hold on.I knew that investing in stocks and shareswas like
+    a little bit risky,but it gets a lot less risk
+- shot_id: 204
+  start: 1094.96
+  end: 1124.44
+  duration: 29.48
+  type: motion_graphic
+  note: S&P 500 動畫圖卡續集（左側 Ali PIP）：曲線從谷底回升並轉綠色區域。文字逐字："S&P 500" / "$1,000" / "-34%"
+    / "$660"；b 幀新增 "$1,000"（Aug 2020 處）與 "$1,400"；c 幀再新增 "$2,100"（End 2025）。軸標 "Jan
+    2020 / Mar 2020 / Aug 2020 / 2021 / End 2025"。曲線與標籤逐幀動畫累加。
+  cues:
+  - 637
+  - 638
+  - 639
+  - 640
+  - 641
+  - 642
+  - 643
+  - 644
+  - 645
+  - 646
+  - 647
+  - 648
+  - 649
+  - 650
+  - 651
+  - 652
+  - 653
+  - 654
+  text: and just leave your money in there for a long time.The market literally recoveredto
+    its pre-crash levels by August.So it
+- shot_id: 205
+  start: 1124.44
+  end: 1126.12
+  duration: 1.68
+  type: aroll
+  note: 書桌廣角機位，Ali 對鏡頭說話、手放桌上比劃。畫面無文字。
+  cues:
+  - 654
+  - 655
+  - 656
+  text: assuming you had invested at the worst possible time.Now, yes, back in 2008,it
+    took like a few years for the market to r
+- shot_id: 206
+  start: 1126.12
+  end: 1137.0
+  duration: 10.88
+  type: motion_graphic
+  note: 新一段 S&P 500 動畫圖卡（左側 Ali PIP），2008 金融海嘯版。a 幀圖表剛開始繪入（僅 "S&P 5 0" 標題動畫中與 "Jan"）；b、c
+    幀完整。文字逐字："S&P 500" / "$1,000" / "-54%"（c 幀）/ "$460"（c 幀）/ "$1,000"（2013 處，c 幀）/
+    軸標 "Jan 2007 / Oct 2007 / Mar 2009 / 2013 / 2020 / End 2025" / "4-5 Years to recover"。
+  cues:
+  - 656
+  - 657
+  - 658
+  - 659
+  - 660
+  - 661
+  - 662
+  text: it took like a few years for the market to recover,but recover it did.And
+    even if you'd invested in the stock marketat t
+- shot_id: 207
+  start: 1137.0
+  end: 1141.56
+  duration: 4.56
+  type: aroll
+  note: 書桌廣角機位，Ali 邊說話邊伸手到桌上拿起一本白色封面的書（a 幀伸手、b 幀舉書）。畫面無疊加文字。
+  cues:
+  - 662
+  - 663
+  - 664
+  - 665
+  text: 'if you just held on.And the key insight here that I learned from this bookand
+    a bunch of research since,is that for the '
+- shot_id: 208
+  start: 1141.56
+  end: 1145.76
+  duration: 4.2
+  type: motion_graphic
+  note: 米白底滿版 kinetic text 金句動畫，文字逐字滑入。a 幀："The stock"（stock 淡入中）；b 幀："The stock market
+    goes up over time as long as you have"（句子仍在動畫中未完）。橘色強調字："goes up" / "over time"。無署名，屬動態文字動畫非引言卡。
+  cues:
+  - 665
+  - 666
+  - 667
+  text: is that for the most part,the stock market goes up over time,as long as you
+    have a long enough time horizon.
+- shot_id: 209
+  start: 1145.76
+  end: 1150.76
+  duration: 5.0
+  type: aroll
+  note: 主持人 Ali 站在書桌後對鏡頭說話、雙手張開比劃，明亮房間有植物、書架、白色麥克風。畫面無文字（背景 LONDON 海報為場景物件）。
+  cues:
+  - 667
+  - 668
+  - 669
+  - 670
+  text: as long as you have a long enough time horizon.It's sort of the same with
+    house prices.Like for the most part, in most c
+- shot_id: 210
+  start: 1150.76
+  end: 1165.52
+  duration: 14.76
+  type: motion_graphic
+  note: 米白底動畫圖卡，左側圓角直式 PIP 內主持人說話；a 幀圖表尚未出現（僅 PIP＋空白底），b/c 幀畫出折線圖後 c 幀轉為滿版文字卡（PIP
+    消失）。圖表文字："Returns" / "$1,000,000" / "Time"（虛線基準、橘色曲線先跌後升）。c 幀文字逐字浮現："The longer
+    you can leave your money in the index fund without touching it, the"。同鏡頭內容漸進變化。
+  cues:
+  - 670
+  - 671
+  - 672
+  - 673
+  - 674
+  - 675
+  - 676
+  - 677
+  - 678
+  - 679
+  text: in most cities where people actually wanna live,if you buy a house today and
+    try and sell it next week,maybe the price h
+- shot_id: 211
+  start: 1165.52
+  end: 1167.64
+  duration: 2.12
+  type: aroll
+  note: 主持人在書桌後對鏡頭說話、手指比向桌上書本。畫面無文字。
+  cues:
+  - 679
+  - 680
+  text: the more it compounds over time.And apparently Albert Einstein had that quote
+    of like,
+- shot_id: 212
+  start: 1167.64
+  end: 1169.64
+  duration: 2.0
+  type: quote_card
+  note: 米白底大字金句卡，逐字動畫：a 幀僅 "Compound"，b 幀完整為 "Compound interest is the eighth wonder
+    - Albert Einstein"（eighth wonder 為橘/粉色強調字）。
+  cues:
+  - 681
+  text: '"Compound interest is the eighth wonder of the world."'
+- shot_id: 213
+  start: 1169.64
+  end: 1173.36
+  duration: 3.72
+  type: aroll
+  note: 主持人雙手撐桌、對鏡頭說話後張開雙手比劃。畫面無文字。
+  cues:
+  - 681
+  - 682
+  - 683
+  - 684
+  text: '"Compound interest is the eighth wonder of the world."Okay, but like seriously,you
+    know, this is my hard earned cash I''m'
+- shot_id: 214
+  start: 1173.36
+  end: 1175.44
+  duration: 2.08
+  type: aroll
+  note: 較近景，主持人雙手舉至頭部高度比劃說話（b 幀改為單手向左比）。畫面無文字。
+  cues:
+  - 684
+  text: Like what would have to be true for me to lose all my money?
+- shot_id: 215
+  start: 1175.44
+  end: 1178.88
+  duration: 3.44
+  type: aroll
+  note: 主持人身體側傾、單手在身側比劃說話，b 幀手放低看向側面。畫面無文字。
+  cues:
+  - 684
+  - 685
+  - 686
+  text: Like what would have to be true for me to lose all my money?So if you're investing
+    in the S&P 500,in order for you to lo
+- shot_id: 216
+  start: 1178.88
+  end: 1190.48
+  duration: 11.6
+  type: motion_graphic
+  note: 米白底動畫資訊圖卡，左側圓角 PIP 主持人說話。a 幀公司 logo 膠囊標籤淡入中（"NVIDIA" "Apple" 半透明）；b/c 幀完整："NVIDIA
+    / Apple / Microsoft / Amazon / Alphabet / Meta ....." 加折線圖 "Returns"、"Time"、曲線衰減至
+    "$0" 紅色標籤。同鏡頭內元素漸進滑入。
+  cues:
+  - 686
+  - 687
+  - 688
+  - 689
+  - 690
+  - 691
+  text: in order for you to lose all of your money,the value of top 500 companies
+    in the USsuddenly has to drop to zero overnigh
+- shot_id: 217
+  start: 1190.48
+  end: 1198.52
+  duration: 8.04
+  type: aroll
+  note: 主持人在書桌後對鏡頭說話，a 幀單手在身後、b 幀正面直視鏡頭、c 幀視線移向側邊。畫面無文字。
+  cues:
+  - 691
+  - 692
+  - 693
+  - 694
+  - 695
+  text: suddenly had their entire value disappear overnight,we would probably be living
+    through an apocalypse.We'd probably have
+- shot_id: 218
+  start: 1198.52
+  end: 1203.4
+  duration: 4.88
+  type: aroll
+  note: 近景，主持人側身看向畫面右側說話（b 幀轉頭微笑）。畫面無文字。
+  cues:
+  - 695
+  - 696
+  - 697
+  - 698
+  text: And the money that you invested in those stocksprobably wouldn't even be worth
+    the paper it's printed onbecause like civ
+- shot_id: 219
+  start: 1203.4
+  end: 1208.92
+  duration: 5.52
+  type: aroll
+  note: 主持人雙手在胸前交扣比劃、後張開雙手對鏡頭說話。畫面無文字。
+  cues:
+  - 698
+  - 699
+  - 700
+  - 701
+  text: or something like that.Now, I think it's a very reasonable bet personallythat
+    the stock market is gonna go up over time,
+- shot_id: 220
+  start: 1208.92
+  end: 1210.72
+  duration: 1.8
+  type: aroll
+  note: 近景，主持人單手握拳舉起再張開比劃說話。畫面無文字。
+  cues:
+  - 701
+  - 702
+  - 703
+  text: over a long enough time horizon.And there's a few different reasons for that.So
+    firstly, human productivity is a thing
+- shot_id: 221
+  start: 1210.72
+  end: 1215.4
+  duration: 4.68
+  type: motion_graphic
+  note: 米白底清單動畫圖卡，左側圓角 PIP 主持人說話。a 幀僅出現藍色圓形編號 "1"；b 幀補上標題文字 "1 Human Productivity"。同鏡頭
+    overlay 逐步滑入。
+  cues:
+  - 703
+  - 704
+  - 705
+  text: So firstly, human productivity is a thingand human productivity compounds.So
+    if we imagine a company like Nvidia, Apple,
+- shot_id: 222
+  start: 1215.4
+  end: 1221.84
+  duration: 6.44
+  type: aroll
+  note: 主持人在書桌前對鏡頭說話並比手勢，右側逐一滑入公司名 pill overlay：a 幀僅「NVIDIA」，b/c 幀完整六個含 logo：「NVIDIA」「Apple」「Amazon」「Meta」「Microsoft」「Alphabet」（overlay
+    逐項滑入）。
+  cues:
+  - 705
+  - 706
+  - 707
+  - 708
+  text: So if we imagine a company like Nvidia, Apple,Amazon, Meta, like these companies
+    that make upthe top few companies of th
+- shot_id: 223
+  start: 1221.84
+  end: 1226.72
+  duration: 4.88
+  type: stock
+  note: 辦公室場景圖庫實拍（女性職員在螢幕前、背景多人），左下角有主持人圓角 PIP 說話畫面；畫面無文字。
+  cues:
+  - 708
+  - 709
+  - 710
+  text: every day there are thousands and thousands of peoplethat go to work where
+    their job is to literally add valueto the com
+- shot_id: 224
+  start: 1226.72
+  end: 1230.64
+  duration: 3.92
+  type: stock
+  note: 另一段辦公室圖庫實拍（多螢幕交易桌、西裝人員、窗外海景），左側主持人圓角 PIP 持續；b 幀鏡頭掃過螢幕器材偏暗模糊；畫面無文字。
+  cues:
+  - 710
+  - 711
+  - 712
+  text: to the company, right?Like they make stuff, they invent things,they create
+    a new iPhone, they make a new chip.
+- shot_id: 225
+  start: 1230.64
+  end: 1233.52
+  duration: 2.88
+  type: aroll
+  note: 主持人回到書桌全畫面對鏡頭說話比手勢；畫面無 overlay 文字。
+  cues:
+  - 712
+  - 713
+  - 714
+  text: they create a new iPhone, they make a new chip.All of that stuff creates real
+    value.Like one thing that I didn't quite a
+- shot_id: 226
+  start: 1233.52
+  end: 1237.08
+  duration: 3.56
+  type: aroll
+  note: 主持人特寫近景（較近的第二機位）對鏡頭說話比手勢；畫面無 overlay 文字。
+  cues:
+  - 714
+  - 715
+  - 716
+  text: Like one thing that I didn't quite appreciatebefore I started getting into
+    investingis that the value of a company
+- shot_id: 227
+  start: 1237.08
+  end: 1255.52
+  duration: 18.44
+  type: aroll
+  note: 主持人在書桌前說話，a/b 幀比出數字手勢無文字，c 幀左側滑入兩個 pill overlay：「Revenue」（綠色上箭頭）「Profit」（綠色上箭頭）——overlay
+    於鏡頭後段才出現。
+  cues:
+  - 716
+  - 717
+  - 718
+  - 719
+  - 720
+  - 721
+  - 722
+  - 723
+  - 724
+  - 725
+  - 726
+  text: is that the value of a companyis not just people gambling on like,I reckon
+    Elon's gonna be great,therefore Tesla price s
+- shot_id: 228
+  start: 1255.52
+  end: 1263.16
+  duration: 7.64
+  type: aroll
+  note: 主持人近景機位對鏡頭雙手比劃說話；三幀皆無 overlay 文字。
+  cues:
+  - 726
+  - 727
+  - 728
+  - 729
+  text: And so because people are continually doing work,you would expect the value
+    of companieswhere people are continually doi
+- shot_id: 229
+  start: 1263.16
+  end: 1269.32
+  duration: 6.16
+  type: motion_graphic
+  note: 米白底編號清單圖卡，左側主持人圓角 PIP 說話；清單逐項浮現：a 幀「1 Human Productivity」＋空的「2」，b/c 幀「1 Human
+    Productivity」「2 Growing world and expanding economy」。
+  cues:
+  - 729
+  - 730
+  - 731
+  - 732
+  - 733
+  text: because value is literally being created every day.The second reason is that
+    the world keeps on getting bigger.So like 2
+- shot_id: 230
+  start: 1269.32
+  end: 1272.44
+  duration: 3.12
+  type: aroll
+  note: 主持人對鏡頭說話，overlay 逐一滑入：a 幀左側粉底 pill「People」（綠色上箭頭），b 幀再加右側兩個白色 pill「Customers」「Transcations」（皆綠色上箭頭；原文拼字即為
+    Transcations）。
+  cues:
+  - 733
+  - 734
+  - 735
+  text: Now we have like 8 billion people in the world.More people means more customers
+    and more transactionsand more economic a
+- shot_id: 231
+  start: 1272.44
+  end: 1281.32
+  duration: 8.88
+  type: aroll
+  note: 主持人在書桌前對鏡頭說話、雙手張開比劃；三幀皆無 overlay 文字。
+  cues:
+  - 735
+  - 736
+  - 737
+  - 738
+  - 739
+  - 740
+  text: and more economic activity.There's hundreds of millions of people in Asia
+    and Africaand South America who are like buyin
+- shot_id: 232
+  start: 1281.32
+  end: 1285.6
+  duration: 4.28
+  type: aroll
+  note: 主持人近景機位對鏡頭說話比手勢；無 overlay 文字。
+  cues:
+  - 740
+  - 741
+  - 742
+  - 743
+  text: to the internet every single day.These people are buying iPhones,they are
+    opening bank accounts,they're like subscribing
+- shot_id: 233
+  start: 1285.6
+  end: 1294.36
+  duration: 8.76
+  type: aroll
+  note: 主持人書桌前對鏡頭說話、雙手在麥克風前比劃；三幀皆無 overlay 文字。
+  cues:
+  - 743
+  - 744
+  - 745
+  - 746
+  - 747
+  - 748
+  - 749
+  text: they're like subscribing to online software.So the fact that like in general,the
+    world's population is increasingis anot
+- shot_id: 234
+  start: 1294.36
+  end: 1302.32
+  duration: 7.96
+  type: motion_graphic
+  note: 回到米白底編號清單圖卡＋左側主持人圓角 PIP；第三項逐步浮現：a 幀「1 Human Productivity」「2 Growing world
+    and expanding economy」＋空的「3」，b/c 幀補上「3 Self-Healing Index」。
+  cues:
+  - 749
+  - 750
+  - 751
+  - 752
+  text: who want the stuff that the companies make.Thirdly, I think it is a reasonably
+    strong betthat the value of something lik
+- shot_id: 235
+  start: 1302.32
+  end: 1304.88
+  duration: 2.56
+  type: aroll
+  note: Ali 在書桌前對鏡頭說話，中景，雙手比劃；畫面無文字 overlay。
+  cues:
+  - 752
+  - 753
+  - 754
+  text: will go up over time is because it is a self-healing index.So it's not like
+    a list of 500 companiesthat never changes, i
+- shot_id: 236
+  start: 1304.88
+  end: 1314.48
+  duration: 9.6
+  type: motion_graphic
+  note: 深綠底動畫資訊圖卡（主持人 PIP 圓角直式視窗固定左側）：黃綠色方塊 waffle grid 代表 500 家公司。a 幀標題文字「Curated」；b
+    幀 grid 放大並出現文字「If any company starts failing」；c 幀一格方塊變白、下方彈出圓形 BLOCKBUSTER logo
+    圖示，示意失敗公司被剔除。文字隨動畫階段變化。
+  cues:
+  - 754
+  - 755
+  - 756
+  - 757
+  - 758
+  - 759
+  text: that never changes, it's a curated list of 500 companies.So if a company starts
+    failing,it gets kicked out of the indexa
+- shot_id: 237
+  start: 1314.48
+  end: 1322.76
+  duration: 8.28
+  type: aroll
+  note: Ali 對鏡頭說話；b 幀中央疊入大字 overlay「Best of Spotify playlist」（Spotify 為橘色強調字），a/c
+    幀無文字——overlay 中段滑入後消失。
+  cues:
+  - 759
+  - 760
+  - 761
+  - 762
+  - 763
+  text: and something like Netflix takes its spot.So you can kind of think of the
+    indexas a sort of like best of Spotify playlis
+- shot_id: 238
+  start: 1322.76
+  end: 1328.56
+  duration: 5.8
+  type: aroll
+  note: Ali 近景對鏡頭說話，疊白色圓角卡片 overlay 附紅色 X 圖示：a 幀左側卡片滑入中（模糊）「Betting on a single company
+    will not last forever」；b 幀兩張卡片並列，左「Betting on a single company will not last forever」、右「Betting
+    on top 500 companies will last forever」，皆帶紅 X。
+  cues:
+  - 763
+  - 764
+  - 765
+  - 766
+  - 767
+  text: with whatever is most valuable at that given moment.And so you're not bettingthat
+    any single company will survive foreve
+- shot_id: 239
+  start: 1328.56
+  end: 1337.64
+  duration: 9.08
+  type: aroll
+  note: Ali 對鏡頭說話，畫面下方疊白色卡片 overlay 附綠色勾勾：「Top companies in the U.S. will continue
+    to grow over time」；三幀皆在。
+  cues:
+  - 767
+  - 768
+  - 769
+  - 770
+  - 771
+  text: these top 500 companies will survive forever.You're just betting that the
+    top 500 companies in the US,in this example, a
+- shot_id: 240
+  start: 1337.64
+  end: 1349.04
+  duration: 11.4
+  type: aroll
+  note: 黑白色調處理的 aroll，Ali 對鏡頭說話並逐漸推近至近景（b/c 幀更近）；無文字。黑白 grading 為刻意風格轉換。
+  cues:
+  - 771
+  - 772
+  - 773
+  - 774
+  - 775
+  - 776
+  - 777
+  text: and creating value within these companies.At this point, you might be thinking,but
+    like the S&P 500 is just American com
+- shot_id: 241
+  start: 1349.04
+  end: 1352.96
+  duration: 3.92
+  type: aroll
+  note: Ali 中景對鏡頭說話（恢復彩色），b 幀雙手張開揮到鏡頭前造成動態模糊；無文字。
+  cues:
+  - 777
+  - 778
+  text: or because of insert whatever flavor you would want.And that is like, you
+    know, and to that, I would say,
+- shot_id: 242
+  start: 1352.96
+  end: 1358.76
+  duration: 5.8
+  type: aroll
+  note: Ali 近景對鏡頭說話，b 幀轉頭望向側面伸手（似要拿東西）；無文字。
+  cues:
+  - 778
+  - 779
+  - 780
+  - 781
+  text: And that is like, you know, and to that, I would say,yeah, that's actually
+    a fair point.That is why you don't have to in
+- shot_id: 243
+  start: 1358.76
+  end: 1366.24
+  duration: 7.48
+  type: aroll
+  note: Ali 中景對鏡頭說話；b 幀中央疊白色圓角標籤 overlay「Vanguard FTSE All-World」，a/c 幀無文字——overlay
+    中段出現後消失。
+  cues:
+  - 781
+  - 782
+  - 783
+  - 784
+  - 785
+  - 786
+  text: in the S&P 500 Index Fund.There are things called global index funds.So there's
+    the Vanguard FTSE All World Index Fund,w
+- shot_id: 244
+  start: 1366.24
+  end: 1386.64
+  duration: 20.4
+  type: motion_graphic
+  note: 米白底動畫比較圖卡（主持人 PIP 直式視窗固定左側）：a 幀僅左側淺藍卡片出現，美國國旗圓餅圖示＋文字「S&P 500」；b 幀右側綠色卡片加入，完整文字：「S&P
+    500 / 500 Companies / 1 Country」對比「Vanguard All-World / 3,700 Companies / 49 Countries」；c
+    幀綠卡上下彈出公司 pill 標籤「Apple」「Microsoft」「Samsung」「TSMC」。元素隨動畫逐步出現。
+  cues:
+  - 786
+  - 787
+  - 788
+  - 789
+  - 790
+  - 791
+  - 792
+  - 793
+  - 794
+  - 795
+  - 796
+  - 797
+  text: 'But instead of investing in the,just the top 500 companies in the US,instead,
+    this fund splits your moneyacross the top '
+- shot_id: 245
+  start: 1386.64
+  end: 1390.4
+  duration: 3.76
+  type: aroll
+  note: Ali 中景對鏡頭說話，雙手在麥克風前比劃；b 幀手伸向桌面；無文字。
+  cues:
+  - 797
+  - 798
+  - 799
+  text: 'You''re getting a little bit of LVMH in France.So even if for whatever reason,you
+    believe that the US economy is heading '
+- shot_id: 246
+  start: 1390.4
+  end: 1398.08
+  duration: 7.68
+  type: aroll
+  note: Ali 近景對鏡頭說話，雙臂大幅張開向兩側比劃（a/b 幀手臂伸展）；無文字。
+  cues:
+  - 799
+  - 800
+  - 801
+  - 802
+  - 803
+  text: you believe that the US economy is heading for decline,the global economy
+    probably isn't.And so you can just spread your
+- shot_id: 247
+  start: 1398.08
+  end: 1403.36
+  duration: 5.28
+  type: aroll
+  note: Ali 中景對鏡頭說話，手勢比劃；無文字。
+  cues:
+  - 803
+  - 804
+  - 805
+  - 806
+  text: 'rather than just US companies.And the nice thing about the Vanguard All World
+    Indexis that it automatically adjusts its '
+- shot_id: 248
+  start: 1403.36
+  end: 1410.6
+  duration: 7.24
+  type: diagram
+  note: 米白背景圖卡，左側 Ali PIP 小卡對鏡頭說話；美國 vs 印度報酬曲線對比圖。文字："America"、"India"、兩張圖軸標 "Returns"
+    / "Time"（America 為先升後降的粉紅曲線，India 為指數上升的綠色曲線）。a 幀圖表尚在動畫載入（只有 America 標籤），b/c 幀兩圖完整。
+  cues:
+  - 806
+  - 807
+  - 808
+  - 809
+  - 810
+  text: based on where the value is.So if the US suddenly shrinksand let's say India's
+    economy suddenly booms,then your distribu
+- shot_id: 249
+  start: 1410.6
+  end: 1421.4
+  duration: 10.8
+  type: aroll
+  note: Ali 在書房桌前對鏡頭說話並比手勢，背景 LONDON 海報、植物、書架、白色麥克風。畫面無文字 overlay。
+  cues:
+  - 810
+  - 811
+  - 812
+  - 813
+  - 814
+  - 815
+  - 816
+  - 817
+  text: will naturally shift to wherever the growth is happening.So again, you're
+    not gamblingthat like a particular companyor a
+- shot_id: 250
+  start: 1421.4
+  end: 1425.32
+  duration: 3.92
+  type: aroll
+  note: Ali 較近景對鏡頭說話，雙手做平衡/框架手勢。畫面無文字 overlay。
+  cues:
+  - 817
+  - 818
+  - 819
+  - 820
+  text: will be creating more value over timeand there will be continued demand for
+    that value.Therefore, the price of everythin
+- shot_id: 251
+  start: 1425.32
+  end: 1439.88
+  duration: 14.56
+  type: aroll
+  note: Ali 對鏡頭說話比手勢；a/b 幀無 overlay，c 幀左上滑入白色小圖卡文字 "$1"。
+  cues:
+  - 820
+  - 821
+  - 822
+  - 823
+  - 824
+  - 825
+  - 826
+  - 827
+  - 828
+  - 829
+  - 830
+  text: is gonna go up over time.So with all that said,you might be asking the question
+    of like,okay, cool, I'm sold.How do I ge
+- shot_id: 252
+  start: 1439.88
+  end: 1446.44
+  duration: 6.56
+  type: aroll
+  note: Ali 近景對鏡頭說話，手伸向鏡頭再做展開手勢。畫面無文字 overlay。
+  cues:
+  - 830
+  - 831
+  - 832
+  - 833
+  - 834
+  text: like generally a small amount of money.Again, I would do some Googlingor ask
+    Chatterbitty or Claude to figure outlike wh
+- shot_id: 253
+  start: 1446.44
+  end: 1449.36
+  duration: 2.92
+  type: aroll
+  note: Ali 中景對鏡頭說話，單手向上舉再雙手合攏。畫面無文字 overlay。
+  cues:
+  - 834
+  - 835
+  - 836
+  - 837
+  text: depending on what country you're in.You should be able to find a platformthat
+    is completely free.You shouldn't have to p
+- shot_id: 254
+  start: 1449.36
+  end: 1454.6
+  duration: 5.24
+  type: aroll
+  note: Ali 近景對鏡頭說話，雙手快速比劃（有動態模糊）。畫面無文字 overlay。
+  cues:
+  - 837
+  - 838
+  - 839
+  - 840
+  - 841
+  - 842
+  text: You shouldn't have to pay for itunless you're in a countrythat has weird regulations
+    and stuff.But for the most part,you
+- shot_id: 255
+  start: 1454.6
+  end: 1462.8
+  duration: 8.2
+  type: aroll
+  note: Ali 中景對鏡頭說話；a 幀無 overlay，b/c 幀畫面下方滑入白色圓角問句卡，文字："What has been your biggest
+    concern about getting started with investing? And if you haven't yet, what's the
+    thing that's holding you back?"（呼籲留言的觀眾提問卡）。
+  cues:
+  - 842
+  - 843
+  - 844
+  - 845
+  - 846
+  - 847
+  - 848
+  text: with very little money to get started.Oh, by the way, if you're enjoying this
+    video so far,I would love to hear from you
+- shot_id: 256
+  start: 1462.8
+  end: 1465.64
+  duration: 2.84
+  type: aroll
+  note: Ali 特寫對鏡頭說話，手在麥克風前比劃。畫面無文字 overlay。
+  cues:
+  - 848
+  - 849
+  - 850
+  text: like what's the thing that's holding you back?Okay, so at this point,we've
+    covered the traditional approach to investing
+- shot_id: 257
+  start: 1465.64
+  end: 1467.6
+  duration: 1.96
+  type: aroll
+  note: Ali 中景對鏡頭說話，手舉到臉旁再伸向麥克風。畫面無文字 overlay。
+  cues:
+  - 850
+  - 851
+  - 852
+  text: we've covered the traditional approach to investing,but there is a final thing
+    we need to talk aboutbecause yes, of cour
+- shot_id: 258
+  start: 1467.6
+  end: 1476.92
+  duration: 9.32
+  type: aroll
+  note: Ali 對鏡頭說話；a 幀無 overlay，b 幀右側白色小圖卡文字 "5-10 Years"，c 幀該卡正在縮小/滑出（殘影）。
+  cues:
+  - 852
+  - 853
+  - 854
+  - 855
+  - 856
+  - 857
+  text: because yes, of course,we all wanna be rich in 30 to 40 years,but it would
+    be nice if we could get richin five to 10 yea
+- shot_id: 259
+  start: 1476.92
+  end: 1478.68
+  duration: 1.76
+  type: aroll
+  note: Ali 中景對鏡頭說話，右側白色小圖卡文字 "30-40 Years"（兩幀皆在）。
+  cues:
+  - 857
+  - 858
+  text: to build true wealth.And that is where we come to part four of the video,
+- shot_id: 260
+  start: 1478.68
+  end: 1489.2
+  duration: 10.52
+  type: title_card
+  note: '綠色系章節卡動畫，鏡頭在多張圓角卡間平移；a 幀聚焦 "Part 3 — Common Fears, Questions, and Concerns"（上方殘文
+    "Investing"，右側模糊卡 "Fin/The/Ap..."），b 幀轉至 "Part 4 — Fastlane Investing: The Alternative
+    Approach"；c 幀已切為 kol 訪談畫面：MJ DeMarco 視訊受訪、左下字 "MJ DeMarco"、左側 Ali PIP 手持書、右側書封
+    "the Millionaire FASTLANE — 10TH ANNIVERSARY EDITION — The International Personal
+    Finance Best-Seller — Crack the Code to Wealth and Live Rich for a Lifetime —
+    MJ DeMARCO"。主體為 Part 3→4 章節卡，末尾已進入下一段訪談。'
+  cues:
+  - 858
+  - 859
+  - 860
+  - 861
+  - 862
+  - 863
+  text: And that is where we come to part four of the video,which is fast lane investing,the
+    alternative approach to building we
+- shot_id: 261
+  start: 1489.2
+  end: 1491.68
+  duration: 2.48
+  type: aroll
+  note: 主持人在書桌前對鏡頭說話，手放在桌上一疊書上；畫面無文字 overlay。
+  cues:
+  - 863
+  - 864
+  - 865
+  text: calls the slow lane approach to building wealth.He's a bit disparaging about
+    it,but basically it's like, I've got some m
+- shot_id: 262
+  start: 1491.68
+  end: 1503.68
+  duration: 12.0
+  type: motion_graphic
+  note: 米白底動畫資訊圖卡，卡通男子站在上升曲線上，主持人以圓角直式 PIP 疊在左側；a 幀僅卡通人物無文字，b/c 幀人物周圍出現多張綠色鈔票、右側滑入鈔票圖示與藍色標籤，文字逐字："Assets"；c
+    幀卡通人物變成拄拐杖的老人（時間推移動畫），右側 Assets 旁鈔票增多。
+  cues:
+  - 865
+  - 866
+  - 867
+  - 868
+  - 869
+  - 870
+  - 871
+  - 872
+  - 873
+  text: but basically it's like, I've got some money,I've got a day job,I'm gonna
+    save 10% of my income from my day job,I'm gonn
+- shot_id: 263
+  start: 1503.68
+  end: 1506.28
+  duration: 2.6
+  type: aroll
+  note: 主持人正面中景對鏡頭說話；a 幀無文字，b 幀左側滑入白色大字 overlay，逐字："Slow"（文字滑入中）。
+  cues:
+  - 873
+  - 874
+  text: and then I'll be a millionaire and stuff.Now, this is a very slow form of
+    investing.
+- shot_id: 264
+  start: 1506.28
+  end: 1514.16
+  duration: 7.88
+  type: aroll
+  note: 主持人側身對鏡頭說話；a 幀大字 overlay 逐字："Slow form of investing"；b 幀換成左側白底圓角標籤 "Balanced
+    portfolio"；c 幀該標籤向上飛出（模糊移動中），下方出現新標籤 "Balanced life"——同鏡頭內 overlay 連續替換。
+  cues:
+  - 874
+  - 875
+  - 876
+  - 877
+  - 878
+  - 879
+  text: Now, this is a very slow form of investing.It's totally fine.And I think it's
+    very important to doas part of a diversifi
+- shot_id: 265
+  start: 1514.16
+  end: 1520.32
+  duration: 6.16
+  type: aroll
+  note: 主持人雙手舉起比劃、近景對鏡頭說話；a 幀無文字，b 幀畫面下方出現大字 overlay 逐字："Reframing what investing
+    actually means"；c 幀文字消失。
+  cues:
+  - 879
+  - 880
+  - 881
+  - 882
+  - 883
+  text: but there is another approach.And that approach involves reframingwhat investing
+    actually means.Now, when we hear invest
+- shot_id: 266
+  start: 1520.32
+  end: 1521.4
+  duration: 1.08
+  type: aroll
+  note: 主持人側身雙手張開比劃說話（廣角側機位）；兩幀皆無文字 overlay。
+  cues:
+  - 883
+  - 884
+  text: a lot of us default to thinkingthat investing means taking our money
+- shot_id: 267
+  start: 1521.4
+  end: 1526.16
+  duration: 4.76
+  type: motion_graphic
+  note: 米白底動畫圖卡，卡通男子被綠色鈔票堆環繞，主持人直式 PIP 疊在左側；a 幀無文字，b 幀右側出現鈔票圖示與藍色標籤，文字逐字："Assets"。
+  cues:
+  - 884
+  - 885
+  - 886
+  text: that investing means taking our moneyand buying an asset with it,like stocks
+    and shares or like buying a rental property
+- shot_id: 268
+  start: 1526.16
+  end: 1529.44
+  duration: 3.28
+  type: aroll
+  note: 主持人近景對鏡頭比劃說話；兩幀皆無文字 overlay。
+  cues:
+  - 886
+  - 887
+  - 888
+  text: like stocks and shares or like buying a rental property.But if we really think
+    about it from first principles,what is th
+- shot_id: 269
+  start: 1529.44
+  end: 1534.0
+  duration: 4.56
+  type: quote_card
+  note: 滿版米白底大字金句卡（無署名）；a 幀文字正逐字打出僅見 "The"，b 幀完整句子逐字："The point of investing money
+    is for your existing money to make more"（existing money to make more 為橘紅色強調）。
+  cues:
+  - 888
+  - 889
+  - 890
+  - 891
+  text: what is the point of investing money?The point of investing money is for your
+    existing moneyto make more money further d
+- shot_id: 270
+  start: 1534.0
+  end: 1538.36
+  duration: 4.36
+  type: aroll
+  note: 主持人對鏡頭說話，b 幀伸手到右側書堆比劃；兩幀皆無文字 overlay。
+  cues:
+  - 891
+  - 892
+  text: The point isn't explicitly to invest in stocks and sharesor like watches or
+    like, I don't know, fine art.
+- shot_id: 271
+  start: 1538.36
+  end: 1545.08
+  duration: 6.72
+  type: aroll
+  note: 主持人對鏡頭說話、舉手比數字手勢；三幀皆無文字 overlay。
+  cues:
+  - 892
+  - 893
+  - 894
+  - 895
+  - 896
+  text: or like watches or like, I don't know, fine art.The point is to grow your
+    moneyand the stocks and shares or the rental p
+- shot_id: 272
+  start: 1545.08
+  end: 1549.16
+  duration: 4.08
+  type: aroll
+  note: 主持人低頭比劃說話；a 幀無文字，b 幀左側出現白底圓角標籤，逐字："7% Returns"。
+  cues:
+  - 896
+  - 897
+  - 898
+  - 899
+  text: by which you turn your money into more money.So if we imagine something like,
+    you know,7% returns in the S&P 500,let's s
+- shot_id: 273
+  start: 1549.16
+  end: 1563.52
+  duration: 14.36
+  type: motion_graphic
+  note: 米白底動畫比較圖卡，主持人直式 PIP 疊在左側；a 幀鈔票堆圖示與文字 "$10,000"；b 幀新增藍色 "+$700"、標籤 "S&P 500"
+    與 "vs"；c 幀右側再出現第二疊鈔票，文字逐字："+$700" "$10,000" "S&P 500" "vs" "Can I find a way to
+    beat market returns?" "$10,000" "Something else"——元素隨鏡頭進行逐步加入。
+  cues:
+  - 899
+  - 900
+  - 901
+  - 902
+  - 903
+  - 904
+  - 905
+  text: let's say you've got a spare $10,000.If you put the $10,000 in the S&P 500
+    today,on average, it'll be worth, what, $10,7
+- shot_id: 274
+  start: 1563.52
+  end: 1565.84
+  duration: 2.32
+  type: aroll
+  note: 主持人 Ali 在書桌前對鏡頭說話並比手勢（廣角桌面機位，白色麥克風、書堆、鍵盤入鏡），無畫面文字 overlay。
+  cues:
+  - 905
+  - 906
+  text: so that it can make more than $700 in the next 12 months?And generally to
+    that, the answer is usually a hell yes.
+- shot_id: 275
+  start: 1565.84
+  end: 1567.92
+  duration: 2.08
+  type: aroll
+  note: 主持人中景對鏡頭說話，雙手比出強調手勢；畫面中央疊白底黑字圓角文字卡「Hell Yes!」，兩幀皆在。
+  cues:
+  - 906
+  - 907
+  text: And generally to that, the answer is usually a hell yes.So there's a couple
+    of different options here.
+- shot_id: 276
+  start: 1567.92
+  end: 1592.04
+  duration: 24.12
+  type: motion_graphic
+  note: 米白底動畫資訊圖卡，主持人以左側圓角 PIP 直式小窗持續說話。a 幀：橘色標題「Fastlane Investing」與藍色圓形數字「1」；b/c
+    幀切為卡通人物示意圖，文字「Healthcare assistant」「Phlebotomist」（虛線連到證書 icon），c 幀再多滑入白色小卡「$15」。多幀為同一動畫的漸進
+    build。
+  cues:
+  - 907
+  - 908
+  - 909
+  - 910
+  - 911
+  - 912
+  - 913
+  - 914
+  - 915
+  - 916
+  - 917
+  - 918
+  text: So there's a couple of different options here.Option number one is if you
+    investin your own ability to make money.So let
+- shot_id: 277
+  start: 1592.04
+  end: 1594.48
+  duration: 2.44
+  type: aroll
+  note: 主持人在書桌前廣角機位對鏡頭說話，雙手張開比劃，無畫面文字。
+  cues:
+  - 918
+  - 919
+  text: lets me suddenly make $30 an hour as a phlebotomist.I've invested in my own
+    skills and my own credentials
+- shot_id: 278
+  start: 1594.48
+  end: 1597.4
+  duration: 2.92
+  type: aroll
+  note: 主持人近景中軸對鏡頭說話（jump cut 近機位），手在臉前揮動有動態模糊，無畫面文字。
+  cues:
+  - 919
+  - 920
+  text: I've invested in my own skills and my own credentialsand as a result, I've
+    literally doubled my earning capacity.
+- shot_id: 279
+  start: 1597.4
+  end: 1611.32
+  duration: 13.92
+  type: aroll
+  note: 主持人廣角桌面機位對鏡頭說話比手勢；b 幀畫面下方疊兩張白底文字卡「4 hrs of work = $60」「40 hrs of work = $600」，a/c
+    幀無文字卡（overlay 中段出現後消失）。
+  cues:
+  - 920
+  - 921
+  - 922
+  - 923
+  - 924
+  - 925
+  - 926
+  - 927
+  text: and as a result, I've literally doubled my earning capacity.And so with an
+    additional four hours of work,what's that, an
+- shot_id: 280
+  start: 1611.32
+  end: 1619.0
+  duration: 7.68
+  type: aroll
+  note: 主持人近景對鏡頭興奮地雙手比劃說話，無畫面文字。
+  cues:
+  - 927
+  - 928
+  - 929
+  - 930
+  - 931
+  text: 'based on that investment.And so my return on this $1,000that I''ve invested
+    in this course or whateveris way higher than '
+- shot_id: 281
+  start: 1619.0
+  end: 1624.28
+  duration: 5.28
+  type: aroll
+  note: 主持人廣角桌面機位對鏡頭說話；b 幀左側滑入白底文字卡「Skills」，a 幀尚未出現（overlay 中途滑入）。
+  cues:
+  - 931
+  - 932
+  - 933
+  - 934
+  text: in my own ability to make money.And this is generally why investing in your
+    own skillsor your own education is very reas
+- shot_id: 282
+  start: 1624.28
+  end: 1629.0
+  duration: 4.72
+  type: aroll
+  note: 主持人近景對鏡頭說話，雙手攤開再單手比劃，無畫面文字。
+  cues:
+  - 934
+  - 935
+  - 936
+  text: provided you can see a path from, okay,getting that credential or getting
+    that qualificationor learning those skills, pr
+- shot_id: 283
+  start: 1629.0
+  end: 1632.12
+  duration: 3.12
+  type: aroll
+  note: 主持人廣角桌面機位對鏡頭說話，b 幀單手高舉比劃，無畫面文字。
+  cues:
+  - 936
+  - 937
+  text: or learning those skills, provided you can see a pathto a sensible return
+    on that investment.
+- shot_id: 284
+  start: 1632.12
+  end: 1635.32
+  duration: 3.2
+  type: aroll
+  note: 主持人近景對鏡頭說話，雙手攤開後轉頭望向側面，無畫面文字。
+  cues:
+  - 937
+  - 938
+  - 939
+  text: to a sensible return on that investment.I'm not saying you have to buy courses
+    and stuff,but you can find stuff for free
+- shot_id: 285
+  start: 1635.32
+  end: 1636.0
+  duration: 0.68
+  type: aroll
+  note: 主持人廣角桌面機位對鏡頭說話比手勢（兩幀相距僅 0.2s 的短鏡頭），無畫面文字。
+  cues:
+  - 939
+  - 940
+  text: but you can find stuff for free on YouTube.I'm just saying that there is often
+    more value
+- shot_id: 286
+  start: 1636.0
+  end: 1643.56
+  duration: 7.56
+  type: quote_card
+  note: 米白底大字金句卡逐字動畫 build-in：a 幀僅「There is」，b 幀增至「There is often more value in investing
+    in your own ability to earn more money than in」，c 幀完整句「There is often more value
+    in investing in your own ability to earn more money than in investing in 500 random
+    companies」（own ability to earn more money 為橘色強調），無署名。
+  cues:
+  - 940
+  - 941
+  - 942
+  - 943
+  text: I'm just saying that there is often more valuein investing in your own ability
+    to make moneythan there is in investing i
+- shot_id: 287
+  start: 1643.56
+  end: 1649.84
+  duration: 6.28
+  type: motion_graphic
+  note: 清單式資訊圖卡：左側主持人小窗（rounded inset），右側編號清單逐項滑入——a 幀只有第 1 點與空的 2 號圓點，b/c 幀第 2 點出現。文字逐字："Fastlane
+    Investing" / "1 Investing in your own ability to make money" / "2 Investing in
+    your own business"。主持人 inset 疊在圖卡上但版面主體是圖卡。
+  cues:
+  - 943
+  - 944
+  - 945
+  - 946
+  text: in the US if you had to choose.And then we have option number two,which is
+    to actually invest in your own business.And t
+- shot_id: 288
+  start: 1649.84
+  end: 1653.32
+  duration: 3.48
+  type: aroll
+  note: 主持人在書桌前（白麥克風、書堆、機械鍵盤、烏鴉海報、落地燈）對鏡頭說話並比手勢，無任何 overlay 文字。
+  cues:
+  - 946
+  - 947
+  - 948
+  text: And that is another form of fast lane investing.Now, obviously this only applies
+    if you have a businessor if you want to
+- shot_id: 289
+  start: 1653.32
+  end: 1654.72
+  duration: 1.4
+  type: aroll
+  note: 主持人近景（中特寫）對鏡頭說話，手插腰，背景植物與 LONDON 海報，畫面無文字 overlay。
+  cues:
+  - 948
+  - 949
+  text: or if you want to start your own business.If I use my own business as example,
+- shot_id: 290
+  start: 1654.72
+  end: 1656.48
+  duration: 1.76
+  type: stock
+  note: 實拍教室畫面：一位老師在白板前講課，多名學生背對鏡頭坐長桌抄筆記；左側主持人 PIP 小窗持續說話。畫面無 overlay 文字。
+  cues:
+  - 949
+  - 950
+  text: If I use my own business as example,when I was 18, I started a business helping
+    kids
+- shot_id: 291
+  start: 1656.48
+  end: 1657.8
+  duration: 1.32
+  type: stock
+  note: 另一實拍教室：藍牆房間內多名學生（部分臉部打碼）低頭寫字，桌上筆記與飲料；左側主持人 PIP 小窗說話。畫面無文字。
+  cues:
+  - 950
+  - 951
+  - 952
+  text: when I was 18, I started a business helping kidsget into med school.In year
+    one, it made about 8,000 pounds, like $10,00
+- shot_id: 292
+  start: 1657.8
+  end: 1687.32
+  duration: 29.52
+  type: motion_graphic
+  note: 動畫長條圖建構過程：a 幀僅主持人 inset＋一條底線（圖表尚未出現），b 幀出現標題與藍色長條，c 幀補上橘/綠條。文字逐字："Business
+    Revenue" / "£8K Year1" / "£80K 8x Year 2" / "£150K 2x Year 3" / "Plateau at £150K
+    Year 4 - 7" / "£1.2M 10x 2020" / "£4.6M 4x 2021"。左側主持人小窗全程在。
+  cues:
+  - 952
+  - 953
+  - 954
+  - 955
+  - 956
+  - 957
+  - 958
+  - 959
+  - 960
+  - 961
+  - 962
+  - 963
+  - 964
+  - 965
+  text: In year one, it made about 8,000 pounds, like $10,000.In year two, it made
+    about 80,000.In year three, it made about 150
+- shot_id: 293
+  start: 1687.32
+  end: 1696.28
+  duration: 8.96
+  type: aroll
+  note: 主持人在書桌前說話；a 幀無文字，b 幀左側滑入白底圓角 pill 標籤，逐字："Apple"（含蘋果 logo），c 幀標籤已消失（overlay
+    滑入又滑出）。
+  cues:
+  - 965
+  - 966
+  - 967
+  - 968
+  - 969
+  - 970
+  text: that's way more than 7% per year.Now, if you were to put money in Apple,it
+    is very unlikely that Apple will 10X its valu
+- shot_id: 294
+  start: 1696.28
+  end: 1698.72
+  duration: 2.44
+  type: aroll
+  note: 主持人近景對鏡頭說話比手勢（b 幀手指指向鏡頭），無 overlay 文字。
+  cues:
+  - 970
+  - 971
+  - 972
+  text: And the bigger you are, the harder it is to grow,at least in terms of percentages,because
+    you're already so huge, right?
+- shot_id: 295
+  start: 1698.72
+  end: 1710.6
+  duration: 11.88
+  type: aroll
+  note: 主持人說話，綠色金額標籤與 logo 卡先後疊上：a 幀無文字，b 幀綠色圓角卡逐字 "$10,000"，c 幀下方白色圓角卡逐字 "Lifestyle
+    Business Academy"（綠色齒輪 logo）。同一鏡頭 overlay 更替。
+  cues:
+  - 972
+  - 973
+  - 974
+  - 975
+  - 976
+  - 977
+  - 978
+  - 979
+  - 980
+  text: because you're already so huge, right?But if for example, you took $1,000and
+    you used it to start your own business,it i
+- shot_id: 296
+  start: 1710.6
+  end: 1714.76
+  duration: 4.16
+  type: aroll
+  note: 主持人近景說話比手勢（b 幀側身伸手），無 overlay 文字。
+  cues:
+  - 980
+  - 981
+  - 982
+  - 983
+  text: for beginners starting businesses.We have some people who've started a businessfor
+    the first time, and within like three
+- shot_id: 297
+  start: 1714.76
+  end: 1720.76
+  duration: 6.0
+  type: aroll
+  note: 主持人在書桌前說話，綠色金額卡疊在麥克風前：a 幀逐字 "$10,000"，b 幀變為 "$100,000"（數字動態增長）。
+  cues:
+  - 983
+  - 984
+  - 985
+  - 986
+  text: they made 10 grand and they're on track to make a hundredgrand within the
+    first 12 months.And so if you think of the inv
+- shot_id: 298
+  start: 1720.76
+  end: 1729.4
+  duration: 8.64
+  type: aroll
+  note: 主持人近景說話，手勢大幅揮動（b 幀手舉高），無 overlay 文字。
+  cues:
+  - 986
+  - 987
+  - 988
+  - 989
+  - 990
+  - 991
+  text: in starting their business, for example,and maybe investing in an educational
+    programor a mentorship program or whatever
+- shot_id: 299
+  start: 1729.4
+  end: 1739.96
+  duration: 10.56
+  type: aroll
+  note: 主持人在書桌前（稍廣角，含鍵盤與書堆）雙手比劃說話，無 overlay 文字。
+  cues:
+  - 991
+  - 992
+  - 993
+  - 994
+  - 995
+  - 996
+  - 997
+  - 998
+  text: compared to just investing in the S&P 500.And if you're interested in this
+    sort of approachto building your own business
+- shot_id: 300
+  start: 1739.96
+  end: 1751.04
+  duration: 11.08
+  type: aroll
+  note: Ali 對鏡頭說話（正面機位，LONDON 海報、綠植、白麥克風背景）；中點幀 b 有白底圓角文字卡疊在畫面右側，逐字：「$100k revenue
+    in 12 months」；a、c 幀無 overlay（overlay 僅短暫出現後消失），c 幀他雙手食指上指。
+  cues:
+  - 998
+  - 999
+  - 1000
+  - 1001
+  - 1002
+  - 1003
+  - 1004
+  text: in starting your own business.That business could be something like a lifestyle
+    businessthat could quite conceivably get
+- shot_id: 301
+  start: 1751.04
+  end: 1770.916
+  duration: 19.876
+  type: aroll
+  note: 切到側面/廣角第二機位，Ali 在木桌前對鏡頭說話，桌上有機械鍵盤、書堆、烏鴉黑色掛畫與立燈；全程比手勢講話。畫面上無任何文字。
+  cues:
+  - 1004
+  - 1005
+  - 1006
+  - 1007
+  - 1008
+  - 1009
+  - 1010
+  - 1011
+  - 1012
+  - 1013
+  - 1014
+  - 1015
+  text: 'that breaks down that concept in more detail.In general, I think it is good
+    to invest a good chunkof your time, energy, '
