@@ -83,9 +83,12 @@ _GUARDRAILS = load_guardrails()
 
 
 def test_guardrails_numbers_aligned_with_prompt_budget() -> None:
-    """4/min 與 planner prompt「~15-25/10min」互斥 — 以 prompt 預算上限 2.5 為準."""
+    """guardrail 與 planner prompt「~25-35/10min」對齊 — 3.5 事件/分.
+
+    成片實測 3.26-3.52 事件/分（editing-grammar 綜合報告 §一，2026-07-18 re-baseline）。
+    """
     limits = _GUARDRAILS["hard_limits"]
-    assert limits["max_cutaways_per_minute"] == 2.5
+    assert limits["max_cutaways_per_minute"] == 3.5
     assert limits["kol_max_total_sec_per_source"] == 20
 
 
