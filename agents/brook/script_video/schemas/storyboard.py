@@ -108,20 +108,20 @@ class VisualIntent(BaseModel):
 
     form: Literal["cutaway", "overlay", "canvas_pip", "aside_marker"]
     category: Literal[
-        "stock_scene",     # 畫面感語句 → 實拍（逐名詞、≤3s、只蓋 visual phrase）
-        "keyword",         # 抽象概念名詞 → 關鍵字卡
-        "person_inset",    # 人名 → 人物照 inset（對比人物雙卡並列）
-        "book_cover",      # 書封（滿版或 inset；hook 內 ≥2 次曝光）
-        "quote",           # 金句 → 首次唸到即上卡
-        "chapter",         # 章節卡（與旁白唸出章節名同步）
+        "stock_scene",  # 畫面感語句 → 實拍（逐名詞、≤3s、只蓋 visual phrase）
+        "keyword",  # 抽象概念名詞 → 關鍵字卡
+        "person_inset",  # 人名 → 人物照 inset（對比人物雙卡並列）
+        "book_cover",  # 書封（滿版或 inset；hook 內 ≥2 次曝光）
+        "quote",  # 金句 → 首次唸到即上卡
+        "chapter",  # 章節卡（與旁白唸出章節名同步）
         "worked_example",  # 數字/比較/流程 → 實算動畫
-        "evidence_doc",    # 研究/文章引用 → 截圖＋黃 highlight
-        "self_archive",    # 修修自供素材（vlog/對帳單/照片）
-        "self_promo",      # 自家舊影片縮圖導流
-        "kol_quote",       # 他人影片引用
-        "screen_demo",     # 螢幕操作展示
-        "meme",            # 梗圖/影劇梗 inset（版權留意）
-        "bigstat",         # 大數字
+        "evidence_doc",  # 研究/文章引用 → 截圖＋黃 highlight
+        "self_archive",  # 修修自供素材（vlog/對帳單/照片）
+        "self_promo",  # 自家舊影片縮圖導流
+        "kol_quote",  # 他人影片引用
+        "screen_demo",  # 螢幕操作展示
+        "meme",  # 梗圖/影劇梗 inset（版權留意）
+        "bigstat",  # 大數字
     ]
     # 給 DP 的一句話 brief：觀眾在這個事件要看到什麼
     description: str
