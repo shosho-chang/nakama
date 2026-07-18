@@ -1,0 +1,1108 @@
+- shot_id: 1
+  type: aroll
+  note: 主持人 Ali 在明亮房間對鏡頭說話開場；frame a 無文字，frame b 大字 overlay 滑入："You want to get started"（白＋淺灰
+    serif 大字橫貫畫面下半）。
+- shot_id: 2
+  type: aroll
+  note: 主持人說話，右側疊 app 風格 Savings UI 卡："Savings / Current Balance / $8,547.23 / Withdraw
+    / Deposit"；frame b 左側再滑入 Property 卡："Property / Open for Sale / $385,000"（房屋照片縮圖）。多幀差異：Property
+    卡在 b 才出現。
+- shot_id: 3
+  type: aroll
+  note: 主持人雙手張開對鏡頭說話，無任何 overlay 文字。
+- shot_id: 4
+  type: aroll
+  note: 主持人對鏡頭說話並比手勢，無 overlay 文字（極短鏡頭）。
+- shot_id: 5
+  type: motion_graphic
+  note: 淺綠畫布動畫＋主持人 PIP 疊左側；彩色虛線框標籤逐一彈入："Stocks & Shares"（frame a 僅此一枚），frame b 增至五枚："Foreign
+    Exchange" "Corporate Bonds" "Real Estate" "Stocks & Shares" "Government Bonds"。
+- shot_id: 6
+  type: aroll
+  note: 主持人揮手說話；frame a 無文字，frame b 疊白色藥丸形 Bitcoin 標籤（橘色 ₿ 圖示）："Bitcoin"，下方部分露出年份字樣
+    "…013"（應為 2013，滑入中）。多幀差異：overlay 在 b 才出現。
+- shot_id: 7
+  type: motion_graphic
+  note: 淺綠畫布手繪曲線動畫＋主持人 PIP 左側；frame a 上升箭頭標 "+30%"（箭頭往左下彎），frame b 曲線爬升標 "+805%"（綠色大字）。
+- shot_id: 8
+  type: aroll
+  note: 主持人雙手高舉誇張手勢對鏡頭說話，無 overlay 文字。
+- shot_id: 9
+  type: motion_graphic
+  note: 延續淺綠畫布動畫＋主持人 PIP 左側；frame a 為 "+30%" 下彎箭頭圖，frame b 換成五枚彩色虛線資產標籤："Foreign Exchange"
+    "Corporate Bonds" "Real Estate" "Stocks & Shares" "Government Bonds"。
+- shot_id: 10
+  type: aroll
+  note: 主持人雙手前伸比手勢對鏡頭說話，無 overlay 文字。
+- shot_id: 11
+  type: motion_graphic
+  note: 淺綠畫布圖表動畫＋主持人 PIP 左側；frame a 座標軸上短上升線標 "+10%"（綠字），frame b 變成陡降曲線與粉紅色下跌區域標 "-68%"（紅色大字）。
+- shot_id: 12
+  type: aroll
+  note: 主持人激動比手勢說話；frame a 無文字，frame b 疊超大藍色 serif 字 "UPDATED" 橫貫上方＋白色字 "Ultimate"
+    於左下（標題 overlay 進場中）。
+- shot_id: 13
+  type: title_card
+  note: '滿版淺綠章節總覽卡：四張深綠圓角卡片動畫浮現（frame a 僅 Part 1 淡入，frame b 四張齊全，內文帶模糊/像素化過場效果）："Part
+    1 The Basics and Philosophy of Investing" "Part 2 Why and How to Invest" "Part
+    3 Common Fears, Concerns, and Questions" "Part 4 Fastlane Investing: The Alternative
+    Approach"。'
+- shot_id: 14
+  type: title_card
+  note: 綠色系章節卡 grid，聚焦 Part 1 卡片（柱＋書 icon），旁邊 Part 3 與右側模糊的 Part 2 卡片可見。文字："Part 1
+    / The Basics and Philosophy of Investing"（下方部分可見 "Part 3"）。兩幀間卡片微幅放大移動。
+- shot_id: 15
+  type: title_card
+  note: 同一綠色章節卡 grid 滑動聚焦 Part 2 卡片（植物＋錢幣 icon）。文字："Part 2 / Why and How to Invest"，下方部分可見
+    "Part 4"。
+- shot_id: 16
+  type: title_card
+  note: 章節卡 grid 聚焦 Part 3 卡片（問號 icon），上方殘留 "Investing" 字尾、右側模糊 Part 4。文字："Part 3
+    / Common Fears, Questions, and Concerns"。
+- shot_id: 17
+  type: title_card
+  note: '章節卡 grid 聚焦 Part 4 卡片（公路 icon）。文字："Part 4 / Fastlane Investing: The Alternative
+    Approach"。'
+- shot_id: 18
+  type: aroll
+  note: Ali 於明亮房間（LONDON 海報、植物、書堆、白色麥克風）對鏡頭說話；a 幀舉手比劃、b 幀正面直視鏡頭。畫面無文字 overlay。
+- shot_id: 19
+  type: title_card
+  note: 以 Part 1 章節卡開場（文字："Part 1 / The Basics and Philosophy of Investing"、下方 "Part
+    3"），b/c 幀切為 Ali 在昏暖檯燈書房桌前 wide 機位講話，c 幀畫面下方疊大字 serif overlay 文字："What's actually
+    the point of"（overlay 僅 c 幀出現）。混合鏡頭：title_card 開頭轉 aroll。
+- shot_id: 20
+  type: motion_graphic
+  note: 米白背景卡通動畫：橘衣男性角色與逐漸堆高的美元鈔票金字塔，左側 Ali 實拍 PIP 圓角框全程存在。文字："£15,000"（b 幀出現，a 幀無、c
+    幀已消失，鈔票持續堆疊）。
+- shot_id: 21
+  type: aroll
+  note: Ali 在昏暖書房桌前（檯燈、鍵盤、麥克風）對鏡頭比手勢說話。畫面無文字。
+- shot_id: 22
+  type: motion_graphic
+  note: 延續卡通動畫：橘衣角色比讚站在鈔票金字塔旁，b 幀頂端鈔票逐張淡出（表示錢減少），左側 Ali 實拍 PIP 全程存在。畫面除鈔票 $ 符號外無文字。
+- shot_id: 23
+  type: aroll
+  note: Ali 在昏暖書房 wide 機位對鏡頭說話，a 幀側身講話、b 幀正面。畫面無文字。
+- shot_id: 24
+  type: motion_graphic
+  note: 米白動畫背景＋左側 Ali PIP：a 幀近乎空白（僅曲線圖形開始繪製），b/c 幀出現 "Purchasing Power" 座標圖，x 軸 "2006
+    / 2016 / 2026"，各年一張美鈔對上逐年縮小的購物車（購物車由 c 幀補齊 2006 大車）。文字："Purchasing Power", "2006",
+    "2016", "2026"。圖表逐步 build-in，多幀內容遞增。
+- shot_id: 25
+  type: aroll
+  note: Ali 在昏暖書房桌前雙手張開比劃、對鏡頭說話。畫面無文字。
+- shot_id: 26
+  type: motion_graphic
+  note: 米白背景資訊圖卡＋左側 Ali PIP：橘色標題膠囊 "Purpose of Investing"，藍色圓 "1" 與紫色圓 "2" 條列逐步 build-in（a
+    幀僅標題與 1 的圓點，b/c 幀全出）。文字："Purpose of Investing", "1 To counteract the effects of
+    inflation", "2 Grow and compound wealth over time"。
+- shot_id: 27
+  type: aroll
+  note: 主持人 Ali 在書桌前對鏡頭說話並用雙手比劃，無任何文字 overlay。
+- shot_id: 28
+  type: aroll
+  note: 主持人置中對鏡頭說話，畫面下方疊大字標題 overlay；a 幀文字打字進行中只出現「How」，b 幀完整顯示「How does investing
+    make you money?」— overlay 逐字進場，兩幀不一致。
+- shot_id: 29
+  type: motion_graphic
+  note: 米白底動畫版面，主持人縮成左側圓角直式 PIP；a 幀出現橘色標籤「Asset」，b 幀換成兩棟紅磚建築 3D 切片插圖（無字），c 幀在上棟建築旁標註「Rental
+    Income」— 元素依序切換，多幀不一致。
+- shot_id: 30
+  type: aroll
+  note: 回到主持人書桌全景，對鏡頭說話比手勢，無文字 overlay。
+- shot_id: 31
+  type: motion_graphic
+  note: '米白底動畫，主持人左側 PIP；a 幀單棟紅磚建築插圖，b 幀加上三張白色卡片「Buy: $1,000,000 house」「Rent: $2,000/month」「Rental
+    income: $24,000/year」與吊牌「$1,000,000」，c 幀增第四張卡「Capital appreciation: +$500,000」且吊牌變「$1,500,000」—
+    資訊逐步堆疊。'
+- shot_id: 32
+  type: aroll
+  note: 主持人書桌全景說話；a 幀無 overlay，b 幀右下疊白色圓角標籤「Property taxes」— overlay 中途進場。
+- shot_id: 33
+  type: motion_graphic
+  note: '延續米白底動畫（主持人左側 PIP）：四張卡片「Buy: $1,000,000 house」「Rent: $2,000/month」「Rental
+    income: $24,000/year」「Capital appreciation: +$500,000」＋建築與「$1,500,000」吊牌；b 幀在
+    Rent 卡旁加綠色勾勾 ✓。'
+- shot_id: 34
+  type: aroll
+  note: 主持人書桌全景對鏡頭說話比手勢，無文字 overlay。
+- shot_id: 35
+  type: stock
+  note: 圖庫實拍：兩名男子在售出房屋前握手（西裝長者與白衣買家），背景立牌「HOUSE SALE / SOLD」；主持人縮左側 PIP 持續講解。
+- shot_id: 36
+  type: stock
+  note: 圖庫實拍：一隻手遞出一疊美鈔（b 幀另一隻手伸來接），廚房背景虛化；主持人左側 PIP；畫面無設計文字。
+- shot_id: 37
+  type: aroll
+  note: 主持人書桌全景說話；a 幀無 overlay，b 幀畫面中央疊白色圓角標籤「Property ladder」，c 幀標籤消失、主持人舉手 — overlay
+    中途進出。
+- shot_id: 38
+  type: aroll
+  note: 主持人近景對鏡頭說話、雙手張開比劃，無文字 overlay。
+- shot_id: 39
+  type: quote_card
+  note: 米白底滿版大字引言卡（襯線字逐字浮現）：a 幀僅「For」，b 幀顯示「For most people, owning a house is actually
+    a relatively inaccessible thing if you're just」（owning a house 為橘色強調，句子尚在進行中）；無署名。
+- shot_id: 40
+  type: aroll
+  note: 主持人 Ali 在書桌前對鏡頭說話（白麥克風、綠植、LONDON 海報）。b 幀出現滿版白色大字 overlay："Alternative asset
+    classes"（a、c 幀無文字）。
+- shot_id: 41
+  type: motion_graphic
+  note: 米白背景動態資訊圖：中央橘色虛線圓 "Asset Classes"，逐幀輻射出泡泡節點："Stocks & Shares" "Hedge Funds"
+    "Index Funds" "Government Bonds" "Corporate Bonds" "Fancy Watches" "Fine Art"
+    "Crypto"；左側主持人直式 PIP 卡全程在畫面。a 幀僅中心圓，b/c 幀節點陸續滑入（Fine Art 淡入中、Crypto 最後出現）。
+- shot_id: 42
+  type: aroll
+  note: 主持人對鏡頭說話比手勢，b 幀轉頭看向側邊（跳切變化角度）。畫面無文字。
+- shot_id: 43
+  type: aroll
+  note: 主持人較近景雙手張開比手勢對鏡頭說話，a 幀動作模糊。畫面無文字。
+- shot_id: 44
+  type: motion_graphic
+  note: 米白背景編號清單卡逐條滑入，左側主持人直式 PIP。文字："1 Accessible to normal people" "2 Low capital
+    needed to get started" "3 Low risk compared to crypto" "4 No special investor
+    status required"。a 幀僅編號 1 圓點出現，b 幀有 1–3 條，c 幀四條齊。
+- shot_id: 45
+  type: title_card
+  note: 綠色系滿版章節卡："Part 2 / Why and How to Invest"（含小樹苗金幣 icon），下緣露出 "Part 4" 卡一角；a→b
+    卡片滑動定位中。
+- shot_id: 46
+  type: motion_graphic
+  note: 米白背景綠色膠囊標題條 + 左側主持人直式 PIP。文字："1 What Does It Mean to Buy a Stock or Share?"；a
+    幀標題滑入中僅顯示 "1 What"，b 幀完整。
+- shot_id: 47
+  type: motion_graphic
+  note: 深綠背景方塊網格動畫（一格白色代表持股比例），左側主持人直式 PIP。b/c 幀出現文字："Small percentage of ownership
+    in a company"；c 幀底部加 Apple logo 徽章 "+0.3%"。a 幀僅網格無文字。
+- shot_id: 48
+  type: aroll
+  note: 主持人對鏡頭說話，疊滿版白色大字 overlay 逐字浮現：a 幀 "What even"，b 幀完整 "What even is the point
+    of owning a stock?"（stock? 為橘色）。
+- shot_id: 49
+  type: motion_graphic
+  note: 米白背景兩張深綠比較卡 + 左側主持人直式 PIP。a 幀僅空白卡滑入；b 幀左卡："Number 1 / Increase in stock price
+    / Investment value $2,000"（Apple logo）＋折線圖（x 軸 26 27 28 29 30 31）；c 幀加右卡："Number
+    2 / Dividends / Investment value $2,000"（BT logo）＋平坦線圖（26–31）。
+- shot_id: 50
+  type: aroll
+  note: 主持人雙手舉起對鏡頭說話。畫面無文字。
+- shot_id: 51
+  type: aroll
+  note: 主持人另一機位（稍偏側、書架背景較多）對鏡頭微笑說話。畫面無文字。
+- shot_id: 52
+  type: motion_graphic
+  note: 米白背景動畫 + 左側主持人直式 PIP。a 幀回到章節標題條 "1 What Does It Mean to Buy a Stock or Share?"（下方淡出的
+    "2" 膠囊）；b/c 幀切為卡通人物插畫＋股票漲幅徽章："+0.3%"（Apple logo）、c 幀再加 "+0.25%"（Tesla logo）與 "+0.5%"（Nvidia
+    logo）。
+- shot_id: 53
+  type: aroll
+  note: 主持人在書桌旁側身轉向鏡頭、手扶白色麥克風，正要拿書；背景 LONDON 海報、Ravenclaw 掛畫、書牆。b 幀他已拿起一本書捧在手上對鏡頭說話。畫面無文字。
+- shot_id: 54
+  type: aroll
+  note: 主持人正面對鏡頭近景，a 幀舉起食指比「1」手勢，b 幀手放下講話中（手部動態模糊）。畫面無文字。
+- shot_id: 55
+  type: aroll
+  note: 主持人拿起書《The Simple Path to Wealth》展示給鏡頭；a 幀正把書立起，b 幀舉到胸前正面展示。書封可讀文字："The Simple
+    Path to Wealth" / "JL Collins"。無其他 overlay。
+- shot_id: 56
+  type: aroll
+  note: 主持人手持書講話，身上疊大字 serif 白色文字 overlay，逐步打出：a 幀 "You should"，b 幀（他側頭看手上的書）"You
+    should not try to pick stocks"。
+- shot_id: 57
+  type: kol
+  note: JL Collins podcast 訪談片段為主畫面（米色底圓角卡框），左側疊主持人 PIP（直式圓角小窗、舉著書），中間疊書封圖："The Simple
+    Path to Wealth / YOUR ROAD MAP TO FINANCIAL INDEPENDENCE AND A RICH, FREE LIFE
+    / JL Collins / with foreword by MR. MONEY MUSTACHE"；左下署名 "JL Collins"。兩幀構圖一致。
+- shot_id: 58
+  type: kol
+  note: Warren Buffett 在 FORTUNE 論壇的片段為主畫面（同一米色卡框版式），左側主持人 PIP，左下署名 "Warren Buffet"；背景牆面重複字樣
+    "FORTUNE"。b 幀多出白色對話泡泡引言 "You should not try to actively pick stocks"（a 幀尚未出現）。
+- shot_id: 59
+  type: aroll
+  note: 主持人對鏡頭講話比手勢；a、b 幀畫面無文字，c 幀疊大字 overlay：白字 "Buy an" + 橘字 "Index Fund"。桌上可見 Simple
+    Path to Wealth 書。
+- shot_id: 60
+  type: motion_graphic
+  note: 米色簡報式動畫版面，左側主持人直式 PIP，右側元素逐步進場：a 幀僅橘色標籤 "Index"；b 幀出現 "Index" "Fund" 兩標籤及
+    "Fund" 下方註解 "A group of stocks and shares"；c 幀再加上方文字 "A fund tracks a"（打字進行中）。多幀
+    overlay 遞增。
+- shot_id: 61
+  type: aroll
+  note: 主持人對鏡頭雙手比劃講解；a 幀無文字，b 幀身前疊白色圓角膠囊標籤 "S&P 500"，c 幀標籤消失。
+- shot_id: 62
+  type: aroll
+  note: 主持人近景對鏡頭講話（推近的 jump cut），兩幀皆無畫面文字。
+- shot_id: 63
+  type: motion_graphic
+  note: 深色圓角卡片上的甜甜圈圖動畫，標題 "S&P 500 Companies"，左側主持人 PIP。a 幀僅綠色扇形＋NVIDIA 標籤浮現；b 幀標籤齊："NVIDIA
+    7.18% / Apple 6% / Microsoft 4% / Amazon 3.6% / Alphabet 4.2% / Meta 2.5%"；c 幀再加
+    "Match Group 0.01%"。overlay 逐幀遞增。
+- shot_id: 64
+  type: aroll
+  note: 主持人對鏡頭講話、單手在頭側比劃，b 幀雙手向下比動作（動態模糊）。畫面無文字。
+- shot_id: 65
+  type: aroll
+  note: 主持人近景對鏡頭講話，a 幀單手掠過臉前（動態模糊），b 幀雙手張開比大範圍手勢。畫面無文字。
+- shot_id: 66
+  type: aroll
+  note: Ali 在書桌前對鏡頭說話、手勢比劃（麥克風、綠植、LONDON 海報、烏鴉畫背景）。畫面無文字 overlay。
+- shot_id: 67
+  type: diagram
+  note: 米白底滿版圖表：S&P 500 歷史對數線圖逐步繪入，左側 Ali 圓角 PIP 直式視窗持續說話。文字："S&P 500"（a 幀標題打字中顯示
+    "S&P 5 0"，線圖僅畫到 1940s）；b/c 幀線圖畫滿至 2020s，b 幀出現標註卡 "2008 FINANCIAL CRISIS / −57%
+    / Oct 2007 — Mar 2009"。軸標籤 1930–2020、5–8K。
+- shot_id: 68
+  type: aroll
+  note: Ali 對鏡頭說話，雙手手勢。畫面無文字 overlay。
+- shot_id: 69
+  type: motion_graphic
+  note: 米白底動畫段落，左側 Ali PIP 直式視窗。a 幀：橘紅標題 "How an Index Fund Works"（模糊滑入中）；b 幀：滿版假想
+    $1000 美鈔插圖，鈔票上文字 "FEDERAL RESERVE NOTE / THE UNITED STATES OF AMERICA / A 30116104
+    A / ONE THREASAND DOLLARS / 1000"；c 幀：鈔票被分割成色條並標註 "Apple" "Microsoft" "NVIDIA"（含
+    logo）。多幀為同一動畫序列的不同階段。
+- shot_id: 70
+  type: aroll
+  note: Ali 對鏡頭說話，雙手手勢。畫面無文字 overlay。
+- shot_id: 71
+  type: kol
+  note: Warren Buffett 訪談片段（圓角卡片置於米白底上），底部設計字幕逐字亮起："I think it's the same thing that
+    makes most sense"（a 幀僅 "I think" 亮、b 幀幾乎全亮——karaoke 式高亮推進）。
+- shot_id: 72
+  type: kol
+  note: 同一 Buffett 訪談的雙人 wide shot（紅衣女主持人與 Buffett 對坐），底部字幕 "practically all of the
+    time, and that is to consistently"（兩幀高亮進度不同）。
+- shot_id: 73
+  type: kol
+  note: Buffett 特寫繼續說話，底部字幕 "buy an S&P 500 low-cost index fund, keep buying it"（karaoke
+    高亮逐字推進，兩幀進度不同）。
+- shot_id: 74
+  type: aroll
+  note: Ali 對鏡頭說話，雙手張開手勢。畫面無文字 overlay。
+- shot_id: 75
+  type: aroll
+  note: Ali 較近景（punch-in）對鏡頭說話，手勢大幅揮動（a 幀雙手於胸前、b 幀雙手高舉、c 幀鏡頭微移）。畫面無文字 overlay。
+- shot_id: 76
+  type: aroll
+  note: Ali 對鏡頭說話。a/b 幀無 overlay；c 幀左上滑入白色圓角 pill overlay，文字 "NVIDIA"（含綠色 NVIDIA logo）——overlay
+    僅在鏡頭後段出現。
+- shot_id: 77
+  type: stock
+  note: 圖庫實拍：交易室內多名男子盯著多螢幕行情（疑似電影/紀錄片式 trading floor 畫面），左側 Ali PIP 直式視窗持續說話。畫面無文字。
+- shot_id: 78
+  type: stock
+  note: 圖庫實拍：夜間辦公室一名男子在雙螢幕前分析股票圖表（螢幕顯示金融 dashboard），左側 Ali PIP 直式視窗持續說話。畫面無可辨識文字（螢幕上為模糊金融數據）。
+- shot_id: 79
+  type: aroll
+  note: 主持人站在書桌後對鏡頭說話，雙手大幅比劃（白色麥克風、綠植、LONDON 海報、烏鴉黑板畫）。畫面無文字 overlay。
+- shot_id: 80
+  type: aroll
+  note: 較近景：主持人半身對鏡頭說話、雙手握拳再張開比劃。畫面無文字 overlay。
+- shot_id: 81
+  type: aroll
+  note: 主持人身體前傾對鏡頭說話，單手在桌面前比劃、後又叉腰。畫面無文字 overlay。
+- shot_id: 82
+  type: motion_graphic
+  note: 米白底動畫圖卡：S&P 500 折線圖逐步繪出（log 軸，1930–2020），左側有主持人 PIP 圓角小窗（兩幀皆在）。文字："S&P 500
+    100 Year Returns"；軸標籤 5/10/20/50/100/200/500/1K/2K/5K 與年份 1930–2020。a 幀曲線只畫到 1940s，b
+    幀畫滿至 2020（動畫進行中）。
+- shot_id: 83
+  type: aroll
+  note: 主持人邊說話邊轉身伸手到桌右側拿/指桌上的書（The Simple Path to Wealth）。畫面無文字 overlay。
+- shot_id: 84
+  type: aroll
+  note: 黑白分級（flashback/強調式 b&w）近景，主持人對鏡頭說話、雙手舉起比劃；a 幀側身、b 幀正面、c 幀更近雙手抬起。畫面無文字 overlay。
+- shot_id: 85
+  type: aroll
+  note: 主持人對鏡頭說話，白色圓角文字 pill overlay 滑入：a 幀無文字，b 幀 "7-9% / year"（畫面中央），c 幀換成 "Double"（畫面左側）。
+- shot_id: 86
+  type: aroll
+  note: 近景主持人對鏡頭說話，表情誇張大笑、後指向鏡頭。畫面無文字 overlay。
+- shot_id: 87
+  type: aroll
+  note: 主持人站在桌後對鏡頭說話，b 幀轉頭望向右側。畫面無文字 overlay。
+- shot_id: 88
+  type: aroll
+  note: 近景主持人叉腰對鏡頭說話，b 幀低頭視線向下。畫面無文字 overlay。
+- shot_id: 89
+  type: aroll
+  note: 主持人對鏡頭說話比劃；a 幀白色 pill overlay "20% / year"（畫面中央），b、c 幀 overlay 消失（滑出）。
+- shot_id: 90
+  type: motion_graphic
+  note: 米白底 agenda 清單圖卡，綠色 pill 列點逐條出現，左側主持人 PIP 圓角小窗。文字："1 What Does It Mean to Buy
+    a Stock or Share?" "2 How to Choose Which Company to Invest In?" "3 Why You Shouldn't
+    Try To Pick Individual Stocks"；c 幀切換為大字 kinetic text 逐字浮現："Unless you get really
+    lucky, chances are you are not actually going"（"really lucky," 橘色強調，句子尚在動畫中未完）。
+- shot_id: 91
+  type: aroll
+  note: 近景主持人對鏡頭說話，雙手先在胸前比劃後向兩側攤開。畫面無文字 overlay。
+- shot_id: 92
+  type: kol
+  note: Warren Buffett 訪談片段（白髮長者、西裝紅領帶、電視訪談場景）置於畫面右側大框，Ali 直式 PIP 疊在左側對鏡頭說話。畫面無文字。
+- shot_id: 93
+  type: diagram
+  note: 米白背景動畫長條圖：五檔基金 vs 對沖基金平均 vs 指數基金報酬比較，Ali 直式 PIP 在左側。a 幀圖表尚未載入（僅空白背景），b/c 幀完整。文字逐字：Year
+    / 2008 - 2016 / Fund A / Fund B / Fund C / Fund D / Fund E / Hedge fund average
+    / Index fund / 8.7% / 28.3% / 62.8% / 2.9% / 7.5% / 22.0% / 85.4% / The funds
+    have not been named publicly; the index fund is Vanguard's S&P 500 Admiral fund
+- shot_id: 94
+  type: aroll
+  note: Ali 中近景對鏡頭說話、手勢比劃，明亮房間（LONDON 海報、植物、書架、白色麥克風）。畫面無文字。
+- shot_id: 95
+  type: aroll
+  note: Ali 對鏡頭說話，較廣角度（可見書桌、鍵盤、檯燈）。畫面無文字。
+- shot_id: 96
+  type: stock
+  note: 實拍畫面：男子在書桌前握拳抵著額頭、對著筆記本苦惱（呈現投資壓力），Ali 直式 PIP 疊在左側說話。畫面無文字。
+- shot_id: 97
+  type: aroll
+  note: Ali 對鏡頭說話，左側依序滑入白底文字卡片。a 幀無文字；b 幀已出現前兩張、第三張滑入中；c 幀四張齊全。文字逐字：Reading financial
+    reports / Tracking the news / Analysing charts / Constant anxiety
+- shot_id: 98
+  type: aroll
+  note: Ali 中近景對鏡頭說話、雙手張開比劃。畫面無文字。
+- shot_id: 99
+  type: stock
+  note: 實拍畫面：四人在餐桌一起用餐聊天（居家聚餐場景），Ali 直式 PIP 疊在左側說話。畫面無文字。
+- shot_id: 100
+  type: stock
+  note: 實拍畫面：男子站著彈木吉他（客廳、鋼琴與植物背景），Ali 直式 PIP 疊在左側，右側白底標籤卡滑入。a 幀僅一張、b 幀兩張。文字逐字：Family
+    / Hobbies
+- shot_id: 101
+  type: aroll
+  note: Ali 對鏡頭說話、雙手比劃，桌面廣角視角。畫面無文字。
+- shot_id: 102
+  type: aroll
+  note: Ali 中近景對鏡頭說話。畫面無文字。
+- shot_id: 103
+  type: aroll
+  note: Ali 對鏡頭說話；a 幀無文字，b 幀左側有一張白底文字卡滑入中（動態模糊）。文字逐字：Individual stocks
+- shot_id: 104
+  type: diagram
+  note: 米白背景動畫折線概念圖：Returns vs Time，指數基金與個股報酬曲線比較，Ali 直式 PIP 在左側。a 幀圖表僅開始繪製（只有兩個圓點與軸線片段），b/c
+    幀完整（藍線上揚最高、橘線居中、紅色虛線下跌）。文字逐字：Index fund / Individual stocks / Returns / $1000
+    / Time
+- shot_id: 105
+  type: aroll
+  note: 主持人在書桌前對鏡頭說話；a 幀無文字，b 幀滑入白底圓角文字卡「Top 500 companies in US」，c 幀換成右側文字卡「Top 1000
+    companies in the world」。overlay 文字內容在鏡頭內切換。
+- shot_id: 106
+  type: aroll
+  note: 主持人較近景舉手比 OK 手勢對鏡頭說話；b 幀轉頭看向側面。畫面無 overlay 文字（僅背景 LONDON 海報）。
+- shot_id: 107
+  type: aroll
+  note: 主持人在書桌前對鏡頭說話並比手勢，b 幀低頭看向桌面。無 overlay 文字。
+- shot_id: 108
+  type: aroll
+  note: 整鏡黑白（去飽和）處理的主持人近景，模擬回憶/自嘲橋段；鏡頭內有推近感（b、c 幀更近、角度晃動）。無 overlay 文字。
+- shot_id: 109
+  type: aroll
+  note: 恢復彩色的主持人近景對鏡頭說話、比手勢。無 overlay 文字。
+- shot_id: 110
+  type: aroll
+  note: 主持人對鏡頭說話；a 幀無 overlay，b、c 幀左側滑入白底圓角 app 圖示卡（Bitcoin 金幣 logo）。圖卡無文字。
+- shot_id: 111
+  type: aroll
+  note: 主持人近景對鏡頭說話；a 幀無 overlay，b 幀左側白底圓角 app 圖示卡出現，內為「Disney+」logo。文字逐字：Disney+。
+- shot_id: 112
+  type: aroll
+  note: 主持人大特寫直視鏡頭說話。無 overlay 文字。
+- shot_id: 113
+  type: aroll
+  note: 主持人中近景對鏡頭說話，b 幀側身看向桌面/側面。無 overlay 文字。
+- shot_id: 114
+  type: aroll
+  note: 主持人在書桌前雙手張開比劃對鏡頭說話。無 overlay 文字。
+- shot_id: 115
+  type: aroll
+  note: 主持人近景伸手向鏡頭比劃說話。無 overlay 文字。
+- shot_id: 116
+  type: screen_recording
+  note: Bitcoin 價格走勢圖表卡（TradingView 式線圖）滿版，左側主持人 PIP 圓角視窗說話。畫面文字逐字：Bitcoin/USD、20.4
+    USD（黃色標籤），右軸價格刻度約 -10000.0 至 120000.0，橫軸年份 2011–2025、Feb。兩幀構圖一致。
+- shot_id: 117
+  type: aroll
+  note: 主持人在書桌前對鏡頭說話、雙手張開；a、b 幀無 overlay，c 幀畫面下方疊入大字白色 serif 文字「I knew it was going
+    to do well」。
+- shot_id: 118
+  type: aroll
+  note: Ali 對鏡頭說話、比出兩指手勢，明亮房間（LONDON 海報、植物、書架、白色麥克風），畫面無文字 overlay。
+- shot_id: 119
+  type: motion_graphic
+  note: 米白底資訊圖卡：Bitcoin/USD 長期價格面積圖，主持人 PIP 圓角框在左側對鏡頭說話。文字："Bitcoin/USD"、"20.4 USD"；b/c
+    幀陸續滑入三個橘色標籤 "here?" "here?" "here?"（a 幀尚未出現）。
+- shot_id: 120
+  type: aroll
+  note: Ali 在書桌前（暖色燈、鳥圖海報、鍵盤入鏡）雙手張開對鏡頭說話，無文字 overlay。與 118 不同機位/時段（較廣、暖光）。
+- shot_id: 121
+  type: motion_graphic
+  note: 米白底股價面積圖卡（2020–2026 走勢，右軸價格刻度，藍色標籤 "174.40"），主持人 PIP 在左側；b 幀圖表 zoom in 放大近期區段。畫面文字僅軸標數字與
+    "174.40"。
+- shot_id: 122
+  type: aroll
+  note: 同書桌機位但整段轉黑白（灰階調色）表現戲劇/自嘲語氣，Ali 說話並在 c 幀雙手舉起，無文字 overlay。
+- shot_id: 123
+  type: motion_graphic
+  note: 米白底股價圖卡＋主持人 PIP；a 幀橘字 "Why" 出現，b 幀完整句子 "Why didn't you sell here?" 配弧形箭頭指向圖上回檔低點（文字逐步打出，兩幀不一致）。
+- shot_id: 124
+  type: aroll
+  note: Ali 在暖光書桌機位對鏡頭說話、比手勢，無文字 overlay。
+- shot_id: 125
+  type: quote_card
+  note: 滿版米白金句卡，橘/黑大字逐字打出動畫：a 幀僅 "It"，b 幀 "It is so easy to delude ourselves into
+    thinking that we"（delude 為橘色強調，句子仍在打出中，無署名）。
+- shot_id: 126
+  type: aroll
+  note: Ali 在暖光書桌機位對鏡頭說話、單手比劃，無文字 overlay。
+- shot_id: 127
+  type: aroll
+  note: Ali 對鏡頭說話（明亮日光機位，同 118 場景），雙手比出捏合手勢，無文字 overlay。
+- shot_id: 128
+  type: kol
+  note: 電影片段（疑為 The Big Short：交易員盯著多螢幕行情、b 幀白襯衫男子講電話）置於圓角卡框內，主持人 PIP 在左側說話。畫面無可讀 overlay
+    文字。
+- shot_id: 129
+  type: aroll
+  note: Ali 在暖光書桌機位雙手舉起對鏡頭說話，無文字 overlay。
+- shot_id: 130
+  type: quote_card
+  note: 滿版米白金句卡逐字打出：a 幀全空白（文字尚未出現），b 幀 "Index funds outperform even those people who
+    are putting their entire life's work"（Index funds 與 entire life's 為橘色強調，句子仍在打出中，無署名）。
+- shot_id: 131
+  type: aroll
+  note: Ali 在書桌前對鏡頭說話（中景，白麥克風、書架、LONDON 海報、鳥圖掛畫），a 幀手放桌面、b 幀雙手在麥克風前比劃；畫面無文字。
+- shot_id: 132
+  type: aroll
+  note: Ali 較近景對鏡頭說話，b 幀鏡頭略推近；背景 LONDON 海報與植物；畫面無文字。
+- shot_id: 133
+  type: kol
+  note: 復古 Kodak Gold 底片盒電視廣告畫面置於圓角卡片，左側 Ali 圓角直式 PIP 同步講話；畫面文字："Kodak Gold"。
+- shot_id: 134
+  type: kol
+  note: 復古廣告片段：兩個小孩趴在沙地上玩（低畫質 VHS 質感），左側 Ali PIP 持續；畫面無文字。
+- shot_id: 135
+  type: kol
+  note: 復古廣告片段：兩個穿條紋球衣（背號 2、7）的小孩在泥地走動，左側 Ali PIP；畫面文字：球衣背號 "2" "7"。
+- shot_id: 136
+  type: kol
+  note: Kodak 廣告片段：Drake 穿黑皮夾克在夜晚街頭低頭看手上裝置微笑，左側 Ali PIP；畫面無 overlay 文字。
+- shot_id: 137
+  type: kol
+  note: 同 Kodak 廣告：a 幀手持白色 Kodak 相機特寫（動態模糊），b 幀 Drake 在 Radio City Music Hall 霓虹招牌前跳動；畫面文字（場景招牌）："RADIO
+    CITY MUSIC HALL"、跑馬燈 "DRAKE SOLD OUT"。
+- shot_id: 138
+  type: kol
+  note: Kodak 廣告：Drake 在 Radio City 霓虹前對鏡頭微笑近景，左側 Ali PIP 比手勢；畫面文字（場景招牌）："RADIO CITY"
+    "MUS…"。
+- shot_id: 139
+  type: kol
+  note: Kodak 廣告：手持 Kodak 相機特寫，a 幀螢幕顯示 Drake 照片，b 幀螢幕顯示分享清單；畫面文字（相機螢幕）："Pitbull /
+    Trey Songz / Rihanna / FACEBOOK / Share"。左側 Ali PIP。
+- shot_id: 140
+  type: kol
+  note: Kodak 廣告：Drake 面前舉起銀色 Kodak 相機特寫（臉部失焦），左側 Ali PIP；畫面文字（相機機身）："Kodak 12 MEGAPIXELS"
+    "5X" "KODAK AF 5x Optical"。
+- shot_id: 141
+  type: aroll
+  note: 回到 Ali 全畫面中景對鏡頭說話，a 幀雙手張開比劃、b 幀手放桌上；畫面無文字。
+- shot_id: 142
+  type: aroll
+  note: Ali 近景對鏡頭說話，a 幀低頭看向側邊、b 幀舉左手比劃；畫面無文字。
+- shot_id: 143
+  type: aroll
+  note: Ali 中景在書桌前對鏡頭說話並比手勢，b 幀視線瞥向側邊；畫面無文字。
+- shot_id: 144
+  type: stock
+  note: 懷舊錄影帶出租店（Blockbuster 店內）檔案畫面為主畫面，顧客在滿牆錄影帶貨架間瀏覽；左側直式圓角 inset 為主持人 Ali 對鏡頭說話（PIP）。畫面上無文字。
+- shot_id: 145
+  type: stock
+  note: Blockbuster Video 店面外觀檔案畫面（夜間霓虹藍色門面），店內顧客可見；左側主持人 PIP 持續。畫面文字（店招）："BLOCKBUSTER
+    VIDEO"。
+- shot_id: 146
+  type: motion_graphic
+  note: 米白背景動態圖卡：左側主持人直式 PIP，中央白色圓角 app 卡內 Blockbuster 票券 logo（文字 "BLOCKBUSTER ENTERTAINMENT"）；b
+    幀滑入右側 Netflix "N" logo 卡與紅色對話泡泡，文字："Hey, do you want to buy us for $50 million?"。a
+    幀時 Netflix 卡尚未完全進場、泡泡未出現（滑入動畫）。
+- shot_id: 147
+  type: aroll
+  note: 主持人在書桌前對鏡頭說話（暖光檯燈、烏鴉海報、LONDON 海報背景），手勢豐富、b 幀笑著指自己。無疊加文字。
+- shot_id: 148
+  type: aroll
+  note: 主持人近景對鏡頭說話，舉手比三的手勢、b 幀歪頭。無疊加文字。
+- shot_id: 149
+  type: stock
+  note: 新聞/實拍畫面：兩名男子抬著拆下的 "LEHMAN BROTHERS" 金屬招牌（Christie's 拍賣行門口）；左側主持人 PIP。畫面文字（招牌）："LEHMAN
+    BROTHERS"。
+- shot_id: 150
+  type: stock
+  note: 新聞檔案畫面：Lehman Brothers 大樓玻璃門前員工進出、鏡頭平移；左側主持人 PIP。畫面文字（大樓招牌）："LEHMAN BROTHERS"、門上
+    "AUTOMATIC DOORS"。
+- shot_id: 151
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，a 幀雙拳舉起手勢；b 幀左側滑入兩個白底文字 pill overlay，文字："Civil War" / "World Wars"。同鏡頭內
+    overlay 由無到有。
+- shot_id: 152
+  type: stock
+  note: 新聞檔案畫面：辦公大樓前穿粉紅襯衫的上班族與行人走過（Lehman 倒閉相關離職畫面）；左側主持人 PIP。畫面上無可讀文字。
+- shot_id: 153
+  type: stock
+  note: 新聞檔案畫面：女子抱著紙箱走出金融區大樓（離職員工），b 幀更多抱箱行人；左側主持人 PIP。畫面上無可讀文字。
+- shot_id: 154
+  type: stock
+  note: 新聞檔案畫面：紐約街頭西裝男抱紙箱走出大樓、人群圍觀（Lehman 倒閉日）；左側主持人 PIP。背景有街頭霓虹招牌但無可辨識逐字文字。
+- shot_id: 155
+  type: stock
+  note: 新聞檔案畫面：離職員工拖著行李箱走在街上（背影），b 幀可見攝影記者在旁拍攝；左側主持人 PIP。畫面上無可讀文字。
+- shot_id: 156
+  type: stock
+  note: 新聞檔案畫面：員工抱著紙箱、文件夾走出大樓門口，保全站在旁邊；左側主持人 PIP。畫面上無可讀文字。
+- shot_id: 157
+  type: aroll
+  note: 主持人 Ali 近景中央構圖對鏡頭說話、手勢比劃，白色麥克風、LONDON 海報與書架背景；畫面無文字。
+- shot_id: 158
+  type: aroll
+  note: 換到較廣的側角度：Ali 坐在木桌後（暖色落地燈、鍵盤、桌上書本入鏡）對鏡頭說話比手勢；畫面無文字。
+- shot_id: 159
+  type: aroll
+  note: 回到正面近景，Ali 雙手在麥克風前比劃說話（a 幀抬頭望上、b 幀直視鏡頭）；畫面無文字。
+- shot_id: 160
+  type: stock
+  note: 圓角卡片式圖庫畫面：戴耳機、穿粉紅襯衫的男子在戶外桌前盯著手機，左側疊主持人 A-roll PIP 小窗（Ali 在書房說話）；畫面無文字。
+- shot_id: 161
+  type: stock
+  note: 實拍第一人稱開 Tesla 車內畫面（方向盤 Tesla 標誌、儀表顯示 32），同樣左側主持人 PIP 小窗持續說話；畫面上文字僅車機儀表數字「32」。
+- shot_id: 162
+  type: stock
+  note: 實拍男子躺沙發看平板、旁有 Coca-Cola 瓶與條紋馬克杯，左側主持人 PIP 小窗持續；畫面文字僅瓶身商標「Coca-Cola」。
+- shot_id: 163
+  type: aroll
+  note: 回到桌後廣角 A-roll，Ali 對鏡頭說話、手在桌面比劃；畫面無文字。
+- shot_id: 164
+  type: aroll
+  note: 正面近景 A-roll，Ali 揮手比劃說話（a 幀手部動態模糊）；畫面無文字。
+- shot_id: 165
+  type: aroll
+  note: 桌後廣角 A-roll，Ali 雙手在麥克風上方比劃說話；畫面無文字。
+- shot_id: 166
+  type: quote_card
+  note: 米白底＋波浪形淺灰色塊的滿版金句卡：a 幀僅空白背景（文字尚未進場），b 幀文字逐字動畫進場，抄錄：「Diversify your holdings
+    across multiple different companies rather than betting your entire」（句子尚在打出中，Diversify
+    為橘色強調）。無署名。
+- shot_id: 167
+  type: aroll
+  note: 桌後廣角 A-roll，Ali 張開雙臂比大手勢後放下（a 幀雙臂全張、b 幀收回）；畫面無文字。
+- shot_id: 168
+  type: motion_graphic
+  note: 米白底章節列表資訊圖卡，左側主持人 PIP 小窗；綠色膠囊列表逐項出現（a 幀 3 項、b 幀第 4 項加入），抄錄：「1 What Does It
+    Mean to Buy a Stock or Share?」「2 How to Choose Which Company to Invest In?」「3
+    Why You Shouldn't Try To Pick Individual Stocks」「4 How Do I Buy Index Funds?」。
+- shot_id: 169
+  type: aroll
+  note: 桌後廣角 A-roll，Ali 攤手、後手插腰對鏡頭說話；畫面無文字。
+- shot_id: 170
+  type: aroll
+  note: Ali 對鏡頭說話，明亮房間（LONDON 海報、植物、書架、白色麥克風），手勢比劃。畫面無文字。
+- shot_id: 171
+  type: kol
+  note: 電影《The Wolf of Wall Street》片段：Matthew McConaughey 等券商在辦公室講電話，Ali 以圓角 PIP 疊在左側繼續說話。畫面無
+    overlay 文字。
+- shot_id: 172
+  type: kol
+  note: 同部華爾街電影片段續：多名穿襯衫打領帶的男子在交易所辦公室講電話，左側 Ali PIP。畫面無文字。
+- shot_id: 173
+  type: kol
+  note: 電影片段續：打領結的男子（Will Arnett 造型）拿著電話講話，辦公室背景，左側 Ali PIP。畫面無文字。
+- shot_id: 174
+  type: kol
+  note: 電影片段續：穿條紋襯衫紅領帶的男子講電話，辦公室內其他人走動，左側 Ali PIP。畫面無文字。
+- shot_id: 175
+  type: aroll
+  note: Ali 回到全畫面書桌場景（暖色立燈、鳥圖海報、鍵盤）說話；b 幀出現黑字白底膠囊 overlay，逐字："Online platforms"（a
+    幀尚未出現，overlay 中途滑入）。
+- shot_id: 176
+  type: screen_recording
+  note: Google 首頁深色模式螢幕錄影，左側 Ali PIP。逐字："Google"、按鈕 "Google Search"、"I'm Feeling Lucky"、"AI
+    Mode"；b 幀輸入 "Stock p"，下拉建議："stock market today / stock market / stock futures
+    / stock market holidays / stock market holidays 2026 / stock market crash / stock
+    images / stock market news / stock split / stock news"。
+- shot_id: 177
+  type: aroll
+  note: Ali 全畫面書桌場景說話，右側疊白底紅字 Vanguard logo 圖卡。逐字："Vanguard®"。c 幀 logo 已消失（overlay
+    滑出）。
+- shot_id: 178
+  type: aroll
+  note: Ali 全畫面對鏡頭講 sponsor，左側疊白底膠囊 sponsor 橫幅，逐字："TRADING 212"（T R ^ DING 212 樣式）；c
+    幀右側另滑入小型 "Vanguard" logo 卡（轉場中，帶模糊）。
+- shot_id: 179
+  type: aroll
+  note: Ali 全畫面書桌場景，舉起食指強調說話。畫面無文字。
+- shot_id: 180
+  type: aroll
+  note: Ali 全畫面（較近景、明亮牆面場景）雙手張開比劃說話。畫面無文字。
+- shot_id: 181
+  type: aroll
+  note: Ali 在不同場景（辦公室，背景牆貼滿粉橘色便利貼、有其他人與電腦螢幕）對鏡頭說話，領口夾無線麥。畫面無文字（便利貼字跡過小不可辨）。
+- shot_id: 182
+  type: aroll
+  note: Sponsor 段：左側 Ali 圓角 PIP（辦公室場景）持續說話；a 幀中央大 "TRADING 212" logo 卡，b/c 幀換成 Trading
+    212 手機 app 畫面（持股列表：GraniteShares 3x Sho… $0.044 / Kanabo p2.4 / Ascential p254.9
+    / Arundel Fr0.445 / Biotechnology Assets €0.291 / Open Orphan p17.1 / GraniteShares
+    3x Lon… $0.0123 / Caerus Mineral Resour… p4.5；c 幀 Popular 分頁：Tesla $143.94 / Apple
+    $142.51 / NIO $11.70 / Coinbase $53.55 / Peloton Interactive $11.05 / Netflix
+    $363.94 / Meta Platforms $143.15 / Alphabet (Class A) $97.67；上方 £1,068.99）。右側黑底免責文字，逐字："When
+    investing, your capital is at risk. Past performance is no guarantee of future
+    results. This information is not investment advice. Do your own research. Sponsored
+    Content. Terms Apply"。
+- shot_id: 183
+  type: screen_recording
+  note: Trading 212 app 手機錄影展示（Vanguard S&P 500 買入流程），主持人 PIP 圓角卡在左側。a 幀：手機顯示「Vanguard
+    S&P 500 (Dist) / VUSA · ETF · IE / £63.5299 / +3.2896 (5.46%) Last month / MARKET
+    OPEN / 1D 1W 1M 3M 1Y MAX / Price alerts / Switch to Real money」，右側黑色 disclaimer
+    卡：「When investing, your capital is at risk. Past performance is no guarantee of
+    future results. This information is not investment advice. Do your own research.
+    Sponsored Content. Terms Apply」。b/c 幀 disclaimer 換成左下「Other fees may apply」；b
+    幀下單畫面：「Vanguard S&P 500 (Dist) / ORDER TYPE Market Buy / SHARES VALUE £2,000.00
+    / NUMBER OF SHARES ~31.481 / COMMISSION Free / TOTAL £2,000.00 / Indicative data.
+    Actual execution values may differ / Send buy order」；c 幀 Portfolio：「£5,000.63
+    / Portfolio £2,000.63 / INVESTED £2,000.00 / RETURN +£0.63 (0.03%) / Investments
+    / Pies / Search investments / Vanguard S&P 500 (Dist) £2,000.63 31.491102 SHARES
+    +£0.63 (0.03%) / Switch to Real money」。
+- shot_id: 184
+  type: aroll
+  note: 主持人在明亮辦公室（便利貼牆、綠植、白麥克風）對鏡頭比手勢說話，全畫面無文字疊加。
+- shot_id: 185
+  type: screen_recording
+  note: 'Trading 212 app Pies 功能錄影，主持人 PIP 圓角卡在右側，左側黑色 disclaimer 卡（三幀皆在）：「Pies &
+    Auto-invest is an execution-only service. Not investment advice or portfolio management.
+    Automatic investing refers to executing scheduled deposits. You are responsible
+    for all investment and rebalancing decisions.」app 內文字：a 幀「Social / Feed Communities
+    Pies / Top New Dividends / (Almost) Daily Dividends by TheDividendExperiment 47.2K
+    / Klickeer: Im ~0.50% to ~1% for about a month… / ARKK - Innovation by Treeba
+    5K / WARRIORS / Income by Briscoe / Start investing now」；b 幀「Vanguard / Views
+    7K / AAR 7.70% / Comments · 5 / Melly888: Why only 10% vwrl. Too much exposure
+    to USA. Could add some VHLY for dividends cheers / Read all comments / Slices
+    · 5 / Vanguard FTSE 100 (Dist) VUKE 28% / Vanguard S&P 500 (Dist) VUSA 28%」；c
+    幀「Edit pie / AAR 9.49% · MIN £50.00 / 100% / Realty Income 2% / Johnson & Johnson
+    2% / Canadian Natural Resources 2% / PepsiCo 2% / AT&T 2% / Procter & Gamble 2%
+    / Next」。'
+- shot_id: 186
+  type: aroll
+  note: 主持人對鏡頭比手勢說話；a 幀無文字，b 幀滑入兩個白色圓角標籤 overlay：「Asset rebalancing」「Dividend reinvesting」，c
+    幀 overlay 已消失（鏡位略拉遠）。
+- shot_id: 187
+  type: screen_recording
+  note: 'Trading 212 sponsor 網頁畫面，主持人 PIP 圓角卡在右側。a 幀 landing page：「TRADING 212 / Build
+    wealth every day / EN / Your free fractional shares are waiting for you / Sign
+    up to claim shares」（含 Amazon/Google/NVIDIA/McDonald''s/Apple 圖標）。b/c 幀 How it
+    works 頁＋下方黑色橫幅「Sponsored code. Terms apply.」：「How it works / 1 Sign up for a Trading
+    212 Invest or Stocks ISA account. / 2 Verify your identity. / 3 Fund your account.
+    / 4 Get fractional shares worth up to £100! / FAQ / Terms & conditions / Shares
+    value probability / Sign up to claim shares / £250 / Deposit to Main pot / Fee:
+    £0.00 / Recurring: Off / Deposit」；b→c 幀第 4 點的青色 highlight 從「Get fractional」掃到整句。'
+- shot_id: 188
+  type: aroll
+  note: 主持人對鏡頭說話（sponsor 收尾）；a 幀無文字；b 幀滑入白色大圓角 overlay：「trading212.com/join/ALI」；c
+    幀 overlay 消失，主持人低頭看錶。
+- shot_id: 189
+  type: aroll
+  note: 場景切回家中書房（LONDON 海報、深色鳥圖掛畫、書架、白麥克風），主持人近景對鏡頭說話，無文字疊加。
+- shot_id: 190
+  type: aroll
+  note: 家中書房較廣鏡位（可見書桌、鍵盤、暖色立燈），主持人雙手張開對鏡頭說話，無文字疊加。
+- shot_id: 191
+  type: title_card
+  note: 滿版綠色系章節卡，深綠圓角卡片配黃綠大字，鏡頭從模糊推近到清晰再帶出下一卡：「Part 3 / Common Fears, Questions, and
+    Concerns」（上方部分可見「Investing」，右側相鄰卡片文字被模糊化，僅見「Pa…」與問號/道路圖標）。
+- shot_id: 192
+  type: aroll
+  note: 回到家中書房廣鏡位，主持人雙手舉起比手勢說話，無文字疊加（過場後承接章節內容）。
+- shot_id: 193
+  type: aroll
+  note: 主持人更近鏡位、雙手大幅張開激動說話（演出恐慌情緒），無文字疊加。
+- shot_id: 194
+  type: title_card
+  note: 米白底滿版標題卡（Fear 卡），左側主持人 PIP 圓角卡（望向右側文字）。文字：橘色標籤「Fear 1」＋黑色大 serif 字「What if
+    I lose all my money」（字色由深到淺漸層）。b 幀切到 B-roll 式插圖：新聞畫面風格的實拍——女子抱紙箱走出金融區大樓（PIP 仍在左側，仍屬同一鏡頭段落，note：b
+    幀為 stock 新聞footage 疊在同版式上）。
+- shot_id: 195
+  type: aroll
+  note: 家中書房鏡位；a 幀主持人比手勢說話無文字；b 幀拿起一本書展示書封《The Simple Path to Wealth》JL COLLINS（書封為手持、非滿版）；c
+    幀把書放回桌上。同一鏡頭內含 stock/相片式插入前後的手持書展示；另 shot 194 b 幀亦含「Evening Standard / RYDER CUP
+    2008 / 8-PAGE SPECIAL PULL-OUT INSIDE / BLACK MONDAY / 5,000 City staff axed as
+    US banks crash / Lehman goes bust, Merrill is taken over / Wall Street crisis
+    sends shares plunging」報紙特寫。
+- shot_id: 196
+  type: aroll
+  note: Ali 對鏡頭說話、雙手在胸前比劃（動作模糊），明亮房間背景（LONDON 海報、植物、書架、白麥克風）。畫面無文字。
+- shot_id: 197
+  type: motion_graphic
+  note: 米白底動畫圖卡：左側 Ali 講話畫面縮成圓角小卡（PIP），右側繪出 S&P 500 曲線圖。a 幀僅 PIP＋空白底（圖表尚未畫出）、b 幀圖表已出現。文字逐字："S&P
+    500" / "$1,000" / "-34%"（b 幀才出現）/ 軸標 "Jan 2020 / Mar 2020 / Aug 2020 / 2021 /
+    End 2025"。
+- shot_id: 198
+  type: aroll
+  note: 換景別：Ali 站在書桌前較廣角側面機位（暖色立燈、鍵盤、書、烏鴉掛畫），對鏡頭說話並比手勢。畫面無疊加文字。
+- shot_id: 199
+  type: aroll
+  note: 黑白調色的 Ali 特寫，雙手扶頭、閉眼仰頭再張手說話——戲劇化黑白處理表現市場崩盤的痛苦情緒。三幀姿勢變化（扶頭→仰頭→攤手）。畫面無文字。
+- shot_id: 200
+  type: aroll
+  note: 回到彩色、書桌廣角機位，Ali 舉手指強調說話；b 幀手臂快速揮動（動作模糊）。畫面無文字。
+- shot_id: 201
+  type: aroll
+  note: 正面近景機位 Ali 伸食指說話；b 幀出現大型 kinetic text overlay 滑入，逐字："Realised the"（文字動畫中，句子未完整顯示）。
+- shot_id: 202
+  type: motion_graphic
+  note: 同 shot197 的 S&P 500 動畫圖卡（左側 Ali PIP），顯示 2020 崩盤段。文字逐字："S&P 500" / "$1,000"
+    / "-34%" / "$660" / "Jan 2020 / Mar 2020 / Aug 2020 / 2021 / End 2025"。三幀圖表相同，PIP
+    內 Ali 手勢變化。
+- shot_id: 203
+  type: aroll
+  note: 正面近景機位 Ali 對鏡頭說話，雙手比劃（合掌→捧狀→雙手攤開）。畫面無文字。
+- shot_id: 204
+  type: motion_graphic
+  note: S&P 500 動畫圖卡續集（左側 Ali PIP）：曲線從谷底回升並轉綠色區域。文字逐字："S&P 500" / "$1,000" / "-34%"
+    / "$660"；b 幀新增 "$1,000"（Aug 2020 處）與 "$1,400"；c 幀再新增 "$2,100"（End 2025）。軸標 "Jan
+    2020 / Mar 2020 / Aug 2020 / 2021 / End 2025"。曲線與標籤逐幀動畫累加。
+- shot_id: 205
+  type: aroll
+  note: 書桌廣角機位，Ali 對鏡頭說話、手放桌上比劃。畫面無文字。
+- shot_id: 206
+  type: motion_graphic
+  note: 新一段 S&P 500 動畫圖卡（左側 Ali PIP），2008 金融海嘯版。a 幀圖表剛開始繪入（僅 "S&P 5 0" 標題動畫中與 "Jan"）；b、c
+    幀完整。文字逐字："S&P 500" / "$1,000" / "-54%"（c 幀）/ "$460"（c 幀）/ "$1,000"（2013 處，c 幀）/
+    軸標 "Jan 2007 / Oct 2007 / Mar 2009 / 2013 / 2020 / End 2025" / "4-5 Years to recover"。
+- shot_id: 207
+  type: aroll
+  note: 書桌廣角機位，Ali 邊說話邊伸手到桌上拿起一本白色封面的書（a 幀伸手、b 幀舉書）。畫面無疊加文字。
+- shot_id: 208
+  type: motion_graphic
+  note: 米白底滿版 kinetic text 金句動畫，文字逐字滑入。a 幀："The stock"（stock 淡入中）；b 幀："The stock market
+    goes up over time as long as you have"（句子仍在動畫中未完）。橘色強調字："goes up" / "over time"。無署名，屬動態文字動畫非引言卡。
+- shot_id: 209
+  type: aroll
+  note: 主持人 Ali 站在書桌後對鏡頭說話、雙手張開比劃，明亮房間有植物、書架、白色麥克風。畫面無文字（背景 LONDON 海報為場景物件）。
+- shot_id: 210
+  type: motion_graphic
+  note: 米白底動畫圖卡，左側圓角直式 PIP 內主持人說話；a 幀圖表尚未出現（僅 PIP＋空白底），b/c 幀畫出折線圖後 c 幀轉為滿版文字卡（PIP
+    消失）。圖表文字："Returns" / "$1,000,000" / "Time"（虛線基準、橘色曲線先跌後升）。c 幀文字逐字浮現："The longer
+    you can leave your money in the index fund without touching it, the"。同鏡頭內容漸進變化。
+- shot_id: 211
+  type: aroll
+  note: 主持人在書桌後對鏡頭說話、手指比向桌上書本。畫面無文字。
+- shot_id: 212
+  type: quote_card
+  note: 米白底大字金句卡，逐字動畫：a 幀僅 "Compound"，b 幀完整為 "Compound interest is the eighth wonder
+    - Albert Einstein"（eighth wonder 為橘/粉色強調字）。
+- shot_id: 213
+  type: aroll
+  note: 主持人雙手撐桌、對鏡頭說話後張開雙手比劃。畫面無文字。
+- shot_id: 214
+  type: aroll
+  note: 較近景，主持人雙手舉至頭部高度比劃說話（b 幀改為單手向左比）。畫面無文字。
+- shot_id: 215
+  type: aroll
+  note: 主持人身體側傾、單手在身側比劃說話，b 幀手放低看向側面。畫面無文字。
+- shot_id: 216
+  type: motion_graphic
+  note: 米白底動畫資訊圖卡，左側圓角 PIP 主持人說話。a 幀公司 logo 膠囊標籤淡入中（"NVIDIA" "Apple" 半透明）；b/c 幀完整："NVIDIA
+    / Apple / Microsoft / Amazon / Alphabet / Meta ....." 加折線圖 "Returns"、"Time"、曲線衰減至
+    "$0" 紅色標籤。同鏡頭內元素漸進滑入。
+- shot_id: 217
+  type: aroll
+  note: 主持人在書桌後對鏡頭說話，a 幀單手在身後、b 幀正面直視鏡頭、c 幀視線移向側邊。畫面無文字。
+- shot_id: 218
+  type: aroll
+  note: 近景，主持人側身看向畫面右側說話（b 幀轉頭微笑）。畫面無文字。
+- shot_id: 219
+  type: aroll
+  note: 主持人雙手在胸前交扣比劃、後張開雙手對鏡頭說話。畫面無文字。
+- shot_id: 220
+  type: aroll
+  note: 近景，主持人單手握拳舉起再張開比劃說話。畫面無文字。
+- shot_id: 221
+  type: motion_graphic
+  note: 米白底清單動畫圖卡，左側圓角 PIP 主持人說話。a 幀僅出現藍色圓形編號 "1"；b 幀補上標題文字 "1 Human Productivity"。同鏡頭
+    overlay 逐步滑入。
+- shot_id: 222
+  type: aroll
+  note: 主持人在書桌前對鏡頭說話並比手勢，右側逐一滑入公司名 pill overlay：a 幀僅「NVIDIA」，b/c 幀完整六個含 logo：「NVIDIA」「Apple」「Amazon」「Meta」「Microsoft」「Alphabet」（overlay
+    逐項滑入）。
+- shot_id: 223
+  type: stock
+  note: 辦公室場景圖庫實拍（女性職員在螢幕前、背景多人），左下角有主持人圓角 PIP 說話畫面；畫面無文字。
+- shot_id: 224
+  type: stock
+  note: 另一段辦公室圖庫實拍（多螢幕交易桌、西裝人員、窗外海景），左側主持人圓角 PIP 持續；b 幀鏡頭掃過螢幕器材偏暗模糊；畫面無文字。
+- shot_id: 225
+  type: aroll
+  note: 主持人回到書桌全畫面對鏡頭說話比手勢；畫面無 overlay 文字。
+- shot_id: 226
+  type: aroll
+  note: 主持人特寫近景（較近的第二機位）對鏡頭說話比手勢；畫面無 overlay 文字。
+- shot_id: 227
+  type: aroll
+  note: 主持人在書桌前說話，a/b 幀比出數字手勢無文字，c 幀左側滑入兩個 pill overlay：「Revenue」（綠色上箭頭）「Profit」（綠色上箭頭）——overlay
+    於鏡頭後段才出現。
+- shot_id: 228
+  type: aroll
+  note: 主持人近景機位對鏡頭雙手比劃說話；三幀皆無 overlay 文字。
+- shot_id: 229
+  type: motion_graphic
+  note: 米白底編號清單圖卡，左側主持人圓角 PIP 說話；清單逐項浮現：a 幀「1 Human Productivity」＋空的「2」，b/c 幀「1 Human
+    Productivity」「2 Growing world and expanding economy」。
+- shot_id: 230
+  type: aroll
+  note: 主持人對鏡頭說話，overlay 逐一滑入：a 幀左側粉底 pill「People」（綠色上箭頭），b 幀再加右側兩個白色 pill「Customers」「Transcations」（皆綠色上箭頭；原文拼字即為
+    Transcations）。
+- shot_id: 231
+  type: aroll
+  note: 主持人在書桌前對鏡頭說話、雙手張開比劃；三幀皆無 overlay 文字。
+- shot_id: 232
+  type: aroll
+  note: 主持人近景機位對鏡頭說話比手勢；無 overlay 文字。
+- shot_id: 233
+  type: aroll
+  note: 主持人書桌前對鏡頭說話、雙手在麥克風前比劃；三幀皆無 overlay 文字。
+- shot_id: 234
+  type: motion_graphic
+  note: 回到米白底編號清單圖卡＋左側主持人圓角 PIP；第三項逐步浮現：a 幀「1 Human Productivity」「2 Growing world
+    and expanding economy」＋空的「3」，b/c 幀補上「3 Self-Healing Index」。
+- shot_id: 235
+  type: aroll
+  note: Ali 在書桌前對鏡頭說話，中景，雙手比劃；畫面無文字 overlay。
+- shot_id: 236
+  type: motion_graphic
+  note: 深綠底動畫資訊圖卡（主持人 PIP 圓角直式視窗固定左側）：黃綠色方塊 waffle grid 代表 500 家公司。a 幀標題文字「Curated」；b
+    幀 grid 放大並出現文字「If any company starts failing」；c 幀一格方塊變白、下方彈出圓形 BLOCKBUSTER logo
+    圖示，示意失敗公司被剔除。文字隨動畫階段變化。
+- shot_id: 237
+  type: aroll
+  note: Ali 對鏡頭說話；b 幀中央疊入大字 overlay「Best of Spotify playlist」（Spotify 為橘色強調字），a/c
+    幀無文字——overlay 中段滑入後消失。
+- shot_id: 238
+  type: aroll
+  note: Ali 近景對鏡頭說話，疊白色圓角卡片 overlay 附紅色 X 圖示：a 幀左側卡片滑入中（模糊）「Betting on a single company
+    will not last forever」；b 幀兩張卡片並列，左「Betting on a single company will not last forever」、右「Betting
+    on top 500 companies will last forever」，皆帶紅 X。
+- shot_id: 239
+  type: aroll
+  note: Ali 對鏡頭說話，畫面下方疊白色卡片 overlay 附綠色勾勾：「Top companies in the U.S. will continue
+    to grow over time」；三幀皆在。
+- shot_id: 240
+  type: aroll
+  note: 黑白色調處理的 aroll，Ali 對鏡頭說話並逐漸推近至近景（b/c 幀更近）；無文字。黑白 grading 為刻意風格轉換。
+- shot_id: 241
+  type: aroll
+  note: Ali 中景對鏡頭說話（恢復彩色），b 幀雙手張開揮到鏡頭前造成動態模糊；無文字。
+- shot_id: 242
+  type: aroll
+  note: Ali 近景對鏡頭說話，b 幀轉頭望向側面伸手（似要拿東西）；無文字。
+- shot_id: 243
+  type: aroll
+  note: Ali 中景對鏡頭說話；b 幀中央疊白色圓角標籤 overlay「Vanguard FTSE All-World」，a/c 幀無文字——overlay
+    中段出現後消失。
+- shot_id: 244
+  type: motion_graphic
+  note: 米白底動畫比較圖卡（主持人 PIP 直式視窗固定左側）：a 幀僅左側淺藍卡片出現，美國國旗圓餅圖示＋文字「S&P 500」；b 幀右側綠色卡片加入，完整文字：「S&P
+    500 / 500 Companies / 1 Country」對比「Vanguard All-World / 3,700 Companies / 49 Countries」；c
+    幀綠卡上下彈出公司 pill 標籤「Apple」「Microsoft」「Samsung」「TSMC」。元素隨動畫逐步出現。
+- shot_id: 245
+  type: aroll
+  note: Ali 中景對鏡頭說話，雙手在麥克風前比劃；b 幀手伸向桌面；無文字。
+- shot_id: 246
+  type: aroll
+  note: Ali 近景對鏡頭說話，雙臂大幅張開向兩側比劃（a/b 幀手臂伸展）；無文字。
+- shot_id: 247
+  type: aroll
+  note: Ali 中景對鏡頭說話，手勢比劃；無文字。
+- shot_id: 248
+  type: diagram
+  note: 米白背景圖卡，左側 Ali PIP 小卡對鏡頭說話；美國 vs 印度報酬曲線對比圖。文字："America"、"India"、兩張圖軸標 "Returns"
+    / "Time"（America 為先升後降的粉紅曲線，India 為指數上升的綠色曲線）。a 幀圖表尚在動畫載入（只有 America 標籤），b/c 幀兩圖完整。
+- shot_id: 249
+  type: aroll
+  note: Ali 在書房桌前對鏡頭說話並比手勢，背景 LONDON 海報、植物、書架、白色麥克風。畫面無文字 overlay。
+- shot_id: 250
+  type: aroll
+  note: Ali 較近景對鏡頭說話，雙手做平衡/框架手勢。畫面無文字 overlay。
+- shot_id: 251
+  type: aroll
+  note: Ali 對鏡頭說話比手勢；a/b 幀無 overlay，c 幀左上滑入白色小圖卡文字 "$1"。
+- shot_id: 252
+  type: aroll
+  note: Ali 近景對鏡頭說話，手伸向鏡頭再做展開手勢。畫面無文字 overlay。
+- shot_id: 253
+  type: aroll
+  note: Ali 中景對鏡頭說話，單手向上舉再雙手合攏。畫面無文字 overlay。
+- shot_id: 254
+  type: aroll
+  note: Ali 近景對鏡頭說話，雙手快速比劃（有動態模糊）。畫面無文字 overlay。
+- shot_id: 255
+  type: aroll
+  note: Ali 中景對鏡頭說話；a 幀無 overlay，b/c 幀畫面下方滑入白色圓角問句卡，文字："What has been your biggest
+    concern about getting started with investing? And if you haven't yet, what's the
+    thing that's holding you back?"（呼籲留言的觀眾提問卡）。
+- shot_id: 256
+  type: aroll
+  note: Ali 特寫對鏡頭說話，手在麥克風前比劃。畫面無文字 overlay。
+- shot_id: 257
+  type: aroll
+  note: Ali 中景對鏡頭說話，手舉到臉旁再伸向麥克風。畫面無文字 overlay。
+- shot_id: 258
+  type: aroll
+  note: Ali 對鏡頭說話；a 幀無 overlay，b 幀右側白色小圖卡文字 "5-10 Years"，c 幀該卡正在縮小/滑出（殘影）。
+- shot_id: 259
+  type: aroll
+  note: Ali 中景對鏡頭說話，右側白色小圖卡文字 "30-40 Years"（兩幀皆在）。
+- shot_id: 260
+  type: title_card
+  note: '綠色系章節卡動畫，鏡頭在多張圓角卡間平移；a 幀聚焦 "Part 3 — Common Fears, Questions, and Concerns"（上方殘文
+    "Investing"，右側模糊卡 "Fin/The/Ap..."），b 幀轉至 "Part 4 — Fastlane Investing: The Alternative
+    Approach"；c 幀已切為 kol 訪談畫面：MJ DeMarco 視訊受訪、左下字 "MJ DeMarco"、左側 Ali PIP 手持書、右側書封
+    "the Millionaire FASTLANE — 10TH ANNIVERSARY EDITION — The International Personal
+    Finance Best-Seller — Crack the Code to Wealth and Live Rich for a Lifetime —
+    MJ DeMARCO"。主體為 Part 3→4 章節卡，末尾已進入下一段訪談。'
+- shot_id: 261
+  type: aroll
+  note: 主持人在書桌前對鏡頭說話，手放在桌上一疊書上；畫面無文字 overlay。
+- shot_id: 262
+  type: motion_graphic
+  note: 米白底動畫資訊圖卡，卡通男子站在上升曲線上，主持人以圓角直式 PIP 疊在左側；a 幀僅卡通人物無文字，b/c 幀人物周圍出現多張綠色鈔票、右側滑入鈔票圖示與藍色標籤，文字逐字："Assets"；c
+    幀卡通人物變成拄拐杖的老人（時間推移動畫），右側 Assets 旁鈔票增多。
+- shot_id: 263
+  type: aroll
+  note: 主持人正面中景對鏡頭說話；a 幀無文字，b 幀左側滑入白色大字 overlay，逐字："Slow"（文字滑入中）。
+- shot_id: 264
+  type: aroll
+  note: 主持人側身對鏡頭說話；a 幀大字 overlay 逐字："Slow form of investing"；b 幀換成左側白底圓角標籤 "Balanced
+    portfolio"；c 幀該標籤向上飛出（模糊移動中），下方出現新標籤 "Balanced life"——同鏡頭內 overlay 連續替換。
+- shot_id: 265
+  type: aroll
+  note: 主持人雙手舉起比劃、近景對鏡頭說話；a 幀無文字，b 幀畫面下方出現大字 overlay 逐字："Reframing what investing
+    actually means"；c 幀文字消失。
+- shot_id: 266
+  type: aroll
+  note: 主持人側身雙手張開比劃說話（廣角側機位）；兩幀皆無文字 overlay。
+- shot_id: 267
+  type: motion_graphic
+  note: 米白底動畫圖卡，卡通男子被綠色鈔票堆環繞，主持人直式 PIP 疊在左側；a 幀無文字，b 幀右側出現鈔票圖示與藍色標籤，文字逐字："Assets"。
+- shot_id: 268
+  type: aroll
+  note: 主持人近景對鏡頭比劃說話；兩幀皆無文字 overlay。
+- shot_id: 269
+  type: quote_card
+  note: 滿版米白底大字金句卡（無署名）；a 幀文字正逐字打出僅見 "The"，b 幀完整句子逐字："The point of investing money
+    is for your existing money to make more"（existing money to make more 為橘紅色強調）。
+- shot_id: 270
+  type: aroll
+  note: 主持人對鏡頭說話，b 幀伸手到右側書堆比劃；兩幀皆無文字 overlay。
+- shot_id: 271
+  type: aroll
+  note: 主持人對鏡頭說話、舉手比數字手勢；三幀皆無文字 overlay。
+- shot_id: 272
+  type: aroll
+  note: 主持人低頭比劃說話；a 幀無文字，b 幀左側出現白底圓角標籤，逐字："7% Returns"。
+- shot_id: 273
+  type: motion_graphic
+  note: 米白底動畫比較圖卡，主持人直式 PIP 疊在左側；a 幀鈔票堆圖示與文字 "$10,000"；b 幀新增藍色 "+$700"、標籤 "S&P 500"
+    與 "vs"；c 幀右側再出現第二疊鈔票，文字逐字："+$700" "$10,000" "S&P 500" "vs" "Can I find a way to
+    beat market returns?" "$10,000" "Something else"——元素隨鏡頭進行逐步加入。
+- shot_id: 274
+  type: aroll
+  note: 主持人 Ali 在書桌前對鏡頭說話並比手勢（廣角桌面機位，白色麥克風、書堆、鍵盤入鏡），無畫面文字 overlay。
+- shot_id: 275
+  type: aroll
+  note: 主持人中景對鏡頭說話，雙手比出強調手勢；畫面中央疊白底黑字圓角文字卡「Hell Yes!」，兩幀皆在。
+- shot_id: 276
+  type: motion_graphic
+  note: 米白底動畫資訊圖卡，主持人以左側圓角 PIP 直式小窗持續說話。a 幀：橘色標題「Fastlane Investing」與藍色圓形數字「1」；b/c
+    幀切為卡通人物示意圖，文字「Healthcare assistant」「Phlebotomist」（虛線連到證書 icon），c 幀再多滑入白色小卡「$15」。多幀為同一動畫的漸進
+    build。
+- shot_id: 277
+  type: aroll
+  note: 主持人在書桌前廣角機位對鏡頭說話，雙手張開比劃，無畫面文字。
+- shot_id: 278
+  type: aroll
+  note: 主持人近景中軸對鏡頭說話（jump cut 近機位），手在臉前揮動有動態模糊，無畫面文字。
+- shot_id: 279
+  type: aroll
+  note: 主持人廣角桌面機位對鏡頭說話比手勢；b 幀畫面下方疊兩張白底文字卡「4 hrs of work = $60」「40 hrs of work = $600」，a/c
+    幀無文字卡（overlay 中段出現後消失）。
+- shot_id: 280
+  type: aroll
+  note: 主持人近景對鏡頭興奮地雙手比劃說話，無畫面文字。
+- shot_id: 281
+  type: aroll
+  note: 主持人廣角桌面機位對鏡頭說話；b 幀左側滑入白底文字卡「Skills」，a 幀尚未出現（overlay 中途滑入）。
+- shot_id: 282
+  type: aroll
+  note: 主持人近景對鏡頭說話，雙手攤開再單手比劃，無畫面文字。
+- shot_id: 283
+  type: aroll
+  note: 主持人廣角桌面機位對鏡頭說話，b 幀單手高舉比劃，無畫面文字。
+- shot_id: 284
+  type: aroll
+  note: 主持人近景對鏡頭說話，雙手攤開後轉頭望向側面，無畫面文字。
+- shot_id: 285
+  type: aroll
+  note: 主持人廣角桌面機位對鏡頭說話比手勢（兩幀相距僅 0.2s 的短鏡頭），無畫面文字。
+- shot_id: 286
+  type: quote_card
+  note: 米白底大字金句卡逐字動畫 build-in：a 幀僅「There is」，b 幀增至「There is often more value in investing
+    in your own ability to earn more money than in」，c 幀完整句「There is often more value
+    in investing in your own ability to earn more money than in investing in 500 random
+    companies」（own ability to earn more money 為橘色強調），無署名。
+- shot_id: 287
+  type: motion_graphic
+  note: 清單式資訊圖卡：左側主持人小窗（rounded inset），右側編號清單逐項滑入——a 幀只有第 1 點與空的 2 號圓點，b/c 幀第 2 點出現。文字逐字："Fastlane
+    Investing" / "1 Investing in your own ability to make money" / "2 Investing in
+    your own business"。主持人 inset 疊在圖卡上但版面主體是圖卡。
+- shot_id: 288
+  type: aroll
+  note: 主持人在書桌前（白麥克風、書堆、機械鍵盤、烏鴉海報、落地燈）對鏡頭說話並比手勢，無任何 overlay 文字。
+- shot_id: 289
+  type: aroll
+  note: 主持人近景（中特寫）對鏡頭說話，手插腰，背景植物與 LONDON 海報，畫面無文字 overlay。
+- shot_id: 290
+  type: stock
+  note: 實拍教室畫面：一位老師在白板前講課，多名學生背對鏡頭坐長桌抄筆記；左側主持人 PIP 小窗持續說話。畫面無 overlay 文字。
+- shot_id: 291
+  type: stock
+  note: 另一實拍教室：藍牆房間內多名學生（部分臉部打碼）低頭寫字，桌上筆記與飲料；左側主持人 PIP 小窗說話。畫面無文字。
+- shot_id: 292
+  type: motion_graphic
+  note: 動畫長條圖建構過程：a 幀僅主持人 inset＋一條底線（圖表尚未出現），b 幀出現標題與藍色長條，c 幀補上橘/綠條。文字逐字："Business
+    Revenue" / "£8K Year1" / "£80K 8x Year 2" / "£150K 2x Year 3" / "Plateau at £150K
+    Year 4 - 7" / "£1.2M 10x 2020" / "£4.6M 4x 2021"。左側主持人小窗全程在。
+- shot_id: 293
+  type: aroll
+  note: 主持人在書桌前說話；a 幀無文字，b 幀左側滑入白底圓角 pill 標籤，逐字："Apple"（含蘋果 logo），c 幀標籤已消失（overlay
+    滑入又滑出）。
+- shot_id: 294
+  type: aroll
+  note: 主持人近景對鏡頭說話比手勢（b 幀手指指向鏡頭），無 overlay 文字。
+- shot_id: 295
+  type: aroll
+  note: 主持人說話，綠色金額標籤與 logo 卡先後疊上：a 幀無文字，b 幀綠色圓角卡逐字 "$10,000"，c 幀下方白色圓角卡逐字 "Lifestyle
+    Business Academy"（綠色齒輪 logo）。同一鏡頭 overlay 更替。
+- shot_id: 296
+  type: aroll
+  note: 主持人近景說話比手勢（b 幀側身伸手），無 overlay 文字。
+- shot_id: 297
+  type: aroll
+  note: 主持人在書桌前說話，綠色金額卡疊在麥克風前：a 幀逐字 "$10,000"，b 幀變為 "$100,000"（數字動態增長）。
+- shot_id: 298
+  type: aroll
+  note: 主持人近景說話，手勢大幅揮動（b 幀手舉高），無 overlay 文字。
+- shot_id: 299
+  type: aroll
+  note: 主持人在書桌前（稍廣角，含鍵盤與書堆）雙手比劃說話，無 overlay 文字。
+- shot_id: 300
+  type: aroll
+  note: Ali 對鏡頭說話（正面機位，LONDON 海報、綠植、白麥克風背景）；中點幀 b 有白底圓角文字卡疊在畫面右側，逐字：「$100k revenue
+    in 12 months」；a、c 幀無 overlay（overlay 僅短暫出現後消失），c 幀他雙手食指上指。
+- shot_id: 301
+  type: aroll
+  note: 切到側面/廣角第二機位，Ali 在木桌前對鏡頭說話，桌上有機械鍵盤、書堆、烏鴉黑色掛畫與立燈；全程比手勢講話。畫面上無任何文字。

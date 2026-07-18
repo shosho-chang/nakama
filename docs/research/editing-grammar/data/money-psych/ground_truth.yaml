@@ -1,0 +1,4279 @@
+stats:
+  total_shots: 382
+  broll_shots: 203
+  broll_shots_per_minute: 7.44
+  broll_events: 93
+  broll_events_per_minute: 3.41
+  shots_per_event_p50: 1
+  shots_per_event_max: 11
+  broll_duration_p50: 4.0
+  broll_duration_p90: 8.76
+  broll_time_share: 0.581
+  aroll_runs:
+    n: 93
+    p50: 6.1
+    p90: 16.3
+    max: 31.9
+  by_type:
+    book_cover:
+      n: 2
+      p50: 3.98
+      max: 5.25
+    diagram:
+      n: 1
+      p50: 3.17
+      max: 3.17
+    doc_screenshot:
+      n: 7
+      p50: 7.26
+      max: 13.6
+    kol:
+      n: 29
+      p50: 3.17
+      max: 11.22
+    motion_graphic:
+      n: 11
+      p50: 4.13
+      max: 27.24
+    other:
+      n: 2
+      p50: 3.94
+      max: 6.38
+    photo_still:
+      n: 1
+      p50: 4.55
+      max: 4.55
+    quote_card:
+      n: 11
+      p50: 8.63
+      max: 10.34
+    screen_recording:
+      n: 14
+      p50: 2.84
+      max: 23.69
+    stock:
+      n: 125
+      p50: 3.84
+      max: 11.3
+shots:
+- shot_id: 1
+  start: 0.0
+  end: 5.339
+  duration: 5.339
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，開場舉手比劃。無台詞字幕以外文字。
+  cues:
+  - 1
+  - 2
+  - 3
+  text: 今天我要分享一本我心目中在投資理財領域前三名的書：
+- shot_id: 2
+  start: 5.339
+  end: 7.216
+  duration: 1.877
+  type: aroll
+  note: 主持人說話，畫面左側疊入《The Psychology of Money》英文書封 inset 卡（含瀏覽器視窗式外框）。inset 文字：「OVER
+    TWO MILLION COPIES SOLD / The Psychology of Money / TIMELESS LESSONS ON WEALTH,
+    GREED, AND HAPPINESS / MORGAN HOUSEL / "One of the best and most original finance
+    books in years." —JASON ZWEIG Wall Street Journal」。a 幀 inset 尚在滑入（部分裁切），b 幀完整。
+  cues:
+  - 4
+  text: The Psychology of Money
+- shot_id: 3
+  start: 7.216
+  end: 9.468
+  duration: 2.252
+  type: aroll
+  note: 主持人說話，畫面右側疊入中文版《致富心態》書封 inset。inset 文字：「致富心態 The Psychology of Money 關於財富、貪婪與幸福的20堂理財課
+    摩根．豪瑟（MORGAN HOUSEL）著 周玉文 譯」。a 幀 inset 較小滑入中，b 幀放大完整。
+  cues:
+  - 5
+  text: 中文翻成《致富心態》
+- shot_id: 4
+  start: 9.468
+  end: 15.474
+  duration: 6.006
+  type: aroll
+  note: 主持人談翻譯用詞。a/b 幀無 overlay；c 幀胸前疊入橘底白字大字卡「金錢心理學」。
+  cues:
+  - 6
+  - 7
+  - 8
+  - 9
+  text: 但我覺得翻成「心態」不太精確我認為還是直接翻成《金錢心理學》會比較好
+- shot_id: 5
+  start: 15.474
+  end: 18.227
+  duration: 2.753
+  type: aroll
+  note: 主持人說話，右側疊《致富心態》中文書封 inset（同 shot 3 文字）。a 幀 inset 較小，b 幀放大並帶瀏覽器式外框。
+  cues:
+  - 10
+  - 11
+  text: 因為這本書裡面除了 mindset 以外
+- shot_id: 6
+  start: 18.227
+  end: 19.478
+  duration: 1.251
+  type: aroll
+  note: 主持人對鏡頭說話，無疊加物。
+  cues:
+  - 12
+  text: 講得更多的
+- shot_id: 7
+  start: 19.478
+  end: 23.774
+  duration: 4.296
+  type: stock
+  note: 歐美人物手持筆記本與筆討論文件的圖庫實拍特寫，上方疊白色大字 overlay。a 幀文字：「《致富心態》」；b 幀文字換為置中三行：「《致富心態》講的是「金錢」在我們心理層面扮演的角色，」。
+  cues:
+  - 13
+  - 14
+  - 15
+  text: 真的就是金錢在我們人類的心理層面所扮演的角色
+- shot_id: 8
+  start: 23.774
+  end: 29.696
+  duration: 5.923
+  type: stock
+  note: 老年夫妻與顧問會談的圖庫實拍，疊白色大字 overlay 逐句滑入。a 幀文字：「以及心理狀態和」；b 幀文字：「以及心理狀態和情緒，是如何在投資領域扮演了決定性的因素。」
+  cues:
+  - 16
+  - 17
+  - 18
+  text: 以及心理狀態和情緒是如何在投資領域扮演了決定性的因素的
+- shot_id: 9
+  start: 29.696
+  end: 32.449
+  duration: 2.753
+  type: aroll
+  note: 主持人說話，右側疊《致富心態》中文書封 inset（同 shot 3 文字）。a 幀較小、b 幀放大帶外框。
+  cues:
+  - 19
+  - 20
+  text: 會說這本書是我的理財類前三名
+- shot_id: 10
+  start: 32.449
+  end: 33.533
+  duration: 1.084
+  type: aroll
+  note: 主持人對鏡頭說話，無疊加物。
+  cues:
+  - 21
+  text: 其實有點保守
+- shot_id: 11
+  start: 33.533
+  end: 35.994
+  duration: 2.461
+  type: aroll
+  note: 主持人對鏡頭說話（近景），b 幀舉手比出三根手指。無疊加物。
+  cues:
+  - 22
+  text: 因為其他兩名從缺
+- shot_id: 12
+  start: 35.994
+  end: 38.956
+  duration: 2.961
+  type: aroll
+  note: 主持人對鏡頭說話（a 幀閉眼強調、b 幀正面），無疊加物。
+  cues:
+  - 23
+  - 24
+  text: 我深深地認為百分之 90 以上的人
+- shot_id: 13
+  start: 38.956
+  end: 41.333
+  duration: 2.377
+  type: aroll
+  note: 主持人說話，左側疊《致富心態》中文書封 inset（同 shot 3 文字）。a 幀較小、b 幀放大帶瀏覽器式外框。
+  cues:
+  - 25
+  text: 只要你把這本書讀懂 讀通了
+- shot_id: 14
+  start: 41.333
+  end: 45.712
+  duration: 4.379
+  type: stock
+  note: 灰白短髮熟齡女性在明亮辦公室拿著文件微笑望向遠方，桌上有筆電與馬克杯。無台詞字幕以外文字。
+  cues:
+  - 26
+  - 27
+  - 28
+  text: 那你這輩子在理財領域甚至整個人生就不會有什麼大問題了
+- shot_id: 15
+  start: 45.712
+  end: 48.84
+  duration: 3.128
+  type: stock
+  note: 戴眼鏡、穿米色西裝的男性坐在辦公室 iMac 前工作，b 幀他雙手舉起歡呼慶祝。無台詞字幕以外文字。
+  cues:
+  - 29
+  - 30
+  text: 達到財富自由也只是時間問題而已
+- shot_id: 16
+  start: 48.84
+  end: 50.008
+  duration: 1.168
+  type: aroll
+  note: 主持人（極短平頭東亞男性）在暖色書架房間對鏡頭說話，穿灰褐色 T 恤。T 恤印字「ENERGIE PHYS ED」（衣著印刷，非 overlay）。
+  cues:
+  - 31
+  text: 今天這集節目
+- shot_id: 17
+  start: 50.008
+  end: 52.386
+  duration: 2.377
+  type: stock
+  note: 戴 AirPods 的年輕男性特寫，低頭專注看螢幕（模糊的居家/咖啡廳背景）。無台詞字幕以外文字。
+  cues:
+  - 32
+  text: 是我看了這本書 10 遍之後
+- shot_id: 18
+  start: 52.386
+  end: 53.887
+  duration: 1.502
+  type: aroll
+  note: 主持人近距離特寫對鏡頭說話，表情誇張，b 幀雙手抬起比劃；暖色書架房間背景，牆上有書法掛軸。無 overlay 文字。
+  cues:
+  - 33
+  text: 不誇張 超過 10 遍
+- shot_id: 19
+  start: 53.887
+  end: 56.056
+  duration: 2.169
+  type: stock
+  note: 蓄鬍男性穿淺藍襯衫在玻璃白板前拿筆思考，玻璃上貼多張藍綠色便利貼。無台詞字幕以外文字。
+  cues:
+  - 34
+  text: 加上我過去二十年的投資經驗
+- shot_id: 20
+  start: 56.056
+  end: 57.516
+  duration: 1.46
+  type: stock
+  note: 雙手在白色鍵盤上打字的特寫，戴手錶、穿深綠襯衫，暖色辦公桌場景。無台詞字幕以外文字。
+  cues:
+  - 35
+  text: 反覆咀嚼消化之後
+- shot_id: 21
+  start: 57.516
+  end: 59.434
+  duration: 1.919
+  type: stock
+  note: 深綠襯衫男性在夜間辦公室沉思的臉部特寫，手托下巴，背景燈光模糊。無台詞字幕以外文字。
+  cues:
+  - 35
+  - 36
+  text: 反覆咀嚼消化之後所整理出來的
+- shot_id: 22
+  start: 59.434
+  end: 65.816
+  duration: 6.381
+  type: stock
+  note: 父親陪長捲髮女兒在廚房中島寫作業，b 幀兩人擊掌，氣氛歡樂，桌上有筆電與文具。無台詞字幕以外文字。
+  cues:
+  - 37
+  - 38
+  - 39
+  - 40
+  text: 我會讓我女兒長大後反覆觀看的人生終極理財心法和投資策略
+- shot_id: 23
+  start: 65.816
+  end: 69.152
+  duration: 3.337
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，穿灰褐色 T 恤（印「LICENSE PHYS ED」字樣的衣著印刷）。無 overlay 文字。
+  cues:
+  - 41
+  - 42
+  text: 因為我講得超詳細的所以會分成上下兩集
+- shot_id: 24
+  start: 69.152
+  end: 72.698
+  duration: 3.545
+  type: stock
+  note: 淺藍毛衣男性坐在電腦前扶額、捏鼻樑，一臉挫敗（股市慘痛情境），明亮居家辦公背景。無台詞字幕以外文字。
+  cues:
+  - 43
+  - 44
+  text: 這一集分享的是我過去在股市的慘痛經驗和學習
+- shot_id: 25
+  start: 72.698
+  end: 74.449
+  duration: 1.752
+  type: aroll
+  note: 主持人對鏡頭說話，右側疊加《致富心態》書封 inset。書封文字逐字：「致富心態」「The Psychology of Money」「關於財富、貪婪與幸福的20堂理財課」「摩根．豪瑟（MORGAN
+    HOUSEL）著」；b 幀書封放大且加上橘色視窗框外觀（inset 動畫變化）。
+  cues:
+  - 45
+  text: 以及我歸納這本書的內容
+- shot_id: 26
+  start: 74.449
+  end: 77.744
+  duration: 3.295
+  type: aroll
+  note: 主持人對鏡頭說話。a 幀右側殘留縮小的《致富心態》書封 inset（文字「致富心態」）；b 幀書封消失，改為滿版橘底白字大標 overlay「7個投資致富的真相」——多幀不一致：書封滑出、標題卡滑入。
+  cues:
+  - 46
+  - 47
+  text: 整理出來的 7 個投資致富的真相
+- shot_id: 27
+  start: 77.744
+  end: 80.497
+  duration: 2.753
+  type: motion_graphic
+  note: 黑底彩色橫向光線流動中浮現線框人頭側臉的抽象動畫；b 幀線條密度大增（動畫演進）。無台詞字幕以外文字。
+  cues:
+  - 48
+  - 49
+  text: 下集我將會用演化心理學的角度
+- shot_id: 28
+  start: 80.497
+  end: 84.543
+  duration: 4.046
+  type: stock
+  note: 戴眼鏡的南亞裔男子在辦公室對著電腦工作，b 幀捏鼻樑顯疲憊。無台詞字幕以外文字。
+  cues:
+  - 50
+  - 51
+  - 52
+  text: 來解釋為什麼能用投資來致富的人少之又少
+- shot_id: 29
+  start: 84.543
+  end: 88.046
+  duration: 3.503
+  type: aroll
+  note: 主持人（平頭東亞男性）在暖色書架房間對鏡頭說話，身後有書法掛畫與書櫃。無台詞字幕以外文字。
+  cues:
+  - 53
+  - 54
+  - 55
+  text: 以及我們要做些什麼樣的修練採取什麼樣的策略
+- shot_id: 30
+  start: 88.046
+  end: 90.215
+  duration: 2.169
+  type: stock
+  note: 辮髮黑人男子穿灰西裝在明亮辦公室看電腦、b 幀轉向微笑。無台詞字幕以外文字。
+  cues:
+  - 56
+  text: 才能成為那少於百分之十
+- shot_id: 31
+  start: 90.215
+  end: 93.218
+  duration: 3.003
+  type: stock
+  note: 黑人女性在大片窗戶前對鏡頭微笑大笑，明亮辦公室逆光。無台詞字幕以外文字。
+  cues:
+  - 57
+  - 58
+  text: 能夠在股市上長期賺錢的贏家
+- shot_id: 32
+  start: 93.218
+  end: 98.557
+  duration: 5.339
+  type: aroll
+  note: a 幀為白底手繪線條轉場（僅左上小塗鴉圖形，畫面近全白），b 幀轉入主持人在書房揮手打招呼；同鏡頭內從白畫轉場過渡到 aroll。無台詞字幕以外文字。
+  cues:
+  - 59
+  - 60
+  - 61
+  text: 嗨大家！歡迎回到我的頻道如果你是新朋友
+- shot_id: 33
+  start: 98.557
+  end: 99.433
+  duration: 0.876
+  type: aroll
+  note: 主持人特寫對鏡頭自我介紹，暖色書房背景。無台詞字幕以外文字。
+  cues:
+  - 62
+  text: 我叫做修修
+- shot_id: 34
+  start: 99.433
+  end: 105.355
+  duration: 5.923
+  type: aroll
+  note: 主持人在書房對鏡頭說話，介紹頻道內容。無台詞字幕以外文字。
+  cues:
+  - 63
+  - 64
+  - 65
+  - 66
+  text: 這個頻道我會跟大家分享科學的方法與工具來幫助大家工作更有效率身心更健康
+- shot_id: 35
+  start: 105.355
+  end: 107.566
+  duration: 2.211
+  type: aroll
+  note: 主持人說話，右側疊入《致富心態》書封 inset（a 幀小、b 幀放大成視窗框樣式）。書封文字：致富心態／關於財富、貪婪與幸福的20堂理財課／The
+    Psychology of Money／摩根．豪瑟（MORGAN HOUSEL）著。
+  cues:
+  - 67
+  text: 其實這本書的中文版出版前
+- shot_id: 36
+  start: 107.566
+  end: 108.609
+  duration: 1.043
+  type: kol
+  note: Tim Ferriss 視訊訪談畫面嵌在黑色格紋框中。左上角文字：影片來源：Tim Ferriss。
+  cues:
+  - 68
+  text: 我就在 Tim Ferriss
+- shot_id: 37
+  start: 108.609
+  end: 112.237
+  duration: 3.629
+  type: kol
+  note: Tim Ferriss podcast 訪談另一位來賓（Morgan Housel）在書牆前說話，黑色格紋框。左上角文字：影片來源：Tim Ferriss。
+  cues:
+  - 69
+  - 70
+  - 71
+  text: 訪問作者 Morgan Housel那集 Podcast知道這本書的內容了
+- shot_id: 38
+  start: 112.237
+  end: 115.365
+  duration: 3.128
+  type: aroll
+  note: 主持人比手指說話，左側疊入 Tim Ferriss Show podcast 封面 inset（a 幀部分滑入、b 幀完整）。Inset 文字：Morgan
+    Housel／THE PSYCHOLOGY OF MONEY／THE TIM FERRISS SHOW。
+  cues:
+  - 72
+  - 73
+  text: 那也是一集極少數我聽過好幾遍的節目
+- shot_id: 39
+  start: 115.365
+  end: 119.161
+  duration: 3.795
+  type: aroll
+  note: 主持人在書房對鏡頭說話，無疊加物。無台詞字幕以外文字。
+  cues:
+  - 74
+  - 75
+  text: 就是那時候我完全改變了「買房子」這件事情的看法
+- shot_id: 40
+  start: 119.161
+  end: 121.663
+  duration: 2.502
+  type: kol
+  note: Tim Ferriss podcast 影片片段：白人男性戴 AirPods 在書架前對鏡頭說話，左上角文字「影片來源：Tim Ferriss」。
+  cues:
+  - 76
+  - 77
+  text: Morgan Housel 在節目中強調一件事情
+- shot_id: 41
+  start: 121.663
+  end: 132.883
+  duration: 11.22
+  type: kol
+  note: 同上 Tim Ferriss 訪談片段，畫面疊上大字引言 overlay；a 幀引言正滑入（僅見「千萬不」殘字），b/c 幀完整顯示「很多理財或投資的策略在試算表上看起來不是最合理的，但是對某個人在心理層面來說，卻是最好的。」左上角「影片來源：Tim
+    Ferriss」。
+  cues:
+  - 78
+  - 79
+  - 80
+  - 81
+  - 82
+  - 83
+  - 84
+  - 85
+  text: 我們千萬不要活在excel 試算表中很多理財或投資的策略在試算表上面看起來不是最合理的但是對某個人在心理層面來說卻是最好的
+- shot_id: 42
+  start: 132.883
+  end: 136.011
+  duration: 3.128
+  type: aroll
+  note: 主持人（極短平頭東亞男性）在暖色調書架房間對鏡頭說話，無 overlay 文字。
+  cues:
+  - 86
+  - 87
+  text: 他說他做過的一件外人很難理解的事情
+- shot_id: 43
+  start: 136.011
+  end: 141.767
+  duration: 5.756
+  type: stock
+  note: 歐美年輕夫妻搬紙箱進新家（搬家實拍），無 overlay 文字。
+  cues:
+  - 88
+  - 89
+  - 90
+  text: 就是他和老婆在房貸利率極低的時候用 100% 的現金來買房
+- shot_id: 44
+  start: 141.767
+  end: 149.358
+  duration: 7.591
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，鏡位略推近，無 overlay 文字。
+  cues:
+  - 91
+  - 92
+  - 93
+  - 94
+  - 95
+  text: 任何的財務顧問都會跟你說這樣太傻了有這麼低的利率房貸幹嘛不借把這些錢拿來投入股市
+- shot_id: 45
+  start: 149.358
+  end: 152.277
+  duration: 2.92
+  type: aroll
+  note: 主持人特寫皺眉對鏡頭說話，無 overlay 文字。
+  cues:
+  - 96
+  - 97
+  text: 買最保守的 ETF都能夠賺到錢
+- shot_id: 46
+  start: 152.277
+  end: 153.612
+  duration: 1.335
+  type: aroll
+  note: 主持人對鏡頭說話，左側疊入橘框瀏覽器視窗式 inset 照片（Morgan Housel 西裝肖像），無 overlay 文字（inset 內無文字）。
+  cues:
+  - 98
+  text: 但 Morgan Housel 說
+- shot_id: 47
+  start: 153.612
+  end: 161.286
+  duration: 7.674
+  type: stock
+  note: 歐美情侶躺在搬家紙箱間的地板上比劃，疊大字引言「他們很清楚自己的目標不是在帳面上是理性的，而是在心理層面上是合理的。」；a 幀文字正滑入（僅第一行「他們很清楚自己的目」）且左側殘留縮小中的
+    Housel inset 照片，b/c 幀引言完整、inset 已消失。
+  cues:
+  - 99
+  - 100
+  - 101
+  text: 他們很清楚自己的目標不是在帳面上面是理性的而是在心理層面上是合理的
+- shot_id: 48
+  start: 161.286
+  end: 168.168
+  duration: 6.882
+  type: stock
+  note: 搬家場景實拍：哈士奇犬與整理紙箱的情侶，b 幀起疊大字引言「這是他們做過最糟的理財決策，但卻是他們做過最好的金錢決策。」（a 幀無 overlay）。
+  cues:
+  - 102
+  - 103
+  - 104
+  - 105
+  text: 他說這是他們做過最糟的理財決策但卻是他們所做過最好的金錢決策
+- shot_id: 49
+  start: 168.168
+  end: 172.339
+  duration: 4.171
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，無 overlay 文字。
+  cues:
+  - 106
+  - 107
+  - 108
+  text: 我把這個他在書中最後講到的故事拿到最前面來破題
+- shot_id: 50
+  start: 172.339
+  end: 176.843
+  duration: 4.505
+  type: aroll
+  note: 主持人對鏡頭說話，左側疊橘框瀏覽器式 inset（Morgan Housel 肖像照），無其他 overlay 文字。
+  cues:
+  - 109
+  - 110
+  text: 就是要想請你先把作者一再提到的一件事放在心上：
+- shot_id: 51
+  start: 176.843
+  end: 183.684
+  duration: 6.84
+  type: stock
+  note: 銀髮夫妻在筆電前討論理財的實拍，疊大字引言；a 幀僅第一行「一個人有沒有錢，」，b/c 幀完整「一個人有沒有錢，更常取決於那個人的心理狀態，而不是理財知識和技能。」
+  cues:
+  - 111
+  - 112
+  - 113
+  text: 一個人有沒有錢更常取決於那個人的心理狀態而不是理財知識和技能
+- shot_id: 52
+  start: 183.684
+  end: 185.394
+  duration: 1.71
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，無 overlay 文字。
+  cues:
+  - 114
+  text: 所以這本書的書名
+- shot_id: 53
+  start: 185.394
+  end: 188.397
+  duration: 3.003
+  type: aroll
+  note: 主持人在書架房間對鏡頭說話，畫面右側疊入《The Psychology of Money》書封 inset（瀏覽器視窗框樣式）；書封文字：「OVER
+    TWO MILLION COPIES SOLD / The Psychology of Money / TIMELESS LESSONS ON WEALTH,
+    GREED, AND HAPPINESS / MORGAN HOUSEL / "One of the best and most original finance
+    books in years." —JASON ZWEIG Wall Street Journal / Hh」。a 幀書封尚在滑入（部分出畫面），b 幀完整。
+  cues:
+  - 115
+  - 116
+  - 117
+  text: 才會叫做The Psychology of Money準備好了嗎？
+- shot_id: 54
+  start: 188.397
+  end: 196.363
+  duration: 7.966
+  type: aroll
+  note: 主持人對鏡頭說話（開頭無 overlay，結尾特寫比手勢）；b 幀（中點）為滿版橘白斜條紋轉場動態圖形，無畫面文字——同一鏡頭內含全版 graphic
+    轉場，前後皆為 aroll。
+  cues:
+  - 118
+  - 119
+  - 120
+  text: 那我們就開始囉要談投資這件事情當然要秀一下自己的對帳單啊！
+- shot_id: 55
+  start: 196.363
+  end: 212.754
+  duration: 16.391
+  type: screen_recording
+  note: '永豐金證券網頁對帳單畫面錄影，先全頁後放大局部並以黃底 highlight「客戶應收總額」。畫面文字（節錄）：「永豐金證券 SinoPac Securities
+    / 國內證券 期貨選擇權 法人專區 客戶支援 / 委回 成回 庫存 未實現 已實現 成交回報損益 綜合損益 對帳單 交割訊息 銀行餘額 歷史委託 / 搜尋日期由
+    2010-01-01 至 2024-08-08 / 交易總價金: 143,079,873 客戶應收總額: 4,262,983 / 成交日 商品 交易別 數量
+    成交價 價金 手續費 交易稅」等交易明細（含 2448、4725、1444 力麗、2382 廣達、03779P 緯穎中信42售03、2357 華碩 等）。多幀為同一頁面不同縮放/highlight
+    狀態。'
+  cues:
+  - 121
+  - 122
+  - 123
+  - 124
+  - 125
+  - 126
+  text: 於是我把進聯發科的時候在永豐銀行開的證券戶從 2010 年到現在所有的交易拉出來交易總價金是 143,079,873 元淨賺了 4,262,983
+- shot_id: 56
+  start: 212.754
+  end: 221.388
+  duration: 8.634
+  type: screen_recording
+  note: Excel 試算表錄影，捲動並以黃底依序 highlight 手續費總計 203879 與交易稅總計 162307。畫面文字（節錄）：「成交日 商品
+    交易別 數量 成交價 價金 手續費 交易稅 應付金額 應收金額 融資金額 保證金 利息 融券手續費 委託單號 幣別 / 2330 台積電 3037 欣興 2303
+    聯電 2344 華邦電 2345 智邦 5347 世界 現買 現賣 / 合計 30615051 143079873 203879 162307 69267901
+    73530884 / 交易總價金:143,079,873 客戶應收總額:4,262,983 / Sheet1 / TWD」。
+  cues:
+  - 127
+  - 128
+  - 129
+  text: 總共有 996 筆交易手續費花了 203,879交易稅是 162,307
+- shot_id: 57
+  start: 221.388
+  end: 228.645
+  duration: 7.257
+  type: aroll
+  note: 主持人（紅字 T 恤 ENERGIE PHYS.ED，衣服本身印字非 overlay）對鏡頭說話，鏡位由中景漸推近特寫，無 overlay 文字。
+  cues:
+  - 130
+  - 131
+  - 132
+  - 133
+  text: 這金額和交易量都不算太大應該蠻符合我這個年紀的交易軌跡總歸一句 四個字：
+- shot_id: 58
+  start: 228.645
+  end: 229.98
+  duration: 1.335
+  type: aroll
+  note: 主持人對鏡頭說話，畫面縮成上下黑邊 letterbox，胸前彈出橘底黑字大字卡「白忙一場」；a 幀字卡尚在放大進場（超出畫面下緣），b 幀定位完成。
+  cues:
+  - 134
+  text: 「白忙一場」
+- shot_id: 59
+  start: 229.98
+  end: 233.692
+  duration: 3.712
+  type: stock
+  note: 歐美男性（灰色高領毛衣、白背景）做出得意/滿足表情的圖庫實拍；a 幀有半透明橘底字卡「白忙一場」殘留淡出中，b 幀已消失——overlay 跨鏡頭淡出。
+  cues:
+  - 135
+  - 136
+  - 137
+  text: 你可能會覺得哇！淨賺 400 萬耶好像還不錯
+- shot_id: 60
+  start: 233.692
+  end: 237.404
+  duration: 3.712
+  type: aroll
+  note: 主持人（紅字 T 恤）在書架房間對鏡頭說話，無 overlay 文字。
+  cues:
+  - 138
+  - 139
+  text: 但是如果以本金 1000 萬時間 10 年來看
+- shot_id: 61
+  start: 237.404
+  end: 241.742
+  duration: 4.338
+  type: stock
+  note: 歐美中年男性（棕色 V 領毛衣、白背景）由面無表情到以手扶額嘆氣的圖庫實拍，無 overlay 文字。
+  cues:
+  - 140
+  - 141
+  text: 我的年化報酬率只有可憐的 3.4%
+- shot_id: 62
+  start: 241.742
+  end: 250.667
+  duration: 8.926
+  type: aroll
+  note: 主持人對鏡頭說話（多幀鏡位略推近），無 overlay 文字。
+  cues:
+  - 142
+  - 143
+  - 144
+  - 145
+  text: 沒錯 我從聯發科離職的那一年存款和證券等可以快速變現的流動資產總價值曾經超過一千萬
+- shot_id: 63
+  start: 250.667
+  end: 274.357
+  duration: 23.69
+  type: screen_recording
+  note: 'MoneyCome「Compound Interest Calc.」複利計算機網頁操作錄影，捲動並黃底 highlight「Amount of Inv.:
+    9,000,000」與 Final Value 18,494,659、Yearly ROI 7.5%。畫面文字（節錄）：「MoneyCome.in / Wise
+    Tool / Compound Interest Calc. / Stock C.I. Normal C.I. / Stock Code 0050,元大台灣50
+    / 本金 3000000 / 每年額外投入 600000 / Years 2013 to 2022 / Yearly Cash Div. Reinvestment
+    / Crash Investment / Compare Calculate / Result / Stock Name: 元大台灣50(0050) / Amount
+    of Inv.: 9,000,000 / Year: 2013 ~ 2022 / 合計10年 - 配發股票股利: 0 元/股 / 合計10年 - 配發現金股利:
+    26.05 元/股 / Buy At Yearly Opening 18,494,659 / Buy At Yearly Highest 17,041,461
+    / Buy At Yearly Lowest 19,693,630 / Final Qty / Total Cash / ROI 105.5% 89.3%
+    118.8% / Yearly ROI 7.5% 6.6% 8.1% / Stock Market Value」。'
+  cues:
+  - 146
+  - 147
+  - 148
+  - 149
+  - 150
+  - 151
+  - 152
+  - 153
+  - 154
+  - 155
+  - 156
+  - 157
+  - 158
+  text: 如果我在 2013 年 1 月 1 日先丟 300 萬去買 0050接下來一個月丟 5 萬股利繼續丟進去再投資10 年過後我的投入本金是 300+10x12x5萬=900萬2023
+    年的 1 月 1 日這 900 萬會變成一千八百五十萬這年
+- shot_id: 64
+  start: 274.357
+  end: 280.28
+  duration: 5.923
+  type: aroll
+  note: 主持人對鏡頭說話（鏡位漸推近），無 overlay 文字。
+  cues:
+  - 159
+  - 160
+  - 161
+  text: 但是把時間複利的效應考慮進去10 年後的結果會是如此的不同
+- shot_id: 65
+  start: 280.28
+  end: 281.656
+  duration: 1.376
+  type: aroll
+  note: 主持人對鏡頭說話，畫面為上下黑邊 letterbox 呈現，無 overlay 文字。
+  cues:
+  - 162
+  text: 那我把錢拿去幹嘛了？
+- shot_id: 66
+  start: 281.656
+  end: 284.284
+  duration: 2.628
+  type: stock
+  note: 戴毛帽的男子在戶外持底片相機，a 幀仰望、b 幀舉相機取景拍照（歐美圖庫實拍，非主持人）。
+  cues:
+  - 163
+  - 164
+  text: 除了生活費和拿來買攝影器材以外
+- shot_id: 67
+  start: 284.284
+  end: 288.413
+  duration: 4.129
+  type: stock
+  note: 西裝男子在夜間辦公室玻璃牆前操作平板，b 幀露出笑容（圖庫實拍，非主持人）。
+  cues:
+  - 165
+  - 166
+  text: 我大多是很自以為厲害的在股市裡面殺進殺出
+- shot_id: 68
+  start: 288.413
+  end: 292.209
+  duration: 3.795
+  type: stock
+  note: 藍西裝男子坐辦公桌邊低頭滑手機微笑，背景白色明亮辦公室與便利貼玻璃牆（圖庫實拍）。
+  cues:
+  - 167
+  - 168
+  text: 一開始覺得股票賺太慢還玩了好一陣子權證
+- shot_id: 69
+  start: 292.209
+  end: 296.296
+  duration: 4.087
+  type: aroll
+  note: 主持人（極短平頭東亞男性）在暖色調書架房間對鏡頭說話，穿卡其色T恤，衣服印字「LNERGIE PHYS.ED」為服裝圖案非 overlay。
+  cues:
+  - 169
+  - 170
+  text: 我買賣權證的高峰就是在我騎車環遊世界那兩年
+- shot_id: 70
+  start: 296.296
+  end: 298.757
+  duration: 2.461
+  type: stock
+  note: 空拍俯瞰乾燥山壁公路，一名單車騎士沿公路騎行（實拍空拍畫面）。
+  cues:
+  - 171
+  text: 那時候是邊騎車邊操盤
+- shot_id: 71
+  start: 298.757
+  end: 302.677
+  duration: 3.921
+  type: stock
+  note: 空拍：藍衣騎士與載滿行李的單車停在山谷觀景平台上眺望（實拍空拍畫面）。
+  cues:
+  - 172
+  - 173
+  - 174
+  text: 只要一停下來就是右手啃香蕉左手滑手機
+- shot_id: 72
+  start: 302.677
+  end: 310.06
+  duration: 7.382
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，c 幀鏡位略推近成臉部特寫（同一鏡頭內景別變化）。
+  cues:
+  - 175
+  - 176
+  - 177
+  - 178
+  - 179
+  text: 印象最深刻的是2013 年 8 月在絲路上騎車的時候我那時候操作一隻大立光（原口誤）的認購權證
+- shot_id: 73
+  start: 310.06
+  end: 317.317
+  duration: 7.257
+  type: screen_recording
+  note: '騎乘紀錄網頁（類 Garmin/Strava 介面）含 Google 地圖路線截畫面；文字：「CYCLING BY SHOSHO ON NOVEMBER
+    4, 2013 @ 11:35 AM」「張掖 - 七彩丹霞」「Event Type: Uncategorized」「Course」「Gear: Add」「40.87
+    km Distance」「2:30:09 Time」「16.3 kph Avg Speed」「337 m Total Ascent」，地圖含 Zhangye
+    張掖市、Qicai Danxia Scenic Spot 張掖七彩丹霞景區等地名；b/c 幀標題「張掖 - 七彩丹霞」加上黃色 highlight（a 幀
+    highlight 在日期上），為逐段 highlight 動態。'
+  cues:
+  - 180
+  - 181
+  - 182
+  text: 11/4 那一天 我記得超級清楚我預計要從張掖市騎車到七彩丹霞的青年旅社
+- shot_id: 74
+  start: 317.317
+  end: 319.986
+  duration: 2.669
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，b 幀閉眼做誇張表情。
+  cues:
+  - 183
+  text: 早上一起來 看這個看盤軟體
+- shot_id: 75
+  start: 319.986
+  end: 323.114
+  duration: 3.128
+  type: aroll
+  note: 主持人臉部大特寫對鏡頭興奮說話（比 shot 74 更近的景別）。
+  cues:
+  - 184
+  - 185
+  text: 哇！拉了好大一根我超興奮的
+- shot_id: 76
+  start: 323.114
+  end: 329.955
+  duration: 6.84
+  type: screen_recording
+  note: 同 shot 73 的騎乘紀錄頁面：a 幀「40.87 km Distance」被黃色 highlight，隨後 b/c 幀 zoom 進滿版 Google
+    地圖路線（Zhangye 張掖市 → Qicai Danxia Scenic Spot 張掖七彩丹霞景區，路線以綠橘色速度著色；地圖文字含 G30、G312、S213、S237、G227、WUJIANGZHEN
+    乌江镇、河 River）。同一鏡頭內由頁面全貌推進到地圖特寫。
+  cues:
+  - 186
+  - 187
+  - 188
+  - 189
+  text: 所以雖然是 40 公里的緩上坡但我還是像開了 turbo 一樣往前衝中午前就到了青年旅舍
+- shot_id: 77
+  start: 329.955
+  end: 334.751
+  duration: 4.796
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話。
+  cues:
+  - 190
+  - 191
+  - 192
+  text: 連行李都還沒有收好我就把手機連上 wifi把庫存全部出掉
+- shot_id: 78
+  start: 334.751
+  end: 338.755
+  duration: 4.004
+  type: screen_recording
+  note: 永豐金證券（SinoPac Securities）下單/對帳網頁的交易明細錄影，逐列顯示 2013/11/04 大立光現股成交紀錄（成交數量、成交價格、損益、報酬率
+    85.43%、84.52%、89.45%、99.70%、103.57% 等）；頁面文字含「永豐金證券」「國內證券 期貨選擇權 法人專區 客戶支援」「快速下單」「登出」「已實現」「成交回報損益」「綜合損益」等
+    tab 與欄位「成交日期 類別 商品 成交數量 成交價格 買進金額 賣出金額 損益 報酬率 委託單號 幣別」；b 幀捲動到合計列且「1,775,016」被黃色
+    highlight（a→b 有捲動與 highlight 出現）。帳號等欄位打碼。
+  cues:
+  - 193
+  - 194
+  text: 短短兩個月我用 177 萬賺了 110 萬
+- shot_id: 79
+  start: 338.755
+  end: 343.301
+  duration: 4.546
+  type: photo_still
+  note: 黑底格線背景上置中一張靜態照片：主持人本人穿紅外套站在七彩丹霞彩色岩層前比手勢微笑；照片有輕微放大移動效果。無台詞字幕以外文字。
+  cues:
+  - 195
+  - 196
+  - 197
+  text: 那天去逛七彩丹霞一路上都笑得超開心你看這張照片
+- shot_id: 80
+  start: 343.301
+  end: 344.553
+  duration: 1.251
+  type: aroll
+  note: 主持人（極短平頭東亞男性）在暖色書架房間對鏡頭說話，b 幀舉起右手比劃；T 恤上有印字「ENERGIE PHYS.ED」（衣物印刷，非 overlay）。
+  cues:
+  - 198
+  text: 但是出來賭
+- shot_id: 81
+  start: 344.553
+  end: 345.762
+  duration: 1.21
+  type: aroll
+  note: 主持人特寫對鏡頭說話，b 幀右手舉起於畫面右側比劃。無 overlay 文字。
+  cues:
+  - 199
+  text: 遲早要還的
+- shot_id: 82
+  start: 345.762
+  end: 351.101
+  duration: 5.339
+  type: stock
+  note: 西裝落腮鬍男子（歐美系人物）在明亮辦公室神情凝重地敲筆電，圖庫實拍。無 overlay 文字。
+  cues:
+  - 200
+  - 201
+  - 202
+  text: 我回台灣之後開始買認售前後買了大立光鴻海 陽明等等
+- shot_id: 83
+  start: 351.101
+  end: 359.192
+  duration: 8.091
+  type: stock
+  note: 同一西裝男子站著講手機、表情驚訝焦慮並比手勢，白色明亮辦公室，圖庫實拍。無 overlay 文字。
+  cues:
+  - 203
+  - 204
+  - 205
+  - 206
+  - 207
+  text: 狂吃龜苓膏最大的一碗龜苓膏是 2016 年 1 月的聯電認售權證價值 50 萬台幣
+- shot_id: 84
+  start: 359.192
+  end: 363.905
+  duration: 4.713
+  type: stock
+  note: 男子手扶太陽穴、皺眉盯著電腦螢幕的苦惱特寫，b 幀閉眼更痛苦，圖庫實拍。無 overlay 文字。
+  cues:
+  - 208
+  - 209
+  - 210
+  - 211
+  text: 就在那時候我發誓這輩子不要再碰權證了這真的是賭博啊
+- shot_id: 85
+  start: 363.905
+  end: 371.037
+  duration: 7.132
+  type: aroll
+  note: 主持人在書架房間對鏡頭說話，c 幀閉眼搖頭狀。無 overlay 文字。
+  cues:
+  - 212
+  - 213
+  - 214
+  - 215
+  text: 但是我想賺快錢的心態還是沒有改變NFT 加密貨幣的坑我一個都沒躲過
+- shot_id: 86
+  start: 371.037
+  end: 376.459
+  duration: 5.422
+  type: stock
+  note: 淺景深辦公桌前景（桌上有讀卡機/計算機與手機），背景失焦的男子與顯示股票走勢圖的筆電；b 幀男子雙手掩面沮喪，圖庫實拍。無 overlay 文字。
+  cues:
+  - 216
+  - 217
+  - 218
+  text: 回過神來 我才發現不但之前賺的錢敗光了甚至還負債
+- shot_id: 87
+  start: 376.459
+  end: 380.046
+  duration: 3.587
+  type: aroll
+  note: 主持人對鏡頭說話，兩幀構圖一致。無 overlay 文字。
+  cues:
+  - 219
+  - 220
+  text: 於是我這幾年靜下心來除了看很多書以外
+- shot_id: 88
+  start: 380.046
+  end: 389.431
+  duration: 9.384
+  type: aroll
+  note: 主持人對鏡頭說話；a 幀右上角疊入黃黑色書封/課程圖卡 inset（男子照片，直排字「極數字力」，部分被裁切），b、c 幀 inset 已消失（滑出）。inset
+    可辨文字：「極數字力」。
+  cues:
+  - 221
+  - 222
+  - 223
+  - 224
+  - 225
+  text: 還上了三次林明樟老師的超級數字力課程才真正地把正確的投資觀念給建立起來講這麼多過去的慘痛經驗
+- shot_id: 89
+  start: 389.431
+  end: 392.809
+  duration: 3.378
+  type: aroll
+  note: 主持人對鏡頭說話，左側疊大面積《致富心態》書封 inset，b 幀放大幾乎佔左半。書封文字：「致富心態」「The Psychology of Money」「關於財富、貪婪與幸福的20堂理財課」「摩根・豪瑟（MORGAN
+    HOUSEL）著」「《華爾街日報》、亞馬遜書店暢銷書」等。
+  cues:
+  - 226
+  - 227
+  text: 就是要跟大家強調這本書的厲害之處
+- shot_id: 90
+  start: 392.809
+  end: 396.187
+  duration: 3.378
+  type: aroll
+  note: 主持人對鏡頭說話；a 幀左側殘留縮小中的《致富心態》書封小 inset（滑出中，字過小難辨），b 幀已消失。
+  cues:
+  - 228
+  - 229
+  text: 一心一意想要賺到大錢讓家人過上好生活的我
+- shot_id: 91
+  start: 396.187
+  end: 400.483
+  duration: 4.296
+  type: stock
+  note: 戴眼鏡落腮鬍男子在筆電後專注看螢幕的特寫，鏡片反射螢幕光，圖庫實拍。無 overlay 文字。
+  cues:
+  - 230
+  - 231
+  - 232
+  text: 讀過的投資理財的書沒有一百本一定也超過 50 本
+- shot_id: 92
+  start: 400.483
+  end: 404.112
+  duration: 3.629
+  type: aroll
+  note: 主持人在暖色書房對鏡頭說話，背後書架與書法掛軸，無疊加物。
+  cues:
+  - 233
+  - 234
+  text: 但是我可以用我這 20 年的老韭菜經驗背書
+- shot_id: 93
+  start: 404.112
+  end: 409.367
+  duration: 5.255
+  type: book_cover
+  note: 黑色格紋背景中央擺《致富心態》書封。畫面文字：「致富心態 The Psychology of Money 關於財富、貪婪與幸福的20堂理財課 《華爾街日報》、亞馬遜書店暢銷書
+    現代社會最重要、卻被置最低估的技能 摩根・豪瑟（MORGAN HOUSEL）著 周玉文 譯 天下文化」。
+  cues:
+  - 235
+  - 236
+  text: 這本書對於 90% 的人來說是你唯一需要的一本理財書
+- shot_id: 94
+  start: 409.367
+  end: 416.499
+  duration: 7.132
+  type: stock
+  note: 歐美西裝眼鏡男子低頭滑平板的辦公室實拍；c 幀滑入大型橘底白字 overlay「7個投資致富的真相」（a、b 幀無 overlay）。
+  cues:
+  - 237
+  - 238
+  - 239
+  - 240
+  - 241
+  text: 接下來就是我從這本書的 20 堂課中濃縮提煉出來的7 個投資致富的真相這些真相
+- shot_id: 95
+  start: 416.499
+  end: 421.671
+  duration: 5.172
+  type: aroll
+  note: 主持人書房對鏡頭說話；a 幀身上有半透明淡出中的大字 overlay「7個投資致富的真相」（自上一鏡頭延續轉場），b 幀無。
+  cues:
+  - 241
+  - 242
+  - 243
+  - 244
+  text: 這些真相很多是違反直覺的你乍看之下或許會不置可否
+- shot_id: 96
+  start: 421.671
+  end: 423.173
+  duration: 1.502
+  type: aroll
+  note: 主持人近景對鏡頭說話，無疊加物。
+  cues:
+  - 245
+  text: 甚至相當不認同
+- shot_id: 97
+  start: 423.173
+  end: 431.89
+  duration: 8.717
+  type: stock
+  note: 黃衣落腮鬍男子在淺灰背景思考的實拍；a、b 幀上方兩個橘色標籤 overlay「以前學的東東」「過去的經驗」（b 幀轉淡、c 幀近景已無 overlay）。
+  cues:
+  - 246
+  - 247
+  - 248
+  - 249
+  - 250
+  text: 我想邀請你先把之前學到的東西和過去的經驗先放下來在腦中騰出一些空間把這些訊息先裝進去
+- shot_id: 98
+  start: 431.89
+  end: 448.323
+  duration: 16.433
+  type: aroll
+  note: 主持人書房對鏡頭說話手勢；b 幀切為橘底 motion graphic 章節卡（鈔票 icon＋「投資致富的真相」），c 幀回到主持人並疊轉場中的橘色標題字「第一：投資這門技術是極少數
+    不用專業能力就能成功的」（兩行交疊淡入）。同一鏡頭內含章節卡插入，多幀不一致。
+  cues:
+  - 251
+  - 252
+  - 253
+  - 254
+  - 255
+  - 256
+  - 257
+  - 258
+  text: 不一定要全盤接受你可以抱持著懷疑的態度在股市上來驗證再決定要不要相信投資這門技術是極少數不用專業能力就能成功的作者開宗明義在書的一開始就講到：
+- shot_id: 99
+  start: 448.323
+  end: 459.209
+  duration: 10.886
+  type: stock
+  note: 白襯衫紅領帶男子在手繪商業塗鴉（GROWTH、SUCCESS、SOLUTIONS、TEAM、PLAN、EARNINGS、STOCK MARKET、GLOBAL
+    MARKETS、30%、10%、20%、40%）前的實拍，疊大段引言 overlay：「『善於理財』和『聰明』幾乎毫無關係，不過卻和『行為處事』大有關係。行為難以教化，即使是聰明絕頂的天才也是如此。」（a
+    幀文字尚在滑入、僅部分可見）。stock 底＋quote overlay。
+  cues:
+  - 259
+  - 260
+  - 261
+  - 262
+  - 263
+  text: 「善於理財」和「有多聰明」幾乎毫無關係不過卻和「行為處事」大有關係行為難以教化即使是聰明絕頂的天才也是如此
+- shot_id: 100
+  start: 459.209
+  end: 461.628
+  duration: 2.419
+  type: aroll
+  note: 主持人書房對鏡頭說話，無疊加物。
+  cues:
+  - 264
+  text: 書中講到的加油站員工的故事
+- shot_id: 101
+  start: 461.628
+  end: 464.381
+  duration: 2.753
+  type: aroll
+  note: 主持人近景說話，左側疊入橘框視窗式 inset 照片（西裝男子＝作者 Morgan Housel 肖像），b 幀 inset 放大定位。
+  cues:
+  - 265
+  text: 是作者每次上節目都會講到的
+- shot_id: 102
+  start: 464.381
+  end: 465.757
+  duration: 1.376
+  type: aroll
+  note: 主持人近景說話，右側疊入橘框視窗式 inset 照片（白鬚老人 Ronald Read），b 幀 inset 放大定位。
+  cues:
+  - 266
+  text: 他叫做 Ronald Read
+- shot_id: 103
+  start: 465.757
+  end: 467.008
+  duration: 1.251
+  type: kol
+  note: 外部動畫影片片段（BRIGHT SIDE）：卡通畢業帽男孩站在紅磚校舍前，右側疊 Ronald Read 真人照片 inset（b 幀無 inset）。畫面文字：「影片來源：BRIGHT
+    SIDE」、浮水印「BRIGHT SIDE」。
+  cues:
+  - 267
+  text: 只有高中畢業
+- shot_id: 104
+  start: 467.008
+  end: 469.844
+  duration: 2.836
+  type: kol
+  note: 外部動畫影片片段（BRIGHT SIDE）：卡通藍色貨卡停在店面前。畫面文字：「影片來源：BRIGHT SIDE」、浮水印「BRIGHT SIDE」。
+  cues:
+  - 268
+  - 269
+  text: 先在一間加油站修車長達 25 年
+- shot_id: 105
+  start: 469.844
+  end: 472.305
+  duration: 2.461
+  type: kol
+  note: Bright Side 動畫片段：男子站在超市貨架前（僅見下半身），b 幀右下滑入掃把。Overlay 文字：「影片來源：BRIGHT SIDE」「BRIGHT
+    SIDE」（畫面內 logo）。
+  cues:
+  - 270
+  text: 然後在百貨公司打掃了 17 年
+- shot_id: 106
+  start: 472.305
+  end: 473.64
+  duration: 1.335
+  type: kol
+  note: Bright Side 動畫片段：棕髮男子正面特寫，背景遮陽棚。Overlay 文字：「影片來源：BRIGHT SIDE」「BRIGHT SIDE」logo。
+  cues:
+  - 271
+  text: 他在 38 歲的時候
+- shot_id: 107
+  start: 473.64
+  end: 476.726
+  duration: 3.086
+  type: kol
+  note: Bright Side 動畫片段：兩層樓房子掛價格吊牌。Overlay 文字：「影片來源：BRIGHT SIDE」「$12,000」「BRIGHT
+    SIDE」logo。
+  cues:
+  - 272
+  - 273
+  text: 花了一萬兩千美金買了一間兩房的房子
+- shot_id: 108
+  start: 476.726
+  end: 481.106
+  duration: 4.379
+  type: kol
+  note: Bright Side 動畫片段：男子背影獨自坐書桌前，檯燈、紙堆、咖啡。Overlay 文字：「影片來源：BRIGHT SIDE」「BRIGHT
+    SIDE」logo。
+  cues:
+  - 274
+  - 275
+  text: 50 歲的時候太太過世他就獨自在那間房子度過一生
+- shot_id: 109
+  start: 481.106
+  end: 484.275
+  duration: 3.17
+  type: kol
+  note: Bright Side 動畫片段：美鈔背景上大字逐字滑出，a 幀只有「92」，b 幀完整「92 YEARS OLD」。Overlay 文字：「影片來源：BRIGHT
+    SIDE」「BRIGHT SIDE」logo。
+  cues:
+  - 276
+  - 277
+  text: 2014 年 Read 過世享年 92 歲
+- shot_id: 110
+  start: 484.275
+  end: 488.279
+  duration: 4.004
+  type: kol
+  note: CNBC 新聞畫面：Ronald Read 老人照片與新聞條。Overlay 文字：「影片來源：CNBC」「RONALD READ」「JANITOR'S
+    $8M FORTUNE」「@CNBCClosingBell」「CNBC」。
+  cues:
+  - 278
+  - 279
+  text: 也在那一年他馬上成為國際上的知名人物
+- shot_id: 111
+  start: 488.279
+  end: 494.995
+  duration: 6.715
+  type: aroll
+  note: 主持人（平頭東亞男性）在暖色書架房間對鏡頭說話，穿紅棕拼色 T 恤，無疊加物。
+  cues:
+  - 280
+  - 281
+  - 282
+  - 283
+  text: 因為那年美國總共有兩百八十萬人死亡只有四千人的淨資產超過八百萬美金
+- shot_id: 112
+  start: 494.995
+  end: 496.621
+  duration: 1.627
+  type: kol
+  note: Bright Side 動畫片段：外套用三個別針扣住的特寫，b 幀拉遠見穿西裝男子上身、城市背景。Overlay 文字：「影片來源：BRIGHT SIDE」「BRIGHT
+    SIDE」logo。
+  cues:
+  - 284
+  text: 而他就是其中一個
+- shot_id: 113
+  start: 496.621
+  end: 503.002
+  duration: 6.381
+  type: kol
+  note: Bright Side 動畫片段：牆上老人遺照，b/c 幀多名哀傷人物圍在相框旁（人物陸續入鏡）。Overlay 文字：「影片來源：BRIGHT SIDE」「BRIGHT
+    SIDE」logo。
+  cues:
+  - 285
+  - 286
+  - 287
+  text: 他把兩百萬留給幾名繼子和朋友其他全部捐出去成了家喻戶曉的慈善家
+- shot_id: 114
+  start: 503.002
+  end: 506.548
+  duration: 3.545
+  type: aroll
+  note: 主持人對鏡頭說話（同書架房間、紅棕拼色 T 恤），無疊加物。
+  cues:
+  - 288
+  - 289
+  text: 他的朋友都覺得很奇怪不知道他到底是怎麼辦到的
+- shot_id: 115
+  start: 506.548
+  end: 516.349
+  duration: 9.801
+  type: kol
+  note: Bright Side 動畫片段：老人遺照為中心，虛線圓圈 icon（劈柴、紅色汽車、郵票）陸續出現——a 幀無 icon、b 幀兩個、c 幀三個。Overlay
+    文字：「影片來源：BRIGHT SIDE」「BRIGHT SIDE」logo。
+  cues:
+  - 290
+  - 291
+  - 292
+  - 293
+  - 294
+  - 295
+  text: 其實他就是省吃儉用開一台二手的 Yaris然後把賺的少少的錢拿去買 P&GJP MorganGE 等等藍籌股
+- shot_id: 116
+  start: 516.349
+  end: 518.56
+  duration: 2.211
+  type: aroll
+  note: 主持人對鏡頭說話並比手勢（同房間、同 T 恤），無疊加物。
+  cues:
+  - 296
+  - 297
+  text: 就這樣 沒了作者舉了另一位
+- shot_id: 117
+  start: 518.56
+  end: 521.062
+  duration: 2.503
+  type: aroll
+  note: 主持人近距特寫對鏡頭說話，左上疊 Ronald Read 老人照片 inset（瀏覽器視窗樣式框），a→b 幀 inset 由小放大滑入完成。inset
+    內無文字。
+  cues:
+  - 298
+  - 299
+  text: 和 Ronald Read生活在光譜另一端的
+- shot_id: 118
+  start: 521.062
+  end: 522.689
+  duration: 1.627
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，右側疊加 Richard Fuscone 西裝照片的瀏覽器視窗式 inset（a 幀 inset 較小、b 幀放大，滑入動畫中）；inset
+    無文字。
+  cues:
+  - 300
+  text: Richard Fuscone 的故事
+- shot_id: 119
+  start: 522.689
+  end: 524.774
+  duration: 2.085
+  type: stock
+  note: 哈佛大學校園空拍，紅磚建築與尖塔，緩慢推移。無畫面文字。
+  cues:
+  - 301
+  text: 他是哈佛 MBA 畢業
+- shot_id: 120
+  start: 524.774
+  end: 526.943
+  duration: 2.169
+  type: stock
+  note: 辦公室內兩位西裝人士握手特寫（無臉部）。無畫面文字。
+  cues:
+  - 302
+  text: 美林證券的高階經理人
+- shot_id: 121
+  start: 526.943
+  end: 530.113
+  duration: 3.17
+  type: stock
+  note: 西裝男子站在玻璃帷幕大樓外微笑數鈔票。無畫面文字。
+  cues:
+  - 303
+  - 304
+  text: 他 40 歲就退休了過著奢華的生活
+- shot_id: 122
+  start: 530.113
+  end: 532.782
+  duration: 2.669
+  type: motion_graphic
+  note: 動態股市報價板動畫，滿版紅綠數字與折線圖，黃色曲線在末端急速下跌（呼應金融海嘯）。畫面文字皆為隨機股價數字，無可抄錄語句。
+  cues:
+  - 305
+  text: 結果 2008 年金融海嘯爆發
+- shot_id: 123
+  start: 532.782
+  end: 535.952
+  duration: 3.17
+  type: stock
+  note: 淺景深特寫：西裝外套配牛仔褲的人物，b 幀鏡頭移至他手持幾乎見底的金屬杯（乞討意象）。無畫面文字。
+  cues:
+  - 306
+  - 307
+  text: 他的豪宅還來不及賣掉就宣告破產了
+- shot_id: 124
+  start: 535.952
+  end: 543.168
+  duration: 7.216
+  type: aroll
+  note: 主持人對鏡頭說話，左右各疊一個瀏覽器視窗式 inset：左為老年白鬍男子（Ronald Read）照片、右為 Fuscone 西裝照；c 幀兩個 inset
+    縮小飛出（退場動畫中）。inset 無文字。
+  cues:
+  - 308
+  - 309
+  - 310
+  - 311
+  - 312
+  text: 這兩個人的學經歷是在光譜的兩端而在金錢的下場同樣也是在兩端你不覺得很神奇嗎？
+- shot_id: 125
+  start: 543.168
+  end: 544.169
+  duration: 1.001
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，無疊加物。無畫面文字。
+  cues:
+  - 313
+  text: 你可以想想
+- shot_id: 126
+  start: 544.169
+  end: 548.423
+  duration: 4.254
+  type: stock
+  note: 昏暗辦公室走廊，穿吊帶工作服戴帽的男子背影向前走。無畫面文字（僅背景出口指示燈）。
+  cues:
+  - 314
+  - 315
+  - 316
+  text: 在其他的產業一個人要是沒有大學學歷沒有受過訓練
+- shot_id: 127
+  start: 548.423
+  end: 552.51
+  duration: 4.087
+  type: stock
+  note: 穿藍色吊帶工作服、戴帽與眼鏡的中年維修工人倚門雙手抱胸看鏡頭。無畫面文字。
+  cues:
+  - 317
+  - 318
+  - 319
+  text: 也沒有專業背景也沒有正式經驗還沒有人脈關係
+- shot_id: 128
+  start: 552.51
+  end: 558.85
+  duration: 6.34
+  type: stock
+  note: 紅色百葉光影牆前，灰髮戴眼鏡、掛聽診器的男醫師雙手抱胸看鏡頭。無畫面文字。
+  cues:
+  - 320
+  - 321
+  - 322
+  - 323
+  text: 有可能會遠遠贏過另一個擁有最好教育和最好培訓和最廣泛人脈關係的人嗎？
+- shot_id: 129
+  start: 558.85
+  end: 561.519
+  duration: 2.669
+  type: aroll
+  note: 主持人臉部特寫對鏡頭說話，無疊加物。無畫面文字。
+  cues:
+  - 324
+  - 325
+  text: 作者說他想不出來我想了一下
+- shot_id: 130
+  start: 561.519
+  end: 566.733
+  duration: 5.214
+  type: stock
+  note: 畫室場景：a 幀為昏暗牆面空景（轉場起點），b 幀女藝術家背對鏡頭在大幅藍橘抽象畫布上作畫——同鏡頭內由暗轉亮/運鏡帶出主體。無畫面文字。
+  cues:
+  - 326
+  - 327
+  - 328
+  text: 或許有些藝術家或創作者有機會吧但是那都是鳳毛麟角的天才
+- shot_id: 131
+  start: 566.733
+  end: 570.57
+  duration: 3.837
+  type: stock
+  note: 東亞男性上班族穿白襯衫在明亮辦公室對著電腦螢幕沉思托下巴（非主持人房間，圖庫實拍）。無台詞字幕以外文字。
+  cues:
+  - 329
+  - 330
+  - 331
+  text: 但是在投資界只要你的「行為」能夠克服人性
+- shot_id: 132
+  start: 570.57
+  end: 573.448
+  duration: 2.878
+  type: stock
+  note: 同一位白襯衫男性上班族臉部特寫，專注盯著電腦螢幕，背景另一同事在工作（圖庫實拍）。無台詞字幕以外文字。
+  cues:
+  - 332
+  - 333
+  text: 不用懂財報只要懂一些國中數學
+- shot_id: 133
+  start: 573.448
+  end: 578.369
+  duration: 4.922
+  type: stock
+  note: 戴眼鏡穿淺藍高領毛衣的亞裔男性在辦公室手持平板閱讀（圖庫實拍）。無台詞字幕以外文字。
+  cues:
+  - 334
+  - 335
+  - 336
+  text: 你就可以成功甚至能夠遠遠勝過那些高學歷的知識份子
+- shot_id: 134
+  start: 578.369
+  end: 583.708
+  duration: 5.339
+  type: aroll
+  note: 主持人（極短平頭、暖色書架房間）對鏡頭說話；b 幀畫面壓暗並疊入橘色大字章節標題「第二：在股市上賺到錢的人」（a 幀尚無 overlay，b 幀滑入）。
+  cues:
+  - 337
+  - 338
+  - 339
+  text: 聽起來是不是很令人振奮啊？在股市上賺到錢的人大部分都是因為運氣好
+- shot_id: 135
+  start: 583.708
+  end: 594.552
+  duration: 10.844
+  type: stock
+  note: 藍綠色純色背景前的歐美大鬍子男性，對鏡頭做出攤手、微笑摸下巴等表演動作，模擬「自稱投資高手」的角色（圖庫實拍）。無台詞字幕以外文字。
+  cues:
+  - 340
+  - 341
+  - 342
+  - 343
+  - 344
+  - 345
+  text: 有些人看到這句話可能會很不服氣地說或許對別人來說是吧但我絕對不是運氣好我可是新店巴菲特耶！年化報酬率 25% 起跳的啦！
+- shot_id: 136
+  start: 594.552
+  end: 597.055
+  duration: 2.503
+  type: aroll
+  note: 主持人（換穿米色+紅字「LNERGIE PHYS. ED」T 恤）在暖色書房對鏡頭說話，b 幀誇張閉眼張嘴表情。無台詞字幕以外文字。
+  cues:
+  - 346
+  - 347
+  text: 那我就會這樣回答好好好 你說的對
+- shot_id: 137
+  start: 597.055
+  end: 598.765
+  duration: 1.71
+  type: aroll
+  note: 主持人在書房對鏡頭說話並抬手比劃，畫面帶黑色上下邊框（letterbox 變化）。無台詞字幕以外文字。
+  cues:
+  - 348
+  text: 那十年的對帳單拿出來
+- shot_id: 138
+  start: 598.765
+  end: 599.766
+  duration: 1.001
+  type: aroll
+  note: 主持人臉部特寫，a 幀閉眼、b 幀張嘴笑著說「開玩笑」語氣的表情。無台詞字幕以外文字。
+  cues:
+  - 349
+  text: 沒有啦 開玩笑
+- shot_id: 139
+  start: 599.766
+  end: 605.146
+  duration: 5.38
+  type: stock
+  note: 非裔女性穿淺藍上衣在磚牆辦公室用筆電打字（圖庫實拍）。無台詞字幕以外文字。
+  cues:
+  - 350
+  - 351
+  - 352
+  text: 我相信絕對有專職的投資者的績效是可以每年都擊敗大盤的
+- shot_id: 140
+  start: 605.146
+  end: 607.19
+  duration: 2.044
+  type: aroll
+  note: 主持人臉部特寫在暖色書房對鏡頭嚴肅說話。無台詞字幕以外文字。
+  cues:
+  - 353
+  text: 但那絕對不是你和我
+- shot_id: 141
+  start: 607.19
+  end: 608.274
+  duration: 1.084
+  type: aroll
+  note: 主持人（米紅 T 恤）在書房對鏡頭說話，預告要展示數據。無台詞字幕以外文字。
+  cues:
+  - 354
+  text: 給你看一個數據
+- shot_id: 142
+  start: 608.274
+  end: 611.277
+  duration: 3.003
+  type: doc_screenshot
+  note: 'S&P Dow Jones Indices 報告首頁截圖，黃色 highlight 標題。畫面文字：「S&P Dow Jones Indices
+    / A Division of S&P Global / SPIVA / SPIVA® U.S. Scorecard / Summary / Contributors:
+    Anu R. Ganti, CFA... Tim Edwards, PhD... Joseph Nelesen, PhD...」及摘要段落「After a
+    dismal 2022, the market recovered with a vengeance in 2023 and the S&P 500® gained
+    an impressive 26%. ...」。'
+  cues:
+  - 355
+  - 356
+  text: S&P Global 今年發布的SPIVA 報告指出
+- shot_id: 143
+  start: 611.277
+  end: 624.874
+  duration: 13.597
+  type: doc_screenshot
+  note: '同份 SPIVA 報告向下捲動至內文段落，逐步黃色 highlight。畫面文字重點：「60% of all active large-cap U.S.
+    equity funds underperformed the S&P 500」「the 64% average annual rate reported
+    over the 23-year history of our SPIVA Scorecards」「Exhibit 1: Percentage of Large-Cap
+    Domestic Equity Funds Underperforming the S&P 500 Each Year」（含長條圖數字 65 68 75 69
+    68 82 87 85 60 等）；b→c 幀 highlight 位置從 60% 句移到 64% 句。'
+  cues:
+  - 357
+  - 358
+  - 359
+  - 360
+  - 361
+  - 362
+  - 363
+  text: 即使在閉著眼睛買 AI 都能賺錢的 2023 年還是有 60% 的主動型基金績效輸給 S&P 500 指數而過去 23 年平均有 64% 的主動型基金是輸給大盤的
+- shot_id: 144
+  start: 624.874
+  end: 628.336
+  duration: 3.462
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，表情驚訝。無台詞字幕以外文字。
+  cues:
+  - 364
+  - 365
+  text: 有些年敗給大盤的基金竟然還高達八成
+- shot_id: 145
+  start: 628.336
+  end: 633.258
+  duration: 4.922
+  type: stock
+  note: 歐美商務人士圍站辦公室，白髮西裝男主管手持文件講解，眾人聆聽。無畫面文字。
+  cues:
+  - 366
+  - 367
+  - 368
+  text: 這些基金公司可是擁有數十位甚至上百位絕頂聰明的分析師
+- shot_id: 146
+  start: 633.258
+  end: 635.051
+  duration: 1.793
+  type: stock
+  note: 交易員手指多螢幕股市數據工作站，螢幕顯示圖表與報價。螢幕內文字：MAIN HUB for STATISTICS & DATA / Internal
+    Stock Process Listings / ANNUAL REPORT / Annual Statistics 502007 / Balance 108552
+    / Summary 785097 / CATEGORIES / INDEX WATCH。
+  cues:
+  - 369
+  text: 和最先進的分析軟體
+- shot_id: 147
+  start: 635.051
+  end: 637.846
+  duration: 2.794
+  type: stock
+  note: 夜間辦公室，蓄鬍男子背對鏡頭用筆電看數據表，窗外城市夜景燈光。無可辨識 overlay 文字（筆電畫面小字不可辨）。
+  cues:
+  - 370
+  text: 以及最新最快的第一手資料喔
+- shot_id: 148
+  start: 637.846
+  end: 644.185
+  duration: 6.34
+  type: aroll
+  note: 主持人對鏡頭說話，暖色書房背景。無台詞字幕以外文字。
+  cues:
+  - 371
+  - 372
+  - 373
+  - 374
+  text: 連他們的績效都慘成這樣你有什麼自信能夠「長期」打敗大盤？作者曾經請教了
+- shot_id: 149
+  start: 644.185
+  end: 647.146
+  duration: 2.961
+  type: aroll
+  note: 主持人對鏡頭說話，左側疊加 Robert Shiller（白髮西裝男）照片之瀏覽器視窗框 inset；a 幀 inset 正滑入（尚小、未完整），b
+    幀完整顯示。inset 內無文字。
+  cues:
+  - 375
+  - 376
+  text: 諾貝爾經濟學獎得主Robert Shiller 一個問題：
+- shot_id: 150
+  start: 647.146
+  end: 651.442
+  duration: 4.296
+  type: stock
+  note: 股市報價牆數據畫面，疊加大字引言逐步打出：a 幀「關於投資，」，b 幀完整「「關於投資，你會想知道哪些我們無法參透的道理？」」。stock 底圖上疊
+    quote overlay。
+  cues:
+  - 377
+  - 378
+  - 379
+  text: 「關於投資你會想知道哪些我們無法參透的道理？」
+- shot_id: 151
+  start: 651.442
+  end: 652.485
+  duration: 1.043
+  type: aroll
+  note: 主持人對鏡頭說話，暖色書房背景。無台詞字幕以外文字。
+  cues:
+  - 380
+  text: 他的回答是：
+- shot_id: 152
+  start: 652.485
+  end: 657.532
+  duration: 5.047
+  type: stock
+  note: 戴眼鏡男子特寫，鏡片反射股市圖表螢幕；疊加引言文字，a 幀「「運氣在投資成功的結果中」，b 幀完整「「運氣在投資成功的結果中所扮演的確切作用。」」。
+  cues:
+  - 381
+  - 382
+  text: 「運氣在投資成功的結果中所扮演的確切作用」
+- shot_id: 153
+  start: 657.532
+  end: 658.908
+  duration: 1.376
+  type: aroll
+  note: 主持人對鏡頭說話（a 幀閉眼感嘆）。無台詞字幕以外文字。
+  cues:
+  - 383
+  text: 這實在太有智慧了
+- shot_id: 154
+  start: 658.908
+  end: 669.252
+  duration: 10.344
+  type: quote_card
+  note: 淺灰底大字引言卡逐行打出；a 幀「我們永遠沒辦法知道，」，b/c 幀完整並出現三顆骰子（白藍紅）：「我們永遠沒辦法知道，在創業或是投資這種事情，成功到底是不是因為運氣好，失敗到底是不是剛好注衰。」多幀為文字漸進打出。
+  cues:
+  - 384
+  - 385
+  - 386
+  - 387
+  - 388
+  text: 我們永遠都沒辦法知道在創業或者投資這種運氣扮演主要因素的事情成功到底是不是因為運氣好失敗到底是不是就剛好注衰
+- shot_id: 155
+  start: 669.252
+  end: 670.879
+  duration: 1.627
+  type: aroll
+  note: 主持人對鏡頭說話，暖色書房背景。無台詞字幕以外文字。
+  cues:
+  - 389
+  text: 連巴菲特的導師
+- shot_id: 156
+  start: 670.879
+  end: 673.882
+  duration: 3.003
+  type: aroll
+  note: 主持人對鏡頭說話，右側疊加 Benjamin Graham（藍色斗篷長者）照片之瀏覽器視窗框 inset；a 幀 inset 較小滑入中，b 幀完整。inset
+    內無文字。
+  cues:
+  - 390
+  - 391
+  text: 價值投資之父Benjamin Graham 都承認
+- shot_id: 157
+  start: 673.882
+  end: 682.14
+  duration: 8.258
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話（穿卡其/紅字T恤），無疊加文字。
+  cues:
+  - 392
+  - 393
+  - 394
+  - 395
+  - 396
+  text: 讓他賺最大一筆錢的投資GEICO 保險打破了幾乎所有他在自己寫的暢銷書裡面提倡的多元分散法則
+- shot_id: 158
+  start: 682.14
+  end: 688.438
+  duration: 6.298
+  type: quote_card
+  note: 黑白照片上的金句卡：戴眼鏡老年學者（西裝領帶）坐在堆滿文件的書桌前，白色大字引言逐行浮現。a 幀僅出現「一次出乎意料的；b/c 幀完整顯示「一次出乎意料的好運
+    與一個非常精明的決定， 我們有能力區分嗎？」——文字為滑入式逐步出現。
+  cues:
+  - 397
+  - 398
+  - 399
+  text: 他說：「一次出乎意料的好運與一個非常精明的決定我們有能力區分嗎？」
+- shot_id: 159
+  start: 688.438
+  end: 692.775
+  duration: 4.338
+  type: aroll
+  note: 主持人對鏡頭說話，左右各疊一張橘框視窗式人物照 inset（左：白髮西裝學者 Robert Shiller 樣貌；右：藍色披風老年學者），無 overlay
+    文字。
+  cues:
+  - 400
+  - 401
+  - 402
+  text: 連大師都沒辦法確定自己是不是運氣好何況是我們呢？
+- shot_id: 160
+  start: 692.775
+  end: 701.117
+  duration: 8.342
+  type: aroll
+  note: 主持人在書架房間對鏡頭說話，鏡頭略推近，無疊加文字。
+  cues:
+  - 403
+  - 404
+  - 405
+  - 406
+  - 407
+  text: 所以我們能做到的就是避免學習特例盡量尋找已經被驗證過能夠廣泛適用於各種狀況的成功模式
+- shot_id: 161
+  start: 701.117
+  end: 702.785
+  duration: 1.668
+  type: aroll
+  note: 主持人對鏡頭說話（b 幀閉眼作感慨表情），無疊加文字。
+  cues:
+  - 408
+  text: 這點我體會太深了
+- shot_id: 162
+  start: 702.785
+  end: 707.707
+  duration: 4.922
+  type: stock
+  note: 圖庫實拍：白色明亮辦公室中，襯衫男子站著操作平板電腦並微笑，無畫面文字。
+  cues:
+  - 409
+  - 410
+  text: 我之前的創業題目是建立一個「腳踏車旅行」的個人品牌
+- shot_id: 163
+  start: 707.707
+  end: 714.339
+  duration: 6.632
+  type: stock
+  note: 圖庫實拍：戴淺綠耳機的男子躺在灰沙發上看筆記本／寫筆記，無畫面文字。
+  cues:
+  - 411
+  - 412
+  - 413
+  - 414
+  text: 然後跟政府以及旅行業者合作共同招攬外國遊客來台灣騎車並且賺取帶團的利潤
+- shot_id: 164
+  start: 714.339
+  end: 719.344
+  duration: 5.005
+  type: stock
+  note: 圖庫實拍：深藍西裝男子在明亮辦公室窗邊講手機，無畫面文字。
+  cues:
+  - 415
+  - 416
+  - 417
+  text: 這就是一個還沒有成功案例的極端項目雖然還真的快被我搞起來了
+- shot_id: 165
+  start: 719.344
+  end: 721.429
+  duration: 2.085
+  type: stock
+  note: 圖庫實拍：淺綠毛衣男子趴在手臂上、眼神放空沉思的特寫，無畫面文字。
+  cues:
+  - 418
+  - 419
+  text: 但是一個疫情就直接把我打趴
+- shot_id: 166
+  start: 721.429
+  end: 728.394
+  duration: 6.965
+  type: aroll
+  note: 主持人在書架房間對鏡頭說話（c 幀有手勢），無疊加文字。
+  cues:
+  - 420
+  - 421
+  - 422
+  - 423
+  text: 而我現在在做的以「知識型」內容建立個人品牌再販售對我觀眾有價值的數位產品或服務
+- shot_id: 167
+  start: 728.394
+  end: 732.482
+  duration: 4.087
+  type: kol
+  note: 他人影片片段：Ali Abdaal 在自宅書架前對鏡頭講話，畫面置於黑色格紋框內；左上角白字「影片來源：Ali Abdaal」。
+  cues:
+  - 424
+  - 425
+  - 426
+  text: 這個 business model在國外早就已經有成千上萬的成功案例
+- shot_id: 168
+  start: 732.482
+  end: 734.025
+  duration: 1.543
+  type: screen_recording
+  note: YouTube 頻道頁螢幕錄影：「張修修的不正常人生 Shosho's Abnormal Life」頻道，a 幀顯示 banner 與頻道資訊，b
+    幀往下捲到影片列表。畫面文字包含「張修修的不正常人生 Shosho's Abnormal Life」「@shoshotw・18.5萬位訂閱者・109 部影片」「我是張修修，曾經是年薪數百萬的聯發科業務，辭掉工作後背著吉他騎上腳踏車環遊世界」「shosho.tw
+    和另外 4 個連結」「已訂閱」「首頁 影片 Shorts Podcast 播放清單 社群」「最新 熱門 最早」及影片標題如「控制情緒的科學方法，3 招讓你降低焦慮」「科學減肥最終章」等。
+  cues:
+  - 427
+  text: 所以我內心就相當地篤定
+- shot_id: 169
+  start: 734.025
+  end: 734.567
+  duration: 0.542
+  type: screen_recording
+  note: 同上頻道頁螢幕錄影續（捲動至影片格），顯示影片縮圖與標題列表：「控制情緒的科學方法，3 招讓你降低焦慮，每天擁有好心情」「科學減肥最終章：張修修版終極減肥模型（一定跟你想的不一樣）」「如果你還在吃低碳、生酮飲食，這集節目你一定要看！」「《高效原力》：6
+    年賺 3 億台幣的學霸 YouTuber」「Anything You Want：微型創業者必修的 8 堂課，一人公司的最佳指南」「《挫折逆轉勝》：如何把古老的斯多葛哲學，變成
+    3 個現代人必備的逆…」「LeBron James 保持顛峰的秘密武器！一般人怎麼效法他的百萬美金…」「Hidden Potential：華頓商學院教授 Adam
+    Grant 最新力作，教你用科…」及觀看次數列。a/b 兩幀畫面幾乎相同。
+  cues:
+  - 427
+  - 428
+  text: 所以我內心就相當地篤定只要我持續下去
+- shot_id: 170
+  start: 734.567
+  end: 735.151
+  duration: 0.584
+  type: screen_recording
+  note: YouTube 頻道影片列表頁截錄，暗色模式顯示多支影片縮圖與標題（如「Anything You Want：微型創業者必修的 8 堂課」「LeBron
+    James 保持顛峰的秘密武器」等），畫面靜止。畫面文字為 YouTube 介面與各影片標題（大量，屬 UI 內容非 overlay）。
+  cues:
+  - 428
+  text: 只要我持續下去
+- shot_id: 171
+  start: 735.151
+  end: 735.693
+  duration: 0.542
+  type: screen_recording
+  note: 同一 YouTube 頻道影片列表頁，已向下捲動一格，顯示減肥、財務自由等影片列（如「新世界的財務自由公式！」「科學減肥三部曲」）。畫面文字皆為 YouTube
+    UI 與影片標題。
+  cues:
+  - 428
+  text: 只要我持續下去
+- shot_id: 172
+  start: 735.693
+  end: 736.361
+  duration: 0.667
+  type: screen_recording
+  note: YouTube 頻道列表繼續往下捲，顯示英語學習、2024 新年計畫、孤單等影片列；兩幀間僅底部台詞字幕換行，畫面近乎靜止。畫面文字皆為 YouTube
+    UI 與影片標題。
+  cues:
+  - 428
+  - 429
+  text: 只要我持續下去做起來只是時間問題而已
+- shot_id: 173
+  start: 736.361
+  end: 738.029
+  duration: 1.668
+  type: screen_recording
+  note: YouTube 頻道列表再往下捲，顯示喝水全攻略、蛋白質、田鴻魁等更早期影片；捲動持續。畫面文字皆為 YouTube UI 與影片標題。
+  cues:
+  - 429
+  text: 做起來只是時間問題而已
+- shot_id: 174
+  start: 738.029
+  end: 750.041
+  duration: 12.012
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話（穿紅灰拼色 T 恤）；第三幀（c）畫面壓暗並疊入大型橘色金句文字滑入中：「美好的事物都要付出代價，」（與前一行字重疊、動畫進行中），多幀不一致：a/b
+    無 overlay，c 有金句 overlay。
+  cues:
+  - 430
+  - 431
+  - 432
+  - 433
+  - 434
+  - 435
+  - 436
+  - 437
+  text: 而在投資領域就有一個能夠適用於九成以上投資者的策略這個容我留到最後再跟大家介紹美好的事物都要付出代價好的投資也是這點乍聽之下有點難懂
+- shot_id: 175
+  start: 750.041
+  end: 753.086
+  duration: 3.045
+  type: aroll
+  note: 主持人對鏡頭說話，左側疊入《致富心態》書封 inset（書封文字：「致富心態 The Psychology of Money 關於財富、貪婪與幸福的20堂理財課
+    摩根．豪瑟（MORGAN HOUSEL）」）；a 幀書封較小、b 幀放大，為書封 inset 動畫。
+  cues:
+  - 438
+  - 439
+  text: 但卻是整本書最令我耳目一新的觀點
+- shot_id: 176
+  start: 753.086
+  end: 754.212
+  duration: 1.126
+  type: aroll
+  note: 主持人在書架房間對鏡頭說話，無 overlay。
+  cues:
+  - 440
+  text: 把這點想通了
+- shot_id: 177
+  start: 754.212
+  end: 755.546
+  duration: 1.335
+  type: aroll
+  note: 主持人特寫對鏡頭說話（較近景），無 overlay。
+  cues:
+  - 441
+  text: 大概整本書就通了
+- shot_id: 178
+  start: 755.546
+  end: 761.678
+  duration: 6.131
+  type: aroll
+  note: 主持人對鏡頭說話，中景，無 overlay，三幀一致。
+  cues:
+  - 442
+  - 443
+  - 444
+  - 445
+  text: 作者用買車來作比喻如果你剛出社會想要買台車代步你可能會有三種選擇
+- shot_id: 179
+  start: 761.678
+  end: 763.68
+  duration: 2.002
+  type: stock
+  note: 圖庫實拍：西裝男子在車展展場俯身撫摸白色新車引擎蓋，無 overlay 文字。
+  cues:
+  - 446
+  - 447
+  text: 第一：買一台一百萬的新車
+- shot_id: 180
+  start: 763.68
+  end: 766.683
+  duration: 3.003
+  type: stock
+  note: 圖庫實拍：空拍廢車場/二手車停放場，數百台車排列，無 overlay 文字。
+  cues:
+  - 448
+  - 449
+  text: 第二：省點錢買一台五十萬的二手車
+- shot_id: 181
+  start: 766.683
+  end: 768.518
+  duration: 1.835
+  type: stock
+  note: 圖庫實拍：連帽黑衣男子在街邊撬黑色轎車車門（偷車情境）；a 幀僅手入鏡、b 幀人物俯身開門，無 overlay 文字。
+  cues:
+  - 450
+  text: 第三：直接把新車偷走
+- shot_id: 182
+  start: 768.518
+  end: 771.854
+  duration: 3.337
+  type: aroll
+  note: 主持人特寫對鏡頭說話，無 overlay。
+  cues:
+  - 451
+  - 452
+  text: 應該 99% 的人都不會選擇第三種
+- shot_id: 183
+  start: 771.854
+  end: 777.151
+  duration: 5.297
+  type: aroll
+  note: 主持人在暖色書房對鏡頭說話（棕色T恤，胸前紅色圖案），無疊加文字。
+  cues:
+  - 453
+  - 454
+  - 455
+  text: 因為我們知道所有的東西都有價格越美好的東西價格越高
+- shot_id: 184
+  start: 777.151
+  end: 780.571
+  duration: 3.42
+  type: stock
+  note: 綠色夜視監視器畫面：停車場中戴帽人偷開一輛車的車門，畫面左上角有 LEVEL「3」水印、下方有時間碼「20:34:42:26」（b 幀為 20:34:44:12）。
+  cues:
+  - 456
+  - 457
+  - 458
+  text: 不想付這個價格而直接想把東西拿走叫做偷竊
+- shot_id: 185
+  start: 780.571
+  end: 783.449
+  duration: 2.878
+  type: stock
+  note: 黑衣連帽竊賊在白色住宅前撬開藍綠色汽車車門的實拍，無畫面文字。
+  cues:
+  - 459
+  - 460
+  text: 一開始運氣好可能讓你得逞個一兩次
+- shot_id: 186
+  start: 783.449
+  end: 786.285
+  duration: 2.836
+  type: stock
+  note: 監獄實拍：獄警押著長髮囚犯站在牢房鐵欄前，無畫面文字。
+  cues:
+  - 461
+  - 462
+  text: 但這個社會遲早會讓你付出代價
+- shot_id: 187
+  start: 786.285
+  end: 789.539
+  duration: 3.253
+  type: aroll
+  note: 主持人在暖色書房對鏡頭說話，比手勢，無疊加文字。
+  cues:
+  - 463
+  - 464
+  text: 這個道理幾乎人人都懂但是放到投資上
+- shot_id: 188
+  start: 789.539
+  end: 790.832
+  duration: 1.293
+  type: aroll
+  note: 主持人近景對鏡頭說話（鏡位比前一鏡更近），無疊加文字。
+  cues:
+  - 465
+  text: 就沒有那麼直覺了
+- shot_id: 189
+  start: 790.832
+  end: 798.84
+  duration: 8.008
+  type: quote_card
+  note: 男子看著筆電上下跌K線圖抱頭的 stock 畫面上，疊入大字引言：「你只要進到投資理財這個領域 想從中賺錢， 就一定得先付出一個代價： 你的精神狀況。」a
+    幀文字剛滑入僅見第一行「你只要進到投資理財這」，b/c 幀全文顯示；底圖為實拍但大字引言為主體。
+  cues:
+  - 466
+  - 467
+  - 468
+  - 469
+  - 470
+  text: 真相是 你只要進到投資理財這個領域想要從中賺錢就一定得先付出一個代價那就是你的精神狀況
+- shot_id: 190
+  start: 798.84
+  end: 803.428
+  duration: 4.588
+  type: stock
+  note: 長髮女子透過透明螢幕看K線圖數據的實拍（臉上映滿綠色K棒與數字），螢幕上的數字為佈景元素非 overlay。
+  cues:
+  - 471
+  - 472
+  - 473
+  text: 如果你是比較保守的長期投資者平常的時候你可能可以高枕無憂
+- shot_id: 191
+  start: 803.428
+  end: 808.391
+  duration: 4.963
+  type: stock
+  note: 西裝男子在辦公室走廊看手機、接著講電話的實拍（a 幀低頭滑手機，b 幀貼耳通話），無畫面文字。
+  cues:
+  - 474
+  - 475
+  - 476
+  text: 但是一遇到股市崩盤除了帳面上的淨值直接打七折以外
+- shot_id: 192
+  start: 808.391
+  end: 813.312
+  duration: 4.922
+  type: stock
+  note: 男子在夜晚書房對著筆電驚慌張手、表情恐懼的實拍，無畫面文字。
+  cues:
+  - 477
+  - 478
+  text: 你一定還會感受到恐懼 懷疑甚至後悔等等負面情緒
+- shot_id: 193
+  start: 813.312
+  end: 822.071
+  duration: 8.759
+  type: quote_card
+  note: 戴眼鏡男子臉部與K線圖疊影的 stock 畫面上，疊入大字引言：「股市的「波動性」帶來的虧損， 以及在股市下行時 感受到的「負面情緒」， 就是一定要付出的代價。」a
+    幀文字滑入中僅見第一行「股市的「波動性」帶來的」，b/c 幀全文顯示。
+  cues:
+  - 479
+  - 480
+  - 481
+  - 482
+  - 483
+  text: 所以股市的「波動性」帶來的虧損以及你在股市下行的時候感受到的「負面情緒」這兩種就是你一定要付出的代價
+- shot_id: 194
+  start: 822.071
+  end: 828.161
+  duration: 6.089
+  type: aroll
+  note: 主持人在暖色書房對鏡頭說話（a 幀中景、b/c 幀推近成近景），無疊加文字。
+  cues:
+  - 484
+  - 485
+  - 486
+  - 487
+  text: 但是付了就沒事了只要時間一拉長你就可以享受到長期投資帶來的甜美果實
+- shot_id: 195
+  start: 828.161
+  end: 836.919
+  duration: 8.759
+  type: stock
+  note: 深色長髮女子抱著平板在明亮開放式辦公室微笑走動、環顧四周的實拍，背景多名同事，無畫面文字。
+  cues:
+  - 488
+  - 489
+  - 490
+  - 491
+  text: 而你也會對這些波動越來越習慣雖然帳面淨值還是會上上下下的但是你的心情會越來越像冬天的湖面一樣平靜
+- shot_id: 196
+  start: 836.919
+  end: 842.55
+  duration: 5.631
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，胸口特寫至半身。
+  cues:
+  - 492
+  - 493
+  - 494
+  text: 這種人就像是第一種花大錢買新車的人他們知道天下沒有白吃的午餐
+- shot_id: 197
+  start: 842.55
+  end: 844.761
+  duration: 2.211
+  type: aroll
+  note: 主持人近景對鏡頭說話，同一書架房間場景。
+  cues:
+  - 495
+  text: 一個好的投資成效也是
+- shot_id: 198
+  start: 844.761
+  end: 853.811
+  duration: 9.051
+  type: stock
+  note: 歐美男性穿淺藍西裝坐辦公桌前，先看手機拿鈔票，後把美金鈔票撒向空中，筆電與咖啡杯在桌上。
+  cues:
+  - 496
+  - 497
+  - 498
+  - 499
+  - 500
+  text: 但是很多投資人會像第三種人一樣他們覺得自己很厲害以為可以不付代價就能夠在投資市場上賺到錢
+- shot_id: 199
+  start: 853.811
+  end: 857.44
+  duration: 3.629
+  type: stock
+  note: 辦公桌筆電特寫，a 幀為男子手放筆電旁，b 幀切為男子頹然趴在筆電鍵盤上、神情疲憊（同一鏡頭內動作推進）。
+  cues:
+  - 501
+  - 502
+  text: 但諷刺的是這些人最後會付出雙倍的代價
+- shot_id: 200
+  start: 857.44
+  end: 862.07
+  duration: 4.63
+  type: aroll
+  note: 主持人近景對鏡頭說話，書架房間。
+  cues:
+  - 503
+  - 504
+  - 505
+  text: 他們會上很多老師的課學習各種基本面甚至技術分析
+- shot_id: 201
+  start: 862.07
+  end: 867.2
+  duration: 5.13
+  type: aroll
+  note: 主持人對鏡頭說話並以手指指向一側、後做手勢，表情豐富。
+  cues:
+  - 506
+  - 507
+  - 508
+  text: 分析個股的財報判斷產業的榮枯以及總體經濟的位置
+- shot_id: 202
+  start: 867.2
+  end: 876.918
+  duration: 9.718
+  type: stock
+  note: 戴玩具皇冠的歐美男子穿西裝坐辦公室，雙手比大拇指朝下/指向自己，桌上有筆電，誇張自負表演。
+  cues:
+  - 509
+  - 510
+  - 511
+  - 512
+  - 513
+  - 514
+  text: 他們的目的就是不想付「波動性」帶來的虧損覺得在自己準確的判斷下絕對能夠低買高賣打敗大盤賺取超額的利潤
+- shot_id: 203
+  start: 876.918
+  end: 877.919
+  duration: 1.001
+  type: aroll
+  note: 主持人近景對鏡頭說話，書架房間。
+  cues:
+  - 515
+  text: 換句話說
+- shot_id: 204
+  start: 877.919
+  end: 882.924
+  duration: 5.005
+  type: stock
+  note: 戴眼鏡蓄鬍的歐美男子穿米白西裝坐書架前，雙手交叉後攤手聳肩。
+  cues:
+  - 516
+  - 517
+  - 518
+  text: 這些人以為自己可以比華爾街 60% 以上的基金經理人還厲害
+- shot_id: 205
+  start: 882.924
+  end: 885.593
+  duration: 2.669
+  type: aroll
+  note: 主持人近景對鏡頭提問式說話，書架房間。
+  cues:
+  - 519
+  text: 你聽出這個想法的荒謬之處了嗎？
+- shot_id: 206
+  start: 885.593
+  end: 889.847
+  duration: 4.254
+  type: aroll
+  note: 主持人對鏡頭說話，微瞇眼表情，書架房間。
+  cues:
+  - 520
+  - 521
+  text: 這些「自作聰明」的人他們每天要做幾十次的反射動作
+- shot_id: 207
+  start: 889.847
+  end: 892.683
+  duration: 2.836
+  type: stock
+  note: 手持手機特寫，螢幕顯示加密貨幣看盤 App（幣種列表 AAVE、JASMY、ALGO、SUPER、UNI、RUNE 等與紅綠漲跌百分比），背景為顯示行情的筆電。畫面文字（App
+    UI）：Favorites Spot Futures、USDT、12:59。
+  cues:
+  - 522
+  text: 就是不斷拿手機出來開看盤軟體
+- shot_id: 208
+  start: 892.683
+  end: 897.355
+  duration: 4.671
+  type: stock
+  note: 俯拍白襯衫男子在辦公桌前滑手機看 K 線圖，桌上有鍵盤、筆記本、滑鼠與眼鏡。
+  cues:
+  - 523
+  - 524
+  - 525
+  text: 心情也隨著這幾十檔個股變紅變綠而上上下下
+- shot_id: 209
+  start: 897.355
+  end: 900.525
+  duration: 3.17
+  type: diagram
+  note: 經典散戶心理曲線圖：紅色股價折線配 1–27 號藍字心境獨白，右上角有「投資經典」立體按鈕框。畫面文字（節錄逐字）：「投資經典」＋編號獨白如「2 還好我定力夠」「3
+    好像真的不錯」「4 小李說他賺了一台車子/聽說最近股票漲得很兇」「5 多頭就是這樣 不買不行 就先買一半吧」「7 汰弱留強，這才是專業的操作」「8 要是當初投那麼保守就好了，再買另外一半」「9
+    介紹親戚來買好了，這可是最後買點呢」「10 主流就是主流 總是比大盤領先創新高」「11 照這個速度下個月就可以賺到…」「12 這次機會不能再錯過，來釋成融資比較快」「13
+    差多跌一下正常 而且央行降息了 買股票很容易打敗銀行定存，一定會把錢逼出來」「15 果然」「14 耐心是投資當中最難的一部份，放心！還會再漲回去的」「16
+    算了！這種股市不看也罷！」「17 該不該賣呢？」「18 還好沒投資」「19 受夠了！真是無能的政府」「20 停損才是交易的紀律，賣掉才是對的，就平靜地去做吧」「還好躲過這凶狠的一段，後頭還會跌得更兇呢！」「22
+    不可能的啦」「23 你看吧」「24 降息是買點不是心引力買點，是好朋友 我才告訴你的」「25 不要說了，我已經淡出股市了」「26 好吧，我也空幾張好了 牛蛙說有的」「27
+    什麼？！※%@＃」（部分小字模糊，依可辨識程度抄錄）
+  cues:
+  - 526
+  text: 就好像這張經典的散戶圖一樣
+- shot_id: 210
+  start: 900.525
+  end: 904.32
+  duration: 3.795
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，穿卡其/紅拼色 T 恤（胸前印 ENERGIE PHYS.ED），無其他 overlay 文字。
+  cues:
+  - 527
+  - 528
+  text: 他們常常躲不過突然的下殺也總是錯過大反彈
+- shot_id: 211
+  start: 904.32
+  end: 911.41
+  duration: 7.09
+  type: stock
+  note: 交易所內戴眼鏡鬍子男子由沮喪到抱頭，前景疊紅色下跌 K 線折線與格線動畫 overlay；無畫面文字。
+  cues:
+  - 529
+  - 530
+  - 531
+  - 532
+  text: 下場就是波動性帶來的虧損以及這個過程中產生的負面情緒都是第一種人的好幾倍
+- shot_id: 212
+  start: 911.41
+  end: 912.745
+  duration: 1.335
+  type: aroll
+  note: 主持人同一書房場景對鏡頭說話（嘟嘴、開口），無其他 overlay 文字。
+  cues:
+  - 533
+  text: 所以作者強調
+- shot_id: 213
+  start: 912.745
+  end: 919.669
+  duration: 6.924
+  type: quote_card
+  note: 黑色調交易室女子操盤 stock 畫面上疊大字金句：a 幀字句滑入中只見「一定要把波動性帶」，b/c 幀完整置中顯示「一定要把波動性帶來的虧損 視為進入投資市場的手續費，
+    而不是罰款。」多幀顯示文字漸進出現。
+  cues:
+  - 534
+  - 535
+  - 536
+  text: 一定要把波動性帶來的虧損視為進入投資市場的手續費而不是罰款
+- shot_id: 214
+  start: 919.669
+  end: 925.758
+  duration: 6.089
+  type: aroll
+  note: 主持人書房對鏡頭說話，三幀鏡位漸推近，無其他 overlay 文字。
+  cues:
+  - 537
+  - 538
+  - 539
+  text: 這種心態能夠讓我們堅持夠長的時間來享受複利帶來的豐富回報
+- shot_id: 215
+  start: 925.758
+  end: 933.433
+  duration: 7.674
+  type: stock
+  note: 淺綠西裝鬍子男子站在玻璃帷幕辦公樓前，先正面站姿後雙手抱胸微笑；無畫面文字。
+  cues:
+  - 540
+  - 541
+  - 542
+  - 543
+  - 544
+  text: 你可能會不服氣覺得自己藝高人膽大抓波段都抓得很準怎麼可能會輸給那些無腦的存股族？
+- shot_id: 216
+  start: 933.433
+  end: 935.685
+  duration: 2.252
+  type: aroll
+  note: 主持人書房對鏡頭說話，無其他 overlay 文字。
+  cues:
+  - 545
+  text: 那下一個書中點出來的真相
+- shot_id: 217
+  start: 935.685
+  end: 942.942
+  duration: 7.257
+  type: aroll
+  note: 主持人書房近景，b/c 幀畫面轉暖橘色並疊上橘色章節大字「第四： 尾巴驅動一切， 讓你大賺的股票和交易日都很稀少」；a 幀尚無此字卡（overlay
+    後進）。type 仍為 aroll，主持人清晰在畫面。
+  cues:
+  - 546
+  - 547
+  - 548
+  - 549
+  text: 或許可以說服你第四：尾巴驅動一切讓你大賺的股票和交易日都很稀少
+- shot_id: 218
+  start: 942.942
+  end: 952.16
+  duration: 9.218
+  type: quote_card
+  note: 辦公室多人圍著筆電歡呼的 stock 畫面上疊白色大字引言：a 幀滑入中僅見「任何一件巨大、有利可」，b/c 幀完整顯示「任何一件巨大、有利可圖、
+    知名度高或有影響力的事情， 都是所謂的尾部事件導致的結果。」文字漸進出現。
+  cues:
+  - 550
+  - 551
+  - 552
+  - 553
+  - 554
+  - 555
+  - 556
+  text: 作者說任何一件巨大有利可圖知名度高或者有影響力的事情都是所謂的尾部事件所導致的結果
+- shot_id: 219
+  start: 952.16
+  end: 953.494
+  duration: 1.335
+  type: aroll
+  note: 主持人書房對鏡頭說話，無其他 overlay 文字。
+  cues:
+  - 557
+  text: 就跟創投業一樣
+- shot_id: 220
+  start: 953.494
+  end: 958.958
+  duration: 5.464
+  type: stock
+  note: 夜間辦公室裡淺藍西裝男子對著螢幕捏鼻樑、扶額苦惱；無畫面文字。
+  cues:
+  - 558
+  - 559
+  - 560
+  - 561
+  text: 一間 VC 可能會投上百間新創公司其中大部分都做不起來（原口誤）也沒關係
+- shot_id: 221
+  start: 958.958
+  end: 962.295
+  duration: 3.337
+  type: stock
+  note: 西裝條紋襯衫男子在玻璃大樓前手持手機興奮歡呼旋轉；無畫面文字。
+  cues:
+  - 562
+  - 563
+  text: 只要其中幾間有中就可以賺大錢了
+- shot_id: 222
+  start: 962.295
+  end: 964.422
+  duration: 2.127
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，牆上掛書法海報。
+  cues:
+  - 564
+  - 565
+  text: 同樣的模式也發生在科技大廠
+- shot_id: 223
+  start: 964.422
+  end: 968.676
+  duration: 4.254
+  type: kol
+  note: Jeff Bezos 訪談片段（Business Insider），坐藍沙發受訪，黑格紋背景框。畫面文字：「影片來源：Never GIve Up」「BUSINESS
+    INSIDER」浮水印。
+  cues:
+  - 566
+  - 567
+  - 568
+  text: Jeff Bezos 在他主導的fire phone 失敗之後公開表示
+- shot_id: 224
+  start: 968.676
+  end: 978.102
+  duration: 9.426
+  type: kol
+  note: 同一 Bezos 訪談片段，畫面上疊入大字引言（a 幀引言僅第一行滑入，b/c 幀完整）。畫面文字：「影片來源：Never GIve Up」、引言「「如果你覺得這算是重大失敗的話，那
+    amazon 此刻正在醞釀更大的失敗，有的甚至會讓 Fire Phone 的失敗看起來微不足道。」」、「BUSINESS INSIDER」浮水印。
+  cues:
+  - 569
+  - 570
+  - 571
+  - 572
+  - 573
+  - 574
+  - 575
+  text: 如果你覺得這個算是重大失敗的話那 amazon 此刻正在醞釀更大的失敗有的甚至會讓Fire Phone 的失敗看起來微不足道
+- shot_id: 225
+  start: 978.102
+  end: 984.65
+  duration: 6.548
+  type: aroll
+  note: 主持人對鏡頭說話，同書架房間，鏡位略推近。
+  cues:
+  - 576
+  - 577
+  - 578
+  - 579
+  - 580
+  text: 這些科技大廠就是這樣不斷地嘗試然後不斷失敗上百個計畫中只要有一兩個中了
+- shot_id: 226
+  start: 984.65
+  end: 986.652
+  duration: 2.002
+  type: aroll
+  note: 主持人近距離特寫對鏡頭說話，同房間。
+  cues:
+  - 581
+  text: 就可以撐起一個科技帝國
+- shot_id: 227
+  start: 986.652
+  end: 990.406
+  duration: 3.754
+  type: motion_graphic
+  note: 動畫城市大樓群，各大樓掛 Amazon 各事業 logo。畫面文字：「影片來源：MagnatesMedia」及樓上 logo：amazon、amazonstudios、aws、amazon
+    publishing、amazonfresh、amazon game studios、amazon fulfillment、amazon FLEX、amazonkindle、amazonmusic、amazonrobotics。
+  cues:
+  - 582
+  - 583
+  text: 事實上 amazon 最大隻的金雞母之一 AWS
+- shot_id: 228
+  start: 990.406
+  end: 993.326
+  duration: 2.92
+  type: stock
+  note: 資料中心機房走道實拍，疊加科技線框與雲朵下載動態圖形（b 幀雲圖示滑入）。畫面文字：「影片來源：MagnatesMedia」「Amazon Web
+    Services」。
+  cues:
+  - 584
+  - 585
+  text: 就是從一個奇怪的side project 做起來的
+- shot_id: 229
+  start: 993.326
+  end: 993.868
+  duration: 0.542
+  type: stock
+  note: Amazon 物流中心大樓外觀實拍，停車場與交通錐。畫面文字：「影片來源：MagnatesMedia」「amazon」。
+  cues:
+  - 586
+  text: 20 年前根本沒有人會覺得
+- shot_id: 230
+  start: 993.868
+  end: 995.62
+  duration: 1.752
+  type: stock
+  note: Amazon 物流中心外觀另一角度實拍（推近至招牌）。畫面文字：「影片來源：MagnatesMedia」「amazon」。
+  cues:
+  - 586
+  text: 20 年前根本沒有人會覺得
+- shot_id: 231
+  start: 995.62
+  end: 999.749
+  duration: 4.129
+  type: motion_graphic
+  note: 多格拼貼牆展示 Amazon 各產品畫面（Prime Air 飛機、Echo、Amazon Go、購物 App 等），黑格紋背景動態排版。畫面文字：「影片來源：MagnatesMedia」及格內「ENTREES」「SALADS
+    & BOWLS」「Prime Air」「amazon」「amazon go」「CONTROL」等。
+  cues:
+  - 587
+  - 588
+  - 589
+  text: 一間網路書店搞這種基礎網路服務會有什麼好下場啊
+- shot_id: 232
+  start: 999.749
+  end: 1003.169
+  duration: 3.42
+  type: kol
+  note: Netflix 執行長 Reed Hastings 於 TED 舞台受訪特寫。畫面文字：「影片來源：TED」。
+  cues:
+  - 590
+  - 591
+  - 592
+  text: Netflix 的執行長Reed Hasting也曾經公開講到
+- shot_id: 233
+  start: 1003.169
+  end: 1009.509
+  duration: 6.34
+  type: kol
+  note: TED 訪談雙人遠景（Reed Hastings 與主持人），疊入大字引言（a 幀僅「「命中率太高」滑入，b/c 幀完整）。畫面文字：「影片來源：TED」、引言「「命中率太高
+    不是一件好事情，團隊要做更多冒險，做更多嘗試。」」。
+  cues:
+  - 593
+  - 594
+  - 595
+  - 596
+  text: 他們的命中率太高了這不是一件好事情團隊需要做更多的冒險做更多嘗試
+- shot_id: 234
+  start: 1009.509
+  end: 1011.01
+  duration: 1.501
+  type: aroll
+  note: 主持人對鏡頭說話，暖色書架房間。
+  cues:
+  - 597
+  text: 因為這些大公司知道
+- shot_id: 235
+  start: 1011.01
+  end: 1016.766
+  duration: 5.756
+  type: motion_graphic
+  note: Amazon 產品生態系網絡動畫，中央 amazon logo 向外連到各子產品節點圓圈。左上角字幕來源標示「影片來源：MagnatesMedia」；節點文字含
+    amazon appstore、amazon cloud player、SOLIMO、A9、amazonwireless、amazon cloud drive、amazon
+    drive、amazonkindle、amazon web services、amazon instant video、amazonlocal、ELEMENTAL
+    等；b 幀畫面中央另疊入大字 overlay「要打造出「尾部產品」，就一定要撐得更久，並且做夠多的嘗試。」（a 幀該 overlay 尚在滑入、僅見「要打造出「尾部」），b
+    幀節點更多（twitch、Zappos、WHOLE FOODS、KIVA Systems、Pill Pack、amazon Prime、diapers.com、Songza、alexa、amazon
+    pay、amazon MP3、livingsocial、annapurna labs、BLUE ORIGIN 等）。
+  cues:
+  - 598
+  - 599
+  - 600
+  - 601
+  text: 要打造出所謂的「尾部產品」就一定要撐得更久並且做夠多的嘗試
+- shot_id: 236
+  start: 1016.766
+  end: 1020.603
+  duration: 3.837
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，右側疊入前集影片縮圖 inset（黑框視窗樣式）；縮圖文字：「執行長日記 THE DIARY OF A CEO」「STEVEN
+    BARTLETT 關於事業與人生的 33 條法則」「THE 33 LAWS OF BUSINESS AND LIFE」「白手起家必看8大心法」（a 幀縮圖尚在滑入、文字部分被切）。
+  cues:
+  - 602
+  - 603
+  - 604
+  text: 之前介紹《執行長日記》的那集節目也有講到類似的概念
+- shot_id: 237
+  start: 1020.603
+  end: 1025.316
+  duration: 4.713
+  type: aroll
+  note: 主持人正面對鏡頭說話，暖色書架房間，無疊加物。
+  cues:
+  - 605
+  - 606
+  - 607
+  text: 轉換到投資領域如果你想要賺大錢一定要掌握兩點：
+- shot_id: 238
+  start: 1025.316
+  end: 1031.03
+  duration: 5.714
+  type: stock
+  note: 歐美辦公室女性用平板的圖庫實拍；b 幀畫面中央疊入大字 overlay「1. 投資涵蓋的範圍越多元越好； 2. 待在市場的時間要夠長。」（a 幀尚無此
+    overlay，僅左側小裝飾點線）。
+  cues:
+  - 608
+  - 609
+  - 610
+  text: 投資涵蓋的範圍要越多元越好而且待在市場的時間要夠長
+- shot_id: 239
+  start: 1031.03
+  end: 1036.077
+  duration: 5.047
+  type: aroll
+  note: 主持人對鏡頭說話，暖色書架房間，無疊加物。
+  cues:
+  - 611
+  - 612
+  - 613
+  text: 尤其是第二點是所有投資心法中威力最強 最簡單
+- shot_id: 240
+  start: 1036.077
+  end: 1039.622
+  duration: 3.545
+  type: aroll
+  note: 主持人對鏡頭說話（表情變化），暖色書架房間，無疊加物。
+  cues:
+  - 614
+  - 615
+  text: 但是又最難做到的我舉一個書中沒有的例子
+- shot_id: 241
+  start: 1039.622
+  end: 1046.879
+  duration: 7.257
+  type: doc_screenshot
+  note: CNBC 文章截圖：標題「This chart shows why investors should never try to time the stock
+    market」、PUBLISHED WED, MAR 24 2021、作者 Pippa Stevens、KEY POINTS 三點、TRENDING NOW
+    側欄、圖表「The difficulties of trying to time the market」；b/c 幀捲動至內文段落，黃色 highlight「Looking
+    at data going back to 1930, the firm found that if an investor missed the S&P
+    500's 10 best days each decade,」，內文含 28%、17,715% 等數字。多幀為同一文章的捲動/highlight 推進。
+  cues:
+  - 616
+  - 617
+  - 618
+  - 619
+  text: 美國銀行做了一個統計從 1930 到現在如果你錯過了每十年表現最好的 10 天
+- shot_id: 242
+  start: 1046.879
+  end: 1052.843
+  duration: 5.964
+  type: aroll
+  note: 主持人對鏡頭說話，暖色書架房間，無疊加物。
+  cues:
+  - 620
+  - 621
+  - 622
+  text: 也就是在 3650 天裡面剛好錯過了漲最多的那 10 天而已喔
+- shot_id: 243
+  start: 1052.843
+  end: 1060.977
+  duration: 8.133
+  type: doc_screenshot
+  note: 同一 CNBC 文章內文特寫，黃色 highlight 從「Looking at data going back to 1930... 10 best
+    days each decade,」延伸至「the total return would stand at 28%.」（a→b 幀 highlight 範圍擴大）；內文含
+    17,715%、panic selling 段落、Savita Subramanian 引言。
+  cues:
+  - 623
+  - 624
+  - 625
+  - 626
+  text: 那從 1930 年到 2020 年的這 90 年間你的投資報酬率只有少得可憐的 28%
+- shot_id: 244
+  start: 1060.977
+  end: 1063.187
+  duration: 2.211
+  type: aroll
+  note: 主持人對鏡頭說話（b 幀有手勢入鏡），暖色書架房間，無疊加物。
+  cues:
+  - 627
+  text: 比放在銀行裡面還少
+- shot_id: 245
+  start: 1063.187
+  end: 1066.232
+  duration: 3.045
+  type: doc_screenshot
+  note: 同一 CNBC 文章內文，黃色 highlight 移至「If, on the other hand, the investor held steady
+    through the ups and downs,」，下句顯示 the return would have been 17,715%。
+  cues:
+  - 628
+  - 629
+  text: 如果你從頭到尾都待在市場裡面
+- shot_id: 246
+  start: 1066.232
+  end: 1068.651
+  duration: 2.419
+  type: aroll
+  note: 主持人對鏡頭說話，暖色書架房間，無疊加物。
+  cues:
+  - 630
+  - 631
+  text: 猜猜看你的投資報酬率會是多少？
+- shot_id: 247
+  start: 1068.651
+  end: 1074.031
+  duration: 5.38
+  type: doc_screenshot
+  note: 同一 CNBC 文章內文，黃色 highlight 移至「the return would have been 17,715%.」，前後文與前鏡頭相同段落。
+  cues:
+  - 632
+  - 633
+  text: 答案是百分之 17715！整整 177 倍啊！
+- shot_id: 248
+  start: 1074.031
+  end: 1075.074
+  duration: 1.043
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，身穿棕紅拼色 T 恤（胸前印 ENERGIE）。畫面無其他 overlay 文字。
+  cues:
+  - 634
+  text: 文章裡講到
+- shot_id: 249
+  start: 1075.074
+  end: 1085.876
+  duration: 10.802
+  type: doc_screenshot
+  note: 英文財經文章截圖，逐句黃色 highlight 隨旁白移動（三幀 highlight 位置不同：先 'When stocks plunge a natural
+    impulse can be to hit the sell button'，再 'but the firm found the market's best
+    days often follow the biggest drops'，最後 'so panic selling can significantly lower
+    returns for longer-term investors by causing them to miss the best days'）。可見文字含
+    '...the return would have been 17,715%.'、'Remaining invested during turbulent
+    times can help recover losses following bear markets - it takes about 1,100 trading
+    days on average to recover losses after a bear market,' noted Savita Subramanian,
+    head of U.S. equity and quantitative strategy at Bank of America.'、'Sometimes,
+    as happened in 2020, the recovery is much faster.'
+  cues:
+  - 635
+  - 636
+  - 637
+  - 638
+  - 639
+  - 640
+  - 641
+  text: 當市場出現暴跌的時候大部分的人都會恐慌性地拋售股票但是 Ｖ 轉往往發生得又快又猛這些人想要買回股票的時候已經來不及了
+- shot_id: 250
+  start: 1085.876
+  end: 1086.21
+  duration: 0.334
+  type: kol
+  note: WSJ 新聞片段：交易員手扶臉憂慮特寫，黑格紋底框內嵌。左上文字「影片來源：The Wall Street Journal」，右上浮水印「WSJ」。
+  cues:
+  - 642
+  text: 2008 年的金融海嘯
+- shot_id: 251
+  start: 1086.21
+  end: 1086.669
+  duration: 0.459
+  type: kol
+  note: WSJ 片段續：藍色制服（963 號牌）年長交易員抬頭掩嘴憂心。文字「影片來源：The Wall Street Journal」「WSJ」「963」。
+  cues:
+  - 642
+  text: 2008 年的金融海嘯
+- shot_id: 252
+  start: 1086.669
+  end: 1087.503
+  duration: 0.834
+  type: kol
+  note: WSJ 片段：交易大廳眾交易員仰望行情板神情緊張。文字「影片來源：The Wall Street Journal」「WSJ」。
+  cues:
+  - 642
+  text: 2008 年的金融海嘯
+- shot_id: 253
+  start: 1087.503
+  end: 1089.505
+  duration: 2.002
+  type: kol
+  note: Vox 片段：WHO 記者會，Tedros 發言。文字「影片來源：Vox」「Vox」浮水印、背板「World Health Organization」、桌牌「Dr
+    Tedros Adhanom Ghebreyesus WHO DIRECTOR-GENERAL」「Dr M...」。
+  cues:
+  - 643
+  text: 2020 年的新冠肺炎
+- shot_id: 254
+  start: 1089.505
+  end: 1093.467
+  duration: 3.962
+  type: kol
+  note: Vox 片段：烏克蘭地圖動畫，坦克圖示與紅箭頭標示俄軍入侵。文字「影片來源：Vox」「Vox」「UKRAINE」「RUSSIA」。
+  cues:
+  - 644
+  - 645
+  text: 以及 2022 年的俄羅斯入侵烏克蘭都是如此
+- shot_id: 255
+  start: 1093.467
+  end: 1094.135
+  duration: 0.667
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話。無 overlay 文字。
+  cues:
+  - 646
+  text: 同樣的 這種對股市
+- shot_id: 256
+  start: 1094.135
+  end: 1100.349
+  duration: 6.215
+  type: stock
+  note: 黑天鵝特寫實拍（紅喙黑羽），鏡頭隨天鵝轉頭微動。無畫面文字。
+  cues:
+  - 646
+  - 647
+  - 648
+  text: 同樣的 這種對股市造成重大影響的黑天鵝也是無法用任何技術分析預測的
+- shot_id: 257
+  start: 1100.349
+  end: 1103.602
+  duration: 3.253
+  type: aroll
+  note: 主持人對鏡頭說話，臉部特寫較近。無 overlay 文字。
+  cues:
+  - 649
+  - 650
+  text: 該吃下去的大黑Ｋ棒一根也躲不掉
+- shot_id: 258
+  start: 1103.602
+  end: 1108.733
+  duration: 5.13
+  type: aroll
+  note: 主持人對鏡頭說話，b 幀雙手張開做強調手勢。無 overlay 文字。
+  cues:
+  - 651
+  - 652
+  - 653
+  text: 所以美國銀行建議投資者不要去預測市場最好的策略還是：
+- shot_id: 259
+  start: 1108.733
+  end: 1113.946
+  duration: 5.214
+  type: aroll
+  note: 主持人對鏡頭說話，疊加橘底白字大型標語卡「一股不賣 奇蹟自來」——a 幀從底部滑入（僅露上半），b 幀定位於畫面中央偏下。
+  cues:
+  - 654
+  - 655
+  - 656
+  text: 一股不賣 奇蹟自來這八字箴言真的不是開玩笑的
+- shot_id: 260
+  start: 1113.946
+  end: 1118.576
+  duration: 4.63
+  type: aroll
+  note: 主持人對鏡頭說話並比出手勢，疊加橘色章節文字：a 幀先出現「第五：」，b 幀完整顯示「第五：金錢帶給你的最高紅利 就是掌控時間」且背景壓暗（文字漸進出現）。
+  cues:
+  - 657
+  - 658
+  text: 第五：金錢帶給你的最高紅利就是掌控時間
+- shot_id: 261
+  start: 1118.576
+  end: 1128.502
+  duration: 9.927
+  type: quote_card
+  note: 美鈔（百元美金）鋪滿畫面上疊入大字引言；a 幀引言標題滑入中「金錢最大的內在價值」，b/c 幀完整置中三行：「金錢最大的內在價值，就是賦予你掌控時間的能力。這就是財務自由的真諦。」背景為錢鈔實拍且畫面壓暗，引言為主體
+  cues:
+  - 659
+  - 660
+  - 661
+  - 662
+  - 663
+  text: 作者強調：金錢最大的內在價值就是賦予你掌控時間的能力我認為這點值得一講再講因為這就是財務自由的真諦
+- shot_id: 262
+  start: 1128.502
+  end: 1135.092
+  duration: 6.59
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，無疊加物
+  cues:
+  - 664
+  - 665
+  - 666
+  - 667
+  - 668
+  text: 最有價值的財富是你可以每天一早醒來的時候講：「今天我可以做任何我想做的事」
+- shot_id: 263
+  start: 1135.092
+  end: 1138.429
+  duration: 3.337
+  type: aroll
+  note: 主持人說話，左上疊入一張黑白人物照片 inset（西裝男性、瀏覽器視窗框樣式），介紹已故密西根大學社會心理學家；照片內無文字
+  cues:
+  - 669
+  - 670
+  - 671
+  text: 已故的密西根大學社會心理學家Angus Campbell
+- shot_id: 264
+  start: 1138.429
+  end: 1141.557
+  duration: 3.128
+  type: aroll
+  note: 主持人在書架房間對鏡頭說話，無疊加物
+  cues:
+  - 672
+  - 673
+  text: 曾經做過有關幸福感的研究他的結論是
+- shot_id: 265
+  start: 1141.557
+  end: 1150.191
+  duration: 8.634
+  type: quote_card
+  note: 街頭西裝男子 stock 畫面壓暗疊大字引言；a 幀文字滑入中（「與任何客觀的生活條件相…」），b/c 幀完整三行：「與任何客觀的生活條件相比，能夠掌握自己生活所帶來的強大感受，是預測幸福更可靠的指標。」
+  cues:
+  - 674
+  - 675
+  - 676
+  - 677
+  text: 與任何客觀生活條件相比能夠掌握自己生活所帶來的強大感受是預測幸福更可靠的指標
+- shot_id: 266
+  start: 1150.191
+  end: 1154.528
+  duration: 4.338
+  type: aroll
+  note: 主持人對鏡頭說話，無疊加物
+  cues:
+  - 678
+  - 679
+  - 680
+  text: 這個指標比你的薪水你的房子大小還有你名片上的 title
+- shot_id: 267
+  start: 1154.528
+  end: 1155.488
+  duration: 0.959
+  type: aroll
+  note: 主持人對鏡頭說話（閉眼表情變化），無疊加物
+  cues:
+  - 681
+  text: 都還要可靠
+- shot_id: 268
+  start: 1155.488
+  end: 1159.492
+  duration: 4.004
+  type: stock
+  note: 歐美家庭客廳嬉戲（女孩騎在爸爸肩上張開雙臂）；b 幀畫面壓暗滑入大字：「幸福的真諦，就是能夠完全掌握你的生活方式；」a 幀無 overlay，屬 overlay
+    滑入過程
+  cues:
+  - 682
+  - 683
+  text: 幸福的真諦就是能夠完全掌握你的生活方式
+- shot_id: 269
+  start: 1159.492
+  end: 1163.788
+  duration: 4.296
+  type: quote_card
+  note: 歐美家庭在屋前揹小孩玩耍的 stock 壓暗疊大字；a 幀文字滑入中（「能在你想要的」），b 幀完整：「能在你想要的時間、跟你想要的人一起做你想做的事。」與
+    268 為連續引言
+  cues:
+  - 684
+  - 685
+  - 686
+  text: 能夠在你想要的時間跟你想要的人做你想做的事情
+- shot_id: 270
+  start: 1163.788
+  end: 1167.291
+  duration: 3.504
+  type: stock
+  note: 歐美家庭廚房烘焙舉手歡呼；b 幀壓暗疊入大字「如果你不想做某件事情，你也可以自由地說不。」a 幀無 overlay，overlay 滑入
+  cues:
+  - 687
+  - 688
+  text: 如果你不想要做某件事情你也可以很自由地說不
+- shot_id: 271
+  start: 1167.291
+  end: 1168.167
+  duration: 0.876
+  type: aroll
+  note: 主持人對鏡頭說話，無疊加物
+  cues:
+  - 689
+  text: 你可能會想
+- shot_id: 272
+  start: 1168.167
+  end: 1171.295
+  duration: 3.128
+  type: aroll
+  note: 主持人對鏡頭說話（先皺眉閉眼後張眼），無疊加物
+  cues:
+  - 690
+  - 691
+  text: 這不是廢話嗎？但其實這沒有那麼好理解喔
+- shot_id: 273
+  start: 1171.295
+  end: 1177.343
+  duration: 6.048
+  type: stock
+  note: 辦公室戴眼鏡蓄鬍白人男子坐在電腦螢幕前若有所思，前景螢幕虛化；無 overlay 文字
+  cues:
+  - 692
+  - 693
+  - 694
+  - 695
+  - 696
+  text: 因為第一大多數的人並沒有好好想清楚自己的「自由生活」長的是什麼樣子
+- shot_id: 274
+  start: 1177.343
+  end: 1181.514
+  duration: 4.171
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話（紅棕拼色 ENERGIE PHYS. ED. T恤）；背景牆上書法掛軸「張遊世界」。畫面文字（衣服印字）：ENERGIE
+    PHYS. ED.
+  cues:
+  - 697
+  - 698
+  - 699
+  - 700
+  text: 很多人會說：「自由就是我想要去哪裡就去買什麼就買」
+- shot_id: 275
+  start: 1181.514
+  end: 1184.767
+  duration: 3.253
+  type: aroll
+  note: 主持人同景別續講，表情提問狀；場景同前暖色書房。衣服印字：ENERGIE PHYS. ED.
+  cues:
+  - 701
+  - 702
+  - 703
+  text: 那如果再繼續追問下去：你要去哪裡？為什麼要去？
+- shot_id: 276
+  start: 1184.767
+  end: 1189.063
+  duration: 4.296
+  type: aroll
+  note: 主持人連續拋出追問的近景，兩幀構圖略異（跳剪感）；同書房場景。衣服印字：ENERGIE PHYS. ED.
+  cues:
+  - 704
+  - 705
+  - 706
+  - 707
+  - 708
+  text: 一年去幾次？去多久？你要買什麼？要花多少錢？為什麼要買？
+- shot_id: 277
+  start: 1189.063
+  end: 1190.981
+  duration: 1.919
+  type: aroll
+  note: 主持人張開雙手比劃說話，畫面上下有黑邊（縮小/letterbox 變化構圖）；同書房。衣服印字：ENERGIE PHYS. ED.
+  cues:
+  - 709
+  text: 常常會一問三不知
+- shot_id: 278
+  start: 1190.981
+  end: 1198.697
+  duration: 7.716
+  type: stock
+  note: 歐美長髮鬍鬚男深夜辦公室用筆電，從打字到扶額、雙手掩面，表現焦慮疲憊；三幀為同一鏡頭情緒遞進。無台詞以外文字。
+  cues:
+  - 710
+  - 711
+  - 712
+  - 713
+  - 714
+  text: 第二 因為不知道自己的「自由生活」要花多少錢所以只好把時間都拿來拼命賺錢感覺怎麼賺都賺不夠
+- shot_id: 279
+  start: 1198.697
+  end: 1205.329
+  duration: 6.632
+  type: aroll
+  note: 主持人回到書房對鏡頭說話，c 幀伸手向鏡頭比劃；同暖色書房場景。衣服印字：ENERGIE
+  cues:
+  - 715
+  - 716
+  - 717
+  text: 這些人不管銀行裡的數字有多高他離財務自由永遠都有一段永恆的距離
+- shot_id: 280
+  start: 1205.329
+  end: 1212.962
+  duration: 7.633
+  type: stock
+  note: 西裝墨鏡歐美男子站在玻璃帷幕大樓前數鈔票，b/c 幀鏡頭推近至臉部抬頭；「金錢的奴隸」意象。無台詞以外文字。
+  cues:
+  - 718
+  - 719
+  - 720
+  - 721
+  text: 因為他們已經成為金錢的奴隸不斷去追求更大更好的物質商品卻放棄更多掌握時間的權力
+- shot_id: 281
+  start: 1212.962
+  end: 1214.755
+  duration: 1.793
+  type: aroll
+  note: 主持人嘟嘴後說話的近景，介紹書中例子；同書房。衣服印字：ENERGIE
+  cues:
+  - 722
+  text: 作者在書中舉了我最愛的
+- shot_id: 282
+  start: 1214.755
+  end: 1216.424
+  duration: 1.668
+  type: aroll
+  note: 主持人近景說話，右側疊加橘框瀏覽器視窗樣式的 Derek Sivers（光頭鬍鬚男）照片 inset，b 幀 inset 放大滑入更明顯。inset
+    內無文字。
+  cues:
+  - 723
+  text: Derek Sivers 的故事當例子
+- shot_id: 283
+  start: 1216.424
+  end: 1217.466
+  duration: 1.043
+  type: aroll
+  note: 主持人對鏡頭引述 Derek Sivers 的話；inset 已消失，回到乾淨書房構圖。衣服印字：ENERGIE
+  cues:
+  - 724
+  text: Derek Sivers 說
+- shot_id: 284
+  start: 1217.466
+  end: 1244.702
+  duration: 27.236
+  type: motion_graphic
+  note: 剪貼風動畫段：a 幀紅髮男子去背疊在咖啡店背景比手勢；b 幀 Derek Sivers 大頭去背貼在白襯衫身體上、黑色星點背景；c 幀 Sivers
+    大頭貼在抱吉他的格紋衫身體上、青綠背景配大字「22 歲」。多幀為同一動畫鏡頭的場景切換。畫面文字：22 歲
+  cues:
+  - 725
+  - 726
+  - 727
+  - 728
+  - 729
+  - 730
+  - 731
+  - 732
+  - 733
+  - 734
+  - 735
+  - 736
+  - 737
+  - 738
+  - 739
+  - 740
+  - 741
+  - 742
+  text: 有一次朋友請他聊聊自己致富的故事他說：我大學畢業後在 Warner/Chappell Music當圖書館員年薪有兩萬美金差不多是最低工資但是我從不外出用餐也不搭計程車我的生活費每個月大概一千塊美金而我每個月賺一千八做了兩年之後總共存下一萬兩
+- shot_id: 285
+  start: 1244.702
+  end: 1245.494
+  duration: 0.792
+  type: stock
+  note: 演唱會現場實拍：粉紅光霧中觀眾舉手，遠處光頭歌手持麥克風；b 幀轉為藍白過曝色調（畫面漸變）。無台詞以外文字。
+  cues:
+  - 743
+  text: 因為我知道自己每個月
+- shot_id: 286
+  start: 1245.494
+  end: 1245.828
+  duration: 0.334
+  type: stock
+  note: 同演唱會素材延續：藍白過曝色調下觀眾舉手剪影，前景人頭虛化；兩幀幾乎相同。無台詞以外文字。
+  cues:
+  - 743
+  text: 因為我知道自己每個月
+- shot_id: 287
+  start: 1245.828
+  end: 1246.162
+  duration: 0.334
+  type: stock
+  note: 演唱會人群逆光高舉雙手，藍白色霧光。無台詞以外文字。
+  cues:
+  - 743
+  text: 因為我知道自己每個月
+- shot_id: 288
+  start: 1246.162
+  end: 1246.579
+  duration: 0.417
+  type: stock
+  note: 紅色調演唱會，觀眾高舉手指、遠處光頭歌手持麥克風。無台詞以外文字。
+  cues:
+  - 743
+  - 744
+  text: 因為我知道自己每個月大概可以有多少場演出
+- shot_id: 289
+  start: 1246.579
+  end: 1246.912
+  duration: 0.334
+  type: stock
+  note: 藍紫逆光演唱會人群舉手比搖滾手勢；a 幀偏藍白、b 幀上方轉紅色漸層（燈光變化）。無台詞以外文字。
+  cues:
+  - 744
+  text: 大概可以有多少場演出
+- shot_id: 290
+  start: 1246.912
+  end: 1247.455
+  duration: 0.542
+  type: stock
+  note: 藍白過曝光暈中兩隻手比搖滾手勢的演唱會人群。無台詞以外文字。
+  cues:
+  - 744
+  text: 大概可以有多少場演出
+- shot_id: 291
+  start: 1247.455
+  end: 1247.913
+  duration: 0.459
+  type: stock
+  note: 深紅色調演唱會，剪影手勢與散景燈光。無台詞以外文字。
+  cues:
+  - 744
+  text: 大概可以有多少場演出
+- shot_id: 292
+  start: 1247.913
+  end: 1248.664
+  duration: 0.751
+  type: stock
+  note: 粉紫紅色演唱會人群剪影，逆光手掌與螢光棒。無台詞以外文字。
+  cues:
+  - 745
+  text: 可以賺多少錢
+- shot_id: 293
+  start: 1248.664
+  end: 1251.459
+  duration: 2.794
+  type: stock
+  note: 紫粉色舞台燈光下演唱會人群舉手剪影。無台詞以外文字。
+  cues:
+  - 745
+  - 746
+  text: 可以賺多少錢而收入就可以負擔生活費
+- shot_id: 294
+  start: 1251.459
+  end: 1274.023
+  duration: 22.564
+  type: motion_graphic
+  note: 去背光頭白衫男子拼貼動畫，背景隨幀切換：a 幀綠底大字「財富自由」、b 幀換成咖啡店背景的紅髮男子攤手、c 幀黑底美鈔飛舞環繞光頭男子——同一鏡頭內多段拼貼場景切換。畫面文字：財富自由。
+  cues:
+  - 747
+  - 748
+  - 749
+  - 750
+  - 751
+  - 752
+  - 753
+  - 754
+  - 755
+  - 756
+  - 757
+  - 758
+  - 759
+  - 760
+  - 761
+  - 762
+  text: 所以我就自由了從此之後沒有再找過第二份工作故事講完了他朋友追問：欸那後來勒？多講一點你後來創業賣掉公司大賺了兩千兩百萬美金的故事啊！他回答說：那件事情對我的生活沒有太大影響不就是銀行戶頭裡面多了一些錢而已真正的分水嶺發生在我二十二歲的那一年
+- shot_id: 295
+  start: 1274.023
+  end: 1277.109
+  duration: 3.086
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，背後有書牆與「環遊世界」書法掛軸（場景陳設文字，非 overlay）。
+  cues:
+  - 763
+  - 764
+  - 765
+  text: 所以財富自由跟你銀行裡帳戶的數字關係不大
+- shot_id: 296
+  start: 1277.109
+  end: 1281.03
+  duration: 3.921
+  type: aroll
+  note: 主持人近距離對鏡頭說話，b 幀更靠近鏡頭；同一暖色書房場景。無台詞以外文字。
+  cues:
+  - 765
+  - 766
+  - 767
+  text: 帳戶的數字關係不大而是跟你的生活型態和心態有關
+- shot_id: 297
+  start: 1281.03
+  end: 1286.41
+  duration: 5.38
+  type: quote_card
+  note: 美鈔鋪滿桌面中央放白色鬧鐘，上方疊入大字引言；a 幀文字滑入中（僅見「如果這個數字已經」半透明），b 幀完整顯示。畫面文字：如果這個數字已經 讓你能掌握這輩子所有的時間，
+    你就已經財富自由了。
+  cues:
+  - 768
+  - 769
+  - 770
+  - 771
+  text: 如果這個數字已經能讓你掌握這輩子所有的時間那你就財富自由了
+- shot_id: 298
+  start: 1286.41
+  end: 1289.205
+  duration: 2.794
+  type: kol
+  note: Derek Sivers 接受 Tim Ferriss 訪談片段（光頭男子對麥克風），黑色格紋外框；a 幀底部有白色人名條「Derek Sivers」，b
+    幀人名條已消失。畫面文字：影片來源：Tim Ferriss／Derek Sivers（僅 a 幀）。
+  cues:
+  - 772
+  - 773
+  text: Derek Sivers在 22 歲那年財富自由
+- shot_id: 299
+  start: 1289.205
+  end: 1292.666
+  duration: 3.462
+  type: stock
+  note: 橘袍僧侶赤腳列隊走在紅磚人行道上化緣的實拍。無台詞以外文字。
+  cues:
+  - 774
+  - 775
+  text: 寺廟的法師們在他們出家那天財富自由
+- shot_id: 300
+  start: 1292.666
+  end: 1293.334
+  duration: 0.667
+  type: stock
+  note: 沙漠公路夕陽下，一名騎士牽著滿載行李的旅行腳踏車停在路邊剪影；疑為主持人環球騎行的個人旅行紀錄畫面而非圖庫。無台詞字幕以外文字。
+  cues:
+  - 776
+  text: 而我在騎腳踏車
+- shot_id: 301
+  start: 1293.334
+  end: 1294.919
+  duration: 1.585
+  type: stock
+  note: 非洲乾旱土地上，一群當地孩童奔跑追著遠處推著旅行腳踏車的旅人；疑為主持人環球騎行個人紀錄畫面。無台詞字幕以外文字。
+  cues:
+  - 776
+  - 777
+  text: 而我在騎腳踏車環遊世界的那兩年
+- shot_id: 302
+  start: 1294.919
+  end: 1296.42
+  duration: 1.502
+  type: other
+  note: 戴安全帽與墨鏡的東亞男子在沙漠中對自拍鏡頭說話（旅行 vlog 自拍畫面），疑為主持人本人的環球騎行舊footage，但非書房 aroll 場景，故不歸
+    aroll；亦非圖庫素材。無台詞字幕以外文字。
+  cues:
+  - 777
+  - 778
+  text: 環遊世界的那兩年是財富自由的
+- shot_id: 303
+  start: 1296.42
+  end: 1296.754
+  duration: 0.334
+  type: stock
+  note: 背心男子戴頭巾帽騎腳踏車過白色欄杆橋的跟拍畫面（旅行紀錄式實拍）。無台詞字幕以外文字。
+  cues:
+  - 779
+  text: 回來之後
+- shot_id: 304
+  start: 1296.754
+  end: 1298.172
+  duration: 1.418
+  type: stock
+  note: 走廊窗邊多人談笑實拍：a 幀為留鬍外國男子與短髮女子對話，b 幀轉為短髮女子居中、兩側男子談笑（同一場景運鏡）；疑為主持人推廣單車旅行時期的紀錄畫面。無台詞字幕以外文字。
+  cues:
+  - 779
+  - 780
+  text: 回來之後推廣腳踏車旅行的那幾年
+- shot_id: 305
+  start: 1298.172
+  end: 1299.048
+  duration: 0.876
+  type: stock
+  note: 外國男子在貼有地圖與海報的室內空間吃剉冰／甜品實拍（旅行紀錄式畫面）。無台詞字幕以外文字。
+  cues:
+  - 780
+  text: 推廣腳踏車旅行的那幾年
+- shot_id: 306
+  start: 1299.048
+  end: 1299.84
+  duration: 0.792
+  type: stock
+  note: 紅磚牆騎樓下，穿橘色外套的東亞男子（疑為主持人本人舊footage）與黃衣外國男子同桌吃小吃、對鏡頭說話的街邊實拍。無台詞字幕以外文字。
+  cues:
+  - 781
+  text: 我也是財富自由的
+- shot_id: 307
+  start: 1299.84
+  end: 1300.549
+  duration: 0.709
+  type: stock
+  note: 台式小吃店內，橘色羽絨外套東亞男子（疑為主持人舊footage）與外國男子同桌吃飯實拍；牆上有店內海報與價目等雜項文字，過小無法逐字辨識。無台詞字幕以外文字可清楚抄錄。
+  cues:
+  - 781
+  text: 我也是財富自由的
+- shot_id: 308
+  start: 1300.549
+  end: 1317.566
+  duration: 17.017
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話；b 幀（中段）疊入滿版橘黃色大字章節標題「第六：致富最重要的技能 是存錢和謙虛」，a、c 幀無此 overlay（標題為中途淡入淡出）。
+  cues:
+  - 782
+  - 783
+  - 784
+  - 785
+  - 786
+  - 787
+  - 788
+  - 789
+  - 790
+  - 791
+  text: 去年底在和一個客戶結束合作的之後到現在即使我還在負債中我依舊是財富自由的第六：致富最重要的技能存錢和謙虛這一點是我認為致富的真相裡面最重要也是我最後才學到的一課相信我
+- shot_id: 309
+  start: 1317.566
+  end: 1322.696
+  duration: 5.13
+  type: aroll
+  note: 主持人書房近景對鏡頭說話，b 幀舉起食指強調；無疊加文字。
+  cues:
+  - 792
+  - 793
+  - 794
+  - 795
+  text: 如果你真的看懂了而且吸收進去了那你離成為有錢人的那天也不遠了
+- shot_id: 310
+  start: 1322.696
+  end: 1329.328
+  duration: 6.632
+  type: stock
+  note: 客廳沙發上棕髮女子拿著錢罐與手機的圖庫實拍，全程疊白色大字：a 幀「收入超過一定門檻的人」，b、c 幀擴為「收入超過一定門檻的人 可以分成三個族群：會存錢的人、
+    不覺得自己能夠存錢的人， 以及不覺得自己需要存錢的人。」（文字逐步展開）；c 幀背景切為公園長椅上滑手機的男子（同鏡頭內背景素材切換）。
+  cues:
+  - 796
+  - 797
+  - 798
+  - 799
+  - 800
+  text: 作者說：收入超過一定門檻的人可以分成三個族群：會存錢的人不覺得自己能夠存錢的人
+- shot_id: 311
+  start: 1329.328
+  end: 1331.956
+  duration: 2.628
+  type: stock
+  note: 辦公桌前白衣男子（拿鈔票／信用卡）的圖庫實拍，畫面壓暗，疊白色大字「收入超過一定門檻的人 可以分成三個族群：會存錢的人、 不覺得自己能夠存錢的人，
+    以及不覺得自己需要存錢的人。」（延續上鏡頭的字卡式 overlay）。
+  cues:
+  - 801
+  text: 以及不覺得自己需要存錢的人
+- shot_id: 312
+  start: 1331.956
+  end: 1334.75
+  duration: 2.794
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，表情誇張張嘴；無疊加文字。
+  cues:
+  - 802
+  - 803
+  text: 他很苦口婆心地說服後兩種人
+- shot_id: 313
+  start: 1334.75
+  end: 1338.963
+  duration: 4.213
+  type: stock
+  note: 手把硬幣投入粉紅小豬撲滿的特寫；b 幀畫面壓暗並疊入大字 overlay「每個人都能存錢，而且都需要存錢。」（a 幀無 overlay，overlay
+    為後段滑入）
+  cues:
+  - 804
+  - 805
+  text: 是的 每個人都能存錢而且都需要存錢
+- shot_id: 314
+  start: 1338.963
+  end: 1342.424
+  duration: 3.462
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話（棕色 T 恤），無畫面文字
+  cues:
+  - 806
+  - 807
+  - 808
+  text: 你猜我是哪一種人？應該蠻好猜的吧我就是第三種
+- shot_id: 315
+  start: 1342.424
+  end: 1348.013
+  duration: 5.589
+  type: stock
+  note: 歐美辦公室男子淺藍襯衫站在白色辦公室，a 幀面無表情、b 幀抱臂大笑，無畫面文字
+  cues:
+  - 809
+  - 810
+  - 811
+  - 812
+  text: 開玩笑我是放棄年薪四百萬的工作騎腳踏車去環遊世界兩年的男人耶！
+- shot_id: 316
+  start: 1348.013
+  end: 1350.349
+  duration: 2.336
+  type: aroll
+  note: 主持人特寫對鏡頭說話，b 幀作出苦笑/皺眉表情，無畫面文字
+  cues:
+  - 813
+  - 814
+  text: 對我來說錢再賺就有啊
+- shot_id: 317
+  start: 1350.349
+  end: 1354.478
+  duration: 4.129
+  type: stock
+  note: 男子在明亮辦公室裡開心撒錢、鈔票飛舞的實拍，無畫面文字
+  cues:
+  - 815
+  - 816
+  - 817
+  text: 錢放在銀行裡面就只是一些數字要花掉才有意義啊！
+- shot_id: 318
+  start: 1354.478
+  end: 1356.522
+  duration: 2.044
+  type: aroll
+  note: 主持人對鏡頭說話，左側疊入《致富心態》書封小圖卡（含「致富心態 The Psychology of Money 關於財富、貪婪與幸福的20堂理財課」字樣）；b
+    幀圖卡放大為左半面大書封（另可辨「摩根．豪瑟（MORGAN HOUSEL）著」），note：疊加書封 inset 逐漸放大
+  cues:
+  - 818
+  - 819
+  text: 所以我第一次讀這本書的時候
+- shot_id: 319
+  start: 1356.522
+  end: 1368.659
+  duration: 12.137
+  type: aroll
+  note: 主持人對鏡頭說話；a 幀左側仍有《致富心態》書封小圖卡（縮小滑出），b 幀無圖卡雙手比劃，c 幀疊入橘底白字大字卡「存錢」——overlay 進出變化
+  cues:
+  - 820
+  - 821
+  - 822
+  - 823
+  - 824
+  - 825
+  - 826
+  - 827
+  - 828
+  text: 我是幾乎把所有講到存錢的內容都隨便看過去就算了第二次讀的時候還是一樣全身的細胞都在跟「存錢」這兩個字唱反調直到看了第三次第四次
+- shot_id: 320
+  start: 1368.659
+  end: 1370.578
+  duration: 1.919
+  type: aroll
+  note: 主持人特寫對鏡頭說話，無畫面文字
+  cues:
+  - 829
+  text: 一直到做這支影片的當下
+- shot_id: 321
+  start: 1370.578
+  end: 1372.371
+  duration: 1.793
+  type: aroll
+  note: 主持人對鏡頭說話、手勢比劃，無畫面文字
+  cues:
+  - 830
+  text: 我才真的看懂了
+- shot_id: 322
+  start: 1372.371
+  end: 1376.041
+  duration: 3.67
+  type: stock
+  note: 男子在明亮室內興奮吶喊、鈔票從空中灑落的實拍（同 shot 317 素材場景），無畫面文字
+  cues:
+  - 831
+  - 832
+  text: 是的 賺錢對我來說可能不是什麼太難的事
+- shot_id: 323
+  start: 1376.041
+  end: 1379.378
+  duration: 3.337
+  type: stock
+  note: 西裝領帶男子在辦公室與人對談、比手勢的實拍（過肩鏡頭），無畫面文字
+  cues:
+  - 833
+  - 834
+  text: 我的風險承受度極高喜歡冒險犯難
+- shot_id: 324
+  start: 1379.378
+  end: 1382.256
+  duration: 2.878
+  type: stock
+  note: 西裝男子邊走邊講手機、微笑走過明亮辦公走廊的實拍，無畫面文字
+  cues:
+  - 835
+  - 836
+  text: 享受從無到有打造出一個東西的過程
+- shot_id: 325
+  start: 1382.256
+  end: 1383.757
+  duration: 1.501
+  type: stock
+  note: 西裝領帶男子坐在辦公桌前對鏡頭微笑、桌上有電腦螢幕的實拍，無畫面文字
+  cues:
+  - 837
+  text: 天生就是一塊創業的料
+- shot_id: 326
+  start: 1383.757
+  end: 1388.345
+  duration: 4.588
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，穿棕/紅字 T 恤。
+  cues:
+  - 838
+  - 839
+  - 840
+  text: 可能做了幾年之後我的快樂事業做起來了就能夠日進斗金
+- shot_id: 327
+  start: 1388.345
+  end: 1393.267
+  duration: 4.922
+  type: stock
+  note: 粉紅小豬撲滿插著美鈔、四周堆滿鈔票堆的實拍/CG 特寫（b 幀鏡頭略推近）。
+  cues:
+  - 841
+  - 842
+  - 843
+  text: 但如果我不把「存錢」這個技能練起來我永遠都不會變成富人
+- shot_id: 328
+  start: 1393.267
+  end: 1400.357
+  duration: 7.09
+  type: stock
+  note: 西裝男在戶外階梯前開心撒錢、鈔票飛舞的圖庫實拍；c 幀換成另一位西裝男在同場景灑錢慶祝。
+  cues:
+  - 844
+  - 845
+  - 846
+  text: 書中講了超多超會賺錢但是花錢更快的投資專家常春藤名校畢業的高階主管們
+- shot_id: 329
+  start: 1400.357
+  end: 1405.029
+  duration: 4.671
+  type: stock
+  note: 辦公室內襯衫男在筆電桌旁丟紙團/揮手的圖庫實拍；b 幀轉為若有所思的姿態。
+  cues:
+  - 847
+  - 848
+  - 849
+  text: 他們都是因為沒有練就「存錢」這個技能導致自己身敗名裂
+- shot_id: 330
+  start: 1405.029
+  end: 1409.825
+  duration: 4.796
+  type: aroll
+  note: 主持人特寫對鏡頭說話，表情驚訝轉凝重。
+  cues:
+  - 850
+  - 851
+  - 852
+  text: 有的甚至落到得結束自己生命的下場我在閱讀這幾段的時候
+- shot_id: 331
+  start: 1409.825
+  end: 1411.201
+  duration: 1.376
+  type: aroll
+  note: 主持人更近距離特寫，皺眉糾結的表情對鏡頭說話。
+  cues:
+  - 853
+  text: 內心一直很糾結
+- shot_id: 332
+  start: 1411.201
+  end: 1414.496
+  duration: 3.295
+  type: aroll
+  note: 主持人對鏡頭說話，表情苦惱。
+  cues:
+  - 854
+  - 855
+  - 856
+  text: 如果我天生就是愛刺激 愛冒險那怎麼辦呢？
+- shot_id: 333
+  start: 1414.496
+  end: 1416.206
+  duration: 1.71
+  type: aroll
+  note: 主持人對鏡頭說話，左側疊加橘框瀏覽器視窗式 inset：西裝男（推測為作者 Morgan Housel）照片；a→b 幀 inset 由小放大滑入。
+  cues:
+  - 857
+  text: 作者在書中講的一句話
+- shot_id: 334
+  start: 1416.206
+  end: 1424.965
+  duration: 8.759
+  type: aroll
+  note: 主持人對鏡頭說話；a 幀左側殘留縮小中的作者照片 inset（滑出中）；c 幀畫面中央疊加橘底白字大字卡，文字：「致富和守財是兩種完全不同的技能」。多幀不一致：inset
+    滑出、字卡後段才出現。
+  cues:
+  - 858
+  - 859
+  - 860
+  - 861
+  - 862
+  - 863
+  text: 真的是讓我如夢初醒中文版是這樣寫的：致富和守財是兩種完全不同的技能但我認為翻成這樣意思已經跑掉了
+- shot_id: 335
+  start: 1424.965
+  end: 1434.099
+  duration: 9.134
+  type: quote_card
+  note: 美鈔背景上的大字引言卡；a 幀文字滑入中（畫面上見「money」「etting」）；b/c 幀完整文字：「"Getting money and keeping
+    money are two different skills." 賺錢跟存錢是兩個不同的技能。」
+  cues:
+  - 864
+  - 865
+  - 866
+  - 867
+  - 868
+  - 869
+  text: 原文是：getting moneyand keeping moneyare two different skills賺錢跟存錢是兩個不同的技能是不是比較直接了當？
+- shot_id: 336
+  start: 1434.099
+  end: 1438.938
+  duration: 4.838
+  type: aroll
+  note: 主持人對鏡頭說話，畫面上下加黑邊（letterbox）呈題外話效果。
+  cues:
+  - 870
+  - 871
+  - 872
+  - 873
+  - 874
+  text: （題外話我建議有興趣的人可以找英文版來看比較能夠看懂作者想表達的意思）
+- shot_id: 337
+  start: 1438.938
+  end: 1442.941
+  duration: 4.004
+  type: stock
+  note: 明亮辦公室圖庫實拍：a 幀男子隔玻璃牆看便利貼；b 幀藍衣男與女子握手。
+  cues:
+  - 875
+  - 876
+  text: 賺錢甚至創業需要的是積極 樂觀 冒險
+- shot_id: 338
+  start: 1442.941
+  end: 1445.486
+  duration: 2.544
+  type: stock
+  note: 辦公室團隊圍桌鼓掌大笑的圖庫實拍。
+  cues:
+  - 877
+  - 878
+  text: 有那種覺得自己什麼都辦得到的霸氣
+- shot_id: 339
+  start: 1445.486
+  end: 1456.789
+  duration: 11.303
+  type: stock
+  note: 西裝亞裔男在明亮辦公室座位上懊惱，雙手合十抵住鼻梁，後續幀轉為低頭沉思特寫；同一場景由煩惱姿勢轉為低頭沉思。無台詞以外文字。
+  cues:
+  - 879
+  - 880
+  - 881
+  - 882
+  - 883
+  - 884
+  text: 但是存錢以及投資需要的是保守 悲觀害怕下一刻就會一無所有還要能夠謙虛地認為目前擁有的很大一部分是由於運氣好的關係
+- shot_id: 340
+  start: 1456.789
+  end: 1463.963
+  duration: 7.174
+  type: aroll
+  note: 主持人（東亞男性、極短平頭）在暖色書架房間對鏡頭說話，穿棕色T恤。無台詞以外文字。
+  cues:
+  - 885
+  - 886
+  - 887
+  - 888
+  - 889
+  text: 我之前在投資上犯的最大錯誤就是把我向前走什麼都不怕的心態用在投資以及理財上
+- shot_id: 341
+  start: 1463.963
+  end: 1467.8
+  duration: 3.837
+  type: aroll
+  note: 主持人同一書架房間對鏡頭說話，b 幀表情皺眉苦臉。無台詞以外文字。
+  cues:
+  - 890
+  - 891
+  text: 權證 加密貨幣那些東西風險越高的我越愛
+- shot_id: 342
+  start: 1467.8
+  end: 1471.804
+  duration: 4.004
+  type: stock
+  note: 西裝亞裔男在明亮辦公室邊講手機邊微笑，背景多位同事工作。無台詞以外文字。
+  cues:
+  - 892
+  - 893
+  text: 再加上我個性急 沒耐心賺得太慢的我根本看不上眼
+- shot_id: 343
+  start: 1471.804
+  end: 1477.267
+  duration: 5.464
+  type: stock
+  note: 西裝男在玻璃帷幕大樓內側臉望向遠方，b 幀轉頭對鏡頭自信微笑。無台詞以外文字。
+  cues:
+  - 894
+  - 895
+  - 896
+  text: 又覺得我自己很厲害一定可以靠我的聰明才智加學習能力打敗大盤
+- shot_id: 344
+  start: 1477.267
+  end: 1478.686
+  duration: 1.418
+  type: stock
+  note: 西裝男在戶外城市大樓前講手機開心大笑，手夾文件夾。無台詞以外文字。
+  cues:
+  - 897
+  text: 賺取超額的利潤
+- shot_id: 345
+  start: 1478.686
+  end: 1480.27
+  duration: 1.585
+  type: aroll
+  note: 主持人書架房間對鏡頭，表情從錯愕轉為苦臉。無台詞以外文字。
+  cues:
+  - 898
+  text: 結果下場就是這樣
+- shot_id: 346
+  start: 1480.27
+  end: 1485.401
+  duration: 5.13
+  type: aroll
+  note: 主持人書架房間對鏡頭說話，b 幀作出無奈委屈表情並抬起雙手。無台詞以外文字。
+  cues:
+  - 899
+  - 900
+  - 901
+  text: 都已經快 46 歲了不但沒車沒房還負債但好消息是
+- shot_id: 347
+  start: 1485.401
+  end: 1487.152
+  duration: 1.752
+  type: stock
+  note: 運動背心男子在明亮客廳窗前喝水瓶的水，側面特寫。無台詞以外文字。
+  cues:
+  - 902
+  text: 我的身心都很健康
+- shot_id: 348
+  start: 1487.152
+  end: 1489.279
+  duration: 2.127
+  type: stock
+  note: 一對男女在山野綠地間自拍合照，兩人開心大笑。無台詞以外文字。
+  cues:
+  - 903
+  text: 又有個不離不棄的老婆在身邊
+- shot_id: 349
+  start: 1489.279
+  end: 1491.74
+  duration: 2.461
+  type: stock
+  note: 父親在廚房單膝跪地牽著穿粉紗裙小女孩的手互動微笑。無台詞以外文字。
+  cues:
+  - 904
+  text: 還有個每天都能給我力量的女兒
+- shot_id: 350
+  start: 1491.74
+  end: 1493.993
+  duration: 2.252
+  type: aroll
+  note: 主持人書架房間對鏡頭說話，b 幀閉眼點頭釋然。無台詞以外文字。
+  cues:
+  - 905
+  text: 而且我這次真的學起來了
+- shot_id: 351
+  start: 1493.993
+  end: 1497.621
+  duration: 3.629
+  type: motion_graphic
+  note: 3D 動畫：白色拼圖版上一片金色拼圖懸浮於缺口上方，準備落入定位；a→b 幀拼圖旋轉下降。無台詞以外文字。
+  cues:
+  - 906
+  - 907
+  text: 我終於獲得成為富人的最後一塊拼圖了
+- shot_id: 352
+  start: 1497.621
+  end: 1503.919
+  duration: 6.298
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，畫面疊橘色大字章節文字，a 幀只出現「第七：」，b 幀完整滑入「第七：要賺到真正的財富，你需要真正的奇蹟——複利」，c
+    幀 overlay 已消失。
+  cues:
+  - 908
+  - 909
+  - 910
+  text: 第七：要賺到真正的財富你需要真正的奇蹟——複利而要讓這個奇蹟發生
+- shot_id: 353
+  start: 1503.919
+  end: 1505.671
+  duration: 1.752
+  type: aroll
+  note: 主持人對鏡頭說話特寫，無疊加文字。
+  cues:
+  - 911
+  text: 你必須符合兩個條件
+- shot_id: 354
+  start: 1505.671
+  end: 1507.256
+  duration: 1.585
+  type: stock
+  note: 藍色背景棚拍，西裝南亞裔女性閉眼雙手上抬做冥想/平靜手勢，無 overlay 文字。
+  cues:
+  - 912
+  text: 第一：夠有耐心
+- shot_id: 355
+  start: 1507.256
+  end: 1509.049
+  duration: 1.793
+  type: stock
+  note: 白髮年長女性與戴帽快遞員一起看手機微笑（收包裹場景），無 overlay 文字。
+  cues:
+  - 913
+  text: 第二：活得夠久
+- shot_id: 356
+  start: 1509.049
+  end: 1514.805
+  duration: 5.756
+  type: kol
+  note: WSJ 訪談片段：巴菲特西裝受訪。a 幀 overlay 淡入中「845／巴菲特」，b 幀完整白色大字「巴菲特 845 億美元的淨資產中，有 815
+    億美元 是過了 65 歲生日才得到的。」；左上角「影片來源：The Wall Street Journal」，右上角「WSJ」logo。
+  cues:
+  - 914
+  - 915
+  - 916
+  text: 作者說：巴菲特 845 億美元的淨資產中有 815 億美元
+- shot_id: 357
+  start: 1514.805
+  end: 1517.474
+  duration: 2.669
+  type: kol
+  note: WSJ 片段延續：巴菲特側身坐姿剪影鏡頭，同一段白色大字 overlay「巴菲特 845 億美元的淨資產中，有 815 億美元 是過了 65 歲生日才得到的。」，左上「影片來源：The
+    Wall Street Journal」、右上「WSJ」。
+  cues:
+  - 917
+  text: 是過了 65 歲生日才得到的
+- shot_id: 358
+  start: 1517.474
+  end: 1522.98
+  duration: 5.505
+  type: aroll
+  note: 主持人對鏡頭說話（b 幀閉眼舉手指強調），無疊加文字。
+  cues:
+  - 918
+  - 919
+  - 920
+  text: 我們的大腦還沒有進化到能夠理解複利的威力所以即使最聰明的人
+- shot_id: 359
+  start: 1522.98
+  end: 1524.481
+  duration: 1.501
+  type: aroll
+  note: 主持人對鏡頭說話特寫，b 幀指向自己太陽穴手勢，無疊加文字。
+  cues:
+  - 921
+  text: 有時候也會誤判
+- shot_id: 360
+  start: 1524.481
+  end: 1537.411
+  duration: 12.93
+  type: motion_graphic
+  note: 比爾蓋茲去背照片拼貼動畫：a 幀深紅 bokeh 背景舉手照，b 幀粉色毛衣演講照＋Gmail M 字 logo，c 幀藍西裝雙手張開＋滿版紅色 3D
+    問號雨；無 overlay 文字（logo 除外）。
+  cues:
+  - 922
+  - 923
+  - 924
+  - 925
+  - 926
+  - 927
+  - 928
+  - 929
+  - 930
+  text: 2004 年比爾蓋茲還批評 google剛發布的 Gmail他說他聽說有人已經用掉免費容量的一半也就是 1G他覺得很奇怪到底誰的 email 信箱會用到這麼多儲存空間啊？
+- shot_id: 361
+  start: 1537.411
+  end: 1540.08
+  duration: 2.669
+  type: aroll
+  note: 主持人對鏡頭說話，左側疊入瀏覽器視窗樣式的巴菲特照片 inset（a 幀較小、b 幀放大），無其他文字。
+  cues:
+  - 931
+  - 932
+  text: 探討巴菲特成功學的兩千本書中
+- shot_id: 362
+  start: 1540.08
+  end: 1541.79
+  duration: 1.71
+  type: aroll
+  note: 主持人對鏡頭說話；a 幀左側殘留縮小中的巴菲特小圖 inset（滑出中），b 幀已消失。
+  cues:
+  - 933
+  text: 沒有一本的書名是
+- shot_id: 363
+  start: 1541.79
+  end: 1544.501
+  duration: 2.711
+  type: book_cover
+  note: 黑格紋背景中央書封：《這個傢伙 已經持續投資75年》，封面文字另有「INFLUENTIAL INDIVIDUALS」「認識華倫．巴菲特的故事 見證「複利」樸實而偉大的奇蹟」，巴菲特照片。
+  cues:
+  - 934
+  - 935
+  text: 《這個傢伙已經持續投資七十五年》
+- shot_id: 364
+  start: 1544.501
+  end: 1548.255
+  duration: 3.754
+  type: aroll
+  note: 主持人對鏡頭說話（表情誇張、b 幀雙手攤開），無疊加文字。
+  cues:
+  - 936
+  - 937
+  text: 因為這太簡單又難以理解沒有人會往那邊想
+- shot_id: 365
+  start: 1548.255
+  end: 1553.552
+  duration: 5.297
+  type: kol
+  note: 黑白紀錄片畫面：年輕巴菲特戴眼鏡穿西裝微笑，背景有大笑的老太太；左上角來源標示，b 幀滑入大字 quote overlay。畫面文字：「影片來源：Business
+    Casual」；b 幀另有「巴菲特的技能是投資，但他的祕訣是時間。」
+  cues:
+  - 938
+  - 939
+  - 940
+  text: 但事實是巴菲特的技能是投資沒錯但他的祕訣是時間
+- shot_id: 366
+  start: 1553.552
+  end: 1555.387
+  duration: 1.835
+  type: aroll
+  note: 主持人在暖色書房對鏡頭說話，做出驚訝表情。無台詞字幕以外的畫面文字。
+  cues:
+  - 941
+  text: 作者有個說法超傳神的
+- shot_id: 367
+  start: 1555.387
+  end: 1560.142
+  duration: 4.755
+  type: stock
+  note: 暗背景書本落下堆疊的圖庫實拍：a 幀近全黑僅右上角一角書掉入，b 幀成一疊書。無畫面文字。
+  cues:
+  - 942
+  - 943
+  - 944
+  text: 他說有許多書探討經濟週期交易策略和產業對策等等
+- shot_id: 368
+  start: 1560.142
+  end: 1563.771
+  duration: 3.629
+  type: aroll
+  note: 主持人書房對鏡頭說話，b 幀舉起手指強調。無台詞字幕以外的畫面文字。
+  cues:
+  - 945
+  - 946
+  - 947
+  text: 但最有威力而且最重要的書應該要取名為
+- shot_id: 369
+  start: 1563.771
+  end: 1575.199
+  duration: 11.428
+  type: motion_graphic
+  note: a 幀為金色粒子背景上的虛構黑色書封動畫，文字「閉上嘴巴，等就對了！ Shut Up and Wait!」；b/c 幀轉為書頁上的 GDP 折線圖特寫，文字「Total
+    GDP selected nations / United Kingdom / United States / China / India / Japan
+    / GDP / Year / 10,000,000 / 1,000,000 / 100,000 / 10,000 / 1820–2010」。多幀不一致：由書封動畫轉入圖表頁面。
+  cues:
+  - 948
+  - 949
+  - 950
+  - 951
+  - 952
+  - 953
+  - 954
+  text: 《閉上嘴巴 等就對了》書中只有一頁上面畫著長期的經濟成長圖講到這裡我都想要訂做一個畫框把這張圖掛在牆上來時時提醒自己了
+- shot_id: 370
+  start: 1575.199
+  end: 1577.075
+  duration: 1.877
+  type: motion_graphic
+  note: 合成畫面：客廳牆上金色雕花畫框內掛著同一張 Total GDP 折線圖。畫面文字：「Total GDP selected nations / United
+    Kingdom / United States / China / India / Japan / GDP / Year」。
+  cues:
+  - 955
+  text: 以上就是上集的內容
+- shot_id: 371
+  start: 1577.075
+  end: 1582.623
+  duration: 5.547
+  type: aroll
+  note: 主持人書房對鏡頭說話（收尾段），無台詞字幕以外的畫面文字。
+  cues:
+  - 956
+  - 957
+  - 958
+  - 959
+  text: 這真的是我跟這本書相處了好幾個月不斷反思過去這 20 年發生的事情
+- shot_id: 372
+  start: 1582.623
+  end: 1593.592
+  duration: 10.969
+  type: aroll
+  note: 主持人書房說話，右側疊入《致富心態》書封 inset：a 幀大尺寸、b 幀縮小、c 幀消失（多幀不一致：書封縮小退場）。書封文字：「致富心態 The
+    Psychology of Money 關於財富、貪婪與幸福的20堂理財課 摩根・豪瑟（MORGAN HOUSEL）著」。
+  cues:
+  - 960
+  - 961
+  - 962
+  - 963
+  - 964
+  - 965
+  - 966
+  text: 嘔心瀝血整理出來的學習希望對你有幫助如果你對哪一段特別有感覺歡迎分享在下方和大家一起討論如果你覺得這樣的內容對你有幫助
+- shot_id: 373
+  start: 1593.592
+  end: 1606.313
+  duration: 12.721
+  type: aroll
+  note: 主持人書房對鏡頭說話，推薦電子報；c 幀底部滑入橘底大字網址 overlay「shosho.tw/free」（a/b 幀無 overlay，多幀不一致）。
+  cues:
+  - 967
+  - 968
+  - 969
+  - 970
+  - 971
+  - 972
+  - 973
+  - 974
+  text: 推薦你訂閱我的電子報：張修修的自由之路我每個禮拜都會分享我在財務自由身體自由和心靈自由這條路上的探索和學習網址是 shosho.tw/free
+- shot_id: 374
+  start: 1606.313
+  end: 1606.939
+  duration: 0.626
+  type: aroll
+  note: 主持人書房近距離對鏡頭說話。無台詞字幕以外的畫面文字。
+  cues:
+  - 975
+  text: 喔對了
+- shot_id: 375
+  start: 1606.939
+  end: 1609.024
+  duration: 2.085
+  type: aroll
+  note: 主持人書房對鏡頭說話，b 幀舉手指強調，提到走鐘獎投票。無台詞字幕以外的畫面文字。
+  cues:
+  - 976
+  text: 今天是走鐘獎最後一天的投票
+- shot_id: 376
+  start: 1609.024
+  end: 1610.192
+  duration: 1.168
+  type: screen_recording
+  note: 走鐘獎官網瀏覽畫面（滑鼠游標在導覽列移動）：金色獎座公告卡。畫面文字：「WBJ / 徵選辦法 / 線上投稿 / 觀眾票選 / 活動影片 / 評審名單
+    / 走鐘獎委員名單 / 入圍暨得獎名單 / 歷屆走鐘獎 / 登入/註冊 / 第六屆走鐘獎投稿開放中 / 第六屆走鐘獎 / 2024/10/26（六）/ 星光大道｜14:00
+    / 頒獎典禮｜18:00 / 直播平台 / 更新訊息請密切關注走鐘獎專屬頻道及社群 / Facebook / Instagram / Youtube」。
+  cues:
+  - 977
+  - 978
+  text: 如果可以的話能否請你去幫我衝個人氣
+- shot_id: 377
+  start: 1610.192
+  end: 1615.447
+  duration: 5.255
+  type: screen_recording
+  note: 走鐘獎官網「觀眾票選」頁：三張獎項卡，b 幀放大並加紅框標示前兩個獎項（多幀不一致：加入紅框 highlight）。畫面文字：「觀眾票選 / 觀眾票選日期
+    2024/08/01 ~ 2024/08/14 / 潛力新星獎 2024年最亮眼的創作者新星，未來發展無可限量，大家一定要認識！ / 年度個人創作者獎 2024年最亮眼的個人創作者，創造出令人印象深刻的影片，不論是企劃、表現、製作能力，都稱得上是年度之最。
+    / 年度團體創作者獎 …都稱得上是年度之最 / 台灣觀眾投票 / 亞洲其他國家觀眾投票 / 投票僅限行動裝置用戶操作」。
+  cues:
+  - 978
+  - 979
+  - 980
+  text: 能否請你去幫我衝個人氣讓我們用心製作的內容能夠被更多人看到呢？
+- shot_id: 378
+  start: 1615.447
+  end: 1618.492
+  duration: 3.045
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話（棕紅 T-shirt，胸前印字 a 幀可見「LIFE… PHYS ED」局部）；b 幀鏡頭略推近。無台詞字幕以外的畫面文字。
+  cues:
+  - 981
+  - 982
+  text: 最後 我要跟你說你很棒 放輕鬆
+- shot_id: 379
+  start: 1618.492
+  end: 1619.66
+  duration: 1.168
+  type: aroll
+  note: 主持人特寫對鏡頭說話，a 幀雙手在鏡頭前揮動造成前景動態模糊，b 幀手放下。無台詞字幕以外的畫面文字。
+  cues:
+  - 983
+  text: 別太逼自己了
+- shot_id: 380
+  start: 1619.66
+  end: 1630.003
+  duration: 10.344
+  type: aroll
+  note: 主持人對鏡頭說話，中景，表情從平述（a）轉誇張苦臉（b）再回平和（c）。T-shirt 印字局部「LIFE… PHYS ED」。無台詞字幕以外的畫面文字。
+  cues:
+  - 984
+  - 985
+  - 986
+  - 987
+  - 988
+  - 989
+  text: 要記住在股市上賺到錢真的不需要在那邊每天盯盤 殺進殺出只要自己的心理狀態調整好了錢就會越來越多的
+- shot_id: 381
+  start: 1630.003
+  end: 1631.713
+  duration: 1.71
+  type: aroll
+  note: 主持人對鏡頭說結尾語，中景，同書架房間。無台詞字幕以外的畫面文字。
+  cues:
+  - 990
+  - 991
+  text: 我們下集節目見掰掰！
+- shot_id: 382
+  start: 1631.713
+  end: 1638.09
+  duration: 6.377
+  type: other
+  note: 三幀皆為全黑畫面（片尾淡出黑幕），無任何內容或文字，無法歸入其他類別。
+  cues: []
+  text: ''
