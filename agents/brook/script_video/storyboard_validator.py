@@ -39,11 +39,19 @@ def _beat_duration(beat: Beat) -> float | None:
 
 
 def _component_key(beat: Beat) -> str | None:
-    """視覺重複判定用的 component 識別：hyperframes 用 component 名，asset 用素材種類."""
+    """視覺重複判定用的 component 識別：hyperframes 用 component 名，asset 用素材來源.
+
+    stock/kol 以 source_url 為識別 — 相鄰兩個「不同 footage」是合法的快切
+    （修修 2026-07-17：hook 段常見連續 stock），同一支 footage 相鄰才算視覺重複。
+    無 source_url 時退回素材種類。
+    """
     if beat.broll is None:
         return None
     if beat.broll.render_target == "asset" and beat.broll.asset is not None:
-        return f"asset:{beat.broll.asset.kind}"
+        spec = beat.broll.asset
+        if spec.kind in ("stock", "kol") and spec.source_url:
+            return f"asset:{spec.kind}:{spec.source_url}"
+        return f"asset:{spec.kind}"
     return f"{beat.broll.render_target}:{beat.broll.component}"
 
 

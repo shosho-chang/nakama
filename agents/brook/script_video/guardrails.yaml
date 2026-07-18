@@ -4,7 +4,10 @@
 
 # Phase 1 hard limits（validate-storyboard CLI 強制，ADR-051 panel v2 §11）
 hard_limits:
-  max_cutaways_per_minute: 2.5       # 對齊 planner prompt 預算 ~15-25/10min（panel v2 §8；原 4 與 prompt 互斥）
+  # 對齊 planner prompt 預算 ~25-35/10min。成片實測 3.26-3.52 cutaway 事件/分
+  # （docs/research/editing-grammar/2026-07-18-shoshotw-editing-grammar.md §一；
+  # 「事件」= 連續 B-roll 鏡合併為一次 cutaway 決策，一事件可展開 N 鏡快切）
+  max_cutaways_per_minute: 3.5
   no_consecutive_same_component: true  # 連續兩 beat 不同 component
   max_consecutive_no_decision: 8     # 連續 8 beat 都 broll_decision=none → 警告太靜
   kol_max_total_sec_per_source: 20   # ADR-051 D6 護欄：單一 KOL 來源取用總長上限（秒）
