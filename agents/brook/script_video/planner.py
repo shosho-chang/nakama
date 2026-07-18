@@ -33,7 +33,8 @@ _GUARDRAILS = Path(__file__).parent / "guardrails.yaml"
 _EXAMPLES_INDEX = Path(__file__).parent / "examples" / "_index.yaml"
 
 _MODEL = "claude-opus-4-7"
-_MAX_TOKENS = 4000  # ~25 beats x ~80 tokens = 2000 output; 4000 for safety
+# ~80 tokens/beat; 18min+ episodes exceeded the old 4000 cap and truncated mid-YAML
+_MAX_TOKENS = 16000
 
 
 def _load_examples() -> list[dict]:
@@ -130,7 +131,17 @@ def _build_prompt(
 def _extract_beats(response_text: str) -> list[dict]:
     """Parse YAML beat array from LLM response (handles ```yaml ... ``` fencing)."""
     m = re.search(r"```(?:yaml)?\s*\n(.*?)\n```", response_text, re.DOTALL)
-    content = m.group(1) if m else response_text
+    if m:
+        content = m.group(1)
+    elif response_text.lstrip().startswith("```"):
+        # Opening fence with no closing fence — the response was cut off at
+        # max_tokens. Parsing the tail would silently drop beats, so fail loud.
+        raise ValueError(
+            "LLM response has an unterminated ``` fence — output was truncated "
+            f"at max_tokens={_MAX_TOKENS}; raise _MAX_TOKENS for longer episodes"
+        )
+    else:
+        content = response_text
     parsed = yaml.safe_load(content)
     if not isinstance(parsed, list):
         raise ValueError(f"expected YAML list of beats, got {type(parsed).__name__}")
