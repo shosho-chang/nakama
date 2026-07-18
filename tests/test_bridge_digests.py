@@ -198,18 +198,22 @@ class TestStudyDetail:
         def fake_fetch(pmids):
             if counter is not None:
                 counter.append(list(pmids))
-            art = dict(article) if article else {
-                "pmid": pmids[0],
-                "title": "Semaglutide trial",
-                "journal": "New England Journal of Medicine",
-                "abstract": "BACKGROUND: A large trial.\nRESULTS: It worked.",
-                "pub_date": "2026 May 1",
-                "authors": "Jane Doe, John Roe",
-                "url": f"https://pubmed.ncbi.nlm.nih.gov/{pmids[0]}/",
-                "issn": "0028-4793",
-                "doi": "10.1056/NEJMoa000000",
-                "pmcid": "PMC12345678",
-            }
+            art = (
+                dict(article)
+                if article
+                else {
+                    "pmid": pmids[0],
+                    "title": "Semaglutide trial",
+                    "journal": "New England Journal of Medicine",
+                    "abstract": "BACKGROUND: A large trial.\nRESULTS: It worked.",
+                    "pub_date": "2026 May 1",
+                    "authors": "Jane Doe, John Roe",
+                    "url": f"https://pubmed.ncbi.nlm.nih.gov/{pmids[0]}/",
+                    "issn": "0028-4793",
+                    "doi": "10.1056/NEJMoa000000",
+                    "pmcid": "PMC12345678",
+                }
+            )
             art.setdefault("pmid", pmids[0])
             return [art]
 
@@ -244,11 +248,20 @@ class TestStudyDetail:
         assert "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12345678/" in body
 
     def test_no_abstract_still_links_to_publisher(self, client, monkeypatch, mock_llm_response):
-        self._patch_fetch(monkeypatch, article={
-            "title": "Letter", "journal": "The Lancet", "abstract": "",
-            "pub_date": "2026 Jul", "authors": "", "url": "",
-            "issn": "", "doi": "10.1016/S0140-6736(26)00001-0", "pmcid": "",
-        })
+        self._patch_fetch(
+            monkeypatch,
+            article={
+                "title": "Letter",
+                "journal": "The Lancet",
+                "abstract": "",
+                "pub_date": "2026 Jul",
+                "authors": "",
+                "url": "",
+                "issn": "",
+                "doi": "10.1016/S0140-6736(26)00001-0",
+                "pmcid": "",
+            },
+        )
         mock_llm_response("unused")
         r = client.get("/bridge/digests/pubmed/2026-05-24/42174253")
         assert r.status_code == 200
@@ -273,10 +286,18 @@ class TestStudyDetail:
         assert llm.ask.call_count == 1  # translated once
 
     def test_no_abstract_shows_notice_no_llm(self, client, monkeypatch, mock_llm_response):
-        self._patch_fetch(monkeypatch, article={
-            "title": "Letter to editor", "journal": "", "abstract": "",
-            "pub_date": "", "authors": "", "url": "", "issn": "",
-        })
+        self._patch_fetch(
+            monkeypatch,
+            article={
+                "title": "Letter to editor",
+                "journal": "",
+                "abstract": "",
+                "pub_date": "",
+                "authors": "",
+                "url": "",
+                "issn": "",
+            },
+        )
         llm = mock_llm_response("should-not-run")
 
         r = client.get("/bridge/digests/pubmed/2026-05-24/42174253")
