@@ -45,6 +45,7 @@ from shared.digest_study_detail import load_study_detail
 from shared.log import get_logger
 from shared.markdown import render_markdown
 from shared.markdown_wikilinks import WikilinkResolver
+from shared.pubmed_score_rubric import build_score_rows
 from thousand_sunny.auth import check_auth
 
 logger = get_logger("nakama.web.bridge_digests")
@@ -299,6 +300,7 @@ async def digest_study(
             "entry": entry,
             "detail": detail,
             "s": detail.study,
+            "score_rows": build_score_rows(detail.study),
             "type_label": _TYPE_LABEL["pubmed"],
             "asset_version": _SHOSHO_ASSET_VERSION,
         },
