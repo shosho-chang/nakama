@@ -41,6 +41,7 @@ from shared.digest_indexer import (
     DigestNotFoundError,
     today_taipei,
 )
+from shared.digest_study_detail import load_study_detail
 from shared.log import get_logger
 from shared.markdown import render_markdown
 from shared.markdown_wikilinks import WikilinkResolver
@@ -253,6 +254,52 @@ async def digest_detail(
             "intro_html": intro_html,
             "studies": studies,
             "type_label": _TYPE_LABEL[type_],
+            "asset_version": _SHOSHO_ASSET_VERSION,
+        },
+    )
+
+
+@page_router.get("/digests/pubmed/{date_}/{pmid}", response_class=HTMLResponse)
+async def digest_study(
+    request: Request,
+    date_: str,
+    pmid: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Per-study detail: PubMed abstract (fetched + cached) + zh-TW translation.
+
+    PubMed-only — AI digest entries are blog posts whose card title links out
+    to the source directly, so they have no station-side detail page.
+    """
+    next_url = f"/bridge/digests/pubmed/{date_}/{pmid}"
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next={next_url}", status_code=302)
+
+    if not pmid.isdigit():
+        raise HTTPException(status_code=404, detail=f"invalid PMID: {pmid!r}")
+
+    idx = _indexer()
+    try:
+        # Validates type/date shape + existence; 404 for a missing digest day.
+        entry = idx.get("pubmed", date_)
+    except DigestNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    detail = load_study_detail(idx, date_, pmid)
+    if detail is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"PMID {pmid} 不在 {date_} 的 PubMed digest 中",
+        )
+
+    return _templates.TemplateResponse(
+        request,
+        "digest_study_detail.html",
+        {
+            "entry": entry,
+            "detail": detail,
+            "s": detail.study,
+            "type_label": _TYPE_LABEL["pubmed"],
             "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
