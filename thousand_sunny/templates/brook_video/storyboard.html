@@ -47,7 +47,7 @@
       </thead>
       <tbody>
         {% for row in rows %}
-        <tr data-beat-id="{{ row.beat_id }}">
+        <tr data-beat-id="{{ row.beat_id }}"{% if row.broll_decision == 'cutaway' %} class="row-cutaway"{% endif %}>
           <td class="col-bid sho-mono">{{ row.beat_id }}</td>
           <td class="col-seg">
             {% if row.transcript_text %}
@@ -132,7 +132,7 @@
           </td>
         </tr>
         {% if row.asset %}
-        <tr class="foundry-asset-row" data-asset-for="{{ row.beat_id }}">
+        <tr class="foundry-asset-row row-cutaway" data-asset-for="{{ row.beat_id }}">
           <td class="col-bid"></td>
           <td colspan="9">
             <div class="foundry-asset">
