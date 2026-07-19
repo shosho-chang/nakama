@@ -111,7 +111,7 @@ roadmap，需 composition 落地，落地前記 Remaining）。
 | 研究/論文/文章引用 | `evidence_doc` | cutaway | 截圖＋黃 highlight 隨旁白逐步移動；7–10s |
 | 修修個人經歷/數據 | `self_archive` | cutaway | 對帳單/舊 vlog/照片——外供素材請求，證據力最強 |
 | 提到自家舊影片主題 | `self_promo` | overlay | 舊片縮圖橘框 inset 導流 |
-| 他人影片/演講引用 | `kol_quote` | cutaway | 黑格紋框＋「影片來源：X」；單源 ≤20s（D6） |
+| 他人影片/演講引用 | `kol_quote` | cutaway | 黑格紋框＋「影片來源：X」；單源 >20s 出提醒警告（2026-07-19 修修裁決：不擋審、自行把關），短碎片快剪優於連續長段 |
 | 軟體/網站操作 | `screen_demo` | cutaway | 可標速度處理（快轉/zoom），DP 決定 |
 | 玩笑/哏 | `meme` | overlay | 梗圖/影劇 inset，2–4s；版權留意，從嚴 |
 | 插敘/題外話開始 | — | aside_marker | letterbox 縮框（或 B&W 去色第二檔位） |
@@ -163,9 +163,11 @@ visual_intent，實現由 DP 降級（overlay→滿版短卡或 none；canvas_pi
 流程：YouTube 搜尋 → 字幕定位到目標句 → 抽 2–3 幀確認畫面內容（不是片頭/廣告）→
 `yt-dlp` 下載**指定秒數區間**到 `<ep>/assets/kol/`。
 
-護欄（D6，違反 = storyboard 不得送審）：
-- 單一來源取用總長 **≤20s**（跨 beat 累計）
+護欄（D6，2026-07-19 修正）：
+- 單一來源取用總長 20s 是**提醒線**（超過出 warning 不擋審，修修自行把關）；
+  剪法上短碎片快剪優於連續長段（Content ID 怕的是長段不是總量）
 - `asset.source_url` + `source_span`（`HH:MM:SS-HH:MM:SS`）+ `attribution` 三者必填
+  （**仍是硬錯誤**——出處紀律是合理使用論述的一部分，不鬆）
 - 一律靜音使用；`full_broll` 滿版不縮放不加框
 - 收尾時彙整全部 attribution 成 description 出處清單，附進 run log
 
@@ -247,8 +249,8 @@ not listed. If an item is unavailable, mark failed with reason and move on.
 
 送審前必跑 `python -m agents.brook.script_video --episode <ep> validate-storyboard`
 （errors 擋送審；warnings 逐條看過再放行）：cutaway ≤3.5 事件/分、無連續同
-component（source_url 粒度）、KOL 單源 ≤20s、asset 類出處欄位齊全、詞彙全在
-guardrails allow list。另自查節拍器：任何 20s 窗口若 cutaway＋overlay 皆無，
+component（source_url 粒度）、asset 類出處欄位齊全、詞彙全在 guardrails allow
+list；KOL 單源 >20s 會出提醒警告（不擋審，總量唸給修修聽過再放行）。另自查節拍器：任何 20s 窗口若 cutaway＋overlay 皆無，
 重看該段是否真的該靜（validator 尚未管 overlay 層，先人工檢查）。
 
 ## Step 7 — Bridge 審核（HITL）
@@ -326,8 +328,9 @@ E2E 每跑完一集（visual approved + DaVinci import smoke 過），把可固�
    （stock 底壓暗／kinetic text——後者待 composition）。
 4. **章節卡**：滿版橘卡＋wipe、與唸出同步、「步驟」也有卡；overlay 層（keyword/
    inset/banner）是 v1 完全缺席的 vocabulary，現為 Step 2 一級公民。
-5. **傳記型警訊**：KOL 單源 ≤20s 紅線與傳主素材用法（成片單源 ~130s+）根本衝突
-   ——遇傳記型選書，開工前先把素材策略拿去給修修裁決，不要排完才發現全違規。
+5. **傳記型警訊（2026-07-19 已解）**：KOL 單源 ≤20s 紅線與傳主素材用法（成片單源
+   ~130s+）衝突——修修裁決：20s 降為提醒線（warning 不擋審，合理使用自行把關），
+   出處三必填不變。傳記型解鎖；分鏡時仍在 run log 列各來源總用量供修修掃一眼。
 6. **從 Ali/Jeff 引入**：canvas_pip 版面（意圖層先記錄，等 composition）、
    worked-example 實算動畫取代論證段 stock、章節 grid 總覽卡、錄屏速度標記。
 

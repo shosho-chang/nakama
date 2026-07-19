@@ -34,7 +34,7 @@ render / emit / cache / Bridge 審核等既有 pipeline 程式維持不動，由
 | D3 | Motion graphics 版面 | Director 依內容選，初期預設滿版；透明疊加待 alpha 輸出驗證（Hyperframes alpha → DaVinci import）通過才開放 |
 | D4 | MG 素材庫成長 | 菜單優先；即席寫新 composition 必須存回 `video/compositions/` 成可重用資產＋過視覺審核 |
 | D5 | Envato stock | 批次交接：`assets_queue.yaml` ＋現成 Codex prompt，一次下載全部，回來驗收續跑；挑選給首選＋兩備選（預覽連結入 storyboard） |
-| D6 | KOL footage | 全自動（搜→字幕定位→抽幀確認→yt-dlp 下載指定秒數）＋護欄：單一來源取用總長上限 20s、storyboard 強制記出處、出處清單可自動生成 description |
+| D6 | KOL footage | 全自動（搜→字幕定位→抽幀確認→yt-dlp 下載指定秒數）＋護欄：單一來源取用總長上限 20s、storyboard 強制記出處、出處清單可自動生成 description。**2026-07-19 修正（修修裁決）**：20s 上限降為提醒線（warning 不擋審）——成片拆解證實傳記型單源實用 ~130s，合理使用修修自行把關；出處強制不變 |
 | D7 | 文獻 highlight | 稿尾來源清單（DOI/連結一行一篇）；PDF 三層 fallback：KB → open access 自抓 → paywall 修修供檔；PyMuPDF 定位引用句 bbox → `doc_highlight` composition（縮圖→推近→黃 highlight）；**配對不到來源寧缺勿猜** |
 | D8 | B-roll v1 類型 | 修修五種（big title / motion graphic / stock / doc highlight / KOL）＋書封卡＋金句卡；重點疊加字卡列 v1.5（alpha 驗證本次排入）；螢幕錄影＝外供素材槽位（修修供檔、Director 排版位） |
 | D9 | 審核介面 | 沿用 Bridge UI `/brook/video` 兩層 HITL（text / visual approved），對話審當備援；UI 小改顯示新類型的來源與候選預覽 |
