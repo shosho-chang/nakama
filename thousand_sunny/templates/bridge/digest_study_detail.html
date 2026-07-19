@@ -54,6 +54,48 @@
         <p class="study-detail-authors">{{ detail.authors }}</p>
       {% endif %}
 
+      {# ── Editor's per-dimension scoring (rubric-sourced meanings) ──────── #}
+      {% if score_rows %}
+        <section class="study-scores">
+          <div class="study-scores-head">
+            <h2 class="study-scores-title">編輯評分</h2>
+            {% if s.score is not none %}
+              <span class="study-scores-overall">總分 {{ '%.1f'|format(s.score) }} / 5</span>
+            {% endif %}
+          </div>
+          <p class="study-scores-note">
+            由「資深醫學編輯」persona 依固定準則逐項評 1–5 分（越高越好）。「分數說明」是該分數在評分準則中的定義，非逐篇個別評語。
+          </p>
+          <div class="study-score-table-wrap">
+            <table class="study-score-table">
+              <thead>
+                <tr>
+                  <th scope="col">維度</th>
+                  <th scope="col">分數</th>
+                  <th scope="col">這個分數代表什麼</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in score_rows %}
+                  {% set stier = 'high' if (row.score or 0) >= 4 else ('mid' if (row.score or 0) == 3 else 'low') %}
+                  <tr>
+                    <th scope="row" class="study-score-dim">
+                      {{ row.label }}
+                      {% if row.reverse %}<span class="study-score-reverse" title="反向分：分數越高代表警訊越少">↕ 反向</span>{% endif %}
+                      <span class="study-score-measures">{{ row.measures }}</span>
+                    </th>
+                    <td class="study-score-num">
+                      <span class="study-score-chip study-score-chip--{{ stier }}">{{ row.score if row.score is not none else '—' }}</span>
+                    </td>
+                    <td class="study-score-def">{{ row.level_def or '（此分數無對應準則說明）' }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      {% endif %}
+
       {# ── Curated framing carried over from the digest ─────────────────── #}
       {% if s.verdict or s.why %}
         <section class="study-detail-framing">

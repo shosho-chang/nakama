@@ -56,7 +56,7 @@ type: digest
 - **Score**: 3.6  (R4/I4/C3/A2/F4/N4)
 - **Verdict**: Semaglutide 對代謝症候群有效。
 - **Why**: 規模大、follow-up 長。
-- **→** [[pubmed-42174253]] · [PubMed](https://pubmed.ncbi.nlm.nih.gov/42174253/)
+- **→** [PubMed](https://pubmed.ncbi.nlm.nih.gov/42174253/)
 """
 
 AI_SAMPLE = """---
@@ -234,6 +234,12 @@ class TestStudyDetail:
         assert "PMID" in body
         # Digest-side framing carried over.
         assert "Semaglutide 對代謝症候群有效" in body
+        # Editor score table renders with rubric-sourced dimension meanings.
+        assert "編輯評分" in body
+        assert "Clinical Relevance 臨床關聯" in body
+        assert "Red Flags" in body  # reverse-scored dimension label present
+        # Rubric level definition for the study's Rigor score (R4).
+        assert "中型 RCT" in body
 
     def test_publisher_and_pmc_links_render(self, client, monkeypatch, mock_llm_response):
         self._patch_fetch(monkeypatch)
