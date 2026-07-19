@@ -71,6 +71,19 @@
   </form>
 {% endmacro %}
 
+{# Review status chip — three honest states so a saved draft doesn't read as
+   "not filled". reviewed (explicit FSM completion) vs has_content (prose
+   written, not yet marked) vs empty. #}
+{% macro review_chip(view) %}
+  {%- if view.review and view.review.status == 'reviewed' -%}
+    <span class="sho-chip sho-chip--online">已完成</span>
+  {%- elif view.review and view.review.has_content -%}
+    <span class="sho-chip sho-chip--hold">草稿已存</span>
+  {%- else -%}
+    <span class="sho-chip sho-chip--offline">尚未填寫</span>
+  {%- endif -%}
+{% endmacro %}
+
 {% macro notes_form(view, weekly_token) %}
   <form class="wk-wf wk-notes-form" method="post" action="/bridge/weekly/notes">
     <input type="hidden" name="week" value="{{ view.week.file_key }}">
@@ -243,8 +256,7 @@
 
       <div class="wk-zone">
         <div class="wk-zone-head"><span class="wk-h">Weekly Review · 6 題</span>
-          <span class="sho-chip sho-chip--{{ 'online' if view.review and view.review.status == 'reviewed' else 'hold' }}">
-            {{ '已回顧' if view.review and view.review.status == 'reviewed' else '待填' }}</span></div>
+          {{ review_chip(view) }}</div>
         <p class="wk-mut">✅ 重要任務完成率自動帶入（見上方本週重要任務）。逐字寫，機器不代筆。</p>
         {{ review_form(view, weekly_token, with_mark=True) }}
       </div>
@@ -389,8 +401,7 @@
       {# ── review (fill any time; designed for week-end) ── #}
       <details class="wk-zone wk-review-zone">
         <summary class="wk-zone-head"><span class="wk-h">週回顧</span>
-          <span class="sho-chip sho-chip--{{ 'online' if view.review and view.review.status == 'reviewed' else 'offline' }}">
-            {{ '已完成' if view.review and view.review.status == 'reviewed' else '本週末填' }}</span></summary>
+          {{ review_chip(view) }}</summary>
         {{ review_form(view, weekly_token, with_mark=True) }}
       </details>
 

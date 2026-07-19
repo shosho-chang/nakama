@@ -371,6 +371,18 @@ class DailyHabit:
     meditation_minutes: int = 0
 
 
+# The four Weekly Review prose sections (headings written by
+# ``bridge_weekly.weekly_review_save``). 隨手筆記 is a separate form, not a
+# review section, so it's excluded from the "has the reader written a review?"
+# signal.
+REVIEW_SECTION_HEADINGS: tuple[str, ...] = (
+    "✨ Highlight",
+    "😔 Lowlight",
+    "📚 學到的東西",
+    "🙏 感恩",
+)
+
+
 @dataclass(frozen=True)
 class WeeklyReview:
     exists: bool
@@ -380,6 +392,15 @@ class WeeklyReview:
     targets: dict = field(default_factory=dict)  # {pomodoro, ufo} — 修修-set (A3)
     sections: dict[str, str] = field(default_factory=dict)  # heading -> prose
     notes: str = ""
+
+    @property
+    def has_content(self) -> bool:
+        """True when any of the four review sections holds prose — the reader
+        has *written* a review. Distinct from ``status == 'reviewed'`` (the
+        explicit FSM completion), so a saved-but-not-marked draft can be shown
+        as "草稿已存" instead of "尚未填寫" (honest FSM, ADR-040 A6: content
+        never auto-advances the status)."""
+        return any((self.sections.get(h) or "").strip() for h in REVIEW_SECTION_HEADINGS)
 
 
 @dataclass(frozen=True)
