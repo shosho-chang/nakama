@@ -557,3 +557,30 @@ def test_all_view_buckets_by_schedule(tmp_path):
     assert [t.name for t in v.all_other_scheduled] == ["D 過去", "C 未來"]
     assert [t.name for t in v.all_unscheduled] == ["E 未排"]
     assert v.backlog_count == 5  # all not-done; F excluded
+
+
+# ── WeeklyReview.has_content (draft-vs-empty signal, #weekly-status fix) ──────
+
+
+def test_has_content_true_when_a_review_section_filled():
+    r = wi.WeeklyReview(
+        exists=True,
+        status="planning",
+        sections={"✨ Highlight": "課程規劃收斂了", "😔 Lowlight": ""},
+    )
+    assert r.has_content is True
+
+
+def test_has_content_false_when_all_review_sections_blank():
+    r = wi.WeeklyReview(
+        exists=True,
+        status="planning",
+        # only whitespace / the separate 隨手筆記 — not a written review
+        sections={"✨ Highlight": "  ", "😔 Lowlight": "\n", "隨手筆記": "some note"},
+    )
+    assert r.has_content is False
+
+
+def test_has_content_ignores_notes_section():
+    r = wi.WeeklyReview(exists=True, status="active", sections={"隨手筆記": "隨手記一筆"})
+    assert r.has_content is False
