@@ -242,14 +242,20 @@ def validate_storyboard(
                 unknown.setdefault(src, []).append(b.beat_id)
             else:
                 totals[src] = totals.get(src, 0.0) + dur
+        # 修修 2026-07-19 裁決：單源超量降為警告不擋送審（合理使用自行把關；
+        # 傳記型單源實用可達 ~130s，見 editing-grammar 綜合報告 §五-5）。
+        # 出處三必填（規則 6）維持硬錯誤不變。
         for src, total in totals.items():
             if total > kol_cap:
                 violations.append(
                     Violation(
                         rule="kol_source_cap",
-                        severity="error",
+                        severity="warning",
                         beat_id=None,
-                        message=f"KOL 來源 {src} 取用總長 {total:.1f}s 超過 {kol_cap}s 上限",
+                        message=(
+                            f"KOL 來源 {src} 取用總長 {total:.1f}s "
+                            f"超過 {kol_cap}s 提醒線——修修自行把關"
+                        ),
                     )
                 )
         for src, ids in unknown.items():

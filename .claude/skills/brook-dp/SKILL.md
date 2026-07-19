@@ -51,7 +51,7 @@ cutaway beat 退回 Director，不代判。
 | `evidence_doc` | v1 紀律：`bigstat` 代打數字結論或 stock 證據感；doc_highlight composition 落地後改真截圖＋黃 highlight | 來源配對寫 run log（中文改述 ↔ 原文獻） |
 | `self_archive` | `asset`/supplied（外供） | 進 asset_requests 的 supplied_pending 節，註明要什麼（對帳單/舊 vlog 段落/照片）＋出處說明 |
 | `self_promo` | 降級規則表 | 目標形態：舊片縮圖橘框 inset；縮圖 URL 記 run log 備用 |
-| `kol_quote` | `asset`/kol | YouTube 搜尋→字幕定位→抽幀確認→yt-dlp 指定秒數；黑格紋框＋「影片來源：X」由 emit 端框版處理；**單源累計 ≤20s（D6 硬線）**，傳記型選書開工前先報 Director 找修修裁決 |
+| `kol_quote` | `asset`/kol | YouTube 搜尋→字幕定位→抽幀確認→yt-dlp 指定秒數；黑格紋框＋「影片來源：X」由 emit 端框版處理；單源 >20s 出提醒警告（2026-07-19 修修裁決：不擋審、自行把關）；剪短碎片不剪連續長段；出處三必填仍是硬錯誤 |
 | `screen_demo` | `asset`/screen_recording（修修外供） | 需求註明段落與速度處理建議（等速/快轉＋zoom 點） |
 | `meme` | 降級規則表；從嚴 | 版權風險先問修修，預設降級 none |
 | `bigstat` | `bigstat`（params: label/value/unit） | 滿版，>1000 或關鍵指標 |

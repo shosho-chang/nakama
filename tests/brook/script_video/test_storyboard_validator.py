@@ -199,7 +199,8 @@ def test_long_none_streak_is_warning_not_error() -> None:
     assert streaks[0].severity == "warning"
 
 
-def test_kol_source_total_over_cap_is_error() -> None:
+def test_kol_source_total_over_cap_is_warning_not_error() -> None:
+    """修修 2026-07-19 裁決：單源超量提醒不擋審（合理使用自行把關）."""
     beats = [
         _beat(1, target="asset", component="kol", asset=_kol_asset(), start=0, duration=12),
         _beat(
@@ -210,8 +211,9 @@ def test_kol_source_total_over_cap_is_error() -> None:
         _beat(3, target="asset", component="kol", asset=_kol_asset(), start=60, duration=12),
     ]
     violations = validate_storyboard(beats, _GUARDRAILS, duration_sec=600.0)
-    caps = [v for v in violations if v.rule == "kol_source_cap" and v.severity == "error"]
-    assert caps and "24.0s" in caps[0].message
+    caps = [v for v in violations if v.rule == "kol_source_cap"]
+    assert caps and caps[0].severity == "warning" and "24.0s" in caps[0].message
+    assert not [v for v in caps if v.severity == "error"]
 
 
 def test_kol_different_sources_under_cap_each_is_ok() -> None:
