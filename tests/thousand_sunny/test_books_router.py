@@ -439,6 +439,11 @@ def test_csp_header_present_on_books_routes(app_client):
     csp = r.headers.get("content-security-policy", "")
     assert csp, "CSP header missing on /robin/books"
     assert "script-src 'self'" in csp
+    # foliate-js rewrites each chapter's stylesheet <link> to a blob: URL, so
+    # style-src must allow blob: or the book renders with no publisher CSS and
+    # <h6>-tagged headings collapse below body size. Regression guard.
+    assert "style-src" in csp
+    assert "blob:" in csp.split("style-src", 1)[1].split(";", 1)[0]
 
 
 def test_csp_header_present_on_api_books_routes(app_client):
