@@ -22,9 +22,23 @@ function isDarkTheme() {
 function pushReaderStyles() {
   if (!view.renderer || typeof view.renderer.setStyles !== 'function') return;
   const dark = isDarkTheme();
+  // Dark mode: publisher EPUB stylesheets hard-code near-black text colors
+  // (color:#000000) on headings, list items, footnotes, boxed text, etc. —
+  // designed for a white page. Once the book's own CSS loads (style-src now
+  // allows the blob: stylesheet, see middleware/csp.py) those elements go
+  // dark-on-dark and vanish. Force every text-bearing element to the light
+  // reading color so dark mode stays readable. This is a deliberate monochrome
+  // trade-off: accent colors (e.g. pink section titles) are dropped in dark
+  // mode but still render in light mode. Font sizes are left untouched, so the
+  // publisher's heading scale is preserved.
   const css = dark
     ? `html, body { background: #1a1a1a !important; color: #e0e0e0 !important; }
-       a, a:visited { color: #9d97ff; }`
+       h1, h2, h3, h4, h5, h6,
+       p, li, dt, dd, blockquote, figcaption, caption, th, td,
+       span, div, cite, em, strong, b, i, u, small, sub, sup {
+         color: #e0e0e0 !important;
+       }
+       a, a:visited { color: #9d97ff !important; }`
     : `html, body { background: #ffffff; color: #1a1a1a; }
        a, a:visited { color: #6c63ff; }`;
   try { view.renderer.setStyles(css); } catch (_) { /* renderer not ready yet */ }

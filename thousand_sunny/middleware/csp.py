@@ -19,7 +19,12 @@ from starlette.responses import Response
 _CSP_POLICY = (
     "default-src 'self'; "
     "script-src 'self'; "
-    "style-src 'self' 'unsafe-inline'; "
+    # foliate-js rewrites each chapter's <link rel="stylesheet"> to a blob:
+    # URL of the EPUB's CSS (epub.js Loader.createURL → URL.createObjectURL).
+    # Without blob: here the browser refuses the book's stylesheet, so every
+    # book renders with zero publisher CSS — headings tagged <h5>/<h6> then
+    # collapse to the UA default (0.83em/0.67em), smaller than 1em body text.
+    "style-src 'self' 'unsafe-inline' blob:; "
     "img-src 'self' data: blob:; "
     # foliate-js's paginator loads chapter HTML into iframes whose src is a
     # blob: URL of the same origin. 'none' blocks them and the reader can't
