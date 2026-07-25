@@ -70,10 +70,9 @@ def gpu_precheck() -> None:
 
 
 def collect_ref_files(episode_dir: Path) -> list[Path]:
-    refs_dir = episode_dir / REFS_DIR
-    if not refs_dir.is_dir():
-        return []
-    return sorted(p for p in refs_dir.iterdir() if p.suffix.lower() in {".md", ".txt"})
+    from shared.subtitle_correct import discover_ref_files
+
+    return discover_ref_files(episode_dir)
 
 
 def run_gen(

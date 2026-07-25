@@ -33,6 +33,7 @@ from shared.subtitle_correct import (  # noqa: E402
     build_correction_report,
     correct_srt_llm,
     correct_srt_scripted,
+    discover_ref_files,
 )
 
 logger = logging.getLogger("subtitle_correct")
@@ -69,12 +70,7 @@ def run_correct(
         raise FileNotFoundError(f"找不到字幕檔 {srt_path}（先跑 subtitle-gen，或用 --srt 指定）")
     srt_content = srt_path.read_text(encoding="utf-8")
 
-    refs_dir = episode_dir / REFS_DIR
-    refs = (
-        sorted(p for p in refs_dir.iterdir() if p.suffix.lower() in {".md", ".txt"})
-        if refs_dir.is_dir()
-        else []
-    )
+    refs = discover_ref_files(episode_dir)
 
     script_path = script or find_script_file(refs)
     if mode == "auto":

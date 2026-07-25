@@ -25,9 +25,17 @@ description: >
 
 外部工具（如 MemoAI）產的 SRT 也能校：`--srt <path>` 直接指定。
 
+## 參考資料來源（自動）
+
+`discover_ref_files` 自動合併兩處的 `.md`/`.txt`：
+1. `<episode>/refs/`
+2. **訪談準備資料夾**（預設 `E:\Projects\張修修的AI創作者新世紀\訪談準備\`，
+   `.env` `INTERVIEW_PREP_DIR` 可覆寫）— 依來賓名配對子資料夾
+   （episode `20260723 謝伯讓` ↔ prep `2026-07-22-謝伯讓`）
+
 ## 執行前跟使用者確認
 
-1. `refs/` 內容齊了嗎（訪綱、準備報告、或完整稿）——**參考資料品質直接決定校正品質**
+1. 回報自動找到的參考檔清單給使用者掃一眼——**參考資料品質直接決定校正品質**
 2. llm 模式：要不要仲裁（預設開，需 `normalized.wav` 在場；`--no-arbitration` 關）
 3. 來賓名／節目名（`--host-name` / `--show-name`，llm 模式的重要 hotword）
 

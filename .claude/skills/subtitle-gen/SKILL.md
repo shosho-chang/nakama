@@ -15,7 +15,8 @@ description: >
 ## 前置
 
 - `<episode>/normalized.wav` 必須存在（audio-prep 產出）；沒有 → 先跑 `/audio-prep`
-- `<episode>/refs/` 裡的 `.md`/`.txt`（訪綱、報告）會自動抽 hotwords 餵 initial prompt——有參考資料先放進去再跑
+- 參考資料自動收集：`<episode>/refs/` + 訪談準備資料夾（依來賓名配對，見
+  subtitle-correct skill 的說明）→ 抽 hotwords 餵 initial prompt
 
 ## GPU 注意事項（必守）
 

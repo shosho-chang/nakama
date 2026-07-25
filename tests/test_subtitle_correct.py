@@ -157,6 +157,38 @@ def test_report_empty_qc():
     assert "（無）" in report
 
 
+def test_discover_ref_files_merges_episode_and_prep(tmp_path, monkeypatch):
+    ep = tmp_path / "20260723 謝伯讓"
+    (ep / "refs").mkdir(parents=True)
+    (ep / "refs" / "訪綱.md").write_text("a", encoding="utf-8")
+    prep_root = tmp_path / "訪談準備"
+    prep = prep_root / "2026-07-22-謝伯讓"
+    prep.mkdir(parents=True)
+    (prep / "report.md").write_text("b", encoding="utf-8")
+    (prep / "圖.png").write_bytes(b"x")
+    other = prep_root / "2026-07-21-李海碩"
+    other.mkdir()
+    (other / "report.md").write_text("c", encoding="utf-8")
+    monkeypatch.setenv("INTERVIEW_PREP_DIR", str(prep_root))
+
+    from shared.subtitle_correct import discover_ref_files
+
+    names = [p.name for p in discover_ref_files(ep)]
+    assert names == ["訪綱.md", "report.md"]
+    paths = discover_ref_files(ep)
+    assert paths[1].parent == prep  # 沒撈到別集來賓的資料
+
+
+def test_discover_ref_files_no_prep_dir(tmp_path, monkeypatch):
+    ep = tmp_path / "20260723 某來賓"
+    ep.mkdir()
+    monkeypatch.setenv("INTERVIEW_PREP_DIR", str(tmp_path / "不存在"))
+
+    from shared.subtitle_correct import discover_ref_files
+
+    assert discover_ref_files(ep) == []
+
+
 def test_find_script_file(tmp_path):
     a = tmp_path / "訪綱.md"
     b = tmp_path / "script.md"

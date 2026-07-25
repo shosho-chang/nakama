@@ -42,6 +42,41 @@ _PUNCT_RE = re.compile(r"[，。、；：？！…—,.;:!?\"'“”‘’()（�
 
 # ── 參考資料載入 ──
 
+# 訪談準備資料夾（每集一個子資料夾 YYYY-MM-DD-<來賓名>）；可用 .env 覆寫
+DEFAULT_INTERVIEW_PREP_DIR = r"E:\Projects\張修修的AI創作者新世紀\訪談準備"
+_EPISODE_PREFIX_RE = re.compile(r"^\d{6,8}[\s_-]*")
+
+
+def discover_ref_files(episode_dir: Path) -> list[Path]:
+    """收集 episode 的參考資料：<episode>/refs/ + 訪談準備資料夾（依來賓名配對）。
+
+    episode 資料夾慣例 `YYYYMMDD <來賓名>`；訪談準備子資料夾慣例
+    `YYYY-MM-DD-<來賓名>`（日期可能不同，用來賓名配對）。只收 .md/.txt。
+    """
+    import os
+
+    refs: list[Path] = []
+    refs_dir = episode_dir / "refs"
+    if refs_dir.is_dir():
+        refs.extend(p for p in sorted(refs_dir.iterdir()) if p.suffix.lower() in {".md", ".txt"})
+
+    guest = _EPISODE_PREFIX_RE.sub("", episode_dir.name).strip()
+    prep_root = Path(os.environ.get("INTERVIEW_PREP_DIR") or DEFAULT_INTERVIEW_PREP_DIR)
+    if guest and prep_root.is_dir():
+        matches = [d for d in prep_root.iterdir() if d.is_dir() and d.name.endswith(guest)]
+        for d in sorted(matches):
+            logger.info(f"導入訪談準備資料夾: {d}")
+            refs.extend(p for p in sorted(d.iterdir()) if p.suffix.lower() in {".md", ".txt"})
+
+    # 去重（refs/ 與準備資料夾可能有同名複本，以路徑為準不去內容重）
+    seen: set[Path] = set()
+    unique = []
+    for p in refs:
+        if p not in seen:
+            seen.add(p)
+            unique.append(p)
+    return unique
+
 
 def load_refs_text(ref_files: list[str | Path], char_cap: int = DEFAULT_REF_CHAR_CAP) -> str:
     """讀參考資料檔，每檔截至 char_cap 並標注截斷。"""
