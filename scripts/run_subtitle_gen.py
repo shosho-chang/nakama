@@ -44,12 +44,33 @@ MANIFEST_NAME = "gen_manifest.json"
 REFS_DIR = "refs"
 
 
-def _build_srt_from_aligned(aligned_segments: list[dict]) -> str:
-    """aligned segments → cue（jieba 詞邊界 + 停頓優先，零內插）→ house style 後處理。"""
+def _speaker_fn(episode_dir: Path):
+    """episode 的 Audio/ 分軌 mic → 詞級說話者判定函數（找不到兩軌回 None）。"""
+    from shared.speaker_assign import assign_word_speakers, detect_mic_tracks, load_envelopes
+
+    audio_dir = next(
+        (d for d in episode_dir.iterdir() if d.is_dir() and d.name.lower() == "audio"), None
+    )
+    if audio_dir is None:
+        return None
+    mics = detect_mic_tracks(audio_dir)
+    if len(mics) < 2:
+        logger.info("分軌 mic 不足兩軌，跳過說話者斷句")
+        return None
+    logger.info(f"說話者斷句啟用: {[p.name for p in mics]}")
+    reference = episode_dir / "normalized.wav"
+    envelopes = load_envelopes(mics, reference=reference if reference.exists() else None)
+    return lambda words: assign_word_speakers(words, envelopes)
+
+
+def _build_srt_from_aligned(aligned_segments: list[dict], episode_dir: Path | None = None) -> str:
+    """aligned segments → cue（jieba 詞邊界 + 停頓優先 + 說話者斷句，零內插）
+    → house style 後處理。"""
     from shared.cue_builder import aligned_segments_to_srt
     from shared.transcriber import _process_srt_line
 
-    srt_content = aligned_segments_to_srt(aligned_segments)
+    speaker_fn = _speaker_fn(episode_dir) if episode_dir else None
+    srt_content = aligned_segments_to_srt(aligned_segments, speaker_fn=speaker_fn)
     return "\n".join(_process_srt_line(line) for line in srt_content.splitlines())
 
 
@@ -59,7 +80,7 @@ def run_recue(episode_dir: Path) -> Path:
     if not aligned_path.exists():
         raise FileNotFoundError(f"找不到 {aligned_path}（需先跑過一次完整 subtitle-gen）")
     aligned = json.loads(aligned_path.read_text(encoding="utf-8"))
-    srt_content = _build_srt_from_aligned(aligned)
+    srt_content = _build_srt_from_aligned(aligned, episode_dir)
     srt_path = episode_dir / SUBS_DIR / SRT_NAME
     srt_path.write_text(srt_content, encoding="utf-8")
     logger.info(f"recue 完成: {srt_content.count(' --> ')} cues → {srt_path}")
@@ -165,7 +186,7 @@ def run_gen(
         json.dumps(aligned_slim, ensure_ascii=False, indent=1), encoding="utf-8"
     )
 
-    srt_content = _build_srt_from_aligned(aligned_slim)
+    srt_content = _build_srt_from_aligned(aligned_slim, episode_dir)
     words: list[dict] = []
     skipped = 0
     for seg in aligned["segments"]:
