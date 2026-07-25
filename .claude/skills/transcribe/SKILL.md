@@ -2,7 +2,7 @@
 name: transcribe
 description: >
   Transcribe Chinese podcast / long-form audio into SRT subtitles via an
-  interactive pipeline (Auphonic normalization + FunASR Paraformer-zh ASR +
+  interactive pipeline (Auphonic normalization + WhisperX large-v3 ASR +
   Claude Opus correction + Gemini 2.5 Pro multimodal arbitration). Produces
   clean SRT plus a QC report with risk-tagged segments. Use this skill
   whenever the user says things like "轉錄", "transcribe", "轉字幕", gives
@@ -163,7 +163,7 @@ Read `references/cost-estimation.md` for the full formula.
 Quick summary for estimation (per hour of audio):
 - Auphonic: upload-bandwidth-limited (default assumption: 10 Mbps up →
   roughly 1 min upload per 60 MB) + ~1 min server processing
-- FunASR: ~30 seconds (local GPU)
+- WhisperX: ~1 minute per 76 min of audio (local GPU)
 - Opus correction: ~$0.33 / hr
 - Gemini arbitration: ~$0.3-0.5 / hr (with thinking_budget=512)
 

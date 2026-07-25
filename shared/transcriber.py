@@ -372,6 +372,47 @@ def _apply_arbitration_verdicts(
     return corrections, qc_items
 
 
+def _build_correction_system(host_name: str, show_name: str, context_parts: list[str]) -> str:
+    """組校正用 system prompt（transcribe pipeline 與 subtitle_correct 共用）。"""
+    system = "你是資深繁體中文（台灣）字幕校正專家，專精 Podcast 訪談字幕。\n"
+
+    if host_name or show_name:
+        system += "\n## 節目資訊\n"
+        if show_name:
+            system += f"- 節目名稱：{show_name}\n"
+        if host_name:
+            system += f"- 主持人：{host_name}\n"
+
+    system += (
+        "\n## 任務\n"
+        "校正語音辨識（ASR）產出的逐字稿。每行格式為 [序號] 文字 (拼音)。\n"
+        "拼音是原始文字的讀音，可幫助你判斷 ASR 的同音字錯誤。\n"
+        "\n## 三輪校對思路（在心中依序執行，最終只輸出結果）\n"
+        "1. 機械校正：同音字/近音字替換、繁體用字統一、術語表比對\n"
+        "2. 語意校正：上下文不通順、人名/稱謂前後不一致、英文專有名詞修正\n"
+        "3. 交付檢核：專有名詞全文一致性、確認沒有過度修改\n"
+        "\n## 核心原則\n"
+        "- 不改變原意、不新增內容\n"
+        "- 術語表/參考資料的寫法為最高優先\n"
+        "- 保持口語自然感，不改成書面語\n"
+        "- 不確定的修正必須放入 uncertain 清單，不要硬改\n"
+        "- **輸出文字不要包含任何標點符號（，。、；：？！等）**；語氣停頓用半形空格分隔即可\n"
+        "\n## 輸出格式（嚴格 JSON，不要加 ```json 標記）\n"
+        "{\n"
+        '  "corrections": {"序號": "校正後文字", ...},\n'
+        '  "uncertain": [\n'
+        '    {"line": 序號, "original": "原文", "suggestion": "建議", '
+        '"reason": "判斷理由", "risk": "high|medium|low"}\n'
+        "  ]\n"
+        "}\n\n"
+        "只輸出 JSON，不要加任何說明。corrections 只包含有修改的行。"
+    )
+
+    if context_parts:
+        system += "\n\n## 參考資料\n" + "\n\n".join(context_parts)
+    return system
+
+
 def _correct_with_llm(
     srt_content: str,
     *,
@@ -432,42 +473,7 @@ def _correct_with_llm(
         context_parts.append(manual_context)
 
     # ── System Prompt ──
-    system = "你是資深繁體中文（台灣）字幕校正專家，專精 Podcast 訪談字幕。\n"
-
-    if host_name or show_name:
-        system += "\n## 節目資訊\n"
-        if show_name:
-            system += f"- 節目名稱：{show_name}\n"
-        if host_name:
-            system += f"- 主持人：{host_name}\n"
-
-    system += (
-        "\n## 任務\n"
-        "校正語音辨識（ASR）產出的逐字稿。每行格式為 [序號] 文字 (拼音)。\n"
-        "拼音是原始文字的讀音，可幫助你判斷 ASR 的同音字錯誤。\n"
-        "\n## 三輪校對思路（在心中依序執行，最終只輸出結果）\n"
-        "1. 機械校正：同音字/近音字替換、繁體用字統一、術語表比對\n"
-        "2. 語意校正：上下文不通順、人名/稱謂前後不一致、英文專有名詞修正\n"
-        "3. 交付檢核：專有名詞全文一致性、確認沒有過度修改\n"
-        "\n## 核心原則\n"
-        "- 不改變原意、不新增內容\n"
-        "- 術語表/參考資料的寫法為最高優先\n"
-        "- 保持口語自然感，不改成書面語\n"
-        "- 不確定的修正必須放入 uncertain 清單，不要硬改\n"
-        "- **輸出文字不要包含任何標點符號（，。、；：？！等）**；語氣停頓用半形空格分隔即可\n"
-        "\n## 輸出格式（嚴格 JSON，不要加 ```json 標記）\n"
-        "{\n"
-        '  "corrections": {"序號": "校正後文字", ...},\n'
-        '  "uncertain": [\n'
-        '    {"line": 序號, "original": "原文", "suggestion": "建議", '
-        '"reason": "判斷理由", "risk": "high|medium|low"}\n'
-        "  ]\n"
-        "}\n\n"
-        "只輸出 JSON，不要加任何說明。corrections 只包含有修改的行。"
-    )
-
-    if context_parts:
-        system += "\n\n## 參考資料\n" + "\n\n".join(context_parts)
+    system = _build_correction_system(host_name, show_name, context_parts)
 
     prompt = f"請校正以下語音辨識逐字稿：\n\n{numbered_text}"
 

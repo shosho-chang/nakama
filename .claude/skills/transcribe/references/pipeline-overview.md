@@ -18,17 +18,22 @@ independently. Read this before Step 4 to explain trade-offs to the user.
 - **Time**: ~`file_size_mb / (user_upload_mbps * 8 / 60)` min upload + ~1 min
   processing. Upload bandwidth is the bottleneck.
 
-## Stage 2: FunASR Paraformer-zh (local GPU)
+## Stage 2: WhisperX large-v3 (local GPU)
 
-- **What**: Local GPU ASR using FunASR Paraformer-zh model. Outputs SRT with
-  VAD-based segmentation, word-level timestamps, and hotword priming.
+- **What**: Local GPU ASR using WhisperX (faster-whisper backend, large-v3).
+  Outputs SRT with sentence-level segments split to house-style cues (jieba
+  word-boundary aware), anti-hallucination options baked in, and hotword
+  priming via `initial_prompt`. Optional `--diarize` adds a `.diar.srt`.
 - **When to enable**: Always (this is the only ASR stage; disabling it means
   no transcription at all, not a supported mode).
 - **Cost**: $0 (local compute).
-- **Time**: ~10 seconds per 20 minutes of audio on RTX 5070 Ti.
+- **Time**: ~1 minute per 76 minutes of audio on RTX 5070 Ti (76× realtime).
 - **Language**: Traditional Chinese output (OpenCC 簡→繁 post-step).
-- **Why not Whisper**: Whisper large-v3 CER on AIShell1 is 4.72% vs FunASR
-  Paraformer-zh at 0.54% — nearly an order of magnitude worse on Mandarin.
+- **History**: Engine was FunASR Paraformer-zh until 2026-04-30; swapped per
+  ADR-013 after side-by-side benchmarks on real Taiwan-podcast audio showed
+  WhisperX matching/beating both FunASR and MemoAI (paper CER numbers on
+  AIShell1 did not transfer to this workload). See
+  `docs/research/2026-04-30-whisperx-vs-memoai-results.md`.
 
 ## Stage 3: Claude Opus Correction
 
