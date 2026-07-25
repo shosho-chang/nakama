@@ -20,10 +20,15 @@ description: >
 |---|---|
 | `prep_manifest.json` + `normalized.wav` | prep 完成 → 下一步 subtitle-gen |
 | `subs/gen_manifest.json` + `subs/raw.srt` | gen 完成 → 下一步 subtitle-correct |
-| `subs/correct_manifest.json` + `transcript.srt` | correct 完成 → 下一步 resolve-project（需 Resolve 開著）|
+| `subs/correct_manifest.json` + `transcript.srt` | correct 完成 → 說話者切分 → resolve-project（需 Resolve 開著）|
 | Resolve 內已有同名 project | 全部完成 → 回報 QC 摘要即可；QC 裁決後用 `--refresh-subtitles` 更新字幕軌 |
 
 都沒有 → 從 audio-prep 開始。
+
+**說話者切分**（correct 之後、上 Resolve 之前）：episode 有分軌 mic
+（Audio/ 內兩軌以上人聲）就跑 `python scripts/run_speaker_split.py <episode>`——
+混人 cue 在說話者變更處切開（校正文字不動、冪等可重跑）。QC 裁決重新
+`--apply` 之後**要再跑一次**，然後才 `--refresh-subtitles`。
 
 ## 段間 HITL（每段完成必停）
 
