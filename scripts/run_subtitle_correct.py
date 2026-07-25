@@ -108,6 +108,7 @@ def run_correct(
         "refs": [p.name for p in refs],
         **stats,
     }
+    (episode_dir / "subs").mkdir(exist_ok=True)
     (episode_dir / "subs" / MANIFEST_NAME).write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
     )

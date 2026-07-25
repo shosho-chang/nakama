@@ -27,6 +27,7 @@ from shared.transcriber import (
     _build_correction_system,
     _extract_srt_texts,
     _parse_llm_response,
+    _process_srt_line,
     _replace_srt_texts,
 )
 
@@ -37,7 +38,7 @@ DEFAULT_REF_CHAR_CAP = 20000  # 每份參考資料的注入上限（字元）
 SCRIPTED_CUE_MATCH_THRESHOLD = 0.5  # cue 內字元對齊率低於此值 → 保留原文並進報告
 
 # 對稿模式重建 cue 文字時的標點清理（SRT house style：無標點、停頓用空格）
-_PUNCT_RE = re.compile(r"[，。、；：？！…—,.;:!?\"'“”‘’()（）\[\]【】]")
+_PUNCT_RE = re.compile(r"[，。、；：？！…—～·,.;:!?\"'“”‘’()（）\[\]【】《》]")
 
 
 # ── 參考資料載入 ──
@@ -172,6 +173,7 @@ def correct_srt_llm(
         logger.info(f"過度刪減防護: {over_deleted} 行修正轉入仲裁/QC")
 
     qc_items: list[dict] = uncertainties
+    arbitrated = False
     if use_arbitration and uncertainties and audio_path is not None:
         try:
             from shared.multimodal_arbiter import arbitrate_uncertain
@@ -181,12 +183,18 @@ def correct_srt_llm(
             corrections, qc_items = _apply_arbitration_verdicts(
                 corrections, uncertainties, verdicts
             )
+            arbitrated = True
             logger.info(f"多模態仲裁完成: {len(verdicts)} verdicts, {len(qc_items)} 進 QC")
         except Exception as e:
             logger.warning(f"多模態仲裁失敗，退回單輪結果: {type(e).__name__}: {e}")
             qc_items = uncertainties
     elif use_arbitration and uncertainties and audio_path is None:
         logger.info("無音檔，跳過多模態仲裁")
+
+    corrected_srt = _replace_srt_texts(srt_content, corrections)
+    # Pass 2（PR #23 教訓）：prompt 明令無標點，但 Opus/Gemini 仍會加回標點或
+    # 吐簡體字；與 /transcribe 同款機械過濾，最終輸出前再掃一次
+    corrected_srt = "\n".join(_process_srt_line(line) for line in corrected_srt.splitlines())
 
     stats = {
         "mode": "llm",
@@ -196,9 +204,9 @@ def correct_srt_llm(
         "uncertain": len(uncertainties),
         "over_deletion_guard": over_deleted,
         "qc": len(qc_items),
-        "arbitrated": use_arbitration and bool(uncertainties) and audio_path is not None,
+        "arbitrated": arbitrated,
     }
-    return _replace_srt_texts(srt_content, corrections), qc_items, stats
+    return corrected_srt, qc_items, stats
 
 
 # ── 對稿（scripted）模式 ──

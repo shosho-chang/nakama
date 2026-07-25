@@ -137,6 +137,46 @@ def test_llm_over_deletion_guard(monkeypatch):
     assert "過度刪減" in qc[0]["reason"]
 
 
+def test_llm_pass2_strips_reintroduced_punctuation(monkeypatch):
+    # PR #23 教訓迴歸：Opus 無視「無標點」指令加回標點/吐簡體 → Pass 2 機械過濾
+    srt = _srt(["大腦簡史這本書"])
+    responses = [json.dumps({"corrections": {"1": "大腦简史，這本書。"}, "uncertain": []})]
+    calls: list[dict] = []
+    monkeypatch.setattr("shared.llm.ask", _fake_ask_factory(responses, calls))
+
+    corrected, _, _ = correct_srt_llm(srt, use_arbitration=False)
+    assert "，" not in corrected and "。" not in corrected
+    assert "简" not in corrected  # 簡體轉回繁體
+    assert "大腦簡史" in corrected
+
+
+def test_llm_arbitrated_false_when_arbitration_fails(monkeypatch, tmp_path):
+    srt = _srt(["第一句話"])
+    unc = {"line": 1, "original": "第一句話", "suggestion": "x", "reason": "r", "risk": "low"}
+    responses = [json.dumps({"corrections": {}, "uncertain": [unc]})]
+    calls: list[dict] = []
+    monkeypatch.setattr("shared.llm.ask", _fake_ask_factory(responses, calls))
+
+    def boom(*a, **kw):
+        raise RuntimeError("gemini down")
+
+    monkeypatch.setattr("shared.multimodal_arbiter.arbitrate_uncertain", boom)
+    fake_audio = tmp_path / "a.wav"
+    fake_audio.write_bytes(b"RIFF")
+
+    _, qc, stats = correct_srt_llm(srt, audio_path=fake_audio, use_arbitration=True)
+    assert stats["arbitrated"] is False
+    assert len(qc) == 1  # 退回未仲裁 uncertainties
+
+
+def test_scripted_strips_book_title_marks():
+    srt = _srt(["來談大腦簡史這本書"])
+    script = "來談《大腦簡史》這本書。"
+    corrected, _, _ = correct_srt_scripted(srt, script)
+    assert "《" not in corrected and "》" not in corrected
+    assert "大腦簡史" in corrected
+
+
 def test_llm_refs_injected_into_system(monkeypatch, tmp_path):
     ref = tmp_path / "訪綱.md"
     ref.write_text("來賓：謝伯讓，主題：大腦簡史" + "x" * 50, encoding="utf-8")
@@ -206,6 +246,24 @@ def test_discover_ref_files_no_prep_dir(tmp_path, monkeypatch):
     from shared.subtitle_correct import discover_ref_files
 
     assert discover_ref_files(ep) == []
+
+
+def test_run_correct_external_srt_creates_subs_dir(monkeypatch, tmp_path):
+    # 外部 SRT（--srt）跳過 subtitle-gen → subs/ 不存在，manifest 寫入不可炸
+    from scripts.run_subtitle_correct import run_correct
+
+    ep = tmp_path / "20260723 某來賓"
+    ep.mkdir()
+    ext_srt = tmp_path / "memoai.srt"
+    ext_srt.write_text(_srt(["外部工具產的字幕"]), encoding="utf-8")
+    responses = [json.dumps({"corrections": {}, "uncertain": []})]
+    calls: list[dict] = []
+    monkeypatch.setattr("shared.llm.ask", _fake_ask_factory(responses, calls))
+    monkeypatch.setenv("INTERVIEW_PREP_DIR", str(tmp_path / "無"))
+
+    out = run_correct(ep, srt=ext_srt, mode="llm", use_arbitration=False)
+    assert out.exists()
+    assert (ep / "subs" / "correct_manifest.json").exists()
 
 
 def test_find_script_file(tmp_path):
