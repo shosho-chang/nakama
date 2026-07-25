@@ -87,49 +87,88 @@ def segment_to_cues(
             return float("inf")  # segment 結尾
         return max(0.0, tokens[j][1] - tokens[j - 1][2])
 
+    import jieba
+
+    def bad_boundary(j0: int) -> bool:
+        """切在 j0 前會不會把詞切半：跨界二字在 jieba 詞典裡（如 對於）→ 壞切點。"""
+        if j0 <= 0 or j0 >= len(tokens):
+            return False
+        left, right = tokens[j0 - 1][0], tokens[j0][0]
+        if len(left) != 1 or len(right) != 1:
+            return False  # ASCII 整詞不受影響
+        return bool(jieba.dt.FREQ.get(left + right))
+
+    # 括號深度：cue 絕不能在《…》「…」內部切開（書名/專有名詞完整性）
+    _OPEN, _CLOSE = "《「", "》」"
+
+    def depth_at(j0: int) -> int:
+        d = 0
+        for i in range(j0):
+            for ch in tokens[i][0]:
+                if ch in _OPEN:
+                    d += 1
+                elif ch in _CLOSE:
+                    d = max(0, d - 1)
+        return d
+
     cues: list[tuple[float, float, str]] = []
     cur: list[tuple[int, int]] = []
     cur_chars = 0
 
-    def flush() -> None:
+    def flush(*, avoid_bad_boundary: bool = False) -> None:
         nonlocal cur, cur_chars
         if not cur:
             return
+        # 壞切點（詞被切半）→ 把最後 1–2 個詞退回下一個 cue
+        carry: list[tuple[int, int]] = []
+        if avoid_bad_boundary:
+            while len(cur) > 1 and len(carry) < 2 and bad_boundary(cur[-1][1]):
+                carry.insert(0, cur.pop())
+        # 括號內部 → 繼續退詞直到切點在括號外（退光了就照切，硬上限保底）
+        while len(cur) > 1 and depth_at(cur[-1][1]) > 0:
+            carry.insert(0, cur.pop())
         i0, j0 = cur[0][0], cur[-1][1]
         text = _join_tokens(tokens, (i0, j0))
         cues.append((tokens[i0][1], tokens[j0 - 1][2], text))
-        cur, cur_chars = [], 0
+        cur = carry
+        cur_chars = sum(span_len(s) for s in cur)
 
     for k, span in enumerate(spans):
         w_len = span_len(span)
         # 塞進來會爆硬上限 → 先 flush 再收
         if cur and cur_chars + w_len > hard_max:
-            flush()
+            flush(avoid_bad_boundary=True)
         cur.append(span)
         cur_chars += w_len
 
         pause = gap_after(span)
-        if pause >= pause_break and cur_chars >= MIN_CUE_CHARS:
+        in_bracket = depth_at(span[1]) > 0
+        if pause >= pause_break and cur_chars >= MIN_CUE_CHARS and not in_bracket:
             flush()  # 自然停頓：最優先切點
             continue
-        if cur_chars >= max_chars:
+        if cur_chars >= max_chars and not in_bracket:
             # 過了軟上限：往後看一小段，若近處有較大停頓就等它，否則現在切
             lookahead = spans[k + 1 : k + 4]
             ahead_chars = sum(span_len(s) for s in lookahead)
             pause_near = any(gap_after(s) >= 0.2 for s in lookahead)
             if not (pause_near and cur_chars + ahead_chars <= hard_max):
-                flush()
+                flush(avoid_bad_boundary=True)
     flush()
     return cues
 
 
 def _join_tokens(tokens: list[tuple[str, float, float]], span: tuple[int, int]) -> str:
-    """組 cue 文字：CJK 相連不加空格，ASCII 詞與前後加半形空格。"""
+    """組 cue 文字：CJK 相連不加空格，ASCII 詞與前後加半形空格；
+    連續單一 ASCII 字母（縮寫如 A+I → AI）直接相連。"""
     parts: list[str] = []
     for i in range(span[0], span[1]):
         text = tokens[i][0]
         if parts and (text[0].isascii() or parts[-1][-1].isascii()):
-            parts.append(" ")
+            prev = parts[-1]
+            if len(prev) == 1 and prev.isascii() and len(text) == 1 and text.isascii():
+                pass  # 縮寫字母連寫
+            else:
+                parts.append(" ")
         parts.append(text)
     return "".join(parts)
 

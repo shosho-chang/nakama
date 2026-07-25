@@ -93,3 +93,35 @@ def test_aligned_segments_to_srt_format():
 
 def test_empty_segment():
     assert segment_to_cues([]) == []
+
+
+def test_never_breaks_inside_book_title_brackets():
+    # 《升級吧大腦》整組必須在同一 cue，即使軟上限已過
+    text = "我想要再聊老師的這本新書《升級吧大腦》之前想要先請教老師"
+    cues = segment_to_cues(_words(text))
+    joined = [c[2] for c in cues]
+    holder = [t for t in joined if "《" in t]
+    assert holder, joined
+    assert "《升級吧大腦》" in holder[0]
+
+
+def test_no_break_between_dict_word_bigram():
+    # 「對於」在 jieba 詞典 → 即使字數到了也不能切在 對|於
+    text = "想要先請教老師對於大腦的興趣是從哪裡開始的呢我很好奇"
+    cues = segment_to_cues(_words(text))
+    for a, b in zip(cues, cues[1:]):
+        assert not (a[2].rstrip().endswith("對") and b[2].lstrip().startswith("於"))
+
+
+def test_initialism_letters_joined():
+    words = [
+        {"word": "講", "start": 0.0, "end": 0.2},
+        {"word": "A", "start": 0.2, "end": 0.4},
+        {"word": "I", "start": 0.4, "end": 0.6},
+        {"word": "對", "start": 0.6, "end": 0.8},
+        {"word": "大", "start": 0.8, "end": 1.0},
+        {"word": "腦", "start": 1.0, "end": 1.2},
+    ]
+    cues = segment_to_cues(words)
+    assert "AI" in cues[0][2]
+    assert "A I" not in cues[0][2]
