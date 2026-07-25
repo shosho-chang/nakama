@@ -101,6 +101,9 @@ def _extract_hotwords(context_files: list[str | Path]) -> list[str]:
         if not p.exists():
             continue
         text = p.read_text(encoding="utf-8")[:2000]
+        # 去 markdown 標記：hotwords 會進 Whisper initial_prompt，殘留的
+        # ** / _ / ` 會在靜音段被 echo 進字幕（2026-07-25 「升級**吧**」幻覺實例）
+        text = re.sub(r"[*_`#>]", "", text)
 
         # 提取書名號內的詞
         hotwords.extend(re.findall(r"《(.+?)》", text))

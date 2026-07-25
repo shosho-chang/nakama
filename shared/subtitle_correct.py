@@ -197,16 +197,38 @@ def emit_correction_workspace(
     return meta
 
 
-def apply_corrections(srt_content: str, payload: dict) -> tuple[str, list[dict], dict]:
-    """套用 subagent 校正結果（merged JSON）：越界過濾 + 過度刪減防護 + Pass 2。
+def delete_cues(srt_content: str, seqs: set[int]) -> str:
+    """從 SRT 移除指定序號的 cue（幻覺/prompt 汙染段），其餘 cue 重新編號。
 
-    payload 形狀：{"corrections": {"<seq>": "文字"}, "uncertain": [{...}]}
-    （corrections key 可為 str 或 int）。回傳 (corrected_srt, qc_items, stats)。
+    注意：重新編號後序號會與 QC 報告的行號錯位——刪除一律放在
+    校正流程的最後一步，且 QC 報告以刪除前的序號為準。
+    """
+    blocks = [b for b in srt_content.strip().split("\n\n") if b.strip()]
+    kept: list[str] = []
+    for block in blocks:
+        lines = block.splitlines()
+        seq = int(lines[0].strip()) if lines and lines[0].strip().isdigit() else None
+        if seq is not None and seq in seqs:
+            continue
+        if seq is not None:
+            lines[0] = str(len(kept) + 1)
+        kept.append("\n".join(lines))
+    return "\n\n".join(kept) + "\n"
+
+
+def apply_corrections(srt_content: str, payload: dict) -> tuple[str, list[dict], dict]:
+    """套用 subagent 校正結果（merged JSON）：越界過濾 + 過度刪減防護 + Pass 2 + 刪除。
+
+    payload 形狀：{"corrections": {"<seq>": "文字" | null}, "uncertain": [{...}]}
+    （corrections key 可為 str 或 int；value 為 null 表示**刪除該 cue**——
+    用於 ASR 幻覺段，如 initial_prompt 在靜音段被 echo 回輸出）。
+    回傳 (corrected_srt, qc_items, stats)。
     """
     entries = _extract_srt_texts(srt_content)
     valid_seqs = {seq for seq, _ in entries}
 
     corrections: dict[int, str] = {}
+    deletions: set[int] = set()
     dropped = 0
     for k, v in (payload.get("corrections") or {}).items():
         try:
@@ -214,21 +236,30 @@ def apply_corrections(srt_content: str, payload: dict) -> tuple[str, list[dict],
         except (TypeError, ValueError):
             dropped += 1
             continue
-        if seq in valid_seqs and isinstance(v, str) and v.strip():
+        if seq not in valid_seqs:
+            dropped += 1
+        elif v is None:
+            deletions.add(seq)
+        elif isinstance(v, str) and v.strip():
             corrections[seq] = v
         else:
             dropped += 1
     uncertainties = [u for u in (payload.get("uncertain") or []) if u.get("line") in valid_seqs]
     if dropped:
         logger.warning(f"丟棄 {dropped} 筆越界/無效修正")
+    if deletions:
+        logger.info(f"刪除 {len(deletions)} 個 cue（幻覺/汙染段）: {sorted(deletions)}")
 
     over_deleted = _over_deletion_guard(corrections, uncertainties, entries)
     corrected_srt = _finalize_srt(srt_content, corrections)
+    if deletions:
+        corrected_srt = delete_cues(corrected_srt, deletions)
 
     stats = {
         "mode": "cowork",
         "cues": len(entries),
         "corrections": len(corrections),
+        "deleted": len(deletions),
         "uncertain": len(uncertainties),
         "over_deletion_guard": over_deleted,
         "dropped": dropped,
@@ -461,6 +492,7 @@ def build_correction_report(stats: dict, qc_items: list[dict]) -> str:
         ("cues", "cue 總數"),
         ("chunks", "LLM chunks"),
         ("corrections", "修正行數"),
+        ("deleted", "刪除 cue 數（幻覺段）"),
         ("uncertain", "uncertain 行數"),
         ("over_deletion_guard", "過度刪減防護攔截"),
         ("qc", "進 QC 行數"),

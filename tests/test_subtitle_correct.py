@@ -204,6 +204,47 @@ def test_load_refs_text_cap_marks_truncation(tmp_path):
 # ── 報告 / 輔助 ──
 
 
+def test_apply_null_deletes_hallucinated_cue():
+    from shared.subtitle_correct import apply_corrections
+
+    srt = _srt(["正常的第一句", "大腦 升級 ** 吧 ** 天龍國", "正常的第三句"])
+    payload = {"corrections": {"2": None}, "uncertain": []}
+    corrected, qc, stats = apply_corrections(srt, payload)
+    assert "天龍國" not in corrected
+    assert stats["deleted"] == 1
+    assert stats["dropped"] == 0
+    # 重新編號：剩兩個 cue，序號 1、2
+    assert corrected.count("-->") == 2
+    seq_lines = [line for line in corrected.splitlines() if line.strip().isdigit()]
+    assert seq_lines == ["1", "2"]
+    # 時間戳保留原值（第三句仍是原本的時間）
+    assert "00:00:04,000 --> 00:00:06,000" in corrected
+
+
+def test_hotwords_strip_markdown(tmp_path):
+    from shared.transcriber import _extract_hotwords
+
+    ref = tmp_path / "訪綱.md"
+    ref.write_text("《升級**吧**！大腦》講「腦_腐_」與「多巴胺」", encoding="utf-8")
+    words = _extract_hotwords([ref])
+    assert "升級吧！大腦" in words
+    assert "腦腐" in words
+    assert not any("*" in w or "_" in w for w in words)
+
+
+def test_find_offset_synthetic():
+    np = __import__("numpy")
+    from shared.auphonic import _find_offset
+
+    rng = np.random.default_rng(42)
+    needle = rng.standard_normal(16000).astype(np.float32)  # 1 秒
+    lead = rng.standard_normal(int(16000 * 2.5)).astype(np.float32) * 0.1
+    haystack = np.concatenate([lead, needle, lead])
+    offset, peak = _find_offset(haystack, needle)
+    assert abs(offset - 2.5) < 0.01
+    assert peak > 0.9
+
+
 def test_report_contains_stats_and_items():
     stats = {"mode": "llm", "cues": 10, "corrections": 3, "qc": 1}
     qc = [{"line": 5, "original": "原", "suggestion": "建", "reason": "理", "risk": "high"}]
