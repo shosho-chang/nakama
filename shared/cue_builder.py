@@ -24,14 +24,21 @@ PAUSE_FORCE_BREAK = 0.6  # 字間停頓 ≥ 此秒數 → 強制斷（自然句�
 MIN_CUE_CHARS = 4  # 停頓斷句的最短 cue（避免碎成單字）
 
 
-def _tokenize(words: list[dict]) -> list[tuple[str, float, float]]:
-    """words → (text, start, end) tuple 清單，丟掉空 token。"""
+def _tokenize(
+    words: list[dict], speakers: list[int | None] | None = None
+) -> list[tuple[str, float, float, int | None]]:
+    """words → (text, start, end, speaker) tuple 清單，丟掉空 token。
+
+    speakers 與 words 等長（speaker_assign.assign_word_speakers 輸出），
+    未提供時 speaker 一律 None（不做說話者斷句）。
+    """
     out = []
-    for w in words:
+    for idx, w in enumerate(words):
         text = (w.get("word") or "").strip()
         if not text or w.get("start") is None or w.get("end") is None:
             continue
-        out.append((text, float(w["start"]), float(w["end"])))
+        spk = speakers[idx] if speakers else None
+        out.append((text, float(w["start"]), float(w["end"]), spk))
     return out
 
 
@@ -45,7 +52,7 @@ def _jieba_spans(tokens: list[tuple[str, float, float]]) -> list[tuple[int, int]
 
     text = "".join(t[0] for t in tokens)
     char_to_token: list[int] = []
-    for idx, (t, _, _) in enumerate(tokens):
+    for idx, (t, *_rest) in enumerate(tokens):
         char_to_token.extend([idx] * len(t))
 
     spans: list[tuple[int, int]] = []
@@ -69,9 +76,13 @@ def segment_to_cues(
     max_chars: int = MAX_CHARS,
     hard_max: int = HARD_MAX_CHARS,
     pause_break: float = PAUSE_FORCE_BREAK,
+    speakers: list[int | None] | None = None,
 ) -> list[tuple[float, float, str]]:
-    """單一 segment 的字級 words → cue 列表 (start, end, text)。"""
-    tokens = _tokenize(words)
+    """單一 segment 的字級 words → cue 列表 (start, end, text)。
+
+    speakers 給定時，說話者變更處**強制斷句**（不同人絕不同 cue）。
+    """
+    tokens = _tokenize(words, speakers)
     if not tokens:
         return []
 
@@ -133,8 +144,21 @@ def segment_to_cues(
         cur = carry
         cur_chars = sum(span_len(s) for s in cur)
 
+    def span_speaker(span: tuple[int, int]) -> int | None:
+        for i in range(span[0], span[1]):
+            if tokens[i][3] is not None:
+                return tokens[i][3]
+        return None
+
+    last_spk: int | None = None
     for k, span in enumerate(spans):
         w_len = span_len(span)
+        # 說話者變更：絕對切點（不同人絕不同 cue）
+        spk = span_speaker(span)
+        if cur and spk is not None and last_spk is not None and spk != last_spk:
+            flush()
+        if spk is not None:
+            last_spk = spk
         # 塞進來會爆硬上限 → 先 flush 再收
         if cur and cur_chars + w_len > hard_max:
             flush(avoid_bad_boundary=True)
@@ -173,11 +197,22 @@ def _join_tokens(tokens: list[tuple[str, float, float]], span: tuple[int, int]) 
     return "".join(parts)
 
 
-def aligned_segments_to_srt(aligned_segments: list[dict], **kwargs) -> str:
-    """whisperx.align() 的 segments → SRT 字串（真實字級時間戳）。"""
+def aligned_segments_to_srt(
+    aligned_segments: list[dict],
+    *,
+    speaker_fn=None,
+    **kwargs,
+) -> str:
+    """whisperx.align() 的 segments → SRT 字串（真實字級時間戳）。
+
+    speaker_fn: words → speakers（如 speaker_assign.assign_word_speakers
+    的偏函數），給定時每個 segment 內做說話者斷句。
+    """
     all_cues: list[tuple[float, float, str]] = []
     for seg in aligned_segments:
-        all_cues.extend(segment_to_cues(seg.get("words", []), **kwargs))
+        words = seg.get("words", [])
+        speakers = speaker_fn(words) if speaker_fn else None
+        all_cues.extend(segment_to_cues(words, speakers=speakers, **kwargs))
 
     lines: list[str] = []
     for seq, (start, end, text) in enumerate(all_cues, start=1):
