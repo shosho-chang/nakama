@@ -118,6 +118,25 @@ def test_llm_filters_out_of_chunk_seq(monkeypatch):
     assert stats["corrections"] == 1
 
 
+def test_llm_over_deletion_guard(monkeypatch):
+    # 修正把 13 字縮成 3 字 → 撤下修正、轉 uncertain（無音檔 → 直接進 QC）
+    srt = _srt(["就是那個常常看到你去上鳳鑫節", "第二句話正常改"])
+    responses = [
+        json.dumps({"corrections": {"1": "鳳馨姊", "2": "第二句話正常修"}, "uncertain": []}),
+    ]
+    calls: list[dict] = []
+    monkeypatch.setattr("shared.llm.ask", _fake_ask_factory(responses, calls))
+
+    corrected, qc, stats = correct_srt_llm(srt, use_arbitration=False)
+    assert "就是那個常常看到你去上鳳鑫節" in corrected  # 原文保留
+    assert "第二句話正常修" in corrected  # 正常修正照套
+    assert stats["over_deletion_guard"] == 1
+    assert len(qc) == 1
+    assert qc[0]["line"] == 1
+    assert qc[0]["suggestion"] == "鳳馨姊"
+    assert "過度刪減" in qc[0]["reason"]
+
+
 def test_llm_refs_injected_into_system(monkeypatch, tmp_path):
     ref = tmp_path / "訪綱.md"
     ref.write_text("來賓：謝伯讓，主題：大腦簡史" + "x" * 50, encoding="utf-8")

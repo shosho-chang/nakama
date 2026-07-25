@@ -148,6 +148,29 @@ def correct_srt_llm(
             f"chunk {idx}/{len(chunks)}: {len(chunk_corr)} 修正, {len(chunk_unc)} uncertain"
         )
 
+    # 防過度刪減：修正後長度 < 原文一半（原文 ≥ 8 有效字元）→ 撤下修正、
+    # 轉入 uncertain 交仲裁聽音檔裁決（無音檔則進 QC 給人工）。
+    # 實例：raw「就是那個常常看到你去上鳳鑫節」被 Opus 縮成「鳳馨姊」——
+    # 同音字修對了但整句 filler 被刪，違反「不改變原意」。
+    entry_map = dict(entries)
+    over_deleted = 0
+    for seq in list(corrections):
+        orig_len = len(re.sub(r"\s", "", entry_map.get(seq, "")))
+        new_len = len(re.sub(r"\s", "", corrections[seq]))
+        if orig_len >= 8 and new_len < 0.5 * orig_len:
+            uncertainties.append(
+                {
+                    "line": seq,
+                    "original": entry_map[seq],
+                    "suggestion": corrections.pop(seq),
+                    "reason": "修正大幅縮短原文（疑似過度刪減），需聽音檔確認",
+                    "risk": "high",
+                }
+            )
+            over_deleted += 1
+    if over_deleted:
+        logger.info(f"過度刪減防護: {over_deleted} 行修正轉入仲裁/QC")
+
     qc_items: list[dict] = uncertainties
     if use_arbitration and uncertainties and audio_path is not None:
         try:
@@ -171,6 +194,7 @@ def correct_srt_llm(
         "chunks": len(chunks),
         "corrections": len(corrections),
         "uncertain": len(uncertainties),
+        "over_deletion_guard": over_deleted,
         "qc": len(qc_items),
         "arbitrated": use_arbitration and bool(uncertainties) and audio_path is not None,
     }
@@ -305,6 +329,7 @@ def build_correction_report(stats: dict, qc_items: list[dict]) -> str:
         ("chunks", "LLM chunks"),
         ("corrections", "修正行數"),
         ("uncertain", "uncertain 行數"),
+        ("over_deletion_guard", "過度刪減防護攔截"),
         ("qc", "進 QC 行數"),
         ("flagged", "低對齊率行數"),
         ("coverage", "整體對齊率"),
