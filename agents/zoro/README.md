@@ -11,7 +11,7 @@ ADR-012：Zoro = 向外搜尋；SEO audit / enrich 屬 Brook 對內加工。
 
 ## 2. 對內健身教練（Coach，Garmin 連動）
 
-Owner personal-ops 能力（**ADR-050**），與內容 pipeline 正交、**非醫療建議**。`agents/zoro/coach/` 子套件：
+Owner personal-ops 能力（**ADR-053**），與內容 pipeline 正交、**非醫療建議**。`agents/zoro/coach/` 子套件：
 
 | 模組 | 職責 |
 |---|---|
@@ -27,4 +27,4 @@ Owner personal-ops 能力（**ADR-050**），與內容 pipeline 正交、**非�
 
 **依賴：** `garminconnect`（optional extra `coach`，需 Python ≥3.12；garth 已死，0.3.x 原生 DI OAuth）。token 在 `data/garmin/`（gitignored），本機 MFA 登入後搬 VPS，非互動 silent refresh。
 
-詳見計畫 `docs/research/2026-06-29-zoro-coach-implementation-plan-v2.md` 與 ADR-050。Phase 2 將加：Tredict 室內單車、恢復（冥想 + CWI 時機）、行事曆排程、週日自動化、Slack 對話 / readiness 調整。
+詳見計畫 `docs/research/2026-06-29-zoro-coach-implementation-plan-v2.md` 與 ADR-053。Phase 2 將加：Tredict 室內單車、恢復（冥想 + CWI 時機）、行事曆排程、週日自動化、Slack 對話 / readiness 調整。

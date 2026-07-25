@@ -1,4 +1,6 @@
-# ADR-050: Zoro 對內健身教練（Garmin 連動）
+# ADR-053: Zoro 對內健身教練（Garmin 連動）
+
+> **改號註記**：原編號 ADR-050，與 main 上 [ADR-050 Video Production Line 歸 Brook](ADR-050-video-production-line-brook-ownership.md)、ADR-052（原亦編 050，Robin promotion package）撞號，2026-07-25 改為 ADR-053。
 
 **Date:** 2026-06-29
 **Status:** Accepted

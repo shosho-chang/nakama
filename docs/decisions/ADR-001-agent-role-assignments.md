@@ -23,7 +23,7 @@ Nakama 在 v0.1.0 初始設計時，7 個 Agent 的職責是概略草擬的，�
 |-------|--------|--------|
 | Robin | Knowledge Base | Knowledge Base（不變）|
 | Nami | Secretary | Secretary（不變）|
-| Zoro | Scout | Scout（不變）+ **對內健身教練**（Garmin 連動的重訓監控/漸進負荷，Owner personal-ops）— *Amended by ADR-050 (2026-06-29)* |
+| Zoro | Scout | Scout（不變）+ **對內健身教練**（Garmin 連動的重訓監控/漸進負荷，Owner personal-ops）— *Amended by ADR-053 (2026-06-29)* |
 | Usopp | Community Monitor | **Publisher**：發布至 WordPress、YouTube、社群媒體；電子報管理（Fluent CRM）|
 | Sanji | Producer（選題/大綱）| **Community Manager**：Fluent Community 社群營運、成員互動、活動策劃 |
 | Franky | Repurpose（SEO/改寫）| **System Maintenance + Evolution Watch**：套件更新、CVE 掃描、API key 驗證、系統健康檢查；AI 工具情報蒐集、跨期 synthesis、proposal 草擬（analyst 角色，非 decision-maker — 戰略拍板仍由修修 + Claude 主線負責）— *Amended by ADR-023 (2026-05-07)* |

@@ -49,6 +49,6 @@ ADR-001 line 38 預留了「SEO / Repurpose 功能未來可由 Brook 擴展承�
 
 ---
 
-## Amendment (2026-06-29, ADR-050): Zoro 多領域 — 對內健身教練 carve-out
+## Amendment (2026-06-29, ADR-053): Zoro 多領域 — 對內健身教練 carve-out
 
-Zoro 除「向外搜尋」外，新增一條 **Owner personal-ops 能力：對內健身教練**（`agents/zoro/coach/` — Garmin 連動的重訓監控 + 漸進負荷 + 課表生成）。此能力**不套用本 ADR 的「向外 / 對內」framing**：它既非向外偵察、也非對既有內容加工，而是 Owner 個人健身領域的工具，與內容七層 pipeline 正交。歸入 Zoro 是務實選擇（複用既有 argparse 分發 / 成本歸因 / heartbeat toolchain），不改變上方 SEO 三件套的 Zoro / Brook 分界。詳見 **ADR-050**。
+Zoro 除「向外搜尋」外，新增一條 **Owner personal-ops 能力：對內健身教練**（`agents/zoro/coach/` — Garmin 連動的重訓監控 + 漸進負荷 + 課表生成）。此能力**不套用本 ADR 的「向外 / 對內」framing**：它既非向外偵察、也非對既有內容加工，而是 Owner 個人健身領域的工具，與內容七層 pipeline 正交。歸入 Zoro 是務實選擇（複用既有 argparse 分發 / 成本歸因 / heartbeat toolchain），不改變上方 SEO 三件套的 Zoro / Brook 分界。詳見 **ADR-053**。
