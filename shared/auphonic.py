@@ -328,7 +328,12 @@ def _download_result(api_key: str, production_data: dict, output_path: Path) -> 
 
 
 def _trim_jingle(audio_path: Path, jingle_seconds: float) -> Path:
-    """用 ffmpeg 裁切頭尾 Jingle，回傳裁切後的檔案路徑。"""
+    """用 ffmpeg 裁切頭尾 Jingle（固定秒數 fallback），回傳裁切後的檔案路徑。
+
+    ⚠️ Auphonic 免費方案 Jingle 實測**不是**固定 6 秒（2026-07-25 量到頭 6.409s /
+    總長 12.817s）——固定裁會讓時間軸偏移原始錄影約 0.4s。有原始檔可對齊時
+    一律走 `_align_trim`（交叉相關、sample 級），本函式僅當 fallback。
+    """
     duration = _get_audio_duration(audio_path)
     end_time = duration - jingle_seconds
 
@@ -353,6 +358,145 @@ def _trim_jingle(audio_path: Path, jingle_seconds: float) -> Path:
     subprocess.run(cmd, capture_output=True, check=True)
     logger.info(f"Jingle 裁切完成: 去掉頭尾各 {jingle_seconds}s → {trimmed_path.name}")
     return trimmed_path
+
+
+_ALIGN_SR = 16000  # 對齊用解碼取樣率
+
+
+def _decode_mono(path: Path, duration: float, start: float = 0.0) -> "object":
+    """解碼片段為 16kHz mono float32（numpy array），交叉相關用。"""
+    import numpy as np
+
+    cmd = [
+        "ffmpeg",
+        "-v",
+        "error",
+        "-ss",
+        str(start),
+        "-t",
+        str(duration),
+        "-i",
+        str(path),
+        "-ac",
+        "1",
+        "-ar",
+        str(_ALIGN_SR),
+        "-f",
+        "f32le",
+        "-",
+    ]
+    out = subprocess.run(cmd, capture_output=True).stdout
+    return np.frombuffer(out, dtype=np.float32)
+
+
+def _find_offset(haystack, needle) -> tuple[float, float]:
+    """needle 在 haystack 中的起始秒數與正規化相關峰值。"""
+    import numpy as np
+
+    n = len(haystack) + len(needle)
+    corr = np.fft.irfft(np.fft.rfft(haystack, n) * np.conj(np.fft.rfft(needle, n)), n)
+    k = int(np.argmax(np.abs(corr[: len(haystack)])))
+    seg = haystack[k : k + len(needle)]
+    peak = float(abs(corr[k]) / (np.linalg.norm(needle) * np.linalg.norm(seg) + 1e-9))
+    return k / _ALIGN_SR, peak
+
+
+def _align_trim(audio_path: Path, source_path: Path, jingle_seconds: float) -> Path:
+    """把 Auphonic 輸出與**原始檔**交叉相關對齊後精確裁掉 Jingle。
+
+    輸出時間軸 = 原始錄影（sample 級），量測驗證兩個位置偏移一致才採用；
+    numpy 不在 / 相關峰值過低 / 偏移不一致 → 退回固定秒數 `_trim_jingle`。
+    """
+    try:
+        import numpy  # noqa: F401
+    except ImportError:
+        logger.warning("numpy 不可用，Jingle 裁切退回固定秒數（時間軸可能偏移 <1s）")
+        return _trim_jingle(audio_path, jingle_seconds)
+
+    try:
+        src_dur = _get_audio_duration(source_path)
+        # 頭部：原始前 20s 在輸出前 40s 中定位
+        head_off, head_peak = _find_offset(
+            _decode_mono(audio_path, 40.0), _decode_mono(source_path, 20.0)
+        )
+        # 驗證：原始中段 10s 應出現在輸出 head_off + 中段（偏移一致才可信）
+        mid = min(60.0, src_dur / 2)
+        mid_off, mid_peak = _find_offset(
+            _decode_mono(audio_path, 30.0, start=head_off + mid - 15.0),
+            _decode_mono(source_path, 10.0, start=mid),
+        )
+        mid_drift = abs((head_off + mid - 15.0 + mid_off) - (head_off + mid))
+        if head_peak < 0.5 or mid_peak < 0.5 or mid_drift > 0.05:
+            logger.warning(
+                f"對齊不可信（peak {head_peak:.2f}/{mid_peak:.2f} drift {mid_drift:.3f}s），"
+                "退回固定秒數裁切"
+            )
+            return _trim_jingle(audio_path, jingle_seconds)
+
+        trimmed_path = audio_path.with_stem(f"{audio_path.stem}_trimmed")
+        # 重編碼裁切（-c copy 會對齊 packet 邊界產生 <0.1s 誤差）；PCM 重編碼無損
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-v",
+                "error",
+                "-i",
+                str(audio_path),
+                "-ss",
+                f"{head_off:.6f}",
+                "-t",
+                f"{src_dur:.6f}",
+                "-c:a",
+                "pcm_s24le",
+                str(trimmed_path),
+            ],
+            capture_output=True,
+            check=True,
+        )
+        logger.info(
+            f"Jingle 對齊裁切完成: 頭 {head_off:.3f}s（peak {head_peak:.2f}）→ "
+            f"{trimmed_path.name}（時間軸 = 原始檔）"
+        )
+        return trimmed_path
+    except Exception as e:
+        logger.warning(f"對齊裁切失敗（{type(e).__name__}: {e}），退回固定秒數裁切")
+        return _trim_jingle(audio_path, jingle_seconds)
+
+
+def find_existing_production(filename: str, duration_seconds: float) -> tuple[str, dict] | None:
+    """在所有帳號找同名且時長吻合的已完成 production（重下載不耗額度）。
+
+    額度不足時的復原路徑：回傳 (api_key, production_data)，找不到回傳 None。
+    """
+    for account in _load_accounts():
+        try:
+            resp = httpx.get(
+                f"{_API_BASE}/productions.json",
+                headers=_headers(account.api_key),
+                params={"limit": 20},
+                timeout=30,
+            )
+            resp.raise_for_status()
+        except Exception:
+            continue
+        for prod in resp.json().get("data", []):
+            meta = prod.get("metadata") or {}
+            title = meta.get("title") or ""
+            if prod.get("status") != _STATUS_DONE:
+                continue
+            in_file = Path(prod.get("input_file") or title or "").name
+            if in_file and Path(filename).stem in in_file:
+                # 時長吻合（輸出 = 原始 + Jingle ~13s，容忍 30s）
+                length = float(prod.get("length", 0) or 0)
+                if length and abs(length - duration_seconds) > 30:
+                    continue
+                logger.info(
+                    f"找到既有 production {prod.get('uuid')}（帳號 {account.email}），"
+                    "重下載不耗額度"
+                )
+                return account.api_key, prod
+    return None
 
 
 # ── 公開 API ──
@@ -393,7 +537,19 @@ def normalize(audio_path: str | Path, *, output_dir: str | Path | None = None, *
     # 1. 取得音檔長度，找有餘額的帳號
     duration = _get_audio_duration(audio_path)
     logger.info(f"音檔長度: {duration:.1f}s ({duration / 60:.1f} min)")
-    account = _find_available_account(duration)
+    output_path = output_dir / f"{audio_path.stem}_normalized.wav"
+    try:
+        account = _find_available_account(duration)
+    except ValueError:
+        # 額度不足 → 先找既有 production（同檔重跑場景；重下載不耗額度）
+        existing = find_existing_production(audio_path.name, duration)
+        if existing is None:
+            raise
+        api_key, production_data = existing
+        _download_result(api_key, production_data, output_path)
+        if params["trim_jingle"]:
+            output_path = _align_trim(output_path, audio_path, params["jingle_seconds"])
+        return output_path
     logger.info(f"使用帳號: {account.email}")
 
     # 2. 建立 production + 上傳 + 處理
@@ -402,11 +558,10 @@ def normalize(audio_path: str | Path, *, output_dir: str | Path | None = None, *
     production_data = _start_and_wait(account.api_key, uuid)
 
     # 3. 下載結果
-    output_path = output_dir / f"{audio_path.stem}_normalized.wav"
     _download_result(account.api_key, production_data, output_path)
 
-    # 4. 裁切 Jingle（免費方案）
+    # 4. 裁切 Jingle（免費方案外加；對齊原始檔還原時間軸）
     if params["trim_jingle"]:
-        output_path = _trim_jingle(output_path, params["jingle_seconds"])
+        output_path = _align_trim(output_path, audio_path, params["jingle_seconds"])
 
     return output_path

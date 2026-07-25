@@ -88,7 +88,10 @@ def run_prep(
         if processed != source:
             intermediates.append(processed)
     else:
-        logger.info("跳過 Auphonic（--no-auphonic）")
+        logger.warning(
+            "跳過 Auphonic（--no-auphonic）：輸出將是 raw 的直接複製，"
+            "**未經任何 normalization**——僅供測試或 Auphonic 不可用時的暫行方案"
+        )
         processed = source
 
     # Stage 3（opt-in）: 頭尾靜音裁切。
