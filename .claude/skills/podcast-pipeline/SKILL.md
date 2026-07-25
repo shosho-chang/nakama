@@ -27,8 +27,15 @@ description: >
 
 **說話者切分**（correct 之後、上 Resolve 之前）：episode 有分軌 mic
 （Audio/ 內兩軌以上人聲）就跑 `python scripts/run_speaker_split.py <episode>`——
-混人 cue 在說話者變更處切開（校正文字不動、冪等可重跑）。QC 裁決重新
-`--apply` 之後**要再跑一次**，然後才 `--refresh-subtitles`。
+混人 cue 在說話者變更處切開（校正文字不動、冪等可重跑）。
+
+**補洞**（切分之後）：`python scripts/run_gap_fill.py <episode>`——偵測
+無字幕區段（>3s）重聽補回（典型成因：幻覺 cue 刪除後底下的真實對話沒補；
+重聽結果有快取，重跑免 GPU）。
+
+**QC 裁決後的完整重跑鏈**（冪等）：改 corrections.json → `--apply` →
+speaker split → gap fill → `--refresh-subtitles`。⚠️ `--apply` 會重生
+transcript.qc.md（見 subtitle-correct skill 的批註保護警告）。
 
 ## 段間 HITL（每段完成必停）
 
