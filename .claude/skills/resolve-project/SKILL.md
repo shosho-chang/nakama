@@ -46,6 +46,9 @@ Scripting API **不開放** subtitle style preset，樣式靠 **DRT 模板**攜�
 3. 之後 build 自動偵測模板：timeline 從模板長出（字幕軌自帶 Shosho YT 樣式）
    → 改名 → 填影片與字幕。模板不存在則退回無樣式建立
 
+模板是**本機檔案**（`data/*` gitignored，不進 git）——只在有 Resolve 的機器有意義。
+遺失時重做步驟 1–2 即可重建（已建過樣式軌的任何 timeline 都能當來源）。
+
 ⚠️ 樣式掛在「軌」上——任何流程都**不可刪字幕軌重建**（refresh 已改為只清內容）。
 
 ## QC 裁決後刷新字幕
