@@ -29,11 +29,24 @@ C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe ^
   E:\nakama\scripts\build_resolve_project.py "<episode 資料夾>"
 ```
 
-- `--dry-run` 先看計畫（主影片選擇、機位、音軌清單）
+- `--dry-run` 先看計畫（主影片選擇、timeline 音軌來源、機位、音軌清單）
 - 主影片自動選 episode 根目錄 `Default_*.mp4`（program feed），`--video` 可覆寫
 - 冪等：project / timeline 同名已存在會跳過重建
-- 產出佈局：timeline（同 project 名）V1 = 主影片；subtitle 軌 = transcript.srt；
-  media pool `Cameras` bin = Video/ 全機位、`Audio` bin = Audio/ 全音軌
+- 產出佈局：timeline（同 project 名）V1 = 主影片（純視訊）；A1 = 根目錄
+  `normalized.wav`（Auphonic 處理後、與錄影同起點；沒有時退回影片內嵌音軌）；
+  subtitle 軌 = transcript.srt；media pool `Cameras` bin = Video/ 全機位、
+  `Audio` bin = Audio/ 全音軌
+
+## 既有 timeline 換音軌
+
+早期建的 timeline 音軌是影片內嵌音軌時，換成 normalized.wav：
+
+```
+... build_resolve_project.py "<episode>" --swap-audio
+```
+
+解除 video-audio link → 移除內嵌音軌 clip → normalized.wav 放 timeline 起點
+（前提：影片與錄音開錄點一致——修修 2026-07-25 確認本流程如此）。
 
 ## 字幕樣式 preset（一次性設定，之後每集自動）
 

@@ -10,7 +10,9 @@ project 名稱 = episode 資料夾名（如「20260723 謝伯讓」），timelin
 
 佈局：
 - Media pool：主影片 + `Cameras` bin（Video/ 全部機位）+ `Audio` bin（Live-Mix 等）
-- Timeline（同 project 名）：V1 = 主影片（含其音軌）；subtitle 軌 = transcript.srt
+- Timeline（同 project 名）：V1 = 主影片；A1 = `normalized.wav`（Auphonic 處理後、
+  與原始錄影同起點）——episode 根目錄沒有 normalized.wav 時退回影片內嵌音軌；
+  subtitle 軌 = transcript.srt。既有 timeline 用 `--swap-audio` 把內嵌音軌換掉
 - 主影片選擇：episode 根目錄的 `Default_*.mp4`（program feed），沒有則取
   Video/ 中時長最接近字幕音檔的檔案；`--video` 可覆寫
 
@@ -105,6 +107,12 @@ def _probe(path: Path) -> dict:
     }
 
 
+def _normalized_audio(episode_dir: Path) -> Path | None:
+    """episode 根目錄的 normalized.wav（audio-prep 產出、與原始錄影同起點）。"""
+    p = episode_dir / "normalized.wav"
+    return p if p.exists() else None
+
+
 def find_main_video(episode_dir: Path, override: Path | None) -> Path:
     if override:
         if not override.exists():
@@ -169,12 +177,14 @@ def build_project(
     )
     audio_files = sorted(audio_dir.glob("*.wav")) if audio_dir else []
 
+    normalized = _normalized_audio(episode_dir)
     plan = {
         "project": project_name,
         "main_video": str(main_video),
         "fps": info["fps"],
         "resolution": f"{info['width']}x{info['height']}",
         "subtitle": str(srt_path),
+        "timeline_audio": str(normalized) if normalized else "（影片內嵌音軌）",
         "cameras": [str(p) for p in cameras],
         "audio_files": [str(p) for p in audio_files],
     }
@@ -228,6 +238,32 @@ def build_project(
         mp.ImportMedia([str(p) for p in audio_files])
 
     mp.SetCurrentFolder(root)
+    norm_items = mp.ImportMedia([str(normalized)]) if normalized else None
+    if normalized and not norm_items:
+        logger.warning(f"normalized.wav 匯入失敗（{normalized}），退回影片內嵌音軌")
+
+    def _fill_av(timeline) -> None:
+        """主影片與音軌上 timeline：有 normalized 就純視訊 + normalized 音軌。"""
+        if norm_items:
+            ok = mp.AppendToTimeline([{"mediaPoolItem": main_items[0], "mediaType": 1}])
+            if not ok:
+                raise SystemExit("主影片（純視訊）上 timeline 失敗")
+            ok = mp.AppendToTimeline(
+                [
+                    {
+                        "mediaPoolItem": norm_items[0],
+                        "mediaType": 2,
+                        "trackIndex": 1,
+                        "recordFrame": timeline.GetStartFrame(),
+                    }
+                ]
+            )
+            if not ok:
+                raise SystemExit("normalized.wav 上 timeline 失敗")
+        else:
+            if not mp.AppendToTimeline(main_items):
+                raise SystemExit("主影片上 timeline 失敗")
+
     template = _template_path()
     timeline = None
     if template.exists():
@@ -237,16 +273,16 @@ def build_project(
             if not timeline.SetName(project_name):
                 logger.warning(f"timeline 改名失敗，保留模板名「{timeline.GetName()}」")
             project.SetCurrentTimeline(timeline)
-            if not mp.AppendToTimeline(main_items):
-                raise SystemExit("主影片放上模板 timeline 失敗")
+            _fill_av(timeline)
             logger.info(f"timeline 由樣式模板建立: {template.name}")
         else:
             logger.warning(f"模板匯入失敗（{template}），退回無樣式建立")
     if timeline is None:
-        timeline = mp.CreateTimelineFromClips(project_name, main_items)
+        timeline = mp.CreateEmptyTimeline(project_name)
         if timeline is None:
             raise SystemExit("timeline 建立失敗")
         project.SetCurrentTimeline(timeline)
+        _fill_av(timeline)
 
     # 字幕：SRT 匯入 media pool 後 append —— Resolve 會放上 subtitle 軌
     # （模板軌已帶樣式，不可刪軌重建）
@@ -324,6 +360,77 @@ def refresh_subtitles(episode_dir: Path) -> dict:
     return {"project": project_name, "status": "subtitles-refreshed", "subtitle_items": count}
 
 
+def swap_audio(episode_dir: Path) -> dict:
+    """既有 timeline 的音軌換成 normalized.wav（內嵌音軌移除）。
+
+    修修 2026-07-25：timeline 上的 audio 要用 Auphonic normalize 過的檔案，
+    不要影片內嵌音軌。開錄點一致（修修確認），normalized 直接放 timeline 起點。
+    """
+    project_name = episode_dir.name
+    normalized = _normalized_audio(episode_dir)
+    if normalized is None:
+        raise FileNotFoundError(f"找不到 {episode_dir / 'normalized.wav'}（先跑 audio-prep）")
+
+    resolve = connect_resolve()
+    pm = resolve.GetProjectManager()
+    project = pm.GetCurrentProject()
+    if project is None or project.GetName() != project_name:
+        project = pm.LoadProject(project_name)
+    if project is None:
+        raise SystemExit(f"project「{project_name}」不存在，先跑完整建立")
+
+    timeline = None
+    for i in range(1, project.GetTimelineCount() + 1):
+        tl = project.GetTimelineByIndex(i)
+        if tl and tl.GetName() == project_name:
+            timeline = tl
+            break
+    if timeline is None:
+        raise SystemExit(f"timeline「{project_name}」不存在")
+    project.SetCurrentTimeline(timeline)
+
+    # 移除既有音軌內容（影片內嵌音軌）：先解除 video-audio link 再刪，
+    # 避免連動刪掉 V1 的影片
+    old_items = []
+    for ti in range(1, timeline.GetTrackCount("audio") + 1):
+        old_items.extend(timeline.GetItemListInTrack("audio", ti) or [])
+    if old_items:
+        timeline.SetClipsLinked(old_items, False)
+        if not timeline.DeleteClips(old_items):
+            raise SystemExit("移除既有音軌內容失敗")
+    video_count = len(timeline.GetItemListInTrack("video", 1) or [])
+    if video_count == 0:
+        raise SystemExit("V1 影片在刪音軌後消失——請在 Resolve 內 undo（Ctrl+Z）並回報")
+
+    mp = project.GetMediaPool()
+    mp.SetCurrentFolder(mp.GetRootFolder())
+    norm_items = mp.ImportMedia([str(normalized)])
+    if not norm_items:
+        raise SystemExit(f"normalized.wav 匯入失敗: {normalized}")
+    ok = mp.AppendToTimeline(
+        [
+            {
+                "mediaPoolItem": norm_items[0],
+                "mediaType": 2,
+                "trackIndex": 1,
+                "recordFrame": timeline.GetStartFrame(),
+            }
+        ]
+    )
+    if not ok:
+        raise SystemExit("normalized.wav 上 timeline 失敗")
+    pm.SaveProject()
+    new_items = timeline.GetItemListInTrack("audio", 1) or []
+    logger.info(f"音軌已換成 normalized.wav（移除 {len(old_items)} 個內嵌音軌 clip）")
+    return {
+        "project": project_name,
+        "status": "audio-swapped",
+        "removed_audio_items": len(old_items),
+        "audio_items": len(new_items),
+        "audio_source": str(normalized),
+    }
+
+
 def make_template(episode_dir: Path) -> dict:
     """從「已手動套好字幕樣式」的 episode timeline 產生 DRT 樣式模板（一次性設定）。
 
@@ -382,6 +489,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="只刷新既有 timeline 的字幕內容（transcript.srt 更新後用；軌與樣式保留）",
     )
     parser.add_argument(
+        "--swap-audio",
+        action="store_true",
+        help="既有 timeline 的音軌換成 normalized.wav（移除影片內嵌音軌）",
+    )
+    parser.add_argument(
         "--make-template",
         action="store_true",
         help="從此 episode 已套好字幕樣式的 timeline 產生 DRT 樣式模板（一次性）",
@@ -399,6 +511,8 @@ def main(argv: list[str] | None = None) -> int:
     started = time.time()
     if args.make_template:
         result = make_template(episode_dir)
+    elif args.swap_audio:
+        result = swap_audio(episode_dir)
     elif args.refresh_subtitles:
         result = refresh_subtitles(episode_dir)
     else:
