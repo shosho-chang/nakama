@@ -1,5 +1,6 @@
 # Memory Index
 
+- [feedback_subscription_first_no_api_spend.md](feedback_subscription_first_no_api_spend.md) — **互動 pipeline 一律 subscription quota（cowork 派 subagent）；付費 API 呼叫必須明確 opt-in flag**（修修 2026-07-25 裁決；首例 run_subtitle_correct --api/--arbitrate）
 - [reference_shoshotw_youtube_channel.md](reference_shoshotw_youtube_channel.md) — **修修頻道 = https://www.youtube.com/@shoshotw，不要再問網址**；兩型內容（創業書 A / 健康 B）節奏差 2.5–3 倍（2026-07-05 前 10 分析，規則已入 ADR-051）
 - [feedback_explain_choices_in_plain_language.md](feedback_explain_choices_in_plain_language.md) — **給修修選項前必先在正文白話展開每個選項的後果**（2026-07-05 push back）：option 卡片只當投票按鈕，論述、類比、失敗成本放正文
 
