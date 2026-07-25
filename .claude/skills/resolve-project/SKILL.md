@@ -35,6 +35,19 @@ C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe ^
 - 產出佈局：timeline（同 project 名）V1 = 主影片；subtitle 軌 = transcript.srt；
   media pool `Cameras` bin = Video/ 全機位、`Audio` bin = Audio/ 全音軌
 
+## 字幕樣式 preset（一次性設定，之後每集自動）
+
+Scripting API **不開放** subtitle style preset，樣式靠 **DRT 模板**攜帶：
+
+1. 修修在任一 episode timeline 手動套 preset：點字幕軌任一句 → Inspector →
+   Track Style → 選「Shosho YT」→ Apply to Track（唯一手動步驟）
+2. 跑 `--make-template`：複製該 timeline → 清空內容留樣式軌 → 匯出
+   `data/resolve/subtitle-template.drt`（env `RESOLVE_SUBTITLE_TEMPLATE` 可覆寫路徑）
+3. 之後 build 自動偵測模板：timeline 從模板長出（字幕軌自帶 Shosho YT 樣式）
+   → 改名 → 填影片與字幕。模板不存在則退回無樣式建立
+
+⚠️ 樣式掛在「軌」上——任何流程都**不可刪字幕軌重建**（refresh 已改為只清內容）。
+
 ## QC 裁決後刷新字幕
 
 修修裁決 QC → 更新 `corrections.json` → `run_subtitle_correct.py --apply` 重產

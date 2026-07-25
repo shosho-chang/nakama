@@ -40,6 +40,16 @@ DEFAULT_SCRIPT_LIB = r"C:\Program Files\Blackmagic Design\DaVinci Resolve\fusion
 SUBTITLE_NAME = "transcript.srt"
 # 版本化 SRT 複本目錄（Resolve 依路徑快取，同路徑重匯拿到舊內容）
 RESOLVE_SUBS_DIR = "subs/resolve_subs"
+# 字幕樣式模板（DRT）：帶著已套用 preset（如「Shosho YT」）的空字幕軌。
+# API 不開放 subtitle style preset，樣式只能靠 DRT 模板攜帶——
+# 用 --make-template 從「已手動套好樣式」的 timeline 產生一次，之後全自動
+DEFAULT_TEMPLATE = (
+    Path(__file__).resolve().parent.parent / "data" / "resolve" / "subtitle-template.drt"
+)
+
+
+def _template_path() -> Path:
+    return Path(os.environ.get("RESOLVE_SUBTITLE_TEMPLATE") or DEFAULT_TEMPLATE)
 
 
 def _versioned_srt(episode_dir: Path) -> Path:
@@ -218,12 +228,28 @@ def build_project(
         mp.ImportMedia([str(p) for p in audio_files])
 
     mp.SetCurrentFolder(root)
-    timeline = mp.CreateTimelineFromClips(project_name, main_items)
+    template = _template_path()
+    timeline = None
+    if template.exists():
+        # 從樣式模板長出 timeline（帶已套 preset 的字幕軌），再改名、填入主影片
+        timeline = mp.ImportTimelineFromFile(str(template), {})
+        if timeline is not None:
+            if not timeline.SetName(project_name):
+                logger.warning(f"timeline 改名失敗，保留模板名「{timeline.GetName()}」")
+            project.SetCurrentTimeline(timeline)
+            if not mp.AppendToTimeline(main_items):
+                raise SystemExit("主影片放上模板 timeline 失敗")
+            logger.info(f"timeline 由樣式模板建立: {template.name}")
+        else:
+            logger.warning(f"模板匯入失敗（{template}），退回無樣式建立")
     if timeline is None:
-        raise SystemExit("timeline 建立失敗")
-    project.SetCurrentTimeline(timeline)
+        timeline = mp.CreateTimelineFromClips(project_name, main_items)
+        if timeline is None:
+            raise SystemExit("timeline 建立失敗")
+        project.SetCurrentTimeline(timeline)
 
     # 字幕：SRT 匯入 media pool 後 append —— Resolve 會放上 subtitle 軌
+    # （模板軌已帶樣式，不可刪軌重建）
     if timeline.GetTrackCount("subtitle") == 0:
         timeline.AddTrack("subtitle")
     srt_items = mp.ImportMedia([str(_versioned_srt(episode_dir))])
@@ -270,10 +296,14 @@ def refresh_subtitles(episode_dir: Path) -> dict:
         raise SystemExit(f"timeline「{project_name}」不存在")
     project.SetCurrentTimeline(timeline)
 
-    # 清掉舊字幕軌（可能多軌）再重建一軌
-    while timeline.GetTrackCount("subtitle") > 0:
-        timeline.DeleteTrack("subtitle", timeline.GetTrackCount("subtitle"))
-    timeline.AddTrack("subtitle")
+    # 清字幕「內容」但**保留軌**——subtitle 軌樣式（如 Shosho YT preset）
+    # 掛在軌上，刪軌 = 洗掉樣式
+    if timeline.GetTrackCount("subtitle") == 0:
+        timeline.AddTrack("subtitle")
+    for ti in range(1, timeline.GetTrackCount("subtitle") + 1):
+        items = timeline.GetItemListInTrack("subtitle", ti) or []
+        if items:
+            timeline.DeleteClips(items)
 
     # 清舊 SRT items（依名稱前綴），改匯版本化複本繞開 Resolve 的路徑快取
     mp = project.GetMediaPool()
@@ -294,6 +324,53 @@ def refresh_subtitles(episode_dir: Path) -> dict:
     return {"project": project_name, "status": "subtitles-refreshed", "subtitle_items": count}
 
 
+def make_template(episode_dir: Path) -> dict:
+    """從「已手動套好字幕樣式」的 episode timeline 產生 DRT 樣式模板（一次性設定）。
+
+    流程：DuplicateTimeline → 複本清空所有 video/audio/subtitle 內容
+    （軌與樣式保留）→ Export DRT → 刪複本。之後 build_project 自動套用。
+    """
+    project_name = episode_dir.name
+    resolve = connect_resolve()
+    pm = resolve.GetProjectManager()
+    project = pm.GetCurrentProject()
+    if project is None or project.GetName() != project_name:
+        project = pm.LoadProject(project_name)
+    if project is None:
+        raise SystemExit(f"project「{project_name}」不存在")
+
+    source_tl = None
+    for i in range(1, project.GetTimelineCount() + 1):
+        tl = project.GetTimelineByIndex(i)
+        if tl and tl.GetName() == project_name:
+            source_tl = tl
+            break
+    if source_tl is None:
+        raise SystemExit(f"timeline「{project_name}」不存在")
+    project.SetCurrentTimeline(source_tl)
+
+    dup = source_tl.DuplicateTimeline("__subtitle_template_build__")
+    if dup is None:
+        raise SystemExit("DuplicateTimeline 失敗")
+    project.SetCurrentTimeline(dup)
+    for track_type in ("video", "audio", "subtitle"):
+        for ti in range(1, dup.GetTrackCount(track_type) + 1):
+            items = dup.GetItemListInTrack(track_type, ti) or []
+            if items:
+                dup.DeleteClips(items)
+
+    template = _template_path()
+    template.parent.mkdir(parents=True, exist_ok=True)
+    ok = dup.Export(str(template), resolve.EXPORT_DRT)
+    project.SetCurrentTimeline(source_tl)
+    project.GetMediaPool().DeleteTimelines([dup])
+    pm.SaveProject()
+    if not ok:
+        raise SystemExit("DRT 模板匯出失敗")
+    logger.info(f"樣式模板已存: {template}")
+    return {"status": "template-saved", "template": str(template)}
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="episode → DaVinci Resolve 專案")
     parser.add_argument("episode", help="episode 資料夾")
@@ -302,7 +379,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--refresh-subtitles",
         action="store_true",
-        help="只刷新既有 timeline 的字幕軌（transcript.srt 更新後用）",
+        help="只刷新既有 timeline 的字幕內容（transcript.srt 更新後用；軌與樣式保留）",
+    )
+    parser.add_argument(
+        "--make-template",
+        action="store_true",
+        help="從此 episode 已套好字幕樣式的 timeline 產生 DRT 樣式模板（一次性）",
     )
     return parser.parse_args(argv)
 
@@ -315,7 +397,9 @@ def main(argv: list[str] | None = None) -> int:
         logger.error(f"episode 資料夾不存在: {episode_dir}")
         return 1
     started = time.time()
-    if args.refresh_subtitles:
+    if args.make_template:
+        result = make_template(episode_dir)
+    elif args.refresh_subtitles:
         result = refresh_subtitles(episode_dir)
     else:
         result = build_project(
