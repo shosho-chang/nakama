@@ -199,7 +199,7 @@ def test_wt6_loader_resolves_vault_from_config_when_env_unset(tmp_path: Path, mo
     vault.mkdir()
     monkeypatch.delenv("VAULT_PATH", raising=False)  # rely on config.yaml, like the VPS
     monkeypatch.setenv("NAKAMA_PROMOTION_MODE", "dry_run")
-    # Stand in for "config.yaml vault_path set, env unset". ADR-050: the env
+    # Stand in for "config.yaml vault_path set, env unset". ADR-052: the env
     # loader lives in Robin's factory; the Sunny shim delegates, so the patch
     # target follows the seam.
     monkeypatch.setattr(factory, "get_vault_path", lambda: vault)
@@ -350,7 +350,7 @@ def test_wt9_no_fastapi_or_thousand_sunny_import_in_adapters(module_name: str):
         f"_preload = (sys, );"
         f"import importlib;"
         f"importlib.import_module({module_name!r});"
-        # ADR-050: promotion adapters live in agents.robin.promotion — their own
+        # ADR-052: promotion adapters live in agents.robin.promotion — their own
         # package chain is allowed; presentation (fastapi / thousand_sunny) and
         # any OTHER agents module stay forbidden. shared.* adapters must not
         # load agents at all.

@@ -1,8 +1,8 @@
-"""Robin Source Promotion bounded package（ADR-050）.
+"""Robin Source Promotion bounded package（ADR-052）.
 
 Source Promotion 的 domain logic 與組裝工廠（composition root）。原先散在
 ``shared/`` 平面命名空間的 19 個 promotion 領域模組收攏於此 — ``shared/``
-只保留「2+ agent 共用」的基礎設施（ADR-050 邊界規則）。
+只保留「2+ agent 共用」的基礎設施（ADR-052 邊界規則）。
 
 對外入口：
 

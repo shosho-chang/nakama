@@ -1,4 +1,4 @@
-"""Promotion composition root（組裝工廠）— ADR-050.
+"""Promotion composition root（組裝工廠）— ADR-052.
 
 Robin 擁有 Source Promotion 的 domain logic，**也擁有它的組裝成本**。
 ADR-024 時代這 ~120 行 env → adapter → service 的組裝知識住在
