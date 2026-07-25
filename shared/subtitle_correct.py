@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import unicodedata
@@ -95,7 +96,148 @@ def load_refs_text(ref_files: list[str | Path], char_cap: int = DEFAULT_REF_CHAR
     return "\n\n".join(parts)
 
 
-# ── LLM 模式 ──
+# ── LLM 模式共用機械件 ──
+
+
+def _over_deletion_guard(
+    corrections: dict[int, str], uncertainties: list[dict], entries: list[tuple[int, str]]
+) -> int:
+    """防過度刪減：修正後長度 < 原文一半（原文 ≥ 8 有效字元）→ 撤下修正、
+    轉入 uncertain（有音檔仲裁時交裁決、否則進 QC 給人工）。
+
+    實例：raw「就是那個常常看到你去上鳳鑫節」被 Opus 縮成「鳳馨姊」——
+    同音字修對了但整句 filler 被刪，違反「不改變原意」。回傳攔截行數。
+    """
+    entry_map = dict(entries)
+    over_deleted = 0
+    for seq in list(corrections):
+        orig_len = len(re.sub(r"\s", "", entry_map.get(seq, "")))
+        new_len = len(re.sub(r"\s", "", corrections[seq]))
+        if orig_len >= 8 and new_len < 0.5 * orig_len:
+            uncertainties.append(
+                {
+                    "line": seq,
+                    "original": entry_map[seq],
+                    "suggestion": corrections.pop(seq),
+                    "reason": "修正大幅縮短原文（疑似過度刪減），需聽音檔確認",
+                    "risk": "high",
+                }
+            )
+            over_deleted += 1
+    if over_deleted:
+        logger.info(f"過度刪減防護: {over_deleted} 行修正轉入仲裁/QC")
+    return over_deleted
+
+
+def _finalize_srt(srt_content: str, corrections: dict[int, str]) -> str:
+    """套用修正 + Pass 2（PR #23 教訓）：prompt 明令無標點，但 LLM 仍會
+    加回標點或吐簡體字；與 /transcribe 同款機械過濾，最終輸出前再掃一次。"""
+    corrected_srt = _replace_srt_texts(srt_content, corrections)
+    return "\n".join(_process_srt_line(line) for line in corrected_srt.splitlines())
+
+
+# ── cowork subagent 模式（subscription quota，零 API 錢）──
+
+WORKDIR_NAME = "correct_work"
+
+
+def emit_correction_workspace(
+    srt_content: str,
+    workdir: Path,
+    *,
+    ref_files: list[str | Path] | None = None,
+    host_name: str = "",
+    show_name: str = "",
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+) -> dict:
+    """把校正工作切成 subagent 可各自認領的 chunk 檔，寫入 workdir。
+
+    產出（供 subtitle-correct skill 派 Opus/其他 subagent 用）：
+    - instructions.md：校正規則（與 API 路徑同一 prompt）+ 參考資料檔清單
+      （subagent 自己 Read，避免每個 chunk 重複塞全文）+ 輸出 JSON 契約
+    - chunk_NN.txt：`[seq] 文字 (拼音)` 行
+    - meta.json：chunk 清單與 seq 範圍
+
+    回傳 meta dict。
+    """
+    entries = _extract_srt_texts(srt_content)
+    if not entries:
+        raise ValueError("SRT 無文字行，無法切 chunk")
+
+    workdir.mkdir(parents=True, exist_ok=True)
+    refs = [str(Path(p)) for p in (ref_files or [])]
+
+    system = _build_correction_system(host_name, show_name, [])
+    instructions = (
+        f"{system}\n\n"
+        "## 參考資料檔（先逐一 Read 再開始校正；「術語表/參考資料寫法最高優先」指的就是這些）\n"
+        + ("\n".join(f"- {p}" for p in refs) if refs else "（無）")
+        + "\n\n## 工作方式\n"
+        "1. Read 上列參考資料檔\n"
+        "2. Read 指定的 chunk_NN.txt\n"
+        "3. 依上述規則校正，**最終回覆只輸出 JSON**（corrections 只含有修改的行；"
+        "序號必須在該 chunk 範圍內）\n"
+    )
+    (workdir / "instructions.md").write_text(instructions, encoding="utf-8")
+
+    chunks_meta: list[dict] = []
+    chunks = [entries[i : i + chunk_size] for i in range(0, len(entries), chunk_size)]
+    for idx, chunk in enumerate(chunks, start=1):
+        name = f"chunk_{idx:02d}.txt"
+        numbered = "\n".join(f"[{seq}] {_add_pinyin(text)}" for seq, text in chunk)
+        (workdir / name).write_text(numbered, encoding="utf-8")
+        chunks_meta.append({"file": name, "seq_start": chunk[0][0], "seq_end": chunk[-1][0]})
+
+    meta = {"cues": len(entries), "chunk_size": chunk_size, "chunks": chunks_meta, "refs": refs}
+    (workdir / "meta.json").write_text(
+        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    logger.info(f"校正工作區就緒: {len(chunks)} chunks / {len(entries)} cues → {workdir}")
+    return meta
+
+
+def apply_corrections(srt_content: str, payload: dict) -> tuple[str, list[dict], dict]:
+    """套用 subagent 校正結果（merged JSON）：越界過濾 + 過度刪減防護 + Pass 2。
+
+    payload 形狀：{"corrections": {"<seq>": "文字"}, "uncertain": [{...}]}
+    （corrections key 可為 str 或 int）。回傳 (corrected_srt, qc_items, stats)。
+    """
+    entries = _extract_srt_texts(srt_content)
+    valid_seqs = {seq for seq, _ in entries}
+
+    corrections: dict[int, str] = {}
+    dropped = 0
+    for k, v in (payload.get("corrections") or {}).items():
+        try:
+            seq = int(k)
+        except (TypeError, ValueError):
+            dropped += 1
+            continue
+        if seq in valid_seqs and isinstance(v, str) and v.strip():
+            corrections[seq] = v
+        else:
+            dropped += 1
+    uncertainties = [u for u in (payload.get("uncertain") or []) if u.get("line") in valid_seqs]
+    if dropped:
+        logger.warning(f"丟棄 {dropped} 筆越界/無效修正")
+
+    over_deleted = _over_deletion_guard(corrections, uncertainties, entries)
+    corrected_srt = _finalize_srt(srt_content, corrections)
+
+    stats = {
+        "mode": "cowork",
+        "cues": len(entries),
+        "corrections": len(corrections),
+        "uncertain": len(uncertainties),
+        "over_deletion_guard": over_deleted,
+        "dropped": dropped,
+        "qc": len(uncertainties),
+        "arbitrated": False,
+    }
+    return corrected_srt, uncertainties, stats
+
+
+# ── LLM 模式（API 路徑 — 明確 opt-in，花 API 錢）──
 
 
 def correct_srt_llm(
@@ -149,28 +291,7 @@ def correct_srt_llm(
             f"chunk {idx}/{len(chunks)}: {len(chunk_corr)} 修正, {len(chunk_unc)} uncertain"
         )
 
-    # 防過度刪減：修正後長度 < 原文一半（原文 ≥ 8 有效字元）→ 撤下修正、
-    # 轉入 uncertain 交仲裁聽音檔裁決（無音檔則進 QC 給人工）。
-    # 實例：raw「就是那個常常看到你去上鳳鑫節」被 Opus 縮成「鳳馨姊」——
-    # 同音字修對了但整句 filler 被刪，違反「不改變原意」。
-    entry_map = dict(entries)
-    over_deleted = 0
-    for seq in list(corrections):
-        orig_len = len(re.sub(r"\s", "", entry_map.get(seq, "")))
-        new_len = len(re.sub(r"\s", "", corrections[seq]))
-        if orig_len >= 8 and new_len < 0.5 * orig_len:
-            uncertainties.append(
-                {
-                    "line": seq,
-                    "original": entry_map[seq],
-                    "suggestion": corrections.pop(seq),
-                    "reason": "修正大幅縮短原文（疑似過度刪減），需聽音檔確認",
-                    "risk": "high",
-                }
-            )
-            over_deleted += 1
-    if over_deleted:
-        logger.info(f"過度刪減防護: {over_deleted} 行修正轉入仲裁/QC")
+    over_deleted = _over_deletion_guard(corrections, uncertainties, entries)
 
     qc_items: list[dict] = uncertainties
     arbitrated = False
@@ -191,10 +312,7 @@ def correct_srt_llm(
     elif use_arbitration and uncertainties and audio_path is None:
         logger.info("無音檔，跳過多模態仲裁")
 
-    corrected_srt = _replace_srt_texts(srt_content, corrections)
-    # Pass 2（PR #23 教訓）：prompt 明令無標點，但 Opus/Gemini 仍會加回標點或
-    # 吐簡體字；與 /transcribe 同款機械過濾，最終輸出前再掃一次
-    corrected_srt = "\n".join(_process_srt_line(line) for line in corrected_srt.splitlines())
+    corrected_srt = _finalize_srt(srt_content, corrections)
 
     stats = {
         "mode": "llm",

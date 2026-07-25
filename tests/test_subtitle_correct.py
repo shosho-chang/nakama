@@ -248,6 +248,62 @@ def test_discover_ref_files_no_prep_dir(tmp_path, monkeypatch):
     assert discover_ref_files(ep) == []
 
 
+def test_emit_and_apply_roundtrip(tmp_path, monkeypatch):
+    # cowork 流程：emit-chunks → （模擬 subagent 產 JSON）→ apply
+    from scripts.run_subtitle_correct import run_apply, run_emit_chunks
+
+    ep = tmp_path / "20260723 某來賓"
+    (ep / "subs").mkdir(parents=True)
+    (ep / "refs").mkdir()
+    (ep / "refs" / "訪綱.md").write_text("來賓：謝伯讓", encoding="utf-8")
+    (ep / "subs" / "raw.srt").write_text(
+        _srt(["就是那個常常看到你去上鳳鑫節", "來談大腦简史這本書"]), encoding="utf-8"
+    )
+    monkeypatch.setenv("INTERVIEW_PREP_DIR", str(tmp_path / "無"))
+
+    workdir = run_emit_chunks(ep)
+    assert (workdir / "instructions.md").exists()
+    assert (workdir / "chunk_01.txt").exists()
+    meta = json.loads((workdir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["cues"] == 2
+    instructions = (workdir / "instructions.md").read_text(encoding="utf-8")
+    assert "訪綱.md" in instructions  # 參考資料清單給 subagent 自己 Read
+    chunk = (workdir / "chunk_01.txt").read_text(encoding="utf-8")
+    assert "[1]" in chunk and "(" in chunk  # 帶拼音
+
+    # 模擬 subagent 合併輸出：一筆正常修正（帶標點+簡體）+ 一筆過度刪減 + 一筆越界
+    payload = {
+        "corrections": {"1": "鳳馨姊", "2": "來談大腦簡史，這本書", "99": "亂"},
+        "uncertain": [],
+    }
+    corrections_json = workdir / "corrections.json"
+    corrections_json.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    out = run_apply(ep, corrections_json)
+
+    corrected = out.read_text(encoding="utf-8")
+    assert "就是那個常常看到你去上鳳鑫節" in corrected  # 過度刪減 → 撤下保留原文
+    assert "大腦簡史" in corrected
+    assert "，" not in corrected  # Pass 2 去標點
+    manifest = json.loads((ep / "subs" / "correct_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["mode"] == "cowork"
+    assert manifest["over_deletion_guard"] == 1
+    assert manifest["dropped"] == 1
+    qc = (ep / "transcript.qc.md").read_text(encoding="utf-8")
+    assert "過度刪減" in qc
+
+
+def test_cli_llm_without_api_flag_is_blocked(tmp_path, monkeypatch):
+    # 沒有完整稿、沒 --api、沒 --emit-chunks/--apply → 擋下（防誤燒 API 錢）
+    from scripts.run_subtitle_correct import main
+
+    ep = tmp_path / "20260723 某來賓"
+    (ep / "subs").mkdir(parents=True)
+    (ep / "subs" / "raw.srt").write_text(_srt(["一句話"]), encoding="utf-8")
+    monkeypatch.setenv("INTERVIEW_PREP_DIR", str(tmp_path / "無"))
+
+    assert main([str(ep)]) == 2
+
+
 def test_run_correct_external_srt_creates_subs_dir(monkeypatch, tmp_path):
     # 外部 SRT（--srt）跳過 subtitle-gen → subs/ 不存在，manifest 寫入不可炸
     from scripts.run_subtitle_correct import run_correct
