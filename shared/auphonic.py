@@ -137,7 +137,11 @@ def _get_audio_duration(path: Path) -> float:
         "-show_format",
         str(path),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    # encoding 明示 utf-8：Windows console codepage（cp1252/cp950）解不了
+    # CJK 檔名（ffprobe JSON 內含路徑），會炸 UnicodeDecodeError
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=True
+    )
     info = json.loads(result.stdout)
     return float(info["format"]["duration"])
 
