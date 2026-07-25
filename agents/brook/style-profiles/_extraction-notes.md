@@ -11,6 +11,15 @@ sample_breakdown: {book-review: 10, people: 13, science: 13}
 
 三個 agent 並行抽取後，本檔做 cross-cutting 歸納：**什麼是修修「全類別」通用的聲音指紋**、**三類之間的分歧在哪**、**Brook 載入 profile 時該怎麼判斷**。
 
+> **2026-06-29 v2 更新**：science / book-review / people 三份 profile 已用更大語料
+> （192 篇 shosho.tw 全文重抓 → 每類盲抽 ~10 篇代表作 → Opus 4.8）重抽並合併升級到
+> `@0.2.0`，方法上加三招：①「絕不這樣寫」NEVER-DO 清單 ②每條聲音指紋附逐字原文引用
+> ③可重跑 JSON sidecar（在 `data/brook/style-profiles-v2/`，本檔 2026-04 的 36 篇舊抽取
+> 仍保留作交叉分析參考）。**注意：以下 §2 的「讀書心得完全不用 emoji（硬規則）」已證實為
+> 誤判**—— `designing-your-life` 購書段落確有 emoji，正解是「正文不撒、CTA/購書連結附近
+> 偶見」，`book-review.yaml` 已改 `forbid_emoji: false`。個別硬規則一律以各 profile 的
+> v2 版本為準。
+
 ---
 
 ## 1. 聲音指紋（三類共通、Brook 永遠要做）

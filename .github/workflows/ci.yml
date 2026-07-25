@@ -28,23 +28,12 @@ jobs:
           python-version: "3.11"
           cache: 'pip'
 
-      - name: Install ffmpeg (required by shared/audio_clip + transcriber + script_video pipeline)
+      - name: Install ffmpeg (required by shared/audio_clip + transcriber + video line ffprobe/emit)
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: 'npm'
-          cache-dependency-path: video/package-lock.json
-
-      - name: Install video/ subproject deps
-        run: npm install --prefix video
-
-      - name: Build video/ TS parser
-        run: npm run build --prefix video
-
-      - name: Run video/ vitest
-        run: npm test --prefix video
+      # video/ Node steps removed by ADR-050 D3 — the TS DSL parser retired;
+      # remaining video/compositions/ are Hyperframes HTML rendered locally
+      # (npx hyperframes), never in CI. Render-dependent tests self-skip.
 
       - name: Install dependencies
         run: pip install -e ".[dev]"

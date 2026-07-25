@@ -436,7 +436,7 @@ class EntityCanonicalMatch(BaseModel):
     Analogous to :class:`CanonicalMatch` but for entities — the matched
     path lives under ``KB/Wiki/Entities/{People|Organizations}/``.
 
-    Confidence drives fast-track in :mod:`shared.promotion_review_service`
+    Confidence drives fast-track in :mod:`agents.robin.promotion.promotion_review_service`
     (PR2c future slice): ``> 0.9`` auto-approve, ``0.5-0.9`` queue,
     ``< 0.5`` defer.
     """

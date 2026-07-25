@@ -1,0 +1,33 @@
+# QC 紀錄 — focus-protocol-1228 成片拆解（v1.1）
+sanity_checks:
+  chapter_gaps_hit:  # 已知 6 個章節無聲空隙 vs scene-detect cut 點（±4s 容忍）
+    - {gap: 54.9, cut: 54.888}
+    - {gap: 229.8, cut: 229.813}
+    - {gap: 434.8, cut: 432.974}
+    - {gap: 671.1, cut: 671.087}
+    - {gap: 803.4, cut: 803.469}
+    - {gap: 932.2, cut: 930.054}
+  inline_spot_check: {n: 3, pass: 3, shots: [64, 80, 35]}  # 主 session 抽查
+
+audit_2026_07_18:
+  auditors: [data-accuracy, methodology, inference]  # 3 獨立 subagent
+  findings_total: 18
+  findings_major: 5
+  stratified_reverify: {n: 27, pass: 26, hold: "shot 33 手持實體書於抽幀中不可見"}
+  stats_recompute: {n: 12, mismatch: ["aroll_runs max（手算 37.7 → 實 42.4）"]}
+  adopted:
+    - 單位錯置：B-roll 鏡數/分 ≠ cutaway 決策/分 → 新增事件層（60 事件 = 3.26/分）
+    - overlay 24% 為 regex artifact（含滿版金句卡）→ 疊 aroll 實為 ~14%（16/117）
+    - scene-detect 盲區 → overlay 第二遍（148 aroll 鏡、467 幀、37 事件）
+    - IoU 0.3 判準失效 → 雙向覆蓋率 ≥0.5 + near-miss ±5s 三欄制
+    - aroll run 統計補進 merge_ground_truth.py（可溯源）；max 42.4s
+    - 引用修正：beat 23 → beats 42-45；shot 149 → 152；shot 33 例證移除
+    - hook 節奏描述改「短拳連打→15.3s hold→收短」；hold 內有 2 張 keyword 字卡
+    - 章節卡 3 張 → 滿版 3 + 內嵌橫幅 ≥5（步驟有卡，形態為橫幅）
+    - 全文加單片觀察標注 + 2024-12 舊風格全局 caveat
+  overlay_second_pass:
+    shots_scanned: 148
+    frames: 467
+    events: 37   # keyword_text 14 / title_banner 5 / photo_inset 8 / list_card 2 / book_cover 1 / letterbox 4 / other 3
+    substantive: 30
+    residue_dropped: 1  # 單字元單幀殘影

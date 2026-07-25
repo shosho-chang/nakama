@@ -1,190 +1,197 @@
-"""FCPXML 1.10 emitter — generate a DaVinci-importable timeline.
+"""FCPXML emitter — DaVinci Resolve timeline writer (ADR-032 §3, ADR-050 D2).
 
-Emits a minimal FCPXML 1.10 document containing:
-  - V1 track: A-roll clips with CutPoints applied as ripple deletes
-  - Resources: asset reference + 1080p 30fps format
-  - No V2-V4 B-roll tracks (Slice 2+)
+Thin adapter over :mod:`shared.fcpxml`: this module owns the episode-dir
+contract (raw_recording lookup, render_status gating, ADR-038 §D2
+content-addressed b-roll resolution); all XML shape and DaVinci quirk
+knowledge lives in the shared builder.
 
-Timing convention:
-  All durations use the ``N/30s`` rational format required by FCPXML 1.10
-  (30 fps, exact — not 29.97).  DaVinci Resolve interprets this correctly.
+V1 track: talking head (raw_recording.mp4), full duration, no transform.
+V2 track (lane 1): rendered B-roll mp4 references at each beat's timing.
+
+Phase 1 layouts (full_aroll / full_broll) do not require adjust-transform.
+side_overlay_* / pip_corner_br require transform, which requires a verified
+DaVinci import fixture (ADR-032 §3b warning) — deferred to Phase 1.5.
+
+`fcpxml_version` parameter falls back to 1.11 or 1.9 if 1.10 import fails in
+the user's DaVinci Resolve version (ADR-032 §Risks).
 """
 
 from __future__ import annotations
 
-import hashlib
-import xml.etree.ElementTree as ET
+import logging
+import subprocess
 from pathlib import Path
-from typing import Sequence
 
-from agents.brook.script_video.cuts import CutPoint
-from agents.brook.script_video.manifest import Manifest
+from shared.fcpxml import (
+    SUPPORTED_VERSIONS,
+    Asset,
+    Clip,
+    FcpxmlVersion,
+    Timeline,
+    build_fcpxml,
+    write_fcpxml,
+)
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
+logger = logging.getLogger(__name__)
 
-
-def emit(manifest: Manifest, output_path: Path) -> None:
-    """Write FCPXML 1.10 to *output_path*."""
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    tree = _build_fcpxml(manifest)
-    _write_xml(tree, output_path)
-
-
-# ---------------------------------------------------------------------------
-# Internal builders
-# ---------------------------------------------------------------------------
-
-_FPS = 30  # frames per second (exact, not 29.97)
+FPS = 30  # Phase 1 hardcoded — composition spec assumes 30fps
 
 
-def _dur(seconds: float) -> str:
-    """Convert seconds to FCPXML rational duration string (N/30s)."""
-    frames = round(seconds * _FPS)
-    if frames == 0:
-        return "0s"
-    return f"{frames}/{_FPS}s"
+def _mp4_duration(path: Path) -> float:
+    """Return mp4 duration in seconds via ffprobe; raises on failure."""
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return float(result.stdout.strip())
 
 
-def _uid(seed: str) -> str:
-    """Deterministic 16-char hex UID derived from *seed*."""
-    return hashlib.sha256(seed.encode()).hexdigest()[:16].upper()
+def emit(
+    storyboard: list[dict],
+    episode_dir: Path,
+    fcpxml_version: FcpxmlVersion = "1.10",
+) -> Path:
+    """Emit episode.fcpxml from storyboard + rendered B-roll mp4s.
 
+    Args:
+        storyboard: list of beat dicts (Beat.model_dump()).
+        episode_dir: data/script_video/<episode-id>/ — must contain
+            raw_recording.mp4 and out/b_roll_<hash>.mp4 per rendered beat.
+        fcpxml_version: 1.10 default; 1.11 / 1.9 fallback if DaVinci rejects.
 
-def _build_segments(
-    total_duration_sec: float,
-    cuts: Sequence[CutPoint],
-) -> list[tuple[float, float]]:
-    """Split source timeline into kept segments after ripple deletes.
-
-    Returns a list of (start_sec, end_sec) pairs in source coordinates,
-    guaranteed non-overlapping and ordered.
+    Returns Path to episode_dir / "out" / "episode.fcpxml".
+    Raises FileNotFoundError if raw_recording.mp4 missing.
+    Raises ValueError if a cutaway beat has no rendered mp4 or missing timing.
     """
-    # Sort and deduplicate cuts
-    sorted_cuts = sorted(
-        (c for c in cuts if c.type == "ripple-delete"),
-        key=lambda c: c.start_sec,
-    )
-
-    # Merge overlapping/adjacent cut regions
-    merged: list[tuple[float, float]] = []
-    for cut in sorted_cuts:
-        if merged and cut.start_sec <= merged[-1][1]:
-            merged[-1] = (merged[-1][0], max(merged[-1][1], cut.end_sec))
-        else:
-            merged.append((cut.start_sec, cut.end_sec))
-
-    # Build kept segments
-    segments: list[tuple[float, float]] = []
-    cursor = 0.0
-    for cut_start, cut_end in merged:
-        if cut_start > cursor:
-            segments.append((cursor, cut_start))
-        cursor = cut_end
-    if cursor < total_duration_sec:
-        segments.append((cursor, total_duration_sec))
-
-    return segments
-
-
-def _build_fcpxml(manifest: Manifest) -> ET.ElementTree:
-    aroll_path = Path(manifest.aroll_video)
-    total_src_sec = manifest.total_frames / manifest.fps
-
-    segments = _build_segments(total_src_sec, manifest.cuts)
-    timeline_duration = sum(e - s for s, e in segments)
-
-    asset_uid = _uid(f"asset-{manifest.episode_id}")
-    event_uid = _uid(f"event-{manifest.episode_id}")
-    project_uid = _uid(f"project-{manifest.episode_id}")
-
-    # Root
-    root = ET.Element("fcpxml", version="1.10")
-
-    # Resources
-    resources = ET.SubElement(root, "resources")
-    ET.SubElement(
-        resources,
-        "format",
-        id="r1",
-        name="FFVideoFormat1080p30",
-        frameDuration=f"1/{_FPS}s",
-        width="1920",
-        height="1080",
-        colorSpace="1-1-1 (Rec. 709)",
-    )
-    asset = ET.SubElement(
-        resources,
-        "asset",
-        id="r2",
-        name=aroll_path.stem,
-        uid=asset_uid,
-        src=aroll_path.as_uri(),
-        duration=_dur(total_src_sec),
-        hasVideo="1",
-        hasAudio="1",
-        videoSources="1",
-        audioSources="1",
-        audioChannels="2",
-        audioRate="48000",
-    )
-    ET.SubElement(
-        asset,
-        "media-rep",
-        kind="original-media",
-        sig=asset_uid,
-        src=aroll_path.as_uri(),
-    )
-
-    # Library → Event → Project → Sequence → Spine
-    library = ET.SubElement(root, "library")
-    event = ET.SubElement(library, "event", name=manifest.episode_id, uid=event_uid)
-    project = ET.SubElement(
-        event,
-        "project",
-        name=manifest.episode_id,
-        uid=project_uid,
-    )
-    sequence = ET.SubElement(
-        project,
-        "sequence",
-        duration=_dur(timeline_duration),
-        format="r1",
-        tcStart="0s",
-        tcFormat="NDF",
-        audioLayout="stereo",
-        audioRate="48k",
-    )
-    spine = ET.SubElement(sequence, "spine")
-
-    # Emit one asset-clip per kept segment.
-    # FCPXML 1.10 spec: <asset-clip> for whole-asset references; <clip> is for
-    # sub-element compositions. DaVinci tolerates both, but Final Cut Pro rejects
-    # <clip ref=...>. Use <asset-clip> for portable interchange.
-    timeline_cursor = 0.0
-    for src_start, src_end in segments:
-        seg_dur = src_end - src_start
-        ET.SubElement(
-            spine,
-            "asset-clip",
-            name=aroll_path.stem,
-            ref="r2",
-            offset=_dur(timeline_cursor),
-            duration=_dur(seg_dur),
-            start=_dur(src_start),
+    if fcpxml_version not in SUPPORTED_VERSIONS:
+        raise ValueError(
+            f"fcpxml_version must be one of {SUPPORTED_VERSIONS}, got {fcpxml_version!r}"
         )
-        timeline_cursor += seg_dur
 
-    return ET.ElementTree(root)
+    raw_mp4 = episode_dir / "raw_recording.mp4"
+    if not raw_mp4.exists():
+        raise FileNotFoundError(f"raw_recording.mp4 not found in {episode_dir}")
 
+    out_dir = episode_dir / "out"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    fcpxml_path = out_dir / "episode.fcpxml"
 
-def _write_xml(tree: ET.ElementTree, path: Path) -> None:
-    ET.indent(tree.getroot(), space="    ")
-    lines = [
-        '<?xml version="1.0" encoding="UTF-8"?>',
-        "<!DOCTYPE fcpxml>",
+    aroll_duration = _mp4_duration(raw_mp4)
+
+    cutaways: list[tuple[dict, Path, float, str]] = []
+    for beat in storyboard:
+        if beat.get("broll_decision") != "cutaway":
+            continue
+        if (beat.get("status") or {}).get("render_status") != "done":
+            logger.warning(
+                "beat %s render_status != done; skipping in FCPXML emit",
+                beat.get("beat_id"),
+            )
+            continue
+        timing = beat.get("timing")
+        if not timing:
+            raise ValueError(f"cutaway beat {beat.get('beat_id')} missing timing")
+        broll = beat.get("broll") or {}
+        if broll.get("render_target") == "asset":
+            # ADR-051 D5/D6/D8: 外部素材 beat 直接引用落地檔案，不走
+            # content-addressed render 輸出。dispatcher 已做存在＋digest 驗收。
+            rel = (broll.get("asset") or {}).get("path")
+            if not rel:
+                raise ValueError(f"cutaway beat {beat['beat_id']} asset beat 缺 broll.asset.path")
+            broll_mp4 = Path(rel)
+            if not broll_mp4.is_absolute():
+                broll_mp4 = episode_dir / rel
+            if not broll_mp4.exists():
+                raise ValueError(
+                    f"cutaway beat {beat['beat_id']} asset 檔案不存在 {broll_mp4} — 素材尚未落地"
+                )
+            clip_name = broll_mp4.stem
+        else:
+            # ADR-038 §D2: rendered mp4 is content-addressed by cached_hash.
+            # Dispatcher writes cached_hash to status before/after render; if it
+            # is missing (legacy storyboard or out-of-band edit), recompute it
+            # so emit() stays self-contained.
+            status = beat.get("status") or {}
+            cached_hash = status.get("cached_hash")
+            if not cached_hash:
+                from agents.brook.script_video.export_hash import compute_beat_hash
+
+                cached_hash = compute_beat_hash(beat)
+            broll_mp4 = out_dir / f"b_roll_{cached_hash}.mp4"
+            if not broll_mp4.exists():
+                raise ValueError(
+                    f"cutaway beat {beat['beat_id']} mp4 not found at {broll_mp4}"
+                    f" (hash={cached_hash})"
+                )
+            clip_name = f"b_roll_{cached_hash}"
+        broll_duration = _mp4_duration(broll_mp4)
+        cutaways.append((beat, broll_mp4, broll_duration, clip_name))
+
+    assets = [
+        Asset(
+            id="r2",
+            path=raw_mp4,
+            duration_sec=aroll_duration,
+            # Episode-scoped seed — every episode's talking head is named
+            # raw_recording.mp4, so a name-derived UID would collide across
+            # episodes in the same DaVinci library.
+            uid_seed=f"{episode_dir.name}/raw_recording",
+            has_audio=True,
+        )
     ]
-    body = ET.tostring(tree.getroot(), encoding="unicode")
-    lines.append(body)
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    overlays = []
+    for idx, (beat, mp4, dur, clip_name) in enumerate(cutaways, start=3):
+        # B-roll assets 一律無聲（has_audio 預設 False）— KOL / stock 素材的
+        # 原始音軌不進 timeline（ADR-051 D6：B-roll 純畫面輔助 talking head）。
+        assets.append(
+            Asset(
+                id=f"r{idx}", path=mp4, duration_sec=dur, uid_seed=f"{episode_dir.name}/{clip_name}"
+            )
+        )
+        overlays.append(
+            Clip(
+                asset_id=f"r{idx}",
+                name=clip_name,
+                offset_sec=beat["timing"]["start"],
+                duration_sec=dur,
+                lane=1,
+            )
+        )
+
+    timeline = Timeline(
+        name=episode_dir.name,
+        event_name=f"nakama-{episode_dir.name}",
+        duration_sec=aroll_duration,
+        spine=(
+            Clip(
+                asset_id="r2",
+                name=raw_mp4.stem,
+                offset_sec=0.0,
+                duration_sec=aroll_duration,
+                children=tuple(overlays),
+            ),
+        ),
+    )
+
+    tree = build_fcpxml(timeline, assets, version=fcpxml_version, fps=FPS)
+    write_fcpxml(tree, fcpxml_path)
+    logger.info(
+        "FCPXML %s written to %s (%d cutaway clips)",
+        fcpxml_version,
+        fcpxml_path,
+        len(cutaways),
+    )
+    return fcpxml_path

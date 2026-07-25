@@ -90,8 +90,11 @@ _(尚無內容)_
 - [[其他相關 concept]]
 
 ## Sources
-- [[Sources/...]]
+_(由系統填入)_
 ```
+
+> `## Sources` 區塊的內容會由系統用真實 source link 覆寫，**不要自己猜或編造**
+> `[[Sources/...]]` 連結（會變成死連結）。保留 heading + `_(由系統填入)_` 占位即可。
 
 **禁止**：
 - ❌ body 末尾 append `## 更新（date）` block 或任何 changelog 變體
@@ -157,7 +160,7 @@ Entity Page 規則沿用 v1（不在 ADR-011 範圍）：
       "title": "新概念",
       "domain": "bioenergetics",
       "candidate_aliases": ["new concept", "alternative name"],
-      "extracted_body": "## Definition\n\n簡短定義...\n\n## Core Principles\n\n- 機制 1\n\n## Sub-concepts\n\n_(尚無內容)_\n\n## Field-level Controversies\n\n_(尚無內容)_\n\n## 文獻分歧 / Discussion\n\n_(尚無內容)_\n\n## Practical Applications\n\n- 應用 1\n\n## Related Concepts\n\n_(尚無內容)_\n\n## Sources\n\n- [[Sources/...]]\n",
+      "extracted_body": "## Definition\n\n簡短定義...\n\n## Core Principles\n\n- 機制 1\n\n## Sub-concepts\n\n_(尚無內容)_\n\n## Field-level Controversies\n\n_(尚無內容)_\n\n## 文獻分歧 / Discussion\n\n_(尚無內容)_\n\n## Practical Applications\n\n- 應用 1\n\n## Related Concepts\n\n_(尚無內容)_\n\n## Sources\n\n_(由系統填入)_\n",
       "conflict": null,
       "reason": "ch1 教科書首次完整介紹此概念"
     }}

@@ -79,7 +79,7 @@ def _source_item(target: str | None) -> SourcePageReviewItem:
 
 def test_resolver_blocks_malicious_permanent_target():
     """Even a manifest that sets target_kb_path into KB/Permanent/ is refused."""
-    from shared.promotion_targets import resolve_target_path
+    from agents.robin.promotion.promotion_targets import resolve_target_path
 
     item = _source_item("KB/Permanent/惡意注入.md")
     with pytest.raises(PermanentWriteViolation):
@@ -88,7 +88,7 @@ def test_resolver_blocks_malicious_permanent_target():
 
 def test_resolver_still_resolves_normal_targets():
     """Regression: guard must not break legitimate Wiki targets."""
-    from shared.promotion_targets import resolve_target_path
+    from agents.robin.promotion.promotion_targets import resolve_target_path
 
     assert resolve_target_path(_source_item("KB/Wiki/Sources/foo.md")) == "KB/Wiki/Sources/foo.md"
     assert resolve_target_path(_source_item(None)) is None
@@ -113,8 +113,8 @@ def test_both_consumers_route_through_guarded_resolver():
     asserted structurally so a future refactor that bypasses the chokepoint trips
     this test (panel Codex §1: resolver is called from gate:120 AND commit:379).
     """
-    import shared.promotion_acceptance_gate as gate
-    import shared.promotion_commit as commit
+    import agents.robin.promotion.promotion_acceptance_gate as gate
+    import agents.robin.promotion.promotion_commit as commit
 
     assert "resolve_target_path" in inspect.getsource(gate)
     assert "resolve_target_path" in inspect.getsource(commit)

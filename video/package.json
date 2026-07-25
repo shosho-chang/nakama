@@ -1,23 +1,13 @@
 {
   "name": "nakama-video",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Hyperframes video subproject for Script-to-B-roll Pipeline (ADR-032)",
+  "description": "Hyperframes compositions for Brook Video Production Line (ADR-032 render layer; DSL parser retired by ADR-050 D3)",
   "type": "module",
   "engines": {
     "node": ">=22"
   },
-  "scripts": {
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "build": "tsc --outDir dist"
-  },
   "dependencies": {
     "hyperframes": "0.6.42"
-  },
-  "devDependencies": {
-    "@types/node": "^22.0.0",
-    "typescript": "^5.9.3",
-    "vitest": "^2.0.0"
   }
 }

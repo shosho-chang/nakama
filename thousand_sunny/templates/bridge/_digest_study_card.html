@@ -32,7 +32,17 @@
     {% endif %}
   </header>
 
-  <h3 class="digest-card-title">{{ s.title }}</h3>
+  {% if type_ == 'pubmed' and s.external_id %}
+    <h3 class="digest-card-title">
+      <a class="digest-card-title-lk" href="/bridge/digests/pubmed/{{ entry.date }}/{{ s.external_id }}">{{ s.title }}</a>
+    </h3>
+  {% elif type_ == 'ai' and s.external_url %}
+    <h3 class="digest-card-title">
+      <a class="digest-card-title-lk" href="{{ s.external_url }}" target="_blank" rel="noopener">{{ s.title }}</a>
+    </h3>
+  {% else %}
+    <h3 class="digest-card-title">{{ s.title }}</h3>
+  {% endif %}
 
   <div class="digest-card-meta">
     {% if type_ == 'pubmed' %}

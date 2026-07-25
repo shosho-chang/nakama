@@ -1,0 +1,3026 @@
+stats:
+  total_shots: 165
+  broll_shots: 137
+  broll_shots_per_minute: 7.25
+  broll_events: 24
+  broll_events_per_minute: 1.27
+  shots_per_event_p50: 5
+  shots_per_event_max: 15
+  broll_duration_p50: 5.8
+  broll_duration_p90: 14.56
+  broll_time_share: 0.913
+  aroll_runs:
+    n: 25
+    p50: 3.0
+    p90: 9.3
+    max: 10.7
+  by_type:
+    diagram:
+      n: 1
+      p50: 8.13
+      max: 8.13
+    kol:
+      n: 3
+      p50: 1.58
+      max: 1.96
+    motion_graphic:
+      n: 18
+      p50: 6.99
+      max: 14.56
+    other:
+      n: 1
+      p50: 0.33
+      max: 0.33
+    screen_recording:
+      n: 107
+      p50: 5.71
+      max: 35.2
+    stock:
+      n: 2
+      p50: 6.13
+      max: 9.05
+    title_card:
+      n: 5
+      p50: 3.67
+      max: 13.97
+shots:
+- shot_id: 1
+  start: 0.0
+  end: 7.883
+  duration: 7.883
+  type: aroll
+  note: Split screen：右半 Jeff 對鏡頭說話，左半米色圖卡疊加，列出 "Chat / Cowork / Code" 三詞，左上角 Claude
+    星芒 logo。b 幀 Chat 旁滑入綠色勾、Code 旁紅色叉；c 幀 Cowork 放大成白色卡片、周圍出現多個紅色問號（overlay 逐步動畫）。type
+    判 aroll（主持人半身說話＋疊加圖卡）。文字：Chat / Cowork / Code
+  cues:
+  - 1
+  - 2
+  - 3
+  text: You're in the right place if you use Cloud Chat every day,are intimidated
+    by Cloud Code,and know Co-Work exists, but not
+- shot_id: 2
+  start: 7.883
+  end: 19.311
+  duration: 11.428
+  type: motion_graphic
+  note: '黑底簡報式資訊圖卡：標題 "COWORK: CORE CAPABILITIES" 配紅色閃電 logo，7 張編號卡片 01–07（內容為佔位灰線）。a
+    幀全暗淡入，b 幀卡片亮起，c 幀各卡加上 "USE CASE" 小標（逐步 build 動畫）。文字：COWORK: CORE CAPABILITIES
+    / 01–07 / USE CASE'
+  cues:
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  text: Because in this video,we're breaking down the seven core capabilitiesof Cloud
+    Co-Work, each with real world use cases,so
+- shot_id: 3
+  start: 19.311
+  end: 22.272
+  duration: 2.961
+  type: aroll
+  note: 實拍側面 B-roll：Jeff 穿棕色上衣坐在攝影棚工作桌前（燈架、相機、音箱入鏡），右側疊大型圓角 PIP，PIP 內 Jeff 對鏡頭說話。非螢幕錄影、主持人
+    PIP 為主敘事，判 aroll（studio wide shot + host PIP inset）。畫面無 overlay 文字
+  cues:
+  - 9
+  - 10
+  text: Quick heads up, I've been making AI videosfor about three years now,
+- shot_id: 4
+  start: 22.272
+  end: 24.733
+  duration: 2.461
+  type: screen_recording
+  note: '過肩實拍看螢幕：Claude.ai 對話頁顯示 Notion Course: Scripting / Building a C... 內容（Tasks,
+    Projects, Areas, Notes, Daily planning, Weekly reviews, Quick capture features
+    等列表），輸入框正在打字 "If you were to summ"，右側 Jeff PIP（host PIP）。可讀文字：Notion Course: Scripting
+    / Tasks / Projects / Areas / Notes / Daily planning / Weekly reviews / Quick capture
+    features / If you were to summ / Claude 3.7 Sonnet / Choose style'
+  cues:
+  - 10
+  - 11
+  text: for about three years now,and I've never felt this way about a single tool.
+- shot_id: 5
+  start: 24.733
+  end: 26.443
+  duration: 1.71
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話大笑，暗色房間、書架背景、大型麥克風。無 overlay 文字
+  cues:
+  - 11
+  - 12
+  - 13
+  text: and I've never felt this way about a single tool.Let's get started.Kicking
+    things off with the three biggest differences
+- shot_id: 6
+  start: 26.443
+  end: 28.695
+  duration: 2.252
+  type: title_card
+  note: 黑底章節卡：Anthropic 'AI' logo 與紅色閃電 logo 並列，大字 "CLAUDE CHAT VS. CLAUDE COWORK"，副標黃字
+    "3 BIGGEST DIFFERENCES"，黃色斜線幾何裝飾（a 幀標題暗、b 幀亮起，動畫 build-in）。文字：CLAUDE CHAT VS.
+    CLAUDE COWORK / 3 BIGGEST DIFFERENCES
+  cues:
+  - 13
+  - 14
+  text: Kicking things off with the three biggest differencesbetween Cloud Chat, the
+    chatbot we're all very familiar with,
+- shot_id: 7
+  start: 28.695
+  end: 34.159
+  duration: 5.464
+  type: screen_recording
+  note: Claude.ai/new 螢幕錄影："Good morning, Jeff" 首頁，附件選單展開（Add files or photos / Take
+    a screenshot / Add to project / Add from Google Drive / Skills / Connectors /
+    Research / Web search / Use style），下方 Write / Learn / From Drive / From Calendar
+    / From Gmail chips；右側 Jeff PIP（host PIP）。b 幀選單收合。文字：Good morning, Jeff / How can
+    I help you today? 及上列選單項
+  cues:
+  - 14
+  - 15
+  text: between Cloud Chat, the chatbot we're all very familiar with,and Cloud Co-Work,
+    the native desktop app.
+- shot_id: 8
+  start: 34.159
+  end: 35.452
+  duration: 1.293
+  type: screen_recording
+  note: Claude.ai 螢幕錄影："Good afternoon, Jeff" 首頁，Finder 視窗開在 Receipts 資料夾（84 selected，多個
+    receipt/invoice PDF 檔名反白），b 幀拖曳大量檔案到頁面出現 "Drop files here" 提示。無 host PIP。文字：Good
+    afternoon, Jeff / How can I help you today? / Receipts / Drop files here / Write
+    / Learn 等
+  cues:
+  - 15
+  - 16
+  text: and Cloud Co-Work, the native desktop app.First, while both Cloud Chat and
+    Co-Work
+- shot_id: 9
+  start: 35.452
+  end: 39.206
+  duration: 3.754
+  type: screen_recording
+  note: Claude.ai 螢幕錄影：上傳過多檔案觸發警告 toast，b 幀 zoom-in 特寫 "You can add at most 20 attachments
+    to a message. Please select fewer attachments."（a 幀全頁、b 幀放大，構圖變化）。文字：You can add
+    at most 20 attachments to a message. Please select fewer attachments. / Good afternoon,
+    Jeff
+  cues:
+  - 16
+  - 17
+  - 18
+  text: First, while both Cloud Chat and Co-Workrequire an internet connection,chat
+    uploads files to the cloud,
+- shot_id: 10
+  start: 39.206
+  end: 42.292
+  duration: 3.086
+  type: screen_recording
+  note: Claude.ai 螢幕錄影：再次從 Finder（Receipts / 99 Temporary (to delete)、Capability 1–4、Cowork
+    Playground 等資料夾）嘗試上傳，b 幀 Finder 導覽回上層。無 host PIP。文字：Good afternoon, Jeff / Receipts
+    / 99 Temporary (to...) / Capability 1 / Capability 2 / Capability 4 / WSET L...ok
+    - Split 等檔名
+  cues:
+  - 18
+  - 19
+  text: chat uploads files to the cloud,which limits you to 20 files per conversation
+- shot_id: 11
+  start: 42.292
+  end: 44.711
+  duration: 2.419
+  type: screen_recording
+  note: Claude.ai 螢幕錄影：另一個上傳限制警告，b 幀 zoom-in 特寫 "You may not upload files larger than
+    31mb."，旁有手繪黃色箭頭 doodle。文字：You may not upload files larger than 31mb. / Good afternoon,
+    Jeff / How can I help you today? / Write / Learn / From Drive / From Calendar
+    / From Gmail
+  cues:
+  - 19
+  - 20
+  text: which limits you to 20 files per conversationand 30 megabytes per file.
+- shot_id: 12
+  start: 44.711
+  end: 51.718
+  duration: 7.007
+  type: screen_recording
+  note: Claude Cowork 桌面 app 螢幕錄影：頂部 Chat / Cowork / Code 分頁切到 Cowork，"Let's knock
+    something off your list"、Sushie Labs 專案 chip，選擇 "Work in a project" → 開檔案選擇器（Cowork
+    Playground：Cap 4 / Chapters / clear-and-concise / Receipts / weekly-report），c
+    幀改為 "Receipts" 資料夾並有手繪指標 doodle。Scheduled 列表：Morning inbox triage / Ops weekly
+    pre meeting brief / Audrey 11 pre meeting brief。文字如上
+  cues:
+  - 20
+  - 21
+  - 22
+  - 23
+  text: and 30 megabytes per file.But since Co-Work can access your local files,neither
+    of those limitations apply.And so Co-Wor
+- shot_id: 13
+  start: 51.718
+  end: 53.637
+  duration: 1.919
+  type: screen_recording
+  note: 'Claude Cowork 螢幕錄影續：選定 Receipts 專案，Finder 疊窗顯示 Receipts 內 receipt/invoice
+    PDF 清單（241101Receipt-Sushie Labs.pdf 反白），b 幀出現手繪箭頭 doodle 指向輸入框。文字：Let''s knock
+    something off your list / Cowork is in research preview. Learn how to use it safely.
+    / How can I help you today? / Receipts / Scheduled: Morning inbox tr... / Ops
+    weekly pre... / Audrey 11 pre m...'
+  cues:
+  - 23
+  - 24
+  text: And so Co-Work can easily handle more fileswith larger file sizes.
+- shot_id: 14
+  start: 53.637
+  end: 56.473
+  duration: 2.836
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話，暗色工作室、大麥克風入鏡，手勢比劃。畫面無文字。
+  cues:
+  - 24
+  - 25
+  text: with larger file sizes.On top of that, Co-Work has a much larger context window,
+- shot_id: 15
+  start: 56.473
+  end: 69.069
+  duration: 12.596
+  type: motion_graphic
+  note: 黑底動態資訊圖卡比較兩個 context window 進度條：標題 "CONTEXT WINDOW"；上排 Anthropic logo 標 "CHAT"，下排閃電
+    logo 標 "COWORK"。b/c 幀 zoom in 且動畫推進：CHAT 加上 "⚠ COMPACTING" 標籤，進度條先顯示 "FULL"（b），再變條紋並顯示
+    "DETAIL LOST"（c）；COWORK 條維持較長橘色。頂部露出被裁切的大標 "CONTEXT L..."。
+  cues:
+  - 25
+  - 26
+  - 27
+  - 28
+  - 29
+  - 30
+  text: On top of that, Co-Work has a much larger context window,meaning you can do
+    a lot more workbefore triggering the compact
+- shot_id: 16
+  start: 69.069
+  end: 75.367
+  duration: 6.298
+  type: screen_recording
+  note: 'Claude.ai 聊天畫面錄影（無 host PIP），對話標題 "AI-enabled Video Editing Workflow / Video
+    202 edit brief"，內文含 "How to use it: Columns C through F (Status, Pattern Name,
+    Editor Instruction, Additional Context) are the paste-ready values..."、"One thing
+    worth flagging for Edit Patterns:"、"''Dark Console'' / ''DCS'' now has 9 occurrences
+    across this video alone..."，附件卡 "Video 202 edit brief draft / Spreadsheet · XLSX
+    / Download"。b/c 幀彈出黃框預覽視窗開啟該 XLSX（欄位 Row / Script Reference / Status / Pattern
+    Name，內容如 "First 15 seconds should immediately reinforce the value"），並滑入白色 callout
+    文字條逐字打出 "We still need to \"do something\" with Chat''s output"（b 幀僅打到 "We still
+    need to \"do something"）。'
+  cues:
+  - 30
+  - 31
+  - 32
+  - 33
+  text: 'but potentially losing important details in the process.Difference number
+    two,Cloud Chat gives you a response in a chat '
+- shot_id: 17
+  start: 75.367
+  end: 80.33
+  duration: 4.963
+  type: screen_recording
+  note: 'Claude Cowork 介面錄影（無 host PIP），頂部 tab "Chat | Cowork | Code"，任務 "Create expense
+    report from receipts"，回覆文字 "Done. Here''s your expense report: View your expense
+    report / What''s in it: 84 line items across two sheets...Rows flagged with VERIFY
+    (highlighted yellow with red text): Taxi receipt (Oct 16)...Files created: ...expense-report.xlsx"；右欄
+    "Progress 3 of 3"、"Cowork Playground" 檔案清單、"Context / Skills / xlsx"。b 幀疊出黃框 Expense
+    Report XLSX 預覽（Date/Vendor/Category/Amount 欄、黃底 VERIFY 列）、Finder 視窗 highlight
+    "expense.xlsx"，與 callout 條 "Cowork delivers re..."（文字打字中）。'
+  cues:
+  - 33
+  - 34
+  - 35
+  text: that you have to then copy, format, or download yourself,while Co-Work actually
+    does the workand delivers ready to use f
+- shot_id: 18
+  start: 80.33
+  end: 84.084
+  duration: 3.754
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話，比出手勢、表情誇張。畫面無文字。
+  cues:
+  - 35
+  - 36
+  - 37
+  text: and delivers ready to use files directly in your folder.Spoiler alert, the
+    final output isn't limitedto just local files
+- shot_id: 19
+  start: 84.084
+  end: 95.47
+  duration: 11.386
+  type: screen_recording
+  note: 'Cowork 首頁錄影，右下角 host PIP（圓角小卡）。畫面文字："Sushie Labs"、"Let''s knock something
+    off your list"、"Cowork is in research preview. Learn how to use it safely."、輸入框
+    "How can I help you today?"、"Scheduled: Morning inbox triage Tomorrow at 6:09
+    AM / Ops weekly pre meeting brief Tomorrow at 12:01 PM / Audrey 1:1 pre meeting
+    brief Tomorrow at 1:01 PM / Show more"。b/c 幀 zoom 至 connectors 黃框選單："Drive search
+    / Gmail / Google Calendar / Notion / Vercel / Claude in Chrome"（皆開啟）、"Add from
+    Google Calendar / Add from Notion"，背景另見 "Add files or photos / Skills / Connectors
+    / Add plugins..."。'
+  cues:
+  - 37
+  - 38
+  - 39
+  - 40
+  - 41
+  text: to just local files,since Co-Work can connect to external platformsand produce
+    polished pages in Notion directly, for ex
+- shot_id: 20
+  start: 95.47
+  end: 100.684
+  duration: 5.214
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話，手勢比劃。畫面無文字。
+  cues:
+  - 41
+  - 42
+  - 43
+  text: we'll cover that later.Third, as a result of those first two differences,we
+    need to prompt Co-Work differently than Clou
+- shot_id: 21
+  start: 100.684
+  end: 106.231
+  duration: 5.547
+  type: motion_graphic
+  note: 黑底動態圖卡：Anthropic logo＋標題 "CLAUDE CHAT"，右上藍色 tag "TASK-FIRST"，下方 01–05 編號的模糊佔位文字列（步驟清單示意）。b
+    幀 zoom in，步驟 01、02 依序亮起（動畫推進）。
+  cues:
+  - 43
+  - 44
+  - 45
+  text: we need to prompt Co-Work differently than Cloud Chat.With chat, we use task-first
+    language.So we tell it what to do ste
+- shot_id: 22
+  start: 106.231
+  end: 111.82
+  duration: 5.589
+  type: screen_recording
+  note: Claude.ai 新對話頁錄影（無 host PIP），"Good afternoon, Jeff"，輸入框上方五張 Jeff 縮圖照片，placeholder
+    "Type / for skills"，底部按鈕 "Write / Learn / From Drive / From Calendar / From Gmail"。b
+    幀輸入中 prompt："Review my raw thumbnail photos and recommend a naming"。
+  cues:
+  - 45
+  - 46
+  - 47
+  - 48
+  text: So we tell it what to do step-by-step.For example, review my raw thumbnail
+    photosand recommend a naming conventionand fo
+- shot_id: 23
+  start: 111.82
+  end: 112.821
+  duration: 1.001
+  type: screen_recording
+  note: Claude 聊天頁 "Thumbnail photo organization system" 的快轉過場：畫面加 glitch/色差特效並疊兩個大型黑色快進（fast-forward）三角形圖示，背景見縮圖照片
+    grid 與部分文字 "...thumbnail photos...convention and ...ture I should use."。兩幀近似，僅
+    glitch 抖動差異。
+  cues:
+  - 49
+  text: You get back a recommendation in text,
+- shot_id: 24
+  start: 112.821
+  end: 115.407
+  duration: 2.586
+  type: screen_recording
+  note: 'Claude 回覆頁錄影（無 host PIP），對話 "Thumbnail photo organization system"，內容："Pose:
+    open-hand, point-up, point-back, arms-crossed, hands-clasped, presenting / Expression:
+    laugh, smile, smirk, neutral, surprised"，白卡 "Folder structure": "/Thumbnails /Raw
+    /2026-03 ← shoot date folders /2026-04 /Cutouts ← background-removed PNGs ready
+    for compositing /by-outfit /teal-overshirt /sage-zip /cream-cardigan /black-zip
+    /Finals ← completed thumbnail files, named by video"，下文 "Why this works for your
+    workflow..."。b 幀 zoom in 至黃框 highlight 的 Folder structure 卡。'
+  cues:
+  - 49
+  - 50
+  text: You get back a recommendation in text,and then you go do the work yourself.
+- shot_id: 25
+  start: 115.407
+  end: 120.829
+  duration: 5.422
+  type: motion_graphic
+  note: 黑底動態圖卡（與 shot 21 成對）：閃電 logo＋標題 "CLAUDE COWORK"，右上橘色 tag "OUTCOME-FIRST"，三個區段標籤
+    "END RESULT / CONSTRAINTS / QUALITY BAR" 配模糊佔位文字列。a 幀淡入中，b 幀 "END RESULT" 區段亮起（動畫推進）。
+  cues:
+  - 50
+  - 51
+  - 52
+  - 53
+  text: and then you go do the work yourself.With Co-Work, we use outcome-first language,where
+    we define the end result,the cons
+- shot_id: 26
+  start: 120.829
+  end: 127.669
+  duration: 6.84
+  type: screen_recording
+  note: Cowork 介面錄影（zoom in，無 host PIP），tab "Chat | Cowork | Code"，標題 "Let's knock
+    something off your list"、"Cowork is in research preview. Learn how to use it safely
+    or give us feedback."，輸入框 placeholder "Type / for skills"、資料夾 chip "Thumbnails"，下方
+    "Get to know Cowork / Download Cowork（劃線）/ Welcome!"。b/c 幀打入 prompt "I have thumbnail
+    photos in this folder. I need them organized into subfolders by topic with descriptive
+    filenames." 並出現紅色 "Let's go →" 按鈕、游標移向按鈕。
+  cues:
+  - 54
+  - 55
+  - 56
+  - 57
+  text: For example, I have 15 raw thumbnail photos in this folder.I need them organized
+    into subfolders by topicwith descriptiv
+- shot_id: 27
+  start: 127.669
+  end: 128.67
+  duration: 1.001
+  type: screen_recording
+  note: Cowork app 螢幕錄影，畫面疊兩個巨大黑色快轉三角形（fast-forward overlay）＋輕微 glitch/RGB 偏移特效。可讀文字："Organize
+    photos into topic folders"、"I have thumbnail photos in this folder. I need them
+    organized into subfolders by topic with descriptive filenames."、"Thinking"、"List
+    files in Thumbn..."、"Check available ima..."、右欄 "Progress / See task progress
+    for longer tasks"、"Thumbnails / Instructions - CLAUDE.md"、"Context / Track tools
+    and referenced files used in this task"、b 幀多出 "Ran 3 commands"、"Now let me convert
+    these... see what's in each photo."、"Loading tools"、"Working on it"、"Scratchpad"、底部
+    "Reply..."、"Claude is AI and can make mistakes. Please double-check responses.
+    Give us feedback"。
+  cues:
+  - 57
+  text: You let Co-Work run, and three minutes later,
+- shot_id: 28
+  start: 128.67
+  end: 130.547
+  duration: 1.877
+  type: screen_recording
+  note: Cowork 完成畫面＋Finder 視窗（thumbnails 資料夾顯示 desk-setup、living-room-couch 兩資料夾）；b
+    幀對回覆卡 zoom-in 加黃色外框 highlight。文字："Done. Here's the final structure in your Thumbnails
+    folder:"、"desk-setup/ (2 files)"、"desk-holding-phone.heif -- at the desk, holding
+    up a phone"、"desk-talking-to-camera.heif -- at the desk, gesturing while speaking"、"living-room-couch/
+    (4 files)"、"couch-chin-on-hand.heif -- on the couch, chin resting on hand"、"couch-hands-clasped.heif
+    -- on the couch, hands clasped together"、"couch-smiling.heif -- on the couch,
+    smiling"、"couch-neutral-expression.heif -- on the couch, neutral/re..."、"If you'd
+    prefer different folder names or want the filenames adjust..."。
+  cues:
+  - 57
+  - 58
+  text: You let Co-Work run, and three minutes later,the work is done.
+- shot_id: 29
+  start: 130.547
+  end: 134.259
+  duration: 3.712
+  type: screen_recording
+  note: Claude 首頁打字輸入 meta prompt（無 PIP）。文字："Good afternoon, Jeff"、"# ROLE / You are
+    a Cowork prompt optimizer. Take the user's raw request and rewrite it into a clean
+    task prompt for Claude Cowork. Output ONLY the rewritten prompt inside a single
+    code block."、"# USER'S RAW REQUEST / Tu"（b 幀打字進度變 "Turn this folder of receipts
+    into an ex"）、"# WHAT COWORK NEEDS TO KNOW / Cowork is an AI assistant that runs
+    tasks on your Mac — it can read and create files, browse the web, and connect
+    to apps like Google Drive, Notion, Gmail, and Calendar. It works best when you
+    tell it WHAT you want, not HOW to do it."、"# REWRITE PRINCIPLES / 1. Lead with
+    the goal. State exactly what the finished result looks like in one sentence."。
+  cues:
+  - 58
+  - 59
+  - 60
+  - 61
+  text: the work is done.If you're struggling with this,I've prepared a prompt templatewhere
+    you can just describe what you're t
+- shot_id: 30
+  start: 134.259
+  end: 135.26
+  duration: 1.001
+  type: screen_recording
+  note: claude.ai 瀏覽器聊天視圖（同 meta prompt 已送出），疊兩個大黑色快轉三角形＋glitch 特效。可讀文字同 shot 29 之
+    prompt："# ROLE / You are a Cowork prompt optimizer..."、"# USER'S RAW REQUEST /
+    ...folder of receipts into an e..."、"...ORK NEEDS TO KNOW"、"Reply..."、"Claude
+    is AI and can make mistakes. Please double-check responses."、tab 標題 "Claude Cowork's
+    missing m..."。
+  cues:
+  - 61
+  text: where you can just describe what you're trying to do,
+- shot_id: 31
+  start: 135.26
+  end: 139.723
+  duration: 4.463
+  type: screen_recording
+  note: 'claude.ai 顯示優化後 prompt 輸出；b 幀捲動至完整結果並出現斜切黑底 overlay 橫幅 "LINK DOWN BELOW"。文字："Optimizing
+    receipt folder into expense report"、"Architected structured prompt for expense
+    report automation"、"GOAL / Create a formatted expense report from all receipts
+    in [folder path, e.g. ~/Desktop/Receipts]."、"SUCCESS CRITERIA / - Every receipt
+    in the folder is captured as a line item / - Each entry includes: date, vendor,
+    amount, and category (e.g. meals, transport, software) / - Totals are summed per
+    category and overall / - Output saved as [format: Excel (.xlsx) / Google Sheet
+    / PDF]"、"INPUTS / - All files in [folder path] (images, PDFs, or scans)"、"CONSTRAINTS
+    / - Extract data only from what''s visible on each receipt — don''t guess missing
+    fields, flag them as \"unclear\" inst"。'
+  cues:
+  - 61
+  - 62
+  - 63
+  text: where you can just describe what you're trying to do,and it spits out a prompt
+    that's optimizedfor Cloud Co-Work, linked
+- shot_id: 32
+  start: 139.723
+  end: 143.393
+  duration: 3.67
+  type: title_card
+  note: 黑底黃線章節標題卡，齒輪 icon，動畫滑入（a 幀僅見部分字 "ESSENTIAL"，b 幀完整）。文字："CLAUDE COWORK / ESSENTIAL
+    SETTINGS"。
+  cues:
+  - 63
+  - 64
+  - 65
+  text: for Cloud Co-Work, linked down below.Now, let's go over a few essential settingsso
+    that Co-Work is set up properly.
+- shot_id: 33
+  start: 143.393
+  end: 163.538
+  duration: 20.145
+  type: screen_recording
+  note: Cowork 桌面 app 操作：a 幀首頁 "Sushie Labs"、"Let's knock something off your list"、"Cowork
+    is in research preview. Learn how to use it safely."、"How can I help you today?"、"Scheduled
+    / Morning inbox triage - Tomorrow at 6:09 AM / Ops weekly pre meeting brief -
+    Tomorrow at 12:01 PM / Audrey 11 pre meeting brief - Tomorrow at 1:01 PM / Show
+    more"；b 幀 zoom 到偏好設定文字框，上方黑底 callout 卡 "Preferences that apply to both Chat and
+    Cowork"，框內文字含 "## My AI Assistant / My assistant's name is Claude. Sharp, efficient,
+    and adaptive — no fluff by default..."、"## About Me / My name is Jeff. I'm a former
+    management consultant (2014–2016, NYC) and ex-Googler (2016–2025, Hong Kong...)...
+    my YouTube education channel, Jeff Su, which has over 1.6M subscribers..."、"##
+    My Preferred Tools / - **Notion** — my command center... - **Google Workspace**
+    — my workbench..."、"## How to Work With Me / **Pyramid structure, always.**..."；c
+    幀 Settings 頁："Settings / General / Account / Usage / Capabilities / Connectors
+    / Claude Code / Cowork / Desktop app / General / Extensions / Developer / Sushie
+    Labs / Organization settings"、"Cowork Preview / Global instructions / Instructions
+    here apply to all Cowork sessions. Use this for preferences, conventions, or context
+    that Claude should always know. / Edit / Delete Cowork sessions / To delete your
+    Cowork sessions, email Anthropic at privacy@anthropic.com."。多幀為同一操作流程不同階段。
+  cues:
+  - 65
+  - 66
+  - 67
+  - 68
+  - 69
+  - 70
+  - 71
+  - 72
+  text: so that Co-Work is set up properly.First, make sure the Co-Work tab is selected,and
+    then under Settings, the first gener
+- shot_id: 34
+  start: 163.538
+  end: 168.377
+  duration: 4.838
+  type: screen_recording
+  note: 'Notion 頁面螢幕錄影＋主持人圓角小卡 PIP 疊右側（host PIP，說話比手勢）；b 幀底部出現黑底橫幅 "LINK DOWN BELOW"。文字："Sushie
+    Labs Teamspace / Shared Externally Tem... / Resources for Claude Cowork (Jeff
+    ...)"、"Meta Prompt / Prompt"、"Starter Pack instructions for Claude Cowork / Prompt"、code
+    block："## Prevent accidental damage / - Before deleting, overwriting, or renaming
+    any existing file, show me what will change and wait for confirmation. / - Never
+    modify files outside the current working folder unless I explicitly ask you to.
+    / ## Keep things organized / When creating new files, use the naming format YYYY-MM-DD-descriptive-name.
+    / At the end of a task, list all files you created or modified with their locations.
+    / ## Control the pace of autonomous work / For multi-step tasks, outline your
+    plan first and wait for my approval before executing. After each major step, briefly
+    summarize what you did and what''s next."、"Additional Resources"、"Edited just
+    now / Share"。'
+  cues:
+  - 72
+  - 73
+  - 74
+  text: that apply to Co-Work only.I've actually put together a starter pack of instructionsbeginners
+    can just copy and paste im
+- shot_id: 35
+  start: 168.377
+  end: 173.59
+  duration: 5.214
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話，暗色工作室、黑色層架背景、大型麥克風入鏡，雙手比手勢。畫面無疊加文字。
+  cues:
+  - 74
+  - 75
+  - 76
+  - 77
+  - 78
+  text: beginners can just copy and paste immediately,out of the goodness of my heart,
+    obviously,and not at all because I'm tryi
+- shot_id: 36
+  start: 173.59
+  end: 173.965
+  duration: 0.375
+  type: aroll
+  note: Jeff 全畫面對鏡頭，雙手合十置於胸前、微笑點頭。畫面無文字。
+  cues:
+  - 79
+  text: What?
+- shot_id: 37
+  start: 173.965
+  end: 176.718
+  duration: 2.753
+  type: aroll
+  note: Jeff 特寫（更近景）大笑後轉為微笑對鏡頭。畫面無文字。與 shot 36 相比為推近的近景鏡位。
+  cues:
+  - 79
+  - 80
+  text: What?No, no, that's just obviously a joke.
+- shot_id: 38
+  start: 176.718
+  end: 177.636
+  duration: 0.918
+  type: aroll
+  note: Jeff 近景，睜大眼、揚眉的反應表情（comedic pause），視線略偏。畫面無文字。
+  cues:
+  - 81
+  text: Anyway, these instructions are basically guardrails
+- shot_id: 39
+  start: 177.636
+  end: 194.277
+  duration: 16.642
+  type: screen_recording
+  note: 'Settings > Cowork 頁操作 Global instructions：a 幀 "Settings / Cowork Preview
+    / Dispatch / Let Claude work on tasks from your phone using this computer. When
+    off, your phone won''t be able to dispatch work here."（toggle 開）、"Give Claude,
+    get more Claude / Send a friend a free week of Claude Cowork. If they love it
+    and subscribe, you''ll get $10 of extra usage to keep building. Terms apply /
+    Guest pass 3/3 left / https://claude.ai/referral/pwUwpjtBgQ?... / Copy link /
+    Friends can try both Cowork and Claude Code. / Global instructions / Instructions
+    here apply to all Cowork sessions... / Edit / Delete Cowork sessions / To delete
+    your Cowork sessions, email Anthropic at privacy@anthropic.com."；b/c 幀 zoom 進編輯框，黃色
+    highlight 標記一行："## Prevent accidental damage / - Before deleting, overwriting,
+    or renaming any existing file, show me what will change and wait for confirmation.（黃底
+    highlight）/ - Never modify files outside the current working folder unless I explicitly
+    ask you to. / ## Keep things organized / When creating new files, use the naming
+    format YYYY-MM-DD-descriptive-name. / At the end of a task, list all files you
+    created or modified with their locations. / ## Control the pace of autonomous
+    work / For multi-step tasks, outline your plan first and wait for my approval
+    before executing. After each major step, briefly summarize what you did and what''s
+    next." / "Cancel / Save"。'
+  cues:
+  - 81
+  - 82
+  - 83
+  - 84
+  - 85
+  - 86
+  - 87
+  - 88
+  text: Anyway, these instructions are basically guardrailsthat stop Co-Work from
+    touching your files without asking,like before
+- shot_id: 40
+  start: 194.277
+  end: 208.041
+  duration: 13.764
+  type: screen_recording
+  note: Claude 桌面 app Settings > Capabilities 頁滾動操作，host PIP 圓角小卡疊右側。a 幀顯示 Memory
+    區："Settings / General / Account / Usage / Capabilities / Connectors / Claude Code
+    / Cowork / Desktop app / General / Extensions / Developer / Sushie Labs / Organization
+    settings / Memory / Search and reference chats / Allow Claude to search for relevant
+    details in past chats. Learn more. / Generate memory from chat history / Allow
+    Claude to remember relevant context from your chats. This setting controls memory
+    for both chats and projects. Learn more. / What does Claude know about you? Not
+    much, yet. After more chats you'll see what Claude knows about you here. / Import
+    memory from other AI providers / Bring relevant context and data from another
+    AI provider to Claude. We'll provide a prompt you can use to fetch the memory
+    from your other account. Learn more / Start import / General / Location metadata
+    / Allow Claude to use coarse location metadata (city/region) to improve product
+    experiences. Learn more. / Tool access / Tool access mode / Controls how connector
+    tools are loaded in new conversations. / Load tools when needed"。b 幀黃框 highlight
+    General/Location metadata 區並新增 "Chats compact less since tools aren't pre-loaded.
+    / Tools already loaded / Chats compact more often since tools are always there."。c
+    幀滾到 Visuals 區："Visuals / Artifacts / Ask Claude to generate content like code
+    snippets, text documents, or website designs, and Claude will create an Artifact
+    that appears in a dedicated window alongside your conversation. / AI-powered artifacts
+    / Create apps, prototypes, and interactive documents that use Claude inside the
+    artifact. Start by saying, \"Let's build an AI app...\" to access the power of
+    Claude API. / Inline visualizations / Allow Claude to generate interactive visualizations,
+    charts, and diagrams directly in the conversation. / Code execution and file creation
+    / Cloud code execution and file creation / Claude can execute code on a server
+    and create and edit docs, spreadsheets, presentations, PDFs, and data reports.
+    / Skills"
+  cues:
+  - 88
+  - 89
+  - 90
+  - 91
+  - 92
+  - 93
+  - 94
+  text: 'as you get more experience with Co-Work.Next, under Settings, Capabilities,enable
+    both memory features.I leave location '
+- shot_id: 41
+  start: 208.041
+  end: 220.637
+  duration: 12.596
+  type: screen_recording
+  note: macOS Finder 開 Documents 資料夾再帶到 Cowork 首頁，host PIP 右側全程。a 幀為 RGB 殘影轉場模糊幀（whip-transition，內容不可辨）；b
+    幀 Finder 清晰："Documents / Favorites / Dropbox / Library / Applications / Documents
+    / Downloads / Locations / iCloud Drive / Google Drive / jeff / Macintosh HD /
+    Name / Date Modified / Size / 01 Local Working Folder Mar 18, 2026 at 10:14 /
+    98 Temporary Mar 18, 2026 / 99 Local Programs Mar 22, 2026 / Claude Mar 22, 2026
+    / Cowork P[layground] Today at 10:22"（正在命名新資料夾）；c 幀 Cowork 首頁疊 Finder 視窗："Chat
+    / Cowork / Code / Soshie Labs / Let's knock something off your list / Cowork is
+    in research preview. Learn how to use it safely. / How can I help you today? /
+    Cowork Playground Today at 10:22"。多幀間畫面由 Finder 全屏縮為 Cowork 頁上的浮動視窗
+  cues:
+  - 94
+  - 95
+  - 96
+  - 97
+  - 98
+  - 99
+  - 100
+  text: and enable all of these features down below.And finally, whether you're on
+    Windows or Mac,head on over to your Documents
+- shot_id: 42
+  start: 220.637
+  end: 247.914
+  duration: 27.277
+  type: screen_recording
+  note: Cowork 首頁與檔案存取權限彈窗。a 幀 Cowork 首頁："Chat / Cowork / Code / Soshie Labs / Let's
+    knock something off your list / Cowork is in research preview. Learn how to use
+    it safely. / How can I help you today? / Work in a project / Scheduled / Morning
+    inbox triage Tomorrow at 6:09 AM / Ops weekly pre meeting brief Tomorrow at 12:01
+    PM / Audrey 11 pre meeting brief Tomorrow at 1:01 PM / Show more"；b 幀放大權限 dialog（背景模糊）："Allow
+    Claude to change files in \"[blurred]\"? This includes all files and subfolders.
+    Claude will be able to read, edit, and permanently delete—and may share file contents
+    with third-party tools it connects to. Be careful about exposing sensitive information.
+    / Cancel / Always Allow / Allow"；c 幀放大輸入框已附檔："Sushie Labs / Let's knock something
+    off your list / Cowork is in research preview. Learn how to use it safely. / image.jpeg
+    / How can I help you today? / Cowork Playground / Let's go → / Scheduled / Morning
+    inbox triage Tomorrow at 6:09 AM / Ops weekly pre meeting brief Tomorrow at 12:01
+    PM"。同鏡頭內 zoom 程度多次變化
+  cues:
+  - 100
+  - 101
+  - 102
+  - 103
+  - 104
+  - 105
+  - 106
+  - 107
+  - 108
+  - 109
+  - 110
+  - 111
+  text: and your other files stay untouched.Now, when we open up a new conversation,point
+    Co-Work at your Playground folderby ch
+- shot_id: 43
+  start: 247.914
+  end: 252.752
+  duration: 4.838
+  type: screen_recording
+  note: Cowork 首頁疊兩個 Finder 深色視窗（Downloads 與 Documents/Cowork Playground），示範把檔案放進
+    playground 資料夾。a 幀文字："Sushie Labs / Let's knock something off your list / Cowork
+    is in research preview. Learn how to use it safely. / image.jpeg / How can I help
+    you today? / Cowork Playground / Let's go / Downloads / Outline.png 1.4 MB PNG
+    image / Screen c...ork.mp4 3.8 MB MPEG-4 / Documents / 01 Local Working Folder
+    / 98 Temporary / 99 Local Programs / Claude 46 bytes Alias / Cowork Playground
+    Today at 10:24 Folder"；b 幀前景 Finder 改開空的 "Cowork Playground" 視窗："Favorites / Dropbox
+    / Library / Applications / Documents / Downloads / Locations / iCloud Drive /
+    Google Drive / jeff / Macintosh HD / Network / Trash / Macintosh HD > Users >
+    jeff > Documents > Cowork Playground / 0 items, 1.85 TB available"。無 host PIP
+  cues:
+  - 111
+  text: make sure all your files are within the Playground folder.
+- shot_id: 44
+  start: 252.752
+  end: 253.086
+  duration: 0.334
+  type: motion_graphic
+  note: 黑白幾何轉場動畫：白色倒三角形楔入黑底（V 形 wipe 轉場），兩幀幾乎相同，畫面上無文字
+  cues:
+  - 112
+  text: All right, capability number one.
+- shot_id: 45
+  start: 253.086
+  end: 259.593
+  duration: 6.507
+  type: motion_graphic
+  note: 黑底簡報式動畫圖卡，藍色線條描邊漸次繪出三張卡片。a 幀僅有藍色線條起筆（無文字）；b 幀出現標題與第一張卡："LOCAL FILE ACCESS
+    / .XLSX / CREATE"；c 幀三卡到齊："LOCAL FILE ACCESS / .XLSX / CREATE / .DOC / EDIT /
+    PROJECT / ORGANIZE"。動畫逐步建構
+  cues:
+  - 112
+  - 113
+  - 114
+  text: All right, capability number one.In plain English, Co-Work can create, edit,and
+    organize files directly on your computer
+- shot_id: 46
+  start: 259.593
+  end: 269.019
+  duration: 9.426
+  type: screen_recording
+  note: macOS Finder 深色視窗顯示 Cowork Playground 內的 Receipts 資料夾，後半疊入白色說明框與左下角標籤（a 幀尚無
+    overlay，b/c 幀 overlay 滑入、文字漸現）。a 幀："Cowork Playground / Favorites / Sushie Labs
+    Dro... / Applications / Library / Desktop / Documents / Downloads / Locations
+    / iCloud Drive / Google Drive - je... / Google Drive - je... / Network / Name
+    Date Modified Size Kind / Receipts Today at 18:00 -- Folder / Macintosh HD > Users
+    > jeff > Documents > Cowork Playground / 1 item, 656.65 GB available"；b 幀加 callout："100+
+    Receipts that are a mix of PDFs and JPEGs / Example 1 / Expense Report"；c 幀同 callout
+    文字打字動畫中（僅部分顯示 "a mix of PDFs and JPEGs"）
+  cues:
+  - 114
+  - 115
+  - 116
+  - 117
+  - 118
+  - 119
+  text: and organize files directly on your computer.Diving right into an example,I've
+    added a folder of over 100 receiptsinto t
+- shot_id: 47
+  start: 269.019
+  end: 298.381
+  duration: 29.363
+  type: screen_recording
+  note: 'Cowork 完整跑一次 expense report 任務。a 幀 Cowork 首頁疊左下角標籤："Chat / Cowork / Code
+    / Let''s knock something off your list / Cowork is in research preview. Learn
+    how to use it safely or give us feedback. / How can I help you today? / Cowork
+    Playground / Get to know Cowork / Download Cowork Welcome! / Connect your everyday
+    tools The more Claude knows your setup, the more it can do / Ask Claude to create
+    something Try a spreadsheet, doc, or presentation / Schedule a recurring task
+    Great for reminders, reports, or regular check-ins / Example 1 / Expense Report"；b
+    幀任務執行中："Create expense report from receipts / I need an expense report from the
+    receipt photos in my receipts folder. Excel spreadsheet with date, vendor, category,
+    amount, and a totals row. If anything''s blurry or unclear, mark it VERIFY / Thought
+    process / Let me check your receipts folder and read the spreadsheet skill, then
+    I''ll get started. / Thinking... 5s / Progress / See task progress for longer
+    tasks. / Cowork Playground / Instructions · CLAUDE.md / Context / Skills / xlsx
+    / Reply... / Queue / Claude is AI and can make mistakes. Please double-check responses.
+    Give us feedback"；c 幀完成畫面＋右側 XLSX 預覽："Done. Here''s your expense report: / View
+    your expense report / What''s in it: / 84 line items across two sheets. The Expense
+    Report sheet has every receipt sorted by date with Date, Vendor, Category, Amount,
+    Currency, and Notes columns, plus a totals row with a SUM formula. The Currency
+    Summary sheet breaks down totals by currency since your expenses span 8 currencies
+    (USD, HKD, TWD, THB, CAD, CNY, JPY, NTD). / Rows flagged with VERIFY (highlighted
+    yellow with red text): / Taxi receipt (Oct 16) - vendor name unclear from the
+    image / Two JPEG images (Dec 14, Dec 16) - multiple Japanese receipts, amounts
+    too blurry to read / Westin Thailand (Jan 2) - currency shown as THB which seems
+    unusual; worth double-checking / Beijing Marriott (Apr 13) - notes suggest the
+    stay may have been October, not April / Ping Pong Gintoneria (Sep 13) - total
+    may be cut off on the receipt / Files created: expense-report.xlsx in the folder
+    you selected. / expense report Spreadsheet · XLSX / Google Drive / Expense Report
+    / Generated: March 28, 2026 / Date Vendor Category Amount / Expense Report / Currency
+    Summary"。左下角標籤僅 a 幀有，之後消失'
+  cues:
+  - 119
+  - 120
+  - 121
+  - 122
+  - 123
+  - 124
+  - 125
+  - 126
+  - 127
+  - 128
+  - 129
+  - 130
+  text: I tell Co-Work, look, I need an expense reportfrom the receipt photos in my
+    Receipts folder.Give me Excel spreadsheet wi
+- shot_id: 48
+  start: 298.381
+  end: 301.343
+  duration: 2.961
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話，暗色工作室背景、大型麥克風，手勢豐富。畫面上無文字
+  cues:
+  - 130
+  - 131
+  - 132
+  text: there are also flagged rows for me to double check.Now, is that possible in
+    Cloud Chat?Not really, because Chat has a 20
+- shot_id: 49
+  start: 301.343
+  end: 302.636
+  duration: 1.293
+  type: screen_recording
+  note: Chrome 中 claude.ai/new，示範把 84 個收據檔拖進 Claude Chat（對照組）。a 幀："claude.ai/new /
+    Ghost / Claude Cowork's missing mi... / Claude / Good afternoon, Jeff / How can
+    I help you today? / Write / Learn / From Dri[ve] / Receipts / Name Date Modified
+    Size Kind / Image...34.jpeg Dec 13, 2024 at 22:11 2.3 MB JPEG image / Image...40.jpeg
+    Dec 16, 2024 at 03:30 1.5 MB JPEG image / 248A0...bs.pdf Oct 29, 2024 at 19:50
+    308 KB PDF Docume / 00357...116.pdf Jan 6, 2024 at 02:05 118 KB ... / 84 of 84
+    selected, 1.98 TB available on iCloud"；b 幀拖曳中檔名標籤成串跟著游標（"image_241214_150734.jpeg
+    / 248A042-Invoice-Sushie Labs.pdf / 241101Receipt-Sushie Labs.pdf / 330313Folio-A_8488.pdf
+    / 20240227 Zapier invoice.pdf / E-receipt.pdf ..."等大量檔名），頁面顯示 "Drop files here
+    t[o]" 與變暗的 "Good afternoon, Jeff"。無 host PIP
+  cues:
+  - 132
+  text: Not really, because Chat has a 20 file limit per conversation
+- shot_id: 50
+  start: 302.636
+  end: 308.433
+  duration: 5.797
+  type: screen_recording
+  note: Claude Chat 顯示附件上限錯誤。a 幀全頁："claude.ai/new / Good afternoon, Jeff / How can
+    I help you today? / Write / Learn / From Drive / From Calendar / From Gmail /
+    You can add a[t most]... fewer attach[ments]"（右上警示浮出中）；b 幀 zoom in 警示條全文："You
+    can add at most 20 attachments to a message. Please select fewer attachments."。無
+    host PIP
+  cues:
+  - 132
+  - 133
+  - 134
+  text: Not really, because Chat has a 20 file limit per conversationand we have more
+    than 20 receipts, obviously.And even if we
+- shot_id: 51
+  start: 308.433
+  end: 314.981
+  duration: 6.548
+  type: screen_recording
+  note: 'Claude Chat 內產出的 Video 202 edit brief XLSX 下載流程，b/c 幀畫面暗化並疊黃框與白色說明框。a 幀："AI-enabled
+    Video Editing Workflow / Video 202 edit brief / Video 202 edit brief draft XLSX
+    / Download / Additional Context column ready to paste into Dark Console Studio.
+    They all assume Animation (.jsx), 16:9, Voiceover mode. You''ll need to paste
+    the full Video 202 script as broader context separately in each DCS session. /
+    How to use it: Columns C through F (Status, Pattern Name, Editor Instruction,
+    Additional Context) are the paste-ready values. Column B is just the first 80
+    characters of each script segment so you can verify alignment before pasting.
+    / One thing worth flagging for Edit Patterns: / \"Dark Console\" / \"DCS\" now
+    has 9 occurrences across this video alone, all mapping to B Roll Animation (Generated).
+    You might want to consider whether DCS warrants its own Pattern Name entry in
+    the Edit Patterns Reference, or if it stays as a subcategory of B Roll Animation
+    (Generated) with the DCS prompt workflow noted in the Template Instruction. No
+    urgency on this, but worth thinking about as the pattern becomes more frequent.
+    / Video 202 edit brief draft Spreadsheet · XLSX / Download / Reply... / Claude
+    is AI and can make mistakes. Please double-check responses."；b/c 幀疊 callout："We
+    still need to ''do something'' with Chat''s output"，下載選單顯示 "video_202_edit_brief_draf
+    18.2 KB · Done / video_202_edit_brief_draft.xlsx 18.2 KB · 29 minutes ago / 202
+    Script _ Learn 80% of Claude Cowork in Under 20 Minutes.pdf 164 KB · 42 minutes
+    ago"，試算表內容含 "Row / Script Reference / Pattern Name / First 15 seconds should immediately
+    reinf... / Drafting / A Roll Talking Head / Chapter Title MKBHD03 / B Roll Screen
+    Capture / B Roll Animation (Generate..." 等'
+  cues:
+  - 134
+  - 135
+  - 136
+  - 137
+  - 138
+  text: And even if we had fewer receipts,Chat would still only give us a spreadsheetand
+    a chat window.We'd then have to downloa
+- shot_id: 52
+  start: 314.981
+  end: 324.991
+  duration: 10.01
+  type: screen_recording
+  note: 回到 Cowork 首頁示範 Example 2：附上 PDF。a 幀為 RGB glitch 轉場模糊幀（Cowork "Let's knock
+    something off your list" 頁面殘影，文字不可辨）；b 幀 zoom in 附件卡（背景模糊）＋左下標籤："Let's knock something
+    off your list / [SHARED] L3 EN Textbook.pdf / PDF / How can I help you today?
+    / Cowork Playground / Let's g[o] / Example 2 / Processing PDFs"；c 幀同頁清晰全景："Let's
+    knock something off your list / Cowork is in research preview. Learn how to use
+    it safely or give us feedback. / [SHARED] L3 EN Textbook.pdf / PDF / How can I
+    help you today? / Cowork Playground / Let's go → / Example 2 / Processing PDFs
+    / Download Cowork"
+  cues:
+  - 138
+  - 139
+  - 140
+  - 141
+  - 142
+  text: and save somewhere else ourselves.Example two, I have a massive 400 plus megabyte
+    PDFthat I need broken into smaller chu
+- shot_id: 53
+  start: 324.991
+  end: 326.117
+  duration: 1.126
+  type: aroll
+  note: Jeff 全畫面對鏡頭微笑講話，暗色書架背景＋大型麥克風，畫面無任何文字 overlay。
+  cues:
+  - 142
+  text: I can just tell Co-Work, I have a massive PDF.
+- shot_id: 54
+  start: 326.117
+  end: 342.968
+  duration: 16.85
+  type: screen_recording
+  note: Claude Cowork 介面：prompt 輸入畫面附 PDF 檔卡，隨後切到執行過程。文字："Let's knock something off
+    your list" / "Cowork is in research preview. Learn how to use it safely or give
+    us feedback." / 檔卡 "[SHARED] L3 EN Textbook.pdf" "PDF" / prompt 由 a 幀 "I have
+    a MASSIVE" 打字中到 b 幀完成 "I have a MASSIVE PDF. I need it broken into separate files,
+    one per chapter or major section, with descriptive filenames so I can find what
+    I need at a glance." / "Cowork Playground" "Let's go"；c 幀轉為執行 log 畫面（"Split PDF
+    into chapter files"、黃框 highlight "Now I have the correct boundaries. Let me do
+    the final split." "All 375 pages accounted for across 47 files."）。左下角常駐標籤 "Example
+    2" "Processing PDFs"。
+  cues:
+  - 142
+  - 143
+  - 144
+  - 145
+  - 146
+  - 147
+  - 148
+  - 149
+  text: I can just tell Co-Work, I have a massive PDF.I need it broken into separate
+    files,one per chapter or major section,with
+- shot_id: 55
+  start: 342.968
+  end: 346.972
+  duration: 4.004
+  type: screen_recording
+  note: Cowork 產出結果＋macOS Finder 疊窗顯示切好的章節 PDF。文字（節錄可見檔名）："01 systematic approach
+    to tasting wine" "07 common elements in winemaking and maturation" "13 bordeaux"
+    "30 spain" "39 australia" "43 sherry" "44 port"；b 幀 Finder 資料夾 "WSET-L3-Chapters"
+    檔案列表（14-Dord...rance.pdf、15-Burgundy.pdf、16-Beaujolais.pdf、17-Alsace.pdf … 30-Spain.pdf）＋"47
+    items, 655.33 GB available"。左下角標籤 "Example 2" "Processing PDFs"。
+  cues:
+  - 149
+  - 150
+  text: create all those individual files,and then save them all back in your folder.
+- shot_id: 56
+  start: 346.972
+  end: 350.392
+  duration: 3.42
+  type: screen_recording
+  note: 'NotebookLM 簡報檢視畫面。a 幀投影片文字："Maximizing Your Google Workspace Investment"
+    "Transforming software expenses into team-wide operational efficiency." "The Workspace
+    Academy Enterprise Deployment"，頂欄 "Maximizing Google Workspace ROI" "Based on
+    42 sources" "Revise" "Good content / Bad content"；b 幀翻到另一頁："The CORE Methodology:
+    An enterprise-ready execution framework" 附圓環圖（Capture / Organize / Review / Engage）與說明段
+    "Capture & Organize… Review… Engage…"。b 幀出現左下角標籤 "Example 3" "Recreate PowerPoint"（a
+    幀尚未出現，右下有 logo 動畫滑入）。'
+  cues:
+  - 150
+  - 151
+  - 152
+  text: and then save them all back in your folder.Example three,Notebook LM can create
+    amazing PowerPoint presentations,
+- shot_id: 57
+  start: 350.392
+  end: 353.812
+  duration: 3.42
+  type: screen_recording
+  note: Keynote 開啟原始簡報，a 幀帶 RGB glitch 轉場模糊效果，b 幀清晰：投影片 "The Gemini Era" "Google's
+    Full-Stack AI Ecosystem"，視窗標題 "Local_The_Gemini_Era_Original"，右側 Style/Image/Arrange
+    面板。左下角標籤 "Example 3" "Recreate PowerPoint"。
+  cues:
+  - 152
+  - 153
+  - 154
+  text: Notebook LM can create amazing PowerPoint presentations,but the slides are
+    images that can't be edited.So we share the f
+- shot_id: 58
+  start: 353.812
+  end: 363.488
+  duration: 9.676
+  type: screen_recording
+  note: Cowork：上傳 PPTX 並下指令到開始執行。文字："Let's knock something off your list" / 檔卡 "Local_The_Gemini_Era_Original.pptx"
+    "PPTX" / a 幀placeholder "How can I help you today?" 與 Active tasks "Rebuild PowerPoint
+    presentation as editable"；b 幀 prompt "These slides aren't editable. Rebuild this
+    as a clean, editable PowerPoint, same content, same slide order." "Let's go"；c
+    幀執行畫面含 Progress（"Read all 15 slide images to extract content" "Building editable
+    PowerPoint with PptxGenJS" "Visual QA - compare output to original"）與 log "The
+    text extraction confirms the issue - every slide is just an embedded image…"。左下角標籤
+    "Example 3" "Recreate PowerPoint"。
+  cues:
+  - 154
+  - 155
+  - 156
+  - 157
+  - 158
+  - 159
+  text: So we share the file with Co-Work and say,"These slides aren't editable.Rebuild
+    this as a clean, editable PowerPoint.Sam
+- shot_id: 59
+  start: 363.488
+  end: 364.489
+  duration: 1.001
+  type: screen_recording
+  note: 同一 Cowork 執行畫面疊上兩個巨大黑色快轉（fast-forward）三角形圖示＋RGB glitch 效果，表示時間跳躍；底層 log 文字部分可見（"Running
+    visual QA on the rebuilt deck" "2026-03-28-the-gemini-era.pptx"）。左下角標籤 "Example
+    3" "Recreate PowerPoint"。
+  cues:
+  - 159
+  text: to understand the underlying content
+- shot_id: 60
+  start: 364.489
+  end: 375.0
+  duration: 10.51
+  type: screen_recording
+  note: Keynote 開啟重建後的可編輯簡報 "The_Gemini_Era_Editable"，示範文字可編輯：a 幀 "The Gemini Era"
+    "Google's Full-Stack AI Ecosystem"；b 幀游標在標題內 "The Gemini"；c 幀改成 "The Gemini? Era"。背景
+    Cowork 文字 "…layout is solid across all 15 slides. Let me verify the content extraction
+    is complete with a quick text check."。左下角標籤 "Example 3" "Recreate PowerPoint"。
+  cues:
+  - 159
+  - 160
+  - 161
+  - 162
+  - 163
+  text: to understand the underlying contentbefore recreating the entire presentationwith
+    real text boxes you can actually modif
+- shot_id: 61
+  start: 375.0
+  end: 375.333
+  duration: 0.334
+  type: motion_graphic
+  note: 黑白幾何三角形轉場動畫（a 幀倒 V 白色三角、b 幀白底黑角），無文字。純轉場 wipe。
+  cues:
+  - 163
+  text: it's better than just having static images.
+- shot_id: 62
+  start: 375.333
+  end: 386.011
+  duration: 10.677
+  type: aroll
+  note: a 幀是暗底藍色線條 logo 動畫收尾（轉場殘留），b/c 幀為 Jeff 全畫面對鏡頭比手勢講話，書架背景＋麥克風，無文字 overlay。同鏡頭內由
+    graphic 轉入 aroll。
+  cues:
+  - 164
+  - 165
+  - 166
+  - 167
+  - 168
+  text: Persistent memory is the most important capabilitywe're covering today,and
+    it's only possible thanks to capability numbe
+- shot_id: 63
+  start: 386.011
+  end: 396.688
+  duration: 10.677
+  type: screen_recording
+  note: 'claude.ai Settings 頁面錄影。文字："Settings" / 側欄 "General Account Privacy Billing
+    Capabilities Connectors Claude Code" / "Profile" "Full name: Jake L" "What should
+    Claude call you? Jake" "What best describes your work? Select your work function"
+    / "What personal preferences should Claude consider in responses? Your preferences
+    will apply to all conversations, within Anthropic''s guidelines." 欄位內容 "Always
+    address me as Heisenberg at the start of every conversation."（b 幀該區塊以黃框放大 highlight，背景變暗）/
+    toast "Account preferences updated" / "Notifications" "Response completions" "Appearance"
+    "Color mode"。c 幀切到 Claude 對話：使用者訊息 "what''s up?"，回覆開頭字母 "H" 正在生成。'
+  cues:
+  - 168
+  - 169
+  - 170
+  - 171
+  - 172
+  - 173
+  text: Let me explain with a silly example.If I go into Claude Chat, open personal
+    preferences,and add, "Always address me as H
+- shot_id: 64
+  start: 396.688
+  end: 398.231
+  duration: 1.543
+  type: kol
+  note: Breaking Bad 影集片段：Walter White（Bryan Cranston）沙漠中特寫講話，背景有車。無文字 overlay。呼應前一鏡頭
+    Heisenberg 梗。
+  cues:
+  - 173
+  - 174
+  text: and Claude will always open with, "Hey, Heisenberg."- Say my name.
+- shot_id: 65
+  start: 398.231
+  end: 399.816
+  duration: 1.585
+  type: kol
+  note: Breaking Bad 同場景反拍：另一角色臉部被橘色 Anthropic "AI" logo 方塊蓋住的迷因式合成，前景 Walter White
+    背影虛化。畫面文字僅 logo 內 "AI"。
+  cues:
+  - 174
+  - 175
+  text: '- Say my name.- Heisenberg.'
+- shot_id: 66
+  start: 399.816
+  end: 401.776
+  duration: 1.96
+  type: kol
+  note: Breaking Bad 影集片段：Walter White（Bryan Cranston，光頭眼鏡山羊鬍）沙漠天空背景特寫講話。畫面無文字。
+  cues:
+  - 175
+  - 176
+  text: '- Heisenberg.- You''re goddamn right.'
+- shot_id: 67
+  start: 401.776
+  end: 405.614
+  duration: 3.837
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話，暗色房間、大麥克風、雙手比劃。畫面無文字 overlay。
+  cues:
+  - 176
+  - 177
+  - 178
+  text: '- You''re goddamn right.- That''s technically persistent memory.You tell
+    the AI something,'
+- shot_id: 68
+  start: 405.614
+  end: 411.494
+  duration: 5.881
+  type: screen_recording
+  note: Claude.ai 聊天介面（host PIP 右側圓角小卡）。對話標題 "Frustration with Skylar"；使用者訊息 "why
+    is skylar such a bitch?"；回覆 "Hey Heisenberg. / Skyler White gets a lot of hate
+    from Breaking Bad fans, but it's worth looking at her character a bit more fairly.
+    / From a storytelling perspective, Skyler functions as a moral anchor — one of
+    the few characters who consistently pushes back on Walt's increasingly dangerous
+    and deceptive behavior... / We're rooting for the \"wrong\" guy... / She's not
+    a pushover... / She's trapped in an impossible situation... / Vince Gilligan (the
+    show's creator) has actually spoken about this..."。b 幀 zoom 至回覆文字，"Hey Heisenberg."
+    加黃色 highlight；兩幀為同錄影的不同 zoom 程度。
+  cues:
+  - 178
+  - 179
+  - 180
+  text: You tell the AI something,and the AI remembers that thing in future conversationswithout
+    you having to repeat yourself.
+- shot_id: 69
+  start: 411.494
+  end: 425.133
+  duration: 13.639
+  type: motion_graphic
+  note: 黑底動畫資訊圖卡，標題 "PERSISTENT MEMORY"，比較兩欄："CLAUDE CHAT"（藍色 bars，疊 "HARD LIMIT"
+    紅色 tag）vs "COWORK"（綠色 bars 持續增長）；c 幀新增白色標註卡 "Decision" "Preference" 指向 Cowork
+    欄。a→c bars 逐漸長出（build-in 動畫）。
+  cues:
+  - 180
+  - 181
+  - 182
+  - 183
+  - 184
+  - 185
+  - 186
+  text: without you having to repeat yourself.But because Claude Chat's memory is
+    stored online,there's a hard limit to how much
+- shot_id: 70
+  start: 425.133
+  end: 434.851
+  duration: 9.718
+  type: screen_recording
+  note: Cowork 介面打字輸入 prompt。畫面文字："Sushie Labs" / "Let's knock something off your
+    list" / "Cowork is in research preview. Learn how to use it safely." / 輸入中 "How
+    many newsletter editions have we produced together so far? Break it down by which
+    app each edition" / "Let's go →" / Scheduled 清單 "Morning inbox triage — Tomorrow
+    at 6:09 AM" "Ops weekly pre meeting brief — Mon, Mar 30 at 12:01 PM" "Audrey 11
+    pre meeting brief — Mon, Mar 30 at 1:01 PM" "Show more"。c 幀滑入黑色橫幅 overlay "WWW.JEFFSU.ORG/NEWSLETTER"；a→b
+    有 zoom in。
+  cues:
+  - 186
+  - 187
+  - 188
+  - 189
+  - 190
+  - 191
+  - 192
+  text: every preference you've set for as long as you need.For example, if I ask
+    Co-Workhow many newsletter additionshave we pr
+- shot_id: 71
+  start: 434.851
+  end: 435.852
+  duration: 1.001
+  type: screen_recording
+  note: Cowork 任務執行畫面加快轉特效：全畫面疊兩個大型黑色 fast-forward 三角箭頭＋glitch/色差邊框。可見文字："Review newsletter
+    editions by app coverage" / prompt "How many newsletter editions have we produced
+    together so far? Break it down by which app each edition covered." / "Authenticating..."（b
+    幀變 "Working on it..."）/ 右欄 "Progress" "iClaude OS" "Instructions · CLAUDE.md"
+    "Context" / 底部橫幅 "WWW.JEFFSU.ORG/NEWSLETTER"。
+  cues:
+  - 192
+  - 193
+  text: for my weekly newsletter if you haven't already.It'll load up the relevant
+    context,
+- shot_id: 72
+  start: 435.852
+  end: 447.197
+  duration: 11.345
+  type: screen_recording
+  note: 'Cowork 回覆結果畫面。文字："Thought process — Let me check the Newsletter HQ memory
+    to pull this up." / "Read 2 files" / "Based on the Newsletter HQ Edition Log,
+    we''ve produced 7 editions together (WE235 through WE241). Here''s the breakdown
+    by app: Gmail — 2 editions (WE236, WE238) Google Chrome — 2 editions (WE235, WE240)
+    Google Calendar — 1 edition (WE237) Google Docs — 1 edition (WE239) Google Drive
+    — 1 edition (WE241, the most recent)"（黃框 highlight）/ "So Gmail and Chrome are
+    tied for most covered... Notable gaps: Google Sheets, Google Slides, and Google
+    Meet haven''t been covered yet in our run together." / 右欄 "iClaude OS" "MEMORY.md"
+    x2 "Scratchpad" "Context"。"7 editions together" 黃色 highlight。'
+  cues:
+  - 193
+  - 194
+  - 195
+  - 196
+  - 197
+  text: It'll load up the relevant context,tell me we've produced seven additions
+    together,two for Gmail, two for Chrome, and so
+- shot_id: 73
+  start: 447.197
+  end: 448.74
+  duration: 1.543
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話並比手勢（b 幀轉頭看向側邊）。畫面無文字 overlay。
+  cues:
+  - 197
+  - 198
+  text: with no prior conversation.Here's a use case you can try yourself.
+- shot_id: 74
+  start: 448.74
+  end: 456.581
+  duration: 7.841
+  type: screen_recording
+  note: Cowork 新任務：附件卡 "Q4 Weekly Meeting with Tommy.docx / DOCX"，打字輸入 "Summarize
+    the meeting transcript. Lim"（打字進行中）。其他文字："Let's knock something off your list"
+    / "Cowork is in research preview. Learn how to use it safely or give us feedback."
+    / "Cowork Playground 2.0" / "Let's go →" / "Active tasks" "Clear all" "Summarize
+    Q4 weekly meeting transcript — 1 minute ago"。三幀為打字漸進。
+  cues:
+  - 198
+  - 199
+  - 200
+  - 201
+  - 202
+  text: Here's a use case you can try yourself.I have a meeting transcriptwithin a
+    subfolder in Co-Work Playground,and I say, "S
+- shot_id: 75
+  start: 456.581
+  end: 457.832
+  duration: 1.251
+  type: screen_recording
+  note: 同前任務執行中，全畫面疊黑色 fast-forward 雙三角箭頭＋glitch 色差特效。可見文字："Summarize Q4 weekly meeting
+    transcript" / "Summarize the meeting transcript... 200 words." / "Working on it..."（b
+    幀出現 "Running skill" "Extract text from..." 等步驟）/ 右欄 "Progress" "Cowork Playground
+    2.0" "Instructions · CLAUDE.md" "Context"。
+  cues:
+  - 202
+  - 203
+  text: limit to 200 words."And after it gives me that first output,
+- shot_id: 76
+  start: 457.832
+  end: 493.034
+  duration: 35.202
+  type: screen_recording
+  note: 'Cowork 會議摘要結果與追問。a 幀摘要："Read 4 files, used a skill, ran a command" / "Tommy
+    Mallen 1. Create a new Toolkit 4.0 folder in Drive (archive the 3.0 folder, keep
+    it for reference) and populate it with the draft 4.0 email sequence. Structure
+    outline due Friday. 2. Create Notion pages for Toolkit 4.0 days 1 through 8...
+    3. Keep in mind for the next workshop cycle..." / "Yun 1. Hold off on creating
+    Notion pages beyond day 8 until the full Toolkit 4.0 structure is confirmed. 2.
+    Send a recap of today''s recorded meeting to Tommy by tomorrow." / "Context on
+    Toolkit 4.0: Jeff proposed simplifying the Toolkit 3.0 plan (14-email integrated..."。b
+    幀使用者打字 "I''ve made some changes to your summary. Compare your version with mine
+    and save those preferences in a visible root cl" ＋ "# MY REVISED VERSION / Context:
+    Jeff wants a simplified 3.0 plan..."。c 幀 Cowork 回覆："Good catch. The differences
+    are clear: 1. Context line, not context paragraph... violated the \"no discussion
+    recaps, rationale, or informational updates\" rule... 2. No bold on collaborator
+    headers... 3. Action items were correct as-is... Let me save these as preferences
+    now. / Writing file"。多階段同一錄影。'
+  cues:
+  - 203
+  - 204
+  - 205
+  - 206
+  - 207
+  - 208
+  - 209
+  - 210
+  - 211
+  - 212
+  - 213
+  - 214
+  - 215
+  - 216
+  - 217
+  - 218
+  text: 'And after it gives me that first output,let''s say I don''t like the structure
+    of this,and I move the context up top, for '
+- shot_id: 77
+  start: 493.034
+  end: 502.377
+  duration: 9.343
+  type: screen_recording
+  note: macOS Finder 視窗（host PIP 右側圓角小卡）顯示 "Cowork Playground" 資料夾："Chapters" "Receipts"
+    "CLAUDE.md 593 bytes" "memory.md 547 bytes" "2034-expense-report.xlsx" "2026-03-28-the-gemini-era.pptx"
+    "Local_The_Gemini_Era_Original.pptx" "Q4 Weekly Meeting with Tommy.docx" "Q4v2
+    Weekly Meetings.docx" "[Wednesday] Ops We...T - Notes by Gemini.pdf" / 側欄 "Sushie
+    Labs Dro..." "iCloud Drive" "Google Drive - je..." "EPro 4TB" 等。b/c 幀 CLAUDE.md＋memory.md
+    加黃框 highlight。
+  cues:
+  - 218
+  - 219
+  - 220
+  - 221
+  - 222
+  - 223
+  text: a CloudMD and MemoryMD file.First, you can see that Co-Work created these
+    two filesunder your Playgrounds root folder.Ho
+- shot_id: 78
+  start: 502.377
+  end: 515.432
+  duration: 13.055
+  type: screen_recording
+  note: 'Cowork 完成畫面（host PIP 右側圓角小卡）。a 幀文字："Done. Both files are saved in the root
+    of your selected folder: CLAUDE.md -- formatting rules for meeting summaries /
+    memory.md -- learned preferences with rationale / The main lesson: I had the \"no
+    recaps\" rule but still included a context paragraph. Now it''s explicit that
+    context is one line max, and process decisions like \"Friday deadlines\" get cut
+    entirely." ＋檔案卡 "Claude Document · MD TextEdit" "Memory Document · MD TextEdit"。b/c
+    幀背景模糊、兩檔案卡黃框 highlight，白色字幕條 overlay 打字浮現："The more it writes, the better Cowork
+    gets at working the way you want it to."（b 幀僅 "The more"，c 幀完整）。'
+  cues:
+  - 223
+  - 224
+  - 225
+  - 226
+  - 227
+  - 228
+  - 229
+  text: so I'll save that for the next video.For now, just know,whenever you tell
+    Co-Work to remember something,it writes to tho
+- shot_id: 79
+  start: 515.432
+  end: 518.059
+  duration: 2.628
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話，暗色書架房間＋大型麥克風，無畫面文字。
+  cues:
+  - 230
+  - 231
+  text: By the way, I recently revamped my free AI toolkitfrom scratch.
+- shot_id: 80
+  start: 518.059
+  end: 525.4
+  duration: 7.341
+  type: motion_graphic
+  note: 黑底資訊圖卡：標題 "AI TOOLKIT / by Jeff Su"，六張卡片依序亮起（a 幀只亮一張、b/c 幀全亮）："ESSENTIAL AI
+    TOOLS — Curated tools with real-world examples"、"PROMPTING PRO TIPS — Practical
+    applications and workflows"、"CUSTOM INSTRUCTIONS — Ready-to-use template for your
+    style"、"AI TERMS DECODED — Key concepts through practical examples"、"AI LEARNING
+    SYSTEM — Daily and weekly update routines"、"PROMPTS DATABASE — Proven, high-performing
+    templates"；底部白色斜切橫幅 "LINK DOWN BELOW"。
+  cues:
+  - 231
+  - 232
+  - 233
+  - 234
+  - 235
+  text: from scratch.New tools, new workflows, new everything.So if you signed up
+    for the original,this is a completely differen
+- shot_id: 81
+  start: 525.4
+  end: 539.372
+  duration: 13.972
+  type: title_card
+  note: 黑底章節卡：a 幀為轉場中斜切大字（可見 "...OLS VIA CONNECTO..."，推測全文 TOOLS VIA CONNECTORS）；b/c
+    幀落定為 "CONNECTORS" 圖卡——COWORK 閃電 logo 連線到 "GMAIL"、"GOOGLE DRIVE"，c 幀再多出 "NOTION"（動畫逐項出現）。
+  cues:
+  - 235
+  - 236
+  - 237
+  - 238
+  - 239
+  - 240
+  text: Link down below.Next up, connecting Co-Work to tools.By default, Co-Work can
+    only see what's in your folder.Connectors l
+- shot_id: 82
+  start: 539.372
+  end: 551.051
+  duration: 11.678
+  type: screen_recording
+  note: Cowork app 操作，host PIP 右側圓角小卡。a 幀首頁："Let's knock something off your list"、"Cowork
+    is in research preview. Learn how to use it safely."、輸入框 "Type / for skills"、"Cowork
+    Playground"、Scheduled 列表 "Morning inbox triage / Tomorrow at 6:09 AM"、"Ops weekly
+    pre meeting brief / Tomorrow at 12:01 PM"、"Audrey 1:1 pre meeting brief / Tomorrow
+    at 1:01 PM"、"Show more"；b/c 幀開啟 Connectors 彈窗："Connect Claude to your apps, files,
+    and services. Connectors are built by third parties and reviewed by Anthropic
+    for safety. You can also add a custom connector."，列出 Gmail / Google Calendar /
+    Canva / Notion / Figma / Slack / Atlassian Rovo / HubSpot / Microsoft 365 / Linear
+    / monday.com / Intercom / Box / Gamma。
+  cues:
+  - 240
+  - 241
+  - 242
+  - 243
+  - 244
+  - 245
+  - 246
+  text: So it can read from them and work directly inside them.To set this up, click
+    the Customize tab on the left,go to Connect
+- shot_id: 83
+  start: 551.051
+  end: 554.095
+  duration: 3.045
+  type: screen_recording
+  note: 'Cowork Connectors 設定頁 Gmail 詳情，host PIP 右側。文字："Connect Gmail to Claude to
+    quickly find important emails and understand long conversations..."、"Tool permissions
+    / Choose when Claude is allowed to use these tools"、"Read-only tools: Get Gmail
+    Profile, List Gmail Drafts, List Gmail Labels, Read Gmail Email, Read Gmail Thread,
+    Search Gmail Emails"、"Write/delete tools: Create Gmail Draft / Always allow"、左欄
+    Web: Gmail / Google Calendar / Google Drive / Notion / Vercel；Desktop: Claude
+    in Chrome INCLUDED；Not connected: Asana CUSTOM…；b 幀為放大推近同頁面。'
+  cues:
+  - 246
+  - 247
+  text: I recommend you connect Gmail, Google Calendar,Google Drive, and Notion if
+    you use it.
+- shot_id: 84
+  start: 554.095
+  end: 583.041
+  duration: 28.946
+  type: screen_recording
+  note: 'Cowork 執行任務全流程（無 PIP）。a 幀首頁輸入 "I want yo"、Active tasks "Analyze writing style
+    from emails / 2 seconds ago"、"Get to know Cowork" checklist（Download Cowork /
+    Connect your everyday tools / Ask Claude to create something / Schedule a recurring
+    task）；b 幀任務 "Extract writing style from emails" 進行中，右側 Progress："Search sent emails
+    from the past month / Read through email samples to analyze writing patterns /
+    Extracting tone and style principles / Save writing style principles to a file"，Context:
+    Gmail；c 幀結果放大高亮卡："Here''s what I found, at a high level: Your default is extreme
+    brevity..."、"A signature move: you restate the actual question after providing
+    context, usually with ''I guess my question is:''..."、高亮句 "I saved the full style
+    guide to your memory.md file so I can reference it going forward whenever I''m
+    writing in your voice."。'
+  cues:
+  - 247
+  - 248
+  - 249
+  - 250
+  - 251
+  - 252
+  - 253
+  - 254
+  - 255
+  - 256
+  - 257
+  - 258
+  - 259
+  - 260
+  - 261
+  text: Google Drive, and Notion if you use it.Once you've connected Gmail,you can
+    tell Co-Work something like,"I want you to un
+- shot_id: 85
+  start: 583.041
+  end: 592.509
+  duration: 9.468
+  type: screen_recording
+  note: host PIP 右側。a 幀 Notion 會議筆記列表（RGB 故障轉場特效、文字模糊）：可辨 "Notes"、多列 Ops Weekly 會議項目；b/c
+    幀 Google Drive："01 Sushie Labs (Shared...) > 95 Meeting Notes and R..."、"Insights
+    from Gemini"，檔案列表多筆 "[Monday] Ops Weekly - ... Notes by Gemini"（41–61 KB）。
+  cues:
+  - 261
+  - 262
+  - 263
+  - 264
+  - 265
+  text: it remembers my tone of voice.Next example, although my team and Itake meeting
+    notes in Notion,we use Google Gemini to a
+- shot_id: 86
+  start: 592.509
+  end: 593.635
+  duration: 1.126
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話比手勢，無畫面文字。
+  cues:
+  - 265
+  - 266
+  text: that are stored in Google Drive.So if I were an anal high-maintenance unreasonable
+    manager,
+- shot_id: 87
+  start: 593.635
+  end: 596.846
+  duration: 3.212
+  type: stock
+  note: 實拍過肩鏡頭：戴耳機的男性剪輯師在隔音棉房間用剪輯軟體時間軸剪 Jeff 的影片（監視器內是 Jeff 的畫面），畫面上無可讀 overlay 文字。
+  cues:
+  - 266
+  - 267
+  text: So if I were an anal high-maintenance unreasonable manager,which I'm not,
+    I tell Co-Work,
+- shot_id: 88
+  start: 596.846
+  end: 616.407
+  duration: 19.561
+  type: screen_recording
+  note: 'Cowork 任務（無 PIP）。a 幀輸入畫面放大："Let''s knock something off your list"、附件 "[Monday]
+    Ops Weekly - ... CST - Notes by... DOC"、輸入 "Ch"、"Transcript: https://docs.google.com/document/d/1jSb0HMNl_nlJJfJG1YQV-0XNFNwcHKVLq8In-BpcglQ/edit?tab=t.8h9h3w4ffjx2"、"Notes:
+    https://www.notion.so/jeffsu/Ops-Weekly-Meeting-2025-Q4-Notes-Thread-278159d20d3e807e9c90e173a6ada3f1?source=copy_link"、"Let''s
+    go"；b 幀任務 "Compare transcript and meeting notes" 執行中，prompt "Check the gemini
+    transcript against the meeting notes in Notion, and surface commitments that didn''t
+    make it into the notes."，Progress: "Fetch Google Doc transcript / Fetching Notion
+    meeting notes / Compare and surface missed commitments"，Context: Notion、Google
+    Drive；c 幀結果高亮卡："I read both documents in full. Here''s what I found. Commitments
+    in the transcript that are missing or wrong in the Notion notes: 1. Recap email
+    about the screen-sharing mistake (missing entirely)... 3. Waitlist follow-up date
+    is wrong... 4. Verifying Audrey''s new day button setup (partially captured)..."。'
+  cues:
+  - 267
+  - 268
+  - 269
+  - 270
+  - 271
+  - 272
+  - 273
+  - 274
+  text: which I'm not, I tell Co-Work,"Hey, check the Gemini transcriptagainst the
+    meeting notes in Notion,and surface commitmen
+- shot_id: 89
+  start: 616.407
+  end: 620.078
+  duration: 3.67
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話比手勢，無畫面文字。
+  cues:
+  - 274
+  - 275
+  - 276
+  text: that didn't make it into the notes page.This is an example of two connectorsworking
+    together via Co-Work.
+- shot_id: 90
+  start: 620.078
+  end: 628.211
+  duration: 8.133
+  type: diagram
+  note: 黑底流程圖動畫（元素逐步亮起）：左側 "TRANSCRIPT / Google Drive" 與 "MEETING NOTES / Notion"
+    兩卡 → 中央 "COWORK / Cross-reference"（閃電 icon）→ 右側 "GAPS SURFACED"；a 幀僅中央/右側暗色浮現，b
+    幀左側兩卡亮起，c 幀全部點亮。
+  cues:
+  - 276
+  - 277
+  - 278
+  - 279
+  - 280
+  text: working together via Co-Work.It pulls a transcript from Google Drive,pulls
+    the meeting notes from Notion,cross-reference
+- shot_id: 91
+  start: 628.211
+  end: 632.006
+  duration: 3.795
+  type: screen_recording
+  note: 'Cowork Connectors 設定頁（Gmail 權限頁同 shot 83 版面），host PIP 右側。可見 "Tool permissions"、Read-only
+    tools 列表、"Write/delete tools: Create Gmail Draft"、"Always allow"；b 幀點開 "+" 選單出現
+    "Browse connectors / Add custom connector"。'
+  cues:
+  - 280
+  - 281
+  - 282
+  text: and surfaces what fell through the cracks.By the way, if you can't find the
+    tool you wantunder connectors, you can add a
+- shot_id: 92
+  start: 632.006
+  end: 639.18
+  duration: 7.174
+  type: screen_recording
+  note: 'Claude Connectors 設定頁（Gmail connector 權限），host PIP 圓角小卡在右側。a 幀為 Gmail 設定頁："Customize
+    / Skills / Connectors / Browse plugins"、"Connectors" 清單（Gmail, Google Calendar,
+    Google Drive, Notion, Vercel; Desktop: Claude in Chrome INCLUDED; Not connected:
+    Asana CUSTOM, Atlassian, Box, Canva, Figma, HubSpot, Intercom, Linear, monday.com）、右欄
+    "Gmail / Disconnect / Connect Gmail to Claude to quickly find important emails
+    and understand long conversations…Perfect for finding that message you remember
+    sending, catching up on email chains you missed, or preparing for meetings. /
+    Tool permissions / Choose when Claude is allowed to use these tools. / Read-only
+    tools / Always allow / Get Gmail Profile / List Gmail Drafts / List Gmail Labels
+    / Read Gmail Email / Read Gmail Thread / Search Gmail Emails / Write/delete tools
+    / Always allow / Create Gmail Draft"。b/c 幀 zoom 到 "Add custom connector BETA"
+    對話框："Connect Claude to your data and tools. Learn more about connectors or get
+    started with pre-built ones. / Name / Remote MCP server URL / Please fill out
+    this field. / Advanced settings / Only use connectors from developers you trust.
+    Anthropic does not control which tools developers make available and cannot verify
+    that they will work as intended or that they won''t change. / Building an MCP
+    server? Report issues and subscribe to updates here / Cancel / Add"。host PIP 持續在右側。'
+  cues:
+  - 282
+  - 283
+  - 284
+  - 285
+  text: 'under connectors, you can add a custom connectorthrough something called
+    an MCP,which we''re not covering today,but just '
+- shot_id: 93
+  start: 639.18
+  end: 639.514
+  duration: 0.334
+  type: motion_graphic
+  note: 黑白轉場動畫——白色倒三角形楔入黑底（wipe transition frame），無文字。
+  cues:
+  - 285
+  text: but just know that option exists.
+- shot_id: 94
+  start: 639.514
+  end: 641.641
+  duration: 2.127
+  type: title_card
+  note: '黑底章節標題卡，藍色線條描邊動畫先出現（a 幀僅一段藍色線條），b 幀成形文字："UTILIZING CLAUDE SKILLS / CAPABILITY
+    #4"。'
+  cues:
+  - 286
+  text: All right, capability number four, skills.
+- shot_id: 95
+  start: 641.641
+  end: 651.609
+  duration: 9.968
+  type: screen_recording
+  note: 'Claude Cowork 介面，對話 "Compare Toolkit 3.0 and 4.0 differences"，長篇回覆比較 Toolkit
+    3.0（14-email sequence）與 Toolkit 4.0（opt-out version，Days 1-7 / Day 8 / Days 9-12ish
+    / Days 13-14），右欄 "Progress / Cowork Playground / Instructions · CLAUDE.md / Scratchpad
+    / Context / Skills / docx"。c 幀 zoom 到輸入框正在打字的 prompt："Edit your output without
+    losing tone: - Make it more clear and concise（黃底 highlight）- Keep it under 150
+    words - Avoid AI giveaway phrases like \"dive into,\" \"unleash,\" or \"game-changing.\"
+    - Use simple words. Prefer short, common words over formal or technical ones."
+    無 PIP。'
+  cues:
+  - 286
+  - 287
+  - 288
+  - 289
+  - 290
+  - 291
+  text: All right, capability number four, skills.Let's dive right into a simple example.I
+    just asked Co-Work to write something
+- shot_id: 96
+  start: 651.609
+  end: 652.61
+  duration: 1.001
+  type: screen_recording
+  note: 同一 Cowork 畫面套用快轉效果——RGB 偏移 glitch＋兩個大型黑色快轉三角形（fast-forward overlay）疊在介面上，底層仍是
+    Toolkit 3.0/4.0 對話與 Edit prompt。
+  cues:
+  - 291
+  - 292
+  text: that makes any text more clear and concise.Co-Work gives me a version two
+    of the output.
+- shot_id: 97
+  start: 652.61
+  end: 662.453
+  duration: 9.843
+  type: screen_recording
+  note: 'Cowork 回覆結果："Thought process" 卡片內精簡版比較——"Toolkit 3.0 is a 14-email sequence
+    that delivers tips/templates and sells the Workspace Academy in one continuous
+    flow…Toolkit 4.0 splits the sequence into phases with a clear opt-out point: Days
+    1-7: Same tips and templates as before. No changes. / Day 8: A transition email
+    framing the next step (\"you''ve learned the exercises, now let''s build a routine\").
+    Includes an obvious opt-out button that doesn''t unsubscribe them from everything.
+    / Days 9-12: Introduces the core workflow, referencing the Academy naturally without
+    pitching it. / Days 13-14: Explicit Academy pitch. / The big shift: instead of
+    one long sequence people either sit through or unsubscribe from, subscribers actively
+    choose whether to continue. Jeff felt 3.0 was overengineered for what a simpler
+    structure could accomplish. Tommy agreed 4.0 could actually convert better." c
+    幀 zoom 到輸入框打字："Turn what you just did into a \"clear and concise\""。無 PIP。'
+  cues:
+  - 292
+  - 293
+  - 294
+  - 295
+  - 296
+  text: Co-Work gives me a version two of the output.I like it, and now I can tell
+    Co-Work,"Hey, turn what you just didinto a cl
+- shot_id: 98
+  start: 662.453
+  end: 663.454
+  duration: 1.001
+  type: screen_recording
+  note: 快轉 glitch overlay（黑色雙三角形＋RGB 偏移）疊在 Cowork 畫面上；底層可見 prompt "Turn what you just
+    did into a \"clear and concise\" Skill." 與 "Running skill"、右欄 Skills 出現 "skill-creator
+    / docx"。
+  cues:
+  - 296
+  text: You can see that Co-Work first runs its own
+- shot_id: 99
+  start: 663.454
+  end: 680.388
+  duration: 16.934
+  type: screen_recording
+  note: 'Cowork 執行 skill-creator："Thinking / Running skill / Request { \"skill\":
+    \"skill-creator\" } / Response Launching skill: skill-creator / Loading tools
+    / Result"，互動問答卡 "A few questions to make sure I build the right skill. What should
+    this skill apply to? 1 of 3 — 1 Claude''s own output / 2 Any text / 3 Meeting
+    summaries / Something else / Skip / ↑↓ to navigate · Enter to select · Esc to
+    skip"。c 幀 zoom 到第三題："Do you want to set up test cases to verify it works well,
+    or just draft the skill and iterate by feel? 3 of 3 — 1 Test cases / 2 Vibe it
+    / Something else / Skip"。'
+  cues:
+  - 296
+  - 297
+  - 298
+  - 299
+  - 300
+  - 301
+  - 302
+  - 303
+  text: You can see that Co-Work first runs its ownskill creator skill for this task.Then
+    it asks me a few clarifying questions.
+- shot_id: 100
+  start: 680.388
+  end: 681.389
+  duration: 1.001
+  type: screen_recording
+  note: 快轉 glitch overlay（黑色雙三角形）疊在 Cowork 上；底層右欄 Progress todo："1 Drafting the clear-and-concise
+    skill / 2 Save skill to the workspace folder / 3 Review draft with fresh eyes
+    and refine"，訊息含 "Let me check the existing skill directory structure…Running command"。
+  cues:
+  - 303
+  text: and Co-Work proceeds to keep going.
+- shot_id: 101
+  start: 681.389
+  end: 683.391
+  duration: 2.002
+  type: screen_recording
+  note: 'Cowork 寫檔權限卡："Updated todo list / Let me check the existing skill directory
+    structure so I know where to put this. / Writing file / Claude wants to use Creating
+    file / Request { `file_path`: `/sessions/blissful-epic-heisenberg/mnt/.claude/skills/clear-and-concise/SKILL.md`,
+    `content`: `--- name: clear-and-concise description: > Edit any text to be clearer
+    and more concise while keeping the original tone and meaning.` / Always allow
+    ↵ / Deny esc / Working on it…"，右欄 Skills 新增 "clear-and-concise"。'
+  cues:
+  - 303
+  - 304
+  text: and Co-Work proceeds to keep going.After receiving permission, Co-Work creates
+    the skill,
+- shot_id: 102
+  start: 683.391
+  end: 684.392
+  duration: 1.001
+  type: screen_recording
+  note: 再次快轉 glitch overlay（黑色雙三角形＋RGB 偏移）疊在同一 Cowork 對話上；底層可見 "Writing SKILL.md…"
+    與 Progress todo 三項。
+  cues:
+  - 304
+  - 305
+  text: After receiving permission, Co-Work creates the skill,and I can now just add
+    the skill to my Co-Work
+- shot_id: 103
+  start: 684.392
+  end: 695.361
+  duration: 10.969
+  type: screen_recording
+  note: 'Cowork 完成 skill："The draft reads well and practices what it preaches. A couple
+    small tightening edits: / Edited 2 files, updated todo list / Here''s what I built:
+    / View your skill / The skill captures the editing pattern from our conversation.
+    Here''s what it does: / When it triggers: Any request to shorten, simplify, tighten,
+    or clean up text, whether it''s Claude''s own output, a draft, or a document.
+    Also triggers on word/line count targets. / What it does: Applies five core principles
+    (earn your place, short words, one idea per sentence, concrete over abstract,
+    preserve voice) plus specific guidance on what to cut (throat-clearing, hedge
+    stacking, echo sentences, AI giveaway phrases) and what to keep (orienting context,
+    useful transitions, clarifying examples). / Output format: The rewritten text
+    plus a brief changelog (2-5 bullets grouped by type, with a word count delta).
+    / To use it, you''d install the clear-and-concise folder as a skill. It''s at
+    Cowork Playground/clear-and-concise/SKILL.md. Want me to package it as a .skill
+    file, or tweak anything in the instructions? / SKILL.md Skill / Copy to your skills
+    / TextEdit"。無 PIP。'
+  cues:
+  - 305
+  - 306
+  - 307
+  - 308
+  text: and I can now just add the skill to my Co-Workwith just one click.And clicking
+    the Manage pop-up on the top rightlets me
+- shot_id: 104
+  start: 695.361
+  end: 703.912
+  duration: 8.55
+  type: screen_recording
+  note: '新對話 "Analyze Gemini Era presentation" 驗證 skill：a 幀長篇分析（"Agentic AI (slides
+    5-6): Introduces the Agent-to-Agent (A2A) protocol and Agent Payments Protocol
+    (AP2)…Developer tools (slide 7): Gemini CLI with MCP support (1M+ developers in
+    3 months) and Jules…Search and reasoning (slide 8)…Consumer products (slides 9-13)…Moonshots
+    (slides 14-15): Project Beam…The overall narrative is that Google has built a
+    vertically integrated AI stack…"，右欄 Skills: pptx）。c 幀 zoom highlight 黃框 "Used
+    a skill" 卡："The user wants me to make my previous response about the presentation
+    more clear and concise. Let me use the clear-and-concise skill."，上方 prompt "Make
+    this more clear and concise"，下方 "Done / Here''s the tightened version: This is
+    \"The Gemini Era: Google''s Full-Stack AI Ecosystem\", a 15-slide deck (generated
+    by NotebookLM) making the case that Google has built a vertically integrated AI
+    stack from custom silicon to consumer products. / Scale: $50B cloud revenue run
+    rate, 480 trillion tokens processed monthly (50x YoY), 1.5B monthly users of AI
+    Overviews in Search. / Infrastructure: Ironwood TPU (7th gen, 42.5 exaflops/pod)
+    powering the Gemini 2.5 model family (Flash, Pro Deep Think, Diffusion)."。多幀差異：c
+    幀有黃色 highlight 放大卡，a 幀無。'
+  cues:
+  - 308
+  - 309
+  - 310
+  - 311
+  - 312
+  text: lets me see all the skills I currently have access to.Now, the next time Claude
+    gives me something,and I say, "Make it m
+- shot_id: 105
+  start: 703.912
+  end: 708.082
+  duration: 4.171
+  type: aroll
+  note: Jeff Su 全畫面對鏡頭說話，暗色房間、大型麥克風入鏡，雙手比劃；畫面無文字 overlay。
+  cues:
+  - 312
+  - 313
+  - 314
+  text: through the skill we just created.So that was just a simple one-step skill,which
+    honestly isn't that impressive, right?
+- shot_id: 106
+  start: 708.082
+  end: 722.639
+  duration: 14.556
+  type: motion_graphic
+  note: 黑底簡報式資訊圖卡：標題 "SKILLS"，下方 1–10 十個圓圈依序亮起；a 幀圓圈灰暗、b 幀橘色全亮並顯示 "TEACHING · 10 /
+    10"、c 幀轉綠色顯示 "RUNNING · 10 / 10"（動畫進程／狀態切換）。
+  cues:
+  - 314
+  - 315
+  - 316
+  - 317
+  - 318
+  - 319
+  - 320
+  text: which honestly isn't that impressive, right?But the underlying concept is
+    exactly the samefor a weekly report that might
+- shot_id: 107
+  start: 722.639
+  end: 731.689
+  duration: 9.051
+  type: stock
+  note: 實拍：東亞年輕男子（穿 Wharton 藍色帽T）在辦公室看螢幕（a 幀）；b、c 幀切為 Google Chat 介面滿版截圖疊在模糊背景上——b
+    幀對話 Sarah Chen（Google Ads team）："Hey Jeff! The Q1 Google Ads report is ready.
+    Here you go:" 附件 "Q1 Google Ads Performance Report / Google Sheets"；c 幀對話 Marcus
+    Reyes（Pixel team）："Hey Jeff, got the Pixel report you asked for. Everything's
+    up to date through this week." 附件 "Pixel Campaign Report - March 2026 / Google
+    Slides"；側欄另有 Priya Agarwal "Just added the events update to..."、Maria Lopez "Sounds
+    good, talk next week!"、Tom Kim "Got it, I'll update the doc"。同一鏡頭內容從實拍切到 UI 截圖，幀間不一致。
+  cues:
+  - 321
+  - 322
+  - 323
+  - 324
+  - 325
+  - 326
+  text: Here's a more practical example.When I was at Google,different teams would
+    send me their weekly updatesin completely dif
+- shot_id: 108
+  start: 731.689
+  end: 740.615
+  duration: 8.926
+  type: screen_recording
+  note: Claude Cowork 首頁螢幕錄影：標題 "Let's knock something off your list"、副標 "Cowork is
+    in research preview. Learn how to use it safely or give us feedback."；已附三檔 events-update.txt
+    / google-ads-update.txt / pixel-update.txt（TXT），prompt 輸入 "Combine these three
+    team updates into 1 formatted weekly marketing update I can send to leadership."，下方
+    "Cowork Playground"、按鈕 "Let's go →"、"Active tasks / Clear all / Analyze Gemini
+    Era presentation / 4 minutes ago"。三幀僅游標移動差異。
+  cues:
+  - 326
+  - 327
+  - 328
+  - 329
+  - 330
+  text: into one clean update for leadership.So I share the raw updates from the three
+    teams with Co-Workand say, "Combine these
+- shot_id: 109
+  start: 740.615
+  end: 741.616
+  duration: 1.001
+  type: screen_recording
+  note: Cowork 任務執行畫面（glitch 風格快轉效果，畫面中央疊大型雙三角快轉符號 overlay）：任務 "Consolidate weekly
+    marketing team updates"，右欄 Progress："Drafting combined weekly marketing update
+    / Create formatted .docx file / Validate the document"、"Cowork Playground / Instructions
+    · CLAUDE.md / Scratchpad"、"Context / Skills / docx"；左側步驟 "Read SKILL.md / Loading
+    tools / Update todo list"、b 幀 "Read 4 files, ran 2 commands... Now let me create
+    the do... / Writing file / Writing create-upda..."。
+  cues:
+  - 330
+  - 331
+  text: '"I can send to leadership."After a few minutes, Co-Work produces a first
+    draft.'
+- shot_id: 110
+  start: 741.616
+  end: 754.796
+  duration: 13.18
+  type: screen_recording
+  note: 'Cowork 完成回覆螢幕錄影："Read 4 files, ran 2 commands, loaded tools"、"Now let me
+    create the document:"、"Ran 5 commands, updated todo list, created a file"、連結 "View
+    your weekly marketing update"、正文 "The document combines all three team updates
+    into a single leadership-ready format. It opens with a key metrics summary table
+    (7 top-line numbers across all teams), then breaks each team into consistent subsections:
+    wins, in-progress items, concerns, and decisions needed. I elevated the SXSW renewal
+    deadline (April 15) as a callout since that needs a leadership decision."、檔卡 "2026
+    03 28 weekly marketing update / Document · DOCX / Google Drive"；b、c 幀 zoom-in
+    至回覆與輸入框，正在打字 "Lead w" → "Lead with 3 top-line metrics across all teams. Then give
+    me three highlights and t"。'
+  cues:
+  - 331
+  - 332
+  - 333
+  - 334
+  - 335
+  - 336
+  text: After a few minutes, Co-Work produces a first draft.And although it looks
+    great, it's way too dense.So I give feedback.L
+- shot_id: 111
+  start: 754.796
+  end: 755.797
+  duration: 1.001
+  type: screen_recording
+  note: 'Cowork 分割畫面（glitch 快轉 overlay，雙三角符號）：左為對話，prompt "Lead with 3 top-line metrics
+    across all teams. Then give me three highlights and three lowlights. Keep it within
+    300 words."，b 幀顯示 Thought process："Top-line metrics: Cloud Next generated 8...
+    qualified pipeline (50% above target). Pixel US market share hit 4.2%... Performance
+    Max SMB templates launched with CTR up..."、"Highlights 1. Cloud Next was a clear
+    win... 380K livestream viewers... 2. The March Pixel Feature Drop pulled 2...
+    above the December drop... Pixel 9a in 2,200 stores starting April... 3. YouTube
+    Ads agreeing to share watch...data with the Google Ads team is a quiet but important
+    win. Cross-platform attribution has been the missing piece for"；右側預覽文件 "Weekly
+    Marketing Update / Week of March 24, 2026 / Key Metrics at a Glance"（2026 03 28
+    weekly marketing update · DOCX · Google Drive）。'
+  cues:
+  - 336
+  - 337
+  text: Keep it within 300 words.Co-Work revises, but gives me the output in chat.
+- shot_id: 112
+  start: 755.797
+  end: 761.427
+  duration: 5.631
+  type: screen_recording
+  note: 'Cowork 分割畫面（清晰無快轉）：左側回覆 "Lowlights 1. The Made by Google NYC pop-up was expensive
+    and underdelivered: $180K for 1,200 visitors, with foot traffic 40% below projection...
+    2. Pixel Tablet returns are up 18% MoM from the charging dock issue, and the hardware
+    fix won''t land until Tablet 2... 3. Losing the Shopify integration beta to Meta''s
+    Advantage+ after a 3-month pitch is a competitive loss worth watching... (40 support
+    tickets this week)... pattern of friction at the SMB tier that needs attention."、"Decision
+    needed: SXSW 2027 sponsorship renewal with a 25% rate increase. Deadline is April
+    15."；右側文件 "Weekly Marketing Update / Key Metrics at a Glance / Events & Partnerships
+    / Wins / In Progress / Concerns / Decision Needed / Google Ads"；b 幀 zoom-in 輸入框正打字
+    "Give"。'
+  cues:
+  - 337
+  - 338
+  text: Co-Work revises, but gives me the output in chat.So just for fun, I ask for
+    a PDF format.
+- shot_id: 113
+  start: 761.427
+  end: 762.428
+  duration: 1.001
+  type: screen_recording
+  note: Cowork 分割畫面（glitch 快轉 overlay，雙三角符號）：prompt "Give it to me in a PDF format."，左側步驟
+    "Working / Running skill / Update todo list / Creating"；右側仍為 "Weekly Marketing
+    Update" DOCX 預覽（Google Drive）。
+  cues:
+  - 338
+  - 339
+  text: So just for fun, I ask for a PDF format.And after a few more minutes,
+- shot_id: 114
+  start: 762.428
+  end: 763.93
+  duration: 1.502
+  type: screen_recording
+  note: Cowork 完成 PDF 畫面："Ran 3 commands, updated todo list, edited 2 files"、"Looks
+    clean. View your PDF"、"One page, three metric cards up top, three highlights,
+    three lowlights, and the SXSW decision callout at the bottom. The .docx version
+    is still in the same folder if you want both."、檔卡 "2026 03 28 weekly marketing
+    update / Document · PDF / Preview"；b 幀點開下拉選單 "Preview / Show in Folder"。
+  cues:
+  - 339
+  - 340
+  text: And after a few more minutes,Co-Work gives me the report in PDF,
+- shot_id: 115
+  start: 763.93
+  end: 775.274
+  duration: 11.345
+  type: screen_recording
+  note: a 幀：點 "Show in Folder" 後彈出 macOS Finder 視窗 "Cowork Playground"，檔案列表含 CLAUDE.md、memory.md、2034-expense-report.xlsx、2026-03-28-the-gemini-era.pptx、Local_The_Gemini_Era_Original.pptx、2026-03-28-weekly-marketing-update.docx、Q4
+    Weekly Meeting with Tommy.docx、[Wednesday] Ops We...T - Notes by Gemini.pdf、選中
+    "2026-03-28-weekly-marketing-update.pdf"；b 幀為過場白爆 glitch（畫面幾乎全白、RGB 邊框，內容不可辨）；c
+    幀 zoom-in 輸入框正打字 "Now go back through our conversation and create a "weekly re"。幀間差異大（Finder
+    → glitch 轉場 → 輸入框特寫）。
+  cues:
+  - 340
+  - 341
+  - 342
+  - 343
+  - 344
+  - 345
+  text: Co-Work gives me the report in PDF,and the structure is exactly what I wanted.So
+    I can finally tell Co-Work,"Now go back
+- shot_id: 116
+  start: 775.274
+  end: 776.275
+  duration: 1.001
+  type: screen_recording
+  note: Cowork 建 skill 流程（a 幀有 glitch 快轉雙三角 overlay，b 幀清晰）：prompt "Now go back through
+    our conversation and create a "weekly report" skill that captures this entire
+    workflow."、"Used a skill / I've got a clear picture from our conversation. Before
+    I draft this, let me confirm a few things. / Loading tools / Working on it..."；右欄
+    Context Skills：skill-creator / pdf / docx；b 幀彈出互動問題 "What output format should
+    the skill default to?" 選項 "1 PDF (Recommended) / 2 Both PDF and DOCX / 3 Ask each
+    time / Something else / Skip"（1 of 3）。
+  cues:
+  - 345
+  - 346
+  text: '"that captures this entire workflow."After asking me a few clarifying questions,'
+- shot_id: 117
+  start: 776.275
+  end: 779.112
+  duration: 2.836
+  type: screen_recording
+  note: Cowork skill 設定第二問（清晰畫面）："Should the skill always use the concise structure
+    (3 metrics, 3 highlights, 3 lowlights) or also support the longer detailed version?"（2
+    of 3）選項 "1 Concise only (Recommended) / 2 Both versions / 3 Let me choose each
+    time / Something else / Skip"、底部 "↑↓ to navigate · Enter to select · Esc to skip"；a
+    幀同為此問答畫面（前一問剛結束）。
+  cues:
+  - 346
+  - 347
+  text: After asking me a few clarifying questions,Co-Work summarizes my request,
+- shot_id: 118
+  start: 779.112
+  end: 780.113
+  duration: 1.001
+  type: screen_recording
+  note: 'Claude Cowork 介面（chat ''Consolidate weekly marketing team updates''）加上大型黑色雙三角快轉
+    icon overlay 與 RGB 抖動 glitch 特效，表示快轉。可見文字："Now go back through our conversation
+    and create a ''weekly report'' skill that captures this entire workflow."、"I''ve
+    got a clear picture from our conversation. Before I draft this, let me confirm
+    a few things."、右欄 Progress 步驟 "Drafting the weekly-report SKILL.md / Create test
+    prompts and evals.json / Run test cases with and without the skill / Create evals
+    JSON and run eval-viewer/generate_review.py so human can review test cases / Iterate
+    on skill based on feedback"、Cowork Playground: Instructions - CLAUDE.md、Context:
+    skill-creator, pdf, docx。兩幀畫面在快轉中內容前進。'
+  cues:
+  - 347
+  - 348
+  text: Co-Work summarizes my request,asks for permissions again,
+- shot_id: 119
+  start: 780.113
+  end: 790.915
+  duration: 10.802
+  type: screen_recording
+  note: '同一 Cowork 對話正常速度："Good. So the skill should: accept a variable number of
+    team updates (2-5), always produce the concise executive summary (3 metrics, 3
+    highlights, 3 lowlights, decisions needed), and ask about format (PDF vs. DOCX)
+    each time. Let me draft it."、"Claude wants to use Running command" mkdir -p .../mnt/.claude/skills/weekly-report、"Always
+    allow / Deny"；b 幀測試計畫 "Here''s the plan. I''ve got 3 test cases ready: 1. 3 teams
+    (Sales, Product, CS) requesting PDF 2. 2 teams (Engineering, Marketing) requesting
+    DOCX 3. 2 teams (Ops, Finance) requesting PDF ... Now launching all 6 runs in
+    parallel"；c 幀 zoom-in 黃框 highlight："The key file is SKILL.md. To install it, copy
+    the weekly-report folder into your .claude/skills/ directory (wherever your other
+    skills live). Once it''s there, it''ll trigger whenever you upload 2+ team updates
+    and ask to combine them into a leadership summary." 多幀為同一流程不同進度＋末段放大加黃色框。'
+  cues:
+  - 348
+  - 349
+  - 350
+  - 351
+  - 352
+  text: asks for permissions again,then spends a few minutes creating the skilland
+    running tests with hypothetical scenarios.Onc
+- shot_id: 120
+  start: 790.915
+  end: 792.625
+  duration: 1.71
+  type: aroll
+  note: Jeff 全畫面在暗色書架房間對鏡頭說話，手勢比劃，前景大型麥克風。無畫面文字。
+  cues:
+  - 352
+  - 353
+  text: Co-Work tells me I need to install the skill manually,almost like I planned
+    for this to happen.
+- shot_id: 121
+  start: 792.625
+  end: 798.047
+  duration: 5.422
+  type: screen_recording
+  note: 'Cowork 畫面：a 幀先重現 skill 完成訊息 "Got it, skipping the eval loop. Let me package
+    the skill... The skill is in your folder: View the weekly-report skill... Quick
+    summary of what the skill encodes from our workflow: always produces the concise
+    format (3 metrics, 3 highlights, 3 lowlights, decisions needed), asks you for
+    PDF vs. DOCX each time, uses the date-based filename convention..." 附 weekly-report
+    檔案卡與 Open 按鈕；b 幀切到 Customize 側欄，游標點擊 "Skills"（另有 Connectors、Personal plugins:
+    Finance, Legal）。兩幀畫面不同（訊息頁→Customize 選單）。'
+  cues:
+  - 353
+  - 354
+  - 355
+  text: almost like I planned for this to happen.So I head on over to Customize, Skills,plus
+    icon, upload a skill,
+- shot_id: 122
+  start: 798.047
+  end: 798.673
+  duration: 0.626
+  type: screen_recording
+  note: 'Skills 管理頁開啟 "Upload skill" 對話框："Drag and drop or click to upload / File
+    requirements: .md file must contain skill name and description formatted in YAML
+    / .zip or .skill file must include a SKILL.md file / Read more about creating
+    skills or see an example"。左列 skills：clear-and-concise（Personal skills）、Examples:
+    canvas-design, skill-creator, theme-factory, algorithmic-art, brand-guidelines,
+    doc-coauthoring, internal-comms, mcp-builder, slack-gif-creator, web-artifacts…；右側
+    clear-and-concise 描述 "Edit any text to be clearer and more concise..."。b 幀對話框放大置中。'
+  cues:
+  - 355
+  - 356
+  text: plus icon, upload a skill,find the skill MD file that Co-Work generated,
+- shot_id: 123
+  start: 798.673
+  end: 801.801
+  duration: 3.128
+  type: screen_recording
+  note: Upload skill 對話框上疊出兩個 macOS Finder 視窗：Cowork Playground 資料夾（Cap 4, Chapters,
+    clear-and-concise, Receipts, weekly-report, CLAUDE.md, memory.md, 2034-expense-report.xlsx,
+    2026-03-28-the-gemini-era.pptx, Local_The_Gemini_Era_Original.pptx, 2026-03-28-weekly-marketing-update.docx,
+    Q4 Weekly Meeting with Tommy.docx, Q4v2 Weekly Meetings.docx, [Wednesday] Ops
+    We...T - Notes by Gemini.pdf, 2026-03-28-weekly-marketing-update.pdf）與 Cap 4 資料夾（events-update-week2.txt,
+    events-update.txt, google-ads-update-week2.txt, google-ads-update.txt, pixel-update-week2.txt,
+    pixel-update.txt）；b 幀進入 weekly-report 資料夾顯示 "evals" 資料夾與 "SKILL.md 5 KB Markdown"。
+  cues:
+  - 356
+  - 357
+  text: find the skill MD file that Co-Work generated,and boom, we now have a weekly
+    report skill.
+- shot_id: 124
+  start: 801.801
+  end: 802.218
+  duration: 0.417
+  type: screen_recording
+  note: 'Upload skill 對話框顯示 "Uploading..."，下方 "File requirements: .md file must contain
+    skill name and description formatted in YAML / .zip or .skill file must include
+    a SKILL.md file"；背景為 clear-and-concise skill 內文 "Every sentence must earn its
+    place... Use the shortest word that works. ''Use'' instead of ''utilize.''..."。兩幀近乎相同。'
+  cues:
+  - 357
+  text: and boom, we now have a weekly report skill.
+- shot_id: 125
+  start: 802.218
+  end: 803.928
+  duration: 1.71
+  type: screen_recording
+  note: 上傳完成：Skills 列表 Personal skills 出現 weekly-report 與 clear-and-concise，右上 toast
+    "Uploaded weekly-report"；右側面板顯示 clear-and-concise 詳情（"Clear and Concise / You
+    are an editor. Your job is to take text and make it shorter, clearer, and easier
+    to read... Core principles..."）。b 幀畫面變暗、黃色圓角框 highlight 左列 "weekly-report" 項目。
+  cues:
+  - 357
+  text: and boom, we now have a weekly report skill.
+- shot_id: 126
+  start: 803.928
+  end: 805.555
+  duration: 1.627
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話並比 OK 手勢，暗色書架房間、大型麥克風。無畫面文字。
+  cues:
+  - 357
+  - 358
+  text: and boom, we now have a weekly report skill.Three more things you need to
+    know about skills.
+- shot_id: 127
+  start: 805.555
+  end: 816.649
+  duration: 11.094
+  type: screen_recording
+  note: 'a 幀 Cowork 首頁："Let''s knock something off your list / Cowork is in research
+    preview. Learn how to use it safely. / How can I help you today? / Cowork Playground
+    / Scheduled: Morning inbox triage Tomorrow at 6:09 AM / Ops weekly pre meeting
+    brief Tomorrow at 12:01 PM / Audrey 11 pre meeting brief Tomorrow at 1:01 PM /
+    Show more"，頂部標籤 "Soshie Labs"；b、c 幀轉到 Customize > Skills：Personal skills 為 session-audit,
+    clear-and-concise, linkedin-native, newsletter-repost，session-audit 描述 "End-of-session
+    audit that check... This is a housekeeping ski..."；c 幀展開 Examples 的 skill-creator
+    顯示內部檔案 SKILL.md, agents, assets, eval-viewer, references, scripts, LICENSE.txt，右側
+    "Skill Creator / A skill for creating new skills... Decide what you want... Write
+    a draft of the skill / Create a few test prompts / Help the user evaluate..."。多幀為不同頁面（首頁→Skills
+    瀏覽）。'
+  cues:
+  - 358
+  - 359
+  - 360
+  - 361
+  - 362
+  - 363
+  text: Three more things you need to know about skills.First, to create your own
+    skill,head on over to Customize, Skills,and ma
+- shot_id: 128
+  start: 816.649
+  end: 825.658
+  duration: 9.009
+  type: screen_recording
+  note: 瀏覽名為 SKILLHUB 的暗色網站（skill 市集）逐步捲動：導覽 "SKILLHUB / ALL SKILLS / STACKS / KOL
+    / HOT / OPENCLAW / RANKINGS / PRODUCTS / API MARKET / Search Skills... / LAUNCH
+    APP / LOGIN"；"BROWSE Productivity 520 SKILLS FOUND"；分類 "ALL, DEVELOPMENT, DEVOPS,
+    TESTING, DOCUMENTATION, SECURITY, DATA, AI/ML, FRONTEND, BACKEND, MOBILE, CLOUD,
+    PRODUCTIVITY, WRITING, DESIGN, META, INTEGRATION, COMMUNICATION, RESEARCH / CREATOR
+    SPOTLIGHT / COLLECTIONS"；卡片如 "01 @TEAM-ATTENTION 8.9 google-calendar"、"02 @INFERENCESH
+    ai-content-pipeline"、"03 @BENBRASTMCKIE 8.3 document-converter"、"04 @DAVEPOON
+    8.4 lead-research-assistant"、"05 @ANTHROPICS 7.9 docx"、"06 @MICROCK 8.9 xlsx"、"07
+    @MADAPPGANG 8.9 ffmpeg-core"、"08 @CLAWDBOT 8.1 summarize"、"09 @YAMADASHY 8.0 agent-memory"
+    等含 stars（691, 239, 435, 2.7k, 104.9k, 146, 248, 338.1k, 22.7k）與 TRY 按鈕。三幀為頁面逐步下捲。
+  cues:
+  - 363
+  - 364
+  - 365
+  text: 'And while there are websites that offer skill templates,I highly recommend
+    creating the first few yourselfto get a hang '
+- shot_id: 129
+  start: 825.658
+  end: 833.75
+  duration: 8.091
+  type: screen_recording
+  note: '回到 Cowork：a 幀強烈 RGB 模糊 glitch 轉場（首頁 "Let''s knock something off your list"
+    疊影，文字難辨）；b 幀新任務 "Edit clear and concise skill"，用戶訊息 "I want to edit the ''clear
+    and concise'' Skill: Let''s target for 350 words for each output. Edit the skill
+    directly."，Claude "Thinking / Read clear-and-concise"；c 幀 "Now I''ll add the 350-word
+    target. The most natural place is in the process section where it already discusses
+    word targets, and I''ll also add it as a default behavior up top." 與 "Claude wants
+    to use Updating file" 的 Edit request（file_path /sessions/nifty-gallant-einstein/mnt/.claude/skills/clear-and-concise/SKILL.md,
+    old_string/new_string "You are an editor..."）、"Always allow / Deny"。a 幀有 glitch
+    轉場效果需註明。'
+  cues:
+  - 365
+  - 366
+  - 367
+  - 368
+  - 369
+  text: to get a hang of creating skills from scratch.Second, you can update a skill
+    anytimeby telling Co-Work which skill to ch
+- shot_id: 130
+  start: 833.75
+  end: 834.751
+  duration: 1.001
+  type: screen_recording
+  note: '同一 "Edit clear and concise skill" 任務加大型黑色雙三角快轉 icon 與 RGB glitch 特效快轉：可見文字
+    "The skill file is on a read-only mount. Let me check if there''s another way
+    to edit..."、"The skills directory is mo[unted read-only]... can''t edit it directly
+    from... the skill-creator skill, wh[ich]... existing skills."、"The skill lives
+    on a read-o[nly]... package it back as an in..."、"Copy skill to writable locat[ion]"、"Now
+    I''ll make two targe[ts]... default target as a co... update the process sect..."、右欄
+    Context: skill-creator, clear-and-concise。兩幀為快轉中不同進度。'
+  cues:
+  - 369
+  - 370
+  text: and granting permission for the change.But after it recreates it,
+- shot_id: 131
+  start: 834.751
+  end: 840.465
+  duration: 5.714
+  type: screen_recording
+  note: 'Claude Cowork chat scrolls through skill-edit progress. Text incl: "Edit
+    clear and concise skill"; "Ran 3 commands"; "The skills directory is mounted as
+    read-only, so I can''t edit it directly from here. Let me use the skill-creator
+    skill, which is designed for modifying existing skills."; "Used a skill"; "The
+    skill lives on a read-only mount, so I''ll copy it to a writable location, make
+    the edit, and package it back as an installable .skill file."; "Copy skill to
+    writable location"; "Now I''ll make two targeted edits: add the 350-word default
+    target as a core principle, and update the process section to reference it.";
+    "Edited 3 files, read a file, ran a command"; "Now update the process step that
+    references word targets to default to 350:"; "Edited a file"; "Now package it
+    as an installable .skill file:"; "Ran 3 commands, found files, read a file"; "Done.
+    Here''s what I changed in the skill: 1. Added a default target of ~350 words right
+    after the opening line, so it applies to every run unless the user overrides it.
+    It also clarifies not to pad shorter texts to reach 350. 2. Updated step 4 in
+    the process section to reference 350 words as the default, rather than only checking
+    for a user-provided target." Frame b adds: "Install your updated skill" "Double-click
+    it to install, and it will replace the current version." "clear-and-concise Skill"
+    buttons "Copy to your skills" "Show in Folder". Sidebar: "Progress", "Cowork Playground",
+    "Instructions · CLAUDE.md", "clear-and-concise.skill", "Scratchpad", "Context",
+    "Skills: skill-creator, clear-and-concise". No host PIP.'
+  cues:
+  - 370
+  - 371
+  - 372
+  text: But after it recreates it,you need to click Copy againto overwrite the previous
+    version.
+- shot_id: 132
+  start: 840.465
+  end: 842.55
+  duration: 2.085
+  type: screen_recording
+  note: 'macOS Finder window "iClaude OS" with folders (China Desk, Clarity Partner,
+    Email HQ, Instagram HQ, LinkedIn HQ, Newsletter HQ, People & Comms, Product Lab,
+    Speaking Engagements, Sponsorships, YouTube HQ) and files google-chat-wireframe.html,
+    usage-burn-wireframe.html, CLAUDE.md, clear-and-concise-SKILL-backup.md, MEMORY.md;
+    "clear-and-concise.skill" (Kind: Skill File, 6 KB) is selected/highlighted. Path
+    bar: "iCloud Drive > iClaude OS > clear-and-concise.skill". "1 of 20 selected,
+    1.98 TB available on iCloud". No host PIP.'
+  cues:
+  - 372
+  - 373
+  text: to overwrite the previous version.I'd also recommend backing up your skills
+    to Google Drive
+- shot_id: 133
+  start: 842.55
+  end: 867.116
+  duration: 24.566
+  type: screen_recording
+  note: 'Multi-part shot: frame a = Google Drive "01 Sushie Labs (Shared…) > 94 Backups"
+    listing linkedin-native.skill, newsletter-repost.skill, session-audit.skill, with
+    "Uploading 1 item… clear-and-concise.skill" toast. Frames b/c = Claude Cowork
+    home "Let''s knock something off your list" (Sushie Labs; "Cowork is in research
+    preview. Learn how to use it safely.") with prompt typed: "Let''s create a skill
+    together using your skill-creator skill. First ask me what the skill should do.",
+    "Cowork Playground" selector, "Let''s go →" button, red X mark overlay animating
+    in over the prompt box (mistake callout), Scheduled list: "Morning inbox triage
+    Tomorrow at 6:09 AM", "Ops weekly pre meeting brief Tomorrow at 12:01 PM", "Audrey
+    11 pre meeting brief Tomorrow at 1:01 PM", "Show more". Host PIP (rounded card,
+    right) present in frames b/c only.'
+  cues:
+  - 373
+  - 374
+  - 375
+  - 376
+  - 377
+  - 378
+  - 379
+  - 380
+  - 381
+  - 382
+  - 383
+  - 384
+  text: I'd also recommend backing up your skills to Google Drivebecause if you move
+    to a new computer,skills do not transfer ov
+- shot_id: 134
+  start: 867.116
+  end: 867.45
+  duration: 0.334
+  type: motion_graphic
+  note: Black-and-white transition wipe — large white inverted triangle on black,
+    no text (both frames identical mid-transition).
+  cues:
+  - 384
+  text: like I showed you earlier today.
+- shot_id: 135
+  start: 867.45
+  end: 881.13
+  duration: 13.68
+  type: motion_graphic
+  note: 'Dark-slide info card animating in (frame a shows only a blue outline stroke).
+    Title: "COWORK PROJECTS". Two cards: "CHAT PROJECTS / PROJECT" (blue) and "COWORK
+    PROJECTS / PROJECT" (green); frame c adds under the green card: "✦ LOCAL FILE
+    ACCESS" "✦ PERSISTENT MEMORY".'
+  cues:
+  - 385
+  - 386
+  - 387
+  - 388
+  - 389
+  - 390
+  - 391
+  text: Moving on, at the risk of massively oversimplifying,Co-Work projects and Claude
+    chat projectsare basically the same thin
+- shot_id: 136
+  start: 881.13
+  end: 888.388
+  duration: 7.257
+  type: aroll
+  note: 'Jeff full-frame talking to camera in dark room with mic. Frame a no text;
+    keyword overlay builds in b/c: "Cowork Projects can write to their own knowledge
+    files directly, unlike" (yellow highlights on "write to their own knowledge files
+    directly").'
+  cues:
+  - 391
+  - 392
+  - 393
+  - 394
+  - 395
+  text: connectors, skills, all of it.But there is one thing worth calling out.Co-Work
+    projects can writeto their knowledge file
+- shot_id: 137
+  start: 888.388
+  end: 901.275
+  duration: 12.888
+  type: screen_recording
+  note: 'Browser on claude.ai — frame a: project page "Clarity Partner — Research,
+    structure, and refine raw training ideas into polished outlines ready for slides
+    and speaker notes. Any topic. Consistent process." with panels "Memory (Only you)
+    Purpose & context Jeff is producing a YouTube tutorial series teaching Claude
+    Cowork to non-technical white-collar professionals…", "Instructions: You are a
+    thought partner, research partner, and clarity articulator with web search enabled.
+    Jeff creates content across formats…", "Files 1% of project capacity used, content-playbook.md
+    314 lines", chats incl "Cowork Projects vs Claude Chat projects", "Cowork use
+    case candidates for tutorial video", "Claude Cowork beginner settings recommendations",
+    "Claude Cowork web search capabilities". Frames b/c: chat response text incl "In
+    my Clarity Partner Cowork Project, I just say ''codify this principle'' and Cowork
+    writes it directly to the project''s instruction file. Done.", "[AI Systems Academy]
+    If you''re watching this and thinking ''I want to set up a system like this for
+    my own work,'' I''m actually building a course that walks you through exactly
+    that, step by step. I''ll leave a link to the waitlist down below.", "Two changes
+    that still hold:", quote-swap edits (''But, there is one thing worth calling out,
+    and that is'' → ''But there is one difference worth calling out, and that is.''
+    … ''Without me having to do anything'' → ''Done.'' Punchier closer…), then zoomed
+    reply box typing highlighted: "What principles can we codify so we carry them
+    forward?". No host PIP.'
+  cues:
+  - 395
+  - 396
+  - 397
+  - 398
+  - 399
+  - 400
+  - 401
+  - 402
+  text: 'unlike Claude chat projects.Here''s what I mean.I have a Claude chat project
+    called Clarity Partnerthat helps me make my '
+- shot_id: 138
+  start: 901.275
+  end: 902.276
+  duration: 1.001
+  type: screen_recording
+  note: Same Clarity Partner chat with big double fast-forward triangle overlay (skip-ahead
+    motif) + VHS glitch border; user message "What principles can we codify so we
+    carry them forward?" visible at top; response partially visible behind triangles
+    ("Two principles from this exchange…"). Fast-forward overlay present in both frames.
+  cues:
+  - 403
+  text: so he remembers next time.
+- shot_id: 139
+  start: 902.276
+  end: 905.863
+  duration: 3.587
+  type: screen_recording
+  note: 'Chat response revealed: "Identified principles for systematic future application
+    — Two principles from this exchange: 1. Deliberate voice choices are not drafting
+    problems. Self-aware hedges (''at the risk of massively oversimplifying''), compound
+    run-on sentences, and conversational pacing are intentional tone devices in Jeff''s
+    video scripts. Don''t clean them up. The test: if the phrasing sounds like Jeff
+    talking to camera, it''s voice. If it sounds like filler that delays the point,
+    it''s clutter. 2. In video scripts, optimize for spoken rhythm, not written concision.
+    Run-on compound sentences that would be too long in a LinkedIn post or newsletter
+    can be exactly right in a script because they match how people actually talk.
+    The editing standard shifts by format: written content gets tightened for reading
+    speed, video scripts get shaped for speaking cadence. Want me to codify these
+    into your Cowork project''s instruction file, or are these going into the playbook?"
+    Frame b zooms on reply box typing: "Add them to the playbook, give me a md file".
+    No host PIP.'
+  cues:
+  - 403
+  - 404
+  - 405
+  text: so he remembers next time.In a chat project,after I ask Claude to codify our
+    learnings,
+- shot_id: 140
+  start: 905.863
+  end: 906.864
+  duration: 1.001
+  type: screen_recording
+  note: 'Same chat with double fast-forward triangles + glitch overlay again; visible
+    text: user msg "Add them to the playbook, give me a md file", status lines behind
+    triangles ("…optimal placement for new principles", "…video-specific editing principles
+    from…rules", "…book to find the right insertion…"). Fast-forward overlay in both
+    frames.'
+  cues:
+  - 405
+  text: after I ask Claude to codify our learnings,
+- shot_id: 141
+  start: 906.864
+  end: 918.668
+  duration: 11.803
+  type: screen_recording
+  note: 'Result revealed: "Expedited markdown playbook compilation — Added both principles
+    as a new ''Video script voice'' subsection under Section 10 (Jeff''s voice essentials),
+    since they''re voice rules but format-specific. They sit alongside Tone, Punctuation,
+    Structure, etc. as peer-level guidance." Artifact card "Content playbook Document
+    · MD" + "Download". Right panel shows doc "Content Structuring: Principles and
+    Frameworks — This document captures how Jeff thinks about, structures, and refines
+    content. It applies across formats: YouTube videos, corporate training sessions,
+    quarterly workshops, newsletters, LinkedIn posts, short-form video, or anything
+    else. The principles are constant regardless of the output format. Every principle
+    below was distilled from real working sessions and includes examples. / 1. The
+    end goal … / 2. The vertical flow framework / 2.1 The constant principle …". Frame
+    b zooms on dropdown: "Download / Add to project / Download as PDF / Publish artifact"
+    with cursor on "Add to project". Frame c back to project page Clarity Partner
+    with content-playbook.md file card highlighted in Files panel. No host PIP.'
+  cues:
+  - 406
+  - 407
+  - 408
+  - 409
+  - 410
+  - 411
+  text: 'Claude is able to generatean updated knowledge file for me.And while I am
+    able to add this to the projectas a knowledge '
+- shot_id: 142
+  start: 918.668
+  end: 926.926
+  duration: 8.258
+  type: screen_recording
+  note: 'Cowork home; frame a is a blurred/glitch rainbow-border transition of the
+    "Let''s knock something off your list" page. Frames b/c crisp: prompt typed "Codify
+    this under Clarity Partner: when I''m explaining a concept and I have an example,
+    always lead with the example first, then name the concept. People grasp it faster."
+    with "Let''s go →" button (cursor hovering in c); "Sushie Labs", "Cowork is in
+    research preview. Learn how to use it safely.", "Active tasks — Understanding
+    Clarity Partner capabilities 5 seconds ago", "Clear all". No host PIP.'
+  cues:
+  - 411
+  - 412
+  - 413
+  - 414
+  - 415
+  - 416
+  text: from the project settings.In Co-Work, I can just say something like,"Codify
+    this principle"under the Clarity Partner pro
+- shot_id: 143
+  start: 926.926
+  end: 927.927
+  duration: 1.001
+  type: screen_recording
+  note: 'Cowork task run "Lead with examples before naming concepts" with double fast-forward
+    triangles + glitch overlay; user msg repeated: "Codify this under Clarity Partner:
+    when I''m explaining a concept and I have an example, always lead with the example
+    first, then name the concept. People grasp it faster."; status "Authenticating…"
+    (frame a) then "Thinking / Reading" (frame b); sidebar "Progress", "iClaude OS",
+    "Instructions · CLAUDE.md", "Context". No host PIP.'
+  cues:
+  - 416
+  - 417
+  text: I always start with an example first.And Co-Work writes it directly to the
+    instruction file
+- shot_id: 144
+  start: 927.927
+  end: 931.639
+  duration: 3.712
+  type: screen_recording
+  note: 'Claude Cowork UI 對話畫面（Chat/Cowork/Code 分頁），b 幀放大黃框 highlight ''Edited a file''
+    回覆。文字："Lead with examples before naming concepts" / "Codify this under Clarity
+    Partner: when I''m explaining a concept and I have an example, always lead with
+    the example first, then name the concept. People grasp it faster." / "Read a file"
+    / "This fits naturally under the Content Structuring Principles section. Adding
+    it now." / "Edited a file" / "Done. Added under Content Structuring Principles
+    in Clarity Partner/CLAUDE.md: ''Example first, then name the concept.'' Lead with
+    the concrete instance, then label the abstraction." / 側欄 "Progress" "See task
+    progress for longer tasks." "iClaude OS" "Instructions · CLAUDE.md" "Scratchpad"
+    "Context" "Track tools and referenced files used in this task." / "Reply..." "Queue"
+    "Claude is AI and can make mistakes. Please double-check responses." b 幀有 zoom
+    + highlight 效果。'
+  cues:
+  - 417
+  - 418
+  text: And Co-Work writes it directly to the instruction filewithout me having to
+    do anything.
+- shot_id: 145
+  start: 931.639
+  end: 934.183
+  duration: 2.544
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話（暗調房間、大麥克風、手勢），無畫面文字。
+  cues:
+  - 418
+  - 419
+  - 420
+  text: without me having to do anything.If you're watching this and thinking,"I want
+    a system like this for my own work,"
+- shot_id: 146
+  start: 934.183
+  end: 940.398
+  duration: 6.215
+  type: motion_graphic
+  note: 黑底 sponsor/課程 landing 圖卡，a 幀漸入偏暗、b/c 幀元素完整（CTA 按鈕由暗轉亮）。文字："AI SYSTEMS ACADEMY"
+    / "Master AI Skills That Never Expire" / "Stop chasing every new AI tool and build
+    systems that actually last." / "JOIN THE WAITLIST" / "PROFESSIONALS TRAINED FROM"
+    Google Microsoft amazon Spotify "and many more" / 斜切白色橫幅 "LINK DOWN BELOW"。
+  cues:
+  - 420
+  - 421
+  - 422
+  - 423
+  text: '"I want a system like this for my own work,"I''m actually building a coursethat
+    walks you through exactly that, step-by-s'
+- shot_id: 147
+  start: 940.398
+  end: 953.911
+  duration: 13.514
+  type: title_card
+  note: 黑底章節卡：a 幀外框字 "BROWSER EXTENS..."（動畫滑入中），b/c 幀定版 "COWORK + BROWSER EXTENSION"，下方
+    Cowork app icon 標 "COWORK"、瀏覽器示意窗（Anthropic logo）標 "BROWSER"，c 幀加綠色箭頭 "HANDOFF"。
+  cues:
+  - 423
+  - 424
+  - 425
+  - 426
+  - 427
+  - 428
+  - 429
+  text: I'll leave a link to the wait list down below.So ironically, this next capabilityalso
+    highlights one of Co-Work's bigges
+- shot_id: 148
+  start: 953.911
+  end: 955.121
+  duration: 1.21
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話、雙手手勢，無畫面文字。
+  cues:
+  - 429
+  - 430
+  text: to the browser extension.I say theoretically
+- shot_id: 149
+  start: 955.121
+  end: 960.042
+  duration: 4.922
+  type: screen_recording
+  note: Chrome Web Store 的 Anthropic Claude 擴充頁，右下角 host PIP（圓角小卡）；b 幀黃框 highlight
+    extension 資訊卡。文字："chrome web store" "Search extensions and themes" "Anthropic"
+    "claude.com · 1 extension" "Claude" "2.7 ★ (634 ratings)" "Share" "Extension |
+    Tools | 4,000,000 users" "Remove from Chrome" "Claude in Chrome (Beta)" "Claude
+    is an AI assistant that works directly in your browser, automating tasks and taking
+    actions on your behalf. Use natural conversation to navigate websites, fill forms,
+    extract data, and run multi-step workflows. Available to all paid subscribers."
+    "WHAT'S NEW" "See extension"。
+  cues:
+  - 430
+  - 431
+  - 432
+  text: I say theoreticallybecause I simply can't recommend the extension right nowfor
+    three practical reasons.
+- shot_id: 150
+  start: 960.042
+  end: 973.806
+  duration: 13.764
+  type: motion_graphic
+  note: 模擬瀏覽器 + Claude 側欄的示意動畫（非真實錄影的簡化 mock UI）：Acme Corp 聯絡表單被 Claude 自動填寫，c 幀切到
+    TeamFlow checklist 出現錯誤並疊字卡。文字（a/b）："Acme Corp - Contact Us" "New Tab" "acmecorp.com/contact"
+    "Contact Us" "Fill out the form below and we'll get back to you within 24 hours."
+    "First Name / Last Name / Email Address / Company / Subject" "Jeff" "Claude Beta"
+    "CURRENT TASK 'Fill out the contact form with my information'" "ACTION I'll click
+    the 'Last Name' field next" "CAPTURE Taking screenshot of page..." "ANALYZING
+    Verifying the Last Name field is focused..." "ELAPSED 0:00 / 0:16"；（c）"TeamFlow
+    - Q2 Campaign Setup" "app.teamflow.io/campaigns/q2-setup" "Q2 Campaign Setup Checklist
+    3 / 8" "Set campaign objective and KPIs / Define target audience segments / Upload
+    creative assets to library / Configure budget allocation per channel" "Required"
+    "Task stopped unexpectedly Something went wrong while processing. You can try
+    running this task again." "Stopped" 疊加字卡 "#2" "It's unreliable"。
+  cues:
+  - 432
+  - 433
+  - 434
+  - 435
+  - 436
+  - 437
+  - 438
+  text: for three practical reasons.First, it's slow as (beep)since most interactions
+    require a screenshotsent back to Co-Work b
+- shot_id: 151
+  start: 973.806
+  end: 975.475
+  duration: 1.668
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話（比雙手拇指手勢），無畫面文字。
+  cues:
+  - 438
+  - 439
+  text: through a task without finishing.Talk about being blue-balled by Claude.
+- shot_id: 152
+  start: 975.475
+  end: 982.106
+  duration: 6.632
+  type: motion_graphic
+  note: '淺底 ''Model usage'' 用量條動畫：a 幀 100%（紫色滿條），b 幀 18%（紅色）並展開 agent 思考 log，c 幀 0%
+    並跳出限制提示；b/c 幀疊字卡 "#3" "It burns through tokens"。文字："Model usage 100% / 18% / 0%"
+    / log："Taking post-navigation screenshot to verify..." "Page title confirmed:
+    ''Google Expense Reports''" "Scanning for cookie banners or auth prompts..." "2
+    Click the ''Submit'' button" "Thinking" "Scanning DOM for elements matching ''Submit''..."
+    "Found 3 candidates. Evaluating each for match..." "Candidate 1: button.goog-primary
+    at (847, 423)" "Checking visibility: visible=true, enabled=true" "Verifying no
+    elements overlap the click target..." "Taking pre-click screenshot for confirmation..."
+    "Button is safe to click. Calculating coordinates..." "Checking for unsaved-changes
+    warnings on click..." "Executing click action at (847, 423)..." "Click registered.
+    Waiting for page response..." "3 Verify the submission result" "Taking post-click
+    screenshot to verify outcome..." "Comparing page state: 847 DOM nodes changed..."
+    "Checking for success banners or error messages..." "Analyzing 12 new network
+    requests for failures..." "You''ve reached your limit" "Wait 3 hours or upgrade
+    your plan"。'
+  cues:
+  - 439
+  - 440
+  - 441
+  - 442
+  - 443
+  text: Talk about being blue-balled by Claude.Third, it burns through your usagebecause
+    it overthinks every stepsince it has to
+- shot_id: 153
+  start: 982.106
+  end: 987.57
+  duration: 5.464
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話（b 幀比手指細節手勢），無畫面文字。
+  cues:
+  - 443
+  - 444
+  - 445
+  text: when controlling your browser.Coming back to the weakness I mentioned earlier,while
+    both Claude Chat and Co-Work can sea
+- shot_id: 154
+  start: 987.57
+  end: 995.912
+  duration: 8.342
+  type: screen_recording
+  note: claude.ai 網頁操作錄影，右側 host PIP。a 幀全頁 "Good morning, Jeff" "How can I help you
+    today?" "Write / Learn / From Drive / From Calendar / From Gmail"；b/c 幀 zoom-in
+    到 + 選單："Add files or photos" "Take a screenshot" "Add to project" "Add from Google
+    Drive" "Skills" "Connectors" "Research" "Web search"（勾選/hover）"Use style"。
+  cues:
+  - 445
+  - 446
+  - 447
+  - 448
+  text: while both Claude Chat and Co-Work can search the web,Claude Chat gives us
+    a lot more control.We can force web search, e
+- shot_id: 155
+  start: 995.912
+  end: 1005.338
+  duration: 9.426
+  type: motion_graphic
+  note: '暗底示意動畫：Claude Cowork 視窗與瀏覽器協作 demo（mock UI，非實錄）。a 幀空 Cowork 窗 "Claude Cowork"
+    "Ask Claude anything..."；b/c 幀出現對話與瀏覽器："Research the top 3 competitors for our
+    SaaS product and summarize their current pricing tiers." "I''ll research competitor
+    pricing for you. Let me search the web for that." "I don''t have direct web search
+    in Cowork, so I''ll use the browser extension to look this up." "BROWSER EXTENSION
+    Running" "tool: browser_extension" "action: navigate_and_search" / 瀏覽器："Google"
+    "google.com"；c 幀 "google.com/search?q=competitor+pricing+SaaS" "competitor pricing
+    SaaS 2026" "www.g2.com > compare > saas-pricing" "SaaS Pricing Comparison 2026
+    - G2" "Compare pricing plans across 500+ SaaS products. See feature breakdowns,
+    per-seat costs, and enterprise tiers side by side..." b 幀有 << 快轉符號 overlay。'
+  cues:
+  - 448
+  - 449
+  - 450
+  - 451
+  - 452
+  text: and we can even enable or disable this mid-conversation.With Co-Work, you
+    can't force a web searchand it often falls bac
+- shot_id: 156
+  start: 1005.338
+  end: 1005.671
+  duration: 0.334
+  type: other
+  note: 純黑白幾何轉場動畫（V 形楔形擦除，兩幀為轉場前後不同階段），無內容、無文字——無法歸入任何內容類別，判為轉場幀。
+  cues:
+  - 452
+  text: that's a real limitation.
+- shot_id: 157
+  start: 1005.671
+  end: 1017.642
+  duration: 11.97
+  type: motion_graphic
+  note: 黑底簡報式比較卡動畫：a 幀僅一條藍色線條動畫（build-in 開始），b 幀三欄卡片滑入中（放大局部），c 幀完整三欄比較。文字：標題 "SCHEDULED
+    TASKS"；三卡 "GEMINI / ✓ SCHEDULED TASKS"、"CHATGPT / ✓ SCHEDULED TASKS"、"COWORK /
+    ✓ SCHEDULED TASKS / + LOCAL FILE ACCESS / + PERSISTENT MEMORY"（Cowork 卡綠色高亮）。多幀不一致：動畫逐步
+    build。
+  cues:
+  - 453
+  - 454
+  - 455
+  - 456
+  - 457
+  text: 'To be clear, scheduled tasks aren''t new.Gemini and Chat GPT have had this
+    feature for a while now,but I found that only '
+- shot_id: 158
+  start: 1017.642
+  end: 1042.041
+  duration: 24.399
+  type: screen_recording
+  note: 'Claude Cowork app 錄影，host PIP 圓角小卡疊右側。a 幀首頁："Let''s knock something off your
+    list"、"Cowork is in research preview. Learn how to use it safely."、"How can I
+    help you today?"、"Sushie Labs"、Scheduled 清單 "Morning inbox triage / Tomorrow at
+    6:09 AM"、"Ops weekly pre meeting brief / Tomorrow at 12:01 PM"、"Audrey 1:1 pre
+    meeting brief / Tomorrow at 1:01 PM"、"Show more"。b 幀放大黃框 callout："Description
+    — Triage Jeff''s Gmail inbox using his Inbox Zero workflow: categorize every email,
+    present draft replies in the output (never in Gmail), and summarize actions."、任務頁
+    "Morning inbox triage"、"Run now"。c 幀放大 triage 輸出："1. Katie [blurred] | Earn on
+    the side as a AI coach / Category: Archive immediately / Cold outreach from ...
+    coaching marketplace. No prior relationship (first email ever from this sender).
+    She''s pitching Jeff to join as a paid AI coach on their platform. This is general
+    cold outreach (non-sponsorship). / Time estimate: Under 2 minutes / Action: Send
+    a brief, friendly decline and archive. / Draft reply: Hi Katie, thanks for reaching
+    out! I appreciate the offer, but coaching isn''t something I''m looking to take
+    on right now. My plate is pretty full with YouTube and course development. Wishing
+    you and the ... team all the best! / What I drafted: Friendly decline with no
+    door left open (per cold outreach rules)." 多幀為同一 app 內不同畫面／zoom 推進。'
+  cues:
+  - 457
+  - 458
+  - 459
+  - 460
+  - 461
+  - 462
+  - 463
+  - 464
+  - 465
+  text: and it's because of the capabilities we've just covered.Diving into an example,
+    let's open up scheduled tasksand click i
+- shot_id: 159
+  start: 1042.041
+  end: 1052.134
+  duration: 10.093
+  type: screen_recording
+  note: 'Gmail Settings > Inbox 操作錄影，host PIP 圓角小卡疊右側，底部斜切黑底 banner "THE WORKSPACE
+    ACADEMY"（a 幀 banner 正滑入、僅露出上半）。a 幀 Inbox type: Default，文字含 "Categories: Primary
+    / Social / Promotions / Updates / Forums"、"Turn on smart features and personalization
+    in Gmail, Chat, and Meet to use inbox categories"。b/c 幀改為 "Multiple Inboxes"，設定
+    "Section 1: l:follow-up / Action Items"、"Section 2: l:waiting / Awaiting Reply"、"Section
+    3: l:read-through / Read Through"、"Maximum page size: Show 10 conversations per
+    page"、"Multiple inbox position: Right of the inbox"。'
+  cues:
+  - 465
+  - 466
+  - 467
+  - 468
+  - 469
+  - 470
+  text: So let me walk you through how this works.First, long-time viewers know I
+    teach my Inbox Zero workflowin the Workspace A
+- shot_id: 160
+  start: 1052.134
+  end: 1064.939
+  duration: 12.804
+  type: screen_recording
+  note: 'Cowork 首頁上疊 macOS Finder 視窗再 zoom 進 CLAUDE.md 檔案內容（無 host PIP）。a 幀：Finder
+    "Email HQ" 資料夾含 "Email HQ Resources / CLAUDE.md 14 KB / MEMORY.md 10 KB"，背後 Cowork
+    "Let''s knock something off your list / How can I help you today?"。b/c 幀：CLAUDE.md
+    全文特寫，文字："## Identity Override — When working in this folder, act as Jeff''s **email
+    strategist and drafting partner**. Still Claude, still sharp and efficient, but
+    optimized for producing emails that sound exactly like Jeff wrote them..."、"##
+    Inbox Zero Triage Workflow — Jeff''s email workflow has two phases. Both are codified
+    here. ### Phase 1: Morning Triage (daily, 10 minutes max) **Goal:** Get the inbox
+    to zero... **Trigger:** Jeff says \"let''s go through my inbox\"... **End state:**
+    Inbox shows \"No new mail!\"... ### Phase 2: Dedicated Email Session (later that
+    day, when Jeff has time)"。c 幀下半段加黃框高亮。多幀不一致：zoom + highlight 推進。'
+  cues:
+  - 470
+  - 471
+  - 472
+  - 473
+  text: 'And thanks to capability number one, local file access,it saved those rules
+    in a markdown document,as you can see here, '
+- shot_id: 161
+  start: 1064.939
+  end: 1081.831
+  duration: 16.892
+  type: screen_recording
+  note: 'Cowork 執行 Morning inbox triage 對話錄影，host PIP 圓角小卡疊右側。a 幀："Run scheduled task:
+    Morning inbox triage"、"Used Gmail integration, read 6 files, loaded tools"、"Morning
+    Inbox Triage - March 28 — 9 emails in inbox. Processing oldest to newest."、右欄
+    "Progress / iClaude OS / Instructions · CLAUDE.md / MEMORY.md / Context / Morning
+    inbox triage / Connectors / Gmail"。b 幀黃框放大 "Read Gmail Email / Result" 工具輸出，列表
+    "1. Katie ... Fri, 27 Mar 2026 13:52:35 +0000 - cold outreach, no prior relationship
+    / 2. Caroline ... / 3. Tiago ... Mastermind / 4. Brandon ... thread / 5. RightMessage
+    #1 ..."、"Done"。c 幀右下疊 CLAUDE.md 視窗（Identity Override 全文）並列對照。多幀不一致：zoom callout
+    與疊窗變化。'
+  cues:
+  - 473
+  - 474
+  - 475
+  - 476
+  - 477
+  - 478
+  - 479
+  text: and these are the instructions.Second, since Co-Work is connected to Gmailthrough
+    the connectors feature, capability num
+- shot_id: 162
+  start: 1081.831
+  end: 1084.375
+  duration: 2.544
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話、雙手比劃，暗色書架＋木條牆背景、大型麥克風。畫面無文字。
+  cues:
+  - 479
+  - 480
+  text: to draft contextually relevant replies.But this did not work so well at the
+    beginning.
+- shot_id: 163
+  start: 1084.375
+  end: 1097.847
+  duration: 13.472
+  type: screen_recording
+  note: 'Cowork 對話中 Jeff 給回饋的錄影（無 host PIP）。a 幀："6. [blurred] | Partnership idea for
+    your AI Productivity audience / Category: Archive immediately / Cold affiliate
+    outreach. 15-30% recurring commission to promote a meeting-turned-everything AI
+    tool. No prior relationship, no product testing, pure affiliate pitch. / Time
+    estimate: Under 2 minutes / Action: Archive. No reply needed."，下方使用者訊息 "So let
+    me give you feedback on how I want to approach morning inbox triage moving forward.
+    1. First and foremost, I actually don''t want you writing the drafts in my Gmail
+    inbox... 2. For this email specifically, you should never commit or even soft-commit
+    to something by default. It should be no..."、右欄 "Skills / session-audit"。b 幀加白色
+    callout 標籤 "My feedback for Cowork" 並黃框高亮該訊息（續文 "...For this email around ...
+    I want you to rewrite this so I can approve and you can codify it. That note,
+    I''m actually glad we have Zane''s email..."）。c 幀 callout 改為 "Cowork''s revised
+    output"，黃框高亮 "reply (rewrite): Hi Anna, that''s great to hear! Confirmed: Google''s
+    AI mode vs. Google Gemini vs. Google AI Studio video with the personalized content
+    offer, targeting May 19th publish date. On AEO: I don''t have anything planned
+    for that topic, so I wouldn''t want to commit to something I haven''t properly
+    thought through yet. If it ever does make it onto my content calendar, you''ll
+    be the first to know. Thanks!"。多幀不一致：callout 標籤切換。'
+  cues:
+  - 480
+  - 481
+  - 482
+  - 483
+  - 484
+  - 485
+  text: But this did not work so well at the beginning.For the first week or so, I
+    had to give feedback to Co-Workon how I would
+- shot_id: 164
+  start: 1097.847
+  end: 1124.874
+  duration: 27.027
+  type: screen_recording
+  note: 'host PIP 圓角小卡疊右側。a 幀為 RGB 色差 glitch 轉場特效（Cowork 畫面模糊殘影，文字不可讀）。b 幀：Finder
+    "Email HQ"（Email HQ Resources / CLAUDE.md 14 KB / MEMORY.md 10 KB）＋ CLAUDE.md
+    視窗＋ MEMORY.md 視窗並列，MEMORY.md 文字含 "### Email Signature — Jeff uses: \"Best Regards,\"
+    followed by \"Jeff Su\" and links to his newsletter and latest video. This appears
+    on every email. (added 2026-03-17)"、"### Thread Naming Convention — Jeff uses
+    \"Name x Name | Year Quarter Thread\" format..."、"### Platform & Tool Naming —
+    **Kit (not ConvertKit)**...rebranded from ConvertKit to Kit..."、"### Triage Output
+    Rules — **No Gmail drafts.** Present all draft reply text in the Cowork chat for
+    Jeff to review and copy-paste. Never create drafts directly in Gmail..."；背景另見
+    "Ops weekly pre meeting brief / Tomorrow at 12:01 PM"、"Audrey 1:1 pre meeting
+    brief / Tomorrow at 1:01 PM"。c 幀黃框放大 Email Signature 段落含 "<!-- Gmail signature
+    API rule consolidated into Email HQ/CLAUDE.md (Vertical Flow Structure, step 5)
+    as of 2026-03-23. -->"。多幀不一致：glitch 轉場→多窗→zoom 高亮。'
+  cues:
+  - 485
+  - 486
+  - 487
+  - 488
+  - 489
+  - 490
+  - 491
+  - 492
+  - 493
+  - 494
+  - 495
+  text: and now triages my Inbox the way I would.And this does require some setup.In
+    my actual Co-Work folder, I have an email H
+- shot_id: 165
+  start: 1124.874
+  end: 1134.364
+  duration: 9.49
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話收尾，手勢揮動後微笑，c 幀左側有紅色光暈轉場光斑掃過。畫面無文字。
+  cues:
+  - 495
+  - 496
+  - 497
+  - 498
+  text: and basically learning, so to speak.I know that looked intimidating, but don't
+    worry,I'm gonna dive much deeper in futur

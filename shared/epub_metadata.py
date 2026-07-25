@@ -196,3 +196,81 @@ def _parse_ol(ol: ET.Element) -> list[TocEntry]:
 
 def _local(tag: str) -> str:
     return tag.split("}")[-1] if "}" in tag else tag
+
+
+# ── Spine / TOC public helpers（自 agents.robin.promotion.source_map_builder 遷入）──────────
+# source_map_builder（promotion 領域，agents/robin/promotion/）與
+# literature_writer（shared/）都需要 spine 抽取 + TOC 標題映射。EPUB 結構
+# 解析的正宗家在這裡 — 領域模組不該各自持有一份 OPF 解析。
+
+
+def build_toc_title_map(toc: list[TocEntry]) -> dict[str, str]:
+    """Flatten a (possibly nested) TocEntry list into ``{href_stem: title}``.
+
+    href_stem is the file-name component of TOC ``href`` (TOC may carry
+    fragments like ``ch1.xhtml#sec1``; we want ``ch1.xhtml``).
+    """
+    out: dict[str, str] = {}
+
+    def walk(entries: list[TocEntry]) -> None:
+        for entry in entries:
+            href = entry.href.split("#", 1)[0]
+            stem = PurePosixPath(href).name
+            if stem and entry.title and stem not in out:
+                out[stem] = entry.title.strip()
+            walk(entry.children)
+
+    walk(toc)
+    return out
+
+
+def extract_spine_items(blob: bytes) -> list[tuple[str, str]]:
+    """Return ``[(href_in_zip, raw_xhtml_text), ...]`` in spine order.
+
+    Pure stdlib (``zipfile`` + ``xml.etree``). Returns the *raw* XHTML so
+    callers can lift ``<title>`` / ``<h1>`` cheaply; whitespace stripping is
+    a downstream concern. Failures propagate (``MalformedEPUBError`` for
+    OCF/OPF structure problems); callers wrap them per their own error model.
+    """
+    out: list[tuple[str, str]] = []
+    with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+        names = set(zf.namelist())
+        if "META-INF/container.xml" not in names:
+            raise MalformedEPUBError("Missing META-INF/container.xml")
+        opf_path = _find_opf_path(zf.read("META-INF/container.xml"))
+        opf_root = _parse_xml(zf.read(opf_path))
+        opf_dir = str(PurePosixPath(opf_path).parent)
+        if opf_dir == ".":
+            # Root-level OPF (PurePosixPath("content.opf").parent is ".").
+            # Truthy "." would prefix manifest hrefs with "./" which won't
+            # match zipfile.namelist() keys; normalize to "" so _resolve
+            # skips the prefix entirely.
+            opf_dir = ""
+
+        mf = _manifest(opf_root)
+        manifest_map: dict[str, str] = {}
+        if mf is not None:
+            for item in mf:
+                item_id = item.get("id")
+                href = item.get("href")
+                if not item_id or not href:
+                    continue
+                manifest_map[item_id] = _resolve(opf_dir, href)
+
+        spine = opf_root.find(f"{{{_NS_OPF}}}spine")
+        if spine is None:
+            return []
+        for itemref in spine:
+            idref = itemref.get("idref")
+            if not idref or idref not in manifest_map:
+                continue
+            href = manifest_map[idref]
+            if href not in names:
+                continue
+            try:
+                xhtml = zf.read(href).decode("utf-8", errors="replace")
+            except (OSError, UnicodeDecodeError):
+                # Skip unreadable spine items; structural errors still raise.
+                continue
+            out.append((href, xhtml))
+    return out

@@ -11,8 +11,22 @@
 <body class="sho robin-center">
 <div class="card">
   <div class="spinner"></div>
-  <h2>{{ label }}</h2>
-  <p id="status">連線中...</p>
+  <h2 id="phase-title">{{ label }}</h2>
+  <ol class="steps" id="steps" aria-label="Ingest 進度">
+    <li class="step" data-step="1"><span class="step-marker">1</span><span class="step-label">閱讀摘要</span></li>
+    <li class="step" data-step="2"><span class="step-marker">2</span><span class="step-label">分析概念</span></li>
+    <li class="step" data-step="3"><span class="step-marker">3</span><span class="step-label">寫入知識庫</span></li>
+    <li class="step" data-step="4"><span class="step-marker">4</span><span class="step-label">開卡建議</span></li>
+  </ol>
+  <div class="ingest-bar" id="ingest-bar" role="progressbar" aria-label="Ingest 進度百分比" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+    <span class="ingest-bar-fill" id="ingest-bar-fill"></span>
+  </div>
+  <div class="ingest-bar-meta">
+    <span class="ingest-pct" id="ingest-pct">0%</span>
+    <span class="ingest-est" id="ingest-est"></span>
+  </div>
+  <div class="activity-feed" id="activity" role="log" aria-live="polite" aria-label="Robin 工作記錄"></div>
+  <p id="status" class="conn-status">連線中...</p>
   <div id="error" class="error-msg" style="display:none"></div>
   <a href="/" class="back-link" style="display:none" id="back">← 返回</a>
   <form method="post" action="/cancel" id="cancel-form" style="margin:0">
@@ -23,22 +37,158 @@
 const sessionId = "{{ session_id }}";
 const evtSource = new EventSource("/robin/events/" + sessionId);
 
-evtSource.addEventListener("status", function(e) {
-  const data = JSON.parse(e.data);
-  document.getElementById("status").textContent = data.msg;
+// Phase titles mirror the four SSE `phase` steps the autonomous flow emits.
+const PHASE_TITLES = {
+  1: "Robin 正在閱讀並摘要",
+  2: "Robin 正在分析概念與實體",
+  3: "Robin 正在寫入知識庫",
+  4: "Robin 正在整理開卡建議",
+};
+
+function setPhase(n) {
+  document.querySelectorAll("#steps .step").forEach(function (li) {
+    const s = Number(li.dataset.step);
+    const marker = li.querySelector(".step-marker");
+    li.classList.remove("is-active", "is-done");
+    if (s < n) { li.classList.add("is-done"); marker.textContent = "✓"; }
+    else if (s === n) { li.classList.add("is-active"); marker.textContent = String(s); }
+    else { marker.textContent = String(s); }
+  });
+  const title = document.getElementById("phase-title");
+  if (PHASE_TITLES[n]) title.textContent = PHASE_TITLES[n];
+}
+
+// ── Progress bar ──────────────────────────────────────────────────────────
+// Discrete signals (4 phase events + per-chunk progress in phase 1) anchor a
+// smoothly-eased bar so it "slowly increases" between events instead of jumping.
+// Each phase owns a [start,end] band; phase events floor the target up, chunk
+// progress sets the real fraction inside phase 1, and a slow creep keeps it
+// inching forward when nothing arrives. Never decreases; caps below 100 until
+// `done`. prefers-reduced-motion → no rAF/creep, just instant jumps on events.
+const PHASE_BAND = { 1: [2, 55], 2: [55, 75], 3: [75, 90], 4: [90, 98] };
+const reduceMotion = window.matchMedia
+  && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const barEl = document.getElementById("ingest-bar");
+const fillEl = document.getElementById("ingest-bar-fill");
+const pctEl = document.getElementById("ingest-pct");
+const estEl = document.getElementById("ingest-est");
+let curPhase = 1;
+let target = 2;
+let display = 0;
+let rafId = null;
+let creepTimer = null;
+
+function paint(p) {
+  const v = Math.max(0, Math.min(100, p));
+  fillEl.style.width = v.toFixed(1) + "%";
+  pctEl.textContent = Math.round(v) + "%";
+  barEl.setAttribute("aria-valuenow", String(Math.round(v)));
+}
+function bumpTarget(t) {
+  if (t > target) target = t;
+  if (reduceMotion) { display = target; paint(display); }
+}
+function frame() {
+  display += (target - display) * 0.05;
+  if (Math.abs(target - display) < 0.1) display = target;
+  paint(display);
+  rafId = window.requestAnimationFrame(frame);
+}
+function stopBar() {
+  if (rafId !== null) { window.cancelAnimationFrame(rafId); rafId = null; }
+  if (creepTimer !== null) { window.clearInterval(creepTimer); creepTimer = null; }
+}
+if (!reduceMotion) {
+  rafId = window.requestAnimationFrame(frame);
+  creepTimer = window.setInterval(function () {
+    const band = PHASE_BAND[curPhase];
+    if (!band) return;
+    const ceil = band[1] - 1;
+    if (target < ceil) target += (ceil - target) * 0.04;
+  }, 700);
+} else {
+  paint(0);
+}
+
+// ── Activity feed ───────────────────────────────────────────────────────────
+// Robin 的即時工作記錄：每個 status 事件 append 一行（與上一行相同則略過，吞掉重複的
+// heartbeat），最新一行加亮、自動捲到底。這就是讓等待讀起來像「真有一個 agent 在做事」。
+const feedEl = document.getElementById("activity");
+function pushActivity(msg) {
+  if (!msg || !feedEl) return;
+  const last = feedEl.lastElementChild;
+  if (last && last.textContent === msg) return;  // swallow consecutive dupes
+  if (last) last.classList.remove("is-latest");
+  const line = document.createElement("div");
+  line.className = "act-line is-latest";
+  line.textContent = msg;
+  feedEl.appendChild(line);
+  feedEl.scrollTop = feedEl.scrollHeight;
+}
+
+evtSource.addEventListener("phase", function (e) {
+  let step;
+  try { step = JSON.parse(e.data).step; } catch (err) { return; }
+  setPhase(step);
+  curPhase = step;
+  const band = PHASE_BAND[step];
+  if (band) bumpTarget(band[0]);
 });
 
-evtSource.addEventListener("done", function(e) {
+evtSource.addEventListener("progress", function (e) {
+  // Per-chunk map-reduce progress during phase 1 → real fraction in its band.
+  let d;
+  try { d = JSON.parse(e.data); } catch (err) { return; }
+  if (!d.total) return;
+  const band = PHASE_BAND[d.step] || PHASE_BAND[1];
+  const frac = Math.max(0, Math.min(1, d.done / d.total));
+  bumpTarget(band[0] + frac * (band[1] - band[0]));
+});
+
+evtSource.addEventListener("estimate", function (e) {
+  let d;
+  try { d = JSON.parse(e.data); } catch (err) { return; }
+  if (d.label) estEl.textContent = "預計 " + d.label;
+});
+
+evtSource.addEventListener("status", function (e) {
+  let data;
+  try { data = JSON.parse(e.data); } catch (err) { return; }
+  pushActivity(data.msg);
+  // A status arriving ⇒ the connection is live; clear any stale 連線中/中斷 notice.
+  const conn = document.getElementById("status");
+  if (conn) conn.textContent = "";
+});
+
+evtSource.addEventListener("done", function (e) {
   evtSource.close();
+  stopBar();
+  paint(100);
+  // Light every step before navigating so the card reads "complete" if the
+  // redirect target is slow to paint.
+  document.querySelectorAll("#steps .step").forEach(function (li) {
+    li.classList.remove("is-active");
+    li.classList.add("is-done");
+    li.querySelector(".step-marker").textContent = "✓";
+  });
   document.getElementById("cancel-form").style.display = "none";
+  pushActivity("✓ 完成，前往開卡建議…");
   const data = JSON.parse(e.data);
   window.location.href = data.redirect;
 });
 
-evtSource.addEventListener("error", function(e) {
+evtSource.addEventListener("error", function (e) {
+  // A SERVER-SENT error event carries data (our sse("error", {msg})). A bare
+  // transport error — proxy idle-timeout on a long ingest, or a network blip —
+  // fires this event with NO data: don't treat it as fatal. Let onerror show the
+  // reconnect notice and EventSource auto-reconnect (the flow resumes from the
+  // step persisted in the session). Without this guard a 100s proxy cut during a
+  // multi-minute book summary looked like a hard failure.
+  if (!e.data) return;
   evtSource.close();
+  stopBar();
   let msg = "發生錯誤，請重試";
-  try { msg = JSON.parse(e.data).msg; } catch(err) {}
+  try { msg = JSON.parse(e.data).msg; } catch (err) { /* keep fallback */ }
   document.getElementById("error").textContent = msg;
   document.getElementById("error").style.display = "block";
   document.getElementById("back").style.display = "inline-block";
@@ -46,7 +196,7 @@ evtSource.addEventListener("error", function(e) {
   document.querySelector(".spinner").style.display = "none";
 });
 
-evtSource.onerror = function() {
+evtSource.onerror = function () {
   document.getElementById("status").textContent = "連線中斷，等待重連...";
 };
 </script>

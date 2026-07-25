@@ -5,6 +5,7 @@ import datetime
 import json
 import os
 import platform
+import queue
 import re
 import shutil
 import subprocess
@@ -23,7 +24,7 @@ from agents.robin.agent import (
     SOURCE_TYPE_TO_RAW_DIR,
 )
 from agents.robin.image_fetcher import fetch_images
-from agents.robin.ingest import IngestPipeline
+from agents.robin.ingest import IngestPipeline, estimate_ingest_seconds
 from agents.robin.kb_search import search_kb
 from shared.annotation_store import (
     AnnotationSet,
@@ -32,9 +33,11 @@ from shared.annotation_store import (
     get_annotation_store,
     upgrade_to_v3,
 )
+from shared.book_raw import extract_book_text, prepare_book_raw
 from shared.book_storage import list_books
 from shared.config import get_agent_config, get_vault_path
 from shared.discard_service import DiscardService
+from shared.epub_text import EPUBTextError
 from shared.llm_context import set_current_agent
 from shared.log import get_logger
 from shared.reading_source_lister import RegistryReadingSourceLister
@@ -101,6 +104,8 @@ def _shosho_asset_version() -> str:
         "robin.css",
         "av-reader.css",
         "av-reader.js",
+        "ingest-confirm.css",
+        "ingest-confirm.js",
         "theme.js",
     ):
         path = static_dir / css
@@ -129,6 +134,10 @@ def _send_to_recycle_bin(path: Path) -> None:
 
 sessions: dict[str, dict] = {}
 SESSION_TTL = 7200
+
+# 長 ingest 步驟（書本 map-reduce 摘要可達數分鐘）期間每隔這麼久送一個 SSE
+# heartbeat，讓反向代理（Cloudflare / nginx ~100s idle）不切線。<100s 即可。
+_SSE_HEARTBEAT_SECONDS = 15
 
 
 def _new_session(**kwargs) -> str:
@@ -300,15 +309,17 @@ def _render_inbox(request: Request) -> HTMLResponse:
 
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request, nakama_auth: str | None = Cookie(None)):
-    # Per-machine landing override: ROBIN_INDEX_REDIRECT=/bridge makes / land
-    # on Bridge dashboard instead of Robin Inbox (local dev where Bridge is
-    # the canonical control plane). Default unset preserves Robin-as-home.
-    override = os.environ.get("ROBIN_INDEX_REDIRECT")
-    if override:
-        return RedirectResponse(override, status_code=302)
-    if not check_auth(nakama_auth):
-        return RedirectResponse("/login?next=/", status_code=302)
-    return _render_inbox(request)
+    # Home = the weekly dashboard (修修's daily landing). Robin's inbox keeps its
+    # own stable entry at /robin (chassis-nav), so landing here on Weekly orphans
+    # nothing. This mirrors the VPS-mode redirect in app.py and is robust whether
+    # or not DISABLE_ROBIN is set — previously, with Robin running (VPS or local),
+    # this handler won the `/` route and dumped users on the Robin inbox instead.
+    # ROBIN_INDEX_REDIRECT overrides the target (e.g. =/robin to restore
+    # Robin-as-home on a machine where that's wanted).
+    # `or` (not dict-default): an env var set to "" must still fall back to
+    # Weekly, not redirect to an empty Location.
+    target = os.environ.get("ROBIN_INDEX_REDIRECT") or "/bridge/weekly"
+    return RedirectResponse(target, status_code=302)
 
 
 @robin_router.get("", response_class=HTMLResponse)
@@ -1004,9 +1015,7 @@ async def start(
         content_nature=content_nature,
         summary_body="",
         summary_path="",
-        user_guidance="",
         plan={"concepts": [], "entities": []},
-        result={"created": [], "updated": []},
         error="",
     )
 
@@ -1034,7 +1043,8 @@ async def start_video(
     逐字稿已由 watchlist confirm 落在 KB/Raw/Videos/{id}.vtt（canonical，ADR-046），
     不像文章從 Inbox 複製進來。故這裡不複製、不刪除原檔：raw_path 直接指向逐字稿，
     file_path 留空（executing 階段不回收它），keep_raw=True（cancel 階段也不回收）。
-    後續走與文章相同的 /processing → SSE → /review-plan → /execute HITL 流程。
+    後續走與文章相同的 /processing → SSE 自動流程（摘要→概念→寫入→開卡建議），
+    無中途 HITL gate（ADR-043）。
     """
     if not check_auth(nakama_auth):
         return RedirectResponse("/login", status_code=302)
@@ -1061,9 +1071,55 @@ async def start_video(
         annotation_slug=f"youtube_{video_id}",
         summary_body="",
         summary_path="",
-        user_guidance="",
         plan={"concepts": [], "entities": []},
-        result={"created": [], "updated": []},
+        error="",
+    )
+
+    response = RedirectResponse("/processing", status_code=302)
+    response.set_cookie("robin_session", sid, httponly=True)
+    if nakama_auth:
+        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+    return response
+
+
+@router.post("/start-book")
+async def start_book(
+    book_id: str = Form(...),
+    content_nature: str = Form("popular_science"),
+    nakama_auth: str | None = Cookie(None),
+):
+    """書本 ingest 入口（Centaur route B，同步）。
+
+    EPUB → 攤平文字 → KB/Raw/Books/{slug}.md（``prepare_book_raw``），再走與文章/影片
+    相同的 /processing → SSE 自動流程（摘要→概念→寫入→開卡建議）。3–5 分鐘 + 進度條，
+    取代舊的 ingest 佇列 + cron consumer（修修回饋：不想為書本多一個排程）。
+
+    annotation_slug=book_id：executing 完成後從整本劃線提案永久卡
+    （``collect_source_items(book_id)``）。file_path 留空、keep_raw=True：KB/Raw/Books
+    是衍生檔（可由 EPUB 重生），cancel / executing 都不回收。
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login", status_code=302)
+
+    try:
+        raw_path = await asyncio.to_thread(prepare_book_raw, book_id)
+    except LookupError:
+        raise HTTPException(404, detail=f"找不到書本：{book_id}") from None
+    except EPUBTextError as exc:
+        raise HTTPException(422, detail=f"這本書無法抽取文字：{exc}") from exc
+
+    sid = _new_session(
+        step="summarizing",
+        file_name=Path(raw_path).name,
+        file_path="",  # 無 Inbox 來源檔 → executing 不回收原檔
+        raw_path=str(raw_path),
+        keep_raw=True,  # KB/Raw/Books 衍生檔，cancel 不回收
+        source_type="book",
+        content_nature=content_nature,
+        annotation_slug=book_id,  # 整本劃線提案用（collect_source_items）
+        summary_body="",
+        summary_path="",
+        plan={"concepts": [], "entities": []},
         error="",
     )
 
@@ -1127,6 +1183,115 @@ async def processing(
     )
 
 
+def _read_ingest_source(raw_path: Path) -> tuple[str, str, str]:
+    """Resolve the ``(title, author, body)`` the summarizer will actually process for
+    a raw file. Mirrors the summarizing-step resolution (``.md`` → strip frontmatter,
+    ``.vtt`` → prose) so the pre-ingest time estimate sees the exact same text the
+    ingest will. One helper → estimate and ingest never drift."""
+    content = read_text(raw_path)
+    title = raw_path.stem
+    author = ""
+    if raw_path.suffix == ".md":
+        fm, body = extract_frontmatter(content)
+        title = fm.get("title", title)
+        author = fm.get("author", "")
+        content = body if body else content
+    elif raw_path.suffix.lower() == ".vtt":
+        content = webvtt_to_prose(content) or content
+    return title, author, content
+
+
+@robin_router.get("/estimate")
+async def estimate_ingest(
+    source_type: str,
+    source_id: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """按 Ingest 前的時長預估（餵確認框）。依 ``source_type`` 解析「摘要實際會吃到的文字」
+    字數 → 段數 → 時間範圍。唯讀:書本走 ``extract_book_text``(不寫 KB/Raw,使用者還沒
+    確認)。回傳 JSON 給 ingest-confirm.js。
+    """
+    if not check_auth(nakama_auth):
+        raise HTTPException(403)
+
+    try:
+        if source_type == "book":
+            _title, _author, text = await asyncio.to_thread(extract_book_text, source_id)
+        elif source_type == "video":
+            videos_dir = get_vault_path() / "KB" / "Raw" / "Videos"
+            raw_md = videos_dir / f"{source_id}.md"
+            raw = raw_md if raw_md.exists() else videos_dir / f"{source_id}.vtt"
+            if not raw.exists():
+                raise HTTPException(404, detail=f"找不到影片逐字稿：{source_id}")
+            _title, _author, text = await asyncio.to_thread(_read_ingest_source, raw)
+        else:  # article / paper：Inbox 檔
+            raw = safe_resolve(_get_inbox(), source_id)
+            if not raw.exists():
+                raise HTTPException(404, detail=f"找不到檔案：{source_id}")
+            _title, _author, text = await asyncio.to_thread(_read_ingest_source, raw)
+    except LookupError:
+        raise HTTPException(404, detail=f"找不到書本：{source_id}") from None
+    except EPUBTextError as exc:
+        raise HTTPException(422, detail=f"這本書無法抽取文字：{exc}") from exc
+
+    char_count = len(text)
+    n_chunks = 1
+    if char_count > pipeline.LARGE_DOC_THRESHOLD:
+        from agents.robin.chunker import chunk_document
+
+        n_chunks = len(await asyncio.to_thread(chunk_document, text))
+
+    est = estimate_ingest_seconds(char_count, n_chunks=n_chunks)
+    size = f"{char_count / 10000:.1f} 萬字" if char_count >= 10000 else f"{char_count} 字"
+    detail = f"{size}，分 {n_chunks} 段" if est["is_large"] else size
+    return {
+        "ok": True,
+        "char_count": char_count,
+        "n_chunks": est["n_chunks"],
+        "is_large": est["is_large"],
+        "low_seconds": est["low_seconds"],
+        "high_seconds": est["high_seconds"],
+        "time_label": est["time_label"],
+        "detail": detail,
+    }
+
+
+async def _propose_source_cards(annotation_slug: str) -> bool:
+    """Ingest 完成「當下」：從這個來源的劃線生永久卡候選 → 寫進收件匣（KB Review 顯示）。
+
+    取代舊「隔天每日流才提案書本」的時間差（修修回饋 item 6）。三來源共用：書
+    slug=book_id、影片 slug=youtube_{id}、文章通常無 annotation 檔 → 回 False（KB
+    Review 退回 adhoc 開卡）。Best-effort——提案失敗不沉已完成的 ingest；回傳是否有候選。
+    """
+    if not annotation_slug:
+        return False
+    try:
+        from agents.robin.daily_review import (  # noqa: PLC0415
+            _local_today,
+            _now,
+            _read_index_text,
+            build_candidates,
+            collect_source_items,
+        )
+        from shared import candidate_inbox  # noqa: PLC0415
+
+        vault = get_vault_path()
+        items = await asyncio.to_thread(collect_source_items, vault, slug=annotation_slug)
+        if not items:
+            return False
+        index_text = await asyncio.to_thread(_read_index_text, vault)
+        cards, _warnings = await asyncio.to_thread(build_candidates, items, index_text)
+        today_iso = _local_today(_now()).isoformat()
+        produced = False
+        for card in cards:
+            candidate_inbox.upsert_candidate(card, today=today_iso)
+            produced = True
+        return produced
+    except Exception:  # noqa: BLE001 — 提案 best-effort，不沉已完成的 ingest
+        logger.exception("ingest 完成提案失敗：%s", annotation_slug)
+        return False
+
+
 @robin_router.get("/events/{session_id}")
 async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
@@ -1137,173 +1302,272 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
         raise HTTPException(404)
 
     async def generate():
+        # 自動化 ingest（ADR-043 Stage-3 脊椎）：摘要 → 概念 → 寫入 → 開卡建議，一條
+        # 連線跑完不停。舊「審摘要 / 逐一核准概念」兩個 HITL gate 已移除——概念是 Robin
+        # 的機器腦（自動寫候選），人的介入點移到 KB Review 親手寫永久卡。step 仍持久化於
+        # session：連線中斷重連時從正確階段續跑（每階段先 emit phase 重新同步進度條）。
         try:
-            step = sess["step"]
+            while True:
+                step = sess["step"]
 
-            if step == "cancelled":
-                yield sse("done", {"redirect": "/robin"})
-                return
+                if step == "cancelled":
+                    yield sse("done", {"redirect": "/robin"})
+                    return
 
-            if step == "summarizing":
-                yield sse("status", {"msg": "Robin 正在閱讀文件..."})
+                if step == "summarizing":
+                    yield sse("phase", {"step": 1, "total": 4})
+                    yield sse("status", {"msg": "Robin 正在閱讀文件..."})
 
-                raw = Path(sess["raw_path"])
-                content = read_text(raw)
-                title = raw.stem
-                author = ""
-                if Path(sess["raw_path"]).suffix == ".md":
-                    fm, body = extract_frontmatter(content)
-                    title = fm.get("title", title)
-                    author = fm.get("author", "")
-                    content = body if body else content
-                elif raw.suffix.lower() == ".vtt":
-                    # 影片逐字稿：WebVTT → 段落化正文（與 CLI ingest 同一條洗法），
-                    # 否則 LLM 摘要會吃到滿屏時間碼、is_large 也會被時間碼灌爆。
-                    content = webvtt_to_prose(content) or content
+                    raw = Path(sess["raw_path"])
+                    title, author, content = _read_ingest_source(raw)
+                    sess["_title"] = title
+                    sess["_author"] = author
+                    sess["_content"] = content
 
-                sess["_title"] = title
-                sess["_author"] = author
-                sess["_content"] = content
+                    is_large = len(content) > pipeline.LARGE_DOC_THRESHOLD
+                    n_chunks = 1
+                    if is_large:
+                        from agents.robin.chunker import chunk_document
 
-                is_large = len(content) > pipeline.LARGE_DOC_THRESHOLD
-                if is_large:
-                    from agents.robin.chunker import chunk_document
+                        n_chunks = len(chunk_document(content))
+                        yield sse(
+                            "status",
+                            {
+                                "msg": f"偵測到大文件（{len(content):,} 字），"
+                                f"將分 {n_chunks} 段 Map-Reduce 摘要，請耐心等候..."
+                            },
+                        )
+                    else:
+                        yield sse("status", {"msg": "正在呼叫 Claude 產出摘要（約 10-30 秒）..."})
 
-                    n_chunks = len(chunk_document(content))
+                    # 開工就把預估時長推給進度頁（與按 Ingest 前確認框同一個 helper，數字一致），
+                    # 進度條據此抓節奏、底下顯示「預計 約 N 分鐘」。is_server_available() 是同步
+                    # 網路探測 → to_thread 不擋事件迴圈。
+                    est = await asyncio.to_thread(estimate_ingest_seconds, len(content), n_chunks)
+                    yield sse(
+                        "estimate",
+                        {
+                            "low": est["low_seconds"],
+                            "high": est["high_seconds"],
+                            "n_chunks": est["n_chunks"],
+                            "is_large": est["is_large"],
+                            "label": est["time_label"],
+                        },
+                    )
+
+                    # 大文件 map-reduce 摘要可達數分鐘（13 萬字的書 ≈ 7 段、~5 分鐘）。這期間若
+                    # SSE 靜默 >~100s，反向代理（Cloudflare / nginx idle timeout）會切線、前端
+                    # 誤判 fatal。摘要丟背景 task：progress_cb 把「第 i/N 段」經 thread-safe
+                    # queue 即時推回 → progress 事件餵進度條；無進度時每 _SSE_HEARTBEAT_SECONDS
+                    # 送 status heartbeat 保活。task 完成才取結果（例外照樣往上拋 → except）。
+                    progress_q: queue.Queue = queue.Queue()
+                    summary_task = asyncio.ensure_future(
+                        asyncio.to_thread(
+                            pipeline._generate_summary,
+                            content=content,
+                            title=title,
+                            author=author,
+                            source_type=sess["source_type"],
+                            content_nature=sess.get("content_nature", ""),
+                            progress_cb=lambda done, total, heading="": progress_q.put(
+                                (done, total, heading)
+                            ),
+                        )
+                    )
+                    # 短輪詢（≤3s）讓「第 i/N 段」進度即時送出；heartbeat 仍以
+                    # _SSE_HEARTBEAT_SECONDS（依經過時間）為準，兩者解耦。
+                    poll_timeout = min(3.0, _SSE_HEARTBEAT_SECONDS)
+                    last_emit = time.monotonic()
+                    while not summary_task.done():
+                        done_set, _ = await asyncio.wait({summary_task}, timeout=poll_timeout)
+                        drained = False
+                        while True:
+                            try:
+                                done_n, total_n, heading_n = progress_q.get_nowait()
+                            except queue.Empty:
+                                break
+                            drained = True
+                            yield sse("progress", {"step": 1, "done": done_n, "total": total_n})
+                            label = f"讀完第 {done_n}/{total_n} 段"
+                            if heading_n:
+                                label += f"：{heading_n}"
+                            yield sse("status", {"msg": label})
+                        now = time.monotonic()
+                        if drained:
+                            last_emit = now
+                        elif not done_set and now - last_emit >= _SSE_HEARTBEAT_SECONDS:
+                            yield sse(
+                                "status",
+                                {"msg": "Robin 仍在閱讀（大文件分段摘要中，請稍候）..."},
+                            )
+                            last_emit = now
+                    summary = summary_task.result()
+                    # 收尾把最後一段（done == total）的進度也補送出去。
+                    while True:
+                        try:
+                            done_n, total_n, heading_n = progress_q.get_nowait()
+                        except queue.Empty:
+                            break
+                        yield sse("progress", {"step": 1, "done": done_n, "total": total_n})
+                        label = f"讀完第 {done_n}/{total_n} 段"
+                        if heading_n:
+                            label += f"：{heading_n}"
+                        yield sse("status", {"msg": label})
+                    sess["summary_body"] = summary
+
+                    from datetime import date
+
+                    from shared.obsidian_writer import write_page
+
+                    slug = slugify(title)
+                    summary_path = f"KB/Wiki/Sources/{slug}.md"
+                    try:
+                        raw_relative = str(Path(sess["raw_path"]).relative_to(get_vault_path()))
+                    except ValueError:
+                        raw_relative = str(Path(sess["raw_path"]))
+
+                    await asyncio.to_thread(
+                        write_page,
+                        summary_path,
+                        {
+                            "title": title,
+                            "type": "source",
+                            "status": "draft",
+                            "created": str(date.today()),
+                            "updated": str(date.today()),
+                            "source_refs": [raw_relative],
+                            "source_type": sess["source_type"],
+                            "content_nature": sess.get("content_nature", "popular_science"),
+                            # Source digest 是 AI 的綜整摘要，author 標 agent_robin
+                            # （provenance 分離，Centaur 規格 §7 紅線 3）。原文作者另記在
+                            # original_author，對齊 CLI pipeline agents/robin/ingest.py。
+                            "author": "agent_robin",
+                            "original_author": author,
+                            "confidence": "medium",
+                            "tags": [],
+                            "related_pages": [],
+                        },
+                        summary,
+                    )
+                    sess["summary_path"] = summary_path
+                    sess["step"] = "planning"
+                    continue
+
+                if step == "planning":
+                    yield sse("phase", {"step": 2, "total": 4})
                     yield sse(
                         "status",
                         {
-                            "msg": f"偵測到大文件（{len(content):,} 字），"
-                            f"將分 {n_chunks} 段 Map-Reduce 摘要，請耐心等候..."
+                            "msg": (
+                                "Robin 正在分析概念與實體"
+                                "（通常 20–60 秒，視知識庫規模與雲端負載）..."
+                            )
                         },
                     )
-                else:
-                    yield sse("status", {"msg": "正在呼叫 Claude 產出摘要（約 10-30 秒）..."})
 
-                summary = await asyncio.to_thread(
-                    pipeline._generate_summary,
-                    content=content,
-                    title=title,
-                    author=author,
-                    source_type=sess["source_type"],
-                    content_nature=sess.get("content_nature", ""),
-                )
-                sess["summary_body"] = summary
+                    plan = await asyncio.to_thread(
+                        pipeline._get_concept_plan,
+                        sess["summary_body"],
+                        sess["summary_path"],
+                        "",  # user_guidance：自動流程不再要求人類事先引導（ADR-043）
+                        content_nature=sess.get("content_nature", ""),
+                    )
+                    sess["plan"] = plan or {"concepts": [], "entities": []}
+                    # 工作記錄：把抽到的候選概念/實體用人話播報，讓使用者看到 Robin「想到什麼」。
+                    _cs = sess["plan"].get("concepts", [])
+                    _es = sess["plan"].get("entities", [])
+                    if _cs or _es:
+                        _parts = []
+                        if _cs:
+                            _names = "、".join(
+                                (c.get("title") or c.get("slug") or "?") for c in _cs[:6]
+                            )
+                            _parts.append(f"{len(_cs)} 個概念：{_names}")
+                        if _es:
+                            _enames = "、".join((e.get("title") or "?") for e in _es[:4])
+                            _parts.append(f"{len(_es)} 個實體：{_enames}")
+                        yield sse("status", {"msg": "Robin 抽出候選 " + "；".join(_parts)})
+                    else:
+                        yield sse("status", {"msg": "這篇沒有夠強的概念候選，純摘要入庫"})
+                    sess["step"] = "executing"
+                    continue
 
-                from datetime import date
+                if step == "executing":
+                    yield sse("phase", {"step": 3, "total": 4})
+                    concepts = sess["plan"].get("concepts", [])
+                    entities = sess["plan"].get("entities", [])
+                    writes = sum(
+                        1
+                        for c in concepts
+                        if c.get("action") in ("create", "update_merge", "update_conflict")
+                    ) + len(entities)
+                    noop_count = sum(1 for c in concepts if c.get("action") == "noop")
+                    msg = f"Robin 正在寫入 {writes} 個 Wiki 頁面"
+                    if noop_count:
+                        msg += f"，並補充 {noop_count} 個既有頁面的引用"
+                    yield sse("status", {"msg": msg + "..."})
 
-                from shared.obsidian_writer import write_page
+                    # 工作記錄：逐頁播報要寫什麼（pre-announce，_execute_plan 隨後實際寫）。
+                    _act_label = {
+                        "create": "建立",
+                        "update_merge": "合併既有",
+                        "update_conflict": "標記衝突",
+                        "noop": "補充引用",
+                    }
+                    for c in concepts:
+                        _name = c.get("title") or c.get("slug") or "?"
+                        _act = c.get("action", "create")
+                        yield sse(
+                            "status", {"msg": f"寫入概念：{_name}（{_act_label.get(_act, _act)}）"}
+                        )
+                    for e in entities:
+                        yield sse("status", {"msg": f"寫入實體：{e.get('title') or '?'}"})
 
-                slug = slugify(title)
-                summary_path = f"KB/Wiki/Sources/{slug}.md"
-                try:
-                    raw_relative = str(Path(sess["raw_path"]).relative_to(get_vault_path()))
-                except ValueError:
-                    raw_relative = str(Path(sess["raw_path"]))
+                    await asyncio.to_thread(
+                        pipeline._execute_plan, sess["plan"], sess["summary_path"]
+                    )
 
-                await asyncio.to_thread(
-                    write_page,
-                    summary_path,
-                    {
-                        "title": title,
-                        "type": "source",
-                        "status": "draft",
-                        "created": str(date.today()),
-                        "updated": str(date.today()),
-                        "source_refs": [raw_relative],
-                        "source_type": sess["source_type"],
-                        "content_nature": sess.get("content_nature", "popular_science"),
-                        # Source digest 是 AI 的綜整摘要，author 標 agent_robin
-                        # （provenance 分離，Centaur 規格 §7 紅線 3）。原文作者另記在
-                        # original_author，對齊 CLI pipeline agents/robin/ingest.py。
-                        "author": "agent_robin",
-                        "original_author": author,
-                        "confidence": "medium",
-                        "tags": [],
-                        "related_pages": [],
-                    },
-                    summary,
-                )
-                sess["summary_path"] = summary_path
-                sess["step"] = "awaiting_guidance"
-                yield sse("done", {"redirect": "/review-summary"})
+                    title = sess.get("_title", Path(sess["raw_path"]).stem)
+                    slug = slugify(title)
+                    await asyncio.to_thread(
+                        pipeline._update_index, title, slug, sess["source_type"]
+                    )
+                    # Source 之外，這次寫出的 Concepts / Entities 也同步進 index.md
+                    # （否則 index 兩區永遠 *(empty)*）。
+                    await asyncio.to_thread(pipeline._index_plan_pages, sess["plan"])
 
-            elif step == "planning":
-                yield sse("status", {"msg": "Robin 正在分析需要建立哪些概念頁面..."})
-                yield sse("status", {"msg": "正在呼叫 Claude（約 10-20 秒）..."})
+                    # file_path 為空 = 無 Inbox 來源檔（影片 ingest）：raw_path 指向
+                    # canonical 逐字稿，不可回收。只有文章 / Inbox 來源才清理原檔。
+                    file_path = sess.get("file_path", "")
+                    if file_path:
+                        mark_file_processed(Path(file_path), "robin")
+                        _send_to_recycle_bin(Path(file_path))
 
-                plan = await asyncio.to_thread(
-                    pipeline._get_concept_plan,
-                    sess["summary_body"],
-                    sess["summary_path"],
-                    sess["user_guidance"],
-                    content_nature=sess.get("content_nature", ""),
-                )
-                sess["plan"] = plan or {"concepts": [], "entities": []}
-                sess["step"] = "awaiting_approval"
-                yield sse("done", {"redirect": "/review-plan"})
+                    # 整本/整篇看完 → 當下從這個來源的劃線提案永久卡（取代隔天每日流的
+                    # 書本提案，修修回饋 item 6：ingest 完成「當下」就看到開卡建議）。
+                    # 文章從 Inbox 丟進來、沒劃線 → 無候選 → 退回 adhoc 開卡。
+                    yield sse("phase", {"step": 4, "total": 4})
+                    yield sse("status", {"msg": "正在整理開永久卡的建議..."})
+                    produced = await _propose_source_cards(sess.get("annotation_slug", ""))
 
-            elif step == "executing":
-                concepts = sess["plan"].get("concepts", [])
-                entities = sess["plan"].get("entities", [])
-                writes = sum(
-                    1
-                    for c in concepts
-                    if c.get("action") in ("create", "update_merge", "update_conflict")
-                ) + len(entities)
-                noop_count = sum(1 for c in concepts if c.get("action") == "noop")
-                msg = f"Robin 正在寫入 {writes} 個 Wiki 頁面"
-                if noop_count:
-                    msg += f"，並補充 {noop_count} 個既有頁面的引用"
-                yield sse("status", {"msg": msg + "..."})
+                    sess["source_slug"] = slug
+                    if produced:
+                        redirect = "/kb/review"
+                    else:
+                        from urllib.parse import quote  # noqa: PLC0415
 
-                await asyncio.to_thread(pipeline._execute_plan, sess["plan"], sess["summary_path"])
+                        redirect = f"/kb/review?open=adhoc&slug={quote(slug)}"
+                    sess["final_redirect"] = redirect
+                    sess["step"] = "done"
+                    yield sse("done", {"redirect": redirect})
+                    return
 
-                title = sess.get("_title", Path(sess["raw_path"]).stem)
-                slug = slugify(title)
-                await asyncio.to_thread(pipeline._update_index, title, slug, sess["source_type"])
+                if step == "done":
+                    yield sse("done", {"redirect": sess.get("final_redirect", "/kb/review")})
+                    return
 
-                # file_path 為空 = 無 Inbox 來源檔（影片 ingest）：raw_path 指向
-                # canonical 逐字稿，不可回收。只有文章 / Inbox 來源才清理原檔。
-                file_path = sess.get("file_path", "")
-                if file_path:
-                    mark_file_processed(Path(file_path), "robin")
-                    _send_to_recycle_bin(Path(file_path))
-
-                concept_create = [
-                    c.get("title") or c.get("slug") or "?"
-                    for c in concepts
-                    if c.get("action") == "create"
-                ]
-                concept_update = [
-                    c.get("title") or c.get("slug") or "?"
-                    for c in concepts
-                    if c.get("action") in ("update_merge", "update_conflict")
-                ]
-                concept_noop = [
-                    c.get("title") or c.get("slug") or "?"
-                    for c in concepts
-                    if c.get("action") == "noop"
-                ]
-                entity_create = [e.get("title", "?") for e in entities]
-                sess["result"] = {
-                    "created": concept_create + entity_create,
-                    "updated": concept_update,
-                    "referenced": concept_noop,
-                }
-                sess["step"] = "done"
-                yield sse("done", {"redirect": "/done"})
-
-            elif step in ("awaiting_guidance", "awaiting_approval", "done"):
-                redirect_map = {
-                    "awaiting_guidance": "/review-summary",
-                    "awaiting_approval": "/review-plan",
-                    "done": "/done",
-                }
-                yield sse("done", {"redirect": redirect_map[step]})
-
-            else:
                 yield sse("error", {"msg": f"未知狀態：{step}"})
+                return
 
         except Exception as e:
             logger.error(f"SSE error: {e}", exc_info=True)
@@ -1311,133 +1575,15 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
             sess["error"] = str(e)
             yield sse("error", {"msg": str(e)})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
-
-
-@router.get("/review-summary", response_class=HTMLResponse)
-async def review_summary(
-    request: Request,
-    robin_session: str | None = Cookie(None),
-    nakama_auth: str | None = Cookie(None),
-):
-    if not check_auth(nakama_auth):
-        return RedirectResponse("/login", status_code=302)
-    sess = _get_session(robin_session)
-    if not sess or sess["step"] != "awaiting_guidance":
-        return RedirectResponse("/robin", status_code=302)
-    return templates.TemplateResponse(
-        request,
-        "review_summary.html",
-        {
-            "file_name": sess["file_name"],
-            "summary": sess["summary_body"],
-            "asset_version": _SHOSHO_ASSET_VERSION,
-        },
-    )
-
-
-@router.post("/submit-guidance")
-async def submit_guidance(
-    guidance: str = Form(default=""),
-    robin_session: str | None = Cookie(None),
-    nakama_auth: str | None = Cookie(None),
-):
-    if not check_auth(nakama_auth):
-        return RedirectResponse("/login", status_code=302)
-    sess = _get_session(robin_session)
-    if not sess:
-        return RedirectResponse("/robin", status_code=302)
-    sess["user_guidance"] = guidance.strip()
-    sess["step"] = "planning"
-    response = RedirectResponse("/processing", status_code=302)
-    if nakama_auth:
-        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
-    return response
-
-
-@router.get("/review-plan", response_class=HTMLResponse)
-async def review_plan(
-    request: Request,
-    robin_session: str | None = Cookie(None),
-    nakama_auth: str | None = Cookie(None),
-):
-    if not check_auth(nakama_auth):
-        return RedirectResponse("/login", status_code=302)
-    sess = _get_session(robin_session)
-    if not sess or sess["step"] != "awaiting_approval":
-        return RedirectResponse("/robin", status_code=302)
-    plan = sess.get("plan", {"concepts": [], "entities": []})
-    return templates.TemplateResponse(
-        request,
-        "review_plan.html",
-        {
-            "file_name": sess["file_name"],
-            "concepts": list(enumerate(plan.get("concepts", []))),
-            "entities": list(enumerate(plan.get("entities", []))),
-            "concepts_list": plan.get("concepts", []),
-            "entities_list": plan.get("entities", []),
-            "asset_version": _SHOSHO_ASSET_VERSION,
-        },
-    )
-
-
-@router.post("/execute")
-async def execute(
-    request: Request,
-    robin_session: str | None = Cookie(None),
-    nakama_auth: str | None = Cookie(None),
-):
-    if not check_auth(nakama_auth):
-        return RedirectResponse("/login", status_code=302)
-    sess = _get_session(robin_session)
-    if not sess:
-        return RedirectResponse("/robin", status_code=302)
-
-    form = await request.form()
-    plan = sess.get("plan", {"concepts": [], "entities": []})
-    all_concepts = plan.get("concepts", [])
-    all_entities = plan.get("entities", [])
-
-    selected_concepts = [
-        all_concepts[int(i)]
-        for i in form.getlist("concept")
-        if i.isdigit() and int(i) < len(all_concepts)
-    ]
-    selected_entities = [
-        all_entities[int(i)]
-        for i in form.getlist("entity")
-        if i.isdigit() and int(i) < len(all_entities)
-    ]
-
-    sess["plan"] = {"concepts": selected_concepts, "entities": selected_entities}
-    sess["step"] = "executing"
-
-    response = RedirectResponse("/processing", status_code=302)
-    if nakama_auth:
-        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
-    return response
-
-
-@router.get("/done", response_class=HTMLResponse)
-async def done(
-    request: Request,
-    robin_session: str | None = Cookie(None),
-    nakama_auth: str | None = Cookie(None),
-):
-    if not check_auth(nakama_auth):
-        return RedirectResponse("/login", status_code=302)
-    sess = _get_session(robin_session)
-    if not sess or sess["step"] != "done":
-        return RedirectResponse("/robin", status_code=302)
-    return templates.TemplateResponse(
-        request,
-        "done.html",
-        {
-            "file_name": sess["file_name"],
-            "created": sess["result"].get("created", []),
-            "updated": sess["result"].get("updated", []),
-            "referenced": sess["result"].get("referenced", []),
-            "asset_version": _SHOSHO_ASSET_VERSION,
+    # no-store + X-Accel-Buffering:no → 叫 nginx 別緩衝這條 SSE（否則 heartbeat 卡在
+    # 緩衝區出不去，保活失效）。Cache-Control 也擋中間層快取串流。
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-store, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
         },
     )
 

@@ -480,6 +480,176 @@ body.sho .cancel-btn:hover {
   border-color: var(--sho-error);
 }
 
+/* 4-step ingest tracker (autonomous flow: 摘要→概念→寫入→開卡建議). Hairline
+   markers, single PANTONE 165 accent for active/done, connector fills as steps
+   complete. Marker text is swapped to ✓ by processing.html on done. */
+body.sho .steps {
+  list-style: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px;
+  margin: 4px auto 28px;
+  padding: 0;
+  max-width: 340px;
+}
+body.sho .step {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+body.sho .step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 13px;
+  left: calc(50% + 16px);
+  right: calc(-50% + 16px);
+  height: 2px;
+  background: var(--sho-line);
+  transition: background var(--sho-t-mid, 200ms) var(--sho-ease);
+}
+body.sho .step.is-done:not(:last-child)::after {
+  background: var(--sho-accent);
+}
+body.sho .step-marker {
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  border: 2px solid var(--sho-line);
+  background: var(--sho-bg);
+  color: var(--sho-muted);
+  transition: border-color var(--sho-t-fast) var(--sho-ease),
+              background var(--sho-t-fast) var(--sho-ease),
+              color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .step.is-active .step-marker {
+  border-color: var(--sho-accent);
+  color: var(--sho-accent);
+  box-shadow: 0 0 0 4px var(--sho-accent-soft);
+}
+body.sho .step.is-done .step-marker {
+  border-color: var(--sho-accent);
+  background: var(--sho-accent);
+  color: var(--sho-bg);
+}
+body.sho .step-label {
+  font-size: 11px;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--sho-muted);
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .step.is-active .step-label,
+body.sho .step.is-done .step-label {
+  color: var(--sho-text-2);
+}
+@media (prefers-reduced-motion: reduce) {
+  body.sho .step-marker,
+  body.sho .step::after {
+    transition: none;
+  }
+}
+
+/* Ingest progress bar (processing.html) — smoothly-eased fill + numeric %.
+   JS (requestAnimationFrame) drives the width, so no CSS width transition here;
+   real chunk fraction fills phase 1, phase events floor it forward, a slow creep
+   keeps it moving between events. Single PANTONE 165 accent on a hairline track. */
+body.sho .ingest-bar {
+  width: 100%;
+  max-width: 340px;
+  height: 6px;
+  margin: 0 auto 10px;
+  background: var(--sho-line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+body.sho .ingest-bar-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--sho-accent);
+  border-radius: 999px;
+}
+body.sho .ingest-bar-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
+  max-width: 340px;
+  margin: 0 auto 16px;
+}
+body.sho .ingest-pct {
+  font-family: var(--sho-font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sho-accent);
+  letter-spacing: 0.02em;
+}
+body.sho .ingest-est {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  color: var(--sho-muted);
+  letter-spacing: 0.02em;
+}
+
+/* Robin 工作記錄 feed (processing.html) — 即時敘事工作流（L1）：每個 status 事件 append
+   一行，最新一行加亮 + accent 箭頭、舊行轉淡，固定高度可捲動 → 像「agent 正在做事」的活動
+   流。hairline / mono / tokens；空的時候不顯示。 */
+body.sho .activity-feed {
+  width: 100%;
+  max-width: 340px;
+  max-height: 168px;
+  overflow-y: auto;
+  margin: 0 auto 12px;
+  padding: 10px 12px;
+  text-align: left;
+  background: var(--sho-bg-2, var(--sho-bg));
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  scrollbar-width: thin;
+}
+body.sho .activity-feed:empty {
+  display: none;
+}
+body.sho .act-line {
+  position: relative;
+  padding: 2px 0 2px 14px;
+  color: var(--sho-muted);
+  word-break: break-word;
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .act-line::before {
+  content: "›";
+  position: absolute;
+  left: 2px;
+  color: var(--sho-line-2, var(--sho-muted));
+}
+body.sho .act-line.is-latest {
+  color: var(--sho-text);
+}
+body.sho .act-line.is-latest::before {
+  content: "▸";
+  color: var(--sho-accent);
+}
+@media (prefers-reduced-motion: reduce) {
+  body.sho .act-line {
+    transition: none;
+  }
+}
+
 /* ── done.html — ingest result summary ──────────────────────────────────── */
 body.sho .icon {
   font-size: 48px;
@@ -922,3 +1092,113 @@ body.sho .hub-action {
 }
 body.sho .hub-action:hover { background: var(--sho-accent-soft); }
 body.sho .hub-action:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+
+/* ── watchlist_list.html — YouTube-style video grid ──────────────────────────
+   Three 16:9 thumbnails per row, each with title / channel / duration-chip.
+   Widens the reading column beyond the 728px chassis cap (same escape hatch
+   the reading hub uses via .hub-wide) so three cards sit side-by-side on
+   desktop. Thumbnail is YouTube's i.ytimg.com/vi/{id}/hqdefault.jpg — derived
+   from video_id, no new backend data. /robin/watchlist is not CSP-guarded
+   (only /robin/books*), so the cross-origin <img> loads fine. Hairline
+   borders + single-accent hover, per design-system; the duration chip uses a
+   neutral --sho-ink fill (NOT the orange accent) so it stays within the
+   "orange = line/dot/char" rule. */
+body.sho.robin-page:has(> .chassis) > .container.watch-wide { max-width: 1120px; }
+
+body.sho .watch-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 28px 16px;
+}
+@media (max-width: 900px) {
+  body.sho .watch-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  body.sho .watch-grid { grid-template-columns: 1fr; }
+}
+
+body.sho .watch-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Thumbnail — 16:9 box, cover-crops hqdefault's 4:3 letterbox bars. */
+body.sho .watch-thumb {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  background: var(--sho-bg-2, var(--sho-bg));
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .watch-card:hover .watch-thumb { border-color: var(--sho-line-2); }
+body.sho .watch-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+body.sho .watch-thumb:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+
+/* Duration chip — YouTube's bottom-right badge. Neutral ink fill, not accent. */
+body.sho .watch-duration {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 1px 5px;
+  border-radius: var(--sho-r-1);
+  background: color-mix(in oklch, var(--sho-ink) 82%, transparent);
+  color: var(--sho-bg);
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+body.sho .watch-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px 2px 0;
+}
+body.sho .watch-title {
+  color: var(--sho-text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-decoration: none;
+  /* Clamp to two lines like YouTube; overflow ellipsizes. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .watch-card:hover .watch-title { color: var(--sho-accent); }
+body.sho .watch-title:focus-visible {
+  outline: none;
+  color: var(--sho-accent);
+  box-shadow: var(--sho-focus);
+  border-radius: var(--sho-r-1);
+}
+body.sho .watch-channel {
+  color: var(--sho-muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

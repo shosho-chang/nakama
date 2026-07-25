@@ -1,0 +1,835 @@
+- shot_id: 1
+  type: aroll
+  note: 主持人紅色羽絨外套在暖色書房對鏡頭開場說話，中景，畫面無文字。
+- shot_id: 2
+  type: aroll
+  note: 主持人近景對鏡頭說話並舉起食指強調，畫面無文字。
+- shot_id: 3
+  type: aroll
+  note: 主持人特寫皺眉苦臉說話（後段抬手指），畫面無文字。
+- shot_id: 4
+  type: aroll
+  note: 主持人中景說話、挑眉再抿嘴聳肩，畫面無文字。
+- shot_id: 5
+  type: aroll
+  note: 主持人中景長段說話；b 幀左右兩個橘色方框文字動畫疊在 aroll 上，動畫中僅見「訂」「行」二字（應為詞語進場中），a、c 幀無文字。
+- shot_id: 6
+  type: aroll
+  note: 主持人特寫說話、比手勢，畫面無文字。
+- shot_id: 7
+  type: aroll
+  note: 主持人中景說話並舉起食指，畫面無文字。
+- shot_id: 8
+  type: book_cover
+  note: 《專注力協定》書封圖卡從左側滑入疊在 aroll 上（主持人佔右半），封面文字「專注力協定 INDISTRACTABLE How to Control
+    Your Attention and Choose Your Life NIR EYAL 分心，是想要逃離正在做的事」。
+- shot_id: 9
+  type: aroll
+  note: 主持人中景抿嘴、嘟嘴說話，畫面無文字。
+- shot_id: 10
+  type: aroll
+  note: 主持人中景到近景（緩慢 zoom in）持續說話，畫面無文字。
+- shot_id: 11
+  type: motion_graphic
+  note: 橘色碎片放射背景上白色卡片、左側黑色線條人臉插圖（無文字）；b 幀為圖卡淡出轉場回 aroll，以動畫圖卡為主分類。
+- shot_id: 12
+  type: aroll
+  note: 主持人中景微笑說話，畫面無文字。
+- shot_id: 13
+  type: aroll
+  note: 主持人中景對鏡頭說話，畫面無文字。
+- shot_id: 14
+  type: aroll
+  note: 主持人近景（較緊構圖）張嘴強調說話，畫面無文字。
+- shot_id: 15
+  type: aroll
+  note: 主持人穿紅色羽絨外套在暖色書房對鏡頭說話（先嘟嘴後皺眉閉眼），畫面無任何文字 overlay
+- shot_id: 16
+  type: aroll
+  note: 主持人略近景對鏡頭說話、表情驚訝挑眉並比手勢，畫面無文字
+- shot_id: 17
+  type: stock
+  note: 實拍素材：白襯衫年輕男子坐在書桌前，桌上一疊書與筆電，表情疲倦抓頭，畫面無文字
+- shot_id: 18
+  type: stock
+  note: 實拍素材：手部特寫在黑色鍵盤（含紅色按鍵）上敲打，背景昏暗，畫面無文字
+- shot_id: 19
+  type: aroll
+  note: 主持人閉眼苦惱狀說話，畫面四周有黑色 letterbox 邊框（縮小畫框效果），無文字
+- shot_id: 20
+  type: aroll
+  note: 主持人回到滿版正面對鏡頭說話，先嘟嘴後閉眼講述，畫面無文字
+- shot_id: 21
+  type: stock
+  note: 實拍素材：藍西裝男子的手握白色滑鼠、旁有筆電，明亮辦公室淺景深，畫面無文字
+- shot_id: 22
+  type: stock
+  note: 實拍素材：黃色T恤男子坐沙發上滑平板電腦、露出微笑，客廳場景，畫面無文字
+- shot_id: 23
+  type: aroll
+  note: 主持人誇張苦臉張嘴抱怨狀對鏡頭說話並揮手，畫面無文字
+- shot_id: 24
+  type: aroll
+  note: 主持人閉眼再睜眼嘟嘴對鏡頭說話，畫面無文字
+- shot_id: 25
+  type: stock
+  note: 實拍素材：戴眼鏡的丹寧襯衫男子深夜在電腦前捏鼻樑揉眼、扶額疲憊，畫面無文字
+- shot_id: 26
+  type: stock
+  note: 實拍素材：淺綠上衣男子側臉特寫，下巴靠在手臂上放空發呆凝視遠方，畫面無文字
+- shot_id: 27
+  type: aroll
+  note: 主持人嘟嘴後睜大眼睛對鏡頭說話，畫面無文字
+- shot_id: 28
+  type: aroll
+  note: 主持人正面對鏡頭繼續講述、表情由嘟嘴轉為平緩，畫面無文字
+- shot_id: 29
+  type: aroll
+  note: 主持人紅色羽絨外套在暖色書房對鏡頭說話，中景，無畫面文字。
+- shot_id: 30
+  type: aroll
+  note: 主持人特寫（比前一鏡更近的 zoom in）對鏡頭說話，無畫面文字。
+- shot_id: 31
+  type: aroll
+  note: 主持人對鏡頭說話，畫面上下加黑色電影 letterbox 邊框做強調，無畫面文字。
+- shot_id: 32
+  type: aroll
+  note: 主持人近景說話，b 幀身體轉向、手伸出畫面像在拿東西（銜接下一鏡拿書），無畫面文字。
+- shot_id: 33
+  type: book_cover
+  note: 《專注的力量》書封圖卡疊在 aroll 上（左側大書封、主持人在右側並手持實體書），文字：「FOCUS 專注的力量」「不再分心的自我鍛鍊，讓你掌握
+    AI 世代的卓越關鍵」「丹尼爾·高曼 DANIEL GOLEMAN」，a 幀書封正滑入中。
+- shot_id: 34
+  type: aroll
+  note: 主持人中近景對鏡頭說話，無畫面文字。
+- shot_id: 35
+  type: quote_card
+  note: 引文大字疊在 stock 素材上（女子在客廳書桌用筆電寫筆記），b/c 幀畫面刷白、白色大字「如果要通往卓越，專注力是個被低估的關鍵能力。」為主體；a
+    幀為尚未出字的純 stock（以佔多數內容分類）。
+- shot_id: 36
+  type: aroll
+  note: 主持人中近景對鏡頭說話，無畫面文字。
+- shot_id: 37
+  type: motion_graphic
+  note: 動畫條列圖卡疊在 aroll 上（左半橘色列表逐項彈入，主持人在右側），文字：「1 對內」「2 對他人」「3 對外在環境」，a 幀為文字未出現的色條動畫進場。
+- shot_id: 38
+  type: aroll
+  note: 主持人對鏡頭說話並握拳手勢；a 幀可見上一鏡條列「1 對內 2 對他人 3 對外在環境」淡出殘影（轉場），以佔多數的 aroll 分類。
+- shot_id: 39
+  type: aroll
+  note: 主持人近景對鏡頭說話，無畫面文字。
+- shot_id: 40
+  type: motion_graphic
+  note: Headspace 品牌冥想動畫（藍綠色卡通角色在橘色沙漠中打坐、伸展、倚石休息），置於橘框播放器與粒子暗底版型內，左上角文字「Headspace」。
+- shot_id: 41
+  type: aroll
+  note: 主持人對鏡頭說話，b 幀視線轉向側邊（銜接下一鏡書封），無畫面文字。
+- shot_id: 42
+  type: book_cover
+  note: '兩張書封圖卡先後疊在 aroll 上（主持人低頭在右側）：a 幀黃綠斜紋《深度工作力》書封滑入（可見直排字「深」「度」「作」「力」）；b 幀《深度數位大掃除》書封，文字：「App」（黑底附
+    X 圖示）「深度數位大掃除」「3分飽連線方案，在喧囂世界過專注人生。」「卡爾·紐波特Cal Newport」「Digital Minimalism: Choosing
+    a Focused Life in a Noisy World」。'
+- shot_id: 43
+  type: book_cover
+  note: 書封圖卡疊在 aroll 上（主持人在左側說話，書封從右側放大進場）：「A World Without Email — Reimagining Work
+    in an Age of Communication Overload」「沒有Email的世界 過度溝通時代—的—深度工作法」「降低過動訊息的干擾，每天只需工作5小時」。
+- shot_id: 44
+  type: aroll
+  note: 主持人（紅色羽絨外套、暖色書房）正面對鏡頭說話，無 overlay 文字。
+- shot_id: 45
+  type: aroll
+  note: 主持人正面近景對鏡頭說話，較前一鏡稍微 zoom in，無 overlay 文字。
+- shot_id: 46
+  type: aroll
+  note: 主持人對鏡頭說話後視線轉向側下方，無 overlay 文字。
+- shot_id: 47
+  type: book_cover
+  note: 疊在 aroll 上：主持人手持實體書《分心不上癮》，右側同時放大英文版書封圖卡「THE DISTRACTION ADDICTION — Getting
+    the Information You Need and the Communication You Want... ALEX SOOJUNG-KIM PANG」。
+- shot_id: 48
+  type: aroll
+  note: 主持人對鏡頭說話為主體；幀 a 右側殘留縮小收合中的《The Distraction Addiction》書封小卡（轉場尾），幀 b 為乾淨 aroll，以多數內容歸
+    aroll。
+- shot_id: 49
+  type: aroll
+  note: 主持人近景對鏡頭說話（閉眼再睜眼、表情變化），無 overlay 文字。
+- shot_id: 50
+  type: screen_recording
+  note: 瑪利歐賽車遊戲畫面（Splatoon 角色與瑪利歐競速），置於橘色粒子框內，左上角來源標示文字「Nintendo of America」。
+- shot_id: 51
+  type: screen_recording
+  note: 瑪利歐賽車遊戲畫面（瑪利歐與耀西駕黃色賽車），橘色粒子外框，左上角文字「Nintendo of America」。
+- shot_id: 52
+  type: book_cover
+  note: 書封圖卡疊在 aroll 上（主持人在左側說話，書封從右側放大進場）：「STOLEN FOCUS — Why You Can't Pay Attention—and
+    How to Think Deeply Again — JOHANN HARI」。
+- shot_id: 53
+  type: book_cover
+  note: 疊在 aroll 上（上下黑邊構圖）：左側書封圖卡「MAGIC PILL — The Extraordinary Benefits and Disturbing
+    Risks of the New Weight-Loss Drugs — JOHANN HARI」；幀 a 圖卡尚未進場（純 aroll），以圖卡為主分類。
+- shot_id: 54
+  type: aroll
+  note: 主持人正面對鏡頭說話（嘟嘴、挑眉表情），無 overlay 文字。
+- shot_id: 55
+  type: book_cover
+  note: 書封圖卡疊在 aroll 上（幀 a 圖卡縮小進場中、幀 b 滿幅）：「專注力協定」「INDISTRACTABLE — How to Control
+    Your Attention and Choose Your Life — NIR EYAL」「分心，是想要逃離正在做的事」。
+- shot_id: 56
+  type: aroll
+  note: 主持人手持黃色英文版實體書（Indistractable，封面書名經模糊處理）對鏡頭展示後放下，主體始終是主持人，無 overlay 文字。
+- shot_id: 57
+  type: aroll
+  note: 主持人於暖色書房對鏡頭說話，手中開始舉起一本黃色書（畫面下緣露出書角），無 overlay 文字。
+- shot_id: 58
+  type: aroll
+  note: 主持人 zoom in 近景，胸前出現橘底白字大型 overlay「心無旁鶩超能力」（首幀為文字動畫進場的白色細條）。
+- shot_id: 59
+  type: aroll
+  note: 主持人中景說話，首幀胸前有小型白橘色細條（文字 overlay 動畫收場殘影），無可讀文字。
+- shot_id: 60
+  type: aroll
+  note: 主持人近景說話，左側疊瀏覽器視窗框照片（白襯衫講者站台演講，似 Nir Eyal）；首幀為滿版橘色轉場，以佔多數的 aroll 分類。
+- shot_id: 61
+  type: book_cover
+  note: 《鉤癮效應》黃色書封在瀏覽器視窗框中滑入、佔畫面右半，疊在 aroll 上；文字：鉤癮效應 創造習慣新商機 HOOKED How to Build
+    Habit-Forming Products 天下文化。
+- shot_id: 62
+  type: aroll
+  note: 主持人手持《鉤癮效應》（HOOKED）黃色實體書對鏡頭展示說話，書封文字：鉤癮效應 HOOKED。
+- shot_id: 63
+  type: aroll
+  note: 主持人近景對鏡頭說話，乾淨畫面無 overlay 文字。
+- shot_id: 64
+  type: diagram
+  note: 白底 Hook 模型概念圖（滿版、無主持人）：黃底標題 The Hook，四象限文字 Trigger / Action / External / Internal
+    / Variable Reward / Investment，右下署名 NIR EYAL NirAndFar.com @nireyal。
+- shot_id: 65
+  type: aroll
+  note: 主持人中景對鏡頭說話（比手勢），無 overlay 文字。
+- shot_id: 66
+  type: aroll
+  note: 主持人 zoom in 近景對鏡頭說話，無 overlay 文字。
+- shot_id: 67
+  type: aroll
+  note: 主持人中景對鏡頭說話，乾淨畫面無 overlay 文字。
+- shot_id: 68
+  type: stock
+  note: 實拍素材：白色帳篷內父親與穿條紋襪的小女孩親暱聊天玩耍，無文字。
+- shot_id: 69
+  type: aroll
+  note: 主持人中景對鏡頭說話，無 overlay 文字。
+- shot_id: 70
+  type: aroll
+  note: 主持人近景對鏡頭說話（嘟嘴表情），無 overlay 文字。
+- shot_id: 71
+  type: stock
+  note: 實拍：綁辮子的小女孩對著鐵罐傳聲筒說話，背景有地球儀、非洲鼓與三角旗，無文字。
+- shot_id: 72
+  type: aroll
+  note: 主持人（紅色羽絨外套）在暖色書房對鏡頭說話，中景，無文字 overlay。
+- shot_id: 73
+  type: aroll
+  note: 主持人對鏡頭說話，鏡頭 zoom in 至臉部特寫，無文字 overlay。
+- shot_id: 74
+  type: stock
+  note: 實拍：穿深紫襯衫的男子坐在木桌前單手滑手機特寫，桌上有青蘋果碗，無文字。
+- shot_id: 75
+  type: aroll
+  note: 主持人在書房對鏡頭說話，中景，無文字 overlay。
+- shot_id: 76
+  type: aroll
+  note: 主持人對鏡頭說話，稍微 zoom in 的近景，表情驚訝，無文字 overlay。
+- shot_id: 77
+  type: stock
+  note: 實拍：男子手持手機拇指滑動特寫，背景為青蘋果碗與咖啡店黑板牆，無文字。
+- shot_id: 78
+  type: aroll
+  note: 主持人近景說話為主體，左側疊一個瀏覽器視窗框 inset，內為白襯衫男性講者（作者 Nir Eyal）舞台演講照，無大型文字。
+- shot_id: 79
+  type: aroll
+  note: 主持人對鏡頭說話；a 幀左側講者照片 inset 正縮小退場（轉場殘留），b 幀為乾淨 aroll，以主持人為多數內容，無文字。
+- shot_id: 80
+  type: motion_graphic
+  note: 黑底星塵動態字卡拆解單字：大字「indistractable」，後出現彩色註解「代表否定」「轉移注意力」「代表能力」與三色底線，末幀切為「distract」橘底線。
+- shot_id: 81
+  type: aroll
+  note: 主持人對鏡頭說話並比手勢，中景，無文字 overlay。
+- shot_id: 82
+  type: aroll
+  note: 主持人近景說話、抬手比劃，無文字 overlay。
+- shot_id: 83
+  type: motion_graphic
+  note: 黑底動態字卡續拆單字：「牽引、拉」＋大字「distract」，再出現「事業成長的動能」＋「traction」並以黃色手繪圈圈起 traction。
+- shot_id: 84
+  type: aroll
+  note: 主持人在書房對鏡頭說話，中景帶手勢，無文字 overlay。
+- shot_id: 85
+  type: motion_graphic
+  note: 黑底星點背景的動態文字動畫，白色大字「distraction」，第二幀出現紫色橢圓圈選描邊動畫。
+- shot_id: 86
+  type: diagram
+  note: 白底雙向箭頭概念圖：左「分心」磁鐵 icon、右「引力」齒輪 icon，下方文字「一個行為，會讓我們遠離我們真正想要的」與「一個行為，會讓我們接近我們真正想要的」，中間幀對「分心」加黃色
+    highlight。
+- shot_id: 87
+  type: stock
+  note: 實拍素材：粉紅襯衫男子在明亮辦公室電腦桌前工作、吃蘋果、翻閱筆記本，無文字。
+- shot_id: 88
+  type: aroll
+  note: 主持人（紅色羽絨外套、暖色書房）近景對鏡頭說話，無文字 overlay。
+- shot_id: 89
+  type: aroll
+  note: 主持人近景對鏡頭說話，表情較誇張，無文字 overlay。
+- shot_id: 90
+  type: stock
+  note: 實拍素材：深藍西裝男子在白色辦公室電腦前沉思、手托下巴，無文字。
+- shot_id: 91
+  type: aroll
+  note: 主持人比手勢說話，右上飛入 YouTube 縮圖小卡（《The War of Art》書封＋頻道主照片），卡上大字「全球創作者必讀神書」，小卡疊在
+    aroll 上但主持人仍為主體。
+- shot_id: 92
+  type: quote_card
+  note: 引文卡疊在壓暗的實拍素材（辦公室苦惱抱頭男子）上，大字「『阿抗』是一種無形的阻力，當人想要從基本的狀態往進階的狀態前進時，它就會出現，讓人分心去做別的事。」首幀文字尚在逐行浮現。
+- shot_id: 93
+  type: aroll
+  note: 主持人近景對鏡頭說話，無文字 overlay。
+- shot_id: 94
+  type: aroll
+  note: 主持人近景對鏡頭說話，鏡頭略微 zoom in，無文字 overlay。
+- shot_id: 95
+  type: diagram
+  note: 白底十字箭頭模型圖，標題「心無旁鶩的模型」，四端為「內在誘因」（大腦）「外在誘因」（鈴鐺）「分心」（磁鐵）「引力」（齒輪），中間幀出現橘底大字條「心無旁鶩模式」並
+    highlight「引力」，末幀 highlight「分心」。
+- shot_id: 96
+  type: aroll
+  note: 主持人近景對鏡頭說話，無文字 overlay。
+- shot_id: 97
+  type: aroll
+  note: 主持人近景對鏡頭說話，無文字 overlay。
+- shot_id: 98
+  type: aroll
+  note: 主持人偏右側說話，左側逐條彈出橘色編號清單 overlay（疊在 aroll 上）：「1 精通內在誘因」「2 為引力空出時間」「3 反擊外在誘因」「4
+    用協定預防分心」，首幀清單膠囊尚未填入文字。
+- shot_id: 99
+  type: aroll
+  note: 主持人書房對鏡頭講話，左側疊四點清單 overlay「1 精通內在誘因／2 為引力空出時間／3 反擊外在誘因／4 用協定預防分心」，第二幀清單已消失。
+- shot_id: 100
+  type: aroll
+  note: 幀不一致：首幀與末幀為主持人講話（末幀右上疊瀏覽器式視窗縮圖，內為 The War of Art 書封＋主持人照片，文字「全球創作者必讀神書」），中幀短暫切滿版橘色章節卡「精通內在誘因」（人頭齒輪跳出箱子
+    icon）；以多數 aroll 計。
+- shot_id: 101
+  type: aroll
+  note: 主持人講話，胸前疊橘底白字 overlay「專業人士」（首幀為文字進場動畫的細白條）。
+- shot_id: 102
+  type: aroll
+  note: 主持人書房講話；首幀胸前殘留文字轉場的小橘白色條動畫，無可讀文字。
+- shot_id: 103
+  type: aroll
+  note: 主持人書房對鏡頭講話（一幀閉眼陳述），畫面無文字。
+- shot_id: 104
+  type: stock
+  note: 實拍素材：戴眼鏡灰西裝男子在明亮辦公室桌前用筆電打字，畫面無文字。
+- shot_id: 105
+  type: stock
+  note: 實拍素材：男子趴在床上枕著枕頭滑手機，畫面無文字。
+- shot_id: 106
+  type: aroll
+  note: 主持人書房對鏡頭講話（表情驚訝、閉眼），畫面無文字。
+- shot_id: 107
+  type: aroll
+  note: 主持人對鏡頭講話並舉手比劃，畫面無文字。
+- shot_id: 108
+  type: aroll
+  note: 主持人書房對鏡頭講話，畫面無文字。
+- shot_id: 109
+  type: quote_card
+  note: 金句「如果說分心的代價是付出時間，那麼時間管理就等於痛苦管理。」疊在深夜辦公室男子講電話持紅鉛筆的實拍素材上；首幀引文尚未浮現（純實拍），以引文卡計。
+- shot_id: 110
+  type: quote_card
+  note: 同一金句「如果說分心的代價是付出時間，那麼時間管理就等於痛苦管理。」疊在會議中男子手持圖表講解的實拍素材上（畫面壓暗）。
+- shot_id: 111
+  type: aroll
+  note: 主持人對鏡頭講話，中幀胸前疊橘底白字橫幅「時間管理等於痛苦管理」（滑入動畫，首幀僅細白條、末幀已消失）。
+- shot_id: 112
+  type: quote_card
+  note: 金句「分心的動機來自想要逃避痛苦的渴望。如果一個行為曾經有效地紓解痛苦，就很可能會繼續把它當成逃避不適感的工具。」疊在窗邊雙手滑手機的實拍素材上（首幀文字進場中，僅見「的動機來自想要逃避痛苦的」）。
+- shot_id: 113
+  type: quote_card
+  note: 引文卡疊在垃圾食物實拍畫面上（薯條、漢堡、甜甜圈、爆米花），大字引文：「分心的動機來自想要逃避痛苦的渴望。如果一個行為曾經有效地紓解痛苦，就很可能會繼續把它當成逃避不適感的工具。」
+- shot_id: 114
+  type: aroll
+  note: 主持人穿紅色羽絨外套在暖色書房對鏡頭說話，無畫面文字。
+- shot_id: 115
+  type: stock
+  note: 實拍特寫：一名男子在電腦前雙手掩面揉眼、顯露疲憊壓力，無畫面文字。
+- shot_id: 116
+  type: stock
+  note: 實拍：男子深夜躺在床上滑手機，臉被螢幕光照亮，無畫面文字。
+- shot_id: 117
+  type: stock
+  note: 實拍：西裝男子坐在辦公桌前吃漢堡，桌上有筆電與薯條漢堡餐盤，無畫面文字。
+- shot_id: 118
+  type: stock
+  note: 實拍特寫：連帽衫鬍子男子雙手滑手機，無畫面文字。
+- shot_id: 119
+  type: aroll
+  note: 主持人對鏡頭說話並做出痛苦皺眉表情，畫面上下加黑邊（letterbox 電影框），無畫面文字。
+- shot_id: 120
+  type: stock
+  note: 實拍特寫：一堆舊式按鍵功能手機（Nokia 式）堆疊，鏡頭緩慢移動，無畫面文字。
+- shot_id: 121
+  type: stock
+  note: 實拍特寫：手指夾著點燃冒煙的香菸，背景戶外虛化，無畫面文字。
+- shot_id: 122
+  type: stock
+  note: 實拍：昏暗藍調臥室裡襯衫領帶男子坐在床邊低頭，後段雙手抱頭苦惱，無畫面文字。
+- shot_id: 123
+  type: aroll
+  note: 主持人穿紅色羽絨外套在書房對鏡頭說話，鏡頭稍近，無畫面文字。
+- shot_id: 124
+  type: motion_graphic
+  note: Headspace 冥想 app 的卡通動畫（藍綠色角色在沙漠跳躍後站定），置於橘色邊框卡內，左上角文字「Headspace」。
+- shot_id: 125
+  type: aroll
+  note: 主持人對鏡頭說話為主；末幀被滿版橘色標題橫幅覆蓋，大字「步驟二：把誘因寫下來。」（疊在 aroll 上），以多數幀 aroll 分類。
+- shot_id: 126
+  type: stock
+  note: 實拍：男子深夜在辦公室電腦前工作後打大哈欠，桌面文件印有「ANNUAL REPORT」（場景內文件字，非 overlay），首幀有一條橘色細線轉場痕跡。
+- shot_id: 127
+  type: stock
+  note: 夜間辦公室裡穿藍綠色襯衫的男子對著電腦打呵欠、舉手掩嘴，無畫面文字。
+- shot_id: 128
+  type: aroll
+  note: 主持人（紅色羽絨外套、暖色書房）對鏡頭說話，表情誇張嘟嘴，無畫面文字。
+- shot_id: 129
+  type: aroll
+  note: 主持人近距離特寫（zoom in）對鏡頭說話，無畫面文字。
+- shot_id: 130
+  type: title_card
+  note: 滿版橘色章節標題卡「步驟三：探索你的感受。」疊在 aroll 上（背景壓暗）；幀 a 為橘色橫線進場轉場。
+- shot_id: 131
+  type: aroll
+  note: 主持人對鏡頭說話，左上疊入瀏覽器視窗式縮圖：手持平板顯示《Dopamine Nation》封面，縮圖文字「多巴胺 完全攻略」。
+- shot_id: 132
+  type: quote_card
+  note: 大字引文「在做出衝動行為之前，先等個五到十分鐘，讓自己跟這個體驗在一起。」疊在壓暗的 stock 素材（黑人男子在筆電前閉眼冥想手勢）上；幀 a 為文字逐行進場轉場。
+- shot_id: 133
+  type: aroll
+  note: 主持人對鏡頭說話；幀 b 出現橘底白字 overlay「水流上的樹葉」，主持人仍為畫面主體。
+- shot_id: 134
+  type: motion_graphic
+  note: 平面風格動畫：綠色樹葉漂浮在深藍綠色水流上，橘色邊框包覆，左上角出處字樣「Flow Neuroscience」。
+- shot_id: 135
+  type: aroll
+  note: 主持人對鏡頭說話並比手勢，無畫面文字。
+- shot_id: 136
+  type: motion_graphic
+  note: 平面風格動畫：藍綠色波浪流動抽象畫面（樹葉已漂出鏡），橘色邊框，左上角出處字樣「Flow Neuroscience」。
+- shot_id: 137
+  type: motion_graphic
+  note: 卡通動畫：沙漠中藍色角色坐在岩石上冥想、下方各種表情的車流角色，橘色邊框，左上角出處字樣「Headspace」。
+- shot_id: 138
+  type: aroll
+  note: 主持人對鏡頭說話並比手勢，無畫面文字。
+- shot_id: 139
+  type: title_card
+  note: 滿版橘色章節標題卡「步驟四：提防臨界時刻。」疊在 aroll 上（背景壓暗）；幀 a 為橘色橫線進場轉場。
+- shot_id: 140
+  type: quote_card
+  note: 大字引文「臨界時刻指的是生活中從一件事情轉換到另一件事情的時間點，這時很容易因為無聊而分心。」疊在壓暗的 stock 素材（窗邊黑衣男子用筆電喝咖啡）上；幀
+    a 為文字與橘線進場轉場。
+- shot_id: 141
+  type: aroll
+  note: 主持人（紅色羽絨外套、暖色書房）對鏡頭說話，無畫面文字。
+- shot_id: 142
+  type: aroll
+  note: 主持人閉眼、皺眉帶情緒地說話（近景），無畫面文字。
+- shot_id: 143
+  type: stock
+  note: 西裝男子站在玻璃帷幕辦公大樓內低頭滑平板，無畫面文字。
+- shot_id: 144
+  type: stock
+  note: 西裝男子坐辦公桌前雙手拿平板閱讀、桌上有筆電，b 幀抬頭思考，無畫面文字。
+- shot_id: 145
+  type: aroll
+  note: 主持人對鏡頭說話，無畫面文字。
+- shot_id: 146
+  type: stock
+  note: 昏暗辦公室裡男子端白色馬克杯喝咖啡、若有所思，無畫面文字。
+- shot_id: 147
+  type: aroll
+  note: 主持人對鏡頭說話，b 幀轉為平靜聆聽神情，無畫面文字。
+- shot_id: 148
+  type: stock
+  note: 灰色帽T男子在海邊藍天下閉眼仰頭深呼吸，無畫面文字。
+- shot_id: 149
+  type: aroll
+  note: 主持人近景對鏡頭說話（嘟嘴、張口表情），無畫面文字。
+- shot_id: 150
+  type: aroll
+  note: 主持人說話，胸前疊橘底白字關鍵字條「自我疼惜」（a 幀動畫展開中僅見「我疼」）。
+- shot_id: 151
+  type: aroll
+  note: 主持人更近景（zoom in）對鏡頭說話，無畫面文字。
+- shot_id: 152
+  type: quote_card
+  note: 海邊夕陽下冥想女子的 stock 畫面，b 幀壓暗疊上滿版金句「越能夠自我疼惜的人，就會有越好的自癒能力。」（a 幀文字尚未出現，疊在 stock
+    上）。
+- shot_id: 153
+  type: diagram
+  note: 白底概念圖「心無旁騖的模型」：十字箭頭連四象限——内在誘因、外在誘因、分心、引力，黃色高亮從「内在誘因」移到「引力」。
+- shot_id: 154
+  type: title_card
+  note: 橘色滿版章節標題卡「替引力製造時間」配時鐘 icon（a 幀為橘白色塊轉場動畫展開中）。
+- shot_id: 155
+  type: quote_card
+  note: 黃昏海邊剪影實拍上疊滿版金句文字，逐行浮現「如果你不知道專心的時候 要做什麼事情, 就不能稱某些事物讓你分心。」，引文文字為主體、疊在 stock
+    剪影畫面上
+- shot_id: 156
+  type: aroll
+  note: 主持人紅色羽絨外套在暖色書房對鏡頭說話，無畫面文字
+- shot_id: 157
+  type: aroll
+  note: 主持人對鏡頭說話，較近景微 zoom，無畫面文字
+- shot_id: 158
+  type: aroll
+  note: 主持人對鏡頭說話，標準中景，無畫面文字
+- shot_id: 159
+  type: motion_graphic
+  note: TED-Ed 動畫：披白袍的哲學家站在人群中演說，疊字「人們在保護個人財產時 很小心翼翼而且斤斤計較, 但是一旦說到時間的浪費, 卻又變得揮霍奢侈;」，左上角
+    TED-Ed logo
+- shot_id: 160
+  type: motion_graphic
+  note: TED-Ed 動畫：深紫底黃色網絡線條與粉紅手掌，疊字「時間卻是唯一一樣東西, 應該正大光明地保持 吝嗇小氣的態度。」（首幀尚未出字），左上角 TED-Ed
+    logo
+- shot_id: 161
+  type: aroll
+  note: 主持人對鏡頭說話，無畫面文字
+- shot_id: 162
+  type: aroll
+  note: 主持人對鏡頭說話，胸前橘底白字 overlay 動畫展開出現「hell yeah or no」
+- shot_id: 163
+  type: aroll
+  note: 主持人對鏡頭說話，橘底文字「hell yeah or no」正在收合轉場（幀間見「ll yeah or」與白色短槓），以 aroll 為主體
+- shot_id: 164
+  type: aroll
+  note: 主持人對鏡頭說話，鏡頭較近的特寫，無畫面文字
+- shot_id: 165
+  type: aroll
+  note: 主持人右側說話，左上疊入 PiP 視窗縮圖：「Talks at Google」logo 與男性講者（Nir Eyal）照片，疊在 aroll 上
+- shot_id: 166
+  type: aroll
+  note: 主持人對鏡頭說話，中景，無畫面文字
+- shot_id: 167
+  type: aroll
+  note: 主持人對鏡頭說話，無畫面文字
+- shot_id: 168
+  type: stock
+  note: 實拍素材：明亮辦公室內男女兩人隔桌討論文件與平板，無畫面文字
+- shot_id: 169
+  type: stock
+  note: 辦公室實拍：西裝男與灰西裝外套捲髮女俯身在桌前一起看文件討論，無畫面文字。
+- shot_id: 170
+  type: aroll
+  note: 主持人（紅色羽絨外套、暖色書房、右側書櫃）對鏡頭說話，無畫面文字。
+- shot_id: 171
+  type: stock
+  note: 辦公室會議實拍：綠襯衫大鬍子男子與多位同事圍桌討論，背後白板貼滿圖表，無畫面文字。
+- shot_id: 172
+  type: aroll
+  note: 主持人對鏡頭說話，無畫面文字。
+- shot_id: 173
+  type: aroll
+  note: 主持人對鏡頭說話；兩幀不一致——後半幀下方出現橘底白字 overlay「心無旁騖時刻」，疊在 aroll 上，以主持人為主體分類。
+- shot_id: 174
+  type: stock
+  note: 辦公室實拍：黑人女性與灰髮西裝男子看著筆記本討論；首幀延續橘底白字 overlay「心無旁騖時刻」，後續幀無文字。
+- shot_id: 175
+  type: quote_card
+  note: 大段白色引文文字為主體，疊在調暗的辦公桌寫字實拍上：「有個妥善安排的一周至關重要，因為如果你不事先規劃一周的每天要做什麼，那就會有別人來幫你規劃。」（首幀文字尚在打入中，僅顯示前段）。
+- shot_id: 176
+  type: quote_card
+  note: 同一段白色引文延續，疊在另一段調暗的男子伏案寫筆記實拍上：「有個妥善安排的一周至關重要，因為如果你不事先規劃一周的每天要做什麼，那就會有別人來幫你規劃。」
+- shot_id: 177
+  type: aroll
+  note: 主持人對鏡頭說話，無畫面文字。
+- shot_id: 178
+  type: stock
+  note: 俯拍實拍：西裝男子坐在辦公桌前寫筆記，桌面擺滿筆電、圖表文件與手機，無畫面文字。
+- shot_id: 179
+  type: aroll
+  note: 主持人對鏡頭說話（鏡位較近的 zoom in），無畫面文字。
+- shot_id: 180
+  type: stock
+  note: 職場過載實拍：紅襯衫大鬍子男子坐在辦公桌前被多位同事包圍遞文件、講電話般轟炸，顯露疲憊壓力；三幀為同組不同構圖，無畫面文字。
+- shot_id: 181
+  type: stock
+  note: 兩幀不同的用電腦實拍：前幀為夜間辦公室藍毛衣男子敲筆電，後幀為沙發上灰帽 T 男子手放筆電旁特寫；皆為無主持人實拍素材，無畫面文字。
+- shot_id: 182
+  type: aroll
+  note: 主持人對鏡頭說話，無畫面文字。
+- shot_id: 183
+  type: aroll
+  note: 主持人特寫對鏡頭說話，第二幀下方出現橘底白字 overlay「為什麼」。
+- shot_id: 184
+  type: aroll
+  note: 主持人中景對鏡頭說話（較廣角），第一幀仍有橘底白字「為什麼」，第二幀文字消失。
+- shot_id: 185
+  type: aroll
+  note: 主持人對鏡頭說話；第一幀為滿版橘色轉場圖形（切到轉場），第二幀橘色上下色塊擦出、第三幀畫面乾淨，以多數幀 aroll 分類，無文字。
+- shot_id: 186
+  type: diagram
+  note: '白底同心圓概念圖，標題「LIFE DOMAINS」，三層圓標「WORK / RELATIONSHIPS / YOU」，下方註「The three
+    life domains: you, relationships, and work.」，黃色 highlight 由 YOU 移到 RELATIONSHIPS。'
+- shot_id: 187
+  type: stock
+  note: 實拍：女子在湖邊夕陽下盤腿打坐冥想的背影，無文字。
+- shot_id: 188
+  type: stock
+  note: 實拍：男子躺在床上白色枕頭棉被間安睡微笑的特寫，無文字。
+- shot_id: 189
+  type: stock
+  note: 實拍：四位朋友並肩坐在湖畔堤岸看夕陽的背影，無文字。
+- shot_id: 190
+  type: stock
+  note: 實拍：紅髮女子在家中窗邊書架前用筆電工作，桌上有攤開的書，無文字。
+- shot_id: 191
+  type: stock
+  note: 實拍：穿黑西裝外套的女子在摩天大樓前張開雙臂仰天伸展，無文字。
+- shot_id: 192
+  type: stock
+  note: 實拍：穿風衣與黃色毛衣的黑人女子在城市街道上雙手抱胸微笑看鏡頭，無文字。
+- shot_id: 193
+  type: aroll
+  note: 主持人中景對鏡頭說話，背景書房書櫃與吉他，無文字。
+- shot_id: 194
+  type: diagram
+  note: 白底十字箭頭概念圖，標題「心無旁騖的模型」，四端標「內在誘因（大腦 icon）／外在誘因（鈴鐺 icon）／分心（磁鐵 icon）／引力（齒輪 icon）」，右側「引力」以黃色方塊
+    highlight。
+- shot_id: 195
+  type: stock
+  note: 實拍：男子在室內明亮落地窗前手持平板電腦、看鏡頭微笑，無文字。
+- shot_id: 196
+  type: stock
+  note: 實拍：男子在廚房用果汁機打綠色蔬果昔，檯面有香蕉與草莓，無文字。
+- shot_id: 197
+  type: stock
+  note: 戴白色毛帽、背橘色背包的年輕男子在森林中仰頭張望，實拍健行畫面，無文字。
+- shot_id: 198
+  type: stock
+  note: 一對情侶在海邊逆光下額頭相抵擁抱微笑，實拍畫面，無文字。
+- shot_id: 199
+  type: stock
+  note: 父親在廚房與坐在流理台上的小女兒對視並擁抱，實拍溫馨親子畫面，無文字。
+- shot_id: 200
+  type: diagram
+  note: '同心圓概念圖，標題「LIFE DOMAINS」，三圈由外至內為「WORK / RELATIONSHIPS / YOU」，下方註解「The three
+    life domains: you, relationships, and work.」；a 幀黃色高亮 YOU、b 幀高亮 RELATIONSHIPS。'
+- shot_id: 201
+  type: stock
+  note: 男子在明亮客廳盤腿冥想、手結手印，實拍畫面，無文字。
+- shot_id: 202
+  type: stock
+  note: 背影鏡頭：穿黃衣的小女孩坐在父親肩上、雙手張開牽著父親走在綠蔭步道，實拍畫面，無文字。
+- shot_id: 203
+  type: stock
+  note: 戴 AirPods 的男子近距離盯著筆電螢幕、神情專注憂慮的特寫，實拍畫面，無文字。
+- shot_id: 204
+  type: aroll
+  note: 主持人穿紅色羽絨外套在暖色書房（左吉他、右書櫃）對鏡頭說話，無文字。
+- shot_id: 205
+  type: aroll
+  note: 主持人繼續對鏡頭說話，鏡位稍微拉近，背景同暖色書房，無文字。
+- shot_id: 206
+  type: stock
+  note: 穿深青色襯衫、戴手錶的男子雙手在白色鍵盤上打字的特寫，實拍畫面，無文字。
+- shot_id: 207
+  type: stock
+  note: 夜間辦公室裡男子手托下巴沉思的特寫，背景燈光虛化，實拍畫面，無文字。
+- shot_id: 208
+  type: stock
+  note: 穿紅 T 恤、戴 AirPod 的男子在廚房餐桌用筆電視訊、桌上有文件，實拍畫面，無文字。
+- shot_id: 209
+  type: aroll
+  note: 主持人穿紅色羽絨外套在暖色書房對鏡頭講話，表情誇張張嘴，無文字。
+- shot_id: 210
+  type: aroll
+  note: 主持人對鏡頭說話後抿嘴停頓，鏡位比前一鏡更近，背景同暖色書房，無文字。
+- shot_id: 211
+  type: aroll
+  note: 主持人穿紅色羽絨外套在暖色書房對鏡頭說話，畫面無 overlay 文字。
+- shot_id: 212
+  type: stock
+  note: 實拍素材：留鬍男子側臉用白板筆在玻璃牆的便利貼上書寫，便利貼為素材內手寫字「PROFIT REPORT」「Sales」，非後製 overlay。
+- shot_id: 213
+  type: diagram
+  note: 黑底概念動畫圖：左白框「暫存區」、右橘框「現役區」，五個彩色橫條「專案 A」「專案 B」「專案 C」「專案 D」「專案 E」，b 幀中專案 A/B/C
+    動畫移入現役區。
+- shot_id: 214
+  type: aroll
+  note: 主持人對鏡頭說話為主體，右側疊入自己另一支影片縮圖 PIP 視窗：《慢速工作力 Slow Productivity》書封與人臉，縮圖文字「原來我之前錯了...」。
+- shot_id: 215
+  type: stock
+  note: 實拍素材：三位朋友（亞裔男、女子、黑人男）在起霧公園開心自拍合照，三幀間表情動作變化（微笑、扮鬼臉、依偎），無文字。
+- shot_id: 216
+  type: aroll
+  note: 主持人在書房對鏡頭說話（略 zoom in），無 overlay 文字。
+- shot_id: 217
+  type: aroll
+  note: 主持人對鏡頭說話並舉起手指、手勢比劃，無 overlay 文字。
+- shot_id: 218
+  type: aroll
+  note: 主持人臉部特寫（zoom in 較緊）對鏡頭說話，無 overlay 文字。
+- shot_id: 219
+  type: aroll
+  note: 主持人對鏡頭說話為主體，右側疊入自己另一支影片縮圖 PIP 視窗：《上線時間管理術》書封，縮圖文字「上線時間管理術」「Google時間管理一姐的高效秘訣，找到工作／生活／自己的平衡與幸福」「上班族
+    必學!!!」。
+- shot_id: 220
+  type: stock
+  note: 實拍素材：金髮女子在霓虹燈電競房玩賽車模擬方向盤，螢幕顯示賽車遊戲畫面，c 幀開心大笑，無 overlay 文字。
+- shot_id: 221
+  type: aroll
+  note: 主持人在書房對鏡頭說話，無 overlay 文字。
+- shot_id: 222
+  type: stock
+  note: 實拍素材：留鬍男子在沙發專注握遊戲手把打電動，後方橘衣女子滑手機；a 幀仍是主持人 aroll（轉場切點），以佔多數的 stock 分類，無文字。
+- shot_id: 223
+  type: aroll
+  note: 主持人在書房對鏡頭說話（表情驚訝再繼續講），無 overlay 文字。
+- shot_id: 224
+  type: stock
+  note: 實拍素材：女子趴睡床上，前景白色雙鈴鬧鐘指向約 7 點，b 幀伸手要按掉鬧鐘，無文字。
+- shot_id: 225
+  type: stock
+  note: 特寫實拍：男子雙手握著黑色智慧型手機（背面朝鏡頭）滑動，無畫面文字。
+- shot_id: 226
+  type: stock
+  note: 實拍：男子在浴室鏡前一邊用電動牙刷刷牙一邊低頭看手機，無畫面文字。
+- shot_id: 227
+  type: stock
+  note: 實拍：捲髮小男孩坐在餐桌旁放聲大哭，無畫面文字。
+- shot_id: 228
+  type: stock
+  note: 實拍：藍襯衫男子坐在特斯拉駕駛座拿著手機講話並比手勢（未看路），無畫面文字。
+- shot_id: 229
+  type: stock
+  note: 實拍：戴耳機眼鏡的男子在電腦前打字，隨後分心拿起綠色手機查看，無畫面文字。
+- shot_id: 230
+  type: stock
+  note: 實拍：西裝男子在辦公桌前低頭滑手機，背景有紅髮女同事工作，無畫面文字。
+- shot_id: 231
+  type: aroll
+  note: 主持人（紅色羽絨外套、暖色書房）對鏡頭說話並比手勢，無畫面文字。
+- shot_id: 232
+  type: aroll
+  note: 主持人對鏡頭說話，鏡頭較前一顆更近（zoom in），無畫面文字。
+- shot_id: 233
+  type: stock
+  note: 實拍特寫：落腮鬍男子坐在車內駕駛座側臉低頭滑手機，無畫面文字。
+- shot_id: 234
+  type: book_cover
+  note: 《專注力協定》書封圖卡從左側滑入疊在 aroll 上，封面文字「專注力協定 INDISTRACTABLE / NIR EYAL / 分心，是想要逃離正在做的事」。
+- shot_id: 235
+  type: stock
+  note: 實拍：辦公桌前女性雙手滑手機（桌上有眼鏡、平板、圖表文件）；首幀左側殘留縮小中的書封小卡（轉場），可見「定」字。
+- shot_id: 236
+  type: stock
+  note: 實拍：白西裝女子在明亮綠意辦公室邊講手機邊用筆電，無畫面文字。
+- shot_id: 237
+  type: aroll
+  note: 主持人對鏡頭說話，表情皺眉強調，無畫面文字。
+- shot_id: 238
+  type: aroll
+  note: 主持人對鏡頭繼續說話（近景），無畫面文字。
+- shot_id: 239
+  type: aroll
+  note: 主持人對鏡頭說話，右側先疊入《數位大掃除》書封（含 App 圖示），後切換成自己舊影片視窗（畫面中他手持《上線時間管理術》書），疊字「上班族 必學!!!」；幀間
+    overlay 內容切換，主持人始終為主體。
+- shot_id: 240
+  type: aroll
+  note: 主持人正面對鏡頭說話，無任何文字或圖卡。
+- shot_id: 241
+  type: aroll
+  note: 主持人說話，左側動畫滑入四點清單：「1 精通內在誘因 2 為引力空出時間 3 反擊外在誘因 4 用協定預防分心」（首幀為橘色色塊 placeholder
+    進場動畫）。
+- shot_id: 242
+  type: aroll
+  note: 主持人說話拉遠鏡頭，前半仍見四點清單「1 精通內在誘因 2 為引力空出時間 3 反擊外在誘因 4 用協定預防分心」，後半清單淡出無文字。
+- shot_id: 243
+  type: aroll
+  note: 主持人對鏡頭說話並比手勢，無文字 overlay。
+- shot_id: 244
+  type: stock
+  note: 實拍素材：一隻手把黑色手機放進白色編織籃（遠離手機情境），無文字。
+- shot_id: 245
+  type: stock
+  note: 實拍素材：戴黑帽白長鬍老先生拿大聲公對鏡頭喊話，無文字。
+- shot_id: 246
+  type: aroll
+  note: 主持人誇張演出（比手勢、皺臉苦相），畫面上下加黑邊 letterbox 做戲劇化效果，無文字。
+- shot_id: 247
+  type: aroll
+  note: 主持人正面對鏡頭說話，無文字 overlay。
+- shot_id: 248
+  type: book_cover
+  note: 《原子習慣 細微改變帶來巨大成就的實證法則 Atomic Habits》書封視窗放大疊在 aroll 上，主持人同時手持實體書《原子習慣》入鏡；首幀書封尚在滑入。
+- shot_id: 249
+  type: aroll
+  note: 主持人說話，首幀左側有縮小成手機卡的《原子習慣》書封退場動畫，後幀無 overlay。
+- shot_id: 250
+  type: book_cover
+  note: 《專注力協定 INDISTRACTABLE》書封視窗放大疊在 aroll 上，封面文字「分心，是想要逃離正在做的事」；首幀為右側縮小手機卡（僅見大字「定」）。
+- shot_id: 251
+  type: aroll
+  note: 主持人說話，橘底大字標題「心無旁騖模型」打在畫面下方；首幀另有縮小的書封手機卡與橘色暫停符號殘影。
+- shot_id: 252
+  type: book_cover
+  note: 三本 Cal Newport 書封視窗疊在 aroll 上佔據左半：「深度工作力」「數位大掃除 3分鐘連線方案，在喧囂世界過專注人生」「A World
+    Without Email 沒有Email的世界 過度溝通時代的深度工作法 每天只需工作5小時」。
+- shot_id: 253
+  type: aroll
+  note: 主持人紅色羽絨外套於暖色書房對鏡頭說話（近景），無畫面文字
+- shot_id: 254
+  type: aroll
+  note: 主持人對鏡頭說話並舉起食指強調（稍廣景，可見右側書櫃與左側吉他），無畫面文字
+- shot_id: 255
+  type: aroll
+  note: 主持人近景對鏡頭說話，無畫面文字
+- shot_id: 256
+  type: aroll
+  note: 主持人對鏡頭說話（中景），無畫面文字
+- shot_id: 257
+  type: aroll
+  note: 主持人對鏡頭說話，右側疊上訂閱按鈕動畫 overlay，文字由「SUBSCRIBE!」被游標點擊變成「SUBSCRIBED」附讚與鈴鐺 icon
+- shot_id: 258
+  type: aroll
+  note: 主持人對鏡頭說話，右側「SUBSCRIBED」訂閱按鈕 overlay 淡出消失（後幀僅剩一小段橘色線條）
+- shot_id: 259
+  type: aroll
+  note: 主持人近景對鏡頭說話，前幀下方疊橘底白字 banner「張修修的自由之路」，後幀文字已消失，以 aroll 為主
+- shot_id: 260
+  type: aroll
+  note: 主持人近景對鏡頭說話，後幀下方疊橘底白字 banner「shosho.tw/free」
+- shot_id: 261
+  type: aroll
+  note: 主持人對鏡頭說話（中景），無畫面文字
+- shot_id: 262
+  type: aroll
+  note: 主持人對鏡頭說話並比手勢（前幀舉拳），無畫面文字
+- shot_id: 263
+  type: aroll
+  note: 主持人對鏡頭說話，雙手張開比手勢，無畫面文字
+- shot_id: 264
+  type: aroll
+  note: 主持人近景對鏡頭說話（後幀閉眼講述），無畫面文字
+- shot_id: 265
+  type: aroll
+  note: 主持人對鏡頭說話（中景），無畫面文字
+- shot_id: 266
+  type: aroll
+  note: 主持人近景對鏡頭說話（前幀閉眼皺眉、舉手指做表情），無畫面文字
+- shot_id: 267
+  type: aroll
+  note: 主持人（紅色羽絨外套）在暖色書房正面對鏡頭說話，背景右側書櫃、左側吉他與工作桌，畫面無任何大型文字。
+- shot_id: 268
+  type: aroll
+  note: 主持人稍微更近的鏡位對鏡頭說話並舉起右手比手勢，背景同一暖色書房，畫面無任何大型文字。

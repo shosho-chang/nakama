@@ -136,6 +136,8 @@ def test_review_page_renders(client):
     assert "理解是分層次的，寫作把你推向更深層" in r.text
     # static JS + CSS wired (CSP-safe, no inline script logic)
     assert "/static/kb_review.js" in r.text
+    # 隨手開新卡入口（缺口 A）：header ＋開新卡 鈕，kb_canvas.js 靠此 id wire。
+    assert 'id="kb-newcard"' in r.text
 
 
 def test_review_page_empty_bundle(client, monkeypatch):
@@ -237,6 +239,101 @@ def test_create_permanent_conflict_409(client):
     assert tc.post("/kb/api/permanent", json=p).status_code == 200
     r2 = tc.post("/kb/api/permanent", json={"title": "重複卡名", "body": "正文二"})
     assert r2.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# ADR-048 Phase 1 — 開卡標記候選 carded（修 create_permanent 收 candidate_id 卻沒用）
+# ---------------------------------------------------------------------------
+
+
+def test_create_permanent_marks_candidate_carded(client):
+    """帶 candidate_id 開卡 → 收件匣該候選 open→carded（不再每日重現）+ 記 card 事件。"""
+    tc, _kb, _v = client
+    from shared import candidate_inbox
+    from shared.schemas.daily_review import CandidateCard
+
+    candidate_inbox.upsert_candidate(
+        CandidateCard(candidate_id="卡片盒筆記-deadbeef", suggested_title="主張", why="x"),
+        today="2026-06-20",
+    )
+    assert candidate_inbox.count_open() == 1
+
+    r = tc.post(
+        "/kb/api/permanent",
+        json={
+            "title": "開卡後該候選要消失",
+            "body": "正文。",
+            "candidate_id": "卡片盒筆記-deadbeef",
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["phase5"]["candidate_recorded"] is True
+
+    row = candidate_inbox.get_candidate("卡片盒筆記-deadbeef")
+    assert row["status"] == "carded"
+    assert row["carded_path"] == r.json()["path"]
+    assert candidate_inbox.count_open() == 0
+    card_events = candidate_inbox.list_events(candidate_id="卡片盒筆記-deadbeef", event_type="card")
+    assert len(card_events) == 1
+
+
+def test_create_permanent_without_candidate_id_no_inbox_write(client):
+    """手建卡 / fleeting 開卡（無 candidate_id）→ 不碰收件匣，candidate_recorded=False。"""
+    tc, _kb, _v = client
+    from shared import candidate_inbox
+
+    r = tc.post("/kb/api/permanent", json={"title": "手建卡無候選來源", "body": "正文。"})
+    assert r.status_code == 200, r.text
+    assert r.json()["phase5"]["candidate_recorded"] is False
+    assert candidate_inbox.count_open() == 0
+
+
+def test_review_skip_logs_event(client):
+    """略過候選 → state JSON 仍是過濾權威，且額外記 skip 事件（ground truth）。"""
+    tc, _kb, _v = client
+    from shared import candidate_inbox
+
+    r = tc.post("/kb/api/review/skip", json={"candidate_id": "卡片盒筆記-skipme"})
+    assert r.status_code == 200, r.text
+    skips = candidate_inbox.list_events(candidate_id="卡片盒筆記-skipme", event_type="skip")
+    assert len(skips) == 1
+
+
+def test_review_later_logs_defer_event(client):
+    """之後再說 → 記 defer 事件。"""
+    tc, _kb, _v = client
+    from shared import candidate_inbox
+
+    r = tc.post("/kb/api/review/later", json={"candidate_id": "卡片盒筆記-laterme"})
+    assert r.status_code == 200, r.text
+    defers = candidate_inbox.list_events(candidate_id="卡片盒筆記-laterme", event_type="defer")
+    assert len(defers) == 1
+
+
+def test_filter_actioned_drops_carded_candidate(vault):
+    """_filter_actioned 即時濾掉已開卡候選（快照凍結在開卡前，同日 reload 不該再現）。"""
+    import thousand_sunny.routers.kb_review as kb
+    from shared import candidate_inbox
+    from shared.schemas.daily_review import CandidateCard, DailyReviewBundle
+
+    candidate_inbox.upsert_candidate(
+        CandidateCard(candidate_id="c-open", suggested_title="o", why=""), today="2026-06-20"
+    )
+    candidate_inbox.upsert_candidate(
+        CandidateCard(candidate_id="c-carded", suggested_title="c", why=""), today="2026-06-20"
+    )
+    candidate_inbox.mark_carded("c-carded")
+
+    bundle = DailyReviewBundle(
+        generated_at="t",
+        review_date="2026-06-20",
+        candidates=[
+            CandidateCard(candidate_id="c-open", suggested_title="o", why=""),
+            CandidateCard(candidate_id="c-carded", suggested_title="c", why=""),
+        ],
+    )
+    filtered = kb._filter_actioned(bundle, vault)
+    assert [c.candidate_id for c in filtered.candidates] == ["c-open"]
 
 
 # ---------------------------------------------------------------------------
@@ -639,3 +736,95 @@ def test_compute_bundle_stale_recompute_forwards_weekly_flag(vault, monkeypatch)
     monkeypatch.setattr("agents.robin.daily_review.run_daily_review", _capture)
     kb._compute_bundle(weekly=True)  # 無快照 → 補算，旗標應透傳
     assert captured.get("weekly") is True
+
+
+# ---------------------------------------------------------------------------
+# 候選持久化：顯示一律吃即時 list_open()，只有開卡 / 忽略才消失（修修 回饋 item A）
+# ---------------------------------------------------------------------------
+
+
+def test_compute_bundle_displays_all_open_from_inbox(vault):
+    """顯示來自即時 list_open()——含快照沒有的（當天 ingest 進來、或被 30 上限擠掉的）。"""
+    import thousand_sunny.routers.kb_review as kb
+    from agents.robin.daily_review import save_review_bundle
+    from shared import candidate_inbox
+
+    for cid in ("c-old", "c-new"):
+        candidate_inbox.upsert_candidate(
+            CandidateCard(candidate_id=cid, suggested_title=cid, why=""), today="2026-06-20"
+        )
+    # 快照只有 c-old（c-new 是快照之後才進收件匣）
+    save_review_bundle(
+        vault, _today_bundle([CandidateCard(candidate_id="c-old", suggested_title="old", why="x")])
+    )
+    out = kb._compute_bundle()
+    assert {c.candidate_id for c in out.candidates} == {"c-old", "c-new"}
+
+
+def test_compute_bundle_excludes_carded_from_live(vault):
+    """開卡的候選 list_open 不再回 → 顯示集自動排除（只有開卡 / 忽略才消失）。"""
+    import thousand_sunny.routers.kb_review as kb
+    from agents.robin.daily_review import save_review_bundle
+    from shared import candidate_inbox
+
+    candidate_inbox.upsert_candidate(
+        CandidateCard(candidate_id="keep", suggested_title="k", why=""), today="2026-06-20"
+    )
+    candidate_inbox.upsert_candidate(
+        CandidateCard(candidate_id="carded", suggested_title="c", why=""), today="2026-06-20"
+    )
+    candidate_inbox.mark_carded("carded")
+    save_review_bundle(
+        vault,
+        _today_bundle(
+            [
+                CandidateCard(candidate_id="keep", suggested_title="k", why=""),
+                CandidateCard(candidate_id="carded", suggested_title="c", why=""),
+            ]
+        ),
+    )
+    out = kb._compute_bundle()
+    assert {c.candidate_id for c in out.candidates} == {"keep"}
+
+
+def test_compute_bundle_merges_snapshot_edges_onto_live(vault):
+    """快照已富化的 edges 會 by candidate_id 併回即時 list_open()（顯示吃 inbox 但不丟 edges）。"""
+    import thousand_sunny.routers.kb_review as kb
+    from agents.robin.daily_review import save_review_bundle
+    from shared import candidate_inbox
+
+    candidate_inbox.upsert_candidate(
+        CandidateCard(candidate_id="e1", suggested_title="t", why=""), today="2026-06-20"
+    )
+    enriched = CandidateCard(
+        candidate_id="e1",
+        suggested_title="t",
+        why="",
+        edges=[
+            TypedEdgeChip(
+                edge_type="support",
+                direction="forward",
+                target_card="KB/Permanent/x",
+                target_title="x",
+            )
+        ],
+    )
+    save_review_bundle(vault, _today_bundle([enriched]))
+    out = kb._compute_bundle()
+    assert len(out.candidates) == 1
+    assert len(out.candidates[0].edges) == 1  # edges 由快照併回
+
+
+def test_compute_bundle_falls_back_to_snapshot_when_inbox_empty(vault):
+    """收件匣空（如 DB 被清空的異常）→ 退回快照，不要整頁空白把卡弄不見。"""
+    import thousand_sunny.routers.kb_review as kb
+    from agents.robin.daily_review import save_review_bundle
+    from shared import candidate_inbox
+
+    assert candidate_inbox.count_open() == 0
+    save_review_bundle(
+        vault,
+        _today_bundle([CandidateCard(candidate_id="snap-only", suggested_title="s", why="x")]),
+    )
+    out = kb._compute_bundle()
+    assert {c.candidate_id for c in out.candidates} == {"snap-only"}

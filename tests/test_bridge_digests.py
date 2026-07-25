@@ -56,7 +56,7 @@ type: digest
 - **Score**: 3.6  (R4/I4/C3/A2/F4/N4)
 - **Verdict**: Semaglutide 對代謝症候群有效。
 - **Why**: 規模大、follow-up 長。
-- **→** [[pubmed-42174253]] · [PubMed](https://pubmed.ncbi.nlm.nih.gov/42174253/)
+- **→** [PubMed](https://pubmed.ncbi.nlm.nih.gov/42174253/)
 """
 
 AI_SAMPLE = """---
@@ -184,6 +184,170 @@ class TestDetail:
         assert r.status_code == 404
 
 
+class TestStudyDetail:
+    """Per-study PubMed detail page: abstract fetch + cache + zh-TW translation.
+
+    ``efetch_abstracts`` is patched on ``shared.digest_study_detail`` (its
+    module-level import); the LLM goes through the ``mock_llm_response``
+    facade fixture. The state.db cache is isolated by the autouse fixture.
+    """
+
+    def _patch_fetch(self, monkeypatch, article=None, *, counter=None):
+        import shared.digest_study_detail as dsd
+
+        def fake_fetch(pmids):
+            if counter is not None:
+                counter.append(list(pmids))
+            art = (
+                dict(article)
+                if article
+                else {
+                    "pmid": pmids[0],
+                    "title": "Semaglutide trial",
+                    "journal": "New England Journal of Medicine",
+                    "abstract": "BACKGROUND: A large trial.\nRESULTS: It worked.",
+                    "pub_date": "2026 May 1",
+                    "authors": "Jane Doe, John Roe",
+                    "url": f"https://pubmed.ncbi.nlm.nih.gov/{pmids[0]}/",
+                    "issn": "0028-4793",
+                    "doi": "10.1056/NEJMoa000000",
+                    "pmcid": "PMC12345678",
+                }
+            )
+            art.setdefault("pmid", pmids[0])
+            return [art]
+
+        monkeypatch.setattr(dsd, "efetch_abstracts", fake_fetch)
+
+    def test_renders_abstract_and_translation(self, client, monkeypatch, mock_llm_response):
+        self._patch_fetch(monkeypatch)
+        mock_llm_response("背景：一項大型試驗。\n結果：有效。")
+
+        r = client.get("/bridge/digests/pubmed/2026-05-24/42174253")
+        assert r.status_code == 200
+        body = r.text
+        assert "Semaglutide trial" in body
+        assert "中文翻譯" in body
+        assert "背景：一項大型試驗" in body  # translation
+        assert "BACKGROUND: A large trial" in body  # english original
+        assert "Jane Doe" in body  # authors
+        assert "PMID" in body
+        # Digest-side framing carried over.
+        assert "Semaglutide 對代謝症候群有效" in body
+        # Editor score table renders with rubric-sourced dimension meanings.
+        assert "編輯評分" in body
+        assert "Clinical Relevance 臨床關聯" in body
+        assert "Red Flags" in body  # reverse-scored dimension label present
+        # Rubric level definition for the study's Rigor score (R4).
+        assert "中型 RCT" in body
+
+    def test_publisher_and_pmc_links_render(self, client, monkeypatch, mock_llm_response):
+        self._patch_fetch(monkeypatch)
+        mock_llm_response("譯文")
+        r = client.get("/bridge/digests/pubmed/2026-05-24/42174253")
+        assert r.status_code == 200
+        body = r.text
+        # DOI resolver → publisher's own page (e.g. Nature/NEJM/Lancet).
+        assert "https://doi.org/10.1056/NEJMoa000000" in body
+        assert "期刊原文" in body
+        # PMC free-full-text link when a PMCID is present.
+        assert "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12345678/" in body
+
+    def test_no_abstract_still_links_to_publisher(self, client, monkeypatch, mock_llm_response):
+        self._patch_fetch(
+            monkeypatch,
+            article={
+                "title": "Letter",
+                "journal": "The Lancet",
+                "abstract": "",
+                "pub_date": "2026 Jul",
+                "authors": "",
+                "url": "",
+                "issn": "",
+                "doi": "10.1016/S0140-6736(26)00001-0",
+                "pmcid": "",
+            },
+        )
+        mock_llm_response("unused")
+        r = client.get("/bridge/digests/pubmed/2026-05-24/42174253")
+        assert r.status_code == 200
+        assert "未提供此文獻的 abstract" in r.text
+        assert "https://doi.org/10.1016/S0140-6736(26)00001-0" in r.text
+
+    def test_translation_model_is_sonnet(self, client, monkeypatch, mock_llm_response):
+        self._patch_fetch(monkeypatch)
+        llm = mock_llm_response("譯文")
+        client.get("/bridge/digests/pubmed/2026-05-24/42174253")
+        assert llm.ask.call_args.kwargs["model"] == "claude-sonnet-4-6"
+
+    def test_cache_hit_second_view_no_refetch(self, client, monkeypatch, mock_llm_response):
+        calls: list = []
+        self._patch_fetch(monkeypatch, counter=calls)
+        llm = mock_llm_response("譯文")
+
+        client.get("/bridge/digests/pubmed/2026-05-24/42174253")
+        client.get("/bridge/digests/pubmed/2026-05-24/42174253")
+
+        assert calls == [["42174253"]]  # fetched once
+        assert llm.ask.call_count == 1  # translated once
+
+    def test_no_abstract_shows_notice_no_llm(self, client, monkeypatch, mock_llm_response):
+        self._patch_fetch(
+            monkeypatch,
+            article={
+                "title": "Letter to editor",
+                "journal": "",
+                "abstract": "",
+                "pub_date": "",
+                "authors": "",
+                "url": "",
+                "issn": "",
+            },
+        )
+        llm = mock_llm_response("should-not-run")
+
+        r = client.get("/bridge/digests/pubmed/2026-05-24/42174253")
+        assert r.status_code == 200
+        assert "未提供此文獻的 abstract" in r.text
+        llm.ask.assert_not_called()
+
+    def test_pmid_not_in_digest_404(self, client):
+        r = client.get("/bridge/digests/pubmed/2026-05-24/99999999")
+        assert r.status_code == 404
+
+    def test_non_digit_pmid_404(self, client):
+        r = client.get("/bridge/digests/pubmed/2026-05-24/not-a-pmid")
+        assert r.status_code == 404
+
+    def test_missing_digest_day_404(self, client):
+        r = client.get("/bridge/digests/pubmed/2026-01-01/42174253")
+        assert r.status_code == 404
+
+    def test_card_title_links_to_detail(self, client):
+        """Detail page PubMed cards expose a title link to the study page."""
+        r = client.get("/bridge/digests/pubmed/2026-05-24")
+        assert "/bridge/digests/pubmed/2026-05-24/42174253" in r.text
+        assert "digest-card-title-lk" in r.text
+
+    def test_requires_auth(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("WEB_PASSWORD", "secret")
+        monkeypatch.setenv("WEB_SECRET", "shh")
+        monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+        monkeypatch.setenv("DISABLE_ROBIN", "1")
+        monkeypatch.setenv("NAKAMA_DOC_INDEX_DB_PATH", str(tmp_path / "x.db"))
+        import thousand_sunny.app as app_module
+        import thousand_sunny.auth as auth_module
+        import thousand_sunny.routers.bridge_digests as bd_module
+
+        importlib.reload(auth_module)
+        importlib.reload(bd_module)
+        importlib.reload(app_module)
+        c = TestClient(app_module.app)
+        r = c.get("/bridge/digests/pubmed/2026-05-24/42174253", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "/login?next=/bridge/digests/pubmed/2026-05-24/42174253"
+
+
 class TestAuth:
     def test_redirects_to_login_without_cookie(self, monkeypatch, tmp_path):
         monkeypatch.setenv("WEB_PASSWORD", "secret")
@@ -247,20 +411,8 @@ class TestAsk:
         assert r.status_code == 200
         assert "天數" in r.text
 
-    def test_post_dispatches_to_llm_and_renders(self, client, monkeypatch):
-        import shared.digest_ask as ask_module
-
-        def fake_llm(prompt, *, system, model, max_tokens):
-            assert "Nature 研究" in prompt  # PubMed digest body in context
-            assert model == "claude-sonnet-4-6"
-            return "LLM 模擬回答：找到 1 篇相關研究"
-
-        monkeypatch.setattr(ask_module, "ask_claude", fake_llm, raising=False)
-        # ask() imports ask_claude lazily — patch via monkeypatching the module
-        # function path that ask() resolves to.
-        import shared.anthropic_client as anth
-
-        monkeypatch.setattr(anth, "ask_claude", fake_llm)
+    def test_post_dispatches_to_llm_and_renders(self, client, mock_llm_response):
+        llm = mock_llm_response("LLM 模擬回答：找到 1 篇相關研究")
 
         r = client.post(
             "/bridge/digests/ask",
@@ -270,14 +422,12 @@ class TestAsk:
         assert "LLM 模擬回答" in r.text
         assert "今天 PubMed 有什麼" in r.text
         assert "引用來源" in r.text
+        prompt = llm.ask.call_args.args[0]
+        assert "Nature 研究" in prompt  # PubMed digest body in context
+        assert llm.ask.call_args.kwargs["model"] == "claude-sonnet-4-6"
 
-    def test_post_llm_failure_renders_error(self, client, monkeypatch):
-        import shared.anthropic_client as anth
-
-        def boom(*a, **kw):
-            raise RuntimeError("simulated outage")
-
-        monkeypatch.setattr(anth, "ask_claude", boom)
+    def test_post_llm_failure_renders_error(self, client, mock_llm_response):
+        mock_llm_response(side_effect=RuntimeError("simulated outage"))
 
         r = client.post(
             "/bridge/digests/ask",
@@ -286,11 +436,10 @@ class TestAsk:
         assert r.status_code == 200
         assert "查詢失敗" in r.text
 
-    def test_post_empty_scope_no_llm_call(self, client, monkeypatch, tmp_path):
+    def test_post_empty_scope_no_llm_call(self, client, monkeypatch, tmp_path, mock_llm_response):
         # Re-build empty vault client
         monkeypatch.setenv("VAULT_PATH", str(tmp_path / "empty"))
         (tmp_path / "empty").mkdir()
-        import shared.anthropic_client as anth
         import thousand_sunny.app as app_module
         import thousand_sunny.routers.bridge_digests as bd_module
 
@@ -298,12 +447,11 @@ class TestAsk:
         importlib.reload(app_module)
         c = TestClient(app_module.app)
 
-        called = []
-        monkeypatch.setattr(anth, "ask_claude", lambda *a, **kw: called.append(1) or "x")
+        llm = mock_llm_response("x")
 
         r = c.post("/bridge/digests/ask", data={"question": "q", "days": "7"})
         assert r.status_code == 200
-        assert called == []
+        llm.ask.assert_not_called()
         assert "無 digest 可查" in r.text
 
     def test_post_shows_truncation_date_range_and_drop_count(self, client, monkeypatch):
@@ -341,13 +489,8 @@ class TestAsk:
         assert "9" in r.text
         assert "已捨棄" in r.text
 
-    def test_post_answer_rendered_as_markdown(self, client, monkeypatch):
-        import shared.anthropic_client as anth
-
-        def fake_llm(prompt, *, system, model, max_tokens):
-            return "**bold** text\n\n- list item"
-
-        monkeypatch.setattr(anth, "ask_claude", fake_llm)
+    def test_post_answer_rendered_as_markdown(self, client, mock_llm_response):
+        mock_llm_response("**bold** text\n\n- list item")
 
         r = client.post(
             "/bridge/digests/ask",
@@ -361,10 +504,8 @@ class TestAsk:
         r = client.get("/bridge/digests")
         assert "/bridge/digests/ask" in r.text
 
-    def test_post_renders_scope_audit_details(self, client, monkeypatch):
-        import shared.anthropic_client as anth
-
-        monkeypatch.setattr(anth, "ask_claude", lambda *a, **kw: "answer text")
+    def test_post_renders_scope_audit_details(self, client, mock_llm_response):
+        mock_llm_response("answer text")
 
         r = client.post(
             "/bridge/digests/ask",

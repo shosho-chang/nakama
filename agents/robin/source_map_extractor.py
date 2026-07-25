@@ -1,16 +1,16 @@
 """LLM-backed ``ClaimExtractor`` for ADR-024 Source Promotion (N519).
 
 Implements the ``ClaimExtractor`` Protocol declared in
-``shared.source_map_builder`` — reads ONE chapter's plain text and returns a
+``agents.robin.promotion.source_map_builder`` — reads ONE chapter's plain text and returns a
 claim-dense ``ClaimExtractionResult`` via a single ``shared.llm.ask`` call.
 Wired behind ``NAKAMA_PROMOTION_MODE=llm`` in ``thousand_sunny.promotion_wiring``;
-the deterministic twin used in ``dry_run`` mode is ``shared.dry_run_extractor``.
+the deterministic twin used in ``dry_run`` mode is ``agents.robin.promotion.dry_run_extractor``.
 
 **Scope.** This extractor serves ``ebook`` + ``inbox_document`` sources. The
 ``youtube_video`` kind never reaches here: it has a dedicated annotation-based
-builder (``shared.video_source_map_builder``) where the user's own annotations
+builder (``agents.robin.promotion.video_source_map_builder``) where the user's own annotations
 are the evidence, so the ClaimExtractor pipeline does not apply (see
-``shared.source_map_builder._inspect`` youtube branch).
+``agents.robin.promotion.source_map_builder._inspect`` youtube branch).
 
 **Claim-dense, not mirror (ADR-024).** The model is asked for a small set of
 factual claims the *source* states, key numbers, figure/table one-liners, and a

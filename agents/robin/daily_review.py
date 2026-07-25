@@ -32,10 +32,12 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from shared import candidate_inbox
 from shared.config import get_vault_path
 from shared.kb_hybrid_search import get_kb_conn
 from shared.llm import ask
 from shared.llm_context import set_current_agent
+from shared.llm_json import extract_json_array, extract_json_object
 from shared.llm_router import get_model
 from shared.schemas.annotations import AnnotationSetV3
 from shared.schemas.daily_review import (
@@ -309,6 +311,13 @@ def _item_quote_note(item) -> tuple[str, str]:
     return item.text, ""
 
 
+def _is_book_annset(ann_set) -> bool:
+    """這個 annotation set 是不是書本來源（對齊 literature_writer._infer_source_kind：
+    ``base == "books"`` 或有 ``book_id``）。書本不走每日「昨日」流，改走整本 ingest
+    完成後的一次提案（:func:`collect_book_items`）。"""
+    return bool(getattr(ann_set, "book_id", None)) or getattr(ann_set, "base", "") == "books"
+
+
 def collect_yesterday_items(
     vault_path: Path,
     *,
@@ -318,11 +327,16 @@ def collect_yesterday_items(
 
     每筆 dict：``{slug, anchor, quote, note, type, literature_path}``。純 highlight
     （無 note）也收進來——P-1 自己依規則排除（雜訊控制在 prompt 側，保留可調性）。
+
+    **書本來源整批排除**（item 6 / 修修回饋）：讀到一半的書，前一天的劃線不該每天
+    被提案；書本改在整本 ingest 完成後由 :func:`collect_book_items` 一次提案。
     """
     out: list[dict] = []
     for path in _iter_annotation_files(vault_path):
         ann_set = _load_v3_set(path)
         if ann_set is None:
+            continue
+        if _is_book_annset(ann_set):
             continue
         slug = ann_set.slug
         for item in ann_set.items:
@@ -340,6 +354,37 @@ def collect_yesterday_items(
                     "literature_path": f"KB/Literature/{slug}",
                 }
             )
+    return out
+
+
+def collect_source_items(vault_path: Path, *, slug: str) -> list[dict]:
+    """收某個來源 slug「全部」annotation item（不限昨日）——來源 ingest 完成「當下」
+    提案用（與「整本書一次提案」同精神，但 keyed by slug，適用三來源）。
+
+    一個 annotation 檔對一個來源 slug（``KB/Annotations/{slug}.md``）。文章從 Inbox
+    丟進來、沒在 Reader 讀過 → 無 annotation 檔 → 回空（無開卡建議，靠 adhoc 開卡）。
+    影片 / 書讀過劃線 → 回 item 清單餵 P-1。回傳 dict 與 :func:`collect_yesterday_items`
+    同形。書本的 slug 即 ``book_id``（annotation set 的 slug 與 book_id 相同）。
+    """
+    path = vault_path / "KB" / "Annotations" / f"{slug}.md"
+    if not path.exists():
+        return []
+    ann_set = _load_v3_set(path)
+    if ann_set is None:
+        return []
+    out: list[dict] = []
+    for item in ann_set.items:
+        quote, note = _item_quote_note(item)
+        out.append(
+            {
+                "slug": ann_set.slug,
+                "anchor": _item_anchor(item, ann_set.slug),
+                "quote": quote,
+                "note": note,
+                "type": item.type,
+                "literature_path": f"KB/Literature/{ann_set.slug}",
+            }
+        )
     return out
 
 
@@ -381,6 +426,7 @@ def _build_p1_prompt(items: list[dict], index_text: str, max_candidates: int) ->
 3. note 只是同意或複述（「沒錯」「就是這樣」）→ 不選。
 4. 純 highlight 無 note → 不選。
 5. 多條 annotation 指向同一概念 → 合併為一條候選，列出全部錨點。
+6. 同一個錨點（anchor）最多輸出一條候選——不要為同一條劃線生多個標題變體。
 
 每條候選輸出：
 - suggested_title：一句宣告句（是主張不是主題；「意志力要用在對齊的任務」
@@ -406,31 +452,18 @@ def _ask_p1_llm(prompt: str) -> list[dict]:
         prompt,
         system=_SYSTEM_PREAMBLE,
         model=get_model(agent="robin", task="daily_review"),
-        max_tokens=2048,
+        max_tokens=8192,  # 候選 JSON（中文 why/quote）超過 2048 會被截斷 → parse 回空
     )
     return _parse_json_array(text)
 
 
 def _parse_json_array(text: str) -> list[dict]:
-    m = re.search(r"\[[\s\S]*\]", text or "")
-    if not m:
-        return []
-    try:
-        data = json.loads(m.group())
-    except json.JSONDecodeError:
-        return []
-    return [d for d in data if isinstance(d, dict)]
+    # 容忍 ```json fence / reasoning preamble / 截斷（見 shared/llm_json）；只保留 dict。
+    return [d for d in extract_json_array(text) if isinstance(d, dict)]
 
 
 def _parse_json_object(text: str) -> dict:
-    m = re.search(r"\{[\s\S]*\}", text or "")
-    if not m:
-        return {}
-    try:
-        data = json.loads(m.group())
-    except json.JSONDecodeError:
-        return {}
-    return data if isinstance(data, dict) else {}
+    return extract_json_object(text)
 
 
 def _candidate_id(slug: str, anchors: list[str]) -> str:
@@ -516,6 +549,20 @@ def build_candidates(
                 strong_signal=strong,
             )
         )
+
+    # 去重：同一條劃線（primary anchor）只留第一張，避免 LLM 對同錨點生多個標題
+    # 變體、或多次 re-ingest 累積近似重複（修修回報）。用 primary anchor 而非
+    # candidate_id 當 key——candidate_id 雜湊「整組 sorted anchors」，LLM 跨次選的
+    # anchor 集合只要微異就漏接；primary anchor（劃線本身的 cfi）才是穩定身分。
+    seen_keys: set[str] = set()
+    deduped: list[CandidateCard] = []
+    for card in cards:
+        key = (card.source_refs[0].anchor if card.source_refs else "") or card.candidate_id
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        deduped.append(card)
+    cards = deduped
 
     # 強訊號置頂（穩定排序：strong 先，再保留 P-1 原序）。
     cards.sort(key=lambda c: (0 if c.strong_signal else 1, c.priority))
@@ -603,7 +650,7 @@ def _ask_p2_llm(prompt: str) -> dict:
         prompt,
         system=_SYSTEM_PREAMBLE,
         model=get_model(agent="robin", task="daily_review"),
-        max_tokens=1536,
+        max_tokens=4096,  # typed-edge JSON 也別被截斷
     )
     return _parse_json_object(text)
 
@@ -1206,18 +1253,43 @@ def run_daily_review(
         save_review_state(vault_path, state)
     deferred_pending: set[str] = set((state.get("deferred") or {}).keys())
 
-    # 2) 昨日 annotation delta → P-1 候選
+    # 2) 昨日 annotation delta → P-1 候選（raw）→ 寫進收件匣 → 讀回「全部未開卡」候選。
+    #    收件匣讓昨天沒處理的候選**結轉**到今天（修「點子消失」：原本單槽快照覆寫即丟）。
     items = collect_yesterday_items(vault_path, yesterday=yesterday)
     index_text = _read_index_text(vault_path)
-    candidates, p1_warnings = build_candidates(items, index_text)
+    fresh, p1_warnings = build_candidates(items, index_text)
     warnings.extend(p1_warnings)
 
-    # 過濾掉已「略過」與「之後再說（未過期）」的候選——不重複打擾
+    # 書本不走每日「昨日」流（collect_yesterday_items 已整批排除）——整本 ingest 完成
+    # 的「當下」提案已移到 ingest 流程內（thousand_sunny robin._propose_source_cards，
+    # 走 collect_source_items），不再靠這裡輪詢佇列（修修回饋：拆掉書本 ingest 佇列）。
+
+    today_iso = today.isoformat()
+    for card in fresh:
+        try:
+            candidate_inbox.upsert_candidate(card, today=today_iso)
+        except Exception as exc:  # noqa: BLE001 — 收件匣寫入失敗不該沉 job
+            warnings.append(f"收件匣寫入失敗（{card.suggested_title[:20]}）：{exc}")
+    try:
+        candidates = candidate_inbox.list_open()  # 結轉 + 今日新候選，強訊號置頂、新→舊
+    except Exception as exc:  # noqa: BLE001 — 收件匣讀取失敗 → 退回當日 fresh（degraded 不中斷）
+        warnings.append(f"收件匣讀取失敗，退回當日候選：{exc}")
+        candidates = fresh
+
+    # 過濾掉已「略過」與「之後再說（未過期）」的候選——skip/defer 過濾權威仍是 state JSON
     candidates = [
         c
         for c in candidates
         if c.candidate_id not in skipped and c.candidate_id not in deferred_pending
     ]
+
+    # 顯示上限：超過的留在收件匣不丟，僅警示（清掉一些後其餘自動浮現）。
+    if len(candidates) > candidate_inbox.MAX_INBOX_DISPLAY:
+        warnings.append(
+            f"收件匣有 {len(candidates)} 條未處理候選，僅顯示前 "
+            f"{candidate_inbox.MAX_INBOX_DISPLAY} 條（其餘已留存，清理後自動浮現）"
+        )
+        candidates = candidates[: candidate_inbox.MAX_INBOX_DISPLAY]
 
     # 3) 每候選跑 P-2 typed-edge（高圈）+ 卡片畫布中圈/外圈（N527）
     mocs = load_mocs(vault_path)  # 一次讀 MOC 清單（語料），每候選共用
@@ -1251,6 +1323,10 @@ def run_daily_review(
         sweep.extend(detect_stale_seedlings(vault_path, today=today))
         sweep.extend(detect_orphans(vault_path, conn=conn))
         for cid in expired_ids:
+            try:
+                candidate_inbox.log_event(cid, "expire")
+            except Exception:  # noqa: BLE001 — 事件記錄 best-effort
+                pass
             sweep.append(
                 SweepItem(
                     kind="expired_defer",

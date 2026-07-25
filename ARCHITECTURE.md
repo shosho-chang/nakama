@@ -18,7 +18,7 @@ Owner（修修 · 船長）
   │                                       │
   └── Manual / Bridge UI
            ├── Brook ──► blog / FB / IG / 電子報 各平台格式輸出
-           ├── Foundry ──► B-roll storyboard → FCPXML（DaVinci）
+           │        └──► Video Production Line：B-roll storyboard → FCPXML（DaVinci）（原 Foundry，ADR-050 歸 Brook）
            └── Sanji（社群 · 規劃中）
 ```
 
@@ -89,7 +89,7 @@ Obsidian vault 的讀寫介面：
 
 ## Robin：Knowledge Base Agent
 
-系統最核心、最成熟的 Agent。（其餘 agent 多數已有實作 — Zoro / Nami / Brook / Foundry / Franky / Usopp 皆已 ship 部分能力，Sanji 仍為規劃中 stub；完整狀態見 [`/bridge/inventory`](thousand_sunny/templates/bridge/inventory.html) 與 [`/progress`](thousand_sunny/templates/bridge/progress.html)。）
+系統最核心、最成熟的 Agent。（其餘 agent 多數已有實作 — Zoro / Nami / Brook（含 Video Production Line，原 Foundry，ADR-050）/ Franky / Usopp 皆已 ship 部分能力，Sanji 仍為規劃中 stub；完整狀態見 [`/bridge/inventory`](thousand_sunny/templates/bridge/inventory.html) 與 [`/progress`](thousand_sunny/templates/bridge/progress.html)。）
 
 ### 工作流程
 
@@ -127,7 +127,7 @@ FastAPI + Jinja2，部署為 systemd service（`thousand-sunny.service`）。
 - `robin.py` — KB ingest UI、Reader、KB search（38 routes）
 - `zoro.py` / `bridge_zoro.py` — Keyword research
 - `brook.py` / `repurpose.py` — Article composition、多 channel render
-- `foundry.py` — B-roll storyboard / FCPXML preview
+- `brook_video.py` — B-roll storyboard / FCPXML preview（Brook Video Production Line surface；route `/brook/video`，舊 `/foundry/*` 301 redirect，ADR-050）
 - `franky.py` — `/healthz` 探針 + `/bridge/franky` 健康儀表板
 - `bridge*.py` — Bridge ops 主控台（weekly / projects / digests / models / cost / logs / memory）
 - `progress.py` / `architecture.py` / `inventory.py` — Ops 文件頁（chassis nav，cookie-authed）

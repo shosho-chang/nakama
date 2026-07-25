@@ -40,6 +40,7 @@ _JOB_NAME_ANOMALY = "nakama-anomaly-daemon"
 _JOB_NAME_GSC_DAILY = "franky-gsc-daily"
 _JOB_NAME_SYNTHESIS = "franky-news-synthesis"
 _JOB_NAME_RETROSPECTIVE = "franky-news-retrospective"
+_JOB_NAME_CAL_RECONCILE = "franky-calendar-reconcile"
 
 
 def _cmd_health(_args: argparse.Namespace) -> int:
@@ -233,6 +234,32 @@ def _cmd_gsc_daily(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_calendar_reconcile(args: argparse.Namespace) -> int:
+    """N543 — daily task ↔ Google Calendar drift sweep. Auto-links the unambiguous
+    unlinked tasks and Slacks 修修 a report on any drift/repair. Heartbeat: success on
+    every non-crash run (finding drift is a healthy detection, not a cron failure)."""
+    from agents.franky.jobs.calendar_reconcile_daily import run_once
+
+    dry_run = getattr(args, "dry_run", False)
+    no_publish = getattr(args, "no_publish", False)
+    slack_bot = None
+    if not dry_run and not no_publish:
+        from agents.franky.slack_bot import FrankySlackBot
+
+        slack_bot = FrankySlackBot.from_env()
+    try:
+        result = run_once(dry_run=dry_run, slack_bot=slack_bot)
+    except Exception as exc:
+        if not dry_run:
+            record_failure(_JOB_NAME_CAL_RECONCILE, f"{type(exc).__name__}: {exc}"[:200])
+        raise
+
+    print(json.dumps(result.to_summary_dict(), ensure_ascii=False, indent=2))
+    if not dry_run:
+        record_success(_JOB_NAME_CAL_RECONCILE)
+    return 0
+
+
 def _cmd_synthesis(args: argparse.Namespace) -> int:
     """ADR-023 §7 S3 — weekly synthesis → two-stage proposal inbox."""
     from agents.franky.news_synthesis import _re_scan_and_promote_page, run_synthesis
@@ -325,6 +352,20 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Parse keywords + compute window only; no GSC API call, no DB write.",
     )
+    cal = sub.add_parser(
+        "calendar-reconcile",
+        help="N543: daily task ↔ Google Calendar drift sweep (auto-link + Slack report)",
+    )
+    cal.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Audit only — no vault writes, no Slack.",
+    )
+    cal.add_argument(
+        "--no-publish",
+        action="store_true",
+        help="Auto-link drift but skip the Slack report (dev use).",
+    )
     synthesis = sub.add_parser(
         "synthesis",
         help="ADR-023 §7 S3: weekly synthesis → two-stage proposal inbox (週日 22:00)",
@@ -385,6 +426,7 @@ def main(argv: list[str] | None = None) -> int:
         "news": _cmd_news,
         "anomaly": _cmd_anomaly,
         "gsc-daily": _cmd_gsc_daily,
+        "calendar-reconcile": _cmd_calendar_reconcile,
         "synthesis": _cmd_synthesis,
         "retrospective": _cmd_retrospective,
     }

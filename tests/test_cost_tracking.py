@@ -256,3 +256,81 @@ def test_get_latency_summary_empty_when_all_zero():
     )
     rows = state.get_latency_summary(days=7)
     assert rows == []
+
+
+# ---------------------------------------------------------------------------
+# Slice 3 — OpenRouter actual cost (cost_usd)
+# ---------------------------------------------------------------------------
+
+
+def test_record_api_call_defaults_cost_usd_to_none():
+    state.record_api_call(
+        agent="nami", model="claude-sonnet-4-6", input_tokens=100, output_tokens=50
+    )
+    conn = state._get_conn()
+    row = conn.execute(
+        "SELECT cost_usd FROM api_calls WHERE agent='nami' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    assert row["cost_usd"] is None  # 原生呼叫無實際 cost → NULL（panel 改估算）
+
+
+def test_record_api_call_stores_cost_usd():
+    state.record_api_call(
+        agent="nami", model="gpt-5", input_tokens=100, output_tokens=50, cost_usd=0.0123
+    )
+    conn = state._get_conn()
+    row = conn.execute(
+        "SELECT cost_usd FROM api_calls WHERE agent='nami' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    assert row["cost_usd"] == pytest.approx(0.0123)
+
+
+def test_get_cost_summary_splits_actual_and_estimated():
+    """同 agent×model group 混有實際 cost（OpenRouter）與 NULL（原生）時，
+    actual_cost_usd 只算實際那筆、est_* token 只收 NULL 那筆 — panel 才能加總正確。"""
+    state.record_api_call(
+        agent="sanji",
+        model="claude-sonnet-4-6",
+        input_tokens=100,
+        output_tokens=50,
+        cost_usd=0.02,
+    )
+    state.record_api_call(
+        agent="sanji",
+        model="claude-sonnet-4-6",
+        input_tokens=200,
+        output_tokens=80,  # 無 cost_usd → NULL
+    )
+    rows = state.get_cost_summary(agent="sanji", days=7)
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["calls"] == 2
+    assert r["input_tokens"] == 300  # 全 token 照常加總
+    assert r["actual_cost_usd"] == pytest.approx(0.02)
+    assert r["est_input_tokens"] == 200  # 只有 NULL 那筆進估算池
+    assert r["est_output_tokens"] == 80
+    assert r["est_cache_read_tokens"] == 0
+    assert r["est_cache_write_tokens"] == 0
+
+
+def test_get_cost_timeseries_exposes_actual_cost_split():
+    state.record_api_call(
+        agent="sanji", model="gpt-5", input_tokens=10, output_tokens=5, cost_usd=0.01
+    )
+    state.record_api_call(agent="sanji", model="gpt-5", input_tokens=20, output_tokens=10)
+    rows = state.get_cost_timeseries(agent="sanji", days=1, bucket="day")
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["actual_cost_usd"] == pytest.approx(0.01)
+    assert r["est_input_tokens"] == 20  # 只有 NULL 那筆
+
+
+def test_pricing_has_openai_family_for_fallback():
+    """OpenRouter 取不到 cost 時的 fallback：OpenAI family 要有非零估算 + 正確 prefix 順序。"""
+    from shared.pricing import calc_cost
+
+    gpt5 = calc_cost("gpt-5", input_tokens=1_000_000)
+    gpt5_mini = calc_cost("gpt-5-mini", input_tokens=1_000_000)
+    assert gpt5 == pytest.approx(1.25)  # gpt-5 input $1.25/Mtok
+    assert gpt5_mini == pytest.approx(0.25)
+    assert gpt5_mini < gpt5  # gpt-5-mini 必須比通用 gpt-5 早命中（更具名前綴）

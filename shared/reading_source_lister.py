@@ -2,7 +2,7 @@
 N518a).
 
 Production implementation of the ``ReadingSourceLister`` Protocol declared
-in ``shared.promotion_review_service`` (#516). Walks the ``books`` table
+in ``agents.robin.promotion.promotion_review_service`` (#516). Walks the ``books`` table
 plus the vault's ``Inbox/web/`` directory and resolves each candidate via
 the injected ``ReadingSourceRegistry`` (#509). Inbox originals and their
 ``-bilingual`` siblings collapse to a single ``ReadingSource`` per the

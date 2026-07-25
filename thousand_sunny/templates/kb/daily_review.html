@@ -6,16 +6,24 @@
 <title>每日回顧 · Centaur KB</title>
 <script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+{# bridge.css 提供 chassis 導覽列 + .sho-btn base。版面 shell 是 body.sho.bridge-page
+   限定，本頁 body 只有 .sho，不會被劫持；只活化 .chassis* 與 .sho-btn*。 #}
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/kb_review.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/kb_canvas.css?v={{ asset_version }}">
 </head>
 <body class="sho">
+{# 全站導覽列（chassis）—— 修補「KB 回顧頁沒有出口、回不去」。KB 高亮；
+   bridge.css 已在 <head> 載入提供樣式，下拉行為走外部 chassis_nav.js（CSP-safe）。 #}
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='kb') }}
 <div class="kb-shell">
   <main class="kb-main">
     <div class="vhead">
       <h1>每日回顧</h1>
       <span class="meta">{{ review_label }}</span>
       {% if weekly_sweep %}<span class="sho-tag sho-tag--warning">每週清掃日</span>{% endif %}
+      <button type="button" class="sho-btn sho-btn--ghost kb-newcard" id="kb-newcard">＋ 開新卡</button>
     </div>
 
     {% if warnings %}
@@ -92,7 +100,18 @@
     <div class="kbc-dz kbc-dz-ext" data-z="extend">延伸</div>
     <div class="kbc-dz kbc-dz-src" data-z="src">來源</div>
     <div class="kbc-lbl">永久卡草稿<span class="q">今日候選 <b id="kbc-i">0</b>/<b id="kbc-n">0</b> · 已寫 <span class="done-n" id="kbc-done">0</span></span></div>
-    <input class="kbc-title" id="kbc-title" spellcheck="false" aria-label="永久卡檔名（一句宣告句）">
+    <textarea class="kbc-title" id="kbc-title" rows="1" spellcheck="false" aria-label="永久卡檔名（一句宣告句）"></textarea>
+    <div class="kbc-src" id="kbc-src" hidden>
+      <div class="kbc-src-item kbc-src-quote">
+        <span class="kbc-src-tag">畫線</span>
+        <p id="kbc-src-quote"></p>
+      </div>
+      <div class="kbc-src-item kbc-src-note" id="kbc-src-note-row">
+        <span class="kbc-src-tag">你的註解</span>
+        <p id="kbc-src-note"></p>
+        <button type="button" class="kbc-src-use" id="kbc-src-use">用註解當草稿 →</button>
+      </div>
+    </div>
     <textarea id="kbc-body" aria-label="永久卡正文" placeholder=""></textarea>
     <div class="kbc-edges" id="kbc-edges-box" hidden>
       <div class="eh">連結與關係<span class="n" id="kbc-e-n"></span></div>

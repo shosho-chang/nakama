@@ -22,9 +22,23 @@ function isDarkTheme() {
 function pushReaderStyles() {
   if (!view.renderer || typeof view.renderer.setStyles !== 'function') return;
   const dark = isDarkTheme();
+  // Dark mode: publisher EPUB stylesheets hard-code near-black text colors
+  // (color:#000000) on headings, list items, footnotes, boxed text, etc. —
+  // designed for a white page. Once the book's own CSS loads (style-src now
+  // allows the blob: stylesheet, see middleware/csp.py) those elements go
+  // dark-on-dark and vanish. Force every text-bearing element to the light
+  // reading color so dark mode stays readable. This is a deliberate monochrome
+  // trade-off: accent colors (e.g. pink section titles) are dropped in dark
+  // mode but still render in light mode. Font sizes are left untouched, so the
+  // publisher's heading scale is preserved.
   const css = dark
     ? `html, body { background: #1a1a1a !important; color: #e0e0e0 !important; }
-       a, a:visited { color: #9d97ff; }`
+       h1, h2, h3, h4, h5, h6,
+       p, li, dt, dd, blockquote, figcaption, caption, th, td,
+       span, div, cite, em, strong, b, i, u, small, sub, sup {
+         color: #e0e0e0 !important;
+       }
+       a, a:visited { color: #9d97ff !important; }`
     : `html, body { background: #ffffff; color: #1a1a1a; }
        a, a:visited { color: #6c63ff; }`;
   try { view.renderer.setStyles(css); } catch (_) { /* renderer not ready yet */ }
@@ -249,7 +263,6 @@ async function fetchBookMetadata() {
     const meta = await r.json();
     if (meta.book_version_hash) bookVersionHash = meta.book_version_hash;
     applyIngestState({
-      has_original: meta.has_original === true,
       ingest_status: typeof meta.ingest_status === 'string' ? meta.ingest_status : 'never',
     });
   } catch (err) {
@@ -939,123 +952,22 @@ function dismissSidebarsOnOutsideClick(target) {
 }
 document.addEventListener('click', e => dismissSidebarsOnOutsideClick(e.target));
 
-// ── Ingest button (Slice 4D) ─────────────────────────────────────────────────
+// ── Ingest button label ──────────────────────────────────────────────────────
 //
-// Reader-side trigger for the whole-book ingest pipeline (Slices 4A–4C). The
-// button is gated on `has_original` — uploads without an EN original cannot be
-// ingested, so we surface an inline tooltip instead of a silent disabled state.
-// On 200 we lock the button into the "Queued" state; the badge on the library
-// page is the source of truth for downstream status (ingesting / ingested /
-// partial / failed). Single user, manual refresh — no polling here.
+// The button is a <form method="post" action="/start-book"> submit (book_reader.html):
+// clicking POSTs synchronously → /processing runs the SAME SSE autonomous flow as
+// articles/videos (摘要→概念→寫入→開卡建議), 3–5 min + progress bar. No ingest queue,
+// no async fetch here — the form navigates. We only relabel: an already-ingested book
+// (ingest_status='ingested', i.e. its KB/Wiki/Sources page exists) offers "重新 ingest".
 
 const ingestBtn = document.getElementById('ingestBtn');
-const ingestWrap = document.getElementById('ingestWrap');
 
-// The ingest button is a state-machine: its current text + dataset.mode tell the
-// click handler which API to call. queued is the only cancellable state — once
-// the LLM ingest starts (status='ingesting') the API refuses (409) since the
-// background job can't be aborted mid-run.
-function applyIngestState({ has_original, ingest_status }) {
-  if (!ingestBtn || !ingestWrap) return;
-  ingestBtn.classList.remove('is-queued');
-  ingestBtn.dataset.mode = 'ingest';
-  if (!has_original) {
-    ingestBtn.disabled = true;
-    ingestBtn.textContent = '📥 Ingest 整本書';
-    ingestWrap.setAttribute('data-disabled-reason', '上傳 EN 原檔以啟用 ingest');
-    return;
-  }
-  ingestWrap.removeAttribute('data-disabled-reason');
-  if (ingest_status === 'queued') {
-    ingestBtn.disabled = false;
-    ingestBtn.classList.add('is-queued');
-    ingestBtn.dataset.mode = 'cancel';
-    ingestBtn.textContent = '📥 取消 Queued';
-    return;
-  }
-  if (ingest_status === 'ingesting') {
-    ingestBtn.disabled = true;
-    ingestBtn.classList.add('is-queued');
-    ingestBtn.textContent = '📥 Ingesting';
-    return;
-  }
-  if (ingest_status === 'ingested') {
-    ingestBtn.disabled = true;
-    ingestBtn.classList.add('is-queued');
-    ingestBtn.textContent = '📥 Ingested';
-    return;
-  }
-  if (ingest_status === 'partial' || ingest_status === 'failed') {
-    ingestBtn.disabled = false;
-    ingestBtn.textContent = '📥 重試 ingest';
-    return;
-  }
-  ingestBtn.disabled = false;
-  ingestBtn.textContent = '📥 Ingest 整本書';
-}
-
-async function requestIngest() {
+function applyIngestState({ ingest_status }) {
   if (!ingestBtn) return;
-  const prevText = ingestBtn.textContent;
-  ingestBtn.disabled = true;
-  ingestBtn.textContent = '📥 送出中⋯';
-  try {
-    const r = await fetch(
-      `/robin/api/books/${encodeURIComponent(BOOK_ID)}/ingest-request`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' } },
-    );
-    if (!r.ok) {
-      const detail = await r.text().catch(() => '');
-      console.error('ingest request failed', r.status, detail);
-      showToast(`Ingest 送出失敗 (HTTP ${r.status})`);
-      ingestBtn.disabled = false;
-      ingestBtn.textContent = prevText;
-      return;
-    }
-    applyIngestState({ has_original: true, ingest_status: 'queued' });
-  } catch (err) {
-    console.error('ingest request error', err);
-    showToast(`Ingest 送出失敗：${String(err.message || err)}`);
-    ingestBtn.disabled = false;
-    ingestBtn.textContent = prevText;
+  const label = ingestBtn.querySelector('.btn-label');
+  if (label) {
+    label.textContent = ingest_status === 'ingested' ? '重新 ingest' : 'Ingest 整本書';
   }
-}
-
-async function cancelIngest() {
-  if (!ingestBtn) return;
-  const prevText = ingestBtn.textContent;
-  ingestBtn.disabled = true;
-  ingestBtn.textContent = '📥 取消中⋯';
-  try {
-    const r = await fetch(
-      `/robin/api/books/${encodeURIComponent(BOOK_ID)}/ingest-request`,
-      { method: 'DELETE' },
-    );
-    if (!r.ok) {
-      const detail = await r.text().catch(() => '');
-      console.error('ingest cancel failed', r.status, detail);
-      showToast(`取消失敗 (HTTP ${r.status})`);
-      ingestBtn.disabled = false;
-      ingestBtn.textContent = prevText;
-      return;
-    }
-    applyIngestState({ has_original: true, ingest_status: 'never' });
-  } catch (err) {
-    console.error('ingest cancel error', err);
-    showToast(`取消失敗：${String(err.message || err)}`);
-    ingestBtn.disabled = false;
-    ingestBtn.textContent = prevText;
-  }
-}
-
-if (ingestBtn) {
-  ingestBtn.addEventListener('click', () => {
-    if (ingestBtn.dataset.mode === 'cancel') {
-      cancelIngest();
-    } else {
-      requestIngest();
-    }
-  });
 }
 
 const deleteBookBtn = document.getElementById('deleteBookBtn');
@@ -1453,6 +1365,56 @@ document.addEventListener('keydown', handleReaderKey);
 // into each iframe doc. Same function, just the historical name.
 const handleNavKey = handleReaderKey;
 
+// ── Mobile page-turn (touch) ─────────────────────────────────────────────────
+//
+// Mobile uses foliate's `scrolled` flow (see applyColumns): native vertical
+// scroll reads *within* a section, but scrolled mode never advances across a
+// section boundary on its own, and next()/prev() are only bound to the keyboard
+// — which a phone doesn't have. Net result: you can scroll a chapter but can't
+// reach the next one without opening the TOC. So on mobile we add touch
+// page-turn on each section doc (where foliate also binds its own touch
+// listeners): a horizontal swipe, or a tap in the left/right screen-edge zone,
+// calls goLeft()/goRight() — which in scrolled flow pages within the section and
+// crosses into the adjacent section at the boundary. Vertical reading scroll is
+// left alone: we only react to horizontal-dominant swipes and short edge taps,
+// and never preventDefault, so native scrolling keeps working.
+const _TAP_MAX_MOVE = 10;     // px — beyond this a touch is a drag/scroll, not a tap
+const _TAP_MAX_MS = 300;      // ms — longer is a press (selection), not a tap
+const _SWIPE_MIN_X = 45;      // px — minimum horizontal travel to count as a swipe
+const _SWIPE_H_RATIO = 1.5;   // horizontal must dominate vertical by this factor
+const _EDGE_ZONE = 0.18;      // left/right 18% of width are tap-to-turn zones
+
+function attachMobilePageTurn(doc) {
+  let sx = 0, sy = 0, st = 0, tracking = false;
+  doc.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) { tracking = false; return; }
+    const t = e.changedTouches[0];
+    sx = t.clientX; sy = t.clientY; st = e.timeStamp; tracking = true;
+  }, { passive: true });
+  doc.addEventListener('touchend', e => {
+    const ok = tracking && mobileMQ.matches;
+    tracking = false;
+    if (!ok || e.changedTouches.length !== 1) return;
+    // Don't hijack the gesture that just finished a text selection.
+    const sel = doc.getSelection && doc.getSelection();
+    if (sel && !sel.isCollapsed) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - sx, dy = t.clientY - sy, dt = e.timeStamp - st;
+    // Horizontal swipe → page turn (swipe left brings in the next page).
+    if (Math.abs(dx) >= _SWIPE_MIN_X && Math.abs(dx) >= Math.abs(dy) * _SWIPE_H_RATIO) {
+      if (dx < 0) view.goRight(); else view.goLeft();
+      return;
+    }
+    // Edge tap → page turn. Skip links so footnote/anchor taps still work.
+    if (Math.abs(dx) < _TAP_MAX_MOVE && Math.abs(dy) < _TAP_MAX_MOVE && dt < _TAP_MAX_MS) {
+      if (e.target && e.target.closest && e.target.closest('a')) return;
+      const w = doc.documentElement.clientWidth || window.innerWidth;
+      if (t.clientX > w * (1 - _EDGE_ZONE)) view.goRight();
+      else if (t.clientX < w * _EDGE_ZONE) view.goLeft();
+    }
+  }, { passive: true });
+}
+
 if (kbdHelpBtn) {
   kbdHelpBtn.addEventListener('click', _openKbdHelp);
 }
@@ -1467,6 +1429,8 @@ view.addEventListener('load', e => {
   const doc = e.detail && e.detail.doc;
   if (doc) {
     attachSelectionListener(doc);
+    // Mobile-only touch page-turn (swipe / edge-tap → next / prev section).
+    attachMobilePageTurn(doc);
     // Mirror the host-level keydown into each iframe doc so keys still work
     // when focus is inside the EPUB content (foliate-js demo does the same in
     // vendor/foliate-js/reader.js:195).

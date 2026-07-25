@@ -317,6 +317,73 @@ def test_create_task_tool_writes_page(tmp_path):
     assert mock_emit.call_args[0][1] == "task_created"
 
 
+def _create_task_via_nami(tmp_path, tool_input, *, sched_side_effect=None):
+    """Drive _tool_create_task through the dispatcher with create_task +
+    schedule_entry stubbed. Returns (result, mock_schedule_entry, mock_emit)."""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [_tool_use_block("create_task", tool_input, id_="toolu_ctp")],
+        ),
+        _fake_response("end_turn", [_text_block("已建立 task")]),
+    ]
+    title = tool_input.get("title", "t")
+    with (
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("shared.config.get_vault_path", return_value=tmp_path),
+        patch("shared.project_writer.create_task") as mock_create,
+        patch(
+            "shared.calendar_scheduler.schedule_entry", side_effect=sched_side_effect
+        ) as mock_sched,
+        patch("gateway.handlers.nami.emit") as mock_emit,
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        mock_create.return_value = tmp_path / "TaskNotes" / "Tasks" / f"{title}.md"
+        result = NamiHandler().handle("create_task", "建任務", "U1")
+    return result, mock_sched, mock_emit
+
+
+def test_create_task_scheduled_projects_to_calendar(tmp_path):
+    """item 4 forward-fix: 有排程日期 → 投影到 GCal（all_day）+ 連動。"""
+    _, mock_sched, _ = _create_task_via_nami(
+        tmp_path, {"title": "看牙醫", "scheduled": "2026-04-22"}
+    )
+    mock_sched.assert_called_once()
+    args, kwargs = mock_sched.call_args
+    assert args[1] == "看牙醫"  # slug = task file stem
+    assert kwargs["all_day"] is True
+    assert kwargs["title"] == "看牙醫"
+    assert kwargs["pomodoros"] == 4
+    assert kwargs["start"].date().isoformat() == "2026-04-22"
+    assert kwargs["reason"] is None  # 2026-04-22 是週三（平日）→ 不留多餘理由
+
+
+def test_create_task_weekend_passes_reason(tmp_path):
+    """週末日期要帶 reason，否則 upsert_plan_entry 會擋（WeekendReasonRequired）。"""
+    _, mock_sched, _ = _create_task_via_nami(
+        tmp_path,
+        {"title": "正課拍攝", "scheduled": "2026-04-25"},  # 週六
+    )
+    assert mock_sched.call_args.kwargs["reason"]  # 非空
+
+
+def test_create_task_unscheduled_skips_projection(tmp_path):
+    _, mock_sched, _ = _create_task_via_nami(tmp_path, {"title": "隨手記"})
+    mock_sched.assert_not_called()
+
+
+def test_create_task_calendar_failure_does_not_block(tmp_path):
+    """行事曆掛了 → 建任務仍成功（best-effort，vault 為權威）。"""
+    result, _, mock_emit = _create_task_via_nami(
+        tmp_path,
+        {"title": "看牙醫", "scheduled": "2026-04-22"},
+        sched_side_effect=RuntimeError("gcal down"),
+    )
+    assert "task" in result.text
+    mock_emit.assert_called_once()  # task_created 仍 emit
+
+
 # ── Agent loop: continue_flow with user reply ───────────────────────
 
 
@@ -1080,6 +1147,59 @@ def test_update_calendar_event_syncs_linked_task():
     assert entry["calendar_event_id"] == "evt42"
     assert entry["date"] == "2026-04-26"
     assert entry["start"] == "2026-04-26T14:00:00+08:00"
+    assert entry["end"] == "2026-04-26T15:00:00+08:00"
+
+
+def test_update_calendar_event_links_by_title_fallback():
+    """N544: event id 沒連到任何 task，但有同名任務（含裸 scheduled、無 event_id）→ 以
+    title+date 補配對並寫回 calendar_event_id，而不是靜默跳過（0724/0731 根因）。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "update_calendar_event",
+                    {"title": "讀書會", "end": "2026-04-26T15:00:00"},
+                    id_="toolu_uce_fallback",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("done")]),
+    ]
+
+    existing = _fake_cal_event(id_="evtX", title="讀書會")
+    updated = _fake_cal_event(
+        id_="evtX",
+        title="讀書會",
+        start="2026-04-26T14:00:00+08:00",
+        end="2026-04-26T15:00:00+08:00",
+    )
+    # task exists by (fuzzy) title but has only a bare `scheduled` — no plan[], no event id
+    fake_task_file = SimpleNamespace(name="讀書會 上午場.md", stem="讀書會 上午場")
+    task_content = "---\ntitle: 讀書會 上午場\nstatus: to-do\nscheduled: 2026-04-26T14:00:00\n---\n"
+
+    with (
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.find_events_by_title", return_value=[existing]
+        ),
+        patch("gateway.handlers.nami.google_calendar.find_conflicts", return_value=[]),
+        patch("gateway.handlers.nami.google_calendar.update_event", return_value=updated),
+        patch("gateway.handlers.nami.list_files", return_value=[fake_task_file]),
+        patch("gateway.handlers.nami.read_page", return_value=task_content),
+        patch("gateway.handlers.nami.write_page") as mock_write,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "讀書會結束時間改 15:00", "U1")
+
+    mock_write.assert_called_once()
+    new_fm = mock_write.call_args.args[1]
+    assert "scheduled" not in new_fm  # bare mirror retired
+    entry = new_fm["plan"][0]
+    assert entry["calendar_event_id"] == "evtX"  # link healed
+    assert entry["date"] == "2026-04-26"
     assert entry["end"] == "2026-04-26T15:00:00+08:00"
 
 

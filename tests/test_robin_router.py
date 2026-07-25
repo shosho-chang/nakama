@@ -4,10 +4,10 @@ Scope：
 - Auth gates（redirect to /login when cookie 無效）
 - Helper functions: _send_to_recycle_bin, session store, _get_inbox_files, _resolve_reader_base
 - Non-SSE routes：index / read / files / save-annotations / mark-read /
-  start / cancel / processing / review-summary /
-  submit-guidance / review-plan / execute / done / kb/research
-- SSE `events` route 留下一輪測（session state × async stream 交互複雜，
-  獨立 PR 處理）
+  start / cancel / processing / kb/research（review-summary / submit-guidance /
+  review-plan / execute / done 等中途 HITL gate 已隨自動化 ingest 移除，ADR-043）
+- SSE `events` 自動流程（summarizing→planning→executing→開卡建議）見
+  test_robin_router_sse.py
 
 依 feedback_pytest_monkeypatch_where_used — monkeypatch 到 robin router 模組
 本身讀名字的 namespace，不是原始定義處。
@@ -327,16 +327,20 @@ def test_resolve_reader_base_rejects_unknown(client):
 # ---------------------------------------------------------------------------
 
 
-def test_index_dev_mode_returns_html(client):
+def test_index_redirects_to_weekly(client):
+    """`/` 一律重導到週看板（首頁＝修修每日落點）。Robin 收件匣改住 /robin，
+    所以這裡無條件 302 不會孤兒。與 VPS 模式（app.py else 分支）對齊。"""
     tc, _ = client
     r = tc.get("/")
-    assert r.status_code == 200
-    assert "text/html" in r.headers.get("content-type", "")
+    assert r.status_code == 302
+    assert r.headers["location"] == "/bridge/weekly"
 
 
-def test_index_redirects_when_auth_required_no_cookie(auth_client):
+def test_robin_inbox_redirects_when_auth_required_no_cookie(auth_client):
+    """登入守門：`/` 已改為無條件重導 /bridge/weekly，所以未登入的 /login 守門
+    移到各實際頁面 —— Robin 收件匣 /robin 未登入應帶 ?next=/robin redirect 到 /login。"""
     tc, _, _ = auth_client
-    r = tc.get("/")
+    r = tc.get("/robin")
     assert r.status_code == 302
     assert "/login" in r.headers["location"]
 
@@ -722,6 +726,171 @@ def test_start_happy_path_creates_session(client, vault):
 
 
 # ---------------------------------------------------------------------------
+# POST /start-book  (Centaur route B — 同步書本 ingest 入口；EPUB→KB/Raw/Books→
+# /processing 自動流程。prepare_book_raw 單元測試見 tests/shared/test_book_raw.py)
+# ---------------------------------------------------------------------------
+
+
+def test_start_book_unauth_redirect(auth_client):
+    tc, _, _ = auth_client
+    r = tc.post("/start-book", data={"book_id": "bk1"})
+    assert r.status_code == 302
+    assert "/login" in r.headers["location"]
+
+
+def test_start_book_missing_book_404(client, monkeypatch):
+    """書不在 books 表 → prepare_book_raw 拋 LookupError → 404。"""
+    tc, mod = client
+
+    def _raise(book_id):
+        raise LookupError("no such book")
+
+    monkeypatch.setattr(mod, "prepare_book_raw", _raise)
+    r = tc.post("/start-book", data={"book_id": "ghost"})
+    assert r.status_code == 404
+
+
+def test_start_book_unextractable_422(client, monkeypatch):
+    """EPUB 抽不出文字 → EPUBTextError → 422。"""
+    tc, mod = client
+    from shared.epub_text import EPUBTextError
+
+    def _raise(book_id):
+        raise EPUBTextError("no extractable text")
+
+    monkeypatch.setattr(mod, "prepare_book_raw", _raise)
+    r = tc.post("/start-book", data={"book_id": "empty-bk"})
+    assert r.status_code == 422
+
+
+def test_start_book_happy_path_creates_session(client, vault, monkeypatch):
+    """書本 raw 就緒 → 建 session（source_type=book、annotation_slug=book_id、
+    keep_raw、無 Inbox 來源檔）→ /processing。"""
+    tc, mod = client
+    raw = vault / "KB" / "Raw" / "Books" / "my-book.md"
+    raw.parent.mkdir(parents=True, exist_ok=True)
+    raw.write_text("---\ntitle: My Book\nsource_type: book\n---\nbook body", encoding="utf-8")
+    monkeypatch.setattr(mod, "prepare_book_raw", lambda book_id: raw)
+
+    r = tc.post("/start-book", data={"book_id": "my-book-id"})
+    assert r.status_code == 302
+    assert r.headers["location"] == "/processing"
+    assert "robin_session" in r.headers.get("set-cookie", "")
+
+    sess = next(s for s in mod.sessions.values() if s.get("source_type") == "book")
+    assert sess["raw_path"] == str(raw)  # 直指 KB/Raw/Books，未從 Inbox 複製
+    assert sess["annotation_slug"] == "my-book-id"  # 整本劃線提案用
+    assert sess["file_path"] == ""  # 無 Inbox 來源檔 → execute 不回收
+    assert sess["keep_raw"] is True  # 衍生檔，cancel 不回收
+    assert sess["step"] == "summarizing"
+
+
+# ---------------------------------------------------------------------------
+# GET /robin/estimate — 按 Ingest 前的時長預估（餵 ingest-confirm.js 確認框）
+# ---------------------------------------------------------------------------
+
+
+def test_estimate_unauth_returns_403(auth_client):
+    tc, _, _ = auth_client
+    r = tc.get("/robin/estimate?source_type=article&source_id=x.md")
+    assert r.status_code == 403
+
+
+def test_estimate_article_returns_label_and_detail(client, vault, monkeypatch):
+    """文章：讀 Inbox 檔（strip frontmatter）→ 回字數 + 時長範圍。"""
+    tc, mod = client
+    import shared.local_llm as _llm
+
+    monkeypatch.setattr(_llm, "is_server_available", lambda *a, **k: False)
+    inbox = mod._get_inbox()
+    inbox.mkdir(parents=True, exist_ok=True)
+    (inbox / "a.md").write_text("---\ntitle: A\n---\n" + ("字" * 2000), encoding="utf-8")
+
+    r = tc.get("/robin/estimate?source_type=article&source_id=a.md")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert data["char_count"] == 2000  # frontmatter 已剝除
+    assert data["is_large"] is False
+    assert data["time_label"].startswith("約")
+    assert "字" in data["detail"]
+
+
+def test_estimate_article_missing_file_404(client, vault):
+    tc, mod = client
+    r = tc.get("/robin/estimate?source_type=article&source_id=ghost.md")
+    assert r.status_code == 404
+
+
+def test_estimate_book_extracts_without_writing(client, vault, monkeypatch):
+    """書本：走 extract_book_text（不寫 KB/Raw）→ 大文件回段數 + 分鐘範圍。"""
+    tc, mod = client
+    import shared.local_llm as _llm
+    from agents.robin import chunker
+
+    monkeypatch.setattr(_llm, "is_server_available", lambda *a, **k: False)
+    monkeypatch.setattr(mod, "extract_book_text", lambda bid: ("書", "作者", "字" * 50000))
+    monkeypatch.setattr(chunker, "chunk_document", lambda content: ["c"] * 4)
+
+    r = tc.get("/robin/estimate?source_type=book&source_id=bk1")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["is_large"] is True
+    assert data["n_chunks"] == 4
+    assert "分 4 段" in data["detail"]
+    assert "分鐘" in data["time_label"]
+    assert not (vault / "KB" / "Raw" / "Books").exists()  # 估算不落 raw 檔
+
+
+def test_estimate_book_missing_returns_404(client, vault, monkeypatch):
+    tc, mod = client
+
+    def _raise(bid):
+        raise LookupError("no book")
+
+    monkeypatch.setattr(mod, "extract_book_text", _raise)
+    r = tc.get("/robin/estimate?source_type=book&source_id=ghost")
+    assert r.status_code == 404
+
+
+def test_estimate_book_unextractable_returns_422(client, vault, monkeypatch):
+    tc, mod = client
+    from shared.epub_text import EPUBTextError
+
+    def _raise(bid):
+        raise EPUBTextError("no text")
+
+    monkeypatch.setattr(mod, "extract_book_text", _raise)
+    r = tc.get("/robin/estimate?source_type=book&source_id=empty")
+    assert r.status_code == 422
+
+
+def test_estimate_video_missing_transcript_404(client, vault):
+    tc, mod = client
+    r = tc.get("/robin/estimate?source_type=video&source_id=novid")
+    assert r.status_code == 404
+
+
+def test_estimate_video_vtt_transcript_returns_estimate(client, vault, monkeypatch):
+    """影片逐字稿（.vtt）存在 → _read_ingest_source 走 webvtt_to_prose → 回估算。"""
+    tc, mod = client
+    import shared.local_llm as _llm
+
+    monkeypatch.setattr(_llm, "is_server_available", lambda *a, **k: False)
+    vdir = vault / "KB" / "Raw" / "Videos"
+    vdir.mkdir(parents=True, exist_ok=True)
+    (vdir / "vid9.vtt").write_text(
+        "WEBVTT\n\n00:00:00.000 --> 00:00:02.000\n這是一段逐字稿內容，用來估算時間。\n",
+        encoding="utf-8",
+    )
+    r = tc.get("/robin/estimate?source_type=video&source_id=vid9")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert data["char_count"] > 0
+
+
+# ---------------------------------------------------------------------------
 # POST /cancel
 # ---------------------------------------------------------------------------
 
@@ -802,185 +971,6 @@ def test_processing_unknown_step_uses_default_label(client):
     r = tc.get("/processing")
     assert r.status_code == 200
     assert "處理中" in r.text
-
-
-# ---------------------------------------------------------------------------
-# GET /review-summary
-# ---------------------------------------------------------------------------
-
-
-def test_review_summary_unauth_redirect(auth_client):
-    tc, _, _ = auth_client
-    r = tc.get("/review-summary")
-    assert r.status_code == 302
-
-
-def test_review_summary_wrong_step_redirects_home(client):
-    tc, mod = client
-    sid = mod._new_session(step="summarizing")
-    tc.cookies.set("robin_session", sid)
-    r = tc.get("/review-summary")
-    assert r.status_code == 302
-    assert r.headers["location"] == "/robin"
-
-
-def test_review_summary_happy_path(client):
-    tc, mod = client
-    sid = mod._new_session(
-        step="awaiting_guidance", file_name="foo.md", summary_body="This is the summary"
-    )
-    tc.cookies.set("robin_session", sid)
-    r = tc.get("/review-summary")
-    assert r.status_code == 200
-    assert "This is the summary" in r.text
-
-
-# ---------------------------------------------------------------------------
-# POST /submit-guidance
-# ---------------------------------------------------------------------------
-
-
-def test_submit_guidance_unauth_redirect(auth_client):
-    tc, _, _ = auth_client
-    r = tc.post("/submit-guidance", data={"guidance": "focus on X"})
-    assert r.status_code == 302
-
-
-def test_submit_guidance_no_session_redirects_home(client):
-    tc, _ = client
-    r = tc.post("/submit-guidance", data={"guidance": "focus"})
-    assert r.status_code == 302
-    assert r.headers["location"] == "/robin"
-
-
-def test_submit_guidance_transitions_to_planning(client):
-    tc, mod = client
-    sid = mod._new_session(step="awaiting_guidance")
-    tc.cookies.set("robin_session", sid)
-    r = tc.post("/submit-guidance", data={"guidance": "  my guidance  "})
-    assert r.status_code == 302
-    assert r.headers["location"] == "/processing"
-    assert mod.sessions[sid]["step"] == "planning"
-    assert mod.sessions[sid]["user_guidance"] == "my guidance"  # stripped
-
-
-# ---------------------------------------------------------------------------
-# GET /review-plan
-# ---------------------------------------------------------------------------
-
-
-def test_review_plan_unauth_redirect(auth_client):
-    tc, _, _ = auth_client
-    r = tc.get("/review-plan")
-    assert r.status_code == 302
-
-
-def test_review_plan_wrong_step_redirects_home(client):
-    tc, mod = client
-    sid = mod._new_session(step="summarizing")
-    tc.cookies.set("robin_session", sid)
-    r = tc.get("/review-plan")
-    assert r.status_code == 302
-
-
-def test_review_plan_happy_path(client):
-    tc, mod = client
-    plan = {
-        "concepts": [{"slug": "concept-a", "action": "create", "title": "Concept A"}],
-        "entities": [{"title": "Existing", "entity_type": "person"}],
-    }
-    sid = mod._new_session(step="awaiting_approval", file_name="foo.md", plan=plan)
-    tc.cookies.set("robin_session", sid)
-    r = tc.get("/review-plan")
-    assert r.status_code == 200
-    assert "Concept A" in r.text
-
-
-# ---------------------------------------------------------------------------
-# POST /execute
-# ---------------------------------------------------------------------------
-
-
-def test_execute_unauth_redirect(auth_client):
-    tc, _, _ = auth_client
-    r = tc.post("/execute", data={})
-    assert r.status_code == 302
-
-
-def test_execute_no_session_redirects_home(client):
-    tc, _ = client
-    r = tc.post("/execute", data={})
-    assert r.status_code == 302
-    assert r.headers["location"] == "/robin"
-
-
-def test_execute_filters_selected_items(client):
-    tc, mod = client
-    plan = {
-        "concepts": [
-            {"slug": "a", "action": "create", "title": "A"},
-            {"slug": "b", "action": "update_merge", "title": "B"},
-            {"slug": "c", "action": "noop", "title": "C"},
-        ],
-        "entities": [
-            {"title": "U1", "entity_type": "person"},
-            {"title": "U2", "entity_type": "tool"},
-        ],
-    }
-    sid = mod._new_session(step="awaiting_approval", plan=plan)
-    tc.cookies.set("robin_session", sid)
-    r = tc.post("/execute", data={"concept": ["0", "2"], "entity": ["1"]})
-    assert r.status_code == 302
-    assert r.headers["location"] == "/processing"
-    final_plan = mod.sessions[sid]["plan"]
-    assert [c["title"] for c in final_plan["concepts"]] == ["A", "C"]
-    assert [e["title"] for e in final_plan["entities"]] == ["U2"]
-    assert mod.sessions[sid]["step"] == "executing"
-
-
-def test_execute_ignores_invalid_indices(client):
-    """非數字或超界 index 應被略過。"""
-    tc, mod = client
-    plan = {"concepts": [{"slug": "a", "action": "create", "title": "A"}], "entities": []}
-    sid = mod._new_session(step="awaiting_approval", plan=plan)
-    tc.cookies.set("robin_session", sid)
-    r = tc.post(
-        "/execute",
-        data={"concept": ["0", "99", "abc"]},
-    )
-    assert r.status_code == 302
-    assert len(mod.sessions[sid]["plan"]["concepts"]) == 1  # only "A"
-
-
-# ---------------------------------------------------------------------------
-# GET /done
-# ---------------------------------------------------------------------------
-
-
-def test_done_unauth_redirect(auth_client):
-    tc, _, _ = auth_client
-    r = tc.get("/done")
-    assert r.status_code == 302
-
-
-def test_done_wrong_step_redirects_home(client):
-    tc, mod = client
-    sid = mod._new_session(step="executing")
-    tc.cookies.set("robin_session", sid)
-    r = tc.get("/done")
-    assert r.status_code == 302
-
-
-def test_done_happy_path(client):
-    tc, mod = client
-    sid = mod._new_session(
-        step="done",
-        file_name="foo.md",
-        result={"created": ["A", "B"], "updated": ["U1"]},
-    )
-    tc.cookies.set("robin_session", sid)
-    r = tc.get("/done")
-    assert r.status_code == 200
 
 
 # ---------------------------------------------------------------------------

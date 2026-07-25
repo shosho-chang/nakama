@@ -2,8 +2,8 @@
 
 Tier A PR3. Surface lives at ``/bridge/digests/ask`` (POST). This module
 holds the pure backend: concat the in-scope digest files, build a Claude
-prompt, dispatch via ``shared.anthropic_client.ask_claude``, return the
-answer plus the source list used.
+prompt, dispatch via the ``shared.llm.ask`` facade, return the answer plus
+the source list used.
 
 Cost discipline:
 - Total concatenated context capped at ``MAX_CONTEXT_CHARS``. Older days
@@ -103,8 +103,8 @@ def ask(
     llm: Callable[..., str] | None = None,
     model: str = DEFAULT_MODEL,
 ) -> AskResult:
-    """Run the LLM-over-vault query. ``llm`` defaults to
-    ``shared.anthropic_client.ask_claude``; tests inject a stub.
+    """Run the LLM-over-vault query. ``llm`` defaults to the
+    :func:`shared.llm.ask` facade; tests inject a stub.
     """
     all_entries = indexer.last_n_days(n=req.days)
     in_scope = [e for e in all_entries if e.type in req.types]
@@ -141,9 +141,12 @@ def ask(
     prompt = f"<digests>\n{context}\n</digests>\n\n使用者問題：{req.question}\n\n請依規則回答。"
 
     if llm is None:
-        from shared.anthropic_client import ask_claude
+        # Route via the shared.llm facade（不直呼 ask_claude）— router / auth
+        # dispatch / cost tracking 的 wiring 都在 facade 後面，也讓測試 mock
+        # 停在 interface 層（2026-07-03 架構審計）。
+        from shared.llm import ask as facade_ask
 
-        llm = ask_claude
+        llm = facade_ask
 
     # ADR-030 follow-up #700: surface the per-call audit scope to api_calls
     # via threadlocal context. The observability writer reads `_local.scope_json`

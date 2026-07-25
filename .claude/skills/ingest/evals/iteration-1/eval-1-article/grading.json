@@ -1,0 +1,46 @@
+{
+  "eval_id": 1,
+  "eval_name": "ingest-article-route-c",
+  "run_date": "2026-06-28",
+  "method": "LLM-judge A/B (with_skill vs without_skill), mirroring skill-creator executor→grader",
+  "with_skill": {
+    "pass_rate": 1.0,
+    "passed": 12,
+    "total": 12,
+    "results": [
+      {"id": "A1", "passed": true, "evidence": "All 7 sections present: 核心主張/重要數據/關鍵觀點/相關概念/相關實體/不確定處/行動建議."},
+      {"id": "A2", "passed": true, "evidence": "Each Core Claim tagged 〔confidence: high｜evidence: cited-research〕 etc."},
+      {"id": "A3", "passed": true, "evidence": "繁中 body; English terms preserved (mTOR/AMPK/autophagy/SIRT1/IGF-1/HOMA-IR/TRE/FMD)."},
+      {"id": "A4", "passed": true, "evidence": "frontmatter author: agent_robin + original_author: Dr. Valter Longo."},
+      {"id": "A5", "passed": true, "evidence": "HITL gate: '我還沒有寫入任何 Concept/Entity 頁面 — 全部停在這個 gate 等你決定'."},
+      {"id": "A6", "passed": true, "evidence": "5 concepts + 3 entities, each with action/type + reason."},
+      {"id": "A7", "passed": true, "evidence": "相關概念/相關實體 are plain text, explicitly no [[ ]]."},
+      {"id": "A8", "passed": true, "evidence": "No Concept body written at gate; does NOT touch KB/Permanent/."},
+      {"id": "A9", "passed": true, "evidence": "highlight 當 emphasis 非 filter; Controversies kept in 不確定處."},
+      {"id": "A10", "passed": true, "evidence": "-14% insulin, +8% HOMA-IR, 2.3x LC3-II/I, FMD ~800kcal, -2.5yr, 1.6g/kg."},
+      {"id": "A11", "passed": true, "evidence": "autophagy「最令人興奮的機制」+ 250人12個月RCT surface in claims/insights."},
+      {"id": "A12", "passed": true, "evidence": "Concepts = autophagy/TRE/mTOR路徑/IF; entities = Longo/Phillips/USC."}
+    ]
+  },
+  "without_skill": {
+    "pass_rate": 0.33,
+    "passed": 4,
+    "total": 12,
+    "results": [
+      {"id": "A1", "passed": false, "evidence": "Different structure (Summary/Key Claims/Highlights/Counterpoints/Protocol), not the 7-section Source Summary."},
+      {"id": "A2", "passed": false, "evidence": "No confidence/evidence tags on claims."},
+      {"id": "A3", "passed": false, "evidence": "Body in English, not Traditional Chinese."},
+      {"id": "A4", "passed": false, "evidence": "author: Valter Longo — AI claims the human's authorship; no agent_robin/original_author split."},
+      {"id": "A5", "passed": false, "evidence": "Wrote 6 concept notes + 2 entity stubs as files immediately; no pre-write gate."},
+      {"id": "A6", "passed": false, "evidence": "6 concept notes (>5) + extra dangling concept links; no constrained action list."},
+      {"id": "A7", "passed": false, "evidence": "Inline [[wikilinks]] throughout + deliberately created dangling [[Fasting]], [[Protein Requirements for Aging]]."},
+      {"id": "A8", "passed": false, "evidence": "Wrote 'permanent notes'; concept bodies cite other concepts (anti-laundering + Permanent red-line)."},
+      {"id": "A9", "passed": true, "evidence": "Highlights + controversies preserved; full text covered."},
+      {"id": "A10", "passed": true, "evidence": "Numbers captured accurately."},
+      {"id": "A11", "passed": true, "evidence": "TRE RCT + autophagy highlight surfaced."},
+      {"id": "A12", "passed": true, "evidence": "Good abstractions + core people."}
+    ]
+  },
+  "discriminating_assertions": ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8"],
+  "summary": "with_skill 1.0 vs without_skill 0.33 (delta +8). The skill wins on KB discipline — 7-section bilingual summary, confidence+evidence tagging, agent_robin/original_author provenance, the pre-write HITL gate, action-count filtering, plain-text vs dangling wikilinks, and the Permanent/anti-laundering red-lines. Both converge only on raw content fidelity (A9-A12): the baseline reads the source well but ignores the KB's structural, provenance, and workflow contracts the skill encodes."
+}

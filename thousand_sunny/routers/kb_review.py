@@ -45,10 +45,13 @@ logger = get_logger("nakama.web.kb_review")
 router = APIRouter(prefix="/kb")
 
 _TEMPLATE_ROOT = Path(__file__).resolve().parent.parent / "templates"
-templates = Jinja2Templates(directory=[str(_TEMPLATE_ROOT / "kb")])
-# Overview (/kb) wears the chassis nav, so its env searches the templates root
-# (resolves both "kb/overview.html" and "bridge/_chassis_nav.html"). The review
-# page keeps the chrome-less `templates` env above untouched.
+# The review page (daily_review.html) now wears the chassis nav too — 修修 回饋
+# 「KB 回顧頁沒有導覽列、回不去」。So this env must resolve "bridge/_chassis_nav.html"
+# alongside the kb templates. Mirror the robin router's [own-dir, bridge] search
+# path (robin.py) rather than hardcode the partial elsewhere.
+templates = Jinja2Templates(directory=[str(_TEMPLATE_ROOT / "kb"), str(_TEMPLATE_ROOT / "bridge")])
+# Overview (/kb) wears the chassis nav via a root-rooted env (resolves both
+# "kb/overview.html" and "bridge/_chassis_nav.html").
 _chrome_templates = Jinja2Templates(directory=[str(_TEMPLATE_ROOT)])
 
 # typed-edge 中文 label（v0.2 §3 inline field）。
@@ -113,23 +116,58 @@ def _compute_bundle(*, weekly: bool = False) -> DailyReviewBundle:
         # 無快照 / 隔日（cron 沒跑成功）→ 即時補算並持久化，與卡片同源、之後開頁不再重跑
         bundle = run_daily_review(weekly=weekly, notify=False)
         save_review_bundle(vault, bundle)
+    # 顯示一律以收件匣即時 list_open() 為準（候選持久化），快照只當 edge 快取。
+    bundle = _merge_live_open_candidates(bundle, vault)
     return _filter_actioned(bundle, vault)
 
 
-def _filter_actioned(bundle: DailyReviewBundle, vault: Path) -> DailyReviewBundle:
-    """濾掉已 skip / later 的候選（對齊 daily_review 的過濾鍵 ``candidate_id``）。
+def _merge_live_open_candidates(bundle: DailyReviewBundle, vault: Path) -> DailyReviewBundle:
+    """顯示一律以收件匣即時 ``list_open()`` 為準——候選持久化:只有開卡 / 忽略才消失。
 
-    快照是時間點凍結的；使用者在快照之後 skip/later 的，顯示時要即時濾掉。
+    快照（``daily_review_latest.json``）整天凍結,且 5am 只富化前 ``MAX_INBOX_DISPLAY`` 名:
+    舊的未處理卡會被擠出顯示、當天 ingest 的新卡也浮不出來(修修 回饋:候選一直在除非按忽略)。
+    這裡把顯示集換成全部 ``status='open'`` 的候選,並 by ``candidate_id`` 併回快照已算好的
+    edges/related。收件匣為空或讀取失敗 → 退回快照(避免 DB 被清空那種異常反而整頁空白)。
+    """
+    try:
+        from shared import candidate_inbox
+
+        live = candidate_inbox.list_open()
+    except Exception:  # noqa: BLE001 — 收件匣讀取失敗 → 退回快照（degraded 不空頁）
+        logger.exception("list_open failed; falling back to snapshot candidates")
+        return bundle
+    if not live:
+        return bundle
+    enriched = {c.candidate_id: c for c in bundle.candidates}
+    bundle.candidates = [enriched.get(c.candidate_id, c) for c in live]
+    return bundle
+
+
+def _filter_actioned(bundle: DailyReviewBundle, vault: Path) -> DailyReviewBundle:
+    """濾掉已 skip / later / 開卡 的候選（對齊 daily_review 的過濾鍵 ``candidate_id``）。
+
+    快照凍結在動作之前；使用者在快照之後 skip / later / 開卡的，顯示時要即時濾掉——
+    否則同日 reload 還會看到剛開過卡的候選，要等隔天 cron 重算才消失。skip / later 讀
+    state JSON；開卡讀收件匣 ``carded`` 狀態（ADR-048 Phase 1）。
     """
     from agents.robin.daily_review import load_review_state
 
     state = load_review_state(vault)
     skipped = set(state.get("skipped") or [])
     deferred = set((state.get("deferred") or {}).keys())
+    carded: set[str] = set()
+    try:
+        from shared import candidate_inbox
+
+        carded = candidate_inbox.carded_among([c.candidate_id for c in bundle.candidates])
+    except Exception:  # noqa: BLE001 — 收件匣讀取失敗 → 退回只濾 skip/later（degraded 不 500）
+        logger.exception("carded filter failed; falling back to skip/later only")
     bundle.candidates = [
         c
         for c in bundle.candidates
-        if c.candidate_id not in skipped and c.candidate_id not in deferred
+        if c.candidate_id not in skipped
+        and c.candidate_id not in deferred
+        and c.candidate_id not in carded
     ]
     return bundle
 
@@ -164,6 +202,16 @@ def _update_review_state(candidate_id: str, action: str) -> None:
         raise ValueError(f"unknown review action: {action!r}")
 
     save_review_state(vault, {"skipped": skipped, "deferred": deferred})
+
+
+def _log_candidate_event(candidate_id: str, event_type: str) -> None:
+    """Best-effort 記一筆候選事件（ADR-048 ground truth）；失敗只記 log，不擋使用者動作。"""
+    try:
+        from shared import candidate_inbox
+
+        candidate_inbox.log_event(candidate_id, event_type)
+    except Exception:  # noqa: BLE001 — 事件記錄非關鍵路徑
+        logger.exception("candidate event log failed cid=%s type=%s", candidate_id, event_type)
 
 
 # ---------------------------------------------------------------------------
@@ -346,6 +394,7 @@ def _run_phase5(payload: CreatePermanentIn, *, card_rel: str, card_title: str) -
     的工作，非本 endpoint）。
     """
     result: dict[str, object] = {
+        "candidate_recorded": False,
         "literature_backfilled": False,
         "fleeting_processed": False,
         "index_updated": False,
@@ -353,6 +402,17 @@ def _run_phase5(payload: CreatePermanentIn, *, card_rel: str, card_title: str) -
         "warnings": [],
     }
     warnings: list[str] = result["warnings"]  # type: ignore[assignment]
+
+    # ⓪ 候選收件匣：開卡來源候選 → 標 carded（list_open 不再回它）+ 記 card 事件。
+    #    修「create_permanent 收了 candidate_id 卻從不記為已處理」——開卡後不再每日重現。
+    if payload.candidate_id:
+        try:
+            from shared import candidate_inbox
+
+            candidate_inbox.mark_carded(payload.candidate_id, carded_path=card_rel)
+            result["candidate_recorded"] = True
+        except Exception as exc:  # noqa: BLE001 — 收件匣記帳 best-effort，不擋開卡
+            warnings.append(f"收件匣標記開卡失敗（{payload.candidate_id}）：{exc}")
 
     # ① Literature mined_concepts + status: mined（沿人寫的 source_ref 連結）。
     if payload.literature_slug:
@@ -566,6 +626,7 @@ async def review_skip(payload: ReviewActionIn, nakama_auth: str | None = Cookie(
     if not cid:
         raise HTTPException(422, detail="candidate_id 不可空")
     _update_review_state(cid, "skip")
+    _log_candidate_event(cid, "skip")
     return {"ok": True, "candidate_id": cid, "action": "skip"}
 
 
@@ -578,6 +639,7 @@ async def review_later(payload: ReviewActionIn, nakama_auth: str | None = Cookie
     if not cid:
         raise HTTPException(422, detail="candidate_id 不可空")
     _update_review_state(cid, "later")
+    _log_candidate_event(cid, "defer")
     return {"ok": True, "candidate_id": cid, "action": "later"}
 
 

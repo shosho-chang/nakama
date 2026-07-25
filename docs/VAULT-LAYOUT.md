@@ -116,7 +116,7 @@ E:\Shosho LifeOS\
 │   ├── Raw/                原始證據層 (禁改 body)
 │   │   ├── Articles/         Robin ingest from Inbox/web
 │   │   ├── Papers/           Robin ingest (manual `Inbox/papers/` flow)
-│   │   ├── Books/            textbook-ingest Phase 0
+│   │   ├── Books/            route B 書本 ingest（{slug}.md：EPUB→text → IngestPipeline）
 │   │   ├── Podcasts/         (reserved, currently empty)
 │   │   ├── Videos/           Robin watchlist `{video_id}.vtt` (機器原始) + `{video_id}.md` (清理人讀稿, ADR-046 §Slice 0A)
 │   │   ├── Repos/            (reserved)
@@ -171,7 +171,8 @@ E:\Shosho LifeOS\
 │   │   ├── notes/          ad-hoc Nami notes
 │   │   └── research/       Nami research handler output
 │   └── brook/
-│       └── seo-audit/      Brook SEO audit task outputs (per ADR-027)
+│       ├── seo-audit/      Brook SEO audit task outputs (per ADR-027)
+│       └── drafts/         draft-article 原子文章初稿 (NON-KB; provenance 單向)
 │
 ├── Templates/            🔒 Human only (Templater plugin owns)
 └── Scripts/              🔒 Human only (Templater user scripts + nakama-config.md)
@@ -213,18 +214,18 @@ data/agent_reports/franky/
 | `Inbox/snapshots/` | 🤖 | 修修 drops .mhtml | (reserved, future mhtml ingest) | — |
 | `KB/Raw/Articles/{slug}.md` | 🤖 | Robin ingest from `Inbox/web/` | KB consumers, RCP builder | ADR-019 |
 | `KB/Raw/Papers/{slug}.md` | 🤖 | Robin manual ingest from `Inbox/papers/` | KB, Brook synthesize | ADR-019 |
-| `KB/Raw/Books/{book-id}.md` | 🤖 | textbook-ingest Phase 0 (lossless EPUB→md via ebooklib) | textbook-ingest Phase 1 LLM | ADR-020 §Phase 0 |
-| `KB/Raw/Videos/{video_id}.vtt` | 🤖 | Robin watchlist confirm `thousand_sunny/routers/robin.py` (yt-dlp caption moved here); path built by `shared/reading_source_registry.py:_resolve_youtube` (convention, not manifest) | AV reader `/robin/watchlist/{id}`, promotion preflight, `shared/video_source_map_builder.py` | ADR-046 §Slice 0A |
+| `KB/Raw/Books/{slug}.md` | 🤖 | route B 書本 ingest（同步）：Reader「Ingest 整本書」→ `POST /robin/start-book` → `shared/book_raw.py`（EPUB→text via `shared/epub_text`）→ 走 `/processing` SSE 自動流程（與文章/影片同一條）。佇列 + cron consumer 已移除 | `/processing` 摘要 → `KB/Wiki/Sources/{slug}` + concepts | route B v2（同步） |
+| `KB/Raw/Videos/{video_id}.vtt` | 🤖 | Robin watchlist confirm `thousand_sunny/routers/robin.py` (yt-dlp caption moved here); path built by `shared/reading_source_registry.py:_resolve_youtube` (convention, not manifest) | AV reader `/robin/watchlist/{id}`, promotion preflight, `agents/robin/promotion/video_source_map_builder.py` | ADR-046 §Slice 0A |
 | `KB/Raw/Videos/{video_id}.md` | 🤖 | Robin watchlist confirm + `scripts/backfill_video_transcript_md.py` → `shared/video_transcript_writer.py`（清理 `.vtt` 成時間碼段落人讀稿） | 人讀逐字稿；`/start-video` ingest 優先輸入（無則退回 `.vtt`） | ADR-046 + transcript cleaning |
 | `Watchlist/youtube/{video_id}/manifest.json` | 🤖 | Robin watchlist confirm (video registry entry: title/channel/cast/`transcript_path`) | `/robin/watchlist` lister `RegistryReadingSourceLister`, `ReadingSourceRegistry._resolve_youtube` | `shared/schemas/youtube_watchlist.py` |
-| `KB/Wiki/Sources/{slug}.md` | 🤖 | Robin promotion `shared/promotion_commit.py` + textbook-ingest | Brook synthesize, RCP, `/writing-assist/` | ADR-024 + `shared/promotion_renderer.py` |
+| `KB/Wiki/Sources/{slug}.md` | 🤖 | Robin promotion `agents/robin/promotion/promotion_commit.py` + textbook-ingest | Brook synthesize, RCP, `/writing-assist/` | ADR-024 + `agents/robin/promotion/promotion_renderer.py` |
 | `KB/Wiki/Sources/pubmed-{pmid}.md` | 🤖 | `agents/robin/pubmed_digest.py:476-477` (NOT KB/Raw/Papers as previously documented) | Brook synthesize, KB consumers | PubMed Source schema |
 | `KB/Wiki/Sources/Books/{book-id}/ch{n}.md` | 🤖 | textbook-ingest Phase 1 via `shared/kb_writer.write_source_page` | Brook context_bridge, Reader | ADR-020 §Phase 1 |
 | `KB/Wiki/Sources/Books/{book-id}/digest.md` | ⛔ retired | **RETIRED (N521)** — superseded by `KB/Literature/{slug}.md`. `book_digest_writer.write_digest` 退役樁 (raise)；既有檔由 `scripts/migrate_books_to_literature.py` 重 render 後送回收桶 | (none — consumers repointed to Literature) | Centaur Literature 規格 §6 / D5 |
 | `KB/Wiki/Sources/Books/{book-id}/notes.md` | ⛔ retired | **RETIRED (N521)** — superseded by `KB/Literature/{slug}.md`. `book_notes_writer.write_notes` 退役樁 (raise)；既有檔由 migration script 重 render 後送回收桶 | (none — consumers repointed to Literature) | Centaur Literature 規格 §6 / D5 |
-| `KB/Wiki/Sources/{slug}/whole.md` | 🤖 | `shared/source_map_builder.py:557` (single-block whole source map) | Reader, Brook synthesize | source-map schema |
-| `KB/Wiki/Sources/{slug}/index.md` | 🤖 | `shared/source_map_builder.py:598` (multi-block index) | source-map navigation | source-map schema |
-| `KB/Wiki/Sources/{slug}/{chapter_ref}.md` | 🤖 | `shared/source_map_builder.py:628` (per-chapter block) | Reader, Brook synthesize | source-map schema |
+| `KB/Wiki/Sources/{slug}/whole.md` | 🤖 | `agents/robin/promotion/source_map_builder.py:557` (single-block whole source map) | Reader, Brook synthesize | source-map schema |
+| `KB/Wiki/Sources/{slug}/index.md` | 🤖 | `agents/robin/promotion/source_map_builder.py:598` (multi-block index) | source-map navigation | source-map schema |
+| `KB/Wiki/Sources/{slug}/{chapter_ref}.md` | 🤖 | `agents/robin/promotion/source_map_builder.py:628` (per-chapter block) | Reader, Brook synthesize | source-map schema |
 | `KB/Wiki/Concepts/{slug}.md` | 🤖 | `shared/kb_writer.upsert_concept_page` (4-action dispatcher, ADR-011 §3.3 — but textbook-ingest Phase B bypasses, drift D1) + `agents/robin/annotation_merger.py` | kb_search, Brook synthesize, RCP | ADR-011 §3.3 v2 schema |
 | `KB/Wiki/Entities/{slug}.md` | 🤖 | textbook-ingest book entity writer (v1 schema, drift D2) | kb_search | ADR-011 §3.1 v1 (frozen) |
 | `KB/Wiki/Outputs/{slug}.md` | 🤖 | `shared/output_writer.py:write_output_page` (Centaur v0.2 D-19 復活 / D-18 確認式 write-back; N524 storage layer — query workflow 另開 task) | KB consumers, future query UI | Centaur v0.2 §8 (P-9 蒸餾); 紅線⑤ enforced at write via `shared/provenance_linter.py` |
@@ -251,6 +252,7 @@ data/agent_reports/franky/
 | `AgentOutputs/nami/notes/` | 🤖 | `gateway/handlers/nami.py:458-525,:1773` (Nami write_vault_note); whitelisted by `shared/vault_rules.py:14-20` | Nami handler reads for context | — |
 | `AgentOutputs/nami/research/` | 🤖 | Nami research handler | 修修 | — |
 | `AgentOutputs/brook/seo-audit/{YYYY-MM-DD}/` | 🤖 | Brook SEO audit + enrich runners (ADR-027) | 修修 | — |
+| `AgentOutputs/brook/drafts/{slug}-draft-{YYYY-MM-DD}.md` | 🤖 | `.claude/skills/draft-article` (Composer skill) | 修修 拿去大改 | 原子文章初稿；**不回寫 KB**（紅線⑤ provenance 單向） |
 | (repo) `data/agent_reports/franky/weekly/` | 🤖 | `agents/franky/reporter.py:277` (post-path-migration) | 修修, Franky weekly digest | Franky weekly format |
 | (repo) `data/agent_reports/franky/dev-backlog.md` | 👤+🤖 | 修修 writes; `agents/franky/agent.py:33` reads | Franky weekly digest input | — |
 | (repo) `data/agent_reports/franky/vault-audit/` | 🤖 | `scripts/vault_layout_audit.py` (Phase 3 PR-C1) | 修修, Franky weekly | — |
@@ -465,7 +467,7 @@ Drift entries record where this doc and code/vault disagree. Each has a status: 
 #### D-promotion-attachments — Inbox→KB attachment migration fixed `[已修]`
 
 **Claim:** When `Inbox/web/{slug}.md` is promoted to `KB/Raw/Articles/{slug}.md`, attachments are moved + image refs rewritten.
-**Reality at flip:** `shared/promotion_commit.py` now performs attachment migration (move `Inbox/web/attachments/{slug}/*` → `KB/Attachments/{slug}/` + rewrite image refs); `agents/robin/agent.py` legacy ingest path patched in tandem.
+**Reality at flip:** `agents/robin/promotion/promotion_commit.py` now performs attachment migration (move `Inbox/web/attachments/{slug}/*` → `KB/Attachments/{slug}/` + rewrite image refs); `agents/robin/agent.py` legacy ingest path patched in tandem.
 **Resolution:** PR #616 (PR-A1, re-sequenced first per Codex audit §4).
 
 #### D-unicode-norm — Cross-platform Unicode normalization risk `[已接受]`

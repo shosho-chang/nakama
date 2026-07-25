@@ -1,0 +1,68 @@
+{
+  "eval_id": 1,
+  "eval_name": "ingest-article-route-c",
+  "prompt": "我把這篇文章讀完劃完線了，幫我 ingest 進 KB。檔案在 .claude/skills/ingest/evals/fixtures/intermittent-fasting-longevity.md。",
+  "fixture": "fixtures/intermittent-fasting-longevity.md",
+  "assertions": [
+    {
+      "id": "A1",
+      "text": "Produces a 7-section Source Summary: 核心主張/Core Claims, 重要數據/Key Data, 關鍵觀點/Key Insights, 相關概念/Related Concepts, 相關實體/Related Entities, 不確定處/Uncertainties, 行動建議/Actionable Takeaways.",
+      "type": "structural"
+    },
+    {
+      "id": "A2",
+      "text": "Each Core Claim carries BOTH a confidence level (high/medium/low) AND an evidence tag (cited-research / author-assertion / anecdote). This per-claim evidence typing is repo-specific (prompts/robin/summarize.md) and richer than a plain summary.",
+      "type": "structural"
+    },
+    {
+      "id": "A3",
+      "text": "Body is Traditional Chinese while English technical terms are preserved verbatim (mTOR, AMPK, autophagy, SIRT1/SIRT3, IGF-1, HOMA-IR, TRE, FMD).",
+      "type": "language"
+    },
+    {
+      "id": "A4",
+      "text": "Source Summary frontmatter separates provenance (red-line 3): author is agent_robin (the AI digest), with the human author carried separately as original_author (Dr. Valter Longo). The AI never claims the human's authorship.",
+      "type": "provenance"
+    },
+    {
+      "id": "A5",
+      "text": "Presents the concept/entity extraction plan (each item with action + title + reason) and STOPS for the user to accept / defer / exclude BEFORE writing any Concept/Entity page. Never auto-releases. Expected discriminator vs the no-skill baseline.",
+      "type": "workflow"
+    },
+    {
+      "id": "A6",
+      "text": "Applies filtering caps: at most 5 concept actions and at most 3 entities, each with an explicit reason — does not dump every noun as a concept.",
+      "type": "filtering"
+    },
+    {
+      "id": "A7",
+      "text": "The Source Summary's related-concepts/entities are PLAIN TEXT, not [[wiki links]] (retrieval-first, ADR-043 / PR #955). No inline [[ ]] that would dangle to non-existent pages.",
+      "type": "formatting"
+    },
+    {
+      "id": "A8",
+      "text": "Red lines: writes nothing under KB/Permanent/ (red-line 1); any written Concept body cites Sources/Raw/Annotations as terminal evidence, never another Concept or Output page (red-line 5 anti-laundering).",
+      "type": "red-line"
+    },
+    {
+      "id": "A9",
+      "text": "Ingests the FULL article text (D-A). The user's ==highlights== and > [!annotation] are treated as an EMPHASIS signal layered on the whole text, never a content filter that drops unhighlighted sections (e.g. the Controversies section is still summarized).",
+      "type": "workflow"
+    },
+    {
+      "id": "A10",
+      "text": "Content fidelity: Key Data captures the source's concrete numbers without fabrication — 14% fasting-insulin reduction, 8% HOMA-IR improvement, 2.3x LC3-II/I autophagy ratio, FMD ~800 cal/day, 2.5-year biological-age reduction, 1.6 g/kg/day protein.",
+      "type": "content"
+    },
+    {
+      "id": "A11",
+      "text": "Respects annotation emphasis: the user-highlighted autophagy mechanism and the annotated 'largest TRE RCT, 12-month' study surface prominently in Core Claims / Key Insights.",
+      "type": "content"
+    },
+    {
+      "id": "A12",
+      "text": "Candidate quality: proposed concepts are cross-source-repeatable abstractions (e.g. autophagy, mTOR inhibition, time-restricted eating) and entities are core researchers/protocols (Valter Longo, Fasting-Mimicking Diet, Stuart Phillips) — not one-off trivia.",
+      "type": "content"
+    }
+  ]
+}

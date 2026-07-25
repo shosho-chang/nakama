@@ -129,7 +129,7 @@ select = ["E", "F", "I", "W"]
 # web_highlight_record.py embeds JS strings (Playwright page.evaluate). Breaking
 # long lines would break JS syntax; the alternative is extracting to .js files.
 # ADR-032 Phase 1.5 may refactor; for now allow E501 on this single file.
-"agents/foundry/lib/web_highlight_record.py" = ["E501"]
+"agents/brook/script_video/lib/web_highlight_record.py" = ["E501"]
 
 # Playbook pipeline scripts embed long multi-line LLM prompts where forced
 # wrapping hurts readability. The prompts are the primary work product — fluff
@@ -142,6 +142,10 @@ select = ["E", "F", "I", "W"]
 "scripts/fix_playbook_v1_to_v1_1.py" = ["E501"]
 "scripts/splice_playbook_v1.py" = ["E501"]
 
+# composer skill 的 style_lint.py 內嵌簡體字偵測常數與繁中檢查訊息 f-string，
+# 斷行會破壞常數/訊息語意，與上述嵌入型檔案同類——允許 E501。
+".claude/skills/composer/scripts/style_lint.py" = ["E501"]
+
 # Coverage 設定（Phase 6 Slice 1）
 # 預設不在 pytest 加 --cov（避免本地 dev 變慢 ~30%）；CI 額外開
 # 量法：pytest --cov=shared --cov=thousand_sunny --cov=agents --cov-report=term-missing
@@ -152,6 +156,12 @@ omit = [
     "*/tests/*",
     "*/__pycache__/*",
     "*/.venv/*",
+    # 非 Python 資產：coverage 7.6+ 的 code_regions() 會對回報清單裡的每個檔
+    # 做 ast.parse，撞到 HTML（如 login.html 的 "·" U+00B7）就 SyntaxError →
+    # 整個 coverage 報告 INTERNALERROR、CI exit 3。templates/static 排除量測即可。
+    "*/templates/*",
+    "*/static/*",
+    "*.html",
 ]
 
 [tool.coverage.report]

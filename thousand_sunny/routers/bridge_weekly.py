@@ -15,7 +15,7 @@ import contextvars
 import hashlib
 import re
 import unicodedata
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Cookie, Form, Query, Request
@@ -577,14 +577,16 @@ async def weekly_task_meta(
     slug: str = PathParam(..., min_length=1),
     category: str = Form(""),
     priority: str = Form(""),
+    est_pomodoros: int = Form(-1),  # -1 = field absent (dashboard row form omits it)
     week: str = Form(""),
     from_task: int = Form(0),
     from_project: str = Form(""),
     nakama_auth: str | None = Cookie(None),
 ):
-    """v3-I follow-up (修修): edit a task's category + priority from the dashboard row /
-    task page dropdowns. Writes only the valid fields; stays in place (the row's #anchor
-    + save-state, or the task page / Brief tab when fired from there)."""
+    """v3-I follow-up (修修): edit a task's category + priority + 預估🍅 from the dashboard
+    row / task page editors. Writes only the valid fields; stays in place (the row's
+    #anchor + save-state, or the task page / Brief tab when fired from there). The task
+    page carries ``est_pomodoros`` (0–40, 0 clears the estimate); the row omits it."""
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
     _FROM_PROJECT.set(from_project.strip())
@@ -596,6 +598,7 @@ async def weekly_task_meta(
             slug,
             category=category if category in CATEGORY_LABELS else None,
             priority=priority if priority in {"low", "normal", "high"} else None,
+            est_pomodoros=est_pomodoros if 0 <= est_pomodoros <= 40 else None,
         )
     except TaskNotFoundError:
         return _back(wk_key, "task")
@@ -1229,6 +1232,7 @@ async def weekly_task_log(
     # actual elapsed from the live timer; 0/absent → manual full block
     elapsed_seconds: int = Form(0),
     manual: int = Form(0),
+    entry_date: str = Form(""),  # 手動補記：這 block 是哪一天做的（YYYY-MM-DD）；空/今天 = 現在
     week: str = Form(""),
     nakama_auth: str | None = Cookie(None),
 ):
@@ -1241,6 +1245,12 @@ async def weekly_task_log(
         return _task_back(slug, wk_key, err="mode")
 
     end = _now_taipei()
+    # 手動補記可指定「哪一天做的」(entry_date)：週儀表板用 endTime 歸屬週次，不給日期就一律記
+    # 今天，補上週的工作會漏進本週 (修修回報的 bug)。給了過去的日期就把 block 錨在那天的 23:59，
+    # 讓 log_time_entry 的「往回堆疊」把連續 N 顆疊在當天內、不跨到前一天。未來/今天 → 用現在。
+    ed = _parse_entry_date(entry_date) if entry_date.strip() else None
+    if ed is not None and ed < end.date():
+        end = datetime.combine(ed, time(23, 59), tzinfo=TAIPEI)
     # Live timer → actual elapsed (capped at the nominal block, floored at 1 min so
     # a stray 0 doesn't make a non-positive span); manual button → full nominal block.
     if elapsed_seconds and elapsed_seconds > 0:

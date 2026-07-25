@@ -504,6 +504,27 @@ def _split_h2_sections(body: str) -> dict[str, str]:
     return {k: "\n".join(v).strip() for k, v in sections.items()}
 
 
+def _render_h2_sections(sections: dict[str, str]) -> str:
+    """Render a ``{heading: content}`` map (from :func:`_split_h2_sections`) back
+    to markdown: ``__prefix__`` first, then canonical ``H2_ORDER``, then any
+    leftover H2 (forward-compat for user-added / future-schema sections)."""
+    out: list[str] = []
+    prefix = sections.get("__prefix__", "").strip()
+    if prefix:
+        out.append(prefix)
+    seen = {"__prefix__"}
+    for h2 in H2_ORDER:
+        if h2 in sections:
+            seen.add(h2)
+            out.append(f"{h2}\n\n{sections[h2].strip() or PLACEHOLDER}")
+    # Any leftover H2 (forward-compat for future v3 sections); preserve doc order.
+    for h2, content in sections.items():
+        if h2 in seen or not h2.startswith("## "):
+            continue
+        out.append(f"{h2}\n\n{content.strip() or PLACEHOLDER}")
+    return "\n\n".join(out) + "\n"
+
+
 def _append_to_section(body: str, heading: str, new_block: str) -> str:
     """Append `new_block` (str) under `heading` (e.g. "## Sources")."""
     if heading not in body:
@@ -516,20 +537,31 @@ def _append_to_section(body: str, heading: str, new_block: str) -> str:
         sections[heading] = new_block.strip()
     else:
         sections[heading] = f"{existing}\n\n{new_block.strip()}"
+    return _render_h2_sections(sections)
 
-    # Re-render (preserve order: prefix, then H2_ORDER, then any unknown H2 tail)
-    out: list[str] = []
-    prefix = sections.pop("__prefix__", "").strip()
-    if prefix:
-        out.append(prefix)
-    for h2 in H2_ORDER:
-        if h2 in sections:
-            out.append(f"{h2}\n\n{sections.pop(h2).strip() or PLACEHOLDER}")
-    # Any leftover H2 (forward-compat for future v3 sections)
-    for h2, content in sections.items():
-        if h2.startswith("## "):
-            out.append(f"{h2}\n\n{content.strip() or PLACEHOLDER}")
-    return "\n\n".join(out) + "\n"
+
+def _normalize_concept_sources(body: str, mentioned_in: list[str]) -> str:
+    """Rewrite the body ``## Sources`` block to mirror frontmatter ``mentioned_in``.
+
+    ``prompts/robin/extract_concepts.md`` ships a ``## Sources`` template whose
+    line is ``- [[Sources/...]]``, so the LLM fills it by guessing a slug from
+    the title/author (e.g. ``[[Sources/財富階梯-Nick-Maggiulli]]``) that points at
+    no real Source page — a dead link. ``mentioned_in`` is the pipeline-injected
+    authoritative provenance list; we overwrite the human-readable ``## Sources``
+    block with it so body and frontmatter never drift and no fabricated link
+    survives. Idempotent; no-op when ``mentioned_in`` is empty.
+    """
+    if not mentioned_in:
+        return body
+    seen: set[str] = set()
+    links: list[str] = []
+    for link in mentioned_in:
+        if link not in seen:
+            seen.add(link)
+            links.append(link)
+    sections = _split_h2_sections(body)
+    sections["## Sources"] = "\n".join(f"- {link}" for link in links)
+    return _render_h2_sections(sections)
 
 
 def _conflict_block_to_md(topic: str, source_link: str, c: ConflictBlock) -> str:
@@ -725,7 +757,11 @@ def upsert_concept_page(
             }
             _mark_concept_candidate(fm)
             body = _ensure_h2_skeleton(extracted_body)
+            # 順序要點：先 lint LLM 原始輸出（紅線 5 抓 concept→concept 洗來源），
+            # 再清理 body ## Sources 的死連結（對齊 mentioned_in）。顛倒會把違規
+            # 連結 silently scrub 掉、繞過紅線 5。
             _enforce_concept_provenance(slug, fm, body)
+            body = _normalize_concept_sources(body, fm["mentioned_in"])
             _write_page_file(abs_path, fm, body)
             logger.info(
                 "concept created",
@@ -821,7 +857,9 @@ def upsert_concept_page(
             mentioned.append(source_link)
             fm["mentioned_in"] = mentioned
         fm["updated"] = today
+        # Lint raw merge output first (red line 5), then scrub dead Sources links.
         _enforce_concept_provenance(slug, fm, body)
+        body = _normalize_concept_sources(body, fm.get("mentioned_in") or [])
         _write_page_file(abs_path, fm, body)
         logger.info(
             "concept update_merge complete",
@@ -855,7 +893,9 @@ def upsert_concept_page(
             fm["mentioned_in"] = mentioned
 
         fm["updated"] = today
+        # Lint raw body first (red line 5), then scrub dead Sources links.
         _enforce_concept_provenance(slug, fm, body)
+        body = _normalize_concept_sources(body, fm.get("mentioned_in") or [])
         _write_page_file(abs_path, fm, body)
         logger.info(
             "concept update_conflict complete",

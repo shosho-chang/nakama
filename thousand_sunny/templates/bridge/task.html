@@ -62,6 +62,14 @@
               <option value="{{ p }}" {{ 'selected' if p == task.priority }}>{{ lbl }}</option>
             {% endfor %}
           </select>
+          {# 預估🍅 editor (修修): editable for ANY task — non-work tasks hide the 🍅 stat
+             block above, and unscheduled tasks have no plan[] to auto-sync from, so this
+             is the only place to set the estimate by hand. 0 clears it. 1🍅 ≈ 30 分。 #}
+          <label class="wk-meta-est" title="預估番茄數（1🍅 ≈ 30 分）">
+            <input class="wk-meta-estnum" type="number" name="est_pomodoros" min="0" max="40"
+                   inputmode="numeric" value="{{ task.est_pomodoros }}" aria-label="預估番茄數">
+            <span class="wk-meta-est-unit" aria-hidden="true">🍅 預估</span>
+          </label>
         </form>
         {% if task.project %}<span class="tk-proj">{{ task.project }}</span>{% endif %}
         <span class="sho-chip sho-chip--{{ 'online' if task.status == 'done' else 'offline' }}">{{ task.status }}</span>
@@ -197,15 +205,25 @@
           <button type="button" class="pj-timer-secondary tk-finish is-hidden" data-timer-finish>完成·記一段</button>
           <button type="button" class="pj-timer-secondary tk-abort is-hidden" data-timer-abort>取消</button>
 
-          {# manual backup — log a full block done away from the browser #}
+          {# manual backup — log a full block done away from the browser. 補記日期 lets 修修
+             backfill a block done on a PAST day; without it the block is stamped today and
+             leaks into the wrong week (修修 bug). JS syncs the picker into each form's
+             entry_date; with no JS it stays blank ⇒ the route records today (safe fallback). #}
+          <label class="tk-backfill" title="手動補記的日期（預設今天；要補過去某天做的，改這裡）">
+            <span class="tk-backfill-cap">補記日期</span>
+            <input type="date" id="tk-backfill-date" value="{{ today_iso }}" max="{{ today_iso }}"
+                   aria-label="手動補記番茄鐘的日期">
+          </label>
           <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-mform">
             <input type="hidden" name="mode" value="pomodoro"><input type="hidden" name="manual" value="1">
             <input type="hidden" name="week" value="{{ week_key }}">
+            <input type="hidden" name="entry_date" value="">
             <button class="pj-timer-secondary" type="submit" title="手動補記一顆 25 分番茄">+1🍅</button>
           </form>
           <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-mform">
             <input type="hidden" name="mode" value="deep"><input type="hidden" name="manual" value="1">
             <input type="hidden" name="week" value="{{ week_key }}">
+            <input type="hidden" name="entry_date" value="">
             <button class="pj-timer-secondary" type="submit" title="手動補記一段 75 分超專注">+1🤩</button>
           </form>
 
@@ -439,11 +457,28 @@
     if (cancel) cancel.addEventListener('click', closeEditor);
   })();
 
-  /* v3-I follow-up (修修): 分類/優先 dropdowns auto-submit on change. */
+  /* v3-I follow-up (修修): 分類/優先/預估🍅 editors auto-submit on change (number input
+     fires 'change' on blur / Enter, not per keystroke — so it saves when 修修 leaves it). */
   (function () {
-    document.querySelectorAll('.wk-meta-form select').forEach(function (sel) {
-      sel.addEventListener('change', function () {
-        if (sel.form) (sel.form.requestSubmit ? sel.form.requestSubmit() : sel.form.submit());
+    document.querySelectorAll('.wk-meta-form select, .wk-meta-form input[type="number"]').forEach(
+      function (el) {
+        el.addEventListener('change', function () {
+          if (el.form) (el.form.requestSubmit ? el.form.requestSubmit() : el.form.submit());
+        });
+      }
+    );
+  })();
+
+  /* 補記日期 → 手動 +1 表單的 entry_date（修修 bug fix：手動補記過去某天的 block，否則
+     一律記今天、漏進錯的週）。提交前把 picker 的日期同步進該表單的 entry_date；沒 JS 時
+     欄位留空 → route 記為今天（安全 fallback，等同舊行為）。 */
+  (function () {
+    var dateInput = document.getElementById('tk-backfill-date');
+    if (!dateInput) return;
+    document.querySelectorAll('form.tk-mform').forEach(function (f) {
+      f.addEventListener('submit', function () {
+        var hidden = f.querySelector('input[name="entry_date"]');
+        if (hidden) hidden.value = dateInput.value || '';
       });
     });
   })();

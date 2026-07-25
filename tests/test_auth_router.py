@@ -174,8 +174,10 @@ def test_vps_legacy_brook_bridge_redirects_301(client_vps):
     assert r.headers["location"] == "/brook/handoff"
 
 
-def test_local_robin_root_available(client_local):
-    """本機模式下 Robin / 仍可訪問（未登入會 redirect 到 /login?next=/）。"""
+def test_local_root_redirects_to_weekly(client_local):
+    """本機模式下 / 也重導到週看板（與 VPS 一致；Robin 收件匣改住 /robin）。
+    先前 Robin 有掛載時 `@router.get('/')` 會贏、把使用者丟到 Robin 收件匣 —
+    這正是「首頁跑到 Robin」的 bug，現已修成無條件重導 /bridge/weekly。"""
     r = client_local.get("/")
     assert r.status_code == 302
-    assert "/login" in r.headers["location"]
+    assert r.headers["location"] == "/bridge/weekly"

@@ -1,7 +1,7 @@
 """Source Map Builder schema (ADR-024 Slice 5 / issue #513).
 
 Pure pydantic value-objects describing the deterministic claim-dense source map
-emitted by ``shared.source_map_builder.SourceMapBuilder.build()`` for one
+emitted by ``agents.robin.promotion.source_map_builder.SourceMapBuilder.build()`` for one
 normalized Reading Source (#509). Builder output (``SourceMapBuildResult``) is
 consumed by downstream slices (#514 concept promotion, #515 commit gate, #516
 review UI) which wrap ``items`` into a ``PromotionManifest`` (#512) with

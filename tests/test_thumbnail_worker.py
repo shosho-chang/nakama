@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agents.foundry.render_workers.thumbnail_worker import (
+from agents.brook.script_video.render_workers.thumbnail_worker import (
     PODCAST_COMPOSITION,
     YOUTUBE_COMPOSITION,
     ThumbnailRenderError,

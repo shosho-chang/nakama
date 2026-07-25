@@ -71,6 +71,19 @@
   </form>
 {% endmacro %}
 
+{# Review status chip — three honest states so a saved draft doesn't read as
+   "not filled". reviewed (explicit FSM completion) vs has_content (prose
+   written, not yet marked) vs empty. #}
+{% macro review_chip(view) %}
+  {%- if view.review and view.review.status == 'reviewed' -%}
+    <span class="sho-chip sho-chip--online">已完成</span>
+  {%- elif view.review and view.review.has_content -%}
+    <span class="sho-chip sho-chip--hold">草稿已存</span>
+  {%- else -%}
+    <span class="sho-chip sho-chip--offline">尚未填寫</span>
+  {%- endif -%}
+{% endmacro %}
+
 {% macro notes_form(view, weekly_token) %}
   <form class="wk-wf wk-notes-form" method="post" action="/bridge/weekly/notes">
     <input type="hidden" name="week" value="{{ view.week.file_key }}">
@@ -243,8 +256,7 @@
 
       <div class="wk-zone">
         <div class="wk-zone-head"><span class="wk-h">Weekly Review · 6 題</span>
-          <span class="sho-chip sho-chip--{{ 'online' if view.review and view.review.status == 'reviewed' else 'hold' }}">
-            {{ '已回顧' if view.review and view.review.status == 'reviewed' else '待填' }}</span></div>
+          {{ review_chip(view) }}</div>
         <p class="wk-mut">✅ 重要任務完成率自動帶入（見上方本週重要任務）。逐字寫，機器不代筆。</p>
         {{ review_form(view, weekly_token, with_mark=True) }}
       </div>
@@ -363,22 +375,33 @@
         </div>
         <div class="wk-tabpane is-hidden" data-pane="all">
           <p class="wk-mut wk-all-hint">所有未完成任務（{{ view.backlog_count }} 項）· 點開可排計畫或排到行事曆。</p>
-          {% for proj, tasks in view.backlog_by_project.items() %}
-            <div class="wk-projgroup">
-              <div class="wk-projname">{{ proj }} <span class="wk-mut">{{ tasks | length }} 項</span></div>
-              {% for t in tasks %}{{ task_row(t, view) }}{% endfor %}
-            </div>
+          {# N541: 全部 grouped by scheduling status, not project. 1+2 sorted nearest→
+             furthest by date (view builder); empty sections are omitted. #}
+          {% if view.backlog_count %}
+            {% for label, tasks in [
+                 ('排定本週的', view.all_this_week),
+                 ('已排程・非本週', view.all_other_scheduled),
+                 ('還沒排定時間', view.all_unscheduled)] %}
+              {% if tasks %}
+                <section class="wk-tsection">
+                  <div class="wk-tsection-head">
+                    <span class="wk-tsection-label">{{ label }}</span>
+                    <span class="wk-tsection-n">{{ tasks | length }}</span>
+                  </div>
+                  {% for t in tasks %}{{ task_row(t, view) }}{% endfor %}
+                </section>
+              {% endif %}
+            {% endfor %}
           {% else %}
             <p class="wk-empty">沒有未完成的任務 🎉</p>
-          {% endfor %}
+          {% endif %}
         </div>
       </div>
 
       {# ── review (fill any time; designed for week-end) ── #}
       <details class="wk-zone wk-review-zone">
         <summary class="wk-zone-head"><span class="wk-h">週回顧</span>
-          <span class="sho-chip sho-chip--{{ 'online' if view.review and view.review.status == 'reviewed' else 'offline' }}">
-            {{ '已完成' if view.review and view.review.status == 'reviewed' else '本週末填' }}</span></summary>
+          {{ review_chip(view) }}</summary>
         {{ review_form(view, weekly_token, with_mark=True) }}
       </details>
 

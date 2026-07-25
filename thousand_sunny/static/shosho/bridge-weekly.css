@@ -118,27 +118,61 @@ body.sho .wk-tab.is-on { background: var(--sho-bg-3); color: var(--sho-text); }
 body.sho .wk-tab:focus-visible { outline: none; box-shadow: var(--sho-focus); }
 body.sho .wk-tabpane.is-hidden { display: none; }
 
-body.sho .wk-task { display: flex; align-items: center; gap: 12px; padding: 9px 6px; border-bottom: 1px solid var(--sho-line); }
+/* N541: the task row is a real aligned table — every row shares ONE grid template so
+   the category / priority / date / 🍅 columns line up across rows. The date + 🍅 cells
+   are always emitted (empty when N/A) so a row missing them keeps the rest aligned.
+   justify-items:start left-aligns every cell within its track. */
+body.sho .wk-task {
+  display: grid;
+  grid-template-columns:
+    auto               /* ☐ done box        */
+    minmax(7rem, 1fr)  /* name (+ ✎ rename)  */
+    4.75rem            /* category chip      */
+    4.25rem            /* priority chip      */
+    7rem               /* date / time        */
+    5rem               /* 實際 / 預估 🍅      */
+    auto               /* ↗ open             */
+    auto;              /* ✕ delete           */
+  align-items: center;
+  justify-items: start;
+  column-gap: 12px;
+  padding: 9px 6px;
+  border-bottom: 1px solid var(--sho-line);
+}
 body.sho .wk-task:last-child { border-bottom: 0; }
 body.sho .wk-box { width: 14px; height: 14px; border: 1.5px solid var(--sho-line-2); border-radius: 3px; flex-shrink: 0; }
 body.sho .wk-box.done { background: var(--sho-text); border-color: var(--sho-text); }
 body.sho .wk-task.done .wk-tname { color: var(--sho-muted); text-decoration: line-through; }
-/* v3-I follow-up (修修): min-width gives the chips that follow the title a consistent
-   start x across rows — an "invisible table" feel. Long names extend past it. */
-body.sho .wk-tname { color: var(--sho-text); min-width: 12rem; }
+/* name shares its grid cell with ✎ and the (hidden) rename form; min-width:0 lets a
+   long name ellipsis instead of pushing the table columns out of alignment. */
+body.sho .wk-namecell { display: inline-flex; align-items: center; gap: 6px; min-width: 0; width: 100%; }
+body.sho .wk-tname { color: var(--sho-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.sho .wk-namecell .wk-rename-form { flex: 1 1 auto; min-width: 0; }
+/* always-present date / 🍅 cells — fixed-width tracks keep empty ones holding the column */
+body.sho .wk-cell { display: inline-flex; align-items: center; min-width: 0; overflow: hidden; }
 body.sho .wk-tproj { font-family: var(--sho-font-mono); font-size: 10px; color: var(--sho-muted); letter-spacing: 0.04em; }
-/* spacer carries the auto-margin so the date badge can sit just left of the 🍅
-   count in the right group (修修); the count itself no longer needs the margin */
-body.sho .wk-rowfill { margin-left: auto; }
 body.sho .wk-tnum {
   font-family: var(--sho-font-mono); font-size: 11px;
-  color: var(--sho-text-2); font-variant-numeric: tabular-nums;
+  color: var(--sho-text-2); font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 body.sho .wk-status { text-transform: none; }
-body.sho .wk-projgroup { padding: 4px 0 8px; }
-body.sho .wk-projname {
-  display: flex; gap: 10px; align-items: baseline; padding: 8px 6px 4px;
-  font-size: 13px; color: var(--sho-ink); border-bottom: 1px solid var(--sho-line-2);
+
+/* ── N541: 全部 view scheduling sections (排定本週的 / 已排程・非本週 / 還沒排定時間) ── */
+body.sho .wk-tsection { margin-top: 18px; }
+body.sho .wk-tsection:first-of-type { margin-top: 4px; }
+body.sho .wk-tsection-head {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 6px 6px 5px; border-bottom: 1px solid var(--sho-line-2);
+}
+body.sho .wk-tsection-label {
+  font-family: var(--sho-font-mono); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--sho-ink);
+}
+/* the count reads as an "indoor voice" tally next to the label */
+body.sho .wk-tsection-n {
+  font-family: var(--sho-font-mono); font-size: 10.5px; color: var(--sho-muted);
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-1); padding: 0 5px;
 }
 
 /* ── daily cards (Mon–Fri): today open, others collapse to a thin agenda row ── */
@@ -800,9 +834,8 @@ body.sho .tk-titlewrap { display: flex; align-items: center; gap: 6px; }
 body.sho .tk-rename-icon { opacity: 1; font-size: 14px; }
 body.sho .tk-titlewrap .wk-rename-input { height: 36px; font-size: 18px; }
 
-/* ── v3-I follow-up: task-row chips (修修) — category (outlined) / project (outlined)
-   / priority (solid). Aligned right of the name; the chip cluster reads as one unit. */
-body.sho .wk-chips { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+/* ── task-row chips (修修) — category (outlined) / priority (solid). N541: each chip is
+   its own grid cell (no wrapper) so they sit in aligned columns. ── */
 /* v3-I follow-up (修修): chips are smaller + lighter (the solid pills read too heavy). */
 body.sho .wk-chip {
   display: inline-flex;
@@ -843,6 +876,22 @@ body.sho .wk-meta-sel:focus-visible { outline: none; border-color: var(--sho-acc
 /* task page: sits inline in the meta row, no top margin; selects more compact */
 body.sho .tk-meta .wk-meta-form { margin-top: 0; gap: 8px; }
 body.sho .tk-meta .wk-meta-sel { padding: 3px 7px; min-width: 0; font-size: 12px; }
+/* 預估🍅 editor: a number input + unit caption, matching the compact select chrome */
+body.sho .wk-meta-est {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  padding: 3px 8px; background: var(--sho-bg);
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-meta-est:focus-within { border-color: var(--sho-accent); box-shadow: var(--sho-focus); }
+body.sho .wk-meta-estnum {
+  width: 2.5rem; font: inherit; font-size: 12px; color: var(--sho-text);
+  border: 0; background: transparent; outline: none; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+body.sho .wk-meta-est-unit {
+  font-family: var(--sho-font-mono); font-size: 11px; letter-spacing: 0.04em; color: var(--sho-muted);
+}
 
 /* N529 — 今日回顧卡（5am Centaur daily review；dashboard 起床即見，連到 /kb/review）*/
 body.sho .wk-review {

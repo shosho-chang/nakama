@@ -1,0 +1,4335 @@
+stats:
+  total_shots: 382
+  broll_shots: 252
+  broll_shots_per_minute: 10.43
+  broll_events: 85
+  broll_events_per_minute: 3.52
+  shots_per_event_p50: 2
+  shots_per_event_max: 14
+  broll_duration_p50: 2.65
+  broll_duration_p90: 7.34
+  broll_time_share: 0.641
+  aroll_runs:
+    n: 85
+    p50: 4.8
+    p90: 12.8
+    max: 42.5
+  by_type:
+    diagram:
+      n: 3
+      p50: 5.59
+      max: 16.23
+    doc_screenshot:
+      n: 4
+      p50: 9.63
+      max: 10.09
+    kol:
+      n: 166
+      p50: 2.52
+      max: 22.9
+    motion_graphic:
+      n: 23
+      p50: 3.34
+      max: 19.89
+    other:
+      n: 3
+      p50: 6.25
+      max: 10.76
+    photo_still:
+      n: 10
+      p50: 2.52
+      max: 7.72
+    screen_recording:
+      n: 7
+      p50: 1.08
+      max: 6.3
+    stock:
+      n: 34
+      p50: 2.48
+      max: 7.34
+    title_card:
+      n: 2
+      p50: 8.97
+      max: 10.55
+shots:
+- shot_id: 1
+  start: 0.0
+  end: 1.46
+  duration: 1.46
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話、右手舉起比手勢，白T恤印 TSUBASA。畫面文字：TSUBASA（T恤）、背景書法掛軸「張遊」。
+  cues:
+  - 1
+  text: 今天我要來介紹一位
+- shot_id: 2
+  start: 1.46
+  end: 4.588
+  duration: 3.128
+  type: aroll
+  note: 主持人近景對鏡頭說話，右側疊入瀏覽器視窗框造型的 inset：黑衣歐美男子（Steven Bartlett）棚拍肖像照；a 幀 inset 尚在滑入（半透明偏小）、b
+    幀完整定位。inset 內無文字。
+  cues:
+  - 2
+  - 3
+  text: 我相當喜歡的 PodcasterSteven Bartlett
+- shot_id: 3
+  start: 4.588
+  end: 6.465
+  duration: 1.877
+  type: aroll
+  note: 主持人對鏡頭說話，無疊加物。畫面文字：背景書法掛軸「張遊」。
+  cues:
+  - 4
+  text: 以及和他節目同名的新書
+- shot_id: 4
+  start: 6.465
+  end: 8.258
+  duration: 1.793
+  type: aroll
+  note: 主持人對鏡頭說話，右側疊入瀏覽器框造型的英文版書封 inset；a 幀滑入中、b 幀完整。書封文字逐字：STEVEN BARTLETT / THE
+    DIARY OF A CEO / THE 33 LAWS OF BUSINESS & LIFE。
+  cues:
+  - 5
+  text: 《The Diary of a CEO》
+- shot_id: 5
+  start: 8.258
+  end: 9.009
+  duration: 0.751
+  type: aroll
+  note: 主持人對鏡頭說話，無疊加物。畫面文字：TSUBASA（T恤）、背景掛軸「張遊」。
+  cues:
+  - 6
+  text: 中文書名是
+- shot_id: 6
+  start: 9.009
+  end: 13.18
+  duration: 4.171
+  type: aroll
+  note: 主持人特寫對鏡頭說話，左側疊入中文版書封 inset；a 幀滑入中、b 幀完整。書封文字逐字：STEVEN BARTLETT / 關於事業與人生的
+    33 條法則 / 執行長日記 / THE DIARY OF A CEO / THE 33 LAWS OF BUSINESS AND LIFE（另有小字作者譯者行：史蒂文·巴列特—著、張嘉倫—譯）。
+  cues:
+  - 7
+  - 8
+  - 9
+  text: 《執行長日記：關於事業與人生的33 條法則》
+- shot_id: 7
+  start: 13.18
+  end: 14.389
+  duration: 1.21
+  type: kol
+  note: Steven Bartlett 在自家 podcast 棚內對鏡頭雙手比劃說話，畫面外框黑色格紋、上方來源標示。畫面文字：影片來源：The Diary
+    of a CEO。
+  cues:
+  - 10
+  text: 這一個 Podcast 節目
+- shot_id: 8
+  start: 14.389
+  end: 17.559
+  duration: 3.17
+  type: kol
+  note: The Diary of a CEO 訪談片段：圓桌對談，Bartlett 面對紅衣來賓（過肩鏡頭）。畫面文字：影片來源：The Diary of
+    a CEO。
+  cues:
+  - 11
+  - 12
+  text: 可是全歐洲下載數排名第一喔
+- shot_id: 9
+  start: 17.559
+  end: 19.686
+  duration: 2.127
+  type: kol
+  note: The Diary of a CEO 訪談片段：過肩拍紅衣男性來賓（Cole Sprouse 樣貌）托腮聆聽，前景 Bartlett 背影比手勢。畫面文字：影片來源：The
+    Diary of a CEO。
+  cues:
+  - 13
+  text: 也是 Spotify 的 2023 年的
+- shot_id: 10
+  start: 19.686
+  end: 22.064
+  duration: 2.377
+  type: kol
+  note: Bartlett 棚內手持小卡對鏡頭說話並伸手比劃。畫面文字：影片來源：The Diary of a CEO。
+  cues:
+  - 14
+  - 15
+  text: 全球第九名超級厲害
+- shot_id: 11
+  start: 22.064
+  end: 23.065
+  duration: 1.001
+  type: kol
+  note: The Diary of a CEO 訪談廣角：Bartlett 與女性來賓隔白色圓桌對談。畫面文字：影片來源：The Diary of a CEO。
+  cues:
+  - 16
+  text: 他的節目訪問到
+- shot_id: 12
+  start: 23.065
+  end: 25.275
+  duration: 2.211
+  type: kol
+  note: The Diary of a CEO 訪談片段：丹寧襯衫女性來賓（學者）對麥克風受訪特寫。畫面文字：影片來源：The Diary of a CEO。
+  cues:
+  - 17
+  text: 全世界最頂尖的學者
+- shot_id: 13
+  start: 25.275
+  end: 26.902
+  duration: 1.627
+  type: kol
+  note: The Diary of a CEO 訪談片段：戴棒球帽長髮鬍鬚男性來賓（Alex Hormozi 樣貌）受訪。畫面文字：影片來源：The Diary
+    of a CEO；帽上 ACQUISITION.COM。
+  cues:
+  - 18
+  text: 創業家 以及作家
+- shot_id: 14
+  start: 26.902
+  end: 27.986
+  duration: 1.084
+  type: kol
+  note: Alex Scott 在 podcast 錄音室對麥克風受訪特寫。畫面文字：「影片來源：The Diary of a CEO」
+  cues:
+  - 19
+  text: 和運動員等等
+- shot_id: 15
+  start: 27.986
+  end: 30.155
+  duration: 2.169
+  type: kol
+  note: podcast 訪談雙人景：女受訪者與背對鏡頭的主持人隔桌對談。畫面文字：「影片來源：The Diary of a CEO」
+  cues:
+  - 20
+  text: 動不動就是一兩個小時起跳
+- shot_id: 16
+  start: 30.155
+  end: 31.49
+  duration: 1.335
+  type: aroll
+  note: 主持人（白T恤、平頭）在暖色書架房間對鏡頭說話特寫，無疊加物。
+  cues:
+  - 21
+  text: 但還是超多人看
+- shot_id: 17
+  start: 31.49
+  end: 33.617
+  duration: 2.127
+  type: kol
+  note: Steven Bartlett 在夜晚豪宅客廳受訪 vlog 片段。畫面文字：「影片來源：Behind the Diary」「Steven Bartlett」（人名下標，僅
+    a 幀有）
+  cues:
+  - 22
+  - 23
+  text: Steven Bartlett現在才 31 歲
+- shot_id: 18
+  start: 33.617
+  end: 35.619
+  duration: 2.002
+  type: photo_still
+  note: Steven Bartlett 少年時期穿校服的舊照片，套底片邊框效果、有滑入動態（a 幀紅色底片框滑入中，b 幀定格顯示 KODAK 75A 字樣）。畫面文字：「影片來源：Behind
+    the Diary」「K'ODA…75A」（底片邊框印字）
+  cues:
+  - 24
+  - 25
+  text: 他在一個既貧困又受到忽視的
+- shot_id: 19
+  start: 35.619
+  end: 38.914
+  duration: 3.295
+  type: photo_still
+  note: 少年 Bartlett 穿白襯衫領帶靠窗望外的舊照片，同樣套底片框效果。畫面文字：「影片來源：Behind the Diary」
+  cues:
+  - 25
+  - 26
+  - 27
+  - 28
+  text: 又受到忽視的弱勢家庭長大加上自己是黑皮膚從小就受到各種的歧視
+- shot_id: 20
+  start: 38.914
+  end: 40.958
+  duration: 2.044
+  type: kol
+  note: Steven Bartlett 戴黑色 flightstory 帽、雙手托下巴的自拍式 vlog 談話。畫面文字：「影片來源：Behind the
+    Diary」「flightstory」（帽上字）
+  cues:
+  - 28
+  text: 從小就受到各種的歧視
+- shot_id: 21
+  start: 40.958
+  end: 44.836
+  duration: 3.879
+  type: kol
+  note: 年輕 Bartlett 在 Social Chain 辦公室受訪（背景 SC 霓虹 logo）；b 幀左下滑入粉紅「SOCIAL CHAIN」logo
+    圖卡（a 幀無，overlay 滑入）。畫面文字：「影片來源：DBP Post Production」「SOCIAL CHAIN」
+  cues:
+  - 29
+  - 30
+  text: 但他連大學都沒有念完就在 22 歲創辦了一間
+- shot_id: 22
+  start: 44.836
+  end: 48.548
+  duration: 3.712
+  type: motion_graphic
+  note: 白底滿版 Social Chain 品牌 logo 動畫，粉紅色勾形圖形展開。畫面文字：「影片來源：DBP Post Production」「SOCIAL
+    CHAIN」
+  cues:
+  - 31
+  - 32
+  - 33
+  text: 相當成功的社群媒體行銷公司Social Chain
+- shot_id: 23
+  start: 48.548
+  end: 56.723
+  duration: 8.175
+  type: kol
+  note: 多來源剪接鏡頭：a 幀 Bartlett 舞台 fireside chat（下標「STEVEN BARTLETT FIRESIDE CHAT / Steven
+    Bartlett / Thirdweb」，來源 We in Web3）；b 幀黑背景談話（來源 Flight Story）；c 幀黑背景談話疊「2023」時間軸動畫（來源
+    Prolific North）。畫面文字：「影片來源：We in Web3」「影片來源：Flight Story」「影片來源：Prolific North」「DANCING
+    SEAHORSE」「zebu LIVE」「2023」
+  cues:
+  - 34
+  - 35
+  - 36
+  - 37
+  - 38
+  - 39
+  - 40
+  text: 後來又陸續成立了區塊鏈的公司 Thirdweb以及另外一間整合行銷公司Flight Story以及創投基金Flight Fund 等公司
+- shot_id: 24
+  start: 56.723
+  end: 59.476
+  duration: 2.753
+  type: kol
+  note: Bartlett 穿黑高領在植物工作室場景比手勢講課（BBC Maestro 課程片段）。畫面文字：「影片來源：BBC Maestro」（背景小黑板隱約有英文字，不可完全辨識）
+  cues:
+  - 41
+  text: 目前身價接近 40 億台幣
+- shot_id: 25
+  start: 59.476
+  end: 66.191
+  duration: 6.715
+  type: aroll
+  note: 主持人對鏡頭說話，左側疊書封圖卡《THE DIARY OF A CEO》；a 幀圖卡滑入中僅見部分，b/c 幀完整顯示。疊加文字：「STEVEN BARTLETT」「THE
+    DIARY OF A CEO」「THE 33 LAWS OF BUSINESS & LIFE」
+  cues:
+  - 42
+  - 43
+  - 44
+  - 45
+  text: 而這本書就是他綜合了自己的經驗以及訪問過眾多大神之後歸納出來的 33 條法則
+- shot_id: 26
+  start: 66.191
+  end: 70.07
+  duration: 3.879
+  type: aroll
+  note: 主持人（白T恤，胸前 TSUBASA 字樣）在書架房間對鏡頭說話，無疊加圖卡。畫面文字：「TSUBASA」（衣服印字）
+  cues:
+  - 46
+  - 47
+  - 48
+  text: 這集節目我會介紹我最有共鳴的八條來分享給大家
+- shot_id: 27
+  start: 70.07
+  end: 83.0
+  duration: 12.93
+  type: aroll
+  note: 主持人（白T、書架暖房）對鏡頭說話；frame a 是白底手繪毛線球塗鴉的過場動畫（無文字），b/c 才是主持人本人——鏡頭開頭有 doodle 過場滑出。畫面文字：T恤上「TSUBASA」。
+  cues:
+  - 49
+  - 50
+  - 51
+  - 52
+  - 53
+  - 54
+  - 55
+  - 56
+  text: 嗨大家！歡迎回到我的頻道如果你是新朋友我叫做修修這個頻道我會跟大家分享科學的方法與工具來幫助大家工作更有效率身心更健康
+- shot_id: 28
+  start: 83.0
+  end: 85.877
+  duration: 2.878
+  type: kol
+  note: 黑色格紋框內兩位男士對坐 podcast 訪談（Steve Bartlett 與 Ali Abdaal）。畫面文字：「影片來源：Deep Dive
+    with Ali Abdaal」。
+  cues:
+  - 57
+  - 58
+  text: 有常在收看國外 Podcast 的人就知道
+- shot_id: 29
+  start: 85.877
+  end: 88.171
+  duration: 2.294
+  type: aroll
+  note: 主持人在黑邊縮小畫框內對鏡頭說話，b 幀舉起食指。畫面文字：T恤上「TSUBASA」。
+  cues:
+  - 59
+  - 60
+  text: 對 是可以用看的Video Podcast
+- shot_id: 30
+  start: 88.171
+  end: 91.508
+  duration: 3.337
+  type: kol
+  note: 格紋框內深色 podcast 棚，黑衣男子（Steve Bartlett）對麥克風受訪。畫面文字：「影片來源：Deep Dive with Ali
+    Abdaal」。
+  cues:
+  - 61
+  - 62
+  text: 這幾年許多製作規格可比電視節目的
+- shot_id: 31
+  start: 91.508
+  end: 93.927
+  duration: 2.419
+  type: kol
+  note: 格紋框內 Ali Abdaal 戴眼鏡坐書架前、桌上有 iPad，對麥克風說話。畫面文字：「影片來源：Deep Dive with Ali Abdaal」。
+  cues:
+  - 63
+  - 64
+  text: 網路訪談節目越來越流行了
+- shot_id: 32
+  start: 93.927
+  end: 95.679
+  duration: 1.752
+  type: kol
+  note: 格紋框內 Joe Rogan 戴耳機對麥克風、背景美國國旗磚牆。畫面文字：「影片來源：JRE Clips」。
+  cues:
+  - 65
+  text: 除了老牌的 Joe Rogan
+- shot_id: 33
+  start: 95.679
+  end: 102.686
+  duration: 7.007
+  type: kol
+  note: 三段名人訪談快切：a 幀 Andrew Huberman 於自家棚（「影片來源：Huberman Lab Clips」）、b 幀 Huberman
+    上 Jimmy Fallon 節目（「影片來源：The Tonight Show Starring Jimmy Fallon」）、c 幀 Lex Fridman
+    西裝對麥克風（「影片來源：Lex Clips」）——同一鏡頭內來源標示隨畫面切換。
+  cues:
+  - 66
+  - 67
+  - 68
+  - 69
+  - 70
+  text: 還有這幾年越來越紅紅到上 Jimmy Fallon節目的 Andrew Huberman和他的好兄弟我最喜歡的 Lex Fridmen
+- shot_id: 34
+  start: 102.686
+  end: 105.355
+  duration: 2.669
+  type: kol
+  note: 格紋框內 Jay Shetty 白色上衣對麥克風受訪。畫面文字：「影片來源：Jay Shetty Podcast」、麥克風罩上「ON PURPOSE」。
+  cues:
+  - 71
+  - 72
+  text: 以及曾放下一切當過三年和尚
+- shot_id: 35
+  start: 105.355
+  end: 107.774
+  duration: 2.419
+  type: kol
+  note: 格紋框內 Joe Biden 西裝受訪於白宮風格室內。畫面文字：「影片來源：Jay Shetty Podcast」。
+  cues:
+  - 73
+  - 74
+  text: 後來訪問到美國總統的Jay Shetty
+- shot_id: 36
+  start: 107.774
+  end: 109.318
+  duration: 1.543
+  type: kol
+  note: 格紋框內圓桌對談遠景（Simon Sinek 與 Steven Bartlett）。畫面文字：「影片來源：The Diary of a CEO」。
+  cues:
+  - 75
+  text: 當然還有今天要分享的
+- shot_id: 37
+  start: 109.318
+  end: 111.695
+  duration: 2.377
+  type: kol
+  note: 格紋框內 Steven Bartlett 黑T恤在書架前對麥克風比手勢。畫面文字：「影片來源：The Diary of a CEO」。
+  cues:
+  - 76
+  - 77
+  text: Steven Bartlett 的The Diary of a CEO
+- shot_id: 38
+  start: 111.695
+  end: 114.406
+  duration: 2.711
+  type: aroll
+  note: 主持人特寫對鏡頭說話，右側疊加瀏覽器視窗風格 inset 圖卡：Steven Bartlett 肖像＋大字「DOAC」；a→b 之間 inset 由小滑入放大。畫面文字：inset
+    內「DOAC」、T恤微露「TSUBASA」（部分幀不可見）。
+  cues:
+  - 78
+  - 79
+  text: 我覺得執行長日記這個節目最厲害的
+- shot_id: 39
+  start: 114.406
+  end: 115.24
+  duration: 0.834
+  type: kol
+  note: 格紋框內 Yuval Noah Harari 灰西裝藍底受訪，胸前疊大字名牌動畫；a 幀顯示「YUVAL NOAH」、b 幀補齊為「YUVAL NOAH
+    HARARI」（文字逐行出現）。畫面文字：「影片來源：The Diary of a CEO」、「YUVAL NOAH HARARI」。
+  cues:
+  - 80
+  text: 除了有夠強的片頭剪輯以外
+- shot_id: 40
+  start: 115.24
+  end: 116.867
+  duration: 1.627
+  type: kol
+  note: TED 舞台演講片段（TEDGLOBAL>LONDON），講者站在紅色圓形講台上，大螢幕文字動態浮現；a 幀「one of the」，b 幀增為「one
+    of the brightest minds」。左上角來源標示「影片來源：The Diary of a CEO」。
+  cues:
+  - 80
+  text: 除了有夠強的片頭剪輯以外
+- shot_id: 41
+  start: 116.867
+  end: 120.162
+  duration: 3.295
+  type: aroll
+  note: 主持人（白T恤、極短平頭）在暖色書架房間對鏡頭說話，胸口衣印 TSUBASA，無其他 overlay 文字。
+  cues:
+  - 81
+  - 82
+  text: 還有就是有些來賓不知道為什麼就會被他弄哭
+- shot_id: 42
+  start: 120.162
+  end: 124.374
+  duration: 4.213
+  type: kol
+  note: The Diary of a CEO podcast 訪談片段：短髮女性（Maisie Williams）摀嘴含淚，畫面上疊大字動態文字；a 幀「THEY
+    WERE」，b 幀增為「THEY WERE ASKING THE RIGHT QUESTIONS」。左上角「影片來源：The Diary of a CEO」。
+  cues:
+  - 83
+  - 84
+  text: 像是在《冰與火之歌》裡面飾演阿雅的 Maisie Williams
+- shot_id: 43
+  start: 124.374
+  end: 128.462
+  duration: 4.087
+  type: kol
+  note: 同一 podcast 訪談片段：深藍T恤壯碩男子（Layne Norton）對麥克風、b 幀捏鼻樑忍淚。左上角「影片來源：The Diary of
+    a CEO」。
+  cues:
+  - 85
+  - 86
+  - 87
+  text: 甚至像 Layne Norton這樣的硬漢也中招了我真的覺得超誇張的
+- shot_id: 44
+  start: 128.462
+  end: 131.59
+  duration: 3.128
+  type: aroll
+  note: 主持人對鏡頭說話，左側疊加《The Diary of a CEO》書封小圖卡（瀏覽器窗框樣式）滑入：a 幀僅部分「THE DIARY OF A CEO」，b
+    幀完整顯示「STEVEN BARTLETT / THE DIARY OF A CEO / THE 33 LAWS OF BUSINESS & LIFE」。type
+    仍 aroll，書封為 inset。
+  cues:
+  - 88
+  - 89
+  text: 但是看了這本書之後我大概能夠理解為什麼了
+- shot_id: 45
+  start: 131.59
+  end: 133.592
+  duration: 2.002
+  type: aroll
+  note: 主持人（白T恤 TSUBASA）在書架房間對鏡頭說話，無 overlay 文字。
+  cues:
+  - 90
+  text: 因為他自己就是苦過來的
+- shot_id: 46
+  start: 133.592
+  end: 138.096
+  duration: 4.505
+  type: aroll
+  note: 主持人近景對鏡頭說話，右側疊加 Steven Bartlett 黑衣肖像照 inset（瀏覽器窗框樣式）；兩幀 inset 位置略有滑動。無其他畫面文字。
+  cues:
+  - 91
+  - 92
+  - 93
+  text: 他在 Botswana 出生爸爸是英國白人媽媽是奈及利亞的黑人
+- shot_id: 47
+  start: 138.096
+  end: 141.6
+  duration: 3.504
+  type: photo_still
+  note: 老家庭照：四名混血小孩圍著生日蛋糕坐在餐桌旁，ITV 節目畫面框。畫面文字：「影片來源：Loose Women」「itv」「Loose WOMEN」logo。
+  cues:
+  - 94
+  - 95
+  text: 他兩歲就和爸媽搬到英國西南邊的一個小港
+- shot_id: 48
+  start: 141.6
+  end: 144.644
+  duration: 3.045
+  type: aroll
+  note: 主持人對鏡頭說話（書架房間、白T恤），無 overlay 文字。
+  cues:
+  - 96
+  - 97
+  text: 從小就在有種族歧視的環境下長大
+- shot_id: 49
+  start: 144.644
+  end: 147.022
+  duration: 2.377
+  type: photo_still
+  note: 老照片：黑人母親坐沙發抱著白衣嬰兒，粉紫漸層背景框、ITV 節目畫面。畫面文字：「影片來源：Loose Women」「itv」「Loose WOMEN」logo。
+  cues:
+  - 98
+  - 99
+  text: 他媽媽沒有受過教育也不識字
+- shot_id: 50
+  start: 147.022
+  end: 154.613
+  duration: 7.591
+  type: aroll
+  note: 主持人對鏡頭說話（書架房間、白T恤 TSUBASA），三幀皆無 overlay 文字。
+  cues:
+  - 100
+  - 101
+  - 102
+  - 103
+  - 104
+  text: 她在 Steven 十歲的時候迷上買彩券導致把家產幾乎都敗光後來為了養家又開始嘗試做生意
+- shot_id: 51
+  start: 154.613
+  end: 155.739
+  duration: 1.126
+  type: aroll
+  note: 主持人近景對鏡頭說話，無 overlay 文字。
+  cues:
+  - 105
+  text: 但也是一直失敗
+- shot_id: 52
+  start: 155.739
+  end: 158.408
+  duration: 2.669
+  type: photo_still
+  note: 老全家福照片：黑人母親抱嬰兒、白人父親與三名小孩合影，ITV 節目畫面附新聞條。畫面文字：「影片來源：Loose Women」「itv」「Loose
+    WOMEN」「Steven's real life rags to riches tale」。
+  cues:
+  - 106
+  - 107
+  text: 於是她和丈夫只能努力賺錢
+- shot_id: 53
+  start: 158.408
+  end: 161.078
+  duration: 2.669
+  type: kol
+  note: 他人節目片段：ITV《Loose Women》播出的 Steven 童年照（黑白格背景框住節目畫面）。畫面文字：「影片來源：Loose Women」「itv」「Loose
+    WOMEN」。
+  cues:
+  - 108
+  - 109
+  text: 基本上就把 Steven給放牛吃草了
+- shot_id: 54
+  start: 161.078
+  end: 166.958
+  duration: 5.881
+  type: aroll
+  note: 主持人（白T恤、平頭）在暖色書架房間對鏡頭說話。T恤上有品牌字「TSUBASA」。
+  cues:
+  - 110
+  - 111
+  - 112
+  - 113
+  text: 相較於他已經成年的三位哥哥姊姊Steven 從十歲開始就被嚴重忽視
+- shot_id: 55
+  start: 166.958
+  end: 174.049
+  duration: 7.09
+  type: stock
+  note: 圖庫實拍：背著卡其色後背包的小孩在街道上騎腳踏車（背影，戴棒球帽）。無畫面文字。
+  cues:
+  - 114
+  - 115
+  - 116
+  - 117
+  - 118
+  text: 他甚至可以離開家一兩天也不會被發現但從另一方面來看他想要做什麼事情都可以他想要做什麼事情都可以
+- shot_id: 56
+  start: 174.049
+  end: 178.72
+  duration: 4.671
+  type: aroll
+  note: 主持人在書架房間對鏡頭說話。T恤上有品牌字「TSUBASA」。
+  cues:
+  - 119
+  - 120
+  - 121
+  text: 於是他開始在街頭上求生存有時候甚至得偷披薩來餵飽自己
+- shot_id: 57
+  start: 178.72
+  end: 184.476
+  duration: 5.756
+  type: stock
+  note: 圖庫實拍：非裔小男孩站在住宅區街道旁，背景有皮卡車與轎車。無畫面文字。
+  cues:
+  - 122
+  - 123
+  - 124
+  - 125
+  text: 他開始想盡辦法做生意賺錢從賣他媽媽從奈及利亞帶來的雪茄
+- shot_id: 58
+  start: 184.476
+  end: 185.435
+  duration: 0.959
+  type: kol
+  note: 他人影片片段：《Behind the Diary》紀錄片中 Steven 少年時期的鏡子自拍照（手機自拍，黑白格背景框住）。畫面文字：「影片來源：Behind
+    the Diary」「streets that I arrived as an 18 year old」（原片英文字幕）。b 幀底部出現半透明橘色橫條滑入。
+  cues:
+  - 126
+  text: 到 14 歲的時候
+- shot_id: 59
+  start: 185.435
+  end: 190.273
+  duration: 4.838
+  type: kol
+  note: 他人影片片段：《Behind the Diary》中 Steven 青少年自拍照（a 幀白T恤自拍、b 幀戴帽持 iPhone 自拍，兩張不同照片）。畫面文字：「影片來源：Behind
+    the Diary」「kid with these, you know,」（原片英文字幕）。
+  cues:
+  - 126
+  - 127
+  - 128
+  - 129
+  - 130
+  text: 到 14 歲的時候幫學校談了一筆自動販賣機的生意並從中獲利所以當他 18 歲的時候
+- shot_id: 60
+  start: 190.273
+  end: 194.444
+  duration: 4.171
+  type: kol
+  note: 他人影片片段：《Behind the Diary》Steven 成年後在火車站月台受訪走動畫面。畫面文字：「影片來源：Behind the Diary」，原片英文字幕
+    a 幀「big dreams about starting in business and doing something」、b 幀「interesting
+    with my life」。
+  cues:
+  - 130
+  - 131
+  - 132
+  - 133
+  text: 所以當他 18 歲的時候進了大學才上了一堂課他就覺得這根本是浪費時間
+- shot_id: 61
+  start: 194.444
+  end: 196.696
+  duration: 2.252
+  type: kol
+  note: 他人影片片段：《Behind the Diary》中 Steven 穿白襯衫站在門口的舊照片。畫面文字：「影片來源：Behind the Diary」「after
+    arriving here and」（原片英文字幕）。
+  cues:
+  - 134
+  text: 於是他當天就從學校輟學
+- shot_id: 62
+  start: 196.696
+  end: 199.074
+  duration: 2.377
+  type: kol
+  note: 他人影片片段：《Behind the Diary》展示 Wallpark 網站首頁/註冊頁的傾斜截圖畫面。畫面文字：「影片來源：Behind the
+    Diary」「wallpark」「The Student Noticeboard」「Connect with Facebook」「Signup with your
+    email」「The Ol' fashioned way」「Signup」「Create Account」「Student or Organisation」，原片英文字幕
+    a 幀「persisted to start a business」、b 幀「and then start another business and」。
+  cues:
+  - 134
+  - 135
+  text: 於是他當天就從學校輟學馬上開始執行他的創業計畫
+- shot_id: 63
+  start: 199.074
+  end: 200.242
+  duration: 1.168
+  type: kol
+  note: 他人影片片段：《Behind the Diary》Steven 穿黑色外套在火車站月台的鏡頭。畫面文字：「影片來源：Behind the Diary」「and
+    then start another business and」（原片英文字幕）。
+  cues:
+  - 135
+  - 136
+  text: 馬上開始執行他的創業計畫就一直到現在
+- shot_id: 64
+  start: 200.242
+  end: 204.663
+  duration: 4.421
+  type: kol
+  note: 他人節目片段：Steven 於 Virgin Radio UK《The Chris Evans Breakfast Show》受訪，對麥克風比手勢。畫面文字：「影片來源：Virgin
+    Radio UK」「THE CHRIS EVANS BREAKFAST SHOW with cinch」「Virgin RADIO」。
+  cues:
+  - 137
+  - 138
+  - 139
+  text: 我看了他的許多訪談深深佩服他的種種街頭智慧
+- shot_id: 65
+  start: 204.663
+  end: 215.424
+  duration: 10.761
+  type: other
+  note: 同一鏡頭三幀內容完全不同（切點偵測未分開）：a 幀為主持人 aroll（T恤字「TSUBASA」）；b 幀為滿版橘色章節卡，白色小豬撲滿 icon＋文字「法則一：依序裝滿人生的五個桶子」；c
+    幀為 KOL 片段——Steven 上《Deep Dive with Ali Abdaal》受訪，畫面文字「影片來源：Deep Dive with Ali
+    Abdaal」。實為 aroll → title_card → kol 三段。
+  cues:
+  - 140
+  - 141
+  - 142
+  - 143
+  - 144
+  - 145
+  - 146
+  - 147
+  text: 如果你也是沒有富爸爸的創業者接下來的分享你一定也會很有感覺法則一：依序裝滿人生的五個桶子這應該是他接受採訪一定會講到的概念
+- shot_id: 66
+  start: 215.424
+  end: 218.301
+  duration: 2.878
+  type: kol
+  note: Steven Bartlett（黑T恤、深色背景）對鏡頭說話，取自其頻道影片。畫面文字：「影片來源：Behind the Diary」（左上角標）。
+  cues:
+  - 148
+  - 149
+  text: 他認為人生在專業上面有五個桶子
+- shot_id: 67
+  start: 218.301
+  end: 231.69
+  duration: 13.388
+  type: motion_graphic
+  note: 白底手繪風動畫：五個水桶依序畫出並標名。畫面文字：「影片來源：Behind the Diary」「THE FIVE BUCKETS」「Knowledge」「Skills」「Network」「Resources」「Reputati(on)」。多幀不一致：a
+    只有標題，b 出現桶1-3，c 五桶齊（第5桶標籤仍在寫出中，僅見 Reputati）。
+  cues:
+  - 150
+  - 151
+  - 152
+  - 153
+  - 154
+  - 155
+  - 156
+  - 157
+  - 158
+  - 159
+  - 160
+  text: 依序為：你知道什麼指的是你的知識你還能做什麼這是你的技能你認識誰這是你的人脈再來是你擁有什麼也就是資源最後是外界對你的看法這是你的聲望
+- shot_id: 68
+  start: 231.69
+  end: 238.488
+  duration: 6.798
+  type: kol
+  note: Steven Bartlett（黑T恤、深色背景）對鏡頭說話，b 幀比出手勢。畫面文字：「影片來源：Behind the Diary」。
+  cues:
+  - 161
+  - 162
+  - 163
+  - 164
+  text: 他說這五個桶子息息相關裝滿一個有助於裝滿下一個而且通常是依照順序的
+- shot_id: 69
+  start: 238.488
+  end: 258.383
+  duration: 19.895
+  type: motion_graphic
+  note: 淺色底扁平插畫動畫：五個彩色水桶，桶間出現箭頭與英文標籤逐步滑入。畫面文字：「影片來源：Ali Abdaal」「What they think of
+    you.」「What you have.」「Who you know.」「What you can do.」「What you know.」；b 起加上「Network
+    / Skill / Knowledge」與箭頭，c 再加「Resources」。多幀不一致：標籤與箭頭逐步出現。
+  cues:
+  - 165
+  - 166
+  - 167
+  - 168
+  - 169
+  - 170
+  - 171
+  - 172
+  - 173
+  - 174
+  - 175
+  - 176
+  - 177
+  - 178
+  text: 我們在學校或書本上會學習到知識然後把知識拿來實際使用就可以獲得技能擁有知識和技能之後就能夠對其他人和組織產生價值然後從公司的同事和主管開始漸漸累積人脈之後賺取的金錢等資源也越來越多於是會越來越多人注意到你你就有了聲望
+- shot_id: 70
+  start: 258.383
+  end: 270.228
+  duration: 11.845
+  type: kol
+  note: Steven Bartlett 上 ITV 節目《Loose Women》受訪片段。畫面文字：「影片來源：Loose Women」「itv」「Loose
+    WOMEN」「Steven's real life rags to riches tale」。
+  cues:
+  - 179
+  - 180
+  - 181
+  - 182
+  - 183
+  - 184
+  - 185
+  text: 他說他 18 歲剛輟學開始創業的時候一直對自己有個靈魂拷問他想比起回到非洲故鄉拯救生命創辦一間賺很多錢的公司是不是不夠崇高？
+- shot_id: 71
+  start: 270.228
+  end: 273.69
+  duration: 3.462
+  type: aroll
+  note: 主持人（白T恤、暖色書架房間）對鏡頭說話。畫面文字：T恤上「TSUBASA」。
+  cues:
+  - 186
+  - 187
+  text: 當時他在一個機緣之下請教了一位精神導師
+- shot_id: 72
+  start: 273.69
+  end: 277.277
+  duration: 3.587
+  type: kol
+  note: Radhanath Swami（黃袍僧人）對麥克風演講片段，畫面中央疊入大字中文引言。畫面文字：「影片來源：His Holiness Radhanath
+    Swami.mp4」「空的桶子是倒不出水的。」（b 幀滑入的大字，a 幀尚無）＋原片英文字幕「I have nothing. I have no one.」「How
+    can I help anyone?」「Filmwork Studios」。多幀不一致：大字引言 b 才出現。
+  cues:
+  - 188
+  - 189
+  text: 後來大師跟他說：「空的桶子是倒不出水的」
+- shot_id: 73
+  start: 277.277
+  end: 279.696
+  duration: 2.419
+  type: kol
+  note: Steven Bartlett 街頭 vlog 特寫（黑帽黑衣，倫敦街景），取自其頻道。畫面文字：「影片來源：Behind the Diary」。
+  cues:
+  - 190
+  - 191
+  text: 他從那時候開始再也沒有疑惑
+- shot_id: 74
+  start: 279.696
+  end: 286.369
+  duration: 6.673
+  type: doc_screenshot
+  note: 傾斜掃過的文件/搜尋結果截圖蒙太奇：a 為黃色螢光筆劃線文件見「Steve」；b 為 Google 搜尋結果「About 3,420,000 results
+    (0.35 seconds)」「stevenbartlett.com」「Steven Bartlett Launches thirdweb」「15 Dec
+    2021 — Steven Bartlett launches THIRDWEB, the new platform pa…Web3 revolution,
+    with $5M ...」「UKTN」「creator platform Thirdweb rais…」；c 為新聞截圖「Atai Life Sciences
+    worth $341 Million」「Accelerate development of effective mental health treatments」「atai
+    LIFE SCIENCES」等。左上角標「影片來源：Behind the Diary」。多幀為不同文件畫面。
+  cues:
+  - 192
+  - 193
+  - 194
+  - 195
+  - 196
+  text: 才花了十幾年就把這五個桶子全都給裝滿準備用他接下來的生命實現他最初的理想
+- shot_id: 75
+  start: 286.369
+  end: 309.267
+  duration: 22.898
+  type: kol
+  note: Steven Bartlett TEDx London 演講片段，畫面疊大字中文引言。畫面文字：「影片來源：TEDx Talks」「TEDx Londo(n)」；a
+    疊「一份工作即使薪水再高」，b 疊四行「致力裝滿前兩個桶子，／絕對是收益最高的投資，／不管世界再怎麼變動，／知識和技能是沒有人可以奪走的；」，c 只剩「致力裝滿前兩個桶子，」。多幀不一致：疊字內容逐段替換。
+  cues:
+  - 197
+  - 198
+  - 199
+  - 200
+  - 201
+  - 202
+  - 203
+  - 204
+  - 205
+  - 206
+  - 207
+  - 208
+  - 209
+  - 210
+  text: 他特別講到一份工作即使薪水再高如果讓你獲得較少的知識和技能充其量只是低收入職業致力裝滿前面兩個桶子絕對是收益最高的投資不管世界再怎麼變動你獲得的知識和技能是沒有人可以奪走的它是你的命脈你的根基也是最能預測你未來的東西
+- shot_id: 76
+  start: 309.267
+  end: 314.898
+  duration: 5.631
+  type: aroll
+  note: 主持人（白T恤、暖色書架房間）對鏡頭說話。畫面文字：T恤上「TSUBASA」。
+  cues:
+  - 211
+  - 212
+  - 213
+  - 214
+  text: 我看到這段覺得他根本就是在講我嘛當初在科技業的時候就是覺得錢雖然領很多
+- shot_id: 77
+  start: 314.898
+  end: 316.733
+  duration: 1.835
+  type: aroll
+  note: 主持人對鏡頭說話，畫面上下加黑邊（letterbox 推近效果）做苦臉表情。畫面文字：T恤上「TSUBASA」。
+  cues:
+  - 215
+  text: 但自己感覺越來越笨了
+- shot_id: 78
+  start: 316.733
+  end: 318.985
+  duration: 2.252
+  type: aroll
+  note: 主持人（白T恤、暖色書架房間）對鏡頭說話。畫面文字：T恤上「TSUBASA」。
+  cues:
+  - 216
+  text: 所以才毅然決然地裸辭
+- shot_id: 79
+  start: 318.985
+  end: 319.945
+  duration: 0.959
+  type: stock
+  note: 主持人本人舊 vlog 檔案畫面：戴棒球帽背背包站在中式涼亭前微笑，黑格紋框內嵌播放。畫面文字（頂部來源條）：「影片來源：張修修 Shosho Chang」。非棚內
+    aroll，屬自有 archive footage。
+  cues:
+  - 217
+  text: 後來雖然推廣
+- shot_id: 80
+  start: 319.945
+  end: 321.363
+  duration: 1.418
+  type: stock
+  note: 主持人舊 vlog：戴安全帽騎腳踏車在公路上邊騎邊自拍講話。畫面文字：「影片來源：張修修 Shosho Chang」。自有 archive footage。
+  cues:
+  - 218
+  text: 腳踏車旅行的事業
+- shot_id: 81
+  start: 321.363
+  end: 323.99
+  duration: 2.628
+  type: stock
+  note: 主持人舊 vlog 空拍：木棧板露台上仰拍兩人向上比手勢，b 幀拉遠成俯瞰全景（同鏡頭內鏡位由近拉遠）。畫面文字：「影片來源：張修修 Shosho
+    Chang」。
+  cues:
+  - 219
+  - 220
+  text: 因為疫情被迫中止導致在這個領域累積的
+- shot_id: 82
+  start: 323.99
+  end: 326.618
+  duration: 2.628
+  type: stock
+  note: 主持人舊 vlog 直式片段三聯拼貼：吃甜品豆花、蒸籠點心、搗芝麻；a 幀只滑入第一格，b 幀三格到齊（overlay 滑入過程）。畫面文字：「影片來源：張修修
+    Shosho Chang」。
+  cues:
+  - 220
+  - 221
+  text: 導致在這個領域累積的人脈和聲望都沒用了
+- shot_id: 83
+  start: 326.618
+  end: 329.162
+  duration: 2.544
+  type: stock
+  note: 主持人舊 vlog：室內自拍與一名外國男子同桌聊天（圓桌、老屋客廳）。畫面文字：「影片來源：張修修 Shosho Chang」。
+  cues:
+  - 222
+  - 223
+  text: 但在這個過程中學到的拍影片
+- shot_id: 84
+  start: 329.162
+  end: 330.121
+  duration: 0.959
+  type: stock
+  note: 主持人舊 vlog：戴安全帽墨鏡騎車自拍，河濱／橋邊背景。畫面文字：「影片來源：張修修 Shosho Chang」。
+  cues:
+  - 224
+  text: 經營自媒體的
+- shot_id: 85
+  start: 330.121
+  end: 331.373
+  duration: 1.251
+  type: stock
+  note: 主持人舊 vlog：逆光下騎士騎過鋼構自行車橋的跟拍畫面。畫面文字：「影片來源：張修修 Shosho Chang」。
+  cues:
+  - 225
+  text: 知識和技能
+- shot_id: 86
+  start: 331.373
+  end: 339.047
+  duration: 7.674
+  type: aroll
+  note: 主持人（白T、極短平頭）在暖色書架房間對鏡頭講話，滿版無疊加。畫面文字（衣服印字）：「TSUBASA」。
+  cues:
+  - 226
+  - 227
+  - 228
+  - 229
+  - 230
+  - 231
+  text: 用在目前專注的工作效率身心健康領域才短短的兩年就建立了許多人脈資源 和聲望
+- shot_id: 87
+  start: 339.047
+  end: 341.383
+  duration: 2.336
+  type: diagram
+  note: 白底手繪風概念圖：五個水桶編號 1–5，出自來源影片畫面。畫面文字：「影片來源：Behind the Diary」「THE FIVE BUCKETS」「1
+    Knowledge」「2 Skills」「3 Network」「4 Resources」「5 Reputation」。
+  cues:
+  - 232
+  - 233
+  text: 這完全應證了他的五個桶子理論
+- shot_id: 88
+  start: 341.383
+  end: 353.061
+  duration: 11.678
+  type: aroll
+  note: 主持人棚內對鏡頭講話；b 幀切為滿版橘色法則卡（雙人課桌 icon＋大字「法則二：想精通一件事情，就逼自己教會別人」），c 幀回到主持人且右上疊入其舊影片縮圖
+    inset（文字：「看得更多 記得更牢 翻轉人生」「張修修高效閱讀法」）——同一鏡頭內 title_card 全版插卡與 inset 疊加交替，主體仍為 aroll。衣服印字「TSUBASA」。
+  cues:
+  - 234
+  - 235
+  - 236
+  - 237
+  - 238
+  - 239
+  - 240
+  - 241
+  text: 而接下來的法則我也剛好用在我目前的事業上法則二：想精通一件事情就逼自己教會別人這點我在講「閱讀習慣」那集節目有提到類似的概念
+- shot_id: 89
+  start: 353.061
+  end: 360.652
+  duration: 7.591
+  type: aroll
+  note: 主持人棚內對鏡頭講話，三幀皆滿版無疊加。畫面文字（衣服印字）：「TSUBASA」。
+  cues:
+  - 242
+  - 243
+  - 244
+  - 245
+  - 246
+  text: 要測試自己是不是真的看懂書中的內容最好的方法就是消化吸收之後以某種方法輸出
+- shot_id: 90
+  start: 360.652
+  end: 362.07
+  duration: 1.418
+  type: kol
+  note: 他人影片片段：戴黑色「flightstory」棒球帽的男子（Steven Bartlett 相關頻道）對鏡頭講話，黑格紋框內嵌。畫面文字：「影片來源：Behind
+    the Diary」「flightstory」（帽子）。
+  cues:
+  - 247
+  text: 他常分享一個故事
+- shot_id: 91
+  start: 362.07
+  end: 365.198
+  duration: 3.128
+  type: kol
+  note: 他人影片片段：同一男子年輕時的 vlog 畫面（黑帽、丹寧外套、彩色層架房間），以畫中畫小框呈現。畫面文字：「影片來源：Behind the Diary」。
+  cues:
+  - 248
+  - 249
+  text: 在 21 歲的時候他決定在每天晚上
+- shot_id: 92
+  start: 365.198
+  end: 372.664
+  duration: 7.466
+  type: kol
+  note: 「Behind the Diary」影片片段：手持鏡頭拍螢幕上的日記文字，a 幀晃動模糊、b/c 幀清晰可讀英文日記。左上角來源標示「影片來源：Behind
+    the Diary」；日記文字：「Okay so i'v sent off my application for Kick Start and for Dragons
+    Den. I'm not really counting on either but my applications for both are concise
+    and attractive so fingers crossed. Today i'l finish the Shell LiveWIRE forms and
+    hopefully get a few more doors opened. Then later I'l focus on investors. I'v
+    given up on James being part of the team cos I won't be able to carry people,
+    too busy right now.. so it looks like this is a one man mission / In other news...
+    The world was meant to end yesterday and i'm still here? thats probably the 5th
+    supposed judgement day I've survived...」（b 幀有「Kick Start and」反白選取）
+  cues:
+  - 250
+  - 251
+  - 252
+  - 253
+  - 254
+  text: 一定要發一則推文或做一支影片把自己當天的思考和學習整理出來然後在八點發布出去
+- shot_id: 93
+  start: 372.664
+  end: 378.461
+  duration: 5.797
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，白色 TSUBASA T 恤。畫面文字：T 恤上「TSUBASA」。
+  cues:
+  - 255
+  - 256
+  - 257
+  text: 他說這是他做過影響自己最深的一件事情徹底改變了他的人生軌跡
+- shot_id: 94
+  start: 378.461
+  end: 386.469
+  duration: 8.008
+  type: kol
+  note: 「Behind the Diary」片段：黑衣落腮鬍男子（Steven Bartlett）自拍對鏡頭，疊白色大字引言，a 幀字滑入僅一行、b/c 幀完整。畫面文字：「影片來源：Behind
+    the Diary」「這件事情讓他每天『有意識』地審視自己的所作所為，到底有沒有善用時間，或者只是在混日子。」
+  cues:
+  - 258
+  - 259
+  - 260
+  - 261
+  - 262
+  text: 因為這件事情先是讓他每天「有意識」地審視自己的所作所為到底有沒有善用時間或者只是在混日子
+- shot_id: 95
+  start: 386.469
+  end: 392.684
+  duration: 6.215
+  type: aroll
+  note: 主持人書架房間對鏡頭說話，白色 T 恤。畫面文字：T 恤上「TSUBASA」。
+  cues:
+  - 263
+  - 264
+  - 265
+  - 266
+  text: 而每天的七點就是逼自己把所學到的東西輸出並且想辦法教會他的讀者
+- shot_id: 96
+  start: 392.684
+  end: 397.105
+  duration: 4.421
+  type: kol
+  note: 「Behind the Diary」片段：三名男子在會議室看筆電上的影片畫面、面帶笑意。畫面文字：「影片來源：Behind the Diary」。
+  cues:
+  - 267
+  - 268
+  - 269
+  text: 而他也可以在社群媒體上馬上得到回饋知道他教得到底好不好
+- shot_id: 97
+  start: 397.105
+  end: 399.19
+  duration: 2.085
+  type: aroll
+  note: 主持人書架房間對鏡頭說話，白色 T 恤。畫面文字：T 恤上「TSUBASA」。
+  cues:
+  - 270
+  text: 他一做就做了十年
+- shot_id: 98
+  start: 399.19
+  end: 401.651
+  duration: 2.461
+  type: kol
+  note: 「Behind the Diary」片段：戴黑色「flightstory」棒球帽的黑色帽 T 男子對鏡頭說話比手勢。畫面文字：「影片來源：Behind
+    the Diary」、帽上「flightstory」。
+  cues:
+  - 271
+  - 272
+  text: 這幫他從一開始的幾十個粉絲
+- shot_id: 99
+  start: 401.651
+  end: 403.194
+  duration: 1.543
+  type: kol
+  note: 「Behind the Diary」片段：同一男子在大型舞台對滿場觀眾演講，舞台燈光。畫面文字：「影片來源：Behind the Diary」、舞台下方綠色「EXIT」燈。
+  cues:
+  - 273
+  text: 成長到上千萬
+- shot_id: 100
+  start: 403.194
+  end: 410.243
+  duration: 7.049
+  type: aroll
+  note: 主持人書架房間對鏡頭說話，白色 T 恤。畫面文字：T 恤上「TSUBASA」。
+  cues:
+  - 274
+  - 275
+  - 276
+  - 277
+  text: 他強烈推薦這個方法給所有想要成為創作者的人我目前在做的事情就完全符合這個法則
+- shot_id: 101
+  start: 410.243
+  end: 413.788
+  duration: 3.545
+  type: aroll
+  note: 主持人對鏡頭說話，左側疊入自己頻道的影片縮圖 inset：a 幀僅一張滑入、b 幀三張視窗式縮圖疊滿左半。縮圖文字：「真心不騙」「一天3分鐘改變你一生」「Zone
+    2」「低心率跑 有氧打底 超慢跑」「Feel Good」「高效原力」「6年賺3億的秘密」。
+  cues:
+  - 278
+  - 279
+  text: 我把這些增進生產力和身心健康的方法整理起來
+- shot_id: 102
+  start: 413.788
+  end: 415.165
+  duration: 1.376
+  type: aroll
+  note: 主持人書架房間對鏡頭說話，白色 T 恤。畫面文字：T 恤上「TSUBASA」。
+  cues:
+  - 280
+  text: 不但用在自己身上
+- shot_id: 103
+  start: 415.165
+  end: 419.753
+  duration: 4.588
+  type: screen_recording
+  note: 個人網站「張修修的不正常人生」瀏覽錄影（可見游標、頁面捲動）：a 幀關於我頁大標與形象照、b 幀單車環球照片區塊。頁面文字：「張修修的不正常人生」「關於我
+    我的書 Podcast 文章 電子報」「我是張修修」「一個把人生當做電玩來破關的阿宅，過著一個屬於自己的不正常人生。曾背著吉他騎腳踏車環遊世界，著有《1082
+    萬次轉動》。」「背著吉他單車環球」「我在 2013 年放棄了科技業數百萬的年薪，背著吉他單車環遊世界，花了兩年穿越歐亞非，為第一位自力單車縱貫非洲的台灣人。回台灣後出版《1082
+    萬次轉動》，考取導遊執照，成了腳踏車領騎，夢想是把全世界的人帶來台灣騎車。」
+  cues:
+  - 281
+  - 282
+  - 283
+  text: 還進一步統整起來用我覺得淺顯易懂的方式寫成文章
+- shot_id: 104
+  start: 419.753
+  end: 420.837
+  duration: 1.084
+  type: screen_recording
+  note: 同網站繼續捲動：a 幀「不正常人類使用說明書」區塊含影片縮圖（「心流 嘗試進入中」「腦波增幅中」），b 幀捲到「腦神經科學相關影片」縮圖列。頁面文字：「張修修的不正常人生」「關於我
+    我的書 Podcast 文章 電子報」「不正常人類使用說明書」「每周分享了許多自己親身實踐、且經過科學認證的方法和工具，希望幫助大家正確使用『人體』——這部演化速度趕不上環境變化的機器，在現代生活中身心更健康、工作更有效率。」「腦神經科學相關影片」「心流
+    嘗試進入中」「腦波增幅中」。
+  cues:
+  - 284
+  text: 或拍成影片
+- shot_id: 105
+  start: 420.837
+  end: 434.559
+  duration: 13.722
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話（白T恤）。a/b 幀為純 aroll；c 幀（431.81s）已切到橘底章節卡，畫面文字：「法則三：荒謬比實用更能定義你」＋吐舌笑臉圖形——鏡頭尾端過渡到
+    title card
+  cues:
+  - 285
+  - 286
+  - 287
+  - 288
+  - 289
+  - 290
+  - 291
+  - 292
+  text: 我也每個禮拜日逼自己把這個禮拜學到的東西統整起來分享給我的電子報用戶這些都是在呼應這個法則法則三：荒謬比實用更能定義你這條是我心頭之好啊
+- shot_id: 106
+  start: 434.559
+  end: 436.353
+  duration: 1.793
+  type: aroll
+  note: 主持人特寫說話，右側疊小型瀏覽器框 inset 內為 Steven Bartlett 黑衣肖像照；無台詞字幕以外的畫面文字
+  cues:
+  - 293
+  - 294
+  text: Steven Bartlett舉了一個例子
+- shot_id: 107
+  start: 436.353
+  end: 437.938
+  duration: 1.585
+  type: kol
+  note: Steven Bartlett 戴黑帽坐酒紅色高背椅受訪片段，黑格紋邊框。畫面文字：「影片來源：What Media」
+  cues:
+  - 295
+  text: 他剛成立 Social Chain 的時候
+- shot_id: 108
+  start: 437.938
+  end: 440.19
+  duration: 2.252
+  type: kol
+  note: Social Chain 開放式辦公室內景（同 What Media 訪談紀錄片素材），a 幀有 zoom 模糊轉場、b 幀清晰。畫面文字：「影片來源：What
+    Media」
+  cues:
+  - 296
+  text: 砸了大筆錢裝潢辦公室
+- shot_id: 109
+  start: 440.19
+  end: 443.068
+  duration: 2.878
+  type: kol
+  note: 辦公室內員工打桌球的手持實拍片段。畫面文字：「影片來源：Pomegranate Consulting – Chartered Accountants」
+  cues:
+  - 297
+  - 298
+  text: 其中包括一個要價一萬三千英鎊的
+- shot_id: 110
+  start: 443.068
+  end: 445.362
+  duration: 2.294
+  type: kol
+  note: 辦公室內藍色巨型溜滑梯與球池實拍，b 幀為快速 pan 模糊。畫面文字：「影片來源：Pomegranate Consulting – Chartered
+    Accountants」
+  cues:
+  - 299
+  text: 藍色巨型溜滑梯
+- shot_id: 111
+  start: 445.362
+  end: 452.869
+  duration: 7.507
+  type: aroll
+  note: 主持人對鏡頭說話；a/b 幀純 aroll，c 幀（451.37s）左右兩側滑入兩個瀏覽器框圖卡：左為 BBC logo、右為 BuzzFeed logo。畫面文字：「BBC」「Buzz
+    Feed」（僅 c 幀出現）
+  cues:
+  - 300
+  - 301
+  - 302
+  - 303
+  - 304
+  text: 雖然他們上班的時候根本沒有人會去用但所有的主流媒體包括 BBCBuzzfeed 來採訪一定會拍
+- shot_id: 112
+  start: 452.869
+  end: 456.581
+  duration: 3.712
+  type: kol
+  note: VICE News/HBO 紀錄片片段：曼徹斯特辦公室俯視內景。畫面文字：「影片來源：VICE News」「Manchester, England」「VICE
+    News | HBO」，牆上玻璃字「WHAT'S THE IDEA?」
+  cues:
+  - 305
+  - 306
+  - 307
+  text: VICE 在製作他們的紀錄片的時候花了大半的時間
+- shot_id: 113
+  start: 456.581
+  end: 457.916
+  duration: 1.335
+  type: kol
+  note: VICE News 記者 Hind Hassan 在辦公室訪談男子（背景可見藍色溜滑梯）。畫面文字：「影片來源：VICE News」「Hind Hassan
+    / VICE News」「VICE News | HBO」
+  cues:
+  - 308
+  text: 從不同角度
+- shot_id: 114
+  start: 457.916
+  end: 460.251
+  duration: 2.336
+  type: kol
+  note: VICE News 片段：兩名年輕男子坐在 MacBook 前受訪，背景是藍色溜滑梯。畫面文字：「影片來源：VICE News」「VICE News
+    | HBO」
+  cues:
+  - 309
+  text: 拍攝這個大溜滑梯和球池
+- shot_id: 115
+  start: 460.251
+  end: 462.504
+  duration: 2.252
+  type: kol
+  note: VICE News 片段：戴帽男子與 Hind Hassan 在辦公室對話。畫面文字：「影片來源：VICE News」「VICE News | HBO」
+  cues:
+  - 310
+  text: 這幫他們賺到了無數的版面
+- shot_id: 116
+  start: 462.504
+  end: 464.631
+  duration: 2.127
+  type: aroll
+  note: 主持人對鏡頭說話，純 aroll 無疊加物
+  cues:
+  - 311
+  - 312
+  text: 他也舉一個在曼徹斯特一間叫做
+- shot_id: 117
+  start: 464.631
+  end: 466.383
+  duration: 1.752
+  type: kol
+  note: Manchester's Finest 影片片段：男子牽貴賓狗站在 BREWDOG 酒吧門口。畫面文字：「影片來源：Manchester's Finest」，場景招牌「BREWDOG」「CRAFT
+    BEER / EPIC BURGERS & WINGS」
+  cues:
+  - 313
+  text: 「釀酒狗」的飯店的例子
+- shot_id: 118
+  start: 466.383
+  end: 467.926
+  duration: 1.543
+  type: kol
+  note: 飯店房間內迷你吧展示（吉他掛牆、玻璃門小冰箱裝滿飲料），外部影片片段裱在黑格紋框內。左上文字：「影片來源：Manchester's Finest」；右上浮水印：「MANCHESTER'S
+    FINEST」。
+  cues:
+  - 314
+  text: 他們不但在房間裡面
+- shot_id: 119
+  start: 467.926
+  end: 469.719
+  duration: 1.793
+  type: kol
+  note: 手持 BREWDOG 酒杯在黑色生啤機下接啤酒的特寫，外部影片片段。文字：「影片來源：Manchester's Finest」「MANCHESTER'S
+    FINEST」，杯身：「BREWDOG」。
+  cues:
+  - 315
+  text: 裝了一台生啤酒機
+- shot_id: 120
+  start: 469.719
+  end: 471.93
+  duration: 2.211
+  type: kol
+  note: 浴室白磚牆上男子掀開寫著 SHOWER BEER 的黑框面板，露出內嵌啤酒罐，外部影片片段。文字：「影片來源：Manchester's Finest」「MANCHESTER'S
+    FINEST」「SHOWER BEER」；b 幀面板已掀開露出冰箱內 BREWDOG/HAWKES PUNK IPA 等罐裝，畫面從招牌轉為開啟狀態。
+  cues:
+  - 316
+  - 317
+  text: 竟然連浴室都配備一個裝滿啤酒的冰箱
+- shot_id: 121
+  start: 471.93
+  end: 473.431
+  duration: 1.501
+  type: kol
+  note: 手在 SHOWER BEER 招牌前開啟一罐 BREWDOG LOST LAGER，噴出泡沫，外部影片片段。文字：「影片來源：Manchester's
+    Finest」「MANCHESTER'S FINEST」，罐身：「BREWDOG LOST LAGER」，背景招牌：「SHOWER BEER」。
+  cues:
+  - 317
+  text: 都配備一個裝滿啤酒的冰箱
+- shot_id: 122
+  start: 473.431
+  end: 476.309
+  duration: 2.878
+  type: aroll
+  note: 主持人白T恤在暖色書架房間對鏡頭說話，b 幀舉起雙手比劃。無台詞字幕以外文字（T恤印字 TSUBASA 為服裝本身）。
+  cues:
+  - 318
+  - 319
+  text: 他說 雖然他不認為會有多少人
+- shot_id: 123
+  start: 476.309
+  end: 476.851
+  duration: 0.542
+  type: kol
+  note: 浴室內白色浴袍/毛巾滑落至深灰磁磚地、露出赤腳的低角度鏡頭，外部影片片段。文字：「影片來源：Manchester's Finest」「MANCHESTER'S
+    FINEST」。
+  cues:
+  - 320
+  text: 真的會一邊沖澡
+- shot_id: 124
+  start: 476.851
+  end: 477.477
+  duration: 0.626
+  type: kol
+  note: 黑色蓮蓬頭噴水、白磚牆與 faLL 沐浴用品瓶罐的淋浴間特寫，外部影片片段。文字：「影片來源：Manchester's Finest」「MANCHESTER'S
+    FINEST」，瓶身：「faLL BODY WASH / HAIR WASH / HAIR CONDITIONER」。
+  cues:
+  - 320
+  text: 真的會一邊沖澡
+- shot_id: 125
+  start: 477.477
+  end: 478.603
+  duration: 1.126
+  type: kol
+  note: 戴眼鏡蓄鬍男子從淋浴間玻璃門探頭、手持 BREWDOG 啤酒罐對鏡頭笑，外部影片片段。文字：「影片來源：Manchester's Finest」「MANCHESTER'S
+    FINEST」，罐身：「BREWDOG」。
+  cues:
+  - 321
+  text: 一邊喝啤酒
+- shot_id: 126
+  start: 478.603
+  end: 479.521
+  duration: 0.918
+  type: aroll
+  note: 主持人白T恤在暖色書架房間對鏡頭說話，b 幀舉起食指強調。無台詞字幕以外文字。
+  cues:
+  - 322
+  text: 欸我覺得應該會有
+- shot_id: 127
+  start: 479.521
+  end: 481.189
+  duration: 1.668
+  type: kol
+  note: 蓄鬍男子在淋浴間玻璃門邊低頭看手中啤酒罐，外部影片片段。文字：「影片來源：Manchester's Finest」「MANCHESTER'S FINEST」。
+  cues:
+  - 323
+  text: 但這超荒謬的特點
+- shot_id: 128
+  start: 481.189
+  end: 482.315
+  duration: 1.126
+  type: kol
+  note: 飯店房間紅磚牆上 BEER DREAM FACTORY 紅色霓虹招牌與床鋪，外部影片片段。文字：「影片來源：Manchester's Finest」「MANCHESTER'S
+    FINEST」「BEER DREAM FACTORY」。
+  cues:
+  - 324
+  text: 就是這個品牌的話題所在
+- shot_id: 129
+  start: 482.315
+  end: 483.525
+  duration: 1.21
+  type: kol
+  note: 棕色貴賓狗趴在床上、床頭紅磚牆黃色霓虹 BEER DREAM FACTORY 招牌，外部影片片段。文字：「影片來源：Manchester's Finest」「MANCHESTER'S
+    FINEST」「BEER DREAM FACTORY」。
+  cues:
+  - 324
+  text: 就是這個品牌的話題所在
+- shot_id: 130
+  start: 483.525
+  end: 488.279
+  duration: 4.755
+  type: aroll
+  note: 主持人白T恤在暖色書架房間對鏡頭說話，a 幀中景、b 幀鏡頭略推近至胸上景。無台詞字幕以外文字。
+  cues:
+  - 325
+  - 326
+  - 327
+  text: 這其實就是我一直在做的一有機會就宣傳我過去的荒謬事蹟
+- shot_id: 131
+  start: 488.279
+  end: 492.659
+  duration: 4.379
+  type: other
+  note: 主持人自己的舊旅行 vlog 素材（非棚內）：a 幀為模糊過場暗畫面，b 幀為戴安全帽墨鏡騎腳踏車自拍對鏡頭講話。左上角來源標示「影片來源：張修修
+    Shosho Chang」，畫面內小字幕「sorry for the wind noise :(」。兩幀差異大（a 模糊黑、b 騎車自拍），屬同鏡頭開頭轉場。因是主持人本人舊素材而非圖庫、也非棚內
+    aroll，歸 other。
+  cues:
+  - 328
+  - 329
+  - 330
+  text: 像是放下幾百萬的年薪騎腳踏車去環遊世界竟然還背著吉他
+- shot_id: 132
+  start: 492.659
+  end: 493.868
+  duration: 1.21
+  type: photo_still
+  note: 靜態照片：人物背對坐在沙漠碎石路旁，背著貼滿各國國旗徽章的吉他袋，旁邊是滿載行李的旅行腳踏車，紅色箭頭指向吉他袋。左上角「影片來源：張修修 Shosho
+    Chang」。兩幀一致。
+  cues:
+  - 330
+  - 331
+  text: 竟然還背著吉他而且這兩年途中
+- shot_id: 133
+  start: 493.868
+  end: 495.036
+  duration: 1.168
+  type: photo_still
+  note: 靜態照片：主持人戴墨鏡在人群中彈吉他接受麥克風採訪，周圍是戴花圈與頭巾的歐洲群眾。b 幀多了紅色箭頭指向吉他滑入。左上角「影片來源：張修修 Shosho
+    Chang」。
+  cues:
+  - 331
+  - 332
+  text: 而且這兩年途中這把吉他被拿出來彈的次數
+- shot_id: 134
+  start: 495.036
+  end: 496.329
+  duration: 1.293
+  type: photo_still
+  note: 靜態照片：騎滿載行李旅行腳踏車的人（背著吉他袋）橫越 Abbey Road 式斑馬線。b 幀多了紅色箭頭指向背上的吉他袋。左上角「影片來源：張修修
+    Shosho Chang」。
+  cues:
+  - 332
+  text: 這把吉他被拿出來彈的次數
+- shot_id: 135
+  start: 496.329
+  end: 497.914
+  duration: 1.585
+  type: kol
+  note: 愛沙尼亞電視台新聞片段（畫面右上 eRR.ee 台標）：主持人穿紅外套在群眾前彈吉他唱歌、金髮女記者遞麥克風採訪。左上角「影片來源：張修修 Shosho
+    Chang」，畫面內台標文字「eRR.ee」。兩幀一致。
+  cues:
+  - 333
+  text: 一隻手都數得出來
+- shot_id: 136
+  start: 497.914
+  end: 501.334
+  duration: 3.42
+  type: aroll
+  note: 主持人（白T恤、暖色書架房間）對鏡頭說話，胸前 T 恤隱約可見 TSUBASA 字樣。兩幀一致，無其他 overlay 文字。
+  cues:
+  - 334
+  - 335
+  - 336
+  text: 平常就是拿來當腳踏車的立車架夠荒謬吧！
+- shot_id: 137
+  start: 501.334
+  end: 511.886
+  duration: 10.552
+  type: title_card
+  note: 多幀不一致（疑含未切開的剪點）：a 幀仍是主持人棚內 aroll（T恤字樣「TSUBASA」）；b 幀為滿版橘底章節卡，白色放大鏡＋指南針 icon，文字「法則四：比對手加倍失敗」；c
+    幀已切到 IBM 前總裁黑白照片（左上「影片來源：WSKG Public Media」）。以中點幀章節卡為主分類。
+  cues:
+  - 337
+  - 338
+  - 339
+  - 340
+  - 341
+  - 342
+  text: 這裡調查一下看到我這個荒謬的故事才按下訂閱的舉手一下法則四：比對手加倍失敗他引用了 IBM 前總裁老華生的一句話：
+- shot_id: 138
+  start: 511.886
+  end: 516.015
+  duration: 4.129
+  type: photo_still
+  note: 黑白靜態照片：IBM 前總裁（西裝老年男性）坐在書櫃前。左上角「影片來源：WSKG Public Media」。b 幀疊上大字引言 overlay「如果想提升你的成功率，就把失敗率加倍。」（a
+    幀無此 overlay，為滑入）。
+  cues:
+  - 343
+  - 344
+  text: 「如果想提升（原口誤）你的成功率就把失敗率加倍」
+- shot_id: 139
+  start: 516.015
+  end: 519.352
+  duration: 3.337
+  type: kol
+  note: Steven Bartlett 訪談/課程片段：黑衣男子在室內對鏡頭講話比手勢。左上角「影片來源：BBC Maestro」。兩幀一致。
+  cues:
+  - 345
+  - 346
+  text: Steven 受訪的時候會講五次以上的口頭禪
+- shot_id: 140
+  start: 519.352
+  end: 524.816
+  duration: 5.464
+  type: kol
+  note: BBC Maestro 課程片段：Steven Bartlett 坐在工業風攝影棚導演椅上講話。左上角「影片來源：BBC Maestro」。a 幀畫面上疊白色大字「失敗＝反饋。」，b
+    幀 overlay 增為四行「失敗＝反饋。反饋＝知識。知識＝力量。所以失敗賦予你力量。」（逐行滑入）。
+  cues:
+  - 347
+  - 348
+  - 349
+  text: 就是「失敗＝反饋反饋＝知識知識＝力量
+- shot_id: 141
+  start: 524.816
+  end: 527.277
+  duration: 2.461
+  type: kol
+  note: BBC Maestro 課程片段（換近景機位）：Steven Bartlett 對鏡頭講話，畫面疊白色大字四行「失敗＝反饋。反饋＝知識。知識＝力量。所以失敗賦予你力量。」左上角「影片來源：BBC
+    Maestro」。兩幀一致。
+  cues:
+  - 350
+  text: 所以失敗賦予你力量」
+- shot_id: 142
+  start: 527.277
+  end: 532.699
+  duration: 5.422
+  type: aroll
+  note: 主持人（白T恤、暖色書架房間）對鏡頭說話，b 幀表情皺眉強調。兩幀一致，無 overlay 文字。
+  cues:
+  - 351
+  - 352
+  - 353
+  - 354
+  text: 他不斷地提到就是從十歲開始在街頭上討生活遭到無數的失敗
+- shot_id: 143
+  start: 532.699
+  end: 534.617
+  duration: 1.919
+  type: aroll
+  note: 主持人（白T恤、暖色書架房間）近景對鏡頭說話。兩幀一致，無 overlay 文字。
+  cues:
+  - 355
+  text: 幫他練就了一身的本領
+- shot_id: 144
+  start: 534.617
+  end: 539.414
+  duration: 4.796
+  type: kol
+  note: Steven Bartlett 在昏暗會議室與團隊開會（桌上 MacBook）片段。左上角文字「影片來源：Behind the Diary」；a 幀右下有手寫風
+    overlay 文字「Producti」「2023」（滑入中，不完整），b 幀該 overlay 已消失。
+  cues:
+  - 356
+  - 357
+  - 358
+  text: 他把他這些嘗試當作是用在自己身上的實驗他也常說
+- shot_id: 145
+  start: 539.414
+  end: 545.879
+  duration: 6.465
+  type: kol
+  note: Steven Bartlett 戴黑帽在紅磚建築前對鏡頭講話（招牌黃字「FRONT LINE FIT」「CENTRE」入鏡）。左上角「影片來源：Behind
+    the Diary」。大字翻譯 overlay 逐行滑入：a 幀僅「想要創造一些新事物，」，b/c 幀完整「想要創造一些新事物，就必須要進行實驗，如果一開始就知道會成功，那就不叫實驗了。」
+  cues:
+  - 359
+  - 360
+  - 361
+  - 362
+  text: 要創造一些新事物就必須要進行實驗如果一開始就知道會成功那就不叫實驗了
+- shot_id: 146
+  start: 545.879
+  end: 550.8
+  duration: 4.922
+  type: aroll
+  note: 主持人（白T恤、極短平頭）在暖色書架房間對鏡頭說話，無疊加物。畫面文字僅衣服印字「TSUBASA」與背景書法掛軸。
+  cues:
+  - 363
+  - 364
+  - 365
+  text: 那些矽谷新創公司最重要的心法之一就是「快快做 快快錯」
+- shot_id: 147
+  start: 550.8
+  end: 560.393
+  duration: 9.593
+  type: kol
+  note: Steven Bartlett 黑T恤在深灰背景對鏡頭談話。左上角「影片來源：Behind the Diary」。翻譯 overlay 變化：a 幀單行「豫不決的致命代價就是浪費」（滑入中截斷），b/c
+    幀完整「猶豫不決的致命代價就是浪費時間，這些時間是本來可以用來實驗，然後從失敗中獲得經驗，最終幫助你成功的。」
+  cues:
+  - 366
+  - 367
+  - 368
+  - 369
+  - 370
+  - 371
+  text: 在商場上猶豫不決的致命代價就是浪費時間這些時間本來是可以用來實驗然後從失敗獲得經驗最終幫助你成功的
+- shot_id: 148
+  start: 560.393
+  end: 566.024
+  duration: 5.631
+  type: kol
+  note: Steven Bartlett 坐藍綠色扶手椅受訪。左上角「影片來源：Behind the Diary」。翻譯 overlay：a 幀「如果害怕失敗，」，b
+    幀完整「如果害怕失敗，試圖避免損失而裹足不前，反而會失去最珍貴的東西。」
+  cues:
+  - 372
+  - 373
+  - 374
+  text: 如果害怕失敗試圖避免損失而裹足不前反而會失去最珍貴的東西
+- shot_id: 149
+  start: 566.024
+  end: 569.611
+  duration: 3.587
+  type: aroll
+  note: 主持人在書架房間對鏡頭說話，無疊加物。衣服印字「TSUBASA」隱約可見。
+  cues:
+  - 375
+  - 376
+  - 377
+  text: 他在擔任其他公司的顧問的時候會建議執行長
+- shot_id: 150
+  start: 569.611
+  end: 575.7
+  duration: 6.089
+  type: aroll
+  note: 主持人對鏡頭說話，身上疊入橘底白字關鍵詞卡「團隊的失敗率」：a 幀滑入中（部分出框），b 幀完整顯示，c 幀已消失。
+  cues:
+  - 378
+  - 379
+  - 380
+  text: 把團隊的失敗率當作重要指標目標就是把失敗率提高十倍
+- shot_id: 151
+  start: 575.7
+  end: 583.416
+  duration: 7.716
+  type: kol
+  note: Steven Bartlett 戴耳麥坐在橘色背板（可見「SPONSORED BY」「Steven」與 deliveroo 風 logo 局部「del…」）的講台受訪。左上角「影片來源：Behind
+    the Diary」。b/c 幀疊大字翻譯「Steven Bartlett 建議公司建立公開分享失敗經驗、並且持續實驗的文化，這可以讓團隊高速成長。」（a
+    幀尚無）。
+  cues:
+  - 381
+  - 382
+  - 383
+  - 384
+  text: 他也建議公司要建立一種公開分享失敗經驗並且持續實驗的文化這可以讓團隊高速成長
+- shot_id: 152
+  start: 583.416
+  end: 584.834
+  duration: 1.418
+  type: aroll
+  note: 主持人在書架房間對鏡頭說話，無疊加物。衣服印字「TSUBASA」。
+  cues:
+  - 385
+  text: 他很常提到一個案例
+- shot_id: 153
+  start: 584.834
+  end: 588.171
+  duration: 3.337
+  type: kol
+  note: 'Steven Bartlett 上 ITV 節目《This Morning》受訪片段。左上角「影片來源：This Morning」；畫面內電視字條「STEVEN
+    BARTLETT: FROM SHOPLIFTER TO DRAGON」「#ThisMorning」、台標「itv」。'
+  cues:
+  - 386
+  - 387
+  - 388
+  text: 他有段時間同時擔任一對父子的行銷顧問
+- shot_id: 154
+  start: 588.171
+  end: 590.048
+  duration: 1.877
+  type: aroll
+  note: 主持人在書架房間對鏡頭說話，無疊加物。衣服印字「TSUBASA」。
+  cues:
+  - 389
+  text: 兩人都是在同一個產業
+- shot_id: 155
+  start: 590.048
+  end: 591.591
+  duration: 1.543
+  type: stock
+  note: 圖庫實拍：白髮西裝中年男子在清水模建築前雙臂交叉微笑（代表「成功的爸爸」意象）。無台詞外文字。
+  cues:
+  - 390
+  text: 爸爸的已經做得很成功
+- shot_id: 156
+  start: 591.591
+  end: 593.635
+  duration: 2.044
+  type: stock
+  note: 圖庫實拍：男子背影站在高樓落地窗前眺望杜拜風格摩天大樓群夕景。無台詞外文字。
+  cues:
+  - 391
+  text: 但兒子的才剛起步而已
+- shot_id: 157
+  start: 593.635
+  end: 599.808
+  duration: 6.173
+  type: aroll
+  note: 主持人（白T恤、極短平頭）在暖色書房對鏡頭說話，背景書架與「張塏」字畫。
+  cues:
+  - 392
+  - 393
+  - 394
+  - 395
+  - 396
+  text: 有次他發現一個社群媒體的 bug好好利用的話可以讓廣告的投資報酬率大增
+- shot_id: 158
+  start: 599.808
+  end: 606.397
+  duration: 6.59
+  type: stock
+  note: 灰鬍年長男子穿針織外套在昏暗高級休息室雙臂交叉坐於桌前，桌上有紙筆；a/b 幀望向側邊、c 幀直視鏡頭。
+  cues:
+  - 397
+  - 398
+  - 399
+  - 400
+  - 401
+  text: 當他跟爸爸報告的時候對方不太積極說這個新案子可能要經過內部評估之後才決定
+- shot_id: 159
+  start: 606.397
+  end: 611.778
+  duration: 5.38
+  type: stock
+  note: 黑人男子在明亮辦公室對著白板圖表做簡報，手持平板，前景有聽眾。
+  cues:
+  - 402
+  - 403
+  - 404
+  - 405
+  text: 但他跟兒子做簡報的時候才講到了一半對方就把主管叫來全部一起聽
+- shot_id: 160
+  start: 611.778
+  end: 616.491
+  duration: 4.713
+  type: stock
+  note: 綁髮髻蓄鬍男子在陽光辦公室對鏡頭微笑，背景同事交談。
+  cues:
+  - 406
+  - 407
+  - 408
+  text: 然後聽完之後就決定馬上執行要花多少錢都可以
+- shot_id: 161
+  start: 616.491
+  end: 624.791
+  duration: 8.3
+  type: aroll
+  note: 主持人在書房對鏡頭說話；c 幀鏡頭推近成較緊的特寫。
+  cues:
+  - 409
+  - 410
+  - 411
+  - 412
+  - 413
+  - 414
+  text: 因為他知道如果失敗了頂多燒掉幾十萬美金而已嘛但什麼都不做不但學不到東西還可能錯失巨大的機會
+- shot_id: 162
+  start: 624.791
+  end: 626.96
+  duration: 2.169
+  type: stock
+  note: 西裝長髮男子在逆光窗前微笑鼓掌，旁邊他人也在鼓掌。
+  cues:
+  - 415
+  text: 於是這個案子真的大獲成功
+- shot_id: 163
+  start: 626.96
+  end: 630.63
+  duration: 3.67
+  type: stock
+  note: 灰鬍年長男子皺眉盯著筆電螢幕，昏暗休息室背景壁燈。
+  cues:
+  - 416
+  - 417
+  - 418
+  text: 爸爸的公司看了之後也想跟進但是 bug 已經被補起來了
+- shot_id: 164
+  start: 630.63
+  end: 637.971
+  duration: 7.341
+  type: stock
+  note: 開放式辦公室多名員工起立鼓掌歡呼，鏡頭緩慢移動。
+  cues:
+  - 419
+  - 420
+  - 421
+  - 422
+  - 423
+  text: 於是這兩家不同經營策略的公司此消彼漲才幾年兒子的公司就和爸爸的黃金交叉
+- shot_id: 165
+  start: 637.971
+  end: 640.098
+  duration: 2.127
+  type: aroll
+  note: 主持人在書房對鏡頭說話。
+  cues:
+  - 424
+  - 425
+  text: 我真的很喜歡Steven 這個法則
+- shot_id: 166
+  start: 640.098
+  end: 656.447
+  duration: 16.35
+  type: kol
+  note: 舞台演講片段：黑衣男子站在藍紫色燈光舞台上，觀眾席剪影；左上角來源標示與滿版大字。畫面文字：「影片來源：Behind the DIary」「不但不要害怕失」（僅
+    a 幀有大字；b、c 幀為主持人書房畫面——此鏡頭 a 幀是 KOL 演講、b/c 幀切回主持人，多幀不一致，以起始 KOL 畫面歸類）。更正：b 幀為主持人揮手說話、c
+    幀為 TED-Ed 動畫，見後述鏡頭邊界模糊。
+  cues:
+  - 426
+  - 427
+  - 428
+  - 429
+  - 430
+  - 431
+  - 432
+  - 433
+  - 434
+  text: 不但不害怕失敗還主動去擁抱失敗增加失敗的次數這給我更多動力接下來去嘗試更多事情法則五：把壓力當作特權現代人常常會把壓力視為洪水猛獸覺得那個是對身體有害的
+- shot_id: 167
+  start: 656.447
+  end: 658.158
+  duration: 1.71
+  type: motion_graphic
+  note: TED-Ed 扁平風動畫：紫色大頭人物對麥克風冒汗（a 幀）、黃綠三角人物生氣拉紅線（b 幀），黑色格紋外框。畫面文字：「影片來源：TED-Ed」。
+  cues:
+  - 435
+  text: 所以避之唯恐不及
+- shot_id: 168
+  start: 658.158
+  end: 659.951
+  duration: 1.793
+  type: aroll
+  note: 主持人在書房對鏡頭說話，b 幀舉起食指強調。
+  cues:
+  - 436
+  text: 但是這恰恰相反
+- shot_id: 169
+  start: 659.951
+  end: 663.913
+  duration: 3.962
+  type: motion_graphic
+  note: TED-Ed 粉紅底扁平動畫：法棍、瓶罐與數字塗鴉，人物滑落；大字 overlay 逐步滑入（a 幀僅「太安逸」，b 幀完整句）。畫面文字：「影片來源：TED-Ed」「『太安逸』才是慢慢扼殺我們身心的隱形殺手。」數字
+    4382、249、85、628。
+  cues:
+  - 437
+  - 438
+  - 439
+  text: 「太安逸」才是慢慢扼殺我們身心的隱形殺手
+- shot_id: 170
+  start: 663.913
+  end: 666.624
+  duration: 2.711
+  type: aroll
+  note: 主持人白T恤在暖色書架房間對鏡頭說話，T恤印「TSUBASA」。無台詞外文字。
+  cues:
+  - 440
+  - 441
+  text: 我們要先對「壓力」做個細部的區分
+- shot_id: 171
+  start: 666.624
+  end: 670.67
+  duration: 4.046
+  type: motion_graphic
+  note: TED-Ed 扁平插畫動畫：綠臉人物在桌前皺眉，周圍茶壺、椅子、馬克杯、手機。左上疊字「影片來源：TED-Ed」。a、b 兩幀人物表情微變。
+  cues:
+  - 442
+  - 443
+  - 444
+  text: 一個是外在環境或刺激給我們的壓力英文叫做 pressure
+- shot_id: 172
+  start: 670.67
+  end: 672.964
+  duration: 2.294
+  type: aroll
+  note: 主持人白T恤（印 TSUBASA）在書架房間側身說話。無台詞外文字。
+  cues:
+  - 445
+  - 446
+  - 447
+  text: 每次講到 pressure就想到 Queen 的Under Pressure
+- shot_id: 173
+  start: 672.964
+  end: 674.299
+  duration: 1.335
+  type: kol
+  note: Queen 官方 MV 片段（廢車場吊車抓斗畫面），加了網格外框。左上疊字「影片來源：Queen Official」。
+  cues: []
+  text: ''
+- shot_id: 174
+  start: 674.299
+  end: 675.633
+  duration: 1.335
+  type: kol
+  note: Queen 官方 MV 片段：堆疊的廢車殘骸。左上疊字「影片來源：Queen Official」。
+  cues: []
+  text: ''
+- shot_id: 175
+  start: 675.633
+  end: 676.342
+  duration: 0.709
+  type: kol
+  note: Queen 官方 MV 片段：粉紅色霧化/破碎抽象畫面。左上疊字「影片來源：Queen Official」。
+  cues: []
+  text: ''
+- shot_id: 176
+  start: 676.342
+  end: 677.677
+  duration: 1.335
+  type: aroll
+  note: 主持人白T恤（印 TSUBASA）在書架房間對鏡頭說話。a、b 皆為 aroll。無台詞外文字。
+  cues:
+  - 448
+  text: 之前常常舉的例子
+- shot_id: 177
+  start: 677.677
+  end: 679.888
+  duration: 2.211
+  type: motion_graphic
+  note: TED-Ed 手繪動畫：背包客在雪地遇到黑熊。左上疊字「影片來源：TED-Ed」。a、b 人物位置微變。
+  cues:
+  - 449
+  text: 像是原始人遇到野獸襲擊
+- shot_id: 178
+  start: 679.888
+  end: 682.39
+  duration: 2.502
+  type: motion_graphic
+  note: TED-Ed 扁平動畫：辦公桌前女性用筆電，b 幀加了環形警示動態光圈。左上疊字「影片來源：TED-Ed」。
+  cues:
+  - 450
+  text: 或是現代人受到老闆爆擊
+- shot_id: 179
+  start: 682.39
+  end: 684.893
+  duration: 2.503
+  type: motion_graphic
+  note: TED-Ed 線稿動畫：蹲坐抱頭的人物，b 幀周圍出現放射狀壓力線條。左上疊字「影片來源：TED-Ed」。
+  cues:
+  - 451
+  - 452
+  text: 這些都是外在給我們的壓力 pressure
+- shot_id: 180
+  start: 684.893
+  end: 687.77
+  duration: 2.878
+  type: motion_graphic
+  note: TED-Ed 動畫：粉膚色人物趴在電腦桌前，桌面有咖啡、下滑折線圖等。左上疊字「影片來源：TED-Ed」。a、b 桌面物件變化。
+  cues:
+  - 453
+  - 454
+  text: 而我們人體為了應對外界的壓力源
+- shot_id: 181
+  start: 687.77
+  end: 691.649
+  duration: 3.879
+  type: motion_graphic
+  note: TED-Ed 等距方塊動畫，頂部有 HP 紅綠漸層血條，右側百分比數字（a=9%附近、b 血條變空）。左上疊字「影片來源：TED-Ed」；畫面內含「HP」與百分比。
+  cues:
+  - 455
+  - 456
+  text: 體內會產生壓力反應英文叫做 stress response
+- shot_id: 182
+  start: 691.649
+  end: 698.323
+  duration: 6.673
+  type: motion_graphic
+  note: TED-Ed 動畫序列：a 腎上腺分泌，標籤「CORTISOL / EPINEPHRINE / NOREPINEPHRINE」；b 三種荷爾蒙分泌台同樣標籤；c
+    心臟加速跳動特寫。左上疊字「影片來源：TED-Ed」。
+  cues:
+  - 457
+  - 458
+  - 459
+  - 460
+  - 461
+  text: 這時候我們的交感神經會主導身體分泌腎上腺素和皮質醇讓心跳加速呼吸也加速
+- shot_id: 183
+  start: 698.323
+  end: 701.659
+  duration: 3.337
+  type: motion_graphic
+  note: TED-Ed 等距風動畫：血管中紅血球流動，旁有小方塊儀表由彩色轉紅。左上角來源標「影片來源：TED-Ed」；a 幀儀表為彩色扇形、b 幀轉為紅色，表示數值升高。
+  cues:
+  - 462
+  - 463
+  - 464
+  text: 血糖上升讓我們的身體能夠應對外來的挑戰
+- shot_id: 184
+  start: 701.659
+  end: 704.37
+  duration: 2.711
+  type: aroll
+  note: 主持人白T恤在暖色書架房間對鏡頭說話，背景有書櫃與書法掛軸，無 overlay 文字（衣服印字 TSUBASA 為服裝本身）。
+  cues:
+  - 465
+  - 466
+  text: 而我們每次順利克服了外在的挑戰後
+- shot_id: 185
+  start: 704.37
+  end: 708.499
+  duration: 4.129
+  type: motion_graphic
+  note: TED-Ed 動畫：a 幀為深色圓框中的小型大腦圖示，b 幀放大為灰藍色大腦內六角形節點網路連線圖。左上角「影片來源：TED-Ed」。同鏡頭內畫面從小腦圖
+    zoom 至腦內網路。
+  cues:
+  - 467
+  - 468
+  - 469
+  text: 大腦和其他參與戰鬥的身體組織也會因此變強
+- shot_id: 186
+  start: 708.499
+  end: 710.376
+  duration: 1.877
+  type: aroll
+  note: 主持人白T恤書架房間近距離對鏡頭說話（鏡頭較近、略晃動），畫面右緣有手部揮動殘影，無 overlay 文字。
+  cues:
+  - 470
+  text: 運動就是一個最好的例子
+- shot_id: 187
+  start: 710.376
+  end: 714.297
+  duration: 3.921
+  type: motion_graphic
+  note: TED-Ed 動畫：紫衣女子在黃色太陽與綠色山丘前跑步。左上角「影片來源：TED-Ed」。
+  cues:
+  - 471
+  - 472
+  - 473
+  text: 我們藉由在每次訓練中越跑越快或是越舉越重
+- shot_id: 188
+  start: 714.297
+  end: 715.924
+  duration: 1.627
+  type: motion_graphic
+  note: TED-Ed 動畫：白底手繪風粉色大腦插圖置中。左上角「影片來源：TED-Ed」。
+  cues:
+  - 474
+  text: 我們的神經 肌肉
+- shot_id: 189
+  start: 715.924
+  end: 716.466
+  duration: 0.542
+  type: motion_graphic
+  note: TED-Ed 動畫：兩名女孩打籃球，右側圓形放大鏡顯示膝關節骨骼 X 光視圖。左上角「影片來源：TED-Ed」。
+  cues:
+  - 475
+  text: 骨骼 能量系統
+- shot_id: 190
+  start: 716.466
+  end: 718.843
+  duration: 2.377
+  type: motion_graphic
+  note: TED-Ed 動畫：紫衣女孩做側伸展，周圍浮現紅/紫/藍分子結構。左上角「影片來源：TED-Ed」；b 幀出現紅色大字「ENDORPHINS」（a
+    幀尚未出現，文字為滑入）。
+  cues:
+  - 475
+  - 476
+  text: 骨骼 能量系統都會越來越厲害
+- shot_id: 191
+  start: 718.843
+  end: 722.513
+  duration: 3.67
+  type: kol
+  note: TODAY 新聞片段：黑白檔案影像，Billie Jean King 高舉溫布頓獎盤慶祝。左上角「影片來源：TODAY」；下方新聞橫幅「MARKING
+    BILLIE JEAN KING'S MILESTONE」＋TODAY 台標。
+  cues:
+  - 477
+  - 478
+  text: 拿過 39 個大滿貫冠軍的前女子網球世界第一
+- shot_id: 192
+  start: 722.513
+  end: 723.598
+  duration: 1.084
+  type: kol
+  note: TODAY 新聞片段：黑白特寫，戴眼鏡的 Billie Jean King 雙手高舉微笑。左上角「影片來源：TODAY」；橫幅「MARKING BILLIE
+    JEAN KING'S MILESTONE」＋NBC NEWS 台標。
+  cues:
+  - 478
+  - 479
+  text: 前女子網球世界第一Billie Jean King
+- shot_id: 193
+  start: 723.598
+  end: 727.352
+  duration: 3.754
+  type: kol
+  note: TODAY 新聞片段：彩色檔案影像，Billie Jean King 著白色網球裙在草地球場；b 幀畫面轉為模糊過場。左上角「影片來源：TODAY」；橫幅「MARKING
+    BILLIE JEAN KING'S MILESTONE」＋TODAY 台標。
+  cues:
+  - 480
+  - 481
+  text: 被問到如何對待這種排山倒海似的外在壓力時
+- shot_id: 194
+  start: 727.352
+  end: 732.44
+  duration: 5.088
+  type: kol
+  note: TODAY 訪談片段：年長的 Billie Jean King 戴紫綠框眼鏡受訪特寫。左上角「影片來源：TODAY」；橫幅「MARKING BILLIE
+    JEAN KING'S MILESTONE」＋TODAY 台標；b 幀畫面中央疊入白色大字引言「壓力是一種特權，只有值得的人才有幸擁有。」（a 幀無，為後段滑入的金句
+    overlay）。
+  cues:
+  - 482
+  - 483
+  - 484
+  text: 她說：「壓力是一種特權只有值得的人才有幸擁有」
+- shot_id: 195
+  start: 732.44
+  end: 734.734
+  duration: 2.294
+  type: kol
+  note: BookTV (C-SPAN2) 訪談片段：Billie Jean King 受訪。左上角「影片來源：BookTV」；畫面下方字幕條「Billie
+    Jean King / Author, "Pressure is a Privilege"」＋「Book tv C-SPAN2」台標。
+  cues:
+  - 485
+  - 486
+  text: 後來她也用這句話出了一本書
+- shot_id: 196
+  start: 734.734
+  end: 738.071
+  duration: 3.337
+  type: aroll
+  note: 主持人（白T、書房）對鏡頭說話，左側疊入《The Diary of a CEO》書封圖卡；a 幀書封剛滑入僅見「THE DIARY OF A CEO
+    / THE 33 LAWS OF」，b 幀完整顯示「STEVEN BARTLETT / THE DIARY OF A CEO / THE 33 LAWS OF
+    BUSINESS & LIFE」。
+  cues:
+  - 487
+  - 488
+  - 489
+  text: Steven 在書中特地舉了一個我也超愛的 TED Talk
+- shot_id: 197
+  start: 738.071
+  end: 741.866
+  duration: 3.795
+  type: aroll
+  note: 主持人對鏡頭說話，右側疊入他自己過去影片縮圖 inset（粉紅大腦舉啞鈴插畫＋主持人照片）；縮圖文字「破解 意志力」；a 幀縮圖滑入中、b 幀定位完成。
+  cues:
+  - 490
+  - 491
+  - 492
+  text: 講者是之前在解析意志力的時候介紹的心理學家
+- shot_id: 198
+  start: 741.866
+  end: 742.825
+  duration: 0.959
+  type: kol
+  note: TED 演講片段：Kelly McGonigal 深藍西裝、紅褲在舞台演講，背景黃色燈泡連線圖形；左上角來源標「影片來源：TED」，畫面下方白字署名「Kelly
+    McGonigal」。
+  cues:
+  - 493
+  text: Kelly McGonigal
+- shot_id: 199
+  start: 742.825
+  end: 747.747
+  duration: 4.922
+  type: kol
+  note: TED 演講片段遠景：講者站在紅色圓形地毯上，大螢幕顯示其特寫與金色圖紋，舞台側有「TED」紅字；左上角「影片來源：TED」。
+  cues:
+  - 494
+  - 495
+  - 496
+  text: 她在這個觀看數將近五千萬的著名演講中講到一個超重要的概念：
+- shot_id: 200
+  start: 747.747
+  end: 754.921
+  duration: 7.174
+  type: kol
+  note: TED 演講講者特寫，疊加大型白色引言字：「我們如何去看待外界的壓力，會很戲劇化地改變我們身體的壓力反應，以及對我們健康的影響。」（a 幀僅第一行逐字浮現，b/c
+    幀四行全出）；左上角「影片來源：TED」。
+  cues:
+  - 497
+  - 498
+  - 499
+  - 500
+  text: 我們如何去看待外界的壓力會很戲劇化地改變我們身體的壓力反應以及對我們健康的影響
+- shot_id: 201
+  start: 754.921
+  end: 761.135
+  duration: 6.215
+  type: aroll
+  note: 主持人（白T印 TSUBASA 字樣、書房）對鏡頭說話，無疊加物。
+  cues:
+  - 501
+  - 502
+  - 503
+  - 504
+  - 505
+  text: 演講中引用了一個讓她嚇一大跳的研究這個研究的目的是想找出壓力對死亡率的影響
+- shot_id: 202
+  start: 761.135
+  end: 767.1
+  duration: 5.964
+  type: kol
+  note: TED 演講舞台遠景：講者立於紅圓毯，螢幕顯示人體透視圖，舞台「TED」紅字；左上角「影片來源：TED」。
+  cues:
+  - 506
+  - 507
+  - 508
+  - 509
+  text: 研究人員對將近三萬名美國成年人進行追蹤並且在一開始問他們幾個問題
+- shot_id: 203
+  start: 767.1
+  end: 777.193
+  duration: 10.093
+  type: doc_screenshot
+  note: '研究論文表格截圖（美國成人壓力調查），黃色 highlight 隨旁白逐幀移動：a 幀標「Amount of stress experienced
+    by U.S. adults in the last 12 months」、b 幀標「How much did stress affect your health?」、c
+    幀標「(During the past 12 months), have you taken any steps to control or reduce
+    stress in your life?」；表頭「TOTAL: Weighted N [in thousands] (unweighted N) %」，含
+    Frequency of Stress / Perceived Health Impact / Stress Reduction 各項數據（如 37,628
+    (6,026) 20.2% 等）。'
+  cues:
+  - 510
+  - 511
+  - 512
+  - 513
+  - 514
+  - 515
+  text: 像是「你過去 12 個月裡經歷了多大壓力？」還有「你覺得壓力對你的健康有多大影響？」以及「你有沒有採取行動來控制或減輕壓力？」
+- shot_id: 204
+  start: 777.193
+  end: 781.739
+  duration: 4.546
+  type: aroll
+  note: 主持人（白T）對鏡頭說話，無疊加物。
+  cues:
+  - 516
+  - 517
+  - 518
+  - 519
+  text: 八年之後研究人員統計有多少人已經過世很不意外地發現
+- shot_id: 205
+  start: 781.739
+  end: 791.749
+  duration: 10.01
+  type: doc_screenshot
+  note: 論文 All-Cause Mortality（HR / 95% CI）表格截圖，黃色 highlight 逐幀增加：a 幀標「A lot of stress
+    in last 12 months」、b 幀加標「Perception that stress affects health a lot」、c 幀再標「Almost
+    no stress in last 12 months」及數值 1.00、1.43；表列各壓力程度與認知組合的 HR 值（0.83、0.91、1.43 等）。
+  cues:
+  - 520
+  - 521
+  - 522
+  - 523
+  - 524
+  - 525
+  - 526
+  text: 那些經歷很大壓力並且認為壓力對健康有害的他們的死亡風險比起對照組也就是沒壓力那群人還高出 43%
+- shot_id: 206
+  start: 791.749
+  end: 793.501
+  duration: 1.752
+  type: aroll
+  note: 主持人（白T印 TSUBASA）對鏡頭說話，無疊加物。
+  cues:
+  - 527
+  text: 但是很出乎意料的
+- shot_id: 207
+  start: 793.501
+  end: 802.76
+  duration: 9.259
+  type: doc_screenshot
+  note: 同一 All-Cause Mortality 表格截圖，highlight 逐幀變化：a 幀僅標數值 0.83、b 幀加標「A lot of stress
+    in last 12 months」「Hardly any, or No perception that stress affects health」、c
+    幀再加「Almost no stress in last 12 months」與 1.00；表含 HR / 95% CI 各組數據。
+  cues:
+  - 528
+  - 529
+  - 530
+  - 531
+  - 532
+  text: 死亡風險最低的那組竟然是經歷很大壓力但是不認為壓力對健康有害的那群人比對照組還低 17%
+- shot_id: 208
+  start: 802.76
+  end: 805.555
+  duration: 2.794
+  type: aroll
+  note: 主持人（白T印 TSUBASA）對鏡頭說話，無疊加物。
+  cues:
+  - 533
+  - 534
+  - 535
+  text: 這讓研究壓力對身體影響的Kelly McGonigal
+- shot_id: 209
+  start: 805.555
+  end: 807.807
+  duration: 2.252
+  type: aroll
+  note: 主持人（白T、平頭）在暖色書房對鏡頭激動說話，表情誇張。無台詞字幕以外的畫面文字。
+  cues:
+  - 536
+  text: 大大地改變她對壓力的看法
+- shot_id: 210
+  start: 807.807
+  end: 812.103
+  duration: 4.296
+  type: kol
+  note: Kelly McGonigal TED 演講片段，講者站在黃色分子圖形背景舞台，畫面置於黑色格線框內。畫面文字：「影片來源：TED」。
+  cues:
+  - 537
+  - 538
+  - 539
+  text: 她也引用了另一個哈佛大學著名的實驗受試者被分成三組
+- shot_id: 211
+  start: 812.103
+  end: 814.439
+  duration: 2.336
+  type: kol
+  note: TED 演講片段，講者站在紅色圓形舞台，畫面疊入大字金色文字 overlay。a 幀 overlay 只出現第一行「「重新評估壓力組」被告知」，b
+    幀完整顯示：「「重新評估壓力組」被告知 心跳加速、呼吸急促的壓力反應 對身體是好的， 它有助我們拿出最好的表現。」另有「影片來源：TED」。
+  cues:
+  - 540
+  text: 一組叫做重新評估壓力組
+- shot_id: 212
+  start: 814.439
+  end: 821.154
+  duration: 6.715
+  type: kol
+  note: TED 演講講者特寫（鏡頭推近、b/c 幀漸模糊），疊同一段金色文字 overlay：「「重新評估壓力組」被告知 心跳加速、呼吸急促的壓力反應 對身體是好的，
+    它有助我們拿出最好的表現。」＋「影片來源：TED」。
+  cues:
+  - 541
+  - 542
+  - 543
+  - 544
+  - 545
+  text: 他們被告知心跳加速呼吸急促的壓力反應對身體是好的它有助於我們拿出最好的表現
+- shot_id: 213
+  start: 821.154
+  end: 825.908
+  duration: 4.755
+  type: kol
+  note: TED 演講，講者撥頭髮站在黃色分子背景前，金色文字 overlay 滑入：a 幀僅頂部「「忽略壓力組」 被告」，b 幀完整：「「忽略壓力組」被告知
+    忽略這些壓力反應就好； 「對照組」則是什麼都不做」＋「影片來源：TED」。
+  cues:
+  - 546
+  - 547
+  - 548
+  text: 另一組是忽略壓力組他們被告知只要忽略這些壓力反應就好
+- shot_id: 214
+  start: 825.908
+  end: 827.535
+  duration: 1.627
+  type: kol
+  note: TED 演講遠景，講者背對觀眾面向暗場觀眾席，疊金色文字：「「忽略壓力組」被告知 忽略這些壓力反應就好； 「對照組」則是什麼都不做。」＋「影片來源：TED」。
+  cues:
+  - 549
+  text: 對照組那就是什麼都不做
+- shot_id: 215
+  start: 827.535
+  end: 830.663
+  duration: 3.128
+  type: aroll
+  note: 主持人在書房對鏡頭說話（白T 印有 TSUBASA 字樣，屬衣服本身非 overlay）。無其他畫面文字。
+  cues:
+  - 550
+  - 551
+  text: 之後他們都接受了TSST 這個壓力測試
+- shot_id: 216
+  start: 830.663
+  end: 833.583
+  duration: 2.92
+  type: kol
+  note: TED 演講，講者手勢說話於黃色分子圖背景，黑色格線框內。畫面文字：「影片來源：TED」。
+  cues:
+  - 552
+  - 553
+  text: 就是對兩名評估人員做 5 分鐘的演講
+- shot_id: 217
+  start: 833.583
+  end: 835.585
+  duration: 2.002
+  type: kol
+  note: TED 演講舞台遠景，講者旁大螢幕顯示心算題「996 – 7...」，左下舞台有「TED」logo。畫面文字：「影片來源：TED」「996 – 7...」「TED」。
+  cues:
+  - 554
+  text: 以及 5 分鐘的高難度的心算
+- shot_id: 218
+  start: 835.585
+  end: 840.882
+  duration: 5.297
+  type: aroll
+  note: 主持人對鏡頭說話，b 幀誇張皺眉閉眼做鬼臉示範「皺眉頭」。無台詞字幕以外文字。
+  cues:
+  - 555
+  - 556
+  - 557
+  - 558
+  text: 然後評估人員會故意給負面的回饋像是皺眉頭啊或者是不耐煩等等
+- shot_id: 219
+  start: 840.882
+  end: 844.677
+  duration: 3.795
+  type: kol
+  note: TED-Ed 動畫片段：米色背景上大腦圖形，a 幀為碎塊拼圖狀大腦，b 幀變為神經節點連線大腦。畫面文字：「影片來源：TED–Ed」。
+  cues:
+  - 559
+  - 560
+  - 561
+  text: 接下來受試者會被要求做一些大腦認知能力的測試
+- shot_id: 220
+  start: 844.677
+  end: 847.18
+  duration: 2.502
+  type: kol
+  note: TED-Ed 動畫：粉紅背景，綠色人物被多個皺眉小臉包圍（b 幀小臉增多），表現壓力。畫面文字：「影片來源：TED–Ed」。
+  cues:
+  - 562
+  text: 看看這三組受壓力的影響程度
+- shot_id: 221
+  start: 847.18
+  end: 848.097
+  duration: 0.918
+  type: aroll
+  note: 主持人在書房對鏡頭說話。無台詞字幕以外文字。
+  cues:
+  - 563
+  text: 實驗發現
+- shot_id: 222
+  start: 848.097
+  end: 864.322
+  duration: 16.225
+  type: diagram
+  note: 研究論文長條圖（Interference Score vs Intervention Condition，Control/Ignore/Reappraisal
+    三組含誤差線）；a 幀粉紅框標 Reappraisal，b 幀改紅框標 Control（框位置隨敘事移動）；c 幀切換為雙圖 A/B：TPR reactivity
+    與 CO reactivity 長條圖，紅框標 Control 與 Ignore。畫面文字：Interference Score (seconds)、Control、Ignore、Reappraisal、Intervention
+    Condition；c 幀另有 A.、B.、TPR reactivity (dyne-seconds X cm-5)、CO reactivity (liters
+    / minute)
+  cues:
+  - 564
+  - 565
+  - 566
+  - 567
+  - 568
+  - 569
+  - 570
+  - 571
+  - 572
+  text: 重新評估壓力組幾乎沒有受到負面情緒的影響而忽略壓力組反而會造成反效果比什麼都不做的對照組還慘在生理反應上控制組和忽略壓力組的總周邊血管阻力是高的而心輸出量是小的
+- shot_id: 223
+  start: 864.322
+  end: 869.202
+  duration: 4.88
+  type: motion_graphic
+  note: 黑底格線上 3D 心臟動畫與紅色血管環（環由粗變細示意收縮），TED 演講投影動畫。畫面文字：影片來源：TED、Jamieson, Nock, &
+    Mendes 2012、Harvard University Department of Psychology
+  cues:
+  - 573
+  - 574
+  - 575
+  text: 這代表雖然他們的心跳的確有加快但是血管是處於收縮狀態
+- shot_id: 224
+  start: 869.202
+  end: 870.87
+  duration: 1.668
+  type: aroll
+  note: 主持人白T在暖色書架房間對鏡頭說話，張嘴強調表情
+  cues:
+  - 576
+  text: 長期處在這種狀況下
+- shot_id: 225
+  start: 870.87
+  end: 873.831
+  duration: 2.961
+  type: aroll
+  note: 主持人對鏡頭說話，左上疊入自己過往影片縮圖 inset（人物指向拳頭、藍圈問號）；a 幀 inset 滑入中（文字被裁）、b 幀完整顯示。inset
+    文字：新。晨間習慣、TSUBASA
+  cues:
+  - 577
+  - 578
+  text: 就容易引發高血壓和其他心血管疾病
+- shot_id: 226
+  start: 873.831
+  end: 875.249
+  duration: 1.418
+  type: aroll
+  note: 主持人白T對鏡頭說話特寫，無疊加物
+  cues:
+  - 579
+  text: 最令人驚訝的是
+- shot_id: 227
+  start: 875.249
+  end: 886.636
+  duration: 11.386
+  type: kol
+  note: TED 演講片段：a/b 幀為投影動畫（心臟＋兩個紅色血管環對比，上小下大），c 幀拉遠見 Kelly McGonigal 站在 TED 舞台紅地毯上。畫面文字：影片來源：TED、Jamieson,
+    Nock, & Mendes 2012、Harvard University Department of Psychology；c 幀另有 TED
+  cues:
+  - 580
+  - 581
+  - 582
+  - 583
+  - 584
+  - 585
+  - 586
+  text: 重新評估壓力組的狀況完全相反他們的心輸出量相當高血管阻力卻比較小雖然心跳有加速但是血管是維持放鬆和舒張的
+- shot_id: 228
+  start: 886.636
+  end: 894.143
+  duration: 7.507
+  type: kol
+  note: TED 舞台上 Kelly McGonigal 臉部特寫，畫面中央疊大字引言逐行浮現：a 幀「這樣的反應跟我們」，b/c 幀完整「這樣的反應跟我們
+    處於興奮、受到鼓勵、 或感到喜悅和勇氣的時候一樣。」；左上「影片來源：TED」
+  cues:
+  - 587
+  - 588
+  - 589
+  - 590
+  - 591
+  - 592
+  text: Kelly McGonigal 說這跟我們處於興奮受到鼓勵或者感到喜悅和勇氣的時候是一樣的生理反應
+- shot_id: 229
+  start: 894.143
+  end: 897.855
+  duration: 3.712
+  type: aroll
+  note: 主持人對鏡頭說話；a 幀無手勢、b 幀舉起食指強調，無疊加文字
+  cues:
+  - 593
+  - 594
+  - 595
+  text: 你不覺得超神奇的嗎？Mindset 的力量真的超強大的！
+- shot_id: 230
+  start: 897.855
+  end: 902.443
+  duration: 4.588
+  type: kol
+  note: 訪談片段：Kelly McGonigal 黑衣坐紅磚牆前受訪。畫面文字：影片來源：UMNCSH；a 幀另有人名條「Kelly McGonigal」
+  cues:
+  - 596
+  - 597
+  - 598
+  - 599
+  text: Kelly McGonigal最後在接受Chris Anderson 的訪問時說了一句超有智慧的話：
+- shot_id: 231
+  start: 902.443
+  end: 911.16
+  duration: 8.717
+  type: kol
+  note: 同一 UMNCSH 訪談片段，疊大字引言逐行浮現：a 幀「人生最好的決定，」，b/c 幀完整「人生最好的決定， 就是去做那些對你來說有意義的事情，
+    然後相信自己能夠克服隨之而來的壓力， 越變越強。」；左上「影片來源：UMNCSH」
+  cues:
+  - 600
+  - 601
+  - 602
+  - 603
+  - 604
+  - 605
+  text: 「人生最好的決定就是去做那些對你來說有意義的事情然後相信自己能夠克服隨之而來的壓力越變越強」
+- shot_id: 232
+  start: 911.16
+  end: 924.132
+  duration: 12.971
+  type: aroll
+  note: 主持人白T（TSUBASA 字樣）對鏡頭說話，無疊加文字
+  cues:
+  - 606
+  - 607
+  - 608
+  - 609
+  - 610
+  - 611
+  - 612
+  - 613
+  - 614
+  text: 這就是我每次在趕工作感到有點喘不過氣來的時候我會對自己說的話這些壓力都是我為自己贏來的特權法則六：價值取決於情境而非技能講白話一點
+- shot_id: 233
+  start: 924.132
+  end: 931.514
+  duration: 7.382
+  type: title_card
+  note: 滿版橘底章節卡，中央白色天平 icon；a 幀文字「法則六：價值取決於情境，而非技能」；b/c 幀切為 Behind the Diary 演講舞台片段（男子站舞台、背景輪盤畫面）疊大字引言：b
+    幀「同樣的技能放在不同產（滑入中）」、c 幀完整「同樣的技能放在不同產業， 能創造的價值 aka 人家願意付給你的錢 就會大大不同。」＋「影片來源：Behind
+    the Diary」——同一鏡頭內由章節卡轉入 kol 引言段
+  cues:
+  - 615
+  - 616
+  - 617
+  - 618
+  - 619
+  text: 就是同樣的技能放在不同的產業能創造的價值aka 人家願意付給你的錢就會大大不同
+- shot_id: 234
+  start: 931.514
+  end: 934.517
+  duration: 3.003
+  type: aroll
+  note: 主持人白T（TSUBASA 字樣）對鏡頭說話，無疊加文字
+  cues:
+  - 620
+  - 621
+  text: 想要賺多點錢的人一定要牢牢記住這點
+- shot_id: 235
+  start: 934.517
+  end: 936.561
+  duration: 2.044
+  type: aroll
+  note: 主持人（白T、書架房間）對鏡頭說話，右側疊瀏覽器風格 inset 圖卡放 Steven Bartlett 肖像照；a 幀 inset 尚在下滑入位，b
+    幀完整；overlay 文字：「Steven Bartlett」（a 幀，人名 lower-third，b 幀已消失）
+  cues:
+  - 622
+  - 623
+  text: Steven Bartlett舉了一個自己的例子
+- shot_id: 236
+  start: 936.561
+  end: 937.311
+  duration: 0.751
+  type: kol
+  note: Behind the Diary 影片片段：Steven Bartlett 戴帽坐火車車廂內側望微笑，黑格紋框畫面；文字：「影片來源：Behind
+    the Diary」
+  cues:
+  - 624
+  text: 他創立了 Social Chain
+- shot_id: 237
+  start: 937.311
+  end: 937.895
+  duration: 0.584
+  type: kol
+  note: Behind the Diary 片段：手持晃動掃過夜間辦公室（Social Chain 辦公室），b 幀轉黑白；文字：「影片來源：Behind the
+    Diary」「TWITTER | M_CELLO」「HEAD OF SPORTS AT SOCIAL CHAIN」
+  cues:
+  - 624
+  text: 他創立了 Social Chain
+- shot_id: 238
+  start: 937.895
+  end: 938.688
+  duration: 0.792
+  type: kol
+  note: VICE News 紀錄片片段：Bartlett 戴黑帽穿飛行外套在辦公室被攝影機拍攝、與人交談；文字：「影片來源：VICE News」「VICE
+    News | HBO」
+  cues:
+  - 625
+  text: 當然也成為一位
+- shot_id: 239
+  start: 938.688
+  end: 939.981
+  duration: 1.293
+  type: kol
+  note: VICE News 片段：Bartlett 戴帽側臉特寫微笑；文字：「影片來源：VICE News」「VICE News | HBO」
+  cues:
+  - 625
+  - 626
+  text: 當然也成為一位炙手可熱的
+- shot_id: 240
+  start: 939.981
+  end: 941.524
+  duration: 1.543
+  type: kol
+  note: VICE News 片段：Bartlett 戴圓帽在彩色置物架辦公室受訪中景；文字：「影片來源：VICE News」「VICE News | HBO」
+  cues:
+  - 627
+  text: 社群媒體行銷大師
+- shot_id: 241
+  start: 941.524
+  end: 944.36
+  duration: 2.836
+  type: aroll
+  note: 主持人（白T、書架房間）對鏡頭說話，無 overlay
+  cues:
+  - 628
+  - 629
+  text: 但他不願意從此被貼上這個標籤
+- shot_id: 242
+  start: 944.36
+  end: 951.742
+  duration: 7.382
+  type: kol
+  note: Behind the Diary 片段：Bartlett 戴棒球帽在火車站月台低角度仰拍行走/佇立，含原片英文字幕；文字：「影片來源：Behind
+    the Diary」及原片字幕「and the apartment's were a thousand pounds a month」「so when I
+    come here it's just full of nostalgia.」「I'm always excited when I arrive back
+    to film」（三幀字幕不同）
+  cues:
+  - 630
+  - 631
+  - 632
+  - 633
+  text: 於是他在 27 歲的時候辭掉了 CEO開始了一段自我探索之旅他宣布不再做行銷的工作
+- shot_id: 243
+  start: 951.742
+  end: 956.831
+  duration: 5.088
+  type: aroll
+  note: 主持人（白T TSUBASA 字樣、書架房間）對鏡頭說話，無 overlay
+  cues:
+  - 634
+  - 635
+  - 636
+  - 637
+  text: 他唯一願意給自己貼上的標籤就是「具有多樣技能和好奇心的人」
+- shot_id: 244
+  start: 956.831
+  end: 959.959
+  duration: 3.128
+  type: kol
+  note: Behind the Diary 片段：Bartlett 黑衣坐矮凳低頭雙手握拳抵嘴沉思，旁站一人；文字：「影片來源：Behind the Diary」
+  cues:
+  - 638
+  - 639
+  text: 他渴望能為整體的社會貢獻一己之力
+- shot_id: 245
+  start: 959.959
+  end: 962.753
+  duration: 2.794
+  type: motion_graphic
+  note: 3D 線框粒子動畫：青色 hologram 高筒球鞋在黑底旋轉，無 overlay 文字
+  cues:
+  - 640
+  - 641
+  text: 而不僅僅是幫某些品牌提高運動鞋
+- shot_id: 246
+  start: 962.753
+  end: 964.13
+  duration: 1.376
+  type: motion_graphic
+  note: 3D 線框粒子動畫：汽水鋁罐 hologram，a 幀青藍色、b 幀轉紅紫色，無 overlay 文字
+  cues:
+  - 642
+  text: 或是汽水的銷量而已
+- shot_id: 247
+  start: 964.13
+  end: 967.717
+  duration: 3.587
+  type: aroll
+  note: 主持人（白T TSUBASA 字樣、書架房間）對鏡頭說話，無 overlay
+  cues:
+  - 643
+  - 644
+  text: 那時候剛好新冠疫情爆發除了疫情本身以外
+- shot_id: 248
+  start: 967.717
+  end: 970.761
+  duration: 3.045
+  type: kol
+  note: 新聞片段：暗色調中一名穿紅衣女子低頭坐在凳子上，畫面帶新聞下標框。畫面文字：「影片來源：WXYZ TV Detroit」「CORONAVIRUS」「WHAT
+    BEING IN QUARANTINE MEANS FOR MENTAL HEALTH」。
+  cues:
+  - 645
+  - 646
+  text: 民眾被隔離在家所造成的心理健康
+- shot_id: 249
+  start: 970.761
+  end: 972.138
+  duration: 1.376
+  type: kol
+  note: 同一則新聞片段：藍色調畫面，穿條紋衣者坐在走廊窗邊地板。畫面文字：「影片來源：WXYZ TV Detroit」「CORONAVIRUS」「WHAT
+    BEING IN QUARANTINE MEANS FOR MENTAL HEALTH」。
+  cues:
+  - 647
+  text: 也成了討論的焦點
+- shot_id: 250
+  start: 972.138
+  end: 978.352
+  duration: 6.215
+  type: aroll
+  note: 主持人（白T恤、極短平頭）在暖色書架房間對鏡頭說話。無台詞字幕以外文字（T恤上印「TSUBASA」為服裝本身）。
+  cues:
+  - 648
+  - 649
+  - 650
+  text: 於是他開始在網路上探索各類的有關心理健康相關的主題其中受他關注的
+- shot_id: 251
+  start: 978.352
+  end: 980.188
+  duration: 1.835
+  type: aroll
+  note: 主持人續在同書架房間對鏡頭說話，中近特寫。無台詞字幕以外文字。
+  cues:
+  - 651
+  text: 就是迷幻藥的世界
+- shot_id: 252
+  start: 980.188
+  end: 984.192
+  duration: 4.004
+  type: aroll
+  note: 主持人臉部大特寫，續對鏡頭說話。無台詞字幕以外文字。
+  cues:
+  - 652
+  - 653
+  - 654
+  - 655
+  text: 現在已經越來越多的臨床研究證實以前大家認為萬惡的迷幻藥 psychedelic
+- shot_id: 253
+  start: 984.192
+  end: 986.235
+  duration: 2.044
+  type: kol
+  note: Big Think 影片片段：兩格分屏迷幻色彩顏料流動畫面（a 幀），b 幀切為左腦部MRI掃描、右模糊人影。畫面文字：「影片來源：Big Think」及「B
+    T」logo。兩幀畫面內容不同（顏料→腦掃描）。
+  cues:
+  - 655
+  text: 萬惡的迷幻藥 psychedelic
+- shot_id: 254
+  start: 986.235
+  end: 988.779
+  duration: 2.544
+  type: kol
+  note: Big Think 影片片段：迷幻色彩流體特寫，中央疊大字「Psilocybin」。畫面文字：「影片來源：Big Think」「Psilocybin」「B
+    T」logo。
+  cues:
+  - 656
+  - 657
+  text: 像是含有 psilocybin 的迷幻香菇
+- shot_id: 255
+  start: 988.779
+  end: 990.072
+  duration: 1.293
+  type: kol
+  note: Big Think 影片片段：蘑菇（裸蓋菇）特寫，中央疊大字。畫面文字：「影片來源：Big Think」「Psilocybin」（註：a/b 幀實為琥珀色液體上疊「LSD」——a
+    幀為 LSD 液體畫面，文字「LSD」）。畫面文字：「影片來源：Big Think」「LSD」「B T」logo。
+  cues:
+  - 658
+  text: LSD 和 MDMA 等等
+- shot_id: 256
+  start: 990.072
+  end: 991.199
+  duration: 1.126
+  type: kol
+  note: Big Think 影片片段：粉紫色粉末特寫，中央疊大字「MDMA」。畫面文字：「影片來源：Big Think」「MDMA」「B T」logo。
+  cues:
+  - 658
+  text: LSD 和 MDMA 等等
+- shot_id: 257
+  start: 991.199
+  end: 997.663
+  duration: 6.465
+  type: kol
+  note: Vox 影片片段：a 幀為星空底報紙標題動畫「Los Angeles Times / Psychedelic drugs may be ready
+    for a medical comeback」，b/c 幀轉為發光大腦動畫。畫面文字：「影片來源：Vox」及上述標題。多幀內容不一致（報紙標題→大腦動畫）。
+  cues:
+  - 659
+  - 660
+  - 661
+  - 662
+  text: 在專業醫療人員的治療下迷幻藥已經被證實具有治療憂鬱症等精神疾病的功效了
+- shot_id: 258
+  start: 997.663
+  end: 1002.585
+  duration: 4.922
+  type: aroll
+  note: 主持人（白T恤）在書架房間對鏡頭說話。無台詞字幕以外文字（T恤印「TSUBASA」為服裝本身）。
+  cues:
+  - 663
+  - 664
+  - 665
+  - 666
+  text: 澳洲全國以及美國有些州也已經把醫療用的迷幻藥合法化了
+- shot_id: 259
+  start: 1002.585
+  end: 1003.419
+  duration: 0.834
+  type: kol
+  note: Huberman Lab Clips 訪談片段：Tim Ferriss 穿橘色T恤坐在麥克風前受訪。畫面文字：「影片來源：Huberman Lab
+    Clips」「Tim Ferriss」（人名 overlay）。
+  cues:
+  - 667
+  text: Tim Ferriss
+- shot_id: 260
+  start: 1003.419
+  end: 1005.004
+  duration: 1.585
+  type: kol
+  note: Huberman Lab Clips 訪談片段：Andrew Huberman 黑衣坐在麥克風前比手勢說話。畫面文字：「影片來源：Huberman
+    Lab Clips」「Andrew Huberman 等意見領袖」（下方大字為台詞字幕樣式但含人名標註）。
+  cues:
+  - 668
+  text: Andrew Huberman 等意見領袖
+- shot_id: 261
+  start: 1005.004
+  end: 1006.505
+  duration: 1.501
+  type: kol
+  note: Tim Ferriss（光頭、橘T恤）在 podcast 訪談對麥克風說話。畫面文字：「影片來源：Huberman Lab Clips」
+  cues:
+  - 669
+  text: 也常在節目上分享
+- shot_id: 262
+  start: 1006.505
+  end: 1008.925
+  duration: 2.419
+  type: kol
+  note: Andrew Huberman（黑衫、落腮鬍）在 podcast 錄音室對麥克風說話。畫面文字：「影片來源：Huberman Lab Clips」
+  cues:
+  - 670
+  - 671
+  text: 有關 psychedelic最新的研究和療效
+- shot_id: 263
+  start: 1008.925
+  end: 1012.97
+  duration: 4.046
+  type: aroll
+  note: 主持人（白T恤、極短平頭）在暖色書架房間近景對鏡頭說話，無疊加物
+  cues:
+  - 672
+  - 673
+  - 674
+  text: 而 Steven也深深地為之著迷當他研究得正起勁的時候
+- shot_id: 264
+  start: 1012.97
+  end: 1014.639
+  duration: 1.668
+  type: kol
+  note: CNBC 新聞畫面：藥廠產線機器壓出成排白色藥片。畫面文字：「影片來源：CNBC International」＋右上角 CNBC logo
+  cues:
+  - 675
+  - 676
+  text: 有天收到朋友的訊息問他願不願意幫忙分享一間
+- shot_id: 265
+  start: 1014.639
+  end: 1017.391
+  duration: 2.753
+  type: kol
+  note: 'CNBC 新聞畫面：藥片鋁箔包裝堆上疊大字統計。畫面文字：「$20 BILLION BY 2030」「SOURCE: Allied Market
+    Research, Feb 2022」「影片來源：CNBC International」＋CNBC logo（新聞內建 bigstat 疊字）'
+  cues:
+  - 676
+  - 677
+  text: 問他願不願意幫忙分享一間迷幻藥公司 IPO 的新聞
+- shot_id: 266
+  start: 1017.391
+  end: 1018.267
+  duration: 0.876
+  type: kol
+  note: 'CNBC 新聞畫面：無塵室人員倒藥片入產線，同樣疊大字。畫面文字：「$20 BILLION BY 2030」「SOURCE: Allied Market
+    Research, Feb 2022」「影片來源：CNBC International」＋CNBC logo'
+  cues:
+  - 677
+  text: 迷幻藥公司 IPO 的新聞
+- shot_id: 267
+  start: 1018.267
+  end: 1022.98
+  duration: 4.713
+  type: aroll
+  note: 主持人在書架房間對鏡頭說話（此鏡頭T恤上見 TSUBASA 字樣），無其他疊加物
+  cues:
+  - 678
+  - 679
+  - 680
+  text: 結果他後來跟這間公司一拍即合決定加入他們幫他們做行銷
+- shot_id: 268
+  start: 1022.98
+  end: 1024.44
+  duration: 1.46
+  type: kol
+  note: Vox 影片動畫片段：Placebo vs LSD 兩張腦部掃描比較圖；a 幀有白色雲狀轉場遮罩、b 幀滿版圖。畫面文字：「Placebo」「LSD」「影片來源：Vox」
+  cues:
+  - 681
+  text: 他對迷幻藥的知識
+- shot_id: 269
+  start: 1024.44
+  end: 1025.775
+  duration: 1.335
+  type: kol
+  note: 'Behind the Diary 片段：podcast 排行榜截圖，紅圈圈出 The Diary of a CEO E101 集，上方動態數字增長（a
+    幀 371,372 Views／7,547／4，b 幀 623,565 Views／12,543／6）。畫面文字：「影片來源：Behind the Diary」「The
+    Diary Of A CEO with... Steven Bartlett」「Off Menu with Ed Gamble...」「Top Shared
+    Episodes of 2022」「See All」「11 OCT 2021」「E101: The Happiness Expert That Made 51
+    Million People Happier: M...」「1 hr 54 min left」'
+  cues:
+  - 682
+  text: 以及行銷技能
+- shot_id: 270
+  start: 1025.775
+  end: 1030.947
+  duration: 5.172
+  type: kol
+  note: The Diary of a CEO 訪談片段：黑T恤男子（Steven Bartlett）對麥克風說話並揮手。畫面文字：「影片來源：The Diary
+    of a CEO Clips」
+  cues:
+  - 683
+  - 684
+  - 685
+  text: 正好可以幫這間公司在市場上獲得更高的估值多募個幾億美金
+- shot_id: 271
+  start: 1030.947
+  end: 1039.038
+  duration: 8.091
+  type: aroll
+  note: 主持人（白T恤，TSUBASA 字樣）在書架房間對鏡頭說話，無疊加物
+  cues:
+  - 686
+  - 687
+  - 688
+  - 689
+  - 690
+  text: 於是這間公司除了付給他薪水以外還給他一個潛在價值高達八百萬的選擇權是他預期的十倍以上
+- shot_id: 272
+  start: 1039.038
+  end: 1042.583
+  duration: 3.545
+  type: aroll
+  note: 主持人在書架房間近景對鏡頭說話，無疊加物
+  cues:
+  - 691
+  - 692
+  text: 跟之前在消費品領域的報酬簡直天差地遠
+- shot_id: 273
+  start: 1042.583
+  end: 1048.881
+  duration: 6.298
+  type: screen_recording
+  note: 'Google Finance 頁面錄影：ATAI Life Sciences NV 股價圖，游標沿曲線移動（三幀 tooltip 分別 19.45
+    USD 18 Jun 2021／5.53 USD 25 Feb 2022／1.12 USD 1 Dec 2023）。畫面文字：「ATAI Life Sciences
+    NV」「NASDAQ: ATAI」「1.33 USD」「-18.12 (-93.16%) all time」「Closed: Jun 21, 12:30 AM
+    EDT · Disclaimer」「Market Summary」「Explore more」「Cybin Inc」「Compass Pathways PLC」「Mind
+    Medicine (MindMed) Inc」「Nasdaq Inc」「Headquarters: Germany」「Number of employees:
+    83 (2023)」「Mkt cap 222.65M」等'
+  cues:
+  - 693
+  - 694
+  - 695
+  - 696
+  text: 咦結果這家公司2021 年 IPO 之後到現在股價跌了 93%不知道他拿到的選擇權綁多久
+- shot_id: 274
+  start: 1048.881
+  end: 1049.799
+  duration: 0.918
+  type: aroll
+  note: 主持人（白T、極短平頭）在暖色書架房間對鏡頭說話。
+  cues:
+  - 697
+  text: 所以他強調
+- shot_id: 275
+  start: 1049.799
+  end: 1058.891
+  duration: 9.092
+  type: kol
+  note: Dragons' Den 式節目片段（黑衣男子入座、投資人在旁），畫面中央大字引言逐幀累加：a 幀「你擁有的技能值不值錢，」；b 幀切到男子特寫、引言四行「你擁有的技能值不值錢，／要看你用在哪個產業上；／能不能用在某個產業，／要看「知識」那個桶子有沒有裝滿。」；c
+    幀切到舞台演講畫面（螢幕上三個桶子 KNOWLEDGE／NETWORK／REPUTATION），引言同四行。左上角來源標「影片來源：Behind the Diary」。
+  cues:
+  - 698
+  - 699
+  - 700
+  - 701
+  - 702
+  - 703
+  text: 你擁有的技能值不值錢要看你用在哪個產業上能不能用在某些產業又要回頭看看你對這個產業的「知識」那個桶子有沒有裝滿
+- shot_id: 276
+  start: 1058.891
+  end: 1063.062
+  duration: 4.171
+  type: aroll
+  note: 主持人在書架房間對鏡頭說話（側臉轉正面），無疊加文字。
+  cues:
+  - 704
+  - 705
+  - 706
+  text: 這個法則我太有感覺了以之前腳踏車旅行那個創業題目來說
+- shot_id: 277
+  start: 1063.062
+  end: 1064.272
+  duration: 1.21
+  type: stock
+  note: 主持人自有頻道舊 vlog 片段：室內民宿/咖啡館內三名男子交談微笑，畫面加黑色格紋邊框。左上角文字「影片來源：張修修 Shosho Chang」。
+  cues:
+  - 707
+  - 708
+  text: 我的知識就是對這個行業的
+- shot_id: 278
+  start: 1064.272
+  end: 1065.94
+  duration: 1.668
+  type: stock
+  note: 自有舊片段：酒吧內一群年輕人舉啤酒歡聚，黑色格紋邊框。左上角文字「影片來源：張修修 Shosho Chang」。
+  cues:
+  - 708
+  - 709
+  text: 就是對這個行業的business model
+- shot_id: 279
+  start: 1065.94
+  end: 1067.733
+  duration: 1.793
+  type: stock
+  note: 自有舊片段：老屋餐廳內主持人（橘色 Arc'teryx 外套）與外國男子交談，黑色格紋邊框。左上角文字「影片來源：張修修 Shosho Chang」。
+  cues:
+  - 710
+  text: 國外車友的喜好和需求
+- shot_id: 280
+  start: 1067.733
+  end: 1068.651
+  duration: 0.918
+  type: stock
+  note: 自有舊片段：空拍山路疊活動海報畫面，黑色格紋邊框。文字「2019 ROMANTIC ROUTE 3 浪漫台三線藝術季」「10.19-12.15｜台北
+    桃園 新竹 苗栗 台中」「影片來源：張修修 Shosho Chang」，及左上角直書「慢點 愛！我 然後 愛我很久」。
+  cues:
+  - 711
+  text: 整個產業的 key player
+- shot_id: 281
+  start: 1068.651
+  end: 1071.821
+  duration: 3.17
+  type: stock
+  note: 自有舊片段：浪漫台三線路線地圖動畫（粉紅路線在 a→b 幀間逐漸畫出），黑色格紋邊框。文字「浪漫台三線藝術季 ROMANTIC ROUTE 3 2019
+    10.19-12.15」、地名「台北 桃園 龍潭 關西 竹東 峨眉 北埔 橫山 獅潭 大湖 東勢 台中」、「橫跨5個縣市、10個鄉鎮市，共150公里 為期58天，50件藝術作品，100場文化探索體驗！」「影片來源：張修修
+    Shosho Chang」。
+  cues:
+  - 711
+  - 712
+  - 713
+  text: 整個產業的 key player以及台灣有潛力的路線的了解這些
+- shot_id: 282
+  start: 1071.821
+  end: 1073.864
+  duration: 2.044
+  type: stock
+  note: 自有舊片段：竹編藝術隧道裝置，a 幀第一人稱穿越、b 幀主持人自拍入鏡，黑色格紋邊框。左上角文字「影片來源：張修修 Shosho Chang」。
+  cues:
+  - 714
+  - 715
+  text: 而我的技能就是拍片寫文章 經營自媒體
+- shot_id: 283
+  start: 1073.864
+  end: 1074.907
+  duration: 1.043
+  type: stock
+  note: 自有舊片段：主持人戴安全帽騎行自拍、指向石橋，黑色格紋邊框。左上角文字「影片來源：張修修 Shosho Chang」。
+  cues:
+  - 715
+  text: 寫文章 經營自媒體
+- shot_id: 284
+  start: 1074.907
+  end: 1079.579
+  duration: 4.671
+  type: aroll
+  note: 主持人（白T印 TSUBASA）在書架房間對鏡頭說話，無疊加文字。
+  cues:
+  - 716
+  - 717
+  - 718
+  text: 當時我曾經向一個公司提案想要用影片幫他們宣傳相關的產品
+- shot_id: 285
+  start: 1079.579
+  end: 1080.997
+  duration: 1.418
+  type: aroll
+  note: 主持人在書架房間對鏡頭說話，畫面上下加黑邊（letterbox 構圖），T恤印字 TSUBASA。
+  cues:
+  - 719
+  text: 結果對方興趣缺缺
+- shot_id: 286
+  start: 1080.997
+  end: 1085.918
+  duration: 4.922
+  type: stock
+  note: 健身房圖庫實拍：多名歐美男子在跑步機上跑步特寫，無畫面文字。
+  cues:
+  - 720
+  - 721
+  - 722
+  text: 而這幾年我在身心健康預防醫學這些領域獲得了滿滿的知識
+- shot_id: 287
+  start: 1085.918
+  end: 1089.63
+  duration: 3.712
+  type: stock
+  note: 開放式辦公室內男子穿粉色襯衫坐在桌前打鍵盤、後靠椅背微笑，背景有女子坐沙發（歐美 stock 人物，非主持人）。畫面無台詞以外文字。
+  cues:
+  - 723
+  - 724
+  text: 再加上做出成績之後我的技能忽然就變得很值錢了
+- shot_id: 288
+  start: 1089.63
+  end: 1092.174
+  duration: 2.544
+  type: stock
+  note: 西裝男子背影走向商場/辦公大樓的黑色手扶梯，玻璃帷幕採光。畫面無台詞以外文字。
+  cues:
+  - 725
+  - 726
+  text: 我去年曾經對一個這個產業的公司提案
+- shot_id: 289
+  start: 1092.174
+  end: 1094.26
+  duration: 2.085
+  type: stock
+  note: 年輕商務男子（襯衫西裝外套）在明亮玻璃帷幕建築內側臉轉向鏡頭微笑特寫。畫面無台詞以外文字。
+  cues:
+  - 727
+  - 728
+  text: 擔任他們 YouTube頻道經營的顧問
+- shot_id: 290
+  start: 1094.26
+  end: 1097.013
+  duration: 2.753
+  type: aroll
+  note: 主持人（極短平頭、白T恤 TSUBASA 字樣）在暖色書架房間對鏡頭說話，中景。畫面無台詞以外文字。
+  cues:
+  - 729
+  - 730
+  text: 我當時開出時薪一萬二的高價
+- shot_id: 291
+  start: 1097.013
+  end: 1098.306
+  duration: 1.293
+  type: aroll
+  note: 主持人特寫對鏡頭說話，暖色書架背景。畫面無台詞以外文字。
+  cues:
+  - 731
+  text: 對方也接受了
+- shot_id: 292
+  start: 1098.306
+  end: 1110.443
+  duration: 12.137
+  type: aroll
+  note: 主持人中景到近景對鏡頭說話（同書房場景），三幀皆無疊加物。畫面無台詞以外文字。
+  cues:
+  - 732
+  - 733
+  - 734
+  - 735
+  - 736
+  - 737
+  - 738
+  - 739
+  text: 雖然後來因為我自己的時間因素沒有接下來但這讓我深深地體會到了選對戰場的重要性法則七：事前驗屍法這個法則跟查理蒙格爺爺提倡的邏輯很像
+- shot_id: 293
+  start: 1110.443
+  end: 1116.574
+  duration: 6.131
+  type: kol
+  note: CNBC 訪談片段：查理蒙格（西裝紅領帶、眼鏡）坐著受訪，黑色格紋框內嵌畫面。左上來源標「影片來源：CNBC Television」、右下「CNBC」台標；a
+    幀無中文 overlay，b 幀起中文引言字卡滑入，c 幀完整顯示「在投入一件重大計劃的時候，一定要給自己一個靈魂拷問：「這個主意為什麼會失敗？」」（b 幀為進場中殘影「:投入一件重大計劃的」）。
+  cues:
+  - 740
+  - 741
+  - 742
+  - 743
+  text: 就是在投入一件重大計劃的時候一定要給自己一個靈魂拷問：「這個主意為什麼會失敗？」
+- shot_id: 294
+  start: 1116.574
+  end: 1119.41
+  duration: 2.836
+  type: aroll
+  note: 主持人對鏡頭說話，右側疊入《超級專案管理》影片縮圖 inset（含書封與兩人臉），縮圖文字「BIG THINGS GET DONE 超級專案管理」「PM,
+    老闆, 政治人物必看」；a 幀縮圖滑入中、b 幀定位完成。
+  cues:
+  - 744
+  - 745
+  text: 在講《超級專案管理》這本書的時候就有提過
+- shot_id: 295
+  start: 1119.41
+  end: 1131.005
+  duration: 11.595
+  type: kol
+  note: 引用他人動畫解說影片（黑白手繪動畫：坐辦公桌與站立的西裝卡通人物），左上標「影片來源：From the Experts' Mouth」。畫面文字：a
+    幀「THE OPTIMISM BIAS」＋笑臉圖形；b 幀「I don't care! I am different, and it will happen
+    for me.」＋中文字卡「我們人類有一種「樂觀偏誤」，當自己一心一意要去做某件事情的時候，就會傾向高估這件事情的前景，」；c 幀「That will never
+    happen」＋「我們也會低估風險，甚至聽不進去所有否定這個計畫的聲音。」中文字卡逐幀切換。
+  cues:
+  - 746
+  - 747
+  - 748
+  - 749
+  - 750
+  - 751
+  - 752
+  text: 我們人類有一種「樂觀偏誤」當自己一心一意想要去做某件事情的時候就會傾向高估這件事情的前景並且低估風險甚至聽不進所有否定這個計畫的聲音
+- shot_id: 296
+  start: 1131.005
+  end: 1132.631
+  duration: 1.627
+  type: aroll
+  note: 主持人對鏡頭說話，左側疊入 Steven Bartlett 黑衣肖像照的視窗框 inset（a 幀滑入中、b 幀定位完成）。inset 內無文字。
+  cues:
+  - 753
+  text: Steven 舉了自己的例子
+- shot_id: 297
+  start: 1132.631
+  end: 1135.551
+  duration: 2.92
+  type: kol
+  note: The Diary of a CEO podcast 片段：圓桌兩側各坐一人（花襯衫短褲男與黑衣主持 Steven）對談，黑色格紋框內嵌。左上標「影片來源：The
+    Diary of a CEO Clips」。
+  cues:
+  - 754
+  - 755
+  text: 他在 The Dairy of a CEO大獲成功之後
+- shot_id: 298
+  start: 1135.551
+  end: 1141.515
+  duration: 5.964
+  type: kol
+  note: 'Behind the Diary 幕後影片片段：a 幀黑底白描字「2019」年份卡、b 幀 Steven 對麥克風說話並有原片英文字幕「Steven:
+    So, I think we''re at the phase in this」。左上標「影片來源：Behind the Diary」。同鏡頭由年份卡切到實拍。'
+  cues:
+  - 756
+  - 757
+  - 758
+  - 759
+  text: 在 2021 年忽然有個大膽的想法他想要做一個 Podcast製作和行銷公司
+- shot_id: 299
+  start: 1141.515
+  end: 1144.31
+  duration: 2.794
+  type: aroll
+  note: 主持人（白T恤 TSUBASA 字樣）在書架房間對鏡頭說話，近景，無疊加物。畫面無台詞以外文字。
+  cues:
+  - 760
+  - 761
+  text: 他要找各個領域最強的主持人來開節目
+- shot_id: 300
+  start: 1144.31
+  end: 1144.643
+  duration: 0.334
+  type: kol
+  note: 他人影片片段（來源標示「影片來源：Behind the Diary」）：黑白畫面中年輕男攝影師持雲台相機，背景疊皺紙拼貼與手寫風文字動畫。畫面文字：「影片來源：Behind
+    the Diary」「WI」（人名字樣正在打入中）。
+  cues:
+  - 762
+  text: 然後用他現有的製作
+- shot_id: 301
+  start: 1144.643
+  end: 1145.436
+  duration: 0.792
+  type: kol
+  note: 承上鏡頭同素材：黑白攝影師人像剪影疊在皺紙背景上，人名與節目名文字已完整出現。畫面文字：「影片來源：Behind the Diary」「WILL」「DOAC」。
+  cues:
+  - 762
+  text: 然後用他現有的製作
+- shot_id: 302
+  start: 1145.436
+  end: 1145.811
+  duration: 0.375
+  type: kol
+  note: 同一 Behind the Diary 片段轉為彩色實拍：男攝影師在攝影棚內手持雲台相機、背後有棚燈，無皺紙圖形。畫面文字：「影片來源：Behind
+    the Diary」。
+  cues:
+  - 762
+  text: 然後用他現有的製作
+- shot_id: 303
+  start: 1145.811
+  end: 1147.438
+  duration: 1.627
+  type: kol
+  note: Behind the Diary 片段：黑白女子受訪畫面疊皺紙拼貼與手寫風職稱介紹。畫面文字：「影片來源：Behind the Diary」「JEMIMA」「DOAC」「HEAD
+    OF PODCAST BOOKING」。
+  cues:
+  - 763
+  text: 和行銷團隊來經營
+- shot_id: 304
+  start: 1147.438
+  end: 1153.569
+  duration: 6.131
+  type: aroll
+  note: 主持人（白T恤、平頭）在暖色書架房間對鏡頭說話。畫面文字（衣服上印字）：「TSUBASA」。
+  cues:
+  - 764
+  - 765
+  - 766
+  - 767
+  text: 因為他在那年光業配就可以賺一百二十萬美金他覺得複製這樣的成功可能是個好生意
+- shot_id: 305
+  start: 1153.569
+  end: 1156.03
+  duration: 2.461
+  type: kol
+  note: Behind the Diary 片段：會議室內 Steven Bartlett（黑衣）與團隊成員在白板前低頭看手機開會。畫面文字：「影片來源：Behind
+    the Diary」。
+  cues:
+  - 768
+  - 769
+  text: 於是他成立一個五人小組就開幹了
+- shot_id: 306
+  start: 1156.03
+  end: 1158.532
+  duration: 2.503
+  type: kol
+  note: Behind the Diary 片段：Steven Bartlett 夜間在車內用平板、手持觸控筆講話。畫面文字：「影片來源：Behind the
+    Diary」。
+  cues:
+  - 770
+  - 771
+  text: 籌備的過程中花了幾十萬美金
+- shot_id: 307
+  start: 1158.532
+  end: 1161.41
+  duration: 2.878
+  type: kol
+  note: Behind the Diary 片段：Steven Bartlett 與三位團隊成員圍會議桌看筆電開會。畫面文字：「影片來源：Behind the
+    Diary」。
+  cues:
+  - 772
+  - 773
+  text: 還有團隊和成員無數的時間和精力
+- shot_id: 308
+  start: 1161.41
+  end: 1164.705
+  duration: 3.295
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，中景。畫面文字（衣服印字）：「TSUBASA」。
+  cues:
+  - 774
+  - 775
+  text: 六個月後他還打電話給一位跨國媒體的負責人
+- shot_id: 309
+  start: 1164.705
+  end: 1167.583
+  duration: 2.878
+  type: aroll
+  note: 主持人特寫對鏡頭說話，左側疊入瀏覽器視窗框樣式的 inset 動圖（The Office 的 Michael Scott 講電話）。a 幀 inset
+    較小剛滑入、b 幀已放大定位，有滑入動態。inset 內無可讀文字。
+  cues:
+  - 776
+  - 777
+  text: 問對方願不願意擔任這個公司的 CEO
+- shot_id: 310
+  start: 1167.583
+  end: 1172.088
+  duration: 4.505
+  type: aroll
+  note: 主持人在暖色書架房間對鏡頭說話，無疊加物。畫面文字（衣服印字）：「TSUBASA」。
+  cues:
+  - 778
+  - 779
+  - 780
+  - 781
+  text: 對方也很有興趣說只要時間到了給我個電話我就會辭職加入
+- shot_id: 311
+  start: 1172.088
+  end: 1174.215
+  duration: 2.127
+  type: aroll
+  note: 主持人特寫對鏡頭說話，右側疊入瀏覽器視窗框樣式的 inset 照片（Steven Bartlett 黑衣肖像照）；a 幀 inset 較小、b 幀放大定位，有滑入動態。inset
+    內無文字。
+  cues:
+  - 782
+  - 783
+  text: 這給 Steven Bartlett極大的信心
+- shot_id: 312
+  start: 1174.215
+  end: 1177.259
+  duration: 3.045
+  type: kol
+  note: Behind the Diary 片段：Steven Bartlett 與三位團隊成員圍黑色會議桌開會、桌上有筆電與飲料罐。畫面文字：「影片來源：Behind
+    the Diary」。
+  cues:
+  - 784
+  - 785
+  text: 於是他又如火如荼地繼續搞了半年
+- shot_id: 313
+  start: 1177.259
+  end: 1180.429
+  duration: 3.17
+  type: kol
+  note: Behind the Diary 幕後片段：Steven Bartlett（黑衣）在會議室看大螢幕簡報（含成長長條圖與 Metaverse/Software/AI/Advertising
+    卡片）講話。左上角來源字樣「影片來源：Behind the Diary」；桌上立牌「AV troubles?」；螢幕細字模糊不可辨。
+  cues:
+  - 786
+  - 787
+  text: 最後終於到了要不要真正啟動的時刻了
+- shot_id: 314
+  start: 1180.429
+  end: 1183.516
+  duration: 3.086
+  type: aroll
+  note: 主持人白T在暖色書架房間對鏡頭說話。T恤字樣「TSUBASA」。
+  cues:
+  - 788
+  - 789
+  text: 於是他這十幾年的商業智慧開始發揮作用
+- shot_id: 315
+  start: 1183.516
+  end: 1187.645
+  duration: 4.129
+  type: kol
+  note: Behind the Diary 幕後片段：Steven Bartlett 坐藍色沙發受訪講話。左上角「影片來源：Behind the Diary」。
+  cues:
+  - 790
+  - 791
+  - 792
+  text: 他召集了整個團隊問大家一個之前從來沒有想過的問題：
+- shot_id: 316
+  start: 1187.645
+  end: 1190.523
+  duration: 2.878
+  type: kol
+  note: Behind the Diary 幕後片段：Steven Bartlett 靠在沙發上比手勢說話；b 幀畫面中央滑入大字引言 overlay「為什麼這件事情
+    可能是個壞主意？」（a 幀無）。左上角「影片來源：Behind the Diary」。
+  cues:
+  - 793
+  - 794
+  text: 「為什麼這件事情可能是個壞主意？」
+- shot_id: 317
+  start: 1190.523
+  end: 1196.696
+  duration: 6.173
+  type: aroll
+  note: 主持人白T對鏡頭說話，b/c 幀鏡頭略推近並有手勢。T恤字樣「TSUBASA」。
+  cues:
+  - 795
+  - 796
+  - 797
+  - 798
+  text: 他的團隊一開始有點愣住因為每個人都開始準備要大幹一場了根本沒有人想到這個問題啊！
+- shot_id: 318
+  start: 1196.696
+  end: 1199.907
+  duration: 3.212
+  type: kol
+  note: Behind the Diary 幕後片段：休息室內多人（女工作人員、戴帽男、Steven 在沙發）交談。左上角「影片來源：Behind the Diary」；工作證上「AAA」。
+  cues:
+  - 799
+  - 800
+  text: 經過了一下子漸漸有人開始拋出疑慮了
+- shot_id: 319
+  start: 1199.907
+  end: 1206.33
+  duration: 6.423
+  type: kol
+  note: Behind the Diary 幕後片段：長髮連帽衫男子坐椅上對沙發上的 Steven 講話（提出疑慮的團隊成員）。左上角「影片來源：Behind
+    the Diary」。
+  cues:
+  - 801
+  - 802
+  - 803
+  - 804
+  text: 像是「目前的人力有限如果資源太分散反而會危及現在成功的 Podcast 業務」
+- shot_id: 320
+  start: 1206.33
+  end: 1210.501
+  duration: 4.171
+  type: kol
+  note: Behind the Diary 幕後片段：休息室內女工作人員與其他團隊成員聽談話，鏡頭晃動。左上角「影片來源：Behind the Diary」；a
+    幀較廣、b 幀近拍女子側臉，胸前布章文字部分可見（似 DOAC）。
+  cues:
+  - 805
+  - 806
+  - 807
+  - 808
+  text: 還有「知名主持人不一定可靠如果他們跑了不就什麼都沒了」
+- shot_id: 321
+  start: 1210.501
+  end: 1216.424
+  duration: 5.923
+  type: aroll
+  note: 主持人白T對鏡頭說話。T恤字樣「TSUBASA」。
+  cues:
+  - 809
+  - 810
+  - 811
+  - 812
+  text: 也有人說「之前的成功其實很難複製因為裡面含有很多運氣和環境的因素」
+- shot_id: 322
+  start: 1216.424
+  end: 1220.553
+  duration: 4.129
+  type: kol
+  note: Behind the Diary 幕後片段：Steven Bartlett 坐沙發雙手前伸做「停下」手勢說話。左上角「影片來源：Behind the
+    Diary」。
+  cues:
+  - 813
+  - 814
+  text: 後來 Steven 自己也說這個計畫會讓他失去專注力
+- shot_id: 323
+  start: 1220.553
+  end: 1225.224
+  duration: 4.671
+  type: kol
+  note: Behind the Diary 幕後片段：a 幀紅衣女子舉起裱框書封「STEVEN BARTLETT / THE DIARY OF A CEO /
+    THE 33 LAWS OF BUSINESS & LIFE」＋「bestsellers」剪報；b 幀 Steven 戴帽抱胸在辦公室看著該裱框。左上角「影片來源：Behind
+    the Diary」。含大面積書封但屬幕後實拍片段，故歸 kol。
+  cues:
+  - 815
+  - 816
+  text: 他需要專心把目前的節目在各種小細節做到最好
+- shot_id: 324
+  start: 1225.224
+  end: 1229.145
+  duration: 3.921
+  type: kol
+  note: Behind the Diary 幕後片段：YouTube 播放頁畫面中 Steven Bartlett 對麥克風講話，影片標題「Behind The
+    Scenes On The RECORD BREAKING Dragons Den Pitch!!」、上方 YouTube 搜尋列「Search」。左上角「影片來源：Behind
+    the Diary」。
+  cues:
+  - 817
+  - 818
+  - 819
+  text: 這才有機會實現任何製作公司都無法實現的複利成長
+- shot_id: 325
+  start: 1229.145
+  end: 1236.318
+  duration: 7.174
+  type: aroll
+  note: 主持人白T對鏡頭說話，表情隨敘事變化。T恤字樣「TSUBASA」。
+  cues:
+  - 820
+  - 821
+  - 822
+  - 823
+  text: 於是才幾分鐘之後他們就決定中止這個已經籌劃一年的案子了後來證明他的決定是對的
+- shot_id: 326
+  start: 1236.318
+  end: 1236.944
+  duration: 0.626
+  type: kol
+  note: Steven Bartlett 在 podcast 攝影棚對鏡頭說話（黑T、麥克風、展示架背景）。左上角文字：「影片來源：The Diary of
+    a CEO」。
+  cues:
+  - 824
+  text: 因為隔年他們節目的觀眾
+- shot_id: 327
+  start: 1236.944
+  end: 1239.363
+  duration: 2.419
+  type: kol
+  note: 舞台表演片段：一群黑衣歌手在紅藍燈光舞台上合唱，b 幀切到聚光燈下獨唱者。左上角文字：「影片來源：The Diary of a CEO」。
+  cues:
+  - 824
+  - 825
+  text: 因為隔年他們節目的觀眾成長了 9 倍
+- shot_id: 328
+  start: 1239.363
+  end: 1243.075
+  duration: 3.712
+  type: kol
+  note: Steven Bartlett 在攝影棚對鏡頭說話比手勢（黑T、麥克風、書架背景）。左上角文字：「影片來源：The Diary of a CEO」。
+  cues:
+  - 826
+  - 827
+  text: 而收入增加了 3 倍以上達到四百萬美金
+- shot_id: 329
+  start: 1243.075
+  end: 1246.537
+  duration: 3.462
+  type: aroll
+  note: 主持人（白T、平頭、書房）對鏡頭說話，左側疊入書封圖卡由下滑入（a 幀只見上半、b 幀完整）。書封文字：「STEVEN BARTLETT / THE
+    DIARY OF A CEO / THE 33 LAWS OF BUSINESS & LIFE」。type 仍 aroll，書封為小型 inset 疊加。
+  cues:
+  - 828
+  - 829
+  text: 這個故事應該是整本書裡面最令我印象深刻的
+- shot_id: 330
+  start: 1246.537
+  end: 1252.126
+  duration: 5.589
+  type: diagram
+  note: Kahneman《快思慢想》手繪風概念圖，System 1 vs System 2 對比，b 幀在 System 2 區塊出現紅框高亮。左上角文字：「影片來源：Luscid」；圖內文字：「System
+    1 automatic / associative memory / no idea / auto-pilot / stranger / jumping to
+    conclusions / What You See Is All There Is / System 2 effortful / deliberate &
+    logical / preserve energy! / THINKING, FAST AND SLOW / DANIEL KAHNEMAN」。
+  cues:
+  - 830
+  - 831
+  - 832
+  - 833
+  text: 又再一次地提醒個性比較衝動的我使用系統二來做決定的重要性
+- shot_id: 331
+  start: 1252.126
+  end: 1258.257
+  duration: 6.131
+  type: aroll
+  note: 主持人（白T、平頭、暖色書房）對鏡頭說話，c 幀舉手比手勢。T 恤上文字：「TSUBASA」。
+  cues:
+  - 834
+  - 835
+  - 836
+  text: 我也要時時提醒自己不要被先前投入的資源所困住該壯士斷腕的時候
+- shot_id: 332
+  start: 1258.257
+  end: 1263.846
+  duration: 5.589
+  type: aroll
+  note: a 幀為主持人對鏡頭說話比手指；b 幀已切為橘底章節卡（白色心臟 icon＋大字「法則八：顧好你的第一基礎」）——同一鏡頭內從 aroll 轉入 title_card，以起始幀主體判
+    aroll，註明結尾轉場為章節卡。
+  cues:
+  - 837
+  - 838
+  - 839
+  - 840
+  text: 就是要果決法則八：顧好你的第一基礎什麼是你的first foundation 呢？
+- shot_id: 333
+  start: 1263.846
+  end: 1267.224
+  duration: 3.378
+  type: aroll
+  note: 主持人對鏡頭說話，左側疊入巴菲特西裝坐姿照片的視窗式圖卡（a 幀滑入中僅半張、b 幀完整）。type 仍 aroll，照片為 inset 疊加，無其他畫面文字。
+  cues:
+  - 841
+  - 842
+  text: 巴菲特有一次在奧瑪哈的一群大學生面前
+- shot_id: 334
+  start: 1267.224
+  end: 1269.56
+  duration: 2.336
+  type: aroll
+  note: 主持人（白T、平頭、書房）對鏡頭說話，無疊加物。T 恤上文字：「TSUBASA」。
+  cues:
+  - 843
+  text: 給出他最重要的人生建議
+- shot_id: 335
+  start: 1269.56
+  end: 1277.276
+  duration: 7.716
+  type: photo_still
+  note: 巴菲特 16 歲年代的黑白肖像老照片；b/c 幀加上拼貼動畫元素（女子髮型剪影、卡通眼睛貼在臉上、橘色老爺車 Fiat 500 剪貼）。左上角文字：「影片來源：Ali
+    Abdaal」。
+  cues:
+  - 844
+  - 845
+  - 846
+  - 847
+  - 848
+  text: 他說他 16 歲的時候滿腦子只有妹仔和車子他對把妹不太行所以心思都放在車上巴菲特繼續說：
+- shot_id: 336
+  start: 1277.276
+  end: 1278.652
+  duration: 1.376
+  type: motion_graphic
+  note: 插畫動畫：小男孩面對神燈，b 幀藍色精靈從煙霧中現身。左上角文字：「影片來源：Ali Abdaal」。
+  cues:
+  - 848
+  - 849
+  text: 巴菲特繼續說：「假設我 16 歲的時候
+- shot_id: 337
+  start: 1278.652
+  end: 1285.784
+  duration: 7.132
+  type: motion_graphic
+  note: 拼貼動畫：藍色精靈（真人拼貼上翹鬍與髮髻）旁逐行浮現引言文字（a 幀兩行、b/c 幀四行）。畫面文字：「I'm going to give you
+    the car of your choice! It'll be here tomorrow morning with a big bow tied on
+    it.」；左上角文字：「影片來源：Ali Abdaal」。
+  cues:
+  - 849
+  - 850
+  - 851
+  - 852
+  - 853
+  - 854
+  text: 「假設我 16 歲的時候有個精靈出現精靈說：我會送你一部全新的車子隔天早上就會繫上大蝴蝶結送到你家」
+- shot_id: 338
+  start: 1285.784
+  end: 1288.287
+  duration: 2.503
+  type: aroll
+  note: 主持人（白T、平頭、暖色書房）對鏡頭說話，無疊加物。T 恤上文字：「TSUBASA」。
+  cues:
+  - 855
+  - 856
+  text: 聽了這麼多精靈的故事我就會問他：
+- shot_id: 339
+  start: 1288.287
+  end: 1290.915
+  duration: 2.628
+  type: kol
+  note: Ali Abdaal 影片片段（左上標「影片來源：Ali Abdaal」，黑格紋框內嵌）：男孩仰望阿拉丁神燈與神燈精靈的插畫式畫面；a 幀為快速運鏡的模糊過場，b
+    幀清晰。畫面文字：影片來源：Ali Abdaal（a 幀背景牆上有模糊英文手寫字，不可辨）
+  cues:
+  - 857
+  - 858
+  text: 「哪有那麼好的事情？其中一定有詐」
+- shot_id: 340
+  start: 1290.915
+  end: 1293.584
+  duration: 2.669
+  type: aroll
+  note: 主持人（白T、暖色書架房間）對鏡頭說話，b 幀張口驚呼表情。畫面文字：TSUBASA（T恤印字）、背景掛軸「環遊」書法字
+  cues:
+  - 859
+  - 860
+  - 861
+  text: 精靈說：「啊哈！你真聰明
+- shot_id: 341
+  start: 1293.584
+  end: 1300.049
+  duration: 6.465
+  type: kol
+  note: Ali Abdaal 片段：藍色神燈精靈（真人扮）抱胸站立，左側手寫體英文字逐字打出；a 幀為模糊運鏡過場，b→c 文字持續增加。畫面文字：影片來源：Ali
+    Abdaal／There's only one catch. This is the last car you'll ever get in your life.
+    So, it's got to last a l（c 幀，打字動畫未完）
+  cues:
+  - 862
+  - 863
+  - 864
+  - 865
+  text: 因為從此之後你就只能開這台車沒有其它車可以換了所以你一定要好好愛惜它」
+- shot_id: 342
+  start: 1300.049
+  end: 1301.717
+  duration: 1.668
+  type: aroll
+  note: 主持人於暖色書架房間對鏡頭說話。畫面文字：TSUBASA（T恤印字）、背景「環遊」掛軸
+  cues:
+  - 866
+  text: 巴菲特繼續跟學生說：
+- shot_id: 343
+  start: 1301.717
+  end: 1305.179
+  duration: 3.462
+  type: kol
+  note: Ali Abdaal 片段：巴菲特坐在轎車駕駛座、手扶方向盤的舊照片（黑格紋框內嵌，鏡頭有推移）。畫面文字：影片來源：Ali Abdaal
+  cues:
+  - 867
+  - 868
+  text: 「如果這件事情真的發生了我一定會把使用手冊讀五遍
+- shot_id: 344
+  start: 1305.179
+  end: 1306.972
+  duration: 1.793
+  type: kol
+  note: Ali Abdaal 片段：巴菲特西裝領帶、笑著看手中白紙（訪談/朗讀畫面，黑背景）。畫面文字：影片來源：Ali Abdaal
+  cues:
+  - 868
+  - 869
+  text: 我一定會把使用手冊讀五遍絕對不會加劣質的汽油
+- shot_id: 345
+  start: 1306.972
+  end: 1308.891
+  duration: 1.919
+  type: kol
+  note: Ali Abdaal 片段：巴菲特坐在車內微笑手扶方向盤的照片；b 幀有金屬條狀轉場元素從上方滑入蓋住畫面上半部（轉場中）。畫面文字：影片來源：Ali
+    Abdaal
+  cues:
+  - 869
+  - 870
+  text: 絕對不會加劣質的汽油晚上會把車停在車庫裡
+- shot_id: 346
+  start: 1308.891
+  end: 1312.645
+  duration: 3.754
+  type: kol
+  note: Ali Abdaal 片段：巴菲特開車側面影像，車窗外綠樹。畫面文字：影片來源：Ali Abdaal
+  cues:
+  - 870
+  - 871
+  - 872
+  text: 晚上會把車停在車庫裡有一點刮痕或凹陷就會馬上修好
+- shot_id: 347
+  start: 1312.645
+  end: 1317.608
+  duration: 4.963
+  type: aroll
+  note: 主持人於暖色書架房間對鏡頭說話。畫面文字：TSUBASA（T恤印字）、背景「環遊」掛軸
+  cues:
+  - 873
+  - 874
+  - 875
+  text: 我一定會好好寶貝這輛車因為要是它壞了我這輩子就哪裡也去不了了
+- shot_id: 348
+  start: 1317.608
+  end: 1320.027
+  duration: 2.419
+  type: stock
+  note: 圖庫實拍：健身房內一男一女做側平板/伏地挺身變化式訓練，紅磚牆與沙袋背景。無台詞字幕以外文字
+  cues:
+  - 876
+  text: 你們的身心就是這輛車
+- shot_id: 349
+  start: 1320.027
+  end: 1324.865
+  duration: 4.838
+  type: stock
+  note: 圖庫實拍：低角度仰拍一群年輕男女舉瓶裝飲料圍圈乾杯，天空背景。無台詞字幕以外文字
+  cues:
+  - 877
+  - 878
+  text: 你們可以仗著自己很年輕任由身體和心靈隨波逐流
+- shot_id: 350
+  start: 1324.865
+  end: 1326.575
+  duration: 1.71
+  type: stock
+  note: 圖庫實拍：男子裹著毯子坐在沙發上手扶額頭、一臉病容，白色廚房背景。無台詞字幕以外文字
+  cues:
+  - 879
+  text: 但如果你不好好照顧它
+- shot_id: 351
+  start: 1326.575
+  end: 1330.329
+  duration: 3.754
+  type: stock
+  note: 圖庫實拍：白鬍老人躺在床上看手中的藥片排裝，床頭桌擺滿藥罐。無台詞字幕以外文字
+  cues:
+  - 880
+  - 881
+  - 882
+  text: 四十年後它就會和老車一樣問題越來越多
+- shot_id: 352
+  start: 1330.329
+  end: 1332.665
+  duration: 2.336
+  type: stock
+  note: 灰髮蓄鬍中年男子戴鼻氧管躺在病床上，冷色調醫院房間特寫。
+  cues:
+  - 883
+  - 884
+  text: 最後只能報廢送到廢鐵廠
+- shot_id: 353
+  start: 1332.665
+  end: 1337.67
+  duration: 5.005
+  type: aroll
+  note: 主持人白T恤在暖色書架房間對鏡頭說話，b 幀推近為較大特寫；背景有書法掛軸與檯燈。
+  cues:
+  - 885
+  - 886
+  - 887
+  text: 所以你現在的所作所為決定了你的身心在幾十年後如何運作
+- shot_id: 354
+  start: 1337.67
+  end: 1340.798
+  duration: 3.128
+  type: stock
+  note: 空拍/跟拍視角：一男一女在森林小徑上慢跑。
+  cues:
+  - 888
+  - 889
+  text: 你只有這台車所以好好照顧它吧！」
+- shot_id: 355
+  start: 1340.798
+  end: 1343.551
+  duration: 2.753
+  type: aroll
+  note: 主持人特寫說話，右側疊入 Steven Bartlett 黑衣肖像照的瀏覽器視窗式圖卡 inset；a 幀圖卡較小、b 幀放大滑入完成，多幀間 inset
+    尺寸不一致。
+  cues:
+  - 890
+  - 891
+  text: 這就是 Steven Bartlett 說的first foundation
+- shot_id: 356
+  start: 1343.551
+  end: 1350.432
+  duration: 6.882
+  type: kol
+  note: 他人影片片段（黑色格紋框內嵌）：Steven Bartlett 戴耳罩式耳機在健身房走動、操作重訓器材，b 幀為快速搖鏡糊幀；左上角來源標示文字「影片來源：Behind
+    the Diary」，a 幀另有小型手機畫面 inset。
+  cues:
+  - 892
+  - 893
+  - 894
+  - 895
+  text: 所以他即便這麼忙還是把睡眠 運動和健康飲食當成不可妥協的優先事項
+- shot_id: 357
+  start: 1350.432
+  end: 1351.308
+  duration: 0.876
+  type: aroll
+  note: 主持人白T恤（可見 TSUBASA 字樣）在書架房間對鏡頭說話特寫。
+  cues:
+  - 896
+  text: 所以記得
+- shot_id: 358
+  start: 1351.308
+  end: 1353.102
+  duration: 1.793
+  type: screen_recording
+  note: YouTube 頻道頁螢幕錄影，從頻道首頁往下捲動；畫面文字：「張修修的不正常人生 Shosho's Abnormal Life」「@shoshotw・18.5萬位訂閱者・109
+    部影片」「我是張修修，曾經是年薪數百萬的聯發科業務，辭掉工作後背著吉他騎上腳踏車環遊世界」「shosho.tw 和另外 4 個連結」「已訂閱」，tab「首頁
+    影片 Shorts Podcast 播放清單 社群」及多個影片標題（如「消除焦慮的科學方法」「科學減肥完結篇」「《高效原力》：6 年賺 3 億台幣的學霸 YouTuber」等）；a→b
+    幀頁面捲動位置不同。
+  cues:
+  - 897
+  text: 「不正常人類使用說明書」
+- shot_id: 359
+  start: 1353.102
+  end: 1353.561
+  duration: 0.459
+  type: screen_recording
+  note: 同一 YouTube 頻道頁錄影續捲，影片牆列表；畫面文字含影片標題如「Anything You Want：微型創業者必修的 8 堂課」「《挫折逆轉勝》」「LeBron
+    James 保持顛峰的秘密武器」「Hidden Potential：華頓商學院教授 Adam Grant 最新力作」「與英美同步！搭上最新的 Science
+    of Reading 風潮」「美人魚汶ỻ：台灣第一位泳渡直布羅陀海峽的女性」「減重全攻略三部曲之一」「新世界的財務自由公式」等。
+  cues:
+  - 897
+  - 898
+  text: 「不正常人類使用說明書」要看五遍喔！
+- shot_id: 360
+  start: 1353.561
+  end: 1353.978
+  duration: 0.417
+  type: screen_recording
+  note: 同一頻道影片牆錄影再往下捲；標題含「英語自學王教你用 AI 學英文」「用科學把英文學好？弄懂底層邏輯」「如何讓 2024 成為人生最棒的一年」「聖誕節一起來終結『孤單』」「阿諾史瓦辛格：從貧地利鄉下窮小子…7
+    個成功祕訣」「為什麼美國人都學不好英文？」「垃圾食物如何綁架青春期大腦」「運動補水終極攻略」等。
+  cues:
+  - 898
+  text: 要看五遍喔！
+- shot_id: 361
+  start: 1353.978
+  end: 1354.311
+  duration: 0.334
+  type: screen_recording
+  note: 與 shot 360 幾乎相同的頻道影片牆畫面（捲動停頓），兩幀近乎靜止；文字同上批影片標題。
+  cues:
+  - 898
+  text: 要看五遍喔！
+- shot_id: 362
+  start: 1354.311
+  end: 1355.062
+  duration: 0.751
+  type: aroll
+  note: 主持人（白T，TSUBASA 字樣）在暖色書架房間對鏡頭說話，畫面上下有黑邊 letterbox。
+  cues:
+  - 899
+  text: 巴菲特說的
+- shot_id: 363
+  start: 1355.062
+  end: 1356.855
+  duration: 1.793
+  type: aroll
+  note: 主持人說話，右側疊入《THE DIARY OF A CEO》書封圖卡（瀏覽器視窗框）滑入：a 幀僅見標題局部「THE DIARY OF A CEO」，b
+    幀完整顯示「STEVEN BARTLETT / THE DIARY OF A CEO / THE 33 LAWS OF BUSINESS & LIFE」；多幀間圖卡由小滑入至完整。
+  cues:
+  - 900
+  text: 以上就是這本書的分享
+- shot_id: 364
+  start: 1356.855
+  end: 1359.775
+  duration: 2.92
+  type: aroll
+  note: 主持人對鏡頭說話；a 幀右側可見書封圖卡縮小滑出中（僅殘留局部字樣），b 幀圖卡已完全消失，多幀不一致為 overlay 滑出。
+  cues:
+  - 901
+  - 902
+  text: 最後再補充幾個他為什麼會這麼成功的祕訣
+- shot_id: 365
+  start: 1359.775
+  end: 1364.363
+  duration: 4.588
+  type: kol
+  note: 黑衣男子在 Mel Robbins podcast 攝影棚對談（framed clip 置於黑色格紋背景）。畫面文字：「影片來源：Mel Robbins」、左下角
+    logo「THE MEL ROBBINS PODCAST」。
+  cues:
+  - 903
+  - 904
+  - 905
+  text: 我在他接受 Mel Robins訪問的那集節目裡聽到他講了一句超棒的話
+- shot_id: 366
+  start: 1364.363
+  end: 1374.665
+  duration: 10.302
+  type: kol
+  note: 同 Mel Robbins podcast 片段，畫面壓暗並疊入大字引言 overlay，a 幀只出現第一行、b 幀完整三行，屬滑入動畫。畫面文字：「影片來源：Mel
+    Robbins」、logo「THE MEL ROBBINS PODCAST」、引言「他很確定幾乎所有人 都只活出了 1% 的自己， 而他渴望要讓全世界知道這件事情。」（c
+    幀換為「他的任務就是把人推下懸崖，」開頭的下一句 overlay）。
+  cues:
+  - 906
+  - 907
+  - 908
+  - 909
+  - 910
+  - 911
+  - 912
+  text: 他說 他很確定幾乎所有的人都只活出了 1% 的自己而他渴望要讓全世界的人知道這件事情他的任務就是把人踢下懸崖讓他們知道
+- shot_id: 367
+  start: 1374.665
+  end: 1376.458
+  duration: 1.793
+  type: kol
+  note: Mel Robbins（金髮女性）在書架攝影棚，畫面壓暗疊大字引言 overlay。畫面文字：「影片來源：Mel Robbins」、logo「MEL
+    ROBBINS PODCAST」、引言「他的任務就是把人推下懸崖， 讓他們知道其實自己是可以飛的。」
+  cues:
+  - 912
+  - 913
+  text: 讓他們知道其實你是可以飛的
+- shot_id: 368
+  start: 1376.458
+  end: 1378.168
+  duration: 1.71
+  type: kol
+  note: 戴眼鏡穿黃綠外套的男子在 Diary of a CEO 攝影棚受訪。畫面文字：「影片來源：The Diary of a CEO Clips」。
+  cues:
+  - 914
+  text: 他也在 Rich Roll 的訪談中
+- shot_id: 369
+  start: 1378.168
+  end: 1383.882
+  duration: 5.714
+  type: kol
+  note: 黑衣男子在書架攝影棚受訪，b 幀壓暗疊入大字引言 overlay（a 幀無，屬滑入）。畫面文字：「影片來源：The Diary of a CEO Clips」、引言「要不斷質疑那些約定俗成的傳統智慧，
+    或是其他人告訴自己的事情。」
+  cues:
+  - 915
+  - 916
+  - 917
+  text: 說自己會不斷質疑那些約定俗成的傳統智慧或是其他人告訴他的事情
+- shot_id: 370
+  start: 1383.882
+  end: 1389.93
+  duration: 6.048
+  type: aroll
+  note: 主持人（白T恤、極短平頭）在暖色書架房間對鏡頭說話，無 overlay。
+  cues:
+  - 918
+  - 919
+  - 920
+  text: 比如說幾歲要幹嘛啊或做這件事情會不會成功等等他都會抱持著懷疑的態度
+- shot_id: 371
+  start: 1389.93
+  end: 1391.974
+  duration: 2.044
+  type: aroll
+  note: 主持人對鏡頭說話，較近景 jump-in，無 overlay。
+  cues:
+  - 921
+  text: 只採信自己實驗的結果
+- shot_id: 372
+  start: 1391.974
+  end: 1396.937
+  duration: 4.963
+  type: kol
+  note: 戴黑帽黑衣男子在飯店房間 vlog 式對鏡頭說話。畫面文字：「影片來源：Behind the Diary」、帽上小字「Enjoy the Journey.」。
+  cues:
+  - 922
+  - 923
+  - 924
+  - 925
+  text: 他始終相信自己是與眾不同的所以這個傳統的系統才和他格格不入
+- shot_id: 373
+  start: 1396.937
+  end: 1401.233
+  duration: 4.296
+  type: kol
+  note: 後台跟拍畫面：男子走向大型演講舞台、b 幀從舞台看向滿場觀眾（Behind the Diary 幕後片段）。畫面文字：「影片來源：Behind the
+    Diary」。
+  cues:
+  - 926
+  - 927
+  text: 而他也一再地創造奇蹟來打臉那些之前唱衰他的人
+- shot_id: 374
+  start: 1401.233
+  end: 1409.116
+  duration: 7.883
+  type: aroll
+  note: 主持人在書架房間對鏡頭說話，無 overlay。
+  cues:
+  - 928
+  - 929
+  - 930
+  - 931
+  text: 我覺得這實在是太帥了雖然我比他晚了很久才起步但是創造屬於自己的英雄之旅永遠都不嫌晚
+- shot_id: 375
+  start: 1409.116
+  end: 1417.082
+  duration: 7.966
+  type: aroll
+  note: 主持人對鏡頭說話（推薦電子報段落），無 overlay。
+  cues:
+  - 932
+  - 933
+  - 934
+  - 935
+  - 936
+  text: 最後也來推薦一下我的電子報張修修的自由之路我每個禮拜都會分享我在這個英雄之旅上的學習和實踐
+- shot_id: 376
+  start: 1417.082
+  end: 1420.586
+  duration: 3.504
+  type: aroll
+  note: 主持人對鏡頭說話；b 幀身上疊入橘框白底大字 URL 圖卡（a 幀無，屬滑入）。overlay 文字：「shosho.tw/free」。type 仍為
+    aroll。
+  cues:
+  - 937
+  text: 網址是 shosho.tw/free
+- shot_id: 377
+  start: 1420.586
+  end: 1429.261
+  duration: 8.675
+  type: aroll
+  note: 主持人對鏡頭說話，無 overlay。
+  cues:
+  - 938
+  - 939
+  - 940
+  - 941
+  - 942
+  - 943
+  - 944
+  text: 有時候一本書還沒看完我也會把一些感想寫在電子報裡如果你想要知道我這個禮拜又從閱讀或生活中學到了什麼
+- shot_id: 378
+  start: 1429.261
+  end: 1430.179
+  duration: 0.918
+  type: aroll
+  note: 主持人（白T、平頭）在暖色書架房間對鏡頭說話（近景），無台詞字幕以外的畫面文字。
+  cues:
+  - 945
+  text: 歡迎訂閱喔！
+- shot_id: 379
+  start: 1430.179
+  end: 1439.396
+  duration: 9.218
+  type: aroll
+  note: 主持人在同一書架房間對鏡頭說話（稍廣鏡位），T恤胸前印字「TSUBASA®」。
+  cues:
+  - 946
+  - 947
+  - 948
+  - 949
+  - 950
+  - 951
+  text: 最後 我要跟你說你很棒 放輕鬆別太逼自己了別把外人的批評和冷言冷語放在心上他們不懂你
+- shot_id: 380
+  start: 1439.396
+  end: 1442.232
+  duration: 2.836
+  type: aroll
+  note: 主持人近景對鏡頭說話，同暖色書房場景，無台詞字幕以外的畫面文字。
+  cues:
+  - 952
+  - 953
+  text: 就專心地創造自己引以為傲的人生吧
+- shot_id: 381
+  start: 1442.232
+  end: 1443.776
+  duration: 1.543
+  type: aroll
+  note: 主持人對鏡頭收尾說話（下集見段落），T恤胸前印字「TSUBASA®」。
+  cues:
+  - 954
+  - 955
+  text: 我們下集節目見掰掰！
+- shot_id: 382
+  start: 1443.776
+  end: 1450.03
+  duration: 6.254
+  type: other
+  note: 三幀（a/b/c）皆為全黑畫面，無任何內容或文字——影片結尾黑場/fade-out。
+  cues: []
+  text: ''

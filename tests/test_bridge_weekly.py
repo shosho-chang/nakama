@@ -483,6 +483,50 @@ class TestTaskDetail:
         assert e["actual_minutes"] == 75  # full nominal block
         assert e["manual"] is True
 
+    def test_log_manual_backdate_stamps_given_day(self, client, tmp_path):
+        """修修 bug: a manual +1🍅 backfilling a PAST day was stamped `now` and leaked
+        into the wrong week. With entry_date the block is stamped on that day instead."""
+        client.post(
+            "/bridge/weekly/task/測試任務/log",
+            data={"mode": "pomodoro", "manual": "1", "entry_date": "2020-01-15", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        e = _time_entries(tmp_path)[-1]
+        assert e["startTime"].startswith("2020-01-15")
+        assert e["endTime"].startswith("2020-01-15")  # 25-min block stays inside the day
+        assert e["manual"] is True
+
+    def test_log_backdate_stacks_n_blocks_within_the_day(self, client, tmp_path):
+        """N backfilled clicks on the same past day stack into N non-overlapping blocks
+        (union == sum == N), all inside that day — so the week rollup credits all N."""
+        for _ in range(3):
+            client.post(
+                "/bridge/weekly/task/測試任務/log",
+                data={
+                    "mode": "pomodoro",
+                    "manual": "1",
+                    "entry_date": "2020-01-15",
+                    "week": WEEK_KEY,
+                },
+                follow_redirects=False,
+            )
+        entries = _time_entries(tmp_path)
+        assert len(entries) == 3
+        assert all(e["endTime"].startswith("2020-01-15") for e in entries)
+        assert all(e["startTime"].startswith("2020-01-15") for e in entries)
+        assert len({e["startTime"] for e in entries}) == 3  # no overlap-collapse
+
+    def test_log_future_entry_date_falls_back_to_today(self, client, tmp_path):
+        """A future (or today's) entry_date is ignored — the block is stamped `now`, never
+        a future week. Guards a stray/direct POST past the date picker's max=today."""
+        client.post(
+            "/bridge/weekly/task/測試任務/log",
+            data={"mode": "pomodoro", "manual": "1", "entry_date": "2099-12-31", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        e = _time_entries(tmp_path)[-1]
+        assert not e["endTime"].startswith("2099")
+
     def test_log_unknown_mode_rejected(self, client, tmp_path):
         before = len(_time_entries(tmp_path))
         r = client.post(
@@ -1654,7 +1698,9 @@ class TestRowChips:
         # SAMPLE_TASK has no category/priority → misc + normal(Medium)
         assert "wk-cat-misc" in body
         assert "wk-pri-normal" in body and "Medium" in body
-        assert "wk-chips" in body
+        # N541: chips are now standalone grid cells (no .wk-chips wrapper) so they align
+        # into columns; the cat/pri chip classes above are the contract now.
+        assert "wk-cat-chip" in body and "wk-pri-chip" in body
 
 
 class TestDayDone:
@@ -1717,3 +1763,27 @@ class TestTaskMeta:
         # SAMPLE_TASK had no category (→ misc default at read) / no priority; bad values ignored
         assert fm.get("category") not in ("bogus",)
         assert fm.get("priority") not in ("urgent",)
+
+    def test_meta_sets_estimate(self, client, tmp_path):
+        """修修: the task page can set 預估🍅 by hand (any task). 0 clears it."""
+        r = client.post(
+            "/bridge/weekly/task/測試任務/meta",
+            data={"category": "growth", "est_pomodoros": "5", "week": WEEK_KEY, "from_task": "1"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert self._fm(tmp_path)["預估🍅"] == 5
+        # out-of-range is ignored (not written); the row form omitting it leaves est intact
+        client.post(
+            "/bridge/weekly/task/測試任務/meta",
+            data={"priority": "high", "est_pomodoros": "99", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert self._fm(tmp_path)["預估🍅"] == 5  # 99 > 40 → ignored
+        # 0 clears the estimate
+        client.post(
+            "/bridge/weekly/task/測試任務/meta",
+            data={"est_pomodoros": "0", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert self._fm(tmp_path)["預估🍅"] == 0

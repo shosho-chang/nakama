@@ -196,6 +196,12 @@ class TestDimLabel:
     def test_pubmed_dim_label(self):
         assert "Rigor" in dim_label("pubmed", "R")
         assert "Impact" in dim_label("pubmed", "I")
+        # C/A/F must match the real rubric (prompts/robin/pubmed_digest/score.md),
+        # not the old clarity/audience/freshness mislabels.
+        assert "Clinical Relevance" in dim_label("pubmed", "C")
+        assert "Actionability" in dim_label("pubmed", "A")
+        assert "Red Flags" in dim_label("pubmed", "F")
+        assert "Novelty" in dim_label("pubmed", "N")
 
     def test_ai_dim_label(self):
         assert "Signal" in dim_label("ai", "S")
@@ -207,6 +213,46 @@ class TestDimLabel:
     def test_label_tables_cover_canonical_dims(self):
         assert set(PUBMED_DIM_LABELS) == set("RICAFN")
         assert set(AI_DIM_LABELS) == set("SNAQR")
+
+
+class TestPubmedRefFormats:
+    """The `- **→**` reference line has two historical shapes; both must yield
+    a usable PMID + PubMed URL (regression: ADR-042 dropped the wikilink and
+    the old regex silently stopped matching, so links vanished on real data)."""
+
+    _ADR042 = """
+### 1. Skin-innervating glutamatergic neurons modulate aging.
+
+- **Journal**: Cell (Q1 · SJR 24.592)
+- **Domain**: `longevity`
+- **Score**: 3.6  (R4/I4/C2/A2/F4/N5)
+- **Verdict**: 皮膚神經元調節膠原蛋白生成。
+- **Why**: 開創神經-皮膚抗老新領域。
+- **→** [PubMed](https://pubmed.ncbi.nlm.nih.gov/42468523/)
+"""
+
+    _LEGACY = """
+### 1. Old format study
+
+- **Journal**: NEJM (Q1 · SJR 18.500)
+- **Domain**: `metabolic`
+- **Score**: 3.6  (R4/I4/C3/A2/F4/N4)
+- **Verdict**: v
+- **Why**: w
+- **→** [[pubmed-42174253]] · [PubMed](https://pubmed.ncbi.nlm.nih.gov/42174253/)
+"""
+
+    def test_adr042_format_yields_pmid_and_url(self):
+        s = parse_pubmed_digest(self._ADR042)[0]
+        assert s.external_id == "42468523"
+        assert s.external_url == "https://pubmed.ncbi.nlm.nih.gov/42468523/"
+        assert s.kb_wikilink is None  # no wikilink in the new format
+
+    def test_legacy_format_still_parses(self):
+        s = parse_pubmed_digest(self._LEGACY)[0]
+        assert s.external_id == "42174253"
+        assert s.external_url == "https://pubmed.ncbi.nlm.nih.gov/42174253/"
+        assert s.kb_wikilink == "pubmed-42174253"
 
 
 class TestRealDigestFixtures:

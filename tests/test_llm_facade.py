@@ -51,12 +51,13 @@ def test_ask_raises_for_unknown_provider():
         llm.ask("hi", model="mystery-model-v1")
 
 
-def test_ask_raises_notimplemented_for_recognized_but_unwired_provider():
-    """openai 已識別但尚未 wire（gpt-* / o1-* / o3-*）。"""
+def test_ask_openai_requires_openrouter_transport(monkeypatch):
+    """OpenAI 經 OpenRouter transport 才可用（Slice 4）；native（kill-switch）時 fail loud。"""
+    monkeypatch.delenv("LLM_TRANSPORT", raising=False)
     from shared import llm
 
-    with pytest.raises(NotImplementedError, match="openai"):
-        llm.ask("hi", model="gpt-4o")
+    with pytest.raises(NotImplementedError, match="LLM_TRANSPORT=openrouter"):
+        llm.ask("hi", model="gpt-5")
 
 
 def test_ask_dispatches_gemini_to_google_client():

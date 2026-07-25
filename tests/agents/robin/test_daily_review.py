@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 import agents.robin.daily_review as dr
+from shared import candidate_inbox
 from shared.kb_hybrid_search import make_conn
 from shared.schemas.annotations import (
     AnnotationSetV3,
@@ -60,15 +61,18 @@ def _write_annotations(vault_path: Path, ann_set: AnnotationSetV3) -> None:
 
 
 def _card_box_set() -> AnnotationSetV3:
-    """《卡片盒筆記》mock fixture：含兩條強評價 note + 一條純 highlight + 舊條目。
+    """通用「昨日來源」fixture：含兩條強評價 note + 一條純 highlight + 舊條目。
 
     強訊號條 (task §5)：「必須重複三次」(08:43)、「這句是我想的，應該要記起來」(06:41)。
+
+    刻意是**非書本**來源（base=inbox / book_id=None）：item 6 後書本不走每日「昨日」
+    流，故通用每日流（強訊號置頂 / 結轉 / 週清掃 / cron 時區）改用非書本來源驗；
+    書本專屬行為（gate + ingest 完成提案）見 ``_book_set`` 與對應測試。
     """
     return AnnotationSetV3(
         slug="卡片盒筆記",
-        base="books",
-        book_id="卡片盒筆記",
-        book_version_hash="a" * 64,
+        base="inbox",
+        book_id=None,
         items=[
             AnnotationV3(
                 cfi="epubcfi(/6/14[ch2]!/4/2/116)",
@@ -418,6 +422,47 @@ def test_build_candidates_caps_at_max(vault: Path, monkeypatch):
     assert len(cards) == 7
 
 
+def test_build_candidates_dedups_same_primary_anchor(vault: Path, monkeypatch):
+    """同一條劃線（primary anchor）只留一張——LLM 對同錨點吐多個標題變體要被收斂
+    （修修回報的近似重複建議）。"""
+    items = [
+        {
+            "slug": "財富階梯",
+            "anchor": "^cfi-6-16-78",
+            "quote": "縱使你目前落在財富階梯上的較低階，你也可以採行較高階的策略！",
+            "note": "花錢的 mindset 停在低階，賺錢的 mindset 要往高階。",
+            "type": "annotation",
+            "literature_path": "KB/Literature/財富階梯",
+        },
+    ]
+
+    def _fake_p1(prompt):  # noqa: ARG001
+        # 同一個 anchor，兩個措辭略異的標題變體 → 應收斂成一張。
+        return [
+            {
+                "suggested_title": "花錢的 mindset 留在低階，賺錢的 mindset 要往高階",
+                "why": "原創主張",
+                "anchors": ["^cfi-6-16-78"],
+                "source_quote": items[0]["quote"],
+                "user_note": items[0]["note"],
+                "strong_signal": False,
+            },
+            {
+                "suggested_title": "花錢的 mindset 停在低階，賺錢的 mindset 要往高階",
+                "why": "同一條劃線的另一個措辭",
+                "anchors": ["^cfi-6-16-78"],
+                "source_quote": items[0]["quote"],
+                "user_note": items[0]["note"],
+                "strong_signal": False,
+            },
+        ]
+
+    monkeypatch.setattr(dr, "_ask_p1_llm", _fake_p1)
+    cards, _ = dr.build_candidates(items, "idx")
+    assert len(cards) == 1  # 兩個變體收斂成一張
+    assert cards[0].source_refs[0].anchor == "^cfi-6-16-78"
+
+
 def test_build_candidates_empty_items():
     cards, warnings = dr.build_candidates([], "idx")
     assert cards == []
@@ -758,6 +803,60 @@ def test_run_daily_review_weekly_expires_deferred(vault: Path, monkeypatch):
     assert dr.load_review_state(vault)["deferred"] == {}
 
 
+# ── 書本：gate（讀到一半不提案）+ 整本 ingest 完成才一次提案（item 6 / 修修回饋）──
+
+
+def _book_set(book_id: str = "斷食長壽書") -> AnnotationSetV3:
+    """書本來源 fixture（base=books / book_id）：一條昨日、一條更早。用於 gate 測試
+    （書本不進每日「昨日」流）+ 以 slug 收整份的 :func:`collect_source_items`。"""
+    return AnnotationSetV3(
+        slug=book_id,
+        base="books",
+        book_id=book_id,
+        book_version_hash="b" * 64,
+        items=[
+            AnnotationV3(
+                cfi="epubcfi(/6/4!/4/2/10)",
+                text_excerpt="自噬在斷食期間上升。",
+                note="這個機制很重要，必須記起來。",
+                book_version_hash="b" * 64,
+                created_at=_YESTERDAY,
+                modified_at=_YESTERDAY,
+            ),
+            AnnotationV3(
+                cfi="epubcfi(/6/4!/4/2/20)",
+                text_excerpt="運動誘發粒線體新生。",
+                note="這句是我想延伸的——和斷食協同。",
+                book_version_hash="b" * 64,
+                created_at=_OLD,  # 非昨日：整本提案要含這條
+                modified_at=_OLD,
+            ),
+        ],
+    )
+
+
+def test_collect_yesterday_items_excludes_books(vault: Path):
+    """書本劃線（即使昨日新增）不進每日「昨日」流。"""
+    _write_annotations(vault, _book_set())
+    assert dr.collect_yesterday_items(vault, yesterday=date(2026, 6, 10)) == []
+
+
+def test_collect_source_items_by_slug_returns_all_dates(vault: Path):
+    """collect_source_items 以 slug 讀單一 annotation 檔，收整份（不限昨日）。"""
+    _write_annotations(vault, _book_set("斷食長壽書"))
+    items = dr.collect_source_items(vault, slug="斷食長壽書")
+    quotes = {it["quote"] for it in items}
+    assert quotes == {"自噬在斷食期間上升。", "運動誘發粒線體新生。"}
+    # 來源 slug 與 literature_path 對齊（餵 P-1 用）
+    assert all(it["slug"] == "斷食長壽書" for it in items)
+    assert all(it["literature_path"] == "KB/Literature/斷食長壽書" for it in items)
+
+
+def test_collect_source_items_missing_file_returns_empty(vault: Path):
+    """文章從 Inbox 丟進來、沒在 Reader 讀過 → 無 annotation 檔 → 空（無開卡建議）。"""
+    assert dr.collect_source_items(vault, slug="從未讀過的文章") == []
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 時區：回顧的「今天 / 昨天 / review_date」用台北日曆，不用 UTC
 # fix/daily-review-morning-cron — 5am 台北 cron 跑時 UTC 還停在前一天，不修會標錯
@@ -786,6 +885,18 @@ def test_is_weekly_sweep_day_monday_only():
     assert dr.is_weekly_sweep_day(date(2026, 6, 22)) is True  # Monday
     for d in range(23, 29):  # Tue..Sun
         assert dr.is_weekly_sweep_day(date(2026, 6, d)) is False
+
+
+def test_p1_parser_tolerates_fence_and_truncation():
+    """P-1 解析容忍 ```json fence；max_tokens 截斷（無收尾 ]）→ 回 [] 不誤拼。
+
+    2026-06-24 回歸：原本天真 regex 在這兩種輸出都吐空 → 每日回顧 0 候選。
+    """
+    fenced = '```json\n[{"suggested_title": "X", "why": "y"}]\n```'
+    assert dr._parse_json_array(fenced) == [{"suggested_title": "X", "why": "y"}]
+    truncated = '```json\n[\n  {"suggested_title": "X", "source_quote": "I just knew'
+    assert dr._parse_json_array(truncated) == []
+    assert dr._parse_json_array('[1, {"a": 2}, "x"]') == [{"a": 2}]  # wrapper 濾非 dict
 
 
 def test_run_daily_review_review_date_is_taipei_not_utc(vault: Path, monkeypatch):
@@ -1221,3 +1332,82 @@ def test_run_daily_review_no_mocs_skips_moc_judge(vault: Path, monkeypatch):
     bundle = dr.run_daily_review(now=_NOW, weekly=False, vault_path=vault, notify=False)
     assert called["moc"] is False  # 無 MOC → 不浪費 LLM call
     assert bundle.candidates[0].related_mocs == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ADR-048 Phase 1 — 候選收件匣結轉（修「點子消失」）+ 事件 ground truth
+# 收件匣持久化（state.db）讓昨天沒處理的候選結轉到今天，不再被單槽快照覆寫即丟。
+# DB 隔離由 conftest autouse isolated_db fixture 提供。
+# ═══════════════════════════════════════════════════════════════════════════
+
+_NOW_DAY2 = datetime(2026, 6, 12, 7, 0, 0, tzinfo=timezone.utc)  # 隔天（台北 06-12）
+
+
+def _one_strong_candidate(prompt):  # noqa: ARG001
+    """P-1 mock：回《卡片盒筆記》06-10 劃線的單一強訊號候選。"""
+    return [
+        {
+            "suggested_title": "間隔重複需要重複三次",
+            "why": "強訊號",
+            "anchors": ["^cfi-6-14-116"],
+            "source_quote": "間隔重複是記憶的關鍵。",
+            "user_note": "必須重複三次才會記得。",
+            "strong_signal": True,
+        }
+    ]
+
+
+def _seed_day1(vault: Path, monkeypatch) -> str:
+    """跑 Day 1（now=06-11，掃 06-10 劃線）產出一條候選，回其 candidate_id。"""
+    _write_annotations(vault, _card_box_set())
+    (vault / "KB").mkdir(exist_ok=True)
+    (vault / "KB" / "index.md").write_text("# index\n", encoding="utf-8")
+    monkeypatch.setattr(dr, "_ask_p1_llm", _one_strong_candidate)
+    import agents.robin.kb_search as kb
+
+    monkeypatch.setattr(kb, "search_kb", lambda *a, **k: [])
+    day1 = dr.run_daily_review(now=_NOW, weekly=False, vault_path=vault, notify=False)
+    assert len(day1.candidates) == 1
+    return day1.candidates[0].candidate_id
+
+
+def test_run_daily_review_carries_forward_unactioned_candidate(vault: Path, monkeypatch):
+    """昨天提的候選若沒處理，今天（即使無新劃線）仍要結轉出現——核心「點子消失」修復。"""
+    cid = _seed_day1(vault, monkeypatch)
+    # Day 2（now=06-12，掃 06-11 → 無新劃線，build_candidates 早退）→ 仍須結轉昨天候選
+    day2 = dr.run_daily_review(now=_NOW_DAY2, weekly=False, vault_path=vault, notify=False)
+    assert [c.candidate_id for c in day2.candidates] == [cid]  # 結轉，沒被覆寫掉
+
+
+def test_run_daily_review_carded_candidate_drops_out(vault: Path, monkeypatch):
+    """開卡（mark_carded）後的候選不再出現在後續 bundle。"""
+    cid = _seed_day1(vault, monkeypatch)
+    candidate_inbox.mark_carded(cid, carded_path="KB/Permanent/間隔重複需要重複三次")
+    day2 = dr.run_daily_review(now=_NOW_DAY2, weekly=False, vault_path=vault, notify=False)
+    assert day2.candidates == []  # 已開卡 → 不再結轉
+
+
+def test_run_daily_review_skip_still_filters_carried_forward(vault: Path, monkeypatch):
+    """skip（state JSON 權威）仍生效於結轉候選——收件匣不搶 skip 過濾權。"""
+    cid = _seed_day1(vault, monkeypatch)
+    dr.save_review_state(vault, {"skipped": [cid], "deferred": {}})
+    day2 = dr.run_daily_review(now=_NOW_DAY2, weekly=False, vault_path=vault, notify=False)
+    assert day2.candidates == []  # 結轉後被 JSON skip 濾掉
+    # 但收件匣仍留著該列（status 仍 open，僅顯示端過濾）——event 也記了
+    assert candidate_inbox.get_candidate(cid)["status"] == "open"
+
+
+def test_run_daily_review_logs_proposed_event(vault: Path, monkeypatch):
+    """每日回顧寫候選進收件匣時記 proposed 事件（Phase 3 學習的 ground truth）。"""
+    cid = _seed_day1(vault, monkeypatch)
+    events = candidate_inbox.list_events(candidate_id=cid, event_type="proposed")
+    assert len(events) == 1
+
+
+def test_run_daily_review_proposed_event_not_duplicated_across_runs(vault: Path, monkeypatch):
+    """同一候選跨日結轉，proposed 事件只記一次（再提出只觸 last_seen，不重記）。"""
+    cid = _seed_day1(vault, monkeypatch)
+    # 再跑 Day 1（同 now，同劃線）→ 同候選再 upsert，但不可重複記 proposed
+    dr.run_daily_review(now=_NOW, weekly=False, vault_path=vault, notify=False)
+    events = candidate_inbox.list_events(candidate_id=cid, event_type="proposed")
+    assert len(events) == 1

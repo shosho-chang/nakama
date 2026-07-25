@@ -375,6 +375,24 @@ class TestUpsertCreate:
         for h2 in kb_writer.H2_ORDER:
             assert h2 in body
 
+    def test_create_overrides_fabricated_sources_link(self, vault):
+        """LLM 在 extracted_body 自己猜的 `[[Sources/...]]` 死連結要被真實
+        source_link 覆寫（body ## Sources 對齊 frontmatter mentioned_in）。"""
+        path = kb_writer.upsert_concept_page(
+            slug="財富等級",
+            action="create",
+            source_link="[[財富階梯]]",
+            title="財富等級",
+            extracted_body=(
+                "## Definition\n\nfoo\n\n## Sources\n\n- [[Sources/財富階梯-Nick-Maggiulli]]\n"
+            ),
+        )
+        fm, body = _read_page(path)
+        sources_block = body.split("## Sources", 1)[1]
+        assert "[[財富階梯]]" in sources_block
+        assert "財富階梯-Nick-Maggiulli" not in body  # 杜撰連結整頁清掉
+        assert fm["mentioned_in"] == ["[[財富階梯]]"]
+
     def test_create_requires_title(self, vault):
         with pytest.raises(ValueError, match="title"):
             kb_writer.upsert_concept_page(
@@ -516,6 +534,28 @@ class TestUpsertNoop:
         kb_writer.upsert_concept_page(slug="x", action="noop", source_link="[[Sources/new]]")
         fm, _ = _read_page(path)
         assert fm["mentioned_in"].count("[[Sources/new]]") == 1
+
+
+class TestNormalizeConceptSources:
+    def test_overwrites_with_mentioned_in(self):
+        body = "## Definition\n\nfoo\n\n## Sources\n\n- [[Sources/guessed-bad-link]]\n"
+        out = kb_writer._normalize_concept_sources(body, ["[[real]]"])
+        sources = out.split("## Sources", 1)[1]
+        assert "- [[real]]" in sources
+        assert "guessed-bad-link" not in out
+        assert "## Definition" in out  # 其他 section 不動
+
+    def test_lists_all_sources_deduped(self):
+        body = "## Sources\n\n- [[old]]\n"
+        out = kb_writer._normalize_concept_sources(body, ["[[a]]", "[[b]]", "[[a]]"])
+        sources = out.split("## Sources", 1)[1]
+        assert "- [[a]]" in sources
+        assert "- [[b]]" in sources
+        assert sources.count("[[a]]") == 1  # dedup
+
+    def test_empty_mentioned_in_is_noop(self):
+        body = "## Definition\n\nfoo\n\n## Sources\n\n- [[keep]]\n"
+        assert kb_writer._normalize_concept_sources(body, []) == body
 
 
 # ---------------------------------------------------------------------------

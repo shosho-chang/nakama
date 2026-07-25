@@ -8,7 +8,7 @@ Brief §5 wiring tests:
 - WT3  ``GET /robin/promotion/`` returns 200 (not 503) after wiring.
 - WT4  ``GET /robin/writing-assist/{id_b64}`` for missing package → 404 (not 503).
 - WT5  ``DISABLE_ROBIN=1`` skips wiring.
-- WT6  Missing ``VAULT_PATH`` → startup raises.
+- WT6  Vault resolves via ``get_vault_path`` (config.yaml ∪ env); WT6b raises if unresolvable.
 - WT7  ``NAKAMA_PROMOTION_MODE=llm`` → startup wires the LLM-backed claim
         extractor (N519) and the promotion service (no raise).
 - WT8  Adapter modules expose no top-level instances.
@@ -184,22 +184,45 @@ def test_wt5_app_disable_robin_skips_wiring(tmp_path: Path, monkeypatch):
         assert wa_module._service is None
 
 
-# ── WT6 — bad config raises ─────────────────────────────────────────────────
+# ── WT6 — vault resolves via get_vault_path (config.yaml ∪ env); VPS 502 fix ──
 
 
-def test_wt6_app_bad_config_raises_when_vault_root_missing(tmp_path: Path, monkeypatch):
-    """Missing ``VAULT_PATH`` (with Robin enabled) must crash the
-    lifespan — silent fallback is forbidden by W4."""
-    monkeypatch.delenv("DISABLE_ROBIN", raising=False)
-    monkeypatch.delenv("VAULT_PATH", raising=False)
+def test_wt6_loader_resolves_vault_from_config_when_env_unset(tmp_path: Path, monkeypatch):
+    """Regression: ``load_promotion_wiring_config`` resolves the vault via
+    ``get_vault_path`` (``VAULT_PATH`` env OR ``config.yaml`` ``vault_path``),
+    NOT env-only. The VPS keeps ``vault_path`` in config.yaml and leaves the env
+    unset; the old env-only read crashed startup with a 502."""
+    from agents.robin.promotion import factory
+    from thousand_sunny import promotion_wiring
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.delenv("VAULT_PATH", raising=False)  # rely on config.yaml, like the VPS
     monkeypatch.setenv("NAKAMA_PROMOTION_MODE", "dry_run")
-    _disable_auth(monkeypatch)
+    # Stand in for "config.yaml vault_path set, env unset". ADR-050: the env
+    # loader lives in Robin's factory; the Sunny shim delegates, so the patch
+    # target follows the seam.
+    monkeypatch.setattr(factory, "get_vault_path", lambda: vault)
 
-    app_module = _reload_app_modules()
+    cfg = promotion_wiring.load_promotion_wiring_config()
+    assert cfg.vault_root == vault
 
-    with pytest.raises(RuntimeError, match="VAULT_PATH"):
-        with TestClient(app_module.app):
-            pass
+
+def test_wt6b_loader_raises_when_vault_unresolvable(monkeypatch):
+    """Safety (W4): if neither env nor config.yaml yields a vault, the loader
+    must raise loudly — no silent fallback to a guessed path."""
+    from agents.robin.promotion import factory
+    from thousand_sunny import promotion_wiring
+
+    monkeypatch.delenv("VAULT_PATH", raising=False)
+
+    def _unresolvable():
+        raise KeyError("vault_path")
+
+    monkeypatch.setattr(factory, "get_vault_path", _unresolvable)
+
+    with pytest.raises(RuntimeError, match="Vault path unresolved"):
+        promotion_wiring.load_promotion_wiring_config()
 
 
 # ── WT7 — NAKAMA_PROMOTION_MODE=llm wires the LLM extractor (N519) ──────────
@@ -276,11 +299,11 @@ def test_app_unknown_promotion_mode_raises(tmp_path: Path, monkeypatch):
     "module_name",
     [
         "shared.blob_loader",
-        "shared.source_resolver",
+        "agents.robin.promotion.source_resolver",
         "shared.reading_source_lister",
-        "shared.kb_concept_index_default",
-        "shared.dry_run_extractor",
-        "shared.dry_run_matcher",
+        "agents.robin.promotion.kb_concept_index_default",
+        "agents.robin.promotion.dry_run_extractor",
+        "agents.robin.promotion.dry_run_matcher",
     ],
 )
 def test_wt8_no_module_singleton_in_adapters(module_name: str):
@@ -311,11 +334,11 @@ def test_wt8_no_module_singleton_in_adapters(module_name: str):
     "module_name",
     [
         "shared.blob_loader",
-        "shared.source_resolver",
+        "agents.robin.promotion.source_resolver",
         "shared.reading_source_lister",
-        "shared.kb_concept_index_default",
-        "shared.dry_run_extractor",
-        "shared.dry_run_matcher",
+        "agents.robin.promotion.kb_concept_index_default",
+        "agents.robin.promotion.dry_run_extractor",
+        "agents.robin.promotion.dry_run_matcher",
     ],
 )
 def test_wt9_no_fastapi_or_thousand_sunny_import_in_adapters(module_name: str):
@@ -327,9 +350,19 @@ def test_wt9_no_fastapi_or_thousand_sunny_import_in_adapters(module_name: str):
         f"_preload = (sys, );"
         f"import importlib;"
         f"importlib.import_module({module_name!r});"
-        f"forbidden_prefixes = ('fastapi', 'thousand_sunny', 'agents');"
+        # ADR-050: promotion adapters live in agents.robin.promotion — their own
+        # package chain is allowed; presentation (fastapi / thousand_sunny) and
+        # any OTHER agents module stay forbidden. shared.* adapters must not
+        # load agents at all.
+        f"forbidden_prefixes = ('fastapi', 'thousand_sunny');"
+        f"own = ('agents', 'agents.robin', 'agents.robin.promotion');"
         f"loaded = [m for m in sys.modules "
-        f"          if any(m == p or m.startswith(p + '.') for p in forbidden_prefixes)];"
+        f"          if any(m == p or m.startswith(p + '.') for p in forbidden_prefixes)"
+        f"          or (m.startswith('agents')"
+        f"              and not {module_name.startswith('agents.robin.promotion')!r}"
+        f"              )"
+        f"          or (m.startswith('agents') and m not in own"
+        f"              and not m.startswith('agents.robin.promotion.'))];"
         f"assert not loaded, f'forbidden modules loaded: {{loaded}}';"
         f"print('OK')"
     )
@@ -349,11 +382,11 @@ def test_wt9_no_fastapi_or_thousand_sunny_import_in_adapters(module_name: str):
     "module_name",
     [
         "shared.blob_loader",
-        "shared.source_resolver",
+        "agents.robin.promotion.source_resolver",
         "shared.reading_source_lister",
-        "shared.kb_concept_index_default",
-        "shared.dry_run_extractor",
-        "shared.dry_run_matcher",
+        "agents.robin.promotion.kb_concept_index_default",
+        "agents.robin.promotion.dry_run_extractor",
+        "agents.robin.promotion.dry_run_matcher",
     ],
 )
 def test_wt10_no_anthropic_import_in_n518a_modules(module_name: str):
@@ -408,7 +441,7 @@ def test_dry_run_extractor_returns_real_claims_in_n518b():
     """Sanity check: the extractor is a real body now, not a stub.
     Replaces the N518a ``test_dry_run_extractor_stub_raises_with_n518b_message``
     test which asserted the stub raised."""
-    from shared.dry_run_extractor import DryRunClaimExtractor
+    from agents.robin.promotion.dry_run_extractor import DryRunClaimExtractor
 
     ex = DryRunClaimExtractor()
     result = ex.extract(chapter_text="some prose", chapter_title="Chapter 1", primary_lang="en")
@@ -420,7 +453,7 @@ def test_dry_run_matcher_returns_no_match_in_n518b():
     """Sanity check: the matcher is a real body now, not a stub.
     Replaces the N518a ``test_dry_run_matcher_stub_raises_with_n518b_message``
     test which asserted the stub raised."""
-    from shared.dry_run_matcher import DryRunConceptMatcher
+    from agents.robin.promotion.dry_run_matcher import DryRunConceptMatcher
     from shared.schemas.concept_promotion import ConceptCandidate
 
     m = DryRunConceptMatcher()

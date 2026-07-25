@@ -439,6 +439,11 @@ def test_csp_header_present_on_books_routes(app_client):
     csp = r.headers.get("content-security-policy", "")
     assert csp, "CSP header missing on /robin/books"
     assert "script-src 'self'" in csp
+    # foliate-js rewrites each chapter's stylesheet <link> to a blob: URL, so
+    # style-src must allow blob: or the book renders with no publisher CSS and
+    # <h6>-tagged headings collapse below body size. Regression guard.
+    assert "style-src" in csp
+    assert "blob:" in csp.split("style-src", 1)[1].split(";", 1)[0]
 
 
 def test_csp_header_present_on_api_books_routes(app_client):
@@ -577,20 +582,6 @@ def test_legacy_api_progress_put_redirects_308(app_client):
     r = tc.put("/api/books/any-id/progress", json={"book_id": "any-id"})
     assert r.status_code == 308
     assert r.headers["location"] == "/robin/api/books/any-id/progress"
-
-
-def test_legacy_api_ingest_request_post_redirects_308(app_client):
-    tc, _ = app_client
-    r = tc.post("/api/books/any-id/ingest-request")
-    assert r.status_code == 308
-    assert r.headers["location"] == "/robin/api/books/any-id/ingest-request"
-
-
-def test_legacy_api_ingest_request_delete_redirects_308(app_client):
-    tc, _ = app_client
-    r = tc.delete("/api/books/any-id/ingest-request")
-    assert r.status_code == 308
-    assert r.headers["location"] == "/robin/api/books/any-id/ingest-request"
 
 
 def test_legacy_api_delete_book_redirects_308(app_client):

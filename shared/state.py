@@ -395,10 +395,10 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (book_id) REFERENCES books(book_id) ON DELETE CASCADE
         );
 
-        -- Slice 4A: ingest queue for background textbook ingestion.
+        -- DEPRECATED (route B v2): 書本 ingest 改走同步 /start-book → /processing，
+        -- 與文章/影片同一條；佇列碼（shared/book_queue.py + book_ingest consumer）已移除。
+        -- 此表保留供既有 DB 的歷史列，books FK CASCADE 在刪書時自動清理；新流程不寫入。
         -- Canonical DDL: migrations/011_book_ingest_queue.sql.
-        -- Owned by shared/book_queue.py; consumed by queue_processor CLI (Slice 4C).
-        -- PK on book_id: at most one active queue row per book.
         CREATE TABLE IF NOT EXISTS book_ingest_queue (
             book_id        TEXT PRIMARY KEY,
             status         TEXT NOT NULL DEFAULT 'queued'
@@ -495,6 +495,27 @@ def _init_tables(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_news_score_shadow_item
             ON news_score_shadow(item_id, scored_at DESC);
+
+        -- Bridge digest study-detail: cached PubMed abstract + zh-TW translation.
+        -- Owned by shared/pubmed_abstract_store.py; written on cache-miss by the
+        -- /bridge/digests/pubmed/{date}/{pmid} detail route. State layer (not vault):
+        -- machine-fetched operational data, keyed by stable PMID, translated once.
+        -- Bridge stays read-only against vault (Issue #231) — this never touches KB.
+        CREATE TABLE IF NOT EXISTS pubmed_abstract_cache (
+            pmid            TEXT PRIMARY KEY,
+            title           TEXT NOT NULL DEFAULT '',
+            journal         TEXT NOT NULL DEFAULT '',
+            authors         TEXT NOT NULL DEFAULT '',
+            pub_date        TEXT NOT NULL DEFAULT '',
+            issn            TEXT NOT NULL DEFAULT '',
+            doi             TEXT NOT NULL DEFAULT '',
+            pmcid           TEXT NOT NULL DEFAULT '',
+            abstract        TEXT NOT NULL DEFAULT '',
+            abstract_zh     TEXT,
+            translate_model TEXT,
+            fetched_at      TEXT NOT NULL,
+            translated_at   TEXT
+        );
     """)
 
     # Migration: api_calls 曾經沒有 cache token 欄位（Phase 4 前）。
@@ -513,6 +534,10 @@ def _init_tables(conn: sqlite3.Connection) -> None:
         # NULL for non-scoped calls (most callers); JSON object for digest_ask
         # and any future surface that wants per-call audit transparency.
         "ALTER TABLE api_calls ADD COLUMN scope_json TEXT",
+        # OpenRouter transport (Slice 3): 實際 cost（OpenRouter usage accounting 回報）。
+        # NULL = 沒有實際 cost（原生呼叫 / OpenRouter 沒回 cost / 歷史 row）→ cost panel
+        # 對這些 row 用 calc_cost 估算，有實際值的直接採用。Nullable 刻意區分「未知」與「$0」。
+        "ALTER TABLE api_calls ADD COLUMN cost_usd REAL",
         "ALTER TABLE r2_backup_checks ADD COLUMN prefix TEXT NOT NULL DEFAULT ''",
     ):
         try:
@@ -679,8 +704,12 @@ def record_api_call(
     auth_actual: Optional[str] = None,
     fallback_reason: Optional[str] = None,
     scope_json: Optional[str] = None,
+    cost_usd: Optional[float] = None,
 ) -> None:
     """記錄一次 LLM API 呼叫的 token 用量 + 延遲。
+
+    ``cost_usd`` 為 provider 回報的『實際』花費（目前只有 OpenRouter transport 帶值）；
+    ``None`` 表示沒有實際 cost，cost panel 對這類 row 改用 ``pricing.calc_cost`` 估算。
 
     ``input_tokens`` / ``output_tokens`` 對應 provider response.usage 的
     input_tokens / output_tokens（Anthropic：thinking tokens 已含在 output）。
@@ -694,8 +723,9 @@ def record_api_call(
         """INSERT INTO api_calls
               (agent, run_id, model, input_tokens, output_tokens,
                cache_read_tokens, cache_write_tokens, latency_ms,
-               auth_requested, auth_actual, fallback_reason, scope_json, called_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               auth_requested, auth_actual, fallback_reason, scope_json,
+               cost_usd, called_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             agent,
             run_id,
@@ -709,6 +739,7 @@ def record_api_call(
             auth_actual,
             fallback_reason,
             scope_json,
+            cost_usd,
             now,
         ),
     )
@@ -788,7 +819,16 @@ def get_cost_summary(agent: Optional[str] = None, days: int = 7) -> list[dict]:
                        SUM(input_tokens) as input_tokens,
                        SUM(output_tokens) as output_tokens,
                        SUM(cache_read_tokens) as cache_read_tokens,
-                       SUM(cache_write_tokens) as cache_write_tokens
+                       SUM(cache_write_tokens) as cache_write_tokens,
+                       SUM(COALESCE(cost_usd, 0)) as actual_cost_usd,
+                       SUM(CASE WHEN cost_usd IS NULL THEN input_tokens ELSE 0 END)
+                           as est_input_tokens,
+                       SUM(CASE WHEN cost_usd IS NULL THEN output_tokens ELSE 0 END)
+                           as est_output_tokens,
+                       SUM(CASE WHEN cost_usd IS NULL THEN cache_read_tokens ELSE 0 END)
+                           as est_cache_read_tokens,
+                       SUM(CASE WHEN cost_usd IS NULL THEN cache_write_tokens ELSE 0 END)
+                           as est_cache_write_tokens
                 FROM api_calls"""
     if agent:
         rows = conn.execute(
@@ -851,7 +891,16 @@ def get_cost_timeseries(
                    SUM(input_tokens) as input_tokens,
                    SUM(output_tokens) as output_tokens,
                    SUM(cache_read_tokens) as cache_read_tokens,
-                   SUM(cache_write_tokens) as cache_write_tokens
+                   SUM(cache_write_tokens) as cache_write_tokens,
+                   SUM(COALESCE(cost_usd, 0)) as actual_cost_usd,
+                   SUM(CASE WHEN cost_usd IS NULL THEN input_tokens ELSE 0 END)
+                       as est_input_tokens,
+                   SUM(CASE WHEN cost_usd IS NULL THEN output_tokens ELSE 0 END)
+                       as est_output_tokens,
+                   SUM(CASE WHEN cost_usd IS NULL THEN cache_read_tokens ELSE 0 END)
+                       as est_cache_read_tokens,
+                   SUM(CASE WHEN cost_usd IS NULL THEN cache_write_tokens ELSE 0 END)
+                       as est_cache_write_tokens
             FROM api_calls
             WHERE {where}
             GROUP BY bucket, agent, model

@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from shared.llm_context import _local
 from shared.llm_observability import record_call
+from shared.llm_transport import openrouter_enabled
 from shared.log import get_logger
 from shared.retry import with_retry
 
@@ -177,6 +178,17 @@ def ask_gemini(
         model = get_model(agent=getattr(_local, "agent", None), task="default")
     _require_gemini_model(model)
 
+    if openrouter_enabled():
+        from shared.openrouter_client import ask_openrouter
+
+        return ask_openrouter(
+            prompt,
+            system=system,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+
     from google.genai import types
 
     thinking_budget = _clamp_thinking_budget(thinking_budget, max_tokens)
@@ -233,6 +245,17 @@ def ask_gemini_multi(
 
         model = get_model(agent=getattr(_local, "agent", None), task="default")
     _require_gemini_model(model)
+
+    if openrouter_enabled():
+        from shared.openrouter_client import ask_openrouter_multi
+
+        return ask_openrouter_multi(
+            messages,
+            system=system,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
 
     from google.genai import types
 

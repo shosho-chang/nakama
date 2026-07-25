@@ -1,0 +1,3789 @@
+stats:
+  total_shots: 333
+  broll_shots: 138
+  broll_shots_per_minute: 5.27
+  broll_events: 63
+  broll_events_per_minute: 2.41
+  shots_per_event_p50: 1
+  shots_per_event_max: 11
+  broll_duration_p50: 3.61
+  broll_duration_p90: 10.05
+  broll_time_share: 0.435
+  aroll_runs:
+    n: 64
+    p50: 9.7
+    p90: 35.1
+    max: 76.0
+  by_type:
+    kol:
+      n: 43
+      p50: 4.09
+      max: 27.57
+    motion_graphic:
+      n: 20
+      p50: 3.8
+      max: 13.51
+    other:
+      n: 4
+      p50: 1.75
+      max: 13.47
+    photo_still:
+      n: 2
+      p50: 36.18
+      max: 44.59
+    quote_card:
+      n: 1
+      p50: 6.59
+      max: 6.59
+    stock:
+      n: 66
+      p50: 3.17
+      max: 10.22
+    title_card:
+      n: 2
+      p50: 11.55
+      max: 14.77
+shots:
+- shot_id: 1
+  start: 0.0
+  end: 3.295
+  duration: 3.295
+  type: aroll
+  note: 主持人紅T恤在暖色書房對鏡頭說話，左側疊入雜誌封面 inset（a 幀滑入中被主持人部分遮擋，b 幀完整展開）。Inset 文字逐字：「Money錢」「慢就是快
+    張皓鈞 & 30歲的男子 財務自由之路」「破解！財務自由公式」（a 幀滑入中僅見部分：「解！財務自由公」）。
+  cues:
+  - 1
+  - 2
+  text: 之前有一集節目新世界的財務自由公式
+- shot_id: 2
+  start: 3.295
+  end: 8.3
+  duration: 5.005
+  type: aroll
+  note: 主持人對鏡頭說話；a 幀左側有極小縮圖 inset 正在滑出/滑入，b 幀縮圖消失、改為滿版大字 overlay「快樂事業」置於胸前。多幀不一致：小
+    inset → 大字 overlay。
+  cues:
+  - 3
+  - 4
+  text: 我提出了「快樂事業」的概念建議大家不要把退休當成目標
+- shot_id: 3
+  start: 8.3
+  end: 11.136
+  duration: 2.836
+  type: aroll
+  note: 主持人中景對鏡頭說話，雙手張開比劃，無 overlay 文字。
+  cues:
+  - 5
+  text: 而是找到一些自己喜歡又擅長
+- shot_id: 4
+  start: 11.136
+  end: 15.641
+  duration: 4.505
+  type: aroll
+  note: 主持人特寫對鏡頭說話（鏡頭比 shot 3 更近），無 overlay 文字。
+  cues:
+  - 6
+  - 7
+  - 8
+  text: 還能夠幫助到別人並且換取報酬的事情一直做下去
+- shot_id: 5
+  start: 15.641
+  end: 19.061
+  duration: 3.42
+  type: aroll
+  note: 主持人對鏡頭說話，右側疊入同一雜誌封面 inset（a 幀滑入中、b 幀完整）。Inset 文字逐字：「Money錢」「慢就是快 張皓鈞 & 30歲的男子
+    財務自由之路」「破解！財務自由公式」。
+  cues:
+  - 9
+  - 10
+  text: 影片上傳之後我受到了相當廣大的迴響
+- shot_id: 6
+  start: 19.061
+  end: 21.188
+  duration: 2.127
+  type: aroll
+  note: 主持人對鏡頭說話；a 幀右側有極小縮圖 inset（滑出中），b 幀已消失。
+  cues:
+  - 11
+  text: 我收到最多的疑問 就是
+- shot_id: 7
+  start: 21.188
+  end: 23.44
+  duration: 2.252
+  type: aroll
+  note: 主持人對鏡頭說話，畫面下方偏中疊大字 overlay「到底要怎麼找到？」（兩幀皆在）。
+  cues:
+  - 12
+  text: 「到底要怎麼找到這件事情？」
+- shot_id: 8
+  start: 23.44
+  end: 27.402
+  duration: 3.962
+  type: stock
+  note: 歐美辦公室實拍：白襯衫男子講桌上型電話並做筆記，背景多名同事在開放式辦公室工作，無畫面文字。
+  cues:
+  - 13
+  - 14
+  text: 有些人平常工作已經很忙了回到家只想耍廢
+- shot_id: 9
+  start: 27.402
+  end: 31.782
+  duration: 4.379
+  type: stock
+  note: 居家客廳實拍：一對男女坐沙發吃爆米花看電視，小孩在背景跑動，無畫面文字。
+  cues:
+  - 15
+  - 16
+  text: 周末又被小孩佔掉所有的時間根本沒有機會好好思考
+- shot_id: 10
+  start: 31.782
+  end: 41.792
+  duration: 10.01
+  type: aroll
+  note: 主持人中景對鏡頭說話，無 overlay 文字。
+  cues:
+  - 17
+  - 18
+  - 19
+  - 20
+  - 21
+  - 22
+  text: 有些朋友一輩子就照著爸媽或者長輩的建議選擇科系或職業從來也沒有好好思考自己要的是什麼一時也不知要從何想起
+- shot_id: 11
+  start: 41.792
+  end: 45.17
+  duration: 3.378
+  type: stock
+  note: 戶外實拍：綠髮少女穿黃色外套戴帽兜，坐在生鏽鐵橋步道旁沉思，無畫面文字。
+  cues:
+  - 23
+  - 24
+  text: 他們共同的想法就是感覺人生卡住了
+- shot_id: 12
+  start: 45.17
+  end: 47.506
+  duration: 2.336
+  type: stock
+  note: 戶外實拍：戴眼鏡黑西裝的南亞裔男子坐在建築物外沮喪扶額，無畫面文字。
+  cues:
+  - 25
+  - 26
+  text: 沒別條路了就這樣了
+- shot_id: 13
+  start: 47.506
+  end: 52.135
+  duration: 4.63
+  type: aroll
+  note: 主持人中景對鏡頭說話，無 overlay 文字。
+  cues:
+  - 27
+  - 28
+  - 29
+  text: 如果你也有類似的感覺別喪氣你絕對不孤單
+- shot_id: 14
+  start: 52.135
+  end: 56.306
+  duration: 4.171
+  type: aroll
+  note: 主持人（紅T恤、書架房間）對鏡頭說話，特寫。
+  cues:
+  - 30
+  - 31
+  text: 我就是過來人今天我要分享這本我的愛書
+- shot_id: 15
+  start: 56.306
+  end: 58.725
+  duration: 2.419
+  type: aroll
+  note: 主持人手持《Designing Your Life》實體書對鏡頭介紹；書封文字：「Designing Your Life:」及中文副標（設計自己的生命設計類字樣，字小不清）。書大面積入鏡但主體仍是主持人說話。
+  cues:
+  - 32
+  text: 《做自己的生命設計師》
+- shot_id: 16
+  start: 58.725
+  end: 63.355
+  duration: 4.63
+  type: aroll
+  note: 主持人對鏡頭說話，帶手勢。
+  cues:
+  - 33
+  - 34
+  text: 來幫助你一步一步設計出屬於你的最棒的人生
+- shot_id: 17
+  start: 63.355
+  end: 76.41
+  duration: 13.055
+  type: aroll
+  note: 多幀不一致：a 幀為白底手繪線條動畫（小昆蟲/線圈塗鴉，疑為 whiteboard 動畫收尾或轉場），b、c 幀為主持人對鏡頭說話；以主體判 aroll，開頭疊有白板動畫畫面。
+  cues:
+  - 35
+  - 36
+  - 37
+  - 38
+  - 39
+  - 40
+  - 41
+  - 42
+  text: 嗨大家！歡迎回到我的頻道如果你是新朋友我叫做修修這個頻道我會跟大家分享科學的方法與工具來幫助大家工作更有效率身心更健康
+- shot_id: 18
+  start: 76.41
+  end: 82.207
+  duration: 5.797
+  type: aroll
+  note: 主持人對鏡頭說話，稍近特寫。
+  cues:
+  - 43
+  - 44
+  - 45
+  text: 喔我真的很少看到一本書從第一頁開始就這麼寫進我心坎裡的
+- shot_id: 19
+  start: 82.207
+  end: 84.543
+  duration: 2.336
+  type: aroll
+  note: 主持人一邊拿著《Designing Your Life》書一邊說話，畫面右側疊入一個瀏覽器視窗樣式的 inset 影片（啄木鳥在樹幹啄洞的實拍片段）；a→b
+    inset 由半滑入到完整顯示。書封可見文字「Designing Your Life」（部分入鏡）。
+  cues:
+  - 46
+  text: 我簡直跟啄木鳥一樣狂點頭
+- shot_id: 20
+  start: 84.543
+  end: 93.302
+  duration: 8.759
+  type: aroll
+  note: 主持人對鏡頭說話，c 幀鏡頭略推近。
+  cues:
+  - 47
+  - 48
+  - 49
+  - 50
+  - 51
+  text: 我先舉書中的三個故事它們都會對應到三個書中定義的會讓你「卡住」的無效想法看看你有沒有似曾相識的喔
+- shot_id: 21
+  start: 93.302
+  end: 93.969
+  duration: 0.667
+  type: aroll
+  note: 主持人對鏡頭說話。
+  cues:
+  - 52
+  text: 故事一：艾倫喜歡蒐集石頭
+- shot_id: 22
+  start: 93.969
+  end: 95.596
+  duration: 1.627
+  type: motion_graphic
+  note: 3D CG 動畫：深藍紫太空背景，霓虹光環中漂浮的岩石與碎石帶（非實拍）。
+  cues:
+  - 52
+  text: 故事一：艾倫喜歡蒐集石頭
+- shot_id: 23
+  start: 95.596
+  end: 98.515
+  duration: 2.92
+  type: motion_graphic
+  note: 3D CG 動畫：大型岩石特寫，一側染粉紫光，周圍碎石飄散，背景霓虹光環。
+  cues:
+  - 53
+  - 54
+  text: 平常就熱衷於把戰利品依照大小
+- shot_id: 24
+  start: 98.515
+  end: 101.56
+  duration: 3.045
+  type: motion_graphic
+  note: 3D CG 動畫：淺綠色巨岩與環繞碎石流，左側米白光環、右側粉紅霓虹弧線。
+  cues:
+  - 55
+  text: 形狀 種類 顏色分門別類
+- shot_id: 25
+  start: 101.56
+  end: 103.812
+  duration: 2.252
+  type: aroll
+  note: 主持人對鏡頭說話，b 幀帶雙手手勢。
+  cues:
+  - 56
+  text: 他從小就不知道長大要幹嘛
+- shot_id: 26
+  start: 103.812
+  end: 108.817
+  duration: 5.005
+  type: aroll
+  note: 主持人對鏡頭說話，特寫。
+  cues:
+  - 57
+  - 58
+  text: 所以大學就很自然地選了地質系過完快樂的大學四年後
+- shot_id: 27
+  start: 108.817
+  end: 112.612
+  duration: 3.795
+  type: aroll
+  note: 主持人紅T恤在暖色書房對鏡頭說話，特寫，表情困惑皺眉；無畫面文字（台詞字幕除外）。
+  cues:
+  - 59
+  - 60
+  text: 他發現自己對地質學家的工作其實不太感興趣
+- shot_id: 28
+  start: 112.612
+  end: 115.49
+  duration: 2.878
+  type: motion_graphic
+  note: 太空中緩慢自轉的地球 CG 動畫，深色星空背景；無畫面文字。
+  cues:
+  - 61
+  - 62
+  text: 他沒有很想知道地球是如何形成的
+- shot_id: 29
+  start: 115.49
+  end: 117.826
+  duration: 2.336
+  type: kol
+  note: 他人影片片段：白色皮卡在澳洲紅土荒野道路行駛，黑色格紋框內嵌呈現；左上角文字「影片來源：GeologyUpSkill」。
+  cues:
+  - 63
+  - 64
+  text: 也對田野調查環保工作
+- shot_id: 30
+  start: 117.826
+  end: 119.036
+  duration: 1.21
+  type: kol
+  note: 他人影片片段：手在白色鍵盤打字特寫，旁有筆記本與黑咖啡，同黑格紋框；左上角文字「影片來源：GeologyUpSkill」。
+  cues:
+  - 65
+  text: 或寫報告等等
+- shot_id: 31
+  start: 119.036
+  end: 120.12
+  duration: 1.084
+  type: kol
+  note: 他人影片片段：Panasonic CF-53 筆電螢幕顯示地質 GIS 製圖軟體與資料表格，同黑格紋框；左上角文字「影片來源：GeologyUpSkill」。
+  cues:
+  - 66
+  text: 都沒有興趣
+- shot_id: 32
+  start: 120.12
+  end: 122.08
+  duration: 1.96
+  type: aroll
+  note: 主持人紅T恤（胸前 CHALLENGE-TAIWAN 圖樣）對鏡頭說話，驚訝張口表情；除T恤印字外無 overlay 文字。
+  cues:
+  - 67
+  text: 他花了爸媽這麼多錢
+- shot_id: 33
+  start: 122.08
+  end: 125.334
+  duration: 3.253
+  type: aroll
+  note: 主持人對鏡頭說話，兩幀間鏡位由中景推近至特寫；無 overlay 文字。
+  cues:
+  - 68
+  - 69
+  text: 拿個地質系的文憑卻不想做相關的工作
+- shot_id: 34
+  start: 125.334
+  end: 128.712
+  duration: 3.378
+  type: stock
+  note: 圖庫實拍：戴毛帽的青少年低頭沮喪，背景失焦的灰鬍中年男子（父親）在沙發上比手勢說話；無畫面文字。
+  cues:
+  - 70
+  - 71
+  text: 爸媽又整天在耳邊碎念讓他覺得很痛苦
+- shot_id: 35
+  start: 128.712
+  end: 131.506
+  duration: 2.794
+  type: aroll
+  note: 主持人紅T恤對鏡頭說話，中景；無 overlay 文字。
+  cues:
+  - 72
+  - 73
+  text: 因為他有個排名第一的無效想法
+- shot_id: 36
+  start: 131.506
+  end: 134.301
+  duration: 2.794
+  type: stock
+  note: 圖庫實拍：年輕男子肩掛耳機在咖啡店沙發用筆電打字，疊加橘黃色大字 overlay；a 幀僅「無效想法一」滑入中，b 幀完整置中顯示「無效想法一：大學念什麼，以後就得做什麼。」並加暗化遮罩——文字逐步進場，多幀不一致。
+  cues:
+  - 74
+  - 75
+  text: 大學念什麼以後就得做什麼
+- shot_id: 37
+  start: 134.301
+  end: 135.761
+  duration: 1.46
+  type: aroll
+  note: 主持人紅T恤對鏡頭說話，特寫；無 overlay 文字。
+  cues:
+  - 76
+  text: 事實上 根據統計
+- shot_id: 38
+  start: 135.761
+  end: 142.225
+  duration: 6.465
+  type: stock
+  note: 圖庫實拍：兩名女子在窗邊桌前用筆電工作（前景失焦人物），疊加白色大字 overlay；a 幀文字打入中僅見「有四分之三的大」，b/c 幀完整顯示「有四分之三的大學畢業生
+    後來做的工作， 都和自己的主修無關。」並加暗化遮罩——文字逐字進場，多幀不一致。
+  cues:
+  - 76
+  - 77
+  - 78
+  - 79
+  - 80
+  text: 事實上 根據統計有四分之三的大學畢業生後來做的工作都和自己的主修無關我就是其中之一
+- shot_id: 39
+  start: 142.225
+  end: 145.228
+  duration: 3.003
+  type: aroll
+  note: 主持人紅T恤對鏡頭說話，中特寫；無 overlay 文字。
+  cues:
+  - 81
+  - 82
+  text: 我大學念的是電機研究所念的是資工
+- shot_id: 40
+  start: 145.228
+  end: 146.355
+  duration: 1.126
+  type: aroll
+  note: 主持人（紅T恤、書架暖光房間）對鏡頭說話，特寫。無台詞字幕以外的畫面文字。
+  cues:
+  - 83
+  text: 現在⋯⋯
+- shot_id: 41
+  start: 146.355
+  end: 147.522
+  duration: 1.168
+  type: aroll
+  note: 主持人對鏡頭說話，稍廣的 letterboxed（上下黑邊）構圖，b 幀雙手張開做手勢。無台詞字幕以外的畫面文字。
+  cues:
+  - 84
+  text: 就一言難盡
+- shot_id: 42
+  start: 147.522
+  end: 148.315
+  duration: 0.792
+  type: aroll
+  note: 主持人對鏡頭說話，b 幀右手比出二的手勢。無台詞字幕以外的畫面文字。
+  cues:
+  - 85
+  text: 故事二：珍妮從小到大
+- shot_id: 43
+  start: 148.315
+  end: 150.984
+  duration: 2.669
+  type: stock
+  note: 小男孩在黑板前手持標滿答案的測驗答案卡，卡上紅圈 A 評分。畫面文字（答案卡）：「TEST」「A」「ABCDE」與題號 1–20；黑板粉筆字「x =
+    3,52」。
+  cues:
+  - 85
+  - 86
+  text: 故事二：珍妮從小到大就是人生勝利組
+- shot_id: 44
+  start: 150.984
+  end: 152.569
+  duration: 1.585
+  type: stock
+  note: 戴學士帽穿畢業袍的年輕女性站在玻璃帷幕中庭，仰角逆光。無畫面文字。
+  cues:
+  - 87
+  text: 念了頂尖的法學院
+- shot_id: 45
+  start: 152.569
+  end: 155.53
+  duration: 2.961
+  type: stock
+  note: 西裝人士會議室開會，前景男性手持筆做手勢，遠景金髮女主管。無可辨識畫面文字。
+  cues:
+  - 88
+  text: 進入專打大官司的知名事務所
+- shot_id: 46
+  start: 155.53
+  end: 164.748
+  duration: 9.218
+  type: aroll
+  note: 主持人對鏡頭說話，三幀表情從張口講述到皺眉、抿嘴（c 幀鏡頭略推近）。無台詞字幕以外的畫面文字。
+  cues:
+  - 89
+  - 90
+  - 91
+  - 92
+  - 93
+  text: 她靠著意志力發憤圖強在學業 事業婚姻等人生的一切幾乎是要什麼 有什麼堪稱成功的典範
+- shot_id: 47
+  start: 164.748
+  end: 166.124
+  duration: 1.376
+  type: aroll
+  note: 主持人對鏡頭說話後閉嘴抿唇停頓。無台詞字幕以外的畫面文字。
+  cues:
+  - 94
+  text: 但她有個秘密
+- shot_id: 48
+  start: 166.124
+  end: 172.464
+  duration: 6.34
+  type: stock
+  note: 紅髮女性臉部大特寫，眼眶含淚、淚珠沿臉頰滑落，昏暗青橘色調。無畫面文字。
+  cues:
+  - 95
+  - 96
+  - 97
+  text: 她常常在下班之後在華燈初上的時候坐在家裡的陽台獨自流淚
+- shot_id: 49
+  start: 172.464
+  end: 175.092
+  duration: 2.628
+  type: aroll
+  note: 主持人對鏡頭說話。無台詞字幕以外的畫面文字。
+  cues:
+  - 98
+  - 99
+  text: 她以為獲得了這些大家口中的成功
+- shot_id: 50
+  start: 175.092
+  end: 178.22
+  duration: 3.128
+  type: aroll
+  note: 主持人對鏡頭說話，表情較嚴肅、微皺眉（b 幀鏡頭略推近）。無台詞字幕以外的畫面文字。
+  cues:
+  - 100
+  - 101
+  text: 自己就會快樂但是她一點也不開心
+- shot_id: 51
+  start: 178.22
+  end: 190.524
+  duration: 12.304
+  type: kol
+  note: 戲劇片段（外供影視素材）嵌在黑色格線底框內：a 幀眾人舉香檳向坐著的黃衣女子敬酒（劇中字幕「謝謝Rebecca」）、b/c 幀同劇女子深夜在廚房用筆電（c
+    幀有馬賽克模糊區）。畫面文字：左上來源標「影片來源：MyVideo影音隨看」。
+  cues:
+  - 102
+  - 103
+  - 104
+  - 105
+  - 106
+  - 107
+  - 108
+  - 109
+  text: 她覺得自己是不是有什麼問題怎麼早上起來是個光鮮亮麗的人生勝利組但回到家之後卻覺得人生少了什麼自己好像擁有了全世界但卻又一無所有該怎麼辦？
+- shot_id: 52
+  start: 190.524
+  end: 191.858
+  duration: 1.335
+  type: aroll
+  note: 主持人對鏡頭說話，b 幀頭微歪、眼半閉的講述表情。無台詞字幕以外的畫面文字。
+  cues:
+  - 110
+  text: 她的無效想法是：
+- shot_id: 53
+  start: 191.858
+  end: 195.195
+  duration: 3.337
+  type: stock
+  note: 辦公室會議桌，紅髮女子與西裝男子面向鏡頭；橘色標題文字疊加。a 幀上方為「無效想法二」，b 幀畫面壓暗、置中變為「無效想法二：只要得到了世俗的成功，就會快樂。」——同鏡頭內
+    overlay 由標題展開為完整句
+  cues:
+  - 111
+  - 112
+  text: 只要得到了世俗定義的成功就會快樂
+- shot_id: 54
+  start: 195.195
+  end: 201.743
+  duration: 6.548
+  type: aroll
+  note: 主持人（紅T恤、暖色書房）對鏡頭說話並比手勢，無疊加文字
+  cues:
+  - 113
+  - 114
+  - 115
+  - 116
+  text: 但事實上是這條康莊大道不適合所有的人快樂的人生是自己設計出來的
+- shot_id: 55
+  start: 201.743
+  end: 204.162
+  duration: 2.419
+  type: aroll
+  note: 主持人對鏡頭說話，同一書房場景，無疊加文字
+  cues:
+  - 117
+  - 118
+  text: 我就是在十年前就體會到這點
+- shot_id: 56
+  start: 204.162
+  end: 205.288
+  duration: 1.126
+  type: other
+  note: 主持人自供素材：空拍俯瞰公路與稻田（有騎士）之影片，置於黑色格紋框內；非圖庫、非主持人露面，屬個人生活實拍。左上文字：「影片來源：張修修 Shosho
+    Chang」
+  cues:
+  - 119
+  text: 所以毅然決然地從
+- shot_id: 57
+  start: 205.288
+  end: 206.748
+  duration: 1.46
+  type: other
+  note: 主持人自供素材：草原上騎登山車的空拍/跟拍畫面，黑色格紋框內；同前為個人實拍非圖庫。左上文字：「影片來源：張修修 Shosho Chang」
+  cues:
+  - 119
+  - 120
+  text: 所以毅然決然地從年薪四百萬的聯發科裸辭
+- shot_id: 58
+  start: 206.748
+  end: 208.792
+  duration: 2.044
+  type: other
+  note: 主持人自供素材：跟拍騎士沿山脊土徑騎登山車，黑色格紋框內。左上文字：「影片來源：張修修 Shosho Chang」
+  cues:
+  - 120
+  text: 年薪四百萬的聯發科裸辭
+- shot_id: 59
+  start: 208.792
+  end: 209.501
+  duration: 0.709
+  type: aroll
+  note: 主持人對鏡頭說話，書房場景，無疊加文字
+  cues:
+  - 121
+  text: 故事三：唐納腳踏實地賺錢
+- shot_id: 60
+  start: 209.501
+  end: 213.213
+  duration: 3.712
+  type: stock
+  note: 戴眼鏡蓄鬍的西裝年輕男子在辦公室盯著電腦螢幕（前景螢幕遮擋），無畫面文字
+  cues:
+  - 121
+  - 122
+  text: 故事三：唐納腳踏實地賺錢一份工作做了三十年
+- shot_id: 61
+  start: 213.213
+  end: 217.759
+  duration: 4.546
+  type: stock
+  note: 白鬍年長西裝男子在木桌前用筆電打字、桌上有圖表文件，後段舉手做動作，無畫面文字
+  cues:
+  - 123
+  - 124
+  - 125
+  text: 房貸快繳完孩子也大了他擁有踏實的事業和人生
+- shot_id: 62
+  start: 217.759
+  end: 219.177
+  duration: 1.418
+  type: stock
+  note: 白髮年長男子在床上掀被起身，俯角特寫，無畫面文字
+  cues:
+  - 126
+  text: 但是每天就是起床 上班
+- shot_id: 63
+  start: 219.177
+  end: 219.72
+  duration: 0.542
+  type: stock
+  note: 提銀色公事包的西裝男子走向玻璃帷幕辦公大樓入口，無畫面文字
+  cues:
+  - 126
+  text: 但是每天就是起床 上班
+- shot_id: 64
+  start: 219.72
+  end: 220.47
+  duration: 0.751
+  type: stock
+  note: 年長男子在廚房餐桌前用筆電並手寫帳單文件，無畫面文字
+  cues:
+  - 127
+  text: 繳帳單 回家 睡覺
+- shot_id: 65
+  start: 220.47
+  end: 220.887
+  duration: 0.417
+  type: stock
+  note: 白鬍年長男子坐沙發上拿遙控器與零食杯看電視，無畫面文字
+  cues:
+  - 127
+  text: 繳帳單 回家 睡覺
+- shot_id: 66
+  start: 220.887
+  end: 222.806
+  duration: 1.919
+  type: stock
+  note: 白髮老人閉眼躺在床上睡覺，b 幀變成他撐起身/起床的俯拍特寫（同鏡頭內動作變化）。無畫面文字。
+  cues:
+  - 127
+  - 128
+  - 129
+  text: 繳帳單 回家 睡覺隔天早上起來也是上班 繳帳單
+- shot_id: 67
+  start: 222.806
+  end: 223.348
+  duration: 0.542
+  type: stock
+  note: 穿深色西裝的男子提著銀色手提箱背對鏡頭走向玻璃帷幕辦公大樓入口。無畫面文字。
+  cues:
+  - 129
+  text: 也是上班 繳帳單
+- shot_id: 68
+  start: 223.348
+  end: 223.849
+  duration: 0.5
+  type: stock
+  note: 白髮戴眼鏡老人坐在廚房餐桌前，用筆看著帳單文件，桌上有筆電。無畫面文字。
+  cues:
+  - 129
+  text: 也是上班 繳帳單
+- shot_id: 69
+  start: 223.849
+  end: 224.349
+  duration: 0.5
+  type: stock
+  note: 白鬍老人坐在沙發上，一手拿遙控器一手拿零食杯看電視，表情呆滯。無畫面文字。
+  cues:
+  - 130
+  text: 回家 睡覺
+- shot_id: 70
+  start: 224.349
+  end: 224.808
+  duration: 0.459
+  type: stock
+  note: 白髮老人閉眼躺在床上睡覺（與 shot 66 同素材的臥床畫面）。無畫面文字。
+  cues:
+  - 130
+  text: 回家 睡覺
+- shot_id: 71
+  start: 224.808
+  end: 229.98
+  duration: 5.172
+  type: aroll
+  note: 主持人（紅T恤、書架暖色房間）對鏡頭說話，T恤上有 CHALLENGE TAIWAN 圖樣（衣服印字非 overlay）。無疊加文字。
+  cues:
+  - 131
+  - 132
+  - 133
+  - 134
+  text: 日復一日多年來不管是在咖啡店或是在家附近的酒吧
+- shot_id: 72
+  start: 229.98
+  end: 231.648
+  duration: 1.668
+  type: aroll
+  note: 主持人對鏡頭說話，皺眉質疑表情。無疊加文字。
+  cues:
+  - 135
+  text: 或是在半夜醒來
+- shot_id: 73
+  start: 231.648
+  end: 239.489
+  duration: 7.841
+  type: stock
+  note: 灰髮男子穿黑西裝黑領帶站在鏡子前看著自己，c 幀閉眼低落神情。無畫面文字。
+  cues:
+  - 136
+  - 137
+  - 138
+  - 139
+  text: 他看著鏡子前的自己的時候都會問自己一個問題：「我這輩子就這樣了嗎？難道這就是我要過的人生嗎？」
+- shot_id: 74
+  start: 239.489
+  end: 241.032
+  duration: 1.543
+  type: stock
+  note: 藍襯衫老人坐在沙發低頭沉思；疊加橘色大字滑入：a 幀僅「無效想法三：」，b 幀完整顯示「無效想法三：一切都太遲了，自己年紀不小了，想做什麼改變都來不及了。」且背景壓暗（overlay
+    漸進出現）。
+  cues:
+  - 140
+  text: 他的無效想法是：
+- shot_id: 75
+  start: 241.032
+  end: 246.496
+  duration: 5.464
+  type: aroll
+  note: 主持人對鏡頭說話，表情由驚訝轉平緩。無疊加文字。
+  cues:
+  - 141
+  - 142
+  - 143
+  text: 一切都太遲了自己年紀也不小了想做什麼改變都來不及了
+- shot_id: 76
+  start: 246.496
+  end: 247.706
+  duration: 1.21
+  type: aroll
+  note: 主持人對鏡頭說話。無疊加文字。
+  cues:
+  - 144
+  text: 但事實上是
+- shot_id: 77
+  start: 247.706
+  end: 251.418
+  duration: 3.712
+  type: aroll
+  note: 主持人對鏡頭說話，b 幀鏡頭推近、雙手在畫面下方比劃（動作模糊）。無疊加文字。
+  cues:
+  - 145
+  - 146
+  text: 設計你熱愛的人生永遠都不嫌晚
+- shot_id: 78
+  start: 251.418
+  end: 254.921
+  duration: 3.504
+  type: aroll
+  note: 主持人對鏡頭說話，嘴型驚訝到平述。無疊加文字。
+  cues:
+  - 147
+  - 148
+  text: 光是在美國在 44 歲到 70 歲之間
+- shot_id: 79
+  start: 254.921
+  end: 259.342
+  duration: 4.421
+  type: aroll
+  note: 主持人（紅T恤、書架暖色房間）對鏡頭說話，無疊加物。
+  cues:
+  - 149
+  - 150
+  text: 就有超過三千一百萬人渴望擁有「安可職涯」
+- shot_id: 80
+  start: 259.342
+  end: 264.514
+  duration: 5.172
+  type: motion_graphic
+  note: 黑色格紋背景上白底扁平動畫：銀行、書本、電腦三個圓形 icon，b 幀電腦螢幕出現折線圖動畫。左上角來源標示文字：「影片來源：Forbes」。
+  cues:
+  - 151
+  - 152
+  - 153
+  text: 也就是能夠帶來人生意義和不間斷的收入還能造福社會的工作
+- shot_id: 81
+  start: 264.514
+  end: 269.227
+  duration: 4.713
+  type: aroll
+  note: 主持人對鏡頭說話，無疊加物。
+  cues:
+  - 154
+  - 155
+  - 156
+  text: 就作者的統計每個人平均可以擁有3.4 段的人生
+- shot_id: 82
+  start: 269.227
+  end: 275.817
+  duration: 6.59
+  type: aroll
+  note: 主持人對鏡頭說話，無疊加物。
+  cues:
+  - 157
+  - 158
+  - 159
+  - 160
+  text: 就我來說華碩兩年加上聯發科四年總共六年的科技業業務是我的第一段人生
+- shot_id: 83
+  start: 275.817
+  end: 279.654
+  duration: 3.837
+  type: aroll
+  note: 主持人對鏡頭說話，右側疊加書封 inset（滑入放大：a 幀較小、b 幀放大）。書封文字：「1082萬次 轉動」「張修維——著」「帶著電玩哲學的單車冒險」「10,820,000
+    REVOLUTIONS」「CHINA EUROPE AFRICA」。
+  cues:
+  - 161
+  - 162
+  text: 花了兩年去騎車環遊世界是第二段人生
+- shot_id: 84
+  start: 279.654
+  end: 280.822
+  duration: 1.168
+  type: stock
+  note: 室內單車工作室實拍：一人手持 RODE 麥克風相機拍攝旅行單車與戴帽男子。畫面文字：「影片來源：張修修 Shosho Chang」（此為主持人自有舊素材，非圖庫，但為實拍
+    B-roll）。
+  cues:
+  - 163
+  - 164
+  text: 騎車拍片邀請 Dan Mace 和我一起
+- shot_id: 85
+  start: 280.822
+  end: 281.781
+  duration: 0.959
+  type: stock
+  note: 裝修中室內實拍：一人踩電動平衡車、另一人持相機拍攝。畫面文字：「影片來源：張修修 Shosho Chang」。自有舊素材實拍 B-roll。
+  cues:
+  - 164
+  text: 邀請 Dan Mace 和我一起
+- shot_id: 86
+  start: 281.781
+  end: 283.45
+  duration: 1.668
+  type: stock
+  note: 山路實拍：兩名男子在黃色護欄旁聊天，一人穿車衣持相機。畫面文字：「影片來源：張修修 Shosho Chang」。自有舊素材實拍 B-roll。
+  cues:
+  - 164
+  - 165
+  text: 邀請 Dan Mace 和我一起推廣台灣的單車旅行
+- shot_id: 87
+  start: 283.45
+  end: 285.035
+  duration: 1.585
+  type: stock
+  note: 頂樓實拍：攝影師拍攝兩名勾肩男子合照，其中一人嘴部有綠色貼圖遮擋。畫面文字：「影片來源：張修修 Shosho Chang」。自有舊素材實拍 B-roll。
+  cues:
+  - 165
+  - 166
+  text: 推廣台灣的單車旅行是第三段
+- shot_id: 88
+  start: 285.035
+  end: 287.537
+  duration: 2.502
+  type: aroll
+  note: 主持人近距離對鏡頭說話（推近特寫），無疊加物。
+  cues:
+  - 167
+  - 168
+  text: 而我現在正在進行的是第四段
+- shot_id: 89
+  start: 287.537
+  end: 289.039
+  duration: 1.502
+  type: aroll
+  note: 主持人對鏡頭說話（b 幀有手勢），無疊加物。
+  cues:
+  - 169
+  text: 以上這三個例子
+- shot_id: 90
+  start: 289.039
+  end: 292.542
+  duration: 3.504
+  type: aroll
+  note: '主持人對鏡頭說話，右側疊加書封 inset（a→b 滑入放大）。書封文字：「Designing Your Life: How to Build a
+    Well-Lived, Joyful Life」「做自己的生命設計師」「用『設計思考』重擬問題，打造全新生命藍圖」「Bill Burnett & Dave
+    Evans」「比爾·柏內特／戴夫·埃文斯——著 許恬寧——譯」。'
+  cues:
+  - 170
+  - 171
+  text: 是兩位作者加起來超過 70 年的教學經歷
+- shot_id: 91
+  start: 292.542
+  end: 300.884
+  duration: 8.342
+  type: title_card
+  note: 滿版章節卡：a 幀為橘白斜條紋轉場過渡（無文字），b/c 幀橘底＋白色書堆 icon＋標題。畫面文字：「這本書的作者是何方神聖？」。
+  cues:
+  - 172
+  - 173
+  - 174
+  - 175
+  - 176
+  text: 歸納出來最典型的會讓你人生卡住的無效想法那這本書的作者是何方神聖呢？本書的兩位作者
+- shot_id: 92
+  start: 300.884
+  end: 306.765
+  duration: 5.881
+  type: kol
+  note: TEDx 演講片段：灰髮戴眼鏡西方男性穿藍西裝在紫色簾幕舞台上手勢講話。左上角文字：「影片來源：TEDx Talks」。
+  cues:
+  - 177
+  - 178
+  - 179
+  - 180
+  text: 其中一位 Bill Burnett是史丹佛大學「生命設計實驗室」的教授和執行主任
+- shot_id: 93
+  start: 306.765
+  end: 311.102
+  duration: 4.338
+  type: kol
+  note: TEDx 演講廣角：同一講者站在舞台紅色大型「TEDx St…」立體字前，前景有觀眾。左上角文字：「影片來源：TEDx Talks」。
+  cues:
+  - 181
+  - 182
+  - 183
+  text: 就是他設計出蘋果第一代筆電Powerbook 耐用的轉軸
+- shot_id: 94
+  start: 311.102
+  end: 316.274
+  duration: 5.172
+  type: kol
+  note: 另一 TEDx 演講片段：灰髮鬍子西方男性穿灰襯衫在暗色講堂比手勢說話。左上角文字：「影片來源：TEDx Talks」。
+  cues:
+  - 184
+  - 185
+  - 186
+  text: 另一位 Dave Evans也是在蘋果待過他負責的是滑鼠的產品行銷
+- shot_id: 95
+  start: 316.274
+  end: 318.443
+  duration: 2.169
+  type: aroll
+  note: 主持人（紅T恤、書架暖色房間）對鏡頭說話，胸前T恤有「…LLENGE-TAIWAN…」字樣圖案（衣物印字，非 overlay）。
+  cues:
+  - 187
+  text: 後來和他老闆離開了蘋果之後
+- shot_id: 96
+  start: 318.443
+  end: 323.406
+  duration: 4.963
+  type: aroll
+  note: 主持人對鏡頭說話，左側疊入瀏覽器視窗樣式圖卡：藍色 Electronic Arts logo，文字「Electronic Arts」；a 幀圖卡尚在滑入（文字被裁切為「lectronic
+    Art」），b 幀完整置定。
+  cues:
+  - 188
+  - 189
+  text: 一起創辦了 EA 美商藝電這個公司在打電動的一定超熟
+- shot_id: 97
+  start: 323.406
+  end: 332.749
+  duration: 9.343
+  type: kol
+  note: 兩位年長西方男性（格紋襯衫與桃紅polo）並坐在米黃牆前對鏡頭談話（Bill Burnett 與 Dave Evans 風格訪談畫面）。左上角文字：「影片來源：Designing
+    Your Life」。
+  cues:
+  - 190
+  - 191
+  - 192
+  - 193
+  - 194
+  text: 他們兩位 2007 年在史丹佛大學開了一堂最受歡迎的選修課就叫做 Designing Your Life〈設計你的生命〉
+- shot_id: 98
+  start: 332.749
+  end: 341.341
+  duration: 8.592
+  type: aroll
+  note: 主持人對鏡頭說話；b 幀（中段）畫面下方疊入大型白色標題字「設計思考」，a、c 幀無疊字——overlay 中途出現後消失。
+  cues:
+  - 195
+  - 196
+  - 197
+  - 198
+  text: 兩位都是產品設計的專家都擅長使用 design thinking「設計思考」這個方法論來解決一些棘手的陌生問題
+- shot_id: 99
+  start: 341.341
+  end: 344.719
+  duration: 3.378
+  type: stock
+  note: Ferrari 官方宣傳影片：紅色法拉利跑車特寫與駛出車庫畫面。畫面文字：「ferrari.com」「is more than a new car.」（片源內嵌英文字幕）；左上角「影片來源：Ferrari」。
+  cues:
+  - 199
+  - 200
+  text: 他們認為不論是曲線無懈可擊的法拉利
+- shot_id: 100
+  start: 344.719
+  end: 347.097
+  duration: 2.377
+  type: stock
+  note: Apple 產品宣傳影片：白背景 MacBook 薄型機身開合特寫（a 幀淺金色、b 幀深藍黑色）。左上角文字：「影片來源：Apple」。
+  cues:
+  - 201
+  text: 還是超輕薄的 MacBook Air
+- shot_id: 101
+  start: 347.097
+  end: 350.058
+  duration: 2.961
+  type: aroll
+  note: 主持人對鏡頭說話（a 幀閉眼陶醉表情），無疊加物。
+  cues:
+  - 202
+  - 203
+  text: 一個好的設計會讓人第一眼就覺得：
+- shot_id: 102
+  start: 350.058
+  end: 351.184
+  duration: 1.126
+  type: aroll
+  note: 主持人張嘴驚呼表情對鏡頭，左側疊入視窗式 meme 圖卡：企鵝 Pudgy Penguin 卡通，文字「THAT'S THE ONE!」。
+  cues:
+  - 204
+  text: 「啊 就是它了」
+- shot_id: 103
+  start: 351.184
+  end: 355.689
+  duration: 4.505
+  type: aroll
+  note: 主持人對鏡頭說話，左側同一企鵝 meme 圖卡持續疊加，文字「THAT'S THE ONE!」；a 幀嘴嘟起、b 幀誇張張嘴。
+  cues:
+  - 205
+  - 206
+  text: 好的設計就是有一種獨特的樣貌讓人打從心底覺得美
+- shot_id: 104
+  start: 355.689
+  end: 357.899
+  duration: 2.211
+  type: aroll
+  note: 主持人對鏡頭正常說話，無疊加物。
+  cues:
+  - 207
+  text: 而經過妥善設計的人生
+- shot_id: 105
+  start: 357.899
+  end: 360.068
+  duration: 2.169
+  type: aroll
+  note: 主持人紅T恤在暖色書房對鏡頭說話，b 幀舉起食指強調。無台詞字幕以外文字。
+  cues:
+  - 208
+  text: 也會給人這種特別的感覺
+- shot_id: 106
+  start: 360.068
+  end: 363.697
+  duration: 3.629
+  type: kol
+  note: 迪士尼動畫片段：戴眼鏡上班族站在滿是隔間電腦的辦公室（a）、坐在桌前理紙堆（b），黑色格紋框內嵌。左上角文字：「影片來源：Disney」。
+  cues:
+  - 209
+  - 210
+  - 211
+  text: 這樣的人生不會是行尸走肉無限重複的
+- shot_id: 107
+  start: 363.697
+  end: 367.576
+  duration: 3.879
+  type: kol
+  note: 同一迪士尼動畫：a 幀角色在海灘跳向海邊，b 幀角色在海浪中舉著紫色物件戲水。左上角文字：「影片來源：Disney」。
+  cues:
+  - 212
+  - 213
+  text: 而是不斷帶來新生命永遠具備創意和生產力
+- shot_id: 108
+  start: 367.576
+  end: 373.748
+  duration: 6.173
+  type: kol
+  note: 迪士尼動畫續：角色戴著彩色眼鏡在辦公桌揮手（a）、跳過成排辦公桌（b）、整間辦公室變成紫紅燈光派對感全景（c）。左上角文字：「影片來源：Disney」。
+  cues:
+  - 214
+  - 215
+  - 216
+  - 217
+  text: 永遠會有意想不到的驚喜在前方等候令人每一天起床都充滿幹勁的人生
+- shot_id: 109
+  start: 373.748
+  end: 377.043
+  duration: 3.295
+  type: aroll
+  note: 主持人紅T恤（Challenge Taiwan 圖案）對鏡頭說話，表情生動。衣服上文字：「CHALLENGE TAIWAN」（衣印，部分可見）。
+  cues:
+  - 218
+  - 219
+  text: 這就是我現在的感覺我老婆常常跟朋友說
+- shot_id: 110
+  start: 377.043
+  end: 379.337
+  duration: 2.294
+  type: aroll
+  note: 主持人續對鏡頭說話，微笑語氣。無台詞字幕以外畫面文字（衣印 CHALLENGE TAIWAN 同前）。
+  cues:
+  - 220
+  - 221
+  text: 和我結婚之後最大的感想之一
+- shot_id: 111
+  start: 379.337
+  end: 380.964
+  duration: 1.627
+  type: aroll
+  note: 主持人對鏡頭說話，右側疊加復古喜劇片段小視窗（女子張開雙臂）配大字「SURPRISE!」；a 幀視窗較大滑入中、b 幀定位完成——meme inset
+    疊加。畫面文字：「SURPRISE!」。
+  cues:
+  - 222
+  text: 就是永遠都有驚喜
+- shot_id: 112
+  start: 380.964
+  end: 385.01
+  duration: 4.046
+  type: aroll
+  note: 主持人對鏡頭說話；a 幀右側 SURPRISE meme 小視窗縮小滑出中，b 幀已消失。多幀不一致：overlay 退場。
+  cues:
+  - 223
+  - 224
+  - 225
+  text: 永遠都沒辦法預測我們明年人會在哪裡要做什麼事情
+- shot_id: 113
+  start: 385.01
+  end: 388.013
+  duration: 3.003
+  type: aroll
+  note: 主持人稍側身對鏡頭說話，畫面上下有黑邊（zoom/裁切變化）。無台詞字幕以外文字。
+  cues:
+  - 226
+  - 227
+  text: 但這幾年太刺激了希望明年可以喘口氣
+- shot_id: 114
+  start: 388.013
+  end: 400.025
+  duration: 12.012
+  type: kol
+  note: Chicago Ideas 講台演講片段：灰髮眼鏡講者比手勢（a）、指向 CHICAGO IDEAS 燈泡 logo（b）、兩位講者同台（c）。畫面文字：「影片來源：Chicago
+    Ideas」「CHICAGO IDEAS」「CHICAGO IDEAS WEEK」「CHICAGO COMMUNITY TRUST」（背板部分可見）。
+  cues:
+  - 228
+  - 229
+  - 230
+  - 231
+  - 232
+  - 233
+  text: 兩位教授都是大師級的設計師曾經親自設計以及主導很多產品的開發相當熟悉這種先卡住再找到出路的過程包括他們自己的人生也不例外
+- shot_id: 115
+  start: 400.025
+  end: 401.318
+  duration: 1.293
+  type: aroll
+  note: 主持人瞪大眼對鏡頭說話（驚訝表情）。無台詞字幕以外文字。
+  cues:
+  - 234
+  text: 他們深深地覺得
+- shot_id: 116
+  start: 401.318
+  end: 405.989
+  duration: 4.671
+  type: aroll
+  note: 主持人續對鏡頭說話，鏡位稍近。無台詞字幕以外文字。
+  cues:
+  - 235
+  - 236
+  text: 這世界上最值得好好設計的案子就是自己的人生
+- shot_id: 117
+  start: 405.989
+  end: 408.825
+  duration: 2.836
+  type: kol
+  note: Stanford Life Design Lab 訪談片段：戴眼鏡灰髮男子側面特寫，背景為貼滿彩色便利貼的玻璃牆。左上角文字：「影片來源：Stanford
+    Life Design Lab」。
+  cues:
+  - 237
+  - 238
+  text: 於是他們決定協助學生們在大學畢業
+- shot_id: 118
+  start: 408.825
+  end: 412.704
+  duration: 3.879
+  type: kol
+  note: 框在黑色格線邊框中的訪談片段：戴眼鏡灰髮西裝男子在貼滿彩色便利貼的玻璃牆前受訪。左上角來源標示文字：「影片來源：Stanford Life Design
+    Lab」。
+  cues:
+  - 239
+  - 240
+  text: 準備出社會的時候能夠快樂並且具備生產力
+- shot_id: 119
+  start: 412.704
+  end: 415.498
+  duration: 2.794
+  type: aroll
+  note: 主持人（紅T恤、書架暖色房間）對鏡頭說話，胸前T恤印「…LLENGE-TAIWAN…」圓形圖樣（衣服本身印字，非 overlay）。
+  cues:
+  - 241
+  - 242
+  text: 而有套方法來找出前方的人生
+- shot_id: 120
+  start: 415.498
+  end: 418.001
+  duration: 2.502
+  type: aroll
+  note: 主持人近景對鏡頭說話，b 幀表情收斂閉口；無 overlay 文字。
+  cues:
+  - 243
+  - 244
+  text: 究竟應該做什麼如果卡住了
+- shot_id: 121
+  start: 418.001
+  end: 420.003
+  duration: 2.002
+  type: aroll
+  note: 主持人更近的特寫對鏡頭說話，b 幀閉眼講話中；無 overlay 文字。
+  cues:
+  - 245
+  text: 這套方法也能幫他們脫身
+- shot_id: 122
+  start: 420.003
+  end: 427.052
+  duration: 7.049
+  type: kol
+  note: 黑格線邊框內的視訊訪談：兩位年長男子（左戴眼鏡深色西裝、右粉紅襯衫白鬍）並肩坐在辦公室（背景有烏克麗麗）對談。左上角來源標示：「影片來源：Designing
+    Your Life」。
+  cues:
+  - 246
+  - 247
+  - 248
+  - 249
+  text: 他們輔導過無數名學生從中學生一直到博士生甚至有中階主管以及退休人士等等
+- shot_id: 123
+  start: 427.052
+  end: 434.142
+  duration: 7.09
+  type: aroll
+  note: 主持人對鏡頭說話，表情隨語氣變化（驚訝、皺眉）；無 overlay 文字。
+  cues:
+  - 250
+  - 251
+  - 252
+  - 253
+  text: 他們發現就算是史丹佛大學的天之驕子還有看起來像是超級人生勝利組的這些人
+- shot_id: 124
+  start: 434.142
+  end: 437.771
+  duration: 3.629
+  type: aroll
+  note: 主持人近景對鏡頭說話；無 overlay 文字。
+  cues:
+  - 254
+  text: 也常常卡在無效的問題中鬼打牆
+- shot_id: 125
+  start: 437.771
+  end: 445.654
+  duration: 7.883
+  type: aroll
+  note: 主持人對鏡頭說話，a 幀無字，b/c 幀下方疊入大型白色關鍵詞「失功能信念」（overlay 中途出現）。
+  cues:
+  - 255
+  - 256
+  - 257
+  - 258
+  text: 心理學家稱這些無效問題為失功能信念dysfunctional beliefs這是會讓你卡住的罪魁禍首
+- shot_id: 126
+  start: 445.654
+  end: 447.781
+  duration: 2.127
+  type: aroll
+  note: 主持人對鏡頭說話，左側疊加橘色瀏覽器視窗框 inset，內為亂髮哭鬧幼兒的 meme 圖；a→b inset 由小放大滑入定位；無 overlay
+    文字。
+  cues:
+  - 259
+  text: 它們會讓你喪失前進的動力
+- shot_id: 127
+  start: 447.781
+  end: 453.411
+  duration: 5.631
+  type: aroll
+  note: 主持人對鏡頭說話，b 幀右下有手勢入鏡；無 overlay 文字。
+  cues:
+  - 260
+  - 261
+  - 262
+  text: 所以在開始設計自己的人生前一定要想辦法找出無效問題並且加以破除
+- shot_id: 128
+  start: 453.411
+  end: 456.539
+  duration: 3.128
+  type: aroll
+  note: 主持人特寫對鏡頭說話，a 幀無字，b 幀疊入大型白色關鍵詞「重擬問題」（overlay 中途出現）。
+  cues:
+  - 263
+  - 264
+  text: 這個過程叫做重擬問題 reframing
+- shot_id: 129
+  start: 456.539
+  end: 461.086
+  duration: 4.546
+  type: aroll
+  note: 主持人對鏡頭說話，右側疊加三條編號清單 overlay；a 幀僅有橘色空白條（文字尚未打出），b 幀完整顯示：「1 大學念什麼，就要做什麼」「2 有「成功」人生就會快樂」「3
+    已經來不及開啟理想生活」。
+  cues:
+  - 265
+  - 266
+  text: 除了前面講的三個出社會之後常常冒出來的無效問題以外
+- shot_id: 130
+  start: 461.086
+  end: 466.049
+  duration: 4.963
+  type: aroll
+  note: 主持人對鏡頭說話並舉起手指比一的手勢，表情興奮；無 overlay 文字。
+  cues:
+  - 267
+  - 268
+  - 269
+  text: 還有一個我們超常被勵志書或演講灌輸的「失功能信念」
+- shot_id: 131
+  start: 466.049
+  end: 479.521
+  duration: 13.472
+  type: other
+  note: 三幀分屬三種畫面（章節轉場序列）：a=白色空間黃裙黑人女舞者 stock，上方大字「無效想法四」；b=橘底滿版動畫心臟圖示卡，文字「順從熱情是最糟糕的職涯建議」；c=主持人（紅T恤、書架房間）對鏡頭說話。多幀嚴重不一致：章節標題卡（stock
+    打底→滿版圖卡）滑入後接回 aroll
+  cues:
+  - 270
+  - 271
+  - 272
+  - 273
+  - 274
+  - 275
+  - 276
+  text: 就是「你必須先找到熱情順從你的熱情才能夠成功」如果你問還在念書或是在公司工作的我我的熱情是什麼我應該會跟你講說
+- shot_id: 132
+  start: 479.521
+  end: 482.023
+  duration: 2.502
+  type: aroll
+  note: 主持人紅T恤書架房間對鏡頭說話；b 幀左右兩側滑入大字 overlay「吃」「睡」（a 幀尚未出現）
+  cues:
+  - 277
+  - 278
+  text: 啊就吃和睡還有放假出去玩
+- shot_id: 133
+  start: 482.023
+  end: 496.454
+  duration: 14.431
+  type: kol
+  note: 他人訪談片段：藍毛衣戴眼鏡的年長歐美男性坐在會議桌前受訪；左上來源標「影片來源：PRYDE」；b/c 幀畫面中央疊入引言大字「12 至 26歲之間的年輕人，只有
+    20% 的人清楚知道自己想朝什麼方向發展、人生想幹什麼，以及理由。」（a 幀無此文字）
+  cues:
+  - 279
+  - 280
+  - 281
+  - 282
+  - 283
+  - 284
+  - 285
+  text: 作者的同事 William Damon是「史丹佛青少年研究中心」的主任他發現 12 歲到 26 歲之間的年輕人只有 20% 的人清楚知道自己想朝什麼方向發展人生想幹嘛還有理由是什麼
+- shot_id: 134
+  start: 496.454
+  end: 498.456
+  duration: 2.002
+  type: aroll
+  note: 主持人紅T恤書架房間對鏡頭說話，b 幀舉手比劃；無 overlay 文字
+  cues:
+  - 286
+  text: 這跟兩位作者的經驗相符
+- shot_id: 135
+  start: 498.456
+  end: 499.791
+  duration: 1.335
+  type: stock
+  note: 紫底棚拍：黃T恤長髮白人女性對鏡頭聳肩、一臉不確定；無畫面文字
+  cues:
+  - 287
+  text: 不論什麼年紀
+- shot_id: 136
+  start: 499.791
+  end: 501.501
+  duration: 1.71
+  type: stock
+  note: 綠底棚拍：深色西裝金髮鬍子白人男性攤手聳肩表示不知道；無畫面文字
+  cues:
+  - 288
+  - 289
+  text: 有八成的人不太曉得自己對什麼有熱情
+- shot_id: 137
+  start: 501.501
+  end: 502.919
+  duration: 1.418
+  type: stock
+  note: 黃橘底棚拍：丹寧襯衫黑人男性搔頭、表情尷尬困惑；無畫面文字
+  cues:
+  - 289
+  text: 不太曉得自己對什麼有熱情
+- shot_id: 138
+  start: 502.919
+  end: 507.507
+  duration: 4.588
+  type: aroll
+  note: 主持人紅T恤書架房間對鏡頭說話（近景），b 幀皺眉苦臉做表情；無 overlay 文字
+  cues:
+  - 290
+  - 291
+  - 292
+  text: 職涯顧問那些做出來的測驗效果也不大就算測驗做出來了
+- shot_id: 139
+  start: 507.507
+  end: 515.765
+  duration: 8.258
+  type: aroll
+  note: 主持人對鏡頭說話；b 幀左右各滑入一個復古視窗框 inset（左：藍衣婦人端派的老影集畫面，右：西裝男在法庭/教室的老影集畫面），a/c 幀無 inset；無
+    overlay 文字
+  cues:
+  - 293
+  - 294
+  - 295
+  - 296
+  text: 建議你應該當律師或者是麵包師傅你也不太可能突然就跑去做因為培養熱情需要時間研究顯示
+- shot_id: 140
+  start: 515.765
+  end: 525.817
+  duration: 10.052
+  type: kol
+  note: 電影《靈魂急轉彎》片段（Joe 在昏暗房間彈鋼琴、特寫琴鍵與閉眼神情），左上來源標「影片來源：Soul」；中央引言大字逐步出現：a 幀「對多數人而言，」，b/c
+    幀完整「對多數人而言，熱情是試過之後才會出現的東西。要先嘗試，才知道喜不喜歡，然後才能精通，進而產生熱情。」
+  cues:
+  - 297
+  - 298
+  - 299
+  - 300
+  - 301
+  - 302
+  - 303
+  text: 對多數人而言熱情是試過之後才會出現的東西要先嘗試才知道喜不喜歡這件事然後才能精通這件事進而產生熱情
+- shot_id: 141
+  start: 525.817
+  end: 527.777
+  duration: 1.96
+  type: aroll
+  note: 主持人紅T恤書架房間對鏡頭說話；無 overlay 文字
+  cues:
+  - 304
+  text: 所以本書的金句來了：
+- shot_id: 142
+  start: 527.777
+  end: 532.657
+  duration: 4.88
+  type: aroll
+  note: 主持人對鏡頭說話（近景）；無 overlay 文字
+  cues:
+  - 305
+  - 306
+  - 307
+  text: 「熱情是良好生命設計帶來的結果而不是源頭」
+- shot_id: 143
+  start: 532.657
+  end: 533.491
+  duration: 0.834
+  type: aroll
+  note: 主持人對鏡頭說話，b 幀舉起食指強調；無 overlay 文字
+  cues:
+  - 308
+  text: 再說一次：
+- shot_id: 144
+  start: 533.491
+  end: 535.744
+  duration: 2.252
+  type: kol
+  note: 電影《靈魂急轉彎》動畫片段：父親與男孩看黑膠唱盤；左上角來源標示「影片來源：Soul」；b 幀畫面壓暗、中央滑入大字金句「熱情是良好生命設計 帶來的結果，而不是源頭。」（a
+    幀尚無金句）
+  cues:
+  - 309
+  text: 「熱情是良好生命設計
+- shot_id: 145
+  start: 535.744
+  end: 538.079
+  duration: 2.336
+  type: kol
+  note: 仰拍綠樹與天空的《Soul》片段（左上角「影片來源：Soul」），中央持續疊大字金句「熱情是良好生命設計 帶來的結果，而不是源頭。」，兩幀一致；接續上鏡的金句
+    overlay
+  cues:
+  - 310
+  - 311
+  text: 帶來的結果而不是源頭」
+- shot_id: 146
+  start: 538.079
+  end: 541.458
+  duration: 3.378
+  type: aroll
+  note: 主持人紅T恤在書架房間對鏡頭說話，無疊加文字
+  cues:
+  - 312
+  - 313
+  text: 好 我統整一下前面提到的四個失功能信念：
+- shot_id: 147
+  start: 541.458
+  end: 544.586
+  duration: 3.128
+  type: stock
+  note: 校園草坪上背靠背用筆電的男女學生實拍；橘色大字 overlay 滑入：a 幀僅「失功能信念一」，b 幀畫面壓暗、完整顯示「失功能信念一： 大學念什麼，
+    出社會就應該做什麼。」
+  cues:
+  - 314
+  - 315
+  - 316
+  text: 第一個大學念什麼出社會就應該做什麼
+- shot_id: 148
+  start: 544.586
+  end: 547.797
+  duration: 3.212
+  type: stock
+  note: 辦公室四人團隊對鏡頭合照式實拍；橘色大字 overlay：a 幀頂部「失功能信念二」，b 幀畫面壓暗、中央「失功能信念二： 只要功成名就 就能過上快樂的人生。」
+  cues:
+  - 317
+  - 318
+  - 319
+  text: 第二個功成名就就能夠過上快樂的人生
+- shot_id: 149
+  start: 547.797
+  end: 551.843
+  duration: 4.046
+  type: stock
+  note: 戴紳士帽中年男子仰望天空實拍；橘色 overlay：a 幀頂部文字剛滑入尚模糊難辨，b 幀畫面壓暗、中央「失功能信念三： 自己已經太老了， 來不及發展人生的第二春了。」
+  cues:
+  - 320
+  - 321
+  text: 第三個 自己已經太老了來不及發展人生的第二春了
+- shot_id: 150
+  start: 551.843
+  end: 555.138
+  duration: 3.295
+  type: stock
+  note: 實驗室白袍男子隔著寫滿化學式的玻璃板實拍；b 幀畫面壓暗、橘色大字「失功能信念四： 必須找到熱情才能成功。」（a 幀無文字）
+  cues:
+  - 322
+  - 323
+  text: 第四個你必須找到熱情才能成功
+- shot_id: 151
+  start: 555.138
+  end: 559.1
+  duration: 3.962
+  type: aroll
+  note: 主持人紅T恤對鏡頭說話，無疊加文字
+  cues:
+  - 324
+  - 325
+  text: 現在我要誠摯地邀請你把這些全部都丟掉
+- shot_id: 152
+  start: 559.1
+  end: 561.061
+  duration: 1.96
+  type: aroll
+  note: 主持人對鏡頭說話，右側疊瀏覽器視窗樣式 inset：白鬍老人影片片段（《虎豹小霸王》式老電影畫面），b 幀 inset 內含字幕「THAT'S NOT
+    TRUE!」
+  cues:
+  - 326
+  text: 因為它們全部都是假的
+- shot_id: 153
+  start: 561.061
+  end: 562.812
+  duration: 1.752
+  type: aroll
+  note: 主持人特寫近距離對鏡頭說話，無疊加文字
+  cues:
+  - 327
+  text: 就是它們害你卡住的！
+- shot_id: 154
+  start: 562.812
+  end: 565.315
+  duration: 2.503
+  type: aroll
+  note: 主持人對鏡頭說話（略側身），無疊加文字
+  cues:
+  - 328
+  - 329
+  text: 如果你準備好了那我們就出發吧！
+- shot_id: 155
+  start: 565.315
+  end: 568.234
+  duration: 2.92
+  type: aroll
+  note: '主持人對鏡頭說話，左側疊書封圖卡（瀏覽器視窗框樣式）：a 幀滑入中僅見部分「esigning Your Li…」，b 幀完整書封「Designing
+    Your Life: How to Build a Well-Lived, Joyful Life／做自己的生命設計師／Bill Burnett & Dave
+    Evans」'
+  cues:
+  - 330
+  - 331
+  text: 作者在書中使用的是設計思考的框架
+- shot_id: 156
+  start: 568.234
+  end: 574.199
+  duration: 5.964
+  type: aroll
+  note: 主持人對鏡頭說話，無疊加文字
+  cues:
+  - 332
+  - 333
+  - 334
+  - 335
+  text: 有些術語可能會有點難懂所以我把它拆解整理成七個步驟方便大家理解
+- shot_id: 157
+  start: 574.199
+  end: 589.13
+  duration: 14.932
+  type: aroll
+  note: 主持人（紅T恤、書架房間）對鏡頭說話，c 幀舉起食指強調；b 幀（中點）是滿版橘底章節卡插入，白色人頭齒輪圖示，文字「步驟一：弄清楚並且接受自己的起點」——同一鏡頭內
+    a/c 為 aroll、b 為章節卡，多幀不一致
+  cues:
+  - 336
+  - 337
+  - 338
+  - 339
+  - 340
+  - 341
+  - 342
+  - 343
+  - 344
+  text: 設計自己生命的第一步就是弄清楚自己是從哪裡出發的步驟一：弄清楚並且接受自己的起點我在幫人設定運動目標和規劃課表前第一件要做的事情就是評估學員的身體現況
+- shot_id: 158
+  start: 589.13
+  end: 593.009
+  duration: 3.879
+  type: stock
+  note: 歐美男子戴黑毛帽穿深灰連帽外套在松樹林中跑步側拍，無畫面文字
+  cues:
+  - 345
+  - 346
+  text: 要一個從來沒跑步過的人三個月後就跑一個全馬
+- shot_id: 159
+  start: 593.009
+  end: 595.011
+  duration: 2.002
+  type: stock
+  note: 低角度特寫跑者雙腿沿柏油路白色標線跑步（黑褲、紅色運動鞋），無畫面文字
+  cues:
+  - 347
+  text: 第一次練習就去跑 10k
+- shot_id: 160
+  start: 595.011
+  end: 596.846
+  duration: 1.835
+  type: stock
+  note: 馬拉松賽道上戴紅毛帽、灰帽T的男跑者停下疲憊低頭，胸前號碼布「0783」，背景多名跑者虛化
+  cues:
+  - 348
+  text: 那下場一定是 GG
+- shot_id: 161
+  start: 596.846
+  end: 598.848
+  duration: 2.002
+  type: aroll
+  note: 主持人特寫對鏡頭說話（紅T恤、書架房間），無疊加文字
+  cues:
+  - 349
+  text: 設計自己的人生也是一樣
+- shot_id: 162
+  start: 598.848
+  end: 606.523
+  duration: 7.674
+  type: stock
+  note: 非裔女性托腮沉思特寫，畫面疊加白色大字：a 幀僅「先搞清楚自己」，b/c 幀文字增為「先搞清楚自己 目前處在什麼位置， 訂出來的目標和行動方案 才會是合理的。」——文字逐步顯示，多幀不一致
+  cues:
+  - 350
+  - 351
+  - 352
+  - 353
+  text: 第一件事情就是搞清楚自己目前處於什麼位置訂出來的目標和行動方案才會是合理的
+- shot_id: 163
+  start: 606.523
+  end: 612.028
+  duration: 5.505
+  type: aroll
+  note: '主持人對鏡頭說話，右側疊加《Designing Your Life 做自己的生命設計師》書封 inset（a 幀滑入中僅見部分「esigning
+    Your Li…Burnett & Dave Evans」，b 幀完整）；書封文字「Designing Your Life: How to Build a
+    Well-Lived, Joyful Life 做自己的生命設計師 Bill Burnett & Dave Evans」'
+  cues:
+  - 354
+  - 355
+  - 356
+  text: 我最喜歡這本書的一部分是作者把人生能夠順利運轉的四大領域
+- shot_id: 164
+  start: 612.028
+  end: 639.264
+  duration: 27.236
+  type: aroll
+  note: 主持人對鏡頭說話，疊加物變化大：a 幀出現小型「人生儀錶板」圖卡＋右側小書封 inset 滑入中；b 幀放大為滿版深色圖表卡「人生儀錶板」含四色橫條「工作／遊戲／愛／健康」；c
+    幀圖卡消失、疊加白色大字「身 心 靈」——多幀不一致
+  cues:
+  - 357
+  - 358
+  - 359
+  - 360
+  - 361
+  - 362
+  - 363
+  - 364
+  - 365
+  - 366
+  - 367
+  - 368
+  - 369
+  - 370
+  - 371
+  - 372
+  - 373
+  - 374
+  text: 設計成健康工作 遊戲和愛的儀錶板大概長的是這個樣子你可以把它想成人類的油箱如果你要在人生這條路上前進那這四個油箱的指標都要兼顧這裡的順序也是有學問的健康是放在最底下代表它最重要是一切的基礎健康包含了身
+    心 靈三個部分身體健康最好理解我之前的
+- shot_id: 165
+  start: 639.264
+  end: 647.23
+  duration: 7.966
+  type: aroll
+  note: 主持人對鏡頭說話，疊加自家頻道影片縮圖：a 幀左側一張縮圖（文字「預測壽命最強指標 VO2 MAX 全攻略」）滑入；b 幀三張縮圖環繞（「預測壽命最強指標
+    VO2 MAX 全攻略」「增肌減脂必看 蛋白質全攻略」「血糖值 到底吃了甚麼!?」）；c 幀縮圖消失、疊加白色大字「情緒健康」——多幀不一致
+  cues:
+  - 375
+  - 376
+  - 377
+  - 378
+  - 379
+  text: 包括你的 VO2 max肌肉量以及血液檢查等等心理健康也包含了情緒健康這點我以後會多多分享
+- shot_id: 166
+  start: 647.23
+  end: 649.899
+  duration: 2.669
+  type: aroll
+  note: 主持人特寫對鏡頭說話（b 幀皺眉困惑表情），無疊加文字
+  cues:
+  - 380
+  - 381
+  text: 靈性的健康感覺有點虛無飄渺
+- shot_id: 167
+  start: 649.899
+  end: 652.861
+  duration: 2.961
+  type: aroll
+  note: 主持人對鏡頭說話，b 幀舉手比劃，無疊加文字
+  cues:
+  - 382
+  - 383
+  text: 但是我覺得你可以問自己一個問題來判斷
+- shot_id: 168
+  start: 652.861
+  end: 655.53
+  duration: 2.669
+  type: stock
+  note: 長髮女子穿青綠上衣坐在辦公室沙發，低頭捧著白色馬克杯沉思，無畫面文字
+  cues:
+  - 384
+  text: 你有感覺生命少了些什麼嗎？
+- shot_id: 169
+  start: 655.53
+  end: 657.699
+  duration: 2.169
+  type: stock
+  note: 女子背影在山頂雲海前雙臂高舉伸展，無畫面文字
+  cues:
+  - 385
+  text: 還是覺得已經相當圓滿了？
+- shot_id: 170
+  start: 657.699
+  end: 661.703
+  duration: 4.004
+  type: stock
+  note: 白髮短髮年長女性在公園對鏡頭微笑的特寫，穿橘紅色外套；無畫面文字。
+  cues:
+  - 386
+  - 387
+  text: 如果感覺越圓滿那靈性健康的分數就越高
+- shot_id: 171
+  start: 661.703
+  end: 676.634
+  duration: 14.932
+  type: aroll
+  note: 主持人（紅T恤、書架暖色房間）對鏡頭說話，口中叼綠色小物、後比出手勢；c 幀滑入大型白色文字 overlay「付出愛　接受愛」（a、b 幀無 overlay）。
+  cues:
+  - 388
+  - 389
+  - 390
+  - 391
+  - 392
+  - 393
+  - 394
+  - 395
+  - 396
+  - 397
+  text: 我目前給自己的健康分數是 80 分算是還不錯但是還有進步空間再來是愛愛分成兩個部分一個是付出愛一個是接受愛兩種同樣重要而付出和接受愛的對象
+- shot_id: 172
+  start: 676.634
+  end: 679.345
+  duration: 2.711
+  type: stock
+  note: 三代同堂家庭在海灘上互相摟抱歡笑；無畫面文字。
+  cues:
+  - 398
+  - 399
+  text: 最重要的當然就是最親密的家人
+- shot_id: 173
+  start: 679.345
+  end: 680.555
+  duration: 1.21
+  type: stock
+  note: 六位年輕男女穿夏日服裝坐在海邊矮牆上談笑；無畫面文字。
+  cues:
+  - 400
+  text: 再來是好朋友
+- shot_id: 174
+  start: 680.555
+  end: 682.307
+  duration: 1.752
+  type: stock
+  note: 兩位女性蹲在公園草地上與一隻黑白小狗玩耍；無畫面文字。
+  cues:
+  - 401
+  text: 或者是你的寵物也可以
+- shot_id: 175
+  start: 682.307
+  end: 685.602
+  duration: 3.295
+  type: stock
+  note: 高角度林間湖畔，一名男子在畫架前寫生；無畫面文字。
+  cues:
+  - 402
+  - 403
+  text: 甚至是沒有生命的藝術品或者是大自然
+- shot_id: 176
+  start: 685.602
+  end: 702.911
+  duration: 17.309
+  type: aroll
+  note: 主持人（紅T恤、書架暖色房間）對鏡頭說話，表情從平述轉為皺眉疑問；無 overlay 文字。
+  cues:
+  - 404
+  - 405
+  - 406
+  - 407
+  - 408
+  - 409
+  - 410
+  - 411
+  - 412
+  - 413
+  text: 這個領域是我一直以來最弱的一塊我的原生家庭是個感受不太到愛的地方爸爸和後母都不太懂得如何去愛人和被愛這讓我在人生最精華的學生時期一直到三十五歲左右吧愛的儀錶板幾乎是空的
+- shot_id: 177
+  start: 702.911
+  end: 710.251
+  duration: 7.341
+  type: stock
+  note: 背影鏡頭：小女孩在夕陽海灘上牽著父母雙手；無畫面文字。
+  cues:
+  - 414
+  - 415
+  - 416
+  - 417
+  - 418
+  text: 幸好我遇到了一個這麼愛我的老婆一起生了一個全世界最棒的女兒讓我知道我也有愛的能力的
+- shot_id: 178
+  start: 710.251
+  end: 719.135
+  duration: 8.884
+  type: aroll
+  note: 主持人（紅T恤）對鏡頭說話，鏡頭略推近；無 overlay 文字。
+  cues:
+  - 419
+  - 420
+  - 421
+  - 422
+  - 423
+  - 424
+  text: 我記得幾年前我狀況不太好的時候老婆問我一句話：「你上一次明確感到自己被愛是什麼時候？」我那時候竟然答不出來耶
+- shot_id: 179
+  start: 719.135
+  end: 735.485
+  duration: 16.35
+  type: aroll
+  note: 主持人對鏡頭笑著說話；b 幀出現滿版深色圖形面板 overlay「人生儀錶板／工作／遊戲／愛／健康」四條進度條，「愛」列以橘黃框高亮（紅色條）、「健康」為綠色條，遮住主持人；a、c
+    幀無此面板（c 僅底部台詞字幕）。多幀不一致：面板僅中段出現。
+  cues:
+  - 425
+  - 426
+  - 427
+  - 428
+  - 429
+  - 430
+  - 431
+  - 432
+  - 433
+  - 434
+  - 435
+  text: 但現在我可以很輕鬆地回答了：「我無時無刻不感到自己是被愛的」這個儀錶板我現在也給自己 80 分再來是遊戲這點是最啟發我的一點作者定義的遊戲是你光去做就會感到樂趣的事情但重點來了
+- shot_id: 180
+  start: 735.485
+  end: 742.075
+  duration: 6.59
+  type: quote_card
+  note: 海邊女子在畫架前作畫的 stock 畫面上疊大字金句；a 幀先出現第一行「做這件事情的目的」，b、c 幀畫面壓暗、完整金句置中：「做這件事情的目的
+    是單純為了樂趣， 而不是為了報酬 或達到某些成就。」多幀不一致：文字逐步浮現、背景漸暗。
+  cues:
+  - 436
+  - 437
+  - 438
+  - 439
+  text: 做這件事情的目的是單純為了樂趣而不是為了報酬或者是達到某些成就
+- shot_id: 181
+  start: 742.075
+  end: 745.328
+  duration: 3.253
+  type: aroll
+  note: 主持人（紅T恤）大特寫對鏡頭說話；無 overlay 文字。
+  cues:
+  - 440
+  - 441
+  text: 這對我們這種個人工作者來說太重要了！
+- shot_id: 182
+  start: 745.328
+  end: 751.793
+  duration: 6.465
+  type: stock
+  note: 辦公室四人團隊圍著筆電開會談笑，其中一人坐輪椅，背景螢幕有 analytics 圖表（英文小字「ANALYTICS SUMMARY」等不可完整辨識）；無其他
+    overlay 文字。
+  cues:
+  - 442
+  - 443
+  - 444
+  - 445
+  - 446
+  text: 我之前都會覺得既然我現在做的事情都是自己喜歡的那工作對我來說不就是玩嗎？
+- shot_id: 183
+  start: 751.793
+  end: 755.296
+  duration: 3.504
+  type: aroll
+  note: 主持人（紅T恤、書架暖色房間）對鏡頭說話，b 幀鏡頭推近至特寫；無台詞字幕以外文字。
+  cues:
+  - 447
+  - 448
+  text: 這個想法是錯的！工作就是工作
+- shot_id: 184
+  start: 755.296
+  end: 759.926
+  duration: 4.63
+  type: stock
+  note: 歐美男子戴眼鏡穿駝色高領，在辦公室對筆電托腮沉思，背景紫色門廊與他人辦公；無畫面文字。
+  cues:
+  - 449
+  - 450
+  - 451
+  text: 不管你再喜歡它還是工作不能跟遊戲混為一談
+- shot_id: 185
+  start: 759.926
+  end: 762.345
+  duration: 2.419
+  type: kol
+  note: 他人影片片段：星際大戰 The Mandalorian 曼達洛人畫面（背影艙門→頭盔盔甲特寫），黑色格線框內嵌；左上角標註「影片來源：DisneyMusicVEVO」。
+  cues:
+  - 452
+  text: 所以該追的劇還是得追
+- shot_id: 186
+  start: 762.345
+  end: 764.18
+  duration: 1.835
+  type: kol
+  note: '他人影片片段：NBA 湖人對金塊比賽實況（記分板 LAL 19 : DEN 16、1ST 2:45），格線框內嵌；左上角標註「影片來源：FreeDawkins」，畫面內有球場廣告字如
+    carmax、PLAYOFFS、State Farm、TNT。'
+  cues:
+  - 453
+  text: 該看的球賽還是得看
+- shot_id: 187
+  start: 764.18
+  end: 766.307
+  duration: 2.127
+  type: stock
+  note: 海邊沙灘上一家三口：爸爸肩上扛小女孩、媽媽張開雙手迎接嬉戲；無畫面文字。
+  cues:
+  - 454
+  text: 該出去旅行的還是得去玩！
+- shot_id: 188
+  start: 766.307
+  end: 770.395
+  duration: 4.087
+  type: kol
+  note: 他人影片片段：PlayStation《Final Fantasy VII》米德加城市夜景空拍動畫（招牌 STUDIO WHITE、LOVELESS），格線框內嵌；左上角標註「影片來源：PlayStation」。
+  cues:
+  - 455
+  - 456
+  text: 我今年忙到一個段落之後也要把太七重製版找來玩了
+- shot_id: 189
+  start: 770.395
+  end: 784.367
+  duration: 13.972
+  type: aroll
+  note: 主持人對鏡頭說話；a 幀嘴部位置疊有小型「人生儀錶板」進度條圖卡（工作/遊戲/愛/健康 四條 bar），b、c 幀圖卡已消失為純 aroll——同鏡頭內
+    overlay 滑出。overlay 文字：人生儀錶板、工作、遊戲、愛、健康。
+  cues:
+  - 457
+  - 458
+  - 459
+  - 460
+  - 461
+  - 462
+  - 463
+  - 464
+  - 465
+  - 466
+  text: 遊戲這個我目前給自己 60 分勉強及格啦工作這個領域大家就比較熟悉了作者要我們列出「工作」的所有方式然後評估整體的工作情況收入好不好會不會太累喜不喜歡等等
+- shot_id: 190
+  start: 784.367
+  end: 790.873
+  duration: 6.507
+  type: stock
+  note: 白色廚房中紅鬍子爸爸單手抱嬰兒、另一手在流理台準備吐司早餐；無畫面文字。
+  cues:
+  - 467
+  - 468
+  - 469
+  - 470
+  - 471
+  text: 記得要把家庭主婦或是家庭主夫還有照顧父母義工這些事情也考慮進去喔
+- shot_id: 191
+  start: 790.873
+  end: 796.295
+  duration: 5.422
+  type: stock
+  note: 年輕媽媽肩夾電話抱著穿星星圖案睡衣的嬰兒，嬰兒手拿食物，明亮窗邊餐桌場景；無畫面文字。
+  cues:
+  - 472
+  - 473
+  - 474
+  text: 我認為全職媽媽的工作時間 壓力 和價值絕對不輸出外賺錢的爸爸
+- shot_id: 192
+  start: 796.295
+  end: 801.509
+  duration: 5.214
+  type: aroll
+  note: 主持人對鏡頭說話，左側疊入 Money錢 雜誌報導截圖 inset（a 幀滑入中、b 幀完整），inset 文字：Money錢、慢 就是快、張修修＆30樣的男子、財務自由之路、破解！財務自由公式。
+  cues:
+  - 475
+  - 476
+  - 477
+  text: 我目前正在打造自己的快樂事業中也很喜歡正在做的每一件事情
+- shot_id: 193
+  start: 801.509
+  end: 815.023
+  duration: 13.514
+  type: motion_graphic
+  note: a 幀為主持人 aroll、嘴前出現縮小的「人生儀錶板」圖卡，b/c 幀圖卡放大成近滿版動態圖形（四色進度條：工作/遊戲/愛/健康），c 幀「工作」列有黃色高亮框——同鏡頭由
+    aroll 過渡到滿版圖卡。overlay 文字：人生儀錶板、工作、遊戲、愛、健康。
+  cues:
+  - 478
+  - 479
+  - 480
+  - 481
+  - 482
+  - 483
+  - 484
+  - 485
+  - 486
+  - 487
+  text: 所以這個領域我給自己 90 分於是我的儀錶板長得就是這個樣子看起來還不錯吧？畫出來之後我就知道自己應該在哪些領域多下工夫有哪些領域持續進行就好很明顯我應該多玩一點
+- shot_id: 194
+  start: 815.023
+  end: 817.567
+  duration: 2.544
+  type: aroll
+  note: 主持人對鏡頭說話（上下黑邊 letterbox、微側頭笑），無疊加物；無台詞字幕以外文字。
+  cues:
+  - 488
+  - 489
+  text: 最近日幣跌成那樣是不是要再出發一下？
+- shot_id: 195
+  start: 817.567
+  end: 822.03
+  duration: 4.463
+  type: aroll
+  note: 主持人特寫對鏡頭說話，右側疊小型「人生儀錶板」進度條圖卡，a→b 圖卡略放大滑入。overlay 文字：人生儀錶板、工作、遊戲、愛、健康。
+  cues:
+  - 490
+  - 491
+  - 492
+  text: 把儀錶板畫出來後作者提醒我們一定要把沒辦法解決的
+- shot_id: 196
+  start: 822.03
+  end: 825.95
+  duration: 3.921
+  type: aroll
+  note: 主持人（紅T恤、書架房間）對鏡頭說話並舉起食指；畫面中央疊加大型白字「重力問題」（a 幀時字在下方滑入、b 幀置中定位，位置在兩幀間不一致）。
+  cues:
+  - 493
+  - 494
+  text: 「重力問題」給抓出來然後接受這個事實
+- shot_id: 197
+  start: 825.95
+  end: 835.752
+  duration: 9.801
+  type: kol
+  note: 台視新聞片段：主播站在房價圖卡前播報。畫面文字：「影片來源：台視新聞 TTV NEWS」「台視新聞HD」「資料來源：房仲陳泰源」「1300萬房子」「北市
+    松山 大安區 使用空間10坪小套房」「北市 北投 萬華 文山區 無電梯老舊公寓 兩房一廳」「新北市 三峽 五股 泰山區 3房2廳家庭式房」「不能不知道」「台灣房價扶搖直上
+    年薪80萬成購屋新門檻」。
+  cues:
+  - 495
+  - 496
+  - 497
+  - 498
+  - 499
+  text: 我之前舉過一個例子現在房價這麼高要在沒有家裡幫助的前提下在台北買到一間理想的房子這個就是辦不到的「重力問題」
+- shot_id: 198
+  start: 835.752
+  end: 845.762
+  duration: 10.01
+  type: aroll
+  note: 主持人中景對鏡頭說話，表情從平述轉為皺眉苦臉；無疊加文字。
+  cues:
+  - 500
+  - 501
+  - 502
+  - 503
+  - 504
+  - 505
+  text: 我重新擬的問題就是要怎麼樣建立一個在哪裡都能工作的事業讓我可以在好山好水房價又相對便宜又能到處玩的台東買房子
+- shot_id: 199
+  start: 845.762
+  end: 847.847
+  duration: 2.085
+  type: aroll
+  note: 主持人特寫（近距離）對鏡頭說話，b 幀舉起食指；無疊加文字。
+  cues:
+  - 506
+  text: 而這就是我未來三年的計畫
+- shot_id: 200
+  start: 847.847
+  end: 865.198
+  duration: 17.351
+  type: aroll
+  note: 主持人中景對鏡頭說話；a、c 幀為 aroll，b 幀（856s）畫面被橘/米色圓角色塊轉場動畫蓋住，露出章節標題「步驟二…羅盤」（中段文字被色塊遮住）＋羅盤
+    icon——鏡頭中段插入 motion graphic 轉場，多幀不一致。
+  cues:
+  - 507
+  - 508
+  - 509
+  - 510
+  - 511
+  - 512
+  - 513
+  - 514
+  - 515
+  text: 弄清楚此時此刻自己人在哪裡之後接下來就是找到前進的方向了步驟二：打造人生的羅盤每個人都一定要有自己的人生羅盤很多人卡住的原因就是他們用別人的羅盤在過自己的人生
+- shot_id: 201
+  start: 865.198
+  end: 868.242
+  duration: 3.045
+  type: kol
+  note: 電影《穿著Prada的惡魔》片段：Meryl Streep 白髮墨鏡角色抱著 RUNWAY 雜誌走進電梯。畫面文字：「影片來源：Movieclips」「FANDANGO
+    MOVIECLIPS」「RUNWAY」（雜誌封面）。
+  cues:
+  - 516
+  - 517
+  text: 可能是某個成功人士或者你偶像的羅盤
+- shot_id: 202
+  start: 868.242
+  end: 871.788
+  duration: 3.545
+  type: stock
+  note: 圖庫實拍：兩名西裝男子背影站在落地窗前眺望雪景城市；無畫面文字。
+  cues:
+  - 518
+  - 519
+  text: 也可能是這個社會約定俗成的「成功羅盤」
+- shot_id: 203
+  start: 871.788
+  end: 875.958
+  duration: 4.171
+  type: aroll
+  note: 主持人特寫對鏡頭說話，b 幀抿嘴微笑點頭；無疊加文字。
+  cues:
+  - 520
+  - 521
+  - 522
+  text: 最慘的是那種你爸媽自己辦不到硬要塞給你的羅盤
+- shot_id: 204
+  start: 875.958
+  end: 883.8
+  duration: 7.841
+  type: kol
+  note: TED-Ed 動畫片段：暴風雨大海中的帆船。疊加大型白字由 a 幀一行擴為 b/c 幀四行：「如果你沒有仔細思考 羅盤適不適合你就直接拿來用， 那你的人生很可能會卡得很死、
+    過得很慘。」另有「影片來源：TED-Ed」。
+  cues:
+  - 523
+  - 524
+  - 525
+  - 526
+  - 527
+  text: 如果你沒有仔細思考這些羅盤適不適合你就直接拿來用那你的人生可能會卡得很死過得很慘
+- shot_id: 205
+  start: 883.8
+  end: 887.637
+  duration: 3.837
+  type: aroll
+  note: 主持人中景對鏡頭說話；無疊加文字。
+  cues:
+  - 528
+  - 529
+  - 530
+  text: 幸好我天生反骨爸媽想給我的羅盤我一概不理
+- shot_id: 206
+  start: 887.637
+  end: 890.348
+  duration: 2.711
+  type: aroll
+  note: 主持人中景對鏡頭說話（畫面上下加黑邊、稍微拉遠構圖），b 幀皺眉；無疊加文字。
+  cues:
+  - 531
+  - 532
+  text: 但是還是不免用了「成功羅盤」一陣子
+- shot_id: 207
+  start: 890.348
+  end: 896.771
+  duration: 6.423
+  type: aroll
+  note: 主持人中景/特寫對鏡頭說話，a 幀皺眉、c 幀嘟嘴；無疊加文字。
+  cues:
+  - 533
+  - 534
+  - 535
+  - 536
+  text: 後來也及時發現這不適合自己現在終於成功打造出屬於我自己的羅盤了
+- shot_id: 208
+  start: 896.771
+  end: 900.233
+  duration: 3.462
+  type: aroll
+  note: '主持人特寫對鏡頭說話，右側疊加書封 inset《Designing Your Life: How to Build a Well-Lived, Joyful
+    Life 做自己的生命設計師 Bill Burnett & Dave Evans》（a 幀書封滑入中、部分文字被裁；b 幀完整）。'
+  cues:
+  - 537
+  - 538
+  - 539
+  text: 作者說打造人生羅盤需要兩樣材料
+- shot_id: 209
+  start: 900.233
+  end: 902.944
+  duration: 2.711
+  type: aroll
+  note: 主持人（紅T恤、書架房間）對鏡頭說話；a 幀無 overlay，b 幀左下滑入大字白色 overlay「工作觀」——多幀不一致（overlay 滑入）。
+  cues:
+  - 540
+  - 541
+  text: 第一個是「工作觀」第二個是「人生觀」
+- shot_id: 210
+  start: 902.944
+  end: 909.117
+  duration: 6.173
+  type: kol
+  note: TED-Ed 動畫片段（桃紅底、人物與緞帶狀道路插畫），左上標註「影片來源：TED-Ed」；中央 overlay 文字逐步顯示：「「工作觀」即是 工作在你心目中的意義，
+    你為什麼要工作？ 什麼工作才算好工作？」（a 幀僅第一行，b/c 幀全文）。
+  cues:
+  - 542
+  - 543
+  - 544
+  - 545
+  text: 首先要找出工作在你心目中的意義你為什麼要工作？什麼工作才算好？
+- shot_id: 211
+  start: 909.117
+  end: 913.204
+  duration: 4.087
+  type: kol
+  note: TED-Ed 動畫片段（灰藍色調、單一人形剪影），左上「影片來源：TED-Ed」；overlay 文字滑入中：a 幀見「生觀」就是你對」，b 幀完整「「人生觀」就是你對世界的看法，
+    你認為世界是如何運行的？ 人生的價值來自何方？」——多幀 overlay 位置不一致（滑入定位）。
+  cues:
+  - 546
+  - 547
+  text: 人生觀就是你對世界的看法你認為世界是如何運行的？
+- shot_id: 212
+  start: 913.204
+  end: 917.417
+  duration: 4.213
+  type: kol
+  note: TED-Ed 動畫片段（青綠色科技感場景轉城市大樓），左上「影片來源：TED-Ed」；a 幀 overlay「「人生觀」就是你對世界的看法， 你認為世界是如何運行的？
+    人生的價值來自何方？」，b 幀換成頂部大字「是名利和個人成就嗎」——多幀 overlay 內容切換。
+  cues:
+  - 548
+  - 549
+  text: 人生的價值來自何方？是名利還是個人成就嗎？
+- shot_id: 213
+  start: 917.417
+  end: 922.046
+  duration: 4.63
+  type: kol
+  note: TED-Ed 動畫片段（人形剪影指向星軌與群眾），左上「影片來源：TED-Ed」；中央 overlay「是名利和個人成就嗎？ 你的人生和家人、社會、
+    地球上其他的人有什麼關聯？」。
+  cues:
+  - 550
+  - 551
+  - 552
+  text: 你的人生和家人 社會地球上其他的人有什麼樣的關聯？
+- shot_id: 214
+  start: 922.046
+  end: 925.675
+  duration: 3.629
+  type: kol
+  note: TED-Ed 動畫片段（灰底、紫色棉被中睡覺的人形），左上「影片來源：TED-Ed」；a 幀無中央文字，b 幀出現 overlay「人生的意義是什麼？」——多幀不一致（文字浮現）。
+  cues:
+  - 553
+  - 554
+  text: 然後就是那個大哉問：「人生的意義是什麼？」
+- shot_id: 215
+  start: 925.675
+  end: 930.346
+  duration: 4.671
+  type: aroll
+  note: 主持人（紅T恤、書架房間）對鏡頭說話；下方大字白色 overlay「工作觀　人生觀」貫穿兩幀。
+  cues:
+  - 555
+  - 556
+  - 557
+  text: 「工作觀」和「人生觀」會隨著年紀和人生不同的階段有所改變
+- shot_id: 216
+  start: 930.346
+  end: 935.143
+  duration: 4.796
+  type: kol
+  note: 《海賊王》動畫片段（手腕上的記錄指針特寫），左上「影片來源：One Piece」；overlay 文字滑入：a 幀「這個人生羅盤就像」，b 幀完整「這個人生羅盤就像
+    《海賊王》裡面的紀錄指針， 到了一個新的地方就會有變動。」；畫面內原生英文字幕「One of them is shaking like our Log Pose...」——多幀
+    overlay 不一致（滑入）。
+  cues:
+  - 558
+  - 559
+  - 560
+  text: 我覺得這個人生羅盤就和《海賊王》裡面的紀錄指針一樣
+- shot_id: 217
+  start: 935.143
+  end: 939.605
+  duration: 4.463
+  type: kol
+  note: 《海賊王》動畫片段（三座島嶼與指針裝置、老人角色），左上「影片來源：One Piece」；中央 overlay「這個人生羅盤就像 《海賊王》裡面的紀錄指針，
+    到了一個新的地方就會有變動。」；畫面內原生英文字幕「Meaning, you have three different routes and you can
+    choose the one that looks the safest.」及島上石碑字「DEATH」。
+  cues:
+  - 561
+  - 562
+  - 563
+  text: 隨著人生旅程的前進到了一個新的地方就會有所更動
+- shot_id: 218
+  start: 939.605
+  end: 945.069
+  duration: 5.464
+  type: aroll
+  note: 主持人（紅T恤、書架房間）對鏡頭說話，兩幀間鏡頭略推近；無 overlay 文字。
+  cues:
+  - 564
+  - 565
+  - 566
+  text: 只要有持續思考這些問題自己的人生願景就會越來越清晰
+- shot_id: 219
+  start: 945.069
+  end: 959.834
+  duration: 14.765
+  type: title_card
+  note: 多幀不一致：a 幀為夜晚海邊燈塔小鎮實拍（stock 過場，無文字），b/c 幀切為滿版橘底章節卡——白色鑰匙燈泡 icon＋大字「步驟三：找到自己的基本設定」。以章節卡為主體分類。
+  cues:
+  - 567
+  - 568
+  - 569
+  - 570
+  - 571
+  - 572
+  - 573
+  - 574
+  text: 它會像燈塔一樣在前面指引著我們的方向讓我們不會在偉大的航道上面鬼打牆步驟三：找到自己的基本設定弄清楚自己的起點準備好自己的羅盤知道要往哪個方向走之後
+- shot_id: 220
+  start: 959.834
+  end: 964.088
+  duration: 4.254
+  type: aroll
+  note: 主持人（紅T恤、書架房間）對鏡頭說話，近景，兩幀間微推近；無 overlay 文字。
+  cues:
+  - 575
+  - 576
+  - 577
+  text: 接下來就是釐清自己喜歡做什麼擅長做什麼
+- shot_id: 221
+  start: 964.088
+  end: 967.592
+  duration: 3.504
+  type: aroll
+  note: 主持人（紅T恤、書架房間）對鏡頭說話；下方大字白色 overlay 滑入：a 幀僅見「喜歡做什麼」部分露出，b 幀完整「喜歡做什麼　擅長做什麼」——多幀不一致（overlay
+    滑入）。
+  cues:
+  - 578
+  - 579
+  text: 最近很流行的 MBTI就是一個很好的工具
+- shot_id: 222
+  start: 967.592
+  end: 970.678
+  duration: 3.086
+  type: aroll
+  note: 主持人紅T恤書房對鏡頭說話，右側疊入 16personalities 風格橘框人格卡片（綠袍老者插畫）；a 幀卡片滑入中僅露部分，b 幀完整顯示文字「Diplomats
+    / Advocate / INFJ-A / INFJ-T / Quiet and mystical, yet very inspiring and tireless
+    idealists.」，overlay 有滑入動態。
+  cues:
+  - 580
+  text: 我測出來一直都是 INFJ-A
+- shot_id: 223
+  start: 970.678
+  end: 973.264
+  duration: 2.586
+  type: aroll
+  note: 主持人對鏡頭說話，左側疊入大面積書封 inset（橘框視窗）：《MBTI 我，和我的使用說明書》，文字含「MBTI / 我，和我的使用說明書 / Perceiving
+    Feeling Sensing iNtuition Extravert…（撕紙字樣）/ 點閱破百萬、最受歡迎的 MBTI 影音頻道 / YouTube「雪力的心理學筆記」首本全面專書！/
+    不是預測未來，而是剖析現狀；讓 MBTI 幫助你，而非定義你 / 雪力（夏瑄澧）」；a 幀書封滑入中、b 幀完整。
+  cues:
+  - 581
+  text: 根據雪力老師的這本書裡面講的
+- shot_id: 224
+  start: 973.264
+  end: 975.141
+  duration: 1.877
+  type: aroll
+  note: 主持人手持《MBTI 我，和我的使用說明書》實體書對鏡頭說話；a 幀書舉在畫面下方且左側有縮小滑出的書封 overlay（滑出動態），b 幀書已放下、無
+    overlay。
+  cues:
+  - 582
+  text: 我是一個相當內向的人
+- shot_id: 225
+  start: 975.141
+  end: 1002.71
+  duration: 27.569
+  type: kol
+  note: Psych2Go 動畫片段（黑色格紋底框內嵌）：三個小白棉花人物聊天、一個戴綠耳機角色想著紫色宇宙泡泡；b 幀角色拿望遠鏡看窗外紙飛機；c 幀兩格綠框內角色煩躁摀臉、被輻射/倒讚符號干擾。左上角文字「影片來源：Psych2Go」。三幀為同一來源動畫的不同段落。
+  cues:
+  - 583
+  - 584
+  - 585
+  - 586
+  - 587
+  - 588
+  - 589
+  - 590
+  - 591
+  - 592
+  - 593
+  - 594
+  - 595
+  - 596
+  - 597
+  - 598
+  - 599
+  - 600
+  - 601
+  - 602
+  text: 只要在人多的地方就會一直失血獨處的時候才能獲得能量我也是個敏銳的人走進一個房間就可以感受到這裡面這群人的磁場我也有滿強的執行力但是必須找到跟自己核心價值有聯結的事情我不太喜歡每天做固定的事情這會讓我難以發揮創意無法運用直覺而常常覺得很壓抑如
+- shot_id: 226
+  start: 1002.71
+  end: 1004.837
+  duration: 2.127
+  type: aroll
+  note: 主持人紅T恤書房中景對鏡頭說話，無 overlay。
+  cues:
+  - 603
+  text: 所以之前做科技業業務的時候
+- shot_id: 227
+  start: 1004.837
+  end: 1006.547
+  duration: 1.71
+  type: aroll
+  note: 主持人對鏡頭說話，上下黑邊（letterbox 強調），表情誇張：a 幀皺眉閉眼、b 幀雙手舉起比劃，無 overlay 文字。
+  cues:
+  - 604
+  text: 真的讓我耗損太大了
+- shot_id: 228
+  start: 1006.547
+  end: 1010.218
+  duration: 3.67
+  type: aroll
+  note: 主持人對鏡頭說話（誇張苦臉），右側疊入橘框影集《六人行》Chandler 片段 inset；a 幀滑入中、b 幀完整顯示，無 overlay 文字。
+  cues:
+  - 605
+  - 606
+  text: 日復一日的應酬和客人在那邊練肖話
+- shot_id: 229
+  start: 1010.218
+  end: 1011.844
+  duration: 1.627
+  type: aroll
+  note: 主持人特寫對鏡頭說話，a 幀右側有縮小滑出的影集片段 inset（人物趴伏），b 幀 overlay 已消失（滑出動態），無 overlay 文字。
+  cues:
+  - 607
+  text: 為了寫報告而寫報告
+- shot_id: 230
+  start: 1011.844
+  end: 1017.016
+  duration: 5.172
+  type: aroll
+  note: 主持人紅T恤書房中景對鏡頭說話，無 overlay。
+  cues:
+  - 608
+  - 609
+  - 610
+  text: 我覺得我除了賺錢以外對這世界沒啥貢獻大老闆在慰留我的時候
+- shot_id: 231
+  start: 1017.016
+  end: 1023.564
+  duration: 6.548
+  type: aroll
+  note: 主持人對鏡頭說話，左側疊入橘框插畫 inset：黑底綠色小人群中央一支手機（螢幕發綠光）；a 幀滑入中較小、b/c 幀完整，無 overlay 文字。
+  cues:
+  - 611
+  - 612
+  - 613
+  text: 邀請我來想像公司賣的晶片做的便宜手機可以幫助很多沒錢買手機的人
+- shot_id: 232
+  start: 1023.564
+  end: 1028.945
+  duration: 5.38
+  type: aroll
+  note: 主持人特寫對鏡頭說話，無 overlay；b 幀鏡位略推近成大特寫。
+  cues:
+  - 614
+  - 615
+  - 616
+  - 617
+  text: 但我就是沒辦法連結起來啊太牽強了於是我經過了 10 年的嘗試和失敗
+- shot_id: 233
+  start: 1028.945
+  end: 1030.655
+  duration: 1.71
+  type: aroll
+  note: 主持人大特寫對鏡頭說話，無 overlay。
+  cues:
+  - 618
+  text: 才找到現在在做的事情
+- shot_id: 234
+  start: 1030.655
+  end: 1033.366
+  duration: 2.711
+  type: aroll
+  note: '主持人對鏡頭說話，右側疊入橘框書封 inset《Designing Your Life 做自己的生命設計師》；a 幀滑入中僅露部分（可見「esigning
+    Your Li…o Build a Well-Lived, Joyful Life / urnett & Dave Evans」），b 幀完整顯示「Designing
+    Your Life: How to Build a Well-Lived, Joyful Life / 做自己的生命設計師 / Bill Burnett &
+    Dave Evans / 比爾・柏內特＆戴夫・埃文斯 著 / 許恬寧 譯」等。'
+  cues:
+  - 619
+  - 620
+  text: 書中另一個找到自己基本設定的方法
+- shot_id: 235
+  start: 1033.366
+  end: 1036.577
+  duration: 3.212
+  type: aroll
+  note: 主持人紅T恤在暖色書房對鏡頭說話；b 幀出現大型白色 overlay 文字「好時光日誌」（a 幀無，屬滑入 overlay）。
+  cues:
+  - 621
+  - 622
+  text: 叫做好時光日誌每天結束的時候
+- shot_id: 236
+  start: 1036.577
+  end: 1039.747
+  duration: 3.17
+  type: aroll
+  note: 主持人近景對鏡頭說話，做出眨眼/皺眉表情，無 overlay 文字。
+  cues:
+  - 623
+  - 624
+  text: 花點時間好好寫下以下三件事情：
+- shot_id: 237
+  start: 1039.747
+  end: 1043.376
+  duration: 3.629
+  type: motion_graphic
+  note: TED-Ed 風格 2D 動畫三聯畫（打網球女孩、彈鋼琴、用電腦研究者）；左上角來源標「影片來源：TED-Ed」；b 幀疊加置中大字「找出自己工作時
+    進入心流的時候在做什麼。」（a 幀無）。
+  cues:
+  - 625
+  - 626
+  text: 第一個：自己工作時進入心流的時候在做什麼
+- shot_id: 238
+  start: 1043.376
+  end: 1052.385
+  duration: 9.009
+  type: aroll
+  note: 主持人對鏡頭說話，表情變化（驚訝到說明），無 overlay 文字。
+  cues:
+  - 627
+  - 628
+  - 629
+  - 630
+  - 631
+  text: 有哪些事情你做的時候是完全投入心中清楚明白：知道該做什麼 怎麼做做起來全然地鎮定和祥和
+- shot_id: 239
+  start: 1052.385
+  end: 1054.178
+  duration: 1.793
+  type: aroll
+  note: 主持人近景對鏡頭說話，無 overlay 文字。
+  cues:
+  - 632
+  text: 感到時間一下就過去了
+- shot_id: 240
+  start: 1054.178
+  end: 1058.14
+  duration: 3.962
+  type: motion_graphic
+  note: TED-Ed 2D 動畫：粉紅底散佈食材（法棍、蛋、酒瓶）與手寫數字 249、4382、85、628、1；左上角「影片來源：TED-Ed」；b 幀疊加置中大字「追蹤做某件事情時
+    精力充沛的程度。」（a 幀無）。
+  cues:
+  - 633
+  - 634
+  text: 第二件 追蹤做某件事情的時候精力充沛的程度
+- shot_id: 241
+  start: 1058.14
+  end: 1063.896
+  duration: 5.756
+  type: aroll
+  note: 主持人對鏡頭說話，無 overlay 文字。
+  cues:
+  - 635
+  - 636
+  - 637
+  - 638
+  text: 有哪些事情你做完可能覺得身體勞累但是內心感到法喜充滿對我來說
+- shot_id: 242
+  start: 1063.896
+  end: 1066.482
+  duration: 2.586
+  type: aroll
+  note: 主持人對鏡頭說話，左側疊加手繪風頻道圖卡 inset，圖卡文字「不正常人類研究所 ABNORMAL HUMANS RESEARCH CENTER」；a→b
+    圖卡由滑入到完整顯示。
+  cues:
+  - 639
+  - 640
+  text: 錄 Podcast 和來賓有個深度的交流
+- shot_id: 243
+  start: 1066.482
+  end: 1070.57
+  duration: 4.087
+  type: aroll
+  note: 主持人對鏡頭說話並舉起食指，無 overlay 文字。
+  cues:
+  - 641
+  - 642
+  - 643
+  text: 就是這樣的事情而應酬和 social對我來說就相反
+- shot_id: 244
+  start: 1070.57
+  end: 1073.197
+  duration: 2.628
+  type: aroll
+  note: 主持人對鏡頭說話，畫面上下有黑邊（letterbox，畫面略縮小），無 overlay 文字。
+  cues:
+  - 644
+  - 645
+  text: 每次結束之後都會去掉半條命
+- shot_id: 245
+  start: 1073.197
+  end: 1082.164
+  duration: 8.967
+  type: motion_graphic
+  note: TED-Ed 2D 動畫：三位科學家看大螢幕、後攤手；左上角「影片來源：TED-Ed」；a 幀大字打入中「如果有件事情能讓你進」，b/c 幀完整顯示「如果有件事情能讓你進入心流，
+    做完又感覺精力充沛， 問問自己為什麼， 並且詳細寫下來。」。
+  cues:
+  - 646
+  - 647
+  - 648
+  - 649
+  - 650
+  text: 第三 如果有一件事情是能讓你進入心流做完之後就感覺精力充沛那就問問自己為什麼並且詳細地寫下來
+- shot_id: 246
+  start: 1082.164
+  end: 1085.459
+  duration: 3.295
+  type: kol
+  note: Podcast 訪談片段（黑色格紋底框住畫面）：戴眼鏡黑帽T男子對麥克風說話；左上角「影片來源：張修修的不正常人生」。
+  cues:
+  - 651
+  - 652
+  text: 像我最近一集訪問到我好朋友李承宗大師
+- shot_id: 247
+  start: 1085.459
+  end: 1090.298
+  duration: 4.838
+  type: kol
+  note: 同一 podcast 訪談另一機位：藍色帽T短髮男子對麥克風說話，黑色格紋底框；左上角「影片來源：張修修的不正常人生」。
+  cues:
+  - 653
+  - 654
+  - 655
+  text: 我就感覺和他的價值觀和人生的想法是相通而且有共鳴的
+- shot_id: 248
+  start: 1090.298
+  end: 1093.926
+  duration: 3.629
+  type: kol
+  note: 兩人 podcast 對談實拍（居家餐桌、麥克風、筆電），左上角黑底白字來源標示；畫面文字：「影片來源：張修修的不正常人生」。b 幀右側來賓比手勢說話，構圖不變。
+  cues:
+  - 656
+  - 657
+  text: 一個小時的時間一下就過了而且意猶未盡
+- shot_id: 249
+  start: 1093.926
+  end: 1095.636
+  duration: 1.71
+  type: aroll
+  note: 主持人（紅T恤、書架暖色房間）對鏡頭說話，特寫；T恤上有「…LENGE-TAIWAN」字樣（衣物印花非 overlay）。
+  cues:
+  - 658
+  text: 如果一時不知道怎麼寫
+- shot_id: 250
+  start: 1095.636
+  end: 1099.932
+  duration: 4.296
+  type: motion_graphic
+  note: '深色粒子波浪背景上白色文字逐行滑入的動態列表；a 幀僅見「Activities / A:」滑入中，b 幀完整顯示：「A: Activities /
+    E: Environments / I: Interactions / O: Objects / U: Users」。'
+  cues:
+  - 659
+  - 660
+  - 661
+  text: 書中教大家一個AEIOU 方法但我覺得有點難記
+- shot_id: 251
+  start: 1099.932
+  end: 1110.151
+  duration: 10.219
+  type: aroll
+  note: 主持人對鏡頭說話，中特寫，三幀皆無疊加物；T恤印花「…ENGE-TAIWAN…」為衣物文字。
+  cues:
+  - 662
+  - 663
+  - 664
+  - 665
+  - 666
+  text: 我覺得就把「人事時地物」給寫出來就很完整了記得要盡量寫詳細一點與其說今天開會的時候很開心要更進一步寫下
+- shot_id: 252
+  start: 1110.151
+  end: 1114.864
+  duration: 4.713
+  type: aroll
+  note: 主持人說話，左側疊入瀏覽器視窗樣式插畫 inset（卡通角色慶祝插圖）；a 幀 inset 滑入中僅見部分，b 幀完整；inset 文字：「IT'S
+    COMPLIMENT DAY, SPREAD THE LOVE!」。
+  cues:
+  - 667
+  - 668
+  text: 原來是自己在做總結的時候獲得老闆的贊同的時候很開心
+- shot_id: 253
+  start: 1114.864
+  end: 1128.169
+  duration: 13.305
+  type: aroll
+  note: a 幀主持人閉眼說話（無疊加），b/c 幀切為滿版橘底動畫卡：白色大腦 icon 與筆插畫，文字「步驟四：發揮想像力，畫下心智圖」——同一鏡頭內由
+    aroll 轉滿版 motion graphic 章節卡，多幀不一致。
+  cues:
+  - 669
+  - 670
+  - 671
+  - 672
+  - 673
+  - 674
+  - 675
+  - 676
+  - 677
+  text: 寫了一陣子之後你大概就會對自己適合做些什麼事情有個底然後就可以進行下一步了步驟四：發揮想像力畫下心智圖這裡的心智圖不需要有邏輯只要先選定一個主題
+- shot_id: 254
+  start: 1128.169
+  end: 1131.297
+  duration: 3.128
+  type: aroll
+  note: 主持人說話比出食指，左側疊入海綿寶寶迷因 inset（彩虹手勢梗圖）；a 幀 inset 滑入中，b 幀完整；inset 文字：「IMAGINATION」。
+  cues:
+  - 678
+  - 679
+  text: 接下來就是天馬行空地隨便聯想
+- shot_id: 255
+  start: 1131.297
+  end: 1133.424
+  duration: 2.127
+  type: aroll
+  note: 主持人對鏡頭說話，中特寫，無疊加物。
+  cues:
+  - 680
+  text: 從一個詞帶出另一個詞
+- shot_id: 256
+  start: 1133.424
+  end: 1136.927
+  duration: 3.503
+  type: aroll
+  note: 主持人說話，右側疊入電影片段 inset（男子在窗邊電腦前打字，Jim Carrey《王牌天神》橋段樣式的瀏覽器視窗框）；a→b 幀 inset 由滑入中變完整，無
+    overlay 文字。
+  cues:
+  - 681
+  - 682
+  text: 重點是要快最好在三到五分鐘之內就完成
+- shot_id: 257
+  start: 1136.927
+  end: 1140.639
+  duration: 3.712
+  type: aroll
+  note: 主持人對鏡頭說話；a 幀右側殘留縮小滑出的 inset 小圖（前鏡頭電影片段收合中），b 幀舉起食指、inset 已消失；無 overlay 文字。
+  cues:
+  - 683
+  - 684
+  - 685
+  text: 這可以跳過腦袋前額葉皮質的理性審查機制
+- shot_id: 258
+  start: 1140.639
+  end: 1145.77
+  duration: 5.13
+  type: aroll
+  note: 主持人大特寫對鏡頭說話，鏡頭推近，無疊加物、無畫面文字。
+  cues:
+  - 686
+  - 687
+  - 688
+  text: 寫完之後再從最外圈最天馬行空那些詞拼出一些可能的概念
+- shot_id: 259
+  start: 1145.77
+  end: 1148.272
+  duration: 2.503
+  type: aroll
+  note: 主持人中特寫對鏡頭說話，無疊加物；T恤印花「…LENGE-TAIWAN…」為衣物文字。
+  cues:
+  - 689
+  - 690
+  text: 這裡我舉一個我自己的例子來解釋
+- shot_id: 260
+  start: 1148.272
+  end: 1152.818
+  duration: 4.546
+  type: stock
+  note: 圖庫實拍：騎士在綠色森林小徑騎登山車的側面特寫（無臉部、歐美人物），無畫面文字；a→b 幀為騎行動作延續。
+  cues:
+  - 691
+  - 692
+  - 693
+  text: 像我就超級喜歡騎腳踏車的每次出去騎車都會讓我感到自由
+- shot_id: 261
+  start: 1152.818
+  end: 1164.288
+  duration: 11.47
+  type: motion_graphic
+  note: 多幀不一致：a 幀是主持人（紅T恤、暖色書架房）對鏡頭說話，b/c 幀切入深色背景橘色泡泡圖動畫，中央大圓「腳踏車」，周圍小圓逐一浮現。畫面文字：腳踏車、腳踏車旅行、YouBike、腳踏車店、腳踏車民宿、三鐵。
+  cues:
+  - 694
+  - 695
+  - 696
+  - 697
+  - 698
+  - 699
+  - 700
+  - 701
+  - 702
+  text: 我就用「腳踏車」當作主題來發想第一個就想到之前嘗試過的腳踏車旅行然後還有腳踏車店腳踏車民宿YouBike三鐵 腳踏車餐車等等腳踏車店我又發想出
+- shot_id: 262
+  start: 1164.288
+  end: 1171.045
+  duration: 6.757
+  type: motion_graphic
+  note: 泡泡圖動畫鏡頭推近，中央「腳踏車」偏右上，周圍圓：YouBike、腳踏車店、腳踏車旅行（部分出框）、腳踏車餐車、臥式自行車、腳踏車進口（黃綠色小圓）。
+  cues:
+  - 702
+  - 703
+  - 704
+  - 705
+  - 706
+  - 707
+  text: 腳踏車店我又發想出腳踏車進口以及 recumbent bike這一個我很想弄一台來玩玩的車腳踏車旅行我又發想出帶團
+- shot_id: 263
+  start: 1171.045
+  end: 1182.807
+  duration: 11.762
+  type: motion_graphic
+  note: 泡泡圖動畫繼續擴展，「腳踏車旅行」子節點展開黃色小圓：導遊、領隊、親子團、帶團、挑戰團；c 幀頂部浮現「紐西蘭」照片圓。其他文字：腳踏車、YouBike、腳踏車店。
+  cues:
+  - 707
+  - 708
+  - 709
+  - 710
+  - 711
+  - 712
+  - 713
+  text: 腳踏車旅行我又發想出帶團接下來就是導遊 領隊親子團 挑戰團等等接下來是幾個我很想再去騎的地方像是紐西蘭 歐洲 日本三鐵這條線我想出來的是
+- shot_id: 264
+  start: 1182.807
+  end: 1183.14
+  duration: 0.334
+  type: motion_graphic
+  note: 泡泡圖動畫，加入照片圓節點「歐洲」「日本」（含風景照）。文字：導遊、領隊、親子團、挑戰團、腳踏車旅行、腳踏車、腳踏車民宿、歐洲、日本。
+  cues:
+  - 713
+  text: 三鐵這條線我想出來的是
+- shot_id: 265
+  start: 1183.14
+  end: 1183.474
+  duration: 0.334
+  type: motion_graphic
+  note: 泡泡圖動畫鏡頭移到右側，浮現新節點「三鐵」。文字：親子團、挑戰團、日本、腳踏車、腳踏車民宿、三鐵、腳踏車餐車。
+  cues:
+  - 713
+  text: 三鐵這條線我想出來的是
+- shot_id: 266
+  start: 1183.474
+  end: 1188.896
+  duration: 5.422
+  type: motion_graphic
+  note: 泡泡圖動畫，「三鐵」子節點浮現黃色小圓：教練、職業選手（b 幀滑入，a 幀尚未出現）。其他文字：腳踏車民宿、三鐵、腳踏車餐車、腳踏車（部分出框）、日本。
+  cues:
+  - 713
+  - 714
+  - 715
+  - 716
+  - 717
+  text: 三鐵這條線我想出來的是教練 職業選手三鐵裝備等等等等大概就是這樣子把最外圈的文字整合起來
+- shot_id: 267
+  start: 1188.896
+  end: 1189.23
+  duration: 0.334
+  type: motion_graphic
+  note: 泡泡圖動畫鏡頭拉遠，全圖節點幾乎全現。文字：腳踏車、腳踏車旅行、親子團、挑戰團、日本、腳踏車民宿、三鐵、教練、職業選手、三鐵裝備、腳踏車餐車、腳踏車店、腳踏車進口。
+  cues:
+  - 717
+  text: 把最外圈的文字整合起來
+- shot_id: 268
+  start: 1189.23
+  end: 1192.775
+  duration: 3.545
+  type: motion_graphic
+  note: 泡泡圖動畫全景，完整心智圖。文字：腳踏車、腳踏車旅行、導遊、領隊、親子團、帶團、挑戰團、紐西蘭、歐洲、日本、YouBike、腳踏車店、臥式自行車、腳踏車進口、腳踏車餐車、腳踏車民宿、三鐵、教練、職業選手、三鐵裝備。
+  cues:
+  - 717
+  - 718
+  - 719
+  text: 把最外圈的文字整合起來我覺得我最可能做的就是跟旅行社合作
+- shot_id: 269
+  start: 1192.775
+  end: 1193.109
+  duration: 0.334
+  type: motion_graphic
+  note: 泡泡圖動畫微推近左半部。文字：腳踏車、腳踏車旅行、導遊、領隊、親子團、帶團、挑戰團、紐西蘭、歐洲、日本、YouBike、腳踏車民宿、三鐵、腳踏車餐車。
+  cues:
+  - 719
+  text: 就是跟旅行社合作
+- shot_id: 270
+  start: 1193.109
+  end: 1205.246
+  duration: 12.137
+  type: motion_graphic
+  note: 泡泡圖動畫聚焦「腳踏車旅行」分支；b 幀「親子團」圓變成綠色高亮（a 幀為黃色），多幀不一致為高亮動畫。文字：導遊、領隊、親子團、帶團、挑戰團、腳踏車旅行、紐西蘭、歐洲、日本、YouBike、腳踏車。
+  cues:
+  - 719
+  - 720
+  - 721
+  - 722
+  - 723
+  - 724
+  - 725
+  - 726
+  text: 就是跟旅行社合作出親子團由我帶大家一起和全家人在歐洲騎車旅行光想就覺得很開心大家覺得可行嗎？對那些困在自己工作裡的上班族來說
+- shot_id: 271
+  start: 1205.246
+  end: 1207.581
+  duration: 2.336
+  type: aroll
+  note: 主持人（紅T恤）在暖色書架房間對鏡頭說話，b 幀舉起食指強調。T恤上有 CHALLENGE TAIWAN 字樣圖案（服裝印刷，非 overlay）。
+  cues:
+  - 727
+  text: 這是一個突破困境的好方法
+- shot_id: 272
+  start: 1207.581
+  end: 1212.628
+  duration: 5.047
+  type: aroll
+  note: 主持人近景對鏡頭說話，b 幀張嘴驚訝表情、手部入鏡。無 overlay 文字。
+  cues:
+  - 728
+  - 729
+  - 730
+  text: 重複這個步驟幾次畫出幾個心智圖之後就可以進入到重頭戲
+- shot_id: 273
+  start: 1212.628
+  end: 1224.14
+  duration: 11.511
+  type: aroll
+  note: 主持人對鏡頭說話，b 幀雙手張開比劃手勢。無 overlay 文字。
+  cues:
+  - 731
+  - 732
+  - 733
+  - 734
+  - 735
+  - 736
+  - 737
+  text: 奧德賽計畫了步驟五：奧德賽計畫真實的人生不只有一個最好的選擇而是有無限多種超棒的選擇作者要大家想出三個就好
+- shot_id: 274
+  start: 1224.14
+  end: 1228.811
+  duration: 4.671
+  type: kol
+  note: TED-Ed 3D 動畫片段：女子在沙灘捧著發光星星，隨後浮現白色大字 overlay。畫面文字：「影片來源：TED-Ed」「人生一：」；b 幀 overlay
+    補齊為「人生一：你目前做的事。可能是目前的延伸，或是已經想做一陣子的點子。」（文字逐步滑入，多幀不一致）
+  cues:
+  - 738
+  - 739
+  - 740
+  text: 人生一：你目前做的事可能是現況的延伸或是已經想做一陣子的點子
+- shot_id: 275
+  start: 1228.811
+  end: 1229.77
+  duration: 0.959
+  type: kol
+  note: TED-Ed 3D 動畫：夜景月亮下人物行走，中央疊「人生一」文字卡。畫面文字：「影片來源：TED-Ed」「人生一：你目前做的事。可能是目前的延伸，或是已經想做一陣子的點子。」；b
+    幀為文字轉場中兩行重疊（可辨「可能是目前的延伸，」與前段字樣交疊），多幀不一致
+  cues:
+  - 740
+  text: 或是已經想做一陣子的點子
+- shot_id: 276
+  start: 1229.77
+  end: 1231.897
+  duration: 2.127
+  type: kol
+  note: TED-Ed 3D 動畫：挑眉女子頭像與持畫筆的手，疊「人生二」文字。畫面文字：「影片來源：TED-Ed」「人生二：」；b 幀補齊為「人生二：萬一事情生變，像是
+    AI 把你的人生一取代掉，你會做的事情。」（文字漸進出現，多幀不一致）
+  cues:
+  - 741
+  - 742
+  text: 人生二：萬一事情生變像是如果 AI
+- shot_id: 277
+  start: 1231.897
+  end: 1235.234
+  duration: 3.337
+  type: kol
+  note: TED-Ed 3D 動畫：畫架與持畫筆的手（b 幀畫筆舉至畫面中央），疊同一段文字。畫面文字：「影片來源：TED-Ed」「人生二：萬一事情生變，像是
+    AI 把你的人生一取代掉，你會做的事情。」
+  cues:
+  - 742
+  - 743
+  - 744
+  text: 像是如果 AI把你的人生一取代掉你會做的事情是什麼
+- shot_id: 278
+  start: 1235.234
+  end: 1242.324
+  duration: 7.09
+  type: kol
+  note: TED-Ed 3D 動畫：女子駕玩具賽車過橋、卡通頭像在角落，疊「人生三」文字。畫面文字：「影片來源：TED-Ed」「人生三：」；b/c 幀補齊為「人生三：如果錢和面子都不是問題，你會做的事情或想過的人生，越瘋狂越好。」（文字逐步出現，多幀不一致）
+  cues:
+  - 745
+  - 746
+  - 747
+  - 748
+  - 749
+  text: 人生三：如果錢和面子都不是問題你會做的事情或者是想過的人生越瘋狂越好
+- shot_id: 279
+  start: 1242.324
+  end: 1269.768
+  duration: 27.444
+  type: aroll
+  note: 主持人（紅T恤、書架房間）對鏡頭說話；b/c 幀畫面壓暗疊橘色文字卡。b 幀文字：「寫下計劃要解決的問題，有什麼疑慮，或者還不確定的地方。」；c 幀文字：「在儀錶板上評估四件事：a.
+    資源（包括時間、錢、技能、人脈） b. 喜歡程度 c. 自信程度 d. 跟人生觀和工作觀的一致性」（overlay 進出，多幀不一致）
+  cues:
+  - 750
+  - 751
+  - 752
+  - 753
+  - 754
+  - 755
+  - 756
+  - 757
+  - 758
+  - 759
+  - 760
+  - 761
+  - 762
+  - 763
+  - 764
+  - 765
+  - 766
+  - 767
+  text: 而每個版本都要包括以下四個東西一條圖示時間軸和事業無關的個人生活都要放上去替每一個計畫取名字增加儀式感寫下那個計劃要考慮的問題有什麼疑慮或者還不確定的地方然後在儀錶板上評估四件事情a.
+    資源包括時間 錢技能和人脈b. 喜歡的程度c. 自信的
+- shot_id: 280
+  start: 1269.768
+  end: 1273.105
+  duration: 3.337
+  type: aroll
+  note: 主持人近景對鏡頭說話；b 幀右側疊入 One Piece 索隆 Q版貼圖與文字「Hi~」（貼圖滑入，多幀不一致）
+  cues:
+  - 768
+  - 769
+  text: 這裡我舉我那位很喜歡索隆的工作夥伴當例子
+- shot_id: 281
+  start: 1273.105
+  end: 1277.401
+  duration: 4.296
+  type: aroll
+  note: '主持人對鏡頭說話，左側疊入《Designing Your Life》書封 inset（a 幀滑入中、b 幀完整）。書封文字：「Designing
+    Your Life: How to Build a Well-Lived, Joyful Life」「做自己的生命設計師」「Bill Burnett & Dave
+    Evans」「比爾·柏內特｜戴夫·埃文斯——著 許恬寧——譯」及書腰小字'
+  cues:
+  - 770
+  - 771
+  - 772
+  text: 他看了這本書之後馬上就畫出了自己的奧德賽計畫
+- shot_id: 282
+  start: 1277.401
+  end: 1305.179
+  duration: 27.778
+  type: photo_still
+  note: 手繪奧德賽計畫筆記掃描特寫（緩慢平移）：三欄年度時間軸與儀表刻度。a 幀文字：「版本1 MOTION MADNESS! - FILM EDITOR」「2024/2025/2026」「WORK
+    with SHOSHO YOUTUBE」「ONLINE COURSES」「SIDE PROJECTS」「APPLY for FILM SCHOOL」「MAD
+    POTATOES SOCIETY (research, scripts, storyboards」「GO TO FILM SCHOOL - study -
+    make friends - intern/work as editor [YEAR ONE]」「TRAVEL in ...」；b 幀續見「PRACTICES」「PODCAST」「*3
+    PODCAST FINAL?」「TRAVEL in EUROPE (during breaks)」及四個儀表「資源／喜歡程度／自信程度／一致性」（0–100），c
+    幀為 aroll 過場（主持人回到畫面），多幀不一致
+  cues:
+  - 773
+  - 774
+  - 775
+  - 776
+  - 777
+  - 778
+  - 779
+  - 780
+  - 781
+  - 782
+  - 783
+  - 784
+  - 785
+  - 786
+  - 787
+  - 788
+  text: 我覺得超棒的他的版本一是成為剪輯師取名為 motion madness2024 年一邊和我工作一邊上課學習剪輯技巧然後經營自己的 podcast和一些
+    side project 增加經驗2025 年拍出三支片子拿去申請學校2026 年出發到
+- shot_id: 283
+  start: 1305.179
+  end: 1307.348
+  duration: 2.169
+  type: aroll
+  note: 主持人微笑對鏡頭說話（上下黑邊 letterbox），無 overlay 文字
+  cues:
+  - 789
+  - 790
+  text: 名字都有瘋狂耶但本人看不出來
+- shot_id: 284
+  start: 1307.348
+  end: 1351.934
+  duration: 44.586
+  type: photo_still
+  note: 手繪奧德賽計畫筆記掃描平移：版本2與版本3。a 幀文字：「版本2 LANGUAGE LUNACY! - LINGUIST」「BUILD FOUNDATION
+    - review linguistics courses - An Introduction to Language - MIT open course (Spring
+    2022)」「PROGRAM RESEARCH」「APPLY for MASTER/PHD PROGRAM (US/EU)」「ITALIANO (al meno
+    B2) EXAM」「[YEAR ONE] STUDY & WORK on the side (TA/linguist/translator/others)」「ESPAGNOL
+    B2 EXAM」「DEUTSCH EXAM」；b/c 幀為「GELATO GYPSY! - GELATIERE (+PROJECTIONIST)」版本：「BUY
+    A TRUCK → RENOVATE IT (turn it into an ICE CREAM TRUCK with FILM PROJECTION EQUIPMENT)」「TRAVEL
+    around TAIWAN with my GELATO-FILM TRUCK → SCREEN FILMS in COUNTIES, TOWNS, & CITIES
+    [ROUND ONE]」「[ROUND TWO] INVITE FILMMAKERS @FILM SCREENINGS while TRAVELING」「(PASS
+    ON FILM SCREEN TOURING PROJECT) RETURN TO TAIPEI → OPEN A GELATERIA (a GELATO
+    MOVIE HUB)」，b 幀另有手繪橘色愛心塗鴉動畫；多幀內容隨平移不同
+  cues:
+  - 791
+  - 792
+  - 793
+  - 794
+  - 795
+  - 796
+  - 797
+  - 798
+  - 799
+  - 800
+  - 801
+  - 802
+  - 803
+  - 804
+  - 805
+  - 806
+  - 807
+  - 808
+  - 809
+  - 810
+  - 811
+  - 812
+  - 813
+  - 814
+  - 815
+  - 816
+  - 817
+  - 818
+  text: 同樣也是上一些相關的線上課程然後開始每年都要考過一個語言檢定包括法文的 C1還有義大利文西班牙文德文還有瑞典文的 B2並且申請學校超狂的這個版本的四個儀表板都比上一個稍低但也都還不錯第三個超有趣的
+    我很喜歡是成為義式冰淇淋師傅加電影放映師他
+- shot_id: 285
+  start: 1351.934
+  end: 1355.688
+  duration: 3.754
+  type: aroll
+  note: 主持人特寫對鏡頭說話，無 overlay 文字
+  cues:
+  - 819
+  - 820
+  text: 你會覺得人生怎麼這麼好玩怎麼有這麼多可能性
+- shot_id: 286
+  start: 1355.688
+  end: 1365.155
+  duration: 9.468
+  type: aroll
+  note: 主持人對鏡頭說話（a/b 幀）；c 幀已切入橘底章節卡「步驟六：打造原型」（含電腦與手機線稿 icon）——鏡頭尾端轉場進 title card，多幀不一致
+  cues:
+  - 821
+  - 822
+  - 823
+  - 824
+  - 825
+  text: 但是在行動之前你還要再做以下的步驟六來增加你的成功機率步驟六：打造原型原型的英文叫做 prototype
+- shot_id: 287
+  start: 1365.155
+  end: 1373.372
+  duration: 8.217
+  type: stock
+  note: 汽車設計工作室實拍：兩位設計師處理油土模型車，一人繪製車輛線圖螢幕；大字白色 overlay 文字漸進：a 幀「設計師在生出最終產品」，b/c 幀為完整三行「設計師在生出最終產品前，一定會做出很多版本的原型，目的是測試計畫行不行得通。」
+  cues:
+  - 826
+  - 827
+  - 828
+  text: 設計師在設計出最終產品前一定會做出很多版本的原型目的是測試計畫行不行得通
+- shot_id: 288
+  start: 1373.372
+  end: 1379.128
+  duration: 5.756
+  type: aroll
+  note: 主持人紅T恤書房對鏡頭說話，右側疊《超級專案管理》書封 inset（黃色書封，含兩位作者頭像）；文字：「BIG THINGS GET DONE 超級專案管理」及黃色手寫字幕
+    a 幀「老闆, 政治人物必看」（部分滑入）、b 幀完整「PM, 老闆, 政治人物必看」，inset 從 a 到 b 有滑入放大動態。
+  cues:
+  - 829
+  - 830
+  - 831
+  - 832
+  text: 上一集節目講到的大型建築的模型還有電影的分鏡圖都算是原型的一種
+- shot_id: 289
+  start: 1379.128
+  end: 1384.174
+  duration: 5.047
+  type: aroll
+  note: 主持人紅T恤書房對鏡頭說話，無 overlay。
+  cues:
+  - 833
+  - 834
+  - 835
+  text: 人生的設計可說是茲事體大啊！當然也要謹慎行事
+- shot_id: 290
+  start: 1384.174
+  end: 1389.972
+  duration: 5.797
+  type: aroll
+  note: 主持人紅T恤書房對鏡頭說話（稍廣景別），無 overlay。
+  cues:
+  - 836
+  - 837
+  - 838
+  text: 在做任何的大決定展開你的奧德賽計畫之前一定要先打造原型
+- shot_id: 291
+  start: 1389.972
+  end: 1391.599
+  duration: 1.627
+  type: aroll
+  note: 主持人紅T恤書房對鏡頭說話，無 overlay。
+  cues:
+  - 839
+  text: 這也可以分成兩個步驟
+- shot_id: 292
+  start: 1391.599
+  end: 1398.48
+  duration: 6.882
+  type: stock
+  note: 咖啡店兩人隔桌對談（男白襯衫、短髮女）實拍；大字白色 overlay：a 幀「第一步：原型訪談。」，b/c 幀擴為「第一步：原型訪談。去訪問正在從事你想做的職業，或過你想過的人生的那些人。」
+  cues:
+  - 840
+  - 841
+  - 842
+  - 843
+  text: 第一個叫做原型訪談就是去找那些正在做你想做的職業或者是過你想像中生活的那些人
+- shot_id: 293
+  start: 1398.48
+  end: 1404.194
+  duration: 5.714
+  type: aroll
+  note: 主持人紅T恤書房對鏡頭說話，無 overlay。
+  cues:
+  - 844
+  - 845
+  - 846
+  - 847
+  text: 想開咖啡廳就找一間你心目中理想的咖啡廳想辦法和老闆混熟
+- shot_id: 294
+  start: 1404.194
+  end: 1408.157
+  duration: 3.962
+  type: aroll
+  note: 主持人紅T恤書房對鏡頭說話（近景），無 overlay。
+  cues:
+  - 848
+  - 849
+  - 850
+  text: 然後聽聽看他對這個職業或者人生最真實的想法
+- shot_id: 295
+  start: 1408.157
+  end: 1418.375
+  duration: 10.219
+  type: stock
+  note: 咖啡店三人商務對談實拍：戴眼鏡黑西裝男子向金髮女子與灰髮西裝男子說話，桌上咖啡與筆記本，無 overlay 文字。
+  cues:
+  - 851
+  - 852
+  - 853
+  - 854
+  - 855
+  - 856
+  text: 當然也不能只是閒聊一定要事先做好準備把這個行業的酸甜苦辣要具備的技能以及需要克服的困難一五一十地給問出來
+- shot_id: 296
+  start: 1418.375
+  end: 1419.877
+  duration: 1.502
+  type: aroll
+  note: 主持人紅T恤書房對鏡頭說話，無 overlay。
+  cues:
+  - 857
+  text: 接下來就是第二步：
+- shot_id: 297
+  start: 1419.877
+  end: 1423.464
+  duration: 3.587
+  type: stock
+  note: 咖啡店吧台兩位圍裙店員實拍，一人持平板交談；大字白色 overlay：a 幀尚未出現，b 幀出現「第二步：原型體驗。就是試水溫啦！」（overlay
+    於鏡頭中段滑入）。
+  cues:
+  - 858
+  - 859
+  text: 原型體驗講白話 就是試水溫啦！
+- shot_id: 298
+  start: 1423.464
+  end: 1427.217
+  duration: 3.754
+  type: aroll
+  note: 主持人紅T恤書房對鏡頭說話，無 overlay。
+  cues:
+  - 860
+  - 861
+  text: 問問老闆有沒有兼差的機會或者乾脆做一陣子白工
+- shot_id: 299
+  start: 1427.217
+  end: 1430.554
+  duration: 3.337
+  type: kol
+  note: 他人影片片段：黑格紋背景框內嵌台灣登山實拍（黑衣戴帽男與穿黃雨衣者在霧中山頂），左上角來源標示「影片來源：台客劇場 TKstory」；片段內含原影片自帶字幕「但是你要答應我一定要閉眼睛」。
+  cues:
+  - 862
+  - 863
+  text: 像白昆禾一開始就是這樣在台客導演身邊學習
+- shot_id: 300
+  start: 1430.554
+  end: 1432.056
+  duration: 1.501
+  type: kol
+  note: 他人影片片段：山頂濃霧中一名戴帽男子將金色獎盃遞給穿黃色雨衣的光頭男子，畫面內嵌於黑色格紋框。左上角文字：「影片來源：台客劇場 TKstory」。
+  cues:
+  - 864
+  text: 才一路成長到現在
+- shot_id: 301
+  start: 1432.056
+  end: 1441.899
+  duration: 9.843
+  type: aroll
+  note: 主持人（紅T恤、暖色書架房間）對鏡頭說話，b/c 幀有手勢入鏡靠近鏡頭。無台詞字幕以外的畫面文字。
+  cues:
+  - 865
+  - 866
+  - 867
+  - 868
+  - 869
+  - 870
+  text: 好 假設這個工作你已經問了許多前輩綜合他們的分享經驗以及你實際跳下去做一陣子之後的心得你覺得這真的是你要的
+- shot_id: 302
+  start: 1441.899
+  end: 1453.744
+  duration: 11.845
+  type: aroll
+  note: 主持人對鏡頭說話，鏡位略近，c 幀鏡頭更貼近。無台詞字幕以外的畫面文字。
+  cues:
+  - 871
+  - 872
+  - 873
+  - 874
+  - 875
+  - 876
+  text: 接下來就是最後一步了步驟七：組建團隊 持續行動只要是有參加在你人生設計大業的人都算是團隊的一份子最重要的當然是親友團
+- shot_id: 303
+  start: 1453.744
+  end: 1454.912
+  duration: 1.168
+  type: aroll
+  note: 主持人特寫對鏡頭說話（嘟嘴、講話表情）。無台詞字幕以外的畫面文字。
+  cues:
+  - 877
+  text: 尤其是家人
+- shot_id: 304
+  start: 1454.912
+  end: 1461.418
+  duration: 6.506
+  type: stock
+  note: 圖庫實拍：明亮廚房中一家四口嬉戲，爸爸穿蕾絲紗裙、肩上扛著穿紗裙的女兒，媽媽抱另一個小女孩。無可辨識 overlay 文字（背景黑板購物清單字樣模糊不計）。
+  cues:
+  - 878
+  - 879
+  - 880
+  - 881
+  text: 雖然他們不一定會很密切地參與你設計的過程但是你做的每個決定都會影響到他們
+- shot_id: 305
+  start: 1461.418
+  end: 1464.672
+  duration: 3.253
+  type: aroll
+  note: 主持人對鏡頭說話，b 幀左下有手勢入鏡。無台詞字幕以外的畫面文字。
+  cues:
+  - 882
+  - 883
+  text: 千萬不要頂下一間咖啡店之後才跟你老婆講
+- shot_id: 306
+  start: 1464.672
+  end: 1465.923
+  duration: 1.251
+  type: aroll
+  note: 主持人特寫，睜大眼、驚訝表情對鏡頭說話。無台詞字幕以外的畫面文字。
+  cues:
+  - 884
+  text: 會出大事啊！
+- shot_id: 307
+  start: 1465.923
+  end: 1469.843
+  duration: 3.921
+  type: aroll
+  note: 主持人對鏡頭說話，b 幀嘟嘴表情。無台詞字幕以外的畫面文字。
+  cues:
+  - 885
+  - 886
+  text: 再來是你的生命設計小組頂多三到五人就好
+- shot_id: 308
+  start: 1469.843
+  end: 1471.22
+  duration: 1.376
+  type: aroll
+  note: 主持人近距離特寫對鏡頭說話、身體前傾，b 幀前景有白色物體（似紙張/手勢）快速掠過造成動態模糊。無台詞字幕以外的畫面文字。
+  cues:
+  - 887
+  text: 他們也都看過這本書
+- shot_id: 309
+  start: 1471.22
+  end: 1478.435
+  duration: 7.216
+  type: stock
+  note: 圖庫實拍：三名年輕人（背影）坐在高處欄杆邊俯瞰整片城市（巴塞隆納式全景），逆光夕陽。無畫面文字。
+  cues:
+  - 888
+  - 889
+  - 890
+  - 891
+  text: 也能和你一起發想彼此的奧德賽計畫並且能夠全心投入為彼此提供有建設性的意見
+- shot_id: 310
+  start: 1478.435
+  end: 1483.482
+  duration: 5.047
+  type: stock
+  note: 圖庫實拍：咖啡廳裡三名年輕人圍著筆電交談，中間女子側頭看螢幕。無畫面文字。
+  cues:
+  - 892
+  - 893
+  - 894
+  text: 你們可以定期聚會分享進度和檢討修正然後互相鼓勵打氣
+- shot_id: 311
+  start: 1483.482
+  end: 1485.025
+  duration: 1.543
+  type: aroll
+  note: 主持人對鏡頭說話，a 幀右手在鏡前比出三根手指手勢。無台詞字幕以外的畫面文字。
+  cues:
+  - 895
+  text: 第三是參與者
+- shot_id: 312
+  start: 1485.025
+  end: 1486.694
+  duration: 1.668
+  type: stock
+  note: 圖庫實拍：辦公室兩人討論文件（戴眼鏡男子拿筆與捲髮女子看紙本），前景文件上印有英文「Evaluating effectiveness」。
+  cues:
+  - 896
+  text: 也就是你工作的同事啦
+- shot_id: 313
+  start: 1486.694
+  end: 1488.153
+  duration: 1.46
+  type: aroll
+  note: 主持人紅T恤在暖色書房對鏡頭說話，b 幀舉起食指。
+  cues:
+  - 897
+  text: 最後是你的支持者
+- shot_id: 314
+  start: 1488.153
+  end: 1494.91
+  duration: 6.757
+  type: stock
+  note: 酒吧內一群歐美年輕人看比賽歡呼慶祝、舉手大笑（三幀從期待到歡呼）。
+  cues:
+  - 898
+  - 899
+  - 900
+  - 901
+  - 902
+  text: 這裡的人數就不限了可能是你的臉友他們都關心你的生活能夠鼓勵你走下去不管怎樣
+- shot_id: 315
+  start: 1494.91
+  end: 1497.955
+  duration: 3.045
+  type: aroll
+  note: 主持人特寫說話，左側疊入橘框視窗 inset：跑步男子實拍去背＋綠色手繪箭頭/塗鴉動畫，b 幀塗鴉元素變多且主持人舉手指。
+  cues:
+  - 903
+  - 904
+  text: 人生這條路上一定是充滿挑戰的
+- shot_id: 316
+  start: 1497.955
+  end: 1501.625
+  duration: 3.67
+  type: aroll
+  note: 主持人對鏡頭說話；a 幀左側有一個縮小中的小型橘框 inset（前鏡頭視窗縮出），b 幀已完全消失——overlay 滑出過渡。
+  cues:
+  - 905
+  - 906
+  text: 如果你想要打造一個專屬於自己的最棒的人生
+- shot_id: 317
+  start: 1501.625
+  end: 1504.503
+  duration: 2.878
+  type: aroll
+  note: 主持人臉部大特寫對鏡頭說話，無疊加物。
+  cues:
+  - 907
+  - 908
+  text: 那能夠參考的成功案例可能不會太多
+- shot_id: 318
+  start: 1504.503
+  end: 1507.005
+  duration: 2.503
+  type: aroll
+  note: 主持人中景說話，b 幀閉眼作嘆息表情，無疊加物。
+  cues:
+  - 909
+  text: 當自己受挫或者失敗的時候
+- shot_id: 319
+  start: 1507.005
+  end: 1512.011
+  duration: 5.005
+  type: aroll
+  note: 主持人特寫說話，左上疊橘框視窗 inset 播他人影集片段（似《The Office》辦公室人物驚呼畫面），兩幀 inset 由小滑入變大。
+  cues:
+  - 910
+  - 911
+  - 912
+  text: 一定要有一個團隊來支持你讓你能持續行動直到成功為止
+- shot_id: 320
+  start: 1512.011
+  end: 1513.804
+  duration: 1.793
+  type: aroll
+  note: '主持人說話，右側滑入橘框視窗 inset 書封《Designing Your Life: How to Build a Well-Lived, Joyful
+    Life 做自己的生命設計師 Bill Burnett & Dave Evans》，a 幀書封尚在滑入僅見部分文字「signing Your L」，b 幀完整。'
+  cues:
+  - 913
+  text: 以上就是這本書的分享
+- shot_id: 321
+  start: 1513.804
+  end: 1515.389
+  duration: 1.585
+  type: aroll
+  note: 畫面縮成左側小視窗的主持人說話，右上橘框 inset 為電影男子（Jim Carrey 似《楚門的世界》）哭泣特寫，黑底排版；兩幀構圖近似。
+  cues:
+  - 914
+  text: 應該又破 20 分鐘了吧
+- shot_id: 322
+  start: 1515.389
+  end: 1517.933
+  duration: 2.544
+  type: aroll
+  note: 主持人中景對鏡頭說話，b 幀皺眉瞇眼作痛苦表情，無疊加物。
+  cues:
+  - 915
+  text: 但我真的超級超級喜歡這本書
+- shot_id: 323
+  start: 1517.933
+  end: 1521.353
+  duration: 3.42
+  type: aroll
+  note: 主持人手持實體書《Designing Your Life 做自己的生命設計師》靠向鏡頭展示並說話；a 幀書面反光模糊，b 幀書名清晰。
+  cues:
+  - 916
+  - 917
+  text: 這是一本極少數我會想推薦給每一個人
+- shot_id: 324
+  start: 1521.353
+  end: 1529.486
+  duration: 8.133
+  type: aroll
+  note: '主持人左手持書《Designing Your Life: 做自己的生命設計師》右手舉食指說話（a 幀），b/c 幀已放下書恢復一般中景說話——同鏡頭內道具收起。'
+  cues:
+  - 918
+  - 919
+  - 920
+  - 921
+  - 922
+  text: 甚至買來到處送的一本書這內容相當地淺顯易懂作者又超幽默重要的是它對人生造成的影響
+- shot_id: 325
+  start: 1529.486
+  end: 1530.779
+  duration: 1.293
+  type: aroll
+  note: 主持人特寫皺眉強調說話，b 幀舉起食指，無疊加物。
+  cues:
+  - 923
+  text: 可以是深遠的
+- shot_id: 326
+  start: 1530.779
+  end: 1532.448
+  duration: 1.668
+  type: aroll
+  note: 主持人（紅T恤、書房）對鏡頭說話，手上拿著一本白色書翻動展示。無台詞字幕以外的畫面文字。
+  cues:
+  - 924
+  text: 而且這本書還沒有改版
+- shot_id: 327
+  start: 1532.448
+  end: 1538.37
+  duration: 5.923
+  type: aroll
+  note: 主持人更近景對鏡頭說話，右手（畫面左側）舉起白色書封面展示；a 幀書在畫面右下、b 幀舉到左側，鏡頭稍推近。書封文字太小無法辨識。
+  cues:
+  - 925
+  - 926
+  - 927
+  - 928
+  text: 打折下來才差不多 250真的是相當值得入手趕快去買爆強烈推薦給你
+- shot_id: 328
+  start: 1538.37
+  end: 1546.962
+  duration: 8.592
+  type: aroll
+  note: 主持人對鏡頭說話，a 幀舉著白色書展示封面，b/c 幀書已放下、鏡頭推近成胸上近景。書封文字太小無法辨識。
+  cues:
+  - 929
+  - 930
+  - 931
+  - 932
+  - 933
+  - 934
+  text: 最後也來推薦一下我的電子報張修修的自由之路我每個禮拜會分享我和網友們在通往財富自由免於病痛自由
+- shot_id: 329
+  start: 1546.962
+  end: 1550.007
+  duration: 3.045
+  type: aroll
+  note: 主持人特寫對鏡頭說話（無書、無疊加物）。無台詞字幕以外的畫面文字。
+  cues:
+  - 935
+  - 936
+  text: 以及心靈自由這條路上的探索和實踐
+- shot_id: 330
+  start: 1550.007
+  end: 1558.432
+  duration: 8.425
+  type: aroll
+  note: 主持人對鏡頭說話；a 幀無疊加，b/c 幀畫面下方滑入大型白色文字 overlay「shosho.tw/free」（type 仍為 aroll，CTA
+    網址疊加）。
+  cues:
+  - 937
+  - 938
+  - 939
+  - 940
+  text: 網址是 shosho.tw/free如果你想要在人生這條路上有人結伴同行歡迎加入我們的行列
+- shot_id: 331
+  start: 1558.432
+  end: 1567.149
+  duration: 8.717
+  type: aroll
+  note: 主持人中景對鏡頭說話、微笑（無疊加物）。無台詞字幕以外的畫面文字。
+  cues:
+  - 941
+  - 942
+  - 943
+  - 944
+  - 945
+  text: 最後 我要跟你說你很棒 放輕鬆別太逼自己了人生是很長的打造屬於自己的夢幻人生
+- shot_id: 332
+  start: 1567.149
+  end: 1568.942
+  duration: 1.793
+  type: aroll
+  note: 主持人大特寫對鏡頭說話，雙手在鏡頭前張開比劃（a 幀手部動態模糊）。無台詞字幕以外的畫面文字。
+  cues:
+  - 946
+  text: 永遠不嫌晚！
+- shot_id: 333
+  start: 1568.942
+  end: 1570.9
+  duration: 1.958
+  type: aroll
+  note: 主持人中景對鏡頭說話收尾、表情放鬆微笑（無疊加物）。無台詞字幕以外的畫面文字。
+  cues:
+  - 947
+  - 948
+  text: 我們下集節目見掰掰！
