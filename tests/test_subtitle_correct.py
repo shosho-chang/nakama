@@ -169,12 +169,14 @@ def test_llm_arbitrated_false_when_arbitration_fails(monkeypatch, tmp_path):
     assert len(qc) == 1  # 退回未仲裁 uncertainties
 
 
-def test_scripted_strips_book_title_marks():
-    srt = _srt(["來談大腦簡史這本書"])
-    script = "來談《大腦簡史》這本書。"
+def test_scripted_preserves_book_title_and_term_marks():
+    # 修修 2026-07-25 裁決：《》書名號與「」專有名詞括號必須保留，其他標點省略
+    srt = _srt(["來談大腦簡史這本書會聊到腦腐"])
+    script = "來談《大腦簡史》這本書，會聊到「腦腐」。"
     corrected, _, _ = correct_srt_scripted(srt, script)
-    assert "《" not in corrected and "》" not in corrected
-    assert "大腦簡史" in corrected
+    assert "《大腦簡史》" in corrected
+    assert "「腦腐」" in corrected
+    assert "，" not in corrected and "。" not in corrected
 
 
 def test_llm_refs_injected_into_system(monkeypatch, tmp_path):

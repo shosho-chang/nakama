@@ -67,6 +67,7 @@ def run_prep(
     *,
     audio: Path | None = None,
     use_auphonic: bool = True,
+    trim_silence: bool = False,
     noise_db: float = DEFAULT_NOISE_DB,
     min_silence: float = DEFAULT_MIN_SILENCE,
     keep_intermediates: bool = False,
@@ -90,13 +91,21 @@ def run_prep(
         logger.info("跳過 Auphonic（--no-auphonic）")
         processed = source
 
-    # Stage 3: 頭尾靜音裁切
-    trim_start, trim_end, dur_before_trim = detect_edge_silence(
-        processed, noise_db=noise_db, min_silence=min_silence
-    )
+    # Stage 3（opt-in）: 頭尾靜音裁切。
+    # 預設**不裁**——normalized.wav 時間軸必須與原始錄影完全一致，
+    # 字幕才能對回 DaVinci 的原始影片（修修 2026-07-25 裁決）。
+    # 只有純音訊用途（podcast 上架等不需對影片）才用 --trim-silence。
     output_path = episode_dir / OUTPUT_NAME
-    if trim_start == 0.0 and trim_end >= dur_before_trim:
-        logger.info("頭尾無靜音段")
+    trim_start, trim_end, dur_before_trim = 0.0, 0.0, 0.0
+    if trim_silence:
+        trim_start, trim_end, dur_before_trim = detect_edge_silence(
+            processed, noise_db=noise_db, min_silence=min_silence
+        )
+    if not trim_silence or (trim_start == 0.0 and trim_end >= dur_before_trim):
+        if not trim_silence:
+            logger.info("靜音裁切關閉（預設）— 時間軸與原始錄影一致")
+        else:
+            logger.info("頭尾無靜音段")
         if processed == source:
             # 不動原始檔：直接複製一份當 normalized.wav
             import shutil
@@ -129,12 +138,16 @@ def run_prep(
         "source": str(source),
         "source_duration_sec": round(source_duration, 3),
         "auphonic": use_auphonic,
-        "silence_trim": {
-            "noise_db": noise_db,
-            "min_silence": min_silence,
-            "trim_start_sec": round(trim_start, 3),
-            "trim_tail_sec": round(max(0.0, dur_before_trim - trim_end), 3),
-        },
+        "silence_trim": (
+            {
+                "noise_db": noise_db,
+                "min_silence": min_silence,
+                "trim_start_sec": round(trim_start, 3),
+                "trim_tail_sec": round(max(0.0, dur_before_trim - trim_end), 3),
+            }
+            if trim_silence
+            else None  # 預設不裁：時間軸與原始錄影一致
+        ),
         "output": OUTPUT_NAME,
         "output_duration_sec": round(final_duration, 3),
     }
@@ -150,7 +163,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="audio-prep：Auphonic normalize + 頭尾靜音裁切")
     parser.add_argument("episode", help="episode 資料夾（含 Audio/ 子資料夾）")
     parser.add_argument("--audio", help="直接指定原始音檔路徑（跳過自動偵測）")
-    parser.add_argument("--no-auphonic", action="store_true", help="跳過 Auphonic，只做靜音裁切")
+    parser.add_argument("--no-auphonic", action="store_true", help="跳過 Auphonic")
+    parser.add_argument(
+        "--trim-silence",
+        action="store_true",
+        help="裁頭尾靜音（預設關——會讓時間軸偏離原始錄影，僅純音訊用途使用）",
+    )
     parser.add_argument("--noise-db", type=float, default=DEFAULT_NOISE_DB, help="靜音判定門檻 dB")
     parser.add_argument(
         "--min-silence", type=float, default=DEFAULT_MIN_SILENCE, help="最短靜音秒數"
@@ -170,6 +188,7 @@ def main(argv: list[str] | None = None) -> int:
         episode_dir,
         audio=Path(args.audio) if args.audio else None,
         use_auphonic=not args.no_auphonic,
+        trim_silence=args.trim_silence,
         noise_db=args.noise_db,
         min_silence=args.min_silence,
         keep_intermediates=args.keep_intermediates,

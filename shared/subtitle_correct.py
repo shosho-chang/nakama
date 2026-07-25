@@ -38,8 +38,9 @@ DEFAULT_CHUNK_SIZE = 150  # 每次 LLM 呼叫的 cue 數
 DEFAULT_REF_CHAR_CAP = 20000  # 每份參考資料的注入上限（字元）
 SCRIPTED_CUE_MATCH_THRESHOLD = 0.5  # cue 內字元對齊率低於此值 → 保留原文並進報告
 
-# 對稿模式重建 cue 文字時的標點清理（SRT house style：無標點、停頓用空格）
-_PUNCT_RE = re.compile(r"[，。、；：？！…—～·,.;:!?\"'“”‘’()（）\[\]【】《》]")
+# 對稿模式重建 cue 文字時的標點清理（SRT house style：停頓用空格；
+# 《》書名號與「」專有名詞括號依修修 2026-07-25 裁決保留）
+_PUNCT_RE = re.compile(r"[，。、；：？！…—～·,.;:!?\"'“”‘’()（）\[\]【】]")
 
 
 # ── 參考資料載入 ──
@@ -422,6 +423,12 @@ def correct_srt_scripted(srt_content: str, script_text: str) -> tuple[str, list[
 
         raw_start = script_index_map[s_start]
         raw_end = script_index_map[s_end - 1] + 1
+        # 括號補齊：span 端點落在《》「」內側時，把括號本身撈進 cue
+        # （normalized 流只含字母數字，括號永遠在 span 邊界外）
+        while raw_start > 0 and script_text[raw_start - 1] in "《「":
+            raw_start -= 1
+        while raw_end < len(script_text) and script_text[raw_end] in "》」":
+            raw_end += 1
         new_text = _clean_cue_text(script_text[raw_start:raw_end])
         if new_text and new_text != orig_text:
             corrections[seq] = new_text

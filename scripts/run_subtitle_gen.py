@@ -84,13 +84,13 @@ def run_gen(
     host_name: str = "",
     show_name: str = "",
 ) -> tuple[Path, Path]:
+    from shared.cue_builder import aligned_segments_to_srt
     from shared.transcriber import (
         _build_initial_prompt,
         _extract_hotwords,
         _get_align_model,
         _get_asr_model,
         _process_srt_line,
-        _whisperx_to_srt,
     )
 
     audio_path = audio if audio else episode_dir / "normalized.wav"
@@ -118,15 +118,16 @@ def run_gen(
     detected_lang = transcription.get("language", language)
     logger.info(f"ASR 完成: {len(segs)} segments（語言 {detected_lang}）")
 
-    # SRT（沿用 /transcribe 同款後處理：cue 拆分 + 簡→繁 + 去標點）
-    srt_content = _whisperx_to_srt(segs)
-    srt_content = "\n".join(_process_srt_line(line) for line in srt_content.splitlines())
-
-    # 字級 timestamps（同一 pass 順手產，下游對稿/video line 重用）
+    # 字級 timestamps（cue 建構與下游對稿/video line 共用）
     align_model, align_metadata = _get_align_model(detected_lang)
     aligned = whisperx.align(
         segs, align_model, align_metadata, audio_data, "cuda", return_char_alignments=False
     )
+
+    # SRT：從字級真實時間戳建 cue（jieba 詞邊界 + 停頓優先，零內插）
+    # 後處理沿用 /transcribe house style（簡→繁 + 去標點）
+    srt_content = aligned_segments_to_srt(aligned["segments"])
+    srt_content = "\n".join(_process_srt_line(line) for line in srt_content.splitlines())
     words: list[dict] = []
     skipped = 0
     for seg in aligned["segments"]:
