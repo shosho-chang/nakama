@@ -1,7 +1,7 @@
 # ADR-048 Robin 第二大腦：候選收件匣 + 分層記憶 + Slack 捕捉 + Skill 自薦
 
-- 狀態：Proposed（v2，已過 3-way panel review；待修修最終定版）
-- 日期：2026-06-24
+- 狀態：Accepted（2026-07-25 修修裁決收斂入 repo；**Phase 0–1 已落地**（#934 / #935），Phase 2–5 為待排序 roadmap）
+- 日期：2026-06-24（v2 panel-reviewed）；2026-07-25 更新落地狀態
 - 決策者：修修
 - Panel：Claude（草稿）→ Codex/GPT-5 → Gemini 2.5 Pro。兩位 auditor 皆判 **approve with modifications**。Audit 全文：`docs/research/2026-06-24-codex-adr048-panel-audit.md`、`docs/research/2026-06-24-gemini-adr048-panel-audit.md`。
 - 關聯：延續 [ADR-047](ADR-047-agent-memory-v2-self-improving.md)（user_memories v2 反思整合）；受 [ADR-043] 約束（`KB/Permanent/` 是人寫權威層）；[ADR-046]（三來源 ingest）。
@@ -44,7 +44,7 @@ Robin（KB agent）每日回顧從「昨天」的劃線提候選永久卡，但�
 ### D-A：候選收件匣 ≠ 記憶；學習分三層、依賴單向
 `candidate_events`（事件）→ `user_behavior_patterns`（統計）→ `user_memories`（語意）。上層只讀下層，不從生訊號跳到語意。
 
-### D-B（Phase 1）：候選收件匣 + 事件表
+### D-B（Phase 1，已完成 #935 `shared/candidate_inbox.py`）：候選收件匣 + 事件表
 - 候選**持久化**（body / source_refs / status / first_seen / last_seen / action history）；開卡記 `done`；未處理**結轉**；dedupe；aging。修「點子消失」。
 - `candidate_events`（accept / skip / defer / open + timestamp + 可選原因）= 後續所有學習的 **ground truth**。
 
@@ -70,7 +70,7 @@ Robin（KB agent）每日回顧從「昨天」的劃線提候選永久卡，但�
 | Phase | 內容 | 依賴 |
 |---|---|---|
 | **0** ✅ | max_tokens + 容錯解析（#934）| — |
-| **1** | 候選收件匣 + `candidate_events`（修點子消失 + ground truth）| 0 |
+| **1** ✅ | 候選收件匣 + `candidate_events`（修點子消失 + ground truth）（#935 `shared/candidate_inbox.py`）| 0 |
 | **2** | Robin Slack bot（fleeting + research；餵既有管線）| 1（fleeting/inbox 落點）|
 | **3** | 行為模式 → P-1 排序 **＋** 語意記憶（從行為導出，含四道護欄）| 1（事件資料）|
 | **4** | `task_events` schema（平台預設記錄）| — |
@@ -94,6 +94,8 @@ Robin（KB agent）每日回顧從「昨天」的劃線提候選永久卡，但�
 3. skill 自薦的「重複」門檻（幾次、多相似才提醒）？
 4. 評測 harness（ADR-047 Phase 3 FAMA 式）怎麼涵蓋 Robin 的個人化排序品質？
 
-## 落地狀態
+## 落地狀態（2026-07-25 更新）
 
-草案 v2（panel-reviewed）。Phase 0 已落地（#934）。建議下一個動工 = **Phase 1（收件匣 + 事件表）**——它同時修掉「點子消失」並產生後續所有學習的 ground truth。其餘 phase 待修修排序。
+- **Phase 0** ✅ #934 — `shared/llm_json.py` + `_ask_p1_llm` 8192（`agents/robin/daily_review.py`）。
+- **Phase 1** ✅ #935 — `shared/candidate_inbox.py`（候選持久化 + `candidate_events` 事件流 + 結轉），接進 `daily_review.py` 與 `thousand_sunny/routers/kb_review.py`。
+- **Phase 2–5** ❌ 未動工，優先序待修修排。記憶基建面：ADR-047 Phase 1 / 2a / 2b（#927 / #932 / #930，反思整合 + episodic 層 + fleet 共享）已全部合併，D-C / D-F 落地時直接騎在其上；`memory_extractor` 目前僅接 Nami（`gateway/handlers/nami.py`），Robin Slack bot（Phase 2）是它接 Robin 的解鎖點。
