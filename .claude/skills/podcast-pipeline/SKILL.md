@@ -32,6 +32,8 @@ description: >
 
 ## 原則
 
-- 長任務（prep 上傳、correct LLM）放背景跑，完成再回報
+- **成本紅線：整條產線預設零 API 錢**——校正走 subtitle-correct 的 subagent
+  模式（subscription quota）；`--api` / `--arbitrate` 付費路徑只在修修明確要求時用
+- 長任務（prep 上傳、subagent 校正）放背景跑，完成再回報
 - 任何一段失敗 → 停在該段照該 skill 的錯誤處理節排除，不要跳段
 - 使用者只丟資料夾沒說從哪開始 → 先報偵測到的進度再續跑
