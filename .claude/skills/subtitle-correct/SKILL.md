@@ -83,9 +83,27 @@ script 會做：越界過濾、過度刪減防護（縮短逾半 → 進 QC）�
 - 這些規則已寫進 instructions.md 的校正 prompt 與 Pass 2 過濾（《》「」不會被清掉），
   subagent 只要照 instructions 做即可
 
+## QC 自主裁決（修修 2026-07-25 裁示）
+
+**不要把整份 QC 清單丟給修修拍板**——「要我拍板的地方實在太多，我沒那麼多時間」。
+QC 的 uncertain 項目由你自己裁決完，流程：
+
+1. **「聽音檔」= 重開 WhisperX**：對該 cue 裁出 ±1 cue 的音檔片段（從
+   normalized.wav），無 initial_prompt 重辨識，比對「原文 / 建議 / 重聽」三方。
+   重疊說話（重聽時句子消失）→ 改裁分軌 mic 軌（stem 比 mix 早約 0.167s，
+   `speaker_assign._measure_offset` 可量）
+2. **重聽支持建議 → 直接改**；**重聽兩次仍是原文 → 保留原文**（講者口誤照實
+   保留，忠實優先）；語意判斷確鑿（如「智慧家」非詞 → 哲學家）→ 直接改
+3. **人名地名 → 派 agent 查證**（refs / web），不要標「請確認」
+4. 全部裁決寫進 `subs/qc_decisions.md`（決定 + 證據 + 可否決的 judgment call），
+   更新 corrections.json 重跑 `--apply`（冪等）
+5. **只把真正音義衝突、多次重聽仍無法判定的極少數（目標 <5 項）升級給修修**
+
+⚠️ `--apply` 會**重生 transcript.qc.md**——修修若在裡面用 `[]` 批註中，先把批註
+原文抄進 qc_decisions.md 再跑，否則會被蓋掉（2026-07-25 血淚）。
+
 ## 完成後回報
 
-1. 讀 `transcript.qc.md`：回報統計（修正行數、QC 行數／低對齊 cue 數）
-2. **把「需人工確認」清單完整呈現給使用者**（這是 HITL gate，不可略過；
-   subagent 模式沒有 Gemini 聽音檔，uncertain 全數靠修修裁決）
-3. 修修裁決後可把採納的項目補進 corrections.json 重跑 `--apply`（冪等）
+1. 讀 `transcript.qc.md` 統計 + 你的 `subs/qc_decisions.md` 裁決摘要
+2. 只呈現升級清單（真無法判定項）與可否決的 judgment call
+3. 修修否決任何一項 → 改 corrections.json → `--apply` → speaker split → refresh（冪等）
