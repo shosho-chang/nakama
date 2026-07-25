@@ -18,6 +18,12 @@ description: >
 - 參考資料自動收集：`<episode>/refs/` + 訪談準備資料夾（依來賓名配對，見
   subtitle-correct skill 的說明）→ 抽 hotwords 餵 initial prompt
 
+## Cue 品質（shared/cue_builder.py）
+
+斷句從**字級真實時間戳**建構：jieba 詞邊界（詞絕不切半）+ 語音停頓優先斷句
++ 14/22 字軟硬上限，時間戳零內插。不是按字數硬切——修修 2026-07-25 驗收
+回饋後重寫（舊版「先請/教老師」型切爛句是紅線）。
+
 ## GPU 注意事項（必守）
 
 - **必須用裝了 torch cu128 的 Python**：修修桌機 =

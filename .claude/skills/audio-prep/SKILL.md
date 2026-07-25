@@ -30,12 +30,16 @@ python E:\nakama\scripts\run_audio_prep.py "<episode 資料夾>"
 ```
 
 - 63 分鐘音檔全程約 10–25 分鐘（上傳 1GB 級 wav + Auphonic 雲端處理）——**放背景跑**，完成後回報
-- `--audio <path>` 指定非慣例檔名；`--no-auphonic` 只做靜音裁切（測試用）
-- 靜音判定預設 -40dB / 0.8s，可用 `--noise-db` / `--min-silence` 調
+- **時間軸鐵則：normalized.wav 時間軸必須與原始錄影完全一致**（字幕要對回
+  DaVinci 的原始影片）。Auphonic 免費方案外加的頭尾 Jingle 各 6 秒會自動裁掉
+  （裁掉才「還原」原始時間軸）；**頭尾靜音預設不裁**——僅純音訊用途
+  （podcast 上架、不對影片）才用 `--trim-silence` 明確開啟（修修 2026-07-25 裁決）
+- `--audio <path>` 指定非慣例檔名；`--no-auphonic` 跳過 Auphonic（額度不足時的
+  fallback：直接複製 raw 當 normalized.wav，時間軸不變）
 
 ## 完成後回報
 
-讀 `prep_manifest.json`，回報：輸出長度、頭尾各裁了幾秒、用了哪個 Auphonic 帳號（log 內有）。裁切秒數異常大（>60s）時提醒使用者抽聽頭尾確認沒切到內容。
+讀 `prep_manifest.json`，回報：輸出長度、有無 Auphonic、用了哪個帳號（log 內有）。若開了 `--trim-silence`，回報裁切秒數並**明確警告時間軸已偏移原始錄影**。
 
 ## 錯誤處理
 

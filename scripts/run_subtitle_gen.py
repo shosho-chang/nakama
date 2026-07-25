@@ -39,8 +39,31 @@ logger = logging.getLogger("subtitle_gen")
 SUBS_DIR = "subs"
 SRT_NAME = "raw.srt"
 WORDS_NAME = "words.json"
+ALIGNED_NAME = "aligned_segments.json"
 MANIFEST_NAME = "gen_manifest.json"
 REFS_DIR = "refs"
+
+
+def _build_srt_from_aligned(aligned_segments: list[dict]) -> str:
+    """aligned segments → cue（jieba 詞邊界 + 停頓優先，零內插）→ house style 後處理。"""
+    from shared.cue_builder import aligned_segments_to_srt
+    from shared.transcriber import _process_srt_line
+
+    srt_content = aligned_segments_to_srt(aligned_segments)
+    return "\n".join(_process_srt_line(line) for line in srt_content.splitlines())
+
+
+def run_recue(episode_dir: Path) -> Path:
+    """從已存的 aligned_segments.json 重建 raw.srt（cue 參數迭代用，零 GPU）。"""
+    aligned_path = episode_dir / SUBS_DIR / ALIGNED_NAME
+    if not aligned_path.exists():
+        raise FileNotFoundError(f"找不到 {aligned_path}（需先跑過一次完整 subtitle-gen）")
+    aligned = json.loads(aligned_path.read_text(encoding="utf-8"))
+    srt_content = _build_srt_from_aligned(aligned)
+    srt_path = episode_dir / SUBS_DIR / SRT_NAME
+    srt_path.write_text(srt_content, encoding="utf-8")
+    logger.info(f"recue 完成: {srt_content.count(' --> ')} cues → {srt_path}")
+    return srt_path
 
 
 def gpu_precheck() -> None:
@@ -89,8 +112,6 @@ def run_gen(
         _extract_hotwords,
         _get_align_model,
         _get_asr_model,
-        _process_srt_line,
-        _whisperx_to_srt,
     )
 
     audio_path = audio if audio else episode_dir / "normalized.wav"
@@ -118,15 +139,33 @@ def run_gen(
     detected_lang = transcription.get("language", language)
     logger.info(f"ASR 完成: {len(segs)} segments（語言 {detected_lang}）")
 
-    # SRT（沿用 /transcribe 同款後處理：cue 拆分 + 簡→繁 + 去標點）
-    srt_content = _whisperx_to_srt(segs)
-    srt_content = "\n".join(_process_srt_line(line) for line in srt_content.splitlines())
-
-    # 字級 timestamps（同一 pass 順手產，下游對稿/video line 重用）
+    # 字級 timestamps（cue 建構與下游對稿/video line 共用）
     align_model, align_metadata = _get_align_model(detected_lang)
     aligned = whisperx.align(
         segs, align_model, align_metadata, audio_data, "cuda", return_char_alignments=False
     )
+
+    # aligned segments 落地：cue 參數調整可用 --recue 重建，免重跑 GPU
+    subs_dir = episode_dir / SUBS_DIR
+    subs_dir.mkdir(exist_ok=True)
+    aligned_slim = [
+        {
+            "words": [
+                {
+                    "word": (w.get("word") or "").strip(),
+                    "start": w.get("start"),
+                    "end": w.get("end"),
+                }
+                for w in seg.get("words", [])
+            ]
+        }
+        for seg in aligned["segments"]
+    ]
+    (subs_dir / ALIGNED_NAME).write_text(
+        json.dumps(aligned_slim, ensure_ascii=False, indent=1), encoding="utf-8"
+    )
+
+    srt_content = _build_srt_from_aligned(aligned_slim)
     words: list[dict] = []
     skipped = 0
     for seg in aligned["segments"]:
@@ -144,8 +183,6 @@ def run_gen(
     if skipped:
         logger.warning(f"{skipped} 個 token 缺 timestamp（align 失敗），已略過")
 
-    subs_dir = episode_dir / SUBS_DIR
-    subs_dir.mkdir(exist_ok=True)
     srt_path = subs_dir / SRT_NAME
     srt_path.write_text(srt_content, encoding="utf-8")
     words_path = subs_dir / WORDS_NAME
@@ -189,6 +226,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--language", default="zh")
     parser.add_argument("--host-name", default="", help="主持人名（hotword 偏置用）")
     parser.add_argument("--show-name", default="", help="節目名（hotword 偏置用）")
+    parser.add_argument(
+        "--recue",
+        action="store_true",
+        help="從既有 aligned_segments.json 重建 raw.srt（cue 參數迭代，零 GPU）",
+    )
     return parser.parse_args(argv)
 
 
@@ -199,6 +241,9 @@ def main(argv: list[str] | None = None) -> int:
     if not episode_dir.is_dir():
         logger.error(f"episode 資料夾不存在: {episode_dir}")
         return 1
+    if args.recue:
+        run_recue(episode_dir)
+        return 0
     run_gen(
         episode_dir,
         audio=Path(args.audio) if args.audio else None,
