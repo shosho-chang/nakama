@@ -11,7 +11,8 @@ description: >
 # podcast-pipeline — 字幕產線編排
 
 薄編排：偵測 episode 進度 → 依序呼叫三個 skill。**不要重新發明各段邏輯**，
-一律進入對應 skill（`/audio-prep`、`/subtitle-gen`、`/subtitle-correct`）照它的手冊做。
+一律進入對應 skill（`/audio-prep`、`/subtitle-gen`、`/subtitle-correct`、
+`/resolve-project`）照它的手冊做。
 
 ## 進度偵測（依檔案存在判斷）
 
@@ -19,7 +20,8 @@ description: >
 |---|---|
 | `prep_manifest.json` + `normalized.wav` | prep 完成 → 下一步 subtitle-gen |
 | `subs/gen_manifest.json` + `subs/raw.srt` | gen 完成 → 下一步 subtitle-correct |
-| `subs/correct_manifest.json` + `transcript.srt` | 全部完成 → 回報 QC 摘要即可 |
+| `subs/correct_manifest.json` + `transcript.srt` | correct 完成 → 下一步 resolve-project（需 Resolve 開著）|
+| Resolve 內已有同名 project | 全部完成 → 回報 QC 摘要即可；QC 裁決後用 `--refresh-subtitles` 更新字幕軌 |
 
 都沒有 → 從 audio-prep 開始。
 
