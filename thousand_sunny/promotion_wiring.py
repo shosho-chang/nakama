@@ -1,6 +1,6 @@
 """ADR-024 promotion-surface wiring — thin presentation-side shim.
 
-ADR-050：組裝知識（env 解析、mode 分支、9-service collaborator graph）下沉到
+ADR-052：組裝知識（env 解析、mode 分支、9-service collaborator graph）下沉到
 Robin 的 composition root ``agents.robin.promotion.factory``。這裡只剩
 presentation 責任：載入 config → 呼叫 factory → 把 service 注入 router
 （``set_service``）。``thousand_sunny.app`` 的 lifespan 介面不變：

@@ -28,7 +28,7 @@ Hard invariants enforced (Brief §4.3):
 - B7 Builder NEVER imports ``shared.book_storage`` (T11 subprocess gate).
 - B8 Builder NEVER imports LLM clients / ``fastapi`` / ``thousand_sunny.*`` /
      agents modules outside its own ``agents.robin.promotion`` package
-     (T12 subprocess gate; boundary updated by ADR-050 package move).
+     (T12 subprocess gate; boundary updated by ADR-052 package move).
 """
 
 from __future__ import annotations

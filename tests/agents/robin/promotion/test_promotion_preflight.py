@@ -483,7 +483,7 @@ def test_preflight_no_fastapi_or_thousand_sunny_imports():
             for m in sys.modules
             if (
                 m.startswith(("fastapi", "thousand_sunny"))
-                # ADR-050: own bounded package is allowed; any OTHER agents
+                # ADR-052: own bounded package is allowed; any OTHER agents
                 # module (e.g. agents.robin.agent / ingest) is still forbidden.
                 or (
                     m.startswith("agents")

@@ -1,6 +1,7 @@
-# ADR-050：Robin Source Promotion bounded package + composition root
+# ADR-052：Robin Source Promotion bounded package + composition root
 
 - **狀態**：Accepted（2026-07-03）
+- **改號註記**：原編號 ADR-050，與 [ADR-050 Video Production Line 歸 Brook](ADR-050-video-production-line-brook-ownership.md)（先進 main，2026-07-03 #973）撞號，2026-07-25 改為 ADR-052。歷史 commit（#971 等）訊息中指涉「ADR-050 promotion / bounded package」者即本文件；「ADR-050 D1–D4 video / foundry / fcpxml」者為 video-line 版
 - **相關**：ADR-024（Source Promotion）、ADR-034（promotion polymorphism / `promotion_targets.py`）、ADR-043（Centaur permanent-layer tripwire）、ADR-045（Robin KB role）、`agents/robin/CONTEXT.md`（ownership boundary）
 - **範圍**：module 佈局 + 組裝責任歸屬；**不**改變任何 promotion 行為 / schema / HTTP 介面
 - **PR**：本 PR（單刀，`git mv` 保留歷史）
