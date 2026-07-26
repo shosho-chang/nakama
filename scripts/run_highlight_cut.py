@@ -236,11 +236,19 @@ def materialize(episode_dir: Path, *, dry_run: bool = False) -> dict:
         label = f"{FORMAT_LABEL[c['format']]}{w['rank']} - {c['title']}"
         f0, f1 = int(c["t_start"] * fps), int(c["t_end"] * fps)
         mp.SetCurrentFolder(hbin)
-        if c["format"] == "long" and template.exists():
+        # 長短片都從樣式模板長 timeline（短片再覆寫成直式解析度）——
+        # 模板是本機檔（data/* gitignored），不存在時退回無樣式並大聲警告
+        tl = None
+        if template.exists():
             tl = mp.ImportTimelineFromFile(str(template), {})
             if tl:
                 tl.SetName(label)
         else:
+            logger.warning(
+                f"字幕樣式模板不存在（{template}）——timeline 將是無樣式！"
+                "從 E:\\nakama 跑本 script，或設 RESOLVE_SUBTITLE_TEMPLATE"
+            )
+        if tl is None:
             tl = mp.CreateEmptyTimeline(label)
         if tl is None:
             raise SystemExit(f"timeline 建立失敗: {label}")
