@@ -166,12 +166,44 @@ python scripts/run_short_tighten.py <episode> --apply --id <winner-id>
 字幕重對時規則（script 自動）：cue 跨刀不拆行（塌縮後 min-max 合一行）、
 被剪贅詞同步從文字移除、整句被剪的 backchannel cue 自然消失。
 
+## Step 7 — 短片雙機位導播（修修 2026-07-26：畫面切分要更細緻）
+
+短片不用機器導播混好的單一 source，改用原始機位（`Video/1_CAMERA 1.mp4`
+=修修、`2_CAMERA 2.mp4`=來賓；全景機位不用）。Step 6 cuts.json 複審完後
+每支短片跑：
+
+```
+python scripts/run_short_director.py <episode> --id <winner-id> --stills <dir>
+```
+
+產出**新** timeline `短N - <標題>（緊·導播）`（Step 6 的（緊）版與原版
+都保留對照）：
+
+- 誰講話切誰的機位（mic 能量詞級說話者，同 speaker-split 那套）；
+  <1s 的附和不切鏡（切過去再切回來會閃屏）
+- 同說話者連續 shot 交替 base/punch 兩級 zoom（jump-cut punch-in 節奏）
+- 開場 4 秒上下分割雙人畫面（來賓上、修修下——參考 E:\\data 鐘穎範本
+  的開場語法），`--no-opener` 關閉
+- audio/字幕與 Step 6 相同（同一份 cuts.json 保留段）
+
+**換集校準**：機位固定、臉部座標全集通用，但**換集必校**——抓各機位一幀
+量臉部中心 x，寫 `highlights/tighten/director.json` 覆蓋 `face_x`（格式見
+script DEFAULT_CFG）；先跑一支 `--stills` 看樣張確認構圖再跑其餘。
+
+**Resolve transform 語意是實測出來的**（Crop=fit 畫布 px 隨 zoom 縮放、
+Pan 1:1、Tilt ×0.3164 且不隨 zoom——見 script 常數註解），改構圖參數後
+必用 `--stills` 樣張驗證，不能只信計算。
+
 ## 修修換段時
 
 改 `winners.json`（換 id/rank）→ 重跑 `--materialize`（冪等，30 秒）。
-（緊）版重出：改 cuts.json → 重跑 `--apply --id`（冪等，同名重建）。
+（緊）版重出：改 cuts.json → 重跑 `--apply --id`（冪等，同名重建）；
+（緊·導播）版同理重跑 `run_short_director.py`。
 
 ## v2 備忘（不做，見 plan 文件）
 
 cold-open 重排、直式字幕模板、訪談留言補掃校 persona、（緊）流程套用到
 長片（長片節奏容忍度高，等修修看完短片版成效再決定）。
+短片設計資產層（參考 E:\\data 鐘穎範本解剖，2026-07-26 分析）：橘色塗鴉
+框版式、字幕關鍵詞高亮、橘底大字 punch 詞、B-roll 插入點——等修修看完
+（緊·導播）版再定。
