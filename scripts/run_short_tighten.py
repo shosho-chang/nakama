@@ -462,24 +462,79 @@ def _merge_blocks(
     cues: list[tuple[float, float, str]],
     segs: list[tuple[float, float]],
     max_gap: float = 0.2,
-) -> list[tuple[float, float, str]]:
-    """相鄰無停頓 cue 併成語意塊（連續語流直接串接，不加空格）。
+) -> list[list[tuple[float, float, str]]]:
+    """相鄰無停頓 cue 分群成語意塊（回傳 **cue 群組**，保留逐 cue 邊界
+    當時間錨——十二輪教訓：整塊串接後用 difflib 全域對齊，重複片語
+    （無處宣洩/無處發洩/無處去治療）會錯位到前一個出現，整塊後半的
+    時間全部提早 1-2s）。
 
-    ⚠️ 相鄰要用**塌縮後**時間判（十一輪複審教訓 ×2）：
+    ⚠️ 相鄰要用**塌縮後**時間判（十一輪教訓 ×2）：
     - 16|歲 兩 cue 之間有停頓剪——源時間有 gap 但成品音軌連續，必須併
     - 且**先過保留段存活過濾再進來**——被剪掉的 backchannel cue、
       片頭前/片尾後的 cue 用源時間判相鄰會把已剪掉的字捲回字幕
-      （「我們大腦對那主要」的對、短3 開頭的 paper 回魂案例）
     """
-    blocks: list[list] = []
+    groups: list[list[tuple[float, float, str]]] = []
     for s, e, text in cues:
-        gap = max(0.0, _collapse_t(s, segs) - _collapse_t(blocks[-1][1], segs)) if blocks else 9e9
-        if blocks and gap < max_gap:
-            blocks[-1][1] = e
-            blocks[-1][2] += text
+        gap = (
+            max(0.0, _collapse_t(s, segs) - _collapse_t(groups[-1][-1][1], segs)) if groups else 9e9
+        )
+        if groups and gap < max_gap:
+            groups[-1].append((s, e, text))
         else:
-            blocks.append([s, e, text])
-    return [(s, e, t) for s, e, t in blocks]
+            groups.append([(s, e, text)])
+    return groups
+
+
+def _fine_units_grouped(
+    group: list[tuple[float, float, str]], words: list[dict]
+) -> list[tuple[float, float, str]]:
+    """cue 群組 → 細切單元。切行看整塊文字（跨 cue 傷口可癒合），
+    **時間錨定逐 cue 局部對齊**（切點先定位所屬 cue，只在該 cue 的詞級
+    資料內 map）——錯位上限 = 單一 cue，不會全塊漂移。"""
+    from run_line_polish import _map_to_raw
+
+    if len(group) == 1:
+        return _fine_units(group[0][0], group[0][1], group[0][2], words)
+    texts = [t for _, _, t in group]
+    offsets = [0]
+    for t in texts:
+        offsets.append(offsets[-1] + len(t))
+    text = "".join(texts)
+    spans = _fine_spans(text)
+    if len(spans) <= 1:
+        return [(group[0][0], group[-1][1], text.strip())] if text.strip() else []
+
+    def t_at(a: int) -> float:
+        k = max(i for i in range(len(group)) if offsets[i] <= a)
+        k = min(k, len(group) - 1)
+        cs, ce, ct = group[k]
+        local = a - offsets[k]
+        seg = [w for w in words if w["end"] > cs + 1e-3 and w["start"] < ce - 1e-3]
+        raw = "".join(w["word"] for w in seg)
+        ctimes: list[float] = []
+        for w in seg:
+            n = max(1, len(w["word"]))
+            for i in range(n):
+                ctimes.append(w["start"] + (w["end"] - w["start"]) * i / n)
+        if not ctimes:
+            return cs + (ce - cs) * local / max(1, len(ct))
+        j = min(max(_map_to_raw(ct, raw, local), 0), len(ctimes) - 1)
+        return ctimes[j]
+
+    bounds = [group[0][0]]
+    for a, _b in spans[1:]:
+        bounds.append(t_at(a))
+    bounds.append(group[-1][1])
+    # 單調修正（局部錨定下只需 clamp，不整塊 fallback）
+    for i in range(1, len(bounds)):
+        bounds[i] = max(bounds[i], bounds[i - 1] + 0.15)
+    bounds[-1] = max(bounds[-1], group[-1][1])
+    out = []
+    for (a, b), us, ue in zip(spans, bounds, bounds[1:]):
+        unit_text = text[a:b].strip()
+        if unit_text and ue > us:
+            out.append((us, ue, unit_text))
+    return out
 
 
 def _strip_cut_word(text: str, word: str, rel: float) -> str:
@@ -544,14 +599,11 @@ def _retime_srt(
         for s, e, text in prepped:
             inter = sum(max(0.0, min(e, se) - max(s, ss)) for ss, se in segs)
             if inter >= 0.15:
-                surviving.append((s, e, text))
-        prepped = _merge_blocks(surviving, segs)
-        # 數字↔量詞間的 house-style 空格拿掉（「16 歲」→「16歲」）——否則
-        # 空格切 clause 後量詞孤行，強制縫合又會撐爆行寬
-        prepped = [
-            (s, e, re.sub(rf"(\d) (?=[{_CLASSIFIERS}])", "\\1", text)) for s, e, text in prepped
-        ]
-        prepped = [u for c in prepped for u in _fine_units(*c, words)]
+                # 數字↔量詞間的 house-style 空格拿掉（「16 歲」→「16歲」）
+                # ——在分群**前**逐 cue 做，維持群組 char offset 一致
+                surviving.append((s, e, re.sub(rf"(\d) ?(?=[{_CLASSIFIERS}])", "\\1", text)))
+        groups = _merge_blocks(surviving, segs)
+        prepped = [u for g in groups for u in _fine_units_grouped(g, words)]
 
     lines = []
     seq = 0

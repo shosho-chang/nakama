@@ -58,7 +58,7 @@ DEFAULT_CFG = {
     # 節奏（修修 2026-07-26 二輪：畫面變化太少——對齊鐘穎範本 ~3s/刀）
     "reaction_every": 9.0,  # 同人 run 每 ~9s 插一個聽者反應鏡頭
     "reaction_sec": 1.8,  # 反應鏡頭長度（點頭畫面，audio 不斷）
-    "punch_ramp_sec": 0.5,  # 內容驅動 punch 的 speed-ramp zoom-in/out 秒數
+    "punch_ramp_sec": 0.2,  # speed-ramp zoom 秒數（十三輪：無回彈後 0.5 太慢，0.2 快狠）
     "face_y": {"0": 330, "1": 330},  # 1080 高源片的眼線 y（punch zoom 鎖臉用）
 }
 SRC_W = 1920
@@ -254,9 +254,8 @@ def _punch_keys(
 def _scurve_expand(keys: list[tuple[float, float]], samples: int = 7) -> list[tuple[float, float]]:
     """ramp 段展開成 easing 取樣（六/七輪：spline 預設內插等速不可信，直接取樣鎖形狀）。
 
-    - 放大段（ramp-in）：back-out 曲線＝慢起 → 衝刺 → **過衝 ~7% 回彈落定**
-      （七輪：要更 dramatic）
-    - 縮回段（ramp-out）：smootherstep 慢快慢，不回彈
+    - 兩方向都 smootherstep 慢快慢（十二輪：放大直接放大就好，**不要過衝
+      回彈**——曾試 easeOutBack，修修否決；速度 0.5s 維持）
     - 兩鍵間距 <0.1s（cut 硬切）不取樣
     """
     out = [keys[0]]
@@ -264,11 +263,7 @@ def _scurve_expand(keys: list[tuple[float, float]], samples: int = 7) -> list[tu
         if v1 != v0 and t1 - t0 >= 0.1:
             for i in range(1, samples + 1):
                 u = i / (samples + 1)
-                if v1 > v0:  # ramp-in：easeOutBack（~10% 過衝回彈）
-                    c1, c3 = 1.70158, 2.70158
-                    s = 1 + c3 * (u - 1) ** 3 + c1 * (u - 1) ** 2
-                else:  # ramp-out：smootherstep
-                    s = 6 * u**5 - 15 * u**4 + 10 * u**3
+                s = 6 * u**5 - 15 * u**4 + 10 * u**3
                 out.append((t0 + (t1 - t0) * u, v0 + (v1 - v0) * s))
         out.append((t1, v1))
     return out
