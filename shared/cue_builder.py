@@ -30,12 +30,20 @@ MAX_CHARS = 14  # 軟上限（同 transcriber._MAX_SUBTITLE_CHARS）
 HARD_MAX_CHARS = 22  # 硬上限（同 script_align）
 PAUSE_FORCE_BREAK = 0.6  # 字間停頓 ≥ 此秒數 → 強制斷（自然句界）
 MIN_CUE_CHARS = 4  # 停頓斷句的最短 cue（避免碎成單字）
+PAUSE_SPACE = 0.3  # cue 內停頓 ≥ 此秒數 → 半形空格（house style「停頓用空格」）
+FILLERS = {"呃"}  # 純遲疑語助詞：永不進字幕（修修 2026-07-26）
+
+
+def est_gap(prev: tuple, nxt: tuple) -> float:
+    """兩相鄰 token 間的估計停頓（WhisperX 詞尾拉長 → 詞長截斷估發音結束）。"""
+    speak_end = prev[1] + min(prev[2] - prev[1], 0.28 + 0.12 * len(prev[0]))
+    return max(0.0, nxt[1] - speak_end)
 
 
 def _tokenize(
     words: list[dict], speakers: list[int | None] | None = None
 ) -> list[tuple[str, float, float, int | None]]:
-    """words → (text, start, end, speaker) tuple 清單，丟掉空 token。
+    """words → (text, start, end, speaker) tuple 清單，丟掉空 token 與遲疑語助詞。
 
     speakers 與 words 等長（speaker_assign.assign_word_speakers 輸出），
     未提供時 speaker 一律 None（不做說話者斷句）。
@@ -44,6 +52,8 @@ def _tokenize(
     for idx, w in enumerate(words):
         text = (w.get("word") or "").strip()
         if not text or w.get("start") is None or w.get("end") is None:
+            continue
+        if text in FILLERS:
             continue
         spk = speakers[idx] if speakers else None
         out.append((text, float(w["start"]), float(w["end"]), spk))
@@ -109,9 +119,7 @@ def segment_to_cues(
         j = span[1]
         if j >= len(tokens):
             return float("inf")  # segment 結尾
-        prev = tokens[j - 1]
-        speak_end = prev[1] + min(prev[2] - prev[1], 0.28 + 0.12 * len(prev[0]))
-        return max(0.0, tokens[j][1] - speak_end)
+        return est_gap(tokens[j - 1], tokens[j])
 
     import jieba
 
@@ -211,11 +219,15 @@ def segment_to_cues(
 
 def _join_tokens(tokens: list[tuple[str, float, float]], span: tuple[int, int]) -> str:
     """組 cue 文字：CJK 相連不加空格，ASCII 詞與前後加半形空格；
-    連續單一 ASCII 字母（縮寫如 A+I → AI）直接相連。"""
+    連續單一 ASCII 字母（縮寫如 A+I → AI）直接相連；
+    cue 內停頓 ≥ PAUSE_SPACE 秒 → 半形空格（house style：分句用空格）。"""
     parts: list[str] = []
     for i in range(span[0], span[1]):
         text = tokens[i][0]
-        if parts and (text[0].isascii() or parts[-1][-1].isascii()):
+        if parts and est_gap(tokens[i - 1], tokens[i]) >= PAUSE_SPACE:
+            if parts[-1] != " ":
+                parts.append(" ")
+        elif parts and (text[0].isascii() or parts[-1][-1].isascii()):
             prev = parts[-1]
             if len(prev) == 1 and prev.isascii() and len(text) == 1 and text.isascii():
                 pass  # 縮寫字母連寫

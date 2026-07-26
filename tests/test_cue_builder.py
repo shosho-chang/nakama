@@ -159,3 +159,27 @@ def test_pause_detected_despite_stretched_word_ends():
     words[stretch_from - 1]["end"] = words[stretch_from]["start"]  # 拉長的詞尾
     cues = segment_to_cues(words)
     assert cues[0][2] == "所以今天是講什麼書", [c[2] for c in cues]
+
+
+def test_filler_words_never_enter_cues():
+    # 「呃」是純遲疑語助詞，cue 裡永遠不該出現（修修 2026-07-26）
+    words = [
+        {"word": "呃", "start": 0.0, "end": 0.3},
+        {"word": "配", "start": 0.3, "end": 0.5},
+        {"word": "套", "start": 0.5, "end": 0.7},
+        {"word": "的", "start": 0.7, "end": 0.9},
+        {"word": "做", "start": 0.9, "end": 1.1},
+        {"word": "法", "start": 1.1, "end": 1.3},
+    ]
+    cues = segment_to_cues(words)
+    assert "呃" not in cues[0][2]
+    assert cues[0][2].startswith("配套")
+
+
+def test_pause_inside_cue_becomes_space():
+    # cue 內 0.3s+ 停頓 → 半形空格（house style 分句可視化）
+    text = "配套的做法那有幾個配套"
+    words = _words(text, gaps={4: 0.5})  # 「做法」之後停 0.5 秒（不足 0.6 不斷 cue）
+    cues = segment_to_cues(words)
+    joined = " ".join(c[2] for c in cues)
+    assert "做法 那有" in joined, [c[2] for c in cues]

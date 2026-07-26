@@ -259,6 +259,26 @@ def polish(episode_dir: Path, *, dry_run: bool = False) -> dict:
             cues[lo] = [cues[lo][0], cues[hi][1], merged_text]
             cues.pop(hi)
             ops_applied += 1
+        elif "space_text" in op:
+            # 忽略空格比對：同 cue 多個分界時，前一個空格套用後原文已變
+            want = op["space_text"].replace(" ", "")
+            hits = [
+                k
+                for k, c in enumerate(cues)
+                if c[2].replace(" ", "") == want
+                and ("near_sec" not in op or abs(c[0] - op["near_sec"]) < 3.0)
+            ]
+            if len(hits) != 1:
+                skipped.append(f"space「{op['space_text'][:12]}…」: 命中 {len(hits)} 個 cue")
+                continue
+            k = hits[0]
+            text = cues[k][2]
+            at = text.find(op["before"])
+            if at <= 0 or text[at - 1] == " ":
+                skipped.append(f"space「{op['space_text'][:12]}…」: 切點無效或已有空格")
+                continue
+            cues[k][2] = text[:at] + " " + text[at:]
+            ops_applied += 1
         else:
             skipped.append(f"未知 op: {list(op.keys())}")
 
@@ -277,10 +297,81 @@ def polish(episode_dir: Path, *, dry_run: bool = False) -> dict:
     }
 
 
+def house_style(episode_dir: Path, *, dry_run: bool = False) -> dict:
+    """機械 house-style 淨化（修修 2026-07-26）：
+
+    1. 遲疑語助詞：「呃」全刪；cue 開頭的「啊」刪（句尾語氣詞「累啊」保留）
+    2. cue 內停頓 ≥ 0.3s → 半形空格（分句可視化；詞級時間戳實測，非猜測）
+
+    冪等；純機械零 LLM。未來集數由 cue_builder 在生成時就做，本模式供存量修復。
+    """
+    from shared.cue_builder import PAUSE_SPACE, est_gap
+
+    srt_path = episode_dir / SRT_NAME
+    cues = _parse_srt(srt_path.read_text(encoding="utf-8"))
+    words = json.loads((episode_dir / "subs/words.json").read_text(encoding="utf-8"))["words"]
+
+    fillers = 0
+    spaces = 0
+    dropped = 0
+    out = []
+    for s0, e0, text in cues:
+        new = text
+        n0 = len(new)
+        new = new.replace("呃", "")
+        if new.startswith("啊") and len(new) > 2:
+            new = new[1:]
+        fillers += n0 - len(new)
+        new = new.strip()
+        if not new:
+            dropped += 1
+            continue
+
+        toks = [
+            (w["word"], float(w["start"]), float(w["end"]))
+            for w in words
+            if w["start"] >= s0 - 0.05 and w["end"] <= e0 + 0.05 and (w["word"] or "").strip()
+        ]
+        raw = _join_words([{"word": t[0]} for t in toks])
+        inserts = []
+        pos = 0
+        for j in range(1, len(toks)):
+            probe = _join_words([{"word": t[0]} for t in toks[: j + 1]])
+            pos = len(probe) - len(toks[j][0])
+            if est_gap(toks[j - 1], toks[j]) >= PAUSE_SPACE:
+                tpos = _map_to_raw(raw, new, pos)
+                ok_l = 0 < tpos < len(new) and new[tpos - 1] not in " 《「"
+                if ok_l and new[tpos] not in " 》」":
+                    inserts.append(tpos)
+        for tpos in sorted(set(inserts), reverse=True):
+            new = new[:tpos] + " " + new[tpos:]
+            spaces += 1
+        out.append([s0, e0, new])
+
+    if not dry_run:
+        shutil.copy2(srt_path, episode_dir / BACKUP_NAME)
+        lines = [
+            f"{seq}\n{_ts(a)} --> {_ts(b)}\n{t}\n" for seq, (a, b, t) in enumerate(out, start=1)
+        ]
+        srt_path.write_text("\n".join(lines), encoding="utf-8")
+    return {
+        "status": "dry-run" if dry_run else "house-styled",
+        "fillers_removed": fillers,
+        "pause_spaces_added": spaces,
+        "cues_dropped": dropped,
+        "cues": len(out),
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="斷句邊界修正套用")
     parser.add_argument("episode", help="episode 資料夾")
+    parser.add_argument(
+        "--house-style",
+        action="store_true",
+        help="機械淨化：刪遲疑語助詞（呃/句首啊）+ cue 內停頓插半形空格（存量修復）",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     episode_dir = Path(args.episode)
@@ -288,7 +379,10 @@ def main(argv: list[str] | None = None) -> int:
         logger.error(f"episode 資料夾不存在: {episode_dir}")
         return 1
     started = time.time()
-    result = polish(episode_dir, dry_run=args.dry_run)
+    if args.house_style:
+        result = house_style(episode_dir, dry_run=args.dry_run)
+    else:
+        result = polish(episode_dir, dry_run=args.dry_run)
     result["elapsed_sec"] = round(time.time() - started, 1)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
