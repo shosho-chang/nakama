@@ -111,6 +111,9 @@ def _snap_outside_brackets(text: str, pos: int) -> int:
 def _jieba_boundaries(text: str) -> set[int]:
     import jieba
 
+    from shared.transcriber import ensure_tw_jieba
+
+    ensure_tw_jieba()
     bounds = {0, len(text)}
     pos = 0
     for w in jieba.cut(text):
