@@ -183,14 +183,20 @@ python scripts/run_short_director.py <episode> --id <winner-id> --stills <dir>
   <1s 的附和不切鏡（切過去再切回來會閃屏）
 - **反應鏡頭**：同人 run 每 ~9s 插 1.8s 聽者點頭畫面再切回（audio 不斷）——
   修修 2026-07-26 二輪回饋「畫面變化太少」的解法，範本語法
-- **max_shot 4s**：任一 shot 超過就在詞邊界均分——整體節奏對齊範本 ~3s/刀
-- 同說話者連續 shot 交替 base/punch 兩級 zoom（jump-cut punch-in 節奏）
+- **內容驅動 punch（五輪裁決，取代機械 max_shot/zoom 交替）**：agent 從
+  tight SRT 標「講重點」的區間寫 `<id>_zoom.json`（timeline 秒）→ 講重點
+  時 **speed-ramp zoom-in**（0.4s 平滑曲線、+15%）、講完 ramp-out。機制：
+  shot item 加 Fusion comp（MediaIn→Transform→MediaOut）、Size 關鍵影格，
+  與 item 靜態 ZoomX 疊乘——一下子跳 zoom 是違規
 - 開場 4 秒上下分割雙人畫面（來賓上、修修下——參考 E:\\data 鐘穎範本
   的開場語法），`--no-opener` 關閉
 - **字幕細切**（修修 2026-07-26 三輪）：cue 再切成 5–9 字呼吸單元，詞級
   時間戳定界、單元首尾相接；空格 clause 優先切、括號不拆、助詞不開頭、
   連接詞（或/跟/但…）不懸行尾——範本的字幕翻頁節奏
 - audio 與 Step 6 相同（同一份 cuts.json 保留段）
+
+**執行順序**：director 重跑會整條重建 timeline——titles 巢狀層會被洗掉，
+**必須 director → titles 順序重跑**。
 
 **換集校準**：機位固定、臉部座標全集通用，但**換集必校**——抓各機位一幀
 量臉部中心 x，寫 `highlights/tighten/director.json` 覆蓋 `face_x`（格式見
@@ -205,6 +211,8 @@ Pan 1:1、Tilt ×0.3164 且不隨 zoom——見 script 常數註解），改構�
 title 不走 subtitle track（單一 style 天花板），走 Fusion Text+ graphics：
 橘底大字（#E87000 逐行塊）、白 Noto Sans TC Black、fade+pop 進出場。
 每支短片 2–3 張，**文字必須是講者原話**（範本語法：verbatim 片段）。
+卡片紀律（修修五輪）：**顯示 ~2s 就退**（太慢消失會煩）、`pos_y` 0.63
+下移避臉（punch zoom 時臉佔上半屏，0.55 會擋臉）。
 
 流程：agent 從 `<id>_tight` SRT 選 punch 時間點 → 寫
 `highlights/tighten/<id>_titles.json`（t0/t1 = 緊·導播 timeline 秒）→
