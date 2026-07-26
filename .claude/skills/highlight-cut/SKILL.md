@@ -46,7 +46,9 @@ Resolve 專案存在且 Resolve 開著）。
 python scripts/run_highlight_cut.py <episode> --validate
 ```
 
-（吸附 cue 邊界、長度帶檢查、同格式重疊 >50% 去重留 rationale 強者）
+（吸附 cue 邊界、長度帶檢查、同格式重疊 >50% 標 **variant 群組**——
+**不淘汰**。2026-07-26 教訓：評分前用 rationale 長度去重，害「數位排毒+
+睡眠運動」整塊從未被評分就消失。重疊候選是同素材的不同切法，全部進盲審）
 
 ## Step 2 — persona 盲審（進 persona-review skill）
 
@@ -59,8 +61,11 @@ python scripts/run_highlight_cut.py <episode> --validate
 - 評選規則（grill Q6）：三位評分 persona 各給總分 → **取中位數排名**；同分
   新觀眾判準強的 persona 分數優先；lens 不計分；**brand-lens 可標否決**
   （斷章取義/害來賓）——否決段標紅進報告等修修裁決，不自動排除
+- **同 variant 群組只取最高分者佔排名**（評分後才去重；落選 variant 照常
+  進報告與 marker）
 - 各選 top 3 → 寫 `highlights/winners.json`：`{winners: [{id, rank, score}],
-  vetoed: [{id, reason}]}`
+  vetoed: [{id, reason}]}`；修修欽點的額外段落可以 rank 4+ 加進 winners
+  （原始需求：精彩就可以超過預設數量）
 
 ## Step 2.5 — 邊界打磨（物化前，必做）
 
