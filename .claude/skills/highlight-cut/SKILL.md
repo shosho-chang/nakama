@@ -200,6 +200,24 @@ script DEFAULT_CFG）；先跑一支 `--stills` 看樣張確認構圖再跑其�
 Pan 1:1、Tilt ×0.3164 且不隨 zoom——見 script 常數註解），改構圖參數後
 必用 `--stills` 樣張驗證，不能只信計算。
 
+## Step 8 — punch 卡（graphics 層，修修 2026-07-26 四輪裁決）
+
+title 不走 subtitle track（單一 style 天花板），走 Fusion Text+ graphics：
+橘底大字（#E87000 逐行塊）、白 Noto Sans TC Black、fade+pop 進出場。
+每支短片 2–3 張，**文字必須是講者原話**（範本語法：verbatim 片段）。
+
+流程：agent 從 `<id>_tight` SRT 選 punch 時間點 → 寫
+`highlights/tighten/<id>_titles.json`（t0/t1 = 緊·導播 timeline 秒）→
+
+```
+python scripts/run_short_titles.py <episode> --id <winner-id> --stills <dir>
+```
+
+機制限制（實測，見 script docstring）：InsertFusionTitle 是插入模式，卡片
+放獨立「titles - <id>」timeline 巢狀疊 track 3（巢狀空白透明）；生成器
+固定 5s，顯示窗口靠 Opacity 關鍵影格（Lua comp:Execute）——**相鄰卡片
+t0 至少差 5 秒**，違反 script 會擋。樣張必驗（--stills）。
+
 ## 修修換段時
 
 改 `winners.json`（換 id/rank）→ 重跑 `--materialize`（冪等，30 秒）。
@@ -210,6 +228,5 @@ Pan 1:1、Tilt ×0.3164 且不隨 zoom——見 script 常數註解），改構�
 
 cold-open 重排、直式字幕模板、訪談留言補掃校 persona、（緊）流程套用到
 長片（長片節奏容忍度高，等修修看完短片版成效再決定）。
-短片設計資產層（參考 E:\\data 鐘穎範本解剖，2026-07-26 分析）：橘色塗鴉
-框版式、字幕關鍵詞高亮、橘底大字 punch 詞、B-roll 插入點——等修修看完
+短片設計資產層（參考 E:\\data 鐘穎範本解剖，2026-07-26 分析）：橘色塗鴉框版式、字幕關鍵詞高亮、B-roll 插入點——等修修看完
 （緊·導播）版再定。
