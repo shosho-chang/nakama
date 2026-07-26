@@ -186,8 +186,8 @@ python scripts/run_short_director.py <episode> --id <winner-id> --stills <dir>
 - **內容驅動 punch（五～七輪裁決）**：agent 從 tight SRT 標「講重點」的
   區間寫 `<id>_zoom.json`（timeline 秒），每項可帶 `style` 與 `scale`：
   - `"style":"ramp"`（預設）＝speed-ramp：smootherstep 慢→快→慢、
-    0.2s、+25%。**不過衝回彈**（十二輪：放大直接放大就好；easeOutBack
-    試過被否決）
+    0.25s、+25%（十四輪定版：0.5 太慢、0.2 略衝）。**不過衝回彈**
+    （十二輪：放大直接放大就好；easeOutBack 試過被否決）
   - `"style":"cut"`＝1 frame **硬切直接放大**（爆點句用）
   - **兩種交互使用**（七輪裁決）：鋪陳升溫→ramp、爆點句→cut
   機制：shot item 加 Fusion comp（MediaIn→Transform→MediaOut）、Size
