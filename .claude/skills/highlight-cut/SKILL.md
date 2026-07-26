@@ -107,6 +107,24 @@ python scripts/run_highlight_cut.py <episode> --materialize
 - brand-lens 否決項**標紅**置頂等修修裁決
 - 落選全列：分數 + 一句短評（撈遺珠用；主 timeline 藍色 marker 對應）
 
+## Step 5 — 終檢（交付前必做）
+
+派一個 QA agent，拿修修的歷史回饋清單（冷開場殘尾/結尾斷半句/斷句拆散/
+說話者混切/標題超出原話/數據歸屬）逐條驗收每個 winner 的**實際上軌 SRT**
+（`highlights/srt/<id>_rNNN.srt` 最新版）。發現寫 `highlights/qa_final.json`。
+
+critical 必修才能交付。修法：`line_moves_*.json` 支援三種操作——
+- `moves`: `{after_cue, delta}` 邊界移動
+- `ops`: `{split_text, at, near_sec?}` 把混切 cue 切成兩個（附和語獨立）；
+  `{merge_text, into: prev|next, near_sec?}` 孤兒 cue 併回
+（ops 用文字定位不用序號——序號會飄；同文撞名用 near_sec 錨定）
+
+改完 → `run_line_polish.py` → 主 timeline `--refresh-subtitles` +
+精華 `--refresh-subs`。已套用的 moves 檔改名 `applied_*`。
+
+**已知極限**：能量 Viterbi 判不出「附和語蓋在對方語流上」的混切（沒錯沒錯/
+對對對），只有終檢的語意層看得到——這是終檢存在的理由。
+
 ## 修修換段時
 
 改 `winners.json`（換 id/rank）→ 重跑 `--materialize`（冪等，30 秒）。
