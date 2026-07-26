@@ -132,3 +132,35 @@ def test_fine_spans_hard_limit_10():
         parts = [text[a:b] for a, b in _fine_spans(text)]
         assert all(_disp_len(p) <= 10 for p in parts), parts
         assert "".join(parts).replace(" ", "") == text.replace(" ", "")
+
+
+def test_fine_spans_number_classifier_glued():
+    # 修修十一輪：「禁掉就好 16」「歲以前就要禁掉」——16 與 歲 絕不可分行
+    text = "禁掉就好 16歲以前就要禁掉 所以"
+    parts = [text[a:b] for a, b in _fine_spans(text)]
+    assert any("16歲" in p for p in parts), parts
+
+
+def test_merge_blocks_joins_continuous_cues():
+    from run_short_tighten import _merge_blocks
+
+    cues = [
+        (10.0, 11.5, "禁掉就好 16"),
+        (11.5, 13.0, "歲以前就要禁掉 所以"),
+        (14.0, 15.0, "下一段"),
+    ]
+    merged = _merge_blocks(cues, [(0.0, 20.0)])
+    assert merged[0] == (10.0, 13.0, "禁掉就好 16歲以前就要禁掉 所以")
+    assert merged[1] == (14.0, 15.0, "下一段")  # gap 1.0s 不併
+
+
+def test_merge_blocks_uses_collapsed_time():
+    from run_short_tighten import _merge_blocks
+
+    # 兩 cue 源時間差 1.0s，但中間全是被剪掉的停頓（不在保留段）——
+    # 成品音軌連續，必須併（16|歲 實案）
+    segs = [(10.0, 11.5), (12.5, 15.0)]
+    cues = [(10.0, 11.5, "禁掉就好 16"), (12.5, 14.0, "歲以前就要禁掉")]
+    merged = _merge_blocks(cues, segs)
+    assert len(merged) == 1
+    assert merged[0][2] == "禁掉就好 16歲以前就要禁掉"
