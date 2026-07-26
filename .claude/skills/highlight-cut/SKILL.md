@@ -194,9 +194,16 @@ python scripts/run_short_director.py <episode> --id <winner-id> --stills <dir>
   靜態 ZoomX 疊乘
 - 開場 4 秒上下分割雙人畫面（來賓上、修修下——參考 E:\\data 鐘穎範本
   的開場語法），`--no-opener` 關閉
-- **字幕細切**（修修 2026-07-26 三輪）：cue 再切成 5–9 字呼吸單元，詞級
-  時間戳定界、單元首尾相接；空格 clause 優先切、括號不拆、助詞不開頭、
-  連接詞（或/跟/但…）不懸行尾——範本的字幕翻頁節奏
+- **字幕細切**（修修三輪＋十輪）：cue 切成呼吸單元，詞級時間戳定界、
+  單元首尾相接。**中文 10 字 = hard limit**（十輪裁決；顯示寬：CJK=1、
+  ASCII=0.5），目標 ~8。打包走原子化（括號群組整塊不可拆、其餘 jieba 詞、
+  空格 clause 優先切、助詞不開頭）；超限只可能來自不可分原子（英文書名），
+  script 發 warning 人工複核
+- **短片字幕樣式模板分家**（十輪）：直式用修修「short」preset（字級 50、
+  位置上移，手機可讀）。修修在任一短片 timeline 調好 Track Style 後跑
+  `build_resolve_project --make-template-short "<timeline名>"` 產
+  `data/resolve/subtitle-template-short.drt`；短片 script 自動用它
+  （缺檔退回主模板）。長片/主 timeline 維持原模板
 - audio 與 Step 6 相同（同一份 cuts.json 保留段）
 
 **執行順序**：director 重跑會整條重建 timeline——titles 巢狀層會被洗掉，
