@@ -37,6 +37,13 @@ description: >
 speaker split → gap fill → `--refresh-subtitles`。⚠️ `--apply` 會重生
 transcript.qc.md（見 subtitle-correct skill 的批註保護警告）。
 
+**斷句全片掃描**（選配，使用者反映斷句差時）：派 subagent 分 chunk 掃
+transcript.srt 的壞邊界（數量詞/「的」結構/專名被拆）→ 產出
+`highlights/line_moves_*.json` → `python scripts/run_line_polish.py <episode>`
+機械套用（防護：22 字上限/括號完整/不跨說話者搬字）→ 主 timeline
+`--refresh-subtitles` + 精華 timeline `run_highlight_cut.py --refresh-subs`
+（後者只換字幕不動剪輯）。
+
 ## 段間 HITL（每段完成必停）
 
 1. **prep 後**：回報裁切秒數；異常大（>60s）請使用者抽聽頭尾

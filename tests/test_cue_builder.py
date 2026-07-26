@@ -125,3 +125,37 @@ def test_initialism_letters_joined():
     cues = segment_to_cues(words)
     assert "AI" in cues[0][2]
     assert "A I" not in cues[0][2]
+
+
+def test_no_break_between_quantifier_and_unit():
+    # 「一個/小時」不可拆（修修 2026-07-26 回饋）——即使字數壓到上限
+    text = "他說在新加坡居住的時候是早晚各一個小時的冥想練習持續了很多年"
+    cues = segment_to_cues(_words(text))
+    for a, b in zip(cues, cues[1:]):
+        assert not (a[2].endswith("一個") and b[2].startswith("小時")), (a[2], b[2])
+    holder = [c[2] for c in cues if "一個" in c[2]]
+    assert holder and "一個小時" in holder[0], [c[2] for c in cues]
+
+
+def test_no_break_after_de():
+    # 「的」結尾的切點是壞切點：「大腦的/影響」類
+    text = "今天是講那個科技對於我們大腦的影響到底是什麼樣的一回事情呢"
+    cues = segment_to_cues(_words(text))
+    for a, b in zip(cues, cues[1:]):
+        assert not a[2].endswith("的"), [c[2] for c in cues]
+
+
+def test_pause_detected_despite_stretched_word_ends():
+    # WhisperX 把詞 end 拉長到下一詞 start（gap 恆 0）→ 截斷估計仍應斷在真停頓
+    text = "所以今天是講什麼書今天是講那個"
+    words = _words(text)
+    # 模擬拉長：「書」的 end 直接黏到下一字 start（中間其實停了 1.5 秒）
+    for w in words:
+        w["start"] = round(w["start"], 3)
+    stretch_from = 9  # 「今」之後的字整體往後移 1.5s
+    for i in range(stretch_from, len(words)):
+        words[i]["start"] = round(words[i]["start"] + 1.5, 3)
+        words[i]["end"] = round(words[i]["end"] + 1.5, 3)
+    words[stretch_from - 1]["end"] = words[stretch_from]["start"]  # 拉長的詞尾
+    cues = segment_to_cues(words)
+    assert cues[0][2] == "所以今天是講什麼書", [c[2] for c in cues]

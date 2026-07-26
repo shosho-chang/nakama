@@ -294,6 +294,74 @@ def materialize(episode_dir: Path, *, dry_run: bool = False) -> dict:
     return {"status": "materialized", "timelines": made, "markers": len(cands)}
 
 
+def refresh_subs(episode_dir: Path) -> dict:
+    """精華 timeline **只換字幕不動剪輯**（transcript.srt 更新後用）。
+
+    修修可能已在精華 timeline 上剪輯——materialize 重建會毀掉他的工作，
+    本模式只清字幕內容重上（軌與樣式保留，比照 build_resolve_project
+    refresh_subtitles）。
+    """
+    from build_resolve_project import connect_resolve
+
+    hdir = episode_dir / HIGHLIGHTS_DIR
+    cands = json.loads((hdir / CANDIDATES_NAME).read_text(encoding="utf-8"))["candidates"]
+    winners = json.loads((hdir / WINNERS_NAME).read_text(encoding="utf-8"))["winners"]
+    by_id = {c["id"]: c for c in cands}
+
+    resolve = connect_resolve()
+    pm = resolve.GetProjectManager()
+    project_name = episode_dir.name
+    project = pm.GetCurrentProject()
+    if project is None or project.GetName() != project_name:
+        project = pm.LoadProject(project_name)
+    if project is None:
+        raise SystemExit(f"project「{project_name}」不存在")
+    mp = project.GetMediaPool()
+    root = mp.GetRootFolder()
+
+    timelines = {}
+    for i in range(1, project.GetTimelineCount() + 1):
+        tl = project.GetTimelineByIndex(i)
+        if tl:
+            timelines[tl.GetName()] = tl
+
+    done = []
+    for w in winners:
+        c = by_id.get(w["id"])
+        if c is None:
+            continue
+        label = f"{FORMAT_LABEL[c['format']]}{w['rank']} - {c['title']}"
+        tl = timelines.get(label)
+        if tl is None:
+            done.append({"timeline": label, "status": "not-found（跳過）"})
+            continue
+        project.SetCurrentTimeline(tl)
+        for ti in range(1, tl.GetTrackCount("subtitle") + 1):
+            items = tl.GetItemListInTrack("subtitle", ti) or []
+            if items:
+                tl.DeleteClips(items)
+        stale = [
+            clip
+            for clip in (root.GetClipList() or [])
+            if (clip.GetName() or "").startswith(f"{c['id']}_r")
+        ]
+        if stale:
+            mp.DeleteClips(stale)
+        mp.SetCurrentFolder(root)
+        seg_srt = _segment_srt(episode_dir, c["id"], c["t_start"], c["t_end"])
+        srt_items = mp.ImportMedia([str(seg_srt)])
+        ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
+        done.append(
+            {
+                "timeline": label,
+                "status": "refreshed" if ok else "append-failed",
+                "items": len(tl.GetItemListInTrack("subtitle", 1) or []),
+            }
+        )
+    pm.SaveProject()
+    return {"status": "subs-refreshed", "timelines": done}
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="highlight-cut 候選驗證 + Resolve 物化")
@@ -303,6 +371,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--materialize", action="store_true", help="當選段建 timeline + 全候選打 marker"
+    )
+    parser.add_argument(
+        "--refresh-subs",
+        action="store_true",
+        help="精華 timeline 只換字幕不動剪輯（transcript.srt 更新後用）",
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
@@ -315,6 +388,8 @@ def main(argv: list[str] | None = None) -> int:
         result = validate(episode_dir)
     elif args.materialize:
         result = materialize(episode_dir, dry_run=args.dry_run)
+    elif args.refresh_subs:
+        result = refresh_subs(episode_dir)
     else:
         logger.error("指定 --validate 或 --materialize")
         return 2
