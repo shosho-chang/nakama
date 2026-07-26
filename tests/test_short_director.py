@@ -30,8 +30,9 @@ def _words(*runs):
 def test_shots_switch_on_speaker_change():
     words = _words((0, 5, 1, 10), (5, 10, 0, 10))
     shots = build_shots([(0.0, 10.0)], words, DEFAULT_CFG)
-    # 5s run > max_shot 4 → 各切成 2；說話者切換點保留
-    assert [s["spk"] for s in shots] == [1, 1, 0, 0]
+    # 五輪後不再機械切分：一人一 shot、全 base zoom
+    assert [s["spk"] for s in shots] == [1, 0]
+    assert all(s["zoom"] == DEFAULT_CFG["zoom_base"] for s in shots)
     for a, b in zip(shots, shots[1:]):
         assert a["e"] == b["s"]  # 邊界相接無縫
 
@@ -47,32 +48,37 @@ def test_shots_short_interjection_absorbed():
     assert all(s["spk"] == 1 for s in shots if s.get("kind") != "reaction")
 
 
-def test_shots_max_shot_split_and_zoom_alternation():
-    # 兩個保留段、同說話者：5s > max_shot → 各切 2，zoom 交替 b/p/b/p
-    words = _words((0, 5, 1, 10), (6, 11, 1, 10))
-    shots = build_shots([(0.0, 5.0), (6.0, 11.0)], words, DEFAULT_CFG)
-    assert len(shots) == 4
-    assert all((s["e"] - s["s"]) <= DEFAULT_CFG["max_shot"] + 0.7 for s in shots)
-    b, p = DEFAULT_CFG["zoom_base"], DEFAULT_CFG["zoom_punch"]
-    assert [s["zoom"] for s in shots] == [b, p, b, p]
+def test_punch_keys_full_ramp_inside_shot():
+    from pytest import approx
+    from run_short_director import _punch_keys
+
+    keys = _punch_keys(20.0, 30.0, 23.0, 27.0, 0.4)
+    assert [t for t, _ in keys] == approx([3.0, 3.4, 6.6, 7.0])
+    assert [v for _, v in keys] == [1.0, 1.15, 1.15, 1.0]
 
 
-def test_shots_zoom_resets_on_speaker_change():
-    words = _words((0, 5, 1, 10), (5, 10, 0, 10))
-    shots = build_shots([(0.0, 10.0)], words, DEFAULT_CFG)
-    # 說話者切換處（shot 2）zoom 重置回 base
-    assert shots[2]["spk"] != shots[1]["spk"]
-    assert shots[2]["zoom"] == DEFAULT_CFG["zoom_base"]
+def test_punch_keys_span_crossing_boundary():
+    from run_short_director import _punch_keys
+
+    # span 26–34 跨 shot(20–30)/shot(30–40)：前段只 ramp-in、後段只 ramp-out
+    front = _punch_keys(20.0, 30.0, 26.0, 34.0, 0.4)
+    assert front[0] == (6.0, 1.0) and front[-1] == (10.0, 1.15)
+    back = _punch_keys(30.0, 40.0, 26.0, 34.0, 0.4)
+    assert back[0] == (0.0, 1.15) and back[-1] == (4.0, 1.0)
+
+
+def test_punch_keys_no_overlap_returns_none():
+    from run_short_director import _punch_keys
+
+    assert _punch_keys(20.0, 30.0, 31.0, 35.0, 0.4) is None
 
 
 def test_shots_long_monologue_cadence():
-    # 20s 獨白：2 個反應鏡頭 + 說話 chunk 全部 ≤ max_shot（範本 ~3s/刀節奏）
+    # 20s 獨白：2 個反應鏡頭；覆蓋不多不少
     words = _words((0, 20, 1, 40))
     shots = build_shots([(0.0, 20.0)], words, DEFAULT_CFG)
     reactions = [s for s in shots if s.get("kind") == "reaction"]
     assert len(reactions) == 2
-    talk = [s for s in shots if s.get("kind") != "reaction"]
-    assert all((s["e"] - s["s"]) <= DEFAULT_CFG["max_shot"] + 0.7 for s in talk)
     total = sum(s["e"] - s["s"] for s in shots)
     assert abs(total - 20.0) < 1e-6  # 不多不少覆蓋整段
 
