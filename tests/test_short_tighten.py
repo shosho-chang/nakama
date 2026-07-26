@@ -149,9 +149,9 @@ def test_merge_blocks_joins_continuous_cues():
         (11.5, 13.0, "歲以前就要禁掉 所以"),
         (14.0, 15.0, "下一段"),
     ]
-    merged = _merge_blocks(cues, [(0.0, 20.0)])
-    assert merged[0] == (10.0, 13.0, "禁掉就好 16歲以前就要禁掉 所以")
-    assert merged[1] == (14.0, 15.0, "下一段")  # gap 1.0s 不併
+    groups = _merge_blocks(cues, [(0.0, 20.0)])
+    assert [len(g) for g in groups] == [2, 1]  # 前兩 cue 同群、末 cue 獨立
+    assert "".join(x[2] for x in groups[0]) == "禁掉就好 16歲以前就要禁掉 所以"
 
 
 def test_merge_blocks_uses_collapsed_time():
@@ -161,6 +161,6 @@ def test_merge_blocks_uses_collapsed_time():
     # 成品音軌連續，必須併（16|歲 實案）
     segs = [(10.0, 11.5), (12.5, 15.0)]
     cues = [(10.0, 11.5, "禁掉就好 16"), (12.5, 14.0, "歲以前就要禁掉")]
-    merged = _merge_blocks(cues, segs)
-    assert len(merged) == 1
-    assert merged[0][2] == "禁掉就好 16歲以前就要禁掉"
+    groups = _merge_blocks(cues, segs)
+    assert len(groups) == 1 and len(groups[0]) == 2
+    assert "".join(x[2] for x in groups[0]) == "禁掉就好 16歲以前就要禁掉"

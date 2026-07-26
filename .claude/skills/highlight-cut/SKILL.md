@@ -185,8 +185,9 @@ python scripts/run_short_director.py <episode> --id <winner-id> --stills <dir>
   修修 2026-07-26 二輪回饋「畫面變化太少」的解法，範本語法
 - **內容驅動 punch（五～七輪裁決）**：agent 從 tight SRT 標「講重點」的
   區間寫 `<id>_zoom.json`（timeline 秒），每項可帶 `style` 與 `scale`：
-  - `"style":"ramp"`（預設）＝speed-ramp：easeOutBack 慢起→衝刺→**過衝
-    ~10% 回彈**（dramatic），縮回走 smootherstep；0.5s、+25%
+  - `"style":"ramp"`（預設）＝speed-ramp：smootherstep 慢→快→慢、
+    0.5s、+25%。**不過衝回彈**（十二輪：放大直接放大就好；easeOutBack
+    試過被否決）
   - `"style":"cut"`＝1 frame **硬切直接放大**（爆點句用）
   - **兩種交互使用**（七輪裁決）：鋪陳升溫→ramp、爆點句→cut
   機制：shot item 加 Fusion comp（MediaIn→Transform→MediaOut）、Size
@@ -210,7 +211,11 @@ python scripts/run_short_director.py <episode> --id <winner-id> --stills <dir>
   (2) 數字↔量詞分行（16|歲）(3) 被剪 cue 的字回魂／片頭尾滲入
   (4) 行寬超限。發現 → 修 root cause → 重建 → 再複審，乾淨才交付。
   機械層已有的防線：跨 cue 重排（塌縮時間判相鄰＋存活過濾）、數字量詞
-  黏合＋空格正規化、hotwords 熱詞注入——複審是抓機械層漏網的語意層
+  黏合＋空格正規化、hotwords 熱詞注入、**時間錨定逐 cue 局部對齊**
+  （十二輪：整塊 difflib 全域對齊遇重複片語（無處宣洩/發洩/治療）會錯位
+  到前一個出現，整塊後半提早 1-2s——錨定後錯位上限=單一 cue）——
+  複審是抓機械層漏網的語意層。**複審必含對賬**：每行反推源區間比對
+  words.json 實際語音（本輪就是靠對賬抓到短4 整段漂移）
 - audio 與 Step 6 相同（同一份 cuts.json 保留段）
 
 **執行順序**：director 重跑會整條重建 timeline——titles 巢狀層會被洗掉，
