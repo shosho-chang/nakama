@@ -242,12 +242,15 @@ def _keep_segments(t0: float, t1: float, cuts: list[dict]) -> list[tuple[float, 
 
 # 字幕細切（修修 2026-07-26 三輪：對齊鐘穎範本——一行 5–9 字的呼吸單元，
 # 字幕翻頁頻率本身是節奏裝置）
-_FINE_MAX = 9  # 一行字數上限（含括號，不含空格切點）
+#
+# ⚠️ 切點必走 jieba 詞邊界（shared/transcriber._force_break）。2026-07-26 教訓：
+# 第一版純按字數切，把「產品/短效/長期/改變/聯考」全部攔腰砍——中文斷行
+# 沒有分詞就是錯的，任何字數規則都救不回來。
+_FINE_MAX = 9  # 一行字數上限（含括號；括號保護時可容忍略超）
 _FINE_MIN = 4  # 短於此的單元往前併
 _OPEN_B = "「《【（"
 _CLOSE_B = "」》】）"
 _NO_START = "的了嗎呢吧」》】）"  # 單元不可用這些字開頭（斷在助詞前）
-_NO_END = "或跟和與而但可就還想去的"  # 行尾不可懸空連接詞（「或/是」被切開很難讀）
 
 
 def _in_brackets(text: str, pos: int) -> bool:
@@ -260,24 +263,14 @@ def _in_brackets(text: str, pos: int) -> bool:
     return depth > 0
 
 
-def _good_cut(text: str, tgt: int, lo: int, hi: int) -> int | None:
-    """在 tgt 附近找合法切點：括號外、不斷在助詞前、不切斷英數詞。"""
-    for off in (0, -1, 1, -2, 2, -3, 3):
-        p = tgt + off
-        if not (lo <= p <= hi):
-            continue
-        if _in_brackets(text, p):
-            continue
-        if text[p] in _NO_START or text[p - 1] in _OPEN_B or text[p - 1] in _NO_END:
-            continue
-        if text[p - 1].isascii() and text[p].isascii() and text[p] != " ":
-            continue  # 英數詞中間不切
-        return p
-    return None
-
-
 def _fine_spans(text: str) -> list[tuple[int, int]]:
-    """cue 文字 → 5–9 字單元的 char span 列表（空格優先切、oversize 均分）。"""
+    """cue 文字 → 5–9 字單元的 char span 列表。
+
+    空格（停頓標記）優先切 clause → 每 clause 走 jieba greedy 打包
+    （_force_break，詞絕不橫跨行）→ 括號完整性/助詞行首/過短單元後修。
+    """
+    from shared.transcriber import _force_break
+
     clauses: list[tuple[int, int]] = []
     a = 0
     for i, ch in enumerate(text):
@@ -289,23 +282,29 @@ def _fine_spans(text: str) -> list[tuple[int, int]]:
         clauses.append((a, len(text)))
     units: list[tuple[int, int]] = []
     for ca, cb in clauses:
-        length = cb - ca
-        if length <= _FINE_MAX:
+        if cb - ca <= _FINE_MAX:
             units.append((ca, cb))
             continue
-        n = -(-length // 8)  # ceil：目標每單元 ~8 字
         cur = ca
-        for k in range(1, n):
-            cut = _good_cut(text, ca + round(length * k / n), cur + 2, cb - 2)
-            if cut is not None and cut - cur >= 2:
-                units.append((cur, cut))
-                cur = cut
-        units.append((cur, cb))
-    # 過短單元往前併（併後含空格 ≤ _FINE_MAX+2 才併）
+        for chunk in _force_break(text[ca:cb], _FINE_MAX, hard_max=_FINE_MAX + 4):
+            i = text.find(chunk, cur)
+            if i < 0:  # 定位失敗（不應發生）→ 整 clause 一行
+                units.append((ca, cb))
+                cur = cb
+                break
+            units.append((i, i + len(chunk)))
+            cur = i + len(chunk)
+    # 後修：括號被拆開 / 行首助詞 → 併入前一單元；過短單元往前併
     merged: list[list[int]] = []
     for ua, ub in units:
-        if merged and ((merged[-1][1] - merged[-1][0]) < _FINE_MIN or (ub - ua) < _FINE_MIN):
-            if ub - merged[-1][0] <= _FINE_MAX + 2:
+        joinable = merged and ub - merged[-1][0] <= _FINE_MAX + 4
+        if merged and (
+            _in_brackets(text, ua)
+            or text[merged[-1][1] - 1] in _OPEN_B
+            or (text[ua] in _NO_START and joinable)
+            or (joinable and ((merged[-1][1] - merged[-1][0]) < _FINE_MIN or (ub - ua) < _FINE_MIN))
+        ):
+            if _in_brackets(text, ua) or text[merged[-1][1] - 1] in _OPEN_B or joinable:
                 merged[-1][1] = ub
                 continue
         merged.append([ua, ub])

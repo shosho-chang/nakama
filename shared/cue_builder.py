@@ -68,6 +68,9 @@ def _jieba_spans(tokens: list[tuple[str, float, float]]) -> list[tuple[int, int]
     """
     import jieba
 
+    from shared.transcriber import ensure_tw_jieba
+
+    ensure_tw_jieba()
     text = "".join(t[0] for t in tokens)
     char_to_token: list[int] = []
     for idx, (t, *_rest) in enumerate(tokens):
@@ -122,6 +125,10 @@ def segment_to_cues(
         return est_gap(tokens[j - 1], tokens[j])
 
     import jieba
+
+    from shared.transcriber import ensure_tw_jieba
+
+    ensure_tw_jieba()
 
     def bad_boundary(j0: int) -> bool:
         """切在 j0 前會不會拆散語意單位 → 壞切點。
