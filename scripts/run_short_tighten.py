@@ -1,0 +1,438 @@
+"""short-tighten：短片緊湊化 — 贅詞/停頓 jump-cut。
+
+修修 2026-07-26：短影片節奏要快狠準——開頭的「那、那」口吃絕不能出現，
+中間的停頓與贅詞也要剪掉，jump cut 越緊湊越好。
+
+兩段式流程（機械偵測 + agent 語意複審，不可全自動——「那/就是/然後」
+很多時候是有意義的連接詞，機械砍會砍壞語意）：
+
+1. `--detect --id <winner-id>`：
+   - ffmpeg silencedetect 抓該段**真實**靜音（WhisperX 詞尾被拉伸貼齊下一
+     詞起點，詞級 gap 永遠是 0，不能用；見 shared/cue_builder.py est_gap 註）
+   - words.json 詞級掃贅詞候選（長音「那/呃/啊/嗯」、口吃重複詞）
+   - 產出 highlights/tighten/<id>_cuts.json：
+     pause 類 keep=true（機械可信）、filler/stutter 類 keep=null（待複審）
+2. agent 逐條複審 cuts.json，把 keep=null 改成 true/false
+3. `--apply --id <winner-id>`：
+   - keep=true 的切除區間 → 補集 = 保留段
+   - 建**新** timeline「短N - <title>（緊）」：多段 jump-cut append（影片
+     順序上軌、音軌逐段 recordFrame 對位）；原 timeline 不動，供對照
+   - 字幕依保留段重新對時（切掉的時間塌縮），版本化 SRT 繞路徑快取
+
+用法：
+    python scripts/run_short_tighten.py <episode> --detect --id punch-S1
+    python scripts/run_short_tighten.py <episode> --apply --id punch-S1
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from run_highlight_cut import (  # noqa: E402
+    FORMAT_LABEL,
+    HIGHLIGHTS_DIR,
+    SEG_SRT_DIR,
+    _parse_srt,
+    _ts,
+)
+
+logger = logging.getLogger("short_tighten")
+
+TIGHTEN_DIR = "highlights/tighten"
+# 靜音偵測：-32dB 門檻、0.35s 起算才視為可剪停頓
+SILENCE_NOISE = "-32dB"
+MIN_PAUSE = 0.35
+# 剪停頓時保留的呼吸空隙（頭尾各留一點，全剪掉聽起來像機器人）
+KEEP_HEAD = 0.08
+KEEP_TAIL = 0.07
+# 贅詞候選：單字拖 ≥0.4s 視為 hesitation（正常語速單字 ~0.15-0.25s）
+FILLER_WORDS = {"那", "呃", "啊", "嗯", "欸", "喔"}
+FILLER_MIN_DUR = 0.40
+# 保留段最短長度——短於此併入切除（0.3s 的孤島段落會閃屏）
+MIN_KEEP_SEG = 0.30
+# 整句只有附和詞的 cue（主持人 backchannel）——短片候選剪除，agent 複審
+# 是否與來賓語音重疊（重疊剪了會斷來賓的話）
+BACKCHANNEL_TEXTS = {"對", "對對", "對對對", "嗯", "嗯嗯", "沒錯", "沒錯沒錯", "是", "好", "對啊"}
+# 切除區間最短長度——短於此不值得一刀（一刀就是一個 jump cut 的視覺跳動）
+MIN_CUT = 0.12
+
+_SIL_START = re.compile(r"silence_start:\s*([\d.]+)")
+_SIL_END = re.compile(r"silence_end:\s*([\d.]+)")
+
+
+def _load_winner(episode_dir: Path, cid: str) -> tuple[dict, dict]:
+    hdir = episode_dir / HIGHLIGHTS_DIR
+    cands = json.loads((hdir / "candidates.json").read_text(encoding="utf-8"))["candidates"]
+    winners = json.loads((hdir / "winners.json").read_text(encoding="utf-8"))["winners"]
+    c = next((x for x in cands if x["id"] == cid), None)
+    w = next((x for x in winners if x["id"] == cid), None)
+    if c is None or w is None:
+        raise SystemExit(f"{cid} 不在 winners/candidates 中")
+    return c, w
+
+
+def _detect_silences(audio: Path, t0: float, t1: float) -> list[tuple[float, float]]:
+    """ffmpeg silencedetect 抓 [t0, t1] 內的靜音區間（絕對秒）。"""
+    proc = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-nostats",
+            "-ss",
+            f"{t0:.3f}",
+            "-t",
+            f"{t1 - t0:.3f}",
+            "-i",
+            str(audio),
+            "-af",
+            f"silencedetect=noise={SILENCE_NOISE}:d={MIN_PAUSE}",
+            "-f",
+            "null",
+            "-",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    out = proc.stderr
+    starts = [float(m.group(1)) + t0 for m in _SIL_START.finditer(out)]
+    ends = [float(m.group(1)) + t0 for m in _SIL_END.finditer(out)]
+    if len(ends) < len(starts):  # 靜音一路到段尾，ffmpeg 不吐 silence_end
+        ends.append(t1)
+    return list(zip(starts, ends))
+
+
+def detect(episode_dir: Path, cid: str) -> dict:
+    c, _w = _load_winner(episode_dir, cid)
+    t0, t1 = float(c["t_start"]), float(c["t_end"])
+    words = json.load(open(episode_dir / "subs" / "words.json", encoding="utf-8"))["words"]
+    seg_words = [x for x in words if t0 <= x.get("start", 0) < t1]
+
+    cuts: list[dict] = []
+
+    # 1) 真實靜音 → pause cut（機械可信，keep=true）
+    audio = episode_dir / "normalized.wav"
+    for s, e in _detect_silences(audio, t0, t1):
+        # 段首/段尾的靜音整段剪掉（不留呼吸），中間的留頭尾空隙
+        cs = t0 if s <= t0 + 0.05 else s + KEEP_HEAD
+        ce = t1 if e >= t1 - 0.05 else e - KEEP_TAIL
+        if ce - cs >= MIN_CUT:
+            cuts.append(
+                {
+                    "t0": round(cs, 3),
+                    "t1": round(ce, 3),
+                    "kind": "pause",
+                    "dur": round(e - s, 2),
+                    "keep": True,
+                }
+            )
+
+    # 2) 贅詞候選（keep=null，agent 語意複審後定生死）
+    def ctx(i: int) -> str:
+        lo, hi = max(0, i - 8), min(len(seg_words), i + 9)
+        return "".join(
+            (f"◤{x['word']}◢" if j == i else x["word"])
+            for j, x in enumerate(seg_words[lo:hi], start=lo)
+        )
+
+    for i, x in enumerate(seg_words):
+        wd, ws, we = x["word"], x["start"], x["end"]
+        dur = we - ws
+        if wd in FILLER_WORDS and dur >= FILLER_MIN_DUR:
+            cuts.append(
+                {
+                    "t0": round(ws, 3),
+                    "t1": round(we, 3),
+                    "kind": "filler",
+                    "word": wd,
+                    "dur": round(dur, 2),
+                    "context": ctx(i),
+                    "keep": None,
+                }
+            )
+        elif (
+            i + 1 < len(seg_words)
+            and wd == seg_words[i + 1]["word"]
+            and wd not in "的了是"
+            and not wd.isascii()  # APP 拼字 P-P、100 的 0-0、省略號都不是口吃
+            and dur >= 0.25  # 合法疊詞（剛剛/常常/慢慢）語速正常；口吃首字會拖
+        ):
+            # 口吃重複（那那/他他）：候選剪第一個
+            cuts.append(
+                {
+                    "t0": round(ws, 3),
+                    "t1": round(we, 3),
+                    "kind": "stutter",
+                    "word": wd,
+                    "dur": round(dur, 2),
+                    "context": ctx(i),
+                    "keep": None,
+                }
+            )
+
+    # 3) backchannel cue（整句只有附和詞，keep=null——要人工確認沒壓到
+    #    來賓語音；能量分析對重疊 backchannel 是盲的，見 SKILL.md 已知極限）
+    for s, e, text in _parse_srt(episode_dir / "transcript.srt"):
+        if t0 <= s and e <= t1 and text.replace(" ", "") in BACKCHANNEL_TEXTS:
+            cuts.append(
+                {
+                    "t0": round(s, 3),
+                    "t1": round(e, 3),
+                    "kind": "backchannel",
+                    "word": text,
+                    "dur": round(e - s, 2),
+                    "keep": None,
+                }
+            )
+
+    cuts.sort(key=lambda x: x["t0"])
+    out_dir = episode_dir / TIGHTEN_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{cid}_cuts.json"
+    payload = {"id": cid, "t_start": t0, "t_end": t1, "cuts": cuts}
+    out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+    n_review = sum(1 for x in cuts if x["keep"] is None)
+    return {
+        "status": "detected",
+        "file": str(out_path),
+        "pauses": sum(1 for x in cuts if x["kind"] == "pause"),
+        "need_review": n_review,
+    }
+
+
+def _keep_segments(t0: float, t1: float, cuts: list[dict]) -> list[tuple[float, float]]:
+    """keep=true 切除區間的補集；合併相鄰切除、吸收過短保留段。"""
+    active = sorted(
+        ((max(t0, x["t0"]), min(t1, x["t1"])) for x in cuts if x.get("keep") is True),
+        key=lambda p: p[0],
+    )
+    merged: list[list[float]] = []
+    for s, e in active:
+        if e - s <= 0:
+            continue
+        if merged and s <= merged[-1][1] + 0.05:
+            merged[-1][1] = max(merged[-1][1], e)
+        else:
+            merged.append([s, e])
+    segs: list[tuple[float, float]] = []
+    pos = t0
+    for s, e in merged:
+        if s - pos >= MIN_KEEP_SEG:
+            segs.append((pos, s))
+        elif segs:  # 過短保留段：併入前一刀（延伸上一保留段終點沒意義，直接丟）
+            pass
+        pos = max(pos, e)
+    if t1 - pos >= MIN_KEEP_SEG:
+        segs.append((pos, t1))
+    return segs
+
+
+def _strip_cut_word(text: str, word: str, rel: float) -> str:
+    """從 cue 文字移除被剪掉的贅詞：多次出現時取相對位置最接近剪點的那個。"""
+    idxs = [m.start() for m in re.finditer(re.escape(word), text)]
+    if not idxs:
+        return text
+    best = min(idxs, key=lambda i: abs(i / max(1, len(text)) - rel))
+    out = text[:best] + text[best + len(word) :]
+    return re.sub(r"  +", " ", out).strip()
+
+
+def _retime_srt(
+    episode_dir: Path, cid: str, segs: list[tuple[float, float]], cuts: list[dict]
+) -> tuple[Path, int]:
+    """字幕依保留段塌縮重對時（版本化路徑繞 Resolve 快取）。
+
+    - cue 跨刀時**不拆行**：刀口在新 timeline 上塌縮為零，取各交集在新時間
+      軸上的 min-max 合成一行（拆行會出現同文字連閃兩次）
+    - 被剪掉的贅詞（filler/stutter keep=true）同步從 cue 文字移除——
+      音沒了字還在會穿幫
+    - backchannel cue 整句被剪 → 與保留段無交集，自然消失
+    """
+    cues = _parse_srt(episode_dir / "transcript.srt")
+    out_dir = episode_dir / SEG_SRT_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    n = 1
+    while (out_dir / f"{cid}_tight_r{n:03d}.srt").exists():
+        n += 1
+    dst = out_dir / f"{cid}_tight_r{n:03d}.srt"
+
+    word_cuts = [
+        x
+        for x in cuts
+        if x.get("keep") is True and x.get("kind") in ("filler", "stutter", "manual")
+    ]
+    lines = []
+    seq = 0
+    for s, e, text in cues:
+        spans = []
+        offset = 0.0
+        for seg_s, seg_e in segs:
+            is_, ie = max(s, seg_s), min(e, seg_e)
+            if ie - is_ > 0:
+                spans.append((offset + is_ - seg_s, offset + ie - seg_s))
+            offset += seg_e - seg_s
+        if not spans or max(b - a for a, b in spans) < 0.15:
+            continue
+        for wc in word_cuts:
+            if s <= wc["t0"] < e:
+                if wc.get("strip_text"):  # manual：指定整串刪除（空格不敏感比對）
+                    pat = r"\s*".join(re.escape(ch) for ch in wc["strip_text"])
+                    text = re.sub(r"  +", " ", re.sub(pat, "", text, count=1)).strip()
+                else:
+                    text = _strip_cut_word(text, wc["word"], (wc["t0"] - s) / max(0.1, e - s))
+        if not text:
+            continue
+        seq += 1
+        lines.append(f"{seq}\n{_ts(spans[0][0])} --> {_ts(spans[-1][1])}\n{text}\n")
+    dst.write_text("\n".join(lines), encoding="utf-8")
+    return dst, seq
+
+
+def apply(episode_dir: Path, cid: str) -> dict:
+    from build_resolve_project import _template_path, connect_resolve, find_main_video
+
+    c, w = _load_winner(episode_dir, cid)
+    t0, t1 = float(c["t_start"]), float(c["t_end"])
+    cuts_path = episode_dir / TIGHTEN_DIR / f"{cid}_cuts.json"
+    if not cuts_path.exists():
+        raise SystemExit(f"{cuts_path} 不存在——先跑 --detect")
+    cuts = json.loads(cuts_path.read_text(encoding="utf-8"))["cuts"]
+    pending = [x for x in cuts if x.get("keep") is None]
+    if pending:
+        raise SystemExit(f"{len(pending)} 個候選未複審（keep=null）——agent 先把 cuts.json 複審完")
+    segs = _keep_segments(t0, t1, cuts)
+    removed = (t1 - t0) - sum(e - s for s, e in segs)
+
+    resolve = connect_resolve()
+    pm = resolve.GetProjectManager()
+    project_name = episode_dir.name
+    project = pm.GetCurrentProject()
+    if project is None or project.GetName() != project_name:
+        project = pm.LoadProject(project_name)
+    if project is None:
+        raise SystemExit(f"project「{project_name}」不存在")
+    fps = float(project.GetSetting("timelineFrameRate"))
+    mp = project.GetMediaPool()
+    root = mp.GetRootFolder()
+
+    main_video = find_main_video(episode_dir, None)
+    clips = {(x.GetName() or ""): x for x in (root.GetClipList() or [])}
+    vid = clips.get(main_video.name)
+    aud = clips.get("normalized.wav")
+    if vid is None:
+        raise SystemExit(f"media pool 找不到主影片 {main_video.name}")
+
+    label = f"{FORMAT_LABEL[c['format']]}{w['rank']} - {c['title']}（緊）"
+    # 冪等：同名舊 timeline 先刪
+    stale = [
+        t
+        for i in range(1, project.GetTimelineCount() + 1)
+        if (t := project.GetTimelineByIndex(i)) and t.GetName() == label
+    ]
+    if stale:
+        mp.DeleteTimelines(stale)
+
+    hbin = next(
+        (f for f in root.GetSubFolderList() if f.GetName() == "Highlights"), None
+    ) or mp.AddSubFolder(root, "Highlights")
+    mp.SetCurrentFolder(hbin)
+
+    template = _template_path()
+    tl = None
+    if template.exists():
+        tl = mp.ImportTimelineFromFile(str(template), {})
+        if tl:
+            tl.SetName(label)
+    else:
+        logger.warning(
+            f"字幕樣式模板不存在（{template}）——timeline 將是無樣式！"
+            "從 E:\\nakama 跑本 script，或設 RESOLVE_SUBTITLE_TEMPLATE"
+        )
+    if tl is None:
+        tl = mp.CreateEmptyTimeline(label)
+    if tl is None:
+        raise SystemExit(f"timeline 建立失敗: {label}")
+    project.SetCurrentTimeline(tl)
+    if c["format"] == "short":
+        tl.SetSetting("useCustomSettings", "1")
+        tl.SetSetting("timelineResolutionWidth", "1080")
+        tl.SetSetting("timelineResolutionHeight", "1920")
+    if tl.GetTrackCount("subtitle") == 0:
+        tl.AddTrack("subtitle")
+
+    # jump-cut 上軌：影片逐段順序 append；音軌逐段 recordFrame 對位（幀數
+    # 與影片同一套 int() 換算，累積偏移保持影音同步）
+    offset_frames = 0
+    tl_start = tl.GetStartFrame()
+    for seg_s, seg_e in segs:
+        f0, f1 = int(seg_s * fps), int(seg_e * fps)
+        ok_v = mp.AppendToTimeline(
+            [{"mediaPoolItem": vid, "mediaType": 1, "startFrame": f0, "endFrame": f1}]
+        )
+        if not ok_v:
+            raise SystemExit(f"{label}: 影片段 {seg_s:.1f}-{seg_e:.1f} 上軌失敗")
+        if aud is not None:
+            mp.AppendToTimeline(
+                [
+                    {
+                        "mediaPoolItem": aud,
+                        "mediaType": 2,
+                        "trackIndex": 1,
+                        "startFrame": f0,
+                        "endFrame": f1,
+                        "recordFrame": tl_start + offset_frames,
+                    }
+                ]
+            )
+        offset_frames += f1 - f0
+
+    mp.SetCurrentFolder(root)
+    seg_srt, n_cues = _retime_srt(episode_dir, cid, segs, cuts)
+    srt_items = mp.ImportMedia([str(seg_srt)])
+    sub_ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
+    pm.SaveProject()
+    return {
+        "status": "tightened",
+        "timeline": label,
+        "segments": len(segs),
+        "cuts": len(segs) - 1,
+        "removed_sec": round(removed, 1),
+        "duration": f"{t1 - t0:.1f}s → {t1 - t0 - removed:.1f}s",
+        "subtitles": sub_ok,
+        "cues": n_cues,
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    parser = argparse.ArgumentParser(description="短片緊湊化：贅詞/停頓 jump-cut")
+    parser.add_argument("episode", help="episode 資料夾")
+    parser.add_argument("--id", required=True, help="winner id（如 punch-S1）")
+    parser.add_argument("--detect", action="store_true", help="偵測切點 → cuts.json")
+    parser.add_argument("--apply", action="store_true", help="套用 cuts.json 建（緊）timeline")
+    args = parser.parse_args(argv)
+    episode_dir = Path(args.episode)
+    if args.detect:
+        print(json.dumps(detect(episode_dir, args.id), ensure_ascii=False, indent=1))
+    elif args.apply:
+        print(json.dumps(apply(episode_dir, args.id), ensure_ascii=False, indent=1))
+    else:
+        parser.error("--detect 或 --apply 擇一")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
