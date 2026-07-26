@@ -240,6 +240,117 @@ def _keep_segments(t0: float, t1: float, cuts: list[dict]) -> list[tuple[float, 
     return segs
 
 
+# 字幕細切（修修 2026-07-26 三輪：對齊鐘穎範本——一行 5–9 字的呼吸單元，
+# 字幕翻頁頻率本身是節奏裝置）
+_FINE_MAX = 9  # 一行字數上限（含括號，不含空格切點）
+_FINE_MIN = 4  # 短於此的單元往前併
+_OPEN_B = "「《【（"
+_CLOSE_B = "」》】）"
+_NO_START = "的了嗎呢吧」》】）"  # 單元不可用這些字開頭（斷在助詞前）
+_NO_END = "或跟和與而但可就還想去的"  # 行尾不可懸空連接詞（「或/是」被切開很難讀）
+
+
+def _in_brackets(text: str, pos: int) -> bool:
+    depth = 0
+    for ch in text[:pos]:
+        if ch in _OPEN_B:
+            depth += 1
+        elif ch in _CLOSE_B:
+            depth = max(0, depth - 1)
+    return depth > 0
+
+
+def _good_cut(text: str, tgt: int, lo: int, hi: int) -> int | None:
+    """在 tgt 附近找合法切點：括號外、不斷在助詞前、不切斷英數詞。"""
+    for off in (0, -1, 1, -2, 2, -3, 3):
+        p = tgt + off
+        if not (lo <= p <= hi):
+            continue
+        if _in_brackets(text, p):
+            continue
+        if text[p] in _NO_START or text[p - 1] in _OPEN_B or text[p - 1] in _NO_END:
+            continue
+        if text[p - 1].isascii() and text[p].isascii() and text[p] != " ":
+            continue  # 英數詞中間不切
+        return p
+    return None
+
+
+def _fine_spans(text: str) -> list[tuple[int, int]]:
+    """cue 文字 → 5–9 字單元的 char span 列表（空格優先切、oversize 均分）。"""
+    clauses: list[tuple[int, int]] = []
+    a = 0
+    for i, ch in enumerate(text):
+        if ch == " " and not _in_brackets(text, i):
+            if i > a:
+                clauses.append((a, i))
+            a = i + 1
+    if a < len(text):
+        clauses.append((a, len(text)))
+    units: list[tuple[int, int]] = []
+    for ca, cb in clauses:
+        length = cb - ca
+        if length <= _FINE_MAX:
+            units.append((ca, cb))
+            continue
+        n = -(-length // 8)  # ceil：目標每單元 ~8 字
+        cur = ca
+        for k in range(1, n):
+            cut = _good_cut(text, ca + round(length * k / n), cur + 2, cb - 2)
+            if cut is not None and cut - cur >= 2:
+                units.append((cur, cut))
+                cur = cut
+        units.append((cur, cb))
+    # 過短單元往前併（併後含空格 ≤ _FINE_MAX+2 才併）
+    merged: list[list[int]] = []
+    for ua, ub in units:
+        if merged and ((merged[-1][1] - merged[-1][0]) < _FINE_MIN or (ub - ua) < _FINE_MIN):
+            if ub - merged[-1][0] <= _FINE_MAX + 2:
+                merged[-1][1] = ub
+                continue
+        merged.append([ua, ub])
+    return [(a, b) for a, b in merged]
+
+
+def _fine_units(s: float, e: float, text: str, words: list[dict]) -> list[tuple[float, float, str]]:
+    """單一 cue → 細切單元（詞級時間戳定界；對不齊退回字數比例分配）。"""
+    from run_line_polish import _map_to_raw
+
+    spans = _fine_spans(text)
+    if len(spans) <= 1:
+        return [(s, e, text.strip())] if text.strip() else []
+    seg = [w for w in words if w["end"] > s + 1e-3 and w["start"] < e - 1e-3]
+    raw = "".join(w["word"] for w in seg)
+    ctimes: list[float] = []
+    for w in seg:
+        n = max(1, len(w["word"]))
+        for i in range(n):
+            ctimes.append(w["start"] + (w["end"] - w["start"]) * i / n)
+    bounds = [s]
+    for a, _b in spans[1:]:
+        if ctimes:
+            j = min(max(_map_to_raw(text, raw, a), 0), len(ctimes) - 1)
+            bounds.append(ctimes[j])
+        else:
+            bounds.append(s + (e - s) * a / max(1, len(text)))
+    bounds.append(e)
+    ok = all(bounds[i] >= bounds[i - 1] + 0.2 for i in range(1, len(bounds)))
+    if not ok:  # 詞級對齊失敗（校正差異太大）→ 字數比例分配
+        total = sum(b - a for a, b in spans)
+        acc = 0.0
+        bounds = [s]
+        for a, b in spans[:-1]:
+            acc += b - a
+            bounds.append(s + (e - s) * acc / total)
+        bounds.append(e)
+    out = []
+    for (a, b), us, ue in zip(spans, bounds, bounds[1:]):
+        unit_text = text[a:b].strip()
+        if unit_text and ue > us:
+            out.append((us, ue, unit_text))
+    return out
+
+
 def _strip_cut_word(text: str, word: str, rel: float) -> str:
     """從 cue 文字移除被剪掉的贅詞：多次出現時取相對位置最接近剪點的那個。"""
     idxs = [m.start() for m in re.finditer(re.escape(word), text)]
@@ -251,15 +362,20 @@ def _strip_cut_word(text: str, word: str, rel: float) -> str:
 
 
 def _retime_srt(
-    episode_dir: Path, cid: str, segs: list[tuple[float, float]], cuts: list[dict]
+    episode_dir: Path,
+    cid: str,
+    segs: list[tuple[float, float]],
+    cuts: list[dict],
+    fine: bool = False,
 ) -> tuple[Path, int]:
     """字幕依保留段塌縮重對時（版本化路徑繞 Resolve 快取）。
 
     - cue 跨刀時**不拆行**：刀口在新 timeline 上塌縮為零，取各交集在新時間
       軸上的 min-max 合成一行（拆行會出現同文字連閃兩次）
-    - 被剪掉的贅詞（filler/stutter keep=true）同步從 cue 文字移除——
-      音沒了字還在會穿幫
+    - 被剪掉的贅詞（filler/stutter keep=true）**先**從 cue 文字移除再細切——
+      音沒了字還在會穿幫；manual strip_text 可能跨細切單元，必須在切前處理
     - backchannel cue 整句被剪 → 與保留段無交集，自然消失
+    - fine=True：細切成 5–9 字呼吸單元（詞級時間戳定界，範本節奏）
     """
     cues = _parse_srt(episode_dir / "transcript.srt")
     out_dir = episode_dir / SEG_SRT_DIR
@@ -274,9 +390,24 @@ def _retime_srt(
         for x in cuts
         if x.get("keep") is True and x.get("kind") in ("filler", "stutter", "manual")
     ]
+    prepped: list[tuple[float, float, str]] = []
+    for s, e, text in cues:
+        for wc in word_cuts:
+            if s <= wc["t0"] < e:
+                if wc.get("strip_text"):  # manual：指定整串刪除（空格不敏感比對）
+                    pat = r"\s*".join(re.escape(ch) for ch in wc["strip_text"])
+                    text = re.sub(r"  +", " ", re.sub(pat, "", text, count=1)).strip()
+                else:
+                    text = _strip_cut_word(text, wc["word"], (wc["t0"] - s) / max(0.1, e - s))
+        if text:
+            prepped.append((s, e, text))
+    if fine:
+        words = json.load(open(episode_dir / "subs" / "words.json", encoding="utf-8"))["words"]
+        prepped = [u for c in prepped for u in _fine_units(*c, words)]
+
     lines = []
     seq = 0
-    for s, e, text in cues:
+    for s, e, text in prepped:
         spans = []
         offset = 0.0
         for seg_s, seg_e in segs:
@@ -285,15 +416,6 @@ def _retime_srt(
                 spans.append((offset + is_ - seg_s, offset + ie - seg_s))
             offset += seg_e - seg_s
         if not spans or max(b - a for a, b in spans) < 0.15:
-            continue
-        for wc in word_cuts:
-            if s <= wc["t0"] < e:
-                if wc.get("strip_text"):  # manual：指定整串刪除（空格不敏感比對）
-                    pat = r"\s*".join(re.escape(ch) for ch in wc["strip_text"])
-                    text = re.sub(r"  +", " ", re.sub(pat, "", text, count=1)).strip()
-                else:
-                    text = _strip_cut_word(text, wc["word"], (wc["t0"] - s) / max(0.1, e - s))
-        if not text:
             continue
         seq += 1
         lines.append(f"{seq}\n{_ts(spans[0][0])} --> {_ts(spans[-1][1])}\n{text}\n")

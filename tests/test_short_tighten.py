@@ -51,3 +51,55 @@ def test_strip_cut_word_picks_nearest_occurrence():
 
 def test_strip_cut_word_absent_is_noop():
     assert _strip_cut_word("完全無關的句子", "那", 0.5) == "完全無關的句子"
+
+
+# --- 字幕細切（5–9 字呼吸單元） ---
+
+from run_short_tighten import _FINE_MAX, _fine_spans, _fine_units  # noqa: E402
+
+
+def _mkwords(s, e, text):
+    """均勻鋪詞（每字一詞）供時間對齊。"""
+    step = (e - s) / len(text)
+    return [
+        {"word": ch, "start": s + i * step, "end": s + (i + 1) * step} for i, ch in enumerate(text)
+    ]
+
+
+def test_fine_spans_split_on_spaces():
+    text = "非常短效的「多巴胺」的獎勵 就是它可能"
+    spans = _fine_spans(text)
+    parts = [text[a:b] for a, b in spans]
+    assert all(len(p) <= _FINE_MAX + 2 for p in parts)
+    assert "".join(parts).replace(" ", "") == text.replace(" ", "")
+
+
+def test_fine_spans_no_split_inside_brackets():
+    text = "有一點「數位排毒」的概念在裡面喔"
+    for a, b in _fine_spans(text):
+        seg = text[a:b]
+        assert seg.count("「") == seg.count("」")  # 括號不被拆開
+
+
+def test_fine_spans_short_text_untouched():
+    assert _fine_spans("對就是") == [(0, 3)]
+
+
+def test_fine_units_timing_monotone():
+    text = "被社群媒體公司來綁架我們的大腦跟注意力"
+    words = _mkwords(632.0, 636.0, text)
+    units = _fine_units(632.0, 636.0, text, words)
+    assert len(units) >= 2
+    assert units[0][0] == 632.0 and units[-1][1] == 636.0
+    for (s1, e1, _), (s2, e2, _) in zip(units, units[1:]):
+        assert e1 == s2  # 單元首尾相接不閃屏
+        assert e1 > s1
+    assert "".join(t for _, _, t in units).replace(" ", "") == text.replace(" ", "")
+
+
+def test_fine_units_fallback_proportional():
+    # 詞級資料空 → 字數比例分配，仍要覆蓋整段
+    text = "第一個部分 第二個部分 第三個部分"
+    units = _fine_units(10.0, 16.0, text, [])
+    assert len(units) == 3
+    assert units[0][0] == 10.0 and units[-1][1] == 16.0

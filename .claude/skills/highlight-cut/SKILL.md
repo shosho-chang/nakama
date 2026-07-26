@@ -187,7 +187,10 @@ python scripts/run_short_director.py <episode> --id <winner-id> --stills <dir>
 - 同說話者連續 shot 交替 base/punch 兩級 zoom（jump-cut punch-in 節奏）
 - 開場 4 秒上下分割雙人畫面（來賓上、修修下——參考 E:\\data 鐘穎範本
   的開場語法），`--no-opener` 關閉
-- audio/字幕與 Step 6 相同（同一份 cuts.json 保留段）
+- **字幕細切**（修修 2026-07-26 三輪）：cue 再切成 5–9 字呼吸單元，詞級
+  時間戳定界、單元首尾相接；空格 clause 優先切、括號不拆、助詞不開頭、
+  連接詞（或/跟/但…）不懸行尾——範本的字幕翻頁節奏
+- audio 與 Step 6 相同（同一份 cuts.json 保留段）
 
 **換集校準**：機位固定、臉部座標全集通用，但**換集必校**——抓各機位一幀
 量臉部中心 x，寫 `highlights/tighten/director.json` 覆蓋 `face_x`（格式見

@@ -389,7 +389,7 @@ def direct(
         offset_frames += f1 - f0
 
     mp.SetCurrentFolder(root)
-    seg_srt, n_cues = _retime_srt(episode_dir, cid, segs, cuts)
+    seg_srt, n_cues = _retime_srt(episode_dir, cid, segs, cuts, fine=True)
     srt_items = mp.ImportMedia([str(seg_srt)])
     sub_ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
     pm.SaveProject()
