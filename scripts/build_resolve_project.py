@@ -48,10 +48,24 @@ RESOLVE_SUBS_DIR = "subs/resolve_subs"
 DEFAULT_TEMPLATE = (
     Path(__file__).resolve().parent.parent / "data" / "resolve" / "subtitle-template.drt"
 )
+# 短片直式專用模板（修修「short」preset：字級 50、位置上移）——與長片
+# 樣式分家（2026-07-26 十輪）。缺檔時退回主模板
+DEFAULT_TEMPLATE_SHORT = (
+    Path(__file__).resolve().parent.parent / "data" / "resolve" / "subtitle-template-short.drt"
+)
 
 
 def _template_path() -> Path:
     return Path(os.environ.get("RESOLVE_SUBTITLE_TEMPLATE") or DEFAULT_TEMPLATE)
+
+
+def _template_path_short() -> Path:
+    env = os.environ.get("RESOLVE_SUBTITLE_TEMPLATE_SHORT")
+    if env:
+        return Path(env)
+    if DEFAULT_TEMPLATE_SHORT.exists():
+        return DEFAULT_TEMPLATE_SHORT
+    return _template_path()  # 短模板尚未產生 → 退回主模板（樣式舊但不裸奔）
 
 
 def _versioned_srt(episode_dir: Path) -> Path:
@@ -431,13 +445,18 @@ def swap_audio(episode_dir: Path) -> dict:
     }
 
 
-def make_template(episode_dir: Path) -> dict:
-    """從「已手動套好字幕樣式」的 episode timeline 產生 DRT 樣式模板（一次性設定）。
+def make_template(
+    episode_dir: Path, *, source_name: str | None = None, out_path: Path | None = None
+) -> dict:
+    """從「已手動套好字幕樣式」的 timeline 產生 DRT 樣式模板（一次性設定）。
 
     流程：DuplicateTimeline → 複本清空所有 video/audio/subtitle 內容
     （軌與樣式保留）→ Export DRT → 刪複本。之後 build_project 自動套用。
+    source_name 預設主 timeline（= project 名）；out_path 預設主模板路徑
+    （短片模板：source 給某支（緊·導播）、out 給 DEFAULT_TEMPLATE_SHORT）。
     """
     project_name = episode_dir.name
+    source_name = source_name or project_name
     resolve = connect_resolve()
     pm = resolve.GetProjectManager()
     project = pm.GetCurrentProject()
@@ -449,11 +468,11 @@ def make_template(episode_dir: Path) -> dict:
     source_tl = None
     for i in range(1, project.GetTimelineCount() + 1):
         tl = project.GetTimelineByIndex(i)
-        if tl and tl.GetName() == project_name:
+        if tl and tl.GetName() == source_name:
             source_tl = tl
             break
     if source_tl is None:
-        raise SystemExit(f"timeline「{project_name}」不存在")
+        raise SystemExit(f"timeline「{source_name}」不存在")
     project.SetCurrentTimeline(source_tl)
 
     dup = source_tl.DuplicateTimeline("__subtitle_template_build__")
@@ -466,7 +485,7 @@ def make_template(episode_dir: Path) -> dict:
             if items:
                 dup.DeleteClips(items)
 
-    template = _template_path()
+    template = out_path or _template_path()
     template.parent.mkdir(parents=True, exist_ok=True)
     ok = dup.Export(str(template), resolve.EXPORT_DRT)
     project.SetCurrentTimeline(source_tl)
@@ -498,6 +517,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="從此 episode 已套好字幕樣式的 timeline 產生 DRT 樣式模板（一次性）",
     )
+    parser.add_argument(
+        "--make-template-short",
+        metavar="TIMELINE_NAME",
+        help="從指定 timeline 產生**短片**字幕樣式模板（修修「short」preset）",
+    )
     return parser.parse_args(argv)
 
 
@@ -509,7 +533,13 @@ def main(argv: list[str] | None = None) -> int:
         logger.error(f"episode 資料夾不存在: {episode_dir}")
         return 1
     started = time.time()
-    if args.make_template:
+    if args.make_template_short:
+        result = make_template(
+            episode_dir,
+            source_name=args.make_template_short,
+            out_path=DEFAULT_TEMPLATE_SHORT,
+        )
+    elif args.make_template:
         result = make_template(episode_dir)
     elif args.swap_audio:
         result = swap_audio(episode_dir)
