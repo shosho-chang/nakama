@@ -109,3 +109,27 @@ def test_panel_top_bottom_tilt_signs():
     # TILT_SCALE 換算後的螢幕位移量：上下各 ~480±窗框補償
     assert abs(top["Tilt"] * TILT_SCALE - 360) < 5
     assert abs(bottom["Tilt"] * TILT_SCALE + 600) < 5
+
+
+def test_scurve_expand_slow_fast_slow():
+
+    from run_short_director import _scurve_expand
+
+    keys = _scurve_expand([(0.0, 1.0), (1.0, 1.15)], samples=7)
+    assert keys[0] == (0.0, 1.0) and keys[-1] == (1.0, 1.15)
+    # S 曲線：前 1/4 幾乎沒動、中點過半程、後 1/4 幾乎到位
+    vals = dict((round(t, 3), v) for t, v in keys)
+    assert vals[0.25] - 1.0 < 0.15 * 0.11  # 慢起步（<11% 行程）
+    assert abs(vals[0.5] - (1.0 + 0.15 * 0.5)) < 1e-6  # 中點正好半程
+    assert 1.15 - vals[0.75] < 0.15 * 0.11  # 慢收尾
+    # 單調遞增
+    ts = [t for t, _ in keys]
+    vs = [v for _, v in keys]
+    assert ts == sorted(ts) and vs == sorted(vs)
+
+
+def test_scurve_expand_hold_segments_untouched():
+    from run_short_director import _scurve_expand
+
+    keys = _scurve_expand([(0.0, 1.15), (3.0, 1.15)], samples=7)
+    assert keys == [(0.0, 1.15), (3.0, 1.15)]  # hold 段不取樣

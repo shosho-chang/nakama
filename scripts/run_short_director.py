@@ -58,7 +58,8 @@ DEFAULT_CFG = {
     # 節奏（修修 2026-07-26 二輪：畫面變化太少——對齊鐘穎範本 ~3s/刀）
     "reaction_every": 9.0,  # 同人 run 每 ~9s 插一個聽者反應鏡頭
     "reaction_sec": 1.8,  # 反應鏡頭長度（點頭畫面，audio 不斷）
-    "punch_ramp_sec": 0.4,  # 內容驅動 punch 的 speed-ramp zoom-in/out 秒數
+    "punch_ramp_sec": 0.5,  # 內容驅動 punch 的 speed-ramp zoom-in/out 秒數
+    "face_y": {"0": 330, "1": 330},  # 1080 高源片的眼線 y（punch zoom 鎖臉用）
 }
 SRC_W = 1920
 FIT = 1080 / 1920  # 16:9 源在 1080 寬 timeline 的 fit 縮放
@@ -244,16 +245,34 @@ def _punch_keys(
     return dedup if len(dedup) >= 2 else None
 
 
-def _apply_punch_zooms(
-    appended: list[dict], punches: list[dict], fps: float, ramp_sec: float
-) -> int:
+def _scurve_expand(keys: list[tuple[float, float]], samples: int = 7) -> list[tuple[float, float]]:
+    """ramp 段展開成 smootherstep S 曲線取樣（修修六輪：要慢→快→慢的
+    ease-in-ease-out，不是等速；spline 預設內插不可信，直接取樣鎖形狀）。"""
+    out = [keys[0]]
+    for (t0, v0), (t1, v1) in zip(keys, keys[1:]):
+        if v1 != v0 and t1 > t0:
+            for i in range(1, samples + 1):
+                u = i / (samples + 1)
+                s = 6 * u**5 - 15 * u**4 + 10 * u**3
+                out.append((t0 + (t1 - t0) * u, v0 + (v1 - v0) * s))
+        out.append((t1, v1))
+    return out
+
+
+def _apply_punch_zooms(appended: list[dict], punches: list[dict], fps: float, cfg: dict) -> int:
     """內容驅動 punch：講重點的區間 speed-ramp zoom-in，講完 ramp-out。
 
     對覆蓋 punch 區間的 talk shot item 加 Fusion comp（MediaIn→Transform→
-    MediaOut），Transform.Size 關鍵影格 1.0→1.15（BezierSpline 平滑曲線 =
-    speed ramp 感）；與 item 靜態 ZoomX 疊乘。reaction shot 不 punch。
-    appended: [{item, tl_s, tl_e(timeline 秒), kind}]
+    MediaOut）：
+
+    - Size 關鍵影格 1.0→1.15，ramp 段 smootherstep 取樣（S 曲線）
+    - **Transform Pivot 鎖在說話者臉部**（源片 normalized 座標，Fusion y
+      軸向上）——繞畫面中心放大會讓臉在 ramp 過程飄移（六輪教訓）。
+      ⚠️ Center 是影像「位置」不是縮放支點，設 Center 會把畫面搬走（實測）
+    - 與 item 靜態 ZoomX 疊乘。reaction shot 不 punch。
+    appended: [{item, tl_s, tl_e(timeline 秒), kind, spk}]
     """
+    ramp_sec = cfg["punch_ramp_sec"]
     n = 0
     for p in punches:
         for a in appended:
@@ -262,6 +281,7 @@ def _apply_punch_zooms(
             keys = _punch_keys(a["tl_s"], a["tl_e"], float(p["t0"]), float(p["t1"]), ramp_sec)
             if not keys:
                 continue
+            keys = _scurve_expand(keys)
             item = a["item"]
             comp = (
                 item.GetFusionCompByIndex(1)
@@ -271,8 +291,10 @@ def _apply_punch_zooms(
             if comp is None:
                 logger.warning(f"AddFusionComp 失敗 @{a['tl_s']:.1f}s——此 shot 跳過 punch")
                 continue
+            cx = float(cfg["face_x"][str(a["spk"])]) / 1920
+            cy = 1.0 - float(cfg["face_y"][str(a["spk"])]) / 1080  # Fusion y 向上
             key_lua = "\n".join(
-                f'  xf:SetInput("Size", {v:.4f}, {int(round(t * fps))})' for t, v in keys
+                f'  xf:SetInput("Size", {v:.5f}, {round(t * fps, 2)})' for t, v in keys
             )
             lua = f"""
 local ok, err = pcall(function()
@@ -284,6 +306,7 @@ local ok, err = pcall(function()
     xf:SetAttrs({{TOOLS_Name = "PunchZoom"}})
     xf.Input = mi.Output
     mo.Input = xf.Output
+    xf.Pivot = {{{cx:.4f}, {cy:.4f}}}
     xf.Size = comp:BezierSpline()
   end
 {key_lua}
@@ -432,6 +455,7 @@ def direct(
                 "tl_s": tl_cursor,
                 "tl_e": tl_cursor + (f1 - f0) / fps,
                 "kind": sh.get("kind", "talk"),
+                "spk": sh["spk"],
             }
         )
         tl_cursor += (f1 - f0) / fps
@@ -441,7 +465,7 @@ def direct(
     n_punch = 0
     if zoom_path.exists():
         punches = json.loads(zoom_path.read_text(encoding="utf-8"))["punches"]
-        n_punch = _apply_punch_zooms(appended, punches, fps, cfg["punch_ramp_sec"])
+        n_punch = _apply_punch_zooms(appended, punches, fps, cfg)
 
     # opener 上半 panel（來賓）：track2、recordFrame 對齊 timeline 開頭
     if opener_span:
