@@ -52,25 +52,25 @@ def test_punch_keys_full_ramp_inside_shot():
     from pytest import approx
     from run_short_director import _punch_keys
 
-    keys = _punch_keys(20.0, 30.0, 23.0, 27.0, 0.4)
+    keys = _punch_keys(20.0, 30.0, 23.0, 27.0, 0.4, 1.25)
     assert [t for t, _ in keys] == approx([3.0, 3.4, 6.6, 7.0])
-    assert [v for _, v in keys] == [1.0, 1.15, 1.15, 1.0]
+    assert [v for _, v in keys] == [1.0, 1.25, 1.25, 1.0]
 
 
 def test_punch_keys_span_crossing_boundary():
     from run_short_director import _punch_keys
 
     # span 26–34 跨 shot(20–30)/shot(30–40)：前段只 ramp-in、後段只 ramp-out
-    front = _punch_keys(20.0, 30.0, 26.0, 34.0, 0.4)
-    assert front[0] == (6.0, 1.0) and front[-1] == (10.0, 1.15)
-    back = _punch_keys(30.0, 40.0, 26.0, 34.0, 0.4)
-    assert back[0] == (0.0, 1.15) and back[-1] == (4.0, 1.0)
+    front = _punch_keys(20.0, 30.0, 26.0, 34.0, 0.4, 1.25)
+    assert front[0] == (6.0, 1.0) and front[-1] == (10.0, 1.25)
+    back = _punch_keys(30.0, 40.0, 26.0, 34.0, 0.4, 1.25)
+    assert back[0] == (0.0, 1.25) and back[-1] == (4.0, 1.0)
 
 
 def test_punch_keys_no_overlap_returns_none():
     from run_short_director import _punch_keys
 
-    assert _punch_keys(20.0, 30.0, 31.0, 35.0, 0.4) is None
+    assert _punch_keys(20.0, 30.0, 31.0, 35.0, 0.4, 1.25) is None
 
 
 def test_shots_long_monologue_cadence():
@@ -111,21 +111,32 @@ def test_panel_top_bottom_tilt_signs():
     assert abs(bottom["Tilt"] * TILT_SCALE + 600) < 5
 
 
-def test_scurve_expand_slow_fast_slow():
-
+def test_scurve_expand_rampin_overshoots():
     from run_short_director import _scurve_expand
 
-    keys = _scurve_expand([(0.0, 1.0), (1.0, 1.15)], samples=7)
-    assert keys[0] == (0.0, 1.0) and keys[-1] == (1.0, 1.15)
-    # S 曲線：前 1/4 幾乎沒動、中點過半程、後 1/4 幾乎到位
-    vals = dict((round(t, 3), v) for t, v in keys)
-    assert vals[0.25] - 1.0 < 0.15 * 0.11  # 慢起步（<11% 行程）
-    assert abs(vals[0.5] - (1.0 + 0.15 * 0.5)) < 1e-6  # 中點正好半程
-    assert 1.15 - vals[0.75] < 0.15 * 0.11  # 慢收尾
-    # 單調遞增
-    ts = [t for t, _ in keys]
-    vs = [v for _, v in keys]
-    assert ts == sorted(ts) and vs == sorted(vs)
+    keys = _scurve_expand([(0.0, 1.0), (1.0, 1.25)], samples=7)
+    assert keys[0] == (0.0, 1.0) and keys[-1] == (1.0, 1.25)
+    vals = [v for _, v in keys]
+    # easeOutBack：中途要衝過目標值再回彈（七輪：dramatic 過衝）
+    assert max(vals) > 1.25 + 0.01
+    assert [x for x, _ in keys] == sorted(x for x, _ in keys)
+
+
+def test_scurve_expand_rampout_no_overshoot():
+    from run_short_director import _scurve_expand
+
+    keys = _scurve_expand([(0.0, 1.25), (0.5, 1.0)], samples=7)
+    vals = [v for _, v in keys]
+    assert min(vals) >= 1.0 - 1e-9  # 縮回不下衝
+    assert vals == sorted(vals, reverse=True)
+
+
+def test_scurve_expand_cut_not_sampled():
+    from run_short_director import _scurve_expand
+
+    # 1 frame 硬切（間距 <0.1s）不取樣——保持階梯（style=cut 直接放大）
+    keys = _scurve_expand([(0.0, 1.0), (0.033, 1.25)], samples=7)
+    assert keys == [(0.0, 1.0), (0.033, 1.25)]
 
 
 def test_scurve_expand_hold_segments_untouched():
