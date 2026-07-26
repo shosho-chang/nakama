@@ -181,6 +181,9 @@ python scripts/run_short_director.py <episode> --id <winner-id> --stills <dir>
 
 - 誰講話切誰的機位（mic 能量詞級說話者，同 speaker-split 那套）；
   <1s 的附和不切鏡（切過去再切回來會閃屏）
+- **反應鏡頭**：同人 run 每 ~9s 插 1.8s 聽者點頭畫面再切回（audio 不斷）——
+  修修 2026-07-26 二輪回饋「畫面變化太少」的解法，範本語法
+- **max_shot 4s**：任一 shot 超過就在詞邊界均分——整體節奏對齊範本 ~3s/刀
 - 同說話者連續 shot 交替 base/punch 兩級 zoom（jump-cut punch-in 節奏）
 - 開場 4 秒上下分割雙人畫面（來賓上、修修下——參考 E:\\data 鐘穎範本
   的開場語法），`--no-opener` 關閉
