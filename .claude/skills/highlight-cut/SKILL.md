@@ -31,6 +31,12 @@ Resolve 專案存在且 Resolve 開著）。
 - 長度：長片目標 8–12min（容忍 6–18）；短片目標 60–120s（容忍 40–180，硬上限 180）
 - **內容邊界優先於長度**：絕不在論述中間切；段落開頭必須是說話者輪替點或提問，
   結尾必須是觀點落地；容忍帶外不提；偏離目標帶要寫一句「為什麼值得破格」
+- **冷開場必須乾淨**（修修 2026-07-26 血淚 ×2）：段落第一句**不可含上一話題的
+  收尾/反應語**——「對啊我就覺得超級有趣的」「再講X會講一整集」這種殘尾。
+  訪談主持人的慣性是「先收上一題再轉場」，收尾語常跟轉場詞（那現在／我們來講
+  下一個／接下來）黏在**同一個 cue**——這種情況段落要從轉場詞起算，並在輸出裡
+  給 `head_trim` 欄位標出該 cue 內要剔除的殘尾字串（例：`"head_trim": "對啊我就
+  覺得超級有趣的"`）
 - 輸出（每候選）：`{id, format(long/short), t_start, t_end, title, hook(段內第一個
   抓人的原句), rationale, miner}`——id 格式 L1/L2…（長）、S1/S2…（短），秒為單位
 
@@ -55,6 +61,25 @@ python scripts/run_highlight_cut.py <episode> --validate
   （斷章取義/害來賓）——否決段標紅進報告等修修裁決，不自動排除
 - 各選 top 3 → 寫 `highlights/winners.json`：`{winners: [{id, rank, score}],
   vetoed: [{id, reason}]}`
+
+## Step 2.5 — 邊界打磨（物化前，必做）
+
+**Renee／persona 指出的開頭問題必須在這裡消化成動作，不是只寫進報告**
+（2026-07-26 教訓：長2/長3 開頭殘留上一題收尾，lens 看到了但流程沒接住）。
+
+對每個當選段落，讀首尾 cue 原文檢查：
+
+1. **首 cue 含前題殘尾**（收尾語+轉場詞同 cue，或 miner 給了 `head_trim`）→
+   寫 `highlights/line_moves_fix*.json`（`after_cue` = 該 cue 序號、`delta` 負數
+   把殘尾留在前句）→ `python scripts/run_line_polish.py <episode>` 切開 →
+   candidates.json 該段 `t_start` 改成新 cue 起點（**秒數換算要驗算**：
+   28:17.886 = 1697.886，不要心算）
+2. **尾 cue 話講一半** → `t_end` 移到上一個完整句尾
+3. 已套用的 line_moves 檔改名 `applied_*` 避免重複套用（run_line_polish 會
+   glob `line_moves_*.json` 全套一遍）
+
+**單獨重建某條 timeline**（其他條不動、保護修修的剪輯）：暫存 winners.json →
+過濾只剩該段 id → `--materialize` → 還原 winners.json。
 
 ## Step 3 — 物化 Resolve
 
