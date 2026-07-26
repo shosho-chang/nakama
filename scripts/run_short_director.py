@@ -52,7 +52,7 @@ DEFAULT_CFG = {
     "cams": {"0": "1_CAMERA 1.mp4", "1": "2_CAMERA 2.mp4"},
     "face_x": {"0": 880, "1": 1165},  # 1920 寬源片的臉部中心 x
     "zoom_base": 3.2,  # 16:9 → 9:16 滿高（3.16）+ 一點餘裕
-    "zoom_punch": 3.68,  # base × 1.15，同人連續 shot 的 punch-in
+    "punch_scale": 1.25,  # punch 放大倍率（七輪：1.15 不夠 dramatic）
     "min_shot": 1.0,  # 短於此的說話者 run 不切鏡（併入前一 shot）
     "opener_sec": 4.0,  # 開場上下分割秒數（不足 2s 的保留段不做）
     # 節奏（修修 2026-07-26 二輪：畫面變化太少——對齊鐘穎範本 ~3s/刀）
@@ -214,13 +214,19 @@ def build_shots(
 
 
 def _punch_keys(
-    item_lo: float, item_hi: float, span_lo: float, span_hi: float, ramp: float
+    item_lo: float,
+    item_hi: float,
+    span_lo: float,
+    span_hi: float,
+    ramp: float,
+    scale: float = 1.25,
 ) -> list[tuple[float, float]] | None:
     """單一 shot 與 punch 區間的交集 → comp 內 Size 關鍵影格 [(local_sec, factor)]。
 
     - 完整 ramp：span 起點 ramp-in、終點 ramp-out（各 ramp 秒）
     - span 跨 shot 邊界時：起點在前一 shot 內才 ramp-in，否則本 shot 直接
-      1.15 起跳（跨刀 zoom 連續）；終點同理
+      punch 級起跳（跨刀 zoom 連續）；終點同理
+    - style=cut 時呼叫端把 ramp 縮成 1 frame → 兩鍵貼齊 = 硬切直接放大
     """
     lo, hi = max(item_lo, span_lo), min(item_hi, span_hi)
     if hi - lo <= 0.05:
@@ -228,14 +234,14 @@ def _punch_keys(
     keys: list[tuple[float, float]] = []
     if span_lo >= item_lo:  # ramp-in 在本 shot 內
         keys.append((span_lo - item_lo, 1.0))
-        keys.append((min(span_lo + ramp, item_hi) - item_lo, 1.15))
+        keys.append((min(span_lo + ramp, item_hi) - item_lo, scale))
     else:  # span 從前一 shot 延續進來——開頭就是 punch 級
-        keys.append((0.0, 1.15))
+        keys.append((0.0, scale))
     if span_hi <= item_hi:  # ramp-out 在本 shot 內
-        keys.append((max(span_hi - ramp, lo) - item_lo, 1.15))
+        keys.append((max(span_hi - ramp, lo) - item_lo, scale))
         keys.append((span_hi - item_lo, 1.0))
     else:
-        keys.append((item_hi - item_lo, 1.15))
+        keys.append((item_hi - item_lo, scale))
     # 去重疊（極短交集時 in/out 撞在一起）
     dedup: list[tuple[float, float]] = []
     for t, v in keys:
@@ -246,14 +252,23 @@ def _punch_keys(
 
 
 def _scurve_expand(keys: list[tuple[float, float]], samples: int = 7) -> list[tuple[float, float]]:
-    """ramp 段展開成 smootherstep S 曲線取樣（修修六輪：要慢→快→慢的
-    ease-in-ease-out，不是等速；spline 預設內插不可信，直接取樣鎖形狀）。"""
+    """ramp 段展開成 easing 取樣（六/七輪：spline 預設內插等速不可信，直接取樣鎖形狀）。
+
+    - 放大段（ramp-in）：back-out 曲線＝慢起 → 衝刺 → **過衝 ~7% 回彈落定**
+      （七輪：要更 dramatic）
+    - 縮回段（ramp-out）：smootherstep 慢快慢，不回彈
+    - 兩鍵間距 <0.1s（cut 硬切）不取樣
+    """
     out = [keys[0]]
     for (t0, v0), (t1, v1) in zip(keys, keys[1:]):
-        if v1 != v0 and t1 > t0:
+        if v1 != v0 and t1 - t0 >= 0.1:
             for i in range(1, samples + 1):
                 u = i / (samples + 1)
-                s = 6 * u**5 - 15 * u**4 + 10 * u**3
+                if v1 > v0:  # ramp-in：easeOutBack（~10% 過衝回彈）
+                    c1, c3 = 1.70158, 2.70158
+                    s = 1 + c3 * (u - 1) ** 3 + c1 * (u - 1) ** 2
+                else:  # ramp-out：smootherstep
+                    s = 6 * u**5 - 15 * u**4 + 10 * u**3
                 out.append((t0 + (t1 - t0) * u, v0 + (v1 - v0) * s))
         out.append((t1, v1))
     return out
@@ -272,13 +287,19 @@ def _apply_punch_zooms(appended: list[dict], punches: list[dict], fps: float, cf
     - 與 item 靜態 ZoomX 疊乘。reaction shot 不 punch。
     appended: [{item, tl_s, tl_e(timeline 秒), kind, spk}]
     """
-    ramp_sec = cfg["punch_ramp_sec"]
     n = 0
     for p in punches:
+        # style：ramp（speed-ramp 過衝回彈）或 cut（1 frame 硬切直接放大）——
+        # 修修七輪：兩種交互使用。scale 可逐 punch 覆蓋
+        style = p.get("style", "ramp")
+        ramp_sec = cfg["punch_ramp_sec"] if style == "ramp" else 1.0 / fps
+        scale = float(p.get("scale", cfg["punch_scale"]))
         for a in appended:
             if a["kind"] == "reaction":
                 continue
-            keys = _punch_keys(a["tl_s"], a["tl_e"], float(p["t0"]), float(p["t1"]), ramp_sec)
+            keys = _punch_keys(
+                a["tl_s"], a["tl_e"], float(p["t0"]), float(p["t1"]), ramp_sec, scale
+            )
             if not keys:
                 continue
             keys = _scurve_expand(keys)

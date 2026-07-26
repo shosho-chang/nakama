@@ -183,11 +183,15 @@ python scripts/run_short_director.py <episode> --id <winner-id> --stills <dir>
   <1s 的附和不切鏡（切過去再切回來會閃屏）
 - **反應鏡頭**：同人 run 每 ~9s 插 1.8s 聽者點頭畫面再切回（audio 不斷）——
   修修 2026-07-26 二輪回饋「畫面變化太少」的解法，範本語法
-- **內容驅動 punch（五輪裁決，取代機械 max_shot/zoom 交替）**：agent 從
-  tight SRT 標「講重點」的區間寫 `<id>_zoom.json`（timeline 秒）→ 講重點
-  時 **speed-ramp zoom-in**（0.4s 平滑曲線、+15%）、講完 ramp-out。機制：
-  shot item 加 Fusion comp（MediaIn→Transform→MediaOut）、Size 關鍵影格，
-  與 item 靜態 ZoomX 疊乘——一下子跳 zoom 是違規
+- **內容驅動 punch（五～七輪裁決）**：agent 從 tight SRT 標「講重點」的
+  區間寫 `<id>_zoom.json`（timeline 秒），每項可帶 `style` 與 `scale`：
+  - `"style":"ramp"`（預設）＝speed-ramp：easeOutBack 慢起→衝刺→**過衝
+    ~10% 回彈**（dramatic），縮回走 smootherstep；0.5s、+25%
+  - `"style":"cut"`＝1 frame **硬切直接放大**（爆點句用）
+  - **兩種交互使用**（七輪裁決）：鋪陳升溫→ramp、爆點句→cut
+  機制：shot item 加 Fusion comp（MediaIn→Transform→MediaOut）、Size
+  關鍵影格取樣、**Pivot 鎖臉**（Center 是位置不是支點，勿踩）、與 item
+  靜態 ZoomX 疊乘
 - 開場 4 秒上下分割雙人畫面（來賓上、修修下——參考 E:\\data 鐘穎範本
   的開場語法），`--no-opener` 關閉
 - **字幕細切**（修修 2026-07-26 三輪）：cue 再切成 5–9 字呼吸單元，詞級
