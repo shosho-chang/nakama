@@ -23,6 +23,10 @@ episode `highlights/tighten/cards/` → 匯入 media pool「Cards」bin →
 （緊·導播）timeline video track 3 依 t0 落點、t1 截長。冪等：舊卡
 items/media 先清；v1 的「titles - <id>」巢狀層與子 timeline 一併清除。
 
+版本釘死 hyperframes@0.7.72（重現性——它兩天一版，未釘版每次 render 漂
+到 latest，且 cache hash 不含引擎版本；升版是有意識的決定：改版號→重渲
+樣張驗過→cache 自然失效重建）。
+
 用法：
     python scripts/run_short_titles.py <episode> --id punch-S1 [--stills <dir>]
 """
@@ -73,7 +77,7 @@ def _render_card(variables: dict, out_path: Path) -> None:
     vars_file = out_path.with_suffix(".vars.json")
     vars_file.write_text(json.dumps(variables, ensure_ascii=False, indent=1), encoding="utf-8")
     cmd = (
-        "npx --yes hyperframes render . -c compositions/punch_card.html "
+        "npx --yes hyperframes@0.7.72 render . -c compositions/punch_card.html "
         f'-o "{out_path}" --format mov -q standard --quiet --no-browser-gpu '
         f'--variables-file "{vars_file}"'
     )
