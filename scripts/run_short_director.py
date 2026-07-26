@@ -55,6 +55,10 @@ DEFAULT_CFG = {
     "zoom_punch": 3.68,  # base × 1.15，同人連續 shot 的 punch-in
     "min_shot": 1.0,  # 短於此的說話者 run 不切鏡（併入前一 shot）
     "opener_sec": 4.0,  # 開場上下分割秒數（不足 2s 的保留段不做）
+    # 節奏（修修 2026-07-26 二輪：畫面變化太少——對齊鐘穎範本 ~3s/刀）
+    "reaction_every": 9.0,  # 同人 run 每 ~9s 插一個聽者反應鏡頭
+    "reaction_sec": 1.8,  # 反應鏡頭長度（點頭畫面，audio 不斷）
+    "max_shot": 4.0,  # 任一 shot 上限——超過在詞邊界均分並交替 zoom
 }
 SRC_W = 1920
 FIT = 1080 / 1920  # 16:9 源在 1080 寬 timeline 的 fit 縮放
@@ -123,6 +127,48 @@ def _word_speakers(episode_dir: Path, t0: float, t1: float) -> list[tuple[float,
     return out
 
 
+def _snap(t: float, word_starts: list[float], lo: float, hi: float) -> float:
+    """把切點吸附到最近的詞開頭（±0.6s 內；夾在 [lo, hi]）。"""
+    cands = [w for w in word_starts if abs(w - t) <= 0.6 and lo <= w <= hi]
+    return min(cands, key=lambda w: abs(w - t)) if cands else min(max(t, lo), hi)
+
+
+def _expand_run(s: float, e: float, spk: int, word_starts: list[float], cfg: dict) -> list[dict]:
+    """單一說話者 run → 反應鏡頭插入 + max_shot 切分。
+
+    - run 每 ~reaction_every 秒插一個 reaction_sec 的聽者反應鏡頭
+      （鐘穎範本語法：獨白中切聽者點頭 1-2s 再切回，audio 不斷）
+    - 說話者 chunk 超過 max_shot 在詞邊界均分（切分處靠 zoom 交替製造節奏）
+    """
+    dur = e - s
+    rsec = cfg["reaction_sec"]
+    k = int(dur // cfg["reaction_every"])
+    pieces: list[tuple[float, float, int, str]] = []
+    if k > 0:
+        chunk = (dur - k * rsec) / (k + 1)
+        pos = s
+        for _ in range(k):
+            r0 = _snap(pos + chunk, word_starts, pos + cfg["min_shot"], e - rsec - cfg["min_shot"])
+            pieces.append((pos, r0, spk, "talk"))
+            pieces.append((r0, r0 + rsec, 1 - spk, "reaction"))
+            pos = r0 + rsec
+        pieces.append((pos, e, spk, "talk"))
+    else:
+        pieces.append((s, e, spk, "talk"))
+    out: list[dict] = []
+    for ps, pe, pspk, kind in pieces:
+        n = max(1, int(-(-(pe - ps) // cfg["max_shot"]))) if kind == "talk" else 1
+        edges = [ps + (pe - ps) * i / n for i in range(1, n)]
+        cur = ps
+        for t in edges:
+            cut = _snap(t, word_starts, cur + cfg["min_shot"], pe - cfg["min_shot"])
+            if cut - cur >= cfg["min_shot"]:
+                out.append({"s": cur, "e": cut, "spk": pspk, "kind": kind})
+                cur = cut
+        out.append({"s": cur, "e": pe, "spk": pspk, "kind": kind})
+    return out
+
+
 def build_shots(
     segs: list[tuple[float, float]], words: list[tuple[float, float, int]], cfg: dict
 ) -> list[dict]:
@@ -131,7 +177,8 @@ def build_shots(
     - shot 邊界 = 保留段邊界 ∪ 段內說話者切換點（詞邊界）
     - 短於 min_shot 的說話者 run 不切鏡（併入前一 shot——0.5s 的附和
       切過去再切回來會閃屏）
-    - zoom：同說話者連續 shot 交替 base/punch；說話者切換重置為 base
+    - 長 run 插聽者反應鏡頭 + max_shot 均分（_expand_run，對齊範本 ~3s/刀）
+    - zoom：同說話者連續 shot 交替 base/punch；說話者切換/反應鏡頭重置 base
     """
     shots: list[dict] = []
     for seg_s, seg_e in segs:
@@ -161,16 +208,21 @@ def build_shots(
         merged = coalesced
         if not merged:
             merged = [[seg_s, seg_e, shots[-1]["spk"] if shots else 1]]
-        # 夾回保留段邊界；shot 邊界取 run 交界
+        # 夾回保留段邊界；shot 邊界取 run 交界；長 run 展開（反應鏡頭 + 均分）
         merged[0][0], merged[-1][1] = seg_s, seg_e
+        word_starts = sorted(w[0] for w in in_seg)
         for i, r in enumerate(merged):
             if i + 1 < len(merged):
                 r[1] = merged[i + 1][0]
-            shots.append({"s": float(r[0]), "e": float(r[1]), "spk": int(r[2])})
-    # zoom 交替
+            shots.extend(_expand_run(float(r[0]), float(r[1]), int(r[2]), word_starts, cfg))
+    # zoom 交替（反應鏡頭固定 base，也重置說話者的交替節奏）
     streak = 0
     for i, sh in enumerate(shots):
-        if i and shots[i - 1]["spk"] == sh["spk"]:
+        if sh.get("kind") == "reaction":
+            streak = 0
+            sh["zoom"] = cfg["zoom_base"]
+            continue
+        if i and shots[i - 1]["spk"] == sh["spk"] and shots[i - 1].get("kind") != "reaction":
             streak += 1
         else:
             streak = 0

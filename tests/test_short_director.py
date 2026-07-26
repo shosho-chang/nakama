@@ -30,28 +30,51 @@ def _words(*runs):
 def test_shots_switch_on_speaker_change():
     words = _words((0, 5, 1, 10), (5, 10, 0, 10))
     shots = build_shots([(0.0, 10.0)], words, DEFAULT_CFG)
-    assert [s["spk"] for s in shots] == [1, 0]
-    assert shots[0]["e"] == shots[1]["s"]  # 邊界相接無縫
+    # 5s run > max_shot 4 → 各切成 2；說話者切換點保留
+    assert [s["spk"] for s in shots] == [1, 1, 0, 0]
+    for a, b in zip(shots, shots[1:]):
+        assert a["e"] == b["s"]  # 邊界相接無縫
 
 
 def test_shots_short_interjection_absorbed():
-    # 0.5s 的附和（min_shot=1.0）不切鏡
+    # 0.5s 的附和（min_shot=1.0）不切鏡；吸收後 10s 長 run 插一個反應鏡頭
     words = _words((0, 4, 1, 8), (4, 4.5, 0, 2), (4.5, 10, 1, 10))
     shots = build_shots([(0.0, 10.0)], words, DEFAULT_CFG)
-    assert [s["spk"] for s in shots] == [1]
+    reactions = [s for s in shots if s.get("kind") == "reaction"]
+    assert len(reactions) == 1
+    assert reactions[0]["spk"] == 0  # 聽者 = 另一人
+    assert abs((reactions[0]["e"] - reactions[0]["s"]) - DEFAULT_CFG["reaction_sec"]) < 1e-6
+    assert all(s["spk"] == 1 for s in shots if s.get("kind") != "reaction")
 
 
-def test_shots_zoom_alternates_within_speaker():
-    # 兩個保留段、同說話者 → 交替 base/punch
+def test_shots_max_shot_split_and_zoom_alternation():
+    # 兩個保留段、同說話者：5s > max_shot → 各切 2，zoom 交替 b/p/b/p
     words = _words((0, 5, 1, 10), (6, 11, 1, 10))
     shots = build_shots([(0.0, 5.0), (6.0, 11.0)], words, DEFAULT_CFG)
-    assert [s["zoom"] for s in shots] == [DEFAULT_CFG["zoom_base"], DEFAULT_CFG["zoom_punch"]]
+    assert len(shots) == 4
+    assert all((s["e"] - s["s"]) <= DEFAULT_CFG["max_shot"] + 0.7 for s in shots)
+    b, p = DEFAULT_CFG["zoom_base"], DEFAULT_CFG["zoom_punch"]
+    assert [s["zoom"] for s in shots] == [b, p, b, p]
 
 
 def test_shots_zoom_resets_on_speaker_change():
     words = _words((0, 5, 1, 10), (5, 10, 0, 10))
     shots = build_shots([(0.0, 10.0)], words, DEFAULT_CFG)
-    assert all(s["zoom"] == DEFAULT_CFG["zoom_base"] for s in shots)
+    # 說話者切換處（shot 2）zoom 重置回 base
+    assert shots[2]["spk"] != shots[1]["spk"]
+    assert shots[2]["zoom"] == DEFAULT_CFG["zoom_base"]
+
+
+def test_shots_long_monologue_cadence():
+    # 20s 獨白：2 個反應鏡頭 + 說話 chunk 全部 ≤ max_shot（範本 ~3s/刀節奏）
+    words = _words((0, 20, 1, 40))
+    shots = build_shots([(0.0, 20.0)], words, DEFAULT_CFG)
+    reactions = [s for s in shots if s.get("kind") == "reaction"]
+    assert len(reactions) == 2
+    talk = [s for s in shots if s.get("kind") != "reaction"]
+    assert all((s["e"] - s["s"]) <= DEFAULT_CFG["max_shot"] + 0.7 for s in talk)
+    total = sum(s["e"] - s["s"] for s in shots)
+    assert abs(total - 20.0) < 1e-6  # 不多不少覆蓋整段
 
 
 def test_pan_centers_face():
