@@ -101,31 +101,44 @@ def validate(episode_dir: Path) -> dict:
         elif not (lo <= dur <= hi):
             issues.append(f"{c['id']}: {_fmt_min(dur)} 落在容忍帶外（{lo}-{hi}s）")
 
-    # 同格式重疊去重：重疊 >50%（相對較短者）→ 淘汰 rationale 較短的一方
-    kept: list[dict] = []
-    dropped: list[str] = []
-    for c in sorted(data["candidates"], key=lambda x: -len(x.get("rationale", ""))):
-        clash = next(
-            (
-                k
-                for k in kept
-                if k["format"] == c["format"]
-                and (
-                    min(k["t_end"], c["t_end"]) - max(k["t_start"], c["t_start"])
-                    > 0.5 * min(k["t_end"] - k["t_start"], c["t_end"] - c["t_start"])
-                )
-            ),
-            None,
-        )
-        if clash:
-            dropped.append(f"{c['id']}（與 {clash['id']} 重疊 >50%）")
-        else:
-            kept.append(c)
-    kept.sort(key=lambda x: (x["format"], x["t_start"]))
-    data["candidates"] = kept
+    # 同格式重疊 >50% → **不淘汰**，標 variant 群組（修修 2026-07-26 裁決：
+    # 去重在評分前用 rationale 長度決生死，害「數位排毒+睡眠運動」整塊從未
+    # 被評分就消失。重疊候選是同素材的不同切法——全部進盲審，評分後同群組
+    # 只取最高分者佔排名（規則在 SKILL.md Step 2）。
+    groups = _variant_groups(data["candidates"])
+    for c in data["candidates"]:
+        c["variant_group"] = groups[c["id"]]
+    data["candidates"].sort(key=lambda x: (x["format"], x["t_start"]))
     cand_path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-    counts = {f: sum(1 for c in kept if c["format"] == f) for f in ("long", "short")}
-    return {"status": "validated", "kept": counts, "dropped": dropped, "band_issues": issues}
+    counts = {f: sum(1 for c in data["candidates"] if c["format"] == f) for f in ("long", "short")}
+    n_groups = len(set(groups.values()))
+    return {
+        "status": "validated",
+        "kept": counts,
+        "variant_groups": n_groups,
+        "band_issues": issues,
+    }
+
+
+def _variant_groups(candidates: list[dict]) -> dict[str, str]:
+    """同格式、重疊 >50%（相對較短者）的候選歸同一 variant 群組（連通分量）。"""
+    parent: dict[str, str] = {c["id"]: c["id"] for c in candidates}
+
+    def find(x: str) -> str:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for i, a in enumerate(candidates):
+        for b in candidates[i + 1 :]:
+            if a["format"] != b["format"]:
+                continue
+            overlap = min(a["t_end"], b["t_end"]) - max(a["t_start"], b["t_start"])
+            shorter = min(a["t_end"] - a["t_start"], b["t_end"] - b["t_start"])
+            if overlap > 0.5 * shorter:
+                parent[find(a["id"])] = find(b["id"])
+    return {cid: find(cid) for cid in parent}
 
 
 def _segment_srt(episode_dir: Path, cid: str, t_start: float, t_end: float) -> Path:
