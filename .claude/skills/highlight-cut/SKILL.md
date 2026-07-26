@@ -98,7 +98,19 @@ python scripts/run_highlight_cut.py <episode> --materialize
 - timeline 進 `Highlights` bin，命名 `長1 - <標題>`
 - 主 timeline 全候選打 marker（當選紅／落選藍），冪等（重跑先清舊）
 
-## Step 4 — 選段企劃報告
+## Step 4 — 標題（必經 title-brainstorm，修修 2026-07-26 裁決）
+
+**miner 給的標題只是工作代號**（timeline 命名、報告索引用），**不是發布標題**。
+每個當選段落各自跑一次 `title-brainstorm` skill：
+
+- input = 該段落的逐字稿節錄（`highlights/srt/<id>_rNNN.srt` 或 review pack 的
+  該段文本存成暫存檔）
+- 走它完整流程（TA 定位 → 關鍵字評分 → 6 角度發散 → panel 冷讀）產 Top 5
+- 產出寫進選段企劃報告該段落的「標題候選」欄
+
+miner 標題自產、跳過 title-brainstorm = 違規（曾產出段內未出現關鍵詞的標題）。
+
+## Step 4b — 選段企劃報告
 
 寫 `highlights/選段企劃-<episode>.md`：
 
