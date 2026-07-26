@@ -84,9 +84,15 @@ def _remove_punctuation(text: str) -> str:
     return re.sub(r" {2,}", " ", text).strip()
 
 
+# OpenCC s2twp 過度轉換修正（修修 2026-07-26 抓到「就是隻要」）：
+# s2twp 的詞庫把「是只要」誤匹配成「是隻要」等；轉換後把副詞用法的
+# 隻X 修回 只X——前面是量詞語境（一隻/這隻/那隻…）時不動
+_ZHI_FIX = re.compile(r"(?<![一兩三幾這那每兩隻])隻(?=(要|是|能|會|有|好|不過|剩))")
+
+
 def _to_traditional(text: str) -> str:
-    """簡體中文轉繁體中文（使用 OpenCC lazy singleton）。"""
-    return _get_cc().convert(text)
+    """簡體中文轉繁體中文（OpenCC lazy singleton + 過度轉換修正）。"""
+    return _ZHI_FIX.sub("只", _get_cc().convert(text))
 
 
 def _extract_hotwords(context_files: list[str | Path]) -> list[str]:
