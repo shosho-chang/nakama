@@ -118,3 +118,17 @@ def test_fine_spans_never_severs_words():
     for text, word in cases:
         parts = [text[a:b] for a, b in _fine_spans(text)]
         assert any(word in p for p in parts), f"{word} 被切斷: {parts}"
+
+
+def test_fine_spans_hard_limit_10():
+    # 修修 2026-07-26 十輪：中文 10 字 hard limit——實砍案例「效果量」句
+    from run_short_tighten import _disp_len
+
+    for text in (
+        "就發現這個「效果量」其實不是很大",
+        "有一點「數位排毒」的概念在裡面喔",
+        "培養自覺的這個「後設認知」能力",
+    ):
+        parts = [text[a:b] for a, b in _fine_spans(text)]
+        assert all(_disp_len(p) <= 10 for p in parts), parts
+        assert "".join(parts).replace(" ", "") == text.replace(" ", "")

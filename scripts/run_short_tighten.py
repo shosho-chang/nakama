@@ -246,11 +246,17 @@ def _keep_segments(t0: float, t1: float, cuts: list[dict]) -> list[tuple[float, 
 # ⚠️ 切點必走 jieba 詞邊界（shared/transcriber._force_break）。2026-07-26 教訓：
 # 第一版純按字數切，把「產品/短效/長期/改變/聯考」全部攔腰砍——中文斷行
 # 沒有分詞就是錯的，任何字數規則都救不回來。
-_FINE_MAX = 9  # 一行字數上限（含括號；括號保護時可容忍略超）
+_FINE_MAX = 8  # 一行目標寬（顯示寬：中文=1、ASCII/空白=0.5）
+_FINE_HARD = 10  # 修修 2026-07-26 十輪裁決：中文 10 字 = hard limit，超過必拆
 _FINE_MIN = 4  # 短於此的單元往前併
 _OPEN_B = "「《【（"
 _CLOSE_B = "」》】）"
 _NO_START = "的了嗎呢吧」》】）"  # 單元不可用這些字開頭（斷在助詞前）
+
+
+def _disp_len(s: str) -> float:
+    """顯示寬：CJK 全形 = 1、ASCII/空白 = 0.5（拉丁字在等寬中文行裡佔半格）。"""
+    return sum(0.5 if ord(c) < 128 else 1.0 for c in s)
 
 
 def _in_brackets(text: str, pos: int) -> bool:
@@ -263,14 +269,50 @@ def _in_brackets(text: str, pos: int) -> bool:
     return depth > 0
 
 
+def _atom_spans(text: str, a: int, b: int) -> list[tuple[int, int]]:
+    """clause [a,b) → 原子 span 列表：括號群組不可分割、其餘 jieba 詞。"""
+    import jieba
+
+    from shared.transcriber import ensure_tw_jieba
+
+    ensure_tw_jieba()
+    atoms: list[tuple[int, int]] = []
+    i = a
+    while i < b:
+        if text[i] in _OPEN_B:
+            depth = 0
+            j = i
+            while j < b:
+                if text[j] in _OPEN_B:
+                    depth += 1
+                elif text[j] in _CLOSE_B:
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            j = min(j + 1, b)
+            atoms.append((i, j))
+            i = j
+        else:
+            j = i
+            while j < b and text[j] not in _OPEN_B:
+                j += 1
+            pos = i
+            for w in jieba.cut(text[i:j]):
+                atoms.append((pos, pos + len(w)))
+                pos += len(w)
+            i = j
+    return atoms
+
+
 def _fine_spans(text: str) -> list[tuple[int, int]]:
-    """cue 文字 → 5–9 字單元的 char span 列表。
+    """cue 文字 → 呼吸單元 char span 列表（目標 ~8 寬、**hard limit 10**）。
 
-    空格（停頓標記）優先切 clause → 每 clause 走 jieba greedy 打包
-    （_force_break，詞絕不橫跨行）→ 括號完整性/助詞行首/過短單元後修。
+    空格（停頓標記）優先切 clause → clause 內原子化（括號群組整塊、其餘
+    jieba 詞）→ greedy 打包：≤_FINE_MAX 直接收，收尾原子容忍到 _FINE_HARD
+    （避免孤兒尾行）。超過 hard limit 的行只可能來自單一不可分原子（超長
+    括號群組/英文詞），保留並記 warning。
     """
-    from shared.transcriber import _force_break
-
     clauses: list[tuple[int, int]] = []
     a = 0
     for i, ch in enumerate(text):
@@ -280,34 +322,44 @@ def _fine_spans(text: str) -> list[tuple[int, int]]:
             a = i + 1
     if a < len(text):
         clauses.append((a, len(text)))
-    units: list[tuple[int, int]] = []
+
+    units: list[list[int]] = []
     for ca, cb in clauses:
-        if cb - ca <= _FINE_MAX:
-            units.append((ca, cb))
-            continue
-        cur = ca
-        for chunk in _force_break(text[ca:cb], _FINE_MAX, hard_max=_FINE_MAX + 4):
-            i = text.find(chunk, cur)
-            if i < 0:  # 定位失敗（不應發生）→ 整 clause 一行
-                units.append((ca, cb))
-                cur = cb
-                break
-            units.append((i, i + len(chunk)))
-            cur = i + len(chunk)
-    # 後修：括號被拆開 / 行首助詞 → 併入前一單元；過短單元往前併
+        atoms = _atom_spans(text, ca, cb)
+        cur: list[int] | None = None
+        for k, (sa, sb) in enumerate(atoms):
+            if cur is None:
+                cur = [sa, sb]
+                continue
+            w_ext = _disp_len(text[cur[0] : sb])
+            is_last = k == len(atoms) - 1
+            if w_ext <= _FINE_MAX or (is_last and w_ext <= _FINE_HARD):
+                cur[1] = sb
+            else:
+                units.append(cur)
+                cur = [sa, sb]
+        if cur is not None:
+            units.append(cur)
+
+    # 後修：行首助詞 / 過短單元往前併——但**絕不超過 hard limit**
     merged: list[list[int]] = []
     for ua, ub in units:
-        joinable = merged and ub - merged[-1][0] <= _FINE_MAX + 4
-        if merged and (
-            _in_brackets(text, ua)
-            or text[merged[-1][1] - 1] in _OPEN_B
-            or (text[ua] in _NO_START and joinable)
-            or (joinable and ((merged[-1][1] - merged[-1][0]) < _FINE_MIN or (ub - ua) < _FINE_MIN))
+        joinable = merged and _disp_len(text[merged[-1][0] : ub]) <= _FINE_HARD
+        if (
+            merged
+            and joinable
+            and (
+                text[ua] in _NO_START
+                or (merged[-1][1] - merged[-1][0]) < _FINE_MIN
+                or (ub - ua) < _FINE_MIN
+            )
         ):
-            if _in_brackets(text, ua) or text[merged[-1][1] - 1] in _OPEN_B or joinable:
-                merged[-1][1] = ub
-                continue
+            merged[-1][1] = ub
+            continue
         merged.append([ua, ub])
+    for ua, ub in merged:
+        if _disp_len(text[ua:ub]) > _FINE_HARD:
+            logger.warning(f"字幕行超過 hard limit {_FINE_HARD}：{text[ua:ub]!r}（不可分原子）")
     return [(a, b) for a, b in merged]
 
 
@@ -423,7 +475,7 @@ def _retime_srt(
 
 
 def apply(episode_dir: Path, cid: str) -> dict:
-    from build_resolve_project import _template_path, connect_resolve, find_main_video
+    from build_resolve_project import _template_path_short, connect_resolve, find_main_video
 
     c, w = _load_winner(episode_dir, cid)
     t0, t1 = float(c["t_start"]), float(c["t_end"])
@@ -471,7 +523,7 @@ def apply(episode_dir: Path, cid: str) -> dict:
     ) or mp.AddSubFolder(root, "Highlights")
     mp.SetCurrentFolder(hbin)
 
-    template = _template_path()
+    template = _template_path_short()
     tl = None
     if template.exists():
         tl = mp.ImportTimelineFromFile(str(template), {})

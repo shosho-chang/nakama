@@ -341,7 +341,7 @@ end)
 def direct(
     episode_dir: Path, cid: str, stills_dir: Path | None = None, opener: bool = True
 ) -> dict:
-    from build_resolve_project import _template_path, connect_resolve
+    from build_resolve_project import _template_path_short, connect_resolve
 
     c, w = _load_winner(episode_dir, cid)
     t0, t1 = float(c["t_start"]), float(c["t_end"])
@@ -415,7 +415,7 @@ def direct(
         (f for f in root.GetSubFolderList() if f.GetName() == "Highlights"), None
     ) or mp.AddSubFolder(root, "Highlights")
     mp.SetCurrentFolder(hbin)
-    template = _template_path()
+    template = _template_path_short()
     tl = None
     if template.exists():
         tl = mp.ImportTimelineFromFile(str(template), {})
