@@ -58,7 +58,7 @@ DEFAULT_CFG = {
     # 節奏（修修 2026-07-26 二輪：畫面變化太少——對齊鐘穎範本 ~3s/刀）
     "reaction_every": 9.0,  # 同人 run 每 ~9s 插一個聽者反應鏡頭
     "reaction_sec": 1.8,  # 反應鏡頭長度（點頭畫面，audio 不斷）
-    "punch_ramp_sec": 0.5,  # 內容驅動 punch 的 speed-ramp zoom-in/out 秒數
+    "punch_ramp_sec": 0.2,  # speed-ramp zoom 秒數（十三輪：無回彈後 0.5 太慢，0.2 快狠）
     "face_y": {"0": 330, "1": 330},  # 1080 高源片的眼線 y（punch zoom 鎖臉用）
 }
 SRC_W = 1920
