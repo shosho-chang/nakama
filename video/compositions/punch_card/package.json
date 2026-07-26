@@ -1,0 +1,9 @@
+{
+  "name": "punch_card",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes hyperframes preview",
+    "render": "npx --yes hyperframes render"
+  }
+}

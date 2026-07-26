@@ -210,13 +210,17 @@ script DEFAULT_CFG）；先跑一支 `--stills` 看樣張確認構圖再跑其�
 Pan 1:1、Tilt ×0.3164 且不隨 zoom——見 script 常數註解），改構圖參數後
 必用 `--stills` 樣張驗證，不能只信計算。
 
-## Step 8 — punch 卡（graphics 層，修修 2026-07-26 四輪裁決）
+## Step 8 — punch 卡（hyperframes overlay，修修 2026-07-26 八輪裁決）
 
-title 不走 subtitle track（單一 style 天花板），走 Fusion Text+ graphics：
-橘底大字（#E87000 逐行塊）、白 Noto Sans TC Black、fade+pop 進出場。
-每支短片 2–3 張，**文字必須是講者原話**（範本語法：verbatim 片段）。
-卡片紀律（修修五輪）：**顯示 ~2s 就退**（太慢消失會煩）、`pos_y` 0.63
-下移避臉（punch zoom 時臉佔上半屏，0.55 會擋臉）。
+title 不走 subtitle track 也不走 Fusion Text+（固定 5s/插入模式/動畫天花板，
+v1 已退役），走 **hyperframes**（Brook 影片線 render 引擎）：
+`video/compositions/punch_card/` HTML/CSS/GSAP composition →
+`npx hyperframes render --format mov` 出 **ProRes 4444 帶 alpha** →
+普通 media clip 疊（緊·導播）track 3，落點/長度全自由。
+
+視覺：逐行橘塊 #E87000、LINE Seed TW 特黑、逐行 swipe-in + back-out pop、
+快收退場。**文字必須是講者原話**（範本語法），每行 ≤6 字（150px 字面）。
+卡片紀律：顯示 ~2s 就退、`pos_y` 0.63 下移避臉。
 
 流程：agent 從 `<id>_tight` SRT 選 punch 時間點 → 寫
 `highlights/tighten/<id>_titles.json`（t0/t1 = 緊·導播 timeline 秒）→
@@ -225,12 +229,14 @@ title 不走 subtitle track（單一 style 天花板），走 Fusion Text+ graph
 python scripts/run_short_titles.py <episode> --id <winner-id> --stills <dir>
 ```
 
-機制限制（實測，見 script docstring）：InsertFusionTitle 是插入模式，卡片
-放獨立「titles - <id>」timeline 巢狀疊 track 3（巢狀空白透明）；生成器
-固定 5s，顯示窗口靠 Opacity 關鍵影格（Lua comp:Execute）——**相鄰卡片
-t0 至少差 5 秒**，違反 script 會擋。樣張必驗（--stills）。
+（逐卡 render ~20s、參數 hash cache；冪等清舊卡；樣張必驗。渲染要
+node/npx——Cowork 沙盒可跑 render 產 mov，疊軌仍要本機 Resolve。）
 
-## 修修換段時
+改 composition 樣式/動畫：編輯 `punch_card.html` → hash 變 → 全卡重渲。
+alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺口
+可據此解鎖。
+
+## 修修換段時## 修修換段時
 
 改 `winners.json`（換 id/rank）→ 重跑 `--materialize`（冪等，30 秒）。
 （緊）版重出：改 cuts.json → 重跑 `--apply --id`（冪等，同名重建）；
