@@ -239,7 +239,7 @@
 - [project_brook_image_pipeline.md](project_brook_image_pipeline.md) — Brook 圖片生成管線（blog/IG/YT 縮圖）下一輪專題
 - [project_repurpose_flow.md](project_repurpose_flow.md) — 部落格 → IG 知識圖表等平台內容重製，下一階段實作
 - [project_podcast_theme_video_repurpose.md](project_podcast_theme_video_repurpose.md) — **Line 1 補位**：訪談 → LLM 抽亮點 → 自動剪 10-20 min 主題影片 + SEO Title + YT Description + Thumbnail（YouTube 通路）
-- [project_envato_api_reality.md](project_envato_api_reality.md) — Envato Elements 無 API，用 Unsplash/Pexels/Flux 替代方案
+- [project_envato_api_reality.md](project_envato_api_reality.md) — Envato 無 API 但 Claude in Chrome 可全自動搜+授權+下載（2026-07 實測）；下載落瀏覽器預設目錄 E:\
 - [reference_infra_xcloud_vultr.md](reference_infra_xcloud_vultr.md) — VPS 規格 2vCPU/4GB，xCloud on Vultr，Cloudflare R2 備份
 - [project_case_studies_archive.md](project_case_studies_archive.md) — vault `Case Studies/` 目錄收錄對話案例，首份 2026-04-22 WP 整合規劃
 - [project_phase1_infra_checkpoint.md](project_phase1_infra_checkpoint.md) — Phase 1 憑證 setup 進度 checkpoint（compact 保留用）
