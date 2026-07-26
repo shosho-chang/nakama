@@ -110,10 +110,13 @@ def polish(episode_dir: Path, *, dry_run: bool = False) -> dict:
     srt_path = episode_dir / SRT_NAME
     cues = _parse_srt(srt_path.read_text(encoding="utf-8"))
     moves: list[dict] = []
+    ops: list[dict] = []
     for f in sorted(episode_dir.glob(MOVES_GLOB)):
-        moves.extend(json.loads(f.read_text(encoding="utf-8")).get("moves", []))
+        d = json.loads(f.read_text(encoding="utf-8"))
+        moves.extend(d.get("moves", []))
+        ops.extend(d.get("ops", []))
     moves.sort(key=lambda m: m["after_cue"])
-    if not moves:
+    if not moves and not ops:
         return {"status": "no-moves"}
 
     meta = json.loads((episode_dir / "subs/words.json").read_text(encoding="utf-8"))
@@ -190,7 +193,76 @@ def polish(episode_dir: Path, *, dry_run: bool = False) -> dict:
         cues[i + 1] = [new_b_start, b[1], right]
         applied += 1
 
-    if not dry_run and applied:
+    # --- ops：split（附和語/混切 cue 切成兩個）與 merge（孤兒 cue 併回）---
+    # 用「文字」定位而非序號——moves 套用後序號已飄移，文字才是穩定 anchor
+    ops_applied = 0
+    for op in ops:
+        if "split_text" in op:
+            hits = [
+                k
+                for k, c in enumerate(cues)
+                if c[2] == op["split_text"]
+                and ("near_sec" not in op or abs(c[0] - op["near_sec"]) < 3.0)
+            ]
+            if len(hits) != 1:
+                skipped.append(f"split「{op['split_text'][:12]}…」: 命中 {len(hits)} 個 cue")
+                continue
+            k = hits[0]
+            s0, e0, text = cues[k]
+            at = text.find(op["at"])
+            if at <= 0:
+                skipped.append(f"split「{op['split_text'][:12]}…」: 找不到切點「{op['at']}」")
+                continue
+            idx = [
+                j for j, w in enumerate(words) if w["start"] >= s0 - 0.05 and w["end"] <= e0 + 0.05
+            ]
+            if len(idx) < 2:
+                skipped.append(f"split「{op['split_text'][:12]}…」: 找不到對應詞")
+                continue
+            raw = _join_words([words[j] for j in idx])
+            raw_pos = _map_to_raw(text, raw, at)
+            char_of_word = []
+            p = 0
+            for j, kk in enumerate(idx):
+                if j > 0:
+                    probe = _join_words([words[jj] for jj in idx[: j + 1]])
+                    p = len(probe) - len(words[kk]["word"])
+                char_of_word.append(p)
+            bword = next((j for j in range(len(idx)) if char_of_word[j] >= raw_pos), None)
+            if not bword:
+                skipped.append(f"split「{op['split_text'][:12]}…」: 切點詞回捲")
+                continue
+            cues[k] = [s0, words[idx[bword - 1]]["end"], text[:at]]
+            cues.insert(k + 1, [words[idx[bword]]["start"], e0, text[at:]])
+            ops_applied += 1
+        elif "merge_text" in op:
+            hits = [
+                k
+                for k, c in enumerate(cues)
+                if c[2] == op["merge_text"]
+                and ("near_sec" not in op or abs(c[0] - op["near_sec"]) < 3.0)
+            ]
+            if len(hits) != 1:
+                skipped.append(f"merge「{op['merge_text'][:12]}…」: 命中 {len(hits)} 個 cue")
+                continue
+            k = hits[0]
+            into = op.get("into", "prev")
+            t = k - 1 if into == "prev" else k + 1
+            if not (0 <= t < len(cues)):
+                skipped.append(f"merge「{op['merge_text'][:12]}…」: 相鄰 cue 不存在")
+                continue
+            merged_text = cues[t][2] + cues[k][2] if into == "prev" else cues[k][2] + cues[t][2]
+            if len(merged_text) > HARD_MAX:
+                skipped.append(f"merge「{op['merge_text'][:12]}…」: 併後超過 {HARD_MAX} 字")
+                continue
+            lo, hi = (t, k) if into == "prev" else (k, t)
+            cues[lo] = [cues[lo][0], cues[hi][1], merged_text]
+            cues.pop(hi)
+            ops_applied += 1
+        else:
+            skipped.append(f"未知 op: {list(op.keys())}")
+
+    if not dry_run and (applied or ops_applied):
         shutil.copy2(srt_path, episode_dir / BACKUP_NAME)
         lines = [
             f"{seq}\n{_ts(s)} --> {_ts(e)}\n{t}\n" for seq, (s, e, t) in enumerate(cues, start=1)
@@ -200,6 +272,7 @@ def polish(episode_dir: Path, *, dry_run: bool = False) -> dict:
         "status": "dry-run" if dry_run else "polished",
         "moves_total": len(moves),
         "applied": applied,
+        "ops_applied": ops_applied,
         "skipped": skipped,
     }
 
