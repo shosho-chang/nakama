@@ -219,8 +219,15 @@ v1 已退役），走 **hyperframes**（Brook 影片線 render 引擎）：
 普通 media clip 疊（緊·導播）track 3，落點/長度全自由。
 
 視覺：逐行橘塊 #E87000、LINE Seed TW 特黑、逐行 swipe-in + back-out pop、
-快收退場。**文字必須是講者原話**（範本語法），每行 ≤6 字（150px 字面）。
+快收退場。**文字必須是講者原話**（範本語法），每行 ≤6 字（script 硬擋）。
 卡片紀律：顯示 ~2s 就退、`pos_y` 0.63 下移避臉。
+
+**三層字卡架構（修修九輪裁決）**：
+- **tier 1 = hero**：每支**最多 1 張**，放全片最強的一句。168px 超大字、
+  縮放彈入+微旋轉甩正、預設 pos_y 0.58。titles.json 標 `"tier": 1`
+- **tier 2 = 標準 punch 卡**（預設）：150px、2–3 張
+- **tier 3 = 逐字字幕**：走現有 subtitle track（樣式改 DRT 模板全軌生效），
+  **不走 render**——50–104 行逐行渲染成本高又失去 Resolve 內可編輯性
 
 流程：agent 從 `<id>_tight` SRT 選 punch 時間點 → 寫
 `highlights/tighten/<id>_titles.json`（t0/t1 = 緊·導播 timeline 秒）→

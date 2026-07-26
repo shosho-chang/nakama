@@ -57,7 +57,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 COMP_DIR = REPO_ROOT / "video" / "compositions" / "punch_card"
 CARDS_DIR = "highlights/tighten/cards"
 COMP_SEC = 4.0  # punch_card.html data-duration——show_sec 上限（留 0.2s 裕度）
-DEFAULT_POS_Y = 0.66
+# 三層字卡架構（修修 2026-07-26 九輪）：tier1=hero（每支≤1 張，全片最強一句，
+# 超大字）、tier2=標準 punch 卡、tier3=逐字字幕（走 subtitle track，不在本 script）
+DEFAULT_POS_Y = {1: 0.58, 2: 0.66}
+MAX_LINE_CHARS = 6  # 168px（hero）×6 + padding ≈ 1064 ≤ 1080
 
 
 def _card_hash(variables: dict) -> str:
@@ -111,11 +114,18 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
                 "composition data-duration 固定 4s，更長的卡拆兩張或改 t1"
             )
         lines = t["text"].split("\n")
+        tier = int(t.get("tier", 2))
+        if tier not in (1, 2):
+            raise SystemExit(f"卡片 {i} tier={tier} 不合法（1=hero 2=標準）")
+        too_long = [x for x in lines if len(x) > MAX_LINE_CHARS]
+        if too_long:
+            raise SystemExit(f"卡片 {i} 行超過 {MAX_LINE_CHARS} 字：{too_long}——改寫或拆行")
         variables = {
             "line1": lines[0],
             "line2": lines[1] if len(lines) > 1 else "",
             "show_sec": show_sec,
-            "pos_y": float(t.get("pos_y", DEFAULT_POS_Y)),
+            "pos_y": float(t.get("pos_y", DEFAULT_POS_Y[tier])),
+            "tier": tier,
         }
         h = _card_hash(variables)
         mov = cards_dir / f"{cid}_{i}_{h}.mov"
