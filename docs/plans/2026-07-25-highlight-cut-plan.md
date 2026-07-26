@@ -40,6 +40,13 @@ Resolve：`Highlights` bin、timeline 命名 `長1 - <標題>`／`短1 - <標題
 - `.claude/skills/highlight-cut/SKILL.md`：Cowork 編排手冊
 - 零 API 錢：miner + persona 全走 Cowork subagent（subscription quota）
 
+## 修訂（2026-07-26 實戰回饋）
+
+- **Step 2.5 邊界打磨**：長2/長3 開頭殘留上一題收尾語（「對啊我就覺得超級有趣的」
+  「再講運動會講一整集」）——主持人慣性「先收上一題再轉場」且收尾+轉場常在同一
+  cue。修正：miner 規格加「冷開場乾淨 + head_trim」、物化前強制邊界打磨步驟
+  （lens 的 opening 發現必須轉成動作）。見 SKILL.md Step 2.5。
+
 ## v2 路線圖（記錄不做）
 
 - 短片進階剪輯：cold-open 重排、詞級時間戳自動去句間停頓（jump-cut 密度）
