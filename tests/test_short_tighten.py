@@ -70,7 +70,7 @@ def test_fine_spans_split_on_spaces():
     text = "非常短效的「多巴胺」的獎勵 就是它可能"
     spans = _fine_spans(text)
     parts = [text[a:b] for a, b in spans]
-    assert all(len(p) <= _FINE_MAX + 2 for p in parts)
+    assert all(len(p) <= _FINE_MAX + 4 for p in parts)  # 括號保護/短行合併容忍 +4
     assert "".join(parts).replace(" ", "") == text.replace(" ", "")
 
 
@@ -103,3 +103,18 @@ def test_fine_units_fallback_proportional():
     units = _fine_units(10.0, 16.0, text, [])
     assert len(units) == 3
     assert units[0][0] == 10.0 and units[-1][1] == 16.0
+
+
+def test_fine_spans_never_severs_words():
+    # 2026-07-26 回歸：字數切割把雙字詞攔腰砍（產品/短效/長期/改變/聯考/我們）
+    cases = [
+        ("這種 比較科技化的產品它都會提供", "產品"),
+        ("非常短效的「多巴胺」的獎勵", "短效"),
+        ("那一旦我們長期習慣了短 小", "長期"),
+        ("原則上沒有改變我們注意力的本質啦", "改變"),
+        ("只是它會改變你的耐心", "改變"),
+        ("我們去這個聯考可能要準備個十二三年", "聯考"),
+    ]
+    for text, word in cases:
+        parts = [text[a:b] for a, b in _fine_spans(text)]
+        assert any(word in p for p in parts), f"{word} 被切斷: {parts}"
