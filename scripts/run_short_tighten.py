@@ -269,8 +269,33 @@ def _in_brackets(text: str, pos: int) -> bool:
     return depth > 0
 
 
+# 數字後的量詞（16|歲 這種刀口是硬傷——jieba 把數字與量詞切成兩 token，
+# 打包時視為單一原子）
+_CLASSIFIERS = "歲個年月日天週次人隻條張件塊萬千百分秒倍章篇集場句字部本間位名度號"
+
+
+def _load_episode_hotwords(episode_dir: Path) -> int:
+    """episode 專有名詞進 jieba（音譯人名等 OOV——「海德/特」教訓：
+    通用詞庫永遠治不了集別詞彙）。來源 subs/hotwords.txt，一行一詞，
+    由細切後的語意複審 curate。"""
+    import jieba
+
+    from shared.transcriber import ensure_tw_jieba
+
+    ensure_tw_jieba()
+    f = episode_dir / "subs" / "hotwords.txt"
+    n = 0
+    if f.exists():
+        for w in f.read_text(encoding="utf-8").split():
+            if w.strip():
+                jieba.add_word(w.strip(), freq=2000)
+                n += 1
+    return n
+
+
 def _atom_spans(text: str, a: int, b: int) -> list[tuple[int, int]]:
-    """clause [a,b) → 原子 span 列表：括號群組不可分割、其餘 jieba 詞。"""
+    """clause [a,b) → 原子 span 列表：括號群組不可分割、其餘 jieba 詞；
+    數字+量詞黏成單一原子（16歲）。"""
     import jieba
 
     from shared.transcriber import ensure_tw_jieba
@@ -302,7 +327,18 @@ def _atom_spans(text: str, a: int, b: int) -> list[tuple[int, int]]:
                 atoms.append((pos, pos + len(w)))
                 pos += len(w)
             i = j
-    return atoms
+    # 數字原子 + 量詞開頭的下一原子 → 黏合
+    glued: list[tuple[int, int]] = []
+    for sa, sb in atoms:
+        if (
+            glued
+            and text[glued[-1][0] : glued[-1][1]].strip().isdigit()
+            and text[sa] in _CLASSIFIERS
+        ):
+            glued[-1] = (glued[-1][0], sb)
+        else:
+            glued.append((sa, sb))
+    return glued
 
 
 def _fine_spans(text: str) -> list[tuple[int, int]]:
@@ -341,11 +377,19 @@ def _fine_spans(text: str) -> list[tuple[int, int]]:
         if cur is not None:
             units.append(cur)
 
-    # 後修：行首助詞 / 過短單元往前併——但**絕不超過 hard limit**
+    # 後修：行首助詞 / 過短單元往前併——但**絕不超過 hard limit**。
+    # 例外：行首量詞接前行尾數字（「12 3」|「年」跨 clause 案例）**強制併**
+    # ——量詞孤行比超寬一格更不可接受
     merged: list[list[int]] = []
     for ua, ub in units:
         joinable = merged and _disp_len(text[merged[-1][0] : ub]) <= _FINE_HARD
-        if (
+        classifier_orphan = (
+            merged
+            and text[ua] in _CLASSIFIERS
+            and text[merged[-1][1] - 1].isdigit()
+            and _disp_len(text[merged[-1][0] : ub]) <= _FINE_HARD + 1  # 縫合不可撐爆行寬
+        )
+        if classifier_orphan or (
             merged
             and joinable
             and (
@@ -402,6 +446,42 @@ def _fine_units(s: float, e: float, text: str, words: list[dict]) -> list[tuple[
     return out
 
 
+def _collapse_t(t: float, segs: list[tuple[float, float]]) -> float:
+    """源時間 → 塌縮後（jump-cut 成品）時間。"""
+    acc = 0.0
+    for s, e in segs:
+        if t <= s:
+            break
+        acc += min(t, e) - s
+        if t <= e:
+            break
+    return acc
+
+
+def _merge_blocks(
+    cues: list[tuple[float, float, str]],
+    segs: list[tuple[float, float]],
+    max_gap: float = 0.2,
+) -> list[tuple[float, float, str]]:
+    """相鄰無停頓 cue 併成語意塊（連續語流直接串接，不加空格）。
+
+    ⚠️ 相鄰要用**塌縮後**時間判（十一輪複審教訓 ×2）：
+    - 16|歲 兩 cue 之間有停頓剪——源時間有 gap 但成品音軌連續，必須併
+    - 且**先過保留段存活過濾再進來**——被剪掉的 backchannel cue、
+      片頭前/片尾後的 cue 用源時間判相鄰會把已剪掉的字捲回字幕
+      （「我們大腦對那主要」的對、短3 開頭的 paper 回魂案例）
+    """
+    blocks: list[list] = []
+    for s, e, text in cues:
+        gap = max(0.0, _collapse_t(s, segs) - _collapse_t(blocks[-1][1], segs)) if blocks else 9e9
+        if blocks and gap < max_gap:
+            blocks[-1][1] = e
+            blocks[-1][2] += text
+        else:
+            blocks.append([s, e, text])
+    return [(s, e, t) for s, e, t in blocks]
+
+
 def _strip_cut_word(text: str, word: str, rel: float) -> str:
     """從 cue 文字移除被剪掉的贅詞：多次出現時取相對位置最接近剪點的那個。"""
     idxs = [m.start() for m in re.finditer(re.escape(word), text)]
@@ -453,7 +533,24 @@ def _retime_srt(
         if text:
             prepped.append((s, e, text))
     if fine:
+        n_hot = _load_episode_hotwords(episode_dir)
+        if n_hot:
+            logger.info(f"episode 熱詞 {n_hot} 個進 jieba")
         words = json.load(open(episode_dir / "subs" / "words.json", encoding="utf-8"))["words"]
+        # 跨 cue 重排（修修十一輪「16|歲」教訓）：上游 cue 邊界可能切在
+        # 詞中，逐 cue 細切縫不回來——**先過保留段存活過濾**（被剪 cue 的
+        # 字不可回魂）再以塌縮後時間判相鄰併塊，切點重新用詞邊界決定
+        surviving = []
+        for s, e, text in prepped:
+            inter = sum(max(0.0, min(e, se) - max(s, ss)) for ss, se in segs)
+            if inter >= 0.15:
+                surviving.append((s, e, text))
+        prepped = _merge_blocks(surviving, segs)
+        # 數字↔量詞間的 house-style 空格拿掉（「16 歲」→「16歲」）——否則
+        # 空格切 clause 後量詞孤行，強制縫合又會撐爆行寬
+        prepped = [
+            (s, e, re.sub(rf"(\d) (?=[{_CLASSIFIERS}])", "\\1", text)) for s, e, text in prepped
+        ]
         prepped = [u for c in prepped for u in _fine_units(*c, words)]
 
     lines = []

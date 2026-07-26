@@ -204,6 +204,13 @@ python scripts/run_short_director.py <episode> --id <winner-id> --stills <dir>
   `build_resolve_project --make-template-short "<timeline名>"` 產
   `data/resolve/subtitle-template-short.drt`；短片 script 自動用它
   （缺檔退回主模板）。長片/主 timeline 維持原模板
+- **細切後語意複審（必做，修修十一輪：「你沒有派 agent 做語意 review 嗎」）**：
+  agent 逐行讀最終 tight SRT，檢查四類病：(1) 專有名詞被切（海德/特——
+  音譯人名 jieba 不認識 → curate `subs/hotwords.txt` 一行一詞重跑）
+  (2) 數字↔量詞分行（16|歲）(3) 被剪 cue 的字回魂／片頭尾滲入
+  (4) 行寬超限。發現 → 修 root cause → 重建 → 再複審，乾淨才交付。
+  機械層已有的防線：跨 cue 重排（塌縮時間判相鄰＋存活過濾）、數字量詞
+  黏合＋空格正規化、hotwords 熱詞注入——複審是抓機械層漏網的語意層
 - audio 與 Step 6 相同（同一份 cuts.json 保留段）
 
 **執行順序**：director 重跑會整條重建 timeline——titles 巢狀層會被洗掉，
