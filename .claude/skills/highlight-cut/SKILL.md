@@ -137,10 +137,41 @@ critical 必修才能交付。修法：`line_moves_*.json` 支援三種操作—
 **已知極限**：能量 Viterbi 判不出「附和語蓋在對方語流上」的混切（沒錯沒錯/
 對對對），只有終檢的語意層看得到——這是終檢存在的理由。
 
+## Step 6 — 短片緊湊化（修修 2026-07-26：短影片節奏要快狠準）
+
+短片開頭的「那、那」口吃**絕不能出現**，中間停頓/贅詞也要剪，jump cut 越緊
+越好。每支當選短片跑 `run_short_tighten.py`，產出**新** timeline
+`短N - <標題>（緊）`（原 timeline 不動，供對照）：
+
+```
+python scripts/run_short_tighten.py <episode> --detect --id <winner-id>
+# → agent 複審 highlights/tighten/<id>_cuts.json 的 keep=null 項
+python scripts/run_short_tighten.py <episode> --apply --id <winner-id>
+```
+
+複審準則（機械偵測會誤報，語意層把關）：
+
+- **filler「那/啊/喔」拖 ≥0.4s**：連接詞用法照剪（口語遲疑），但要確認剪掉
+  後字幕文字仍通順（script 會同步從 cue 文字移除該字）
+- **stutter 重複字**：真口吃（那那/他他）剪第一個；APP 拼字/數字/疊詞誤報
+  已被 ASCII + 首字時長 ≥0.25s 濾掉，殘餘誤報標 keep=false
+- **backchannel 整句附和 cue（對/嗯/沒錯）**：先用
+  `ffmpeg silencedetect`（-22dB 粗探）看該區有無縫隙——**緊貼前後語流無縫
+  隙 = 重疊型附和，剪了會斬到來賓語音，keep=false**；有獨立空檔才整刀剪
+  （刀口留 60-90ms 護墊）
+- **假起手（裡面就是裡面裡面他他）**：雙字詞重複偵測不到，人工掃該短片
+  頭 10 秒的 cue 文字，發現用 `{"kind":"manual","t0","t1","strip_text"}` 手
+  動下刀（strip_text = 同步從字幕刪除的字串，詞級時間戳定刀口）
+
+字幕重對時規則（script 自動）：cue 跨刀不拆行（塌縮後 min-max 合一行）、
+被剪贅詞同步從文字移除、整句被剪的 backchannel cue 自然消失。
+
 ## 修修換段時
 
 改 `winners.json`（換 id/rank）→ 重跑 `--materialize`（冪等，30 秒）。
+（緊）版重出：改 cuts.json → 重跑 `--apply --id`（冪等，同名重建）。
 
 ## v2 備忘（不做，見 plan 文件）
 
-cold-open 重排、詞級去句間停頓、直式字幕模板、訪談留言補掃校 persona。
+cold-open 重排、直式字幕模板、訪談留言補掃校 persona、（緊）流程套用到
+長片（長片節奏容忍度高，等修修看完短片版成效再決定）。
