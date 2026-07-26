@@ -218,8 +218,8 @@ python scripts/run_short_director.py <episode> --id <winner-id> --stills <dir>
   words.json 實際語音（本輪就是靠對賬抓到短4 整段漂移）
 - audio 與 Step 6 相同（同一份 cuts.json 保留段）
 
-**執行順序**：director 重跑會整條重建 timeline——titles 巢狀層會被洗掉，
-**必須 director → titles 順序重跑**。
+**執行順序**：director 重跑會整條重建 timeline——上層軌全被洗掉，
+**必須 director → broll → titles 順序重跑**。
 
 **換集校準**：機位固定、臉部座標全集通用，但**換集必校**——抓各機位一幀
 量臉部中心 x，寫 `highlights/tighten/director.json` 覆蓋 `face_x`（格式見
@@ -262,7 +262,46 @@ node/npx——Cowork 沙盒可跑 render 產 mov，疊軌仍要本機 Resolve。
 alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺口
 可據此解鎖。
 
-## 修修換段時## 修修換段時
+## Step 9 — 素材層：B-roll / 貼紙 / 概念卡（修修 2026-07-27 通宵裁決，對標鐘穎波旬集）
+
+波旬範本解剖出四種素材語彙，全部走 `highlights/tighten/<id>_broll.json` +
+`run_short_broll.py`（schema 見 script docstring）：
+
+1. **stock video 切出**（比喻具象化：講跑車→跑車片、講孤立→窗邊人影）
+   → track 2 全幅直式裁滿（fill zoom 自動算）
+2. **stock photo**（Ken Burns 慢推 1.0→1.06，Fusion Transform 線性 Size）
+   → track 2
+3. **雙貼紙**（irasutoya 插畫貼講者兩側，講故事/舉例時；彈入+浮動+快收）
+   → `video/compositions/sticker_pair/` hyperframes alpha → track 4
+4. **概念圖解卡**（兩插畫+雙向箭頭+橘塊標題，講抽象關係；首發「相關≠因果」）
+   → `video/compositions/concept_card/` → track 4
+
+**軌道契約**：1=主鏡、2=開場第二機+B-roll、3=punch 卡、4=貼紙/概念卡。
+
+**素材來源**：
+- **Envato Elements**（修修有訂閱）：Claude in Chrome 全自動——
+  `app.envato.com/search?itemType=stock-video&term=<英文>&filter.orientation=Vertical`
+  → 點結果 → 點 Download（自動授權）→ 檔案落**瀏覽器預設下載目錄
+  （修修的是 `E:\` 根目錄）**→ 搬到 episode `assets/broll/<slug>.<ext>`。
+  photos 同理（`itemType=photos`，可不加 vertical——照片會裁）。
+  ⚠️ 標題帶「Green」的多半是綠幕素材，樣張必驗（S3 通知手機血案）
+- **irasutoya**（貼紙，免費、就是波旬範本用的風格）：搜尋頁 JS 撈
+  blogger 圖 URL，`/s180-c/`→`/s800/` 抓全尺寸 →
+  `assets/stickers/<name>.png`。商用單作品 ≤20 張的授權上限，夠用
+- 貼紙/插畫以 **data URI** 進 hyperframes variables——episode 素材不進
+  repo composition assets
+
+**規劃紀律**（agent 寫 broll.json 時）：
+- 每支 2–4 個素材點、每點 1.5–4s（貼紙可到 6.5s），跟著具象名詞/比喻走
+- 避開：punch zoom 區間（zoom.json）、字卡窗口（titles.json）、
+  **track 2 的開場分割 0–4s**（script 有重疊防呆，撞到會報錯）
+- 素材別連發——兩點之間至少隔 8s，留談話呼吸
+
+**驗證**：`--stills` 樣張逐張看（fill 構圖、貼紙不遮臉——`y_pct`/`size_pct`
+逐項可調、綠幕/浮水印攔截）。冪等：slug stem 比對清舊 item（素材換
+副檔名也清得掉）。
+
+## 修修換段時
 
 改 `winners.json`（換 id/rank）→ 重跑 `--materialize`（冪等，30 秒）。
 （緊）版重出：改 cuts.json → 重跑 `--apply --id`（冪等，同名重建）；
@@ -275,5 +314,6 @@ hyperframes 進階：`--batch` 一次渲整支的卡（省 npx 冷啟）、Rende
 （等出 experimental 再評）。升版流程：改 pin 版號 → 重渲樣張驗 → 進 PR。
 cold-open 重排、直式字幕模板、訪談留言補掃校 persona、（緊）流程套用到
 長片（長片節奏容忍度高，等修修看完短片版成效再決定）。
-短片設計資產層（參考 E:\\data 鐘穎範本解剖，2026-07-26 分析）：橘色塗鴉框版式、字幕關鍵詞高亮、B-roll 插入點——等修修看完
-（緊·導播）版再定。
+短片設計資產層剩餘項（波旬範本還有、我們還沒做）：橘色塗鴉框版式
+（重點段落講者縮進橘 doodle 紋理框）、片尾 EP 品牌卡（logo+金句+橘
+zigzag）、字幕關鍵詞高亮、BGM/音效。B-roll/貼紙/概念卡已落地（Step 9）。
