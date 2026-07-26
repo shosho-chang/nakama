@@ -15,8 +15,16 @@
 from __future__ import annotations
 
 import logging
+import re
 
 logger = logging.getLogger(__name__)
+
+# 數量詞（不可與後面的名詞拆開）：數字/約量 + 選配量詞結尾
+_NUM_CLASSIFIER = re.compile(
+    r"[0-9零一二三四五六七八九十百千萬兩幾半每各]+[個位條張顆件名次場句段本篇集堂包杯歲趴]?$"
+)
+# 計量單位詞（不可孤懸成 cue 開頭）
+_UNIT_WORDS = {"小時", "分鐘", "秒鐘", "公斤", "公里", "公分", "百分比", "個月", "歲", "塊錢"}
 
 MAX_CHARS = 14  # 軟上限（同 transcriber._MAX_SUBTITLE_CHARS）
 HARD_MAX_CHARS = 22  # 硬上限（同 script_align）
@@ -92,19 +100,39 @@ def segment_to_cues(
         return sum(len(tokens[i][0]) for i in range(span[0], span[1]))
 
     def gap_after(span: tuple[int, int]) -> float:
-        """此詞之後的語音停頓（下一 token start − 本詞末 token end）。"""
+        """此詞之後的語音停頓（估計值）。
+
+        WhisperX 的詞 end 常被 align 拉長到下一詞 start（詞間 gap 恆 0，
+        修修 2026-07-26 抓到停頓斷句因此從沒生效）——改用詞長截斷估
+        真實發音結束點，再算與下一詞的間隙。
+        """
         j = span[1]
         if j >= len(tokens):
             return float("inf")  # segment 結尾
-        return max(0.0, tokens[j][1] - tokens[j - 1][2])
+        prev = tokens[j - 1]
+        speak_end = prev[1] + min(prev[2] - prev[1], 0.28 + 0.12 * len(prev[0]))
+        return max(0.0, tokens[j][1] - speak_end)
 
     import jieba
 
     def bad_boundary(j0: int) -> bool:
-        """切在 j0 前會不會把詞切半：跨界二字在 jieba 詞典裡（如 對於）→ 壞切點。"""
+        """切在 j0 前會不會拆散語意單位 → 壞切點。
+
+        規則（修修 2026-07-26「一個/小時」回饋後擴充）：
+        1. 左詞以 的/得/地 結尾（「大腦的/影響」）
+        2. 左詞是數量詞（「一個/小時」「三十/分鐘」「每個/月」）
+        3. 右詞是計量單位詞
+        4. 跨界二字本身是 jieba 詞（「對/於」原規則）
+        """
         if j0 <= 0 or j0 >= len(tokens):
             return False
         left, right = tokens[j0 - 1][0], tokens[j0][0]
+        if left[-1] in "的得地":
+            return True
+        if _NUM_CLASSIFIER.search(left):
+            return True
+        if right in _UNIT_WORDS:
+            return True
         if len(left) != 1 or len(right) != 1:
             return False  # ASCII 整詞不受影響
         return bool(jieba.dt.FREQ.get(left + right))
