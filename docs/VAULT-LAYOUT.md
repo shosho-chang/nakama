@@ -248,6 +248,8 @@ data/agent_reports/franky/
 | `Attachments/cutouts/shosho/{emotion}/{n}.png` | 🤖 | `scripts/import_shosho_cutouts.py` (PR4 one-off) + u2net via hyperframes-media | `shared/cutout_library.pick_youtube_host` | binary |
 | `Attachments/cutouts/podcast/{ep_slug}/{host,guest}_v{n}.png` | 🤖 | `thousand_sunny/routers/bridge_project_thumbnails.py` thumbnail_podcast_active_cutouts endpoint (ADR-033 PR4-B, calls u2net via `npx hyperframes remove-background`) | `shared/cutout_library.pick_podcast_{host,guest}` | binary |
 | `Attachments/cutouts/reference/{youtube,podcast}/{mine,peers}/` | 👤 | 修修 manual dump | Brainstorm LLM few-shot (Sonnet 4.6 vision) | binary |
+| `Attachments/packaging/{episode}/packages.json` + `pkg-*.png` | 🤖 | packaging skill（ADR-054 D10/D16；podcast-pipeline 末段 `emit_packages.py`） | Bridge packaging gate（VPS 經 Syncthing）+ 發布層 uploader（桌機讀本機 vault） | 路徑一律 vault-relative；PNG 檔名 ASCII slug；conflict policy：讀方遇 `*.sync-conflict-*` **fail loud**（ADR-030:214），不靜默讀舊版 |
+| `Attachments/packaging/{episode}/approval.json` | 🤖 Bridge | Bridge approve endpoint（ADR-054 D11；與 packages.json 分檔避免讀寫互踩） | packaging skill（讀 reject_note 重抽）+ 發布層（讀 primary_package） | rotation：approve 後重生 packages 須先 `_archive/{ts}/` 舊組（照 projects thumbnail 慣例），不同名覆寫 |
 | `AgentOutputs/nami/briefs/` | 🤖 | Nami Morning Brief handler (post-ADR-028) | 修修 | `agents/nami/...` |
 | `AgentOutputs/nami/notes/` | 🤖 | `gateway/handlers/nami.py:458-525,:1773` (Nami write_vault_note); whitelisted by `shared/vault_rules.py:14-20` | Nami handler reads for context | — |
 | `AgentOutputs/nami/research/` | 🤖 | Nami research handler | 修修 | — |
