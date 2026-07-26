@@ -1,0 +1,9 @@
+{
+  "name": "sticker_pair",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes hyperframes@0.7.72 preview",
+    "render": "npx --yes hyperframes@0.7.72 render"
+  }
+}
