@@ -244,6 +244,9 @@ alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺�
 
 ## v2 備忘（不做，見 plan 文件）
 
+hyperframes 進階：`--batch` 一次渲整支的卡（省 npx 冷啟）、RenderStretch
+（0.7.67+，可解 data-duration 固定 4s）、`--experimental-fast-capture`
+（等出 experimental 再評）。升版流程：改 pin 版號 → 重渲樣張驗 → 進 PR。
 cold-open 重排、直式字幕模板、訪談留言補掃校 persona、（緊）流程套用到
 長片（長片節奏容忍度高，等修修看完短片版成效再決定）。
 短片設計資產層（參考 E:\\data 鐘穎範本解剖，2026-07-26 分析）：橘色塗鴉框版式、字幕關鍵詞高亮、B-roll 插入點——等修修看完
