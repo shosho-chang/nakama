@@ -299,9 +299,10 @@ alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺�
   repo composition assets
 
 **規劃紀律**（agent 寫 broll.json 時，十五輪起引 brook-director 文法）：
-- **節拍器（密度目標）**：短片每分鐘 5–8 個視覺事件（B-roll+貼紙+概念卡+
-  字卡合計；波旬範本 ~9/分、長片文法 4.5–5.5/分）——觀眾每 ~10s 要有新
-  視覺事件，>15s 全靜就是漏。密度不足先補 keyword 字卡（成本最低）
+- **節拍器（密度目標）**：短片每分鐘 **6–9 個視覺事件**（B-roll+貼紙+
+  概念卡+字卡合計；十六輪裁決：短片比長片更緊湊——波旬範本 ~9/分、
+  長片文法才 4.5–5.5/分）——觀眾每 ~8s 要有新視覺事件，>12s 全靜就是漏。
+  密度不足先補 keyword 字卡（成本最低）
 - **觸發信號 → 素材類型**（brook-director 規則表 subset）：
   畫面感語句→stock、抽象概念名詞→keyword 字卡（tier 2）、
   研究/論文引用→**evidence_doc：真論文第一頁 center 貼紙**（pymupdf 渲
