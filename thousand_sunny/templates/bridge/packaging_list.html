@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Packaging Gate</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='brook') }}
+
+{% from "_breadcrumb.html" import breadcrumb %}
+{{ breadcrumb([
+  {"label": "PACKAGING · GATE", "href": none, "is_current": true},
+]) }}
+
+<section class="page-header page-header--split">
+  <div>
+    <div class="nk-caps">/bridge/packaging · 標題×封面 approve</div>
+    <h1 class="page-title">Packaging Gate <span class="zh">每集的 package 裁決台</span></h1>
+  </div>
+  <div class="header-meta">ADR-054 · D9/D10</div>
+</section>
+
+<main class="page-main page-main--stack">
+  <article class="section" aria-labelledby="sec-episodes">
+    <header class="section-head">
+      <div>
+        <div class="section-marker">§ 1 · Episodes</div>
+        <h2 class="section-title" id="sec-episodes">待裁決集數 <span class="zh">vault Attachments/packaging/</span></h2>
+      </div>
+      <span class="section-status idle">{{ rows | length }} EP</span>
+    </header>
+    <div class="section-body">
+      {% if not rows %}
+      <p class="sho-mono">目前沒有任何 packaging 產出 — 在 Cowork 跑完 podcast-pipeline 的 packaging 段後，這裡會出現該集。</p>
+      {% else %}
+      <table class="pkg-list-table">
+        <thead>
+          <tr>
+            <th scope="col">Episode</th>
+            <th scope="col">Cuts</th>
+            <th scope="col">已裁決</th>
+            <th scope="col">狀態</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td>
+              {% if row.error %}
+              <span class="sho-mono">{{ row.slug }}</span>
+              {% else %}
+              <a class="sho-lk" href="/bridge/packaging/{{ row.slug }}">{{ row.episode }}</a>
+              {% endif %}
+            </td>
+            <td class="sho-mono">{{ row.cuts_total }}（長 {{ row.long_total }}）</td>
+            <td class="sho-mono">{{ row.approved }}</td>
+            <td>
+              {% if row.error %}
+              <span class="pkg-error" role="alert">⚠ {{ row.error }}</span>
+              {% elif row.approved >= row.long_total and row.long_total > 0 %}
+              <span class="sho-tag sho-tag--accent">DONE</span>
+              {% else %}
+              <span class="sho-tag">PENDING</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+  </article>
+</main>
+
+<style>
+  .pkg-list-table { width: 100%; border-collapse: collapse; }
+  .pkg-list-table th {
+    text-align: left; font-size: 11.5px; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--sho-muted);
+    border-bottom: 1px solid var(--sho-line-2); padding: var(--sho-s-2) var(--sho-s-3);
+  }
+  .pkg-list-table td {
+    border-bottom: 1px solid var(--sho-line); padding: var(--sho-s-2) var(--sho-s-3);
+  }
+  .pkg-error { color: var(--sho-error); font-size: 12.5px; }
+</style>
+</body>
+</html>
