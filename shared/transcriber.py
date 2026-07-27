@@ -95,6 +95,43 @@ def _to_traditional(text: str) -> str:
     return _ZHI_FIX.sub("只", _get_cc().convert(text))
 
 
+_TW_JIEBA_READY = False
+
+
+def ensure_tw_jieba() -> None:
+    """給 jieba 掛繁體補充詞庫（所有對繁體文本 jieba.cut 的呼叫點都要先呼叫）。
+
+    jieba 內建詞庫是**簡體**——繁體詞（綁架/覺察…）不在庫裡會被逐字切，
+    下游任何「詞邊界」邏輯（斷行/斷句/細切）就會把詞攔腰砍（2026-07-26
+    「來綁/架我們大腦」案例）。修法：把內建 dict.txt 用 OpenCC s2twp 整批
+    轉繁、cache 到 data/jieba_tw_dict.txt（首次 ~10s，之後秒載），
+    load_userdict 疊加（簡繁同庫）。"""
+    global _TW_JIEBA_READY
+    if _TW_JIEBA_READY:
+        return
+    import jieba
+
+    data_dir = os.environ.get("NAKAMA_DATA_DIR") or (
+        Path(__file__).resolve().parent.parent / "data"
+    )
+    cache = Path(data_dir) / "jieba_tw_dict.txt"
+    if not cache.exists():
+        logger.info("首次生成 jieba 繁體詞庫（OpenCC 整批轉換，~10s）→ %s", cache)
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        with jieba.dt.get_dict_file() as f:
+            lines = f.read().decode("utf-8").splitlines()
+        rows = [ln.split(" ") for ln in lines if ln.strip()]
+        tw_words = _to_traditional("\n".join(r[0] for r in rows)).splitlines()
+        out = [
+            " ".join([tw] + r[1:])
+            for tw, r in zip(tw_words, rows)
+            if tw != r[0]  # 只收簡繁不同的（相同的內建庫已有）
+        ]
+        cache.write_text("\n".join(out), encoding="utf-8")
+    jieba.load_userdict(str(cache))
+    _TW_JIEBA_READY = True
+
+
 def _extract_hotwords(context_files: list[str | Path]) -> list[str]:
     """從 context 檔案的 frontmatter 或內容中提取專有名詞作為 hotwords。
 
@@ -609,6 +646,7 @@ def _force_break(text: str, max_chars: int, hard_max: int | None = None) -> list
     """
     import jieba
 
+    ensure_tw_jieba()
     if hard_max is None:
         hard_max = max_chars + 8
     tokens = list(jieba.cut(text, cut_all=False))
