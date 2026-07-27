@@ -364,6 +364,45 @@ class TestCandidateServing:
         assert r.status_code == 404
 
 
+class TestPackagingCandidateServing:
+    """Tests for the packaging PNG serving endpoint (ADR-054 S6)."""
+
+    def _seed_packaging_png(self, tmp_path: Path, episode_slug: str, filename: str) -> Path:
+        d = tmp_path / "Attachments" / "packaging" / episode_slug
+        d.mkdir(parents=True)
+        f = d / filename
+        f.write_bytes(b"\x89PNG\r\n\x1a\npkg-bytes")
+        return f
+
+    def test_packaging_candidate_serves_existing_png(self, client, tmp_path):
+        self._seed_packaging_png(tmp_path, "20260723-xieboran", "pkg-L1-1.png")
+        r = client.get(
+            "/bridge/projects/肌酸的妙用/thumbnail/packaging/20260723-xieboran/pkg-L1-1.png"
+        )
+        assert r.status_code == 200
+        assert r.content == b"\x89PNG\r\n\x1a\npkg-bytes"
+
+    def test_packaging_candidate_rejects_traversal_filename(self, client):
+        r = client.get(
+            "/bridge/projects/肌酸的妙用/thumbnail/packaging/20260723-xieboran/..%2Fevil.png"
+        )
+        assert r.status_code in (400, 404)
+
+    def test_packaging_candidate_rejects_bad_ep_slug(self, client):
+        r = client.get("/bridge/projects/肌酸的妙用/thumbnail/packaging/謝伯讓/pkg-L1-1.png")
+        assert r.status_code == 400
+
+    def test_packaging_candidate_404_when_missing(self, client):
+        r = client.get(
+            "/bridge/projects/肌酸的妙用/thumbnail/packaging/20260723-xieboran/missing.png"
+        )
+        assert r.status_code == 404
+
+    def test_packaging_candidate_rejects_cjk_filename(self, client):
+        r = client.get("/bridge/projects/肌酸的妙用/thumbnail/packaging/20260723-xieboran/封面.png")
+        assert r.status_code in (400, 404)
+
+
 class TestCommit:
     def _seed_candidate(self, tmp_path: Path, ts: str = "20260526T140000") -> Path:
         from thousand_sunny.routers.bridge_project_thumbnails import _thumbnails_dir
@@ -583,12 +622,11 @@ class TestPodcastFunnel:
         r = podcast_client.post("/bridge/projects/王醫師專訪/thumbnail/podcast/funnel/host")
         assert r.status_code == 404
 
-    def test_funnel_400_when_video_path_escapes_repo_root(self, podcast_client, tmp_path):
-        """Defense-in-depth: frontmatter host_video_path that resolves outside
-        repo root must be rejected (post-review hardening 2026-05-26)."""
+    def test_funnel_400_when_video_path_outside_allowlist(self, podcast_client, tmp_path):
+        """Defense-in-depth: path outside ALL allowlist roots (repo root + FOOTAGE_ROOT)
+        must be rejected. ADR-054 S6 — allowlist replaces single-root constraint."""
         path = tmp_path / "Projects" / "王醫師專訪.md"
         text = path.read_text(encoding="utf-8")
-        # Replace with traversal attempt
         text = text.replace(
             "host_video_path: data/podcasts/wang/host_angle.mp4",
             "host_video_path: ../../../../../etc/passwd",
@@ -600,7 +638,44 @@ class TestPodcastFunnel:
 
         r = podcast_client.post("/bridge/projects/王醫師專訪/thumbnail/podcast/funnel/host")
         assert r.status_code == 400
-        assert "escapes" in r.text.lower() or "repo root" in r.text.lower()
+        assert "outside allowed roots" in r.text.lower() or "allowed" in r.text.lower()
+
+    def test_funnel_allows_footage_root_path(self, podcast_client, monkeypatch, tmp_path):
+        """FOOTAGE_ROOT env expands the allowlist: absolute paths under it must be
+        accepted and proceed to the funnel run step (not 400). ADR-054 S6."""
+        footage_dir = tmp_path / "footages"
+        footage_dir.mkdir()
+        video_path = footage_dir / "謝伯讓" / "host_angle.mp4"
+        video_path.parent.mkdir(parents=True)
+        video_path.write_bytes(b"fake mp4")
+
+        monkeypatch.setenv("FOOTAGE_ROOT", str(footage_dir))
+
+        proj_path = tmp_path / "Projects" / "王醫師專訪.md"
+        text = proj_path.read_text(encoding="utf-8")
+        text = text.replace(
+            "host_video_path: data/podcasts/wang/host_angle.mp4",
+            f"host_video_path: {video_path}",
+        )
+        proj_path.write_text(text, encoding="utf-8")
+        import thousand_sunny.routers.bridge_project_thumbnails as bpt_mod
+
+        bpt_mod._indexer_singleton = None  # noqa: SLF001
+
+        _mock_funnel_run(
+            monkeypatch,
+            candidates=[
+                {
+                    "filename": "frame_000.png",
+                    "timestamp_sec": 5.0,
+                    "sample_kind": "periodic",
+                    "sharpness": 800.0,
+                }
+            ],
+        )
+        r = podcast_client.post("/bridge/projects/王醫師專訪/thumbnail/podcast/funnel/host")
+        assert r.status_code == 200, r.text
+        assert "frame_000.png" in r.text
 
     def test_funnel_happy_path(self, podcast_client, monkeypatch, tmp_path):
         # 1. Create a fake video at the resolved path
