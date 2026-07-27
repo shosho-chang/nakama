@@ -43,7 +43,10 @@ logger = logging.getLogger("short_review")
 
 REVIEW_DIR = "highlights/review"
 PREVIEW_W, PREVIEW_H = 540, 960
-GAP_SEC = 12.0  # 節拍器：>12s 無新視覺事件 = 缺口（十六輪）
+GAP_SEC = 8.0  # 節拍器缺口門檻（二十四輪盲審下修：12s 太寬鬆）
+# punch zoom 是「同機位縮放」不是新視覺事件——算進去會遮蔽真死區
+# （兩位盲審獨立指出）。缺口只計換鏡素材與卡片。
+GAP_EXCLUDE_PREFIX = ("punch-",)
 
 
 def _load_events(episode_dir: Path, cid: str) -> list[dict]:
@@ -246,12 +249,23 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
             _ffmpeg(["-ss", f"{t:.2f}", "-i", str(preview), "-frames:v", "1", str(out_dir / name)])
             frames.append({"event": i, "at": round(t, 2), "file": name})
 
-    # 節拍器缺口：相鄰事件「起點」間距 > GAP_SEC
+    # 節拍器缺口：**前事件結束 → 後事件開始**的真空（二十四輪修正：
+    # 舊版用 t0→t0 會高估缺口長度、又漏抓尾段空窗），且排除 punch zoom
     gaps = []
-    starts = [0.0] + [e["t0"] for e in events] + [dur]
-    for a, b in zip(starts, starts[1:]):
-        if b - a > GAP_SEC:
-            gaps.append({"from": round(a, 1), "to": round(b, 1), "sec": round(b - a, 1)})
+    visual = [e for e in events if not e["type"].startswith(GAP_EXCLUDE_PREFIX)]
+    cursor = 0.0
+    for e in visual:
+        if e["t0"] - cursor > GAP_SEC:
+            gaps.append(
+                {
+                    "from": round(cursor, 1),
+                    "to": round(e["t0"], 1),
+                    "sec": round(e["t0"] - cursor, 1),
+                }
+            )
+        cursor = max(cursor, e["t1"])
+    if dur - cursor > GAP_SEC:
+        gaps.append({"from": round(cursor, 1), "to": round(dur, 1), "sec": round(dur - cursor, 1)})
 
     packet = {
         "timeline": label,
