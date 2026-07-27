@@ -10,7 +10,9 @@
 | 貼紙 | pop.wav ×2（左右錯拍） | t0、t0+0.18 | 3 |
 | 概念卡 | pop.wav | t0 | 3 |
 | tier2 卡 | swish.wav（輕掃） | t0 | 2 |
-| B-roll 切出 | swish.wav | t0−0.05 | 1 |
+
+B-roll 切出**不配音效**（二十二輪拿掉）——畫面切換自帶訊號，機械式每切
+必響只是噪音；要聲音走 sound.json 的 ambient（跟素材語意走）。
 
 防吵紀律：間距 <1.2s 只留優先級高的（同事件的雙 pop 豁免）。響度在
 素材端已烘焙（assets/sfx/*.wav：ding I=-18 / riser -19 / impact -17 /
@@ -90,8 +92,10 @@ def build_cues(episode_dir: Path, cid: str) -> list[dict]:
                     cues.append({"t": t0 + 0.18, "sfx": "pop", "prio": 3, "ev": ev})
             elif it["kind"] == "concept":
                 cues.append({"t": t0, "sfx": "pop", "prio": 3, "ev": ev})
-            else:  # video / photo 切出
-                cues.append({"t": t0 - 0.05, "sfx": "swish", "prio": 1, "ev": ev})
+            # video / photo 切出**不配音效**（修修二十二輪：「進 B-roll 前那個
+            # 小音效不知道作用是什麼，可以拿掉」）——畫面切換本身就是訊號，
+            # 額外的 swish 只是噪音。B-roll 要聲音就走 sound.json 的 ambient
+            # （跟著素材語意，不是機械式每切必響）。
 
     cues = [c for c in cues if c["t"] >= 0.0]
     cues.sort(key=lambda c: (c["t"], -c["prio"]))
@@ -120,7 +124,9 @@ def _dur(path: Path) -> float:
         return 2.0
 
 
-def _cut_to_span(src: Path, span: float, gain_db: float, cache: Path, fade: float) -> Path:
+def _cut_to_span(
+    src: Path, span: float, gain_db: float, cache: Path, fade: float, src_in: float = 0.0
+) -> Path:
     """把音效裁成指定長度 + 增益 + 尾端 fade，快取到 episode。
 
     修修二十二輪：環境音「出來的時間必須跟 B-roll 切齊，結束也要一起結束」。
@@ -128,11 +134,12 @@ def _cut_to_span(src: Path, span: float, gain_db: float, cache: Path, fade: floa
     ——長度由檔案保證，不靠 Resolve 手拉、重跑也一致。
     """
     cache.mkdir(parents=True, exist_ok=True)
-    key = hashlib.md5(f"{src}|{span}|{gain_db}|{fade}".encode()).hexdigest()[:10]
+    key = hashlib.md5(f"{src}|{span}|{gain_db}|{fade}|{src_in}".encode()).hexdigest()[:10]
     out = cache / f"{src.stem[:24]}_{key}.wav"
     if out.exists():
         return out
-    af = f"atrim=0:{span},asetpts=PTS-STARTPTS,volume={gain_db}dB"
+    # src_in：跳過素材開頭靜音／無用段（WA WA WA 前 0.5s 是靜音）
+    af = f"atrim={src_in}:{src_in + span},asetpts=PTS-STARTPTS,volume={gain_db}dB"
     if fade > 0 and span > fade * 2:
         af += f",afade=t=out:st={max(0.0, span - fade):.3f}:d={fade}"
     proc = subprocess.run(
@@ -205,7 +212,14 @@ def build_layered(episode_dir: Path, cid: str) -> list[dict]:
             raise SystemExit(f"語意音效 @{s.get('t')} 缺 why——沒有理由的音效就是噪音")
         src = _resolve_lib_path(s["file"])
         span = float(s.get("sec") or _dur(src))
-        path = _cut_to_span(src, span, float(s.get("gain_db", SEMANTIC_GAIN_DB)), cache, 0.2)
+        path = _cut_to_span(
+            src,
+            span,
+            float(s.get("gain_db", SEMANTIC_GAIN_DB)),
+            cache,
+            0.2,
+            float(s.get("src_in", 0.0)),
+        )
         jobs.append(
             {
                 "t": float(s["t"]),
