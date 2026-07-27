@@ -13,6 +13,23 @@ description: >
 設計凍結：`docs/plans/2026-07-25-highlight-cut-plan.md`（grill Q1–Q7）。
 **零 API 錢**：miner 與 persona 全走 Cowork subagent。
 
+## 執行環境（v1 收斂裁決，修修 2026-07-27）
+
+**這個 skill 只能在 Claude Code + 本機跑，不走 CoWork / Computer Use。**
+
+理由是機制差異，不是偏好：
+- 本 skill 的 Resolve 操作全走**官方 Python Scripting API**
+  （`DaVinciResolveScript`，見 `scripts/build_resolve_project.py`）——
+  直接呼叫 timeline/item/Fusion 物件，逐幀關鍵影格、0.05s 精度的音效落點
+  都靠它
+- CoWork 走 **Computer Use**（截圖→認畫面→點按鈕），做不到這種精度，
+  也擋不住版面變動
+- 前提：**Resolve Studio 執行中** + Preferences → System → General →
+  External scripting using = **Local**；跑 Resolve 的 script 用
+  `py -3.10`（3.14 沒有 Resolve 模組），pytest/ruff 用 `python`
+- Sandcastle / 雲端 runner 同樣不適用（沒有 Resolve、沒有素材碟）；
+  唯一可外包的是純 render 類工作（hyperframes 卡片），疊軌仍要本機
+
 ## 前提
 
 episode 已完成 podcast-pipeline 至 resolve-project（`transcript.srt` 說話者已切、
