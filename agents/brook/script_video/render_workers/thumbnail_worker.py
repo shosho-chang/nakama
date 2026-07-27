@@ -36,7 +36,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # repo_root/agents/brook/script_video/render_workers/thumbnail_worker.py → repo_root
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+_REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_VIDEO_DIR = _REPO_ROOT / "video"
 
 YOUTUBE_COMPOSITION = "compositions/thumbnail_youtube"
@@ -120,6 +120,8 @@ async def _render_still(
     )
 
     argv = _build_argv(composition, variables_file, frames_dir)
+    # Windows 的 npx 是 npx.cmd — CreateProcess 不吃 PATHEXT，spawn 前解析成完整路徑。
+    argv[0] = shutil.which(argv[0]) or argv[0]
     logger.info(
         "thumbnail render start: out=%s composition=%s",
         out_png.name,

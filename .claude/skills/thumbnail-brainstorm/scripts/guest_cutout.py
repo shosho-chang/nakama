@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+"""guest_cutout.py — 來賓 cutout 的機械層（funnel Stage 3 的抽格與落檔）。
+
+兩個子命令（vision 挑格那一步在兩者之間，由 skill 手冊的 subagent 做）：
+
+    # 1) 機位交叉驗證（fail loud）→ 窗口化 funnel 抽格 → 印候選 frame JSON
+    python guest_cutout.py sample --episode-dir "G:/footages/20260723 謝伯讓" \
+        --cam-video CAM_B.mp4 --window 1234.5 1310.2 --expected-speaker 1 \
+        --out-dir "G:/footages/20260723 謝伯讓/packaging/guest_frames/L1"
+
+    # 2) vision 選定的 frame → hyperframes 去背 → vault cutouts/podcast/<ep_slug>/
+    python guest_cutout.py finalize --frame <picked.png> --emotion 思考 \
+        --ep-slug 20260723-xieboran --index 1
+
+sample 的機位驗證：expected-speaker 在窗內的說話占比 < 0.6 即 ValueError
+（ADR-054 A8③ — 機位對應寫錯時會穩定抽到錯的人且不報錯，必須 fail loud）。
+finalize 檔名 = cutout_filename("guest", i, emotion)（A8④ — 帶 emotion，
+否則表情匹配永遠 miss 掉入隨機 fallback）。
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import shutil
+import sys
+from pathlib import Path
+
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
+
+from shared.cam_validate import validate_cam_speaker  # noqa: E402
+from shared.config import get_vault_path  # noqa: E402
+from shared.cutout_library import cutout_filename, resolve_emotion  # noqa: E402
+
+_HYPERFRAMES_VIDEO_DIR = Path(__file__).resolve().parents[4] / "video"
+
+
+def load_word_speakers(episode_dir: Path) -> tuple[list[dict], list[int | None]]:
+    """episode 的 subs/words.json + 分軌 mic 能量 → (words, word_speakers)。"""
+    from shared.speaker_assign import (
+        assign_word_speakers,
+        detect_mic_tracks,
+        load_envelopes,
+    )
+
+    words = json.loads((episode_dir / "subs" / "words.json").read_text(encoding="utf-8"))["words"]
+    mics = detect_mic_tracks(episode_dir / "Audio")
+    envs = load_envelopes(mics, reference=episode_dir / "normalized.wav")
+    return words, assign_word_speakers(words, envs)
+
+
+async def sample(
+    episode_dir: Path,
+    cam_video: Path,
+    window: tuple[float, float],
+    expected_speaker: int,
+    out_dir: Path,
+) -> list[dict]:
+    from shared.thumbnail_funnel import run as funnel_run
+
+    words, spk = load_word_speakers(episode_dir)
+    validate_cam_speaker(words, spk, window, expected_speaker)
+
+    candidates = await funnel_run(cam_video, out_dir, mode="expression_sample", window=window)
+    return [
+        {
+            "path": str(c.path),
+            "timestamp_sec": c.timestamp_sec,
+            "sample_kind": c.sample_kind,
+            "sharpness": c.sharpness,
+        }
+        for c in candidates
+    ]
+
+
+async def finalize(frame: Path, emotion_text: str, ep_slug: str, index: int) -> Path:
+    emotion = resolve_emotion(emotion_text)
+    if not frame.exists():
+        raise FileNotFoundError(f"picked frame not found: {frame}")
+
+    dst_dir = get_vault_path() / "Attachments" / "cutouts" / "podcast" / ep_slug
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    dst = dst_dir / cutout_filename("guest", index, emotion)
+
+    npx = shutil.which("npx") or "npx"  # Windows 上是 npx.cmd，CreateProcess 不自動解析
+    argv = [npx, "hyperframes", "remove-background", str(frame), "-o", str(dst)]
+    proc = await asyncio.create_subprocess_exec(
+        *argv,
+        cwd=str(_HYPERFRAMES_VIDEO_DIR),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0 or not dst.exists():
+        raise RuntimeError(
+            f"hyperframes remove-background failed (exit {proc.returncode}): "
+            f"{stderr.decode(errors='replace')[-500:]}"
+        )
+    return dst
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_sample = sub.add_parser("sample")
+    p_sample.add_argument("--episode-dir", type=Path, required=True)
+    p_sample.add_argument("--cam-video", type=Path, required=True)
+    p_sample.add_argument("--window", type=float, nargs=2, required=True, metavar=("T0", "T1"))
+    p_sample.add_argument("--expected-speaker", type=int, required=True)
+    p_sample.add_argument("--out-dir", type=Path, required=True)
+
+    p_fin = sub.add_parser("finalize")
+    p_fin.add_argument("--frame", type=Path, required=True)
+    p_fin.add_argument("--emotion", required=True, help="emotions.yml 七值之一（zh/en/alias 皆可）")
+    p_fin.add_argument("--ep-slug", required=True, help="ASCII episode slug，如 20260723-xieboran")
+    p_fin.add_argument("--index", type=int, required=True)
+
+    args = parser.parse_args()
+    if args.cmd == "sample":
+        cam = args.cam_video
+        if not cam.is_absolute():
+            cam = args.episode_dir / cam
+        result = asyncio.run(
+            sample(args.episode_dir, cam, tuple(args.window), args.expected_speaker, args.out_dir)
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        dst = asyncio.run(finalize(args.frame, args.emotion, args.ep_slug, args.index))
+        print(dst)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
