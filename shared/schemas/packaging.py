@@ -2,7 +2,11 @@
 
 Two JSON files form the contract between skill (writer) and Bridge/publish layer (reader):
 - packages.json  — title candidates + thumbnail packages per cut  → PackagesFileV1
-- approval.json  — gate decision per cut                          → ApprovalV1
+- approval.json  — gate decisions, one per cut                    → ApprovalFileV1
+
+附錄 C 草案的 approval.json 是單 cut 物件（ApprovalV1）；一集有多支長片要各自
+approve，S7 落地時升級為 ApprovalFileV1 容器（approvals list，cut_id 唯一）。
+ApprovalV1 保留為單筆 entry 模型。
 """
 
 from __future__ import annotations
@@ -167,7 +171,27 @@ def parse_packages(path: "Path | str") -> PackagesFileV1:
     return PackagesFileV1.model_validate(data)
 
 
+class ApprovalFileV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    episode: str
+    approvals: list[ApprovalV1]
+
+    @model_validator(mode="after")
+    def _unique_cut_ids(self) -> "ApprovalFileV1":
+        ids = [a.cut_id for a in self.approvals]
+        if len(ids) != len(set(ids)):
+            raise ValueError(f"duplicate cut_id in approvals: {ids}")
+        return self
+
+
 def parse_approval(path: "Path | str") -> ApprovalV1:
-    """Load and validate approval.json. Raises pydantic.ValidationError on bad shape."""
+    """Load and validate a single-cut approval object. Raises pydantic.ValidationError."""
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     return ApprovalV1.model_validate(data)
+
+
+def parse_approval_file(path: "Path | str") -> ApprovalFileV1:
+    """Load and validate approval.json (multi-cut container). Raises pydantic.ValidationError."""
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    return ApprovalFileV1.model_validate(data)
