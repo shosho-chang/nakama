@@ -7,6 +7,7 @@
   data-composition-variables='[
     {"id":"left_src","type":"string","label":"左貼紙（data URI）","default":""},
     {"id":"right_src","type":"string","label":"右貼紙（data URI）","default":""},
+    {"id":"center_src","type":"string","label":"置中大圖（data URI，論文封面/書封用）","default":""},
     {"id":"show_sec","type":"number","label":"顯示秒數","default":5.0},
     {"id":"y_pct","type":"number","label":"貼紙垂直中心 %","default":46},
     {"id":"size_pct","type":"number","label":"貼紙寬 %（畫面寬）","default":26}
@@ -29,6 +30,14 @@
       }
       #left  { left: 5%; }
       #right { right: 5%; }
+      /* center = 論文封面/書封證物模式：置中大圖 + 白框（evidence_doc 語彙） */
+      #center {
+        left: 50%;
+        transform: translate(-50%, -50%);
+        border: 10px solid #fff;
+        border-radius: 6px;
+        filter: drop-shadow(0 16px 36px rgba(0, 0, 0, 0.5));
+      }
     </style>
   </head>
   <body>
@@ -43,6 +52,7 @@
     >
       <img class="sticker" id="left" alt="" />
       <img class="sticker" id="right" alt="" />
+      <img class="sticker" id="center" alt="" />
     </div>
     <script>
       const vars =
@@ -50,23 +60,28 @@
       const showSec = Number(vars.show_sec ?? 5.0);
       const yPct = Number(vars.y_pct ?? 46);
       const sizePct = Number(vars.size_pct ?? 26);
-      for (const [id, src] of [["left", vars.left_src], ["right", vars.right_src]]) {
+      for (const [id, src, w] of [
+        ["left", vars.left_src, sizePct],
+        ["right", vars.right_src, sizePct],
+        ["center", vars.center_src, Math.max(sizePct, 52)],
+      ]) {
         const el = document.getElementById(id);
         if (src) {
           el.src = src;
           el.style.setProperty("--y", `${yPct}%`);
           el.style.top = `${yPct}%`;
-          el.style.width = `${sizePct}%`;
+          el.style.width = `${w}%`;
         } else {
           el.remove();
         }
       }
+      const hasCenter = !!vars.center_src;
 
       window.__timelines = window.__timelines || {};
       const tl = gsap.timeline({ defaults: { transformOrigin: "50% 60%" } });
       // 進場：波旬範本語法——貼紙彈入（scale pop + 微旋轉），左右錯拍
       tl.fromTo(
-        ".sticker",
+        "#left, #right",
         { opacity: 0, scale: 0.2, rotation: -8, yPercent: -42 },
         {
           opacity: 1,
@@ -79,17 +94,45 @@
         },
         0
       );
-      // 待機：輕微上下浮動（貼紙「活著」但不搶戲）
-      tl.to(
-        "#left",
-        { yPercent: -46, duration: 1.1, ease: "sine.inOut", yoyo: true, repeat: -1 },
-        0.5
-      );
-      tl.to(
-        "#right",
-        { yPercent: -54, duration: 1.3, ease: "sine.inOut", yoyo: true, repeat: -1 },
-        0.65
-      );
+      // 待機（十五輪：修修要看得出在動）：浮動加大 + 旋轉搖擺 + 呼吸縮放
+      for (const [sel, amp, rot, dur, at] of [
+        ["#left", 5, 3.5, 0.9, 0.5],
+        ["#right", 5, -3.5, 1.05, 0.62],
+      ]) {
+        // one-sided yoyo：從進場終點出發，無縫接待機
+        tl.to(sel, {
+          yPercent: -50 + amp, duration: dur, ease: "sine.inOut", yoyo: true, repeat: -1,
+        }, at);
+        tl.to(sel, {
+          rotation: rot, duration: dur * 1.4, ease: "sine.inOut", yoyo: true, repeat: -1,
+        }, at);
+        tl.to(sel, {
+          scale: 1.05, duration: dur * 1.15, ease: "sine.inOut", yoyo: true, repeat: -1,
+        }, at + 0.2);
+      }
+      // center（論文封面/書封）：正面彈入 + 緩慢漂浮，證物感不搞笑
+      if (hasCenter) {
+        tl.fromTo(
+          "#center",
+          { opacity: 0, scale: 0.55, rotation: 4, xPercent: -50, yPercent: -40 },
+          {
+            opacity: 1,
+            scale: 1,
+            rotation: -1.2,
+            xPercent: -50,
+            yPercent: -50,
+            duration: 0.5,
+            ease: "back.out(1.6)",
+          },
+          0
+        );
+        tl.to("#center", {
+          yPercent: -47, duration: 1.6, ease: "sine.inOut", yoyo: true, repeat: -1,
+        }, 0.6);
+        tl.to("#center", {
+          rotation: 1.2, duration: 2.2, ease: "sine.inOut", yoyo: true, repeat: -1,
+        }, 0.6);
+      }
       // 退場：縮小淡出（獨立 timeline——主 tl 有 infinite repeat 撐著待機動畫）
       gsap.to(".sticker", {
         opacity: 0,

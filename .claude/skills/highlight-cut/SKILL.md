@@ -239,7 +239,14 @@ v1 已退役），走 **hyperframes**（Brook 影片線 render 引擎）：
 
 視覺：逐行橘塊 #E87000、LINE Seed TW 特黑、逐行 swipe-in + back-out pop、
 快收退場。**文字必須是講者原話**（範本語法），每行 ≤6 字（script 硬擋）。
-卡片紀律：顯示 ~2s 就退、`pos_y` 0.63 下移避臉。
+卡片紀律：顯示 ~2s 就退（**概念卡可到 3s**——十五輪「閒下來沒事做」裁決）、
+`pos_y` 0.63 下移避臉。
+
+**選卡準則（十五輪補漏：DMN 沒出卡被修修抓）**：金句之外，
+**全片核心概念/理論名詞（講者反覆提及、整支論證支柱）必須有一張 tier 2 卡**，
+落在第一次完整介紹處——對應 brook-director 觸發規則表的 `keyword` 信號
+（抽象概念名詞→關鍵字卡）。選完卡自問：「這支影片的概念骨架，光看字卡
+能不能拼出來？」拼不出來就是漏了。
 
 **三層字卡架構（修修九輪裁決）**：
 - **tier 1 = hero**：每支**最多 1 張**，放全片最強的一句。168px 超大字、
@@ -291,11 +298,27 @@ alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺�
 - 貼紙/插畫以 **data URI** 進 hyperframes variables——episode 素材不進
   repo composition assets
 
-**規劃紀律**（agent 寫 broll.json 時）：
-- 每支 2–4 個素材點、每點 1.5–4s（貼紙可到 6.5s），跟著具象名詞/比喻走
-- 避開：punch zoom 區間（zoom.json）、字卡窗口（titles.json）、
-  **track 2 的開場分割 0–4s**（script 有重疊防呆，撞到會報錯）
-- 素材別連發——兩點之間至少隔 8s，留談話呼吸
+**規劃紀律**（agent 寫 broll.json 時，十五輪起引 brook-director 文法）：
+- **節拍器（密度目標）**：短片每分鐘 5–8 個視覺事件（B-roll+貼紙+概念卡+
+  字卡合計；波旬範本 ~9/分、長片文法 4.5–5.5/分）——觀眾每 ~10s 要有新
+  視覺事件，>15s 全靜就是漏。密度不足先補 keyword 字卡（成本最低）
+- **觸發信號 → 素材類型**（brook-director 規則表 subset）：
+  畫面感語句→stock、抽象概念名詞→keyword 字卡（tier 2）、
+  研究/論文引用→**evidence_doc：真論文第一頁 center 貼紙**（pymupdf 渲
+  PDF p1 → 裁標題區 → `side:"center"`，禁用泛用 stock 代打——十五輪裁決）、
+  書名→書封、講故事/舉例→雙貼紙、抽象關係→概念卡
+- 每點 1.5–4s（貼紙可到 6.5s）；兩個 cutaway 之間留談話呼吸（overlay 不限）
+- 避開：字卡窗口（titles.json）、**track 2 的開場分割 0–4s**（script 有
+  重疊防呆）。**punch zoom 與具象比喻衝突時，縮短 punch 讓位 footage**
+  ——B-roll 蓋住 punch = punch 白做（十五輪「陷在過去」裁決）
+
+**搜尋工法（brook-dp Step 2 移植）**：每個 stock 意圖出 2–3 組**不同切面**
+英文詞（字面/視覺隱喻/場景/情緒），並帶：
+- **景別**：滑手機/操作類一律「hands close up」特寫——有臉的素材會讀成
+  「在跟人互動/視訊」（十五輪血案）
+- **negative 清單**：標題帶 Green（綠幕）、corporate 擺拍假笑、文字疊圖、
+  AI 生成感、視訊通話感
+- mood：偏暖、自然光；同一支短片 stock 調性一致
 
 **驗證**：`--stills` 樣張逐張看（fill 構圖、貼紙不遮臉——`y_pct`/`size_pct`
 逐項可調、綠幕/浮水印攔截）。冪等：slug stem 比對清舊 item（素材換
