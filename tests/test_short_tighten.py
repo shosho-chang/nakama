@@ -164,3 +164,51 @@ def test_merge_blocks_uses_collapsed_time():
     groups = _merge_blocks(cues, segs)
     assert len(groups) == 1 and len(groups[0]) == 2
     assert "".join(x[2] for x in groups[0]) == "禁掉就好 16歲以前就要禁掉"
+
+
+class TestMinCueDuration:
+    """一行最短顯示 0.8s（二十四輪盲審：0.16s 閃現 cue 讀不到）。"""
+
+    def test_extends_when_gap_available(self):
+        from run_short_tighten import _enforce_min_duration
+
+        out = _enforce_min_duration([(0.0, 0.16, "容易確定")], 5.0)
+        assert out == [(0.0, 0.8, "容易確定")]
+
+    def test_merges_with_neighbour_when_within_hard_limit(self):
+        from run_short_tighten import _enforce_min_duration
+
+        # 合併後 ≤10 字才可併（修修的 hard limit 不可破）
+        units = [(0.0, 1.0, "他就想說"), (1.0, 1.16, "沒事了")]
+        out = _enforce_min_duration(units, 1.16)
+        assert len(out) == 1
+        assert out[0][2] == "他就想說沒事了"
+
+    def test_does_not_merge_past_hard_limit(self):
+        from run_short_tighten import _enforce_min_duration
+
+        # 合併會變 11 字 → 不可併，只能盡量延長
+        units = [(0.0, 1.0, "因果關係其實不"), (1.0, 1.16, "容易確定")]
+        out = _enforce_min_duration(units, 1.16)
+        assert len(out) == 2
+
+    def test_balance_pass_avoids_short_orphan(self):
+        """病根修正：平衡切點後就不會產生 0.16s 的孤兒行。"""
+        from run_short_tighten import _fine_spans
+
+        s = "因果關係其實不容易確定"
+        assert [s[a:b] for a, b in _fine_spans(s)] == ["因果關係其實", "不容易確定"]
+
+    def test_keeps_long_units_untouched(self):
+        from run_short_tighten import _enforce_min_duration
+
+        units = [(0.0, 1.2, "第一行"), (1.2, 2.5, "第二行")]
+        assert _enforce_min_duration(units, 2.5) == units
+
+    def test_never_exceeds_next_start(self):
+        from run_short_tighten import _enforce_min_duration
+
+        # 下一行 0.5s 就開始且合併會爆行寬 → 只能延長到 0.5，不可蓋過去
+        units = [(0.0, 0.2, "短"), (0.5, 2.0, "這是一個很長的下一行文字")]
+        out = _enforce_min_duration(units, 2.0)
+        assert out[0][1] <= 0.5 + 1e-6
