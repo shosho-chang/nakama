@@ -129,12 +129,21 @@ def _probe_meta(path: Path) -> tuple[float, float]:
             timeout=30,
         ).stdout.strip()
         parts = out.split(",")
+        # 逐欄位獨立 parse——SAR 常見 "N/A"（方形像素），一起 parse 會把
+        # fps 也拖下水回退 30fps（十八輪：teen-phone 60fps 又縮回一半）
+        if parts:
+            try:
+                n, d = parts[0].split(":")
+                sar = int(n) / int(d) if int(d) else 1.0
+            except ValueError:
+                sar = 1.0
         if len(parts) >= 2:
-            n, d = parts[0].split(":")
-            sar = int(n) / int(d) if int(d) else 1.0
-            fn, fd = parts[1].split("/")
-            fps = int(fn) / int(fd) if int(fd) else 0.0
-    except (ValueError, OSError, subprocess.TimeoutExpired):
+            try:
+                fn, fd = parts[1].split("/")
+                fps = int(fn) / int(fd) if int(fd) else 0.0
+            except ValueError:
+                fps = 0.0
+    except (OSError, subprocess.TimeoutExpired):
         pass
     return sar, fps
 
@@ -211,7 +220,9 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
                     # （首輪盲審：空錢包前 1s 是黑色皮件側面）
                     "src_in": float(it.get("src_in", 0.0)),
                     "sar": sar,
-                    "src_fps": src_fps,  # photo 或 probe 失敗時為 0 → 落回 timeline fps
+                    # photo 的「fps」無意義（jpg 會回報 25）——歸零走 timeline
+                    # fps（搭配 clip Frames 設定）；probe 失敗同樣落回
+                    "src_fps": 0.0 if kind == "photo" else src_fps,
                 }
             )
         elif kind == "sticker":
