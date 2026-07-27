@@ -13,6 +13,23 @@ description: >
 設計凍結：`docs/plans/2026-07-25-highlight-cut-plan.md`（grill Q1–Q7）。
 **零 API 錢**：miner 與 persona 全走 Cowork subagent。
 
+## 執行環境（v1 收斂裁決，修修 2026-07-27）
+
+**這個 skill 只能在 Claude Code + 本機跑，不走 CoWork / Computer Use。**
+
+理由是機制差異，不是偏好：
+- 本 skill 的 Resolve 操作全走**官方 Python Scripting API**
+  （`DaVinciResolveScript`，見 `scripts/build_resolve_project.py`）——
+  直接呼叫 timeline/item/Fusion 物件，逐幀關鍵影格、0.05s 精度的音效落點
+  都靠它
+- CoWork 走 **Computer Use**（截圖→認畫面→點按鈕），做不到這種精度，
+  也擋不住版面變動
+- 前提：**Resolve Studio 執行中** + Preferences → System → General →
+  External scripting using = **Local**；跑 Resolve 的 script 用
+  `py -3.10`（3.14 沒有 Resolve 模組），pytest/ruff 用 `python`
+- Sandcastle / 雲端 runner 同樣不適用（沒有 Resolve、沒有素材碟）；
+  唯一可外包的是純 render 類工作（hyperframes 卡片），疊軌仍要本機
+
 ## 前提
 
 episode 已完成 podcast-pipeline 至 resolve-project（`transcript.srt` 說話者已切、
@@ -350,7 +367,10 @@ alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺�
 | 貼紙 | pop ×2（左右錯拍 0.18s） | t0 | 3 |
 | 概念卡 | pop | t0 | 3 |
 | tier2 卡 | swish（輕掃） | t0 | 2 |
-| B-roll 切出 | swish | t0−0.05 | 1 |
+
+**B-roll 切出不配音效**（二十二輪修修裁決：「不知道那個小音效作用是什麼，
+可以拿掉」）——畫面切換本身就是訊號。B-roll 要聲音走 sound-designer 的
+ambient（引擎/翻找等 diegetic 音，跟素材語意走）。
 
 - **防吵**：間距 <1.2s 只留優先級高的（同事件雙 pop 豁免）。hero 卡與
   cut punch 同點時 ding 勝出
@@ -361,6 +381,19 @@ alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺�
   ⚠️ 列表頁的下載鈕要用 `find` 拿 ref 再點（座標點擊常誤觸別列）
 - **對白本身已接近 0 dBFS**（實測峰 −1.5 dB）——SFX 疊上去區域測到
   −0.0 是對白造成，不是音效；判斷音效大小要聽，不要只看 volumedetect
+
+### BGM（方案 B：極輕 ambient 墊底，二十三輪修修裁決）
+
+`run_short_bgm.py` → audio **track 4**（1 對白 / 2 SFX / 3 環境 / 4 BGM）。
+
+- **響度**：對白實測 −15.4 LUFS，BGM 烘焙到 **−43 LUFS**（低 28 dB）
+  ——「感覺得到、聽不出來」。這個差距**不需要 ducking**（再壓就消失）；
+  未來若改「有存在感的墊底」才需要，屆時用對白區間算音量關鍵影格
+- **檔案端烘焙**：loudnorm + 頭尾 fade（1.2s / 2.0s）+ 裁到片長、
+  短於片長自動循環（`-stream_loop`）——不靠 Resolve clip gain，重跑可重現
+- 素材：`assets/bgm/<name>.wav`；`--track` 換曲
+- 參考片實測：鐘穎波旬集片尾能掉到 −35.8 dB → **該集沒有連續 BGM**；
+  我們是有意識地加，不是模仿範本
 
 ## Step 11 — 自檢 loop（交付前必跑，修修 2026-07-27 十七輪裁決）
 
