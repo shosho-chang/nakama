@@ -150,8 +150,10 @@ visual_intent，實現由 DP 降級（overlay→滿版短卡或 none；canvas_pi
 
 ### 4a. Stock（Envato Elements）
 
-1. 用 Envato MCP（`search_items`）搜——**只搜不下載**（Chrome extension 下載不了
-   Envato 資產，下載走 Codex computer use，見 Step 5）。
+1. 用 Envato MCP（`search_items`）搜——MCP 只搜不下載。**下載已可由
+   Claude in Chrome 全自動**（2026-07-27 實測：新版 app.envato.com 點
+   Download 即自動授權+下載，落瀏覽器預設下載目錄；舊「下載走 Codex
+   computer use」條款作廢，批次量大時 Codex 仍是備援）。
 2. 每個 beat 挑**首選＋兩備選**，預覽 URL 寫進 `broll.asset.candidates`
    （首選同時填 `source_url`），修修在 Bridge 圈選。
 3. 同一集 stock 調性一致（都實拍或都動畫；偏暖、非 corporate 假笑）。
