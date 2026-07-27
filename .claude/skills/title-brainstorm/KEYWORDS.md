@@ -9,14 +9,15 @@
 分數直接來自 Zoro，不用自己估：
 
 ```bash
-# repo 根目錄跑
-python -c "from agents.zoro.keyword_research import research_keywords; import json; \
-print(json.dumps(research_keywords('<主題>', content_type='youtube'), ensure_ascii=False))"
+# repo 根目錄跑（零 LLM 成本；評分由 subagent 做）
+python -c "from agents.zoro.keyword_research import collect_keyword_signals; import json; \
+print(json.dumps(collect_keyword_signals('<主題>', en_topic='<english topic>'), ensure_ascii=False))"
 ```
 
-`keywords[]` 每個含：`search_volume`→熱門度、`competition`→競爭度、`opportunity`→機會分、`reason`→理由。
-另有 `trend_gaps`（低競爭缺口，優先卡位）、`youtube_titles`（標題種子）。
-相依 httpx / trendspy；`YOUTUBE_API_KEY` 選配；內部呼叫 Claude 合成（**有成本**）。
+回傳 `zh` / `en` 兩輪 raw signals（youtube / trends / autocomplete / twitter / reddit），
+以及 `sources_used` / `sources_failed`。`en_topic` 省略時 `en_skipped: true`、`en` 為 `null`。
+評分（`search_volume` / `competition` / `opportunity`）由呼叫端 subagent 在 signals 上做判斷，
+不由此函式呼叫 LLM。相依 httpx / trendspy；`YOUTUBE_API_KEY` 選配。
 
 ## Branch B — WebSearch（獨立環境／沒有 repo）
 

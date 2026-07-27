@@ -27,6 +27,82 @@ logger = get_logger("nakama.zoro.keyword_research")
 _SOURCE_TIMEOUT = 15  # seconds per data source
 
 
+_CONNECTOR_NAMES = ("youtube", "trends", "autocomplete", "twitter", "reddit")
+
+
+def collect_keyword_signals(
+    topic: str,
+    *,
+    en_topic: str | None = None,
+) -> dict:
+    """Collect raw keyword signals from all connectors. Zero LLM calls.
+
+    Args:
+        topic: Chinese topic (e.g. "間歇性斷食").
+        en_topic: English equivalent. When None the English round is skipped
+                  and the returned dict has ``en_skipped: true``.
+                  Scoring / synthesis is the caller's (subagent) responsibility.
+
+    Returns dict with keys:
+        zh:           {youtube, trends, autocomplete, twitter, reddit} raw results
+                      (each connector result dict, or None on failure/empty)
+        en:           same structure, or None when en_skipped
+        en_skipped:   bool — True when en_topic was not provided
+        sources_used: list of "<connector>_<lang>" keys that returned data
+        sources_failed: list of "<connector>_<lang>" keys that failed / returned empty
+    """
+    collectors: dict[str, object] = {
+        "youtube_zh": lambda: search_top_videos(topic),
+        "trends_zh": lambda: get_trends(topic),
+        "autocomplete_zh": lambda: get_suggestions(topic),
+        "twitter_zh": lambda: search_recent_tweets(topic, region="tw-tzh"),
+        "reddit_zh": lambda: search_reddit_posts(topic, subreddit_allowlist=_HEALTH_SUBREDDITS),
+    }
+    if en_topic is not None:
+        _en = en_topic  # local binding avoids late-binding closure hazard
+        collectors.update(
+            {
+                "youtube_en": lambda: search_top_videos(_en),
+                "trends_en": lambda: get_trends(_en),
+                "autocomplete_en": lambda: get_suggestions(_en),
+                "twitter_en": lambda: search_recent_tweets(_en),
+                "reddit_en": lambda: search_reddit_posts(_en),
+            }
+        )
+
+    raw: dict[str, dict | None] = {}
+    sources_used: list[str] = []
+    sources_failed: list[str] = []
+
+    with ThreadPoolExecutor(max_workers=len(collectors)) as pool:
+        futures = {pool.submit(fn): name for name, fn in collectors.items()}
+        for future in as_completed(futures, timeout=_SOURCE_TIMEOUT + 5):
+            name = futures[future]
+            try:
+                result = future.result(timeout=_SOURCE_TIMEOUT)
+                if result:
+                    raw[name] = result
+                    sources_used.append(name)
+                else:
+                    raw[name] = None
+                    sources_failed.append(name)
+            except Exception as e:
+                logger.warning("Keyword signal source %s failed: %s", name, e)
+                raw[name] = None
+                sources_failed.append(name)
+
+    zh_signals = {c: raw.get(f"{c}_zh") for c in _CONNECTOR_NAMES}
+    en_signals = {c: raw.get(f"{c}_en") for c in _CONNECTOR_NAMES} if en_topic is not None else None
+
+    return {
+        "zh": zh_signals,
+        "en": en_signals,
+        "en_skipped": en_topic is None,
+        "sources_used": sorted(sources_used),
+        "sources_failed": sorted(sources_failed),
+    }
+
+
 def _auto_translate(topic: str) -> str:
     """Use Claude to translate a Chinese topic to its English equivalent.
 

@@ -285,3 +285,90 @@ def test_format_cost_summary_includes_tokens_and_dollars():
 def test_format_cost_summary_empty_returns_empty_string():
     """No usage records → no cost block (don't print fake zeros)."""
     assert cli_mod._format_cost_summary([]) == ""
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# collect_keyword_signals (ADR-054 D6 / issue #1066)
+# ──────────────────────────────────────────────────────────────────────────
+
+_YT_STUB = {
+    "top_videos": [{"title": "T", "views": 100, "channel": "C", "published": "2026-01-01"}],
+    "avg_views": 100,
+}
+_TRENDS_STUB = {"trend_direction": "rising", "related_top": [], "related_rising": []}
+_AC_STUB = {"suggestions": ["間歇性斷食 效果", "間歇性斷食 168"]}
+_TW_STUB = {"tweets": [{"text": "tweet", "likes": 5, "retweets": 2, "username": "u"}]}
+_RD_STUB = {
+    "posts": [
+        {
+            "title": "post",
+            "score": 10,
+            "num_comments": 3,
+            "subreddit": "fasting",
+            "url": "http://x",
+        }
+    ]
+}
+
+
+def _stub_all_connectors(monkeypatch):
+    monkeypatch.setattr(kw_mod, "search_top_videos", lambda *_: _YT_STUB)
+    monkeypatch.setattr(kw_mod, "get_trends", lambda *_: _TRENDS_STUB)
+    monkeypatch.setattr(kw_mod, "get_suggestions", lambda *_: _AC_STUB)
+    monkeypatch.setattr(kw_mod, "search_recent_tweets", lambda *_, **__: _TW_STUB)
+    monkeypatch.setattr(kw_mod, "search_reddit_posts", lambda *_, **__: _RD_STUB)
+
+
+def test_collect_signals_with_en_topic_returns_both_rounds(monkeypatch):
+    """Both zh and en rounds run when en_topic is provided."""
+    _stub_all_connectors(monkeypatch)
+    result = kw_mod.collect_keyword_signals("間歇性斷食", en_topic="intermittent fasting")
+
+    assert result["en_skipped"] is False
+    assert result["zh"] is not None
+    assert result["en"] is not None
+    for connector in ("youtube", "trends", "autocomplete", "twitter", "reddit"):
+        assert result["zh"][connector] is not None, f"zh.{connector} should have data"
+        assert result["en"][connector] is not None, f"en.{connector} should have data"
+    assert "youtube_zh" in result["sources_used"]
+    assert "youtube_en" in result["sources_used"]
+
+
+def test_collect_signals_en_topic_none_skips_en_round(monkeypatch):
+    """When en_topic is omitted, en round is skipped and en_skipped=True."""
+    _stub_all_connectors(monkeypatch)
+    result = kw_mod.collect_keyword_signals("間歇性斷食")
+
+    assert result["en_skipped"] is True
+    assert result["en"] is None
+    assert all("_en" not in k for k in result["sources_used"])
+    assert all("_en" not in k for k in result["sources_failed"])
+
+
+def test_collect_signals_single_connector_failure_does_not_abort(monkeypatch):
+    """A single connector exception is recorded in sources_failed; others succeed."""
+    _stub_all_connectors(monkeypatch)
+
+    def _fail(*_):
+        raise RuntimeError("trends down")
+
+    monkeypatch.setattr(kw_mod, "get_trends", _fail)
+
+    result = kw_mod.collect_keyword_signals("間歇性斷食", en_topic="intermittent fasting")
+
+    assert "trends_zh" in result["sources_failed"]
+    assert "trends_en" in result["sources_failed"]
+    assert "youtube_zh" in result["sources_used"]
+    assert result["zh"]["trends"] is None
+    assert result["en"]["trends"] is None
+
+
+def test_collect_signals_zero_llm_calls(monkeypatch):
+    """collect_keyword_signals must never call ask (zero LLM cost)."""
+    _stub_all_connectors(monkeypatch)
+    llm_called = []
+    monkeypatch.setattr(kw_mod, "ask", lambda *_a, **_kw: llm_called.append(True) or "{}")
+
+    kw_mod.collect_keyword_signals("間歇性斷食", en_topic="intermittent fasting")
+
+    assert llm_called == [], "collect_keyword_signals must not call ask (zero LLM)"

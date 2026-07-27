@@ -175,9 +175,6 @@ def clear_override(agent: str, task: str) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-# ADR-026: auth policy 解析。ternary 值 — "api" / "subscription_preferred" /
-# "subscription_required"。預設 subscription_preferred（修修長期 Max Plan
-# 訂閱者），缺 OAuth token 時軟降 API 並寫 fallback_reason 觀察。
 # tool_use 強制 api：CLI subprocess path 拿不到 raw tool-use JSON。
 _VALID_AUTH_POLICIES: frozenset[str] = frozenset(
     {"api", "subscription_preferred", "subscription_required"}
@@ -261,7 +258,7 @@ def get_auth_policy(agent: str | None = None, task: str = "default") -> str:
        這種 100% 必須走 Max Plan 的場景）
     2. Env var `AUTH_<AGENT>_<TASK>`
     3. Env var `AUTH_<AGENT>`
-    4. `DEFAULT_AUTH[task]`（預設 ``subscription_preferred``）
+    4. `DEFAULT_AUTH[task]`（預設 ``api``）
 
     Args:
         agent: Agent 名稱（大小寫不敏感）。``None`` 跳過 agent 層覆寫。
