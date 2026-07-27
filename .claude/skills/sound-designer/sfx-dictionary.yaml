@@ -1,0 +1,128 @@
+# 音效字典 — 修修口述的使用情境（2026-07-27 二十一輪起維護）
+#
+# ⛔ 這份字典的每一條「when」都是**修修親口說的用法**，不是我從檔名猜的。
+#    檔名關鍵字猜語意已作廢（AWW 猜成「失望」就是血案：它其實是看到可愛/
+#    感人時發的聲音）。新音效一律走試聽包 → 修修口述 → 才進字典。
+#
+# 欄位：
+#   file      音效庫內檔名（不含副檔名；路徑由 sfx_index 解析）
+#   when      使用情境（修修原話為準）
+#   polarity  正面 / 負面 / 中性 — 決定能不能用在講者自嘲 vs 打臉他人
+#   length    短(<1.5s，可壓在對白縫) / 中(1.5–4s) / 長(>4s，要留白)
+#   usage     常用 / 偶用 / 不用（修修裁決；「不用」的留著是為了別再推薦）
+#   verified  true = 修修口述過；false = 待確認，禁止排進 sound.json
+#
+# ⚠️ verified: false 的音效**不可**進 sound.json——寧缺勿猜（CLAUDE.md 紅線）。
+
+sounds:
+  # ── 失敗 / 負面 ──────────────────────────────────────────
+  - file: WA WA WA
+    when: 失敗（failure）。事情搞砸、預期落空的那一刻
+    polarity: 負面
+    length: 中
+    usage: 常用
+    verified: true
+    note: 修修校正——這是「失敗」不是「失望」，兩者不可混用
+
+  - file: SAD MUSIC
+    when: 哀傷。字面上的悲傷情境，不是失敗也不是失望
+    polarity: 負面
+    length: 長
+    usage: 常用
+    verified: true
+
+  - file: SAD MUSIC #2
+    when: 同 SAD MUSIC（第二版本）
+    polarity: 負面
+    length: 長
+    usage: 常用
+    verified: true
+
+  - file: DUN DUN DUNNN
+    when: 出現令人震驚、偏負面的結果時。比較長，要留得下空間
+    polarity: 負面
+    length: 中
+    usage: 常用
+    verified: true
+
+  - file: FAIL - WHA WHA VERSION
+    when: 未確認（疑似同 WA WA WA 家族的失敗音）
+    polarity: 負面
+    length: 中
+    usage: 未確認
+    verified: false
+
+  # ── 正面 / 展示 ──────────────────────────────────────────
+  - file: YAY
+    when: 慶祝。很可愛的小朋友「耶」
+    polarity: 正面
+    length: 中
+    usage: 常用
+    verified: true
+
+  - file: VICTORY
+    when: 勝利。《太空戰士》戰鬥勝利的音樂——達成、過關的收束感
+    polarity: 正面
+    length: 長
+    usage: 常用
+    verified: true
+
+  - file: TA DAHH
+    when: present / show off 一個東西的時候（登場、揭曉），**不是慶祝**
+    polarity: 正面
+    length: 中
+    usage: 常用
+    verified: true
+    note: 修修校正——「慶祝」歸 YAY/VICTORY，「亮相」才是 TA DAHH
+
+  - file: MLG HORNS
+    when: 強調某一件事情的時候
+    polarity: 中性
+    length: 中
+    usage: 常用
+    verified: true
+
+  - file: AWW
+    when: 歐美人看到很可愛或很感人的情境時發出的聲音（憐愛/被觸動）
+    polarity: 正面
+    length: 短
+    usage: 常用
+    verified: true
+    note: 修修校正——**不是失望**。索引早期把它歸「失望」是猜出來的錯誤
+
+  # ── 注意力 / 懸疑 ────────────────────────────────────────
+  - file: MGS ALERT
+    when: 忽然有一件要注意的事，抓住觀眾注意力。很短
+    polarity: 中性
+    length: 短
+    usage: 常用
+    verified: true
+
+  - file: SUDDEN SUSPENSE
+    when: 同 MGS ALERT——忽然要注意的事，抓注意力，很短
+    polarity: 中性
+    length: 短
+    usage: 常用
+    verified: true
+    note: 與 MGS ALERT 場合幾乎相同，同一支影片內兩者擇一避免重複感
+
+  - file: Panic Suspense - Sound Effect (HD)
+    when: —
+    polarity: 中性
+    length: 長
+    usage: 不用
+    verified: true
+    note: 修修裁決不常用——查詢結果要排除，別再推薦
+
+  # ── 環境 / 具象 ──────────────────────────────────────────
+  - file: Car sounds with gas pedal
+    when: 畫面出現車/跑車時的引擎環境音（diegetic，跟著素材走）
+    polarity: 中性
+    length: 長
+    usage: 常用
+    verified: false
+    note: 修修提過「跑車出現要有引擎音效」，但未指定此檔——試聽後補確認
+
+# UI 事件音效（Envato 來源，run_short_sfx.py 內建規則使用；與本字典並行）
+# ding / riser / impact / pop / swish → 見 SKILL Step 10 表，屬「機械層」，
+# 不需語意判斷，不進本字典。

@@ -39,25 +39,37 @@ INDEX_PATH = Path(__file__).resolve().parent.parent / "data" / "sfx_index.json"
 AUDIO_EXT = {".wav", ".mp3", ".aif", ".aiff", ".m4a", ".flac"}
 USUAL_DIR = "usual use"
 
-# 中文語意 → 檔名關鍵字（修修庫的實際命名，二十一輪盤點）
-SEMANTIC_ALIASES = {
-    "失望": ["wa wa", "wha wha", "fail", "aww", "sad"],
-    "哇哇哇": ["wa wa", "wha wha", "fail"],
-    "慶祝": ["yay", "victory", "ta dahh", "applause", "cheer", "horn"],
-    "耶": ["yay", "victory", "applause"],
-    "懸疑": ["suspense", "dun dun", "drum roll", "alert", "panic"],
-    "驚訝": ["wow", "anime wow", "baby says wow", "gasp"],
-    "錯誤": ["buzzer", "wrong", "break"],
-    "金錢": ["ka-ching", "coin", "cash"],
-    "引擎": ["car sounds", "gas pedal", "engine"],
-    "打擊": ["punch", "kick", "impact", "hit"],
+# ⛔ 語意來源只有一個：sound-designer skill 的 sfx-dictionary.yaml
+# （修修口述的用法）。檔名關鍵字猜語意已作廢——血案：AWW 被猜成「失望」，
+# 實際是「看到可愛/感人時的憐愛聲」；TA DAHH 被猜成「慶祝」，實際是「亮相」。
+DICT_PATH = (
+    Path(__file__).resolve().parent.parent
+    / ".claude"
+    / "skills"
+    / "sound-designer"
+    / "sfx-dictionary.yaml"
+)
+# 純檔名 fallback（字典沒收錄時用，結果一律標「未驗證」提醒走試聽包）
+FALLBACK_KEYS = {
     "轉場": ["whoosh", "swoosh", "woosh", "transition", "swipe"],
-    "笑聲": ["laugh", "baby laughing", "evil laugh"],
-    "心跳": ["heart beat", "heartbeat"],
-    "打字": ["keyboard", "pencil write", "computer"],
+    "打擊": ["punch", "kick", "impact", "hit"],
+    "打字": ["keyboard", "typing"],
     "相機": ["camera shutter", "shutter"],
-    "鈴": ["ding", "bell", "sparkle", "pop"],
+    "引擎": ["car sounds", "gas pedal", "engine"],
 }
+
+
+def load_dictionary() -> list[dict]:
+    """sfx-dictionary.yaml → 條目（缺 yaml 套件時退回空清單，不擋索引建立）。"""
+    if not DICT_PATH.exists():
+        return []
+    try:
+        import yaml
+    except ImportError:
+        logger.warning("PyYAML 未安裝——字典查詢停用，只剩檔名 fallback")
+        return []
+    data = yaml.safe_load(DICT_PATH.read_text(encoding="utf-8")) or {}
+    return [s for s in data.get("sounds", []) if s.get("usage") != "不用"]
 
 
 def _ffprobe_duration(path: Path) -> float:
@@ -154,19 +166,48 @@ def build(root: Path) -> dict:
 
 
 def query(terms: str, limit: int = 12) -> list[dict]:
-    """中文語意或英文關鍵字 → 候選（Usual use 優先）。"""
+    """語意查詢：先比對字典的 when/場合，再退回檔名關鍵字。
+
+    字典命中者標 `dict_when`（修修口述用法）與 `verified`；未收錄者標
+    `verified=False`——**排進 sound.json 前必須走試聽包給修修確認**。
+    """
     if not INDEX_PATH.exists():
         raise SystemExit(f"{INDEX_PATH} 不存在——先跑 build_sfx_index.py 建索引")
     index = json.loads(INDEX_PATH.read_text(encoding="utf-8"))
+    by_name = {it["name"].lower(): it for it in index["items"]}
+    hits: list[dict] = []
+    seen: set[str] = set()
+
+    for entry in load_dictionary():
+        hay = f"{entry.get('when', '')} {entry.get('note', '')} {entry['file']}".lower()
+        if not any(term.lower() in hay for term in terms.split()):
+            continue
+        it = by_name.get(entry["file"].lower())
+        if it is None:
+            continue
+        seen.add(it["path"])
+        hits.append(
+            {
+                **it,
+                "dict_when": entry.get("when", ""),
+                "polarity": entry.get("polarity", ""),
+                "usage": entry.get("usage", ""),
+                "verified": bool(entry.get("verified")),
+                "score": 100 + (5 if entry.get("usage") == "常用" else 0),
+            }
+        )
+
     keys: list[str] = []
     for term in terms.split():
-        keys += SEMANTIC_ALIASES.get(term, [term.lower()])
-    hits = []
+        keys += FALLBACK_KEYS.get(term, [term.lower()])
     for it in index["items"]:
+        if it["path"] in seen:
+            continue
         hay = f"{it['name']} {it['folder']}".lower()
-        score = sum(2 if k in hay else 0 for k in keys)
+        score = sum(2 for k in keys if k in hay)
         if score:
-            hits.append({**it, "score": score + (3 if it["usual"] else 0)})
+            hits.append({**it, "verified": False, "score": score + (3 if it["usual"] else 0)})
+
     hits.sort(key=lambda x: (-x["score"], x["sec"]))
     return hits[:limit]
 
@@ -182,8 +223,10 @@ def main(argv: list[str] | None = None) -> int:
         rows = query(args.query, args.limit)
         for r in rows:
             mark = "★" if r["usual"] else " "
-            print(f"{mark} {r['name'][:44]:<44} {r['sec']:5.2f}s {r['tone']:<4} {r['folder'][:28]}")
-        print(f"（{len(rows)} 筆；★ = Usual use）")
+            tag = "✓" if r.get("verified") else "?"
+            when = r.get("dict_when", "")[:30]
+            print(f"{mark}{tag} {r['name'][:34]:<34} {r['sec']:5.2f}s {r['tone']:<4} {when}")
+        print(f"（{len(rows)} 筆；★=常用區 ✓=字典已驗證 ?=未驗證，需試聽包確認）")
         return 0
     print(json.dumps(build(Path(args.root)), ensure_ascii=False, indent=1))
     return 0
