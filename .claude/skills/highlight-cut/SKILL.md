@@ -119,28 +119,18 @@ python scripts/run_highlight_cut.py <episode> --materialize
 
 **miner 給的標題只是工作代號**（timeline 命名、報告索引用），**不是發布標題**。
 
-**執行權歸屬（ADR-054 D16①）**：packaging 段（podcast-pipeline 末段）上線後，標題發想
-由 packaging 執行、產物單一落點 `packages.json`——本 skill **不重跑**、選段企劃報告
-**不再存標題候選**（留一行指向 packaging gate）。以下規則屆時由 packaging 段承接；
-**packaging 上線前的過渡期照舊在本 skill 內執行**：
-
-**長片**：每支各自跑一次 `title-brainstorm` skill 完整流程——
-
-- input = 該段落的逐字稿節錄（`highlights/srt/<id>_rNNN.srt` 或 review pack 的
-  該段文本存成暫存檔）
-- 走它完整流程（TA 定位 → 關鍵字評分 → 6 角度發散 → panel 冷讀）產 Top 5
-- miner 標題自產、跳過 title-brainstorm = 違規（曾產出段內未出現關鍵詞的標題）
-
-**短片**：標題 LLM 直出（吃該段 hook 原句＋本集關鍵字表，單次生成），**不跑 panel、
-不跑淘汰賽**。理由：Test & Compare 不支援 Shorts（無客觀 A/B 裁判）、Shorts 點擊由
-前 3 秒內容決定，標題不是 CTR 變數——修修：「短影片的 title 直接用 LLM 決定就好」。
+**執行權歸屬（ADR-054 D16①，packaging 段已上線）**：標題發想由 **packaging 段**
+（podcast-pipeline 末段）執行——長片走 `title-brainstorm --batch` 完整 7 步（深度
+不可簡化 — D13）、短片 LLM 直出不跑 panel（D4）、產物單一落點 `packages.json`。
+本 skill **不跑 title-brainstorm、不重跑**；miner 只產工作代號。長短片分流的完整
+規則與理由見 `podcast-pipeline` SKILL.md「Packaging 末段」與 ADR-054 D4/D13。
 
 ## Step 4b — 選段企劃報告
 
 寫 `highlights/選段企劃-<episode>.md`：
 
-- 各 3 當選段：標題候選（過渡期＝長片 Top 5／短片 LLM 直出 1 條；packaging 上線後
-  本欄改為一行指向 packaging gate，不重複存 — ADR-054 D16①）+ hook 原句 + 選段理由 +
+- 各 3 當選段：標題欄一行指向 packaging gate（`/bridge/packaging/<slug>`；候選
+  單一落點 packages.json，不重複存 — ADR-054 D16①）+ hook 原句 + 選段理由 +
   persona 意見摘要 + Renee 留存風險（長片）
 - brand-lens 否決項**標紅**置頂等修修裁決
 - 落選全列：分數 + 一句短評（撈遺珠用；主 timeline 藍色 marker 對應）
