@@ -365,6 +365,19 @@ ambient（引擎/翻找等 diegetic 音，跟素材語意走）。
 - **對白本身已接近 0 dBFS**（實測峰 −1.5 dB）——SFX 疊上去區域測到
   −0.0 是對白造成，不是音效；判斷音效大小要聽，不要只看 volumedetect
 
+### BGM（方案 B：極輕 ambient 墊底，二十三輪修修裁決）
+
+`run_short_bgm.py` → audio **track 4**（1 對白 / 2 SFX / 3 環境 / 4 BGM）。
+
+- **響度**：對白實測 −15.4 LUFS，BGM 烘焙到 **−43 LUFS**（低 28 dB）
+  ——「感覺得到、聽不出來」。這個差距**不需要 ducking**（再壓就消失）；
+  未來若改「有存在感的墊底」才需要，屆時用對白區間算音量關鍵影格
+- **檔案端烘焙**：loudnorm + 頭尾 fade（1.2s / 2.0s）+ 裁到片長、
+  短於片長自動循環（`-stream_loop`）——不靠 Resolve clip gain，重跑可重現
+- 素材：`assets/bgm/<name>.wav`；`--track` 換曲
+- 參考片實測：鐘穎波旬集片尾能掉到 −35.8 dB → **該集沒有連續 BGM**；
+  我們是有意識地加，不是模仿範本
+
 ## Step 11 — 自檢 loop（交付前必跑，修修 2026-07-27 十七輪裁決）
 
 「剪完 → 低解析 export → 盲審 agent 看片 → 修 → loop」。每支短片交付前
