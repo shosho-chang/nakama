@@ -275,6 +275,7 @@ def _keep_segments(t0: float, t1: float, cuts: list[dict]) -> list[tuple[float, 
 # ⚠️ 切點必走 jieba 詞邊界（shared/transcriber._force_break）。2026-07-26 教訓：
 # 第一版純按字數切，把「產品/短效/長期/改變/聯考」全部攔腰砍——中文斷行
 # 沒有分詞就是錯的，任何字數規則都救不回來。
+_MIN_CUE_SEC = 0.8  # 一行最短顯示秒數（二十四輪盲審：0.16s 閃現讀不到）
 _FINE_MAX = 8  # 一行目標寬（顯示寬：中文=1、ASCII/空白=0.5）
 _FINE_HARD = 10  # 修修 2026-07-26 十輪裁決：中文 10 字 = hard limit，超過必拆
 _FINE_MIN = 4  # 短於此的單元往前併
@@ -430,10 +431,41 @@ def _fine_spans(text: str) -> list[tuple[int, int]]:
             merged[-1][1] = ub
             continue
         merged.append([ua, ub])
+    merged = _balance_pairs(text, merged)
     for ua, ub in merged:
         if _disp_len(text[ua:ub]) > _FINE_HARD:
             logger.warning(f"字幕行超過 hard limit {_FINE_HARD}：{text[ua:ub]!r}（不可分原子）")
     return [(a, b) for a, b in merged]
+
+
+def _balance_pairs(text: str, units: list[list[int]]) -> list[list[int]]:
+    """相鄰兩行寬度失衡時，在**原子邊界**上挪一個原子讓兩行更平均。
+
+    二十四輪盲審血案：「因果關係其實不 / 容易確定」（7+4）——greedy 打包
+    貪到 _FINE_MAX 才斷，把「不容易」切開，短行只剩 0.16s 閃現讀不到。
+    平衡後成「因果關係其實 / 不容易確定」（6+5），語意與時間都合理。
+
+    只在同 clause 內、且移動後兩行都 ≤_FINE_HARD、失衡確實下降時才動。
+    """
+    out = [list(u) for u in units]
+    for i in range(len(out) - 1):
+        a1, b1 = out[i]
+        a2, b2 = out[i + 1]
+        if b1 != a2:  # 跨 clause（中間有空白）不動
+            continue
+        best = abs(_disp_len(text[a1:b1]) - _disp_len(text[a2:b2]))
+        atoms = _atom_spans(text, a1, b1)
+        if len(atoms) < 2:
+            continue
+        # 把第一行最後一個原子移到第二行
+        sa, sb = atoms[-1]
+        if sb != b1:
+            continue
+        w1, w2 = _disp_len(text[a1:sa]), _disp_len(text[sa:b2])
+        if w1 and w2 <= _FINE_HARD and abs(w1 - w2) < best:
+            out[i] = [a1, sa]
+            out[i + 1] = [sa, b2]
+    return out
 
 
 def _fine_units(s: float, e: float, text: str, words: list[dict]) -> list[tuple[float, float, str]]:
@@ -472,7 +504,7 @@ def _fine_units(s: float, e: float, text: str, words: list[dict]) -> list[tuple[
         unit_text = text[a:b].strip()
         if unit_text and ue > us:
             out.append((us, ue, unit_text))
-    return out
+    return _enforce_min_duration(out, e)
 
 
 def _collapse_t(t: float, segs: list[tuple[float, float]]) -> float:
@@ -563,7 +595,64 @@ def _fine_units_grouped(
         unit_text = text[a:b].strip()
         if unit_text and ue > us:
             out.append((us, ue, unit_text))
-    return out
+    return _enforce_min_duration(out, group[-1][1])
+
+
+def _enforce_min_duration(
+    units: list[tuple[float, float, str]], hard_end: float
+) -> list[tuple[float, float, str]]:
+    """一行短於 _MIN_CUE_SEC 就併進鄰居——盲審抓到 0.16s 閃現 cue 讀不到。
+
+    優先「往後借時間」（下一行還沒開始 → 直接延長，不動文字）；借不到
+    就與較短的鄰居合併文字（合併後仍受 _FINE_HARD 行寬限制，撐爆就寧可
+    只延長時間、讓兩行重疊 0）。
+    """
+    if not units:
+        return units
+    out = [list(u) for u in units]
+    i = 0
+    while i < len(out):
+        s, e, txt = out[i]
+        if e - s >= _MIN_CUE_SEC:
+            i += 1
+            continue
+        want = s + _MIN_CUE_SEC
+        nxt_start = out[i + 1][0] if i + 1 < len(out) else hard_end
+        if want <= nxt_start + 1e-6:  # 後面有空檔 → 純延長
+            out[i][1] = min(want, nxt_start)
+            i += 1
+            continue
+        # 沒空檔 → 先向前一行「借時間」（把邊界往前挪，前一行仍須 ≥ 下限）
+        if i > 0 and abs(out[i - 1][1] - s) < 1e-6:
+            ps, pe = out[i - 1][0], out[i - 1][1]
+            lend = min(_MIN_CUE_SEC - (e - s), max(0.0, (pe - ps) - _MIN_CUE_SEC))
+            if lend > 0.01:
+                out[i - 1][1] = pe - lend
+                out[i][0] = s - lend
+                s = out[i][0]
+                if e - s >= _MIN_CUE_SEC - 1e-6:
+                    i += 1
+                    continue
+        # 還是不夠 → 與鄰居合併文字（挑合併後較短的一側，避免爆行寬）
+        cand = []
+        if i + 1 < len(out) and _disp_len(txt + out[i + 1][2]) <= _FINE_HARD:
+            cand.append((_disp_len(txt + out[i + 1][2]), i + 1))
+        if i > 0 and _disp_len(out[i - 1][2] + txt) <= _FINE_HARD:
+            cand.append((_disp_len(out[i - 1][2] + txt), i - 1))
+        if not cand:
+            out[i][1] = max(e, min(want, nxt_start))  # 併不了就盡量延長
+            i += 1
+            continue
+        _, j = min(cand)
+        if j > i:
+            out[i] = [s, out[j][1], txt + out[j][2]]
+            del out[j]
+        else:
+            out[j] = [out[j][0], e, out[j][2] + txt]
+            del out[i]
+            i = max(0, j)
+        # 合併後重新檢查同一位置（可能仍不足）
+    return [(a, b, c) for a, b, c in out if c.strip() and b > a]
 
 
 def _strip_cut_word(text: str, word: str, rel: float) -> str:

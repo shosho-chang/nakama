@@ -24,7 +24,10 @@
       .sticker {
         position: absolute; top: var(--y, 46%);
         width: var(--w, 26%);
-        transform: translateY(-50%);
+        /* ⚠️ 這裡**不可**寫 transform：GSAP 用 xPercent/yPercent 定位，
+           CSS transform 會被 GSAP 解析成 px 後再疊加一次 → 位移加倍
+           （二十四輪血案：論文卡被推出畫面左緣一半、標題讀不到）。
+           垂直居中一律交給 GSAP 的 yPercent: -50。 */
         opacity: 0;
         filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.35));
       }
@@ -32,8 +35,7 @@
       #right { right: 5%; }
       /* center = 論文封面/書封證物模式：置中大圖 + 白框（evidence_doc 語彙） */
       #center {
-        left: 50%;
-        transform: translate(-50%, -50%);
+        left: 50%;  /* 水平居中由 GSAP xPercent: -50 完成，勿加 transform */
         border: 10px solid #fff;
         border-radius: 6px;
         filter: drop-shadow(0 16px 36px rgba(0, 0, 0, 0.5));
