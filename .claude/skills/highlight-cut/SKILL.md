@@ -325,6 +325,27 @@ alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺�
 逐項可調、綠幕/浮水印攔截）。冪等：slug stem 比對清舊 item（素材換
 副檔名也清得掉）。
 
+## Step 10 — 自檢 loop（交付前必跑，修修 2026-07-27 十七輪裁決）
+
+「剪完 → 低解析 export → 盲審 agent 看片 → 修 → loop」。每支短片交付前
+至少跑一輪，**修完任何 JSON/素材也要再跑**（十七輪首航就抓到 titles 清場
+誤殺 track 4 整條貼紙層——沒 loop 根本不會發現）。
+
+1. `python scripts/run_short_review.py <episode> --id <cid>` →
+   episode `highlights/review/<cid>/`：540×960 preview（**ffmpeg 從 tight
+   SRT 燒字幕**——Resolve render API 燒不進字幕，只有 ExportSubtitle
+   sidecar）、1fps 縮圖牆、逐事件抽幀、events.json（含節拍器缺口）
+2. dispatch 盲審 subagent：給 packet 路徑 + 八項 checklist（鋪滿/貼合/
+   時長/遮臉/裁切感/節奏/字幕/其他異常），輸出 findings JSON
+   （severity high/medium/low/pass）
+3. high/medium 必修：改 JSON 或 script → 重跑受影響 script → 重出 packet
+   再審。**收斂條件：無 high/medium**。low 列進交付報告給修修裁決
+4. 修完的教訓照慣例進 SKILL/code（本 loop 首航戰果：SAR 非方形像素
+   fill 修正、`src_in` 源內偏移、titles 誤殺 broll 卡、ffmpeg 字幕燒錄）
+
+broll.json 補充欄位：`src_in`（秒）＝素材源內起點偏移——素材開頭是廢畫面
+（黑色皮件、logo 卡）時跳過再進。
+
 ## 修修換段時
 
 改 `winners.json`（換 id/rank）→ 重跑 `--materialize`（冪等，30 秒）。

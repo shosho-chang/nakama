@@ -159,11 +159,18 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     project.SetCurrentTimeline(director)
 
     # 冪等清場：track1+ 的舊卡/巢狀 item、v1 子 timeline、media pool 舊卡
+    # ⚠️ 前綴 <cid>_ 會誤殺 broll 的貼紙/概念卡（<cid>_broll_*，track 4）——
+    # 十七輪血案：titles 重跑把整條 track 4 滅掉。broll 卡明確排除。
+    def _mine(name: str) -> bool:
+        return name.startswith((f"{cid}_", f"titles - {cid}")) and not name.startswith(
+            f"{cid}_broll_"
+        )
+
     for ti in range(1, director.GetTrackCount("video") + 1):
         stale = [
             it
             for it in (director.GetItemListInTrack("video", ti) or [])
-            if (it.GetName() or "").startswith((f"{cid}_", f"titles - {cid}"))
+            if _mine(it.GetName() or "")
         ]
         if stale:
             director.DeleteClips(stale)
@@ -172,9 +179,7 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     cards_bin = next(
         (f for f in root.GetSubFolderList() if f.GetName() == "Cards"), None
     ) or mp.AddSubFolder(root, "Cards")
-    stale_clips = [
-        cl for cl in (cards_bin.GetClipList() or []) if (cl.GetName() or "").startswith(f"{cid}_")
-    ]
+    stale_clips = [cl for cl in (cards_bin.GetClipList() or []) if _mine(cl.GetName() or "")]
     if stale_clips:
         mp.DeleteClips(stale_clips)
 

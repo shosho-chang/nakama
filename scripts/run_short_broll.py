@@ -100,12 +100,44 @@ def _render_card(comp: str, variables: dict, out_path: Path) -> None:
         raise SystemExit(f"hyperframes render 失敗: {(proc.stderr or '')[-400:]}")
 
 
-def _fill_zoom(res: str) -> float:
-    """素材解析度 "WxH" → 填滿 1080×1920 的 Zoom 倍率（Resolve 先 fit 再 zoom）。"""
+def _probe_sar(path: Path) -> float:
+    """ffprobe 取 sample aspect ratio（非方形像素的素材：像素尺寸 ≠ 顯示尺寸）。
+
+    十七輪血案：meditation.mov 1080×1920 但 SAR 109:120 → 顯示寬僅 981px，
+    只看像素尺寸算出 zoom=1.0 → 左右各留一條縫。Resolve 依 SAR 顯示，
+    fill 計算必須用顯示尺寸。
+    """
+    try:
+        out = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=sample_aspect_ratio",
+                "-of",
+                "csv=p=0",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        ).stdout.strip()
+        n, d = out.split(":")
+        return int(n) / int(d) if int(d) else 1.0
+    except (ValueError, OSError, subprocess.TimeoutExpired):
+        return 1.0
+
+
+def _fill_zoom(res: str, sar: float = 1.0) -> float:
+    """素材解析度 "WxH"（+SAR）→ 填滿 1080×1920 的 Zoom 倍率（Resolve 先 fit 再 zoom）。"""
     try:
         w, h = (int(x) for x in res.split("x"))
     except (ValueError, AttributeError):
         return 1.0
+    w = w * (sar if sar > 0 else 1.0)  # 顯示寬度
     fit = min(CANVAS_W / w, CANVAS_H / h)
     return max(CANVAS_W / (w * fit), CANVAS_H / (h * fit))
 
@@ -159,7 +191,18 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
             hits = sorted(assets_dir.glob(f"{it['slug']}.*"))
             if not hits:
                 raise SystemExit(f"assets/broll/{it['slug']}.* 不存在——先下載素材")
-            media_jobs.append({"path": hits[0], "t0": t0, "span": span, "kind": kind, "i": i})
+            media_jobs.append(
+                {
+                    "path": hits[0],
+                    "t0": t0,
+                    "span": span,
+                    "kind": kind,
+                    "i": i,
+                    # src_in（秒）：素材源內起點偏移——素材開頭讀不懂/是廢畫面時跳過
+                    #（首輪盲審：空錢包前 1s 是黑色皮件側面）
+                    "src_in": float(it.get("src_in", 0.0)),
+                }
+            )
         elif kind == "sticker":
             comp = "sticker_pair"
             if span > COMP_MAX_SEC[comp] - 0.3:
@@ -225,17 +268,28 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         raise SystemExit(f"「{director_label}」不存在——先跑 run_short_director")
     project.SetCurrentTimeline(director)
 
-    # 冪等清場：素材 slug（stem，不含副檔名——素材換格式 .mov→.mp4 也要清得掉）
-    # + <cid>_broll_ 前綴的舊 item；BRoll bin 舊 clip
-    known = {j["path"].stem for j in media_jobs} | {f"{cid}_broll_"}
+    # 冪等清場（timeline items）：**媒體路徑歸屬判定**——本 timeline 上凡是
+    # 媒體檔在 episode assets/broll/ 底下的 item 都是本 script 放的（開場分割
+    # 是 COMBO 機位源，路徑不同），一律清掉再重疊。slug 改名不會再留孤兒
+    # （十七輪：sports-car 換 slug 後舊 item 沒被 name 比對清到）。
+    # 卡片 item 用 <cid>_broll_ 名稱前綴（每 cid 專屬，不跨短片）。
+    assets_prefix = str(assets_dir.resolve()).lower()
+
+    def _ours(it) -> bool:
+        if (it.GetName() or "").startswith(f"{cid}_broll_"):
+            return True
+        try:
+            mpi = it.GetMediaPoolItem()
+            fp = (mpi.GetClipProperty("File Path") or "") if mpi else ""
+        except (AttributeError, TypeError):
+            return False
+        return fp.lower().startswith(assets_prefix)
+
     for ti in range(1, director.GetTrackCount("video") + 1):
-        stale = [
-            it
-            for it in (director.GetItemListInTrack("video", ti) or [])
-            if any((it.GetName() or "").startswith(k) for k in known)
-        ]
+        stale = [it for it in (director.GetItemListInTrack("video", ti) or []) if _ours(it)]
         if stale:
             director.DeleteClips(stale)
+    known = {j["path"].stem for j in media_jobs} | {f"{cid}_broll_"}
     broll_bin = next(
         (f for f in root.GetSubFolderList() if f.GetName() == "BRoll"), None
     ) or mp.AddSubFolder(root, "BRoll")
@@ -281,15 +335,15 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
                     "mediaType": 1,
                     "trackIndex": BROLL_TRACK,
                     "recordFrame": tl_start + int(job["t0"] * fps),
-                    "startFrame": 0,
-                    "endFrame": int(job["span"] * fps),
+                    "startFrame": int(job["src_in"] * fps),
+                    "endFrame": int((job["src_in"] + job["span"]) * fps),
                 }
             ]
         )
         if not ok:
             raise SystemExit(f"疊軌失敗 @{job['t0']}（track {BROLL_TRACK} 可能被佔）")
         item = (director.GetItemListInTrack("video", BROLL_TRACK) or [])[-1]
-        zoom = _fill_zoom(clip.GetClipProperty("Resolution"))
+        zoom = _fill_zoom(clip.GetClipProperty("Resolution"), _probe_sar(job["path"]))
         if job["kind"] == "photo":
             # 靜照先放大到 fill，Ken Burns 再往上推
             item.SetProperty("ZoomX", zoom)
