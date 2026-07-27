@@ -318,12 +318,36 @@ alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺�
 - **景別**：滑手機/操作類一律「hands close up」特寫——有臉的素材會讀成
   「在跟人互動/視訊」（十五輪血案）
 - **negative 清單**：標題帶 Green（綠幕）、corporate 擺拍假笑、文字疊圖、
-  AI 生成感、視訊通話感
+  視訊通話感、**AI 生成素材（十八輪修修裁決：一律停用**——AI 內容日後走
+  brand guideline 管線：Higgsfield + Seedance、Pixel 風 3D，先有自家設計
+  再產，見 v2 備忘**）**、AI 素材常見破綻：運鏡方向詭異（車尾逼近像倒車）、
+  文化錯位（聯考配西方教室——在地語境名詞配亞洲素材）
 - mood：偏暖、自然光；同一支短片 stock 調性一致
 
 **驗證**：`--stills` 樣張逐張看（fill 構圖、貼紙不遮臉——`y_pct`/`size_pct`
 逐項可調、綠幕/浮水印攔截）。冪等：slug stem 比對清舊 item（素材換
 副檔名也清得掉）。
+
+## Step 10 — 自檢 loop（交付前必跑，修修 2026-07-27 十七輪裁決）
+
+「剪完 → 低解析 export → 盲審 agent 看片 → 修 → loop」。每支短片交付前
+至少跑一輪，**修完任何 JSON/素材也要再跑**（十七輪首航就抓到 titles 清場
+誤殺 track 4 整條貼紙層——沒 loop 根本不會發現）。
+
+1. `python scripts/run_short_review.py <episode> --id <cid>` →
+   episode `highlights/review/<cid>/`：540×960 preview（**ffmpeg 從 tight
+   SRT 燒字幕**——Resolve render API 燒不進字幕，只有 ExportSubtitle
+   sidecar）、1fps 縮圖牆、逐事件抽幀、events.json（含節拍器缺口）
+2. dispatch 盲審 subagent：給 packet 路徑 + 八項 checklist（鋪滿/貼合/
+   時長/遮臉/裁切感/節奏/字幕/其他異常），輸出 findings JSON
+   （severity high/medium/low/pass）
+3. high/medium 必修：改 JSON 或 script → 重跑受影響 script → 重出 packet
+   再審。**收斂條件：無 high/medium**。low 列進交付報告給修修裁決
+4. 修完的教訓照慣例進 SKILL/code（本 loop 首航戰果：SAR 非方形像素
+   fill 修正、`src_in` 源內偏移、titles 誤殺 broll 卡、ffmpeg 字幕燒錄）
+
+broll.json 補充欄位：`src_in`（秒）＝素材源內起點偏移——素材開頭是廢畫面
+（黑色皮件、logo 卡）時跳過再進。
 
 ## 修修換段時
 
@@ -338,6 +362,8 @@ hyperframes 進階：`--batch` 一次渲整支的卡（省 npx 冷啟）、Rende
 （等出 experimental 再評）。升版流程：改 pin 版號 → 重渲樣張驗 → 進 PR。
 cold-open 重排、直式字幕模板、訪談留言補掃校 persona、（緊）流程套用到
 長片（長片節奏容忍度高，等修修看完短片版成效再決定）。
+AI 生成素材管線（十八輪修修方向）：brand guideline 先行 → Higgsfield +
+Seedance 產 Pixel 風 3D 動畫——自家設計定稿前，B-roll 一律實拍 stock。
 短片設計資產層剩餘項（波旬範本還有、我們還沒做）：橘色塗鴉框版式
 （重點段落講者縮進橘 doodle 紋理框）、片尾 EP 品牌卡（logo+金句+橘
 zigzag）、字幕關鍵詞高亮、BGM/音效。B-roll/貼紙/概念卡已落地（Step 9）。
