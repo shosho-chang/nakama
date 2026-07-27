@@ -350,7 +350,10 @@ alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺�
 | 貼紙 | pop ×2（左右錯拍 0.18s） | t0 | 3 |
 | 概念卡 | pop | t0 | 3 |
 | tier2 卡 | swish（輕掃） | t0 | 2 |
-| B-roll 切出 | swish | t0−0.05 | 1 |
+
+**B-roll 切出不配音效**（二十二輪修修裁決：「不知道那個小音效作用是什麼，
+可以拿掉」）——畫面切換本身就是訊號。B-roll 要聲音走 sound-designer 的
+ambient（引擎/翻找等 diegetic 音，跟素材語意走）。
 
 - **防吵**：間距 <1.2s 只留優先級高的（同事件雙 pop 豁免）。hero 卡與
   cut punch 同點時 ding 勝出
