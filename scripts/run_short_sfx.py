@@ -27,8 +27,10 @@ Append 不帶 start/endFrame（整段落軌）。
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
+import subprocess
 import sys
 from pathlib import Path
 
@@ -45,6 +47,10 @@ logger = logging.getLogger("short_sfx")
 
 SFX_TRACK = 2
 MIN_GAP = 1.2  # 秒——比這近的兩個音效只留優先級高的
+AMBIENT_TRACK = 3  # 環境音獨立軌（襯底，與事件音效互不搶）
+AMBIENT_GAIN_DB = -12.0
+SEMANTIC_GAIN_DB = -6.0
+AMBIENT_FADE = 0.15  # 尾端 fade，避免與 B-roll 同時切斷時爆音
 
 
 def build_cues(episode_dir: Path, cid: str) -> list[dict]:
@@ -101,12 +107,153 @@ def build_cues(episode_dir: Path, cid: str) -> list[dict]:
     return kept
 
 
+def _dur(path: Path) -> float:
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+        capture_output=True,
+        text=True,
+        errors="replace",
+    ).stdout.strip()
+    try:
+        return round(float(out), 3)
+    except ValueError:
+        return 2.0
+
+
+def _cut_to_span(src: Path, span: float, gain_db: float, cache: Path, fade: float) -> Path:
+    """把音效裁成指定長度 + 增益 + 尾端 fade，快取到 episode。
+
+    修修二十二輪：環境音「出來的時間必須跟 B-roll 切齊，結束也要一起結束」。
+    素材通常比 B-roll 長（引擎音 9.5s vs 跑車 2.2s），**在檔案端裁好**再疊軌
+    ——長度由檔案保證，不靠 Resolve 手拉、重跑也一致。
+    """
+    cache.mkdir(parents=True, exist_ok=True)
+    key = hashlib.md5(f"{src}|{span}|{gain_db}|{fade}".encode()).hexdigest()[:10]
+    out = cache / f"{src.stem[:24]}_{key}.wav"
+    if out.exists():
+        return out
+    af = f"atrim=0:{span},asetpts=PTS-STARTPTS,volume={gain_db}dB"
+    if fade > 0 and span > fade * 2:
+        af += f",afade=t=out:st={max(0.0, span - fade):.3f}:d={fade}"
+    proc = subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-v",
+            "error",
+            "-i",
+            str(src),
+            "-af",
+            af,
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
+            str(out),
+        ],
+        capture_output=True,
+        text=True,
+        errors="replace",
+    )
+    if proc.returncode != 0 or not out.exists():
+        raise SystemExit(f"音效裁切失敗（{src.name}）: {(proc.stderr or '')[-200:]}")
+    return out
+
+
+def _resolve_lib_path(name: str) -> Path:
+    """字典檔名 → 音效庫實際路徑（走 sfx_index；未建索引直接報錯）。"""
+    from build_sfx_index import INDEX_PATH
+
+    if not INDEX_PATH.exists():
+        raise SystemExit("data/sfx_index.json 不存在——先跑 build_sfx_index.py")
+    index = json.loads(INDEX_PATH.read_text(encoding="utf-8"))
+    for it in index["items"]:
+        if it["name"].lower() == name.lower():
+            return Path(it["path"])
+    raise SystemExit(f"音效庫找不到「{name}」——確認 sfx-dictionary.yaml 的 file 欄")
+
+
+def _verified_files() -> dict[str, dict]:
+    """sfx-dictionary.yaml → {檔名: 條目}（只收 verified 且非「不用」）。"""
+    from build_sfx_index import load_dictionary
+
+    return {
+        e["file"]: e for e in load_dictionary() if e.get("verified") and e.get("usage") != "不用"
+    }
+
+
+def build_layered(episode_dir: Path, cid: str) -> list[dict]:
+    """<id>_sound.json → 語意層 + 環境層 job（環境層時間戳讀 broll.json）。
+
+    ambient 只填 slug——t0/t1 由 broll.json 決定，**進出點與 B-roll 由結構
+    保證切齊**（修修二十二輪要求），不靠人手填時間。
+    """
+    sound_path = episode_dir / TIGHTEN_DIR / f"{cid}_sound.json"
+    if not sound_path.exists():
+        return []
+    spec = json.loads(sound_path.read_text(encoding="utf-8"))
+    ok_files = _verified_files()
+    cache = episode_dir / "assets" / "sfx" / "cache"
+    jobs: list[dict] = []
+
+    for s in spec.get("semantic", []):
+        if s["file"] not in ok_files:
+            raise SystemExit(
+                f"「{s['file']}」不在字典或未 verified——寧缺勿猜，先走試聽包給修修確認"
+            )
+        if not s.get("why"):
+            raise SystemExit(f"語意音效 @{s.get('t')} 缺 why——沒有理由的音效就是噪音")
+        src = _resolve_lib_path(s["file"])
+        span = float(s.get("sec") or _dur(src))
+        path = _cut_to_span(src, span, float(s.get("gain_db", SEMANTIC_GAIN_DB)), cache, 0.2)
+        jobs.append(
+            {
+                "t": float(s["t"]),
+                "path": path,
+                "track": SFX_TRACK,
+                "kind": "semantic",
+                "label": s["file"],
+                "why": s["why"],
+            }
+        )
+
+    broll_path = episode_dir / TIGHTEN_DIR / f"{cid}_broll.json"
+    items = (
+        {i["slug"]: i for i in json.loads(broll_path.read_text(encoding="utf-8"))["items"]}
+        if broll_path.exists()
+        else {}
+    )
+    for a in spec.get("ambient", []):
+        if a["file"] not in ok_files:
+            raise SystemExit(f"環境音「{a['file']}」不在字典或未 verified")
+        item = items.get(a["slug"])
+        if item is None:
+            raise SystemExit(f"環境音對應的素材「{a['slug']}」不在 {cid}_broll.json")
+        t0, t1 = float(item["t0"]), float(item["t1"])
+        src = _resolve_lib_path(a["file"])
+        path = _cut_to_span(
+            src, round(t1 - t0, 3), float(a.get("gain_db", AMBIENT_GAIN_DB)), cache, AMBIENT_FADE
+        )
+        jobs.append(
+            {
+                "t": t0,
+                "path": path,
+                "track": AMBIENT_TRACK,
+                "kind": "ambient",
+                "label": a["file"],
+                "why": f"{a['slug']} 素材環境音（{t0}–{t1}s 切齊）",
+            }
+        )
+    return jobs
+
+
 def apply(episode_dir: Path, cid: str) -> dict:
     from build_resolve_project import connect_resolve
 
     c, w = _load_winner(episode_dir, cid)
     sfx_dir = episode_dir / "assets" / "sfx"
     cues = build_cues(episode_dir, cid)
+    layered = build_layered(episode_dir, cid)  # 語意層 + 環境層（<id>_sound.json）
     need = sorted({q["sfx"] for q in cues})
     for name in need:
         if not (sfx_dir / f"{name}.wav").exists():
@@ -165,7 +312,8 @@ def apply(episode_dir: Path, cid: str) -> dict:
         clips[name] = clip
     mp.SetCurrentFolder(root)
 
-    while timeline.GetTrackCount("audio") < SFX_TRACK:
+    need_tracks = max([SFX_TRACK] + [j["track"] for j in layered])
+    while timeline.GetTrackCount("audio") < need_tracks:
         timeline.AddTrack("audio", "stereo")
     tl_start = timeline.GetStartFrame()
     placed = []
@@ -184,6 +332,27 @@ def apply(episode_dir: Path, cid: str) -> dict:
             logger.warning("SFX 疊軌失敗 @%.2fs（%s）——跳過", q["t"], q["sfx"])
             continue
         placed.append({"at": round(q["t"], 2), "sfx": q["sfx"], "ev": q["ev"]})
+
+    # 語意層 / 環境層（檔案已裁到目標長度——進出點由檔案保證）
+    mp.SetCurrentFolder(sfx_bin)
+    for j in layered:
+        imported = mp.ImportMedia([str(j["path"])]) or []
+        if not imported:
+            raise SystemExit(f"匯入失敗: {j['path']}")
+        ok = mp.AppendToTimeline(
+            [
+                {
+                    "mediaPoolItem": imported[0],
+                    "mediaType": 2,
+                    "trackIndex": j["track"],
+                    "recordFrame": tl_start + int(j["t"] * fps),
+                }
+            ]
+        )
+        if not ok:
+            raise SystemExit(f"{j['kind']} 疊軌失敗 @{j['t']}s（track {j['track']}）")
+        placed.append({"at": round(j["t"], 2), "sfx": j["label"], "ev": j["kind"], "why": j["why"]})
+    mp.SetCurrentFolder(root)
     pm.SaveProject()
     return {"status": "sfxed", "timeline": label, "cues": placed, "count": len(placed)}
 

@@ -120,8 +120,12 @@ sounds:
     polarity: 中性
     length: 長
     usage: 常用
-    verified: false
-    note: 修修提過「跑車出現要有引擎音效」，但未指定此檔——試聽後補確認
+    verified: true
+    note: >-
+      修修二十二輪確認可用。**進出點必須與 B-roll 完全切齊**——素材 9.5s
+      通常比 B-roll 長，一律裁到 span 並在尾端 0.15s fade（避免硬切爆音）。
+      所以 sound.json 的 ambient 只填 slug，t0/t1 由 script 讀 broll.json，
+      對齊由結構保證、不靠人填。
 
 # UI 事件音效（Envato 來源，run_short_sfx.py 內建規則使用；與本字典並行）
 # ding / riser / impact / pop / swish → 見 SKILL Step 10 表，屬「機械層」，
