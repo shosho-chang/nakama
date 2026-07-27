@@ -318,7 +318,10 @@ alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺�
 - **景別**：滑手機/操作類一律「hands close up」特寫——有臉的素材會讀成
   「在跟人互動/視訊」（十五輪血案）
 - **negative 清單**：標題帶 Green（綠幕）、corporate 擺拍假笑、文字疊圖、
-  AI 生成感、視訊通話感
+  視訊通話感、**AI 生成素材（十八輪修修裁決：一律停用**——AI 內容日後走
+  brand guideline 管線：Higgsfield + Seedance、Pixel 風 3D，先有自家設計
+  再產，見 v2 備忘**）**、AI 素材常見破綻：運鏡方向詭異（車尾逼近像倒車）、
+  文化錯位（聯考配西方教室——在地語境名詞配亞洲素材）
 - mood：偏暖、自然光；同一支短片 stock 調性一致
 
 **驗證**：`--stills` 樣張逐張看（fill 構圖、貼紙不遮臉——`y_pct`/`size_pct`
@@ -359,6 +362,8 @@ hyperframes 進階：`--batch` 一次渲整支的卡（省 npx 冷啟）、Rende
 （等出 experimental 再評）。升版流程：改 pin 版號 → 重渲樣張驗 → 進 PR。
 cold-open 重排、直式字幕模板、訪談留言補掃校 persona、（緊）流程套用到
 長片（長片節奏容忍度高，等修修看完短片版成效再決定）。
+AI 生成素材管線（十八輪修修方向）：brand guideline 先行 → Higgsfield +
+Seedance 產 Pixel 風 3D 動畫——自家設計定稿前，B-roll 一律實拍 stock。
 短片設計資產層剩餘項（波旬範本還有、我們還沒做）：橘色塗鴉框版式
 （重點段落講者縮進橘 doodle 紋理框）、片尾 EP 品牌卡（logo+金句+橘
 zigzag）、字幕關鍵詞高亮、BGM/音效。B-roll/貼紙/概念卡已落地（Step 9）。

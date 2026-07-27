@@ -100,13 +100,16 @@ def _render_card(comp: str, variables: dict, out_path: Path) -> None:
         raise SystemExit(f"hyperframes render 失敗: {(proc.stderr or '')[-400:]}")
 
 
-def _probe_sar(path: Path) -> float:
-    """ffprobe 取 sample aspect ratio（非方形像素的素材：像素尺寸 ≠ 顯示尺寸）。
+def _probe_meta(path: Path) -> tuple[float, float]:
+    """ffprobe 取 (SAR, 源 fps)。兩個都是十七輪血案：
 
-    十七輪血案：meditation.mov 1080×1920 但 SAR 109:120 → 顯示寬僅 981px，
-    只看像素尺寸算出 zoom=1.0 → 左右各留一條縫。Resolve 依 SAR 顯示，
-    fill 計算必須用顯示尺寸。
+    - SAR：meditation.mov 1080×1920 但 SAR 109:120 → 顯示寬僅 981px，
+      只看像素尺寸算出 zoom=1.0 → 左右各留一條縫（Resolve 依 SAR 顯示）
+    - fps：AppendToTimeline 的 startFrame/endFrame 是**源幀**——素材 fps
+      24–60 不一，用 timeline 30fps 換算會讓長度縮水/膨脹（exam-students
+      50fps → 3.8s 變 2.3s，盲審抓到）
     """
+    sar, fps = 1.0, 0.0
     try:
         out = subprocess.run(
             [
@@ -116,7 +119,7 @@ def _probe_sar(path: Path) -> float:
                 "-select_streams",
                 "v:0",
                 "-show_entries",
-                "stream=sample_aspect_ratio",
+                "stream=sample_aspect_ratio,r_frame_rate",
                 "-of",
                 "csv=p=0",
                 str(path),
@@ -125,10 +128,15 @@ def _probe_sar(path: Path) -> float:
             text=True,
             timeout=30,
         ).stdout.strip()
-        n, d = out.split(":")
-        return int(n) / int(d) if int(d) else 1.0
+        parts = out.split(",")
+        if len(parts) >= 2:
+            n, d = parts[0].split(":")
+            sar = int(n) / int(d) if int(d) else 1.0
+            fn, fd = parts[1].split("/")
+            fps = int(fn) / int(fd) if int(fd) else 0.0
     except (ValueError, OSError, subprocess.TimeoutExpired):
-        return 1.0
+        pass
+    return sar, fps
 
 
 def _fill_zoom(res: str, sar: float = 1.0) -> float:
@@ -191,6 +199,7 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
             hits = sorted(assets_dir.glob(f"{it['slug']}.*"))
             if not hits:
                 raise SystemExit(f"assets/broll/{it['slug']}.* 不存在——先下載素材")
+            sar, src_fps = _probe_meta(hits[0])
             media_jobs.append(
                 {
                     "path": hits[0],
@@ -199,8 +208,10 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
                     "kind": kind,
                     "i": i,
                     # src_in（秒）：素材源內起點偏移——素材開頭讀不懂/是廢畫面時跳過
-                    #（首輪盲審：空錢包前 1s 是黑色皮件側面）
+                    # （首輪盲審：空錢包前 1s 是黑色皮件側面）
                     "src_in": float(it.get("src_in", 0.0)),
+                    "sar": sar,
+                    "src_fps": src_fps,  # photo 或 probe 失敗時為 0 → 落回 timeline fps
                 }
             )
         elif kind == "sticker":
@@ -328,6 +339,10 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         if not clips:
             raise SystemExit(f"匯入失敗: {job['path']}")
         clip = clips[0]
+        if job["kind"] == "photo":
+            # 靜照的 endFrame 會被忽略（走專案預設靜照時長 5s，實測 journal
+            # 照 3.2s 變 5.0s）——先把 clip 的 Frames 設成目標長度
+            clip.SetClipProperty("Frames", str(int(job["span"] * fps)))
         ok = mp.AppendToTimeline(
             [
                 {
@@ -335,15 +350,17 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
                     "mediaType": 1,
                     "trackIndex": BROLL_TRACK,
                     "recordFrame": tl_start + int(job["t0"] * fps),
-                    "startFrame": int(job["src_in"] * fps),
-                    "endFrame": int((job["src_in"] + job["span"]) * fps),
+                    # startFrame/endFrame 是「源幀」——用源 fps 換算（photo/probe
+                    # 失敗 src_fps=0 → 落回 timeline fps）
+                    "startFrame": int(job["src_in"] * (job["src_fps"] or fps)),
+                    "endFrame": int((job["src_in"] + job["span"]) * (job["src_fps"] or fps)),
                 }
             ]
         )
         if not ok:
             raise SystemExit(f"疊軌失敗 @{job['t0']}（track {BROLL_TRACK} 可能被佔）")
         item = (director.GetItemListInTrack("video", BROLL_TRACK) or [])[-1]
-        zoom = _fill_zoom(clip.GetClipProperty("Resolution"), _probe_sar(job["path"]))
+        zoom = _fill_zoom(clip.GetClipProperty("Resolution"), job["sar"])
         if job["kind"] == "photo":
             # 靜照先放大到 fill，Ken Burns 再往上推
             item.SetProperty("ZoomX", zoom)

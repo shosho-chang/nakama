@@ -188,20 +188,24 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         director.AddTrack("video")
     made = []
     tl_start = director.GetStartFrame()
+    tl_end = director.GetEndFrame()  # 清完舊卡後 = 主畫面實際結束幀
     for job in jobs:
         items = mp.ImportMedia([str(job["mov"])]) or []
         if not items:
             raise SystemExit(f"匯入失敗: {job['mov']}")
+        record = tl_start + int(job["t0"] * fps)
+        # 卡片退場動畫收在 show_sec 內，截到 show_sec + 2 frames；
+        # 並鉗位在主畫面結束前——卡片伸出片尾會變「黑底浮卡」（盲審 S2 抓到）
+        dur = min(int(job["show_sec"] * fps) + 2, max(1, tl_end - record))
         ok = mp.AppendToTimeline(
             [
                 {
                     "mediaPoolItem": items[0],
                     "mediaType": 1,
                     "trackIndex": 3,
-                    "recordFrame": tl_start + int(job["t0"] * fps),
+                    "recordFrame": record,
                     "startFrame": 0,
-                    # 卡片退場動畫收在 show_sec 內，截到 show_sec + 2 frames
-                    "endFrame": int(job["show_sec"] * fps) + 2,
+                    "endFrame": dur,
                 }
             ]
         )
