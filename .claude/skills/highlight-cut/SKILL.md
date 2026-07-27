@@ -328,7 +328,32 @@ alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺�
 逐項可調、綠幕/浮水印攔截）。冪等：slug stem 比對清舊 item（素材換
 副檔名也清得掉）。
 
-## Step 10 — 自檢 loop（交付前必跑，修修 2026-07-27 十七輪裁決）
+## Step 10 — 音效層（修修 2026-07-27 二十輪：SFX 先做、BGM 隨後）
+
+`run_short_sfx.py`：讀 titles/zoom/broll 三份 JSON → cue 表 → audio
+**track 2**（track 1 對白絕不碰）。落點決定性、零人工。
+
+| 事件 | 音效 | 落點 | 優先級 |
+|---|---|---|---|
+| tier1 hero 卡 | ding（亮鈴「叮」） | t0 | 5 |
+| ramp punch | riser（swoosh） | t0−0.35（響區蓋放大過程） | 4 |
+| cut punch | impact（低沉「咚」） | t0 | 4 |
+| 貼紙 | pop ×2（左右錯拍 0.18s） | t0 | 3 |
+| 概念卡 | pop | t0 | 3 |
+| tier2 卡 | swish（輕掃） | t0 | 2 |
+| B-roll 切出 | swish | t0−0.05 | 1 |
+
+- **防吵**：間距 <1.2s 只留優先級高的（同事件雙 pop 豁免）。hero 卡與
+  cut punch 同點時 ding 勝出
+- **響度烘焙在素材端**（`assets/sfx/*.wav`）：ffmpeg loudnorm + 去頭部
+  靜音 + 截尾 fade + 逐檔 peak 微調（ding/impact/pop/riser ≈ −8 dB、
+  swish −19 dB）。不靠 Resolve clip gain 手調——重跑才可重現
+- **素材來源**：Envato Sound Effects（zip 內含 wav，解壓後正規化）。
+  ⚠️ 列表頁的下載鈕要用 `find` 拿 ref 再點（座標點擊常誤觸別列）
+- **對白本身已接近 0 dBFS**（實測峰 −1.5 dB）——SFX 疊上去區域測到
+  −0.0 是對白造成，不是音效；判斷音效大小要聽，不要只看 volumedetect
+
+## Step 11 — 自檢 loop（交付前必跑，修修 2026-07-27 十七輪裁決）
 
 「剪完 → 低解析 export → 盲審 agent 看片 → 修 → loop」。每支短片交付前
 至少跑一輪，**修完任何 JSON/素材也要再跑**（十七輪首航就抓到 titles 清場
