@@ -72,6 +72,35 @@ _SIL_START = re.compile(r"silence_start:\s*([\d.]+)")
 _SIL_END = re.compile(r"silence_end:\s*([\d.]+)")
 
 
+def import_srt_tidy(mp, root, seg_srt: Path):
+    """SRT 匯入 media pool 的衛生版：進 Subs bin + 刪同名舊版。
+
+    十九輪血案：每輪修字幕都往 root 匯一版新 SRT，20 輪下來 root 堆了
+    96 個 clip。改為：匯進「Subs」bin；匯入前刪同 prefix（去 _rNNN）的
+    舊版 clip（軌上的 cue 是匯入時複製的，刪 pool clip 不影響既有字幕軌，
+    2026-07-27 實測）。⚠️ MoveClips 對 Subtitle clip 是複製語意，不能用
+    「先匯再搬」。回傳 ImportMedia 的 items。
+    """
+    import re as _re
+
+    subs_bin = next(
+        (f for f in root.GetSubFolderList() if f.GetName() == "Subs"), None
+    ) or mp.AddSubFolder(root, "Subs")
+    prefix = _re.sub(r"_r\d{3}$", "", seg_srt.stem)
+    stale = [
+        cl
+        for folder in (subs_bin, root)
+        for cl in (folder.GetClipList() or [])
+        if _re.fullmatch(_re.escape(prefix) + r"_r\d{3}", cl.GetName() or "")
+    ]
+    if stale:
+        mp.DeleteClips(stale)
+    mp.SetCurrentFolder(subs_bin)
+    items = mp.ImportMedia([str(seg_srt)])
+    mp.SetCurrentFolder(root)
+    return items
+
+
 def _load_winner(episode_dir: Path, cid: str) -> tuple[dict, dict]:
     hdir = episode_dir / HIGHLIGHTS_DIR
     cands = json.loads((hdir / "candidates.json").read_text(encoding="utf-8"))["candidates"]
@@ -723,7 +752,7 @@ def apply(episode_dir: Path, cid: str) -> dict:
 
     mp.SetCurrentFolder(root)
     seg_srt, n_cues = _retime_srt(episode_dir, cid, segs, cuts)
-    srt_items = mp.ImportMedia([str(seg_srt)])
+    srt_items = import_srt_tidy(mp, root, seg_srt)
     sub_ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
     pm.SaveProject()
     return {

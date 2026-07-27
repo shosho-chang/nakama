@@ -171,12 +171,18 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
     fps = float(project.GetSetting("timelineFrameRate"))
     dur = (timeline.GetEndFrame() - timeline.GetStartFrame()) / fps
 
-    # 舊輪抽幀先清——事件增減會讓編號位移，混輪的舊幀會誤導盲審
-    for old in [*out_dir.glob("ev_*.png"), out_dir / "contact_sheet.png"]:
-        old.unlink(missing_ok=True)
+    # 舊輪產物先清——事件增減會讓抽幀編號位移；舊 preview 留著會讓修修
+    # 分不清要看哪個（十九輪）
+    for stale in [
+        *out_dir.glob("ev_*.png"),
+        out_dir / "contact_sheet.png",
+        *out_dir.glob("*_preview*.mp4"),
+        *out_dir.glob("*_raw*.mp4"),
+    ]:
+        stale.unlink(missing_ok=True)
 
     logger.info("render preview（540×960 H.264）…")
-    preview = _render_preview(project, timeline, out_dir, f"{cid}_preview")
+    preview = _render_preview(project, timeline, out_dir, f"{cid}_raw")
 
     # 字幕燒錄：Resolve render API 燒不進字幕（僅 ExportSubtitle sidecar，
     # 十七輪實測），改用 ffmpeg 從 tight SRT 燒——同源資料，順帶驗同步。
@@ -185,7 +191,8 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
         import shutil
 
         shutil.copy(srts[-1], out_dir / "subs.srt")
-        burned = out_dir / f"{cid}_preview_sub.mp4"
+        # 交付檔名用「短N」開頭——修修不用對 punch-SN ↔ 短N 對照表（十九輪）
+        burned = out_dir / f"{FORMAT_LABEL[c['format']]}{w['rank']}_preview.mp4"
         style = "FontName=Microsoft JhengHei,FontSize=14,Outline=1,MarginV=42"
         proc = subprocess.run(
             [
@@ -206,6 +213,7 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
             text=True,
         )
         if proc.returncode == 0 and burned.exists():
+            preview.unlink(missing_ok=True)  # raw 無字幕版燒完即棄
             preview = burned
         else:
             logger.warning("字幕燒錄失敗，preview 無字幕: %s", proc.stderr[-200:])

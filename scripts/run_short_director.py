@@ -42,6 +42,7 @@ from run_short_tighten import (  # noqa: E402
     _keep_segments,
     _load_winner,
     _retime_srt,
+    import_srt_tidy,
 )
 
 logger = logging.getLogger("short_director")
@@ -514,7 +515,7 @@ def direct(
 
     mp.SetCurrentFolder(root)
     seg_srt, n_cues = _retime_srt(episode_dir, cid, segs, cuts, fine=True)
-    srt_items = mp.ImportMedia([str(seg_srt)])
+    srt_items = import_srt_tidy(mp, root, seg_srt)
     sub_ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
     pm.SaveProject()
 
