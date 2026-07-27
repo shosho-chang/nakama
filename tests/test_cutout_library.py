@@ -9,6 +9,7 @@ import pytest
 
 from shared.cutout_library import (
     EmotionLookupError,
+    cutout_filename,
     pick_podcast_guest,
     pick_podcast_host,
     pick_youtube_host,
@@ -128,3 +129,58 @@ def test_pick_podcast_guest_independent_pool(vault_root: Path):
     }
     path = pick_podcast_guest("ep42", "thoughtful", vault_root, fm, rng=random.Random(0))
     assert "guest" in path.stem
+
+
+# ── cutout_filename helper (ADR-054 A8 new write format) ─────────────────────
+
+
+def test_cutout_filename_format():
+    assert cutout_filename("host", 1, "surprised") == "host_v1_surprised.png"
+    assert cutout_filename("guest", 2, "thoughtful") == "guest_v2_thoughtful.png"
+
+
+def test_cutout_filename_emotion_in_stem_enables_matching(tmp_path: Path):
+    """New-format cutout file is matched by the emotion filter in _pick_podcast_active."""
+    cutout_dir = tmp_path / "Attachments" / "cutouts" / "podcast" / "ep99"
+    cutout_dir.mkdir(parents=True)
+
+    # New-format file (with emotion) — should match
+    new_fmt = cutout_dir / cutout_filename("guest", 1, "thoughtful")
+    new_fmt.write_bytes(b"PNG")
+    # Old-format file (without emotion) — should NOT match by emotion
+    old_fmt = cutout_dir / "guest_v2.png"
+    old_fmt.write_bytes(b"PNG")
+
+    fm = {
+        "thumbnail_active_cutouts": {
+            "guest": [
+                f"Attachments/cutouts/podcast/ep99/{new_fmt.name}",
+                f"Attachments/cutouts/podcast/ep99/{old_fmt.name}",
+            ],
+        }
+    }
+    # When both old and new format files exist, emotion match (new format) wins
+    picked = pick_podcast_guest("ep99", "thoughtful", tmp_path, fm, rng=random.Random(0))
+    assert "thoughtful" in picked.stem
+
+
+def test_cutout_filename_old_format_still_readable_via_fallback(tmp_path: Path):
+    """Old-format files (no emotion) still work as fallback when no emotion matches."""
+    cutout_dir = tmp_path / "Attachments" / "cutouts" / "podcast" / "ep99"
+    cutout_dir.mkdir(parents=True)
+
+    # Only old-format files — emotion won't match, fallback to random
+    (cutout_dir / "guest_v1.png").write_bytes(b"PNG")
+    (cutout_dir / "guest_v2.png").write_bytes(b"PNG")
+
+    fm = {
+        "thumbnail_active_cutouts": {
+            "guest": [
+                "Attachments/cutouts/podcast/ep99/guest_v1.png",
+                "Attachments/cutouts/podcast/ep99/guest_v2.png",
+            ],
+        }
+    }
+    # Should not raise — falls back to random from the full active set
+    picked = pick_podcast_guest("ep99", "thoughtful", tmp_path, fm, rng=random.Random(0))
+    assert picked.exists()

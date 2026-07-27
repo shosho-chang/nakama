@@ -112,6 +112,7 @@ async def _detect_audio_peaks(
     threshold_db: float = -30.0,
     min_silence_sec: float = 0.5,
     min_speech_sec: float = 1.5,
+    window: tuple[float, float] | None = None,
 ) -> list[float]:
     """Find speech-segment midpoints via ``ffmpeg silencedetect``.
 
@@ -172,7 +173,11 @@ async def _detect_audio_peaks(
     for s, e in zip(speech_starts, speech_ends, strict=False):
         if e - s >= min_speech_sec:
             peaks.append((s + e) / 2.0)
-    return sorted(peaks)
+    all_peaks = sorted(peaks)
+    if window is not None:
+        t_start, t_end = window
+        all_peaks = [p for p in all_peaks if t_start <= p <= t_end]
+    return all_peaks
 
 
 async def _ffmpeg_extract(
@@ -232,6 +237,7 @@ async def stratified_sample(
     max_frames: int = 80,
     seed: int = 42,
     duration_sec: float | None = None,
+    window: tuple[float, float] | None = None,
 ) -> list[FrameCandidate]:
     """Stage 1 — extract candidate frames from a raw video.
 
@@ -262,20 +268,28 @@ async def stratified_sample(
     """
     if duration_sec is None:
         duration_sec = await _probe_duration(video_path)
-    if duration_sec <= periodic_interval:
-        # Video too short for stratified sampling; treat as one-shot.
-        timestamps: list[tuple[float, str]] = [(duration_sec / 2.0, "periodic")]
+
+    # Determine the effective time range — clipped to video bounds.
+    if window is not None:
+        t_start, t_end = window
     else:
-        n_periodic = math.floor(duration_sec / periodic_interval)
-        periodic_ts = [(i + 1) * periodic_interval for i in range(n_periodic)]
+        t_start, t_end = 0.0, duration_sec
+    span = t_end - t_start
+
+    if span <= periodic_interval:
+        # Window (or full video) too short for stratified sampling; one-shot at midpoint.
+        timestamps: list[tuple[float, str]] = [((t_start + t_end) / 2.0, "periodic")]
+    else:
+        n_periodic = math.floor(span / periodic_interval)
+        periodic_ts = [t_start + (i + 1) * periodic_interval for i in range(n_periodic)]
         timestamps = [(t, "periodic") for t in periodic_ts]
 
         if audio_burst:
-            peaks = await _detect_audio_peaks(video_path)
+            peaks = await _detect_audio_peaks(video_path, window=window)
             for p in peaks:
                 for delta in (-0.3, 0.0, 0.3):
                     t = p + delta
-                    if 0.0 <= t <= duration_sec:
+                    if t_start <= t <= t_end:
                         timestamps.append((t, "audio_peak"))
 
     # Dedupe by (rounded ts, kind) so two peaks within 1 frame don't double-extract.
@@ -349,6 +363,7 @@ async def run(
     mode: Literal["conversation", "expression_sample"] = "conversation",
     top_pct: float = 0.25,
     seed: int = 42,
+    window: tuple[float, float] | None = None,
 ) -> list[FrameCandidate]:
     """End-to-end Stages 1+2.
 
@@ -356,6 +371,9 @@ async def run(
     ``mode="expression_sample"`` → 30-sec deliberate-takes video (ADR-033 D8a),
     dense 1s periodic sampling, audio peaks off (silence between expressions
     would generate noisy peaks), max 40 frames.
+    ``window`` clips sampling to ``(t_start, t_end)`` seconds — all three layers
+    (run → stratified_sample → _detect_audio_peaks) honour it so audio peaks
+    outside the window are never selected.
     """
     if mode == "conversation":
         candidates = await stratified_sample(
@@ -365,6 +383,7 @@ async def run(
             audio_burst=True,
             max_frames=80,
             seed=seed,
+            window=window,
         )
     else:
         candidates = await stratified_sample(
@@ -374,5 +393,6 @@ async def run(
             audio_burst=False,
             max_frames=40,
             seed=seed,
+            window=window,
         )
     return rank_by_sharpness(candidates, top_pct=top_pct)

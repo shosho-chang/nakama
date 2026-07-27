@@ -50,6 +50,15 @@ def emotion_keys() -> list[str]:
     return [e["key"] for e in load_emotions()]
 
 
+def cutout_filename(role: str, i: int, emotion: str) -> str:
+    """Generate the canonical podcast cutout filename (ADR-054 A8 new format).
+
+    New write format: ``{role}_v{i}_{emotion}.png``.
+    Old format ``{role}_v{n}.png`` (no emotion) remains readable but is no longer written.
+    """
+    return f"{role}_v{i}_{emotion}.png"
+
+
 def resolve_emotion(text: str) -> str:
     """Resolve free-text emotion (English key, zh-Hant, or alias) → canonical key.
 

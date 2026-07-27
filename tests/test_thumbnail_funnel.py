@@ -439,3 +439,85 @@ def test_run_expression_sample_mode_uses_dense_periodic(monkeypatch, tmp_path):
     )
     assert len(out) == 30
     assert all(c.sample_kind == "periodic" for c in out)
+
+
+# ── window parameter threading (ADR-054 S3) ──────────────────────────────────
+
+
+def test_window_shorter_than_periodic_interval_one_shot(monkeypatch, tmp_path):
+    """Window narrower than periodic_interval → single frame at window midpoint."""
+    dispatch = _make_dispatch_for_full_funnel(duration=60.0)
+    _install_subprocess(monkeypatch, dispatch)
+    candidates = asyncio.run(
+        stratified_sample(
+            tmp_path / "video.mp4",
+            tmp_path / "frames",
+            periodic_interval=10.0,
+            audio_burst=False,
+            window=(20.0, 25.0),  # span=5s < 10s interval
+        )
+    )
+    assert len(candidates) == 1
+    assert candidates[0].timestamp_sec == pytest.approx(22.5)
+
+
+def test_window_audio_peaks_outside_window_excluded(monkeypatch, tmp_path):
+    """Audio peaks outside the window must not be included in candidates."""
+    # _SILENCEDETECT_STDERR produces peaks at ~2.25s and ~6.5s (from speech midpoints)
+    dispatch = _make_dispatch_for_full_funnel(
+        duration=60.0,
+        silence_stderr=_SILENCEDETECT_STDERR,
+    )
+    _install_subprocess(monkeypatch, dispatch)
+    # Window (5.0, 60.0) — peak at 2.25s is outside, peak at 6.5s is inside
+    candidates = asyncio.run(
+        stratified_sample(
+            tmp_path / "video.mp4",
+            tmp_path / "frames",
+            periodic_interval=10.0,
+            audio_burst=True,
+            window=(5.0, 60.0),
+        )
+    )
+    audio_peak_times = [c.timestamp_sec for c in candidates if c.sample_kind == "audio_peak"]
+    # All audio peak times must be within the window
+    assert all(5.0 <= t <= 60.0 for t in audio_peak_times), (
+        f"some audio peaks outside window: {audio_peak_times}"
+    )
+
+
+def test_window_periodic_timestamps_start_from_window_t_start(monkeypatch, tmp_path):
+    """Periodic timestamps must start from window start, not from t=0."""
+    dispatch = _make_dispatch_for_full_funnel(duration=60.0)
+    _install_subprocess(monkeypatch, dispatch)
+    candidates = asyncio.run(
+        stratified_sample(
+            tmp_path / "video.mp4",
+            tmp_path / "frames",
+            periodic_interval=10.0,
+            audio_burst=False,
+            window=(20.0, 50.0),  # span=30s → 3 periodic timestamps
+        )
+    )
+    periodic_times = sorted(c.timestamp_sec for c in candidates if c.sample_kind == "periodic")
+    # Expected: 20+10=30, 20+20=40, 20+30=50
+    assert periodic_times == pytest.approx([30.0, 40.0, 50.0])
+
+
+def test_run_passes_window_to_stratified_sample(monkeypatch, tmp_path):
+    """run() with window= must honour window in the output timestamps."""
+    dispatch = _make_dispatch_for_full_funnel(duration=60.0)
+    _install_subprocess(monkeypatch, dispatch)
+    out = asyncio.run(
+        run(
+            tmp_path / "video.mp4",
+            tmp_path / "frames",
+            mode="conversation",
+            top_pct=1.0,
+            window=(30.0, 60.0),
+        )
+    )
+    # All timestamps must fall within the window
+    assert all(30.0 <= c.timestamp_sec <= 60.0 for c in out), (
+        f"timestamps outside window: {[c.timestamp_sec for c in out]}"
+    )
