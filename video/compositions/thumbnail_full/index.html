@@ -1,23 +1,23 @@
 <!doctype html>
 <!--
-  封面設計系統 N1「完整版訪談卡」（docs/thumbnail-design-system.md；對標普查 R1）。
+  N1 完整版訪談卡 — **修修 house style**（樣板：E:\data\podcast thumbnail\EP112/114/117，
+  2026-07-28 修修裁決以自家既有封面為準，不是對標頻道的翻譯）。
 
-  1280×720。修修 cutout 貼左緣、來賓貼右緣（頭高目標 ≥50% frame）；中欄繁中大字
-  疊行（白 + 恰好一個橘色 highlight 詞 + 句點）；白底圓角名牌（來賓名｜頭銜）；
-  bolt 小 logo 右上（99/1）。背景 = 暖近黑 flat + 極輕 vignette，無漸層裝飾。
+  規格（從 EP112/114 逆向）：
+  - 兩張超大臉（頭高 60–80%）貼左右緣、可出血側緣；mic/耳機保留（podcast 識別）
+  - 中央兩行白色 EB 大字；payoff 詞 = **橘底圓角框 + 白字**（不是橘色字）
+  - 左下橘框 EP 號、右下橘框來賓名（白字）
+  - 背景：炭灰 radial（中央亮 → 邊緣暗），非純黑
 
   Variables:
-    title_lines        — JSON array，每元素一行（2–6 字/行，作者含「。」）
-    highlight_text     — 在 title 中要染橘的子字串（跨行不支援；空 = 全白）
-    guest_name         — 名牌主文字（如「謝伯讓」）
-    guest_title        — 名牌頭銜（如「腦科學家」；空 = 只顯示名）
-    episode_label      — 左上小標（如「修修 × 謝伯讓 EP.12」；空 = 隱藏）
-    host_cutout_data_url / guest_cutout_data_url — 透明 PNG data URL
-    host_height_pct / guest_height_pct — cutout 高度（% of frame，預設 112 → 胸上裁切）
-    palette            — { bg, fg, accent, ink } 覆寫
-
-  色彩角色鎖定（紀律，見設計系統）：accent 只用於 highlight 詞與 bolt；名牌 = 白底
-  ink 字；其餘白/暖灰。字型：LINE Seed TW（需系統安裝 TTF）。
+    title_lines     — JSON array（通常 2 行）
+    highlight_text  — 要框橘底的子字串（恰好一次）
+    ep_label        — 左下標籤（如「EP118」；空 = 隱藏）
+    guest_name      — 右下標籤（如「謝伯讓」；空 = 隱藏）
+    host_cutout_data_url / guest_cutout_data_url
+    host_height_pct / guest_height_pct（預設 118）
+    host_x_pct / guest_x_pct — 貼緣偏移（負值 = 出血；預設 -2）
+    palette         — { bg_center, bg_edge, accent } 覆寫
 -->
 <html lang="zh-Hant" data-resolution="landscape">
   <head>
@@ -28,67 +28,50 @@
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body {
         width: 1280px; height: 720px; overflow: hidden; background: #000;
-        font-family: "LINE Seed TW", "LINE Seed TW_TTF", "Noto Sans TC",
-          "PingFang TC", "Microsoft JhengHei", sans-serif;
+        font-family: "LINE Seed TW", "Noto Sans TC", "PingFang TC",
+          "Microsoft JhengHei", sans-serif;
       }
       #root {
-        position: relative; width: 1280px; height: 720px;
-        background: var(--bg, #26211B); overflow: hidden;
-      }
-      /* 極輕 vignette — 把視線推向中央，非裝飾漸層 */
-      #vignette {
-        position: absolute; inset: 0; z-index: 2;
-        background: radial-gradient(ellipse 90% 80% at 50% 45%,
-          rgba(0,0,0,0) 55%, rgba(0,0,0,0.35) 100%);
+        position: relative; width: 1280px; height: 720px; overflow: hidden;
+        background: radial-gradient(ellipse 85% 100% at 50% 42%,
+          var(--bg-center, #414141) 0%, var(--bg-edge, #1F1F1F) 100%);
       }
       #host, #guest {
-        position: absolute; bottom: 0; z-index: 4; object-fit: contain;
+        position: absolute; bottom: 0; z-index: 3; object-fit: contain;
       }
-      #host  { left: 0;  height: var(--host-h, 112%);  object-position: bottom left; }
-      #guest { right: 0; height: var(--guest-h, 112%); object-position: bottom right; }
+      #host  { left: var(--host-x, -2%);  height: var(--host-h, 118%);  object-position: bottom left; }
+      #guest { right: var(--guest-x, -2%); height: var(--guest-h, 118%); object-position: bottom right; }
 
-      /* 中欄：title + 名牌 垂直群組 */
-      #center {
-        position: absolute; left: 50%; top: 46%;
-        transform: translate(-50%, -50%);
-        z-index: 5; width: 460px; text-align: center;
-      }
       #title {
-        color: var(--fg, #FFFFFF);
+        position: absolute; left: 50%; top: 44%;
+        transform: translate(-50%, -50%);
+        z-index: 5; width: 760px; text-align: center;
+        color: #FFFFFF;
         font-weight: 800;
-        font-size: 122px;
-        line-height: 1.06;
-        letter-spacing: -0.01em;
-        text-shadow: 0 6px 40px rgba(0,0,0,0.9), 0 2px 10px rgba(0,0,0,0.85);
+        font-size: 96px;
+        line-height: 1.28;
+        letter-spacing: 0.005em;
+        text-shadow: 0 5px 30px rgba(0,0,0,0.75), 0 2px 8px rgba(0,0,0,0.6);
         white-space: nowrap;
       }
-      #title .hl { color: var(--accent, #e98965); }
-      #title .period { margin-left: -0.28em; }
-      /* 名牌：白底圓角、ink 字 — census R1 name banner lockup */
-      #name-tag {
-        display: inline-block; margin-top: 30px;
-        background: #FFFFFF; color: var(--ink, #1A1713);
-        font-weight: 700; font-size: 31px; letter-spacing: 0.04em;
-        padding: 10px 26px; border-radius: 10px;
-        box-shadow: 0 4px 24px rgba(0,0,0,0.55);
+      /* payoff 詞 = 橘底白字圓角框（house style 核心元素） */
+      #title .hl {
+        background: var(--accent, #EE8435);
+        border-radius: 14px;
+        padding: 2px 14px 6px;
+        box-decoration-break: clone;
       }
-      #name-tag:empty { display: none; }
-      #name-tag .sep { color: var(--accent, #e98965); margin: 0 8px; font-weight: 800; }
-
-      #episode-label {
-        position: absolute; left: 40px; top: 32px; z-index: 6;
-        color: rgba(255,255,255,0.75);
-        font-weight: 700; font-size: 26px; letter-spacing: 0.08em;
-        text-shadow: 0 2px 10px rgba(0,0,0,0.7);
+      /* 左下 EP / 右下人名 — 橘底白字標籤 */
+      .corner-tag {
+        position: absolute; bottom: 52px; z-index: 6;
+        background: var(--accent, #EE8435); color: #FFFFFF;
+        font-weight: 800; font-size: 44px; letter-spacing: 0.02em;
+        padding: 8px 26px 12px; border-radius: 14px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.45);
       }
-      #episode-label:empty { display: none; }
-
-      /* bolt — 品牌 zigzag streak，每頁 1×（99/1） */
-      #bolt { position: absolute; right: 40px; top: 36px; z-index: 6; width: 56px; height: 33px; }
-      #bolt polyline {
-        fill: none; stroke: var(--accent, #e98965);
-        stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round;
-      }
+      #ep-tag   { left: 130px; }
+      #name-tag { right: 130px; }
+      .corner-tag:empty { display: none; }
     </style>
   </head>
   <body>
@@ -100,29 +83,24 @@
       data-width="1280"
       data-height="720"
       data-composition-variables='{
-        "title_lines":           { "type": "object", "default": ["未填", "字卡。"] },
+        "title_lines":           { "type": "object", "default": ["未填", "字卡"] },
         "highlight_text":        { "type": "string", "default": "" },
+        "ep_label":              { "type": "string", "default": "" },
         "guest_name":            { "type": "string", "default": "" },
-        "guest_title":           { "type": "string", "default": "" },
-        "episode_label":         { "type": "string", "default": "" },
         "host_cutout_data_url":  { "type": "string", "default": "" },
         "guest_cutout_data_url": { "type": "string", "default": "" },
-        "host_height_pct":       { "type": "number", "default": 112 },
-        "guest_height_pct":      { "type": "number", "default": 112 },
+        "host_height_pct":       { "type": "number", "default": 118 },
+        "guest_height_pct":      { "type": "number", "default": 118 },
+        "host_x_pct":            { "type": "number", "default": -2 },
+        "guest_x_pct":           { "type": "number", "default": -2 },
         "palette":               { "type": "object", "default": {} }
       }'
     >
-      <div id="vignette"></div>
       <img id="host" alt="" />
       <img id="guest" alt="" />
-      <div id="center">
-        <div id="title"></div>
-        <div id="name-tag"></div>
-      </div>
-      <div id="episode-label"></div>
-      <svg id="bolt" viewBox="0 0 24 14" aria-hidden="true">
-        <polyline points="1,10 7,4 11,8 16,2 20,6 23,3" />
-      </svg>
+      <h1 id="title"></h1>
+      <div id="ep-tag" class="corner-tag"></div>
+      <div id="name-tag" class="corner-tag"></div>
     </div>
 
     <script>
@@ -133,34 +111,26 @@
 
       const root = document.getElementById("root");
       const palette = vars.palette || {};
-      for (const [k, cssVar] of [["bg","--bg"],["fg","--fg"],["accent","--accent"],["ink","--ink"]]) {
+      for (const [k, cssVar] of [
+        ["bg_center", "--bg-center"], ["bg_edge", "--bg-edge"], ["accent", "--accent"],
+      ]) {
         if (palette[k]) root.style.setProperty(cssVar, palette[k]);
       }
       if (vars.host_height_pct)  root.style.setProperty("--host-h",  vars.host_height_pct + "%");
       if (vars.guest_height_pct) root.style.setProperty("--guest-h", vars.guest_height_pct + "%");
+      if (vars.host_x_pct !== undefined)  root.style.setProperty("--host-x",  vars.host_x_pct + "%");
+      if (vars.guest_x_pct !== undefined) root.style.setProperty("--guest-x", vars.guest_x_pct + "%");
 
       for (const [id, key] of [["host","host_cutout_data_url"],["guest","guest_cutout_data_url"]]) {
         const el = document.getElementById(id);
         if (vars[key]) el.src = vars[key]; else el.style.display = "none";
       }
 
-      // Title：逐行 div；highlight_text 出現的那一行把該子字串染橘（恰好一次）；
-      // 行尾全形句號收緊間距（.period 負 margin）。
+      // 兩行標題；highlight_text 那段包橘底框（恰好一次）
       const titleEl = document.getElementById("title");
-      const lines = Array.isArray(vars.title_lines) ? vars.title_lines : ["未填", "字卡。"];
+      const lines = Array.isArray(vars.title_lines) ? vars.title_lines : ["未填", "字卡"];
       const hl = vars.highlight_text || "";
       let hlUsed = false;
-      const appendText = (parent, text) => {
-        if (text.endsWith("。")) {
-          parent.append(text.slice(0, -1));
-          const p = document.createElement("span");
-          p.className = "period";
-          p.textContent = "。";
-          parent.append(p);
-        } else {
-          parent.append(text);
-        }
-      };
       for (const line of lines) {
         const div = document.createElement("div");
         if (hl && !hlUsed && line.includes(hl)) {
@@ -168,32 +138,22 @@
           div.append(line.slice(0, i));
           const span = document.createElement("span");
           span.className = "hl";
-          appendText(span, hl);
-          div.append(span);
-          appendText(div, line.slice(i + hl.length));
+          span.textContent = hl;
+          div.append(span, line.slice(i + hl.length));
           hlUsed = true;
         } else {
-          appendText(div, line);
+          div.textContent = line;
         }
         titleEl.append(div);
       }
-      // 行寬超出 460px 時整塊等比縮（白話：字多自動變小，不換行）
+      // 行寬超出即整塊縮字（不換行）
       requestAnimationFrame(() => {
         const w = titleEl.scrollWidth;
-        if (w > 460) titleEl.style.fontSize = Math.floor(118 * 460 / w) + "px";
+        if (w > 760) titleEl.style.fontSize = Math.floor(96 * 760 / w) + "px";
       });
 
-      const tag = document.getElementById("name-tag");
-      if (vars.guest_name) {
-        tag.append(vars.guest_name);
-        if (vars.guest_title) {
-          const sep = document.createElement("span");
-          sep.className = "sep";
-          sep.textContent = "｜";
-          tag.append(sep, vars.guest_title);
-        }
-      }
-      document.getElementById("episode-label").textContent = vars.episode_label || "";
+      document.getElementById("ep-tag").textContent = vars.ep_label || "";
+      document.getElementById("name-tag").textContent = vars.guest_name || "";
 
       window.__timelines = window.__timelines || {};
       window.__timelines["thumbnail-full"] = gsap.timeline({ paused: true });
