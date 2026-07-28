@@ -107,7 +107,7 @@ def _grade(png_path: Path, brightness: float = 1.0) -> None:
 
     im = Image.open(png_path).convert("RGBA")
     rgb = im.convert("RGB")
-    gamma = 1.0 / (brightness ** 1.5)
+    gamma = 1.0 / (brightness**1.5)
     lut = [round(255 * (v / 255) ** gamma) for v in range(256)]
     graded = Image.merge("RGBA", (*rgb.point(lut * 3).split(), im.split()[3]))
     graded.save(png_path)
