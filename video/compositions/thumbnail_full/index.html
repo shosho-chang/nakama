@@ -43,8 +43,8 @@
       #host, #guest {
         position: absolute; bottom: 0; z-index: 3; object-fit: contain;
       }
-      #host  { left: var(--host-x, -2%);  height: var(--host-h, 108%);  object-position: bottom left; }
-      #guest { right: var(--guest-x, -2%); height: var(--guest-h, 108%); object-position: bottom right; }
+      #host  { left: var(--host-x, -2%);  bottom: var(--host-y, 0%);  height: var(--host-h, 108%);  object-position: bottom left; }
+      #guest { right: var(--guest-x, -2%); bottom: var(--guest-y, 0%); height: var(--guest-h, 108%); object-position: bottom right; }
 
       #title {
         position: absolute; left: 50%; top: 44%;
@@ -97,6 +97,9 @@
         "guest_height_pct":      { "type": "number", "default": 108 },
         "host_x_pct":            { "type": "number", "default": -2 },
         "guest_x_pct":           { "type": "number", "default": -2 },
+        "host_y_pct":            { "type": "number", "default": 0 },
+        "guest_y_pct":           { "type": "number", "default": 0 },
+        "title_max_width":       { "type": "number", "default": 580 },
         "palette":               { "type": "object", "default": {} }
       }'
     >
@@ -125,6 +128,10 @@
       if (vars.guest_height_pct) root.style.setProperty("--guest-h", vars.guest_height_pct + "%");
       if (vars.host_x_pct !== undefined)  root.style.setProperty("--host-x",  vars.host_x_pct + "%");
       if (vars.guest_x_pct !== undefined) root.style.setProperty("--guest-x", vars.guest_x_pct + "%");
+      if (vars.host_y_pct !== undefined)  root.style.setProperty("--host-y",  vars.host_y_pct + "%");
+      if (vars.guest_y_pct !== undefined) root.style.setProperty("--guest-y", vars.guest_y_pct + "%");
+      const maxW = vars.title_max_width || 580;
+      document.getElementById("title").style.width = maxW + "px";
 
       for (const [id, key] of [["host","host_cutout_data_url"],["guest","guest_cutout_data_url"]]) {
         const el = document.getElementById(id);
@@ -154,7 +161,7 @@
       // 行寬超出即整塊縮字（不換行）
       requestAnimationFrame(() => {
         const w = titleEl.scrollWidth;
-        if (w > 580) titleEl.style.fontSize = Math.floor(100 * 580 / w) + "px";
+        if (w > maxW) titleEl.style.fontSize = Math.floor(100 * maxW / w) + "px";
       });
 
       document.getElementById("ep-tag").textContent = vars.ep_label || "";
