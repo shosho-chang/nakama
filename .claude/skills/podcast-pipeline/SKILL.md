@@ -24,6 +24,7 @@ description: >
 | `prep_manifest.json` + `normalized.wav` | prep 完成 → 下一步 subtitle-gen |
 | `subs/gen_manifest.json` + `subs/raw.srt` | gen 完成 → 下一步 subtitle-correct |
 | `subs/correct_manifest.json` + `transcript.srt` | correct 完成 → 說話者切分 → resolve-project（需 Resolve 開著）|
+| `transcript_prose.md` | 人讀逐字稿已產（字幕定稿的副產物；缺就補跑，見下節）|
 | Resolve 內已有同名 project | **resolve 段完成**（非全部完成）→ 回報 QC 摘要；QC 裁決後 `--refresh-subtitles`；下一步 highlight-cut |
 | `highlights/candidates.json` | 選段開採完成（mining）→ 續 highlight-cut 評審段 |
 | `highlights/winners.json` + `highlights/選段企劃-*.md` | highlight-cut 完成 → 下一步 packaging |
@@ -42,6 +43,13 @@ description: >
 **QC 裁決後的完整重跑鏈**（冪等）：改 corrections.json → `--apply` →
 speaker split → gap fill → `--refresh-subtitles`。⚠️ `--apply` 會重生
 transcript.qc.md（見 subtitle-correct skill 的批註保護警告）。
+
+**人讀逐字稿**（字幕定稿後，與剪輯線並行、互不阻擋）：
+`python scripts/run_transcript_prose.py <episode> --guest <來賓姓名>`——
+去時間戳、一問一答分段的完整訪談稿，同時落 episode 內 `transcript_prose.md`
+與 vault `KB/Raw/Podcasts/{slug}.md`。**`--guest` 一定要給**（機器不猜姓名）；
+輸出的 `first_line` 是給使用者一眼驗軌序用的，若兩位講者對調就補 `--swap` 重跑。
+標點由實測停頓推導、不動任何一個字（規則見 script docstring）。
 
 **斷句全片掃描**（選配，使用者反映斷句差時）：派 subagent 分 chunk 掃
 transcript.srt 的壞邊界（數量詞/「的」結構/專名被拆）→ 產出

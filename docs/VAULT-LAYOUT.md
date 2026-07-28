@@ -117,7 +117,7 @@ E:\Shosho LifeOS\
 │   │   ├── Articles/         Robin ingest from Inbox/web
 │   │   ├── Papers/           Robin ingest (manual `Inbox/papers/` flow)
 │   │   ├── Books/            route B 書本 ingest（{slug}.md：EPUB→text → IngestPipeline）
-│   │   ├── Podcasts/         (reserved, currently empty)
+│   │   ├── Podcasts/         自製訪談的分講者人讀逐字稿 `{slug}.md`（`scripts/run_transcript_prose.py`）
 │   │   ├── Videos/           Robin watchlist `{video_id}.vtt` (機器原始) + `{video_id}.md` (清理人讀稿, ADR-046 §Slice 0A)
 │   │   ├── Repos/            (reserved)
 │   │   └── Data/             (reserved)
@@ -215,6 +215,7 @@ data/agent_reports/franky/
 | `KB/Raw/Articles/{slug}.md` | 🤖 | Robin ingest from `Inbox/web/` | KB consumers, RCP builder | ADR-019 |
 | `KB/Raw/Papers/{slug}.md` | 🤖 | Robin manual ingest from `Inbox/papers/` | KB, Brook synthesize | ADR-019 |
 | `KB/Raw/Books/{slug}.md` | 🤖 | route B 書本 ingest（同步）：Reader「Ingest 整本書」→ `POST /robin/start-book` → `shared/book_raw.py`（EPUB→text via `shared/epub_text`）→ 走 `/processing` SSE 自動流程（與文章/影片同一條）。佇列 + cron consumer 已移除 | `/processing` 摘要 → `KB/Wiki/Sources/{slug}` + concepts | route B v2（同步） |
+| `KB/Raw/Podcasts/{slug}.md` | 🤖 | `scripts/run_transcript_prose.py`（校正後 `transcript.srt` + `subs/words.json` → 分講者段落、去時間戳；講者判定走 `shared/speaker_assign` 分軌 mic 能量）。`--no-vault` 可只寫 episode 內 `transcript_prose.md` | 人讀完整訪談稿；未來自製節目 ingest 進 KB 的原始層 | 本 PR（`{slug}` 預設 = episode 資料夾名，`--slug` 可覆寫） |
 | `KB/Raw/Videos/{video_id}.vtt` | 🤖 | Robin watchlist confirm `thousand_sunny/routers/robin.py` (yt-dlp caption moved here); path built by `shared/reading_source_registry.py:_resolve_youtube` (convention, not manifest) | AV reader `/robin/watchlist/{id}`, promotion preflight, `agents/robin/promotion/video_source_map_builder.py` | ADR-046 §Slice 0A |
 | `KB/Raw/Videos/{video_id}.md` | 🤖 | Robin watchlist confirm + `scripts/backfill_video_transcript_md.py` → `shared/video_transcript_writer.py`（清理 `.vtt` 成時間碼段落人讀稿） | 人讀逐字稿；`/start-video` ingest 優先輸入（無則退回 `.vtt`） | ADR-046 + transcript cleaning |
 | `Watchlist/youtube/{video_id}/manifest.json` | 🤖 | Robin watchlist confirm (video registry entry: title/channel/cast/`transcript_path`) | `/robin/watchlist` lister `RegistryReadingSourceLister`, `ReadingSourceRegistry._resolve_youtube` | `shared/schemas/youtube_watchlist.py` |
