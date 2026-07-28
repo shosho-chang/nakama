@@ -50,9 +50,13 @@
       }
       .line:nth-child(2) { margin-left: 60px; }
       /* tier 1 = hero：超大字（6 字/行上限；168px×6+padding ≈ 1064 ≤ 1080） */
+      /* tier1 必須「一眼看出比 tier2 大一級」（二十八輪修修：兩者看起來
+         一樣大）。190px×5 字 + padding 56 = 1006 ≤ 1080，故 tier1 行寬
+         上限收到 5 字（script 端 MAX_LINE_CHARS_HERO 同步）。 */
       .tier1 .line {
-        font-size: 168px;
+        font-size: 190px;
         padding: 10px 28px 18px;
+        line-height: 1.1;
       }
       .tier1 .line:nth-child(2) { margin-left: 40px; }
     </style>

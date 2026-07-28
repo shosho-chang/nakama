@@ -37,9 +37,11 @@ import argparse
 import hashlib
 import json
 import logging
+import re
 import subprocess
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
@@ -64,8 +66,9 @@ DEFAULT_POS_Y = {1: 0.58, 2: 0.66}
 # 內容的鋪陳，是不是也要有完整的規劃」）。每張卡必須標明在論證裡承擔哪一拍；
 # 寫不出 beat 的卡就是不該存在的卡。
 BEATS = ("hook", "mechanism", "evidence", "insight", "closing")
-SEC_PER_CARD = 12.0  # 密度上限：卡片總數 ≤ 片長 ÷ 12（60s ≈ 5 張）
-MAX_LINE_CHARS = 6  # 168px（hero）×6 + padding ≈ 1064 ≤ 1080
+SEC_PER_CARD = 4.5  # 密度上限：卡片總數 ≤ 片長 ÷ 4.5（範本 67s 22 張 ≈ 每 3s 一張）
+MAX_LINE_CHARS = 6  # tier2：150px×6 + padding ≈ 964 ≤ 1080
+MAX_LINE_CHARS_HERO = 5  # tier1：190px×5 + padding ≈ 1006 ≤ 1080
 
 
 def _card_hash(variables: dict) -> str:
@@ -97,6 +100,35 @@ def _render_card(variables: dict, out_path: Path) -> None:
         raise SystemExit(f"hyperframes render 失敗: {(proc.stderr or '')[-400:]}")
 
 
+_PUNCT = r"[\s，。、？！「」『』（）()《》〈〉·,.?!:;\-—…]"
+
+
+def _norm(s: str) -> str:
+    """比對用正規化：去換行、空白、標點、引號，只留可讀字元。"""
+    return re.sub(_PUNCT, "", s)
+
+
+def _spoken_around(episode_dir: Path, cid: str, t0: float, t1: float) -> str:
+    """該時間點前後 ±1.5s 講者實際說的話——字卡必須是它的連續節錄。"""
+    srts = sorted((episode_dir / "highlights/srt").glob(f"{cid}_tight_r*.srt"))
+    if not srts:
+        return ""
+    out = []
+    blocks = re.split(r"\n\s*\n", srts[-1].read_text(encoding="utf-8").strip())
+    for block in blocks:
+        ls = block.splitlines()
+        if len(ls) < 3:
+            continue
+        m = re.match(r"(\d+):(\d+):(\d+),(\d+) --> (\d+):(\d+):(\d+),(\d+)", ls[1])
+        if not m:
+            continue
+        s = int(m.group(2)) * 60 + int(m.group(3)) + int(m.group(4)) / 1000
+        e = int(m.group(6)) * 60 + int(m.group(7)) + int(m.group(8)) / 1000
+        if e > t0 - 1.5 and s < t1 + 1.5:
+            out.append(ls[2])
+    return "".join(out)
+
+
 def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     from build_resolve_project import connect_resolve
 
@@ -106,11 +138,17 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         raise SystemExit(f"{titles_path} 不存在——agent 先從 tight SRT 選 punch 時間點")
     titles = json.loads(titles_path.read_text(encoding="utf-8"))["titles"]
     titles.sort(key=lambda x: x["t0"])
-    insights = [x for x in titles if x.get("beat") == "insight"]
-    if len(insights) != 1:
-        raise SystemExit(f"insight 卡有 {len(insights)} 張——一支短片只有一個洞見，且必須是 hero")
-    if int(insights[0].get("tier", 2)) != 1:
-        raise SystemExit("insight 卡必須標 tier: 1（hero）——它是全片最強的一句")
+    heroes = [x for x in titles if int(x.get("tier", 2)) == 1]
+    if not 1 <= len(heroes) <= 3:
+        raise SystemExit(
+            f"hero（tier 1）有 {len(heroes)} 張——修修二十七輪：1–3 張（中段一張論點、片尾一張收束）"
+        )
+    bad_beat = [x for x in heroes if x.get("beat") not in ("insight", "closing")]
+    if bad_beat:
+        raise SystemExit(
+            "hero 的 beat 只能是 insight（論點）或 closing（收束）："
+            + "、".join(x["text"].replace(chr(10), "／") for x in bad_beat)
+        )
 
     # 1) 逐卡 render（參數 hash cache）
     cards_dir = episode_dir / CARDS_DIR
@@ -133,9 +171,33 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         tier = int(t.get("tier", 2))
         if tier not in (1, 2):
             raise SystemExit(f"卡片 {i} tier={tier} 不合法（1=hero 2=標準）")
-        too_long = [x for x in lines if len(x) > MAX_LINE_CHARS]
+        # 字卡必須是**講者原話的連續節錄**，不是轉譯／總結（二十六輪血案：
+        # 「三分鐘的獎勵／十年的成果」是我自行合成的對比，講者從沒這樣說 →
+        # 字卡與耳朵聽到的對不上，變成干擾）。範本 22 張卡全是原話直接擷取。
+        # 「有意義的 summary」而不是逐字節錄（二十七輪修修裁決：可以改寫、
+        # 要有意義）。但**不可自行合成講者沒說的話**——用子序列比例把關：
+        # 卡片的字必須大多按原順序出現在該時段的原話裡（壓縮/省贅字 OK，
+        # 跨段拼貼會掉到門檻以下）。
+        spoken = _spoken_around(episode_dir, cid, float(t["t0"]), float(t["t1"]))
+        if spoken:
+            # 字元重疊比例（不強制順序——summary 常會調詞序、省贅字；
+            # 但憑空捏造的字會讓比例掉下來）
+            card_n, spoken_n = _norm(t["text"]), _norm(spoken)
+            pool = Counter(spoken_n)
+            hit = sum(1 for ch in card_n if pool[ch] > 0 and not pool.__setitem__(ch, pool[ch] - 1))
+            ratio = hit / max(1, len(card_n))
+            if ratio < 0.7:
+                raise SystemExit(
+                    "卡片 {} 「{}」與該時段原話落差太大（按序命中 {:.0%}）。\n"
+                    "  該時段實際說的是：{}\n"
+                    "  可以壓縮改寫，但不可寫成講者沒說的意思".format(
+                        i, t["text"].replace(chr(10), "／"), ratio, spoken
+                    )
+                )
+        limit = MAX_LINE_CHARS_HERO if tier == 1 else MAX_LINE_CHARS
+        too_long = [x for x in lines if len(x) > limit]
         if too_long:
-            raise SystemExit(f"卡片 {i} 行超過 {MAX_LINE_CHARS} 字：{too_long}——改寫或拆行")
+            raise SystemExit(f"卡片 {i}（tier {tier}）行超過 {limit} 字：{too_long}——改寫或拆行")
         variables = {
             "line1": lines[0],
             "line2": lines[1] if len(lines) > 1 else "",
@@ -222,11 +284,22 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
             a0, a1 = job["t0"], job["t0"] + job["show_sec"]
             for ov in overlays:
                 b0, b1 = float(ov["t0"]), float(ov["t1"])
-                if a0 < b1 and a1 > b0:
+                if not (a0 < b1 and a1 > b0):
+                    continue
+                # 時間重疊不必然打架——**垂直分層**就能共存（二十八輪：
+                # 上一輪為了避讓把貼紙從 2.2s 搬到 8.8s，語意時機整個跑掉。
+                # 版面問題要用版面解，不可用時間解）。
+                # 貼紙帶：y_pct ± size_pct/2（畫面高比例，粗估用寬度比例）
+                y = float(ov.get("y_pct", 46)) / 100
+                half = float(ov.get("size_pct", 26)) / 100 * 0.5
+                sticker_bottom = y + half
+                card_top = float(job.get("pos_y", 0.63)) - 0.09  # 卡片高約 18% 畫面
+                if sticker_bottom > card_top:
                     raise SystemExit(
                         f"字卡「{job['text'].replace(chr(10), '／')}」({a0}–{a1:.1f}s) 與"
-                        f" {ov['kind']}「{ov.get('slug')}」({b0}–{b1}s) 時間重疊"
-                        "——兩者都在畫面中下段會互相遮擋，錯開時間或縮短其一"
+                        f" {ov['kind']}「{ov.get('slug')}」({b0}–{b1}s) 同時出現且垂直重疊"
+                        f"（貼紙下緣 {sticker_bottom:.2f} > 卡片上緣 {card_top:.2f}）"
+                        "——把貼紙 y_pct 往上移或縮小 size_pct，**不要改時間**"
                     )
 
     mp.SetCurrentFolder(cards_bin)
