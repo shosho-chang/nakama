@@ -17,7 +17,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from run_transcript_prose import (  # noqa: E402
     _cue_speaker,
     _cue_word_ranges,
+    _demote_period,
     _finish,
+    _is_mixed,
     _parse_srt,
     _spaces_to_commas,
     build_paragraphs,
@@ -88,9 +90,31 @@ def test_cue_speaker_none_when_no_evidence():
 
 
 def test_spaces_to_commas_only_between_cjk():
-    assert _spaces_to_commas("我也常 常聽") == "我也常，常聽"
+    assert _spaces_to_commas("今天很好 明天也不錯") == "今天很好，明天也不錯"
     assert _spaces_to_commas("用 AI 工具") == "用 AI 工具"  # 中英交界的空格留著
     assert _spaces_to_commas("machine learning") == "machine learning"
+
+
+def test_spaces_inside_a_word_get_no_comma():
+    """停頓 ≠ 句讀：0.3s 換氣常落在詞中間，下逗號會讓讀者卡住甚至讀反。
+
+    這四個都是 2026-07-28 三份 review 報告實際抓到的句子。
+    """
+    assert _spaces_to_commas("反方的意 見") == "反方的意見"
+    assert _spaces_to_commas("認知儲 備") == "認知儲備"
+    assert _spaces_to_commas("不 過這個有機會") == "不過這個有機會"  # 曾被讀成否定
+    assert _spaces_to_commas("我也常 常聽") == "我也常常聽"
+
+
+def test_demote_period_after_connective():
+    # 換氣停頓落在連接詞後面 → 句號會把句子腰斬成殘句，降級成逗號
+    assert _demote_period("我們會因為", "。") == "，"
+    assert _demote_period("大家都很關心但", "。") == "，"
+    assert _demote_period("所以我們真的要", "。") == "，"
+    # 正常結尾不動；本來就不是句號的分隔符也不動
+    assert _demote_period("這樣就好了", "。") == "。"
+    assert _demote_period("我們會因為", "，") == "，"
+    assert _demote_period("我們會因為", "") == ""
 
 
 def test_finish_adds_period_and_question_mark():
@@ -195,10 +219,12 @@ def test_empty_cue_text_ignored():
 
 def test_keep_spaces_leaves_pause_spaces_alone():
     words = [_w("甲", 0.0, 0.3)]
-    cues = _cues_from([(0.0, 0.3, "我也常 常聽")])
+    cues = _cues_from([(0.0, 0.3, "今天很好 明天也不錯")])
     ranges = _cue_word_ranges(cues, words)
-    assert build_paragraphs(cues, [0], ranges, words, keep_spaces=True) == [(0, "我也常 常聽。")]
-    assert build_paragraphs(cues, [0], ranges, words) == [(0, "我也常，常聽。")]
+    assert build_paragraphs(cues, [0], ranges, words, keep_spaces=True) == [
+        (0, "今天很好 明天也不錯。")
+    ]
+    assert build_paragraphs(cues, [0], ranges, words) == [(0, "今天很好，明天也不錯。")]
 
 
 # --- 輸出 -------------------------------------------------------------------
@@ -239,3 +265,47 @@ def test_write_vault_refuses_when_vault_root_missing(tmp_path, monkeypatch):
         rtp._write_vault("body", episode_dir=tmp_path / "ep", host="H", guest="G", slug=None)
     assert "vault 路徑不存在" in str(exc.value)
     assert not ghost.exists()
+
+
+# --- 混人 cue 偵測 -----------------------------------------------------------
+
+
+def test_is_mixed_flags_cue_with_two_strong_speakers():
+    # 搶話：兩人各講一半 → 少數方占比 0.5，Viterbi 只能挑一個人，必須標出來
+    words = [_w("問", 0.0, 1.0), _w("答", 1.0, 2.0)]
+    assert _is_mixed([0, 1], [0, 1], words) == 0.5
+
+
+def test_is_mixed_ignores_single_speaker_cue():
+    words = [_w("甲", 0.0, 1.0), _w("乙", 1.0, 2.0)]
+    assert _is_mixed([0, 1], [0, 0], words) == 0.0
+
+
+def test_is_mixed_tolerates_short_backchannel():
+    # 對方只吐了 0.1s 的「對」→ 占比 ~5%，低於門檻，不算混人
+    words = [_w("長句", 0.0, 2.0), _w("對", 2.0, 2.1)]
+    assert _is_mixed([0, 1], [0, 1], words) < 0.3
+
+
+def test_very_long_paragraph_splits_on_an_ordinary_sentence_pause():
+    """超過 HARD_PARA_CHARS 後，0.6s 的句末停頓就足以分段（避免文字牆）。
+
+    長獨白裡 0.8s 以上的停頓很稀有——第二版只放寬到 0.8s/300 字時，
+    這一集仍留下 13 個 >400 字的段落、最長 672 字。
+    """
+    long_text = "很" * 650
+    # gap = 0.9 - 0.3 = 0.6 → 剛好落在 PERIOD_GAP，未達 PARA_GAP(0.8)
+    words = [_w("甲", 0.0, 0.3), _w("乙", 0.9, 1.2)]
+    cues = _cues_from([(0.0, 0.3, long_text), (0.9, 1.2, "新段")])
+    ranges = _cue_word_ranges(cues, words)
+    paras = build_paragraphs(cues, [0, 0], ranges, words)
+    assert len(paras) == 2
+    assert paras[1] == (0, "新段。")
+
+
+def test_medium_paragraph_not_split_by_ordinary_pause():
+    # 同樣 0.6s 停頓，但段落只有 400 字（未達 HARD_PARA_CHARS）→ 不分段
+    words = [_w("甲", 0.0, 0.3), _w("乙", 0.9, 1.2)]
+    cues = _cues_from([(0.0, 0.3, "很" * 400), (0.9, 1.2, "後續")])
+    ranges = _cue_word_ranges(cues, words)
+    assert len(build_paragraphs(cues, [0, 0], ranges, words)) == 1

@@ -109,17 +109,9 @@ def _snap_outside_brackets(text: str, pos: int) -> int:
 
 
 def _jieba_boundaries(text: str) -> set[int]:
-    import jieba
+    from shared.cue_builder import jieba_boundaries  # 與 run_transcript_prose 共用同一份
 
-    from shared.transcriber import ensure_tw_jieba
-
-    ensure_tw_jieba()
-    bounds = {0, len(text)}
-    pos = 0
-    for w in jieba.cut(text):
-        pos += len(w)
-        bounds.add(pos)
-    return bounds
+    return jieba_boundaries(text)
 
 
 def _snap_word_boundary(pos: int, bounds: set[int]) -> int:
