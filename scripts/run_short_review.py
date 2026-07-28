@@ -254,6 +254,17 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
             _ffmpeg(["-ss", f"{t:.2f}", "-i", str(preview), "-frames:v", "1", str(out_dir / name)])
             frames.append({"event": i, "at": round(t, 2), "file": name})
 
+    # 換鏡也是視覺事件（二十五輪：只算素材與卡片會誤判——導播的反應鏡頭
+    # 與機位切換觀眾是看得到的）。直接讀 track 1 的 item 邊界＝真實切點。
+    cut_events = []
+    for it in timeline.GetItemListInTrack("video", 1) or []:
+        ts = (it.GetStart() - timeline.GetStartFrame()) / fps
+        if ts > 0.05:
+            cut_events.append(
+                {"type": "cut", "slug": "", "t0": round(ts, 2), "t1": round(ts, 2), "note": "換鏡"}
+            )
+    events = sorted(events + cut_events, key=lambda x: x["t0"])
+
     # 節拍器缺口：**前事件結束 → 後事件開始**的真空（二十四輪修正：
     # 舊版用 t0→t0 會高估缺口長度、又漏抓尾段空窗），且排除 punch zoom
     gaps = []
@@ -276,6 +287,11 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
         "timeline": label,
         "duration_sec": round(dur, 1),
         "events_per_min": round(len(events) / (dur / 60), 1),
+        # 換鏡是「弱事件」（同一組談話頭來回切）——素材/卡片才是「強事件」。
+        # 兩個數字一起看：只有換鏡撐場的段落，強事件密度會露餡
+        "content_per_min": round(
+            len([e for e in events if e["type"] != "cut"]) / (dur / 60), 1
+        ),
         "events": events,
         "gaps_over_12s": gaps,
         "frames": frames,
@@ -290,6 +306,7 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
         "dir": str(out_dir),
         "events": len(events),
         "events_per_min": packet["events_per_min"],
+        "content_per_min": packet["content_per_min"],
         "gaps_over_12s": gaps,
         "frames": len(frames),
     }
