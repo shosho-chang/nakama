@@ -1,0 +1,162 @@
+<!doctype html>
+<!--
+  N1 完整版訪談卡 — **修修 house style**（樣板：E:\data\podcast thumbnail\EP112/114/117，
+  2026-07-28 修修裁決以自家既有封面為準，不是對標頻道的翻譯）。
+
+  規格（從 EP112/114 逆向）：
+  - 兩張超大臉（頭高 60–80%）貼左右緣、可出血側緣；mic/耳機保留（podcast 識別）
+  - 中央兩行白色 EB 大字；payoff 詞 = **橘底圓角框 + 白字**（不是橘色字）
+  - 左下橘框 EP 號、右下橘框來賓名（白字）
+  - 背景：炭灰 radial（中央亮 → 邊緣暗），非純黑
+
+  Variables:
+    title_lines     — JSON array（通常 2 行）
+    highlight_text  — 要框橘底的子字串（恰好一次）
+    ep_label        — 左下標籤（如「EP118」；空 = 隱藏）
+    guest_name      — 右下標籤（如「謝伯讓」；空 = 隱藏）
+    host_cutout_data_url / guest_cutout_data_url
+    host_height_pct / guest_height_pct（預設 118）
+    host_x_pct / guest_x_pct — 貼緣偏移（負值 = 出血；預設 -2）
+    palette         — { bg_center, bg_edge, accent } 覆寫
+-->
+<html lang="zh-Hant" data-resolution="landscape">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1280, height=720" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 1280px; height: 720px; overflow: hidden; background: #000;
+        font-family: "LINE Seed TW", "Noto Sans TC", "PingFang TC",
+          "Microsoft JhengHei", sans-serif;
+      }
+      #root {
+        position: relative; width: 1280px; height: 720px; overflow: hidden;
+        background: radial-gradient(ellipse 85% 100% at 50% 42%,
+          var(--bg-center, #414141) 0%, var(--bg-edge, #1F1F1F) 100%);
+      }
+      #host, #guest {
+        position: absolute; bottom: 0; z-index: 3; object-fit: contain;
+      }
+      #host  { left: var(--host-x, -2%);  height: var(--host-h, 118%);  object-position: bottom left; }
+      #guest { right: var(--guest-x, -2%); height: var(--guest-h, 118%); object-position: bottom right; }
+
+      #title {
+        position: absolute; left: 50%; top: 44%;
+        transform: translate(-50%, -50%);
+        z-index: 5; width: 760px; text-align: center;
+        color: #FFFFFF;
+        font-weight: 800;
+        font-size: 96px;
+        line-height: 1.28;
+        letter-spacing: 0.005em;
+        text-shadow: 0 5px 30px rgba(0,0,0,0.75), 0 2px 8px rgba(0,0,0,0.6);
+        white-space: nowrap;
+      }
+      /* payoff 詞 = 橘底白字圓角框（house style 核心元素） */
+      #title .hl {
+        background: var(--accent, #EE8435);
+        border-radius: 14px;
+        padding: 2px 14px 6px;
+        box-decoration-break: clone;
+      }
+      /* 左下 EP / 右下人名 — 橘底白字標籤 */
+      .corner-tag {
+        position: absolute; bottom: 52px; z-index: 6;
+        background: var(--accent, #EE8435); color: #FFFFFF;
+        font-weight: 800; font-size: 44px; letter-spacing: 0.02em;
+        padding: 8px 26px 12px; border-radius: 14px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.45);
+      }
+      #ep-tag   { left: 130px; }
+      #name-tag { right: 130px; }
+      .corner-tag:empty { display: none; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="thumbnail-full"
+      data-start="0"
+      data-duration="0.5"
+      data-width="1280"
+      data-height="720"
+      data-composition-variables='{
+        "title_lines":           { "type": "object", "default": ["未填", "字卡"] },
+        "highlight_text":        { "type": "string", "default": "" },
+        "ep_label":              { "type": "string", "default": "" },
+        "guest_name":            { "type": "string", "default": "" },
+        "host_cutout_data_url":  { "type": "string", "default": "" },
+        "guest_cutout_data_url": { "type": "string", "default": "" },
+        "host_height_pct":       { "type": "number", "default": 118 },
+        "guest_height_pct":      { "type": "number", "default": 118 },
+        "host_x_pct":            { "type": "number", "default": -2 },
+        "guest_x_pct":           { "type": "number", "default": -2 },
+        "palette":               { "type": "object", "default": {} }
+      }'
+    >
+      <img id="host" alt="" />
+      <img id="guest" alt="" />
+      <h1 id="title"></h1>
+      <div id="ep-tag" class="corner-tag"></div>
+      <div id="name-tag" class="corner-tag"></div>
+    </div>
+
+    <script>
+      const vars =
+        (window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+          ? window.__hyperframes.getVariables()
+          : {}) || {};
+
+      const root = document.getElementById("root");
+      const palette = vars.palette || {};
+      for (const [k, cssVar] of [
+        ["bg_center", "--bg-center"], ["bg_edge", "--bg-edge"], ["accent", "--accent"],
+      ]) {
+        if (palette[k]) root.style.setProperty(cssVar, palette[k]);
+      }
+      if (vars.host_height_pct)  root.style.setProperty("--host-h",  vars.host_height_pct + "%");
+      if (vars.guest_height_pct) root.style.setProperty("--guest-h", vars.guest_height_pct + "%");
+      if (vars.host_x_pct !== undefined)  root.style.setProperty("--host-x",  vars.host_x_pct + "%");
+      if (vars.guest_x_pct !== undefined) root.style.setProperty("--guest-x", vars.guest_x_pct + "%");
+
+      for (const [id, key] of [["host","host_cutout_data_url"],["guest","guest_cutout_data_url"]]) {
+        const el = document.getElementById(id);
+        if (vars[key]) el.src = vars[key]; else el.style.display = "none";
+      }
+
+      // 兩行標題；highlight_text 那段包橘底框（恰好一次）
+      const titleEl = document.getElementById("title");
+      const lines = Array.isArray(vars.title_lines) ? vars.title_lines : ["未填", "字卡"];
+      const hl = vars.highlight_text || "";
+      let hlUsed = false;
+      for (const line of lines) {
+        const div = document.createElement("div");
+        if (hl && !hlUsed && line.includes(hl)) {
+          const i = line.indexOf(hl);
+          div.append(line.slice(0, i));
+          const span = document.createElement("span");
+          span.className = "hl";
+          span.textContent = hl;
+          div.append(span, line.slice(i + hl.length));
+          hlUsed = true;
+        } else {
+          div.textContent = line;
+        }
+        titleEl.append(div);
+      }
+      // 行寬超出即整塊縮字（不換行）
+      requestAnimationFrame(() => {
+        const w = titleEl.scrollWidth;
+        if (w > 760) titleEl.style.fontSize = Math.floor(96 * 760 / w) + "px";
+      });
+
+      document.getElementById("ep-tag").textContent = vars.ep_label || "";
+      document.getElementById("name-tag").textContent = vars.guest_name || "";
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["thumbnail-full"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

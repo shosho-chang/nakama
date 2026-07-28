@@ -1,0 +1,155 @@
+<!doctype html>
+<!--
+  封面設計系統 N3「主題卡」（docs/thumbnail-design-system.md；對標普查 R3）。
+
+  1280×720。左 55% 字塊（2–3 行、單一橘 highlight、句點、名牌），右來賓；
+  背景 = 實拍棚景 frame 壓暗＋輕模糊（真素材處理，非 AI）。
+
+  Variables:
+    title_lines / highlight_text / guest_name / guest_title — 同 thumbnail_full
+    guest_cutout_data_url — 透明 PNG data URL
+    guest_height_pct      — 預設 106
+    bg_data_url           — 實拍棚景 frame（必填；壓暗模糊由本 composition 做）
+    bg_darken             — 預設 0.62
+    palette               — { fg, accent, ink } 覆寫
+-->
+<html lang="zh-Hant" data-resolution="landscape">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1280, height=720" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 1280px; height: 720px; overflow: hidden; background: #000;
+        font-family: "LINE Seed TW", "Noto Sans TC", "PingFang TC",
+          "Microsoft JhengHei", sans-serif;
+      }
+      #root {
+        position: relative; width: 1280px; height: 720px;
+        background: #191613; overflow: hidden;
+      }
+      #bg {
+        position: absolute; inset: -12px; z-index: 1;
+        width: calc(100% + 24px); height: calc(100% + 24px);
+        object-fit: cover; filter: blur(7px) saturate(0.8);
+      }
+      #darken {
+        position: absolute; inset: 0; z-index: 2;
+        background: rgba(10, 8, 6, var(--darken, 0.62));
+      }
+      #guest {
+        position: absolute; right: 0; bottom: 0; z-index: 3;
+        height: var(--guest-h, 106%); object-fit: contain;
+        object-position: bottom right;
+      }
+      #text-block {
+        position: absolute; left: 64px; top: 96px; z-index: 4; width: 640px;
+      }
+      #title {
+        color: var(--fg, #FFFFFF);
+        font-weight: 800; font-size: 104px; line-height: 1.16;
+        letter-spacing: 0.01em; white-space: nowrap;
+        text-shadow: 0 6px 36px rgba(0,0,0,0.9), 0 2px 8px rgba(0,0,0,0.8);
+      }
+      #title .hl { color: var(--accent, #e98965); }
+      #name-tag {
+        display: inline-block; margin-top: 34px;
+        background: #FFFFFF; color: var(--ink, #1A1713);
+        font-weight: 700; font-size: 30px; letter-spacing: 0.04em;
+        padding: 10px 24px; border-radius: 10px;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.55);
+      }
+      #name-tag:empty { display: none; }
+      #name-tag .sep { color: var(--accent, #e98965); margin: 0 8px; font-weight: 800; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="thumbnail-topic"
+      data-start="0"
+      data-duration="0.5"
+      data-width="1280"
+      data-height="720"
+      data-composition-variables='{
+        "title_lines":           { "type": "object", "default": ["未填", "字卡。"] },
+        "highlight_text":        { "type": "string", "default": "" },
+        "guest_name":            { "type": "string", "default": "" },
+        "guest_title":           { "type": "string", "default": "" },
+        "guest_cutout_data_url": { "type": "string", "default": "" },
+        "guest_height_pct":      { "type": "number", "default": 106 },
+        "bg_data_url":           { "type": "string", "default": "" },
+        "bg_darken":             { "type": "number", "default": 0.62 },
+        "palette":               { "type": "object", "default": {} }
+      }'
+    >
+      <img id="bg" alt="" />
+      <div id="darken"></div>
+      <img id="guest" alt="" />
+      <div id="text-block">
+        <div id="title"></div>
+        <div id="name-tag"></div>
+      </div>
+    </div>
+
+    <script>
+      const vars =
+        (window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+          ? window.__hyperframes.getVariables()
+          : {}) || {};
+
+      const root = document.getElementById("root");
+      const palette = vars.palette || {};
+      for (const [k, cssVar] of [["fg","--fg"],["accent","--accent"],["ink","--ink"]]) {
+        if (palette[k]) root.style.setProperty(cssVar, palette[k]);
+      }
+      if (vars.bg_darken !== undefined) root.style.setProperty("--darken", String(vars.bg_darken));
+      if (vars.guest_height_pct) root.style.setProperty("--guest-h", vars.guest_height_pct + "%");
+
+      const bgEl = document.getElementById("bg");
+      if (vars.bg_data_url) bgEl.src = vars.bg_data_url; else bgEl.style.display = "none";
+      const guestEl = document.getElementById("guest");
+      if (vars.guest_cutout_data_url) guestEl.src = vars.guest_cutout_data_url;
+      else guestEl.style.display = "none";
+
+      const titleEl = document.getElementById("title");
+      const lines = Array.isArray(vars.title_lines) ? vars.title_lines : ["未填", "字卡。"];
+      const hl = vars.highlight_text || "";
+      let hlUsed = false;
+      for (const line of lines) {
+        const div = document.createElement("div");
+        if (hl && !hlUsed && line.includes(hl)) {
+          const i = line.indexOf(hl);
+          div.append(line.slice(0, i));
+          const span = document.createElement("span");
+          span.className = "hl";
+          span.textContent = hl;
+          div.append(span, line.slice(i + hl.length));
+          hlUsed = true;
+        } else {
+          div.textContent = line;
+        }
+        titleEl.append(div);
+      }
+      requestAnimationFrame(() => {
+        const w = titleEl.scrollWidth;
+        if (w > 640) titleEl.style.fontSize = Math.floor(104 * 640 / w) + "px";
+      });
+
+      const tag = document.getElementById("name-tag");
+      if (vars.guest_name) {
+        tag.append(vars.guest_name);
+        if (vars.guest_title) {
+          const sep = document.createElement("span");
+          sep.className = "sep";
+          sep.textContent = "｜";
+          tag.append(sep, vars.guest_title);
+        }
+      }
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["thumbnail-topic"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

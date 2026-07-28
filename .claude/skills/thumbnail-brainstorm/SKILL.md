@@ -13,8 +13,8 @@ description: >
 
 # thumbnail-brainstorm — 封面 brainstorm 手冊
 
-**版本：v1.0（2026-07-28，ADR-054 D8/D9 + 附錄 A8/A9 落地；playbook 語料依據：
-`prompts/thumbnail/playbook_v1.md`）**
+**版本：v1.1（2026-07-28，封面設計系統 v1 接入 — 對標 Modern Wisdom 普查；
+規格見 `docs/thumbnail-design-system.md`；v1.0 = ADR-054 D8/D9 首落地）**
 
 你是 packaging 的**封面棒**：標題已定（Top 5 進 packages.json），你為前 3 條
 各配一個封面、render 成 PNG、綁成 3 個 package。你**不改標題**：覺得某條標題
@@ -34,8 +34,10 @@ description: >
    playbook compact index，不即席發明 archetype。
 4. **檔名 ASCII**：PNG 一律 `pkg-{cut_id}-{n}.png`；guest cutout 一律
    `cutout_filename("guest", i, emotion)` 產（帶 emotion — A8④）。
-5. **背景層 = 純色/漸層**（composition 內建；Unsplash 底圖 PR5 未落地 —
-   ADR-054 附錄 B）。diversity 只承諾做得到的軸：**表情／大字／裝飾**。
+5. **設計系統紀律**（`docs/thumbnail-design-system.md` 硬紀律節）：一張圖一個
+   idea、色彩角色鎖定（橘只當 highlight/框/bolt）、頭高 ≥45%、視線朝內、
+   零裝飾、100px 自檢。diversity 軸 = **配方（N1/N2/N3）× 表情 × 大字**。
+   真人不 AI（memory 鐵律）；N2 prop 卡供給 = Envato → 公版 → 圖表重繪。
 6. **每集寫 run log packaging 節**（配對理由、表情選擇、否決、Remaining）。
 
 ## 輸入
@@ -81,59 +83,62 @@ python -c "from shared.thumbnail_playbook import format_playbook_index_for_promp
    不是標題全文——標題已在 YouTube 標題欄，封面大字補不同資訊）、
    **表情**（`prompts/thumbnail/emotions.yml` 七值之一，host 與 guest 各一）。
 
-## Step 2 — 視覺配方 routing
+## Step 2 — 視覺配方 routing（修修 2026-07-28 裁：兩人都從 raw file 抽）
 
 | visual_recipe | host | guest |
 |---|---|---|
-| `podcast` | 預建庫 `pick_youtube_host(表情, vault)` | Step 3 funnel Stage 3 |
-| `youtube_host` | 同上 | 無 |
+| `podcast` | Step 3 抽格（`--role host`，修修機位） | Step 3 抽格（`--role guest`） |
+| `youtube_host` | 預建庫 `pick_youtube_host(表情, vault)`（非訪談影片才用） | 無 |
 | `youtube_book` | Step 0 已 fail loud | — |
 
-host 取檔：
+## Step 3 — cutout 抽格（兩個角色，僅 podcast）
 
-```bash
-python -c "from shared.cutout_library import pick_youtube_host; \
-  from shared.config import get_vault_path; \
-  print(pick_youtube_host('<表情>', get_vault_path()))"
-```
-
-## Step 3 — guest cutout（funnel Stage 3，僅 podcast）
-
-1. 窗口 = `winners.json` 該 cut 的 start/end；來賓機位檔 + `expected_speaker`
-   = `director.json` 的 `cams` 對應（誰的特寫是哪支檔、speaker index 是誰）。
-2. 抽格（機位交叉驗證內建 — 見紅線 2）：
+1. 窗口 = `winners.json` 該 cut 的 start/end；機位檔 + `expected_speaker`
+   = `director.json` 的 `cams` 對應。host 反應臉常在來賓說話窗 → `--role host`
+   會跳過 speaker-dominance 檢查（機位正確性由 cams 設定把關）。
+2. 抽格（guest 機位交叉驗證內建 — 見紅線 2）：
 
 ```bash
 python .claude/skills/thumbnail-brainstorm/scripts/guest_cutout.py sample \
-  --episode-dir "<episode>" --cam-video <來賓機位.mp4> \
-  --window <t0> <t1> --expected-speaker <n> \
-  --out-dir "<packaging_dir>/guest_frames/<cut_id>"
+  --episode-dir "<episode>" --cam-video <機位.mp4> --role <host|guest> \
+  --window <t0> <t1> [--expected-speaker <n>] \
+  --out-dir "<packaging_dir>/<role>_frames/<cut_id>"
 ```
 
-3. **vision 挑格（subagent，一次批量）**：把候選 frame（已按清晰度排序）交給
-   一個 subagent，任務 =「依 emotions.yml 七值，為 Step 1 定案的 guest 表情
-   各挑最佳一格；臉被手/麥克風擋、閉眼、動態模糊者淘汰」。一個 subagent 看完
-   全部候選，不逐格開新 subagent。
-4. 去背落檔（每個選定表情一次）：
+3. **vision 挑格（subagent，一次批量，兩個角色各一次）**：候選已按清晰度排序
+   （= motion blur 淘汰）。任務 =「依 emotions.yml 為 Step 1 定案的表情各挑
+   最佳一格；臉被手/麥擋、閉眼、動態模糊、側轉 >45° 淘汰；**回報視線方向**
+   （放左緣的人要看畫面右，反之亦然）」。一個 subagent 看完全部候選。
+4. 去背落檔（BiRefNet + 統一調色內建）：
 
 ```bash
 python .claude/skills/thumbnail-brainstorm/scripts/guest_cutout.py finalize \
-  --frame <picked.png> --emotion <表情> --ep-slug <ascii-slug> --index <i>
+  --frame <picked.png> --emotion <表情> --ep-slug <ascii-slug> --index <i> \
+  --role <host|guest> [--crop x0 y0 x1 y1] [--flip]
 ```
 
-## Step 4 — render 3 張 PNG
+- `--crop`：比例框，去麥臂/筆電/衣字；**臉要貼哪個邊，裁框就收到臉那一側的邊**
+  （邊緣錨定原理與經驗值見設計系統「素材管線」節）。
+- `--flip`：視線不朝內時翻轉（實拍像素、非 AI；**衣服有字時禁用**，run log 註記
+  給修修否決權）。
+- render 後**必看成品**：cutout 裁切/位置不對就調 crop 重出 — 一次迭代是常態。
 
-每個 package 一張，輸出到 `<packaging_dir>/pkg-{cut_id}-{n}.png`：
+## Step 4 — render 3 張 PNG（設計系統 v1）
+
+依 Step 1 的配對選配方（N1 `thumbnail_full`／N2 `thumbnail_reaction`／N3
+`thumbnail_topic` — 選擇邏輯見設計系統），寫 spec JSON 後：
 
 ```bash
 python .claude/skills/thumbnail-brainstorm/scripts/render_still.py \
-  --recipe <podcast|youtube_host> --title-hook "<大字>" \
-  --host-cutout <host.png> [--guest-cutout <guest.png>] \
-  --out "<packaging_dir>/pkg-<cut_id>-<n>.png" [--accent "<裝飾>"]
+  --composition <thumbnail_full|thumbnail_reaction|thumbnail_topic> \
+  --spec <spec.json> --out "<packaging_dir>/pkg-<cut_id>-<n>.png"
 ```
 
-render 失敗（ThumbnailRenderError）→ 看保留的 variables JSON 與 stderr，修完
-重跑；連續失敗 2 次停下報修修，不降級成無封面。
+spec 的 variables 見各 composition 檔頭註解（title_lines/highlight_text/
+guest_name/guest_title/…）。大字 = 2–6 字/行 ≤3 行、**恰好一個** highlight 詞、
+句點結尾。render 失敗（ThumbnailRenderError）→ 看保留的 variables JSON 與
+stderr，修完重跑；連續失敗 2 次停下報修修，不降級成無封面。
+（v0 路徑 `--recipe` 保留給舊 compositions，新集勿用。）
 
 ## Step 5 — 回填 + 驗證 + 雙落點
 
