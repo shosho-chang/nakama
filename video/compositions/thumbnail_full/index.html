@@ -34,21 +34,21 @@
       #root {
         position: relative; width: 1280px; height: 720px; overflow: hidden;
         background: radial-gradient(ellipse 85% 100% at 50% 42%,
-          var(--bg-center, #414141) 0%, var(--bg-edge, #1F1F1F) 100%);
+          var(--bg-center, #4A4A4A) 0%, var(--bg-edge, #1F1F1F) 100%);
       }
       #host, #guest {
         position: absolute; bottom: 0; z-index: 3; object-fit: contain;
       }
-      #host  { left: var(--host-x, -2%);  height: var(--host-h, 118%);  object-position: bottom left; }
-      #guest { right: var(--guest-x, -2%); height: var(--guest-h, 118%); object-position: bottom right; }
+      #host  { left: var(--host-x, -2%);  height: var(--host-h, 108%);  object-position: bottom left; }
+      #guest { right: var(--guest-x, -2%); height: var(--guest-h, 108%); object-position: bottom right; }
 
       #title {
         position: absolute; left: 50%; top: 44%;
         transform: translate(-50%, -50%);
-        z-index: 5; width: 760px; text-align: center;
+        z-index: 5; width: 580px; text-align: center;
         color: #FFFFFF;
         font-weight: 800;
-        font-size: 96px;
+        font-size: 100px;
         line-height: 1.28;
         letter-spacing: 0.005em;
         text-shadow: 0 5px 30px rgba(0,0,0,0.75), 0 2px 8px rgba(0,0,0,0.6);
@@ -89,8 +89,8 @@
         "guest_name":            { "type": "string", "default": "" },
         "host_cutout_data_url":  { "type": "string", "default": "" },
         "guest_cutout_data_url": { "type": "string", "default": "" },
-        "host_height_pct":       { "type": "number", "default": 118 },
-        "guest_height_pct":      { "type": "number", "default": 118 },
+        "host_height_pct":       { "type": "number", "default": 108 },
+        "guest_height_pct":      { "type": "number", "default": 108 },
         "host_x_pct":            { "type": "number", "default": -2 },
         "guest_x_pct":           { "type": "number", "default": -2 },
         "palette":               { "type": "object", "default": {} }
@@ -149,7 +149,7 @@
       // 行寬超出即整塊縮字（不換行）
       requestAnimationFrame(() => {
         const w = titleEl.scrollWidth;
-        if (w > 760) titleEl.style.fontSize = Math.floor(96 * 760 / w) + "px";
+        if (w > 580) titleEl.style.fontSize = Math.floor(100 * 580 / w) + "px";
       });
 
       document.getElementById("ep-tag").textContent = vars.ep_label || "";
