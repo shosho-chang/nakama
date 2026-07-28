@@ -354,3 +354,5 @@
 - [feedback_title_brainstorm_is_highest_leverage.md](feedback_title_brainstorm_is_highest_leverage.md) — 修修 2026-07-26（同日二修）：**長片**標題槓桿最高，批次化不得砍 panel 迭代／真訊號／淘汰賽；**短片**標題 LLM 直出不跑 panel（Test & Compare 不支援 Shorts）
 - [真人畫面不交給 AI 合成](feedback_no_ai_synthesized_humans.md) — 實拍素材優先，AI 限 graphic/標題 render；升頻灰區先問
 - [成果交付資料夾](reference_agent_output_folder.md) — E:\data\AgentOutput\YYYYMMDD-<topic>\ 快照 + README 指回正式落點
+- [逐字稿維持逐字，不做 LLM 潤飾](project_transcript_prose_verbatim_only.md) — 修修 2026-07-28 否決 A/B 兩版潤飾；「只刪不加」可機械驗證但擋不住刪除造成的語意漂移
+- [subagent 的量測結論要自己驗過再採信](feedback_verify_agent_claims_against_data.md) — 現象通常真、歸因常錯；「我驗證通過」的自我宣告不能當數
