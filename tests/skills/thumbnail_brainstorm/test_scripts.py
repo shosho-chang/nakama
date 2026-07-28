@@ -135,7 +135,11 @@ def test_finalize_names_file_with_emotion(monkeypatch, tmp_path):
 
     monkeypatch.setattr(guest_cutout.asyncio, "create_subprocess_exec", _fake_exec)
 
-    dst = asyncio.run(guest_cutout.finalize(frame, "思考", "20260723-xieboran", 2))
+    dst = asyncio.run(
+        guest_cutout.finalize(
+            frame, "思考", "20260723-xieboran", 2, engine="hyperframes", grade=False
+        )
+    )
     assert (
         dst
         == vault
@@ -156,6 +160,60 @@ def test_finalize_rejects_unknown_emotion(tmp_path, monkeypatch):
         asyncio.run(guest_cutout.finalize(frame, "憂鬱", "ep", 1))
 
 
+def _real_png(path: Path, w: int = 8, h: int = 8) -> None:
+    from PIL import Image
+
+    im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    # 左上角一顆紅點 — flip/crop 斷言用
+    im.putpixel((0, 0), (255, 0, 0, 255))
+    im.save(path)
+
+
+def test_finalize_host_role_crop_flip_grade(monkeypatch, tmp_path):
+    """host 檔名前綴 + crop/flip/grade 管線（BiRefNet mock 成 copy）。"""
+    from PIL import Image
+
+    vault = tmp_path / "vault"
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    frame = tmp_path / "picked.png"
+    _real_png(frame)
+
+    monkeypatch.setattr(
+        guest_cutout, "_remove_bg_birefnet", lambda src, dst: dst.write_bytes(src.read_bytes())
+    )
+
+    dst = asyncio.run(
+        guest_cutout.finalize(
+            frame, "認真", "ep-x", 1, role="host", crop=(0.0, 0.0, 0.5, 0.5), flip=True
+        )
+    )
+    assert dst.name == "host_v1_serious.png"
+    im = Image.open(dst)
+    assert im.size == (4, 4)  # crop 生效
+    r, g, b, a = im.getpixel((3, 0))  # flip 後紅點在右上
+    assert a == 255 and r > g and r > b  # grade 會微調數值，只驗色相方向
+
+
+def test_sample_host_skips_speaker_validation(monkeypatch, tmp_path):
+    """--role host：不呼叫 speaker 分析、funnel 照跑（反應臉常在來賓說話窗）。"""
+
+    def _boom(_d):
+        raise AssertionError("host 不應計算 word_speakers")
+
+    monkeypatch.setattr(guest_cutout, "load_word_speakers", _boom)
+
+    async def _fake_run(video_path, out_dir, *, mode, window):
+        return []
+
+    import shared.thumbnail_funnel as tf
+
+    monkeypatch.setattr(tf, "run", _fake_run)
+    result = asyncio.run(
+        guest_cutout.sample(tmp_path, tmp_path / "cam.mp4", (0.0, 10.0), 0, tmp_path, role="host")
+    )
+    assert result == []
+
+
 # ---------------------------------------------------------------------------
 # render_still — visual_recipe routing fail loud
 # ---------------------------------------------------------------------------
@@ -174,6 +232,49 @@ def test_unknown_recipe_rejected():
 @pytest.mark.parametrize("recipe", ["podcast", "youtube_host"])
 def test_supported_recipes_pass(recipe):
     render_still.ensure_recipe_supported(recipe)
+
+
+def test_render_v2_passes_spec_to_worker(monkeypatch, tmp_path):
+    """設計系統 v1 路徑：spec JSON → render_thumbnail(composition, variables, images)。"""
+    import agents.brook.script_video.render_workers.thumbnail_worker as tw
+
+    seen: dict = {}
+
+    async def _fake(composition, *, variables, images, out_png, video_dir=None):
+        seen.update(composition=composition, variables=variables, images=images, out=out_png)
+        return out_png
+
+    monkeypatch.setattr(tw, "render_thumbnail", _fake)
+    spec = tmp_path / "spec.json"
+    spec.write_text(
+        json.dumps(
+            {
+                "variables": {"title_lines": ["戒手機", "＝戒毒。"], "highlight_text": "戒毒"},
+                "images": {"host_cutout_data_url": str(tmp_path / "h.png")},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    out = asyncio.run(render_still._render_v2("thumbnail_full", spec, tmp_path / "o.png"))
+    assert out == tmp_path / "o.png"
+    assert seen["composition"] == "thumbnail_full"
+    assert seen["variables"]["highlight_text"] == "戒毒"
+    assert seen["images"]["host_cutout_data_url"] == tmp_path / "h.png"
+
+
+def test_render_thumbnail_missing_image_fails_loud(tmp_path):
+    from agents.brook.script_video.render_workers.thumbnail_worker import render_thumbnail
+
+    with pytest.raises(FileNotFoundError, match="host_cutout_data_url"):
+        asyncio.run(
+            render_thumbnail(
+                "thumbnail_full",
+                variables={},
+                images={"host_cutout_data_url": tmp_path / "nope.png"},
+                out_png=tmp_path / "o.png",
+            )
+        )
 
 
 # ---------------------------------------------------------------------------

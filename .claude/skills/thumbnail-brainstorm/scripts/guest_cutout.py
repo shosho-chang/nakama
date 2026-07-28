@@ -62,11 +62,18 @@ async def sample(
     window: tuple[float, float],
     expected_speaker: int,
     out_dir: Path,
+    *,
+    role: str = "guest",
 ) -> list[dict]:
     from shared.thumbnail_funnel import run as funnel_run
 
-    words, spk = load_word_speakers(episode_dir)
-    validate_cam_speaker(words, spk, window, expected_speaker)
+    if role == "guest":
+        words, spk = load_word_speakers(episode_dir)
+        validate_cam_speaker(words, spk, window, expected_speaker)
+    else:
+        # host 反應臉常取自「來賓說話窗」（聽者表情），speaker-dominance 檢查
+        # 對 host 不適用 — 機位正確性由 director.json cams 設定把關。
+        print(f"[host] speaker-dominance check skipped (cam={cam_video.name})", file=sys.stderr)
 
     candidates = await funnel_run(cam_video, out_dir, mode="expression_sample", window=window)
     return [
@@ -80,15 +87,27 @@ async def sample(
     ]
 
 
-async def finalize(frame: Path, emotion_text: str, ep_slug: str, index: int) -> Path:
-    emotion = resolve_emotion(emotion_text)
-    if not frame.exists():
-        raise FileNotFoundError(f"picked frame not found: {frame}")
+def _grade(png_path: Path) -> None:
+    """統一調色 pass（設計系統：壓飽和 matte 感）— 傳統曲線，非 AI relight。"""
+    from PIL import Image, ImageEnhance
 
-    dst_dir = get_vault_path() / "Attachments" / "cutouts" / "podcast" / ep_slug
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    dst = dst_dir / cutout_filename("guest", index, emotion)
+    im = Image.open(png_path).convert("RGBA")
+    rgb = im.convert("RGB")
+    rgb = ImageEnhance.Color(rgb).enhance(0.88)
+    rgb = ImageEnhance.Contrast(rgb).enhance(1.05)
+    graded = Image.merge("RGBA", (*rgb.split(), im.split()[3]))
+    graded.save(png_path)
 
+
+def _remove_bg_birefnet(frame: Path, dst: Path) -> None:
+    """BiRefNet 去背（rembg birefnet-general）— 髮絲/眼鏡/物件邊緣優於 u2net。"""
+    from rembg import new_session, remove
+
+    session = new_session("birefnet-general")
+    dst.write_bytes(remove(frame.read_bytes(), session=session))
+
+
+async def _remove_bg_hyperframes(frame: Path, dst: Path) -> None:
     npx = shutil.which("npx") or "npx"  # Windows 上是 npx.cmd，CreateProcess 不自動解析
     argv = [npx, "hyperframes", "remove-background", str(frame), "-o", str(dst)]
     proc = await asyncio.create_subprocess_exec(
@@ -103,6 +122,59 @@ async def finalize(frame: Path, emotion_text: str, ep_slug: str, index: int) -> 
             f"hyperframes remove-background failed (exit {proc.returncode}): "
             f"{stderr.decode(errors='replace')[-500:]}"
         )
+
+
+def _crop(png_path: Path, box: tuple[float, float, float, float]) -> None:
+    """依比例框裁切（x0,y0,x1,y1 ∈ [0,1]）— 去掉入鏡的長麥臂/筆電等前景物。"""
+    from PIL import Image
+
+    im = Image.open(png_path)
+    w, h = im.size
+    im.crop((int(box[0] * w), int(box[1] * h), int(box[2] * w), int(box[3] * h))).save(png_path)
+
+
+def _flip(png_path: Path) -> None:
+    """水平翻轉 — 讓視線朝畫面內（實拍像素不變，非 AI；衣服字樣入鏡時禁用）。"""
+    from PIL import Image
+
+    Image.open(png_path).transpose(Image.Transpose.FLIP_LEFT_RIGHT).save(png_path)
+
+
+async def finalize(
+    frame: Path,
+    emotion_text: str,
+    ep_slug: str,
+    index: int,
+    *,
+    role: str = "guest",
+    engine: str = "birefnet",
+    grade: bool = True,
+    crop: tuple[float, float, float, float] | None = None,
+    flip: bool = False,
+) -> Path:
+    emotion = resolve_emotion(emotion_text)
+    if not frame.exists():
+        raise FileNotFoundError(f"picked frame not found: {frame}")
+
+    dst_dir = get_vault_path() / "Attachments" / "cutouts" / "podcast" / ep_slug
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    dst = dst_dir / cutout_filename(role, index, emotion)
+
+    if engine == "birefnet":
+        try:
+            _remove_bg_birefnet(frame, dst)
+        except ImportError:
+            print("[warn] rembg 未安裝 — fallback hyperframes u2net", file=sys.stderr)
+            await _remove_bg_hyperframes(frame, dst)
+    else:
+        await _remove_bg_hyperframes(frame, dst)
+
+    if crop:
+        _crop(dst, crop)
+    if flip:
+        _flip(dst)
+    if grade:
+        _grade(dst)
     return dst
 
 
@@ -114,14 +186,26 @@ def main() -> int:
     p_sample.add_argument("--episode-dir", type=Path, required=True)
     p_sample.add_argument("--cam-video", type=Path, required=True)
     p_sample.add_argument("--window", type=float, nargs=2, required=True, metavar=("T0", "T1"))
-    p_sample.add_argument("--expected-speaker", type=int, required=True)
+    p_sample.add_argument("--expected-speaker", type=int, default=0)
     p_sample.add_argument("--out-dir", type=Path, required=True)
+    p_sample.add_argument("--role", choices=("host", "guest"), default="guest")
 
     p_fin = sub.add_parser("finalize")
     p_fin.add_argument("--frame", type=Path, required=True)
     p_fin.add_argument("--emotion", required=True, help="emotions.yml 七值之一（zh/en/alias 皆可）")
     p_fin.add_argument("--ep-slug", required=True, help="ASCII episode slug，如 20260723-xieboran")
     p_fin.add_argument("--index", type=int, required=True)
+    p_fin.add_argument("--role", choices=("host", "guest"), default="guest")
+    p_fin.add_argument("--engine", choices=("birefnet", "hyperframes"), default="birefnet")
+    p_fin.add_argument("--no-grade", action="store_true", help="跳過統一調色 pass")
+    p_fin.add_argument(
+        "--crop",
+        type=float,
+        nargs=4,
+        metavar=("X0", "Y0", "X1", "Y1"),
+        help="比例裁切框（0–1）— 去掉入鏡麥臂/筆電",
+    )
+    p_fin.add_argument("--flip", action="store_true", help="水平翻轉（視線朝內；衣字入鏡禁用）")
 
     args = parser.parse_args()
     if args.cmd == "sample":
@@ -129,11 +213,30 @@ def main() -> int:
         if not cam.is_absolute():
             cam = args.episode_dir / cam
         result = asyncio.run(
-            sample(args.episode_dir, cam, tuple(args.window), args.expected_speaker, args.out_dir)
+            sample(
+                args.episode_dir,
+                cam,
+                tuple(args.window),
+                args.expected_speaker,
+                args.out_dir,
+                role=args.role,
+            )
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
-        dst = asyncio.run(finalize(args.frame, args.emotion, args.ep_slug, args.index))
+        dst = asyncio.run(
+            finalize(
+                args.frame,
+                args.emotion,
+                args.ep_slug,
+                args.index,
+                role=args.role,
+                engine=args.engine,
+                grade=not args.no_grade,
+                crop=tuple(args.crop) if args.crop else None,
+                flip=args.flip,
+            )
+        )
         print(dst)
     return 0
 

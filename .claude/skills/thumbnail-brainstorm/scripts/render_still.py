@@ -71,19 +71,49 @@ async def _render(args: argparse.Namespace) -> Path:
     )
 
 
+async def _render_v2(composition: str, spec_path: Path, out: Path) -> Path:
+    """封面設計系統 v1 路徑：spec JSON 直通 render_thumbnail。
+
+    spec.json 形狀：{"variables": {...}, "images": {"<var>_data_url": "<path>", ...}}
+    — variables 照 composition 的 data-composition-variables；images 由本函式
+    轉 data URL。字型／排版凍結在 composition，這裡零判斷。
+    """
+    from agents.brook.script_video.render_workers.thumbnail_worker import render_thumbnail
+
+    spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    images = {k: Path(v) for k, v in (spec.get("images") or {}).items()}
+    return await render_thumbnail(
+        composition, variables=spec.get("variables") or {}, images=images, out_png=out
+    )
+
+
+_V2_COMPOSITIONS = ("thumbnail_full", "thumbnail_reaction", "thumbnail_topic")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--recipe", required=True)
-    parser.add_argument("--title-hook", required=True)
-    parser.add_argument("--host-cutout", type=Path, required=True)
+    parser.add_argument("--recipe", help="visual_recipe 路由（舊 v0 模板路徑）")
+    parser.add_argument(
+        "--composition", choices=_V2_COMPOSITIONS, help="設計系統 v1 配方（N1/N2/N3）"
+    )
+    parser.add_argument("--spec", type=Path, help="v1 spec JSON（variables + images）")
+    parser.add_argument("--title-hook")
+    parser.add_argument("--host-cutout", type=Path)
     parser.add_argument("--guest-cutout", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--accent", default="")
     parser.add_argument("--palette", type=Path, help="palette JSON（keys: bg/fg/accent/bg_darken）")
     args = parser.parse_args()
 
-    ensure_recipe_supported(args.recipe)
-    out = asyncio.run(_render(args))
+    if args.composition:
+        if not args.spec:
+            raise SystemExit("--composition 需要 --spec（variables + images JSON）")
+        out = asyncio.run(_render_v2(args.composition, args.spec, args.out))
+    else:
+        if not args.recipe or not args.title_hook or not args.host_cutout:
+            raise SystemExit("v0 路徑需要 --recipe --title-hook --host-cutout")
+        ensure_recipe_supported(args.recipe)
+        out = asyncio.run(_render(args))
     print(out)
     return 0
 

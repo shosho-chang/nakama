@@ -1,0 +1,129 @@
+<!doctype html>
+<!--
+  封面設計系統 N2「反應卡」（docs/thumbnail-design-system.md；對標普查 R2 — 頻道主力款）。
+
+  1280×720。橘框圓角 prop 卡（概念圖：Envato stock／公版藝術／自產圖表）佔寬
+  ~48%；反應臉貼另一緣（單人）或兩緣（雙人），視線朝卡（選格時的責任）。
+  **預設零文字** — 敘事由 prop 卡承擔。背景暖近黑 + vignette 融合。
+
+  Variables:
+    prop_image_data_url  — prop 卡內容圖（必填）
+    prop_width_pct       — prop 卡寬（% of frame，預設 48）
+    prop_position        — "center"（雙反應臉夾中）或 "left"（單反應臉在右）
+    host_cutout_data_url / guest_cutout_data_url — 透明 PNG data URL（可只給一個）
+    host_height_pct / guest_height_pct — cutout 高度 %（預設 108）
+    caption              — 極簡小字（預設空 = 無字；census 153 張中僅 1 張帶標籤）
+    palette              — { bg, accent } 覆寫
+
+  色彩角色鎖定：accent（橘）只用於 prop 卡框；卡內圖不加工。
+-->
+<html lang="zh-Hant" data-resolution="landscape">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1280, height=720" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 1280px; height: 720px; overflow: hidden; background: #000;
+        font-family: "LINE Seed TW", "Noto Sans TC", "PingFang TC",
+          "Microsoft JhengHei", sans-serif;
+      }
+      #root {
+        position: relative; width: 1280px; height: 720px;
+        background: var(--bg, #191613); overflow: hidden;
+      }
+      #vignette {
+        position: absolute; inset: 0; z-index: 2;
+        background: radial-gradient(ellipse 95% 85% at 50% 45%,
+          rgba(0,0,0,0) 50%, rgba(0,0,0,0.4) 100%);
+      }
+      #host, #guest {
+        position: absolute; bottom: 0; z-index: 3; object-fit: contain;
+      }
+      #host  { left: 0;  height: var(--host-h, 108%);  object-position: bottom left; }
+      #guest { right: 0; height: var(--guest-h, 108%); object-position: bottom right; }
+
+      /* prop 卡在反應臉之上（z 4）— census R2 的空間邏輯：卡是主角 */
+      #prop-wrap {
+        position: absolute; top: 50%; z-index: 4;
+        width: var(--prop-w, 48%);
+        transform: translateY(-50%);
+        border: 8px solid var(--accent, #e98965);
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 18px 60px rgba(0,0,0,0.65);
+        background: #000;
+      }
+      #root[data-prop="center"] #prop-wrap { left: 50%; transform: translate(-50%, -50%); }
+      #root[data-prop="left"]   #prop-wrap { left: 6%; }
+      #prop { display: block; width: 100%; height: auto; max-height: 560px; object-fit: cover; }
+
+      #caption {
+        position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
+        z-index: 5; color: rgba(255,255,255,0.85);
+        font-weight: 700; font-size: 28px; letter-spacing: 0.08em;
+        text-shadow: 0 2px 12px rgba(0,0,0,0.8);
+      }
+      #caption:empty { display: none; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="thumbnail-reaction"
+      data-start="0"
+      data-duration="0.5"
+      data-width="1280"
+      data-height="720"
+      data-prop="center"
+      data-composition-variables='{
+        "prop_image_data_url":   { "type": "string", "default": "" },
+        "prop_width_pct":        { "type": "number", "default": 48 },
+        "prop_position":         { "type": "string", "default": "center" },
+        "host_cutout_data_url":  { "type": "string", "default": "" },
+        "guest_cutout_data_url": { "type": "string", "default": "" },
+        "host_height_pct":       { "type": "number", "default": 108 },
+        "guest_height_pct":      { "type": "number", "default": 108 },
+        "caption":               { "type": "string", "default": "" },
+        "palette":               { "type": "object", "default": {} }
+      }'
+    >
+      <div id="vignette"></div>
+      <img id="host" alt="" />
+      <img id="guest" alt="" />
+      <div id="prop-wrap"><img id="prop" alt="" /></div>
+      <div id="caption"></div>
+    </div>
+
+    <script>
+      const vars =
+        (window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+          ? window.__hyperframes.getVariables()
+          : {}) || {};
+
+      const root = document.getElementById("root");
+      const palette = vars.palette || {};
+      if (palette.bg) root.style.setProperty("--bg", palette.bg);
+      if (palette.accent) root.style.setProperty("--accent", palette.accent);
+      if (vars.prop_width_pct) root.style.setProperty("--prop-w", vars.prop_width_pct + "%");
+      if (vars.host_height_pct)  root.style.setProperty("--host-h",  vars.host_height_pct + "%");
+      if (vars.guest_height_pct) root.style.setProperty("--guest-h", vars.guest_height_pct + "%");
+      root.dataset.prop = vars.prop_position === "left" ? "left" : "center";
+
+      for (const [id, key] of [
+        ["host", "host_cutout_data_url"],
+        ["guest", "guest_cutout_data_url"],
+        ["prop", "prop_image_data_url"],
+      ]) {
+        const el = document.getElementById(id);
+        if (vars[key]) el.src = vars[key];
+        else (id === "prop" ? el.parentElement : el).style.display = "none";
+      }
+      document.getElementById("caption").textContent = vars.caption || "";
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["thumbnail-reaction"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

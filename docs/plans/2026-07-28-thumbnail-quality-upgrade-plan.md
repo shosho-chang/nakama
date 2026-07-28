@@ -60,10 +60,15 @@
 
 ## 4. 分階段執行
 
-### P0 — 素材層（最大槓桿，零 AI、零工程；需修修出人）
-1. **修修 cutout 庫 v2 棚拍**：rim light＋眼神光、乾淨深色背景、7 表情 × 3 姿勢、4K、一次調色。半天拍完，取代現在的手機感庫。
-2. **來賓抽格升級**（工程小改）：S3 funnel 抽格偏好 — 臉占比大、正面 ±45°、無麥克風遮擋（麥臂偵測進淘汰規則）；從機位原檔全解析度抽。
-3. **空棚 plate**：拍攝日順手拍 2–3 張空景（虛化／壓暗後當 N3 背景）。
+### P0 — 素材層（修修 2026-07-28 二裁：兩人 cutout 都從訪談 raw file 抽）
+1. **主供給線 = 訪談影片抽格**（不是棚拍）：來賓與修修的 cutout 都由 S3 funnel 從
+   各自機位原檔抽 — 清晰度排序（Laplacian variance）本來就在挑 motion blur 最少的
+   格，vision subagent 挑表情。修修側新增：修修機位（CAM1）走同一條抽格線
+   （反應臉可取自來賓說話窗，speaker-dominance 驗證對 host 放行）。
+2. **抽格偏好升級**：臉占比大、正面 ±45°、無麥克風遮擋（麥臂偵測進淘汰規則）；
+   從機位原檔全解析度抽。
+3. 棚拍降為 optional（未來想要更強的 rim light 質感再排）；預建 shosho 庫保留給
+   非訪談的 `youtube_host` 配方。
 
 ### P1 — 設計系統＋composition v2（工程，零 AI、零新費用）
 1. `docs/thumbnail-design-system.md`：凍結 §3 三配方 spec（尺寸、色彩角色鎖定、type、名牌、prop 卡框）。
@@ -72,10 +77,16 @@
 4. **調色統一 pass**：cutout 套 LUT（壓飽和、暖膚冷影）貼合背景 — 傳統曲線調色，非 AI relight（原則紅線）。
 5. thumbnail-brainstorm SKILL v2：diversity 軸改「配方 × 概念圖 × 大字」；每 package 標配方。
 
-### P2 — 概念圖層（AI = graphic only；唯一新增花費，需 opt-in）
-1. skill 新 Step「視覺隱喻 brainstorm」：從標題 archetype＋段落內容發想 prop 卡內容，三條供給線：(a) 公版藝術／自有素材 (b) **AI 生成 graphic**（無人物、無文字）(c) 研究圖表重繪。
-2. AI 生成建議接 **Gemini API（nano banana pro）**：識別一致性最好、可吃品牌參考圖，約 $0.13/張、一集 9 張候選 ≈ $1.2。備選 gpt-image-2（更便宜檔次多）。**繁中大字仍走 deterministic render**（hyperframes 真字型，`謝伯讓` 永不出錯）；AI render 標題只作風格化實驗。
-3. 明確禁區（memory 已凍結）：AI 人臉／img2img 重繪真人／換臉／AI relight（IC-Light 類）；升頻灰區預設不用。
+### P2 — 概念圖層（修修 2026-07-28 二裁：不用 AI 生圖，graphics 走 Envato）
+1. skill 新 Step「視覺隱喻 brainstorm」：從標題 archetype＋段落內容發想 prop 卡
+   內容，供給線（依序）：(a) **Envato stock**（MCP `search_items` 已接，brook-dp
+   同一條）(b) 公版藝術品／自有素材 (c) 研究圖表重繪（hyperframes 參數 render）。
+2. **AI 生圖暫不用**（修修：「傾向不要用 Nano Banana 來產生圖」）— nano banana /
+   gpt-image 選項作廢；金額歸零（Envato 走既有 Elements 訂閱）。
+3. **繁中大字永遠 deterministic render**（hyperframes 真字型 — 就是「用 code 寫的
+   Canva 模板」：字型排版凍結在 composition，agent 只填參數，成果 100% 可控）。
+4. 明確禁區（memory 已凍結）：AI 人臉／img2img 重繪真人／換臉／AI relight；升頻
+   灰區預設不用。
 
 ### P3 — 品質迴圈
 1. 終檢 rubric（vision subagent 對照 Chris 參考集打分）：臉占比 ≥50%？元素 ≤3？色彩 ≤4 家族且角色不越界？100px 可讀？視線向量朝卡？— 不過門檻**重做，不交付**。
@@ -90,11 +101,12 @@
 
 ## 5. 成本
 
-- P0：半天拍攝（修修時間）。P1／P3：工程時間，$0。
-- P2：唯一金額 — 概念圖 API 約 **$1–2/集**（9 張候選）；subscription-first 原則下需修修明確 opt-in。
+- 全案 **$0 新增金額**（2026-07-28 二裁後）：抽格/render 零費用；graphics 走既有
+  Envato Elements 訂閱；AI 生圖作廢。
 
-## 6. 待裁決
+## 6. 裁決紀錄
 
-1. 整案方向（本文件）。
-2. P2 image API：nano banana pro vs gpt-image-2 vs 暫不接（概念圖先用公版＋自產）— 可延後到 P1 驗收後。
-3. P0 棚拍排程。
+1. ~~整案方向~~ → 修修 2026-07-28 裁：照改版方向做（cutout 全從 raw file 抽、
+   deterministic 排版、graphics 走 Envato）。
+2. ~~P2 image API~~ → 作廢（不用 AI 生圖）。
+3. ~~P0 棚拍排程~~ → 降 optional；主供給線 = 訪談抽格。
