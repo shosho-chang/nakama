@@ -15,12 +15,13 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from run_transcript_prose import (  # noqa: E402
+    _binds,
     _cue_speaker,
     _cue_word_ranges,
-    _demote_period,
     _finish,
-    _is_mixed,
+    _forward_fill,
     _parse_srt,
+    _separator,
     _spaces_to_commas,
     build_paragraphs,
     render_markdown,
@@ -106,15 +107,33 @@ def test_spaces_inside_a_word_get_no_comma():
     assert _spaces_to_commas("我也常 常聽") == "我也常常聽"
 
 
-def test_demote_period_after_connective():
+def test_period_demoted_after_connective():
     # 換氣停頓落在連接詞後面 → 句號會把句子腰斬成殘句，降級成逗號
-    assert _demote_period("我們會因為", "。") == "，"
-    assert _demote_period("大家都很關心但", "。") == "，"
-    assert _demote_period("所以我們真的要", "。") == "，"
-    # 正常結尾不動；本來就不是句號的分隔符也不動
-    assert _demote_period("這樣就好了", "。") == "。"
-    assert _demote_period("我們會因為", "，") == "，"
-    assert _demote_period("我們會因為", "") == ""
+    assert _separator("我們會因為", "想說你只聽了", 1.0) == "，"
+    assert _separator("大家都很關心但", "我想要聊", 1.0) == "，"
+    # 正常結尾照給句號；停頓不夠長就給逗號／不給
+    assert _separator("這樣就好了", "然後呢", 1.0) == "。"
+    assert _separator("這樣就好了", "然後呢", 0.4) == "，"
+    assert _separator("這樣就好了", "然後呢", 0.1) == ""
+
+
+def test_no_punctuation_inside_a_bound_phrase():
+    # jieba 認為「生命的｜起源」是合法邊界，但「的」黏著後面的名詞
+    assert _separator("你是對生命的", "起源很有興趣", 1.0) == ""
+    assert _separator("這些都是蠻高階", "的認知能力", 1.0) == ""
+    assert _separator("你還是比", "認真做當下的事情", 0.4) == ""
+    assert _binds("有空閒的", "時候") is True
+    assert _binds("這樣就好了", "然後呢") is False
+    # 「對」既是介詞也是應答詞，刻意不收——收了會吃掉「對，我兒子喜歡騎」
+    assert _binds("對", "我兒子喜歡騎") is False
+
+
+def test_period_floor_prevents_endless_comma_run():
+    # 連接詞降級規則不能無限降——太久沒句號就強制留一個
+    short_tail = "話" * 20 + "還有"
+    long_tail = "話" * 200 + "還有"
+    assert _separator(short_tail, "下一句", 1.0) == "，"
+    assert _separator(long_tail, "下一句", 1.0) == "。"
 
 
 def test_finish_adds_period_and_question_mark():
@@ -192,7 +211,7 @@ def test_leading_cue_without_speaker_is_dropped():
 
 
 def test_long_turn_splits_on_long_pause_only_when_paragraph_is_thick():
-    long_text = "很" * 300
+    long_text = "話" * 300
     words = [_w("甲", 0.0, 0.3), _w("乙", 0.5, 0.8), _w("丙", 3.0, 3.3)]
     cues = _cues_from([(0.0, 0.3, long_text), (0.5, 0.8, long_text), (3.0, 3.3, "新段")])
     ranges = _cue_word_ranges(cues, words)
@@ -267,45 +286,10 @@ def test_write_vault_refuses_when_vault_root_missing(tmp_path, monkeypatch):
     assert not ghost.exists()
 
 
-# --- 混人 cue 偵測 -----------------------------------------------------------
+def test_forward_fill_carries_speaker_across_gaps():
+    assert _forward_fill([0, None, None, 1, None]) == [0, 0, 0, 1, 1]
 
 
-def test_is_mixed_flags_cue_with_two_strong_speakers():
-    # 搶話：兩人各講一半 → 少數方占比 0.5，Viterbi 只能挑一個人，必須標出來
-    words = [_w("問", 0.0, 1.0), _w("答", 1.0, 2.0)]
-    assert _is_mixed([0, 1], [0, 1], words) == 0.5
-
-
-def test_is_mixed_ignores_single_speaker_cue():
-    words = [_w("甲", 0.0, 1.0), _w("乙", 1.0, 2.0)]
-    assert _is_mixed([0, 1], [0, 0], words) == 0.0
-
-
-def test_is_mixed_tolerates_short_backchannel():
-    # 對方只吐了 0.1s 的「對」→ 占比 ~5%，低於門檻，不算混人
-    words = [_w("長句", 0.0, 2.0), _w("對", 2.0, 2.1)]
-    assert _is_mixed([0, 1], [0, 1], words) < 0.3
-
-
-def test_very_long_paragraph_splits_on_an_ordinary_sentence_pause():
-    """超過 HARD_PARA_CHARS 後，0.6s 的句末停頓就足以分段（避免文字牆）。
-
-    長獨白裡 0.8s 以上的停頓很稀有——第二版只放寬到 0.8s/300 字時，
-    這一集仍留下 13 個 >400 字的段落、最長 672 字。
-    """
-    long_text = "很" * 650
-    # gap = 0.9 - 0.3 = 0.6 → 剛好落在 PERIOD_GAP，未達 PARA_GAP(0.8)
-    words = [_w("甲", 0.0, 0.3), _w("乙", 0.9, 1.2)]
-    cues = _cues_from([(0.0, 0.3, long_text), (0.9, 1.2, "新段")])
-    ranges = _cue_word_ranges(cues, words)
-    paras = build_paragraphs(cues, [0, 0], ranges, words)
-    assert len(paras) == 2
-    assert paras[1] == (0, "新段。")
-
-
-def test_medium_paragraph_not_split_by_ordinary_pause():
-    # 同樣 0.6s 停頓，但段落只有 400 字（未達 HARD_PARA_CHARS）→ 不分段
-    words = [_w("甲", 0.0, 0.3), _w("乙", 0.9, 1.2)]
-    cues = _cues_from([(0.0, 0.3, "很" * 400), (0.9, 1.2, "後續")])
-    ranges = _cue_word_ranges(cues, words)
-    assert len(build_paragraphs(cues, [0, 0], ranges, words)) == 1
+def test_forward_fill_leaves_leading_unknowns_alone():
+    # 開頭就沒有證據 → 沒有人可承接，維持 None（由 build_paragraphs 丟棄）
+    assert _forward_fill([None, None, 1]) == [None, None, 1]
