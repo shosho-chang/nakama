@@ -60,6 +60,25 @@ def _tokenize(
     return out
 
 
+def jieba_boundaries(text: str) -> set[int]:
+    """text 的 jieba 詞邊界 char 位置集合（含 0 與 len）。
+
+    「切點不可落在詞中間」是這條產線的共同規則——切 cue（run_speaker_split）
+    與下標點（run_transcript_prose）都要它，所以放在這裡共用。
+    """
+    import jieba
+
+    from shared.transcriber import ensure_tw_jieba
+
+    ensure_tw_jieba()
+    bounds = {0, len(text)}
+    pos = 0
+    for w in jieba.cut(text):
+        pos += len(w)
+        bounds.add(pos)
+    return bounds
+
+
 def _jieba_spans(tokens: list[tuple[str, float, float]]) -> list[tuple[int, int]]:
     """jieba 斷詞 → 每個詞對應的 token index 範圍 [i, j)。
 
