@@ -17,6 +17,8 @@
                            提供時蓋掉純色底並隱藏 vignette（圖已內建）
     person_glow_color    — 人物輪廓 glow 色（預設 #EE8435；空字串 = 關閉）
     inner_edge_fade_pct  — 人物內側緣漸隱寬(%,預設 9;0 = 關閉)— 蓋掉裁框切身體的硬邊
+    logo_data_url        — 頻道 logo(白線透明底);logo_height_px(預設 88)
+    logo_position        — bottom-left(預設,與 N1 同角)/ top-left / below-card
     caption              — 極簡小字（預設空 = 無字；census 153 張中僅 1 張帶標籤）
     palette              — { bg, accent } 覆寫（bg 僅無背景圖時生效）
 
@@ -87,6 +89,19 @@
       #root[data-prop="left"]   #prop-wrap { left: 6%; }
       #prop { display: block; width: 100%; height: auto; max-height: 560px; object-fit: cover; }
 
+      /* 頻道 logo — 與 N1 同一角落(左下)保持頻道一致性;三種錨點可選 */
+      #logo {
+        position: absolute; z-index: 6;
+        height: var(--logo-h, 88px); width: auto;
+        filter: drop-shadow(0 3px 16px rgba(0,0,0,0.6));
+      }
+      #root[data-logo="bottom-left"] #logo { left: 46px; bottom: 38px; }
+      #root[data-logo="top-left"]    #logo { left: 46px; top: 34px; }
+      /* below-card:卡片整體上移讓出下緣暗底(不縮高 — 縮高會裁掉 prop 內容),
+         logo 永遠落在深底上(白線可讀,不受 prop 圖亮度影響);與 N1 同左下角 */
+      #root[data-logo="below-card"]  #logo { left: 46px; bottom: 16px; }
+      #root[data-logo="below-card"][data-prop="left"] #prop-wrap { top: 46%; }
+
       #caption {
         position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
         z-index: 5; color: rgba(255,255,255,0.85);
@@ -120,6 +135,9 @@
         "guest_y_pct":           { "type": "number", "default": 0 },
         "person_glow_color":     { "type": "string", "default": "#EE8435" },
         "inner_edge_fade_pct":   { "type": "number", "default": 9 },
+        "logo_data_url":         { "type": "string", "default": "" },
+        "logo_height_px":        { "type": "number", "default": 88 },
+        "logo_position":         { "type": "string", "default": "bottom-left" },
         "caption":               { "type": "string", "default": "" },
         "palette":               { "type": "object", "default": {} }
       }'
@@ -129,6 +147,7 @@
       <img id="host" alt="" />
       <img id="guest" alt="" />
       <div id="prop-wrap"><img id="prop" alt="" /></div>
+      <img id="logo" alt="" />
       <div id="caption"></div>
     </div>
 
@@ -185,6 +204,15 @@
         const el = document.getElementById(id);
         if (vars[key]) el.src = vars[key];
         else (id === "prop" ? el.parentElement : el).style.display = "none";
+      }
+      const logoEl = document.getElementById("logo");
+      if (vars.logo_data_url) {
+        logoEl.src = vars.logo_data_url;
+        root.dataset.logo = ["bottom-left", "top-left", "below-card"].includes(vars.logo_position)
+          ? vars.logo_position : "bottom-left";
+        if (vars.logo_height_px) root.style.setProperty("--logo-h", vars.logo_height_px + "px");
+      } else {
+        logoEl.style.display = "none";
       }
       document.getElementById("caption").textContent = vars.caption || "";
 
