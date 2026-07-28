@@ -225,7 +225,9 @@ def main() -> int:
     )
     p_fin.add_argument("--flip", action="store_true", help="水平翻轉（視線朝內；衣字入鏡禁用）")
     p_fin.add_argument("--brightness", type=float, default=1.0, help="gamma 微抬（暗機位 ~1.12）")
-    p_fin.add_argument("--sharpen", action="store_true", help="unsharp mask（臉被放大 >1.1× 時補軟化）")
+    p_fin.add_argument(
+        "--sharpen", action="store_true", help="unsharp mask（臉被放大 >1.1× 時補軟化）"
+    )
 
     args = parser.parse_args()
     if args.cmd == "sample":
