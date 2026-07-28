@@ -1,7 +1,8 @@
-# 封面設計系統 v1（Thumbnail Design System）
+# 封面設計系統 v1.1（Thumbnail Design System）
 
-> 訪談/影片封面的 single source of truth。對標基準：Modern Wisdom 153 張全量普查
-> （`docs/plans/2026-07-28-thumbnail-quality-upgrade-plan.md` §1）。
+> 訪談/影片封面的 single source of truth。**設計基準 = 修修自家 house style**
+> （樣板：`E:\data\podcast thumbnail\EP112/114/117`，2026-07-28 修修裁決）；
+> Modern Wisdom 153 張普查（計畫文件 §1）降為工藝參考（臉占比/元素紀律/100px 自檢）。
 > 鐵律：**真人畫面不交 AI 合成**（`memory/claude/feedback_no_ai_synthesized_humans.md`）—
 > 兩人 cutout 一律從訪談 raw file 抽格；AI 不生成人像；graphics 走 Envato/公版。
 > 文字一律 deterministic render（composition 真字型，繁中零錯字）。
@@ -10,21 +11,31 @@
 
 | 配方 | composition | 用途 | 文字 |
 |---|---|---|---|
-| **N1 完整版** | `thumbnail_full` | 完整集數：修修左緣＋來賓右緣＋中欄大字＋名牌 | 2–6 字 × ≤3 行 |
-| **N2 反應卡** | `thumbnail_reaction` | clip/主題款（對標主力 52%）：橘框 prop 卡＋反應臉 | **預設零字** |
+| **N1 完整版（house style）** | `thumbnail_full` | 完整集數：兩張超大臉貼緣出血＋中央兩行大字＋橘框 payoff＋EP/人名標籤 | 2 行 × 5–8 字 |
+| **N2 反應卡** | `thumbnail_reaction` | clip/主題款：橘框 prop 卡＋反應臉 | **預設零字** |
 | **N3 主題卡** | `thumbnail_topic` | 單人主題：左字塊＋右來賓＋實拍棚景壓暗背景 | 2–4 行＋名牌 |
 
-## 硬紀律（從普查逆向，rubric 同款）
+## N1 house style 規格（EP112/114 逆向；composition 已凍結）
+
+- **臉**：頭高 60–80%、頭頂出血（height_pct 118–126）、左右貼緣可出血側緣；
+  mic／耳機保留（podcast 識別）
+- **大字**：中央兩行、白 EB ~96px、line-height 1.28；**payoff 詞 = 橘底圓角框
+  ＋白字**（不是橘色字）— house style 核心元素
+- **標籤**：左下 `EP<N>`、右下來賓名 — 橘底白字圓角框 44px
+- **背景**：炭灰 radial（中央 `#414141` → 邊緣 `#1F1F1F`），非純黑非暖黑
+- **調色**：punchy — 提亮 1.14＋對比 1.07，**不壓飽和**
+
+## 硬紀律（工藝底線，rubric 同款）
 
 1. **一張圖一個 idea**：N2 的敘事在 prop 卡（不加字）；N1/N3 的敘事在大字（不加 prop）。
-2. **色彩角色鎖定**：每張 ≤4 色系。橘 `#e98965` 只出現在 highlight 詞、prop 卡框、
-   bolt、名牌分隔線 — **不做大面積填色**。名牌 = 白底 ink 字。背景 = 暖近黑 `#191613`。
-3. **臉**：頭高 ≥45%（目標 50–70%）；視線朝畫面內（cutout 可 `--flip`，衣字入鏡禁用）；
-   人物貼 frame 邊緣，不漂浮。
-4. **文字**：LINE Seed TW EB（系統需裝 TTF）；白 + **恰好一個**橘 highlight 詞；句點
-   結尾；名牌「來賓名｜頭銜」。無描邊 — 用 soft shadow。
-5. **裝飾零容忍**：無箭頭、無 emoji、無光暈、無漸層裝飾（vignette 是融合手段不是裝飾）。
-6. **100px 自檢**：縮到 feed 尺寸仍讀得出 idea 才算過。
+2. **色彩角色鎖定**：每張 ≤4 色系；橘 = highlight 框／標籤／prop 卡框，白 = 字，
+   其餘中性 — 不出現第二個彩色。
+3. **臉**：頭高 ≥60%；視線朝畫面內（cutout 可 `--flip`，衣字入鏡禁用）；貼緣不漂浮。
+4. **文字**：LINE Seed TW EB（系統需裝 TTF）；**恰好一個**橘框 payoff 詞；無描邊，
+   soft shadow。
+5. **裝飾零容忍**：無箭頭、無 emoji、無光暈。
+6. **100px 自檢** + **成品必與 house style 樣板並排對照**（EP112/114）— 不對照不交付
+   （2026-07-28 血淚：自評不是對照）。
 
 ## 素材管線（`.claude/skills/thumbnail-brainstorm/scripts/guest_cutout.py`）
 
@@ -33,10 +44,11 @@
 2. vision subagent 批量挑格（表情 × 無遮擋 × 視線方向）。
 3. `finalize`：BiRefNet 去背（fallback hyperframes u2net）→ `--crop x0 y0 x1 y1`
    （比例框：去麥臂/筆電/衣字，並決定「臉在裁框哪一側」→ 邊緣錨定位置）→
-   `--flip`（視線朝內；衣字入鏡禁用）→ 統一調色（壓飽和 matte；非 AI relight）。
+   `--flip`（視線朝內；衣字入鏡禁用）→ 統一調色（提亮 punchy；非 AI relight）。
 
-**裁框經驗值**（謝伯讓集實測）：host bust =（0.24, 0.02, 0.60, 0.58）+ flip；
-guest 臉貼右緣 = 裁框右界收到臉右緣（如 0.50–0.82），否則右錨定錨到空肩膀。
+**裁框經驗值**（謝伯讓集實測）：host 特寫 =（0.22, 0.0, 0.62, 0.72）+ flip；
+guest =（0.50, 0.0, 0.86, 0.78）— 臉貼右緣要把裁框右界收到臉右緣，否則右錨定
+錨到空肩膀。height_pct：host 126／guest 122（頭頂出血）。
 
 ## Render（deterministic）
 
