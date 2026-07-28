@@ -182,7 +182,12 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
         *out_dir.glob("*_preview*.mp4"),
         *out_dir.glob("*_raw*.mp4"),
     ]:
-        stale.unlink(missing_ok=True)
+        try:
+            stale.unlink(missing_ok=True)
+        except PermissionError:
+            # 修修正在播那支 preview → 檔案被鎖。不擋整條重建，
+            # 後續 ffmpeg 會覆寫同名檔（覆寫比刪除寬容）
+            logger.warning("刪不掉（可能正在播放）：%s", stale.name)
 
     logger.info("render preview（540×960 H.264）…")
     preview = _render_preview(project, timeline, out_dir, f"{cid}_raw")
