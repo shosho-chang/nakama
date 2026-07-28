@@ -33,8 +33,12 @@
       }
       #root {
         position: relative; width: 1280px; height: 720px; overflow: hidden;
+      }
+      /* hyperframes 截圖會丟棄 root 自身的 background — 背景必須是子元素 */
+      #bgfill {
+        position: absolute; inset: 0; z-index: 0;
         background: radial-gradient(ellipse 85% 100% at 50% 42%,
-          var(--bg-center, #4A4A4A) 0%, var(--bg-edge, #1F1F1F) 100%);
+          var(--bg-center, #4A4A4A) 0%, var(--bg-edge, #222222) 100%);
       }
       #host, #guest {
         position: absolute; bottom: 0; z-index: 3; object-fit: contain;
@@ -96,6 +100,7 @@
         "palette":               { "type": "object", "default": {} }
       }'
     >
+      <div id="bgfill"></div>
       <img id="host" alt="" />
       <img id="guest" alt="" />
       <h1 id="title"></h1>

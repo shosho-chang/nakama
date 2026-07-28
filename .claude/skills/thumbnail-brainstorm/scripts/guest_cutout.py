@@ -87,14 +87,15 @@ async def sample(
     ]
 
 
-def _grade(png_path: Path) -> None:
-    """統一調色 pass（設計系統：壓飽和 matte 感）— 傳統曲線，非 AI relight。"""
+def _grade(png_path: Path, brightness: float = 1.14) -> None:
+    """統一調色 pass（house style：臉亮而 punchy）— 傳統曲線，非 AI relight。
+
+    brightness 可依機位光差個別調（目標：臉亮度量測值 123–130，見設計系統）。"""
     from PIL import Image, ImageEnhance
 
     im = Image.open(png_path).convert("RGBA")
     rgb = im.convert("RGB")
-    # house style（EP112/114）：臉亮而 punchy — 提亮 + 微加對比，不壓飽和
-    rgb = ImageEnhance.Brightness(rgb).enhance(1.14)
+    rgb = ImageEnhance.Brightness(rgb).enhance(brightness)
     rgb = ImageEnhance.Contrast(rgb).enhance(1.07)
     graded = Image.merge("RGBA", (*rgb.split(), im.split()[3]))
     graded.save(png_path)
@@ -152,6 +153,7 @@ async def finalize(
     grade: bool = True,
     crop: tuple[float, float, float, float] | None = None,
     flip: bool = False,
+    brightness: float = 1.14,
 ) -> Path:
     emotion = resolve_emotion(emotion_text)
     if not frame.exists():
@@ -175,7 +177,7 @@ async def finalize(
     if flip:
         _flip(dst)
     if grade:
-        _grade(dst)
+        _grade(dst, brightness=brightness)
     return dst
 
 
@@ -207,6 +209,7 @@ def main() -> int:
         help="比例裁切框（0–1）— 去掉入鏡麥臂/筆電",
     )
     p_fin.add_argument("--flip", action="store_true", help="水平翻轉（視線朝內；衣字入鏡禁用）")
+    p_fin.add_argument("--brightness", type=float, default=1.14, help="提亮倍率（暗機位調高）")
 
     args = parser.parse_args()
     if args.cmd == "sample":
@@ -236,6 +239,7 @@ def main() -> int:
                 grade=not args.no_grade,
                 crop=tuple(args.crop) if args.crop else None,
                 flip=args.flip,
+                brightness=args.brightness,
             )
         )
         print(dst)
