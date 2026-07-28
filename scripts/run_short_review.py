@@ -289,9 +289,7 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
         "events_per_min": round(len(events) / (dur / 60), 1),
         # 換鏡是「弱事件」（同一組談話頭來回切）——素材/卡片才是「強事件」。
         # 兩個數字一起看：只有換鏡撐場的段落，強事件密度會露餡
-        "content_per_min": round(
-            len([e for e in events if e["type"] != "cut"]) / (dur / 60), 1
-        ),
+        "content_per_min": round(len([e for e in events if e["type"] != "cut"]) / (dur / 60), 1),
         "events": events,
         "gaps_over_12s": gaps,
         "frames": frames,
