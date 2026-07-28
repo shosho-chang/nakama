@@ -17,12 +17,14 @@
 
 ## N1 house style 規格（EP112/114 逆向；composition 已凍結）
 
-- **臉**：頭高 60–80%、頭頂出血（height_pct 118–126）、左右貼緣可出血側緣；
-  mic／耳機保留（podcast 識別）
-- **大字**：中央兩行、白 EB ~96px、line-height 1.28；**payoff 詞 = 橘底圓角框
-  ＋白字**（不是橘色字）— house style 核心元素
+- **臉**：**頭高 65%（修修 2026-07-28 裁決：55% 太小、75% 太大）**、左右貼緣
+  可出血側緣；mic／耳機保留（podcast 識別）。75% 大臉留給 N2 零文字反應卡
+- **大字**：中央兩行、白 EB ~96px、line-height 1.28、title_max_width 460（65% 臉
+  下的字塊寬）；**payoff 詞 = 橘底圓角框＋白字**（不是橘色字）— house style 核心元素
 - **標籤**：左下 `EP<N>`、右下來賓名 — 橘底白字圓角框 44px
-- **背景**：炭灰 radial（中央 `#414141` → 邊緣 `#1F1F1F`），非純黑非暖黑
+- **背景**：**修修正版背景圖 `E:\data\podcast thumbnail background.png`**（1920×1080
+  炭灰 radial vignette），spec `images.bg_image_data_url` 帶入；CSS gradient 僅為
+  無圖 fallback
 - **調色**：punchy — 提亮 1.14＋對比 1.07，**不壓飽和**
 
 ## 硬紀律（工藝底線，rubric 同款）
@@ -57,8 +59,11 @@
 - 方向:視線必朝內 — **先驗原始畫面的實際視線再決定要不要 flip**（vision agent
   的視線回報要抽查，2026-07-28 誤報導致整輪翻錯邊）
 - 亮度:基準 = 攝影機原色不動;暗機位 `--brightness` 微抬(gamma 曲線,1.12 上限左右)。**線性乘法禁用**(爆高光+膚色發灰,2026-07-28 教訓);兩人調法必須幾乎一致,色調不一致比暗更醒目
-- 謝伯讓集定案參數:host crop (0.30,0,0.60,0.72) 不翻轉/guest (0.545,0.02,0.82,0.68)
-  brightness 1.12(gamma);兩者 height_pct 112,host_x -9,guest_x -21
+- 謝伯讓集定案參數(v9, 頭 65%):host crop (0.30,0,0.60,0.72) 不翻轉/guest
+  (0.545,0.02,0.82,0.68) brightness 1.12(gamma)+sharpen;height 138/145,
+  x -14/-25,y -14/-18,title_max_width 460
+- height_pct 換算:height = 目標頭占比 ÷（頭px ÷ cutout高px）— 謝伯讓集
+  host 頭 365/777、guest 頭 320/713,65% → 138/145
 
 ## Render（deterministic）
 

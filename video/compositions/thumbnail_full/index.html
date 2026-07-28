@@ -15,9 +15,11 @@
     ep_label        — 左下標籤（如「EP118」；空 = 隱藏）
     guest_name      — 右下標籤（如「謝伯讓」；空 = 隱藏）
     host_cutout_data_url / guest_cutout_data_url
+    bg_image_data_url — 背景圖（修修正版：E:\data\podcast thumbnail background.png）；
+                        提供時蓋掉 CSS radial gradient
     host_height_pct / guest_height_pct（預設 118）
     host_x_pct / guest_x_pct — 貼緣偏移（負值 = 出血；預設 -2）
-    palette         — { bg_center, bg_edge, accent } 覆寫
+    palette         — { bg_center, bg_edge, accent } 覆寫（僅無背景圖時生效）
 -->
 <html lang="zh-Hant" data-resolution="landscape">
   <head>
@@ -39,6 +41,9 @@
         position: absolute; inset: 0; z-index: 0;
         background: radial-gradient(ellipse 85% 100% at 50% 42%,
           var(--bg-center, #4A4A4A) 0%, var(--bg-edge, #222222) 100%);
+      }
+      #bgimg {
+        width: 100%; height: 100%; object-fit: cover; display: none;
       }
       #host, #guest {
         position: absolute; bottom: 0; z-index: 3; object-fit: contain;
@@ -93,6 +98,7 @@
         "guest_name":            { "type": "string", "default": "" },
         "host_cutout_data_url":  { "type": "string", "default": "" },
         "guest_cutout_data_url": { "type": "string", "default": "" },
+        "bg_image_data_url":     { "type": "string", "default": "" },
         "host_height_pct":       { "type": "number", "default": 108 },
         "guest_height_pct":      { "type": "number", "default": 108 },
         "host_x_pct":            { "type": "number", "default": -2 },
@@ -103,7 +109,7 @@
         "palette":               { "type": "object", "default": {} }
       }'
     >
-      <div id="bgfill"></div>
+      <div id="bgfill"><img id="bgimg" alt="" /></div>
       <img id="host" alt="" />
       <img id="guest" alt="" />
       <h1 id="title"></h1>
@@ -136,6 +142,12 @@
       for (const [id, key] of [["host","host_cutout_data_url"],["guest","guest_cutout_data_url"]]) {
         const el = document.getElementById(id);
         if (vars[key]) el.src = vars[key]; else el.style.display = "none";
+      }
+
+      if (vars.bg_image_data_url) {
+        const bg = document.getElementById("bgimg");
+        bg.src = vars.bg_image_data_url;
+        bg.style.display = "block";
       }
 
       // 兩行標題；highlight_text 那段包橘底框（恰好一次）
