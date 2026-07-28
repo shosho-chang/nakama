@@ -352,3 +352,4 @@
 - [project_session_2026_05_05_late_line2_digest_prd.md](project_session_2026_05_05_late_line2_digest_prd.md) — **收工 2026-05-05 late**：Line 2 digest + hybrid retrieval grill 5 輪凍結 / PRD #430 + S1-S4 (#431-#434) ready；vault 845 pages 8.45x zaferdace 警戒；起手 dispatch #431 sandcastle
 - [project_pr_sync_2026_05_05_late_handoff.md](project_pr_sync_2026_05_05_late_handoff.md) — **PR sync 中斷 handoff 2026-05-05 late**：#425 merged + #410/#418 closed + #397 rebase 解；等 CI green squash #419/#435/#397，再處理 #398/#399 stack rebase，最後 dispatch #431 sandcastle
 - [feedback_title_brainstorm_is_highest_leverage.md](feedback_title_brainstorm_is_highest_leverage.md) — 修修 2026-07-26（同日二修）：**長片**標題槓桿最高，批次化不得砍 panel 迭代／真訊號／淘汰賽；**短片**標題 LLM 直出不跑 panel（Test & Compare 不支援 Shorts）
+- [真人畫面不交給 AI 合成](feedback_no_ai_synthesized_humans.md) — 實拍素材優先，AI 限 graphic/標題 render；升頻灰區先問
