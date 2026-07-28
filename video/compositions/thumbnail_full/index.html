@@ -12,7 +12,9 @@
   Variables:
     title_lines     — JSON array（通常 2 行）
     highlight_text  — 要框橘底的子字串（恰好一次）
-    ep_label        — 左下標籤（如「EP118」；空 = 隱藏）
+    ep_label        — 左下標籤（空 = 隱藏；2026-07-28 起改放頻道 logo,本欄棄用）
+    logo_data_url   — 頻道 logo(白線透明底:E:\data\podcast thumbnail props\channel_logo_white.png)
+    logo_height_px  — logo 高(預設 96px)
     guest_name      — 右下標籤（如「謝伯讓」；空 = 隱藏）
     host_cutout_data_url / guest_cutout_data_url
     bg_image_data_url — 背景圖（修修正版：E:\data\podcast thumbnail background.png）；
@@ -82,6 +84,12 @@
         box-shadow: 0 4px 20px rgba(0,0,0,0.45);
       }
       #ep-tag   { left: 130px; }
+      /* 頻道 logo(左下)— 修修 2026-07-28 裁決:取代 EP 號 */
+      #logo {
+        position: absolute; left: 46px; bottom: 38px; z-index: 6;
+        height: var(--logo-h, 96px); width: auto;
+        filter: drop-shadow(0 3px 14px rgba(0,0,0,0.55));
+      }
       #name-tag { right: 130px; }
       .corner-tag:empty { display: none; }
     </style>
@@ -98,6 +106,8 @@
         "title_lines":           { "type": "object", "default": ["未填", "字卡"] },
         "highlight_text":        { "type": "string", "default": "" },
         "ep_label":              { "type": "string", "default": "" },
+        "logo_data_url":         { "type": "string", "default": "" },
+        "logo_height_px":        { "type": "number", "default": 96 },
         "guest_name":            { "type": "string", "default": "" },
         "host_cutout_data_url":  { "type": "string", "default": "" },
         "guest_cutout_data_url": { "type": "string", "default": "" },
@@ -116,6 +126,7 @@
       <img id="host" alt="" />
       <img id="guest" alt="" />
       <h1 id="title"></h1>
+      <img id="logo" alt="" />
       <div id="ep-tag" class="corner-tag"></div>
       <div id="name-tag" class="corner-tag"></div>
     </div>
@@ -179,6 +190,13 @@
         if (w > maxW) titleEl.style.fontSize = Math.floor(100 * maxW / w) + "px";
       });
 
+      const logoEl = document.getElementById("logo");
+      if (vars.logo_data_url) {
+        logoEl.src = vars.logo_data_url;
+        if (vars.logo_height_px) root.style.setProperty("--logo-h", vars.logo_height_px + "px");
+      } else {
+        logoEl.style.display = "none";
+      }
       document.getElementById("ep-tag").textContent = vars.ep_label || "";
       document.getElementById("name-tag").textContent = vars.guest_name || "";
 
