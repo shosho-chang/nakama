@@ -97,9 +97,11 @@
         0
       );
       // 待機（十五輪：修修要看得出在動）：浮動加大 + 旋轉搖擺 + 呼吸縮放
+      // 幅度（二十七輪修修：「Icon 的動畫不見了」——實測位移只有 12px≈0.8%
+      // 畫面高，視覺上等於靜止）：位移 ±5% → ±12%，呼吸縮放 1.05 → 1.12
       for (const [sel, amp, rot, dur, at] of [
-        ["#left", 5, 3.5, 0.9, 0.5],
-        ["#right", 5, -3.5, 1.05, 0.62],
+        ["#left", 12, 6, 0.85, 0.5],
+        ["#right", 12, -6, 1.0, 0.62],
       ]) {
         // one-sided yoyo：從進場終點出發，無縫接待機
         tl.to(sel, {
@@ -109,7 +111,7 @@
           rotation: rot, duration: dur * 1.4, ease: "sine.inOut", yoyo: true, repeat: -1,
         }, at);
         tl.to(sel, {
-          scale: 1.05, duration: dur * 1.15, ease: "sine.inOut", yoyo: true, repeat: -1,
+          scale: 1.12, duration: dur * 1.15, ease: "sine.inOut", yoyo: true, repeat: -1,
         }, at + 0.2);
       }
       // center（論文封面/書封）：正面彈入 + 緩慢漂浮，證物感不搞笑
