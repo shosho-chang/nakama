@@ -15,9 +15,11 @@
     ep_label        — 左下標籤（如「EP118」；空 = 隱藏）
     guest_name      — 右下標籤（如「謝伯讓」；空 = 隱藏）
     host_cutout_data_url / guest_cutout_data_url
+    bg_image_data_url — 背景圖（修修正版：E:\data\podcast thumbnail background.png）；
+                        提供時蓋掉 CSS radial gradient
     host_height_pct / guest_height_pct（預設 118）
     host_x_pct / guest_x_pct — 貼緣偏移（負值 = 出血；預設 -2）
-    palette         — { bg_center, bg_edge, accent } 覆寫
+    palette         — { bg_center, bg_edge, accent } 覆寫（僅無背景圖時生效）
 -->
 <html lang="zh-Hant" data-resolution="landscape">
   <head>
@@ -28,19 +30,29 @@
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body {
         width: 1280px; height: 720px; overflow: hidden; background: #000;
-        font-family: "LINE Seed TW", "Noto Sans TC", "PingFang TC",
+        /* 實裝 TTF 的 family name 帶 _TTF 後綴（LINESeedTW_TTF_0.ttf, weight 800）—
+           寫 "LINE Seed TW" 對不上會整段 fallback 到微軟正黑 */
+        font-family: "LINE Seed TW_TTF ExtraBold", "LINE Seed TW_TTF",
+          "LINE Seed TW", "Noto Sans TC", "PingFang TC",
           "Microsoft JhengHei", sans-serif;
       }
       #root {
         position: relative; width: 1280px; height: 720px; overflow: hidden;
+      }
+      /* hyperframes 截圖會丟棄 root 自身的 background — 背景必須是子元素 */
+      #bgfill {
+        position: absolute; inset: 0; z-index: 0;
         background: radial-gradient(ellipse 85% 100% at 50% 42%,
-          var(--bg-center, #4A4A4A) 0%, var(--bg-edge, #1F1F1F) 100%);
+          var(--bg-center, #4A4A4A) 0%, var(--bg-edge, #222222) 100%);
+      }
+      #bgimg {
+        width: 100%; height: 100%; object-fit: cover; display: none;
       }
       #host, #guest {
         position: absolute; bottom: 0; z-index: 3; object-fit: contain;
       }
-      #host  { left: var(--host-x, -2%);  height: var(--host-h, 108%);  object-position: bottom left; }
-      #guest { right: var(--guest-x, -2%); height: var(--guest-h, 108%); object-position: bottom right; }
+      #host  { left: var(--host-x, -2%);  bottom: var(--host-y, 0%);  height: var(--host-h, 108%);  object-position: bottom left; }
+      #guest { right: var(--guest-x, -2%); bottom: var(--guest-y, 0%); height: var(--guest-h, 108%); object-position: bottom right; }
 
       #title {
         position: absolute; left: 50%; top: 44%;
@@ -89,13 +101,18 @@
         "guest_name":            { "type": "string", "default": "" },
         "host_cutout_data_url":  { "type": "string", "default": "" },
         "guest_cutout_data_url": { "type": "string", "default": "" },
+        "bg_image_data_url":     { "type": "string", "default": "" },
         "host_height_pct":       { "type": "number", "default": 108 },
         "guest_height_pct":      { "type": "number", "default": 108 },
         "host_x_pct":            { "type": "number", "default": -2 },
         "guest_x_pct":           { "type": "number", "default": -2 },
+        "host_y_pct":            { "type": "number", "default": 0 },
+        "guest_y_pct":           { "type": "number", "default": 0 },
+        "title_max_width":       { "type": "number", "default": 580 },
         "palette":               { "type": "object", "default": {} }
       }'
     >
+      <div id="bgfill"><img id="bgimg" alt="" /></div>
       <img id="host" alt="" />
       <img id="guest" alt="" />
       <h1 id="title"></h1>
@@ -120,10 +137,20 @@
       if (vars.guest_height_pct) root.style.setProperty("--guest-h", vars.guest_height_pct + "%");
       if (vars.host_x_pct !== undefined)  root.style.setProperty("--host-x",  vars.host_x_pct + "%");
       if (vars.guest_x_pct !== undefined) root.style.setProperty("--guest-x", vars.guest_x_pct + "%");
+      if (vars.host_y_pct !== undefined)  root.style.setProperty("--host-y",  vars.host_y_pct + "%");
+      if (vars.guest_y_pct !== undefined) root.style.setProperty("--guest-y", vars.guest_y_pct + "%");
+      const maxW = vars.title_max_width || 580;
+      document.getElementById("title").style.width = maxW + "px";
 
       for (const [id, key] of [["host","host_cutout_data_url"],["guest","guest_cutout_data_url"]]) {
         const el = document.getElementById(id);
         if (vars[key]) el.src = vars[key]; else el.style.display = "none";
+      }
+
+      if (vars.bg_image_data_url) {
+        const bg = document.getElementById("bgimg");
+        bg.src = vars.bg_image_data_url;
+        bg.style.display = "block";
       }
 
       // 兩行標題；highlight_text 那段包橘底框（恰好一次）
@@ -149,7 +176,7 @@
       // 行寬超出即整塊縮字（不換行）
       requestAnimationFrame(() => {
         const w = titleEl.scrollWidth;
-        if (w > 580) titleEl.style.fontSize = Math.floor(100 * 580 / w) + "px";
+        if (w > maxW) titleEl.style.fontSize = Math.floor(100 * maxW / w) + "px";
       });
 
       document.getElementById("ep-tag").textContent = vars.ep_label || "";
