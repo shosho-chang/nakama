@@ -309,3 +309,41 @@ Q3 決定了「新開兩張表」，但**沒有回答這兩張表是不是 SoT**
 - **§4.1 DB 當 SoT**（刻意偏離 vault-as-SoT house 原則）
 
 ADR 定稿後建議跑 `multi-agent-panel`——Q2 與 §4.1 都屬於「架構鎖定 + 我有強烈偏好」，正是 confirmation bias 最會咬人的位置。
+（註：修修 2026-07-26 已 retire multi-agent-panel skill——改為直接派 3 個 Opus 5 subagent 分 lens 對抗性審查，criteria 不變。ADR-054 v2→v3 即用此法。）
+
+---
+
+## §7 接手 session 回覆（2026-07-26，title/thumbnail session — ADR-054 v3 已收接縫）
+
+**§3.3 三題已裁**（細節見 `docs/decisions/ADR-054-packaging-title-thumbnail-brainstorm.md` 附錄 D）：
+
+1. **縮圖只長片需要 — 是**，且理由升級為硬平台事實：Test & Compare 官方不支援 Shorts。
+   短片 `thumbnail: null` 明填（≠ 省略）。
+2. **`citations` / `brand_flags` 由 packaging skill 填**。更正一個前提：它們**不是只活在散文裡**
+   —— `highlights/review_brandlens.json` 是機器可讀 JSON（散文的是選段企劃報告）。skill 從
+   JSON 搬進 `packages.json`，發布層零 parse。
+3. **交接檔不放 episode 資料夾** —— 統一為 **vault `Attachments/packaging/<episode>/` 是唯一
+   交接面**：`packages.json`（skill 寫）+ `approval.json`（Bridge 寫）。理由：審核 UI（VPS）
+   與 uploader（桌機）都讀得到 vault；發布層在桌機讀本機 vault 同樣零網路。
+   **§3.2 提案的 `highlights/publish/<cut_id>.json` 不做** —— 同一份資料兩個位置必然漂移。
+   episode 資料夾只放 working set（推導鏈、抽格、中間物），發布層不讀。
+
+**§5 第 5 條 — 形狀變了，發布層要跟進**：
+- 標題「已決定」= `approval.json.primary_package` 指向的那組（修修在 gate approve 時定）。
+  發布層上傳用它，審核頁照原設計「顯示已決定 + 改寫欄」。
+- **新增**：每支長片另有 2 組 A/B 備用 package（標題+縮圖）。**Test & Compare 無 API**
+  （已查證：桌機 Studio only），所以 A/B 測試是修修上傳後在 Studio 手動建 —— 審核頁請加
+  「複製 A/B 備用」按鈕（純文字複製 + 縮圖檔路徑），把手動成本壓到最低。
+- 短片標題 = LLM 直出單條（修修 2026-07-26 二修：「短影片的 title 直接用 LLM 決定就好」），
+  無 alternates。
+
+**§5 其餘四條**：全部照辦 —— 落檔 ✅（packages.json）、`format` 必填 ✅（一等欄位；短片燒字幕
+的 render 地雷收到）、長片縮圖 vault-relative 路徑 ✅、citations/brand_flags 上游填 ✅。
+`packages.json` schema 草案在 ADR-054 附錄 C，凍結前請對一眼欄位夠不夠。
+
+**§1 兩條前提的獨立驗證結果**（接手側重驗，皆一致）：`.env` 三個 YouTube OAuth key 值全空 ✅；
+`YOUTUBE_API_KEY` 唯讀有值 ✅。另補一條你們會用到的：修修 cutout 表情庫已從 VPS Syncthing
+`.stversions` 還原 17 張／7 表情（曾於 2026-06-05 被刪，兩側 vault 都消失過 —— vault 沒有
+備份、Syncthing 版本控制只在 VPS 側有開，這對 §4.1 的 SoT 討論是個 data point）。
+
+**§6 Slice 0 探針不依賴本 session 的任何產出，建議立即先行。**
