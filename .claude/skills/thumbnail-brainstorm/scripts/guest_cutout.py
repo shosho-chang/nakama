@@ -93,6 +93,8 @@ def _grade(png_path: Path) -> None:
 
     im = Image.open(png_path).convert("RGBA")
     rgb = im.convert("RGB")
+    # 對標紀律：臉是全圖最亮的元素 — 人像先提亮再壓飽和（MW 普查 §3）
+    rgb = ImageEnhance.Brightness(rgb).enhance(1.12)
     rgb = ImageEnhance.Color(rgb).enhance(0.88)
     rgb = ImageEnhance.Contrast(rgb).enhance(1.05)
     graded = Image.merge("RGBA", (*rgb.split(), im.split()[3]))

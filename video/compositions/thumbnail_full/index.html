@@ -33,7 +33,7 @@
       }
       #root {
         position: relative; width: 1280px; height: 720px;
-        background: var(--bg, #191613); overflow: hidden;
+        background: var(--bg, #26211B); overflow: hidden;
       }
       /* 極輕 vignette — 把視線推向中央，非裝飾漸層 */
       #vignette {
@@ -56,13 +56,14 @@
       #title {
         color: var(--fg, #FFFFFF);
         font-weight: 800;
-        font-size: 118px;
-        line-height: 1.12;
-        letter-spacing: 0.01em;
+        font-size: 122px;
+        line-height: 1.06;
+        letter-spacing: -0.01em;
         text-shadow: 0 6px 40px rgba(0,0,0,0.9), 0 2px 10px rgba(0,0,0,0.85);
         white-space: nowrap;
       }
       #title .hl { color: var(--accent, #e98965); }
+      #title .period { margin-left: -0.28em; }
       /* 名牌：白底圓角、ink 字 — census R1 name banner lockup */
       #name-tag {
         display: inline-block; margin-top: 30px;
@@ -143,11 +144,23 @@
         if (vars[key]) el.src = vars[key]; else el.style.display = "none";
       }
 
-      // Title：逐行 div；highlight_text 出現的那一行把該子字串染橘（恰好一次）
+      // Title：逐行 div；highlight_text 出現的那一行把該子字串染橘（恰好一次）；
+      // 行尾全形句號收緊間距（.period 負 margin）。
       const titleEl = document.getElementById("title");
       const lines = Array.isArray(vars.title_lines) ? vars.title_lines : ["未填", "字卡。"];
       const hl = vars.highlight_text || "";
       let hlUsed = false;
+      const appendText = (parent, text) => {
+        if (text.endsWith("。")) {
+          parent.append(text.slice(0, -1));
+          const p = document.createElement("span");
+          p.className = "period";
+          p.textContent = "。";
+          parent.append(p);
+        } else {
+          parent.append(text);
+        }
+      };
       for (const line of lines) {
         const div = document.createElement("div");
         if (hl && !hlUsed && line.includes(hl)) {
@@ -155,11 +168,12 @@
           div.append(line.slice(0, i));
           const span = document.createElement("span");
           span.className = "hl";
-          span.textContent = hl;
-          div.append(span, line.slice(i + hl.length));
+          appendText(span, hl);
+          div.append(span);
+          appendText(div, line.slice(i + hl.length));
           hlUsed = true;
         } else {
-          div.textContent = line;
+          appendText(div, line);
         }
         titleEl.append(div);
       }
