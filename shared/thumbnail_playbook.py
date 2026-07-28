@@ -47,6 +47,7 @@ class PlaybookPairing:
     title_archetype_id: str
     thumb_archetype_id: str
     frequency: int
+    why_they_pair: str
 
 
 @dataclass(frozen=True)
@@ -109,6 +110,7 @@ def load_playbook_index() -> PlaybookIndex:
             title_archetype_id=p.get("title_archetype_id", ""),
             thumb_archetype_id=p.get("thumb_archetype_id", ""),
             frequency=int(p.get("frequency", 0)),
+            why_they_pair=p.get("why_they_pair", ""),
         )
 
     return PlaybookIndex(
@@ -154,10 +156,16 @@ def format_playbook_index_for_prompt(index: PlaybookIndex | None = None) -> str:
     parts.append("### Common joint pairings (high-frequency title × thumb combos)")
     parts.append("")
     for p in index.joint_pairings:
-        parts.append(
+        line = (
             f"- **{p.id}** {p.name}"
             f" ({p.title_archetype_id} × {p.thumb_archetype_id}, n={p.frequency})"
         )
+        if p.why_they_pair:
+            why = p.why_they_pair
+            if len(why) > 140:
+                why = why[:140].rstrip() + "…"
+            line += f" — {why}"
+        parts.append(line)
 
     parts.append("")
     parts.append("### Brand-fit grade meaning")

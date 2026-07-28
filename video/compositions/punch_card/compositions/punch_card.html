@@ -1,0 +1,138 @@
+<!-- nakama:component punch_card（短片橘底大字 punch 卡，透明 overlay 疊 Resolve track 3）
+     tier 1 = hero（每支最多一張，全片最強的一句：超大字+更狠進場）
+     tier 2 = 標準 punch 卡 -->
+<!doctype html>
+<html
+  lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"line1","type":"string","label":"第一行","default":"它會改變"},
+    {"id":"line2","type":"string","label":"第二行（可空）","default":"你的耐心"},
+    {"id":"show_sec","type":"number","label":"顯示秒數","default":2.0},
+    {"id":"pos_y","type":"number","label":"卡片垂直中心 0-1","default":0.66},
+    {"id":"tier","type":"number","label":"層級 1=hero 2=標準","default":2}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 900;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Eb.woff2") format("woff2");
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 1080px; height: 1920px; overflow: hidden;
+        background: transparent;
+      }
+      #root {
+        position: relative; width: 1080px; height: 1920px; overflow: hidden;
+      }
+      #card {
+        position: absolute; left: 50%; top: var(--pos-y, 66%);
+        transform: translate(-50%, -50%);
+        display: flex; flex-direction: column; align-items: center; gap: 10px;
+      }
+      .line {
+        display: inline-block;
+        background: #e87000;
+        color: #fff;
+        font-family: "LINE Seed TW", "Noto Sans TC", sans-serif;
+        font-weight: 900;
+        font-size: 150px;
+        line-height: 1.16;
+        padding: 6px 34px 14px;
+        white-space: nowrap;
+        opacity: 0;
+      }
+      .line:nth-child(2) { margin-left: 60px; }
+      /* tier 1 = hero：超大字（6 字/行上限；168px×6+padding ≈ 1064 ≤ 1080） */
+      .tier1 .line {
+        font-size: 168px;
+        padding: 10px 28px 18px;
+      }
+      .tier1 .line:nth-child(2) { margin-left: 40px; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-root="true"
+      data-composition-id="punch_card"
+      data-width="1080"
+      data-height="1920"
+      data-start="0"
+      data-duration="4"
+    >
+      <div id="card">
+        <span class="line" id="l1"></span>
+        <span class="line" id="l2"></span>
+      </div>
+    </div>
+    <script>
+      const vars =
+        (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const line1 = vars.line1 ?? "它會改變";
+      const line2 = vars.line2 ?? "";
+      const showSec = Number(vars.show_sec ?? 2.0);
+      const posY = Number(vars.pos_y ?? 0.66);
+      const tier = Number(vars.tier ?? 2);
+
+      document.getElementById("l1").textContent = line1;
+      const l2 = document.getElementById("l2");
+      if (line2) {
+        l2.textContent = line2;
+      } else {
+        l2.remove();
+      }
+      const card = document.getElementById("card");
+      card.style.top = `${posY * 100}%`;
+      if (tier === 1) card.classList.add("tier1");
+
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ defaults: { transformOrigin: "50% 50%" } });
+      if (tier === 1) {
+        // hero 進場：大幅縮放彈入 + 微旋轉甩正（全片最強一句的儀式感）
+        tl.fromTo(
+          ".line",
+          { opacity: 0, scale: 0.68, rotation: -2.2, y: 30 },
+          {
+            opacity: 1,
+            scale: 1,
+            rotation: 0,
+            y: 0,
+            duration: 0.5,
+            ease: "back.out(2.2)",
+            stagger: 0.12,
+          },
+          0
+        );
+      } else {
+        // 標準進場：逐行由左 swipe + S 曲線 pop（範例語法）
+        tl.fromTo(
+          ".line",
+          { x: -70, opacity: 0, scale: 0.9 },
+          {
+            x: 0,
+            opacity: 1,
+            scale: 1,
+            duration: 0.42,
+            ease: "back.out(1.4)",
+            stagger: 0.09,
+          },
+          0
+        );
+      }
+      // 退場：快速縮小淡出（快狠準——0.22s 收掉）
+      tl.to(
+        ".line",
+        { opacity: 0, scale: 0.94, duration: 0.22, ease: "power2.in", stagger: 0.04 },
+        Math.max(0.6, showSec - 0.22)
+      );
+      window.__timelines["punch_card"] = tl;
+    </script>
+  </body>
+</html>

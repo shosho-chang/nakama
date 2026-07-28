@@ -154,6 +154,10 @@ git switch chore/something && git stash pop   # 還原 stash
 
 4. **container 內 `gh issue close` 曾被 sandbox 擋**（historical，round 2 之後不再擋） — round 1 PR #263 / #264 時 sandbox 政策擋 `gh issue close`，round 2（PR #288/#289）已 work。仍建議走 PR body `Closes #N` auto-close 為 canonical 路徑，避免依賴 sandbox 政策飄移。
 
+5. **container 內 commit 把改過的檔寫成 CRLF blob**（Windows host） — host clone `core.autocrlf=true` 讓 bind-mount worktree checkout 成 CRLF，agent 改檔後 commit 進 blob，PR diff 出現千行假 churn（2026-07-28 packaging 波1/2/4 三度踩到：`git show --shortstat` 1460+ vs `-w` 309+）。**解（host 端 SOP）：cherry-pick 到 PR branch 後，對 commit 內每個「修改」檔跑 `git show <c>:<f> | file -` 驗 CRLF，中獎的 `git add --renormalize <files>` + `git commit --amend`**。新檔（pure create）通常不中。
+
+6. **機器睡眠/工作階段事件殺 run**（Windows host） — orchestrator 或 claude-code spawn 吃 `0xC0000142`（3221225794）死掉，但 iteration 內已 commit 的產物**還在 run 的 worktree branch 上**（`git log main..sandcastle/nakama/<ts>`）。**解：先撈 commit（cherry-pick），再清理**（`docker rm -f` 孤兒 container、`git worktree remove --force` + `prune`、刪 run branch），不必整段重跑。AFK 長跑前確認電源計畫不會睡眠。
+
 ## Exit criteria（採用後監控）
 
 任一觸發 → 退場回 single-worktree 模式：

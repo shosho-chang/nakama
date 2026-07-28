@@ -1,7 +1,0 @@
-{# ADR-033 PR4-A — 3 thumbnail idea cards (HTMX swap target).
-   v1.1 (playbook integration): each card now editable + save + individual re-roll. #}
-<div class="pj-thumb-idea-grid" data-project-slug="{{ slug }}">
-  {% for idea in ideas %}
-    {% include "projects/_thumbnail_idea_card_single.html" with context %}
-  {% endfor %}
-</div>

@@ -239,7 +239,7 @@
 - [project_brook_image_pipeline.md](project_brook_image_pipeline.md) — Brook 圖片生成管線（blog/IG/YT 縮圖）下一輪專題
 - [project_repurpose_flow.md](project_repurpose_flow.md) — 部落格 → IG 知識圖表等平台內容重製，下一階段實作
 - [project_podcast_theme_video_repurpose.md](project_podcast_theme_video_repurpose.md) — **Line 1 補位**：訪談 → LLM 抽亮點 → 自動剪 10-20 min 主題影片 + SEO Title + YT Description + Thumbnail（YouTube 通路）
-- [project_envato_api_reality.md](project_envato_api_reality.md) — Envato Elements 無 API，用 Unsplash/Pexels/Flux 替代方案
+- [project_envato_api_reality.md](project_envato_api_reality.md) — Envato 無 API 但 Claude in Chrome 可全自動搜+授權+下載（2026-07 實測）；下載落瀏覽器預設目錄 E:\
 - [reference_infra_xcloud_vultr.md](reference_infra_xcloud_vultr.md) — VPS 規格 2vCPU/4GB，xCloud on Vultr，Cloudflare R2 備份
 - [project_case_studies_archive.md](project_case_studies_archive.md) — vault `Case Studies/` 目錄收錄對話案例，首份 2026-04-22 WP 整合規劃
 - [project_phase1_infra_checkpoint.md](project_phase1_infra_checkpoint.md) — Phase 1 憑證 setup 進度 checkpoint（compact 保留用）
@@ -351,3 +351,4 @@
 - [project_pubmed_top_journal_blind_spot_2026_05_05.md](project_pubmed_top_journal_blind_spot_2026_05_05.md) — **PR #415 ship**：PubMed RSS sort-by-date 必被高頻刊物霸佔（單 saved search 永遠 0 頂刊）；MDPI/Frontiers blocklist + 頂刊白名單 eutils feed 雙修；blocked PMID 仍 mark_seen
 - [project_session_2026_05_05_late_line2_digest_prd.md](project_session_2026_05_05_late_line2_digest_prd.md) — **收工 2026-05-05 late**：Line 2 digest + hybrid retrieval grill 5 輪凍結 / PRD #430 + S1-S4 (#431-#434) ready；vault 845 pages 8.45x zaferdace 警戒；起手 dispatch #431 sandcastle
 - [project_pr_sync_2026_05_05_late_handoff.md](project_pr_sync_2026_05_05_late_handoff.md) — **PR sync 中斷 handoff 2026-05-05 late**：#425 merged + #410/#418 closed + #397 rebase 解；等 CI green squash #419/#435/#397，再處理 #398/#399 stack rebase，最後 dispatch #431 sandcastle
+- [feedback_title_brainstorm_is_highest_leverage.md](feedback_title_brainstorm_is_highest_leverage.md) — 修修 2026-07-26（同日二修）：**長片**標題槓桿最高，批次化不得砍 panel 迭代／真訊號／淘汰賽；**短片**標題 LLM 直出不跑 panel（Test & Compare 不支援 Shorts）

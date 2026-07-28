@@ -118,3 +118,97 @@ def test_fine_spans_never_severs_words():
     for text, word in cases:
         parts = [text[a:b] for a, b in _fine_spans(text)]
         assert any(word in p for p in parts), f"{word} 被切斷: {parts}"
+
+
+def test_fine_spans_hard_limit_10():
+    # 修修 2026-07-26 十輪：中文 10 字 hard limit——實砍案例「效果量」句
+    from run_short_tighten import _disp_len
+
+    for text in (
+        "就發現這個「效果量」其實不是很大",
+        "有一點「數位排毒」的概念在裡面喔",
+        "培養自覺的這個「後設認知」能力",
+    ):
+        parts = [text[a:b] for a, b in _fine_spans(text)]
+        assert all(_disp_len(p) <= 10 for p in parts), parts
+        assert "".join(parts).replace(" ", "") == text.replace(" ", "")
+
+
+def test_fine_spans_number_classifier_glued():
+    # 修修十一輪：「禁掉就好 16」「歲以前就要禁掉」——16 與 歲 絕不可分行
+    text = "禁掉就好 16歲以前就要禁掉 所以"
+    parts = [text[a:b] for a, b in _fine_spans(text)]
+    assert any("16歲" in p for p in parts), parts
+
+
+def test_merge_blocks_joins_continuous_cues():
+    from run_short_tighten import _merge_blocks
+
+    cues = [
+        (10.0, 11.5, "禁掉就好 16"),
+        (11.5, 13.0, "歲以前就要禁掉 所以"),
+        (14.0, 15.0, "下一段"),
+    ]
+    groups = _merge_blocks(cues, [(0.0, 20.0)])
+    assert [len(g) for g in groups] == [2, 1]  # 前兩 cue 同群、末 cue 獨立
+    assert "".join(x[2] for x in groups[0]) == "禁掉就好 16歲以前就要禁掉 所以"
+
+
+def test_merge_blocks_uses_collapsed_time():
+    from run_short_tighten import _merge_blocks
+
+    # 兩 cue 源時間差 1.0s，但中間全是被剪掉的停頓（不在保留段）——
+    # 成品音軌連續，必須併（16|歲 實案）
+    segs = [(10.0, 11.5), (12.5, 15.0)]
+    cues = [(10.0, 11.5, "禁掉就好 16"), (12.5, 14.0, "歲以前就要禁掉")]
+    groups = _merge_blocks(cues, segs)
+    assert len(groups) == 1 and len(groups[0]) == 2
+    assert "".join(x[2] for x in groups[0]) == "禁掉就好 16歲以前就要禁掉"
+
+
+class TestMinCueDuration:
+    """一行最短顯示 0.8s（二十四輪盲審：0.16s 閃現 cue 讀不到）。"""
+
+    def test_extends_when_gap_available(self):
+        from run_short_tighten import _enforce_min_duration
+
+        out = _enforce_min_duration([(0.0, 0.16, "容易確定")], 5.0)
+        assert out == [(0.0, 0.8, "容易確定")]
+
+    def test_merges_with_neighbour_when_within_hard_limit(self):
+        from run_short_tighten import _enforce_min_duration
+
+        # 合併後 ≤10 字才可併（修修的 hard limit 不可破）
+        units = [(0.0, 1.0, "他就想說"), (1.0, 1.16, "沒事了")]
+        out = _enforce_min_duration(units, 1.16)
+        assert len(out) == 1
+        assert out[0][2] == "他就想說沒事了"
+
+    def test_does_not_merge_past_hard_limit(self):
+        from run_short_tighten import _enforce_min_duration
+
+        # 合併會變 11 字 → 不可併，只能盡量延長
+        units = [(0.0, 1.0, "因果關係其實不"), (1.0, 1.16, "容易確定")]
+        out = _enforce_min_duration(units, 1.16)
+        assert len(out) == 2
+
+    def test_balance_pass_avoids_short_orphan(self):
+        """病根修正：平衡切點後就不會產生 0.16s 的孤兒行。"""
+        from run_short_tighten import _fine_spans
+
+        s = "因果關係其實不容易確定"
+        assert [s[a:b] for a, b in _fine_spans(s)] == ["因果關係其實", "不容易確定"]
+
+    def test_keeps_long_units_untouched(self):
+        from run_short_tighten import _enforce_min_duration
+
+        units = [(0.0, 1.2, "第一行"), (1.2, 2.5, "第二行")]
+        assert _enforce_min_duration(units, 2.5) == units
+
+    def test_never_exceeds_next_start(self):
+        from run_short_tighten import _enforce_min_duration
+
+        # 下一行 0.5s 就開始且合併會爆行寬 → 只能延長到 0.5，不可蓋過去
+        units = [(0.0, 0.2, "短"), (0.5, 2.0, "這是一個很長的下一行文字")]
+        out = _enforce_min_duration(units, 2.0)
+        assert out[0][1] <= 0.5 + 1e-6

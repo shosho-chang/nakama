@@ -83,7 +83,8 @@ cutaway beat 退回 Director，不代判。
 - 連發組（shots_hint>1）：同語意不同景別/主體，逐支不同 `source_url`
   （validator 以 source_url 判重複，同一支相鄰才違規）
 
-Envato MCP（`search_items`）**只搜不下載**；每 beat 首選＋兩備選寫進
+Envato MCP（`search_items`）只搜；下載可由 **Claude in Chrome 全自動**
+（2026-07-27 實測，見 brook-director Step 4a）；每 beat 首選＋兩備選寫進
 `broll.asset.candidates`（首選同時填 `source_url`），修修 Bridge 圈選。
 同一集調性一致（都實拍或都動畫）。授權假設 = Elements 訂閱制；帳號若改單購
 先停下找修修。

@@ -40,31 +40,6 @@ tags:
 肌酸 ep
 """
 
-SAMPLE_BRAINSTORM_LLM_RESPONSE = """\
-Here are 3 distinct thumbnail idea blocks:
-
-Idea 1
-大字：妙用解密
-我的表情：驚訝
-視覺：左罐右腦黃閃電
-數字/圖示：⚡
-背景：實驗室白底
-
-Idea 2
-大字：65 歲來得及
-我的表情：思考
-視覺：老人 + 大腦掃描
-數字/圖示：65
-背景：醫院走廊
-
-Idea 3
-大字：每天 5g
-我的表情：解釋
-視覺：湯匙 + 化學分子式
-數字/圖示：5g
-背景：實驗室桌面
-"""
-
 
 @pytest.fixture
 def client(monkeypatch, tmp_path):
@@ -78,18 +53,11 @@ def client(monkeypatch, tmp_path):
     proj_dir.mkdir(parents=True)
     (proj_dir / "肌酸的妙用.md").write_text(SAMPLE_PROJECT, encoding="utf-8")
 
-    # B1 cutout library — populate `surprised`, `thoughtful`, `explaining` for
-    # the 3 emotions in SAMPLE_BRAINSTORM_LLM_RESPONSE.
+    # Cutout library — populate emotions used by the render tests.
     for emo in ("surprised", "thoughtful", "explaining"):
         d = tmp_path / "Attachments" / "cutouts" / "shosho" / emo
         d.mkdir(parents=True)
         (d / "1.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
-
-    # Reference library — at least one image so brainstorm payload includes
-    # an image block (otherwise the user_message branch with no images runs).
-    ref_dir = tmp_path / "Attachments" / "cutouts" / "reference" / "youtube" / "mine"
-    ref_dir.mkdir(parents=True)
-    (ref_dir / "ref1.png").write_bytes(b"\x89PNG\r\n\x1a\nfake-ref")
 
     import thousand_sunny.app as app_module
     import thousand_sunny.auth as auth_module
@@ -101,176 +69,27 @@ def client(monkeypatch, tmp_path):
     return TestClient(app_module.app)
 
 
-class TestBrainstorm:
-    def test_brainstorm_persists_three_ideas(self, client, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
-            lambda *a, **kw: SAMPLE_BRAINSTORM_LLM_RESPONSE,
-        )
-
-        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm")
-        assert r.status_code == 200, r.text
-        body = r.text
-        assert "Idea 1" in body
-        assert "妙用解密" in body
-        assert "65 歲來得及" in body
-        assert "每天 5g" in body
-        # Director's Notes textarea wired in
-        assert "director_notes" in body
-
-        fm = yaml.safe_load(
-            (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8").split("---")[1]
-        )
-        ideas = fm["thumbnail_ideas"]
-        assert isinstance(ideas, list)
-        assert len(ideas) == 3
-        # Round-trip parseability — feed each back through parser
-        from shared.thumbnail_idea import parse_idea
-
-        parsed = [parse_idea(i) for i in ideas]
-        assert {p.emotion_key for p in parsed} == {"surprised", "thoughtful", "explaining"}
-
-    def test_brainstorm_writes_audit_scope(self, client, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
-            lambda *a, **kw: SAMPLE_BRAINSTORM_LLM_RESPONSE,
-        )
-        captured: list[dict] = []
-        monkeypatch.setattr(
-            "thousand_sunny.routers.bridge_project_thumbnails.record_api_call",
-            lambda **kw: captured.append(kw),
-        )
-
-        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm")
-        assert r.status_code == 200, r.text
-
-        assert any(
-            json.loads(c.get("scope_json", "{}")).get("scope") == "thumbnail_brainstorm"
-            for c in captured
-        )
-
-    def test_brainstorm_rejects_unknown_content_type(self, client, tmp_path, monkeypatch):
-        """ADR-033 PR4-B opened podcast; other types still 400."""
+class TestRender:
+    @pytest.fixture
+    def with_ideas(self, client, tmp_path):
+        """Seed project with 3 parseable thumbnail ideas (no LLM call)."""
+        ideas = [
+            "大字：妙用解密\n我的表情：驚訝\n視覺：左罐右腦黃閃電\n數字/圖示：⚡\n背景：白色",
+            "大字：65 歲來得及\n我的表情：思考\n視覺：老人加大腦掃描\n數字/圖示：65\n背景：灰藍色",
+            "大字：每天 5g\n我的表情：解釋\n視覺：湯匙加化學分子式\n"
+            "數字/圖示：5g\n背景：實驗室桌面",
+        ]
         path = tmp_path / "Projects" / "肌酸的妙用.md"
-        text = path.read_text(encoding="utf-8")
-        text = text.replace("content_type: youtube", "content_type: article")
-        path.write_text(text, encoding="utf-8")
+        raw = path.read_text(encoding="utf-8")
+        parts = raw.split("---", 2)
+        fm = yaml.safe_load(parts[1])
+        fm["thumbnail_ideas"] = ideas
+        fm_yaml = yaml.dump(fm, allow_unicode=True, default_flow_style=False)
+        new_raw = "---\n" + fm_yaml + "---" + parts[2]
+        path.write_text(new_raw, encoding="utf-8")
         import thousand_sunny.routers.bridge_project_thumbnails as bpt_mod
 
         bpt_mod._indexer_singleton = None  # noqa: SLF001
-
-        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm")
-        assert r.status_code == 400
-        assert "youtube|podcast" in r.text or "youtube" in r.text.lower()
-
-    def test_brainstorm_502_on_unparseable_llm_response(self, client, monkeypatch):
-        monkeypatch.setattr(
-            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
-            lambda *a, **kw: "totally unstructured text with no 大字 anywhere",
-        )
-
-        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm")
-        assert r.status_code == 502
-
-
-class TestTitleBrainstorm:
-    def test_titles_persists_three_candidates(self, client, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
-            lambda *a, **kw: (
-                "肌酸不只練肌肉：3 個你沒聽過的妙用\n"
-                "65 歲開始吃肌酸？最新研究說：來得及\n"
-                "每天 5g，改變你大腦的化學反應\n"
-            ),
-        )
-
-        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm-titles")
-        assert r.status_code == 200, r.text
-        # Returned partial is the textarea with 3 lines
-        assert "肌酸不只練肌肉" in r.text
-        assert "65 歲開始吃肌酸" in r.text
-        assert "每天 5g" in r.text
-
-        fm = yaml.safe_load(
-            (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8").split("---")[1]
-        )
-        assert len(fm["title_candidates"]) == 3
-        assert fm["title_candidates"][0] == "肌酸不只練肌肉：3 個你沒聽過的妙用"
-
-    def test_titles_strips_numbered_prefix(self, client, monkeypatch):
-        monkeypatch.setattr(
-            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
-            lambda *a, **kw: "1. 肌酸的真相\n2) 你不知道的事\n(3) 65 歲的選擇\n",
-        )
-        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm-titles")
-        assert r.status_code == 200, r.text
-        assert "1. 肌酸" not in r.text
-        assert "肌酸的真相" in r.text
-        assert "你不知道的事" in r.text
-        assert "65 歲的選擇" in r.text
-
-    def test_titles_strips_bullet_markers(self, client, monkeypatch):
-        monkeypatch.setattr(
-            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
-            lambda *a, **kw: "- A 候選\n• B 候選\n* C 候選\n",
-        )
-        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm-titles")
-        assert r.status_code == 200, r.text
-        assert "- A 候選" not in r.text
-        assert "A 候選" in r.text
-
-    def test_titles_caps_at_3(self, client, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
-            lambda *a, **kw: "title 1\ntitle 2\ntitle 3\ntitle 4\ntitle 5\n",
-        )
-        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm-titles")
-        assert r.status_code == 200, r.text
-        fm = yaml.safe_load(
-            (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8").split("---")[1]
-        )
-        assert len(fm["title_candidates"]) == 3
-        assert fm["title_candidates"] == ["title 1", "title 2", "title 3"]
-
-    def test_titles_skips_preamble_lines(self, client, tmp_path, monkeypatch):
-        """Lines starting with 'Here', '以下', 'Title' etc are LLM preamble — never stored."""
-        monkeypatch.setattr(
-            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
-            lambda *a, **kw: (
-                "Here are 3 title candidates:\n"
-                "以下三個候選：\n"
-                "肌酸的真相\n"
-                "65 歲還來得及嗎\n"
-                "每天 5g 的改變\n"
-            ),
-        )
-        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm-titles")
-        assert r.status_code == 200, r.text
-        fm = yaml.safe_load(
-            (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8").split("---")[1]
-        )
-        assert fm["title_candidates"] == ["肌酸的真相", "65 歲還來得及嗎", "每天 5g 的改變"]
-        assert all("Here are" not in t for t in fm["title_candidates"])
-        assert all("以下" not in t for t in fm["title_candidates"])
-
-    def test_titles_502_on_empty_response(self, client, monkeypatch):
-        monkeypatch.setattr(
-            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
-            lambda *a, **kw: "",
-        )
-        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm-titles")
-        assert r.status_code == 502
-
-
-class TestRender:
-    @pytest.fixture
-    def with_ideas(self, client, tmp_path, monkeypatch):
-        """Seed the project with 3 brainstormed ideas (no LLM needed for render tests)."""
-        monkeypatch.setattr(
-            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
-            lambda *a, **kw: SAMPLE_BRAINSTORM_LLM_RESPONSE,
-        )
-        client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm")
         return client
 
     def test_render_calls_worker_and_serves_partial(self, with_ideas, tmp_path, monkeypatch):
@@ -362,6 +181,45 @@ class TestCandidateServing:
             "/bridge/projects/肌酸的妙用/thumbnail/candidate/20260526T140000/missing.png"
         )
         assert r.status_code == 404
+
+
+class TestPackagingCandidateServing:
+    """Tests for the packaging PNG serving endpoint (ADR-054 S6)."""
+
+    def _seed_packaging_png(self, tmp_path: Path, episode_slug: str, filename: str) -> Path:
+        d = tmp_path / "Attachments" / "packaging" / episode_slug
+        d.mkdir(parents=True)
+        f = d / filename
+        f.write_bytes(b"\x89PNG\r\n\x1a\npkg-bytes")
+        return f
+
+    def test_packaging_candidate_serves_existing_png(self, client, tmp_path):
+        self._seed_packaging_png(tmp_path, "20260723-xieboran", "pkg-L1-1.png")
+        r = client.get(
+            "/bridge/projects/肌酸的妙用/thumbnail/packaging/20260723-xieboran/pkg-L1-1.png"
+        )
+        assert r.status_code == 200
+        assert r.content == b"\x89PNG\r\n\x1a\npkg-bytes"
+
+    def test_packaging_candidate_rejects_traversal_filename(self, client):
+        r = client.get(
+            "/bridge/projects/肌酸的妙用/thumbnail/packaging/20260723-xieboran/..%2Fevil.png"
+        )
+        assert r.status_code in (400, 404)
+
+    def test_packaging_candidate_rejects_bad_ep_slug(self, client):
+        r = client.get("/bridge/projects/肌酸的妙用/thumbnail/packaging/謝伯讓/pkg-L1-1.png")
+        assert r.status_code == 400
+
+    def test_packaging_candidate_404_when_missing(self, client):
+        r = client.get(
+            "/bridge/projects/肌酸的妙用/thumbnail/packaging/20260723-xieboran/missing.png"
+        )
+        assert r.status_code == 404
+
+    def test_packaging_candidate_rejects_cjk_filename(self, client):
+        r = client.get("/bridge/projects/肌酸的妙用/thumbnail/packaging/20260723-xieboran/封面.png")
+        assert r.status_code in (400, 404)
 
 
 class TestCommit:
@@ -583,12 +441,11 @@ class TestPodcastFunnel:
         r = podcast_client.post("/bridge/projects/王醫師專訪/thumbnail/podcast/funnel/host")
         assert r.status_code == 404
 
-    def test_funnel_400_when_video_path_escapes_repo_root(self, podcast_client, tmp_path):
-        """Defense-in-depth: frontmatter host_video_path that resolves outside
-        repo root must be rejected (post-review hardening 2026-05-26)."""
+    def test_funnel_400_when_video_path_outside_allowlist(self, podcast_client, tmp_path):
+        """Defense-in-depth: path outside ALL allowlist roots (repo root + FOOTAGE_ROOT)
+        must be rejected. ADR-054 S6 — allowlist replaces single-root constraint."""
         path = tmp_path / "Projects" / "王醫師專訪.md"
         text = path.read_text(encoding="utf-8")
-        # Replace with traversal attempt
         text = text.replace(
             "host_video_path: data/podcasts/wang/host_angle.mp4",
             "host_video_path: ../../../../../etc/passwd",
@@ -600,7 +457,44 @@ class TestPodcastFunnel:
 
         r = podcast_client.post("/bridge/projects/王醫師專訪/thumbnail/podcast/funnel/host")
         assert r.status_code == 400
-        assert "escapes" in r.text.lower() or "repo root" in r.text.lower()
+        assert "outside allowed roots" in r.text.lower() or "allowed" in r.text.lower()
+
+    def test_funnel_allows_footage_root_path(self, podcast_client, monkeypatch, tmp_path):
+        """FOOTAGE_ROOT env expands the allowlist: absolute paths under it must be
+        accepted and proceed to the funnel run step (not 400). ADR-054 S6."""
+        footage_dir = tmp_path / "footages"
+        footage_dir.mkdir()
+        video_path = footage_dir / "謝伯讓" / "host_angle.mp4"
+        video_path.parent.mkdir(parents=True)
+        video_path.write_bytes(b"fake mp4")
+
+        monkeypatch.setenv("FOOTAGE_ROOT", str(footage_dir))
+
+        proj_path = tmp_path / "Projects" / "王醫師專訪.md"
+        text = proj_path.read_text(encoding="utf-8")
+        text = text.replace(
+            "host_video_path: data/podcasts/wang/host_angle.mp4",
+            f"host_video_path: {video_path}",
+        )
+        proj_path.write_text(text, encoding="utf-8")
+        import thousand_sunny.routers.bridge_project_thumbnails as bpt_mod
+
+        bpt_mod._indexer_singleton = None  # noqa: SLF001
+
+        _mock_funnel_run(
+            monkeypatch,
+            candidates=[
+                {
+                    "filename": "frame_000.png",
+                    "timestamp_sec": 5.0,
+                    "sample_kind": "periodic",
+                    "sharpness": 800.0,
+                }
+            ],
+        )
+        r = podcast_client.post("/bridge/projects/王醫師專訪/thumbnail/podcast/funnel/host")
+        assert r.status_code == 200, r.text
+        assert "frame_000.png" in r.text
 
     def test_funnel_happy_path(self, podcast_client, monkeypatch, tmp_path):
         # 1. Create a fake video at the resolved path
@@ -831,264 +725,3 @@ class TestPodcastActiveCutouts:
         )
         assert r.status_code == 500
         assert "u2net" in r.text.lower() or "remove-background" in r.text.lower()
-
-
-class TestPodcastBrainstormHappyPath:
-    def test_podcast_brainstorm_uses_podcast_prompt(self, podcast_client, monkeypatch):
-        prompts_seen: list[str] = []
-
-        def fake_llm(messages, *, system=None, model=None, max_tokens=2048):
-            prompts_seen.append(system or "")
-            return SAMPLE_BRAINSTORM_LLM_RESPONSE
-
-        monkeypatch.setattr(
-            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
-            fake_llm,
-        )
-        r = podcast_client.post("/bridge/projects/王醫師專訪/thumbnail/brainstorm")
-        assert r.status_code == 200, r.text
-        # Podcast prompt has the DOAC / two-person framing — verify it was loaded.
-        assert "DOAC" in prompts_seen[0] or "兩人" in prompts_seen[0] or "host" in prompts_seen[0]
-
-
-# ── v1.1 playbook integration + B-min refinement endpoints ───────────────────
-
-
-SAMPLE_BRAINSTORM_WITH_ARCHETYPE_TAGS = """\
-Idea 1
-archetype: [T-A1, T-V10, JP-4]
-大字：8 個習慣
-我的表情：驚訝
-視覺：圖示列表
-數字/圖示：8
-背景：白色
-
-Idea 2
-archetype: [T-A8, T-V3]
-大字：12 週實證
-我的表情：思考
-視覺：左右對照
-數字/圖示：12
-背景：醫院走廊
-
-Idea 3
-archetype: [T-A6, T-V4]
-大字：真的嗎
-我的表情：解釋
-視覺：問句覆字
-數字/圖示：?
-背景：深藍科學感
-"""
-
-
-class TestPlaybookIntegration:
-    """v1.1: playbook archetype index injected, vision images removed."""
-
-    def test_brainstorm_user_message_includes_playbook_index_no_images(self):
-        from thousand_sunny.routers.bridge_project_thumbnails import (
-            _brainstorm_user_message,
-        )
-
-        parts = _brainstorm_user_message(
-            title_candidates=["Test title"],
-            one_sentence="test sentence",
-            search_topic="test",
-        )
-        # All parts are text now — no image attachments
-        assert all(p.get("type") == "text" for p in parts)
-        # Playbook index present
-        combined = "\n".join(p["text"] for p in parts)
-        assert "Playbook archetype index" in combined
-        assert "T-A1" in combined and "T-V6" in combined
-        # Brief preserved
-        assert "Test title" in combined and "test sentence" in combined
-
-    def test_brainstorm_persists_archetype_tags(self, client, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
-            lambda *a, **kw: SAMPLE_BRAINSTORM_WITH_ARCHETYPE_TAGS,
-        )
-
-        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm")
-        assert r.status_code == 200, r.text
-
-        # Meta JSON written with archetype tags per idea
-        meta_path = tmp_path / "data_thumbs" / "肌酸的妙用" / "brainstorm_meta.json"
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        assert meta["schema_version"] == "v1"
-        runs = meta["runs"]
-        assert len(runs) == 1
-        idea_tags = [i["archetype_tags"] for i in runs[0]["ideas"]]
-        assert ["T-A1", "T-V10", "JP-4"] in idea_tags
-        assert ["T-A8", "T-V3"] in idea_tags
-        assert ["T-A6", "T-V4"] in idea_tags
-
-    def test_brainstorm_emits_archetype_tags_in_audit(self, client, monkeypatch):
-        monkeypatch.setattr(
-            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
-            lambda *a, **kw: SAMPLE_BRAINSTORM_WITH_ARCHETYPE_TAGS,
-        )
-        captured: list[dict] = []
-        monkeypatch.setattr(
-            "thousand_sunny.routers.bridge_project_thumbnails.record_api_call",
-            lambda **kw: captured.append(kw),
-        )
-
-        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm")
-        assert r.status_code == 200, r.text
-
-        brainstorm_audit = next(
-            c
-            for c in captured
-            if json.loads(c.get("scope_json", "{}")).get("scope") == "thumbnail_brainstorm"
-        )
-        scope = json.loads(brainstorm_audit["scope_json"])
-        assert scope["n_references"] == 0  # v1.1: no image few-shot
-        assert "archetype_tags" in scope
-        assert ["T-A1", "T-V10", "JP-4"] in scope["archetype_tags"]
-
-
-class TestIdeaSaveEdit:
-    """B-min.1: editable idea card + save endpoint."""
-
-    def _seed_three_ideas(self, client, monkeypatch):
-        monkeypatch.setattr(
-            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
-            lambda *a, **kw: SAMPLE_BRAINSTORM_LLM_RESPONSE,
-        )
-        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm")
-        assert r.status_code == 200, r.text
-
-    def test_save_edit_updates_frontmatter_at_index(self, client, tmp_path, monkeypatch):
-        self._seed_three_ideas(client, monkeypatch)
-
-        new_value = (
-            "archetype: [T-A2, T-V4]\n"
-            "大字：手動編輯版\n"
-            "我的表情：解釋\n"
-            "視覺：edited visual\n"
-            "數字/圖示：5\n"
-            "背景：edited bg"
-        )
-        r = client.post(
-            "/bridge/projects/肌酸的妙用/thumbnail/idea/1",
-            data={"value": new_value},
-        )
-        assert r.status_code == 200, r.text
-        assert "手動編輯版" in r.text
-
-        fm = yaml.safe_load(
-            (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8").split("---")[1]
-        )
-        # idx=1 replaced, idx=0 and idx=2 unchanged
-        assert "手動編輯版" in fm["thumbnail_ideas"][1]
-        assert "妙用解密" in fm["thumbnail_ideas"][0]
-        assert "每天 5g" in fm["thumbnail_ideas"][2]
-
-    def test_save_edit_out_of_range_400(self, client, monkeypatch):
-        self._seed_three_ideas(client, monkeypatch)
-        r = client.post(
-            "/bridge/projects/肌酸的妙用/thumbnail/idea/99",
-            data={"value": "anything"},
-        )
-        assert r.status_code == 400
-        assert "out of range" in r.text.lower()
-
-    def test_save_edit_empty_value_400(self, client, monkeypatch):
-        self._seed_three_ideas(client, monkeypatch)
-        r = client.post(
-            "/bridge/projects/肌酸的妙用/thumbnail/idea/0",
-            data={"value": "   "},
-        )
-        assert r.status_code == 400
-
-    def test_save_edit_invalid_idea_surfaces_parse_error_inline(self, client, monkeypatch):
-        self._seed_three_ideas(client, monkeypatch)
-        r = client.post(
-            "/bridge/projects/肌酸的妙用/thumbnail/idea/0",
-            data={"value": "broken — missing required lines"},
-        )
-        # Save succeeds (200) but partial surfaces parse error inline
-        assert r.status_code == 200
-        assert "解析失敗" in r.text or "parse" in r.text.lower()
-
-
-class TestIdeaIndividualReroll:
-    """B-min.2: re-roll a single idea slot, keep others verbatim."""
-
-    def test_idea_reroll_swaps_only_target_idx(self, client, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
-            lambda *a, **kw: SAMPLE_BRAINSTORM_LLM_RESPONSE,
-        )
-        # Seed
-        client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm")
-
-        # Stub a fresh LLM that produces a single fresh idea different from kept
-        fresh = (
-            "Idea 1\n"
-            "archetype: [T-A3, T-V8]\n"
-            "大字：新版 hook\n"
-            "我的表情：認真\n"
-            "視覺：新視覺\n"
-            "數字/圖示：新\n"
-            "背景：新背景\n"
-        )
-        monkeypatch.setattr(
-            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
-            lambda *a, **kw: fresh,
-        )
-
-        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm/idea/0")
-        assert r.status_code == 200, r.text
-        # Response is the full 3-card grid swap
-        assert "新版 hook" in r.text
-        assert "每天 5g" in r.text  # idx=2 preserved
-
-        fm = yaml.safe_load(
-            (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8").split("---")[1]
-        )
-        assert "新版 hook" in fm["thumbnail_ideas"][0]
-        assert "65 歲來得及" in fm["thumbnail_ideas"][1]
-        assert "每天 5g" in fm["thumbnail_ideas"][2]
-
-
-class TestTitleIndividualReroll:
-    """B-min.3: re-roll a single title row, keep others verbatim."""
-
-    def test_title_reroll_with_textarea_value(self, client, tmp_path, monkeypatch):
-        # Provide current textarea content; LLM returns one new title
-        new_title = "5g 肌酸是大腦的祕密武器（哈佛研究）"
-        monkeypatch.setattr(
-            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
-            lambda *a, **kw: new_title + "\n",
-        )
-
-        current = (
-            "肌酸不只練肌肉：3 個你沒聽過的妙用\n"
-            "65 歲開始吃肌酸？最新研究說：來得及\n"
-            "每天 5g，改變你大腦的化學反應\n"
-        )
-        r = client.post(
-            "/bridge/projects/肌酸的妙用/thumbnail/brainstorm-titles/idea/1",
-            data={"value": current},
-        )
-        assert r.status_code == 200, r.text
-        # New title shows up; original titles 0 + 2 still there
-        assert new_title in r.text
-        assert "肌酸不只練肌肉" in r.text
-        assert "每天 5g，改變你大腦" in r.text
-
-        fm = yaml.safe_load(
-            (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8").split("---")[1]
-        )
-        assert fm["title_candidates"][0] == "肌酸不只練肌肉：3 個你沒聽過的妙用"
-        assert fm["title_candidates"][1] == new_title
-        assert fm["title_candidates"][2] == "每天 5g，改變你大腦的化學反應"
-
-    def test_title_reroll_out_of_range_400(self, client, monkeypatch):
-        r = client.post(
-            "/bridge/projects/肌酸的妙用/thumbnail/brainstorm-titles/idea/99",
-            data={"value": "a\nb\nc"},
-        )
-        assert r.status_code == 400

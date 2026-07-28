@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Packaging · {{ pkg.episode }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='brook') }}
+
+{% from "_breadcrumb.html" import breadcrumb %}
+{{ breadcrumb([
+  {"label": "PACKAGING · GATE", "href": "/bridge/packaging", "is_current": false},
+  {"label": pkg.episode | upper, "href": none, "is_current": true},
+]) }}
+
+<section class="page-header page-header--split">
+  <div>
+    <div class="nk-caps">/bridge/packaging/{{ episode_slug }} · package 裁決</div>
+    <h1 class="page-title">{{ pkg.episode }} <span class="zh">{{ cuts | length }} cuts</span></h1>
+  </div>
+  <div class="header-meta sho-mono">generated {{ pkg.generated_at }}</div>
+</section>
+
+<main class="page-main page-main--stack">
+  <p class="sho-mono pkg-hint">重抽標題或封面 → 回 Cowork 跑 <code>title-brainstorm --batch</code> / <code>thumbnail-brainstorm</code>（gate 零 LLM，只裁決不生成）。</p>
+
+  {% for view in cuts %}
+  {% set cut = view.cut %}
+  {% set approval = view.approval %}
+  <article class="section pkg-cut" aria-labelledby="cut-{{ cut.cut_id }}">
+    <header class="section-head">
+      <div>
+        <div class="section-marker">§ {{ loop.index }} · {{ cut.format | upper }}</div>
+        <h2 class="section-title" id="cut-{{ cut.cut_id }}">{{ cut.cut_id }}
+          <span class="zh">{{ cut.visual_recipe }} · {{ cut.aspect }}</span>
+        </h2>
+      </div>
+      {% if approval %}
+        {% if approval.approved %}
+        <span class="sho-tag sho-tag--accent">APPROVED · PKG {{ approval.primary_package }}</span>
+        {% else %}
+        <span class="sho-tag pkg-tag-rejected">REJECTED</span>
+        {% endif %}
+      {% else %}
+      <span class="section-status idle">PENDING</span>
+      {% endif %}
+    </header>
+    <div class="section-body">
+
+      {% if cut.brand_flags %}
+      <div class="pkg-brand-flags" role="alert">
+        {% for flag in cut.brand_flags %}
+        <span class="pkg-flag">⚑ {{ flag }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if cut.format == 'long' %}
+      <form method="post" action="/bridge/packaging/{{ episode_slug }}/approve" class="pkg-approve-form">
+        <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
+        <fieldset class="pkg-cards">
+          <legend class="sho-mono-up">選 primary package（三個都願意花早期 impression 測才 approve）</legend>
+          {% for item in view.packages %}
+          <label class="pkg-card{% if approval and approval.approved and approval.primary_package == item.pkg.title_rank %} pkg-card--primary{% endif %}">
+            <input type="radio" name="primary_package" value="{{ item.pkg.title_rank }}"
+                   {% if approval and approval.approved and approval.primary_package == item.pkg.title_rank %}checked{% endif %}
+                   {% if not approval or not approval.approved %}{% if loop.first %}checked{% endif %}{% endif %}>
+            <img src="/bridge/projects/gate/thumbnail/packaging/{{ episode_slug }}/{{ item.pkg.thumbnail_png.split('/')[-1] }}"
+                 alt="package {{ item.pkg.title_rank }} 封面：{{ item.title.text if item.title else '' }}" loading="lazy">
+            <div class="pkg-card-title">{{ item.title.text if item.title else '（缺 rank ' ~ item.pkg.title_rank ~ ' 標題）' }}</div>
+            <div class="sho-mono pkg-card-meta">#{{ item.pkg.title_rank }} · {{ item.pkg.thumb_archetype_id }} · {{ item.pkg.joint_pairing_id }}</div>
+          </label>
+          {% endfor %}
+        </fieldset>
+
+        {% if view.runners_up %}
+        <details class="pkg-runners">
+          <summary class="sho-mono-up">落選標題（rank 4–5）</summary>
+          <ul>
+            {% for t in view.runners_up %}
+            <li><span class="pkg-runner-text">{{ t.text }}</span>
+                <span class="sho-mono">— {{ t.panel_note }}</span></li>
+            {% endfor %}
+          </ul>
+        </details>
+        {% endif %}
+
+        <div class="field">
+          <label class="field-label" for="note-{{ cut.cut_id }}">REJECT NOTE ·（否決理由，taste capture — 選填）</label>
+          <textarea class="sho-input pkg-note" id="note-{{ cut.cut_id }}" name="reject_note"
+                    rows="2" maxlength="2000">{{ approval.reject_note or '' if approval else '' }}</textarea>
+        </div>
+        <div class="pkg-actions">
+          <button class="sho-btn" type="submit" name="decision" value="approve">Approve</button>
+          <button class="sho-btn sho-btn--ghost" type="submit" name="decision" value="reject">Reject（附理由）</button>
+        </div>
+      </form>
+
+      {% else %}{# short cut #}
+      <form method="post" action="/bridge/packaging/{{ episode_slug }}/short-title" class="pkg-short-form">
+        <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
+        <div class="field">
+          <label class="field-label" for="st-{{ cut.cut_id }}">短片標題（LLM 直出初稿，可改）</label>
+          <input class="sho-input" id="st-{{ cut.cut_id }}" name="title_text" maxlength="200"
+                 value="{{ cut.titles[0].text if cut.titles else '' }}">
+        </div>
+        <div class="pkg-actions">
+          <button class="sho-btn sho-btn--ghost" type="submit">存標題</button>
+        </div>
+      </form>
+      <p class="sho-mono pkg-coverframe-note">cover frame：上傳時選取，不得落在 opener 0–4s 上下分割段（ADR-054 A4 — grid 尺寸兩張小臉零文字是最差縮圖）。frame 預覽待 frame-serving endpoint（Remaining）。</p>
+      <form method="post" action="/bridge/packaging/{{ episode_slug }}/approve" class="pkg-approve-form pkg-approve-form--short">
+        <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
+        <input type="hidden" name="primary_package" value="1">
+        <div class="field">
+          <label class="field-label" for="snote-{{ cut.cut_id }}">REJECT NOTE ·（選填）</label>
+          <textarea class="sho-input pkg-note" id="snote-{{ cut.cut_id }}" name="reject_note"
+                    rows="2" maxlength="2000">{{ approval.reject_note or '' if approval else '' }}</textarea>
+        </div>
+        <div class="pkg-actions">
+          <button class="sho-btn" type="submit" name="decision" value="approve">Approve</button>
+          <button class="sho-btn sho-btn--ghost" type="submit" name="decision" value="reject">Reject</button>
+        </div>
+      </form>
+      {% endif %}
+
+      {% if approval %}
+      <p class="sho-mono pkg-decided">decided {{ approval.decided_at }}{% if approval.reject_note %} · note：{{ approval.reject_note }}{% endif %}</p>
+      {% endif %}
+    </div>
+  </article>
+  {% endfor %}
+</main>
+
+<style>
+  .pkg-hint { margin: 0 0 var(--sho-s-4); }
+  .pkg-hint code { font-size: 12px; }
+  .pkg-brand-flags { margin-bottom: var(--sho-s-3); display: flex; gap: var(--sho-s-2); flex-wrap: wrap; }
+  .pkg-flag {
+    color: var(--sho-error); border: 1px solid color-mix(in oklch, var(--sho-error) 45%, transparent);
+    border-radius: var(--sho-r-1); padding: 2px var(--sho-s-2); font-size: 12px;
+  }
+  .pkg-tag-rejected { color: var(--sho-error); border-color: color-mix(in oklch, var(--sho-error) 45%, transparent); }
+  .pkg-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--sho-s-4); border: 0; padding: 0; margin: 0 0 var(--sho-s-4); }
+  .pkg-cards legend { margin-bottom: var(--sho-s-3); color: var(--sho-muted); }
+  .pkg-card {
+    display: block; border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-2);
+    padding: var(--sho-s-3); cursor: pointer;
+    transition: border-color var(--sho-t-fast) var(--sho-ease);
+  }
+  .pkg-card:hover { border-color: var(--sho-accent-line); }
+  .pkg-card:has(input:checked) { border-color: var(--sho-accent); background: var(--sho-accent-soft); }
+  .pkg-card:has(input:focus-visible) { box-shadow: var(--sho-focus); }
+  .pkg-card input[type="radio"] { position: absolute; opacity: 0; }
+  .pkg-card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--sho-r-1); display: block; background: var(--sho-bg-3); }
+  .pkg-card-title { margin-top: var(--sho-s-2); font-weight: 600; line-height: 1.6; }
+  .pkg-card-meta { margin-top: var(--sho-s-1); }
+  .pkg-card--primary { border-color: var(--sho-accent); }
+  .pkg-runners { margin-bottom: var(--sho-s-4); }
+  .pkg-runners ul { margin: var(--sho-s-2) 0 0; padding-left: var(--sho-s-4); }
+  .pkg-runners li { line-height: 1.7; color: var(--sho-text-2); }
+  .pkg-note { width: 100%; resize: vertical; }
+  .pkg-actions { display: flex; gap: var(--sho-s-3); margin-top: var(--sho-s-3); }
+  .pkg-decided { margin-top: var(--sho-s-3); }
+  .pkg-coverframe-note { margin: var(--sho-s-3) 0; }
+  .pkg-cut + .pkg-cut { margin-top: var(--sho-s-5); }
+</style>
+</body>
+</html>

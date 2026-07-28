@@ -42,6 +42,7 @@ from run_short_tighten import (  # noqa: E402
     _keep_segments,
     _load_winner,
     _retime_srt,
+    import_srt_tidy,
 )
 
 logger = logging.getLogger("short_director")
@@ -52,13 +53,14 @@ DEFAULT_CFG = {
     "cams": {"0": "1_CAMERA 1.mp4", "1": "2_CAMERA 2.mp4"},
     "face_x": {"0": 880, "1": 1165},  # 1920 寬源片的臉部中心 x
     "zoom_base": 3.2,  # 16:9 → 9:16 滿高（3.16）+ 一點餘裕
-    "zoom_punch": 3.68,  # base × 1.15，同人連續 shot 的 punch-in
+    "punch_scale": 1.25,  # punch 放大倍率（七輪：1.15 不夠 dramatic）
     "min_shot": 1.0,  # 短於此的說話者 run 不切鏡（併入前一 shot）
     "opener_sec": 4.0,  # 開場上下分割秒數（不足 2s 的保留段不做）
     # 節奏（修修 2026-07-26 二輪：畫面變化太少——對齊鐘穎範本 ~3s/刀）
     "reaction_every": 9.0,  # 同人 run 每 ~9s 插一個聽者反應鏡頭
     "reaction_sec": 1.8,  # 反應鏡頭長度（點頭畫面，audio 不斷）
-    "max_shot": 4.0,  # 任一 shot 上限——超過在詞邊界均分並交替 zoom
+    "punch_ramp_sec": 0.25,  # speed-ramp zoom 秒數（十四輪：0.5 太慢、0.2 略衝，0.25 定版）
+    "face_y": {"0": 330, "1": 330},  # 1080 高源片的眼線 y（punch zoom 鎖臉用）
 }
 SRC_W = 1920
 FIT = 1080 / 1920  # 16:9 源在 1080 寬 timeline 的 fit 縮放
@@ -134,11 +136,13 @@ def _snap(t: float, word_starts: list[float], lo: float, hi: float) -> float:
 
 
 def _expand_run(s: float, e: float, spk: int, word_starts: list[float], cfg: dict) -> list[dict]:
-    """單一說話者 run → 反應鏡頭插入 + max_shot 切分。
+    """單一說話者 run → 反應鏡頭插入。
 
     - run 每 ~reaction_every 秒插一個 reaction_sec 的聽者反應鏡頭
       （鐘穎範本語法：獨白中切聽者點頭 1-2s 再切回，audio 不斷）
-    - 說話者 chunk 超過 max_shot 在詞邊界均分（切分處靠 zoom 交替製造節奏）
+    - 修修 2026-07-26 五輪：**不再做 max_shot 機械切分/zoom 交替**——punch
+      改成內容驅動的 speed-ramp zoom（見 _apply_punch_zooms），機械節奏的
+      punch in/out 時間點「抓得很奇怪」
     """
     dur = e - s
     rsec = cfg["reaction_sec"]
@@ -155,18 +159,7 @@ def _expand_run(s: float, e: float, spk: int, word_starts: list[float], cfg: dic
         pieces.append((pos, e, spk, "talk"))
     else:
         pieces.append((s, e, spk, "talk"))
-    out: list[dict] = []
-    for ps, pe, pspk, kind in pieces:
-        n = max(1, int(-(-(pe - ps) // cfg["max_shot"]))) if kind == "talk" else 1
-        edges = [ps + (pe - ps) * i / n for i in range(1, n)]
-        cur = ps
-        for t in edges:
-            cut = _snap(t, word_starts, cur + cfg["min_shot"], pe - cfg["min_shot"])
-            if cut - cur >= cfg["min_shot"]:
-                out.append({"s": cur, "e": cut, "spk": pspk, "kind": kind})
-                cur = cut
-        out.append({"s": cur, "e": pe, "spk": pspk, "kind": kind})
-    return out
+    return [{"s": ps, "e": pe, "spk": pspk, "kind": kind} for ps, pe, pspk, kind in pieces]
 
 
 def build_shots(
@@ -177,8 +170,8 @@ def build_shots(
     - shot 邊界 = 保留段邊界 ∪ 段內說話者切換點（詞邊界）
     - 短於 min_shot 的說話者 run 不切鏡（併入前一 shot——0.5s 的附和
       切過去再切回來會閃屏）
-    - 長 run 插聽者反應鏡頭 + max_shot 均分（_expand_run，對齊範本 ~3s/刀）
-    - zoom：同說話者連續 shot 交替 base/punch；說話者切換/反應鏡頭重置 base
+    - 長 run 插聽者反應鏡頭（_expand_run）
+    - zoom 全 base；punch 由 <id>_zoom.json 內容驅動（speed-ramp，五輪裁決）
     """
     shots: list[dict] = []
     for seg_s, seg_e in segs:
@@ -208,32 +201,143 @@ def build_shots(
         merged = coalesced
         if not merged:
             merged = [[seg_s, seg_e, shots[-1]["spk"] if shots else 1]]
-        # 夾回保留段邊界；shot 邊界取 run 交界；長 run 展開（反應鏡頭 + 均分）
+        # 夾回保留段邊界；shot 邊界取 run 交界；長 run 展開（反應鏡頭）
         merged[0][0], merged[-1][1] = seg_s, seg_e
         word_starts = sorted(w[0] for w in in_seg)
         for i, r in enumerate(merged):
             if i + 1 < len(merged):
                 r[1] = merged[i + 1][0]
             shots.extend(_expand_run(float(r[0]), float(r[1]), int(r[2]), word_starts, cfg))
-    # zoom 交替（反應鏡頭固定 base，也重置說話者的交替節奏）
-    streak = 0
-    for i, sh in enumerate(shots):
-        if sh.get("kind") == "reaction":
-            streak = 0
-            sh["zoom"] = cfg["zoom_base"]
-            continue
-        if i and shots[i - 1]["spk"] == sh["spk"] and shots[i - 1].get("kind") != "reaction":
-            streak += 1
-        else:
-            streak = 0
-        sh["zoom"] = cfg["zoom_punch"] if streak % 2 else cfg["zoom_base"]
+    # zoom 全部 base——punch 改內容驅動 speed-ramp（_apply_punch_zooms）
+    for sh in shots:
+        sh["zoom"] = cfg["zoom_base"]
     return shots
+
+
+def _punch_keys(
+    item_lo: float,
+    item_hi: float,
+    span_lo: float,
+    span_hi: float,
+    ramp: float,
+    scale: float = 1.25,
+) -> list[tuple[float, float]] | None:
+    """單一 shot 與 punch 區間的交集 → comp 內 Size 關鍵影格 [(local_sec, factor)]。
+
+    - 完整 ramp：span 起點 ramp-in、終點 ramp-out（各 ramp 秒）
+    - span 跨 shot 邊界時：起點在前一 shot 內才 ramp-in，否則本 shot 直接
+      punch 級起跳（跨刀 zoom 連續）；終點同理
+    - style=cut 時呼叫端把 ramp 縮成 1 frame → 兩鍵貼齊 = 硬切直接放大
+    """
+    lo, hi = max(item_lo, span_lo), min(item_hi, span_hi)
+    if hi - lo <= 0.05:
+        return None
+    keys: list[tuple[float, float]] = []
+    if span_lo >= item_lo:  # ramp-in 在本 shot 內
+        keys.append((span_lo - item_lo, 1.0))
+        keys.append((min(span_lo + ramp, item_hi) - item_lo, scale))
+    else:  # span 從前一 shot 延續進來——開頭就是 punch 級
+        keys.append((0.0, scale))
+    if span_hi <= item_hi:  # ramp-out 在本 shot 內
+        keys.append((max(span_hi - ramp, lo) - item_lo, scale))
+        keys.append((span_hi - item_lo, 1.0))
+    else:
+        keys.append((item_hi - item_lo, scale))
+    # 去重疊（極短交集時 in/out 撞在一起）
+    dedup: list[tuple[float, float]] = []
+    for t, v in keys:
+        if dedup and t <= dedup[-1][0] + 1e-6:
+            continue
+        dedup.append((t, v))
+    return dedup if len(dedup) >= 2 else None
+
+
+def _scurve_expand(keys: list[tuple[float, float]], samples: int = 7) -> list[tuple[float, float]]:
+    """ramp 段展開成 easing 取樣（六/七輪：spline 預設內插等速不可信，直接取樣鎖形狀）。
+
+    - 兩方向都 smootherstep 慢快慢（十二輪：放大直接放大就好，**不要過衝
+      回彈**——曾試 easeOutBack，修修否決；速度 0.5s 維持）
+    - 兩鍵間距 <0.1s（cut 硬切）不取樣
+    """
+    out = [keys[0]]
+    for (t0, v0), (t1, v1) in zip(keys, keys[1:]):
+        if v1 != v0 and t1 - t0 >= 0.1:
+            for i in range(1, samples + 1):
+                u = i / (samples + 1)
+                s = 6 * u**5 - 15 * u**4 + 10 * u**3
+                out.append((t0 + (t1 - t0) * u, v0 + (v1 - v0) * s))
+        out.append((t1, v1))
+    return out
+
+
+def _apply_punch_zooms(appended: list[dict], punches: list[dict], fps: float, cfg: dict) -> int:
+    """內容驅動 punch：講重點的區間 speed-ramp zoom-in，講完 ramp-out。
+
+    對覆蓋 punch 區間的 talk shot item 加 Fusion comp（MediaIn→Transform→
+    MediaOut）：
+
+    - Size 關鍵影格 1.0→1.15，ramp 段 smootherstep 取樣（S 曲線）
+    - **Transform Pivot 鎖在說話者臉部**（源片 normalized 座標，Fusion y
+      軸向上）——繞畫面中心放大會讓臉在 ramp 過程飄移（六輪教訓）。
+      ⚠️ Center 是影像「位置」不是縮放支點，設 Center 會把畫面搬走（實測）
+    - 與 item 靜態 ZoomX 疊乘。reaction shot 不 punch。
+    appended: [{item, tl_s, tl_e(timeline 秒), kind, spk}]
+    """
+    n = 0
+    for p in punches:
+        # style：ramp（speed-ramp 過衝回彈）或 cut（1 frame 硬切直接放大）——
+        # 修修七輪：兩種交互使用。scale 可逐 punch 覆蓋
+        style = p.get("style", "ramp")
+        ramp_sec = cfg["punch_ramp_sec"] if style == "ramp" else 1.0 / fps
+        scale = float(p.get("scale", cfg["punch_scale"]))
+        for a in appended:
+            if a["kind"] == "reaction":
+                continue
+            keys = _punch_keys(
+                a["tl_s"], a["tl_e"], float(p["t0"]), float(p["t1"]), ramp_sec, scale
+            )
+            if not keys:
+                continue
+            keys = _scurve_expand(keys)
+            item = a["item"]
+            comp = (
+                item.GetFusionCompByIndex(1)
+                if item.GetFusionCompCount() > 0
+                else item.AddFusionComp()
+            )
+            if comp is None:
+                logger.warning(f"AddFusionComp 失敗 @{a['tl_s']:.1f}s——此 shot 跳過 punch")
+                continue
+            cx = float(cfg["face_x"][str(a["spk"])]) / 1920
+            cy = 1.0 - float(cfg["face_y"][str(a["spk"])]) / 1080  # Fusion y 向上
+            key_lua = "\n".join(
+                f'  xf:SetInput("Size", {v:.5f}, {round(t * fps, 2)})' for t, v in keys
+            )
+            lua = f"""
+local ok, err = pcall(function()
+  local mi = comp:FindToolByID("MediaIn")
+  local mo = comp:FindToolByID("MediaOut")
+  local xf = comp:FindTool("PunchZoom")
+  if xf == nil then
+    xf = comp:AddTool("Transform", -32768, -32768)
+    xf:SetAttrs({{TOOLS_Name = "PunchZoom"}})
+    xf.Input = mi.Output
+    mo.Input = xf.Output
+    xf.Pivot = {{{cx:.4f}, {cy:.4f}}}
+    xf.Size = comp:BezierSpline()
+  end
+{key_lua}
+end)
+"""
+            comp.Execute(lua)
+            n += 1
+    return n
 
 
 def direct(
     episode_dir: Path, cid: str, stills_dir: Path | None = None, opener: bool = True
 ) -> dict:
-    from build_resolve_project import _template_path, connect_resolve
+    from build_resolve_project import _template_path_short, connect_resolve
 
     c, w = _load_winner(episode_dir, cid)
     t0, t1 = float(c["t_start"]), float(c["t_end"])
@@ -307,7 +411,7 @@ def direct(
         (f for f in root.GetSubFolderList() if f.GetName() == "Highlights"), None
     ) or mp.AddSubFolder(root, "Highlights")
     mp.SetCurrentFolder(hbin)
-    template = _template_path()
+    template = _template_path_short()
     tl = None
     if template.exists():
         tl = mp.ImportTimelineFromFile(str(template), {})
@@ -349,6 +453,10 @@ def direct(
         _set_props(_append_video(cam_items[0], f0, f1), _panel_props(cfg, 0, top=False))
 
     # video：逐 shot 上軌 + 逐 item 設 transform（fit 縮放後 ZoomX/Pan）
+    appended: list[dict] = []
+    tl_cursor = (
+        (int(opener_span[1] * fps) - int(opener_span[0] * fps)) / fps if opener_span else 0.0
+    )
     for sh in shots:
         f0, f1 = int(sh["s"] * fps), int(sh["e"] * fps)
         if f1 <= f0:
@@ -358,6 +466,23 @@ def direct(
             item,
             {"ZoomX": sh["zoom"], "ZoomY": sh["zoom"], "Pan": _pan(cfg, sh["spk"], sh["zoom"])},
         )
+        appended.append(
+            {
+                "item": item,
+                "tl_s": tl_cursor,
+                "tl_e": tl_cursor + (f1 - f0) / fps,
+                "kind": sh.get("kind", "talk"),
+                "spk": sh["spk"],
+            }
+        )
+        tl_cursor += (f1 - f0) / fps
+
+    # 內容驅動 punch（<id>_zoom.json：agent 標「講重點」的 timeline 秒區間）
+    zoom_path = episode_dir / TIGHTEN_DIR / f"{cid}_zoom.json"
+    n_punch = 0
+    if zoom_path.exists():
+        punches = json.loads(zoom_path.read_text(encoding="utf-8"))["punches"]
+        n_punch = _apply_punch_zooms(appended, punches, fps, cfg)
 
     # opener 上半 panel（來賓）：track2、recordFrame 對齊 timeline 開頭
     if opener_span:
@@ -390,7 +515,7 @@ def direct(
 
     mp.SetCurrentFolder(root)
     seg_srt, n_cues = _retime_srt(episode_dir, cid, segs, cuts, fine=True)
-    srt_items = mp.ImportMedia([str(seg_srt)])
+    srt_items = import_srt_tidy(mp, root, seg_srt)
     sub_ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
     pm.SaveProject()
 
@@ -405,7 +530,7 @@ def direct(
         "timeline": label,
         "shots": len(shots),
         "cam_switches": n_switch,
-        "punch_shots": sum(1 for s in shots if s["zoom"] == cfg["zoom_punch"]),
+        "punch_ramps": n_punch,
         "subtitles": sub_ok,
         "cues": n_cues,
         "stills": stills,
