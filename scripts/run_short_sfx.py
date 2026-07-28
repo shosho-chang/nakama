@@ -73,7 +73,9 @@ def build_cues(episode_dir: Path, cid: str) -> list[dict]:
     if p.exists():
         for i, z in enumerate(json.loads(p.read_text(encoding="utf-8"))["punches"]):
             if z.get("style", "ramp") == "cut":
-                cues.append({"t": float(z["t0"]), "sfx": "impact", "prio": 4, "ev": f"punch{i}"})
+                # 二十五輪修修裁決：impact（cinematic hit）配在論述型訪談太戲劇
+                # ——「有一個很奇怪的音效」。硬切放大本身就是視覺重音，不配聲音
+                continue
             else:
                 # riser（檔長 1.1s，能量區 0.4–0.95s）提前 0.35s——響區蓋住
                 # ramp 的 t0 → t0+0.25 放大過程

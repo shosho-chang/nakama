@@ -60,6 +60,11 @@ COMP_SEC = 4.0  # punch_card.html data-duration——show_sec 上限（留 0.2s 
 # 三層字卡架構（修修 2026-07-26 九輪）：tier1=hero（每支≤1 張，全片最強一句，
 # 超大字）、tier2=標準 punch 卡、tier3=逐字字幕（走 subtitle track，不在本 script）
 DEFAULT_POS_Y = {1: 0.58, 2: 0.66}
+# 字卡企劃＝短片的論證骨架（二十五輪修修裁決：「它其實是在支持這整個短影片
+# 內容的鋪陳，是不是也要有完整的規劃」）。每張卡必須標明在論證裡承擔哪一拍；
+# 寫不出 beat 的卡就是不該存在的卡。
+BEATS = ("hook", "mechanism", "evidence", "insight", "closing")
+SEC_PER_CARD = 12.0  # 密度上限：卡片總數 ≤ 片長 ÷ 12（60s ≈ 5 張）
 MAX_LINE_CHARS = 6  # 168px（hero）×6 + padding ≈ 1064 ≤ 1080
 
 
@@ -101,6 +106,11 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         raise SystemExit(f"{titles_path} 不存在——agent 先從 tight SRT 選 punch 時間點")
     titles = json.loads(titles_path.read_text(encoding="utf-8"))["titles"]
     titles.sort(key=lambda x: x["t0"])
+    insights = [x for x in titles if x.get("beat") == "insight"]
+    if len(insights) != 1:
+        raise SystemExit(f"insight 卡有 {len(insights)} 張——一支短片只有一個洞見，且必須是 hero")
+    if int(insights[0].get("tier", 2)) != 1:
+        raise SystemExit("insight 卡必須標 tier: 1（hero）——它是全片最強的一句")
 
     # 1) 逐卡 render（參數 hash cache）
     cards_dir = episode_dir / CARDS_DIR
@@ -114,6 +124,12 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
                 "composition data-duration 固定 4s，更長的卡拆兩張或改 t1"
             )
         lines = t["text"].split("\n")
+        beat = t.get("beat")
+        if beat not in BEATS:
+            raise SystemExit(
+                f"卡片 {i}「{t['text'].replace(chr(10), '／')}」缺 beat 或不合法"
+                f"（要 {'/'.join(BEATS)}）——寫不出它在論證裡的角色，就不該放這張卡"
+            )
         tier = int(t.get("tier", 2))
         if tier not in (1, 2):
             raise SystemExit(f"卡片 {i} tier={tier} 不合法（1=hero 2=標準）")
@@ -158,6 +174,15 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         raise SystemExit(f"「{director_label}」不存在——先跑 run_short_director")
     project.SetCurrentTimeline(director)
 
+    dur = (director.GetEndFrame() - director.GetStartFrame()) / fps
+    cap = max(3, int(dur / SEC_PER_CARD))
+    if len(titles) > cap:
+        raise SystemExit(
+            f"字卡 {len(titles)} 張超過密度上限 {cap} 張（片長 {dur:.0f}s ÷ "
+            f"{SEC_PER_CARD:.0f}s）——每句都想 highlight 反而稀釋畫龍點睛，"
+            "砍掉鋪陳句、只留論證骨架的每一拍"
+        )
+
     # 冪等清場：track1+ 的舊卡/巢狀 item、v1 子 timeline、media pool 舊卡
     # ⚠️ 前綴 <cid>_ 會誤殺 broll 的貼紙/概念卡（<cid>_broll_*，track 4）——
     # 十七輪血案：titles 重跑把整條 track 4 滅掉。broll 卡明確排除。
@@ -182,6 +207,27 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     stale_clips = [cl for cl in (cards_bin.GetClipList() or []) if _mine(cl.GetName() or "")]
     if stale_clips:
         mp.DeleteClips(stale_clips)
+
+    # 元素互相遮擋防呆（二十五輪血案：字卡「被社群媒體綁架」壓在貼紙上）
+    # 字卡（track 3）與貼紙/概念卡（track 4）都在畫面中下段——時間重疊
+    # 就一定互相打架。broll.json 是唯一真相，這裡直接擋。
+    broll_path = episode_dir / TIGHTEN_DIR / f"{cid}_broll.json"
+    if broll_path.exists():
+        overlays = [
+            it
+            for it in json.loads(broll_path.read_text(encoding="utf-8"))["items"]
+            if it["kind"] in ("sticker", "concept")
+        ]
+        for job in jobs:
+            a0, a1 = job["t0"], job["t0"] + job["show_sec"]
+            for ov in overlays:
+                b0, b1 = float(ov["t0"]), float(ov["t1"])
+                if a0 < b1 and a1 > b0:
+                    raise SystemExit(
+                        f"字卡「{job['text'].replace(chr(10), '／')}」({a0}–{a1:.1f}s) 與"
+                        f" {ov['kind']}「{ov.get('slug')}」({b0}–{b1}s) 時間重疊"
+                        "——兩者都在畫面中下段會互相遮擋，錯開時間或縮短其一"
+                    )
 
     mp.SetCurrentFolder(cards_bin)
     while director.GetTrackCount("video") < 3:
