@@ -87,6 +87,15 @@ async def sample(
     ]
 
 
+def _sharpen(png_path: Path) -> None:
+    """溫和 unsharp mask — 補「臉小被放大」的軟化（光學銳化，非 AI；放大 >1.1× 才用）。"""
+    from PIL import Image, ImageFilter
+
+    im = Image.open(png_path).convert("RGBA")
+    rgb = im.convert("RGB").filter(ImageFilter.UnsharpMask(radius=2, percent=70, threshold=3))
+    Image.merge("RGBA", (*rgb.split(), im.split()[3])).save(png_path)
+
+
 def _grade(png_path: Path, brightness: float = 1.0) -> None:
     """提亮 pass — gamma 曲線抬中間調（不爆高光、不動膚色平衡；非 AI relight）。
 
@@ -156,7 +165,8 @@ async def finalize(
     grade: bool = True,
     crop: tuple[float, float, float, float] | None = None,
     flip: bool = False,
-    brightness: float = 1.14,
+    brightness: float = 1.0,
+    sharpen: bool = False,
 ) -> Path:
     emotion = resolve_emotion(emotion_text)
     if not frame.exists():
@@ -181,6 +191,8 @@ async def finalize(
         _flip(dst)
     if grade:
         _grade(dst, brightness=brightness)
+    if sharpen:
+        _sharpen(dst)
     return dst
 
 
@@ -212,7 +224,8 @@ def main() -> int:
         help="比例裁切框（0–1）— 去掉入鏡麥臂/筆電",
     )
     p_fin.add_argument("--flip", action="store_true", help="水平翻轉（視線朝內；衣字入鏡禁用）")
-    p_fin.add_argument("--brightness", type=float, default=1.14, help="提亮倍率（暗機位調高）")
+    p_fin.add_argument("--brightness", type=float, default=1.0, help="gamma 微抬（暗機位 ~1.12）")
+    p_fin.add_argument("--sharpen", action="store_true", help="unsharp mask（臉被放大 >1.1× 時補軟化）")
 
     args = parser.parse_args()
     if args.cmd == "sample":
@@ -243,6 +256,7 @@ def main() -> int:
                 crop=tuple(args.crop) if args.crop else None,
                 flip=args.flip,
                 brightness=args.brightness,
+                sharpen=args.sharpen,
             )
         )
         print(dst)
