@@ -87,17 +87,20 @@ async def sample(
     ]
 
 
-def _grade(png_path: Path, brightness: float = 1.14) -> None:
-    """統一調色 pass（house style：臉亮而 punchy）— 傳統曲線，非 AI relight。
+def _grade(png_path: Path, brightness: float = 1.0) -> None:
+    """提亮 pass — gamma 曲線抬中間調（不爆高光、不動膚色平衡；非 AI relight）。
 
-    brightness 可依機位光差個別調（目標：臉亮度量測值 123–130，見設計系統）。"""
-    from PIL import Image, ImageEnhance
+    brightness 1.0 = 不動（house style 基準是攝影機原色）；暗機位微抬
+    （1.1 ≈ gamma 0.87）。線性乘法會剪高光＋膚色發灰 — 2026-07-28 教訓，禁用。"""
+    if brightness == 1.0:
+        return
+    from PIL import Image
 
     im = Image.open(png_path).convert("RGBA")
     rgb = im.convert("RGB")
-    rgb = ImageEnhance.Brightness(rgb).enhance(brightness)
-    rgb = ImageEnhance.Contrast(rgb).enhance(1.07)
-    graded = Image.merge("RGBA", (*rgb.split(), im.split()[3]))
+    gamma = 1.0 / (brightness ** 1.5)
+    lut = [round(255 * (v / 255) ** gamma) for v in range(256)]
+    graded = Image.merge("RGBA", (*rgb.point(lut * 3).split(), im.split()[3]))
     graded.save(png_path)
 
 

@@ -56,9 +56,9 @@
 - 出血:後腦/耳機可出血側緣（guest_x 可到 -13%），五官不可
 - 方向:視線必朝內 — **先驗原始畫面的實際視線再決定要不要 flip**（vision agent
   的視線回報要抽查，2026-07-28 誤報導致整輪翻錯邊）
-- 亮度:暗機位 finalize `--brightness` 調到臉亮度量測 123–130
+- 亮度:基準 = 攝影機原色不動;暗機位 `--brightness` 微抬(gamma 曲線,1.12 上限左右)。**線性乘法禁用**(爆高光+膚色發灰,2026-07-28 教訓);兩人調法必須幾乎一致,色調不一致比暗更醒目
 - 謝伯讓集定案參數:host crop (0.30,0,0.60,0.72) 不翻轉/guest (0.545,0.02,0.82,0.68)
-  brightness 1.38;兩者 height_pct 112,host_x -5,guest_x -13
+  brightness 1.12(gamma);兩者 height_pct 112,host_x -5,guest_x -13
 
 ## Render（deterministic）
 
