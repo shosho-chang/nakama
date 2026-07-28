@@ -16,6 +16,7 @@
     bg_image_data_url    — 背景圖（修修正版：E:\data\podcast thumbnail background.png）；
                            提供時蓋掉純色底並隱藏 vignette（圖已內建）
     person_glow_color    — 人物輪廓 glow 色（預設 #EE8435；空字串 = 關閉）
+    inner_edge_fade_pct  — 人物內側緣漸隱寬(%,預設 9;0 = 關閉)— 蓋掉裁框切身體的硬邊
     caption              — 極簡小字（預設空 = 無字；census 153 張中僅 1 張帶標籤）
     palette              — { bg, accent } 覆寫（bg 僅無背景圖時生效）
 
@@ -56,6 +57,16 @@
       }
       #host  { left: var(--host-x, 0%);  bottom: var(--host-y, 0%);  height: var(--host-h, 108%);  object-position: bottom left; }
       #guest { right: var(--guest-x, 0%); bottom: var(--guest-y, 0%); height: var(--guest-h, 108%); object-position: bottom right; }
+      /* 內側緣 fade — 裁框切到身體的硬邊（肩膀/前臂）在深底上漸隱;
+         mask 在 filter(glow)之後套用,光暈同步淡出(修修 2026-07-28 三修) */
+      #guest.fade-inner {
+        -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade, 9%));
+        mask-image: linear-gradient(to right, transparent 0, #000 var(--fade, 9%));
+      }
+      #host.fade-inner {
+        -webkit-mask-image: linear-gradient(to left, transparent 0, #000 var(--fade, 9%));
+        mask-image: linear-gradient(to left, transparent 0, #000 var(--fade, 9%));
+      }
       /* glow 走「大半徑低強度」— 均勻擴散、無硬邊（修修 2026-07-28 二修） */
       #host.glow, #guest.glow {
         filter: drop-shadow(0 0 36px var(--glow, rgba(238,132,53,0.5)))
@@ -108,6 +119,7 @@
         "host_y_pct":            { "type": "number", "default": 0 },
         "guest_y_pct":           { "type": "number", "default": 0 },
         "person_glow_color":     { "type": "string", "default": "#EE8435" },
+        "inner_edge_fade_pct":   { "type": "number", "default": 9 },
         "caption":               { "type": "string", "default": "" },
         "palette":               { "type": "object", "default": {} }
       }'
@@ -149,6 +161,12 @@
         root.style.setProperty("--glow", `rgba(${r},${g},${b},0.5)`);
         root.style.setProperty("--glow-soft", `rgba(${r},${g},${b},0.3)`);
         for (const id of ["host", "guest"]) document.getElementById(id).classList.add("glow");
+      }
+
+      const fade = vars.inner_edge_fade_pct !== undefined ? vars.inner_edge_fade_pct : 9;
+      if (fade > 0) {
+        root.style.setProperty("--fade", fade + "%");
+        for (const id of ["host", "guest"]) document.getElementById(id).classList.add("fade-inner");
       }
 
       if (vars.bg_image_data_url) {
