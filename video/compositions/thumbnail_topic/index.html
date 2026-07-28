@@ -22,7 +22,9 @@
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body {
         width: 1280px; height: 720px; overflow: hidden; background: #000;
-        font-family: "LINE Seed TW", "Noto Sans TC", "PingFang TC",
+        /* 實裝 TTF family name 帶 _TTF 後綴 — 寫 "LINE Seed TW" 會 fallback 微軟正黑 */
+        font-family: "LINE Seed TW_TTF ExtraBold", "LINE Seed TW_TTF",
+          "LINE Seed TW", "Noto Sans TC", "PingFang TC",
           "Microsoft JhengHei", sans-serif;
       }
       #root {
