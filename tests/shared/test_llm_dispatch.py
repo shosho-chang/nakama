@@ -20,15 +20,15 @@ def _reset_singletons_and_transport(monkeypatch):
     monkeypatch.delenv("NAKAMA_REQUIRE_MAX_PLAN", raising=False)
     import shared.anthropic_client as ac
     import shared.xai_client as xai
-    from shared.llm_context import _local
+    from shared.llm_context import clear_current_agent
 
     ac._client = None
     xai._client = None
-    _local.agent = None  # 清 set_current_agent 殘留，避免 per-agent transport 漏到別測試
+    clear_current_agent()  # 清 set_current_agent 殘留，避免 per-agent transport 漏到別測試
     yield
     ac._client = None
     xai._client = None
-    _local.agent = None
+    clear_current_agent()
 
 
 def _fake_anthropic_msg(text="native-claude"):

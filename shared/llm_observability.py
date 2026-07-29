@@ -13,7 +13,12 @@
 
 from __future__ import annotations
 
-from shared.llm_context import _local
+from shared.llm_context import (
+    get_current_agent,
+    get_current_run_id,
+    get_scope_json,
+    get_usage_buffer,
+)
 from shared.log import get_logger
 
 logger = get_logger("nakama.llm_observability")
@@ -60,12 +65,12 @@ def record_call(
             帶值）。``None`` 表示無實際 cost，cost panel 改用 ``pricing.calc_cost`` 估算。
 
     Side effects:
-        - 若 thread-local ``usage_buffer`` 已啟用（opt-in tracking），append
+        - 若 context ``usage_buffer`` 已啟用（opt-in tracking），append
           一筆紀錄
         - 寫一筆 row 到 ``state.api_calls``（失敗時 debug log，不 raise）
     """
     # 1) Opt-in buffer（給 skill / script 算單次成本用）
-    buf = getattr(_local, "usage_buffer", None)
+    buf = get_usage_buffer()
     if buf is not None:
         buf.append(
             {
@@ -82,12 +87,12 @@ def record_call(
     try:
         from shared.state import record_api_call
 
-        agent = getattr(_local, "agent", "unknown")
-        run_id = getattr(_local, "run_id", None)
+        agent = get_current_agent() or "unknown"
+        run_id = get_current_run_id()
         # ADR-030 follow-up #700: surface per-call audit scope when caller
-        # has populated it via threadlocal context. Mirrors agent/run_id
+        # has populated it via contextvars. Mirrors agent/run_id
         # pattern. None for the typical non-scoped LLM call.
-        scope_json = getattr(_local, "scope_json", None)
+        scope_json = get_scope_json()
         record_api_call(
             agent=agent,
             model=model,

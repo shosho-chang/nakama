@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from typing import Callable, Sequence
 
 from shared.digest_indexer import DIGEST_TYPES, DigestEntry, DigestIndexer
-from shared.llm_context import _local
+from shared.llm_context import get_scope_json, set_scope_json
 
 MAX_DAYS: int = 30
 DEFAULT_DAYS: int = 14
@@ -149,7 +149,7 @@ def ask(
         llm = facade_ask
 
     # ADR-030 follow-up #700: surface the per-call audit scope to api_calls
-    # via threadlocal context. The observability writer reads `_local.scope_json`
+    # via contextvars. The observability writer reads the context `scope_json`
     # and persists it alongside token/cost. Owner can audit "what did the LLM
     # see when it answered this question."
     scope_json = json.dumps(
@@ -166,8 +166,8 @@ def ask(
         },
         ensure_ascii=False,
     )
-    prior_scope = getattr(_local, "scope_json", None)
-    _local.scope_json = scope_json
+    prior_scope = get_scope_json()
+    set_scope_json(scope_json)
     try:
         answer = llm(
             prompt,
@@ -176,7 +176,7 @@ def ask(
             max_tokens=MAX_OUTPUT_TOKENS,
         )
     finally:
-        _local.scope_json = prior_scope
+        set_scope_json(prior_scope)
     return AskResult(
         question=req.question,
         answer=answer.strip(),
