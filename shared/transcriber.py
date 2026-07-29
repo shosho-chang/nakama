@@ -89,10 +89,17 @@ def _remove_punctuation(text: str) -> str:
 # 隻X 修回 只X——前面是量詞語境（一隻/這隻/那隻…）時不動
 _ZHI_FIX = re.compile(r"(?<![一兩三幾這那每兩隻])隻(?=(要|是|能|會|有|好|不過|剩))")
 
+# 同類第二例（2026-07-29 鄭國威那集抓到，全集 32 處）：s2twp 把「腳本」無條件
+# 映射成資訊術語「指令碼」——連輸入本來就是繁體的「腳本」也照轉。本產線處理的是
+# **影音訪談**的 ASR 文字，「腳本」一律是分鏡前的影片腳本（大綱→腳本→分鏡→拍攝），
+# 不是 shell script；且「指令碼」是書面術語，沒有人這樣講話，ASR 不會原生產出它。
+_SCRIPT_FIX = re.compile(r"指令碼")
+
 
 def _to_traditional(text: str) -> str:
     """簡體中文轉繁體中文（OpenCC lazy singleton + 過度轉換修正）。"""
-    return _ZHI_FIX.sub("只", _get_cc().convert(text))
+    converted = _get_cc().convert(text)
+    return _SCRIPT_FIX.sub("腳本", _ZHI_FIX.sub("只", converted))
 
 
 _TW_JIEBA_READY = False
