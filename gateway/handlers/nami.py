@@ -51,6 +51,7 @@ logger = get_logger("nakama.gateway.nami")
 
 NAMI_AGENT_FLOW = "nami_agent"
 TASK_DIR = "TaskNotes/Tasks"
+ARCHIVE_DIR = "TaskNotes/Archive"  # done task 歸檔（shared/task_archiver.py）
 PROJECT_DIR = "Projects"
 
 _MAX_ITERS = 15
@@ -1589,7 +1590,7 @@ class NamiHandler(BaseHandler):
             if not content:
                 continue
             fm = _extract_frontmatter(content)
-            if fm.get("status") in ("to-do", "todo", "in-progress"):
+            if fm.get("status") in ("to-do", "todo", "doing", "in-progress"):
                 tasks.append(
                     {
                         "title": fm.get("title", f.stem),
@@ -1608,7 +1609,7 @@ class NamiHandler(BaseHandler):
             line = f"- {icon} {t['title']}"
             if t["scheduled"]:
                 line += f" ({t['scheduled']})"
-            if t["status"] == "in-progress":
+            if t["status"] in ("doing", "in-progress"):
                 line += " [進行中]"
             lines.append(line)
 
@@ -1712,11 +1713,13 @@ class NamiHandler(BaseHandler):
                 results.append((rel, fm))
         return results
 
-    def _find_task_by_title(self, title: str) -> tuple[str, dict, str] | None:
+    def _find_task_by_title(
+        self, title: str, directory: str = TASK_DIR
+    ) -> tuple[str, dict, str] | None:
         """以 title 搜尋 task 檔案，回傳 (relative_path, frontmatter, body) 或 None。"""
         title_lower = title.lower()
-        for f in list_files(TASK_DIR):
-            rel = f"{TASK_DIR}/{f.name}"
+        for f in list_files(directory):
+            rel = f"{directory}/{f.name}"
             content = read_page(rel)
             if not content:
                 continue
@@ -1918,15 +1921,22 @@ class NamiHandler(BaseHandler):
             slug = _slugify(title)
             task_rel_path = f"{TASK_DIR}/{slug}.md"
             existing = self._find_task_by_title(title)
-            if existing is not None:
+            archived = (
+                None if existing is not None else self._find_task_by_title(title, ARCHIVE_DIR)
+            )
+            if existing is not None or archived is not None:
                 # 分流引導（PR #1122）：撞到已完成的舊 task → 這是新一輪工作，
                 # 引導帶日期的新標題；撞到進行中的 task → 排進既有 plan，
                 # 不准 silent 降級成「只建 calendar」讓 vault 與 calendar 脫鉤。
-                existing_rel, existing_fm, _ = existing
+                # 撞到 Archive/ 內的同名檔（task_archiver 歸檔的都是 done）→
+                # 同樣走已完成分支，避免重建同名檔造成 wikilink 歧義。
+                existing_rel, existing_fm, _ = existing or archived
                 existing_title = existing_fm.get("title", title)
                 existing_slug = Path(existing_rel).stem
-                is_done = str(existing_fm.get("status", "")).lower() == "done" or bool(
-                    existing_fm.get("✅")
+                is_done = (
+                    archived is not None
+                    or str(existing_fm.get("status", "")).lower() == "done"
+                    or bool(existing_fm.get("✅"))
                 )
                 if is_done:
                     today = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d")
