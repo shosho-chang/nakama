@@ -53,14 +53,44 @@ SLOP_PATTERNS = [
 _EMOJI_RE = re.compile("[\U0001f300-\U0001faff\U00002600-\U000027bf\U0001f900-\U0001f9ff⬀-⯿️]")
 
 
+_PROFILE_REL = Path("data") / "brook" / "style-profiles-fable5" / "verify_quotes.py"
+
+
+def _profile_roots() -> list[Path]:
+    """側寫可能在哪。
+
+    `data/*` 是 gitignored，所以 **sibling worktree 沒有這個目錄**——只看
+    `parents[4]` 的話，在 worktree 裡跑 lint 會直接 SystemExit（實際踩到）。
+    正本永遠在主 worktree，用 git 的 common dir 反推它在哪，不寫死路徑。
+    """
+    import subprocess
+
+    here = Path(__file__).resolve()
+    roots = [here.parents[4]]
+    try:
+        common = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cwd=here.parent,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        if common:
+            roots.append(Path(common).parent)  # 主 worktree 根目錄
+    except (OSError, subprocess.CalledProcessError):
+        pass
+    return roots
+
+
 def _load_zeros() -> list[str]:
     """禁用詞黑名單 — 從側寫自己的驗證腳本 import，不重抄。"""
-    root = Path(__file__).resolve().parents[4]
-    vq = root / "data" / "brook" / "style-profiles-fable5" / "verify_quotes.py"
-    if not vq.exists():
+    tried = [r / _PROFILE_REL for r in _profile_roots()]
+    vq = next((p for p in tried if p.exists()), None)
+    if vq is None:
         raise SystemExit(
-            f"找不到風格側寫 {vq}\n"
-            "  social-post skill 依賴 fable5 側寫；側寫不在就不要硬寫（先補側寫）。"
+            "找不到風格側寫 verify_quotes.py，找過：\n  "
+            + "\n  ".join(str(p) for p in tried)
+            + "\n  social-post skill 依賴 fable5 側寫；側寫不在就不要硬寫（先補側寫）。"
         )
     spec = importlib.util.spec_from_file_location("_vq", vq)
     mod = importlib.util.module_from_spec(spec)
