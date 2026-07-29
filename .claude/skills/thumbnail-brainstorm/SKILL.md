@@ -11,7 +11,7 @@ description: >
   本 skill 只呼叫、不重新發明。
 ---
 
-# thumbnail-brainstorm — 封面 brainstorm 手冊
+# thumbnail-brainstorm — 封面 brainstorm 手冊（v2.0）
 
 **版本：v1.1（2026-07-28，封面設計系統 v1 接入 — 對標 Modern Wisdom 普查；
 規格見 `docs/thumbnail-design-system.md`；v1.0 = ADR-054 D8/D9 首落地）**
@@ -117,10 +117,17 @@ python .claude/skills/thumbnail-brainstorm/scripts/guest_cutout.py finalize \
   --role <host|guest> [--crop x0 y0 x1 y1] [--flip]
 ```
 
-- `--crop`：比例框，去麥臂/筆電/衣字；**臉要貼哪個邊，裁框就收到臉那一側的邊**
-  （邊緣錨定原理與經驗值見設計系統「素材管線」節）。
+- `--crop`：比例框。**內側界（朝畫面中央那一側）必須落在自然物件的邊緣，
+  不可切過身體** — 切過肩膀/手臂會在合成後留下一條懸空直線。決定方式：
+  對整張 frame 去背 → 讀 alpha 欄剖面找「身體／麥克風／前景物」的分界 →
+  界線放在麥克風等物件外緣（謝伯讓集：0.545 → **0.49**，肩線問題消失）。
+  **不要目測猜**（2026-07-29 血淚：目測誤判成「怎麼切都會切到身體」）。
+- 頭為主裁框：整顆頭佔 cutout 高 ~50%（兩顆頭等大的前提）；下緣可再裁胸
+  以提高頭佔比（N2 用 0.882 倍高）。
 - `--flip`：視線不朝內時翻轉（實拍像素、非 AI；**衣服有字時禁用**，run log 註記
-  給修修否決權）。
+  給修修否決權）。**先驗原始畫面的實際視線再決定**（vision agent 回報要抽查）。
+- `--brightness`：gamma 微抬到**臉亮度落 123–130** 目標帶（謝伯讓集來賓需 1.20）；
+  線性乘法禁用。`--sharpen`：放大 >1.1× 時補軟化。
 - render 後**必看成品**：cutout 裁切/位置不對就調 crop 重出 — 一次迭代是常態。
 
 ## Step 4 — render 3 張 PNG（設計系統 v1）
@@ -134,11 +141,31 @@ python .claude/skills/thumbnail-brainstorm/scripts/render_still.py \
   --spec <spec.json> --out "<packaging_dir>/pkg-<cut_id>-<n>.png"
 ```
 
-spec 的 variables 見各 composition 檔頭註解（title_lines/highlight_text/
-guest_name/guest_title/…）。大字 = 2–6 字/行 ≤3 行、**恰好一個** highlight 詞、
-句點結尾。render 失敗（ThumbnailRenderError）→ 看保留的 variables JSON 與
-stderr，修完重跑；連續失敗 2 次停下報修修，不降級成無封面。
-（v0 路徑 `--recipe` 保留給舊 compositions，新集勿用。）
+spec 的 variables 見各 composition 檔頭註解。**定案參數表在
+`docs/thumbnail-design-system.md`（N1／N2 各一節，2026-07-29 修修鎖定）**，
+起手直接照抄，只調每集差異項：
+
+- **N1 完整訪談**：兩人 glow + 內緣 fade 9% + 字塊 z4（在人之下 → 字尾塞肩後）、
+  字 Bold 無陰影、橘框 padding 14/14/5、`guest_credit`（頭銜＋姓名）、
+  左下頻道 logo 92px、`text_center_pct` 每包微調
+- **N2 精華長片**：右來賓 75%→頭56% + 左 Envato prop 卡 58%（躲肩後）、零文字、
+  logo `below-card` 82px
+- 大字 = **≤6 字/行 × 2 行**、**恰好一個** highlight 詞
+- render 失敗（ThumbnailRenderError）→ 看 variables JSON 與 stderr 修完重跑；
+  連續失敗 2 次停下報修修，不降級成無封面。
+
+## Step 4.5 — 量測驗收（**不做不交付**）
+
+目測會漏；三項都要跑（腳本邏輯見設計系統對應節）：
+
+| 檢查 | 門檻 | 失敗時調 |
+|---|---|---|
+| 兩人**眼線差** | ≤10px @720p | `guest_height_pct`（放大＝眼線上移；**不要用 y 上移**，底部會露背景）|
+| **字塊遮蔽平衡** | \|左遮−右遮\| ≤600px² | `text_center_pct`（線性內插 2 輪收斂）|
+| 臉高／中心x／頂y／亮度 | 48–52%／14–17%·83–85%／8–12%／89–100 | height／x／brightness |
+
+⚠️ **順序有依賴**：先定眼線（改 height）→ 再校遮蔽平衡（改 text_center）。
+放大來賓後遮蔽平衡必然漂掉，一定要重跑（謝伯讓集實測 +574 → +1985）。
 
 ## Step 5 — 回填 + 驗證 + 雙落點
 
@@ -158,7 +185,7 @@ working set 與 vault 雙寫（ADR-054 D10）。驗證錯誤讀訊息修 specs�
 ## Run log 格式（append 於 `<ep>/run_log.md`）
 
 ```markdown
-## Packaging 封面節 — thumbnail-brainstorm v1.0
+## Packaging 封面節 — thumbnail-brainstorm v2.0
 - L1 rank1「...」T-A8 → JP-7（T-V2 tight face crop）；guest 表情=驚訝
   （frame 0034，淘汰 0021 手擋臉）；大字「大腦會說謊」
 - L1 rank3 無 JP 佐證 → 自配 T-V4（解釋語境、A 級）；理由：...
@@ -172,4 +199,19 @@ E2E 每跑完一集（gate approve 過），可固化的教訓 **append 進本�
 
 ### 教訓紀錄
 
-（v1.0 尚無——第一集跑完後開始累積。）
+**v2.0（2026-07-29，謝伯讓集 gate 前收斂）**
+
+1. **對標的是修修自家 house style**（`E:\data\podcast thumbnail\EP112/114/117`），
+   不是外部頻道；出手前先問「現有的長什麼樣」。
+2. **元素存在 ≠ 位置正確**：自評打分前必須重開圖量測。曾經版式/臉都自評 90 分，
+   修修給 0 分。
+3. **hyperframes 截圖會丟棄 root 元素自身的 background** → 背景必須放子元素
+   （`#bgfill`），否則輸出是 alpha=0 的透明圖（看起來像純黑）。
+4. **實裝字型 family name 帶後綴**：`LINE Seed TW_TTF ExtraBold`／`... Bold`。
+   寫 `LINE Seed TW` 會**靜默** fallback 微軟正黑。
+5. **工具誤差不是保留既有結論的理由**：haar 對眼鏡側臉低估，但它早就顯示兩顆頭
+   不等大 — 當時用「工具不準」搪塞 = 確認偏誤。
+6. **先修結構再碰顏色**：亮度/色偏的抱怨常常根因在裁框與尺寸。
+7. **AI 只做 graphic 與 render，真人一律實拍**（修修原則）；prop 走 Envato，
+   授權檔可用 Claude in Chrome 走修修登入態下載（落點 `E:\`）。
+8. 交付快照同步 `E:\data\AgentOutput\YYYYMMDD-<topic>\`（每輪都要，不是最後才做）。
