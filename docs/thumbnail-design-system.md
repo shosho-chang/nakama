@@ -38,10 +38,16 @@ CW 式空間邏輯：**人在前、卡在後、卡躲進肩膀後面**；零文�
 | prop 卡寬 | `prop_width_pct` **58** | 右緣塞進肩膀後 ~76px = 層次感來源 |
 | 人物 glow | 36px/0.5 ＋ 90px/0.3（`person_glow_color` 預設 `#EE8435`） | 大半徑低強度，均勻無硬邊 |
 | 內側緣漸隱 | `inner_edge_fade_pct` **9** | 蓋掉裁框硬邊；mask 套在 glow 之後 |
-| 頻道 logo | `logo_position: below-card`、`logo_height_px: 82` | 左下暗底（卡自動上移 46%）— **白線 logo 不可壓在 prop 卡上**（淺色卡會糊掉） |
+| 頻道 logo | `logo_position: below-card`、`logo_height_px: 82` | 左下暗底（卡自動上移 46%）— **白線 logo 不可壓在 prop 卡上**（淺色卡會糊掉）。資產見下方 |
 | 背景 | 修修正版背景圖 | `bg_image_data_url` |
 
 **z 序**：背景 0 → prop 卡 4 → 人物 5 → logo 6。
+
+**頻道 logo 資產**（2026-07-29 修修裁決）：用「張修修的不正常人生」的
+`channel_profile_logo_rgb.ai` 轉出的**白線透明底單一臉部圖標**
+`E:\data\podcast thumbnail props\channel_logo_face_white.png`；
+先前「不正常人類研究所」那版（含麥克風＋#＋@ 符號）在縮圖尺寸下過於雜亂，已停用。
+N1 用 92px、N2 用 82px。
 
 ## 硬紀律（工藝底線，rubric 同款）
 
