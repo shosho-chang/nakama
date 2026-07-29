@@ -203,10 +203,24 @@ OpenAI **砍掉**視覺化 no-code builder，官方遷移建議：
 用這條線量 Nakama：
 
 - **Nami 排任務** → Slack 觸發、你不在場也要跑、要寫 vault、要動 Calendar、要 rollback → **超出 Cowork，自建 agent 正確**
-- **Brook 產文章** → 你在場、你委派、你看成果 → **很可能 Cowork 就夠**，而且 Cowork 跑在桌面、正好能讀本機資料夾（Resolve / GPU / `G:\` 素材都在那）
+- **Brook 產文章** → 初步看像是「你在場、你委派、你看成果」，一度以為 Cowork 就夠
 
-> ❓ **未驗證**：Cowork 能不能從 Slack 觸發。查到的資料只說它「接 Slack 這類 app」和「能跑排程」。
-> **建議在動手寫 Brook agent 之前先花半天試 Cowork。**
+### ✅ 已查證：Cowork 不適用（2026-07-29 更新）
+
+原本的假設「Brook 可以走 Cowork，而且 Cowork 跑在桌面正好能讀本機素材」**兩個前提都不成立**：
+
+| 問題 | 查證結果 | 出處 |
+|---|---|---|
+| 能從 Slack 觸發嗎 | **不能。** 官方「Assign tasks from anywhere」列出的觸發面**只有手機與桌面**，全文無 Slack 觸發或 @-mention | [Assign tasks from anywhere](https://support.claude.com/en/articles/13947068-assign-tasks-from-anywhere-in-claude-cowork) |
+| Slack 的角色 | **純連接器** —— 執行中可讀 Slack 資料、可 post 回 channel，但不是入口 | 同上 |
+| 在哪執行 | **遠端**：「Cowork runs your tasks remotely (in beta). Claude's work runs on Anthropic's servers, in an isolated environment.」 | [Get started](https://support.claude.com/en/articles/13345190-get-started-with-claude-cowork) |
+| 排程能讀本機檔案嗎 | **不能。**「Scheduled tasks cannot access local computer folders — they work with your connectors and the files saved to your Claude account.」需要本機檔案的任務只在本機跑，但那就不能排程 | [Schedule recurring tasks](https://support.claude.com/en/articles/13854387-schedule-recurring-tasks-in-claude-cowork) |
+| 排程粒度 | hourly / daily / weekly / weekdays / manually。**沒有 cron**、沒有任意時間 | 同上 |
+| 結果送到哪 | 留在 Cowork 自己的 UI（側邊欄 Scheduled），不主動推送 | 同上 |
+
+**「本機檔案」與「排程」在 Cowork 是互斥的** —— 而修修的重媒體 skill 兩者都要。
+
+**❌ 已否決**：「動手寫 Brook agent 之前先花半天試 Cowork」這條建議取消。**Brook 也走 Agent SDK。**
 
 ---
 
@@ -275,6 +289,55 @@ Anthropic 的 memory tool 只給檔案系統介面；Managed Agents memory store
 
 ---
 
+## 5b. 目標形態：多 bot + 自主排程（修修 2026-07-29 提出）
+
+理想使用情境：**每個 agent 在 Slack 上是獨立 bot，有自己的名字與頭像**；而且 **bot 能自己排 cron job** —— 早上做 brainstorm、agent 之間互相討論。
+
+### Cowork 辦不到（三項硬限制）
+
+| 需求 | Cowork 現實 |
+|---|---|
+| 每個 agent 是獨立 Slack bot，有名字有頭像 | Cowork 是 Anthropic app 裡的「一個 Claude」。無自訂 bot 身分、無頭像、不在 Slack 呈現成多角色 |
+| bot 自己排 cron | 排程由使用者透過 UI 建（`/schedule` 或「Create with Claude」協助）。**agent 沒有程式化建立／修改自己排程的能力** |
+| bot 之間互相討論 | 無多 agent 概念 |
+
+加上入口是 Slack 而 Cowork 不從 Slack 進來 → **確認 Cowork 不適用**。
+
+### Nakama 現況已經是這個形狀
+
+| 要素 | 現況 |
+|---|---|
+| 多 bot 單進程 | `gateway/bot.py`；`conversation_state.py` 註解：「the gateway serves all three bots from one process across Slack-SDK threads」 |
+| handler 分家 | `nami.py` / `sanji.py` / `zoro.py` / `orchestrator.py` |
+| thread 認 bot | 「其他 bot 的 thread，不要搶」 |
+| 晨間排程 | `cron.conf`：Zoro scout 05:00、Robin daily_review 05:15、Robin pubmed 05:30、Franky news 06:30 |
+| agent 互相呼叫 | Nami 的 28 個 tool 裡有 `ask_zoro` |
+
+**所以要做的不是新架構，是「換 harness + 補上自主排程」。** Agent SDK 換的是 harness；Slack gateway、bot 身分、cron 這些保留 —— 這降低了整體風險。
+
+### 自主排程：現況落差與設計
+
+| | 現況 | 目標 |
+|---|---|---|
+| 排程定義 | `cron.conf` 是**靜態文字檔**，要手動 `crontab -e` | agent 執行中自己新增／修改／取消 |
+| 誰能改 | 只有修修 | agent 自己 |
+| 粒度 | 固定 cron 行 | 動態（「明天早上再想一次這題」） |
+
+> `agents/franky/cron_dispatcher.py` **不是**通用排程器 —— 它只做「週日該跑 synthesis 還是 retrospective」的分支判斷。
+
+要做的話大致四塊：
+
+1. **job store** — `state.db` 開一張表（agent / schedule / prompt / 狀態 / 下次執行時間 / 建立者）
+2. **dispatcher** — 一條 cron（例如每分鐘）讀表、到點觸發對應 agent
+3. **`schedule_job` / `cancel_job` tool** — Agent SDK 這邊的 in-process MCP tool
+4. **護欄（非可選）** — 每個 agent 的 job 數上限、最小間隔、單次 `max_budget_usd`、以及**修修可見可撤銷**的清單（Bridge 一頁）
+
+> ⚠️ 第 4 點不能省。**一個能自己排程、又能在排程裡再排程的 agent，是遞迴燒錢的標準形狀。**
+
+**排期：遷移完成後的獨立 slice，不塞進 S0–S5。** 理由同 auto memory —— 本次目標是「換 harness、行為不變」，同時加新能力會讓出問題時分不清是誰造成的。
+
+---
+
 ## 6. 已定決策
 
 | # | 決策 | 理由 |
@@ -286,6 +349,8 @@ Anthropic 的 memory tool 只給檔案系統介面；Managed Agents memory store
 | 5 | **不做雙框架生產系統** | 兩個 agent 做不同的事，差異分不清是框架還是任務造成 —— 得不出結論卻付兩套維護成本 |
 | 6 | **Codex 訂閱額度實驗獨立、暫緩** | 唯一能回答「不燒 API credit」的路徑，但價值在批次工作不在 Nami |
 | 7 | **L3 memory 不動** | Nakama 自己做得比兩家原生方案深 |
+| 8 | **Cowork 不適用，Brook 也走 Agent SDK** | 已查證：不能從 Slack 觸發（觸發面只有手機／桌面）；遠端執行；排程任務不能讀本機檔案 —— 而重媒體 skill 兩者都要 |
+| 9 | **多 bot + 自主排程是目標形態；自主排程排在遷移之後** | Nakama 現況已是多 bot 形狀，換 harness 即可；自主排程是新能力，需要 job store + dispatcher + tool + 護欄，獨立 slice |
 
 ---
 
@@ -308,8 +373,32 @@ Anthropic 的 memory tool 只給檔案系統介面；Managed Agents memory store
 | 跨日日期 bug 修復 | ✅ commit `396d0e1`，PR [#1107](https://github.com/shosho-chang/nakama/pull/1107) 已開，**未 merge** |
 | 遷移計畫（六 slice + 六要素 task prompt） | ✅ `docs/plans/2026-07-29-nami-agent-sdk-migration-plan.md` |
 | 本文件 | ✅ |
-| S0 探針 | ⬜ 未開始 |
+| S0 探針腳本 | ✅ `scripts/spikes/agent_sdk_probe.py`（**已寫、未跑**） |
+| S0 探針執行 | ⬜ 未開始 |
 | Morning brief | ⬜ 未開始（內容待討論；`agents/nami/__main__.py` 仍是 stub、`cron.conf` 07:00 仍註解） |
+| 自主排程 | ⬜ 未開始（遷移後的獨立 slice，見 §5b） |
+
+### 重開機後怎麼接 S0
+
+```bash
+cd E:/nakama-nami-time
+python -m venv .venv-spike
+.venv-spike/Scripts/Activate.ps1          # Windows
+pip install claude-agent-sdk
+# ANTHROPIC_API_KEY 要在環境變數裡（SDK 不讀 .env）
+
+python scripts/spikes/agent_sdk_probe.py q1     # 安全紅線：tools=[] 是否真的移除內建工具
+python scripts/spikes/agent_sdk_probe.py q2a    # 印出 session_id
+# 關掉進程，然後：
+python scripts/spikes/agent_sdk_probe.py q2b <session_id>   # 必須從同一個 cwd 跑
+```
+
+Q3 要在 VPS 上跑（`~/.ssh/config` 有一組 host）。
+
+**兩個已知缺口，開跑前要處理：**
+
+1. **`defer` 決策的 API 形狀沒有查證到**，腳本裡 `_can_use_tool()` 目前先回 `PermissionResultAllow`。跑 q2a 前先讀 [hooks 文件的 "Defer a tool call for later"](https://code.claude.com/docs/en/hooks) 把它補上。在那之前 q2a/q2b 測到的只是「pending 狀態能不能 resume 接回」，不是完整 defer 流程。
+2. **決策 #1（auto memory 開/關）未定**。S0 是探針、不碰生產，所以不擋 S0；但擋 S2。
 
 ### Worktree
 
