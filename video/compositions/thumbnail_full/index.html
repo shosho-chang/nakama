@@ -1,0 +1,267 @@
+<!doctype html>
+<!--
+  N1 完整版訪談卡 — **修修 house style**（樣板：E:\data\podcast thumbnail\EP112/114/117，
+  2026-07-28 修修裁決以自家既有封面為準，不是對標頻道的翻譯）。
+
+  規格（從 EP112/114 逆向）：
+  - 兩張超大臉（頭高 60–80%）貼左右緣、可出血側緣；mic/耳機保留（podcast 識別）
+  - 中央兩行白色 EB 大字；payoff 詞 = **橘底圓角框 + 白字**（不是橘色字）
+  - 左下橘框 EP 號、右下橘框來賓名（白字）
+  - 背景：炭灰 radial（中央亮 → 邊緣暗），非純黑
+
+  Variables:
+    title_lines     — JSON array（通常 2 行）
+    highlight_text  — 要框橘底的子字串（恰好一次）
+    ep_label        — 左下標籤（空 = 隱藏；2026-07-28 起改放頻道 logo,本欄棄用）
+    logo_data_url   — 頻道 logo(白線透明底:E:\data\podcast thumbnail props\channel_logo_white.png)
+    logo_height_px  — logo 高(預設 96px)
+    guest_name      — 右下橘標籤（空 = 隱藏；credit 上線後通常留空）
+    guest_credit    — 大字下方小字（如「臺大心理系教授 謝伯讓」）
+    host_cutout_data_url / guest_cutout_data_url
+    bg_image_data_url — 背景圖（修修正版：E:\data\podcast thumbnail background.png）；
+                        提供時蓋掉 CSS radial gradient
+    host_height_pct / guest_height_pct（預設 118）
+    host_x_pct / guest_x_pct — 貼緣偏移（負值 = 出血；預設 -2）
+    palette         — { bg_center, bg_edge, accent } 覆寫（僅無背景圖時生效）
+-->
+<html lang="zh-Hant" data-resolution="landscape">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1280, height=720" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 1280px; height: 720px; overflow: hidden; background: #000;
+        /* 實裝 TTF 的 family name 帶 _TTF 後綴（LINESeedTW_TTF_0.ttf, weight 800）—
+           寫 "LINE Seed TW" 對不上會整段 fallback 到微軟正黑 */
+        font-family: "LINE Seed TW_TTF ExtraBold", "LINE Seed TW_TTF",
+          "LINE Seed TW", "Noto Sans TC", "PingFang TC",
+          "Microsoft JhengHei", sans-serif;
+      }
+      #root {
+        position: relative; width: 1280px; height: 720px; overflow: hidden;
+      }
+      /* hyperframes 截圖會丟棄 root 自身的 background — 背景必須是子元素 */
+      #bgfill {
+        position: absolute; inset: 0; z-index: 0;
+        background: radial-gradient(ellipse 85% 100% at 50% 42%,
+          var(--bg-center, #4A4A4A) 0%, var(--bg-edge, #222222) 100%);
+      }
+      #bgimg {
+        width: 100%; height: 100%; object-fit: cover; display: none;
+      }
+      /* 人物在字塊之上（z5 > 字 z4）— 字尾塞進肩/髮後方形成分層（N2 同邏輯，
+         2026-07-29 修修裁決沿用）；glow 沿 alpha 輪廓、內側緣漸隱蓋掉裁框硬邊 */
+      #host, #guest {
+        position: absolute; bottom: 0; z-index: 5; object-fit: contain;
+      }
+      #host.glow, #guest.glow {
+        filter: drop-shadow(0 0 36px var(--glow, rgba(238,132,53,0.5)))
+                drop-shadow(0 0 90px var(--glow-soft, rgba(238,132,53,0.3)));
+      }
+      #host.fade-inner {
+        -webkit-mask-image: linear-gradient(to left, transparent 0, #000 var(--fade, 9%));
+        mask-image: linear-gradient(to left, transparent 0, #000 var(--fade, 9%));
+      }
+      #guest.fade-inner {
+        -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade, 9%));
+        mask-image: linear-gradient(to right, transparent 0, #000 var(--fade, 9%));
+      }
+      #host  { left: var(--host-x, -2%);  bottom: var(--host-y, 0%);  height: var(--host-h, 108%);  object-position: bottom left; }
+      #guest { right: var(--guest-x, -2%); bottom: var(--guest-y, 0%); height: var(--guest-h, 108%); object-position: bottom right; }
+
+      /* 字塊 = 大字 + 來賓 credit，整塊置中於 44%（z4，在人物之下 → 分層） */
+      #text-block {
+        position: absolute; left: var(--text-x, 50%); top: 44%;
+        transform: translate(-50%, -50%);
+        z-index: 4; width: 580px; text-align: center;
+      }
+      #title {
+        color: #FFFFFF;
+        /* Bold(700) 而非 ExtraBold — 修修 2026-07-29：原本太粗 */
+        font-family: "LINE Seed TW_TTF Bold", "LINE Seed TW_TTF",
+          "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+        font-weight: 700;
+        font-size: 100px;
+        line-height: 1.24;
+        letter-spacing: 0.005em;
+        white-space: nowrap;   /* 無 text-shadow — 修修 2026-07-29 拿掉 */
+      }
+      /* payoff 詞 = 橘底白字圓角框；上下 padding 對齊左右視覺留白（等距） */
+      #title .hl {
+        display: inline-block;
+        background: var(--accent, #EE8435);
+        border-radius: 14px;
+        /* 上 14 / 下 5 = 視覺四邊等距（字身在 em 框內偏上，下方本就有 9px 空隙）*/
+        padding: 14px 14px 5px;
+        line-height: 1.02;
+        box-decoration-break: clone;
+      }
+      /* 來賓 credit — 大字下方小字（頭銜＋姓名） */
+      #credit {
+        margin-top: 22px;
+        color: rgba(255,255,255,0.94);
+        font-family: "LINE Seed TW_TTF Regular", "LINE Seed TW_TTF",
+          "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+        font-weight: 400;
+        font-size: 38px;
+        letter-spacing: 0.06em;
+        white-space: nowrap;
+      }
+      #credit:empty { display: none; }
+      /* 左下 EP / 右下人名 — 橘底白字標籤 */
+      .corner-tag {
+        position: absolute; bottom: 52px; z-index: 6;
+        background: var(--accent, #EE8435); color: #FFFFFF;
+        font-weight: 800; font-size: 44px; letter-spacing: 0.02em;
+        padding: 8px 26px 12px; border-radius: 14px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.45);
+      }
+      #ep-tag   { left: 130px; }
+      /* 頻道 logo(左下)— 修修 2026-07-28 裁決:取代 EP 號 */
+      #logo {
+        position: absolute; left: 46px; bottom: 38px; z-index: 6;
+        height: var(--logo-h, 96px); width: auto;
+        filter: drop-shadow(0 3px 14px rgba(0,0,0,0.55));
+      }
+      #name-tag { right: 130px; }
+      .corner-tag:empty { display: none; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="thumbnail-full"
+      data-start="0"
+      data-duration="0.5"
+      data-width="1280"
+      data-height="720"
+      data-composition-variables='{
+        "title_lines":           { "type": "object", "default": ["未填", "字卡"] },
+        "highlight_text":        { "type": "string", "default": "" },
+        "ep_label":              { "type": "string", "default": "" },
+        "logo_data_url":         { "type": "string", "default": "" },
+        "logo_height_px":        { "type": "number", "default": 96 },
+        "person_glow_color":     { "type": "string", "default": "#EE8435" },
+        "inner_edge_fade_pct":   { "type": "number", "default": 9 },
+        "guest_name":            { "type": "string", "default": "" },
+        "guest_credit":          { "type": "string", "default": "" },
+        "host_cutout_data_url":  { "type": "string", "default": "" },
+        "guest_cutout_data_url": { "type": "string", "default": "" },
+        "bg_image_data_url":     { "type": "string", "default": "" },
+        "host_height_pct":       { "type": "number", "default": 108 },
+        "guest_height_pct":      { "type": "number", "default": 108 },
+        "host_x_pct":            { "type": "number", "default": -2 },
+        "guest_x_pct":           { "type": "number", "default": -2 },
+        "host_y_pct":            { "type": "number", "default": 0 },
+        "guest_y_pct":           { "type": "number", "default": 0 },
+        "title_max_width":       { "type": "number", "default": 580 },
+        "text_center_pct":       { "type": "number", "default": 50 },
+        "palette":               { "type": "object", "default": {} }
+      }'
+    >
+      <div id="bgfill"><img id="bgimg" alt="" /></div>
+      <img id="host" alt="" />
+      <img id="guest" alt="" />
+      <div id="text-block">
+        <h1 id="title"></h1>
+        <div id="credit"></div>
+      </div>
+      <img id="logo" alt="" />
+      <div id="ep-tag" class="corner-tag"></div>
+      <div id="name-tag" class="corner-tag"></div>
+    </div>
+
+    <script>
+      const vars =
+        (window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+          ? window.__hyperframes.getVariables()
+          : {}) || {};
+
+      const root = document.getElementById("root");
+      const palette = vars.palette || {};
+      for (const [k, cssVar] of [
+        ["bg_center", "--bg-center"], ["bg_edge", "--bg-edge"], ["accent", "--accent"],
+      ]) {
+        if (palette[k]) root.style.setProperty(cssVar, palette[k]);
+      }
+      if (vars.host_height_pct)  root.style.setProperty("--host-h",  vars.host_height_pct + "%");
+      if (vars.guest_height_pct) root.style.setProperty("--guest-h", vars.guest_height_pct + "%");
+      if (vars.host_x_pct !== undefined)  root.style.setProperty("--host-x",  vars.host_x_pct + "%");
+      if (vars.guest_x_pct !== undefined) root.style.setProperty("--guest-x", vars.guest_x_pct + "%");
+      if (vars.host_y_pct !== undefined)  root.style.setProperty("--host-y",  vars.host_y_pct + "%");
+      if (vars.guest_y_pct !== undefined) root.style.setProperty("--guest-y", vars.guest_y_pct + "%");
+      const maxW = vars.title_max_width || 580;
+      document.getElementById("text-block").style.width = maxW + "px";
+      if (vars.text_center_pct !== undefined)
+        root.style.setProperty("--text-x", vars.text_center_pct + "%");
+
+      const glowHex = vars.person_glow_color !== undefined ? vars.person_glow_color : "#EE8435";
+      if (glowHex) {
+        const r = parseInt(glowHex.slice(1, 3), 16),
+              g = parseInt(glowHex.slice(3, 5), 16),
+              b = parseInt(glowHex.slice(5, 7), 16);
+        root.style.setProperty("--glow", `rgba(${r},${g},${b},0.5)`);
+        root.style.setProperty("--glow-soft", `rgba(${r},${g},${b},0.3)`);
+        for (const id of ["host", "guest"]) document.getElementById(id).classList.add("glow");
+      }
+      const fade = vars.inner_edge_fade_pct !== undefined ? vars.inner_edge_fade_pct : 9;
+      if (fade > 0) {
+        root.style.setProperty("--fade", fade + "%");
+        for (const id of ["host", "guest"]) document.getElementById(id).classList.add("fade-inner");
+      }
+
+      for (const [id, key] of [["host","host_cutout_data_url"],["guest","guest_cutout_data_url"]]) {
+        const el = document.getElementById(id);
+        if (vars[key]) el.src = vars[key]; else el.style.display = "none";
+      }
+
+      if (vars.bg_image_data_url) {
+        const bg = document.getElementById("bgimg");
+        bg.src = vars.bg_image_data_url;
+        bg.style.display = "block";
+      }
+
+      // 兩行標題；highlight_text 那段包橘底框（恰好一次）
+      const titleEl = document.getElementById("title");
+      const lines = Array.isArray(vars.title_lines) ? vars.title_lines : ["未填", "字卡"];
+      const hl = vars.highlight_text || "";
+      let hlUsed = false;
+      for (const line of lines) {
+        const div = document.createElement("div");
+        if (hl && !hlUsed && line.includes(hl)) {
+          const i = line.indexOf(hl);
+          div.append(line.slice(0, i));
+          const span = document.createElement("span");
+          span.className = "hl";
+          span.textContent = hl;
+          div.append(span, line.slice(i + hl.length));
+          hlUsed = true;
+        } else {
+          div.textContent = line;
+        }
+        titleEl.append(div);
+      }
+      // 行寬超出即整塊縮字（不換行）
+      requestAnimationFrame(() => {
+        const w = titleEl.scrollWidth;
+        if (w > maxW) titleEl.style.fontSize = Math.floor(100 * maxW / w) + "px";
+      });
+
+      const logoEl = document.getElementById("logo");
+      if (vars.logo_data_url) {
+        logoEl.src = vars.logo_data_url;
+        if (vars.logo_height_px) root.style.setProperty("--logo-h", vars.logo_height_px + "px");
+      } else {
+        logoEl.style.display = "none";
+      }
+      document.getElementById("ep-tag").textContent = vars.ep_label || "";
+      document.getElementById("name-tag").textContent = vars.guest_name || "";
+      document.getElementById("credit").textContent = vars.guest_credit || "";
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["thumbnail-full"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

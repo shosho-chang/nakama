@@ -1,5 +1,7 @@
 # Memory Index
 
+- [feedback_qc_self_adjudication.md](feedback_qc_self_adjudication.md) — **QC/uncertain 清單自己裁決完（重開 WhisperX = 聽音檔、分軌 stem、派 agent 查證），只升級真無法判定的 <5 項**（修修 2026-07-25：「要我拍板的地方實在太多」）
+- [feedback_subscription_first_no_api_spend.md](feedback_subscription_first_no_api_spend.md) — **互動 pipeline 一律 subscription quota（cowork 派 subagent）；付費 API 呼叫必須明確 opt-in flag**（修修 2026-07-25 裁決；首例 run_subtitle_correct --api/--arbitrate）
 - [reference_shoshotw_youtube_channel.md](reference_shoshotw_youtube_channel.md) — **修修頻道 = https://www.youtube.com/@shoshotw，不要再問網址**；兩型內容（創業書 A / 健康 B）節奏差 2.5–3 倍（2026-07-05 前 10 分析，規則已入 ADR-051）
 - [feedback_explain_choices_in_plain_language.md](feedback_explain_choices_in_plain_language.md) — **給修修選項前必先在正文白話展開每個選項的後果**（2026-07-05 push back）：option 卡片只當投票按鈕，論述、類比、失敗成本放正文
 
@@ -237,7 +239,7 @@
 - [project_brook_image_pipeline.md](project_brook_image_pipeline.md) — Brook 圖片生成管線（blog/IG/YT 縮圖）下一輪專題
 - [project_repurpose_flow.md](project_repurpose_flow.md) — 部落格 → IG 知識圖表等平台內容重製，下一階段實作
 - [project_podcast_theme_video_repurpose.md](project_podcast_theme_video_repurpose.md) — **Line 1 補位**：訪談 → LLM 抽亮點 → 自動剪 10-20 min 主題影片 + SEO Title + YT Description + Thumbnail（YouTube 通路）
-- [project_envato_api_reality.md](project_envato_api_reality.md) — Envato Elements 無 API，用 Unsplash/Pexels/Flux 替代方案
+- [project_envato_api_reality.md](project_envato_api_reality.md) — Envato 無 API 但 Claude in Chrome 可全自動搜+授權+下載（2026-07 實測）；下載落瀏覽器預設目錄 E:\
 - [reference_infra_xcloud_vultr.md](reference_infra_xcloud_vultr.md) — VPS 規格 2vCPU/4GB，xCloud on Vultr，Cloudflare R2 備份
 - [project_case_studies_archive.md](project_case_studies_archive.md) — vault `Case Studies/` 目錄收錄對話案例，首份 2026-04-22 WP 整合規劃
 - [project_phase1_infra_checkpoint.md](project_phase1_infra_checkpoint.md) — Phase 1 憑證 setup 進度 checkpoint（compact 保留用）
@@ -349,3 +351,9 @@
 - [project_pubmed_top_journal_blind_spot_2026_05_05.md](project_pubmed_top_journal_blind_spot_2026_05_05.md) — **PR #415 ship**：PubMed RSS sort-by-date 必被高頻刊物霸佔（單 saved search 永遠 0 頂刊）；MDPI/Frontiers blocklist + 頂刊白名單 eutils feed 雙修；blocked PMID 仍 mark_seen
 - [project_session_2026_05_05_late_line2_digest_prd.md](project_session_2026_05_05_late_line2_digest_prd.md) — **收工 2026-05-05 late**：Line 2 digest + hybrid retrieval grill 5 輪凍結 / PRD #430 + S1-S4 (#431-#434) ready；vault 845 pages 8.45x zaferdace 警戒；起手 dispatch #431 sandcastle
 - [project_pr_sync_2026_05_05_late_handoff.md](project_pr_sync_2026_05_05_late_handoff.md) — **PR sync 中斷 handoff 2026-05-05 late**：#425 merged + #410/#418 closed + #397 rebase 解；等 CI green squash #419/#435/#397，再處理 #398/#399 stack rebase，最後 dispatch #431 sandcastle
+- [feedback_title_brainstorm_is_highest_leverage.md](feedback_title_brainstorm_is_highest_leverage.md) — 修修 2026-07-26（同日二修）：**長片**標題槓桿最高，批次化不得砍 panel 迭代／真訊號／淘汰賽；**短片**標題 LLM 直出不跑 panel（Test & Compare 不支援 Shorts）
+- [真人畫面不交給 AI 合成](feedback_no_ai_synthesized_humans.md) — 實拍素材優先，AI 限 graphic/標題 render；升頻灰區先問
+- [成果交付資料夾](reference_agent_output_folder.md) — E:\data\AgentOutput\YYYYMMDD-<topic>\ 快照 + README 指回正式落點
+- [逐字稿維持逐字，不做 LLM 潤飾](project_transcript_prose_verbatim_only.md) — 修修 2026-07-28 否決 A/B 兩版潤飾；「只刪不加」可機械驗證但擋不住刪除造成的語意漂移
+- [subagent 的量測結論要自己驗過再採信](feedback_verify_agent_claims_against_data.md) — 現象通常真、歸因常錯；「我驗證通過」的自我宣告不能當數
+- [框架要攤開讓修修選](feedback_surface_the_frame_not_just_the_draft.md) — 多角度產出不可擅自定框架只讓他改字；出 4–6 個角度菜單（含「犧牲什麼」）讓他在具體選項上選

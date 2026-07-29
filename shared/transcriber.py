@@ -22,7 +22,8 @@ logger = get_logger("nakama.transcriber")
 # 句中標點（中英）→ 替換為空格
 # 注意：英文 `,` 在中英 code-switch 文字裡通常是子句斷點而非英文文法逗號，
 # 一律當斷點處理；如果未來需要保留英文文法 `,`（如「Paul, my friend」）可加 detection。
-_ZH_MID_PUNCTUATION = re.compile(r"[，、；：" "''（）《》【】…—～·,;:]")
+# 《》（書名號）與「」（專有名詞）依修修 2026-07-25 裁決保留，不在清除範圍
+_ZH_MID_PUNCTUATION = re.compile(r"[，、；：" "''（）【】…—～·,;:]")
 # 句尾標點（中英）→ 直接移除
 _ZH_END_PUNCTUATION = re.compile(r"[。！？!?]|(?<=\S)\.(?=\s|$)")
 
@@ -83,9 +84,52 @@ def _remove_punctuation(text: str) -> str:
     return re.sub(r" {2,}", " ", text).strip()
 
 
+# OpenCC s2twp 過度轉換修正（修修 2026-07-26 抓到「就是隻要」）：
+# s2twp 的詞庫把「是只要」誤匹配成「是隻要」等；轉換後把副詞用法的
+# 隻X 修回 只X——前面是量詞語境（一隻/這隻/那隻…）時不動
+_ZHI_FIX = re.compile(r"(?<![一兩三幾這那每兩隻])隻(?=(要|是|能|會|有|好|不過|剩))")
+
+
 def _to_traditional(text: str) -> str:
-    """簡體中文轉繁體中文（使用 OpenCC lazy singleton）。"""
-    return _get_cc().convert(text)
+    """簡體中文轉繁體中文（OpenCC lazy singleton + 過度轉換修正）。"""
+    return _ZHI_FIX.sub("只", _get_cc().convert(text))
+
+
+_TW_JIEBA_READY = False
+
+
+def ensure_tw_jieba() -> None:
+    """給 jieba 掛繁體補充詞庫（所有對繁體文本 jieba.cut 的呼叫點都要先呼叫）。
+
+    jieba 內建詞庫是**簡體**——繁體詞（綁架/覺察…）不在庫裡會被逐字切，
+    下游任何「詞邊界」邏輯（斷行/斷句/細切）就會把詞攔腰砍（2026-07-26
+    「來綁/架我們大腦」案例）。修法：把內建 dict.txt 用 OpenCC s2twp 整批
+    轉繁、cache 到 data/jieba_tw_dict.txt（首次 ~10s，之後秒載），
+    load_userdict 疊加（簡繁同庫）。"""
+    global _TW_JIEBA_READY
+    if _TW_JIEBA_READY:
+        return
+    import jieba
+
+    data_dir = os.environ.get("NAKAMA_DATA_DIR") or (
+        Path(__file__).resolve().parent.parent / "data"
+    )
+    cache = Path(data_dir) / "jieba_tw_dict.txt"
+    if not cache.exists():
+        logger.info("首次生成 jieba 繁體詞庫（OpenCC 整批轉換，~10s）→ %s", cache)
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        with jieba.dt.get_dict_file() as f:
+            lines = f.read().decode("utf-8").splitlines()
+        rows = [ln.split(" ") for ln in lines if ln.strip()]
+        tw_words = _to_traditional("\n".join(r[0] for r in rows)).splitlines()
+        out = [
+            " ".join([tw] + r[1:])
+            for tw, r in zip(tw_words, rows)
+            if tw != r[0]  # 只收簡繁不同的（相同的內建庫已有）
+        ]
+        cache.write_text("\n".join(out), encoding="utf-8")
+    jieba.load_userdict(str(cache))
+    _TW_JIEBA_READY = True
 
 
 def _extract_hotwords(context_files: list[str | Path]) -> list[str]:
@@ -100,6 +144,9 @@ def _extract_hotwords(context_files: list[str | Path]) -> list[str]:
         if not p.exists():
             continue
         text = p.read_text(encoding="utf-8")[:2000]
+        # 去 markdown 標記：hotwords 會進 Whisper initial_prompt，殘留的
+        # ** / _ / ` 會在靜音段被 echo 進字幕（2026-07-25 「升級**吧**」幻覺實例）
+        text = re.sub(r"[*_`#>]", "", text)
 
         # 提取書名號內的詞
         hotwords.extend(re.findall(r"《(.+?)》", text))
@@ -372,6 +419,56 @@ def _apply_arbitration_verdicts(
     return corrections, qc_items
 
 
+def _build_correction_system(host_name: str, show_name: str, context_parts: list[str]) -> str:
+    """組校正用 system prompt（transcribe pipeline 與 subtitle_correct 共用）。"""
+    system = "你是資深繁體中文（台灣）字幕校正專家，專精 Podcast 訪談字幕。\n"
+
+    if host_name or show_name:
+        system += "\n## 節目資訊\n"
+        if show_name:
+            system += f"- 節目名稱：{show_name}\n"
+        if host_name:
+            system += f"- 主持人：{host_name}\n"
+
+    system += (
+        "\n## 任務\n"
+        "校正語音辨識（ASR）產出的逐字稿。每行格式為 [序號] 文字 (拼音)。\n"
+        "拼音是原始文字的讀音，可幫助你判斷 ASR 的同音字錯誤。\n"
+        "\n## 三輪校對思路（在心中依序執行，最終只輸出結果）\n"
+        "1. 機械校正：同音字/近音字替換、繁體用字統一、術語表比對\n"
+        "2. 語意校正：上下文不通順、人名/稱謂前後不一致、英文專有名詞修正\n"
+        "3. 交付檢核：專有名詞全文一致性、確認沒有過度修改\n"
+        "\n## 核心原則\n"
+        "- 不改變原意、不新增內容\n"
+        "- 術語表/參考資料的寫法為最高優先\n"
+        "- 保持口語自然感，不改成書面語\n"
+        "- 不確定的修正必須放入 uncertain 清單，不要硬改\n"
+        "- **書名／作品名必須用《》標出**（例：《升級吧 大腦》；書名內部標點仍省略）；"
+        "**專有名詞／術語用「」標出**（例：「腦腐」「多巴胺」）——這兩種括號幫助讀者閱讀，"
+        "凡辨識得出就要主動補上\n"
+        "- 除上述《》「」外，**輸出不要包含其他標點符號（，。、；：？！等）**；"
+        "語氣停頓用半形空格分隔即可\n"
+        "- **同一行內兩個獨立分句黏在一起時，分界處補半形空格**"
+        "（例：「配套的做法那有幾個配套就是」→「配套的做法 那有幾個配套 就是」）——"
+        "承接詞（那/就是/然後/可是/所以）起新句是典型分界\n"
+        "- **純遲疑語助詞「呃」一律刪除**；行首遲疑的「啊」刪除（句尾語氣的"
+        "「累啊」「好處吧」保留）\n"
+        "\n## 輸出格式（嚴格 JSON，不要加 ```json 標記）\n"
+        "{\n"
+        '  "corrections": {"序號": "校正後文字", ...},\n'
+        '  "uncertain": [\n'
+        '    {"line": 序號, "original": "原文", "suggestion": "建議", '
+        '"reason": "判斷理由", "risk": "high|medium|low"}\n'
+        "  ]\n"
+        "}\n\n"
+        "只輸出 JSON，不要加任何說明。corrections 只包含有修改的行。"
+    )
+
+    if context_parts:
+        system += "\n\n## 參考資料\n" + "\n\n".join(context_parts)
+    return system
+
+
 def _correct_with_llm(
     srt_content: str,
     *,
@@ -432,42 +529,7 @@ def _correct_with_llm(
         context_parts.append(manual_context)
 
     # ── System Prompt ──
-    system = "你是資深繁體中文（台灣）字幕校正專家，專精 Podcast 訪談字幕。\n"
-
-    if host_name or show_name:
-        system += "\n## 節目資訊\n"
-        if show_name:
-            system += f"- 節目名稱：{show_name}\n"
-        if host_name:
-            system += f"- 主持人：{host_name}\n"
-
-    system += (
-        "\n## 任務\n"
-        "校正語音辨識（ASR）產出的逐字稿。每行格式為 [序號] 文字 (拼音)。\n"
-        "拼音是原始文字的讀音，可幫助你判斷 ASR 的同音字錯誤。\n"
-        "\n## 三輪校對思路（在心中依序執行，最終只輸出結果）\n"
-        "1. 機械校正：同音字/近音字替換、繁體用字統一、術語表比對\n"
-        "2. 語意校正：上下文不通順、人名/稱謂前後不一致、英文專有名詞修正\n"
-        "3. 交付檢核：專有名詞全文一致性、確認沒有過度修改\n"
-        "\n## 核心原則\n"
-        "- 不改變原意、不新增內容\n"
-        "- 術語表/參考資料的寫法為最高優先\n"
-        "- 保持口語自然感，不改成書面語\n"
-        "- 不確定的修正必須放入 uncertain 清單，不要硬改\n"
-        "- **輸出文字不要包含任何標點符號（，。、；：？！等）**；語氣停頓用半形空格分隔即可\n"
-        "\n## 輸出格式（嚴格 JSON，不要加 ```json 標記）\n"
-        "{\n"
-        '  "corrections": {"序號": "校正後文字", ...},\n'
-        '  "uncertain": [\n'
-        '    {"line": 序號, "original": "原文", "suggestion": "建議", '
-        '"reason": "判斷理由", "risk": "high|medium|low"}\n'
-        "  ]\n"
-        "}\n\n"
-        "只輸出 JSON，不要加任何說明。corrections 只包含有修改的行。"
-    )
-
-    if context_parts:
-        system += "\n\n## 參考資料\n" + "\n\n".join(context_parts)
+    system = _build_correction_system(host_name, show_name, context_parts)
 
     prompt = f"請校正以下語音辨識逐字稿：\n\n{numbered_text}"
 
@@ -584,6 +646,7 @@ def _force_break(text: str, max_chars: int, hard_max: int | None = None) -> list
     """
     import jieba
 
+    ensure_tw_jieba()
     if hard_max is None:
         hard_max = max_chars + 8
     tokens = list(jieba.cut(text, cut_all=False))

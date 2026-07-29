@@ -1,0 +1,418 @@
+shots_scanned: 195
+events:
+- shot_id: 1
+  kind: photo_inset
+  text: Money錢 慢就是快 張修修＆30歲的男子 財務自由之路 破解！財務自由公式（雜誌封面＋人物照，橘色瀏覽器視窗框）
+  t_start: 0.2
+  t_end: 3.2
+- shot_id: 2
+  kind: keyword_text
+  text: 快樂事業
+  t_start: 4.5
+  t_end: 6.5
+- shot_id: 5
+  kind: photo_inset
+  text: Money錢 慢就是快 張修修＆30歲的男子 財務自由之路 破解！財務自由公式（同片頭雜誌卡，這次滑入右側）
+  t_start: 15.84
+  t_end: 18.84
+- shot_id: 6
+  kind: keyword_text
+  text: 到底要怎麼找到？（跨 shot 6–7 持續顯示）
+  t_start: 19.26
+  t_end: 23.39
+- shot_id: 17
+  kind: title_banner
+  text: 張修修的不正常人生（全螢幕白底手繪風頻道片頭卡，含相機/吉他/健身車塗鴉，隨後白場淡出）
+  t_start: 63.55
+  t_end: 65.56
+- shot_id: 19
+  kind: photo_inset
+  text: 無文字——右側滑入的仿瀏覽器/視窗框影片小卡（頂部橘黃色標題列含三個圓點），內容為一隻啄木鳥在樹幹上啄樹洞的實拍影片；84.41 時視窗縮小淡出中
+  t_start: 82.41
+  t_end: 84.41
+- shot_id: 20
+  kind: keyword_text
+  text: 卡住
+  t_start: 89.74
+  t_end: 90.74
+- shot_id: 41
+  kind: letterbox
+  text: 無文字——畫面縮框並上下加黑邊的 letterbox 效果（電影感縮框）
+  t_start: 146.55
+  t_end: 146.55
+- shot_id: 75
+  kind: keyword_text
+  text: 無效想法三：一切都太遲了，自己年紀不小了，想做什麼改變都來不及了。
+  t_start: 241.23
+  t_end: 246.23
+- shot_id: 79
+  kind: keyword_text
+  text: 安可職涯
+  t_start: 258.12
+  t_end: 259.12
+- shot_id: 81
+  kind: keyword_text
+  text: 3.4段人生
+  t_start: 267.71
+  t_end: 268.71
+- shot_id: 83
+  kind: book_cover
+  text: 1082萬次轉動 張修維——著 帶著電玩哲學的單車冒險 10,820,000 REVOLUTIONS CHINA EUROPE AFRICA（書封
+    inset，橘色瀏覽器視窗框，畫面右側滑入）
+  t_start: 276.02
+  t_end: 279.02
+- shot_id: 90
+  kind: book_cover
+  text: 'Designing Your Life: How to Build a Well-Lived, Joyful Life 做自己的生命設計師 Bill
+    Burnett & Dave Evans（書封 inset，橘色瀏覽器視窗框，畫面右側滑入）'
+  t_start: 289.24
+  t_end: 292.24
+- shot_id: 96
+  kind: photo_inset
+  text: Electronic Arts（藍色 EA logo 圖卡，橘色瀏覽器視窗框，畫面左側滑入）
+  t_start: 318.64
+  t_end: 322.64
+- shot_id: 98
+  kind: keyword_text
+  text: 設計思考
+  t_start: 337.95
+  t_end: 338.95
+- shot_id: 103
+  kind: photo_inset
+  text: THAT'S THE ONE!（企鵝卡通 meme 圖卡，橘色瀏覽器視窗框，畫面左側滑入）
+  t_start: 351.38
+  t_end: 352.38
+- shot_id: 112
+  kind: photo_inset
+  text: SURPRISE!（真人誇張驚喜 meme 圖卡，橘色瀏覽器視窗框，畫面右側滑入）
+  t_start: 381.16
+  t_end: 382.16
+- shot_id: 113
+  kind: letterbox
+  text: 畫面四周黑邊縮框（整個 talking head 畫面縮小置中，上下左右都有黑邊）
+  t_start: 385.21
+  t_end: 387.21
+- shot_id: 125
+  kind: keyword_text
+  text: 失功能信念
+  t_start: 440.97
+  t_end: 444.97
+- shot_id: 126
+  kind: photo_inset
+  text: 左側橘黃色瀏覽器視窗框 inset，內容為金髮幼兒哭鬧影片畫面（無文字）
+  t_start: 445.85
+  t_end: 446.85
+- shot_id: 128
+  kind: keyword_text
+  text: 重擬問題
+  t_start: 454.61
+  t_end: 455.61
+- shot_id: 129
+  kind: list_card
+  text: 1 大學念什麼，就要做什麼 / 2 有「成功」人生就會快樂 / 3 已經來不及開啟理想生活（右側橘色圓角條列卡，滑入時先出現三條橘色空白橫條）
+  t_start: 456.74
+  t_end: 460.74
+- shot_id: 132
+  kind: keyword_text
+  text: 吃 睡 放假出去玩
+  t_start: 480.72
+  t_end: 481.72
+- shot_id: 139
+  kind: photo_inset
+  text: 雙格黃框復古視窗影片 inset：右框為穿灰西裝黑人男子（情境喜劇法庭片段），左框為藍衣婦人端著烤壞的派（右框 508.71 先入，左框 509.71
+    加入）
+  t_start: 508.71
+  t_end: 511.71
+- shot_id: 152
+  kind: photo_inset
+  text: THAT'S NOT TRUE!（黃框視窗 inset，白鬍老先生影片片段附英文字幕）
+  t_start: 559.3
+  t_end: 560.3
+- shot_id: 155
+  kind: book_cover
+  text: 'Designing Your Life: How to Build a Well-Lived, Joyful Life／做自己的生命設計師 Bill
+    Burnett & Dave Evans（黃框視窗式書封 inset，左側）'
+  t_start: 565.52
+  t_end: 567.52
+- shot_id: 157
+  kind: keyword_text
+  text: 弄清楚自己從哪裡出發
+  t_start: 576.4
+  t_end: 578.4
+- shot_id: 157
+  kind: title_banner
+  text: 步驟一：弄清楚並且接受自己的起點（全螢幕橘底章節卡，含頭腦跳出箱子圖示）
+  t_start: 579.4
+  t_end: 581.4
+- shot_id: 157
+  kind: other
+  text: 米白＋淺橘斜向圓角色塊轉場 wipe（無文字）
+  t_start: 582.4
+  t_end: 582.4
+- shot_id: 163
+  kind: book_cover
+  text: 'Designing Your Life: How to Build a Well-Lived, Joyful Life／做自己的生命設計師／Bill
+    Burnett & Dave Evans（書封置於右側橘框瀏覽器視窗樣式卡內）'
+  t_start: 606.72
+  t_end: 611.72
+- shot_id: 164
+  kind: list_card
+  text: 人生儀錶板｜工作／遊戲／愛／健康（深色圓角卡，四條彩色進度條逐條動畫填滿，後段「健康」列被橘色框高亮）
+  t_start: 612.23
+  t_end: 631.23
+- shot_id: 164
+  kind: keyword_text
+  text: 身 心 靈
+  t_start: 633.23
+  t_end: 635.23
+- shot_id: 165
+  kind: photo_inset
+  text: 三張 YouTube 縮圖 inset（瀏覽器視窗框）：「預測壽命最強指標 VO2 MAX 全攻略」／「增肌減脂必看！蛋白質全攻略」／「血糖值 到底吃了甚麼!?」
+  t_start: 639.46
+  t_end: 643.46
+- shot_id: 165
+  kind: keyword_text
+  text: 情緒健康
+  t_start: 645.46
+  t_end: 646.46
+- shot_id: 171
+  kind: list_card
+  text: 人生儀錶板｜工作／遊戲／愛／健康（再次滑入；「健康」條為綠色部分填滿並先高亮，後改高亮「愛」列——其餘條為灰色空條）
+  t_start: 661.9
+  t_end: 668.9
+- shot_id: 171
+  kind: keyword_text
+  text: 付出愛　接受愛
+  t_start: 670.9
+  t_end: 673.9
+- shot_id: 179
+  kind: list_card
+  text: 人生儀錶板／工作／遊戲／愛／健康（深灰圓角面板＋四條進度條；「愛」列先被橘黃框 highlight 並填入紅色條，之後「遊戲」列被 highlight；「健康」為綠色條）
+  t_start: 725.34
+  t_end: 729.34
+- shot_id: 179
+  kind: keyword_text
+  text: 光去做就會感到樂趣的事
+  t_start: 732.34
+  t_end: 734.34
+- shot_id: 189
+  kind: list_card
+  text: 人生儀錶板／工作／遊戲／愛／健康（同款深灰儀錶板面板由小放大滑入；「遊戲」列 highlight 並填入黃色條，接著 highlight 移到「工作」列；愛＝紅條、健康＝綠條）
+  t_start: 770.6
+  t_end: 774.6
+- shot_id: 192
+  kind: photo_inset
+  text: Money錢 雜誌封面截圖（瀏覽器視窗框 inset，左側）：「Money錢 / 慢就是快 張修修＆30歲的男子 財務自由之路」＋漫畫爆炸框「破解！」＋黃字「財務自由公式」
+  t_start: 796.5
+  t_end: 800.5
+- shot_id: 194
+  kind: letterbox
+  text: 上下黑邊 letterbox 縮框效果（整個 shot 194 皆有）
+  t_start: 815.22
+  t_end: 817.22
+- shot_id: 195
+  kind: other
+  text: 深色圓角面板圖表 overlay「人生儀錶板」：四條進度條 工作（藍）／遊戲（黃）／愛（紅）／健康（綠），面板由小放大再縮回
+  t_start: 817.77
+  t_end: 821.77
+- shot_id: 196
+  kind: keyword_text
+  text: 重力問題
+  t_start: 822.23
+  t_end: 823.23
+- shot_id: 200
+  kind: title_banner
+  text: 步驟二：打造人生的羅盤（全屏橘色章節卡，含指南針 icon，斜條紋 wipe 轉場進出）
+  t_start: 854.05
+  t_end: 857.05
+- shot_id: 206
+  kind: letterbox
+  text: 上下黑邊縮框效果（電影感 letterbox，畫面內縮）
+  t_start: 887.84
+  t_end: 889.84
+- shot_id: 208
+  kind: book_cover
+  text: 'Designing Your Life: How to Build a Well-Lived, Joyful Life／做自己的生命設計師／Bill
+    Burnett & Dave Evans（橘色瀏覽器視窗框書封 inset，右側滑入後縮小滑出）'
+  t_start: 896.97
+  t_end: 898.97
+- shot_id: 209
+  kind: keyword_text
+  text: 工作觀　人生觀（白色大字，先出「工作觀」再補「人生觀」）
+  t_start: 900.43
+  t_end: 902.43
+- shot_id: 215
+  kind: keyword_text
+  text: 工作觀　人生觀（同一組白色大字持續顯示）
+  t_start: 925.88
+  t_end: 929.88
+- shot_id: 220
+  kind: keyword_text
+  text: 喜歡做什麼　擅長做什麼（白色大字，先出「喜歡做什麼」再補「擅長做什麼」，延續至 shot221 開頭）
+  t_start: 962.03
+  t_end: 964.29
+- shot_id: 222
+  kind: photo_inset
+  text: Diplomats／Advocate／INFJ-A / INFJ-T／Quiet and mystical, yet very inspiring
+    and tireless idealists.（16personalities 綠色人格卡截圖，橘色瀏覽器視窗框）
+  t_start: 967.79
+  t_end: 969.79
+- shot_id: 223
+  kind: book_cover
+  text: MBTI 我，和我的使用說明書／點閱破百萬、最受歡迎的 MBTI 影音頻道 YouTube「雪力的心理學筆記」首本全面專書！／雪力（橘色瀏覽器視窗框書封
+    inset，左上）
+  t_start: 970.88
+  t_end: 972.88
+- shot_id: 226
+  kind: letterbox
+  text: 上下黑邊縮框效果（電影感 letterbox）
+  t_start: 1002.91
+  t_end: 1003.91
+- shot_id: 227
+  kind: letterbox
+  text: 上下黑邊縮框效果（電影感 letterbox）
+  t_start: 1005.04
+  t_end: 1006.04
+- shot_id: 228
+  kind: photo_inset
+  text: 無文字——美劇《六人行》Chandler 影片片段（西裝男子大笑後趴倒），橘色瀏覽器視窗框 inset，右側，延續至 shot229 開頭縮小消失
+  t_start: 1006.75
+  t_end: 1010.42
+- shot_id: 231
+  kind: photo_inset
+  text: 橘色頂欄視窗框插畫小卡：黑底綠色發光圓形小人群圍繞一支智慧型手機（無文字）
+  t_start: 1017.22
+  t_end: 1023.22
+- shot_id: 234
+  kind: book_cover
+  text: 'Designing Your Life: How to Build a Well-Lived, Joyful Life 做自己的生命設計師 Bill
+    Burnett & Dave Evans'
+  t_start: 1030.86
+  t_end: 1032.86
+- shot_id: 235
+  kind: keyword_text
+  text: 好時光日誌
+  t_start: 1034.57
+  t_end: 1034.57
+- shot_id: 242
+  kind: photo_inset
+  text: 不正常人類研究所 ABNORMAL HUMANS RESEARCH CENTER（橘色頂欄視窗框卡通插畫：戴墨鏡白袍科學家）
+  t_start: 1064.1
+  t_end: 1066.1
+- shot_id: 244
+  kind: letterbox
+  text: 上下黑邊縮框效果（畫面整體縮小加黑色 letterbox）
+  t_start: 1070.77
+  t_end: 1072.77
+- shot_id: 251
+  kind: keyword_text
+  text: 人事時地物
+  t_start: 1101.13
+  t_end: 1104.13
+- shot_id: 252
+  kind: photo_inset
+  text: IT'S COMPLIMENT DAY, SPREAD THE LOVE!（橘框瀏覽器視窗卡通插畫：三個卡通角色，中間一人在筆電前，左上滑入）
+  t_start: 1110.35
+  t_end: 1113.35
+- shot_id: 253
+  kind: title_banner
+  text: 步驟四：發揮想像力，畫下心智圖（全螢幕橘底章節卡，白色大腦插圖，文字逐字打出）
+  t_start: 1121.06
+  t_end: 1124.06
+- shot_id: 254
+  kind: photo_inset
+  text: IMAGINATION（橘框瀏覽器視窗 inset：海綿寶寶雙手畫彩虹迷因圖）
+  t_start: 1128.37
+  t_end: 1130.37
+- shot_id: 256
+  kind: photo_inset
+  text: 無文字——橘框瀏覽器視窗 inset：電影片段（金凱瑞在窗邊書桌對電腦快速打字），右側滑入
+  t_start: 1133.62
+  t_end: 1136.62
+- shot_id: 273
+  kind: title_banner
+  text: 步驟五：奧德賽計畫
+  t_start: 1212.83
+  t_end: 1215.83
+- shot_id: 279
+  kind: keyword_text
+  text: 一條圖示時間軸，和事業無關的個人生活都要放上去。
+  t_start: 1245.52
+  t_end: 1248.52
+- shot_id: 279
+  kind: keyword_text
+  text: 替每一個計畫取名字，增加儀式感。
+  t_start: 1249.52
+  t_end: 1251.52
+- shot_id: 279
+  kind: keyword_text
+  text: 寫下計劃要解決的問題，有什麼疑慮，或者還不確定的地方。
+  t_start: 1252.52
+  t_end: 1255.52
+- shot_id: 279
+  kind: list_card
+  text: 在儀錶板上評估四件事：a. 資源（包括時間、錢、技能、人脈） b. 喜歡程度 c. 自信程度 d. 跟人生觀和工作觀的一致性
+  t_start: 1257.52
+  t_end: 1269.52
+- shot_id: 280
+  kind: other
+  text: One Piece 索隆（Zoro）Q版貼圖抱酒桶，旁白文字「Hi~」，右側滑入
+  t_start: 1270.97
+  t_end: 1272.97
+- shot_id: 281
+  kind: book_cover
+  text: 'Designing Your Life: How to Build a Well-Lived, Joyful Life 做自己的生命設計師 Bill
+    Burnett & Dave Evans'
+  t_start: 1273.31
+  t_end: 1277.31
+- shot_id: 283
+  kind: letterbox
+  text: 上下黑邊縮框效果，無文字
+  t_start: 1305.38
+  t_end: 1306.38
+- shot_id: 286
+  kind: title_banner
+  text: 步驟六：打造原型
+  t_start: 1360.89
+  t_end: 1362.89
+- shot_id: 288
+  kind: photo_inset
+  text: 瀏覽器視窗框 inset：影片縮圖含書封《BIG THINGS GET DONE 超級專案管理》＋兩位人物頭像，字樣「PM, 老闆, 政治人物必看」
+  t_start: 1373.57
+  t_end: 1377.57
+- shot_id: 302
+  kind: title_banner
+  text: 步驟七：組建團隊，持續行動
+  t_start: 1444.1
+  t_end: 1447.1
+- shot_id: 315
+  kind: photo_inset
+  text: 無文字：左側橘框瀏覽器視窗小卡，內為黑白跑者插畫動畫，周圍有桃紅／螢光綠武器（鎬、釘錘）圖形揮動
+  t_start: 1495.11
+  t_end: 1497.11
+- shot_id: 319
+  kind: photo_inset
+  text: 無文字：左側橘框瀏覽器視窗小卡，播放《The Office》三人跳舞慶祝的影片片段
+  t_start: 1508.21
+  t_end: 1511.21
+- shot_id: 320
+  kind: book_cover
+  text: 'Designing Your Life: How to Build a Well-Lived, Joyful Life 做自己的生命設計師 Bill
+    Burnett & Dave Evans'
+  t_start: 1512.21
+  t_end: 1513.21
+- shot_id: 321
+  kind: letterbox
+  text: 無文字：主持人畫面縮框置於黑底左側，右側配橘框視窗小卡播放 Jim Carrey 哭喪臉電影片段
+  t_start: 1514
+  t_end: 1515
+- shot_id: 328
+  kind: keyword_text
+  text: 張修修的自由之路
+  t_start: 1540.57
+  t_end: 1541.57
+- shot_id: 330
+  kind: keyword_text
+  text: shosho.tw/free
+  t_start: 1551.21
+  t_end: 1558.21

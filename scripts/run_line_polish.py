@@ -1,0 +1,392 @@
+"""line-polish：套用斷句掃描的邊界修正（subagent 掃描 → 機械套用）。
+
+修修 2026-07-26：「一個/小時」被拆開，整個字幕到處都有——cue_builder 的
+停頓斷句被 WhisperX 拉長的詞尾時間戳廢掉（gap 恆 0），退化成字數切。
+本 script 吃 subagent 全片掃描產出的邊界移動清單（highlights/line_moves_*.json），
+把相鄰 cue 的邊界移動 ±N 字：**不動任何文字內容**，只移邊界；時間用詞級
+真實時間戳重算。
+
+防護：
+- 移動後兩句皆 ≤22 字且非空
+- 切點不落在《》「」內部
+- 被移動的字的說話者必須與接收句一致（不跨說話者搬字）
+- 任一防護失敗 → 跳過該移動並記錄
+
+用法：
+    python scripts/run_line_polish.py <episode>            # 套用 + 報告
+    python scripts/run_line_polish.py <episode> --dry-run  # 只驗證不寫檔
+"""
+
+from __future__ import annotations
+
+import argparse
+import difflib
+import json
+import logging
+import re
+import shutil
+import sys
+import time
+from pathlib import Path
+
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+logger = logging.getLogger("line_polish")
+
+SRT_NAME = "transcript.srt"
+MOVES_GLOB = "highlights/line_moves_*.json"
+BACKUP_NAME = "subs/transcript_pre_line_polish.srt"
+HARD_MAX = 22
+_TS = re.compile(r"(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})")
+_OPEN, _CLOSE = "《「", "》」"
+
+
+def _parse_srt(text: str) -> list[list]:
+    cues = []
+    for block in re.split(r"\n\s*\n", text.strip()):
+        lines = [x for x in block.splitlines() if x.strip()]
+        if len(lines) < 2:
+            continue
+        m = _TS.search(lines[1])
+        if not m:
+            continue
+        g = [int(x) for x in m.groups()]
+        cues.append(
+            [
+                g[0] * 3600 + g[1] * 60 + g[2] + g[3] / 1000,
+                g[4] * 3600 + g[5] * 60 + g[6] + g[7] / 1000,
+                "\n".join(lines[2:]),
+            ]
+        )
+    return cues
+
+
+def _ts(seconds: float) -> str:
+    ms = int(round(seconds * 1000))
+    h, rem = divmod(ms, 3600000)
+    m, rem = divmod(rem, 60000)
+    s, ms = divmod(rem, 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def _join_words(ws: list[dict]) -> str:
+    parts: list[str] = []
+    for w in ws:
+        text = w["word"]
+        if parts and (text[0].isascii() or parts[-1][-1].isascii()):
+            prev = parts[-1]
+            if not (len(prev) == 1 and prev.isascii() and len(text) == 1 and text.isascii()):
+                parts.append(" ")
+        parts.append(text)
+    return "".join(parts)
+
+
+def _map_to_raw(corrected: str, raw: str, pos: int) -> int:
+    """校正後文字的 char 位置 → raw 詞串接文字的對應位置。"""
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, corrected, raw).get_opcodes():
+        if pos < i2 or (pos == i2 and tag == "equal"):
+            if tag == "equal":
+                return j1 + (pos - i1)
+            return j1 if pos <= (i1 + i2) // 2 else j2
+    return len(raw)
+
+
+def _inside_brackets(text: str, pos: int) -> bool:
+    depth = 0
+    for i, ch in enumerate(text[:pos]):
+        if ch in _OPEN:
+            depth += 1
+        elif ch in _CLOSE:
+            depth = max(0, depth - 1)
+    return depth > 0
+
+
+def polish(episode_dir: Path, *, dry_run: bool = False) -> dict:
+    from shared.speaker_assign import assign_word_speakers, detect_mic_tracks, load_envelopes
+
+    srt_path = episode_dir / SRT_NAME
+    cues = _parse_srt(srt_path.read_text(encoding="utf-8"))
+    moves: list[dict] = []
+    ops: list[dict] = []
+    for f in sorted(episode_dir.glob(MOVES_GLOB)):
+        d = json.loads(f.read_text(encoding="utf-8"))
+        moves.extend(d.get("moves", []))
+        ops.extend(d.get("ops", []))
+    moves.sort(key=lambda m: m["after_cue"])
+    if not moves and not ops:
+        return {"status": "no-moves"}
+
+    meta = json.loads((episode_dir / "subs/words.json").read_text(encoding="utf-8"))
+    words = meta["words"]
+    mics = detect_mic_tracks(episode_dir / "Audio") if (episode_dir / "Audio").is_dir() else []
+    speakers: list = [None] * len(words)
+    if len(mics) >= 2:
+        reference = episode_dir / "normalized.wav"
+        speakers = assign_word_speakers(
+            words, load_envelopes(mics, reference=reference if reference.exists() else None)
+        )
+
+    applied = 0
+    skipped: list[str] = []
+    for mv in moves:
+        i = mv["after_cue"] - 1
+        if not (0 <= i < len(cues) - 1):
+            skipped.append(f"{mv['after_cue']}: cue 序號越界")
+            continue
+        a, b = cues[i], cues[i + 1]
+        merged = a[2] + b[2]
+        pos = len(a[2]) + int(mv["delta"])
+        if not (0 < pos < len(merged)):
+            skipped.append(f"{mv['after_cue']}: 移動後有一側為空")
+            continue
+        left, right = merged[:pos], merged[pos:]
+        if len(left) > HARD_MAX or len(right) > HARD_MAX:
+            skipped.append(f"{mv['after_cue']}: 移動後超過 {HARD_MAX} 字")
+            continue
+        if _inside_brackets(merged, pos):
+            skipped.append(f"{mv['after_cue']}: 切點落在括號內")
+            continue
+
+        # 詞級時間重算：pair 時間範圍內的詞 → 邊界 char → 邊界詞
+        idx = [
+            k for k, w in enumerate(words) if w["start"] >= a[0] - 0.05 and w["end"] <= b[1] + 0.05
+        ]
+        if len(idx) < 2:
+            skipped.append(f"{mv['after_cue']}: 找不到對應詞")
+            continue
+        raw = _join_words([words[k] for k in idx])
+        raw_pos = _map_to_raw(merged, raw, pos)
+        char_of_word: list[int] = []
+        p = 0
+        for j, k in enumerate(idx):
+            if j > 0:
+                probe = _join_words([words[kk] for kk in idx[: j + 1]])
+                p = len(probe) - len(words[k]["word"])
+            char_of_word.append(p)
+        bword = next((j for j in range(len(idx)) if char_of_word[j] >= raw_pos), len(idx) - 1)
+        if bword == 0:
+            skipped.append(f"{mv['after_cue']}: 邊界詞回捲到句首")
+            continue
+
+        # 說話者防護：被移動的詞須與接收句的多數說話者一致
+        delta = int(mv["delta"])
+        if delta > 0:  # B 頭幾個詞搬給 A
+            moved = [speakers[idx[j]] for j in range(len(idx)) if char_of_word[j] >= len(a[2]) - 1]
+            moved = moved[: abs(delta)]
+            host = [speakers[k] for k in idx if words[k]["end"] <= a[1] + 0.05]
+        else:  # A 尾幾個詞搬給 B
+            moved = [speakers[idx[j]] for j in range(len(idx)) if char_of_word[j] >= raw_pos]
+            moved = moved[: abs(delta)]
+            host = [speakers[k] for k in idx if words[k]["start"] >= b[0] - 0.05]
+        moved_spk = {s for s in moved if s is not None}
+        host_spk = {s for s in host if s is not None}
+        if moved_spk and host_spk and not (moved_spk & host_spk):
+            skipped.append(f"{mv['after_cue']}: 跨說話者搬字，拒絕")
+            continue
+
+        new_a_end = words[idx[bword - 1]]["end"]
+        new_b_start = words[idx[bword]]["start"]
+        cues[i] = [a[0], new_a_end, left]
+        cues[i + 1] = [new_b_start, b[1], right]
+        applied += 1
+
+    # --- ops：split（附和語/混切 cue 切成兩個）與 merge（孤兒 cue 併回）---
+    # 用「文字」定位而非序號——moves 套用後序號已飄移，文字才是穩定 anchor
+    ops_applied = 0
+    for op in ops:
+        if "split_text" in op:
+            hits = [
+                k
+                for k, c in enumerate(cues)
+                if c[2] == op["split_text"]
+                and ("near_sec" not in op or abs(c[0] - op["near_sec"]) < 3.0)
+            ]
+            if len(hits) != 1:
+                skipped.append(f"split「{op['split_text'][:12]}…」: 命中 {len(hits)} 個 cue")
+                continue
+            k = hits[0]
+            s0, e0, text = cues[k]
+            at = text.find(op["at"])
+            if at <= 0:
+                skipped.append(f"split「{op['split_text'][:12]}…」: 找不到切點「{op['at']}」")
+                continue
+            idx = [
+                j for j, w in enumerate(words) if w["start"] >= s0 - 0.05 and w["end"] <= e0 + 0.05
+            ]
+            if len(idx) < 2:
+                skipped.append(f"split「{op['split_text'][:12]}…」: 找不到對應詞")
+                continue
+            raw = _join_words([words[j] for j in idx])
+            raw_pos = _map_to_raw(text, raw, at)
+            char_of_word = []
+            p = 0
+            for j, kk in enumerate(idx):
+                if j > 0:
+                    probe = _join_words([words[jj] for jj in idx[: j + 1]])
+                    p = len(probe) - len(words[kk]["word"])
+                char_of_word.append(p)
+            bword = next((j for j in range(len(idx)) if char_of_word[j] >= raw_pos), None)
+            if not bword:
+                skipped.append(f"split「{op['split_text'][:12]}…」: 切點詞回捲")
+                continue
+            cues[k] = [s0, words[idx[bword - 1]]["end"], text[:at]]
+            cues.insert(k + 1, [words[idx[bword]]["start"], e0, text[at:]])
+            ops_applied += 1
+        elif "merge_text" in op:
+            hits = [
+                k
+                for k, c in enumerate(cues)
+                if c[2] == op["merge_text"]
+                and ("near_sec" not in op or abs(c[0] - op["near_sec"]) < 3.0)
+            ]
+            if len(hits) != 1:
+                skipped.append(f"merge「{op['merge_text'][:12]}…」: 命中 {len(hits)} 個 cue")
+                continue
+            k = hits[0]
+            into = op.get("into", "prev")
+            t = k - 1 if into == "prev" else k + 1
+            if not (0 <= t < len(cues)):
+                skipped.append(f"merge「{op['merge_text'][:12]}…」: 相鄰 cue 不存在")
+                continue
+            merged_text = cues[t][2] + cues[k][2] if into == "prev" else cues[k][2] + cues[t][2]
+            if len(merged_text) > HARD_MAX:
+                skipped.append(f"merge「{op['merge_text'][:12]}…」: 併後超過 {HARD_MAX} 字")
+                continue
+            lo, hi = (t, k) if into == "prev" else (k, t)
+            cues[lo] = [cues[lo][0], cues[hi][1], merged_text]
+            cues.pop(hi)
+            ops_applied += 1
+        elif "space_text" in op:
+            # 忽略空格比對：同 cue 多個分界時，前一個空格套用後原文已變
+            want = op["space_text"].replace(" ", "")
+            hits = [
+                k
+                for k, c in enumerate(cues)
+                if c[2].replace(" ", "") == want
+                and ("near_sec" not in op or abs(c[0] - op["near_sec"]) < 3.0)
+            ]
+            if len(hits) != 1:
+                skipped.append(f"space「{op['space_text'][:12]}…」: 命中 {len(hits)} 個 cue")
+                continue
+            k = hits[0]
+            text = cues[k][2]
+            at = text.find(op["before"])
+            if at <= 0 or text[at - 1] == " ":
+                skipped.append(f"space「{op['space_text'][:12]}…」: 切點無效或已有空格")
+                continue
+            cues[k][2] = text[:at] + " " + text[at:]
+            ops_applied += 1
+        else:
+            skipped.append(f"未知 op: {list(op.keys())}")
+
+    if not dry_run and (applied or ops_applied):
+        shutil.copy2(srt_path, episode_dir / BACKUP_NAME)
+        lines = [
+            f"{seq}\n{_ts(s)} --> {_ts(e)}\n{t}\n" for seq, (s, e, t) in enumerate(cues, start=1)
+        ]
+        srt_path.write_text("\n".join(lines), encoding="utf-8")
+    return {
+        "status": "dry-run" if dry_run else "polished",
+        "moves_total": len(moves),
+        "applied": applied,
+        "ops_applied": ops_applied,
+        "skipped": skipped,
+    }
+
+
+def house_style(episode_dir: Path, *, dry_run: bool = False) -> dict:
+    """機械 house-style 淨化（修修 2026-07-26）：
+
+    1. 遲疑語助詞：「呃」全刪；cue 開頭的「啊」刪（句尾語氣詞「累啊」保留）
+    2. cue 內停頓 ≥ 0.3s → 半形空格（分句可視化；詞級時間戳實測，非猜測）
+
+    冪等；純機械零 LLM。未來集數由 cue_builder 在生成時就做，本模式供存量修復。
+    """
+    from shared.cue_builder import PAUSE_SPACE, est_gap
+
+    srt_path = episode_dir / SRT_NAME
+    cues = _parse_srt(srt_path.read_text(encoding="utf-8"))
+    words = json.loads((episode_dir / "subs/words.json").read_text(encoding="utf-8"))["words"]
+
+    fillers = 0
+    spaces = 0
+    dropped = 0
+    out = []
+    for s0, e0, text in cues:
+        new = text
+        n0 = len(new)
+        new = new.replace("呃", "")
+        if new.startswith("啊") and len(new) > 2:
+            new = new[1:]
+        fillers += n0 - len(new)
+        new = new.strip()
+        if not new:
+            dropped += 1
+            continue
+
+        toks = [
+            (w["word"], float(w["start"]), float(w["end"]))
+            for w in words
+            if w["start"] >= s0 - 0.05 and w["end"] <= e0 + 0.05 and (w["word"] or "").strip()
+        ]
+        raw = _join_words([{"word": t[0]} for t in toks])
+        inserts = []
+        pos = 0
+        for j in range(1, len(toks)):
+            probe = _join_words([{"word": t[0]} for t in toks[: j + 1]])
+            pos = len(probe) - len(toks[j][0])
+            if est_gap(toks[j - 1], toks[j]) >= PAUSE_SPACE:
+                tpos = _map_to_raw(raw, new, pos)
+                ok_l = 0 < tpos < len(new) and new[tpos - 1] not in " 《「"
+                if ok_l and new[tpos] not in " 》」":
+                    inserts.append(tpos)
+        for tpos in sorted(set(inserts), reverse=True):
+            new = new[:tpos] + " " + new[tpos:]
+            spaces += 1
+        out.append([s0, e0, new])
+
+    if not dry_run:
+        shutil.copy2(srt_path, episode_dir / BACKUP_NAME)
+        lines = [
+            f"{seq}\n{_ts(a)} --> {_ts(b)}\n{t}\n" for seq, (a, b, t) in enumerate(out, start=1)
+        ]
+        srt_path.write_text("\n".join(lines), encoding="utf-8")
+    return {
+        "status": "dry-run" if dry_run else "house-styled",
+        "fillers_removed": fillers,
+        "pause_spaces_added": spaces,
+        "cues_dropped": dropped,
+        "cues": len(out),
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    parser = argparse.ArgumentParser(description="斷句邊界修正套用")
+    parser.add_argument("episode", help="episode 資料夾")
+    parser.add_argument(
+        "--house-style",
+        action="store_true",
+        help="機械淨化：刪遲疑語助詞（呃/句首啊）+ cue 內停頓插半形空格（存量修復）",
+    )
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args(argv)
+    episode_dir = Path(args.episode)
+    if not episode_dir.is_dir():
+        logger.error(f"episode 資料夾不存在: {episode_dir}")
+        return 1
+    started = time.time()
+    if args.house_style:
+        result = house_style(episode_dir, dry_run=args.dry_run)
+    else:
+        result = polish(episode_dir, dry_run=args.dry_run)
+    result["elapsed_sec"] = round(time.time() - started, 1)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

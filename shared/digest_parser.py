@@ -114,8 +114,15 @@ _SCORE_LINE_RE = re.compile(
 _PUBMED_VERDICT_RE = re.compile(r"^- \*\*Verdict\*\*:\s*(.+?)\s*$", re.MULTILINE)
 _PUBMED_WHY_RE = re.compile(r"^- \*\*Why\*\*:\s*(.+?)\s*$", re.MULTILINE)
 _PUBMED_FULLTEXT_RE = re.compile(r"^- \*\*全文\*\*:\s*(.+?)\s*$", re.MULTILINE)
-# → [[pubmed-XXX]] · [PubMed](url)
+# Reference line. ADR-042 dropped the local Source-page wikilink; entries now
+# end with just `- **→** [PubMed](https://pubmed.ncbi.nlm.nih.gov/<id>/)`. Parse
+# that (PMID from the URL), and keep a fallback for the pre-ADR-042 layout
+# `[[pubmed-<id>]] · [PubMed](url)` so archived digests still resolve.
 _PUBMED_REF_RE = re.compile(
+    r"^- \*\*→\*\*\s+\[PubMed\]\((https?://pubmed\.ncbi\.nlm\.nih\.gov/(\d+)/?)\)\s*$",
+    re.MULTILINE,
+)
+_PUBMED_REF_LEGACY_RE = re.compile(
     r"^- \*\*→\*\*\s+\[\[(pubmed-(\d+))\]\][^[]*\[PubMed\]\(([^)]+)\)\s*$",
     re.MULTILINE,
 )
@@ -255,9 +262,15 @@ def parse_pubmed_digest(body: str) -> list[DigestStudy]:
         kb_wikilink = external_url = external_id = None
         rm = _PUBMED_REF_RE.search(entry_body)
         if rm:
-            kb_wikilink = rm.group(1)
+            # ADR-042 format: PMID lives in the PubMed URL, no local wikilink.
+            external_url = rm.group(1)
             external_id = rm.group(2)
-            external_url = rm.group(3)
+        else:
+            lm = _PUBMED_REF_LEGACY_RE.search(entry_body)
+            if lm:
+                kb_wikilink = lm.group(1)
+                external_id = lm.group(2)
+                external_url = lm.group(3)
 
         studies.append(
             DigestStudy(
@@ -371,13 +384,18 @@ def parse_ai_digest(body: str) -> list[DigestStudy]:
 
 # Human-readable labels for the score dimensions — for hover tooltips on
 # the per-entry score chip. Source: Robin/Franky scoring rubric docs.
+# Source of truth for the dimension set + meanings: the scoring rubric in
+# ``prompts/robin/pubmed_digest/score.md`` (the "六維度評分" section). The
+# breakdown code `R/I/C/A/F/N` maps to rigor/impact/clinical_relevance/
+# actionability/red_flags/novelty — NOT the old clarity/audience/freshness
+# labels, which never matched what Robin actually scored.
 PUBMED_DIM_LABELS: dict[str, str] = {
     "R": "Rigor 嚴謹度",
     "I": "Impact 影響力",
-    "C": "Clarity 清晰度",
-    "A": "Audience-fit 對讀者相關度",
-    "F": "Freshness 新穎度",
-    "N": "Novelty 原創性",
+    "C": "Clinical Relevance 臨床關聯",
+    "A": "Actionability 實用性",
+    "F": "Red Flags 警訊（反向：5=無警訊）",
+    "N": "Novelty 新穎度",
 }
 AI_DIM_LABELS: dict[str, str] = {
     "S": "Signal 訊號強度",

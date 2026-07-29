@@ -1,0 +1,378 @@
+"""shared/subtitle_correct.py 測試（零外呼：LLM 走 monkeypatch）。"""
+
+from __future__ import annotations
+
+import json
+
+from scripts.run_subtitle_correct import find_script_file
+from shared.subtitle_correct import (
+    build_correction_report,
+    correct_srt_llm,
+    correct_srt_scripted,
+    load_refs_text,
+)
+
+
+def _srt(cues: list[str]) -> str:
+    blocks = []
+    for i, text in enumerate(cues, start=1):
+        start = f"00:00:{(i - 1) * 2:02d},000"
+        end = f"00:00:{i * 2:02d},000"
+        blocks.append(f"{i}\n{start} --> {end}\n{text}\n")
+    return "\n".join(blocks)
+
+
+# ── scripted 模式 ──
+
+
+def test_scripted_fixes_homophone_from_script():
+    srt = _srt(["我們今天請到謝柏讓老師", "來談大腦簡史這本書"])
+    script = "我們今天請到謝伯讓老師，來談《大腦簡史》這本書。"
+    corrected, flagged, stats = correct_srt_scripted(srt, script)
+    assert "謝伯讓" in corrected
+    assert "謝柏讓" not in corrected
+    assert flagged == []
+    assert stats["mode"] == "scripted"
+    assert stats["coverage"] > 0.9
+
+
+def test_scripted_keeps_timestamps_and_cue_count():
+    srt = _srt(["我們今天請到謝柏讓老師", "來談大腦簡史這本書"])
+    script = "我們今天請到謝伯讓老師，來談《大腦簡史》這本書。"
+    corrected, _, _ = correct_srt_scripted(srt, script)
+    assert corrected.count("-->") == 2
+    assert "00:00:00,000 --> 00:00:02,000" in corrected
+    assert "00:00:02,000 --> 00:00:04,000" in corrected
+
+
+def test_scripted_flags_off_script_cue():
+    # 第二個 cue 完全不在稿上（臨場發揮）→ 保留原文 + 進 flagged
+    srt = _srt(["我們今天請到謝伯讓老師", "廠商贊助時間感謝收聽"])
+    script = "我們今天請到謝伯讓老師。"
+    corrected, flagged, stats = correct_srt_scripted(srt, script)
+    assert "廠商贊助時間感謝收聽" in corrected
+    assert len(flagged) == 1
+    assert flagged[0]["line"] == 2
+    assert stats["flagged"] == 1
+
+
+def test_scripted_punctuation_becomes_space():
+    srt = _srt(["今天天氣很好我們出發"])
+    script = "今天天氣很好，我們出發。"
+    corrected, _, _ = correct_srt_scripted(srt, script)
+    assert "，" not in corrected
+    assert "。" not in corrected
+
+
+def test_scripted_empty_srt():
+    corrected, flagged, stats = correct_srt_scripted("", "隨便的稿")
+    assert corrected == ""
+    assert stats["cues"] == 0
+
+
+# ── llm 模式 ──
+
+
+def _fake_ask_factory(responses: list[str], calls: list[dict]):
+    def fake_ask(prompt, *, system=None, model=None, max_tokens=None, **kw):
+        calls.append({"prompt": prompt, "system": system})
+        return responses[len(calls) - 1]
+
+    return fake_ask
+
+
+def test_llm_chunked_merge(monkeypatch):
+    srt = _srt(["第一句話", "第二句話", "第三句話"])
+    unc3 = {"line": 3, "original": "第三句話", "suggestion": "x", "reason": "r", "risk": "low"}
+    responses = [
+        json.dumps({"corrections": {"1": "第一句話改"}, "uncertain": []}),
+        json.dumps({"corrections": {"3": "第三句話改"}, "uncertain": [unc3]}),
+    ]
+    calls: list[dict] = []
+    monkeypatch.setattr("shared.llm.ask", _fake_ask_factory(responses, calls))
+
+    corrected, qc, stats = correct_srt_llm(srt, chunk_size=2, use_arbitration=False)
+    assert len(calls) == 2
+    assert "第一句話改" in corrected
+    assert "第三句話改" in corrected
+    assert "第二句話" in corrected
+    assert stats["chunks"] == 2
+    assert stats["corrections"] == 2
+    assert len(qc) == 1
+
+
+def test_llm_filters_out_of_chunk_seq(monkeypatch):
+    # LLM 幻覺回了不在本 chunk 的序號 → 丟棄
+    srt = _srt(["第一句話", "第二句話"])
+    unc42 = {"line": 42, "original": "?", "suggestion": "?", "reason": "?", "risk": "low"}
+    responses = [
+        json.dumps({"corrections": {"1": "改一", "99": "亂改"}, "uncertain": [unc42]}),
+    ]
+    calls: list[dict] = []
+    monkeypatch.setattr("shared.llm.ask", _fake_ask_factory(responses, calls))
+
+    corrected, qc, stats = correct_srt_llm(srt, chunk_size=10, use_arbitration=False)
+    assert "改一" in corrected
+    assert "亂改" not in corrected
+    assert qc == []
+    assert stats["corrections"] == 1
+
+
+def test_llm_over_deletion_guard(monkeypatch):
+    # 修正把 13 字縮成 3 字 → 撤下修正、轉 uncertain（無音檔 → 直接進 QC）
+    srt = _srt(["就是那個常常看到你去上鳳鑫節", "第二句話正常改"])
+    responses = [
+        json.dumps({"corrections": {"1": "鳳馨姊", "2": "第二句話正常修"}, "uncertain": []}),
+    ]
+    calls: list[dict] = []
+    monkeypatch.setattr("shared.llm.ask", _fake_ask_factory(responses, calls))
+
+    corrected, qc, stats = correct_srt_llm(srt, use_arbitration=False)
+    assert "就是那個常常看到你去上鳳鑫節" in corrected  # 原文保留
+    assert "第二句話正常修" in corrected  # 正常修正照套
+    assert stats["over_deletion_guard"] == 1
+    assert len(qc) == 1
+    assert qc[0]["line"] == 1
+    assert qc[0]["suggestion"] == "鳳馨姊"
+    assert "過度刪減" in qc[0]["reason"]
+
+
+def test_llm_pass2_strips_reintroduced_punctuation(monkeypatch):
+    # PR #23 教訓迴歸：Opus 無視「無標點」指令加回標點/吐簡體 → Pass 2 機械過濾
+    srt = _srt(["大腦簡史這本書"])
+    responses = [json.dumps({"corrections": {"1": "大腦简史，這本書。"}, "uncertain": []})]
+    calls: list[dict] = []
+    monkeypatch.setattr("shared.llm.ask", _fake_ask_factory(responses, calls))
+
+    corrected, _, _ = correct_srt_llm(srt, use_arbitration=False)
+    assert "，" not in corrected and "。" not in corrected
+    assert "简" not in corrected  # 簡體轉回繁體
+    assert "大腦簡史" in corrected
+
+
+def test_llm_arbitrated_false_when_arbitration_fails(monkeypatch, tmp_path):
+    srt = _srt(["第一句話"])
+    unc = {"line": 1, "original": "第一句話", "suggestion": "x", "reason": "r", "risk": "low"}
+    responses = [json.dumps({"corrections": {}, "uncertain": [unc]})]
+    calls: list[dict] = []
+    monkeypatch.setattr("shared.llm.ask", _fake_ask_factory(responses, calls))
+
+    def boom(*a, **kw):
+        raise RuntimeError("gemini down")
+
+    monkeypatch.setattr("shared.multimodal_arbiter.arbitrate_uncertain", boom)
+    fake_audio = tmp_path / "a.wav"
+    fake_audio.write_bytes(b"RIFF")
+
+    _, qc, stats = correct_srt_llm(srt, audio_path=fake_audio, use_arbitration=True)
+    assert stats["arbitrated"] is False
+    assert len(qc) == 1  # 退回未仲裁 uncertainties
+
+
+def test_scripted_preserves_book_title_and_term_marks():
+    # 修修 2026-07-25 裁決：《》書名號與「」專有名詞括號必須保留，其他標點省略
+    srt = _srt(["來談大腦簡史這本書會聊到腦腐"])
+    script = "來談《大腦簡史》這本書，會聊到「腦腐」。"
+    corrected, _, _ = correct_srt_scripted(srt, script)
+    assert "《大腦簡史》" in corrected
+    assert "「腦腐」" in corrected
+    assert "，" not in corrected and "。" not in corrected
+
+
+def test_llm_refs_injected_into_system(monkeypatch, tmp_path):
+    ref = tmp_path / "訪綱.md"
+    ref.write_text("來賓：謝伯讓，主題：大腦簡史" + "x" * 50, encoding="utf-8")
+    srt = _srt(["哈囉大家好"])
+    responses = [json.dumps({"corrections": {}, "uncertain": []})]
+    calls: list[dict] = []
+    monkeypatch.setattr("shared.llm.ask", _fake_ask_factory(responses, calls))
+
+    correct_srt_llm(srt, ref_files=[ref], use_arbitration=False)
+    assert "謝伯讓" in calls[0]["system"]
+    assert "訪綱.md" in calls[0]["system"]
+
+
+def test_load_refs_text_cap_marks_truncation(tmp_path):
+    ref = tmp_path / "long.md"
+    ref.write_text("甲" * 100, encoding="utf-8")
+    text = load_refs_text([ref], char_cap=10)
+    assert "甲" * 10 in text
+    assert "甲" * 11 not in text
+    assert "已截斷" in text
+
+
+# ── 報告 / 輔助 ──
+
+
+def test_apply_null_deletes_hallucinated_cue():
+    from shared.subtitle_correct import apply_corrections
+
+    srt = _srt(["正常的第一句", "大腦 升級 ** 吧 ** 天龍國", "正常的第三句"])
+    payload = {"corrections": {"2": None}, "uncertain": []}
+    corrected, qc, stats = apply_corrections(srt, payload)
+    assert "天龍國" not in corrected
+    assert stats["deleted"] == 1
+    assert stats["dropped"] == 0
+    # 重新編號：剩兩個 cue，序號 1、2
+    assert corrected.count("-->") == 2
+    seq_lines = [line for line in corrected.splitlines() if line.strip().isdigit()]
+    assert seq_lines == ["1", "2"]
+    # 時間戳保留原值（第三句仍是原本的時間）
+    assert "00:00:04,000 --> 00:00:06,000" in corrected
+
+
+def test_hotwords_strip_markdown(tmp_path):
+    from shared.transcriber import _extract_hotwords
+
+    ref = tmp_path / "訪綱.md"
+    ref.write_text("《升級**吧**！大腦》講「腦_腐_」與「多巴胺」", encoding="utf-8")
+    words = _extract_hotwords([ref])
+    assert "升級吧！大腦" in words
+    assert "腦腐" in words
+    assert not any("*" in w or "_" in w for w in words)
+
+
+def test_find_offset_synthetic():
+    np = __import__("numpy")
+    from shared.auphonic import _find_offset
+
+    rng = np.random.default_rng(42)
+    needle = rng.standard_normal(16000).astype(np.float32)  # 1 秒
+    lead = rng.standard_normal(int(16000 * 2.5)).astype(np.float32) * 0.1
+    haystack = np.concatenate([lead, needle, lead])
+    offset, peak = _find_offset(haystack, needle)
+    assert abs(offset - 2.5) < 0.01
+    assert peak > 0.9
+
+
+def test_report_contains_stats_and_items():
+    stats = {"mode": "llm", "cues": 10, "corrections": 3, "qc": 1}
+    qc = [{"line": 5, "original": "原", "suggestion": "建", "reason": "理", "risk": "high"}]
+    report = build_correction_report(stats, qc)
+    assert "模式：llm" in report
+    assert "Line 5" in report
+    assert "HIGH" in report
+
+
+def test_report_empty_qc():
+    report = build_correction_report({"mode": "scripted", "cues": 5}, [])
+    assert "（無）" in report
+
+
+def test_discover_ref_files_merges_episode_and_prep(tmp_path, monkeypatch):
+    ep = tmp_path / "20260723 謝伯讓"
+    (ep / "refs").mkdir(parents=True)
+    (ep / "refs" / "訪綱.md").write_text("a", encoding="utf-8")
+    prep_root = tmp_path / "訪談準備"
+    prep = prep_root / "2026-07-22-謝伯讓"
+    prep.mkdir(parents=True)
+    (prep / "report.md").write_text("b", encoding="utf-8")
+    (prep / "圖.png").write_bytes(b"x")
+    other = prep_root / "2026-07-21-李海碩"
+    other.mkdir()
+    (other / "report.md").write_text("c", encoding="utf-8")
+    monkeypatch.setenv("INTERVIEW_PREP_DIR", str(prep_root))
+
+    from shared.subtitle_correct import discover_ref_files
+
+    names = [p.name for p in discover_ref_files(ep)]
+    assert names == ["訪綱.md", "report.md"]
+    paths = discover_ref_files(ep)
+    assert paths[1].parent == prep  # 沒撈到別集來賓的資料
+
+
+def test_discover_ref_files_no_prep_dir(tmp_path, monkeypatch):
+    ep = tmp_path / "20260723 某來賓"
+    ep.mkdir()
+    monkeypatch.setenv("INTERVIEW_PREP_DIR", str(tmp_path / "不存在"))
+
+    from shared.subtitle_correct import discover_ref_files
+
+    assert discover_ref_files(ep) == []
+
+
+def test_emit_and_apply_roundtrip(tmp_path, monkeypatch):
+    # cowork 流程：emit-chunks → （模擬 subagent 產 JSON）→ apply
+    from scripts.run_subtitle_correct import run_apply, run_emit_chunks
+
+    ep = tmp_path / "20260723 某來賓"
+    (ep / "subs").mkdir(parents=True)
+    (ep / "refs").mkdir()
+    (ep / "refs" / "訪綱.md").write_text("來賓：謝伯讓", encoding="utf-8")
+    (ep / "subs" / "raw.srt").write_text(
+        _srt(["就是那個常常看到你去上鳳鑫節", "來談大腦简史這本書"]), encoding="utf-8"
+    )
+    monkeypatch.setenv("INTERVIEW_PREP_DIR", str(tmp_path / "無"))
+
+    workdir = run_emit_chunks(ep)
+    assert (workdir / "instructions.md").exists()
+    assert (workdir / "chunk_01.txt").exists()
+    meta = json.loads((workdir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["cues"] == 2
+    instructions = (workdir / "instructions.md").read_text(encoding="utf-8")
+    assert "訪綱.md" in instructions  # 參考資料清單給 subagent 自己 Read
+    chunk = (workdir / "chunk_01.txt").read_text(encoding="utf-8")
+    assert "[1]" in chunk and "(" in chunk  # 帶拼音
+
+    # 模擬 subagent 合併輸出：一筆正常修正（帶標點+簡體）+ 一筆過度刪減 + 一筆越界
+    payload = {
+        "corrections": {"1": "鳳馨姊", "2": "來談大腦簡史，這本書", "99": "亂"},
+        "uncertain": [],
+    }
+    corrections_json = workdir / "corrections.json"
+    corrections_json.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    out = run_apply(ep, corrections_json)
+
+    corrected = out.read_text(encoding="utf-8")
+    assert "就是那個常常看到你去上鳳鑫節" in corrected  # 過度刪減 → 撤下保留原文
+    assert "大腦簡史" in corrected
+    assert "，" not in corrected  # Pass 2 去標點
+    manifest = json.loads((ep / "subs" / "correct_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["mode"] == "cowork"
+    assert manifest["over_deletion_guard"] == 1
+    assert manifest["dropped"] == 1
+    qc = (ep / "transcript.qc.md").read_text(encoding="utf-8")
+    assert "過度刪減" in qc
+
+
+def test_cli_llm_without_api_flag_is_blocked(tmp_path, monkeypatch):
+    # 沒有完整稿、沒 --api、沒 --emit-chunks/--apply → 擋下（防誤燒 API 錢）
+    from scripts.run_subtitle_correct import main
+
+    ep = tmp_path / "20260723 某來賓"
+    (ep / "subs").mkdir(parents=True)
+    (ep / "subs" / "raw.srt").write_text(_srt(["一句話"]), encoding="utf-8")
+    monkeypatch.setenv("INTERVIEW_PREP_DIR", str(tmp_path / "無"))
+
+    assert main([str(ep)]) == 2
+
+
+def test_run_correct_external_srt_creates_subs_dir(monkeypatch, tmp_path):
+    # 外部 SRT（--srt）跳過 subtitle-gen → subs/ 不存在，manifest 寫入不可炸
+    from scripts.run_subtitle_correct import run_correct
+
+    ep = tmp_path / "20260723 某來賓"
+    ep.mkdir()
+    ext_srt = tmp_path / "memoai.srt"
+    ext_srt.write_text(_srt(["外部工具產的字幕"]), encoding="utf-8")
+    responses = [json.dumps({"corrections": {}, "uncertain": []})]
+    calls: list[dict] = []
+    monkeypatch.setattr("shared.llm.ask", _fake_ask_factory(responses, calls))
+    monkeypatch.setenv("INTERVIEW_PREP_DIR", str(tmp_path / "無"))
+
+    out = run_correct(ep, srt=ext_srt, mode="llm", use_arbitration=False)
+    assert out.exists()
+    assert (ep / "subs" / "correct_manifest.json").exists()
+
+
+def test_find_script_file(tmp_path):
+    a = tmp_path / "訪綱.md"
+    b = tmp_path / "script.md"
+    for p in (a, b):
+        p.write_text("x", encoding="utf-8")
+    assert find_script_file([a, b]) == b
+    assert find_script_file([a]) is None
+
+    c = tmp_path / "逐字稿v2.txt"
+    c.write_text("x", encoding="utf-8")
+    assert find_script_file([a, c]) == c

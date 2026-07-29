@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · {{ type_label }} · {{ s.title }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version | default('') }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge-digests.css?v={{ asset_version | default('') }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+  {% from "_chassis_nav.html" import chassis_nav %}
+  {{ chassis_nav(nav_active='digests') }}
+
+  <main class="digest-detail-wrap">
+    <nav class="digest-detail-meta">
+      <a class="sho-lk" href="/bridge/digests/pubmed/{{ entry.date }}">← {{ entry.date }} PubMed 精選</a>
+      <span class="digest-detail-meta-sep">·</span>
+      <span class="digest-detail-meta-kind">{{ type_label }}</span>
+      {% if s.is_editor_pick %}
+        <span class="digest-detail-meta-sep">·</span>
+        <span class="digest-detail-meta-accent">⭐ Editor's Pick</span>
+      {% endif %}
+      <span class="digest-detail-meta-sep">·</span>
+      <span>PMID <span class="digest-detail-meta-val">{{ detail.pmid }}</span></span>
+    </nav>
+
+    <article class="study-detail">
+      <h1 class="study-detail-title">{{ s.title }}</h1>
+
+      <div class="study-detail-metarow">
+        {% set tier = 'high' if (s.score or 0) >= 3.5 else ('mid' if (s.score or 0) >= 3.0 else 'low') %}
+        {% if s.score is not none %}
+          <span class="digest-score-chip digest-score-chip--{{ tier }}"
+                title="{% for d, v in s.score_dims %}{{ d }}{{ v }}{% if not loop.last %} · {% endif %}{% endfor %}">
+            {{ '%.1f'|format(s.score) }}
+          </span>
+        {% endif %}
+        {% if s.journal_name %}
+          <span class="study-detail-meta-item">
+            📖 {{ s.journal_name }}
+            {% if s.journal_quartile %}<span class="digest-tag digest-tag--quartile">{{ s.journal_quartile }}</span>{% endif %}
+            {% if s.journal_sjr is not none %}<span class="digest-card-meta-mono">SJR {{ s.journal_sjr }}</span>{% endif %}
+          </span>
+        {% endif %}
+        {% if s.domain %}<span class="digest-tag">{{ s.domain }}</span>{% endif %}
+        {% if detail.pub_date %}<span class="digest-card-meta-mono">🗓 {{ detail.pub_date }}</span>{% endif %}
+        {% if detail.doi %}<span class="digest-card-meta-mono">DOI {{ detail.doi }}</span>{% endif %}
+      </div>
+
+      {% if detail.authors %}
+        <p class="study-detail-authors">{{ detail.authors }}</p>
+      {% endif %}
+
+      {# ── Editor's per-dimension scoring (rubric-sourced meanings) ──────── #}
+      {% if score_rows %}
+        <section class="study-scores">
+          <div class="study-scores-head">
+            <h2 class="study-scores-title">編輯評分</h2>
+            {% if s.score is not none %}
+              <span class="study-scores-overall">總分 {{ '%.1f'|format(s.score) }} / 5</span>
+            {% endif %}
+          </div>
+          <p class="study-scores-note">
+            由「資深醫學編輯」persona 依固定準則逐項評 1–5 分（越高越好）。「分數說明」是該分數在評分準則中的定義，非逐篇個別評語。
+          </p>
+          <div class="study-score-table-wrap">
+            <table class="study-score-table">
+              <thead>
+                <tr>
+                  <th scope="col">維度</th>
+                  <th scope="col">分數</th>
+                  <th scope="col">這個分數代表什麼</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in score_rows %}
+                  {% set stier = 'high' if (row.score or 0) >= 4 else ('mid' if (row.score or 0) == 3 else 'low') %}
+                  <tr>
+                    <th scope="row" class="study-score-dim">
+                      {{ row.label }}
+                      {% if row.reverse %}<span class="study-score-reverse" title="反向分：分數越高代表警訊越少">↕ 反向</span>{% endif %}
+                      <span class="study-score-measures">{{ row.measures }}</span>
+                    </th>
+                    <td class="study-score-num">
+                      <span class="study-score-chip study-score-chip--{{ stier }}">{{ row.score if row.score is not none else '—' }}</span>
+                    </td>
+                    <td class="study-score-def">{{ row.level_def or '（此分數無對應準則說明）' }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      {% endif %}
+
+      {# ── Curated framing carried over from the digest ─────────────────── #}
+      {% if s.verdict or s.why %}
+        <section class="study-detail-framing">
+          {% if s.verdict %}
+            <div class="digest-card-block digest-card-block--verdict">
+              <div class="digest-card-block-kicker">Verdict</div>
+              <p>{{ s.verdict }}</p>
+            </div>
+          {% endif %}
+          {% if s.why %}
+            <div class="digest-card-block">
+              <div class="digest-card-block-kicker">Why this matters</div>
+              <p>{{ s.why }}</p>
+            </div>
+          {% endif %}
+        </section>
+      {% endif %}
+
+      {# ── Abstract + translation ───────────────────────────────────────── #}
+      {% if detail.fetch_error %}
+        <div class="study-detail-notice study-detail-notice--warn" role="status">
+          {{ detail.fetch_error }}
+        </div>
+      {% elif not detail.has_abstract %}
+        <div class="study-detail-notice" role="status">
+          PubMed 未提供此文獻的 abstract（可能是評論、社論或勘誤）。
+        </div>
+      {% else %}
+        <section class="study-detail-abstract">
+          <div class="study-detail-abstract-head">
+            <h2 class="study-detail-abstract-title">中文翻譯</h2>
+            <span class="study-detail-abstract-note">AI 翻譯 · 以英文原文為準</span>
+          </div>
+          {% if detail.translate_error %}
+            <div class="study-detail-notice study-detail-notice--warn" role="status">
+              {{ detail.translate_error }}
+            </div>
+          {% else %}
+            <div class="study-detail-abstract-text">{{ detail.abstract_zh }}</div>
+          {% endif %}
+        </section>
+
+        <section class="study-detail-abstract study-detail-abstract--source">
+          <div class="study-detail-abstract-head">
+            <h2 class="study-detail-abstract-title">Abstract</h2>
+            <span class="study-detail-abstract-note">PubMed 原文</span>
+          </div>
+          <div class="study-detail-abstract-text">{{ detail.abstract }}</div>
+        </section>
+      {% endif %}
+
+      <footer class="study-detail-foot">
+        {% if s.full_text_label %}
+          <span class="digest-card-access">{{ s.full_text_label }}</span>
+        {% endif %}
+        {% if detail.doi %}
+          <a class="study-detail-source-lk" href="https://doi.org/{{ detail.doi }}" target="_blank" rel="noopener">🔗 期刊原文（出版商頁面）↗</a>
+        {% elif s.full_text_url %}
+          <a class="study-detail-source-lk" href="{{ s.full_text_url }}" target="_blank" rel="noopener">🔗 期刊原文 ↗</a>
+        {% endif %}
+        {% if detail.pmcid %}
+          <a class="sho-lk" href="https://www.ncbi.nlm.nih.gov/pmc/articles/{{ detail.pmcid }}/" target="_blank" rel="noopener">PMC 免費全文 ↗</a>
+        {% endif %}
+        <a class="sho-lk" href="https://pubmed.ncbi.nlm.nih.gov/{{ detail.pmid }}/" target="_blank" rel="noopener">PubMed ↗</a>
+      </footer>
+    </article>
+  </main>
+</body>
+</html>

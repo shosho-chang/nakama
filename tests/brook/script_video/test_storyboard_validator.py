@@ -83,9 +83,12 @@ _GUARDRAILS = load_guardrails()
 
 
 def test_guardrails_numbers_aligned_with_prompt_budget() -> None:
-    """4/min 與 planner prompt「~15-25/10min」互斥 — 以 prompt 預算上限 2.5 為準."""
+    """guardrail 與 planner prompt「~25-35/10min」對齊 — 3.5 事件/分.
+
+    成片實測 3.26-3.52 事件/分（editing-grammar 綜合報告 §一，2026-07-18 re-baseline）。
+    """
     limits = _GUARDRAILS["hard_limits"]
-    assert limits["max_cutaways_per_minute"] == 2.5
+    assert limits["max_cutaways_per_minute"] == 3.5
     assert limits["kol_max_total_sec_per_source"] == 20
 
 
@@ -155,8 +158,8 @@ def test_consecutive_component_separated_by_none_is_ok() -> None:
     assert [v for v in violations if v.rule == "consecutive_component"] == []
 
 
-def test_consecutive_same_asset_kind_is_error() -> None:
-    """asset 類的視覺重複比對用 kind（兩個相鄰 stock = 重複）."""
+def test_consecutive_same_stock_footage_is_error() -> None:
+    """asset 類的視覺重複比對用 source_url（同一支 footage 相鄰 = 重複）."""
     stock = {"kind": "stock", "source_url": "https://elements.envato.com/a"}
     beats = [
         _beat(1, target="asset", component="stock", asset=dict(stock), start=0),
@@ -164,6 +167,28 @@ def test_consecutive_same_asset_kind_is_error() -> None:
     ]
     violations = validate_storyboard(beats, _GUARDRAILS, duration_sec=600.0)
     assert [v for v in violations if v.rule == "consecutive_component"]
+
+
+def test_consecutive_different_stock_footage_is_ok() -> None:
+    """相鄰兩個「不同 footage」的 stock 是合法快切（修修 2026-07-17 hook 段回饋）."""
+    beats = [
+        _beat(
+            1,
+            target="asset",
+            component="stock",
+            asset={"kind": "stock", "source_url": "https://elements.envato.com/a"},
+            start=0,
+        ),
+        _beat(
+            2,
+            target="asset",
+            component="stock",
+            asset={"kind": "stock", "source_url": "https://elements.envato.com/b"},
+            start=30,
+        ),
+    ]
+    violations = validate_storyboard(beats, _GUARDRAILS, duration_sec=600.0)
+    assert [v for v in violations if v.rule == "consecutive_component"] == []
 
 
 def test_long_none_streak_is_warning_not_error() -> None:
@@ -174,7 +199,8 @@ def test_long_none_streak_is_warning_not_error() -> None:
     assert streaks[0].severity == "warning"
 
 
-def test_kol_source_total_over_cap_is_error() -> None:
+def test_kol_source_total_over_cap_is_warning_not_error() -> None:
+    """修修 2026-07-19 裁決：單源超量提醒不擋審（合理使用自行把關）."""
     beats = [
         _beat(1, target="asset", component="kol", asset=_kol_asset(), start=0, duration=12),
         _beat(
@@ -185,8 +211,9 @@ def test_kol_source_total_over_cap_is_error() -> None:
         _beat(3, target="asset", component="kol", asset=_kol_asset(), start=60, duration=12),
     ]
     violations = validate_storyboard(beats, _GUARDRAILS, duration_sec=600.0)
-    caps = [v for v in violations if v.rule == "kol_source_cap" and v.severity == "error"]
-    assert caps and "24.0s" in caps[0].message
+    caps = [v for v in violations if v.rule == "kol_source_cap"]
+    assert caps and caps[0].severity == "warning" and "24.0s" in caps[0].message
+    assert not [v for v in caps if v.severity == "error"]
 
 
 def test_kol_different_sources_under_cap_each_is_ok() -> None:

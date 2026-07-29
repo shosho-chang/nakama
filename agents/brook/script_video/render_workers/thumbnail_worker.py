@@ -36,7 +36,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # repo_root/agents/brook/script_video/render_workers/thumbnail_worker.py → repo_root
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+_REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_VIDEO_DIR = _REPO_ROOT / "video"
 
 YOUTUBE_COMPOSITION = "compositions/thumbnail_youtube"
@@ -120,6 +120,8 @@ async def _render_still(
     )
 
     argv = _build_argv(composition, variables_file, frames_dir)
+    # Windows 的 npx 是 npx.cmd — CreateProcess 不吃 PATHEXT，spawn 前解析成完整路徑。
+    argv[0] = shutil.which(argv[0]) or argv[0]
     logger.info(
         "thumbnail render start: out=%s composition=%s",
         out_png.name,
@@ -154,6 +156,29 @@ async def _render_still(
 
     logger.info("thumbnail render done: %s", out_png)
     return out_png
+
+
+async def render_thumbnail(
+    composition: str,
+    *,
+    variables: dict,
+    images: dict[str, Path] | None = None,
+    out_png: Path,
+    video_dir: Path | None = None,
+) -> Path:
+    """封面設計系統 v1 的通用入口（thumbnail_full / thumbnail_reaction / thumbnail_topic）。
+
+    ``images`` 把「composition 變數名 → 圖檔路徑」轉成 data URL 塞進 variables
+    （變數名照 composition 的 *_data_url 慣例由 caller 給全名）。缺檔 fail loud。
+    """
+    merged = dict(variables)
+    for var_name, path in (images or {}).items():
+        if not path.exists():
+            raise FileNotFoundError(f"{var_name}: image not found: {path}")
+        merged[var_name] = _to_data_url(path)
+    return await _render_still(
+        f"compositions/{composition}", merged, out_png, video_dir or DEFAULT_VIDEO_DIR
+    )
 
 
 async def render_youtube_still(

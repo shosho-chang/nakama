@@ -417,6 +417,63 @@ def test_efetch_abstracts_handles_unstructured_abstract_and_collective_author(mo
     assert second["abstract"] == "Plain unstructured abstract."
 
 
+_EFETCH_XML_WITH_IDS = b"""<?xml version="1.0"?>
+<PubmedArticleSet>
+  <PubmedArticle>
+    <MedlineCitation>
+      <PMID>42011014</PMID>
+      <Article>
+        <Journal><Title>Acta Paediatrica</Title>
+          <JournalIssue><PubDate><Year>2026</Year></PubDate></JournalIssue>
+        </Journal>
+        <ArticleTitle>Body composition in adolescents.</ArticleTitle>
+        <ELocationID EIdType="doi" ValidYN="Y">10.1111/apa.70554</ELocationID>
+        <Abstract><AbstractText>Some abstract.</AbstractText></Abstract>
+      </Article>
+    </MedlineCitation>
+    <PubmedData>
+      <ArticleIdList>
+        <ArticleId IdType="pubmed">42011014</ArticleId>
+        <ArticleId IdType="doi">10.1111/apa.70554</ArticleId>
+        <ArticleId IdType="pmc">PMC13371817</ArticleId>
+      </ArticleIdList>
+      <ReferenceList>
+        <Reference>
+          <ArticleIdList>
+            <ArticleId IdType="pmc">PMC9999999</ArticleId>
+          </ArticleIdList>
+        </Reference>
+      </ReferenceList>
+    </PubmedData>
+  </PubmedArticle>
+</PubmedArticleSet>
+"""
+
+
+def test_efetch_abstracts_extracts_doi_and_pmcid_scoped(monkeypatch):
+    """DOI + PMCID come from the article's own id list, never a cited reference's."""
+    monkeypatch.setattr(
+        pubmed_client.httpx,
+        "get",
+        lambda url, params, timeout: _fake_xml_response(_EFETCH_XML_WITH_IDS),
+    )
+    out = efetch_abstracts(["42011014"])
+    assert out[0]["doi"] == "10.1111/apa.70554"
+    # The reference's PMC9999999 must NOT leak in — only the article's own PMC.
+    assert out[0]["pmcid"] == "PMC13371817"
+
+
+def test_efetch_abstracts_missing_ids_default_empty(monkeypatch):
+    monkeypatch.setattr(
+        pubmed_client.httpx,
+        "get",
+        lambda url, params, timeout: _fake_xml_response(_EFETCH_XML),
+    )
+    out = efetch_abstracts(["42081737"])
+    assert out[0]["doi"] == ""
+    assert out[0]["pmcid"] == ""
+
+
 def test_efetch_abstracts_empty_input_no_api_call(monkeypatch):
     called = False
 

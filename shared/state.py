@@ -495,6 +495,27 @@ def _init_tables(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_news_score_shadow_item
             ON news_score_shadow(item_id, scored_at DESC);
+
+        -- Bridge digest study-detail: cached PubMed abstract + zh-TW translation.
+        -- Owned by shared/pubmed_abstract_store.py; written on cache-miss by the
+        -- /bridge/digests/pubmed/{date}/{pmid} detail route. State layer (not vault):
+        -- machine-fetched operational data, keyed by stable PMID, translated once.
+        -- Bridge stays read-only against vault (Issue #231) — this never touches KB.
+        CREATE TABLE IF NOT EXISTS pubmed_abstract_cache (
+            pmid            TEXT PRIMARY KEY,
+            title           TEXT NOT NULL DEFAULT '',
+            journal         TEXT NOT NULL DEFAULT '',
+            authors         TEXT NOT NULL DEFAULT '',
+            pub_date        TEXT NOT NULL DEFAULT '',
+            issn            TEXT NOT NULL DEFAULT '',
+            doi             TEXT NOT NULL DEFAULT '',
+            pmcid           TEXT NOT NULL DEFAULT '',
+            abstract        TEXT NOT NULL DEFAULT '',
+            abstract_zh     TEXT,
+            translate_model TEXT,
+            fetched_at      TEXT NOT NULL,
+            translated_at   TEXT
+        );
     """)
 
     # Migration: api_calls 曾經沒有 cache token 欄位（Phase 4 前）。

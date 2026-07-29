@@ -1,0 +1,302 @@
+<!doctype html>
+<!--
+  封面設計系統 N2「反應卡」（docs/thumbnail-design-system.md；對標普查 R2 — 頻道主力款）。
+
+  1280×720。橘框 prop 卡（概念圖：Envato stock／公版藝術／自產圖表）佔寬
+  ~48%；反應臉貼另一緣（單人）或兩緣（雙人），視線朝卡（選格時的責任）。
+  **預設零文字** — 敘事由 prop 卡承擔。背景暖近黑 + vignette 融合。
+
+  框型（frame_style）走《張修修品牌識別_0827.pdf》：
+    plain  — 圓角矩形框（＝ 品牌書 p22「影片引用字卡」的框本體，不帶碎片）
+    shards — p22 原生做法：框 + 品牌鋸齒碎片從框背後爆出（p15「群體連結」母題）
+    skew   — p15「自我解讀」母題：直角斜切四邊形框（左緣高、頂緣朝來賓側下傾）
+    hybrid — skew 框 + 外緣碎片
+
+  Variables:
+    prop_image_data_url  — prop 卡內容圖（必填）
+    prop_width_pct       — prop 卡寬（% of frame，預設 48）
+    prop_left_pct        — prop_position=left 時的左緣（% of frame，預設 6）
+    prop_height_px       — prop 卡高（px，預設 576）
+    prop_position        — "center"（雙反應臉夾中）或 "left"（單反應臉在右）
+    frame_style          — plain（預設）/ shards / skew / hybrid
+    host_cutout_data_url / guest_cutout_data_url — 透明 PNG data URL（可只給一個）
+    host_height_pct / guest_height_pct — cutout 高度 %（預設 108；75% 頭 ≈ 165）
+    host_x_pct / guest_x_pct / host_y_pct / guest_y_pct — 貼緣偏移（負值 = 出血）
+    bg_image_data_url    — 背景圖（修修正版：E:\data\podcast thumbnail background.png）；
+                           提供時蓋掉純色底並隱藏 vignette（圖已內建）
+    person_glow_color    — 人物輪廓 glow 色（預設 #F37425；空字串 = 關閉）
+    inner_edge_fade_pct  — 人物內側緣漸隱寬(%,預設 9;0 = 關閉)— 蓋掉裁框切身體的硬邊
+    logo_data_url        — 頻道 logo(白線透明底);logo_height_px(預設 88)
+    logo_position        — bottom-left(預設,與 N1 同角)/ top-left / below-card
+    caption              — 極簡小字（預設空 = 無字；census 153 張中僅 1 張帶標籤）
+    palette              — { bg, accent } 覆寫（bg 僅無背景圖時生效）
+
+  色彩角色鎖定：accent（橘）只用於 prop 卡框與碎片；卡內圖不加工。
+  accent 預設 #F37425 — 品牌書內文寫的 #e98965 與同頁 CMYK 0.68.98.0／
+  RGB 233.105.37 互斥，實際稿件（p10/15/16/22/24）量測皆為 #F37425。
+-->
+<html lang="zh-Hant" data-resolution="landscape">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1280, height=720" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 1280px; height: 720px; overflow: hidden; background: #000;
+        /* 實裝 TTF family name 帶 _TTF 後綴 — 寫 "LINE Seed TW" 會 fallback 微軟正黑 */
+        font-family: "LINE Seed TW_TTF ExtraBold", "LINE Seed TW_TTF",
+          "LINE Seed TW", "Noto Sans TC", "PingFang TC",
+          "Microsoft JhengHei", sans-serif;
+      }
+      #root {
+        position: relative; width: 1280px; height: 720px; overflow: hidden;
+      }
+      /* hyperframes 截圖會丟棄 root 自身的 background — 背景必須是子元素 */
+      #bgfill {
+        position: absolute; inset: 0; z-index: 0;
+        background: var(--bg, #191613);
+      }
+      #bgimg { width: 100%; height: 100%; object-fit: cover; display: none; }
+      #vignette {
+        position: absolute; inset: 0; z-index: 2;
+        background: radial-gradient(ellipse 95% 85% at 50% 45%,
+          rgba(0,0,0,0) 50%, rgba(0,0,0,0.4) 100%);
+      }
+      /* 人在卡之上（z 5 > 卡 z 4）— 修修 2026-07-28 裁決（CW 式）：肩膀完整、
+         卡躲到肩膀後面；人物輪廓帶 accent glow（drop-shadow 跟 alpha 輪廓走） */
+      #host, #guest {
+        position: absolute; bottom: 0; z-index: 5; object-fit: contain;
+      }
+      #host  { left: var(--host-x, 0%);  bottom: var(--host-y, 0%);  height: var(--host-h, 108%);  object-position: bottom left; }
+      #guest { right: var(--guest-x, 0%); bottom: var(--guest-y, 0%); height: var(--guest-h, 108%); object-position: bottom right; }
+      /* 內側緣 fade — 裁框切到身體的硬邊（肩膀/前臂）在深底上漸隱;
+         mask 在 filter(glow)之後套用,光暈同步淡出(修修 2026-07-28 三修) */
+      #guest.fade-inner {
+        -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade, 9%));
+        mask-image: linear-gradient(to right, transparent 0, #000 var(--fade, 9%));
+      }
+      #host.fade-inner {
+        -webkit-mask-image: linear-gradient(to left, transparent 0, #000 var(--fade, 9%));
+        mask-image: linear-gradient(to left, transparent 0, #000 var(--fade, 9%));
+      }
+      /* glow 走「大半徑低強度」— 均勻擴散、無硬邊（修修 2026-07-28 二修） */
+      #host.glow, #guest.glow {
+        filter: drop-shadow(0 0 36px var(--glow, rgba(243,116,37,0.5)))
+                drop-shadow(0 0 90px var(--glow-soft, rgba(243,116,37,0.3)));
+      }
+
+      /* card-layer 帶卡片幾何且 overflow 可見 — 碎片(z -1)藏在卡背後往外爆 */
+      #card-layer {
+        position: absolute; top: 50%; z-index: 4;
+        width: var(--prop-w, 48%); height: var(--prop-h, 576px);
+        transform: translateY(-50%);
+      }
+      #root[data-prop="center"] #card-layer { left: 50%; transform: translate(-50%, -50%); }
+      #root[data-prop="left"]   #card-layer { left: var(--prop-l, 6%); }
+
+      #prop-wrap { position: absolute; inset: 0; }
+      /* 框本體與圖層各自 clip — skew 時兩層套同一個 polygon(%)，
+         內層盒小 24px，斜率差 <1px，視覺上等寬邊 */
+      #prop-frame {
+        position: absolute; inset: 0;
+        background: var(--accent, #F37425);
+        border-radius: var(--frame-r, 16px);
+        box-shadow: 0 18px 60px rgba(0,0,0,0.65);
+      }
+      #prop-clip {
+        position: absolute; inset: var(--frame-b, 8px);
+        border-radius: var(--frame-ri, 9px);
+        overflow: hidden; background: #000;
+      }
+      #prop { display: block; width: 100%; height: 100%; object-fit: cover; }
+      /* p15「自我解讀」量測（1262,376→1505,391→1502,477）：頂緣朝右下傾、
+         左緣較高。搬到卡片上收斂為頂 3.5% / 底 1.2%（原樣 17% 會看起來像壞掉） */
+      #root[data-frame="skew"] #prop-frame,
+      #root[data-frame="hybrid"] #prop-frame,
+      #root[data-frame="skew"] #prop-clip,
+      #root[data-frame="hybrid"] #prop-clip {
+        clip-path: polygon(0% 0%, 100% 3.5%, 100% 100%, 0% 98.8%);
+        border-radius: 0;
+      }
+      #root[data-frame="skew"] #prop-clip,
+      #root[data-frame="hybrid"] #prop-clip { inset: 12px; }
+      #root[data-frame="skew"] #prop-frame,
+      #root[data-frame="hybrid"] #prop-frame { box-shadow: none; }
+
+      /* 品牌鋸齒碎片（p15 群體連結 / p22 引用字卡）— 斜切矩形咬合，
+         純 accent 實心、無描邊漸層；z -1 => 在卡背後、人物之下 */
+      .shard {
+        position: absolute; top: 50%; z-index: -1;
+        width: 260px; height: 620px; transform: translateY(-50%);
+        fill: var(--accent, #F37425); display: none;
+      }
+      #shard-l { left: -190px; }
+      #shard-r { right: -190px; transform: translateY(-50%) scaleX(-1); }
+      #root[data-frame="shards"] .shard,
+      #root[data-frame="hybrid"] .shard { display: block; }
+      /* prop=left：卡右緣本來就躲在人物後面，右側碎片只會從肩上冒出零星角料 */
+      #root[data-prop="left"] #shard-r { display: none; }
+
+      /* 頻道 logo — 與 N1 同一角落(左下)保持頻道一致性;三種錨點可選 */
+      #logo {
+        position: absolute; z-index: 6;
+        height: var(--logo-h, 88px); width: auto;
+        filter: drop-shadow(0 3px 16px rgba(0,0,0,0.6));
+      }
+      #root[data-logo="bottom-left"] #logo { left: 46px; bottom: 38px; }
+      #root[data-logo="top-left"]    #logo { left: 46px; top: 34px; }
+      /* below-card:卡片整體上移讓出下緣暗底(不縮高 — 縮高會裁掉 prop 內容),
+         logo 永遠落在深底上(白線可讀,不受 prop 圖亮度影響);與 N1 同左下角 */
+      #root[data-logo="below-card"]  #logo { left: 46px; bottom: 24px; }
+      #root[data-logo="below-card"][data-prop="left"] #card-layer { top: 46%; }
+
+      #caption {
+        position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
+        z-index: 5; color: rgba(255,255,255,0.85);
+        font-weight: 700; font-size: 28px; letter-spacing: 0.08em;
+        text-shadow: 0 2px 12px rgba(0,0,0,0.8);
+      }
+      #caption:empty { display: none; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="thumbnail-reaction"
+      data-start="0"
+      data-duration="0.5"
+      data-width="1280"
+      data-height="720"
+      data-prop="center"
+      data-frame="plain"
+      data-composition-variables='{
+        "prop_image_data_url":   { "type": "string", "default": "" },
+        "prop_width_pct":        { "type": "number", "default": 48 },
+        "prop_left_pct":         { "type": "number", "default": 6 },
+        "prop_height_px":        { "type": "number", "default": 576 },
+        "prop_position":         { "type": "string", "default": "center" },
+        "frame_style":           { "type": "string", "default": "plain" },
+        "host_cutout_data_url":  { "type": "string", "default": "" },
+        "guest_cutout_data_url": { "type": "string", "default": "" },
+        "bg_image_data_url":     { "type": "string", "default": "" },
+        "host_height_pct":       { "type": "number", "default": 108 },
+        "guest_height_pct":      { "type": "number", "default": 108 },
+        "host_x_pct":            { "type": "number", "default": 0 },
+        "guest_x_pct":           { "type": "number", "default": 0 },
+        "host_y_pct":            { "type": "number", "default": 0 },
+        "guest_y_pct":           { "type": "number", "default": 0 },
+        "person_glow_color":     { "type": "string", "default": "#F37425" },
+        "inner_edge_fade_pct":   { "type": "number", "default": 9 },
+        "logo_data_url":         { "type": "string", "default": "" },
+        "logo_height_px":        { "type": "number", "default": 88 },
+        "logo_position":         { "type": "string", "default": "bottom-left" },
+        "caption":               { "type": "string", "default": "" },
+        "palette":               { "type": "object", "default": {} }
+      }'
+    >
+      <div id="bgfill"><img id="bgimg" alt="" /></div>
+      <div id="vignette"></div>
+      <img id="host" alt="" />
+      <img id="guest" alt="" />
+      <div id="card-layer">
+        <svg id="shard-l" class="shard" viewBox="0 0 260 620" aria-hidden="true">
+          <polygon points="146,78 245,14 278,66 179,130" />
+          <polygon points="59,102 266,157 245,234 38,179" />
+          <polygon points="132,256 252,200 280,260 160,316" />
+          <polygon points="41,265 253,373 219,439 7,331" />
+          <polygon points="117,456 243,380 279,440 153,516" />
+          <polygon points="76,477 267,521 252,583 61,539" />
+        </svg>
+        <svg id="shard-r" class="shard" viewBox="0 0 260 620" aria-hidden="true">
+          <polygon points="146,78 245,14 278,66 179,130" />
+          <polygon points="59,102 266,157 245,234 38,179" />
+          <polygon points="132,256 252,200 280,260 160,316" />
+          <polygon points="41,265 253,373 219,439 7,331" />
+          <polygon points="117,456 243,380 279,440 153,516" />
+          <polygon points="76,477 267,521 252,583 61,539" />
+        </svg>
+        <div id="prop-wrap">
+          <div id="prop-frame"></div>
+          <div id="prop-clip"><img id="prop" alt="" /></div>
+        </div>
+      </div>
+      <img id="logo" alt="" />
+      <div id="caption"></div>
+    </div>
+
+    <script>
+      const vars =
+        (window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+          ? window.__hyperframes.getVariables()
+          : {}) || {};
+
+      const root = document.getElementById("root");
+      const palette = vars.palette || {};
+      if (palette.bg) root.style.setProperty("--bg", palette.bg);
+      if (palette.accent) root.style.setProperty("--accent", palette.accent);
+      if (vars.prop_width_pct) root.style.setProperty("--prop-w", vars.prop_width_pct + "%");
+      if (vars.prop_left_pct !== undefined) root.style.setProperty("--prop-l", vars.prop_left_pct + "%");
+      if (vars.prop_height_px) root.style.setProperty("--prop-h", vars.prop_height_px + "px");
+      if (vars.host_height_pct)  root.style.setProperty("--host-h",  vars.host_height_pct + "%");
+      if (vars.guest_height_pct) root.style.setProperty("--guest-h", vars.guest_height_pct + "%");
+      for (const [k, cssVar] of [
+        ["host_x_pct", "--host-x"], ["guest_x_pct", "--guest-x"],
+        ["host_y_pct", "--host-y"], ["guest_y_pct", "--guest-y"],
+      ]) {
+        if (vars[k] !== undefined) root.style.setProperty(cssVar, vars[k] + "%");
+      }
+      root.dataset.prop = vars.prop_position === "left" ? "left" : "center";
+      root.dataset.frame = ["plain", "shards", "skew", "hybrid"].includes(vars.frame_style)
+        ? vars.frame_style : "plain";
+
+      const glowHex = vars.person_glow_color !== undefined ? vars.person_glow_color : "#F37425";
+      if (glowHex) {
+        const r = parseInt(glowHex.slice(1, 3), 16),
+              g = parseInt(glowHex.slice(3, 5), 16),
+              b = parseInt(glowHex.slice(5, 7), 16);
+        root.style.setProperty("--glow", `rgba(${r},${g},${b},0.5)`);
+        root.style.setProperty("--glow-soft", `rgba(${r},${g},${b},0.3)`);
+        for (const id of ["host", "guest"]) document.getElementById(id).classList.add("glow");
+      }
+
+      const fade = vars.inner_edge_fade_pct !== undefined ? vars.inner_edge_fade_pct : 9;
+      if (fade > 0) {
+        root.style.setProperty("--fade", fade + "%");
+        for (const id of ["host", "guest"]) document.getElementById(id).classList.add("fade-inner");
+      }
+
+      if (vars.bg_image_data_url) {
+        const bg = document.getElementById("bgimg");
+        bg.src = vars.bg_image_data_url;
+        bg.style.display = "block";
+        // 修修正版背景已內建 vignette — 不再疊加
+        document.getElementById("vignette").style.display = "none";
+      }
+
+      for (const [id, key] of [
+        ["host", "host_cutout_data_url"],
+        ["guest", "guest_cutout_data_url"],
+        ["prop", "prop_image_data_url"],
+      ]) {
+        const el = document.getElementById(id);
+        if (vars[key]) el.src = vars[key];
+        else if (id === "prop") document.getElementById("card-layer").style.display = "none";
+        else el.style.display = "none";
+      }
+      const logoEl = document.getElementById("logo");
+      if (vars.logo_data_url) {
+        logoEl.src = vars.logo_data_url;
+        root.dataset.logo = ["bottom-left", "top-left", "below-card"].includes(vars.logo_position)
+          ? vars.logo_position : "bottom-left";
+        if (vars.logo_height_px) root.style.setProperty("--logo-h", vars.logo_height_px + "px");
+      } else {
+        logoEl.style.display = "none";
+      }
+      document.getElementById("caption").textContent = vars.caption || "";
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["thumbnail-reaction"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

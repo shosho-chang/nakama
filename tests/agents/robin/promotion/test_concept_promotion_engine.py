@@ -650,7 +650,7 @@ def test_no_runtime_imports_forbidden():
                     "claude_client",
                     "google.generativeai",
                 ))
-                # ADR-050: own bounded package is allowed; any OTHER agents
+                # ADR-052: own bounded package is allowed; any OTHER agents
                 # module (e.g. agents.robin.agent / ingest) is still forbidden.
                 or (
                     m.startswith("agents")

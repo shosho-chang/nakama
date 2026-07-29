@@ -1,0 +1,443 @@
+- shot_id: 1
+  type: screen_recording
+  note: 'Google 首頁搜尋畫面（無 host PIP）。文字逐字："About / Store / Gmail / Images / Google Search
+    / I''m Feeling Lucky / Advertising / Business / How Search works / Our third decade
+    of climate action: join us / Privacy / Terms / Settings"（b 幀為搜尋框特寫放大，輸入中文字 "AI
+    vs. |"，autocomplete 建議 "ai vs. ml"——同鏡頭由全頁 zoom 到搜尋框特寫）'
+- shot_id: 2
+  type: kol
+  note: Sundar Pichai 在 Google I/O keynote 舞台（木紋背景）對觀眾演講，中景。畫面文字逐字："Sundar Pichai
+    / he/him"（左下黃色名牌）
+- shot_id: 3
+  type: kol
+  note: Google keynote 舞台大遠景，Pichai 站在巨大白色螢幕旁，螢幕僅顯示 Google "G" logo，地面有藍紅黃綠色帶。畫面無其他文字
+- shot_id: 4
+  type: kol
+  note: 同 keynote 舞台大遠景另一角度，白色大螢幕顯示 "G" logo，Pichai 站左側。畫面無其他文字
+- shot_id: 5
+  type: kol
+  note: Pichai keynote 中景特寫（木紋背景），雙手比劃講話。畫面無文字
+- shot_id: 6
+  type: kol
+  note: Keynote 舞台遠景，大螢幕顯示 Google Maps Immersive View 投影片（左側城市空拍地圖含 12th Ave / 11th
+    Ave / 10th Ave 路線標記）。文字逐字："Immersive View for routes / Coming to 15 cities by
+    the end of the year / 12th Ave / 11th Ave / 10th Ave"
+- shot_id: 7
+  type: kol
+  note: Pichai keynote 中景，雙手交握講話（木紋背景）。畫面無文字
+- shot_id: 8
+  type: kol
+  note: Sundar Pichai 於 NYT DealBook Summit 訪談坐姿中景（藍色背板）。文字逐字："The New York Times
+    DealBook Summit"（左上角）、背板 "The New York Times / DealBook Summit / Sundar Pichai"
+- shot_id: 9
+  type: kol
+  note: 同 DealBook 訪談畫面，鏡頭緩慢推進（比 shot 8 略近）。文字同："The New York Times DealBook Summit
+    / The New York Times / DealBook Summit / Sundar Pichai"
+- shot_id: 10
+  type: kol
+  note: DealBook 訪談續，緩慢 zoom-in 更近一格。文字同："The New York Times DealBook Summit / The
+    New York Times / DealBook Summit / Sundar Pichai"
+- shot_id: 11
+  type: kol
+  note: DealBook 訪談續，zoom 再推近（背板字部分裁出畫面）。可見文字："...York Times DealBook Summit / ...he
+    New York Times / DealBook Summ... / Sundar Pichai"
+- shot_id: 12
+  type: kol
+  note: DealBook 訪談續，zoom 最近一段，Pichai 手勢講話。可見文字："...York Times DealBook Summit / ...e
+    New York Times / DealBook Summ... / Sundar Pichai"
+- shot_id: 13
+  type: kol
+  note: DealBook 訪談切回較廣景別，Pichai 側身講話，前景有水瓶水杯。文字逐字："The New York Times DealBook Summit
+    / The New York Times / DealBook Summit / Sundar Pichai"
+- shot_id: 14
+  type: kol
+  note: CNBC 訪談片段：Sundar Pichai 戶外受訪。文字：左上「CNBC EXCLUSIVE MAY 14」；下方橫幅「CNBC TECH CHECK」「SUNDAR
+    PICHAI / ALPHABET CEO」。
+- shot_id: 15
+  type: kol
+  note: Mark Zuckerberg 遠端訪談畫面（暗色木屋室內、綠 T 恤、金項鍊），左上有「R」字樣 logo 浮水印。畫面無其他文字。
+- shot_id: 16
+  type: kol
+  note: NVIDIA keynote：Jensen Huang（黑皮衣）於黑色舞台演講，背景圖形。文字（部分被遮）：「NVIDIA N...」、右側直排隱約「R...
+    / Indu...」。
+- shot_id: 17
+  type: kol
+  note: News18 座談片段：Sundar Pichai 持麥克風發言、石階背景。文字：右上「NEWS18 / news18.com」。
+- shot_id: 18
+  type: kol
+  note: NVIDIA keynote 廣角：Jensen Huang 與另一西裝男（橘領帶）站在舞台，背景流程圖。文字：「NeMo Curator > Customizer
+    > Evaluator > Guardrails」「...DIA AI FOUNDRY」「Experts」「AI Models」「NVIDIA NIM」。
+- shot_id: 19
+  type: kol
+  note: 另一場演講：灰鬍男性講者（agent.ai T 恤）於橘紅背景舞台發言。文字：T 恤上「agent.ai」（部分被手遮擋）。
+- shot_id: 20
+  type: kol
+  note: NVIDIA keynote 中景：Jensen Huang 講解，背景 NIM 圖示與流程線。文字：「NVIDIA NIM」「...DRY」（AI
+    FOUNDRY 被裁切）。
+- shot_id: 21
+  type: kol
+  note: CNBC 訪談片段（同 shot 14 場景，另一 take）：Sundar Pichai 舉手比劃。文字：「CNBC EXCLUSIVE MAY
+    14」「CNBC TECH CHECK」「SUNDAR PICHAI / ALPHABET CEO」。
+- shot_id: 22
+  type: kol
+  note: NVIDIA keynote 廣角（同 shot 18 場景）：Jensen Huang 與西裝男。文字：「NeMo Curator > Customizer
+    > Evaluator > Guardrails」「...DIA AI FOUNDRY」「Experts」「AI Models」「NVIDIA NIM」。
+- shot_id: 23
+  type: kol
+  note: HubSpot INBOUND keynote 大遠景：講者站舞台左側，大螢幕顯示兩張對比卡（Apple logo vs HubSpot logo）。文字：背景「...BOUND」（INBOUND
+    被裁）；卡片「There's an app for that.」「There's an agent for that.」。
+- shot_id: 24
+  type: kol
+  note: NVIDIA keynote 中景（同場景另一構圖）：Jensen Huang 講解。文字：「...FOUNDRY」「NVIDIA NIM」。
+- shot_id: 25
+  type: motion_graphic
+  note: 三選一比較圖卡（點陣暗底）：左為 ByteByteGo「AI Agent Overview」技術流程圖、中為 Jeff Su 直式講話影片卡、右為
+    SpongeBob 彩虹迷因圖「AI AGENTS」。標籤文字：「Too technical」(紅 X)、「Just right」(綠勾)、「Too basic」(紅
+    X)。多幀不一致：a 幀全黑（轉場起點），b 幀只出現左圖與 Too technical、迷因滑入中，c 幀三欄完整。
+- shot_id: 26
+  type: stock
+  note: 實拍 B-roll：Jeff Su 本人側面坐在雙螢幕工作桌前托腮看螢幕（非對鏡頭說話），螢幕顯示標題「Prompt Injection」的文件與聊天視窗。畫面文字僅螢幕內容可辨「Prompt
+    Injection」。
+- shot_id: 27
+  type: stock
+  note: '實拍桌面場景：白色喇叭旁、螢幕顯示 Claude 對話（Notion Course: Scripting / Building a Customizable
+    Notion Productivity System），前景人物肩膀虛化。螢幕內可辨文字含 ''Notion Course: Scripting / Building
+    a Customizable Notion Productivity System''、''4. Surface relevant information
+    automatically when you need it''、''5. Connect related projects, tasks, notes,
+    and resources in a meaningful way''、''Jeff describes it as "the backbone of everything
+    I do" and "the only reason I can stay so organized even though there''s so much
+    going on in my life." The Command Center is structured with both a frontend (the
+    visual interface you interact with) and backend (the databases that store and
+    organize information).''、''The course walks through building this system from
+    scratch, including sections for: Tasks / Projects / Areas / Notes / Daily planning
+    / Weekly reviews / Quick capture features''、''Rather than simply providing a template,
+    Jeff focuses on teaching the underlying structure so users can customize it to
+    their specific needs while maintaining the core functionality.''、輸入框打字中 ''If you
+    were to summarize the purpose of''（a 幀為 ''If you were to summarize th''，打字進行中）、''Claude
+    3.7 Sonnet''、''Choose style''、''Use shift + return for new line''、''Claude can
+    make mistakes. Please double-check responses.''。實拍鏡頭拍攝實體螢幕，非螢幕錄影。'
+- shot_id: 28
+  type: doc_screenshot
+  note: 暗底點陣背景上的白色文章標題卡（Forbes 式）。文字：'INNOVATION > ENTERPRISE TECH'、'How AI Agents
+    Will Revolutionize Your Day-To-Day Life'、'Follow Author'；作者列模糊處理。b 幀 'AI Agents'
+    加上黃色 highlight（a 幀無），卡片略放大。
+- shot_id: 29
+  type: motion_graphic
+  note: 暗底點陣背景三欄資訊圖卡，逐步 build：編號卡 '1 / 2 / 3'，下方 icon＋標籤。a 幀僅 '1' 下出現 OpenAI logo＋'ChatGPT
+    (LLMs)'；b/c 幀補齊 'AI Workflows'（流程 icon）與 'AI Agents'（機器人 icon）。文字：'1'、'2'、'3'、'ChatGPT
+    (LLMs)'、'AI Workflows'、'AI Agents'。
+- shot_id: 30
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話，暗色房間、大型麥克風，手勢比劃（舉食指）。畫面無文字。
+- shot_id: 31
+  type: doc_screenshot
+  note: AWS 網頁截圖（深藍底），周邊模糊，標題清晰並帶黃色 highlight。文字：'What is RAG (Retrieval-Augmented
+    Generation)?'（'(Retrieval-Augmented Generation)?' 部分黃底 highlight）。緩慢 zoom。
+- shot_id: 32
+  type: doc_screenshot
+  note: Google Cloud 網頁截圖，內文模糊、標題清晰帶黃色 highlight。文字：'What is Retrieval-Augmented Generation
+    (RAG)?'（'Retrieval-Augmented Generation' 黃底），右側側欄卡片可見 'Quick…'、'Without RA…'、'Grounding…'
+    等部分字樣。
+- shot_id: 33
+  type: doc_screenshot
+  note: NVIDIA blog 文章截圖，內文模糊、標題清晰帶黃色 highlight。文字：'What Is Retrieval-Augmented Generation,
+    aka RAG…'（'Retrieval-Augmented Generation,' 黃底），右緣被裁切。
+- shot_id: 34
+  type: doc_screenshot
+  note: '兩幀為不同文章截圖（同鏡頭內切換/滑動）：a 幀白底頁面標題 ''ReACT Agent Model''（''ReACT'' 黃底 highlight）；b
+    幀 Google Cloud Medium 式文章標題 ''Building ReAct Agents from Scratch: A Hands-On Guide
+    using Gemini''（''ReAct'' 黃底 highlight），作者列模糊。'
+- shot_id: 35
+  type: aroll
+  note: Jeff 全畫面對鏡頭，笑著舉食指（a 幀）轉為瞇眼微笑（b 幀）。畫面無文字。
+- shot_id: 36
+  type: motion_graphic
+  note: 章節式動態圖卡 build：a 幀黑色斜面上外框字 'LANGUAGE MODELS' 動畫進場；b/c 幀定版為暗底點陣圖卡——左側三個 logo（OpenAI、Gemini、Anthropic）＋黃色標籤
+    'Large Language Models (LLMs)'，右側 Jeff 圓角直式 PIP 卡說話。多幀不一致：a 為轉場動畫，b/c 為完整版含 host
+    PIP。
+- shot_id: 37
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話，雙手張開手勢。畫面無文字。
+- shot_id: 38
+  type: screen_recording
+  note: 'ChatGPT 介面螢幕錄影，置於米白點陣背景中的圓角視窗，下方黃色流程 diagram overlay 逐步補字：a 幀左上角 Jeff 圓角
+    PIP（host PIP），僅使用者訊息 ''Draft an email to Elon Husky asking for a coffee chat''；b
+    幀 PIP 消失、出現 diagram ''Input → LLM (CHATGPT) → Output''；c 幀 ChatGPT 回覆完整顯示（''Sure!
+    Here''s a concise, friendly, and professional draft you can use to reach out to
+    Elon Husky for a coffee chat:''、''Subject: Quick Coffee Chat?''、''Hi Elon,''、''Hope
+    you''re doing well! I''ve been following your work for a while now and really
+    admire your approach to [insert specific topic or project they''re known for].
+    I''d love the chance to connect and hear more about your journey.''、''Would you
+    be open to a quick coffee chat sometime in the next few weeks? I''d really value
+    your perspective and promise to keep it brief.''、''Thanks in advance—and either
+    way, keep up the great work!''、''Best, [Your Name]''、''Let me know if you''d like
+    to tailor it based on your …tionship with Elon or what you''re hoping to learn
+    from the chat''），diagram 補為 ''Input (Prompt) → LLM (CHATGPT) → Output (Email)''；介面另有
+    ''Ask anything''、''Deep research''、''ChatGPT can make mistakes. Check important
+    info.''。'
+- shot_id: 39
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話，雙手張開後舉食指（b 幀鏡位略近）。畫面無文字。
+- shot_id: 40
+  type: screen_recording
+  note: 'ChatGPT 介面錄影（無 host PIP，a 幀）：回覆結尾與輸入框、Deep research 按鈕；b/c 幀切為黑底 dot-grid
+    資訊卡「KEY TRAITS OF LLMs」，c 幀加入「1. Despite being trained on vast amounts of data,
+    they have limited knowledge of proprietary information: like our personal information
+    or internal company data.」（limited knowledge of proprietary information 橘字）。a
+    幀文字逐字："Let me know if you''d like to tailor it based on your relationship with
+    Elon or... learn from the chat." / "W" / "Deep research" / "ChatGPT can make mistakes.
+    Check important info."。多幀不一致：screen recording → 圖卡轉場，主體以圖卡段落為主，惟 a 幀為 ChatGPT
+    錄影'
+- shot_id: 41
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話（灰襯衫、麥克風、書架背景），b 幀舉起食指強調；畫面無文字
+- shot_id: 42
+  type: motion_graphic
+  note: 黑底動畫圖卡：a 幀為傾斜外框大字轉場「...WORKFLOWS」（前字被裁）；b 幀 Input → LLM → Output 流程圖；c 幀 LLM
+    下方加藍色箭頭連 Google Calendar 圖示，標「Search Query」。文字："WORKFLOWS" / "Input" / "LLM" /
+    "Output" / "Search Query"。多幀：轉場字卡 → 流程圖逐步 build
+- shot_id: 43
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話、雙手比劃；畫面無文字
+- shot_id: 44
+  type: diagram
+  note: 黑底 LLM 工具呼叫概念圖：Input / LLM / Output 加 Google Calendar 圖示；b/c 幀滑入藍色虛線對話框 "When
+    is my coffee chat with Elon Husky?" 與 "It's tomorrow at 10AM!"，c 幀補上 LLM→Output
+    虛線箭頭。文字："Input" / "LLM" / "Output" / "When is my coffee chat with Elon Husky?"
+    / "It's tomorrow at 10AM!"。多幀：元素逐步出現
+- shot_id: 45
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話，a 幀舉食指、b 幀比 OK 手勢；畫面無文字
+- shot_id: 46
+  type: diagram
+  note: 同一 LLM+Calendar 概念圖延續：a 幀僅 Input/LLM/Output+Calendar；b/c 幀加入紅色虛線框 "What will
+    the weather be like that day?" 與紅色 X 圓標壓在 Output 上（紅底線）。文字："Input" / "LLM" / "Output"
+    / "What will the weather be like that day?"。多幀：紅色失敗元素滑入
+- shot_id: 47
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話、手勢揮動；畫面無文字
+- shot_id: 48
+  type: motion_graphic
+  note: 黑底圖卡：a 幀僅標題「AI WORKFLOW」；b 幀出現 Input→LLM→Output＋Calendar 流程圖；c 幀加橘圈 highlight
+    虛線路徑並滑入黃底黑字標籤「PATH = CONTROL LOGIC」。文字："AI WORKFLOW" / "Input" / "LLM" / "Output"
+    / "PATH = CONTROL LOGIC"。多幀：逐步 build
+- shot_id: 49
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話、手放胸前比劃；畫面無文字
+- shot_id: 50
+  type: diagram
+  note: 黑底流程圖擴展：a 幀 Input→LLM 與 Calendar 雙向藍箭頭；b 幀加入第二個黃色 LLM 盒 "LLM (text-to-audio)"
+    與天氣圖示；c 幀補 Output 與藍字 "The weather forecast for seeing Elon Husky" 及藍色音波形。文字："Input"
+    / "LLM" / "LLM (text-to-audio)" / "Output" / "The weather forecast for seeing
+    Elon Husky"。多幀：pipeline 逐步 build
+- shot_id: 51
+  type: aroll
+  note: a 幀 Jeff 全畫面比 OK 手勢說話；b/c 幀切為黑底圖卡：標題「AI WORKFLOW = HUMAN DECISION MAKER」，中央圓角框內是
+    Jeff 說話畫面，下方 Input → 七個白色方塊 → Output。文字："AI WORKFLOW = HUMAN DECISION MAKER" /
+    "Input" / "Output"。多幀不一致：aroll → 圖卡（內嵌 host 畫面）；以 aroll 開場、時長主體含圖卡
+- shot_id: 52
+  type: aroll
+  note: Jeff 全畫面對鏡頭，手伸向鏡頭做捏指手勢（手部前景失焦）；畫面無文字
+- shot_id: 53
+  type: motion_graphic
+  note: 黑底點陣畫布上依序滑入三張推薦影片縮圖與說明段落（a 幀僅左上一張縮圖，b 幀三張齊 + 文字，c 幀切為 Jeff's AI Toolkit 筆電
+    mockup 收尾）。文字逐字：a/b 幀縮圖標籤 'Agentic RAG Explained' / 'AI AGENT VS ASSISTANT VS
+    RAG' / 'What is RAG?'，標題 'RETRIEVAL AUGMENTED GENERATION (RAG)'，段落 'RAG is a process
+    that helps AI models "look things up" before they answer. Essentially, RAG is
+    just a type of AI workflow.'，另有 Google Calendar 與天氣 emoji 圖示。c 幀：'JEFF'S AI TOOLKIT'
+    / 筆電畫面 'Master the essential AI tools and workflows that will transform how you
+    work.' / 'AI Toolkit' / 'Your free email course that cuts through the noise and
+    helps you focus on achieving real results with AI, faster.' / 'Get the Toolkit'
+    / 橫幅 'LINK DOWN BELOW'。多幀內容差異大（元素陸續進出）
+- shot_id: 54
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話、雙手比劃，暗色房間+大麥克風。畫面無文字
+- shot_id: 55
+  type: kol
+  note: '他人教學影片片段：Make.com 介面（Google Sheets ''Watch New Rows'' 模組、b 幀展開模組選單含 ''Perplexity
+    AI ● Verified'' / ''Create a Chat Completion'' / ''Make an API Call'' / ''Google
+    Sheets'' / ''Pipedrive CRM'' / ''0CodeKit'' / ''Persat'' / ''Manychat''），右下有原作者（女性）webcam。下方橫幅
+    ''SOURCE: HELENA LIU''（a 幀橫幅正滑入、字被裁切）。介面文字另含 ''Integration Google Sheets'' / ''Run
+    once'' / ''Daily at 8:23 AM'''
+- shot_id: 56
+  type: screen_recording
+  note: Make.com workflow 畫布螢幕錄影，右側 Jeff 圓角小卡 host PIP。標題 overlay 'AI WORKFLOW EXAMPLE'（a
+    幀滑入中僅見 'FLOW EXAMPLE'）。節點文字：'Compile links in Sheets' / 'Watch New Rows' / 'Summarize
+    article' / 'Create a Chat Completion' / 'Router' / 'Draft LinkedIn Post' / 'Draft
+    Instagram Post' / 'Create a Prompt' / 'Run once' / 'Daily at 8:00 AM'；b 幀為兩個 AI
+    節點的黃框放大特寫（標題消失）
+- shot_id: 57
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話、單手食指上指。畫面無文字
+- shot_id: 58
+  type: screen_recording
+  note: 'Make.com 執行結果螢幕錄影，右側 Jeff 圓角小卡 host PIP。a 幀 workflow 節點全打勾（''Compile links
+    in Sheets'' / ''Summarize article'' / ''Router'' / ''Draft LinkedIn Post'' / ''Draft
+    Instagram Post''）；b 幀展開 ''Operation 1'' 面板：''Data size: 2.3 KB'' / ''INPUT / Bundle
+    1 / Model: claude-3-7-sonnet-20250219 / Messages / Metadata / Max Tokens: 800
+    / Temperature: 1 / OUTPUT / Text Response / Unique ID: msg_013T8M7pqZmJgaEJwoakHiHM
+    / Type: message / Role: assistant / Stop Reason: end_turn / Commit / Finalization''；c
+    幀顯示產出的 LinkedIn Post 全文：''# LinkedIn Post / **The Evolution of Short-Form News:
+    Reflecting on BBC News Summary''s Legacy** / For over three decades, the BBC News
+    Summary served as a cornerstone of quick, reliable information for millions. This
+    90-second bulletin, delivered by a single newsreader, managed to compress national
+    headlines, international developments, regional updates, and weather forecasts
+    into a concise package that kept us informed without overwhelming us. / As our
+    media landscape continues to transform, I find myself reflecting on how these
+    efficient information formats shaped our consumption habits. From 1986 to 2018,
+    this brief but mighty program demonstrated that quality news delivery doesn''t
+    always require lengthy segments. / What short-form news sources do you rely on
+    today? Has the way you consume news changed significantly in recent years? / Let''s
+    discuss how we balance brevity with depth in our increasingly fast-paced information
+    environment. / #MediaEvolution #NewsConsumption #DigitalTransformation'''
+- shot_id: 59
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話、手勢比劃（a 幀側臉望向畫面外，b 幀正對鏡頭）。畫面無文字
+- shot_id: 60
+  type: screen_recording
+  note: 'Make.com 螢幕錄影，右側 Jeff 圓角小卡 host PIP。a 幀 ''Anthropic Claude'' 彈窗顯示 LinkedIn
+    Post 輸出（同 shot 58 貼文內容縮小版，''Model: claude-3-7-sonnet-20250219'' / ''Commit'' /
+    ''Finalization''）；b/c 幀切到 prompt 設定面板：''Type* / Map / Text / For models that support
+    image content blocks (vision), see the Anthropic model comparison table. / Text*
+    / Act as a social media manager and generate a LinkedIn post. The post should
+    engage the audience with a compelling introduction, provide essential details,
+    and encourage interaction through likes, comments, and shares. End with a clear
+    call to action. Include optional hashtags: [#Hashtag1, #Hashtag2]. / Here''s a
+    summary of the article I want you to write a LinkedIn post about: 2. Choices[
+    ]: Message.Content / Content of the message on behalf of the selected Role. /
+    + Add content / + Add message''，c 幀 Text 欄位加黃框 highlight；背景節點 ''Router'' / ''Draft
+    LinkedIn Post'' / ''Draft Instagram Post'' / ''Create a Prompt'''
+- shot_id: 61
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話、雙手手勢。畫面無文字
+- shot_id: 62
+  type: motion_graphic
+  note: '章節轉場+概念動畫：a 幀黑色三角形轉場中露出外框字 ''AI AGENTS''（章節卡過場）；b/c 幀為黑底點陣圖解，頂端 Jeff 小卡 PIP
+    加虛線箭頭指向 ''REASON'' 虛線框；c 幀擴展為 ''REASON'' / ''Step 1: Compile links'' / ''Step
+    2: Summarize articles'' / ''Step 3: Write posts'' / ''ACT (via tools)'' + Google
+    Sheets 圖示。多幀元素漸進出現'
+- shot_id: 63
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話（a 幀食指上指，b 幀微笑）。畫面無文字
+- shot_id: 64
+  type: motion_graphic
+  note: '黑底點陣 REASON/ACT 圖解動畫延續：a 幀頂端 Jeff 小卡 PIP + ''REASON'' / ''Step 1: Compile
+    links'' / ''Step 2: Summarize articles'' / ''Step 3: Write posts'' / ''ACT (via
+    tools)'' + Google Sheets / Readwise / Anthropic 三個工具圖示；b 幀 PIP 換成機器人圖示、REASON
+    下出現 loading spinner，文字 ''What''s the most efficient way to compile news articles?
+    Should I copy and paste each article into a word document? No. It''s probably
+    easier to compile links to those articles, and use another tool to fetch the data.''；c
+    幀回到步驟圖，ACT 列出現打叉的 Word 圖示。多幀元素進出（host PIP→robot、圖示增減）'
+- shot_id: 65
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話、手勢比劃（a 幀手伸向鏡頭失焦）。畫面無文字
+- shot_id: 66
+  type: motion_graphic
+  note: 暗色點陣背景上的動態文字卡；frame a 文字尚未出現（僅黑底點陣），frame b/c 文字已入場。文字逐字：「ReAct Framework
+    = Reasoning + Act」（ReAct 藍黃配色，Google 風格）。
+- shot_id: 67
+  type: aroll
+  note: 主持人 Jeff 全畫面對鏡頭說話，深灰襯衫、面前大麥克風，手勢比劃。畫面無文字。
+- shot_id: 68
+  type: motion_graphic
+  note: AI Workflow 流程圖動畫，逐幀堆疊元素：frame a 標題「AI Workflow (human decision maker)」＋流程「Compile
+    links / Summarize / Write post / Post / Human」（Sheets、Gemini、Anthropic icon＋人臉照片）；frame
+    b Human 換成 OpenAI logo，左上加機器人 icon、右上加「ITERATION」循環箭頭；frame c 再加機器人對話框「1. How
+    do I make sure it's good? 2. I'll ask another LLM to critique the post based on
+    best practices.」且最後節點標「Critique Bot」，藍色虛線迴圈連回 Write post。
+- shot_id: 69
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，雙手張開比劃。畫面無文字。
+- shot_id: 70
+  type: kol
+  note: Andrew Ng 於舞台演講（Landing AI / 演講 demo 片段），frame a 為轉場過渡：黑色菱形擦入、outline 大字「AI
+    AGENTS」；frame b Andrew Ng 站在透明講台前；frame c 舞台大螢幕顯示文字「DEMO — AGENTIC WORKFLOW AND
+    VIDEO Q&A APP」。
+- shot_id: 71
+  type: screen_recording
+  note: 'VisionAgent（va.landing.ai）網頁操作錄影，無 host PIP。畫面文字：「VisionAgent」「Early Access」「Generate
+    code to solve your vision problem with simple prompts.」「Upload an image or video」「We
+    accept: JPG, JPEG, HEIC, WEBP, AVIF, MP4, MOV (videos up to 30 seconds)」「Describe
+    your vision task. Examples: Detect the dogs in the image, count the number of
+    red cars in the video, identify the logos in the image.」「Smart mode」「Try example
+    programs」「Detect how close sharks are to surfers / Object Detection」「Room and
+    Style Categorization Program / Visual Question Answering」「Soda Can Counting and
+    Inventory Status / Counting」；frame b 已上傳足球影片縮圖。'
+- shot_id: 72
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，手向前指比劃。畫面無文字。
+- shot_id: 73
+  type: screen_recording
+  note: 'LandingAI 影片搜尋工具操作錄影，右側主持人圓角小卡 PIP（host PIP）。frame a 文字：「LandingAI」「Looking
+    for a specific moment? Start typing...」「skier」「Indexed Videos (25)」「andrew_talk.mp4
+    / baggage_resized.mp4 / bertha_benz.mp4」；frame b/c 搜尋結果頁：「Search results: 10 clips
+    (from 25 videos)」「skier」「Clear Search」「View By Clip By Video」「High / Medium」多個「ski_jump_clipped.mp4
+    Clip 1–8」。'
+- shot_id: 74
+  type: screen_recording
+  note: 接續影片 clip 檢視操作錄影，右側 host PIP。frame a 開啟 clip modal「01:26 - 01:34 high」「01:26
+    / 01:45」雪山滑雪畫面；frame b 另一 clip「01:19 - 01:26 high」滑雪者跳躍被黃框標出「01:22 / 01:45」；frame
+    c 疊出機器人 icon＋黑底大字 overlay「I THINK THIS IS A SKIIER」。
+- shot_id: 75
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，笑容、手勢比劃。畫面無文字。
+- shot_id: 76
+  type: screen_recording
+  note: 'clip 播放器操作錄影，右側 host PIP。frame a：「Search results: 10 clips (from 25 videos)」「01:26
+    - 01:34 high」「01:26 / 01:45」「ski_jump_clipped.mp4 Clip 6/7/8」；frame b 疊入主持人頭像圓形貼圖＋黃色標籤「Skiier」；frame
+    c 再加黃色標籤「Mountains」「Trees」（標註元素逐步滑入）。'
+- shot_id: 77
+  type: aroll
+  note: 主持人全畫面對鏡頭說話，雙手大幅比劃（frame a 手部動態模糊）。畫面無文字。
+- shot_id: 78
+  type: screen_recording
+  note: LandingAI 搜尋首頁操作錄影，右側 host PIP。文字：「LandingAI」「Looking for a specific moment?
+    Start typing...」「skier」（歷史建議）「baggage_resized.mp4 / bertha_benz.mp4 / game_camera_converted.mp4」；frame
+    b 搜尋框正輸入「foot」。
+- shot_id: 79
+  type: screen_recording
+  note: LandingAI 網站搜尋介面（白底），搜尋框輸入 football，右下角 host PIP（Jeff 圓角小卡對鏡頭說話）。畫面文字：「LandingAI」「football」「Clear
+    Search」。
+- shot_id: 80
+  type: screen_recording
+  note: 'LandingAI 搜尋結果頁，顯示 superbowl 影片切片縮圖 grid，host PIP 在右側。a 幀為滿版網頁、b 幀縮小成浮在黑色點陣背景上的視窗（zoom-out
+    轉場）。畫面文字：「Search results: 10 clips (from 25 videos)」「football」「Clear Search」「By
+    Video / View By Clip」「High」「Medium」「superbowl_short.mp4 Clip 1–9」「02:59-03:05」「02:48-02:54」「01:13-01:18」「00:06-00:...」「01:30-01:35」「00:28-00:34」「02:37-02:42」「02:09-02:14」。'
+- shot_id: 81
+  type: screen_recording
+  note: 同一 LandingAI 結果頁上點開單一 clip 的預覽播放視窗（美式足球擒抱畫面，FOX 台標），底部有時間軸色塊，host PIP 在右側說話。畫面文字：「Medium」「01:13-01:18」（彈窗左上
+    clip 標籤）「00:13 / 05:02」（b 幀為 00:14 / 05:02）。
+- shot_id: 82
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話、手勢比劃（暗色房間、大麥克風、層架背景），無 overlay 文字。
+- shot_id: 83
+  type: screen_recording
+  note: n8n 產品官網滾動瀏覽（深紫色 landing page，含 workflow editor 截圖與程式碼卡片），無 host PIP。a 幀文字：「Forge
+    your masterpiece」「You can use our visual editor. You can code. You can self-host
+    or use our cloud. You will successfully execute your workflow.」「1. Leading Visual
+    Editor」「2. Powerful Debugging」「3. Secure Deployments」。b 幀：「Leading visual editor」「Nodes
+    are steps in your workflow. Use native and HTTP nodes to work directly with APIs.
+    Use built-in data transformers or code to manipulate your data. Get out-of-the-box
+    AI agents.」。c 幀：「Get rid of repetitive code. We've built over 400 pre-configured
+    integrations to help you achieve this. No more getting lost in documentation or
+    dealing with CORS errors either.」「View integrations →」「The tool comes to life
+    with fast feedback loops, letting you build piece by piece. Outputs appear right
+    next to your settings at every step.」「You can execute just the last step, not
+    the whole sequence. And you can replay data, sparing you from re-triggering events
+    or enduring slow workflow steps.」「More on coding →」「Fall back to code」「The interface
+    will never limit you. Use the code node to write custom transformations in JavaScript
+    or Python. On self-hosted instances, add npm packages for even more power.」「Merge,
+    loop, filter」「From the simple to the sophisticated you will find a path for your
+    data. Route data with switches and if nodes. Create loops and...」。
+- shot_id: 84
+  type: title_card
+  note: 章節卡：黑色菱形區塊擴張的轉場，中央 outline 大字動畫進場。畫面文字：「SUMMARY」（a 幀字樣尚在滑入、部分被裁切）。b 幀轉場已切到
+    Jeff 全畫面對鏡頭說話（同一鏡頭內由 title card 轉入 a-roll）。
+- shot_id: 85
+  type: diagram
+  note: 黑底點陣背景的三層概念圖逐步 build（動態組裝）。a 幀僅一條黃色橫條（元素尚在進場）；b 幀出現三張卡與虛線框；c 幀完整含三欄。畫面文字：「LLMS
+    (level 1)」「AI WORKFLOWS (level 2)」「AI AGENTS (level 3)」（黃底高亮）「AI AGENT」「Goal」「Reasoning」「Step
+    1... Step 2... Step 3...」「Act (via tools)」「Iteration」「Hmm... let's try that again.」。
+- shot_id: 86
+  type: aroll
+  note: Jeff 全畫面對鏡頭說話收尾（比手指、微笑），c 幀畫面邊緣有光暈/light leak 轉場效果，無 overlay 文字。

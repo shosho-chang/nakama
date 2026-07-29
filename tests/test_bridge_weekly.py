@@ -483,6 +483,50 @@ class TestTaskDetail:
         assert e["actual_minutes"] == 75  # full nominal block
         assert e["manual"] is True
 
+    def test_log_manual_backdate_stamps_given_day(self, client, tmp_path):
+        """修修 bug: a manual +1🍅 backfilling a PAST day was stamped `now` and leaked
+        into the wrong week. With entry_date the block is stamped on that day instead."""
+        client.post(
+            "/bridge/weekly/task/測試任務/log",
+            data={"mode": "pomodoro", "manual": "1", "entry_date": "2020-01-15", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        e = _time_entries(tmp_path)[-1]
+        assert e["startTime"].startswith("2020-01-15")
+        assert e["endTime"].startswith("2020-01-15")  # 25-min block stays inside the day
+        assert e["manual"] is True
+
+    def test_log_backdate_stacks_n_blocks_within_the_day(self, client, tmp_path):
+        """N backfilled clicks on the same past day stack into N non-overlapping blocks
+        (union == sum == N), all inside that day — so the week rollup credits all N."""
+        for _ in range(3):
+            client.post(
+                "/bridge/weekly/task/測試任務/log",
+                data={
+                    "mode": "pomodoro",
+                    "manual": "1",
+                    "entry_date": "2020-01-15",
+                    "week": WEEK_KEY,
+                },
+                follow_redirects=False,
+            )
+        entries = _time_entries(tmp_path)
+        assert len(entries) == 3
+        assert all(e["endTime"].startswith("2020-01-15") for e in entries)
+        assert all(e["startTime"].startswith("2020-01-15") for e in entries)
+        assert len({e["startTime"] for e in entries}) == 3  # no overlap-collapse
+
+    def test_log_future_entry_date_falls_back_to_today(self, client, tmp_path):
+        """A future (or today's) entry_date is ignored — the block is stamped `now`, never
+        a future week. Guards a stray/direct POST past the date picker's max=today."""
+        client.post(
+            "/bridge/weekly/task/測試任務/log",
+            data={"mode": "pomodoro", "manual": "1", "entry_date": "2099-12-31", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        e = _time_entries(tmp_path)[-1]
+        assert not e["endTime"].startswith("2099")
+
     def test_log_unknown_mode_rejected(self, client, tmp_path):
         before = len(_time_entries(tmp_path))
         r = client.post(

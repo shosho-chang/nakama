@@ -154,11 +154,9 @@ def test_render_success_writes_variables_json_and_copies_first_frame(
     # argv shape correctness — cwd was video_dir
     assert len(written_argv) == 1
     argv = written_argv[0]
-    assert argv[0:3] == ("npx", "hyperframes", "render") or argv[0:3] == [
-        "npx",
-        "hyperframes",
-        "render",
-    ]
+    # argv[0] 在 spawn 前經 shutil.which 解析（Windows 上 npx 是 npx.cmd）
+    assert Path(argv[0]).stem == "npx"
+    assert list(argv[1:3]) == ["hyperframes", "render"]
 
 
 def test_render_success_variables_json_contains_data_urls(assets: dict[str, Path]):

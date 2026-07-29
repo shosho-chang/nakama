@@ -624,7 +624,7 @@ def test_st5_service_no_llm_client_import():
                     "google.generativeai",
                     "google.genai",
                 ))
-                # ADR-050: own bounded package is allowed; any OTHER agents
+                # ADR-052: own bounded package is allowed; any OTHER agents
                 # module (e.g. agents.robin.agent / ingest) is still forbidden.
                 or (
                     m.startswith("agents")

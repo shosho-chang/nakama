@@ -222,7 +222,7 @@ def efetch_abstracts(
     eutils-type feed 走這條 efetch path 補 abstract。輸出 dict 與
     ``agents/robin/pubmed_digest.py:_parse_entry`` 對齊：
 
-    keys: pmid, title, journal, abstract, pub_date, authors, url, issn
+    keys: pmid, title, journal, abstract, pub_date, authors, url, issn, doi, pmcid
 
     Empty input → empty output（不打 API）。XML 解析失敗的單篇記 warning 跳過，
     不整批 raise（避免一兩篇損壞 entry 帶倒整個 feed）。
@@ -286,6 +286,25 @@ def _parse_pubmed_article(article: ET.Element) -> dict[str, Any] | None:
     issn_el = article.find(".//Journal/ISSN")
     issn = (issn_el.text or "").strip() if issn_el is not None else ""
 
+    # DOI + PMCID — for the "go straight to the publisher / free full text" links.
+    # Scope to THIS article's own id list (``PubmedData/ArticleIdList`` + the
+    # Article-level ``ELocationID``); ``.//`` would also swallow the PMCIDs of
+    # every cited reference under ``ReferenceList``.
+    doi = ""
+    doi_el = article.find("MedlineCitation/Article/ELocationID[@EIdType='doi']")
+    if doi_el is not None and doi_el.text:
+        doi = doi_el.text.strip()
+    pmcid = ""
+    aid_list = article.find("PubmedData/ArticleIdList")
+    if aid_list is not None:
+        if not doi:
+            doi_aid = aid_list.find("ArticleId[@IdType='doi']")
+            if doi_aid is not None and doi_aid.text:
+                doi = doi_aid.text.strip()
+        pmc_aid = aid_list.find("ArticleId[@IdType='pmc']")
+        if pmc_aid is not None and pmc_aid.text:
+            pmcid = pmc_aid.text.strip()
+
     # Abstract — 多段 <AbstractText Label="BACKGROUND"> 等需要拼接，保留 label 前綴
     abstract_parts: list[str] = []
     for abs_text in article.findall(".//Abstract/AbstractText"):
@@ -335,6 +354,8 @@ def _parse_pubmed_article(article: ET.Element) -> dict[str, Any] | None:
         "authors": authors,
         "url": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
         "issn": issn,
+        "doi": doi,
+        "pmcid": pmcid,
     }
 
 

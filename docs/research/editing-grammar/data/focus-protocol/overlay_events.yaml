@@ -1,0 +1,451 @@
+- shot_id: 1
+  overlays: []
+- shot_id: 2
+  overlays: []
+- shot_id: 3
+  overlays: []
+- shot_id: 4
+  overlays: []
+- shot_id: 5
+  overlays:
+  - t_first: 17.31
+    t_last: 22.31
+    kind: keyword_text
+    text: 預先計畫 / 實際行動
+  - t_first: 23.31
+    t_last: 26.31
+    kind: keyword_text
+    text: 極致專注力
+- shot_id: 6
+  overlays: []
+- shot_id: 7
+  overlays: []
+- shot_id: 9
+  overlays: []
+- shot_id: 10
+  overlays: []
+- shot_id: 12
+  overlays: []
+- shot_id: 13
+  overlays: []
+- shot_id: 14
+  overlays: []
+- shot_id: 15
+  overlays: []
+- shot_id: 16
+  overlays: []
+- shot_id: 19
+  overlays:
+  - t_first: 84.38
+    t_last: 84.38
+    kind: letterbox
+    text: ''
+- shot_id: 20
+  overlays: []
+- shot_id: 23
+  overlays: []
+- shot_id: 24
+  overlays: []
+- shot_id: 27
+  overlays: []
+- shot_id: 28
+  overlays: []
+- shot_id: 29
+  overlays: []
+- shot_id: 30
+  overlays: []
+- shot_id: 31
+  overlays:
+  - t_first: 123.5
+    t_last: 123.5
+    kind: letterbox
+    text: ''
+- shot_id: 32
+  overlays: []
+- shot_id: 34
+  overlays: []
+- shot_id: 36
+  overlays: []
+- shot_id: 38
+  overlays: []
+- shot_id: 39
+  overlays: []
+- shot_id: 41
+  overlays: []
+- shot_id: 44
+  overlays: []
+- shot_id: 45
+  overlays: []
+- shot_id: 46
+  overlays: []
+- shot_id: 49
+  overlays: []
+- shot_id: 54
+  overlays: []
+- shot_id: 56
+  overlays: []
+- shot_id: 57
+  overlays: []
+- shot_id: 58
+  overlays:
+  - t_first: 224.51
+    t_last: 227.51
+    kind: keyword_text
+    text: 心無旁鶩超能力
+- shot_id: 59
+  overlays: []
+- shot_id: 60
+  overlays:
+  - t_first: 230.31
+    t_last: 232.31
+    kind: title_banner
+    text: 心無旁鶩的超能力
+  - t_first: 233.31
+    t_last: 235.31
+    kind: photo_inset
+    text: ''
+- shot_id: 62
+  overlays: []
+- shot_id: 63
+  overlays: []
+- shot_id: 65
+  overlays: []
+- shot_id: 66
+  overlays: []
+- shot_id: 67
+  overlays: []
+- shot_id: 69
+  overlays: []
+- shot_id: 70
+  overlays: []
+- shot_id: 72
+  overlays: []
+- shot_id: 73
+  overlays: []
+- shot_id: 75
+  overlays: []
+- shot_id: 76
+  overlays: []
+- shot_id: 78
+  overlays:
+  - t_first: 297.84
+    t_last: 299.84
+    kind: photo_inset
+    text: ''
+- shot_id: 79
+  overlays: []
+- shot_id: 81
+  overlays: []
+- shot_id: 82
+  overlays: []
+- shot_id: 84
+  overlays: []
+- shot_id: 88
+  overlays: []
+- shot_id: 89
+  overlays: []
+- shot_id: 93
+  overlays: []
+- shot_id: 94
+  overlays: []
+- shot_id: 96
+  overlays: []
+- shot_id: 97
+  overlays: []
+- shot_id: 98
+  overlays:
+  - t_first: 421.63
+    t_last: 428.63
+    kind: list_card
+    text: '1 精通內在誘因
+
+      2 為引力空出時間
+
+      3 反擊外在誘因
+
+      4 用協定預防分心'
+- shot_id: 99
+  overlays: []
+- shot_id: 100
+  overlays:
+  - t_first: 434.47
+    t_last: 437.47
+    kind: title_banner
+    text: 精通內在誘因
+  - t_first: 438.47
+    t_last: 440.47
+    kind: photo_inset
+    text: 全球創作者必讀神書
+- shot_id: 101
+  overlays:
+  - t_first: 441.98
+    t_last: 444.98
+    kind: keyword_text
+    text: 專業人士
+- shot_id: 102
+  overlays:
+  - t_first: 445.99
+    t_last: 445.99
+    kind: other
+    text: 白色細直線於胸前（關鍵字標籤退場動畫殘影，無可讀文字；t446.99 已消失）
+- shot_id: 103
+  overlays: []
+- shot_id: 106
+  overlays: []
+- shot_id: 107
+  overlays: []
+- shot_id: 108
+  overlays: []
+- shot_id: 111
+  overlays:
+  - t_first: 469.84
+    t_last: 473.84
+    kind: keyword_text
+    text: 時間管理等於痛苦管理
+- shot_id: 114
+  overlays: []
+- shot_id: 119
+  overlays:
+  - t_first: 504.55
+    t_last: 505.55
+    kind: letterbox
+    text: ''
+- shot_id: 123
+  overlays: []
+- shot_id: 125
+  overlays:
+  - t_first: 527.15
+    t_last: 531.15
+    kind: title_banner
+    text: 步驟一：察覺分心前的不適感，並且思考背後的誘因。
+  - t_first: 532.15
+    t_last: 539.15
+    kind: title_banner
+    text: 步驟二：把誘因寫下來。
+- shot_id: 128
+  overlays: []
+- shot_id: 129
+  overlays: []
+- shot_id: 131
+  overlays:
+  - t_first: 557.72
+    t_last: 558.72
+    kind: photo_inset
+    text: 多巴胺 完全攻略 / dopamine nation — ANNA LEMBKE, MD
+- shot_id: 133
+  overlays:
+  - t_first: 568.73
+    t_last: 571.73
+    kind: keyword_text
+    text: 水流上的樹葉
+- shot_id: 135
+  overlays: []
+- shot_id: 138
+  overlays: []
+- shot_id: 141
+  overlays: []
+- shot_id: 142
+  overlays: []
+- shot_id: 145
+  overlays: []
+- shot_id: 147
+  overlays: []
+- shot_id: 149
+  overlays: []
+- shot_id: 150
+  overlays:
+  - t_first: 649.9
+    t_last: 652.9
+    kind: keyword_text
+    text: 自我疼惜
+- shot_id: 151
+  overlays: []
+- shot_id: 156
+  overlays: []
+- shot_id: 157
+  overlays: []
+- shot_id: 158
+  overlays: []
+- shot_id: 161
+  overlays: []
+- shot_id: 162
+  overlays:
+  - t_first: 709.83
+    t_last: 711.83
+    kind: keyword_text
+    text: hell yeah or no
+- shot_id: 163
+  overlays: []
+- shot_id: 164
+  overlays: []
+- shot_id: 165
+  overlays:
+  - t_first: 717.97
+    t_last: 719.97
+    kind: photo_inset
+    text: Talks at Google
+- shot_id: 166
+  overlays: []
+- shot_id: 167
+  overlays: []
+- shot_id: 170
+  overlays: []
+- shot_id: 172
+  overlays: []
+- shot_id: 173
+  overlays:
+  - t_first: 751.37
+    t_last: 754.37
+    kind: keyword_text
+    text: 心無旁鶩時刻
+- shot_id: 177
+  overlays: []
+- shot_id: 179
+  overlays: []
+- shot_id: 182
+  overlays: []
+- shot_id: 183
+  overlays:
+  - t_first: 797.5
+    t_last: 799.5
+    kind: keyword_text
+    text: 為什麼
+- shot_id: 184
+  overlays:
+  - t_first: 800.42
+    t_last: 801.42
+    kind: keyword_text
+    text: 為什麼
+- shot_id: 185
+  overlays:
+  - t_first: 803.97
+    t_last: 805.97
+    kind: title_banner
+    text: 你人生的引力有哪些？
+- shot_id: 193
+  overlays: []
+- shot_id: 204
+  overlays: []
+- shot_id: 205
+  overlays: []
+- shot_id: 209
+  overlays: []
+- shot_id: 210
+  overlays: []
+- shot_id: 211
+  overlays: []
+- shot_id: 214
+  overlays:
+  - t_first: 902.03
+    t_last: 905.03
+    kind: photo_inset
+    text: 慢速工作力 Slow Productivity 原來我之前錯了...
+- shot_id: 216
+  overlays: []
+- shot_id: 217
+  overlays: []
+- shot_id: 218
+  overlays: []
+- shot_id: 219
+  overlays:
+  - t_first: 918.29
+    t_last: 919.29
+    kind: photo_inset
+    text: 上線時間管理術 Google時間管理一姐的高效秘訣，找到工作/生活/自己的平衡與幸福 上班族 必學!!!
+- shot_id: 221
+  overlays: []
+- shot_id: 223
+  overlays: []
+- shot_id: 231
+  overlays: []
+- shot_id: 232
+  overlays: []
+- shot_id: 237
+  overlays: []
+- shot_id: 238
+  overlays: []
+- shot_id: 239
+  overlays:
+  - t_first: 1014.43
+    t_last: 1016.43
+    kind: book_cover
+    text: 'App 深度數位大掃除 MIT電腦科學博士 卡爾・紐波特Cal Newport 著 3分鐘離線方案，在喧囂世界過專注人生 Digital Minimalism:
+      Choosing a Focused Life in a Noisy World'
+  - t_first: 1017.43
+    t_last: 1020.43
+    kind: photo_inset
+    text: 上線時間管理術 Google時間管理一姐的高效秘訣，找到工作/生活/自己的平衡與幸福 上班族 必學!!!
+- shot_id: 240
+  overlays: []
+- shot_id: 241
+  overlays:
+  - t_first: 1022.6
+    t_last: 1023.6
+    kind: list_card
+    text: 1 精通內在誘因 2 為引力空出時間 3 反擊外在誘因 4 用協定預防分心
+- shot_id: 242
+  overlays: []
+- shot_id: 243
+  overlays: []
+- shot_id: 246
+  overlays:
+  - t_first: 1042.29
+    t_last: 1042.29
+    kind: letterbox
+    text: ''
+- shot_id: 247
+  overlays: []
+- shot_id: 249
+  overlays: []
+- shot_id: 251
+  overlays:
+  - t_first: 1055.01
+    t_last: 1058.01
+    kind: keyword_text
+    text: 心無旁鶩模型
+- shot_id: 253
+  overlays: []
+- shot_id: 254
+  overlays: []
+- shot_id: 255
+  overlays: []
+- shot_id: 256
+  overlays: []
+- shot_id: 257
+  overlays:
+  - t_first: 1074.87
+    t_last: 1075.87
+    kind: other
+    text: SUBSCRIBE!
+  - t_first: 1076.87
+    t_last: 1077.87
+    kind: other
+    text: SUBSCRIBED
+- shot_id: 258
+  overlays: []
+- shot_id: 259
+  overlays:
+  - t_first: 1082.29
+    t_last: 1084.29
+    kind: keyword_text
+    text: 張修修的自由之路
+- shot_id: 260
+  overlays:
+  - t_first: 1087.38
+    t_last: 1090.38
+    kind: keyword_text
+    text: shosho.tw/free
+- shot_id: 261
+  overlays: []
+- shot_id: 262
+  overlays: []
+- shot_id: 263
+  overlays: []
+- shot_id: 264
+  overlays: []
+- shot_id: 265
+  overlays: []
+- shot_id: 266
+  overlays: []
+- shot_id: 267
+  overlays: []
