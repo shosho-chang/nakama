@@ -51,9 +51,9 @@ def _fake_ask_factory(payloads: dict[str, str]):
     """依 thread-local agent 回傳對應文字；沒設定 agent 回 fallback。"""
 
     def fake_ask(prompt: str, **kwargs):
-        from shared.llm_context import _local
+        from shared.llm_context import get_current_agent
 
-        agent = getattr(_local, "agent", None) or "unknown"
+        agent = get_current_agent() or "unknown"
         return payloads.get(agent, f"[{agent} view]")
 
     return fake_ask
@@ -99,9 +99,9 @@ def test_run_brainstorm_participant_ask_failure_fills_placeholder() -> None:
     """單一參與者失敗不該讓整個 brainstorm 掛掉。"""
 
     def fake_ask(prompt: str, **kwargs):
-        from shared.llm_context import _local
+        from shared.llm_context import get_current_agent
 
-        agent = getattr(_local, "agent", None)
+        agent = get_current_agent()
         if agent == "sanji":
             raise RuntimeError("Grok 503")
         return f"[{agent} view]"
@@ -117,9 +117,9 @@ def test_run_brainstorm_participant_ask_failure_fills_placeholder() -> None:
 
 def test_run_brainstorm_synthesizer_failure_fills_placeholder() -> None:
     def fake_ask(prompt: str, **kwargs):
-        from shared.llm_context import _local
+        from shared.llm_context import get_current_agent
 
-        agent = getattr(_local, "agent", None)
+        agent = get_current_agent()
         if agent == "nami":
             raise RuntimeError("Claude 500")
         return f"[{agent} view]"
@@ -176,10 +176,10 @@ def test_run_brainstorm_sets_thread_local_agent_per_call() -> None:
     seen_agents: list[str] = []
 
     def fake_ask(prompt: str, **kwargs):
-        from shared.llm_context import _local
+        from shared.llm_context import get_current_agent
 
         with lock:
-            seen_agents.append(getattr(_local, "agent", None) or "unset")
+            seen_agents.append(get_current_agent() or "unset")
         return "x"
 
     with patch.object(orchestrator, "ask", side_effect=fake_ask):

@@ -407,16 +407,16 @@ def test_ask_gemini_resolves_model_via_router(monkeypatch):
     assert fake_client.models.generate_content.call_args.kwargs["model"] == "gemini-2.5-pro"
 
 
-def test_gemini_client_uses_shared_llm_context_local():
-    """unified thread-local：所有 provider client 都從 shared.llm_context 共用 _local。"""
-    from shared.anthropic_client import _local as a_local
-    from shared.gemini_client import _local as g_local
-    from shared.llm_context import _local as ctx_local
-    from shared.xai_client import _local as x_local
+def test_gemini_client_uses_shared_llm_context():
+    """unified context：所有 provider client 都從 shared.llm_context 讀 agent。"""
+    from shared.anthropic_client import get_current_agent as a_get
+    from shared.gemini_client import get_current_agent as g_get
+    from shared.llm_context import get_current_agent as ctx_get
+    from shared.xai_client import get_current_agent as x_get
 
-    assert a_local is ctx_local
-    assert g_local is ctx_local
-    assert x_local is ctx_local
+    assert a_get is ctx_get
+    assert g_get is ctx_get
+    assert x_get is ctx_get
 
 
 # ── 步驟 4 follow-up：borderline bug 修復測試 ─────────────────────────

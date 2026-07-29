@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from shared.anthropic_client import ask_claude, ask_claude_multi, call_claude_with_tools
-from shared.llm_context import _local
+from shared.llm_context import get_current_agent
 from shared.llm_router import get_auth_policy, get_model, get_provider
 from shared.llm_transport import openrouter_enabled
 
@@ -53,7 +53,7 @@ def ask(
     ``thinking_budget`` 僅對 Gemini 生效（其他 provider 忽略）。傳 ``None`` 時讓
     Gemini wrapper 套自家預設 512；傳 ``0`` 明確關閉 thinking；正整數為上限。
     """
-    agent = getattr(_local, "agent", None)
+    agent = get_current_agent()
     if model is None:
         model = get_model(agent=agent, task=task)
 
@@ -133,7 +133,7 @@ def ask_multi(
 
     ``thinking_budget`` 僅對 Gemini 生效（其他 provider 忽略）。
     """
-    agent = getattr(_local, "agent", None)
+    agent = get_current_agent()
     if model is None:
         model = get_model(agent=agent, task=task)
 
@@ -211,7 +211,7 @@ def ask_with_tools(
     各有 tool-use 但 schema / 回傳語意不同，這層 facade 暫不混淆 — 改
     其他 provider 時請補 dispatch 並對齊 stop_reason / content block 形狀。
     """
-    agent = getattr(_local, "agent", None)
+    agent = get_current_agent()
     if model is None:
         model = get_model(agent=agent, task=task)
 

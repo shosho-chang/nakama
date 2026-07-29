@@ -210,9 +210,9 @@ class TestScopeAuditLog:
         captured: dict = {}
 
         def fake_llm(prompt, **kw):
-            from shared.llm_context import _local
+            from shared.llm_context import get_scope_json
 
-            captured["scope"] = getattr(_local, "scope_json", None)
+            captured["scope"] = get_scope_json()
             return "ok"
 
         req = AskRequest(question="X 是什麼？", days=7, types=("pubmed", "ai"))
@@ -230,28 +230,28 @@ class TestScopeAuditLog:
         assert parsed["truncated"] is False
 
     def test_scope_json_cleared_after_call(self, tmp_path):
-        from shared.llm_context import _local
+        from shared.llm_context import get_scope_json, set_scope_json
 
         _seed(tmp_path, "KB/Wiki/Digests/PubMed", _today(0), "hi")
         idx = DigestIndexer(tmp_path)
 
-        # Prior threadlocal value preserved across call
-        _local.scope_json = "before"
+        # Prior context value preserved across call
+        set_scope_json("before")
         try:
             ask(
                 AskRequest(question="q", days=7, types=("pubmed",)),
                 idx,
                 llm=lambda *a, **kw: "ok",
             )
-            assert getattr(_local, "scope_json", None) == "before"
+            assert get_scope_json() == "before"
         finally:
-            _local.scope_json = None
+            set_scope_json(None)
 
     def test_empty_scope_does_not_set_scope_json(self, tmp_path):
-        from shared.llm_context import _local
+        from shared.llm_context import get_scope_json, set_scope_json
 
         idx = DigestIndexer(tmp_path)
-        _local.scope_json = None
+        set_scope_json(None)
 
         called = []
         ask(
@@ -261,7 +261,7 @@ class TestScopeAuditLog:
         )
         # No LLM call → scope_json never touched
         assert called == []
-        assert getattr(_local, "scope_json", None) is None
+        assert get_scope_json() is None
 
 
 class TestConstants:
