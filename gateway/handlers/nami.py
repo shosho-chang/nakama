@@ -46,7 +46,10 @@ TASK_DIR = "TaskNotes/Tasks"
 PROJECT_DIR = "Projects"
 
 _MAX_ITERS = 15
-_MODEL = "claude-sonnet-4-6"
+# Model 不硬寫在這裡——走 llm_router 的 (agent="nami", task="default") 解析，
+# 讓 Bridge /bridge/models override 與 MODEL_NAMI env 真的能生效。預設值宣告在
+# shared/llm_router.py 的 MODEL_REGISTRY，換代時只改那一處。
+_MODEL_TASK = "default"
 
 # ── Tool definitions（stable, will be prompt-cached） ──────────────────
 
@@ -894,12 +897,7 @@ class NamiHandler(BaseHandler):
 
     def handle(self, intent: str, text: str, user_id: str) -> HandlerResponse:
         set_current_agent("nami")
-        date_context = _build_date_context()
-        memory_context = agent_memory.format_as_context("nami", user_id)
-        parts = [date_context]
-        if memory_context:
-            parts.append(memory_context)
-        parts.append(text)
+        parts = [*_build_context_preamble(user_id), text]
         messages: list[dict] = [{"role": "user", "content": "\n\n".join(parts)}]
         return self._run_loop(messages, user_id)
 
@@ -919,7 +917,9 @@ class NamiHandler(BaseHandler):
         if not messages:
             return HandlerResponse(text="流程狀態異常，已重置。請重新開始。")
 
-        messages = list(messages)
+        # 續談可能跨日（thread idle timeout 24h）——把 messages[0] 的日期／記憶
+        # 換成當下的值，否則模型讀到的「今天」是這個 thread 開場那天。
+        messages = _refresh_context_preamble(list(messages), user_id)
         if pending_id:
             # 有 pending ask_user：把使用者回覆當成 tool_result 塞回 loop
             messages.append(
@@ -953,7 +953,7 @@ class NamiHandler(BaseHandler):
                 messages=messages,
                 tools=NAMI_TOOLS,
                 system=system_prompt,
-                model=_MODEL,
+                task=_MODEL_TASK,
                 max_tokens=8192,
             )
 
@@ -2642,7 +2642,11 @@ class NamiHandler(BaseHandler):
 
 
 def _build_date_context() -> str:
-    """今日日期資訊，注入到 user message（而非 system）以保持 system prompt 可快取。"""
+    """今日日期資訊，注入到 user message（而非 system）以保持 system prompt 可快取。
+
+    形狀變更時必須同步更新 ``_DATE_BLOCK_RE`` — 否則 :func:`_refresh_context_preamble`
+    會停止辨識舊區塊，跨日對話又會回到讀取過期日期的狀態。
+    """
     _weekday_zh = {0: "週一", 1: "週二", 2: "週三", 3: "週四", 4: "週五", 5: "週六", 6: "週日"}
     now = datetime.now(ZoneInfo("Asia/Taipei"))
     today_str = now.strftime("%Y-%m-%d")
@@ -2659,6 +2663,60 @@ def _build_date_context() -> str:
         f"今天是 {today_str}（{today_zh}）。\n\n"
         f"未來 14 天日期對照表（直接查，不要自行推算）：\n{date_table}"
     )
+
+
+# messages[0] 開頭那段 context preamble 的形狀。這兩個 pattern 必須跟
+# _build_date_context() / agent_memory.format_as_context() 的輸出對齊——
+# tests/test_gateway_handlers.py 的 refresh 測試會抓形狀漂移。
+_DATE_BLOCK_RE = re.compile(
+    r"## 今日資訊\n"
+    r"今天是 [^\n]*\n"
+    r"\n"
+    r"未來 \d+ 天日期對照表[^\n]*"
+    r"(?:\n {2}\d{4}-\d{2}-\d{2}[^\n]*)+"
+)
+# 記憶區塊沒有固定行數，用「到第一個空行為止」界定——preamble 各段本來就是
+# 用 "\n\n" 串接的，空行正好是段落邊界。
+_MEMORY_BLOCK_RE = re.compile(r"## 你記得關於使用者的事(?:(?!\n\n).)*", re.DOTALL)
+
+
+def _build_context_preamble(user_id: str) -> list[str]:
+    """組出要放在使用者原話前面的 context 區塊（日期、記憶）。"""
+    parts = [_build_date_context()]
+    memory_context = agent_memory.format_as_context("nami", user_id)
+    if memory_context:
+        parts.append(memory_context)
+    return parts
+
+
+def _strip_context_preamble(content: str) -> str:
+    """把 messages[0] 的 context 區塊拆掉，只留使用者原本說的話。"""
+    stripped = _DATE_BLOCK_RE.sub("", content, count=1)
+    stripped = _MEMORY_BLOCK_RE.sub("", stripped, count=1)
+    return stripped.lstrip("\n")
+
+
+def _refresh_context_preamble(messages: list[dict], user_id: str) -> list[dict]:
+    """回傳把 messages[0] 的日期／記憶換成當下值的新 list。
+
+    為什麼是「換掉」而不是「每輪再附一份」：conversation state 的 idle timeout 是
+    24 小時（``gateway/conversation_state.py``），跨日續談時 messages[0] 裡那句
+    「今天是 <昨天>」仍是 context 中唯一的日期權威，模型會照著用——2026-07-29
+    就是這樣把電子報排到 07-28。附加新區塊只會讓 context 同時存在兩個互相矛盾的
+    「今天」，這裡直接把過期那份換掉，全程只留一個日期事實。
+
+    不影響 prompt caching：``call_claude_with_tools`` 的 cache_control 打在 system
+    上，render order 是 tools → system → messages，改 messages 不會動到那個 prefix。
+    """
+    if not messages:
+        return messages
+    first = messages[0]
+    content = first.get("content")
+    if not isinstance(content, str):
+        # tool_result 之類的 block list 不會是 preamble 的位置；保守跳過。
+        return messages
+    parts = [*_build_context_preamble(user_id), _strip_context_preamble(content)]
+    return [{**first, "content": "\n\n".join(parts)}, *messages[1:]]
 
 
 def _slugify(title: str) -> str:

@@ -9,8 +9,10 @@ from gateway.handlers import get_handler, list_agents
 from gateway.handlers.nami import (
     NAMI_AGENT_FLOW,
     NamiHandler,
+    _build_context_preamble,
     _extract_frontmatter,
     _slugify,
+    _strip_context_preamble,
 )
 
 NAMI_PERSONA = Path(__file__).resolve().parents[1] / "prompts" / "nami" / "agent_system.md"
@@ -448,6 +450,130 @@ def test_continue_flow_missing_state_returns_graceful_error():
     assert "異常" in result.text or "重置" in result.text
 
 
+# ── Agent loop: 跨日續談時 context preamble 要重新產生 ────────────────
+#
+# 2026-07-29 事故：thread idle timeout 是 24h，前一天開的 thread 隔天續談時
+# messages[0] 仍寫著「今天是 2026-07-28」，Nami 照著把行程排到昨天。
+
+# 這裡刻意寫死形狀（而非呼叫 _build_date_context），才能驗證 _DATE_BLOCK_RE
+# 真的認得 production 產出的樣子；形狀漂移由下面的 roundtrip 測試把關。
+_STALE_DATE_BLOCK = (
+    "## 今日資訊\n"
+    "今天是 2026-07-28（週二）。\n"
+    "\n"
+    "未來 14 天日期對照表（直接查，不要自行推算）：\n"
+    "  2026-07-28 週二（今天）\n"
+    "  2026-07-29 週三（明天）\n"
+    "  2026-07-30 週四"
+)
+
+
+def _today_taipei() -> str:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    return datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d")
+
+
+def _run_continue_flow(state, reply, *, memory=""):
+    """跑一次 continue_flow，回傳送進 LLM 的 messages。"""
+    captured = []
+
+    def _capture(**kwargs):
+        captured.append(list(kwargs["messages"]))
+        return _fake_response("end_turn", [_text_block("好")])
+
+    with (
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=_capture),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("gateway.handlers.nami.agent_memory.format_as_context", return_value=memory),
+    ):
+        NamiHandler().continue_flow(NAMI_AGENT_FLOW, state, reply, "U1")
+    return captured[-1]
+
+
+def test_continue_flow_replaces_stale_date_block():
+    """跨日續談：舊日期要被換掉，而不是留在 context 裡跟新日期打架。"""
+    state = {
+        "messages": [{"role": "user", "content": f"{_STALE_DATE_BLOCK}\n\n幫我安排今天下午兩點"}],
+        "pending_tool_use_id": None,
+    }
+
+    first_msg = _run_continue_flow(state, "改成三點")[0]
+
+    assert "2026-07-28（週二）" not in first_msg["content"]
+    assert f"今天是 {_today_taipei()}" in first_msg["content"]
+    # 只留一份日期事實 — 這是選 B 而非「每輪再附一份」的重點
+    assert first_msg["content"].count("## 今日資訊") == 1
+    # 使用者原話不能被吃掉
+    assert "幫我安排今天下午兩點" in first_msg["content"]
+
+
+def test_continue_flow_replaces_stale_memory_block():
+    """記憶同樣只在 handle() 注入過；續談要重讀，不然新記憶整個 thread 都看不到。"""
+    stale = "## 你記得關於使用者的事\n- [fact] 舊事：這條已經過期"
+    state = {
+        "messages": [{"role": "user", "content": f"{_STALE_DATE_BLOCK}\n\n{stale}\n\n原本的話"}],
+        "pending_tool_use_id": None,
+    }
+
+    fresh = "## 你記得關於使用者的事\n- [fact] 新事：這條是新的"
+    first_msg = _run_continue_flow(state, "嗯", memory=fresh)[0]["content"]
+
+    assert "這條已經過期" not in first_msg
+    assert "這條是新的" in first_msg
+    assert first_msg.count("## 你記得關於使用者的事") == 1
+    assert "原本的話" in first_msg
+
+
+def test_continue_flow_injects_date_when_preamble_absent():
+    """timeout 前就已在飛的舊對話（messages[0] 沒 preamble）也要拿到日期。"""
+    state = {
+        "messages": [{"role": "user", "content": "幫我建 project"}],
+        "pending_tool_use_id": None,
+    }
+
+    first_msg = _run_continue_flow(state, "research")[0]
+
+    assert f"今天是 {_today_taipei()}" in first_msg["content"]
+    assert "幫我建 project" in first_msg["content"]
+
+
+def test_continue_flow_leaves_block_list_content_alone():
+    """messages[0] 不是字串（理論上不會發生）時安靜跳過，不要炸掉整個 thread。"""
+    blocks = [{"type": "text", "text": "hi"}]
+    state = {
+        "messages": [{"role": "user", "content": blocks}],
+        "pending_tool_use_id": None,
+    }
+
+    first_msg = _run_continue_flow(state, "嗯")[0]
+
+    assert first_msg["content"] == blocks
+
+
+def test_strip_context_preamble_roundtrips_real_output():
+    """形狀漂移守門員：_build_context_preamble 產的東西必須被 strip 完整拆掉。
+
+    _build_date_context / format_as_context 的輸出格式若改了而
+    _DATE_BLOCK_RE / _MEMORY_BLOCK_RE 沒跟上，跨日 bug 會無聲復發。
+    """
+    memory = "## 你記得關於使用者的事\n- [fact] 船長：修修是船長\n- [pref] 番茄鐘：一顆 30 分鐘"
+    with patch("gateway.handlers.nami.agent_memory.format_as_context", return_value=memory):
+        parts = _build_context_preamble("U1")
+
+    content = "\n\n".join([*parts, "使用者原本說的話"])
+    assert _strip_context_preamble(content) == "使用者原本說的話"
+
+
+def test_strip_context_preamble_without_memory_block():
+    with patch("gateway.handlers.nami.agent_memory.format_as_context", return_value=""):
+        parts = _build_context_preamble("U1")
+
+    content = "\n\n".join([*parts, "只有日期"])
+    assert _strip_context_preamble(content) == "只有日期"
+
+
 # ── Agent loop: list_tasks tool ─────────────────────────────────────
 
 
@@ -765,7 +891,7 @@ def test_create_calendar_event_conflict_returns_error():
     conflict = _fake_cal_event(title="已有的會議")
     captured_tool_results = []
 
-    def _capture_and_respond(*, messages, tools, system, model, **kwargs):
+    def _capture_and_respond(*, messages, tools, system, **kwargs):
         # 第二輪看 tool_result 是否標記 is_error=True
         for msg in messages:
             if isinstance(msg.get("content"), list):
@@ -1446,7 +1572,7 @@ def test_create_calendar_event_rollback_on_task_write_failure():
     fake_created = _fake_cal_event(id_="evtRollback", title="會議")
     captured_results = []
 
-    def _capture(*, messages, tools, system, model, **kwargs):
+    def _capture(*, messages, tools, system, **kwargs):
         for msg in messages:
             if isinstance(msg.get("content"), list):
                 for block in msg["content"]:
