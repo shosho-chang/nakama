@@ -113,8 +113,22 @@ def _sdk_settings() -> str | None:
     return json.dumps({"autoMemoryDirectory": str(dir_path)}, ensure_ascii=False)
 
 
+_WEEKDAYS_ZH = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"]
+
+
 def _now_taipei() -> str:
-    return datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d (%A) %H:%M")
+    now = datetime.now(ZoneInfo("Asia/Taipei"))
+    return f"{now:%Y-%m-%d}（{_WEEKDAYS_ZH[now.weekday()]}）{now:%H:%M}"
+
+
+async def _empty_prompt_stream():
+    """零則訊息的 prompt stream —— resume 接 deferred tool call 時用。
+
+    不產生空 user message：SDK 收到空流即走 end-input，不會為空訊息多跑一輪
+    （避免第二個 ResultMessage），且全路徑自然耗盡讓子進程清理同步跑完（B1）。
+    """
+    return
+    yield  # pragma: no cover — 讓函式是 async generator
 
 
 def _format_ask_user_question(tool_input: dict) -> str:
@@ -126,16 +140,17 @@ def _format_ask_user_question(tool_input: dict) -> str:
     return text
 
 
-def _make_ask_user_hook(answer: str | None):
+def _make_ask_user_hook(answer: str | None, answer_box: dict):
     """PreToolUse hook for ``mcp__nami__ask_user``（S3 pause/resume 的核心）。
 
     S0-Q2 實測契約（findings 文件）：hook 回 defer → tool 不執行、進程結束
     （``stop_reason='tool_deferred'``，pending tool call 留在 session）；resume 後
-    **同一個 tool call 重新觸發本 hook** —— 這次以 allow + updatedInput 注入
-    使用者回覆。answer 只用一次：同一輪內模型再問（追問）就再 defer、再回 Slack。
-    回覆文字同時帶當下時間 —— 跨日 resume 時 session 歷史裡的「今天」是凍結的
-    （legacy ``_refresh_context_preamble`` 在 SDK session 上沒有對應物），日期
-    事實隨 tool result 進 context（S2 review 地雷 #2 的解）。
+    **同一個 tool call 重新觸發本 hook** —— 這次 allow，並把使用者回覆寫進
+    in-process 的 ``answer_box`` 給 tool handler 讀（不經 CLI 往返 —— 模型
+    自填欄位繞不過，schema 外欄位能否穿越 CLI 也不再是單點）。answer 只用
+    一次：同一輪內模型再問（追問）就再 defer、再回 Slack。回覆文字帶當下
+    時間 —— 跨日 resume 時 session 歷史裡的「今天」是凍結的，日期事實隨
+    tool result 進 context，配合 system prompt 的日期權威條款生效。
     """
     state = {"answer": answer}
 
@@ -149,14 +164,12 @@ def _make_ask_user_hook(answer: str | None):
                 }
             }
         state["answer"] = None
+        answer_box["value"] = f"（現在時間：{_now_taipei()}）使用者回覆：{pending}"
         return {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "allow",
-                "updatedInput": {
-                    **input_data.get("tool_input", {}),
-                    "answer": f"（現在時間：{_now_taipei()}）使用者回覆：{pending}",
-                },
+                "updatedInput": dict((input_data or {}).get("tool_input") or {}),
             }
         }
 
@@ -1155,13 +1168,17 @@ class NamiHandler(BaseHandler):
 
     def _continue_sdk(self, state: dict, text: str, user_id: str) -> HandlerResponse:
         """SDK 路徑的 thread 續談（S3）：session resume 取代整份 messages。"""
+        if not _use_agent_sdk():
+            # S5 回滾旗標要蓋到飛行中的 SDK conversation —— 關掉後不准繼續走
+            # SDK 路徑（PR #1121 review m6）
+            return HandlerResponse(text="系統路徑已切換，這個流程已重置。請重新下指令。")
         session_id = state.get("session_id")
         if not session_id:
             return HandlerResponse(text="流程狀態異常，已重置。請重新開始。")
         if state.get("pending_tool_use_id"):
-            # 使用者在回答 pending 的 ask_user：回覆經 PreToolUse hook 注入
-            # tool result（帶當下時間）；S0-Q2b 實測 resume 接 deferred tool
-            # call 不需要新 user message —— prompt 給空字串
+            # 使用者在回答 pending 的 ask_user：回覆經 PreToolUse hook 寫進
+            # answer_box；resume 接 deferred tool call 不需要新 user message
+            # （_arun_loop_sdk 對 answer 路徑用空 prompt stream）
             return self._run_loop_sdk("", user_id, resume_session=session_id, answer=text)
         # thread 內一般續談：新訊息當 prompt resume。重注日期 —— session 歷史
         # 裡的「今天」凍在開場那天（legacy _refresh_context_preamble 的對應解）
@@ -1189,6 +1206,13 @@ class NamiHandler(BaseHandler):
         except FileNotFoundError:
             logger.error("agent_system prompt missing — fallback to minimal system")
             system_prompt = "你是 Nami，修修的 LifeOS 任務助手。用繁體中文。"
+        # M2：ask_user 與其他工具同輪並發時 defer 會被忽略（S0 限制 1）；
+        # M3：resume 時 session 歷史開場的「今日資訊」是凍結的，日期權威要讓位。
+        system_prompt += (
+            "\n\n（Agent SDK 模式注意：1) ask_user 必須單獨一輪呼叫，"
+            "不可與其他工具同輪並發；2) 對話中出現「（現在時間：…）」時，"
+            "以該時間為唯一日期權威，忽略歷史開場「今日資訊」區塊的過期內容。）"
+        )
         if not os.environ.get(_SDK_AUTO_MEMORY_ENV):
             # 裁決 1b：「S2 必須明確設定，不可留預設 —— 留預設就是選了分裂」
             logger.warning(
@@ -1224,11 +1248,16 @@ class NamiHandler(BaseHandler):
         # 模組層互相 import 會循環（nami_tools import 本模組拿 NAMI_TOOLS/handler）
         from gateway.handlers.nami_tools import build_nami_server  # noqa: PLC0415
 
+        # hook（allow 時寫入）與 ask_user tool handler（讀取後清空）之間的
+        # per-run in-process 通道 —— 使用者回覆不經 CLI 往返（review M1/M2）
+        answer_box: dict[str, str | None] = {"value": None}
         options = ClaudeAgentOptions(
             model=get_model(agent="nami", task=_MODEL_TASK),
             system_prompt=system_prompt,
             tools=[],  # 安全紅線：移除全部內建工具（S0-Q1 實測背書，findings 文件）
-            mcp_servers={"nami": build_nami_server(self, include_ask_user=True)},
+            mcp_servers={
+                "nami": build_nami_server(self, include_ask_user=True, answer_box=answer_box)
+            },
             allowed_tools=[f"mcp__nami__{spec['name']}" for spec in NAMI_TOOLS],
             max_turns=_MAX_ITERS,
             max_budget_usd=_sdk_budget_usd(),
@@ -1238,23 +1267,31 @@ class NamiHandler(BaseHandler):
             resume=resume_session,
             hooks={
                 "PreToolUse": [
-                    HookMatcher(matcher="mcp__nami__ask_user", hooks=[_make_ask_user_hook(answer)])
+                    HookMatcher(
+                        matcher="mcp__nami__ask_user",
+                        hooks=[_make_ask_user_hook(answer, answer_box)],
+                    )
                 ]
             },
         )
 
+        # answer 路徑（回答 pending ask_user）不需要新 user message：給空的
+        # prompt stream，SDK 直接 resume pending tool call，不會為空訊息多跑
+        # 一輪。其餘路徑用字串 prompt。
+        prompt: Any = _empty_prompt_stream() if answer is not None else user_text
+
         # SDK 對 error result 的形狀是「先 yield ResultMessage 再 raise」——
         # 所以 ResultMessage 到手當下就 log（失敗的 run 也要留 cost/session 痕跡），
         # 例外就地攔下來，終態統一在 loop 後分支。
-        # 第一個 ResultMessage 就是本輪的終態，直接 break —— resume 空 prompt 時
-        # SDK 會為那則空 user message 多跑一輪、冒第二個 ResultMessage（S0-Q2b
-        # 實測），不 break 會把真結果蓋掉。
+        # 取第一個 ResultMessage 為本輪終態，但**不 break、drain 到自然結束**：
+        # break 會把 SDK 子進程的清理丟給 GC/loop teardown 賭局，CLI 進程
+        # （~100MB）可能掛到 gateway 結束才被收（PR #1121 review B1）。
         result_msg: ResultMessage | None = None
         stream_error: Exception | None = None
         try:
-            async with aclosing(query(prompt=user_text, options=options)) as stream:
+            async with aclosing(query(prompt=prompt, options=options)) as stream:
                 async for message in stream:
-                    if isinstance(message, ResultMessage):
+                    if isinstance(message, ResultMessage) and result_msg is None:
                         result_msg = message
                         # per-call 粒度的成本記錄是 S4；先讓 session 級數字進 log 可查
                         logger.info(
@@ -1267,7 +1304,6 @@ class NamiHandler(BaseHandler):
                             message.terminal_reason,
                             message.is_error,
                         )
-                        break
         except Exception as e:
             logger.exception("Agent SDK stream failed")
             stream_error = e
@@ -1306,7 +1342,9 @@ class NamiHandler(BaseHandler):
                     agent="nami",
                     user_id=user_id,
                     messages=[
-                        {"role": "user", "content": user_text},
+                        # answer 路徑 user_text 是空的 —— 用使用者的回覆，
+                        # 不然這一輪的記憶抽取拿到空字串（review m7）
+                        {"role": "user", "content": user_text or answer or ""},
                         {"role": "assistant", "content": result_text},
                     ],
                 )

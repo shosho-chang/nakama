@@ -53,44 +53,67 @@ def _make_tool(handler: NamiHandler, spec: dict) -> SdkMcpTool:
     return _handler
 
 
-def _make_ask_user_tool() -> SdkMcpTool:
+def _make_ask_user_tool(answer_box: dict) -> SdkMcpTool:
     """ask_user 的 SDK 版（S3，PreToolUse defer 流程）。
 
     不走 ``_execute_tool``：第一次呼叫會被 PreToolUse hook 以 ``defer`` 攔下、
     進程結束把問題送回 Slack —— 執行不到這裡。resume 時同一個 tool call 重新
-    觸發 hook，hook 以 allow + updatedInput 注入使用者回覆（``answer`` 欄位，
-    刻意**不在** input_schema 裡 —— 模型看不到就不會自己代答），這裡把回覆
-    交還給模型當 tool result。
+    觸發 hook，hook allow 並把使用者回覆寫進 **in-process 的 answer_box**，
+    這裡讀取後清空、交還給模型當 tool result。
+
+    刻意**完全不信任 ``args``**：回覆不經 CLI 往返（消除 schema 外欄位傳遞
+    的單點），且模型自填 answer、或並發 tool call 讓 defer 被忽略時，拿到的
+    是 is_error —— 不會發生模型替使用者回答自己的確認問題（PR #1121 review
+    M1/M2）。
     """
     spec = next(s for s in NAMI_TOOLS if s["name"] == "ask_user")
 
     @tool(spec["name"], spec["description"], spec["input_schema"])
     async def _handler(args: dict) -> dict:
-        answer = args.get("answer")
-        if answer is None:
+        value = answer_box.get("value")
+        answer_box["value"] = None
+        if value is None:
             return {
-                "content": [{"type": "text", "text": "（尚未取得使用者回覆 — defer hook 未生效）"}],
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "（尚未取得使用者回覆。ask_user 必須單獨一輪呼叫、"
+                            "不可與其他工具並發；請單獨重新呼叫一次 ask_user。）"
+                        ),
+                    }
+                ],
                 "is_error": True,
             }
-        return {"content": [{"type": "text", "text": str(answer)}]}
+        return {"content": [{"type": "text", "text": str(value)}]}
 
     return _handler
 
 
 def build_nami_sdk_tools(
-    handler: NamiHandler, *, include_ask_user: bool = False
+    handler: NamiHandler,
+    *,
+    include_ask_user: bool = False,
+    answer_box: dict | None = None,
 ) -> list[SdkMcpTool]:
     """Return one SdkMcpTool per NAMI_TOOLS entry; ask_user 只在 S3 defer 流程要求時附上。"""
     tools = [_make_tool(handler, spec) for spec in NAMI_TOOLS if spec["name"] != "ask_user"]
     if include_ask_user:
-        tools.append(_make_ask_user_tool())
+        tools.append(_make_ask_user_tool(answer_box if answer_box is not None else {}))
     return tools
 
 
-def build_nami_server(handler: NamiHandler, *, include_ask_user: bool = False) -> object:
+def build_nami_server(
+    handler: NamiHandler,
+    *,
+    include_ask_user: bool = False,
+    answer_box: dict | None = None,
+) -> object:
     """Build an in-process MCP server exposing Nami tools（ask_user 依參數）."""
     return create_sdk_mcp_server(
         name="nami",
         version=_SERVER_VERSION,
-        tools=build_nami_sdk_tools(handler, include_ask_user=include_ask_user),
+        tools=build_nami_sdk_tools(
+            handler, include_ask_user=include_ask_user, answer_box=answer_box
+        ),
     )

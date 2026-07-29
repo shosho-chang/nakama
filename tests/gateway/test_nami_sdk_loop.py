@@ -63,6 +63,7 @@ def _fake_query(captured: dict, messages: list, raise_after: Exception | None = 
             yield m
         if raise_after is not None:
             raise raise_after
+        captured["exhausted"] = True  # drain 到自然結束才會設（B1：不准 break）
 
     return fake_query
 
@@ -269,25 +270,36 @@ def test_deferred_ask_user_returns_question_and_pending_state():
 
 
 def test_ask_user_hook_defers_without_answer():
-    hook = _make_ask_user_hook(None)
+    box: dict = {"value": None}
+    hook = _make_ask_user_hook(None, box)
     out = asyncio.run(hook({"tool_input": {"question": "q"}}, "toolu_1", None))
     assert out["hookSpecificOutput"]["permissionDecision"] == "defer"
+    assert box["value"] is None
 
 
-def test_ask_user_hook_allows_once_then_defers():
-    """resume：第一次注入回覆 allow，同輪模型追問 → 再 defer 回 Slack。"""
-    hook = _make_ask_user_hook("走 youtube")
+def test_ask_user_hook_allows_once_via_box_then_defers():
+    """resume：第一次 allow 並把回覆寫進 in-process box（不經 CLI）；同輪追問 → 再 defer。"""
+    box: dict = {"value": None}
+    hook = _make_ask_user_hook("走 youtube", box)
     first = asyncio.run(hook({"tool_input": {"question": "q1"}}, "toolu_1", None))
     assert first["hookSpecificOutput"]["permissionDecision"] == "allow"
-    injected = first["hookSpecificOutput"]["updatedInput"]
-    assert injected["question"] == "q1"  # 原 input 保留
-    assert "使用者回覆：走 youtube" in injected["answer"]
-    assert "現在時間：" in injected["answer"]  # 跨日 resume 的日期刷新
+    # updatedInput 只原樣 pass-through —— 回覆不走 CLI（review M1/M2）
+    assert first["hookSpecificOutput"]["updatedInput"] == {"question": "q1"}
+    assert "使用者回覆：走 youtube" in box["value"]
+    assert "現在時間：" in box["value"]  # 跨日 resume 的日期刷新
     second = asyncio.run(hook({"tool_input": {"question": "q2"}}, "toolu_2", None))
     assert second["hookSpecificOutput"]["permissionDecision"] == "defer"
 
 
-def test_continue_flow_sdk_pending_resumes_with_answer():
+def test_ask_user_hook_survives_none_input_data():
+    box: dict = {"value": None}
+    hook = _make_ask_user_hook("ok", box)
+    out = asyncio.run(hook(None, "toolu_1", None))
+    assert out["hookSpecificOutput"]["updatedInput"] == {}
+
+
+def test_continue_flow_sdk_pending_resumes_with_answer(monkeypatch):
+    monkeypatch.setenv("NAMI_USE_AGENT_SDK", "1")
     handler = NamiHandler()
     state = {"sdk": True, "session_id": "sess-9", "pending_tool_use_id": "toolu_x1"}
     with patch.object(handler, "_run_loop_sdk", return_value="resumed") as sdk:
@@ -296,7 +308,8 @@ def test_continue_flow_sdk_pending_resumes_with_answer():
     sdk.assert_called_once_with("", "U1", resume_session="sess-9", answer="選 youtube")
 
 
-def test_continue_flow_sdk_followup_resumes_with_dated_prompt():
+def test_continue_flow_sdk_followup_resumes_with_dated_prompt(monkeypatch):
+    monkeypatch.setenv("NAMI_USE_AGENT_SDK", "1")
     handler = NamiHandler()
     state = {"sdk": True, "session_id": "sess-9", "pending_tool_use_id": None}
     with patch.object(handler, "_run_loop_sdk", return_value="resumed") as sdk:
@@ -307,10 +320,21 @@ def test_continue_flow_sdk_followup_resumes_with_dated_prompt():
     assert kwargs == {"resume_session": "sess-9"}
 
 
-def test_continue_flow_sdk_without_session_resets():
+def test_continue_flow_sdk_without_session_resets(monkeypatch):
+    monkeypatch.setenv("NAMI_USE_AGENT_SDK", "1")
     handler = NamiHandler()
     resp = handler.continue_flow(NAMI_AGENT_FLOW, {"sdk": True}, "hi", "U1")
     assert "流程狀態異常" in resp.text
+
+
+def test_continue_flow_sdk_flag_off_resets():
+    """S5 回滾：旗標關掉後飛行中的 SDK conversation 不准繼續走 SDK 路徑（m6）。"""
+    handler = NamiHandler()
+    state = {"sdk": True, "session_id": "sess-9", "pending_tool_use_id": None}
+    with patch.object(handler, "_run_loop_sdk") as sdk:
+        resp = handler.continue_flow(NAMI_AGENT_FLOW, state, "hi", "U1")
+    sdk.assert_not_called()
+    assert "已重置" in resp.text
 
 
 def test_continue_flow_legacy_state_untouched():
@@ -339,16 +363,47 @@ def test_tool_deferred_unavailable_reports_invalid_state():
     assert captured["options"].resume == "sess-9"
 
 
-def test_first_result_message_wins():
-    """resume 空 prompt 會冒第二個 ResultMessage（S0-Q2b）—— 只取第一個。"""
+def test_first_result_message_wins_and_stream_drained():
+    """取第一個 ResultMessage 為終態，但 stream 要 drain 到自然結束 ——
+    break 會把 CLI 子進程清理丟給 GC（review B1）。"""
     captured: dict = {}
-    msgs = [_result(text="真結果"), _result(text="空訊息的雜訊回應")]
+    msgs = [_result(text="真結果"), _result(text="第二個 result 的雜訊")]
     with (
         patch("gateway.handlers.nami.query", _fake_query(captured, msgs)),
         patch("gateway.handlers.nami.get_model", return_value="m"),
     ):
         resp = NamiHandler()._run_loop_sdk("hi", "U1")
     assert resp.text == "真結果"
+    assert captured.get("exhausted") is True  # 沒有 break
+
+
+def test_answer_resume_uses_empty_prompt_stream():
+    """answer 路徑不產生新 user message：prompt 是空的 async stream，不是字串。"""
+    captured: dict = {}
+    with (
+        patch("gateway.handlers.nami.query", _fake_query(captured, [_result("好的")])),
+        patch("gateway.handlers.nami.get_model", return_value="m"),
+    ):
+        resp = NamiHandler()._run_loop_sdk("", "U1", resume_session="sess-9", answer="選 youtube")
+    assert resp.text == "好的"
+    assert captured["options"].resume == "sess-9"
+    prompt = captured["prompt"]
+    assert not isinstance(prompt, str)
+    assert hasattr(prompt, "__anext__")  # async generator（零則訊息）
+
+
+def test_server_built_with_ask_user_and_shared_answer_box():
+    """MCP server 以 include_ask_user=True 建立，且 answer_box 與 hook 同一個物件（n5）。"""
+    captured: dict = {}
+    with (
+        patch("gateway.handlers.nami.query", _fake_query(captured, [_result("ok")])),
+        patch("gateway.handlers.nami.get_model", return_value="m"),
+        patch("gateway.handlers.nami_tools.build_nami_server", return_value={"type": "sdk"}) as bs,
+    ):
+        NamiHandler()._run_loop_sdk("hi", "U1")
+    _, kwargs = bs.call_args
+    assert kwargs["include_ask_user"] is True
+    assert isinstance(kwargs["answer_box"], dict)
 
 
 def test_format_ask_user_question_without_options():
