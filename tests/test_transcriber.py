@@ -1492,3 +1492,17 @@ def test_write_qc_report_new_format(tmp_path):
     assert "Gemini 仲裁" in content
     assert "蘇味的祕密" in content
     assert "音訊清楚為秘密" in content
+
+
+def test_to_traditional_keeps_video_script_term():
+    """s2twp 把「腳本」轉成資訊術語「指令碼」——影音產線要修回來。
+
+    2026-07-29 鄭國威那集全集 32 處（大綱 腳本 分鏡 拍攝 粗剪／影音的腳本），
+    語境全是影片腳本，無一是 shell script。
+    """
+    assert _to_traditional("大綱腳本分鏡") == "大綱腳本分鏡"
+    assert _to_traditional("影音的腳本") == "影音的腳本"
+    # 簡體輸入同樣要落在「腳本」
+    assert _to_traditional("脚本") == "腳本"
+    # 既有的隻/只 修正不受影響
+    assert _to_traditional("就是只要") == "就是只要"
