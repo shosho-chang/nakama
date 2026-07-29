@@ -11,10 +11,12 @@ description: >
   本 skill 只呼叫、不重新發明。
 ---
 
-# thumbnail-brainstorm — 封面 brainstorm 手冊（v2.0）
+# thumbnail-brainstorm — 封面 brainstorm 手冊（v2.1）
 
-**版本：v1.1（2026-07-28，封面設計系統 v1 接入 — 對標 Modern Wisdom 普查；
-規格見 `docs/thumbnail-design-system.md`；v1.0 = ADR-054 D8/D9 首落地）**
+**版本：v2.1（2026-07-29，N2 框型接上《張修修品牌識別》— 斜切框＋碎片、
+品牌橘 `#F37425`、logo 淨空規範；v2.0 = 謝伯讓集 gate 前收斂；
+v1.1 = 封面設計系統 v1 接入；v1.0 = ADR-054 D8/D9 首落地。
+規格見 `docs/thumbnail-design-system.md`）**
 
 你是 packaging 的**封面棒**：標題已定（Top 5 進 packages.json），你為前 3 條
 各配一個封面、render 成 PNG、綁成 3 個 package。你**不改標題**：覺得某條標題
@@ -148,8 +150,9 @@ spec 的 variables 見各 composition 檔頭註解。**定案參數表在
 - **N1 完整訪談**：兩人 glow + 內緣 fade 9% + 字塊 z4（在人之下 → 字尾塞肩後）、
   字 Bold 無陰影、橘框 padding 14/14/5、`guest_credit`（頭銜＋姓名）、
   左下頻道 logo 92px、`text_center_pct` 每包微調
-- **N2 精華長片**：右來賓 75%→頭56% + 左 Envato prop 卡 58%（躲肩後）、零文字、
-  logo `below-card` 82px
+- **N2 精華長片**：右來賓 75%→頭56% + 左 Envato prop 卡（`prop_left_pct` 15／
+  `prop_width_pct` 52，躲肩後）、零文字、`frame_style: hybrid`（品牌斜切框＋碎片）、
+  logo `below-card` 96px、accent `#F37425`
 - 大字 = **≤6 字/行 × 2 行**、**恰好一個** highlight 詞
 - render 失敗（ThumbnailRenderError）→ 看 variables JSON 與 stderr 修完重跑；
   連續失敗 2 次停下報修修，不降級成無封面。
@@ -163,6 +166,7 @@ spec 的 variables 見各 composition 檔頭註解。**定案參數表在
 | 兩人**眼線差** | ≤10px @720p | `guest_height_pct`（放大＝眼線上移；**不要用 y 上移**，底部會露背景）|
 | **字塊遮蔽平衡** | \|左遮−右遮\| ≤600px² | `text_center_pct`（線性內插 2 輪收斂）|
 | 臉高／中心x／頂y／亮度 | 48–52%／14–17%·83–85%／8–12%／89–100 | height／x／brightness |
+| **logo 淨空**（N2） | 上／下／左三邊皆 ≥ **0.235 × logo 高**（品牌書 p7） | `logo_height_px`；要更大就得動碎片幾何 |
 
 ⚠️ **順序有依賴**：先定眼線（改 height）→ 再校遮蔽平衡（改 text_center）。
 放大來賓後遮蔽平衡必然漂掉，一定要重跑（謝伯讓集實測 +574 → +1985）。
@@ -185,7 +189,7 @@ working set 與 vault 雙寫（ADR-054 D10）。驗證錯誤讀訊息修 specs�
 ## Run log 格式（append 於 `<ep>/run_log.md`）
 
 ```markdown
-## Packaging 封面節 — thumbnail-brainstorm v2.0
+## Packaging 封面節 — thumbnail-brainstorm v2.1
 - L1 rank1「...」T-A8 → JP-7（T-V2 tight face crop）；guest 表情=驚訝
   （frame 0034，淘汰 0021 手擋臉）；大字「大腦會說謊」
 - L1 rank3 無 JP 佐證 → 自配 T-V4（解釋語境、A 級）；理由：...
@@ -215,3 +219,21 @@ E2E 每跑完一集（gate approve 過），可固化的教訓 **append 進本�
 7. **AI 只做 graphic 與 render，真人一律實拍**（修修原則）；prop 走 Envato，
    授權檔可用 Claude in Chrome 走修修登入態下載（落點 `E:\`）。
 8. 交付快照同步 `E:\data\AgentOutput\YYYYMMDD-<topic>\`（每輪都要，不是最後才做）。
+
+**v2.1（2026-07-29，N2 框型品牌化）**
+
+9. **通用語彙 = 撞臉風險**：8px 圓角矩形橘框「沒有錯」，但那是 CW 也有的東西。
+   出手前先問「這個元素在**修修的品牌書**裡對應到什麼」——
+   `F:\Project Files\Assets\張修修品牌\張修修品牌識別_0827.pdf`。
+   本案的答案早就在 p22（影片引用字卡）：框 ＋ 框背後爆出的鋸齒碎片。
+10. **品牌書的內文可能跟稿件不一致**：p10 寫 `#e98965`，但同頁 CMYK／RGB 與
+    實際稿件像素都指向 `#F37425`。**量稿件，不要抄內文**。
+11. **母題要收斂不要直譯**：p15「自我解讀」的傾斜量等比例搬到卡片是 96px，
+    看起來像壞掉；收到 3.5% 才成立。品牌書給的是**方向**不是**數值**。
+12. **裝飾有空間成本，要先算再畫**：碎片需要 ~190px；原本卡左緣只剩 77px →
+    卡右移並縮窄（6%→15%、58%→52%）。沒有先算就會做出被畫布切平的碎片。
+13. **小尺寸驗證是獨立的一關**：320×180（YouTube 格線真實尺寸）另存一張比對。
+    謝伯讓集實測——碎片在格線尺寸仍可辨識，斜切幾乎看不出來。
+14. **淨空規範是 logo 尺寸的硬上限**（品牌書 p7，X ≈ 0.235 × logo 高）：
+    修修說「放大一些些」時，不要憑感覺選一個數字 — 掃尺寸、量三邊、挑
+    最大的合規值（本案 96px；108 起上緣就撞碎片）。
