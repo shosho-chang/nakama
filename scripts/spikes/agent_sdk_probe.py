@@ -14,7 +14,7 @@ docs/research/2026-07-29-agent-sdk-spike-findings.md 後即可刪除。
 
 跑法：
     python scripts/spikes/agent_sdk_probe.py q1     # tools=[] 是否真的移除內建工具
-    python scripts/spikes/agent_sdk_probe.py q2a    # 起 session、PreToolUse hook 回 defer、印出 session_id
+    python scripts/spikes/agent_sdk_probe.py q2a    # PreToolUse hook 回 defer、印 session_id
     python scripts/spikes/agent_sdk_probe.py q2b <session_id>   # 新進程接回
     python scripts/spikes/agent_sdk_probe.py q3     # 環境健檢（VPS 上跑）
 
