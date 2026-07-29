@@ -1,8 +1,19 @@
 # Nami → Claude Agent SDK 遷移計畫
 
 **日期**：2026-07-29
-**Branch**：`feat/nami-time-context`（後續 slice 另開 branch）
 **模式**：P9 規劃 — 本文件輸出的是 task prompt，不是 code
+
+---
+
+## 🚩 從這裡開始（給接手的 session）
+
+1. 讀 `docs/research/2026-07-29-nami-agent-architecture-decisions.md` —— 為什麼這樣決定、9 項已定決策
+2. **下一個動作：跑 S0 探針**。腳本已寫好在 `scripts/spikes/agent_sdk_probe.py`，**未跑過**
+3. **開跑前先補一個缺口**：腳本裡 `_can_use_tool()` 的 `defer` 決策形狀還沒查證。先讀
+   <https://code.claude.com/docs/en/hooks> 的「Defer a tool call for later」把它補上，再跑 q1
+4. 三題（q1 安全紅線 / q2 跨進程 resume / q3 VPS 環境）都過，才動生產程式碼
+
+Morning brief 暫緩，不在本輪範圍。
 
 ---
 
@@ -48,7 +59,25 @@
 | **L2 agent 自寫筆記** | 「修修常在週三下午排寫稿」這類 operational 觀察 | Agent SDK auto memory — **需決策，見下** |
 | **L3 領域事實** | 「番茄鐘 30 分鐘」「課程推薦文會親自深入研究」 | **`shared/agent_memory.py` 原封不動**，繼續走 `_build_context_preamble()` 注入 |
 
-### ⚠️ 待修修裁決：auto memory 怎麼處理
+### ✅ 已裁決（2026-07-29，修修）：auto memory **打開**
+
+修修裁決要開。以下原本的三選一保留作紀錄，並標註**還剩一個子決策**。
+
+**還沒定的子決策：存到哪。** Auto memory 預設寫 `~/.claude/projects/<project>/memory/`，官方明說
+**machine-local，不跨機器共享**。Nami 跑 VPS、修修的機器是 Windows —— 用預設會**分裂成兩份**。
+
+| 子選項 | 做法 | 評估 |
+|---|---|---|
+| **B. 導向 repo** | `autoMemoryDirectory` 指到 repo 內 `memory/nami-auto/` | 符合 CLAUDE.md「記憶在 repo 內 git 共用」；但 VPS 上要處理 git 寫入與 push，且可能與 `memory_maintenance.py reindex` 打架 |
+| **C. 導向獨立目錄** | 指到 VPS 上非 git 的固定路徑 | 不污染 repo、實作簡單；但仍 machine-local，Windows 端看不到 |
+
+**建議先 C，S2 上線觀察一輪再決定要不要升級成 B。** 理由：先確認 auto memory 實際會寫出什麼、
+量有多大、有沒有價值，再決定要不要付「跨機同步」的複雜度。C → B 之後搬目錄的成本很低。
+
+> ⚠️ S2 實作時**必須明確設定** `autoMemoryDirectory`，不可留預設 —— 留預設就是選了「分裂」。
+
+<details>
+<summary>原始三選一（已被上述裁決取代，保留紀錄）</summary>
 
 Auto memory **預設開啟**，寫到 `~/.claude/projects/<project>/memory/`，且官方明說 **machine-local，不跨機器共享**。
 
@@ -62,7 +91,9 @@ Nami 跑在 VPS。若不處理，VPS 家目錄會長出一份跟 repo `memory/` 
 | **B. 導向 repo** | `autoMemoryDirectory` 指到 repo 內 `memory/nami-auto/` | 拿到 L2 且 git 共享；符合既有紀律 | 需 commit 才跨機同步；VPS 上要處理 git 寫入與 push；可能與 `memory_maintenance.py` 的 reindex 打架 |
 | **C. 導向獨立目錄** | `autoMemoryDirectory` 指到 VPS 上非 git 的固定路徑 | 拿到 L2、不污染 repo | 仍是 machine-local，Windows 端看不到 |
 
-**建議 A（先關掉）**。理由：本次遷移的目標是「換 harness、行為不變」，不是同時引入新的記憶來源。L2 值得做，但應該是遷移穩定後的獨立議題 —— 否則出問題時分不清是 harness 換掉造成的還是新記憶造成的。
+~~建議 A（先關掉）~~ —— **已被修修裁決推翻，改為打開。**
+
+</details>
 
 ---
 
@@ -158,7 +189,7 @@ Nami 跑在 VPS。若不處理，VPS 家目錄會長出一份跟 repo `memory/` 
 
 | # | 事項 | 我的建議 |
 |---|---|---|
-| 1 | Auto memory 開/關/導向 | **關掉**（見上方表格） |
+| 1 | ~~Auto memory 開/關~~ | ✅ **已裁決：打開**。剩子決策「存到哪」——建議先用 `autoMemoryDirectory` 指到 VPS 獨立目錄，S2 觀察一輪再決定要不要搬進 repo |
 | 2 | `setting_sources=["project"]` 要載入哪些 skill | 白名單，先只放 Nami 用得到的；重媒體 skill 排除 |
 | 3 | Session 儲存位置（SDK 預設 JSONL on disk，cwd-keyed） | 先用預設；VPS 上確認 cwd 穩定 |
 | 4 | Cutover 用 feature flag 還是直接切 | **feature flag**（S5） |

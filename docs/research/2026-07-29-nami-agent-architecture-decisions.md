@@ -358,7 +358,8 @@ Anthropic 的 memory tool 只給檔案系統介面；Managed Agents memory store
 
 | # | 事項 | 建議 | 狀態 |
 |---|---|---|---|
-| 1 | **Auto memory 開/關/導向** | **先關掉**（`autoMemoryEnabled: false`）。本次目標是「換 harness、行為不變」，不該同時引入新記憶來源，否則出問題分不清誰造成的 | ⏳ 等修修 |
+| 1 | **Auto memory 開/關** | ~~先關掉~~ → **修修裁決：打開** | ✅ **已定** |
+| 1b | Auto memory 存到哪（預設 machine-local 會讓 VPS 與 Windows 分裂） | 先 `autoMemoryDirectory` 指到 VPS 獨立目錄；S2 觀察一輪再決定要不要搬進 repo `memory/`。**S2 必須明確設定，不可留預設** | ⏳ |
 | 2 | `setting_sources` 載入哪些 skill | 白名單，重媒體 skill 排除在 VPS 外 | ⏳ |
 | 3 | Session 儲存位置 | 先用 SDK 預設，VPS 上確認 cwd 穩定 | ⏳ |
 | 4 | Cutover 方式 | feature flag 並行，實用一週無異常才移除舊路徑 | ⏳ |
@@ -398,7 +399,7 @@ Q3 要在 VPS 上跑（`~/.ssh/config` 有一組 host）。
 **兩個已知缺口，開跑前要處理：**
 
 1. **`defer` 決策的 API 形狀沒有查證到**，腳本裡 `_can_use_tool()` 目前先回 `PermissionResultAllow`。跑 q2a 前先讀 [hooks 文件的 "Defer a tool call for later"](https://code.claude.com/docs/en/hooks) 把它補上。在那之前 q2a/q2b 測到的只是「pending 狀態能不能 resume 接回」，不是完整 defer 流程。
-2. **決策 #1（auto memory 開/關）未定**。S0 是探針、不碰生產，所以不擋 S0；但擋 S2。
+2. **auto memory 已裁決為「打開」**（2026-07-29）。剩「存到哪」的子決策，只擋 S2、不擋 S0。
 
 ### Worktree
 
