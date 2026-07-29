@@ -15,7 +15,8 @@
     ep_label        — 左下標籤（空 = 隱藏；2026-07-28 起改放頻道 logo,本欄棄用）
     logo_data_url   — 頻道 logo(白線透明底:E:\data\podcast thumbnail props\channel_logo_white.png)
     logo_height_px  — logo 高(預設 96px)
-    guest_name      — 右下標籤（如「謝伯讓」；空 = 隱藏）
+    guest_name      — 右下橘標籤（空 = 隱藏；credit 上線後通常留空）
+    guest_credit    — 大字下方小字（如「臺大心理系教授 謝伯讓」）
     host_cutout_data_url / guest_cutout_data_url
     bg_image_data_url — 背景圖（修修正版：E:\data\podcast thumbnail background.png）；
                         提供時蓋掉 CSS radial gradient
@@ -70,25 +71,45 @@
       #host  { left: var(--host-x, -2%);  bottom: var(--host-y, 0%);  height: var(--host-h, 108%);  object-position: bottom left; }
       #guest { right: var(--guest-x, -2%); bottom: var(--guest-y, 0%); height: var(--guest-h, 108%); object-position: bottom right; }
 
-      #title {
-        position: absolute; left: 50%; top: 44%;
+      /* 字塊 = 大字 + 來賓 credit，整塊置中於 44%（z4，在人物之下 → 分層） */
+      #text-block {
+        position: absolute; left: var(--text-x, 50%); top: 44%;
         transform: translate(-50%, -50%);
         z-index: 4; width: 580px; text-align: center;
-        color: #FFFFFF;
-        font-weight: 800;
-        font-size: 100px;
-        line-height: 1.28;
-        letter-spacing: 0.005em;
-        text-shadow: 0 5px 30px rgba(0,0,0,0.75), 0 2px 8px rgba(0,0,0,0.6);
-        white-space: nowrap;
       }
-      /* payoff 詞 = 橘底白字圓角框（house style 核心元素） */
+      #title {
+        color: #FFFFFF;
+        /* Bold(700) 而非 ExtraBold — 修修 2026-07-29：原本太粗 */
+        font-family: "LINE Seed TW_TTF Bold", "LINE Seed TW_TTF",
+          "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+        font-weight: 700;
+        font-size: 100px;
+        line-height: 1.24;
+        letter-spacing: 0.005em;
+        white-space: nowrap;   /* 無 text-shadow — 修修 2026-07-29 拿掉 */
+      }
+      /* payoff 詞 = 橘底白字圓角框；上下 padding 對齊左右視覺留白（等距） */
       #title .hl {
+        display: inline-block;
         background: var(--accent, #EE8435);
         border-radius: 14px;
-        padding: 2px 14px 6px;
+        /* 上 14 / 下 5 = 視覺四邊等距（字身在 em 框內偏上，下方本就有 9px 空隙）*/
+        padding: 14px 14px 5px;
+        line-height: 1.02;
         box-decoration-break: clone;
       }
+      /* 來賓 credit — 大字下方小字（頭銜＋姓名） */
+      #credit {
+        margin-top: 22px;
+        color: rgba(255,255,255,0.94);
+        font-family: "LINE Seed TW_TTF Regular", "LINE Seed TW_TTF",
+          "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+        font-weight: 400;
+        font-size: 38px;
+        letter-spacing: 0.06em;
+        white-space: nowrap;
+      }
+      #credit:empty { display: none; }
       /* 左下 EP / 右下人名 — 橘底白字標籤 */
       .corner-tag {
         position: absolute; bottom: 52px; z-index: 6;
@@ -125,6 +146,7 @@
         "person_glow_color":     { "type": "string", "default": "#EE8435" },
         "inner_edge_fade_pct":   { "type": "number", "default": 9 },
         "guest_name":            { "type": "string", "default": "" },
+        "guest_credit":          { "type": "string", "default": "" },
         "host_cutout_data_url":  { "type": "string", "default": "" },
         "guest_cutout_data_url": { "type": "string", "default": "" },
         "bg_image_data_url":     { "type": "string", "default": "" },
@@ -135,13 +157,17 @@
         "host_y_pct":            { "type": "number", "default": 0 },
         "guest_y_pct":           { "type": "number", "default": 0 },
         "title_max_width":       { "type": "number", "default": 580 },
+        "text_center_pct":       { "type": "number", "default": 50 },
         "palette":               { "type": "object", "default": {} }
       }'
     >
       <div id="bgfill"><img id="bgimg" alt="" /></div>
       <img id="host" alt="" />
       <img id="guest" alt="" />
-      <h1 id="title"></h1>
+      <div id="text-block">
+        <h1 id="title"></h1>
+        <div id="credit"></div>
+      </div>
       <img id="logo" alt="" />
       <div id="ep-tag" class="corner-tag"></div>
       <div id="name-tag" class="corner-tag"></div>
@@ -167,7 +193,9 @@
       if (vars.host_y_pct !== undefined)  root.style.setProperty("--host-y",  vars.host_y_pct + "%");
       if (vars.guest_y_pct !== undefined) root.style.setProperty("--guest-y", vars.guest_y_pct + "%");
       const maxW = vars.title_max_width || 580;
-      document.getElementById("title").style.width = maxW + "px";
+      document.getElementById("text-block").style.width = maxW + "px";
+      if (vars.text_center_pct !== undefined)
+        root.style.setProperty("--text-x", vars.text_center_pct + "%");
 
       const glowHex = vars.person_glow_color !== undefined ? vars.person_glow_color : "#EE8435";
       if (glowHex) {
@@ -230,6 +258,7 @@
       }
       document.getElementById("ep-tag").textContent = vars.ep_label || "";
       document.getElementById("name-tag").textContent = vars.guest_name || "";
+      document.getElementById("credit").textContent = vars.guest_credit || "";
 
       window.__timelines = window.__timelines || {};
       window.__timelines["thumbnail-full"] = gsap.timeline({ paused: true });
