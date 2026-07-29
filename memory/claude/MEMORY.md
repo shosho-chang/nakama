@@ -356,3 +356,4 @@
 - [成果交付資料夾](reference_agent_output_folder.md) — E:\data\AgentOutput\YYYYMMDD-<topic>\ 快照 + README 指回正式落點
 - [逐字稿維持逐字，不做 LLM 潤飾](project_transcript_prose_verbatim_only.md) — 修修 2026-07-28 否決 A/B 兩版潤飾；「只刪不加」可機械驗證但擋不住刪除造成的語意漂移
 - [subagent 的量測結論要自己驗過再採信](feedback_verify_agent_claims_against_data.md) — 現象通常真、歸因常錯；「我驗證通過」的自我宣告不能當數
+- [框架要攤開讓修修選](feedback_surface_the_frame_not_just_the_draft.md) — 多角度產出不可擅自定框架只讓他改字；出 4–6 個角度菜單（含「犧牲什麼」）讓他在具體選項上選
