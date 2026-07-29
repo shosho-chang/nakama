@@ -77,7 +77,7 @@ dependencies = [
     "cn2an>=0.5.22",       # Chinese numeral normalization for SRT pre-processing
 
     # Claude Agent SDK — Nami migration S1: in-process MCP tool server (#1112)
-    "claude-agent-sdk>=0.2.128",
+    "claude-agent-sdk>=0.2.128,<0.3",
 ]
 
 [project.optional-dependencies]
