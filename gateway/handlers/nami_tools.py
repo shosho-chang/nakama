@@ -27,6 +27,7 @@ _READ_ONLY_NAMES: frozenset[str] = frozenset(
         "web_search",
         "fetch_url",
         "youtube_transcript",
+        "arxiv_citations",  # 純 Semantic Scholar GET；名字不吻合 _lookup 後綴所以明列
     ]
 )
 

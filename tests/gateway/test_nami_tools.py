@@ -118,6 +118,42 @@ def test_no_emit_on_error(handler):
     mock_kb_log.assert_not_called()
 
 
+def test_execute_tool_receives_name_and_args(handler):
+    """Each wrapper passes its own tool name and the caller's args straight to _execute_tool."""
+    tools = build_nami_sdk_tools(handler)
+    for name, args in [("create_task", {"title": "x"}), ("web_search", {"query": "y"})]:
+        with patch.object(
+            handler, "_execute_tool", return_value=_ToolOutcome(content="ok")
+        ) as mock_execute:
+            asyncio.run(_get_tool(tools, name).handler(args))
+        mock_execute.assert_called_once_with(name, args)
+
+
+_EXPECTED_READ_ONLY = {
+    "list_tasks",
+    "list_calendar_events",
+    "list_gmail_unread",
+    "list_vault_notes",
+    "read_vault_note",
+    "pubmed_lookup",
+    "arxiv_lookup",
+    "arxiv_citations",
+    "search_gmail_history",
+    "get_gmail_message",
+    "web_search",
+    "fetch_url",
+    "youtube_transcript",
+}
+
+
+def test_read_only_annotations_exact_set(handler):
+    """readOnlyHint marks exactly the side-effect-free tools; write tools carry no annotations."""
+    tools = build_nami_sdk_tools(handler)
+    hinted = {t.name for t in tools if t.annotations is not None and t.annotations.readOnlyHint}
+    assert hinted == _EXPECTED_READ_ONLY
+    assert all(t.annotations is None for t in tools if t.name not in _EXPECTED_READ_ONLY)
+
+
 def test_build_nami_server_returns_server_config(handler):
     """build_nami_server returns a dict-shaped McpSdkServerConfig for the 'nami' server."""
     server = build_nami_server(handler)
