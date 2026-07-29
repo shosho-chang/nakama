@@ -53,15 +53,44 @@ def _make_tool(handler: NamiHandler, spec: dict) -> SdkMcpTool:
     return _handler
 
 
-def build_nami_sdk_tools(handler: NamiHandler) -> list[SdkMcpTool]:
-    """Return one SdkMcpTool per NAMI_TOOLS entry, excluding ask_user."""
-    return [_make_tool(handler, spec) for spec in NAMI_TOOLS if spec["name"] != "ask_user"]
+def _make_ask_user_tool() -> SdkMcpTool:
+    """ask_user 的 SDK 版（S3，PreToolUse defer 流程）。
+
+    不走 ``_execute_tool``：第一次呼叫會被 PreToolUse hook 以 ``defer`` 攔下、
+    進程結束把問題送回 Slack —— 執行不到這裡。resume 時同一個 tool call 重新
+    觸發 hook，hook 以 allow + updatedInput 注入使用者回覆（``answer`` 欄位，
+    刻意**不在** input_schema 裡 —— 模型看不到就不會自己代答），這裡把回覆
+    交還給模型當 tool result。
+    """
+    spec = next(s for s in NAMI_TOOLS if s["name"] == "ask_user")
+
+    @tool(spec["name"], spec["description"], spec["input_schema"])
+    async def _handler(args: dict) -> dict:
+        answer = args.get("answer")
+        if answer is None:
+            return {
+                "content": [{"type": "text", "text": "（尚未取得使用者回覆 — defer hook 未生效）"}],
+                "is_error": True,
+            }
+        return {"content": [{"type": "text", "text": str(answer)}]}
+
+    return _handler
 
 
-def build_nami_server(handler: NamiHandler) -> object:
-    """Build an in-process MCP server exposing all Nami tools except ask_user."""
+def build_nami_sdk_tools(
+    handler: NamiHandler, *, include_ask_user: bool = False
+) -> list[SdkMcpTool]:
+    """Return one SdkMcpTool per NAMI_TOOLS entry; ask_user 只在 S3 defer 流程要求時附上。"""
+    tools = [_make_tool(handler, spec) for spec in NAMI_TOOLS if spec["name"] != "ask_user"]
+    if include_ask_user:
+        tools.append(_make_ask_user_tool())
+    return tools
+
+
+def build_nami_server(handler: NamiHandler, *, include_ask_user: bool = False) -> object:
+    """Build an in-process MCP server exposing Nami tools（ask_user 依參數）."""
     return create_sdk_mcp_server(
         name="nami",
         version=_SERVER_VERSION,
-        tools=build_nami_sdk_tools(handler),
+        tools=build_nami_sdk_tools(handler, include_ask_user=include_ask_user),
     )

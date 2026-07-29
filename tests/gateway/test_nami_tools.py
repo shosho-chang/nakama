@@ -160,3 +160,20 @@ def test_build_nami_server_returns_server_config(handler):
     # McpSdkServerConfig is a TypedDict; validate its structural keys
     assert server["type"] == "sdk"
     assert server["name"] == "nami"
+
+
+def test_include_ask_user_adds_sdk_only_tool(handler):
+    """S3：include_ask_user=True 附上 defer 流程用的 ask_user，schema 原樣（answer 不外露）。"""
+    tools = build_nami_sdk_tools(handler, include_ask_user=True)
+    assert len(tools) == len(NAMI_TOOLS)
+    spec = next(s for s in NAMI_TOOLS if s["name"] == "ask_user")
+    t = _get_tool(tools, "ask_user")
+    assert t.description == spec["description"]
+    assert t.input_schema == spec["input_schema"]
+    assert "answer" not in t.input_schema["properties"]
+    # resume 時 hook 注入 answer → 原樣回給模型；沒 answer = hook 未生效 → is_error
+    ok = asyncio.run(t.handler({"question": "q", "answer": "（現在時間：X）使用者回覆：好"}))
+    assert ok["content"][0]["text"] == "（現在時間：X）使用者回覆：好"
+    assert "is_error" not in ok or not ok.get("is_error")
+    bad = asyncio.run(t.handler({"question": "q"}))
+    assert bad["is_error"] is True
