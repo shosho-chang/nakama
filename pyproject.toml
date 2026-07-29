@@ -75,6 +75,9 @@ dependencies = [
     # foundry — Script-to-B-roll Pipeline (ADR-032)
     "rapidfuzz>=3.6",      # diagnostic-only fuzzy match (ADR-032 §6); primary path is str.find()
     "cn2an>=0.5.22",       # Chinese numeral normalization for SRT pre-processing
+
+    # Claude Agent SDK — Nami migration S1: in-process MCP tool server (#1112)
+    "claude-agent-sdk>=0.2.128",
 ]
 
 [project.optional-dependencies]
