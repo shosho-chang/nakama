@@ -1919,10 +1919,34 @@ class NamiHandler(BaseHandler):
             task_rel_path = f"{TASK_DIR}/{slug}.md"
             existing = self._find_task_by_title(title)
             if existing is not None:
+                # 分流引導（PR #1122）：撞到已完成的舊 task → 這是新一輪工作，
+                # 引導帶日期的新標題；撞到進行中的 task → 排進既有 plan，
+                # 不准 silent 降級成「只建 calendar」讓 vault 與 calendar 脫鉤。
+                existing_rel, existing_fm, _ = existing
+                existing_title = existing_fm.get("title", title)
+                existing_slug = Path(existing_rel).stem
+                is_done = str(existing_fm.get("status", "")).lower() == "done" or bool(
+                    existing_fm.get("✅")
+                )
+                if is_done:
+                    today = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d")
+                    return _ToolOutcome(
+                        content=(
+                            f"Task 標題撞名：vault 內已有同名 task「{existing_title}」，"
+                            "但它已完成——這應該是新一輪的工作。"
+                            f"請用帶日期的新標題重試（例如「{title} {today}」），"
+                            "會正常建立新 task + calendar event。"
+                        ),
+                        is_error=True,
+                    )
                 return _ToolOutcome(
                     content=(
-                        f"Task 標題撞名：vault 內已有「{existing[1].get('title', title)}」。"
-                        "請改 event 標題，或用 also_create_task=false 只建 calendar 不建 task。"
+                        f"Task 標題撞名：vault 內已有進行中的 task「{existing_title}」"
+                        f"（task_slug: {existing_slug}）。"
+                        f'請改用 schedule_task_entry（task_slug="{existing_slug}"，'
+                        "加 date/time）把這個時段排進該 task 的 plan"
+                        "（會一併建 calendar event），不要另建新 task。"
+                        "若這其實是不同的工作，改一個不同的 event 標題重試。"
                     ),
                     is_error=True,
                 )
