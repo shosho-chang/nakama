@@ -79,3 +79,6 @@ cn2an>=0.5.22            # Chinese numeral normalization (一萬一千 / 11000 /
 # 封面設計系統 v1（docs/thumbnail-design-system.md）— BiRefNet 去背
 rembg>=2.0               # birefnet-general 模型（首用時自下載 ~970MB 至 ~/.u2net/）
 onnxruntime>=1.17        # rembg 推論後端（CPU）
+
+# Claude Agent SDK — Nami migration S1: in-process MCP tool server (#1112)
+claude-agent-sdk>=0.2.128

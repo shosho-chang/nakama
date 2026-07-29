@@ -1,5 +1,6 @@
 # Memory Index
 
+- [feedback_subtitle_house_style.md](feedback_subtitle_house_style.md) — **字幕三鐵則（2026-07-25 驗收裁決）：《》「」必標其他標點省略（推翻 PR #23 全刪）；斷句禁字數硬切走 cue_builder；時間軸必須＝原始錄影（靜音裁切 opt-in）**
 - [feedback_qc_self_adjudication.md](feedback_qc_self_adjudication.md) — **QC/uncertain 清單自己裁決完（重開 WhisperX = 聽音檔、分軌 stem、派 agent 查證），只升級真無法判定的 <5 項**（修修 2026-07-25：「要我拍板的地方實在太多」）
 - [feedback_subscription_first_no_api_spend.md](feedback_subscription_first_no_api_spend.md) — **互動 pipeline 一律 subscription quota（cowork 派 subagent）；付費 API 呼叫必須明確 opt-in flag**（修修 2026-07-25 裁決；首例 run_subtitle_correct --api/--arbitrate）
 - [reference_shoshotw_youtube_channel.md](reference_shoshotw_youtube_channel.md) — **修修頻道 = https://www.youtube.com/@shoshotw，不要再問網址**；兩型內容（創業書 A / 健康 B）節奏差 2.5–3 倍（2026-07-05 前 10 分析，規則已入 ADR-051）
@@ -356,3 +357,4 @@
 - [成果交付資料夾](reference_agent_output_folder.md) — E:\data\AgentOutput\YYYYMMDD-<topic>\ 快照 + README 指回正式落點
 - [逐字稿維持逐字，不做 LLM 潤飾](project_transcript_prose_verbatim_only.md) — 修修 2026-07-28 否決 A/B 兩版潤飾；「只刪不加」可機械驗證但擋不住刪除造成的語意漂移
 - [subagent 的量測結論要自己驗過再採信](feedback_verify_agent_claims_against_data.md) — 現象通常真、歸因常錯；「我驗證通過」的自我宣告不能當數
+- [框架要攤開讓修修選](feedback_surface_the_frame_not_just_the_draft.md) — 多角度產出不可擅自定框架只讓他改字；出 4–6 個角度菜單（含「犧牲什麼」）讓他在具體選項上選
