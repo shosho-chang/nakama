@@ -24,6 +24,7 @@ description: >
 | `prep_manifest.json` + `normalized.wav` | prep 完成 → 下一步 subtitle-gen |
 | `subs/gen_manifest.json` + `subs/raw.srt` | gen 完成 → 下一步 subtitle-correct |
 | `subs/correct_manifest.json` + `transcript.srt` | correct 完成 → 說話者切分 → resolve-project（需 Resolve 開著）|
+| `transcript_prose.md` | 人讀逐字稿已產（字幕定稿的副產物；缺就補跑，見下節）|
 | Resolve 內已有同名 project | **resolve 段完成**（非全部完成）→ 回報 QC 摘要；QC 裁決後 `--refresh-subtitles`；下一步 highlight-cut |
 | `highlights/candidates.json` | 選段開採完成（mining）→ 續 highlight-cut 評審段 |
 | `highlights/winners.json` + `highlights/選段企劃-*.md` | highlight-cut 完成 → 下一步 packaging |
@@ -42,6 +43,33 @@ description: >
 **QC 裁決後的完整重跑鏈**（冪等）：改 corrections.json → `--apply` →
 speaker split → gap fill → `--refresh-subtitles`。⚠️ `--apply` 會重生
 transcript.qc.md（見 subtitle-correct skill 的批註保護警告）。
+
+**人讀逐字稿**（字幕定稿後，與剪輯線並行、互不阻擋）——兩段：
+
+1. `python scripts/run_transcript_prose.py <episode> --guest <來賓姓名>
+   [--outtakes-from 1:01:36]`——去時間戳、一問一答分段的完整訪談稿，落
+   episode 內 `transcript_prose.md` 與 vault `KB/Raw/Podcasts/{slug}.md`。
+   - **`--guest` 一定要給**（機器不猜姓名）；輸出的 `first_line` 是給使用者
+     一眼驗軌序用的，兩位講者對調就補 `--swap` 重跑
+   - `--outtakes-from` 給**訪談結束**的時間碼（在逐字稿裡找致謝收尾那句），
+     之後的收工閒聊另存 `transcript_outtakes.md`——那段兩人搶話、講者不可靠
+   - `transcript_prose_suspect.json` 是判定可疑的 cue 清單（兩軌 mic 能量差
+     <7dB），交付前掃一眼
+
+2. **語意標點 pass**——把「停頓標點」修成「語意標點」（實例：「反芻了過去好的
+   事情，我們要延續不好的事情」意思是反的，應為「反芻了過去，好的事情我們要
+   延續，不好的事情…」）：
+
+   ```
+   python scripts/run_transcript_punctuate.py emit <episode>
+   〔派 subagent 逐塊改標點 → punct_work/NNN.done.md〕
+   python scripts/run_transcript_punctuate.py apply <episode> --guest <來賓> --slug <slug>
+   ```
+
+   派 subagent 時**鐵則要寫進 prompt**：一個字都不准改（不加不刪、不換同義詞、
+   不刪贅詞、不修錯字）、話不可以換人講、只能搬標點與切同一人的長段落。
+   `apply` 會逐塊機械驗證（去標點後逐字比對 + 逐 turn 比對），**任何一塊沒過
+   就整批不寫檔**並列出原因，不會靜默跳過。
 
 **斷句全片掃描**（選配，使用者反映斷句差時）：派 subagent 分 chunk 掃
 transcript.srt 的壞邊界（數量詞/「的」結構/專名被拆）→ 產出
