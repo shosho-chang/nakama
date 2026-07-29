@@ -142,6 +142,7 @@ Nami 跑在 VPS。若不處理，VPS 家目錄會長出一份跟 repo `memory/` 
    - `setting_sources=["project"]`（載入 skills —— **白名單依裁決 #2**；SDK 0.2.128 有專門的 `skills: list[str]` option 可逐 skill 白名單並自動補 allowed_tools，S2 優先用它）
    - `max_turns` 對齊現行 `_MAX_ITERS=15`；加 `max_budget_usd`
    - auto memory 依上方裁決處理
+   - ⚠️ **thread-local 斷裂（S1 review 發現，必須處理）**：`shared/llm_context.py` 的 `set_current_agent` 是 `threading.local`。tool handler 改在 SDK event loop 執行（或用 `asyncio.to_thread` 解同步阻塞）後 thread-local 會斷 → cost tracking 歸屬全錯；`ask_zoro` 內部（`agents/zoro/keyword_research.py`）又自己 set。解法方向：改 `contextvars` 或顯式傳遞。且注意：一旦用 `to_thread` 解鎖**真並發**，`obsidian_writer` / Google token filelock 從未被並發審過，要先審再開
 5. **驗收** —
    - 「排一個任務 + 建行事曆事件」端到端跑通，vault 檔案與 calendar event 與現況一致
    - **rollback 路徑必須實測**：模擬 task 寫入失敗，確認 calendar event 被回收（對應既有 `test_create_calendar_event_rollback_on_task_write_failure`）
