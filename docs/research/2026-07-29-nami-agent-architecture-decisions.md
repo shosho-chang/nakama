@@ -1,9 +1,9 @@
 # Nami Agent 架構：調查結果與決策紀錄
 
 **日期**：2026-07-29
-**狀態**：決策已定，實作未開始（S0 探針待跑）
+**狀態**：決策已定；S0 三題全過、S1 完成（PR #1113），下一步 S2
 **相關**：
-- PR [#1107](https://github.com/shosho-chang/nakama/pull/1107) — 跨日日期 bug 修復（已開）
+- PR [#1107](https://github.com/shosho-chang/nakama/pull/1107) — 跨日日期 bug 修復（已 merge）
 - `docs/plans/2026-07-29-nami-agent-sdk-migration-plan.md` — 六 slice 遷移計畫
 
 > 這份文件記錄的是**為什麼**。實作步驟看上面的 plan。
@@ -132,7 +132,7 @@ Anthropic 沒有 floating alias（沒有 `claude-sonnet-latest`），**無法自
 | Hooks | 無 | `PreToolUse` / `PostToolUse` / `Stop` |
 | Subagent | 無 | 內建 |
 | Budget cap | `_MAX_ITERS = 15` | `max_turns` + `max_budget_usd` |
-| pause/resume | 自寫 SQLite | `can_use_tool` + `defer` + session resume |
+| pause/resume | 自寫 SQLite | PreToolUse hook `defer` + session resume |
 
 ### 為什麼不是 Managed Agents
 
@@ -285,7 +285,7 @@ Anthropic 的 memory tool 只給檔案系統介面；Managed Agents memory store
 
 - **L3（`agent_memory` 及周邊 5 檔）完全不動**，繼續走 `_build_context_preamble()` 注入
 - **L1** 由 Agent SDK Session 接手（取代 `conversations.db` 存整份 messages）
-- **L2 先關掉** —— 見下方決策
+- **L2 依裁決打開**，`autoMemoryDirectory` 指 VPS 獨立目錄（見 §7 #1/1b）
 
 ---
 
@@ -371,7 +371,7 @@ Anthropic 的 memory tool 只給檔案系統介面；Managed Agents memory store
 
 | 項目 | 狀態 |
 |---|---|
-| 跨日日期 bug 修復 | ✅ commit `396d0e1`，PR [#1107](https://github.com/shosho-chang/nakama/pull/1107) 已開，**未 merge** |
+| 跨日日期 bug 修復 | ✅ PR [#1107](https://github.com/shosho-chang/nakama/pull/1107) 已 merge（merge commit `41d8f96`） |
 | 遷移計畫（六 slice + 六要素 task prompt） | ✅ `docs/plans/2026-07-29-nami-agent-sdk-migration-plan.md` |
 | 本文件 | ✅ |
 | S0 探針腳本 | ✅ `scripts/spikes/agent_sdk_probe.py`（defer 形狀已依 hooks 文件查證後改寫） |
@@ -380,7 +380,7 @@ Anthropic 的 memory tool 只給檔案系統介面；Managed Agents memory store
 | Morning brief | ⬜ 未開始（內容待討論；`agents/nami/__main__.py` 仍是 stub、`cron.conf` 07:00 仍註解） |
 | 自主排程 | ⬜ 未開始（遷移後的獨立 slice，見 §5b） |
 
-### 重開機後怎麼接 S0
+### 重開機後怎麼接 S0（歷史紀錄 —— S0 已跑完，留作重現步驟）
 
 ```bash
 cd E:/nakama-nami-time
@@ -400,7 +400,7 @@ Q3 要在 VPS 上跑（`~/.ssh/config` 有一組 host）。
 **兩個已知缺口的後續：**
 
 1. ✅ **`defer` 形狀已查證並實測**（2026-07-29）：defer 是 PreToolUse hook 的 `permissionDecision`，不是 can_use_tool 回傳值（Python SDK 沒有 PermissionResultDefer）。完整迴圈跨進程實測通過，見 findings。
-2. **auto memory 已裁決為「打開」**（2026-07-29）。剩「存到哪」的子決策，只擋 S2、不擋 S0。
+2. **auto memory 已裁決為「打開」且存 VPS 獨立目錄**（2026-07-29，§7 #1/1b）—— 不再有未決子項。
 
 ### Worktree
 

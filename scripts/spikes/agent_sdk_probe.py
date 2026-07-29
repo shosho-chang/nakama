@@ -1,7 +1,7 @@
 """S0 探針 — Agent SDK 遷移前的三個必答問題。
 
 一次性 spike，不進 CI、不進生產。跑完把結果記進
-docs/research/2026-07-XX-agent-sdk-spike-findings.md 後即可刪除。
+docs/research/2026-07-29-agent-sdk-spike-findings.md 後即可刪除。
 
 計畫見 docs/plans/2026-07-29-nami-agent-sdk-migration-plan.md 的 S0。
 
@@ -14,7 +14,7 @@ docs/research/2026-07-XX-agent-sdk-spike-findings.md 後即可刪除。
 
 跑法：
     python scripts/spikes/agent_sdk_probe.py q1     # tools=[] 是否真的移除內建工具
-    python scripts/spikes/agent_sdk_probe.py q2a    # 起 session、觸發 can_use_tool、印出 session_id
+    python scripts/spikes/agent_sdk_probe.py q2a    # 起 session、PreToolUse hook 回 defer、印出 session_id
     python scripts/spikes/agent_sdk_probe.py q2b <session_id>   # 新進程接回
     python scripts/spikes/agent_sdk_probe.py q3     # 環境健檢（VPS 上跑）
 
@@ -39,7 +39,7 @@ try:
         query,
         tool,
     )
-    from claude_agent_sdk.types import HookMatcher
+    from claude_agent_sdk.types import HookMatcher, TextBlock, ToolUseBlock
 except ImportError:
     sys.exit("claude-agent-sdk 未安裝。先 pip install claude-agent-sdk（見本檔 docstring）")
 
@@ -71,9 +71,9 @@ def _base_options(**overrides: Any) -> ClaudeAgentOptions:
 def _dump(message: Any) -> None:
     if isinstance(message, AssistantMessage):
         for block in message.content:
-            if getattr(block, "type", None) == "text":
+            if isinstance(block, TextBlock):
                 print(f"  [text] {block.text[:400]}")
-            elif getattr(block, "type", None) == "tool_use":
+            elif isinstance(block, ToolUseBlock):
                 print(f"  [tool_use] {block.name} {block.input}")
     elif isinstance(message, ResultMessage):
         print(f"  [result] subtype={message.subtype} turns={message.num_turns}")

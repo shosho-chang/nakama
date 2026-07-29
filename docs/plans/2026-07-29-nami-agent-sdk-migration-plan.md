@@ -12,7 +12,8 @@
    `docs/research/2026-07-29-agent-sdk-spike-findings.md`。重點：defer 是 **PreToolUse hook**
    的 `permissionDecision`（不是 can_use_tool 回傳值）；`tools=[]` 紅線通過；
    `setting_sources` 在 S2 **必須明確指定**（預設會載入本機設定與 plugin）
-3. **下一個動作：S1** —— 27 個 tool 包成 in-process MCP server（見下方 S1 六要素）
+3. ✅ **S1 已完成（2026-07-29）** —— Sandcastle 產出（issue #1112），PR #1113 CI 綠
+4. **下一個動作：S2** —— loop 換 `query()`（見下方 S2 六要素；四項裁決已收齊，見「未決事項」表）
 
 Morning brief 暫緩，不在本輪範圍。
 
@@ -30,7 +31,7 @@ Morning brief 暫緩，不在本輪範圍。
 | Hooks | 無。要審計/攔截只能改 loop 本體 | `PreToolUse` / `PostToolUse` / `Stop` 等 |
 | Subagent | 無 | 內建 |
 | Budget cap | `_MAX_ITERS = 15`（土法） | `max_turns` + `max_budget_usd` |
-| pause/resume | 自寫 SQLite（`conversations.db`） | `can_use_tool` + `defer` + session resume |
+| pause/resume | 自寫 SQLite（`conversations.db`） | PreToolUse hook `defer` + session resume |
 
 **Skills 是決定性理由**：修修的使用情境是「Slack 呼叫 agent → 用既有 skill 產出東西」。這在手寫 loop 上做不到。
 
@@ -106,7 +107,7 @@ Nami 跑在 VPS。若不處理，VPS 家目錄會長出一份跟 repo `memory/` 
 1. **目標** — 在動任何生產程式碼前，用最小可執行範例驗證三個關鍵未知，任一失敗就回頭重新設計。
 2. **範圍** — 新增 `scripts/spikes/agent_sdk_probe.py`（一次性，不進 CI）。不碰 `gateway/`。
 3. **輸入** — `claude-agent-sdk` (Python ≥3.10)；Agent SDK 文件的 sessions / user-input / custom-tools 三頁。
-4. **輸出** — 一份 `docs/research/2026-07-XX-agent-sdk-spike-findings.md`，逐項記錄實測結果與版本號。
+4. **輸出** — 一份 `docs/research/2026-07-29-agent-sdk-spike-findings.md`，逐項記錄實測結果與版本號。
 5. **驗收** — 三題都有明確答案且附實測輸出：
    - **Q1 `tools=[]` 是否真的移除所有內建工具？** 用 `tools=[]` + 一個 MCP tool 跑一輪，確認 Claude 拿不到 `Bash`/`Write`/`Read`。**這是 VPS 安全紅線，文件說法必須被實測驗證。**
    - **Q2 `defer` + session resume 能否跨進程？** 觸發 `can_use_tool` → 回傳 defer → **殺掉進程** → 新進程用 `resume=session_id` 接回 → 確認上下文完整、pending tool call 仍可回覆。
@@ -119,7 +120,7 @@ Nami 跑在 VPS。若不處理，VPS 家目錄會長出一份跟 repo `memory/` 
 
 1. **目標** — 把既有 `_tool_*` 實作原封不動地暴露成 Agent SDK 可用的 tool，業務邏輯零改動。
 2. **範圍** — 新增 `gateway/handlers/nami_tools.py`。**不改** `gateway/handlers/nami.py` 的 `_tool_*` 函式本體、不改 `shared/lifeos_writer.py` / `shared/google_calendar.py` / `calendar_scheduler`。
-3. **輸入** — 現有 `NAMI_TOOLS` 的 28 個 JSON Schema；27 個 `_tool_*` 方法（簽章皆為 `(input_: dict) -> _ToolOutcome`）；`create_sdk_mcp_server` / `@tool` API。
+3. **輸入** — 現有 `NAMI_TOOLS` 的 28 個 JSON Schema；27 個 `_tool_*` 方法（簽章皆為 `(input_: dict) -> _ToolOutcome`，唯一例外 `_tool_list_tasks` 無參數）；`create_sdk_mcp_server` / `@tool` API。
 4. **輸出** — `create_sdk_mcp_server(name="nami", tools=[...])`，每個 tool 是薄 wrapper：呼叫既有 `_tool_*`，把 `_ToolOutcome` 轉成 `{"content": [...], "is_error": bool}`。
 5. **驗收** —
    - 27 個 tool 全部有對應 wrapper（`ask_user` 除外，走 S3）
@@ -138,7 +139,7 @@ Nami 跑在 VPS。若不處理，VPS 家目錄會長出一份跟 repo `memory/` 
 4. **輸出** — `_run_loop()` 改為 `query()` / `ClaudeSDKClient`，並設定：
    - `tools=[]` ← **安全紅線，S0-Q1 驗證過才可寫**
    - `mcp_servers={"nami": nami_server}`、`allowed_tools=["mcp__nami__*"]`
-   - `setting_sources=["project"]`（載入 skills — 但先確認載入哪些、不要意外把重媒體 skill 帶進 VPS）
+   - `setting_sources=["project"]`（載入 skills —— **白名單依裁決 #2**；SDK 0.2.128 有專門的 `skills: list[str]` option 可逐 skill 白名單並自動補 allowed_tools，S2 優先用它）
    - `max_turns` 對齊現行 `_MAX_ITERS=15`；加 `max_budget_usd`
    - auto memory 依上方裁決處理
 5. **驗收** —
