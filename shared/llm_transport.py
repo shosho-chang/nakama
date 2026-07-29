@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import os
 
-from shared.llm_context import _local
+from shared.llm_context import get_current_agent
 
 
 def _is_openrouter(value: str | None) -> bool:
@@ -42,7 +42,7 @@ def openrouter_enabled(agent: str | None = None) -> bool:
     解析序：``LLM_TRANSPORT_<AGENT>`` > ``LLM_TRANSPORT`` > native（預設關）。
     """
     if agent is None:
-        agent = getattr(_local, "agent", None)
+        agent = get_current_agent()
     if agent:
         per_agent = os.environ.get(f"LLM_TRANSPORT_{agent.upper()}")
         if per_agent:

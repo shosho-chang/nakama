@@ -7,7 +7,7 @@
 
 依賴 ``google-genai>=1.73``（lazy import — 沒裝時不影響其他模組）。
 
-Thread-local context 與 cost-tracking 入口統一在 :mod:`shared.llm_context` /
+跨 provider context 與 cost-tracking 入口統一在 :mod:`shared.llm_context` /
 :mod:`shared.llm_observability`，本檔只關心 Gemini-specific 的 request
 building、response parsing、token 抽取（thinking token 算入 output 等）。
 """
@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from shared.llm_context import _local
+from shared.llm_context import get_current_agent
 from shared.llm_observability import record_call
 from shared.llm_transport import openrouter_enabled
 from shared.log import get_logger
@@ -175,7 +175,7 @@ def ask_gemini(
     if model is None:
         from shared.llm_router import get_model
 
-        model = get_model(agent=getattr(_local, "agent", None), task="default")
+        model = get_model(agent=get_current_agent(), task="default")
     _require_gemini_model(model)
 
     if openrouter_enabled():
@@ -243,7 +243,7 @@ def ask_gemini_multi(
     if model is None:
         from shared.llm_router import get_model
 
-        model = get_model(agent=getattr(_local, "agent", None), task="default")
+        model = get_model(agent=get_current_agent(), task="default")
     _require_gemini_model(model)
 
     if openrouter_enabled():

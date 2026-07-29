@@ -30,7 +30,7 @@ from openai import (
     RateLimitError,
 )
 
-from shared.llm_context import _local
+from shared.llm_context import get_current_agent
 from shared.llm_observability import record_call
 from shared.log import get_logger
 from shared.openrouter_models import to_openrouter_slug
@@ -74,7 +74,7 @@ def _resolve_model(model: str | None) -> str:
         return model
     from shared.llm_router import get_model
 
-    return get_model(agent=getattr(_local, "agent", None), task="default")
+    return get_model(agent=get_current_agent(), task="default")
 
 
 def _build_extra_body(

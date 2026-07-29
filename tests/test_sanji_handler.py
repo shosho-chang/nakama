@@ -50,9 +50,9 @@ def test_sanji_handle_sets_current_agent_to_sanji():
     captured_agent: list[str | None] = []
 
     def fake_ask(**kwargs):
-        from shared.llm_context import _local
+        from shared.llm_context import get_current_agent
 
-        captured_agent.append(getattr(_local, "agent", None))
+        captured_agent.append(get_current_agent())
         return "x"
 
     with patch("gateway.handlers.sanji.ask", side_effect=fake_ask):

@@ -3,7 +3,7 @@
 為什麼不用 ``xai-sdk``：它是 gRPC，部分 VPS / corporate proxy 會擋。OpenAI SDK
 走 HTTP 更穩，response shape 也對齊既有 cost-tracking 入口的鉤子。
 
-Thread-local context 與 cost-tracking 入口統一在 :mod:`shared.llm_context` /
+跨 provider context 與 cost-tracking 入口統一在 :mod:`shared.llm_context` /
 :mod:`shared.llm_observability`，本檔只關心 xAI-specific 的 request building +
 response parsing（OpenAI shape 的 token 抽取，cached_tokens 從 prompt_tokens
 扣除避免重複計費等）。
@@ -22,7 +22,7 @@ from openai import (
     RateLimitError,
 )
 
-from shared.llm_context import _local
+from shared.llm_context import get_current_agent
 from shared.llm_observability import record_call
 from shared.log import get_logger
 from shared.retry import with_retry
@@ -81,7 +81,7 @@ def ask_grok(
     if model is None:
         from shared.llm_router import get_model
 
-        model = get_model(agent=getattr(_local, "agent", None), task="default")
+        model = get_model(agent=get_current_agent(), task="default")
     _require_grok_model(model)
 
     messages: list[dict] = []
@@ -124,7 +124,7 @@ def ask_grok_multi(
     if model is None:
         from shared.llm_router import get_model
 
-        model = get_model(agent=getattr(_local, "agent", None), task="default")
+        model = get_model(agent=get_current_agent(), task="default")
     _require_grok_model(model)
 
     full_messages: list[dict] = []

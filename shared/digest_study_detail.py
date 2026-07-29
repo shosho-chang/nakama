@@ -26,7 +26,7 @@ from typing import Any, Callable, Optional
 from shared import pubmed_abstract_store
 from shared.digest_indexer import DigestIndexer
 from shared.digest_parser import DigestStudy
-from shared.llm_context import _local
+from shared.llm_context import get_scope_json, set_scope_json
 from shared.log import get_logger
 from shared.pubmed_client import efetch_abstracts
 
@@ -70,7 +70,7 @@ class StudyDetail:
 def _translate(text: str, llm: Callable[..., str], model: str, *, pmid: str, date: str) -> str:
     """Translate an English abstract to zh-TW via the LLM facade.
 
-    Sets ``_local.scope_json`` for per-call cost audit, mirroring
+    Sets the context ``scope_json`` for per-call cost audit, mirroring
     ``shared.digest_ask`` (ADR-030 follow-up #700).
     """
     prompt = f"<abstract>\n{text}\n</abstract>\n\n請依規則翻成繁體中文。"
@@ -78,12 +78,12 @@ def _translate(text: str, llm: Callable[..., str], model: str, *, pmid: str, dat
         {"surface": "digest_study_translate", "pmid": pmid, "date": date, "model": model},
         ensure_ascii=False,
     )
-    prior = getattr(_local, "scope_json", None)
-    _local.scope_json = scope_json
+    prior = get_scope_json()
+    set_scope_json(scope_json)
     try:
         out = llm(prompt, system=_TRANSLATE_SYSTEM, model=model, max_tokens=MAX_OUTPUT_TOKENS)
     finally:
-        _local.scope_json = prior
+        set_scope_json(prior)
     return out.strip()
 
 

@@ -4,7 +4,7 @@
 :mod:`shared.llm_context` / :mod:`shared.llm_observability`；本檔只關心
 Anthropic-specific 的 request building + response parsing。
 
-Thread-local 設置請直接 ``from shared.llm_context import set_current_agent``。
+Context 設置請直接 ``from shared.llm_context import set_current_agent``。
 跨 provider routing 走 :func:`shared.llm.ask`。
 """
 
@@ -16,7 +16,7 @@ import time
 
 import anthropic
 
-from shared.llm_context import _local
+from shared.llm_context import get_current_agent
 from shared.llm_observability import record_call
 from shared.llm_transport import openrouter_enabled
 from shared.log import get_logger
@@ -254,7 +254,7 @@ def ask_claude(
     if model is None:
         from shared.llm_router import get_model
 
-        model = get_model(agent=getattr(_local, "agent", None), task="default")
+        model = get_model(agent=get_current_agent(), task="default")
     _require_claude_model(model)
 
     requested = _resolve_effective_policy(auth_policy)
@@ -362,7 +362,7 @@ def call_claude_with_tools(
     if model is None:
         from shared.llm_router import get_model
 
-        model = get_model(agent=getattr(_local, "agent", None), task="tool_use")
+        model = get_model(agent=get_current_agent(), task="tool_use")
     _require_claude_model(model)
 
     requested = _resolve_effective_policy(auth_policy)
@@ -430,7 +430,7 @@ def ask_claude_multi(
     if model is None:
         from shared.llm_router import get_model
 
-        model = get_model(agent=getattr(_local, "agent", None), task="default")
+        model = get_model(agent=get_current_agent(), task="default")
     _require_claude_model(model)
 
     requested = _resolve_effective_policy(auth_policy)
