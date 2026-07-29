@@ -18,11 +18,9 @@ docs/research/2026-07-XX-agent-sdk-spike-findings.md 後即可刪除。
     python scripts/spikes/agent_sdk_probe.py q2b <session_id>   # 新進程接回
     python scripts/spikes/agent_sdk_probe.py q3     # 環境健檢（VPS 上跑）
 
-⚠️ Q2 的 `defer` 決策形狀本檔**沒有實作** —— 我沒有查證到它的確切 API，
-   不憑印象寫。跑 q2a 前先讀 https://code.claude.com/docs/en/hooks
-   的 "Defer a tool call for later"，把回傳值補進 _can_use_tool()。
-   在那之前 q2a/q2b 測到的是「同一個 pending 狀態能不能用 resume 接回」，
-   不是完整的 defer 流程。
+Q2 的 `defer` 形狀已查證（2026-07-29，hooks 文件 "Defer a tool call for later"）：
+   defer 不是 can_use_tool 的回傳值（Python SDK 沒有 PermissionResultDefer），
+   是 PreToolUse hook 的 permissionDecision。詳見 q2 區塊註解。
 """
 
 from __future__ import annotations
@@ -41,7 +39,7 @@ try:
         query,
         tool,
     )
-    from claude_agent_sdk.types import HookMatcher, PermissionResultAllow
+    from claude_agent_sdk.types import HookMatcher
 except ImportError:
     sys.exit("claude-agent-sdk 未安裝。先 pip install claude-agent-sdk（見本檔 docstring）")
 
@@ -123,71 +121,117 @@ async def q1() -> None:
     )
 
 
-# ── Q2：can_use_tool 暫停 → 進程結束 → 新進程 resume 接回 ─────────────
+# ── Q2：PreToolUse hook 回 defer → 進程結束 → 新進程 resume 接回 ────────
 #
 # 這是 ask_user 的命脈。現行 Nami 靠 SQLite 存整份 messages 做到這件事；
-# 遷移後要靠 SDK 的 session resume。必須跨進程實測，不是同進程內測。
+# 遷移後要靠 defer + session resume。必須跨進程實測，不是同進程內測。
+#
+# 查證結果（2026-07-29，code.claude.com/docs/en/hooks#defer-a-tool-call-for-later）：
+# - defer 不是 can_use_tool 的回傳值（Python SDK 沒有 PermissionResultDefer），
+#   而是 PreToolUse hook 的 permissionDecision。
+# - 流程：hook 回 {"hookSpecificOutput": {"hookEventName": "PreToolUse",
+#   "permissionDecision": "defer"}} → tool 不執行、進程結束，result 帶
+#   stop_reason="tool_deferred" 與 deferred_tool_use{id, name, input}。
+# - resume 後**同一個 tool call 會再次觸發 PreToolUse**，hook 這次回 allow
+#   （答案放 updatedInput）→ tool 執行、Claude 繼續。答案還沒到可以再 defer。
+# - 限制：turn 內單一 tool call 才有效（多個並發 → defer 被忽略）；
+#   defer 時 updatedInput / permissionDecisionReason / additionalContext 全被忽略；
+#   session 檔受 cleanupPeriodDays 管，預設 30 天清掉；
+#   resume 時 tool 不在（MCP server 沒接）→ stop_reason="tool_deferred_unavailable"。
 
 
-async def _can_use_tool(tool_name: str, input_data: dict, context: Any) -> Any:
-    print(f"\n  >>> can_use_tool 觸發：{tool_name} {input_data}")
-    print("  >>> ⚠️ 這裡應該回傳 defer 決策，讓進程可以結束後再接回。")
-    print("  >>> 目前先 allow 讓流程跑完；defer 形狀待查證後補上。")
-    return PermissionResultAllow(updated_input=input_data)
-
-
-async def _dummy_hook(input_data: Any, tool_use_id: Any, context: Any) -> dict:
-    # Python 的 can_use_tool 需要 streaming mode；沒有 hook 或 in-process MCP
-    # server 撐著的話，SDK 會在 callback 被呼叫前就關掉 input stream。
-    return {"continue_": True}
+async def _defer_hook(input_data: Any, tool_use_id: Any, context: Any) -> dict:
+    print(f"\n  >>> PreToolUse 觸發：{input_data.get('tool_name')} tool_use_id={tool_use_id}")
+    print("  >>> 回 defer —— 進程應在此後結束，pending tool call 留在 transcript")
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "defer",
+        }
+    }
 
 
 async def q2a() -> None:
-    print("=== Q2a: 起 session 並觸發 can_use_tool ===")
+    print("=== Q2a: PreToolUse hook 回 defer，觀察進程如何結束 ===")
     print(f"model={MODEL}\n")
 
     session_id = None
     options = _base_options(
-        can_use_tool=_can_use_tool,
-        hooks={"PreToolUse": [HookMatcher(matcher=None, hooks=[_dummy_hook])]},
-        allowed_tools=[],  # 清空 → 讓 nami_echo 走 permission flow 而非自動放行
+        hooks={
+            "PreToolUse": [
+                HookMatcher(matcher="mcp__nami__nami_echo", hooks=[_defer_hook])
+            ]
+        },
     )
 
-    async def _prompt_stream():
-        yield {
-            "type": "user",
-            "message": {
-                "role": "user",
-                "content": "請用 nami_echo 工具回聲 'S0-probe'，然後告訴我結果。",
-            },
-        }
-
     try:
-        async for message in query(prompt=_prompt_stream(), options=options):
+        async for message in query(
+            prompt="請用 nami_echo 工具回聲 'S0-probe'，然後告訴我結果。",
+            options=options,
+        ):
             _dump(message)
             if isinstance(message, ResultMessage):
                 session_id = message.session_id
+                # 看 stop_reason / deferred_tool_use 在 Python 型別上有沒有露出
+                print(f"  [result:raw] {message!r}")
     except Exception as e:  # noqa: BLE001 — spike，要看到原始錯誤
         print(f"  [error] {type(e).__name__}: {e}")
 
     print(f"\n>>> session_id = {session_id}")
-    print(">>> 現在**關掉這個進程**，然後跑：")
+    print(">>> 判讀：result 應帶 stop_reason='tool_deferred'，deferred_tool_use 帶")
+    print(">>>       nami_echo 的 id/name/input。若 Python ResultMessage 沒露出這兩")
+    print(">>>       個欄位 → 記進 findings（S3 要嘛升版 SDK、要嘛自己讀 raw JSON）。")
+    print(">>> 進程自然結束後跑：")
     print(f">>>   python scripts/spikes/agent_sdk_probe.py q2b {session_id}")
     print(">>> 注意：resume 依賴 cwd —— q2b 必須從同一個目錄跑。")
 
 
+async def _resume_allow_hook(input_data: Any, tool_use_id: Any, context: Any) -> dict:
+    print(f"\n  >>> resume 後 PreToolUse 再次觸發：{input_data.get('tool_name')}")
+    print("  >>> 這次回 allow（真實 S3 會把 Slack 收到的答案放進 updatedInput）")
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "updatedInput": input_data.get("tool_input", {}),
+        }
+    }
+
+
 async def q2b(session_id: str) -> None:
-    print(f"=== Q2b: 新進程用 resume={session_id} 接回 ===")
+    print(f"=== Q2b: 新進程用 resume={session_id} 接回 deferred tool call ===")
     print(f"cwd={os.getcwd()}\n")
 
-    prompt = "我剛剛請你做什麼？請完整複述，包含我要你回聲的那個字串。"
+    options = _base_options(
+        resume=session_id,
+        hooks={
+            "PreToolUse": [
+                HookMatcher(matcher="mcp__nami__nami_echo", hooks=[_resume_allow_hook])
+            ]
+        },
+    )
 
-    async for message in query(prompt=prompt, options=_base_options(resume=session_id)):
-        _dump(message)
+    # 文件說 CLI 層 resume deferred tool call 時可以不給 prompt；
+    # Python query() 的 prompt 是必填 —— 先試空字串，實際行為記進 findings。
+    try:
+        async for message in query(prompt="", options=options):
+            _dump(message)
+            if isinstance(message, ResultMessage):
+                print(f"  [result:raw] {message!r}")
+    except Exception as e:  # noqa: BLE001 — spike，要看到原始錯誤
+        print(f"  [error] {type(e).__name__}: {e}")
+        print("  空 prompt 失敗 → fallback 帶一句 prompt 重試：")
+        async for message in query(
+            prompt="（繼續剛才被擱置的工具呼叫）", options=options
+        ):
+            _dump(message)
+            if isinstance(message, ResultMessage):
+                print(f"  [result:raw] {message!r}")
 
     print(
-        "\n判讀：模型必須答得出 'S0-probe' 這個字串。答不出來 → session "
-        "沒接回（先查 cwd 是否一致、session 檔是否在本機）。"
+        "\n判讀：PreToolUse 必須再次觸發、allow 後 tool 真的執行，"
+        "Claude 的回覆要包含 'echo: S0-probe'。沒觸發或答不出 → defer 迴圈斷裂，"
+        "S3 設計要重看（先查 cwd 是否一致、session 檔是否在本機）。"
     )
 
 

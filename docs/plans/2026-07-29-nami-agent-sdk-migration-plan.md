@@ -8,10 +8,11 @@
 ## 🚩 從這裡開始（給接手的 session）
 
 1. 讀 `docs/research/2026-07-29-nami-agent-architecture-decisions.md` —— 為什麼這樣決定、9 項已定決策
-2. **下一個動作：跑 S0 探針**。腳本已寫好在 `scripts/spikes/agent_sdk_probe.py`，**未跑過**
-3. **開跑前先補一個缺口**：腳本裡 `_can_use_tool()` 的 `defer` 決策形狀還沒查證。先讀
-   <https://code.claude.com/docs/en/hooks> 的「Defer a tool call for later」把它補上，再跑 q1
-4. 三題（q1 安全紅線 / q2 跨進程 resume / q3 VPS 環境）都過，才動生產程式碼
+2. ✅ **S0 探針已跑完（2026-07-29），三題全過** —— 實測結果與版本號在
+   `docs/research/2026-07-29-agent-sdk-spike-findings.md`。重點：defer 是 **PreToolUse hook**
+   的 `permissionDecision`（不是 can_use_tool 回傳值）；`tools=[]` 紅線通過；
+   `setting_sources` 在 S2 **必須明確指定**（預設會載入本機設定與 plugin）
+3. **下一個動作：S1** —— 27 個 tool 包成 in-process MCP server（見下方 S1 六要素）
 
 Morning brief 暫緩，不在本輪範圍。
 
@@ -99,7 +100,7 @@ Nami 跑在 VPS。若不處理，VPS 家目錄會長出一份跟 repo `memory/` 
 
 ## Slice 拆解
 
-### S0 — 探針（spike，不進生產）
+### S0 — 探針（spike，不進生產）✅ 完成（2026-07-29，三題全過，見 findings）
 
 1. **目標** — 在動任何生產程式碼前，用最小可執行範例驗證三個關鍵未知，任一失敗就回頭重新設計。
 2. **範圍** — 新增 `scripts/spikes/agent_sdk_probe.py`（一次性，不進 CI）。不碰 `gateway/`。
@@ -150,10 +151,10 @@ Nami 跑在 VPS。若不處理，VPS 家目錄會長出一份跟 repo `memory/` 
 
 ### S3 — `ask_user` 的 pause / resume
 
-1. **目標** — 用 `can_use_tool` + `defer` + session resume 取代自寫的 SQLite pause/resume，行為等價：Slack 提問 → 進程可結束 → 數小時後使用者回覆 → 接回原上下文。
+1. **目標** — 用 **PreToolUse hook 的 `defer`** + session resume 取代自寫的 SQLite pause/resume，行為等價：Slack 提問 → 進程可結束 → 數小時後使用者回覆 → 接回原上下文。
 2. **範圍** — `gateway/handlers/nami.py` 的 `continue_flow()`；`gateway/conversation_state.py`（改存 session_id 而非整份 messages）；`gateway/bot.py` 的 continuation 註冊。
-3. **輸入** — S0-Q2 的實測結論；現行 `NAMI_AGENT_FLOW` continuation 契約；`AskUserQuestion` 的 questions/answers 格式。
-4. **輸出** — `conversations.db` 的 `state_json` 由「整份 messages」改為 `{"session_id": ..., "pending_tool_use_id": ...}`；`can_use_tool` callback 把問題送回 Slack 並 defer。
+3. **輸入** — **S0-Q2 實測結論（`docs/research/2026-07-29-agent-sdk-spike-findings.md`，含 6 條文件限制與 resume prompt 怪象）**；現行 `NAMI_AGENT_FLOW` continuation 契約；`AskUserQuestion` 的 questions/answers 格式。
+4. **輸出** — `conversations.db` 的 `state_json` 由「整份 messages」改為 `{"session_id": ..., "pending_tool_use_id": ...}`；**PreToolUse hook** 攔下提問 tool：把問題送回 Slack、回 `permissionDecision: "defer"` 結束進程；使用者回覆後 `resume=<session_id>`（同 cwd），hook 對再次觸發的同一 tool call 回 `allow` + 答案放 `updatedInput`。resume 收到 `tool_deferred_unavailable` 或多 tool call 導致 defer 被忽略時要有明確 fallback。
 5. **驗收** —
    - **VPS 重啟後仍能接回**（不是只在同一進程內測）
    - 24h idle timeout 行為保留

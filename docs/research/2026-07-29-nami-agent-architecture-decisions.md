@@ -363,7 +363,7 @@ Anthropic 的 memory tool 只給檔案系統介面；Managed Agents memory store
 | 2 | `setting_sources` 載入哪些 skill | 白名單，重媒體 skill 排除在 VPS 外 | ⏳ |
 | 3 | Session 儲存位置 | 先用 SDK 預設，VPS 上確認 cwd 穩定 | ⏳ |
 | 4 | Cutover 方式 | feature flag 並行，實用一週無異常才移除舊路徑 | ⏳ |
-| 5 | **S0 探針是否開跑** | 建議開跑 | ⏳ |
+| 5 | ~~S0 探針是否開跑~~ | 已跑完（2026-07-29），三題全過 → `docs/research/2026-07-29-agent-sdk-spike-findings.md` | ✅ **已定** |
 
 ---
 
@@ -374,8 +374,8 @@ Anthropic 的 memory tool 只給檔案系統介面；Managed Agents memory store
 | 跨日日期 bug 修復 | ✅ commit `396d0e1`，PR [#1107](https://github.com/shosho-chang/nakama/pull/1107) 已開，**未 merge** |
 | 遷移計畫（六 slice + 六要素 task prompt） | ✅ `docs/plans/2026-07-29-nami-agent-sdk-migration-plan.md` |
 | 本文件 | ✅ |
-| S0 探針腳本 | ✅ `scripts/spikes/agent_sdk_probe.py`（**已寫、未跑**） |
-| S0 探針執行 | ⬜ 未開始 |
+| S0 探針腳本 | ✅ `scripts/spikes/agent_sdk_probe.py`（defer 形狀已依 hooks 文件查證後改寫） |
+| S0 探針執行 | ✅ **三題全過**（2026-07-29，SDK 0.2.128）→ `docs/research/2026-07-29-agent-sdk-spike-findings.md`。下一步：S1 |
 | Morning brief | ⬜ 未開始（內容待討論；`agents/nami/__main__.py` 仍是 stub、`cron.conf` 07:00 仍註解） |
 | 自主排程 | ⬜ 未開始（遷移後的獨立 slice，見 §5b） |
 
@@ -396,9 +396,9 @@ python scripts/spikes/agent_sdk_probe.py q2b <session_id>   # 必須從同一個
 
 Q3 要在 VPS 上跑（`~/.ssh/config` 有一組 host）。
 
-**兩個已知缺口，開跑前要處理：**
+**兩個已知缺口的後續：**
 
-1. **`defer` 決策的 API 形狀沒有查證到**，腳本裡 `_can_use_tool()` 目前先回 `PermissionResultAllow`。跑 q2a 前先讀 [hooks 文件的 "Defer a tool call for later"](https://code.claude.com/docs/en/hooks) 把它補上。在那之前 q2a/q2b 測到的只是「pending 狀態能不能 resume 接回」，不是完整 defer 流程。
+1. ✅ **`defer` 形狀已查證並實測**（2026-07-29）：defer 是 PreToolUse hook 的 `permissionDecision`，不是 can_use_tool 回傳值（Python SDK 沒有 PermissionResultDefer）。完整迴圈跨進程實測通過，見 findings。
 2. **auto memory 已裁決為「打開」**（2026-07-29）。剩「存到哪」的子決策，只擋 S2、不擋 S0。
 
 ### Worktree
