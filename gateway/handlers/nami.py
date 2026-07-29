@@ -74,25 +74,41 @@ def _use_agent_sdk() -> bool:
 def _sdk_skills() -> list[str]:
     """Skill 白名單（裁決 #2）。空 = 全關 — SDK 的 skills=None 不是「關」，是 CLI 預設。"""
     raw = os.environ.get(_SDK_SKILLS_ENV, "")
-    return [s.strip() for s in raw.split(",") if s.strip()]
+    skills = [s.strip() for s in raw.split(",") if s.strip()]
+    if skills:
+        # S2 的 options 組合下這份白名單不會生效：tools=[] 拿掉了 Skill 工具本體、
+        # setting_sources=[] 又清空 skill 探索來源。S5 要開 skills 需 tools=["Skill"]
+        # + 探索來源重新設計 + 重驗 tools 安全紅線。（PR #1120 review M2）
+        logger.warning("NAMI_SKILLS=%s 已設定，但 S2 的 options 組合下 skills 尚無法生效", skills)
+    return skills
 
 
-def _sdk_settings_path() -> str | None:
+def _sdk_budget_usd() -> float:
+    raw = os.environ.get(_SDK_BUDGET_ENV)
+    if raw:
+        try:
+            return float(raw)
+        except ValueError:
+            logger.warning(
+                "%s=%r 不是數字，改用預設 %s", _SDK_BUDGET_ENV, raw, _SDK_DEFAULT_BUDGET_USD
+            )
+    return _SDK_DEFAULT_BUDGET_USD
+
+
+def _sdk_settings() -> str | None:
     """Auto memory 依 2026-07-29 裁決存 VPS 獨立目錄（machine-local 預設會讓兩台機器分裂）。
 
-    SDK 的 ``settings`` 吃檔案路徑 — 設定檔直接放在 auto memory 目錄內，自包含。
-    未設 env 時回 None：auto memory 落 SDK 預設位置（只該發生在本機測試）。
+    SDK 的 ``settings`` 同時吃檔案路徑與 inline JSON 字串 —— 用 inline JSON
+    免去 handler 內的檔案寫入與多 thread 首跑的 truncate-write race。
+    未設 env 時回 None：auto memory 落 SDK 預設位置（只該發生在本機測試，
+    裁決明文「留預設就是選了分裂」—— _run_loop_sdk 會補 warning）。
     """
     auto_dir = os.environ.get(_SDK_AUTO_MEMORY_ENV)
     if not auto_dir:
         return None
     dir_path = Path(auto_dir)
     dir_path.mkdir(parents=True, exist_ok=True)
-    settings_file = dir_path / "agent-settings.json"
-    desired = json.dumps({"autoMemoryDirectory": str(dir_path)}, ensure_ascii=False)
-    if not settings_file.exists() or settings_file.read_text(encoding="utf-8") != desired:
-        settings_file.write_text(desired, encoding="utf-8")
-    return str(settings_file)
+    return json.dumps({"autoMemoryDirectory": str(dir_path)}, ensure_ascii=False)
 
 
 # ── Tool definitions（stable, will be prompt-cached） ──────────────────
@@ -1099,11 +1115,20 @@ class NamiHandler(BaseHandler):
         system_prompt += (
             "\n\n（Agent SDK 測試模式：ask_user 工具暫不可用，需要澄清時直接在回覆中問。）"
         )
+        if not os.environ.get(_SDK_AUTO_MEMORY_ENV):
+            # 裁決 1b：「S2 必須明確設定，不可留預設 —— 留預設就是選了分裂」
+            logger.warning(
+                "%s=1 但 %s 未設 — auto memory 落 machine-local 預設，只該在本機測試發生",
+                _SDK_FLAG_ENV,
+                _SDK_AUTO_MEMORY_ENV,
+            )
         try:
             return asyncio.run(self._arun_loop_sdk(user_text, system_prompt, user_id))
-        except Exception as e:
-            logger.exception("Agent SDK loop failed")
-            return HandlerResponse(text=f"Agent SDK 路徑失敗（{type(e).__name__}）：{e}")
+        except Exception:
+            # stream 內的例外在 _arun_loop_sdk 就地處理；走到這裡是 options 組裝
+            # 或 loop 啟動層炸掉。raw 內文只進 log，不進 Slack。
+            logger.exception("Agent SDK loop failed outside stream")
+            return HandlerResponse(text="Nami 執行失敗，請稍後再試。（細節已記錄在 log）")
 
     async def _arun_loop_sdk(
         self, user_text: str, system_prompt: str, user_id: str
@@ -1120,44 +1145,65 @@ class NamiHandler(BaseHandler):
                 f"mcp__nami__{spec['name']}" for spec in NAMI_TOOLS if spec["name"] != "ask_user"
             ],
             max_turns=_MAX_ITERS,
-            max_budget_usd=float(os.environ.get(_SDK_BUDGET_ENV, _SDK_DEFAULT_BUDGET_USD)),
+            max_budget_usd=_sdk_budget_usd(),
             setting_sources=[],  # None 會載入全部本機設定（S0-Q1 附帶發現）——明確給空
             skills=_sdk_skills(),
-            settings=_sdk_settings_path(),
+            settings=_sdk_settings(),
         )
 
-        result_text: str | None = None
+        # SDK 對 error result 的形狀是「先 yield ResultMessage 再 raise」——
+        # 所以 ResultMessage 到手當下就 log（失敗的 run 也要留 cost/session 痕跡），
+        # 例外就地攔下來，終態統一在 loop 後分支。
         result_msg: ResultMessage | None = None
-        async for message in query(prompt=user_text, options=options):
-            if isinstance(message, ResultMessage):
-                result_msg = message
-                if message.subtype == "success" and message.result:
-                    result_text = message.result
-
-        if result_msg is not None:
-            # per-call 粒度的成本記錄是 S4；先讓 session 級數字進 log 可查
-            logger.info(
-                "nami sdk loop done: session=%s turns=%s cost_usd=%s terminal=%s",
-                result_msg.session_id,
-                result_msg.num_turns,
-                result_msg.total_cost_usd,
-                result_msg.terminal_reason,
-            )
-
-        # 背景抽取記憶（與 legacy 路徑同步）。失敗不影響主流程。
+        stream_error: Exception | None = None
         try:
-            extract_in_background(
-                agent="nami",
-                user_id=user_id,
-                messages=[
-                    {"role": "user", "content": user_text},
-                    {"role": "assistant", "content": result_text or ""},
-                ],
-            )
+            async for message in query(prompt=user_text, options=options):
+                if isinstance(message, ResultMessage):
+                    result_msg = message
+                    # per-call 粒度的成本記錄是 S4；先讓 session 級數字進 log 可查
+                    logger.info(
+                        "nami sdk result: session=%s subtype=%s turns=%s cost_usd=%s "
+                        "terminal=%s is_error=%s",
+                        message.session_id,
+                        message.subtype,
+                        message.num_turns,
+                        message.total_cost_usd,
+                        message.terminal_reason,
+                        message.is_error,
+                    )
         except Exception as e:
-            logger.warning(f"Failed to spawn memory extractor: {e}")
+            logger.exception("Agent SDK stream failed")
+            stream_error = e
 
-        return HandlerResponse(text=result_text or "完成。")
+        ok = result_msg is not None and result_msg.subtype == "success" and not result_msg.is_error
+        if ok and stream_error is None:
+            result_text = result_msg.result or ""
+            # 背景抽取記憶（與 legacy 路徑同步）。失敗不影響主流程。
+            # 註：SDK 路徑只給 extractor 首尾兩則（tool 往返在 session 內部拿不到）
+            # —— 訊號比 legacy 貧化，是 S2 的已知取捨，S4 觀測時一併評估。
+            try:
+                extract_in_background(
+                    agent="nami",
+                    user_id=user_id,
+                    messages=[
+                        {"role": "user", "content": user_text},
+                        {"role": "assistant", "content": result_text},
+                    ],
+                )
+            except Exception as e:
+                logger.warning(f"Failed to spawn memory extractor: {e}")
+            return HandlerResponse(text=result_text or "完成。")
+
+        # 非 success 終態：對外明確說失敗（不謊報「完成」、不洩 raw exception）
+        subtype = result_msg.subtype if result_msg is not None else None
+        logger.warning(
+            "nami sdk loop ended without success: subtype=%s stream_error=%r", subtype, stream_error
+        )
+        if subtype == "error_max_turns":
+            return HandlerResponse(text="已達最大迴圈次數，請重新下指令。")  # 對映 legacy 訊息
+        if subtype == "error_max_budget_usd":
+            return HandlerResponse(text="這次執行超出單次成本上限，已中止。請把指令拆小一點再下。")
+        return HandlerResponse(text="Nami 執行失敗，請稍後再試。（細節已記錄在 log）")
 
     # ── Tool executors ───────────────────────────────────────────
 
