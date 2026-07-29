@@ -64,15 +64,16 @@ Morning brief 暫緩，不在本輪範圍。
 
 修修裁決要開。以下原本的三選一保留作紀錄，並標註**還剩一個子決策**。
 
-**還沒定的子決策：存到哪。** Auto memory 預設寫 `~/.claude/projects/<project>/memory/`，官方明說
-**machine-local，不跨機器共享**。Nami 跑 VPS、修修的機器是 Windows —— 用預設會**分裂成兩份**。
+**✅ 子決策已裁決（2026-07-29，修修）：選 C —— 存 VPS 獨立目錄。** 背景：auto memory 預設寫
+`~/.claude/projects/<project>/memory/`，官方明說 **machine-local，不跨機器共享**。Nami 跑 VPS、
+修修的機器是 Windows —— 用預設會**分裂成兩份**。兩個子選項保留如下作紀錄。
 
 | 子選項 | 做法 | 評估 |
 |---|---|---|
 | **B. 導向 repo** | `autoMemoryDirectory` 指到 repo 內 `memory/nami-auto/` | 符合 CLAUDE.md「記憶在 repo 內 git 共用」；但 VPS 上要處理 git 寫入與 push，且可能與 `memory_maintenance.py reindex` 打架 |
 | **C. 導向獨立目錄** | 指到 VPS 上非 git 的固定路徑 | 不污染 repo、實作簡單；但仍 machine-local，Windows 端看不到 |
 
-**建議先 C，S2 上線觀察一輪再決定要不要升級成 B。** 理由：先確認 auto memory 實際會寫出什麼、
+**裁決採 C，S2 上線觀察一輪再決定要不要升級成 B。** 理由：先確認 auto memory 實際會寫出什麼、
 量有多大、有沒有價值，再決定要不要付「跨機同步」的複雜度。C → B 之後搬目錄的成本很低。
 
 > ⚠️ S2 實作時**必須明確設定** `autoMemoryDirectory`，不可留預設 —— 留預設就是選了「分裂」。
@@ -186,14 +187,14 @@ Nami 跑在 VPS。若不處理，VPS 家目錄會長出一份跟 repo `memory/` 
 
 ---
 
-## 未決事項（需修修裁決）
+## 未決事項 → 全數已裁決（2026-07-29，修修）
 
-| # | 事項 | 我的建議 |
+| # | 事項 | 裁決 |
 |---|---|---|
-| 1 | ~~Auto memory 開/關~~ | ✅ **已裁決：打開**。剩子決策「存到哪」——建議先用 `autoMemoryDirectory` 指到 VPS 獨立目錄，S2 觀察一輪再決定要不要搬進 repo |
-| 2 | `setting_sources=["project"]` 要載入哪些 skill | 白名單，先只放 Nami 用得到的；重媒體 skill 排除 |
-| 3 | Session 儲存位置（SDK 預設 JSONL on disk，cwd-keyed） | 先用預設；VPS 上確認 cwd 穩定 |
-| 4 | Cutover 用 feature flag 還是直接切 | **feature flag**（S5） |
+| 1 | ~~Auto memory 開/關 + 存到哪~~ | ✅ **打開**；`autoMemoryDirectory` 指 VPS 獨立目錄（子選項 C），S2 觀察一輪再決定要不要搬進 repo。**S2 必須明確設定，不可留預設** |
+| 2 | ~~`setting_sources=["project"]` 要載入哪些 skill~~ | ✅ 白名單，先只放 Nami 用得到的；重媒體 skill 排除 |
+| 3 | ~~Session 儲存位置~~ | ✅ 先用 SDK 預設（JSONL on disk，cwd-keyed）；VPS 上 gateway 的 WorkingDirectory 固定 |
+| 4 | ~~Cutover 方式~~ | ✅ **feature flag**（S5），實用一週無異常才移除舊路徑 |
 
 ---
 

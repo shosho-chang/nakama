@@ -354,15 +354,15 @@ Anthropic 的 memory tool 只給檔案系統介面；Managed Agents memory store
 
 ---
 
-## 7. 待裁決（重開機後繼續）
+## 7. 待裁決 → 全數已定（2026-07-29 修修裁決收齊）
 
-| # | 事項 | 建議 | 狀態 |
+| # | 事項 | 裁決 | 狀態 |
 |---|---|---|---|
 | 1 | **Auto memory 開/關** | ~~先關掉~~ → **修修裁決：打開** | ✅ **已定** |
-| 1b | Auto memory 存到哪（預設 machine-local 會讓 VPS 與 Windows 分裂） | 先 `autoMemoryDirectory` 指到 VPS 獨立目錄；S2 觀察一輪再決定要不要搬進 repo `memory/`。**S2 必須明確設定，不可留預設** | ⏳ |
-| 2 | `setting_sources` 載入哪些 skill | 白名單，重媒體 skill 排除在 VPS 外 | ⏳ |
-| 3 | Session 儲存位置 | 先用 SDK 預設，VPS 上確認 cwd 穩定 | ⏳ |
-| 4 | Cutover 方式 | feature flag 並行，實用一週無異常才移除舊路徑 | ⏳ |
+| 1b | Auto memory 存到哪（預設 machine-local 會讓 VPS 與 Windows 分裂） | **修修裁決：VPS 獨立目錄**（`autoMemoryDirectory` 明確設定，不可留預設）；S2 觀察一輪再決定要不要搬進 repo `memory/` | ✅ **已定** |
+| 2 | `setting_sources` 載入哪些 skill | 白名單，重媒體 skill 排除在 VPS 外（依建議裁決） | ✅ **已定** |
+| 3 | Session 儲存位置 | 先用 SDK 預設，VPS 上 gateway WorkingDirectory 固定（依建議裁決） | ✅ **已定** |
+| 4 | Cutover 方式 | feature flag 並行，實用一週無異常才移除舊路徑（依建議裁決） | ✅ **已定** |
 | 5 | ~~S0 探針是否開跑~~ | 已跑完（2026-07-29），三題全過 → `docs/research/2026-07-29-agent-sdk-spike-findings.md` | ✅ **已定** |
 
 ---
@@ -375,7 +375,8 @@ Anthropic 的 memory tool 只給檔案系統介面；Managed Agents memory store
 | 遷移計畫（六 slice + 六要素 task prompt） | ✅ `docs/plans/2026-07-29-nami-agent-sdk-migration-plan.md` |
 | 本文件 | ✅ |
 | S0 探針腳本 | ✅ `scripts/spikes/agent_sdk_probe.py`（defer 形狀已依 hooks 文件查證後改寫） |
-| S0 探針執行 | ✅ **三題全過**（2026-07-29，SDK 0.2.128）→ `docs/research/2026-07-29-agent-sdk-spike-findings.md`。下一步：S1 |
+| S0 探針執行 | ✅ **三題全過**（2026-07-29，SDK 0.2.128）→ `docs/research/2026-07-29-agent-sdk-spike-findings.md` |
+| S1（27 tool 包 in-process MCP server） | ✅ Sandcastle 產出（issue #1112），PR #1113 CI 綠。下一步：S2 |
 | Morning brief | ⬜ 未開始（內容待討論；`agents/nami/__main__.py` 仍是 stub、`cron.conf` 07:00 仍註解） |
 | 自主排程 | ⬜ 未開始（遷移後的獨立 slice，見 §5b） |
 
