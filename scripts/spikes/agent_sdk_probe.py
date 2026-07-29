@@ -157,11 +157,7 @@ async def q2a() -> None:
 
     session_id = None
     options = _base_options(
-        hooks={
-            "PreToolUse": [
-                HookMatcher(matcher="mcp__nami__nami_echo", hooks=[_defer_hook])
-            ]
-        },
+        hooks={"PreToolUse": [HookMatcher(matcher="mcp__nami__nami_echo", hooks=[_defer_hook])]},
     )
 
     try:
@@ -205,9 +201,7 @@ async def q2b(session_id: str) -> None:
     options = _base_options(
         resume=session_id,
         hooks={
-            "PreToolUse": [
-                HookMatcher(matcher="mcp__nami__nami_echo", hooks=[_resume_allow_hook])
-            ]
+            "PreToolUse": [HookMatcher(matcher="mcp__nami__nami_echo", hooks=[_resume_allow_hook])]
         },
     )
 
@@ -221,9 +215,7 @@ async def q2b(session_id: str) -> None:
     except Exception as e:  # noqa: BLE001 — spike，要看到原始錯誤
         print(f"  [error] {type(e).__name__}: {e}")
         print("  空 prompt 失敗 → fallback 帶一句 prompt 重試：")
-        async for message in query(
-            prompt="（繼續剛才被擱置的工具呼叫）", options=options
-        ):
+        async for message in query(prompt="（繼續剛才被擱置的工具呼叫）", options=options):
             _dump(message)
             if isinstance(message, ResultMessage):
                 print(f"  [result:raw] {message!r}")
