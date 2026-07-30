@@ -413,3 +413,58 @@ def test_pairings_carry_why_they_pair_and_formatter_prints_it():
     text = format_playbook_index_for_prompt(index)
     # 注入時截斷至 140 字守 size budget — 驗前綴即可
     assert with_why[0].why_they_pair[:100] in text
+
+
+def test_attach_tolerates_other_long_cut_still_draft(monkeypatch, tmp_path):
+    """同集其他長片還沒配封面（packages 空）時，本支仍要落得了地。
+
+    ADR-054 D14 逐支處理 → 一集內同時存在「已完成」與「只有標題」的 cut 是
+    設計本意。舊版整檔驗證會因為別支 packages != 3 而失敗，2026-07-29 謝伯讓集
+    踩到，被迫手動搬檔繞過。
+    """
+    vault = tmp_path / "vault"
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    working = tmp_path / "packaging"
+    working.mkdir()
+
+    data = _midstate_packages_file()
+    draft = json.loads(json.dumps(data["cuts"][0]))  # deep copy
+    draft["cut_id"] = "story-L1"
+    draft["title_trace_ref"] = "packaging/story-L1/title_trace.json"
+    data["cuts"].append(draft)
+    (working / "packages.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    specs = []
+    for n in (1, 2, 3):
+        png = working / f"pkg-punch-L1-{n}.png"
+        png.write_bytes(b"png")
+        specs.append(_spec(n, png, vault))
+
+    out = attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+    written = json.loads(Path(out).read_text(encoding="utf-8"))
+    done = next(c for c in written["cuts"] if c["cut_id"] == "punch-L1")
+    pending = next(c for c in written["cuts"] if c["cut_id"] == "story-L1")
+    assert len(done["packages"]) == 3
+    assert pending["packages"] == []  # 草稿原樣保留，沒被動到
+
+
+def test_attach_still_rejects_incomplete_target_cut(monkeypatch, tmp_path):
+    """放寬只針對『其他支』——本支自己 packages 不足 3 仍必須擋下。"""
+    vault = tmp_path / "vault"
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    working = tmp_path / "packaging"
+    working.mkdir()
+    (working / "packages.json").write_text(
+        json.dumps(_midstate_packages_file(), ensure_ascii=False), encoding="utf-8"
+    )
+
+    png = working / "pkg-punch-L1-1.png"
+    png.write_bytes(b"png")
+
+    with pytest.raises(Exception):  # pydantic ValidationError
+        attach_packages.attach(working, "punch-L1", "20260723-xieboran", [_spec(1, png, vault)])
+
+    assert not (vault / "Attachments" / "packaging").exists() or not list(
+        (vault / "Attachments" / "packaging" / "20260723-xieboran").glob("*.png")
+    )
