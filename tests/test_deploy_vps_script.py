@@ -144,3 +144,106 @@ def test_no_new_commits_exits_early(deployable):
     r = _run(clone, "--dry-run")
     assert "No new commits" in r.stdout
     assert r.returncode == 0
+
+
+# ---------------------------------------------------------------------------
+# healthz 重試（2026-07-30 假失敗事故）
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def stub_bin(tmp_path):
+    """把 sudo / systemctl / pip 換成 stub，讓 healthz 那段在本機也跑得起來。"""
+    bin_dir = tmp_path / "stubbin"
+    bin_dir.mkdir()
+    (bin_dir / "sudo").write_text('#!/bin/sh\nexec "$@"\n', encoding="utf-8")
+    (bin_dir / "systemctl").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    (bin_dir / "pip").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    for f in bin_dir.iterdir():
+        f.chmod(0o755)
+    return bin_dir
+
+
+def _delayed_healthz(delay_sec: float):
+    """起一個 HTTP server：前 delay_sec 秒回 503，之後回 healthz JSON。
+
+    模擬 systemd restart 後 uvicorn 還沒 listen 的空窗（VPS 實測 ~5s）。
+    """
+    import http.server
+    import json as _json
+    import threading
+    import time as _time
+
+    started = _time.monotonic()
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if _time.monotonic() - started < delay_sec:
+                self.send_error(503)
+                return
+            body = _json.dumps({"uptime_seconds": 3}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):  # 別把 request log 噴進測試輸出
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, f"http://127.0.0.1:{srv.server_port}/healthz"
+
+
+def _push_service_change(tmp_path: Path):
+    """在 origin 推一個 thousand_sunny/ 變更 → NEED[thousand-sunny]=1，才會走 healthz。"""
+    seed = tmp_path / "seed"
+    (seed / "thousand_sunny").mkdir(exist_ok=True)
+    (seed / "thousand_sunny" / "x.py").write_text("# touch\n", encoding="utf-8")
+    _git(seed, "add", "thousand_sunny/x.py")
+    _git(seed, "commit", "-m", "touch thousand_sunny")
+    _git(seed, "push", "origin", "main")
+
+
+def _run_env(clone: Path, stub_bin: Path, url: str, timeout: str):
+    import os
+
+    return subprocess.run(
+        [_BASH, "./scripts/deploy_vps.sh"],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env={
+            **os.environ,
+            "PATH": f"{stub_bin}{os.pathsep}{os.environ['PATH']}",
+            "HEALTHZ_URL": url,
+            "HEALTHZ_TIMEOUT": timeout,
+        },
+    )
+
+
+def test_healthz_waits_for_slow_starting_service(deployable, stub_bin, tmp_path):
+    """舊版單次 curl 必落空 → exit 4 假失敗（deploy 其實成功）。"""
+    clone, _behind, _ahead = deployable
+    _push_service_change(tmp_path)
+    srv, url = _delayed_healthz(delay_sec=4.0)
+    try:
+        r = _run_env(clone, stub_bin, url, "30")
+        assert r.returncode == 0, f"healthz 假失敗（舊版行為）:\n{r.stdout}\n{r.stderr}"
+        assert "uptime_seconds=3" in r.stdout, r.stdout
+        assert "等待服務就緒" in r.stdout, "沒重試就過了 — 測試沒真的驗到重試路徑"
+        assert "Deploy complete" in r.stdout
+    finally:
+        srv.shutdown()
+
+
+def test_healthz_still_fails_when_service_never_comes_up(deployable, stub_bin, tmp_path):
+    """真故障仍要 exit 4 — 重試不可以把 crash loop 吞掉。"""
+    clone, _behind, _ahead = deployable
+    _push_service_change(tmp_path)
+    r = _run_env(clone, stub_bin, "http://127.0.0.1:59999/healthz", "4")
+    assert r.returncode == 4, f"真故障沒被抓到:\n{r.stdout}\n{r.stderr}"
+    assert "crash loop" in r.stderr or "沒起來" in r.stderr

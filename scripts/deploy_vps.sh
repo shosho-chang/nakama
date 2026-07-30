@@ -213,19 +213,43 @@ if [ "$fail" -ne 0 ]; then
 fi
 
 # --- post-deploy healthz check ---
+#
+# ⚠️ 必須重試等服務就緒。`systemctl restart` 只保證 process 被 spawn，**不保證
+# uvicorn 已經在 listen**（2026-07-30 實測差 5 秒：restart 11:01:48 →
+# `Uvicorn running` 11:01:53）。而連線被拒是**立即**回錯（curl exit 7、
+# `after 0 ms`），`--max-time` 完全用不到 → 舊版單次 curl 必落空 → `exit 4`
+# 宣告 deploy 失敗，**但 deploy 其實成功了**。
+# 假失敗比沒檢查更糟：它會讓人去追不存在的問題，或重跑一次 deploy。
+HEALTHZ_URL="${HEALTHZ_URL:-http://127.0.0.1:8000/healthz}"   # 可覆寫，供測試注入
+HEALTHZ_TIMEOUT="${HEALTHZ_TIMEOUT:-40}"                      # 總等待秒數上限
+
 if [ "${NEED[thousand-sunny]}" -eq 1 ]; then
   echo
-  echo "==> healthz check"
-  # Hit the origin directly — going through nakama.shosho.tw from the VPS itself
-  # triggers Cloudflare's bot challenge (VPS egress IP is flagged) and the
-  # JS-challenge HTML comes back instead of the healthz JSON.
-  if uptime=$(curl -fsS --max-time 10 http://127.0.0.1:8000/healthz | python3 -c 'import sys,json; print(json.load(sys.stdin)["uptime_seconds"])' 2>/dev/null); then
+  echo "==> healthz check（最多等 ${HEALTHZ_TIMEOUT}s）"
+  # 直打 origin — 從 VPS 自己走 nakama.shosho.tw 會觸發 Cloudflare bot
+  # challenge（VPS egress IP 被標記），回來的是 JS-challenge HTML 不是 healthz JSON。
+  uptime=""
+  waited=0
+  while :; do
+    if uptime=$(curl -fsS --max-time 5 "$HEALTHZ_URL" \
+        | python3 -c 'import sys,json; print(json.load(sys.stdin)["uptime_seconds"])' 2>/dev/null); then
+      break
+    fi
+    uptime=""
+    [ "$waited" -ge "$HEALTHZ_TIMEOUT" ] && break
+    sleep 2
+    waited=$((waited + 2))
+    echo "    等待服務就緒… ${waited}s"
+  done
+
+  if [ -n "$uptime" ]; then
     echo "    uptime_seconds=$uptime (should be small)"
     if [ "$uptime" -gt 120 ]; then
       echo "    WARN: uptime > 120s — restart may not have taken effect" >&2
     fi
   else
-    echo "    WARN: healthz check failed" >&2
+    echo "    ERROR: healthz 在 ${HEALTHZ_TIMEOUT}s 內沒起來（服務可能 crash loop）" >&2
+    echo "    查: journalctl -u thousand-sunny -n 50 --no-pager" >&2
     exit 4
   fi
 fi
