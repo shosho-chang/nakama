@@ -101,9 +101,32 @@ body.sho .chassis-version {
 }
 body.sho .chassis-nav {
   flex: 1;
+  min-width: 0; /* 允許在 flex row 內收縮，否則 nowrap 子項會把 body 推寬 */
   display: flex;
   align-items: center;
   gap: 24px;
+}
+
+/* 窄螢幕：整條 nav 換行、chassis 自己長高。
+   2026-07-30 實測 390px 下 body.scrollWidth 1006 vs viewport 390 — 溢出源是
+   .chassis-nav（732px，子項 white-space: nowrap 且 gap 24px）。
+   不用 overflow-x: auto，因為 FLEET / OPS 是絕對定位下拉選單，放進 scroll
+   容器會被裁掉、在手機上打不開。改為換行：全部項目可見、無裁切。 */
+@media (max-width: 900px) {
+  body.sho .chassis {
+    height: auto;
+    min-height: 48px;
+    padding: 8px 16px;
+    flex-wrap: wrap;
+    gap: 12px 16px;
+  }
+  body.sho .chassis-nav {
+    /* 自己佔滿一整行——不這樣的話它只分到 brand 剩下的寬度（實測 141px），
+       項目會疊成一長條把 chassis 撐到 247px 高（390px 視窗的 29%）。 */
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+  }
 }
 body.sho .chassis-nav a {
   font-family: var(--sho-font-mono);

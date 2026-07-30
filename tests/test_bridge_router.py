@@ -200,6 +200,9 @@ def _assert_canonical_chassis_nav(body: str, path: str, active_label: str) -> No
     # Top-level direct links must be present
     for label, zh in [
         ("DRAFTS", "待審"),
+        # packaging gate（ADR-054 S7）2026-07-30 補進 nav — 在此之前 gate 做好了
+        # 卻沒有入口，修修只能記網址
+        ("PACKAGING", "封面標題"),
         ("SEO", "優化"),
     ]:
         assert f'{label} <span class="zh">{zh}' in body, f"{path} missing top-level {label}"

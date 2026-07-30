@@ -83,6 +83,10 @@
     <a href="/kb"{% if nav_active == 'kb' %} class="active" aria-current="page"{% endif %}>KB <span class="zh">卡片盒</span></a>
     <a href="/bridge/projects"{% if nav_active == 'projects' %} class="active" aria-current="page"{% endif %}>PROJECTS <span class="zh">專案</span></a>
     <a href="/bridge/drafts"{% if nav_active == 'drafts' %} class="active" aria-current="page"{% endif %}>DRAFTS <span class="zh">待審</span></a>
+    {#-- packaging gate（ADR-054 S7）擺 DRAFTS 旁邊：兩者都是「等修修裁決」的關口。
+         2026-07-30 修修問「VPS 上審封面跟 TITLE 的入口在哪裡？」——在此之前 gate
+         做好了卻沒進導覽列，只能靠記網址。#}
+    <a href="/bridge/packaging"{% if nav_active == 'packaging' %} class="active" aria-current="page"{% endif %}>PACKAGING <span class="zh">封面標題</span></a>
     <a href="/bridge/digests"{% if nav_active == 'digests' %} class="active" aria-current="page"{% endif %}>DIGESTS <span class="zh">情報</span></a>
     <a href="/bridge/seo"{% if nav_active == 'seo' %} class="active" aria-current="page"{% endif %}>SEO <span class="zh">優化</span></a>
 
