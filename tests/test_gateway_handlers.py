@@ -2781,3 +2781,31 @@ def test_list_tasks_includes_doing_status():
     assert not out.is_error
     assert "進行中的事" in out.content
     assert "[進行中]" in out.content
+
+
+def test_calendar_only_event_result_discloses_missing_task():
+    """also_create_task=false 的工具結果必須自帶「沒建 task」揭露（2026-07-30 事故：
+    session 歷史讓模型慣性帶 false 並繞過撞名檢查，只靠 prompt 壓不住）。"""
+    fake_event = SimpleNamespace(
+        id="ev1",
+        title="拍攝影片",
+        start="2026-07-30T14:00:00+08:00",
+        end="2026-07-30T16:00:00+08:00",
+        html_link="https://cal/ev1",
+    )
+    with (
+        patch("gateway.handlers.nami.google_calendar.create_event", return_value=fake_event),
+        patch("gateway.handlers.nami.list_files", return_value=[]),
+    ):
+        out = NamiHandler()._execute_tool(
+            "create_calendar_event",
+            {
+                "title": "拍攝影片",
+                "start": "2026-07-30T14:00:00",
+                "end": "2026-07-30T16:00:00",
+                "also_create_task": False,
+            },
+        )
+    assert not out.is_error
+    assert "沒有建 vault task" in out.content
+    assert "必須註明" in out.content
