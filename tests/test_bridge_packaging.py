@@ -400,3 +400,18 @@ def test_title_edit_redirect_keeps_section_open(client):
     assert 'id="title-edit-punch-L1"' in body
     marker = body.split('id="title-edit-punch-L1"')[1][:80]
     assert "open" in marker
+
+
+# ---------------------------------------------------------------------------
+# nav 入口（2026-07-30 修修：「VPS 上審封面跟 TITLE 的入口在哪裡？」）
+# ---------------------------------------------------------------------------
+
+
+def test_packaging_pages_mark_own_nav_active(client):
+    """gate 的兩頁都要把自己標成 active，不是借用 BROOK。"""
+    for path in ("/bridge/packaging", "/bridge/packaging/20260723-xieboran"):
+        body = client.get(path).text
+        assert 'href="/bridge/packaging"' in body, f"{path} 缺 packaging nav 連結"
+        # active 標記落在 packaging 這條，而非 brook
+        seg = body.split('href="/bridge/packaging"')[1][:80]
+        assert 'class="active"' in seg, f"{path} 的 packaging nav 沒標 active：{seg!r}"

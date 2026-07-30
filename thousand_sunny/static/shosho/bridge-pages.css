@@ -55,6 +55,10 @@ body.sho .page-header--split {
   justify-content: space-between;
   align-items: flex-end;
   gap: 24px;
+  /* 窄螢幕不換行的話右欄（例如 packaging board 的 `generated <ISO 時間戳>`，
+     實測 162px）會頂出 viewport → 整頁水平滾動（2026-07-30 390px 實測）。
+     這個 class 是共用的，修這裡等於一次修掉所有 split header 頁面。 */
+  flex-wrap: wrap;
 }
 body.sho .page-header--center {
   display: flex;
