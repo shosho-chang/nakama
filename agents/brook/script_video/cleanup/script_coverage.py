@@ -100,8 +100,21 @@ _TAIL_PAD_SEC = 1.00
 # cut 鏈之間 0.5s 的「最」）— 丟棄併入前後 cut，不是內容。
 _MIN_SEGMENT_SEC = 0.8
 
-# ── 拍手交叉驗證 ─────────────────────────────────────────────────────
-_CLAP_SUSPECT_TAIL_SEC = 0.8  # 選中 take 結束後此秒數內有拍手 → 可疑
+# ── 拍手否決（hard constraint）──────────────────────────────────────
+# 2026-07-30 血淚：拍手前修修會想 3–9 秒才拍 — 用「離拍手多近」當窗口
+# （初版 0.8s）接不住。正確語意：拍手否決其前的整個語音 run；重錄從
+# 哪個字開始，否決範圍就從那個字開始 — 由「同單元是否存在更晚的
+# 乾淨 take」決定，不由時間窗決定。
+_DAMN_RUN_GAP = 1.2  # 否決 run 的字間斷點
+_DAMN_OVERLAP_FRAC = 0.5  # occurrence 字數落在否決 run 內 ≥ 此比例 → 否決
+
+# ── 時間戳修復 ───────────────────────────────────────────────────────
+# WhisperX 對齊崩壞時把好幾秒的語音壓縮進極短區間（實測 31 字/秒），
+# 之後的切點、字幕全跟著錯 — 用 VAD 實測語音範圍重內插。
+_GARBAGE_RATE = 12.0  # 單字字速超過此值（字/秒）視為壓縮
+_GARBAGE_MIN_WORDS = 8  # 連續此數量以上才算崩壞 run（單字誤差不觸發）
+_REPAIR_VAD_RMS = 0.02
+_REPAIR_MAX_EXTEND_SEC = 12.0  # 修復時最多往後找語音端點這麼遠
 
 
 @functools.lru_cache(maxsize=8192)
@@ -176,9 +189,193 @@ class CleanPlan:
     cuts: list[CutPoint]
     kept_segments: list[tuple[float, float]]
     warnings: list[str]
+    # 時間戳修復後的 words — 所有索引/時間都指向這份，下游（SRT、驗證）
+    # 必須用它而不是呼叫端的原始 words（修復會平移時間）
+    words: list[Word] = dataclasses.field(default_factory=list)
+    # 拍手否決 run 的字索引（驗證與 QC 用）
+    damned_word_idx: set[int] = dataclasses.field(default_factory=set)
     # 語意不明的拍手（隔長沉默、run 過長）→ 裁決項：LLM/人工看完給
     # manual_cuts 重跑。每項: {clap, run_start, run_end, run_text, gap}
     adjudications: list[dict] = dataclasses.field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Stage 0 — 時間戳修復（WhisperX 對齊崩壞區）
+# ---------------------------------------------------------------------------
+
+
+def repair_word_timestamps(
+    words: Sequence[Word],
+    audio_path,
+    *,
+    rate_threshold: float = _GARBAGE_RATE,
+    min_words: int = _GARBAGE_MIN_WORDS,
+) -> tuple[list[Word], list[str]]:
+    """壓縮崩壞的字級時間戳 → 以 VAD 實測語音範圍均勻重內插。
+
+    實測（2026-07-30 頻道復出 13.2–16.7s）：WhisperX 把 ~6 秒的語音
+    壓進 3.5 秒（31 字/秒），之後的切點與字幕全跟著錯。修復：找出
+    連續 ``min_words`` 個字速 > ``rate_threshold`` 的 run，往後用 VAD
+    找真實語音端點，把 run 的字均勻攤回 [run 頭, 語音端點]。
+
+    ``audio_path`` 為 None 時原樣返回（測試/無音訊環境）。
+    """
+    if audio_path is None:
+        return list(words), []
+
+    import numpy as np
+
+    from agents.brook.script_video.cleanup.mistake_removal import (
+        _load_wav,
+        _lowpass_filter,
+    )
+
+    def rate(w: Word) -> float:
+        return (len(_match_norm(w.text)) or 1) / max(w.end - w.start, 1e-3)
+
+    flags = [rate(w) > rate_threshold for w in words]
+    repaired = list(words)
+    notes: list[str] = []
+    audio = lpf = None
+    sr = 0
+    n = len(words)
+
+    # 原始 runs（連續 flagged）→ 合併相鄰（崩壞區裡零星單字的字速
+    # 「看起來正常」會把 run 碎化，每段的修復 cap 都是下一段的頭 →
+    # 實際攤不開）— 間隔 ≤3 個字就併，合併後整體字速仍超標才修
+    raw_runs: list[list[int]] = []
+    i = 0
+    while i < n:
+        if not flags[i]:
+            i += 1
+            continue
+        j = i
+        while j + 1 < n and flags[j + 1]:
+            j += 1
+        raw_runs.append([i, j])
+        i = j + 1
+    merged_runs: list[list[int]] = []
+    for r in raw_runs:
+        if merged_runs and r[0] - merged_runs[-1][1] <= 4:
+            merged_runs[-1][1] = r[1]
+        else:
+            merged_runs.append(r)
+
+    for i, j in merged_runs:
+        total_c = sum(len(_match_norm(w.text)) or 1 for w in words[i : j + 1])
+        span = max(0.05, words[j].end - words[i].start)
+        if j - i + 1 >= min_words and total_c / span > rate_threshold * 0.8:
+            if audio is None:
+                audio, sr = _load_wav(audio_path)
+                lpf = _lowpass_filter(audio, sr, 3000.0)
+            run_start = words[i].start
+            # cap 留 0.2s 邊距，避免反向 VAD 掃到下一個 take 自己的開頭
+            cap = (words[j + 1].start - 0.2) if j + 1 < n else words[j].end + _REPAIR_MAX_EXTEND_SEC
+            cap = min(cap, words[j].end + _REPAIR_MAX_EXTEND_SEC)
+            cap = max(cap, words[j].end)
+            # 反向掃描：cap 往回找最後一個有聲 30ms 窗
+            frame = max(1, int(sr * 0.03))
+            b = min(len(lpf), int(cap * sr))
+            a = max(0, int(words[j].end * sr))
+            vad_end = words[j].end
+            pos = b - frame
+            while pos > a:
+                seg = lpf[pos : pos + frame].astype(np.float64)
+                if float(np.sqrt(np.mean(seg**2))) >= _REPAIR_VAD_RMS:
+                    vad_end = (pos + frame) / sr
+                    break
+                pos -= frame
+            new_end = max(words[j].end, vad_end)
+            total_chars = sum(len(_match_norm(w.text)) or 1 for w in words[i : j + 1])
+            scale = (new_end - run_start) / max(1, total_chars)
+            cursor = run_start
+            for k in range(i, j + 1):
+                c = len(_match_norm(words[k].text)) or 1
+                repaired[k] = Word(text=words[k].text, start=cursor, end=cursor + c * scale)
+                cursor += c * scale
+            notes.append(
+                f"時間戳修復：{run_start:.1f}–{words[j].end:.1f}s 的 {j - i + 1} 字"
+                f"（{total_chars / max(0.1, words[j].end - run_start):.0f} 字/秒壓縮）"
+                f"→ 攤回 {run_start:.1f}–{new_end:.1f}s"
+            )
+    return repaired, notes
+
+
+# ---------------------------------------------------------------------------
+# 拍手否決 run
+# ---------------------------------------------------------------------------
+
+
+def damned_word_indices(
+    words: Sequence[Word],
+    clap_times: Sequence[float],
+    *,
+    run_gap: float = _DAMN_RUN_GAP,
+) -> set[int]:
+    """每個拍手往回標記其否決的語音 run（字索引集合）。
+
+    拍手語意：否決其前的語音 — 不論拍手前停頓多久（實測 3–9 秒都有）。
+    否決是否生效由下游決定：同單元存在拍手後的乾淨 take 才排除；
+    唯一 take（重錄從更後面開始 → 前段其實被默許）照留。
+    """
+    damned: set[int] = set()
+    for t in clap_times:
+        k = None
+        for idx in range(len(words) - 1, -1, -1):
+            if words[idx].start <= t:
+                k = idx
+                break
+        if k is None:
+            continue
+        j = k
+        while j - 1 >= 0 and words[j].start - words[j - 1].end < run_gap:
+            j -= 1
+        damned.update(range(j, k + 1))
+    return damned
+
+
+def excluded_occurrence_indices(
+    words: Sequence[Word],
+    occurrences: Sequence[Occurrence],
+    clap_times: Sequence[float],
+    *,
+    run_gap: float = _DAMN_RUN_GAP,
+) -> set[int]:
+    """逐拍手判定要排除的 occurrence（回傳 occurrences 的索引集合）。
+
+    語意：「重錄從哪個字開始，否決範圍就從那個字開始」。拍手 t 否決其
+    前語音 run 中的 take — 但只在該單元於 **t 之後**還有 take 時排除
+    （之後沒有重錄 = 該內容被默許，例如整段開頭）。
+
+    全域 run 標記行不通（2026-07-30 教訓）：take 是連續語音，run 必然
+    回溯到 take 開頭，37 個拍手會把幾乎所有 take 都標到 — 只有
+    「per-clap + 存在拍手後替代」的條件式排除才對應拍攝協議。
+    """
+    # 每個拍手的 run 起點（時間）
+    run_starts: list[tuple[float, float]] = []  # (run_start, clap_t)
+    for t in clap_times:
+        k = None
+        for idx in range(len(words) - 1, -1, -1):
+            if words[idx].start <= t:
+                k = idx
+                break
+        if k is None:
+            continue
+        j = k
+        while j - 1 >= 0 and words[j].start - words[j - 1].end < run_gap:
+            j -= 1
+        run_starts.append((words[j].start, t))
+
+    excluded: set[int] = set()
+    for rs, t in run_starts:
+        for i, o in enumerate(occurrences):
+            if i in excluded:
+                continue
+            # occurrence 完整落在該拍手的否決 run 內
+            if o.t0 >= rs - 0.5 and o.t1 <= t + 0.3:
+                if any(a.unit_idx == o.unit_idx and a.t0 > t for a in occurrences):
+                    excluded.add(i)
+    return excluded
 
 
 # ---------------------------------------------------------------------------
@@ -319,10 +516,16 @@ def select_final_takes(
 ) -> list[Occurrence]:
     """時間、稿序皆單調遞增下最大化覆蓋；桶內同分偏好較晚 take。
 
+    拍手否決的 hard constraint 在進來之前處理 —
+    ``excluded_occurrence_indices`` 先把被拍手否決且有替代的 take 濾掉
+    （2026-07-30 血淚：重錄 take 的 ASR 比失敗 take 差一個分數桶，
+    軟性 lateness 偏好被蓋掉，成品留了修修拍手否決的那次）。
+
     連續性 bonus：相鄰單元的 occurrence 在字元流上相接（同一次 take
     連續讀下來）→ 加分，避免文字同分時在兩次 take 之間無謂跳接
     （跳接 = 畫面上多一個不必要的 jump cut）。
     """
+
     occs = sorted(occurrences, key=lambda o: o.t0)
     n = len(occs)
     if n == 0:
@@ -364,49 +567,45 @@ def select_final_takes(
     return chain
 
 
-def rescue_clap_suspects(
-    selected: list[Occurrence],
-    occurrences: Sequence[Occurrence],
-    ng_markers: Sequence[NgMarker],
+def micro_cuts_for_claps_inside_takes(
+    words: Sequence[Word],
+    selected: Sequence[Occurrence],
+    clap_times: Sequence[float],
     warnings: list[str],
-) -> list[Occurrence]:
-    """選中 take 內（或結束後 0.8s 內）有拍手 = 修修否決過它 → 試換較晚 take。
+) -> list[CutPoint]:
+    """選中 take 內部的拍手 → 微 NG cut（講到一半否決又原地接續的 case）。
 
-    換得動的條件：同單元存在更晚的 occurrence、分數不比原選低超過一個
-    桶、且與前後選擇保持單調。換不動就留 QC warning 給人工。
+    實測：「去年底 Cloud—」講到一半拍手重來，WhisperX 把跨拍手的英文
+    字母拉長吸收（一個字母 1.6s），兩次嘗試合併成單一 occurrence。
+    處理：拍手兩側最近的完整字之間切掉（往回跳過 ASCII 字母殘渣到
+    CJK 字界）。
     """
-    clap_times = [t for m in ng_markers for t in m.clap_times]
-
-    def has_clap(o: Occurrence) -> bool:
-        return any(o.t0 <= t <= o.t1 + _CLAP_SUSPECT_TAIL_SEC for t in clap_times)
-
-    out = list(selected)
-    for k, o in enumerate(out):
-        if not has_clap(o):
-            continue
-        nxt_t = out[k + 1].t0 if k + 1 < len(out) else float("inf")
-        alts = [
-            a
-            for a in occurrences
-            if a.unit_idx == o.unit_idx
-            and a.t0 > o.t1
-            and a.t1 <= nxt_t
-            and a.score >= o.score - _SCORE_BUCKET * 1.5
-            and not has_clap(a)
-        ]
-        if alts:
-            best_alt = max(alts, key=lambda a: (a.score, a.t0))
-            out[k] = best_alt
-            warnings.append(
-                f"單元 {o.unit_idx} 選中的 take（{o.t0:.1f}–{o.t1:.1f}s）內含拍手，"
-                f"已換較晚 take（{best_alt.t0:.1f}–{best_alt.t1:.1f}s）"
-            )
-        else:
-            warnings.append(
-                f"單元 {o.unit_idx} 選中的 take（{o.t0:.1f}–{o.t1:.1f}s）內含拍手"
-                f"且無可換的較晚 take — 需人工確認"
-            )
-    return out
+    cuts: list[CutPoint] = []
+    for o in selected:
+        for t in clap_times:
+            if not (o.t0 + 0.2 < t < o.t1 - 0.2):
+                continue
+            occ_words = list(range(o.w0, o.w1 + 1))
+            before = [wi for wi in occ_words if words[wi].end <= t]
+            after = [wi for wi in occ_words if words[wi].start >= t]
+            if not before or not after:
+                continue
+            bi = before[-1]
+            # ASCII 字母是 ASR 把跨拍手語音打散的殘渣 — 退到 CJK 字界
+            while bi - 1 >= o.w0 and words[bi].text.isascii():
+                bi -= 1
+            start = words[bi].end
+            end = max(t + 0.05, words[after[0]].start - _ROLLBACK_LEAD_IN)
+            if start < end:
+                cuts.append(
+                    CutPoint(type="ripple-delete", start_sec=start, end_sec=end,
+                             reason="clap-in-take", confidence=0.5)
+                )
+                warnings.append(
+                    f"拍手 @ {t:.1f}s 落在選中 take 內（單元 {o.unit_idx}）→ "
+                    f"微切 [{start:.1f}–{end:.1f}s] — 請覆核"
+                )
+    return cuts
 
 
 # ---------------------------------------------------------------------------
@@ -532,13 +731,53 @@ def build_clean_plan(
     adlib_policy: str = "keep",  # "keep" | "cut"
     tail_policy: str = "script-end",  # "script-end" | "keep-all"
     manual_cuts: Sequence[CutPoint] = (),  # 裁決層回填的 cut（重放用）
+    audio_path=None,  # 給時間戳修復與 VAD 用；None = 跳過修復
 ) -> CleanPlan:
     warnings: list[str] = []
+    words, repair_notes = repair_word_timestamps(list(words), audio_path)
+    warnings.extend(repair_notes)
+
+    all_claps = sorted(t for m in ng_markers for t in m.clap_times)
+    damned = damned_word_indices(words, all_claps)
+
     units = split_units(script_text)
     stream = build_char_stream(words)
     occurrences = find_occurrences(units, stream)
-    selected = select_final_takes(units, occurrences, total_duration_sec=total_duration_sec)
-    selected = rescue_clap_suspects(selected, occurrences, ng_markers, warnings)
+    excl = excluded_occurrence_indices(words, occurrences, all_claps)
+    if excl:
+        excl_units = sorted({occurrences[i].unit_idx for i in excl})
+        warnings.append(
+            f"拍手否決排除 {len(excl)} 個 take（單元 {excl_units}）— "
+            f"改選拍手後的重錄 take"
+        )
+    survivors = [o for i, o in enumerate(occurrences) if i not in excl]
+    selected = select_final_takes(units, survivors, total_duration_sec=total_duration_sec)
+
+    # 縫隙吸收：相鄰選中單元之間的短字縫（<1.5s、無拍手、語音連續）是
+    # 同一次 take 的連續語流 — 中間的字必然是稿文的 ASR 亂碼版（實測
+    # 「親手寫過一行code」→「親手寫規範口」被 occurrence 邊界修整裁掉，
+    # 成品憑空少半句）。展開後段 occurrence 把縫隙收進來。
+    for k in range(len(selected) - 1):
+        a, b = selected[k], selected[k + 1]
+        if b.unit_idx != a.unit_idx + 1 or b.w0 <= a.w1 + 1:
+            continue
+        if not (0 < b.t0 - a.t1 <= 1.5):
+            continue
+        if any(a.t1 < t < b.t0 for t in all_claps):
+            continue
+        gap_idx = list(range(a.w1 + 1, b.w0))
+        chain = [a.w1] + gap_idx + [b.w0]
+        if any(words[y].start - words[x].end >= 0.6 for x, y in zip(chain, chain[1:])):
+            continue
+        gap_text = "".join(words[i].text for i in gap_idx)
+        selected[k + 1] = dataclasses.replace(
+            b, w0=gap_idx[0], t0=words[gap_idx[0]].start
+        )
+        warnings.append(
+            f"縫隙吸收：單元 {a.unit_idx}→{b.unit_idx} 間 "
+            f"[{words[gap_idx[0]].start:.1f}–{words[gap_idx[-1]].end:.1f}s]"
+            f"「{gap_text[:20]}」（ASR 亂碼的稿文）併入保留"
+        )
 
     got = {o.unit_idx for o in selected}
     unmatched_units = [u.idx for u in units if u.idx not in got]
@@ -552,9 +791,12 @@ def build_clean_plan(
     # ad-lib 區塊：預設保留；內部用「拍手 + 指紋回溯」雕出 NG。
     # 搜尋窗跨出區塊（retake 本體常是區塊後的 scripted 段），但 cut
     # clamp 回區塊範圍 — 不准動到已選中的 take。
-    clap_times = sorted(t for m in ng_markers for t in m.clap_times)
+    clap_times = all_claps
     adlib_keep: list[tuple[int, int]] = []
     adlib_internal_cuts: list[CutPoint] = list(manual_cuts)
+    adlib_internal_cuts.extend(
+        micro_cuts_for_claps_inside_takes(words, selected, clap_times, warnings)
+    )
     adjudications: list[dict] = []
     for blk in blocks:
         if blk.classification != "adlib":
@@ -660,11 +902,17 @@ def build_clean_plan(
         seg_bounds.append((first, prev))
 
     # 孤兒微段過濾：cut 邊界縫隙漏出的零碎字（如兩個 cut 之間 0.5s 的
-    # 半個詞）不是內容 — 丟字併入 cut
+    # 半個詞）不是內容 — 丟字併入 cut。但**選中 take 的字豁免**：
+    # micro-cut 可能把 take 開頭隔成短片段（實測「去年底」0.48s），
+    # 那是稿內容不是殘渣。
+    sel_words: set[int] = set()
+    for o in selected:
+        sel_words.update(range(o.w0, o.w1 + 1))
     orphans = [
         (fw, lw)
         for fw, lw in seg_bounds
         if words[lw].end - words[fw].start < _MIN_SEGMENT_SEC
+        and not any(wi in sel_words for wi in range(fw, lw + 1))
     ]
     for fw, lw in orphans:
         text = "".join(words[i].text for i in range(fw, lw + 1) if i in kept_idx)
@@ -732,6 +980,8 @@ def build_clean_plan(
         cuts=cuts,
         kept_segments=segments,
         warnings=warnings,
+        words=list(words),
+        damned_word_idx=damned,
         adjudications=adjudications,
     )
 
@@ -767,14 +1017,19 @@ def map_clean_ceil(segments: Sequence[tuple[float, float]], t: float) -> float:
 # ---------------------------------------------------------------------------
 
 
-def build_srt(plan: CleanPlan, words: Sequence[Word]) -> str:
-    """乾淨 timeline 的 SRT：文字以稿為準，ad-lib 段落用 ASR 文字。"""
+def build_srt(plan: CleanPlan, words: Sequence[Word] | None = None) -> str:
+    """乾淨 timeline 的 SRT：文字以稿為準，ad-lib 段落用 ASR 文字。
+
+    一律使用 ``plan.words``（時間戳修復後）— ``words`` 參數僅為舊介面
+    相容，會被忽略。
+    """
     from agents.brook.script_video.cleanup.script_align import (
         _clean_cue_text,
         _seconds_to_srt_ts,
         _split_script_cues,
     )
 
+    words = plan.words
     stream = build_char_stream(words)
     segs = plan.kept_segments
     entries: list[tuple[float, float, str]] = []  # (clean_start, clean_end, text)
@@ -860,15 +1115,37 @@ _MAX_SUBTITLE_SPLIT = 14  # ad-lib cue 換行門檻（同 house style _MAX_SUBTI
 
 def verify_plan(
     plan: CleanPlan,
-    words: Sequence[Word],
+    words: Sequence[Word] | None,
     ng_markers: Sequence[NgMarker],
+    *,
+    audio_path=None,
 ) -> dict:
-    """DoD 驗證：覆蓋率、重複覆蓋、拍手去向、殘餘 gap。"""
+    """DoD 驗證：覆蓋率、重複覆蓋、拍手去向、否決字殘留、殘餘 gap、切點能量。
+
+    一律使用 ``plan.words``（時間戳修復後）— ``words`` 參數僅為舊介面
+    相容，會被忽略。``audio_path`` 給定時檢查每個段界 ±80ms 的語音
+    能量（切在語音正中間 = 可疑切點）。
+    """
     from rapidfuzz import fuzz
 
+    words = plan.words
     kept_norm = "".join(_match_norm(words[wi].text) for wi in plan.kept_word_idx)
     script_norm = "".join(u.norm for u in plan.units)
     coverage = float(fuzz.ratio(kept_norm, script_norm))
+
+    # 稿側缺漏：全域 ratio 會吸收小段刪失（實測半句稿文被裁掉只讓
+    # ratio 掉 0.1）— 用 opcodes 逐段抓「稿有、保留沒有」的實質缺漏
+    import difflib
+
+    missing_script: list[dict] = []
+    sm_ops = difflib.SequenceMatcher(None, script_norm, kept_norm, autojunk=False)
+    for tag, i1, i2, j1, j2 in sm_ops.get_opcodes():
+        if tag == "delete" and i2 - i1 >= 4:
+            missing_script.append({"missing": script_norm[i1:i2][:40]})
+        elif tag == "replace" and (i2 - i1) >= (j2 - j1) + 4:
+            missing_script.append(
+                {"missing": script_norm[i1:i2][:40], "got": kept_norm[j1:j2][:40]}
+            )
 
     duplicated: list[dict] = []
     sel_by_unit = {o.unit_idx: o for o in plan.selected}
@@ -900,20 +1177,66 @@ def verify_plan(
         )
     claps_outside = [r for r in clap_report if not r["all_inside_cut"]]
 
-    # 拍手語意檢查：拍手必然否決其前的語句 — 保留字的結尾若貼著拍手
-    # （<1.2s 且中間無其他保留字），該語句可能是漏網 NG。
-    # 「拍手落在停頓 cut 內」會讓上面的 in_cut 檢查漏接這種 case。
+    # 拍手貼身殘留：保留字結束在拍手前 3 秒內（且其間無其他保留字）—
+    # 拍手極可能否決了它。合法情境（唯一 take、修修默許）也列出供覆核，
+    # 一個都不靜默。
     clap_all = sorted(t for m in ng_markers for t in m.clap_times)
-    kept_words = [(wi, words[wi]) for wi in plan.kept_word_idx]
-    suspects = []
+    kept_set = set(plan.kept_word_idx)
+    kept_words_seq = [(wi, words[wi]) for wi in plan.kept_word_idx]
+    kept_damned_groups: list[dict] = []
     for t in clap_all:
-        before = [(wi, w) for wi, w in kept_words if w.end <= t]
+        before = [(wi, w) for wi, w in kept_words_seq if w.end <= t]
         if not before:
             continue
         wi, w = before[-1]
-        if t - w.end < 1.2:
-            ctx = "".join(x.text for _, x in before[-6:])
-            suspects.append({"clap": round(t, 2), "kept_tail": ctx, "delta": round(t - w.end, 2)})
+        if t - w.end > 3.0:
+            continue
+        # 拍手與保留字之間若有「被剪掉的字」→ 拍手否決的是那些字，
+        # 保留內容無辜，不列
+        intervening = any(
+            x.end > w.end and x.start < t
+            for xi, x in enumerate(words)
+            if xi not in kept_set
+        )
+        if intervening:
+            continue
+        ctx = "".join(x.text for _, x in before[-8:])
+        kept_damned_groups.append(
+            {"clap": round(t, 2), "kept_tail": ctx, "delta": round(t - w.end, 2)}
+        )
+
+    # 切點能量：段界 ±80ms 的語音頻帶 RMS — 高能量 = 切在語音正中間
+    hot_boundaries: list[dict] = []
+    if audio_path is not None and plan.kept_segments:
+        import numpy as np
+
+        from agents.brook.script_video.cleanup.mistake_removal import (
+            _load_wav,
+            _lowpass_filter,
+        )
+
+        audio, sr = _load_wav(audio_path)
+        lpf = _lowpass_filter(audio, sr, 3000.0)
+        # ±30ms：只量切點瞬間 — 段首 pad 0.12s 後語音本來就開始，
+        # 窗開太大會把正常的相鄰語音也算成 hot
+        win = int(0.03 * sr)
+
+        def rms_at(t: float) -> float:
+            a = max(0, int(t * sr) - win)
+            b = min(len(lpf), int(t * sr) + win)
+            seg = lpf[a:b].astype(np.float64)
+            return float(np.sqrt(np.mean(seg**2))) if len(seg) else 0.0
+
+        boundaries: list[float] = []
+        for i, (s, e) in enumerate(plan.kept_segments):
+            if i > 0:
+                boundaries.append(s)
+            if i < len(plan.kept_segments) - 1:
+                boundaries.append(e)
+        for t in boundaries:
+            r = rms_at(t)
+            if r > 0.04:
+                hot_boundaries.append({"t": round(t, 2), "rms": round(r, 3)})
 
     # 殘餘 gap：把每個保留字映射到乾淨 timeline（用 kept_segments 的
     # 累積偏移 — 可證明正確，不依賴 cut 消耗順序），取相鄰字最大間隔。
@@ -930,11 +1253,13 @@ def verify_plan(
 
     return {
         "coverage_ratio": round(coverage, 1),
+        "missing_script_content": missing_script,
         "unmatched_units": plan.unmatched_units,
         "duplicated_units": duplicated,
         "ng_markers": len(ng_markers),
         "claps_outside_cut": claps_outside,
-        "clap_adjacent_suspects": suspects,
+        "kept_damned_content": kept_damned_groups,
+        "hot_cut_boundaries": hot_boundaries,
         "max_clean_gap_sec": round(max_gap, 2),
         "kept_duration_sec": round(sum(e - s for s, e in plan.kept_segments), 1),
         "n_segments": len(plan.kept_segments),

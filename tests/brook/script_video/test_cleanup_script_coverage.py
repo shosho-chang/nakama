@@ -246,3 +246,62 @@ def test_build_srt_scripted_text_and_clean_timeline() -> None:
     srt = sc.build_srt(plan, words)
     assert "今天天氣真的很好" in srt  # 稿上繁體，非 ASR 簡體
     assert "00:00:0" in srt  # 乾淨 timeline 從 0 起算
+
+
+# ---------------------------------------------------------------------------
+# 2026-07-30 11s bug 修復（拍手否決硬約束 / 縫隙吸收 / 時間戳修復）
+# ---------------------------------------------------------------------------
+
+from agents.brook.script_video.cleanup.clap_impulse import NgMarker
+
+
+def test_clap_veto_overrides_score_bucket() -> None:
+    """拍手否決 > 分數桶：失敗 take 的 ASR 較乾淨也必須選拍手後的重錄。
+
+    2026-07-30 11s bug 本尊：重錄 take 的 ASR 差一個桶，lateness 軟偏好
+    被蓋掉，成品留了被拍手否決的 take。
+    """
+    words = make_words(
+        [
+            ("今天天氣真的很好", 0.0, 2.0),  # 被否決的 take（ASR 完美，100→桶12）
+            ("今天天氣真得很好", 5.0, 7.0),  # 重錄（ASR 差一字，87.5→桶11）
+            ("我們一起出去外面玩吧", 7.5, 10.0),
+        ]
+    )
+    markers = [NgMarker(clap_times=(3.0,))]
+    plan = sc.build_clean_plan(
+        words, SCRIPT, total_duration_sec=12.0, ng_markers=markers
+    )
+    unit0 = next(o for o in plan.selected if o.unit_idx == 0)
+    assert unit0.t0 >= 4.9, "拍手否決的 take 不得中選"
+    # 反向對照：沒有拍手時，ASR 較乾淨的早 take 才會贏（證明本測試有牙齒）
+    plan2 = sc.build_clean_plan(words, SCRIPT, total_duration_sec=12.0)
+    unit0b = next(o for o in plan2.selected if o.unit_idx == 0)
+    assert unit0b.t0 < 1.0
+
+
+def test_gap_absorption_between_adjacent_takes() -> None:
+    """相鄰選中單元間的短亂碼縫隙（同 take 連續語流）併入保留。"""
+    words = make_words(
+        [
+            ("今天天氣真的很好", 0.0, 2.0),
+            ("哦一行口", 2.05, 2.85),  # ASR 亂碼的稿文（實測「寫過一行code」）
+            ("我們一起出去外面玩吧", 2.9, 5.4),
+        ]
+    )
+    plan = sc.build_clean_plan(words, SCRIPT, total_duration_sec=7.0)
+    kept_texts = "".join(plan.words[i].text for i in plan.kept_word_idx)
+    assert "一行口" in kept_texts, "縫隙字必須併入保留（否則成品憑空少內容）"
+
+
+def test_timestamp_repair_stretches_garbage_run(tmp_path: Path) -> None:
+    """壓縮崩壞的時間戳攤回 VAD 實測語音範圍。"""
+    sr = 16000
+    audio = synth(sr, 12.0)
+    add_tone_burst(audio, sr, 5.0, hz=300, amp=0.15, dur=3.0)  # 真實語音 5–8s
+    wav = write_wav(tmp_path / "r.wav", audio, sr)
+    # ASR 聲稱 20 個字擠在 5.0–5.5s（40 字/秒 — 崩壞）
+    words = make_words([("今天天氣真的很好我們一起出去外面玩吧對啊", 5.0, 5.5)])
+    repaired, notes = sc.repair_word_timestamps(words, wav)
+    assert notes, "應偵測到崩壞 run"
+    assert repaired[-1].end > 7.0, f"應攤回語音端點附近，got {repaired[-1].end}"

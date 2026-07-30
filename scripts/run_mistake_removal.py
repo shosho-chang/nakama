@@ -207,8 +207,9 @@ def main(argv: list[str] | None = None) -> int:
         manual_cuts=manual,
         max_gap_sec=args.max_gap,
         tail_policy=args.tail_policy,
+        audio_path=wav,
     )
-    report = sc.verify_plan(plan, words, markers)
+    report = sc.verify_plan(plan, None, markers, audio_path=wav)
     qc = write_qc_report(ep_dir, plan, report, markers, decisions)
 
     if plan.adjudications:
@@ -223,7 +224,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 3
 
-    (ep_dir / "transcript.srt").write_text(sc.build_srt(plan, words), encoding="utf-8")
+    (ep_dir / "transcript.srt").write_text(sc.build_srt(plan), encoding="utf-8")
     (ep_dir / "out" / "clean_segments.json").write_text(
         json.dumps(
             {"fps": None, "total": total,
