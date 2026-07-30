@@ -41,6 +41,7 @@ _JOB_NAME_GSC_DAILY = "franky-gsc-daily"
 _JOB_NAME_SYNTHESIS = "franky-news-synthesis"
 _JOB_NAME_RETROSPECTIVE = "franky-news-retrospective"
 _JOB_NAME_CAL_RECONCILE = "franky-calendar-reconcile"
+_JOB_NAME_TASK_ARCHIVE = "franky-task-archive"
 
 
 def _cmd_health(_args: argparse.Namespace) -> int:
@@ -260,6 +261,31 @@ def _cmd_calendar_reconcile(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_task_archive(args: argparse.Namespace) -> int:
+    """修修 2026-07-29 裁決 — done task 完成滿 14 天收進 TaskNotes/Archive/。
+    對齊 TaskNotes plugin 歸檔慣例（同資料夾、搬移語義）。Heartbeat: 非 crash 即成功。"""
+    from agents.franky.jobs.task_archive_daily import run_once
+
+    dry_run = getattr(args, "dry_run", False)
+    no_publish = getattr(args, "no_publish", False)
+    slack_bot = None
+    if not dry_run and not no_publish:
+        from agents.franky.slack_bot import FrankySlackBot
+
+        slack_bot = FrankySlackBot.from_env()
+    try:
+        result = run_once(dry_run=dry_run, slack_bot=slack_bot)
+    except Exception as exc:
+        if not dry_run:
+            record_failure(_JOB_NAME_TASK_ARCHIVE, f"{type(exc).__name__}: {exc}"[:200])
+        raise
+
+    print(json.dumps(result.to_summary_dict(), ensure_ascii=False, indent=2))
+    if not dry_run:
+        record_success(_JOB_NAME_TASK_ARCHIVE)
+    return 0
+
+
 def _cmd_synthesis(args: argparse.Namespace) -> int:
     """ADR-023 §7 S3 — weekly synthesis → two-stage proposal inbox."""
     from agents.franky.news_synthesis import _re_scan_and_promote_page, run_synthesis
@@ -366,6 +392,20 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Auto-link drift but skip the Slack report (dev use).",
     )
+    tarch = sub.add_parser(
+        "task-archive",
+        help="修修 2026-07-29: done task 完成滿 14 天 → TaskNotes/Archive/（+ Slack 摘要）",
+    )
+    tarch.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="盤點 only — 不搬檔、不發 Slack。",
+    )
+    tarch.add_argument(
+        "--no-publish",
+        action="store_true",
+        help="搬檔但不發 Slack 摘要（dev use）。",
+    )
     synthesis = sub.add_parser(
         "synthesis",
         help="ADR-023 §7 S3: weekly synthesis → two-stage proposal inbox (週日 22:00)",
@@ -427,6 +467,7 @@ def main(argv: list[str] | None = None) -> int:
         "anomaly": _cmd_anomaly,
         "gsc-daily": _cmd_gsc_daily,
         "calendar-reconcile": _cmd_calendar_reconcile,
+        "task-archive": _cmd_task_archive,
         "synthesis": _cmd_synthesis,
         "retrospective": _cmd_retrospective,
     }

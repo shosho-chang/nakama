@@ -18,6 +18,7 @@ _NAMI_READ_WHITELIST = (
     "AgentOutputs/nami/notes/",
     "Projects/",
     "TaskNotes/Tasks/",
+    "TaskNotes/Archive/",  # 歸檔的 done task（修修 2026-07-29）——唯讀，撞名檢查與回顧用
 )
 
 
