@@ -61,7 +61,65 @@
       </div>
       {% endif %}
 
+      {# 內容速覽 — 修修 2026-07-30：「我不太清楚這支影片在講什麼，所以也沒辦法判斷」。
+         預設收合，不擾裁決動線；由 Cowork 端 packaging_brief.py 落檔，UI 只讀（D11 零 LLM）。#}
+      {% if view.brief %}
+      <details class="pkg-brief">
+        <summary class="sho-mono-up">這支在講什麼{% if view.brief.duration %} · {{ view.brief.duration }}{% endif %}</summary>
+        {% if view.brief.error %}
+        <p class="pkg-brief-error" role="alert">⚠ {{ view.brief.error }}</p>
+        {% else %}
+        <p class="pkg-brief-one-liner">{{ view.brief.one_liner }}</p>
+        {% if view.brief.caution %}
+        <p class="pkg-brief-caution" role="alert">⚠ {{ view.brief.caution }}</p>
+        {% endif %}
+        {% if view.brief.beats %}
+        <ol class="pkg-brief-beats">
+          {% for b in view.brief.beats %}
+          <li><span class="sho-mono pkg-brief-at">{{ b.at }}</span> {{ b.what }}</li>
+          {% endfor %}
+        </ol>
+        {% endif %}
+        {% if view.brief.quotes %}
+        <ul class="pkg-brief-quotes">
+          {% for q in view.brief.quotes %}
+          <li><span class="sho-mono pkg-brief-at">{{ q.at }}</span>
+              {% if q.speaker %}<span class="pkg-brief-speaker">{{ q.speaker }}</span>{% endif %}
+              「{{ q.text }}」</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% endif %}
+      </details>
+      {% else %}
+      <p class="sho-mono pkg-brief-missing">（無內容速覽 — Cowork 端跑 <code>scripts/packaging_brief.py</code> 產生）</p>
+      {% endif %}
+
       {% if cut.format == 'long' %}
+      {# 標題手改字（修修 2026-07-30 裁決）：D11「零 LLM」禁的是生成不是編輯。
+         每條獨立 form，避免與 approve 表單的 submit 混在一起。#}
+      <details class="pkg-title-edit" id="title-edit-{{ cut.cut_id }}"
+               {% if edited_cut == cut.cut_id %}open{% endif %}>
+        <summary class="sho-mono-up">改標題文字（不重抽，只改字）</summary>
+        {% for t in cut.titles|sort(attribute='rank') %}
+        <form method="post" action="/bridge/packaging/{{ episode_slug }}/title" class="pkg-title-form">
+          <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
+          <input type="hidden" name="rank" value="{{ t.rank }}">
+          <label class="field-label" for="t-{{ cut.cut_id }}-{{ t.rank }}">
+            rank {{ t.rank }}{% if t.original_text %} · 已手改{% endif %}
+          </label>
+          <div class="pkg-title-row">
+            <input class="sho-input" id="t-{{ cut.cut_id }}-{{ t.rank }}" name="title_text"
+                   maxlength="200" value="{{ t.text }}">
+            <button class="sho-btn sho-btn--ghost" type="submit">存</button>
+          </div>
+          {% if t.original_text %}
+          <p class="sho-mono pkg-title-orig">原句：{{ t.original_text }}</p>
+          {% endif %}
+        </form>
+        {% endfor %}
+      </details>
+
       <form method="post" action="/bridge/packaging/{{ episode_slug }}/approve" class="pkg-approve-form">
         <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
         <fieldset class="pkg-cards">
@@ -103,7 +161,7 @@
       </form>
 
       {% else %}{# short cut #}
-      <form method="post" action="/bridge/packaging/{{ episode_slug }}/short-title" class="pkg-short-form">
+      <form method="post" action="/bridge/packaging/{{ episode_slug }}/title" class="pkg-short-form">
         <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
         <div class="field">
           <label class="field-label" for="st-{{ cut.cut_id }}">短片標題（LLM 直出初稿，可改）</label>
@@ -165,6 +223,32 @@
   .pkg-runners { margin-bottom: var(--sho-s-4); }
   .pkg-runners ul { margin: var(--sho-s-2) 0 0; padding-left: var(--sho-s-4); }
   .pkg-runners li { line-height: 1.7; color: var(--sho-text-2); }
+
+  /* 內容速覽 — 判斷標題前先知道這支在講什麼 */
+  .pkg-brief { margin-bottom: var(--sho-s-4); }
+  .pkg-brief[open] > summary { margin-bottom: var(--sho-s-3); }
+  .pkg-brief-one-liner { margin: 0 0 var(--sho-s-3); line-height: 1.75; }
+  .pkg-brief-caution, .pkg-brief-error { margin: 0 0 var(--sho-s-3); color: var(--sho-error); line-height: 1.7; }
+  .pkg-brief-beats { margin: 0 0 var(--sho-s-3); padding-left: var(--sho-s-4); }
+  .pkg-brief-beats li { line-height: 1.8; color: var(--sho-text-2); }
+  .pkg-brief-quotes { margin: 0; padding-left: 0; list-style: none; }
+  .pkg-brief-quotes li {
+    line-height: 1.8; color: var(--sho-text-2);
+    border-left: 2px solid var(--sho-accent-line); padding-left: var(--sho-s-3);
+  }
+  .pkg-brief-quotes li + li { margin-top: var(--sho-s-2); }
+  .pkg-brief-at { color: var(--sho-muted); margin-right: var(--sho-s-2); }
+  .pkg-brief-speaker { font-weight: 600; margin-right: var(--sho-s-1); }
+  .pkg-brief-missing { color: var(--sho-muted); margin: 0 0 var(--sho-s-4); }
+
+  /* 標題手改字 */
+  .pkg-title-edit { margin-bottom: var(--sho-s-4); }
+  .pkg-title-edit[open] > summary { margin-bottom: var(--sho-s-3); }
+  .pkg-title-form + .pkg-title-form { margin-top: var(--sho-s-3); }
+  .pkg-title-row { display: flex; gap: var(--sho-s-2); align-items: center; }
+  .pkg-title-row .sho-input { flex: 1 1 auto; min-width: 0; }
+  .pkg-title-row .sho-btn { flex: 0 0 auto; }
+  .pkg-title-orig { margin: var(--sho-s-1) 0 0; color: var(--sho-muted); }
   .pkg-note { width: 100%; resize: vertical; }
   .pkg-actions { display: flex; gap: var(--sho-s-3); margin-top: var(--sho-s-3); }
   .pkg-decided { margin-top: var(--sho-s-3); }

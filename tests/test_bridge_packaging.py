@@ -5,7 +5,9 @@ Coverage:
 - 列表：空 vault 空清單、正常集數統計、sync-conflict fail loud（列 error 不吞）
 - board：正常渲染（package 卡 / 落選 rank4-5 / brand_flags）、conflict 409、壞 JSON 422
 - approve：寫 approval.json（ApprovalFileV1 upsert）、reject 帶 note、重整後狀態正確
-- short-title：改字落 packages.json 且整檔重驗、長片 400
+- title 改字（長短片皆可，修修 2026-07-30）：落 packages.json 且整檔重驗、
+  長片記 original_text/edited_at、重複改字保留最初原句、空字串 400
+- 內容速覽 brief：有就渲染、缺就顯示提示、壞檔不擋 board
 - ApprovalFileV1：cut_id 唯一性
 """
 
@@ -248,28 +250,66 @@ def test_approve_unknown_cut_404(client):
 # ---------------------------------------------------------------------------
 
 
-def test_short_title_edit_persists_and_revalidates(client, vault):
-    r = client.post(
-        "/bridge/packaging/20260723-xieboran/short-title",
-        data={"cut_id": "punch-S1", "title_text": "手機把你的腦腐掉了"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 303
-    data = json.loads(
+def _packages(vault):
+    return json.loads(
         (vault / "Attachments" / "packaging" / "20260723-xieboran" / "packages.json").read_text(
             encoding="utf-8"
         )
     )
-    short = next(c for c in data["cuts"] if c["cut_id"] == "punch-S1")
+
+
+def test_short_title_edit_persists_and_revalidates(client, vault):
+    r = client.post(
+        "/bridge/packaging/20260723-xieboran/title",
+        data={"cut_id": "punch-S1", "title_text": "手機把你的腦腐掉了"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    short = next(c for c in _packages(vault)["cuts"] if c["cut_id"] == "punch-S1")
     assert short["titles"][0]["text"] == "手機把你的腦腐掉了"
     # thumbnail: null 顯式欄位在 round-trip 後仍在（schema 不對稱驗證仍過）
     assert "thumbnail" in short and short["thumbnail"] is None
 
 
-def test_short_title_rejected_for_long_cut(client):
+def test_long_title_edit_allowed_and_records_original(client, vault):
+    """修修 2026-07-30：長片也要能在 gate 手改字。
+
+    D11「UI 零 LLM」禁的是 LLM 生成（VPS 叫不到桌機 Cowork），不禁人工編輯；
+    舊版擋長片是實作自加的限制，ADR 無此決定。
+    """
     r = client.post(
-        "/bridge/packaging/20260723-xieboran/short-title",
-        data={"cut_id": "punch-L1", "title_text": "亂改"},
+        "/bridge/packaging/20260723-xieboran/title",
+        data={"cut_id": "punch-L1", "title_text": "改過的長片標題", "rank": "2"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    cut = next(c for c in _packages(vault)["cuts"] if c["cut_id"] == "punch-L1")
+    t2 = next(t for t in cut["titles"] if t["rank"] == 2)
+    assert t2["text"] == "改過的長片標題"
+    # 原句必須留著 — 否則推導鏈會謊稱手改文字是 panel 產出
+    assert t2["original_text"] and t2["original_text"] != "改過的長片標題"
+    assert t2["edited_at"]
+    t1 = next(t for t in cut["titles"] if t["rank"] == 1)
+    assert not t1.get("original_text")
+
+
+def test_long_title_repeat_edit_keeps_first_original(client, vault):
+    for text in ("第一次改", "第二次改"):
+        client.post(
+            "/bridge/packaging/20260723-xieboran/title",
+            data={"cut_id": "punch-L1", "title_text": text, "rank": "3"},
+            follow_redirects=False,
+        )
+    cut = next(c for c in _packages(vault)["cuts"] if c["cut_id"] == "punch-L1")
+    t3 = next(t for t in cut["titles"] if t["rank"] == 3)
+    assert t3["text"] == "第二次改"
+    assert t3["original_text"] not in ("第一次改", "第二次改")
+
+
+def test_title_edit_empty_text_400(client):
+    r = client.post(
+        "/bridge/packaging/20260723-xieboran/title",
+        data={"cut_id": "punch-L1", "title_text": "   ", "rank": "1"},
         follow_redirects=False,
     )
     assert r.status_code == 400
@@ -294,3 +334,69 @@ def test_approval_file_rejects_duplicate_cut_ids():
     )
     with pytest.raises(ValidationError):
         ApprovalFileV1(episode="ep", approvals=[entry, entry])
+
+
+# ---------------------------------------------------------------------------
+# 內容速覽（brief）
+# ---------------------------------------------------------------------------
+
+
+def _write_brief(vault, cut_id: str, payload: dict | str):
+    d = vault / "Attachments" / "packaging" / "20260723-xieboran" / "briefs"
+    d.mkdir(parents=True, exist_ok=True)
+    text = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
+    (d / f"{cut_id}.json").write_text(text, encoding="utf-8")
+
+
+def test_board_renders_brief_when_present(client, vault):
+    """修修 2026-07-30：「我不太清楚這支影片在講什麼，所以也沒辦法判斷」。"""
+    _write_brief(
+        vault,
+        "punch-L1",
+        {
+            "cut_id": "punch-L1",
+            "one_liner": "談該不該把大腦外包給 AI",
+            "duration": "10:16",
+            "beats": [{"at": "03:40", "what": "改用健康當判準"}],
+            "quotes": [{"at": "01:35", "speaker": "謝伯讓", "text": "我們直接把能力外包給AI"}],
+            "caution": "02:24 那句是轉述極端派立場",
+        },
+    )
+    body = client.get("/bridge/packaging/20260723-xieboran").text
+    assert "這支在講什麼" in body
+    assert "談該不該把大腦外包給 AI" in body
+    assert "03:40" in body and "改用健康當判準" in body
+    assert "我們直接把能力外包給AI" in body
+    assert "轉述極端派立場" in body
+
+
+def test_board_shows_hint_when_brief_missing(client):
+    body = client.get("/bridge/packaging/20260723-xieboran").text
+    assert "無內容速覽" in body
+
+
+def test_corrupt_brief_does_not_block_board(client, vault):
+    """速覽是輔助資訊——它壞了不該擋掉裁決（approve 表單仍要在）。"""
+    _write_brief(vault, "punch-L1", "{not json")
+    r = client.get("/bridge/packaging/20260723-xieboran")
+    assert r.status_code == 200
+    assert "brief 壞檔" in r.text
+    assert "Approve" in r.text
+
+
+def test_title_edit_redirect_keeps_section_open(client):
+    """改完一條後 <details> 會因重載收起，要再點一次才能改下一條
+    （2026-07-30 browser UAT 抓到）→ redirect 帶 ?edited=<cut_id>，template 保持展開。"""
+    r = client.post(
+        "/bridge/packaging/20260723-xieboran/title",
+        data={"cut_id": "punch-L1", "title_text": "改個字看看", "rank": "1"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert "edited=punch-L1" in r.headers["location"]
+
+    body = client.get("/bridge/packaging/20260723-xieboran?edited=punch-L1").text
+    # 該支的改字區帶 open；其他支不帶
+    assert 'id="title-edit-punch-L1"' in body
+    marker = body.split('id="title-edit-punch-L1"')[1][:80]
+    assert "open" in marker
