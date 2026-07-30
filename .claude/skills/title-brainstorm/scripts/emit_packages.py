@@ -98,6 +98,10 @@ def emit(
     Raises ValueError on schema violations.
     """
     episode: str = input_data["episode"]
+    # vault 落點目錄名：ADR-054 D10 用 ASCII slug（`20260723-xieboran`），不是 CJK
+    # 的 `episode` 欄。attach_packages.py 一直吃 `--episode-slug`，emit 端卻沿用
+    # `episode` → 同一集會生出兩個 vault 目錄（2026-07-29 謝伯讓集實際踩到）。
+    episode_slug: str = input_data.get("episode_slug") or episode
     cut_id: str = input_data["cut_id"]
     fmt: str = input_data["format"]
     info_origin: str = input_data.get("information_origin", "full_text")
@@ -145,13 +149,15 @@ def emit(
     }
     trace_path.write_text(json.dumps(trace_out, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # Write packages.json
-    # Short: full PackagesFileV1 (packages=[], thumbnail=null).
-    # Long: titles-only draft (PackagesFileV1 schema intentionally not validated
-    #       at this stage — packages are added by S5 thumbnail brainstorm).
+    # Write packages.json — **merge by cut_id, never whole-file overwrite**。
+    # ADR-054 D14 是「逐支處理」：一集有 3 長 + 3~4 短，每支各跑一次本 script。
+    # 舊版兩個分支都 write(cuts=[單一 cut])，跑第二支就把第一支的標題與**已 render
+    # 的 packages** 一起抹掉（含 vault SoT）。2026-07-29 謝伯讓集差點全毀，靠 agent
+    # 改用 per-cut 子目錄才閃過。
     packages_path = packaging_dir / "packages.json"
+
     if fmt == "short":
-        cut = CutV1(
+        new_cut = CutV1(
             cut_id=cut_id,
             format="short",
             information_origin=info_origin,
@@ -162,42 +168,63 @@ def emit(
             citations=citations,
             brand_flags=brand_flags,
             thumbnail=None,
-        )
-        pkg_file = PackagesFileV1(
-            episode=episode,
-            generated_at=generated_at,
-            cuts=[cut],
-        )
-        packages_path.write_text(pkg_file.model_dump_json(indent=2), encoding="utf-8")
+        ).model_dump()
     else:
-        # Long cut — titles-only draft; S5 will add packages
-        draft = {
-            "episode": episode,
-            "generated_at": generated_at,
-            "cuts": [
-                {
-                    "cut_id": cut_id,
-                    "format": fmt,
-                    "information_origin": info_origin,
-                    "visual_recipe": visual_recipe,
-                    "aspect": aspect,
-                    "citations": citations,
-                    "brand_flags": brand_flags,
-                    "titles": [t.model_dump() for t in titles],
-                    "packages": [],
-                    "_draft": True,
-                    "_note": "titles-only draft — packages added by S5 thumbnail brainstorm",
-                }
-            ],
+        # Long cut — titles-only 草稿；packages 由 S5 thumbnail brainstorm 補。
+        # 不放 `_draft` / `_note` 這類額外欄位：CutV1 是 extra_forbid，留著會讓
+        # attach_packages 的整檔驗證炸掉（packages 空 → 用 len 判斷即可）。
+        new_cut = {
+            "cut_id": cut_id,
+            "format": fmt,
+            "information_origin": info_origin,
+            "visual_recipe": visual_recipe,
+            "aspect": aspect,
+            "citations": citations,
+            "brand_flags": brand_flags,
+            "titles": [t.model_dump() for t in titles],
+            "packages": [],
         }
-        packages_path.write_text(json.dumps(draft, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    existing: dict = {}
+    if packages_path.exists():
+        try:
+            existing = json.loads(packages_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            # 壞損不靜默重建——重建等於把別支的成果丟掉
+            raise ValueError(
+                f"{packages_path} 不是合法 JSON（{exc}）。修好或改名備份後再跑，"
+                "本 script 不會覆寫壞損檔。"
+            ) from exc
+
+    cuts: list[dict] = list(existing.get("cuts", []))
+    for i, c in enumerate(cuts):
+        if c.get("cut_id") == cut_id:
+            cuts[i] = new_cut
+            break
+    else:
+        cuts.append(new_cut)
+
+    merged = {
+        "episode": episode,
+        "generated_at": generated_at,
+        "cuts": cuts,
+    }
+
+    # 寫檔前驗證：長片在本階段本來就還沒有 packages（S5 才補），這些草稿跳過；
+    # 其餘（短片、已配好封面的長片）必須通過 S1 schema，才不會把壞資料寫進別支。
+    drafts = {c["cut_id"] for c in cuts if c.get("format") == "long" and not c.get("packages")}
+    PackagesFileV1.model_validate(
+        {**merged, "cuts": [c for c in cuts if c["cut_id"] not in drafts]}
+    )
+
+    packages_path.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
 
     written_files = [str(trace_path), str(packages_path)]
 
     # Copy to vault if VAULT_PATH is available
     vault_copies: list[str] = []
     if vault_path is not None:
-        vault_ep_dir = vault_path / "Attachments" / "packaging" / episode
+        vault_ep_dir = vault_path / "Attachments" / "packaging" / episode_slug
         vault_ep_dir.mkdir(parents=True, exist_ok=True)
         for src in (trace_path, packages_path):
             dst = vault_ep_dir / src.name
