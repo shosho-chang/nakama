@@ -2703,3 +2703,81 @@ def test_schedule_task_entry_blank_time_is_all_day():
         NamiHandler().handle("general", "排整天", "U1")
 
     assert seen["all_day"] is True
+
+
+def test_calendar_task_conflict_active_task_suggests_schedule_entry():
+    """撞到進行中 task → 引導 schedule_task_entry 附 slug，不再引導 silent 降級（PR #1122）。"""
+    fake_task_file = SimpleNamespace(name="讀書會.md", stem="讀書會")
+    content = "---\ntitle: 讀書會\nstatus: to-do\ntags: [task]\n---\n"
+    with (
+        patch("gateway.handlers.nami.list_files", return_value=[fake_task_file]),
+        patch("gateway.handlers.nami.read_page", return_value=content),
+        patch("gateway.handlers.nami.google_calendar.create_event") as mock_create,
+    ):
+        out = NamiHandler()._execute_tool(
+            "create_calendar_event",
+            {"title": "讀書會", "start": "2026-04-25T15:00:00", "end": "2026-04-25T16:00:00"},
+        )
+    assert out.is_error
+    assert "schedule_task_entry" in out.content
+    assert "讀書會" in out.content
+    assert "also_create_task" not in out.content
+    mock_create.assert_not_called()
+
+
+def test_calendar_task_conflict_done_task_suggests_dated_title():
+    """撞到已完成 task → 新一輪工作，引導帶日期的新標題（PR #1122，寫電子報事故）。"""
+    fake_task_file = SimpleNamespace(name="寫電子報.md", stem="寫電子報")
+    content = "---\ntitle: 寫電子報\nstatus: done\ntags: [task]\n---\n"
+    with (
+        patch("gateway.handlers.nami.list_files", return_value=[fake_task_file]),
+        patch("gateway.handlers.nami.read_page", return_value=content),
+        patch("gateway.handlers.nami.google_calendar.create_event") as mock_create,
+    ):
+        out = NamiHandler()._execute_tool(
+            "create_calendar_event",
+            {"title": "寫電子報", "start": "2026-07-30T14:00:00", "end": "2026-07-30T16:00:00"},
+        )
+    assert out.is_error
+    assert "已完成" in out.content
+    assert "寫電子報 20" in out.content  # 帶日期的新標題示例
+    assert "schedule_task_entry" not in out.content
+    mock_create.assert_not_called()
+
+
+def test_calendar_task_conflict_with_archived_task_suggests_dated_title():
+    """撞到 Archive/ 內的同名 task（歸檔的都是 done）→ 帶日期新標題（PR #1127）。"""
+
+    def fake_list_files(directory):
+        if directory == "TaskNotes/Archive":
+            return [SimpleNamespace(name="寫電子報.md", stem="寫電子報")]
+        return []  # Tasks/ 已被歸檔清空
+
+    content = "---\ntitle: 寫電子報\nstatus: done\ntags: [task]\n---\n"
+    with (
+        patch("gateway.handlers.nami.list_files", side_effect=fake_list_files),
+        patch("gateway.handlers.nami.read_page", return_value=content),
+        patch("gateway.handlers.nami.google_calendar.create_event") as mock_create,
+    ):
+        out = NamiHandler()._execute_tool(
+            "create_calendar_event",
+            {"title": "寫電子報", "start": "2026-07-30T14:00:00", "end": "2026-07-30T16:00:00"},
+        )
+    assert out.is_error
+    assert "已完成" in out.content
+    assert "寫電子報 20" in out.content
+    mock_create.assert_not_called()
+
+
+def test_list_tasks_includes_doing_status():
+    """TaskNotes plugin 的進行中狀態值是 doing —— 不能被過濾掉（PR #1127）。"""
+    fake_task_file = SimpleNamespace(name="進行中的事.md", stem="進行中的事")
+    content = "---\ntitle: 進行中的事\nstatus: doing\ntags: [task]\n---\n"
+    with (
+        patch("gateway.handlers.nami.list_files", return_value=[fake_task_file]),
+        patch("gateway.handlers.nami.read_page", return_value=content),
+    ):
+        out = NamiHandler()._execute_tool("list_tasks", {})
+    assert not out.is_error
+    assert "進行中的事" in out.content
+    assert "[進行中]" in out.content

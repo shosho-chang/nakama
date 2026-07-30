@@ -160,3 +160,31 @@ def test_build_nami_server_returns_server_config(handler):
     # McpSdkServerConfig is a TypedDict; validate its structural keys
     assert server["type"] == "sdk"
     assert server["name"] == "nami"
+
+
+def test_include_ask_user_adds_sdk_only_tool(handler):
+    """S3：include_ask_user=True 附上 defer 流程用的 ask_user，schema 原樣。
+
+    回覆走 in-process answer_box（hook 寫入、handler 讀取後清空）——
+    完全不信任 args：模型自填 answer 拿到的是 is_error（review M1/M2）。
+    """
+    box: dict = {"value": None}
+    tools = build_nami_sdk_tools(handler, include_ask_user=True, answer_box=box)
+    assert len(tools) == len(NAMI_TOOLS)
+    spec = next(s for s in NAMI_TOOLS if s["name"] == "ask_user")
+    t = _get_tool(tools, "ask_user")
+    assert t.description == spec["description"]
+    assert t.input_schema == spec["input_schema"]
+    assert "answer" not in t.input_schema["properties"]
+
+    # box 有值（hook allow 後）→ 原樣回給模型並清空
+    box["value"] = "（現在時間：X）使用者回覆：好"
+    ok = asyncio.run(t.handler({"question": "q"}))
+    assert ok["content"][0]["text"] == "（現在時間：X）使用者回覆：好"
+    assert not ok.get("is_error")
+    assert box["value"] is None
+
+    # box 空 + 模型自填 answer → 不信任 args，is_error 指路重呼叫
+    bad = asyncio.run(t.handler({"question": "q", "answer": "模型捏造的回覆"}))
+    assert bad["is_error"] is True
+    assert "單獨" in bad["content"][0]["text"]

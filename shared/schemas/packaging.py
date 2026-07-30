@@ -40,6 +40,13 @@ class TitleV1(BaseModel):
     cite: str
     rank: int = Field(ge=1, le=5)
     panel_note: str | None = None
+    # 修修在 gate 手改字後填這兩欄。ADR-054 D11 的「UI 零 LLM」硬約束只是
+    # 「VPS FastAPI 呼叫不到桌機 Cowork」——禁的是 LLM **生成**，不禁人工編輯；
+    # 品味的最終裁決權永遠在他身上（feedback_hitl_gate_serves_subjective_taste）。
+    # 留 original_text 是為了讓 archetype_id / angle_combo / cite / payoff 仍能
+    # 溯源到它們實際描述的那句話——否則推導鏈會謊稱手改後的文字是 panel 跑出來的。
+    original_text: str | None = None
+    edited_at: AwareDatetime | None = None
 
     @model_validator(mode="after")
     def _rank_gate_needs_panel_note(self) -> "TitleV1":

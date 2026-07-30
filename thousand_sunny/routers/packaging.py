@@ -72,6 +72,28 @@ def _sync_conflicts(ep_dir: Path) -> list[str]:
     return sorted(p.name for p in ep_dir.glob("*sync-conflict*"))
 
 
+def _load_brief(ep_dir: Path, cut_id: str) -> dict | None:
+    """讀該支的內容速覽（`briefs/<cut_id>.json`），沒有就回 None。
+
+    修修 2026-07-30：「審 util-L4 的時候我不太清楚這支影片在講什麼，所以我也
+    沒辦法判斷。」board 原本只給封面＋標題文字，零內容脈絡 → 判斷不了是必然的。
+
+    **UI 零 LLM 不變**（ADR-054 D11）：速覽由 Cowork 端 `packaging_brief.py`
+    從該支 SRT 生成後落檔，本 router 只讀。壞檔不擋 board——速覽是輔助資訊，
+    不該讓它的問題阻擋裁決；改為在該區塊顯示錯誤。
+    """
+    path = ep_dir / "briefs" / f"{cut_id}.json"
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return {"error": f"brief 壞檔：{exc}"}
+    if not isinstance(data, dict):
+        return {"error": "brief 格式錯誤：頂層必須是物件"}
+    return data
+
+
 def _load_approvals(ep_dir: Path, episode: str) -> ApprovalFileV1:
     path = ep_dir / "approval.json"
     if not path.is_file():
@@ -152,6 +174,7 @@ def _board_context(episode_slug: str) -> dict:
                 {"pkg": p, "title": titles_by_rank.get(p.title_rank)} for p in cut.packages
             ],
             "runners_up": [t for t in cut.titles if t.rank >= 4],
+            "brief": _load_brief(ep_dir, cut.cut_id),
         }
         cuts.append(view)
     return {"episode_slug": episode_slug, "pkg": pkg, "cuts": cuts}
@@ -172,12 +195,15 @@ async def packaging_list(request: Request, nakama_auth: str | None = Cookie(None
 async def packaging_board(
     request: Request,
     episode_slug: str,
+    edited: str | None = None,
     nakama_auth: str | None = Cookie(None),
 ):
     if not check_auth(nakama_auth):
         return RedirectResponse(f"/login?next=/bridge/packaging/{episode_slug}", status_code=302)
     ctx = _board_context(episode_slug)
     ctx["asset_version"] = _SHOSHO_ASSET_VERSION
+    # 剛改完字的那支：改字區保持展開（見 packaging_edit_title 的 redirect 註解）
+    ctx["edited_cut"] = edited
     return _templates.TemplateResponse(request, "packaging_board.html", ctx)
 
 
@@ -225,14 +251,26 @@ async def packaging_approve(
     return RedirectResponse(f"/bridge/packaging/{episode_slug}", status_code=303)
 
 
-@page_router.post("/{episode_slug}/short-title")
-async def packaging_short_title(
+@page_router.post("/{episode_slug}/title")
+async def packaging_edit_title(
     episode_slug: str,
     cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
     title_text: str = Form(..., max_length=_TITLE_MAX),
+    rank: int = Form(1, ge=1, le=5),
     nakama_auth: str | None = Cookie(None),
 ):
-    """短片標題改字（D4：LLM 直出僅是初稿）。整檔重驗後才落盤。"""
+    """標題手改字 — **長短片皆可**（修修 2026-07-30 裁決）。整檔重驗後才落盤。
+
+    ADR-054 D11 的「UI 零 LLM」硬約束原文是「VPS FastAPI 呼叫不到桌機 Cowork」，
+    禁的是 LLM **生成**（所以沒有重抽按鈕），不禁人工編輯。舊版把長片擋掉是實作
+    時自己加的限制，ADR 無此決定；修修是品味的最終裁決者
+    （feedback_hitl_gate_serves_subjective_taste），為一個用字繞回 Cowork 是純
+    摩擦（feedback_minimize_manual_friction）。
+
+    首次改字把原文存進 `original_text` 並蓋 `edited_at`——archetype_id /
+    angle_combo / cite / payoff 描述的是**原句**，沒有這欄推導鏈就會謊稱手改後
+    的文字是 panel 跑出來的。重複改字保留最初的 original_text。
+    """
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/packaging", status_code=302)
     text = title_text.strip()
@@ -244,17 +282,34 @@ async def packaging_short_title(
     cut = next((c for c in pkg.cuts if c.cut_id == cut_id), None)
     if cut is None:
         raise HTTPException(status_code=404, detail=f"cut not found: {cut_id}")
-    if cut.format != "short":
-        raise HTTPException(status_code=400, detail="只有短片標題走 gate 改字；長片回 Cowork 重跑")
+    if cut.format == "short":
+        rank = 1  # 短片只有一條標題，忽略傳入的 rank
 
     ep_dir = _packaging_root() / episode_slug
     path = ep_dir / "packages.json"
     data = json.loads(path.read_text(encoding="utf-8"))
+    edited = False
     for raw_cut in data["cuts"]:
-        if raw_cut["cut_id"] == cut_id:
-            raw_cut["titles"][0]["text"] = text
-            break
-    PackagesFileV1.model_validate(data)  # 驗證失敗即不落盤
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    logger.info("packaging short-title edit: %s/%s", episode_slug, cut_id)
-    return RedirectResponse(f"/bridge/packaging/{episode_slug}", status_code=303)
+        if raw_cut["cut_id"] != cut_id:
+            continue
+        target = next((t for t in raw_cut["titles"] if t.get("rank") == rank), None)
+        if target is None:
+            raise HTTPException(status_code=404, detail=f"{cut_id} 沒有 rank {rank} 的標題")
+        if target["text"] != text:
+            target.setdefault("original_text", target["text"])
+            target["edited_at"] = datetime.now(timezone.utc).isoformat()
+            target["text"] = text
+            edited = True
+        break
+
+    if edited:
+        PackagesFileV1.model_validate(data)  # 驗證失敗即不落盤
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        logger.info("packaging title edit: %s/%s rank=%s", episode_slug, cut_id, rank)
+    # 帶回 `?edited=<cut_id>`：改完一條後 <details> 會因為重載而收起，要再點一次
+    # 才能改下一條（2026-07-30 browser UAT 抓到）。template 靠這個把該支的改字區
+    # 保持展開並 scroll 回來。
+    return RedirectResponse(
+        f"/bridge/packaging/{episode_slug}?edited={cut_id}#title-edit-{cut_id}",
+        status_code=303,
+    )
