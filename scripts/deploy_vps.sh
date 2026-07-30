@@ -18,8 +18,12 @@
 # Usage (on VPS, as the nakama user with sudo):
 #   cd /home/nakama
 #   ./scripts/deploy_vps.sh                 # pull main + restart
-#   ./scripts/deploy_vps.sh --dry-run       # show plan, don't act
+#   ./scripts/deploy_vps.sh --dry-run       # fetch + show plan；**不 pull、不動 HEAD**
 #   ./scripts/deploy_vps.sh --force-all     # restart all three regardless
+#
+# --dry-run 是唯讀的（只 fetch），跑完再跑正式 deploy 會正常重啟。舊版 dry-run
+# 會 pull，導致接著跑正式版時被判定「無新 commit → 不用重啟」，VPS 停在
+# 新檔案 + 舊 process（2026-07-30 實際踩到）。
 #
 # Exit codes:
 #   0  success (or dry-run)
@@ -67,17 +71,38 @@ fi
 OLD_SHA=$(git rev-parse HEAD)
 echo "==> Current HEAD: $OLD_SHA"
 
-# --- pull ---
-echo "==> git fetch + pull --ff-only origin main"
+# --- fetch, then pull only when actually deploying ---
+#
+# ⚠️ --dry-run 絕對不可以 pull。舊版無條件 pull、只在最後跳過 restart，結果：
+# 先跑 dry-run 看計畫 → 再跑正式 deploy → 正式那次看到 OLD_SHA == NEW_SHA →
+# 「No new commits. Nothing to restart.」→ **服務永遠不重啟**，VPS 停在
+# 「新檔案 + 舊 process」——正是本 script 當初被寫出來要防的那個事故
+# （2026-05-28 /bridge/digests 4 天 404）。2026-07-30 實際踩到並靠 --force-all
+# 補救。照 usage 註解「先 dry-run 看看」的直覺操作就會中。
+echo "==> git fetch origin"
 git fetch --prune origin
-git pull --ff-only origin main
-
-NEW_SHA=$(git rev-parse HEAD)
-echo "==> New HEAD:     $NEW_SHA"
+NEW_SHA=$(git rev-parse FETCH_HEAD)
 
 if [ "$OLD_SHA" = "$NEW_SHA" ] && [ "$FORCE_ALL" -eq 0 ]; then
   echo "==> No new commits. Nothing to restart. (Use --force-all to override.)"
   exit 0
+fi
+
+echo "==> Incoming: $OLD_SHA → $NEW_SHA"
+if [ "$OLD_SHA" != "$NEW_SHA" ]; then
+  git log --oneline "$OLD_SHA..$NEW_SHA" | sed 's/^/    /'
+fi
+
+if [ "$DRY_RUN" -eq 0 ]; then
+  echo "==> git pull --ff-only origin main"
+  git pull --ff-only origin main
+  PULLED_SHA=$(git rev-parse HEAD)
+  if [ "$PULLED_SHA" != "$NEW_SHA" ]; then
+    echo "ERROR: pull 後 HEAD ($PULLED_SHA) 與 fetch 目標 ($NEW_SHA) 不符 — 中止。" >&2
+    exit 1
+  fi
+else
+  echo "==> Dry run: 不 pull（HEAD 保持 $OLD_SHA），以下計畫依 fetch 的內容推算"
 fi
 
 # --- decide which services need restart ---
@@ -145,7 +170,7 @@ fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
   echo
-  echo "==> Dry run; exiting without action."
+  echo "==> Dry run; exiting without action. (HEAD 未動，重跑不帶 --dry-run 才會實際 deploy)"
   exit 0
 fi
 
