@@ -358,7 +358,9 @@ NAMI_TOOLS: list[dict] = [
             "（方便在 Tasks view 看到）。預設會先檢查時段衝突，若有重疊事件"
             "會回傳衝突資訊（不建立）— 此時用 ask_user 問使用者要改時段還是"
             "覆蓋。使用者確認要覆蓋時用 force=true 再呼叫一次。"
-            "純事件（婚禮、生日、紀念日）不需要 task 的話用 also_create_task=false。"
+            "LifeOS 慣例：排程 = task + calendar 成對，also_create_task 一律保持預設 true；"
+            "false 僅限使用者明確說『不用建 task』或純紀念性事件（婚禮、生日）——"
+            "不可因撞名、圖方便、或沿用對話歷史的舊做法自行改用。"
             "適用於「排會議」「排行程」「XX 點跟 XX 開會」等需求。"
         ),
         "input_schema": {
@@ -384,7 +386,8 @@ NAMI_TOOLS: list[dict] = [
                 "also_create_task": {
                     "type": "boolean",
                     "description": (
-                        "是否同時建立對應 Task（預設 true）。純事件（婚禮、生日、紀念日）設 false。"
+                        "是否同時建立對應 Task（預設 true，一律保持預設）。"
+                        "false 僅限使用者明確說不要 task、或純紀念性事件（婚禮、生日）。"
                     ),
                 },
                 "category": {
@@ -2013,6 +2016,15 @@ class NamiHandler(BaseHandler):
                     is_error=True,
                 )
             task_path_display = f"\n   📝 Task：{task_rel_path}"
+        else:
+            # 揭露強制化（2026-07-30 事故）：session 歷史裡的舊模式會讓模型慣性
+            # 帶 also_create_task=false 而繞過撞名檢查與 prompt 規則。工具結果
+            # 每輪都是新鮮 context，必須在這裡把「沒建 task」講明並要求轉告。
+            task_path_display = (
+                "\n   ⚠️ 只建了 Calendar，沒有建 vault task（also_create_task=false）。"
+                "\n   回覆使用者時必須註明這點；若使用者要追蹤這件事，"
+                "改用預設（also_create_task=true）重排。"
+            )
 
         summary = (
             f"📅 Calendar 事件已建立：{event.title}\n"
