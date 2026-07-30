@@ -13,6 +13,12 @@
 乾淨 mp4 — ADR-015 凍結語意，ADR-050 沿用）。
 """
 
+from agents.brook.script_video.cleanup.clap_impulse import (
+    ClapEvent,
+    NgMarker,
+    detect_claps,
+    merge_ng_markers,
+)
 from agents.brook.script_video.cleanup.cuts import CutPoint
 from agents.brook.script_video.cleanup.mistake_removal import (
     detect_clap_markers,
@@ -26,15 +32,29 @@ from agents.brook.script_video.cleanup.script_align import (
     load_words,
     remap_words_through_cuts,
 )
+from agents.brook.script_video.cleanup.script_coverage import (
+    CleanPlan,
+    build_clean_plan,
+    build_srt,
+    verify_plan,
+)
 
 __all__ = [
+    "ClapEvent",
+    "CleanPlan",
     "CutPoint",
+    "NgMarker",
     "Word",
+    "build_clean_plan",
+    "build_srt",
     "correct_srt",
     "detect_clap_markers",
+    "detect_claps",
     "detect_script_anchored_cuts",
     "detect_single_claps",
     "emit_ripple_timeline",
     "load_words",
+    "merge_ng_markers",
     "remap_words_through_cuts",
+    "verify_plan",
 ]
