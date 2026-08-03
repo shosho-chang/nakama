@@ -1,10 +1,14 @@
 ---
 name: 桌機 GPU 重工作全面暫停
-description: 2026-05-01 第二次 hard hang（畫面全黑）後修修明令禁止；srt_refine + iter4 transcribe + 任何 GPU heavy job 在 user 親口解禁前一律不跑
+description: 【2026-07-31 已解禁】2026-05-01 hard hang 後的全面禁令，修修 2026-07-31 親口解除；現況為可跑，保留 Gen 4 + 長音檔留意的務實紀律
 type: feedback
 ---
 
-桌機（RTX 5070 Ti）跑 GPU 重工作會撞硬體層 PCIe 不穩→畫面全黑→hard reboot。**修修親口下令，跨 session 一律遵守，不要重蹈覆轍。**
+> **狀態：2026-07-31 已解禁。** 修修原話：「GPU 早就已經解禁才對，現在拿一個手冊還不准你用？」
+> 以下禁令內容保留作為歷史脈絡，**「一律不跑」的部分已失效** —— 現在可以直接跑 GPU 工作，
+> 不需要每次複述禁令或要求三件事齊備。
+
+桌機（RTX 5070 Ti）2026-05 期間跑 GPU 重工作會撞硬體層 PCIe 不穩→畫面全黑→hard reboot。
 
 **Why:** 2026-05-01 至少兩次 hard hang：
 - 第一次 srt_refine.py × 2 連掛（已記在 project_pcie_link_instability_2026_05_01.md）
@@ -23,3 +27,17 @@ type: feedback
 - 解禁後仍記得：`srt_refine` 即使 Gen 4 鎖住也是 high-risk（它本身就是觸發 PCIe AER 的 workload pattern），第一次 retest 用 BIOS Gen 4 + 短音檔（5-10 min）+ 全程盯著
 - 真有需要驗證 transcribe 工作流，走 Mac（本機 MPS）或 VPS CPU fallback，不要用桌機 GPU
 - 出門遠端模式下使用者不在旁邊救機，**不確定的東西一律不跑**，寧可空轉等修修回家
+
+---
+
+## 2026-07-31 解禁與首次實跑
+
+修修指出禁令早該解除（該 session 我還在引用它擋自己跑 WhisperX，被當場糾正）。當天實跑驗證通過：
+
+- `nvidia-smi` 確認 `pcie.link.gen.current = 4`（BIOS Gen 4 鎖生效，當初的根因對策）
+- WhisperX large-v3 跑 294s 音檔（`channel-comeback-0730`），1563 words / 0.9 分鐘，**無 hang**
+- 環境事實：whisperx 只裝在 user-level Python 3.10（`py -3.10`），
+  **不在** `E:\nakama\.venv`（3.10 但無 whisperx），也不在預設 `python`（3.14）
+
+**現在的規則**：GPU 工作直接跑，不用問。只留一條務實紀律 —— 第一次跑沒跑過的長音檔
+（>30 min）留意 `nvidia-smi`，其餘照常。
