@@ -1,0 +1,121 @@
+<!-- nakama:component caption_card（短片逐句字卡：橘底白字 caption，透明 overlay 疊 Resolve track 3）
+     與 punch_card 同設計語言（#e87000 / LINE Seed TW 特黑），字級縮到 caption 尺寸、
+     進場 0.12s 微淡入、無退場動畫（timeline 依 cue 長度截尾即硬收）。
+     修修 2026-07-30「中野崇卸力短片」需求：每句逐字稿都以橘底白字卡上畫面。 -->
+<!doctype html>
+<html
+  lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"line1","type":"string","label":"第一行","default":"很開心的接到邀請"},
+    {"id":"line2","type":"string","label":"第二行（可空）","default":""},
+    {"id":"pos_y","type":"number","label":"卡片垂直中心 0-1","default":0.72},
+    {"id":"font_px","type":"number","label":"字級 px","default":84},
+    {"id":"emph","type":"number","label":"強調卡 0/1（pop 進場）","default":0}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 900;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Eb.woff2") format("woff2");
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 1080px; height: 1920px; overflow: hidden;
+        background: transparent;
+      }
+      #root {
+        position: relative; width: 1080px; height: 1920px; overflow: hidden;
+      }
+      #card {
+        position: absolute; left: 50%; top: var(--pos-y, 72%);
+        transform: translate(-50%, -50%);
+        display: flex; flex-direction: column; align-items: center; gap: 8px;
+      }
+      .line {
+        display: inline-block;
+        background: #e87000;
+        color: #fff;
+        font-family: "LINE Seed TW", "Noto Sans TC", sans-serif;
+        font-weight: 900;
+        font-size: var(--font-px, 84px);
+        line-height: 1.18;
+        padding: 4px 26px 10px;
+        white-space: nowrap;
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-root="true"
+      data-composition-id="caption_card"
+      data-width="1080"
+      data-height="1920"
+      data-start="0"
+      data-duration="8"
+    >
+      <div id="card">
+        <span class="line" id="l1"></span>
+        <span class="line" id="l2"></span>
+      </div>
+    </div>
+    <script>
+      const vars =
+        (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const line1 = vars.line1 ?? "很開心的接到邀請";
+      const line2 = vars.line2 ?? "";
+      const posY = Number(vars.pos_y ?? 0.72);
+      const fontPx = Number(vars.font_px ?? 84);
+      const emph = Number(vars.emph ?? 0) === 1;
+
+      document.getElementById("l1").textContent = line1;
+      const l2 = document.getElementById("l2");
+      if (line2) {
+        l2.textContent = line2;
+      } else {
+        l2.remove();
+      }
+      const card = document.getElementById("card");
+      card.style.top = `${posY * 100}%`;
+      card.style.setProperty("--font-px", `${fontPx}px`);
+      document.querySelectorAll(".line").forEach(
+        (el) => (el.style.fontSize = `${fontPx}px`)
+      );
+
+      // caption 節奏：一般卡 0.12s 微淡入；強調卡 punch 式 pop 進場。
+      // 退場都交給 timeline 截尾（硬收）
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ defaults: { transformOrigin: "50% 50%" } });
+      if (emph) {
+        tl.fromTo(
+          ".line",
+          { opacity: 0, scale: 0.7, y: 24 },
+          {
+            opacity: 1,
+            scale: 1,
+            y: 0,
+            duration: 0.4,
+            ease: "back.out(2.0)",
+            stagger: 0.08,
+          },
+          0
+        );
+      } else {
+        tl.fromTo(
+          ".line",
+          { opacity: 0, y: 10 },
+          { opacity: 1, y: 0, duration: 0.12, ease: "power2.out", stagger: 0.03 },
+          0
+        );
+      }
+      window.__timelines["caption_card"] = tl;
+    </script>
+  </body>
+</html>

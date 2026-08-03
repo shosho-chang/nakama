@@ -1,0 +1,113 @@
+<!-- nakama:component discount_card（短片折扣資訊卡：hero 式 pop 進場 + 呼吸 pulse 常駐）
+     與 punch/caption 卡同設計語言（#e87000 / LINE Seed TW 特黑）。
+     修修 2026-07-30「中野崇卸力短片」：片尾折扣碼要顯眼。 -->
+<!doctype html>
+<html
+  lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"line1","type":"string","label":"第一行（折扣碼）","default":"折扣碼「SHOSHO350」"},
+    {"id":"line2","type":"string","label":"第二行（折扣額）","default":"折扣 $350"},
+    {"id":"pos_y","type":"number","label":"卡片垂直中心 0-1","default":0.50}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 900;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Eb.woff2") format("woff2");
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 1080px; height: 1920px; overflow: hidden;
+        background: transparent;
+      }
+      #root {
+        position: relative; width: 1080px; height: 1920px; overflow: hidden;
+      }
+      #card {
+        position: absolute; left: 50%; top: var(--pos-y, 50%);
+        transform: translate(-50%, -50%);
+        display: flex; flex-direction: column; align-items: center; gap: 12px;
+      }
+      .line {
+        display: inline-block;
+        background: #e87000;
+        color: #fff;
+        font-family: "LINE Seed TW", "Noto Sans TC", sans-serif;
+        font-weight: 900;
+        line-height: 1.14;
+        white-space: nowrap;
+        opacity: 0;
+      }
+      #l1 { font-size: 84px; padding: 6px 28px 12px; }  /* 1080 內留 IG 安全邊距 */
+      /* 折扣額 = 主角：白底橘字反轉 + 更大字級，跟折扣碼形成層級 */
+      #l2 {
+        font-size: 150px;
+        padding: 8px 40px 16px;
+        background: #fff;
+        color: #e87000;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-root="true"
+      data-composition-id="discount_card"
+      data-width="1080"
+      data-height="1920"
+      data-start="0"
+      data-duration="6"
+    >
+      <div id="card">
+        <span class="line" id="l1"></span>
+        <span class="line" id="l2"></span>
+      </div>
+    </div>
+    <script>
+      const vars =
+        (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      document.getElementById("l1").textContent =
+        vars.line1 ?? "折扣碼「SHOSHO350」";
+      document.getElementById("l2").textContent = vars.line2 ?? "折扣 $350";
+      const card = document.getElementById("card");
+      card.style.top = `${Number(vars.pos_y ?? 0.5) * 100}%`;
+
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ defaults: { transformOrigin: "50% 50%" } });
+      // hero 式進場：縮放彈入 + 微旋轉甩正
+      tl.fromTo(
+        ".line",
+        { opacity: 0, scale: 0.6, rotation: -2.4, y: 36 },
+        {
+          opacity: 1,
+          scale: 1,
+          rotation: 0,
+          y: 0,
+          duration: 0.55,
+          ease: "back.out(2.2)",
+          stagger: 0.14,
+        },
+        0
+      );
+      // 常駐呼吸 pulse（顯眼但不吵）：折扣額微幅縮放循環
+      tl.to(
+        "#l2",
+        {
+          scale: 1.05,
+          duration: 0.55,
+          ease: "sine.inOut",
+          yoyo: true,
+          repeat: -1,
+        },
+        0.8
+      );
+      window.__timelines["discount_card"] = tl;
+    </script>
+  </body>
+</html>
