@@ -222,3 +222,88 @@ class TestPlaybookMapping:
         ]
         for angle in required_angles:
             assert angle in content, f"PLAYBOOK.md missing angle: {angle}"
+
+
+class TestEmitMergesInsteadOfOverwriting:
+    """ADR-054 D14 逐支處理：一集多支各跑一次 emit，不可互相覆寫。
+
+    2026-07-29 謝伯讓集踩到：舊版兩個分支都 write(cuts=[單一 cut])，跑第二支
+    會把第一支的標題與**已 render 的 packages** 一起抹掉（含 vault SoT）。
+    """
+
+    def test_second_cut_preserves_first(self, tmp_path):
+        mod = _load_emit_module()
+        first = _long_input()
+        first["cut_id"] = "punch-L5"
+        mod.emit(first, tmp_path, vault_path=None)
+
+        second = _long_input()
+        second["cut_id"] = "story-L1"
+        mod.emit(second, tmp_path, vault_path=None)
+
+        data = json.loads((tmp_path / "packages.json").read_text(encoding="utf-8"))
+        assert [c["cut_id"] for c in data["cuts"]] == ["punch-L5", "story-L1"]
+
+    def test_rerun_same_cut_replaces_in_place(self, tmp_path):
+        """冪等：重跑同一支只換那一支，不追加、不動其他支。"""
+        mod = _load_emit_module()
+        mod.emit({**_long_input(), "cut_id": "punch-L5"}, tmp_path, vault_path=None)
+        mod.emit({**_long_input(), "cut_id": "story-L1"}, tmp_path, vault_path=None)
+        mod.emit({**_long_input(), "cut_id": "punch-L5"}, tmp_path, vault_path=None)
+
+        data = json.loads((tmp_path / "packages.json").read_text(encoding="utf-8"))
+        assert [c["cut_id"] for c in data["cuts"]] == ["punch-L5", "story-L1"]
+
+    def test_existing_packages_not_clobbered_by_later_cut(self, tmp_path):
+        """已配好封面的 cut，其 packages 不可被別支的 emit 洗掉。"""
+        mod = _load_emit_module()
+        mod.emit({**_long_input(), "cut_id": "punch-L5"}, tmp_path, vault_path=None)
+
+        pkg_path = tmp_path / "packages.json"
+        data = json.loads(pkg_path.read_text(encoding="utf-8"))
+        data["cuts"][0]["packages"] = [
+            {
+                "title_rank": r,
+                "thumbnail_png": f"Attachments/packaging/ep/p{r}.png",
+                "thumb_archetype_id": "T-V2",
+                "joint_pairing_id": "N2-fixed",
+                "host_cutout": "Attachments/cutouts/h.png",
+                "guest_cutout": "Attachments/cutouts/g.png",
+            }
+            for r in (1, 2, 3)
+        ]
+        pkg_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+        mod.emit({**_long_input(), "cut_id": "story-L1"}, tmp_path, vault_path=None)
+
+        after = json.loads(pkg_path.read_text(encoding="utf-8"))
+        punch = next(c for c in after["cuts"] if c["cut_id"] == "punch-L5")
+        assert len(punch["packages"]) == 3
+
+    def test_corrupt_file_fails_loud_not_silent_rebuild(self, tmp_path):
+        """壞損 JSON 不可靜默重建——重建等於把別支的成果丟掉。"""
+        mod = _load_emit_module()
+        (tmp_path / "packages.json").write_text("{not json", encoding="utf-8")
+        with pytest.raises(ValueError, match="合法 JSON"):
+            mod.emit(_long_input(), tmp_path, vault_path=None)
+
+    def test_long_draft_has_no_extra_keys(self, tmp_path):
+        """草稿 cut 不可留 `_draft`/`_note`：CutV1 是 extra_forbid，
+        留著會讓 attach_packages 的整檔驗證炸掉。"""
+        mod = _load_emit_module()
+        mod.emit(_long_input(), tmp_path, vault_path=None)
+        cut = json.loads((tmp_path / "packages.json").read_text(encoding="utf-8"))["cuts"][0]
+        assert not [k for k in cut if k.startswith("_")]
+
+    def test_vault_dir_uses_ascii_slug_not_cjk_episode(self, tmp_path):
+        """vault 落點用 ASCII slug（ADR-054 D10），不是 CJK 的 episode 欄。"""
+        mod = _load_emit_module()
+        vault = tmp_path / "vault"
+        payload = {
+            **_long_input(),
+            "episode": "20260723 謝伯讓",
+            "episode_slug": "20260723-xieboran",
+        }
+        mod.emit(payload, tmp_path / "work", vault_path=vault)
+        assert (vault / "Attachments" / "packaging" / "20260723-xieboran").is_dir()
+        assert not (vault / "Attachments" / "packaging" / "20260723 謝伯讓").exists()

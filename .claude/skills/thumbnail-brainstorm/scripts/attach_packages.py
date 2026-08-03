@@ -85,7 +85,22 @@ def attach(packaging_dir: Path, cut_id: str, episode_slug: str, specs: list[dict
     cut["packages"] = packages
     data["generated_at"] = datetime.now(timezone.utc).isoformat()
 
-    PackagesFileV1.model_validate(data)  # 整檔驗證 — 失敗即不落任何一份（含 PNG）
+    # 驗證：**本支必須完整**，但同檔內其他還沒配封面的長片（packages 空）是
+    # 正常中間態，不該讓本支落不了地。ADR-054 D14 逐支處理 → 一集內同時存在
+    # 「已完成」與「只有標題」的 cut 是設計本意；舊版整檔驗證會因為別支
+    # packages != 3 而失敗（2026-07-29 謝伯讓集踩到，被迫手動搬檔繞過）。
+    pending = [
+        c["cut_id"]
+        for c in data.get("cuts", [])
+        if c.get("cut_id") != cut_id and c.get("format") == "long" and not c.get("packages")
+    ]
+    to_validate = {
+        **data,
+        "cuts": [c for c in data.get("cuts", []) if c.get("cut_id") not in pending],
+    }
+    PackagesFileV1.model_validate(to_validate)  # 失敗即不落任何一份（含 PNG）
+    if pending:
+        print(f"[note] 尚未配封面的長片（本次不驗證）：{', '.join(pending)}", file=sys.stderr)
 
     for src_png, dst_png in png_copies:
         shutil.copy2(src_png, dst_png)

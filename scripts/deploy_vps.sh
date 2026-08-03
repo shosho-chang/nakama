@@ -18,8 +18,12 @@
 # Usage (on VPS, as the nakama user with sudo):
 #   cd /home/nakama
 #   ./scripts/deploy_vps.sh                 # pull main + restart
-#   ./scripts/deploy_vps.sh --dry-run       # show plan, don't act
+#   ./scripts/deploy_vps.sh --dry-run       # fetch + show plan；**不 pull、不動 HEAD**
 #   ./scripts/deploy_vps.sh --force-all     # restart all three regardless
+#
+# --dry-run 是唯讀的（只 fetch），跑完再跑正式 deploy 會正常重啟。舊版 dry-run
+# 會 pull，導致接著跑正式版時被判定「無新 commit → 不用重啟」，VPS 停在
+# 新檔案 + 舊 process（2026-07-30 實際踩到）。
 #
 # Exit codes:
 #   0  success (or dry-run)
@@ -67,17 +71,38 @@ fi
 OLD_SHA=$(git rev-parse HEAD)
 echo "==> Current HEAD: $OLD_SHA"
 
-# --- pull ---
-echo "==> git fetch + pull --ff-only origin main"
+# --- fetch, then pull only when actually deploying ---
+#
+# ⚠️ --dry-run 絕對不可以 pull。舊版無條件 pull、只在最後跳過 restart，結果：
+# 先跑 dry-run 看計畫 → 再跑正式 deploy → 正式那次看到 OLD_SHA == NEW_SHA →
+# 「No new commits. Nothing to restart.」→ **服務永遠不重啟**，VPS 停在
+# 「新檔案 + 舊 process」——正是本 script 當初被寫出來要防的那個事故
+# （2026-05-28 /bridge/digests 4 天 404）。2026-07-30 實際踩到並靠 --force-all
+# 補救。照 usage 註解「先 dry-run 看看」的直覺操作就會中。
+echo "==> git fetch origin"
 git fetch --prune origin
-git pull --ff-only origin main
-
-NEW_SHA=$(git rev-parse HEAD)
-echo "==> New HEAD:     $NEW_SHA"
+NEW_SHA=$(git rev-parse FETCH_HEAD)
 
 if [ "$OLD_SHA" = "$NEW_SHA" ] && [ "$FORCE_ALL" -eq 0 ]; then
   echo "==> No new commits. Nothing to restart. (Use --force-all to override.)"
   exit 0
+fi
+
+echo "==> Incoming: $OLD_SHA → $NEW_SHA"
+if [ "$OLD_SHA" != "$NEW_SHA" ]; then
+  git log --oneline "$OLD_SHA..$NEW_SHA" | sed 's/^/    /'
+fi
+
+if [ "$DRY_RUN" -eq 0 ]; then
+  echo "==> git pull --ff-only origin main"
+  git pull --ff-only origin main
+  PULLED_SHA=$(git rev-parse HEAD)
+  if [ "$PULLED_SHA" != "$NEW_SHA" ]; then
+    echo "ERROR: pull 後 HEAD ($PULLED_SHA) 與 fetch 目標 ($NEW_SHA) 不符 — 中止。" >&2
+    exit 1
+  fi
+else
+  echo "==> Dry run: 不 pull（HEAD 保持 $OLD_SHA），以下計畫依 fetch 的內容推算"
 fi
 
 # --- decide which services need restart ---
@@ -145,7 +170,7 @@ fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
   echo
-  echo "==> Dry run; exiting without action."
+  echo "==> Dry run; exiting without action. (HEAD 未動，重跑不帶 --dry-run 才會實際 deploy)"
   exit 0
 fi
 
@@ -188,19 +213,43 @@ if [ "$fail" -ne 0 ]; then
 fi
 
 # --- post-deploy healthz check ---
+#
+# ⚠️ 必須重試等服務就緒。`systemctl restart` 只保證 process 被 spawn，**不保證
+# uvicorn 已經在 listen**（2026-07-30 實測差 5 秒：restart 11:01:48 →
+# `Uvicorn running` 11:01:53）。而連線被拒是**立即**回錯（curl exit 7、
+# `after 0 ms`），`--max-time` 完全用不到 → 舊版單次 curl 必落空 → `exit 4`
+# 宣告 deploy 失敗，**但 deploy 其實成功了**。
+# 假失敗比沒檢查更糟：它會讓人去追不存在的問題，或重跑一次 deploy。
+HEALTHZ_URL="${HEALTHZ_URL:-http://127.0.0.1:8000/healthz}"   # 可覆寫，供測試注入
+HEALTHZ_TIMEOUT="${HEALTHZ_TIMEOUT:-40}"                      # 總等待秒數上限
+
 if [ "${NEED[thousand-sunny]}" -eq 1 ]; then
   echo
-  echo "==> healthz check"
-  # Hit the origin directly — going through nakama.shosho.tw from the VPS itself
-  # triggers Cloudflare's bot challenge (VPS egress IP is flagged) and the
-  # JS-challenge HTML comes back instead of the healthz JSON.
-  if uptime=$(curl -fsS --max-time 10 http://127.0.0.1:8000/healthz | python3 -c 'import sys,json; print(json.load(sys.stdin)["uptime_seconds"])' 2>/dev/null); then
+  echo "==> healthz check（最多等 ${HEALTHZ_TIMEOUT}s）"
+  # 直打 origin — 從 VPS 自己走 nakama.shosho.tw 會觸發 Cloudflare bot
+  # challenge（VPS egress IP 被標記），回來的是 JS-challenge HTML 不是 healthz JSON。
+  uptime=""
+  waited=0
+  while :; do
+    if uptime=$(curl -fsS --max-time 5 "$HEALTHZ_URL" \
+        | python3 -c 'import sys,json; print(json.load(sys.stdin)["uptime_seconds"])' 2>/dev/null); then
+      break
+    fi
+    uptime=""
+    [ "$waited" -ge "$HEALTHZ_TIMEOUT" ] && break
+    sleep 2
+    waited=$((waited + 2))
+    echo "    等待服務就緒… ${waited}s"
+  done
+
+  if [ -n "$uptime" ]; then
     echo "    uptime_seconds=$uptime (should be small)"
     if [ "$uptime" -gt 120 ]; then
       echo "    WARN: uptime > 120s — restart may not have taken effect" >&2
     fi
   else
-    echo "    WARN: healthz check failed" >&2
+    echo "    ERROR: healthz 在 ${HEALTHZ_TIMEOUT}s 內沒起來（服務可能 crash loop）" >&2
+    echo "    查: journalctl -u thousand-sunny -n 50 --no-pager" >&2
     exit 4
   fi
 fi
