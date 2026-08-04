@@ -134,6 +134,15 @@ python .claude/skills/thumbnail-brainstorm/scripts/guest_cutout.py finalize \
 - `--brightness`：gamma 微抬到**臉亮度落 123–130** 目標帶（謝伯讓集來賓需 1.20）；
   線性乘法禁用。`--sharpen`：放大 >1.1× 時補軟化。
 - render 後**必看成品**：cutout 裁切/位置不對就調 crop 重出 — 一次迭代是常態。
+- **表情庫一次抽齊（v2.4，修修 2026-08-04）**：vision 挑格與 finalize 不要只
+  做本輪三個包用到的表情——host 與 guest 各自把 emotions.yml 常用值
+  （至少 serious／surprised／excited／laughing 四值）**同一輪、同一個裁切框**
+  全部 finalize 出來。理由：(1) 謝伯讓集 host 只落了兩種表情，pkg3 被迫與
+  pkg1 同臉；(2) 表情版 scale 繼承（layout_solve 規則 7）要求同尺寸裁切框——
+  事後補抽若裁切框不同，scale 就不可繼承，等於重做。
+- **cutout 定稿即量測**：每顆 finalize 完立刻建 `cutouts_manifest.json`
+  validated 條目＋精測地標（頭頂/眼/下巴 2x 網格精讀 + head_cols alpha bbox）
+  ——排版期零手工。
 
 ## Step 4 — render 3 張 PNG（設計系統 v1）
 
