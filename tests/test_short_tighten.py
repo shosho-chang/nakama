@@ -212,3 +212,60 @@ class TestMinCueDuration:
         units = [(0.0, 0.2, "短"), (0.5, 2.0, "這是一個很長的下一行文字")]
         out = _enforce_min_duration(units, 2.0)
         assert out[0][1] <= 0.5 + 1e-6
+
+
+# ── 長片格式（修修 2026-08-03：長片緊湊化刻意比短片鬆）─────────────────────
+
+
+def test_long_tighten_keeps_filler_and_backchannel():
+    from run_short_tighten import FORMAT_TIGHTEN
+
+    short, long_ = FORMAT_TIGHTEN["short"], FORMAT_TIGHTEN["long"]
+    assert short["cut_filler"] and short["cut_backchannel"]
+    # 長片保留連接詞與附和——那是訪談的自然感，不是贅肉
+    assert not long_["cut_filler"] and not long_["cut_backchannel"]
+    # 每個門檻都比短片鬆（實測依據見 FORMAT_TIGHTEN 註解）
+    for k in ("min_pause", "keep_head", "keep_tail", "min_cut", "min_keep_seg"):
+        assert long_[k] > short[k], k
+
+
+def test_long_keep_segments_absorbs_bigger_islands():
+    # 0.4s 孤島在短片是合法保留段，在長片（min_keep_seg=0.5）要被吸收
+    cuts = [_cut(2.0, 3.0), _cut(3.4, 5.0)]
+    assert _keep_segments(0.0, 10.0, cuts, 0.30) == [(0.0, 2.0), (3.0, 3.4), (5.0, 10.0)]
+    assert _keep_segments(0.0, 10.0, cuts, 0.50) == [(0.0, 2.0), (5.0, 10.0)]
+
+
+def test_passage_cut_needs_no_special_casing():
+    """語意刪段（kind=passage）走同一套補集運算，不必改 code。"""
+    cuts = [{"t0": 100.0, "t1": 160.0, "kind": "passage", "keep": True}]
+    assert _keep_segments(0.0, 300.0, cuts, 0.50) == [(0.0, 100.0), (160.0, 300.0)]
+
+
+def test_review_long_format_params():
+    """長片自檢：960×540、縮圖牆分段、缺口門檻放寬。"""
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent / "scripts"))
+    from run_short_review import FORMAT_REVIEW
+
+    short, long_ = FORMAT_REVIEW["short"], FORMAT_REVIEW["long"]
+    assert short["preview"] == (540, 960) and long_["preview"] == (960, 540)
+    assert short["chunk_sec"] is None  # 短片一張縮圖牆看得完
+    assert long_["chunk_sec"] == 180.0  # 752s 單張是 1800×7676px，盲審讀不到細節
+    assert long_["gap_sec"] > short["gap_sec"]  # 長片密度目標較低，同尺會誤判死區
+
+
+def test_titles_long_format_params():
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent / "scripts"))
+    from run_short_titles import FORMAT_TITLES
+
+    assert FORMAT_TITLES["short"]["comp"] == "punch_card.html"
+    assert FORMAT_TITLES["long"]["comp"] == "punch_card_wide.html"
+    # 16:9 有寬度沒高度 → 每行字數放寬
+    assert FORMAT_TITLES["long"]["max_line"] > FORMAT_TITLES["short"]["max_line"]
+    assert FORMAT_TITLES["long"]["max_line_hero"] > FORMAT_TITLES["short"]["max_line_hero"]

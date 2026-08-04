@@ -145,3 +145,57 @@ def test_scurve_expand_hold_segments_untouched():
 
     keys = _scurve_expand([(0.0, 1.15), (3.0, 1.15)], samples=7)
     assert keys == [(0.0, 1.15), (3.0, 1.15)]  # hold 段不取樣
+
+
+# ── 長片格式（修修 2026-08-03：Step 7 選項 B，從原始機位重導播）────────────
+
+
+def test_long_cfg_overrides_short_defaults(tmp_path):
+    from run_short_director import _load_cfg
+
+    short, long_ = _load_cfg(tmp_path, "short"), _load_cfg(tmp_path, "long")
+    assert short == DEFAULT_CFG  # 短片 = identity，已驗收行為不得漂移
+    assert long_["reframe"] is False and long_["zoom_base"] == 1.0
+    assert long_["opener_style"] == "wide" and long_["reaction_style"] == "alternate"
+    assert long_["fine_subs"] is False  # Q4b：長片只上 CC，細切會讓 CC 破碎
+    assert long_["face_x"] == DEFAULT_CFG["face_x"]  # 未覆蓋的沿用共通值
+
+
+def test_director_json_per_format_section(tmp_path):
+    import json as _json
+
+    from run_short_director import TIGHTEN_DIR, _load_cfg
+
+    d = tmp_path / TIGHTEN_DIR
+    d.mkdir(parents=True)
+    (d / "director.json").write_text(
+        _json.dumps({"face_x": {"0": 900, "1": 1100}, "long": {"min_shot": 2.5}}),
+        encoding="utf-8",
+    )
+    # 平鋪鍵套用到所有格式；分格式區塊只套到該格式
+    assert _load_cfg(tmp_path, "short")["face_x"] == {"0": 900, "1": 1100}
+    assert _load_cfg(tmp_path, "short")["min_shot"] == DEFAULT_CFG["min_shot"]
+    assert _load_cfg(tmp_path, "long")["min_shot"] == 2.5
+    assert _load_cfg(tmp_path, "long")["face_x"] == {"0": 900, "1": 1100}
+
+
+def test_long_reactions_alternate_listener_and_wide(tmp_path):
+    from run_short_director import _load_cfg
+
+    cfg = _load_cfg(tmp_path, "long")
+    # 60s 單人 run、reaction_every=12 → 多個反應鏡頭，交替切全景
+    words = _words((0, 60, 1, 120))
+    shots = build_shots([(0.0, 60.0)], words, cfg)
+    reactions = [s for s in shots if s.get("kind") == "reaction"]
+    assert len(reactions) >= 3
+    assert [r.get("cam") for r in reactions[:4]] == [None, "wide", None, "wide"]
+    assert all(r["spk"] == 0 for r in reactions)  # 聽者仍是另一人
+    assert all(s["zoom"] == 1.0 for s in shots)  # 長片滿幀，不裁切
+
+
+def test_short_reactions_never_use_wide(tmp_path):
+    from run_short_director import _load_cfg
+
+    words = _words((0, 60, 1, 120))
+    shots = build_shots([(0.0, 60.0)], words, _load_cfg(tmp_path, "short"))
+    assert [s for s in shots if s.get("cam") == "wide"] == []

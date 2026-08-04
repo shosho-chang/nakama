@@ -1,0 +1,277 @@
+<!-- nakama:component transition_title_wide（長片滿版轉場卡）
+
+     v4（修修 2026-08-04 五輪：「黑字被背景吃掉」「壓到臉」「沒有退場動畫」）。
+     原生 transition_title 的紙白底寫在 body/#root——hyperframes 出 alpha mov
+     時 root 背景被丟掉，上軌變成裸字壓實拍。此檔三個修正：
+
+     1. 滿版底改為「元素」而非 body 背景，才能進 alpha：
+        - style "paper" / "paper_hand"：HTML 維持透明，beige paper texture
+          motion bg 由 run_short_broll.py 以 ffmpeg 預合成疊在字卡下
+          （HTML 內嵌 <video> 在 hyperframes 渲染器不可靠）
+        - style "scrim"：滿版半透明暖灰 #scrim div（prores4444 半透明 alpha
+          直接上軌，實拍暗化透出）
+     2. 退場動畫：title 上滑出 + kicker/underline 收掉（原生註解「硬切」已廢）
+     3. show_sec 變數控制退場起點（timeline 放多長就傳多長）
+
+     paper_hand = paper + 橘手繪底線（同 punch_card_wide hero 的 WOBBLE 定值
+     序列——同 variables 同畫面，cache hash 才有效）。
+     位移全交 GSAP，元素不寫 CSS transform（concept_card 直式版血案）。 -->
+<!doctype html>
+<html
+  lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"kicker","type":"string","label":"章節序（如 01）","default":"01"},
+    {"id":"title","type":"string","label":"章節標題","default":"睡眠"},
+    {"id":"style","type":"string","label":"paper|paper_hand|scrim","default":"paper"},
+    {"id":"show_sec","type":"number","label":"顯示秒數（退場起點）","default":3.0}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 400;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Rg.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 700;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Bd.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 900;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Eb.woff2") format("woff2");
+      }
+
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        font-family: "LINE Seed TW", sans-serif;
+      }
+
+      /* scrim 底：暖深灰半透明，滿版蓋掉實拍（修修提案）。paper 系不渲染。 */
+      #scrim {
+        position: absolute;
+        inset: 0;
+        background: rgba(33, 30, 26, 0.78);
+        opacity: 0;
+        display: none;
+      }
+      .style-scrim #scrim { display: block; }
+
+      /* 字幕禁飛區：底部 200px 不放內容。置中（修修七輪：滿版樣式 OK 但要置中） */
+      .stage {
+        position: absolute;
+        inset: 0 160px 200px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 36px;
+      }
+
+      .kicker-row { display: flex; align-items: center; gap: 24px; }
+      .kicker-bar {
+        width: 0;
+        height: 12px;
+        background: #e98965;              /* PANTONE 165 */
+        border-radius: 6px;
+        will-change: width;
+      }
+      .kicker {
+        font-size: 52px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        opacity: 0;
+        will-change: transform, opacity;
+      }
+      .style-paper .kicker, .style-paper_hand .kicker { color: #6f6a62; }
+      .style-scrim .kicker { color: rgba(246, 244, 241, 0.72); }
+
+      .title-clip { overflow: hidden; padding-bottom: 0.08em; }
+      .title {
+        font-size: 168px;
+        font-weight: 900;
+        line-height: 1.12;
+        letter-spacing: 0.01em;
+        max-width: 1600px;
+        text-align: center;
+        will-change: transform;
+      }
+      .title.long { font-size: 128px; }
+      .style-paper .title, .style-paper_hand .title { color: #1c1915; }
+      .style-scrim .title { color: #f6f4f1; }
+
+      /* paper / scrim 用直橘槓；paper_hand 換手繪 SVG */
+      .underline {
+        width: 0;
+        height: 16px;
+        margin-top: 8px;
+        background: #e98965;
+        border-radius: 8px;
+        will-change: width;
+      }
+      .style-paper_hand .underline { display: none; }
+      .style-paper_hand .kicker-bar { display: none; }
+      .uline {
+        display: block;
+        height: 26px;
+        margin-top: 4px;
+        overflow: visible;
+      }
+      .kbar-svg {
+        display: block;
+        width: 96px;
+        height: 18px;
+        overflow: visible;
+      }
+      .uline path,
+      .kbar-svg path {
+        fill: none;
+        stroke: #e98965;
+        stroke-linecap: round;
+      }
+      .uline path { stroke-width: 9; }
+      .kbar-svg path { stroke-width: 8; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="transition_title_wide"
+      data-root="true"
+      data-start="0"
+      data-duration="4"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scrim"></div>
+      <div class="stage">
+        <div class="kicker-row">
+          <div id="kickerBar" class="kicker-bar"></div>
+          <div id="kicker" class="kicker">01</div>
+        </div>
+        <div class="title-clip">
+          <div id="title" class="title">睡眠</div>
+        </div>
+        <div id="underline" class="underline"></div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      const vars =
+        (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const style = ["paper", "paper_hand", "scrim"].includes(vars.style)
+        ? vars.style
+        : "paper";
+      const showSec = Math.max(1.2, Number(vars.show_sec ?? 3.0));
+      document.getElementById("root").classList.add(`style-${style}`);
+
+      const titleText = vars.title ?? "睡眠";
+      document.getElementById("kicker").textContent = vars.kicker ?? "01";
+      const titleEl = document.getElementById("title");
+      titleEl.textContent = titleText;
+      if (titleText.length > 9) titleEl.classList.add("long");
+
+      const tl = gsap.timeline({
+        paused: true,
+        defaults: { ease: "power3.out", overwrite: "auto" },
+      });
+
+      // ── 進場 ──
+      if (style === "scrim") tl.to("#scrim", { opacity: 1, duration: 0.32, ease: "power2.out" }, 0);
+      let kbarPath = null;
+      if (style === "paper_hand") {
+        // 修修六輪：kicker 短槓也要手繪——短版單段 cubic 描邊
+        const ksvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        ksvg.setAttribute("class", "kbar-svg");
+        ksvg.setAttribute("viewBox", "0 0 100 22");
+        ksvg.setAttribute("preserveAspectRatio", "none");
+        kbarPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        kbarPath.setAttribute("d", "M3,12 C 30,9.5 62,14 97,11");
+        ksvg.appendChild(kbarPath);
+        document.getElementById("kickerBar").after(ksvg);
+        const klen = kbarPath.getTotalLength();
+        kbarPath.style.strokeDasharray = `${klen}`;
+        kbarPath.style.strokeDashoffset = `${klen}`;
+        tl.to(kbarPath, { strokeDashoffset: 0, duration: 0.32, ease: "power2.inOut" }, 0.08);
+      } else {
+        tl.to("#kickerBar", { width: 96, duration: 0.35 }, 0.08);
+      }
+      tl.fromTo(
+        "#kicker",
+        { x: -18, opacity: 0 },
+        { x: 0, opacity: 1, duration: 0.4, ease: "power2.out" },
+        0.18
+      );
+      tl.fromTo(
+        "#title",
+        { yPercent: 108 },
+        { yPercent: 0, duration: 0.55, ease: "power4.out" },
+        0.26
+      );
+
+      if (style === "paper_hand") {
+        // 手繪底線：WOBBLE 定值序列（同 punch_card_wide hero），描邊由左畫到右。
+        // 長度＝字寬（修修六輪：「跟字等長才像畫線」）——用字數×字級算，
+        // 不量 DOM（字型載入時序在 hyperframes capture 下不可靠）
+        const fontPx = titleText.length > 9 ? 128 : 168;
+        const lineW = Math.round(titleText.length * fontPx * 1.01);
+        const WOBBLE = [3, -2, 4, -3, 1, -4, 3, -1, 2, -3, 4, -2];
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("class", "uline");
+        svg.setAttribute("viewBox", "0 0 100 22");
+        svg.setAttribute("preserveAspectRatio", "none");
+        svg.style.width = `${lineW}px`;
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        const w = WOBBLE.map((v, i) => v * (i % 2 ? 1 : -1) * 0.7);
+        path.setAttribute(
+          "d",
+          `M2,${11 + w[0]} C 18,${8 + w[1]} 30,${15 + w[2]} 46,${11 + w[3]}` +
+            ` S 62,${8 + w[4]} 74,${12 + w[5]} S 90,${14 + w[6]} 98,${12 + w[7]}`
+        );
+        svg.appendChild(path);
+        document.getElementById("underline").after(svg);
+        const len = path.getTotalLength();
+        path.style.strokeDasharray = `${len}`;
+        path.style.strokeDashoffset = `${len}`;
+        tl.to(path, { strokeDashoffset: 0, duration: 0.5, ease: "power2.inOut" }, 0.66);
+      } else {
+        tl.to("#underline", { width: 420, duration: 0.45 }, 0.6);
+      }
+
+      // ── 退場（修修五輪：「直接消失很不好」）：title 上滑出、其餘收掉 ──
+      const outAt = Math.max(0.9, showSec - 0.45);
+      tl.to("#title", { yPercent: -112, duration: 0.4, ease: "power3.in" }, outAt);
+      tl.to(
+        "#kicker",
+        { opacity: 0, x: -14, duration: 0.3, ease: "power2.in" },
+        outAt + 0.05
+      );
+      tl.to("#kickerBar", { width: 0, duration: 0.3, ease: "power2.in" }, outAt + 0.05);
+      if (style === "paper_hand") {
+        tl.to(".uline path", { opacity: 0, duration: 0.28, ease: "power2.in" }, outAt + 0.08);
+      } else {
+        tl.to("#underline", { opacity: 0, duration: 0.28, ease: "power2.in" }, outAt + 0.08);
+      }
+      if (style === "scrim") {
+        tl.to("#scrim", { opacity: 0, duration: 0.32, ease: "power2.in" }, showSec - 0.32);
+      }
+
+      window.__timelines["transition_title_wide"] = tl;
+    </script>
+  </body>
+</html>

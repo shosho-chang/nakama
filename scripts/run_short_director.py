@@ -51,6 +51,7 @@ logger = logging.getLogger("short_director")
 # 臉部座標校一次全集通用。換集若座標不同，寫 highlights/tighten/director.json 覆蓋）
 DEFAULT_CFG = {
     "cams": {"0": "1_CAMERA 1.mp4", "1": "2_CAMERA 2.mp4"},
+    "wide_cam": "3_CAMERA 3.mp4",  # 兩人全景（修修 2026-08-03 確認；CAM4-6 不用）
     "face_x": {"0": 880, "1": 1165},  # 1920 寬源片的臉部中心 x
     "zoom_base": 3.2,  # 16:9 → 9:16 滿高（3.16）+ 一點餘裕
     "punch_scale": 1.25,  # punch 放大倍率（七輪：1.15 不夠 dramatic）
@@ -61,16 +62,57 @@ DEFAULT_CFG = {
     "reaction_sec": 1.8,  # 反應鏡頭長度（點頭畫面，audio 不斷）
     "punch_ramp_sec": 0.25,  # speed-ramp zoom 秒數（十四輪：0.5 太慢、0.2 略衝，0.25 定版）
     "face_y": {"0": 330, "1": 330},  # 1080 高源片的眼線 y（punch zoom 鎖臉用）
+    "reframe": True,  # 逐 shot 裁切重構圖（16:9 源 → 9:16）；長片關掉用滿幀
+    "opener_style": "split",  # split=上下分割雙人 / wide=全景機位
+    "reaction_style": "listener",  # listener=只切聽者 / alternate=聽者與全景交替
+    "fine_subs": True,  # 字幕細切成呼吸單元
+}
+
+# 長片覆蓋（修修 2026-08-03 裁決：Step 7 走選項 B，從原始機位重導播）。
+#
+# 與短片的三個結構差異：
+# 1. **不裁切**：16:9 源進 16:9 timeline，機位本身就是單人中景，滿幀直上。
+#    短片那套 zoom 3.2 + Pan 鎖臉是為了把橫幅擠進直式，長片沒有這個問題。
+# 2. **全景機位（CAM3）派上用場**：開場用全景建立「這是一場對談」，
+#    反應鏡頭與聽者特寫交替——短片沒有全景可用，只能合成上下分割。
+# 3. **字幕不細切**：長片依 Q4b 裁決不燒字幕、只上 CC
+#    （docs/plans/2026-07-26-video-publishing-plan.md §Q4b），
+#    CC 由 YouTube 自己排版，切成 8 字反而讓 CC 破碎難讀。
+#
+# 節奏放慢的依據同 tighten：剪輯文法 §1.1（A-roll p50 6.0s 已達標）
+# 與建議 7（反 over-editing）。min_shot 1.5s、反應鏡頭每 12s 一次。
+FORMAT_CFG = {
+    "short": {},  # identity——短片行為與四支已驗收版本完全一致
+    "long": {
+        "zoom_base": 1.0,
+        "reframe": False,
+        "min_shot": 1.5,
+        "opener_sec": 5.0,
+        "opener_style": "wide",
+        "reaction_every": 12.0,
+        "reaction_sec": 2.0,
+        "reaction_style": "alternate",
+        "fine_subs": False,
+    },
 }
 SRC_W = 1920
 FIT = 1080 / 1920  # 16:9 源在 1080 寬 timeline 的 fit 縮放
 
 
-def _load_cfg(episode_dir: Path) -> dict:
+def _load_cfg(episode_dir: Path, fmt: str = "short") -> dict:
+    """格式預設 → episode 覆蓋。
+
+    `director.json` 可以是平鋪（套用到所有格式，維持既有慣例）或依格式
+    分層 `{"long": {...}, "short": {...}}`——換集校準時長短片的 face_x
+    共用、但節奏參數可能要分開調。
+    """
     override = episode_dir / TIGHTEN_DIR / "director.json"
-    cfg = dict(DEFAULT_CFG)
+    cfg = {**DEFAULT_CFG, **FORMAT_CFG.get(fmt, {})}
     if override.exists():
-        cfg.update(json.loads(override.read_text(encoding="utf-8")))
+        raw = json.loads(override.read_text(encoding="utf-8"))
+        per_fmt = {k: v for k, v in raw.items() if k in FORMAT_CFG}
+        cfg.update({k: v for k, v in raw.items() if k not in FORMAT_CFG})
+        cfg.update(per_fmt.get(fmt, {}))
     return cfg
 
 
@@ -211,6 +253,16 @@ def build_shots(
     # zoom 全部 base——punch 改內容驅動 speed-ramp（_apply_punch_zooms）
     for sh in shots:
         sh["zoom"] = cfg["zoom_base"]
+    # 反應鏡頭配鏡：短片只有兩個機位可用，一律切聽者特寫；長片有全景，
+    # 改成「聽者特寫 / 全景」交替——定期讓觀眾看見兩人的相對關係，
+    # 也避免 12 分鐘一路只在兩張臉之間乒乓。
+    if cfg.get("reaction_style") == "alternate":
+        n = 0
+        for sh in shots:
+            if sh.get("kind") == "reaction":
+                if n % 2 == 1:
+                    sh["cam"] = "wide"
+                n += 1
     return shots
 
 
@@ -337,18 +389,20 @@ end)
 def direct(
     episode_dir: Path, cid: str, stills_dir: Path | None = None, opener: bool = True
 ) -> dict:
-    from build_resolve_project import _template_path_short, connect_resolve
+    from build_resolve_project import _template_path, _template_path_short, connect_resolve
+    from run_short_tighten import FORMAT_TIGHTEN
 
     c, w = _load_winner(episode_dir, cid)
+    fmt = c.get("format", "short")
     t0, t1 = float(c["t_start"]), float(c["t_end"])
-    cfg = _load_cfg(episode_dir)
+    cfg = _load_cfg(episode_dir, fmt)
     cuts_path = episode_dir / TIGHTEN_DIR / f"{cid}_cuts.json"
     if not cuts_path.exists():
         raise SystemExit(f"{cuts_path} 不存在——先跑 run_short_tighten --detect + 複審")
     cuts = json.loads(cuts_path.read_text(encoding="utf-8"))["cuts"]
     if any(x.get("keep") is None for x in cuts):
         raise SystemExit("cuts.json 有未複審項（keep=null）——先複審")
-    segs = _keep_segments(t0, t1, cuts)
+    segs = _keep_segments(t0, t1, cuts, FORMAT_TIGHTEN[fmt]["min_keep_seg"])
     words = _word_speakers(episode_dir, t0, t1)
     shots = build_shots(segs, words, cfg)
 
@@ -384,8 +438,10 @@ def direct(
     cams_bin = next((f for f in root.GetSubFolderList() if f.GetName() == "Cams"), None)
     if cams_bin:
         clips.update({(x.GetName() or ""): x for x in (cams_bin.GetClipList() or [])})
-    cam_items: dict[int, object] = {}
-    for spk, fname in cfg["cams"].items():
+    cam_items: dict[int | str, object] = {}
+
+    def _cam(fname: str):
+        nonlocal cams_bin
         if fname not in clips:
             if cams_bin is None:
                 cams_bin = mp.AddSubFolder(root, "Cams")
@@ -395,7 +451,14 @@ def direct(
             if not imported:
                 raise SystemExit(f"機位匯入失敗: {fname}")
             clips[fname] = imported[0]
-        cam_items[int(spk)] = clips[fname]
+        return clips[fname]
+
+    for spk, fname in cfg["cams"].items():
+        cam_items[int(spk)] = _cam(fname)
+    # 全景機位只在真的用得到時才匯入（短片不用，別白白拖一支 12GB 進 pool）
+    needs_wide = cfg.get("opener_style") == "wide" or cfg.get("reaction_style") == "alternate"
+    if needs_wide:
+        cam_items["wide"] = _cam(cfg["wide_cam"])
     aud = clips.get("normalized.wav")
 
     label = f"{FORMAT_LABEL[c['format']]}{w['rank']} - {c['title']}（緊·導播）"
@@ -411,7 +474,7 @@ def direct(
         (f for f in root.GetSubFolderList() if f.GetName() == "Highlights"), None
     ) or mp.AddSubFolder(root, "Highlights")
     mp.SetCurrentFolder(hbin)
-    template = _template_path_short()
+    template = _template_path_short() if fmt == "short" else _template_path()
     tl = None
     if template.exists():
         tl = mp.ImportTimelineFromFile(str(template), {})
@@ -424,9 +487,10 @@ def direct(
     if tl is None:
         raise SystemExit(f"timeline 建立失敗: {label}")
     project.SetCurrentTimeline(tl)
-    tl.SetSetting("useCustomSettings", "1")
-    tl.SetSetting("timelineResolutionWidth", "1080")
-    tl.SetSetting("timelineResolutionHeight", "1920")
+    if fmt == "short":  # 長片維持 project 的 16:9 設定，不覆寫
+        tl.SetSetting("useCustomSettings", "1")
+        tl.SetSetting("timelineResolutionWidth", "1080")
+        tl.SetSetting("timelineResolutionHeight", "1920")
     if tl.GetTrackCount("subtitle") == 0:
         tl.AddTrack("subtitle")
 
@@ -447,10 +511,15 @@ def direct(
         return (tl.GetItemListInTrack("video", track) or [])[-1]
 
     tl_start = tl.GetStartFrame()
-    # opener 下半 panel（修修）先落 track1 開頭，後續 shot 順序接在其後
+    split_opener = opener_span is not None and cfg.get("opener_style") == "split"
+    # opener：短片走上下分割（下半 = 修修，先落 track1 開頭，上半後補 track2）；
+    # 長片直接用全景機位一顆——16:9 本來就裝得下兩個人，不必合成
     if opener_span:
         f0, f1 = int(opener_span[0] * fps), int(opener_span[1] * fps)
-        _set_props(_append_video(cam_items[0], f0, f1), _panel_props(cfg, 0, top=False))
+        if split_opener:
+            _set_props(_append_video(cam_items[0], f0, f1), _panel_props(cfg, 0, top=False))
+        else:
+            _append_video(cam_items["wide"], f0, f1)
 
     # video：逐 shot 上軌 + 逐 item 設 transform（fit 縮放後 ZoomX/Pan）
     appended: list[dict] = []
@@ -461,11 +530,15 @@ def direct(
         f0, f1 = int(sh["s"] * fps), int(sh["e"] * fps)
         if f1 <= f0:
             continue
-        item = _append_video(cam_items[sh["spk"]], f0, f1)
-        _set_props(
-            item,
-            {"ZoomX": sh["zoom"], "ZoomY": sh["zoom"], "Pan": _pan(cfg, sh["spk"], sh["zoom"])},
-        )
+        src = cam_items["wide"] if sh.get("cam") == "wide" else cam_items[sh["spk"]]
+        item = _append_video(src, f0, f1)
+        # reframe=False（長片）：16:9 源進 16:9 timeline，滿幀直上不動 transform。
+        # 全景 shot 任何格式都不重構圖——把兩人裁掉就失去用全景的意義。
+        if cfg.get("reframe", True) and sh.get("cam") != "wide":
+            _set_props(
+                item,
+                {"ZoomX": sh["zoom"], "ZoomY": sh["zoom"], "Pan": _pan(cfg, sh["spk"], sh["zoom"])},
+            )
         appended.append(
             {
                 "item": item,
@@ -485,7 +558,7 @@ def direct(
         n_punch = _apply_punch_zooms(appended, punches, fps, cfg)
 
     # opener 上半 panel（來賓）：track2、recordFrame 對齊 timeline 開頭
-    if opener_span:
+    if split_opener:
         if tl.GetTrackCount("video") < 2:
             tl.AddTrack("video")
         f0, f1 = int(opener_span[0] * fps), int(opener_span[1] * fps)
@@ -514,7 +587,7 @@ def direct(
         offset_frames += f1 - f0
 
     mp.SetCurrentFolder(root)
-    seg_srt, n_cues = _retime_srt(episode_dir, cid, segs, cuts, fine=True)
+    seg_srt, n_cues = _retime_srt(episode_dir, cid, segs, cuts, fine=cfg["fine_subs"])
     srt_items = import_srt_tidy(mp, root, seg_srt)
     sub_ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
     pm.SaveProject()
@@ -527,13 +600,88 @@ def direct(
     n_switch = sum(1 for i in range(1, len(shots)) if shots[i]["spk"] != shots[i - 1]["spk"])
     return {
         "status": "directed",
+        "format": fmt,
         "timeline": label,
         "shots": len(shots),
+        "wide_shots": sum(1 for s in shots if s.get("cam") == "wide"),
         "cam_switches": n_switch,
         "punch_ramps": n_punch,
         "subtitles": sub_ok,
         "cues": n_cues,
         "stills": stills,
+    }
+
+
+def refresh_subs(episode_dir: Path, cid: str) -> dict:
+    """（緊·導播）timeline **只換字幕軌，不動剪輯**。
+
+    用途：修修在 Resolve 上手動微調過剪輯（最常見的是把段尾拉長讓句子講完）
+    之後，字幕還停在原本的模型長度。重跑 director 會整條重建、洗掉手改，
+    所以只換字幕。
+
+    **timeline 比模型長 = 修修把尾段拉長了**——把 delta 加回最後一個保留段，
+    重新對時，尾巴那幾句才有 CC。長片依 Q4b 不燒字幕只上 CC，缺這段等於
+    上架的字幕檔少一句。
+    """
+    from build_resolve_project import connect_resolve
+    from run_short_tighten import FORMAT_TIGHTEN
+
+    c, w = _load_winner(episode_dir, cid)
+    fmt = c.get("format", "short")
+    cfg = _load_cfg(episode_dir, fmt)
+    t0, t1 = float(c["t_start"]), float(c["t_end"])
+    cuts = json.loads((episode_dir / TIGHTEN_DIR / f"{cid}_cuts.json").read_text(encoding="utf-8"))[
+        "cuts"
+    ]
+    segs = _keep_segments(t0, t1, cuts, FORMAT_TIGHTEN[fmt]["min_keep_seg"])
+
+    resolve = connect_resolve()
+    pm = resolve.GetProjectManager()
+    project = pm.GetCurrentProject()
+    if project is None or project.GetName() != episode_dir.name:
+        project = pm.LoadProject(episode_dir.name)
+    if project is None:
+        raise SystemExit(f"project「{episode_dir.name}」不存在")
+    fps = float(project.GetSetting("timelineFrameRate"))
+    mp = project.GetMediaPool()
+    root = mp.GetRootFolder()
+
+    label = f"{FORMAT_LABEL[fmt]}{w['rank']} - {c['title']}（緊·導播）"
+    tl = next(
+        (
+            t
+            for i in range(1, project.GetTimelineCount() + 1)
+            if (t := project.GetTimelineByIndex(i)) and t.GetName() == label
+        ),
+        None,
+    )
+    if tl is None:
+        raise SystemExit(f"timeline「{label}」不存在——先跑一次 director")
+
+    model_dur = sum(e - s for s, e in segs)
+    actual_dur = (tl.GetEndFrame() - tl.GetStartFrame() + 1) / fps
+    delta = actual_dur - model_dur
+    if delta > 1.0 / fps:  # 一幀以上才算手改，浮點誤差不算
+        segs = segs[:-1] + [(segs[-1][0], segs[-1][1] + delta)]
+        logger.info(f"timeline 比模型長 {delta:.2f}s——尾段延長後重對時（修修手改）")
+    elif delta < -1.0 / fps:
+        logger.warning(f"timeline 比模型短 {-delta:.2f}s——尾端字幕會被截，請確認手改內容")
+
+    project.SetCurrentTimeline(tl)
+    for ti in range(1, tl.GetTrackCount("subtitle") + 1):
+        items = tl.GetItemListInTrack("subtitle", ti) or []
+        if items:
+            tl.DeleteClips(items)
+    seg_srt, n_cues = _retime_srt(episode_dir, cid, segs, cuts, fine=cfg["fine_subs"])
+    srt_items = import_srt_tidy(mp, root, seg_srt)
+    ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
+    pm.SaveProject()
+    return {
+        "status": "subs-refreshed" if ok else "append-failed",
+        "timeline": label,
+        "manual_tail_delta_sec": round(delta, 2),
+        "srt": str(seg_srt),
+        "cues": n_cues,
     }
 
 
@@ -566,11 +714,14 @@ def _grab_stills(
             jobs.append((jid, "opener"))
     for sh in shots:
         dur = int(sh["e"] * fps) - int(sh["s"] * fps)
-        key = (sh["spk"], sh["zoom"])
+        cam = sh.get("cam", "spk")
+        # 長片的 zoom 全是 1.0，只用（spk, zoom）當 key 會只抽到兩張——
+        # 把機位與 shot 類型也納入，talk / reaction / 全景各有樣張可驗
+        key = (sh["spk"], sh["zoom"], cam, sh.get("kind", "talk"))
         if key not in seen and dur > int(fps):
             seen.add(key)
             frame = tl_start + offset + dur // 2
-            prefix = f"spk{sh['spk']}_z{sh['zoom']:.2f}"
+            prefix = f"{cam}{sh['spk']}_{sh.get('kind', 'talk')}_z{sh['zoom']:.2f}"
             project.SetRenderSettings(
                 {
                     "MarkIn": frame,
@@ -616,7 +767,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--id", required=True, help="winner id（如 punch-S1）")
     parser.add_argument("--stills", help="物化後抓樣張到此資料夾（agent 校驗構圖）")
     parser.add_argument("--no-opener", action="store_true", help="不做開場上下分割")
+    parser.add_argument(
+        "--refresh-subs",
+        action="store_true",
+        help="只換（緊·導播）的字幕軌，不重建 timeline（修修手改剪輯後用）",
+    )
     args = parser.parse_args(argv)
+    if args.refresh_subs:
+        print(json.dumps(refresh_subs(Path(args.episode), args.id), ensure_ascii=False, indent=1))
+        return 0
     result = direct(
         Path(args.episode),
         args.id,

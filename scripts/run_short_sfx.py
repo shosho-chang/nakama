@@ -93,7 +93,12 @@ def build_cues(episode_dir: Path, cid: str) -> list[dict]:
                 if len(it.get("stickers", [])) > 1:
                     cues.append({"t": t0 + 0.18, "sfx": "pop", "prio": 3, "ev": ev})
             elif it["kind"] == "concept":
-                cues.append({"t": t0, "sfx": "pop", "prio": 3, "ev": ev})
+                # 章節籤（長片證據驅動語彙）是導航記號不是重點——輕掃 swish；
+                # 概念卡維持 pop
+                if it.get("comp") in ("chapter_label", "transition_title"):
+                    cues.append({"t": t0, "sfx": "swish", "prio": 2, "ev": ev})
+                else:
+                    cues.append({"t": t0, "sfx": "pop", "prio": 3, "ev": ev})
             # video / photo 切出**不配音效**（修修二十二輪：「進 B-roll 前那個
             # 小音效不知道作用是什麼，可以拿掉」）——畫面切換本身就是訊號，
             # 額外的 swish 只是噪音。B-roll 要聲音就走 sound.json 的 ambient

@@ -60,13 +60,50 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 COMPS = {
     "sticker_pair": REPO_ROOT / "video" / "compositions" / "sticker_pair",
     "concept_card": REPO_ROOT / "video" / "compositions" / "concept_card",
+    # 章節籤（修修 2026-08-04 grill：長片證據驅動語彙）——長片專屬，
+    # 只有 *_wide.html；短片誤用會在 _card_hash 讀檔時 fail loud
+    "chapter_label": REPO_ROOT / "video" / "compositions" / "chapter_label",
+    # 滿版章節轉場（Brook script_video 既有 composition，原生 1920×1080——
+    # 檔名沒有 _wide，走 _comp_file 的 fallback）
+    "transition_title": REPO_ROOT / "video" / "compositions" / "transition_title",
 }
+
+
+def _comp_file(comp: str, suffix: str) -> str:
+    """composition 檔名解析：優先 {comp}{suffix}.html；不存在時退回 {comp}.html
+    （原生 16:9 的 Brook composition 如 transition_title 沒有 _wide 變體）。"""
+    if (COMPS[comp] / "compositions" / f"{comp}{suffix}.html").exists():
+        return f"{comp}{suffix}.html"
+    return f"{comp}.html"
+
+
 CARDS_DIR = "highlights/tighten/cards"
 BROLL_TRACK = 2
 CARD_TRACK = 4
+# 品牌 badge loop（修修 2026-08-04：左下角 logo 小動畫，全片循環）——
+# 預合成好的 16:9 alpha 短 loop（ffmpeg scale+pad 定位，不靠 Resolve
+# transform 的座標換算），逐 loop 鋪滿 timeline
+BADGE_TRACK = 5
 CANVAS_W, CANVAS_H = 1080, 1920
+# 格式參數（修修 2026-08-03 長片線）。短片欄 = 既有已驗收值。
+# 長片畫布 16:9，貼紙/概念卡走 *_wide composition。
+FORMAT_BROLL = {
+    "short": {"canvas": (1080, 1920), "comp_suffix": ""},
+    "long": {"canvas": (1920, 1080), "comp_suffix": "_wide"},
+}
 # composition data-duration 上限（進場+待機+退場都要收在裡面）
-COMP_MAX_SEC = {"sticker_pair": 8.0, "concept_card": 6.0}
+COMP_MAX_SEC = {
+    "sticker_pair": 8.0,
+    "concept_card": 6.0,
+    "chapter_label": 8.0,
+    "transition_title": 4.0,
+}  # _wide 版 data-duration 4s、show_sec 控退場
+# 滿版紙紋底（修修 2026-08-04 B2 定版）：transition_title 的 paper 系是透明
+# 字卡，疊 beige paper texture motion bg 預合成成滿版——滿版蓋掉畫面，字
+# 才不壓臉（HTML 內嵌 <video> 在 hyperframes 渲染器不可靠，texture 走 ffmpeg）。
+# 源：E:\data\subtle-animated-beige-paper-texture-background-loo-…mov（修修抓的
+# Envato 素材，預縮 1080p 落 episode assets）。scrim style 自帶半透明底、不合成。
+PAPER_TEXTURE = "paper-texture.mp4"
 KENBURNS_SCALE = 1.06  # photo 慢推幅度（波旬語彙：照片不能死著）
 
 
@@ -75,29 +112,81 @@ def _data_uri(path: Path) -> str:
     return f"data:{mime};base64,{base64.b64encode(path.read_bytes()).decode('ascii')}"
 
 
-def _card_hash(comp: str, variables: dict) -> str:
+def _card_hash(comp: str, variables: dict, suffix: str = "") -> str:
+    """comp = composition 目錄鍵；suffix = 畫幅變體（長片 "_wide"，同目錄不同檔）。"""
     comp_digest = hashlib.md5(
-        (COMPS[comp] / "compositions" / f"{comp}.html").read_bytes()
+        (COMPS[comp] / "compositions" / _comp_file(comp, suffix)).read_bytes()
     ).hexdigest()[:8]
-    payload = json.dumps(variables, ensure_ascii=False, sort_keys=True) + comp_digest
+    payload = json.dumps(variables, ensure_ascii=False, sort_keys=True) + suffix + comp_digest
     return hashlib.md5(payload.encode("utf-8")).hexdigest()[:10]
 
 
-def _render_card(comp: str, variables: dict, out_path: Path) -> None:
+def _render_card(comp: str, variables: dict, out_path: Path, suffix: str = "") -> None:
     """npx hyperframes render → ProRes 4444 alpha（Windows 走 --variables-file）。"""
     vars_file = out_path.with_suffix(".vars.json")
     vars_file.write_text(json.dumps(variables, ensure_ascii=False, indent=1), encoding="utf-8")
     cmd = (
-        f"npx --yes hyperframes@0.7.72 render . -c compositions/{comp}.html "
+        f"npx --yes hyperframes@0.7.72 render . -c compositions/{_comp_file(comp, suffix)} "
         f'-o "{out_path}" --format mov -q standard --quiet --no-browser-gpu '
         f'--variables-file "{vars_file}"'
     )
     logger.info("render %s: %s", comp, out_path.name)
+    for attempt in (1, 2):
+        proc = subprocess.run(
+            cmd, shell=True, cwd=str(COMPS[comp]), capture_output=True, text=True, encoding="utf-8"
+        )
+        if proc.returncode == 0 and out_path.exists():
+            return
+        # 連續多次 render 後偶發空 stderr 失敗（2026-08-04 兩輪實測皆在第 5 次
+        # 連續 render 掛），非內容問題——冷卻後重試一次
+        logger.warning("hyperframes render 失敗（第 %d 次），重試…", attempt)
+        time.sleep(5)
+    raise SystemExit(f"hyperframes render 失敗×2: {(proc.stderr or '')[-400:]}")
+
+
+def _composite_texture(
+    card_mov: Path, tex: Path, out_path: Path, show_sec: float, card_sec: float
+) -> None:
+    """透明字卡疊滿版紙紋底 → prores4444。texture alpha fade 進退場透出實拍。
+
+    峰值 alpha 0.92（修修七輪：「白色的背景稍微變成半透明」）——滿版期間
+    隱約透出實拍，與名牌/hero 的半透明紙白卡同一套材質語彙。"""
+    fade_out = max(0.4, show_sec - 0.32)
+    fc = (
+        "[0:v]fps=30,format=yuva420p,colorchannelmixer=aa=0.92,"
+        f"fade=t=in:st=0:d=0.32:alpha=1,fade=t=out:st={fade_out:.2f}:d=0.32:alpha=1[tex];"
+        "[tex][1:v]overlay=0:0,format=yuva444p10le"
+    )
     proc = subprocess.run(
-        cmd, shell=True, cwd=str(COMPS[comp]), capture_output=True, text=True, encoding="utf-8"
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-stream_loop",
+            "-1",
+            "-i",
+            str(tex),
+            "-i",
+            str(card_mov),
+            "-filter_complex",
+            fc,
+            "-t",
+            f"{card_sec:.2f}",
+            "-c:v",
+            "prores_ks",
+            "-profile:v",
+            "4444",
+            "-pix_fmt",
+            "yuva444p10le",
+            str(out_path),
+        ],
+        capture_output=True,
+        text=True,
     )
     if proc.returncode != 0 or not out_path.exists():
-        raise SystemExit(f"hyperframes render 失敗: {(proc.stderr or '')[-400:]}")
+        raise SystemExit(f"紙紋底合成失敗: {(proc.stderr or '')[-300:]}")
 
 
 def _probe_meta(path: Path) -> tuple[float, float]:
@@ -148,15 +237,44 @@ def _probe_meta(path: Path) -> tuple[float, float]:
     return sar, fps
 
 
-def _fill_zoom(res: str, sar: float = 1.0) -> float:
-    """素材解析度 "WxH"（+SAR）→ 填滿 1080×1920 的 Zoom 倍率（Resolve 先 fit 再 zoom）。"""
+def _probe_dur(path: Path) -> float:
+    """ffprobe 取影片長度（秒）——badge loop 鋪軌用；失敗回 4.0（badge 慣例長度）。"""
+    try:
+        out = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "csv=p=0",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        ).stdout.strip()
+        return float(out)
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return 4.0
+
+
+def _fill_zoom(res: str, sar: float = 1.0, canvas: tuple[int, int] | None = None) -> float:
+    """素材解析度 "WxH"（+SAR）→ 填滿畫布的 Zoom 倍率（Resolve 先 fit 再 zoom）。
+
+    ⚠️ 長片（16:9 畫布）餵直式素材時倍率會衝到 ~3.16——那不是壞掉，是
+    「只看得到直式素材中間那條橫帶」。短片線下載的 stock 全是 Vertical
+    取向，拿來鋪長片必須逐支看 `--stills` 確認裁完主體還在。
+    """
+    cw, ch = canvas or (CANVAS_W, CANVAS_H)
     try:
         w, h = (int(x) for x in res.split("x"))
     except (ValueError, AttributeError):
         return 1.0
     w = w * (sar if sar > 0 else 1.0)  # 顯示寬度
-    fit = min(CANVAS_W / w, CANVAS_H / h)
-    return max(CANVAS_W / (w * fit), CANVAS_H / (h * fit))
+    fit = min(cw / w, ch / h)
+    return max(cw / (w * fit), ch / (h * fit))
 
 
 def _ken_burns(item, span_sec: float, fps: float, zoom_hi: float) -> bool:
@@ -186,6 +304,10 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     from build_resolve_project import connect_resolve
 
     c, w = _load_winner(episode_dir, cid)
+    fmt = c.get("format", "short")
+    fcfg = FORMAT_BROLL[fmt]
+    canvas = tuple(fcfg["canvas"])
+    suffix = fcfg["comp_suffix"]
     broll_path = episode_dir / TIGHTEN_DIR / f"{cid}_broll.json"
     if not broll_path.exists():
         raise SystemExit(f"{broll_path} 不存在——agent 先從 tight SRT 規劃素材點")
@@ -197,7 +319,7 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     cards_dir.mkdir(parents=True, exist_ok=True)
 
     # 1) 準備 jobs：媒體素材找檔、卡片素材 render（hash cache）
-    media_jobs, card_jobs = [], []
+    media_jobs, card_jobs, badge_jobs = [], [], []
     for i, it in enumerate(items):
         t0, t1 = float(it["t0"]), float(it["t1"])
         span = round(t1 - t0, 2)
@@ -255,16 +377,49 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
                 else:
                     variables[k] = v
             card_jobs.append({"comp": comp, "vars": variables, "t0": t0, "span": span, "i": i})
+        elif kind == "badge":
+            hits = sorted(assets_dir.glob(f"{it['slug']}.*"))
+            if not hits:
+                raise SystemExit(f"assets/broll/{it['slug']}.* 不存在——先預合成 badge")
+            _sar, src_fps = _probe_meta(hits[0])
+            badge_jobs.append(
+                {"path": hits[0], "t0": t0, "t1": t1, "src_fps": src_fps or 30.0, "i": i}
+            )
         else:
-            raise SystemExit(f"item {i} kind={kind} 不合法（video/photo/sticker/concept）")
+            raise SystemExit(f"item {i} kind={kind} 不合法（video/photo/sticker/concept/badge）")
 
     for job in card_jobs:
-        h = _card_hash(job["comp"], job["vars"])
+        h = _card_hash(job["comp"], job["vars"], suffix)
         mov = cards_dir / f"{cid}_broll_{job['i']}_{h}.mov"
         if not mov.exists():
-            _render_card(job["comp"], job["vars"], mov)
+            # 編號無關的 cache 檢索：hash 相同=內容相同，插入新 item 造成的
+            # 編號位移不重渲（2026-08-04：插 3 支 stock 讓 5 張章節籤全部
+            # cache miss 白渲 10 分鐘）
+            same_hash = sorted(cards_dir.glob(f"{cid}_broll_*_{h}.mov"))
+            if same_hash:
+                logger.info("cache hit（編號位移）: %s → %s", same_hash[0].name, mov.name)
+                mov = same_hash[0]
+            else:
+                _render_card(job["comp"], job["vars"], mov, suffix)
         else:
             logger.info("cache hit: %s", mov.name)
+        # B2 定版：paper 系滿版轉場卡疊紙紋 motion bg（scrim 自帶底不合成）
+        style_val = str(job["vars"].get("style", ""))
+        if job["comp"] == "transition_title" and style_val.startswith("paper"):
+            tex = assets_dir / PAPER_TEXTURE
+            if not tex.exists():
+                raise SystemExit(f"assets/broll/{PAPER_TEXTURE} 不存在——先落紙紋底（見 SKILL.md）")
+            tex_mov = mov.with_name(mov.stem + "_tex.mov")
+            if not tex_mov.exists():
+                logger.info("紙紋底合成: %s", tex_mov.name)
+                _composite_texture(
+                    mov,
+                    tex,
+                    tex_mov,
+                    float(job["vars"]["show_sec"]),
+                    COMP_MAX_SEC[job["comp"]],
+                )
+            mov = tex_mov
         job["mov"] = mov
 
     # 2) Resolve：匯入 + 疊軌
@@ -371,7 +526,7 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         if not ok:
             raise SystemExit(f"疊軌失敗 @{job['t0']}（track {BROLL_TRACK} 可能被佔）")
         item = (director.GetItemListInTrack("video", BROLL_TRACK) or [])[-1]
-        zoom = _fill_zoom(clip.GetClipProperty("Resolution"), job["sar"])
+        zoom = _fill_zoom(clip.GetClipProperty("Resolution"), job["sar"], canvas)
         if job["kind"] == "photo":
             # 靜照先放大到 fill，Ken Burns 再往上推
             item.SetProperty("ZoomX", zoom)
@@ -405,6 +560,48 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
             raise SystemExit(f"疊軌失敗 @{job['t0']}（track {CARD_TRACK}）")
         made.append(
             {"slug": job["mov"].stem, "kind": job["comp"], "at": job["t0"], "sec": job["span"]}
+        )
+
+    for job in badge_jobs:
+        while director.GetTrackCount("video") < BADGE_TRACK:
+            director.AddTrack("video")
+        clips = mp.ImportMedia([str(job["path"])]) or []
+        if not clips:
+            raise SystemExit(f"匯入失敗: {job['path']}")
+        # 逐 loop 鋪滿 [t0, min(t1, timeline 尾)]——loop 檔長 = 源長
+        loop_frames_src = int(round(_probe_dur(job["path"]) * job["src_fps"]))
+        end_frame = min(int(job["t1"] * fps), director.GetEndFrame() - tl_start + 1)
+        pos = int(job["t0"] * fps)
+        n_loops = 0
+        while pos < end_frame:
+            remain_tl = end_frame - pos
+            take_src = min(loop_frames_src, int(remain_tl * job["src_fps"] / fps))
+            if take_src <= 0:
+                break
+            ok = mp.AppendToTimeline(
+                [
+                    {
+                        "mediaPoolItem": clips[0],
+                        "mediaType": 1,
+                        "trackIndex": BADGE_TRACK,
+                        "recordFrame": tl_start + pos,
+                        "startFrame": 0,
+                        "endFrame": take_src,
+                    }
+                ]
+            )
+            if not ok:
+                raise SystemExit(f"badge 疊軌失敗 @frame {pos}")
+            pos += int(take_src * fps / job["src_fps"])
+            n_loops += 1
+        made.append(
+            {
+                "slug": job["path"].stem,
+                "kind": "badge",
+                "at": job["t0"],
+                "sec": round((end_frame - int(job["t0"] * fps)) / fps, 1),
+                "loops": n_loops,
+            }
         )
 
     mp.SetCurrentFolder(root)
