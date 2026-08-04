@@ -1,6 +1,7 @@
 # ADR-055: 影片發布線架構 — 桌機 uploader、新表不沿用舊 queue、DB 當 SoT
 
-- **Status**: Proposed（D1/D2 為 2026-07-26 修修已裁決的追認；D3 待修修裁決）
+- **Status**: Accepted（D1/D2 為 2026-07-26 修修裁決的追認；D3 修修 2026-08-04
+  裁決通過——「依照你的建議繼續做下去」）
 - **Date**: 2026-08-04
 - **Context**: `docs/plans/2026-07-26-video-publishing-plan.md`（grill 全記錄）、
   ADR-054（packaging 交接契約）。Slice 0 探針已 PASS（#1124：OAuth + 上傳 +
