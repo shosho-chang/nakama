@@ -166,12 +166,11 @@ def solve_duo(
         if "head_cols" not in lm or "cutout_w" not in lm:
             raise SystemExit(f"{name} 缺 head_cols/cutout_w——先量 alpha bbox 補進 manifest")
 
-    s_g0 = canvas_h / (ch_g - lm_g["head_top"])  # 規則 1
-    eye_ref = (lm_g["eye"] - lm_g["head_top"]) * s_g0  # 規則 4 的鎖定眼位
-    s_h = (lm_g["chin"] - lm_g["eye"]) * s_g0 / (lm_h["chin"] - lm_h["eye"])  # 規則 2
-    s_g = s_g0 * guest_face_boost  # 規則 3
-
-    # 規則 7：表情版繼承基準 scale，換上自己的 landmarks 解 y/x
+    # 規則 7（2026-08-05 安吉集改版）：表情版**各自解**，不繼承基準 scale。
+    # 舊版繼承 scale 是為了擋「張嘴大笑讓眼-下巴 +23% → 人被誤縮 19%」，但那是
+    # **用臉高當量尺**才有的病。改用頭高當量尺後，張嘴不影響頭高，繼承就沒必要
+    # 了——而且繼承反而有害：低頭／抬頭會讓同一個 scale 下的頭在畫面上忽大忽小
+    # （安吉集實測 thoughtful 版 guest 大 13%、explaining 版 host 大 8%）。
     actual = {"host": host_expr or host, "guest": guest_expr or guest}
     lms = {"host": (lm_h, ch_h), "guest": (lm_g, ch_g)}
     for role in ("host", "guest"):
@@ -181,9 +180,22 @@ def solve_duo(
             if (ch_a, lm_a.get("cutout_w")) != (ref_ch, ref_lm.get("cutout_w")):
                 raise SystemExit(
                     f"{actual[role]} 尺寸 {lm_a.get('cutout_w')}x{ch_a} ≠ 基準 "
-                    f"{ref_lm.get('cutout_w')}x{ref_ch}——裁切框不同不可繼承 scale"
+                    f"{ref_lm.get('cutout_w')}x{ref_ch}——裁切框不同，landmarks 不可比"
                 )
             lms[role] = (lm_a, ch_a)
+
+    lm_g, ch_g = lms["guest"]
+    lm_h, ch_h = lms["host"]
+    s_g0 = canvas_h / (ch_g - lm_g["head_top"])  # 規則 1
+    eye_ref = (lm_g["eye"] - lm_g["head_top"]) * s_g0  # 規則 4 的鎖定眼位
+    # 規則 2（改版）：**頭高**等大，不是臉高。修修 2026-08-05 安吉集：
+    # 「三張封面的頭的大小還是不一樣，我的都偏小」——他看的是頭。臉高等大只有在
+    # 兩人「臉高/頭高」比例接近時才順帶讓頭等大（謝伯讓集 41% vs 42% 剛好成立），
+    # 比例一不同就會歪（安吉集 46% vs 53%，臉等大時頭差 14%）。
+    # ⚠️ head_top 必須是**視覺頭顱頂端**（alpha 寬度達峰值 35% 的首列），不能用
+    # alpha 首列——罩耳耳機的頭帶弓在頭頂上方 40px，稀疏髮絲也會多算。
+    s_h = (lm_g["chin"] - lm_g["head_top"]) * s_g0 / (lm_h["chin"] - lm_h["head_top"])
+    s_g = s_g0 * guest_face_boost  # 規則 3
 
     out = {}
     roles = (
