@@ -87,6 +87,9 @@
          2026-07-30 修修問「VPS 上審封面跟 TITLE 的入口在哪裡？」——在此之前 gate
          做好了卻沒進導覽列，只能靠記網址。#}
     <a href="/bridge/packaging"{% if nav_active == 'packaging' %} class="active" aria-current="page"{% endif %}>PACKAGING <span class="zh">封面標題</span></a>
+    {#-- publish gate（ADR-055 S4）：發布前最後確認 + 排程上傳。桌機 dev server
+         才有影片檔可 preview（Q2 uploader 在桌機）。#}
+    <a href="/bridge/publish"{% if nav_active == 'publish' %} class="active" aria-current="page"{% endif %}>PUBLISH <span class="zh">上架</span></a>
     <a href="/bridge/digests"{% if nav_active == 'digests' %} class="active" aria-current="page"{% endif %}>DIGESTS <span class="zh">情報</span></a>
     <a href="/bridge/seo"{% if nav_active == 'seo' %} class="active" aria-current="page"{% endif %}>SEO <span class="zh">優化</span></a>
 

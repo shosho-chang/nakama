@@ -33,6 +33,9 @@ from google_auth_oauthlib.flow import InstalledAppFlow  # noqa: E402
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube",
+    # captions.insert 需要 force-ssl（2026-08-04 實測：CC 上傳 403
+    # insufficientPermissions，前兩個 scope 蓋不到 captions endpoint）
+    "https://www.googleapis.com/auth/youtube.force-ssl",
 ]
 
 _DATA_DIR = Path(os.environ.get("NAKAMA_DATA_DIR", "data"))
