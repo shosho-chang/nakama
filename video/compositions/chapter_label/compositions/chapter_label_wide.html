@@ -73,29 +73,32 @@
       /* ── paper：半透明紙白（修修七輪統一系統：與 hero 卡、轉場卡紙紋底同
          材質）、ink 字、橘只出現在手繪筆觸。tick 換手繪 SVG 豎筆觸（描邊
          動畫），與 hero 底線／轉場卡 kicker 槓同一支麥克筆。 ── */
+      /* v4（修修 2026-08-04 story-L1 UAT：「謝伯讓還看得到，下面那排敘述
+         真的看不到了，整個都要放大」）：全組 ×~1.5——1080p 縮到手機寬時
+         19px 頭銜低於可讀底線 */
       .style-paper #tag {
         background: rgba(251, 250, 247, 0.85);
         border: 1px solid rgba(217, 213, 207, 0.55);
-        border-radius: 8px;                  /* --sho-r-2 */
-        padding: 10px 24px 12px 18px;
+        border-radius: 10px;                 /* 隨字級同步放大一級 */
+        padding: 14px 32px 17px 24px;
         box-shadow: 0 2px 10px rgba(20, 18, 15, 0.14);
       }
       .style-paper #tick { display: none; }
       .tick-svg {
         flex: none;
-        width: 14px;
+        width: 19px;
         align-self: stretch;
         overflow: visible;
       }
       .tick-svg path {
         fill: none;
         stroke: #e98965;                     /* PANTONE 165 */
-        stroke-width: 7;
+        stroke-width: 8;
         stroke-linecap: round;
         opacity: 0.92;
       }
-      .style-paper #text { font-weight: 700; font-size: 34px; line-height: 1.2; color: #1c1915; }
-      .style-paper #sub { font-weight: 400; font-size: 19px; line-height: 1.35; color: #6f6a62; margin-top: 3px; }
+      .style-paper #text { font-weight: 700; font-size: 50px; line-height: 1.2; color: #1c1915; }
+      .style-paper #sub { font-weight: 400; font-size: 29px; line-height: 1.35; color: #6f6a62; margin-top: 5px; }
 
       /* ── ink：warm near-black 卡、反白字、橘 accent——亮背景替代款 ── */
       .style-ink #tag {
