@@ -879,8 +879,9 @@ def apply(episode_dir: Path, cid: str) -> dict:
         ok_v = mp.AppendToTimeline(
             [{"mediaPoolItem": vid, "mediaType": 1, "startFrame": f0, "endFrame": f1}]
         )
-        if not ok_v:
-            raise SystemExit(f"{label}: 影片段 {seg_s:.1f}-{seg_e:.1f} 上軌失敗")
+        # AppendToTimeline 失敗回 [None]（truthy）——2026-08-04 util-L4 事故
+        if not ok_v or (isinstance(ok_v, list) and ok_v[0] is None):
+            raise SystemExit(f"{label}: 影片段 {seg_s:.1f}-{seg_e:.1f} 上軌失敗（回 {ok_v!r}）")
         if aud is not None:
             mp.AppendToTimeline(
                 [
