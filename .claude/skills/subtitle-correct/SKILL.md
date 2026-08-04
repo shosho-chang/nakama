@@ -88,8 +88,18 @@ script 會做：越界過濾、過度刪減防護（縮短逾半 → 進 QC）�
 **不要把整份 QC 清單丟給修修拍板**——「要我拍板的地方實在太多，我沒那麼多時間」。
 QC 的 uncertain 項目由你自己裁決完，流程：
 
-1. **「聽音檔」= 重開 WhisperX**：對該 cue 裁出 ±1 cue 的音檔片段（從
-   normalized.wav），無 initial_prompt 重辨識，比對「原文 / 建議 / 重聽」三方。
+1. **「聽音檔」= 重開 WhisperX** — 用 `scripts/run_subtitle_relisten.py`：
+
+   ```
+   py -3.10 scripts/run_subtitle_relisten.py "<episode>"                  # 預設掃 qc.md 的 HIGH
+   py -3.10 scripts/run_subtitle_relisten.py "<episode>" --risk medium    # 再掃 MEDIUM
+   ```
+
+   對該 cue 裁出 ±1 cue 的音檔片段（從 normalized.wav），**明確不給
+   initial_prompt** 重辨識（帶原 prompt 重跑只會重現同一個錯），比對
+   「原文 / 建議 / 重聽」三方，落 `subs/relisten.json`。⚠️ 行號吃 raw.srt
+   序號——transcript.srt 經 speaker split / gap fill 後序號已位移。
+   重聽項目多時把 relisten.json 交給 subagent 依裁決規則批次判讀成 delta。
    重疊說話（重聽時句子消失）→ 改裁分軌 mic 軌（stem 比 mix 早約 0.167s，
    `speaker_assign._measure_offset` 可量）
 2. **重聽支持建議 → 直接改**；**重聽兩次仍是原文 → 保留原文**（講者口誤照實
