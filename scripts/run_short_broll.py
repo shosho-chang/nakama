@@ -138,7 +138,9 @@ def _render_card(comp: str, variables: dict, out_path: Path, suffix: str = "") -
     raise SystemExit(f"hyperframes render 失敗×2: {(proc.stderr or '')[-400:]}")
 
 
-def _composite_texture(card_mov: Path, tex: Path, out_path: Path, show_sec: float, card_sec: float) -> None:
+def _composite_texture(
+    card_mov: Path, tex: Path, out_path: Path, show_sec: float, card_sec: float
+) -> None:
     """透明字卡疊滿版紙紋底 → prores4444。texture alpha fade 進退場透出實拍。
 
     峰值 alpha 0.92（修修七輪：「白色的背景稍微變成半透明」）——滿版期間
@@ -366,7 +368,8 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         else:
             logger.info("cache hit: %s", mov.name)
         # B2 定版：paper 系滿版轉場卡疊紙紋 motion bg（scrim 自帶底不合成）
-        if job["comp"] == "transition_title" and str(job["vars"].get("style", "")).startswith("paper"):
+        style_val = str(job["vars"].get("style", ""))
+        if job["comp"] == "transition_title" and style_val.startswith("paper"):
             tex = assets_dir / PAPER_TEXTURE
             if not tex.exists():
                 raise SystemExit(f"assets/broll/{PAPER_TEXTURE} 不存在——先落紙紋底（見 SKILL.md）")

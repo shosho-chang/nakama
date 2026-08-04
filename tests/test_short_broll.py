@@ -87,9 +87,8 @@ class TestLongFormat:
         # data-duration 4s：3.0s 上軌 + 退場收在 show_sec 內
         assert COMP_MAX_SEC["transition_title"] == 4.0
         root = Path(__file__).resolve().parent.parent / "video" / "compositions"
-        html = (root / "transition_title" / "compositions" / "transition_title_wide.html").read_text(
-            encoding="utf-8"
-        )
+        comp_dir = root / "transition_title" / "compositions"
+        html = (comp_dir / "transition_title_wide.html").read_text(encoding="utf-8")
         # 滿版底是「元素」不是 body 背景——body 背景在 alpha 渲染下會被丟掉
         assert 'background: transparent' in html
         assert 'id="scrim"' in html
@@ -107,6 +106,53 @@ class TestLongFormat:
         card_block = html.split("#card {")[1].split("}")[0]
         assert "transform:" not in card_block
         assert "xPercent: -50" in html  # 水平置中改由 GSAP 負責
+
+
+class TestContentGaps:
+    """素材真空偵測（修修 2026-08-04：「情緒是建構的那段太空，程式應該偵測」）。
+    既有 gap 偵測把 cut 算進事件——長片導播每幾秒換鏡，14s 門檻永遠不觸發，
+    164 秒無素材照樣回 gaps=[]。content_gaps 只掃強事件。"""
+
+    def _scan(self, events, dur, srt=(), threshold=75.0):
+        from run_short_review import _scan_content_gaps
+
+        return _scan_content_gaps(events, dur, list(srt), threshold)
+
+    def test_cuts_do_not_fill_content_gap(self):
+        # 0-10s 有素材，之後 170 秒只有換鏡——cut 是弱事件，必須報真空
+        events = [{"type": "video", "slug": "stock", "t0": 5.0, "t1": 10.0}] + [
+            {"type": "cut", "slug": "", "t0": float(t), "t1": float(t)}
+            for t in range(12, 180, 6)
+        ]
+        gaps = self._scan(events, 180.0)
+        assert len(gaps) == 1
+        assert gaps[0]["from"] == 10.0 and gaps[0]["to"] == 180.0
+
+    def test_dense_strong_events_report_clean(self):
+        events = [
+            {"type": "concept", "slug": "tr", "t0": float(t), "t1": float(t + 3)}
+            for t in range(0, 300, 60)
+        ]
+        assert self._scan(events, 300.0) == []
+
+    def test_transcript_attached_to_gap_window(self):
+        events = [{"type": "video", "slug": "s", "t0": 0.0, "t1": 5.0}]
+        srt = [
+            {"t0": 2.0, "t1": 4.0, "text": "素材期間的話"},
+            {"t0": 50.0, "t1": 53.0, "text": "真空裡的話"},
+        ]
+        gaps = self._scan(events, 120.0, srt)
+        assert len(gaps) == 1
+        assert "真空裡的話" in gaps[0]["transcript"]
+        assert "素材期間的話" not in gaps[0]["transcript"]
+
+    def test_punch_zoom_is_not_strong_event(self):
+        events = [
+            {"type": "punch-ramp", "slug": "", "t0": float(t), "t1": float(t + 2)}
+            for t in range(0, 200, 20)
+        ]
+        gaps = self._scan(events, 200.0)
+        assert len(gaps) == 1  # punch zoom 同機位縮放，撐不起素材真空
 
 
 def test_sfx_chapter_label_maps_to_swish(tmp_path):
