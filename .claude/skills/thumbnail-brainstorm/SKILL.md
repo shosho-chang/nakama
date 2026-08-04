@@ -11,9 +11,10 @@ description: >
   本 skill 只呼叫、不重新發明。
 ---
 
-# thumbnail-brainstorm — 封面 brainstorm 手冊（v2.1）
+# thumbnail-brainstorm — 封面 brainstorm 手冊（v2.3）
 
-**版本：v2.2（2026-08-04，cutout manifest 紀律＋精華長片 TF 式雙臉版式；
+**版本：v2.3（2026-08-04，TF 式雙臉版式 SOP + layout_solve 確定性求解；
+v2.2 = cutout manifest 紀律；
 v2.1 = N2 框型接上《張修修品牌識別》— 斜切框＋碎片、
 品牌橘 `#F37425`、logo 淨空規範；v2.0 = 謝伯讓集 gate 前收斂；
 v1.1 = 封面設計系統 v1 接入；v1.0 = ADR-054 D8/D9 首落地。
@@ -196,6 +197,38 @@ working set 與 vault 雙寫（ADR-054 D10）。驗證錯誤讀訊息修 specs�
 - L1 rank3 無 JP 佐證 → 自配 T-V4（解釋語境、A 級）；理由：...
 - Remaining：youtube_book 參考圖庫未建
 ```
+
+## 精華長片 TF 式雙臉版式（v2.3 SOP — 修修 2026-08-04 定案，跨集可重現）
+
+精華長片封面 = `thumbnail_reaction` + `prop_position:"center"`：兩側頭像＋
+中央品牌框 prop 卡（代表精華重點的 stock photo，非文字——文字版是 N1
+完整訪談語彙）。**人物幾何全走 `scripts/layout_solve.py`，零目測**：
+
+```bash
+# 每集一次：cutout 定稿後精測地標寫進該集 cutouts_manifest.json
+#   landmarks_px = { head_top, eye, chin（row px，2x+ 放大 2% 網格精讀）,
+#                    cutout_h, cutout_w, head_cols（頭部 alpha bbox 左右界，
+#                    程式量：頭頂-下巴 rows 內 alpha>20 的 col min/max）}
+python .claude/skills/thumbnail-brainstorm/scripts/layout_solve.py solve-duo \
+  --manifest <cutouts_manifest.json> --host <host定稿.png> --guest <guest定稿.png>
+# → 六個參數直接進 spec；render 前必跑 verify（PASS 才 render）
+python .claude/skills/thumbnail-brainstorm/scripts/layout_solve.py verify \
+  --manifest <cutouts_manifest.json> --spec <spec.json>
+```
+
+版式規則（solver 內建，跨集不變；謝伯讓集由修修 A/B/C 三版裁決收斂）：
+
+| 規則 | 值 | 為什麼 |
+|---|---|---|
+| 等大基準 | **臉高（眼–下巴）**，非頭高 | 蓬髮吃頭高額度，等頭高=臉縮水（謝伯讓集 -2.4%）|
+| guest 感知校準 | 臉再 **×1.05**（`--guest-face-boost`）| 正面臉＋眼鏡感知上小一號；指標等大≠感知等大，最後一格由修修 A/B 校準 |
+| headroom | **0**（guest 頭頂 0px 且下緣貼底的耦合解；host 眼線跟隨）| TF 規格；guest 再上抬會在身下露背景縫 |
+| 眼線 | 兩人鎖同一水平（差 ≤10px）| 修修 2026-07-29 驗收標準 |
+| 外側出血 | 各切**頭寬 8%**（92% 可見）；頭界=alpha bbox | TF「側邊切一點點」；出血對「頭」不對圖檔——兩顆 cutout 裡頭的位置不同 |
+
+⚠️ 量測紀律（2026-08-04 事故的直接教訓）：**驗收用 verify 的數學預測，
+不用眼睛讀格線**——目測誤差 ±5% 曾把一版數學正確的排版「修」壞（bottom
+錨定負偏移方向感反轉＋確認偏誤）。眼睛只負責最後 sanity check 與感知校準。
 
 ## 每集教訓寫回手冊
 
