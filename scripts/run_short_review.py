@@ -5,8 +5,10 @@ deterministic 前半段。本 script 產「review packet」，subagent 盲審由
 session 主循環 dispatch（見 SKILL Step 10）。
 
 產出（episode `highlights/review/<id>/`）：
-- preview.mp4        低解析（540×960）快轉審片用
-- contact_sheet.png  1fps 縮圖牆（全片節奏一眼掃）
+- preview.mp4        低解析快轉審片用（短片 540×960 / 長片 960×540）
+- contact_sheet.png  1fps 縮圖牆（全片節奏一眼掃）；長片切成
+                     contact_sheet_NN.png，每包 180s——單張 7000px 高的
+                     長條盲審讀不到細節
 - ev_XX_<slug>.png   每個視覺事件的抽幀（進場後 0.4s + 中點）
 - events.json        事件清單（素材/字卡/punch 合併時間軸）+ 節拍器
                      缺口分析（>12s 無新視覺事件的區段）+ 對應 SRT 行
@@ -44,6 +46,17 @@ logger = logging.getLogger("short_review")
 REVIEW_DIR = "highlights/review"
 PREVIEW_W, PREVIEW_H = 540, 960
 GAP_SEC = 8.0  # 節拍器缺口門檻（二十四輪盲審下修：12s 太寬鬆）
+# 格式參數（修修 2026-08-03 長片線）。短片欄 = 既有已驗收值。
+#
+# 長片除了換畫幅，還必須**分段出縮圖牆**：752s 全片 1fps ×10 欄 = 1800×7676px
+# 的長條，盲審 agent 讀進去會被縮到看不清任何一格。切成 180s 一包 →
+# 每包 1800×1818，接近正方形、細節讀得到。
+# 缺口門檻也放寬：長片密度目標 4.5–5.5 事件/分（剪輯文法 §2.1），
+# 短片是 6–9，用同一把尺會把長片的正常呼吸判成死區。
+FORMAT_REVIEW = {
+    "short": {"preview": (540, 960), "gap_sec": GAP_SEC, "chunk_sec": None, "burn_srt": True},
+    "long": {"preview": (960, 540), "gap_sec": 14.0, "chunk_sec": 180.0, "burn_srt": False},
+}
 # punch zoom 是「同機位縮放」不是新視覺事件——算進去會遮蔽真死區
 # （兩位盲審獨立指出）。缺口只計換鏡素材與卡片。
 GAP_EXCLUDE_PREFIX = ("punch-",)
@@ -55,6 +68,8 @@ def _load_events(episode_dir: Path, cid: str) -> list[dict]:
     p = td / f"{cid}_broll.json"
     if p.exists():
         for it in json.loads(p.read_text(encoding="utf-8"))["items"]:
+            if it["kind"] == "badge":
+                continue  # 全片常駐 watermark，不是「視覺事件」——進事件表會污染節拍分析
             events.append(
                 {
                     "type": it["kind"],
@@ -108,8 +123,11 @@ def _load_srt_lines(episode_dir: Path, cid: str) -> list[dict]:
     return lines
 
 
-def _render_preview(project, timeline, out_dir: Path, name: str) -> Path:
+def _render_preview(
+    project, timeline, out_dir: Path, name: str, size: tuple[int, int] | None = None
+) -> Path:
     """Resolve render queue 出低解析 H.264 preview。"""
+    pw, ph = size or (PREVIEW_W, PREVIEW_H)
     project.SetCurrentRenderFormatAndCodec("mp4", "H264")
     project.SetRenderSettings(
         {
@@ -117,8 +135,8 @@ def _render_preview(project, timeline, out_dir: Path, name: str) -> Path:
             "MarkOut": timeline.GetEndFrame(),
             "TargetDir": str(out_dir),
             "CustomName": name,
-            "FormatWidth": PREVIEW_W,
-            "FormatHeight": PREVIEW_H,
+            "FormatWidth": pw,
+            "FormatHeight": ph,
         }
     )
     jid = project.AddRenderJob()
@@ -179,6 +197,7 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
     for stale in [
         *out_dir.glob("ev_*.png"),
         out_dir / "contact_sheet.png",
+        *out_dir.glob("contact_sheet_*.png"),
         *out_dir.glob("*_preview*.mp4"),
         *out_dir.glob("*_raw*.mp4"),
     ]:
@@ -189,16 +208,24 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
             # 後續 ffmpeg 會覆寫同名檔（覆寫比刪除寬容）
             logger.warning("刪不掉（可能正在播放）：%s", stale.name)
 
-    logger.info("render preview（540×960 H.264）…")
-    preview = _render_preview(project, timeline, out_dir, f"{cid}_raw")
+    fcfg = FORMAT_REVIEW[c.get("format", "short")]
+    pw, ph = fcfg["preview"]
+    logger.info("render preview（%d×%d H.264）…", pw, ph)
+    preview = _render_preview(project, timeline, out_dir, f"{cid}_raw", (pw, ph))
 
-    # 字幕燒錄：Resolve render API 燒不進字幕（僅 ExportSubtitle sidecar，
+    # 字幕燒錄：短片的 Resolve render 燒不進字幕（僅 ExportSubtitle sidecar，
     # 十七輪實測），改用 ffmpeg 從 tight SRT 燒——同源資料，順帶驗同步。
+    #
+    # ⚠️ **長片不燒**（2026-08-04 實測）：長片走主字幕模板，Resolve render
+    # 會把字幕軌燒進 preview，再疊一層 ffmpeg 會出現**兩條字幕**（上面灰底
+    # 是模板樣式、下面白字描邊是 ffmpeg）。長片的 preview 直接用 Resolve
+    # 出的那條，樣式還更接近成品。
     srts = sorted((episode_dir / "highlights/srt").glob(f"{cid}_tight_r*.srt"))
     if srts:
         import shutil
 
         shutil.copy(srts[-1], out_dir / "subs.srt")
+    if srts and fcfg["burn_srt"]:
         # 交付檔名用「短N」開頭——修修不用對 punch-SN ↔ 短N 對照表（十九輪）
         burned = out_dir / f"{FORMAT_LABEL[c['format']]}{w['rank']}_preview.mp4"
         style = "FontName=Microsoft JhengHei,FontSize=14,Outline=1,MarginV=42"
@@ -225,22 +252,51 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
             preview = burned
         else:
             logger.warning("字幕燒錄失敗，preview 無字幕: %s", proc.stderr[-200:])
+    elif srts:
+        # 長片：Resolve 已把字幕軌燒進來，只把 raw 改成交付檔名
+        named = out_dir / f"{FORMAT_LABEL[c['format']]}{w['rank']}_preview.mp4"
+        named.unlink(missing_ok=True)
+        preview = preview.rename(named)
 
-    # 縮圖牆：1fps、每列 10 張
+    # 縮圖牆：1fps、每列 10 張。長片切成 chunk_sec 一包——單張 7000px 高的
+    # 長條，盲審讀進去每格會小到看不出東西。
     import math
 
-    cols, rows = 10, max(1, math.ceil(dur / 10))
-    _ffmpeg(
-        [
-            "-i",
-            str(preview),
-            "-vf",
-            f"fps=1,scale=180:-1,tile={cols}x{rows}",
-            "-frames:v",
-            "1",
-            str(out_dir / "contact_sheet.png"),
-        ]
-    )
+    chunk = fcfg["chunk_sec"]
+    sheets = []
+    if chunk:
+        n_chunks = max(1, math.ceil(dur / chunk))
+        for k in range(n_chunks):
+            ss = k * chunk
+            span = min(chunk, dur - ss)
+            if span <= 0:
+                break
+            rows = max(1, math.ceil(span / 10))
+            out = out_dir / f"contact_sheet_{k:02d}.png"
+            _ffmpeg(
+                [
+                    "-ss", f"{ss:.2f}", "-t", f"{span:.2f}",
+                    "-i", str(preview),
+                    "-vf", f"fps=1,scale=180:-1,tile=10x{rows}",
+                    "-frames:v", "1", str(out),
+                ]
+            )
+            if out.exists():
+                sheets.append({"file": out.name, "t0": round(ss, 1), "t1": round(ss + span, 1)})
+    else:
+        cols, rows = 10, max(1, math.ceil(dur / 10))
+        _ffmpeg(
+            [
+                "-i",
+                str(preview),
+                "-vf",
+                f"fps=1,scale=180:-1,tile={cols}x{rows}",
+                "-frames:v",
+                "1",
+                str(out_dir / "contact_sheet.png"),
+            ]
+        )
+        sheets.append({"file": "contact_sheet.png", "t0": 0.0, "t1": round(dur, 1)})
 
     # 每事件抽幀：進場後 0.4s + 中點（>2s 的事件才抽中點）
     frames = []
@@ -271,7 +327,7 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
     visual = [e for e in events if not e["type"].startswith(GAP_EXCLUDE_PREFIX)]
     cursor = 0.0
     for e in visual:
-        if e["t0"] - cursor > GAP_SEC:
+        if e["t0"] - cursor > fcfg["gap_sec"]:
             gaps.append(
                 {
                     "from": round(cursor, 1),
@@ -280,7 +336,7 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
                 }
             )
         cursor = max(cursor, e["t1"])
-    if dur - cursor > GAP_SEC:
+    if dur - cursor > fcfg["gap_sec"]:
         gaps.append({"from": round(cursor, 1), "to": round(dur, 1), "sec": round(dur - cursor, 1)})
 
     packet = {
@@ -291,7 +347,9 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
         # 兩個數字一起看：只有換鏡撐場的段落，強事件密度會露餡
         "content_per_min": round(len([e for e in events if e["type"] != "cut"]) / (dur / 60), 1),
         "events": events,
-        "gaps_over_12s": gaps,
+        "gap_threshold_sec": fcfg["gap_sec"],
+        "gaps": gaps,
+        "contact_sheets": sheets,
         "frames": frames,
         "srt": srt,
         "preview": preview.name,
@@ -305,7 +363,9 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
         "events": len(events),
         "events_per_min": packet["events_per_min"],
         "content_per_min": packet["content_per_min"],
-        "gaps_over_12s": gaps,
+        "gap_threshold_sec": fcfg["gap_sec"],
+        "gaps": gaps,
+        "contact_sheets": [x["file"] for x in sheets],
         "frames": len(frames),
     }
 

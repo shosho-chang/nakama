@@ -61,25 +61,44 @@ CARDS_DIR = "highlights/tighten/cards"
 COMP_SEC = 4.0  # punch_card.html data-duration——show_sec 上限（留 0.2s 裕度）
 # 三層字卡架構（修修 2026-07-26 九輪）：tier1=hero（每支≤1 張，全片最強一句，
 # 超大字）、tier2=標準 punch 卡、tier3=逐字字幕（走 subtitle track，不在本 script）
-DEFAULT_POS_Y = {1: 0.58, 2: 0.66}
+# 格式參數（修修 2026-08-03 長片線）。短片欄 = 既有已驗收值，一個字沒動。
+#
+# 行寬上限的算法是「字級 × 字數 + padding ≤ 畫布寬」：
+#   短片 tier2 150px×6 + padding ≈ 964 ≤ 1080；tier1 190px×5 ≈ 1006 ≤ 1080
+#   長片 tier2 140px×8 + padding ≈ 1176 ≤ 1920；tier1 200px×6 ≈ 1248 ≤ 1920
+# 長片走 punch_card_wide.html：16:9 有寬度沒高度，卡片改走橫幅——每行字數
+# 放寬、pos_y 下修避開 ~0.88 起跳的字幕帶。
+FORMAT_TITLES = {
+    "short": {
+        "comp": "punch_card.html",
+        "max_line": 6,
+        "max_line_hero": 5,
+        "pos_y": {1: 0.58, 2: 0.66},
+    },
+    "long": {
+        "comp": "punch_card_wide.html",
+        "max_line": 8,
+        "max_line_hero": 6,
+        "pos_y": {1: 0.60, 2: 0.66},
+        # 修修 2026-08-04 四輪定案：長片 hero = paper（白底黑字 + 橘手繪畫線），
+        # 逐卡可用 titles.json 的 "style" 覆蓋（orange|paper|ink）
+        "style": "paper",
+    },
+}
 # 字卡企劃＝短片的論證骨架（二十五輪修修裁決：「它其實是在支持這整個短影片
 # 內容的鋪陳，是不是也要有完整的規劃」）。每張卡必須標明在論證裡承擔哪一拍；
 # 寫不出 beat 的卡就是不該存在的卡。
 BEATS = ("hook", "mechanism", "evidence", "insight", "closing")
 SEC_PER_CARD = 4.5  # 密度上限：卡片總數 ≤ 片長 ÷ 4.5（範本 67s 22 張 ≈ 每 3s 一張）
-MAX_LINE_CHARS = 6  # tier2：150px×6 + padding ≈ 964 ≤ 1080
-MAX_LINE_CHARS_HERO = 5  # tier1：190px×5 + padding ≈ 1006 ≤ 1080
 
 
-def _card_hash(variables: dict) -> str:
-    comp_digest = hashlib.md5(
-        (COMP_DIR / "compositions" / "punch_card.html").read_bytes()
-    ).hexdigest()[:8]
-    payload = json.dumps(variables, ensure_ascii=False, sort_keys=True) + comp_digest
+def _card_hash(variables: dict, comp: str = "punch_card.html") -> str:
+    comp_digest = hashlib.md5((COMP_DIR / "compositions" / comp).read_bytes()).hexdigest()[:8]
+    payload = json.dumps(variables, ensure_ascii=False, sort_keys=True) + comp + comp_digest
     return hashlib.md5(payload.encode("utf-8")).hexdigest()[:10]
 
 
-def _render_card(variables: dict, out_path: Path) -> None:
+def _render_card(variables: dict, out_path: Path, comp: str = "punch_card.html") -> None:
     """npx hyperframes render → ProRes 4444 alpha mov（約 ~20s/卡）。
 
     Windows shell=True 走 cmd.exe——單引號不是引號、中文 JSON 會炸，
@@ -88,7 +107,7 @@ def _render_card(variables: dict, out_path: Path) -> None:
     vars_file = out_path.with_suffix(".vars.json")
     vars_file.write_text(json.dumps(variables, ensure_ascii=False, indent=1), encoding="utf-8")
     cmd = (
-        "npx --yes hyperframes@0.7.72 render . -c compositions/punch_card.html "
+        f"npx --yes hyperframes@0.7.72 render . -c compositions/{comp} "
         f'-o "{out_path}" --format mov -q standard --quiet --no-browser-gpu '
         f'--variables-file "{vars_file}"'
     )
@@ -133,6 +152,8 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     from build_resolve_project import connect_resolve
 
     c, w = _load_winner(episode_dir, cid)
+    fmt = c.get("format", "short")
+    fcfg = FORMAT_TITLES[fmt]
     titles_path = episode_dir / TIGHTEN_DIR / f"{cid}_titles.json"
     if not titles_path.exists():
         raise SystemExit(f"{titles_path} 不存在——agent 先從 tight SRT 選 punch 時間點")
@@ -194,7 +215,7 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
                         i, t["text"].replace(chr(10), "／"), ratio, spoken
                     )
                 )
-        limit = MAX_LINE_CHARS_HERO if tier == 1 else MAX_LINE_CHARS
+        limit = fcfg["max_line_hero"] if tier == 1 else fcfg["max_line"]
         too_long = [x for x in lines if len(x) > limit]
         if too_long:
             raise SystemExit(f"卡片 {i}（tier {tier}）行超過 {limit} 字：{too_long}——改寫或拆行")
@@ -202,13 +223,16 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
             "line1": lines[0],
             "line2": lines[1] if len(lines) > 1 else "",
             "show_sec": show_sec,
-            "pos_y": float(t.get("pos_y", DEFAULT_POS_Y[tier])),
+            "pos_y": float(t.get("pos_y", fcfg["pos_y"][tier])),
             "tier": tier,
         }
-        h = _card_hash(variables)
+        style = t.get("style", fcfg.get("style"))
+        if style:  # 短片無 style 概念——不進 variables，hash 不變
+            variables["style"] = style
+        h = _card_hash(variables, fcfg["comp"])
         mov = cards_dir / f"{cid}_{i}_{h}.mov"
         if not mov.exists():
-            _render_card(variables, mov)
+            _render_card(variables, mov, fcfg["comp"])
         else:
             logger.info("cache hit: %s", mov.name)
         jobs.append({"mov": mov, "t0": float(t["t0"]), "show_sec": show_sec, "text": t["text"]})

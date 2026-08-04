@@ -1,0 +1,144 @@
+<!-- nakama:component concept_card_wide（長片 16:9 概念圖解卡：兩個插畫 + 雙向箭頭 +
+     橘塊標題，講抽象關係時用。透明 overlay 疊 Resolve track 4）
+
+     與直式 concept_card.html 同一套視覺與動畫語彙，只重調幾何：
+     1. 1920×1080。卡片寬 44%（直式 88%）——88% 搬到 16:9 會變 1690px 寬、
+        插畫跟著撐到 554px，卡片高度吃掉 74% 畫面，整個蓋住講者。
+        44% × 1920 = 845px，與直式的 950px 絕對尺寸相當，份量才對得上。
+     2. 字級同步下修（標題 74→62、標籤 58→42、箭頭 96→80），維持卡內比例。
+        標籤加 nowrap——實測 48px 配 .side 30% 時「幫你求生存」會斷成兩行，
+        把卡片撐高擠進字幕帶。
+     3. **卡片是 lower-third 不是全屏**：16:9 的講者在畫面中央偏上，
+        卡片擺 0.46 會整張蓋住臉（實測）。縮成寬 40%、高約 390px，
+        pos_y 0.63 → 上緣 ~0.45（臉下方）、下緣 ~0.81（字幕帶之上）。 -->
+<!doctype html>
+<html
+  lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"title","type":"string","label":"標題（橘塊）","default":"相關 ≠ 因果"},
+    {"id":"left_label","type":"string","label":"左標籤","default":"手機"},
+    {"id":"right_label","type":"string","label":"右標籤","default":"焦慮"},
+    {"id":"left_src","type":"string","label":"左插畫（data URI）","default":""},
+    {"id":"right_src","type":"string","label":"右插畫（data URI）","default":""},
+    {"id":"show_sec","type":"number","label":"顯示秒數","default":3.5},
+    {"id":"pos_y","type":"number","label":"卡片垂直中心 0-1","default":0.63}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 900;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Eb.woff2") format("woff2");
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+      #card {
+        position: absolute; left: 50%; top: var(--pos-y, 63%);
+        /* ⚠️ 這裡**不可**寫 transform（直式 concept_card.html 寫了
+           translate(-50%,-50%)，實測會與 GSAP 的 yPercent:-50 疊加，
+           卡片整張上飄半個身高、標題橘塊被切出畫面）。水平與垂直居中
+           一律交給 GSAP 的 xPercent/yPercent —— 同 sticker_pair 的 #center。 */
+        width: 40%;
+        background: #fffdf8;
+        border-radius: 24px;
+        border: 5px solid #e87000;
+        box-shadow: 0 14px 34px rgba(0, 0, 0, 0.4);
+        padding: 40px 26px 34px;
+        display: flex; flex-direction: column; align-items: center; gap: 26px;
+        opacity: 0;
+        font-family: "LINE Seed TW", "Noto Sans TC", sans-serif;
+      }
+      #title {
+        background: #e87000; color: #fff;
+        font-size: 62px; font-weight: 900; line-height: 1.15;
+        padding: 7px 28px 12px; white-space: nowrap;
+        transform: rotate(-1.4deg);
+        margin-top: -72px;  /* 標題塊咬在卡片上緣（波旬語彙：元素疊出層次） */
+      }
+      #row { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+      .side { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 34%; }
+      .side img { width: 100%; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.18)); }
+      .side .label { font-size: 42px; font-weight: 900; color: #40372e; white-space: nowrap; }
+      #arrows { display: flex; flex-direction: column; gap: 22px; width: 20%; align-items: center; }
+      .arrow { font-size: 80px; font-weight: 900; color: #e87000; line-height: 1; opacity: 0; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-root="true"
+      data-composition-id="concept_card_wide"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="6"
+    >
+      <div id="card">
+        <div id="title"></div>
+        <div id="row">
+          <div class="side">
+            <img id="left_img" alt="" />
+            <div class="label" id="left_label"></div>
+          </div>
+          <div id="arrows">
+            <div class="arrow" id="a1">→</div>
+            <div class="arrow" id="a2">←</div>
+          </div>
+          <div class="side">
+            <img id="right_img" alt="" />
+            <div class="label" id="right_label"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      const vars =
+        (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const showSec = Number(vars.show_sec ?? 3.5);
+      document.getElementById("title").textContent = vars.title ?? "相關 ≠ 因果";
+      document.getElementById("left_label").textContent = vars.left_label ?? "";
+      document.getElementById("right_label").textContent = vars.right_label ?? "";
+      const card = document.getElementById("card");
+      card.style.top = `${Number(vars.pos_y ?? 0.63) * 100}%`;
+      for (const [id, src] of [["left_img", vars.left_src], ["right_img", vars.right_src]]) {
+        const el = document.getElementById(id);
+        if (src) el.src = src;
+        else el.remove();
+      }
+
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ defaults: { transformOrigin: "50% 50%" } });
+      // 卡片彈入
+      tl.fromTo(
+        "#card",
+        { opacity: 0, scale: 0.7, xPercent: -50, yPercent: -46 },
+        {
+          opacity: 1, scale: 1, xPercent: -50, yPercent: -50,
+          duration: 0.45, ease: "back.out(1.9)",
+        },
+        0
+      );
+      // 箭頭輪流打出（雙向因果的視覺論證：→ 先、← 後）
+      tl.fromTo("#a1", { opacity: 0, x: -40 }, { opacity: 1, x: 0, duration: 0.35, ease: "back.out(2)" }, 0.5);
+      tl.fromTo("#a2", { opacity: 0, x: 40 }, { opacity: 1, x: 0, duration: 0.35, ease: "back.out(2)" }, 0.85);
+      // 箭頭待機脈動（維持「兩邊都在推」的張力）
+      tl.to("#a1", { x: 14, duration: 0.6, ease: "sine.inOut", yoyo: true, repeat: -1 }, 1.3);
+      tl.to("#a2", { x: -14, duration: 0.6, ease: "sine.inOut", yoyo: true, repeat: -1 }, 1.3);
+      // 退場（獨立 tween——主 tl 有 infinite repeat）
+      gsap.to("#card", {
+        opacity: 0,
+        scale: 0.82,
+        duration: 0.25,
+        ease: "power2.in",
+        delay: Math.max(0.6, showSec - 0.25),
+      });
+      window.__timelines.main = tl;
+    </script>
+  </body>
+</html>

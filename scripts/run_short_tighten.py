@@ -1,7 +1,11 @@
-"""short-tighten：短片緊湊化 — 贅詞/停頓 jump-cut。
+"""cut-tighten：精華段緊湊化 — 贅詞/停頓 jump-cut（長短片共用）。
 
 修修 2026-07-26：短影片節奏要快狠準——開頭的「那、那」口吃絕不能出現，
 中間的停頓與贅詞也要剪掉，jump cut 越緊湊越好。
+
+修修 2026-08-03：長片線開工，本 script 泛化成長短片共用（格式從 candidates
+的 `format` 欄自動判定，無新 CLI 旗標）。**長片的緊湊化刻意比短片鬆**，
+參數表見 FORMAT_TIGHTEN。
 
 兩段式流程（機械偵測 + agent 語意複審，不可全自動——「那/就是/然後」
 很多時候是有意義的連接詞，機械砍會砍壞語意）：
@@ -68,6 +72,43 @@ BACKCHANNEL_TEXTS = {"對", "對對", "對對對", "嗯", "嗯嗯", "沒錯", "�
 # 切除區間最短長度——短於此不值得一刀（一刀就是一個 jump cut 的視覺跳動）
 MIN_CUT = 0.12
 
+# ── 格式參數 ────────────────────────────────────────────────────────────────
+# 短片 = 既有已驗收行為（四支短片 2026-07-28 收線），數值原封不動搬進來。
+#
+# 長片刻意放鬆，依據 docs/research/editing-grammar/2026-07-18：
+# - §1.5「呼吸節奏」：A-roll 連續段 p90 16.4s，長段落是讓講解落地的裝置，
+#   不是該剪掉的贅肉
+# - 建議 7「反 over-editing 條款」：25+ 教育受眾禁止再加密度
+#
+# 具體差別：長片只剪**真口吃**與**明顯的長停頓（≥1s）**；連接詞用法的
+# 「那/就是/然後」與附和「對對對」全部留著——短片剪它們是因為 60s 內沒有
+# 揮霍的餘裕，8–12 分鐘沒有這個限制，剪了反而失去訪談的自然感。
+FORMAT_TIGHTEN = {
+    "short": {
+        "min_pause": MIN_PAUSE,
+        "keep_head": KEEP_HEAD,
+        "keep_tail": KEEP_TAIL,
+        "min_cut": MIN_CUT,
+        "min_keep_seg": MIN_KEEP_SEG,
+        "cut_filler": True,
+        "cut_backchannel": True,
+    },
+    "long": {
+        # 0.80 是實測定的，不是拍腦袋：謝伯讓 punch-L5（759s）在 -32dB 下的
+        # 靜音分佈 = 0.3–0.5s ×100、0.5–0.8s ×33、0.8–1.0s ×6、≥1.0s ×4。
+        # 0.8s 以下那 133 個是**說話節奏**（換氣、語句間隔），剪掉就是 over-
+        # editing；0.8s 以上的 10 個才是真的空檔。門檻訂 1.0 只抓得到 4 個、
+        # 全段只移除 3.7s（0.5%）＝等於沒剪。
+        "min_pause": 0.80,
+        "keep_head": 0.20,  # 剪完仍留 ~0.35s 靜默——聽得出停頓、但不拖
+        "keep_tail": 0.15,
+        "min_cut": 0.30,  # 0.12s 的一刀在長片是白跳一下，不值得
+        "min_keep_seg": 0.50,
+        "cut_filler": False,
+        "cut_backchannel": False,
+    },
+}
+
 _SIL_START = re.compile(r"silence_start:\s*([\d.]+)")
 _SIL_END = re.compile(r"silence_end:\s*([\d.]+)")
 
@@ -112,7 +153,9 @@ def _load_winner(episode_dir: Path, cid: str) -> tuple[dict, dict]:
     return c, w
 
 
-def _detect_silences(audio: Path, t0: float, t1: float) -> list[tuple[float, float]]:
+def _detect_silences(
+    audio: Path, t0: float, t1: float, min_pause: float = MIN_PAUSE
+) -> list[tuple[float, float]]:
     """ffmpeg silencedetect 抓 [t0, t1] 內的靜音區間（絕對秒）。"""
     proc = subprocess.run(
         [
@@ -126,7 +169,7 @@ def _detect_silences(audio: Path, t0: float, t1: float) -> list[tuple[float, flo
             "-i",
             str(audio),
             "-af",
-            f"silencedetect=noise={SILENCE_NOISE}:d={MIN_PAUSE}",
+            f"silencedetect=noise={SILENCE_NOISE}:d={min_pause}",
             "-f",
             "null",
             "-",
@@ -146,6 +189,8 @@ def _detect_silences(audio: Path, t0: float, t1: float) -> list[tuple[float, flo
 
 def detect(episode_dir: Path, cid: str) -> dict:
     c, _w = _load_winner(episode_dir, cid)
+    fmt = c.get("format", "short")
+    cfg = FORMAT_TIGHTEN[fmt]
     t0, t1 = float(c["t_start"]), float(c["t_end"])
     words = json.load(open(episode_dir / "subs" / "words.json", encoding="utf-8"))["words"]
     seg_words = [x for x in words if t0 <= x.get("start", 0) < t1]
@@ -154,11 +199,11 @@ def detect(episode_dir: Path, cid: str) -> dict:
 
     # 1) 真實靜音 → pause cut（機械可信，keep=true）
     audio = episode_dir / "normalized.wav"
-    for s, e in _detect_silences(audio, t0, t1):
+    for s, e in _detect_silences(audio, t0, t1, cfg["min_pause"]):
         # 段首/段尾的靜音整段剪掉（不留呼吸），中間的留頭尾空隙
-        cs = t0 if s <= t0 + 0.05 else s + KEEP_HEAD
-        ce = t1 if e >= t1 - 0.05 else e - KEEP_TAIL
-        if ce - cs >= MIN_CUT:
+        cs = t0 if s <= t0 + 0.05 else s + cfg["keep_head"]
+        ce = t1 if e >= t1 - 0.05 else e - cfg["keep_tail"]
+        if ce - cs >= cfg["min_cut"]:
             cuts.append(
                 {
                     "t0": round(cs, 3),
@@ -180,7 +225,7 @@ def detect(episode_dir: Path, cid: str) -> dict:
     for i, x in enumerate(seg_words):
         wd, ws, we = x["word"], x["start"], x["end"]
         dur = we - ws
-        if wd in FILLER_WORDS and dur >= FILLER_MIN_DUR:
+        if cfg["cut_filler"] and wd in FILLER_WORDS and dur >= FILLER_MIN_DUR:
             cuts.append(
                 {
                     "t0": round(ws, 3),
@@ -214,7 +259,8 @@ def detect(episode_dir: Path, cid: str) -> dict:
 
     # 3) backchannel cue（整句只有附和詞，keep=null——要人工確認沒壓到
     #    來賓語音；能量分析對重疊 backchannel 是盲的，見 SKILL.md 已知極限）
-    for s, e, text in _parse_srt(episode_dir / "transcript.srt"):
+    srt_cues = _parse_srt(episode_dir / "transcript.srt") if cfg["cut_backchannel"] else []
+    for s, e, text in srt_cues:
         if t0 <= s and e <= t1 and text.replace(" ", "") in BACKCHANNEL_TEXTS:
             cuts.append(
                 {
@@ -236,13 +282,16 @@ def detect(episode_dir: Path, cid: str) -> dict:
     n_review = sum(1 for x in cuts if x["keep"] is None)
     return {
         "status": "detected",
+        "format": fmt,
         "file": str(out_path),
         "pauses": sum(1 for x in cuts if x["kind"] == "pause"),
         "need_review": n_review,
     }
 
 
-def _keep_segments(t0: float, t1: float, cuts: list[dict]) -> list[tuple[float, float]]:
+def _keep_segments(
+    t0: float, t1: float, cuts: list[dict], min_keep_seg: float = MIN_KEEP_SEG
+) -> list[tuple[float, float]]:
     """keep=true 切除區間的補集；合併相鄰切除、吸收過短保留段。"""
     active = sorted(
         ((max(t0, x["t0"]), min(t1, x["t1"])) for x in cuts if x.get("keep") is True),
@@ -259,12 +308,12 @@ def _keep_segments(t0: float, t1: float, cuts: list[dict]) -> list[tuple[float, 
     segs: list[tuple[float, float]] = []
     pos = t0
     for s, e in merged:
-        if s - pos >= MIN_KEEP_SEG:
+        if s - pos >= min_keep_seg:
             segs.append((pos, s))
         elif segs:  # 過短保留段：併入前一刀（延伸上一保留段終點沒意義，直接丟）
             pass
         pos = max(pos, e)
-    if t1 - pos >= MIN_KEEP_SEG:
+    if t1 - pos >= min_keep_seg:
         segs.append((pos, t1))
     return segs
 
@@ -742,9 +791,16 @@ def _retime_srt(
 
 
 def apply(episode_dir: Path, cid: str) -> dict:
-    from build_resolve_project import _template_path_short, connect_resolve, find_main_video
+    from build_resolve_project import (
+        _template_path,
+        _template_path_short,
+        connect_resolve,
+        find_main_video,
+    )
 
     c, w = _load_winner(episode_dir, cid)
+    fmt = c.get("format", "short")
+    fcfg = FORMAT_TIGHTEN[fmt]
     t0, t1 = float(c["t_start"]), float(c["t_end"])
     cuts_path = episode_dir / TIGHTEN_DIR / f"{cid}_cuts.json"
     if not cuts_path.exists():
@@ -753,7 +809,7 @@ def apply(episode_dir: Path, cid: str) -> dict:
     pending = [x for x in cuts if x.get("keep") is None]
     if pending:
         raise SystemExit(f"{len(pending)} 個候選未複審（keep=null）——agent 先把 cuts.json 複審完")
-    segs = _keep_segments(t0, t1, cuts)
+    segs = _keep_segments(t0, t1, cuts, fcfg["min_keep_seg"])
     removed = (t1 - t0) - sum(e - s for s, e in segs)
 
     resolve = connect_resolve()
@@ -790,7 +846,8 @@ def apply(episode_dir: Path, cid: str) -> dict:
     ) or mp.AddSubFolder(root, "Highlights")
     mp.SetCurrentFolder(hbin)
 
-    template = _template_path_short()
+    # 短片走直式 preset 模板；長片維持主模板（16:9，與主 timeline 同樣式）
+    template = _template_path_short() if fmt == "short" else _template_path()
     tl = None
     if template.exists():
         tl = mp.ImportTimelineFromFile(str(template), {})
@@ -806,7 +863,7 @@ def apply(episode_dir: Path, cid: str) -> dict:
     if tl is None:
         raise SystemExit(f"timeline 建立失敗: {label}")
     project.SetCurrentTimeline(tl)
-    if c["format"] == "short":
+    if fmt == "short":
         tl.SetSetting("useCustomSettings", "1")
         tl.SetSetting("timelineResolutionWidth", "1080")
         tl.SetSetting("timelineResolutionHeight", "1920")
@@ -846,6 +903,7 @@ def apply(episode_dir: Path, cid: str) -> dict:
     pm.SaveProject()
     return {
         "status": "tightened",
+        "format": fmt,
         "timeline": label,
         "segments": len(segs),
         "cuts": len(segs) - 1,
@@ -858,9 +916,9 @@ def apply(episode_dir: Path, cid: str) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
-    parser = argparse.ArgumentParser(description="短片緊湊化：贅詞/停頓 jump-cut")
+    parser = argparse.ArgumentParser(description="精華段緊湊化：贅詞/停頓 jump-cut（長短片共用）")
     parser.add_argument("episode", help="episode 資料夾")
-    parser.add_argument("--id", required=True, help="winner id（如 punch-S1）")
+    parser.add_argument("--id", required=True, help="winner id（如 punch-S1 / punch-L5）")
     parser.add_argument("--detect", action="store_true", help="偵測切點 → cuts.json")
     parser.add_argument("--apply", action="store_true", help="套用 cuts.json 建（緊）timeline")
     args = parser.parse_args(argv)

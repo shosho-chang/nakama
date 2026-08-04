@@ -1,0 +1,233 @@
+<!-- nakama:component chapter_label_wide（長片 16:9 章節籤／名牌，透明 overlay 疊 Resolve track 4）
+
+     v3（修修 2026-08-04 三輪：「lower third 太醜」）：加 style 變數，把
+     docs/design-system.md 的 --sho-* 語言直譯成 overlay——
+     - "orange"：v2 橘塊（保留當比較基準；⚠️ 它踩設計系統 AI-slop 禁用清單
+       「大塊橘色 fill」，短片波旬語彙的殘留）
+     - "paper"：紙白卡（--sho-bg 0.988 近紙白、ink 字、PANTONE 165 橘只當
+       kicker 短槓與 hairline，圓角 8px）——transition_title 的同語言 lower-third
+     - "ink"：暖黑卡（--sho dark 0.145 warm near-black、反白字、橘 accent 槓）
+       ——亮背景畫面上的替代款
+
+     位置：align:"center"=章節籤（中央偏下 0.76）；align:"left"=名牌（左下，
+     sub 放頭銜）。置中/位移全交 GSAP（CSS transform 會與 GSAP 疊加——
+     concept_card 直式版血案）。 -->
+<!doctype html>
+<html
+  lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"label","type":"string","label":"主文字（章節名／姓名）","default":"睡眠"},
+    {"id":"sub","type":"string","label":"副標小字（名牌頭銜用，空=隱藏）","default":""},
+    {"id":"align","type":"string","label":"center=章節籤 left=名牌","default":"center"},
+    {"id":"style","type":"string","label":"orange|paper|ink","default":"paper"},
+    {"id":"show_sec","type":"number","label":"顯示秒數","default":3.0}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 400;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Rg.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 700;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Bd.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 900;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Eb.woff2") format("woff2");
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+      #tag {
+        position: absolute;
+        display: inline-flex; align-items: center; gap: 14px;
+        opacity: 0;
+        font-family: "LINE Seed TW", "Noto Sans TC", sans-serif;
+      }
+      #tick { flex: none; border-radius: 3px; }
+      #col { display: flex; flex-direction: column; }
+      #text { white-space: nowrap; }
+      #sub { white-space: nowrap; }
+
+      /* ── orange：v2 基準（波旬短片語彙殘留，比較用） ── */
+      .style-orange #tag {
+        background: #e87000; border-radius: 9px;
+        padding: 7px 22px 11px 18px;
+        box-shadow: 0 5px 16px rgba(0, 0, 0, 0.35);
+      }
+      .style-orange #tick { width: 7px; align-self: stretch; background: #fff; border-radius: 4px; }
+      .style-orange #text { font-weight: 900; font-size: 36px; line-height: 1.15; color: #fff; }
+      .style-orange #sub { font-weight: 900; font-size: 21px; line-height: 1.2; color: rgba(255,255,255,0.92); margin-top: 2px; }
+
+      /* ── paper：半透明紙白（修修七輪統一系統：與 hero 卡、轉場卡紙紋底同
+         材質）、ink 字、橘只出現在手繪筆觸。tick 換手繪 SVG 豎筆觸（描邊
+         動畫），與 hero 底線／轉場卡 kicker 槓同一支麥克筆。 ── */
+      .style-paper #tag {
+        background: rgba(251, 250, 247, 0.85);
+        border: 1px solid rgba(217, 213, 207, 0.55);
+        border-radius: 8px;                  /* --sho-r-2 */
+        padding: 10px 24px 12px 18px;
+        box-shadow: 0 2px 10px rgba(20, 18, 15, 0.14);
+      }
+      .style-paper #tick { display: none; }
+      .tick-svg {
+        flex: none;
+        width: 14px;
+        align-self: stretch;
+        overflow: visible;
+      }
+      .tick-svg path {
+        fill: none;
+        stroke: #e98965;                     /* PANTONE 165 */
+        stroke-width: 7;
+        stroke-linecap: round;
+        opacity: 0.92;
+      }
+      .style-paper #text { font-weight: 700; font-size: 34px; line-height: 1.2; color: #1c1915; }
+      .style-paper #sub { font-weight: 400; font-size: 19px; line-height: 1.35; color: #6f6a62; margin-top: 3px; }
+
+      /* ── ink：warm near-black 卡、反白字、橘 accent——亮背景替代款 ── */
+      .style-ink #tag {
+        background: rgba(30, 27, 24, 0.94);  /* --sho dark bg oklch(0.145 0.005 80) */
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        border-radius: 8px;
+        padding: 10px 24px 12px 18px;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.30);
+      }
+      .style-ink #tick { width: 5px; align-self: stretch; background: #e98965; }
+      .style-ink #text { font-weight: 700; font-size: 34px; line-height: 1.2; color: #f6f4f1; }
+      .style-ink #sub { font-weight: 400; font-size: 19px; line-height: 1.35; color: rgba(246, 244, 241, 0.68); margin-top: 3px; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-root="true"
+      data-composition-id="chapter_label_wide"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="8"
+    >
+      <div id="tag">
+        <div id="tick"></div>
+        <div id="col">
+          <div id="text"></div>
+          <div id="sub"></div>
+        </div>
+      </div>
+    </div>
+    <script>
+      const vars =
+        (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const showSec = Number(vars.show_sec ?? 3.0);
+      const align = (vars.align ?? "center") === "left" ? "left" : "center";
+      const style = ["orange", "paper", "ink"].includes(vars.style) ? vars.style : "paper";
+      document.getElementById("root").classList.add(`style-${style}`);
+      document.getElementById("text").textContent = vars.label ?? "";
+      const sub = document.getElementById("sub");
+      if (vars.sub) sub.textContent = vars.sub;
+      else sub.remove();
+
+      const tag = document.getElementById("tag");
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline();
+      if (style === "paper" && align === "left") {
+        // 名牌逐元素進場（修修七輪：「整個區塊一起跑出來沒經過設計」）：
+        // 半透明紙卡先落 → 手繪 tick 畫出 → 姓名滑入 → 頭銜淡入
+        const tsvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        tsvg.setAttribute("class", "tick-svg");
+        tsvg.setAttribute("viewBox", "0 0 22 100");
+        tsvg.setAttribute("preserveAspectRatio", "none");
+        const tpath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        tpath.setAttribute("d", "M12,4 C 9.5,30 13.5,62 10.5,96");  // 手繪豎筆觸：微彎
+        tsvg.appendChild(tpath);
+        document.getElementById("tick").after(tsvg);
+        const tlen = tpath.getTotalLength();
+        tpath.style.strokeDasharray = `${tlen}`;
+        tpath.style.strokeDashoffset = `${tlen}`;
+
+        tag.style.left = "4%";
+        tag.style.top = "76%";
+        tl.fromTo(
+          "#tag",
+          { opacity: 0, x: -24, yPercent: -50 },
+          { opacity: 1, x: 0, yPercent: -50, duration: 0.3, ease: "power3.out" },
+          0
+        );
+        tl.to(tpath, { strokeDashoffset: 0, duration: 0.3, ease: "power2.inOut" }, 0.12);
+        tl.fromTo(
+          "#text",
+          { opacity: 0, x: -16 },
+          { opacity: 1, x: 0, duration: 0.35, ease: "power2.out" },
+          0.22
+        );
+        if (vars.sub) {
+          tl.fromTo(
+            "#sub",
+            { opacity: 0, y: 8 },
+            { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" },
+            0.38
+          );
+        }
+        // 退場：反向逐元素——頭銜先收、姓名滑走、卡帶 tick 一起淡出
+        const outAt = Math.max(0.9, showSec - 0.5);
+        if (vars.sub) tl.to("#sub", { opacity: 0, y: 6, duration: 0.22, ease: "power2.in" }, outAt);
+        tl.to("#text", { opacity: 0, x: -12, duration: 0.26, ease: "power2.in" }, outAt + 0.08);
+        tl.to("#tag", { opacity: 0, x: -20, duration: 0.28, ease: "power2.in" }, outAt + 0.2);
+        window.__timelines.main = tl;
+      } else if (align === "center") {
+        // 章節籤：畫面中央偏下（0.76），由下淡入浮起
+        tag.style.left = "50%";
+        tag.style.top = "76%";
+        tl.fromTo(
+          "#tag",
+          { opacity: 0, y: 26, xPercent: -50, yPercent: -50 },
+          { opacity: 1, y: 0, xPercent: -50, yPercent: -50, duration: 0.38, ease: "power3.out" },
+          0
+        );
+        tl.to(
+          "#tag",
+          { opacity: 0, y: 18, duration: 0.28, ease: "power2.in" },
+          Math.max(0.5, showSec - 0.28)
+        );
+      } else {
+        // 名牌：左下 lower-third，由左滑入
+        tag.style.left = "4%";
+        tag.style.top = "76%";
+        tl.fromTo(
+          "#tag",
+          { opacity: 0, x: -60, yPercent: -50 },
+          { opacity: 1, x: 0, yPercent: -50, duration: 0.38, ease: "power3.out" },
+          0
+        );
+        tl.to(
+          "#tag",
+          { opacity: 0, x: -40, duration: 0.28, ease: "power2.in" },
+          Math.max(0.5, showSec - 0.28)
+        );
+      }
+      // 舊式 tick 伸展只給 orange/ink（paper 名牌的手繪 tick 在自己的分支）
+      if (!(style === "paper" && align === "left")) {
+        tl.fromTo(
+          "#tick",
+          { scaleY: 0 },
+          { scaleY: 1, duration: 0.3, ease: "back.out(1.6)" },
+          0.1
+        );
+        window.__timelines.main = tl;
+      }
+    </script>
+  </body>
+</html>

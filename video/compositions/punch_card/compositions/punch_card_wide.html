@@ -1,0 +1,227 @@
+<!-- nakama:component punch_card_wide（長片 16:9 橘底大字 punch 卡，透明 overlay 疊 Resolve track 3）
+     與直式 punch_card.html 同一套視覺語彙（橘塊 #E87000 / LINE Seed TW 特黑 /
+     逐行 swipe-in + 快收），只重調幾何：
+
+     1. 1920×1080——16:9 有寬度沒高度，改走**單行為主的橫幅**：
+        tier2 每行 8 字（140px×8+padding ≈ 1176 = 61% 幅寬），
+        tier1 每行 6 字（200px×6+padding ≈ 1248 = 65%）。
+     2. 字級略小於直式（140/200 vs 150/190 但幅寬多 78%）——首版試 120/160，
+        實渲後 hero 只佔 28% 幅寬、在寬幅裡份量太輕（直式版佔 58%），上調定案。
+     3. pos_y 預設下修（0.66/0.60）：16:9 的字幕帶在 ~0.88 起跳，
+        兩行卡的下緣必須收在 0.86 以前，否則壓到字幕。 -->
+<!doctype html>
+<html
+  lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"line1","type":"string","label":"第一行","default":"它會改變"},
+    {"id":"line2","type":"string","label":"第二行（可空）","default":"你的耐心"},
+    {"id":"show_sec","type":"number","label":"顯示秒數","default":2.0},
+    {"id":"pos_y","type":"number","label":"卡片垂直中心 0-1","default":0.66},
+    {"id":"tier","type":"number","label":"層級 1=hero 2=標準","default":2}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 700;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Bd.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 900;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Eb.woff2") format("woff2");
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 1920px; height: 1080px; overflow: hidden;
+        background: transparent;
+      }
+      #root {
+        position: relative; width: 1920px; height: 1080px; overflow: hidden;
+      }
+      #card {
+        position: absolute; left: 50%; top: var(--pos-y, 66%);
+        transform: translate(-50%, -50%);
+        display: flex; flex-direction: column; align-items: center; gap: 8px;
+      }
+      .line {
+        display: inline-block;
+        background: #e87000;
+        color: #fff;
+        font-family: "LINE Seed TW", "Noto Sans TC", sans-serif;
+        font-weight: 900;
+        font-size: 140px;
+        line-height: 1.16;
+        padding: 5px 28px 11px;
+        white-space: nowrap;
+        opacity: 0;
+      }
+      /* 第二行右推——與直式同語法，位移比例照字級縮（60 × 120/150） */
+      .line:nth-child(2) { margin-left: 48px; }
+      /* tier 1 = hero：全片最強一句，必須一眼比 tier2 大一級 */
+      /* v2 修修 2026-08-04：「情緒是建構起來的」200px 實渲後太大（5 字行寬
+         1048px = 55% 幅寬、兩行高 ~500px 直接蓋臉）→ 收到 150px。
+         仍比 tier2（140px）大一級＋更重 padding，hero 辨識度保留。 */
+      .tier1 .line {
+        font-size: 150px;
+        padding: 8px 24px 15px;
+        line-height: 1.1;
+      }
+      .tier1 .line:nth-child(2) { margin-left: 32px; }
+
+      /* ── v3 style 變體（修修 2026-08-04：「字卡太醜」→ 設計系統直譯）──
+         orange = 現況基準（波旬短片語彙殘留：大塊橘 fill，踩 --sho AI-slop
+         禁用清單）；paper = 近紙白卡 + ink 字 + PANTONE 165 kicker 槓；
+         ink = warm near-black + 反白。 */
+      /* 半透明紙白（修修七輪統一系統）：與名牌、轉場卡紙紋底同材質——
+         底隱約透出實拍，陰影收輕（半透明卡的重影會顯髒） */
+      .style-paper .line {
+        background: rgba(251, 250, 247, 0.86);
+        color: #1c1915;
+        border: 1px solid rgba(217, 213, 207, 0.55);
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(20, 18, 15, 0.14);
+      }
+      .style-ink .line {
+        background: rgba(30, 27, 24, 0.94);
+        color: #f6f4f1;
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        border-radius: 10px;
+        box-shadow: 0 3px 16px rgba(0, 0, 0, 0.35);
+      }
+      /* 手繪畫線（paper/ink）：SVG 描邊動畫，位置貼在字底、蓋在卡片上 */
+      .line { position: relative; }
+      .line svg.uline {
+        position: absolute;
+        left: 22px; right: 22px; bottom: 10px;
+        width: calc(100% - 44px); height: 22px;
+        overflow: visible; pointer-events: none;
+      }
+      .line svg.uline path {
+        fill: none;
+        stroke: #e98965;
+        stroke-width: 9;
+        stroke-linecap: round;
+        opacity: 0.92;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-root="true"
+      data-composition-id="punch_card_wide"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="4"
+    >
+      <div id="card">
+        <span class="line" id="l1"></span>
+        <span class="line" id="l2"></span>
+      </div>
+    </div>
+    <script>
+      const vars =
+        (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const line1 = vars.line1 ?? "它會改變";
+      const line2 = vars.line2 ?? "";
+      const showSec = Number(vars.show_sec ?? 2.0);
+      const posY = Number(vars.pos_y ?? 0.66);
+      const tier = Number(vars.tier ?? 2);
+
+      document.getElementById("l1").textContent = line1;
+      const l2 = document.getElementById("l2");
+      if (line2) {
+        l2.textContent = line2;
+      } else {
+        l2.remove();
+      }
+      const card = document.getElementById("card");
+      card.style.top = `${posY * 100}%`;
+      if (tier === 1) card.classList.add("tier1");
+      const style = ["orange", "paper", "ink"].includes(vars.style) ? vars.style : "orange";
+      document.getElementById("root").classList.add(`style-${style}`);
+
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ defaults: { transformOrigin: "50% 50%" } });
+      if (tier === 1) {
+        // hero 進場：大幅縮放彈入 + 微旋轉甩正（全片最強一句的儀式感）
+        tl.fromTo(
+          ".line",
+          { opacity: 0, scale: 0.68, rotation: -2.2, y: 30 },
+          {
+            opacity: 1,
+            scale: 1,
+            rotation: 0,
+            y: 0,
+            duration: 0.5,
+            ease: "back.out(2.2)",
+            stagger: 0.12,
+          },
+          0
+        );
+      } else {
+        // 標準進場：逐行由左 swipe + S 曲線 pop（範例語法）
+        tl.fromTo(
+          ".line",
+          { x: -70, opacity: 0, scale: 0.9 },
+          {
+            x: 0,
+            opacity: 1,
+            scale: 1,
+            duration: 0.42,
+            ease: "back.out(1.4)",
+            stagger: 0.09,
+          },
+          0
+        );
+      }
+      // 手繪畫線（修修四輪）：hero 進場完成後，橘色麥克筆在字下由左畫到右。
+      // 抖動用定值序列（非 Math.random）——同 variables 必須渲出同畫面，
+      // cache hash 才有意義
+      if (tier === 1 && style !== "orange") {
+        const WOBBLE = [3, -2, 4, -3, 1, -4, 3, -1, 2, -3, 4, -2];
+        document.querySelectorAll(".line").forEach((line, li) => {
+          const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+          svg.setAttribute("class", "uline");
+          svg.setAttribute("viewBox", "0 0 100 22");
+          svg.setAttribute("preserveAspectRatio", "none");
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          // 手繪感：三段 cubic、y 在 8–15 間定值抖動，尾端微下沉像收筆
+          const w = WOBBLE.map((v, i) => v * ((i + li) % 2 ? 1 : -1) * 0.7);
+          path.setAttribute(
+            "d",
+            `M2,${11 + w[0]} C 18,${8 + w[1]} 30,${15 + w[2]} 46,${11 + w[3]}` +
+              ` S 62,${8 + w[4]} 74,${12 + w[5]} S 90,${14 + w[6]} 98,${12 + w[7]}`
+          );
+          svg.appendChild(path);
+          line.appendChild(svg);
+          const len = path.getTotalLength();
+          path.style.strokeDasharray = `${len}`;
+          path.style.strokeDashoffset = `${len}`;
+          // 進場（0.5s+stagger）收尾後開畫：0.75s 起、每行錯拍 0.22s、畫 0.45s
+          tl.to(
+            path,
+            { strokeDashoffset: 0, duration: 0.45, ease: "power2.inOut" },
+            0.75 + li * 0.22
+          );
+        });
+      }
+
+      // 退場：快速縮小淡出（快狠準——0.22s 收掉）
+      tl.to(
+        ".line",
+        { opacity: 0, scale: 0.94, duration: 0.22, ease: "power2.in", stagger: 0.04 },
+        Math.max(0.6, showSec - 0.22)
+      );
+      window.__timelines["punch_card_wide"] = tl;
+    </script>
+  </body>
+</html>
