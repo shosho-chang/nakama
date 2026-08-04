@@ -54,8 +54,10 @@ GAP_SEC = 8.0  # 節拍器缺口門檻（二十四輪盲審下修：12s 太寬�
 # 缺口門檻也放寬：長片密度目標 4.5–5.5 事件/分（剪輯文法 §2.1），
 # 短片是 6–9，用同一把尺會把長片的正常呼吸判成死區。
 FORMAT_REVIEW = {
-    "short": {"preview": (540, 960), "gap_sec": GAP_SEC, "chunk_sec": None, "burn_srt": True},
-    "long": {"preview": (960, 540), "gap_sec": 14.0, "chunk_sec": 180.0, "burn_srt": False},
+    "short": {"preview": (540, 960), "gap_sec": GAP_SEC, "chunk_sec": None, "burn_srt": True,
+              "content_gap_sec": None},
+    "long": {"preview": (960, 540), "gap_sec": 14.0, "chunk_sec": 180.0, "burn_srt": False,
+             "content_gap_sec": 75.0},
 }
 # punch zoom 是「同機位縮放」不是新視覺事件——算進去會遮蔽真死區
 # （兩位盲審獨立指出）。缺口只計換鏡素材與卡片。
@@ -121,6 +123,37 @@ def _load_srt_lines(episode_dir: Path, cid: str) -> list[dict]:
                 e = int(m.group(6)) * 60 + int(m.group(7)) + int(m.group(8)) / 1000
                 lines.append({"t0": round(s, 2), "t1": round(e, 2), "text": ls[2]})
     return lines
+
+
+def _scan_content_gaps(
+    events: list[dict], dur: float, srt: list[dict], threshold: float
+) -> list[dict]:
+    """素材真空段掃描（修修 2026-08-04：「情緒是建構的那段太空」）。
+
+    只算**強事件**（素材/卡片）——cut 是弱事件（同組談話頭來回切，觀眾對
+    「有畫面變化」的感受撐不了一分鐘以上），算進去會讓長片 gap 偵測永遠
+    沉默：導播每幾秒換鏡一次，14s 門檻掃不到 127→291s 的 164 秒素材真空。
+    每段真空附該區間 transcript——下游（LLM/人工）用它找「描述情境」的句子
+    提案 stock，走 hero 同款 gate：提案 → 修修裁決 → 才抓素材上軌。"""
+    gaps = []
+    strong = [
+        e for e in events
+        if e["type"] != "cut" and not e["type"].startswith(GAP_EXCLUDE_PREFIX)
+    ]
+
+    def _one(f: float, t: float) -> dict:
+        text = " ".join(s["text"] for s in srt if s["t0"] < t and s["t1"] > f)
+        return {"from": round(f, 1), "to": round(t, 1), "sec": round(t - f, 1),
+                "transcript": text}
+
+    cursor = 0.0
+    for e in strong:
+        if e["t0"] - cursor > threshold:
+            gaps.append(_one(cursor, e["t0"]))
+        cursor = max(cursor, e["t1"])
+    if dur - cursor > threshold:
+        gaps.append(_one(cursor, dur))
+    return gaps
 
 
 def _render_preview(
@@ -339,6 +372,13 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
     if dur - cursor > fcfg["gap_sec"]:
         gaps.append({"from": round(cursor, 1), "to": round(dur, 1), "sec": round(dur - cursor, 1)})
 
+    # 素材真空段（長片 only）：強事件之間 > content_gap_sec 的區間 + transcript
+    content_gaps = (
+        _scan_content_gaps(events, dur, srt, fcfg["content_gap_sec"])
+        if fcfg["content_gap_sec"]
+        else []
+    )
+
     packet = {
         "timeline": label,
         "duration_sec": round(dur, 1),
@@ -349,6 +389,8 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
         "events": events,
         "gap_threshold_sec": fcfg["gap_sec"],
         "gaps": gaps,
+        "content_gap_threshold_sec": fcfg["content_gap_sec"],
+        "content_gaps": content_gaps,
         "contact_sheets": sheets,
         "frames": frames,
         "srt": srt,
@@ -365,6 +407,10 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
         "content_per_min": packet["content_per_min"],
         "gap_threshold_sec": fcfg["gap_sec"],
         "gaps": gaps,
+        # transcript 不進 summary（stdout 會爆）——只報時間窗，全文在 packet
+        "content_gaps": [
+            {k: g[k] for k in ("from", "to", "sec")} for g in content_gaps
+        ],
         "contact_sheets": [x["file"] for x in sheets],
         "frames": len(frames),
     }
