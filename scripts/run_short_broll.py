@@ -523,7 +523,7 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
                 }
             ]
         )
-        if not ok:
+        if not ok or (isinstance(ok, list) and ok[0] is None):  # [None]=失敗（2026-08-04）
             raise SystemExit(f"疊軌失敗 @{job['t0']}（track {BROLL_TRACK} 可能被佔）")
         item = (director.GetItemListInTrack("video", BROLL_TRACK) or [])[-1]
         zoom = _fill_zoom(clip.GetClipProperty("Resolution"), job["sar"], canvas)
@@ -556,7 +556,7 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
                 }
             ]
         )
-        if not ok:
+        if not ok or (isinstance(ok, list) and ok[0] is None):  # [None]=失敗（2026-08-04）
             raise SystemExit(f"疊軌失敗 @{job['t0']}（track {CARD_TRACK}）")
         made.append(
             {"slug": job["mov"].stem, "kind": job["comp"], "at": job["t0"], "sec": job["span"]}
@@ -590,7 +590,7 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
                     }
                 ]
             )
-            if not ok:
+            if not ok or (isinstance(ok, list) and ok[0] is None):  # [None]=失敗（2026-08-04）
                 raise SystemExit(f"badge 疊軌失敗 @frame {pos}")
             pos += int(take_src * fps / job["src_fps"])
             n_loops += 1

@@ -503,8 +503,11 @@ def direct(
         if extra:
             spec.update(extra)
         items = mp.AppendToTimeline([spec])
-        if not items:
-            raise SystemExit(f"{label}: 上軌失敗 {f0}-{f1}")
+        # ⚠️ AppendToTimeline 失敗會回傳 [None]——truthy！`if not items` 判不到
+        # （2026-08-04 util-L4 事故：Resolve 忙碌時全片 append 靜默失敗，
+        # script 照報 102 shots、timeline 是空的）
+        if not items or (isinstance(items, list) and items[0] is None):
+            raise SystemExit(f"{label}: 上軌失敗（AppendToTimeline 回 {items!r}）{f0}-{f1}")
         if isinstance(items, list):
             return items[0]
         track = (extra or {}).get("trackIndex", 1)
@@ -590,6 +593,15 @@ def direct(
     seg_srt, n_cues = _retime_srt(episode_dir, cid, segs, cuts, fine=cfg["fine_subs"])
     srt_items = import_srt_tidy(mp, root, seg_srt)
     sub_ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
+    # 收尾驗證：實際上軌數 = shot 數（fail loud——報成功但 timeline 空的血案不再）
+    placed = sum(
+        len(tl.GetItemListInTrack("video", k) or [])
+        for k in range(1, tl.GetTrackCount("video") + 1)
+    )
+    if placed < len(shots):
+        raise SystemExit(
+            f"{label}: 上軌驗證失敗——timeline 實有 {placed} items < shots {len(shots)}"
+        )
     pm.SaveProject()
 
     stills = []

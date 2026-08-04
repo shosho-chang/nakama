@@ -90,7 +90,7 @@ roll back。根因有二：(1) 短片語彙是為了留住滑動的人，長片�
 | **品牌 badge** | 識別 | 左下角 logo，**只出現開場（收在名牌進場前，如 7.4s）+ 每個轉場卡結束後 ~8s**。`kind:"badge"` + slug `brand-badge-7s`/`brand-badge-8s`/`brand-badge-10s`：**定長 fade 預合成**（180px、alpha fade in/out 0.5s——源動畫動作區僅 ~87×48px，150px loop 版感知不到「沒有動」）。ffmpeg `-stream_loop` + scale=180 + pad 66:840 + fade，鋪 track 5。源檔 `E:\Projects\張修修的AI創作者新世紀\output\podcast-logo-animation\` | 開場+轉場後 |
 | **來賓名牌** | 介紹 | `chapter_label_wide` `align:"left"` + `sub` + `style:"paper"`＝半透明紙卡＋手繪橘豎筆觸＋**逐元素進退場**（卡落→tick 畫出→姓名滑入→頭銜淡入；修修：「整個區塊一起跑出來沒經過設計」）。落**來賓第一個實質單獨鏡頭內**（查 timeline v1 軌首個 ≥3s 的 CAM2 段，貼切點進、退場收在段內；碎片鏡頭 <1s 掛不了名牌）。⚠️ 開場 badge 窗必須在名牌進場前收掉——左下角同框=擠 | 1 |
 | **論文第一頁卡** | 信任感 | 真 PDF 第一頁彈入（`sticker_pair_wide` center 模式；禁 stock 代打）。唯一的證物類型（書封/人名/數據卡都不做——grill 裁決） | 提到具體研究時 |
-| **Hero 大字卡** | 錨點 | `punch_card_wide` tier1 150px + `style:"paper"`（FORMAT_TITLES long 預設）＝半透明紙白卡＋ink 字＋**橘色手繪畫線動畫**（SVG 描邊，進場後 0.75s 逐行由左畫到右）。**我提案附原話+時間點 → 修修裁決 → 才 render** | 2–4 |
+| **Hero 大字卡** | 錨點 | `punch_card_wide` tier1 150px + `style:"paper"`（FORMAT_TITLES long 預設）＝半透明紙白卡＋ink 字＋**橘色手繪畫線動畫**（SVG 描邊，進場後 0.75s 逐行由左畫到右）。**agent 自裁**（修修 2026-08-04 收斂裁決：剪輯線免 HITL——選轉折點、貼原話、驗語檢查把關；曾經的「提案→裁決」流程退役） | 2–4 |
 | **滿版 stock** | 情境具象化 | 描述情境的時刻滿版實拍。**選點走演算法不逐支請示**（修修：「這套策略要能應用在之後的長影片」）：① `run_short_review` 的 `content_gaps` 掃真空段（>75s 無強事件；換鏡是弱事件不算）② 每段塞 1 支、段長 ≥100s 最多 2 支且間隔 ≥40s ③ 選句優先序：**「比方說/例如」舉例句 > 具體可拍場景（動作/地點）**，抽象論述不選、關鍵論點段不蓋 ④ 橫式 4K 實拍（Envato）、主題不與已用素材重複、3.5–4.5s、`src_in` 跳廢頭 ⑤ 密度=分佈優先，非固定總量；塞完重掃殘餘真空迭代到收斂 ⑥ **觸發 ≠ 必塞**：真空段內找不到具體情境句（全是抽象論述/書的內容）→ 保留 talking head 並記錄——硬湊是 v1 整版被打掉的根因。直式素材只有特寫類能裁著用 | 每 75s+ 真空段 1–2 |
 
 **退場語彙**（長片不用）：橘塊 style（保留當 `style:"orange"` 比較基準）、
@@ -146,3 +146,34 @@ Step 6 起重走。修修手改過的 timeline 尾端見 Step 6–7 的 `--refre
 
 長片定版後 → 發布線（`publish_prep.py` render+登錄 → 描述生成 → uploader，
 見 `docs/plans/2026-07-26-video-publishing-plan.md` + ADR-054）。
+
+## 收斂後的運行模式（修修 2026-08-04 裁決：剪輯線免 HITL）
+
+util-L4 完成後修修裁決：「長影片的剪輯已經慢慢可以收斂了，以後都可以不用
+經過 Human in the Loop。」自此每支長片 Step 6–11 **端到端自動跑完**（含
+hero 自裁、stock 演算法、視覺語彙套定版系統），修修只在兩個發布 gate 出現：
+
+1. **Packaging gate**（PACKAGING 頁選主打組——TF-duo 三組由 thumbnail 線自動產）
+2. **發布審核頁**（/bridge/publish 看 preview、潤文案、排程上傳）
+
+preview 照樣交付（他要看隨時能看），但**不阻塞產線**。
+
+### 事實更正卡（brandlens 數據條件的視覺落地，util-L4 首用）
+
+brandlens 對數據類 caution 的三件套處置：
+1. **錯誤數據句 → 語意刪段**（passage cut；例：聽力 2–3% 實為 ~7%）
+2. **比例性質誤讀 → 更正卡**：`chapter_label_wide` center + paper，label=
+   正確表述（「45–47%＝族群層級可預防比例」）、sub=補充（「非個人風險降幅｜
+   The Lancet 2024」）。**不標「（主持人引用）」**——修修：聽得出來、看得出來
+3. **數據不掛來賓名下**：更正卡落在主持人鏡頭段內（導播本來就會切說話者）
+
+### 字幕 QC（發布前必掃，錯字修源頭）
+
+- 讀最新 tight SRT 全文掃 ASR 錯字；**修 `transcript.srt` 源頭**（CC 與未來
+  重跑都繼承），再 `--refresh-subs` 換字幕軌（不動剪輯）
+- 只修上下文能確證的錯（例：「捷思啊神力啊」→「節能啊省力啊」——修修
+  同場說過「大腦是很節能的」）；不確定的列給修修，**不腦補**
+- ⚠️ **passage cut 邊界落在 cue 內時，字幕文字不會跟著切**（util-L4 血案：
+  剪掉的「2、3%」文字殘留 0.8s）——先把 source cue 在切點**拆成兩個 cue**
+  再 refresh，讓 retime 自然丟掉被剪的那半
+- stock 銜接：滿版不裁的前提下 1080p 源可用（畫質無損；4K 仍為預設優先）
