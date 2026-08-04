@@ -32,7 +32,9 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 EYE_TOL_PX = 10  # 修修 2026-07-29 驗收標準（720p）
-HEAD_TOL_PX = 12
+HEAD_TOL_PX = 12  # 舊判準，僅供參考輸出
+FACE_BOOST_TARGET = 1.05  # TF-duo 定案：guest 臉（眼-下巴）= host × 1.05
+FACE_RATIO_TOL = 0.03
 
 
 def _landmarks(manifest: dict, cutout: str) -> tuple[dict, float]:
@@ -88,11 +90,20 @@ def verify(manifest: dict, spec: dict, canvas_h: float) -> int:
         )
     if len(preds) == 2:
         eye_d = abs(preds["host"]["eye"] - preds["guest"]["eye"])
+        # 等大判準 = 臉高（眼-下巴）比值落在 face_boost ± 容差——頭高含髮量
+        # 不可比（TF-duo 定案規則 2+3；頭高差僅供參考印出）
+        face_h = preds["host"]["chin"] - preds["host"]["eye"]
+        face_g = preds["guest"]["chin"] - preds["guest"]["eye"]
+        ratio = face_g / face_h
+        ok_eye = eye_d <= EYE_TOL_PX
+        ok_face = abs(ratio - FACE_BOOST_TARGET) <= FACE_RATIO_TOL
         head_d = abs(preds["host"]["head_h"] - preds["guest"]["head_h"])
-        ok_eye, ok_head = eye_d <= EYE_TOL_PX, head_d <= HEAD_TOL_PX
         print(f"眼線差 {eye_d:.1f}px（≤{EYE_TOL_PX}）: {'PASS' if ok_eye else 'FAIL'}")
-        print(f"頭高差 {head_d:.1f}px（≤{HEAD_TOL_PX}）: {'PASS' if ok_head else 'FAIL'}")
-        out = 0 if (ok_eye and ok_head) else 1
+        print(
+            f"臉高比 guest/host {ratio:.3f}（目標 {FACE_BOOST_TARGET}±{FACE_RATIO_TOL}）: "
+            f"{'PASS' if ok_face else 'FAIL'}（頭高差 {head_d:.1f}px 含髮量僅供參考）"
+        )
+        out = 0 if (ok_eye and ok_face) else 1
     return out
 
 
