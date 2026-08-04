@@ -75,6 +75,31 @@ def _predict(lm: dict, ch: float, canvas_h: float, height_pct: float, y_pct: flo
 
 def verify(manifest: dict, spec: dict, canvas_h: float) -> int:
     v = spec["variables"]
+    # 表情繼承版 spec（帶 _solve 中繼資料）：最強判準 = spec 參數必須與 solver
+    # 重算完全一致（表情臉高比對 expr 對無意義——張嘴會撐長臉高，見規則 7）
+    refs = spec.get("_solve")
+    if refs:
+        expected = solve_duo(
+            manifest,
+            refs["host"],
+            refs["guest"],
+            canvas_h,
+            float(refs.get("canvas_w", 1280)),
+            host_expr=refs.get("host_expr"),
+            guest_expr=refs.get("guest_expr"),
+        )
+        ok = True
+        for role in ("host", "guest"):
+            for k, want in expected[role].items():
+                got = float(v.get(k, float("nan")))
+                if abs(got - want) > 0.05:
+                    print(f"{k}: spec {got} ≠ solver {want} FAIL")
+                    ok = False
+            p = expected[f"_{role}_predicted"]
+            lock = expected["_eye_lock_px"]
+            print(f"{role}: 頭頂 {p['head_top']}px 眼 {p['eye']}px（eye_lock {lock}）")
+        print("solver 重算一致性: " + ("PASS" if ok else "FAIL"))
+        return 0 if ok else 1
     out, preds = 0, {}
     for role in ("host", "guest"):
         url = (spec.get("images") or {}).get(f"{role}_cutout_data_url", "")
@@ -116,6 +141,8 @@ def solve_duo(
     guest_face_boost: float = 1.05,
     clip_frac: float = 0.08,
     outward_shift_pct: float = 5.0,
+    host_expr: str | None = None,
+    guest_expr: str | None = None,
 ) -> dict:
     """TF 式雙臉版式（修修 2026-08-04 謝伯讓集定案）的通用求解。
 
@@ -127,6 +154,11 @@ def solve_duo(
     5. 外側各切頭寬 clip_frac（TF 規格基準）；頭界用 alpha bbox 不含目測
     6. 再各外移 outward_shift_pct（% canvas 寬）讓中央卡空間變大（修修定案 5%；
        總裁切約達頭寬 20%——TF 樣本觀察帶 15–25% 內）
+    7. **表情版 cutout 繼承同人基準 scale**（host_expr/guest_expr）：臉高量尺
+       會被表情弄壞（張嘴大笑讓眼-下巴 +23% → 人被誤縮 19%，2026-08-04 pkg2
+       事故）。同人同機位同尺寸裁切框 = 同 pixel scale，表情版只重解 y（眼線
+       對齊）與 x（自己的 head_cols），scale 不重解。**表情版與基準 cutout 的
+       像素尺寸必須相同**（不同 = 裁切框不同 = 不可繼承，fail loud）。
     """
     lm_h, ch_h = _landmarks(manifest, host)
     lm_g, ch_g = _landmarks(manifest, guest)
@@ -139,8 +171,25 @@ def solve_duo(
     s_h = (lm_g["chin"] - lm_g["eye"]) * s_g0 / (lm_h["chin"] - lm_h["eye"])  # 規則 2
     s_g = s_g0 * guest_face_boost  # 規則 3
 
+    # 規則 7：表情版繼承基準 scale，換上自己的 landmarks 解 y/x
+    actual = {"host": host_expr or host, "guest": guest_expr or guest}
+    lms = {"host": (lm_h, ch_h), "guest": (lm_g, ch_g)}
+    for role in ("host", "guest"):
+        if actual[role] != (host if role == "host" else guest):
+            lm_a, ch_a = _landmarks(manifest, actual[role])
+            ref_lm, ref_ch = lms[role]
+            if (ch_a, lm_a.get("cutout_w")) != (ref_ch, ref_lm.get("cutout_w")):
+                raise SystemExit(
+                    f"{actual[role]} 尺寸 {lm_a.get('cutout_w')}x{ch_a} ≠ 基準 "
+                    f"{ref_lm.get('cutout_w')}x{ref_ch}——裁切框不同不可繼承 scale"
+                )
+            lms[role] = (lm_a, ch_a)
+
     out = {}
-    roles = (("host", host, lm_h, ch_h, s_h), ("guest", guest, lm_g, ch_g, s_g))
+    roles = (
+        ("host", actual["host"], *lms["host"], s_h),
+        ("guest", actual["guest"], *lms["guest"], s_g),
+    )
     for role, name, lm, ch, s in roles:
         displayed_h = ch * s
         screen_top = eye_ref - lm["eye"] * s
@@ -180,6 +229,8 @@ def main() -> int:
     d.add_argument("--guest-face-boost", type=float, default=1.05)
     d.add_argument("--clip-frac", type=float, default=0.08)
     d.add_argument("--outward-shift-pct", type=float, default=5.0)
+    d.add_argument("--host-expr", default=None, help="表情版 cutout（繼承 --host 的 scale）")
+    d.add_argument("--guest-expr", default=None, help="表情版 cutout（繼承 --guest 的 scale）")
     v = sub.add_parser("verify")
     v.add_argument("--manifest", required=True)
     v.add_argument("--spec", required=True)
@@ -207,6 +258,8 @@ def main() -> int:
                     a.guest_face_boost,
                     a.clip_frac,
                     a.outward_shift_pct,
+                    a.host_expr,
+                    a.guest_expr,
                 ),
                 ensure_ascii=False,
                 indent=1,
