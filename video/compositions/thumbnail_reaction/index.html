@@ -138,6 +138,21 @@
       /* prop=left：卡右緣本來就躲在人物後面，右側碎片只會從肩上冒出零星角料 */
       #root[data-prop="left"] #shard-r { display: none; }
 
+      /* shard_edges=topbottom（修修 2026-08-04 TF-duo）：寬卡時左右碎片整簇
+         躲進人物身後看不見 → 改由卡的上下緣爆出（p22 母題不變，換邊）。
+         幾何 = 側邊碎片的座標轉置（260×620 → 620×260），深度 260 大半藏在
+         卡後（z -1），只露出卡緣外的部分。 */
+      .shard-tb {
+        position: absolute; left: 50%; z-index: -1;
+        width: 540px; height: 226px; transform: translateX(-50%);
+        fill: var(--accent, #F37425); display: none;
+      }
+      #shard-t { top: -88px; }
+      #shard-b { bottom: -88px; transform: translateX(-50%) scaleY(-1); }
+      #root[data-frame="shards"][data-shard-edges="topbottom"] .shard-tb,
+      #root[data-frame="hybrid"][data-shard-edges="topbottom"] .shard-tb { display: block; }
+      #root[data-shard-edges="topbottom"] .shard { display: none !important; }
+
       /* 頻道 logo — 與 N1 同一角落(左下)保持頻道一致性;三種錨點可選 */
       #logo {
         position: absolute; z-index: 6;
@@ -177,6 +192,7 @@
         "prop_height_px":        { "type": "number", "default": 576 },
         "prop_position":         { "type": "string", "default": "center" },
         "frame_style":           { "type": "string", "default": "plain" },
+        "shard_edges":           { "type": "string", "default": "sides" },
         "host_cutout_data_url":  { "type": "string", "default": "" },
         "guest_cutout_data_url": { "type": "string", "default": "" },
         "bg_image_data_url":     { "type": "string", "default": "" },
@@ -216,6 +232,23 @@
           <polygon points="117,456 243,380 279,440 153,516" />
           <polygon points="76,477 267,521 252,583 61,539" />
         </svg>
+        <!-- 上下緣碎片：側邊簇的座標轉置（swap x,y），母題與密度不變 -->
+        <svg id="shard-t" class="shard-tb" viewBox="0 0 620 260" aria-hidden="true">
+          <polygon points="78,146 14,245 66,278 130,179" />
+          <polygon points="102,59 157,266 234,245 179,38" />
+          <polygon points="256,132 200,252 260,280 316,160" />
+          <polygon points="265,41 373,253 439,219 331,7" />
+          <polygon points="456,117 380,243 440,279 516,153" />
+          <polygon points="477,76 521,267 583,252 539,61" />
+        </svg>
+        <svg id="shard-b" class="shard-tb" viewBox="0 0 620 260" aria-hidden="true">
+          <polygon points="78,146 14,245 66,278 130,179" />
+          <polygon points="102,59 157,266 234,245 179,38" />
+          <polygon points="256,132 200,252 260,280 316,160" />
+          <polygon points="265,41 373,253 439,219 331,7" />
+          <polygon points="456,117 380,243 440,279 516,153" />
+          <polygon points="477,76 521,267 583,252 539,61" />
+        </svg>
         <div id="prop-wrap">
           <div id="prop-frame"></div>
           <div id="prop-clip"><img id="prop" alt="" /></div>
@@ -249,6 +282,7 @@
       root.dataset.prop = vars.prop_position === "left" ? "left" : "center";
       root.dataset.frame = ["plain", "shards", "skew", "hybrid"].includes(vars.frame_style)
         ? vars.frame_style : "plain";
+      root.dataset.shardEdges = vars.shard_edges === "topbottom" ? "topbottom" : "sides";
 
       const glowHex = vars.person_glow_color !== undefined ? vars.person_glow_color : "#F37425";
       if (glowHex) {

@@ -104,6 +104,7 @@ def solve_duo(
     canvas_w: float = 1280,
     guest_face_boost: float = 1.05,
     clip_frac: float = 0.08,
+    outward_shift_pct: float = 5.0,
 ) -> dict:
     """TF 式雙臉版式（修修 2026-08-04 謝伯讓集定案）的通用求解。
 
@@ -112,7 +113,9 @@ def solve_duo(
     2. host 臉高（眼-下巴）= guest 基準臉高（等大用臉不用頭——蓬髮吃頭高額度）
     3. guest 再 × face_boost（感知校準：正面臉+眼鏡看起來小一號，修修 A/B 選 +5%）
     4. 兩人眼線鎖同一水平（以 guest 基準解的眼位為準）
-    5. 外側各切頭寬 clip_frac（頭 92% 可見，TF 規格）；頭界用 alpha bbox 不含目測
+    5. 外側各切頭寬 clip_frac（TF 規格基準）；頭界用 alpha bbox 不含目測
+    6. 再各外移 outward_shift_pct（% canvas 寬）讓中央卡空間變大（修修定案 5%；
+       總裁切約達頭寬 20%——TF 樣本觀察帶 15–25% 內）
     """
     lm_h, ch_h = _landmarks(manifest, host)
     lm_g, ch_g = _landmarks(manifest, guest)
@@ -134,10 +137,10 @@ def solve_duo(
         head_w = (lm["head_cols"][1] - lm["head_cols"][0]) * s
         clip = clip_frac * head_w
         if role == "host":  # 左緣錨定
-            x_pct = (-clip - lm["head_cols"][0] * s) / canvas_w * 100
+            x_pct = (-clip - lm["head_cols"][0] * s) / canvas_w * 100 - outward_shift_pct
         else:  # 右緣錨定
             shift = clip + (lm["cutout_w"] - lm["head_cols"][1]) * s
-            x_pct = -shift / canvas_w * 100
+            x_pct = -shift / canvas_w * 100 - outward_shift_pct
         out[role] = {
             f"{role}_height_pct": round(displayed_h / canvas_h * 100, 1),
             f"{role}_x_pct": round(x_pct, 1),
@@ -165,6 +168,7 @@ def main() -> int:
     d.add_argument("--canvas-w", type=float, default=1280)
     d.add_argument("--guest-face-boost", type=float, default=1.05)
     d.add_argument("--clip-frac", type=float, default=0.08)
+    d.add_argument("--outward-shift-pct", type=float, default=5.0)
     v = sub.add_parser("verify")
     v.add_argument("--manifest", required=True)
     v.add_argument("--spec", required=True)
@@ -191,6 +195,7 @@ def main() -> int:
                     a.canvas_w,
                     a.guest_face_boost,
                     a.clip_frac,
+                    a.outward_shift_pct,
                 ),
                 ensure_ascii=False,
                 indent=1,

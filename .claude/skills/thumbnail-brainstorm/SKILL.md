@@ -224,11 +224,22 @@ python .claude/skills/thumbnail-brainstorm/scripts/layout_solve.py verify \
 | guest 感知校準 | 臉再 **×1.05**（`--guest-face-boost`）| 正面臉＋眼鏡感知上小一號；指標等大≠感知等大，最後一格由修修 A/B 校準 |
 | headroom | **0**（guest 頭頂 0px 且下緣貼底的耦合解；host 眼線跟隨）| TF 規格；guest 再上抬會在身下露背景縫 |
 | 眼線 | 兩人鎖同一水平（差 ≤10px）| 修修 2026-07-29 驗收標準 |
-| 外側出血 | 各切**頭寬 8%**（92% 可見）；頭界=alpha bbox | TF「側邊切一點點」；出血對「頭」不對圖檔——兩顆 cutout 裡頭的位置不同 |
+| 外側出血 | 各切**頭寬 8%** 再**外移 5% canvas**（`--outward-shift-pct`，總裁切 ~20%） | TF「側邊切一點點」+ 修修定案：外移讓中央卡空間變大；出血對「頭」不對圖檔——兩顆 cutout 裡頭的位置不同 |
+
+**中央卡定案規格（修修 2026-08-04 skew 定版）**：
+
+- `frame_style: "skew"`（純斜切＋細橘框），**無碎片**——碎片在寬卡+雙臉下只露
+  出零星角料反而像 artifact（`shard_edges:"topbottom"` 模式保留在 composition
+  可隨時啟用，但 TF-duo 定案不用）
+- `prop_width_pct: 53`、`prop_height_px: 455`——寬幅卡、兩人壓住卡緣（景深）
+- prop 圖 = **實拍情境照 cover 塞滿**（該精華核心情境；可從本集 stock 素材
+  抽靜幀）；**禁灰底攝影棚小物照**——留白會讓主體縮成一角
+- 背景 = 修修正版 bg、logo bottom-left 92px、零文字
 
 ⚠️ 量測紀律（2026-08-04 事故的直接教訓）：**驗收用 verify 的數學預測，
 不用眼睛讀格線**——目測誤差 ±5% 曾把一版數學正確的排版「修」壞（bottom
-錨定負偏移方向感反轉＋確認偏誤）。眼睛只負責最後 sanity check 與感知校準。
+錨定負偏移方向感反轉＋確認偏誤）。眼睛只負責最後 sanity check 與感知校準
+（臉等大的 ×1.05、外移量這類「感知量」由修修 A/B 收斂）。
 
 ## 每集教訓寫回手冊
 
