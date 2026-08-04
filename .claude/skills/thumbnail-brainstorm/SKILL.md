@@ -13,7 +13,8 @@ description: >
 
 # thumbnail-brainstorm — 封面 brainstorm 手冊（v2.1）
 
-**版本：v2.1（2026-07-29，N2 框型接上《張修修品牌識別》— 斜切框＋碎片、
+**版本：v2.2（2026-08-04，cutout manifest 紀律＋精華長片 TF 式雙臉版式；
+v2.1 = N2 框型接上《張修修品牌識別》— 斜切框＋碎片、
 品牌橘 `#F37425`、logo 淨空規範；v2.0 = 謝伯讓集 gate 前收斂；
 v1.1 = 封面設計系統 v1 接入；v1.0 = ADR-054 D8/D9 首落地。
 規格見 `docs/thumbnail-design-system.md`）**
@@ -219,6 +220,27 @@ E2E 每跑完一集（gate approve 過），可固化的教訓 **append 進本�
 7. **AI 只做 graphic 與 render，真人一律實拍**（修修原則）；prop 走 Envato，
    授權檔可用 Claude in Chrome 走修修登入態下載（落點 `E:\`）。
 8. 交付快照同步 `E:\data\AgentOutput\YYYYMMDD-<topic>\`（每輪都要，不是最後才做）。
+
+**v2.2（2026-08-04，story-L1 TF 式封面爛版事故——三層根因）**
+
+15. **cutout 資料夾是迭代歷史，不是素材庫**：`guest_v1..v8`／`host_v1` 是
+    finalize `--crop` 的中間迭代（裁切幾何彼此不同：528×713／528×629／
+    634×713／634×628、host_v1 甚至 1075×778 寬幅帶場景），只有最後一輪是
+    定稿。把「版號×表情」當可互換素材庫亂抽 = 2026-08-04 v2/v3 爛版根因之一。
+    **處置**：定稿寫進 `cutouts_manifest.json`（validated 清單＋各 composition
+    已調參基準），中間產物歸檔 `_iterations/`。**排版只准用 manifest 裡的檔**；
+    新集 finalize 收斂後立刻建 manifest。
+16. **幾何參數 per-cutout、per-composition，皆不可移植**：`height_pct` +
+    `object-fit: contain` 下，同一個 138% 套在不同 aspect 的 cutout 上頭的
+    大小位置完全不同；同一顆 cutout 換 composition（N1 1280 畫布 vs N2）
+    基準也不同。換 cutout 或換 composition = 從 manifest 基準起手重調。
+17. **Step 4.5 量測驗收沒有「提案輪豁免」**：「先給修修看方向再驗收」=
+    v2/v3 直接把爛版送到修修面前。**任何要給修修看的 render 都要先過
+    量測**（skill 本來就寫「不做不交付」——這次是流程違規，不是規則缺口）。
+18. **精華長片 TF 式版式 = N2 `prop_position:"center"` 雙臉夾中**，中央是
+    品牌框 prop 卡（代表該精華重點的 stock photo），**不是文字**（修修
+    2026-08-04 裁決；中央大字是 N1 完整訪談的語彙）。prop 圖要預裁緊
+    （主體佔滿卡面）——cover 裁切不會幫你放大主體。
 
 **v2.1（2026-07-29，N2 框型品牌化）**
 
