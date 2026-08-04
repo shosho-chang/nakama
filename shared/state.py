@@ -516,6 +516,42 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             fetched_at      TEXT NOT NULL,
             translated_at   TEXT
         );
+
+        -- 發布線（migration 018 / ADR-055）：Episode → Cut → Release Target
+        -- 三層模型。DB 是 release plan + 執行狀態的 SoT。
+        CREATE TABLE IF NOT EXISTS releases (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            episode      TEXT NOT NULL,
+            cut_id       TEXT NOT NULL,
+            format       TEXT NOT NULL,
+            work_title   TEXT NOT NULL DEFAULT '',
+            file_path    TEXT NOT NULL,
+            file_bytes   INTEGER NOT NULL DEFAULT 0,
+            duration_sec REAL NOT NULL DEFAULT 0,
+            rendered_at  TEXT NOT NULL,
+            created_at   TEXT NOT NULL,
+            UNIQUE (episode, cut_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS release_targets (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            release_id         INTEGER NOT NULL REFERENCES releases(id),
+            platform           TEXT NOT NULL,
+            status             TEXT NOT NULL DEFAULT 'draft',
+            title              TEXT,
+            description        TEXT,
+            thumbnail_path     TEXT,
+            publish_at         TEXT,
+            video_id           TEXT,
+            url                TEXT,
+            error              TEXT,
+            upload_session_uri TEXT,
+            updated_at         TEXT NOT NULL,
+            UNIQUE (release_id, platform)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_release_targets_status
+            ON release_targets (status, publish_at);
     """)
 
     # Migration: api_calls 曾經沒有 cache token 欄位（Phase 4 前）。
