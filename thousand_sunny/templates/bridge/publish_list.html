@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Publish</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='publish') }}
+
+{% from "_breadcrumb.html" import breadcrumb %}
+{{ breadcrumb([
+  {"label": "PUBLISH · 發布審核", "href": none, "is_current": true},
+]) }}
+
+<section class="page-header">
+  <div>
+    <div class="nk-caps">/bridge/publish · 上架前最後確認</div>
+    <h1 class="page-title">發布審核 <span class="zh">{{ releases | length }} 支已登錄</span></h1>
+  </div>
+</section>
+
+<main class="page-main page-main--stack">
+  {% if not releases %}
+  <p class="sho-mono">還沒有登錄的成品——先跑 <code>publish_prep.py</code>。</p>
+  {% endif %}
+  {% for r in releases %}
+  <article class="section">
+    <header class="section-head">
+      <div>
+        <div class="section-marker">{{ r.episode }} · {{ r.format | upper }}</div>
+        <h2 class="section-title">
+          <a href="/bridge/publish/{{ r.episode }}/{{ r.cut_id }}">{{ r.cut_id }}</a>
+          <span class="zh">{{ r.work_title }}</span>
+        </h2>
+      </div>
+      {% set st = r.target_status.get('youtube', '—') %}
+      {% if st == 'uploaded' or st == 'published' %}
+      <span class="sho-tag sho-tag--accent">{{ st | upper }}</span>
+      {% elif st == 'failed' %}
+      <span class="sho-tag">FAILED</span>
+      {% else %}
+      <span class="sho-tag">{{ st | upper }}</span>
+      {% endif %}
+    </header>
+    <div class="sho-mono" style="font-size: 12px;">
+      {{ (r.file_bytes / 1000000) | round | int }} MB ·
+      {{ (r.duration_sec / 60) | round(1) }} min ·
+      rendered {{ r.rendered_at[:16] }}
+    </div>
+  </article>
+  {% endfor %}
+</main>
+</body>
+</html>

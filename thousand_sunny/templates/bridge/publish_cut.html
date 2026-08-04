@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Publish · {{ rel.cut_id }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+<style>
+  /* 頁面局部佈局——tokens 全走 --sho-*，不硬寫色碼 */
+  .pub-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--sho-gap-3, 24px); align-items: start; }
+  @media (max-width: 960px) { .pub-grid { grid-template-columns: 1fr; } }
+  .pub-video { width: 100%; border-radius: 8px; border: 1px solid var(--sho-line); background: var(--sho-ink, #000); }
+  .pub-thumb { width: 100%; border-radius: 8px; border: 1px solid var(--sho-line); display: block; }
+  .pub-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+  .pub-field label { font-size: 12px; letter-spacing: 0.08em; }
+  .pub-desc { min-height: 320px; resize: vertical; font-size: 13px; line-height: 1.6; }
+  .pub-count { font-size: 11px; opacity: 0.65; text-align: right; }
+  .pub-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+  .pub-status-line { margin-top: 10px; font-size: 13px; }
+</style>
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='publish') }}
+
+{% from "_breadcrumb.html" import breadcrumb %}
+{{ breadcrumb([
+  {"label": "PUBLISH · 發布審核", "href": "/bridge/publish", "is_current": false},
+  {"label": rel.cut_id | upper, "href": none, "is_current": true},
+]) }}
+
+<section class="page-header page-header--split">
+  <div>
+    <div class="nk-caps">/bridge/publish/{{ rel.episode }}/{{ rel.cut_id }} · 上架前最後確認</div>
+    <h1 class="page-title">{{ rel.cut_id }} <span class="zh">{{ rel.work_title }}</span></h1>
+  </div>
+  <div class="header-meta sho-mono" id="statusTag" data-status="{{ t.status }}">
+    {{ t.status | upper }}{% if t.url %} · <a href="{{ t.url }}" target="_blank">YouTube ↗</a>{% endif %}
+  </div>
+</section>
+
+<main class="page-main page-main--stack">
+  <div class="pub-grid">
+    <div>
+      <article class="section">
+        <header class="section-head">
+          <div class="section-marker">影片 · {{ duration_min }} min · {{ size_mb }} MB</div>
+        </header>
+        {% if file_exists %}
+        <video class="pub-video" controls preload="metadata"
+               src="/bridge/publish/media/{{ rel.episode }}/{{ rel.cut_id }}"></video>
+        {% else %}
+        <p class="sho-mono">⚠ 成品檔不存在——重跑 publish_prep</p>
+        {% endif %}
+      </article>
+
+      <article class="section">
+        <header class="section-head">
+          <div class="section-marker">Thumbnail</div>
+        </header>
+        {% if thumb_exists %}
+        <img class="pub-thumb" src="/bridge/publish/thumb/{{ rel.episode }}/{{ rel.cut_id }}"
+             alt="縮圖預覽">
+        <div class="sho-mono pub-count">{{ t.thumbnail_path }}</div>
+        {% else %}
+        <p class="sho-mono">（無縮圖——短片正常；長片請確認 packaging gate 已核准）</p>
+        {% endif %}
+      </article>
+    </div>
+
+    <div>
+      <form class="section" method="post"
+            action="/bridge/publish/{{ rel.episode }}/{{ rel.cut_id }}/save">
+        <header class="section-head">
+          <div class="section-marker">文案 · 排程</div>
+        </header>
+
+        <div class="pub-field">
+          <label class="nk-caps" for="f-title">Title</label>
+          <input class="sho-input" id="f-title" name="title" maxlength="100"
+                 value="{{ t.title or '' }}" oninput="cnt('f-title','title-count',100)"
+                 {% if t.status in ('uploading','uploaded','published') %}disabled{% endif %}>
+          <div class="pub-count sho-mono" id="title-count"></div>
+        </div>
+
+        <div class="pub-field">
+          <label class="nk-caps" for="f-desc">Description</label>
+          <textarea class="sho-input pub-desc" id="f-desc" name="description"
+                    oninput="cnt('f-desc','desc-count',5000)"
+                    {% if t.status in ('uploading','uploaded','published') %}disabled{% endif %}>{{ t.description or '' }}</textarea>
+          <div class="pub-count sho-mono" id="desc-count"></div>
+        </div>
+
+        <div class="pub-field">
+          <label class="nk-caps" for="f-sched">公開時間（台北時間；留空 = 上傳後先不公開）</label>
+          <input class="sho-input" id="f-sched" type="datetime-local" name="publish_at_local"
+                 value="{{ publish_local }}"
+                 {% if t.status in ('uploading','uploaded','published') %}disabled{% endif %}>
+        </div>
+
+        <div class="pub-actions">
+          {% if t.status not in ('uploading','uploaded','published') %}
+          <button class="sho-btn sho-btn--ghost" type="submit">儲存</button>
+          {% endif %}
+        </div>
+      </form>
+
+      <article class="section">
+        <header class="section-head">
+          <div class="section-marker">上架</div>
+        </header>
+        {% if t.status in ('uploading',) %}
+        <p class="pub-status-line sho-mono" id="upline">上傳中… 頁面會自動更新</p>
+        {% elif t.status in ('uploaded','published') %}
+        <p class="pub-status-line">✅ 已上傳
+          {% if t.publish_at %}——排程 {{ t.publish_at }} 公開{% else %}（private，未排程）{% endif %}
+          {% if t.url %}<br><a href="{{ t.url }}" target="_blank">{{ t.url }}</a>{% endif %}
+        </p>
+        {% else %}
+        {% if t.error %}<p class="pub-status-line sho-mono">⚠ 上次失敗：{{ t.error }}</p>{% endif %}
+        <form method="post"
+              action="/bridge/publish/{{ rel.episode }}/{{ rel.cut_id }}/approve-upload"
+              onsubmit="return confirm('確認核准並上傳？\n\n上傳為 private{{ '，並排程 ' + t.publish_at + ' 自動公開' if t.publish_at else '（未排程，之後可再設）' }}。')">
+          <button class="sho-btn" type="submit"
+                  {% if not t.title or not t.description %}disabled title="先儲存 Title/Description"{% endif %}>
+            核准並上傳
+          </button>
+        </form>
+        <p class="pub-status-line sho-mono" style="opacity:.65">
+          上傳為 private；到「公開時間」由 YouTube 的鐘自動轉公開（機器不需在線）。
+        </p>
+        {% endif %}
+      </article>
+    </div>
+  </div>
+</main>
+
+<script>
+function cnt(src, dst, max) {
+  var v = document.getElementById(src).value.length;
+  document.getElementById(dst).textContent = v + " / " + max;
+}
+cnt('f-title', 'title-count', 100);
+cnt('f-desc', 'desc-count', 5000);
+
+// 上傳中 → poll 狀態，狀態變了整頁刷新
+(function () {
+  var tag = document.getElementById('statusTag');
+  if (!tag || tag.dataset.status !== 'uploading') return;
+  var t = setInterval(function () {
+    fetch(location.pathname + '/status')
+      .then(function (r) { return r.json(); })
+      .then(function (s) {
+        if (s.status !== 'uploading') { clearInterval(t); location.reload(); }
+      })
+      .catch(function () {});
+  }, 4000);
+})();
+</script>
+</body>
+</html>
