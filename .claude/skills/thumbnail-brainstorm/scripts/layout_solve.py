@@ -32,7 +32,9 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 EYE_TOL_PX = 10  # 修修 2026-07-29 驗收標準（720p）
-HEAD_TOL_PX = 12
+HEAD_TOL_PX = 12  # 舊判準，僅供參考輸出
+FACE_BOOST_TARGET = 1.05  # TF-duo 定案：guest 臉（眼-下巴）= host × 1.05
+FACE_RATIO_TOL = 0.03
 
 
 def _landmarks(manifest: dict, cutout: str) -> tuple[dict, float]:
@@ -73,6 +75,31 @@ def _predict(lm: dict, ch: float, canvas_h: float, height_pct: float, y_pct: flo
 
 def verify(manifest: dict, spec: dict, canvas_h: float) -> int:
     v = spec["variables"]
+    # 表情繼承版 spec（帶 _solve 中繼資料）：最強判準 = spec 參數必須與 solver
+    # 重算完全一致（表情臉高比對 expr 對無意義——張嘴會撐長臉高，見規則 7）
+    refs = spec.get("_solve")
+    if refs:
+        expected = solve_duo(
+            manifest,
+            refs["host"],
+            refs["guest"],
+            canvas_h,
+            float(refs.get("canvas_w", 1280)),
+            host_expr=refs.get("host_expr"),
+            guest_expr=refs.get("guest_expr"),
+        )
+        ok = True
+        for role in ("host", "guest"):
+            for k, want in expected[role].items():
+                got = float(v.get(k, float("nan")))
+                if abs(got - want) > 0.05:
+                    print(f"{k}: spec {got} ≠ solver {want} FAIL")
+                    ok = False
+            p = expected[f"_{role}_predicted"]
+            lock = expected["_eye_lock_px"]
+            print(f"{role}: 頭頂 {p['head_top']}px 眼 {p['eye']}px（eye_lock {lock}）")
+        print("solver 重算一致性: " + ("PASS" if ok else "FAIL"))
+        return 0 if ok else 1
     out, preds = 0, {}
     for role in ("host", "guest"):
         url = (spec.get("images") or {}).get(f"{role}_cutout_data_url", "")
@@ -88,11 +115,20 @@ def verify(manifest: dict, spec: dict, canvas_h: float) -> int:
         )
     if len(preds) == 2:
         eye_d = abs(preds["host"]["eye"] - preds["guest"]["eye"])
+        # 等大判準 = 臉高（眼-下巴）比值落在 face_boost ± 容差——頭高含髮量
+        # 不可比（TF-duo 定案規則 2+3；頭高差僅供參考印出）
+        face_h = preds["host"]["chin"] - preds["host"]["eye"]
+        face_g = preds["guest"]["chin"] - preds["guest"]["eye"]
+        ratio = face_g / face_h
+        ok_eye = eye_d <= EYE_TOL_PX
+        ok_face = abs(ratio - FACE_BOOST_TARGET) <= FACE_RATIO_TOL
         head_d = abs(preds["host"]["head_h"] - preds["guest"]["head_h"])
-        ok_eye, ok_head = eye_d <= EYE_TOL_PX, head_d <= HEAD_TOL_PX
         print(f"眼線差 {eye_d:.1f}px（≤{EYE_TOL_PX}）: {'PASS' if ok_eye else 'FAIL'}")
-        print(f"頭高差 {head_d:.1f}px（≤{HEAD_TOL_PX}）: {'PASS' if ok_head else 'FAIL'}")
-        out = 0 if (ok_eye and ok_head) else 1
+        print(
+            f"臉高比 guest/host {ratio:.3f}（目標 {FACE_BOOST_TARGET}±{FACE_RATIO_TOL}）: "
+            f"{'PASS' if ok_face else 'FAIL'}（頭高差 {head_d:.1f}px 含髮量僅供參考）"
+        )
+        out = 0 if (ok_eye and ok_face) else 1
     return out
 
 
@@ -105,6 +141,8 @@ def solve_duo(
     guest_face_boost: float = 1.05,
     clip_frac: float = 0.08,
     outward_shift_pct: float = 5.0,
+    host_expr: str | None = None,
+    guest_expr: str | None = None,
 ) -> dict:
     """TF 式雙臉版式（修修 2026-08-04 謝伯讓集定案）的通用求解。
 
@@ -116,6 +154,11 @@ def solve_duo(
     5. 外側各切頭寬 clip_frac（TF 規格基準）；頭界用 alpha bbox 不含目測
     6. 再各外移 outward_shift_pct（% canvas 寬）讓中央卡空間變大（修修定案 5%；
        總裁切約達頭寬 20%——TF 樣本觀察帶 15–25% 內）
+    7. **表情版 cutout 繼承同人基準 scale**（host_expr/guest_expr）：臉高量尺
+       會被表情弄壞（張嘴大笑讓眼-下巴 +23% → 人被誤縮 19%，2026-08-04 pkg2
+       事故）。同人同機位同尺寸裁切框 = 同 pixel scale，表情版只重解 y（眼線
+       對齊）與 x（自己的 head_cols），scale 不重解。**表情版與基準 cutout 的
+       像素尺寸必須相同**（不同 = 裁切框不同 = 不可繼承，fail loud）。
     """
     lm_h, ch_h = _landmarks(manifest, host)
     lm_g, ch_g = _landmarks(manifest, guest)
@@ -128,8 +171,25 @@ def solve_duo(
     s_h = (lm_g["chin"] - lm_g["eye"]) * s_g0 / (lm_h["chin"] - lm_h["eye"])  # 規則 2
     s_g = s_g0 * guest_face_boost  # 規則 3
 
+    # 規則 7：表情版繼承基準 scale，換上自己的 landmarks 解 y/x
+    actual = {"host": host_expr or host, "guest": guest_expr or guest}
+    lms = {"host": (lm_h, ch_h), "guest": (lm_g, ch_g)}
+    for role in ("host", "guest"):
+        if actual[role] != (host if role == "host" else guest):
+            lm_a, ch_a = _landmarks(manifest, actual[role])
+            ref_lm, ref_ch = lms[role]
+            if (ch_a, lm_a.get("cutout_w")) != (ref_ch, ref_lm.get("cutout_w")):
+                raise SystemExit(
+                    f"{actual[role]} 尺寸 {lm_a.get('cutout_w')}x{ch_a} ≠ 基準 "
+                    f"{ref_lm.get('cutout_w')}x{ref_ch}——裁切框不同不可繼承 scale"
+                )
+            lms[role] = (lm_a, ch_a)
+
     out = {}
-    roles = (("host", host, lm_h, ch_h, s_h), ("guest", guest, lm_g, ch_g, s_g))
+    roles = (
+        ("host", actual["host"], *lms["host"], s_h),
+        ("guest", actual["guest"], *lms["guest"], s_g),
+    )
     for role, name, lm, ch, s in roles:
         displayed_h = ch * s
         screen_top = eye_ref - lm["eye"] * s
@@ -169,6 +229,8 @@ def main() -> int:
     d.add_argument("--guest-face-boost", type=float, default=1.05)
     d.add_argument("--clip-frac", type=float, default=0.08)
     d.add_argument("--outward-shift-pct", type=float, default=5.0)
+    d.add_argument("--host-expr", default=None, help="表情版 cutout（繼承 --host 的 scale）")
+    d.add_argument("--guest-expr", default=None, help="表情版 cutout（繼承 --guest 的 scale）")
     v = sub.add_parser("verify")
     v.add_argument("--manifest", required=True)
     v.add_argument("--spec", required=True)
@@ -196,6 +258,8 @@ def main() -> int:
                     a.guest_face_boost,
                     a.clip_frac,
                     a.outward_shift_pct,
+                    a.host_expr,
+                    a.guest_expr,
                 ),
                 ensure_ascii=False,
                 indent=1,

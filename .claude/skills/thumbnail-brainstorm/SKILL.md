@@ -11,9 +11,10 @@ description: >
   本 skill 只呼叫、不重新發明。
 ---
 
-# thumbnail-brainstorm — 封面 brainstorm 手冊（v2.3）
+# thumbnail-brainstorm — 封面 brainstorm 手冊（v2.4）
 
-**版本：v2.3（2026-08-04，TF 式雙臉版式 SOP + layout_solve 確定性求解；
+**版本：v2.4（2026-08-04，表情同調規則 + 表情版 scale 繼承；
+v2.3 = TF 式雙臉版式 SOP + layout_solve 確定性求解；
 v2.2 = cutout manifest 紀律；
 v2.1 = N2 框型接上《張修修品牌識別》— 斜切框＋碎片、
 品牌橘 `#F37425`、logo 淨空規範；v2.0 = 謝伯讓集 gate 前收斂；
@@ -198,7 +199,7 @@ working set 與 vault 雙寫（ADR-054 D10）。驗證錯誤讀訊息修 specs�
 - Remaining：youtube_book 參考圖庫未建
 ```
 
-## 精華長片 TF 式雙臉版式（v2.3 SOP — 修修 2026-08-04 定案，跨集可重現）
+## 精華長片 TF 式雙臉版式（v2.3–2.4 SOP — 修修 2026-08-04 定案，跨集可重現）
 
 精華長片封面 = `thumbnail_reaction` + `prop_position:"center"`：兩側頭像＋
 中央品牌框 prop 卡（代表精華重點的 stock photo，非文字——文字版是 N1
@@ -240,6 +241,27 @@ python .claude/skills/thumbnail-brainstorm/scripts/layout_solve.py verify \
 不用眼睛讀格線**——目測誤差 ±5% 曾把一版數學正確的排版「修」壞（bottom
 錨定負偏移方向感反轉＋確認偏誤）。眼睛只負責最後 sanity check 與感知校準
 （臉等大的 ×1.05、外移量這類「感知量」由修修 A/B 收斂）。
+
+**表情規則（v2.4，修修 2026-08-04：「這很重要」）**：
+
+1. **包內同調**：同一張封面兩人情緒必須一致——話題嚴肅/警示 → 兩人
+   serious/neutral；話題輕鬆/有趣 → 兩人可同笑。一人大笑一人肅穆 =
+   不協調，直接重配。**表情從標題語氣推**（先定 pair 情緒、再挑 cutout），
+   不是各自挑好看的格。
+2. **包間拉開**：diversity 軸只作用在「包與包之間」（pkg1 嚴肅組/pkg2 笑組），
+   **不是包內**——舊版手冊「三包表情拉開」被誤讀成包內混搭，正是 2026-08-04
+   笑臉配肅臉事故的來源。
+3. **表情版幾何走 scale 繼承**（solver 規則 7）：`solve-duo --host-expr/--guest-expr`
+   ——臉高量尺會被張嘴表情撐長（+23% → 人被誤縮 19%），表情版必須繼承同人
+   基準 cutout 的 scale，只重解 y/x。spec 寫入 `_solve` 中繼資料後，verify
+   直接重算比對六參數（一致性判準，取代對 expr 對無意義的臉高比）。
+
+**一次到位交付檢查（v2.4）**——給修修看之前，四項全過，缺一不交付：
+
+- [ ] `verify` PASS（幾何一致性）
+- [ ] 表情同調自檢（兩人情緒 × 標題語氣，逐包過）
+- [ ] prop 幀乾淨（無動態模糊/殘影；抽幀要挑）
+- [ ] 320×180 小圖可讀（YouTube 格線真實尺寸）
 
 ## 每集教訓寫回手冊
 
