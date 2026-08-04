@@ -12,6 +12,9 @@
   /* 頁面局部佈局——tokens 全走 --sho-*，不硬寫色碼 */
   .pub-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 24px; align-items: start; }
   @media (max-width: 960px) { .pub-grid { grid-template-columns: 1fr; } }
+  /* 修修 2026-08-04：section 卡片之間要留空隙 */
+  .pub-grid > div { display: flex; flex-direction: column; gap: 24px; }
+  .pub-grid .section { margin: 0; }
   .pub-body { padding: 18px 20px; }
   .pub-video { width: 100%; display: block; border-radius: var(--sho-r-1); background: #000; }
   .pub-thumb { width: 100%; display: block; border-radius: var(--sho-r-1); border: 1px solid var(--sho-line); }
@@ -34,6 +37,9 @@
   .pub-ab-meta { min-width: 0; }
   .pub-ab-title { font-size: 13px; line-height: 1.5; margin-bottom: 8px; }
   .pub-ab-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pub-progress { margin-top: 10px; height: 8px; border-radius: 4px;
+                  background: var(--sho-bg-2); border: 1px solid var(--sho-line); overflow: hidden; }
+  .pub-progress-bar { height: 100%; background: var(--sho-accent); transition: width .5s ease; }
 </style>
 </head>
 <body class="sho bridge-page bridge-page--scroll">
@@ -132,7 +138,9 @@
         </header>
         <div class="pub-body">
           {% if t.status == 'uploading' %}
-          <p class="pub-status-line sho-mono" id="upline">上傳中… 頁面會自動更新</p>
+          <p class="pub-status-line sho-mono" id="upline">上傳中…</p>
+          <div class="pub-progress"><div class="pub-progress-bar" id="upbar" style="width:0%"></div></div>
+          <p class="pub-count sho-mono" id="uppct" style="text-align:left; margin-top:6px"></p>
           {% elif t.status in ('uploaded','published') %}
           <p class="pub-status-line">✅ 已上傳
             {% if t.publish_at %}——排程 {{ t.publish_at }} 公開{% else %}（private，未排程）{% endif %}
@@ -206,18 +214,24 @@ function copyText(btn, text) {
 cnt('f-title', 'title-count', 100);
 cnt('f-desc', 'desc-count', 5000);
 
-// 上傳中 → poll 狀態，狀態變了整頁刷新
+// 上傳中 → poll 狀態畫進度條，狀態變了整頁刷新
 (function () {
   var tag = document.getElementById('statusTag');
   if (!tag || tag.dataset.status !== 'uploading') return;
+  var bar = document.getElementById('upbar');
+  var pct = document.getElementById('uppct');
   var t = setInterval(function () {
     fetch(location.pathname + '/status')
       .then(function (r) { return r.json(); })
       .then(function (s) {
-        if (s.status !== 'uploading') { clearInterval(t); location.reload(); }
+        if (s.status !== 'uploading') { clearInterval(t); location.reload(); return; }
+        if (s.progress && bar) {
+          bar.style.width = s.progress.pct + '%';
+          pct.textContent = s.progress.pct + '%' + (s.progress.note ? ' · ' + s.progress.note : '');
+        }
       })
       .catch(function () {});
-  }, 4000);
+  }, 2500);
 })();
 </script>
 </body>

@@ -233,15 +233,22 @@ def publish_approve_upload(
     if not Path(rel["file_path"]).exists():
         raise HTTPException(status_code=422, detail="成品檔不存在——重跑 publish_prep")
     update_target(t["id"], status="approved")
-    # 與 CLI 同一條路：subprocess 跑 uploader（狀態轉移由它寫 DB，頁面 poll）
-    script = Path(__file__).resolve().parent.parent.parent / "scripts" / "publish_upload.py"
+    # 與 CLI 同一條路：subprocess 跑 uploader（狀態轉移由它寫 DB，頁面 poll）。
+    # stdout/stderr 落 log 檔——先前 DEVNULL 把 token 缺失的死訊吞掉，修修按了
+    # 上傳「後台沒反應」（2026-08-04）
+    root = Path(__file__).resolve().parent.parent.parent
+    script = root / "scripts" / "publish_upload.py"
+    log_dir = root / "data" / "upload_progress"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    safe = f"{episode}_{cut_id}".replace("/", "_").replace("\\", "_")
+    log_f = open(log_dir / f"{safe}.log", "a", encoding="utf-8")  # noqa: SIM115 — 交給子程序持有
     subprocess.Popen(
         [sys.executable, str(script), "--run", "--episode", episode, "--cut", cut_id],
-        cwd=str(script.parent.parent),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        cwd=str(root),
+        stdout=log_f,
+        stderr=subprocess.STDOUT,
     )
-    logger.info("publish approve+upload: %s/%s", episode, cut_id)
+    logger.info("publish approve+upload: %s/%s（log: %s.log）", episode, cut_id, safe)
     return RedirectResponse(f"/bridge/publish/{episode}/{cut_id}", status_code=303)
 
 
@@ -251,9 +258,20 @@ def publish_status(
 ) -> JSONResponse:
     _require_auth(auth)
     _, t = _yt_target(episode, cut_id)
+    progress = None
+    if t["status"] == "uploading":
+        root = Path(__file__).resolve().parent.parent.parent
+        safe = f"{episode}_{cut_id}".replace("/", "_").replace("\\", "_")
+        pf = root / "data" / "upload_progress" / f"{safe}.json"
+        if pf.exists():
+            try:
+                progress = json.loads(pf.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                progress = None
     return JSONResponse(
         {
             "status": t["status"],
+            "progress": progress,
             "video_id": t.get("video_id"),
             "url": t.get("url"),
             "error": t.get("error"),

@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -40,9 +41,28 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 logger = logging.getLogger("publish_upload")
 
-_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+_DATA_DIR = Path(
+    os.environ.get("NAKAMA_DATA_DIR", "") or Path(__file__).resolve().parent.parent / "data"
+)
 TOKEN_PATH = _DATA_DIR / "youtube_token.json"
+PROGRESS_DIR = _DATA_DIR / "upload_progress"
 CHUNK_MB = 8  # resumable chunk；小檔一發、1.35GB 約 170 chunks
+
+
+def _progress_file(episode: str, cut_id: str) -> Path:
+    safe = f"{episode}_{cut_id}".replace("/", "_").replace("\\", "_")
+    return PROGRESS_DIR / f"{safe}.json"
+
+
+def write_progress(episode: str, cut_id: str, pct: float, note: str = "") -> None:
+    """上傳進度落檔——Bridge 審核頁的 /status endpoint 讀它畫進度條。"""
+    from datetime import datetime as _dt
+
+    PROGRESS_DIR.mkdir(parents=True, exist_ok=True)
+    _progress_file(episode, cut_id).write_text(
+        json.dumps({"pct": round(pct, 1), "note": note, "at": _dt.now(timezone.utc).isoformat()}),
+        encoding="utf-8",
+    )
 
 
 def _load_yt():
@@ -130,6 +150,7 @@ def _upload_one(yt, item: dict, vault: Path) -> dict:
 
     body = build_insert_body(t, rel)
     update_target(tid, status="uploading")
+    write_progress(rel["episode"], cid, 0.0, "開始上傳")
     logger.info("%s: 上傳中（%.1f MB）…", cid, video.stat().st_size / 1e6)
 
     media = MediaFileUpload(str(video), chunksize=CHUNK_MB * 1024 * 1024, resumable=True)
@@ -144,7 +165,10 @@ def _upload_one(yt, item: dict, vault: Path) -> dict:
             update_target(tid, upload_session_uri=uri)
             t["upload_session_uri"] = uri
         if status:
-            logger.info("%s: %.0f%%", cid, status.progress() * 100)
+            pct = status.progress() * 100
+            write_progress(rel["episode"], cid, pct, "影片上傳中")
+            logger.info("%s: %.0f%%", cid, pct)
+    write_progress(rel["episode"], cid, 100.0, "影片完成，處理縮圖與字幕")
 
     video_id = resp["id"]
     url = f"https://www.youtube.com/watch?v={video_id}"
@@ -237,15 +261,20 @@ def cmd_run(args) -> int:
         print(f"\n[dry-run] {len(picked)} 支待上傳，未執行")
         return 0
 
-    yt = _load_yt()
-    vault = get_vault_path()
+    try:
+        yt = _load_yt()
+        vault = get_vault_path()
+    except SystemExit as exc:
+        # token/環境壞掉時把所有 picked 標 failed——被 subprocess 吞掉的死法
+        # 在 UI 上必須看得到（2026-08-04 修修按了上傳「後台沒反應」的根因）
+        for it in picked:
+            update_target(it["target"]["id"], status="failed", error=str(exc)[:500])
+        raise
     results = []
     for it in picked:
         try:
             results.append(_upload_one(yt, it, vault))
-        except SystemExit:
-            raise
-        except Exception as exc:  # noqa: BLE001 — 單支失敗不擋整批，記進 DB
+        except (Exception, SystemExit) as exc:  # noqa: BLE001 — 單支失敗不擋整批，記進 DB
             update_target(it["target"]["id"], status="failed", error=str(exc)[:500])
             logger.error("%s: 上傳失敗 — %s", it["release"]["cut_id"], exc)
     print(json.dumps({"uploaded": results}, ensure_ascii=False, indent=1))
