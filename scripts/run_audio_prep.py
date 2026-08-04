@@ -9,6 +9,7 @@
 用法：
     python scripts/run_audio_prep.py "G:/footages/20260723 謝伯讓"
     python scripts/run_audio_prep.py <episode> --no-auphonic   # 只做靜音裁切（測試用）
+    python scripts/run_audio_prep.py <episode> --pre-processed <已處理檔>  # 手動下載的 Auphonic 輸出
 """
 
 from __future__ import annotations
@@ -34,7 +35,12 @@ from shared.audio_trim import (  # noqa: E402
     detect_edge_silence,
     trim_edge_silence,
 )
-from shared.auphonic import _get_audio_duration, normalize  # noqa: E402
+from shared.auphonic import (  # noqa: E402
+    _align_trim,
+    _env_float,
+    _get_audio_duration,
+    normalize,
+)
 
 logger = logging.getLogger("audio_prep")
 
@@ -67,6 +73,7 @@ def run_prep(
     *,
     audio: Path | None = None,
     use_auphonic: bool = True,
+    pre_processed: Path | None = None,
     trim_silence: bool = False,
     noise_db: float = DEFAULT_NOISE_DB,
     min_silence: float = DEFAULT_MIN_SILENCE,
@@ -79,7 +86,18 @@ def run_prep(
     intermediates: list[Path] = []
 
     # Stage 1+2: Auphonic（內含免費方案 Jingle 裁切）
-    if use_auphonic:
+    if pre_processed is not None:
+        # 已在 Auphonic 網站處理好、手動下載的輸出：不重傳，只做 Jingle 對齊裁切。
+        # 對齊基準是 raw source，輸出時間軸因此還原成原始錄影（字幕要對回 DaVinci）。
+        if not pre_processed.is_file():
+            raise FileNotFoundError(f"--pre-processed 檔案不存在: {pre_processed}")
+        logger.info(f"已處理音檔: {pre_processed}（跳過 Auphonic 上傳）")
+        processed = _align_trim(
+            pre_processed, source, _env_float("AUPHONIC_JINGLE_SECONDS", 6.0)
+        )
+        if processed != pre_processed:
+            intermediates.append(processed)
+    elif use_auphonic:
         processed = normalize(source, output_dir=episode_dir)
         # normalize() 可能留下 *_normalized.wav（Jingle 裁切前）中間檔
         untrimmed = episode_dir / f"{source.stem}_normalized.wav"
@@ -140,7 +158,8 @@ def run_prep(
         "completed_at": datetime.now(timezone.utc).isoformat(),
         "source": str(source),
         "source_duration_sec": round(source_duration, 3),
-        "auphonic": use_auphonic,
+        "auphonic": True if pre_processed is not None else use_auphonic,
+        "pre_processed": str(pre_processed) if pre_processed is not None else None,
         "silence_trim": (
             {
                 "noise_db": noise_db,
@@ -168,6 +187,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--audio", help="直接指定原始音檔路徑（跳過自動偵測）")
     parser.add_argument("--no-auphonic", action="store_true", help="跳過 Auphonic")
     parser.add_argument(
+        "--pre-processed",
+        help="已在 Auphonic 網站處理好、手動下載的音檔：不重傳，只對齊原始檔裁掉 Jingle",
+    )
+    parser.add_argument(
         "--trim-silence",
         action="store_true",
         help="裁頭尾靜音（預設關——會讓時間軸偏離原始錄影，僅純音訊用途使用）",
@@ -191,6 +214,7 @@ def main(argv: list[str] | None = None) -> int:
         episode_dir,
         audio=Path(args.audio) if args.audio else None,
         use_auphonic=not args.no_auphonic,
+        pre_processed=Path(args.pre_processed) if args.pre_processed else None,
         trim_silence=args.trim_silence,
         noise_db=args.noise_db,
         min_silence=args.min_silence,

@@ -37,6 +37,22 @@ python E:\nakama\scripts\run_audio_prep.py "<episode 資料夾>"
 - `--audio <path>` 指定非慣例檔名；`--no-auphonic` 跳過 Auphonic（額度不足時的
   fallback：直接複製 raw 當 normalized.wav，時間軸不變）
 
+## 已在 Auphonic 網站處理好的音檔（`--pre-processed`）
+
+修修自己上傳 Auphonic、手動下載回來的檔（檔名如 `<date>-processed.wav`）：
+
+```
+python E:\nakama\scripts\run_audio_prep.py "<episode>" --pre-processed "<episode>\<date>-processed.wav"
+```
+
+不重傳（省額度、省 20 分鐘上傳），只把免費方案的頭尾 Jingle 裁掉——走
+`_align_trim` 與 **raw 交叉相關對齊**，輸出時間軸還原成原始錄影。判斷是否
+需要這條路徑：processed 檔比 raw 長 ~12s（頭尾各 6s）即是。
+
+驗收：`ffprobe` 出來的 normalized.wav 長度必須與 raw **完全一致**（例：安吉集
+4588.158s = 4588.158s）；log 會印對齊偏移與相關峰值（peak <0.5 會退回固定
+秒數裁切，此時要人工確認頭尾）。
+
 ## 完成後回報
 
 讀 `prep_manifest.json`，回報：輸出長度、有無 Auphonic、用了哪個帳號（log 內有）。若開了 `--trim-silence`，回報裁切秒數並**明確警告時間軸已偏移原始錄影**。
