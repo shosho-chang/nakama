@@ -3,23 +3,37 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bridge · Publish · {{ rel.cut_id }}</title>
+<title>Bridge · Publish · {{ t.title or rel.work_title }}</title>
 <script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
 <style>
   /* 頁面局部佈局——tokens 全走 --sho-*，不硬寫色碼 */
-  .pub-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--sho-gap-3, 24px); align-items: start; }
+  .pub-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 24px; align-items: start; }
   @media (max-width: 960px) { .pub-grid { grid-template-columns: 1fr; } }
-  .pub-video { width: 100%; border-radius: 8px; border: 1px solid var(--sho-line); background: var(--sho-ink, #000); }
-  .pub-thumb { width: 100%; border-radius: 8px; border: 1px solid var(--sho-line); display: block; }
-  .pub-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
-  .pub-field label { font-size: 12px; letter-spacing: 0.08em; }
-  .pub-desc { min-height: 320px; resize: vertical; font-size: 13px; line-height: 1.6; }
-  .pub-count { font-size: 11px; opacity: 0.65; text-align: right; }
-  .pub-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
-  .pub-status-line { margin-top: 10px; font-size: 13px; }
+  .pub-body { padding: 18px 20px; }
+  .pub-video { width: 100%; display: block; border-radius: var(--sho-r-1); background: #000; }
+  .pub-thumb { width: 100%; display: block; border-radius: var(--sho-r-1); border: 1px solid var(--sho-line); }
+  .pub-cap { margin-top: 8px; font-size: 11px; color: var(--sho-muted); word-break: break-all; }
+  .pub-field { display: flex; flex-direction: column; gap: 6px; }
+  .pub-field + .pub-field { margin-top: 20px; }
+  .pub-field > label { font-size: 11px; letter-spacing: 0.14em; color: var(--sho-muted); }
+  .pub-desc { min-height: 300px; resize: vertical; font-size: 13px; line-height: 1.65; }
+  .pub-count { font-size: 11px; color: var(--sho-muted); text-align: right; }
+  .pub-form-foot { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--sho-line);
+                   display: flex; justify-content: flex-end; }
+  .pub-upload-note { margin-top: 10px; font-size: 12px; color: var(--sho-muted); line-height: 1.6; }
+  .pub-status-line { font-size: 13px; line-height: 1.7; }
+  .pub-error { font-size: 12px; color: var(--sho-text); background: var(--sho-bg-2);
+               border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+               padding: 10px 12px; margin-bottom: 12px; }
+  .pub-ab { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; }
+  .pub-ab + .pub-ab { border-top: 1px solid var(--sho-line); }
+  .pub-ab-thumb { width: 120px; border-radius: var(--sho-r-1); border: 1px solid var(--sho-line); flex: none; }
+  .pub-ab-meta { min-width: 0; }
+  .pub-ab-title { font-size: 13px; line-height: 1.5; margin-bottom: 8px; }
+  .pub-ab-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 </style>
 </head>
 <body class="sho bridge-page bridge-page--scroll">
@@ -34,8 +48,8 @@
 
 <section class="page-header page-header--split">
   <div>
-    <div class="nk-caps">/bridge/publish/{{ rel.episode }}/{{ rel.cut_id }} · 上架前最後確認</div>
-    <h1 class="page-title">{{ rel.cut_id }} <span class="zh">{{ rel.work_title }}</span></h1>
+    <div class="nk-caps">{{ rel.episode }} · {{ rel.format | upper }} · {{ rel.cut_id }}</div>
+    <h1 class="page-title">{{ t.title or rel.work_title }}</h1>
   </div>
   <div class="header-meta sho-mono" id="statusTag" data-status="{{ t.status }}">
     {{ t.status | upper }}{% if t.url %} · <a href="{{ t.url }}" target="_blank">YouTube ↗</a>{% endif %}
@@ -49,25 +63,29 @@
         <header class="section-head">
           <div class="section-marker">影片 · {{ duration_min }} min · {{ size_mb }} MB</div>
         </header>
-        {% if file_exists %}
-        <video class="pub-video" controls preload="metadata"
-               src="/bridge/publish/media/{{ rel.episode }}/{{ rel.cut_id }}"></video>
-        {% else %}
-        <p class="sho-mono">⚠ 成品檔不存在——重跑 publish_prep</p>
-        {% endif %}
+        <div class="pub-body">
+          {% if file_exists %}
+          <video class="pub-video" controls preload="metadata"
+                 src="/bridge/publish/media/{{ rel.episode }}/{{ rel.cut_id }}"></video>
+          {% else %}
+          <p class="sho-mono">⚠ 成品檔不存在——重跑 publish_prep</p>
+          {% endif %}
+        </div>
       </article>
 
       <article class="section">
         <header class="section-head">
           <div class="section-marker">Thumbnail</div>
         </header>
-        {% if thumb_exists %}
-        <img class="pub-thumb" src="/bridge/publish/thumb/{{ rel.episode }}/{{ rel.cut_id }}"
-             alt="縮圖預覽">
-        <div class="sho-mono pub-count">{{ t.thumbnail_path }}</div>
-        {% else %}
-        <p class="sho-mono">（無縮圖——短片正常；長片請確認 packaging gate 已核准）</p>
-        {% endif %}
+        <div class="pub-body">
+          {% if thumb_exists %}
+          <img class="pub-thumb" src="/bridge/publish/thumb/{{ rel.episode }}/{{ rel.cut_id }}"
+               alt="縮圖預覽">
+          <div class="pub-cap sho-mono">{{ t.thumbnail_path }}</div>
+          {% else %}
+          <p class="sho-mono">（無縮圖——短片正常；長片請確認 packaging gate 已核准）</p>
+          {% endif %}
+        </div>
       </article>
     </div>
 
@@ -77,33 +95,33 @@
         <header class="section-head">
           <div class="section-marker">文案 · 排程</div>
         </header>
+        <div class="pub-body">
+          <div class="pub-field">
+            <label class="nk-caps" for="f-title">Title</label>
+            <input class="sho-input" id="f-title" name="title" maxlength="100"
+                   value="{{ t.title or '' }}" oninput="cnt('f-title','title-count',100)"
+                   {% if locked %}disabled{% endif %}>
+            <div class="pub-count sho-mono" id="title-count"></div>
+          </div>
 
-        <div class="pub-field">
-          <label class="nk-caps" for="f-title">Title</label>
-          <input class="sho-input" id="f-title" name="title" maxlength="100"
-                 value="{{ t.title or '' }}" oninput="cnt('f-title','title-count',100)"
-                 {% if t.status in ('uploading','uploaded','published') %}disabled{% endif %}>
-          <div class="pub-count sho-mono" id="title-count"></div>
-        </div>
+          <div class="pub-field">
+            <label class="nk-caps" for="f-desc">Description</label>
+            <textarea class="sho-input pub-desc" id="f-desc" name="description"
+                      oninput="cnt('f-desc','desc-count',5000)"
+                      {% if locked %}disabled{% endif %}>{{ t.description or '' }}</textarea>
+            <div class="pub-count sho-mono" id="desc-count"></div>
+          </div>
 
-        <div class="pub-field">
-          <label class="nk-caps" for="f-desc">Description</label>
-          <textarea class="sho-input pub-desc" id="f-desc" name="description"
-                    oninput="cnt('f-desc','desc-count',5000)"
-                    {% if t.status in ('uploading','uploaded','published') %}disabled{% endif %}>{{ t.description or '' }}</textarea>
-          <div class="pub-count sho-mono" id="desc-count"></div>
-        </div>
+          <div class="pub-field">
+            <label class="nk-caps" for="f-sched">公開時間（台北時間；留空 = 上傳後先不公開）</label>
+            <input class="sho-input" id="f-sched" type="datetime-local" name="publish_at_local"
+                   value="{{ publish_local }}" {% if locked %}disabled{% endif %}>
+          </div>
 
-        <div class="pub-field">
-          <label class="nk-caps" for="f-sched">公開時間（台北時間；留空 = 上傳後先不公開）</label>
-          <input class="sho-input" id="f-sched" type="datetime-local" name="publish_at_local"
-                 value="{{ publish_local }}"
-                 {% if t.status in ('uploading','uploaded','published') %}disabled{% endif %}>
-        </div>
-
-        <div class="pub-actions">
-          {% if t.status not in ('uploading','uploaded','published') %}
-          <button class="sho-btn sho-btn--ghost" type="submit">儲存</button>
+          {% if not locked %}
+          <div class="pub-form-foot">
+            <button class="sho-btn" type="submit">儲存文案與排程</button>
+          </div>
           {% endif %}
         </div>
       </form>
@@ -112,28 +130,63 @@
         <header class="section-head">
           <div class="section-marker">上架</div>
         </header>
-        {% if t.status in ('uploading',) %}
-        <p class="pub-status-line sho-mono" id="upline">上傳中… 頁面會自動更新</p>
-        {% elif t.status in ('uploaded','published') %}
-        <p class="pub-status-line">✅ 已上傳
-          {% if t.publish_at %}——排程 {{ t.publish_at }} 公開{% else %}（private，未排程）{% endif %}
-          {% if t.url %}<br><a href="{{ t.url }}" target="_blank">{{ t.url }}</a>{% endif %}
-        </p>
-        {% else %}
-        {% if t.error %}<p class="pub-status-line sho-mono">⚠ 上次失敗：{{ t.error }}</p>{% endif %}
-        <form method="post"
-              action="/bridge/publish/{{ rel.episode }}/{{ rel.cut_id }}/approve-upload"
-              onsubmit="return confirm('確認核准並上傳？\n\n上傳為 private{{ '，並排程 ' + t.publish_at + ' 自動公開' if t.publish_at else '（未排程，之後可再設）' }}。')">
-          <button class="sho-btn" type="submit"
-                  {% if not t.title or not t.description %}disabled title="先儲存 Title/Description"{% endif %}>
-            核准並上傳
-          </button>
-        </form>
-        <p class="pub-status-line sho-mono" style="opacity:.65">
-          上傳為 private；到「公開時間」由 YouTube 的鐘自動轉公開（機器不需在線）。
-        </p>
-        {% endif %}
+        <div class="pub-body">
+          {% if t.status == 'uploading' %}
+          <p class="pub-status-line sho-mono" id="upline">上傳中… 頁面會自動更新</p>
+          {% elif t.status in ('uploaded','published') %}
+          <p class="pub-status-line">✅ 已上傳
+            {% if t.publish_at %}——排程 {{ t.publish_at }} 公開{% else %}（private，未排程）{% endif %}
+            {% if t.url %}<br><a href="{{ t.url }}" target="_blank">{{ t.url }}</a>{% endif %}
+          </p>
+          {% else %}
+          {% if t.error %}<p class="pub-error sho-mono">⚠ 上次失敗：{{ t.error }}</p>{% endif %}
+          <form method="post"
+                action="/bridge/publish/{{ rel.episode }}/{{ rel.cut_id }}/approve-upload"
+                onsubmit="return confirm('確認核准並上傳？\n\n上傳為 private{{ '，並排程 ' + t.publish_at + ' 自動公開' if t.publish_at else '（未排程，之後可再設）' }}。')">
+            <button class="sho-btn" type="submit"
+                    {% if not t.title or not t.description %}disabled title="先儲存 Title/Description"{% endif %}>
+              核准並上傳
+            </button>
+          </form>
+          <p class="pub-upload-note">
+            上傳為 private + 附 CC 字幕；到「公開時間」由 YouTube 的鐘自動轉公開（機器不需在線）。
+          </p>
+          {% endif %}
+        </div>
       </article>
+
+      {% if ab_alternates %}
+      <article class="section">
+        <header class="section-head">
+          <div class="section-marker">A/B 備用（Studio Test &amp; Compare 用）</div>
+        </header>
+        <div class="pub-body">
+          <p class="pub-upload-note" style="margin-top:0">
+            Test &amp; Compare 沒有 API（2026-08 官方文件重查證）——上傳後到
+            YouTube Studio 手動建測試。備用組一鍵複製：
+          </p>
+          {% for alt in ab_alternates %}
+          <div class="pub-ab">
+            {% if alt.thumbnail %}
+            <img class="pub-ab-thumb" src="/bridge/publish/vault-thumb?path={{ alt.thumbnail | urlencode }}"
+                 alt="備用縮圖 {{ loop.index }}">
+            {% endif %}
+            <div class="pub-ab-meta">
+              <div class="pub-ab-title">{{ alt.title }}</div>
+              <div class="pub-ab-actions">
+                <button class="sho-btn sho-btn--ghost" type="button"
+                        onclick="copyText(this, {{ alt.title | tojson }})">複製標題</button>
+                {% if alt.thumbnail %}
+                <button class="sho-btn sho-btn--ghost" type="button"
+                        onclick="copyText(this, {{ alt.thumbnail | tojson }})">複製縮圖路徑</button>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </article>
+      {% endif %}
     </div>
   </div>
 </main>
@@ -142,6 +195,13 @@
 function cnt(src, dst, max) {
   var v = document.getElementById(src).value.length;
   document.getElementById(dst).textContent = v + " / " + max;
+}
+function copyText(btn, text) {
+  navigator.clipboard.writeText(text).then(function () {
+    var old = btn.textContent;
+    btn.textContent = "已複製 ✓";
+    setTimeout(function () { btn.textContent = old; }, 1500);
+  });
 }
 cnt('f-title', 'title-count', 100);
 cnt('f-desc', 'desc-count', 5000);

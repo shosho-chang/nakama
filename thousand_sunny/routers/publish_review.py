@@ -15,6 +15,7 @@ VPS 控制面版等 HTTP claim/report 契約（v2）。
 from __future__ import annotations
 
 import hashlib
+import json
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -79,11 +80,40 @@ def taipei_to_iso(dt_local: str) -> str:
 def publish_list(request: Request, auth: str | None = Cookie(default=None)) -> HTMLResponse:
     _require_auth(auth)
     releases = list_releases()
+    # 列表主顯示 = 發布標題（修修：cut 編號沒有意義）；未回填時退回工作代號
+    for r in releases:
+        full = get_release(r["episode"], r["cut_id"])
+        yt = next((x for x in full["targets"] if x["platform"] == "youtube"), None)
+        r["display_title"] = (yt or {}).get("title") or r["work_title"] or r["cut_id"]
     return _templates.TemplateResponse(
         request,
         "publish_list.html",
         {"releases": releases, "asset_version": _asset_version()},
     )
+
+
+def _ab_alternates(episode: str, cut_id: str, current_title: str | None) -> list[dict]:
+    """packaging 的其餘 package 組（title+縮圖）——Test & Compare 無 API
+    （2026-08-04 官方 revision history 重查證，同 ADR-054 §7），A/B 測試是
+    修修上傳後在 Studio 手動建。這裡把備用組端出來讓他一鍵複製。"""
+    try:
+        from agents.usopp.video_description import find_packaging_dir
+
+        pdir = find_packaging_dir(get_vault_path(), episode)
+        packages = json.loads((pdir / "packages.json").read_text(encoding="utf-8"))
+        cut = next((c for c in packages["cuts"] if c["cut_id"] == cut_id), None)
+        if cut is None:
+            return []
+        titles = {x["rank"]: x["text"] for x in cut.get("titles", [])}
+        out = []
+        for p in cut.get("packages", []):
+            title = titles.get(p.get("title_rank"))
+            if not title or title == current_title:
+                continue
+            out.append({"title": title, "thumbnail": p.get("thumbnail_png")})
+        return out
+    except (ValueError, OSError, json.JSONDecodeError, KeyError):
+        return []  # packaging 交接檔缺漏不擋審核頁——A/B 是加值不是必需
 
 
 @page_router.get("/{episode}/{cut_id}", response_class=HTMLResponse)
@@ -105,6 +135,10 @@ def publish_cut(
         {
             "rel": rel,
             "t": t,
+            "ab_alternates": _ab_alternates(episode, cut_id, t.get("title"))
+            if rel["format"] == "long"
+            else [],
+            "locked": t["status"] in ("uploading", "uploaded", "published"),
             "thumb_exists": thumb_exists,
             "publish_local": publish_local,
             "file_exists": Path(rel["file_path"]).exists(),
@@ -138,6 +172,21 @@ def publish_thumb(
     p = get_vault_path() / t["thumbnail_path"]
     if not p.exists():
         raise HTTPException(status_code=404, detail=f"縮圖不存在: {p}")
+    return FileResponse(p, media_type="image/png")
+
+
+@page_router.get("/vault-thumb")
+def publish_vault_thumb(path: str, auth: str | None = Cookie(default=None)) -> FileResponse:
+    """A/B 備用縮圖預覽。只放行 vault Attachments/packaging/ 下的 png——
+    resolve 後驗前綴，擋 path traversal。"""
+    _require_auth(auth)
+    vault = get_vault_path().resolve()
+    allowed = (vault / "Attachments" / "packaging").resolve()
+    p = (vault / path).resolve()
+    if not str(p).startswith(str(allowed)) or p.suffix.lower() != ".png":
+        raise HTTPException(status_code=403, detail="僅限 packaging 縮圖")
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="縮圖不存在")
     return FileResponse(p, media_type="image/png")
 
 

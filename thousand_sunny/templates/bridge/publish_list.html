@@ -33,10 +33,9 @@
   <article class="section">
     <header class="section-head">
       <div>
-        <div class="section-marker">{{ r.episode }} · {{ r.format | upper }}</div>
+        <div class="section-marker">{{ r.episode }} · {{ r.format | upper }} · {{ r.cut_id }}</div>
         <h2 class="section-title">
-          <a href="/bridge/publish/{{ r.episode }}/{{ r.cut_id }}">{{ r.cut_id }}</a>
-          <span class="zh">{{ r.work_title }}</span>
+          <a href="/bridge/publish/{{ r.episode }}/{{ r.cut_id }}">{{ r.display_title }}</a>
         </h2>
       </div>
       {% set st = r.target_status.get('youtube', '—') %}
