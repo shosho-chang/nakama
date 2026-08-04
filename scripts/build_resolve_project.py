@@ -32,6 +32,10 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from shared.resolve_append import append_checked  # noqa: E402
+
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
@@ -257,12 +261,20 @@ def build_project(
         logger.warning(f"normalized.wav 匯入失敗（{normalized}），退回影片內嵌音軌")
 
     def _fill_av(timeline) -> None:
-        """主影片與音軌上 timeline：有 normalized 就純視訊 + normalized 音軌。"""
+        """主影片與音軌上 timeline：有 normalized 就純視訊 + normalized 音軌。
+
+        ⚠️ 一律走 append_checked——timeline 剛從模板匯入時 Resolve 常還沒就緒，
+        第一次 append 回 `[None]`（truthy，舊的 `if not ok` 判不出來）。
+        2026-08-05 安吉集：主影片整支沒上軌卻回報 created，到緊湊化才炸出來。
+        """
         if norm_items:
-            ok = mp.AppendToTimeline([{"mediaPoolItem": main_items[0], "mediaType": 1}])
-            if not ok:
-                raise SystemExit("主影片（純視訊）上 timeline 失敗")
-            ok = mp.AppendToTimeline(
+            append_checked(
+                mp,
+                [{"mediaPoolItem": main_items[0], "mediaType": 1}],
+                "主影片（純視訊）",
+            )
+            append_checked(
+                mp,
                 [
                     {
                         "mediaPoolItem": norm_items[0],
@@ -270,13 +282,14 @@ def build_project(
                         "trackIndex": 1,
                         "recordFrame": timeline.GetStartFrame(),
                     }
-                ]
+                ],
+                "normalized.wav",
             )
-            if not ok:
-                raise SystemExit("normalized.wav 上 timeline 失敗")
         else:
-            if not mp.AppendToTimeline(main_items):
-                raise SystemExit("主影片上 timeline 失敗")
+            append_checked(mp, main_items, "主影片")
+        placed = len(timeline.GetItemListInTrack("video", 1) or [])
+        if placed < 1:
+            raise SystemExit(f"主影片上軌後 v1 仍是空的（items={placed}）")
 
     template = _template_path()
     timeline = None

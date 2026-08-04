@@ -34,6 +34,8 @@ sys.stderr.reconfigure(encoding="utf-8")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from shared.resolve_append import append_checked  # noqa: E402
+
 logger = logging.getLogger("highlight_cut")
 
 HIGHLIGHTS_DIR = "highlights"
@@ -272,13 +274,17 @@ def materialize(episode_dir: Path, *, dry_run: bool = False) -> dict:
             tl.SetSetting("timelineResolutionHeight", "1920")
         if tl.GetTrackCount("subtitle") == 0:
             tl.AddTrack("subtitle")
-        ok_v = mp.AppendToTimeline(
-            [{"mediaPoolItem": vid, "mediaType": 1, "startFrame": f0, "endFrame": f1}]
+        # ⚠️ 走 append_checked：新建的 timeline 上第一次 append 常回 `[None]`
+        # （truthy，`if not ok_v` 判不出來）——2026-08-05 安吉集三條 timeline
+        # 全部 v1 空、卻回報 materialized。判 [None] + 重試才擋得住。
+        append_checked(
+            mp,
+            [{"mediaPoolItem": vid, "mediaType": 1, "startFrame": f0, "endFrame": f1}],
+            f"{label} 影片",
         )
-        if not ok_v:
-            raise SystemExit(f"{label}: 影片上軌失敗")
         if aud is not None:
-            mp.AppendToTimeline(
+            append_checked(
+                mp,
                 [
                     {
                         "mediaPoolItem": aud,
@@ -288,8 +294,12 @@ def materialize(episode_dir: Path, *, dry_run: bool = False) -> dict:
                         "endFrame": f1,
                         "recordFrame": tl.GetStartFrame(),
                     }
-                ]
+                ],
+                f"{label} 音軌",
             )
+        placed = len(tl.GetItemListInTrack("video", 1) or [])
+        if placed < 1:
+            raise SystemExit(f"{label}: 影片上軌後 v1 仍是空的")
         mp.SetCurrentFolder(root)
         seg_srt = _segment_srt(episode_dir, c["id"], c["t_start"], c["t_end"])
         srt_items = mp.ImportMedia([str(seg_srt)])
