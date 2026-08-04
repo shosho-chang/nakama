@@ -72,8 +72,13 @@ class TestLongFormat:
         """*_wide.html 的 data-width/height 是 hyperframes 的輸出解析度來源，
         JS 改不動——寫錯會渲出直式卡片疊到 16:9 timeline 上。"""
         root = Path(__file__).resolve().parent.parent / "video" / "compositions"
-        for comp in ("punch_card", "sticker_pair", "concept_card", "chapter_label",
-                     "transition_title"):
+        for comp in (
+            "punch_card",
+            "sticker_pair",
+            "concept_card",
+            "chapter_label",
+            "transition_title",
+        ):
             html = (root / comp / "compositions" / f"{comp}_wide.html").read_text(encoding="utf-8")
             assert 'data-width="1920"' in html, comp
             assert 'data-height="1080"' in html, comp
@@ -90,7 +95,7 @@ class TestLongFormat:
         comp_dir = root / "transition_title" / "compositions"
         html = (comp_dir / "transition_title_wide.html").read_text(encoding="utf-8")
         # 滿版底是「元素」不是 body 背景——body 背景在 alpha 渲染下會被丟掉
-        assert 'background: transparent' in html
+        assert "background: transparent" in html
         assert 'id="scrim"' in html
         # 退場動畫存在（原生 transition_title 註解「硬切」已廢）
         assert "yPercent: -112" in html
@@ -121,8 +126,7 @@ class TestContentGaps:
     def test_cuts_do_not_fill_content_gap(self):
         # 0-10s 有素材，之後 170 秒只有換鏡——cut 是弱事件，必須報真空
         events = [{"type": "video", "slug": "stock", "t0": 5.0, "t1": 10.0}] + [
-            {"type": "cut", "slug": "", "t0": float(t), "t1": float(t)}
-            for t in range(12, 180, 6)
+            {"type": "cut", "slug": "", "t0": float(t), "t1": float(t)} for t in range(12, 180, 6)
         ]
         gaps = self._scan(events, 180.0)
         assert len(gaps) == 1
@@ -173,10 +177,14 @@ def test_sfx_chapter_label_maps_to_swish(tmp_path):
         _json.dumps(
             {
                 "items": [
-                    {"t0": 20.0, "t1": 23.0, "kind": "concept", "comp": "chapter_label",
-                     "vars": {"label": "睡眠"}},
-                    {"t0": 30.0, "t1": 33.0, "kind": "concept",
-                     "vars": {"title": "相關 ≠ 因果"}},
+                    {
+                        "t0": 20.0,
+                        "t1": 23.0,
+                        "kind": "concept",
+                        "comp": "chapter_label",
+                        "vars": {"label": "睡眠"},
+                    },
+                    {"t0": 30.0, "t1": 33.0, "kind": "concept", "vars": {"title": "相關 ≠ 因果"}},
                 ]
             }
         ),

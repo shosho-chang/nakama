@@ -75,6 +75,8 @@ def _comp_file(comp: str, suffix: str) -> str:
     if (COMPS[comp] / "compositions" / f"{comp}{suffix}.html").exists():
         return f"{comp}{suffix}.html"
     return f"{comp}.html"
+
+
 CARDS_DIR = "highlights/tighten/cards"
 BROLL_TRACK = 2
 CARD_TRACK = 4
@@ -90,8 +92,12 @@ FORMAT_BROLL = {
     "long": {"canvas": (1920, 1080), "comp_suffix": "_wide"},
 }
 # composition data-duration 上限（進場+待機+退場都要收在裡面）
-COMP_MAX_SEC = {"sticker_pair": 8.0, "concept_card": 6.0, "chapter_label": 8.0,
-                "transition_title": 4.0}  # _wide 版 data-duration 4s、show_sec 控退場
+COMP_MAX_SEC = {
+    "sticker_pair": 8.0,
+    "concept_card": 6.0,
+    "chapter_label": 8.0,
+    "transition_title": 4.0,
+}  # _wide 版 data-duration 4s、show_sec 控退場
 # 滿版紙紋底（修修 2026-08-04 B2 定版）：transition_title 的 paper 系是透明
 # 字卡，疊 beige paper texture motion bg 預合成成滿版——滿版蓋掉畫面，字
 # 才不壓臉（HTML 內嵌 <video> 在 hyperframes 渲染器不可靠，texture 走 ffmpeg）。
@@ -152,12 +158,32 @@ def _composite_texture(
         "[tex][1:v]overlay=0:0,format=yuva444p10le"
     )
     proc = subprocess.run(
-        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-         "-stream_loop", "-1", "-i", str(tex), "-i", str(card_mov),
-         "-filter_complex", fc, "-t", f"{card_sec:.2f}",
-         "-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le",
-         str(out_path)],
-        capture_output=True, text=True,
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-stream_loop",
+            "-1",
+            "-i",
+            str(tex),
+            "-i",
+            str(card_mov),
+            "-filter_complex",
+            fc,
+            "-t",
+            f"{card_sec:.2f}",
+            "-c:v",
+            "prores_ks",
+            "-profile:v",
+            "4444",
+            "-pix_fmt",
+            "yuva444p10le",
+            str(out_path),
+        ],
+        capture_output=True,
+        text=True,
     )
     if proc.returncode != 0 or not out_path.exists():
         raise SystemExit(f"紙紋底合成失敗: {(proc.stderr or '')[-300:]}")
@@ -215,9 +241,19 @@ def _probe_dur(path: Path) -> float:
     """ffprobe 取影片長度（秒）——badge loop 鋪軌用；失敗回 4.0（badge 慣例長度）。"""
     try:
         out = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-             "-of", "csv=p=0", str(path)],
-            capture_output=True, text=True, timeout=30,
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "csv=p=0",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
         ).stdout.strip()
         return float(out)
     except (OSError, subprocess.TimeoutExpired, ValueError):
@@ -377,8 +413,11 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
             if not tex_mov.exists():
                 logger.info("紙紋底合成: %s", tex_mov.name)
                 _composite_texture(
-                    mov, tex, tex_mov,
-                    float(job["vars"]["show_sec"]), COMP_MAX_SEC[job["comp"]],
+                    mov,
+                    tex,
+                    tex_mov,
+                    float(job["vars"]["show_sec"]),
+                    COMP_MAX_SEC[job["comp"]],
                 )
             mov = tex_mov
         job["mov"] = mov
@@ -556,8 +595,13 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
             pos += int(take_src * fps / job["src_fps"])
             n_loops += 1
         made.append(
-            {"slug": job["path"].stem, "kind": "badge", "at": job["t0"],
-             "sec": round((end_frame - int(job["t0"] * fps)) / fps, 1), "loops": n_loops}
+            {
+                "slug": job["path"].stem,
+                "kind": "badge",
+                "at": job["t0"],
+                "sec": round((end_frame - int(job["t0"] * fps)) / fps, 1),
+                "loops": n_loops,
+            }
         )
 
     mp.SetCurrentFolder(root)

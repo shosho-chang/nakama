@@ -630,9 +630,9 @@ def refresh_subs(episode_dir: Path, cid: str) -> dict:
     fmt = c.get("format", "short")
     cfg = _load_cfg(episode_dir, fmt)
     t0, t1 = float(c["t_start"]), float(c["t_end"])
-    cuts = json.loads(
-        (episode_dir / TIGHTEN_DIR / f"{cid}_cuts.json").read_text(encoding="utf-8")
-    )["cuts"]
+    cuts = json.loads((episode_dir / TIGHTEN_DIR / f"{cid}_cuts.json").read_text(encoding="utf-8"))[
+        "cuts"
+    ]
     segs = _keep_segments(t0, t1, cuts, FORMAT_TIGHTEN[fmt]["min_keep_seg"])
 
     resolve = connect_resolve()

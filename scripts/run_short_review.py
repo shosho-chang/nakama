@@ -54,10 +54,20 @@ GAP_SEC = 8.0  # 節拍器缺口門檻（二十四輪盲審下修：12s 太寬�
 # 缺口門檻也放寬：長片密度目標 4.5–5.5 事件/分（剪輯文法 §2.1），
 # 短片是 6–9，用同一把尺會把長片的正常呼吸判成死區。
 FORMAT_REVIEW = {
-    "short": {"preview": (540, 960), "gap_sec": GAP_SEC, "chunk_sec": None, "burn_srt": True,
-              "content_gap_sec": None},
-    "long": {"preview": (960, 540), "gap_sec": 14.0, "chunk_sec": 180.0, "burn_srt": False,
-             "content_gap_sec": 75.0},
+    "short": {
+        "preview": (540, 960),
+        "gap_sec": GAP_SEC,
+        "chunk_sec": None,
+        "burn_srt": True,
+        "content_gap_sec": None,
+    },
+    "long": {
+        "preview": (960, 540),
+        "gap_sec": 14.0,
+        "chunk_sec": 180.0,
+        "burn_srt": False,
+        "content_gap_sec": 75.0,
+    },
 }
 # punch zoom 是「同機位縮放」不是新視覺事件——算進去會遮蔽真死區
 # （兩位盲審獨立指出）。缺口只計換鏡素材與卡片。
@@ -137,14 +147,12 @@ def _scan_content_gaps(
     提案 stock，走 hero 同款 gate：提案 → 修修裁決 → 才抓素材上軌。"""
     gaps = []
     strong = [
-        e for e in events
-        if e["type"] != "cut" and not e["type"].startswith(GAP_EXCLUDE_PREFIX)
+        e for e in events if e["type"] != "cut" and not e["type"].startswith(GAP_EXCLUDE_PREFIX)
     ]
 
     def _one(f: float, t: float) -> dict:
         text = " ".join(s["text"] for s in srt if s["t0"] < t and s["t1"] > f)
-        return {"from": round(f, 1), "to": round(t, 1), "sec": round(t - f, 1),
-                "transcript": text}
+        return {"from": round(f, 1), "to": round(t, 1), "sec": round(t - f, 1), "transcript": text}
 
     cursor = 0.0
     for e in strong:
@@ -308,10 +316,17 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
             out = out_dir / f"contact_sheet_{k:02d}.png"
             _ffmpeg(
                 [
-                    "-ss", f"{ss:.2f}", "-t", f"{span:.2f}",
-                    "-i", str(preview),
-                    "-vf", f"fps=1,scale=180:-1,tile=10x{rows}",
-                    "-frames:v", "1", str(out),
+                    "-ss",
+                    f"{ss:.2f}",
+                    "-t",
+                    f"{span:.2f}",
+                    "-i",
+                    str(preview),
+                    "-vf",
+                    f"fps=1,scale=180:-1,tile=10x{rows}",
+                    "-frames:v",
+                    "1",
+                    str(out),
                 ]
             )
             if out.exists():
@@ -408,9 +423,7 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
         "gap_threshold_sec": fcfg["gap_sec"],
         "gaps": gaps,
         # transcript 不進 summary（stdout 會爆）——只報時間窗，全文在 packet
-        "content_gaps": [
-            {k: g[k] for k in ("from", "to", "sec")} for g in content_gaps
-        ],
+        "content_gaps": [{k: g[k] for k in ("from", "to", "sec")} for g in content_gaps],
         "contact_sheets": [x["file"] for x in sheets],
         "frames": len(frames),
     }
