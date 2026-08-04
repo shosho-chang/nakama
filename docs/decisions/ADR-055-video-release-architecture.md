@@ -1,0 +1,60 @@
+# ADR-055: 影片發布線架構 — 桌機 uploader、新表不沿用舊 queue、DB 當 SoT
+
+- **Status**: Proposed（D1/D2 為 2026-07-26 修修已裁決的追認；D3 待修修裁決）
+- **Date**: 2026-08-04
+- **Context**: `docs/plans/2026-07-26-video-publishing-plan.md`（grill 全記錄）、
+  ADR-054（packaging 交接契約）。Slice 0 探針已 PASS（#1124：OAuth + 上傳 +
+  publishAt 排程 + 無降權標記實測）。
+
+## D1 — 桌機當 uploader，VPS 當控制面（追認 Q2）
+
+YouTube API 只吃 POST bytes（無「給我 URL 你自己抓」）→ 持有檔案的機器必須
+是上傳者；原檔與 Resolve 都在桌機（24/7）。VPS 留 release 狀態機、per-platform
+文案、Bridge 審核與排程 UI。兩邊走 HTTP claim/report 契約（API key）。
+
+**Upload 與 publish 時間解耦**：upload = approve 後盡快傳成 private（機會性）；
+publish = YT 原生排程（`privacyStatus=private` + `publishAt`），平台的鐘執行，
+兩台機器都不需在那一刻活著——修修排的發布時間是硬承諾。
+
+逃生門（不做先）：NAS DS918+ 可接手 uploader，契約不變。
+
+## D2 — 新開 releases / release_targets，不沿用 approval_queue（追認 Q3）
+
+`approval_queue` 為「一篇 WP 文字稿 → 一個網站」設計，且生產環境**零次成功
+執行**（VPS 實查：2 列 rejected 死資料、publish_jobs 0 列）。影片要補五樣：
+檔案身分與所在機器、一對多平台群組（release_id）、排程時間可查欄位、跨機器
+認領、大檔斷點續傳。在 2 列死資料的表上動五次手術不如新開。
+
+三層模型：**Episode**（資料夾）→ **Cut**（winners.json 一支成品，
+canonical key = episode × cut_id）→ **Release Target**（Cut × platform，
+執行單位，各自擁有文案/排程/狀態/平台回傳）。YT 成功 + IG 失敗是必然，
+target 獨立成列才有重試單位。
+
+Schema：`migrations/018_releases.sql`（canonical copy 在
+`shared/state.py::_init_tables`）；deep module `shared/release_store.py`
+五法（register_release / ensure_target / get_release / list_releases /
+update_target）。只借舊那套的「做法」（狀態機紀律、fail-loud、冪等），
+不借零件。
+
+## D3 — DB 當 release plan 的 SoT，vault 只收發布結果（**待修修裁決**）
+
+**刻意偏離 house 原則**（ADR-030 D1 / ADR-033 D7 / ADR-041 D1：vault 是
+committed state 的 canonical SoT）——這正是本 ADR 存在的理由，否則半年後
+會有人來「修正」它。
+
+- release plan 是**數天期的操作意圖**（表單形狀、per-platform 欄位、高頻
+  狀態轉移），不是耐久知識；ADR-041 v3 的痛（byte-splice、dual-read）正
+  來自把表單形狀塞進 markdown
+- vault 收**發布完成後的結果**（URL / 發布時間 / 最終標題）單向寫回
+  episode 頁——那才是耐久知識
+- packaging 交接面維持 ADR-054 §7：vault `Attachments/packaging/` 的
+  `packages.json` / `approval.json`（上游 skill 與 Bridge 寫，發布層只讀）
+
+## 後果
+
+- 發布層 code 歸屬（plan §4.2）：`agents/usopp/` 但與 WP 線平行不共用零件；
+  `CONTENT-PIPELINE.md:207` 的自我矛盾句要一併修——**下個 slice 處理**
+- 重複上傳防護：無平台天然 idempotency key → DB claim + `video_id` 上傳完成
+  即寫 + `upload_session_uri` 持久化（crash 續傳不重傳）
+- Q4b 字幕實測與計畫假設相反（長片 Resolve render 會燒模板軌、短片燒不進）
+  → publish_prep：長片 render 前 disable 字幕軌、短片 ffmpeg 燒 tight SRT

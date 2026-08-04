@@ -1,0 +1,292 @@
+"""publish_prep — 發布線 Slice 1：render 成品 mp4 + 登錄草稿 Release（Q4a）。
+
+設計凍結：`docs/plans/2026-07-26-video-publishing-plan.md` §2 Q4a/Q4b、ADR-055。
+
+    python scripts/publish_prep.py "20260723 謝伯讓"                  # 這集全部 winners
+    python scripts/publish_prep.py "20260723 謝伯讓" --cut punch-L5    # 只出這一支
+
+跑完的語意是「**登錄了**」不是「發布了」——系統手上多了檔案 + 草稿
+Release（draft），等文案（packaging 交接檔）、等排程、等修修核准。
+
+Q4b 字幕的兩顆地雷（run_short_review 實測，與計畫文件的假設**相反**）：
+
+- **長片**：Resolve render 會把主字幕模板軌**燒進畫面**——但 Q4b 裁決長片
+  不燒、只上 CC → render 前 disable 全部 subtitle 軌，render 完恢復
+- **短片**：Resolve render **燒不進**字幕（只出 sidecar）——但短片必須燒
+  → Resolve 出乾淨畫面，ffmpeg 從 tight SRT 燒（同 QC preview 工法，
+  字級按全解析放大）
+
+檔案落點：`<episode>/highlights/exports/<cut_id>.mp4`（短片另保留
+`<cut_id>_clean.mp4` 乾淨版供重燒）。CC 字幕直接用
+`highlights/srt/<cut_id>_tight_r*.srt` 最新版（已平移 0 起點）。
+
+執行環境同 longform-cut skill：Resolve Studio 開著、`py -3.10`。
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from run_highlight_cut import FORMAT_LABEL  # noqa: E402
+
+logger = logging.getLogger("publish_prep")
+
+EXPORTS_DIR = "highlights/exports"
+# 短片燒錄字幕樣式：QC preview 用 540 寬 FontSize 14——全解析 1080 寬等比 ×2。
+# 樣式盡量貼近 Resolve 直式模板（修修 UAT 後可調）。
+SHORT_SUB_STYLE = "FontName=Microsoft JhengHei,FontSize=28,Outline=2,MarginV=84"
+RENDER_TIMEOUT_SEC = 3600  # 長片全解析 render 上限（12 分鐘片 + 排隊餘裕）
+
+
+def _load_plan(episode_dir: Path) -> tuple[list[dict], list[dict]]:
+    hdir = episode_dir / "highlights"
+    cands = json.loads((hdir / "candidates.json").read_text(encoding="utf-8"))["candidates"]
+    winners = json.loads((hdir / "winners.json").read_text(encoding="utf-8"))["winners"]
+    return cands, winners
+
+
+def cuts_to_prep(cands: list[dict], winners: list[dict], only: str | None = None) -> list[dict]:
+    """要匯出的 cut 清單：winners × candidates join（format/title 來自 candidate）。
+
+    `--cut` 指定不存在的 id fail loud——寧可停下也不要默默出整集
+    （嚴禁幻想：id 打錯不是「全出」的授權）。"""
+    by_id = {c["id"]: c for c in cands}
+    picked = []
+    for w in winners:
+        if only and w["id"] != only:
+            continue
+        c = by_id.get(w["id"])
+        if c is None:
+            raise SystemExit(f"winner {w['id']} 不在 candidates.json——資料不一致，先修")
+        picked.append({**c, "rank": w["rank"]})
+    if only and not picked:
+        raise SystemExit(f"--cut {only} 不在 winners.json")
+    return picked
+
+
+def timeline_label(cut: dict) -> str:
+    """winner id → Resolve timeline 顯示名（雙 id 陷阱：對應必須機器保證）。"""
+    return f"{FORMAT_LABEL[cut['format']]}{cut['rank']} - {cut['title']}（緊·導播）"
+
+
+def _latest_tight_srt(episode_dir: Path, cut_id: str) -> Path | None:
+    srts = sorted((episode_dir / "highlights/srt").glob(f"{cut_id}_tight_r*.srt"))
+    return srts[-1] if srts else None
+
+
+def _find_timeline(project, label: str):
+    for i in range(1, project.GetTimelineCount() + 1):
+        t = project.GetTimelineByIndex(i)
+        if t and t.GetName() == label:
+            return t
+    raise SystemExit(f"timeline「{label}」不存在——先跑完 longform-cut/highlight-cut 製作線")
+
+
+def _render_master(project, timeline, out_dir: Path, name: str) -> Path:
+    """Resolve render queue 出全解析 H.264 mp4（timeline 原生解析度）。"""
+    w = int(timeline.GetSetting("timelineResolutionWidth"))
+    h = int(timeline.GetSetting("timelineResolutionHeight"))
+    project.SetCurrentRenderFormatAndCodec("mp4", "H264")
+    project.SetRenderSettings(
+        {
+            "MarkIn": timeline.GetStartFrame(),
+            "MarkOut": timeline.GetEndFrame(),
+            "TargetDir": str(out_dir),
+            "CustomName": name,
+            "FormatWidth": w,
+            "FormatHeight": h,
+        }
+    )
+    jid = project.AddRenderJob()
+    if not jid:
+        raise SystemExit("AddRenderJob 失敗")
+    project.StartRendering([jid], isInteractiveMode=False)
+    for _ in range(RENDER_TIMEOUT_SEC // 2):
+        if not project.IsRenderingInProgress():
+            break
+        time.sleep(2)
+    else:
+        raise SystemExit(f"render 逾時（>{RENDER_TIMEOUT_SEC}s）")
+    project.DeleteRenderJob(jid)
+    out = out_dir / f"{name}.mp4"
+    if not out.exists():
+        raise SystemExit(f"render 完成但檔案不存在: {out}")
+    return out
+
+
+def _set_subtitle_tracks(timeline, enabled: bool) -> int:
+    """開/關全部字幕軌（長片 Q4b：成品不燒字幕）。回軌數供 log。"""
+    n = int(timeline.GetTrackCount("subtitle") or 0)
+    for i in range(1, n + 1):
+        timeline.SetTrackEnable("subtitle", i, enabled)
+    return n
+
+
+def _burn_short_subs(clean: Path, srt: Path, out: Path) -> None:
+    """短片 ffmpeg 燒字幕（Resolve render 燒不進——十七輪實測）。"""
+    proc = subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-v",
+            "error",
+            "-i",
+            clean.name,
+            "-vf",
+            f"subtitles={srt.name}:force_style='{SHORT_SUB_STYLE}'",
+            "-c:v",
+            "libx264",
+            "-crf",
+            "17",
+            "-preset",
+            "slow",
+            "-c:a",
+            "copy",
+            out.name,
+        ],
+        cwd=str(clean.parent),
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0 or not out.exists():
+        raise SystemExit(f"短片字幕燒錄失敗: {(proc.stderr or '')[-300:]}")
+
+
+def _probe(path: Path) -> tuple[float, int]:
+    out = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "csv=p=0",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    ).stdout.strip()
+    try:
+        dur = float(out)
+    except ValueError:
+        dur = 0.0
+    return dur, path.stat().st_size
+
+
+def export_cut(project, episode_dir: Path, cut: dict) -> dict:
+    """單支 cut：render → （短片燒字幕）→ exports/<cut_id>.mp4。"""
+    label = timeline_label(cut)
+    timeline = _find_timeline(project, label)
+    project.SetCurrentTimeline(timeline)
+    out_dir = episode_dir / EXPORTS_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cid = cut["id"]
+
+    if cut["format"] == "long":
+        # Q4b：長片成品不燒字幕（CC 另上）。Resolve 會燒模板字幕軌 → 先關。
+        n = _set_subtitle_tracks(timeline, False)
+        logger.info("%s: 長片——已暫時關閉 %d 條字幕軌（成品不燒，CC 另上）", cid, n)
+        try:
+            final = _render_master(project, timeline, out_dir, cid)
+        finally:
+            _set_subtitle_tracks(timeline, True)
+    else:
+        srt = _latest_tight_srt(episode_dir, cid)
+        if srt is None:
+            raise SystemExit(f"{cid} 沒有 tight SRT——短片必須燒字幕（Q4b）")
+        clean = _render_master(project, timeline, out_dir, f"{cid}_clean")
+        final = out_dir / f"{cid}.mp4"
+        import shutil
+
+        shutil.copy(srt, out_dir / f"{cid}.srt")
+        logger.info("%s: 短片——ffmpeg 燒字幕（%s）", cid, srt.name)
+        _burn_short_subs(clean, out_dir / f"{cid}.srt", final)
+
+    dur, size = _probe(final)
+    srt_path = _latest_tight_srt(episode_dir, cid)
+    return {
+        "cut_id": cid,
+        "format": cut["format"],
+        "work_title": cut["title"],
+        "file": str(final),
+        "duration_sec": round(dur, 2),
+        "file_bytes": size,
+        "cc_srt": str(srt_path) if srt_path else None,
+        "timeline": label,
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    parser = argparse.ArgumentParser(description="發布線 Slice 1：render 成品 + 登錄草稿 Release")
+    parser.add_argument("episode", help="episode 資料夾（G:\\footages\\...）")
+    parser.add_argument("--cut", help="只出這一支（winner id，如 punch-L5）")
+    args = parser.parse_args(argv)
+
+    episode_dir = Path(args.episode)
+    if not episode_dir.exists():
+        raise SystemExit(f"episode 不存在: {episode_dir}")
+    cands, winners = _load_plan(episode_dir)
+    cuts = cuts_to_prep(cands, winners, args.cut)
+
+    from build_resolve_project import connect_resolve  # Resolve 依賴延後 import
+
+    from shared.release_store import ensure_target, register_release
+
+    resolve = connect_resolve()
+    pm = resolve.GetProjectManager()
+    project = pm.GetCurrentProject()
+    if project is None or project.GetName() != episode_dir.name:
+        project = pm.LoadProject(episode_dir.name)
+    if project is None:
+        raise SystemExit(f"project「{episode_dir.name}」不存在")
+
+    results = []
+    for cut in cuts:
+        info = export_cut(project, episode_dir, cut)
+        release_id = register_release(
+            episode_dir.name,
+            info["cut_id"],
+            info["format"],
+            info["file"],
+            work_title=info["work_title"],
+            file_bytes=info["file_bytes"],
+            duration_sec=info["duration_sec"],
+        )
+        target_id = ensure_target(release_id, "youtube")
+        info["release_id"] = release_id
+        info["youtube_target_id"] = target_id
+        results.append(info)
+        logger.info(
+            "登錄 release #%d（%s）→ youtube target #%d（draft）",
+            release_id,
+            info["cut_id"],
+            target_id,
+        )
+
+    print(
+        json.dumps(
+            {"status": "registered", "count": len(results), "cuts": results},
+            ensure_ascii=False,
+            indent=1,
+        )
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
