@@ -87,9 +87,8 @@ class TestLongFormat:
         # data-duration 4s：3.0s 上軌 + 退場收在 show_sec 內
         assert COMP_MAX_SEC["transition_title"] == 4.0
         root = Path(__file__).resolve().parent.parent / "video" / "compositions"
-        html = (root / "transition_title" / "compositions" / "transition_title_wide.html").read_text(
-            encoding="utf-8"
-        )
+        comp_dir = root / "transition_title" / "compositions"
+        html = (comp_dir / "transition_title_wide.html").read_text(encoding="utf-8")
         # 滿版底是「元素」不是 body 背景——body 背景在 alpha 渲染下會被丟掉
         assert 'background: transparent' in html
         assert 'id="scrim"' in html

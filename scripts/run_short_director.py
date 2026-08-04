@@ -390,7 +390,6 @@ def direct(
     episode_dir: Path, cid: str, stills_dir: Path | None = None, opener: bool = True
 ) -> dict:
     from build_resolve_project import _template_path, _template_path_short, connect_resolve
-
     from run_short_tighten import FORMAT_TIGHTEN
 
     c, w = _load_winner(episode_dir, cid)
@@ -625,7 +624,6 @@ def refresh_subs(episode_dir: Path, cid: str) -> dict:
     上架的字幕檔少一句。
     """
     from build_resolve_project import connect_resolve
-
     from run_short_tighten import FORMAT_TIGHTEN
 
     c, w = _load_winner(episode_dir, cid)
