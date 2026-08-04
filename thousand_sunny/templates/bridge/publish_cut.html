@@ -126,7 +126,11 @@
 
           {% if not locked %}
           <div class="pub-form-foot">
-            <button class="sho-btn" type="submit">儲存文案與排程</button>
+            <button class="sho-btn sho-btn--ghost" type="submit">儲存文案與排程</button>
+            <button class="sho-btn" type="submit" form="approveForm"
+                    {% if not t.title or not t.description %}disabled title="先儲存 Title/Description"{% endif %}>
+              核准並上傳
+            </button>
           </div>
           {% endif %}
         </div>
@@ -134,11 +138,13 @@
 
       <article class="section">
         <header class="section-head">
-          <div class="section-marker">上架</div>
+          <div class="section-marker">上架狀態</div>
         </header>
         <div class="pub-body">
-          {% if t.status == 'uploading' %}
-          <p class="pub-status-line sho-mono" id="upline">上傳中…</p>
+          {% if t.status in ('approved', 'uploading') %}
+          <p class="pub-status-line sho-mono" id="upline">
+            {{ '上傳中…' if t.status == 'uploading' else '已核准——上傳啟動中…' }}
+          </p>
           <div class="pub-progress"><div class="pub-progress-bar" id="upbar" style="width:0%"></div></div>
           <p class="pub-count sho-mono" id="uppct" style="text-align:left; margin-top:6px"></p>
           {% elif t.status in ('uploaded','published') %}
@@ -146,22 +152,23 @@
             {% if t.publish_at %}——排程 {{ t.publish_at }} 公開{% else %}（private，未排程）{% endif %}
             {% if t.url %}<br><a href="{{ t.url }}" target="_blank">{{ t.url }}</a>{% endif %}
           </p>
+          {% if t.error %}<p class="pub-error sho-mono" style="margin-top:10px">⚠ {{ t.error }}</p>{% endif %}
           {% else %}
           {% if t.error %}<p class="pub-error sho-mono">⚠ 上次失敗：{{ t.error }}</p>{% endif %}
-          <form method="post"
-                action="/bridge/publish/{{ rel.episode }}/{{ rel.cut_id }}/approve-upload"
-                onsubmit="return confirm('確認核准並上傳？\n\n上傳為 private{{ '，並排程 ' + t.publish_at + ' 自動公開' if t.publish_at else '（未排程，之後可再設）' }}。')">
-            <button class="sho-btn" type="submit"
-                    {% if not t.title or not t.description %}disabled title="先儲存 Title/Description"{% endif %}>
-              核准並上傳
-            </button>
-          </form>
-          <p class="pub-upload-note">
-            上傳為 private + 附 CC 字幕；到「公開時間」由 YouTube 的鐘自動轉公開（機器不需在線）。
+          <p class="pub-upload-note" style="margin-top:0">
+            按上方「核准並上傳」→ 上傳為 private + 附 CC 字幕；到「公開時間」由
+            YouTube 的鐘自動轉公開（機器不需在線）。
           </p>
           {% endif %}
         </div>
       </article>
+
+      {% if not locked %}
+      <form id="approveForm" method="post"
+            action="/bridge/publish/{{ rel.episode }}/{{ rel.cut_id }}/approve-upload"
+            onsubmit="return confirm('確認核准並上傳？\n\n上傳為 private{{ '，並排程 ' + t.publish_at + ' 自動公開' if t.publish_at else '（未排程，之後可再設）' }}。')">
+      </form>
+      {% endif %}
 
       {% if ab_alternates %}
       <article class="section">
@@ -214,17 +221,24 @@ function copyText(btn, text) {
 cnt('f-title', 'title-count', 100);
 cnt('f-desc', 'desc-count', 5000);
 
-// 上傳中 → poll 狀態畫進度條，狀態變了整頁刷新
+// approved（上傳啟動中）/ uploading → poll 狀態畫進度條，狀態變了整頁刷新
+// （approved 也 poll：approve redirect 回來時 subprocess 可能還沒把狀態切到
+// uploading——第一輪修修按了看不到進度條的原因之一）
 (function () {
   var tag = document.getElementById('statusTag');
-  if (!tag || tag.dataset.status !== 'uploading') return;
+  if (!tag) return;
+  var st = tag.dataset.status;
+  if (st !== 'uploading' && st !== 'approved') return;
   var bar = document.getElementById('upbar');
   var pct = document.getElementById('uppct');
   var t = setInterval(function () {
     fetch(location.pathname + '/status')
       .then(function (r) { return r.json(); })
       .then(function (s) {
-        if (s.status !== 'uploading') { clearInterval(t); location.reload(); return; }
+        if (s.status !== 'uploading' && s.status !== 'approved') {
+          clearInterval(t); location.reload(); return;
+        }
+        if (s.status !== st) { location.reload(); return; }
         if (s.progress && bar) {
           bar.style.width = s.progress.pct + '%';
           pct.textContent = s.progress.pct + '%' + (s.progress.note ? ' · ' + s.progress.note : '');
