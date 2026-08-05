@@ -45,10 +45,12 @@ ALPHA_ON = 20
 
 # render QA 門檻（720p）。臉高會被姿勢/張嘴真實改變（大笑 eye-chin +9% 是
 # 物理不是 bug），所以跨張一致性主尺 = IOD（瞳距，姿勢下最穩），臉高當寬鬆
-# backstop 只抓 solver 級災難（2026-08-05 事故是 16–22%）。
+# backstop 只抓 solver 級災難（2026-08-05 事故是 16–22%）。眼線在 crown 錨定
+# （solver v3.1）下隨頭部姿勢漂是**合法**（TF 原版實測 ~10% canvas），跨張
+# 漂移只做資訊輸出；硬檢查 = 每張實測眼位 vs solver 預測（帶 --spec 時）。
 RENDER_IOD_SPREAD_TOL = 0.08  # 同角色跨張 IOD 離散 ≤8%
 RENDER_FACE_SPREAD_TOL = 0.12  # 同角色跨張臉高離散 backstop ≤12%
-RENDER_EYE_SPREAD_PX = 12.0  # 跨張眼線漂移 ≤12px
+RENDER_EYE_PRED_TOL = 10.0  # 每張：實測眼位 vs solver 預測 ≤10px
 RENDER_RATIO_TOL = 0.12  # 包內 guest/host 臉高比 sanity ±0.12（精確值印出供人判）
 SIDE_ZONE = 0.30  # 左右 30% 畫寬內的臉才算 host/guest（中央 prop 照的臉忽略）
 
@@ -172,10 +174,47 @@ def cmd_cutouts(args) -> int:
     return 0
 
 
+def _expected_from_specs(args) -> list[dict] | None:
+    """--spec（與 --png 一一對應）→ 每張的 solver 預測眼位（host/guest）。"""
+    specs = args.spec or []
+    if not specs:
+        return None
+    if len(specs) != len(args.png):
+        raise SystemExit("--spec 數量需與 --png 一一對應")
+    if not args.manifest:
+        raise SystemExit("--spec 需要 --manifest（重算 solver 預測）")
+    sys.path.insert(0, str(Path(__file__).parent))
+    from layout_solve import solve_duo
+
+    mani = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+    out = []
+    for sp in specs:
+        refs = (json.loads(Path(sp).read_text(encoding="utf-8")).get("_solve")) or {}
+        if not refs:
+            raise SystemExit(f"{sp} 缺 _solve 中繼資料——無從重算預測")
+        exp = solve_duo(
+            mani,
+            refs["host"],
+            refs["guest"],
+            args.canvas_h,
+            float(refs.get("canvas_w", 1280)),
+            guest_face_boost=float(refs.get("guest_face_boost", 1.0)),
+            clip_frac=float(refs.get("clip_frac", 0.08)),
+            outward_shift_pct=float(refs.get("outward_shift_pct", 5.0)),
+            host_expr=refs.get("host_expr"),
+            guest_expr=refs.get("guest_expr"),
+            face_target_frac=float(refs.get("face_target_frac", 0.347)),
+        )
+        out.append({r: float(exp[f"_{r}_predicted"]["eye"]) for r in ("host", "guest")})
+    return out
+
+
 def cmd_render(args) -> int:
+    expected = _expected_from_specs(args)
     mp, lmk = _landmarker(num_faces=6)
     per_png = {}
-    for png in args.png:
+    ok = True
+    for i, png in enumerate(args.png):
         arr = np.array(Image.open(png).convert("RGB"))
         h, w = arr.shape[:2]
         faces = _detect(mp, lmk, arr)
@@ -195,24 +234,29 @@ def cmd_render(args) -> int:
             f"{Path(png).name}: host 臉高 {sides['host']['face_h']} eye@{sides['host']['eye']} | "
             f"guest 臉高 {sides['guest']['face_h']} eye@{sides['guest']['eye']} | guest/host {r:.3f}"
         )
-    ok = True
+        if expected:
+            for role in ("host", "guest"):
+                d = abs(sides[role]["eye"] - expected[i][role])
+                ok_p = d <= RENDER_EYE_PRED_TOL
+                ok = ok and ok_p
+                print(
+                    f"  {role} 眼位 vs solver 預測 {expected[i][role]:.1f}：差 {d:.1f}px"
+                    f"（≤{RENDER_EYE_PRED_TOL:.0f}）{'PASS' if ok_p else 'FAIL'}"
+                )
     for role in ("host", "guest"):
         fh = np.array([v[role]["face_h"] for v in per_png.values()])
         iod = np.array([v[role]["iod"] for v in per_png.values()])
         ey = np.array([v[role]["eye"] for v in per_png.values()])
         f_spread = float(fh.max() / fh.min() - 1)
         i_spread = float(iod.max() / iod.min() - 1)
-        eye_spread = float(ey.max() - ey.min())
         ok_i = i_spread <= RENDER_IOD_SPREAD_TOL
         ok_f = f_spread <= RENDER_FACE_SPREAD_TOL
-        ok_e = eye_spread <= RENDER_EYE_SPREAD_PX
-        ok = ok and ok_i and ok_f and ok_e
+        ok = ok and ok_i and ok_f
         print(
             f"{role}: 跨張 IOD 離散 {i_spread:.1%}（≤{RENDER_IOD_SPREAD_TOL:.0%}）"
             f"{'PASS' if ok_i else 'FAIL'} | 臉高離散 {f_spread:.1%}"
             f"（≤{RENDER_FACE_SPREAD_TOL:.0%}）{'PASS' if ok_f else 'FAIL'} | "
-            f"眼線漂移 {eye_spread:.1f}px（≤{RENDER_EYE_SPREAD_PX:.0f}）"
-            f"{'PASS' if ok_e else 'FAIL'}"
+            f"眼線跨張漂 {float(ey.max() - ey.min()):.1f}px（資訊：crown 錨定下隨姿勢漂為合法）"
         )
     for name, sides in per_png.items():
         r = sides["guest"]["face_h"] / sides["host"]["face_h"]
@@ -235,6 +279,8 @@ def main() -> int:
     c.add_argument("--date", default="2026-08-05")
     r = sub.add_parser("render")
     r.add_argument("--png", action="append", required=True)
+    r.add_argument("--spec", action="append", help="與 --png 一一對應；給了就多驗「實測眼位 vs solver 預測」")
+    r.add_argument("--manifest", help="--spec 重算預測用")
     r.add_argument("--canvas-h", type=float, default=720)
     r.add_argument("--host-ratio-target", type=float, default=1.0,
                    help="guest/host 臉高比目標（= solver 的 guest_face_boost 感知校準值）")

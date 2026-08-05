@@ -94,6 +94,7 @@ def verify(manifest: dict, spec: dict, canvas_h: float) -> int:
             outward_shift_pct=float(refs.get("outward_shift_pct", 5.0)),
             host_expr=refs.get("host_expr"),
             guest_expr=refs.get("guest_expr"),
+            face_target_frac=float(refs.get("face_target_frac", 0.347)),
         )
         ok = True
         for role in ("host", "guest"):
@@ -103,8 +104,10 @@ def verify(manifest: dict, spec: dict, canvas_h: float) -> int:
                     print(f"{k}: spec {got} ≠ solver {want} FAIL")
                     ok = False
             p = expected[f"_{role}_predicted"]
-            lock = expected["_eye_lock_px"]
-            print(f"{role}: 頭頂 {p['head_top']}px 眼 {p['eye']}px（eye_lock {lock}）")
+            print(
+                f"{role}: 頭頂 {p['head_top']}px 眼 {p['eye']}px "
+                f"臉 {p['chin'] - p['eye']:.1f}px（目標 {expected['_face_target_px']}）"
+            )
         print("solver 重算一致性: " + ("PASS" if ok else "FAIL"))
         return 0 if ok else 1
     out, preds = 0, {}
@@ -150,6 +153,7 @@ def solve_duo(
     outward_shift_pct: float = 5.0,
     host_expr: str | None = None,
     guest_expr: str | None = None,
+    face_target_frac: float = 0.347,
 ) -> dict:
     """TF 式雙臉版式 v3（2026-08-05 安吉集三輪事故後定版）。
 
@@ -161,20 +165,27 @@ def solve_duo(
     每個單張標量（臉高/頭高/IOD）都會被姿勢真實改變 ±5–10%，靠任何
     「per-photo 等大規則」都是把量測噪音放大成成品噪音。
 
-    v3 契約（物理：同人同機位同裁切框 → 同 pixel scale；IOD 佐證）：
-    1. **量尺只解一次**（基準對 = 兩人正面 serious 定稿）然後鎖定：
-       - s_g = canvas_h / (guest 頭頂→圖底) × guest_face_boost   [TF 框架]
-       - s_h = s_g0 × geomean(臉高比, 頭高比)——臉（眼-下巴）與頭（crown-下巴）
-         **同時**逼近等大；好地標下兩指標差 <2%，幾何平均把兩者都壓進 ±1%。
-         差 >6% 代表地標可疑或髮型極端，警告並要求人工拍板。
-    2. **眼線 = 全集一個常數** eye_lock（由基準解出）。
-    3. **表情版鎖 scale，只解 y/x**：y 把該格 eye 釘上 eye_lock；若因此
-       bottom_off > 0（人底下露背景縫）→ clamp 0 並回報眼線偏移量。
-       x 照 5/6 出血規則用該格 head_cols。表情版裁切框尺寸必須與基準相同
-       （不同 = 不可鎖，fail loud）。
-    4. guest_face_boost 是**感知校準**，per-pairing 一次由修修拍板後鎖定
+    v3.1 契約（物理：同人同機位同裁切框 → 同 pixel scale；IOD 佐證）：
+    1. **尺寸 = 臉的畫布絕對目標**：s_g0 = canvas_h × face_target_frac ÷
+       guest 基準臉高（眼-下巴）。0.347 是謝伯讓定案三張的實測值
+       （臉高 248–262px @720，修修核准）。⛔ 舊規則「crown 到圖底填滿
+       畫布」是間接量——它隨裁切框留多少身體而變，安吉集因此比定案
+       小 20%（2026-08-05 修修：「cutout 太小了，跟 TF/謝伯讓比就知道」）。
+    2. **量尺只解一次**（基準對 = 兩人正面 serious 定稿）然後鎖定：
+       s_h = s_g0 × geomean(臉高比, 頭高比)——臉與頭**同時**逼近等大；
+       好地標下兩指標差 <2%。差 >6% 警告、要求人工拍板。
+    3. **每張照片用自己的頭頂錨定畫布頂緣**（crown_screen = 0）→ headroom
+       結構性歸零。⛔ 舊規則把「跨張眼線一致」當硬約束：眼線常數來自
+       serious 基準照，大笑仰頭的照片 crown→eye 投影短 30px+，釘眼線
+       就讓頭頂掉下來 39px headroom（2026-08-05 SL7 事故）。眼線降為
+       **軟目標**：TF 原版自己就容忍眼線隨頭部姿勢漂（實測 ~10% canvas），
+       頂天蓋地才是硬規格。預測眼位輸出供 render QA 對照。
+    4. **表情版鎖 scale，只解 y/x**：y = 自己的 crown 錨頂；x 照出血規則
+       用自己的 head_cols。裁切框尺寸必須與基準相同（不同 = 不可鎖）。
+       bottom 若搆不到畫布底（露縫）→ fail loud（裁切框太短，回去改 crop）。
+    5. guest_face_boost 是**感知校準**，per-pairing 一次由修修拍板後鎖定
        （謝伯讓集 1.05 = 眼鏡正面臉補償；安吉集 1.0）。預設 1.0。
-    5. 外側各切頭寬 clip_frac + 外移 outward_shift_pct（TF 規格，不變）。
+    6. 外側各切頭寬 clip_frac + 外移 outward_shift_pct（TF 規格，不變）。
 
     ⚠️ 本函式輸出只是「參數正確」。**交付 gate 是 face_measure.py render**
     ——對 render 出的 PNG 直接量兩張臉。參數自洽 ≠ 看起來對。
@@ -198,8 +209,9 @@ def solve_duo(
                 )
             lms[role] = (lm_a, ch_a)
 
-    # ── 規則 1：量尺從基準對解一次，表情版不得重解 ──
-    s_g0 = canvas_h / (ch_g_ref - lm_g_ref["head_top"])
+    # ── 規則 1+2：尺寸 = 臉的畫布絕對目標；量尺從基準對解一次，表情版不得重解 ──
+    face_target_px = canvas_h * face_target_frac
+    s_g0 = face_target_px / (lm_g_ref["chin"] - lm_g_ref["eye"])
     face_ratio = (lm_g_ref["chin"] - lm_g_ref["eye"]) / (lm_h_ref["chin"] - lm_h_ref["eye"])
     head_ratio = (lm_g_ref["chin"] - lm_g_ref["head_top"]) / (
         lm_h_ref["chin"] - lm_h_ref["head_top"]
@@ -212,8 +224,6 @@ def solve_duo(
         )
     s_h = s_g0 * (face_ratio * head_ratio) ** 0.5
     s_g = s_g0 * guest_face_boost
-    # ── 規則 2：眼線常數由基準解出（表情版共用，跨包共用）──
-    eye_lock = (lm_g_ref["eye"] - lm_g_ref["head_top"]) * s_g0
 
     out = {}
     roles = (
@@ -222,14 +232,14 @@ def solve_duo(
     )
     for role, name, lm, ch, s in roles:
         displayed_h = ch * s
-        screen_top = eye_lock - lm["eye"] * s
+        # ── 規則 3：每張照片自己的頭頂錨定頂緣 → headroom 結構性歸零 ──
+        screen_top = -lm["head_top"] * s
         bottom_off = canvas_h - screen_top - displayed_h
-        if bottom_off > 0:  # 規則 3 clamp：人底下不許露背景縫
-            warnings.append(
-                f"{name} 依眼線鎖需上抬 {bottom_off:.1f}px 會露底縫——clamp 貼底，"
-                f"眼線下移 {bottom_off:.1f}px（該格前傾/低頭較多，可換格）"
+        if bottom_off > 0:  # 人搆不到畫布底 = 裁切框太短，這不是排版能救的
+            raise SystemExit(
+                f"{name} 頂天後下緣離畫布底還有 {bottom_off:.1f}px（會露背景縫）"
+                "——裁切框身體留太少，回 finalize 重裁再量"
             )
-            bottom_off = 0.0
         y_pct = bottom_off / canvas_h * 100
         head_w = (lm["head_cols"][1] - lm["head_cols"][0]) * s
         clip = clip_frac * head_w
@@ -244,7 +254,7 @@ def solve_duo(
             f"{role}_y_pct": round(y_pct, 1),
         }
         out[f"_{role}_predicted"] = _predict(lm, ch, canvas_h, displayed_h / canvas_h * 100, y_pct)
-    out["_eye_lock_px"] = round(eye_lock, 1)
+    out["_face_target_px"] = round(face_target_px, 1)
     out["_scale_lock"] = {
         "host": round(s_h, 6),
         "guest": round(s_g, 6),
@@ -273,6 +283,8 @@ def main() -> int:
     d.add_argument("--canvas-w", type=float, default=1280)
     d.add_argument("--guest-face-boost", type=float, default=1.0,
                    help="感知校準，per-pairing 修修拍板後鎖定（謝伯讓 1.05；安吉 1.0）")
+    d.add_argument("--face-target-frac", type=float, default=0.347,
+                   help="臉高的畫布佔比目標（0.347 = 謝伯讓定案實測 250px@720）")
     d.add_argument("--clip-frac", type=float, default=0.08)
     d.add_argument("--outward-shift-pct", type=float, default=5.0)
     d.add_argument("--host-expr", default=None, help="表情版 cutout（繼承 --host 的 scale）")
@@ -306,6 +318,7 @@ def main() -> int:
                     a.outward_shift_pct,
                     a.host_expr,
                     a.guest_expr,
+                    a.face_target_frac,
                 ),
                 ensure_ascii=False,
                 indent=1,
