@@ -36,6 +36,10 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 EYE_TOL_PX = 10  # 修修 2026-07-29 驗收標準（720p）
+# 修修 2026-08-05 SL7 變體板 D 定案：頂天與眼線齊互斥時，guest 以眼線齊
+# 為主，但可用 ≤12px 的眼差買回等量 headroom（D 眼差12/頭上空37 > E 全齊49、
+# > C 折衷 25/25 > 純頂天）。衝突 ≤12px 時退化成頂天。
+EYE_SOFT_PX = 12.0
 HEAD_TOL_PX = 12  # 舊判準，僅供參考輸出
 FACE_BOOST_TARGET = 1.05  # TF-duo 定案：guest 臉（眼-下巴）= host × 1.05
 FACE_RATIO_TOL = 0.03
@@ -174,12 +178,15 @@ def solve_duo(
     2. **量尺只解一次**（基準對 = 兩人正面 serious 定稿）然後鎖定：
        s_h = s_g0 × geomean(臉高比, 頭高比)——臉與頭**同時**逼近等大；
        好地標下兩指標差 <2%。差 >6% 警告、要求人工拍板。
-    3. **每張照片用自己的頭頂錨定畫布頂緣**（crown_screen = 0）→ headroom
-       結構性歸零。⛔ 舊規則把「跨張眼線一致」當硬約束：眼線常數來自
-       serious 基準照，大笑仰頭的照片 crown→eye 投影短 30px+，釘眼線
-       就讓頭頂掉下來 39px headroom（2026-08-05 SL7 事故）。眼線降為
-       **軟目標**：TF 原版自己就容忍眼線隨頭部姿勢漂（實測 ~10% canvas），
-       頂天蓋地才是硬規格。預測眼位輸出供 render QA 對照。
+    3. **垂直錨定（v3.2，修修變體板 D 定案）**：
+       - host：自己的頭頂釘畫布頂緣（頂天蓋地）。
+       - guest：對齊 host 眼線為主；若因此開出 headroom，只准用
+         **≤EYE_SOFT_PX（12px）的眼差**買回等量 headroom——衝突小時
+         退化成頂天（微笑對不變），衝突大時落在「眼差 12 / 其餘留給
+         headroom」（仰頭大笑對）。前傾反向衝突＝眼線齊會裁到頭頂，
+         TF 規格允許，照齊。⛔ 純頂天讓仰頭照的臉浮太高（「頭太上面、
+         不平衡」）；純眼線鎖讓頭頂掉出 headroom——兩個單邊都被修修
+         打槍過，D 檔是他在五檔等距變體上點的位置。
     4. **表情版鎖 scale，只解 y/x**：y = 自己的 crown 錨頂；x 照出血規則
        用自己的 head_cols。裁切框尺寸必須與基準相同（不同 = 不可鎖）。
        bottom 若搆不到畫布底（露縫）→ fail loud（裁切框太短，回去改 crop）。
@@ -226,14 +233,23 @@ def solve_duo(
     s_g = s_g0 * guest_face_boost
 
     out = {}
+    host_eye_px = 0.0
     roles = (
         ("host", actual["host"], *lms["host"], s_h),
         ("guest", actual["guest"], *lms["guest"], s_g),
     )
     for role, name, lm, ch, s in roles:
         displayed_h = ch * s
-        # ── 規則 3：每張照片自己的頭頂錨定頂緣 → headroom 結構性歸零 ──
-        screen_top = -lm["head_top"] * s
+        if role == "host":
+            # ── 規則 3a：host 自己的頭頂錨定頂緣（頂天蓋地）──
+            screen_top = -lm["head_top"] * s
+            host_eye_px = screen_top + lm["eye"] * s
+        else:
+            # ── 規則 3b：guest 眼線齊 host 為主，≤EYE_SOFT_PX 眼差換 headroom ──
+            screen_top = host_eye_px - lm["eye"] * s
+            crown_at_align = screen_top + lm["head_top"] * s
+            if crown_at_align > 0:
+                screen_top -= min(EYE_SOFT_PX, crown_at_align)
         bottom_off = canvas_h - screen_top - displayed_h
         if bottom_off > 0:  # 人搆不到畫布底 = 裁切框太短，這不是排版能救的
             raise SystemExit(
