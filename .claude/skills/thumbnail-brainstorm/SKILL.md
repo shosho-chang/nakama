@@ -11,9 +11,11 @@ description: >
   本 skill 只呼叫、不重新發明。
 ---
 
-# thumbnail-brainstorm — 封面 brainstorm 手冊（v2.4）
+# thumbnail-brainstorm — 封面 brainstorm 手冊（v2.5）
 
-**版本：v2.4（2026-08-04，表情同調規則 + 表情版 scale 繼承；
+**版本：v2.5（2026-08-05，安吉集三輪事故定版——scale 每角色鎖定、
+地標只准 face_measure 程式量、渲染成品 QA 是交付 gate；
+v2.4 = 表情同調規則 + 表情版 scale 繼承；
 v2.3 = TF 式雙臉版式 SOP + layout_solve 確定性求解；
 v2.2 = cutout manifest 紀律；
 v2.1 = N2 框型接上《張修修品牌識別》— 斜切框＋碎片、
@@ -140,9 +142,11 @@ python .claude/skills/thumbnail-brainstorm/scripts/guest_cutout.py finalize \
   全部 finalize 出來。理由：(1) 謝伯讓集 host 只落了兩種表情，pkg3 被迫與
   pkg1 同臉；(2) 表情版 scale 繼承（layout_solve 規則 7）要求同尺寸裁切框——
   事後補抽若裁切框不同，scale 就不可繼承，等於重做。
-- **cutout 定稿即量測**：每顆 finalize 完立刻建 `cutouts_manifest.json`
-  validated 條目＋精測地標（頭頂/眼/下巴 2x 網格精讀 + head_cols alpha bbox）
-  ——排版期零手工。
+- **cutout 定稿即量測（v2.5 改版）**：每顆 finalize 完立刻跑
+  `face_measure.py cutouts --write`（mediapipe iris/chin + alpha crown 35% 規則
+  + head_cols + IOD，一鍵回寫 manifest）。**禁止 agent 目視量地標**——目視/
+  啟發式已兩次釀禍（教訓 20）。IOD 離散 >4% 的格子 = 該格明顯前傾/後仰，
+  可用但渲染 QA 會盯著看。
 
 ## Step 4 — render 3 張 PNG（設計系統 v1）
 
@@ -215,25 +219,30 @@ working set 與 vault 雙寫（ADR-054 D10）。驗證錯誤讀訊息修 specs�
 完整訪談語彙）。**人物幾何全走 `scripts/layout_solve.py`，零目測**：
 
 ```bash
-# 每集一次：cutout 定稿後精測地標寫進該集 cutouts_manifest.json
-#   landmarks_px = { head_top, eye, chin（row px，2x+ 放大 2% 網格精讀）,
-#                    cutout_h, cutout_w, head_cols（頭部 alpha bbox 左右界，
-#                    程式量：頭頂-下巴 rows 內 alpha>20 的 col min/max）}
+# 每集一次：cutout 定稿後程式量地標（mediapipe iris/chin + alpha crown 35% 規則）
+python .claude/skills/thumbnail-brainstorm/scripts/face_measure.py cutouts \
+  --manifest <cutouts_manifest.json> --write
+# 每包：--host/--guest 一律傳基準對（兩人 serious 定稿），表情用 --*-expr
 python .claude/skills/thumbnail-brainstorm/scripts/layout_solve.py solve-duo \
-  --manifest <cutouts_manifest.json> --host <host定稿.png> --guest <guest定稿.png>
-# → 六個參數直接進 spec；render 前必跑 verify（PASS 才 render）
+  --manifest <m.json> --host <host_v1.png> --guest <guest_v1.png> \
+  --host-expr <host_表情.png> --guest-expr <guest_表情.png> [--guest-face-boost 1.0]
+# → 六參數進 spec（含 _solve 中繼資料，boost 一併記入）；render 前 verify
 python .claude/skills/thumbnail-brainstorm/scripts/layout_solve.py verify \
-  --manifest <cutouts_manifest.json> --spec <spec.json>
+  --manifest <m.json> --spec <spec.json>
+# render 後交付 gate（量成品像素，該集所有包一起比）：
+python .claude/skills/thumbnail-brainstorm/scripts/face_measure.py render \
+  --host-ratio-target <boost> --png pkg1.png --png pkg2.png --png pkg3.png
 ```
 
-版式規則（solver 內建，跨集不變；謝伯讓集由修修 A/B/C 三版裁決收斂）：
+版式規則（solver v3 內建，跨集不變）：
 
 | 規則 | 值 | 為什麼 |
 |---|---|---|
-| 等大基準 | **臉高（眼–下巴）**，非頭高 | 蓬髮吃頭高額度，等頭高=臉縮水（謝伯讓集 -2.4%）|
-| guest 感知校準 | 臉再 **×1.05**（`--guest-face-boost`）| 正面臉＋眼鏡感知上小一號；指標等大≠感知等大，最後一格由修修 A/B 校準 |
-| headroom | **0**（guest 頭頂 0px 且下緣貼底的耦合解；host 眼線跟隨）| TF 規格；guest 再上抬會在身下露背景縫 |
-| 眼線 | 兩人鎖同一水平（差 ≤10px）| 修修 2026-07-29 驗收標準 |
+| **量尺鎖定** | 每角色 scale 由**基準對解一次**，該集全部表情版共用；表情版只解 y/x | 單張照片任何標量（臉高/頭高/IOD）被姿勢真實改變 ±5–10%，per-photo 重解＝把姿勢噪音放大成成品噪音（教訓 19）；同人同機位同裁切框物理上同 scale |
+| 等大 | s_h = s_g0 × **geomean(臉高比, 頭高比)**（基準對量） | 臉與頭**同時**逼近等大；好地標下兩指標差 <2%，差 >6% 時 solver 警告、需人工確認 |
+| guest 感知校準 | `--guest-face-boost` per-pairing 修修拍板一次（謝伯讓 1.05、安吉 1.0；預設 1.0） | 指標等大≠感知等大；但校準值**不可跨 pairing 搬**（教訓 22）|
+| headroom | 基準對 guest 頭頂 0px + 下緣貼底耦合解；表情版 y 釘 eye_lock，會露底縫時 clamp 貼底並回報 | TF 規格；人底下露背景縫＝穿幫 |
+| 眼線 | 全集常數 `eye_lock`（基準對解出）；渲染實測漂移 ≤12px | 三張並排位置一致 by construction（事故實測曾漂 63px）|
 | 外側出血 | 各切**頭寬 8%** 再**外移 5% canvas**（`--outward-shift-pct`，總裁切 ~20%） | TF「側邊切一點點」+ 修修定案：外移讓中央卡空間變大；出血對「頭」不對圖檔——兩顆 cutout 裡頭的位置不同 |
 
 **中央卡定案規格（修修 2026-08-04 skew 定版）**：
@@ -246,10 +255,12 @@ python .claude/skills/thumbnail-brainstorm/scripts/layout_solve.py verify \
   抽靜幀）；**禁灰底攝影棚小物照**——留白會讓主體縮成一角
 - 背景 = 修修正版 bg、logo bottom-left 92px、零文字
 
-⚠️ 量測紀律（2026-08-04 事故的直接教訓）：**驗收用 verify 的數學預測，
-不用眼睛讀格線**——目測誤差 ±5% 曾把一版數學正確的排版「修」壞（bottom
-錨定負偏移方向感反轉＋確認偏誤）。眼睛只負責最後 sanity check 與感知校準
-（臉等大的 ×1.05、外移量這類「感知量」由修修 A/B 收斂）。
+⚠️ 量測紀律（兩次事故各一課，方向相反、都要守）：
+(1) 2026-08-04——**排版參數不許用眼睛讀格線定**：目測 ±5% + 確認偏誤曾把
+數學正確的版「修」壞。地標與求解全程式。
+(2) 2026-08-05——**驗收不許拿參數自洽充當**：verify 全 PASS 的三張成品，
+實測眼線漂 63px、host 臉跨張縮 16%。交付判準 = `face_measure.py render`
+量成品像素 + 親眼看全圖。**程式管幾何，眼睛管感知，兩者不可互替。**
 
 **表情規則（v2.4，修修 2026-08-04：「這很重要」）**：
 
@@ -260,17 +271,30 @@ python .claude/skills/thumbnail-brainstorm/scripts/layout_solve.py verify \
 2. **包間拉開**：diversity 軸只作用在「包與包之間」（pkg1 嚴肅組/pkg2 笑組），
    **不是包內**——舊版手冊「三包表情拉開」被誤讀成包內混搭，正是 2026-08-04
    笑臉配肅臉事故的來源。
-3. **表情版幾何走 scale 繼承**（solver 規則 7）：`solve-duo --host-expr/--guest-expr`
-   ——臉高量尺會被張嘴表情撐長（+23% → 人被誤縮 19%），表情版必須繼承同人
-   基準 cutout 的 scale，只重解 y/x。spec 寫入 `_solve` 中繼資料後，verify
-   直接重算比對六參數（一致性判準，取代對 expr 對無意義的臉高比）。
+3. **表情版幾何鎖 scale**（solver v3）：`solve-duo --host-expr/--guest-expr`
+   ——scale 從基準對解一次後鎖定，表情版**不重解尺寸**（張嘴、仰頭、前傾
+   都會真實改變單張地標 ±5–10%；重解＝把姿勢噪音變成跨包尺寸噪音）。
+   表情版只解 y（眼釘 eye_lock、防露底縫）與 x（自己的 head_cols）。
+   spec 寫入 `_solve`（**含 guest_face_boost**）後 verify 重算比對六參數。
 
-**一次到位交付檢查（v2.4）**——給修修看之前，四項全過，缺一不交付：
+**一次到位交付檢查（v2.5）**——給修修看之前，五項全過，缺一不交付：
 
-- [ ] `verify` PASS（幾何一致性）
+- [ ] `verify` PASS（spec 參數 vs solver 重算自洽——render 前的 sanity）
+- [ ] **`face_measure.py render` QA PASS**——render 出的 PNG 上直接量兩張臉
+      （跨包 IOD/臉高離散、眼線漂移、包內比例）。**這才是 gate**：verify
+      PASS 擋不住 63px 眼線漂移（教訓 21）
+- [ ] 親眼看全圖（人物大小/位置/與中央卡的關係）＋ 320×180 小圖可讀
 - [ ] 表情同調自檢（兩人情緒 × 標題語氣，逐包過）
 - [ ] prop 幀乾淨（無動態模糊/殘影；抽幀要挑）
-- [ ] 320×180 小圖可讀（YouTube 格線真實尺寸）
+
+**全自動做不到、要人的部分（v2.5 誠實邊界）**：
+
+- `guest_face_boost` 感知微調：每個**新 pairing** 由修修看渲染成品拍板一次
+  （預設 1.0 起手——等大指標已收在 ±1%；某側看起來偏小就 ±0.03–0.05 重出），
+  拍板後記進 spec `_solve`、整集鎖定。感知等大是品味量，沒有客觀正解。
+- 表情選格是品味（開心程度 × 話題重量）：vision agent 提名、修修有否決權。
+- QA 綠燈內的 ±4% 呼吸是姿勢物理（大笑前傾臉會長一點），不是 bug；
+  「三張像素級全同」做不到也不該追求——那等於同一格照片用三次。
 
 ## 每集教訓寫回手冊
 
@@ -278,6 +302,30 @@ E2E 每跑完一集（gate approve 過），可固化的教訓 **append 進本�
 版本號**（經 PR）。
 
 ### 教訓紀錄
+
+**v2.5（2026-08-05，安吉集封面三輪同類投訴——scale 鎖定 + 渲染 QA 定版）**
+
+19. **單張照片的任何標量都被姿勢真實改變 ±5–10%**（張嘴讓眼-下巴 +9%、仰頭
+    讓髮頂投影 -10%、前傾讓 IOD +7%——mediapipe 實測）。「每張表情照各自量、
+    各自解等大」＝把姿勢噪音放大成成品噪音：實測跨三包 host 臉高漂 16%、
+    guest 頭 384→445px、眼線漂 63px，修修三連投訴（尺寸不一、臉偏小、位置漂）
+    全部源於此。同人同機位同裁切框 → pixel scale 物理上相同（IOD 跨表情
+    離散 ≤1% 佐證）——**scale 每角色解一次後鎖定**。
+20. **地標只准程式量**（`face_measure.py cutouts --write`）。agent 目視／
+    啟發式量地標兩次釀禍：耳機頭帶被當頭頂（頭高比誤讀 1.036，實際 1.14）、
+    下巴梯度誤讀 ±6px。目視只做最後 sanity check，不進數字迴路。
+21. **QA 要量交付物，不是量計畫**：verify PASS 只證明 spec 參數與 solver
+    自洽——眼線漂 63px 的三張成品 verify 全 PASS 過。交付 gate 必須直接
+    偵測 render PNG 上的臉（`face_measure.py render`）。**參數自洽 ≠ 看起來
+    對**；把 verify 當視覺驗收 = 本次「QA 寫了卻攔不住」的直接原因。
+22. **感知校準值不可跨 pairing 搬**：guest_face_boost 1.05 是謝伯讓
+    （眼鏡正面臉）的 A/B 拍板值，慣性搬到安吉集＝修修兩輪「我偏小」的
+    成因之一。新 pairing 一律 1.0 起手，要調由修修看成品拍板，記進
+    `_solve` 鎖定。
+23. **連續同類投訴時，先質疑量測與求解結構，不要 metric ping-pong**：
+    臉高等大↔頭高等大來回換量尺，兩輪都錯——錯的不是量尺選擇，是
+    「壞地標 + per-photo 重解」。換指標再賭一次只是把同一批噪音換個
+    投影方向。
 
 **v2.0（2026-07-29，謝伯讓集 gate 前收斂）**
 

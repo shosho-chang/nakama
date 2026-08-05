@@ -1,13 +1,17 @@
-"""layout_solve — 封面人物幾何的確定性求解與驗收（零目測）。
+"""layout_solve — 封面人物幾何的確定性求解（零目測）。
 
-2026-08-04 事故根因：目測讀數 ±5% 誤差 + 確認偏誤 + bottom 錨定負偏移方向
-搞反，把一版數學上正確的排版「修」壞了。本工具把人從量測迴路拿掉：
+2026-08-04 事故：目測讀數 ±5% + 確認偏誤把數學正確的排版「修」壞 → 地標
+必須程式量。2026-08-05 事故：地標改「每張照片各量各解」後，姿勢噪音直接
+變成成品噪音（跨張人物尺寸漂 16–22%、眼線漂 63px）→ scale 必須鎖定。
 
-- 地標（頭頂/眼睛/下巴的 cutout 像素 row）一次性高倍精測後寫進
-  `cutouts_manifest.json` 的 `landmarks_px`
-- solve：給目標（頭高 px、眼線 px）→ 反解 height_pct / y_pct
-- verify：給 spec → 純數學預測螢幕上的頭頂/眼線/下巴位置，直接判 PASS/FAIL
-  （眼線差 ≤10px、頭高差 ≤12px）——render 前就知道對不對
+分工（缺一不可）：
+- 地標：`face_measure.py cutouts --write`（mediapipe + alpha 規則）是唯一
+  合法來源——agent 目視量地標已兩次釀禍，禁止。
+- solve-duo：基準對解一次 scale/眼線後鎖定；表情版只解 y/x。
+- verify：spec 參數 vs solver 重算的一致性——**只證明參數自洽**。
+- ⚠️ 交付 gate 是 `face_measure.py render`（量 render 出的 PNG 上觀眾
+  實際看到的臉）。verify PASS ≠ 看起來對——2026-08-05 三張 verify 全 PASS
+  的成品，render 實測 host 臉跨張縮水 16%。
 
 幾何模型（thumbnail_reaction / thumbnail_full 的 CSS 契約）：
     displayed_h = canvas_h * height_pct/100
@@ -85,6 +89,9 @@ def verify(manifest: dict, spec: dict, canvas_h: float) -> int:
             refs["guest"],
             canvas_h,
             float(refs.get("canvas_w", 1280)),
+            guest_face_boost=float(refs.get("guest_face_boost", 1.0)),
+            clip_frac=float(refs.get("clip_frac", 0.08)),
+            outward_shift_pct=float(refs.get("outward_shift_pct", 5.0)),
             host_expr=refs.get("host_expr"),
             guest_expr=refs.get("guest_expr"),
         )
@@ -138,64 +145,75 @@ def solve_duo(
     guest: str,
     canvas_h: float = 720,
     canvas_w: float = 1280,
-    guest_face_boost: float = 1.05,
+    guest_face_boost: float = 1.0,
     clip_frac: float = 0.08,
     outward_shift_pct: float = 5.0,
     host_expr: str | None = None,
     guest_expr: str | None = None,
 ) -> dict:
-    """TF 式雙臉版式（修修 2026-08-04 謝伯讓集定案）的通用求解。
+    """TF 式雙臉版式 v3（2026-08-05 安吉集三輪事故後定版）。
 
-    規則（跨集不變；每集只要 landmarks 換新）：
-    1. guest 基準 scale = 頭頂到圖底剛好填滿畫布（headroom 0 + 下緣貼底的耦合解）
-    2. host 臉高（眼-下巴）= guest 基準臉高（等大用臉不用頭——蓬髮吃頭高額度）
-    3. guest 再 × face_boost（感知校準：正面臉+眼鏡看起來小一號，修修 A/B 選 +5%）
-    4. 兩人眼線鎖同一水平（以 guest 基準解的眼位為準）
-    5. 外側各切頭寬 clip_frac（TF 規格基準）；頭界用 alpha bbox 不含目測
-    6. 再各外移 outward_shift_pct（% canvas 寬）讓中央卡空間變大（修修定案 5%；
-       總裁切約達頭寬 20%——TF 樣本觀察帶 15–25% 內）
-    7. **表情版 cutout 繼承同人基準 scale**（host_expr/guest_expr）：臉高量尺
-       會被表情弄壞（張嘴大笑讓眼-下巴 +23% → 人被誤縮 19%，2026-08-04 pkg2
-       事故）。同人同機位同尺寸裁切框 = 同 pixel scale，表情版只重解 y（眼線
-       對齊）與 x（自己的 head_cols），scale 不重解。**表情版與基準 cutout 的
-       像素尺寸必須相同**（不同 = 裁切框不同 = 不可繼承，fail loud）。
+    ⛔ 歷史教訓（三輪都是「每張照片重新量、重新解」惹的禍）：
+    - v1 臉高等大 + 繼承（謝伯讓集 OK 純屬兩人臉/頭比例剛好接近）
+    - v2 臉高等大（安吉集：head_top 量到耳機頭帶 → 頭差 14%）
+    - v3' 頭高等大 + 每表情重解（頭高被姿勢/髮頂噪音污染 ±8% → 跨張
+      guest 頭 384→445px、host 臉 190→221px、眼線漂 63px——修修三連抱怨）
+    每個單張標量（臉高/頭高/IOD）都會被姿勢真實改變 ±5–10%，靠任何
+    「per-photo 等大規則」都是把量測噪音放大成成品噪音。
+
+    v3 契約（物理：同人同機位同裁切框 → 同 pixel scale；IOD 佐證）：
+    1. **量尺只解一次**（基準對 = 兩人正面 serious 定稿）然後鎖定：
+       - s_g = canvas_h / (guest 頭頂→圖底) × guest_face_boost   [TF 框架]
+       - s_h = s_g0 × geomean(臉高比, 頭高比)——臉（眼-下巴）與頭（crown-下巴）
+         **同時**逼近等大；好地標下兩指標差 <2%，幾何平均把兩者都壓進 ±1%。
+         差 >6% 代表地標可疑或髮型極端，警告並要求人工拍板。
+    2. **眼線 = 全集一個常數** eye_lock（由基準解出）。
+    3. **表情版鎖 scale，只解 y/x**：y 把該格 eye 釘上 eye_lock；若因此
+       bottom_off > 0（人底下露背景縫）→ clamp 0 並回報眼線偏移量。
+       x 照 5/6 出血規則用該格 head_cols。表情版裁切框尺寸必須與基準相同
+       （不同 = 不可鎖，fail loud）。
+    4. guest_face_boost 是**感知校準**，per-pairing 一次由修修拍板後鎖定
+       （謝伯讓集 1.05 = 眼鏡正面臉補償；安吉集 1.0）。預設 1.0。
+    5. 外側各切頭寬 clip_frac + 外移 outward_shift_pct（TF 規格，不變）。
+
+    ⚠️ 本函式輸出只是「參數正確」。**交付 gate 是 face_measure.py render**
+    ——對 render 出的 PNG 直接量兩張臉。參數自洽 ≠ 看起來對。
     """
-    lm_h, ch_h = _landmarks(manifest, host)
-    lm_g, ch_g = _landmarks(manifest, guest)
-    for lm, name in ((lm_h, host), (lm_g, guest)):
+    lm_h_ref, ch_h_ref = _landmarks(manifest, host)
+    lm_g_ref, ch_g_ref = _landmarks(manifest, guest)
+    for lm, name in ((lm_h_ref, host), (lm_g_ref, guest)):
         if "head_cols" not in lm or "cutout_w" not in lm:
-            raise SystemExit(f"{name} 缺 head_cols/cutout_w——先量 alpha bbox 補進 manifest")
+            raise SystemExit(f"{name} 缺 head_cols/cutout_w——先跑 face_measure.py cutouts --write")
 
-    # 規則 7（2026-08-05 安吉集改版）：表情版**各自解**，不繼承基準 scale。
-    # 舊版繼承 scale 是為了擋「張嘴大笑讓眼-下巴 +23% → 人被誤縮 19%」，但那是
-    # **用臉高當量尺**才有的病。改用頭高當量尺後，張嘴不影響頭高，繼承就沒必要
-    # 了——而且繼承反而有害：低頭／抬頭會讓同一個 scale 下的頭在畫面上忽大忽小
-    # （安吉集實測 thoughtful 版 guest 大 13%、explaining 版 host 大 8%）。
     actual = {"host": host_expr or host, "guest": guest_expr or guest}
-    lms = {"host": (lm_h, ch_h), "guest": (lm_g, ch_g)}
-    for role in ("host", "guest"):
-        if actual[role] != (host if role == "host" else guest):
+    lms = {"host": (lm_h_ref, ch_h_ref), "guest": (lm_g_ref, ch_g_ref)}
+    for role, ref_name in (("host", host), ("guest", guest)):
+        if actual[role] != ref_name:
             lm_a, ch_a = _landmarks(manifest, actual[role])
             ref_lm, ref_ch = lms[role]
             if (ch_a, lm_a.get("cutout_w")) != (ref_ch, ref_lm.get("cutout_w")):
                 raise SystemExit(
                     f"{actual[role]} 尺寸 {lm_a.get('cutout_w')}x{ch_a} ≠ 基準 "
-                    f"{ref_lm.get('cutout_w')}x{ref_ch}——裁切框不同，landmarks 不可比"
+                    f"{ref_lm.get('cutout_w')}x{ref_ch}——裁切框不同，scale 不可鎖定"
                 )
             lms[role] = (lm_a, ch_a)
 
-    lm_g, ch_g = lms["guest"]
-    lm_h, ch_h = lms["host"]
-    s_g0 = canvas_h / (ch_g - lm_g["head_top"])  # 規則 1
-    eye_ref = (lm_g["eye"] - lm_g["head_top"]) * s_g0  # 規則 4 的鎖定眼位
-    # 規則 2（改版）：**頭高**等大，不是臉高。修修 2026-08-05 安吉集：
-    # 「三張封面的頭的大小還是不一樣，我的都偏小」——他看的是頭。臉高等大只有在
-    # 兩人「臉高/頭高」比例接近時才順帶讓頭等大（謝伯讓集 41% vs 42% 剛好成立），
-    # 比例一不同就會歪（安吉集 46% vs 53%，臉等大時頭差 14%）。
-    # ⚠️ head_top 必須是**視覺頭顱頂端**（alpha 寬度達峰值 35% 的首列），不能用
-    # alpha 首列——罩耳耳機的頭帶弓在頭頂上方 40px，稀疏髮絲也會多算。
-    s_h = (lm_g["chin"] - lm_g["head_top"]) * s_g0 / (lm_h["chin"] - lm_h["head_top"])
-    s_g = s_g0 * guest_face_boost  # 規則 3
+    # ── 規則 1：量尺從基準對解一次，表情版不得重解 ──
+    s_g0 = canvas_h / (ch_g_ref - lm_g_ref["head_top"])
+    face_ratio = (lm_g_ref["chin"] - lm_g_ref["eye"]) / (lm_h_ref["chin"] - lm_h_ref["eye"])
+    head_ratio = (lm_g_ref["chin"] - lm_g_ref["head_top"]) / (
+        lm_h_ref["chin"] - lm_h_ref["head_top"]
+    )
+    warnings = []
+    if abs(face_ratio / head_ratio - 1) > 0.06:
+        warnings.append(
+            f"基準對臉高比 {face_ratio:.3f} 與頭高比 {head_ratio:.3f} 差 >6%——"
+            "地標可疑或髮型極端，幾何平均解需人工確認"
+        )
+    s_h = s_g0 * (face_ratio * head_ratio) ** 0.5
+    s_g = s_g0 * guest_face_boost
+    # ── 規則 2：眼線常數由基準解出（表情版共用，跨包共用）──
+    eye_lock = (lm_g_ref["eye"] - lm_g_ref["head_top"]) * s_g0
 
     out = {}
     roles = (
@@ -204,8 +222,15 @@ def solve_duo(
     )
     for role, name, lm, ch, s in roles:
         displayed_h = ch * s
-        screen_top = eye_ref - lm["eye"] * s
-        y_pct = (canvas_h - screen_top - displayed_h) / canvas_h * 100
+        screen_top = eye_lock - lm["eye"] * s
+        bottom_off = canvas_h - screen_top - displayed_h
+        if bottom_off > 0:  # 規則 3 clamp：人底下不許露背景縫
+            warnings.append(
+                f"{name} 依眼線鎖需上抬 {bottom_off:.1f}px 會露底縫——clamp 貼底，"
+                f"眼線下移 {bottom_off:.1f}px（該格前傾/低頭較多，可換格）"
+            )
+            bottom_off = 0.0
+        y_pct = bottom_off / canvas_h * 100
         head_w = (lm["head_cols"][1] - lm["head_cols"][0]) * s
         clip = clip_frac * head_w
         if role == "host":  # 左緣錨定
@@ -219,7 +244,15 @@ def solve_duo(
             f"{role}_y_pct": round(y_pct, 1),
         }
         out[f"_{role}_predicted"] = _predict(lm, ch, canvas_h, displayed_h / canvas_h * 100, y_pct)
-    out["_eye_lock_px"] = round(eye_ref, 1)
+    out["_eye_lock_px"] = round(eye_lock, 1)
+    out["_scale_lock"] = {
+        "host": round(s_h, 6),
+        "guest": round(s_g, 6),
+        "face_ratio_ref": round(face_ratio, 4),
+        "head_ratio_ref": round(head_ratio, 4),
+    }
+    if warnings:
+        out["_warnings"] = warnings
     return out
 
 
@@ -238,7 +271,8 @@ def main() -> int:
     d.add_argument("--guest", required=True)
     d.add_argument("--canvas-h", type=float, default=720)
     d.add_argument("--canvas-w", type=float, default=1280)
-    d.add_argument("--guest-face-boost", type=float, default=1.05)
+    d.add_argument("--guest-face-boost", type=float, default=1.0,
+                   help="感知校準，per-pairing 修修拍板後鎖定（謝伯讓 1.05；安吉 1.0）")
     d.add_argument("--clip-frac", type=float, default=0.08)
     d.add_argument("--outward-shift-pct", type=float, default=5.0)
     d.add_argument("--host-expr", default=None, help="表情版 cutout（繼承 --host 的 scale）")
