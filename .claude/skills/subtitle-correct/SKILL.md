@@ -76,12 +76,27 @@ script 會做：越界過濾、過度刪減防護（縮短逾半 → 進 QC）�
 再花 API 錢）。只在修修**明確要求**（例如無人值守批次、或指名要 Gemini 仲裁）
 時使用，用前提醒一句成本。
 
-## 字幕 house style（修修 2026-07-25 裁決）
+## 字幕 house style（修修 2026-07-25 + 2026-08-05 裁決）
 
 - **書名／作品名必須《》標出**、**專有名詞／術語必須「」標出**——校正時主動補上
 - 其他標點（逗號句號等）省略，停頓用半形空格
 - 這些規則已寫進 instructions.md 的校正 prompt 與 Pass 2 過濾（《》「」不會被清掉），
   subagent 只要照 instructions 做即可
+
+**顯示層定版兩規則（2026-08-05 裁決——修修做字幕的固定喜好）**：
+
+- **cue 間零空隙**：每句 end 補到次句 start，字幕連續顯示不閃爍。>3s 真靜默
+  例外（沒人講話字幕該消失）——例外必須回報出來，不可靜默吞掉
+- **句尾零標點**：cue 每行行尾不留任何標點；閉合符（」』》））保留、其前標點剝除
+- 實作 `shared/subtitle_finalize.py`，上軌時**自動**套於顯示層副本：
+  resolve-project `_versioned_srt`（主 timeline）、highlight-cut `_segment_srt`
+  （精華 timeline）、cut-tighten `_retimed_srt`（長短片（緊））。
+  **transcript.srt 本體永遠不動**——工作真值必須貼語音（highlight-cut 等靠
+  cue 時間切片，拉長 end 會帶入死氣）
+- 繞過 pipeline 的 SRT（翻譯精選、外部工具產物）上軌前手動套：
+  `python scripts/run_subtitle_finalize.py <srt>`
+- 出處：2026-08-05 Christina AI 紅利精選——翻譯直產的 SRT 繞過
+  `_process_srt_line`，句尾標點上了 timeline、cue 間空隙閃爍，修修看片抓出
 
 ## QC 自主裁決（修修 2026-07-25 裁示）
 

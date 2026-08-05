@@ -34,8 +34,10 @@ C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe ^
 - 冪等：project / timeline 同名已存在會跳過重建
 - 產出佈局：timeline（同 project 名）V1 = 主影片（純視訊）；A1 = 根目錄
   `normalized.wav`（Auphonic 處理後、與錄影同起點；沒有時退回影片內嵌音軌）；
-  subtitle 軌 = transcript.srt；media pool `Cameras` bin = Video/ 全機位、
-  `Audio` bin = Audio/ 全音軌
+  subtitle 軌 = transcript.srt 的**顯示層定版副本**（句尾零標點 + cue 間 ≤3s
+  空隙補平連續顯示——修修 2026-08-05 裁決，規則見 subtitle-correct skill 的
+  house style；transcript.srt 本體不動）；media pool `Cameras` bin = Video/
+  全機位、`Audio` bin = Audio/ 全音軌
 
 ## 既有 timeline 換音軌
 

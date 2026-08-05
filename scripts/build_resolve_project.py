@@ -35,6 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from shared.resolve_append import append_checked  # noqa: E402
+from shared.subtitle_finalize import finalize_srt_file  # noqa: E402
 
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
@@ -73,14 +74,15 @@ def _template_path_short() -> Path:
 
 
 def _versioned_srt(episode_dir: Path) -> Path:
-    """把最新 transcript.srt 複製成遞增版本檔，回傳新路徑。
+    """把最新 transcript.srt 定版成遞增版本檔（顯示層副本），回傳新路徑。
 
     Resolve 的 media pool 依「檔案路徑」快取——transcript.srt 內容更新後
     用同路徑 ImportMedia 會拿回舊 item。每次匯入都用新路徑的複本繞開快取；
     複本要保留（media pool item 引用該檔），佔用極小（純文字）。
-    """
-    import shutil
 
+    複本同時套修修 2026-08-05 字幕定版兩規則（句尾零標點 + cue 間 ≤3s
+    空隙補平連續顯示）——transcript.srt 本體不動，工作真值必須貼語音。
+    """
     src = episode_dir / SUBTITLE_NAME
     out_dir = episode_dir / RESOLVE_SUBS_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -88,7 +90,11 @@ def _versioned_srt(episode_dir: Path) -> Path:
     while (out_dir / f"transcript_r{n:03d}.srt").exists():
         n += 1
     dst = out_dir / f"transcript_r{n:03d}.srt"
-    shutil.copy2(src, dst)
+    stats = finalize_srt_file(src, dst)
+    msg = f"字幕定版: 尾標點剝 {stats['stripped']} 句、空隙補平 {stats['closed']} 處"
+    if stats["true_silences"]:
+        msg += f"、>3s 真靜默不補 {len(stats['true_silences'])} 處（字幕該消失）"
+    logger.info(msg)
     return dst
 
 

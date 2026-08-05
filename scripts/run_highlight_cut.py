@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from shared.resolve_append import append_checked  # noqa: E402
+from shared.subtitle_finalize import finalize_cues  # noqa: E402
 
 logger = logging.getLogger("highlight_cut")
 
@@ -144,7 +145,11 @@ def _variant_groups(candidates: list[dict]) -> dict[str, str]:
 
 
 def _segment_srt(episode_dir: Path, cid: str, t_start: float, t_end: float) -> Path:
-    """裁出段落字幕（時間平移到 0 起點），版本化路徑繞 Resolve 路徑快取。"""
+    """裁出段落字幕（時間平移到 0 起點），版本化路徑繞 Resolve 路徑快取。
+
+    副本套修修 2026-08-05 字幕定版兩規則（句尾零標點 + cue 間 ≤3s 空隙補平）
+    ——transcript.srt 本體不動。
+    """
     cues = _parse_srt(episode_dir / "transcript.srt")
     out_dir = episode_dir / SEG_SRT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -152,16 +157,18 @@ def _segment_srt(episode_dir: Path, cid: str, t_start: float, t_end: float) -> P
     while (out_dir / f"{cid}_r{n:03d}.srt").exists():
         n += 1
     dst = out_dir / f"{cid}_r{n:03d}.srt"
-    lines = []
-    seq = 0
-    for s, e, text in cues:
-        if e <= t_start or s >= t_end:
-            continue
-        seq += 1
-        lines.append(
-            f"{seq}\n{_ts(max(0.0, s - t_start))} --> {_ts(min(t_end, e) - t_start)}\n{text}\n"
-        )
-    dst.write_text("\n".join(lines), encoding="utf-8")
+    seg_cues = [
+        (max(0.0, s - t_start), min(t_end, e) - t_start, text)
+        for s, e, text in cues
+        if e > t_start and s < t_end
+    ]
+    seg_cues, stats = finalize_cues(seg_cues)
+    if stats["true_silences"]:
+        logger.info(f"{cid}: >3s 真靜默不補 {len(stats['true_silences'])} 處（字幕該消失）")
+    dst.write_text(
+        "\n".join(f"{i}\n{_ts(s)} --> {_ts(e)}\n{text}\n" for i, (s, e, text) in enumerate(seg_cues, 1)),
+        encoding="utf-8",
+    )
     return dst
 
 
