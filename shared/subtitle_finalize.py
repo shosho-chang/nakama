@@ -54,7 +54,7 @@ def finalize_cues(
     out: list[list] = []
     stripped = 0
     for s, e, text in cues:
-        new_text = "\n".join(strip_tail_punct(l) for l in text.splitlines())
+        new_text = "\n".join(strip_tail_punct(ln) for ln in text.splitlines())
         if new_text != text:
             stripped += 1
         out.append([s, e, new_text])
@@ -67,11 +67,67 @@ def finalize_cues(
             closed += 1
         elif gap > gap_close_max:
             true_silences.append((i + 1, round(gap, 2)))
+    try:
+        bad = find_bad_boundaries(out)
+    except ImportError:
+        _msg = "jieba 未安裝——斷句檢查沒跑，不可視為通過"
+        bad = [{"cue": -1, "tail": "", "head": "", "reason": _msg}]
     return [tuple(c) for c in out], {
         "stripped": stripped,
         "closed": closed,
         "true_silences": true_silences,
+        "bad_boundaries": bad,
     }
+
+
+_TAIL_STICKY = set("的把被跟與和或在從對讓一這那每幾很超最更")
+_HEAD_STICKY = set("的著了嗎呢吧喔哦")
+
+
+def find_bad_boundaries(cues: list) -> list[dict]:
+    """偵測跨 cue 壞斷句（修修 2026-08-06「句子被切掉」裁決後的強制關卡）。
+
+    高精度保守三規則：次句黏著開頭（的/著/了…）、前句黏著結尾（的/把/被/
+    一/這…）、jieba 詞跨 cue 邊界被切開。回傳 [{cue, tail, head, reason}]。
+    呼叫端必須呈現結果——斷句檢查從「選配」升級為 finalize 層標配，
+    偵測得到的壞切點不再默默出貨；語感層級的修復仍由人/agent 判讀執行。
+    """
+    import jieba
+
+    flags = []
+    for i in range(len(cues) - 1):
+        ta_full = cues[i][2].strip()
+        tb_full = cues[i + 1][2].strip()
+        if not ta_full or not tb_full:
+            continue
+        a = ta_full.splitlines()[-1].strip()
+        b = tb_full.splitlines()[0].strip()
+        if not a or not b:
+            continue
+        reason = None
+        if b[0] in _HEAD_STICKY:
+            reason = f"次句以「{b[0]}」開頭"
+        elif a[-1] in _TAIL_STICKY:
+            reason = f"前句以「{a[-1]}」結尾"
+        else:
+            ta, tb = a[-6:].replace(" ", ""), b[:6].replace(" ", "")
+            if ta and tb:
+                cut = len(ta)
+                pos = 0
+                # HMM=False：純詞典切分。HMM 對「跨 cue 拼接串」會發明
+                # 「東西現」類假詞（誤報）、也會把「判斷力」合成 OOV 長詞
+                # （漏報）——詞典模式兩者皆免。
+                for tok in jieba.cut(ta + tb, HMM=False):
+                    pos += len(tok)
+                    if pos == cut:
+                        break
+                    if pos > cut:
+                        if len(tok) > 1:
+                            reason = f"詞「{tok}」被切開"
+                        break
+        if reason:
+            flags.append({"cue": i + 1, "tail": a[-8:], "head": b[:8], "reason": reason})
+    return flags
 
 
 def parse_srt_text(text: str) -> list[tuple[float, float, str]]:

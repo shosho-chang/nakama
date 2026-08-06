@@ -94,6 +94,10 @@ def _versioned_srt(episode_dir: Path) -> Path:
     msg = f"字幕定版: 尾標點剝 {stats['stripped']} 句、空隙補平 {stats['closed']} 處"
     if stats["true_silences"]:
         msg += f"、>3s 真靜默不補 {len(stats['true_silences'])} 處（字幕該消失）"
+    if stats.get("bad_boundaries"):
+        msg += f"、⚠️ 斷句疑點 {len(stats['bad_boundaries'])} 處（不准默默出貨——列出待修）"
+        for f in stats["bad_boundaries"][:5]:
+            logger.warning(f"斷句疑點 cue{f['cue']}: …{f['tail']}｜{f['head']}…（{f['reason']}）")
     logger.info(msg)
     return dst
 

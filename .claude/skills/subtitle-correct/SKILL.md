@@ -95,6 +95,12 @@ script 會做：越界過濾、過度刪減防護（縮短逾半 → 進 QC）�
   cue 時間切片，拉長 end 會帶入死氣）
 - 繞過 pipeline 的 SRT（翻譯精選、外部工具產物）上軌前手動套：
   `python scripts/run_subtitle_finalize.py <srt>`
+- **斷句 gate（2026-08-06 裁決——「句子被切掉」根除）**：finalize 內建跨 cue
+  壞斷句偵測（黏著開頭「的/著/了…」、黏著結尾「的/把/被/一/這…」、jieba
+  詞跨界被切），stats 帶 `bad_boundaries`，**呼叫端必列不可吞**。修復手段：
+  相鄰 cue 搬字（文字移、時間不動——譯文卡）或按語意子句重切（有字級時間
+  戳的 ASR 卡）；偵測是機器的，語感判讀是 agent/修修的。歷史根因：cue_builder
+  14 字硬上限、翻譯字幕繼承英文 ASR 斷句——檢查以前是選配所以一再復發
 - 出處：2026-08-05 Christina AI 紅利精選——翻譯直產的 SRT 繞過
   `_process_srt_line`，句尾標點上了 timeline、cue 間空隙閃爍，修修看片抓出
 

@@ -39,7 +39,7 @@ class TestFinalizeCues:
         cues = [(0.0, 1.0, "第一句。"), (1.5, 2.0, "第二句")]
         out, stats = finalize_cues(cues)
         assert out[0] == (0.0, 1.5, "第一句")
-        assert stats == {"stripped": 1, "closed": 1, "true_silences": []}
+        assert (stats["stripped"], stats["closed"], stats["true_silences"]) == (1, 1, [])
 
     def test_true_silence_not_closed(self):
         cues = [(0.0, 1.0, "a"), (5.5, 6.0, "b")]
@@ -62,9 +62,29 @@ class TestFinalizeCues:
         assert out[-1][1] == 2.0
 
 
+class TestBadBoundaries:
+    def test_word_split_across_cues_flagged(self):
+        _, stats = finalize_cues([(0.0, 1.0, "這正是我們要練的判"), (1.0, 2.0, "斷力肌肉")])
+        assert any("被切開" in f["reason"] for f in stats["bad_boundaries"])
+
+    def test_sticky_tail_flagged(self):
+        _, stats = finalize_cues([(0.0, 1.0, "是當我的"), (1.0, 2.0, "第一個讀者")])
+        assert any("結尾" in f["reason"] for f in stats["bad_boundaries"])
+
+    def test_sticky_head_flagged(self):
+        _, stats = finalize_cues([(0.0, 1.0, "就是那個緊抓"), (1.0, 2.0, "著單一職涯不放的人")])
+        assert any("開頭" in f["reason"] for f in stats["bad_boundaries"])
+
+    def test_clean_boundary_not_flagged(self):
+        _, stats = finalize_cues([(0.0, 1.0, "跌進了不少坑"), (1.0, 2.0, "但學到了超多東西")])
+        assert stats["bad_boundaries"] == []
+
+
 class TestSrtRoundtrip:
     def test_parse_format_roundtrip(self):
-        srt = "1\n00:00:00,031 --> 00:00:01,500\n第一句\n\n2\n00:00:01,500 --> 00:00:03,000\n第二句\n"
+        srt = (
+            "1\n00:00:00,031 --> 00:00:01,500\n第一句\n\n2\n00:00:01,500 --> 00:00:03,000\n第二句\n"
+        )
         cues = parse_srt_text(srt)
         assert cues == [(0.031, 1.5, "第一句"), (1.5, 3.0, "第二句")]
         assert parse_srt_text(format_srt(cues)) == cues

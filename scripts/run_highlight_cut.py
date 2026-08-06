@@ -165,10 +165,10 @@ def _segment_srt(episode_dir: Path, cid: str, t_start: float, t_end: float) -> P
     seg_cues, stats = finalize_cues(seg_cues)
     if stats["true_silences"]:
         logger.info(f"{cid}: >3s 真靜默不補 {len(stats['true_silences'])} 處（字幕該消失）")
-    dst.write_text(
-        "\n".join(f"{i}\n{_ts(s)} --> {_ts(e)}\n{text}\n" for i, (s, e, text) in enumerate(seg_cues, 1)),
-        encoding="utf-8",
-    )
+    for f in stats.get("bad_boundaries", [])[:5]:
+        logger.warning(f"{cid} 斷句疑點 cue{f['cue']}: …{f['tail']}｜{f['head']}…（{f['reason']}）")
+    blocks = (f"{i}\n{_ts(s)} --> {_ts(e)}\n{text}\n" for i, (s, e, text) in enumerate(seg_cues, 1))
+    dst.write_text("\n".join(blocks), encoding="utf-8")
     return dst
 
 

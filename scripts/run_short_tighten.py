@@ -51,6 +51,7 @@ from run_highlight_cut import (  # noqa: E402
     _parse_srt,
     _ts,
 )
+
 from shared.subtitle_finalize import finalize_cues  # noqa: E402
 
 logger = logging.getLogger("short_tighten")
@@ -789,10 +790,10 @@ def _retime_srt(
     rows, fstats = finalize_cues(rows)
     if fstats["true_silences"]:
         logger.info(f"{cid}: >3s 真靜默不補 {len(fstats['true_silences'])} 處（字幕該消失）")
-    dst.write_text(
-        "\n".join(f"{i}\n{_ts(s)} --> {_ts(e)}\n{text}\n" for i, (s, e, text) in enumerate(rows, 1)),
-        encoding="utf-8",
-    )
+    for f in fstats.get("bad_boundaries", [])[:5]:
+        logger.warning(f"{cid} 斷句疑點 cue{f['cue']}: …{f['tail']}｜{f['head']}…（{f['reason']}）")
+    blocks = (f"{i}\n{_ts(s)} --> {_ts(e)}\n{text}\n" for i, (s, e, text) in enumerate(rows, 1))
+    dst.write_text("\n".join(blocks), encoding="utf-8")
     return dst, len(rows)
 
 
