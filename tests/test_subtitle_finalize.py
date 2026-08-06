@@ -64,8 +64,14 @@ class TestFinalizeCues:
 
 class TestBadBoundaries:
     def test_word_split_across_cues_flagged(self):
-        _, stats = finalize_cues([(0.0, 1.0, "這正是我們要練的判"), (1.0, 2.0, "斷力肌肉")])
+        # 「面商」= 詞典真詞跨界（r003 實測案例：個人層面｜商業層面）
+        _, stats = finalize_cues([(0.0, 1.0, "課程會從個人層面"), (1.0, 2.0, "商業層面來看")])
         assert any("被切開" in f["reason"] for f in stats["bad_boundaries"])
+
+    def test_hmm_fabricated_word_not_flagged(self):
+        # HMM 對拼接串會發明「東西現」——詞頻表過濾不可誤報
+        _, stats = finalize_cues([(0.0, 1.0, "但學到了超多東西"), (1.0, 2.0, "現在我真的有股衝動")])
+        assert not any("被切開" in f["reason"] for f in stats["bad_boundaries"])
 
     def test_sticky_tail_flagged(self):
         _, stats = finalize_cues([(0.0, 1.0, "是當我的"), (1.0, 2.0, "第一個讀者")])

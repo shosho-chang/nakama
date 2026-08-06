@@ -114,15 +114,18 @@ def find_bad_boundaries(cues: list) -> list[dict]:
             if ta and tb:
                 cut = len(ta)
                 pos = 0
-                # HMM=False：純詞典切分。HMM 對「跨 cue 拼接串」會發明
-                # 「東西現」類假詞（誤報）、也會把「判斷力」合成 OOV 長詞
-                # （漏報）——詞典模式兩者皆免。
-                for tok in jieba.cut(ta + tb, HMM=False):
+                # HMM=True + 詞頻表過濾：jieba 預設詞典是簡體，HMM=False 會把
+                # 繁中碎成單字（不可用）；HMM=True 對拼接串會發明「東西現」類
+                # 假詞——用 FREQ 濾掉。已知限制（誠實邊界）：HMM 合成的 OOV
+                # 複合詞（如「判斷力」）不在詞頻表，跨界時抓不到——該類主要
+                # 出自逐字硬切，ASR 卡走語意重切後已根治；譯文卡由黏著字
+                # 規則兜底。
+                for tok in jieba.cut(ta + tb):
                     pos += len(tok)
                     if pos == cut:
                         break
                     if pos > cut:
-                        if len(tok) > 1:
+                        if len(tok) > 1 and jieba.dt.FREQ.get(tok, 0) > 0:
                             reason = f"詞「{tok}」被切開"
                         break
         if reason:
