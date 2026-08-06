@@ -121,9 +121,14 @@ python .claude/skills/thumbnail-brainstorm/scripts/guest_cutout.py sample \
 ```bash
 python .claude/skills/thumbnail-brainstorm/scripts/guest_cutout.py finalize \
   --frame <picked.png> --emotion <表情> --ep-slug <ascii-slug> --index <i> \
-  --role <host|guest> [--crop x0 y0 x1 y1] [--flip]
+  --episode-dir "<episode>" --role <host|guest> [--crop x0 y0 x1 y1] [--flip]
 ```
 
+- **雙落點（修修 2026-08-06 裁決）**：canonical 在 vault
+  `Attachments/cutouts/podcast/<ep_slug>/`（Bridge 漏斗、cutout_library、
+  frontmatter 都讀它），finalize 會自動鏡射整組到 `<episode>/packaging/cutouts/`
+  ——素材要在 project 資料夾一眼看得到。歷史集數或 manifest 更新後補同步：
+  `guest_cutout.py mirror --ep-slug <slug> --episode-dir "<episode>"`。
 - `--crop`：比例框。**內側界（朝畫面中央那一側）必須落在自然物件的邊緣，
   不可切過身體** — 切過肩膀/手臂會在合成後留下一條懸空直線。決定方式：
   對整張 frame 去背 → 讀 alpha 欄剖面找「身體／麥克風／前景物」的分界 →
