@@ -47,6 +47,10 @@ v1.0 2026-07-18 依四支成片拆解＋Ali/Jeff 對照的配方庫建立；
 - **找片工法**：情境英文詞正常搜尋 → 開任一命中的他的 item →「Similar by
   YuriArcursPeopleimages」瀑布流裡挑同人不同情境；下載前 vision 核對臉，
   不是他就不算數
+- **進階（2026-08-06 實測）**：可直接在他的作品集內做關鍵詞搜尋——
+  `app.envato.com/search?itemType=stock-video&itemReference=f3b54f2f-3eec-4558-8106-aeaf39a72109&filter.portfolio=YuriArcursPeopleimages&term=<情境詞>&filter.orientation=Horizontal`
+  （itemReference 錨定結果排序，換 term 換情境）；帳號模特兒眾多，
+  縮圖階段就要 zoom 核臉再點進去
 - **已授權存檔**：`standin-couch-laptop`（"Young Man Uses Laptop at Home on
   Couch"，17s 25fps；1080p 在 Christina 集 `assets/broll/`）——首次採用
   2026-08-06，Christina AI 紅利精選「跌進不少坑但學到超多」段

@@ -135,6 +135,9 @@ v5 badge；a1 對白 / a2 SFX。
   （動它會改到已出貨短片，待裁決）
 - **hyperframes 連續第 ~5 次 render 偶發空 stderr 失敗**（兩輪重現）——非
   內容問題，`_render_card` 已內建冷卻 5s 重試一次
+- **手動 render 單卡時，沒給的 variable 會吃 composition default**——
+  punch_card_wide 的 line2 預設「你的耐心」，漏給就多印一行（2026-08-06
+  半人馬卡實測）。所有欄位明給，空值明給空字串
 - **卡片 cache 檢索不看 item 編號**——檔名 `<cid>_broll_<i>_<hash>` 的編號
   只是人類對照，插入新 item 位移編號時以 hash glob 撿舊檔（曾讓 5 張卡
   白渲 10 分鐘）
