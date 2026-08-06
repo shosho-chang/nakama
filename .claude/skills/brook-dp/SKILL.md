@@ -32,6 +32,26 @@ description: >
    不硬湊。
 4. **每集寫 run log DP 節**：搜尋詞、候選、否決理由、降級、skill 版本。
 
+## 修修本人情境的固定 stand-in（修修 2026-08-06 裁決）
+
+**凡 b-roll 要描述「修修本人在做某件事」**（第一人稱敘事的 stock 代打：用電腦、
+上課課金、跌坑、學習、閱讀⋯⋯），**一律用同一位模特兒**——跨集視覺一致，
+觀眾把他讀成「修修的化身」，不同男模特兒輪流充當是視覺 bug：
+
+- **帳號**：Envato **`YuriArcursPeopleimages`**（⚠️ 該帳號旗下有多位模特兒，
+  每次都要核對臉）
+- **臉部特徵**：亞裔年輕男性、精瘦；深色短髮前額上梳；絡腮短鬚（下顎線連
+  鬢角＋唇上短鬚）；招牌燦笑瞇眼；常見造型＝淺色/薄荷綠襯衫罩白 T、丹寧襯衫、
+  右手腕木珠手串。**參考照：`references/shosho-standin-yuriarcurs.jpg`**
+- **找片工法**：情境英文詞正常搜尋 → 開任一命中的他的 item →「Similar by
+  YuriArcursPeopleimages」瀑布流裡挑同人不同情境；下載前 vision 核對臉，
+  不是他就不算數
+- **已授權存檔**：`standin-couch-laptop`（"Young Man Uses Laptop at Home on
+  Couch"，17s 25fps；1080p 在 Christina 集 `assets/broll/`）——首次採用
+  2026-08-06，Christina AI 紅利精選「跌進不少坑但學到超多」段
+- 該模特兒找不到對應情境 → 走紅線 3 寧缺勿猜：改非人物視角（雙手/背影/
+  物件特寫）或降級，**不得用別的男模特兒充當修修**
+
 ## 輸入
 
 `data/script_video/<ep>/storyboard.yaml`——cutaway beat 應帶 `visual_intent`
