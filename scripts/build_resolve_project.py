@@ -92,6 +92,8 @@ def _versioned_srt(episode_dir: Path) -> Path:
     dst = out_dir / f"transcript_r{n:03d}.srt"
     stats = finalize_srt_file(src, dst)
     msg = f"字幕定版: 尾標點剝 {stats['stripped']} 句、空隙補平 {stats['closed']} 處"
+    if stats.get("reboundary_moved"):
+        msg += f"、切點重修 {stats['reboundary_moved']} 處"
     if stats["true_silences"]:
         msg += f"、>3s 真靜默不補 {len(stats['true_silences'])} 處（字幕該消失）"
     if stats.get("bad_boundaries"):

@@ -162,6 +162,11 @@ def _segment_srt(episode_dir: Path, cid: str, t_start: float, t_end: float) -> P
         for s, e, text in cues
         if e > t_start and s < t_end
     ]
+    from shared.subtitle_reboundary import repair_cues
+
+    seg_cues, rb = repair_cues(seg_cues)
+    if rb["moved"]:
+        logger.info(f"{cid}: 切點重修 {rb['moved']} 處（壞斷句搬到合法語意邊界）")
     seg_cues, stats = finalize_cues(seg_cues)
     if stats["true_silences"]:
         logger.info(f"{cid}: >3s 真靜默不補 {len(stats['true_silences'])} 處（字幕該消失）")

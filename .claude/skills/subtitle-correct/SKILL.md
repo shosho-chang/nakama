@@ -95,12 +95,31 @@ script 會做：越界過濾、過度刪減防護（縮短逾半 → 進 QC）�
   cue 時間切片，拉長 end 會帶入死氣）
 - 繞過 pipeline 的 SRT（翻譯精選、外部工具產物）上軌前手動套：
   `python scripts/run_subtitle_finalize.py <srt>`
-- **斷句 gate（2026-08-06 裁決——「句子被切掉」根除）**：finalize 內建跨 cue
-  壞斷句偵測（黏著開頭「的/著/了…」、黏著結尾「的/把/被/一/這…」、jieba
-  詞跨界被切），stats 帶 `bad_boundaries`，**呼叫端必列不可吞**。修復手段：
-  相鄰 cue 搬字（文字移、時間不動——譯文卡）或按語意子句重切（有字級時間
-  戳的 ASR 卡）；偵測是機器的，語感判讀是 agent/修修的。歷史根因：cue_builder
-  14 字硬上限、翻譯字幕繼承英文 ASR 斷句——檢查以前是選配所以一再復發
+- **斷句 gate + 自動重修（2026-08-06 兩輪裁決——「句子被切掉」根除）**：
+
+  | 層 | 模組 | 職責 |
+  |---|---|---|
+  | 偵測 | `subtitle_finalize.boundary_reason` | 六規則判定單一切點 |
+  | 修復 | `subtitle_reboundary.repair_cues` | 把壞切點**搬**到最近的合法語意邊界 |
+
+  **六規則**：次句黏著開頭（的/著/了…）｜前句黏著結尾（的/把/被/一/這/蠻…）｜
+  **前句以代名詞收尾且次句是謂語起手**（我｜覺得——代名詞其實是下句主語）｜
+  **前句以「代名詞＋認知動詞」收尾**（我覺得｜進入——賓語子句被切走）｜
+  **前句以助動詞/連接副詞收尾**（我們要｜繼續、怎麼｜做、一直｜要，詞級判定
+  以免誤傷「可能/機會/需要」）｜jieba 詞跨界被切。
+  修復保證**文字一字不動**（只有切點位置移動），時間取字級時間戳真值，
+  沒有 words.json 時在 cue 內線性內插。已接進三個切片點：`_versioned_srt`
+  （完整版）、`run_highlight_cut._segment_srt`、`run_short_tighten._retime_srt`
+  ——**塌縮/細切會製造新的壞斷句，所以重修必須在重對時之後、定版之前**。
+  單獨修既有 SRT：`python scripts/run_subtitle_reboundary.py --srt X --words Y --out Z`
+  （`--no-finalize` 給工作真值用——transcript.srt 不可補空隙）。
+
+  ⚠️ **根因不是規則不夠，是 jieba 用錯詞典**（2026-08-06 安吉集查出）：
+  `find_bad_boundaries` 原本直接 `import jieba` 吃**內建簡體詞典**，繁中被逐字
+  切碎，才被迫用「HMM=True＋詞頻表過濾」的權宜寫法（HMM 會發明「東西現」類
+  假詞），連「判斷力」都被寫成抓不到的已知限制。掛 `ensure_tw_jieba()` 後
+  HMM=False 即可正確切繁中，假詞與那條限制一起消失。**任何對繁中 jieba.cut
+  的呼叫點都要先 ensure_tw_jieba()。**
 - 出處：2026-08-05 Christina AI 紅利精選——翻譯直產的 SRT 繞過
   `_process_srt_line`，句尾標點上了 timeline、cue 間空隙閃爍，修修看片抓出
 

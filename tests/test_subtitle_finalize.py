@@ -64,14 +64,67 @@ class TestFinalizeCues:
 
 class TestBadBoundaries:
     def test_word_split_across_cues_flagged(self):
-        # 「面商」= 詞典真詞跨界（r003 實測案例：個人層面｜商業層面）
-        _, stats = finalize_cues([(0.0, 1.0, "課程會從個人層面"), (1.0, 2.0, "商業層面來看")])
+        # 詞典真詞被攔腰切開（繁體詞庫下「社群」「商學院」都在庫裡）
+        _, stats = finalize_cues([(0.0, 1.0, "進入這個社"), (1.0, 2.0, "群會完全改觀")])
         assert any("被切開" in f["reason"] for f in stats["bad_boundaries"])
 
+    def test_list_rhythm_boundary_not_flagged(self):
+        # 個人層面｜商業層面＝並列句的合法節奏點（掛繁體詞庫後不再誤報成「面商」）
+        _, stats = finalize_cues([(0.0, 1.0, "課程會從個人層面"), (1.0, 2.0, "商業層面來看")])
+        assert not any("被切開" in f["reason"] for f in stats["bad_boundaries"])
+
     def test_hmm_fabricated_word_not_flagged(self):
-        # HMM 對拼接串會發明「東西現」——詞頻表過濾不可誤報
+        # HMM 對拼接串會發明「東西現」——繁體詞庫 + HMM=False 不可誤報
         _, stats = finalize_cues([(0.0, 1.0, "但學到了超多東西"), (1.0, 2.0, "現在我真的有股衝動")])
         assert not any("被切開" in f["reason"] for f in stats["bad_boundaries"])
+
+    def test_traditional_compound_word_split_flagged(self):
+        # 繁體詞庫掛上前，「判斷力」被當成抓不到的已知限制（安吉集實測）
+        _, stats = finalize_cues([(0.0, 1.0, "我們要練的判斷"), (1.0, 2.0, "力肌肉就越強")])
+        assert any("被切開" in f["reason"] for f in stats["bad_boundaries"])
+
+
+class TestPronounSubjectSplit:
+    """修修 2026-08-06 安吉集裁決：代名詞被切在上一句尾、其實是下句主語。"""
+
+    def test_pronoun_then_verb_flagged(self):
+        cues = [(0.0, 1.0, "就跟保羅說你不用想這麼多 我"), (1.0, 2.0, "覺得進入這個社群")]
+        _, stats = finalize_cues(cues)
+        assert any("代名詞" in f["reason"] for f in stats["bad_boundaries"])
+
+    def test_pronoun_then_adverb_flagged(self):
+        cues = [(0.0, 1.0, "還是要定居 然後我"), (1.0, 2.0, "就跟保羅說")]
+        _, stats = finalize_cues(cues)
+        assert any("代名詞" in f["reason"] for f in stats["bad_boundaries"])
+
+    def test_plural_pronoun_flagged(self):
+        cues = [(0.0, 1.0, "之後需要做什麼 我們"), (1.0, 2.0, "要繼續旅遊嗎")]
+        _, stats = finalize_cues(cues)
+        assert any("代名詞" in f["reason"] for f in stats["bad_boundaries"])
+
+    def test_complement_verb_tail_flagged(self):
+        # 「我覺得」收尾＝賓語子句被切到下一句（安吉集 1:43 實例）
+        cues = [(0.0, 1.0, "你不用想這麼多我覺得"), (1.0, 2.0, "進入這個社群會改觀")]
+        _, stats = finalize_cues(cues)
+        assert any("賓語被切到次句" in f["reason"] for f in stats["bad_boundaries"])
+
+    def test_modal_tail_flagged(self):
+        # 助動詞/連接副詞收尾：主要動詞在下一句（我們要｜繼續、怎麼｜做）
+        for tail, head in [("之後需要做什麼我們要", "繼續旅遊嗎"), ("我應該怎麼", "做 Podcast")]:
+            _, stats = finalize_cues([(0.0, 1.0, tail), (1.0, 2.0, head)])
+            assert any("助動詞" in f["reason"] for f in stats["bad_boundaries"]), tail
+
+    def test_complete_word_ending_in_modal_char_not_flagged(self):
+        # 詞級判定：「可能」「機會」「需要」以同字收尾但是完整詞，不可誤報
+        for tail in ("到當地可能", "這是一個機會", "我覺得不需要"):
+            _, stats = finalize_cues([(0.0, 1.0, tail), (1.0, 2.0, "後來就沒有了")])
+            assert not any("助動詞" in f["reason"] for f in stats["bad_boundaries"]), tail
+
+    def test_pronoun_as_object_not_flagged(self):
+        # 代名詞當受詞、次句以名詞另起主語 → 合法斷點，不可誤報
+        cues = [(0.0, 1.0, "這件事情是他告訴我"), (1.0, 2.0, "老闆說沒有問題")]
+        _, stats = finalize_cues(cues)
+        assert not any("代名詞" in f["reason"] for f in stats["bad_boundaries"])
 
     def test_sticky_tail_flagged(self):
         _, stats = finalize_cues([(0.0, 1.0, "是當我的"), (1.0, 2.0, "第一個讀者")])

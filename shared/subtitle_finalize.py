@@ -80,20 +80,125 @@ def finalize_cues(
     }
 
 
-_TAIL_STICKY = set("的把被跟與和或在從對讓一這那每幾很超最更")
+_TAIL_STICKY = set("的把被跟與和或在從對讓一這那每幾很超最更蠻挺滿")
 _HEAD_STICKY = set("的著了嗎呢吧喔哦")
+
+# 代名詞收尾（修修 2026-08-06「我｜覺得」裁決）：長詞在前，比對取最長匹配。
+_PRONOUN_TAILS = (
+    "我們", "你們", "妳們", "他們", "她們", "它們", "牠們", "咱們", "大家",
+    "我", "你", "妳", "他", "她", "它", "牠", "咱",
+)
+# 次句首詞的詞性若屬「謂語起手」（動詞/副詞/介詞/連接詞/時間詞），代表前句
+# 尾巴那個代名詞其實是**下一句的主語**，被硬切在上一句尾（「這麼多我｜覺得」）。
+# 反之次句以名詞/代名詞開頭時，代名詞多半是上一句的受詞（「他告訴我｜小明說」），
+# 屬合法斷點——這個區分是本規則不誤報的關鍵。
+_SUBJ_HEAD_FLAGS = frozenset({"d", "p", "c", "t", "zg", "a", "ad", "an"})
+
+
+def _tw_jieba():
+    """取得掛好**繁體詞庫**的 jieba（本模組所有斷詞的唯一入口）。
+
+    ⚠️ 血淚（2026-08-06）：本函式存在之前，本模組直接 `import jieba` 用的是
+    內建**簡體**詞典——繁中被逐字切碎，逼出「HMM=True + 詞頻表過濾」的權宜
+    寫法（HMM 會發明「東西現」類假詞），連「判斷力」都被當成抓不到的已知限制。
+    掛上 `ensure_tw_jieba()` 後 HMM=False 即可正確切繁中（判斷力 FREQ=103），
+    假詞問題連同那條限制一起消失。
+    """
+    import jieba
+
+    from shared.transcriber import ensure_tw_jieba
+
+    ensure_tw_jieba()
+    return jieba
+
+
+# 認知/言說動詞：接在代名詞後當句尾＝賓語（整個子句）被切走（「我覺得｜進入…」）。
+# 封閉清單而非全部動詞——「他們同意」「我知道」這種可獨立成句的收尾不該誤報。
+_COMPLEMENT_VERBS = (
+    "覺得", "認為", "以為", "發現", "希望", "想說", "說到", "提到", "講到",
+    "相信", "擔心", "害怕", "決定", "打算", "喜歡", "討厭", "需要", "想要",
+)
+
+
+# 助動詞／連接副詞：獨立成詞出現在句尾＝後面的主要動詞被切走。
+_MODAL_TAIL = frozenset(
+    {"要", "會", "能", "該", "就", "才", "也", "還", "又", "再", "不", "沒",
+     "想", "可以", "應該", "必須", "願意", "打算", "開始", "繼續",
+     "怎麼", "一直", "一定", "已經", "突然", "好像", "幾乎", "甚至", "越來越"}
+)
+
+
+def _pronoun_verb_tail(bare: str) -> str | None:
+    """前句是否以「代名詞＋認知動詞」收尾（賓語子句被切到下一句）。"""
+    for v in _COMPLEMENT_VERBS:
+        if not bare.endswith(v):
+            continue
+        stem = bare[: -len(v)]
+        if any(stem.endswith(p) for p in _PRONOUN_TAILS):
+            pron = next(p for p in _PRONOUN_TAILS if stem.endswith(p))
+            return pron + v
+    return None
+
+
+def _is_subject_head(head: str) -> bool:
+    """次句開頭是不是「謂語起手」（→ 前句尾的代名詞是被切走的主語）。"""
+    import jieba.posseg as posseg
+
+    _tw_jieba()
+    for w in posseg.cut(head, HMM=False):
+        return w.flag.startswith("v") or w.flag in _SUBJ_HEAD_FLAGS
+    return False
+
+
+def boundary_reason(tail: str, head: str) -> str | None:
+    """單一切點的四規則判定；乾淨切點回 None。（重切工具與 gate 共用真值）"""
+    a = (tail or "").strip()
+    b = (head or "").strip().lstrip("-—– ").lstrip()
+    if not a or not b:
+        return None
+    if b[0] in _HEAD_STICKY:
+        return f"次句以「{b[0]}」開頭"
+    if a[-1] in _TAIL_STICKY:
+        return f"前句以「{a[-1]}」結尾"
+    bare_a, bare_b = a.replace(" ", ""), b.replace(" ", "")
+    if not bare_a or not bare_b:
+        return None
+    pron = next((p for p in _PRONOUN_TAILS if bare_a.endswith(p)), None)
+    if pron and _is_subject_head(bare_b[:6]):
+        return f"前句以代名詞「{pron}」收尾，其實是次句主語"
+    sv = _pronoun_verb_tail(bare_a)
+    if sv:
+        return f"前句以「{sv}」收尾，賓語被切到次句"
+    # 助動詞/連接副詞收尾＝主要動詞在下一句（「我們要｜繼續旅遊」「然後我就｜跟他說」）。
+    # **詞級**判定：字元級會誤傷「可能」「機會」「需要」這些以同字收尾的完整詞。
+    last = list(_tw_jieba().cut(bare_a[-8:], HMM=False))[-1]
+    if last in _MODAL_TAIL:
+        return f"前句以助動詞「{last}」收尾，主要動詞在次句"
+    # 切點兩側任一是 ASCII → 不跑詞跨界（jieba 會把整串英文當成一個「詞」，
+    # 「We are a team」跨 cue 必誤報；英文詞完整性由 cue_builder 的空格切分把關）
+    if bare_a[-1].isascii() or bare_b[0].isascii():
+        return None
+    ta, tb = bare_a[-6:], bare_b[:6]
+    cut, pos = len(ta), 0
+    for tok in _tw_jieba().cut(ta + tb, HMM=False):
+        pos += len(tok)
+        if pos == cut:
+            break
+        if pos > cut:
+            if len(tok) > 1:
+                return f"詞「{tok}」被切開"
+            break
+    return None
 
 
 def find_bad_boundaries(cues: list) -> list[dict]:
     """偵測跨 cue 壞斷句（修修 2026-08-06「句子被切掉」裁決後的強制關卡）。
 
-    高精度保守三規則：次句黏著開頭（的/著/了…）、前句黏著結尾（的/把/被/
-    一/這…）、jieba 詞跨 cue 邊界被切開。回傳 [{cue, tail, head, reason}]。
-    呼叫端必須呈現結果——斷句檢查從「選配」升級為 finalize 層標配，
-    偵測得到的壞切點不再默默出貨；語感層級的修復仍由人/agent 判讀執行。
+    四規則見 `boundary_reason`：次句黏著開頭、前句黏著結尾、**前句以代名詞收尾
+    且次句是謂語起手**（我｜覺得）、jieba 詞跨邊界被切開。
+    回傳 [{cue, tail, head, reason}]。呼叫端必須呈現結果——斷句檢查是 finalize
+    層標配，偵測得到的壞切點不再默默出貨；修復由 run_subtitle_reboundary 或人判讀。
     """
-    import jieba
-
     flags = []
     for i in range(len(cues) - 1):
         ta_full = cues[i][2].strip()
@@ -102,32 +207,7 @@ def find_bad_boundaries(cues: list) -> list[dict]:
             continue
         a = ta_full.splitlines()[-1].strip()
         b = tb_full.splitlines()[0].strip()
-        if not a or not b:
-            continue
-        reason = None
-        if b[0] in _HEAD_STICKY:
-            reason = f"次句以「{b[0]}」開頭"
-        elif a[-1] in _TAIL_STICKY:
-            reason = f"前句以「{a[-1]}」結尾"
-        else:
-            ta, tb = a[-6:].replace(" ", ""), b[:6].replace(" ", "")
-            if ta and tb:
-                cut = len(ta)
-                pos = 0
-                # HMM=True + 詞頻表過濾：jieba 預設詞典是簡體，HMM=False 會把
-                # 繁中碎成單字（不可用）；HMM=True 對拼接串會發明「東西現」類
-                # 假詞——用 FREQ 濾掉。已知限制（誠實邊界）：HMM 合成的 OOV
-                # 複合詞（如「判斷力」）不在詞頻表，跨界時抓不到——該類主要
-                # 出自逐字硬切，ASR 卡走語意重切後已根治；譯文卡由黏著字
-                # 規則兜底。
-                for tok in jieba.cut(ta + tb):
-                    pos += len(tok)
-                    if pos == cut:
-                        break
-                    if pos > cut:
-                        if len(tok) > 1 and jieba.dt.FREQ.get(tok, 0) > 0:
-                            reason = f"詞「{tok}」被切開"
-                        break
+        reason = boundary_reason(a, b)
         if reason:
             flags.append({"cue": i + 1, "tail": a[-8:], "head": b[:8], "reason": reason})
     return flags
@@ -164,10 +244,23 @@ def format_srt(cues: list[tuple[float, float, str]]) -> str:
     )
 
 
-def finalize_srt_file(src: Path, dst: Path, *, gap_close_max: float = 3.0) -> dict:
-    """src SRT → 定版 → 寫 dst。回傳 stats（含 cues 總數）。"""
+def finalize_srt_file(
+    src: Path, dst: Path, *, gap_close_max: float = 3.0, repair: bool = True
+) -> dict:
+    """src SRT →（切點重修）→ 定版 → 寫 dst。回傳 stats（含 cues 總數）。
+
+    repair=True（預設）先把偵測到的壞斷句搬到合法語意邊界，再跑定版兩規則
+    ——偵測與修復同一層，顯示副本不會帶著已知壞切點出貨。
+    """
     cues = parse_srt_text(Path(src).read_text(encoding="utf-8-sig"))
+    moved = 0
+    if repair:
+        from shared.subtitle_reboundary import repair_cues  # 延遲載入避免循環匯入
+
+        cues, rb = repair_cues(cues)
+        moved = rb["moved"]
     fin, stats = finalize_cues(cues, gap_close_max=gap_close_max)
     Path(dst).write_text(format_srt(fin), encoding="utf-8")
     stats["cues"] = len(fin)
+    stats["reboundary_moved"] = moved
     return stats

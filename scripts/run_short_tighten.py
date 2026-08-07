@@ -786,6 +786,13 @@ def _retime_srt(
         if not spans or max(b - a for a, b in spans) < 0.15:
             continue
         rows.append((spans[0][0], spans[-1][1], text))
+    # 切點重修（修修 2026-08-06）：塌縮/細切會製造新的壞斷句（怎麼｜做、蠻｜好奇）
+    # ——重對時之後、定版之前把切點搬回合法語意邊界
+    from shared.subtitle_reboundary import repair_cues
+
+    rows, rb = repair_cues(rows)
+    if rb["moved"]:
+        logger.info(f"{cid}: 切點重修 {rb['moved']} 處（壞斷句搬到合法語意邊界）")
     # 顯示層定版（修修 2026-08-05）：句尾零標點 + cue 間 ≤3s 空隙補平連續顯示
     rows, fstats = finalize_cues(rows)
     if fstats["true_silences"]:
