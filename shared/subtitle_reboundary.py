@@ -1,15 +1,21 @@
 """切點重修——把壞斷句「搬」到最近的合法語意邊界（修修 2026-08-06 根治裁決）。
 
-`subtitle_finalize.find_bad_boundaries` 只**偵測**（我｜覺得、蠻｜好奇、詞被切半），
-本模組負責**修**：對每個被旗標的相鄰 cue 對，在兩句串起來的文字裡重找切點——
-只落 jieba 詞邊界、必須通過同一套規則、優先選語音停頓最大處。**文字一字不動**，
-只有切點位置移動。
+`subtitle_finalize.boundary_reason` 只**偵測**（我｜覺得、的｜…、孤兒括號），
+本模組負責**修**：對每個被旗標的相鄰 cue 對，在兩句文字裡重找切點——只落
+jieba 詞邊界、必須通過同一套偵測規則、括號深度為 0、優先選語音停頓最大處。
 
-字級時間戳（words.json）有就用真值算停頓；沒有（精選/緊版等已重對時的 SRT）
-就在 cue 自身時間範圍內線性內插——只移動幾個字的切點，誤差可忽略。
+⚠️ 文字處理鐵律（2026-08-07 安吉 45s「結 婚」慘案後定版）：**切原文，不重渲染**。
+第一版把兩句打散成裸字元再用 est_gap 重推空格——WhisperX 的 align 拖尾（「結」
+被拉長 1.1s）讓它在詞中間塞出空格、還把校正層原有的停頓空格全部毀掉。現版
+只把原文字串在切點處剖開搬移，內部空格逐字保留；唯一的接縫規則：CJK 相接
+不加空格（「結」+「婚以後」→「結婚以後」）、ASCII 相接補一格。每次修復後
+run-time 驗證兩條不變量（裸文字恆等、不新增任何原文沒有的空格），違反即 raise
+——寧可炸也不默默出貨壞字幕。
 
-⚠️ 顯示層與工作真值分離：`transcript.srt` 只跑重修**不跑 finalize**
-（cue 時間要貼語音，下游靠它切片）；顯示副本才跑 finalize 補空隙。
+時間：字級時間戳（words.json）有就用真值；沒有就在 cue 時間範圍內線性內插。
+
+顯示層與工作真值分離：`transcript.srt` 只跑重修**不跑 finalize**（cue 時間要
+貼語音，下游靠它切片）；顯示副本才補空隙。
 """
 
 from __future__ import annotations
@@ -17,8 +23,13 @@ from __future__ import annotations
 import difflib
 import re
 
-from shared.cue_builder import HARD_MAX_CHARS, MIN_CUE_CHARS, PAUSE_SPACE, est_gap
-from shared.subtitle_finalize import _tw_jieba, boundary_reason
+from shared.cue_builder import HARD_MAX_CHARS, MIN_CUE_CHARS, est_gap
+from shared.subtitle_finalize import (
+    CLOSE_BRACKETS,
+    OPEN_BRACKETS,
+    _tw_jieba,
+    boundary_reason,
+)
 
 MAX_ROUNDS = 3
 
@@ -34,6 +45,7 @@ def char_times_from_words(words: list[dict], target: str) -> list[Span]:
     """校正後字串每字元的 (start, end)——difflib 對回 ASR 字級時間戳。
 
     replace/insert 段（校正動過的字）沒有對應 ASR 字，用前後錨點線性內插。
+    內插時間**只拿來排序停頓候選**，絕不拿來重推空格（見模組 docstring 鐵律）。
     """
     src_chars: list[str] = []
     src_times: list[Span] = []
@@ -78,8 +90,7 @@ def char_times_from_cues(cues: list[Cue]) -> list[Span]:
     """無字級時間戳時的退路：每個 cue 內字元均分自身時間範圍。"""
     out: list[Span] = []
     for s, e, text in cues:
-        chars = bare(text)
-        n = len(chars)
+        n = len(bare(text))
         if not n:
             continue
         step = (e - s) / n
@@ -96,23 +107,52 @@ def _word_bounds(text: str) -> set[int]:
     return bounds
 
 
-def _render(joint: str, times: list[Span], base: int, lo: int, hi: int) -> str:
-    """還原 cue 文字——停頓 ≥PAUSE_SPACE 補半形空格（house style）。"""
-    parts: list[str] = []
-    for k in range(lo, hi):
-        if parts:
-            prev = (joint[k - 1], times[base + k - 1][0], times[base + k - 1][1])
-            nxt = (joint[k], times[base + k][0], times[base + k][1])
-            if est_gap(prev, nxt) >= PAUSE_SPACE:
-                parts.append(" ")
-            elif joint[k].isascii() != joint[k - 1].isascii():
-                parts.append(" ")
-        parts.append(joint[k])
-    return "".join(parts).strip()
+def _bare_index_map(text: str) -> list[int]:
+    """裸位置 k → 原字串索引（text[:idx] 的裸長度恰為 k）。長度 = 裸長+1。"""
+    idx = [0]
+    for i, ch in enumerate(text):
+        if not ch.isspace():
+            idx.append(i + 1)
+    return idx
 
 
-def _round(cues: list[Cue], times: list[Span], starts: list[int]) -> tuple[list[Cue], int]:
-    """一輪重修。切點移動後 starts[i+1] 立即改變（該對總字數不變，i+2 之後不受影響）。"""
+def _seam_join(left: str, right: str) -> str:
+    """接縫規則：CJK 相接不加空格，ASCII 相接補一格（不重推任何其他空格）。"""
+    left, right = left.rstrip(), right.lstrip()
+    if not left or not right:
+        return left + right
+    if left[-1].isascii() and right[0].isascii():
+        return left + " " + right
+    return left + right
+
+
+def _carve(a_text: str, b_text: str, p: int, ba_len: int) -> tuple[str, str]:
+    """把 cue 對的切點搬到裸位置 p（原字串剖開搬移，內部空格逐字保留）。"""
+    if p < ba_len:  # a 的尾巴搬去 b 開頭
+        ia = _bare_index_map(a_text)[p]
+        return a_text[:ia].rstrip(), _seam_join(a_text[ia:], b_text)
+    ib = _bare_index_map(b_text)[p - ba_len]  # b 的開頭搬去 a 結尾
+    return _seam_join(a_text, b_text[:ib]), b_text[ib:].lstrip()
+
+
+def _depth_before(cues: list[Cue]) -> list[int]:
+    """每個 cue 起點的括號深度（從整集第一句累計；閉多於開夾 0）。"""
+    depths = []
+    d = 0
+    for _, _, text in cues:
+        depths.append(d)
+        for ch in text:
+            if ch in OPEN_BRACKETS:
+                d += 1
+            elif ch in CLOSE_BRACKETS:
+                d = max(0, d - 1)
+    return depths
+
+
+def _round(
+    cues: list[Cue], times: list[Span], starts: list[int], depths: list[int]
+) -> tuple[list[Cue], int]:
+    """一輪重修。切點移動後 starts[i+1] 立即更新（該對總字數不變，i+2 之後不受影響）。"""
     out = [list(c) for c in cues]
     moved = 0
     for i in range(len(out) - 1):
@@ -121,9 +161,19 @@ def _round(cues: list[Cue], times: list[Span], starts: list[int]) -> tuple[list[
             continue
         ba, bb = bare(a), bare(b)
         joint, base, orig = ba + bb, starts[i], len(ba)
+        d0 = depths[i]
         cands = []
-        for p in sorted(_word_bounds(joint)):
-            if p == orig or not (MIN_CUE_CHARS <= p <= HARD_MAX_CHARS):
+        depth = d0
+        bounds = _word_bounds(joint)
+        for p in range(1, len(joint)):
+            ch = joint[p - 1]
+            if ch in OPEN_BRACKETS:
+                depth += 1
+            elif ch in CLOSE_BRACKETS:
+                depth = max(0, depth - 1)
+            if p == orig or p not in bounds or depth != 0:
+                continue
+            if not (MIN_CUE_CHARS <= p <= HARD_MAX_CHARS):
                 continue
             if not (MIN_CUE_CHARS <= len(joint) - p <= HARD_MAX_CHARS):
                 continue
@@ -141,9 +191,10 @@ def _round(cues: list[Cue], times: list[Span], starts: list[int]) -> tuple[list[
             continue
         _, _, p = max(cands)
         gi = base + p
-        out[i][2] = _render(joint, times, base, 0, p)
+        new_a, new_b = _carve(out[i][2].strip(), out[i + 1][2].strip(), p, orig)
+        out[i][2] = new_a
         out[i][1] = times[gi - 1][1]
-        out[i + 1][2] = _render(joint, times, base, p, len(joint))
+        out[i + 1][2] = new_b
         out[i + 1][0] = times[gi][0]
         starts[i + 1] = gi
         moved += 1
@@ -164,15 +215,45 @@ def sanitize(cues: list[Cue], min_dur: float = 0.24) -> tuple[list[Cue], int]:
     return [tuple(c) for c in out], fixed
 
 
+def _space_offsets(cues: list[Cue]) -> set[int]:
+    """全片空格的「裸位置」集合（每個空格記它前面累計的裸字元數）。"""
+    offsets = set()
+    pos = 0
+    for _, _, text in cues:
+        for ch in text:
+            if ch.isspace():
+                offsets.add(pos)
+            else:
+                pos += 1
+    return offsets
+
+
+def _verify(before: list[Cue], after: list[Cue]) -> None:
+    """兩條不變量（違反即 raise——寧炸不默默出貨壞字幕）。
+
+    ① 裸文字恆等：修復只搬切點，一個字都不可增刪改。
+    ② 空格零新增：輸出的每個空格，原文同裸位置必須本來就有空格
+       （接縫處**刪**空格合法；**生**出原文沒有的空格＝「結 婚」慘案重演）。
+    """
+    b0 = "".join(bare(t) for _, _, t in before)
+    b1 = "".join(bare(t) for _, _, t in after)
+    if b0 != b1:
+        raise ValueError("reboundary 不變量①破裂：裸文字被改動")
+    extra = _space_offsets(after) - _space_offsets(before)
+    if extra:
+        raise ValueError(f"reboundary 不變量②破裂：新增空格於裸位置 {sorted(extra)[:5]}")
+
+
 def repair_cues(
     cues: list[Cue],
     *,
     words: list[dict] | None = None,
     rounds: int = MAX_ROUNDS,
 ) -> tuple[list[Cue], dict]:
-    """切點重修主入口。回傳 (新 cues, stats)。文字內容保證不變（僅切點位置移動）。"""
+    """切點重修主入口。回傳 (新 cues, stats)。"""
     if len(cues) < 2:
         return cues, {"moved": 0, "rounds": 0, "sanitized": 0}
+    original = list(cues)
     target = "".join(bare(t) for _, _, t in cues)
     times = char_times_from_words(words, target) if words else char_times_from_cues(cues)
     if len(times) != len(target):
@@ -184,9 +265,10 @@ def repair_cues(
         for _, _, t in cues:
             starts.append(acc)
             acc += len(bare(t))
-        cues, moved = _round(cues, times, starts)
+        cues, moved = _round(cues, times, starts, _depth_before(cues))
         total += moved
         if not moved:
             break
     cues, fixed = sanitize(cues)
+    _verify(original, cues)
     return cues, {"moved": total, "rounds": used, "sanitized": fixed}

@@ -121,11 +121,16 @@ _COMPLEMENT_VERBS = (
 
 
 # 助動詞／連接副詞：獨立成詞出現在句尾＝後面的主要動詞被切走。
+# ⚠️ 「開始/繼續」不收（2026-08-07 安吉 45s 血淚）：它們常是本動詞、後接受詞
+# （開始｜「數位遊牧」），跨 cue 是正常斷法——誤旗標會驅動破壞性修復。
 _MODAL_TAIL = frozenset(
     {"要", "會", "能", "該", "就", "才", "也", "還", "又", "再", "不", "沒",
-     "想", "可以", "應該", "必須", "願意", "打算", "開始", "繼續",
+     "想", "可以", "應該", "必須", "願意", "打算",
      "怎麼", "一直", "一定", "已經", "突然", "好像", "幾乎", "甚至", "越來越"}
 )
+
+OPEN_BRACKETS = "「『《（"
+CLOSE_BRACKETS = "」』》）"
 
 
 def _pronoun_verb_tail(bare: str) -> str | None:
@@ -156,6 +161,10 @@ def boundary_reason(tail: str, head: str) -> str | None:
     b = (head or "").strip().lstrip("-—– ").lstrip()
     if not a or not b:
         return None
+    if a[-1] in OPEN_BRACKETS:
+        return f"前句以開括號「{a[-1]}」結尾（孤兒括號）"
+    if b[0] in CLOSE_BRACKETS:
+        return f"次句以閉括號「{b[0]}」開頭（孤兒括號）"
     if b[0] in _HEAD_STICKY:
         return f"次句以「{b[0]}」開頭"
     if a[-1] in _TAIL_STICKY:
