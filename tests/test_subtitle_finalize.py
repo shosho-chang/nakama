@@ -196,6 +196,17 @@ class TestReboundaryCarving:
         a, b = _carve("那我跟保羅在結", "婚以後我們就開始", 5, 7)
         assert " " not in (a + b)[:6]
 
+    def test_carved_head_no_leading_space(self):
+        from shared.subtitle_reboundary import _carve
+
+        # a 尾搬去 b 開頭，切點恰在校正空格之後 → 空格不得黏在新 cue 開頭
+        # （2026-08-07 安吉三支長片稽核：「 我覺得…」「 對然後…」每支 3–8 句）
+        a, b = _carve("他就講了很多 然後 我", "覺得我也是有很多愛可以給", 8, 9)
+        assert b == b.lstrip(), repr(b)
+        assert a == a.rstrip(), repr(a)
+        bare_all = (a + b).replace(" ", "")
+        assert bare_all == "他就講了很多然後我覺得我也是有很多愛可以給"
+
     def test_no_cut_inside_brackets(self):
         from shared.subtitle_reboundary import repair_cues
 

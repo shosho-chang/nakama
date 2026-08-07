@@ -127,10 +127,15 @@ def _seam_join(left: str, right: str) -> str:
 
 
 def _carve(a_text: str, b_text: str, p: int, ba_len: int) -> tuple[str, str]:
-    """把 cue 對的切點搬到裸位置 p（原字串剖開搬移，內部空格逐字保留）。"""
+    """把 cue 對的切點搬到裸位置 p（原字串剖開搬移，內部空格逐字保留）。
+
+    搬移片段的**外緣**（成為新 cue 起點/終點的那一側）必須 strip——切點落在
+    校正空格之後時，那個空格會黏在片段外緣變成「 我覺得…」的首空格 cue
+    （2026-08-07 安吉三支長片 r005/r006 稽核，每支 3–8 句中招）。
+    """
     if p < ba_len:  # a 的尾巴搬去 b 開頭
         ia = _bare_index_map(a_text)[p]
-        return a_text[:ia].rstrip(), _seam_join(a_text[ia:], b_text)
+        return a_text[:ia].rstrip(), _seam_join(a_text[ia:].lstrip(), b_text)
     ib = _bare_index_map(b_text)[p - ba_len]  # b 的開頭搬去 a 結尾
     return _seam_join(a_text, b_text[:ib]), b_text[ib:].lstrip()
 
