@@ -25,6 +25,10 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
+from shared.log import get_logger
+
+logger = get_logger("nakama.weekly_writer")
+
 TAIPEI_TZ = ZoneInfo("Asia/Taipei")  # ADR-041 D4 — naive local stored WITH +08:00 (v3 V1)
 
 TASKS_DIR = "TaskNotes/Tasks"
@@ -114,6 +118,7 @@ def _atomic_write(path: Path, content: str) -> None:
         for attempt in range(3):
             try:
                 os.replace(tmp_path_str, path)
+                _warn_if_sync_conflict_sibling(path)
                 return
             except PermissionError as e:
                 if attempt == 2:
@@ -133,6 +138,31 @@ def _atomic_write(path: Path, content: str) -> None:
         except OSError:
             pass
         raise
+
+
+def _warn_if_sync_conflict_sibling(path: Path) -> None:
+    """Best-effort post-write check (2026-08-10 incident): Obsidian Sync can shunt
+    a file we just wrote into a ``*.sync-conflict-*.md`` sibling instead of
+    accepting it as canonical, if it's reconciling that same path against another
+    device at the same moment — the vault-write itself still reports success since
+    ``os.replace`` above already succeeded. This is NOT authoritative (Sync may
+    react seconds after we return, so a clean check here doesn't guarantee no
+    conflict is coming) — it only catches the same-instant case immediately
+    instead of it surfacing hours later as "calendar has it, vault doesn't".
+    A daily sweep (``shared/task_archiver.find_integrity_issues``) catches the
+    delayed case."""
+    try:
+        siblings = sorted(p.name for p in path.parent.glob(f"{path.stem}.sync-conflict-*.md"))
+    except OSError:
+        return
+    if siblings:
+        logger.warning(
+            "%s has %d sync-conflict sibling(s) right after write — "
+            "Obsidian Sync may have shunted this write: %s",
+            path.name,
+            len(siblings),
+            siblings,
+        )
 
 
 def _read_task(path: Path) -> tuple[dict[str, Any], str]:

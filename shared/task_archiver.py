@@ -36,6 +36,18 @@ _FM_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 
 @dataclass
+class IntegrityReport:
+    stale_duplicates: list[tuple[str, str]] = field(default_factory=list)  # (Tasks/ name, Archive/ name)
+    sync_conflicts: list[str] = field(default_factory=list)  # vault-relative paths
+
+    def to_summary_dict(self) -> dict:
+        return {
+            "stale_duplicates": len(self.stale_duplicates),
+            "sync_conflicts": len(self.sync_conflicts),
+        }
+
+
+@dataclass
 class ArchiveReport:
     moved: list[tuple[str, str]] = field(default_factory=list)  # (filename, completed_iso)
     kept_recent: list[str] = field(default_factory=list)  # done 但還在保留視窗內
@@ -145,5 +157,60 @@ def archive_done_tasks(
                 continue
         report.moved.append((path.name, completed.date().isoformat()))
         logger.info("archived task %s (completed %s)", path.name, completed.date())
+
+    return report
+
+
+def find_integrity_issues(vault_root: Path) -> IntegrityReport:
+    """Vault-hygiene check for the 2026-08-10 寫電子報事故 failure mode: a
+    ``Tasks/`` file that is actually a stale duplicate of an already-archived
+    note (same ``title`` + ``dateCreated`` — the fingerprint of "same note,
+    never cleaned out of Tasks/") silently skips ``archive_done_tasks`` above
+    forever if its own ``status`` isn't ``done`` (e.g. it got reopened), and
+    schedule_task_entry has no collision guard against it — it just gets
+    written into, races Obsidian Sync, and the write lands as a
+    ``*.sync-conflict-*.md`` sibling instead of canonical.
+
+    Also flags any stray ``*.sync-conflict-*.md`` anywhere under
+    ``TaskNotes/`` regardless of cause. Read-only — reports for a human/Slack
+    to act on, never moves or deletes anything."""
+    report = IntegrityReport()
+    tasks_dir = vault_root / TASKS_DIR
+    archive_dir = vault_root / ARCHIVE_DIR
+
+    archived_by_identity: dict[tuple[str, str], str] = {}
+    if archive_dir.is_dir():
+        for path in sorted(archive_dir.glob("*.md")):
+            try:
+                fm = _parse_frontmatter(path.read_text(encoding="utf-8"))
+            except OSError:
+                continue
+            if fm is None:
+                continue
+            title = str(fm.get("title") or "").strip()
+            created = str(fm.get("dateCreated") or "").strip()
+            if title and created:
+                archived_by_identity[(title, created)] = path.name
+
+    if tasks_dir.is_dir():
+        for path in sorted(tasks_dir.glob("*.md")):
+            try:
+                fm = _parse_frontmatter(path.read_text(encoding="utf-8"))
+            except OSError:
+                continue
+            if fm is None:
+                continue
+            title = str(fm.get("title") or "").strip()
+            created = str(fm.get("dateCreated") or "").strip()
+            if not title or not created:
+                continue
+            archive_name = archived_by_identity.get((title, created))
+            if archive_name:
+                report.stale_duplicates.append((path.name, archive_name))
+
+    notes_root = vault_root / "TaskNotes"
+    if notes_root.is_dir():
+        for path in sorted(notes_root.rglob("*.sync-conflict-*.md")):
+            report.sync_conflicts.append(str(path.relative_to(vault_root)).replace("\\", "/"))
 
     return report
