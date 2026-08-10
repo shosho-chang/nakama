@@ -16,6 +16,7 @@ from shared.weekly_writer import (
     WeekendReasonRequired,
     WeeklyConflictError,
     WeeklyWriteError,
+    _warn_if_sync_conflict_sibling,
     add_plan_entry,
     log_time_entry,
     read_task_body,
@@ -1057,3 +1058,28 @@ class TestSetTaskDone:
     def test_missing_task_raises(self, vault):
         with pytest.raises(TaskNotFoundError):
             set_task_done(vault, "nope", True)
+
+
+class TestWarnIfSyncConflictSibling:
+    """2026-08-10 事故：Obsidian Sync 有時會把剛寫入的檔案改名成
+    ``*.sync-conflict-*.md``，寫入本身仍回報成功。這個 helper 在同一次寫入
+    後立刻檢查有沒有這種 sibling 冒出來，發現了就記 warning log（不擋、不拋）。"""
+
+    def test_logs_warning_when_conflict_sibling_exists(self, vault, caplog):
+        p = vault / TASKS_DIR / "寫電子報.md"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("---\ntitle: 寫電子報\n---\n", encoding="utf-8")
+        (p.parent / "寫電子報.sync-conflict-20260617-160416-YJZV5NL.md").write_text(
+            "---\ntitle: 寫電子報\n---\n", encoding="utf-8"
+        )
+        with caplog.at_level("WARNING", logger="nakama.weekly_writer"):
+            _warn_if_sync_conflict_sibling(p)
+        assert "sync-conflict sibling" in caplog.text
+
+    def test_no_warning_when_clean(self, vault, caplog):
+        p = vault / TASKS_DIR / "寫稿.md"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("---\ntitle: 寫稿\n---\n", encoding="utf-8")
+        with caplog.at_level("WARNING", logger="nakama.weekly_writer"):
+            _warn_if_sync_conflict_sibling(p)
+        assert caplog.text == ""

@@ -1851,6 +1851,29 @@ class NamiHandler(BaseHandler):
         task = WeeklyIndexer(vault).find_task(slug)
         if task is None:
             return _ToolOutcome(content=f"找不到 task：{slug}（task_slug 是檔名）", is_error=True)
+
+        # 2026-08-10 事故：這條路沒有 create_calendar_event 的撞名分流（PR #1126）。
+        # 找到的 task 若跟 Archive/ 裡「同一份」（dateCreated 相同）已完成的紀錄撞了，
+        # 代表 Tasks/ 這份是歸檔沒清乾淨的殘留檔——繼續往上加 plan 只會再踩一次
+        # 「vault sync 衝突、calendar 有 vault 沒有」的老問題（寫電子報事故 postmortem）。
+        task_fm = _extract_frontmatter(read_page(f"{TASK_DIR}/{slug}.md") or "")
+        task_created = task_fm.get("dateCreated")
+        if task_created:
+            archived = self._find_task_by_title(task.title, ARCHIVE_DIR)
+            if archived is not None:
+                archived_rel, archived_fm, _ = archived
+                if archived_fm.get("dateCreated") == task_created:
+                    today = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d")
+                    return _ToolOutcome(
+                        content=(
+                            f"「{task.title}」（{slug}）跟 {archived_rel} 是同一份筆記"
+                            "（歸檔沒清乾淨的殘留，dateCreated 相同），不能再往上加 plan——"
+                            "會再踩一次 vault 跟 calendar 脫鉤的老問題（2026-08-10 寫電子報事故）。"
+                            f"請改用 create_calendar_event 建一個帶日期的新標題"
+                            f"（例如「{task.title} {today}」）。"
+                        ),
+                        is_error=True,
+                    )
         pom_in = input_.get("pomodoros")
         pom = int(pom_in) if pom_in else (task.est_pomodoros or 2)
 
