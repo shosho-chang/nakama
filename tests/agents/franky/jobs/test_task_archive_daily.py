@@ -31,6 +31,14 @@ def _write_archived(vault: Path, filename: str, fm_lines: list[str]) -> None:
     (d / filename).write_text("---\n" + "\n".join(fm_lines) + "\n---\n\n內文\n", encoding="utf-8")
 
 
+def _integrity_calls(slack_bot: MagicMock) -> list:
+    return [
+        c
+        for c in slack_bot.post_plain.call_args_list
+        if c.kwargs.get("context") == "task_archive_integrity"
+    ]
+
+
 def test_run_once_posts_integrity_warning_for_stale_duplicate(tmp_path):
     _write_task(
         tmp_path,
@@ -46,9 +54,7 @@ def test_run_once_posts_integrity_warning_for_stale_duplicate(tmp_path):
 
     run_once(slack_bot=slack_bot, vault_root=tmp_path)
 
-    integrity_calls = [
-        c for c in slack_bot.post_plain.call_args_list if c.kwargs.get("context") == "task_archive_integrity"
-    ]
+    integrity_calls = _integrity_calls(slack_bot)
     assert len(integrity_calls) == 1
     msg = integrity_calls[0].args[0]
     assert "寫電子報" in msg
@@ -65,9 +71,7 @@ def test_run_once_posts_integrity_warning_for_sync_conflict(tmp_path):
 
     run_once(slack_bot=slack_bot, vault_root=tmp_path)
 
-    integrity_calls = [
-        c for c in slack_bot.post_plain.call_args_list if c.kwargs.get("context") == "task_archive_integrity"
-    ]
+    integrity_calls = _integrity_calls(slack_bot)
     assert len(integrity_calls) == 1
     assert "sync-conflict" in integrity_calls[0].args[0]
 
@@ -82,9 +86,7 @@ def test_run_once_clean_vault_no_integrity_warning(tmp_path):
 
     result = run_once(slack_bot=slack_bot, vault_root=tmp_path)
 
-    integrity_calls = [
-        c for c in slack_bot.post_plain.call_args_list if c.kwargs.get("context") == "task_archive_integrity"
-    ]
+    integrity_calls = _integrity_calls(slack_bot)
     assert integrity_calls == []
     assert result.status == "ok"
 

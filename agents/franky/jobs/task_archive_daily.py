@@ -78,7 +78,8 @@ def run_once(
         except OSError as exc:
             logger.warning("task_archive integrity scan failed: %s", exc)
             integrity = None
-        if integrity and (integrity.stale_duplicates or integrity.sync_conflicts) and slack_bot is not None:
+        has_issues = integrity and (integrity.stale_duplicates or integrity.sync_conflicts)
+        if has_issues and slack_bot is not None:
             warn_lines = ["⚠️ Task vault 完整性檢查發現異常："]
             warn_lines += [
                 f"  • Tasks/{name} 跟 Archive/{arch_name} 是同一份筆記（歸檔殘留，建議人工清理）"

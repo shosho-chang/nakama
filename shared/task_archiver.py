@@ -37,7 +37,8 @@ _FM_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 @dataclass
 class IntegrityReport:
-    stale_duplicates: list[tuple[str, str]] = field(default_factory=list)  # (Tasks/ name, Archive/ name)
+    # (Tasks/ name, Archive/ name)
+    stale_duplicates: list[tuple[str, str]] = field(default_factory=list)
     sync_conflicts: list[str] = field(default_factory=list)  # vault-relative paths
 
     def to_summary_dict(self) -> dict:
