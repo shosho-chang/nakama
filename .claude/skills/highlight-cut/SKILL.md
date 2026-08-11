@@ -2,10 +2,10 @@
 name: highlight-cut
 description: >
   訪談集精華選段：整集 transcript（說話者已切）開採長片（8–12min 橫式 YT）與
-  短片（60–120s 直式 Shorts）候選段落，persona 盲審評分各選 top 3，物化成
-  Resolve timeline + marker + 選段企劃報告。Use when the user says 「選段」
-  「切精華」「highlight」「剪短影片段落」, or after resolve-project
-  completes in the podcast pipeline. 一鍵到底，修修只看最終報告。
+  短片（60–120s 直式 Shorts）候選段落，persona 盲審評分排名 → **停下來給修修挑**
+  （Step 2.4 gate）→ 物化成 Resolve timeline + marker + 選段企劃報告。
+  Use when the user says 「選段」「切精華」「highlight」「剪短影片段落」,
+  or after resolve-project completes in the podcast pipeline.
   Step 6–11 製作線只涵蓋短片；長片製作線在 longform-cut skill。
 ---
 
@@ -81,9 +81,30 @@ python scripts/run_highlight_cut.py <episode> --validate
   （斷章取義/害來賓）——否決段標紅進報告等修修裁決，不自動排除
 - **同 variant 群組只取最高分者佔排名**（評分後才去重；落選 variant 照常
   進報告與 marker）
-- 各選 top 3 → 寫 `highlights/winners.json`：`{winners: [{id, rank, score}],
-  vetoed: [{id, reason}]}`；修修欽點的額外段落可以 rank 4+ 加進 winners
-  （原始需求：精彩就可以超過預設數量）
+- 排名結果**不要自己收成 top 3**——進 Step 2.4 的 gate（見下）
+
+## Step 2.4 — 選段 gate（修修挑，**必停**；修修 2026-08-11 裁決）
+
+```
+python scripts/run_cut_shortlist.py <episode> --format long   # 出候選表
+〔把表貼給修修，等他指定 id〕
+python scripts/run_cut_shortlist.py <episode> --pick SL4,SL3,SL7   # 才寫 winners.json
+```
+
+**為什麼停在這裡**：panel 是**讀逐字稿**評分的，評的是素材強度，不是成片吸引力、
+更不是修修的品味。安吉集自動取 top 3 做完三支之後他才說「其中一兩個主題好像不是
+特別吸引人」——那時候製作與 packaging 的成本已經付掉了。他自己算過另一條路
+（做 5 支挑 3 支）：多付兩支的製作＋packaging，而 packaging 是 100% 線性、
+LLM 用量最大的一塊；把 HITL 移到**排完之後、製作之前**幾乎零成本，因為那張表的
+料在 panel 跑完時就已經齊了。
+
+- 表上有：排名 / id / variant 群組 / 中位數 / 三位分數 / 長度 / 主題 / 品牌 lens 旗標，
+  外加每支的 hook 與 lens 細節。同群組落選的 variant **照常列出**（標「同群組落選」），
+  修修可以指名要那個切法
+- 幾支都可以（預設 3 支）。修修欽點超過預設數量是原始需求，`--pick` 給幾個就寫幾個，
+  順序＝rank
+- brand-lens 否決段可以被指名，但 script 會在 stderr 警告——**不靜默照做**
+- `winners.json` 只由本 script 寫（schema 由它保證）；既有的 `excluded_group` 保留
 
 ## Step 2.5 — 邊界打磨（物化前，必做）
 
