@@ -52,6 +52,8 @@ from run_highlight_cut import (  # noqa: E402
     _ts,
 )
 
+from shared.subtitle_finalize import finalize_cues  # noqa: E402
+
 logger = logging.getLogger("short_tighten")
 
 TIGHTEN_DIR = "highlights/tighten"
@@ -772,8 +774,7 @@ def _retime_srt(
         groups = _merge_blocks(surviving, segs)
         prepped = [u for g in groups for u in _fine_units_grouped(g, words)]
 
-    lines = []
-    seq = 0
+    rows: list[tuple[float, float, str]] = []
     for s, e, text in prepped:
         spans = []
         offset = 0.0
@@ -784,10 +785,23 @@ def _retime_srt(
             offset += seg_e - seg_s
         if not spans or max(b - a for a, b in spans) < 0.15:
             continue
-        seq += 1
-        lines.append(f"{seq}\n{_ts(spans[0][0])} --> {_ts(spans[-1][1])}\n{text}\n")
-    dst.write_text("\n".join(lines), encoding="utf-8")
-    return dst, seq
+        rows.append((spans[0][0], spans[-1][1], text))
+    # 切點重修（修修 2026-08-06）：塌縮/細切會製造新的壞斷句（怎麼｜做、蠻｜好奇）
+    # ——重對時之後、定版之前把切點搬回合法語意邊界
+    from shared.subtitle_reboundary import repair_cues
+
+    rows, rb = repair_cues(rows)
+    if rb["moved"]:
+        logger.info(f"{cid}: 切點重修 {rb['moved']} 處（壞斷句搬到合法語意邊界）")
+    # 顯示層定版（修修 2026-08-05）：句尾零標點 + cue 間 ≤3s 空隙補平連續顯示
+    rows, fstats = finalize_cues(rows)
+    if fstats["true_silences"]:
+        logger.info(f"{cid}: >3s 真靜默不補 {len(fstats['true_silences'])} 處（字幕該消失）")
+    for f in fstats.get("bad_boundaries", [])[:5]:
+        logger.warning(f"{cid} 斷句疑點 cue{f['cue']}: …{f['tail']}｜{f['head']}…（{f['reason']}）")
+    blocks = (f"{i}\n{_ts(s)} --> {_ts(e)}\n{text}\n" for i, (s, e, text) in enumerate(rows, 1))
+    dst.write_text("\n".join(blocks), encoding="utf-8")
+    return dst, len(rows)
 
 
 def apply(episode_dir: Path, cid: str) -> dict:

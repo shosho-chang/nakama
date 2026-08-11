@@ -36,6 +36,10 @@ SRT_NAME = "transcript.srt"
 WORDS_NAME = "subs/words.json"
 BACKUP_NAME = "subs/transcript_pre_speaker_split.srt"
 _PAD = 0.05  # cue 邊界與詞時間戳的容差（秒）
+# 切出來的碎片下限：短於 1 frame（30fps ≈ 0.033s）的 cue 會被 Resolve 靜默丟棄
+# ——整句字幕就此消失。安吉集實例：「…真實最重要」在說話者變更處切開，
+# 尾巴「重要」只有 0.02s，timeline item 數比 SRT 少 1。切不出合格碎片就不切。
+_MIN_PIECE_SEC = 0.12
 _TS_RE = re.compile(r"(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})")
 _OPEN, _CLOSE = "《「", "》」"
 
@@ -204,7 +208,11 @@ def split_episode(episode_dir: Path, *, dry_run: bool = False) -> dict:
             if not piece:
                 ok = False
                 break
-            pieces.append((words[idx[a]]["start"], words[idx[b - 1]]["end"], piece))
+            p_start, p_end = words[idx[a]]["start"], words[idx[b - 1]]["end"]
+            if p_end - p_start < _MIN_PIECE_SEC:
+                ok = False  # 碎片過短 → Resolve 會丟掉整句，保留原 cue
+                break
+            pieces.append((p_start, p_end, piece))
             prev_cut = cut
         if not ok or len(pieces) < 2:
             out.append((start, end, text))  # 切不乾淨就保留原樣（保守）

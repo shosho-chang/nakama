@@ -126,11 +126,21 @@ def _render_master(project, timeline, out_dir: Path, name: str) -> Path:
     return out
 
 
-def _set_subtitle_tracks(timeline, enabled: bool) -> int:
-    """開/關全部字幕軌（長片 Q4b：成品不燒字幕）。回軌數供 log。"""
+def _set_subtitle_tracks(resolve, timeline, enabled: bool) -> int:
+    """開/關全部字幕軌（長片 Q4b：成品不燒字幕）。回軌數供 log。
+
+    ⚠️ Resolve 在 **deliver page** 上 SetTrackEnable 會靜默 no-op（回 True 但
+    狀態不變，GetIsTrackEnabled 讀值也不可信）——2026-08-07 安吉三支長片
+    render 完 finally 恢復失效，SL4/SL3 字幕軌卡在關閉。先切 edit page、
+    設完複讀驗證，不符 fail loud。
+    """
+    resolve.OpenPage("edit")
     n = int(timeline.GetTrackCount("subtitle") or 0)
     for i in range(1, n + 1):
         timeline.SetTrackEnable("subtitle", i, enabled)
+    bad = [i for i in range(1, n + 1) if bool(timeline.GetIsTrackEnabled("subtitle", i)) != enabled]
+    if bad:
+        raise SystemExit(f"字幕軌 {bad} 設 enabled={enabled} 未生效——timeline/page 狀態異常，先查")
     return n
 
 
@@ -187,7 +197,7 @@ def _probe(path: Path) -> tuple[float, int]:
     return dur, path.stat().st_size
 
 
-def export_cut(project, episode_dir: Path, cut: dict) -> dict:
+def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
     """單支 cut：render → （短片燒字幕）→ exports/<cut_id>.mp4。"""
     label = timeline_label(cut)
     timeline = _find_timeline(project, label)
@@ -198,12 +208,12 @@ def export_cut(project, episode_dir: Path, cut: dict) -> dict:
 
     if cut["format"] == "long":
         # Q4b：長片成品不燒字幕（CC 另上）。Resolve 會燒模板字幕軌 → 先關。
-        n = _set_subtitle_tracks(timeline, False)
+        n = _set_subtitle_tracks(resolve, timeline, False)
         logger.info("%s: 長片——已暫時關閉 %d 條字幕軌（成品不燒，CC 另上）", cid, n)
         try:
             final = _render_master(project, timeline, out_dir, cid)
         finally:
-            _set_subtitle_tracks(timeline, True)
+            _set_subtitle_tracks(resolve, timeline, True)
     else:
         srt = _latest_tight_srt(episode_dir, cid)
         if srt is None:
@@ -257,7 +267,7 @@ def main(argv: list[str] | None = None) -> int:
 
     results = []
     for cut in cuts:
-        info = export_cut(project, episode_dir, cut)
+        info = export_cut(resolve, project, episode_dir, cut)
         release_id = register_release(
             episode_dir.name,
             info["cut_id"],

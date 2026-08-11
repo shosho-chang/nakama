@@ -76,20 +76,80 @@ script 會做：越界過濾、過度刪減防護（縮短逾半 → 進 QC）�
 再花 API 錢）。只在修修**明確要求**（例如無人值守批次、或指名要 Gemini 仲裁）
 時使用，用前提醒一句成本。
 
-## 字幕 house style（修修 2026-07-25 裁決）
+## 字幕 house style（修修 2026-07-25 + 2026-08-05 裁決）
 
 - **書名／作品名必須《》標出**、**專有名詞／術語必須「」標出**——校正時主動補上
 - 其他標點（逗號句號等）省略，停頓用半形空格
 - 這些規則已寫進 instructions.md 的校正 prompt 與 Pass 2 過濾（《》「」不會被清掉），
   subagent 只要照 instructions 做即可
 
+**顯示層定版兩規則（2026-08-05 裁決——修修做字幕的固定喜好）**：
+
+- **cue 間零空隙**：每句 end 補到次句 start，字幕連續顯示不閃爍。>3s 真靜默
+  例外（沒人講話字幕該消失）——例外必須回報出來，不可靜默吞掉
+- **句尾零標點**：cue 每行行尾不留任何標點；閉合符（」』》））保留、其前標點剝除
+- 實作 `shared/subtitle_finalize.py`，上軌時**自動**套於顯示層副本：
+  resolve-project `_versioned_srt`（主 timeline）、highlight-cut `_segment_srt`
+  （精華 timeline）、cut-tighten `_retimed_srt`（長短片（緊））。
+  **transcript.srt 本體永遠不動**——工作真值必須貼語音（highlight-cut 等靠
+  cue 時間切片，拉長 end 會帶入死氣）
+- 繞過 pipeline 的 SRT（翻譯精選、外部工具產物）上軌前手動套：
+  `python scripts/run_subtitle_finalize.py <srt>`
+- **斷句 gate + 自動重修（2026-08-06 兩輪裁決——「句子被切掉」根除）**：
+
+  | 層 | 模組 | 職責 |
+  |---|---|---|
+  | 偵測 | `subtitle_finalize.boundary_reason` | 六規則判定單一切點 |
+  | 修復 | `subtitle_reboundary.repair_cues` | 把壞切點**搬**到最近的合法語意邊界 |
+
+  **七規則**：孤兒括號（前句以開括號結尾/次句以閉括號開頭）｜次句黏著開頭
+  （的/著/了…）｜前句黏著結尾（的/把/被/一/這/蠻…）｜**前句以代名詞收尾且
+  次句是謂語起手**（我｜覺得——代名詞其實是下句主語）｜**前句以「代名詞＋
+  認知動詞」收尾**（我覺得｜進入——賓語子句被切走）｜**前句以助動詞/連接
+  副詞收尾**（我們要｜繼續、怎麼｜做，詞級判定以免誤傷「可能/機會/需要」；
+  ⚠️「開始/繼續」不收——它們常是本動詞＋受詞，開始｜「數位遊牧」是正常斷法，
+  誤旗標會驅動破壞性修復）｜jieba 詞跨界被切。
+  修復候選除通過七規則外，**括號深度必須為 0**（深度從整集累計，切點永不落
+  在「」《》內）。已接進三個切片點：`_versioned_srt`（完整版）、
+  `run_highlight_cut._segment_srt`、`run_short_tighten._retime_srt`
+  ——**塌縮/細切會製造新的壞斷句，所以重修必須在重對時之後、定版之前**。
+  單獨修既有 SRT：`python scripts/run_subtitle_reboundary.py --srt X --words Y --out Z`
+  （`--no-finalize` 給工作真值用——transcript.srt 不可補空隙）。
+
+  ⚠️ **修復的文字處理鐵律（2026-08-07 安吉 45s「結 婚」慘案定版）：切原文，
+  不重渲染**。第一版把兩句打散成裸字元、用 est_gap 重推所有空格——WhisperX
+  align 拖尾（「結」被拉長 1.1s）讓它在**詞中間**塞出空格（結 婚），還毀掉
+  校正層原有的停頓空格、把開括號孤懸句尾。現版只把原字串在切點剖開搬移，
+  內部空格逐字保留；接縫規則唯一：CJK 相接不加空格、ASCII 相接補一格。
+  `repair_cues` 每次執行 run-time 驗證兩條不變量（裸文字恆等、空格零新增），
+  違反即 raise。**內插時間只准拿來排序停頓候選，永不准拿來生成文字。**
+
+  ⚠️ **根因不是規則不夠，是 jieba 用錯詞典**（2026-08-06 安吉集查出）：
+  `find_bad_boundaries` 原本直接 `import jieba` 吃**內建簡體詞典**，繁中被逐字
+  切碎，才被迫用「HMM=True＋詞頻表過濾」的權宜寫法（HMM 會發明「東西現」類
+  假詞），連「判斷力」都被寫成抓不到的已知限制。掛 `ensure_tw_jieba()` 後
+  HMM=False 即可正確切繁中，假詞與那條限制一起消失。**任何對繁中 jieba.cut
+  的呼叫點都要先 ensure_tw_jieba()。**
+- 出處：2026-08-05 Christina AI 紅利精選——翻譯直產的 SRT 繞過
+  `_process_srt_line`，句尾標點上了 timeline、cue 間空隙閃爍，修修看片抓出
+
 ## QC 自主裁決（修修 2026-07-25 裁示）
 
 **不要把整份 QC 清單丟給修修拍板**——「要我拍板的地方實在太多，我沒那麼多時間」。
 QC 的 uncertain 項目由你自己裁決完，流程：
 
-1. **「聽音檔」= 重開 WhisperX**：對該 cue 裁出 ±1 cue 的音檔片段（從
-   normalized.wav），無 initial_prompt 重辨識，比對「原文 / 建議 / 重聽」三方。
+1. **「聽音檔」= 重開 WhisperX** — 用 `scripts/run_subtitle_relisten.py`：
+
+   ```
+   py -3.10 scripts/run_subtitle_relisten.py "<episode>"                  # 預設掃 qc.md 的 HIGH
+   py -3.10 scripts/run_subtitle_relisten.py "<episode>" --risk medium    # 再掃 MEDIUM
+   ```
+
+   對該 cue 裁出 ±1 cue 的音檔片段（從 normalized.wav），**明確不給
+   initial_prompt** 重辨識（帶原 prompt 重跑只會重現同一個錯），比對
+   「原文 / 建議 / 重聽」三方，落 `subs/relisten.json`。⚠️ 行號吃 raw.srt
+   序號——transcript.srt 經 speaker split / gap fill 後序號已位移。
+   重聽項目多時把 relisten.json 交給 subagent 依裁決規則批次判讀成 delta。
    重疊說話（重聽時句子消失）→ 改裁分軌 mic 軌（stem 比 mix 早約 0.167s，
    `speaker_assign._measure_offset` 可量）
 2. **重聽支持建議 → 直接改**；**重聽兩次仍是原文 → 保留原文**（講者口誤照實

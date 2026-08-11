@@ -18,6 +18,9 @@
     prop_left_pct        — prop_position=left 時的左緣（% of frame，預設 6）
     prop_height_px       — prop 卡高（px，預設 576）
     prop_position        — "center"（雙反應臉夾中）或 "left"（單反應臉在右）
+    prop_y_offset_px     — prop 卡垂直偏移 px（負＝上移；預設 0 置中。
+                           2026-08-05 安吉集：桌上麥克風固定在畫面下緣，
+                           卡上移可讓麥壓在暗底而非卡面）
     frame_style          — plain（預設）/ shards / skew / hybrid
     host_cutout_data_url / guest_cutout_data_url — 透明 PNG data URL（可只給一個）
     host_height_pct / guest_height_pct — cutout 高度 %（預設 108；75% 頭 ≈ 165）
@@ -88,7 +91,7 @@
 
       /* card-layer 帶卡片幾何且 overflow 可見 — 碎片(z -1)藏在卡背後往外爆 */
       #card-layer {
-        position: absolute; top: 50%; z-index: 4;
+        position: absolute; top: calc(50% + var(--prop-dy, 0px)); z-index: 4;
         width: var(--prop-w, 48%); height: var(--prop-h, 576px);
         transform: translateY(-50%);
       }
@@ -191,6 +194,7 @@
         "prop_left_pct":         { "type": "number", "default": 6 },
         "prop_height_px":        { "type": "number", "default": 576 },
         "prop_position":         { "type": "string", "default": "center" },
+        "prop_y_offset_px":      { "type": "number", "default": 0 },
         "frame_style":           { "type": "string", "default": "plain" },
         "shard_edges":           { "type": "string", "default": "sides" },
         "host_cutout_data_url":  { "type": "string", "default": "" },
@@ -271,6 +275,7 @@
       if (vars.prop_width_pct) root.style.setProperty("--prop-w", vars.prop_width_pct + "%");
       if (vars.prop_left_pct !== undefined) root.style.setProperty("--prop-l", vars.prop_left_pct + "%");
       if (vars.prop_height_px) root.style.setProperty("--prop-h", vars.prop_height_px + "px");
+      if (vars.prop_y_offset_px) root.style.setProperty("--prop-dy", vars.prop_y_offset_px + "px");
       if (vars.host_height_pct)  root.style.setProperty("--host-h",  vars.host_height_pct + "%");
       if (vars.guest_height_pct) root.style.setProperty("--guest-h", vars.guest_height_pct + "%");
       for (const [k, cssVar] of [
