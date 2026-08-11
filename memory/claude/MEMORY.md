@@ -1,5 +1,6 @@
 # Memory Index
 
+- [feedback_hitl_at_cheapest_fork.md](feedback_hitl_at_cheapest_fork.md) — **修修的選擇放在成本最低的分叉點：機器排完就給他挑，不要物化完才問**（2026-08-11 安吉三支長片全做完才嫌主題不吸引人）；排序＝per episode、製作＋packaging＝per cut 線性，這個不對稱就是判斷依據
 - [feedback_subtitle_house_style.md](feedback_subtitle_house_style.md) — **字幕三鐵則（2026-07-25 驗收裁決）：《》「」必標其他標點省略（推翻 PR #23 全刪）；斷句禁字數硬切走 cue_builder；時間軸必須＝原始錄影（靜音裁切 opt-in）**
 - [feedback_qc_self_adjudication.md](feedback_qc_self_adjudication.md) — **QC/uncertain 清單自己裁決完（重開 WhisperX = 聽音檔、分軌 stem、派 agent 查證），只升級真無法判定的 <5 項**（修修 2026-07-25：「要我拍板的地方實在太多」）
 - [feedback_subscription_first_no_api_spend.md](feedback_subscription_first_no_api_spend.md) — **互動 pipeline 一律 subscription quota（cowork 派 subagent）；付費 API 呼叫必須明確 opt-in flag**（修修 2026-07-25 裁決；首例 run_subtitle_correct --api/--arbitrate）
