@@ -27,6 +27,7 @@ description: >
 | `transcript_prose.md` | 人讀逐字稿已產（字幕定稿的副產物；缺就補跑，見下節）|
 | Resolve 內已有同名 project | **resolve 段完成**（非全部完成）→ 回報 QC 摘要；QC 裁決後 `--refresh-subtitles`；下一步 highlight-cut |
 | `highlights/candidates.json` | 選段開採完成（mining）→ 續 highlight-cut 評審段 |
+| `highlights/選段候選表.md`（無 winners.json） | 盲審排完、**卡在選段 gate** → 把表貼給修修等他挑（見下方 HITL 第 5 條）|
 | `highlights/winners.json` + `highlights/選段企劃-*.md` | highlight-cut 完成 → 下一步 packaging |
 | `packaging/manifest.json` | packaging 進行中/完成 — 用 `python scripts/packaging_manifest.py status` 判斷該續哪支（見下節），全完成 → 去 gate review |
 
@@ -108,8 +109,13 @@ transcript.srt 的壞邊界（數量詞/「的」結構/專名被拆）→ 產�
 1. **prep 後**：回報裁切秒數；異常大（>60s）請使用者抽聽頭尾
 2. **gen 前**：確認 `refs/` 放好了（訪綱/報告/完整稿）；確認 GPU 注意事項（見 subtitle-gen skill）
 3. **gen 後**：抽 SRT 開頭幾個 cue 給使用者掃一眼再進校正
-4. **correct 後**：完整呈現 `transcript.qc.md` 的「需人工確認」清單——這是最終 HITL gate
-5. **packaging 後**：告知 gate URL 即停 — approve 在 Web UI 做，不在對話裡代決
+4. **correct 後**：完整呈現 `transcript.qc.md` 的「需人工確認」清單——這是字幕的最終 HITL gate
+5. **選段盲審後（必停，修修 2026-08-11 裁決）**：跑
+   `python scripts/run_cut_shortlist.py <episode> --format long` 出候選表貼給修修，
+   **等他指定 id** 才 `--pick` 寫 winners.json 進製作。理由：panel 讀逐字稿評的是素材強度，
+   不是成片吸引力也不是他的品味；做完才發現主題不吸引人，製作＋packaging 的成本已經付掉
+   （安吉集實例）。詳見 highlight-cut skill Step 2.4
+6. **packaging 後**：告知 gate URL 即停 — approve 在 Web UI 做，不在對話裡代決
 
 ## 原則
 
