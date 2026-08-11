@@ -95,7 +95,19 @@ def _find_timeline(project, label: str):
 
 
 def _render_master(project, timeline, out_dir: Path, name: str) -> Path:
-    """Resolve render queue 出全解析 H.264 mp4（timeline 原生解析度）。"""
+    """Resolve render queue 出全解析 H.264 mp4（timeline 原生解析度）。
+
+    ⚠️ 三道驗證缺一不可（2026-08-11 安吉 SL7 事故）：舊版只檢查「檔案存在嗎」，
+    而舊檔本來就在 → render job **Failed 也照樣回報成功**，還把上一版重新登錄
+    進 DB。當時的 job error 是：
+
+        A read-only file SL7.mp4 already exists. Please select another file name.
+
+    真正的原因是修修正在審核頁預覽那支影片，`/bridge/publish/media/...` 的
+    FileResponse 握著檔案 handle，Resolve 寫不進去。所以：讀 job 狀態
+    （**必須在 DeleteRenderJob 之前**）、檔案要存在、而且 mtime 要比 render
+    開始時新——三道都過才算數。
+    """
     w = int(timeline.GetSetting("timelineResolutionWidth"))
     h = int(timeline.GetSetting("timelineResolutionHeight"))
     project.SetCurrentRenderFormatAndCodec("mp4", "H264")
@@ -109,6 +121,9 @@ def _render_master(project, timeline, out_dir: Path, name: str) -> Path:
             "FormatHeight": h,
         }
     )
+    out = out_dir / f"{name}.mp4"
+    before_mtime = out.stat().st_mtime if out.exists() else 0.0
+
     jid = project.AddRenderJob()
     if not jid:
         raise SystemExit("AddRenderJob 失敗")
@@ -119,10 +134,23 @@ def _render_master(project, timeline, out_dir: Path, name: str) -> Path:
         time.sleep(2)
     else:
         raise SystemExit(f"render 逾時（>{RENDER_TIMEOUT_SEC}s）")
-    project.DeleteRenderJob(jid)
-    out = out_dir / f"{name}.mp4"
+
+    status = project.GetRenderJobStatus(jid) or {}
+    project.DeleteRenderJob(jid)  # 狀態一定要在刪 job 前讀
+    job_status = status.get("JobStatus")
+    if job_status and job_status != "Complete":
+        raise SystemExit(
+            f"render job {job_status}: {status.get('Error') or '(Resolve 沒給錯誤訊息)'}"
+            f"\n  → 「read-only file already exists」通常是**有人正握著這個檔**："
+            f"審核頁在預覽這支影片、或播放器開著 {out.name}。關掉再重跑。"
+        )
     if not out.exists():
         raise SystemExit(f"render 完成但檔案不存在: {out}")
+    if out.stat().st_mtime <= before_mtime:
+        raise SystemExit(
+            f"render 回報完成但 {out.name} 沒有更新（mtime 沒變）——舊檔還在原地。"
+            f"\n  → 同上：檔案被佔用時 Resolve 會靜默失敗，不要拿舊檔當新成品。"
+        )
     return out
 
 
