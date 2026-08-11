@@ -1,5 +1,6 @@
 """gateway/handlers 單元測試（Nami agent-loop 版本）。"""
 
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -10,6 +11,7 @@ from gateway.handlers.nami import (
     NAMI_AGENT_FLOW,
     NamiHandler,
     _build_context_preamble,
+    _dated_title_suggestion,
     _extract_frontmatter,
     _slugify,
     _strip_context_preamble,
@@ -1734,6 +1736,35 @@ def test_slugify_long():
     assert len(_slugify(long_title)) <= 60
 
 
+def test_dated_title_suggestion_weekly_recurring_uses_iso_week():
+    """「寫電子報」是週期性任務（修修 2026-08-10 裁決）→ 帶 ISO 週號，不帶日期。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    now = datetime(2026, 8, 10, 11, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    assert _dated_title_suggestion("寫電子報", now) == "寫電子報 26W33"
+
+
+def test_dated_title_suggestion_year_boundary_week():
+    """跨年週（ISO week 可能落在前一年最後一週或後一年第一週）算法要用
+    isocalendar() 的 ISO year，不是曆年 year。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    # 2027-01-01 是週五，屬於 ISO 2026 年第 53 週
+    now = datetime(2027, 1, 1, 9, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    assert _dated_title_suggestion("寫電子報", now) == "寫電子報 26W53"
+
+
+def test_dated_title_suggestion_non_recurring_uses_date():
+    """不在 allowlist 的任務 → 維持原本的 YYYY-MM-DD 格式。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    now = datetime(2026, 8, 10, 11, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    assert _dated_title_suggestion("訪問某人", now) == "訪問某人 2026-08-10"
+
+
 def test_extract_frontmatter_valid():
     content = "---\ntitle: test\nstatus: to-do\n---\n\nbody"
     fm = _extract_frontmatter(content)
@@ -2815,7 +2846,8 @@ def test_calendar_task_conflict_active_task_suggests_schedule_entry():
 
 
 def test_calendar_task_conflict_done_task_suggests_dated_title():
-    """撞到已完成 task → 新一輪工作，引導帶日期的新標題（PR #1122，寫電子報事故）。"""
+    """撞到已完成 task → 新一輪工作，引導帶日期的新標題（PR #1122，寫電子報事故）。
+    「寫電子報」是週期性任務（修修 2026-08-10 裁決），新標題用 ISO 週號而非日期。"""
     fake_task_file = SimpleNamespace(name="寫電子報.md", stem="寫電子報")
     content = "---\ntitle: 寫電子報\nstatus: done\ntags: [task]\n---\n"
     with (
@@ -2829,13 +2861,14 @@ def test_calendar_task_conflict_done_task_suggests_dated_title():
         )
     assert out.is_error
     assert "已完成" in out.content
-    assert "寫電子報 20" in out.content  # 帶日期的新標題示例
+    assert re.search(r"寫電子報 \d{2}W\d{2}", out.content)  # 帶 ISO 週號的新標題示例
     assert "schedule_task_entry" not in out.content
     mock_create.assert_not_called()
 
 
 def test_calendar_task_conflict_with_archived_task_suggests_dated_title():
-    """撞到 Archive/ 內的同名 task（歸檔的都是 done）→ 帶日期新標題（PR #1127）。"""
+    """撞到 Archive/ 內的同名 task（歸檔的都是 done）→ 帶日期新標題（PR #1127）。
+    「寫電子報」是週期性任務，新標題用 ISO 週號。"""
 
     def fake_list_files(directory):
         if directory == "TaskNotes/Archive":
@@ -2854,7 +2887,27 @@ def test_calendar_task_conflict_with_archived_task_suggests_dated_title():
         )
     assert out.is_error
     assert "已完成" in out.content
-    assert "寫電子報 20" in out.content
+    assert re.search(r"寫電子報 \d{2}W\d{2}", out.content)
+    mock_create.assert_not_called()
+
+
+def test_calendar_task_conflict_non_recurring_title_keeps_date_suffix():
+    """非 allowlist 的一次性撞名任務 → 維持原本的 YYYY-MM-DD 帶日期新標題，
+    不要被「寫電子報」的週號規則誤套用到所有任務（修修 2026-08-10 裁決：只對
+    明確週期性的任務生效）。"""
+    fake_task_file = SimpleNamespace(name="訪問某人.md", stem="訪問某人")
+    content = "---\ntitle: 訪問某人\nstatus: done\ntags: [task]\n---\n"
+    with (
+        patch("gateway.handlers.nami.list_files", return_value=[fake_task_file]),
+        patch("gateway.handlers.nami.read_page", return_value=content),
+        patch("gateway.handlers.nami.google_calendar.create_event") as mock_create,
+    ):
+        out = NamiHandler()._execute_tool(
+            "create_calendar_event",
+            {"title": "訪問某人", "start": "2026-07-30T14:00:00", "end": "2026-07-30T16:00:00"},
+        )
+    assert out.is_error
+    assert re.search(r"訪問某人 \d{4}-\d{2}-\d{2}", out.content)
     mock_create.assert_not_called()
 
 
