@@ -2705,6 +2705,95 @@ def test_schedule_task_entry_blank_time_is_all_day():
     assert seen["all_day"] is True
 
 
+def test_schedule_task_entry_archived_duplicate_blocks_write():
+    """schedule_task_entry 找到的 task 若跟 Archive/ 裡「同一份」（dateCreated 相同）
+    已完成的紀錄撞了，代表 Tasks/ 殘留檔——擋下不准往上加 plan，不然會再踩一次
+    「vault sync 衝突、calendar 有 vault 沒有」（2026-08-10 寫電子報事故）。"""
+    from shared import calendar_scheduler
+
+    task_content = (
+        "---\ntitle: 寫電子報\nstatus: to-do\ndateCreated: '2026-06-17T03:41:33.278Z'\n---\n"
+    )
+    archive_content = (
+        "---\ntitle: 寫電子報\nstatus: done\ndateCreated: '2026-06-17T03:41:33.278Z'\n---\n"
+    )
+
+    def fake_read_page(rel):
+        if rel == "TaskNotes/Tasks/寫電子報.md":
+            return task_content
+        if rel == "TaskNotes/Archive/寫電子報.md":
+            return archive_content
+        return None
+
+    fake_task = SimpleNamespace(title="寫電子報", est_pomodoros=4)
+    archive_file = SimpleNamespace(name="寫電子報.md", stem="寫電子報")
+
+    with (
+        patch("gateway.handlers.nami.read_page", side_effect=fake_read_page),
+        patch(
+            "gateway.handlers.nami.list_files",
+            side_effect=lambda d: [archive_file] if d == "TaskNotes/Archive" else [],
+        ),
+        patch("shared.config.get_vault_path", return_value=Path("/tmp/vault")),
+        patch(
+            "shared.weekly_indexer.WeeklyIndexer",
+            return_value=SimpleNamespace(find_task=lambda s: fake_task),
+        ),
+        patch.object(calendar_scheduler, "schedule_entry") as mock_schedule,
+    ):
+        out = NamiHandler()._execute_tool(
+            "schedule_task_entry",
+            {"task_slug": "寫電子報", "date": "2026-08-10", "time": "10:30"},
+        )
+    assert out.is_error
+    assert "同一份筆記" in out.content
+    assert "create_calendar_event" in out.content
+    mock_schedule.assert_not_called()
+
+
+def test_schedule_task_entry_same_title_different_dateCreated_is_not_blocked():
+    """同標題但 dateCreated 不同（合法的不同輪次任務，不是殘留檔）→ 不擋。"""
+    from shared import calendar_scheduler
+
+    task_content = (
+        "---\ntitle: 寫電子報\nstatus: to-do\ndateCreated: '2026-08-01T00:00:00.000Z'\n---\n"
+    )
+    archive_content = (
+        "---\ntitle: 寫電子報\nstatus: done\ndateCreated: '2026-06-17T03:41:33.278Z'\n---\n"
+    )
+
+    def fake_read_page(rel):
+        if rel == "TaskNotes/Tasks/寫電子報.md":
+            return task_content
+        if rel == "TaskNotes/Archive/寫電子報.md":
+            return archive_content
+        return None
+
+    fake_task = SimpleNamespace(title="寫電子報", est_pomodoros=4)
+    archive_file = SimpleNamespace(name="寫電子報.md", stem="寫電子報")
+    outcome = SimpleNamespace(calendar_status=calendar_scheduler.CREATED, event_id="evt_ok")
+
+    with (
+        patch("gateway.handlers.nami.read_page", side_effect=fake_read_page),
+        patch(
+            "gateway.handlers.nami.list_files",
+            side_effect=lambda d: [archive_file] if d == "TaskNotes/Archive" else [],
+        ),
+        patch("shared.config.get_vault_path", return_value=Path("/tmp/vault")),
+        patch(
+            "shared.weekly_indexer.WeeklyIndexer",
+            return_value=SimpleNamespace(find_task=lambda s: fake_task),
+        ),
+        patch.object(calendar_scheduler, "schedule_entry", return_value=outcome) as mock_schedule,
+    ):
+        out = NamiHandler()._execute_tool(
+            "schedule_task_entry",
+            {"task_slug": "寫電子報", "date": "2026-08-10", "time": "10:30"},
+        )
+    assert not out.is_error
+    mock_schedule.assert_called_once()
+
+
 def test_calendar_task_conflict_active_task_suggests_schedule_entry():
     """撞到進行中 task → 引導 schedule_task_entry 附 slug，不再引導 silent 降級（PR #1122）。"""
     fake_task_file = SimpleNamespace(name="讀書會.md", stem="讀書會")
