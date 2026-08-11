@@ -1863,14 +1863,16 @@ class NamiHandler(BaseHandler):
             if archived is not None:
                 archived_rel, archived_fm, _ = archived
                 if archived_fm.get("dateCreated") == task_created:
-                    today = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d")
+                    suggestion = _dated_title_suggestion(
+                        task.title, datetime.now(ZoneInfo("Asia/Taipei"))
+                    )
                     return _ToolOutcome(
                         content=(
                             f"「{task.title}」（{slug}）跟 {archived_rel} 是同一份筆記"
                             "（歸檔沒清乾淨的殘留，dateCreated 相同），不能再往上加 plan——"
                             "會再踩一次 vault 跟 calendar 脫鉤的老問題（2026-08-10 寫電子報事故）。"
                             f"請改用 create_calendar_event 建一個帶日期的新標題"
-                            f"（例如「{task.title} {today}」）。"
+                            f"（例如「{suggestion}」）。"
                         ),
                         is_error=True,
                     )
@@ -1965,12 +1967,14 @@ class NamiHandler(BaseHandler):
                     or bool(existing_fm.get("✅"))
                 )
                 if is_done:
-                    today = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d")
+                    suggestion = _dated_title_suggestion(
+                        title, datetime.now(ZoneInfo("Asia/Taipei"))
+                    )
                     return _ToolOutcome(
                         content=(
                             f"Task 標題撞名：vault 內已有同名 task「{existing_title}」，"
                             "但它已完成——這應該是新一輪的工作。"
-                            f"請用帶日期的新標題重試（例如「{title} {today}」），"
+                            f"請用帶日期的新標題重試（例如「{suggestion}」），"
                             "會正常建立新 task + calendar event。"
                         ),
                         is_error=True,
@@ -3132,6 +3136,21 @@ def _slugify(title: str) -> str:
     slug = re.sub(r"[^\w\u4e00-\u9fff\-]", " ", title)
     slug = re.sub(r"\s+", "-", slug.strip())
     return slug[:60] or "untitled"
+
+
+# 撞名分流引導（is_done 分支）預設用 YYYY-MM-DD 帶日期新標題，但每週固定
+# 節奏的任務用 ISO 週號比日期更好認、更好比對「這是哪一週那一篇」（修修
+# 2026-08-10 裁決，例：「寫電子報 26W33」）。只對這個明確 allowlist 生效——
+# 一次性撞名（如「訪問某人」）沒有週期性，日期比週號更直覺，不要一概而論。
+_WEEKLY_RECURRING_TASK_TITLES = {"寫電子報"}
+
+
+def _dated_title_suggestion(title: str, now: datetime) -> str:
+    """撞名分流訊息裡建議的新標題後綴：週期性任務用 ISO 週號，其餘用日期。"""
+    if title.strip() in _WEEKLY_RECURRING_TASK_TITLES:
+        iso = now.isocalendar()
+        return f"{title} {iso.year % 100:02d}W{iso.week:02d}"
+    return f"{title} {now:%Y-%m-%d}"
 
 
 def _stringify_fm_dates(fm: dict) -> dict:
