@@ -20,6 +20,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Cookie, Form, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
@@ -53,8 +54,22 @@ def _asset_version() -> str:
 
 
 def _require_auth(auth_cookie: str | None) -> None:
+    """子資源（media / thumb / status / POST）用：未登入回 401 JSON。
+
+    ⚠️ 參數名必須叫 `nakama_auth` — FastAPI 的 `Cookie()` 以**參數名**當 cookie 名，
+    而 `/login` 發的是 `nakama_auth`（thousand_sunny/auth.py::set_auth_cookie）。
+    本 router 原本宣告成 `auth`，等於讀一個沒人會設的 cookie → 登入後照樣 401，
+    審核頁在瀏覽器裡從來打不開（2026-08-11 修修實際撞到）。
+    """
     if not check_auth(auth_cookie):
         raise HTTPException(status_code=401, detail="unauthorized")
+
+
+def _login_redirect(request: Request) -> RedirectResponse:
+    """**頁面**請求未登入時導去 /login，不要回 401 JSON——瀏覽器看到的是死路。
+
+    與 bridge 其餘頁面（bridge_index 等）同一個慣例。"""
+    return RedirectResponse(f"/login?next={quote(request.url.path, safe='/')}", status_code=302)
 
 
 def _yt_target(episode: str, cut_id: str) -> tuple[dict, dict]:
@@ -76,9 +91,12 @@ def taipei_to_iso(dt_local: str) -> str:
     return dt.isoformat() + "+08:00"
 
 
-@page_router.get("", response_class=HTMLResponse)
-def publish_list(request: Request, auth: str | None = Cookie(default=None)) -> HTMLResponse:
-    _require_auth(auth)
+@page_router.get("", response_class=HTMLResponse, response_model=None)
+def publish_list(
+    request: Request, nakama_auth: str | None = Cookie(None)
+) -> HTMLResponse | RedirectResponse:
+    if not check_auth(nakama_auth):
+        return _login_redirect(request)
     releases = list_releases()
     # 列表主顯示 = 發布標題（修修：cut 編號沒有意義）；未回填時退回工作代號
     for r in releases:
@@ -116,11 +134,12 @@ def _ab_alternates(episode: str, cut_id: str, current_title: str | None) -> list
         return []  # packaging 交接檔缺漏不擋審核頁——A/B 是加值不是必需
 
 
-@page_router.get("/{episode}/{cut_id}", response_class=HTMLResponse)
+@page_router.get("/{episode}/{cut_id}", response_class=HTMLResponse, response_model=None)
 def publish_cut(
-    episode: str, cut_id: str, request: Request, auth: str | None = Cookie(default=None)
-) -> HTMLResponse:
-    _require_auth(auth)
+    episode: str, cut_id: str, request: Request, nakama_auth: str | None = Cookie(None)
+) -> HTMLResponse | RedirectResponse:
+    if not check_auth(nakama_auth):
+        return _login_redirect(request)
     rel, t = _yt_target(episode, cut_id)
     thumb_exists = (
         bool(t.get("thumbnail_path")) and (get_vault_path() / t["thumbnail_path"]).exists()
@@ -151,9 +170,9 @@ def publish_cut(
 
 @page_router.get("/media/{episode}/{cut_id}")
 def publish_media(
-    episode: str, cut_id: str, auth: str | None = Cookie(default=None)
+    episode: str, cut_id: str, nakama_auth: str | None = Cookie(None)
 ) -> FileResponse:
-    _require_auth(auth)
+    _require_auth(nakama_auth)
     rel, _ = _yt_target(episode, cut_id)
     p = Path(rel["file_path"])
     if not p.exists():
@@ -163,9 +182,9 @@ def publish_media(
 
 @page_router.get("/thumb/{episode}/{cut_id}")
 def publish_thumb(
-    episode: str, cut_id: str, auth: str | None = Cookie(default=None)
+    episode: str, cut_id: str, nakama_auth: str | None = Cookie(None)
 ) -> FileResponse:
-    _require_auth(auth)
+    _require_auth(nakama_auth)
     _, t = _yt_target(episode, cut_id)
     if not t.get("thumbnail_path"):
         raise HTTPException(status_code=404, detail="無縮圖")
@@ -176,10 +195,10 @@ def publish_thumb(
 
 
 @page_router.get("/vault-thumb")
-def publish_vault_thumb(path: str, auth: str | None = Cookie(default=None)) -> FileResponse:
+def publish_vault_thumb(path: str, nakama_auth: str | None = Cookie(None)) -> FileResponse:
     """A/B 備用縮圖預覽。只放行 vault Attachments/packaging/ 下的 png——
     resolve 後驗前綴，擋 path traversal。"""
-    _require_auth(auth)
+    _require_auth(nakama_auth)
     vault = get_vault_path().resolve()
     allowed = (vault / "Attachments" / "packaging").resolve()
     p = (vault / path).resolve()
@@ -197,9 +216,9 @@ def publish_save(
     title: str = Form(...),
     description: str = Form(...),
     publish_at_local: str = Form(""),
-    auth: str | None = Cookie(default=None),
+    nakama_auth: str | None = Cookie(None),
 ) -> RedirectResponse:
-    _require_auth(auth)
+    _require_auth(nakama_auth)
     _, t = _yt_target(episode, cut_id)
     if t["status"] in ("uploading", "uploaded", "published"):
         raise HTTPException(status_code=409, detail="已上傳/上傳中——文案鎖定")
@@ -222,9 +241,9 @@ def publish_save(
 
 @page_router.post("/{episode}/{cut_id}/approve-upload")
 def publish_approve_upload(
-    episode: str, cut_id: str, auth: str | None = Cookie(default=None)
+    episode: str, cut_id: str, nakama_auth: str | None = Cookie(None)
 ) -> RedirectResponse:
-    _require_auth(auth)
+    _require_auth(nakama_auth)
     rel, t = _yt_target(episode, cut_id)
     if t["status"] in ("uploading", "uploaded", "published"):
         raise HTTPException(status_code=409, detail="已上傳/上傳中")
@@ -254,9 +273,9 @@ def publish_approve_upload(
 
 @page_router.get("/{episode}/{cut_id}/status")
 def publish_status(
-    episode: str, cut_id: str, auth: str | None = Cookie(default=None)
+    episode: str, cut_id: str, nakama_auth: str | None = Cookie(None)
 ) -> JSONResponse:
-    _require_auth(auth)
+    _require_auth(nakama_auth)
     _, t = _yt_target(episode, cut_id)
     progress = None
     if t["status"] == "uploading":
