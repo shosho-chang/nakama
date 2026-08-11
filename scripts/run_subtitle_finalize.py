@@ -30,7 +30,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-o", "--out", help="輸出路徑（預設 <in>_display.srt）")
     parser.add_argument("--in-place", action="store_true", help="原地覆寫來源檔")
     parser.add_argument(
-        "--gap-close-max", type=float, default=3.0,
+        "--gap-close-max",
+        type=float,
+        default=3.0,
         help="補平上限秒數；更長視為真靜默不補（預設 3.0）",
     )
     args = parser.parse_args(argv)
@@ -44,7 +46,12 @@ def main(argv: list[str] | None = None) -> int:
             "不可原地 gap close。上軌時 resolve-project 會自動在顯示層副本套定版。"
         )
         return 1
-    dst = src if args.in_place else Path(args.out) if args.out else src.with_name(f"{src.stem}_display.srt")
+    if args.in_place:
+        dst = src
+    elif args.out:
+        dst = Path(args.out)
+    else:
+        dst = src.with_name(f"{src.stem}_display.srt")
     stats = finalize_srt_file(src, dst, gap_close_max=args.gap_close_max)
     print(
         f"{dst.name}: {stats['cues']} cues | 尾標點剝 {stats['stripped']} 句 | "

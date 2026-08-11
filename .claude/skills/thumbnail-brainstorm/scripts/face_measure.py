@@ -58,7 +58,7 @@ SIDE_ZONE = 0.30  # 左右 30% 畫寬內的臉才算 host/guest（中央 prop �
 def _landmarker(num_faces: int):
     if not MODEL_PATH.is_file():
         raise SystemExit(
-            f"缺模型 {MODEL_PATH}——下載：curl -L -o \"{MODEL_PATH}\" "
+            f'缺模型 {MODEL_PATH}——下載：curl -L -o "{MODEL_PATH}" '
             "https://storage.googleapis.com/mediapipe-models/face_landmarker/"
             "face_landmarker/float16/latest/face_landmarker.task"
         )
@@ -85,8 +85,13 @@ def _face_metrics(lms, w: int, h: int) -> dict:
     ey = (lms[IRIS_L].y + lms[IRIS_R].y) / 2 * h
     cy = lms[CHIN].y * h
     iod = float(np.hypot((lms[IRIS_L].x - lms[IRIS_R].x) * w, (lms[IRIS_L].y - lms[IRIS_R].y) * h))
-    return {"eye_x": round(ex, 1), "eye": round(ey, 1), "chin": round(cy, 1),
-            "face_h": round(cy - ey, 1), "iod": round(iod, 1)}
+    return {
+        "eye_x": round(ex, 1),
+        "eye": round(ey, 1),
+        "chin": round(cy, 1),
+        "face_h": round(cy - ey, 1),
+        "iod": round(iod, 1),
+    }
 
 
 def _alpha_crown(alpha: np.ndarray) -> tuple[int, tuple[int, int]]:
@@ -144,7 +149,9 @@ def cmd_cutouts(args) -> int:
             "head_cols": [c0, c1],
             "iod": m["iod"],
             "eye_x": m["eye_x"],
-            "_measured": f"{args.date} face_measure.py（mediapipe iris/chin + alpha crown {CROWN_FRAC:.0%}）",
+            "_measured": (
+                f"{args.date} face_measure.py（mediapipe iris/chin + alpha crown {CROWN_FRAC:.0%}）"
+            ),
             "_head_top_method": "alpha 寬度達前60%峰值 35% 的首列（程式量測，非目測）",
         }
         deltas = {
@@ -227,12 +234,15 @@ def cmd_render(args) -> int:
                 sides[role] = m
         missing = {"host", "guest"} - set(sides)
         if missing:
-            raise SystemExit(f"{Path(png).name}: 偵測不到 {missing}（左右 {SIDE_ZONE:.0%} 區內無臉）")
+            raise SystemExit(
+                f"{Path(png).name}: 偵測不到 {missing}（左右 {SIDE_ZONE:.0%} 區內無臉）"
+            )
         per_png[Path(png).name] = sides
         r = sides["guest"]["face_h"] / sides["host"]["face_h"]
         print(
             f"{Path(png).name}: host 臉高 {sides['host']['face_h']} eye@{sides['host']['eye']} | "
-            f"guest 臉高 {sides['guest']['face_h']} eye@{sides['guest']['eye']} | guest/host {r:.3f}"
+            f"guest 臉高 {sides['guest']['face_h']} eye@{sides['guest']['eye']} | "
+            f"guest/host {r:.3f}"
         )
         if expected:
             for role in ("host", "guest"):
@@ -279,11 +289,19 @@ def main() -> int:
     c.add_argument("--date", default="2026-08-05")
     r = sub.add_parser("render")
     r.add_argument("--png", action="append", required=True)
-    r.add_argument("--spec", action="append", help="與 --png 一一對應；給了就多驗「實測眼位 vs solver 預測」")
+    r.add_argument(
+        "--spec",
+        action="append",
+        help="與 --png 一一對應；給了就多驗「實測眼位 vs solver 預測」",
+    )
     r.add_argument("--manifest", help="--spec 重算預測用")
     r.add_argument("--canvas-h", type=float, default=720)
-    r.add_argument("--host-ratio-target", type=float, default=1.0,
-                   help="guest/host 臉高比目標（= solver 的 guest_face_boost 感知校準值）")
+    r.add_argument(
+        "--host-ratio-target",
+        type=float,
+        default=1.0,
+        help="guest/host 臉高比目標（= solver 的 guest_face_boost 感知校準值）",
+    )
     args = ap.parse_args()
     return cmd_cutouts(args) if args.cmd == "cutouts" else cmd_render(args)
 

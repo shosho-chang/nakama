@@ -138,9 +138,7 @@ def _set_subtitle_tracks(resolve, timeline, enabled: bool) -> int:
     n = int(timeline.GetTrackCount("subtitle") or 0)
     for i in range(1, n + 1):
         timeline.SetTrackEnable("subtitle", i, enabled)
-    bad = [
-        i for i in range(1, n + 1) if bool(timeline.GetIsTrackEnabled("subtitle", i)) != enabled
-    ]
+    bad = [i for i in range(1, n + 1) if bool(timeline.GetIsTrackEnabled("subtitle", i)) != enabled]
     if bad:
         raise SystemExit(f"字幕軌 {bad} 設 enabled={enabled} 未生效——timeline/page 狀態異常，先查")
     return n

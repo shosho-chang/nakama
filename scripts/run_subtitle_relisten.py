@@ -126,9 +126,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     logger.info(f"重聽 {len(targets)} 個 cue（context ±{args.context}）")
 
-    from shared.transcriber import _get_asr_model  # noqa: E402
-
     import whisperx  # noqa: E402
+
+    from shared.transcriber import _get_asr_model  # noqa: E402
 
     # ⚠️ initial_prompt 明確給空字串：帶原 prompt 重跑會重現同一個偏誤
     model = _get_asr_model(args.model, initial_prompt="")
@@ -142,9 +142,25 @@ def main(argv: list[str] | None = None) -> int:
             t0, t1 = cues[lo]["start"], cues[hi]["end"]
             clip = Path(td) / f"c{seq}.wav"
             subprocess.run(
-                ["ffmpeg", "-y", "-v", "error", "-i", str(audio), "-ss", f"{t0:.3f}",
-                 "-t", f"{max(0.4, t1 - t0):.3f}", "-ac", "1", "-ar", "16000", str(clip)],
-                check=True, capture_output=True,
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-v",
+                    "error",
+                    "-i",
+                    str(audio),
+                    "-ss",
+                    f"{t0:.3f}",
+                    "-t",
+                    f"{max(0.4, t1 - t0):.3f}",
+                    "-ac",
+                    "1",
+                    "-ar",
+                    "16000",
+                    str(clip),
+                ],
+                check=True,
+                capture_output=True,
             )
             tr = model.transcribe(whisperx.load_audio(str(clip)), batch_size=8, language="zh")
             heard = " ".join(s.get("text", "").strip() for s in tr.get("segments") or []).strip()
@@ -152,7 +168,9 @@ def main(argv: list[str] | None = None) -> int:
                 "line": seq,
                 "risk": t.get("risk"),
                 "window": [round(t0, 2), round(t1, 2)],
-                "context_original": " / ".join(cues[c]["text"] for c in range(lo, hi + 1) if c in cues),
+                "context_original": " / ".join(
+                    cues[c]["text"] for c in range(lo, hi + 1) if c in cues
+                ),
                 "original": t.get("original") or cues[seq]["text"],
                 "suggestion": t.get("suggestion"),
                 "reason": t.get("reason"),

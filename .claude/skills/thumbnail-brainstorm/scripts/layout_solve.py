@@ -297,10 +297,18 @@ def main() -> int:
     d.add_argument("--guest", required=True)
     d.add_argument("--canvas-h", type=float, default=720)
     d.add_argument("--canvas-w", type=float, default=1280)
-    d.add_argument("--guest-face-boost", type=float, default=1.0,
-                   help="感知校準，per-pairing 修修拍板後鎖定（謝伯讓 1.05；安吉 1.0）")
-    d.add_argument("--face-target-frac", type=float, default=0.347,
-                   help="臉高的畫布佔比目標（0.347 = 謝伯讓定案實測 250px@720）")
+    d.add_argument(
+        "--guest-face-boost",
+        type=float,
+        default=1.0,
+        help="感知校準，per-pairing 修修拍板後鎖定（謝伯讓 1.05；安吉 1.0）",
+    )
+    d.add_argument(
+        "--face-target-frac",
+        type=float,
+        default=0.347,
+        help="臉高的畫布佔比目標（0.347 = 謝伯讓定案實測 250px@720）",
+    )
     d.add_argument("--clip-frac", type=float, default=0.08)
     d.add_argument("--outward-shift-pct", type=float, default=5.0)
     d.add_argument("--host-expr", default=None, help="表情版 cutout（繼承 --host 的 scale）")

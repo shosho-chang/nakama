@@ -9,7 +9,8 @@
 用法：
     python scripts/run_audio_prep.py "G:/footages/20260723 謝伯讓"
     python scripts/run_audio_prep.py <episode> --no-auphonic   # 只做靜音裁切（測試用）
-    python scripts/run_audio_prep.py <episode> --pre-processed <已處理檔>  # 手動下載的 Auphonic 輸出
+    # 手動下載的 Auphonic 輸出
+    python scripts/run_audio_prep.py <episode> --pre-processed <已處理檔>
 """
 
 from __future__ import annotations
@@ -92,9 +93,7 @@ def run_prep(
         if not pre_processed.is_file():
             raise FileNotFoundError(f"--pre-processed 檔案不存在: {pre_processed}")
         logger.info(f"已處理音檔: {pre_processed}（跳過 Auphonic 上傳）")
-        processed = _align_trim(
-            pre_processed, source, _env_float("AUPHONIC_JINGLE_SECONDS", 6.0)
-        )
+        processed = _align_trim(pre_processed, source, _env_float("AUPHONIC_JINGLE_SECONDS", 6.0))
         if processed != pre_processed:
             intermediates.append(processed)
     elif use_auphonic:
