@@ -122,6 +122,8 @@ def test_sample_happy_path_passes_window_to_funnel(monkeypatch, tmp_path):
 def test_finalize_names_file_with_emotion(monkeypatch, tmp_path):
     vault = tmp_path / "vault"
     monkeypatch.setenv("VAULT_PATH", str(vault))
+    episode_dir = tmp_path / "20260723 xieboran"
+    episode_dir.mkdir()
     frame = tmp_path / "picked.png"
     frame.write_bytes(b"png")
 
@@ -137,7 +139,13 @@ def test_finalize_names_file_with_emotion(monkeypatch, tmp_path):
 
     dst = asyncio.run(
         guest_cutout.finalize(
-            frame, "思考", "20260723-xieboran", 2, engine="hyperframes", grade=False
+            frame,
+            "思考",
+            "20260723-xieboran",
+            2,
+            episode_dir=episode_dir,
+            engine="hyperframes",
+            grade=False,
         )
     )
     assert (
@@ -150,6 +158,8 @@ def test_finalize_names_file_with_emotion(monkeypatch, tmp_path):
         / "guest_v2_thoughtful.png"
     )
     assert dst.exists()
+    # 雙落點：vault 是 canonical，episode 資料夾是可見性鏡射（修修 2026-08-06）
+    assert (episode_dir / "packaging" / "cutouts" / "guest_v2_thoughtful.png").exists()
 
 
 def test_finalize_rejects_unknown_emotion(tmp_path, monkeypatch):
@@ -157,7 +167,7 @@ def test_finalize_rejects_unknown_emotion(tmp_path, monkeypatch):
     frame = tmp_path / "picked.png"
     frame.write_bytes(b"png")
     with pytest.raises(ValueError):
-        asyncio.run(guest_cutout.finalize(frame, "憂鬱", "ep", 1))
+        asyncio.run(guest_cutout.finalize(frame, "憂鬱", "ep", 1, episode_dir=tmp_path))
 
 
 def _real_png(path: Path, w: int = 8, h: int = 8) -> None:
@@ -175,6 +185,8 @@ def test_finalize_host_role_crop_flip_grade(monkeypatch, tmp_path):
 
     vault = tmp_path / "vault"
     monkeypatch.setenv("VAULT_PATH", str(vault))
+    episode_dir = tmp_path / "ep-x-dir"
+    episode_dir.mkdir()
     frame = tmp_path / "picked.png"
     _real_png(frame)
 
@@ -184,7 +196,14 @@ def test_finalize_host_role_crop_flip_grade(monkeypatch, tmp_path):
 
     dst = asyncio.run(
         guest_cutout.finalize(
-            frame, "認真", "ep-x", 1, role="host", crop=(0.0, 0.0, 0.5, 0.5), flip=True
+            frame,
+            "認真",
+            "ep-x",
+            1,
+            episode_dir=episode_dir,
+            role="host",
+            crop=(0.0, 0.0, 0.5, 0.5),
+            flip=True,
         )
     )
     assert dst.name == "host_v1_serious.png"

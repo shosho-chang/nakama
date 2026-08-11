@@ -149,14 +149,20 @@ def segment_to_cues(
 
     ensure_tw_jieba()
 
+    from shared.subtitle_finalize import boundary_reason
+
     def bad_boundary(j0: int) -> bool:
         """切在 j0 前會不會拆散語意單位 → 壞切點。
 
-        規則（修修 2026-07-26「一個/小時」回饋後擴充）：
+        token 級規則（修修 2026-07-26「一個/小時」回饋）＋
+        **finalize 層共用七規則**（修修 2026-08-07「整個 review 演算法」裁決：
+        出生層與偵測層同一套真值——出生就避開的壞切點，下游不用修）：
         1. 左詞以 的/得/地 結尾（「大腦的/影響」）
         2. 左詞是數量詞（「一個/小時」「三十/分鐘」「每個/月」）
         3. 右詞是計量單位詞
         4. 跨界二字本身是 jieba 詞（「對/於」原規則）
+        5. `boundary_reason`：黏著字／代名詞主語／代名詞＋認知動詞／
+           助動詞尾／孤兒括號／詞跨界（文字窗各取 12 字）
         """
         if j0 <= 0 or j0 >= len(tokens):
             return False
@@ -166,6 +172,10 @@ def segment_to_cues(
         if _NUM_CLASSIFIER.search(left):
             return True
         if right in _UNIT_WORDS:
+            return True
+        left_text = "".join(t[0] for t in tokens[max(0, j0 - 8) : j0])[-12:]
+        right_text = "".join(t[0] for t in tokens[j0 : j0 + 8])[:12]
+        if boundary_reason(left_text, right_text):
             return True
         if len(left) != 1 or len(right) != 1:
             return False  # ASCII 整詞不受影響

@@ -115,6 +115,8 @@ python scripts/run_highlight_cut.py <episode> --materialize
   用 build_resolve_project `--make-template` 概念存直式模板，之後自動）
 - timeline 進 `Highlights` bin，命名 `長1 - <標題>`
 - 主 timeline 全候選打 marker（當選紅／落選藍），冪等（重跑先清舊）
+- 上軌 SRT 為**顯示層定版副本**（句尾零標點 + cue 間 ≤3s 空隙補平——修修
+  2026-08-05 裁決；transcript.srt 本體不動，規則見 subtitle-correct skill）
 
 ## Step 4 — 標題（長短片分流，修修 2026-07-26 二修裁決；ADR-054 D4/D13/D16）
 

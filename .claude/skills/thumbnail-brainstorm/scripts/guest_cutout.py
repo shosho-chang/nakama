@@ -8,9 +8,15 @@
         --cam-video CAM_B.mp4 --window 1234.5 1310.2 --expected-speaker 1 \
         --out-dir "G:/footages/20260723 謝伯讓/packaging/guest_frames/L1"
 
-    # 2) vision 選定的 frame → hyperframes 去背 → vault cutouts/podcast/<ep_slug>/
+    # 2) vision 選定的 frame → 去背 → vault cutouts/podcast/<ep_slug>/
+    #    （同步鏡射到 <episode>/packaging/cutouts/ — vault 為 canonical）
     python guest_cutout.py finalize --frame <picked.png> --emotion 思考 \
-        --ep-slug 20260723-xieboran --index 1
+        --ep-slug 20260723-xieboran --index 1 \
+        --episode-dir "G:/footages/20260723 謝伯讓"
+
+    # 3) 手動鏡射（歷史集數 backfill / manifest 更新後重新同步）
+    python guest_cutout.py mirror --ep-slug 20260723-xieboran \
+        --episode-dir "G:/footages/20260723 謝伯讓"
 
 sample 的機位驗證：expected-speaker 在窗內的說話占比 < 0.6 即 ValueError
 （ADR-054 A8③ — 機位對應寫錯時會穩定抽到錯的人且不報錯，必須 fail loud）。
@@ -154,12 +160,36 @@ def _flip(png_path: Path) -> None:
     Image.open(png_path).transpose(Image.Transpose.FLIP_LEFT_RIGHT).save(png_path)
 
 
+def mirror_to_episode(ep_slug: str, episode_dir: Path) -> list[Path]:
+    """vault cutout 目錄 → <episode>/packaging/cutouts/ 鏡射（雙落點）。
+
+    修修 2026-08-06 裁決：素材要在 project 資料夾一眼看得到（與縮圖成品的
+    packaging 雙落點同慣例）。vault 仍是 canonical——Bridge 漏斗、
+    cutout_library、frontmatter 都讀 vault；本鏡射只求可見性。
+    複製頂層 *.png + cutouts_manifest.json，跳過 _iterations/ 工作檔。
+    """
+    src_dir = get_vault_path() / "Attachments" / "cutouts" / "podcast" / ep_slug
+    if not src_dir.is_dir():
+        raise FileNotFoundError(f"vault cutout 目錄不存在: {src_dir}")
+    if not episode_dir.is_dir():
+        raise FileNotFoundError(f"episode 資料夾不存在: {episode_dir}")
+    dst_dir = episode_dir / "packaging" / "cutouts"
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    copied: list[Path] = []
+    for f in sorted(src_dir.iterdir()):
+        if f.is_file() and (f.suffix == ".png" or f.name == "cutouts_manifest.json"):
+            shutil.copy2(f, dst_dir / f.name)
+            copied.append(dst_dir / f.name)
+    return copied
+
+
 async def finalize(
     frame: Path,
     emotion_text: str,
     ep_slug: str,
     index: int,
     *,
+    episode_dir: Path,
     role: str = "guest",
     engine: str = "birefnet",
     grade: bool = True,
@@ -193,6 +223,8 @@ async def finalize(
         _grade(dst, brightness=brightness)
     if sharpen:
         _sharpen(dst)
+    copied = mirror_to_episode(ep_slug, episode_dir)
+    print(f"[mirror] {len(copied)} 檔 → {episode_dir / 'packaging' / 'cutouts'}", file=sys.stderr)
     return dst
 
 
@@ -213,6 +245,12 @@ def main() -> int:
     p_fin.add_argument("--emotion", required=True, help="emotions.yml 七值之一（zh/en/alias 皆可）")
     p_fin.add_argument("--ep-slug", required=True, help="ASCII episode slug，如 20260723-xieboran")
     p_fin.add_argument("--index", type=int, required=True)
+    p_fin.add_argument(
+        "--episode-dir",
+        type=Path,
+        required=True,
+        help="episode 資料夾——完稿後鏡射到 <episode>/packaging/cutouts/（雙落點）",
+    )
     p_fin.add_argument("--role", choices=("host", "guest"), default="guest")
     p_fin.add_argument("--engine", choices=("birefnet", "hyperframes"), default="birefnet")
     p_fin.add_argument("--no-grade", action="store_true", help="跳過統一調色 pass")
@@ -228,6 +266,10 @@ def main() -> int:
     p_fin.add_argument(
         "--sharpen", action="store_true", help="unsharp mask（臉被放大 >1.1× 時補軟化）"
     )
+
+    p_mir = sub.add_parser("mirror")
+    p_mir.add_argument("--ep-slug", required=True)
+    p_mir.add_argument("--episode-dir", type=Path, required=True)
 
     args = parser.parse_args()
     if args.cmd == "sample":
@@ -245,13 +287,14 @@ def main() -> int:
             )
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
-    else:
+    elif args.cmd == "finalize":
         dst = asyncio.run(
             finalize(
                 args.frame,
                 args.emotion,
                 args.ep_slug,
                 args.index,
+                episode_dir=args.episode_dir,
                 role=args.role,
                 engine=args.engine,
                 grade=not args.no_grade,
@@ -262,6 +305,9 @@ def main() -> int:
             )
         )
         print(dst)
+    else:
+        copied = mirror_to_episode(args.ep_slug, args.episode_dir)
+        print(f"{len(copied)} 檔 → {args.episode_dir / 'packaging' / 'cutouts'}")
     return 0
 
 

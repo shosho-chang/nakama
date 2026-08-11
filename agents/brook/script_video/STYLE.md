@@ -9,7 +9,7 @@ Not a brand document — brand tokens live in `docs/design-system.md` (canonical
 ## Hard rules（必遵守）
 
 - **B-roll service 的是 idea，不是 sentence**：一個 beat 是一個 idea unit，可跨多句 SRT。配合 §6 LLM 自然分群。
-- **Restraint budget**：10 分鐘影片預期 ~25-35 個 cutaway 事件（成片實測 3.26-3.52 事件/分，見 `docs/research/editing-grammar/2026-07-18-shoshotw-editing-grammar.md` §一；一事件可展開多鏡快切）。連續兩 beat 不用同一個 component（避免視覺重複；同 kind 不同 footage 的快切連發合法，判定粒度為 source_url）。
+- **Restraint budget**：10 分鐘影片預期 ~25-35 個 cutaway 事件（成片實測 3.26-3.52 事件/分，見 `docs/research/editing-grammar/2026-07-18-shoshotw-editing-grammar.md` §一；一事件可展開多鏡快切）。連續兩 beat 不用同一個 component（避免視覺重複；同 kind 不同 footage 的快切連發合法，判定粒度為 source_url）。**同一支 footage（同 source_url）全片只准出現一次**（修修 2026-08-06：重複 b-roll 是大忌）——validator 目前僅查相鄰重複，全片唯一為待升級 gap。
 - **Anti-literal**：B-roll 添加資訊或情緒，不要畫名詞（「成長」→ 上升箭頭是 lazy slop）。
 - **Anti-hype**：拒用 money-count 巨大數字效果（除 BigStat fork）、neon caption、glitch RGB、TikTok/IG follow overlay。Brook editorial tone 是 anti-hype, engineering-grounded（見 `docs/design-system.md`）。
 
