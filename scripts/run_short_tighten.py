@@ -301,6 +301,45 @@ def tight_to_feed(t: float, segs: list[tuple[float, float]]) -> float:
     return segs[-1][1] if segs else t
 
 
+def feed_to_tight(t: float, segs: list[tuple[float, float]]) -> float | None:
+    """原始 feed 時間 → 緊湊後 timeline 時間；落在被剪掉的區間回 None。"""
+    acc = 0.0
+    for a, b in segs:
+        if a <= t <= b:
+            return acc + (t - a)
+        acc += b - a
+    return None
+
+
+def _timeline_words(
+    episode_dir: Path, segs: list[tuple[float, float]], clock_offset: float
+) -> list[dict] | None:
+    """`words.json` → 緊湊後 timeline 時鐘（被剪掉的字丟棄）。
+
+    切點重修**必須**拿真實詞級時間去問停頓圖。退回 `char_times_from_cues` 的
+    「cue 內均分」時，一個 14 字 / 2.5s 的 cue 每字 177ms，而停頓判定的窗只有
+    ±60ms——等於拿錯位置去問音檔。2026-08-12「黑馬｜班」實測：同一個候選位置
+    內插算出 RMS 0.021（看起來比原位更差）、真值 0.006（其實是個真的音量凹陷），
+    整個候選排序是反的，於是那一刀留在詞中間出貨。
+    """
+    p = episode_dir / "subs" / "words.json"
+    if not p.exists():
+        return None
+    raw = json.load(open(p, encoding="utf-8"))
+    words = raw["words"] if isinstance(raw, dict) else raw
+    out: list[dict] = []
+    for w in words:
+        s, e = w.get("start"), w.get("end")
+        if s is None or e is None:
+            continue
+        ts = feed_to_tight(float(s) - clock_offset, segs)
+        if ts is None:
+            continue
+        te = feed_to_tight(float(e) - clock_offset, segs)
+        out.append({"word": w["word"], "start": ts, "end": te if te is not None else ts + 0.02})
+    return out or None
+
+
 def _tight_pause_map(episode_dir: Path, segs: list[tuple[float, float]], cid: str):
     """緊湊後 timeline 專用的停頓圖（斷句主判準）。
 
@@ -848,7 +887,14 @@ def _retime_srt(
             # 比沒有停頓圖更糟——丟掉它，退回詞典判準，但大聲留紀錄。
             logger.error("%s: 停頓圖時鐘自檢不過（%s）——丟棄，退回詞典判準", cid, exc)
             pause = None
-    rows, rb = repair_cues(rows, pause=pause)
+    tl_words = _timeline_words(episode_dir, segs, clock_offset)
+    if tl_words is None:
+        logger.warning("%s: 沒有 words.json——字元時間退回 cue 內均分，停頓判定會失準", cid)
+    # 黏著度語料用**整集**逐字稿，不是這一段——單一 cut 只有 ~2500 字，
+    # 字元 bigram 統計會稀疏到抓不到任何東西
+    from shared.word_cohesion import Cohesion
+
+    rows, rb = repair_cues(rows, words=tl_words, pause=pause, cohesion=Cohesion(cues))
     if rb["moved"]:
         logger.info(f"{cid}: 切點重修 {rb['moved']} 處（切點搬到音檔靜音處）")
     # 顯示層定版（修修 2026-08-05）：句尾零標點 + cue 間 ≤3s 空隙補平連續顯示
