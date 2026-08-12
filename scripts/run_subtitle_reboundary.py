@@ -35,6 +35,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="字幕切點重修（壞斷句搬到合法語意邊界）")
     ap.add_argument("--srt", required=True)
     ap.add_argument("--words", help="字級時間戳（有就用真值算停頓；沒有則 cue 內內插）")
+    ap.add_argument("--audio", help="與 SRT **同時鐘**的音檔——停頓圖來源（主判準）")
     ap.add_argument("--out", required=True)
     ap.add_argument("--rounds", type=int, default=MAX_ROUNDS)
     ap.add_argument("--no-finalize", action="store_true", help="不跑定版兩規則（工作真值用）")
@@ -45,8 +46,24 @@ def main() -> int:
     if args.words:
         raw = json.loads(Path(args.words).read_text(encoding="utf-8"))
         words = raw["words"] if isinstance(raw, dict) else raw
-    before = len(finalize_cues(cues)[1]["bad_boundaries"])
-    cues, rb = repair_cues(cues, words=words, rounds=args.rounds)
+
+    pause = None
+    if args.audio:
+        from shared.pause_map import PauseMap, build_envelope
+
+        audio = Path(args.audio)
+        env = build_envelope(audio, audio.parent / "subs" / "pause_map.npy")
+        pause = PauseMap(env)
+        ratio = pause.sanity_check([c[0] for c in cues[1:]], [(c[0] + c[1]) / 2 for c in cues])
+        print(
+            f"停頓圖 {pause.duration:.0f}s｜底噪 {pause.noise_floor:.5f} "
+            f"靜音 {pause.quiet:.5f} 吵 {pause.noisy:.5f}｜時鐘自檢 {ratio:.2f}"
+        )
+    else:
+        print("⚠️ 沒給 --audio：退回詞典判準，已知會漏掉集別詞彙，不可視為通過")
+
+    before = len(finalize_cues(cues, pause=pause)[1]["bad_boundaries"])
+    cues, rb = repair_cues(cues, words=words, pause=pause, rounds=args.rounds)
     print(
         f"cue {len(cues)} | 搬動 {rb['moved']} 處（{rb['rounds']} 輪）"
         f"| 時間夾正 {rb['sanitized']} 處"
@@ -54,10 +71,10 @@ def main() -> int:
 
     stats = {}
     if not args.no_finalize:
-        cues, stats = finalize_cues(cues)
+        cues, stats = finalize_cues(cues, pause=pause)
     after = stats.get("bad_boundaries")
     if after is None:
-        after = finalize_cues(cues)[1]["bad_boundaries"]
+        after = finalize_cues(cues, pause=pause)[1]["bad_boundaries"]
     Path(args.out).write_text(format_srt(cues), encoding="utf-8")
     print(f"壞切點 {before} → {len(after)}")
     if stats:
