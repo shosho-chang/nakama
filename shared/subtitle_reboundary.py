@@ -43,6 +43,7 @@ from shared.subtitle_finalize import (
     _tw_jieba,
     boundary_reason,
 )
+from shared.word_cohesion import Cohesion, _is_word_char
 
 MAX_ROUNDS = 3
 
@@ -170,6 +171,22 @@ def _depth_before(cues: list[Cue]) -> list[int]:
 IMPROVE = 3.0  # 沒有真靜音可落時，新位置至少要安靜這麼多倍才值得搬
 
 
+def _worth_moving(cur_rms: float | None, best_rms: float | None, pause) -> bool:
+    """音檔觸發（沒有詞典／黏著度違規）時，這一搬值不值得。
+
+    ① **類別改善**——目前在「吵」的一側、候選在「不吵」的一側：直接搬。從
+       「切在連續發聲中」變成「切在音量凹陷上」是質變，拿比例去卡是錯的
+       （2026-08-12「黑馬｜班」0.01673 → 0.00649 只有 2.58 倍，被 3 倍門檻
+       擋掉，詞就這樣留在中間出貨）。
+    ② 兩邊同一側時才用比例門檻擋 churn，避免為千分之一的差把好切點搬走。
+    """
+    if cur_rms is None or best_rms is None or pause is None:
+        return True
+    if cur_rms > pause.noisy >= best_rms:
+        return True
+    return best_rms < cur_rms / IMPROVE
+
+
 def _pick(cands: list[dict], quiet: float | None, noisy: float | None) -> dict:
     """從候選裡選切點——三層，一層比一層不確定。
 
@@ -218,12 +235,15 @@ def _round(
     starts: list[int],
     depths: list[int],
     pause=None,
+    cohesion: Cohesion | None = None,
 ) -> tuple[list[Cue], int]:
     """一輪重修。切點移動後 starts[i+1] 立即更新（該對總字數不變，i+2 之後不受影響）。
 
-    觸發條件（2026-08-12 反轉）：舊版只修 `boundary_reason` 旗標的切點，於是
-    詞典沒收的詞（冒牌者）全數逃逸——安吉三支長片 575 個切點有 148 個切在
-    連續發聲中間，舊規則抓到 0 個。現在**音檔說吵就修**，詞典只是另一個觸發源。
+    三個判準，一個都不能少（2026-08-12 三輪回饋後定版）：
+    - **音檔靜音**（主）：切點落在連續發聲中就修，不必知道那是什麼詞
+    - **黏著度**（`cohesion`）：音檔沒意見時（實測「健身｜教練」「黑馬｜班」的
+      靜音持續長度都是 0ms），問這一集自己的統計「這兩個字是不是同一個詞」
+    - **詞典四規則**（兜底）：封閉類詞素等語言事實
     """
     out = [list(c) for c in cues]
     moved = 0
@@ -231,7 +251,7 @@ def _round(
         a, b = out[i][2].strip(), out[i + 1][2].strip()
         ba, bb = bare(a), bare(b)
         joint, base, orig = ba + bb, starts[i], len(ba)
-        lex = boundary_reason(a, b)
+        lex = boundary_reason(a, b) or (cohesion.reason(a, b) if cohesion else None)
         cur_rms = None
         if pause is not None and 0 < base + orig < len(times):
             cur_rms = pause.floor(times[base + orig][0])
@@ -267,6 +287,14 @@ def _round(
             # 不是詞典覆蓋率問題。停頓也不能讓「者」變成合法句首。
             if boundary_reason(joint[:p], joint[p:]):
                 continue
+            # 英文詞內部：joint 已去空格，所以「原文該處有空格」才是合法切點。
+            # 少了這條，重切會把 `team` 切成 `tea`｜`m`（2026-08-12 SL7 實測）
+            # ——`boundary_reason` 對 ASCII 一律放行，英文原本零防線。
+            if _is_word_char(joint[p - 1]) and _is_word_char(joint[p]) and p not in spaces:
+                continue
+            # 本集統計說這兩個字是同一個詞 → 不管音檔多安靜都不切
+            if cohesion and cohesion.splits_cjk(joint[p - 1], joint[p]):
+                continue
             gap = est_gap(
                 (joint[p - 1], times[gi - 1][0], times[gi - 1][1]),
                 (joint[p], times[gi][0], times[gi][1]),
@@ -288,11 +316,8 @@ def _round(
             pause.quiet if pause is not None else None,
             pause.noisy if pause is not None else None,
         )
-        # 音檔觸發（沒有詞典違規）時要求實質改善，否則不動——避免為了
-        # 千分之一的 RMS 差把好好的切點搬來搬去。
-        if not lex and cur_rms is not None and best["rms"] is not None:
-            if not (best["rms"] <= pause.quiet or best["rms"] < cur_rms / IMPROVE):
-                continue
+        if not lex and not _worth_moving(cur_rms, best["rms"], pause):
+            continue
         p = best["p"]
         gi = base + p
         new_a, new_b = _carve(out[i][2].strip(), out[i + 1][2].strip(), p, orig)
@@ -357,6 +382,7 @@ def repair_cues(
     *,
     words: list[dict] | None = None,
     pause=None,
+    cohesion: Cohesion | None = None,
     rounds: int = MAX_ROUNDS,
 ) -> tuple[list[Cue], dict]:
     """切點重修主入口。回傳 (新 cues, stats)。
@@ -364,9 +390,15 @@ def repair_cues(
     `pause`（`shared.pause_map.PauseMap`）是主判準：切點必須落在靜音上。
     不傳就退回舊的詞典判準——那條路已知會讓集別詞彙被攔腰切開，
     stats["pause_used"] 會標 False，呼叫端要把這件事回報出來。
+
+    `cohesion` 是音檔沒意見時的第二判準；不傳就用 `cues` 自己當語料建。
+    語料越大越準——呼叫端若手上有整集逐字稿，傳整集的（單一 cut 只有 ~2500 字，
+    統計會太稀疏）。
     """
     if len(cues) < 2:
         return cues, {"moved": 0, "rounds": 0, "sanitized": 0, "pause_used": pause is not None}
+    if cohesion is None:
+        cohesion = Cohesion(cues)
     original = list(cues)
     target = "".join(bare(t) for _, _, t in cues)
     times = char_times_from_words(words, target) if words else char_times_from_cues(cues)
@@ -379,7 +411,9 @@ def repair_cues(
         for _, _, t in cues:
             starts.append(acc)
             acc += len(bare(t))
-        cues, moved = _round(cues, times, starts, _depth_before(cues), pause=pause)
+        cues, moved = _round(
+            cues, times, starts, _depth_before(cues), pause=pause, cohesion=cohesion
+        )
         total += moved
         if not moved:
             break

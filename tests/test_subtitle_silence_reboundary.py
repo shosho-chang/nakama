@@ -12,7 +12,7 @@ import pytest
 
 from shared.pause_map import FRAME, PauseMap
 from shared.subtitle_finalize import boundary_reason, find_bad_boundaries
-from shared.subtitle_reboundary import _pick, repair_cues
+from shared.subtitle_reboundary import _pick, _worth_moving, bare, repair_cues
 
 CHAR = 0.2  # 每字 0.2s，第 i 個字佔 [0.2i, 0.2(i+1))
 
@@ -154,3 +154,51 @@ def test_ascii_seam_space_is_allowed_but_cjk_space_is_not():
     fixed, _ = repair_cues([(0.0, 2.0, a), (2.0, 4.4, b)], words=words, pause=pause)
     joined = fixed[0][2] + fixed[1][2]
     assert "Whatdo" not in joined and "youmean" not in joined
+
+
+# ── 2026-08-12 第三輪回饋：音檔沒意見時的斷詞 ────────────────────────────
+
+
+def test_english_word_is_never_split_even_at_a_quiet_spot():
+    """`words.json` 把英文切成單一字母（本集去重只有 23 個 token＝字母表），
+    字元時間又是均分的——`m` 常落進詞尾拖尾的靜音，看起來「很安靜」。少了
+    空格規則，重切會把 team 切成 tea｜m（2026-08-12 SL7 實測出貨）。"""
+    a, b = "他說 We are a team 然後", "到時候我就懂了這件事"
+    words = chars_to_words((a + b).replace(" ", ""))
+    ba = bare(a)
+    # 把 team 內部（tea｜m）做成全片最安靜的地方，誘導演算法切在那裡
+    pause = PauseMap(env_with_silence_at([(ba.index("team") + 3) * CHAR]))
+    fixed, _ = repair_cues([(0.0, 3.4, a), (3.4, 6.4, b)], words=words, pause=pause)
+    joined = [c[2] for c in fixed]
+    assert not any(t.rstrip().endswith("tea") for t in joined)
+    assert not any(t.lstrip().startswith("m ") for t in joined)
+
+
+def test_cohesion_triggers_a_move_when_audio_has_no_opinion():
+    """「健身｜教練」實測靜音持續 0ms——音檔給不出答案，靠本集自己的統計。"""
+    from shared.word_cohesion import Cohesion
+
+    co = Cohesion([(0.0, 1.0, "我要成為健身教練這件事")] * 5)
+    assert co.reason("你好勇敢成為健身", "教練然後告訴大家") is not None
+    assert co.reason("我昨天去了那間餐廳", "他們的牛肉麵很好吃") is None
+
+
+class _Bar:
+    quiet, noisy = 0.004, 0.015
+
+
+@pytest.mark.parametrize(
+    "cur,best,expect,why",
+    [
+        (0.01673, 0.00649, True, "黑馬｜班：吵→不吵是類別改善，只有 2.58 倍也要搬"),
+        (0.05000, 0.03000, False, "兩邊都吵、只差 1.7 倍 → 不動（擋 churn）"),
+        (0.05000, 0.01000, True, "兩邊都吵但差 5 倍 → 值得搬"),
+        (0.00800, 0.00300, False, "本來就不吵 → 不必為了更安靜而搬"),
+    ],
+)
+def test_worth_moving_gate(cur, best, expect, why):
+    assert _worth_moving(cur, best, _Bar()) is expect, why
+
+
+def test_worth_moving_without_audio_never_blocks():
+    assert _worth_moving(None, None, None) is True
