@@ -49,10 +49,10 @@ def main() -> int:
 
     pause = None
     if args.audio:
-        from shared.pause_map import PauseMap, build_envelope
+        from shared.pause_map import PauseMap, build_envelope, cache_path_for
 
         audio = Path(args.audio)
-        env = build_envelope(audio, audio.parent / "subs" / "pause_map.npy")
+        env = build_envelope(audio, cache_path_for(audio))
         pause = PauseMap(env)
         ratio = pause.sanity_check([c[0] for c in cues[1:]], [(c[0] + c[1]) / 2 for c in cues])
         print(

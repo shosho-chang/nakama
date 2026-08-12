@@ -137,6 +137,16 @@ def build_envelope(audio: Path, cache: Path | None = None, *, force: bool = Fals
     return env
 
 
+def cache_path_for(audio: Path, subs_dir: Path | None = None) -> Path:
+    """快取檔名**必須帶音檔名**——同一集可能有多個不同時鐘的 `normalized.wav`
+    （本集根目錄與 `program_v2/` 差 71.01s）。共用 `pause_map.npy` 這種名字，
+    後來者會讀到別條時鐘的包絡，而且完全不會報錯。
+    """
+    audio = Path(audio)
+    base = subs_dir if subs_dir is not None else audio.parent / "subs"
+    return Path(base) / f"pause_map_{audio.stem}.npy"
+
+
 def _probe_envelope(audio: Path, start: float, dur: float, sr: int = 1000) -> np.ndarray:
     p = subprocess.run(
         ["ffmpeg", "-v", "error", "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", str(audio),
@@ -226,5 +236,5 @@ def load_for_episode(
     audio = episode_dir / audio_name
     if not audio.exists():
         return None
-    env = build_envelope(audio, episode_dir / "subs" / "pause_map.npy")
+    env = build_envelope(audio, cache_path_for(audio, episode_dir / "subs"))
     return PauseMap(env, to_audio=to_audio)

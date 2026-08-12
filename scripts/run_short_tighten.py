@@ -308,14 +308,14 @@ def _tight_pause_map(episode_dir: Path, segs: list[tuple[float, float]], cid: st
     回去——零猜測。找不到音檔或時鐘自檢不過就回 None 退回詞典判準，並且**大聲
     講出來**：那條路已知會讓集別詞彙被攔腰切開（2026-08-12「冒牌｜者」）。
     """
-    from shared.pause_map import PauseMap, build_envelope
+    from shared.pause_map import PauseMap, build_envelope, cache_path_for
 
     audio = episode_dir / "normalized.wav"
     if not audio.exists():
         logger.warning("%s: 找不到 %s——斷句退回詞典判準（已知會漏集別詞彙）", cid, audio.name)
         return None
     try:
-        env = build_envelope(audio, episode_dir / "subs" / f"pause_map_{audio.stem}.npy")
+        env = build_envelope(audio, cache_path_for(audio, episode_dir / "subs"))
     except Exception as exc:  # ffmpeg 沒裝 / 檔壞掉
         logger.warning("%s: 停頓圖建不起來（%s）——斷句退回詞典判準", cid, exc)
         return None

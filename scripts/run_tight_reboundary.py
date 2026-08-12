@@ -37,7 +37,12 @@ from scripts.run_short_tighten import (  # noqa: E402
     _retime_srt,
     tight_to_feed,
 )
-from shared.pause_map import PauseMap, build_envelope, detect_audio_offset  # noqa: E402
+from shared.pause_map import (  # noqa: E402
+    PauseMap,
+    build_envelope,
+    cache_path_for,
+    detect_audio_offset,
+)
 from shared.subtitle_finalize import find_bad_boundaries, parse_srt_text  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -84,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # 驗收：cue 切點必須整體落在靜音上（用 cuts 時鐘的音檔，零映射猜測）
     fresh = parse_srt_text(dst.read_text(encoding="utf-8-sig"))
-    env = build_envelope(cuts_audio, ep / "subs" / f"pause_map_{cuts_audio.stem}.npy")
+    env = build_envelope(cuts_audio, cache_path_for(cuts_audio, ep / "subs"))
     pause = PauseMap(env, to_audio=lambda t: tight_to_feed(t, segs))
     ratio = pause.sanity_check([c[0] for c in fresh[1:]], [(c[0] + c[1]) / 2 for c in fresh])
     bad = find_bad_boundaries(fresh, pause=pause)
