@@ -82,8 +82,11 @@ def timeline_label(cut: dict) -> str:
 
 
 def _latest_tight_srt(episode_dir: Path, cut_id: str) -> Path | None:
-    srts = sorted((episode_dir / "highlights/srt").glob(f"{cut_id}_tight_r*.srt"))
-    return srts[-1] if srts else None
+    # 版本挑選規則只留一份（shared.tight_srt）——審核頁 preview / CC / 短片燒字幕
+    # 必須指到同一個檔，否則修修看到的字幕不是實際上架的那份
+    from shared.tight_srt import latest_tight_srt
+
+    return latest_tight_srt(episode_dir, cut_id)
 
 
 def _find_timeline(project, label: str):
