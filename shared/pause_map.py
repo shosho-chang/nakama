@@ -128,7 +128,7 @@ def build_envelope(audio: Path, cache: Path | None = None, *, force: bool = Fals
     x = np.frombuffer(p.stdout, dtype=np.int16).astype(np.float32) / 32768.0
     f = int(FRAME * SR)
     if len(x) < f:
-        raise ValueError(f"音檔太短（{len(x)/SR:.2f}s）")
+        raise ValueError(f"音檔太短（{len(x) / SR:.2f}s）")
     env = np.sqrt((x[: len(x) // f * f].reshape(-1, f) ** 2).mean(axis=1))
     if cache is not None:
         cache.parent.mkdir(parents=True, exist_ok=True)
@@ -149,8 +149,24 @@ def cache_path_for(audio: Path, subs_dir: Path | None = None) -> Path:
 
 def _probe_envelope(audio: Path, start: float, dur: float, sr: int = 1000) -> np.ndarray:
     p = subprocess.run(
-        ["ffmpeg", "-v", "error", "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", str(audio),
-         "-ac", "1", "-ar", str(sr), "-f", "s16le", "-"],
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-ss",
+            f"{start:.3f}",
+            "-t",
+            f"{dur:.3f}",
+            "-i",
+            str(audio),
+            "-ac",
+            "1",
+            "-ar",
+            str(sr),
+            "-f",
+            "s16le",
+            "-",
+        ],
         capture_output=True,
     )
     if p.returncode != 0:
@@ -164,9 +180,18 @@ def _probe_envelope(audio: Path, start: float, dur: float, sr: int = 1000) -> np
 
 def media_duration(path: Path) -> float:
     p = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "default=nw=1:nk=1", str(path)],
-        capture_output=True, text=True,
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=nw=1:nk=1",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
     )
     if p.returncode != 0:
         raise RuntimeError(f"ffprobe 失敗：{p.stderr[:300]}")
@@ -215,7 +240,7 @@ def detect_audio_offset(
     logger.info("音檔偏移 %+.3fs（%d 個探測點，離散 %.3fs）", off, len(offs), spread)
     if spread > tol:
         raise ValueError(
-            f"音檔偏移不是常數（離散 {spread:.3f}s > {tol}s）：{[round(o,3) for o in offs]}"
+            f"音檔偏移不是常數（離散 {spread:.3f}s > {tol}s）：{[round(o, 3) for o in offs]}"
             "——兩個檔中間被剪過，不能用單一偏移換算"
         )
     return off

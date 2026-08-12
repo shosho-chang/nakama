@@ -18,10 +18,7 @@ CHAR = 0.2  # 每字 0.2s，第 i 個字佔 [0.2i, 0.2(i+1))
 
 
 def chars_to_words(text: str) -> list[dict]:
-    return [
-        {"word": ch, "start": i * CHAR, "end": (i + 1) * CHAR}
-        for i, ch in enumerate(text)
-    ]
+    return [{"word": ch, "start": i * CHAR, "end": (i + 1) * CHAR} for i, ch in enumerate(text)]
 
 
 def env_with_silence_at(times: list[float], total: float = 12.0) -> np.ndarray:

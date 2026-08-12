@@ -347,11 +347,7 @@ def _verify(before: list[Cue], after: list[Cue]) -> None:
     # ASCII 接縫例外：`_seam_join` 明訂「ASCII 相接補一格」（否則 We+are→Weare）。
     # 切點搬移把原本分屬兩句的英文併進同一句時，這個空格是規則要求的產物，不是
     # 「結 婚」那種重推空格。只放行**兩側都是 ASCII** 的位置，CJK 一律仍是違規。
-    extra = {
-        p
-        for p in extra
-        if not (0 < p < len(b1) and b1[p - 1].isascii() and b1[p].isascii())
-    }
+    extra = {p for p in extra if not (0 < p < len(b1) and b1[p - 1].isascii() and b1[p].isascii())}
     if extra:
         raise ValueError(f"reboundary 不變量②破裂：新增空格於裸位置 {sorted(extra)[:5]}")
 

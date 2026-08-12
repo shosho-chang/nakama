@@ -55,10 +55,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("episode")
     ap.add_argument("--id", required=True)
     ap.add_argument("--transcript", help="要用的逐字稿（預設 <ep>/transcript.srt）")
-    ap.add_argument("--cuts-audio", default="normalized.wav",
-                    help="與 cuts.json 同時鐘的音檔（相對 episode）")
-    ap.add_argument("--transcript-audio", default="program_v2/normalized.wav",
-                    help="與逐字稿同時鐘的音檔（相對 episode）")
+    ap.add_argument(
+        "--cuts-audio", default="normalized.wav", help="與 cuts.json 同時鐘的音檔（相對 episode）"
+    )
+    ap.add_argument(
+        "--transcript-audio",
+        default="program_v2/normalized.wav",
+        help="與逐字稿同時鐘的音檔（相對 episode）",
+    )
     ap.add_argument("--apply", action="store_true", help="寫出新 revision（預設只報告）")
     args = ap.parse_args(argv)
 
@@ -82,7 +86,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     dst, n_cues = _retime_srt(
-        ep, cid, segs, cuts["cuts"],
+        ep,
+        cid,
+        segs,
+        cuts["cuts"],
         transcript=Path(args.transcript) if args.transcript else None,
         clock_offset=offset,
     )
@@ -99,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
     for f in bad[:10]:
         print(f"    cue{f['cue']}：…{f['tail']} ｜ {f['head']}…  {f['reason']}")
     if len(bad) > 10:
-        print(f"    …另有 {len(bad)-10} 個")
+        print(f"    …另有 {len(bad) - 10} 個")
     print(f"\n→ {dst}")
     return 0
 
