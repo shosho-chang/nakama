@@ -44,12 +44,14 @@ def finalize_cues(
     cues: list[tuple[float, float, str]],
     *,
     gap_close_max: float = 3.0,
+    pause=None,
 ) -> tuple[list[tuple[float, float, str]], dict]:
     """套用兩條定版規則。輸入 (start, end, text) 已按 start 排序；text 可含
     換行（多行 cue 逐行剝尾標點）。
 
     回傳 (新 cues, stats)。stats["true_silences"] 是沒補的 >gap_close_max
     區段（(前句序號 1-based, gap 秒)）——呼叫端要回報出來，不可靜默。
+    `pause` 傳入停頓圖時，斷句檢查改以音檔靜音為主判準（見 find_bad_boundaries）。
     """
     out: list[list] = []
     stripped = 0
@@ -68,7 +70,7 @@ def finalize_cues(
         elif gap > gap_close_max:
             true_silences.append((i + 1, round(gap, 2)))
     try:
-        bad = find_bad_boundaries(out)
+        bad = find_bad_boundaries(out, pause=pause)
     except ImportError:
         _msg = "jieba 未安裝——斷句檢查沒跑，不可視為通過"
         bad = [{"cue": -1, "tail": "", "head": "", "reason": _msg}]
@@ -81,7 +83,13 @@ def finalize_cues(
 
 
 _TAIL_STICKY = set("的把被跟與和或在從對讓一這那每幾很超最更蠻挺滿")
-_HEAD_STICKY = set("的著了嗎呢吧喔哦")
+# 黏著詞素：不可能當 cue 開頭。這是**封閉類**，不是詞庫——只收現代口語中
+# 完全不可能起句的字。2026-08-12「冒牌｜者」出貨後補：詞典沒有「冒牌者」
+# → jieba 切成「冒牌｜者」→ 四規則全放行。詞典會無限增長（修修：「永遠都
+# 修不完」），黏著詞素不會，所以這條不靠詞典就擋得住整個類別。
+# ⚠️ 不收 性/化/得/地/之/兒：它們都能起詞（性別、化學、得到、地方、之後、
+# 兒子），加進來會誤旗標並驅動破壞性修復。
+_HEAD_STICKY = set("的著了嗎呢吧喔哦者們")
 
 # 代名詞收尾（修修 2026-08-06「我｜覺得」裁決）：長詞在前，比對取最長匹配。
 _PRONOUN_TAILS = (
@@ -257,13 +265,18 @@ def boundary_reason(tail: str, head: str) -> str | None:
     return None
 
 
-def find_bad_boundaries(cues: list) -> list[dict]:
+def find_bad_boundaries(cues: list, pause=None) -> list[dict]:
     """偵測跨 cue 壞斷句（修修 2026-08-06「句子被切掉」裁決後的強制關卡）。
 
-    四規則見 `boundary_reason`：次句黏著開頭、前句黏著結尾、**前句以代名詞收尾
-    且次句是謂語起手**（我｜覺得）、jieba 詞跨邊界被切開。
-    回傳 [{cue, tail, head, reason}]。呼叫端必須呈現結果——斷句檢查是 finalize
-    層標配，偵測得到的壞切點不再默默出貨；修復由 run_subtitle_reboundary 或人判讀。
+    判準分兩層：
+    ① **音檔靜音**（`pause`，`shared.pause_map.PauseMap`）——主判準。切點落在
+       連續發聲中間即旗標，不需要知道被切開的是什麼詞。這是唯一能抓到集別
+       詞彙的層：2026-08-12「冒牌｜者」四條詞典規則全放行，音檔一聽就知道。
+    ② `boundary_reason` 的詞典四規則——兜底。詞典永遠不完整（修修：「永遠都
+       修不完」），所以它現在是輔助，不是主力。
+
+    `pause=None` 時只跑第②層，**等於已知會漏詞的舊路徑**，呼叫端要回報這件事。
+    回傳 [{cue, tail, head, reason, rms?}]。
     """
     flags = []
     for i in range(len(cues) - 1):
@@ -274,8 +287,16 @@ def find_bad_boundaries(cues: list) -> list[dict]:
         a = ta_full.splitlines()[-1].strip()
         b = tb_full.splitlines()[0].strip()
         reason = boundary_reason(a, b)
+        rms = None
+        if pause is not None:
+            rms = pause.floor(cues[i + 1][0])
+            if rms > pause.noisy and not reason:
+                reason = f"切在連續發聲中（RMS {rms:.4f} > 本集吵門檻 {pause.noisy:.4f}）"
         if reason:
-            flags.append({"cue": i + 1, "tail": a[-8:], "head": b[:8], "reason": reason})
+            f = {"cue": i + 1, "tail": a[-8:], "head": b[:8], "reason": reason}
+            if rms is not None:
+                f["rms"] = round(rms, 5)
+            flags.append(f)
     return flags
 
 
@@ -311,21 +332,28 @@ def format_srt(cues: list[tuple[float, float, str]]) -> str:
 
 
 def finalize_srt_file(
-    src: Path, dst: Path, *, gap_close_max: float = 3.0, repair: bool = True
+    src: Path,
+    dst: Path,
+    *,
+    gap_close_max: float = 3.0,
+    repair: bool = True,
+    pause=None,
+    words: list[dict] | None = None,
 ) -> dict:
     """src SRT →（切點重修）→ 定版 → 寫 dst。回傳 stats（含 cues 總數）。
 
-    repair=True（預設）先把偵測到的壞斷句搬到合法語意邊界，再跑定版兩規則
-    ——偵測與修復同一層，顯示副本不會帶著已知壞切點出貨。
+    repair=True（預設）先把切點搬到合法邊界，再跑定版兩規則——偵測與修復
+    同一層，顯示副本不會帶著已知壞切點出貨。傳 `pause`（停頓圖）時重修以
+    音檔靜音為主判準；不傳則退回詞典判準（已知會漏集別詞彙）。
     """
     cues = parse_srt_text(Path(src).read_text(encoding="utf-8-sig"))
     moved = 0
     if repair:
         from shared.subtitle_reboundary import repair_cues  # 延遲載入避免循環匯入
 
-        cues, rb = repair_cues(cues)
+        cues, rb = repair_cues(cues, words=words, pause=pause)
         moved = rb["moved"]
-    fin, stats = finalize_cues(cues, gap_close_max=gap_close_max)
+    fin, stats = finalize_cues(cues, gap_close_max=gap_close_max, pause=pause)
     Path(dst).write_text(format_srt(fin), encoding="utf-8")
     stats["cues"] = len(fin)
     stats["reboundary_moved"] = moved

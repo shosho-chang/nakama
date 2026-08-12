@@ -291,6 +291,37 @@ def detect(episode_dir: Path, cid: str) -> dict:
     }
 
 
+def tight_to_feed(t: float, segs: list[tuple[float, float]]) -> float:
+    """緊湊後 timeline 時間 → 原始 feed 時間（cuts.json / normalized.wav 時鐘）。"""
+    acc = 0.0
+    for a, b in segs:
+        if t <= acc + (b - a):
+            return a + (t - acc)
+        acc += b - a
+    return segs[-1][1] if segs else t
+
+
+def _tight_pause_map(episode_dir: Path, segs: list[tuple[float, float]], cid: str):
+    """緊湊後 timeline 專用的停頓圖（斷句主判準）。
+
+    音檔 `normalized.wav` 是 **feed 時鐘**，cue 是 timeline 時鐘，靠保留段映射
+    回去——零猜測。找不到音檔或時鐘自檢不過就回 None 退回詞典判準，並且**大聲
+    講出來**：那條路已知會讓集別詞彙被攔腰切開（2026-08-12「冒牌｜者」）。
+    """
+    from shared.pause_map import PauseMap, build_envelope, cache_path_for
+
+    audio = episode_dir / "normalized.wav"
+    if not audio.exists():
+        logger.warning("%s: 找不到 %s——斷句退回詞典判準（已知會漏集別詞彙）", cid, audio.name)
+        return None
+    try:
+        env = build_envelope(audio, cache_path_for(audio, episode_dir / "subs"))
+    except Exception as exc:  # ffmpeg 沒裝 / 檔壞掉
+        logger.warning("%s: 停頓圖建不起來（%s）——斷句退回詞典判準", cid, exc)
+        return None
+    return PauseMap(env, to_audio=lambda t: tight_to_feed(t, segs))
+
+
 def _keep_segments(
     t0: float, t1: float, cuts: list[dict], min_keep_seg: float = MIN_KEEP_SEG
 ) -> list[tuple[float, float]]:
@@ -722,6 +753,8 @@ def _retime_srt(
     segs: list[tuple[float, float]],
     cuts: list[dict],
     fine: bool = False,
+    transcript: Path | None = None,
+    clock_offset: float = 0.0,
 ) -> tuple[Path, int]:
     """字幕依保留段塌縮重對時（版本化路徑繞 Resolve 快取）。
 
@@ -731,8 +764,18 @@ def _retime_srt(
       音沒了字還在會穿幫；manual strip_text 可能跨細切單元，必須在切前處理
     - backchannel cue 整句被剪 → 與保留段無交集，自然消失
     - fine=True：細切成 5–9 字呼吸單元（詞級時間戳定界，範本節奏）
+
+    `transcript` / `clock_offset`（2026-08-12 補）：逐字稿與 `cuts.json` 可能
+    **不同時鐘**——本集 `normalized.wav` 有兩份差 71.01s，`transcript.srt` 出自
+    `program_v2/` 那份而 cuts 用根目錄那份。舊版硬假設同鐘，重跑會整份錯位
+    71 秒且不會報錯（只在字卡驗證時以「與原話落差太大」的形式間接爆出來）。
+    `clock_offset` = 逐字稿時鐘 − cuts 時鐘，換算時整份減掉；用
+    `shared.pause_map.detect_audio_offset` 量測，不要手寫。
     """
-    cues = _parse_srt(episode_dir / "transcript.srt")
+    cues = _parse_srt(Path(transcript) if transcript else episode_dir / "transcript.srt")
+    if clock_offset:
+        logger.info("逐字稿時鐘校正 %+.3fs（逐字稿 → cuts 時鐘）", -clock_offset)
+        cues = [(s - clock_offset, e - clock_offset, t) for s, e, t in cues]
     out_dir = episode_dir / SEG_SRT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     n = 1
@@ -761,6 +804,12 @@ def _retime_srt(
         if n_hot:
             logger.info(f"episode 熱詞 {n_hot} 個進 jieba")
         words = json.load(open(episode_dir / "subs" / "words.json", encoding="utf-8"))["words"]
+        if clock_offset:  # words.json 與逐字稿同鐘，一起校正
+            words = [
+                {**w, "start": w["start"] - clock_offset, "end": w["end"] - clock_offset}
+                for w in words
+                if w.get("start") is not None and w.get("end") is not None
+            ]
         # 跨 cue 重排（修修十一輪「16|歲」教訓）：上游 cue 邊界可能切在
         # 詞中，逐 cue 細切縫不回來——**先過保留段存活過濾**（被剪 cue 的
         # 字不可回魂）再以塌縮後時間判相鄰併塊，切點重新用詞邊界決定
@@ -790,11 +839,20 @@ def _retime_srt(
     # ——重對時之後、定版之前把切點搬回合法語意邊界
     from shared.subtitle_reboundary import repair_cues
 
-    rows, rb = repair_cues(rows)
+    pause = _tight_pause_map(episode_dir, segs, cid)
+    if pause is not None:
+        try:
+            pause.sanity_check([r[0] for r in rows[1:]], [(r[0] + r[1]) / 2 for r in rows])
+        except ValueError as exc:
+            # 時鐘對不上時，帶著錯的停頓圖重修會**主動**把切點搬到錯的位置，
+            # 比沒有停頓圖更糟——丟掉它，退回詞典判準，但大聲留紀錄。
+            logger.error("%s: 停頓圖時鐘自檢不過（%s）——丟棄，退回詞典判準", cid, exc)
+            pause = None
+    rows, rb = repair_cues(rows, pause=pause)
     if rb["moved"]:
-        logger.info(f"{cid}: 切點重修 {rb['moved']} 處（壞斷句搬到合法語意邊界）")
+        logger.info(f"{cid}: 切點重修 {rb['moved']} 處（切點搬到音檔靜音處）")
     # 顯示層定版（修修 2026-08-05）：句尾零標點 + cue 間 ≤3s 空隙補平連續顯示
-    rows, fstats = finalize_cues(rows)
+    rows, fstats = finalize_cues(rows, pause=pause)
     if fstats["true_silences"]:
         logger.info(f"{cid}: >3s 真靜默不補 {len(fstats['true_silences'])} 處（字幕該消失）")
     for f in fstats.get("bad_boundaries", [])[:5]:
