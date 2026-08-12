@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import APIRouter, Cookie, Form, HTTPException
+from fastapi import APIRouter, Cookie, Form, HTTPException, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
@@ -30,6 +30,7 @@ from starlette.requests import Request
 from shared.config import get_vault_path
 from shared.log import get_logger
 from shared.release_store import get_release, list_releases, update_target
+from shared.tight_srt import latest_tight_srt, srt_to_vtt
 from thousand_sunny.auth import check_auth
 
 logger = get_logger("nakama.web.publish_review")
@@ -80,6 +81,12 @@ def _yt_target(episode: str, cut_id: str) -> tuple[dict, dict]:
     if t is None:
         raise HTTPException(status_code=404, detail="youtube target 不存在")
     return rel, t
+
+
+def _episode_dir(rel: dict) -> Path:
+    """成品在 `<episode>/highlights/exports/<cut>.mp4`——往上三層＝episode 目錄
+    （與 publish_upload 推導 CC 來源的方式相同，不硬編磁碟位置）。"""
+    return Path(rel["file_path"]).parents[2]
 
 
 def taipei_to_iso(dt_local: str) -> str:
@@ -148,12 +155,14 @@ def publish_cut(
     publish_local = ""
     if t.get("publish_at"):
         publish_local = t["publish_at"][:16]
+    subs = latest_tight_srt(_episode_dir(rel), cut_id)
     return _templates.TemplateResponse(
         request,
         "publish_cut.html",
         {
             "rel": rel,
             "t": t,
+            "subs_name": subs.name if subs else None,
             "ab_alternates": _ab_alternates(episode, cut_id, t.get("title"))
             if rel["format"] == "long"
             else [],
@@ -192,6 +201,25 @@ def publish_thumb(
     if not p.exists():
         raise HTTPException(status_code=404, detail=f"縮圖不存在: {p}")
     return FileResponse(p, media_type="image/png")
+
+
+@page_router.get("/subs/{episode}/{cut_id}")
+def publish_subs(episode: str, cut_id: str, nakama_auth: str | None = Cookie(None)) -> Response:
+    """審核頁影片的字幕軌（`<track>`）——**就是實際會上架的那份 CC**。
+
+    長片成品不燒字幕（ADR-055 Q4b），所以審核時看不到字幕；修修 2026-08-12：
+    「可以預設顯示由 SRT 抓來的字幕檔嗎？不需要直接燒到影片裡面去。」
+    轉成 WebVTT 是因為瀏覽器的 `<track>` 不吃 SRT。
+    """
+    _require_auth(nakama_auth)
+    rel, _ = _yt_target(episode, cut_id)
+    srt = latest_tight_srt(_episode_dir(rel), cut_id)
+    if srt is None:
+        raise HTTPException(status_code=404, detail=f"{cut_id} 沒有 tight SRT")
+    return Response(
+        srt_to_vtt(srt.read_text(encoding="utf-8")),
+        media_type="text/vtt; charset=utf-8",
+    )
 
 
 @page_router.get("/vault-thumb")

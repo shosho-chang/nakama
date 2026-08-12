@@ -72,7 +72,18 @@
         <div class="pub-body">
           {% if file_exists %}
           <video class="pub-video" controls preload="metadata"
-                 src="/bridge/publish/media/{{ rel.episode }}/{{ rel.cut_id }}"></video>
+                 src="/bridge/publish/media/{{ rel.episode }}/{{ rel.cut_id }}">
+            {# 長片成品不燒字幕（ADR-055 Q4b）；這條 track 就是實際會上架的那份 CC #}
+            {% if subs_name %}
+            <track kind="subtitles" srclang="zh-TW" label="CC（{{ subs_name }}）" default
+                   src="/bridge/publish/subs/{{ rel.episode }}/{{ rel.cut_id }}">
+            {% endif %}
+          </video>
+          {% if subs_name %}
+          <div class="pub-cap sho-mono">字幕軌 {{ subs_name }}——同一份會上傳成 CC</div>
+          {% else %}
+          <div class="pub-cap sho-mono">⚠ 沒有 tight SRT——上傳時 CC 也會缺</div>
+          {% endif %}
           {% else %}
           <p class="sho-mono">⚠ 成品檔不存在——重跑 publish_prep</p>
           {% endif %}

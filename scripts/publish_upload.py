@@ -140,8 +140,12 @@ def upload_captions(yt, video_id: str, episode_dir: Path, cid: str) -> None:
     """CC 字幕上傳（captions.insert；需 youtube.force-ssl scope）。"""
     from googleapiclient.http import MediaFileUpload as _MFU
 
-    srts = sorted((episode_dir / "highlights/srt").glob(f"{cid}_tight_r*.srt"))
-    if not srts:
+    from shared.tight_srt import latest_tight_srt
+
+    # 與審核頁 preview 同一個挑選規則（shared.tight_srt）——他在頁面上看到的
+    # 字幕軌就是這裡上傳的檔
+    srt = latest_tight_srt(episode_dir, cid)
+    if srt is None:
         logger.warning("%s: 沒有 tight SRT——跳過 CC", cid)
         return
     yt.captions().insert(
@@ -153,9 +157,9 @@ def upload_captions(yt, video_id: str, episode_dir: Path, cid: str) -> None:
                 "name": "中文（台灣）",
             }
         },
-        media_body=_MFU(str(srts[-1]), mimetype="application/octet-stream"),
+        media_body=_MFU(str(srt), mimetype="application/octet-stream"),
     ).execute()
-    logger.info("%s: CC 字幕 OK（%s）", cid, srts[-1].name)
+    logger.info("%s: CC 字幕 OK（%s）", cid, srt.name)
 
 
 def cmd_cc_only(args) -> int:
