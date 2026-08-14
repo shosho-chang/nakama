@@ -382,6 +382,7 @@ async def packaging_compose(
     guest_cutout: str = Form(..., max_length=_EP_SLUG_MAX * 4),
     big_text_1: str = Form("", max_length=40),
     big_text_2: str = Form("", max_length=40),
+    big_text_3: str = Form("", max_length=40),
     highlight_text: str = Form("", max_length=40),
     nakama_auth: str | None = Cookie(None),
 ):
@@ -406,7 +407,7 @@ async def packaging_compose(
         if val not in known:
             raise HTTPException(status_code=404, detail=f"{label} 不在本集 cutout 清單：{val}")
 
-    lines = [ln.strip() for ln in (big_text_1, big_text_2) if ln.strip()]
+    lines = [ln.strip() for ln in (big_text_1, big_text_2, big_text_3) if ln.strip()]
     if not lines:
         raise HTTPException(status_code=400, detail="封面大字不可為空")
     hl = highlight_text.strip()
