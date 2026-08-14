@@ -41,12 +41,12 @@
           <span class="zh">{{ cut.visual_recipe }} · {{ cut.aspect }}</span>
         </h2>
       </div>
-      {% if approval %}
-        {% if approval.approved %}
-        <span class="sho-tag sho-tag--accent">APPROVED · PKG {{ approval.primary_package }}</span>
-        {% else %}
-        <span class="sho-tag pkg-tag-rejected">REJECTED</span>
-        {% endif %}
+      {# decision 是 2026-08-14 新增：只挑變體不算裁決。舊檔沒這欄（None）→ 用
+         approved 回退判讀，維持既有集數的顯示。#}
+      {% if approval and approval.approved %}
+      <span class="sho-tag sho-tag--accent">APPROVED · PKG {{ approval.primary_package }}</span>
+      {% elif approval and (approval.decision == 'reject' or (approval.decision is none and approval.selected_variant is none and approval.bigtext_request is none)) %}
+      <span class="sho-tag pkg-tag-rejected">REJECTED</span>
       {% else %}
       <span class="section-status idle">PENDING</span>
       {% endif %}

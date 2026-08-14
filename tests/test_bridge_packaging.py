@@ -502,3 +502,69 @@ def test_bigtext_request_saved_and_rendered_back(client, vault_with_variants):
 def test_board_shows_variant_thumbnails(client, vault_with_variants):
     board = client.get("/bridge/packaging/20260723-xieboran")
     assert "var-r1-a.png" in board.text and "var-r1-b.png" in board.text
+
+
+def test_approve_does_not_wipe_selected_variant(client, vault_with_variants):
+    """2026-08-14 browser UAT：勾完變體再 approve，選擇整個不見。"""
+    client.post(
+        "/bridge/packaging/20260723-xieboran/variant",
+        data={"cut_id": "punch-L1", "selected_variant": "r1-b", "bigtext_request": "大字／[重出]"},
+        follow_redirects=False,
+    )
+    client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
+        follow_redirects=False,
+    )
+    saved = json.loads(
+        (vault_with_variants / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    entry = saved["approvals"][0]
+    assert entry["approved"] is True
+    assert entry["selected_variant"] == "r1-b"
+    assert entry["bigtext_request"] == "大字／[重出]"
+
+
+def test_variant_pick_alone_is_not_a_rejection(client, vault_with_variants):
+    """2026-08-14 browser UAT：只挑變體時 board 顯示 REJECTED，會誤導。"""
+    client.post(
+        "/bridge/packaging/20260723-xieboran/variant",
+        data={"cut_id": "punch-L1", "selected_variant": "r1-a"},
+        follow_redirects=False,
+    )
+    board = client.get("/bridge/packaging/20260723-xieboran")
+    assert "PENDING" in board.text
+    assert "REJECTED" not in board.text
+    # 真的按 Reject 才是 REJECTED
+    client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "reject", "reject_note": "臉不對"},
+        follow_redirects=False,
+    )
+    assert "REJECTED" in client.get("/bridge/packaging/20260723-xieboran").text
+
+
+def test_legacy_approval_without_decision_still_shows_rejected(client, vault):
+    """舊檔沒有 decision 欄位 → 用 approved 回退判讀，既有集數顯示不變。"""
+    ep = vault / "Attachments" / "packaging" / "20260723-xieboran"
+    (ep / "approval.json").write_text(
+        json.dumps(
+            {
+                "episode": "20260723 謝伯讓",
+                "approvals": [
+                    {
+                        "cut_id": "punch-L1",
+                        "approved": False,
+                        "primary_package": 1,
+                        "reject_note": "舊檔",
+                        "decided_at": "2026-07-30T00:00:00+00:00",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    assert "REJECTED" in client.get("/bridge/packaging/20260723-xieboran").text

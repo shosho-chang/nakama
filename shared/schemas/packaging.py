@@ -219,6 +219,9 @@ class ApprovalV1(BaseModel):
     primary_package: int = Field(ge=1, le=3)
     reject_note: str | None = None
     decided_at: AwareDatetime
+    # 真的按了 Approve／Reject 才有值；None = 只是挑了變體或打了大字，還沒裁決。
+    # 舊檔沒這欄 → None，template 以 approved 回退判讀（見 packaging_board.html）。
+    decision: Literal["approve", "reject"] | None = None
     # 修修在 gate 勾的封面變體（`VariantV1.variant_id`）。None = 還沒挑／該支沒變體。
     selected_variant: str | None = None
     # 變體都不滿意時打的字：`第一行／第二[橘框詞]` — VPS 不能 render，桌機端

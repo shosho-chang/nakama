@@ -233,15 +233,21 @@ async def packaging_approve(
     if approved and cut.format == "long" and not any(p.title_rank for p in cut.packages):
         raise HTTPException(status_code=409, detail="長片尚無 package，先跑 thumbnail-brainstorm")
 
+    ep_dir = _packaging_root() / episode_slug
+    existing = _load_approvals(ep_dir, pkg.episode)
+    prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
     entry = ApprovalV1(
         cut_id=cut_id,
         approved=approved,
         primary_package=primary_package if approved else 1,
         reject_note=reject_note.strip() or None,
         decided_at=datetime.now(timezone.utc),
+        decision=decision,
+        # 挑臉／打大字是另一支 form 寫的，approve 不可以把它們洗掉
+        # （2026-08-14 browser UAT 抓到：勾完變體再 approve，選擇整個不見）。
+        selected_variant=prev.selected_variant if prev else None,
+        bigtext_request=prev.bigtext_request if prev else None,
     )
-    ep_dir = _packaging_root() / episode_slug
-    existing = _load_approvals(ep_dir, pkg.episode)
     others = [a for a in existing.approvals if a.cut_id != cut_id]
     updated = ApprovalFileV1(episode=pkg.episode, approvals=[*others, entry])
     (ep_dir / "approval.json").write_text(
@@ -296,6 +302,9 @@ async def packaging_select_variant(
         primary_package=prev.primary_package if prev else 1,
         reject_note=prev.reject_note if prev else None,
         decided_at=datetime.now(timezone.utc),
+        # 挑變體不是裁決：沒按過 Approve/Reject 就維持 None，board 才不會把
+        # 「挑到一半」顯示成 REJECTED（2026-08-14 browser UAT 抓到）。
+        decision=prev.decision if prev else None,
         selected_variant=variant if variant is not None else (prev.selected_variant if prev else None),
         bigtext_request=bigtext_request.strip() or None,
     )
