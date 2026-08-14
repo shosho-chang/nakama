@@ -41,12 +41,12 @@
           <span class="zh">{{ cut.visual_recipe }} · {{ cut.aspect }}</span>
         </h2>
       </div>
-      {% if approval %}
-        {% if approval.approved %}
-        <span class="sho-tag sho-tag--accent">APPROVED · PKG {{ approval.primary_package }}</span>
-        {% else %}
-        <span class="sho-tag pkg-tag-rejected">REJECTED</span>
-        {% endif %}
+      {# decision 是 2026-08-14 新增：只挑變體不算裁決。舊檔沒這欄（None）→ 用
+         approved 回退判讀，維持既有集數的顯示。#}
+      {% if approval and approval.approved %}
+      <span class="sho-tag sho-tag--accent">APPROVED · PKG {{ approval.primary_package }}</span>
+      {% elif approval and (approval.decision == 'reject' or (approval.decision is none and approval.selected_variant is none and approval.bigtext_request is none)) %}
+      <span class="sho-tag pkg-tag-rejected">REJECTED</span>
       {% else %}
       <span class="section-status idle">PENDING</span>
       {% endif %}
@@ -119,6 +119,149 @@
         </form>
         {% endfor %}
       </details>
+
+      {# 組封面配方（修修 2026-08-14 裁決：先選標題／大字／臉，再 render 一次）。
+         gate 只寫配方，出圖在桌機端——所以這裡沒有預覽，只有「存配方」。#}
+      <details class="pkg-compose" id="compose-{{ cut.cut_id }}"
+               {% if composed_cut == cut.cut_id %}open{% endif %}>
+        <summary class="sho-mono-up">組封面：選標題 ＋ 打大字 ＋ 挑臉（存完我再 render 一次）</summary>
+        {% set req = approval.render_request if approval else none %}
+        <form method="post" action="/bridge/packaging/{{ episode_slug }}/compose" class="pkg-compose-form">
+          <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
+
+          <div class="field">
+            <label class="field-label" for="cr-{{ cut.cut_id }}">用哪一條標題</label>
+            <select class="sho-input" id="cr-{{ cut.cut_id }}" name="title_rank">
+              {% for t in cut.titles|sort(attribute='rank') %}
+              <option value="{{ t.rank }}" {% if req and req.title_rank == t.rank %}selected{% endif %}>
+                #{{ t.rank }} {{ t.text }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          {# 候選池（修修 2026-08-14）：桌機 brainstorm 完寫進 packages.json，
+             這裡只是清單 ＋「填入」把文字塞進下面的格子（純瀏覽器端，零 LLM）。#}
+          {% if cut.brainstorm and (cut.brainstorm.titles or cut.brainstorm.bigtexts) %}
+          <details class="pkg-pool">
+            <summary class="sho-mono-up">候選池：標題 {{ cut.brainstorm.titles | length }} 條 · 大字 {{ cut.brainstorm.bigtexts | length }} 組（點「填入」帶進格子）</summary>
+            {% if cut.brainstorm.bigtexts %}
+            <ul class="pkg-pool-list">
+              {% for b in cut.brainstorm.bigtexts %}
+              <li>
+                <button type="button" class="sho-btn sho-btn--ghost pkg-fill"
+                        data-cut="{{ cut.cut_id }}"
+                        data-l1="{{ b.lines[0] }}"
+                        data-l2="{{ b.lines[1] if b.lines|length > 1 else '' }}"
+                        data-hl="{{ b.highlight }}">填入</button>
+                <span class="pkg-pool-text">{{ b.lines | join('／') }}</span>
+                {% if b.highlight %}<span class="sho-mono">橘框：{{ b.highlight }}</span>{% endif %}
+                {% if b.angle %}<span class="sho-mono">— {{ b.angle }}</span>{% endif %}
+              </li>
+              {% endfor %}
+            </ul>
+            {% endif %}
+            {% if cut.brainstorm.titles %}
+            <ul class="pkg-pool-list pkg-pool-titles">
+              {% for bt in cut.brainstorm.titles %}
+              <li><span class="pkg-pool-text">{{ bt.text }}</span>
+                  {% if bt.angle %}<span class="sho-mono">— {{ bt.angle }}</span>{% endif %}
+                  {% if bt.note %}<span class="sho-mono">（{{ bt.note }}）</span>{% endif %}</li>
+              {% endfor %}
+            </ul>
+            <p class="sho-mono pkg-pool-hint">標題候選要用哪條 → 複製貼進上面〈改標題文字〉的格子存檔（標題文字是 packages.json 的資料，不是這裡的池子）。</p>
+            {% endif %}
+          </details>
+          {% endif %}
+
+          <div class="pkg-compose-text">
+            <div class="field">
+              <label class="field-label" for="b1-{{ cut.cut_id }}">封面大字 第一行</label>
+              <input class="sho-input" id="b1-{{ cut.cut_id }}" name="big_text_1" maxlength="40"
+                     value="{{ req.big_text[0] if req and req.big_text|length > 0 else '' }}">
+            </div>
+            <div class="field">
+              <label class="field-label" for="b2-{{ cut.cut_id }}">第二行</label>
+              <input class="sho-input" id="b2-{{ cut.cut_id }}" name="big_text_2" maxlength="40"
+                     value="{{ req.big_text[1] if req and req.big_text|length > 1 else '' }}">
+            </div>
+            <div class="field">
+              <label class="field-label" for="hl-{{ cut.cut_id }}">橘框詞（要在大字裡）</label>
+              <input class="sho-input" id="hl-{{ cut.cut_id }}" name="highlight_text" maxlength="40"
+                     value="{{ req.highlight_text if req else '' }}">
+            </div>
+          </div>
+
+          {% for role, label in [('host', '修修'), ('guest', '來賓')] %}
+          <fieldset class="pkg-cards pkg-cutout-set">
+            <legend class="sho-mono-up">{{ label }}的臉</legend>
+            {% for c in cutouts[role] %}
+            {% set current = (req.host_cutout if role == 'host' else req.guest_cutout) if req else none %}
+            <label class="pkg-card pkg-card--cutout{% if current == c.vault_path %} pkg-card--primary{% endif %}">
+              <input type="radio" name="{{ role }}_cutout" value="{{ c.vault_path }}"
+                     {% if current == c.vault_path %}checked{% elif not current and loop.first %}checked{% endif %}>
+              <img src="/bridge/projects/gate/thumbnail/cutout/{{ episode_slug }}/{{ c.file }}"
+                   alt="{{ label }} {{ c.emotion }}" loading="lazy">
+              <div class="sho-mono pkg-card-meta">{{ c.emotion or c.file }}</div>
+            </label>
+            {% else %}
+            <p class="sho-mono pkg-brief-missing">（這集還沒有 {{ label }} 的 cutout — 桌機端跑 thumbnail-brainstorm 產生）</p>
+            {% endfor %}
+          </fieldset>
+          {% endfor %}
+
+          <div class="pkg-actions">
+            <button class="sho-btn" type="submit">存配方（我再 render）</button>
+          </div>
+          {% if req %}
+          <p class="sho-mono pkg-title-orig">
+            目前配方：#{{ req.title_rank }} · 大字「{{ req.big_text | join('／') }}」·
+            {{ req.host_cutout.split('/')[-1] }} ＋ {{ req.guest_cutout.split('/')[-1] }}
+            {% if req.rendered_png %}· 已出圖 {{ req.rendered_png }}{% else %}· <strong>等我 render</strong>{% endif %}
+          </p>
+          {% endif %}
+        </form>
+      </details>
+
+      {# 封面變體勾選（修修 2026-08-14 裁決）：臉與封面大字都要能挑。變體 PNG 是
+         桌機端先 render 完的，這裡純勾選 — VPS 不 render、不叫 LLM（D11）。#}
+      {% set has_variants = view.packages | map(attribute='pkg') | map(attribute='variants') | select | list | length > 0 %}
+      {% if has_variants %}
+      <details class="pkg-variants" id="variants-{{ cut.cut_id }}">
+        <summary class="sho-mono-up">挑封面：臉與大字的變體</summary>
+        <form method="post" action="/bridge/packaging/{{ episode_slug }}/variant" class="pkg-variant-form">
+          <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
+          {% for item in view.packages %}
+          {% if item.pkg.variants %}
+          <fieldset class="pkg-cards pkg-variant-set">
+            <legend class="sho-mono-up">#{{ item.pkg.title_rank }} {{ item.title.text if item.title else '' }}</legend>
+            {% for v in item.pkg.variants %}
+            <label class="pkg-card pkg-card--variant{% if approval and approval.selected_variant == v.variant_id %} pkg-card--primary{% endif %}">
+              <input type="radio" name="selected_variant" value="{{ v.variant_id }}"
+                     {% if approval and approval.selected_variant == v.variant_id %}checked{% endif %}>
+              <img src="/bridge/projects/gate/thumbnail/packaging/{{ episode_slug }}/{{ v.thumbnail_png.split('/')[-1] }}"
+                   alt="變體 {{ v.variant_id }}" loading="lazy">
+              <div class="sho-mono pkg-card-meta">{{ v.variant_id }} · 大字「{{ v.big_text | join('／') }}」</div>
+            </label>
+            {% endfor %}
+          </fieldset>
+          {% endif %}
+          {% endfor %}
+          <div class="field">
+            <label class="field-label" for="bt-{{ cut.cut_id }}">
+              大字都不對？打你要的（格式：<code>第一行／第二行[橘框詞]</code>）——
+              <strong>不是即時的</strong>：VPS 不能 render，桌機端讀到後重出一張變體
+            </label>
+            <input class="sho-input" id="bt-{{ cut.cut_id }}" name="bigtext_request" maxlength="2000"
+                   placeholder="沒有資源／怎麼[活下來]"
+                   value="{{ approval.bigtext_request or '' if approval else '' }}">
+          </div>
+          <div class="pkg-actions">
+            <button class="sho-btn sho-btn--ghost" type="submit">存選擇</button>
+          </div>
+        </form>
+      </details>
+      {% endif %}
 
       <form method="post" action="/bridge/packaging/{{ episode_slug }}/approve" class="pkg-approve-form">
         <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
@@ -214,6 +357,23 @@
   }
   .pkg-card:hover { border-color: var(--sho-accent-line); }
   .pkg-card:has(input:checked) { border-color: var(--sho-accent); background: var(--sho-accent-soft); }
+  .pkg-variants { margin: 12px 0 4px; }
+  .pkg-variant-set { margin-bottom: 14px; }
+  .pkg-card--variant img { width: 100%; display: block; }
+  .pkg-compose { margin: 12px 0; }
+  .pkg-compose-text { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .pkg-cutout-set { margin-bottom: 14px; }
+  .pkg-pool { margin-bottom: 14px; }
+  .pkg-pool-list { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 6px; }
+  .pkg-pool-list li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pkg-pool-text { font-weight: 600; }
+  .pkg-pool-titles li { padding-left: 4px; }
+  .pkg-pool-hint { opacity: 0.75; }
+  .pkg-card--cutout img { width: 100%; display: block; background: #1a1a1a; }
+  .pkg-card--cutout .pkg-card-meta { padding: 6px 8px 8px; }
+  @media (max-width: 720px) { .pkg-compose-text { grid-template-columns: 1fr; } }
+  .pkg-card--variant .pkg-card-meta { padding: 6px 8px 8px; }
+
   .pkg-card:has(input:focus-visible) { box-shadow: var(--sho-focus); }
   .pkg-card input[type="radio"] { position: absolute; opacity: 0; }
   .pkg-card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--sho-r-1); display: block; background: var(--sho-bg-3); }
@@ -255,5 +415,17 @@
   .pkg-coverframe-note { margin: var(--sho-s-3) 0; }
   .pkg-cut + .pkg-cut { margin-top: var(--sho-s-5); }
 </style>
+<script>
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest(".pkg-fill");
+    if (!btn) return;
+    const cut = btn.dataset.cut;
+    const set = (id, val) => { const el = document.getElementById(id + "-" + cut); if (el) el.value = val; };
+    set("b1", btn.dataset.l1);
+    set("b2", btn.dataset.l2);
+    set("hl", btn.dataset.hl);
+    document.getElementById("b1-" + cut)?.focus();
+  });
+</script>
 </body>
 </html>

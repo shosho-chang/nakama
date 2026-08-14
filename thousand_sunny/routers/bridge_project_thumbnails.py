@@ -362,6 +362,32 @@ async def thumbnail_packaging_candidate(
     return FileResponse(path, media_type="image/png")
 
 
+@page_router.get("/projects/{slug}/thumbnail/cutout/{episode_slug}/{filename}")
+async def thumbnail_cutout_candidate(
+    slug: str,
+    episode_slug: str,
+    filename: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Serve a podcast cutout PNG from vault ``Attachments/cutouts/podcast/{episode_slug}/``.
+
+    Packaging gate 的 cutout 挑選器用（修修 2026-08-14：先選臉與大字，再 render
+    一次）。與 packaging 候選圖同一套路徑驗證，只換目錄。
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/bridge/projects/{slug}", status_code=302)
+    safe_ep = _safe_ep_slug(episode_slug)
+    if safe_ep is None:
+        raise HTTPException(status_code=400, detail="invalid episode_slug")
+    safe = _safe_filename(filename)
+    if safe is None:
+        raise HTTPException(status_code=400, detail="invalid filename")
+    path = get_vault_path() / "Attachments" / "cutouts" / "podcast" / safe_ep / safe
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail=f"cutout missing: {filename}")
+    return FileResponse(path, media_type="image/png")
+
+
 @page_router.post("/projects/{slug}/thumbnail/commit")
 async def thumbnail_commit(
     request: Request,

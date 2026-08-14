@@ -89,8 +89,13 @@ transcript.srt 的壞邊界（數量詞/「的」結構/專名被拆）→ 產�
 2. **每支長片**（winners.json 的 long 當選，依 rank 序）：
    - `titles`：進 `title-brainstorm` skill 跑 `--batch <packaging_dir>`（完整 7 步，
      深度不可簡化 — D13）→ 成功後 `mark --cut <id> --stage titles`
+   - **標題 gate（修修 2026-08-14 裁決，必停）**：titles emit 完 → 把 Top 5 貼給修修，
+     等他挑／改字才進封面段。理由同選段 gate——**HITL 放在成本最低的分叉點**；
+     標題沒定就做封面，等於用已經做完的封面逼他接受標題（鄭國威集實例）。
+     他也可以直接在 gate 頁的標題輸入框改字（`/bridge/packaging/<slug>/title`）。
    - `thumbnails`：進 `/thumbnail-brainstorm`（joint pairing → cutout → render 3 PNG
-     → attach_packages 回填+雙落點）→ `mark --cut <id> --stage thumbnails`
+     ＋**變體板**（3 表情對 × 2 大字，Step 4.6）→ attach_packages 回填+雙落點）
+     → `mark --cut <id> --stage thumbnails`
    - `emitted`：確認該 cut 在 **vault 端** `Attachments/packaging/<slug>/packages.json`
      內 packages 滿 3 且 PNG 檔在 → `mark --cut <id> --stage emitted`
 3. **短片**（winners.json 的 short 當選）：title-brainstorm `--batch` 內建 LLM 直出
@@ -115,7 +120,10 @@ transcript.srt 的壞邊界（數量詞/「的」結構/專名被拆）→ 產�
    **等他指定 id** 才 `--pick` 寫 winners.json 進製作。理由：panel 讀逐字稿評的是素材強度，
    不是成片吸引力也不是他的品味；做完才發現主題不吸引人，製作＋packaging 的成本已經付掉
    （安吉集實例）。詳見 highlight-cut skill Step 2.4
-6. **packaging 後**：告知 gate URL 即停 — approve 在 Web UI 做，不在對話裡代決
+6. **標題 emit 後（必停）**：Top 5 貼給修修挑／改字，定案才進封面段（見上節）
+7. **packaging 後**：告知 gate URL 即停 — approve、挑封面變體、打封面大字都在
+   Web UI 做，不在對話裡代決。修修若在 gate 打了 `bigtext_request`，下次跑
+   thumbnail-brainstorm 要讀它重出變體
 
 ## 原則
 
