@@ -43,7 +43,9 @@ sys.path.insert(0, str(_REPO))
 
 from shared.config import get_vault_path  # noqa: E402
 
-RENDER_REQUEST = _REPO / ".claude" / "skills" / "thumbnail-brainstorm" / "scripts" / "render_request.py"
+RENDER_REQUEST = (
+    _REPO / ".claude" / "skills" / "thumbnail-brainstorm" / "scripts" / "render_request.py"
+)
 FOOTAGE_ROOTS = (Path("G:/Footages"), Path("G:/footages"))
 
 
@@ -111,7 +113,11 @@ def render_one(job: dict, state: dict, state_path: Path, log_path: Path | None) 
     slug, cut_id = job["slug"], job["cut_id"]
     packaging_dir = find_packaging_dir(slug)
     if packaging_dir is None:
-        _log(f"SKIP {slug}/{cut_id}：找不到 working-set packaging 目錄（G:/Footages/*/packaging）", log_path)
+        _log(
+            f"SKIP {slug}/{cut_id}：找不到 working-set packaging 目錄"
+            "（G:/Footages/*/packaging）",
+            log_path,
+        )
         state[job["key"]] = {
             "requested_at": job["req"]["requested_at"],
             "last_error": "packaging dir not found",

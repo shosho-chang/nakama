@@ -116,7 +116,10 @@ def main() -> int:
             args.eye_target = float(geo.get("eye_target", args.eye_target))
         if "--guest-face-boost" not in given:
             args.guest_face_boost = float(geo.get("guest_face_boost", args.guest_face_boost))
-        print(f"[geometry.json] eye_target={args.eye_target} guest_face_boost={args.guest_face_boost}")
+        print(
+            f"[geometry.json] eye_target={args.eye_target} "
+            f"guest_face_boost={args.guest_face_boost}"
+        )
 
     vault = get_vault_path()
     ep_vault = vault / "Attachments" / "packaging" / args.episode_slug
@@ -143,8 +146,14 @@ def main() -> int:
     hlm, glm = _landmarks(manifest, host_name), _landmarks(manifest, guest_name)
     guest = _solve(glm, guest_h, args.eye_target, GUEST_HEAD_X, "guest")
     host = _solve(hlm, host_h, guest["eye"], HOST_HEAD_X, "host")  # 眼線對齊來賓
-    print(f"host {host_name}: h={host['height_pct']} y={host['y_pct']} x={host['x_pct']} eye={host['eye']}")
-    print(f"guest {guest_name}: h={guest['height_pct']} y={guest['y_pct']} x={guest['x_pct']} eye={guest['eye']}")
+    print(
+        f"host {host_name}: h={host['height_pct']} y={host['y_pct']} "
+        f"x={host['x_pct']} eye={host['eye']}"
+    )
+    print(
+        f"guest {guest_name}: h={guest['height_pct']} y={guest['y_pct']} "
+        f"x={guest['x_pct']} eye={guest['eye']}"
+    )
     print(f"眼線差 {abs(host['eye'] - guest['eye']):.1f}px（門檻 10）")
     print(
         f"headroom：host crown {host['crown']:.0f}px（{host['crown'] / CANVAS_H:.1%}）"

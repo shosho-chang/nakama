@@ -354,7 +354,9 @@ async def packaging_select_variant(
         # 挑變體不是裁決：沒按過 Approve/Reject 就維持 None，board 才不會把
         # 「挑到一半」顯示成 REJECTED（2026-08-14 browser UAT 抓到）。
         decision=prev.decision if prev else None,
-        selected_variant=variant if variant is not None else (prev.selected_variant if prev else None),
+        selected_variant=(
+            variant if variant is not None else (prev.selected_variant if prev else None)
+        ),
         bigtext_request=bigtext_request.strip() or None,
     )
     others = [a for a in existing.approvals if a.cut_id != cut_id]
