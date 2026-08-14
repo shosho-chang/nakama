@@ -8,7 +8,11 @@ specs.json（3 筆，local thumbnail 絕對路徑 + 顯式 cutout 欄位）：
     [{"title_rank": 1, "thumbnail": "G:/.../pkg-L1-1.png",
       "thumb_archetype_id": "T-V7", "joint_pairing_id": "JP-7",
       "host_cutout": "<vault 絕對或 vault-relative>",
-      "guest_cutout": "<同上>"}, ...]
+      "guest_cutout": "<同上>",
+      "variants": [                      # 選填 — gate 變體板（修修 2026-08-14）
+        {"variant_id": "r1-serious-a", "thumbnail": "G:/.../var-r1-serious-a.png",
+         "host_cutout": "<同上>", "guest_cutout": "<同上>",
+         "big_text": ["沒有資源", "怎麼活下來"], "highlight_text": "活下來"}]}, ...]
 
 動作：thumbnail PNG 複製進 vault `Attachments/packaging/<episode-slug>/`、
 cutout 路徑正規化為 vault-relative、回填 cut.packages、**整檔過
@@ -72,6 +76,26 @@ def attach(packaging_dir: Path, cut_id: str, episode_slug: str, specs: list[dict
         dst_png = vault_pkg_dir / src_png.name
         if src_png.resolve() != dst_png.resolve():
             png_copies.append((src_png, dst_png))
+        # 變體板（修修 2026-08-14）：同一條標題的多張候選封面，gate 上勾選。
+        # PNG 一併複製進 vault——Bridge 只讀 vault，working set 它看不到。
+        variants = []
+        for var in spec.get("variants", []):
+            var_png = Path(var["thumbnail"])
+            if not var_png.exists():
+                raise FileNotFoundError(f"variant PNG not found: {var_png}")
+            var_dst = vault_pkg_dir / var_png.name
+            if var_png.resolve() != var_dst.resolve():
+                png_copies.append((var_png, var_dst))
+            variants.append(
+                {
+                    "variant_id": var["variant_id"],
+                    "thumbnail_png": f"Attachments/packaging/{episode_slug}/{var_png.name}",
+                    "host_cutout": to_vault_relative(var["host_cutout"], vault_root),
+                    "guest_cutout": to_vault_relative(var["guest_cutout"], vault_root),
+                    "big_text": var["big_text"],
+                    "highlight_text": var.get("highlight_text", ""),
+                }
+            )
         packages.append(
             {
                 "title_rank": spec["title_rank"],
@@ -80,6 +104,7 @@ def attach(packaging_dir: Path, cut_id: str, episode_slug: str, specs: list[dict
                 "joint_pairing_id": spec["joint_pairing_id"],
                 "host_cutout": to_vault_relative(spec["host_cutout"], vault_root),
                 "guest_cutout": to_vault_relative(spec["guest_cutout"], vault_root),
+                "variants": variants,
             }
         )
     cut["packages"] = packages

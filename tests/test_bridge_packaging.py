@@ -415,3 +415,90 @@ def test_packaging_pages_mark_own_nav_active(client):
         # active 標記落在 packaging 這條，而非 brook
         seg = body.split('href="/bridge/packaging"')[1][:80]
         assert 'class="active"' in seg, f"{path} 的 packaging nav 沒標 active：{seg!r}"
+
+
+# ---------------------------------------------------------------------------
+# 封面變體勾選（修修 2026-08-14：臉與封面大字都要能挑）
+# ---------------------------------------------------------------------------
+
+
+def _variant(vid: str, n: int) -> dict:
+    return {
+        "variant_id": vid,
+        "thumbnail_png": f"Attachments/packaging/20260723-xieboran/var-{vid}.png",
+        "host_cutout": "Attachments/cutouts/shosho/surprised/1.png",
+        "guest_cutout": "Attachments/cutouts/podcast/20260723-xieboran/guest_v1_thoughtful.png",
+        "big_text": ["沒有資源", "怎麼活下來"],
+        "highlight_text": "活下來",
+    }
+
+
+@pytest.fixture
+def vault_with_variants(vault):
+    path = vault / "Attachments" / "packaging" / "20260723-xieboran" / "packages.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["cuts"][0]["packages"][0]["variants"] = [_variant("r1-a", 1), _variant("r1-b", 1)]
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    return vault
+
+
+def test_variant_select_writes_approval_without_approving(client, vault_with_variants):
+    r = client.post(
+        "/bridge/packaging/20260723-xieboran/variant",
+        data={"cut_id": "punch-L1", "selected_variant": "r1-b"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    saved = json.loads(
+        (vault_with_variants / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    entry = saved["approvals"][0]
+    assert entry["selected_variant"] == "r1-b"
+    assert entry["approved"] is False  # 挑臉不等於拍板
+
+
+def test_variant_select_keeps_existing_approval(client, vault_with_variants):
+    client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "2"},
+        follow_redirects=False,
+    )
+    client.post(
+        "/bridge/packaging/20260723-xieboran/variant",
+        data={"cut_id": "punch-L1", "selected_variant": "r1-a"},
+        follow_redirects=False,
+    )
+    saved = json.loads(
+        (vault_with_variants / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    entry = saved["approvals"][0]
+    assert entry["approved"] is True and entry["primary_package"] == 2
+    assert entry["selected_variant"] == "r1-a"
+
+
+def test_variant_unknown_id_404(client, vault_with_variants):
+    r = client.post(
+        "/bridge/packaging/20260723-xieboran/variant",
+        data={"cut_id": "punch-L1", "selected_variant": "nope"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 404
+
+
+def test_bigtext_request_saved_and_rendered_back(client, vault_with_variants):
+    client.post(
+        "/bridge/packaging/20260723-xieboran/variant",
+        data={"cut_id": "punch-L1", "bigtext_request": "沒有資源／怎麼[活下來]"},
+        follow_redirects=False,
+    )
+    board = client.get("/bridge/packaging/20260723-xieboran")
+    assert "沒有資源／怎麼[活下來]" in board.text
+
+
+def test_board_shows_variant_thumbnails(client, vault_with_variants):
+    board = client.get("/bridge/packaging/20260723-xieboran")
+    assert "var-r1-a.png" in board.text and "var-r1-b.png" in board.text

@@ -120,6 +120,46 @@
         {% endfor %}
       </details>
 
+      {# 封面變體勾選（修修 2026-08-14 裁決）：臉與封面大字都要能挑。變體 PNG 是
+         桌機端先 render 完的，這裡純勾選 — VPS 不 render、不叫 LLM（D11）。#}
+      {% set has_variants = view.packages | map(attribute='pkg') | map(attribute='variants') | select | list | length > 0 %}
+      {% if has_variants %}
+      <details class="pkg-variants" id="variants-{{ cut.cut_id }}">
+        <summary class="sho-mono-up">挑封面：臉與大字的變體</summary>
+        <form method="post" action="/bridge/packaging/{{ episode_slug }}/variant" class="pkg-variant-form">
+          <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
+          {% for item in view.packages %}
+          {% if item.pkg.variants %}
+          <fieldset class="pkg-cards pkg-variant-set">
+            <legend class="sho-mono-up">#{{ item.pkg.title_rank }} {{ item.title.text if item.title else '' }}</legend>
+            {% for v in item.pkg.variants %}
+            <label class="pkg-card pkg-card--variant{% if approval and approval.selected_variant == v.variant_id %} pkg-card--primary{% endif %}">
+              <input type="radio" name="selected_variant" value="{{ v.variant_id }}"
+                     {% if approval and approval.selected_variant == v.variant_id %}checked{% endif %}>
+              <img src="/bridge/projects/gate/thumbnail/packaging/{{ episode_slug }}/{{ v.thumbnail_png.split('/')[-1] }}"
+                   alt="變體 {{ v.variant_id }}" loading="lazy">
+              <div class="sho-mono pkg-card-meta">{{ v.variant_id }} · 大字「{{ v.big_text | join('／') }}」</div>
+            </label>
+            {% endfor %}
+          </fieldset>
+          {% endif %}
+          {% endfor %}
+          <div class="field">
+            <label class="field-label" for="bt-{{ cut.cut_id }}">
+              大字都不對？打你要的（格式：<code>第一行／第二行[橘框詞]</code>）——
+              <strong>不是即時的</strong>：VPS 不能 render，桌機端讀到後重出一張變體
+            </label>
+            <input class="sho-input" id="bt-{{ cut.cut_id }}" name="bigtext_request" maxlength="2000"
+                   placeholder="沒有資源／怎麼[活下來]"
+                   value="{{ approval.bigtext_request or '' if approval else '' }}">
+          </div>
+          <div class="pkg-actions">
+            <button class="sho-btn sho-btn--ghost" type="submit">存選擇</button>
+          </div>
+        </form>
+      </details>
+      {% endif %}
+
       <form method="post" action="/bridge/packaging/{{ episode_slug }}/approve" class="pkg-approve-form">
         <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
         <fieldset class="pkg-cards">
@@ -214,6 +254,11 @@
   }
   .pkg-card:hover { border-color: var(--sho-accent-line); }
   .pkg-card:has(input:checked) { border-color: var(--sho-accent); background: var(--sho-accent-soft); }
+  .pkg-variants { margin: 12px 0 4px; }
+  .pkg-variant-set { margin-bottom: 14px; }
+  .pkg-card--variant img { width: 100%; display: block; }
+  .pkg-card--variant .pkg-card-meta { padding: 6px 8px 8px; }
+
   .pkg-card:has(input:focus-visible) { box-shadow: var(--sho-focus); }
   .pkg-card input[type="radio"] { position: absolute; opacity: 0; }
   .pkg-card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--sho-r-1); display: block; background: var(--sho-bg-3); }

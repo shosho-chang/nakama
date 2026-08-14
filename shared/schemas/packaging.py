@@ -20,6 +20,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_serializ
 
 _PNG_SLUG_RE = re.compile(r"^[A-Za-z0-9._-]+\.png$")
 _WIN_ABS_RE = re.compile(r"^[A-Za-z]:[/\\]")
+_VARIANT_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 def _is_abs_path(s: str) -> bool:
@@ -58,6 +59,45 @@ class TitleV1(BaseModel):
         return self
 
 
+class VariantV1(BaseModel):
+    """同一條標題的一個封面變體 — 差在臉（cutout 表情）與封面大字。
+
+    修修 2026-08-14 裁決：gate 上要能勾臉、能改封面大字。render 只能在桌機跑
+    （Chrome/hyperframes/字型都在那），VPS 的 Bridge 叫不到，所以走「桌機先把
+    變體 render 完 → gate 純勾選」的變體板路線（v2.5「感知量收斂 = 變體板」的
+    延伸）。gate 端零 render、零 LLM，不違反 ADR-054 D11。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    variant_id: str
+    thumbnail_png: str
+    host_cutout: str
+    guest_cutout: str
+    big_text: list[str] = Field(min_length=1, max_length=3)
+    highlight_text: str = ""
+
+    @model_validator(mode="after")
+    def _validate(self) -> "VariantV1":
+        if not _VARIANT_ID_RE.match(self.variant_id):
+            raise ValueError(
+                f"variant_id must match [A-Za-z0-9._-]+, got {self.variant_id!r} "
+                "(進檔名與 form value，CJK/空白會壞掉)"
+            )
+        for name in ("thumbnail_png", "host_cutout", "guest_cutout"):
+            val: str = getattr(self, name)
+            if _is_abs_path(val):
+                raise ValueError(f"{name} must be vault-relative path, got absolute: {val!r}")
+            if val.lower().endswith(".png") and not _PNG_SLUG_RE.match(_png_basename(val)):
+                raise ValueError(f"PNG filename must match [A-Za-z0-9._-]+\\.png, got {val!r}")
+        if self.highlight_text and self.highlight_text not in "".join(self.big_text):
+            raise ValueError(
+                f"highlight_text {self.highlight_text!r} 不在 big_text 內 "
+                "（橘框詞必須是大字的子字串，否則 render 出來不會有框）"
+            )
+        return self
+
+
 class PackageV1(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -67,6 +107,15 @@ class PackageV1(BaseModel):
     joint_pairing_id: str
     host_cutout: str
     guest_cutout: str
+    # 空 list = 這支還沒產變體（舊集數／短片）；gate 就退化成單張顯示。
+    variants: list[VariantV1] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_variant_ids(self) -> "PackageV1":
+        ids = [v.variant_id for v in self.variants]
+        if len(ids) != len(set(ids)):
+            raise ValueError(f"duplicate variant_id in package rank {self.title_rank}: {ids}")
+        return self
 
     @model_validator(mode="after")
     def _validate_path_fields(self) -> "PackageV1":
@@ -170,6 +219,11 @@ class ApprovalV1(BaseModel):
     primary_package: int = Field(ge=1, le=3)
     reject_note: str | None = None
     decided_at: AwareDatetime
+    # 修修在 gate 勾的封面變體（`VariantV1.variant_id`）。None = 還沒挑／該支沒變體。
+    selected_variant: str | None = None
+    # 變體都不滿意時打的字：`第一行／第二[橘框詞]` — VPS 不能 render，桌機端
+    # thumbnail-brainstorm 讀到後重出一張新變體，不是即時生效。
+    bigtext_request: str | None = None
 
 
 def parse_packages(path: "Path | str") -> PackagesFileV1:

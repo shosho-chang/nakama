@@ -251,6 +251,71 @@ async def packaging_approve(
     return RedirectResponse(f"/bridge/packaging/{episode_slug}", status_code=303)
 
 
+@page_router.post("/{episode_slug}/variant")
+async def packaging_select_variant(
+    episode_slug: str,
+    cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
+    selected_variant: str = Form("", max_length=_EP_SLUG_MAX),
+    bigtext_request: str = Form("", max_length=_NOTE_MAX),
+    nakama_auth: str | None = Cookie(None),
+):
+    """勾封面變體／打封面大字（修修 2026-08-14）— 只寫 approval.json，不動 packages.json。
+
+    勾選是即時生效的（變體 PNG 桌機端已經 render 完，gate 純挑）；打字則是**請求**
+    ——VPS 叫不到桌機的 render（ADR-054 D11），桌機端 thumbnail-brainstorm 讀到
+    `bigtext_request` 後才重出一張新變體。UI 上要講清楚這個時間差，不要讓修修
+    以為打完字圖就變了。
+
+    不改 approved／primary_package／reject_note：挑臉跟拍板是兩件事，挑到一半
+    不該被當成已核准。
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/packaging", status_code=302)
+
+    ctx = _board_context(episode_slug)
+    pkg: PackagesFileV1 = ctx["pkg"]
+    cut = next((c for c in pkg.cuts if c.cut_id == cut_id), None)
+    if cut is None:
+        raise HTTPException(status_code=404, detail=f"cut not found: {cut_id}")
+
+    variant = selected_variant.strip() or None
+    if variant is not None:
+        known = {v.variant_id for p in cut.packages for v in p.variants}
+        if variant not in known:
+            raise HTTPException(
+                status_code=404,
+                detail=f"{cut_id} 沒有 variant {variant!r}（已知：{sorted(known)}）",
+            )
+
+    ep_dir = _packaging_root() / episode_slug
+    existing = _load_approvals(ep_dir, pkg.episode)
+    prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
+    entry = ApprovalV1(
+        cut_id=cut_id,
+        approved=prev.approved if prev else False,
+        primary_package=prev.primary_package if prev else 1,
+        reject_note=prev.reject_note if prev else None,
+        decided_at=datetime.now(timezone.utc),
+        selected_variant=variant if variant is not None else (prev.selected_variant if prev else None),
+        bigtext_request=bigtext_request.strip() or None,
+    )
+    others = [a for a in existing.approvals if a.cut_id != cut_id]
+    updated = ApprovalFileV1(episode=pkg.episode, approvals=[*others, entry])
+    (ep_dir / "approval.json").write_text(
+        updated.model_dump_json(indent=2) + "\n", encoding="utf-8"
+    )
+    logger.info(
+        "packaging variant: %s/%s variant=%s bigtext=%s",
+        episode_slug,
+        cut_id,
+        entry.selected_variant,
+        bool(entry.bigtext_request),
+    )
+    return RedirectResponse(
+        f"/bridge/packaging/{episode_slug}#cut-{cut_id}", status_code=303
+    )
+
+
 @page_router.post("/{episode_slug}/title")
 async def packaging_edit_title(
     episode_slug: str,
