@@ -39,6 +39,7 @@ from thousand_sunny.routers import (  # noqa: E402
     crew,
     franky,
     inventory,
+    highlight_review,
     kb_review,
     packaging,
     progress,
@@ -96,6 +97,7 @@ app.include_router(bridge_models.router)
 app.include_router(bridge_projects.page_router)
 app.include_router(bridge_project_thumbnails.page_router)
 app.include_router(packaging.page_router)
+app.include_router(highlight_review.page_router)
 app.include_router(publish_review.page_router)
 app.include_router(bridge_weekly.page_router)
 app.include_router(bridge_zoro.page_router)

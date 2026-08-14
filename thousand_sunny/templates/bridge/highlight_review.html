@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Highlight review · {{ episode_slug }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+<style>
+  .highlight-gate { max-width: 1060px; margin: 0 auto; padding: var(--sho-s-5) var(--sho-gutter) var(--sho-s-8); }
+  .highlight-hint { color: var(--sho-text-2); margin: 0 0 var(--sho-s-5); }
+  .highlight-grid { display: grid; gap: var(--sho-s-3); }
+  .highlight-card { border: 1px solid var(--sho-line); border-left: 4px solid var(--sho-line-2); background: var(--sho-bg-2); padding: var(--sho-s-4); }
+  .highlight-card:has(input:checked) { border-left-color: var(--sho-accent); }
+  .highlight-card.veto { border-left-color: var(--sho-error); }
+  .highlight-card__head { display: flex; gap: var(--sho-s-3); justify-content: space-between; align-items: start; }
+  .highlight-card label { cursor: pointer; font-weight: 700; }
+  .highlight-meta, .highlight-score { color: var(--sho-text-2); font-size: .875rem; }
+  .highlight-hook { margin: var(--sho-s-3) 0; white-space: pre-wrap; }
+  .highlight-veto { border-top: 1px dashed var(--sho-error); color: var(--sho-text-2); padding-top: var(--sho-s-2); }
+  .highlight-feedback { display: block; margin-top: var(--sho-s-3); }
+  .highlight-feedback textarea { box-sizing: border-box; display: block; width: 100%; min-height: 4.5rem; margin-top: var(--sho-s-1); border: 1px solid var(--sho-line-2); background: var(--sho-bg); color: var(--sho-text); font: inherit; padding: var(--sho-s-2); }
+  .highlight-actions { position: sticky; bottom: 0; display: flex; align-items: center; gap: var(--sho-s-3); border-top: 1px solid var(--sho-line); background: var(--sho-bg); padding: var(--sho-s-3) 0; margin-top: var(--sho-s-4); }
+  .highlight-actions button { border: 0; background: var(--sho-accent); color: var(--sho-ink); cursor: pointer; font: inherit; font-weight: 700; padding: var(--sho-s-2) var(--sho-s-4); }
+  .highlight-actions button:disabled { cursor: not-allowed; opacity: .45; }
+  input:focus-visible, textarea:focus-visible, button:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+  @media (prefers-reduced-motion: reduce) { .highlight-card { transition: none; } }
+</style>
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='packaging') }}
+<section class="page-header page-header--split">
+  <div><div class="nk-caps">/bridge/highlights/{{ episode_slug }} · human gate</div><h1 class="page-title">長片 highlight 選段 <span class="zh">最多五候選，確認三支才進製作</span></h1></div>
+  <div class="header-meta sho-mono">AUDIT {{ decision_count }} DECISIONS</div>
+</section>
+<main class="highlight-gate">
+  {% if saved %}<p role="status" class="highlight-hint">已確認 3 支 selection；winners.json 與 feedback audit 已落盤。</p>{% endif %}
+  <p class="highlight-hint">panel 分數是素材強度，不代替你的成片判斷。Brand veto 必須逐支明確勾選 override，才可儲存。</p>
+  <form method="post" action="/bridge/highlights/{{ episode_slug }}/decide" id="highlight-form">
+    <div class="highlight-grid">
+    {% for row in rows %}
+      <article class="highlight-card {% if row.brand_severity == 'veto' %}veto{% endif %}" data-veto="{{ 'true' if row.brand_severity == 'veto' else 'false' }}">
+        <div class="highlight-card__head">
+          <label><input type="checkbox" name="candidate_id" value="{{ row.id }}" {% if row.selected %}checked{% endif %}> {{ row.id }} · {{ row.title or '未命名候選' }}</label>
+          <span class="highlight-score">{% if row.rank %}RANK {{ row.rank }}{% else %}VARIANT{% endif %} · median {{ '%.0f'|format(row.median) }}</span>
+        </div>
+        <div class="highlight-meta">{{ row.group }} · {{ '%d:%02d'|format(row.duration_sec // 60, row.duration_sec % 60) }} · 阿哲/凱文/淑芬 {{ row.scores.azhe if row.scores.azhe is not none else '-' }}/{{ row.scores.kevin if row.scores.kevin is not none else '-' }}/{{ row.scores.shufen if row.scores.shufen is not none else '-' }}</div>
+        {% if row.hook %}<p class="highlight-hook">{{ row.hook }}</p>{% endif %}
+        {% if row.brand_severity %}<div class="highlight-veto" role="alert">{{ row.brand_severity | upper }} · {{ row.brand_issue }}{% if row.brand_mitigation %}／{{ row.brand_mitigation }}{% endif %}{% if row.brand_severity == 'veto' %}<br><label><input type="checkbox" name="override_veto" value="{{ row.id }}"> 我理解此 veto，仍要選此段。</label>{% endif %}</div>{% endif %}
+        <label class="highlight-feedback">選擇 feedback／淘汰理由<textarea name="feedback_{{ row.id }}" maxlength="2000">{{ row.feedback }}</textarea></label>
+      </article>
+    {% endfor %}
+    </div>
+    <div class="highlight-actions"><output id="selection-count" aria-live="polite">已選 0 / 3</output><button type="submit" id="save-selection">確認三支並寫入 gate</button></div>
+  </form>
+</main>
+<script>
+(() => { const form = document.querySelector('#highlight-form'); const output = document.querySelector('#selection-count'); const button = document.querySelector('#save-selection'); const sync = () => { const selected = [...form.querySelectorAll('input[name="candidate_id"]:checked')]; const vetoMissing = selected.some(input => input.closest('[data-veto="true"]')?.querySelector('input[name="override_veto"]:checked') === null); output.textContent = `已選 ${selected.length} / 3`; button.disabled = selected.length !== 3 || vetoMissing; }; form.addEventListener('change', sync); sync(); })();
+</script>
+</body>
+</html>

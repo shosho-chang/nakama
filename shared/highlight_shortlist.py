@@ -1,0 +1,196 @@
+"""Shared ranking and durable writes for the highlight selection gate.
+
+Both the command-line shortlist and the authenticated Bridge surface use this
+module so a decision always produces the same ``winners.json`` contract.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import statistics
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+SCORERS = ("azhe", "kevin", "shufen")
+
+
+class HighlightDataError(ValueError):
+    """The pre-production highlight artefacts are absent or malformed."""
+
+
+def _load_object(path: Path, *, required: bool = False) -> dict[str, Any]:
+    if not path.is_file():
+        if required:
+            raise HighlightDataError(f"missing required highlight input: {path}")
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise HighlightDataError(f"invalid JSON in {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise HighlightDataError(f"highlight input must be a JSON object: {path}")
+    return data
+
+
+def _atomic_json_write(path: Path, payload: dict[str, Any]) -> Path:
+    """Write JSON through an adjacent temporary file, then atomically replace."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    encoded = json.dumps(payload, ensure_ascii=False, indent=1) + "\n"
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+        raise
+    return path
+
+
+def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
+    """Join candidates, persona scores and brand lens, ordered by median score."""
+    candidates_doc = _load_object(hl_dir / "candidates.json", required=True)
+    candidates = candidates_doc.get("candidates")
+    if not isinstance(candidates, list):
+        raise HighlightDataError("candidates.json requires a candidates array")
+
+    scores: dict[str, dict[str, float]] = {}
+    for who in SCORERS:
+        review = _load_object(hl_dir / f"review_{who}.json")
+        rows = review.get("scores", [])
+        if not isinstance(rows, list):
+            raise HighlightDataError(f"review_{who}.json scores must be an array")
+        for row in rows:
+            if not isinstance(row, dict) or not isinstance(row.get("id"), str):
+                raise HighlightDataError(f"review_{who}.json contains an invalid score row")
+            total = row.get("total")
+            if isinstance(total, (int, float)) and not isinstance(total, bool):
+                scores.setdefault(row["id"], {})[who] = float(total)
+
+    brand: dict[str, dict[str, Any]] = {}
+    lens = _load_object(hl_dir / "lens_brand.json")
+    findings = lens.get("findings", [])
+    if not isinstance(findings, list):
+        raise HighlightDataError("lens_brand.json findings must be an array")
+    for finding in findings:
+        if isinstance(finding, dict) and isinstance(finding.get("id"), str):
+            brand[finding["id"]] = finding
+
+    result: list[dict[str, Any]] = []
+    ids: set[str] = set()
+    for candidate in candidates:
+        if not isinstance(candidate, dict) or candidate.get("format") != fmt:
+            continue
+        candidate_id = candidate.get("id")
+        if not isinstance(candidate_id, str) or not candidate_id.strip():
+            raise HighlightDataError("each displayed candidate requires a non-empty string id")
+        if candidate_id in ids:
+            raise HighlightDataError(f"duplicate candidate id: {candidate_id}")
+        ids.add(candidate_id)
+        candidate_scores = scores.get(candidate_id, {})
+        values = list(candidate_scores.values())
+        finding = brand.get(candidate_id, {})
+        duration = candidate.get("duration_sec") or 0
+        try:
+            duration = round(float(duration), 1)
+        except (TypeError, ValueError) as exc:
+            raise HighlightDataError(f"candidate {candidate_id} has an invalid duration_sec") from exc
+        result.append(
+            {
+                "id": candidate_id,
+                "group": candidate.get("variant_group") or candidate_id,
+                "title": str(candidate.get("title") or ""),
+                "hook": str(candidate.get("hook") or ""),
+                "duration_sec": duration,
+                "median": statistics.median(values) if values else 0.0,
+                "scores": {scorer: candidate_scores.get(scorer) for scorer in SCORERS},
+                "brand_severity": str(finding.get("severity") or ""),
+                "brand_issue": str(finding.get("issue") or "")[:160],
+                "brand_mitigation": str(finding.get("mitigation") or "")[:160],
+            }
+        )
+    result.sort(key=lambda row: -row["median"])
+    seen_groups: set[str] = set()
+    rank = 0
+    for row in result:
+        row["group_top"] = row["group"] not in seen_groups
+        seen_groups.add(row["group"])
+        if row["group_top"]:
+            rank += 1
+            row["rank"] = rank
+        else:
+            row["rank"] = None
+    return result
+
+
+def write_winners(
+    hl_dir: Path,
+    rows: list[dict[str, Any]],
+    picks: list[str],
+    *,
+    picked_by: str = "修修 (gate)",
+) -> Path:
+    """Write the established winners schema without dropping excluded groups."""
+    by_id = {row["id"]: row for row in rows}
+    missing = [candidate_id for candidate_id in picks if candidate_id not in by_id]
+    if missing:
+        raise HighlightDataError(f"candidate ids are not in the shortlist: {missing}")
+    vetoed = [
+        {"id": row["id"], "reason": f"brand-lens veto：{row['brand_issue']}"}
+        for row in rows
+        if row["brand_severity"] == "veto"
+    ]
+    payload: dict[str, Any] = {
+        "winners": [
+            {
+                "id": candidate_id,
+                "rank": index + 1,
+                "score": int(by_id[candidate_id]["median"]),
+                "title": by_id[candidate_id]["title"],
+            }
+            for index, candidate_id in enumerate(picks)
+        ],
+        "vetoed": vetoed,
+        "picked_by": picked_by,
+    }
+    existing = _load_object(hl_dir / "winners.json")
+    if existing.get("excluded_group") is not None:
+        payload["excluded_group"] = existing["excluded_group"]
+    return _atomic_json_write(hl_dir / "winners.json", payload)
+
+
+def load_review_feedback(hl_dir: Path) -> dict[str, Any]:
+    """Load feedback audit data; malformed existing history must stop the gate."""
+    payload = _load_object(hl_dir / "review_feedback.json")
+    decisions = payload.get("decisions", [])
+    if not isinstance(decisions, list):
+        raise HighlightDataError("review_feedback.json decisions must be an array")
+    return {"decisions": decisions}
+
+
+def append_review_feedback(
+    hl_dir: Path,
+    *,
+    selected_ids: list[str],
+    feedback: dict[str, str],
+    overridden_veto_ids: list[str],
+) -> Path:
+    """Append a timestamped decision; prior feedback is never discarded."""
+    payload = load_review_feedback(hl_dir)
+    payload["decisions"].append(
+        {
+            "decided_at": datetime.now(timezone.utc).isoformat(),
+            "selected_ids": selected_ids,
+            "feedback": feedback,
+            "override_veto_ids": overridden_veto_ids,
+        }
+    )
+    return _atomic_json_write(hl_dir / "review_feedback.json", payload)
