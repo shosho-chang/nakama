@@ -120,6 +120,75 @@
         {% endfor %}
       </details>
 
+      {# 組封面配方（修修 2026-08-14 裁決：先選標題／大字／臉，再 render 一次）。
+         gate 只寫配方，出圖在桌機端——所以這裡沒有預覽，只有「存配方」。#}
+      <details class="pkg-compose" id="compose-{{ cut.cut_id }}"
+               {% if composed_cut == cut.cut_id %}open{% endif %}>
+        <summary class="sho-mono-up">組封面：選標題 ＋ 打大字 ＋ 挑臉（存完我再 render 一次）</summary>
+        {% set req = approval.render_request if approval else none %}
+        <form method="post" action="/bridge/packaging/{{ episode_slug }}/compose" class="pkg-compose-form">
+          <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
+
+          <div class="field">
+            <label class="field-label" for="cr-{{ cut.cut_id }}">用哪一條標題</label>
+            <select class="sho-input" id="cr-{{ cut.cut_id }}" name="title_rank">
+              {% for t in cut.titles|sort(attribute='rank') %}
+              <option value="{{ t.rank }}" {% if req and req.title_rank == t.rank %}selected{% endif %}>
+                #{{ t.rank }} {{ t.text }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="pkg-compose-text">
+            <div class="field">
+              <label class="field-label" for="b1-{{ cut.cut_id }}">封面大字 第一行</label>
+              <input class="sho-input" id="b1-{{ cut.cut_id }}" name="big_text_1" maxlength="40"
+                     value="{{ req.big_text[0] if req and req.big_text|length > 0 else '' }}">
+            </div>
+            <div class="field">
+              <label class="field-label" for="b2-{{ cut.cut_id }}">第二行</label>
+              <input class="sho-input" id="b2-{{ cut.cut_id }}" name="big_text_2" maxlength="40"
+                     value="{{ req.big_text[1] if req and req.big_text|length > 1 else '' }}">
+            </div>
+            <div class="field">
+              <label class="field-label" for="hl-{{ cut.cut_id }}">橘框詞（要在大字裡）</label>
+              <input class="sho-input" id="hl-{{ cut.cut_id }}" name="highlight_text" maxlength="40"
+                     value="{{ req.highlight_text if req else '' }}">
+            </div>
+          </div>
+
+          {% for role, label in [('host', '修修'), ('guest', '來賓')] %}
+          <fieldset class="pkg-cards pkg-cutout-set">
+            <legend class="sho-mono-up">{{ label }}的臉</legend>
+            {% for c in cutouts[role] %}
+            {% set current = (req.host_cutout if role == 'host' else req.guest_cutout) if req else none %}
+            <label class="pkg-card pkg-card--cutout{% if current == c.vault_path %} pkg-card--primary{% endif %}">
+              <input type="radio" name="{{ role }}_cutout" value="{{ c.vault_path }}"
+                     {% if current == c.vault_path %}checked{% elif not current and loop.first %}checked{% endif %}>
+              <img src="/bridge/projects/gate/thumbnail/cutout/{{ episode_slug }}/{{ c.file }}"
+                   alt="{{ label }} {{ c.emotion }}" loading="lazy">
+              <div class="sho-mono pkg-card-meta">{{ c.emotion or c.file }}</div>
+            </label>
+            {% else %}
+            <p class="sho-mono pkg-brief-missing">（這集還沒有 {{ label }} 的 cutout — 桌機端跑 thumbnail-brainstorm 產生）</p>
+            {% endfor %}
+          </fieldset>
+          {% endfor %}
+
+          <div class="pkg-actions">
+            <button class="sho-btn" type="submit">存配方（我再 render）</button>
+          </div>
+          {% if req %}
+          <p class="sho-mono pkg-title-orig">
+            目前配方：#{{ req.title_rank }} · 大字「{{ req.big_text | join('／') }}」·
+            {{ req.host_cutout.split('/')[-1] }} ＋ {{ req.guest_cutout.split('/')[-1] }}
+            {% if req.rendered_png %}· 已出圖 {{ req.rendered_png }}{% else %}· <strong>等我 render</strong>{% endif %}
+          </p>
+          {% endif %}
+        </form>
+      </details>
+
       {# 封面變體勾選（修修 2026-08-14 裁決）：臉與封面大字都要能挑。變體 PNG 是
          桌機端先 render 完的，這裡純勾選 — VPS 不 render、不叫 LLM（D11）。#}
       {% set has_variants = view.packages | map(attribute='pkg') | map(attribute='variants') | select | list | length > 0 %}
@@ -257,6 +326,12 @@
   .pkg-variants { margin: 12px 0 4px; }
   .pkg-variant-set { margin-bottom: 14px; }
   .pkg-card--variant img { width: 100%; display: block; }
+  .pkg-compose { margin: 12px 0; }
+  .pkg-compose-text { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .pkg-cutout-set { margin-bottom: 14px; }
+  .pkg-card--cutout img { width: 100%; display: block; background: #1a1a1a; }
+  .pkg-card--cutout .pkg-card-meta { padding: 6px 8px 8px; }
+  @media (max-width: 720px) { .pkg-compose-text { grid-template-columns: 1fr; } }
   .pkg-card--variant .pkg-card-meta { padding: 6px 8px 8px; }
 
   .pkg-card:has(input:focus-visible) { box-shadow: var(--sho-focus); }

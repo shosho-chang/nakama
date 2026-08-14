@@ -210,6 +210,35 @@ spec 的 variables 見各 composition 檔頭註解。**定案參數表在
 - 變體不必每張都過 Step 4.5 全套；**但被勾選的那張進交付前一定要跑**
   （`face_measure render` + `occlusion_check`）。
 
+## Step 4.7 — 修修在 gate 組配方 → **render 一次**（修修 2026-08-14 定案流程）
+
+他要的流程不是「先窮舉變體再挑」，是「**先把標題、大字、臉選定，再 render 一次**」。
+gate 的〈組封面〉區寫 `approval.json` 的 `render_request`（title_rank／host_cutout／
+guest_cutout／big_text／highlight_text），桌機端跑：
+
+```bash
+python .claude/skills/thumbnail-brainstorm/scripts/render_request.py   --episode-slug <slug> --packaging-dir "<ep>/packaging" --cut-id <cut>
+```
+
+script 內建：scale 鎖定（基準 cutout 解一次）→ 只解 y（眼線對齊來賓）與 x →
+render → `occlusion_check` 兩輪內插收斂 → `face_measure render` gate → 回填
+`rendered_png` 與該 rank 的 package 縮圖。**強表情素材要先備好**（見下節），
+否則他在 gate 上只能從弱表情裡挑。
+
+### 強表情素材怎麼找（不要只抽你想得到的那幾段）
+
+鄭國威集教訓：只抽 9 個窗（106 分鐘裡的 9 分鐘）→ vision agent 回報「全部候選
+沒有一格眼睛睜大」，修修回「表情都差強人意」。正確做法是**用資料找段落**：
+
+1. 兩人各自的 mic 軌能量 → 逐 20 秒窗取 95th percentile → 每人 top 12 高能量窗
+   （笑聲與激動段自然落在這裡；guest 另外要求該窗自己詞占比 ≥0.6 才過機位驗證）
+2. 這些窗抽格（每窗 ~10 格）
+3. **mediapipe blendshapes 量表情強度**（`mouthSmile` / `jawOpen` / `eyeWide` /
+   `browInnerUp`，`eyeBlink>0.5` 淘汰）→ 每個類別取 top N 給人眼複驗
+4. 定稿進 `cutouts_manifest.json` — gate 的臉挑選器只列 validated 清單
+
+實測差異：舊法 host 最強 smile 0.37；新法 smile 0.88–0.93 + jawOpen 0.5+（真的大笑）。
+
 ## Step 5 — 回填 + 驗證 + 雙落點
 
 寫 `specs.json`（3 筆：title_rank／thumbnail 本地路徑／thumb_archetype_id／

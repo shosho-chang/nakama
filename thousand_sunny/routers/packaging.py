@@ -34,6 +34,7 @@ from shared.schemas.packaging import (
     ApprovalFileV1,
     ApprovalV1,
     PackagesFileV1,
+    RenderRequestV1,
     parse_approval_file,
     parse_packages,
 )
@@ -92,6 +93,46 @@ def _load_brief(ep_dir: Path, cut_id: str) -> dict | None:
     if not isinstance(data, dict):
         return {"error": "brief 格式錯誤：頂層必須是物件"}
     return data
+
+
+
+def _load_cutout_choices(episode_slug: str) -> dict[str, list[dict]]:
+    """列出這集可選的 cutout（vault `Attachments/cutouts/podcast/<slug>/`）。
+
+    只讀 `cutouts_manifest.json` 的 validated 清單——中間迭代檔（`_iterations/`、
+    未定稿的版本）不該出現在挑選器裡（skill v2.2 教訓 15：cutout 資料夾是迭代
+    歷史不是素材庫）。manifest 不在就退回列頂層 PNG，但標記 unvalidated。
+    """
+    d = get_vault_path() / "Attachments" / "cutouts" / "podcast" / episode_slug
+    out: dict[str, list[dict]] = {"host": [], "guest": []}
+    if not d.is_dir():
+        return out
+    manifest = d / "cutouts_manifest.json"
+    names: list[str]
+    validated = True
+    if manifest.is_file():
+        try:
+            names = sorted(json.loads(manifest.read_text(encoding="utf-8")).get("validated", {}))
+        except json.JSONDecodeError:
+            names, validated = sorted(p.name for p in d.glob("*.png")), False
+    else:
+        names, validated = sorted(p.name for p in d.glob("*.png")), False
+    for name in names:
+        if not (d / name).is_file():
+            continue
+        role = "host" if name.startswith("host") else "guest" if name.startswith("guest") else None
+        if role is None:
+            continue
+        parts = name.removesuffix(".png").split("_")
+        out[role].append(
+            {
+                "file": name,
+                "vault_path": f"Attachments/cutouts/podcast/{episode_slug}/{name}",
+                "emotion": parts[-1] if len(parts) >= 3 else "",
+                "validated": validated,
+            }
+        )
+    return out
 
 
 def _load_approvals(ep_dir: Path, episode: str) -> ApprovalFileV1:
@@ -177,7 +218,12 @@ def _board_context(episode_slug: str) -> dict:
             "brief": _load_brief(ep_dir, cut.cut_id),
         }
         cuts.append(view)
-    return {"episode_slug": episode_slug, "pkg": pkg, "cuts": cuts}
+    return {
+        "episode_slug": episode_slug,
+        "pkg": pkg,
+        "cuts": cuts,
+        "cutouts": _load_cutout_choices(episode_slug),
+    }
 
 
 @page_router.get("", response_class=HTMLResponse)
@@ -196,6 +242,7 @@ async def packaging_board(
     request: Request,
     episode_slug: str,
     edited: str | None = None,
+    composed: str | None = None,
     nakama_auth: str | None = Cookie(None),
 ):
     if not check_auth(nakama_auth):
@@ -204,6 +251,8 @@ async def packaging_board(
     ctx["asset_version"] = _SHOSHO_ASSET_VERSION
     # 剛改完字的那支：改字區保持展開（見 packaging_edit_title 的 redirect 註解）
     ctx["edited_cut"] = edited
+    # 剛存完配方那支：組封面區保持展開（同 edited 的理由 — <details> 會因重載收起）
+    ctx["composed_cut"] = composed
     return _templates.TemplateResponse(request, "packaging_board.html", ctx)
 
 
@@ -322,6 +371,88 @@ async def packaging_select_variant(
     )
     return RedirectResponse(
         f"/bridge/packaging/{episode_slug}#cut-{cut_id}", status_code=303
+    )
+
+
+@page_router.post("/{episode_slug}/compose")
+async def packaging_compose(
+    episode_slug: str,
+    cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
+    title_rank: int = Form(..., ge=1, le=5),
+    host_cutout: str = Form(..., max_length=_EP_SLUG_MAX * 4),
+    guest_cutout: str = Form(..., max_length=_EP_SLUG_MAX * 4),
+    big_text_1: str = Form("", max_length=40),
+    big_text_2: str = Form("", max_length=40),
+    highlight_text: str = Form("", max_length=40),
+    nakama_auth: str | None = Cookie(None),
+):
+    """存「封面配方」：哪張臉、什麼大字、哪個詞加橘框（修修 2026-08-14 裁決）。
+
+    **gate 不 render**（D11 不變）——這裡只寫配方，桌機端 thumbnail-brainstorm
+    讀 `render_request` 後**出圖一次**。這比預先窮舉變體省：cutout × 大字的組合
+    數是乘法，而他真正想要的那一組往往不在預先 render 的清單裡。
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/packaging", status_code=302)
+
+    ctx = _board_context(episode_slug)
+    pkg: PackagesFileV1 = ctx["pkg"]
+    cut = next((c for c in pkg.cuts if c.cut_id == cut_id), None)
+    if cut is None:
+        raise HTTPException(status_code=404, detail=f"cut not found: {cut_id}")
+
+    choices = ctx["cutouts"]
+    known = {c["vault_path"] for c in choices["host"]} | {c["vault_path"] for c in choices["guest"]}
+    for label, val in (("host_cutout", host_cutout), ("guest_cutout", guest_cutout)):
+        if val not in known:
+            raise HTTPException(status_code=404, detail=f"{label} 不在本集 cutout 清單：{val}")
+
+    lines = [ln.strip() for ln in (big_text_1, big_text_2) if ln.strip()]
+    if not lines:
+        raise HTTPException(status_code=400, detail="封面大字不可為空")
+    hl = highlight_text.strip()
+    if hl and hl not in "".join(lines):
+        raise HTTPException(
+            status_code=400, detail=f"橘框詞「{hl}」不在大字裡，render 出來不會有框"
+        )
+
+    try:
+        req = RenderRequestV1(
+            title_rank=title_rank,
+            host_cutout=host_cutout,
+            guest_cutout=guest_cutout,
+            big_text=lines,
+            highlight_text=hl,
+            requested_at=datetime.now(timezone.utc),
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=f"配方驗證失敗：{str(exc)[:300]}") from exc
+
+    ep_dir = _packaging_root() / episode_slug
+    existing = _load_approvals(ep_dir, pkg.episode)
+    prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
+    entry = ApprovalV1(
+        cut_id=cut_id,
+        approved=prev.approved if prev else False,
+        primary_package=prev.primary_package if prev else 1,
+        reject_note=prev.reject_note if prev else None,
+        decided_at=datetime.now(timezone.utc),
+        decision=prev.decision if prev else None,
+        selected_variant=prev.selected_variant if prev else None,
+        bigtext_request=prev.bigtext_request if prev else None,
+        render_request=req,
+    )
+    others = [a for a in existing.approvals if a.cut_id != cut_id]
+    updated = ApprovalFileV1(episode=pkg.episode, approvals=[*others, entry])
+    (ep_dir / "approval.json").write_text(
+        updated.model_dump_json(indent=2) + "\n", encoding="utf-8"
+    )
+    logger.info(
+        "packaging compose: %s/%s rank=%s host=%s guest=%s text=%s",
+        episode_slug, cut_id, title_rank, Path(host_cutout).name, Path(guest_cutout).name, lines,
+    )
+    return RedirectResponse(
+        f"/bridge/packaging/{episode_slug}?composed={cut_id}#compose-{cut_id}", status_code=303
     )
 
 

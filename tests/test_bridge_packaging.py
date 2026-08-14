@@ -568,3 +568,93 @@ def test_legacy_approval_without_decision_still_shows_rejected(client, vault):
         encoding="utf-8",
     )
     assert "REJECTED" in client.get("/bridge/packaging/20260723-xieboran").text
+
+
+# ---------------------------------------------------------------------------
+# 組配方 → 桌機 render 一次（修修 2026-08-14：先選定再出圖）
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def vault_with_cutouts(vault):
+    d = vault / "Attachments" / "cutouts" / "podcast" / "20260723-xieboran"
+    d.mkdir(parents=True)
+    for name in ("host_v1_serious.png", "host_v2_laughing.png", "guest_v1_serious.png"):
+        (d / name).write_bytes(bytes.fromhex("89504e470d0a1a0a"))
+    (d / "cutouts_manifest.json").write_text(
+        json.dumps({"validated": {n: {} for n in (
+            "host_v1_serious.png", "host_v2_laughing.png", "guest_v1_serious.png")}}),
+        encoding="utf-8",
+    )
+    return vault
+
+
+def _compose(client, **over):
+    data = {
+        "cut_id": "punch-L1",
+        "title_rank": "2",
+        "host_cutout": "Attachments/cutouts/podcast/20260723-xieboran/host_v2_laughing.png",
+        "guest_cutout": "Attachments/cutouts/podcast/20260723-xieboran/guest_v1_serious.png",
+        "big_text_1": "沒有資源",
+        "big_text_2": "怎麼活下來",
+        "highlight_text": "活下來",
+    }
+    data.update(over)
+    return client.post(
+        "/bridge/packaging/20260723-xieboran/compose", data=data, follow_redirects=False
+    )
+
+
+def test_compose_writes_render_request(client, vault_with_cutouts):
+    assert _compose(client).status_code == 303
+    saved = json.loads(
+        (vault_with_cutouts / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    req = saved["approvals"][0]["render_request"]
+    assert req["title_rank"] == 2
+    assert req["big_text"] == ["沒有資源", "怎麼活下來"]
+    assert req["highlight_text"] == "活下來"
+    assert req["host_cutout"].endswith("host_v2_laughing.png")
+    assert req["rendered_png"] is None  # 還沒出圖
+
+
+def test_compose_rejects_highlight_not_in_big_text(client, vault_with_cutouts):
+    r = _compose(client, highlight_text="不存在")
+    assert r.status_code == 400
+    assert "不會有框" in r.text
+
+
+def test_compose_rejects_unknown_cutout(client, vault_with_cutouts):
+    r = _compose(client, host_cutout="Attachments/cutouts/podcast/20260723-xieboran/nope.png")
+    assert r.status_code == 404
+
+
+def test_compose_rejects_empty_big_text(client, vault_with_cutouts):
+    r = _compose(client, big_text_1="", big_text_2="", highlight_text="")
+    assert r.status_code == 400
+
+
+def test_compose_keeps_approval_state(client, vault_with_cutouts):
+    client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "3"},
+        follow_redirects=False,
+    )
+    _compose(client)
+    saved = json.loads(
+        (vault_with_cutouts / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    entry = saved["approvals"][0]
+    assert entry["approved"] is True and entry["primary_package"] == 3
+    assert entry["render_request"]["title_rank"] == 2
+
+
+def test_board_lists_cutout_choices(client, vault_with_cutouts):
+    board = client.get("/bridge/packaging/20260723-xieboran")
+    assert "host_v2_laughing.png" in board.text
+    assert "guest_v1_serious.png" in board.text
+    assert "存配方" in board.text

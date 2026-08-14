@@ -211,6 +211,43 @@ class PackagesFileV1(BaseModel):
     cuts: list[CutV1]
 
 
+class RenderRequestV1(BaseModel):
+    """修修在 gate 上組好的封面配方 — 桌機端據此 **render 一次**（2026-08-14 裁決）。
+
+    他原話：「比較好的方式是，先把標題、大字跟 cutout 選定之後，你再去做 render，
+    這樣 render 一次就好了。」預先窮舉變體會爆炸（cutout 對 × 大字 = N×M 張），
+    而且他要的組合往往不在裡面。gate 端只寫「配方」，不 render（D11 不變）。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    title_rank: int = Field(ge=1, le=5)
+    host_cutout: str
+    guest_cutout: str
+    big_text: list[str] = Field(min_length=1, max_length=3)
+    highlight_text: str = ""
+    requested_at: AwareDatetime
+    # 桌機端 render 完把成品 PNG 檔名寫回來，gate 才知道這份配方已經出圖。
+    rendered_png: str | None = None
+
+    @model_validator(mode="after")
+    def _validate(self) -> "RenderRequestV1":
+        for name in ("host_cutout", "guest_cutout"):
+            val: str = getattr(self, name)
+            if _is_abs_path(val):
+                raise ValueError(f"{name} must be vault-relative path, got absolute: {val!r}")
+            if not _PNG_SLUG_RE.match(_png_basename(val)):
+                raise ValueError(f"cutout 檔名必須是 ASCII PNG，got {val!r}")
+        if not any(line.strip() for line in self.big_text):
+            raise ValueError("big_text 不可全為空白——封面大字是 N1 卡型的主體")
+        if self.highlight_text and self.highlight_text not in "".join(self.big_text):
+            raise ValueError(
+                f"highlight_text {self.highlight_text!r} 不在 big_text 內"
+                "（橘框詞必須是大字的子字串，否則 render 出來不會有框）"
+            )
+        return self
+
+
 class ApprovalV1(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -227,6 +264,8 @@ class ApprovalV1(BaseModel):
     # 變體都不滿意時打的字：`第一行／第二[橘框詞]` — VPS 不能 render，桌機端
     # thumbnail-brainstorm 讀到後重出一張新變體，不是即時生效。
     bigtext_request: str | None = None
+    # 「先選好、再 render 一次」的配方（每支最多一份；要換就覆蓋）。
+    render_request: RenderRequestV1 | None = None
 
 
 def parse_packages(path: "Path | str") -> PackagesFileV1:
