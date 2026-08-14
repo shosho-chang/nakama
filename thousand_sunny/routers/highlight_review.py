@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 from fastapi import APIRouter, Cookie, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
@@ -21,7 +21,9 @@ from shared.highlight_shortlist import (
 from thousand_sunny.auth import check_auth
 
 page_router = APIRouter(prefix="/bridge/highlights", tags=["bridge-highlights"])
-_templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates" / "bridge"))
+_templates = Jinja2Templates(
+    directory=str(Path(__file__).resolve().parent.parent / "templates" / "bridge")
+)
 _MAX_CANDIDATES = 5
 _MAX_FEEDBACK = 2000
 
@@ -29,7 +31,7 @@ _MAX_FEEDBACK = 2000
 def _shosho_asset_version() -> str:
     static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
     digest = hashlib.sha1()
-    for name in ("tokens.css", "bridge.css", "bridge-pages.css"):
+    for name in ("tokens.css", "bridge.css", "bridge-pages.css", "bridge-highlight-review.css"):
         asset = static_dir / name
         if asset.is_file():
             digest.update(asset.read_bytes())
@@ -86,10 +88,13 @@ def _context(episode_slug: str) -> dict:
     selected_ids = latest.get("selected_ids", []) if isinstance(latest, dict) else []
     if not isinstance(selected_ids, list):
         selected_ids = []
-    selected_set = {value for value in selected_ids if isinstance(value, str)}
+    selected_ids = [value for value in selected_ids if isinstance(value, str)]
+    selected_set = set(selected_ids)
+    selected_rank = {candidate_id: index + 1 for index, candidate_id in enumerate(selected_ids)}
     for row in shown:
         row["feedback"] = str(latest_feedback.get(row["id"], ""))[:_MAX_FEEDBACK]
         row["selected"] = row["id"] in selected_set
+        row["selection_rank"] = selected_rank.get(row["id"])
     return {
         "episode_slug": episode_slug,
         "rows": shown,
@@ -97,6 +102,14 @@ def _context(episode_slug: str) -> dict:
         "decision_count": len(feedback_audit["decisions"]),
         "asset_version": _SHOSHO_ASSET_VERSION,
     }
+
+
+def _program_video(episode_slug: str) -> Path:
+    episode_dir = _episode_dir(episode_slug)
+    candidates = sorted(episode_dir.glob("Default_*.mp4"))
+    if not candidates:
+        raise HTTPException(status_code=404, detail="program video not found")
+    return candidates[0]
 
 
 @page_router.get("/{episode_slug}", response_class=HTMLResponse)
@@ -113,6 +126,16 @@ async def highlight_review_board(
     return _templates.TemplateResponse(request, "highlight_review.html", context)
 
 
+@page_router.get("/{episode_slug}/media")
+async def highlight_review_media(
+    episode_slug: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="authentication required")
+    return FileResponse(_program_video(episode_slug), media_type="video/mp4")
+
+
 @page_router.post("/{episode_slug}/decide")
 async def highlight_review_decide(
     request: Request,
@@ -124,24 +147,46 @@ async def highlight_review_decide(
     context = _context(episode_slug)
     form = await request.form()
     selected_ids = [str(value) for value in form.getlist("candidate_id")]
+    selection_order = [value for value in str(form.get("selection_order", "")).split(",") if value]
+    if selection_order:
+        if len(selection_order) != len(set(selection_order)) or set(selection_order) != set(
+            selected_ids
+        ):
+            raise HTTPException(
+                status_code=400, detail="selection order does not match selected candidates"
+            )
+        selected_ids = selection_order
     if len(selected_ids) != 3 or len(set(selected_ids)) != 3:
-        raise HTTPException(status_code=400, detail="select exactly three distinct long-form candidates")
+        raise HTTPException(
+            status_code=400, detail="select exactly three distinct long-form candidates"
+        )
     by_id = {row["id"]: row for row in context["rows"]}
     unknown = [candidate_id for candidate_id in selected_ids if candidate_id not in by_id]
     if unknown:
-        raise HTTPException(status_code=400, detail=f"candidate is not in this review shortlist: {unknown}")
+        raise HTTPException(
+            status_code=400, detail=f"candidate is not in this review shortlist: {unknown}"
+        )
 
     override_ids = {str(value) for value in form.getlist("override_veto")}
-    vetoed = {candidate_id for candidate_id in selected_ids if by_id[candidate_id]["brand_severity"] == "veto"}
+    vetoed = {
+        candidate_id
+        for candidate_id in selected_ids
+        if by_id[candidate_id]["brand_severity"] == "veto"
+    }
     if not vetoed.issubset(override_ids):
-        raise HTTPException(status_code=400, detail="brand-veto candidates require an explicit override_veto")
+        raise HTTPException(
+            status_code=400, detail="brand-veto candidates require an explicit override_veto"
+        )
     feedback: dict[str, str] = {}
     # Keep the editor's rejection rationale too: it is the most useful signal for
     # tuning future shortlists, and the form intentionally exposes it on all cards.
     for candidate_id in by_id:
         value = str(form.get(f"feedback_{candidate_id}", "")).strip()
         if len(value) > _MAX_FEEDBACK:
-            raise HTTPException(status_code=400, detail=f"feedback for {candidate_id} exceeds {_MAX_FEEDBACK} characters")
+            raise HTTPException(
+                status_code=400,
+                detail=f"feedback for {candidate_id} exceeds {_MAX_FEEDBACK} characters",
+            )
         if value:
             feedback[candidate_id] = value
 
@@ -149,7 +194,12 @@ async def highlight_review_decide(
     try:
         # Validate and prepare every input before either durable write. Each write
         # itself is atomic; the audit entry preserves earlier decisions.
-        write_winners(highlights_dir, context["rows"], selected_ids, picked_by="修修 (Bridge highlight review gate)")
+        write_winners(
+            highlights_dir,
+            context["rows"],
+            selected_ids,
+            picked_by="修修 (Bridge highlight review gate)",
+        )
         append_review_feedback(
             highlights_dir,
             selected_ids=selected_ids,

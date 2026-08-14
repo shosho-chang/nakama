@@ -8,57 +8,185 @@
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
-<style>
-  .highlight-gate { max-width: 1060px; margin: 0 auto; padding: var(--sho-s-5) var(--sho-gutter) var(--sho-s-8); }
-  .highlight-hint { color: var(--sho-text-2); margin: 0 0 var(--sho-s-5); }
-  .highlight-grid { display: grid; gap: var(--sho-s-3); }
-  .highlight-card { border: 1px solid var(--sho-line); border-left: 4px solid var(--sho-line-2); background: var(--sho-bg-2); padding: var(--sho-s-4); }
-  .highlight-card:has(input:checked) { border-left-color: var(--sho-accent); }
-  .highlight-card.veto { border-left-color: var(--sho-error); }
-  .highlight-card__head { display: flex; gap: var(--sho-s-3); justify-content: space-between; align-items: start; }
-  .highlight-card label { cursor: pointer; font-weight: 700; }
-  .highlight-meta, .highlight-score { color: var(--sho-text-2); font-size: .875rem; }
-  .highlight-hook { margin: var(--sho-s-3) 0; white-space: pre-wrap; }
-  .highlight-veto { border-top: 1px dashed var(--sho-error); color: var(--sho-text-2); padding-top: var(--sho-s-2); }
-  .highlight-feedback { display: block; margin-top: var(--sho-s-3); }
-  .highlight-feedback textarea { box-sizing: border-box; display: block; width: 100%; min-height: 4.5rem; margin-top: var(--sho-s-1); border: 1px solid var(--sho-line-2); background: var(--sho-bg); color: var(--sho-text); font: inherit; padding: var(--sho-s-2); }
-  .highlight-actions { position: sticky; bottom: 0; display: flex; align-items: center; gap: var(--sho-s-3); border-top: 1px solid var(--sho-line); background: var(--sho-bg); padding: var(--sho-s-3) 0; margin-top: var(--sho-s-4); }
-  .highlight-actions button { border: 0; background: var(--sho-accent); color: var(--sho-ink); cursor: pointer; font: inherit; font-weight: 700; padding: var(--sho-s-2) var(--sho-s-4); }
-  .highlight-actions button:disabled { cursor: not-allowed; opacity: .45; }
-  input:focus-visible, textarea:focus-visible, button:focus-visible { outline: none; box-shadow: var(--sho-focus); }
-  @media (prefers-reduced-motion: reduce) { .highlight-card { transition: none; } }
-</style>
+<link rel="stylesheet" href="/static/shosho/bridge-highlight-review.css?v={{ asset_version }}">
 </head>
 <body class="sho bridge-page bridge-page--scroll">
 {% from "_chassis_nav.html" import chassis_nav %}
 {{ chassis_nav(nav_active='packaging') }}
+
 <section class="page-header page-header--split">
-  <div><div class="nk-caps">/bridge/highlights/{{ episode_slug }} · human gate</div><h1 class="page-title">長片 highlight 選段 <span class="zh">最多五候選，確認三支才進製作</span></h1></div>
+  <div>
+    <div class="nk-caps">/bridge/highlights/{{ episode_slug }} · human gate</div>
+    <h1 class="page-title">長精華選段 <span class="zh">五個候選，排出三支再進製作</span></h1>
+  </div>
   <div class="header-meta sho-mono">AUDIT {{ decision_count }} DECISIONS</div>
 </section>
-<main class="highlight-gate">
-  {% if saved %}<p role="status" class="highlight-hint">已確認 3 支 selection；winners.json 與 feedback audit 已落盤。</p>{% endif %}
-  <p class="highlight-hint">panel 分數是素材強度，不代替你的成片判斷。Brand veto 必須逐支明確勾選 override，才可儲存。</p>
+
+<main class="highlight-workbench">
+  {% if saved %}
+  <div role="status" class="highlight-notice highlight-notice--success">已保存前三順位、逐段 feedback 與 veto override。</div>
+  {% endif %}
+
+  <section class="highlight-theatre sho-panel" aria-labelledby="preview-heading">
+    <div class="highlight-theatre__copy">
+      <div class="sho-kicker"><span class="sho-kicker-n">001</span> PREVIEW</div>
+      <h2 id="preview-heading">先看內容，再看分數</h2>
+      <p id="preview-status">點候選的「播放此段」，播放器會跳到該段起點並在終點暫停。</p>
+    </div>
+    <video id="highlight-player" controls preload="metadata">
+      <source src="/bridge/highlights/{{ episode_slug }}/media" type="video/mp4">
+      瀏覽器無法播放此影片。
+    </video>
+  </section>
+
+  <div class="highlight-instruction">
+    <div><strong>決策方式</strong>　依你勾選的順序標為 #1、#2、#3；取消後可重新排序。</div>
+    <div class="sho-mono">PANEL SCORE = 素材強度，不代表成片裁決</div>
+  </div>
+
   <form method="post" action="/bridge/highlights/{{ episode_slug }}/decide" id="highlight-form">
+    <input type="hidden" name="selection_order" id="selection-order" value="">
     <div class="highlight-grid">
     {% for row in rows %}
-      <article class="highlight-card {% if row.brand_severity == 'veto' %}veto{% endif %}" data-veto="{{ 'true' if row.brand_severity == 'veto' else 'false' }}">
-        <div class="highlight-card__head">
-          <label><input type="checkbox" name="candidate_id" value="{{ row.id }}" {% if row.selected %}checked{% endif %}> {{ row.id }} · {{ row.title or '未命名候選' }}</label>
-          <span class="highlight-score">{% if row.rank %}RANK {{ row.rank }}{% else %}VARIANT{% endif %} · median {{ '%.0f'|format(row.median) }}</span>
+      <article class="highlight-card {% if row.brand_severity == 'veto' %}highlight-card--veto{% endif %}"
+               data-candidate-id="{{ row.id }}"
+               data-start="{{ row.t_start }}"
+               data-end="{{ row.t_end }}"
+               data-veto="{{ 'true' if row.brand_severity == 'veto' else 'false' }}"
+               data-initial-rank="{{ row.selection_rank or '' }}">
+        <div class="highlight-card__rail">
+          <span class="highlight-rank" aria-hidden="true">{% if row.selection_rank %}#{{ row.selection_rank }}{% else %}—{% endif %}</span>
+          <label class="highlight-pick">
+            <input type="checkbox" name="candidate_id" value="{{ row.id }}" {% if row.selected %}checked{% endif %}>
+            <span>選入前三</span>
+          </label>
         </div>
-        <div class="highlight-meta">{{ row.group }} · {{ '%d:%02d'|format(row.duration_sec // 60, row.duration_sec % 60) }} · 阿哲/凱文/淑芬 {{ row.scores.azhe if row.scores.azhe is not none else '-' }}/{{ row.scores.kevin if row.scores.kevin is not none else '-' }}/{{ row.scores.shufen if row.scores.shufen is not none else '-' }}</div>
-        {% if row.hook %}<p class="highlight-hook">{{ row.hook }}</p>{% endif %}
-        {% if row.brand_severity %}<div class="highlight-veto" role="alert">{{ row.brand_severity | upper }} · {{ row.brand_issue }}{% if row.brand_mitigation %}／{{ row.brand_mitigation }}{% endif %}{% if row.brand_severity == 'veto' %}<br><label><input type="checkbox" name="override_veto" value="{{ row.id }}"> 我理解此 veto，仍要選此段。</label>{% endif %}</div>{% endif %}
-        <label class="highlight-feedback">選擇 feedback／淘汰理由<textarea name="feedback_{{ row.id }}" maxlength="2000">{{ row.feedback }}</textarea></label>
+
+        <div class="highlight-card__body">
+          <header class="highlight-card__head">
+            <div>
+              <div class="sho-mono highlight-card__id">{{ row.id }} · {{ row.group }}</div>
+              <h2>{{ row.title or '未命名候選' }}</h2>
+            </div>
+            <div class="highlight-score"><strong>{{ '%.0f'|format(row.median) }}</strong><span>MEDIAN</span></div>
+          </header>
+
+          <div class="highlight-meta">
+            <span>{{ '%d:%02d'|format(row.t_start // 60, row.t_start % 60) }} → {{ '%d:%02d'|format(row.t_end // 60, row.t_end % 60) }}</span>
+            <span>{{ '%d:%02d'|format(row.duration_sec // 60, row.duration_sec % 60) }}</span>
+            <span>阿哲／凱文／淑芬 {{ row.scores.azhe if row.scores.azhe is not none else '–' }}／{{ row.scores.kevin if row.scores.kevin is not none else '–' }}／{{ row.scores.shufen if row.scores.shufen is not none else '–' }}</span>
+          </div>
+
+          {% if row.hook %}<blockquote class="highlight-hook">{{ row.hook }}</blockquote>{% endif %}
+          {% if row.rationale %}<p class="highlight-rationale"><strong>為什麼值得選：</strong>{{ row.rationale }}</p>{% endif %}
+
+          <div class="highlight-card__tools">
+            <button type="button" class="sho-btn sho-btn--ghost highlight-preview">播放此段</button>
+            {% if row.transcript or row.review_notes %}
+            <details>
+              <summary>逐字稿與 panel 理由</summary>
+              {% if row.transcript %}<pre class="highlight-transcript">{{ row.transcript }}</pre>{% endif %}
+              {% if row.review_notes %}
+              <dl class="highlight-review-notes">
+                {% for who, note in row.review_notes.items() %}<dt>{{ who }}</dt><dd>{{ note }}</dd>{% endfor %}
+              </dl>
+              {% endif %}
+            </details>
+            {% endif %}
+          </div>
+
+          {% if row.brand_severity %}
+          <div class="highlight-veto" role="alert">
+            <strong>{{ row.brand_severity | upper }}</strong> · {{ row.brand_issue }}
+            {% if row.brand_mitigation %}<span>／{{ row.brand_mitigation }}</span>{% endif %}
+            {% if row.brand_severity == 'veto' %}
+            <label><input type="checkbox" name="override_veto" value="{{ row.id }}"> 我理解此風險，仍要選此段</label>
+            {% endif %}
+          </div>
+          {% endif %}
+
+          <label class="highlight-feedback">
+            <span>給未來選段流程的 feedback</span>
+            <textarea name="feedback_{{ row.id }}" maxlength="2000" placeholder="例如：主題太像另一段、開頭慢、這個角度很吸引人……">{{ row.feedback }}</textarea>
+          </label>
+        </div>
       </article>
     {% endfor %}
     </div>
-    <div class="highlight-actions"><output id="selection-count" aria-live="polite">已選 0 / 3</output><button type="submit" id="save-selection">確認三支並寫入 gate</button></div>
+
+    <div class="highlight-actions">
+      <div>
+        <output id="selection-count" aria-live="polite">已選 0 / 3</output>
+        <ol id="selection-summary" aria-label="目前前三順位"></ol>
+      </div>
+      <button type="submit" class="sho-btn" id="save-selection">確認前三並寫入 gate</button>
+    </div>
   </form>
 </main>
+
 <script>
-(() => { const form = document.querySelector('#highlight-form'); const output = document.querySelector('#selection-count'); const button = document.querySelector('#save-selection'); const sync = () => { const selected = [...form.querySelectorAll('input[name="candidate_id"]:checked')]; const vetoMissing = selected.some(input => input.closest('[data-veto="true"]')?.querySelector('input[name="override_veto"]:checked') === null); output.textContent = `已選 ${selected.length} / 3`; button.disabled = selected.length !== 3 || vetoMissing; }; form.addEventListener('change', sync); sync(); })();
+(() => {
+  const form = document.querySelector('#highlight-form');
+  const player = document.querySelector('#highlight-player');
+  const status = document.querySelector('#preview-status');
+  const output = document.querySelector('#selection-count');
+  const summary = document.querySelector('#selection-summary');
+  const button = document.querySelector('#save-selection');
+  const orderInput = document.querySelector('#selection-order');
+  const cards = [...form.querySelectorAll('.highlight-card')];
+  const initiallyRanked = cards.filter(card => card.dataset.initialRank).sort((a, b) => Number(a.dataset.initialRank) - Number(b.dataset.initialRank));
+  let order = initiallyRanked.map(card => card.dataset.candidateId);
+  let previewEnd = null;
+
+  const sync = () => {
+    const checked = new Set(cards.filter(card => card.querySelector('input[name="candidate_id"]').checked).map(card => card.dataset.candidateId));
+    order = order.filter(id => checked.has(id));
+    cards.forEach(card => {
+      const checkbox = card.querySelector('input[name="candidate_id"]');
+      if (checkbox.checked && !order.includes(card.dataset.candidateId) && order.length < 3) order.push(card.dataset.candidateId);
+      if (checkbox.checked && !order.includes(card.dataset.candidateId)) checkbox.checked = false;
+    });
+    cards.forEach(card => {
+      const rank = order.indexOf(card.dataset.candidateId) + 1;
+      card.classList.toggle('is-selected', rank > 0);
+      card.querySelector('.highlight-rank').textContent = rank ? `#${rank}` : '—';
+    });
+    const selected = cards.filter(card => card.querySelector('input[name="candidate_id"]').checked);
+    const vetoMissing = selected.some(card => card.dataset.veto === 'true' && !card.querySelector('input[name="override_veto"]:checked'));
+    const atLimit = order.length >= 3;
+    cards.forEach(card => {
+      const checkbox = card.querySelector('input[name="candidate_id"]');
+      checkbox.disabled = atLimit && !checkbox.checked;
+    });
+    orderInput.value = order.join(',');
+    output.textContent = `已選 ${order.length} / 3`;
+    summary.replaceChildren(...order.map(id => {
+      const item = document.createElement('li');
+      item.textContent = id;
+      return item;
+    }));
+    button.disabled = order.length !== 3 || vetoMissing;
+  };
+
+  cards.forEach(card => {
+    card.querySelector('.highlight-preview').addEventListener('click', async () => {
+      const start = Number(card.dataset.start);
+      previewEnd = Number(card.dataset.end);
+      player.currentTime = start;
+      status.textContent = `正在預覽 ${card.dataset.candidateId} · ${Math.floor(start / 60)}:${String(Math.floor(start % 60)).padStart(2, '0')} 起`;
+      cards.forEach(item => item.classList.toggle('is-previewing', item === card));
+      try { await player.play(); } catch (_) { /* Browser may require a second explicit play gesture. */ }
+    });
+  });
+  player.addEventListener('timeupdate', () => {
+    if (previewEnd !== null && player.currentTime >= previewEnd) {
+      player.pause();
+      previewEnd = null;
+    }
+  });
+  form.addEventListener('change', sync);
+  sync();
+})();
 </script>
 </body>
 </html>

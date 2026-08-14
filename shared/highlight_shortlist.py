@@ -7,6 +7,7 @@ module so a decision always produces the same ``winners.json`` contract.
 from __future__ import annotations
 
 import json
+import math
 import os
 import statistics
 import tempfile
@@ -63,6 +64,7 @@ def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
         raise HighlightDataError("candidates.json requires a candidates array")
 
     scores: dict[str, dict[str, float]] = {}
+    review_notes: dict[str, dict[str, str]] = {}
     for who in SCORERS:
         review = _load_object(hl_dir / f"review_{who}.json")
         rows = review.get("scores", [])
@@ -74,6 +76,11 @@ def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
             total = row.get("total")
             if isinstance(total, (int, float)) and not isinstance(total, bool):
                 scores.setdefault(row["id"], {})[who] = float(total)
+            for field in ("rationale", "reason", "summary", "notes"):
+                note = row.get(field)
+                if isinstance(note, str) and note.strip():
+                    review_notes.setdefault(row["id"], {})[who] = note.strip()[:800]
+                    break
 
     brand: dict[str, dict[str, Any]] = {}
     lens = _load_object(hl_dir / "lens_brand.json")
@@ -102,16 +109,32 @@ def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
         try:
             duration = round(float(duration), 1)
         except (TypeError, ValueError) as exc:
-            raise HighlightDataError(f"candidate {candidate_id} has an invalid duration_sec") from exc
+            raise HighlightDataError(
+                f"candidate {candidate_id} has an invalid duration_sec"
+            ) from exc
+        try:
+            t_start = float(candidate.get("t_start") or 0)
+            t_end = float(candidate.get("t_end") or (t_start + duration))
+        except (TypeError, ValueError) as exc:
+            raise HighlightDataError(f"candidate {candidate_id} has invalid timecodes") from exc
+        if not all(math.isfinite(value) for value in (duration, t_start, t_end)):
+            raise HighlightDataError(f"candidate {candidate_id} has non-finite timing values")
+        if duration < 0 or t_start < 0 or t_end <= t_start:
+            raise HighlightDataError(f"candidate {candidate_id} has an invalid time range")
         result.append(
             {
                 "id": candidate_id,
                 "group": candidate.get("variant_group") or candidate_id,
                 "title": str(candidate.get("title") or ""),
                 "hook": str(candidate.get("hook") or ""),
+                "rationale": str(candidate.get("rationale") or "")[:2000],
+                "transcript": str(candidate.get("transcript") or "")[:12000],
+                "t_start": t_start,
+                "t_end": t_end,
                 "duration_sec": duration,
                 "median": statistics.median(values) if values else 0.0,
                 "scores": {scorer: candidate_scores.get(scorer) for scorer in SCORERS},
+                "review_notes": review_notes.get(candidate_id, {}),
                 "brand_severity": str(finding.get("severity") or ""),
                 "brand_issue": str(finding.get("issue") or "")[:160],
                 "brand_mitigation": str(finding.get("mitigation") or "")[:160],
