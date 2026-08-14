@@ -24,76 +24,32 @@ packaging 的成本已經付掉了。他自己的比較：「做 5 支挑 3 支�
 from __future__ import annotations
 
 import argparse
-import json
-import statistics
 import sys
 from pathlib import Path
+
+from shared.highlight_shortlist import (
+    SCORERS,
+    HighlightDataError,
+)
+from shared.highlight_shortlist import (
+    collect as _collect,
+)
+from shared.highlight_shortlist import (
+    write_winners as _write_winners,
+)
 
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
-SCORERS = ("azhe", "kevin", "shufen")
 HIGHLIGHTS = "highlights"
 
 
-def _load(path: Path) -> dict:
-    if not path.exists():
-        raise SystemExit(f"{path} 不存在——先跑 highlight-cut Step 1/2")
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
 def collect(hl_dir: Path, fmt: str) -> list[dict]:
-    """候選 × 分數 × lens 警示 → 依中位數排序（同群組標出誰是最高分）。"""
-    cands = [c for c in _load(hl_dir / "candidates.json")["candidates"] if c.get("format") == fmt]
-    scores: dict[str, dict[str, float]] = {}
-    for who in SCORERS:
-        p = hl_dir / f"review_{who}.json"
-        if not p.exists():
-            continue
-        for row in _load(p).get("scores", []):
-            scores.setdefault(row["id"], {})[who] = row["total"]
-
-    brand: dict[str, dict] = {}
-    bp = hl_dir / "lens_brand.json"
-    if bp.exists():
-        for f in _load(bp).get("findings", []):
-            brand[f["id"]] = f
-
-    rows = []
-    for c in cands:
-        s = scores.get(c["id"], {})
-        vals = [v for v in s.values() if isinstance(v, (int, float))]
-        # 評選規則：三位評分 persona 取中位數（highlight-cut Step 2 / grill Q6）
-        median = statistics.median(vals) if vals else 0.0
-        b = brand.get(c["id"], {})
-        rows.append(
-            {
-                "id": c["id"],
-                "group": c.get("variant_group") or c["id"],
-                "title": c.get("title", ""),
-                "hook": c.get("hook", ""),
-                "duration_sec": round(float(c.get("duration_sec") or 0), 1),
-                "median": median,
-                "scores": {w: s.get(w) for w in SCORERS},
-                "brand_severity": b.get("severity", ""),
-                "brand_issue": (b.get("issue") or "")[:160],
-                "brand_mitigation": (b.get("mitigation") or "")[:160],
-            }
-        )
-    rows.sort(key=lambda r: -r["median"])
-    # 同 variant 群組只有最高分者佔排名（落選 variant 照常留在表上）
-    seen: set[str] = set()
-    for r in rows:
-        r["group_top"] = r["group"] not in seen
-        seen.add(r["group"])
-    rank = 0
-    for r in rows:
-        if r["group_top"]:
-            rank += 1
-            r["rank"] = rank
-        else:
-            r["rank"] = None
-    return rows
+    """Compatibility wrapper for the shared ranking implementation."""
+    try:
+        return _collect(hl_dir, fmt)
+    except HighlightDataError as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 def render_table(rows: list[dict], fmt: str) -> str:
@@ -130,36 +86,16 @@ def render_table(rows: list[dict], fmt: str) -> str:
 
 
 def write_winners(hl_dir: Path, rows: list[dict], picks: list[str]) -> Path:
-    by_id = {r["id"]: r for r in rows}
-    missing = [p for p in picks if p not in by_id]
-    if missing:
-        raise SystemExit(f"這些 id 不在候選表裡：{missing}")
-    vetoed = [
-        {"id": r["id"], "reason": f"brand-lens veto：{r['brand_issue']}"}
-        for r in rows
-        if r["brand_severity"] == "veto"
-    ]
-    picked_veto = [p for p in picks if by_id[p]["brand_severity"] == "veto"]
-    if picked_veto:
-        # 修修可以覆蓋，但不能靜默——他必須知道自己挑了被否決的段
-        print(f"⚠️ 注意：{picked_veto} 是 brand-lens 否決段，仍照你的指定寫入", file=sys.stderr)
-    winners = [
-        {
-            "id": p,
-            "rank": i + 1,
-            "score": int(by_id[p]["median"]),
-            "title": by_id[p]["title"],
-        }
-        for i, p in enumerate(picks)
-    ]
-    out = hl_dir / "winners.json"
-    payload: dict = {"winners": winners, "vetoed": vetoed, "picked_by": "修修 (gate)"}
-    if out.exists():
-        prev = json.loads(out.read_text(encoding="utf-8"))
-        if prev.get("excluded_group"):
-            payload["excluded_group"] = prev["excluded_group"]
-    out.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
-    return out
+    """Compatibility wrapper preserving the CLI's SystemExit error contract."""
+    try:
+        picked_veto = [
+            p for p in picks if any(r["id"] == p and r["brand_severity"] == "veto" for r in rows)
+        ]
+        if picked_veto:
+            print(f"⚠️ 注意：{picked_veto} 是 brand-lens 否決段，仍照你的指定寫入", file=sys.stderr)
+        return _write_winners(hl_dir, rows, picks)
+    except HighlightDataError as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 def main(argv: list[str] | None = None) -> int:
