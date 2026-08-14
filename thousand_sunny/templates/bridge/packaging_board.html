@@ -45,7 +45,7 @@
          approved 回退判讀，維持既有集數的顯示。#}
       {% if approval and approval.approved %}
       <span class="sho-tag sho-tag--accent">APPROVED · PKG {{ approval.primary_package }}</span>
-      {% elif approval and (approval.decision == 'reject' or (approval.decision is none and approval.selected_variant is none and approval.bigtext_request is none)) %}
+      {% elif approval and (approval.decision == 'reject' or (approval.decision is none and approval.selected_variant is none and approval.bigtext_request is none and approval.render_request is none)) %}
       <span class="sho-tag pkg-tag-rejected">REJECTED</span>
       {% else %}
       <span class="section-status idle">PENDING</span>
@@ -184,6 +184,11 @@
               <label class="field-label" for="b2-{{ cut.cut_id }}">第二行</label>
               <input class="sho-input" id="b2-{{ cut.cut_id }}" name="big_text_2" maxlength="40"
                      value="{{ req.big_text[1] if req and req.big_text|length > 1 else '' }}">
+            </div>
+            <div class="field">
+              <label class="field-label" for="b3-{{ cut.cut_id }}">第三行（可空）</label>
+              <input class="sho-input" id="b3-{{ cut.cut_id }}" name="big_text_3" maxlength="40"
+                     value="{{ req.big_text[2] if req and req.big_text|length > 2 else '' }}">
             </div>
             <div class="field">
               <label class="field-label" for="hl-{{ cut.cut_id }}">橘框詞（要在大字裡）</label>
@@ -361,7 +366,7 @@
   .pkg-variant-set { margin-bottom: 14px; }
   .pkg-card--variant img { width: 100%; display: block; }
   .pkg-compose { margin: 12px 0; }
-  .pkg-compose-text { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .pkg-compose-text { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
   .pkg-cutout-set { margin-bottom: 14px; }
   .pkg-pool { margin-bottom: 14px; }
   .pkg-pool-list { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 6px; }

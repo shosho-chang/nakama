@@ -638,6 +638,45 @@ def test_compose_writes_render_request(client, vault_with_cutouts):
     assert req["rendered_png"] is None  # 還沒出圖
 
 
+def test_compose_accepts_three_lines(client, vault_with_cutouts):
+    """三行大字（修修 2026-08-15「第一支片／別求成功／別求爆紅」）。
+
+    schema 本來就允許 1–3 行，表單卻只開兩格——第三段只能被丟掉或硬塞進同一行
+    （九字一行會讓整塊字級從 100px 縮到 64px）。補上第三格讓它進得來也回得去。
+    """
+    r = _compose(
+        client,
+        big_text_1="第一支片",
+        big_text_2="別求成功",
+        big_text_3="別求爆紅",
+        highlight_text="別求爆紅",
+    )
+    assert r.status_code == 303
+    saved = json.loads(
+        (
+            vault_with_cutouts / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json"
+        ).read_text(encoding="utf-8")
+    )
+    req = saved["approvals"][0]["render_request"]
+    assert req["big_text"] == ["第一支片", "別求成功", "別求爆紅"]
+    # 表單要能把三行讀回格子裡，否則下次按存配方就掉一行
+    board = client.get("/bridge/packaging/20260723-xieboran")
+    assert 'name="big_text_3"' in board.text
+    assert board.text.count("別求爆紅") >= 2  # 第三格 + 橘框詞
+
+
+def test_saved_recipe_is_pending_not_rejected(client, vault_with_cutouts):
+    """存配方 ≠ 退件（2026-08-15 browser UAT）。
+
+    舊檔回退判讀原本只看 selected_variant / bigtext_request，剛存好配方的新集數
+    三欄皆空 → 被判成 REJECTED，修修會以為自己退過件。
+    """
+    _compose(client)
+    board = client.get("/bridge/packaging/20260723-xieboran")
+    assert "PENDING" in board.text
+    assert "REJECTED" not in board.text
+
+
 def test_compose_rejects_highlight_not_in_big_text(client, vault_with_cutouts):
     r = _compose(client, highlight_text="不存在")
     assert r.status_code == 400
