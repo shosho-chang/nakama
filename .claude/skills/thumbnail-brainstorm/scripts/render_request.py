@@ -107,6 +107,17 @@ def main() -> int:
     ap.add_argument("--out-suffix", default="", help="輸出檔名後綴（做比較板時用）")
     args = ap.parse_args()
 
+    # 每集拍板一次的感知常數（修修在比較板上點的那一檔）。CLI 明給就以 CLI 為準。
+    geo_path = args.packaging_dir / "geometry.json"
+    if geo_path.is_file():
+        geo = json.loads(geo_path.read_text(encoding="utf-8"))
+        given = set(sys.argv)
+        if "--eye-target" not in given:
+            args.eye_target = float(geo.get("eye_target", args.eye_target))
+        if "--guest-face-boost" not in given:
+            args.guest_face_boost = float(geo.get("guest_face_boost", args.guest_face_boost))
+        print(f"[geometry.json] eye_target={args.eye_target} guest_face_boost={args.guest_face_boost}")
+
     vault = get_vault_path()
     ep_vault = vault / "Attachments" / "packaging" / args.episode_slug
     cut_dir = vault / "Attachments" / "cutouts" / "podcast" / args.episode_slug

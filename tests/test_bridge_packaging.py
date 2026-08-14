@@ -658,3 +658,24 @@ def test_board_lists_cutout_choices(client, vault_with_cutouts):
     assert "host_v2_laughing.png" in board.text
     assert "guest_v1_serious.png" in board.text
     assert "存配方" in board.text
+
+
+def test_title_edit_records_original_when_key_exists_as_null(client, vault):
+    """2026-08-14 UAT：packages.json 帶 original_text: null 時，setdefault 不會寫入。"""
+    path = vault / "Attachments" / "packaging" / "20260723-xieboran" / "packages.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    for tt in data["cuts"][0]["titles"]:
+        tt["original_text"] = None
+        tt["edited_at"] = None
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    client.post(
+        "/bridge/packaging/20260723-xieboran/title",
+        data={"cut_id": "punch-L1", "rank": "2", "title_text": "改過的標題"},
+        follow_redirects=False,
+    )
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    target = next(t for t in saved["cuts"][0]["titles"] if t["rank"] == 2)
+    assert target["text"] == "改過的標題"
+    assert target["original_text"] == "標題 rank 2"
+    assert target["edited_at"] is not None

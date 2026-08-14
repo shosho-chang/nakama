@@ -501,7 +501,11 @@ async def packaging_edit_title(
         if target is None:
             raise HTTPException(status_code=404, detail=f"{cut_id} 沒有 rank {rank} 的標題")
         if target["text"] != text:
-            target.setdefault("original_text", target["text"])
+            # setdefault 不夠：TitleV1 序列化後 original_text 這個 key 是存在的
+            # （值 null），setdefault 看到 key 就不寫 → 推導鏈斷掉（2026-08-14
+            # browser UAT 抓到：改完字 original_text 還是 null）。
+            if not target.get("original_text"):
+                target["original_text"] = target["text"]
             target["edited_at"] = datetime.now(timezone.utc).isoformat()
             target["text"] = text
             edited = True
