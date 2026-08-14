@@ -140,6 +140,40 @@
             </select>
           </div>
 
+          {# 候選池（修修 2026-08-14）：桌機 brainstorm 完寫進 packages.json，
+             這裡只是清單 ＋「填入」把文字塞進下面的格子（純瀏覽器端，零 LLM）。#}
+          {% if cut.brainstorm and (cut.brainstorm.titles or cut.brainstorm.bigtexts) %}
+          <details class="pkg-pool">
+            <summary class="sho-mono-up">候選池：標題 {{ cut.brainstorm.titles | length }} 條 · 大字 {{ cut.brainstorm.bigtexts | length }} 組（點「填入」帶進格子）</summary>
+            {% if cut.brainstorm.bigtexts %}
+            <ul class="pkg-pool-list">
+              {% for b in cut.brainstorm.bigtexts %}
+              <li>
+                <button type="button" class="sho-btn sho-btn--ghost pkg-fill"
+                        data-cut="{{ cut.cut_id }}"
+                        data-l1="{{ b.lines[0] }}"
+                        data-l2="{{ b.lines[1] if b.lines|length > 1 else '' }}"
+                        data-hl="{{ b.highlight }}">填入</button>
+                <span class="pkg-pool-text">{{ b.lines | join('／') }}</span>
+                {% if b.highlight %}<span class="sho-mono">橘框：{{ b.highlight }}</span>{% endif %}
+                {% if b.angle %}<span class="sho-mono">— {{ b.angle }}</span>{% endif %}
+              </li>
+              {% endfor %}
+            </ul>
+            {% endif %}
+            {% if cut.brainstorm.titles %}
+            <ul class="pkg-pool-list pkg-pool-titles">
+              {% for bt in cut.brainstorm.titles %}
+              <li><span class="pkg-pool-text">{{ bt.text }}</span>
+                  {% if bt.angle %}<span class="sho-mono">— {{ bt.angle }}</span>{% endif %}
+                  {% if bt.note %}<span class="sho-mono">（{{ bt.note }}）</span>{% endif %}</li>
+              {% endfor %}
+            </ul>
+            <p class="sho-mono pkg-pool-hint">標題候選要用哪條 → 複製貼進上面〈改標題文字〉的格子存檔（標題文字是 packages.json 的資料，不是這裡的池子）。</p>
+            {% endif %}
+          </details>
+          {% endif %}
+
           <div class="pkg-compose-text">
             <div class="field">
               <label class="field-label" for="b1-{{ cut.cut_id }}">封面大字 第一行</label>
@@ -329,6 +363,12 @@
   .pkg-compose { margin: 12px 0; }
   .pkg-compose-text { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px; }
   .pkg-cutout-set { margin-bottom: 14px; }
+  .pkg-pool { margin-bottom: 14px; }
+  .pkg-pool-list { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 6px; }
+  .pkg-pool-list li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pkg-pool-text { font-weight: 600; }
+  .pkg-pool-titles li { padding-left: 4px; }
+  .pkg-pool-hint { opacity: 0.75; }
   .pkg-card--cutout img { width: 100%; display: block; background: #1a1a1a; }
   .pkg-card--cutout .pkg-card-meta { padding: 6px 8px 8px; }
   @media (max-width: 720px) { .pkg-compose-text { grid-template-columns: 1fr; } }
@@ -375,5 +415,17 @@
   .pkg-coverframe-note { margin: var(--sho-s-3) 0; }
   .pkg-cut + .pkg-cut { margin-top: var(--sho-s-5); }
 </style>
+<script>
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest(".pkg-fill");
+    if (!btn) return;
+    const cut = btn.dataset.cut;
+    const set = (id, val) => { const el = document.getElementById(id + "-" + cut); if (el) el.value = val; };
+    set("b1", btn.dataset.l1);
+    set("b2", btn.dataset.l2);
+    set("hl", btn.dataset.hl);
+    document.getElementById("b1-" + cut)?.focus();
+  });
+</script>
 </body>
 </html>

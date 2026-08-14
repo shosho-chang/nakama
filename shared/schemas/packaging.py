@@ -136,6 +136,46 @@ class PackageV1(BaseModel):
         return self
 
 
+class BrainstormTitleV1(BaseModel):
+    """gate 候選池裡的一條標題（display-only，不佔 packages 的 5 條 rank）。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    text: str
+    angle: str = ""
+    note: str = ""
+
+
+class BrainstormBigTextV1(BaseModel):
+    """gate 候選池裡的一組封面大字。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    lines: list[str] = Field(min_length=1, max_length=3)
+    highlight: str = ""
+    angle: str = ""
+
+    @model_validator(mode="after")
+    def _highlight_in_lines(self) -> "BrainstormBigTextV1":
+        if self.highlight and self.highlight not in "".join(self.lines):
+            raise ValueError(f"highlight {self.highlight!r} 不在 lines 內")
+        return self
+
+
+class BrainstormV1(BaseModel):
+    """標題／大字候選池 — 修修 2026-08-14：「把好幾個方向都列出來讓我挑，挑完填到格子裡」。
+
+    這是 **display-only** 的池子：不動 `titles`（長片固定 5 條、帶推導鏈）也不動
+    packages。gate 上每條旁邊一個「填入」把文字塞進〈組封面〉的格子，全部在瀏覽器
+    端做，沒有 LLM 呼叫（D11 不變）。內容由桌機端 brainstorm 後寫入。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    titles: list[BrainstormTitleV1] = Field(default_factory=list)
+    bigtexts: list[BrainstormBigTextV1] = Field(default_factory=list)
+
+
 class CutV1(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -150,6 +190,8 @@ class CutV1(BaseModel):
     brand_flags: list[str] = Field(default_factory=list)
     # Only field exempt from absolute-path rejection (D10 硬規則①): working-set relative,桌機 only.
     title_trace_ref: str | None = None
+    # 標題／大字候選池（display-only；gate 上「填入」用）
+    brainstorm: BrainstormV1 | None = None
     # Long cuts must NOT set this; short cuts MUST explicitly set null.
     # model_fields_set tells apart "explicitly null" from "omitted/defaulted".
     thumbnail: None = None

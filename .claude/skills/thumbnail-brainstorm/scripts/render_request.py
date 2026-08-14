@@ -96,6 +96,15 @@ def main() -> int:
     ap.add_argument("--host-baseline", default="host_v1_serious.png")
     ap.add_argument("--guest-baseline", default="guest_v1_serious.png")
     ap.add_argument("--credit", default="", help="來賓 credit（頭銜＋姓名）；空 = 沿用上一張 spec")
+    ap.add_argument(
+        "--eye-target", type=float, default=307.0,
+        help="眼線落在畫布的 y（px）。**調小 = 兩人一起往上、headroom 變少**（修修 2026-08-14）",
+    )
+    ap.add_argument(
+        "--guest-face-boost", type=float, default=1.0,
+        help="來賓臉相對主持人的感知放大（指標等大 ≠ 感知等大；per-pairing 由修修拍板一次）",
+    )
+    ap.add_argument("--out-suffix", default="", help="輸出檔名後綴（做比較板時用）")
     args = ap.parse_args()
 
     vault = get_vault_path()
@@ -115,14 +124,22 @@ def main() -> int:
     # scale 鎖定：基準 cutout 解一次（同角色同裁切框 = 同 scale，v2.5 教訓 19）
     hb, gb = _landmarks(manifest, args.host_baseline), _landmarks(manifest, args.guest_baseline)
     host_h = TARGET_HEAD_PX / (hb["chin"] - hb["head_top"]) * float(hb["cutout_h"]) / CANVAS_H * 100
-    guest_h = TARGET_HEAD_PX / (gb["chin"] - gb["head_top"]) * float(gb["cutout_h"]) / CANVAS_H * 100
+    guest_h = (
+        TARGET_HEAD_PX * args.guest_face_boost / (gb["chin"] - gb["head_top"])
+        * float(gb["cutout_h"]) / CANVAS_H * 100
+    )
 
     hlm, glm = _landmarks(manifest, host_name), _landmarks(manifest, guest_name)
-    guest = _solve(glm, guest_h, 307.0, GUEST_HEAD_X, "guest")
+    guest = _solve(glm, guest_h, args.eye_target, GUEST_HEAD_X, "guest")
     host = _solve(hlm, host_h, guest["eye"], HOST_HEAD_X, "host")  # 眼線對齊來賓
     print(f"host {host_name}: h={host['height_pct']} y={host['y_pct']} x={host['x_pct']} eye={host['eye']}")
     print(f"guest {guest_name}: h={guest['height_pct']} y={guest['y_pct']} x={guest['x_pct']} eye={guest['eye']}")
     print(f"眼線差 {abs(host['eye'] - guest['eye']):.1f}px（門檻 10）")
+    print(
+        f"headroom：host crown {host['crown']:.0f}px（{host['crown'] / CANVAS_H:.1%}）"
+        f" guest crown {guest['crown']:.0f}px（{guest['crown'] / CANVAS_H:.1%}）"
+        f" · guest_face_boost={args.guest_face_boost}"
+    )
 
     credit = args.credit
     if not credit:
@@ -166,7 +183,7 @@ def main() -> int:
         path.write_text(json.dumps(spec, ensure_ascii=False, indent=2), encoding="utf-8")
         return path
 
-    out = args.packaging_dir / f"pkg-{args.cut_id}-{req['title_rank']}.png"
+    out = args.packaging_dir / f"pkg-{args.cut_id}-{req['title_rank']}{args.out_suffix}.png"
     tout = args.packaging_dir / f"_textonly-req-{args.cut_id}.png"
     render = str(_SKILL_DIR / "render_still.py")
     occ = str(_SKILL_DIR / "occlusion_check.py")
@@ -196,6 +213,10 @@ def main() -> int:
     qa = _run([sys.executable, str(_SKILL_DIR / "face_measure.py"), "render",
                "--canvas-h", "720", "--png", str(out)])
     print(qa.stdout.strip().splitlines()[-1] if qa.stdout else "(face_measure 無輸出)")
+
+    if args.out_suffix:  # 比較板：只出圖，不回填（還沒定案）
+        print(f"→ {out}（比較板，未回填）")
+        return 0
 
     # 回填：vault 複製一份 + render_request.rendered_png + 該 rank 的 package 縮圖
     dst = ep_vault / out.name
