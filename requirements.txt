@@ -77,6 +77,7 @@ rapidfuzz>=3.6           # beat_aligner diagnostic-only fuzzy match (NOT primary
 cn2an>=0.5.22            # Chinese numeral normalization (一萬一千 / 11000 / 一·一萬 → canonical)
 
 # 封面設計系統 v1（docs/thumbnail-design-system.md）— BiRefNet 去背
+mediapipe>=0.10          # face_measure 量成品臉部地標（封面交付 gate；render watcher 需要）
 rembg>=2.0               # birefnet-general 模型（首用時自下載 ~970MB 至 ~/.u2net/）
 onnxruntime>=1.17        # rembg 推論後端（CPU）
 
