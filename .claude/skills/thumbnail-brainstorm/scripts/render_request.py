@@ -48,8 +48,13 @@ _DIFF_RE = re.compile(r"左遮 (\d+)px² 右遮 (\d+)px²")
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(
-        cmd, cwd=str(_REPO), capture_output=True, text=True,
-        encoding="utf-8", errors="replace", timeout=600,
+        cmd,
+        cwd=str(_REPO),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=600,
     )
 
 
@@ -97,11 +102,15 @@ def main() -> int:
     ap.add_argument("--guest-baseline", default="guest_v1_serious.png")
     ap.add_argument("--credit", default="", help="來賓 credit（頭銜＋姓名）；空 = 沿用上一張 spec")
     ap.add_argument(
-        "--eye-target", type=float, default=307.0,
+        "--eye-target",
+        type=float,
+        default=307.0,
         help="眼線落在畫布的 y（px）。**調小 = 兩人一起往上、headroom 變少**（修修 2026-08-14）",
     )
     ap.add_argument(
-        "--guest-face-boost", type=float, default=1.0,
+        "--guest-face-boost",
+        type=float,
+        default=1.0,
         help="來賓臉相對主持人的感知放大（指標等大 ≠ 感知等大；per-pairing 由修修拍板一次）",
     )
     ap.add_argument("--out-suffix", default="", help="輸出檔名後綴（做比較板時用）")
@@ -117,8 +126,7 @@ def main() -> int:
         if "--guest-face-boost" not in given:
             args.guest_face_boost = float(geo.get("guest_face_boost", args.guest_face_boost))
         print(
-            f"[geometry.json] eye_target={args.eye_target} "
-            f"guest_face_boost={args.guest_face_boost}"
+            f"[geometry.json] eye_target={args.eye_target} guest_face_boost={args.guest_face_boost}"
         )
 
     vault = get_vault_path()
@@ -139,8 +147,12 @@ def main() -> int:
     hb, gb = _landmarks(manifest, args.host_baseline), _landmarks(manifest, args.guest_baseline)
     host_h = TARGET_HEAD_PX / (hb["chin"] - hb["head_top"]) * float(hb["cutout_h"]) / CANVAS_H * 100
     guest_h = (
-        TARGET_HEAD_PX * args.guest_face_boost / (gb["chin"] - gb["head_top"])
-        * float(gb["cutout_h"]) / CANVAS_H * 100
+        TARGET_HEAD_PX
+        * args.guest_face_boost
+        / (gb["chin"] - gb["head_top"])
+        * float(gb["cutout_h"])
+        / CANVAS_H
+        * 100
     )
 
     hlm, glm = _landmarks(manifest, host_name), _landmarks(manifest, guest_name)
@@ -211,8 +223,18 @@ def main() -> int:
     center, history = 50.0, []
     for attempt in range(3):
         for textonly, dest in ((False, out), (True, tout)):
-            r = _run([sys.executable, render, "--composition", "thumbnail_full",
-                      "--spec", str(build(center, textonly)), "--out", str(dest)])
+            r = _run(
+                [
+                    sys.executable,
+                    render,
+                    "--composition",
+                    "thumbnail_full",
+                    "--spec",
+                    str(build(center, textonly)),
+                    "--out",
+                    str(dest),
+                ]
+            )
             if r.returncode != 0:
                 raise SystemExit(f"render 失敗：{r.stderr[-500:]}")
         c = _run([sys.executable, occ, str(out), str(tout)])
@@ -230,8 +252,17 @@ def main() -> int:
     else:
         print("⚠ 遮蔽平衡沒收斂——人工調 text_center 再重跑", file=sys.stderr)
 
-    qa = _run([sys.executable, str(_SKILL_DIR / "face_measure.py"), "render",
-               "--canvas-h", "720", "--png", str(out)])
+    qa = _run(
+        [
+            sys.executable,
+            str(_SKILL_DIR / "face_measure.py"),
+            "render",
+            "--canvas-h",
+            "720",
+            "--png",
+            str(out),
+        ]
+    )
     print(qa.stdout.strip().splitlines()[-1] if qa.stdout else "(face_measure 無輸出)")
 
     if args.out_suffix:  # 比較板：只出圖，不回填（還沒定案）

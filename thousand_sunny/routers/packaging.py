@@ -95,7 +95,6 @@ def _load_brief(ep_dir: Path, cut_id: str) -> dict | None:
     return data
 
 
-
 def _load_cutout_choices(episode_slug: str) -> dict[str, list[dict]]:
     """列出這集可選的 cutout（vault `Attachments/cutouts/podcast/<slug>/`）。
 
@@ -371,9 +370,7 @@ async def packaging_select_variant(
         entry.selected_variant,
         bool(entry.bigtext_request),
     )
-    return RedirectResponse(
-        f"/bridge/packaging/{episode_slug}#cut-{cut_id}", status_code=303
-    )
+    return RedirectResponse(f"/bridge/packaging/{episode_slug}#cut-{cut_id}", status_code=303)
 
 
 @page_router.post("/{episode_slug}/compose")
@@ -451,7 +448,12 @@ async def packaging_compose(
     )
     logger.info(
         "packaging compose: %s/%s rank=%s host=%s guest=%s text=%s",
-        episode_slug, cut_id, title_rank, Path(host_cutout).name, Path(guest_cutout).name, lines,
+        episode_slug,
+        cut_id,
+        title_rank,
+        Path(host_cutout).name,
+        Path(guest_cutout).name,
+        lines,
     )
     return RedirectResponse(
         f"/bridge/packaging/{episode_slug}?composed={cut_id}#compose-{cut_id}", status_code=303

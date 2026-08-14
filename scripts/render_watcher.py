@@ -114,8 +114,7 @@ def render_one(job: dict, state: dict, state_path: Path, log_path: Path | None) 
     packaging_dir = find_packaging_dir(slug)
     if packaging_dir is None:
         _log(
-            f"SKIP {slug}/{cut_id}：找不到 working-set packaging 目錄"
-            "（G:/Footages/*/packaging）",
+            f"SKIP {slug}/{cut_id}：找不到 working-set packaging 目錄（G:/Footages/*/packaging）",
             log_path,
         )
         state[job["key"]] = {
@@ -128,12 +127,20 @@ def render_one(job: dict, state: dict, state_path: Path, log_path: Path | None) 
     _log(f"RENDER {slug}/{cut_id} 大字={job['req'].get('big_text')} → {packaging_dir}", log_path)
     proc = subprocess.run(
         [
-            sys.executable, str(RENDER_REQUEST),
-            "--episode-slug", slug,
-            "--packaging-dir", str(packaging_dir),
-            "--cut-id", cut_id,
+            sys.executable,
+            str(RENDER_REQUEST),
+            "--episode-slug",
+            slug,
+            "--packaging-dir",
+            str(packaging_dir),
+            "--cut-id",
+            cut_id,
         ],
-        cwd=str(_REPO), capture_output=True, text=True, encoding="utf-8", errors="replace",
+        cwd=str(_REPO),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=1800,
     )
     tail = (proc.stdout or proc.stderr or "").strip().splitlines()
@@ -157,7 +164,9 @@ def main() -> int:
     ap.add_argument("--once", action="store_true", help="掃一輪就結束（測試用）")
     ap.add_argument("--log", type=Path, default=_REPO / "logs" / "render-watcher.log")
     ap.add_argument(
-        "--state", type=Path, default=_REPO / "logs" / "render-watcher-state.json",
+        "--state",
+        type=Path,
+        default=_REPO / "logs" / "render-watcher-state.json",
         help="已處理配方的時間戳（同一份只 render 一次）",
     )
     args = ap.parse_args()

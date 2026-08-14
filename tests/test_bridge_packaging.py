@@ -450,9 +450,13 @@ def test_variant_select_writes_approval_without_approving(client, vault_with_var
     )
     assert r.status_code == 303
     saved = json.loads(
-        (vault_with_variants / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json").read_text(
-            encoding="utf-8"
-        )
+        (
+            vault_with_variants
+            / "Attachments"
+            / "packaging"
+            / "20260723-xieboran"
+            / "approval.json"
+        ).read_text(encoding="utf-8")
     )
     entry = saved["approvals"][0]
     assert entry["selected_variant"] == "r1-b"
@@ -471,9 +475,13 @@ def test_variant_select_keeps_existing_approval(client, vault_with_variants):
         follow_redirects=False,
     )
     saved = json.loads(
-        (vault_with_variants / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json").read_text(
-            encoding="utf-8"
-        )
+        (
+            vault_with_variants
+            / "Attachments"
+            / "packaging"
+            / "20260723-xieboran"
+            / "approval.json"
+        ).read_text(encoding="utf-8")
     )
     entry = saved["approvals"][0]
     assert entry["approved"] is True and entry["primary_package"] == 2
@@ -517,9 +525,13 @@ def test_approve_does_not_wipe_selected_variant(client, vault_with_variants):
         follow_redirects=False,
     )
     saved = json.loads(
-        (vault_with_variants / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json").read_text(
-            encoding="utf-8"
-        )
+        (
+            vault_with_variants
+            / "Attachments"
+            / "packaging"
+            / "20260723-xieboran"
+            / "approval.json"
+        ).read_text(encoding="utf-8")
     )
     entry = saved["approvals"][0]
     assert entry["approved"] is True
@@ -582,8 +594,14 @@ def vault_with_cutouts(vault):
     for name in ("host_v1_serious.png", "host_v2_laughing.png", "guest_v1_serious.png"):
         (d / name).write_bytes(bytes.fromhex("89504e470d0a1a0a"))
     (d / "cutouts_manifest.json").write_text(
-        json.dumps({"validated": {n: {} for n in (
-            "host_v1_serious.png", "host_v2_laughing.png", "guest_v1_serious.png")}}),
+        json.dumps(
+            {
+                "validated": {
+                    n: {}
+                    for n in ("host_v1_serious.png", "host_v2_laughing.png", "guest_v1_serious.png")
+                }
+            }
+        ),
         encoding="utf-8",
     )
     return vault
@@ -608,9 +626,9 @@ def _compose(client, **over):
 def test_compose_writes_render_request(client, vault_with_cutouts):
     assert _compose(client).status_code == 303
     saved = json.loads(
-        (vault_with_cutouts / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json").read_text(
-            encoding="utf-8"
-        )
+        (
+            vault_with_cutouts / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json"
+        ).read_text(encoding="utf-8")
     )
     req = saved["approvals"][0]["render_request"]
     assert req["title_rank"] == 2
@@ -644,9 +662,9 @@ def test_compose_keeps_approval_state(client, vault_with_cutouts):
     )
     _compose(client)
     saved = json.loads(
-        (vault_with_cutouts / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json").read_text(
-            encoding="utf-8"
-        )
+        (
+            vault_with_cutouts / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json"
+        ).read_text(encoding="utf-8")
     )
     entry = saved["approvals"][0]
     assert entry["approved"] is True and entry["primary_package"] == 3
