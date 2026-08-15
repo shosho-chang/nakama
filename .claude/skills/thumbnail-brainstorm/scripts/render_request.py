@@ -247,7 +247,7 @@ def main() -> int:
                 "guest_height_pct": guest["height_pct"],
                 "guest_x_pct": guest["x_pct"],
                 "guest_y_pct": guest["y_pct"],
-                "title_max_width": 580,
+                "title_max_width": int(req.get("title_max_width") or 580),
                 "logo_height_px": 92,
                 "text_center_pct": center,
                 "person_glow_color": "#F37425",
