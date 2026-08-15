@@ -388,6 +388,27 @@ async def thumbnail_cutout_candidate(
     return FileResponse(path, media_type="image/png")
 
 
+# N1 卡型的固定素材（背景圖、頻道 logo）。packaging gate 的排版預覽要它們才畫得
+# 出跟成品一樣的東西。**白名單，不吃任意路徑**——這兩支是 composition 寫死的。
+_STILL_ASSETS = {
+    "bg": Path(r"E:/data/podcast thumbnail background.png"),
+    "logo": Path(r"E:/data/podcast thumbnail props/channel_logo_face_white.png"),
+}
+
+
+@page_router.get("/thumbnail/still-asset/{name}")
+async def thumbnail_still_asset(name: str, nakama_auth: str | None = Cookie(None)):
+    """Serve a fixed N1 composition asset by whitelist key (``bg`` / ``logo``)."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/packaging", status_code=302)
+    path = _STILL_ASSETS.get(name)
+    if path is None:
+        raise HTTPException(status_code=404, detail=f"unknown asset: {name}")
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail=f"asset missing on disk: {path.name}")
+    return FileResponse(path, media_type="image/png")
+
+
 @page_router.post("/projects/{slug}/thumbnail/commit")
 async def thumbnail_commit(
     request: Request,

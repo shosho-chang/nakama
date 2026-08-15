@@ -677,6 +677,64 @@ def test_saved_recipe_is_pending_not_rejected(client, vault_with_cutouts):
     assert "REJECTED" not in board.text
 
 
+_GEO = {
+    "host_height_pct": "140.0",
+    "host_x_pct": "-26.6",
+    "host_y_pct": "-34.5",
+    "guest_height_pct": "113.8",
+    "guest_x_pct": "-25.4",
+    "guest_y_pct": "-1.3",
+}
+
+
+def _saved_req(vault):
+    saved = json.loads(
+        (vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    return saved["approvals"][0]["render_request"]
+
+
+def test_compose_saves_manual_geometry(client, vault_with_cutouts):
+    """修修在預覽上拖完的位置要原封不動進 render_request（2026-08-15）。"""
+    assert _compose(client, geometry_mode="manual", **_GEO).status_code == 303
+    req = _saved_req(vault_with_cutouts)
+    assert req["geometry_manual"] is True
+    assert req["geometry"]["host_height_pct"] == 140.0
+    assert req["geometry"]["guest_y_pct"] == -1.3
+
+
+def test_compose_auto_keeps_geometry_but_unlocks_it(client, vault_with_cutouts):
+    """不勾「用我調的位置」= 交還 solver，但數字留著當下次拖曳的起點。
+
+    solver 每次 render 完都會把解出來的位置寫回 geometry；要是沒有 geometry_manual
+    這個旗標，第一次寫回就等於把自己鎖死——之後換一張臉也不會重新解算。
+    """
+    _compose(client, geometry_mode="manual", **_GEO)
+    _compose(client)  # 第二次不帶 geometry_mode → auto
+    req = _saved_req(vault_with_cutouts)
+    assert req["geometry_manual"] is False
+    assert req["geometry"]["host_height_pct"] == 140.0  # 起點還在
+
+
+def test_compose_rejects_out_of_range_geometry(client, vault_with_cutouts):
+    r = _compose(client, geometry_mode="manual", **{**_GEO, "host_height_pct": "0"})
+    assert r.status_code == 400
+    assert "超出範圍" in r.text
+
+
+def test_board_renders_layout_stage(client, vault_with_cutouts):
+    """排版舞台要真的畫得出來：素材路徑、六個數字欄、手動勾選框。"""
+    _compose(client, geometry_mode="manual", **_GEO)
+    board = client.get("/bridge/packaging/20260723-xieboran")
+    assert "/bridge/thumbnail/still-asset/bg" in board.text
+    assert 'data-geo="host_height"' in board.text
+    assert 'data-geo="guest_y"' in board.text
+    assert 'name="geometry_mode"' in board.text
+    assert "140.0" in board.text  # 欄位帶著存過的值回來
+
+
 def test_compose_rejects_highlight_not_in_big_text(client, vault_with_cutouts):
     r = _compose(client, highlight_text="不存在")
     assert r.status_code == 400

@@ -253,6 +253,28 @@ class PackagesFileV1(BaseModel):
     cuts: list[CutV1]
 
 
+class GeometryV1(BaseModel):
+    """兩張臉的位置與大小（%，直接對應 composition 的 CSS 變數）。
+
+    修修 2026-08-15：「cutout 的位置跟大小都沒有很確定……有辦法讓我直接在 web UI
+    去做調整嗎？」——solver 只保證參數自洽，看起來對不對是他的眼睛說了算。
+    這六個數字由 gate 的拖曳/縮放介面寫進來；`None`（整個 geometry 不存在）＝
+    照舊跑 solver。桌機端 render 完會把實際用的值寫回來當下次的起點。
+
+    座標系跟 composition 一致：x 是離該側邊界的 %（負值＝往畫布外推），
+    y 是離底部的 %，height 是佔畫布高的 %。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    host_height_pct: float = Field(gt=0, le=400)
+    host_x_pct: float = Field(ge=-200, le=200)
+    host_y_pct: float = Field(ge=-200, le=200)
+    guest_height_pct: float = Field(gt=0, le=400)
+    guest_x_pct: float = Field(ge=-200, le=200)
+    guest_y_pct: float = Field(ge=-200, le=200)
+
+
 class RenderRequestV1(BaseModel):
     """修修在 gate 上組好的封面配方 — 桌機端據此 **render 一次**（2026-08-14 裁決）。
 
@@ -269,6 +291,12 @@ class RenderRequestV1(BaseModel):
     big_text: list[str] = Field(min_length=1, max_length=3)
     highlight_text: str = ""
     requested_at: AwareDatetime
+    # geometry 兩種來源，靠 geometry_manual 分辨：
+    #   False（預設）— solver 解完寫回來的，只當 gate 拖曳介面的起點，下次照樣重解
+    #   True          — 修修自己拖的，render 端照抄不解算
+    # 沒有這個旗標的話，solver 第一次寫回值就等於把自己鎖死（換臉也不會重解）。
+    geometry: GeometryV1 | None = None
+    geometry_manual: bool = False
     # 桌機端 render 完把成品 PNG 檔名寫回來，gate 才知道這份配方已經出圖。
     rendered_png: str | None = None
 

@@ -215,6 +215,53 @@
           </fieldset>
           {% endfor %}
 
+          {# 排版預覽（修修 2026-08-15：「有辦法讓我直接在 web UI 去做調整嗎？讓我
+             可以縮放跟移動位置？」）。舞台是 1280×720 的等比縮小版，CSS 跟
+             composition 同一份寫法，所以拖出來的位置就是 render 出來的位置。
+             仍然零 LLM、零 render——這裡只改六個數字，出圖還是桌機端那隻手。#}
+          {% set g = req.geometry if req else none %}
+          <fieldset class="pkg-stage-set">
+            <legend class="sho-mono-up">排版：拖曳移動、滾輪縮放（或直接改數字）</legend>
+            <div class="pkg-stage" data-cut="{{ cut.cut_id }}">
+              <div class="pkg-stage-inner">
+                <img class="st-bg" src="/bridge/thumbnail/still-asset/bg" alt="">
+                <img class="st-person st-host" data-role="host" alt="修修" draggable="false"
+                     src="/bridge/projects/gate/thumbnail/cutout/{{ episode_slug }}/{{ (req.host_cutout if req else cutouts.host[0].vault_path if cutouts.host else '').split('/')[-1] }}">
+                <img class="st-person st-guest" data-role="guest" alt="來賓" draggable="false"
+                     src="/bridge/projects/gate/thumbnail/cutout/{{ episode_slug }}/{{ (req.guest_cutout if req else cutouts.guest[0].vault_path if cutouts.guest else '').split('/')[-1] }}">
+                <div class="st-text">
+                  <div class="st-title"></div>
+                  {# credit 的文字只存在桌機端的 spec，gate 看不到（D10）。這裡放
+                     等高的佔位字串，讓字塊高度跟成品一致——不是真的 credit。#}
+                  <div class="st-credit">（來賓 credit・出圖時帶入）</div>
+                </div>
+                <img class="st-logo" src="/bridge/thumbnail/still-asset/logo" alt="">
+              </div>
+            </div>
+            <div class="pkg-stage-ctl">
+              <label class="pkg-stage-mode">
+                <input type="checkbox" name="geometry_mode" value="manual"
+                       {% if req and req.geometry_manual %}checked{% endif %}>
+                用我調的位置（不勾＝每次重新自動解算）
+              </label>
+              <div class="pkg-stage-nums">
+                {% for role, label in [('host', '修修'), ('guest', '來賓')] %}
+                {% for axis, ax_label in [('height', '大小'), ('x', '左右'), ('y', '上下')] %}
+                <label class="field">
+                  <span class="field-label">{{ label }}{{ ax_label }}</span>
+                  <input class="sho-input" type="number" step="0.1" data-geo="{{ role }}_{{ axis }}"
+                         name="{{ role }}_{{ axis }}_pct"
+                         value="{{ g[role ~ '_' ~ axis ~ '_pct'] if g else '' }}">
+                </label>
+                {% endfor %}
+                {% endfor %}
+              </div>
+              <p class="sho-mono pkg-stage-hint">
+                預覽用 text_center 50% 畫；實際出圖會再依左右遮蔽微調置中，字塊位置可能差 1–2%。
+              </p>
+            </div>
+          </fieldset>
+
           <div class="pkg-actions">
             <button class="sho-btn" type="submit">存配方（我再 render）</button>
           </div>
@@ -419,6 +466,68 @@
   .pkg-decided { margin-top: var(--sho-s-3); }
   .pkg-coverframe-note { margin: var(--sho-s-3) 0; }
   .pkg-cut + .pkg-cut { margin-top: var(--sho-s-5); }
+
+  /* 排版舞台（修修 2026-08-15）：1280×720 的等比縮小版。CSS 刻意跟
+     video/compositions/thumbnail_full/index.html 同一份寫法 —— 兩邊要是漂了，
+     預覽就會騙人。改那邊記得改這裡。 */
+  .pkg-stage-set { border: 0; padding: 0; margin: var(--sho-s-4) 0 0; }
+  .pkg-stage-set > legend { padding: 0 0 var(--sho-s-2); color: var(--sho-muted); }
+  .pkg-stage {
+    position: relative; width: 100%; max-width: 640px; aspect-ratio: 16 / 9;
+    overflow: hidden; border-radius: var(--sho-radius-2, 8px);
+    border: 1px solid var(--sho-line); background: #1a1a1a;
+    touch-action: none; overscroll-behavior: contain;
+  }
+  .pkg-stage-inner {
+    position: absolute; top: 0; left: 0; width: 1280px; height: 720px;
+    transform: scale(var(--s, 0.5)); transform-origin: top left;
+    --glow: rgba(243,116,37,0.5); --glow-soft: rgba(243,116,37,0.3); --fade: 9%;
+  }
+  .st-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+  .st-person {
+    position: absolute; bottom: 0; z-index: 5; object-fit: contain; cursor: grab;
+    filter: drop-shadow(0 0 36px var(--glow)) drop-shadow(0 0 90px var(--glow-soft));
+  }
+  .st-person:active { cursor: grabbing; }
+  .st-host {
+    left: var(--host-x, -2%); bottom: var(--host-y, 0%); height: var(--host-h, 108%);
+    object-position: bottom left;
+    -webkit-mask-image: linear-gradient(to left, transparent 0, #000 var(--fade));
+    mask-image: linear-gradient(to left, transparent 0, #000 var(--fade));
+  }
+  .st-guest {
+    right: var(--guest-x, -2%); bottom: var(--guest-y, 0%); height: var(--guest-h, 108%);
+    object-position: bottom right;
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade));
+    mask-image: linear-gradient(to right, transparent 0, #000 var(--fade));
+  }
+  .st-text {
+    position: absolute; left: 50%; top: 44%; transform: translate(-50%, -50%);
+    z-index: 4; width: 580px; text-align: center;
+  }
+  .st-title {
+    color: #fff; font-family: "LINE Seed TW_TTF Bold", "LINE Seed TW_TTF",
+      "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    font-weight: 700; font-size: 100px; line-height: 1.24;
+    letter-spacing: 0.005em; white-space: nowrap;
+  }
+  .st-title .hl {
+    display: inline-block; background: #F37425; border-radius: 14px;
+    padding: 14px 14px 5px; line-height: 1.02;
+  }
+  .st-credit {
+    margin-top: 22px; color: rgba(255,255,255,0.55); font-size: 38px;
+    letter-spacing: 0.06em; white-space: nowrap; font-style: italic;
+  }
+  .st-logo { position: absolute; left: 52px; bottom: 52px; height: 92px; z-index: 6; }
+  .pkg-stage-ctl { margin-top: var(--sho-s-3); }
+  .pkg-stage-mode { display: flex; gap: var(--sho-s-2); align-items: center; }
+  .pkg-stage-nums {
+    display: grid; grid-template-columns: repeat(6, 1fr);
+    gap: var(--sho-s-2); margin-top: var(--sho-s-2);
+  }
+  .pkg-stage-hint { margin: var(--sho-s-2) 0 0; color: var(--sho-muted); }
+  @media (max-width: 720px) { .pkg-stage-nums { grid-template-columns: repeat(3, 1fr); } }
 </style>
 <script>
   document.addEventListener("click", (e) => {
@@ -430,7 +539,156 @@
     set("b2", btn.dataset.l2);
     set("hl", btn.dataset.hl);
     document.getElementById("b1-" + cut)?.focus();
+    syncStages();
   });
+
+  // ── 排版舞台（修修 2026-08-15：「讓我可以縮放跟移動位置」）─────────────────
+  // 六個數字是唯一的真相來源：拖曳/滾輪改數字，數字驅動 CSS 變數，送出時就是
+  // 那六個數字。數字欄位本身可鍵盤輸入 → 不靠滑鼠也能調（a11y）。
+  const STAGE_DEFAULT = { host_height: 108, host_x: -2, host_y: 0,
+                          guest_height: 108, guest_x: -2, guest_y: 0 };
+
+  function stageInputs(stage) {
+    const form = stage.closest("form");
+    const out = {};
+    for (const el of form.querySelectorAll("[data-geo]")) out[el.dataset.geo] = el;
+    return out;
+  }
+
+  function applyStage(stage) {
+    const inner = stage.querySelector(".pkg-stage-inner");
+    const inputs = stageInputs(stage);
+    for (const [key, el] of Object.entries(inputs)) {
+      const v = el.value === "" ? STAGE_DEFAULT[key] : parseFloat(el.value);
+      if (Number.isNaN(v)) continue;
+      const [role, axis] = key.split("_");
+      inner.style.setProperty(`--${role}-${axis === "height" ? "h" : axis}`, v + "%");
+    }
+  }
+
+  function stageScale(stage) {
+    stage.style.setProperty("--s", stage.clientWidth / 1280);
+  }
+
+  // 大字：把 highlight_text 那段包成橘框（跟 composition 同規則：只包第一次）
+  function syncStageText(stage) {
+    const form = stage.closest("form");
+    const cut = stage.dataset.cut;
+    const val = (p) => (form.querySelector(`#${p}-${CSS.escape(cut)}`) || {}).value || "";
+    const hl = val("hl").trim();
+    const box = stage.querySelector(".st-title");
+    box.textContent = "";
+    let used = false;
+    for (const line of [val("b1"), val("b2"), val("b3")].map((s) => s.trim()).filter(Boolean)) {
+      const div = document.createElement("div");
+      const i = hl ? line.indexOf(hl) : -1;
+      if (i >= 0 && !used) {
+        div.append(line.slice(0, i));
+        const span = document.createElement("span");
+        span.className = "hl";
+        span.textContent = hl;
+        div.append(span, line.slice(i + hl.length));
+        used = true;
+      } else {
+        div.textContent = line;
+      }
+      box.append(div);
+    }
+  }
+
+  // 換臉時預覽跟著換（radio 的 value 是 vault 相對路徑，取檔名即可）
+  function syncStageFaces(stage) {
+    const form = stage.closest("form");
+    for (const role of ["host", "guest"]) {
+      const picked = form.querySelector(`input[name="${role}_cutout"]:checked`);
+      if (!picked) continue;
+      const file = picked.value.split("/").pop();
+      const img = stage.querySelector(`.st-${role}`);
+      const next = img.src.replace(/[^/]+$/, encodeURIComponent(file));
+      if (img.src !== next) img.src = next;
+    }
+  }
+
+  function syncStages() {
+    for (const stage of document.querySelectorAll(".pkg-stage")) {
+      stageScale(stage);
+      syncStageText(stage);
+      syncStageFaces(stage);
+      applyStage(stage);
+    }
+  }
+
+  // 拖曳＝改 x/y。host 的 x 從左算、guest 從右算，所以 guest 的水平位移要反號
+  // （跟 composition 的 left/right 對稱寫法一致）。
+  let drag = null;
+  document.addEventListener("pointerdown", (e) => {
+    const person = e.target.closest(".st-person");
+    if (!person) return;
+    const stage = person.closest(".pkg-stage");
+    const role = person.dataset.role;
+    const inputs = stageInputs(stage);
+    const num = (k) => (inputs[k].value === "" ? STAGE_DEFAULT[k] : parseFloat(inputs[k].value));
+    drag = { stage, role, inputs, x0: e.clientX, y0: e.clientY,
+             sx: num(role + "_x"), sy: num(role + "_y"),
+             s: stage.clientWidth / 1280 };
+    person.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  document.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const dx = (e.clientX - drag.x0) / drag.s / 1280 * 100;
+    const dy = (e.clientY - drag.y0) / drag.s / 720 * 100;
+    const signX = drag.role === "guest" ? -1 : 1;   // guest 貼右緣，右移＝數字變小
+    drag.inputs[drag.role + "_x"].value = (drag.sx + signX * dx).toFixed(2);
+    drag.inputs[drag.role + "_y"].value = (drag.sy - dy).toFixed(2);  // y 從底部算
+    applyStage(drag.stage);
+    markManual(drag.stage);
+  });
+  document.addEventListener("pointerup", () => { drag = null; });
+
+  // 滾輪＝縮放（游標停在誰身上就縮誰）
+  document.addEventListener("wheel", (e) => {
+    const person = e.target.closest(".st-person");
+    if (!person) return;
+    e.preventDefault();
+    const stage = person.closest(".pkg-stage");
+    const inputs = stageInputs(stage);
+    const key = person.dataset.role + "_height";
+    const cur = inputs[key].value === "" ? STAGE_DEFAULT[key] : parseFloat(inputs[key].value);
+    inputs[key].value = Math.min(400, Math.max(20, cur + (e.deltaY < 0 ? 1 : -1))).toFixed(2);
+    applyStage(stage);
+    markManual(stage);
+  }, { passive: false });
+
+  // 手動動過就自動勾「用我調的位置」——不然辛苦拖完按存檔又被 solver 蓋掉
+  function markManual(stage) {
+    const box = stage.closest("form").querySelector('input[name="geometry_mode"]');
+    if (box && !box.checked) box.checked = true;
+  }
+
+  document.addEventListener("input", (e) => {
+    const form = e.target.closest("form");
+    if (!form) return;
+    const stage = form.querySelector(".pkg-stage");
+    if (!stage) return;
+    if (e.target.matches("[data-geo]")) { applyStage(stage); markManual(stage); }
+    if (e.target.matches('input[name^="big_text"], input[name="highlight_text"]')) {
+      syncStageText(stage);
+    }
+  });
+  document.addEventListener("change", (e) => {
+    if (!e.target.matches('input[name$="_cutout"]')) return;
+    const stage = e.target.closest("form")?.querySelector(".pkg-stage");
+    if (stage) syncStageFaces(stage);
+  });
+  // <details> 收合時 clientWidth 是 0，展開才量得到縮放比
+  document.addEventListener("toggle", (e) => {
+    if (e.target.tagName === "DETAILS" && e.target.open) syncStages();
+  }, true);
+  window.addEventListener("resize", () => {
+    for (const stage of document.querySelectorAll(".pkg-stage")) stageScale(stage);
+  });
+  syncStages();
 </script>
 </body>
 </html>

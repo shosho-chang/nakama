@@ -10,8 +10,10 @@
   - 背景：炭灰 radial（中央亮 → 邊緣暗），非純黑
 
   Variables:
-    title_lines     — JSON array（通常 2 行）
+    title_lines     — JSON array（1–3 行）
     highlight_text  — 要框橘底的子字串（恰好一次）
+    highlight_pad   — [上,右,下,左] px；橘框四邊視覺等距用，由 render_request.py
+                      量成品 PNG 回推（空陣列＝用 CSS 保底值）
     ep_label        — 左下標籤（空 = 隱藏；2026-07-28 起改放頻道 logo,本欄棄用）
     logo_data_url   — 頻道 logo(白線透明底:E:\data\podcast thumbnail props\channel_logo_white.png)
     logo_height_px  — logo 高(預設 96px)
@@ -88,12 +90,12 @@
         letter-spacing: 0.005em;
         white-space: nowrap;   /* 無 text-shadow — 修修 2026-07-29 拿掉 */
       }
-      /* payoff 詞 = 橘底白字圓角框；上下 padding 對齊左右視覺留白（等距） */
+      /* payoff 詞 = 橘底白字圓角框。padding 由 fitHighlightPadding() 依實際 ink
+         量測後覆寫（修修 2026-08-15）；這裡只是 metrics 拿不到時的保底值。 */
       #title .hl {
         display: inline-block;
         background: var(--accent, #EE8435);
         border-radius: 14px;
-        /* 上 14 / 下 5 = 視覺四邊等距（字身在 em 框內偏上，下方本就有 9px 空隙）*/
         padding: 14px 14px 5px;
         line-height: 1.02;
         box-decoration-break: clone;
@@ -140,6 +142,7 @@
       data-composition-variables='{
         "title_lines":           { "type": "object", "default": ["未填", "字卡"] },
         "highlight_text":        { "type": "string", "default": "" },
+        "highlight_pad":         { "type": "object", "default": [] },
         "ep_label":              { "type": "string", "default": "" },
         "logo_data_url":         { "type": "string", "default": "" },
         "logo_height_px":        { "type": "number", "default": 96 },
@@ -180,6 +183,7 @@
           : {}) || {};
 
       const root = document.getElementById("root");
+      const HL_GAP = 14;  // 橘框四邊要留的視覺等距（px，@100px 字級）
       const palette = vars.palette || {};
       for (const [k, cssVar] of [
         ["bg_center", "--bg-center"], ["bg_edge", "--bg-edge"], ["accent", "--accent"],
@@ -247,7 +251,32 @@
       requestAnimationFrame(() => {
         const w = titleEl.scrollWidth;
         if (w > maxW) titleEl.style.fontSize = Math.floor(100 * maxW / w) + "px";
+        fitHighlightPadding();
       });
+
+      // 橘框四邊視覺等距（修修 2026-08-15：「間隔沒有平均」）。
+      //
+      // 固定 padding 修不了：中文字的 ink 在 em 框裡每個字偏移都不同——實測
+      // 「別求爆紅」左 33 右 19、「誰還會看」上 23 下 4。瀏覽器端也量不準：
+      // 用 measureText().actualBoundingBox* 補完左右仍差 14px，改成離屏 canvas
+      // 掃 alpha 也只差 13px（canvas 的字型解析跟 DOM 排版對不上）。
+      //
+      // 所以量測交給 render 端：render_request.py 出圖後直接量成品 PNG 的橘框
+      // 與白字 ink，回推四邊 padding 從 `highlight_pad` 灌回來再出一次
+      // （跟 text_center_pct 的收斂同一個套路——量真實輸出，不猜排版）。
+      // pad 允許負值：padding 沒有負的，左側超收的部分改用 text-indent 把字身往
+      // 左拉（inline-block 的 shrink-to-fit 會跟著縮，右邊留白不受影響）。
+      // 需要負值是因為有些字天生側距大——實測「別」的 ink 只有 64px 寬，
+      // 其他三字 88–92px，padding 收到 0 左邊仍多 25px。
+      function fitHighlightPadding() {
+        const span = titleEl.querySelector(".hl");
+        const pad = vars.highlight_pad;
+        if (!span || !Array.isArray(pad) || pad.length !== 4) return;
+        const [t, r, b, l] = pad.map((v) => Math.round(v));
+        const px = (v) => Math.max(0, v) + "px";
+        span.style.padding = `${px(t)} ${px(r)} ${px(b)} ${px(l)}`;
+        span.style.textIndent = Math.min(0, l) + "px";
+      }
 
       const logoEl = document.getElementById("logo");
       if (vars.logo_data_url) {
