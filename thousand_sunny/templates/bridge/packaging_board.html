@@ -206,6 +206,11 @@
                      type="number" step="10" min="300" max="1000"
                      value="{{ req.title_max_width if req else 580 }}">
             </div>
+            <div class="field">
+              <label class="field-label" for="gc-{{ cut.cut_id }}">來賓抬頭</label>
+              <input class="sho-input" id="gc-{{ cut.cut_id }}" name="guest_credit" maxlength="40"
+                     value="{{ req.guest_credit if req else '' }}">
+            </div>
           </div>
 
           {% for role, label in [('host', '修修'), ('guest', '來賓')] %}
@@ -242,9 +247,7 @@
                      src="/bridge/projects/gate/thumbnail/cutout/{{ episode_slug }}/{{ (req.guest_cutout if req else cutouts.guest[0].vault_path if cutouts.guest else '').split('/')[-1] }}">
                 <div class="st-text">
                   <div class="st-title"></div>
-                  {# credit 的文字只存在桌機端的 spec，gate 看不到（D10）。這裡放
-                     等高的佔位字串，讓字塊高度跟成品一致——不是真的 credit。#}
-                  <div class="st-credit">（來賓 credit・出圖時帶入）</div>
+                  <div class="st-credit"></div>
                 </div>
                 <img class="st-logo" src="/bridge/thumbnail/still-asset/logo" alt="">
               </div>
@@ -428,7 +431,7 @@
   .pkg-variant-set { margin-bottom: 14px; }
   .pkg-card--variant img { width: 100%; display: block; }
   .pkg-compose { margin: 12px 0; }
-  .pkg-compose-text { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 12px; }
+  .pkg-compose-text { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
   .pkg-fontsize { color: var(--sho-muted); font-variant-numeric: tabular-nums; }
   .pkg-cutout-set { margin-bottom: 14px; }
   .pkg-pool { margin-bottom: 14px; }
@@ -532,8 +535,10 @@
     padding: 14px 14px 5px; line-height: 1.02;
   }
   .st-credit {
-    margin-top: 22px; color: rgba(255,255,255,0.55); font-size: 38px;
-    letter-spacing: 0.06em; white-space: nowrap; font-style: italic;
+    margin-top: 22px; color: rgba(255,255,255,0.94); font-size: 38px;
+    letter-spacing: 0.06em; white-space: nowrap;
+    font-family: "LINE Seed TW_TTF Regular", "LINE Seed TW_TTF",
+      "Noto Sans TC", "Microsoft JhengHei", sans-serif;
   }
   .st-logo { position: absolute; left: 52px; bottom: 52px; height: 92px; z-index: 6; }
   .pkg-stage-ctl { margin-top: var(--sho-s-3); }
@@ -610,6 +615,10 @@
       }
       box.append(div);
     }
+    // credit 是配方的一部分了，預覽直接顯示真值（空的話跟 composition 一樣收合）
+    const credit = stage.querySelector(".st-credit");
+    credit.textContent = val("gc").trim();
+    credit.style.display = credit.textContent ? "" : "none";
     fitStageTitle(stage);
   }
 
@@ -705,7 +714,7 @@
     const stage = form.querySelector(".pkg-stage");
     if (!stage) return;
     if (e.target.matches("[data-geo]")) { applyStage(stage); markManual(stage); }
-    if (e.target.matches('input[name^="big_text"], input[name="highlight_text"]')) {
+    if (e.target.matches('input[name^="big_text"], input[name="highlight_text"], input[name="guest_credit"]')) {
       syncStageText(stage);
     }
     if (e.target.matches('input[name="title_max_width"]')) fitStageTitle(stage);

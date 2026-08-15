@@ -294,6 +294,10 @@ class RenderRequestV1(BaseModel):
     # fontSize = 100 * title_max_width / 實際行寬。所以這個值就是字級的旋鈕——
     # 調大字更大但更容易被臉蓋到，調小反之（修修 2026-08-15 要能自己選）。
     title_max_width: int = Field(default=580, ge=300, le=1000)
+    # 來賓抬頭（「泛科學知識長 鄭國威」）。以前只活在桌機端的 spec 檔裡，靠 glob
+    # 上一份 spec 撈——2026-08-15 把中間產物搬進 _work/ 就撈不到，整行從封面消失。
+    # 收進配方後 gate 看得到也改得動，不再靠檔案系統的巧合。
+    guest_credit: str = Field(default="", max_length=40)
     requested_at: AwareDatetime
     # geometry 兩種來源，靠 geometry_manual 分辨：
     #   False（預設）— solver 解完寫回來的，只當 gate 拖曳介面的起點，下次照樣重解

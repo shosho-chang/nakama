@@ -731,6 +731,20 @@ def test_compose_saves_title_max_width(client, vault_with_cutouts):
     assert 'value="720"' in board.text
 
 
+def test_compose_saves_guest_credit(client, vault_with_cutouts):
+    """來賓抬頭進配方（2026-08-15 回歸）。
+
+    抬頭以前只活在桌機端的 spec 檔，render 端靠 glob 上一份 spec 撈。中間產物一搬
+    進 _work/ 就撈不到 → 空字串 → composition 的 `#credit:empty{display:none}`
+    把整行收掉，封面上的抬頭直接消失。收進配方就不靠檔案系統的巧合了。
+    """
+    assert _compose(client, guest_credit="泛科學知識長 鄭國威").status_code == 303
+    assert _saved_req(vault_with_cutouts)["guest_credit"] == "泛科學知識長 鄭國威"
+    board = client.get("/bridge/packaging/20260723-xieboran")
+    assert 'name="guest_credit"' in board.text
+    assert "泛科學知識長 鄭國威" in board.text
+
+
 def test_compose_defaults_title_max_width(client, vault_with_cutouts):
     _compose(client)
     assert _saved_req(vault_with_cutouts)["title_max_width"] == 580

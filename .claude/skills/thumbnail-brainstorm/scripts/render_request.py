@@ -221,13 +221,18 @@ def main() -> int:
             f" · guest_face_boost={args.guest_face_boost}"
         )
 
-    credit = args.credit
+    # credit 來源優先序：CLI → 配方（gate 上可改）→ 舊 spec 撈一次當遷移。
+    # 舊做法只有第三項，而且 glob 只看 packaging 根目錄——2026-08-15 把中間產物
+    # 搬進 _work/ 之後就撈不到，整行抬頭從封面消失（修修回報）。
+    credit = args.credit or (req.get("guest_credit") or "").strip()
     if not credit:
-        prev = sorted(args.packaging_dir.glob("spec_pkg*.json"))
-        if prev:
-            credit = json.loads(prev[0].read_text(encoding="utf-8"))["variables"].get(
-                "guest_credit", ""
-            )
+        for d in (args.packaging_dir, args.packaging_dir / "_work"):
+            prev = sorted(d.glob("spec_pkg*.json"))
+            if prev:
+                credit = json.loads(prev[0].read_text(encoding="utf-8"))["variables"].get(
+                    "guest_credit", ""
+                )
+                break
 
     hl_pad: list[int] = []
 
@@ -372,6 +377,7 @@ def main() -> int:
     dst = ep_vault / out.name
     dst.write_bytes(out.read_bytes())
     req["rendered_png"] = f"Attachments/packaging/{args.episode_slug}/{out.name}"
+    req["guest_credit"] = credit  # 從舊 spec 撈到的也回填，gate 才顯示得出來
     # 實際用的位置寫回 gate：solver 解完的數字要變成拖曳介面的起點，
     # 不然修修一打開排版預覽看到的是 composition 預設值（差了 30% 以上）
     req["geometry"] = {
