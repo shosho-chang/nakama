@@ -33,6 +33,7 @@ from shared.log import get_logger
 from shared.schemas.packaging import (
     ApprovalFileV1,
     ApprovalV1,
+    GeometryV1,
     PackagesFileV1,
     RenderRequestV1,
     parse_approval_file,
@@ -384,6 +385,13 @@ async def packaging_compose(
     big_text_2: str = Form("", max_length=40),
     big_text_3: str = Form("", max_length=40),
     highlight_text: str = Form("", max_length=40),
+    geometry_mode: str = Form("auto", max_length=8),
+    host_height_pct: float = Form(0.0),
+    host_x_pct: float = Form(0.0),
+    host_y_pct: float = Form(0.0),
+    guest_height_pct: float = Form(0.0),
+    guest_x_pct: float = Form(0.0),
+    guest_y_pct: float = Form(0.0),
     nakama_auth: str | None = Cookie(None),
 ):
     """存「封面配方」：哪張臉、什麼大字、哪個詞加橘框（修修 2026-08-14 裁決）。
@@ -416,6 +424,31 @@ async def packaging_compose(
             status_code=400, detail=f"橘框詞「{hl}」不在大字裡，render 出來不會有框"
         )
 
+    # geometry_mode=manual → 用他在預覽上拖出來的位置；auto → 交還給 solver
+    # （auto 時保留上一份 geometry 當拖曳介面的起點，但不鎖住 render）
+    geometry = None
+    manual = geometry_mode == "manual"
+    if manual:
+        try:
+            geometry = GeometryV1(
+                host_height_pct=host_height_pct,
+                host_x_pct=host_x_pct,
+                host_y_pct=host_y_pct,
+                guest_height_pct=guest_height_pct,
+                guest_x_pct=guest_x_pct,
+                guest_y_pct=guest_y_pct,
+            )
+        except ValidationError as exc:
+            raise HTTPException(
+                status_code=400, detail=f"位置/大小超出範圍：{str(exc)[:300]}"
+            ) from exc
+
+    ep_dir = _packaging_root() / episode_slug
+    existing = _load_approvals(ep_dir, pkg.episode)
+    prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
+    if geometry is None and prev and prev.render_request:
+        geometry = prev.render_request.geometry  # auto：留著當下次拖曳的起點
+
     try:
         req = RenderRequestV1(
             title_rank=title_rank,
@@ -424,13 +457,12 @@ async def packaging_compose(
             big_text=lines,
             highlight_text=hl,
             requested_at=datetime.now(timezone.utc),
+            geometry=geometry,
+            geometry_manual=manual,
         )
     except ValidationError as exc:
         raise HTTPException(status_code=400, detail=f"配方驗證失敗：{str(exc)[:300]}") from exc
 
-    ep_dir = _packaging_root() / episode_slug
-    existing = _load_approvals(ep_dir, pkg.episode)
-    prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
     entry = ApprovalV1(
         cut_id=cut_id,
         approved=prev.approved if prev else False,

@@ -45,6 +45,46 @@ HOST_HEAD_X, GUEST_HEAD_X = 192.0, 1075.0  # 15% / 84%（設計系統驗收帶�
 BALANCE_TOL = 600
 _DIFF_RE = re.compile(r"左遮 (\d+)px² 右遮 (\d+)px²")
 
+ACCENT_RGB = (243, 116, 37)  # #F37425
+HL_GAP = 14  # 橘框四邊要留的視覺等距（px）
+HL_TOL = 2  # 收斂門檻：四邊都在 ±2px 內就算平均
+HL_CSS_PAD = (14, 14, 5, 14)  # composition CSS 的保底值（上,右,下,左）
+# 橘框搜尋範圍：避開左下 EP 標籤與右下人名標籤（也是 accent 底色）
+_HL_WINDOW = (300, 1000, 40, 600)  # x0, x1, y0, y1
+
+
+def _measure_highlight(png: Path) -> tuple[int, int, int, int] | None:
+    """量成品 PNG 裡橘框四邊的**實際視覺留白**（上,右,下,左）。
+
+    瀏覽器端量不準（measureText 的 actualBoundingBox 與離屏 canvas 掃描都跟 DOM
+    排版對不上，實測左右仍差 13–14px），所以量測放在這裡：對真正輸出的像素做。
+    """
+    try:
+        import numpy as np
+        from PIL import Image
+    except ImportError:
+        return None
+
+    a = np.asarray(Image.open(png).convert("RGB")).astype(int)
+    x0, x1, y0, y1 = _HL_WINDOW
+    win = a[y0:y1, x0:x1]
+    box = np.abs(win - np.array(ACCENT_RGB)).sum(axis=2) < 40
+    ys, xs = np.nonzero(box)
+    if len(ys) == 0:
+        return None
+    by0, by1, bx0, bx1 = ys.min(), ys.max(), xs.min(), xs.max()
+    sub = win[by0 : by1 + 1, bx0 : bx1 + 1]
+    ink = (sub[:, :, 0] > 225) & (sub[:, :, 1] > 225) & (sub[:, :, 2] > 225)
+    iy, ix = np.nonzero(ink)
+    if len(iy) == 0:
+        return None
+    return (
+        int(iy.min()),
+        int(bx1 - bx0 - ix.max()),
+        int(by1 - by0 - iy.max()),
+        int(ix.min()),
+    )
+
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(
@@ -156,22 +196,30 @@ def main() -> int:
     )
 
     hlm, glm = _landmarks(manifest, host_name), _landmarks(manifest, guest_name)
-    guest = _solve(glm, guest_h, args.eye_target, GUEST_HEAD_X, "guest")
-    host = _solve(hlm, host_h, guest["eye"], HOST_HEAD_X, "host")  # 眼線對齊來賓
-    print(
-        f"host {host_name}: h={host['height_pct']} y={host['y_pct']} "
-        f"x={host['x_pct']} eye={host['eye']}"
-    )
-    print(
-        f"guest {guest_name}: h={guest['height_pct']} y={guest['y_pct']} "
-        f"x={guest['x_pct']} eye={guest['eye']}"
-    )
-    print(f"眼線差 {abs(host['eye'] - guest['eye']):.1f}px（門檻 10）")
-    print(
-        f"headroom：host crown {host['crown']:.0f}px（{host['crown'] / CANVAS_H:.1%}）"
-        f" guest crown {guest['crown']:.0f}px（{guest['crown'] / CANVAS_H:.1%}）"
-        f" · guest_face_boost={args.guest_face_boost}"
-    )
+    given_geo = req.get("geometry") if req.get("geometry_manual") else None
+    if given_geo:
+        # 修修在 gate 上拖過了 → 照他的來，不再解算（2026-08-15：「cutout 的位置跟
+        # 大小都沒有很確定」——solver 自洽不等於好看，眼睛是他的）
+        host = {k: given_geo[f"host_{k}"] for k in ("height_pct", "x_pct", "y_pct")}
+        guest = {k: given_geo[f"guest_{k}"] for k in ("height_pct", "x_pct", "y_pct")}
+        print(f"[geometry] 用 gate 上調好的位置：host {host} guest {guest}")
+    else:
+        guest = _solve(glm, guest_h, args.eye_target, GUEST_HEAD_X, "guest")
+        host = _solve(hlm, host_h, guest["eye"], HOST_HEAD_X, "host")  # 眼線對齊來賓
+        print(
+            f"host {host_name}: h={host['height_pct']} y={host['y_pct']} "
+            f"x={host['x_pct']} eye={host['eye']}"
+        )
+        print(
+            f"guest {guest_name}: h={guest['height_pct']} y={guest['y_pct']} "
+            f"x={guest['x_pct']} eye={guest['eye']}"
+        )
+        print(f"眼線差 {abs(host['eye'] - guest['eye']):.1f}px（門檻 10）")
+        print(
+            f"headroom：host crown {host['crown']:.0f}px（{host['crown'] / CANVAS_H:.1%}）"
+            f" guest crown {guest['crown']:.0f}px（{guest['crown'] / CANVAS_H:.1%}）"
+            f" · guest_face_boost={args.guest_face_boost}"
+        )
 
     credit = args.credit
     if not credit:
@@ -181,12 +229,15 @@ def main() -> int:
                 "guest_credit", ""
             )
 
+    hl_pad: list[int] = []
+
     def build(center: float, textonly: bool) -> Path:
         blank = args.packaging_dir / "_transparent1px.png"
         spec = {
             "variables": {
                 "title_lines": req["big_text"],
                 "highlight_text": req.get("highlight_text", ""),
+                "highlight_pad": hl_pad,
                 "ep_label": "",
                 "guest_name": "",
                 "guest_credit": credit,
@@ -252,6 +303,44 @@ def main() -> int:
     else:
         print("⚠ 遮蔽平衡沒收斂——人工調 text_center 再重跑", file=sys.stderr)
 
+    # 橘框四邊等距收斂（修修 2026-08-15：「間隔沒有平均」）。
+    # 每個中文字的 ink 在 em 框裡偏移都不同，固定 padding 必然歪；量成品回推兩輪。
+    if req.get("highlight_text"):
+        # 量→補→出圖，最後一輪只量（確認收斂才不印警告）。要多輪是因為 text-indent
+        # 拉字身時 shrink-to-fit 會跟著縮，單輪只吃掉約六成誤差 → 幾何收斂。
+        for _ in range(5):
+            gaps = _measure_highlight(out)
+            if gaps is None:
+                print("  橘框留白：量不到（跳過收斂）")
+                break
+            worst = max(abs(g - HL_GAP) for g in gaps)
+            base = hl_pad or list(HL_CSS_PAD)
+            print(
+                f"  橘框留白 上{gaps[0]} 右{gaps[1]} 下{gaps[2]} 左{gaps[3]}"
+                f"（目標 {HL_GAP}±{HL_TOL}）"
+            )
+            if worst <= HL_TOL:
+                break
+            # 左邊允許負值（composition 會轉成 text-indent）；上/右/下沒有負 padding
+            hl_pad = [base[i] + (HL_GAP - gaps[i]) for i in range(4)]
+            hl_pad[:3] = [max(0, v) for v in hl_pad[:3]]
+            r = _run(
+                [
+                    sys.executable,
+                    render,
+                    "--composition",
+                    "thumbnail_full",
+                    "--spec",
+                    str(build(center, False)),
+                    "--out",
+                    str(out),
+                ]
+            )
+            if r.returncode != 0:
+                raise SystemExit(f"render 失敗：{r.stderr[-500:]}")
+        else:
+            print("⚠ 橘框留白兩輪仍未收斂——字型可能有異常側距", file=sys.stderr)
+
     qa = _run(
         [
             sys.executable,
@@ -273,6 +362,16 @@ def main() -> int:
     dst = ep_vault / out.name
     dst.write_bytes(out.read_bytes())
     req["rendered_png"] = f"Attachments/packaging/{args.episode_slug}/{out.name}"
+    # 實際用的位置寫回 gate：solver 解完的數字要變成拖曳介面的起點，
+    # 不然修修一打開排版預覽看到的是 composition 預設值（差了 30% 以上）
+    req["geometry"] = {
+        "host_height_pct": round(float(host["height_pct"]), 2),
+        "host_x_pct": round(float(host["x_pct"]), 2),
+        "host_y_pct": round(float(host["y_pct"]), 2),
+        "guest_height_pct": round(float(guest["height_pct"]), 2),
+        "guest_x_pct": round(float(guest["x_pct"]), 2),
+        "guest_y_pct": round(float(guest["y_pct"]), 2),
+    }
     (ep_vault / "approval.json").write_text(
         json.dumps(approval, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
