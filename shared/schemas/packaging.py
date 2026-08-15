@@ -290,6 +290,10 @@ class RenderRequestV1(BaseModel):
     guest_cutout: str
     big_text: list[str] = Field(min_length=1, max_length=3)
     highlight_text: str = ""
+    # 大字的寬度預算（px @1280 畫布）。composition 是「整塊縮字不換行」：
+    # fontSize = 100 * title_max_width / 實際行寬。所以這個值就是字級的旋鈕——
+    # 調大字更大但更容易被臉蓋到，調小反之（修修 2026-08-15 要能自己選）。
+    title_max_width: int = Field(default=580, ge=300, le=1000)
     requested_at: AwareDatetime
     # geometry 兩種來源，靠 geometry_manual 分辨：
     #   False（預設）— solver 解完寫回來的，只當 gate 拖曳介面的起點，下次照樣重解

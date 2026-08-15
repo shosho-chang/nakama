@@ -718,6 +718,41 @@ def test_compose_auto_keeps_geometry_but_unlocks_it(client, vault_with_cutouts):
     assert req["geometry"]["host_height_pct"] == 140.0  # 起點還在
 
 
+def test_compose_saves_title_max_width(client, vault_with_cutouts):
+    """大字寬度＝字級旋鈕（修修 2026-08-15：「封面抬頭的大小可以讓我調整嗎」）。
+
+    composition 整塊縮字：fontSize = 100 * title_max_width / 行寬。他的 7 字大字
+    在 580 下被縮到 82px，兩端跑到臉底下；調寬就是調字級。
+    """
+    assert _compose(client, title_max_width="720").status_code == 303
+    assert _saved_req(vault_with_cutouts)["title_max_width"] == 720
+    board = client.get("/bridge/packaging/20260723-xieboran")
+    assert 'name="title_max_width"' in board.text
+    assert 'value="720"' in board.text
+
+
+def test_compose_defaults_title_max_width(client, vault_with_cutouts):
+    _compose(client)
+    assert _saved_req(vault_with_cutouts)["title_max_width"] == 580
+
+
+def test_compose_rejects_absurd_title_max_width(client, vault_with_cutouts):
+    assert _compose(client, title_max_width="4000").status_code == 422
+
+
+def test_geometry_inputs_use_step_any(client, vault_with_cutouts):
+    """step 必須是 any（2026-08-15 browser UAT）。
+
+    Chrome 的 step 基準點是初始 value，不是 0——step="0.1" 配上兩位小數的種子值
+    會讓合法值變成 -21.69/-21.59/…，拖曳出來的數字幾乎都落在格子外，按存配方
+    就跳「請輸入有效值」。修修回報的「數字不符合」就是這個。
+    """
+    _compose(client, geometry_mode="manual", **_GEO)
+    board = client.get("/bridge/packaging/20260723-xieboran")
+    assert 'step="any" data-geo=' in board.text
+    assert 'step="0.1" data-geo=' not in board.text
+
+
 def test_compose_rejects_out_of_range_geometry(client, vault_with_cutouts):
     r = _compose(client, geometry_mode="manual", **{**_GEO, "host_height_pct": "0"})
     assert r.status_code == 400
