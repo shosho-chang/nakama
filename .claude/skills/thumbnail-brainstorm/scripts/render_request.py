@@ -231,8 +231,18 @@ def main() -> int:
 
     hl_pad: list[int] = []
 
+    # 中間產物（spec、textonly 對照圖、佔位圖）收進 _work/，packaging 根目錄只留
+    # 定稿與資料檔（修修 2026-08-15：「package 那個資料夾裡面太亂了」）
+    work_dir = args.packaging_dir / "_work"
+    work_dir.mkdir(exist_ok=True)
+    blank = work_dir / "_transparent1px.png"
+    if not blank.is_file():
+        # 以前這張是靠人手放進去的，新集數的 packaging 目錄沒有就 render 失敗
+        from PIL import Image
+
+        Image.new("RGBA", (1, 1), (0, 0, 0, 0)).save(blank)
+
     def build(center: float, textonly: bool) -> Path:
-        blank = args.packaging_dir / "_transparent1px.png"
         spec = {
             "variables": {
                 "title_lines": req["big_text"],
@@ -262,12 +272,12 @@ def main() -> int:
             },
         }
         suffix = "_textonly" if textonly else ""
-        path = args.packaging_dir / f"spec_req_{args.cut_id}{suffix}.json"
+        path = work_dir / f"spec_req_{args.cut_id}{suffix}.json"
         path.write_text(json.dumps(spec, ensure_ascii=False, indent=2), encoding="utf-8")
         return path
 
     out = args.packaging_dir / f"pkg-{args.cut_id}-{req['title_rank']}{args.out_suffix}.png"
-    tout = args.packaging_dir / f"_textonly-req-{args.cut_id}.png"
+    tout = work_dir / f"_textonly-req-{args.cut_id}.png"
     render = str(_SKILL_DIR / "render_still.py")
     occ = str(_SKILL_DIR / "occlusion_check.py")
 
@@ -386,7 +396,26 @@ def main() -> int:
                     p["host_cutout"] = req["host_cutout"]
                     p["guest_cutout"] = req["guest_cutout"]
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    # 定稿夾（修修 2026-08-15）：上架只需要兩樣東西——封面跟標題。檔名固定、
+    # 每次 render 覆蓋，所以這個資料夾永遠只有「現在這一版」，不會越積越多。
+    final_dir = args.packaging_dir.parent / "final"
+    final_dir.mkdir(exist_ok=True)
+    (final_dir / f"cover-{args.cut_id}.png").write_bytes(out.read_bytes())
+    title_text = next(
+        (
+            t["text"]
+            for cut in json.loads((ep_vault / "packages.json").read_text(encoding="utf-8"))["cuts"]
+            if cut["cut_id"] == args.cut_id
+            for t in cut["titles"]
+            if t["rank"] == req["title_rank"]
+        ),
+        "",
+    )
+    (final_dir / f"title-{args.cut_id}.txt").write_text(title_text + "\n", encoding="utf-8")
+
     print(f"→ {dst}")
+    print(f"→ {final_dir / f'cover-{args.cut_id}.png'}（定稿夾）")
     return 0
 
 
