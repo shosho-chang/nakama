@@ -254,6 +254,22 @@ script 會：PNG 複製進 vault `Attachments/packaging/<slug>/`、cutout 路徑
 vault-relative、整檔過 `PackagesFileV1` 驗證（失敗即不落任何一份）、
 working set 與 vault 雙寫（ADR-054 D10）。驗證錯誤讀訊息修 specs，不改 schema。
 
+### 目錄分層（修修 2026-08-15：「package 那個資料夾裡面太亂了」）
+
+```
+<episode>/
+├── final/                    ← 上架就看這裡：cover-<cut_id>.png ＋ title-<cut_id>.txt
+│                               每次 render 覆蓋同名檔，永遠只有現在這一版
+└── packaging/
+    ├── packages.json geometry.json keywords.json title_trace.json
+    ├── manifest.json specs.json  pkg-<cut_id>-<rank>.png（packages.json 引用的）
+    ├── briefs/ cutouts/ review_sheets/
+    └── _work/                ← spec_*、_textonly-*、抽格 frames、比較板變體
+```
+
+`render_request.py` 的中間產物一律寫進 `_work/`；`_transparent1px.png` 缺了會自動
+補（以前靠人手放，新集數會 render 失敗）。根目錄只留定稿與資料檔。
+
 ## Run log 格式（append 於 `<ep>/run_log.md`）
 
 ```markdown
