@@ -31,11 +31,7 @@ def measure_huggingface_snapshot(
     resolved_root = root.resolve(strict=True)
     repo_root = resolved_root.parent.parent
     blobs_candidate = repo_root / "blobs"
-    blobs_root = (
-        blobs_candidate.resolve(strict=True)
-        if blobs_candidate.is_dir()
-        else None
-    )
+    blobs_root = blobs_candidate.resolve(strict=True) if blobs_candidate.is_dir() else None
 
     entries: list[tuple[str, int, str]] = []
     for candidate in sorted(root.rglob("*"), key=lambda item: item.as_posix()):
@@ -46,9 +42,7 @@ def measure_huggingface_snapshot(
         attributes = int(getattr(candidate_stat, "st_file_attributes", 0))
         if candidate.is_symlink():
             if blobs_root is None:
-                raise SnapshotIdentityError(
-                    "snapshot link requires a model-cache blobs directory"
-                )
+                raise SnapshotIdentityError("snapshot link requires a model-cache blobs directory")
             if candidate.is_dir():
                 raise SnapshotIdentityError("snapshot may not contain linked directories")
             target_text = os.readlink(candidate)

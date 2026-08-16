@@ -460,8 +460,7 @@ class ReferenceEnrollment:
             or snapshot.extractor_version != self.artifact.extractor_version
             or snapshot.extractor_config_hash != self.artifact.extractor_config_hash
             or snapshot.extractor_code_hash != self.artifact.extractor_code_hash
-            or snapshot.extractor_runtime_hash
-            != self.artifact.extractor_runtime_hash
+            or snapshot.extractor_runtime_hash != self.artifact.extractor_runtime_hash
             or snapshot.offset_unit != self.artifact.offset_unit
             or len(snapshot.blocks) != self.artifact.extraction_block_count
         ):
@@ -498,9 +497,7 @@ class CreateRequest:
             any(value is None for value in enrollment_manifest_hashes)
             or len(set(enrollment_manifest_hashes)) != 1
         ):
-            raise ValueError(
-                "reference enrollments must belong to one exact operator manifest"
-            )
+            raise ValueError("reference enrollments must belong to one exact operator manifest")
         enrolled_by_source = {
             enrollment.artifact.source_id: enrollment for enrollment in enrollments
         }
@@ -510,17 +507,13 @@ class CreateRequest:
                 enrolled_by_source[source_id].artifact != artifact
                 for source_id, artifact in artifacts_by_source.items()
             ):
-                raise ValueError(
-                    "every reference Artifact requires one exact Reference Enrollment"
-                )
+                raise ValueError("every reference Artifact requires one exact Reference Enrollment")
         else:
             artifacts = tuple(enrollment.artifact for enrollment in enrollments)
             object.__setattr__(self, "reference_artifacts", artifacts)
         if self.speaker_tracks and len(self.speaker_tracks) != 2:
             raise ValueError("speaker attribution requires exactly two microphone tracks")
-        if len({item.speaker_label for item in self.speaker_tracks}) != len(
-            self.speaker_tracks
-        ):
+        if len({item.speaker_label for item in self.speaker_tracks}) != len(self.speaker_tracks):
             raise ValueError("speaker attribution labels must be unique")
         if len({str(item.path.resolve()) for item in self.speaker_tracks}) != len(
             self.speaker_tracks
@@ -539,9 +532,7 @@ class CreateRequest:
             digest = enrollment.artifact.extracted_text.sha256
             existing = snapshots_by_digest.get(digest)
             if existing is not None and existing != enrollment.extraction_snapshot:
-                raise ValueError(
-                    "Reference Enrollments contain conflicting bytes for one digest"
-                )
+                raise ValueError("Reference Enrollments contain conflicting bytes for one digest")
             snapshots_by_digest[digest] = enrollment.extraction_snapshot
 
 
@@ -788,13 +779,9 @@ _NATIVE_RESOLUTION_AUTHORIZATION = "native_resolution/authorization.json"
 _NATIVE_RESOLUTION_ACCEPTANCE_POLICY = "native_resolution/acceptance_policy.json"
 _NATIVE_RESOLUTION_ORIGINAL_POLICY = "native_resolution/original_confirmation_policy.json"
 _NATIVE_RESOLUTION_HUMAN_AUDIO_INDEX = "native_resolution/human_audio_index.json"
-_NATIVE_RESOLUTION_HUMAN_ORIGINAL_INDEX = (
-    "native_resolution/human_original_confirmation_index.json"
-)
+_NATIVE_RESOLUTION_HUMAN_ORIGINAL_INDEX = "native_resolution/human_original_confirmation_index.json"
 _NATIVE_RESOLUTION_REFERENCE_PROOF = "native_resolution/reference_authority_proof.json"
-_NATIVE_RESOLUTION_REFERENCE_ADJUDICATION = (
-    "native_resolution/human_reference_adjudication.json"
-)
+_NATIVE_RESOLUTION_REFERENCE_ADJUDICATION = "native_resolution/human_reference_adjudication.json"
 _NATIVE_RESOLUTION_LEDGER_ENTRY = "native_resolution/prepared_ledger_entry.json"
 _NATIVE_RESOLVE_PREFIX = "native_resolve/"
 
@@ -836,9 +823,7 @@ def _ledger_entry_from_payload(payload: object) -> LedgerEntry:
         "entry_hash",
     }
     if not isinstance(payload, dict) or set(payload) != required:
-        raise ResolutionTransactionError(
-            "resolution transaction carries an invalid Ledger entry"
-        )
+        raise ResolutionTransactionError("resolution transaction carries an invalid Ledger entry")
     if (
         not isinstance(payload["sequence"], int)
         or isinstance(payload["sequence"], bool)
@@ -866,18 +851,14 @@ def _ledger_entry_from_payload(payload: object) -> LedgerEntry:
         "decision_hash": decision_hash,
     }
     if entry.decision_hash != decision_hash or entry.entry_hash != hash_object(identity):
-        raise ResolutionTransactionError(
-            "resolution transaction Ledger entry hash mismatch"
-        )
+        raise ResolutionTransactionError("resolution transaction Ledger entry hash mismatch")
     return entry
 
 
 def _file_uri_path(uri: str) -> Path:
     parsed = urlparse(uri)
     if parsed.scheme != "file":
-        raise ModuleInvariantError(
-            "Recognition raw output must be a local immutable file artifact"
-        )
+        raise ModuleInvariantError("Recognition raw output must be a local immutable file artifact")
     raw = url2pathname(unquote(parsed.path))
     if os.name == "nt" and len(raw) >= 3 and raw[0] in "/\\" and raw[2] == ":":
         raw = raw[1:]
@@ -1013,17 +994,14 @@ def _checkpoint_adapter_identity(
         stable_config = getattr(adapter, "_settings", None)
         config_hash = hash_object(
             {
-                "adapter_class": (
-                    f"{type(adapter).__module__}.{type(adapter).__qualname__}"
-                ),
+                "adapter_class": (f"{type(adapter).__module__}.{type(adapter).__qualname__}"),
                 "settings": stable_config if isinstance(stable_config, Mapping) else None,
             }
         )
     execution_mode = (
         declared.execution_mode
         if declared is not None
-        else getattr(runtime_identity, "execution_mode", None)
-        or "other"
+        else getattr(runtime_identity, "execution_mode", None) or "other"
     )
     # RecognitionModelIdentity records the more precise ``import`` mode for
     # immutable provider exports.  The older checkpoint envelope predates that
@@ -1106,8 +1084,7 @@ def _native_resolve_checkpoint_artifacts(
     """Namespace final Generation artifact names inside a resolve checkpoint."""
 
     return {
-        f"{_NATIVE_RESOLVE_PREFIX}{name}": payload
-        for name, payload in sorted(artifacts.items())
+        f"{_NATIVE_RESOLVE_PREFIX}{name}": payload for name, payload in sorted(artifacts.items())
     }
 
 
@@ -1184,24 +1161,16 @@ def _audio_artifacts_payload(receipt: NormalizationReceipt) -> dict[str, dict[st
 
 def _portable_reference_artifact(artifact: ReferenceArtifact) -> ReferenceArtifact:
     source_name = f"reference_sources/{artifact.digest.sha256}.bin"
-    digest = artifact.digest.model_copy(
-        update={"uri": f"generation-artifact://{source_name}"}
-    )
-    extraction_name = (
-        f"reference_extractions/{artifact.extracted_text.sha256}.json"
-    )
+    digest = artifact.digest.model_copy(update={"uri": f"generation-artifact://{source_name}"})
+    extraction_name = f"reference_extractions/{artifact.extracted_text.sha256}.json"
     extracted_text = artifact.extracted_text.model_copy(
         update={"uri": f"generation-artifact://{extraction_name}"}
     )
-    return artifact.model_copy(
-        update={"digest": digest, "extracted_text": extracted_text}
-    )
+    return artifact.model_copy(update={"digest": digest, "extracted_text": extracted_text})
 
 
 def _portable_reference(item: ReferenceEvidence) -> ReferenceEvidence:
-    return item.model_copy(
-        update={"artifact": _portable_reference_artifact(item.artifact)}
-    )
+    return item.model_copy(update={"artifact": _portable_reference_artifact(item.artifact)})
 
 
 def _reference_evidence_by_span(
@@ -1294,9 +1263,7 @@ def _reference_retrieval_requests(
         for vocabulary_term in policy.vocabulary:
             if any(
                 start < context.anchor_query_end and end > context.anchor_query_start
-                for start, end in _casefold_occurrences(
-                    context.exact_query, vocabulary_term
-                )
+                for start, end in _casefold_occurrences(context.exact_query, vocabulary_term)
             ):
                 add(vocabulary_term)
         requests.append(
@@ -1322,7 +1289,8 @@ def _reference_retrieval_failure_risks(
         if receipt.status != "failed":
             continue
         issue = ReviewIssue(
-            id="issue-" + hash_object(
+            id="issue-"
+            + hash_object(
                 {
                     "code": "reference_retrieval_failed",
                     "span_ids": (receipt.audio_span_id,),
@@ -1352,9 +1320,7 @@ def _native_full_audit_resolution_risk(
     """Keep native audit evidence non-authoritative until an explicit decision."""
 
     ordered = tuple(sorted(discoveries, key=lambda item: item.id))
-    cited_span_ids = {
-        span_id for candidate in ordered for span_id in candidate.cited_span_ids
-    }
+    cited_span_ids = {span_id for candidate in ordered for span_id in candidate.cited_span_ids}
     span_ids = (
         tuple(span.id for span in transcript.spans if span.id in cited_span_ids)
         if ordered
@@ -1364,10 +1330,7 @@ def _native_full_audit_resolution_risk(
     if ordered and (
         not span_ids
         or cited_span_ids != set(span_ids)
-        or any(
-            not set(candidate.cited_span_ids).issubset(cited_span_ids)
-            for candidate in ordered
-        )
+        or any(not set(candidate.cited_span_ids).issubset(cited_span_ids) for candidate in ordered)
     ):
         raise GenerationIsolationError(
             "native discovery risk cites spans outside its audit-basis transcript"
@@ -1437,9 +1400,7 @@ def _reference_evidence_ids_for_target(
                 f"Correction Decision targets unknown canonical identity {span_id!r}"
             ) from exc
         for lineage_span_id in (span.id, *span.lineage):
-            allowed.update(
-                item.id for item in references_by_span.get(lineage_span_id, ())
-            )
+            allowed.update(item.id for item in references_by_span.get(lineage_span_id, ()))
     return tuple(sorted(allowed))
 
 
@@ -1595,25 +1556,18 @@ def _audio_identity_from_payload(payload: object) -> AudioModelIdentity | None:
 
 def _recognition_identity_from_payload(payload: object) -> RecognitionModelIdentity:
     if not isinstance(payload, dict):
-        raise GenerationIsolationError(
-            "stored Recognition Adapter identity has invalid shape"
-        )
+        raise GenerationIsolationError("stored Recognition Adapter identity has invalid shape")
     typed = dict(payload)
     components = typed.get("runtime_components")
     if not isinstance(components, list):
-        raise GenerationIsolationError(
-            "stored Recognition runtime components have invalid shape"
-        )
+        raise GenerationIsolationError("stored Recognition runtime components have invalid shape")
     typed["runtime_components"] = tuple(
-        tuple(component) if isinstance(component, list) else component
-        for component in components
+        tuple(component) if isinstance(component, list) else component for component in components
     )
     try:
         return RecognitionModelIdentity(**typed)
     except (TypeError, ValueError) as exc:
-        raise GenerationIsolationError(
-            "stored Recognition Adapter identity is invalid"
-        ) from exc
+        raise GenerationIsolationError("stored Recognition Adapter identity is invalid") from exc
 
 
 def _semantic_identity_from_payload(payload: object) -> SemanticModelIdentity:
@@ -1632,9 +1586,7 @@ def _semantic_execution_receipt_from_payload(payload: object) -> SemanticExecuti
     try:
         typed["request"] = ArtifactDigest.model_validate(typed.get("request"))
         typed["response"] = ArtifactDigest.model_validate(typed.get("response"))
-        typed["adapter_identity"] = _semantic_identity_from_payload(
-            typed.get("adapter_identity")
-        )
+        typed["adapter_identity"] = _semantic_identity_from_payload(typed.get("adapter_identity"))
         return SemanticExecutionReceipt(**typed)
     except (TypeError, ValueError) as exc:
         raise GenerationIsolationError("stored Semantic execution receipt is invalid") from exc
@@ -1662,18 +1614,14 @@ def _speech_coverage_identity_from_payload(
         "runtime_hash",
     }
     if not isinstance(payload, dict) or set(payload) != expected:
-        raise GenerationIsolationError(
-            "stored Speech Coverage Analyzer identity has invalid shape"
-        )
+        raise GenerationIsolationError("stored Speech Coverage Analyzer identity has invalid shape")
     if not all(isinstance(payload[key], str) for key in expected):
         raise GenerationIsolationError(
             "stored Speech Coverage Analyzer identity has invalid field types"
         )
     identity = {key: payload[key] for key in expected}
     if not identity["adapter_name"].strip() or not identity["adapter_version"].strip():
-        raise GenerationIsolationError(
-            "stored Speech Coverage Analyzer identity is blank"
-        )
+        raise GenerationIsolationError("stored Speech Coverage Analyzer identity is blank")
     if any(
         not re.fullmatch(r"[0-9a-f]{64}", identity[label])
         for label in ("config_hash", "code_hash", "runtime_hash")
@@ -1770,8 +1718,7 @@ def _validate_review_risk_evidence_membership(
     for risk in risk_tuple:
         unknown_evidence = set(risk.evidence_ids) - allowed_audio_ids(risk.issue.code)
         unknown_references = (
-            set(risk.supporting_reference_ids)
-            | set(risk.conflicting_reference_ids)
+            set(risk.supporting_reference_ids) | set(risk.conflicting_reference_ids)
         ) - reference_ids
         if unknown_evidence or unknown_references:
             raise GenerationIsolationError(
@@ -1859,9 +1806,7 @@ def _is_material_issue(
 
 def _material_issues(transcript: CanonicalTranscript) -> tuple[ReviewIssue, ...]:
     return tuple(
-        issue
-        for issue in transcript.review_issues
-        if _is_material_issue(transcript, issue)
+        issue for issue in transcript.review_issues if _is_material_issue(transcript, issue)
     )
 
 
@@ -1912,9 +1857,7 @@ def _derive_correction_preaudit_transcript(
         raise GenerationIsolationError(
             f"Correction replay receipt cites unknown Proposal {exc.args[0]!r}"
         ) from exc
-    removed_issue_ids = {
-        _proposal_review_issue_id(proposal) for proposal in removed_proposals
-    }
+    removed_issue_ids = {_proposal_review_issue_id(proposal) for proposal in removed_proposals}
     removed_issue_ids.update(
         _audio_audit_review_issue_id(receipt)
         for receipt in audio_audits
@@ -1943,9 +1886,7 @@ def _derive_correction_preaudit_transcript(
             "full_audit_receipt_set_hash": None,
         }
     )
-    preaudit = preaudit.model_copy(
-        update={"generation_id": canonical_generation_id(preaudit)}
-    )
+    preaudit = preaudit.model_copy(update={"generation_id": canonical_generation_id(preaudit)})
     _validate_canonical_acceptance_identity(preaudit)
     return preaudit
 
@@ -1968,9 +1909,7 @@ def _derive_audio_preaudit_transcript(
         raise GenerationIsolationError(
             f"Audio replay receipt cites unknown Proposal {exc.args[0]!r}"
         ) from exc
-    removed_issue_ids = {
-        _proposal_review_issue_id(proposal) for proposal in audio_proposals
-    }
+    removed_issue_ids = {_proposal_review_issue_id(proposal) for proposal in audio_proposals}
     removed_issue_ids.update(
         _audio_audit_review_issue_id(receipt)
         for receipt in audio_audits
@@ -1999,17 +1938,14 @@ def _derive_audio_preaudit_transcript(
             "full_audit_receipt_set_hash": None,
         }
     )
-    preaudit = preaudit.model_copy(
-        update={"generation_id": canonical_generation_id(preaudit)}
-    )
+    preaudit = preaudit.model_copy(update={"generation_id": canonical_generation_id(preaudit)})
     _validate_canonical_acceptance_identity(preaudit)
     return preaudit
 
 
 def _validate_canonical_acceptance_identity(transcript: CanonicalTranscript) -> None:
     pending_warning = any(
-        warning.status == "requires_full_audit"
-        for warning in transcript.generation_warnings
+        warning.status == "requires_full_audit" for warning in transcript.generation_warnings
     )
     expected_status = (
         "draft"
@@ -2051,8 +1987,7 @@ def _validate_acceptance_policy_not_rewritten(
     )
     alternate = transcript.model_copy(update={"acceptance_policy": alternate_policy})
     pending_warning = any(
-        warning.status == "requires_full_audit"
-        for warning in alternate.generation_warnings
+        warning.status == "requires_full_audit" for warning in alternate.generation_warnings
     )
     expected_status = (
         "draft"
@@ -2164,9 +2099,7 @@ def _validate_audio_full_audit_attestation(
         raise GenerationIsolationError(
             "audio full-audit receipts must exactly partition current Canonical spans"
         )
-    if transcript.full_audit_receipt_set_hash != audio_audit_receipt_set_hash(
-        list(receipt_tuple)
-    ):
+    if transcript.full_audit_receipt_set_hash != audio_audit_receipt_set_hash(list(receipt_tuple)):
         raise GenerationIsolationError(
             "Canonical Transcript audio full-audit receipt set hash mismatch"
         )
@@ -2193,8 +2126,7 @@ def _validate_audio_full_audit_attestation(
             or receipt.config_hash != identity.config_hash
         ):
             raise GenerationIsolationError(
-                "stored Audio Audit Receipt crossed current immutable truth or "
-                "Adapter identity"
+                "stored Audio Audit Receipt crossed current immutable truth or Adapter identity"
             )
         if (
             receipt.window_start_ms != selected[0].start_ms
@@ -2205,9 +2137,7 @@ def _validate_audio_full_audit_attestation(
             )
         preaudit_generation_ids.add(receipt.preaudit_generation_id)
     if len(preaudit_generation_ids) != 1:
-        raise GenerationIsolationError(
-            "one audio full audit cannot mix pre-audit Generations"
-        )
+        raise GenerationIsolationError("one audio full audit cannot mix pre-audit Generations")
 
 
 def _validate_text_full_audit_attestation(
@@ -2255,8 +2185,7 @@ def _validate_text_full_audit_attestation(
             or receipt.preaudit_generation_id != preaudit_transcript.generation_id
             or receipt.preaudit_content_hash != preaudit_transcript.content_hash
             or receipt.evidence_hash != preaudit_transcript.evidence_hash
-            or receipt.reference_evidence_hash
-            != preaudit_transcript.reference_evidence_hash
+            or receipt.reference_evidence_hash != preaudit_transcript.reference_evidence_hash
             or receipt.available_reference_evidence_ids != reference_ids
             or receipt.available_reference_evidence_hash != reference_hash
             or receipt.presented_reference_evidence_ids
@@ -2323,8 +2252,7 @@ def _validate_proposal_ownership(
     for receipt in audio_audits:
         audited = tuple(by_id[item] for item in receipt.proposal_ids)
         if receipt.proposal_set_hash != hash_object(audited) or any(
-            proposal.evidence_basis not in {"audio", "audio_and_reference"}
-            for proposal in audited
+            proposal.evidence_basis not in {"audio", "audio_and_reference"} for proposal in audited
         ):
             raise GenerationIsolationError(
                 "audio audit proposal ownership or evidence basis mismatch"
@@ -2376,8 +2304,7 @@ def _validate_canonical_timing_provenance(
             )
         projected_text_by_ref = {
             (
-                f"evidence:{projection.source_recognition_evidence_hash}:"
-                f"{token.source_token_id}"
+                f"evidence:{projection.source_recognition_evidence_hash}:{token.source_token_id}"
             ): token.projected_text
             for projection in projection_tuple
             for token in projection.tokens
@@ -2421,11 +2348,7 @@ def _validate_canonical_timing_provenance(
         if token.start_ms is None or token.end_ms is None:  # schema defense in depth
             raise GenerationIsolationError("Recognition-timed Canonical token lacks a clock")
         refs = set(token.alignment_evidence_ids)
-        if (
-            not refs
-            or not refs.issubset(evidence_tokens)
-            or not refs.issubset(token.evidence_ids)
-        ):
+        if not refs or not refs.issubset(evidence_tokens) or not refs.issubset(token.evidence_ids):
             raise GenerationIsolationError(
                 "Recognition-timed Canonical token lacks exact Recognition Evidence lineage"
             )
@@ -2477,9 +2400,7 @@ def _merge_execution_artifacts(
     for name, payload in added.items():
         existing = merged.get(name)
         if existing is not None and existing != payload:
-            raise GenerationIsolationError(
-                "audio execution artifact digest has conflicting bytes"
-            )
+            raise GenerationIsolationError("audio execution artifact digest has conflicting bytes")
         merged[name] = payload
     return merged
 
@@ -2506,18 +2427,12 @@ def _derive_resolution_with_child_audit(
         derived = add_review_risks(derived, retrieval_failure_risks)
     proposal_by_id = {proposal.id: proposal for proposal in child_proposals}
     child_text_proposal_ids = tuple(
-        proposal_id
-        for audit in child_correction_audits
-        for proposal_id in audit.proposal_ids
+        proposal_id for audit in child_correction_audits for proposal_id in audit.proposal_ids
     )
     child_audio_proposal_ids = tuple(
-        proposal_id
-        for audit in child_audio_audits
-        for proposal_id in audit.proposal_ids
+        proposal_id for audit in child_audio_audits for proposal_id in audit.proposal_ids
     )
-    if (*child_text_proposal_ids, *child_audio_proposal_ids) != tuple(
-        proposal_by_id
-    ):
+    if (*child_text_proposal_ids, *child_audio_proposal_ids) != tuple(proposal_by_id):
         raise GenerationIsolationError(
             "child proposal set differs from its text/audio audit ownership"
         )
@@ -2605,9 +2520,7 @@ def _validate_semantic_partition(
             raise ModuleInvariantError(f"Semantic Unit {unit.id!r} is not contiguous")
         unit_range = tuple(unit.token_ids)
         if unit_range in unit_ranges:
-            raise ModuleInvariantError(
-                f"duplicate Semantic Unit token range {unit_range!r}"
-            )
+            raise ModuleInvariantError(f"duplicate Semantic Unit token range {unit_range!r}")
         unit_ranges.add(unit_range)
         if unit.kind in {"name", "term"} and not unit.forbid_cue_breaks:
             raise ModuleInvariantError(
@@ -2617,8 +2530,7 @@ def _validate_semantic_partition(
             boundary_overlap[cut] += 1
             if boundary_overlap[cut] > 8:
                 raise ModuleInvariantError(
-                    "Semantic Units exceed the bounded overlap budget at "
-                    f"Canonical boundary {cut}"
+                    f"Semantic Units exceed the bounded overlap budget at Canonical boundary {cut}"
                 )
         covered.update(unit.token_ids)
     if not typed:
@@ -2716,18 +2628,12 @@ class PodcastSubtitleV2:
             raise ValueError("PodcastSubtitleV2 requires at least one Recognizer Adapter")
         for recognizer in recognizers:
             instance_attributes = getattr(recognizer, "__dict__", {})
-            if (
-                not hasattr(type(recognizer), "identity")
-                and "identity" not in instance_attributes
-            ):
+            if not hasattr(type(recognizer), "identity") and "identity" not in instance_attributes:
                 raise ValueError(
-                    "Recognizer must expose its measured executable "
-                    "RecognitionModelIdentity"
+                    "Recognizer must expose its measured executable RecognitionModelIdentity"
                 )
             if not callable(getattr(recognizer, "verify", None)):
-                raise ValueError(
-                    "Recognizer must expose a strict fresh-process Evidence verifier"
-                )
+                raise ValueError("Recognizer must expose a strict fresh-process Evidence verifier")
         runtime_semantic_identity = getattr(semantic_analyzer, "identity", None)
         if not isinstance(runtime_semantic_identity, SemanticModelIdentity):
             raise ValueError(
@@ -2737,8 +2643,7 @@ class PodcastSubtitleV2:
             semantic_analyzer_identity.name != runtime_semantic_identity.adapter_name
             or semantic_analyzer_identity.version != runtime_semantic_identity.adapter_version
             or semantic_analyzer_identity.config_hash != runtime_semantic_identity.config_hash
-            or semantic_analyzer_identity.execution_mode
-            != runtime_semantic_identity.execution_mode
+            or semantic_analyzer_identity.execution_mode != runtime_semantic_identity.execution_mode
         ):
             raise ValueError(
                 "configured Semantic Analyzer identity differs from the Adapter executable identity"
@@ -2771,8 +2676,7 @@ class PodcastSubtitleV2:
                 corrector_identity.name != runtime_corrector_identity.adapter_name
                 or corrector_identity.version != runtime_corrector_identity.adapter_version
                 or corrector_identity.config_hash != runtime_corrector_identity.config_hash
-                or corrector_identity.execution_mode
-                != runtime_corrector_identity.execution_mode
+                or corrector_identity.execution_mode != runtime_corrector_identity.execution_mode
             ):
                 raise ValueError(
                     "configured Corrector identity differs from the Adapter executable identity"
@@ -2789,10 +2693,8 @@ class PodcastSubtitleV2:
             assert speaker_attributor_identity is not None
             if (
                 speaker_attributor_identity.name != speaker_attributor.adapter_name
-                or speaker_attributor_identity.version
-                != speaker_attributor.adapter_version
-                or speaker_attributor_identity.config_hash
-                != speaker_attributor.adapter_config_hash
+                or speaker_attributor_identity.version != speaker_attributor.adapter_version
+                or speaker_attributor_identity.config_hash != speaker_attributor.adapter_config_hash
             ):
                 raise ValueError(
                     "configured Speaker Attributor identity differs from the Adapter runtime"
@@ -2970,9 +2872,7 @@ class PodcastSubtitleV2:
         for recognizer in self._recognizers:
             identity = recognizer.identity
             if not isinstance(identity, RecognitionModelIdentity):
-                raise ModuleInvariantError(
-                    "Recognizer identity is not a RecognitionModelIdentity"
-                )
+                raise ModuleInvariantError("Recognizer identity is not a RecognitionModelIdentity")
             identities.append(identity)
         if len({identity.content_hash for identity in identities}) != len(identities):
             raise ModuleInvariantError("Recognizer executable identities must be unique")
@@ -3086,9 +2986,7 @@ class PodcastSubtitleV2:
             "adapter_identity_hash": hash_object(adapter_identities),
             "expected_active_generation_id": checkpoint.expected_active_generation_id,
         }
-        payload = self.store.read_create_checkpoint_artifact(
-            stored, _CHECKPOINT_CREATE_INTENT
-        )
+        payload = self.store.read_create_checkpoint_artifact(stored, _CHECKPOINT_CREATE_INTENT)
         if (
             checkpoint.episode_id != request.episode_id
             or checkpoint.source != source
@@ -3099,8 +2997,7 @@ class PodcastSubtitleV2:
             or checkpoint.speaker_track_binding_hash
             != hash_object(tuple(item.portable_identity for item in speaker_bindings))
             or checkpoint.adapter_identities != adapter_identities
-            or checkpoint.artifact_hashes
-            != {_CHECKPOINT_CREATE_INTENT: sha256_bytes(payload)}
+            or checkpoint.artifact_hashes != {_CHECKPOINT_CREATE_INTENT: sha256_bytes(payload)}
             or payload != canonical_json_bytes(expected)
         ):
             raise GenerationIsolationError(
@@ -3145,19 +3042,13 @@ class PodcastSubtitleV2:
         if audio.checkpoint.stage == "native_audio_audit_ready":
             if audio.checkpoint.previous_checkpoint_id is None:
                 raise GenerationIsolationError("Native Audio Checkpoint lacks predecessor")
-            text = self.store.load_create_checkpoint_id(
-                audio.checkpoint.previous_checkpoint_id
-            )
+            text = self.store.load_create_checkpoint_id(audio.checkpoint.previous_checkpoint_id)
             if text.checkpoint.previous_checkpoint_id is None:
                 raise GenerationIsolationError("Native Text Checkpoint lacks predecessor")
-            basis = self.store.load_create_checkpoint_id(
-                text.checkpoint.previous_checkpoint_id
-            )
+            basis = self.store.load_create_checkpoint_id(text.checkpoint.previous_checkpoint_id)
             if basis.checkpoint.previous_checkpoint_id is None:
                 raise GenerationIsolationError("Native Audit Basis lacks predecessor")
-            evidence = self.store.load_create_checkpoint_id(
-                basis.checkpoint.previous_checkpoint_id
-            )
+            evidence = self.store.load_create_checkpoint_id(basis.checkpoint.previous_checkpoint_id)
             if evidence.checkpoint.previous_checkpoint_id is None:
                 raise GenerationIsolationError("Evidence Create Checkpoint lacks predecessor")
             started = self.store.load_create_checkpoint_id(
@@ -3179,9 +3070,7 @@ class PodcastSubtitleV2:
             return audio, text, basis, evidence, started
         if audio.checkpoint.previous_checkpoint_id is None:
             raise GenerationIsolationError("Audio Create Checkpoint lacks predecessor")
-        correction = self.store.load_create_checkpoint_id(
-            audio.checkpoint.previous_checkpoint_id
-        )
+        correction = self.store.load_create_checkpoint_id(audio.checkpoint.previous_checkpoint_id)
         if correction.checkpoint.previous_checkpoint_id is None:
             raise GenerationIsolationError("Correction Create Checkpoint lacks predecessor")
         evidence = self.store.load_create_checkpoint_id(
@@ -3189,9 +3078,7 @@ class PodcastSubtitleV2:
         )
         if evidence.checkpoint.previous_checkpoint_id is None:
             raise GenerationIsolationError("Evidence Create Checkpoint lacks predecessor")
-        started = self.store.load_create_checkpoint_id(
-            evidence.checkpoint.previous_checkpoint_id
-        )
+        started = self.store.load_create_checkpoint_id(evidence.checkpoint.previous_checkpoint_id)
         self._assert_checkpoint_inherits(
             evidence.checkpoint,
             started.checkpoint,
@@ -3218,12 +3105,9 @@ class PodcastSubtitleV2:
         )
         return audio, correction, evidence, started
 
-    def _validate_terminal_runtime_identities(
-        self, checkpoint: CreateCheckpoint
-    ) -> None:
+    def _validate_terminal_runtime_identities(self, checkpoint: CreateCheckpoint) -> None:
         terminal_has_speaker = any(
-            identity.role == "speaker_attributor"
-            for identity in checkpoint.adapter_identities
+            identity.role == "speaker_attributor" for identity in checkpoint.adapter_identities
         )
         runtime_identities = self._create_checkpoint_adapter_identities(
             active_speaker_identity=(
@@ -3235,9 +3119,7 @@ class PodcastSubtitleV2:
                 "runtime Adapter identities differ from the terminal checkpoint"
             )
 
-    def _validate_complete_checkpoint_binding(
-        self, stored: StoredCreateCheckpoint
-    ) -> None:
+    def _validate_complete_checkpoint_binding(self, stored: StoredCreateCheckpoint) -> None:
         checkpoint = stored.checkpoint
         if checkpoint.stage != "complete":
             raise GenerationIsolationError("terminal Create Checkpoint is not complete")
@@ -3254,11 +3136,9 @@ class PodcastSubtitleV2:
             "generation_outcome": checkpoint.generation_outcome,
             "previous_checkpoint_id": checkpoint.previous_checkpoint_id,
         }
-        if (
-            checkpoint.artifact_hashes
-            != {_CHECKPOINT_COMPLETE_BINDING: sha256_bytes(binding_payload)}
-            or binding_payload != canonical_json_bytes(expected_binding)
-        ):
+        if checkpoint.artifact_hashes != {
+            _CHECKPOINT_COMPLETE_BINDING: sha256_bytes(binding_payload)
+        } or binding_payload != canonical_json_bytes(expected_binding):
             raise GenerationIsolationError("complete checkpoint binding artifact changed")
 
     def _validate_native_terminal_checkpoint_artifacts(
@@ -3296,34 +3176,31 @@ class PodcastSubtitleV2:
             index_name=_NATIVE_AUDIO_RUN_INDEX,
             categories=("requests", "responses", "clips", "journals"),
         )
-        evidence_names = (
-            {
-                _RECEIPT,
-                _AUDIO_ARTIFACTS,
-                _EVIDENCE,
-                _RECOGNITION_REQUEST,
-                _RECOGNITION_INDEPENDENCE,
-                _ORTHOGRAPHIC_PROJECTIONS,
-                _BASE_PRIMARY_EVIDENCE,
-                _SPEAKER_PROVENANCE,
-                _REFERENCE_ENROLLMENTS,
-                _REFERENCE_RETRIEVAL_POLICY,
-                _SPEECH_COVERAGE,
-            }
-            | {
-                name
-                for name in generation.artifact_hashes
-                if name.startswith(
-                    (
-                        "raw_evidence/",
-                        "orthographic_projection/raw/",
-                        "speech_coverage/raw/",
-                        "reference_sources/",
-                        "reference_extractions/",
-                    )
+        evidence_names = {
+            _RECEIPT,
+            _AUDIO_ARTIFACTS,
+            _EVIDENCE,
+            _RECOGNITION_REQUEST,
+            _RECOGNITION_INDEPENDENCE,
+            _ORTHOGRAPHIC_PROJECTIONS,
+            _BASE_PRIMARY_EVIDENCE,
+            _SPEAKER_PROVENANCE,
+            _REFERENCE_ENROLLMENTS,
+            _REFERENCE_RETRIEVAL_POLICY,
+            _SPEECH_COVERAGE,
+        } | {
+            name
+            for name in generation.artifact_hashes
+            if name.startswith(
+                (
+                    "raw_evidence/",
+                    "orthographic_projection/raw/",
+                    "speech_coverage/raw/",
+                    "reference_sources/",
+                    "reference_extractions/",
                 )
-            }
-        )
+            )
+        }
         expected_by_stage = {
             "started": {_CHECKPOINT_CREATE_INTENT},
             "evidence_ready": evidence_names,
@@ -3474,8 +3351,7 @@ class PodcastSubtitleV2:
                 "terminal Generation Reference Enrollments are invalid"
             ) from exc
         if (
-            len({item.source_id for item in enrolled_artifacts})
-            != len(enrolled_artifacts)
+            len({item.source_id for item in enrolled_artifacts}) != len(enrolled_artifacts)
             or hash_object(enrolled_artifacts) != checkpoint.reference_enrollment_hash
         ):
             raise GenerationIsolationError(
@@ -3483,9 +3359,7 @@ class PodcastSubtitleV2:
             )
         return outcome, enrolled_artifacts
 
-    def _terminal_generation_outcome(
-        self, checkpoint: CreateCheckpoint
-    ) -> GenerationOutcome:
+    def _terminal_generation_outcome(self, checkpoint: CreateCheckpoint) -> GenerationOutcome:
         generation_id = checkpoint.generation_id
         if generation_id is None:
             raise GenerationIsolationError("complete checkpoint lacks Generation ID")
@@ -3516,9 +3390,7 @@ class PodcastSubtitleV2:
                 "terminal Generation native Full Audit profile is incomplete or ambiguous"
             )
         record_hash = hash_file(record.directory / "generation.json")
-        expected_outcome = (
-            "accepted" if transcript.status == "accepted" else "needs_review"
-        )
+        expected_outcome = "accepted" if transcript.status == "accepted" else "needs_review"
         ledger_entries = self.ledger.entries()
         verified_prefixes = {
             GENESIS_HASH,
@@ -3546,10 +3418,8 @@ class PodcastSubtitleV2:
             or transcript.source_audio_hash != checkpoint.source.sha256
             or checkpoint.normalized is None
             or transcript.normalized_audio_hash != checkpoint.normalized.sha256
-            or transcript.normalization_receipt_hash
-            != checkpoint.normalization_receipt_hash
-            or manifest.stage_artifact_hashes.get("canonical_transcript")
-            != hash_object(transcript)
+            or transcript.normalization_receipt_hash != checkpoint.normalization_receipt_hash
+            or manifest.stage_artifact_hashes.get("canonical_transcript") != hash_object(transcript)
         ):
             raise GenerationIsolationError(
                 "complete checkpoint Generation binding is not reproducible"
@@ -3566,9 +3436,7 @@ class PodcastSubtitleV2:
             size_bytes=checkpoint.normalized.size_bytes,
         )
         if expected_outcome == "accepted":
-            outcome: GenerationOutcome = AcceptedGeneration(
-                generation_id, transcript, manifest
-            )
+            outcome: GenerationOutcome = AcceptedGeneration(generation_id, transcript, manifest)
         else:
             issues = tuple(
                 issue for issue in transcript.review_issues if issue.status == "unresolved"
@@ -3687,9 +3555,7 @@ class PodcastSubtitleV2:
         outcome: GenerationOutcome,
     ) -> GenerationOutcome:
         if isinstance(outcome, Interrupted):
-            raise GenerationIsolationError(
-                "cannot seal an interrupted create as complete"
-            )
+            raise GenerationIsolationError("cannot seal an interrupted create as complete")
         record = self.store.load(outcome.generation_id)
         manifest_hash = hash_object(outcome.manifest)
         transcript_hash = hash_object(outcome.transcript)
@@ -3716,9 +3582,7 @@ class PodcastSubtitleV2:
             invocation_id=audio_checkpoint.invocation_id,
             source=audio_checkpoint.source,
             normalized=audio_checkpoint.normalized,
-            normalization_receipt_hash=(
-                audio_checkpoint.normalization_receipt_hash
-            ),
+            normalization_receipt_hash=(audio_checkpoint.normalization_receipt_hash),
             input_binding_hash=audio_checkpoint.input_binding_hash,
             policy_hash=audio_checkpoint.policy_hash,
             code_hash=audio_checkpoint.code_hash,
@@ -3726,9 +3590,7 @@ class PodcastSubtitleV2:
             speaker_track_binding_hash=audio_checkpoint.speaker_track_binding_hash,
             adapter_identities=audio_checkpoint.adapter_identities,
             artifact_hashes={_CHECKPOINT_COMPLETE_BINDING: sha256_bytes(payload)},
-            expected_active_generation_id=(
-                audio_checkpoint.expected_active_generation_id
-            ),
+            expected_active_generation_id=(audio_checkpoint.expected_active_generation_id),
             previous_checkpoint_id=audio_checkpoint.id,
             generation_id=outcome.generation_id,
             generation_artifact_set_hash=record.artifact_set_hash,
@@ -3776,12 +3638,10 @@ class PodcastSubtitleV2:
             if (
                 item.adapter != identity.adapter_name
                 or item.config_hash != identity.config_hash
-                or item.model
-                not in {identity.model, f"{identity.model}@{identity.model_version}"}
+                or item.model not in {identity.model, f"{identity.model}@{identity.model_version}"}
             ):
                 raise GenerationIsolationError(
-                    f"{context} Recognition Evidence {ordinal} differs from its "
-                    "executable identity"
+                    f"{context} Recognition Evidence {ordinal} differs from its executable identity"
                 )
             if raw_outputs is None:
                 raw_payload = _file_uri_path(item.raw_output.uri).read_bytes()
@@ -3912,9 +3772,7 @@ class PodcastSubtitleV2:
             if not isinstance(values, list):
                 raise ValueError("projection Evidence is not a list")
             projections = tuple(
-                OrthographicProjectionEvidenceV1.model_validate_json(
-                    canonical_json_bytes(item)
-                )
+                OrthographicProjectionEvidenceV1.model_validate_json(canonical_json_bytes(item))
                 for item in values
             )
             if orthographic_projection_evidence_set_hash(projections) != expected_set_hash:
@@ -3926,10 +3784,7 @@ class PodcastSubtitleV2:
 
         raw_outputs: dict[str, bytes] = {}
         for projection in projections:
-            name = (
-                "orthographic_projection/raw/"
-                f"{projection.raw_output.sha256}.txt"
-            )
+            name = f"orthographic_projection/raw/{projection.raw_output.sha256}.txt"
             if projection.raw_output.uri != f"generation-artifact://{name}":
                 raise GenerationIsolationError(
                     "stored Orthographic Projection raw output URI is not canonical"
@@ -3998,8 +3853,7 @@ class PodcastSubtitleV2:
             **reference_extraction_snapshots,
         }
         artifacts = {
-            name: _checkpoint_artifact_bytes(value)
-            for name, value in artifact_values.items()
+            name: _checkpoint_artifact_bytes(value) for name, value in artifact_values.items()
         }
         checkpoint = build_create_checkpoint(
             operation_key=operation_key,
@@ -4020,9 +3874,7 @@ class PodcastSubtitleV2:
             artifact_hashes={
                 name: sha256_bytes(payload) for name, payload in sorted(artifacts.items())
             },
-            expected_active_generation_id=(
-                started_checkpoint.expected_active_generation_id
-            ),
+            expected_active_generation_id=(started_checkpoint.expected_active_generation_id),
             previous_checkpoint_id=started_checkpoint.id,
         )
         self.store.commit_create_checkpoint(checkpoint, artifacts=artifacts)
@@ -4043,9 +3895,7 @@ class PodcastSubtitleV2:
             _RECOGNITION_REQUEST: state.recognition_request,
             _RECOGNITION_INDEPENDENCE: state.recognition_independence,
             _BASE_PRIMARY_EVIDENCE: (
-                (state.base_primary_evidence,)
-                if state.base_primary_evidence is not None
-                else ()
+                (state.base_primary_evidence,) if state.base_primary_evidence is not None else ()
             ),
             _SPEAKER_PROVENANCE: state.speaker_provenance,
             _ORTHOGRAPHIC_PROJECTIONS: state.orthographic_projections,
@@ -4058,9 +3908,7 @@ class PodcastSubtitleV2:
             **reference_source_snapshots,
             **reference_extraction_snapshots,
         }
-        return {
-            name: _checkpoint_artifact_bytes(value) for name, value in values.items()
-        }
+        return {name: _checkpoint_artifact_bytes(value) for name, value in values.items()}
 
     def _load_evidence_checkpoint(
         self,
@@ -4100,8 +3948,7 @@ class PodcastSubtitleV2:
         receipt = NormalizationReceipt.model_validate_json(artifact(_RECEIPT))
         if (
             receipt.status != "accepted"
-            or normalization_receipt_content_hash(receipt)
-            != checkpoint.normalization_receipt_hash
+            or normalization_receipt_content_hash(receipt) != checkpoint.normalization_receipt_hash
             or receipt.source != checkpoint.source
             or receipt.normalized != checkpoint.normalized
         ):
@@ -4119,8 +3966,7 @@ class PodcastSubtitleV2:
             size_bytes=receipt.normalized.size_bytes,
         )
         evidence = tuple(
-            RecognitionEvidence.model_validate(item)
-            for item in json.loads(artifact(_EVIDENCE))
+            RecognitionEvidence.model_validate(item) for item in json.loads(artifact(_EVIDENCE))
         )
         if not evidence:
             raise GenerationIsolationError("Create Checkpoint lacks Recognition Evidence")
@@ -4236,9 +4082,7 @@ class PodcastSubtitleV2:
             )
         try:
             orthographic_projections = tuple(
-                OrthographicProjectionEvidenceV1.model_validate_json(
-                    canonical_json_bytes(item)
-                )
+                OrthographicProjectionEvidenceV1.model_validate_json(canonical_json_bytes(item))
                 for item in projection_payloads
             )
         except (TypeError, ValueError) as exc:
@@ -4251,10 +4095,7 @@ class PodcastSubtitleV2:
             )
         orthographic_raw_outputs: dict[str, bytes] = {}
         for projection in orthographic_projections:
-            name = (
-                "orthographic_projection/raw/"
-                f"{projection.raw_output.sha256}.txt"
-            )
+            name = f"orthographic_projection/raw/{projection.raw_output.sha256}.txt"
             raw_payload = artifact(name)
             if projection.raw_output.uri != f"generation-artifact://{name}":
                 raise GenerationIsolationError(
@@ -4281,9 +4122,7 @@ class PodcastSubtitleV2:
             verified = self._speaker_attributor.verify(
                 evidence[0],
                 base_evidence=base_evidence[0],
-                raw_output=raw_outputs[
-                    f"raw_evidence/{evidence[0].raw_output.sha256}.json"
-                ],
+                raw_output=raw_outputs[f"raw_evidence/{evidence[0].raw_output.sha256}.json"],
             )
             _assert_speaker_attribution_binding(
                 attributed=evidence[0],
@@ -4341,15 +4180,11 @@ class PodcastSubtitleV2:
                 raise GenerationIsolationError(
                     "Create Checkpoint Speech Coverage lacks its exact runtime/audio"
                 )
-            raw_name = (
-                f"speech_coverage/raw/{speech_coverage_receipt.raw_output.sha256}.json"
-            )
+            raw_name = f"speech_coverage/raw/{speech_coverage_receipt.raw_output.sha256}.json"
             raw_payload = artifact(raw_name)
             if (
-                speech_coverage_receipt.raw_output.uri
-                != f"generation-artifact://{raw_name}"
-                or sha256_bytes(raw_payload)
-                != speech_coverage_receipt.raw_output.sha256
+                speech_coverage_receipt.raw_output.uri != f"generation-artifact://{raw_name}"
+                or sha256_bytes(raw_payload) != speech_coverage_receipt.raw_output.sha256
                 or len(raw_payload) != speech_coverage_receipt.raw_output.size_bytes
             ):
                 raise GenerationIsolationError(
@@ -4604,12 +4439,8 @@ class PodcastSubtitleV2:
             reference_retrievals=retrievals,
             normalized_audio_path=normalized_audio,
         )
-        text_index, text_artifacts = _address_native_sources(
-            text_sources, namespace="text"
-        )
-        audio_index, audio_artifacts = _address_native_sources(
-            audio_sources, namespace="audio"
-        )
+        text_index, text_artifacts = _address_native_sources(text_sources, namespace="text")
+        audio_index, audio_artifacts = _address_native_sources(audio_sources, namespace="audio")
         artifacts: dict[str, bytes] = {
             _NATIVE_AUDIT_PLAN: canonical_json_bytes(audit_plan),
             _NATIVE_CANDIDATE_SIGNALS: canonical_json_bytes(signals),
@@ -4671,10 +4502,7 @@ class PodcastSubtitleV2:
             if not isinstance(uri, str) or not isinstance(name, str) or uri in sources:
                 raise GenerationIsolationError("native source index identity is invalid")
             payload = self.store.read_create_checkpoint_artifact(stored, name)
-            if (
-                entry["sha256"] != sha256_bytes(payload)
-                or entry["size_bytes"] != len(payload)
-            ):
+            if entry["sha256"] != sha256_bytes(payload) or entry["size_bytes"] != len(payload):
                 raise GenerationIsolationError("native source index digest mismatch")
             sources[uri] = payload
             if name in names:
@@ -4772,9 +4600,7 @@ class PodcastSubtitleV2:
             boundary_constraints=None,
             seam_evidence=None,
         )
-        expected_groups = derive_candidate_group_set(
-            expected_plan, expected_signals, transcript
-        )
+        expected_groups = derive_candidate_group_set(expected_plan, expected_signals, transcript)
         normalized_audio = self.store.audio_path(
             evidence_state.receipt.normalized.sha256,
             size_bytes=evidence_state.receipt.normalized.size_bytes,
@@ -4797,9 +4623,7 @@ class PodcastSubtitleV2:
             expected_execution,
         ):
             raise GenerationIsolationError("native audit basis parents are not reproducible")
-        text_sources, text_names = self._load_native_source_set(
-            stored, _NATIVE_TEXT_SOURCE_INDEX
-        )
+        text_sources, text_names = self._load_native_source_set(stored, _NATIVE_TEXT_SOURCE_INDEX)
         audio_sources, audio_names = self._load_native_source_set(
             stored, _NATIVE_AUDIO_SOURCE_INDEX
         )
@@ -4987,9 +4811,7 @@ class PodcastSubtitleV2:
         run: AudioAuditRunResult,
         aggregate: FullAuditAggregateAttestationV2,
     ) -> _NativeAudioAuditState:
-        journal_bytes = tuple(
-            canonical_json_bytes(item) for item in run.record.invocation_journals
-        )
+        journal_bytes = tuple(canonical_json_bytes(item) for item in run.record.invocation_journals)
         index, run_artifacts = _address_native_run_bytes(
             prefix="audio",
             categories={
@@ -5242,9 +5064,7 @@ class PodcastSubtitleV2:
             self.store.load_create_checkpoint_id(state.checkpoint.id),
         ):
             for name in stored_checkpoint.checkpoint.artifact_hashes:
-                payload = self.store.read_create_checkpoint_artifact(
-                    stored_checkpoint, name
-                )
+                payload = self.store.read_create_checkpoint_artifact(stored_checkpoint, name)
                 existing = artifacts.get(name)
                 if existing is not None and existing != payload:
                     raise GenerationIsolationError(
@@ -5286,12 +5106,8 @@ class PodcastSubtitleV2:
             "canonical_transcript": hash_object(transcript),
             "risks": hash_object(tuple(_risk_payload(item) for item in result.risks)),
             "native_audit_plan": sha256_bytes(artifacts[_NATIVE_AUDIT_PLAN]),
-            "native_candidate_signal_set": sha256_bytes(
-                artifacts[_NATIVE_CANDIDATE_SIGNALS]
-            ),
-            "native_candidate_group_set": sha256_bytes(
-                artifacts[_NATIVE_CANDIDATE_GROUPS]
-            ),
+            "native_candidate_signal_set": sha256_bytes(artifacts[_NATIVE_CANDIDATE_SIGNALS]),
+            "native_candidate_group_set": sha256_bytes(artifacts[_NATIVE_CANDIDATE_GROUPS]),
             "native_execution_plan": sha256_bytes(artifacts[_NATIVE_EXECUTION_PLAN]),
             "native_text_audit_record": sha256_bytes(artifacts[_NATIVE_TEXT_RECORD]),
             "native_audio_audit_record": sha256_bytes(artifacts[_NATIVE_AUDIO_RECORD]),
@@ -5334,9 +5150,7 @@ class PodcastSubtitleV2:
         )
         if stored.generation_id != transcript.generation_id:
             raise GenerationIsolationError("store changed native Canonical Generation ID")
-        issues = tuple(
-            item for item in transcript.review_issues if item.status == "unresolved"
-        )
+        issues = tuple(item for item in transcript.review_issues if item.status == "unresolved")
         return NeedsReview(stored.generation_id, transcript, issues, manifest)
 
     def _commit_correction_checkpoint(
@@ -5404,10 +5218,7 @@ class PodcastSubtitleV2:
             **correction_execution_artifacts,
         }
         artifacts.update(
-            {
-                name: _checkpoint_artifact_bytes(value)
-                for name, value in values.items()
-            }
+            {name: _checkpoint_artifact_bytes(value) for name, value in values.items()}
         )
         checkpoint = build_create_checkpoint(
             operation_key=evidence_state.checkpoint.operation_key,
@@ -5420,20 +5231,14 @@ class PodcastSubtitleV2:
             input_binding_hash=evidence_state.checkpoint.input_binding_hash,
             policy_hash=evidence_state.checkpoint.policy_hash,
             code_hash=evidence_state.checkpoint.code_hash,
-            reference_enrollment_hash=(
-                evidence_state.checkpoint.reference_enrollment_hash
-            ),
-            speaker_track_binding_hash=(
-                evidence_state.checkpoint.speaker_track_binding_hash
-            ),
+            reference_enrollment_hash=(evidence_state.checkpoint.reference_enrollment_hash),
+            speaker_track_binding_hash=(evidence_state.checkpoint.speaker_track_binding_hash),
             adapter_identities=evidence_state.checkpoint.adapter_identities,
             artifact_hashes={
                 name: sha256_bytes(payload) for name, payload in sorted(artifacts.items())
             },
             previous_checkpoint_id=evidence_state.checkpoint.id,
-            expected_active_generation_id=(
-                evidence_state.checkpoint.expected_active_generation_id
-            ),
+            expected_active_generation_id=(evidence_state.checkpoint.expected_active_generation_id),
         )
         self.store.commit_create_checkpoint(checkpoint, artifacts=artifacts)
         return _CreateCorrectionState(
@@ -5464,15 +5269,11 @@ class PodcastSubtitleV2:
             ReferenceEvidence.model_validate(item) for item in load_json(_REFERENCES)
         )
         retrievals = tuple(
-            ReferenceRetrievalReceipt.model_validate(item)
-            for item in load_json(_RETRIEVALS)
+            ReferenceRetrievalReceipt.model_validate(item) for item in load_json(_RETRIEVALS)
         )
-        proposals = tuple(
-            CorrectionProposal(**item) for item in load_json(_PROPOSALS)
-        )
+        proposals = tuple(CorrectionProposal(**item) for item in load_json(_PROPOSALS))
         correction_audits = tuple(
-            CorrectionAuditReceipt.model_validate(item)
-            for item in load_json(_CORRECTION_AUDITS)
+            CorrectionAuditReceipt.model_validate(item) for item in load_json(_CORRECTION_AUDITS)
         )
         targeted_audits = tuple(
             _TargetedCorrectionAuditReceipt(**item)
@@ -5487,9 +5288,10 @@ class PodcastSubtitleV2:
         }
         for item in references:
             enrollment = enrollment_by_source.get(item.artifact.source_id)
-            if enrollment is None or _portable_reference_artifact(
-                enrollment.artifact
-            ) != item.artifact:
+            if (
+                enrollment is None
+                or _portable_reference_artifact(enrollment.artifact) != item.artifact
+            ):
                 raise GenerationIsolationError(
                     "Create Checkpoint Reference Evidence crossed enrollment lineage"
                 )
@@ -5520,9 +5322,7 @@ class PodcastSubtitleV2:
             if runtime_index is not None and retrieval.index_hash != getattr(
                 runtime_index, "index_hash", None
             ):
-                raise GenerationIsolationError(
-                    "Create Checkpoint Reference index identity drifted"
-                )
+                raise GenerationIsolationError("Create Checkpoint Reference index identity drifted")
 
         full_ids = tuple(
             proposal_id for audit in correction_audits for proposal_id in audit.proposal_ids
@@ -5545,12 +5345,8 @@ class PodcastSubtitleV2:
             references=references,
             orthographic_projections=evidence_state.orthographic_projections,
         )
-        rebuilt = attest_speech_coverage(
-            rebuilt, evidence_state.speech_coverage_receipt
-        )
-        checkpoint_reference_failure_risks = _reference_retrieval_failure_risks(
-            retrievals
-        )
+        rebuilt = attest_speech_coverage(rebuilt, evidence_state.speech_coverage_receipt)
+        checkpoint_reference_failure_risks = _reference_retrieval_failure_risks(retrievals)
         if checkpoint_reference_failure_risks:
             rebuilt = add_review_risks(rebuilt, checkpoint_reference_failure_risks)
         preaudit_result = rebuilt
@@ -5572,9 +5368,7 @@ class PodcastSubtitleV2:
             context="Create Checkpoint reload",
         )
         result_with_initial = (
-            add_correction_proposals(rebuilt, initial_proposals)
-            if initial_proposals
-            else rebuilt
+            add_correction_proposals(rebuilt, initial_proposals) if initial_proposals else rebuilt
         )
         rebuilt = (
             add_correction_proposals(
@@ -5585,12 +5379,8 @@ class PodcastSubtitleV2:
             if proposals
             else rebuilt
         )
-        stored_transcript = CanonicalTranscript.model_validate(
-            load_json(_CHECKPOINT_CANONICAL)
-        )
-        stored_risks = tuple(
-            _risk_from_payload(item) for item in load_json(_CHECKPOINT_RISKS)
-        )
+        stored_transcript = CanonicalTranscript.model_validate(load_json(_CHECKPOINT_CANONICAL))
+        stored_risks = tuple(_risk_from_payload(item) for item in load_json(_CHECKPOINT_RISKS))
         if rebuilt.transcript != stored_transcript or rebuilt.risks != stored_risks:
             raise GenerationIsolationError(
                 "Create Checkpoint correction state is not deterministically reproducible"
@@ -5668,16 +5458,11 @@ class PodcastSubtitleV2:
             _CORRECTION_AUDITS: state.correction_audits,
             _TARGETED_CORRECTION_AUDITS: state.targeted_correction_audits,
             _CHECKPOINT_CANONICAL: state.result.transcript,
-            _CHECKPOINT_RISKS: tuple(
-                _risk_payload(risk) for risk in state.result.risks
-            ),
+            _CHECKPOINT_RISKS: tuple(_risk_payload(risk) for risk in state.result.risks),
             **state.correction_execution_artifacts,
         }
         artifacts.update(
-            {
-                name: _checkpoint_artifact_bytes(value)
-                for name, value in values.items()
-            }
+            {name: _checkpoint_artifact_bytes(value) for name, value in values.items()}
         )
         return artifacts
 
@@ -5715,16 +5500,11 @@ class PodcastSubtitleV2:
             _AUDIO_AUDITS: audio_audits,
             _CHECKPOINT_AUDIO_PROPOSALS: proposals,
             _CHECKPOINT_AUDIO_CANONICAL: result.transcript,
-            _CHECKPOINT_AUDIO_RISKS: tuple(
-                _risk_payload(risk) for risk in result.risks
-            ),
+            _CHECKPOINT_AUDIO_RISKS: tuple(_risk_payload(risk) for risk in result.risks),
             **audio_execution_artifacts,
         }
         artifacts.update(
-            {
-                name: _checkpoint_artifact_bytes(value)
-                for name, value in values.items()
-            }
+            {name: _checkpoint_artifact_bytes(value) for name, value in values.items()}
         )
         previous = correction_state.checkpoint
         checkpoint = build_create_checkpoint(
@@ -5772,34 +5552,25 @@ class PodcastSubtitleV2:
             AudioAuditReceipt.model_validate(item) for item in load_json(_AUDIO_AUDITS)
         )
         proposals = tuple(
-            CorrectionProposal(**item)
-            for item in load_json(_CHECKPOINT_AUDIO_PROPOSALS)
+            CorrectionProposal(**item) for item in load_json(_CHECKPOINT_AUDIO_PROPOSALS)
         )
         proposal_by_id = {item.id: item for item in proposals}
         if len(proposal_by_id) != len(proposals):
-            raise GenerationIsolationError(
-                "Create Checkpoint Audio Audit proposals are not unique"
-            )
+            raise GenerationIsolationError("Create Checkpoint Audio Audit proposals are not unique")
         audio_ids = tuple(
             proposal_id for audit in audio_audits for proposal_id in audit.proposal_ids
         )
         if any(item not in proposal_by_id for item in audio_ids):
-            raise GenerationIsolationError(
-                "Create Checkpoint Audio Audit cites unknown proposals"
-            )
+            raise GenerationIsolationError("Create Checkpoint Audio Audit cites unknown proposals")
         audio_proposals = tuple(proposal_by_id[item] for item in audio_ids)
         rebuilt = attest_full_audit(correction_state.result, audio_audits)
         if audio_proposals:
             rebuilt = add_correction_proposals(
                 rebuilt,
                 audio_proposals,
-                allowed_reference_ids=tuple(
-                    item.id for item in correction_state.references
-                ),
+                allowed_reference_ids=tuple(item.id for item in correction_state.references),
             )
-        if proposals != _merge_proposal_batches(
-            (correction_state.proposals, audio_proposals)
-        ):
+        if proposals != _merge_proposal_batches((correction_state.proposals, audio_proposals)):
             raise GenerationIsolationError(
                 "Create Checkpoint Audio Audit proposal merge is not reproducible"
             )
@@ -5868,9 +5639,7 @@ class PodcastSubtitleV2:
         with self.store.create_execution_lease():
             return self._create_under_execution_lease(request)
 
-    def _create_under_execution_lease(
-        self, request: CreateRequest
-    ) -> GenerationOutcome:
+    def _create_under_execution_lease(self, request: CreateRequest) -> GenerationOutcome:
         source = request.source_audio.resolve()
         if not source.is_file():
             raise ModuleInvariantError(f"source audio is not a file: {source}")
@@ -5878,9 +5647,7 @@ class PodcastSubtitleV2:
         # work.  The Attributor rechecks these digests before and after DSP.
         speaker_bindings = _bind_speaker_tracks(request.speaker_tracks)
         if speaker_bindings and self._speaker_attributor is None:
-            raise ModuleInvariantError(
-                "speaker tracks require a configured Speaker Attributor"
-            )
+            raise ModuleInvariantError("speaker tracks require a configured Speaker Attributor")
         # Reference parsing and lineage validation can fail.  It must do so
         # before normalization initializes any external provider or uploads
         # audio, even for non-CLI callers.
@@ -5897,9 +5664,7 @@ class PodcastSubtitleV2:
         )
         source_snapshot = self.store.snapshot_audio(source)
         source_hash = source_snapshot.sha256
-        active_speaker_identity = (
-            self._speaker_attributor_identity if speaker_bindings else None
-        )
+        active_speaker_identity = self._speaker_attributor_identity if speaker_bindings else None
         effective_policy_hash = hash_object(
             {
                 "subtitle_policy": request.policy.content_hash,
@@ -5913,8 +5678,7 @@ class PodcastSubtitleV2:
                 ),
                 "corrector": (
                     self._corrector_identity.content_hash
-                    if self._native_full_audit is None
-                    and self._corrector_identity is not None
+                    if self._native_full_audit is None and self._corrector_identity is not None
                     else None
                 ),
                 "corrector_execution": (
@@ -5925,8 +5689,7 @@ class PodcastSubtitleV2:
                 ),
                 "audio_auditor": (
                     self._audio_auditor.identity.content_hash
-                    if self._native_full_audit is None
-                    and self._audio_auditor is not None
+                    if self._native_full_audit is None and self._audio_auditor is not None
                     else None
                 ),
                 "native_full_audit": (
@@ -5948,18 +5711,14 @@ class PodcastSubtitleV2:
                     else None
                 ),
                 "arbiter": (
-                    self._arbiter.identity.content_hash
-                    if self._arbiter is not None
-                    else None
+                    self._arbiter.identity.content_hash if self._arbiter is not None else None
                 ),
                 "speaker_attributor": (
                     active_speaker_identity.content_hash
                     if active_speaker_identity is not None
                     else None
                 ),
-                "speaker_tracks": tuple(
-                    binding.portable_identity for binding in speaker_bindings
-                ),
+                "speaker_tracks": tuple(binding.portable_identity for binding in speaker_bindings),
                 "reference_retriever": (
                     self._reference_retriever_identity.content_hash
                     if self._reference_retriever_identity is not None
@@ -5991,9 +5750,7 @@ class PodcastSubtitleV2:
                     (name, sha256_bytes(payload))
                     for name, payload in sorted(reference_extraction_snapshots.items())
                 ),
-                "speaker_tracks": tuple(
-                    binding.portable_identity for binding in speaker_bindings
-                ),
+                "speaker_tracks": tuple(binding.portable_identity for binding in speaker_bindings),
                 "adapter_identities": adapter_identities,
             }
         )
@@ -6056,9 +5813,7 @@ class PodcastSubtitleV2:
                 elif stored_checkpoint.checkpoint.stage == "audio_audit_ready":
                     correction_id = stored_checkpoint.checkpoint.previous_checkpoint_id
                     assert correction_id is not None
-                    correction_checkpoint = self.store.load_create_checkpoint_id(
-                        correction_id
-                    )
+                    correction_checkpoint = self.store.load_create_checkpoint_id(correction_id)
                     evidence_id = correction_checkpoint.checkpoint.previous_checkpoint_id
                     assert evidence_id is not None
                     evidence_checkpoint = self.store.load_create_checkpoint_id(evidence_id)
@@ -6146,9 +5901,7 @@ class PodcastSubtitleV2:
             try:
                 source_snapshot.verify()
             except ArtifactHashMismatchError as exc:
-                raise GenerationIsolationError(
-                    "source audio changed during normalization"
-                ) from exc
+                raise GenerationIsolationError("source audio changed during normalization") from exc
             if (
                 receipt.source.sha256 != source_hash
                 or receipt.source.size_bytes != source_snapshot.size_bytes
@@ -6188,19 +5941,14 @@ class PodcastSubtitleV2:
             raw_output_dir=raw_output_dir,
             language_hint=request.language_hint or request.policy.language,
         )
-        recognition_request_artifact = build_recognition_request_artifact(
-            recognition_request
-        )
+        recognition_request_artifact = build_recognition_request_artifact(recognition_request)
         invocation_evidence = tuple(
-            recognizer.recognize(recognition_request)
-            for recognizer in self._recognizers
+            recognizer.recognize(recognition_request) for recognizer in self._recognizers
         )
         try:
             normalized_snapshot.verify()
         except ArtifactHashMismatchError as exc:
-            raise GenerationIsolationError(
-                "normalized audio changed during recognition"
-            ) from exc
+            raise GenerationIsolationError("normalized audio changed during recognition") from exc
         if not normalized_transport_is_source_snapshot and (
             not normalized_path.is_file()
             or hash_file(normalized_path) != receipt.normalized.sha256
@@ -6233,8 +5981,7 @@ class PodcastSubtitleV2:
             if (
                 attributed.episode_id != base_primary_evidence.episode_id
                 or attributed.invocation_id != base_primary_evidence.invocation_id
-                or attributed.normalized_audio_hash
-                != base_primary_evidence.normalized_audio_hash
+                or attributed.normalized_audio_hash != base_primary_evidence.normalized_audio_hash
                 or len(attributed.tokens) != len(base_primary_evidence.tokens)
             ):
                 raise GenerationIsolationError(
@@ -6253,9 +6000,7 @@ class PodcastSubtitleV2:
                         "Speaker Attribution changed Recognition truth or timing"
                     )
                 if not (attributed_token.speaker or "").strip():
-                    raise GenerationIsolationError(
-                        "Speaker Attribution left an unknown speaker"
-                    )
+                    raise GenerationIsolationError("Speaker Attribution left an unknown speaker")
             try:
                 normalized_snapshot.verify()
             except ArtifactHashMismatchError as exc:
@@ -6263,10 +6008,10 @@ class PodcastSubtitleV2:
                     "normalized audio changed during speaker attribution"
                 ) from exc
             if any(
-                    hash_file(binding.path) != binding.sha256
-                    or binding.path.stat().st_size != binding.size_bytes
-                    for binding in speaker_bindings
-                ):
+                hash_file(binding.path) != binding.sha256
+                or binding.path.stat().st_size != binding.size_bytes
+                for binding in speaker_bindings
+            ):
                 raise GenerationIsolationError(
                     "microphone track changed during speaker attribution"
                 )
@@ -6332,8 +6077,7 @@ class PodcastSubtitleV2:
             ) from exc
         orthographic_raw_outputs = {
             (
-                "orthographic_projection/raw/"
-                f"{projection.raw_output.sha256}.txt"
+                f"orthographic_projection/raw/{projection.raw_output.sha256}.txt"
             ): orthographic_projection_raw_output_bytes(projection)
             for projection in orthographic_projections
         }
@@ -6351,16 +6095,12 @@ class PodcastSubtitleV2:
             expected_normalized_audio_size_bytes=receipt.normalized.size_bytes,
             normalized_audio_duration_ms=receipt.normalized_duration_ms,
             recognition_evidence=evidence,
-            raw_output_dir=(
-                self.store.root / "invocations" / invocation_id / "speech-coverage"
-            ),
+            raw_output_dir=(self.store.root / "invocations" / invocation_id / "speech-coverage"),
         )
         if self._speech_coverage_analyzer is not None:
-            local_coverage_receipt = self._speech_coverage_analyzer.analyze(
-                speech_coverage_request
-            )
-            speech_coverage_receipt, speech_coverage_raw_artifacts = (
-                _snapshot_speech_coverage(local_coverage_receipt)
+            local_coverage_receipt = self._speech_coverage_analyzer.analyze(speech_coverage_request)
+            speech_coverage_receipt, speech_coverage_raw_artifacts = _snapshot_speech_coverage(
+                local_coverage_receipt
             )
             verified_coverage = self._speech_coverage_analyzer.verify(
                 speech_coverage_receipt,
@@ -6453,9 +6193,7 @@ class PodcastSubtitleV2:
             if latest.checkpoint.stage == "audio_audit_ready":
                 correction_id = latest.checkpoint.previous_checkpoint_id
                 assert correction_id is not None
-                correction_stored = self.store.load_create_checkpoint_id(
-                    correction_id
-                )
+                correction_stored = self.store.load_create_checkpoint_id(correction_id)
             correction_state = self._load_correction_checkpoint(
                 correction_stored,
                 evidence_state=state,
@@ -6666,25 +6404,21 @@ class PodcastSubtitleV2:
         evidence = state.evidence_state.evidence
         result = state.result
         try:
-            audio_proposals, audio_audits, audio_audit_artifacts = (
-                self._run_audio_audit(
-                    result=result,
-                    target_windows=_full_audit_windows(
-                        result.transcript, request.policy
-                    ),
-                    normalized_audio=self.store.audio_path(
-                        receipt.normalized.sha256,
-                        size_bytes=receipt.normalized.size_bytes,
-                    ),
-                    normalized_audio_hash=receipt.normalized.sha256,
-                    normalized_audio_duration_ms=receipt.normalized_duration_ms,
-                    evidence=evidence,
-                    references=state.references,
-                    references_by_span=_reference_evidence_by_span(
-                        state.references,
-                        state.retrievals,
-                    ),
-                )
+            audio_proposals, audio_audits, audio_audit_artifacts = self._run_audio_audit(
+                result=result,
+                target_windows=_full_audit_windows(result.transcript, request.policy),
+                normalized_audio=self.store.audio_path(
+                    receipt.normalized.sha256,
+                    size_bytes=receipt.normalized.size_bytes,
+                ),
+                normalized_audio_hash=receipt.normalized.sha256,
+                normalized_audio_duration_ms=receipt.normalized_duration_ms,
+                evidence=evidence,
+                references=state.references,
+                references_by_span=_reference_evidence_by_span(
+                    state.references,
+                    state.retrievals,
+                ),
             )
         except AdapterWorkPending as pending:
             return Interrupted(
@@ -6841,9 +6575,7 @@ class PodcastSubtitleV2:
             correction_execution_artifacts=correction.correction_execution_artifacts,
             audio_execution_artifacts=state.audio_execution_artifacts,
             speech_coverage_receipt=evidence_state.speech_coverage_receipt,
-            speech_coverage_raw_artifacts=(
-                evidence_state.speech_coverage_raw_artifacts
-            ),
+            speech_coverage_raw_artifacts=(evidence_state.speech_coverage_raw_artifacts),
             raw_outputs=evidence_state.raw_outputs,
             reference_source_snapshots=reference_source_snapshots,
             reference_extraction_snapshots=reference_extraction_snapshots,
@@ -6883,9 +6615,7 @@ class PodcastSubtitleV2:
             raise NativeAcceptanceRequiredError(
                 "native resolution requires the native Full Audit runtime"
             )
-        parent = self._load_generation(
-            request.generation_id, require_active=require_active
-        )
+        parent = self._load_generation(request.generation_id, require_active=require_active)
         parent_result = parent.result
         if not isinstance(parent.audit, LoadedNativeAuditState):
             raise GenerationIsolationError(
@@ -6911,18 +6641,14 @@ class PodcastSubtitleV2:
                 strict=True,
             )
         except ValueError as exc:
-            raise GenerationIsolationError(
-                "native authorization bytes are invalid"
-            ) from exc
+            raise GenerationIsolationError("native authorization bytes are invalid") from exc
         if canonical_json_bytes(declared) != authorization_bytes:
             raise GenerationIsolationError("native authorization bytes are not canonical")
         candidates: tuple[NativeDiscoveredCandidateV2, ...] = (
             *text_record.candidate_discovery_set.candidates,
             *audio_record.candidate_discovery_set.candidates,
         )
-        matching = tuple(
-            item for item in candidates if item.id == declared.candidate_discovery_id
-        )
+        matching = tuple(item for item in candidates if item.id == declared.candidate_discovery_id)
         if len(matching) != 1:
             raise GenerationIsolationError(
                 "native authorization names zero or multiple stored discoveries"
@@ -6944,9 +6670,7 @@ class PodcastSubtitleV2:
         if request.correction_acceptance_verdict is not None:
             assert isinstance(declared, CorrectionAcceptanceVerdictV2)
             assert request.correction_acceptance_policy is not None
-            policy = verify_correction_acceptance_policy(
-                request.correction_acceptance_policy
-            )
+            policy = verify_correction_acceptance_policy(request.correction_acceptance_policy)
             human_receipts = tuple(
                 verify_human_audio_review_receipt(payload)
                 for payload in request.human_audio_receipts
@@ -6973,16 +6697,12 @@ class PodcastSubtitleV2:
             policy_bytes = request.correction_acceptance_policy
             receipt_bytes = request.human_audio_receipts
             receipt_index_name = _NATIVE_RESOLUTION_HUMAN_AUDIO_INDEX
-            receipt_namespace: Literal[
-                "human_audio", "human_original_confirmation"
-            ] = "human_audio"
+            receipt_namespace: Literal["human_audio", "human_original_confirmation"] = "human_audio"
             policy_name = _NATIVE_RESOLUTION_ACCEPTANCE_POLICY
         else:
             assert isinstance(declared, OriginalConfirmationAuthorizationV2)
             assert request.original_confirmation_policy is not None
-            policy = verify_original_confirmation_policy(
-                request.original_confirmation_policy
-            )
+            policy = verify_original_confirmation_policy(request.original_confirmation_policy)
             human_original_receipts = tuple(
                 verify_human_original_confirmation_receipt(payload)
                 for payload in request.human_original_confirmation_receipts
@@ -7005,13 +6725,9 @@ class PodcastSubtitleV2:
             policy_name = _NATIVE_RESOLUTION_ORIGINAL_POLICY
         span_by_id = {span.id: span for span in parent_result.transcript.spans}
         try:
-            cited_spans = tuple(
-                span_by_id[span_id] for span_id in candidate.cited_span_ids
-            )
+            cited_spans = tuple(span_by_id[span_id] for span_id in candidate.cited_span_ids)
         except KeyError as exc:
-            raise GenerationIsolationError(
-                "native discovery cites a missing parent span"
-            ) from exc
+            raise GenerationIsolationError("native discovery cites a missing parent span") from exc
         fingerprint = review_target_fingerprint(
             parent_result.transcript,
             candidate.cited_span_ids,
@@ -7064,12 +6780,9 @@ class PodcastSubtitleV2:
             "authorization_kind": decision.authorization_kind,
             "authorization": sha256_bytes(authorization_bytes),
             "policy": sha256_bytes(policy_bytes),
-            "human_audio": tuple(
-                sha256_bytes(payload) for payload in request.human_audio_receipts
-            ),
+            "human_audio": tuple(sha256_bytes(payload) for payload in request.human_audio_receipts),
             "human_original": tuple(
-                sha256_bytes(payload)
-                for payload in request.human_original_confirmation_receipts
+                sha256_bytes(payload) for payload in request.human_original_confirmation_receipts
             ),
             "reference_proof": (
                 sha256_bytes(request.reference_authority_proof)
@@ -7086,9 +6799,7 @@ class PodcastSubtitleV2:
             {
                 "operation": "native_resolution_v2",
                 "request": request_hashes,
-                "parent_manifest_hash": hash_object(
-                    parent.storage.manifest.materialize()
-                ),
+                "parent_manifest_hash": hash_object(parent.storage.manifest.materialize()),
                 "parent_ledger_hash": parent_result.transcript.ledger_hash,
                 "prepared_ledger_entry_hash": ledger_entry.entry_hash,
                 "code_hash": self._code_hash,
@@ -7129,8 +6840,7 @@ class PodcastSubtitleV2:
             parent_references=parent.references.evidence,
             parent_retrievals=parent.references.retrievals,
             reference_extraction_snapshots={
-                item.name: item.payload
-                for item in parent.references.extraction_snapshots.artifacts
+                item.name: item.payload for item in parent.references.extraction_snapshots.artifacts
             },
         )
         retrieval_risks = _reference_retrieval_failure_risks(retrievals)
@@ -7182,12 +6892,8 @@ class PodcastSubtitleV2:
             reference_retrievals=retrievals,
             normalized_audio_path=normalized_audio,
         )
-        text_index, text_artifacts = _address_native_sources(
-            text_sources, namespace="text"
-        )
-        audio_index, audio_artifacts = _address_native_sources(
-            audio_sources, namespace="audio"
-        )
+        text_index, text_artifacts = _address_native_sources(text_sources, namespace="text")
+        audio_index, audio_artifacts = _address_native_sources(audio_sources, namespace="audio")
         final_artifacts = {
             **authorization.resolution_artifacts,
             _CHECKPOINT_CANONICAL: canonical_json_bytes(result.transcript),
@@ -7225,9 +6931,7 @@ class PodcastSubtitleV2:
             policy_hash=result.transcript.policy_hash,
             code_hash=self._code_hash,
             reference_enrollment_hash=hash_object(parent.references.enrollments),
-            adapter_identities_hash=sha256_bytes(
-                parent.audit.runtime.identities_artifact.payload
-            ),
+            adapter_identities_hash=sha256_bytes(parent.audit.runtime.identities_artifact.payload),
             artifact_hashes={
                 name: sha256_bytes(payload)
                 for name, payload in sorted(checkpoint_artifacts.items())
@@ -7277,24 +6981,18 @@ class PodcastSubtitleV2:
             checkpoint.stage == "audit_basis_ready",
             checkpoint.operation_key == authorization.operation_key,
             checkpoint.parent_generation_id == parent_result.transcript.generation_id,
-            checkpoint.parent_manifest_hash
-            == hash_object(parent.storage.manifest.materialize()),
-            checkpoint.expected_active_generation_id
-            == parent_result.transcript.generation_id,
+            checkpoint.parent_manifest_hash == hash_object(parent.storage.manifest.materialize()),
+            checkpoint.expected_active_generation_id == parent_result.transcript.generation_id,
             checkpoint.expected_ledger_head == parent_result.transcript.ledger_hash,
-            checkpoint.prepared_ledger_entry_hash
-            == authorization.ledger_entry.entry_hash,
+            checkpoint.prepared_ledger_entry_hash == authorization.ledger_entry.entry_hash,
             checkpoint.decision_event_id == authorization.decision.event_id,
             checkpoint.decision_content_hash == authorization.decision.content_hash,
             checkpoint.authorization_id == authorization.authorization.id,
             checkpoint.authorization_hash == authorization.authorization.content_hash,
             checkpoint.code_hash == self._code_hash,
-            checkpoint.reference_enrollment_hash
-            == hash_object(parent.references.enrollments),
+            checkpoint.reference_enrollment_hash == hash_object(parent.references.enrollments),
             checkpoint.adapter_identities_hash
-            == sha256_bytes(
-                parent.audit.runtime.identities_artifact.payload
-            ),
+            == sha256_bytes(parent.audit.runtime.identities_artifact.payload),
         )
         if not all(expected_bindings):
             raise GenerationIsolationError(
@@ -7314,15 +7012,11 @@ class PodcastSubtitleV2:
             self._native_resolve_checkpoint_bytes(stored, _RETRIEVALS),
             label=_RETRIEVALS,
         )
-        if not isinstance(references_payload, list) or not isinstance(
-            retrievals_payload, list
-        ):
+        if not isinstance(references_payload, list) or not isinstance(retrievals_payload, list):
             raise GenerationIsolationError(
                 "native resolve Reference checkpoint collections are invalid"
             )
-        references = tuple(
-            ReferenceEvidence.model_validate(item) for item in references_payload
-        )
+        references = tuple(ReferenceEvidence.model_validate(item) for item in references_payload)
         retrievals = tuple(
             ReferenceRetrievalReceipt.model_validate(item) for item in retrievals_payload
         )
@@ -7332,9 +7026,7 @@ class PodcastSubtitleV2:
             )
         invocations = {item.invocation_id for item in retrievals}
         if len(invocations) > 1:
-            raise GenerationIsolationError(
-                "native resolve Reference receipts cross invocations"
-            )
+            raise GenerationIsolationError("native resolve Reference receipts cross invocations")
         self._validate_reference_retrieval_state(
             transcript=result.transcript,
             policy=parent.references.retrieval_policy,
@@ -7343,8 +7035,7 @@ class PodcastSubtitleV2:
             references=references,
             retrievals=retrievals,
             reference_extraction_snapshots={
-                item.name: item.payload
-                for item in parent.references.extraction_snapshots.artifacts
+                item.name: item.payload for item in parent.references.extraction_snapshots.artifacts
             },
             context="native resolve checkpoint",
         )
@@ -7400,9 +7091,7 @@ class PodcastSubtitleV2:
             boundary_constraints=None,
             seam_evidence=None,
         )
-        expected_groups = derive_candidate_group_set(
-            expected_plan, expected_signals, transcript
-        )
+        expected_groups = derive_candidate_group_set(expected_plan, expected_signals, transcript)
         normalized_audio = parent.normalization.normalized_audio_path
         expected_execution = build_correction_audit_execution_plan(
             expected_plan,
@@ -7434,18 +7123,12 @@ class PodcastSubtitleV2:
             reference_retrievals=retrievals,
             normalized_audio_path=normalized_audio,
         )
-        text_index, text_artifacts = _address_native_sources(
-            text_sources, namespace="text"
-        )
-        audio_index, audio_artifacts = _address_native_sources(
-            audio_sources, namespace="audio"
-        )
+        text_index, text_artifacts = _address_native_sources(text_sources, namespace="text")
+        audio_index, audio_artifacts = _address_native_sources(audio_sources, namespace="audio")
         expected_final_artifacts = {
             **authorization.resolution_artifacts,
             _CHECKPOINT_CANONICAL: canonical_json_bytes(transcript),
-            _CHECKPOINT_RISKS: canonical_json_bytes(
-                tuple(_risk_payload(item) for item in risks)
-            ),
+            _CHECKPOINT_RISKS: canonical_json_bytes(tuple(_risk_payload(item) for item in risks)),
             _REFERENCES: canonical_json_bytes(references),
             _RETRIEVALS: canonical_json_bytes(retrievals),
             _NATIVE_AUDIT_PLAN: canonical_json_bytes(audit_plan),
@@ -7568,16 +7251,10 @@ class PodcastSubtitleV2:
             checkpoint.stage != "text_audit_ready"
             or checkpoint.previous_checkpoint_id != basis.checkpoint.id
         ):
-            raise GenerationIsolationError(
-                "native resolve text checkpoint predecessor differs"
-            )
-        record_bytes = self._native_resolve_checkpoint_bytes(
-            stored, _NATIVE_TEXT_RECORD
-        )
+            raise GenerationIsolationError("native resolve text checkpoint predecessor differs")
+        record_bytes = self._native_resolve_checkpoint_bytes(stored, _NATIVE_TEXT_RECORD)
         record = TextAuditExecutionRecordV2.model_validate_json(record_bytes, strict=True)
-        index_bytes = self._native_resolve_checkpoint_bytes(
-            stored, _NATIVE_TEXT_RUN_INDEX
-        )
+        index_bytes = self._native_resolve_checkpoint_bytes(stored, _NATIVE_TEXT_RUN_INDEX)
         index = _canonical_json_value(index_bytes, label=_NATIVE_TEXT_RUN_INDEX)
         if not isinstance(index, dict) or set(index) != {
             "schema_version",
@@ -7590,12 +7267,10 @@ class PodcastSubtitleV2:
         if not isinstance(request_names, list) or not isinstance(response_names, list):
             raise GenerationIsolationError("native resolve text run index paths are invalid")
         requests = tuple(
-            self._native_resolve_checkpoint_bytes(stored, str(name))
-            for name in request_names
+            self._native_resolve_checkpoint_bytes(stored, str(name)) for name in request_names
         )
         responses = tuple(
-            self._native_resolve_checkpoint_bytes(stored, str(name))
-            for name in response_names
+            self._native_resolve_checkpoint_bytes(stored, str(name)) for name in response_names
         )
         run = TextAuditRunResult(
             record=record,
@@ -7618,9 +7293,13 @@ class PodcastSubtitleV2:
             **expected_runs,
         }
         expected_checkpoint = _native_resolve_checkpoint_artifacts(expected_final)
-        if replayed != run or set(checkpoint.artifact_hashes) != set(expected_checkpoint) or any(
-            self.store.read_native_resolve_checkpoint_artifact(stored, name) != payload
-            for name, payload in expected_checkpoint.items()
+        if (
+            replayed != run
+            or set(checkpoint.artifact_hashes) != set(expected_checkpoint)
+            or any(
+                self.store.read_native_resolve_checkpoint_artifact(stored, name) != payload
+                for name, payload in expected_checkpoint.items()
+            )
         ):
             raise GenerationIsolationError(
                 "native resolve text audit artifact set is not replayable"
@@ -7645,8 +7324,7 @@ class PodcastSubtitleV2:
                 "responses": run.response_bytes,
                 "clips": run.clip_bytes,
                 "journals": tuple(
-                    canonical_json_bytes(item)
-                    for item in run.record.invocation_journals
+                    canonical_json_bytes(item) for item in run.record.invocation_journals
                 ),
             },
         )
@@ -7681,9 +7359,7 @@ class PodcastSubtitleV2:
             checkpoint.stage != "audio_audit_ready"
             or checkpoint.previous_checkpoint_id != text.checkpoint.id
         ):
-            raise GenerationIsolationError(
-                "native resolve audio checkpoint predecessor differs"
-            )
+            raise GenerationIsolationError("native resolve audio checkpoint predecessor differs")
         record = AudioAuditExecutionRecordV2.model_validate_json(
             self._native_resolve_checkpoint_bytes(stored, _NATIVE_AUDIO_RECORD),
             strict=True,
@@ -7692,9 +7368,7 @@ class PodcastSubtitleV2:
             self._native_resolve_checkpoint_bytes(stored, _NATIVE_AGGREGATE),
             strict=True,
         )
-        index_bytes = self._native_resolve_checkpoint_bytes(
-            stored, _NATIVE_AUDIO_RUN_INDEX
-        )
+        index_bytes = self._native_resolve_checkpoint_bytes(stored, _NATIVE_AUDIO_RUN_INDEX)
         index = _canonical_json_value(index_bytes, label=_NATIVE_AUDIO_RUN_INDEX)
         categories = ("requests", "responses", "clips", "journals")
         if not isinstance(index, dict) or set(index) != {"schema_version", *categories}:
@@ -7703,19 +7377,14 @@ class PodcastSubtitleV2:
         for category in categories:
             names = index[category]
             if not isinstance(names, list):
-                raise GenerationIsolationError(
-                    "native resolve audio run index paths are invalid"
-                )
+                raise GenerationIsolationError("native resolve audio run index paths are invalid")
             raw[category] = tuple(
-                self._native_resolve_checkpoint_bytes(stored, str(name))
-                for name in names
+                self._native_resolve_checkpoint_bytes(stored, str(name)) for name in names
             )
         if raw["journals"] != tuple(
             canonical_json_bytes(item) for item in record.invocation_journals
         ):
-            raise GenerationIsolationError(
-                "native resolve audio invocation journals changed"
-            )
+            raise GenerationIsolationError("native resolve audio invocation journals changed")
         run = AudioAuditRunResult(
             record=record,
             request_bytes=raw["requests"],
@@ -7759,8 +7428,7 @@ class PodcastSubtitleV2:
             or verified_aggregate != aggregate
             or set(checkpoint.artifact_hashes) != set(expected_checkpoint)
             or any(
-                self.store.read_native_resolve_checkpoint_artifact(stored, name)
-                != payload
+                self.store.read_native_resolve_checkpoint_artifact(stored, name) != payload
                 for name, payload in expected_checkpoint.items()
             )
         ):
@@ -7847,26 +7515,21 @@ class PodcastSubtitleV2:
                 "responses": state.run.response_bytes,
                 "clips": state.run.clip_bytes,
                 "journals": tuple(
-                    canonical_json_bytes(item)
-                    for item in state.run.record.invocation_journals
+                    canonical_json_bytes(item) for item in state.run.record.invocation_journals
                 ),
             },
         )
         inherited_raw_artifacts = {
-            item.name: item.payload
-            for item in parent.recognition.raw_outputs.artifacts
+            item.name: item.payload for item in parent.recognition.raw_outputs.artifacts
         }
         inherited_coverage_artifacts = {
-            item.name: item.payload
-            for item in parent.speech_coverage.raw_outputs.artifacts
+            item.name: item.payload for item in parent.speech_coverage.raw_outputs.artifacts
         }
         inherited_reference_sources = {
-            item.name: item.payload
-            for item in parent.references.source_snapshots.artifacts
+            item.name: item.payload for item in parent.references.source_snapshots.artifacts
         }
         inherited_reference_extractions = {
-            item.name: item.payload
-            for item in parent.references.extraction_snapshots.artifacts
+            item.name: item.payload for item in parent.references.extraction_snapshots.artifacts
         }
         artifacts: dict[str, bytes] = {
             _RECEIPT: parent.normalization.receipt_artifact.payload,
@@ -7874,14 +7537,10 @@ class PodcastSubtitleV2:
             _RECOGNITION_REQUEST: parent.recognition.request_bytes.payload,
             _RECOGNITION_INDEPENDENCE: parent.recognition.independence_bytes.payload,
             _EVIDENCE: parent.recognition.evidence_bytes.payload,
-            _BASE_PRIMARY_EVIDENCE: (
-                parent.recognition.speaker_base_evidence_bytes.payload
-            ),
+            _BASE_PRIMARY_EVIDENCE: (parent.recognition.speaker_base_evidence_bytes.payload),
             _SPEAKER_PROVENANCE: parent.recognition.speaker_provenance_bytes.payload,
             _REFERENCE_ENROLLMENTS: parent.references.enrollments_bytes.payload,
-            _REFERENCE_RETRIEVAL_POLICY: (
-                parent.references.retrieval_policy_bytes.payload
-            ),
+            _REFERENCE_RETRIEVAL_POLICY: (parent.references.retrieval_policy_bytes.payload),
             _SPEECH_COVERAGE: parent.speech_coverage.receipt_bytes.payload,
             _REFERENCES: canonical_json_bytes(basis.references),
             _RETRIEVALS: canonical_json_bytes(basis.retrievals),
@@ -7890,12 +7549,8 @@ class PodcastSubtitleV2:
                 tuple(_risk_payload(item) for item in result.risks)
             ),
             _NATIVE_AUDIT_PLAN: canonical_json_bytes(basis.audit_plan),
-            _NATIVE_CANDIDATE_SIGNALS: canonical_json_bytes(
-                basis.candidate_signal_set
-            ),
-            _NATIVE_CANDIDATE_GROUPS: canonical_json_bytes(
-                basis.candidate_group_set
-            ),
+            _NATIVE_CANDIDATE_SIGNALS: canonical_json_bytes(basis.candidate_signal_set),
+            _NATIVE_CANDIDATE_GROUPS: canonical_json_bytes(basis.candidate_group_set),
             _NATIVE_EXECUTION_PLAN: canonical_json_bytes(basis.execution_plan),
             _NATIVE_TEXT_SOURCE_INDEX: text_source_index,
             _NATIVE_AUDIO_SOURCE_INDEX: audio_source_index,
@@ -7905,9 +7560,7 @@ class PodcastSubtitleV2:
             _NATIVE_TEXT_RUN_INDEX: text_run_index,
             _NATIVE_AUDIO_RUN_INDEX: audio_run_index,
             _CANONICAL: canonical_json_bytes(transcript),
-            _RISKS: canonical_json_bytes(
-                tuple(_risk_payload(item) for item in result.risks)
-            ),
+            _RISKS: canonical_json_bytes(tuple(_risk_payload(item) for item in result.risks)),
             **inherited_coverage_artifacts,
             **inherited_raw_artifacts,
             **inherited_reference_sources,
@@ -7926,9 +7579,7 @@ class PodcastSubtitleV2:
             artifacts.update(parent_orthographic_raw_outputs)
         adapter_bytes = parent.audit.runtime.identities_artifact.payload
         artifacts[_ADAPTER_IDENTITIES] = adapter_bytes
-        adapter_payload = _canonical_json_value(
-            adapter_bytes, label=_ADAPTER_IDENTITIES
-        )
+        adapter_payload = _canonical_json_value(adapter_bytes, label=_ADAPTER_IDENTITIES)
         stage_hashes = {
             "adapter_identities": sha256_bytes(adapter_bytes),
             "normalization_receipt": hash_object(parent.normalization.receipt),
@@ -7949,19 +7600,13 @@ class PodcastSubtitleV2:
             "canonical_transcript": hash_object(transcript),
             "risks": hash_object(tuple(_risk_payload(item) for item in result.risks)),
             "native_audit_plan": sha256_bytes(artifacts[_NATIVE_AUDIT_PLAN]),
-            "native_candidate_signal_set": sha256_bytes(
-                artifacts[_NATIVE_CANDIDATE_SIGNALS]
-            ),
-            "native_candidate_group_set": sha256_bytes(
-                artifacts[_NATIVE_CANDIDATE_GROUPS]
-            ),
+            "native_candidate_signal_set": sha256_bytes(artifacts[_NATIVE_CANDIDATE_SIGNALS]),
+            "native_candidate_group_set": sha256_bytes(artifacts[_NATIVE_CANDIDATE_GROUPS]),
             "native_execution_plan": sha256_bytes(artifacts[_NATIVE_EXECUTION_PLAN]),
             "native_text_audit_record": sha256_bytes(artifacts[_NATIVE_TEXT_RECORD]),
             "native_audio_audit_record": sha256_bytes(artifacts[_NATIVE_AUDIO_RECORD]),
             "native_full_audit_aggregate": sha256_bytes(artifacts[_NATIVE_AGGREGATE]),
-            "native_resolution_decision": sha256_bytes(
-                artifacts[_NATIVE_RESOLUTION_DECISION]
-            ),
+            "native_resolution_decision": sha256_bytes(artifacts[_NATIVE_RESOLUTION_DECISION]),
             "native_resolution_authorization": sha256_bytes(
                 artifacts[_NATIVE_RESOLUTION_AUTHORIZATION]
             ),
@@ -8021,9 +7666,7 @@ class PodcastSubtitleV2:
             manifest=manifest,
             artifacts=artifacts,
         )
-        issues = tuple(
-            item for item in transcript.review_issues if item.status == "unresolved"
-        )
+        issues = tuple(item for item in transcript.review_issues if item.status == "unresolved")
         return NeedsReview(stored.generation_id, transcript, issues, manifest)
 
     def _publish_native_resolution(
@@ -8058,9 +7701,7 @@ class PodcastSubtitleV2:
             self._recover_resolution_transaction_locked()
             active_generation_id = self.store.active_generation_id()
             if active_generation_id == outcome.generation_id:
-                recovered = self._completed_native_resolution_outcome_locked(
-                    authorization
-                )
+                recovered = self._completed_native_resolution_outcome_locked(authorization)
                 if recovered is None or recovered.generation_id != outcome.generation_id:
                     raise GenerationIsolationError(
                         "active native child does not match the exact completed request"
@@ -8084,9 +7725,7 @@ class PodcastSubtitleV2:
                 outcome.generation_id,
                 expected_generation_id=parent_result.transcript.generation_id,
             )
-            self.store.write_resolution_journal_locked(
-                {**journal, "state": "completed"}
-            )
+            self.store.write_resolution_journal_locked({**journal, "state": "completed"})
         return outcome
 
     def _completed_native_resolution_outcome_locked(
@@ -8105,8 +7744,7 @@ class PodcastSubtitleV2:
             or payload["state"] != "completed"
             or decision != authorization.decision
             or entry != authorization.ledger_entry
-            or payload["parent_generation_id"]
-            != parent_result.transcript.generation_id
+            or payload["parent_generation_id"] != parent_result.transcript.generation_id
             or payload["parent_manifest_hash"]
             != hash_object(authorization.parent.storage.manifest.materialize())
         ):
@@ -8160,9 +7798,7 @@ class PodcastSubtitleV2:
         else:
             stage = stored.checkpoint.stage
             if stage == "audit_basis_ready":
-                basis = self._load_native_resolve_audit_basis(
-                    stored, authorization=authorization
-                )
+                basis = self._load_native_resolve_audit_basis(stored, authorization=authorization)
             else:
                 predecessor_id = stored.checkpoint.previous_checkpoint_id
                 if predecessor_id is None:
@@ -8170,21 +7806,15 @@ class PodcastSubtitleV2:
                         "native resolve checkpoint lacks its predecessor"
                     )
                 if stage == "text_audit_ready":
-                    basis_stored = self.store.load_native_resolve_checkpoint_id(
-                        predecessor_id
-                    )
+                    basis_stored = self.store.load_native_resolve_checkpoint_id(predecessor_id)
                 else:
-                    text_stored = self.store.load_native_resolve_checkpoint_id(
-                        predecessor_id
-                    )
+                    text_stored = self.store.load_native_resolve_checkpoint_id(predecessor_id)
                     basis_id = text_stored.checkpoint.previous_checkpoint_id
                     if basis_id is None:
                         raise GenerationIsolationError(
                             "native resolve text checkpoint lacks audit basis"
                         )
-                    basis_stored = self.store.load_native_resolve_checkpoint_id(
-                        basis_id
-                    )
+                    basis_stored = self.store.load_native_resolve_checkpoint_id(basis_id)
                 basis = self._load_native_resolve_audit_basis(
                     basis_stored,
                     authorization=authorization,
@@ -8304,24 +7934,18 @@ class PodcastSubtitleV2:
             for item in parent.audit.correction_execution_artifacts.artifacts
         }
         audio_execution_artifacts = {
-            item.name: item.payload
-            for item in parent.audit.audio_execution_artifacts.artifacts
+            item.name: item.payload for item in parent.audit.audio_execution_artifacts.artifacts
         }
         speech_coverage_receipt = parent.speech_coverage.receipt
         speech_coverage_raw_artifacts = {
-            item.name: item.payload
-            for item in parent.speech_coverage.raw_outputs.artifacts
+            item.name: item.payload for item in parent.speech_coverage.raw_outputs.artifacts
         }
-        raw_outputs = {
-            item.name: item.payload for item in parent.recognition.raw_outputs.artifacts
-        }
+        raw_outputs = {item.name: item.payload for item in parent.recognition.raw_outputs.artifacts}
         reference_source_snapshots = {
-            item.name: item.payload
-            for item in parent.references.source_snapshots.artifacts
+            item.name: item.payload for item in parent.references.source_snapshots.artifacts
         }
         reference_extraction_snapshots = {
-            item.name: item.payload
-            for item in parent.references.extraction_snapshots.artifacts
+            item.name: item.payload for item in parent.references.extraction_snapshots.artifacts
         }
         reference_retrieval_policy = parent.references.retrieval_policy
         result = current
@@ -8494,9 +8118,7 @@ class PodcastSubtitleV2:
             speaker_base_evidence=speaker_base_evidence,
             speaker_provenance=speaker_provenance,
             speaker_attributor_identity=(
-                self._speaker_attributor_identity
-                if speaker_provenance is not None
-                else None
+                self._speaker_attributor_identity if speaker_provenance is not None else None
             ),
             enrolled_artifacts=enrolled_artifacts,
             reference_retrieval_policy=reference_retrieval_policy,
@@ -8576,9 +8198,7 @@ class PodcastSubtitleV2:
         )
         try:
             projection = SubtitleProjection.model_validate_json(artifacts[_PROJECTION])
-            manifest = ProjectionManifest.model_validate_json(
-                artifacts[_PROJECTION_MANIFEST]
-            )
+            manifest = ProjectionManifest.model_validate_json(artifacts[_PROJECTION_MANIFEST])
             quality_report = QualityReport.model_validate_json(artifacts[_QUALITY])
         except ValueError as exc:  # exhaustive verifier already parsed these
             raise GenerationIsolationError(
@@ -8675,13 +8295,9 @@ class PodcastSubtitleV2:
         authoritative_cues: tuple[tuple[int, int, int, int], ...] = ()
         memo_boundary_authority_hash: str | None = None
         if self._memo_boundary_authority_factory is not None:
-            authority = self._memo_boundary_authority_factory(
-                loaded.recognition.evidence[0]
-            )
+            authority = self._memo_boundary_authority_factory(loaded.recognition.evidence[0])
             memo_boundary_authority_hash = authority.content_hash
-            mandatory_cue_boundaries, authoritative_cues = authority.projection_contract(
-                transcript
-            )
+            mandatory_cue_boundaries, authoritative_cues = authority.projection_contract(transcript)
             allowed_cue_boundaries = mandatory_cue_boundaries
         projected = project_semantic_units(
             transcript.tokens,
@@ -8731,9 +8347,7 @@ class PodcastSubtitleV2:
             generation_id=transcript.generation_id,
             canonical_hash=transcript.content_hash,
             profile_hash=profile_hash,
-            token_sequence_hash=token_sequence_hash(
-                [token.id for token in transcript.tokens]
-            ),
+            token_sequence_hash=token_sequence_hash([token.id for token in transcript.tokens]),
             output_hash=output_hash,
         )
         projection_id = "projection-" + hash_object(
@@ -8795,9 +8409,7 @@ class PodcastSubtitleV2:
         for target_span_ids in target_windows:
             target_set = set(target_span_ids)
             issues = tuple(
-                issue
-                for issue in material
-                if set(issue.span_ids).intersection(target_set)
+                issue for issue in material if set(issue.span_ids).intersection(target_set)
             )
             window_references = references
             if references_by_span is not None:
@@ -8820,7 +8432,8 @@ class PodcastSubtitleV2:
             run = self._corrector.propose_with_receipt(request)
             proposed = tuple(run.proposals)
             if any(
-                proposal.evidence_basis not in {
+                proposal.evidence_basis
+                not in {
                     "recognition",
                     "recognition_and_reference",
                     "reference_only",
@@ -8853,14 +8466,13 @@ class PodcastSubtitleV2:
                 )
             expected_presented_ids = tuple(item.id for item in window_references)
             expected_presented_hash = reference_evidence_set_hash(window_references)
-            packet_presented_ids, packet_presented_hash = (
-                _correction_packet_reference_binding(run.request_bytes[0])
+            packet_presented_ids, packet_presented_hash = _correction_packet_reference_binding(
+                run.request_bytes[0]
             )
             if (
                 packet_presented_ids != expected_presented_ids
                 or packet_presented_hash != expected_presented_hash
-                or
-                execution.presented_reference_evidence_ids != expected_presented_ids
+                or execution.presented_reference_evidence_ids != expected_presented_ids
                 or execution.presented_reference_evidence_hash != expected_presented_hash
             ):
                 raise GenerationIsolationError(
@@ -8905,12 +8517,8 @@ class PodcastSubtitleV2:
                         preaudit_content_hash=result.transcript.content_hash,
                         evidence_hash=recognition_evidence_set_hash(evidence),
                         reference_evidence_hash=result.transcript.reference_evidence_hash,
-                        available_reference_evidence_ids=tuple(
-                            item.id for item in references
-                        ),
-                        available_reference_evidence_hash=reference_evidence_set_hash(
-                            references
-                        ),
+                        available_reference_evidence_ids=tuple(item.id for item in references),
+                        available_reference_evidence_hash=reference_evidence_set_hash(references),
                         presented_reference_evidence_ids=tuple(
                             execution.presented_reference_evidence_ids
                         ),
@@ -8947,12 +8555,8 @@ class PodcastSubtitleV2:
                         evidence_hash=recognition_evidence_set_hash(evidence),
                         policy_hash=result.transcript.policy_hash,
                         reference_evidence_hash=result.transcript.reference_evidence_hash,
-                        available_reference_evidence_ids=tuple(
-                            item.id for item in references
-                        ),
-                        available_reference_evidence_hash=reference_evidence_set_hash(
-                            references
-                        ),
+                        available_reference_evidence_ids=tuple(item.id for item in references),
+                        available_reference_evidence_hash=reference_evidence_set_hash(references),
                         presented_reference_evidence_ids=tuple(
                             execution.presented_reference_evidence_ids
                         ),
@@ -9011,9 +8615,7 @@ class PodcastSubtitleV2:
                 for span_id in target_span_ids:
                     for item in references_by_span.get(span_id, ()):
                         by_id[item.id] = item
-                window_references = tuple(
-                    sorted(by_id.values(), key=lambda item: item.id)
-                )
+                window_references = tuple(sorted(by_id.values(), key=lambda item: item.id))
             run = self._audio_auditor.audit(
                 AudioAuditRequest(
                     transcript=result.transcript,
@@ -9028,15 +8630,13 @@ class PodcastSubtitleV2:
             receipt = run.receipt
             if (
                 receipt.target_span_ids != target_span_ids
-                or receipt.adapter_identity_hash
-                != self._audio_auditor.identity.content_hash
+                or receipt.adapter_identity_hash != self._audio_auditor.identity.content_hash
                 or receipt.adapter_name != self._audio_auditor.identity.adapter_name
                 or receipt.adapter_version != self._audio_auditor.identity.adapter_version
                 or receipt.model != self._audio_auditor.identity.model
                 or receipt.model_version != self._audio_auditor.identity.model_version
                 or receipt.runtime_hash != self._audio_auditor.identity.runtime_hash
-                or receipt.adapter_code_hash
-                != self._audio_auditor.identity.adapter_code_hash
+                or receipt.adapter_code_hash != self._audio_auditor.identity.adapter_code_hash
                 or receipt.config_hash != self._audio_auditor.identity.config_hash
             ):
                 raise GenerationIsolationError(
@@ -9081,9 +8681,7 @@ class PodcastSubtitleV2:
 
         name = artifact.uri.removeprefix("generation-artifact://")
         if name == artifact.uri:
-            raise GenerationIsolationError(
-                f"{context} execution artifact URI is not portable"
-            )
+            raise GenerationIsolationError(f"{context} execution artifact URI is not portable")
         try:
             payload = artifacts[name]
         except KeyError as exc:
@@ -9147,18 +8745,14 @@ class PodcastSubtitleV2:
             preaudit_transcript=preaudit_transcript,
         )
         if normalization_receipt.normalized_duration_ms is None:
-            raise GenerationIsolationError(
-                f"{context} Audio Audit lacks Normalized Audio duration"
-            )
+            raise GenerationIsolationError(f"{context} Audio Audit lacks Normalized Audio duration")
         normalized_audio = self.store.audio_path(
             normalization_receipt.normalized.sha256,
             size_bytes=normalization_receipt.normalized.size_bytes,
         )
         proposal_by_id = {proposal.id: proposal for proposal in proposals}
         if len(proposal_by_id) != len(proposals):
-            raise GenerationIsolationError(
-                f"{context} Correction Proposal IDs are not unique"
-            )
+            raise GenerationIsolationError(f"{context} Correction Proposal IDs are not unique")
         for receipt in receipts:
             try:
                 audited = tuple(proposal_by_id[item] for item in receipt.proposal_ids)
@@ -9239,18 +8833,14 @@ class PodcastSubtitleV2:
                 f"{context} Arbitration proofs lack their configured Arbiter"
             )
         if normalization_receipt.normalized_duration_ms is None:
-            raise GenerationIsolationError(
-                f"{context} Arbitration lacks Normalized Audio duration"
-            )
+            raise GenerationIsolationError(f"{context} Arbitration lacks Normalized Audio duration")
         normalized_audio = self.store.audio_path(
             normalization_receipt.normalized.sha256,
             size_bytes=normalization_receipt.normalized.size_bytes,
         )
         proposal_by_id = {proposal.id: proposal for proposal in proposals}
         if len(proposal_by_id) != len(proposals):
-            raise GenerationIsolationError(
-                f"{context} Correction Proposal IDs are not unique"
-            )
+            raise GenerationIsolationError(f"{context} Correction Proposal IDs are not unique")
         for receipt in receipts:
             try:
                 proposal = proposal_by_id[receipt.proposal_id]
@@ -9262,8 +8852,7 @@ class PodcastSubtitleV2:
                 receipt.generation_id != transcript.generation_id
                 or receipt.canonical_content_hash != transcript.content_hash
                 or receipt.evidence_hash != transcript.evidence_hash
-                or receipt.reference_evidence_hash
-                != transcript.reference_evidence_hash
+                or receipt.reference_evidence_hash != transcript.reference_evidence_hash
                 or receipt.policy_hash != transcript.policy_hash
                 or receipt.normalized_audio_hash != transcript.normalized_audio_hash
             ):
@@ -9375,9 +8964,7 @@ class PodcastSubtitleV2:
         if isinstance(audit, CorrectionAuditReceipt) and (
             transcript.episode_id != audit.episode_id
         ):
-            raise GenerationIsolationError(
-                f"{context} Correction audit belongs to another episode"
-            )
+            raise GenerationIsolationError(f"{context} Correction audit belongs to another episode")
         if (
             transcript.generation_id != expected_generation_id
             or transcript.content_hash != expected_content_hash
@@ -9391,29 +8978,24 @@ class PodcastSubtitleV2:
         references_by_id = {item.id: item for item in references}
         try:
             available = tuple(
-                references_by_id[item]
-                for item in audit.available_reference_evidence_ids
+                references_by_id[item] for item in audit.available_reference_evidence_ids
             )
             available_by_id = {item.id: item for item in available}
             presented = tuple(
-                available_by_id[item]
-                for item in audit.presented_reference_evidence_ids
+                available_by_id[item] for item in audit.presented_reference_evidence_ids
             )
         except KeyError as exc:
             raise GenerationIsolationError(
                 "Correction receipt presents unknown Reference Evidence"
             ) from exc
-        if (
-            audit.available_reference_evidence_hash
-            != reference_evidence_set_hash(available)
-            or audit.presented_reference_evidence_hash
-            != reference_evidence_set_hash(presented)
-        ):
+        if audit.available_reference_evidence_hash != reference_evidence_set_hash(
+            available
+        ) or audit.presented_reference_evidence_hash != reference_evidence_set_hash(presented):
             raise GenerationIsolationError(
                 "Correction receipt available/presented Reference Evidence hash mismatch"
             )
-        packet_presented_ids, packet_presented_hash = (
-            _correction_packet_reference_binding(request_bytes)
+        packet_presented_ids, packet_presented_hash = _correction_packet_reference_binding(
+            request_bytes
         )
         if (
             packet_presented_ids != audit.presented_reference_evidence_ids
@@ -9449,9 +9031,7 @@ class PodcastSubtitleV2:
             if set(issue.span_ids).intersection(target_set)
         )
         mode: Literal["full_audit", "targeted_review"] = (
-            "full_audit"
-            if isinstance(audit, CorrectionAuditReceipt)
-            else "targeted_review"
+            "full_audit" if isinstance(audit, CorrectionAuditReceipt) else "targeted_review"
         )
         request = CorrectionRequest(
             episode_id=transcript.episode_id,
@@ -9513,13 +9093,9 @@ class PodcastSubtitleV2:
 
         proposal_by_id = {proposal.id: proposal for proposal in proposals}
         if len(proposal_by_id) != len(proposals):
-            raise GenerationIsolationError(
-                f"{context} Correction Proposal IDs are not unique"
-            )
+            raise GenerationIsolationError(f"{context} Correction Proposal IDs are not unique")
         full_proposal_ids = tuple(
-            proposal_id
-            for audit in correction_audits
-            for proposal_id in audit.proposal_ids
+            proposal_id for audit in correction_audits for proposal_id in audit.proposal_ids
         )
         targeted_proposal_ids = tuple(
             proposal_id
@@ -9527,9 +9103,7 @@ class PodcastSubtitleV2:
             for proposal_id in audit.proposal_ids
         )
         audio_proposal_ids = tuple(
-            proposal_id
-            for audit in audio_audits
-            for proposal_id in audit.proposal_ids
+            proposal_id for audit in audio_audits for proposal_id in audit.proposal_ids
         )
         full_preaudit = _derive_correction_preaudit_transcript(
             transcript,
@@ -9568,8 +9142,7 @@ class PodcastSubtitleV2:
                 audited = tuple(proposal_by_id[item] for item in audit.proposal_ids)
             except KeyError as exc:
                 raise GenerationIsolationError(
-                    f"{context} Targeted Correction Audit cites unknown Proposal "
-                    f"{exc.args[0]!r}"
+                    f"{context} Targeted Correction Audit cites unknown Proposal {exc.args[0]!r}"
                 ) from exc
             self._verify_correction_execution_replay(
                 audit=audit,
@@ -9687,9 +9260,7 @@ class PodcastSubtitleV2:
                 decision.target_span_ids,
             )
         )
-        out_of_scope_references = (
-            set(decision.reference_evidence_ids) - scoped_references
-        )
+        out_of_scope_references = set(decision.reference_evidence_ids) - scoped_references
         if out_of_scope_references:
             raise GenerationIsolationError(
                 "Correction Decision cites Reference Evidence not retrieved for its "
@@ -9706,8 +9277,7 @@ class PodcastSubtitleV2:
             )
         if decision.action == "accept_candidate":
             selected_receipts = tuple(
-                receipt_by_id[receipt_id]
-                for receipt_id in decision.arbitration_receipt_ids
+                receipt_by_id[receipt_id] for receipt_id in decision.arbitration_receipt_ids
             )
             if len(selected_receipts) != len(decision.proposal_ids):
                 raise ModuleInvariantError(
@@ -9730,19 +9300,15 @@ class PodcastSubtitleV2:
                     or receipt.generation_id != transcript.generation_id
                     or receipt.canonical_content_hash != transcript.content_hash
                     or receipt.evidence_hash != transcript.evidence_hash
-                    or receipt.reference_evidence_hash
-                    != transcript.reference_evidence_hash
+                    or receipt.reference_evidence_hash != transcript.reference_evidence_hash
                     or receipt.policy_hash != transcript.policy_hash
-                    or receipt.normalized_audio_hash
-                    != transcript.normalized_audio_hash
+                    or receipt.normalized_audio_hash != transcript.normalized_audio_hash
                 ):
                     raise GenerationIsolationError(
                         "accept_candidate is not authorized by an exact accepted audio verdict"
                     )
         unresolved_by_id = {
-            issue.id: issue
-            for issue in transcript.review_issues
-            if issue.status == "unresolved"
+            issue.id: issue for issue in transcript.review_issues if issue.status == "unresolved"
         }
         unknown_issues = set(decision.issue_ids) - set(unresolved_by_id)
         if unknown_issues:
@@ -9785,9 +9351,7 @@ class PodcastSubtitleV2:
         observed_text = "".join(token.text for token in target_tokens)
         linked = tuple(proposal_by_id[proposal_id] for proposal_id in decision.proposal_ids)
         proposal_reference_ids = {
-            evidence_id
-            for proposal in linked
-            for evidence_id in proposal.reference_evidence_ids
+            evidence_id for proposal in linked for evidence_id in proposal.reference_evidence_ids
         }
         if linked and set(decision.reference_evidence_ids) != proposal_reference_ids:
             raise GenerationIsolationError(
@@ -9831,11 +9395,14 @@ class PodcastSubtitleV2:
 
     def _validated_resolution_journal_locked(
         self,
-    ) -> tuple[
-        dict[str, object],
-        LedgerEntry,
-        CorrectionDecision | NativeCorrectionDecisionV2,
-    ] | None:
+    ) -> (
+        tuple[
+            dict[str, object],
+            LedgerEntry,
+            CorrectionDecision | NativeCorrectionDecisionV2,
+        ]
+        | None
+    ):
         payload = self.store.read_resolution_journal_locked()
         if payload is None:
             return None
@@ -9861,8 +9428,7 @@ class PodcastSubtitleV2:
         if (
             payload["schema_version"] not in {_RESOLUTION_TRANSACTION_VERSION, 2}
             or any(
-                not isinstance(payload[field], str) or not payload[field]
-                for field in string_fields
+                not isinstance(payload[field], str) or not payload[field] for field in string_fields
             )
             or payload["state"] not in {"prepared", "completed"}
         ):
@@ -9878,9 +9444,7 @@ class PodcastSubtitleV2:
                 "resolution transaction carries an invalid Correction Decision"
             ) from exc
         expected_family = (
-            "native_correction_v2"
-            if payload["schema_version"] == 2
-            else "legacy_correction_v1"
+            "native_correction_v2" if payload["schema_version"] == 2 else "legacy_correction_v1"
         )
         if decoded.family != expected_family:
             raise ResolutionTransactionError(
@@ -9897,9 +9461,7 @@ class PodcastSubtitleV2:
                 "resolution transaction crossed Decision, Generation, or Ledger identity"
             )
         identity = {
-            key: value
-            for key, value in payload.items()
-            if key not in {"transaction_id", "state"}
+            key: value for key, value in payload.items() if key not in {"transaction_id", "state"}
         }
         expected_id = f"resolution-{hash_object(identity)}"
         if payload["transaction_id"] != expected_id:
@@ -9914,19 +9476,13 @@ class PodcastSubtitleV2:
         entry: LedgerEntry,
         decision: CorrectionDecision | NativeCorrectionDecisionV2,
     ) -> None:
-        parent = self._load_generation(
-            str(payload["parent_generation_id"]), require_active=False
-        )
-        child = self._load_generation(
-            str(payload["child_generation_id"]), require_active=False
-        )
+        parent = self._load_generation(str(payload["parent_generation_id"]), require_active=False)
+        child = self._load_generation(str(payload["child_generation_id"]), require_active=False)
         parent_result = parent.result
         child_result = child.result
         if (
-            hash_object(parent.storage.manifest.materialize())
-            != payload["parent_manifest_hash"]
-            or hash_object(child.storage.manifest.materialize())
-            != payload["child_manifest_hash"]
+            hash_object(parent.storage.manifest.materialize()) != payload["parent_manifest_hash"]
+            or hash_object(child.storage.manifest.materialize()) != payload["child_manifest_hash"]
         ):
             raise ResolutionTransactionError(
                 "resolution transaction Generation manifest hash mismatch"
@@ -10080,14 +9636,10 @@ class PodcastSubtitleV2:
             else ()
         )
         expected_child_audio_audits = (
-            active.audit.audio_audits
-            if isinstance(active.audit, LoadedLegacyAuditState)
-            else ()
+            active.audit.audio_audits if isinstance(active.audit, LoadedLegacyAuditState) else ()
         )
         expected_child_proposals = (
-            active.audit.proposals
-            if isinstance(active.audit, LoadedLegacyAuditState)
-            else ()
+            active.audit.proposals if isinstance(active.audit, LoadedLegacyAuditState) else ()
         )
         expected_child_retrievals = active.references.retrievals
         cursor = head_hash
@@ -10184,9 +9736,7 @@ class PodcastSubtitleV2:
                 else ()
             )
             expected_child_proposals = (
-                parent.audit.proposals
-                if isinstance(parent.audit, LoadedLegacyAuditState)
-                else ()
+                parent.audit.proposals if isinstance(parent.audit, LoadedLegacyAuditState) else ()
             )
             expected_child_retrievals = parent.references.retrievals
             cursor = entry.previous_hash
@@ -10268,9 +9818,7 @@ class PodcastSubtitleV2:
                 )
             return
         if self._reference_retriever is None or self._reference_retriever_identity is None:
-            raise GenerationIsolationError(
-                f"{context} lacks the exact Reference Retriever runtime"
-            )
+            raise GenerationIsolationError(f"{context} lacks the exact Reference Retriever runtime")
         allowed_source_ids = tuple(sorted(item.source_id for item in enrolled_artifacts))
         expected_requests = _reference_retrieval_requests(
             transcript=transcript,
@@ -10342,9 +9890,7 @@ class PodcastSubtitleV2:
                     raise GenerationIsolationError(
                         f"{context} Reference Evidence crossed Enrollment identity"
                     )
-                snapshot_name = (
-                    f"reference_extractions/{enrollment.extracted_text.sha256}.json"
-                )
+                snapshot_name = f"reference_extractions/{enrollment.extracted_text.sha256}.json"
                 try:
                     snapshot = reference_extraction_snapshots[snapshot_name]
                 except KeyError as exc:
@@ -10413,9 +9959,7 @@ class PodcastSubtitleV2:
         if callable(retrieve_many):
             retrieved = tuple(retrieve_many(prepared))
         else:
-            retrieved = tuple(
-                self._reference_retriever.retrieve(item) for item in prepared
-            )
+            retrieved = tuple(self._reference_retriever.retrieve(item) for item in prepared)
         if len(retrieved) != len(prepared):
             raise GenerationIsolationError(
                 "Reference Retriever did not return one fresh receipt per child span"
@@ -10456,9 +10000,7 @@ class PodcastSubtitleV2:
                     )
                 evidence_by_id[portable.id] = portable
                 portable_evidence.append(portable)
-            receipts.append(
-                receipt.model_copy(update={"evidence": tuple(portable_evidence)})
-            )
+            receipts.append(receipt.model_copy(update={"evidence": tuple(portable_evidence)}))
         references = tuple(sorted(evidence_by_id.values(), key=lambda item: item.id))
         receipt_tuple = tuple(receipts)
         self._validate_reference_retrieval_state(
@@ -10504,9 +10046,7 @@ class PodcastSubtitleV2:
             source_id: _portable_reference_artifact(artifact)
             for source_id, artifact in declared_artifacts.items()
         }
-        reference_policy = request.policy.reference_retrieval_snapshot(
-            tuple(request.vocabulary)
-        )
+        reference_policy = request.policy.reference_retrieval_snapshot(tuple(request.vocabulary))
         prepared = _reference_retrieval_requests(
             transcript=preliminary.transcript,
             policy=reference_policy,
@@ -10518,9 +10058,7 @@ class PodcastSubtitleV2:
         if callable(retrieve_many):
             retrieved = tuple(retrieve_many(prepared))
         else:
-            retrieved = tuple(
-                self._reference_retriever.retrieve(item) for item in prepared
-            )
+            retrieved = tuple(self._reference_retriever.retrieve(item) for item in prepared)
         if len(retrieved) != len(prepared):
             raise GenerationIsolationError(
                 "Reference Retriever did not return exactly one receipt per canonical span"
@@ -10544,10 +10082,8 @@ class PodcastSubtitleV2:
                 or receipt.context != retrieval_request.context
                 or receipt.policy != retrieval_request.policy
                 or receipt.candidate_terms != retrieval_request.candidate_terms
-                or receipt.allowed_source_ids
-                != tuple(sorted(declared_artifacts))
-                or receipt.max_results
-                != reference_policy.max_results
+                or receipt.allowed_source_ids != tuple(sorted(declared_artifacts))
+                or receipt.max_results != reference_policy.max_results
                 or len(receipt.evidence) > receipt.max_results
             ):
                 raise GenerationIsolationError(
@@ -10663,9 +10199,7 @@ class PodcastSubtitleV2:
     ) -> GenerationOutcome:
         transcript = result.transcript
         _validate_canonical_acceptance_identity(transcript)
-        expected_outcome = (
-            "accepted" if transcript.status == "accepted" else "needs_review"
-        )
+        expected_outcome = "accepted" if transcript.status == "accepted" else "needs_review"
         if result.outcome != expected_outcome:
             raise GenerationIsolationError(
                 "Canonical Build outcome differs from persisted acceptance status"
@@ -10800,12 +10334,8 @@ class PodcastSubtitleV2:
             context="Generation commit",
         )
         audio_artifacts = _audio_artifacts_payload(receipt)
-        self.store.audio_path(
-            receipt.source.sha256, size_bytes=receipt.source.size_bytes
-        )
-        self.store.audio_path(
-            receipt.normalized.sha256, size_bytes=receipt.normalized.size_bytes
-        )
+        self.store.audio_path(receipt.source.sha256, size_bytes=receipt.source.size_bytes)
+        self.store.audio_path(receipt.normalized.sha256, size_bytes=receipt.normalized.size_bytes)
         stage_hashes = {
             "adapter_identities": hash_object(
                 {
@@ -10813,9 +10343,7 @@ class PodcastSubtitleV2:
                     "corrector": self._corrector_identity,
                     "corrector_execution": self._corrector_execution_identity,
                     "audio_auditor": self._audio_auditor.identity,
-                    "speech_coverage_analyzer": (
-                        self._speech_coverage_analyzer_identity
-                    ),
+                    "speech_coverage_analyzer": (self._speech_coverage_analyzer_identity),
                     "arbiter": self._arbiter.identity if self._arbiter is not None else None,
                     "reference_retriever": self._reference_retriever_identity,
                     "speaker_attributor": speaker_attributor_identity,
@@ -10834,14 +10362,10 @@ class PodcastSubtitleV2:
             "speech_coverage_raw_artifacts": hash_object(
                 tuple(
                     (name, sha256_bytes(payload))
-                    for name, payload in sorted(
-                        speech_coverage_raw_artifacts.items()
-                    )
+                    for name, payload in sorted(speech_coverage_raw_artifacts.items())
                 )
             ),
-            "speaker_base_recognition_evidence": hash_object(
-                speaker_base_evidence
-            ),
+            "speaker_base_recognition_evidence": hash_object(speaker_base_evidence),
             "speaker_attribution_provenance": hash_object(speaker_provenance),
             "reference_enrollments": hash_object(enrolled_artifacts),
             "reference_retrieval_policy": hash_object(reference_retrieval_policy),
@@ -10860,9 +10384,7 @@ class PodcastSubtitleV2:
             ),
             "reference_retrieval_receipts": hash_object(retrievals),
             "correction_audit_receipts": hash_object(correction_audits),
-            "targeted_correction_audit_receipts": hash_object(
-                targeted_correction_audits
-            ),
+            "targeted_correction_audit_receipts": hash_object(targeted_correction_audits),
             "correction_execution_artifacts": hash_object(
                 tuple(
                     (name, sha256_bytes(payload))
@@ -10882,15 +10404,12 @@ class PodcastSubtitleV2:
             "risks": hash_object(tuple(_risk_payload(risk) for risk in result.risks)),
             "raw_recognition_outputs": hash_object(
                 tuple(
-                    (name, sha256_bytes(payload))
-                    for name, payload in sorted(raw_outputs.items())
+                    (name, sha256_bytes(payload)) for name, payload in sorted(raw_outputs.items())
                 )
             ),
         }
         if transcript.orthographic_projection_evidence_hash is not None:
-            stage_hashes["orthographic_projection_evidence"] = hash_object(
-                orthographic_projections
-            )
+            stage_hashes["orthographic_projection_evidence"] = hash_object(orthographic_projections)
         input_artifact_hashes = {
             "source_audio": transcript.source_audio_hash,
             "normalized_audio": transcript.normalized_audio_hash,
@@ -10907,9 +10426,7 @@ class PodcastSubtitleV2:
                 if speech_coverage_receipt is not None
                 else hash_object(None)
             ),
-            "speaker_base_recognition_evidence": hash_object(
-                speaker_base_evidence
-            ),
+            "speaker_base_recognition_evidence": hash_object(speaker_base_evidence),
             "speaker_attribution_provenance": hash_object(speaker_provenance),
             "ledger_head": transcript.ledger_hash,
             "reference_enrollments": hash_object(enrolled_artifacts),
@@ -10938,9 +10455,7 @@ class PodcastSubtitleV2:
                     "corrector": self._corrector_identity,
                     "corrector_execution": self._corrector_execution_identity,
                     "audio_auditor": self._audio_auditor.identity,
-                    "speech_coverage_analyzer": (
-                        self._speech_coverage_analyzer_identity
-                    ),
+                    "speech_coverage_analyzer": (self._speech_coverage_analyzer_identity),
                     "arbiter": self._arbiter.identity if self._arbiter is not None else None,
                     "reference_retriever": self._reference_retriever_identity,
                     "speaker_attributor": speaker_attributor_identity,
@@ -10973,9 +10488,7 @@ class PodcastSubtitleV2:
                 "corrector": self._corrector_identity,
                 "corrector_execution": self._corrector_execution_identity,
                 "audio_auditor": self._audio_auditor.identity,
-                "speech_coverage_analyzer": (
-                    self._speech_coverage_analyzer_identity
-                ),
+                "speech_coverage_analyzer": (self._speech_coverage_analyzer_identity),
                 "arbiter": self._arbiter.identity if self._arbiter is not None else None,
                 "reference_retriever": self._reference_retriever_identity,
                 "speaker_attributor": speaker_attributor_identity,
@@ -11004,9 +10517,7 @@ class PodcastSubtitleV2:
             self.store.set_active(stored.generation_id)
         if result.outcome == "accepted":
             return AcceptedGeneration(stored.generation_id, transcript, manifest)
-        issues = tuple(
-            issue for issue in transcript.review_issues if issue.status == "unresolved"
-        )
+        issues = tuple(issue for issue in transcript.review_issues if issue.status == "unresolved")
         return NeedsReview(stored.generation_id, transcript, issues, manifest)
 
     def _load_native_generation_model(
@@ -11029,9 +10540,7 @@ class PodcastSubtitleV2:
                 f"native Generation artifact {name!r} is invalid"
             ) from exc
         if canonical_json_bytes(value) != payload:
-            raise GenerationIsolationError(
-                f"native Generation artifact {name!r} is not canonical"
-            )
+            raise GenerationIsolationError(f"native Generation artifact {name!r} is not canonical")
         return value
 
     def _load_native_generation_source_set(
@@ -11072,9 +10581,7 @@ class PodcastSubtitleV2:
             ):
                 raise GenerationIsolationError("native Generation source identity is invalid")
             payload = load(name)
-            if entry["sha256"] != sha256_bytes(payload) or entry["size_bytes"] != len(
-                payload
-            ):
+            if entry["sha256"] != sha256_bytes(payload) or entry["size_bytes"] != len(payload):
                 raise GenerationIsolationError("native Generation source digest mismatch")
             sources[uri] = payload
             names.add(name)
@@ -11084,20 +10591,13 @@ class PodcastSubtitleV2:
         }.get(index_name)
         if namespace is None:
             raise GenerationIsolationError("native Generation source index role is unknown")
-        expected_index, expected_artifacts = _address_native_sources(
-            sources, namespace=namespace
-        )
+        expected_index, expected_artifacts = _address_native_sources(sources, namespace=namespace)
         if (
             index_bytes != expected_index
             or names != {index_name, *expected_artifacts}
-            or any(
-                load(name) != payload
-                for name, payload in expected_artifacts.items()
-            )
+            or any(load(name) != payload for name, payload in expected_artifacts.items())
         ):
-            raise GenerationIsolationError(
-                "native Generation source index is not canonical"
-            )
+            raise GenerationIsolationError("native Generation source index is not canonical")
         return sources, names
 
     def _load_native_generation_run_bytes(
@@ -11149,10 +10649,7 @@ class PodcastSubtitleV2:
         if (
             index_bytes != expected_index
             or names != {index_name, *expected_artifacts}
-            or any(
-                load(name) != payload
-                for name, payload in expected_artifacts.items()
-            )
+            or any(load(name) != payload for name, payload in expected_artifacts.items())
         ):
             raise GenerationIsolationError("native Generation run index is not canonical")
         return result, names
@@ -11201,9 +10698,7 @@ class PodcastSubtitleV2:
             receipt_namespace = "human_original_confirmation"
         policy_bytes = read_artifact(policy_name)
         try:
-            declared = authorization_model.model_validate_json(
-                authorization_bytes, strict=True
-            )
+            declared = authorization_model.model_validate_json(authorization_bytes, strict=True)
             candidate_model = (
                 TextDiscoveredCandidateV2
                 if declared.candidate_modality == "text"
@@ -11230,10 +10725,7 @@ class PodcastSubtitleV2:
             require_active=False,
         )
         parent_result = parent.result
-        if (
-            hash_object(parent.storage.manifest.materialize())
-            != manifest.parent_manifest_hash
-        ):
+        if hash_object(parent.storage.manifest.materialize()) != manifest.parent_manifest_hash:
             raise GenerationIsolationError(
                 "native resolution child names a different exact parent manifest"
             )
@@ -11254,13 +10746,9 @@ class PodcastSubtitleV2:
                 "native resolution candidate differs from the stored parent discovery"
             )
         index_bytes = read_artifact(receipt_index_name)
-        index = _canonical_json_value(
-            index_bytes, label=receipt_index_name
-        )
+        index = _canonical_json_value(index_bytes, label=receipt_index_name)
         if not isinstance(index, dict) or set(index) != {"schema_version", "receipts"}:
-            raise GenerationIsolationError(
-                "native resolution human-review index is invalid"
-            )
+            raise GenerationIsolationError("native resolution human-review index is invalid")
         receipt_names = index["receipts"]
         if index["schema_version"] != 2 or not isinstance(receipt_names, list):
             raise GenerationIsolationError(
@@ -11274,8 +10762,7 @@ class PodcastSubtitleV2:
                 )
             payload = read_artifact(name)
             expected_name = (
-                f"native_resolution/{receipt_namespace}/{ordinal:04d}-"
-                f"{sha256_bytes(payload)}.json"
+                f"native_resolution/{receipt_namespace}/{ordinal:04d}-{sha256_bytes(payload)}.json"
             )
             if name != expected_name:
                 raise GenerationIsolationError(
@@ -11334,8 +10821,7 @@ class PodcastSubtitleV2:
         else:
             policy = verify_original_confirmation_policy(policy_bytes)
             human_original_receipts = tuple(
-                verify_human_original_confirmation_receipt(payload)
-                for payload in receipt_bytes
+                verify_human_original_confirmation_receipt(payload) for payload in receipt_bytes
             )
             authorization = verify_original_confirmation_authorization(
                 authorization_bytes,
@@ -11350,16 +10836,12 @@ class PodcastSubtitleV2:
             )
         span_by_id = {span.id: span for span in parent_result.transcript.spans}
         try:
-            cited_spans = tuple(
-                span_by_id[span_id] for span_id in candidate.cited_span_ids
-            )
+            cited_spans = tuple(span_by_id[span_id] for span_id in candidate.cited_span_ids)
         except KeyError as exc:
             raise GenerationIsolationError(
                 "native resolution candidate cites a missing parent span"
             ) from exc
-        fingerprint = review_target_fingerprint(
-            parent_result.transcript, candidate.cited_span_ids
-        )
+        fingerprint = review_target_fingerprint(parent_result.transcript, candidate.cited_span_ids)
         decision = verify_native_correction_decision(
             decision_bytes,
             episode_id=parent_result.transcript.episode_id,
@@ -11378,9 +10860,7 @@ class PodcastSubtitleV2:
         try:
             decoded_entry = decode_ledger_entry(entry)
         except LedgerDecisionCodecError as exc:
-            raise GenerationIsolationError(
-                "native resolution Ledger decision is invalid"
-            ) from exc
+            raise GenerationIsolationError("native resolution Ledger decision is invalid") from exc
         if (
             decoded_entry.decision != decision
             or entry.previous_hash != parent_result.transcript.ledger_hash
@@ -11416,14 +10896,10 @@ class PodcastSubtitleV2:
                 "native resolution child aggregate crossed its audit basis Generation"
             )
         human_audio_receipts = (
-            human_receipts
-            if isinstance(declared, CorrectionAcceptanceVerdictV2)
-            else ()
+            human_receipts if isinstance(declared, CorrectionAcceptanceVerdictV2) else ()
         )
         human_original_confirmation_receipts = (
-            ()
-            if isinstance(declared, CorrectionAcceptanceVerdictV2)
-            else human_original_receipts
+            () if isinstance(declared, CorrectionAcceptanceVerdictV2) else human_original_receipts
         )
         resolution = LoadedNativeResolutionState(
             authorization_kind=parsed_decision.authorization_kind,
@@ -11438,14 +10914,10 @@ class PodcastSubtitleV2:
                 entry_hash=entry.entry_hash,
             ),
             human_audio_receipts=human_audio_receipts,
-            human_original_confirmation_receipts=(
-                human_original_confirmation_receipts
-            ),
+            human_original_confirmation_receipts=(human_original_confirmation_receipts),
             reference_proof=proof,
             reference_adjudication=(
-                adjudication
-                if isinstance(declared, CorrectionAcceptanceVerdictV2)
-                else None
+                adjudication if isinstance(declared, CorrectionAcceptanceVerdictV2) else None
             ),
             artifacts=LoadedNativeResolutionArtifacts(
                 decision=verified_artifact(_NATIVE_RESOLUTION_DECISION),
@@ -11551,10 +11023,7 @@ class PodcastSubtitleV2:
             stored_recognizers != self._runtime_recognizer_identities()
             or stored_speech != self._speech_coverage_analyzer_identity
             or stored_reference != self._reference_retriever_identity
-            or (
-                stored_speaker is not None
-                and stored_speaker != self._speaker_attributor_identity
-            )
+            or (stored_speaker is not None and stored_speaker != self._speaker_attributor_identity)
             or stored_text_identity != bundle.text_executor.identity
             or stored_text_policy != bundle.text_executor.policy
             or stored_audio_identity != bundle.audio_executor.identity
@@ -11616,9 +11085,7 @@ class PodcastSubtitleV2:
             generation_warnings=transcript.generation_warnings,
         )
         resolution_artifact_names = {
-            name
-            for name in record.artifact_hashes
-            if name.startswith("native_resolution/")
+            name for name in record.artifact_hashes if name.startswith("native_resolution/")
         }
         is_resolution_child = bool(resolution_artifact_names)
         if is_resolution_child and _NATIVE_RESOLUTION_DECISION not in resolution_artifact_names:
@@ -11626,9 +11093,7 @@ class PodcastSubtitleV2:
                 "native resolution artifact profile lacks its Decision discriminant"
             )
         audit_basis = (
-            _native_resolved_audit_basis(stored_result)
-            if is_resolution_child
-            else stored_result
+            _native_resolved_audit_basis(stored_result) if is_resolution_child else stored_result
         )
         audit_transcript = audit_basis.transcript
 
@@ -11643,8 +11108,7 @@ class PodcastSubtitleV2:
             receipt.status != "accepted"
             or receipt.source.sha256 != transcript.source_audio_hash
             or receipt.normalized.sha256 != transcript.normalized_audio_hash
-            or normalization_receipt_content_hash(receipt)
-            != transcript.normalization_receipt_hash
+            or normalization_receipt_content_hash(receipt) != transcript.normalization_receipt_hash
         ):
             raise GenerationIsolationError("native Normalization Receipt lineage mismatch")
         audio_artifacts = load_value(_AUDIO_ARTIFACTS)
@@ -11656,15 +11120,13 @@ class PodcastSubtitleV2:
         normalized_audio = self.store.audio_path(
             receipt.normalized.sha256, size_bytes=receipt.normalized.size_bytes
         )
-        recognition_request_artifact, recognition_request = (
-            self._load_stored_recognition_request(
-                generation_id,
-                episode_id=transcript.episode_id,
-                normalized_audio=normalized_audio,
-                normalized_sha256=receipt.normalized.sha256,
-                normalized_size_bytes=receipt.normalized.size_bytes,
-                read_artifact=read_artifact,
-            )
+        recognition_request_artifact, recognition_request = self._load_stored_recognition_request(
+            generation_id,
+            episode_id=transcript.episode_id,
+            normalized_audio=normalized_audio,
+            normalized_sha256=receipt.normalized.sha256,
+            normalized_size_bytes=receipt.normalized.size_bytes,
+            read_artifact=read_artifact,
         )
         recognition_independence = self._load_stored_recognition_independence(
             generation_id,
@@ -11730,9 +11192,7 @@ class PodcastSubtitleV2:
                 raise GenerationIsolationError("native Recognition raw digest conflicts")
             raw_outputs[name] = payload
         original_evidence = (
-            (speaker_base_evidence[0], *evidence[1:])
-            if speaker_base_evidence
-            else evidence
+            (speaker_base_evidence[0], *evidence[1:]) if speaker_base_evidence else evidence
         )
         invocation_ids = {item.invocation_id for item in original_evidence}
         if len(invocation_ids) != 1:
@@ -11767,9 +11227,7 @@ class PodcastSubtitleV2:
 
         speech_payload = load_value(_SPEECH_COVERAGE)
         speech_coverage_receipt = (
-            None
-            if speech_payload is None
-            else SpeechCoverageReceipt.model_validate(speech_payload)
+            None if speech_payload is None else SpeechCoverageReceipt.model_validate(speech_payload)
         )
         speech_coverage_raw_artifacts: dict[str, bytes] = {}
         if speech_coverage_receipt is None:
@@ -11778,9 +11236,7 @@ class PodcastSubtitleV2:
         else:
             if self._speech_coverage_analyzer is None or receipt.normalized_duration_ms is None:
                 raise GenerationIsolationError("native Speech Coverage runtime is absent")
-            raw_name = speech_coverage_receipt.raw_output.uri.removeprefix(
-                "generation-artifact://"
-            )
+            raw_name = speech_coverage_receipt.raw_output.uri.removeprefix("generation-artifact://")
             if raw_name != (
                 f"speech_coverage/raw/{speech_coverage_receipt.raw_output.sha256}.json"
             ):
@@ -11834,9 +11290,7 @@ class PodcastSubtitleV2:
         reference_retrieval_policy = ReferenceRetrievalPolicySnapshot.model_validate(
             retrieval_policy_payload
         )
-        references = tuple(
-            ReferenceEvidence.model_validate(item) for item in reference_payload
-        )
+        references = tuple(ReferenceEvidence.model_validate(item) for item in reference_payload)
         retrievals = tuple(
             ReferenceRetrievalReceipt.model_validate(item) for item in retrieval_payload
         )
@@ -12131,9 +11585,7 @@ class PodcastSubtitleV2:
                 }
             )
         expected_stage_hashes = {
-            "adapter_identities": sha256_bytes(
-                read_artifact(_ADAPTER_IDENTITIES)
-            ),
+            "adapter_identities": sha256_bytes(read_artifact(_ADAPTER_IDENTITIES)),
             "normalization_receipt": hash_object(receipt),
             "recognition_request": recognition_request_artifact.content_hash,
             "recognition_independence": (
@@ -12146,27 +11598,13 @@ class PodcastSubtitleV2:
             "reference_retrieval_receipts": hash_object(retrievals),
             "canonical_transcript": hash_object(transcript),
             "risks": hash_object(tuple(_risk_payload(item) for item in risks)),
-            "native_audit_plan": sha256_bytes(
-                read_artifact(_NATIVE_AUDIT_PLAN)
-            ),
-            "native_candidate_signal_set": sha256_bytes(
-                read_artifact(_NATIVE_CANDIDATE_SIGNALS)
-            ),
-            "native_candidate_group_set": sha256_bytes(
-                read_artifact(_NATIVE_CANDIDATE_GROUPS)
-            ),
-            "native_execution_plan": sha256_bytes(
-                read_artifact(_NATIVE_EXECUTION_PLAN)
-            ),
-            "native_text_audit_record": sha256_bytes(
-                read_artifact(_NATIVE_TEXT_RECORD)
-            ),
-            "native_audio_audit_record": sha256_bytes(
-                read_artifact(_NATIVE_AUDIO_RECORD)
-            ),
-            "native_full_audit_aggregate": sha256_bytes(
-                read_artifact(_NATIVE_AGGREGATE)
-            ),
+            "native_audit_plan": sha256_bytes(read_artifact(_NATIVE_AUDIT_PLAN)),
+            "native_candidate_signal_set": sha256_bytes(read_artifact(_NATIVE_CANDIDATE_SIGNALS)),
+            "native_candidate_group_set": sha256_bytes(read_artifact(_NATIVE_CANDIDATE_GROUPS)),
+            "native_execution_plan": sha256_bytes(read_artifact(_NATIVE_EXECUTION_PLAN)),
+            "native_text_audit_record": sha256_bytes(read_artifact(_NATIVE_TEXT_RECORD)),
+            "native_audio_audit_record": sha256_bytes(read_artifact(_NATIVE_AUDIO_RECORD)),
+            "native_full_audit_aggregate": sha256_bytes(read_artifact(_NATIVE_AGGREGATE)),
         }
         if transcript.orthographic_projection_evidence_hash is not None:
             expected_stage_hashes["orthographic_projection_evidence"] = hash_object(
@@ -12185,9 +11623,7 @@ class PodcastSubtitleV2:
                         tuple(
                             (
                                 name,
-                                sha256_bytes(
-                                    read_artifact(name)
-                                ),
+                                sha256_bytes(read_artifact(name)),
                             )
                             for name in sorted(resolution_names)
                         )
@@ -12260,10 +11696,9 @@ class PodcastSubtitleV2:
             reference_evidence_hash=transcript.reference_evidence_hash,
             generation_warnings=transcript.generation_warnings,
         )
+
         def verified_set(names: set[str] | tuple[str, ...]) -> VerifiedArtifactSet:
-            return VerifiedArtifactSet(
-                tuple(verified_artifact(name) for name in sorted(names))
-            )
+            return VerifiedArtifactSet(tuple(verified_artifact(name) for name in sorted(names)))
 
         loaded_speech_identity = (
             None
@@ -12318,19 +11753,13 @@ class PodcastSubtitleV2:
             )
 
         text_request_names = {
-            name
-            for name in text_run_names
-            if name.startswith("native_full_audit/text/requests/")
+            name for name in text_run_names if name.startswith("native_full_audit/text/requests/")
         }
         text_response_names = {
-            name
-            for name in text_run_names
-            if name.startswith("native_full_audit/text/responses/")
+            name for name in text_run_names if name.startswith("native_full_audit/text/responses/")
         }
         audio_request_names = {
-            name
-            for name in audio_run_names
-            if name.startswith("native_full_audit/audio/requests/")
+            name for name in audio_run_names if name.startswith("native_full_audit/audio/requests/")
         }
         audio_response_names = {
             name
@@ -12338,14 +11767,10 @@ class PodcastSubtitleV2:
             if name.startswith("native_full_audit/audio/responses/")
         }
         audio_clip_names = {
-            name
-            for name in audio_run_names
-            if name.startswith("native_full_audit/audio/clips/")
+            name for name in audio_run_names if name.startswith("native_full_audit/audio/clips/")
         }
         audio_journal_names = {
-            name
-            for name in audio_run_names
-            if name.startswith("native_full_audit/audio/journals/")
+            name for name in audio_run_names if name.startswith("native_full_audit/audio/journals/")
         }
         loaded = LoadedGenerationState(
             result=result,
@@ -12407,12 +11832,8 @@ class PodcastSubtitleV2:
                 candidate_signals=signals,
                 candidate_groups=groups,
                 execution_plan=execution,
-                text_sources=native_sources(
-                    "text", text_sources, _NATIVE_TEXT_SOURCE_INDEX
-                ),
-                audio_sources=native_sources(
-                    "audio", audio_sources, _NATIVE_AUDIO_SOURCE_INDEX
-                ),
+                text_sources=native_sources("text", text_sources, _NATIVE_TEXT_SOURCE_INDEX),
+                audio_sources=native_sources("audio", audio_sources, _NATIVE_AUDIO_SOURCE_INDEX),
                 text_run=text_run,
                 audio_run=audio_run,
                 aggregate=aggregate,
@@ -12525,9 +11946,7 @@ class PodcastSubtitleV2:
             return json.loads(read_artifact(name))
 
         adapter_identities_payload = load_json(_ADAPTER_IDENTITIES)
-        if not isinstance(adapter_identities_payload, dict) or set(
-            adapter_identities_payload
-        ) != {
+        if not isinstance(adapter_identities_payload, dict) or set(adapter_identities_payload) != {
             "recognizers",
             "corrector",
             "corrector_execution",
@@ -12570,11 +11989,9 @@ class PodcastSubtitleV2:
         if (
             stored_recognizer_identities != self._runtime_recognizer_identities()
             or stored_corrector_identity != self._corrector_identity
-            or stored_corrector_execution_identity
-            != self._corrector_execution_identity
+            or stored_corrector_execution_identity != self._corrector_execution_identity
             or stored_audio_auditor_identity != self._audio_auditor.identity
-            or stored_speech_coverage_identity
-            != self._speech_coverage_analyzer_identity
+            or stored_speech_coverage_identity != self._speech_coverage_analyzer_identity
             or stored_arbiter_identity
             != (self._arbiter.identity if self._arbiter is not None else None)
             or stored_reference_identity != self._reference_retriever_identity
@@ -12598,10 +12015,7 @@ class PodcastSubtitleV2:
             raise GenerationIsolationError("stored receipt source lineage mismatch")
         if receipt.normalized.sha256 != transcript.normalized_audio_hash:
             raise GenerationIsolationError("stored receipt normalized lineage mismatch")
-        if (
-            normalization_receipt_content_hash(receipt)
-            != transcript.normalization_receipt_hash
-        ):
+        if normalization_receipt_content_hash(receipt) != transcript.normalization_receipt_hash:
             raise GenerationIsolationError("stored receipt content identity mismatch")
         audio_artifacts = load_json(_AUDIO_ARTIFACTS)
         if audio_artifacts != _audio_artifacts_payload(receipt):
@@ -12614,23 +12028,19 @@ class PodcastSubtitleV2:
         normalized_audio = self.store.audio_path(
             receipt.normalized.sha256, size_bytes=receipt.normalized.size_bytes
         )
-        recognition_request_artifact, recognition_request = (
-            self._load_stored_recognition_request(
-                generation_id,
-                episode_id=transcript.episode_id,
-                normalized_audio=normalized_audio,
-                normalized_sha256=receipt.normalized.sha256,
-                normalized_size_bytes=receipt.normalized.size_bytes,
-                read_artifact=read_artifact,
-            )
+        recognition_request_artifact, recognition_request = self._load_stored_recognition_request(
+            generation_id,
+            episode_id=transcript.episode_id,
+            normalized_audio=normalized_audio,
+            normalized_sha256=receipt.normalized.sha256,
+            normalized_size_bytes=receipt.normalized.size_bytes,
+            read_artifact=read_artifact,
         )
         recognition_independence = self._load_stored_recognition_independence(
             generation_id,
             read_artifact=read_artifact,
         )
-        evidence = tuple(
-            RecognitionEvidence.model_validate(item) for item in load_json(_EVIDENCE)
-        )
+        evidence = tuple(RecognitionEvidence.model_validate(item) for item in load_json(_EVIDENCE))
         if not evidence:
             raise GenerationIsolationError("stored generation lacks Recognition Evidence")
         if transcript.orthographic_projection_evidence_hash is None:
@@ -12671,12 +12081,9 @@ class PodcastSubtitleV2:
                 raise GenerationIsolationError(
                     "stored normalized audio lacks duration for Speech Coverage replay"
                 )
-            raw_name = speech_coverage_receipt.raw_output.uri.removeprefix(
-                "generation-artifact://"
-            )
+            raw_name = speech_coverage_receipt.raw_output.uri.removeprefix("generation-artifact://")
             expected_raw_name = (
-                "speech_coverage/raw/"
-                f"{speech_coverage_receipt.raw_output.sha256}.json"
+                f"speech_coverage/raw/{speech_coverage_receipt.raw_output.sha256}.json"
             )
             if raw_name != expected_raw_name:
                 raise GenerationIsolationError(
@@ -12732,16 +12139,13 @@ class PodcastSubtitleV2:
                 "Canonical Transcript Speech Coverage attestation mismatch"
             )
         speaker_base_evidence = tuple(
-            RecognitionEvidence.model_validate(item)
-            for item in load_json(_BASE_PRIMARY_EVIDENCE)
+            RecognitionEvidence.model_validate(item) for item in load_json(_BASE_PRIMARY_EVIDENCE)
         )
         speaker_provenance_payload = load_json(_SPEAKER_PROVENANCE)
         speaker_provenance = (
             None
             if speaker_provenance_payload is None
-            else SpeakerAttributionProvenance.from_payload(
-                speaker_provenance_payload
-            )
+            else SpeakerAttributionProvenance.from_payload(speaker_provenance_payload)
         )
         raw_outputs: dict[str, bytes] = {}
         seen_raw_digests: set[str] = set()
@@ -12758,9 +12162,7 @@ class PodcastSubtitleV2:
                 raise GenerationIsolationError("stored Recognition raw output mismatch")
             raw_outputs[name] = payload
         original_recognition_evidence = (
-            (speaker_base_evidence[0], *evidence[1:])
-            if speaker_base_evidence
-            else evidence
+            (speaker_base_evidence[0], *evidence[1:]) if speaker_base_evidence else evidence
         )
         invocation_ids = {item.invocation_id for item in original_recognition_evidence}
         if len(invocation_ids) != 1:
@@ -12795,9 +12197,7 @@ class PodcastSubtitleV2:
                 raise GenerationIsolationError(
                     "stored Speaker Attribution Adapter identity mismatch"
                 )
-            attribution_raw = raw_outputs[
-                f"raw_evidence/{evidence[0].raw_output.sha256}.json"
-            ]
+            attribution_raw = raw_outputs[f"raw_evidence/{evidence[0].raw_output.sha256}.json"]
             verified_speaker_provenance = self._speaker_attributor.verify(
                 evidence[0],
                 base_evidence=speaker_base_evidence[0],
@@ -12820,21 +12220,14 @@ class PodcastSubtitleV2:
                 "attributed primary Evidence lacks persisted base provenance"
             )
         enrolled_artifacts = tuple(
-            ReferenceArtifact.model_validate(item)
-            for item in load_json(_REFERENCE_ENROLLMENTS)
+            ReferenceArtifact.model_validate(item) for item in load_json(_REFERENCE_ENROLLMENTS)
         )
         reference_retrieval_policy = ReferenceRetrievalPolicySnapshot.model_validate(
             load_json(_REFERENCE_RETRIEVAL_POLICY)
         )
-        if len({item.source_id for item in enrolled_artifacts}) != len(
-            enrolled_artifacts
-        ):
-            raise GenerationIsolationError(
-                "stored Reference Enrollments have duplicate source IDs"
-            )
-        enrolled_by_source = {
-            artifact.source_id: artifact for artifact in enrolled_artifacts
-        }
+        if len({item.source_id for item in enrolled_artifacts}) != len(enrolled_artifacts):
+            raise GenerationIsolationError("stored Reference Enrollments have duplicate source IDs")
+        enrolled_by_source = {artifact.source_id: artifact for artifact in enrolled_artifacts}
         reference_source_snapshots: dict[str, bytes] = {}
         reference_extraction_snapshots: dict[str, bytes] = {}
         source_snapshots_by_digest: dict[str, bytes] = {}
@@ -12847,9 +12240,7 @@ class PodcastSubtitleV2:
                 )
             source_name = f"reference_sources/{artifact.digest.sha256}.bin"
             source_payload = read_artifact(source_name)
-            extraction_name = (
-                f"reference_extractions/{artifact.extracted_text.sha256}.json"
-            )
+            extraction_name = f"reference_extractions/{artifact.extracted_text.sha256}.json"
             extraction_payload = read_artifact(extraction_name)
             ReferenceEnrollment(
                 artifact=artifact,
@@ -12869,16 +12260,12 @@ class PodcastSubtitleV2:
                 )
             source_snapshots_by_digest[artifact.digest.sha256] = source_payload
             reference_source_snapshots[source_name] = source_payload
-            previous = extraction_snapshots_by_digest.get(
-                artifact.extracted_text.sha256
-            )
+            previous = extraction_snapshots_by_digest.get(artifact.extracted_text.sha256)
             if previous is not None and previous != extraction_payload:
                 raise GenerationIsolationError(
                     "stored Reference extraction digest has conflicting bytes"
                 )
-            extraction_snapshots_by_digest[
-                artifact.extracted_text.sha256
-            ] = extraction_payload
+            extraction_snapshots_by_digest[artifact.extracted_text.sha256] = extraction_payload
             reference_extraction_snapshots[extraction_name] = extraction_payload
         references = tuple(
             ReferenceEvidence.model_validate(item) for item in load_json(_REFERENCES)
@@ -12886,12 +12273,9 @@ class PodcastSubtitleV2:
         retrievals = tuple(
             ReferenceRetrievalReceipt.model_validate(item) for item in load_json(_RETRIEVALS)
         )
-        proposals = tuple(
-            CorrectionProposal(**item) for item in load_json(_PROPOSALS)
-        )
+        proposals = tuple(CorrectionProposal(**item) for item in load_json(_PROPOSALS))
         correction_audits = tuple(
-            CorrectionAuditReceipt.model_validate(item)
-            for item in load_json(_CORRECTION_AUDITS)
+            CorrectionAuditReceipt.model_validate(item) for item in load_json(_CORRECTION_AUDITS)
         )
         targeted_correction_audits = tuple(
             _TargetedCorrectionAuditReceipt(**item)
@@ -12977,9 +12361,7 @@ class PodcastSubtitleV2:
                     "stored Reference Evidence lacks a persisted Enrollment"
                 )
             try:
-                snapshot = extraction_snapshots_by_digest[
-                    enrolled.extracted_text.sha256
-                ]
+                snapshot = extraction_snapshots_by_digest[enrolled.extracted_text.sha256]
             except KeyError as exc:
                 raise GenerationIsolationError(
                     "stored Reference Evidence extraction snapshot is missing"
@@ -12991,9 +12373,7 @@ class PodcastSubtitleV2:
             )
         reference_invocations = {item.invocation_id for item in retrievals}
         if len(reference_invocations) > 1:
-            raise GenerationIsolationError(
-                "stored Reference Retrieval Receipts cross invocations"
-            )
+            raise GenerationIsolationError("stored Reference Retrieval Receipts cross invocations")
         reference_preaudit = _derive_correction_preaudit_transcript(
             transcript,
             proposals=proposals,
@@ -13077,18 +12457,13 @@ class PodcastSubtitleV2:
                 request_payload.get("work_packet_id") != audit.work_packet_id
                 or request_payload.get("episode_id") != audit.episode_id
                 or request_payload.get("generation_id") != audit.preaudit_generation_id
-                or request_payload.get("canonical_content_hash")
-                != audit.preaudit_content_hash
+                or request_payload.get("canonical_content_hash") != audit.preaudit_content_hash
                 or request_payload.get("recognition_evidence_hash") != audit.evidence_hash
-                or request_payload.get("reference_evidence_hash")
-                != audit.reference_evidence_hash
+                or request_payload.get("reference_evidence_hash") != audit.reference_evidence_hash
                 or request_payload.get("policy_hash") != audit.policy_hash
-                or request_payload.get("normalized_audio_hash")
-                != audit.normalized_audio_hash
-                or tuple(request_payload.get("target_span_ids", ()))
-                != audit.target_span_ids
-                or request_payload.get("adapter_identity_hash")
-                != audit.adapter_identity_hash
+                or request_payload.get("normalized_audio_hash") != audit.normalized_audio_hash
+                or tuple(request_payload.get("target_span_ids", ())) != audit.target_span_ids
+                or request_payload.get("adapter_identity_hash") != audit.adapter_identity_hash
             ):
                 raise GenerationIsolationError(
                     "stored Audio Audit request bytes differ from their typed receipt"
@@ -13142,31 +12517,24 @@ class PodcastSubtitleV2:
                 or arbitration.generation_id != transcript.generation_id
                 or arbitration.canonical_content_hash != transcript.content_hash
                 or arbitration.evidence_hash != transcript.evidence_hash
-                or arbitration.reference_evidence_hash
-                != transcript.reference_evidence_hash
+                or arbitration.reference_evidence_hash != transcript.reference_evidence_hash
                 or arbitration.policy_hash != transcript.policy_hash
                 or arbitration.normalized_audio_hash != transcript.normalized_audio_hash
                 or stored_arbiter_identity is None
-                or arbitration.adapter_identity_hash
-                != stored_arbiter_identity.content_hash
+                or arbitration.adapter_identity_hash != stored_arbiter_identity.content_hash
                 or arbitration.adapter_name != stored_arbiter_identity.adapter_name
                 or arbitration.adapter_version != stored_arbiter_identity.adapter_version
                 or arbitration.model != stored_arbiter_identity.model
                 or arbitration.model_version != stored_arbiter_identity.model_version
                 or arbitration.runtime_hash != stored_arbiter_identity.runtime_hash
-                or arbitration.adapter_code_hash
-                != stored_arbiter_identity.adapter_code_hash
+                or arbitration.adapter_code_hash != stored_arbiter_identity.adapter_code_hash
                 or arbitration.config_hash != stored_arbiter_identity.config_hash
             ):
                 raise GenerationIsolationError(
                     "stored Arbitration Receipt crossed proposal, truth, or Adapter identity"
                 )
-            request_name = arbitration.request.uri.removeprefix(
-                "generation-artifact://"
-            )
-            response_name = arbitration.response.uri.removeprefix(
-                "generation-artifact://"
-            )
+            request_name = arbitration.request.uri.removeprefix("generation-artifact://")
+            response_name = arbitration.response.uri.removeprefix("generation-artifact://")
             try:
                 request_payload = json.loads(audio_execution_artifacts[request_name])
                 response_payload = json.loads(audio_execution_artifacts[response_name])
@@ -13180,15 +12548,12 @@ class PodcastSubtitleV2:
                 or request_payload.get("generation_id") != arbitration.generation_id
                 or request_payload.get("canonical_content_hash")
                 != arbitration.canonical_content_hash
-                or request_payload.get("recognition_evidence_hash")
-                != arbitration.evidence_hash
+                or request_payload.get("recognition_evidence_hash") != arbitration.evidence_hash
                 or request_payload.get("reference_evidence_hash")
                 != arbitration.reference_evidence_hash
                 or request_payload.get("policy_hash") != arbitration.policy_hash
-                or request_payload.get("normalized_audio_hash")
-                != arbitration.normalized_audio_hash
-                or request_payload.get("adapter_identity_hash")
-                != arbitration.adapter_identity_hash
+                or request_payload.get("normalized_audio_hash") != arbitration.normalized_audio_hash
+                or request_payload.get("adapter_identity_hash") != arbitration.adapter_identity_hash
                 or not isinstance(request_payload.get("proposal"), dict)
                 or request_payload["proposal"].get("id") != arbitration.proposal_id
             ):
@@ -13248,19 +12613,15 @@ class PodcastSubtitleV2:
                 or audit.evidence_hash != transcript.evidence_hash
                 or audit.reference_evidence_hash != transcript.reference_evidence_hash
                 or audit.policy_hash != transcript.policy_hash
-                or audit.adapter_identity_hash
-                != stored_corrector_execution_identity.content_hash
+                or audit.adapter_identity_hash != stored_corrector_execution_identity.content_hash
                 or audit.adapter_name != stored_corrector_execution_identity.adapter_name
-                or audit.adapter_version
-                != stored_corrector_execution_identity.adapter_version
+                or audit.adapter_version != stored_corrector_execution_identity.adapter_version
                 or audit.model != stored_corrector_execution_identity.model
                 or audit.model_version != stored_corrector_execution_identity.model_version
                 or audit.runtime_hash != stored_corrector_execution_identity.runtime_hash
-                or audit.adapter_code_hash
-                != stored_corrector_execution_identity.adapter_code_hash
+                or audit.adapter_code_hash != stored_corrector_execution_identity.adapter_code_hash
                 or audit.config_hash != stored_corrector_execution_identity.config_hash
-                or audit.execution_mode
-                != stored_corrector_execution_identity.execution_mode
+                or audit.execution_mode != stored_corrector_execution_identity.execution_mode
             ):
                 raise GenerationIsolationError(
                     "Correction Audit immutable input or executable identity mismatch"
@@ -13281,23 +12642,17 @@ class PodcastSubtitleV2:
                 or audit.policy_hash != transcript.policy_hash
                 or audit.reference_evidence_hash != transcript.reference_evidence_hash
             ):
-                raise GenerationIsolationError(
-                    "Targeted Correction Audit immutable input mismatch"
-                )
+                raise GenerationIsolationError("Targeted Correction Audit immutable input mismatch")
             if (
-                audit.adapter_identity_hash
-                != stored_corrector_execution_identity.content_hash
+                audit.adapter_identity_hash != stored_corrector_execution_identity.content_hash
                 or audit.adapter_name != stored_corrector_execution_identity.adapter_name
-                or audit.adapter_version
-                != stored_corrector_execution_identity.adapter_version
+                or audit.adapter_version != stored_corrector_execution_identity.adapter_version
                 or audit.model != stored_corrector_execution_identity.model
                 or audit.model_version != stored_corrector_execution_identity.model_version
                 or audit.runtime_hash != stored_corrector_execution_identity.runtime_hash
-                or audit.adapter_code_hash
-                != stored_corrector_execution_identity.adapter_code_hash
+                or audit.adapter_code_hash != stored_corrector_execution_identity.adapter_code_hash
                 or audit.config_hash != stored_corrector_execution_identity.config_hash
-                or audit.execution_mode
-                != stored_corrector_execution_identity.execution_mode
+                or audit.execution_mode != stored_corrector_execution_identity.execution_mode
             ):
                 raise GenerationIsolationError(
                     "Targeted Correction Audit Adapter identity mismatch"
@@ -13329,9 +12684,7 @@ class PodcastSubtitleV2:
                 if speech_coverage_receipt is not None
                 else hash_object(None)
             ),
-            "speaker_base_recognition_evidence": hash_object(
-                speaker_base_evidence
-            ),
+            "speaker_base_recognition_evidence": hash_object(speaker_base_evidence),
             "speaker_attribution_provenance": hash_object(speaker_provenance),
             "ledger_head": transcript.ledger_hash,
             "reference_enrollments": hash_object(enrolled_artifacts),
@@ -13350,8 +12703,7 @@ class PodcastSubtitleV2:
             {
                 "recognizers": stored_recognizer_identities,
                 "speaker_base_recognizers": tuple(
-                    (item.adapter, item.model, item.config_hash)
-                    for item in speaker_base_evidence
+                    (item.adapter, item.model, item.config_hash) for item in speaker_base_evidence
                 ),
                 "corrector": stored_corrector_identity,
                 "corrector_execution": stored_corrector_execution_identity,
@@ -13394,9 +12746,7 @@ class PodcastSubtitleV2:
                     for name, payload in sorted(speech_coverage_raw_artifacts.items())
                 )
             ),
-            "speaker_base_recognition_evidence": hash_object(
-                speaker_base_evidence
-            ),
+            "speaker_base_recognition_evidence": hash_object(speaker_base_evidence),
             "speaker_attribution_provenance": hash_object(speaker_provenance),
             "reference_enrollments": hash_object(enrolled_artifacts),
             "reference_retrieval_policy": hash_object(reference_retrieval_policy),
@@ -13410,16 +12760,12 @@ class PodcastSubtitleV2:
             "reference_extraction_snapshots": hash_object(
                 tuple(
                     (name, sha256_bytes(payload))
-                    for name, payload in sorted(
-                        reference_extraction_snapshots.items()
-                    )
+                    for name, payload in sorted(reference_extraction_snapshots.items())
                 )
             ),
             "reference_retrieval_receipts": hash_object(retrievals),
             "correction_audit_receipts": hash_object(correction_audits),
-            "targeted_correction_audit_receipts": hash_object(
-                targeted_correction_audits
-            ),
+            "targeted_correction_audit_receipts": hash_object(targeted_correction_audits),
             "correction_execution_artifacts": hash_object(
                 tuple(
                     (name, sha256_bytes(payload))
@@ -13439,8 +12785,7 @@ class PodcastSubtitleV2:
             "risks": hash_object(tuple(_risk_payload(risk) for risk in risks)),
             "raw_recognition_outputs": hash_object(
                 tuple(
-                    (name, sha256_bytes(payload))
-                    for name, payload in sorted(raw_outputs.items())
+                    (name, sha256_bytes(payload)) for name, payload in sorted(raw_outputs.items())
                 )
             ),
         }
@@ -13503,9 +12848,7 @@ class PodcastSubtitleV2:
         assert stored_audio_auditor_identity is not None
 
         def verified_set(names: set[str] | tuple[str, ...]) -> VerifiedArtifactSet:
-            return VerifiedArtifactSet(
-                tuple(verified_artifact(name) for name in sorted(names))
-            )
+            return VerifiedArtifactSet(tuple(verified_artifact(name) for name in sorted(names)))
 
         def loaded_adapter(identity: AdapterIdentity | None) -> LoadedAdapterIdentity | None:
             return (
@@ -13539,18 +12882,10 @@ class PodcastSubtitleV2:
                 evidence_hash=item.evidence_hash,
                 policy_hash=item.policy_hash,
                 reference_evidence_hash=item.reference_evidence_hash,
-                available_reference_evidence_ids=(
-                    item.available_reference_evidence_ids
-                ),
-                available_reference_evidence_hash=(
-                    item.available_reference_evidence_hash
-                ),
-                presented_reference_evidence_ids=(
-                    item.presented_reference_evidence_ids
-                ),
-                presented_reference_evidence_hash=(
-                    item.presented_reference_evidence_hash
-                ),
+                available_reference_evidence_ids=(item.available_reference_evidence_ids),
+                available_reference_evidence_hash=(item.available_reference_evidence_hash),
+                presented_reference_evidence_ids=(item.presented_reference_evidence_ids),
+                presented_reference_evidence_hash=(item.presented_reference_evidence_hash),
                 work_packet_id=item.work_packet_id,
                 request=item.request,
                 request_hash=item.request_hash,
@@ -13634,18 +12969,12 @@ class PodcastSubtitleV2:
                 collection_artifacts=LoadedLegacyCollectionArtifacts(
                     proposals=verified_artifact(_PROPOSALS),
                     correction_audits=verified_artifact(_CORRECTION_AUDITS),
-                    targeted_correction_audits=verified_artifact(
-                        _TARGETED_CORRECTION_AUDITS
-                    ),
+                    targeted_correction_audits=verified_artifact(_TARGETED_CORRECTION_AUDITS),
                     audio_audits=verified_artifact(_AUDIO_AUDITS),
                     arbitrations=verified_artifact(_ARBITRATIONS),
                 ),
-                correction_execution_artifacts=verified_set(
-                    set(correction_execution_artifacts)
-                ),
-                audio_execution_artifacts=verified_set(
-                    set(audio_execution_artifacts)
-                ),
+                correction_execution_artifacts=verified_set(set(correction_execution_artifacts)),
+                audio_execution_artifacts=verified_set(set(audio_execution_artifacts)),
                 runtime=LoadedLegacyRuntimeState(
                     common=LoadedCommonRuntimeState(
                         recognizers=stored_recognizer_identities,
@@ -13732,9 +13061,7 @@ class PodcastSubtitleV2:
             return
         projections_root = directory.parent
         projections_root.mkdir(parents=True, exist_ok=True)
-        temporary = Path(
-            tempfile.mkdtemp(prefix=f".{projection_id[:24]}-", dir=projections_root)
-        )
+        temporary = Path(tempfile.mkdtemp(prefix=f".{projection_id[:24]}-", dir=projections_root))
         try:
             for name, payload in payloads.items():
                 path = temporary / name
@@ -13836,8 +13163,7 @@ class PodcastSubtitleV2:
             report = QualityReport.model_validate_json(result[_QUALITY])
             profile = ProjectionProfile.model_validate_json(result[_PROFILE])
             units = tuple(
-                SemanticUnit.model_validate(item)
-                for item in json.loads(result[_SEMANTIC])
+                SemanticUnit.model_validate(item) for item in json.loads(result[_SEMANTIC])
             )
             semantic_identity = _semantic_identity_from_payload(
                 json.loads(result[_SEMANTIC_ADAPTER])
@@ -13936,13 +13262,9 @@ class PodcastSubtitleV2:
         authoritative_cues: tuple[tuple[int, int, int, int], ...] = ()
         memo_boundary_authority_hash: str | None = None
         if self._memo_boundary_authority_factory is not None:
-            authority = self._memo_boundary_authority_factory(
-                loaded.recognition.evidence[0]
-            )
+            authority = self._memo_boundary_authority_factory(loaded.recognition.evidence[0])
             memo_boundary_authority_hash = authority.content_hash
-            mandatory_cue_boundaries, authoritative_cues = authority.projection_contract(
-                canonical
-            )
+            mandatory_cue_boundaries, authoritative_cues = authority.projection_contract(canonical)
             allowed_cue_boundaries = mandatory_cue_boundaries
         derived = project_semantic_units(
             canonical.tokens,
@@ -13976,9 +13298,7 @@ class PodcastSubtitleV2:
             render_srt(derived).encode("utf-8") != result[_SRT]
             or render_sidecar_json(derived).encode("utf-8") != result[_SIDECAR]
         ):
-            raise GenerationIsolationError(
-                "rendered projection artifacts are not reproducible"
-            )
+            raise GenerationIsolationError("rendered projection artifacts are not reproducible")
         output_lineage = {
             "projection": hash_object(projection),
             "quality_report": hash_object(report),
@@ -13997,9 +13317,7 @@ class PodcastSubtitleV2:
             generation_id=canonical.generation_id,
             canonical_hash=canonical.content_hash,
             profile_hash=hash_object(profile),
-            token_sequence_hash=token_sequence_hash(
-                [token.id for token in canonical.tokens]
-            ),
+            token_sequence_hash=token_sequence_hash([token.id for token in canonical.tokens]),
             output_hash=output_hash,
         )
         if manifest != expected_manifest:

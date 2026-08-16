@@ -389,9 +389,7 @@ def build_full_audit_aggregate(
             execution_plan.reference_retrieval_receipt_set_hash
         ),
         "speech_coverage_receipt_hash": audit_plan.inputs.speech_coverage_receipt_hash,
-        "boundary_constraint_receipt_hash": (
-            audit_plan.inputs.boundary_constraint_receipt_hash
-        ),
+        "boundary_constraint_receipt_hash": (audit_plan.inputs.boundary_constraint_receipt_hash),
         "seam_evidence_hash": audit_plan.inputs.seam_evidence_hash,
         "normalized_audio_hash": audit_plan.inputs.normalized_audio_hash,
         "topology_policy_hash": execution_plan.policy_hash,

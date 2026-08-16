@@ -408,9 +408,7 @@ class LLMCorrectorAdapter:
             "available_reference_evidence_hash": reference_evidence_set_hash(
                 request.available_reference_evidence
             ),
-            "presented_reference_evidence_ids": [
-                item.id for item in request.reference_evidence
-            ],
+            "presented_reference_evidence_ids": [item.id for item in request.reference_evidence],
             "presented_reference_evidence_hash": reference_evidence_set_hash(
                 request.reference_evidence
             ),
@@ -624,9 +622,7 @@ class LLMCorrectorAdapter:
             packet_proposals = self._validate_payload(request, packet, response)
             proposals.extend(packet_proposals)
             request_bytes = canonical_json_bytes(packet)
-            packet_reference_ids = tuple(
-                str(item["id"]) for item in packet["reference_evidence"]
-            )
+            packet_reference_ids = tuple(str(item["id"]) for item in packet["reference_evidence"])
             declared_reference_ids = tuple(
                 str(item) for item in packet["presented_reference_evidence_ids"]
             )

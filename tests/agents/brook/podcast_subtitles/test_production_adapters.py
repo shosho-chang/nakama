@@ -232,9 +232,7 @@ def test_corrector_binds_available_reference_set_separately_from_presented_subse
         (presented, withheld)
     )
     assert packet["presented_reference_evidence_ids"] == [presented.id]
-    assert packet["presented_reference_evidence_hash"] == reference_evidence_set_hash(
-        (presented,)
-    )
+    assert packet["presented_reference_evidence_hash"] == reference_evidence_set_hash((presented,))
     assert [item["id"] for item in packet["reference_evidence"]] == [presented.id]
 
 
@@ -263,9 +261,7 @@ def test_corrector_packet_uses_exact_module_presented_reference_tuple() -> None:
         available_reference_evidence=(first, second),
     )
 
-    packet = LLMCorrectorAdapter(
-        model="codex", model_version="5.6-sol"
-    ).export_work_packet(request)
+    packet = LLMCorrectorAdapter(model="codex", model_version="5.6-sol").export_work_packet(request)
 
     assert packet["presented_reference_evidence_ids"] == [first.id, second.id]
     assert packet["presented_reference_evidence_hash"] == reference_evidence_set_hash(
@@ -347,10 +343,7 @@ def test_corrector_replay_rejects_packet_excerpt_removed_while_receipt_claims_it
     forged_receipt = replace(
         run.execution_receipts[0],
         request=ArtifactDigest(
-            uri=(
-                "generation-artifact://correction/requests/"
-                f"{sha256_bytes(forged_request_bytes)}"
-            ),
+            uri=(f"generation-artifact://correction/requests/{sha256_bytes(forged_request_bytes)}"),
             sha256=sha256_bytes(forged_request_bytes),
             size_bytes=len(forged_request_bytes),
         ),
@@ -593,9 +586,9 @@ def test_corrector_empty_strict_response_still_has_execution_receipt() -> None:
 
 
 def _correction_response_bytes(packet: dict[str, object]) -> bytes:
-    return (
-        json.dumps(_correction_payload(packet), ensure_ascii=False, indent=2) + "\n"
-    ).encode("utf-8")
+    return (json.dumps(_correction_payload(packet), ensure_ascii=False, indent=2) + "\n").encode(
+        "utf-8"
+    )
 
 
 def test_corrector_fresh_adapter_replays_exact_bytes_without_calling_runner() -> None:
@@ -652,9 +645,7 @@ def test_corrector_request_or_response_byte_tamper_fails_replay(
         "request_bytes": run.request_bytes,
         "response_bytes": run.response_bytes,
     }
-    replay_kwargs[f"{tampered_field}_bytes"] = (
-        replay_kwargs[f"{tampered_field}_bytes"][0] + b" ",
-    )
+    replay_kwargs[f"{tampered_field}_bytes"] = (replay_kwargs[f"{tampered_field}_bytes"][0] + b" ",)
 
     with pytest.raises(AdapterIntegrityError, match="stored Corrector execution proof"):
         adapter.replay(request, **replay_kwargs)
@@ -713,9 +704,7 @@ def test_corrector_replay_is_bound_to_current_generation_content_and_reference_s
     )
 
     generation_id = "generation-replay-drift"
-    generation_transcript = request.transcript.model_copy(
-        update={"generation_id": generation_id}
-    )
+    generation_transcript = request.transcript.model_copy(update={"generation_id": generation_id})
     generation_request = replace(
         request,
         generation_id=generation_id,
@@ -764,8 +753,7 @@ def test_corrector_replay_strictly_rejects_hostile_raw_json() -> None:
             '"proposals":[],"unexpected":true}' % packet_id
         ).encode("utf-8"),
         (
-            '{"schema_version":1,"work_packet_id":"%s",'
-            '"proposals":[],"unexpected":NaN}' % packet_id
+            '{"schema_version":1,"work_packet_id":"%s","proposals":[],"unexpected":NaN}' % packet_id
         ).encode("utf-8"),
     )
 
@@ -1201,9 +1189,7 @@ def test_audio_arbiter_low_confidence_and_default_api_gate(tmp_path: Path) -> No
     audio = tmp_path / "normalized.wav"
     audio.write_bytes(b"normalized-audio")
     request = _arbitration_request(audio)
-    adapter = GeminiAudioArbiterAdapter(
-        model="gemini-2.5-pro", model_version="2025-06"
-    )
+    adapter = GeminiAudioArbiterAdapter(model="gemini-2.5-pro", model_version="2025-06")
     with pytest.raises(AdapterUnavailableError, match="allow_paid_api=True"):
         adapter.decide(request)
 

@@ -159,9 +159,7 @@ def make_coverage(
         "recognition_interval_hash": HB,
         "coverage_tolerance_ms": 0,
         "minimum_uncovered_ms": 1,
-        "raw_output": ArtifactDigest(
-            uri="file:///coverage.json", sha256=HC, size_bytes=100
-        ),
+        "raw_output": ArtifactDigest(uri="file:///coverage.json", sha256=HC, size_bytes=100),
         "raw_output_hash": HC,
         "activity_intervals": (
             SpeechActivityInterval(
@@ -248,9 +246,7 @@ def test_plan_has_exact_n_plus_one_boundaries_and_cartesian_cells() -> None:
     transcript, recognitions = make_case()
     policy = default_correction_audit_policy()
 
-    plan = build_audit_plan(
-        transcript, recognitions, policy, references_enrolled=False
-    )
+    plan = build_audit_plan(transcript, recognitions, policy, references_enrolled=False)
 
     assert len(plan.span_targets) == 2
     assert len(plan.boundary_targets) == 3
@@ -272,25 +268,12 @@ def test_plan_applicability_is_explicit_per_target_not_global() -> None:
     )
 
     assert cell(plan, "span", 0, "lexical_fidelity").applicability == "required"
-    assert (
-        cell(plan, "span", 0, "reference_name_term").applicability
-        == "not_applicable"
-    )
-    assert (
-        cell(plan, "span", 0, "confidence_integrity").applicability
-        == "not_applicable"
-    )
-    assert (
-        cell(plan, "boundary", 0, "cross_span_fidelity").applicability
-        == "not_applicable"
-    )
-    assert (
-        cell(plan, "boundary", 1, "cross_span_fidelity").applicability == "required"
-    )
+    assert cell(plan, "span", 0, "reference_name_term").applicability == "not_applicable"
+    assert cell(plan, "span", 0, "confidence_integrity").applicability == "not_applicable"
+    assert cell(plan, "boundary", 0, "cross_span_fidelity").applicability == "not_applicable"
+    assert cell(plan, "boundary", 1, "cross_span_fidelity").applicability == "required"
     assert cell(plan, "boundary", 1, "chunk_seam").applicability == "unavailable"
-    assert (
-        cell(plan, "boundary", 1, "speech_coverage").applicability == "unavailable"
-    )
+    assert cell(plan, "boundary", 1, "speech_coverage").applicability == "unavailable"
 
 
 @pytest.mark.parametrize(
@@ -338,8 +321,7 @@ def test_coverage_assesses_leading_internal_and_trailing_boundaries() -> None:
     )
 
     assert [
-        cell(plan, "boundary", ordinal, "speech_coverage").applicability
-        for ordinal in range(3)
+        cell(plan, "boundary", ordinal, "speech_coverage").applicability for ordinal in range(3)
     ] == ["required", "required", "required"]
     assert cell(plan, "span", 1, "lexical_fidelity").applicability == "required"
 
@@ -367,12 +349,8 @@ def test_seam_observation_has_one_internal_boundary_owner(
     )
 
     assert cell(plan, "boundary", 1, "chunk_seam").applicability == expected
-    assert (
-        cell(plan, "boundary", 0, "chunk_seam").applicability == "not_applicable"
-    )
-    assert (
-        cell(plan, "boundary", 2, "chunk_seam").applicability == "not_applicable"
-    )
+    assert cell(plan, "boundary", 0, "chunk_seam").applicability == "not_applicable"
+    assert cell(plan, "boundary", 2, "chunk_seam").applicability == "not_applicable"
 
 
 def test_long_gap_seam_inside_boundary_window_is_not_rejected_by_midpoint_distance() -> None:
@@ -387,9 +365,7 @@ def test_long_gap_seam_inside_boundary_window_is_not_rejected_by_midpoint_distan
         seam_evidence=seam,
     )
 
-    assert (
-        cell(plan, "boundary", 1, "chunk_seam").applicability == "not_applicable"
-    )
+    assert cell(plan, "boundary", 1, "chunk_seam").applicability == "not_applicable"
 
 
 def test_equidistant_seam_ownership_fails_closed() -> None:
@@ -427,9 +403,7 @@ def test_seam_wrapper_cannot_name_an_arbitrary_raw_artifact() -> None:
 
 def test_transcript_and_coverage_recognition_lineage_must_match_exactly() -> None:
     transcript, recognitions = make_case()
-    forged = CanonicalTranscript.model_validate(
-        {**transcript.model_dump(), "evidence_hash": HA}
-    )
+    forged = CanonicalTranscript.model_validate({**transcript.model_dump(), "evidence_hash": HA})
     with pytest.raises(AuditPlanError, match="Canonical Recognition Evidence lineage"):
         build_audit_plan(
             forged,
@@ -538,13 +512,16 @@ def test_assert_plan_is_an_exact_rebuild_not_a_hash_only_check() -> None:
         default_correction_audit_policy(),
         references_enrolled=False,
     )
-    assert assert_audit_plan(
-        plan,
-        transcript,
-        recognitions,
-        default_correction_audit_policy(),
-        references_enrolled=False,
-    ) == plan
+    assert (
+        assert_audit_plan(
+            plan,
+            transcript,
+            recognitions,
+            default_correction_audit_policy(),
+            references_enrolled=False,
+        )
+        == plan
+    )
 
     with pytest.raises(AuditPlanError, match="not reproducible"):
         assert_audit_plan(

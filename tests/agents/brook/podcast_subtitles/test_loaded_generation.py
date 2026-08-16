@@ -242,24 +242,16 @@ def _native_audit(generation_id: str) -> LoadedNativeAuditState:
     )
     audit_artifacts = LoadedNativeAuditArtifacts(
         audit_plan=_artifact("native_full_audit/audit_plan.json", b"plan"),
-        candidate_signals=_artifact(
-            "native_full_audit/candidate_signal_set.json", b"signals"
-        ),
-        candidate_groups=_artifact(
-            "native_full_audit/candidate_group_set.json", b"groups"
-        ),
+        candidate_signals=_artifact("native_full_audit/candidate_signal_set.json", b"signals"),
+        candidate_groups=_artifact("native_full_audit/candidate_group_set.json", b"groups"),
         execution_plan=_artifact(
             "native_full_audit/correction_audit_execution_plan.json", b"execution"
         ),
-        text_record=_artifact(
-            "native_full_audit/text_audit_execution_record.json", b"text-record"
-        ),
+        text_record=_artifact("native_full_audit/text_audit_execution_record.json", b"text-record"),
         audio_record=_artifact(
             "native_full_audit/audio_audit_execution_record.json", b"audio-record"
         ),
-        aggregate=_artifact(
-            "native_full_audit/full_audit_aggregate.json", b"aggregate"
-        ),
+        aggregate=_artifact("native_full_audit/full_audit_aggregate.json", b"aggregate"),
     )
     runtime = LoadedNativeRuntimeState(
         common=_common_runtime(),
@@ -281,9 +273,7 @@ def _native_audit(generation_id: str) -> LoadedNativeAuditState:
         audio_sources=audio_sources,
         text_run=text_run,
         audio_run=audio_run,
-        aggregate=FullAuditAggregateAttestationV2.model_construct(
-            generation_id=generation_id
-        ),
+        aggregate=FullAuditAggregateAttestationV2.model_construct(generation_id=generation_id),
         audit_artifacts=audit_artifacts,
         text_run_artifacts=text_artifacts,
         audio_run_artifacts=audio_artifacts,
@@ -338,12 +328,8 @@ def _native_resolution() -> LoadedNativeResolutionState:
             candidate=_artifact("native_resolution/candidate_discovery.json", b"candidate"),
             authorization=_artifact("native_resolution/authorization.json", b"authorization"),
             policy=_artifact("native_resolution/acceptance_policy.json", b"policy"),
-            human_receipt_index=_artifact(
-                "native_resolution/human_audio_index.json", b"receipts"
-            ),
-            ledger_entry=_artifact(
-                "native_resolution/prepared_ledger_entry.json", b"ledger"
-            ),
+            human_receipt_index=_artifact("native_resolution/human_audio_index.json", b"receipts"),
+            ledger_entry=_artifact("native_resolution/prepared_ledger_entry.json", b"ledger"),
             human_receipts=VerifiedArtifactSet(),
             reference_proof=None,
             reference_adjudication=None,
@@ -437,9 +423,7 @@ def _native_loaded_generation(tmp_path) -> LoadedGenerationState:
         request_bytes=_artifact("recognition_request.json", b"request"),
         independence_bytes=_artifact("recognition_independence_receipt.json", b"null"),
         evidence_bytes=_artifact("recognition_evidence.json", b"evidence"),
-        speaker_base_evidence_bytes=_artifact(
-            "base_primary_recognition_evidence.json", b"[]"
-        ),
+        speaker_base_evidence_bytes=_artifact("base_primary_recognition_evidence.json", b"[]"),
         speaker_provenance_bytes=_artifact("speaker_attribution_provenance.json", b"null"),
         orthographic_projection_bytes=None,
         raw_outputs=VerifiedArtifactSet(
@@ -545,9 +529,7 @@ def test_loaded_storage_snapshot_breaks_mutable_manifest_and_record_aliases(
     artifact_hashes["later.json"] = "b" * 64
 
     assert tuple(item.name for item in snapshot.manifest.input_artifact_hashes) == ("input",)
-    assert snapshot.artifact_hashes == (
-        snapshot.artifact_hashes[0],
-    )
+    assert snapshot.artifact_hashes == (snapshot.artifact_hashes[0],)
     assert snapshot.artifact_hash("canonical.json") == digest
     assert snapshot.manifest.materialize() == GenerationManifest(
         id="manifest-1",
@@ -566,9 +548,7 @@ def test_legacy_audit_state_has_a_closed_discriminant_and_no_positional_api() ->
     collection_artifacts = LoadedLegacyCollectionArtifacts(
         proposals=_artifact("correction_proposals.json", b"[]"),
         correction_audits=_artifact("correction_audit_receipts.json", b"[]"),
-        targeted_correction_audits=_artifact(
-            "targeted_correction_audit_receipts.json", b"[]"
-        ),
+        targeted_correction_audits=_artifact("targeted_correction_audit_receipts.json", b"[]"),
         audio_audits=_artifact("audio_audit_receipts.json", b"[]"),
         arbitrations=_artifact("arbitration_receipts.json", b"[]"),
     )
@@ -659,12 +639,10 @@ def test_native_audit_state_carries_exact_typed_parents_under_closed_profile() -
     assert state.execution_plan.candidate_group_set_content_hash == (
         state.candidate_groups.content_hash
     )
-    assert state.text_run_artifacts.requests.artifacts[0].payload is (
-        state.text_run.request_bytes[0]
+    assert (
+        state.text_run_artifacts.requests.artifacts[0].payload is (state.text_run.request_bytes[0])
     )
-    assert state.audio_run_artifacts.clips.artifacts[0].payload is (
-        state.audio_run.clip_bytes[0]
-    )
+    assert state.audio_run_artifacts.clips.artifacts[0].payload is (state.audio_run.clip_bytes[0])
     assert state.resolution is None
     assert not hasattr(state, "__getitem__")
     assert not hasattr(state, "__iter__")
@@ -672,9 +650,7 @@ def test_native_audit_state_carries_exact_typed_parents_under_closed_profile() -
 
 def test_native_audit_state_rejects_crossed_full_audit_parent_lineage() -> None:
     state = _native_audit("8" * 64)
-    crossed_groups = state.candidate_groups.model_copy(
-        update={"signal_set_content_hash": "f" * 64}
-    )
+    crossed_groups = state.candidate_groups.model_copy(update={"signal_set_content_hash": "f" * 64})
 
     with pytest.raises(ValueError, match="parents crossed content lineage"):
         LoadedNativeAuditState(
@@ -730,9 +706,7 @@ def test_native_parent_manifest_without_resolution_is_a_valid_loaded_derivative(
 
 def test_top_state_rejects_crossed_canonical_recognition_lineage(tmp_path) -> None:
     state = _native_loaded_generation(tmp_path)
-    crossed_transcript = state.result.transcript.model_copy(
-        update={"evidence_hash": "f" * 64}
-    )
+    crossed_transcript = state.result.transcript.model_copy(update={"evidence_hash": "f" * 64})
 
     with pytest.raises(ValueError, match="Recognition Evidence crossed Canonical lineage"):
         LoadedGenerationState(

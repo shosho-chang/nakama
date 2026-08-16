@@ -122,9 +122,7 @@ def test_decodes_native_without_inventing_legacy_proposal_or_literal() -> None:
     assert decoded.view.candidate_discovery is not None
     assert decoded.view.candidate_discovery.discovery_id == "4" * 64
     assert decoded.view.candidate_discovery.discovery_hash == "5" * 64
-    assert decoded.view.candidate_discovery.literal_sha256 == sha256_bytes(
-        b"candidate literal"
-    )
+    assert decoded.view.candidate_discovery.literal_sha256 == sha256_bytes(b"candidate literal")
     assert decoded.view.selected_candidate is None
 
 

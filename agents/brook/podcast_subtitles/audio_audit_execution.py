@@ -104,10 +104,7 @@ class AudioAuditProviderFailed(AudioAuditExecutionError):
                 "redaction": "code_only_no_provider_body_exception_secret_or_path",
             }
         )
-        if (
-            sha256_bytes(self.failure_bytes)
-            != receipt.redacted_failure_artifact.sha256
-        ):
+        if sha256_bytes(self.failure_bytes) != receipt.redacted_failure_artifact.sha256:
             raise ValueError("audio audit redacted failure artifact is not reproducible")
 
 
@@ -141,11 +138,15 @@ class AudioAuditRunResult:
             or len(self.request_bytes) != len(self.clip_bytes)
         ):
             raise ValueError("audio audit run requires paired request/response/clip bytes")
-        if any(type(item) is not bytes or not item for values in (
-            self.request_bytes,
-            self.response_bytes,
-            self.clip_bytes,
-        ) for item in values):
+        if any(
+            type(item) is not bytes or not item
+            for values in (
+                self.request_bytes,
+                self.response_bytes,
+                self.clip_bytes,
+            )
+            for item in values
+        ):
             raise TypeError("audio audit run artifacts require exact non-empty bytes")
 
 
@@ -433,9 +434,10 @@ def _source_objects(request: AudioAuditProviderRequestV2) -> dict[str, object]:
     for reference in references:
         if any(item not in span_order for item in reference.retrieved_for_audio_span_ids):
             raise AudioAuditExecutionError("Reference membership escapes visible Canonical spans")
-        if tuple(
-            sorted(reference.retrieved_for_audio_span_ids, key=span_order.__getitem__)
-        ) != reference.retrieved_for_audio_span_ids:
+        if (
+            tuple(sorted(reference.retrieved_for_audio_span_ids, key=span_order.__getitem__))
+            != reference.retrieved_for_audio_span_ids
+        ):
             raise AudioAuditExecutionError("Reference membership is reordered")
     parsed["reference_excerpt"] = tuple(references)
     return parsed
@@ -501,11 +503,9 @@ def _validate_provider_assessment(
     assert isinstance(audit_slice, CorrectionAuditPlanSliceV2)
     assert isinstance(canonical, CorrectionCanonicalTranscriptSliceV2)
     assert isinstance(recognitions, CorrectionRecognitionEvidenceSliceV2)
-    targets = {
-        item.id: item for item in (*audit_slice.span_targets, *audit_slice.boundary_targets)
-    }
-    allowed_spans, allowed_tokens, allowed_recognition, start_ms, end_ms = (
-        _target_evidence_scope(targets[cell.target_id], canonical, recognitions)
+    targets = {item.id: item for item in (*audit_slice.span_targets, *audit_slice.boundary_targets)}
+    allowed_spans, allowed_tokens, allowed_recognition, start_ms, end_ms = _target_evidence_scope(
+        targets[cell.target_id], canonical, recognitions
     )
     if (
         assessment.audited_start_ms != start_ms
@@ -812,9 +812,7 @@ class AudioFullAuditExecutor:
                 "execution_status": "request_frozen_not_yet_assessed",
             }
             digest = hash_object(payload)
-            requests.append(
-                AudioAuditProviderRequestV2(**payload, id=digest, content_hash=digest)
-            )
+            requests.append(AudioAuditProviderRequestV2(**payload, id=digest, content_hash=digest))
         return tuple(requests)
 
     def _journal_directory(self, request: AudioAuditProviderRequestV2) -> Path:
@@ -889,10 +887,9 @@ class AudioFullAuditExecutor:
             )
         journal = _journal_from_events(events)
         first = journal.events[0]
-        if (
-            first.request_artifact != _artifact("requests", request_bytes)
-            or first.clip_artifact != _artifact("clips", clip_bytes, media_type="audio/wav")
-        ):
+        if first.request_artifact != _artifact(
+            "requests", request_bytes
+        ) or first.clip_artifact != _artifact("clips", clip_bytes, media_type="audio/wav"):
             raise AudioAuditExecutionError("audio invocation intent binds different exact bytes")
         return journal
 
@@ -1052,9 +1049,7 @@ class AudioFullAuditExecutor:
             )
         try:
             validated_journals = tuple(
-                AudioAuditInvocationJournalV2.model_validate_json(
-                    canonical_json_bytes(item)
-                )
+                AudioAuditInvocationJournalV2.model_validate_json(canonical_json_bytes(item))
                 for item in journals
             )
         except ValidationError as exc:
@@ -1067,9 +1062,7 @@ class AudioFullAuditExecutor:
             )
         journals = validated_journals
         request_bytes = tuple(canonical_json_bytes(item) for item in requests)
-        clip_bytes = tuple(
-            source_artifacts[item.clip.binding.artifact_uri] for item in requests
-        )
+        clip_bytes = tuple(source_artifacts[item.clip.binding.artifact_uri] for item in requests)
         assessments: list[AudioAuditCellAssessmentV2] = []
         receipts: list[AudioAuditProviderResponseReceiptV2] = []
         for request, exact_request, clip, response in zip(
@@ -1281,9 +1274,7 @@ class AudioFullAuditExecutor:
                 journal.state == "response_committed"
                 or journal.events[-1].event == "attempt_started_at_most_once"
             )
-            if response_path.exists() and (
-                self._runner is None or direct_response_has_provenance
-            ):
+            if response_path.exists() and (self._runner is None or direct_response_has_provenance):
                 response = _safe_read(response_path)
                 if journal.state != "response_committed":
                     journal = self._append_event(

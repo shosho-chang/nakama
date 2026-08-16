@@ -158,9 +158,10 @@ def test_speaker_attribution_is_new_content_addressed_evidence(tmp_path: Path) -
     )
     assert [track.speaker_label for track in provenance.tracks] == ["HOST", "GUEST"]
     assert [track.sha256 for track in provenance.tracks] == [hash_file(left), hash_file(right)]
-    assert SpeakerAttributionProvenance.from_payload(
-        json.loads(canonical_json_bytes(provenance))
-    ) == provenance
+    assert (
+        SpeakerAttributionProvenance.from_payload(json.loads(canonical_json_bytes(provenance)))
+        == provenance
+    )
 
 
 def test_speaker_attribution_rejects_unresolved_or_invalid_slots(tmp_path: Path) -> None:

@@ -31,9 +31,7 @@ def test_balanced_delimiters_across_recognition_tokens_are_not_false_positive() 
 
 
 def test_forbidden_punctuation_maps_back_to_exact_stable_span() -> None:
-    risks = discover_editorial_risks(
-        (_observation(1, "第一段"), _observation(2, "第二段。"))
-    )
+    risks = discover_editorial_risks((_observation(1, "第一段"), _observation(2, "第二段。")))
 
     assert len(risks) == 1
     assert risks[0].issue.code == "forbidden_punctuation"
@@ -64,9 +62,7 @@ def test_simplified_phrase_spanning_tokens_is_review_only_and_fail_closed() -> N
 
 
 def test_unbalanced_delimiter_can_address_multiple_spans_without_text_mutation() -> None:
-    risks = discover_editorial_risks(
-        (_observation(1, "《書名"), _observation(2, "」"))
-    )
+    risks = discover_editorial_risks((_observation(1, "《書名"), _observation(2, "」")))
 
     assert [(risk.issue.code, risk.issue.span_ids) for risk in risks] == [
         ("unbalanced_house_delimiter", ("span-1", "span-2"))

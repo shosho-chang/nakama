@@ -243,9 +243,9 @@ class HumanOriginalConfirmationReceiptV2(_StrictContract):
     notes_digest: Sha256
     reviewer: HumanReviewerAttestationV2
     reviewed_at_utc: str
-    authority: Literal[
+    authority: Literal["human_pronunciation_review_not_spelling_or_text_mutation_authority"] = (
         "human_pronunciation_review_not_spelling_or_text_mutation_authority"
-    ] = "human_pronunciation_review_not_spelling_or_text_mutation_authority"
+    )
     content_hash: Sha256
 
     @field_validator("original_text", "rejected_candidate_text")
@@ -255,9 +255,7 @@ class HumanOriginalConfirmationReceiptV2(_StrictContract):
 
     @field_validator("affected_token_ids", "cited_span_ids", "cited_recognition_evidence_ids")
     @classmethod
-    def _identifiers_are_exact(
-        cls, values: tuple[str, ...], info: object
-    ) -> tuple[str, ...]:
+    def _identifiers_are_exact(cls, values: tuple[str, ...], info: object) -> tuple[str, ...]:
         label = str(getattr(info, "field_name", "identifiers"))
         if len(set(values)) != len(values):
             raise ValueError(f"{label} must not contain duplicates")
@@ -382,12 +380,10 @@ class OriginalConfirmationAuthorizationV2(_StrictContract):
         if self.original_text == self.rejected_candidate_text:
             raise ValueError("original confirmation cannot authorize a no-op candidate")
         if (
-            self.human_original_receipt_ids
-            != tuple(sorted(self.human_original_receipt_ids))
+            self.human_original_receipt_ids != tuple(sorted(self.human_original_receipt_ids))
             or self.human_original_receipt_hashes
             != tuple(sorted(self.human_original_receipt_hashes))
-            or len(self.human_original_receipt_ids)
-            != len(self.human_original_receipt_hashes)
+            or len(self.human_original_receipt_ids) != len(self.human_original_receipt_hashes)
         ):
             raise ValueError("human original receipt parents are not canonical")
         expected_reasons = tuple(
@@ -487,9 +483,7 @@ class NativeCorrectionDecisionV2(_StrictContract):
 
     @field_validator("target_span_ids", "affected_token_ids", "cited_recognition_evidence_ids")
     @classmethod
-    def _event_ids_are_exact(
-        cls, values: tuple[str, ...], info: object
-    ) -> tuple[str, ...]:
+    def _event_ids_are_exact(cls, values: tuple[str, ...], info: object) -> tuple[str, ...]:
         label = str(getattr(info, "field_name", "identifiers"))
         if not values or len(set(values)) != len(values):
             raise ValueError(f"{label} must be non-empty and unique")
@@ -523,9 +517,7 @@ class NativeCorrectionDecisionV2(_StrictContract):
                 raise ValueError("original confirmation authorized literal hash drift")
         elif self.authorized_literal_sha256 is not None:
             raise ValueError("defer/reject cannot carry an authorized literal")
-        expected_payload = self.model_dump(
-            mode="json", exclude={"event_id", "content_hash"}
-        )
+        expected_payload = self.model_dump(mode="json", exclude={"event_id", "content_hash"})
         expected_hash = hash_object(expected_payload)
         if (
             self.event_id != f"native-resolution-{expected_hash}"
@@ -701,8 +693,7 @@ def _original_receipt_binding_is_exact(
         or receipt.normalized_audio_hash != aggregate.normalized_audio_hash
         or receipt.affected_token_ids != candidate.affected_token_ids
         or receipt.cited_span_ids != candidate.cited_span_ids
-        or receipt.cited_recognition_evidence_ids
-        != candidate.cited_recognition_evidence_ids
+        or receipt.cited_recognition_evidence_ids != candidate.cited_recognition_evidence_ids
         or receipt.original_text != candidate.observed_text
         or receipt.rejected_candidate_text != candidate.candidate_text
     ):
@@ -837,9 +828,7 @@ def build_original_confirmation_authorization(
     relations = {item.candidate_pronunciation_relation for item in exact_receipts}
     if len(audio_lineages) > 1 or len(relations) > 1:
         reasons.add("human_receipt_disagreement")
-    orthography_requires_reference = (
-        relations == {"homophone_or_orthographically_indiscriminable"}
-    )
+    orthography_requires_reference = relations == {"homophone_or_orthographically_indiscriminable"}
 
     proof: ReferenceAuthorityProofV2 | None = None
     selected_claim = None
@@ -914,9 +903,7 @@ def build_original_confirmation_authorization(
         "rejected_candidate_text": candidate.candidate_text,
         "orthography_requires_reference": orthography_requires_reference,
         "human_original_receipt_ids": tuple(item.id for item in receipts),
-        "human_original_receipt_hashes": tuple(
-            sorted(item.content_hash for item in receipts)
-        ),
+        "human_original_receipt_hashes": tuple(sorted(item.content_hash for item in receipts)),
         "reference_proof_id": proof.id if proof is not None else None,
         "reference_proof_hash": proof.content_hash if proof is not None else None,
         "reference_coverage_receipt_id": proof.coverage.id if proof is not None else None,
@@ -927,9 +914,7 @@ def build_original_confirmation_authorization(
         "reference_conflict_set_hash": (
             proof.conflicts.content_hash if proof is not None else None
         ),
-        "selected_reference_claim_id": (
-            selected_claim.id if selected_claim is not None else None
-        ),
+        "selected_reference_claim_id": (selected_claim.id if selected_claim is not None else None),
         "selected_reference_claim_hash": (
             selected_claim.content_hash if selected_claim is not None else None
         ),
@@ -953,8 +938,7 @@ def _authorization_candidate_binding(
         and authorization.candidate_discovery_hash == candidate.content_hash
         and authorization.affected_token_ids == candidate.affected_token_ids
         and authorization.cited_span_ids == candidate.cited_span_ids
-        and authorization.cited_recognition_evidence_ids
-        == candidate.cited_recognition_evidence_ids
+        and authorization.cited_recognition_evidence_ids == candidate.cited_recognition_evidence_ids
     )
     if isinstance(authorization, CorrectionAcceptanceVerdictV2):
         return (
@@ -1025,7 +1009,9 @@ def build_native_correction_decision(
     authorized_hash = (
         candidate_hash
         if action == "accept_exact_candidate"
-        else original_hash if action == "confirm_original" else None
+        else original_hash
+        if action == "confirm_original"
+        else None
     )
     payload: dict[str, object] = {
         "schema_version": 2,
@@ -1305,8 +1291,7 @@ def verify_native_reference_authority_proof(
         evidence_id = omission.omitted_id.split("|", maxsplit=1)[0]
         if (
             evidence_id not in evidence_by_id
-            or omission.omitted_id
-            != f"{evidence_id}|{resolution_key}|{reference_scope}"
+            or omission.omitted_id != f"{evidence_id}|{resolution_key}|{reference_scope}"
         ):
             raise NativeResolutionError("Reference proof Evidence omission ID is invalid")
         omission_scopes.setdefault((evidence_id, resolution_key), set()).add(reference_scope)

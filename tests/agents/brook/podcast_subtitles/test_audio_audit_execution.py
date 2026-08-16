@@ -193,10 +193,7 @@ def _execution_with_forged_clip(
     binding_payload = {
         **old.model_dump(mode="python", exclude={"binding_hash"}),
         "content_hash": sha256_bytes(exact_bytes),
-        "artifact_uri": (
-            "execution-artifact://audio/audio_clip/"
-            f"{sha256_bytes(exact_bytes)}.wav"
-        ),
+        "artifact_uri": (f"execution-artifact://audio/audio_clip/{sha256_bytes(exact_bytes)}.wav"),
         "size_bytes": len(exact_bytes),
     }
     binding = CorrectionSourceBindingV2(
@@ -288,9 +285,7 @@ def test_audio_full_audit_hears_every_required_cell_and_preserves_nonrequired_ce
     assert tuple(
         item.cell_id for item in result.record.audio_disposition_set.dispositions
     ) == tuple(item.id for item in audit_plan.cells)
-    required = {
-        item.id for item in audit_plan.cells if item.applicability == "required"
-    }
+    required = {item.id for item in audit_plan.cells if item.applicability == "required"}
     for disposition in result.record.audio_disposition_set.dispositions:
         if disposition.cell_id in required:
             assert disposition.status == "verified_clean_from_exact_audio"
@@ -718,8 +713,7 @@ def test_subscription_workspace_exports_exact_request_and_clip_then_resumes(
     result = executor.execute(execution, audit_plan, sources)
     assert result.record.execution_status == "complete_audio_full_audit"
     assert all(
-        tuple(item.event for item in journal.events)
-        == ("intent_persisted", "response_committed")
+        tuple(item.event for item in journal.events) == ("intent_persisted", "response_committed")
         for journal in result.record.invocation_journals
     )
 
@@ -1092,9 +1086,7 @@ def test_audio_replay_rejects_response_clip_request_and_record_tamper(
         executor.replay(execution, audit_plan, sources, record_tamper)
 
     original_journal = result.record.invocation_journals[0]
-    forged_event = original_journal.events[-1].model_copy(
-        update={"content_hash": "f" * 64}
-    )
+    forged_event = original_journal.events[-1].model_copy(update={"content_hash": "f" * 64})
     journal_payload = original_journal.model_dump(
         mode="python",
         exclude={"id", "content_hash"},

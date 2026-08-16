@@ -318,9 +318,7 @@ def build_reference_bundle(
         source_path = source_path.absolute()
         path_key = os.path.normcase(str(source_path))
         if path_key in resolved_paths:
-            raise ReferenceManifestError(
-                "reference manifest cannot enroll one path more than once"
-            )
+            raise ReferenceManifestError("reference manifest cannot enroll one path more than once")
         resolved_paths.add(path_key)
         expected[item.source_id] = item
         try:

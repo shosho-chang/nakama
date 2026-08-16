@@ -22,8 +22,10 @@ TEST_FILES = tuple(
 
 
 def _is_load_call(node: ast.AST) -> bool:
-    return isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and (
-        node.func.attr in {"_load_generation", "_load_native_generation"}
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and (node.func.attr in {"_load_generation", "_load_native_generation"})
     )
 
 
@@ -48,9 +50,12 @@ def test_loaders_have_one_named_return_contract() -> None:
 
     assert hints["return"] is LoadedGenerationState
     assert native_hints["return"] is LoadedGenerationState
-    assert "tuple" not in inspect.getsource(PodcastSubtitleV2._load_generation).split(
-        ") ->", maxsplit=1
-    )[1].split(":", maxsplit=1)[0]
+    assert (
+        "tuple"
+        not in inspect.getsource(PodcastSubtitleV2._load_generation)
+        .split(") ->", maxsplit=1)[1]
+        .split(":", maxsplit=1)[0]
+    )
 
 
 def test_loaded_generation_calls_have_no_positional_consumers_or_unpacking() -> None:
@@ -65,8 +70,10 @@ def test_loaded_generation_calls_have_no_positional_consumers_or_unpacking() -> 
                 and node.value.id in names
             ):
                 violations.append(f"{path.name}:{node.lineno}: positional subscript")
-            if isinstance(node, ast.Assign) and _is_load_call(node.value) and any(
-                isinstance(target, (ast.Tuple, ast.List)) for target in node.targets
+            if (
+                isinstance(node, ast.Assign)
+                and _is_load_call(node.value)
+                and any(isinstance(target, (ast.Tuple, ast.List)) for target in node.targets)
             ):
                 violations.append(f"{path.name}:{node.lineno}: tuple unpack")
 

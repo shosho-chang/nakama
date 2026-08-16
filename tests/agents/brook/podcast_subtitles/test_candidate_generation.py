@@ -85,9 +85,7 @@ def make_reference_receipt(
     support_kind: str = "candidate_term_exact",
 ) -> tuple[CanonicalTranscript, ReferenceRetrievalReceipt]:
     target = transcript.spans[0]
-    query = "".join(
-        token.text for token in transcript.tokens if token.id in target.token_ids
-    )
+    query = "".join(token.text for token in transcript.tokens if token.id in target.token_ids)
     policy = ReferenceRetrievalPolicySnapshot(
         left_unicode_scalar_budget=0,
         right_unicode_scalar_budget=0,
@@ -120,17 +118,13 @@ def make_reference_receipt(
         algorithm_version="unicode-scalar-v1",
         policy_hash=reference_retrieval_policy_hash(policy),
     )
-    locator = ReferenceLocator(
-        parts=(ReferenceLocatorPart(kind="paragraph", value="1"),)
-    )
+    locator = ReferenceLocator(parts=(ReferenceLocatorPart(kind="paragraph", value="1"),))
     artifact = ReferenceArtifact(
         source_id="book-1",
         kind="book",
         source_format="text",
         digest=ArtifactDigest(uri="file:///book.txt", sha256=H1, size_bytes=100),
-        extracted_text=ArtifactDigest(
-            uri="file:///book.extracted.json", sha256=H2, size_bytes=120
-        ),
+        extracted_text=ArtifactDigest(uri="file:///book.extracted.json", sha256=H2, size_bytes=120),
         extractor_name="fixture-extractor",
         extractor_version="1",
         extractor_config_hash=H3,
@@ -239,15 +233,18 @@ def test_clean_inputs_can_produce_a_complete_empty_signal_and_group_set() -> Non
     assert groups.groups == ()
     assert signals.builder_code_hash == candidate_signal_builder_code_hash()
     assert groups.builder_code_hash == candidate_group_builder_code_hash()
-    assert assert_candidate_signal_set(
-        signals,
-        plan,
-        transcript,
-        recognitions,
-        references_enrolled=False,
-        speech_coverage=make_coverage(transcript, recognitions),
-        seam_evidence=make_seam(transcript, recognitions, seam_ms=None),
-    ) == signals
+    assert (
+        assert_candidate_signal_set(
+            signals,
+            plan,
+            transcript,
+            recognitions,
+            references_enrolled=False,
+            speech_coverage=make_coverage(transcript, recognitions),
+            seam_evidence=make_seam(transcript, recognitions, seam_ms=None),
+        )
+        == signals
+    )
     assert assert_candidate_group_set(groups, plan, signals, transcript) == groups
 
 
@@ -279,9 +276,10 @@ def test_overlapping_numeric_latin_and_acronym_signals_are_grouped_losslessly() 
         "latin_code_switch_detected",
         "acronym_initialism_detected",
     }
-    assert tuple(
-        sorted(signal_id for group in group_set.groups for signal_id in group.signal_ids)
-    ) == group_set.signal_ids
+    assert (
+        tuple(sorted(signal_id for group in group_set.groups for signal_id in group.signal_ids))
+        == group_set.signal_ids
+    )
     assert any(len(group.signal_ids) >= 3 for group in group_set.groups)
     assert all(group.discovery_required for group in group_set.groups if not group.options)
     assert group_set.proposal_status == "dormant_no_proposals_created"
@@ -299,17 +297,13 @@ def test_recognition_sources_pair_content_evidence_and_raw_digest() -> None:
         plan, transcript, recognitions, references_enrolled=False
     )
     signal = next(
-        item
-        for item in signal_set.signals
-        if item.code == "recognition_confidence_missing"
+        item for item in signal_set.signals if item.code == "recognition_confidence_missing"
     )
     by_kind = {binding.kind: binding for binding in signal.source_bindings}
 
     assert by_kind["recognition_evidence"].record_ids == ("recognition-1",)
     assert by_kind["recognition_raw_artifact"].content_hash == recognitions[0].raw_output_hash
-    assert by_kind["recognition_raw_artifact"].id.endswith(
-        recognitions[0].raw_output_hash
-    )
+    assert by_kind["recognition_raw_artifact"].id.endswith(recognitions[0].raw_output_hash)
 
 
 def test_source_kind_cannot_be_forged_even_when_signal_id_is_recomputed() -> None:
@@ -324,9 +318,7 @@ def test_source_kind_cannot_be_forged_even_when_signal_id_is_recomputed() -> Non
         plan, transcript, recognitions, references_enrolled=False
     )
     original = next(
-        item
-        for item in signal_set.signals
-        if item.code == "numeric_arabic_digits_detected"
+        item for item in signal_set.signals if item.code == "numeric_arabic_digits_detected"
     )
     forged_binding = CandidateSourceBinding(
         kind="reference_source_artifact",
@@ -365,9 +357,7 @@ def test_coverage_signals_include_leading_and_trailing_episode_boundaries() -> N
         speech_coverage=coverage,
     )
     boundary_signals = [
-        item
-        for item in signal_set.signals
-        if item.code == "speech_coverage_uncovered_at_boundary"
+        item for item in signal_set.signals if item.code == "speech_coverage_uncovered_at_boundary"
     ]
 
     assert {item.target_id for item in boundary_signals} == {
@@ -443,9 +433,7 @@ def test_reference_support_without_exact_replacement_target_creates_no_option(
     )
     group_set = derive_candidate_group_set(plan, signal_set, transcript)
     reference_signal = next(
-        item
-        for item in signal_set.signals
-        if item.category == "reference_name_term"
+        item for item in signal_set.signals if item.category == "reference_name_term"
     )
 
     assert reference_signal.candidate_text is None
@@ -489,9 +477,7 @@ def test_signal_set_and_group_set_bind_exact_plan_and_source_identities() -> Non
         assert_candidate_group_set(forged_group_set, plan, signal_set, transcript)
 
 
-def _corpus_cell(
-    plan: object, target_kind: str, category: str, ordinal: int
-) -> object:
+def _corpus_cell(plan: object, target_kind: str, category: str, ordinal: int) -> object:
     targets = (
         plan.span_targets if target_kind == "span" else plan.boundary_targets  # type: ignore[attr-defined]
     )
@@ -511,9 +497,7 @@ def _combine_into_one_span(transcript: CanonicalTranscript) -> CanonicalTranscri
         start_ms=transcript.spans[0].start_ms,
         end_ms=transcript.spans[-1].end_ms,
     )
-    return CanonicalTranscript.model_validate(
-        {**transcript.model_dump(), "spans": (combined,)}
-    )
+    return CanonicalTranscript.model_validate({**transcript.model_dump(), "spans": (combined,)})
 
 
 def _run_declared_behavior(case: dict[str, object]) -> None:
@@ -563,9 +547,7 @@ def _run_declared_behavior(case: dict[str, object]) -> None:
     elif case_id == "boundary-repetition":
         texts = ("甲", "甲")
 
-    transcript, recognitions = make_case(
-        texts, confidences=confidences, speakers=speakers
-    )
+    transcript, recognitions = make_case(texts, confidences=confidences, speakers=speakers)
     if case_id == "span-speaker-mixed":
         transcript = _combine_into_one_span(transcript)
 
@@ -599,11 +581,7 @@ def _run_declared_behavior(case: dict[str, object]) -> None:
     )
     ordinal = 0
     if target_kind == "boundary":
-        ordinal = (
-            0
-            if case_id == "boundary-cross-span-endpoint"
-            else 1
-        )
+        ordinal = 0 if case_id == "boundary-cross-span-endpoint" else 1
     actual_cell = _corpus_cell(plan, target_kind, category, ordinal)
     assert actual_cell.applicability == expected_applicability  # type: ignore[attr-defined]
 
@@ -676,9 +654,7 @@ def _run_forged_provenance_hostile(_: dict[str, object]) -> None:
             record_ids=("forged-corpus",),
         ),
     )
-    payload["id"] = hash_object(
-        {key: value for key, value in payload.items() if key != "id"}
-    )
+    payload["id"] = hash_object({key: value for key, value in payload.items() if key != "id"})
     with pytest.raises(ValidationError, match="contradicts evidence_kind"):
         CandidateSignal.model_validate(payload)
 

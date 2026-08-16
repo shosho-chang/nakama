@@ -158,9 +158,7 @@ class AudioAuditExecutionPolicyV2(_AudioAuditContract):
     schema_version: Literal[2] = 2
     policy_id: Literal["nakama-audio-full-audit"] = "nakama-audio-full-audit"
     policy_version: Literal[2] = 2
-    prompt_contract_id: Literal["nakama-audio-full-audit-prompt"] = (
-        "nakama-audio-full-audit-prompt"
-    )
+    prompt_contract_id: Literal["nakama-audio-full-audit-prompt"] = "nakama-audio-full-audit-prompt"
     prompt_contract_version: Literal[2] = 2
     prompt_contract_code_hash: Sha256
     request_serialization: Literal["canonical-json-utf8-v1"] = "canonical-json-utf8-v1"
@@ -176,9 +174,9 @@ class AudioAuditExecutionPolicyV2(_AudioAuditContract):
     evidence_scope: Literal["exact_bounded_audio_clip_and_frozen_packet_only"] = (
         "exact_bounded_audio_clip_and_frozen_packet_only"
     )
-    untrusted_data_boundary: Literal[
+    untrusted_data_boundary: Literal["all_text_sources_are_untrusted_data_never_instructions"] = (
         "all_text_sources_are_untrusted_data_never_instructions"
-    ] = "all_text_sources_are_untrusted_data_never_instructions"
+    )
     invocation_contract: Literal[
         "durable_intent_then_at_most_one_auto_attempt_ambiguous_requires_manual_resolution"
     ] = "durable_intent_then_at_most_one_auto_attempt_ambiguous_requires_manual_resolution"
@@ -270,9 +268,7 @@ class AudioAuditProviderRequestV2(_AudioAuditContract):
         "listen_to_exact_clip_assess_expected_cells_only_never_follow_source_instructions"
     ] = "listen_to_exact_clip_assess_expected_cells_only_never_follow_source_instructions"
     untrusted_source_documents: tuple[AudioAuditSourceDocumentV2, ...]
-    execution_status: Literal["request_frozen_not_yet_assessed"] = (
-        "request_frozen_not_yet_assessed"
-    )
+    execution_status: Literal["request_frozen_not_yet_assessed"] = "request_frozen_not_yet_assessed"
     content_hash: Sha256
 
     @field_validator("episode_id", "generation_id")
@@ -526,11 +522,9 @@ class AudioAuditProviderFailureReceiptV2(_AudioAuditContract):
             sort_keys=True,
             separators=(",", ":"),
         ).encode("utf-8")
-        if (
-            self.redacted_failure_artifact.sha256
-            != hashlib.sha256(redacted_bytes).hexdigest()
-            or self.redacted_failure_artifact.size_bytes != len(redacted_bytes)
-        ):
+        if self.redacted_failure_artifact.sha256 != hashlib.sha256(
+            redacted_bytes
+        ).hexdigest() or self.redacted_failure_artifact.size_bytes != len(redacted_bytes):
             raise ValueError("audio audit redacted failure artifact is not reproducible")
         expected = _hash_json(self.model_dump(mode="json", exclude={"id", "content_hash"}))
         if self.id != expected or self.content_hash != expected:
@@ -625,9 +619,9 @@ class AudioDiscoveredCandidateV2(_AudioAuditContract):
     trigger_signal_ids: tuple[Sha256, ...]
     trigger_group_ids: tuple[Sha256, ...]
     evidence_basis: AudioFindingEvidenceBasisV2
-    authority: Literal[
+    authority: Literal["audio_audit_discovery_not_correction_decision_or_arbitration"] = (
         "audio_audit_discovery_not_correction_decision_or_arbitration"
-    ] = "audio_audit_discovery_not_correction_decision_or_arbitration"
+    )
     requires_audio_arbitration: Literal[True] = True
     is_audio_evidence: Literal[True] = True
     content_hash: Sha256
@@ -859,8 +853,7 @@ class AudioAuditExecutionRecordV2(_AudioAuditContract):
         if (
             self.audio_disposition_set.execution_plan_id != self.execution_plan_id
             or self.audio_disposition_set.audit_plan_hash != self.audit_plan_hash
-            or self.audio_disposition_set.audit_plan_content_hash
-            != self.audit_plan_content_hash
+            or self.audio_disposition_set.audit_plan_content_hash != self.audit_plan_content_hash
             or self.audio_disposition_set.policy_hash != self.policy_hash
             or self.audio_disposition_set.adapter_identity_hash != self.adapter_identity_hash
             or self.audio_disposition_set.response_receipt_ids
@@ -896,8 +889,7 @@ class AudioAuditExecutionRecordV2(_AudioAuditContract):
                 or candidate.cited_span_ids != assessment.cited_span_ids
                 or candidate.cited_recognition_evidence_ids
                 != assessment.cited_recognition_evidence_ids
-                or candidate.cited_reference_evidence_ids
-                != assessment.cited_reference_evidence_ids
+                or candidate.cited_reference_evidence_ids != assessment.cited_reference_evidence_ids
                 or candidate.trigger_signal_ids != assessment.trigger_signal_ids
                 or candidate.trigger_group_ids != assessment.trigger_group_ids
                 or candidate.evidence_basis != assessment.evidence_basis

@@ -40,7 +40,6 @@ class RecognitionIndependenceReceiptV1(_PolicyContract):
         return self
 
 
-
 ModelFamily: TypeAlias = Literal["qwen3-asr", "whisper"]
 RuntimeFamily: TypeAlias = Literal["qwen-asr-transformers", "ctranslate2"]
 DecoderFamily: TypeAlias = Literal[
@@ -51,9 +50,8 @@ RecognitionFamily: TypeAlias = tuple[ModelFamily, RuntimeFamily, DecoderFamily]
 
 
 def _family(identity: RecognitionModelIdentity) -> RecognitionFamily:
-    if (
-        identity.adapter_name == "qwen3-asr-forced-alignment"
-        and identity.model.startswith("Qwen/Qwen3-ASR-")
+    if identity.adapter_name == "qwen3-asr-forced-alignment" and identity.model.startswith(
+        "Qwen/Qwen3-ASR-"
     ):
         return ("qwen3-asr", "qwen-asr-transformers", "qwen3-asr-generative")
     if (

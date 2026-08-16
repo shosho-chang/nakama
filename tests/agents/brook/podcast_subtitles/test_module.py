@@ -814,9 +814,7 @@ def _correction_run(request, proposals) -> CorrectionRunResult:
         "available_reference_evidence_hash": reference_evidence_set_hash(
             request.available_reference_evidence
         ),
-        "presented_reference_evidence_ids": [
-            item.id for item in request.reference_evidence
-        ],
+        "presented_reference_evidence_ids": [item.id for item in request.reference_evidence],
         "presented_reference_evidence_hash": reference_evidence_set_hash(
             request.reference_evidence
         ),
@@ -1006,9 +1004,7 @@ def _single_stream_module(
                 normalized,
                 _accepted_receipt(source, normalized),
             ),
-            recognizers=(
-                _SingleRecognizer(normalized, raw, "primary", texts),
-            ),
+            recognizers=(_SingleRecognizer(normalized, raw, "primary", texts),),
             corrector=corrector,
             audio_auditor=audio_auditor or FixtureAudioAuditorAdapter(),
             arbiter=arbiter,
@@ -1086,9 +1082,7 @@ def _replace_decision_for_proposal(
         target_span_ids=proposal.audio_span_ids,
         target_start_ms=proposal.start_ms,
         target_end_ms=proposal.end_ms,
-        evidence_fingerprint=review_target_fingerprint(
-            transcript, proposal.audio_span_ids
-        ),
+        evidence_fingerprint=review_target_fingerprint(transcript, proposal.audio_span_ids),
         proposal_ids=(proposal.id,),
         issue_ids=issue_ids,
         audio_evidence_ids=tuple(
@@ -1125,10 +1119,7 @@ def _audio_execution_stage_hash(
             name = artifact.uri.removeprefix("generation-artifact://")
             artifacts[name] = (directory / Path(name)).read_bytes()
     return hash_object(
-        tuple(
-            (name, sha256_bytes(payload))
-            for name, payload in sorted(artifacts.items())
-        )
+        tuple((name, sha256_bytes(payload)) for name, payload in sorted(artifacts.items()))
     )
 
 
@@ -1167,9 +1158,7 @@ def _rewrite_generation_consistently(
             "generation_record_hash": hash_file(record_path),
         }
         active_path.write_bytes(
-            canonical_json_bytes(
-                {**active_payload, "pointer_hash": hash_object(active_payload)}
-            )
+            canonical_json_bytes({**active_payload, "pointer_hash": hash_object(active_payload)})
         )
 
 
@@ -1194,9 +1183,7 @@ def _coordinated_correction_byte_tamper(
     artifact["sha256"] = sha256_bytes(changed_bytes)
     artifact["size_bytes"] = len(changed_bytes)
     audit[f"{artifact_field}_hash"] = artifact["sha256"]
-    typed_audits = tuple(
-        CorrectionAuditReceipt.model_validate(item) for item in audit_payloads
-    )
+    typed_audits = tuple(CorrectionAuditReceipt.model_validate(item) for item in audit_payloads)
     audit_bytes = canonical_json_bytes(typed_audits)
     execution_artifacts: dict[str, bytes] = {}
     for typed in typed_audits:
@@ -1219,9 +1206,7 @@ def _coordinated_correction_byte_tamper(
             "correction_execution_artifacts": hash_object(
                 tuple(
                     (artifact_name, sha256_bytes(artifact_bytes))
-                    for artifact_name, artifact_bytes in sorted(
-                        execution_artifacts.items()
-                    )
+                    for artifact_name, artifact_bytes in sorted(execution_artifacts.items())
                 )
             ),
         },
@@ -1276,11 +1261,7 @@ def _coordinated_audio_audit_tamper(
     transcript_path = directory / "canonical_transcript.json"
     transcript = CanonicalTranscript.model_validate_json(transcript_path.read_bytes())
     transcript = transcript.model_copy(
-        update={
-            "full_audit_receipt_set_hash": audio_audit_receipt_set_hash(
-                changed_audits
-            )
-        }
+        update={"full_audit_receipt_set_hash": audio_audit_receipt_set_hash(changed_audits)}
     )
     changed_artifacts["canonical_transcript.json"] = canonical_json_bytes(transcript)
     for name, payload_item in changed_artifacts.items():
@@ -1428,9 +1409,7 @@ def test_vertical_slice_is_restartable_and_keeps_one_generation_identity(tmp_pat
 
     reopened, _ = _module(tmp_path)
     assert reopened.store.active_generation_id() == resolved.generation_id
-    loaded = reopened._load_generation(
-        resolved.generation_id, require_active=True
-    ).result
+    loaded = reopened._load_generation(resolved.generation_id, require_active=True).result
     assert loaded.transcript == resolved.transcript
     reopened._verify_projection_directory(
         verified.projection_id,
@@ -1444,15 +1423,11 @@ def test_text_changing_resolve_requires_fresh_child_audio_audit_and_resumes_clea
     module, source = _module(tmp_path)
     delegate = module._audio_auditor
     assert isinstance(delegate, FixtureAudioAuditorAdapter)
-    created = module.create(
-        CreateRequest(episode_id="episode-child-audit", source_audio=source)
-    )
+    created = module.create(CreateRequest(episode_id="episode-child-audit", source_audio=source))
     assert isinstance(created, NeedsReview)
     parent_loaded = module._load_generation(created.generation_id, require_active=True)
     parent_audits = parent_loaded.audit.audio_audits
-    parent_generation_ids = {
-        receipt.preaudit_generation_id for receipt in parent_audits
-    }
+    parent_generation_ids = {receipt.preaudit_generation_id for receipt in parent_audits}
 
     auditor = _PendingAudioAuditor(delegate, tmp_path / "resolve-audio-work")
     module._audio_auditor = auditor
@@ -1460,9 +1435,7 @@ def test_text_changing_resolve_requires_fresh_child_audio_audit_and_resumes_clea
     active_before = module.store.active_generation_id()
     ledger_before = module.ledger.entries()
 
-    pending = module.resolve(
-        ResolveRequest(created.generation_id, (decision,))
-    )
+    pending = module.resolve(ResolveRequest(created.generation_id, (decision,)))
 
     assert isinstance(pending, Interrupted)
     assert pending.operation == "resolve"
@@ -1478,9 +1451,7 @@ def test_text_changing_resolve_requires_fresh_child_audio_audit_and_resumes_clea
         module.project(ProjectRequest(pending.generation_id, HORIZONTAL_16X9))
 
     auditor.ready = True
-    resolved = module.resolve(
-        ResolveRequest(created.generation_id, (decision,))
-    )
+    resolved = module.resolve(ResolveRequest(created.generation_id, (decision,)))
 
     assert isinstance(resolved, AcceptedGeneration)
     assert module.store.active_generation_id() == resolved.generation_id
@@ -1490,15 +1461,13 @@ def test_text_changing_resolve_requires_fresh_child_audio_audit_and_resumes_clea
     assert tuple(
         span_id for receipt in child_audits for span_id in receipt.target_span_ids
     ) == tuple(span.id for span in resolved.transcript.spans)
-    assert {
-        receipt.preaudit_content_hash for receipt in child_audits
-    } == {resolved.transcript.content_hash}
-    assert {
-        receipt.preaudit_generation_id for receipt in child_audits
-    } == {pending.generation_id}
-    assert {
-        receipt.preaudit_generation_id for receipt in child_audits
-    }.isdisjoint(parent_generation_ids)
+    assert {receipt.preaudit_content_hash for receipt in child_audits} == {
+        resolved.transcript.content_hash
+    }
+    assert {receipt.preaudit_generation_id for receipt in child_audits} == {pending.generation_id}
+    assert {receipt.preaudit_generation_id for receipt in child_audits}.isdisjoint(
+        parent_generation_ids
+    )
     with pytest.raises(GenerationIsolationError, match="exactly partition"):
         _validate_audio_full_audit_attestation(
             resolved.transcript,
@@ -1506,16 +1475,12 @@ def test_text_changing_resolve_requires_fresh_child_audio_audit_and_resumes_clea
             delegate.identity,
         )
     stale_child_audits = tuple(
-        receipt.model_copy(
-            update={"preaudit_content_hash": created.transcript.content_hash}
-        )
+        receipt.model_copy(update={"preaudit_content_hash": created.transcript.content_hash})
         for receipt in child_audits
     )
     forged_transcript = resolved.transcript.model_copy(
         update={
-            "full_audit_receipt_set_hash": audio_audit_receipt_set_hash(
-                list(stale_child_audits)
-            )
+            "full_audit_receipt_set_hash": audio_audit_receipt_set_hash(list(stale_child_audits))
         }
     )
     with pytest.raises(GenerationIsolationError, match="current immutable truth"):
@@ -1673,9 +1638,7 @@ def test_disjoint_proposals_are_regenerated_and_arbitrated_per_child_generation(
             target_span_ids=proposal.audio_span_ids,
             target_start_ms=proposal.start_ms,
             target_end_ms=proposal.end_ms,
-            evidence_fingerprint=review_target_fingerprint(
-                transcript, proposal.audio_span_ids
-            ),
+            evidence_fingerprint=review_target_fingerprint(transcript, proposal.audio_span_ids),
             proposal_ids=(proposal.id,),
             issue_ids=issue_ids,
             audio_evidence_ids=tuple(
@@ -1737,19 +1700,12 @@ def test_disjoint_proposals_are_regenerated_and_arbitrated_per_child_generation(
         assert tuple(receipt.proposal_id for receipt in arbitrations) == tuple(
             proposal.id for proposal in proposals
         )
-        assert all(
-            receipt.generation_id == transcript.generation_id
-            for receipt in arbitrations
-        )
+        assert all(receipt.generation_id == transcript.generation_id for receipt in arbitrations)
 
-    assert {
-        receipt.request.sha256 for receipt in parent.audit.correction_audits
-    }.isdisjoint(
+    assert {receipt.request.sha256 for receipt in parent.audit.correction_audits}.isdisjoint(
         receipt.request.sha256 for receipt in child.audit.correction_audits
     )
-    assert {
-        receipt.request.sha256 for receipt in parent.audit.audio_audits
-    }.isdisjoint(
+    assert {receipt.request.sha256 for receipt in parent.audit.audio_audits}.isdisjoint(
         receipt.request.sha256 for receipt in child.audit.audio_audits
     )
 
@@ -1864,9 +1820,7 @@ def test_missing_speech_coverage_is_durable_and_cannot_be_human_accepted(
     assert created.transcript.verified_speech_coverage_receipt_hash is None
     assert {issue.code for issue in created.issues} >= {"speech_coverage_receipt_missing"}
     reopened, _ = _module(tmp_path, speech_coverage_analyzer=None)
-    loaded = reopened._load_generation(
-        created.generation_id, require_active=True
-    ).result
+    loaded = reopened._load_generation(created.generation_id, require_active=True).result
     assert loaded.transcript == created.transcript
 
     reviewed = reopened.resolve(
@@ -1907,9 +1861,7 @@ def test_failed_speech_coverage_analyzer_persists_blocking_receipt(
     )
     assert reopened._load_generation(
         created.generation_id, require_active=True
-    ).result.transcript == (
-        created.transcript
-    )
+    ).result.transcript == (created.transcript)
 
 
 @pytest.mark.parametrize(
@@ -1950,9 +1902,7 @@ def test_uncovered_speech_activity_is_stable_across_restart(
         tmp_path,
         speech_coverage_analyzer=FixtureSpeechCoverageAnalyzer(activity),
     )
-    reloaded = reopened._load_generation(
-        created.generation_id, require_active=True
-    ).result
+    reloaded = reopened._load_generation(created.generation_id, require_active=True).result
     assert tuple(
         issue.id
         for issue in reloaded.transcript.review_issues
@@ -2081,9 +2031,7 @@ def test_reopen_replays_every_parent_in_a_multi_decision_chain(tmp_path: Path) -
     reopened, _ = _module(tmp_path)
 
     assert reopened.store.active_generation_id() == accepted.generation_id
-    loaded = reopened._load_generation(
-        accepted.generation_id, require_active=True
-    ).result
+    loaded = reopened._load_generation(accepted.generation_id, require_active=True).result
     assert loaded.transcript == accepted.transcript
 
 
@@ -2237,9 +2185,7 @@ def test_fresh_load_rejects_coordinated_orphan_risk_evidence_id(
         (directory / "canonical_transcript.json").read_text(encoding="utf-8")
     )
     matching_issue = next(
-        item
-        for item in transcript_payload["review_issues"]
-        if item["id"] == risk["issue"]["id"]
+        item for item in transcript_payload["review_issues"] if item["id"] == risk["issue"]["id"]
     )
     matching_issue[issue_field] = [orphan_id]
     transcript = CanonicalTranscript.model_validate(transcript_payload)
@@ -2379,9 +2325,7 @@ def test_complete_checkpoint_fresh_create_replay_calls_no_adapter(
     recognizers = fresh._recognizers
     with (
         patch.object(normalizer, "normalize", wraps=normalizer.normalize) as normalize,
-        patch.object(
-            recognizers[0], "recognize", wraps=recognizers[0].recognize
-        ) as recognize,
+        patch.object(recognizers[0], "recognize", wraps=recognizers[0].recognize) as recognize,
     ):
         replayed = fresh.create(
             CreateRequest(
@@ -2457,11 +2401,7 @@ def test_generation_commit_crash_recovers_without_repeating_paid_work(
         first.create(request)
     partial = first.store.load_latest_create_checkpoint()
     assert partial is not None and partial.checkpoint.stage == "audio_audit_ready"
-    inactive = tuple(
-        path.name
-        for path in first.store.generations_dir.iterdir()
-        if path.is_dir()
-    )
+    inactive = tuple(path.name for path in first.store.generations_dir.iterdir() if path.is_dir())
     assert len(inactive) == 1
     assert first.store.load(inactive[0]).generation_id == inactive[0]
     with pytest.raises(GenerationNotFoundError):
@@ -2500,9 +2440,7 @@ def test_generation_commit_crash_does_not_repeat_arbitration_decision(
         confidence=0.99,
         rationale="fixture exact audio",
     )
-    first_arbiter = _ReplayCountingArbiter(
-        FixtureArbiterAdapter({"proposal-last-span": verdict})
-    )
+    first_arbiter = _ReplayCountingArbiter(FixtureArbiterAdapter({"proposal-last-span": verdict}))
     first, source = _single_stream_module(
         tmp_path,
         texts=("原始", "文字"),
@@ -2523,9 +2461,7 @@ def test_generation_commit_crash_does_not_repeat_arbitration_decision(
     assert first_arbiter.decide_calls == 1
     monkeypatch.undo()
 
-    fresh_arbiter = _ReplayCountingArbiter(
-        FixtureArbiterAdapter({"proposal-last-span": verdict})
-    )
+    fresh_arbiter = _ReplayCountingArbiter(FixtureArbiterAdapter({"proposal-last-span": verdict}))
     fresh, fresh_source = _single_stream_module(
         tmp_path,
         texts=("原始", "文字"),
@@ -2644,9 +2580,7 @@ def test_complete_seal_rejects_ledger_advance_before_active_cas(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module, source = _module(tmp_path)
-    first = module.create(
-        CreateRequest(episode_id="episode-seal-ledger-race", source_audio=source)
-    )
+    first = module.create(CreateRequest(episode_id="episode-seal-ledger-race", source_audio=source))
     assert isinstance(first, NeedsReview)
     original_terminal_outcome = module._terminal_generation_outcome
     injected = False
@@ -2756,9 +2690,7 @@ def test_complete_checkpoint_pointer_publication_tail_is_repairable(
         path
         for path in module.store.create_checkpoints_dir.iterdir()
         if path.is_dir()
-        and json.loads((path / "checkpoint.json").read_text(encoding="utf-8"))[
-            "stage"
-        ]
+        and json.loads((path / "checkpoint.json").read_text(encoding="utf-8"))["stage"]
         == "complete"
     )
     assert len(complete_directories) == 1
@@ -2989,18 +2921,21 @@ def test_generation_persists_exact_recognition_request_context(
     assert payload["context_policy_id"] == "nakama-verbatim-no-lexical-context-v1"
     assert payload["context_sha256"] == _sha(b"")
     assert payload["context_size_bytes"] == 0
-    assert record.manifest["input_artifact_hashes"]["recognition_request"] == payload[
-        "content_hash"
-    ]
-    assert record.manifest["stage_artifact_hashes"]["recognition_request"] == payload[
-        "content_hash"
-    ]
-    assert json.loads(
-        module.store.read_artifact(
-            created.generation_id,
-            "recognition_independence_receipt.json",
+    assert (
+        record.manifest["input_artifact_hashes"]["recognition_request"] == payload["content_hash"]
+    )
+    assert (
+        record.manifest["stage_artifact_hashes"]["recognition_request"] == payload["content_hash"]
+    )
+    assert (
+        json.loads(
+            module.store.read_artifact(
+                created.generation_id,
+                "recognition_independence_receipt.json",
+            )
         )
-    ) is None
+        is None
+    )
 
 
 def test_speaker_attribution_persists_base_without_false_corroboration(
@@ -3077,9 +3012,7 @@ def test_configured_attributor_is_idle_when_evidence_already_has_speakers(
     loaded = module._load_generation(created.generation_id, require_active=True)
     assert loaded.recognition.speaker_base_evidence == ()
     assert loaded.recognition.speaker_provenance is None
-    assert all(
-        token.speaker == "guest" for token in loaded.recognition.evidence[0].tokens
-    )
+    assert all(token.speaker == "guest" for token in loaded.recognition.evidence[0].tokens)
 
 
 def test_missing_track_fails_before_normalization_provider_runs(tmp_path: Path) -> None:
@@ -3693,9 +3626,7 @@ def test_pending_correction_resumes_in_fresh_process_without_paid_prefix(
     first._normalizer = first_normalizer
     first._recognizers = (first_recognizer,)
     assert isinstance(
-        first.create(
-            CreateRequest(episode_id="episode-fresh-checkpoint", source_audio=source)
-        ),
+        first.create(CreateRequest(episode_id="episode-fresh-checkpoint", source_audio=source)),
         Interrupted,
     )
     assert (first_normalizer.calls, first_recognizer.calls) == (1, 1)
@@ -3726,9 +3657,7 @@ def test_pending_correction_resumes_in_fresh_process_without_paid_prefix(
 def test_pending_audio_audit_resume_does_not_repeat_paid_prefix_stages(
     tmp_path: Path,
 ) -> None:
-    auditor = _PendingAudioAuditor(
-        FixtureAudioAuditorAdapter(), tmp_path / "audio-work"
-    )
+    auditor = _PendingAudioAuditor(FixtureAudioAuditorAdapter(), tmp_path / "audio-work")
     module, source = _single_stream_module(
         tmp_path,
         texts=("完整", "句子"),
@@ -3753,9 +3682,7 @@ def test_pending_audio_audit_resume_does_not_repeat_paid_prefix_stages(
     module._recognizers = (recognizer,)
     module._corrector = corrector
 
-    first = module.create(
-        CreateRequest(episode_id="episode-audio-checkpoint", source_audio=source)
-    )
+    first = module.create(CreateRequest(episode_id="episode-audio-checkpoint", source_audio=source))
     assert isinstance(first, Interrupted)
     assert (normalizer.calls, recognizer.calls, coverage_calls, corrector.calls) == (
         1,
@@ -3821,6 +3748,7 @@ def test_pending_arbiter_resume_does_not_repeat_corrector_or_audio_audit(
     assert not isinstance(resumed, Interrupted)
     assert (corrector.calls, len(auditor.requests)) == (1, 1)
 
+
 def test_create_checkpoint_rejects_source_and_runtime_identity_drift(
     tmp_path: Path,
 ) -> None:
@@ -3837,9 +3765,7 @@ def test_create_checkpoint_rejects_source_and_runtime_identity_drift(
 
     source.write_bytes(b"changed-source-audio")
     with pytest.raises(GenerationIsolationError, match="different source"):
-        module.create(
-            CreateRequest(episode_id="episode-checkpoint-drift", source_audio=source)
-        )
+        module.create(CreateRequest(episode_id="episode-checkpoint-drift", source_audio=source))
 
     source.write_bytes(b"source-audio")
     module._corrector_identity = replace(
@@ -3847,9 +3773,7 @@ def test_create_checkpoint_rejects_source_and_runtime_identity_drift(
         config_hash=hash_object({"fixture": "drifted"}),
     )
     with pytest.raises(GenerationIsolationError, match="different source"):
-        module.create(
-            CreateRequest(episode_id="episode-checkpoint-drift", source_audio=source)
-        )
+        module.create(CreateRequest(episode_id="episode-checkpoint-drift", source_audio=source))
 
 
 def test_create_checkpoint_rejects_microphone_track_drift_before_normalization(
@@ -3898,17 +3822,14 @@ def test_create_checkpoint_rejects_module_code_identity_drift(tmp_path: Path) ->
         corrector=corrector,
     )
     assert isinstance(
-        module.create(
-            CreateRequest(episode_id="episode-code-checkpoint", source_audio=source)
-        ),
+        module.create(CreateRequest(episode_id="episode-code-checkpoint", source_audio=source)),
         Interrupted,
     )
     module._code_hash = hash_object({"implementation": "changed"})
 
     with pytest.raises(GenerationIsolationError, match="different source"):
-        module.create(
-            CreateRequest(episode_id="episode-code-checkpoint", source_audio=source)
-        )
+        module.create(CreateRequest(episode_id="episode-code-checkpoint", source_audio=source))
+
 
 def test_create_checkpoint_artifact_tamper_blocks_resume_before_paid_prefix(
     tmp_path: Path,
@@ -3935,9 +3856,7 @@ def test_create_checkpoint_artifact_tamper_blocks_resume_before_paid_prefix(
 
     corrector.ready = True
     with pytest.raises(ArtifactHashMismatchError, match="artifact hash mismatch"):
-        module.create(
-            CreateRequest(episode_id="episode-checkpoint-tamper", source_audio=source)
-        )
+        module.create(CreateRequest(episode_id="episode-checkpoint-tamper", source_audio=source))
     assert normalizer.calls == 1
 
 
@@ -4152,9 +4071,7 @@ def test_arbitration_replay_runs_before_commit_and_rejects_semantic_rewrite(
         confidence=0.99,
         rationale="fixture heard exact audio",
     )
-    arbiter = _ReplayCountingArbiter(
-        FixtureArbiterAdapter({"proposal-last-span": verdict})
-    )
+    arbiter = _ReplayCountingArbiter(FixtureArbiterAdapter({"proposal-last-span": verdict}))
     module, source = _single_stream_module(
         tmp_path,
         texts=("原始", "文字"),
@@ -4169,9 +4086,7 @@ def test_arbitration_replay_runs_before_commit_and_rejects_semantic_rewrite(
     assert arbiter.replay_calls == 1
 
     _coordinated_arbitration_response_tamper(module, created.generation_id)
-    fresh_arbiter = _ReplayCountingArbiter(
-        FixtureArbiterAdapter({"proposal-last-span": verdict})
-    )
+    fresh_arbiter = _ReplayCountingArbiter(FixtureArbiterAdapter({"proposal-last-span": verdict}))
     with pytest.raises(
         GenerationIsolationError,
         match="Arbitration proof is not reproducible|complete checkpoint Generation binding",
@@ -4241,9 +4156,7 @@ def test_low_risk_blocking_policy_survives_reopen_and_resolves_explicitly(
         texts=("Podcast",),
         corrector=FixtureCorrectorAdapter(),
     )
-    loaded = reopened._load_generation(
-        created.generation_id, require_active=True
-    ).result
+    loaded = reopened._load_generation(created.generation_id, require_active=True).result
     assert loaded.outcome == "needs_review"
     issue = loaded.transcript.review_issues[0]
     token = loaded.transcript.tokens[0]
@@ -4268,9 +4181,7 @@ def test_low_risk_blocking_policy_survives_reopen_and_resolves_explicitly(
         rationale="confirmed exact normalized audio",
         timestamp=datetime(2026, 8, 12, tzinfo=timezone.utc),
     )
-    resolved = reopened.resolve(
-        ResolveRequest(created.generation_id, (decision,))
-    )
+    resolved = reopened.resolve(ResolveRequest(created.generation_id, (decision,)))
     assert isinstance(resolved, AcceptedGeneration)
     assert resolved.transcript.acceptance_policy.permit_unresolved_low_risk is False
 
@@ -4303,9 +4214,7 @@ def test_fresh_load_rejects_coordinated_acceptance_policy_and_status_tamper(
     )
     assert isinstance(created, NeedsReview)
     directory = module.store.generation_dir(created.generation_id)
-    payload = json.loads(
-        (directory / "canonical_transcript.json").read_text(encoding="utf-8")
-    )
+    payload = json.loads((directory / "canonical_transcript.json").read_text(encoding="utf-8"))
     payload["acceptance_policy"]["permit_unresolved_low_risk"] = True
     payload["status"] = "accepted"
     transcript = CanonicalTranscript.model_validate(payload)

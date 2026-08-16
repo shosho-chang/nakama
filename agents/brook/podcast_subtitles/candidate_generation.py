@@ -99,9 +99,7 @@ def candidate_group_set_digest(group_set: CandidateGroupSet) -> str:
 
 
 def _cell_index(plan: AuditPlan) -> dict[tuple[str, str, str], AuditCell]:
-    return {
-        (cell.target_kind, cell.target_id, cell.category): cell for cell in plan.cells
-    }
+    return {(cell.target_kind, cell.target_id, cell.category): cell for cell in plan.cells}
 
 
 def _span_index(plan: AuditPlan) -> dict[str, SpanAuditTarget]:
@@ -205,9 +203,7 @@ def _make_signal(
         "reference_query_support_end": reference_query_support_end,
         "candidate_text": candidate_text,
         "candidate_text_hash": (
-            sha256_bytes(candidate_text.encode("utf-8"))
-            if candidate_text is not None
-            else None
+            sha256_bytes(candidate_text.encode("utf-8")) if candidate_text is not None else None
         ),
         "detail_hash": hash_object(detail),
         "is_audio_evidence": False,
@@ -346,9 +342,7 @@ def _reference_signals(
                 evidence_kind="reference_evidence",
                 source_bindings=source_bindings,
                 detail={
-                    "failure_reason_hash": sha256_bytes(
-                        receipt.failure_reason.encode("utf-8")
-                    )
+                    "failure_reason_hash": sha256_bytes(receipt.failure_reason.encode("utf-8"))
                 },
             ),
         )
@@ -409,9 +403,7 @@ def _reference_signals(
                 plan=plan,
                 cell=cell,
                 span_ids=(target.span_id,),
-                token_ids=tuple(
-                    token.id for token in transcript.tokens[token_start:token_end]
-                ),
+                token_ids=tuple(token.id for token in transcript.tokens[token_start:token_end]),
                 token_start_index=token_start,
                 token_end_index=token_end,
                 observed_text=_token_text(transcript, token_start, token_end),
@@ -571,9 +563,7 @@ def _recognition_metadata_signals(
                 evidence_kind="speaker_metadata",
                 source_bindings=recognition_bindings,
                 detail={
-                    "canonical_speaker_hashes": tuple(
-                        sorted(hash_object(item) for item in known)
-                    ),
+                    "canonical_speaker_hashes": tuple(sorted(hash_object(item) for item in known)),
                     "observed_speaker_hashes": tuple(
                         sorted(hash_object(item) for item in observed)
                     ),
@@ -640,9 +630,7 @@ def _coverage_span_signals(
 def _seam_ownership(
     plan: AuditPlan, seam_evidence: RecognitionSeamEvidence | None
 ) -> dict[str, tuple[object, ...]]:
-    ownership: dict[str, list[object]] = {
-        target.id: [] for target in plan.boundary_targets
-    }
+    ownership: dict[str, list[object]] = {target.id: [] for target in plan.boundary_targets}
     if seam_evidence is None or seam_evidence.status == "unchunked":
         return {key: tuple(value) for key, value in ownership.items()}
     internal = plan.boundary_targets[1:-1]
@@ -696,9 +684,7 @@ def _boundary_signals(
         else:
             start, end = left.token_end_index - 1, right.token_start_index + 1
         token_ids = tuple(token.id for token in transcript.tokens[start:end])
-        span_ids = tuple(
-            item.span_id for item in (left, right) if item is not None
-        )
+        span_ids = tuple(item.span_id for item in (left, right) if item is not None)
         observed_text = _token_text(transcript, start, end)
 
         coverage_cell = _cell_index(plan)[("boundary", target.id, "speech_coverage")]
@@ -758,17 +744,14 @@ def _boundary_signals(
                                     _source_binding(
                                         kind="speech_coverage_raw_artifact",
                                         source_id=(
-                                            "speech-coverage-raw:"
-                                            f"{coverage.raw_output_hash}"
+                                            f"speech-coverage-raw:{coverage.raw_output_hash}"
                                         ),
                                         content_hash=coverage.raw_output_hash,
                                         record_ids=(interval.id,),
                                     ),
                                     _source_binding(
                                         kind="speech_coverage_receipt",
-                                        source_id=(
-                                            f"speech-coverage:{coverage.invocation_id}"
-                                        ),
+                                        source_id=(f"speech-coverage:{coverage.invocation_id}"),
                                         content_hash=coverage_hash,
                                         record_ids=(coverage.invocation_id, interval.id),
                                     ),
@@ -797,9 +780,7 @@ def _boundary_signals(
                 ),
                 None,
             )
-            if edge is not None and (
-                edge.material_uncertainty or edge.cue_relation == "forbidden"
-            ):
+            if edge is not None and (edge.material_uncertainty or edge.cue_relation == "forbidden"):
                 code: CandidateSignalCode = (
                     "semantic_boundary_uncertain"
                     if edge.material_uncertainty
@@ -883,9 +864,7 @@ def _boundary_signals(
                             (
                                 _source_binding(
                                     kind="recognition_raw_artifact",
-                                    source_id=(
-                                        f"recognition-raw:{observation.raw_artifact_hash}"
-                                    ),
+                                    source_id=(f"recognition-raw:{observation.raw_artifact_hash}"),
                                     content_hash=observation.raw_artifact_hash,
                                     record_ids=(observation.id,),
                                 ),
@@ -952,9 +931,7 @@ def _boundary_signals(
                 )
             )
 
-        repetition_cell = _cell_index(plan)[
-            ("boundary", target.id, "repetition_self_repair")
-        ]
+        repetition_cell = _cell_index(plan)[("boundary", target.id, "repetition_self_repair")]
         if cross_span_repetition(left.observed_text, right.observed_text):
             signals.append(
                 _make_signal(
@@ -1006,7 +983,8 @@ def _assert_signal_cross_bindings(plan: AuditPlan, signal: CandidateSignal) -> N
         if signal.span_ids != (target.span_id,):
             raise CandidateGenerationError("span signal carries the wrong Canonical span")
         if not (
-            target.token_start_index <= signal.token_start_index
+            target.token_start_index
+            <= signal.token_start_index
             < signal.token_end_index
             <= target.token_end_index
         ):
@@ -1014,9 +992,7 @@ def _assert_signal_cross_bindings(plan: AuditPlan, signal: CandidateSignal) -> N
     else:
         target = next(item for item in plan.boundary_targets if item.id == signal.target_id)
         expected_span_ids = tuple(
-            item
-            for item in (target.left_span_id, target.right_span_id)
-            if item is not None
+            item for item in (target.left_span_id, target.right_span_id) if item is not None
         )
         if signal.span_ids != expected_span_ids:
             raise CandidateGenerationError("boundary signal carries the wrong Canonical spans")
@@ -1156,9 +1132,7 @@ def derive_candidate_signal_set(
             )
         if signal.token_ids != tuple(
             token.id
-            for token in transcript.tokens[
-                signal.token_start_index : signal.token_end_index
-            ]
+            for token in transcript.tokens[signal.token_start_index : signal.token_end_index]
         ):
             raise CandidateGenerationError(
                 "CandidateSignal token range is not exact Canonical order"
@@ -1235,13 +1209,7 @@ def _candidate_options(
             )
         )
         reference_ids = tuple(
-            sorted(
-                {
-                    evidence_id
-                    for item in sources
-                    for evidence_id in item.reference_evidence_ids
-                }
-            )
+            sorted({evidence_id for item in sources for evidence_id in item.reference_evidence_ids})
         )
         payload = {
             "schema_version": 1,

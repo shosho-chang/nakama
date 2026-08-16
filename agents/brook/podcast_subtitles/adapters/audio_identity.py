@@ -13,9 +13,7 @@ from typing import Literal
 
 from ..hashing import hash_file, hash_object, sha256_bytes
 
-AudioExecutionMode = Literal[
-    "fixture", "local", "paid_api", "subscription", "other"
-]
+AudioExecutionMode = Literal["fixture", "local", "paid_api", "subscription", "other"]
 
 
 def _package_version(distribution: str, *, required: bool) -> str:

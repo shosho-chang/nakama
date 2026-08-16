@@ -323,9 +323,7 @@ class MicEnergySpeakerAttributor:
                         "adapter": _ADAPTER,
                         "base_token_id": token.id,
                         "speaker": (
-                            tracks[assignment].speaker_label
-                            if assignment is not None
-                            else None
+                            tracks[assignment].speaker_label if assignment is not None else None
                         ),
                         "raw_output_hash": raw_output.sha256,
                     }
@@ -334,9 +332,7 @@ class MicEnergySpeakerAttributor:
                 start_ms=token.start_ms,
                 end_ms=token.end_ms,
                 confidence=token.confidence,
-                speaker=(
-                    tracks[assignment].speaker_label if assignment is not None else None
-                ),
+                speaker=(tracks[assignment].speaker_label if assignment is not None else None),
                 evidence_refs=(
                     f"recognition:{base_hash}#{token.id}",
                     f"raw:{raw_output.sha256}",
@@ -519,4 +515,6 @@ class MicEnergySpeakerAttributor:
             config_hash=config_hash,
             tracks=tuple(tracks),
         )
+
+
 __all__ = ["MicEnergySpeakerAttributor"]

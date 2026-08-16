@@ -88,9 +88,7 @@ class NormalizationResult:
 class RecognitionContextPolicyV1:
     """Closed recognition request policy: language guidance, never lexical bias."""
 
-    id: Literal["nakama-verbatim-no-lexical-context-v1"] = (
-        "nakama-verbatim-no-lexical-context-v1"
-    )
+    id: Literal["nakama-verbatim-no-lexical-context-v1"] = "nakama-verbatim-no-lexical-context-v1"
     context_bytes: bytes = b""
 
     def __post_init__(self) -> None:
@@ -182,13 +180,9 @@ class RecognitionModelIdentity:
                 raise ValueError(
                     "Recognition runtime components require non-blank trimmed names and values"
                 )
-        expected_runtime_hash = hash_object(
-            {"runtime_components": self.runtime_components}
-        )
+        expected_runtime_hash = hash_object({"runtime_components": self.runtime_components})
         if self.runtime_hash != expected_runtime_hash:
-            raise ValueError(
-                "Recognition runtime_hash must cover the exact runtime components"
-            )
+            raise ValueError("Recognition runtime_hash must cover the exact runtime components")
         for label, value in (
             ("runtime_hash", self.runtime_hash),
             ("adapter_code_hash", self.adapter_code_hash),
@@ -531,9 +525,7 @@ class DiarizationModelIdentity:
             names.append(name)
         if len(set(names)) != len(names):
             raise ValueError("Diarization runtime component names must be unique")
-        if self.runtime_hash != hash_object(
-            {"runtime_components": self.runtime_components}
-        ):
+        if self.runtime_hash != hash_object({"runtime_components": self.runtime_components}):
             raise ValueError("Diarization runtime_hash must cover exact runtime components")
         for label, digest in (
             ("runtime_hash", self.runtime_hash),
@@ -724,9 +716,10 @@ class DiarizationRunResult:
             or len(self.response_bytes) != self.receipt.response.size_bytes
         ):
             raise ValueError("Diarization response bytes differ from receipt")
-        if recognition_evidence_content_hash(
-            self.evidence
-        ) != self.receipt.materialized_recognition_evidence_hash:
+        if (
+            recognition_evidence_content_hash(self.evidence)
+            != self.receipt.materialized_recognition_evidence_hash
+        ):
             raise ValueError("Diarization Evidence differs from receipt")
         if (
             self.evidence.episode_id != self.receipt.episode_id
@@ -995,9 +988,7 @@ class CorrectionExecutionReceipt:
         if len(set(self.presented_reference_evidence_ids)) != len(
             self.presented_reference_evidence_ids
         ):
-            raise ValueError(
-                "Correction execution presented Reference Evidence IDs must be unique"
-            )
+            raise ValueError("Correction execution presented Reference Evidence IDs must be unique")
         if not re.fullmatch(r"[0-9a-f]{64}", self.presented_reference_evidence_hash):
             raise ValueError(
                 "Correction execution presented Reference Evidence hash must be lowercase SHA-256"
@@ -1326,9 +1317,7 @@ class SemanticAnalysisRequest:
             raise ValueError("Semantic Analysis policy_hash must be lowercase SHA-256")
         object.__setattr__(self, "policy_hash", effective_policy_hash)
         object.__setattr__(self, "protected_ranges", tuple(self.protected_ranges))
-        positions = {
-            token.id: index for index, token in enumerate(self.transcript.tokens)
-        }
+        positions = {token.id: index for index, token in enumerate(self.transcript.tokens)}
         seen_ids: set[str] = set()
         for protected in self.protected_ranges:
             if protected.id in seen_ids:
@@ -1342,13 +1331,9 @@ class SemanticAnalysisRequest:
                 ) from exc
             if indices != list(range(indices[0], indices[-1] + 1)):
                 raise ValueError("Semantic protected ranges must be ordered and contiguous")
-            text = "".join(
-                self.transcript.tokens[index].text for index in indices
-            )
+            text = "".join(self.transcript.tokens[index].text for index in indices)
             if text != protected.canonical_text:
-                raise ValueError(
-                    "Semantic protected range text differs from Canonical truth"
-                )
+                raise ValueError("Semantic protected range text differs from Canonical truth")
 
     @property
     def protected_range_set_hash(self) -> str:
@@ -1414,9 +1399,9 @@ class SemanticExecutionReceipt:
     adapter_identity: SemanticModelIdentity
     semantic_unit_ids: tuple[str, ...]
     owned_boundary_indices: tuple[int, ...] = ()
-    boundary_ownership_contract: Literal[
-        "legacy-token-only", "canonical-adjacent-edge-v1"
-    ] = "legacy-token-only"
+    boundary_ownership_contract: Literal["legacy-token-only", "canonical-adjacent-edge-v1"] = (
+        "legacy-token-only"
+    )
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -1441,9 +1426,7 @@ class SemanticExecutionReceipt:
             self.target_token_ids
         ):
             raise ValueError("Semantic execution requires unique target token IDs")
-        if not self.owned_token_ids or len(set(self.owned_token_ids)) != len(
-            self.owned_token_ids
-        ):
+        if not self.owned_token_ids or len(set(self.owned_token_ids)) != len(self.owned_token_ids):
             raise ValueError("Semantic execution requires unique owned token IDs")
         if not set(self.owned_token_ids).issubset(self.target_token_ids):
             raise ValueError("Semantic execution may own only target tokens")
@@ -1457,10 +1440,7 @@ class SemanticExecutionReceipt:
             raise ValueError("Semantic execution boundary ownership must be positive and unique")
         if tuple(sorted(self.owned_boundary_indices)) != self.owned_boundary_indices:
             raise ValueError("Semantic execution boundary ownership must be ordered")
-        if (
-            self.boundary_ownership_contract == "legacy-token-only"
-            and self.owned_boundary_indices
-        ):
+        if self.boundary_ownership_contract == "legacy-token-only" and self.owned_boundary_indices:
             raise ValueError("legacy Semantic execution cannot claim boundary ownership")
         for label, artifact in (("request", self.request), ("response", self.response)):
             match = re.fullmatch(
@@ -1557,9 +1537,7 @@ class SemanticRunResult:
                     self.canonical_token_ids[boundary_index],
                 }
                 if not endpoints.issubset(receipt.target_token_ids):
-                    raise ValueError(
-                        "Semantic execution owns a boundary outside its target tokens"
-                    )
+                    raise ValueError("Semantic execution owns a boundary outside its target tokens")
 
         if tuple(owned) != self.canonical_token_ids:
             raise ValueError("Semantic execution ownership is not an exact Canonical partition")

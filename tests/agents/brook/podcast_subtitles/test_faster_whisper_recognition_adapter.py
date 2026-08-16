@@ -101,9 +101,7 @@ def test_faster_whisper_seals_raw_words_and_groups_zero_duration_without_epsilon
         {"index": 1, "text": "會對象", "start_seconds": 0.1, "end_seconds": 0.8},
     ]
     assert grouping["groups"][0]["source_observation_indices"] == [0, 1]
-    assert grouping["groups"][0]["timing_basis"] == (
-        "provider_word_timestamp_bounded_group"
-    )
+    assert grouping["groups"][0]["timing_basis"] == ("provider_word_timestamp_bounded_group")
 
 
 def test_faster_whisper_preserves_one_based_provider_segment_ids(tmp_path: Path) -> None:
@@ -112,9 +110,7 @@ def test_faster_whisper_preserves_one_based_provider_segment_ids(tmp_path: Path)
     observation = _observation()
     observation["segments"][0]["id"] = 1
 
-    evidence = _adapter(lambda _audio, _request: observation).recognize(
-        _request(tmp_path, audio)
-    )
+    evidence = _adapter(lambda _audio, _request: observation).recognize(_request(tmp_path, audio))
 
     assert evidence.tokens
     envelope = json.loads(next((tmp_path / "raw").glob("*.json")).read_text("utf-8"))
@@ -469,9 +465,7 @@ def test_faster_whisper_bounded_multichunk_resume_never_rematerializes_full_audi
         segment = payload["segments"][0]
         segment["end"] = 0.3
         segment["text"] = " 詞"
-        segment["words"] = [
-            {"word": " 詞", "start": 0.1, "end": 0.2, "probability": 0.95}
-        ]
+        segment["words"] = [{"word": " 詞", "start": 0.1, "end": 0.2, "probability": 0.95}]
         return payload
 
     def interrupted_runner(chunk: Path, _request_value):

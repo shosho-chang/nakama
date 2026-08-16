@@ -188,9 +188,7 @@ class CorrectionLedger:
         decision_hash: str,
     ) -> LedgerEntry | None:
         for entry in existing:
-            existing_id = entry.decision.get(
-                "event_id", entry.decision.get("decision_id")
-            )
+            existing_id = entry.decision.get("event_id", entry.decision.get("decision_id"))
             if existing_id != event_id:
                 continue
             if entry.decision_hash == decision_hash:
@@ -260,9 +258,7 @@ class CorrectionLedger:
 
     def _append_prepared_locked(self, entry: LedgerEntry) -> LedgerEntry:
         existing = self.entries()
-        event_id = entry.decision.get(
-            "event_id", entry.decision.get("decision_id")
-        )
+        event_id = entry.decision.get("event_id", entry.decision.get("decision_id"))
         duplicate = self._matching_existing(
             existing,
             event_id=event_id,

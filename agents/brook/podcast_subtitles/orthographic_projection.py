@@ -86,9 +86,7 @@ class OpenCCS2TWIdentityV1(_Contract):
     implementation: Literal["opencc-python-reimplemented"] = _DISTRIBUTION_NAME
     implementation_version: str
     config_path: Literal["config/s2tw.json"] = _CONFIG_PATH
-    dictionary_chain: tuple[
-        Literal["STPhrases.txt", "STCharacters.txt", "TWVariants.txt"], ...
-    ]
+    dictionary_chain: tuple[Literal["STPhrases.txt", "STCharacters.txt", "TWVariants.txt"], ...]
     inventory: tuple[OrthographicInventoryItemV1, ...]
     inventory_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     ambiguous_dictionaries: tuple[OrthographicAmbiguousDictionaryV1, ...]
@@ -199,9 +197,7 @@ class OrthographicProjectionEvidenceV1(_Contract):
                 raise ValueError("projected token offsets are not contiguous")
             if item.source_end_offset - item.source_start_offset != len(item.source_text):
                 raise ValueError("source token scalar range mismatch")
-            if item.projected_end_offset - item.projected_start_offset != len(
-                item.projected_text
-            ):
+            if item.projected_end_offset - item.projected_start_offset != len(item.projected_text):
                 raise ValueError("projected token scalar range mismatch")
             source_cursor = item.source_end_offset
             projected_cursor = item.projected_end_offset
@@ -288,9 +284,7 @@ def _read_dictionary(path: Path) -> dict[str, tuple[str, ...]]:
 def _assert_literal_scalars_unchanged(source_text: str, projected_text: str) -> None:
     """Protect literals that an orthographic converter has no authority to edit."""
 
-    for offset, (source, projected) in enumerate(
-        zip(source_text, projected_text, strict=True)
-    ):
+    for offset, (source, projected) in enumerate(zip(source_text, projected_text, strict=True)):
         category = unicodedata.category(source)
         name = unicodedata.name(source, "")
         protected = source.isascii() or "LATIN" in name or category.startswith("N")
@@ -348,9 +342,7 @@ def measure_opencc_s2tw_identity() -> OpenCCS2TWIdentityV1:
     for relative in _DICTIONARY_PATHS:
         entries = _read_dictionary(root / relative)
         ambiguous = tuple(
-            (source, candidates)
-            for source, candidates in entries.items()
-            if len(candidates) > 1
+            (source, candidates) for source, candidates in entries.items() if len(candidates) > 1
         )
         ambiguous_dictionaries.append(
             OrthographicAmbiguousDictionaryV1(
@@ -490,9 +482,7 @@ def _changed_scalars(
     changes: list[OrthographicChangedScalarV1] = []
     for token in tokens:
         if len(token.source_text) != len(token.projected_text):
-            raise OrthographicProjectionError(
-                "OpenCC s2tw changed a token's Unicode scalar length"
-            )
+            raise OrthographicProjectionError("OpenCC s2tw changed a token's Unicode scalar length")
         for offset, (source, projected) in enumerate(
             zip(token.source_text, token.projected_text, strict=True)
         ):
@@ -639,16 +629,13 @@ def verify_orthographic_projection(
     matches = tuple(
         item
         for item in evidence
-        if recognition_evidence_content_hash(item)
-        == projected.source_recognition_evidence_hash
+        if recognition_evidence_content_hash(item) == projected.source_recognition_evidence_hash
     )
     if len(matches) != 1:
         raise OrthographicProjectionError(
             "projection must bind exactly one member of the supplied Recognition Evidence set"
         )
-    replayed = project_recognition_evidence(
-        matches[0], source_evidence_set_hash=expected_set_hash
-    )
+    replayed = project_recognition_evidence(matches[0], source_evidence_set_hash=expected_set_hash)
     if replayed != projected:
         raise OrthographicProjectionError(
             "orthographic projection differs from fresh measured s2tw replay"
@@ -666,8 +653,7 @@ def project_recognition_evidence_set(
     evidence = tuple(source_evidence)
     set_hash = recognition_evidence_set_hash(evidence)
     projected = tuple(
-        project_recognition_evidence(item, source_evidence_set_hash=set_hash)
-        for item in evidence
+        project_recognition_evidence(item, source_evidence_set_hash=set_hash) for item in evidence
     )
     for item in projected:
         verify_orthographic_projection(item, evidence)

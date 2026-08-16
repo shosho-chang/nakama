@@ -82,19 +82,13 @@ def _checkpoint(
         reference_enrollment_hash=hash_object(()),
         speaker_track_binding_hash=hash_object(()),
         adapter_identities=_identities(),
-        artifact_hashes={
-            name: sha256_bytes(value) for name, value in sorted(payloads.items())
-        },
+        artifact_hashes={name: sha256_bytes(value) for name, value in sorted(payloads.items())},
         previous_checkpoint_id=previous_checkpoint_id or started.id,
         generation_id=generation_id,
-        generation_artifact_set_hash=(
-            "1" * 64 if generation_id and complete_binding else None
-        ),
+        generation_artifact_set_hash=("1" * 64 if generation_id and complete_binding else None),
         generation_record_hash=("2" * 64 if generation_id and complete_binding else None),
         generation_manifest_hash=("3" * 64 if generation_id and complete_binding else None),
-        generation_transcript_hash=(
-            "4" * 64 if generation_id and complete_binding else None
-        ),
+        generation_transcript_hash=("4" * 64 if generation_id and complete_binding else None),
         generation_outcome=("accepted" if generation_id and complete_binding else None),
     )
 
@@ -120,9 +114,7 @@ def _started_checkpoint(
         reference_enrollment_hash=hash_object(()),
         speaker_track_binding_hash=hash_object(()),
         adapter_identities=_identities(),
-        artifact_hashes={
-            name: sha256_bytes(value) for name, value in sorted(artifacts.items())
-        },
+        artifact_hashes={name: sha256_bytes(value) for name, value in sorted(artifacts.items())},
         expected_active_generation_id=expected_active_generation_id,
     )
 
@@ -150,15 +142,13 @@ def test_create_checkpoint_round_trips_and_reverifies_in_fresh_process(
     _commit_started(first, checkpoint)
     stored = first.commit_create_checkpoint(checkpoint, artifacts=artifacts)
     fresh = GenerationStore(tmp_path)
-    loaded = fresh.load_create_checkpoint(
-        expected_operation_key=checkpoint.operation_key
-    )
+    loaded = fresh.load_create_checkpoint(expected_operation_key=checkpoint.operation_key)
 
     assert loaded is not None
     assert loaded.checkpoint == checkpoint
-    assert fresh.read_create_checkpoint_artifact(loaded, "raw/one.json") == artifacts[
-        "raw/one.json"
-    ]
+    assert (
+        fresh.read_create_checkpoint_artifact(loaded, "raw/one.json") == artifacts["raw/one.json"]
+    )
     assert stored.directory == loaded.directory
 
 
@@ -249,10 +239,10 @@ def test_started_checkpoint_captures_active_parent_before_external_work() -> Non
 def test_complete_checkpoint_requires_exact_generation_storage_binding() -> None:
     with pytest.raises(ValidationError, match="complete Generation binding"):
         _checkpoint(
-        stage="complete",
-        generation_id="generation-" + "a" * 64,
-        complete_binding=False,
-    )
+            stage="complete",
+            generation_id="generation-" + "a" * 64,
+            complete_binding=False,
+        )
 
 
 def test_pointer_tamper_is_rejected_before_checkpoint_use(tmp_path: Path) -> None:
@@ -366,9 +356,7 @@ def test_checkpoint_store_rejects_skipped_stage_and_inherited_parent_drift(
         reference_enrollment_hash=evidence.reference_enrollment_hash,
         speaker_track_binding_hash=evidence.speaker_track_binding_hash,
         adapter_identities=evidence.adapter_identities,
-        artifact_hashes={
-            "state.json": sha256_bytes(drifted_artifacts["state.json"])
-        },
+        artifact_hashes={"state.json": sha256_bytes(drifted_artifacts["state.json"])},
         expected_active_generation_id=evidence.expected_active_generation_id,
         previous_checkpoint_id=evidence.id,
     )

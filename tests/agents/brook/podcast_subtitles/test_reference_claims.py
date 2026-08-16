@@ -354,9 +354,9 @@ def test_complete_lookup_finds_authority_counterclaim_hidden_by_top_k(
     assert proof.coverage.selection_complete is True
     assert proof.coverage.bounded_retrieval_complete is False
     assert len(proof.coverage.bounded_retrieval_omitted_claim_ids) == 1
-    assert {
-        item.code for item in proof.conflicts.unresolved_conditions
-    } == {"bounded_retrieval_not_authority_complete"}
+    assert {item.code for item in proof.conflicts.unresolved_conditions} == {
+        "bounded_retrieval_not_authority_complete"
+    }
     assert len(proof.conflicts.conflicts) == 1
     assert proof.conflicts.conflicts[0].kind == "authoritative_authoritative"
     assert proof.conflicts.blocking is True
@@ -366,9 +366,7 @@ def test_complete_lookup_finds_authority_counterclaim_hidden_by_top_k(
 def test_reference_authority_proof_round_trips_from_exact_frozen_parents(
     tmp_path: Path,
 ) -> None:
-    retriever, targets, evidence, specs, bounded_ids, proof = (
-        _conflicting_authority_proof(tmp_path)
-    )
+    retriever, targets, evidence, specs, bounded_ids, proof = _conflicting_authority_proof(tmp_path)
     exact_bytes = reference_authority_proof_bytes(proof)
 
     replayed = verify_reference_authority_proof(
@@ -385,9 +383,7 @@ def test_reference_authority_proof_round_trips_from_exact_frozen_parents(
 
 
 def test_reference_authority_proof_v1_fails_closed(tmp_path: Path) -> None:
-    retriever, targets, evidence, specs, bounded_ids, proof = (
-        _conflicting_authority_proof(tmp_path)
-    )
+    retriever, targets, evidence, specs, bounded_ids, proof = _conflicting_authority_proof(tmp_path)
     payload = json.loads(reference_authority_proof_bytes(proof))
     payload["schema_version"] = 1
     old_bytes = json.dumps(
@@ -858,9 +854,7 @@ def test_claim_locator_excerpt_and_authority_tamper_fail_closed(
     field: str,
     replacement: str,
 ) -> None:
-    retriever, targets, evidence, specs, bounded_ids, proof = (
-        _conflicting_authority_proof(tmp_path)
-    )
+    retriever, targets, evidence, specs, bounded_ids, proof = _conflicting_authority_proof(tmp_path)
     payload = json.loads(reference_authority_proof_bytes(proof))
     payload["claims"][0][field] = replacement
 
@@ -878,9 +872,7 @@ def test_claim_locator_excerpt_and_authority_tamper_fail_closed(
 def test_coordinated_index_and_outer_hash_tamper_fails_parent_rebuild(
     tmp_path: Path,
 ) -> None:
-    retriever, targets, evidence, specs, bounded_ids, proof = (
-        _conflicting_authority_proof(tmp_path)
-    )
+    retriever, targets, evidence, specs, bounded_ids, proof = _conflicting_authority_proof(tmp_path)
     payload = json.loads(reference_authority_proof_bytes(proof))
     coverage = payload["coverage"]
     conflicts = payload["conflicts"]
@@ -911,9 +903,7 @@ def test_missing_duplicate_reordered_or_lying_coverage_fails_closed(
     tmp_path: Path,
     mutation: str,
 ) -> None:
-    retriever, targets, evidence, specs, bounded_ids, proof = (
-        _conflicting_authority_proof(tmp_path)
-    )
+    retriever, targets, evidence, specs, bounded_ids, proof = _conflicting_authority_proof(tmp_path)
     payload = json.loads(reference_authority_proof_bytes(proof))
     coverage = payload["coverage"]
     conflicts = payload["conflicts"]
@@ -948,9 +938,7 @@ def test_missing_duplicate_reordered_or_lying_coverage_fails_closed(
 
 
 def test_coverage_omission_without_typed_reason_fails_closed(tmp_path: Path) -> None:
-    retriever, targets, evidence, specs, bounded_ids, proof = (
-        _conflicting_authority_proof(tmp_path)
-    )
+    retriever, targets, evidence, specs, bounded_ids, proof = _conflicting_authority_proof(tmp_path)
     payload = json.loads(reference_authority_proof_bytes(proof))
     coverage = payload["coverage"]
     conflicts = payload["conflicts"]
@@ -1050,9 +1038,7 @@ def test_complete_lookup_rejects_duplicate_exact_ranges(tmp_path: Path) -> None:
 
 
 def test_complete_claim_registry_rejects_duplicate_specs(tmp_path: Path) -> None:
-    retriever, targets, evidence, specs, bounded_ids, _ = _conflicting_authority_proof(
-        tmp_path
-    )
+    retriever, targets, evidence, specs, bounded_ids, _ = _conflicting_authority_proof(tmp_path)
 
     with pytest.raises(ValueError, match="claim specs must be unique"):
         build_reference_authority_proof(
@@ -1065,9 +1051,7 @@ def test_complete_claim_registry_rejects_duplicate_specs(tmp_path: Path) -> None
 
 
 def test_claimed_text_must_match_exact_evidence_range(tmp_path: Path) -> None:
-    retriever, targets, evidence, specs, bounded_ids, _ = _conflicting_authority_proof(
-        tmp_path
-    )
+    retriever, targets, evidence, specs, bounded_ids, _ = _conflicting_authority_proof(tmp_path)
     forged = specs[0].model_copy(update={"claimed_text": "LLM paraphrase"})
 
     with pytest.raises(ValueError, match="not a member"):
@@ -1083,9 +1067,7 @@ def test_claimed_text_must_match_exact_evidence_range(tmp_path: Path) -> None:
 def test_complete_proof_recomputes_and_rejects_tampered_index_identity(
     tmp_path: Path,
 ) -> None:
-    retriever, targets, evidence, specs, bounded_ids, _ = _conflicting_authority_proof(
-        tmp_path
-    )
+    retriever, targets, evidence, specs, bounded_ids, _ = _conflicting_authority_proof(tmp_path)
     object.__setattr__(
         retriever,
         "_index",

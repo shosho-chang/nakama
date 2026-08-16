@@ -75,9 +75,7 @@ def _write_script_episode(
 
 
 def _canned_storyboard_for_srt(srt_bytes: bytes) -> str:
-    flat_text, _char_to_time, _ranges = flatten_cues(
-        parse_srt(srt_bytes.decode("utf-8"))
-    )
+    flat_text, _char_to_time, _ranges = flatten_cues(parse_srt(srt_bytes.decode("utf-8")))
     anchor = flat_text[: min(12, len(flat_text))]
     beats = [
         {
@@ -128,9 +126,7 @@ def test_plan_uses_real_disk_verifier_and_records_exact_storyboard_provenance(
 
     assert pipeline._cmd_plan(argparse.Namespace(episode=episode_id)) == 0
 
-    provenance = json.loads(
-        (ep_dir / "storyboard.provenance.json").read_text(encoding="utf-8")
-    )
+    provenance = json.loads((ep_dir / "storyboard.provenance.json").read_text(encoding="utf-8"))
     assert provenance == {
         "schema_version": 1,
         "episode_id": episode_id,

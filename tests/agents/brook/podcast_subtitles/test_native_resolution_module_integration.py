@@ -121,9 +121,7 @@ def _write_root_text_responses(
                 observed = assessment["cited_token_ids"][0]
                 # The provider response helper has already bound cited_token_ids; its
                 # observed literal is available only in the canonical source packet.
-                request = TextAuditProviderRequestV2.model_validate_json(
-                    request_path.read_bytes()
-                )
+                request = TextAuditProviderRequestV2.model_validate_json(request_path.read_bytes())
                 canonical_source = next(
                     item
                     for item in request.untrusted_source_documents
@@ -364,9 +362,7 @@ def _acceptance_request(scenario: _ParentScenario) -> ResolveNativeRequest:
     candidate = scenario.candidate
     aggregate = scenario.aggregate
     loaded_parent = scenario.loaded_parent
-    receipt = _human_audio_receipt(
-        candidate, aggregate, loaded_parent.recognition.evidence
-    )
+    receipt = _human_audio_receipt(candidate, aggregate, loaded_parent.recognition.evidence)
     resolution_key = "term:exact-candidate"
     target = ReferenceAuthorityTargetV2(
         resolution_key=resolution_key,
@@ -385,9 +381,7 @@ def _acceptance_request(scenario: _ParentScenario) -> ResolveNativeRequest:
         )[0]
         for item in loaded_parent.references.evidence
     )
-    selected = next(
-        item for item in authority_evidence if candidate.candidate_text in item.excerpt
-    )
+    selected = next(item for item in authority_evidence if candidate.candidate_text in item.excerpt)
     start = selected.excerpt.index(candidate.candidate_text)
     proof = build_reference_authority_proof(
         retriever=scenario.retriever,
@@ -462,9 +456,7 @@ def _original_confirmation_request(scenario: _ParentScenario) -> ResolveNativeRe
             authorization
         ),
         original_confirmation_policy=original_confirmation_policy_bytes(policy),
-        human_original_confirmation_receipts=(
-            human_original_confirmation_receipt_bytes(receipt),
-        ),
+        human_original_confirmation_receipts=(human_original_confirmation_receipt_bytes(receipt),),
     )
 
 
@@ -530,9 +522,7 @@ def test_accept_exact_candidate_reaudits_and_publishes_verified_child(
     candidate_literal = references[0].excerpt
     _write_root_text_responses(text_pending, candidate_literal=candidate_literal)
 
-    second, _ = _configured_native_module(
-        episode_root, workspace=workspace, retriever=retriever
-    )
+    second, _ = _configured_native_module(episode_root, workspace=workspace, retriever=retriever)
     audio_pending = second.create(request)
     assert isinstance(audio_pending, Interrupted)
     for request_path, clip_path, response_path in zip(
@@ -568,9 +558,7 @@ def test_accept_exact_candidate_reaudits_and_publishes_verified_child(
             fromlist=["FullAuditAggregateAttestationV2"],
         ).FullAuditAggregateAttestationV2,
     )
-    receipt = _human_audio_receipt(
-        candidate, aggregate, loaded_parent.recognition.evidence
-    )
+    receipt = _human_audio_receipt(candidate, aggregate, loaded_parent.recognition.evidence)
     resolution_key = "term:exact-candidate"
     target = ReferenceAuthorityTargetV2(
         resolution_key=resolution_key,
@@ -679,9 +667,7 @@ def test_accept_exact_candidate_reaudits_and_publishes_verified_child(
     assert final_module.store.active_generation_id() == child.generation_id
     assert final_module.ledger.head_hash == child.transcript.ledger_hash
     assert (
-        final_module._load_generation(
-            child.generation_id, require_active=True
-        ).result.transcript
+        final_module._load_generation(child.generation_id, require_active=True).result.transcript
         == child.transcript
     )
     assert final_module._generation_descends_from(
@@ -803,9 +789,7 @@ def test_confirm_original_preserves_exact_text_and_gates_fresh_child_discovery(
     assert set(native_gates[0].span_ids) == {
         span_id for item in fresh_candidates for span_id in item.cited_span_ids
     }
-    reloaded = final_module._load_generation(
-        child.generation_id, require_active=True
-    ).result
+    reloaded = final_module._load_generation(child.generation_id, require_active=True).result
     assert reloaded.transcript == child.transcript
 
 

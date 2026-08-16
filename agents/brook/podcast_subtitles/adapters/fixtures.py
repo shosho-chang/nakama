@@ -304,15 +304,11 @@ class FixtureCorrectorAdapter:
             "available_reference_evidence_hash": reference_evidence_set_hash(
                 request.available_reference_evidence
             ),
-            "presented_reference_evidence_ids": [
-                item.id for item in request.reference_evidence
-            ],
+            "presented_reference_evidence_ids": [item.id for item in request.reference_evidence],
             "presented_reference_evidence_hash": reference_evidence_set_hash(
                 request.reference_evidence
             ),
-            "reference_evidence": [
-                {"id": item.id} for item in request.reference_evidence
-            ],
+            "reference_evidence": [{"id": item.id} for item in request.reference_evidence],
             "policy_hash": request.transcript.policy_hash,
             "target_span_ids": list(request.target_span_ids),
             "adapter_identity_hash": self.identity.content_hash,

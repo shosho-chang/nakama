@@ -1161,9 +1161,7 @@ def _build_qwen_alignment_grouping(
     observations: Sequence[Mapping[str, object]],
 ) -> _QwenAlignmentGroupingReceipt:
     try:
-        typed = tuple(
-            TimedObservation.model_validate(item, strict=True) for item in observations
-        )
+        typed = tuple(TimedObservation.model_validate(item, strict=True) for item in observations)
         return build_timed_observation_grouping(
             typed,
             policy=FORCED_ALIGNMENT_GROUPING_POLICY,
@@ -1808,9 +1806,7 @@ class Qwen3ASRRecognizerAdapter:
             "chunk_derivation": "pcm_wav_frame_slice_v1",
             "ownership": "alignment_midpoint_in_half_open_owned_interval_v1",
             "seam_comparison": "normalized_alignment_text_in_shared_context_v1",
-            "timestamp_semantics": (
-                "forced_aligner_exact_or_zero_duration_bounded_group_v1"
-            ),
+            "timestamp_semantics": ("forced_aligner_exact_or_zero_duration_bounded_group_v1"),
             "envelope_schema_version": self.ENVELOPE_SCHEMA_VERSION,
         }
 
@@ -1885,9 +1881,7 @@ class Qwen3ASRRecognizerAdapter:
                 f"{repo_id}@{revision} has no readable model weights"
             )
         try:
-            resolved_snapshot, _inventory, inventory_hash = (
-                measure_huggingface_snapshot(snapshot)
-            )
+            resolved_snapshot, _inventory, inventory_hash = measure_huggingface_snapshot(snapshot)
         except SnapshotIdentityError as exc:
             raise AdapterUnavailableError(
                 f"Qwen3-ASR pinned local {label} snapshot identity failed: {exc}"
@@ -2002,9 +1996,7 @@ class Qwen3ASRRecognizerAdapter:
                 "Qwen3-ASR local snapshot paths were not established by identity preflight"
             )
         try:
-            _, _, model_inventory = measure_huggingface_snapshot(
-                self._model_snapshot_path
-            )
+            _, _, model_inventory = measure_huggingface_snapshot(self._model_snapshot_path)
             _, _, aligner_inventory = measure_huggingface_snapshot(
                 self._forced_aligner_snapshot_path
             )
@@ -2034,9 +2026,7 @@ class Qwen3ASRRecognizerAdapter:
             local_files_only=self._local_files_only,
         )
         try:
-            _, _, model_inventory_after = measure_huggingface_snapshot(
-                self._model_snapshot_path
-            )
+            _, _, model_inventory_after = measure_huggingface_snapshot(self._model_snapshot_path)
             _, _, aligner_inventory_after = measure_huggingface_snapshot(
                 self._forced_aligner_snapshot_path
             )

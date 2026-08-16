@@ -134,9 +134,7 @@ class ReferenceSourceSpec:
                     raise ValueError(
                         "ReferenceSourceSpec document_date must be YYYY-MM-DD or 'undated'"
                     ) from exc
-                if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value) or (
-                    parsed.isoformat() != value
-                ):
+                if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value) or (parsed.isoformat() != value):
                     raise ValueError(
                         "ReferenceSourceSpec document_date must be YYYY-MM-DD or 'undated'"
                     )
@@ -302,8 +300,7 @@ def _validate_metadata(value: str, label: str, *, maximum: int) -> str:
     if len(value) > maximum:
         raise ValueError(f"{label} exceeds {maximum} Unicode scalars")
     if any(
-        unicodedata.category(character) in {"Cc", "Cs"}
-        or character in _BIDI_CONTROL_CHARACTERS
+        unicodedata.category(character) in {"Cc", "Cs"} or character in _BIDI_CONTROL_CHARACTERS
         for character in value
     ):
         raise ValueError(f"{label} contains forbidden control characters")
@@ -569,9 +566,7 @@ def _html_blocks(document: bytes, *, member: str) -> tuple[ExtractedPassage, ...
             current_heading = text
             continue
         paragraph_number += 1
-        parts: list[ReferenceLocatorPart] = [
-            ReferenceLocatorPart(kind="section", value=member)
-        ]
+        parts: list[ReferenceLocatorPart] = [ReferenceLocatorPart(kind="section", value=member)]
         if current_heading:
             parts.append(ReferenceLocatorPart(kind="heading", value=current_heading))
         parts.append(ReferenceLocatorPart(kind="paragraph", value=str(paragraph_number)))
@@ -626,9 +621,7 @@ def _default_pdf_page_extractor(blob: bytes) -> Sequence[str]:
     try:
         from pypdf import PdfReader
     except ImportError as exc:  # pragma: no cover - optional runtime dependency
-        raise AdapterInputError(
-            "PDF references require optional dependency pypdf>=5.0"
-        ) from exc
+        raise AdapterInputError("PDF references require optional dependency pypdf>=5.0") from exc
     try:
         reader = PdfReader(io.BytesIO(blob))
         return tuple(page.extract_text() or "" for page in reader.pages)
@@ -696,8 +689,7 @@ def _parser_runtime_hash(*, dependencies: Sequence[str] = ()) -> str:
             "python_cache_tag": sys.implementation.cache_tag,
             "unicode_database_version": unicodedata.unidata_version,
             "dependencies": {
-                dependency: _package_version(dependency)
-                for dependency in sorted(dependencies)
+                dependency: _package_version(dependency) for dependency in sorted(dependencies)
             },
         }
     )
@@ -812,9 +804,7 @@ def _extract_with_registration(
             f"Reference parser failed for {registration.identity.source_format}"
         ) from exc
     if not result or not all(isinstance(item, ExtractedPassage) for item in result):
-        raise AdapterInputError(
-            "Reference parser must return one or more ExtractedPassage values"
-        )
+        raise AdapterInputError("Reference parser must return one or more ExtractedPassage values")
     return result
 
 
@@ -872,9 +862,7 @@ def verify_reference_extraction_derivation(
         or identity.runtime_hash != enrolled_artifact.extractor_runtime_hash
     ):
         raise AdapterIntegrityError("Enrolled Reference parser is outside the trusted registry")
-    expected = _extraction_snapshot_bytes(
-        _build_extraction_snapshot(source_bytes, registration)
-    )
+    expected = _extraction_snapshot_bytes(_build_extraction_snapshot(source_bytes, registration))
     if expected != extraction_snapshot:
         raise AdapterIntegrityError(
             "Reference extraction snapshot is not derived by the enrolled trusted parser"
@@ -913,8 +901,10 @@ def _grapheme_spans(value: str) -> tuple[tuple[int, int], ...]:
         start = index
         first = value[index]
         index += 1
-        if _is_regional_indicator(first) and index < len(value) and _is_regional_indicator(
-            value[index]
+        if (
+            _is_regional_indicator(first)
+            and index < len(value)
+            and _is_regional_indicator(value[index])
         ):
             index += 1
         while index < len(value):
@@ -947,10 +937,7 @@ def _lexical_features(value: str) -> frozenset[str]:
     features = set(latin_words)
     for word in latin_words:
         for size in range(3, min(6, len(word)) + 1):
-            features.update(
-                word[index : index + size]
-                for index in range(len(word) - size + 1)
-            )
+            features.update(word[index : index + size] for index in range(len(word) - size + 1))
     for run in _CJK_RUN_RE.findall(normalized):
         features.add(run)
         if len(run) == 1:
@@ -959,8 +946,7 @@ def _lexical_features(value: str) -> frozenset[str]:
             for size in range(2, min(6, len(run)) + 1):
                 if len(run) >= size:
                     features.update(
-                        run[index : index + size]
-                        for index in range(len(run) - size + 1)
+                        run[index : index + size] for index in range(len(run) - size + 1)
                     )
     return frozenset(features)
 
@@ -1059,9 +1045,7 @@ def _phonetic_lookup_keys(syllables: tuple[str, ...]) -> tuple[str, ...]:
     keys = ["exact:" + "/".join(syllables)]
     for index, syllable in enumerate(syllables):
         masked = (*syllables[:index], "*", *syllables[index + 1 :])
-        keys.append(
-            f"near:{index}:{_pinyin_initial(syllable)}:" + "/".join(masked)
-        )
+        keys.append(f"near:{index}:{_pinyin_initial(syllable)}:" + "/".join(masked))
     return tuple(keys)
 
 
@@ -1074,9 +1058,7 @@ def _near_phonetic_match(
     if len(observed) != len(source) or len(observed) < 2:
         return None
     differing = tuple(
-        (left, right)
-        for left, right in zip(observed, source, strict=True)
-        if left != right
+        (left, right) for left, right in zip(observed, source, strict=True) if left != right
     )
     if len(differing) > 1:
         return None
@@ -1172,11 +1154,7 @@ def _minimal_excerpt(
         len(text),
     )
     end = next(
-        (
-            cluster_end
-            for _, cluster_end in reversed(graphemes)
-            if cluster_end <= end
-        ),
+        (cluster_end for _, cluster_end in reversed(graphemes) if cluster_end <= end),
         start,
     )
     if target_end and (start > target_start or end < target_end):
@@ -1223,11 +1201,7 @@ def _query_support(
     if phonetic_anchor is not None and overlaps(
         phonetic_anchor.query_start, phonetic_anchor.query_end
     ):
-        kind = (
-            "phonetic_exact"
-            if phonetic_anchor.differing_syllables == 0
-            else "phonetic_near"
-        )
+        kind = "phonetic_exact" if phonetic_anchor.differing_syllables == 0 else "phonetic_near"
         return phonetic_anchor.query_start, phonetic_anchor.query_end, kind, None
 
     passage_features = passage.lexical_features
@@ -1299,17 +1273,13 @@ def _exclusive_file_lock(path: Path) -> Iterator[None]:
     try:
         from filelock import FileLock, Timeout
     except ImportError as exc:  # pragma: no cover - dependency contract
-        raise AdapterInputError(
-            "cross-process Reference CAS locking requires filelock"
-        ) from exc
+        raise AdapterInputError("cross-process Reference CAS locking requires filelock") from exc
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with FileLock(str(path), timeout=30):
             yield
     except Timeout as exc:
-        raise AdapterIntegrityError(
-            f"timed out acquiring Reference CAS lock: {path}"
-        ) from exc
+        raise AdapterIntegrityError(f"timed out acquiring Reference CAS lock: {path}") from exc
 
 
 def _persist_content_addressed(path: Path, payload: bytes, *, label: str) -> None:
@@ -1402,9 +1372,7 @@ class LocalReferenceRetriever:
                 "phonetic_policy": "same-initial-at-most-one-single-edit-syllable-v1",
             }
         )
-        self._trusted_parser_registry = (
-            trusted_parser_registry or default_trusted_parser_registry()
-        )
+        self._trusted_parser_registry = trusted_parser_registry or default_trusted_parser_registry()
         normalized_overrides = {
             key.casefold() if key.startswith(".") else f".{key.casefold()}": value
             for key, value in dict(parser_overrides or {}).items()
@@ -1460,9 +1428,7 @@ class LocalReferenceRetriever:
             self._passages
         )
         artifacts = tuple(artifact for artifact, _ in indexed)
-        self._artifacts_by_source_id = {
-            artifact.source_id: artifact for artifact in artifacts
-        }
+        self._artifacts_by_source_id = {artifact.source_id: artifact for artifact in artifacts}
         self._index = ReferenceIndex(
             index_hash=self._compute_index_hash(
                 artifacts,
@@ -1506,9 +1472,7 @@ class LocalReferenceRetriever:
         """Return verified canonical extraction bytes for persistence by the Module."""
 
         digest = (
-            artifact.extracted_text.sha256
-            if isinstance(artifact, ReferenceArtifact)
-            else artifact
+            artifact.extracted_text.sha256 if isinstance(artifact, ReferenceArtifact) else artifact
         )
         try:
             payload = self._extraction_snapshots[digest]
@@ -1554,9 +1518,7 @@ class LocalReferenceRetriever:
         if artifacts != self._index.artifacts:
             raise AdapterIntegrityError("Reference index artifact coverage/order drift")
         if any(
-            passage.artifact != self._artifacts_by_source_id.get(
-                passage.artifact.source_id
-            )
+            passage.artifact != self._artifacts_by_source_id.get(passage.artifact.source_id)
             for passage in self._passages
         ):
             raise AdapterIntegrityError("Reference index passage Artifact binding drift")
@@ -1781,10 +1743,7 @@ class LocalReferenceRetriever:
             if extraction_digest not in checked_extractions:
                 checked_extractions.add(extraction_digest)
                 extraction_path = (
-                    self._snapshot_root
-                    / "extractions"
-                    / extraction_digest
-                    / "extracted-text.json"
+                    self._snapshot_root / "extractions" / extraction_digest / "extracted-text.json"
                 )
                 extraction_payload = _safe_read_source(
                     extraction_path,
@@ -1809,22 +1768,16 @@ class LocalReferenceRetriever:
     ) -> tuple[tuple[int, ...], dict[int, _PhoneticAnchor], str]:
         lexical_query = tuple(
             sorted(
-                _lexical_features(
-                    " ".join((*request.candidate_terms, request.observed_text))
-                ),
+                _lexical_features(" ".join((*request.candidate_terms, request.observed_text))),
                 key=lambda item: (-len(item), item),
             )
         )
         phonetic_windows = _phonetic_windows(request.observed_text)
-        phonetic_windows_by_key: dict[
-            str, list[tuple[int, int, tuple[str, ...]]]
-        ] = {}
+        phonetic_windows_by_key: dict[str, list[tuple[int, int, tuple[str, ...]]]] = {}
         for window in phonetic_windows:
             for key in _phonetic_lookup_keys(window[2]):
                 phonetic_windows_by_key.setdefault(key, []).append(window)
-        phonetic_query_keys = tuple(
-            phonetic_windows_by_key
-        )
+        phonetic_query_keys = tuple(phonetic_windows_by_key)
         candidate_votes: dict[int, int] = {}
         best_anchors: dict[int, tuple[tuple[int, int, int], _PhoneticAnchor]] = {}
 
@@ -1871,12 +1824,8 @@ class LocalReferenceRetriever:
                 continue
             phonetic_postings_examined += 1
             passage = self._passages[posting.passage_index]
-            matching_anchors: list[
-                tuple[tuple[int, int, int], _PhoneticAnchor]
-            ] = []
-            for observed_start, _, observed_syllables in phonetic_windows_by_key[
-                lookup_key
-            ]:
+            matching_anchors: list[tuple[tuple[int, int, int], _PhoneticAnchor]] = []
+            for observed_start, _, observed_syllables in phonetic_windows_by_key[lookup_key]:
                 differing = _near_phonetic_match(observed_syllables, posting.syllables)
                 if differing is None:
                     continue
@@ -1937,8 +1886,8 @@ class LocalReferenceRetriever:
         request: ReferenceRetrievalRequest,
     ) -> ReferenceRetrievalReceipt:
         allowed = set(request.allowed_artifact_ids)
-        candidate_indexes, phonetic_anchors, query_plan_hash = (
-            self._candidate_passage_indexes(request)
+        candidate_indexes, phonetic_anchors, query_plan_hash = self._candidate_passage_indexes(
+            request
         )
         ranked: list[
             tuple[
@@ -2177,10 +2126,7 @@ class LocalReferenceRetriever:
                                 ),
                                 "extracted_text": item.artifact.extracted_text.model_copy(
                                     update={
-                                        "uri": (
-                                            "sha256://"
-                                            f"{item.artifact.extracted_text.sha256}"
-                                        )
+                                        "uri": (f"sha256://{item.artifact.extracted_text.sha256}")
                                     }
                                 ),
                             }

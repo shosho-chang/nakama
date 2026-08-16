@@ -62,18 +62,13 @@ _CLOSED_CLASS = frozenset(
     }
 )
 _NEGATIONS = frozenset({"不", "沒", "沒有", "無", "非", "未", "別"})
-_CONNECTORS = frozenset(
-    {"但是", "所以", "因為", "如果", "而且", "然後", "不過", "可是", "其實"}
-)
+_CONNECTORS = frozenset({"但是", "所以", "因為", "如果", "而且", "然後", "不過", "可是", "其實"})
 _FILLERS = frozenset({"嗯", "呃", "額", "欸", "誒", "啊", "那個", "就是"})
 _CLASSIFIERS = (
     "個|位|名|本|篇|份|項|種|次|件|顆|支|張|台|部|套|組|杯|碗|公斤|"
     "公克|克|毫克|微克|公升|毫升|公里|公尺|公分|毫米|小時|分鐘|秒|天|週|月|年"
 )
-_UNITS = (
-    "kg|g|mg|μg|ug|km|m|cm|mm|L|mL|ml|kcal|cal|Hz|kHz|MHz|GB|MB|%|％|"
-    + _CLASSIFIERS
-)
+_UNITS = "kg|g|mg|μg|ug|km|m|cm|mm|L|mL|ml|kcal|cal|Hz|kHz|MHz|GB|MB|%|％|" + _CLASSIFIERS
 _OPEN_TO_CLOSE = {
     "(": ")",
     "（": "）",
@@ -158,9 +153,7 @@ def _token_offsets(tokens: Sequence[CanonicalToken]) -> tuple[tuple[int, ...], s
     return tuple(offsets), "".join(token.text for token in tokens)
 
 
-def _aligned_token_range(
-    offsets: Sequence[int], start: int, end: int
-) -> tuple[int, int] | None:
+def _aligned_token_range(offsets: Sequence[int], start: int, end: int) -> tuple[int, int] | None:
     starts = {offset: index for index, offset in enumerate(offsets[:-1])}
     ends = {offset: index for index, offset in enumerate(offsets[1:], start=1)}
     if start not in starts or end not in ends:
@@ -179,9 +172,7 @@ def derive_protected_token_ranges(
 
     token_tuple = tuple(tokens)
     offsets, canonical_text = _token_offsets(token_tuple)
-    grouped: dict[
-        tuple[tuple[str, ...], ProtectedSemanticKind], list[ProtectedTermMetadata]
-    ] = {}
+    grouped: dict[tuple[tuple[str, ...], ProtectedSemanticKind], list[ProtectedTermMetadata]] = {}
     for item in metadata:
         for start, end in _casefold_occurrences(canonical_text, item.value):
             aligned = _aligned_token_range(offsets, start, end)
@@ -198,13 +189,7 @@ def derive_protected_token_ranges(
         grouped.items(), key=lambda entry: (entry[0][0], entry[0][1])
     ):
         reference_ids = tuple(
-            sorted(
-                {
-                    evidence_id
-                    for item in sources
-                    for evidence_id in item.reference_evidence_ids
-                }
-            )
+            sorted({evidence_id for item in sources for evidence_id in item.reference_evidence_ids})
         )
         source: ProtectedSemanticSource = (
             "retrieved_reference_metadata" if reference_ids else "policy_vocabulary"
@@ -240,9 +225,7 @@ def _semantic_ranges(
 ) -> tuple[tuple[SemanticUnit, int, int], ...]:
     positions = {token.id: index for index, token in enumerate(tokens)}
     covered: set[str] = set()
-    seen_ranges: dict[
-        tuple[str, ...], tuple[float, bool, bool, str | None, str | None]
-    ] = {}
+    seen_ranges: dict[tuple[str, ...], tuple[float, bool, bool, str | None, str | None]] = {}
     result: list[tuple[SemanticUnit, int, int]] = []
     for unit in units:
         try:
@@ -775,13 +758,7 @@ def build_boundary_constraint_receipt(
         protected_ranges=protected,
     )
     reference_ids = tuple(
-        sorted(
-            {
-                evidence_id
-                for item in protected
-                for evidence_id in item.reference_evidence_ids
-            }
-        )
+        sorted({evidence_id for item in protected for evidence_id in item.reference_evidence_ids})
     )
     payload = {
         "schema_version": 2,

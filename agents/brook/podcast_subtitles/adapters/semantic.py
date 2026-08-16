@@ -34,6 +34,7 @@ from ..ports import (
 
 SemanticRunner = Callable[..., object]
 
+
 class _StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -239,9 +240,7 @@ class SemanticAnalyzerAdapter:
                 "protected_ranges": [
                     protected.model_dump(mode="json")
                     for protected in request.protected_ranges
-                    if set(protected.token_ids).intersection(
-                        token.id for token in target
-                    )
+                    if set(protected.token_ids).intersection(token.id for token in target)
                 ],
                 "language": request.language,
                 "model": self._model,
@@ -374,10 +373,7 @@ class SemanticAnalyzerAdapter:
                 raise AdapterIntegrityError(
                     f"Semantic boundary {edge_index} token endpoints drifted"
                 )
-            is_neutral = (
-                payload.cue_relation == "neutral"
-                and payload.line_relation == "neutral"
-            )
+            is_neutral = payload.cue_relation == "neutral" and payload.line_relation == "neutral"
             if is_neutral != (payload.strength == 0):
                 raise AdapterIntegrityError(
                     "neutral Semantic boundary requires zero strength and every "
@@ -470,19 +466,14 @@ class SemanticAnalyzerAdapter:
                     work_packet_id=packet_id,
                     packet_index=int(packet["packet_index"]),
                     packet_count=int(packet["packet_count"]),
-                    target_token_ids=tuple(
-                        str(item["id"]) for item in packet["target_tokens"]
-                    ),
-                    owned_token_ids=tuple(
-                        str(item) for item in packet["owned_target_token_ids"]
-                    ),
+                    target_token_ids=tuple(str(item["id"]) for item in packet["target_tokens"]),
+                    owned_token_ids=tuple(str(item) for item in packet["owned_target_token_ids"]),
                     request=_artifact("request", request_bytes),
                     response=_artifact("response", response_bytes),
                     adapter_identity=self.identity,
                     semantic_unit_ids=tuple(unit.id for unit in packet_units),
                     owned_boundary_indices=tuple(
-                        int(item["edge_index"])
-                        for item in packet["owned_boundaries"]
+                        int(item["edge_index"]) for item in packet["owned_boundaries"]
                     ),
                     boundary_ownership_contract="canonical-adjacent-edge-v1",
                 )

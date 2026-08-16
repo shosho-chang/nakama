@@ -200,9 +200,7 @@ class _ReferenceIndex:
         self.sources = tuple(sources)
         self.literal_terms = _literal_terms(self.sources)
         self.allowed_outline_literals = {
-            literal.match_key
-            for literal in self.literal_terms
-            if literal.source.kind == "outline"
+            literal.match_key for literal in self.literal_terms if literal.source.kind == "outline"
         }
         self.runs = tuple(
             _ReferenceRun(
@@ -261,8 +259,7 @@ class _ReferenceIndex:
                 and _phonetic_signature(literal.match_key) == signature
             }
             result = tuple(
-                found[item]
-                for item in sorted(found, key=lambda value: (value[0], value[1]))
+                found[item] for item in sorted(found, key=lambda value: (value[0], value[1]))
             )
             self._cache[key] = result
             return result
@@ -753,9 +750,7 @@ def _merged_lexical_differences(
                 left_anchor=primary_key[
                     max(0, primary_start - _ALIGNMENT_ANCHOR_LENGTH) : primary_start
                 ],
-                right_anchor=primary_key[
-                    primary_end : primary_end + _ALIGNMENT_ANCHOR_LENGTH
-                ],
+                right_anchor=primary_key[primary_end : primary_end + _ALIGNMENT_ANCHOR_LENGTH],
             )
         )
     return tuple(differences)
@@ -786,8 +781,7 @@ def _assign_tokens_to_groups(
     groups: Sequence[Sequence[EvidenceToken]],
 ) -> tuple[tuple[EvidenceToken, ...], ...]:
     boundaries = tuple(
-        (left[-1].end_ms + right[0].start_ms) // 2
-        for left, right in zip(groups, groups[1:])
+        (left[-1].end_ms + right[0].start_ms) // 2 for left, right in zip(groups, groups[1:])
     )
     assigned: list[list[EvidenceToken]] = [[] for _group in groups]
     for token in tokens:
@@ -818,9 +812,7 @@ def _build_aligned_windows(
             strict=True,
         )
     ):
-        primary_text = _canonical_recognition_text(
-            "".join(token.text for token in primary_tokens)
-        )
+        primary_text = _canonical_recognition_text("".join(token.text for token in primary_tokens))
         corroborating_text = _canonical_recognition_text(
             "".join(token.text for token in corroborating_tokens)
         )
@@ -867,9 +859,7 @@ def _best_exact_reference_support(
     changed = text_key[start:end]
     if re.search(r"[A-Za-z0-9]", changed) and len(changed) < 6:
         return None
-    required_changed_overlap = (
-        min(4, len(changed)) if re.search(r"[A-Za-z0-9]", changed) else 1
-    )
+    required_changed_overlap = min(4, len(changed)) if re.search(r"[A-Za-z0-9]", changed) else 1
     maximum = min(_MAX_REFERENCE_TERM_LENGTH, len(text_key))
     for length in range(maximum, 1, -1):
         first_start = max(0, start - length + 1)
@@ -940,9 +930,7 @@ def _whole_difference_reference_support(
         if end < len(text_key) and re.fullmatch(r"[A-Za-z0-9]", text_key[end]):
             return None
     references = tuple(
-        reference
-        for reference in index.exact(term)
-        if reference.kind in {"book", "glossary"}
+        reference for reference in index.exact(term) if reference.kind in {"book", "glossary"}
     )
     if not references:
         return None
@@ -957,9 +945,7 @@ def _whole_difference_reference_support(
             if left + term + right in item.match_key
         }
         references = tuple(
-            reference
-            for reference in references
-            if reference.source_id in contextual_source_ids
+            reference for reference in references if reference.source_id in contextual_source_ids
         )
         if not references:
             return None
@@ -1180,9 +1166,10 @@ def _consensus_glossary_subreplacements(
             for start in range(primary_start, primary_end - length + 1):
                 candidate = primary_key[start : start + length]
                 corroborating_start = other_start + start - primary_start
-                if candidate != corroborating_key[
-                    corroborating_start : corroborating_start + length
-                ]:
+                if (
+                    candidate
+                    != corroborating_key[corroborating_start : corroborating_start + length]
+                ):
                     continue
                 if candidate != literal.match_key and not _strict_near_phonetic(
                     candidate,
@@ -1316,10 +1303,7 @@ def _aligned_glossary_replacement(
     corroborating_key = window.corroborating_compact.text.casefold()
     proposals: list[_Replacement] = []
     for literal in index.literal_terms:
-        if (
-            literal.source.kind != "glossary"
-            or len(literal.match_key) > _MAX_REFERENCE_TERM_LENGTH
-        ):
+        if literal.source.kind != "glossary" or len(literal.match_key) > _MAX_REFERENCE_TERM_LENGTH:
             continue
         for other_start, other_end in _occurrences(
             corroborating_key,
@@ -1353,13 +1337,9 @@ def _aligned_glossary_replacement(
                 if 0 <= primary_start < primary_end <= len(primary_key):
                     if (
                         primary_key[primary_start : difference.primary_start]
-                        == corroborating_key[
-                            other_start : difference.corroborating_start
-                        ]
+                        == corroborating_key[other_start : difference.corroborating_start]
                         and primary_key[difference.primary_end : primary_end]
-                        == corroborating_key[
-                            difference.corroborating_end : other_end
-                        ]
+                        == corroborating_key[difference.corroborating_end : other_end]
                     ):
                         candidate_spans.add((primary_start, primary_end))
 
@@ -1399,9 +1379,7 @@ def _aligned_glossary_replacement(
                             "corroborating ASR and only its compatible primary subspan "
                             "is replaced"
                         ),
-                        references=(
-                            _reference_record(literal.display_text, literal.source),
-                        ),
+                        references=(_reference_record(literal.display_text, literal.source),),
                         resolves_difference=(
                             primary_start <= difference.primary_start
                             and difference.primary_end <= primary_end
@@ -1409,20 +1387,14 @@ def _aligned_glossary_replacement(
                         ),
                     )
                 )
-    unique = {
-        (item.start, item.end, item.selected): item for item in proposals
-    }
+    unique = {(item.start, item.end, item.selected): item for item in proposals}
     if len(unique) != 1:
         return None
     return next(iter(unique.values()))
 
 
 def _latin_name_near(candidate: str, selected: str) -> bool:
-    if (
-        _ASCII_TEXT_RE.fullmatch(candidate) is None
-        or not candidate
-        or not selected
-    ):
+    if _ASCII_TEXT_RE.fullmatch(candidate) is None or not candidate or not selected:
         return False
     candidate_key = candidate.casefold()
     selected_key = selected.casefold()
@@ -1467,9 +1439,7 @@ def _authoritative_glossary_name_replacement(
         ):
             continue
         references = index.exact(literal.match_key)
-        if not {"book", "glossary"}.issubset(
-            {reference.kind for reference in references}
-        ):
+        if not {"book", "glossary"}.issubset({reference.kind for reference in references}):
             continue
         if not (
             _latin_name_near(current_key, literal.match_key)
@@ -1522,9 +1492,7 @@ def _single_asr_authoritative_glossary_replacement(
         ):
             continue
         target_references = index.exact(literal.match_key)
-        if not {"book", "glossary"}.issubset(
-            {reference.kind for reference in target_references}
-        ):
+        if not {"book", "glossary"}.issubset({reference.kind for reference in target_references}):
             continue
         length = len(literal.match_key)
         first_start = max(0, difference.primary_start - length + 1)
@@ -1555,10 +1523,7 @@ def _single_asr_authoritative_glossary_replacement(
                     references=target_references,
                 )
             )
-    unique = {
-        (item.start, item.end, item.selected): item
-        for item in proposals
-    }
+    unique = {(item.start, item.end, item.selected): item for item in proposals}
     if len(unique) != 1:
         return None
     return next(iter(unique.values()))
@@ -1596,9 +1561,7 @@ def _local_confirmation_replacement(
             candidate.primary_end,
         )
         == (difference.primary_start, difference.primary_end)
-        and confirmation_key[
-            candidate.corroborating_start : candidate.corroborating_end
-        ]
+        and confirmation_key[candidate.corroborating_start : candidate.corroborating_end]
         == corroborating_part
     )
     if len(matching) != 1:
@@ -1618,15 +1581,11 @@ def _local_confirmation_replacement(
     if difference.corroborating_start == difference.corroborating_end:
         selected = ""
     else:
-        corroborating_raw_start, corroborating_raw_end = (
-            window.corroborating_compact.raw_span(
-                difference.corroborating_start,
-                difference.corroborating_end,
-            )
+        corroborating_raw_start, corroborating_raw_end = window.corroborating_compact.raw_span(
+            difference.corroborating_start,
+            difference.corroborating_end,
         )
-        selected = window.corroborating_text[
-            corroborating_raw_start:corroborating_raw_end
-        ]
+        selected = window.corroborating_text[corroborating_raw_start:corroborating_raw_end]
     return _Replacement(
         start=primary_raw_start,
         end=primary_raw_end,
@@ -1669,13 +1628,11 @@ def _phonetic_reference_replacement(
     if len(terms) != 1:
         return None
     selected = next(iter(terms))
+
     def heard_as(candidate: str) -> bool:
         if len(candidate) != len(selected):
             return False
-        if (
-            _HAN_TEXT_RE.fullmatch(candidate) is None
-            or _HAN_TEXT_RE.fullmatch(selected) is None
-        ):
+        if _HAN_TEXT_RE.fullmatch(candidate) is None or _HAN_TEXT_RE.fullmatch(selected) is None:
             return False
         candidate_sound = _phonetic_signature(candidate)
         selected_sound = _phonetic_signature(selected)
@@ -1687,9 +1644,7 @@ def _phonetic_reference_replacement(
     if not (heard_as(current) and heard_as(corroborating)):
         return None
     references = tuple(
-        _reference_record(term, source)
-        for term, source in matches
-        if term == selected
+        _reference_record(term, source) for term, source in matches if term == selected
     )
     return selected, references
 
@@ -1747,9 +1702,7 @@ def _phonetic_glossary_subreplacements(
                 continue
             raw_start, raw_end = compact.raw_span(start, start + length)
             references = tuple(
-                _reference_record(term, source)
-                for term, source in matches
-                if term == selected
+                _reference_record(term, source) for term, source in matches if term == selected
             )
             proposals.append(
                 _Replacement(
@@ -1794,9 +1747,7 @@ def _is_high_priority_difference(
 ) -> bool:
     for difference_index in unresolved_indices:
         difference = window.differences[difference_index]
-        primary = window.primary_compact.text[
-            difference.primary_start : difference.primary_end
-        ]
+        primary = window.primary_compact.text[difference.primary_start : difference.primary_end]
         corroborating = window.corroborating_compact.text[
             difference.corroborating_start : difference.corroborating_end
         ]
@@ -1834,10 +1785,7 @@ def _transformed_boundary(
     delta = 0
     for replacement in replacements:
         if offset <= replacement.start:
-            if (
-                offset == replacement.start == replacement.end
-                and end_bias
-            ):
+            if offset == replacement.start == replacement.end and end_bias:
                 delta += len(replacement.selected)
             return offset + delta
         if offset >= replacement.end:
@@ -1923,8 +1871,6 @@ def _local_difference_category(
     )
 
 
-
-
 def correct_recognition(
     *,
     primary: RecognitionEvidence,
@@ -1952,8 +1898,7 @@ def correct_recognition(
     recognition_corpus = tuple(
         _compact_text(
             _canonical_recognition_text("".join(token.text for token in evidence.tokens))
-        )
-        .text.casefold()
+        ).text.casefold()
         for evidence in (primary, corroborating)
     )
     recognition_literals = frozenset(
@@ -2007,9 +1952,7 @@ def correct_recognition(
 
     for window in windows:
         primary_token_ids = tuple(token.id for token in window.primary_tokens)
-        corroborating_token_ids = tuple(
-            token.id for token in window.corroborating_tokens
-        )
+        corroborating_token_ids = tuple(token.id for token in window.corroborating_tokens)
         lineage = (
             _lineage(primary, primary_token_ids),
             _lineage(corroborating, corroborating_token_ids),
@@ -2047,9 +1990,7 @@ def correct_recognition(
         selected = window.primary_text
         resolved_differences: set[int] = set()
         whole_glossary = _whole_window_glossary_replacement(window, reference_index)
-        replacements: list[_Replacement] = (
-            [] if whole_glossary is None else [whole_glossary]
-        )
+        replacements: list[_Replacement] = [] if whole_glossary is None else [whole_glossary]
         occupied = {
             position
             for replacement in replacements
@@ -2219,10 +2160,7 @@ def correct_recognition(
                         replacements.append(embedded_replacement)
                         occupied.update(positions)
                     if embedded and all(
-                        any(
-                            item.start <= position < item.end
-                            for item in embedded
-                        )
+                        any(item.start <= position < item.end for item in embedded)
                         for position in range(primary_raw_start, primary_raw_end)
                     ):
                         resolved_differences.add(difference_index)
@@ -2266,15 +2204,11 @@ def correct_recognition(
             )
         for replacement in reversed(replacements):
             selected = (
-                selected[: replacement.start]
-                + replacement.selected
-                + selected[replacement.end :]
+                selected[: replacement.start] + replacement.selected + selected[replacement.end :]
             )
 
         unresolved_indices = tuple(
-            index
-            for index in range(len(window.differences))
-            if index not in resolved_differences
+            index for index in range(len(window.differences)) if index not in resolved_differences
         )
         window_output_start = sum(len(token.text) for token in output_tokens)
         for difference_index in unresolved_indices:
@@ -2297,9 +2231,7 @@ def correct_recognition(
                 replacements,
             )
             current_part = selected[local_start:local_end]
-            candidate_part = window.corroborating_text[
-                candidate_raw_start:candidate_raw_end
-            ]
+            candidate_part = window.corroborating_text[candidate_raw_start:candidate_raw_end]
             if current_part == candidate_part:
                 continue
             category, reason = _local_difference_category(window, difference_index)
@@ -2495,23 +2427,15 @@ def _replace_local_character_span(
     if union_text[local_start:local_end] != current:
         raise ValueError("review decision target no longer exact-copies corrected token evidence")
     selected_text = union_text[:local_start] + chosen + union_text[local_end:]
-    confidences = [
-        token.confidence for token in current_tokens if token.confidence is not None
-    ]
+    confidences = [token.confidence for token in current_tokens if token.confidence is not None]
     speakers = {token.speaker for token in current_tokens}
     source_ids = tuple(
         dict.fromkeys(
-            source_id
-            for token in current_tokens
-            for source_id in token.source_primary_token_ids
+            source_id for token in current_tokens for source_id in token.source_primary_token_ids
         )
     )
     recognition_refs = tuple(
-        dict.fromkeys(
-            reference
-            for token in current_tokens
-            for reference in token.recognition_refs
-        )
+        dict.fromkeys(reference for token in current_tokens for reference in token.recognition_refs)
     )
     tokens[first:last] = _timed_atomic_tokens(
         text=selected_text,
@@ -2653,10 +2577,7 @@ def apply_review_selections(
     for decision in remaining:
         if decision.target_start_char is None or decision.target_end_char is None:
             continue
-        if (
-            updated_text[decision.target_start_char : decision.target_end_char]
-            != decision.current
-        ):
+        if updated_text[decision.target_start_char : decision.target_end_char] != decision.current:
             raise ValueError("remaining review target no longer exact-copies correction text")
     return AccurateCorrectionResult(
         schema_version=result.schema_version,
@@ -2716,14 +2637,10 @@ def _tupled_decision(payload: Mapping[str, Any]) -> CorrectionDecision:
         recognition_lineage=lineage,
         references=tuple(_tupled_reference(item) for item in payload["references"]),
         target_start_char=(
-            None
-            if payload.get("target_start_char") is None
-            else int(payload["target_start_char"])
+            None if payload.get("target_start_char") is None else int(payload["target_start_char"])
         ),
         target_end_char=(
-            None
-            if payload.get("target_end_char") is None
-            else int(payload["target_end_char"])
+            None if payload.get("target_end_char") is None else int(payload["target_end_char"])
         ),
     )
 

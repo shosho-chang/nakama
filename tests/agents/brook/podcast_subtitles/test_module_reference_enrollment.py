@@ -115,9 +115,7 @@ class _TamperingRetriever:
                 "excerpt_hash": sha256_bytes(forged_excerpt.encode("utf-8")),
             }
         )
-        return receipt.model_copy(
-            update={"evidence": (forged, *receipt.evidence[1:])}
-        )
+        return receipt.model_copy(update={"evidence": (forged, *receipt.evidence[1:])})
 
 
 def _reference_setup(
@@ -191,9 +189,7 @@ def test_reference_enrollment_persists_source_and_extraction_trust_roots(
         enrollment.artifact.authority.content_hash
     )
     source_name = f"reference_sources/{enrollment.artifact.digest.sha256}.bin"
-    extraction_name = (
-        f"reference_extractions/{enrollment.artifact.extracted_text.sha256}.json"
-    )
+    extraction_name = f"reference_extractions/{enrollment.artifact.extracted_text.sha256}.json"
     assert module.store.read_artifact(created.generation_id, source_name) == (
         enrollment.source_snapshot
     )
@@ -333,9 +329,7 @@ def test_reference_context_is_window_scoped_and_prompt_text_remains_untrusted_da
         for request in module._audio_auditor.requests
     ) == (("author-book-v1",), ("guest-report-v1",))
     assert injection in corrector.requests[0].reference_evidence[0].excerpt
-    assert "".join(token.text for token in created.transcript.tokens) == (
-        "今天吃迷邪明天談心率"
-    )
+    assert "".join(token.text for token in created.transcript.tokens) == ("今天吃迷邪明天談心率")
 
 
 def test_malicious_retriever_cannot_replace_enrolled_verbatim_excerpt(

@@ -84,9 +84,7 @@ def test_grouping_receipt_rejects_a_tampered_partition_on_replay() -> None:
 
 
 def test_observation_indices_must_match_their_ordered_tuple_positions() -> None:
-    observations = (
-        TimedObservation(index=1, text="甲", start_seconds=0.0, end_seconds=0.1),
-    )
+    observations = (TimedObservation(index=1, text="甲", start_seconds=0.0, end_seconds=0.1),)
 
     with pytest.raises(ValueError, match="ordered and contiguous"):
         build_timed_observation_grouping(

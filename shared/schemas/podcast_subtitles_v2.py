@@ -640,13 +640,9 @@ class ReferenceAuthorityAttestation(_Contract):
                     "and record_sha256"
                 )
         elif (
-            self.provenance != "none"
-            or self.attestor is not None
-            or self.record_sha256 is not None
+            self.provenance != "none" or self.attestor is not None or self.record_sha256 is not None
         ):
-            raise ValueError(
-                "unconfirmed Reference authority cannot carry attestation provenance"
-            )
+            raise ValueError("unconfirmed Reference authority cannot carry attestation provenance")
         return self
 
 
@@ -683,9 +679,7 @@ class ReferenceAuthorityDescriptor(_Contract):
             raise ValueError(
                 "transcript belongs to Recognition Evidence and cannot be Reference authority"
             )
-        predecessor_keys = [
-            (item.logical_source_id, item.version_id) for item in self.supersedes
-        ]
+        predecessor_keys = [(item.logical_source_id, item.version_id) for item in self.supersedes]
         if len(set(predecessor_keys)) != len(predecessor_keys):
             raise ValueError("Reference authority supersedes entries must be unique")
         if predecessor_keys != sorted(predecessor_keys):
@@ -707,9 +701,7 @@ class ReferenceAuthorityDescriptor(_Contract):
             "literal_terminology",
             "verbatim_source_text",
         )
-        outline_scopes: tuple[ReferenceAuthorityScope, ...] = (
-            "owner_approved_glossary_spelling",
-        )
+        outline_scopes: tuple[ReferenceAuthorityScope, ...] = ("owner_approved_glossary_spelling",)
         if self.role == "published_author_book":
             if (
                 self.source_kind != "book"
@@ -769,11 +761,7 @@ class ReferenceAuthorityDescriptor(_Contract):
                     "is explicitly attested"
                 )
         elif self.role == "contextual_reference":
-            if (
-                self.trust_tier != "contextual"
-                or self.allowed_scopes
-                or self.attestation.confirmed
-            ):
+            if self.trust_tier != "contextual" or self.allowed_scopes or self.attestation.confirmed:
                 raise ValueError("contextual_reference cannot carry mutation authority")
 
         if self.version_status != "active" and (
@@ -2258,13 +2246,9 @@ class CanonicalTranscript(_Contract):
     @model_validator(mode="after")
     def _canonical_invariants(self) -> CanonicalTranscript:
         if self.schema_version == 1 and self.orthographic_projection_evidence_hash is not None:
-            raise ValueError(
-                "Canonical schema v1 cannot claim Orthographic Projection Evidence"
-            )
+            raise ValueError("Canonical schema v1 cannot claim Orthographic Projection Evidence")
         if self.schema_version == 2 and self.orthographic_projection_evidence_hash is None:
-            raise ValueError(
-                "Canonical schema v2 requires Orthographic Projection Evidence"
-            )
+            raise ValueError("Canonical schema v2 requires Orthographic Projection Evidence")
         if not self.tokens:
             raise ValueError("canonical transcript requires at least one token")
         token_ids = [token.id for token in self.tokens]
@@ -3512,8 +3496,7 @@ class SemanticUnit(_Contract):
             if self.forbid_line_breaks != (self.line_boundary_relation == "forbidden"):
                 raise ValueError("line boundary relation disagrees with hard line constraint")
             if (
-                self.cue_boundary_relation != "neutral"
-                or self.line_boundary_relation != "neutral"
+                self.cue_boundary_relation != "neutral" or self.line_boundary_relation != "neutral"
             ) and self.strength <= 0:
                 raise ValueError("non-neutral semantic boundary requires positive strength")
             if (
@@ -3522,10 +3505,7 @@ class SemanticUnit(_Contract):
                 and self.strength != 0
             ):
                 raise ValueError("neutral semantic boundary must have zero strength")
-        elif (
-            self.cue_boundary_relation is not None
-            or self.line_boundary_relation is not None
-        ):
+        elif self.cue_boundary_relation is not None or self.line_boundary_relation is not None:
             raise ValueError("only semantic boundary pairs may carry boundary relations")
         return self
 
@@ -3609,9 +3589,7 @@ class BoundaryConstraintEdge(_Contract):
     # Only a separately stored/replayable acoustic-prosody artifact may fill
     # this channel.  Recognition token timestamps are alignment Evidence, not
     # pause Evidence, and therefore leave this value ``None``.
-    verified_pause_strength: float | None = Field(
-        default=None, ge=0, le=1, allow_inf_nan=False
-    )
+    verified_pause_strength: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
     reason_codes: tuple[BoundaryReasonCode, ...]
     material_uncertainty: bool = False
 
@@ -3737,9 +3715,7 @@ class ProjectionProfile(_Contract):
     # Cue density is independent of physical line width.  A two-line subtitle
     # normally carries more than one line's target without being forced to fill
     # the complete two-line hard capacity.
-    target_cue_display_columns: float | None = Field(
-        default=None, gt=0, allow_inf_nan=False
-    )
+    target_cue_display_columns: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     # Optional dead band around the cue-density target.  Width is a visual
     # preference, not a sentence boundary: cues inside this band carry no
     # quadratic density penalty, so semantic evidence decides their edges.
@@ -3749,9 +3725,7 @@ class ProjectionProfile(_Contract):
     maximum_preferred_cue_display_columns: float | None = Field(
         default=None, gt=0, allow_inf_nan=False
     )
-    cue_density_center_tiebreak_penalty: float = Field(
-        default=0.0, ge=0, allow_inf_nan=False
-    )
+    cue_density_center_tiebreak_penalty: float = Field(default=0.0, ge=0, allow_inf_nan=False)
     min_cue_duration_ms: int = Field(gt=0)
     max_cue_duration_ms: int = Field(gt=0)
     max_reading_units_per_second: float = Field(gt=0, allow_inf_nan=False)
@@ -3770,8 +3744,7 @@ class ProjectionProfile(_Contract):
             raise ValueError("hard_line_display_columns must be >= target_line_display_columns")
         if (
             self.target_cue_display_columns is not None
-            and self.target_cue_display_columns
-            > self.max_lines * self.hard_line_display_columns
+            and self.target_cue_display_columns > self.max_lines * self.hard_line_display_columns
         ):
             raise ValueError(
                 "target_cue_display_columns must fit within the cue's hard line capacity"
@@ -3779,18 +3752,12 @@ class ProjectionProfile(_Contract):
         preferred_minimum = self.minimum_preferred_cue_display_columns
         preferred_maximum = self.maximum_preferred_cue_display_columns
         if (preferred_minimum is None) != (preferred_maximum is None):
-            raise ValueError(
-                "preferred cue display-column bounds must be configured together"
-            )
+            raise ValueError("preferred cue display-column bounds must be configured together")
         if preferred_minimum is not None and preferred_maximum is not None:
             if preferred_minimum > preferred_maximum:
-                raise ValueError(
-                    "minimum_preferred_cue_display_columns must be <= maximum"
-                )
+                raise ValueError("minimum_preferred_cue_display_columns must be <= maximum")
             if preferred_maximum > self.max_lines * self.hard_line_display_columns:
-                raise ValueError(
-                    "preferred cue display-column band must fit within hard capacity"
-                )
+                raise ValueError("preferred cue display-column band must fit within hard capacity")
         if self.max_cue_duration_ms < self.min_cue_duration_ms:
             raise ValueError("max_cue_duration_ms must be >= min_cue_duration_ms")
         return self

@@ -585,9 +585,10 @@ def test_native_decision_round_trip_requires_same_authorization_and_candidate(
     }
     event = build_native_correction_decision(**arguments)
 
-    assert verify_native_correction_decision(
-        native_correction_decision_bytes(event), **arguments
-    ) == event
+    assert (
+        verify_native_correction_decision(native_correction_decision_bytes(event), **arguments)
+        == event
+    )
 
     drifted = dict(arguments)
     drifted["target_end_ms"] = 1_999
@@ -625,9 +626,7 @@ def _native_event(parent, candidate, authorization):
     return build_native_correction_decision(
         episode_id=parent.transcript.episode_id,
         parent_generation_id=parent.transcript.generation_id,
-        reviewed_fingerprint=review_target_fingerprint(
-            parent.transcript, candidate.cited_span_ids
-        ),
+        reviewed_fingerprint=review_target_fingerprint(parent.transcript, candidate.cited_span_ids),
         target_start_ms=cited[0].start_ms,
         target_end_ms=cited[-1].end_ms,
         candidate=candidate,
@@ -639,9 +638,7 @@ def test_native_projection_changes_only_exact_affected_token_range(
     tmp_path: Path,
     audited_case,
 ) -> None:
-    candidate, _receipt, _proof, _policy, arguments = _acceptance_arguments(
-        tmp_path, audited_case
-    )
+    candidate, _receipt, _proof, _policy, arguments = _acceptance_arguments(tmp_path, audited_case)
     parent = _native_parent(audited_case)
     verdict = build_correction_acceptance_verdict(**arguments)
     event = _native_event(parent, candidate, verdict)
@@ -695,9 +692,7 @@ def test_native_projection_rejects_noncontiguous_affected_range(
     tmp_path: Path,
     audited_case,
 ) -> None:
-    candidate, _receipt, _proof, _policy, arguments = _acceptance_arguments(
-        tmp_path, audited_case
-    )
+    candidate, _receipt, _proof, _policy, arguments = _acceptance_arguments(tmp_path, audited_case)
     parent = _native_parent(audited_case)
     middle = parent.transcript.tokens[1]
     payload = candidate.model_dump(mode="python", exclude={"id", "content_hash"})
@@ -705,9 +700,7 @@ def test_native_projection_rejects_noncontiguous_affected_range(
         parent.transcript.tokens[0].id,
         parent.transcript.tokens[2].id,
     )
-    payload["observed_text"] = (
-        parent.transcript.tokens[0].text + parent.transcript.tokens[2].text
-    )
+    payload["observed_text"] = parent.transcript.tokens[0].text + parent.transcript.tokens[2].text
     payload["cited_span_ids"] = tuple(span.id for span in parent.transcript.spans[:3])
     payload["cited_recognition_evidence_ids"] = tuple(
         dict.fromkeys(
@@ -717,9 +710,7 @@ def test_native_projection_rejects_noncontiguous_affected_range(
     drifted = _addressed(type(candidate), payload)
     verdict = build_correction_acceptance_verdict(**arguments)
     valid_event = _native_event(parent, candidate, verdict)
-    event_payload = valid_event.model_dump(
-        mode="python", exclude={"event_id", "content_hash"}
-    )
+    event_payload = valid_event.model_dump(mode="python", exclude={"event_id", "content_hash"})
     event_payload.update(
         {
             "candidate_discovery_id": drifted.id,
@@ -845,9 +836,10 @@ def test_native_resolve_checkpoint_is_content_addressed_and_stage_typed() -> Non
     )
 
     assert basis.id.startswith("native-resolve-checkpoint-")
-    assert NativeResolveCheckpointV2.model_validate_json(
-        canonical_json_bytes(basis), strict=True
-    ) == basis
+    assert (
+        NativeResolveCheckpointV2.model_validate_json(canonical_json_bytes(basis), strict=True)
+        == basis
+    )
     assert text.previous_checkpoint_id == basis.id
 
 

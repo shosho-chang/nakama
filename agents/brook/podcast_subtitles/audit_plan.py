@@ -137,9 +137,7 @@ def cross_span_repetition(left_text: str, right_text: str) -> bool:
     return any(left_text[-width:] == right_text[:width] for width in range(1, maximum + 1))
 
 
-def _metadata_status(values: Sequence[object | None]) -> Literal[
-    "complete", "partial", "absent"
-]:
+def _metadata_status(values: Sequence[object | None]) -> Literal["complete", "partial", "absent"]:
     available = sum(value is not None for value in values)
     if available == 0:
         return "absent"
@@ -155,9 +153,7 @@ def _span_target(
     token_positions: dict[str, int],
     basis_hash: str,
 ) -> SpanAuditTarget:
-    selected = tuple(
-        transcript.tokens[token_positions[token_id]] for token_id in span.token_ids
-    )
+    selected = tuple(transcript.tokens[token_positions[token_id]] for token_id in span.token_ids)
     text = "".join(token.text for token in selected)
     payload = {
         "schema_version": 1,
@@ -261,9 +257,7 @@ def _span_cell(
                 category=category,
                 applicability="required" if reference_receipt.hits else "not_applicable",
                 reason=(
-                    "reference_completed"
-                    if reference_receipt.hits
-                    else "no_reference_support"
+                    "reference_completed" if reference_receipt.hits else "no_reference_support"
                 ),
                 basis_hash=basis_hash,
             )
@@ -367,10 +361,7 @@ def _boundary_cell(
             basis_hash=basis_hash,
         )
     if category == "repetition_self_repair":
-        detected = (
-            not endpoint
-            and cross_span_repetition(left.observed_text, right.observed_text)
-        )
+        detected = not endpoint and cross_span_repetition(left.observed_text, right.observed_text)
         return _cell(
             target_kind="boundary",
             target_id=target.id,
@@ -411,8 +402,9 @@ def _boundary_cell(
             basis_hash=basis_hash,
         )
     if endpoint or seam_status == "unchunked":
-        applicability, reason = "not_applicable", (
-            "endpoint_not_applicable" if endpoint else "no_matching_seam"
+        applicability, reason = (
+            "not_applicable",
+            ("endpoint_not_applicable" if endpoint else "no_matching_seam"),
         )
     elif seam_status == "absent":
         applicability, reason = "unavailable", "upstream_missing"
@@ -493,9 +485,7 @@ def build_audit_plan(
             evidence.id: evidence for receipt in retrievals for evidence in receipt.evidence
         }
         if len(evidence_by_id) != sum(len(item.evidence) for item in retrievals):
-            duplicates = [
-                evidence.id for receipt in retrievals for evidence in receipt.evidence
-            ]
+            duplicates = [evidence.id for receipt in retrievals for evidence in receipt.evidence]
             if len(set(duplicates)) != len(duplicates):
                 # The same immutable Evidence may legitimately be retrieved for
                 # adjacent spans; identity equality is checked below.
@@ -525,10 +515,10 @@ def build_audit_plan(
         coverage_hash = None
         audio_duration_ms = transcript.spans[-1].end_ms
     else:
-        if speech_coverage.episode_id != transcript.episode_id or (
-            speech_coverage.normalized_audio_hash != transcript.normalized_audio_hash
-        ) or (
-            speech_coverage.recognition_evidence_hash != recognition_set_hash
+        if (
+            speech_coverage.episode_id != transcript.episode_id
+            or (speech_coverage.normalized_audio_hash != transcript.normalized_audio_hash)
+            or (speech_coverage.recognition_evidence_hash != recognition_set_hash)
         ):
             raise AuditPlanError("Speech Coverage differs from Canonical lineage")
         coverage_status = speech_coverage.status
@@ -546,8 +536,7 @@ def build_audit_plan(
             or boundary_constraints.generation_id != transcript.generation_id
             or boundary_constraints.canonical_content_hash != transcript.content_hash
             or boundary_constraints.policy_hash != transcript.policy_hash
-            or boundary_constraints.token_ids
-            != tuple(token.id for token in transcript.tokens)
+            or boundary_constraints.token_ids != tuple(token.id for token in transcript.tokens)
         ):
             raise AuditPlanError("Boundary Constraint Receipt differs from Canonical truth")
         boundary_status = "verified"
@@ -561,9 +550,7 @@ def build_audit_plan(
             raise AuditPlanError("seam evidence differs from Canonical audio lineage")
         if seam_evidence.recognition_evidence_hashes != recognition_hashes:
             raise AuditPlanError("seam evidence differs from Recognition Evidence set")
-        if seam_evidence.raw_artifact_hash not in {
-            item.raw_output_hash for item in recognitions
-        }:
+        if seam_evidence.raw_artifact_hash not in {item.raw_output_hash for item in recognitions}:
             raise AuditPlanError("seam raw artifact is not owned by Recognition Evidence")
         seam_status = seam_evidence.status
         seam_hash = hash_object(seam_evidence)
@@ -590,9 +577,7 @@ def build_audit_plan(
         "seam_status": seam_status,
         "seam_evidence_hash": seam_hash,
     }
-    inputs = AuditInputBindings(
-        **input_payload, content_hash=hash_object(input_payload)
-    )
+    inputs = AuditInputBindings(**input_payload, content_hash=hash_object(input_payload))
     policy_hash = hash_object(policy)
     builder_code_hash = audit_plan_builder_code_hash()
     basis_hash = hash_object(
@@ -625,9 +610,7 @@ def build_audit_plan(
         )
         for index in range(len(spans) + 1)
     )
-    seam_ownership: dict[str, tuple[object, ...]] = {
-        target.id: () for target in boundaries
-    }
+    seam_ownership: dict[str, tuple[object, ...]] = {target.id: () for target in boundaries}
     if seam_evidence is not None and seam_evidence.status != "unchunked":
         internal = boundaries[1:-1]
         owned: dict[str, list[object]] = {target.id: [] for target in internal}
@@ -718,9 +701,7 @@ def build_audit_plan(
             confidences=tuple(
                 canonical_by_id[token_id].confidence for token_id in target.token_ids
             ),
-            speakers=tuple(
-                canonical_by_id[token_id].speaker for token_id in target.token_ids
-            ),
+            speakers=tuple(canonical_by_id[token_id].speaker for token_id in target.token_ids),
             speaker_disagreement=span_speaker_disagreement(target),
             low_confidence_threshold=policy.low_confidence_threshold,
             basis_hash=basis_hash,
@@ -772,9 +753,7 @@ def build_audit_plan(
         "boundary_targets": boundaries,
         "cells": cells,
         "execution_status": "dormant_not_executed",
-        "completeness_statement": (
-            "structural_completeness_only_not_semantic_recall_proof"
-        ),
+        "completeness_statement": ("structural_completeness_only_not_semantic_recall_proof"),
     }
     return AuditPlan(**payload, content_hash=hash_object(payload))
 

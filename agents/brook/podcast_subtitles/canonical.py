@@ -303,9 +303,7 @@ def _verified_orthographic_text(
     if not projection_tuple:
         return {}, None
     evidence_tuple = tuple(evidence)
-    evidence_by_hash = {
-        recognition_evidence_content_hash(item): item for item in evidence_tuple
-    }
+    evidence_by_hash = {recognition_evidence_content_hash(item): item for item in evidence_tuple}
     if len(evidence_by_hash) != len(evidence_tuple):
         raise ValueError("Recognition Evidence content identities must be unique")
     projection_by_source = {
@@ -344,18 +342,14 @@ def _orthographic_ambiguity_risks(
 ) -> tuple[RiskRecord, ...]:
     """Surface every selected multi-option dictionary entry as unresolved review."""
 
-    evidence_by_hash = {
-        recognition_evidence_content_hash(item): item for item in evidence
-    }
+    evidence_by_hash = {recognition_evidence_content_hash(item): item for item in evidence}
     primary = tuple(evidence)[0]
     primary_intervals = tuple(
         (token.start_ms, token.end_ms, primary_span_ids[index])
         for index, token in enumerate(primary.tokens)
     )
     risks: list[RiskRecord] = []
-    for projection in sorted(
-        projections, key=lambda item: item.source_recognition_evidence_hash
-    ):
+    for projection in sorted(projections, key=lambda item: item.source_recognition_evidence_hash):
         source = evidence_by_hash[projection.source_recognition_evidence_hash]
         source_by_id = {token.id: token for token in source.tokens}
         source_hash = recognition_evidence_content_hash(source)
@@ -372,14 +366,10 @@ def _orthographic_ambiguity_risks(
                 affected_spans = (
                     min(
                         primary_intervals,
-                        key=lambda item: min(
-                            abs(item[0] - end_ms), abs(start_ms - item[1])
-                        ),
+                        key=lambda item: min(abs(item[0] - end_ms), abs(start_ms - item[1])),
                     )[2],
                 )
-            evidence_ids = tuple(
-                f"evidence:{source_hash}:{token.id}" for token in source_tokens
-            )
+            evidence_ids = tuple(f"evidence:{source_hash}:{token.id}" for token in source_tokens)
             issue_payload = {
                 "code": "orthographic_multi_option_ambiguity",
                 "projection_id": projection.id,
@@ -419,8 +409,7 @@ def _material_risks(
     return tuple(
         risk
         for risk in risks
-        if risk.issue.status == "unresolved"
-        and risk.issue.severity in blocking_severities
+        if risk.issue.status == "unresolved" and risk.issue.severity in blocking_severities
     )
 
 
@@ -462,14 +451,10 @@ def _generation_identity_payload(
         "risk_hash": hash_object(tuple(review_issues)),
         "generation_warning_hash": hash_object(tuple(generation_warnings)),
         "full_audit_receipt_set_hash": full_audit_receipt_set_hash,
-        "verified_speech_coverage_receipt_hash": (
-            verified_speech_coverage_receipt_hash
-        ),
+        "verified_speech_coverage_receipt_hash": (verified_speech_coverage_receipt_hash),
     }
     if orthographic_projection_evidence_hash is not None:
-        payload["orthographic_projection_evidence_hash"] = (
-            orthographic_projection_evidence_hash
-        )
+        payload["orthographic_projection_evidence_hash"] = orthographic_projection_evidence_hash
     return payload
 
 
@@ -484,9 +469,7 @@ def canonical_generation_id(transcript: CanonicalTranscript) -> str:
         normalized_audio_hash=transcript.normalized_audio_hash,
         normalization_receipt_hash=transcript.normalization_receipt_hash,
         evidence_hash=transcript.evidence_hash,
-        orthographic_projection_evidence_hash=(
-            transcript.orthographic_projection_evidence_hash
-        ),
+        orthographic_projection_evidence_hash=(transcript.orthographic_projection_evidence_hash),
         reference_evidence_hash=transcript.reference_evidence_hash,
         ledger_hash=transcript.ledger_hash,
         policy_hash=transcript.policy_hash,
@@ -496,9 +479,7 @@ def canonical_generation_id(transcript: CanonicalTranscript) -> str:
         review_issues=transcript.review_issues,
         generation_warnings=transcript.generation_warnings,
         full_audit_receipt_set_hash=transcript.full_audit_receipt_set_hash,
-        verified_speech_coverage_receipt_hash=(
-            transcript.verified_speech_coverage_receipt_hash
-        ),
+        verified_speech_coverage_receipt_hash=(transcript.verified_speech_coverage_receipt_hash),
     )
     return f"generation-{hash_object(payload)}"
 
@@ -561,9 +542,7 @@ def _seal_transcript(
         review_issues=tuple(risk.issue for risk in risk_tuple),
         generation_warnings=warning_tuple,
         full_audit_receipt_set_hash=full_audit_receipt_set_hash,
-        verified_speech_coverage_receipt_hash=(
-            verified_speech_coverage_receipt_hash
-        ),
+        verified_speech_coverage_receipt_hash=(verified_speech_coverage_receipt_hash),
     )
     return CanonicalTranscript(
         schema_version=2 if orthographic_projection_evidence_hash is not None else 1,
@@ -585,9 +564,7 @@ def _seal_transcript(
         review_issues=tuple(risk.issue for risk in risk_tuple),
         generation_warnings=warning_tuple,
         full_audit_receipt_set_hash=full_audit_receipt_set_hash,
-        verified_speech_coverage_receipt_hash=(
-            verified_speech_coverage_receipt_hash
-        ),
+        verified_speech_coverage_receipt_hash=(verified_speech_coverage_receipt_hash),
         content_hash=content_hash,
     )
 
@@ -651,8 +628,8 @@ def reconcile_canonical(
     # it inside the token loop turns an otherwise linear reconciliation into
     # O(n^2) full-Evidence serialisation for episode-sized inputs.
     primary_evidence_identity = _evidence_identity(primary)
-    projected_text_by_ref, orthographic_projection_evidence_hash = (
-        _verified_orthographic_text(evidence, orthographic_projections)
+    projected_text_by_ref, orthographic_projection_evidence_hash = _verified_orthographic_text(
+        evidence, orthographic_projections
     )
     reference_evidence_hash = reference_evidence_set_hash(tuple(references))
 
@@ -765,9 +742,7 @@ def reconcile_canonical(
         normalized_audio_hash=normalized_audio_hash,
         normalization_receipt_hash=normalization_receipt_hash,
         evidence_hash=evidence_hash,
-        orthographic_projection_evidence_hash=(
-            orthographic_projection_evidence_hash
-        ),
+        orthographic_projection_evidence_hash=(orthographic_projection_evidence_hash),
         reference_evidence_hash=reference_evidence_hash,
         ledger_hash=GENESIS_HASH,
         policy_hash=policy_hash,
@@ -842,9 +817,7 @@ def add_review_risks(
         normalized_audio_hash=transcript.normalized_audio_hash,
         normalization_receipt_hash=transcript.normalization_receipt_hash,
         evidence_hash=transcript.evidence_hash,
-        orthographic_projection_evidence_hash=(
-            transcript.orthographic_projection_evidence_hash
-        ),
+        orthographic_projection_evidence_hash=(transcript.orthographic_projection_evidence_hash),
         reference_evidence_hash=transcript.reference_evidence_hash,
         ledger_hash=transcript.ledger_hash,
         policy_hash=transcript.policy_hash,
@@ -854,9 +827,7 @@ def add_review_risks(
         risks=combined,
         generation_warnings=current.generation_warnings,
         full_audit_receipt_set_hash=transcript.full_audit_receipt_set_hash,
-        verified_speech_coverage_receipt_hash=(
-            transcript.verified_speech_coverage_receipt_hash
-        ),
+        verified_speech_coverage_receipt_hash=(transcript.verified_speech_coverage_receipt_hash),
     )
     return CanonicalBuildResult(
         outcome="accepted" if resealed.status == "accepted" else "needs_review",
@@ -878,9 +849,7 @@ def without_native_resolution_risk(
     """
 
     retained = tuple(
-        risk
-        for risk in current.risks
-        if risk.issue.code != "native_full_audit_requires_resolution"
+        risk for risk in current.risks if risk.issue.code != "native_full_audit_requires_resolution"
     )
     if retained == current.risks:
         return current
@@ -892,9 +861,7 @@ def without_native_resolution_risk(
         normalized_audio_hash=transcript.normalized_audio_hash,
         normalization_receipt_hash=transcript.normalization_receipt_hash,
         evidence_hash=transcript.evidence_hash,
-        orthographic_projection_evidence_hash=(
-            transcript.orthographic_projection_evidence_hash
-        ),
+        orthographic_projection_evidence_hash=(transcript.orthographic_projection_evidence_hash),
         reference_evidence_hash=transcript.reference_evidence_hash,
         ledger_hash=transcript.ledger_hash,
         policy_hash=transcript.policy_hash,
@@ -904,9 +871,7 @@ def without_native_resolution_risk(
         risks=retained,
         generation_warnings=current.generation_warnings,
         full_audit_receipt_set_hash=transcript.full_audit_receipt_set_hash,
-        verified_speech_coverage_receipt_hash=(
-            transcript.verified_speech_coverage_receipt_hash
-        ),
+        verified_speech_coverage_receipt_hash=(transcript.verified_speech_coverage_receipt_hash),
     )
     return CanonicalBuildResult(
         outcome="accepted" if resealed.status == "accepted" else "needs_review",
@@ -934,9 +899,7 @@ def attest_speech_coverage(
         normalized_audio_hash=transcript.normalized_audio_hash,
         normalization_receipt_hash=transcript.normalization_receipt_hash,
         evidence_hash=transcript.evidence_hash,
-        orthographic_projection_evidence_hash=(
-            transcript.orthographic_projection_evidence_hash
-        ),
+        orthographic_projection_evidence_hash=(transcript.orthographic_projection_evidence_hash),
         reference_evidence_hash=transcript.reference_evidence_hash,
         ledger_hash=transcript.ledger_hash,
         policy_hash=transcript.policy_hash,
@@ -1171,9 +1134,7 @@ def attest_full_audit(
         normalized_audio_hash=transcript.normalized_audio_hash,
         normalization_receipt_hash=transcript.normalization_receipt_hash,
         evidence_hash=transcript.evidence_hash,
-        orthographic_projection_evidence_hash=(
-            transcript.orthographic_projection_evidence_hash
-        ),
+        orthographic_projection_evidence_hash=(transcript.orthographic_projection_evidence_hash),
         reference_evidence_hash=transcript.reference_evidence_hash,
         ledger_hash=transcript.ledger_hash,
         policy_hash=transcript.policy_hash,
@@ -1183,9 +1144,7 @@ def attest_full_audit(
         risks=audited.risks,
         generation_warnings=warnings,
         full_audit_receipt_set_hash=receipt_set_hash,
-        verified_speech_coverage_receipt_hash=(
-            transcript.verified_speech_coverage_receipt_hash
-        ),
+        verified_speech_coverage_receipt_hash=(transcript.verified_speech_coverage_receipt_hash),
     )
     return CanonicalBuildResult(
         outcome="accepted" if resealed.status == "accepted" else "needs_review",
@@ -1380,15 +1339,11 @@ def _apply_decision(
             )
         remapped_audio_spans = tuple(
             dict.fromkeys(
-                span_replacements.get(span_id, span_id)
-                for span_id in risk.audio_span_ids
+                span_replacements.get(span_id, span_id) for span_id in risk.audio_span_ids
             )
         )
         remapped_issue_spans = tuple(
-            dict.fromkeys(
-                span_replacements.get(span_id, span_id)
-                for span_id in issue.span_ids
-            )
+            dict.fromkeys(span_replacements.get(span_id, span_id) for span_id in issue.span_ids)
         )
         if issue.span_ids != remapped_issue_spans:
             issue = issue.model_copy(update={"span_ids": remapped_issue_spans})
@@ -1422,9 +1377,7 @@ def _apply_decision(
         normalized_audio_hash=transcript.normalized_audio_hash,
         normalization_receipt_hash=transcript.normalization_receipt_hash,
         evidence_hash=transcript.evidence_hash,
-        orthographic_projection_evidence_hash=(
-            transcript.orthographic_projection_evidence_hash
-        ),
+        orthographic_projection_evidence_hash=(transcript.orthographic_projection_evidence_hash),
         reference_evidence_hash=transcript.reference_evidence_hash,
         ledger_hash=ledger_hash,
         policy_hash=transcript.policy_hash,
@@ -1438,9 +1391,7 @@ def _apply_decision(
         # Decision child, including confirm/reject/defer decisions that keep
         # the rendered text unchanged.
         full_audit_receipt_set_hash=None,
-        verified_speech_coverage_receipt_hash=(
-            transcript.verified_speech_coverage_receipt_hash
-        ),
+        verified_speech_coverage_receipt_hash=(transcript.verified_speech_coverage_receipt_hash),
     )
     return CanonicalBuildResult(
         outcome=("accepted" if new_transcript.status == "accepted" else "needs_review"),
@@ -1499,8 +1450,7 @@ def derive_native_canonical_resolution(
         or decision.candidate_discovery_hash != candidate.content_hash
         or decision.target_span_ids != candidate.cited_span_ids
         or decision.affected_token_ids != candidate.affected_token_ids
-        or decision.cited_recognition_evidence_ids
-        != candidate.cited_recognition_evidence_ids
+        or decision.cited_recognition_evidence_ids != candidate.cited_recognition_evidence_ids
     ):
         raise ValueError("native decision differs from exact discovery artifact")
     original_hash = sha256_bytes(candidate.observed_text.encode("utf-8"))
@@ -1511,10 +1461,7 @@ def derive_native_canonical_resolution(
     ):
         raise ValueError("native decision literal hashes differ from discovery")
     if decision.action == "accept_exact_candidate":
-        if (
-            not decision.mutates_text
-            or decision.authorized_literal_sha256 != candidate_hash
-        ):
+        if not decision.mutates_text or decision.authorized_literal_sha256 != candidate_hash:
             raise ValueError("native acceptance lacks exact candidate authority")
     elif decision.mutates_text or decision.authorized_literal_sha256 not in {
         None,
@@ -1543,14 +1490,10 @@ def derive_native_canonical_resolution(
         )
 
     token_positions = {token.id: index for index, token in enumerate(transcript.tokens)}
-    selected_token_ids = tuple(
-        token_id for span in selected_spans for token_id in span.token_ids
-    )
+    selected_token_ids = tuple(token_id for span in selected_spans for token_id in span.token_ids)
     try:
         selected_token_positions = [token_positions[token_id] for token_id in selected_token_ids]
-        affected_positions = [
-            token_positions[token_id] for token_id in decision.affected_token_ids
-        ]
+        affected_positions = [token_positions[token_id] for token_id in decision.affected_token_ids]
     except KeyError as exc:
         raise ValueError(f"native decision targets unknown token {exc.args[0]!r}") from exc
     if selected_token_positions != list(
@@ -1566,9 +1509,7 @@ def derive_native_canonical_resolution(
         raise ValueError("native discovery observed text differs from affected tokens")
     affected_evidence = tuple(
         dict.fromkeys(
-            evidence_id
-            for token in affected_tokens
-            for evidence_id in token.evidence_ids
+            evidence_id for token in affected_tokens for evidence_id in token.evidence_ids
         )
     )
     # Canonical lineage prefixes recognition references with ``evidence:``;
@@ -1577,9 +1518,7 @@ def derive_native_canonical_resolution(
     qualified_affected_evidence = {
         evidence_id.removeprefix("evidence:") for evidence_id in affected_evidence
     }
-    if not set(candidate.cited_recognition_evidence_ids).issubset(
-        qualified_affected_evidence
-    ):
+    if not set(candidate.cited_recognition_evidence_ids).issubset(qualified_affected_evidence):
         raise ValueError("native discovery cites Recognition Evidence outside affected tokens")
 
     tokens = list(transcript.tokens)
@@ -1667,8 +1606,7 @@ def derive_native_canonical_resolution(
                 issue=issue,
                 audio_span_ids=tuple(
                     dict.fromkeys(
-                        span_replacements.get(span_id, span_id)
-                        for span_id in risk.audio_span_ids
+                        span_replacements.get(span_id, span_id) for span_id in risk.audio_span_ids
                     )
                 ),
             )
@@ -1692,9 +1630,7 @@ def derive_native_canonical_resolution(
         normalized_audio_hash=transcript.normalized_audio_hash,
         normalization_receipt_hash=transcript.normalization_receipt_hash,
         evidence_hash=transcript.evidence_hash,
-        orthographic_projection_evidence_hash=(
-            transcript.orthographic_projection_evidence_hash
-        ),
+        orthographic_projection_evidence_hash=(transcript.orthographic_projection_evidence_hash),
         reference_evidence_hash=transcript.reference_evidence_hash,
         ledger_hash=ledger_hash,
         policy_hash=transcript.policy_hash,
@@ -1704,9 +1640,7 @@ def derive_native_canonical_resolution(
         risks=risks,
         generation_warnings=generation_warnings,
         full_audit_receipt_set_hash=None,
-        verified_speech_coverage_receipt_hash=(
-            transcript.verified_speech_coverage_receipt_hash
-        ),
+        verified_speech_coverage_receipt_hash=(transcript.verified_speech_coverage_receipt_hash),
     )
     return CanonicalBuildResult(
         outcome="accepted" if new_transcript.status == "accepted" else "needs_review",
@@ -1786,9 +1720,7 @@ def replay_correction_ledger(
         span_tokens = {span.id: span.token_ids for span in result.transcript.spans}
         tokens = {token.id: token for token in result.transcript.tokens}
         target_token_ids = tuple(
-            token_id
-            for span_id in decision.target_span_ids
-            for token_id in span_tokens[span_id]
+            token_id for span_id in decision.target_span_ids for token_id in span_tokens[span_id]
         )
         current_target_evidence = {
             evidence_id
@@ -1818,8 +1750,7 @@ def replay_correction_ledger(
                 ),
                 (
                     "reference_evidence_membership",
-                    len(retained_reference_evidence)
-                    != len(decision.reference_evidence_ids),
+                    len(retained_reference_evidence) != len(decision.reference_evidence_ids),
                 ),
             )
             if stale
@@ -1832,12 +1763,8 @@ def replay_correction_ledger(
                 "span_ids": decision.target_span_ids,
                 "fingerprint": current_fingerprint,
                 "reasons": stale_reasons,
-                "current_target_evidence_hash": hash_object(
-                    tuple(sorted(current_target_evidence))
-                ),
-                "current_reference_membership_hash": hash_object(
-                    tuple(sorted(allowed_references))
-                ),
+                "current_target_evidence_hash": hash_object(tuple(sorted(current_target_evidence))),
+                "current_reference_membership_hash": hash_object(tuple(sorted(allowed_references))),
             }
             issue = ReviewIssue(
                 id=f"issue-{hash_object(stale_issue_identity)}",

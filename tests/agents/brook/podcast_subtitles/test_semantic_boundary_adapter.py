@@ -97,9 +97,7 @@ def _response(
 
 
 def _response_bytes(packet: dict[str, object]) -> bytes:
-    return (
-        json.dumps(_response(packet), ensure_ascii=False, indent=2) + "\n"
-    ).encode("utf-8")
+    return (json.dumps(_response(packet), ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
 def test_response_is_one_exact_assessment_per_owned_boundary() -> None:
@@ -131,10 +129,7 @@ def test_response_is_one_exact_assessment_per_owned_boundary() -> None:
     assert run.units[0].forbid_cue_breaks is True
     assert run.units[0].forbid_line_breaks is False
     assert run.execution_receipts[0].owned_boundary_indices == (1, 2)
-    assert (
-        run.execution_receipts[0].boundary_ownership_contract
-        == "canonical-adjacent-edge-v1"
-    )
+    assert run.execution_receipts[0].boundary_ownership_contract == "canonical-adjacent-edge-v1"
 
 
 def test_packet_binds_policy_and_least_context_protected_ranges() -> None:
@@ -177,8 +172,7 @@ def test_long_run_all_neutral_boundary_evidence_fails_closed() -> None:
     adapter = SemanticAnalyzerAdapter(model="codex", model_version="5.6-sol")
     packet = adapter.export_work_packet(request)
     neutral = {
-        int(edge["edge_index"]): ("neutral", "neutral", 0.0)
-        for edge in packet["owned_boundaries"]
+        int(edge["edge_index"]): ("neutral", "neutral", 0.0) for edge in packet["owned_boundaries"]
     }
 
     with pytest.raises(AdapterIntegrityError, match="singleton-only/all-neutral"):
@@ -270,20 +264,17 @@ def test_packets_own_every_boundary_once_and_expose_bounded_context() -> None:
     assert first_ids[-1] == second_ids[0]
     assert [item["id"] for item in packets[0]["context_after"]] == [second_ids[1]]
     assert [item["id"] for item in packets[1]["context_before"]] == [first_ids[0]]
-    assert [
-        edge["edge_index"]
-        for packet in packets
-        for edge in packet["owned_boundaries"]
-    ] == [1, 2]
+    assert [edge["edge_index"] for packet in packets for edge in packet["owned_boundaries"]] == [
+        1,
+        2,
+    ]
 
     run = adapter.import_work_results_with_receipts(
         request,
         tuple(_response(packet) for packet in packets),
     )
     assert [
-        edge
-        for receipt in run.execution_receipts
-        for edge in receipt.owned_boundary_indices
+        edge for receipt in run.execution_receipts for edge in receipt.owned_boundary_indices
     ] == [1, 2]
 
 
@@ -311,9 +302,7 @@ def test_four_token_phrase_crossing_packet_seam_is_fully_expressible() -> None:
     run = adapter.import_work_results_with_receipts(request, payloads)
     edges = assess_boundary_edges(request.transcript.tokens, run.units, HORIZONTAL_16X9)
 
-    assert {edge.edge_index for edge in edges if edge.cue_relation == "forbidden"} == (
-        phrase_edges
-    )
+    assert {edge.edge_index for edge in edges if edge.cue_relation == "forbidden"} == (phrase_edges)
     assert any(3 in receipt.owned_boundary_indices for receipt in run.execution_receipts)
 
 
@@ -365,13 +354,16 @@ def test_execution_receipt_preserves_exact_bytes_and_replays() -> None:
     assert run.execution_receipts[0].request.sha256 == sha256_bytes(run.request_bytes[0])
     assert run.execution_receipts[0].response.sha256 == sha256_bytes(response_bytes)
     assert run.execution_receipts[0].adapter_identity == adapter.identity
-    assert adapter.replay(
-        request,
-        units=run.units,
-        execution_receipts=run.execution_receipts,
-        request_bytes=run.request_bytes,
-        response_bytes=run.response_bytes,
-    ) == run
+    assert (
+        adapter.replay(
+            request,
+            units=run.units,
+            execution_receipts=run.execution_receipts,
+            request_bytes=run.request_bytes,
+            response_bytes=run.response_bytes,
+        )
+        == run
+    )
 
 
 @pytest.mark.parametrize("payload", [b"", b"not-json", b'{"schema_version":5}'])
@@ -455,9 +447,7 @@ def test_request_response_tamper_and_identity_drift_fail_replay() -> None:
         replace(
             run.execution_receipts[0],
             request=run.execution_receipts[0].request.model_copy(
-                update={
-                    "uri": "projection-artifact://semantic/requests/../../projection.json"
-                }
+                update={"uri": "projection-artifact://semantic/requests/../../projection.json"}
             ),
         )
 

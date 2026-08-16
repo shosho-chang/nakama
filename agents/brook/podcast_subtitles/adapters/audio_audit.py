@@ -163,9 +163,7 @@ class GeminiAudioAuditAdapter:
         runner: AudioAuditRunner | None = None,
         clipper: Clipper = extract_clip,
         allow_paid_api: bool = False,
-        execution_mode: Literal[
-            "fixture", "local", "paid_api", "subscription", "other"
-        ] = "other",
+        execution_mode: Literal["fixture", "local", "paid_api", "subscription", "other"] = "other",
         min_confidence: float = 0.82,
         padding_ms: int = 750,
         workspace_root: str | Path | None = None,
@@ -359,9 +357,7 @@ class GeminiAudioAuditAdapter:
         if response.verdict != "finding" or not response.proposals:
             raise AdapterIntegrityError("audio finding requires at least one proposal")
 
-        target_positions = {
-            span_id: index for index, span_id in enumerate(request.target_span_ids)
-        }
+        target_positions = {span_id: index for index, span_id in enumerate(request.target_span_ids)}
         spans = {span.id: span for span in request.transcript.spans}
         tokens = {token.id: token for token in request.transcript.tokens}
         evidence_tokens = {
@@ -454,9 +450,7 @@ class GeminiAudioAuditAdapter:
                 os.fsync(stream.fileno())
             if path.exists():
                 if path.read_bytes() != payload:
-                    raise AdapterIntegrityError(
-                        f"concurrent audio audit artifact conflict: {path}"
-                    )
+                    raise AdapterIntegrityError(f"concurrent audio audit artifact conflict: {path}")
             else:
                 os.replace(temporary, path)
         finally:
@@ -555,9 +549,7 @@ class GeminiAudioAuditAdapter:
             except AdapterIntegrityError:
                 raise
             except Exception as exc:
-                raise AdapterIntegrityError(
-                    "audio audit failed to extract a bounded clip"
-                ) from exc
+                raise AdapterIntegrityError("audio audit failed to extract a bounded clip") from exc
         if not clip_bytes:
             raise AdapterIntegrityError("audio audit clip is empty")
         return clip_bytes
@@ -574,10 +566,7 @@ class GeminiAudioAuditAdapter:
         packet_path = self._workspace_root / "audio_audit" / "packets" / f"{packet_id}.json"
         clip_path = self._workspace_root / "audio_audit" / "clips" / f"{packet_id}.wav"
         response_path = (
-            self._workspace_root
-            / "audio_audit"
-            / "responses"
-            / f"{packet_id}.response.json"
+            self._workspace_root / "audio_audit" / "responses" / f"{packet_id}.response.json"
         )
         clip_bytes = self._extract_clip_bytes(audio_path, packet)
         self._atomic_bytes(packet_path, request_bytes)

@@ -225,9 +225,7 @@ class HumanAudioReviewReceiptV2(_StrictContract):
 
     @field_validator("affected_token_ids", "cited_span_ids", "cited_recognition_evidence_ids")
     @classmethod
-    def _ids_are_nonblank_and_unique(
-        cls, values: tuple[str, ...], info: object
-    ) -> tuple[str, ...]:
+    def _ids_are_nonblank_and_unique(cls, values: tuple[str, ...], info: object) -> tuple[str, ...]:
         label = str(getattr(info, "field_name", "identifiers"))
         if len(set(values)) != len(values):
             raise ValueError(f"{label} must not contain duplicates")
@@ -414,9 +412,7 @@ class CorrectionAcceptanceVerdictV2(_StrictContract):
             sorted(self.human_audio_review_receipt_hashes)
         ):
             raise ValueError("human audio receipt parents must use canonical order")
-        if len(self.human_audio_review_receipt_ids) != len(
-            self.human_audio_review_receipt_hashes
-        ):
+        if len(self.human_audio_review_receipt_ids) != len(self.human_audio_review_receipt_hashes):
             raise ValueError("human audio receipt IDs and hashes differ")
         expected_reason_order = tuple(
             reason for reason in _REASON_ORDER if reason in set(self.reasons)
@@ -491,8 +487,7 @@ def _audio_receipt_binding_is_exact(
         or receipt.normalized_audio_hash != aggregate.normalized_audio_hash
         or receipt.affected_token_ids != candidate.affected_token_ids
         or receipt.cited_span_ids != candidate.cited_span_ids
-        or receipt.cited_recognition_evidence_ids
-        != candidate.cited_recognition_evidence_ids
+        or receipt.cited_recognition_evidence_ids != candidate.cited_recognition_evidence_ids
         or receipt.recognized_text != candidate.observed_text
         or receipt.candidate_text != candidate.candidate_text
     ):
@@ -557,8 +552,7 @@ def _reference_receipt_binding_is_exact(
         return False
     conflict_by_id = {item.id: item for item in proof.conflicts.conflicts}
     return all(
-        receipt.chosen_claim_id in conflict_by_id[item].claim_ids
-        for item in receipt.conflict_ids
+        receipt.chosen_claim_id in conflict_by_id[item].claim_ids for item in receipt.conflict_ids
     )
 
 
@@ -658,19 +652,22 @@ def build_correction_acceptance_verdict(
             reasons.add("audio_incompatible")
         elif any(item.pronunciation_outcome == "indeterminate" for item in exact_audio_receipts):
             reasons.add("audio_indiscriminable")
-        elif len(
-            {
-                (
-                    item.clip_lineage_kind,
-                    item.clip_lineage_parent_id,
-                    item.clip_extraction_policy_hash,
-                    item.clip_sha256,
-                    item.clip_start_ms,
-                    item.clip_end_ms,
-                )
-                for item in exact_audio_receipts
-            }
-        ) != 1:
+        elif (
+            len(
+                {
+                    (
+                        item.clip_lineage_kind,
+                        item.clip_lineage_parent_id,
+                        item.clip_extraction_policy_hash,
+                        item.clip_sha256,
+                        item.clip_start_ms,
+                        item.clip_end_ms,
+                    )
+                    for item in exact_audio_receipts
+                }
+            )
+            != 1
+        ):
             reasons.add("audio_receipt_lineage_mismatch")
 
     proof: ReferenceAuthorityProofV2 | None = None
@@ -686,10 +683,7 @@ def build_correction_acceptance_verdict(
         )
         if reference_scope not in policy.authorisable_reference_scopes:
             reasons.add("reference_scope_not_authorizable")
-        if (
-            not proof.coverage.selection_complete
-            or proof.conflicts.unresolved_conditions
-        ):
+        if not proof.coverage.selection_complete or proof.conflicts.unresolved_conditions:
             reasons.add("reference_coverage_incomplete")
         scoped_claims = tuple(
             item
@@ -784,9 +778,7 @@ def build_correction_acceptance_verdict(
         final_reasons = ("all_required_evidence_authorizes_exact_candidate",)
 
     compatible_receipts = tuple(
-        item
-        for item in exact_audio_receipts
-        if item.pronunciation_outcome == "compatible"
+        item for item in exact_audio_receipts if item.pronunciation_outcome == "compatible"
     )
     audio_window = (
         (compatible_receipts[0].clip_start_ms, compatible_receipts[0].clip_end_ms)
@@ -823,9 +815,7 @@ def build_correction_acceptance_verdict(
         "reference_conflict_set_hash": (
             proof.conflicts.content_hash if proof is not None else None
         ),
-        "selected_reference_claim_id": (
-            selected_claim.id if selected_claim is not None else None
-        ),
+        "selected_reference_claim_id": (selected_claim.id if selected_claim is not None else None),
         "selected_reference_claim_hash": (
             selected_claim.content_hash if selected_claim is not None else None
         ),
@@ -833,9 +823,7 @@ def build_correction_acceptance_verdict(
             selected_claim.claimed_text if selected_claim is not None else None
         ),
         "human_audio_review_receipt_ids": tuple(item.id for item in receipts),
-        "human_audio_review_receipt_hashes": tuple(
-            sorted(item.content_hash for item in receipts)
-        ),
+        "human_audio_review_receipt_hashes": tuple(sorted(item.content_hash for item in receipts)),
         "human_reference_adjudication_receipt_id": (
             reference_receipt.id if reference_receipt is not None else None
         ),

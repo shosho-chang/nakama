@@ -29,9 +29,7 @@ def _exit_while_holding_create_lease(episode_root: str) -> None:
 
 
 def test_canonical_hash_ignores_mapping_insertion_order() -> None:
-    assert hash_object({"b": 2, "a": [1, "安吉"]}) == hash_object(
-        {"a": [1, "安吉"], "b": 2}
-    )
+    assert hash_object({"b": 2, "a": [1, "安吉"]}) == hash_object({"a": [1, "安吉"], "b": 2})
 
 
 def test_canonical_hash_rejects_mapping_key_coercion_collisions() -> None:
@@ -46,6 +44,7 @@ def test_read_artifact_rehashes_the_exact_returned_bytes(tmp_path) -> None:
     generation = store.commit(manifest={"stage": "test"}, artifacts={"value.txt": b"safe"})
     artifact_path = generation.directory / "value.txt"
     original_read_bytes = type(artifact_path).read_bytes
+
     def swap_after_load(path):
         if path == artifact_path:
             return b"tampered-after-load"
@@ -199,9 +198,10 @@ def test_active_generation_prevents_cross_generation_read(tmp_path) -> None:
     )
     store.set_active(first.generation_id)
 
-    assert store.read_artifact(
-        first.generation_id, "canonical.json", require_active=True
-    ) == "第一代".encode()
+    assert (
+        store.read_artifact(first.generation_id, "canonical.json", require_active=True)
+        == "第一代".encode()
+    )
     with pytest.raises(GenerationIsolationError):
         store.read_artifact(second.generation_id, "canonical.json", require_active=True)
 

@@ -181,18 +181,14 @@ class CreateCheckpoint(_CheckpointContract):
                 or self.normalization_receipt_hash is not None
                 or self.previous_checkpoint_id is not None
             ):
-                raise ValueError(
-                    "started Create Checkpoint cannot claim completed normalization"
-                )
+                raise ValueError("started Create Checkpoint cannot claim completed normalization")
         elif (
             self.invocation_id is None
             or self.normalized is None
             or self.normalization_receipt_hash is None
             or self.previous_checkpoint_id is None
         ):
-            raise ValueError(
-                "post-start Create Checkpoint requires normalization and predecessor"
-            )
+            raise ValueError("post-start Create Checkpoint requires normalization and predecessor")
         complete_binding = (
             self.generation_id,
             self.generation_artifact_set_hash,

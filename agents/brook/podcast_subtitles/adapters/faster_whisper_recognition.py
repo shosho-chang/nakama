@@ -114,9 +114,7 @@ class _ProviderObservation(_EnvelopeContract):
     @model_validator(mode="after")
     def _ordered_complete_segments(self) -> _ProviderObservation:
         segment_ids = tuple(segment.id for segment in self.segments)
-        if len(set(segment_ids)) != len(segment_ids) or segment_ids != tuple(
-            sorted(segment_ids)
-        ):
+        if len(set(segment_ids)) != len(segment_ids) or segment_ids != tuple(sorted(segment_ids)):
             raise ValueError("Faster-Whisper provider segment IDs must be unique and ordered")
         previous_segment_end = 0.0
         previous_word_end = 0.0
@@ -133,9 +131,7 @@ class _ProviderObservation(_EnvelopeContract):
                     raise ValueError("Faster-Whisper words overlap or move backwards")
                 # Zero-duration provider points may sit on a segment seam.  A
                 # positive word interval, however, must belong to its segment.
-                if word.end > word.start and (
-                    word.start < segment.start or word.end > segment.end
-                ):
+                if word.end > word.start and (word.start < segment.start or word.end > segment.end):
                     raise ValueError("Faster-Whisper word exceeds its provider segment")
                 previous_word_end = word.end
         return self
@@ -414,9 +410,7 @@ class FasterWhisperRecognizerAdapter:
         self._logical_namespace = logical_namespace
         self._source_hash = hash_file(Path(__file__))
         self._dependency_source_hashes = {
-            "evidence_helpers_source_hash": hash_file(
-                Path(__file__).with_name("recognition.py")
-            ),
+            "evidence_helpers_source_hash": hash_file(Path(__file__).with_name("recognition.py")),
             "hashing_source_hash": hash_file(Path(__file__).parents[1] / "hashing.py"),
             "snapshot_identity_source_hash": hash_file(
                 Path(__file__).with_name("snapshot_identity.py")
@@ -514,9 +508,7 @@ class FasterWhisperRecognizerAdapter:
 
     def _assert_source_identity(self) -> None:
         current = {
-            "evidence_helpers_source_hash": hash_file(
-                Path(__file__).with_name("recognition.py")
-            ),
+            "evidence_helpers_source_hash": hash_file(Path(__file__).with_name("recognition.py")),
             "hashing_source_hash": hash_file(Path(__file__).parents[1] / "hashing.py"),
             "snapshot_identity_source_hash": hash_file(
                 Path(__file__).with_name("snapshot_identity.py")
@@ -592,13 +584,9 @@ class FasterWhisperRecognizerAdapter:
             not (snapshot / name).is_file() or (snapshot / name).stat().st_size <= 0
             for name in required_files
         ):
-            raise AdapterUnavailableError(
-                "Faster-Whisper pinned local snapshot is incomplete"
-            )
+            raise AdapterUnavailableError("Faster-Whisper pinned local snapshot is incomplete")
         try:
-            resolved_snapshot, inventory, inventory_hash = measure_huggingface_snapshot(
-                snapshot
-            )
+            resolved_snapshot, inventory, inventory_hash = measure_huggingface_snapshot(snapshot)
         except SnapshotIdentityError as exc:
             raise AdapterUnavailableError(f"Faster-Whisper {exc}") from exc
         components = {
@@ -781,8 +769,7 @@ class FasterWhisperRecognizerAdapter:
                         global_start_sample=plan.inference_start_sample + local_start,
                         global_end_sample=plan.inference_start_sample + local_end,
                         probability=min(
-                            words[index].probability
-                            for index in group.source_observation_indices
+                            words[index].probability for index in group.source_observation_indices
                         ),
                         source_observation_indices=group.source_observation_indices,
                         timing_basis=group.timing_basis,
@@ -813,9 +800,7 @@ class FasterWhisperRecognizerAdapter:
         return tuple(
             word
             for word in chunk.grouped_words
-            if start_sample
-            <= (word.global_start_sample + word.global_end_sample) // 2
-            < end_sample
+            if start_sample <= (word.global_start_sample + word.global_end_sample) // 2 < end_sample
         )
 
     def _build_envelope(
@@ -900,9 +885,7 @@ class FasterWhisperRecognizerAdapter:
                     right_text=right_text,
                     left_normalized=left_normalized,
                     right_normalized=right_normalized,
-                    status=(
-                        "matched" if left_normalized == right_normalized else "conflict"
-                    ),
+                    status=("matched" if left_normalized == right_normalized else "conflict"),
                 )
             )
 
@@ -956,9 +939,7 @@ class FasterWhisperRecognizerAdapter:
                 ownership="word_midpoint_in_half_open_owned_interval_v1",
                 seam_comparison="normalized_word_text_in_shared_context_v1",
                 owned_chunk_samples=self._owned_chunk_seconds * audio.sample_rate_hz,
-                seam_context_samples=round(
-                    self._seam_context_ms * audio.sample_rate_hz / 1_000
-                ),
+                seam_context_samples=round(self._seam_context_ms * audio.sample_rate_hz / 1_000),
             ),
             chunks=tuple(chunks),
             seams=tuple(seams),
@@ -1066,9 +1047,7 @@ class FasterWhisperRecognizerAdapter:
             planner_name="faster-whisper-bounded-overlap",
             planner_version=str(self.ADAPTER_VERSION),
             owned_chunk_samples=self._owned_chunk_seconds * audio.sample_rate_hz,
-            seam_context_samples=round(
-                self._seam_context_ms * audio.sample_rate_hz / 1_000
-            ),
+            seam_context_samples=round(self._seam_context_ms * audio.sample_rate_hz / 1_000),
         )
         chunks = tuple(
             build_recognition_chunk_plan(
@@ -1101,9 +1080,13 @@ class FasterWhisperRecognizerAdapter:
             raise AdapterUnavailableError(
                 "Faster-Whisper local snapshot path was not established by preflight"
             )
-        if self._model_snapshot_inventory_hash is None or hash_object(
-            {"snapshot_inventory": self._snapshot_inventory(self._model_snapshot_path)}
-        ) != self._model_snapshot_inventory_hash:
+        if (
+            self._model_snapshot_inventory_hash is None
+            or hash_object(
+                {"snapshot_inventory": self._snapshot_inventory(self._model_snapshot_path)}
+            )
+            != self._model_snapshot_inventory_hash
+        ):
             raise AdapterIntegrityError(
                 "Faster-Whisper local snapshot bytes changed after identity preflight"
             )
@@ -1120,9 +1103,12 @@ class FasterWhisperRecognizerAdapter:
                 local_files_only=True,
                 revision=self._model_revision,
             )
-            if hash_object(
-                {"snapshot_inventory": self._snapshot_inventory(self._model_snapshot_path)}
-            ) != self._model_snapshot_inventory_hash:
+            if (
+                hash_object(
+                    {"snapshot_inventory": self._snapshot_inventory(self._model_snapshot_path)}
+                )
+                != self._model_snapshot_inventory_hash
+            ):
                 del model
                 raise AdapterIntegrityError(
                     "Faster-Whisper snapshot changed while the model was constructed"
@@ -1204,9 +1190,7 @@ class FasterWhisperRecognizerAdapter:
                 model = None
                 try:
                     model = None if self._runner is not None else self._load_model()
-                    with tempfile.TemporaryDirectory(
-                        prefix="faster-whisper-bounded-"
-                    ) as temporary:
+                    with tempfile.TemporaryDirectory(prefix="faster-whisper-bounded-") as temporary:
                         for index in range(completed_prefix, len(chunk_plans)):
                             chunk_plan = chunk_plans[index]
                             derived = derive_recognition_pcm_wav_chunk(
@@ -1302,9 +1286,7 @@ class FasterWhisperRecognizerAdapter:
                     )
                     chunk_path = Path(temporary) / f"{plan.id}.wav"
                     chunk_path.write_bytes(chunk_bytes)
-                    outputs.append(
-                        self._execute_chunk(chunk_path, request, model=model)
-                    )
+                    outputs.append(self._execute_chunk(chunk_path, request, model=model))
                     del chunk_bytes
         finally:
             if model is not None:

@@ -110,9 +110,7 @@ class ReferenceAuthorityTargetV2(_StrictContract):
     def _scope_set_is_canonical(self) -> ReferenceAuthorityTargetV2:
         if not self.scopes:
             raise ValueError("Reference authority target requires at least one scope")
-        if len(set(self.scopes)) != len(self.scopes) or self.scopes != tuple(
-            sorted(self.scopes)
-        ):
+        if len(set(self.scopes)) != len(self.scopes) or self.scopes != tuple(sorted(self.scopes)):
             raise ValueError("Reference authority target scopes must be unique and ordered")
         return self
 
@@ -184,9 +182,7 @@ class ReferenceEvidenceOmissionSpecV2(_StrictContract):
     def _scope_set_is_canonical(self) -> ReferenceEvidenceOmissionSpecV2:
         if not self.scopes:
             raise ValueError("Reference Evidence omission requires target scopes")
-        if len(set(self.scopes)) != len(self.scopes) or self.scopes != tuple(
-            sorted(self.scopes)
-        ):
+        if len(set(self.scopes)) != len(self.scopes) or self.scopes != tuple(sorted(self.scopes)):
             raise ValueError("Reference Evidence omission scopes must be unique and ordered")
         return self
 
@@ -345,9 +341,7 @@ class ReferenceAuthorityCoverageReceiptV2(_StrictContract):
             )
             for item in self.omissions
         ]
-        if len(set(omission_keys)) != len(omission_keys) or omission_keys != sorted(
-            omission_keys
-        ):
+        if len(set(omission_keys)) != len(omission_keys) or omission_keys != sorted(omission_keys):
             raise ValueError("Reference coverage omissions must be unique and ordered")
         expected_selection = not any(item.blocking for item in self.omissions)
         if self.selection_complete != expected_selection:
@@ -419,9 +413,7 @@ class ReferenceConflictSetV2(_StrictContract):
             sorted(conflict_ids)
         ):
             raise ValueError("Reference conflicts must be unique and ordered")
-        condition_keys = tuple(
-            (item.code, item.related_ids) for item in self.unresolved_conditions
-        )
+        condition_keys = tuple((item.code, item.related_ids) for item in self.unresolved_conditions)
         if len(set(condition_keys)) != len(condition_keys) or condition_keys != tuple(
             sorted(condition_keys)
         ):
@@ -580,12 +572,10 @@ def _explicitly_supersedes(left: ReferenceClaimV2, right: ReferenceClaimV2) -> b
     if left.logical_source_id != right.logical_source_id:
         return False
     return any(
-        item.logical_source_id == right.logical_source_id
-        and item.version_id == right.version_id
+        item.logical_source_id == right.logical_source_id and item.version_id == right.version_id
         for item in left.supersedes
     ) or any(
-        item.logical_source_id == left.logical_source_id
-        and item.version_id == left.version_id
+        item.logical_source_id == left.logical_source_id and item.version_id == left.version_id
         for item in right.supersedes
     )
 
@@ -666,9 +656,7 @@ def build_reference_authority_proof(
             ) from exc
         evidence_by_id[item.id] = item
 
-    target_scopes = {
-        item.resolution_key: frozenset(item.scopes) for item in targets
-    }
+    target_scopes = {item.resolution_key: frozenset(item.scopes) for item in targets}
     spec_keys = [
         (
             item.resolution_key,
@@ -689,9 +677,7 @@ def build_reference_authority_proof(
     ]
     if len(set(omission_spec_keys)) != len(omission_spec_keys):
         raise ReferenceClaimError("Reference Evidence omission specs must be unique")
-    omission_by_target: dict[
-        tuple[str, str], ReferenceEvidenceOmissionSpecV2
-    ] = {}
+    omission_by_target: dict[tuple[str, str], ReferenceEvidenceOmissionSpecV2] = {}
     for omission in evidence_omissions:
         if omission.evidence_id not in evidence_by_id:
             raise ReferenceClaimError("Reference Evidence omission names unknown Evidence")
@@ -706,9 +692,10 @@ def build_reference_authority_proof(
         omission_by_target[omission_key] = omission
     claims: list[ReferenceClaimV2] = []
     for spec in claim_specs:
-        if spec.resolution_key not in target_scopes or spec.scope not in target_scopes[
-            spec.resolution_key
-        ]:
+        if (
+            spec.resolution_key not in target_scopes
+            or spec.scope not in target_scopes[spec.resolution_key]
+        ):
             raise ReferenceClaimError("Reference claim spec is outside explicit target scope")
         try:
             item = evidence_by_id[spec.evidence_id]
@@ -718,9 +705,7 @@ def build_reference_authority_proof(
             claims.append(_build_claim(spec, item))
     claims_tuple = tuple(sorted(claims, key=lambda item: item.id))
 
-    claimed_cells = {
-        (item.evidence_id, item.resolution_key, item.scope) for item in claim_specs
-    }
+    claimed_cells = {(item.evidence_id, item.resolution_key, item.scope) for item in claim_specs}
     omitted_cells = {
         (item.evidence_id, item.resolution_key, scope)
         for item in evidence_omissions
@@ -823,13 +808,13 @@ def build_reference_authority_proof(
     claim_set_hash = hash_object(claims_tuple)
     bounded_assessed = bounded_retrieval_evidence_ids is not None
     bounded_ids = tuple(sorted(bounded_retrieval_evidence_ids or ()))
-    if len(set(bounded_ids)) != len(bounded_ids) or not set(bounded_ids) <= set(
-        evidence_by_id
-    ):
+    if len(set(bounded_ids)) != len(bounded_ids) or not set(bounded_ids) <= set(evidence_by_id):
         raise ReferenceClaimError("bounded retrieval Evidence IDs are duplicate or unknown")
-    bounded_omitted_claim_ids = tuple(
-        sorted(item.id for item in claims_tuple if item.evidence_id not in bounded_ids)
-    ) if bounded_assessed else ()
+    bounded_omitted_claim_ids = (
+        tuple(sorted(item.id for item in claims_tuple if item.evidence_id not in bounded_ids))
+        if bounded_assessed
+        else ()
+    )
     coverage_payload: dict[str, object] = {
         "schema_version": 2,
         "targets_hash": hash_object(targets),
@@ -839,15 +824,11 @@ def build_reference_authority_proof(
         "retriever_code_hash": index.retriever_code_hash,
         "retriever_runtime_hash": index.retriever_runtime_hash,
         "artifact_set_hash": hash_object(artifacts),
-        "authority_descriptor_set_hash": hash_object(
-            tuple(item.authority for item in artifacts)
-        ),
+        "authority_descriptor_set_hash": hash_object(tuple(item.authority for item in artifacts)),
         "version_coverage_hash": hash_object(version_tuple),
         "evidence_set_hash": reference_evidence_set_hash(validated_evidence),
         "claim_spec_set_hash": hash_object(tuple(sorted(spec_keys))),
-        "evidence_omission_spec_set_hash": hash_object(
-            tuple(sorted(omission_spec_keys))
-        ),
+        "evidence_omission_spec_set_hash": hash_object(tuple(sorted(omission_spec_keys))),
         "claim_set_hash": claim_set_hash,
         "version_coverage": version_tuple,
         "eligible_logical_version_ids": tuple(
@@ -864,9 +845,7 @@ def build_reference_authority_proof(
         "bounded_retrieval_assessed": bounded_assessed,
         "bounded_retrieval_evidence_ids": bounded_ids,
         "bounded_retrieval_omitted_claim_ids": bounded_omitted_claim_ids,
-        "bounded_retrieval_complete": (
-            not bounded_omitted_claim_ids if bounded_assessed else None
-        ),
+        "bounded_retrieval_complete": (not bounded_omitted_claim_ids if bounded_assessed else None),
         "authority": _AUTHORITY_LIMIT,
     }
     coverage = _seal(
@@ -912,8 +891,7 @@ def build_reference_authority_proof(
         "conflicts": conflicts_tuple,
         "unresolved_conditions": conditions_tuple,
         "blocking": bool(
-            any(item.severity == "blocking" for item in conflicts_tuple)
-            or conditions_tuple
+            any(item.severity == "blocking" for item in conflicts_tuple) or conditions_tuple
         ),
         "authority": _AUTHORITY_LIMIT,
     }

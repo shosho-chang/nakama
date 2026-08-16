@@ -25,11 +25,7 @@ class EpisodeTranscriptEdit:
     confidence: str = "confirmed"
 
     def __post_init__(self) -> None:
-        if (
-            not self.id.strip()
-            or not self.current.strip()
-            or not self.replacement.strip()
-        ):
+        if not self.id.strip() or not self.current.strip() or not self.replacement.strip():
             raise ValueError("episode edit requires id and non-empty exact text")
         if self.end_ms <= self.start_ms:
             raise ValueError("episode edit interval must be positive")
@@ -48,9 +44,7 @@ def _replace_token_span(
     start_ms = source[0].start_ms
     end_ms = source[-1].end_ms
     duration = max(1, end_ms - start_ms)
-    source_ids = tuple(
-        item for token in source for item in token.source_primary_token_ids
-    )
+    source_ids = tuple(item for token in source for item in token.source_primary_token_ids)
     recognition_refs = tuple(
         dict.fromkeys(item for token in source for item in token.recognition_refs)
     )
@@ -119,8 +113,7 @@ def apply_episode_transcript_edits(
         bounded = [
             (first, last)
             for first, last in candidates
-            if tokens[first].end_ms >= edit.start_ms
-            and tokens[last].start_ms <= edit.end_ms
+            if tokens[first].end_ms >= edit.start_ms and tokens[last].start_ms <= edit.end_ms
         ]
         if len(bounded) != 1:
             raise ValueError(
@@ -152,18 +145,12 @@ def apply_episode_transcript_edits(
         unresolved = shifted_unresolved
         _replace_token_span(tokens, first=first, last=last, replacement=edit.replacement)
 
-    tokens = [
-        replace(token, id=f"corrected-{index:08d}")
-        for index, token in enumerate(tokens)
-    ]
+    tokens = [replace(token, id=f"corrected-{index:08d}") for index, token in enumerate(tokens)]
     updated_text = "".join(token.text for token in tokens)
     for decision in unresolved:
         if decision.target_start_char is None or decision.target_end_char is None:
             continue
-        if (
-            updated_text[decision.target_start_char : decision.target_end_char]
-            != decision.current
-        ):
+        if updated_text[decision.target_start_char : decision.target_end_char] != decision.current:
             raise ValueError("episode edit left a stale unresolved correction target")
     return replace(
         result,

@@ -59,8 +59,10 @@ def _grapheme_spans(value: str) -> tuple[tuple[int, int], ...]:
         start = index
         first = value[index]
         index += 1
-        if _is_regional_indicator(first) and index < len(value) and _is_regional_indicator(
-            value[index]
+        if (
+            _is_regional_indicator(first)
+            and index < len(value)
+            and _is_regional_indicator(value[index])
         ):
             index += 1
         while index < len(value):
@@ -104,9 +106,7 @@ def _span_views(transcript: CanonicalTranscript) -> tuple[_SpanView, ...]:
 def _slice_token_ids(view: _SpanView, start: int, end: int) -> tuple[str, ...]:
     return tuple(
         token.id
-        for token, (token_start, token_end) in zip(
-            view.tokens, view.token_ranges, strict=True
-        )
+        for token, (token_start, token_end) in zip(view.tokens, view.token_ranges, strict=True)
         if token_start < end and token_end > start
     )
 
@@ -231,8 +231,7 @@ def _build_one(
     slices = (*left_slices, anchor_slice, *right_slices)
     view_by_id = {view.span.id: view for view in views}
     query_parts = tuple(
-        view_by_id[item.span_id].text[item.slice_start : item.slice_end]
-        for item in slices
+        view_by_id[item.span_id].text[item.slice_start : item.slice_end] for item in slices
     )
     exact_query = "".join(query_parts)
     left_width = sum(len(part) for part in query_parts[: len(left_slices)])

@@ -182,18 +182,14 @@ def _native_view(decision: NativeCorrectionDecisionV2) -> LedgerDecisionView:
     )
 
 
-def _strict_typed_decision(
-    *, raw_bytes: bytes, family: DecisionFamily
-) -> TypedLedgerDecision:
+def _strict_typed_decision(*, raw_bytes: bytes, family: DecisionFamily) -> TypedLedgerDecision:
     try:
         if family == "legacy_correction_v1":
             return CorrectionDecision.model_validate_json(raw_bytes, strict=True)
         return NativeCorrectionDecisionV2.model_validate_json(raw_bytes, strict=True)
     except (ValidationError, ValueError) as exc:
         label = "legacy" if family == "legacy_correction_v1" else "native"
-        raise LedgerDecisionCodecError(
-            f"Ledger decision violates strict {label} schema"
-        ) from exc
+        raise LedgerDecisionCodecError(f"Ledger decision violates strict {label} schema") from exc
 
 
 def decode_ledger_decision(

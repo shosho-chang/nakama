@@ -66,9 +66,7 @@ def test_same_audio_bytes_are_deduplicated_idempotently(tmp_path: Path) -> None:
         second_stored = snapshot.commit()
 
     assert first_stored == second_stored
-    assert tuple(path.name for path in store.audio_dir.iterdir()) == (
-        first_stored.sha256,
-    )
+    assert tuple(path.name for path in store.audio_dir.iterdir()) == (first_stored.sha256,)
     assert not tuple(store.audio_staging_dir.iterdir())
 
 

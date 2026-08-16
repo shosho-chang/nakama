@@ -121,9 +121,7 @@ def _canonical_alignment(
             first = tokens[indices[0]]
             last = tokens[indices[-1]]
             if first.start_ms != span.start_ms or last.end_ms != span.end_ms:
-                raise ValueError(
-                    "lexeme_exact CanonicalSpan outer timing differs from its tokens"
-                )
+                raise ValueError("lexeme_exact CanonicalSpan outer timing differs from its tokens")
     if flattened != [token.id for token in tokens]:
         raise ValueError("CanonicalSpans must exactly partition canonical tokens")
     return tuple(starts), tuple(ends), frozenset(legal)
@@ -158,17 +156,14 @@ def evaluate_projection(
         tokens, tuple(canonical_spans)
     )
     projected_ids = tuple(token_id for cue in projection.cues for token_id in cue.token_ids)
-    cue_for_token = {
-        token_id: cue.id for cue in projection.cues for token_id in cue.token_ids
-    }
+    cue_for_token = {token_id: cue.id for cue in projection.cues for token_id in cue.token_ids}
     findings: list[QualityFinding] = []
 
     if boundary_constraints is not None:
         if (
             boundary_constraints.episode_id != projection.episode_id
             or boundary_constraints.generation_id != projection.generation_id
-            or boundary_constraints.canonical_content_hash
-            != canonical_content_hash(tokens)
+            or boundary_constraints.canonical_content_hash != canonical_content_hash(tokens)
             or boundary_constraints.token_ids != canonical_ids
             or boundary_constraints.profile_id != profile.id
             or boundary_constraints.profile_version != profile.profile_version
@@ -203,9 +198,7 @@ def evaluate_projection(
         span_text = "".join(token_by_id[token_id].text for token_id in span.token_ids)
         span_columns = display_columns(span_text)
         span_reading_units = reading_units(span_text)
-        reading_ms = math.ceil(
-            span_reading_units / profile.max_reading_units_per_second * 1000
-        )
+        reading_ms = math.ceil(span_reading_units / profile.max_reading_units_per_second * 1000)
         speakers = {token_by_id[token_id].speaker for token_id in span.token_ids}
         if (
             span_columns > profile.max_lines * profile.hard_line_display_columns
@@ -263,9 +256,7 @@ def evaluate_projection(
         )
 
     canonical_text = "".join(token.text for token in tokens)
-    scalar_to_token_id = tuple(
-        token.id for token in tokens for _character in token.text
-    )
+    scalar_to_token_id = tuple(token.id for token in tokens for _character in token.text)
     emitted_editorial_targets: set[tuple[str, tuple[str, ...]]] = set()
     for editorial in inspect_editorial_text(canonical_text):
         cue_ids = tuple(
@@ -304,9 +295,7 @@ def evaluate_projection(
             token_by_id[token_id] for token_id in cue.token_ids if token_id in token_by_id
         ]
         known_positions = [
-            token_positions[token_id]
-            for token_id in cue.token_ids
-            if token_id in token_positions
+            token_positions[token_id] for token_id in cue.token_ids if token_id in token_positions
         ]
         if known_positions and (
             known_positions != list(range(known_positions[0], known_positions[-1] + 1))
@@ -380,11 +369,7 @@ def evaluate_projection(
                 )
             )
         cue_reading_units = reading_units("".join(cue.lines))
-        reading_rate = (
-            cue_reading_units / (duration_ms / 1000)
-            if duration_ms > 0
-            else float("inf")
-        )
+        reading_rate = cue_reading_units / (duration_ms / 1000) if duration_ms > 0 else float("inf")
         if reading_rate > profile.max_reading_units_per_second:
             cps_failures += 1
             findings.append(
@@ -407,9 +392,7 @@ def evaluate_projection(
             )
         elif previous_end >= 0:
             intercue_gap_ms = cue.start_ms - previous_end
-            max_observed_intercue_gap_ms = max(
-                max_observed_intercue_gap_ms, intercue_gap_ms
-            )
+            max_observed_intercue_gap_ms = max(max_observed_intercue_gap_ms, intercue_gap_ms)
             if intercue_gap_ms > profile.max_intercue_gap_ms:
                 long_intercue_gap_count += 1
             # A long natural pause is not a display-timeline failure.  Missing
@@ -432,8 +415,7 @@ def evaluate_projection(
                     )
                 )
         if len(cue.lines) > profile.max_lines or any(
-            display_columns(line) > profile.hard_line_display_columns
-            for line in cue.lines
+            display_columns(line) > profile.hard_line_display_columns for line in cue.lines
         ):
             findings.append(
                 _finding(
@@ -451,9 +433,7 @@ def evaluate_projection(
             if known_positions and known_positions[-1] + 1 < len(tokens):
                 cue_cuts.add(known_positions[-1] + 1)
             cue_texts = [token_by_id[token_id].text for token_id in cue.token_ids]
-            relative_line_cuts, cuts_align = _line_cut_token_positions(
-                cue_texts, cue.lines
-            )
+            relative_line_cuts, cuts_align = _line_cut_token_positions(cue_texts, cue.lines)
             if not cuts_align:
                 findings.append(
                     _finding(
@@ -463,9 +443,7 @@ def evaluate_projection(
                     )
                 )
             if known_positions:
-                line_cuts.update(
-                    known_positions[0] + relative for relative in relative_line_cuts
-                )
+                line_cuts.update(known_positions[0] + relative for relative in relative_line_cuts)
         for edge in boundary_constraints.edges:
             if edge.material_uncertainty:
                 findings.append(

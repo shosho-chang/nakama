@@ -1029,9 +1029,7 @@ def test_qwen_loader_uses_measured_local_snapshots_without_hub_access(
         snapshot_calls.append(kwargs)
         assert kwargs["local_files_only"] is True
         return str(
-            model_snapshot
-            if kwargs["repo_id"] == "Qwen/Qwen3-ASR-1.7B"
-            else aligner_snapshot
+            model_snapshot if kwargs["repo_id"] == "Qwen/Qwen3-ASR-1.7B" else aligner_snapshot
         )
 
     def poison_hub(*args, **kwargs):
@@ -1125,9 +1123,7 @@ def test_qwen_snapshot_identity_hashes_symlink_blob_and_detects_preload_tamper(
     blob = blobs / "weights"
     blob.write_bytes(b"qwen-weights-one")
     try:
-        (snapshot / "model.safetensors").symlink_to(
-            os.path.relpath(blob, start=snapshot)
-        )
+        (snapshot / "model.safetensors").symlink_to(os.path.relpath(blob, start=snapshot))
     except OSError:
         pytest.skip("host does not permit unprivileged symlink creation")
     monkeypatch.setitem(
@@ -1157,9 +1153,7 @@ def test_qwen_snapshot_identity_hashes_symlink_blob_and_detects_preload_tamper(
         sys.modules,
         "qwen_asr",
         SimpleNamespace(
-            Qwen3ASRModel=SimpleNamespace(
-                from_pretrained=lambda *_args, **_kwargs: object()
-            )
+            Qwen3ASRModel=SimpleNamespace(from_pretrained=lambda *_args, **_kwargs: object())
         ),
     )
     blob.write_bytes(b"qwen-weights-two")
@@ -1263,9 +1257,7 @@ def test_qwen_zero_duration_observations_become_explicit_bounded_groups(
         model_revision="model-revision",
         forced_aligner_revision="aligner-revision",
     )
-    raw = production_adapter._transcribe_qwen_chunk(
-        FakeModel(), audio, _request(tmp_path, audio)
-    )
+    raw = production_adapter._transcribe_qwen_chunk(FakeModel(), audio, _request(tmp_path, audio))
     grouping = raw["alignment_grouping"]
 
     assert [
@@ -1358,9 +1350,7 @@ def test_qwen_replay_rejects_bounded_alignment_grouping_tamper(tmp_path: Path) -
         model_revision="model-revision",
         forced_aligner_revision="aligner-revision",
     )
-    raw = production_adapter._transcribe_qwen_chunk(
-        FakeModel(), audio, _request(tmp_path, audio)
-    )
+    raw = production_adapter._transcribe_qwen_chunk(FakeModel(), audio, _request(tmp_path, audio))
     adapter = _adapter(lambda _path, _request: raw)
     request = _request(tmp_path, audio)
     evidence = adapter.recognize(request)

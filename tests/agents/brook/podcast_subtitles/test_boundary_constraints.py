@@ -87,9 +87,7 @@ def test_anji_terms_are_not_inferred_without_reference_or_semantic_evidence() ->
     real_life = _relations(list("人生真實樣貌的一個展現"))
 
     assert any(edge.cue_relation != "forbidden" for edge in academic)
-    assert any(
-        edge.edge_index <= 5 and edge.cue_relation != "forbidden" for edge in real_life
-    )
+    assert any(edge.edge_index <= 5 and edge.cue_relation != "forbidden" for edge in real_life)
 
 
 @pytest.mark.parametrize(
@@ -215,9 +213,7 @@ def test_singleton_all_neutral_whole_run_missing_duplicate_and_conflict_fail_clo
     duplicate = (*_units(tokens), _units(tokens)[0].model_copy(update={"id": "dup"}))
     conflict = (
         *_units(tokens),
-        _units(tokens)[0].model_copy(
-            update={"id": "conflict", "forbid_cue_breaks": True}
-        ),
+        _units(tokens)[0].model_copy(update={"id": "conflict", "forbid_cue_breaks": True}),
     )
 
     for invalid in (singletons, neutral, whole, missing, duplicate, conflict):

@@ -52,22 +52,14 @@ def _interval_span_anchors(
     if overlapping:
         return overlapping
     left = next(
-        (
-            span
-            for span in reversed(spans)
-            if span.end_ms <= interval.start_ms
-        ),
+        (span for span in reversed(spans) if span.end_ms <= interval.start_ms),
         None,
     )
     right = next(
         (span for span in spans if span.start_ms >= interval.end_ms),
         None,
     )
-    anchors = tuple(
-        dict.fromkeys(
-            span.id for span in (left, right) if span is not None
-        )
-    )
+    anchors = tuple(dict.fromkeys(span.id for span in (left, right) if span is not None))
     return anchors or _global_span_anchors(spans)
 
 

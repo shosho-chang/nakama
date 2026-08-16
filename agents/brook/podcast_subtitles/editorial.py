@@ -56,20 +56,12 @@ def _traditional_converter() -> OpenCC:
 
 @lru_cache(maxsize=1)
 def _opencc_character_dictionary() -> bytes:
-    return (
-        resources.files("opencc")
-        .joinpath("dictionary", "STCharacters.txt")
-        .read_bytes()
-    )
+    return resources.files("opencc").joinpath("dictionary", "STCharacters.txt").read_bytes()
 
 
 @lru_cache(maxsize=1)
 def _opencc_phrase_dictionary() -> bytes:
-    return (
-        resources.files("opencc")
-        .joinpath("dictionary", "STPhrases.txt")
-        .read_bytes()
-    )
+    return resources.files("opencc").joinpath("dictionary", "STPhrases.txt").read_bytes()
 
 
 @lru_cache(maxsize=1)
@@ -167,12 +159,8 @@ def editorial_detector_identity() -> str:
             "house_style_version": HOUSE_STYLE_VERSION,
             "allowed_punctuation": "".join(sorted(ALLOWED_PUNCTUATION)),
             "traditional_detector": "opencc:s2tw:contextual-self-mappings-v3",
-            "opencc_character_dictionary_sha256": sha256_bytes(
-                _opencc_character_dictionary()
-            ),
-            "opencc_phrase_dictionary_sha256": sha256_bytes(
-                _opencc_phrase_dictionary()
-            ),
+            "opencc_character_dictionary_sha256": sha256_bytes(_opencc_character_dictionary()),
+            "opencc_phrase_dictionary_sha256": sha256_bytes(_opencc_phrase_dictionary()),
             "opencc_version": importlib.metadata.version("opencc-python-reimplemented"),
             "unicode_database_version": unicodedata.unidata_version,
         }

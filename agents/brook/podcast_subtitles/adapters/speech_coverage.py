@@ -198,12 +198,10 @@ def _merge_intervals(
 def _parse_silence(stderr: bytes, duration_ms: int) -> tuple[tuple[int, int], ...]:
     events: list[tuple[int, bytes]] = []
     events.extend(
-        (match.start(), b"start:" + match.group(1))
-        for match in _SILENCE_START_RE.finditer(stderr)
+        (match.start(), b"start:" + match.group(1)) for match in _SILENCE_START_RE.finditer(stderr)
     )
     events.extend(
-        (match.start(), b"end:" + match.group(1))
-        for match in _SILENCE_END_RE.finditer(stderr)
+        (match.start(), b"end:" + match.group(1)) for match in _SILENCE_END_RE.finditer(stderr)
     )
     events.sort()
     pending: int | None = None
@@ -315,9 +313,7 @@ def _request_identity(request: SpeechCoverageRequest) -> dict[str, object]:
         "normalized_audio_hash": request.expected_normalized_audio_hash,
         "normalized_audio_size_bytes": request.expected_normalized_audio_size_bytes,
         "normalized_audio_duration_ms": request.normalized_audio_duration_ms,
-        "recognition_evidence_hash": recognition_evidence_set_hash(
-            request.recognition_evidence
-        ),
+        "recognition_evidence_hash": recognition_evidence_set_hash(request.recognition_evidence),
         "canonical_primary_evidence_hash": recognition_evidence_content_hash(
             request.recognition_evidence[0]
         ),
@@ -482,10 +478,7 @@ class FFmpegSpeechCoverageAnalyzer:
             "0:a:0",
             "-vn",
             "-af",
-            (
-                f"silencedetect=noise={self._noise_db:.3f}dB:"
-                f"d={self._minimum_silence_ms / 1000:.3f}"
-            ),
+            (f"silencedetect=noise={self._noise_db:.3f}dB:d={self._minimum_silence_ms / 1000:.3f}"),
             "-f",
             "null",
             "-",
@@ -545,8 +538,7 @@ class FFmpegSpeechCoverageAnalyzer:
             # Canonical reconciliation is primary-led.  A corroborating ASR
             # token cannot hide speech omitted from that canonical stream.
             recognition = tuple(
-                (token.start_ms, token.end_ms)
-                for token in request.recognition_evidence[0].tokens
+                (token.start_ms, token.end_ms) for token in request.recognition_evidence[0].tokens
             )
             uncovered = _uncovered_activity(
                 activity,
@@ -660,9 +652,7 @@ class FixtureSpeechCoverageAnalyzer:
         minimum_uncovered_ms: int = 1,
         failure_reason: str | None = None,
     ) -> None:
-        self._activity = (
-            None if activity_intervals is None else tuple(activity_intervals)
-        )
+        self._activity = None if activity_intervals is None else tuple(activity_intervals)
         self._coverage_tolerance_ms = coverage_tolerance_ms
         self._minimum_uncovered_ms = minimum_uncovered_ms
         self._failure_reason = failure_reason
@@ -706,13 +696,10 @@ class FixtureSpeechCoverageAnalyzer:
     def adapter_runtime_hash(self) -> str:
         return hash_object({"runtime": "pure-python-fixture-v1"})
 
-    def _resolved_activity(
-        self, request: SpeechCoverageRequest
-    ) -> tuple[tuple[int, int], ...]:
+    def _resolved_activity(self, request: SpeechCoverageRequest) -> tuple[tuple[int, int], ...]:
         return (
             tuple(
-                (token.start_ms, token.end_ms)
-                for token in request.recognition_evidence[0].tokens
+                (token.start_ms, token.end_ms) for token in request.recognition_evidence[0].tokens
             )
             if self._activity is None
             else self._activity
@@ -776,8 +763,7 @@ class FixtureSpeechCoverageAnalyzer:
             end_ms=request.normalized_audio_duration_ms,
         )
         recognition = tuple(
-            (token.start_ms, token.end_ms)
-            for token in request.recognition_evidence[0].tokens
+            (token.start_ms, token.end_ms) for token in request.recognition_evidence[0].tokens
         )
         uncovered = _uncovered_activity(
             activity,

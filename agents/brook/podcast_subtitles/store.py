@@ -461,26 +461,19 @@ class GenerationStore:
         """
 
         encoded = {
-            _safe_artifact_name(name): _artifact_bytes(value)
-            for name, value in artifacts.items()
+            _safe_artifact_name(name): _artifact_bytes(value) for name, value in artifacts.items()
         }
-        actual_hashes = {
-            name: sha256_bytes(payload) for name, payload in sorted(encoded.items())
-        }
+        actual_hashes = {name: sha256_bytes(payload) for name, payload in sorted(encoded.items())}
         if actual_hashes != checkpoint.artifact_hashes:
             raise GenerationIsolationError(
                 "Native resolve checkpoint artifact bytes differ from its typed manifest"
             )
         destination = self.native_resolve_checkpoint_dir(checkpoint.id)
         checkpoint_bytes = canonical_json_bytes(checkpoint)
-        pointer_path = self._native_resolve_checkpoint_pointer_path(
-            checkpoint.operation_key
-        )
+        pointer_path = self._native_resolve_checkpoint_pointer_path(checkpoint.operation_key)
 
         with self.episode_transaction():
-            current = self._read_native_resolve_checkpoint_pointer_locked(
-                checkpoint.operation_key
-            )
+            current = self._read_native_resolve_checkpoint_pointer_locked(checkpoint.operation_key)
             current_id = current.get("checkpoint_id") if current is not None else None
             if checkpoint.stage == "audit_basis_ready":
                 if current_id not in {None, checkpoint.id}:
@@ -503,9 +496,7 @@ class GenerationStore:
                     raise GenerationIsolationError(
                         "post-basis Native resolve checkpoint lacks a predecessor"
                     )
-                previous = self._load_native_resolve_checkpoint_directory(
-                    previous_id
-                ).checkpoint
+                previous = self._load_native_resolve_checkpoint_directory(previous_id).checkpoint
                 expected_stage = {
                     "audit_basis_ready": "text_audit_ready",
                     "text_audit_ready": "audio_audit_ready",
@@ -534,10 +525,7 @@ class GenerationStore:
                     "reference_enrollment_hash",
                     "adapter_identities_hash",
                 )
-                if any(
-                    getattr(checkpoint, name) != getattr(previous, name)
-                    for name in inherited
-                ):
+                if any(getattr(checkpoint, name) != getattr(previous, name) for name in inherited):
                     raise GenerationIsolationError(
                         "Native resolve checkpoint inherited identity changed"
                     )
@@ -568,14 +556,11 @@ class GenerationStore:
                     except OSError:
                         if not destination.exists():
                             raise
-                        existing = self._load_native_resolve_checkpoint_directory(
-                            checkpoint.id
-                        )
+                        existing = self._load_native_resolve_checkpoint_directory(checkpoint.id)
                         shutil.rmtree(temporary, ignore_errors=True)
                         if existing.checkpoint != checkpoint:
                             raise GenerationConflictError(
-                                f"native resolve checkpoint {checkpoint.id} "
-                                "concurrently conflicted"
+                                f"native resolve checkpoint {checkpoint.id} concurrently conflicted"
                             )
                 except Exception:
                     if temporary.exists():
@@ -604,9 +589,7 @@ class GenerationStore:
         if not path.exists():
             return None
         if not path.is_file():
-            raise GenerationIsolationError(
-                "Native resolve checkpoint pointer is not a file"
-            )
+            raise GenerationIsolationError("Native resolve checkpoint pointer is not a file")
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError) as exc:
@@ -619,14 +602,10 @@ class GenerationStore:
             "operation_key",
             "pointer_hash",
         }:
-            raise GenerationIsolationError(
-                "Native resolve checkpoint pointer schema is invalid"
-            )
+            raise GenerationIsolationError("Native resolve checkpoint pointer schema is invalid")
         pointer_hash = payload.pop("pointer_hash")
         if pointer_hash != hash_object(payload):
-            raise GenerationIsolationError(
-                "Native resolve checkpoint pointer hash mismatch"
-            )
+            raise GenerationIsolationError("Native resolve checkpoint pointer hash mismatch")
         return payload
 
     def _load_native_resolve_checkpoint_directory(
@@ -667,20 +646,14 @@ class GenerationStore:
         """Load and authenticate the current stage for one exact operation."""
 
         with self._lock:
-            pointer = self._read_native_resolve_checkpoint_pointer_locked(
-                expected_operation_key
-            )
+            pointer = self._read_native_resolve_checkpoint_pointer_locked(expected_operation_key)
             if pointer is None:
                 return None
             checkpoint_id = pointer["checkpoint_id"]
             if not isinstance(checkpoint_id, str):
-                raise GenerationIsolationError(
-                    "Native resolve checkpoint pointer ID is invalid"
-                )
+                raise GenerationIsolationError("Native resolve checkpoint pointer ID is invalid")
             stored = self._load_native_resolve_checkpoint_directory(checkpoint_id)
-            record_hash = hash_file(
-                stored.directory / _NATIVE_RESOLVE_CHECKPOINT_RECORD_NAME
-            )
+            record_hash = hash_file(stored.directory / _NATIVE_RESOLVE_CHECKPOINT_RECORD_NAME)
             if pointer["checkpoint_hash"] != record_hash:
                 raise GenerationIsolationError(
                     "Native resolve checkpoint pointer no longer binds its exact record"
@@ -762,14 +735,9 @@ class GenerationStore:
             current = self._read_create_checkpoint_pointer_locked()
             current_id = current.get("checkpoint_id") if current is not None else None
             starts_after_terminal = False
-            if (
-                checkpoint.stage == "started"
-                and current_id not in {None, checkpoint.id}
-            ):
+            if checkpoint.stage == "started" and current_id not in {None, checkpoint.id}:
                 if not isinstance(current_id, str):
-                    raise GenerationIsolationError(
-                        "Create Checkpoint pointer ID is invalid"
-                    )
+                    raise GenerationIsolationError("Create Checkpoint pointer ID is invalid")
                 predecessor = self._load_create_checkpoint_directory(current_id)
                 starts_after_terminal = predecessor.checkpoint.stage == "complete"
             if (
@@ -821,18 +789,12 @@ class GenerationStore:
                     "adapter_identities",
                     "expected_active_generation_id",
                 )
-                if any(
-                    getattr(checkpoint, name) != getattr(previous, name)
-                    for name in inherited
-                ):
-                    raise GenerationIsolationError(
-                        "Create Checkpoint inherited identity changed"
-                    )
+                if any(getattr(checkpoint, name) != getattr(previous, name) for name in inherited):
+                    raise GenerationIsolationError("Create Checkpoint inherited identity changed")
                 if previous.stage != "started" and (
                     checkpoint.invocation_id != previous.invocation_id
                     or checkpoint.normalized != previous.normalized
-                    or checkpoint.normalization_receipt_hash
-                    != previous.normalization_receipt_hash
+                    or checkpoint.normalization_receipt_hash != previous.normalization_receipt_hash
                 ):
                     raise GenerationIsolationError(
                         "Create Checkpoint normalization lineage changed"

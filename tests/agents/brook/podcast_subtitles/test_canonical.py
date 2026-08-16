@@ -57,14 +57,10 @@ def reconcile_canonical(**kwargs):
 def attest_full_audit(result, receipts):
     original_generation_id = result.transcript.generation_id
     primary_refs = {
-        evidence_id
-        for token in result.transcript.tokens
-        for evidence_id in token.evidence_ids
+        evidence_id for token in result.transcript.tokens for evidence_id in token.evidence_ids
     }
     evidence_hash = result.transcript.evidence_hash
-    intervals = sorted(
-        (span.start_ms, span.end_ms) for span in result.transcript.spans
-    )
+    intervals = sorted((span.start_ms, span.end_ms) for span in result.transcript.spans)
     coverage_payload = {
         "episode_id": result.transcript.episode_id,
         "normalized_audio_hash": result.transcript.normalized_audio_hash,
@@ -1015,10 +1011,7 @@ def test_replace_decision_creates_new_revision_and_replays_without_recurrence(
         (_audit_receipt(draft, tuple(span.id for span in draft.transcript.spans)),),
     )
     assert draft.transcript.generation_warnings
-    assert all(
-        warning.status == "mitigated"
-        for warning in draft.transcript.generation_warnings
-    )
+    assert all(warning.status == "mitigated" for warning in draft.transcript.generation_warnings)
     ledger = CorrectionLedger(tmp_path / "events.ndjson")
     span_ids = tuple(span.id for span in draft.transcript.spans)
     decision = _decision(
@@ -1035,8 +1028,7 @@ def test_replace_decision_creates_new_revision_and_replays_without_recurrence(
     assert resolved.transcript.status == "draft"
     assert resolved.transcript.full_audit_receipt_set_hash is None
     assert all(
-        warning.status == "requires_full_audit"
-        and warning.mitigation_receipt_set_hash is None
+        warning.status == "requires_full_audit" and warning.mitigation_receipt_set_hash is None
         for warning in resolved.transcript.generation_warnings
     )
     assert resolved.transcript.revision == 2
@@ -1045,8 +1037,7 @@ def test_replace_decision_creates_new_revision_and_replays_without_recurrence(
     assert "".join(token.text for token in resolved.transcript.tokens) == "哥大畢業典禮"
     assert tuple(token.text for token in resolved.transcript.tokens) == ("哥大", "畢業典禮")
     assert all(
-        token.start_ms is None and token.end_ms is None
-        for token in resolved.transcript.tokens
+        token.start_ms is None and token.end_ms is None for token in resolved.transcript.tokens
     )
     assert all(token.timing_basis == "coarse_span" for token in resolved.transcript.tokens)
     assert (
@@ -1114,9 +1105,7 @@ def test_ledger_replays_across_new_generation_on_same_audio_and_fingerprint(
     assert replayed.transcript.full_audit_receipt_set_hash is None
     assert "".join(token.text for token in replayed.transcript.tokens) == "哥大畢業典禮"
     assert replayed.transcript.generation_id != resolved.transcript.generation_id
-    assert "ledger_replay_stale" not in {
-        risk.issue.code for risk in replayed.risks
-    }
+    assert "ledger_replay_stale" not in {risk.issue.code for risk in replayed.risks}
 
 
 @pytest.mark.parametrize("drift_kind", ("raw_output", "config"))
@@ -1308,7 +1297,6 @@ def test_stale_same_audio_ledger_event_becomes_review_risk(tmp_path: Path) -> No
     stale = next(risk for risk in changed.risks if risk.issue.code == "ledger_replay_stale")
     assert "".join(token.text for token in changed.transcript.tokens) == "內容已不同"
 
-
     assert stale.issue.audio_evidence_ids == ()
     assert stale.evidence_ids == ()
     assert stale.issue.reference_evidence_ids == ()
@@ -1362,8 +1350,7 @@ def test_multi_span_replacement_merges_deterministically_with_evidence_lineage(
     assert len(resolved.transcript.tokens) == 2
     assert tuple(token.text for token in resolved.transcript.tokens) == ("跟他", "遊牧")
     assert all(
-        token.start_ms is None and token.end_ms is None
-        for token in resolved.transcript.tokens
+        token.start_ms is None and token.end_ms is None for token in resolved.transcript.tokens
     )
     assert all(
         set(token.evidence_ids) == original_evidence_ids for token in resolved.transcript.tokens
@@ -1401,9 +1388,7 @@ def test_replacement_cardinality_never_manufactures_lexeme_timestamps(
     source_tokens: tuple[tuple[str, int, int], ...],
     replacement_lexemes: tuple[str, ...],
 ) -> None:
-    primary = _multi_token_evidence(
-        adapter="primary", raw_hash="5" * 64, tokens=source_tokens
-    )
+    primary = _multi_token_evidence(adapter="primary", raw_hash="5" * 64, tokens=source_tokens)
     secondary = _multi_token_evidence(
         adapter="secondary",
         raw_hash="6" * 64,
@@ -1431,9 +1416,7 @@ def test_replacement_cardinality_never_manufactures_lexeme_timestamps(
     assert tuple(token.text for token in resolved.transcript.tokens) == replacement_lexemes
     assert len({token.id for token in resolved.transcript.tokens}) == len(replacement_lexemes)
     assert all(
-        token.timing_basis == "coarse_span"
-        and token.start_ms is None
-        and token.end_ms is None
+        token.timing_basis == "coarse_span" and token.start_ms is None and token.end_ms is None
         for token in resolved.transcript.tokens
     )
     assert resolved.transcript.spans[0].alignment == "coarse"

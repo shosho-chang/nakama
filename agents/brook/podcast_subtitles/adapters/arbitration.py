@@ -146,9 +146,7 @@ class GeminiAudioArbiterAdapter:
         allow_paid_api: bool = False,
         min_confidence: float = 0.75,
         padding_seconds: float = 1.0,
-        execution_mode: Literal[
-            "fixture", "local", "paid_api", "subscription", "other"
-        ] = "other",
+        execution_mode: Literal["fixture", "local", "paid_api", "subscription", "other"] = "other",
         workspace_root: str | Path | None = None,
     ) -> None:
         if not model.strip() or not model_version.strip():
@@ -360,9 +358,7 @@ class GeminiAudioArbiterAdapter:
                 os.fsync(stream.fileno())
             if path.exists():
                 if path.read_bytes() != payload:
-                    raise AdapterIntegrityError(
-                        f"concurrent arbitration artifact conflict: {path}"
-                    )
+                    raise AdapterIntegrityError(f"concurrent arbitration artifact conflict: {path}")
             else:
                 os.replace(temporary, path)
         finally:
@@ -472,10 +468,7 @@ class GeminiAudioArbiterAdapter:
         packet_path = self._workspace_root / "arbitration" / "packets" / f"{packet_id}.json"
         clip_path = self._workspace_root / "arbitration" / "clips" / f"{packet_id}.wav"
         response_path = (
-            self._workspace_root
-            / "arbitration"
-            / "responses"
-            / f"{packet_id}.response.json"
+            self._workspace_root / "arbitration" / "responses" / f"{packet_id}.response.json"
         )
         self._atomic_bytes(packet_path, request_bytes)
         clip_bytes = self._extract_clip_bytes(audio_path, request, packet)

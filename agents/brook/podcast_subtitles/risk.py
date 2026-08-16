@@ -233,9 +233,7 @@ def discover_editorial_risks(
             dict.fromkeys(scalar_to_observation[position] for position in finding.positions)
         )
         span_ids = tuple(
-            span_id
-            for index in observation_indexes
-            for span_id in typed[index].audio_span_ids
+            span_id for index in observation_indexes for span_id in typed[index].audio_span_ids
         )
         evidence_ids = tuple(
             sorted(

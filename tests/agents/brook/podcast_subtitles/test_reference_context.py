@@ -51,9 +51,7 @@ def _transcript(
     tokens: list[CanonicalToken] = []
     spans: list[CanonicalSpan] = []
     cursor = 100
-    for index, (text, speaker, gap) in enumerate(
-        zip(texts, speakers, gaps_ms, strict=True)
-    ):
+    for index, (text, speaker, gap) in enumerate(zip(texts, speakers, gaps_ms, strict=True)):
         cursor += gap
         token_id = f"token-{index}"
         span_id = f"span-{index}"
@@ -104,8 +102,7 @@ def test_single_character_spans_rebuild_cross_span_term_for_every_anchor() -> No
 
     assert tuple(item.exact_query for item in contexts) == ("數位遊牧",) * 4
     assert tuple(
-        item.exact_query[item.anchor_query_start : item.anchor_query_end]
-        for item in contexts
+        item.exact_query[item.anchor_query_start : item.anchor_query_end] for item in contexts
     ) == ("數", "位", "遊", "牧")
     assert tuple(item.anchor_span_id for item in contexts) == tuple(
         span.id for span in transcript.spans

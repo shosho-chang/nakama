@@ -62,8 +62,7 @@ def test_traditional_detection_uses_phrase_context_for_ambiguous_characters() ->
         "simplified_chinese_suspected",
     ]
     assert [
-        (finding.positions, finding.observed, finding.detector_output)
-        for finding in findings
+        (finding.positions, finding.observed, finding.detector_output) for finding in findings
     ] == [
         ((3,), "云", "雲"),
         ((5,), "里", "裡"),

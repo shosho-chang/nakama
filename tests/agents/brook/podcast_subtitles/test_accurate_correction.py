@@ -131,8 +131,7 @@ def test_equal_length_output_keeps_per_token_primary_and_temporally_local_second
         ("qwen-2",),
     ]
     token_ref_ids = [
-        tuple(ref.rsplit(":", 1)[-1] for ref in token.recognition_refs)
-        for token in result.tokens
+        tuple(ref.rsplit(":", 1)[-1] for ref in token.recognition_refs) for token in result.tokens
     ]
     assert token_ref_ids == [
         ("qwen-0", "faster-0"),
@@ -555,8 +554,7 @@ def test_secondary_exact_ascii_glossary_repairs_missing_prefix() -> None:
 
     assert result.text == "我想要用健身帶給別人empowerment但是做不到"
     assert any(
-        item.current == "powerment" and item.selected == "empowerment"
-        for item in result.applied
+        item.current == "powerment" and item.selected == "empowerment" for item in result.applied
     )
     assert result.unresolved
 
@@ -1026,8 +1024,7 @@ def test_secondary_only_text_requires_exact_confirmation_before_insertion() -> N
     assert with_confirmation.text == "我不知道"
     assert with_confirmation.unresolved == ()
     assert any(
-        item.category == "audio_confirmed_secondary_coverage"
-        for item in with_confirmation.applied
+        item.category == "audio_confirmed_secondary_coverage" for item in with_confirmation.applied
     )
 
 
@@ -1160,9 +1157,7 @@ def test_selecting_one_of_two_local_differences_keeps_the_other_unchanged() -> N
             ),
         )
         assert len(result.unresolved) == 2
-        decision = next(
-            item for item in result.unresolved if item.candidates == (first_candidate,)
-        )
+        decision = next(item for item in result.unresolved if item.candidates == (first_candidate,))
 
         selected = apply_review_selections(
             result,
@@ -1238,9 +1233,10 @@ def test_remaining_local_target_shifts_after_unequal_length_selection() -> None:
 
     assert once.text == "今天sunny但是外面cold"
     assert once.unresolved[0].id == second.id
-    assert once.text[
-        once.unresolved[0].target_start_char : once.unresolved[0].target_end_char
-    ] == "cold"
+    assert (
+        once.text[once.unresolved[0].target_start_char : once.unresolved[0].target_end_char]
+        == "cold"
+    )
 
     twice = apply_review_selections(
         once,

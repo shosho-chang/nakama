@@ -520,9 +520,7 @@ def test_human_reference_adjudicates_exact_conflict_ids_then_accepts(
         policy=default_correction_acceptance_policy(),
     )
 
-    assert reference_receipt.conflict_ids == tuple(
-        item.id for item in proof.conflicts.conflicts
-    )
+    assert reference_receipt.conflict_ids == tuple(item.id for item in proof.conflicts.conflicts)
     assert verdict.action == "accept_exact_candidate"
     assert verdict.human_reference_adjudication_receipt_id == reference_receipt.id
 

@@ -175,8 +175,7 @@ class ArtifactHashBinding:
 
 def _capture_hash_bindings(values: Mapping[str, str]) -> tuple[ArtifactHashBinding, ...]:
     return tuple(
-        ArtifactHashBinding(name=name, sha256=digest)
-        for name, digest in sorted(values.items())
+        ArtifactHashBinding(name=name, sha256=digest) for name, digest in sorted(values.items())
     )
 
 
@@ -352,9 +351,7 @@ class LoadedRecognitionState:
             raise ValueError("loaded Recognition state requires Recognition Evidence")
         if bool(self.speaker_base_evidence) != (self.speaker_provenance is not None):
             raise ValueError("speaker-base Evidence and provenance must be present together")
-        if bool(self.orthographic_projections) != (
-            self.orthographic_projection_bytes is not None
-        ):
+        if bool(self.orthographic_projections) != (self.orthographic_projection_bytes is not None):
             raise ValueError("orthographic Evidence and its exact collection bytes are incomplete")
         if not self.orthographic_projections and self.orthographic_raw_outputs.artifacts:
             raise ValueError("orthographic raw outputs require Orthographic Evidence")
@@ -671,9 +668,7 @@ class LoadedNativeSourceSet:
             raise TypeError("native source set requires an immutable tuple")
         if not self.sources:
             raise ValueError("native source set requires at least one exact source")
-        expected_index = (
-            f"native_full_audit/{self.modality}_source_artifact_index.json"
-        )
+        expected_index = f"native_full_audit/{self.modality}_source_artifact_index.json"
         if self.index_artifact.name != expected_index:
             raise ValueError("native source set has the wrong index role name")
         uris = tuple(item.uri for item in self.sources)
@@ -813,16 +808,13 @@ class LoadedNativeResolutionState:
             or self.authorization.policy_hash != self.policy.content_hash
         ):
             raise ValueError("native resolution parents crossed content lineage")
-        if self.ledger_entry.decision_hash != hash_object(
-            self.decision.model_dump(mode="json")
-        ):
+        if self.ledger_entry.decision_hash != hash_object(self.decision.model_dump(mode="json")):
             raise ValueError("native resolution Ledger entry differs from its Decision")
         if (
             self.artifacts.decision.name != "native_resolution/decision.json"
             or self.artifacts.candidate.name != "native_resolution/candidate_discovery.json"
             or self.artifacts.authorization.name != "native_resolution/authorization.json"
-            or self.artifacts.ledger_entry.name
-            != "native_resolution/prepared_ledger_entry.json"
+            or self.artifacts.ledger_entry.name != "native_resolution/prepared_ledger_entry.json"
         ):
             raise ValueError("native resolution artifacts have incorrect role names")
         if self.authorization_kind == "correction_acceptance":
@@ -842,8 +834,7 @@ class LoadedNativeResolutionState:
                     not item.name.startswith("native_resolution/human_audio/")
                     for item in self.artifacts.human_receipts.artifacts
                 )
-                or len(self.artifacts.human_receipts.artifacts)
-                != len(self.human_audio_receipts)
+                or len(self.artifacts.human_receipts.artifacts) != len(self.human_audio_receipts)
             ):
                 raise ValueError("correction acceptance artifacts crossed branch roles")
         else:
@@ -854,14 +845,11 @@ class LoadedNativeResolutionState:
             if self.human_audio_receipts or self.reference_adjudication is not None:
                 raise ValueError("original confirmation cannot contain acceptance-only receipts")
             if (
-                self.artifacts.policy.name
-                != "native_resolution/original_confirmation_policy.json"
+                self.artifacts.policy.name != "native_resolution/original_confirmation_policy.json"
                 or self.artifacts.human_receipt_index.name
                 != "native_resolution/human_original_confirmation_index.json"
                 or any(
-                    not item.name.startswith(
-                        "native_resolution/human_original_confirmation/"
-                    )
+                    not item.name.startswith("native_resolution/human_original_confirmation/")
                     for item in self.artifacts.human_receipts.artifacts
                 )
                 or len(self.artifacts.human_receipts.artifacts)
@@ -876,9 +864,7 @@ class LoadedNativeResolutionState:
             != "native_resolution/reference_authority_proof.json"
         ):
             raise ValueError("native resolution Reference proof has the wrong role name")
-        if (self.reference_adjudication is None) != (
-            self.artifacts.reference_adjudication is None
-        ):
+        if (self.reference_adjudication is None) != (self.artifacts.reference_adjudication is None):
             raise ValueError("native resolution Reference adjudication artifacts are incomplete")
         if (
             self.artifacts.reference_adjudication is not None
@@ -955,17 +941,14 @@ class LoadedNativeAuditState:
         if (
             self.candidate_signals.audit_plan_content_hash != self.audit_plan.content_hash
             or self.candidate_groups.audit_plan_content_hash != self.audit_plan.content_hash
-            or self.candidate_groups.signal_set_content_hash
-            != self.candidate_signals.content_hash
+            or self.candidate_groups.signal_set_content_hash != self.candidate_signals.content_hash
             or self.execution_plan.audit_plan_content_hash != self.audit_plan.content_hash
             or self.execution_plan.candidate_signal_set_content_hash
             != self.candidate_signals.content_hash
             or self.execution_plan.candidate_group_set_content_hash
             != self.candidate_groups.content_hash
-            or self.text_run.record.execution_plan_content_hash
-            != self.execution_plan.content_hash
-            or self.audio_run.record.execution_plan_content_hash
-            != self.execution_plan.content_hash
+            or self.text_run.record.execution_plan_content_hash != self.execution_plan.content_hash
+            or self.audio_run.record.execution_plan_content_hash != self.execution_plan.content_hash
         ):
             raise ValueError("native Full Audit parents crossed content lineage")
 
@@ -1002,18 +985,13 @@ class LoadedGenerationState:
         if (
             transcript.source_audio_hash != receipt.source.sha256
             or transcript.normalized_audio_hash != receipt.normalized.sha256
-            or transcript.normalization_receipt_hash
-            != normalization_receipt_content_hash(receipt)
+            or transcript.normalization_receipt_hash != normalization_receipt_content_hash(receipt)
         ):
             raise ValueError("loaded Normalization state crossed Canonical lineage")
-        if transcript.evidence_hash != recognition_evidence_set_hash(
-            self.recognition.evidence
-        ):
+        if transcript.evidence_hash != recognition_evidence_set_hash(self.recognition.evidence):
             raise ValueError("loaded Recognition Evidence crossed Canonical lineage")
         projected_hash = (
-            orthographic_projection_evidence_set_hash(
-                self.recognition.orthographic_projections
-            )
+            orthographic_projection_evidence_set_hash(self.recognition.orthographic_projections)
             if self.recognition.orthographic_projections
             else None
         )

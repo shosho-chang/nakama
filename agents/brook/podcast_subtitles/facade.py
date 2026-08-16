@@ -76,11 +76,7 @@ class PodcastSubtitleFacade:
                     require_active=False,
                 )
             return StatusView(
-                state=(
-                    "complete_pending_activation"
-                    if item.stage == "complete"
-                    else "partial"
-                ),
+                state=("complete_pending_activation" if item.stage == "complete" else "partial"),
                 checkpoint_stage=item.stage,
                 checkpoint_id=item.id,
                 operation_key=item.operation_key,
@@ -151,13 +147,9 @@ class PodcastSubtitleFacade:
                     }
                 )
             ),
-            checkpoint_stage=(
-                checkpoint.checkpoint.stage if checkpoint is not None else None
-            ),
+            checkpoint_stage=(checkpoint.checkpoint.stage if checkpoint is not None else None),
             checkpoint_id=(checkpoint.checkpoint.id if checkpoint is not None else None),
-            operation_key=(
-                checkpoint.checkpoint.operation_key if checkpoint is not None else None
-            ),
+            operation_key=(checkpoint.checkpoint.operation_key if checkpoint is not None else None),
             checkpoint_generation_id=(
                 checkpoint.checkpoint.generation_id if checkpoint is not None else None
             ),
@@ -170,9 +162,7 @@ class PodcastSubtitleFacade:
 
     def review(self, generation_id: str | None = None) -> ReviewView:
         selected = generation_id or self.module.store.active_generation_id()
-        result = self.module._load_generation(
-            selected, require_active=generation_id is None
-        ).result
+        result = self.module._load_generation(selected, require_active=generation_id is None).result
         issues = tuple(
             issue.model_dump(mode="json")
             for issue in result.transcript.review_issues

@@ -134,8 +134,7 @@ def _cluster_is_emoji(cluster: str) -> bool:
     if sum(_is_regional_indicator(character) for character in cluster) >= 2:
         return True
     return any(
-        0x1F000 <= ord(character) <= 0x1FAFF
-        or 0x2600 <= ord(character) <= 0x27BF
+        0x1F000 <= ord(character) <= 0x1FAFF or 0x2600 <= ord(character) <= 0x27BF
         for character in cluster
     )
 

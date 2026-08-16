@@ -100,9 +100,7 @@ def _runner(
         if command[0] == "ffprobe":
             return CommandResult(
                 returncode=ffprobe_returncode,
-                stdout=json.dumps(
-                    {"format": {"duration": str(duration_seconds)}}
-                ).encode("utf-8"),
+                stdout=json.dumps({"format": {"duration": str(duration_seconds)}}).encode("utf-8"),
                 stderr=b"probe-stderr",
             )
         assert command[0] == "ffmpeg"
@@ -281,9 +279,7 @@ def test_fixture_analyzer_is_text_free_and_fail_closed(tmp_path: Path) -> None:
 
     assert _ranges(receipt.uncovered_intervals) == ((0, 500), (1_500, 2_000))
     assert not hasattr(receipt.activity_intervals[0], "text")
-    failed = FixtureSpeechCoverageAnalyzer(failure_reason="analyzer refused").analyze(
-        request
-    )
+    failed = FixtureSpeechCoverageAnalyzer(failure_reason="analyzer refused").analyze(request)
     assert failed.status == "failed"
     assert failed.passed is False
 

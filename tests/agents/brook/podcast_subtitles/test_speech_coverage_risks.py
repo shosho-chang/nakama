@@ -139,9 +139,13 @@ def test_missing_or_failed_receipt_creates_stable_blocking_global_issue() -> Non
     assert missing[0].issue.code == "speech_coverage_receipt_missing"
     assert failed[0].issue.code == "speech_coverage_analyzer_failed"
     assert missing[0].issue.severity == failed[0].issue.severity == "blocking"
-    assert missing[0].issue.span_ids == failed[0].issue.span_ids == (
-        "span-a",
-        "span-c",
+    assert (
+        missing[0].issue.span_ids
+        == failed[0].issue.span_ids
+        == (
+            "span-a",
+            "span-c",
+        )
     )
     assert verified_speech_coverage_hash(None) is None
     assert verified_speech_coverage_hash(_receipt(activity=(), failed=True)) is None
@@ -194,9 +198,7 @@ def test_recognition_outside_energy_activity_is_low_warning_not_text_deletion() 
     assert tuple(risk.issue.span_ids for risk in warnings) == (("span-b",), ("span-c",))
     assert tuple(risk.issue.candidates for risk in warnings) == (("乙",), ("丙",))
     assert all(risk.issue.severity == "low" for risk in warnings)
-    assert verified_speech_coverage_hash(receipt) == speech_coverage_receipt_content_hash(
-        receipt
-    )
+    assert verified_speech_coverage_hash(receipt) == speech_coverage_receipt_content_hash(receipt)
 
 
 def test_receipt_from_another_audio_is_rejected() -> None:

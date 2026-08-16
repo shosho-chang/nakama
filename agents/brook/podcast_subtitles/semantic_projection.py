@@ -106,9 +106,7 @@ def _build_projection_index(
             try:
                 indices = [positions[token_id] for token_id in span.token_ids]
             except KeyError as exc:
-                raise ValueError(
-                    f"CanonicalSpan references unknown token {exc.args[0]!r}"
-                ) from exc
+                raise ValueError(f"CanonicalSpan references unknown token {exc.args[0]!r}") from exc
             if indices != list(range(indices[0], indices[-1] + 1)):
                 raise ValueError(f"CanonicalSpan {span.id!r} must be ordered and contiguous")
             if previous_span_end is not None and span.start_ms < previous_span_end:
@@ -154,12 +152,8 @@ def _build_projection_index(
             speech_end_ms[index] = token.end_ms
 
     for index, token in enumerate(tokens):
-        display_column_prefix.append(
-            display_column_prefix[-1] + display_columns(token.text)
-        )
-        reading_unit_prefix.append(
-            reading_unit_prefix[-1] + reading_units(token.text)
-        )
+        display_column_prefix.append(display_column_prefix[-1] + display_columns(token.text))
+        reading_unit_prefix.append(reading_unit_prefix[-1] + reading_units(token.text))
         if index and tokens[index - 1].speaker != token.speaker:
             current_run_start = index
         speaker_run_start.append(current_run_start)
@@ -184,9 +178,7 @@ def _validate_semantic_units(
     forbidden_line: set[int] = set()
     crossing_strength: dict[int, float] = {}
     ending_strength: dict[int, float] = {}
-    effects_by_range: dict[
-        tuple[str, ...], tuple[float, bool, bool, str | None, str | None]
-    ] = {}
+    effects_by_range: dict[tuple[str, ...], tuple[float, bool, bool, str | None, str | None]] = {}
     for unit in units:
         try:
             indices = [positions[token_id] for token_id in unit.token_ids]
@@ -204,9 +196,7 @@ def _validate_semantic_units(
         existing_effect = effects_by_range.get(unit.token_ids)
         if existing_effect is not None:
             if existing_effect != effect:
-                raise ValueError(
-                    f"SemanticUnit range {unit.token_ids!r} has conflicting effects"
-                )
+                raise ValueError(f"SemanticUnit range {unit.token_ids!r} has conflicting effects")
             # Adapter packet overlap or a custom Adapter may repeat an
             # equivalent range under a different ID/kind.  Its projection
             # effect is set-like, never multiplicative.
@@ -225,16 +215,12 @@ def _validate_semantic_units(
                 unit.cue_boundary_relation,
                 unit.line_boundary_relation,
             }:
-                crossing_strength[cut] = max(
-                    crossing_strength.get(cut, 0.0), unit.strength
-                )
+                crossing_strength[cut] = max(crossing_strength.get(cut, 0.0), unit.strength)
             if (
                 unit.line_boundary_relation == "preferred"
                 and unit.cue_boundary_relation != "preferred"
             ):
-                ending_strength[cut] = max(
-                    ending_strength.get(cut, 0.0), unit.strength
-                )
+                ending_strength[cut] = max(ending_strength.get(cut, 0.0), unit.strength)
             continue
         if unit.forbid_cue_breaks:
             forbidden_cue.update(internal)
@@ -246,9 +232,7 @@ def _validate_semantic_units(
                 # vote count.  Max preserves nested units at their unique
                 # boundaries while preventing repeated/crossing ranges from
                 # increasing the penalty without limit.
-                crossing_strength[cut] = max(
-                    crossing_strength.get(cut, 0.0), unit.strength
-                )
+                crossing_strength[cut] = max(crossing_strength.get(cut, 0.0), unit.strength)
         ending_strength[end] = max(ending_strength.get(end, 0.0), unit.strength)
     for cut in range(1, len(tokens)):
         if tokens[cut - 1].speaker != tokens[cut].speaker:
@@ -384,13 +368,9 @@ def _wrap_lines(
             # A newline is a display boundary just like a cue boundary.  Soft
             # SemanticUnits therefore influence both with the same cohesion
             # policy: discourage cuts through a unit and prefer its natural end.
-            semantic_cost = profile.semantic_break_penalty * crossing_strength.get(
-                cut, 0.0
-            )
+            semantic_cost = profile.semantic_break_penalty * crossing_strength.get(cut, 0.0)
             semantic_cost -= min(
-                profile.semantic_break_penalty
-                * 0.25
-                * ending_strength.get(cut, 0.0),
+                profile.semantic_break_penalty * 0.25 * ending_strength.get(cut, 0.0),
                 profile.second_line_penalty,
             )
             candidate = (semantic_cost, visual_cost, cut)
@@ -454,9 +434,7 @@ def _cue_candidate(
         if end == len(tokens)
         else (index.speech_end_ms[end - 1] + index.speech_start_ms[end]) // 2
     )
-    reading_duration_ms = math.ceil(
-        cue_reading_units / profile.max_reading_units_per_second * 1000
-    )
+    reading_duration_ms = math.ceil(cue_reading_units / profile.max_reading_units_per_second * 1000)
     display_duration_ms = max(
         profile.min_cue_duration_ms,
         speech_duration_ms,
@@ -513,9 +491,7 @@ def _cue_candidate(
         + profile.cue_density_center_tiebreak_penalty * center_delta * center_delta
     )
     reading_target_ms = round(
-        cue_reading_units
-        / (profile.max_reading_units_per_second * 0.65)
-        * 1000
+        cue_reading_units / (profile.max_reading_units_per_second * 0.65) * 1000
     )
     reading_target_ms = min(
         profile.max_cue_duration_ms,
@@ -556,9 +532,7 @@ def _cue_candidate(
     # are equal; therefore dense model preferences can never manufacture more
     # cues than the same projection without those preferences.
     preferred_boundary_strength = (
-        0.0
-        if end == len(tokens)
-        else (preferred_cue_strength or {}).get(end, 0.0)
+        0.0 if end == len(tokens) else (preferred_cue_strength or {}).get(end, 0.0)
     )
     return _Candidate(
         cost=sum(score),
@@ -588,8 +562,7 @@ def _allocate_cue_times(
     if audio_start_ms < 0 or audio_end_ms <= audio_start_ms:
         raise ValueError("audio bounds must be a positive ordered interval")
     speech_intervals = [
-        (index.speech_start_ms[start], index.speech_end_ms[end - 1])
-        for start, end, _ in slices
+        (index.speech_start_ms[start], index.speech_end_ms[end - 1]) for start, end, _ in slices
     ]
     if speech_intervals[0][0] < audio_start_ms or speech_intervals[-1][1] > audio_end_ms:
         raise ProjectionUnsatisfiableError("canonical speech timing falls outside audio bounds")
@@ -607,9 +580,7 @@ def _allocate_cue_times(
         if lower > speech_start or upper < speech_end:
             raise ProjectionUnsatisfiableError("global timing seams exclude canonical speech")
         start, end, _ = slices[index]
-        cue_reading_units = reading_units(
-            "".join(token.text for token in tokens[start:end])
-        )
+        cue_reading_units = reading_units("".join(token.text for token in tokens[start:end]))
         reading_duration_ms = math.ceil(
             cue_reading_units / profile.max_reading_units_per_second * 1000
         )
@@ -676,14 +647,9 @@ def project_semantic_units(
     index = _build_projection_index(tokens, tuple(canonical_spans))
     mandatory_boundaries: set[int] = set()
     for edge in mandatory_cue_boundaries:
-        if (
-            isinstance(edge, bool)
-            or not isinstance(edge, int)
-            or not 1 <= edge < len(tokens)
-        ):
+        if isinstance(edge, bool) or not isinstance(edge, int) or not 1 <= edge < len(tokens):
             raise ValueError(
-                "mandatory cue boundary must be an integer token edge in "
-                f"1..{len(tokens) - 1}"
+                f"mandatory cue boundary must be an integer token edge in 1..{len(tokens) - 1}"
             )
         mandatory_boundaries.add(edge)
     allowed_boundaries: set[int] | None = None
@@ -704,23 +670,21 @@ def project_semantic_units(
     if audio_end_ms is None:
         audio_end_ms = index.speech_end_ms[-1]
     if boundary_constraints is None:
-        forbidden, forbidden_line, crossing_strength, ending_strength = (
-            _validate_semantic_units(tokens, semantic_units)
+        forbidden, forbidden_line, crossing_strength, ending_strength = _validate_semantic_units(
+            tokens, semantic_units
         )
         verified_pause_strength: dict[int, float] = {}
         positions = {token.id: index for index, token in enumerate(tokens)}
         preferred_cue_strength = {
             positions[unit.token_ids[0]] + 1: unit.strength
             for unit in semantic_units
-            if unit.kind == "boundary_pair"
-            and unit.cue_boundary_relation == "preferred"
+            if unit.kind == "boundary_pair" and unit.cue_boundary_relation == "preferred"
         }
     else:
         if (
             boundary_constraints.episode_id != episode_id
             or boundary_constraints.generation_id != generation_id
-            or boundary_constraints.canonical_content_hash
-            != canonical_content_hash(tokens)
+            or boundary_constraints.canonical_content_hash != canonical_content_hash(tokens)
             or boundary_constraints.profile_id != profile.id
             or boundary_constraints.profile_version != profile.profile_version
             or boundary_constraints.profile_hash != hash_object(profile)
@@ -790,9 +754,7 @@ def project_semantic_units(
         selected: _State | None = None
         speaker_floor = index.speaker_run_start[end - 1]
         candidate_floor = max(speaker_floor, latest_mandatory_before[end])
-        maximum_display_columns = (
-            profile.max_lines * profile.hard_line_display_columns
-        )
+        maximum_display_columns = profile.max_lines * profile.hard_line_display_columns
         for start in range(end - 1, -1, -1):
             # These constraints are monotone as ``start`` moves left.  Once
             # one fails, every older edge fails too, so no globally legal
@@ -835,15 +797,13 @@ def project_semantic_units(
             state = _State(
                 cost=prior.cost + candidate.cost,
                 score=tuple(
-                    left + right
-                    for left, right in zip(prior.score, candidate.score, strict=True)
+                    left + right for left, right in zip(prior.score, candidate.score, strict=True)
                 ),
                 cue_count=prior.cue_count + 1,
                 previous=start,
                 lines=candidate.lines,
                 preferred_boundary_strength=(
-                    prior.preferred_boundary_strength
-                    + candidate.preferred_boundary_strength
+                    prior.preferred_boundary_strength + candidate.preferred_boundary_strength
                 ),
             )
             if selected is None or (

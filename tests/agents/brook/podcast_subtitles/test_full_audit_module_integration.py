@@ -432,9 +432,7 @@ def _forge_native_terminal_chain(module: PodcastSubtitleV2, generation_id: str) 
         normalization_receipt_hash=None,
         artifact_hashes={"attacker.json": sha256_bytes(started_payload)},
     )
-    module.store.commit_create_checkpoint(
-        previous, artifacts={"attacker.json": started_payload}
-    )
+    module.store.commit_create_checkpoint(previous, artifacts={"attacker.json": started_payload})
     for stage in (
         "evidence_ready",
         "native_audit_basis_ready",
@@ -495,9 +493,7 @@ def _forge_hash_consistent_native_terminal_tamper(
 
     generation_dir = module.store.generation_dir(generation_id)
     text_index = json.loads(
-        (generation_dir / "native_full_audit" / "text_run_index.json").read_text(
-            encoding="utf-8"
-        )
+        (generation_dir / "native_full_audit" / "text_run_index.json").read_text(encoding="utf-8")
     )
     response_name = text_index["responses"][0]
     response_path = generation_dir / Path(response_name)
@@ -543,8 +539,8 @@ def test_native_general_load_rejects_reordered_source_index(tmp_path: Path) -> N
     index_path.write_bytes(index_bytes)
     record_path = directory / "generation.json"
     record = json.loads(record_path.read_text(encoding="utf-8"))
-    record["artifact_hashes"]["native_full_audit/text_source_artifact_index.json"] = (
-        sha256_bytes(index_bytes)
+    record["artifact_hashes"]["native_full_audit/text_source_artifact_index.json"] = sha256_bytes(
+        index_bytes
     )
     record_path.write_bytes(canonical_json_bytes(record))
     _reseal_generation_record(module, completed.generation_id)
@@ -697,10 +693,7 @@ def test_reference_backed_native_generation_reopens_from_immutable_snapshots(
     assert tuple(item.source_id for item in loaded.references.enrollments) == (
         enrollment.artifact.source_id,
     )
-    assert (
-        loaded.references.enrollments[0].digest.sha256
-        == enrollment.artifact.digest.sha256
-    )
+    assert loaded.references.enrollments[0].digest.sha256 == enrollment.artifact.digest.sha256
     assert loaded.references.evidence
 
     workspace.rename(tmp_path / "detached-workspace")

@@ -45,9 +45,7 @@ def _checkpoint(
         "code_hash": "b" * 64,
         "reference_enrollment_hash": "c" * 64,
         "adapter_identities_hash": "d" * 64,
-        "artifact_hashes": {
-            name: sha256_bytes(value) for name, value in sorted(payloads.items())
-        },
+        "artifact_hashes": {name: sha256_bytes(value) for name, value in sorted(payloads.items())},
         "previous_checkpoint_id": previous.id if previous is not None else None,
     }
     values.update(updates)
@@ -129,12 +127,14 @@ def test_native_resolve_operations_have_independent_authenticated_pointers(
     store.commit_native_resolve_checkpoint(first, artifacts=first_artifacts)
     store.commit_native_resolve_checkpoint(second, artifacts=second_artifacts)
 
-    assert store.load_native_resolve_checkpoint(
-        expected_operation_key=first.operation_key
-    ).checkpoint == first
-    assert store.load_native_resolve_checkpoint(
-        expected_operation_key=second.operation_key
-    ).checkpoint == second
+    assert (
+        store.load_native_resolve_checkpoint(expected_operation_key=first.operation_key).checkpoint
+        == first
+    )
+    assert (
+        store.load_native_resolve_checkpoint(expected_operation_key=second.operation_key).checkpoint
+        == second
+    )
 
 
 def test_native_resolve_checkpoint_tamper_fails_closed(tmp_path: Path) -> None:

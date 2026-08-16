@@ -245,16 +245,12 @@ def test_source_is_snapshotted_before_index_and_new_bytes_make_new_identity(
         "# 第一章\n\n作者稱這條道路為《無路之路》\n",
     )
     first = LocalReferenceRetriever(tmp_path / "index", (_spec(source),))
-    first_result = first.retrieve(
-        _request(observed="五物之物", candidates=("《無路之路》",))
-    )
+    first_result = first.retrieve(_request(observed="五物之物", candidates=("《無路之路》",)))
     first_digest = first.index.artifacts[0].digest.sha256
     assert first_result.evidence[0].excerpt == "作者稱這條道路為《無路之路》"
 
     source.write_text("# 第二版\n\n作者改稱 Traveling Village\n", encoding="utf-8")
-    replay = first.retrieve(
-        _request(observed="五物之物", candidates=("《無路之路》",))
-    )
+    replay = first.retrieve(_request(observed="五物之物", candidates=("《無路之路》",)))
     assert replay == first_result
 
     second = LocalReferenceRetriever(
@@ -273,12 +269,8 @@ def test_index_hash_excludes_original_and_snapshot_machine_paths(tmp_path: Path)
     assert first.index.artifacts[0].digest.uri == second.index.artifacts[0].digest.uri
     assert first.index.artifacts[0] == second.index.artifacts[0]
     assert first.index.index_hash == second.index.index_hash
-    first_result = first.retrieve(
-        _request(observed="蘇味遊牧", candidates=("數位遊牧",))
-    )
-    second_result = second.retrieve(
-        _request(observed="蘇味遊牧", candidates=("數位遊牧",))
-    )
+    first_result = first.retrieve(_request(observed="蘇味遊牧", candidates=("數位遊牧",)))
+    second_result = second.retrieve(_request(observed="蘇味遊牧", candidates=("數位遊牧",)))
     assert first_result.evidence == second_result.evidence
 
 
@@ -336,12 +328,9 @@ def test_book_report_and_outline_hits_preserve_metadata_locator_and_hash(tmp_pat
         assert evidence.artifact.source_id == source_id
         assert evidence.artifact.trust_tier == tier
         assert any(
-            part.kind == "heading" and part.value == heading
-            for part in evidence.locator.parts
+            part.kind == "heading" and part.value == heading for part in evidence.locator.parts
         )
-        assert evidence.excerpt_hash == hashlib.sha256(
-            evidence.excerpt.encode("utf-8")
-        ).hexdigest()
+        assert evidence.excerpt_hash == hashlib.sha256(evidence.excerpt.encode("utf-8")).hexdigest()
 
 
 def test_adjacent_context_retrieves_for_every_single_character_anchor(tmp_path: Path) -> None:
@@ -351,8 +340,7 @@ def test_adjacent_context_retrieves_for_every_single_character_anchor(tmp_path: 
     )
     retriever = LocalReferenceRetriever(tmp_path / "index", (_spec(source),))
     requests = tuple(
-        _single_character_anchor_request("數位油牧", anchor_index=index)
-        for index in range(4)
+        _single_character_anchor_request("數位油牧", anchor_index=index) for index in range(4)
     )
 
     receipts = retriever.retrieve_many(requests)
@@ -416,9 +404,7 @@ def test_allowed_source_filter_and_no_match_are_completed_without_fabrication(
     )
     assert {item.artifact.source_id for item in filtered.evidence} == {"report-1"}
 
-    empty = retriever.retrieve(
-        _request(observed="完全不存在的量子香蕉術語", allowed=("book-1",))
-    )
+    empty = retriever.retrieve(_request(observed="完全不存在的量子香蕉術語", allowed=("book-1",)))
     assert empty.status == "completed"
     assert empty.evidence == ()
     assert empty.failure_reason is None
@@ -434,9 +420,7 @@ def test_long_document_returns_bounded_minimal_excerpt_never_whole_document(
         (_spec(source),),
         max_excerpt_chars=120,
     )
-    result = retriever.retrieve(
-        _request(observed="吹拂村", candidates=("Traveling Village",))
-    )
+    result = retriever.retrieve(_request(observed="吹拂村", candidates=("Traveling Village",)))
     assert len(result.evidence) == 1
     evidence = result.evidence[0]
     assert len(evidence.excerpt) <= 120
@@ -564,9 +548,7 @@ The official project name is Traveling Village
     )
     assert "official project name" in english.evidence[0].excerpt
 
-    chinese = retriever.retrieve(
-        _request(observed="五物之物", candidates=("無路之路",))
-    )
+    chinese = retriever.retrieve(_request(observed="五物之物", candidates=("無路之路",)))
     assert "《無路之路》" in chinese.evidence[0].excerpt
 
 
@@ -645,9 +627,7 @@ def test_membership_verifier_rejects_retriever_artifact_substitution(
     ).evidence[0]
     substituted = evidence.model_copy(
         update={
-            "artifact": evidence.artifact.model_copy(
-                update={"version": "attacker-controlled:2"}
-            )
+            "artifact": evidence.artifact.model_copy(update={"version": "attacker-controlled:2"})
         }
     )
     with pytest.raises(AdapterIntegrityError, match="explicitly enrolled artifact"):
@@ -665,9 +645,7 @@ def test_tampered_extracted_text_snapshot_is_rejected_on_restart(tmp_path: Path)
     extraction = tmp_path / "index" / "extractions" / digest / "extracted-text.json"
     extraction.write_bytes(extraction.read_bytes() + b" ")
     with pytest.raises(AdapterIntegrityError, match="extraction digest differs"):
-        retriever.retrieve(
-            _request(observed="Digital homeland", candidates=("Digital nomad",))
-        )
+        retriever.retrieve(_request(observed="Digital homeland", candidates=("Digital nomad",)))
     with pytest.raises(AdapterIntegrityError, match="extraction is corrupt"):
         LocalReferenceRetriever(tmp_path / "index", (_spec(source),))
 
@@ -737,9 +715,7 @@ def test_docx_epub_and_pdf_parser_seams_preserve_structural_locator(
         **kwargs,  # type: ignore[arg-type]
     )
     assert isinstance(retriever, ReferenceRetriever)
-    result = retriever.retrieve(
-        _request(observed="辨識錯詞", candidates=(candidate,))
-    )
+    result = retriever.retrieve(_request(observed="辨識錯詞", candidates=(candidate,)))
     assert result.evidence
     evidence = result.evidence[0]
     assert any(part.kind == expected_kind for part in evidence.locator.parts)
@@ -888,9 +864,7 @@ def test_excerpt_edges_do_not_split_combining_or_zwj_graphemes(tmp_path: Path) -
         (_spec(source),),
         max_excerpt_chars=80,
     )
-    evidence = retriever.retrieve(
-        _request(observed="target", candidates=("TARGET",))
-    ).evidence[0]
+    evidence = retriever.retrieve(_request(observed="target", candidates=("TARGET",))).evidence[0]
 
     retriever.verify(evidence)
     assert "TARGET" in evidence.excerpt
@@ -907,9 +881,9 @@ def test_emoji_offsets_are_unicode_scalar_indices_not_utf8_bytes(tmp_path: Path)
         (_spec(source),),
         max_excerpt_chars=80,
     )
-    evidence = retriever.retrieve(
-        _request(observed="emoji term", candidates=("😀TERM",))
-    ).evidence[0]
+    evidence = retriever.retrieve(_request(observed="emoji term", candidates=("😀TERM",))).evidence[
+        0
+    ]
     snapshot = ReferenceExtractionSnapshot.model_validate_json(
         retriever.extraction_snapshot(evidence.artifact)
     )
@@ -945,14 +919,22 @@ def test_concurrent_content_addressed_enrollment_is_atomic(tmp_path: Path) -> No
 
 def test_reference_evidence_id_covers_semantic_source_metadata(tmp_path: Path) -> None:
     source = _write_markdown(tmp_path / "source.txt", "Traveling Village")
-    first = LocalReferenceRetriever(
-        tmp_path / "first",
-        (_spec(source, title="Authoritative edition"),),
-    ).retrieve(_request(observed="term", candidates=("Traveling Village",))).evidence[0]
-    second = LocalReferenceRetriever(
-        tmp_path / "second",
-        (_spec(source, title="Unreviewed edition"),),
-    ).retrieve(_request(observed="term", candidates=("Traveling Village",))).evidence[0]
+    first = (
+        LocalReferenceRetriever(
+            tmp_path / "first",
+            (_spec(source, title="Authoritative edition"),),
+        )
+        .retrieve(_request(observed="term", candidates=("Traveling Village",)))
+        .evidence[0]
+    )
+    second = (
+        LocalReferenceRetriever(
+            tmp_path / "second",
+            (_spec(source, title="Unreviewed edition"),),
+        )
+        .retrieve(_request(observed="term", candidates=("Traveling Village",)))
+        .evidence[0]
+    )
     assert first.excerpt == second.excerpt
     assert first.id != second.id
 
