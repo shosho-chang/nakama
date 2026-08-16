@@ -1,5 +1,7 @@
 # Memory Index
 
+- [../shared/reference/fleet_community_stack.md](../shared/reference/fleet_community_stack.md) — **自由艦隊社群站是 `fleet.shosho.tw` 不是 `shosho.tw` 主站**（FluentCommunity / FluentCart / FluentCRM 全裝這邊，主站一個都沒有）；SSH `nakama-vps` → `/var/www/fleet.shosho.tw`，DB `db2_fleet_shosho` prefix `zcjf_`，wp-cli 要 `sudo -u u2_fleet_shosho`。LiteSpeed object cache 開著、測試帳號是 user 8/9/10。領域知識在 `agents/sanji/CONTEXT.md`
+- [../shared/decision/fluentcart_single_grant_channel.md](../shared/decision/fluentcart_single_grant_channel.md) — **社群權限只能由 FluentCart product feed 授予；FluentCRM funnel #42 的 `add_to_fluent_community` 是刻意刪掉的，不要加回去**（2026-08-16：雙軌授予導致 18 個退款帳號權限殘留半年）。付費空間 privacy 必須 `private`；部分退款不會自動回收（已知 gap 非 bug）
 - [feedback_hitl_at_cheapest_fork.md](feedback_hitl_at_cheapest_fork.md) — **修修的選擇放在成本最低的分叉點：機器排完就給他挑，不要物化完才問**（2026-08-11 安吉三支長片全做完才嫌主題不吸引人）；排序＝per episode、製作＋packaging＝per cut 線性，這個不對稱就是判斷依據
 - [feedback_subtitle_house_style.md](feedback_subtitle_house_style.md) — **字幕三鐵則（2026-07-25 驗收裁決）：《》「」必標其他標點省略（推翻 PR #23 全刪）；斷句禁字數硬切走 cue_builder；時間軸必須＝原始錄影（靜音裁切 opt-in）**
 - [feedback_qc_self_adjudication.md](feedback_qc_self_adjudication.md) — **QC/uncertain 清單自己裁決完（重開 WhisperX = 聽音檔、分軌 stem、派 agent 查證），只升級真無法判定的 <5 項**（修修 2026-07-25：「要我拍板的地方實在太多」）
