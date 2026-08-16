@@ -286,7 +286,6 @@ def test_cli_invalid_dotenv_production_setting_remains_fail_closed(
         "MEMO_RECOGNITION_MANIFEST": "memo-recognition.json",
         "MEMO_RECOGNITION_SOURCE_EXPORT": "memo-recognition.srt",
         "MEMO_RECOGNITION_ACCEPTANCE_RECEIPT": "memo-recognition-acceptance.json",
-        "MEMO_CUE_MANIFEST": "memo-cues.json",
         "MEMO_CUE_SOURCE_EXPORT": "memo-cues.srt",
         "MEMO_CUE_ACCEPTANCE_RECEIPT": "memo-cues-acceptance.json",
     }

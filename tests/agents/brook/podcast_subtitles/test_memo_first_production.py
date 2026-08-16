@@ -32,6 +32,8 @@ from agents.brook.podcast_subtitles.memo_boundary import (
     MemoBoundaryRepairProofV1,
     MemoBoundaryRepairV1,
     MemoCueBoundaryManifestV1,
+    MemoSrtAcceptanceReceiptV1,
+    MemoSrtBoundaryAuthorityV1,
     MemoSourceCueV1,
 )
 from agents.brook.podcast_subtitles.ports import (
@@ -112,9 +114,22 @@ def _memo_fixture(tmp_path: Path, *, final_text: str = "謝謝"):
     evidence = adapter.recognize(request)
 
     cue_export = tmp_path / "memo-gui.srt"
-    cue_export.write_bytes(b"accepted reviewed Memo cue export")
+    cue_export.write_text(
+        "1\n00:00:00,100 --> 00:00:01,000\n今天，我們談\n\n"
+        "2\n00:00:01,000 --> 00:00:02,000\n修修再談內容\n\n"
+        f"3\n00:00:02,000 --> 00:00:03,000\n{final_text}。\n",
+        encoding="utf-8",
+    )
     cue_acceptance = tmp_path / "cue-acceptance.json"
-    cue_acceptance.write_bytes(b'{"accepted":true,"reviewer":"human"}')
+    _write(
+        cue_acceptance,
+        MemoSrtAcceptanceReceiptV1(
+            source_export_sha256=hash_file(cue_export),
+            source_export_size_bytes=cue_export.stat().st_size,
+            reviewer="human",
+            accepted_at=datetime(2026, 8, 16, tzinfo=timezone.utc),
+        ),
+    )
     cues = (
         MemoAcceptedCueV1(id="memo-cue-001", start_ms=100, end_ms=1_000, text="今天我們談", source_token_ids=("z-001", "z-002")),
         MemoAcceptedCueV1(id="memo-cue-002", start_ms=1_000, end_ms=2_000, text="修修再談內容", source_token_ids=("z-003", "z-004")),
@@ -296,7 +311,6 @@ def test_production_composition_is_memo_primary_and_corroborators_are_opt_in(
         "PODCAST_SUBTITLE_V2_MEMO_RECOGNITION_MANIFEST": str(tmp_path / "memo-recognition.json"),
         "PODCAST_SUBTITLE_V2_MEMO_RECOGNITION_SOURCE_EXPORT": str(tmp_path / "memo.stdout"),
         "PODCAST_SUBTITLE_V2_MEMO_RECOGNITION_ACCEPTANCE_RECEIPT": str(tmp_path / "recognition-acceptance.json"),
-        "PODCAST_SUBTITLE_V2_MEMO_CUE_MANIFEST": str(tmp_path / "memo-cues.json"),
         "PODCAST_SUBTITLE_V2_MEMO_CUE_SOURCE_EXPORT": str(tmp_path / "memo-gui.srt"),
         "PODCAST_SUBTITLE_V2_MEMO_CUE_ACCEPTANCE_RECEIPT": str(tmp_path / "cue-acceptance.json"),
         "PODCAST_SUBTITLE_V2_TEXT_AUDIT_MODEL": "gpt-5.6-sol",
@@ -315,11 +329,11 @@ def test_production_composition_is_memo_primary_and_corroborators_are_opt_in(
     assert type(module._normalizer).__name__ == "VerifiedNormalizedAudioHandoffAdapter"
 
 
-def test_module_projects_corrected_text_on_exact_memo_cues_and_replays_authority_hash(
+def test_module_projects_corrected_text_via_memo_srt_alignment_and_replays_authority_hash(
     tmp_path: Path,
 ) -> None:
     (tmp_path / "memo").mkdir()
-    adapter, _request, _evidence, accepted_authority, _source_export = _memo_fixture(
+    adapter, _request, _evidence, _accepted_authority, _source_export = _memo_fixture(
         tmp_path / "memo", final_text="錯甲"
     )
     normalized = Path(adapter._manifest_path).parent / "normalized.wav"
@@ -328,9 +342,9 @@ def test_module_projects_corrected_text_on_exact_memo_cues_and_replays_authority
     semantic = _DynamicSemanticAnalyzer()
 
     def authority_for(stored_evidence):
-        return MemoBoundaryAuthorityV1(
-            accepted_authority.manifest,
-            manifest_bytes=accepted_authority.manifest_bytes,
+        return MemoSrtBoundaryAuthorityV1.load_verified(
+            tmp_path / "memo" / "memo-gui.srt",
+            acceptance_receipt=tmp_path / "memo" / "cue-acceptance.json",
             recognition_evidence=stored_evidence,
         )
 
@@ -427,7 +441,7 @@ def test_module_projects_corrected_text_on_exact_memo_cues_and_replays_authority
     class DriftedAuthority:
         content_hash = "f" * 64
 
-        def __init__(self, delegate: MemoBoundaryAuthorityV1) -> None:
+        def __init__(self, delegate: MemoSrtBoundaryAuthorityV1) -> None:
             self._delegate = delegate
 
         def projection_contract(self, transcript):

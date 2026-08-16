@@ -171,7 +171,7 @@ from .loaded_generation import (
     VerifiedArtifactSet,
     VerifiedNativeSource,
 )
-from .memo_boundary import MemoBoundaryAuthorityV1
+from .memo_boundary import MemoBoundaryAuthorityV1, MemoSrtBoundaryAuthorityV1
 from .native_resolution import (
     NativeCorrectionDecisionV2,
     NativeResolveCheckpointV2,
@@ -2704,7 +2704,11 @@ class PodcastSubtitleV2:
         speech_coverage_analyzer: SpeechCoverageAnalyzer | None = None,
         recognition_independence_policy: RecognitionIndependencePolicyV1 | None = None,
         memo_boundary_authority_factory: (
-            Callable[[RecognitionEvidence], MemoBoundaryAuthorityV1] | None
+            Callable[
+                [RecognitionEvidence],
+                MemoBoundaryAuthorityV1 | MemoSrtBoundaryAuthorityV1,
+            ]
+            | None
         ) = None,
         code_version: str = "podcast-subtitle-v2",
     ) -> None:

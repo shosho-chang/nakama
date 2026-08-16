@@ -23,7 +23,6 @@ def _valid_environment(tmp_path: Path) -> dict[str, str]:
         "PODCAST_SUBTITLE_V2_MEMO_RECOGNITION_MANIFEST": str(tmp_path / "memo-recognition.json"),
         "PODCAST_SUBTITLE_V2_MEMO_RECOGNITION_SOURCE_EXPORT": str(tmp_path / "memo.stdout"),
         "PODCAST_SUBTITLE_V2_MEMO_RECOGNITION_ACCEPTANCE_RECEIPT": str(tmp_path / "recognition-acceptance.json"),
-        "PODCAST_SUBTITLE_V2_MEMO_CUE_MANIFEST": str(tmp_path / "memo-cues.json"),
         "PODCAST_SUBTITLE_V2_MEMO_CUE_SOURCE_EXPORT": str(tmp_path / "memo-gui.srt"),
         "PODCAST_SUBTITLE_V2_MEMO_CUE_ACCEPTANCE_RECEIPT": str(tmp_path / "cue-acceptance.json"),
         "PODCAST_SUBTITLE_V2_TEXT_AUDIT_MODEL": "gpt-5.6-sol",
@@ -37,8 +36,8 @@ def _valid_environment(tmp_path: Path) -> dict[str, str]:
 
 def test_production_requires_explicit_memo_and_upstream_handoff_paths(tmp_path: Path) -> None:
     environment = _valid_environment(tmp_path)
-    del environment["PODCAST_SUBTITLE_V2_MEMO_CUE_MANIFEST"]
-    with pytest.raises(ProductionConfigurationError, match="MEMO_CUE_MANIFEST"):
+    del environment["PODCAST_SUBTITLE_V2_MEMO_CUE_SOURCE_EXPORT"]
+    with pytest.raises(ProductionConfigurationError, match="MEMO_CUE_SOURCE_EXPORT"):
         load_production_config(environment)
 
 

@@ -19,8 +19,7 @@ from .adapters import (
 )
 from .audio_audit_execution import AudioFullAuditExecutor, build_audio_audit_adapter_identity
 from .composition import FactoryContextV1
-from .hashing import hash_file
-from .memo_boundary import MemoBoundaryAuthorityV1
+from .memo_boundary import MemoSrtBoundaryAuthorityV1
 from .module import AdapterIdentity, NativeFullAuditBundle, PodcastSubtitleV2
 from .recognition_policy import PRODUCTION_RECOGNITION_INDEPENDENCE_POLICY
 from .store import GenerationStore
@@ -30,7 +29,7 @@ _PREFIX = "PODCAST_SUBTITLE_V2_"
 _PATH_SETTINGS = (
     "NORMALIZED_HANDOFF_MANIFEST",
     "MEMO_RECOGNITION_MANIFEST", "MEMO_RECOGNITION_SOURCE_EXPORT",
-    "MEMO_RECOGNITION_ACCEPTANCE_RECEIPT", "MEMO_CUE_MANIFEST",
+    "MEMO_RECOGNITION_ACCEPTANCE_RECEIPT",
     "MEMO_CUE_SOURCE_EXPORT", "MEMO_CUE_ACCEPTANCE_RECEIPT",
 )
 _KNOWN_SETTINGS = frozenset(
@@ -64,7 +63,6 @@ class ProductionConfig:
     memo_recognition_manifest: Path
     memo_recognition_source_export: Path
     memo_recognition_acceptance_receipt: Path
-    memo_cue_manifest: Path
     memo_cue_source_export: Path
     memo_cue_acceptance_receipt: Path
     enable_qwen_corroboration: bool
@@ -157,7 +155,6 @@ def load_production_config(environ: Mapping[str, str]) -> ProductionConfig:
         memo_recognition_manifest=paths["MEMO_RECOGNITION_MANIFEST"],
         memo_recognition_source_export=paths["MEMO_RECOGNITION_SOURCE_EXPORT"],
         memo_recognition_acceptance_receipt=paths["MEMO_RECOGNITION_ACCEPTANCE_RECEIPT"],
-        memo_cue_manifest=paths["MEMO_CUE_MANIFEST"],
         memo_cue_source_export=paths["MEMO_CUE_SOURCE_EXPORT"],
         memo_cue_acceptance_receipt=paths["MEMO_CUE_ACCEPTANCE_RECEIPT"],
         enable_qwen_corroboration=qwen,
@@ -215,14 +212,10 @@ def build_production(context: FactoryContextV1) -> PodcastSubtitleV2:
     )
     semantic = SemanticAnalyzerAdapter(model=config.semantic_model, model_version=config.semantic_model_version, workspace_root=workspace, allow_paid_api=False, execution_mode="subscription")
     bundle = context.reference_bundle
-    recognition_manifest_sha256 = hash_file(config.memo_recognition_manifest)
-
     def boundary_factory(evidence):
-        return MemoBoundaryAuthorityV1.load_verified(
-            config.memo_cue_manifest,
-            recognition_manifest_sha256=recognition_manifest_sha256,
+        return MemoSrtBoundaryAuthorityV1.load_verified(
+            config.memo_cue_source_export,
             recognition_evidence=evidence,
-            source_export=config.memo_cue_source_export,
             acceptance_receipt=config.memo_cue_acceptance_receipt,
         )
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+from datetime import datetime
 from pathlib import Path
 from typing import Literal, Sequence
 
@@ -13,6 +14,13 @@ from shared.schemas.podcast_subtitles_v2 import CanonicalTranscript, Recognition
 from .hashing import canonical_json_bytes, hash_file, hash_object, sha256_bytes
 from .display_metrics import display_columns, reading_units
 from .ports import AdapterInputError, AdapterIntegrityError
+from .memo_projection import (
+    MemoCue,
+    ProjectionResult as MemoProjectionResult,
+    SourceToken,
+    parse_srt,
+    project_tokens_to_memo_cues,
+)
 
 MemoBoundaryRepairReason = Literal[
     "hard_length", "cps_duration", "invalid_empty", "invalid_overlap",
@@ -315,4 +323,163 @@ class MemoBoundaryAuthorityV1:
             raise AdapterIntegrityError("ordinary text correction changed Memo cue boundaries")
 
 
-__all__ = ["MemoAcceptedCueV1", "MemoBoundaryAuthorityV1", "MemoBoundaryEvidenceV1", "MemoBoundaryRepairProofV1", "MemoBoundaryRepairReason", "MemoBoundaryRepairV1", "MemoCueBoundaryManifestV1", "MemoSourceCueV1", "load_memo_boundary_manifest"]
+class MemoSrtAcceptanceReceiptV1(_StrictModel):
+    """Small operator receipt binding one accepted Memo GUI SRT export."""
+
+    schema_version: Literal[1] = 1
+    contract: Literal["accepted-memo-gui-srt-v1"] = "accepted-memo-gui-srt-v1"
+    accepted: Literal[True] = True
+    source_export_sha256: str
+    source_export_size_bytes: int = Field(gt=0)
+    reviewer: str
+    accepted_at: datetime
+
+    @model_validator(mode="after")
+    def _valid(self) -> "MemoSrtAcceptanceReceiptV1":
+        if (
+            len(self.source_export_sha256) != 64
+            or any(character not in "0123456789abcdef" for character in self.source_export_sha256)
+            or not self.reviewer.strip()
+            or self.accepted_at.tzinfo is None
+        ):
+            raise ValueError("Memo SRT acceptance receipt is incomplete")
+        return self
+
+
+class MemoSrtBoundaryAuthorityV1:
+    """Project corrected Canonical text onto an accepted Memo GUI SRT.
+
+    This is the production form of the Zheng Guowei projection contract:
+    global text alignment, token-edge snap, adjacent Memo cue merge, exact
+    Canonical text copy, one-line output, and fail-closed retention QC.
+    """
+
+    def __init__(
+        self,
+        *,
+        memo_srt_bytes: bytes,
+        acceptance_receipt: MemoSrtAcceptanceReceiptV1,
+        acceptance_receipt_bytes: bytes,
+        recognition_evidence: RecognitionEvidence,
+        min_boundary_retention: float = 0.95,
+        min_alignment_ratio: float = 0.90,
+    ) -> None:
+        try:
+            self.memo_cues: tuple[MemoCue, ...] = parse_srt(
+                memo_srt_bytes.decode("utf-8-sig")
+            )
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise AdapterInputError(f"invalid accepted Memo GUI SRT: {exc}") from exc
+        self.memo_srt_bytes = memo_srt_bytes
+        self.acceptance_receipt = acceptance_receipt
+        self.acceptance_receipt_bytes = acceptance_receipt_bytes
+        self.recognition_evidence = recognition_evidence
+        self.min_boundary_retention = min_boundary_retention
+        self.min_alignment_ratio = min_alignment_ratio
+        self.content_hash = hash_object(
+            {
+                "contract": "memo-srt-corrected-projection-v1",
+                "memo_srt_sha256": sha256_bytes(memo_srt_bytes),
+                "acceptance_receipt_sha256": sha256_bytes(acceptance_receipt_bytes),
+                "recognition_evidence": recognition_evidence.model_dump(mode="json"),
+                "min_boundary_retention": min_boundary_retention,
+                "min_alignment_ratio": min_alignment_ratio,
+            }
+        )
+
+    @classmethod
+    def load_verified(
+        cls,
+        source_export: str | Path,
+        *,
+        acceptance_receipt: str | Path,
+        recognition_evidence: RecognitionEvidence,
+        min_boundary_retention: float = 0.95,
+        min_alignment_ratio: float = 0.90,
+    ) -> "MemoSrtBoundaryAuthorityV1":
+        export_path = Path(source_export)
+        receipt_path = Path(acceptance_receipt)
+        try:
+            memo_srt_bytes = export_path.read_bytes()
+            receipt_bytes = receipt_path.read_bytes()
+            json.loads(receipt_bytes, object_pairs_hook=_pairs)
+            receipt = MemoSrtAcceptanceReceiptV1.model_validate_json(
+                receipt_bytes, strict=True
+            )
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValidationError, ValueError) as exc:
+            raise AdapterInputError(f"invalid Memo SRT acceptance boundary: {exc}") from exc
+        if canonical_json_bytes(receipt) != receipt_bytes:
+            raise AdapterIntegrityError("Memo SRT acceptance receipt must be canonical JSON")
+        if (
+            sha256_bytes(memo_srt_bytes) != receipt.source_export_sha256
+            or len(memo_srt_bytes) != receipt.source_export_size_bytes
+        ):
+            raise AdapterIntegrityError("Memo GUI SRT differs from its acceptance receipt")
+        return cls(
+            memo_srt_bytes=memo_srt_bytes,
+            acceptance_receipt=receipt,
+            acceptance_receipt_bytes=receipt_bytes,
+            recognition_evidence=recognition_evidence,
+            min_boundary_retention=min_boundary_retention,
+            min_alignment_ratio=min_alignment_ratio,
+        )
+
+    @staticmethod
+    def _source_tokens(transcript: CanonicalTranscript) -> tuple[SourceToken, ...]:
+        span_by_token = {
+            token_id: span
+            for span in transcript.spans
+            for token_id in span.token_ids
+        }
+        return tuple(
+            SourceToken(
+                id=token.id,
+                text=token.text,
+                start_ms=(
+                    token.start_ms
+                    if token.start_ms is not None
+                    else span_by_token[token.id].start_ms
+                ),
+                end_ms=(
+                    token.end_ms
+                    if token.end_ms is not None
+                    else span_by_token[token.id].end_ms
+                ),
+            )
+            for token in transcript.tokens
+        )
+
+    def project_result(self, transcript: CanonicalTranscript) -> MemoProjectionResult:
+        try:
+            return project_tokens_to_memo_cues(
+                self._source_tokens(transcript),
+                self.memo_cues,
+                min_boundary_retention=self.min_boundary_retention,
+                min_alignment_ratio=self.min_alignment_ratio,
+            )
+        except ValueError as exc:
+            raise AdapterIntegrityError(
+                f"Memo SRT corrected-text projection failed QC: {exc}"
+            ) from exc
+
+    def projection_contract(
+        self,
+        transcript: CanonicalTranscript,
+    ) -> tuple[tuple[int, ...], tuple[tuple[int, int, int, int], ...]]:
+        result = self.project_result(transcript)
+        lengths = tuple(len(cue.token_ids) for cue in result.cues)
+        boundaries: list[int] = []
+        cursor = 0
+        for length in lengths[:-1]:
+            cursor += length
+            boundaries.append(cursor)
+        starts = (0, *boundaries)
+        ends = (*boundaries, len(transcript.tokens))
+        authoritative = tuple(
+            (start, end, cue.start_ms, cue.end_ms)
+            for start, end, cue in zip(starts, ends, result.cues, strict=True)
+        )
+        return tuple(boundaries), authoritative
+
+
+__all__ = ["MemoAcceptedCueV1", "MemoBoundaryAuthorityV1", "MemoBoundaryEvidenceV1", "MemoBoundaryRepairProofV1", "MemoBoundaryRepairReason", "MemoBoundaryRepairV1", "MemoCueBoundaryManifestV1", "MemoSourceCueV1", "MemoSrtAcceptanceReceiptV1", "MemoSrtBoundaryAuthorityV1", "load_memo_boundary_manifest"]

@@ -52,41 +52,54 @@ token／micro-segment 只屬於 Recognition Evidence，不是顯示切點。
 Qwen3-ASR 與 Faster-Whisper 只可由明示設定啟用為 corroborating Evidence 或 targeted
 audit。它們不得成為 primary recognizer，也不得提供 display boundary authority。
 
-### 3. Explicit Memo cue authority
+### 3. Accepted Memo SRT boundary authority
 
-顯示切點只能來自另一份明示接受的：
+Production 直接接受 Memo GUI SRT 與一張 canonical acceptance receipt。Receipt 必須
+綁定 exact SRT bytes 的 SHA-256、size、reviewer 與 accepted time；operator 不必手工
+預造 cue manifest。Reviewed Memo cue projection 仍可作為明示的人工作業
+產物，但不是正常 production project 的必要輸入。
 
-- Memo GUI SRT；或
-- reviewed Memo cue projection。
+Memo SRT 提供 ordered candidate cue timing 與 boundary evidence；它的辨識文字不是最終
+文字 authority，也不必逐字等於 Recognition token text 或預先對應 Recognition token
+partition。正式 `project()` 與 CLI script 共用 `memo_projection` 的同一實作：
 
-Cue manifest 必須：
+- 將 Memo cue text 與 corrected Canonical token text 做 global alignment；
+- alignment 比較會忽略空白、標點與 presentation-only Unicode 差異，但不改輸出文字；
+- 將每個 Memo boundary 映射到最近的完整 corrected-token edge，絕不切開 token；
+- 多個 Memo boundaries 映射到同一 token edge 時，只能依原順序 adjacent merge；
+- 保存 Memo cue index provenance、boundary time delta、alignment ratio、token-snap count、
+  merge count 與 boundary-retention ratio；
+- alignment 或 retention 低於明示 threshold 時 fail closed。
 
-- 綁定同一份 Memo Recognition manifest；
-- 綁定 source cue export 與 acceptance receipt；
-- 依原順序、無遺漏、無重複地 partition 全部 Memo source token IDs；
-- 保存每個 accepted cue 的 identity、start/end time 與原始文字；
-- 將 authority content hash 納入 projection output lineage 與 fresh-process replay。
+Authority content hash 綁定 exact Memo SRT、acceptance receipt、Recognition Evidence 與
+QC thresholds，並納入 projection output lineage 與 fresh-process replay。Raw
+micro-segments、semantic model 建議、字數偏好或 ASR token gap 都不能自行新增 edge。
 
-Raw micro-segments、semantic model 建議、字數偏好或 ASR token gap 都不能自行新增
-顯示切點。
+### 4. Corrected Canonical text is output authority
 
-### 4. Correction changes text, not cue boundaries
+Full Audit 與 human correction 可以修改 Canonical Transcript 的文字與 provenance；最終
+SRT 文字只能是 corrected Canonical token stream 的 exact ordered copy。Memo 的文字只用
+來對齊其 timing boundaries，不能覆蓋校對結果。
 
-Full Audit 與 human correction 可以修改 Canonical Transcript 的文字與 provenance，
-但每個 corrected token 必須仍可追到唯一 accepted Memo cue。一般校對不得：
+投影必須保證：
 
-- 跨越 cue 邊界合併 Evidence lineage；
-- 改變 accepted cue order；
-- 改變 cue outer start/end time；
-- 遺失 Memo source-token coverage。
+- 每個 corrected token 恰好出現一次、順序不變，且不被 boundary 切開；
+- Memo boundary order 不變；若 boundary 可落在不同 token edges，保留對應 Memo cue 的
+  outer timing；
+- duplicate mapped edges 可將相鄰 Memo cues 合併，合併 cue 使用第一個來源 cue 的
+  start 與最後一個來源 cue 的 end；
+- 除上述 token-safe adjacent merge 外，不做全域重切或發明新 timing edge；
+- 每個輸出 cue 都是單行、非空、正 duration、互不重疊。
 
-投影時，allowed edges 與 mandatory edges 都等於 accepted Memo cue edges；輸出的 cue
-數量、順序與時間必須逐一相同。校對後文字只在相同 cue 裡重新投影。
+因此 output cue count 不保證與 Memo 原始 cue count 相同；有 adjacent merge 時也不要求
+逐 cue timing 一對一相同。必須保留的是 ordered Memo timing provenance、outer span、
+corrected-token integrity，以及通過 retention/alignment QC。
 
 ### 5. Local boundary repair
 
-只有明示、局部、可機器重算的 repair 可以改變 accepted cue manifest。允許的 closed
-reason code 為：
+Reviewed cue projection 只有在明示、局部、可機器重算時才可改變來源 cue proposal。
+這是額外的人工作業路徑；production alignment 因 duplicate token edge 產生的 adjacent
+merge 由 retention QC 管理，不需要偽裝成 repair。允許的 closed reason code 為：
 
 - `hard_length`：原 cue 的 display columns 確實超過 hard limit；
 - `cps_duration`：原 cue 的 reading units / duration 確實超過 hard CPS；
@@ -96,14 +109,15 @@ reason code 為：
 - `explicit_semantic`：引用 manifest 內 exact bytes、digest、size 都驗證過的 semantic
   receipt。
 
-每筆 repair 最多涵蓋八個來源與八個輸出 cues，必須保留整組 outer span、完整文字與
-source-token partition。沒有 repair log 的變動、理由與實際 Evidence 不符、或全域重切
+每筆 repair 最多涵蓋八個來源與八個輸出 cues，必須保留整組 outer span 與完整文字。
+沒有 repair log 的 reviewed-projection 變動、理由與實際 Evidence 不符、或全域重切
 一律 fail closed。
 
 ### 6. Projection profile and delivery
 
 16:9 長影片 profile 固定 `max_lines = 1`。Projection 仍執行文字完整性、時間合法性、
-reading speed 與其他 hard QC，但不得以這些規則重新開放 Memo cue 之外的 edge。
+reading speed 與其他 hard QC，但不得以這些規則發明與 Memo boundary alignment 無關的
+新 edge。
 
 Production 主路徑只有：
 
@@ -111,8 +125,8 @@ Production 主路徑只有：
 verified normalized-audio handoff
   -> Memo large-v2 immutable Recognition Evidence
   -> full text/audio audit and correction
-  -> accepted Memo cue authority
-  -> exact-edge semantic text projection
+  -> accepted Memo GUI SRT + canonical acceptance receipt
+  -> shared alignment / token-edge snap / adjacent-merge projection
   -> fail-closed QC
   -> one-line SRT + sidecar + projection receipt
 ```
@@ -130,17 +144,17 @@ recognition pilot 不屬於 production runtime 或 public operator workflow。
    timestamp。
 3. Reference Evidence 只能提出或支持 correction，不得覆蓋清楚的 Audio Evidence。
 4. Accepted Generation 仍須通過完整 text/audio audit、speech coverage 與 replay。
-5. Projection 必須綁定 accepted Memo cue authority hash；authority drift 時 fresh replay
+5. Projection 必須綁定 Memo SRT authority hash；authority drift 時 fresh replay
    失敗。
 6. SRT 是 Canonical Transcript 的可重建 projection，不是 truth source。
 7. Production factory 對 normalized audio 之前的處理沒有 ownership。
 
 ## Consequences
 
-- 優點：沿用 Memo 已驗證的斷句品質；校對不再破壞切點；一行字幕與 exact timing
+- 優點：沿用 Memo 已驗證的斷句品質；校對不再任意全域重切；一行字幕與 timing lineage
   可直接測試；外部 Evidence 與人工接受都有 immutable lineage。
-- 代價：Memo GUI cue export 與 acceptance receipt 成為必要 production input；需要改
-  切點時必須留下局部 repair proof，不能靠全域 optimizer 靜默重算。
+- 代價：Memo GUI cue export 與 acceptance receipt 成為必要 production input；alignment
+  或 retention 不足時必須人工 review，不能靠全域 optimizer 靜默重算。
 - 遷移：舊 Qwen-primary、Subtitle V2 內部 normalization orchestration、全域 boundary
   optimizer、Human Gold comparator 與 benchmark CLI 決策均已 superseded，不再描述
   production 現況。
@@ -149,7 +163,10 @@ recognition pilot 不屬於 production runtime 或 public operator workflow。
 
 - Production recognizer index 0 是 Memo；corroborators 預設關閉。
 - Production import surface 不含 normalization provider implementation。
-- Corrected text 經 `PodcastSubtitleV2.project()` 後仍維持 exact Memo cue count、order、
-  start/end time。
-- Cue authority hash 參與 projection lineage，fresh replay 可重現；hash drift fail closed。
+- Corrected text 經 `PodcastSubtitleV2.project()` 後是 exact ordered token copy，且不切開
+  token；Memo boundaries 依序映射到 token edges，duplicate edges 只可 adjacent merge。
+- Alignment ratio 與 boundary-retention ratio 通過明示 threshold；QC 保存 snap、merge、
+  retention 與 time-delta metrics。
+- Memo SRT authority hash 參與 projection lineage，fresh replay 可重現；hash drift fail
+  closed。
 - 16:9 SRT 每個 cue 恰好一行。
