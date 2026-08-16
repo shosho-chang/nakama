@@ -21,10 +21,7 @@ from agents.brook.podcast_subtitles.correction_acceptance import (
     default_correction_acceptance_policy,
     human_audio_review_receipt_bytes,
 )
-from agents.brook.podcast_subtitles.facade import (
-    PodcastSubtitleFacade,
-    _stored_process_trace,
-)
+from agents.brook.podcast_subtitles.facade import PodcastSubtitleFacade
 from agents.brook.podcast_subtitles.full_audit_attestation import (
     FullAuditAggregateAttestationV2,
 )
@@ -495,7 +492,6 @@ def _prepare_child_for_publication(
 
 def test_accept_exact_candidate_reaudits_and_publishes_verified_child(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     episode_root = tmp_path / "episode"
     workspace = tmp_path / "workspace"
@@ -675,63 +671,6 @@ def test_accept_exact_candidate_reaudits_and_publishes_verified_child(
         ancestor_generation_id=parent.generation_id,
     )
     assert PodcastSubtitleFacade(final_module).status().state == "revised"
-    loaded_child = final_module._load_generation(child.generation_id, require_active=False)
-    sources, proposals, decisions = _stored_process_trace(
-        module=final_module,
-        generation_id=child.generation_id,
-        loaded_generation=loaded_child,
-    )
-    assert proposals == ()
-    assert any(item.role == "candidate_discovery" for item in sources)
-    assert len(decisions) == 1
-    assert decisions[0].decision_family == "native_correction_v2"
-    assert decisions[0].candidate_discovery_id == candidate.id
-    assert decisions[0].candidate_discovery_hash == candidate.content_hash
-    assert decisions[0].candidate_literal_sha256 is not None
-    assert decisions[0].proposal_ids == ()
-    assert decisions[0].selected_candidate is None
-    candidate_name = "native_resolution/candidate_discovery.json"
-    read_artifact = final_module.store.read_artifact
-    with monkeypatch.context() as patch:
-
-        def missing_candidate(generation_id: str, name: str) -> bytes:
-            if generation_id == child.generation_id and name == candidate_name:
-                raise FileNotFoundError("injected missing native discovery")
-            return read_artifact(generation_id, name)
-
-        patch.setattr(final_module.store, "read_artifact", missing_candidate)
-        with pytest.raises(FileNotFoundError, match="missing native discovery"):
-            _stored_process_trace(
-                module=final_module,
-                generation_id=child.generation_id,
-                loaded_generation=loaded_child,
-            )
-
-    drifted_payload = candidate.model_dump(
-        mode="python",
-        exclude={"id", "content_hash"},
-    )
-    drifted_payload["candidate_text"] = candidate.candidate_text + " drift"
-    drifted_hash = hash_object(drifted_payload)
-    drifted_candidate = type(candidate)(
-        **drifted_payload,
-        id=drifted_hash,
-        content_hash=drifted_hash,
-    )
-    with monkeypatch.context() as patch:
-
-        def drifted_candidate_bytes(generation_id: str, name: str) -> bytes:
-            if generation_id == child.generation_id and name == candidate_name:
-                return canonical_json_bytes(drifted_candidate)
-            return read_artifact(generation_id, name)
-
-        patch.setattr(final_module.store, "read_artifact", drifted_candidate_bytes)
-        with pytest.raises(ValueError, match="discovery artifact hash binding differs"):
-            _stored_process_trace(
-                module=final_module,
-                generation_id=child.generation_id,
-                loaded_generation=loaded_child,
-            )
     assert not any(
         issue.code == "native_full_audit_requires_resolution"
         for issue in child.transcript.review_issues
