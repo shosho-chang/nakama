@@ -940,7 +940,8 @@ def test_whisperx_builtin_production_identity_is_explicitly_unavailable() -> Non
     sys.modules.pop("whisperx", None)
     adapter = WhisperXRecognizerAdapter()
 
-    assert isinstance(adapter, Recognizer)
+    assert callable(adapter.recognize)
+    assert callable(adapter.verify)
     with pytest.raises(AdapterUnavailableError, match="immutable model and aligner snapshots"):
         _ = adapter.identity
     assert "whisperx" not in sys.modules

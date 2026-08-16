@@ -114,6 +114,30 @@ def _attribution_config_hash(
     )
 
 
+def _envelope_coverage_ms(
+    envelopes: object,
+    *,
+    algorithm: Mapping[str, object],
+) -> int | None:
+    frame_samples = algorithm.get("frame_samples")
+    sample_rate = algorithm.get("env_sample_rate")
+    shape = getattr(envelopes, "shape", None)
+    if (
+        not isinstance(frame_samples, int)
+        or isinstance(frame_samples, bool)
+        or frame_samples <= 0
+        or not isinstance(sample_rate, int)
+        or isinstance(sample_rate, bool)
+        or sample_rate <= 0
+        or not isinstance(shape, tuple)
+        or len(shape) != 2
+        or not isinstance(shape[1], int)
+        or shape[1] < 0
+    ):
+        return None
+    return shape[1] * frame_samples * 1_000 // sample_rate
+
+
 def _strict_payload(raw_output: bytes) -> dict[str, object]:
     duplicates: list[str] = []
 
@@ -251,6 +275,15 @@ class MicEnergySpeakerAttributor:
         ]
         try:
             envelopes = self._loader([binding.path for binding in tracks], normalized_audio)
+            coverage_ms = _envelope_coverage_ms(
+                envelopes,
+                algorithm=self._algorithm_config,
+            )
+            if coverage_ms is not None and any(token.end_ms > coverage_ms for token in base.tokens):
+                raise AdapterInputError(
+                    "speaker attribution left one or more tokens unresolved "
+                    "beyond microphone coverage"
+                )
             assignments = self._assigner(words, envelopes)
         except (AdapterInputError, AdapterIntegrityError):
             raise

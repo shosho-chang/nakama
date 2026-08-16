@@ -23,7 +23,7 @@ from shared.schemas.podcast_subtitles_v2 import (
     EvidenceToken,
     RecognitionEvidence,
 )
-from shared.speaker_assign import FRAME_SEC, assign_word_speakers
+from shared.speaker_assign import ENV_SR, FRAME, FRAME_SEC, assign_word_speakers
 
 
 def _base_evidence(audio: Path, raw: Path) -> RecognitionEvidence:
@@ -181,7 +181,12 @@ def test_production_assigner_rejects_token_beyond_shorter_mic_coverage(tmp_path:
     attributor = MicEnergySpeakerAttributor(
         envelope_loader=lambda _paths, _reference: envelopes,
         speaker_assigner=assign_word_speakers,
-        algorithm_config={"algorithm": "two-track-rms-viterbi", "algorithm_version": 2},
+        algorithm_config={
+            "algorithm": "two-track-rms-viterbi",
+            "algorithm_version": 2,
+            "env_sample_rate": ENV_SR,
+            "frame_samples": FRAME,
+        },
     )
 
     with pytest.raises(AdapterInputError, match="unresolved"):

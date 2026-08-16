@@ -14,7 +14,6 @@ ROOT = Path(__file__).resolve().parents[4]
 PRODUCTION_FILES = (
     ROOT / "agents" / "brook" / "podcast_subtitles" / "module.py",
     ROOT / "agents" / "brook" / "podcast_subtitles" / "facade.py",
-    ROOT / "agents" / "brook" / "podcast_subtitles" / "benchmark.py",
 )
 TEST_FILES = tuple(
     sorted((ROOT / "tests" / "agents" / "brook" / "podcast_subtitles").glob("test_*.py"))

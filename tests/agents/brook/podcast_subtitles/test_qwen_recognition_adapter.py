@@ -11,6 +11,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 import pytest
 
@@ -32,6 +34,12 @@ from agents.brook.podcast_subtitles.recognition_run import (
 from agents.brook.podcast_subtitles.store import GenerationStore
 
 _QWEN_V3_NAMESPACE = "podcast-subtitle-v2/qwen3-asr-bounded-overlap-envelope/v3"
+
+
+def _file_uri_path(uri: str) -> Path:
+    parsed = urlparse(uri)
+    assert parsed.scheme == "file"
+    return Path(url2pathname(parsed.path))
 
 
 def _request(tmp_path: Path, audio: Path) -> RecognitionRequest:
@@ -279,7 +287,7 @@ def test_qwen_checkpoint_fresh_run_and_complete_rerun_use_durable_observations(
         recognition_run_repository=repository,
         logical_namespace=_QWEN_V3_NAMESPACE,
     ).recognize(request)
-    first_raw = Path(first.raw_output.uri.removeprefix("file:///"))
+    first_raw = _file_uri_path(first.raw_output.uri)
 
     assert fresh_calls == [0, 1, 2]
     observation_paths = tuple(
@@ -311,9 +319,7 @@ def test_qwen_checkpoint_fresh_run_and_complete_rerun_use_durable_observations(
     assert replay_calls == []
     assert replayed == first
     assert canonical_json_bytes(replayed) == canonical_json_bytes(first)
-    assert Path(replayed.raw_output.uri.removeprefix("file:///")).read_bytes() == (
-        first_raw.read_bytes()
-    )
+    assert _file_uri_path(replayed.raw_output.uri).read_bytes() == first_raw.read_bytes()
 
 
 def test_qwen_checkpoint_derives_only_current_chunk_before_each_provider_call(
@@ -421,7 +427,7 @@ def test_qwen_checkpoint_resumes_only_after_exact_durable_prefix_and_matches_uni
     request = _request(tmp_path, audio)
     base = _global_event_runner(_LONG_EVENTS)
     uninterrupted = _adapter(base).recognize(request)
-    uninterrupted_raw = Path(uninterrupted.raw_output.uri.removeprefix("file:///")).read_bytes()
+    uninterrupted_raw = _file_uri_path(uninterrupted.raw_output.uri).read_bytes()
 
     repository = _repository(tmp_path / "resumed-episode")
     failed_calls: list[int] = []
@@ -460,7 +466,7 @@ def test_qwen_checkpoint_resumes_only_after_exact_durable_prefix_and_matches_uni
 
     assert resumed_calls == [1, 2]
     assert canonical_json_bytes(resumed) == canonical_json_bytes(uninterrupted)
-    assert Path(resumed.raw_output.uri.removeprefix("file:///")).read_bytes() == uninterrupted_raw
+    assert _file_uri_path(resumed.raw_output.uri).read_bytes() == uninterrupted_raw
 
 
 @pytest.mark.parametrize(

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import json
 import os
+import sys
 import wave
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,6 +24,35 @@ from agents.brook.podcast_subtitles.ports import (
 from agents.brook.podcast_subtitles.recognition_run import RecognitionRunRepository
 
 MODEL_REVISION = "edaa852ec7e145841d8ffdb056a99866b5f0a478"
+
+
+def _install_fake_production_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    snapshot_download,
+) -> None:
+    monkeypatch.setitem(
+        sys.modules,
+        "huggingface_hub",
+        SimpleNamespace(snapshot_download=snapshot_download),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "ctranslate2",
+        SimpleNamespace(get_cuda_device_count=lambda: 1),
+    )
+    real_version = importlib.metadata.version
+
+    def runtime_version(distribution: str) -> str:
+        versions = {
+            "ctranslate2": "4.8.1",
+            "faster-whisper": "1.2.1",
+        }
+        if distribution in versions:
+            return versions[distribution]
+        return real_version(distribution)
+
+    monkeypatch.setattr(importlib.metadata, "version", runtime_version)
 
 
 def _write_wav(path: Path, *, duration_seconds: float = 1.0) -> None:
@@ -220,7 +251,10 @@ def test_faster_whisper_identity_is_bound_to_complete_local_snapshot(
         }
         return str(snapshot)
 
-    monkeypatch.setattr("huggingface_hub.snapshot_download", local_snapshot_download)
+    _install_fake_production_runtime(
+        monkeypatch,
+        snapshot_download=local_snapshot_download,
+    )
     adapter = FasterWhisperRecognizerAdapter(
         model_revision=MODEL_REVISION,
         device="cpu",
@@ -260,7 +294,10 @@ def test_faster_whisper_snapshot_identity_hashes_symlink_target_bytes_and_detect
         (snapshot / "model.bin").symlink_to(os.path.relpath(blob, start=snapshot))
     except OSError:
         pytest.skip("host does not permit unprivileged symlink creation")
-    monkeypatch.setattr("huggingface_hub.snapshot_download", lambda **_kwargs: str(snapshot))
+    _install_fake_production_runtime(
+        monkeypatch,
+        snapshot_download=lambda **_kwargs: str(snapshot),
+    )
     adapter = FasterWhisperRecognizerAdapter(
         model_revision=MODEL_REVISION,
         device="cpu",
@@ -296,7 +333,10 @@ def test_faster_whisper_snapshot_rejects_symlink_escape(
         (snapshot / "model.bin").symlink_to(os.path.relpath(outside, start=snapshot))
     except OSError:
         pytest.skip("host does not permit unprivileged symlink creation")
-    monkeypatch.setattr("huggingface_hub.snapshot_download", lambda **_kwargs: str(snapshot))
+    _install_fake_production_runtime(
+        monkeypatch,
+        snapshot_download=lambda **_kwargs: str(snapshot),
+    )
 
     with pytest.raises(AdapterUnavailableError, match="escapes"):
         FasterWhisperRecognizerAdapter(
@@ -355,7 +395,11 @@ def test_faster_whisper_local_execution_uses_only_the_measured_snapshot(
     adapter._model_snapshot_inventory_hash = hash_object(
         {"snapshot_inventory": adapter._snapshot_inventory(snapshot)}
     )
-    monkeypatch.setattr("faster_whisper.WhisperModel", FakeWhisperModel)
+    monkeypatch.setitem(
+        sys.modules,
+        "faster_whisper",
+        SimpleNamespace(WhisperModel=FakeWhisperModel),
+    )
 
     evidence = adapter.recognize(_request(tmp_path, audio))
 

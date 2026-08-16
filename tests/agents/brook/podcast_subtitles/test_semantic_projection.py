@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import math
-import time
 
 import pytest
 
+from agents.brook.podcast_subtitles import quality as quality_module
+from agents.brook.podcast_subtitles import semantic_projection as semantic_projection_module
 from agents.brook.podcast_subtitles.display_metrics import display_columns as _char_count
 from agents.brook.podcast_subtitles.errors import (
     NeedsAlignmentError,
@@ -448,13 +449,10 @@ def test_bounded_global_dp_matches_exhaustive_small_case(
     assert optimized_partition in brute_partitions
 
 
-@pytest.mark.parametrize(
-    ("token_count", "max_seconds"),
-    ((5_000, 3.0), (24_769, 10.0)),
-)
+@pytest.mark.parametrize("token_count", (5_000, 24_769))
 def test_bounded_edge_generation_scales_linearly_on_long_episode(
     token_count: int,
-    max_seconds: float,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tokens = tuple(
         CanonicalToken(
@@ -475,7 +473,29 @@ def test_bounded_edge_generation_scales_linearly_on_long_episode(
         max_chars_per_second=50.0,
     )
 
-    started = time.perf_counter()
+    candidate_calls = 0
+
+    def count_candidate_work(
+        candidate_tokens: tuple[CanonicalToken, ...],
+        **kwargs: object,
+    ) -> semantic_projection_module._Candidate:
+        nonlocal candidate_calls
+        candidate_calls += 1
+        start = int(kwargs["start"])
+        end = int(kwargs["end"])
+        return semantic_projection_module._Candidate(
+            cost=0.0,
+            score=(0.0, 0.0, 0.0, 0.0, 0.0),
+            lines=("".join(token.text for token in candidate_tokens[start:end]),),
+            preferred_boundary_strength=0.0,
+        )
+
+    # This regression owns only the bounded edge generator.  Candidate scoring
+    # and the independent quality verifier have their own exhaustive tests; a
+    # wall-clock gate here measures coverage.py tracing overhead, not Big-O.
+    monkeypatch.setattr(semantic_projection_module, "_cue_candidate", count_candidate_work)
+    monkeypatch.setattr(quality_module, "assert_projection_quality", lambda *_args, **_kwargs: None)
+
     result = project_semantic_units(
         tokens,
         (),
@@ -483,10 +503,15 @@ def test_bounded_edge_generation_scales_linearly_on_long_episode(
         episode_id="anji-scale",
         generation_id=f"generation-{token_count}",
     )
-    elapsed = time.perf_counter() - started
 
     assert result.token_ids == tuple(token.id for token in tokens)
-    assert elapsed < max_seconds
+    maximum_tokens_per_candidate = min(
+        math.ceil(
+            profile.max_lines * profile.hard_line_display_columns / _char_count(tokens[0].text)
+        ),
+        math.ceil(profile.max_cue_duration_ms / 60),
+    )
+    assert token_count < candidate_calls <= token_count * maximum_tokens_per_candidate
 
 
 def test_renderers_preserve_srt_text_and_sidecar_token_identity() -> None:
