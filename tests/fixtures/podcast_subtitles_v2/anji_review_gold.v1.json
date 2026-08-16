@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "episode_id": "20260415-anji",
+  "lineage_id": "anji-program-v2-bc652157",
+  "normalized_audio_hash": "bc652157b0551769a2e79d565ee10338626db89fc7accd82ec23e2873022ef8a",
+  "purpose": "Recognition disagreements that must remain unresolved until audio-backed human or approved arbiter adjudication.",
+  "source": {
+    "transcript": "G:/footages/20260415 安吉/program_v2/transcript.srt",
+    "words": "G:/footages/20260415 安吉/program_v2/subs/words.json",
+    "normalized_audio": "G:/footages/20260415 安吉/program_v2/normalized.wav"
+  },
+  "cases": [
+    {
+      "case_id": "anji-mental-health-word-order",
+      "lineage_id": "anji-program-v2-bc652157",
+      "start_ms": 2002118,
+      "end_ms": 2003499,
+      "observed_evidence_text": "我心裡開始健康有問題",
+      "published_v1_text": "我心理開始／健康有問題",
+      "candidate_texts": [
+        "我心理健康開始有問題",
+        "我心理開始健康有問題",
+        "我心裡開始健康有問題"
+      ],
+      "expected_outcome": "needs_review",
+      "expected_minimum_severity": "high",
+      "reason": "Word-level evidence and the published V1 text do not establish the spoken word order. V2 must not promote a linguistically plausible guess to canonical truth without approved audio adjudication."
+    }
+  ]
+}
