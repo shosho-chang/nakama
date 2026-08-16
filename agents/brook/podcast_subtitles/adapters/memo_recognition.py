@@ -15,10 +15,16 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+
 from shared.schemas.podcast_subtitles_v2 import ArtifactDigest, EvidenceToken, RecognitionEvidence
 
 from ..hashing import canonical_json_bytes, hash_file, hash_object, sha256_bytes
-from ..ports import AdapterInputError, AdapterIntegrityError, RecognitionModelIdentity, RecognitionRequest
+from ..ports import (
+    AdapterInputError,
+    AdapterIntegrityError,
+    RecognitionModelIdentity,
+    RecognitionRequest,
+)
 
 
 class _StrictModel(BaseModel):
@@ -107,7 +113,7 @@ def load_memo_recognition_manifest(path: str | Path) -> tuple[MemoRecognitionMan
     manifest_path = Path(path)
     try:
         payload = manifest_path.read_bytes()
-        parsed = json.loads(payload, object_pairs_hook=_reject_duplicate_keys)
+        json.loads(payload, object_pairs_hook=_reject_duplicate_keys)
         manifest = MemoRecognitionManifestV1.model_validate_json(payload, strict=True)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValidationError, ValueError) as exc:
         raise AdapterInputError(f"invalid Memo recognition manifest: {exc}") from exc
@@ -145,22 +151,24 @@ class MemoRecognizerAdapter:
         ):
             raise AdapterIntegrityError("Memo source export differs from recognition manifest")
         if hash_file(self._acceptance_receipt) != manifest.accepted_by_receipt_sha256:
-            raise AdapterIntegrityError(
-                "Memo acceptance receipt differs from recognition manifest"
-            )
+            raise AdapterIntegrityError("Memo acceptance receipt differs from recognition manifest")
         return manifest, payload
 
     @property
     def identity(self) -> RecognitionModelIdentity:
         manifest, payload = self._verified_manifest()
-        components = tuple(sorted((
-            ("import_contract", manifest.contract),
-            ("manifest_sha256", sha256_bytes(payload)),
-            ("memo_version_claim", manifest.memo_version),
-            ("python_implementation", platform.python_implementation()),
-            ("python_version", platform.python_version()),
-            ("source_export_sha256", manifest.source_export_sha256),
-        )))
+        components = tuple(
+            sorted(
+                (
+                    ("import_contract", manifest.contract),
+                    ("manifest_sha256", sha256_bytes(payload)),
+                    ("memo_version_claim", manifest.memo_version),
+                    ("python_implementation", platform.python_implementation()),
+                    ("python_version", platform.python_version()),
+                    ("source_export_sha256", manifest.source_export_sha256),
+                )
+            )
+        )
         return RecognitionModelIdentity(
             adapter_name=self.ADAPTER_NAME,
             adapter_version=self.ADAPTER_VERSION,
@@ -236,9 +244,11 @@ class MemoRecognizerAdapter:
         if raw_output != payload or sha256_bytes(raw_output) != evidence.raw_output.sha256:
             raise AdapterIntegrityError("Memo recognition raw bytes do not replay")
         expected = self._evidence(request).model_copy(
-            update={"raw_output": self._evidence(request).raw_output.model_copy(
-                update={"uri": evidence.raw_output.uri}
-            )}
+            update={
+                "raw_output": self._evidence(request).raw_output.model_copy(
+                    update={"uri": evidence.raw_output.uri}
+                )
+            }
         )
         if evidence != expected:
             raise AdapterIntegrityError("Memo Recognition Evidence does not replay")

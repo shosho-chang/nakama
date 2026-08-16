@@ -7,6 +7,7 @@ this package remains importable in orchestration, test, and CPU-only runtimes.
 from .arbitration import GeminiAudioArbiterAdapter
 from .audio_audit import GeminiAudioAuditAdapter
 from .correction import LLMCorrectorAdapter
+from .faster_whisper_recognition import FasterWhisperRecognizerAdapter
 from .fixtures import (
     FixtureArbiterAdapter,
     FixtureAudioAuditorAdapter,
@@ -16,7 +17,6 @@ from .fixtures import (
     FixtureReferenceRetrieverAdapter,
     FixtureSemanticAnalyzerAdapter,
 )
-from .faster_whisper_recognition import FasterWhisperRecognizerAdapter
 from .memo_recognition import (
     MemoRecognitionManifestV1,
     MemoRecognitionTokenV1,

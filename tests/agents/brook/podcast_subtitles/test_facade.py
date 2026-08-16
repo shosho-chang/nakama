@@ -24,10 +24,10 @@ from agents.brook.podcast_subtitles.profiles import SubtitlePolicy
 from shared.schemas.podcast_subtitles_v2 import CorrectionDecision
 from tests.agents.brook.podcast_subtitles.test_module import (
     _LastSpanProposalCorrector,
+    _module,
     _PendingArbiter,
     _PendingAudioAuditor,
     _PendingCorrector,
-    _module,
     _single_stream_module,
 )
 
@@ -44,13 +44,9 @@ def _decision(created: NeedsReview) -> CorrectionDecision:
         target_end_ms=tokens[-1].end_ms,
         evidence_fingerprint=review_target_fingerprint(created.transcript, spans),
         issue_ids=tuple(
-            issue.id
-            for issue in created.transcript.review_issues
-            if issue.status == "unresolved"
+            issue.id for issue in created.transcript.review_issues if issue.status == "unresolved"
         ),
-        audio_evidence_ids=tuple(
-            sorted({item for token in tokens for item in token.evidence_ids})
-        ),
+        audio_evidence_ids=tuple(sorted({item for token in tokens for item in token.evidence_ids})),
         evidence_basis="audio",
         action="replace",
         replacement_text="哥大畢業典禮",
@@ -115,13 +111,9 @@ def test_status_reports_exact_partial_create_stage_without_active_generation(
 ) -> None:
     if checkpoint_stage == "evidence_ready":
         corrector = _PendingCorrector(tmp_path / "corrector-work")
-        module, source = _single_stream_module(
-            tmp_path, texts=("Podcast",), corrector=corrector
-        )
+        module, source = _single_stream_module(tmp_path, texts=("Podcast",), corrector=corrector)
     elif checkpoint_stage == "correction_ready":
-        auditor = _PendingAudioAuditor(
-            FixtureAudioAuditorAdapter(), tmp_path / "audio-work"
-        )
+        auditor = _PendingAudioAuditor(FixtureAudioAuditorAdapter(), tmp_path / "audio-work")
         module, source = _single_stream_module(
             tmp_path,
             texts=("Podcast",),
@@ -182,9 +174,7 @@ def test_status_keeps_old_active_distinct_from_new_partial_create(
 ) -> None:
     corrector = _PendingCorrector(tmp_path / "corrector-work")
     corrector.ready = True
-    module, source = _single_stream_module(
-        tmp_path, texts=("Podcast",), corrector=corrector
-    )
+    module, source = _single_stream_module(tmp_path, texts=("Podcast",), corrector=corrector)
     first = module.create(
         CreateRequest(
             episode_id="episode-status-active-partial",

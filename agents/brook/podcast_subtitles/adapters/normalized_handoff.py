@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+
 from shared.schemas.podcast_subtitles_v2 import (
     ArtifactDigest,
     AudioClockMap,
@@ -39,9 +40,7 @@ class NormalizedAudioHandoffManifestV1(BaseModel):
 
     @model_validator(mode="after")
     def _valid(self) -> "NormalizedAudioHandoffManifestV1":
-        for label, value in (
-            ("normalized_audio_sha256", self.normalized_audio_sha256),
-        ):
+        for label, value in (("normalized_audio_sha256", self.normalized_audio_sha256),):
             if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
                 raise ValueError(f"{label} must be lowercase SHA-256")
         if self.accepted_at.tzinfo is None:
@@ -61,7 +60,7 @@ def _pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
 def _load(path: Path) -> tuple[NormalizedAudioHandoffManifestV1, bytes]:
     try:
         payload = path.read_bytes()
-        parsed = json.loads(payload, object_pairs_hook=_pairs)
+        json.loads(payload, object_pairs_hook=_pairs)
         manifest = NormalizedAudioHandoffManifestV1.model_validate_json(payload, strict=True)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValidationError, ValueError) as exc:
         raise AdapterInputError(f"invalid normalized-audio handoff manifest: {exc}") from exc

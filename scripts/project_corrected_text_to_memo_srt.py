@@ -17,6 +17,5 @@ from agents.brook.podcast_subtitles.memo_projection import (  # noqa: F401
     render_srt,
 )
 
-
 if __name__ == "__main__":
     raise SystemExit(main())

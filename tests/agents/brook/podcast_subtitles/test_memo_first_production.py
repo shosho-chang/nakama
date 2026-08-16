@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import replace
+import wave
 from datetime import datetime, timezone
 from pathlib import Path
-import wave
 
 import pytest
 
@@ -12,12 +11,12 @@ from agents.brook.podcast_subtitles.adapters.fixtures import (
     FixtureAudioAuditorAdapter,
     FixtureNormalizerAdapter,
 )
-from agents.brook.podcast_subtitles.adapters.speech_coverage import (
-    FixtureSpeechCoverageAnalyzer,
-)
 from agents.brook.podcast_subtitles.adapters.normalized_handoff import (
     NormalizedAudioHandoffManifestV1,
     VerifiedNormalizedAudioHandoffAdapter,
+)
+from agents.brook.podcast_subtitles.adapters.speech_coverage import (
+    FixtureSpeechCoverageAnalyzer,
 )
 from agents.brook.podcast_subtitles.canonical import (
     reconcile_canonical,
@@ -25,26 +24,17 @@ from agents.brook.podcast_subtitles.canonical import (
 )
 from agents.brook.podcast_subtitles.composition import FactoryContextV1
 from agents.brook.podcast_subtitles.errors import GenerationIsolationError
-from agents.brook.podcast_subtitles.hashing import canonical_json_bytes, hash_file, sha256_bytes
+from agents.brook.podcast_subtitles.hashing import canonical_json_bytes, hash_file
 from agents.brook.podcast_subtitles.memo_boundary import (
     MemoAcceptedCueV1,
     MemoBoundaryAuthorityV1,
     MemoBoundaryRepairProofV1,
     MemoBoundaryRepairV1,
     MemoCueBoundaryManifestV1,
+    MemoSourceCueV1,
     MemoSrtAcceptanceReceiptV1,
     MemoSrtBoundaryAuthorityV1,
-    MemoSourceCueV1,
 )
-from agents.brook.podcast_subtitles.ports import (
-    AdapterIntegrityError,
-    NormalizeRequest,
-    RecognitionRequest,
-)
-from agents.brook.podcast_subtitles.profiles import HORIZONTAL_16X9
-from agents.brook.podcast_subtitles.production import build_production
-from agents.brook.podcast_subtitles.semantic_projection import project_semantic_units
-from shared.schemas.podcast_subtitles_v2 import CorrectionDecision, SemanticUnit
 from agents.brook.podcast_subtitles.module import (
     AcceptedGeneration,
     AdapterIdentity,
@@ -53,12 +43,21 @@ from agents.brook.podcast_subtitles.module import (
     ProjectRequest,
     ResolveRequest,
 )
+from agents.brook.podcast_subtitles.ports import (
+    AdapterIntegrityError,
+    NormalizeRequest,
+    RecognitionRequest,
+)
+from agents.brook.podcast_subtitles.production import build_production
+from agents.brook.podcast_subtitles.profiles import HORIZONTAL_16X9
+from agents.brook.podcast_subtitles.semantic_projection import project_semantic_units
+from shared.schemas.podcast_subtitles_v2 import CorrectionDecision, SemanticUnit
 from tests.agents.brook.podcast_subtitles.test_module import (
+    _accepted_receipt,
     _AcceptEveryProposalArbiter,
+    _adapter_identity,
     _DynamicSemanticAnalyzer,
     _SequentialDisjointCorrector,
-    _accepted_receipt,
-    _adapter_identity,
 )
 
 
@@ -80,11 +79,31 @@ def _memo_fixture(tmp_path: Path, *, final_text: str = "謝謝"):
     )
 
     raw_tokens = (
-        MemoRecognitionTokenV1(id="z-001", text="今天", start_ms=100, end_ms=500, confidence=0.99, speaker="guest"),
-        MemoRecognitionTokenV1(id="z-002", text="我們談", start_ms=500, end_ms=1_000, confidence=0.99, speaker="guest"),
-        MemoRecognitionTokenV1(id="z-003", text="修修", start_ms=1_000, end_ms=1_500, confidence=0.99, speaker="guest"),
-        MemoRecognitionTokenV1(id="z-004", text="再談內容", start_ms=1_500, end_ms=2_000, confidence=0.99, speaker="guest"),
-        MemoRecognitionTokenV1(id="z-005", text=final_text, start_ms=2_000, end_ms=3_000, confidence=0.99, speaker="guest"),
+        MemoRecognitionTokenV1(
+            id="z-001", text="今天", start_ms=100, end_ms=500, confidence=0.99, speaker="guest"
+        ),
+        MemoRecognitionTokenV1(
+            id="z-002", text="我們談", start_ms=500, end_ms=1_000, confidence=0.99, speaker="guest"
+        ),
+        MemoRecognitionTokenV1(
+            id="z-003", text="修修", start_ms=1_000, end_ms=1_500, confidence=0.99, speaker="guest"
+        ),
+        MemoRecognitionTokenV1(
+            id="z-004",
+            text="再談內容",
+            start_ms=1_500,
+            end_ms=2_000,
+            confidence=0.99,
+            speaker="guest",
+        ),
+        MemoRecognitionTokenV1(
+            id="z-005",
+            text=final_text,
+            start_ms=2_000,
+            end_ms=3_000,
+            confidence=0.99,
+            speaker="guest",
+        ),
     )
     recognition = MemoRecognitionManifestV1(
         memo_version="1.7.5",
@@ -131,9 +150,27 @@ def _memo_fixture(tmp_path: Path, *, final_text: str = "謝謝"):
         ),
     )
     cues = (
-        MemoAcceptedCueV1(id="memo-cue-001", start_ms=100, end_ms=1_000, text="今天我們談", source_token_ids=("z-001", "z-002")),
-        MemoAcceptedCueV1(id="memo-cue-002", start_ms=1_000, end_ms=2_000, text="修修再談內容", source_token_ids=("z-003", "z-004")),
-        MemoAcceptedCueV1(id="memo-cue-003", start_ms=2_000, end_ms=3_000, text=final_text, source_token_ids=("z-005",)),
+        MemoAcceptedCueV1(
+            id="memo-cue-001",
+            start_ms=100,
+            end_ms=1_000,
+            text="今天我們談",
+            source_token_ids=("z-001", "z-002"),
+        ),
+        MemoAcceptedCueV1(
+            id="memo-cue-002",
+            start_ms=1_000,
+            end_ms=2_000,
+            text="修修再談內容",
+            source_token_ids=("z-003", "z-004"),
+        ),
+        MemoAcceptedCueV1(
+            id="memo-cue-003",
+            start_ms=2_000,
+            end_ms=3_000,
+            text=final_text,
+            source_token_ids=("z-005",),
+        ),
     )
     cue_manifest = MemoCueBoundaryManifestV1(
         recognition_manifest_sha256=hash_file(recognition_path),
@@ -141,9 +178,7 @@ def _memo_fixture(tmp_path: Path, *, final_text: str = "謝謝"):
         source_export_size_bytes=cue_export.stat().st_size,
         source_export_kind="memo_gui_srt",
         acceptance_receipt_sha256=hash_file(cue_acceptance),
-        base_cues=tuple(
-            MemoSourceCueV1(**cue.model_dump()) for cue in cues
-        ),
+        base_cues=tuple(MemoSourceCueV1(**cue.model_dump()) for cue in cues),
         cues=cues,
     )
     cue_path = _write(tmp_path / "memo-cues.json", cue_manifest)
@@ -170,7 +205,11 @@ def test_memo_import_is_immutable_and_binds_actual_export_and_acceptance(tmp_pat
     adapter, request, evidence, _authority, source_export = _memo_fixture(tmp_path)
     raw = Path(adapter._manifest_path).read_bytes()
     portable = evidence.model_copy(
-        update={"raw_output": evidence.raw_output.model_copy(update={"uri": "generation-artifact://raw"})}
+        update={
+            "raw_output": evidence.raw_output.model_copy(
+                update={"uri": "generation-artifact://raw"}
+            )
+        }
     )
     assert adapter.verify(portable, request=request, raw_output=raw) == portable
     source_export.write_bytes(b"tampered")
@@ -178,7 +217,9 @@ def test_memo_import_is_immutable_and_binds_actual_export_and_acceptance(tmp_pat
         adapter.recognize(request)
 
 
-def test_accepted_memo_cues_forbid_global_boundary_drift_and_keep_exact_times(tmp_path: Path) -> None:
+def test_accepted_memo_cues_forbid_global_boundary_drift_and_keep_exact_times(
+    tmp_path: Path,
+) -> None:
     _adapter, _request, evidence, authority, _source = _memo_fixture(tmp_path)
     transcript = _canonical(evidence)
     boundaries, authoritative = authority.projection_contract(transcript)
@@ -201,7 +242,9 @@ def test_accepted_memo_cues_forbid_global_boundary_drift_and_keep_exact_times(tm
     )
     assert len(result.projection.cues) == 3
     assert tuple((cue.start_ms, cue.end_ms) for cue in result.projection.cues) == (
-        (100, 1_000), (1_000, 2_000), (2_000, 3_000)
+        (100, 1_000),
+        (1_000, 2_000),
+        (2_000, 3_000),
     )
     assert all(len(cue.lines) == 1 for cue in result.projection.cues)
     assert "".join(line for cue in result.projection.cues for line in cue.lines) == "".join(
@@ -209,7 +252,9 @@ def test_accepted_memo_cues_forbid_global_boundary_drift_and_keep_exact_times(tm
     )
 
 
-def test_text_only_change_preserves_memo_cue_identity_and_cross_cue_change_fails(tmp_path: Path) -> None:
+def test_text_only_change_preserves_memo_cue_identity_and_cross_cue_change_fails(
+    tmp_path: Path,
+) -> None:
     _adapter, _request, evidence, authority, _source = _memo_fixture(tmp_path)
     before = _canonical(evidence)
     changed_tokens = list(before.tokens)
@@ -218,18 +263,30 @@ def test_text_only_change_preserves_memo_cue_identity_and_cross_cue_change_fails
     authority.assert_text_correction_preserved_boundaries(before, after)
 
     crossed = changed_tokens[1].model_copy(
-        update={"evidence_ids": tuple((*changed_tokens[1].evidence_ids, *changed_tokens[2].evidence_ids))}
+        update={
+            "evidence_ids": tuple(
+                (*changed_tokens[1].evidence_ids, *changed_tokens[2].evidence_ids)
+            )
+        }
     )
-    invalid = before.model_copy(update={"tokens": (changed_tokens[0], crossed, *changed_tokens[2:])})
+    invalid = before.model_copy(
+        update={"tokens": (changed_tokens[0], crossed, *changed_tokens[2:])}
+    )
     with pytest.raises(AdapterIntegrityError, match="crossed an accepted Memo cue"):
         authority.mandatory_cue_boundaries(invalid)
 
 
 def test_punctuation_repair_is_local_logged_and_exactly_verified() -> None:
-    base = MemoSourceCueV1(id="base-1", start_ms=0, end_ms=2_000, text="今天，我們聊", source_token_ids=("a", "b"))
+    base = MemoSourceCueV1(
+        id="base-1", start_ms=0, end_ms=2_000, text="今天，我們聊", source_token_ids=("a", "b")
+    )
     outputs = (
-        MemoAcceptedCueV1(id="out-1", start_ms=0, end_ms=1_000, text="今天，", source_token_ids=("a",)),
-        MemoAcceptedCueV1(id="out-2", start_ms=1_000, end_ms=2_000, text="我們聊", source_token_ids=("b",)),
+        MemoAcceptedCueV1(
+            id="out-1", start_ms=0, end_ms=1_000, text="今天，", source_token_ids=("a",)
+        ),
+        MemoAcceptedCueV1(
+            id="out-2", start_ms=1_000, end_ms=2_000, text="我們聊", source_token_ids=("b",)
+        ),
     )
     fixed = dict(
         recognition_manifest_sha256="1" * 64,
@@ -242,25 +299,29 @@ def test_punctuation_repair_is_local_logged_and_exactly_verified() -> None:
     )
     manifest = MemoCueBoundaryManifestV1(
         **fixed,
-        repairs=(MemoBoundaryRepairV1(
-            id="repair-1",
-            reason_code="explicit_punctuation",
-            source_cue_ids=("base-1",),
-            output_cue_ids=("out-1", "out-2"),
-            proof=MemoBoundaryRepairProofV1(punctuation="，", punctuation_scalar_offset=3),
-        ),),
+        repairs=(
+            MemoBoundaryRepairV1(
+                id="repair-1",
+                reason_code="explicit_punctuation",
+                source_cue_ids=("base-1",),
+                output_cue_ids=("out-1", "out-2"),
+                proof=MemoBoundaryRepairProofV1(punctuation="，", punctuation_scalar_offset=3),
+            ),
+        ),
     )
     assert manifest.repairs[0].reason_code == "explicit_punctuation"
     with pytest.raises(ValueError, match="explicit_punctuation"):
         MemoCueBoundaryManifestV1(
             **fixed,
-            repairs=(MemoBoundaryRepairV1(
-                id="repair-1",
-                reason_code="explicit_punctuation",
-                source_cue_ids=("base-1",),
-                output_cue_ids=("out-1", "out-2"),
-                proof=MemoBoundaryRepairProofV1(punctuation="。", punctuation_scalar_offset=3),
-            ),),
+            repairs=(
+                MemoBoundaryRepairV1(
+                    id="repair-1",
+                    reason_code="explicit_punctuation",
+                    source_cue_ids=("base-1",),
+                    output_cue_ids=("out-1", "out-2"),
+                    proof=MemoBoundaryRepairProofV1(punctuation="。", punctuation_scalar_offset=3),
+                ),
+            ),
         )
 
 
@@ -295,9 +356,7 @@ def test_normalized_handoff_constructs_content_bound_reused_receipt(
     assert result.normalized_audio == audio.resolve()
     assert result.receipt.status == "accepted"
     assert result.receipt.production_source == "reused"
-    assert result.receipt.original_production_id == (
-        f"upstream-normalized-{hash_file(audio)}"
-    )
+    assert result.receipt.original_production_id == (f"upstream-normalized-{hash_file(audio)}")
     assert result.receipt.normalized_duration_ms == 1_000
 
 
@@ -310,7 +369,9 @@ def test_production_composition_is_memo_primary_and_corroborators_are_opt_in(
         "PODCAST_SUBTITLE_V2_NORMALIZED_HANDOFF_MANIFEST": str(tmp_path / "handoff.json"),
         "PODCAST_SUBTITLE_V2_MEMO_RECOGNITION_MANIFEST": str(tmp_path / "memo-recognition.json"),
         "PODCAST_SUBTITLE_V2_MEMO_RECOGNITION_SOURCE_EXPORT": str(tmp_path / "memo.stdout"),
-        "PODCAST_SUBTITLE_V2_MEMO_RECOGNITION_ACCEPTANCE_RECEIPT": str(tmp_path / "recognition-acceptance.json"),
+        "PODCAST_SUBTITLE_V2_MEMO_RECOGNITION_ACCEPTANCE_RECEIPT": str(
+            tmp_path / "recognition-acceptance.json"
+        ),
         "PODCAST_SUBTITLE_V2_MEMO_CUE_SOURCE_EXPORT": str(tmp_path / "memo-gui.srt"),
         "PODCAST_SUBTITLE_V2_MEMO_CUE_ACCEPTANCE_RECEIPT": str(tmp_path / "cue-acceptance.json"),
         "PODCAST_SUBTITLE_V2_TEXT_AUDIT_MODEL": "gpt-5.6-sol",
@@ -372,13 +433,9 @@ def test_module_projects_corrected_text_via_memo_srt_alignment_and_replays_autho
         )
 
     module = build_module()
-    created = module.create(
-        CreateRequest(episode_id="zheng-minimized", source_audio=source)
-    )
+    created = module.create(CreateRequest(episode_id="zheng-minimized", source_audio=source))
     target = created.transcript.spans[-1]
-    selected = tuple(
-        token for token in created.transcript.tokens if token.id in target.token_ids
-    )
+    selected = tuple(token for token in created.transcript.tokens if token.id in target.token_ids)
     corrected = module.resolve(
         ResolveRequest(
             created.generation_id,
@@ -422,12 +479,12 @@ def test_module_projects_corrected_text_via_memo_srt_alignment_and_replays_autho
     assert isinstance(corrected, AcceptedGeneration)
     assert "正甲" in "".join(token.text for token in corrected.transcript.tokens)
 
-    verified = module.project(
-        ProjectRequest(corrected.generation_id, HORIZONTAL_16X9)
+    verified = module.project(ProjectRequest(corrected.generation_id, HORIZONTAL_16X9))
+    assert tuple((cue.start_ms, cue.end_ms) for cue in verified.projection.cues) == (
+        (100, 1_000),
+        (1_000, 2_000),
+        (2_000, 3_000),
     )
-    assert tuple(
-        (cue.start_ms, cue.end_ms) for cue in verified.projection.cues
-    ) == ((100, 1_000), (1_000, 2_000), (2_000, 3_000))
     assert len(verified.projection.cues) == 3
     assert all(len(cue.lines) == 1 for cue in verified.projection.cues)
     assert "正甲" in verified.srt_bytes.decode("utf-8")
@@ -448,9 +505,7 @@ def test_module_projects_corrected_text_via_memo_srt_alignment_and_replays_autho
             return self._delegate.projection_contract(transcript)
 
     drifted = build_module(
-        boundary_factory=lambda stored_evidence: DriftedAuthority(
-            authority_for(stored_evidence)
-        )
+        boundary_factory=lambda stored_evidence: DriftedAuthority(authority_for(stored_evidence))
     )
     with pytest.raises(GenerationIsolationError, match="lineage is not reproducible"):
         drifted._verify_projection_directory(

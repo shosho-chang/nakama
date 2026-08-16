@@ -12,11 +12,11 @@ from agents.brook.podcast_subtitles.errors import (
     ProjectionUnsatisfiableError,
     QualityGateError,
 )
+from agents.brook.podcast_subtitles.profiles import HORIZONTAL_16X9
 from agents.brook.podcast_subtitles.quality import (
     assert_projection_quality,
     evaluate_projection,
 )
-from agents.brook.podcast_subtitles.profiles import HORIZONTAL_16X9
 from agents.brook.podcast_subtitles.semantic_projection import (
     _build_projection_index,
     _cue_candidate,
@@ -78,17 +78,11 @@ def _profile(**overrides: object) -> ProjectionProfile:
     }
     translated = dict(overrides)
     if "target_line_width" in translated:
-        translated["target_line_display_columns"] = 2 * float(
-            translated.pop("target_line_width")
-        )
+        translated["target_line_display_columns"] = 2 * float(translated.pop("target_line_width"))
     if "hard_line_width" in translated:
-        translated["hard_line_display_columns"] = 2 * float(
-            translated.pop("hard_line_width")
-        )
+        translated["hard_line_display_columns"] = 2 * float(translated.pop("hard_line_width"))
     if "max_chars_per_second" in translated:
-        translated["max_reading_units_per_second"] = translated.pop(
-            "max_chars_per_second"
-        )
+        translated["max_reading_units_per_second"] = translated.pop("max_chars_per_second")
     values.update(translated)
     return ProjectionProfile(**values)
 
@@ -622,9 +616,7 @@ def test_natural_sixty_second_silence_stays_empty_and_passes_quality() -> None:
 
     assert [cue.end_ms - cue.start_ms for cue in result.cues] == [800, 800]
     assert result.cues[1].start_ms - result.cues[0].end_ms == 59_600
-    assert all(
-        cue.end_ms - cue.start_ms < profile.max_cue_duration_ms for cue in result.cues
-    )
+    assert all(cue.end_ms - cue.start_ms < profile.max_cue_duration_ms for cue in result.cues)
     assert report.passed
     assert report.metrics["long_intercue_gap_count"] == 1.0
     assert report.metrics["max_observed_intercue_gap_ms"] == 59_600.0
@@ -647,9 +639,7 @@ def test_line_wrap_prefers_soft_semantic_seam_over_balanced_internal_cut() -> No
         hard_line_width=9,
         semantic_break_penalty=4.0,
     )
-    forbidden, forbidden_line, crossing, ending = _validate_semantic_units(
-        tokens, (soft_unit,)
-    )
+    forbidden, forbidden_line, crossing, ending = _validate_semantic_units(tokens, (soft_unit,))
 
     candidate = _cue_candidate(
         tokens,
@@ -932,8 +922,7 @@ def test_long_name_is_one_cue_but_may_wrap_across_physical_lines() -> None:
     assert len(result.cues[0].lines) == 2
     assert "".join(result.cues[0].lines) == "".join(token.text for token in tokens)
     assert all(
-        _char_count(line) <= profile.hard_line_display_columns
-        for line in result.cues[0].lines
+        _char_count(line) <= profile.hard_line_display_columns for line in result.cues[0].lines
     )
 
 
@@ -1404,6 +1393,4 @@ def test_forced_aligned_replacement_may_cross_cues_only_at_exact_boundaries() ->
     )
 
     assert len(result.cues) == 3
-    assert tuple(cue.token_ids for cue in result.cues) == tuple(
-        (token.id,) for token in tokens
-    )
+    assert tuple(cue.token_ids for cue in result.cues) == tuple((token.id,) for token in tokens)

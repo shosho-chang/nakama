@@ -45,27 +45,6 @@ from agents.brook.podcast_subtitles.ports import (
     SemanticAnalysisRequest,
     SemanticAnalyzer,
 )
-try:
-    from agents.brook.podcast_subtitles.adapters.auphonic import AuphonicNormalizerAdapter
-    from shared.auphonic import (
-        AuphonicAlignmentResult,
-        AuphonicNormalizationResult,
-        AuphonicSubmittedParameters,
-    )
-except ImportError:
-    # Subtitle V2 no longer owns or changes the mature upstream Auphonic seam.
-    # These retained-adapter regression tests only run in a checkout that also
-    # carries the separate shared.auphonic implementation revision.
-    AuphonicNormalizerAdapter = None  # type: ignore[assignment,misc]
-    AuphonicAlignmentResult = None  # type: ignore[assignment,misc]
-    AuphonicNormalizationResult = None  # type: ignore[assignment,misc]
-    AuphonicSubmittedParameters = None  # type: ignore[assignment,misc]
-
-
-requires_legacy_auphonic_adapter = pytest.mark.skipif(
-    AuphonicNormalizerAdapter is None,
-    reason="legacy Auphonic adapter is outside the Memo-first Subtitle V2 boundary",
-)
 from shared.schemas.podcast_subtitles_v2 import (
     EMPTY_REFERENCE_EVIDENCE_HASH,
     ArtifactDigest,
@@ -89,6 +68,30 @@ from shared.schemas.podcast_subtitles_v2 import (
 )
 from tests.agents.brook.podcast_subtitles.reference_authority_fixtures import (
     reference_authority_fixture,
+)
+
+try:
+    from agents.brook.podcast_subtitles.adapters.auphonic import (  # noqa: I001
+        AuphonicNormalizerAdapter,
+    )
+    from shared.auphonic import (
+        AuphonicAlignmentResult,
+        AuphonicNormalizationResult,
+        AuphonicSubmittedParameters,
+    )
+except ImportError:
+    # Subtitle V2 no longer owns or changes the mature upstream Auphonic seam.
+    # These retained-adapter regression tests only run in a checkout that also
+    # carries the separate shared.auphonic implementation revision.
+    AuphonicNormalizerAdapter = None  # type: ignore[assignment,misc]
+    AuphonicAlignmentResult = None  # type: ignore[assignment,misc]
+    AuphonicNormalizationResult = None  # type: ignore[assignment,misc]
+    AuphonicSubmittedParameters = None  # type: ignore[assignment,misc]
+
+
+requires_legacy_auphonic_adapter = pytest.mark.skipif(
+    AuphonicNormalizerAdapter is None,
+    reason="legacy Auphonic adapter is outside the Memo-first Subtitle V2 boundary",
 )
 
 H0 = "0" * 64
@@ -283,11 +286,7 @@ def _transcript() -> CanonicalTranscript:
         policy_hash=H3,
         acceptance_policy={"permit_unresolved_low_risk": True},
         tokens=tokens,
-        spans=(
-            CanonicalSpan(
-                id="span-1", token_ids=("ct-1", "ct-2"), start_ms=100, end_ms=900
-            ),
-        ),
+        spans=(CanonicalSpan(id="span-1", token_ids=("ct-1", "ct-2"), start_ms=100, end_ms=900),),
         review_issues=(
             ReviewIssue(
                 id="issue-1",
@@ -895,11 +894,14 @@ def test_whisperx_adapter_is_lazy_and_runner_output_uses_same_contract(tmp_path:
     envelope = json.loads(raw_path.read_text(encoding="utf-8"))
     assert envelope["identity_hash"] == adapter.identity.content_hash
     assert envelope["provider_output"]["language"] == "zh"
-    assert adapter.verify(
-        evidence,
-        request=_request(audio),
-        raw_output=raw_path.read_bytes(),
-    ) == evidence
+    assert (
+        adapter.verify(
+            evidence,
+            request=_request(audio),
+            raw_output=raw_path.read_bytes(),
+        )
+        == evidence
+    )
     assert calls == [audio], "raw replay must not call the provider runner"
 
 
