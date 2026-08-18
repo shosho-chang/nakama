@@ -48,6 +48,7 @@ from agents.brook.script_video.render_workers.thumbnail_worker import (
 )
 from shared import thumbnail_funnel
 from shared.config import get_vault_path
+from shared.cutout_casting import CutoutCastingError, pick_youtube_host_by_pose
 from shared.cutout_library import (
     EmotionLookupError,
     pick_podcast_guest,
@@ -193,6 +194,7 @@ async def thumbnail_render(
     # PR5 Unsplash integration. The composition handles bg_data_url="" by hiding
     # the <img> and falling back to the palette gradient.
     bg_path = None  # PR5: replace with Unsplash query / AI gen driven by parsed.bg
+    cutout_casting = None
 
     try:
         if entry.content_type == "podcast":
@@ -215,8 +217,15 @@ async def thumbnail_render(
             )
         else:
             try:
-                cutout_path = pick_youtube_host(parsed.emotion_key, vault)
+                pose_selection = pick_youtube_host_by_pose(parsed, vault)
+                if pose_selection is None:
+                    cutout_path = pick_youtube_host(parsed.emotion_key, vault)
+                else:
+                    cutout_path = pose_selection.path
+                    cutout_casting = pose_selection.to_manifest()
             except FileNotFoundError as exc:
+                raise HTTPException(status_code=412, detail=str(exc)) from exc
+            except CutoutCastingError as exc:
                 raise HTTPException(status_code=412, detail=str(exc)) from exc
             await render_youtube_still(
                 title_hook=parsed.hook,
@@ -240,6 +249,7 @@ async def thumbnail_render(
             "filename": out_png.name,
             "parsed_idea": parsed.__dict__,
             "director_notes": director_notes,
+            "cutout_casting": cutout_casting,
         }
     )
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")

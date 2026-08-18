@@ -35,6 +35,44 @@ class TestStripTailPunct:
 
 
 class TestFinalizeCues:
+    def test_leading_comma_is_owned_by_preceding_cue_without_retiming(self):
+        cues = [
+            (34.000, 40.064, "就是負責原本的這個任務的規模就已經差不多了"),
+            (40.064, 42.000, "，所以那就想說，好 那我們要做一個新的格式"),
+        ]
+
+        out, stats = finalize_cues(cues)
+
+        assert out == [
+            (34.000, 40.064, "就是負責原本的這個任務的規模就已經差不多了"),
+            (40.064, 42.000, "所以那就想說，好 那我們要做一個新的格式"),
+        ]
+        assert stats["leading_commas_rehomed"] == 1
+
+    def test_first_cue_leading_ascii_comma_is_dropped_as_orphan_display_punctuation(self):
+        out, stats = finalize_cues([(0.0, 1.0, ",開場直接進主題")])
+
+        assert out == [(0.0, 1.0, "開場直接進主題")]
+        assert stats["leading_commas_dropped"] == 1
+
+    def test_leading_sentence_punctuation_is_not_left_on_next_cue(self):
+        cues = [
+            (0.0, 1.0, "上一句"),
+            (1.0, 2.0, "。下一句"),
+            (2.0, 3.0, "！？最後一句"),
+        ]
+
+        out, stats = finalize_cues(cues)
+
+        assert [cue[2] for cue in out] == ["上一句", "下一句", "最後一句"]
+        assert stats["leading_punct_rehomed"] == 3
+
+    def test_first_cue_leading_period_is_dropped(self):
+        out, stats = finalize_cues([(0.0, 1.0, "。開場直接進主題")])
+
+        assert out == [(0.0, 1.0, "開場直接進主題")]
+        assert stats["leading_punct_dropped"] == 1
+
     def test_gap_closed_and_stripped(self):
         cues = [(0.0, 1.0, "第一句。"), (1.5, 2.0, "第二句")]
         out, stats = finalize_cues(cues)
