@@ -30,6 +30,9 @@ _SLUG_MAP: dict[str, str] = {
     # ── OpenAI（Slice 4 會一併進 KNOWN_MODELS；transport map 先備好）─────────
     "gpt-5": "openai/gpt-5",
     "gpt-5-mini": "openai/gpt-5-mini",
+    # GPT-5.6 Terra — balanced tier（2026-08-17 起可用），Franky / memory
+    # reflection 換 OpenAI transport 用的預設選擇。
+    "gpt-5.6-terra": "openai/gpt-5.6-terra",
 }
 
 

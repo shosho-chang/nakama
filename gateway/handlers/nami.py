@@ -68,6 +68,8 @@ _SDK_BUDGET_ENV = "NAMI_SDK_MAX_BUDGET_USD"
 _SDK_DEFAULT_BUDGET_USD = 1.0
 _SDK_AUTO_MEMORY_ENV = "NAMI_AUTO_MEMORY_DIR"
 _SDK_SKILLS_ENV = "NAMI_SKILLS"
+# 設了就讓 SDK 子進程走訂閱額度（見 _sdk_auth_env）。未設 = 維持 API key 計費。
+_SDK_OAUTH_TOKEN_ENV = "NAMI_SDK_OAUTH_TOKEN"
 
 
 def _use_agent_sdk() -> bool:
@@ -112,6 +114,28 @@ def _sdk_settings() -> str | None:
     dir_path = Path(auto_dir)
     dir_path.mkdir(parents=True, exist_ok=True)
     return json.dumps({"autoMemoryDirectory": str(dir_path)}, ensure_ascii=False)
+
+
+def _sdk_auth_env() -> dict[str, str]:
+    """訂閱認證覆寫（只作用在 SDK 子進程，gateway 行程本身不受影響）。
+
+    設了 ``NAMI_SDK_OAUTH_TOKEN`` → Nami 這條 SDK 路徑改吃 Claude 訂閱額度，
+    不再消耗 Anthropic API credit。**同時把子進程的 ``ANTHROPIC_API_KEY`` 清空**：
+    兩個憑證並存時 CLI 的優先序沒有文件保證，留著等於把「走訂閱」變成賭局。
+    清空只影響 SDK 子進程 —— 同一個 gateway 行程內的 Sanji / Zoro / 其他
+    ``shared.llm`` 呼叫仍讀得到原本的 key（``ClaudeAgentOptions.env`` 只餵給
+    subprocess，見 SDK ``subprocess_cli.py`` 的 ``process_env`` 合併順序）。
+
+    未設 → 回空 dict，行為與加這個 flag 之前逐位元相同。
+
+    2026-08-18 實測背書：拔掉 API key、餵無效 OAuth token 時 CLI 回
+    ``401 OAuth access token is invalid`` —— 證明 SDK 確實會走 OAuth 認證路徑
+    （推翻 2026-07-29 遷移計畫「Agent SDK 不支援 subscription」的記載）。
+    """
+    token = os.environ.get(_SDK_OAUTH_TOKEN_ENV)
+    if not token:
+        return {}
+    return {"CLAUDE_CODE_OAUTH_TOKEN": token, "ANTHROPIC_API_KEY": ""}
 
 
 _WEEKDAYS_ZH = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"]
@@ -1268,6 +1292,7 @@ class NamiHandler(BaseHandler):
             setting_sources=[],  # None 會載入全部本機設定（S0-Q1 附帶發現）——明確給空
             skills=_sdk_skills(),
             settings=_sdk_settings(),
+            env=_sdk_auth_env(),  # 訂閱認證覆寫（未設 token 時是空 dict = 零改變）
             resume=resume_session,
             hooks={
                 "PreToolUse": [
