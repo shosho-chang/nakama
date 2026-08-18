@@ -142,6 +142,98 @@ class TestRender:
         assert manifest["renders"][0]["director_notes"] == "shift face left"
         assert manifest["renders"][0]["idea_index"] == 1
 
+    def test_render_uses_pose_manifest_when_available(self, with_ideas, tmp_path, monkeypatch):
+        cutout = tmp_path / "Attachments" / "cutouts" / "shosho" / "thoughtful" / "1.png"
+        manifest_path = tmp_path / "pose_manifest.json"
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "shosho_cutout_pose_manifest.v1",
+                    "entries": [
+                        {
+                            "cutout_id": "C_SAFE",
+                            "source_path": str(cutout),
+                            "vault_relative_path": "Attachments/cutouts/shosho/thoughtful/1.png",
+                            "original_emotion_folder": "thoughtful",
+                            "tags": {
+                                "body_angle": "front",
+                                "gaze": "camera",
+                                "expression_family": "thoughtful",
+                                "intensity": "subtle",
+                                "mouth": "slight_smile",
+                                "brow": "relaxed",
+                                "hands": "chin",
+                                "crop": "waist",
+                                "credibility": "high",
+                            },
+                            "use_context": ["ali_warm_explainer", "evidence_review"],
+                            "avoid_context": ["warning"],
+                            "confidence": 0.9,
+                            "picker_policy": "eligible",
+                        },
+                        {
+                            "cutout_id": "C_LOUD",
+                            "source_path": str(
+                                tmp_path
+                                / "Attachments"
+                                / "cutouts"
+                                / "shosho"
+                                / "surprised"
+                                / "1.png"
+                            ),
+                            "vault_relative_path": "Attachments/cutouts/shosho/surprised/1.png",
+                            "original_emotion_folder": "surprised",
+                            "tags": {
+                                "body_angle": "front",
+                                "gaze": "camera",
+                                "expression_family": "mild_surprise",
+                                "intensity": "extreme",
+                                "mouth": "open_wide",
+                                "brow": "raised",
+                                "hands": "hands_on_head",
+                                "crop": "waist",
+                                "credibility": "low",
+                            },
+                            "use_context": ["comedy_only"],
+                            "avoid_context": ["ali_warm_explainer", "evidence_review"],
+                            "confidence": 0.95,
+                            "picker_policy": "manual_only",
+                        },
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("NAKAMA_CUTOUT_POSE_MANIFEST", str(manifest_path))
+        captured: dict[str, Path] = {}
+
+        async def fake_render(*, cutout_path, out_png, **_kw):
+            captured["cutout_path"] = cutout_path
+            out_png.parent.mkdir(parents=True, exist_ok=True)
+            out_png.write_bytes(b"\x89PNG\r\n\x1a\nx")
+            return out_png
+
+        monkeypatch.setattr(
+            "thousand_sunny.routers.bridge_project_thumbnails.render_youtube_still",
+            fake_render,
+        )
+
+        project_slug = next((tmp_path / "Projects").glob("*.md")).stem
+        r = with_ideas.post(
+            f"/bridge/projects/{project_slug}/thumbnail/render",
+            data={"idea_index": "1", "director_notes": ""},
+        )
+        assert r.status_code == 200, r.text
+        assert captured["cutout_path"] == cutout
+
+        from thousand_sunny.routers.bridge_project_thumbnails import _thumbnails_dir
+
+        slug_dir = _thumbnails_dir() / project_slug / "runs"
+        ts_dirs = list(slug_dir.iterdir())
+        manifest = json.loads((ts_dirs[0] / "manifest.json").read_text(encoding="utf-8"))
+        assert manifest["renders"][0]["cutout_casting"]["selected"]["cutout_id"] == "C_SAFE"
+
     def test_render_index_out_of_range_400(self, with_ideas):
         r = with_ideas.post(
             "/bridge/projects/肌酸的妙用/thumbnail/render",
