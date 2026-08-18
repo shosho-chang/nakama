@@ -23,13 +23,13 @@
     <div><dt>REVISION</dt><dd>{{ manifest.revision }}</dd></div>
     <div><dt>PAGES</dt><dd>{{ rows|length }}</dd></div>
     <div><dt>MODE</dt><dd>{{ manifest.publish_compatibility }}</dd></div>
-    <div><dt>REVIEWS</dt><dd>{{ decision_count }}</dd></div>
-    <div><dt>GATE</dt><dd>{{ 'APPROVED' if approved else 'OPEN' }}</dd></div>
+    <div><dt>REVIEWS</dt><dd id="review-count">{{ decision_count }}</dd></div>
+    <div><dt>GATE</dt><dd id="review-gate-status">{{ 'APPROVED' if approved else 'OPEN' }}</dd></div>
   </dl>
 </header>
 
 <main class="carousel-workbench">
-  <form id="carousel-review-form" method="post" action="/bridge/ig-cards/{{ episode_slug }}/decide">
+  <form id="carousel-review-form" method="post" action="/bridge/ig-cards/{{ episode_slug }}/decide" data-manifest-sha="{{ manifest_sha256 }}">
     <input type="hidden" name="manifest_sha256" value="{{ manifest_sha256 }}">
     <section class="carousel-grid" aria-label="Podcast Carousel 全部卡片">
     {% for row in rows %}
@@ -57,8 +57,8 @@
     <footer class="carousel-actions">
       <p><strong>整組通過規則：</strong>同一 revision 的每一張都必須 Approve。</p>
       <div>
-        {% if saved %}<span class="carousel-notice" role="status" aria-live="polite">第 {{ decision_count }} 輪 Review 已儲存。</span>{% endif %}
-        <button class="sho-btn" type="submit" data-saving-label="儲存中…">儲存這一輪 Review</button>
+        <span id="review-save-status" class="carousel-notice" role="status" aria-live="polite" {% if not saved %}hidden{% endif %}>{% if saved %}第 {{ decision_count }} 輪 Review 已儲存。{% endif %}</span>
+        <button class="sho-btn" type="submit" data-idle-label="儲存這一輪 Review" data-saving-label="儲存中…">儲存這一輪 Review</button>
       </div>
     </footer>
   </form>
@@ -89,11 +89,106 @@
 document.querySelectorAll('[data-evidence-target]').forEach((button) => {
   button.addEventListener('click', () => document.getElementById(button.dataset.evidenceTarget).showModal());
 });
-document.getElementById('carousel-review-form').addEventListener('submit', (event) => {
-  const submitButton = event.submitter;
-  if (!submitButton) return;
+
+const reviewForm = document.getElementById('carousel-review-form');
+const submitButton = reviewForm.querySelector('button[type="submit"]');
+const saveStatus = document.getElementById('review-save-status');
+const reviewCount = document.getElementById('review-count');
+const gateStatus = document.getElementById('review-gate-status');
+const draftKey = `nakama.carousel-review-draft.v1:${reviewForm.dataset.manifestSha}`;
+let saving = false;
+
+function setSaveStatus(message, state) {
+  saveStatus.hidden = false;
+  saveStatus.textContent = message;
+  saveStatus.dataset.state = state;
+}
+
+function readDraftValues() {
+  const values = {};
+  for (const [name, value] of new FormData(reviewForm).entries()) {
+    if (name !== 'manifest_sha256') values[name] = String(value);
+  }
+  return values;
+}
+
+function persistDraft() {
+  const draft = {values: readDraftValues(), savedAt: Date.now()};
+  sessionStorage.setItem(draftKey, JSON.stringify(draft));
+  const time = new Date(draft.savedAt).toLocaleTimeString('zh-TW', {hour12: false});
+  setSaveStatus(`本機草稿已暫存 ${time}`, 'draft');
+}
+
+function restoreDraft() {
+  const rawDraft = sessionStorage.getItem(draftKey);
+  if (!rawDraft) return;
+  try {
+    const draft = JSON.parse(rawDraft);
+    for (const [name, value] of Object.entries(draft.values || {})) {
+      const controls = [...reviewForm.elements].filter((control) => control.name === name);
+      for (const control of controls) {
+        if (control.type === 'radio') control.checked = control.value === value;
+        else control.value = value;
+      }
+    }
+    setSaveStatus('已還原 refresh 前未送出的本機草稿。', 'draft');
+  } catch (error) {
+    sessionStorage.removeItem(draftKey);
+  }
+}
+
+reviewForm.addEventListener('input', persistDraft);
+reviewForm.addEventListener('change', persistDraft);
+restoreDraft();
+
+reviewForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (saving) return;
+  saving = true;
+  persistDraft();
+  submitButton.disabled = true;
   submitButton.textContent = submitButton.dataset.savingLabel;
   submitButton.setAttribute('aria-busy', 'true');
+
+  try {
+    const response = await fetch(reviewForm.action, {
+      method: 'POST',
+      body: new FormData(reviewForm),
+      credentials: 'same-origin',
+    });
+    if (!response.ok) {
+      const contentType = response.headers.get('content-type') || '';
+      const detail = contentType.includes('application/json')
+        ? (await response.json()).detail
+        : await response.text();
+      throw new Error(detail || `HTTP ${response.status}`);
+    }
+    const savedUrl = new URL(response.url);
+    if (!response.redirected || savedUrl.searchParams.get('saved') !== '1') {
+      throw new Error('伺服器沒有確認這一輪 Review 已寫入。');
+    }
+
+    sessionStorage.removeItem(draftKey);
+    const nextCount = Number(reviewCount.textContent) + 1;
+    reviewCount.textContent = String(nextCount);
+    const allApproved = [...reviewForm.querySelectorAll('.carousel-card')].every(
+      (card) => card.querySelector('input[type="radio"]:checked')?.value === 'approved'
+    );
+    gateStatus.textContent = allApproved ? 'APPROVED' : 'OPEN';
+    setSaveStatus(`第 ${nextCount} 輪 Review 已儲存。`, 'saved');
+    history.replaceState(null, '', response.url);
+    submitButton.textContent = '已儲存';
+    window.setTimeout(() => {
+      submitButton.textContent = submitButton.dataset.idleLabel;
+    }, 1200);
+  } catch (error) {
+    setSaveStatus(`儲存失敗：${error.message}`, 'error');
+    submitButton.textContent = '儲存失敗，請重試';
+  } finally {
+    saving = false;
+    submitButton.disabled = false;
+    submitButton.removeAttribute('aria-busy');
+  }
 });
 </script>
 </body>

@@ -222,6 +222,17 @@ def test_saved_board_names_review_round_and_exposes_saving_state(client):
     assert 'data-saving-label="儲存中…"' in saved_board.text
 
 
+def test_review_board_persists_refresh_draft_and_submits_without_navigation(client):
+    app, _ = client
+    response = app.get(f"/bridge/ig-cards/{EPISODE}")
+
+    assert "sessionStorage.setItem" in response.text
+    assert "sessionStorage.getItem" in response.text
+    assert "fetch(reviewForm.action" in response.text
+    assert 'id="review-save-status"' in response.text
+    assert 'id="review-count"' in response.text
+
+
 def test_media_returns_verified_png(client):
     app, _ = client
     response = app.get(f"/bridge/ig-cards/{EPISODE}/media/cover")
