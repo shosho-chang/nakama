@@ -131,8 +131,7 @@ async def _q1_one_run(i: int) -> bool:
     )
     keys = sorted(mp.keys()) if isinstance(mp, dict) else None
     print(
-        f"run {i}: invoked={'mapping' in box} valid={ok} concepts={keys} "
-        f"{time.time() - t0:.0f}s",
+        f"run {i}: invoked={'mapping' in box} valid={ok} concepts={keys} {time.time() - t0:.0f}s",
         flush=True,
     )
     return ok
@@ -189,9 +188,7 @@ def q2() -> None:
 
 
 def _count_cli() -> int:
-    r = subprocess.run(
-        ["pgrep", "-c", "-f", "_bundled/claude"], capture_output=True, text=True
-    )
+    r = subprocess.run(["pgrep", "-c", "-f", "_bundled/claude"], capture_output=True, text=True)
     return int(r.stdout.strip() or 0)
 
 
