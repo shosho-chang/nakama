@@ -7,7 +7,7 @@ Brook 負責把已存在的 source material 轉換成可供各 channel 製作的
 ### Podcast Carousel
 
 **Podcast Carousel Template**:
-Podcast episode carousel 的純視覺版型，固定頁型骨架為封面、主要 Hook、由內容重點與 Re-hook 組成的中段序列、來賓金句、CTA；模板內文字全部是 placeholder，不是任何正式產出的內容來源。
+Podcast episode carousel 的純視覺版型，固定頁型骨架為封面、單一主要 Hook、有序內容重點、來賓金句、CTA；模板內文字全部是 placeholder，不是任何正式產出的內容來源。
 _Avoid_: Carousel copy、文案模板
 
 **Podcast Carousel Copy Spec**:
@@ -27,7 +27,7 @@ _Avoid_: Display quote、template copy
 _Avoid_: Verbatim quote、raw transcript
 
 **Social Editorial Voice**:
-社群經理以訪談內容為依據，為 IG 受眾撰寫封面、Hook、Re-hook、內容重點與 CTA 時使用的節目／品牌編輯聲音。可以自然地對受眾使用「你」，但不得讓編輯文案看起來像主持人或來賓未曾說過的第一人稱原話。
+社群經理以訪談內容為依據，為 IG 受眾撰寫封面、Hook、內容重點與 CTA 時使用的節目／品牌編輯聲音。可以自然地對受眾使用「你」，但不得讓編輯文案看起來像主持人或來賓未曾說過的第一人稱原話。
 _Avoid_: Transcript voice、unattributed first-person quote、guest impersonation
 
 **Internal Editorial Panel**:
@@ -54,25 +54,17 @@ _Avoid_: Single-topic post、exhaustive transcript summary
 為特定 channel 的受眾、閱讀節奏與語言重新組織後，可以脫離原始媒介獨立成立並發布的內容資產。
 _Avoid_: Transcript excerpt、episode summary、promotional by-product
 
-**Re-hook**:
-出現在內容序列中、用來開啟另一組重要內容或重新抓住注意力的第二或第三個 Hook。
-_Avoid_: Takeaway heading、decorative divider
-
 **Hook Copy**:
 P2 主要 Hook 的語意資料，由一個不需訪談背景也能理解的受眾問題 `question`、該問題內唯一一段完整原字串 `emphasis`，以及說明繼續滑會得到什麼的 `bridge` 組成。`bridge` 描述 episode payoff，不是固定來賓履歷欄。
 _Avoid_: Guest bio block、template placeholder、context-dependent question
-
-**Re-hook Copy**:
-與 **Hook Copy** 共用 P2 視覺 layout 與 `question`／`emphasis`／`bridge` 欄位，但 `bridge` 指向接下來一組內容重點的 payoff，不重複整集 payoff。
-_Avoid_: Repeated main hook、section label、episode-wide bridge
 
 **Quote Layout Variant**:
 Podcast Carousel 倒數第二頁的 deterministic layout 選型：A 為單一來賓金句，B 為主持人提問加上直接相連的來賓回答。
 _Avoid_: Random quote layout、unpaired Q&A、renderer-selected variant
 
 **Content Sequence**:
-主要 Hook 與來賓金句之間的有序頁面序列，由內容重點與零個以上獨立佔頁的 **Re-hook** 組成。
-_Avoid_: Points list、unordered takeaways
+主要 Hook 與來賓金句之間的有序內容重點；每一點都必須承接主要 Hook 的 episode payoff。
+_Avoid_: Re-hook、unordered takeaways
 
 **Publish Compatibility**:
 依總頁數標示 Podcast Carousel 的發布能力：10 頁內為 `api_compatible`，11–20 頁為 `manual_only`。
@@ -122,14 +114,11 @@ _Avoid_: Second authoring source、mutable latest template、untracked template 
 - 有 **Carousel Editorial Direction** 時 Copy Skill 必須遵守其內容取捨與編排方向；沒有時 Copy Skill 自行建立 **Episode Highlight Arc**，不能因此停止。
 - 一份 **Podcast Carousel Copy Spec** 表達一條 **Episode Highlight Arc**，可以涵蓋訪談中的多個主要主題。
 - Podcast Carousel 是 IG context 裡的 **Channel-native Asset**；它不是依逐字稿順序排列的摘要，也不只是 Podcast 宣傳附圖。
-- 封面、Hook、Re-hook、內容重點與 CTA 使用 **Social Editorial Voice**；來賓金句保留來賓聲音並清楚標示歸屬。若內容頁需要使用主持人或來賓的第一人稱觀點，必須標示說話者並連回 **Transcript Evidence**。
-- 一份 **Podcast Carousel Copy Spec** 包含一個封面、一個主要 Hook、一個以上內容重點、零個以上 **Re-hook**、一個來賓金句與一個 CTA。
+- 封面、Hook、內容重點與 CTA 使用 **Social Editorial Voice**；來賓金句保留來賓聲音並清楚標示歸屬。若內容頁需要使用主持人或來賓的第一人稱觀點，必須標示說話者並連回 **Transcript Evidence**。
+- 一份 **Podcast Carousel Copy Spec** 包含一個封面、一個主要 Hook、一個以上有序內容重點、一個來賓金句與一個 CTA；v1 不接受第二個 Hook 或 Re-hook。
 - 內容重點數量由 **Episode Highlight Arc** 的實際內容完整度決定；4 點或 6 點只是常見案例，不是 schema、template 或 editorial hard limit。不得為了湊數加入弱點，也不得為了壓頁數刪除足以代表整集的重要主題。
-- **Content Sequence** 保存每張中段頁面的順序；內容重點與 **Re-hook** 不得拆成兩個失去相對位置的陣列。
-- **Re-hook** 獨立佔一頁，可在 **Content Sequence** 中開啟第二或第三組重點；它不計為內容重點，也不是內容重點的標題替代品。
-- **Re-hook** 只在即將轉入另一個重要主題、完成一段論述後需要重建注意力，或下一段有新的反差／問題／懸念時插入；它必須開啟下一段內容，不得只是改寫主要 Hook，也不得按固定頁數配額硬插。
-- 主要 Hook 使用 **Hook Copy**；每個 **Re-hook** 使用 **Re-hook Copy**。兩者欄位相同但作用域不同，renderer 只負責 fit 與視覺套用，不替 Copy Skill 補寫欄位。
-- v1 的主要 Hook 與所有 **Re-hook** 共用同一個已核准的 Hook 視覺版型；是否新增 Re-hook 視覺 variant 必須等真實 carousel pilot 後另行 review。
+- **Content Sequence** 保存每張中段內容重點的順序；不得用第二個 Hook、Re-hook 或裝飾性 divider 打斷序列。
+- 主要 Hook 使用 **Hook Copy**，並為後續所有 points 建立清楚一致的 episode payoff；renderer 只負責 fit 與視覺套用，不替 Copy Skill補寫欄位。
 - 一份 **Podcast Carousel Copy Spec** 最多 20 頁；超過 20 頁必須重新篩選內容。
 - 主版本進入 **Podcast Carousel Render** 前必須通過 **Internal Editorial Panel**：reviewer agent 獨立盲審，主 agent 逐項查證其發現是否能由 Copy Spec、Transcript Evidence 與乾淨逐字稿支持，再收斂成修訂。
 - **Internal Editorial Panel** 固定包含三個互不替代的 reviewer：**IG Audience Lens**、**Episode Editorial Lens**、**Brand and Evidence Lens**；三者獨立輸出 findings，不以平均分或多數決消除少數 lens 的有效問題。
@@ -168,5 +157,5 @@ _Avoid_: Second authoring source、mutable latest template、untracked template 
 ## Flagged ambiguities
 
 - 舊程式使用 `IGRenderer` 同時指涉文案生成；本 context 將文案萃取稱為 **Podcast Carousel Copy Spec**，將生圖階段稱為 **Podcast Carousel Render**，避免兩者混淆。
-- 「一份 carousel 只講一個主軸」已否決；Podcast Carousel 應涵蓋整集訪談中多個吸引人重點，必要時用 **Re-hook** 重整節奏。
+- 「一份 carousel 只講一個主軸」已否決；Podcast Carousel 應以單一 Hook 帶出整集訪談中多個吸引人重點，不使用 Re-hook 重整節奏。
 - 舊 ADR-014 把 IG 放在 Blog／FB 同一個 RepurposeEngine fan-out；Podcast Carousel v1 已決定採獨立 **Podcast Carousel Flow**，不再以該 fan-out 作 canonical entrypoint。

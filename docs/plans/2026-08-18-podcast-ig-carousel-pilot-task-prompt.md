@@ -5,6 +5,9 @@
 > Domain contract: `agents/brook/CONTEXT.md`  
 > Decisions: ADR-063、ADR-064
 
+> **Contract update (2026-08-18):** 本計畫早期允許 Re-hook 的驗收條件已被 EP120 實圖
+> review 決策取代；v1 現行結構只允許單一 Hook 與 ordered points。
+
 ## 1. 目標
 
 實作獨立 `/ig-cards` Podcast Carousel flow，從鄭國威 EP120 的乾淨逐字稿產生一份有逐字稿 evidence、經三個獨立 agent lens 查證收斂的 channel-native Copy Spec，套用已核准的 1080×1350 設計系統，輸出可在輕量 Review Web App 逐卡核准與回饋的完整 Carousel asset。
@@ -72,7 +75,7 @@
     manifest.json
 ```
 
-- Copy Spec 頁型骨架：一個 cover → 一個 hook → ordered `content_sequence`（point 與零個以上 re_hook）→ 一個 quote → 一個 CTA。
+- Copy Spec 頁型骨架：一個 cover → 一個 hook → ordered points → 一個 quote → 一個 CTA；v1 不接受 re_hook。
 - 每個 page 有跨 revision 穩定的 `page_id`、`role`、Display Copy、最多一個且必為同區塊完整原字串的 `emphasis`、一個以上 Transcript Evidence、content hash。
 - Quote variant：EP120 為偶數，預設 B（主持人問題＋直接相連的來賓回答）；找不到可靠配對時 fail-soft 降級 A，不補假問題。允許人工 override。
 - 10 頁內標 `api_compatible`；11–20 頁標 `manual_only`；不得為了 API 相容刪除重要內容。
@@ -87,12 +90,12 @@
 - 非引言頁使用 Social Editorial Voice；引言／B 版問題可縮短順句但不改原意，且均可展開查看 immutable evidence。
 - 不允許把不連續時間段拼成單一句來賓金句；跨段 evidence 只能支撐社群編輯的內容重點。
 - 內容點數不鎖 4／6；不湊數、不因頁數方便漏掉整集重要主題；總頁數 20 以內。
-- Re-hook 只有在開啟另一重要主題、重建注意力或建立新懸念時出現，獨立佔頁，並重用 P2 layout。測試 fixture 至少涵蓋有 Re-hook 與無 Re-hook 兩條路徑。
+- 主要 Hook 必須能帶出後續 ordered points；測試 fixture 必須證明 re_hook 在 v1 fail closed。
 - 三個 reviewer lens 互不看彼此輸出；主 agent 對每個 finding 查證。Brand/Evidence 的事實、歸屬、斷章取義 blocker 必須解決；其他未採納建議要在 synthesis 保存理由。不得以平均分／多數決自動送出。
 
 ### Render
 
-- 每張輸出精確為 1080×1350；頁碼與內容編號依 ordered sequence 自動重算，Re-hook 不占 point 編號。
+- 每張輸出精確為 1080×1350；頁碼與內容編號依 ordered points 自動重算。
 - headline/body/quote 等區塊各自 fit；不裁字、不省略、不由 renderer 改寫。低於 pilot 可讀範圍才 fit 的頁仍 render 並標 `needs_review`。
 - 同 revision 重跑使用相同 Template Snapshot；artifact 未變時 hash 穩定。修改單頁只重 render 受影響頁，結構／順序改動才重建相關頁碼與整體 manifest。
 - 缺 cutout、evidence 無法定位、image 尺寸錯誤、manifest path 越界或 hash 不符都 fail closed。

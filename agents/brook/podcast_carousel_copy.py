@@ -20,7 +20,6 @@ from shared.schemas.podcast_carousel import (
     PodcastCarouselCopySpecV1,
     PointPage,
     QuotePage,
-    ReHookPage,
     TranscriptEvidence,
 )
 
@@ -230,7 +229,7 @@ class _DraftModel(BaseModel):
 
 class _DraftPage(_DraftModel):
     page_id: str
-    role: Literal["cover", "hook", "point", "re_hook", "quote", "cta"]
+    role: Literal["cover", "hook", "point", "quote", "cta"]
     evidence_ids: list[str] = Field(min_length=1)
     headline: str | None = None
     question: str | None = None
@@ -296,9 +295,9 @@ channel-native asset，不是逐字稿摘要，也不是把模板 placeholder �
 {direction}
 
 ## 硬規則
-- 結構：cover → hook → point/re_hook ordered sequence → quote → cta。
+- 結構：cover → 一個 hook → ordered points → quote → cta。
 - 中段重點數量不鎖 4/6，不湊數；全份最多 20 頁。
-- Re-hook 獨立一頁，只在開啟下一組重要內容時使用，且下一頁必須是 point。
+- v1 不使用 Re-hook；開頭 Hook 之後直接依閱讀順序列出受眾會感興趣的 points。
 - 非引言頁用社群編輯聲音；不要假裝成主持人或來賓未說過的第一人稱。
 - 每頁 evidence_ids 只能填下方 transcript block ID；每個主張都要有 evidence。
 - emphasis 必須是同頁文案的完整原字串，每頁一處。
@@ -306,7 +305,7 @@ channel-native asset，不是逐字稿摘要，也不是把模板 placeholder �
   B 必須使用直接相連的主持人問題與來賓回答；找不到才降級 A，
   並填 variant_override_reason。
 - quote 可以縮短順句但不得改原意；不可拼接不同時間的回答。
-- hook/re_hook 使用 question + emphasis + bridge；point 使用 headline + emphasis + body。
+- hook 使用 question + emphasis + bridge；point 使用 headline + emphasis + body。
 - cover 使用 headline + emphasis + guest cutout；quote 使用 text + emphasis + guest cutout，
   B 另填 host_question、host_question_evidence_ids、host_cutout。
 - cta 使用 episode_topic + emphasis + engagement_question；三平台由 renderer 固定，不輸出。
@@ -368,13 +367,6 @@ def _materialise_page(
             headline=_required(draft.headline, "headline", draft.role),
             emphasis=draft.emphasis,
             body=_required(draft.body, "body", draft.role),
-        )
-    if draft.role == "re_hook":
-        return ReHookPage(
-            **common,
-            question=_required(draft.question, "question", draft.role),
-            emphasis=draft.emphasis,
-            bridge=_required(draft.bridge, "bridge", draft.role),
         )
     if draft.role == "quote":
         variant = draft.variant or ("A" if episode.number % 2 else "B")

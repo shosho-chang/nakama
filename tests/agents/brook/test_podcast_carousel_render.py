@@ -129,6 +129,18 @@ def test_template_snapshot_is_content_addressed(tmp_path: Path):
     assert Path(first.root, "PodcastCarouselRender.html").is_file()
 
 
+def test_design_system_cover_and_cta_use_reviewed_visual_contract():
+    source = (DESIGN_TEMPLATE / "PodcastCarouselRender.html").read_text(encoding="utf-8")
+
+    assert ".cover .em-orange{color:var(--white)" in source
+    assert "cover-headline-zone" in source
+    assert ".cta-title .em-orange{color:var(--white)" in source
+    assert 'createElementNS("http://www.w3.org/2000/svg","svg")' in source
+    assert 'aria-label",name' in source
+    assert '[["AP","Apple Podcasts"],["S","Spotify"],["YT","YouTube"]]' not in source
+    assert "cover headline/cutout collision" in source
+
+
 @pytest.mark.skipif(not CHROME.is_file(), reason="system Chrome required")
 def test_render_outputs_exact_images_and_reuses_unchanged_pages(tmp_path: Path):
     template = _template(tmp_path)
@@ -189,3 +201,5 @@ def test_real_design_system_template_renders_every_page_role(tmp_path: Path):
     assert [page.role for page in manifest.pages] == ["cover", "hook", "point", "quote", "cta"]
     assert all(Path(page.image.path).is_file() for page in manifest.pages)
     assert all(page.fit.status == "fit" for page in manifest.pages)
+    with Image.open(manifest.pages[-1].image.path).convert("RGB") as cta:
+        assert cta.getpixel((12, 1338)) == (40, 37, 37)

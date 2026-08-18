@@ -20,7 +20,6 @@ from shared.schemas.podcast_carousel import (
     PodcastCarouselCopySpecV1,
     PointPage,
     QuotePage,
-    ReHookPage,
     TemplateSnapshot,
     TranscriptEvidence,
     receipt_for,
@@ -43,7 +42,7 @@ def evidence(evidence_id: str = "ev-1", *, speaker: str = "鄭國威") -> Transc
     )
 
 
-def pages(*, quote_variant: str = "B", re_hook: bool = False):
+def pages(*, quote_variant: str = "B"):
     ev = [evidence()]
     result = [
         CoverPage(
@@ -70,25 +69,6 @@ def pages(*, quote_variant: str = "B", re_hook: bool = False):
             evidence=ev,
         ),
     ]
-    if re_hook:
-        result.extend(
-            [
-                ReHookPage(
-                    page_id="rehook-trust",
-                    question="但做得穩，真的只靠演算法嗎？",
-                    emphasis="只靠演算法",
-                    bridge="接下來看長期信任如何累積。",
-                    evidence=ev,
-                ),
-                PointPage(
-                    page_id="point-trust",
-                    headline="一致性是觀眾看見的結果",
-                    emphasis="看見的結果",
-                    body="幕後其實經過大量試錯與淘汰。",
-                    evidence=ev,
-                ),
-            ]
-        )
     quote_kwargs = {
         "page_id": "quote",
         "variant": quote_variant,
@@ -121,7 +101,7 @@ def pages(*, quote_variant: str = "B", re_hook: bool = False):
     return result
 
 
-def spec(*, episode_number: int = 120, re_hook: bool = False, quote_variant: str = "B"):
+def spec(*, episode_number: int = 120, quote_variant: str = "B"):
     return PodcastCarouselCopySpecV1(
         episode_id="20260721-zheng-guowei",
         revision="r001",
@@ -131,49 +111,26 @@ def spec(*, episode_number: int = 120, re_hook: bool = False, quote_variant: str
             guest_name="鄭國威",
             guest_title="泛科學共同創辦人",
         ),
-        pages=pages(quote_variant=quote_variant, re_hook=re_hook),
+        pages=pages(quote_variant=quote_variant),
         publish_compatibility="api_compatible",
     )
 
 
-def test_copy_spec_accepts_ordered_sequence_with_rehook():
-    value = spec(re_hook=True)
-    assert [page.role for page in value.pages] == [
-        "cover",
-        "hook",
-        "point",
-        "re_hook",
-        "point",
-        "quote",
-        "cta",
-    ]
-
-
-def test_copy_spec_rejects_rehook_without_following_point():
-    bad_pages = pages()
-    bad_pages.insert(
+def test_copy_spec_rejects_rehook_in_v1():
+    payload = spec().model_dump(mode="json")
+    payload["pages"].insert(
         -2,
-        ReHookPage(
-            page_id="rehook-orphan",
-            question="下一段呢？",
-            emphasis="下一段",
-            bridge="但後面沒有內容。",
-            evidence=[evidence()],
-        ),
+        {
+            "page_id": "rehook-trust",
+            "role": "re_hook",
+            "question": "但做得穩，真的只靠演算法嗎？",
+            "emphasis": "只靠演算法",
+            "bridge": "接下來看長期信任如何累積。",
+            "evidence": [evidence().model_dump(mode="json")],
+        },
     )
-    with pytest.raises(ValidationError, match="re_hook must open a following point"):
-        PodcastCarouselCopySpecV1(
-            episode_id="ep120",
-            revision="r001",
-            episode=EpisodeMetadata(
-                number=120,
-                topic="測試",
-                guest_name="鄭國威",
-                guest_title="來賓",
-            ),
-            pages=bad_pages,
-            publish_compatibility="api_compatible",
-        )
+    with pytest.raises(ValidationError, match="re_hook"):
+        PodcastCarouselCopySpecV1.model_validate(payload)
 
 
 def test_emphasis_must_be_exact_substring():

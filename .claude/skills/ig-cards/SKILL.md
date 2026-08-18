@@ -39,9 +39,9 @@ episode asset, not as packaging metadata or a transcript summary.
 
 ## Fixed content contract
 
-- Sequence: `cover → hook → ordered point/re_hook sequence → quote → CTA`.
-- Use as many points as the episode needs, up to 20 total pages. A re-hook is a separate page
-  and must introduce the next point group.
+- Sequence: `cover → one hook → ordered points → quote → CTA`.
+- Use as many points as the episode needs, up to 20 total pages. Podcast Carousel v1 does not
+  use Re-hook pages; the opening Hook must establish the payoff for the ordered points that follow.
 - Use quote A on odd episodes and quote B on even episodes. B contains a host question and a
   guest answer; fall back to A only with a recorded evidence reason.
 - Lightly rewrite long questions and quotes only when meaning remains unchanged. Never stitch

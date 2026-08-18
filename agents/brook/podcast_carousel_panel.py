@@ -128,7 +128,8 @@ def assert_panel_renderable(
 _LENS_BRIEFS = {
     "ig_audience": (
         "你是 IG 受眾 reviewer。只評 Hook 是否抓人、卡片理解成本、閱讀節奏、"
-        "Re-hook 是否真的重啟注意力，以及看完是否想聽完整節目。不要替品牌或 evidence lens 投票。"
+        "Hook 與後續 ordered points 是否一致，以及看完是否想聽完整節目。"
+        "不要替品牌或 evidence lens 投票。"
     ),
     "episode_editorial": (
         "你是 Podcast episode 編輯。檢查這份 Carousel 是否涵蓋整集最值得傳播的"

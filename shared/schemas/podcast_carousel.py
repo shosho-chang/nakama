@@ -115,18 +115,6 @@ class PointPage(_BasePage):
         return self
 
 
-class ReHookPage(_BasePage):
-    role: Literal["re_hook"] = "re_hook"
-    question: str = Field(min_length=1)
-    emphasis: str = Field(min_length=1)
-    bridge: str = Field(min_length=1)
-
-    @model_validator(mode="after")
-    def _emphasis_in_copy(self) -> ReHookPage:
-        _assert_emphasis(self.emphasis, self.question)
-        return self
-
-
 class QuotePage(_BasePage):
     role: Literal["quote"] = "quote"
     variant: Literal["A", "B"]
@@ -173,7 +161,7 @@ class CTAPage(_BasePage):
 
 
 CarouselPage = Annotated[
-    Union[CoverPage, HookPage, PointPage, ReHookPage, QuotePage, CTAPage],
+    Union[CoverPage, HookPage, PointPage, QuotePage, CTAPage],
     Field(discriminator="role"),
 ]
 
@@ -207,11 +195,8 @@ class PodcastCarouselCopySpecV1(CarouselModel):
         middle = roles[2:-2]
         if "point" not in middle:
             raise ValueError("content sequence must contain at least one point")
-        if middle and (middle[0] == "re_hook" or middle[-1] == "re_hook"):
-            raise ValueError("re_hook must open a following point group")
-        for index, role in enumerate(middle[:-1]):
-            if role == "re_hook" and middle[index + 1] != "point":
-                raise ValueError("re_hook must be followed by a point")
+        if any(role != "point" for role in middle):
+            raise ValueError("Podcast Carousel v1 middle pages must all be point pages")
         page_ids = [page.page_id for page in self.pages]
         if len(page_ids) != len(set(page_ids)):
             raise ValueError("page_id must be unique within a Copy Spec")
@@ -267,7 +252,7 @@ class PageFitDiagnostic(CarouselModel):
 class CarouselReviewPage(CarouselModel):
     page_id: str
     page_number: int = Field(gt=0)
-    role: Literal["cover", "hook", "point", "re_hook", "quote", "cta"]
+    role: Literal["cover", "hook", "point", "quote", "cta"]
     content_sha256: str
     image: ArtifactReceipt
     fit: PageFitDiagnostic
