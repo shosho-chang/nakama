@@ -13,7 +13,7 @@ presentation layer（Web UI）。
 - **Nami** — Secretary：行事曆、Email triage、task 排程、daily briefing
 - **Zoro** — Scout（**向外搜尋**）：keyword research、SERP / Trends / Reddit / YouTube 偵察 — 從外部世界拉情報回來
 - **Sanji** — Community Manager：Fluent Community 社群營運、會員問答
-- **Brook** — Composer（**對內加工**）：將素材 compose 成各平台格式（Blog / IG / YouTube / Newsletter）+ 既有部落格 SEO audit / enrich — 處理「已知/已存在」的內容
+- **Brook** — Composer（**對內加工**）：將素材 compose 成各平台格式（Blog / IG / YouTube / Newsletter）+ Podcast Subtitle V2 + 既有部落格 SEO audit / enrich — 處理「已知/已存在」的內容；Podcast 字幕子 context 見 [agents/brook/podcast_subtitles/CONTEXT.md](agents/brook/podcast_subtitles/CONTEXT.md)
 - **Franky** — System Maintenance：套件更新、CVE 掃描、health check、news digest
 - **Usopp** — Publisher：發布到 WordPress / YouTube / Fluent CRM；core community publisher 待開
 
@@ -30,7 +30,8 @@ presentation layer（Web UI）。
 - **Brook ← Zoro** (`SEOContextV1`)：Zoro 跑 keyword-research + seo-keyword-enrich 產出 SEO context block，Brook compose 時 consume
 - **Robin ← Brook** (KB lookup)：Brook compose 時可呼叫 KB search 拉素材
 - **Usopp ← Brook + Sanji**：Brook 產長文輸出、Sanji 產社群素材，Usopp 排程發布；含 ADR-006 HITL approval gate
-- **Brook video line ↔ video subproject**（ADR-032/ADR-050）：pipeline 吃 `/transcribe` 產的 SRT → chinese_normalizer + LLM planner 產 `storyboard.yaml`（exact-copy anchor + 兩層 HITL approve）→ render_dispatcher 呼叫 `video/compositions/` Hyperframes render per-beat B-roll mp4（headless Chrome）→ Python 端 emit FCPXML 1.10（V1 talking head + lane-1 B-roll）；DaVinci import 後修修微調 → YT；選配前置：拍掌 marker `cleanup` stage（ADR-050 D3）
+- **Brook Podcast Subtitle V2 → Brook video line**（ADR-056）：Stage 4 的 `PodcastSubtitleV2` 以 Canonical Transcript 保存唯一文字真相，並輸出 content-addressed Verified Projection；Stage 5 只收 Projection ID + manifest，不收裸 SRT path
+- **Brook video line ↔ video subproject**（ADR-032/ADR-050/ADR-056）：pipeline 驗證 Verified Projection lineage → LLM planner 產 `storyboard.yaml`（projection exact-copy anchor + 兩層 HITL approve）→ render_dispatcher 呼叫 `video/compositions/` Hyperframes render per-beat B-roll mp4（headless Chrome）→ Python 端 emit FCPXML 1.10（V1 talking head + lane-1 B-roll）；DaVinci import 後修修微調 → YT；選配前置：拍掌 marker `cleanup` stage（ADR-050 D3）
 - **Brook video line ← Robin**（Phase 1.5，read-only）：`refs.yaml` 的 `book_slug_robin` 對 Robin Reader URL scheme，書內引用 B-roll 走 reader-playwright 錄真實書頁（ADR-032 Phase 1.5 接通）
 
 ## Per-context glossary
@@ -49,10 +50,11 @@ presentation layer（Web UI）。
 - **「SEO 中控台」** = `/bridge/seo` surface 的別名，SEO solution 操作 hub。**跨三 agent**：Zoro（keyword research）+ Brook（audit / enrich）+ Franky（ranking telemetry，ADR-008）。v1 三 section：(1) WP 文章列表 + lazy audit 分數、(2) 攻擊中目標關鍵字（讀 `config/target-keywords.yaml`）、(3) 排名變化（v1.1 等 ADR-008 Phase 2a-min 落地接 `gsc_rows` db）；2026-04-29 grilling 凍結，ADR-029 v2 補正 Franky owner
 - **「audit review session」** = SEO 中控台底下「點進文章 → 跑新 audit → Y+ 左右對照」的單次審稿動作；以 `audit_results.suggestions_json` 落 db 持久化（resumable，無另開 session 表）；review 完成後一鍵 export 進 ADR-006 `approval_queue` 走既有 publish HITL — **不直接寫 WP**
 - **「slice」** = vertical slice = 跨層（schema / API / UI / tests）的薄完整路徑；對應現有 Slice A/B/C 慣例
+- **「Podcast Subtitle V2」** = Brook Stage 4 的深 Module（ADR-056；`agents/brook/podcast_subtitles/`）：immutable Evidence → append-only Correction Ledger → Canonical Transcript → Semantic Units → Verified Projection。Canonical Transcript 是唯一文字真相；SRT 只是 fail-closed 驗證後的 display projection；完整詞彙見 [Podcast Subtitle V2 CONTEXT](agents/brook/podcast_subtitles/CONTEXT.md)
 - **「chassis-nav」** = bridge surface 頂層 nav bar（`templates/bridge/_chassis_nav.html` partial 是 single source of truth）。**ADR-029 v2 凍結 dual-axis 原則**（取代 2026-04-29 的「agent-rooted 頂層直到擠爆才 dropdown」原則）：nav 依 task frequency × semantic similarity 組織 — 高頻 cross-agent workflow 拿 top-level slot（DRAFTS、SEO）；agent 收進單一 Fleet ▾ dropdown（dashboard grid 為主要視覺入口）；低頻 cross-cutting ops 收進 Ops ▾ dropdown（COST / LOGS / MEMORY / DOCS）。原則 component-agnostic（橫向 dropdown 目前；左 sidebar 為視覺探索階段已知候選）。`aria-current` 嚴格對齊 URL，不表 user journey trail
 - **「dual-axis nav」** = ADR-029 v2 凍結的 Bridge IA 心智模型。**Agent axis**（Fleet ▾ + dashboard grid）：每個 agent 有單一 canonical home（console）；single-agent function 收進該 agent console（如 HEALTH → Franky、REPURPOSE → Brook）。**Workflow axis**（top-level slots）：跨 agent 的 work 拿獨立 top-level surface（DRAFTS、SEO）；分界線：「這 work 需不需要跨 agent 協調」。**Ops axis**（Ops ▾）：cross-cutting 觀測 surface 不屬於任何 agent。雙軸並存，不是 agent-first 也不是 task-first
 - **「breadcrumb」** = page-header 之上一行的 user journey trail（如 `← /bridge/seo · 找新關鍵字 → ZORO · KEYWORD RESEARCH`），用來補位 chassis-nav 失去的「從哪來」資訊。Always 顯示（不 referrer-detect），用既有 `nk-caps` token
-- **「script-driven video」/「腳本式影片」/「Video Production Line」** = ADR-015 開題、ADR-032 重寫技術、ADR-050 歸屬 Brook 的 cross-cutting context。修修最高價值 content workflow：照稿錄 A-roll →（選配）拍掌 marker cleanup → `/transcribe` SRT → LLM storyboard plan（兩層 HITL）→ Hyperframes B-roll render → 出 DaVinci FCPXML → 修修微調 ≤30 分鐘上 YT。**不是** Line 1/2/3（podcast/book/literature → 多 channel 文字）的延伸——input/output shape 不同，是 sibling 不是 extension
+- **「script-driven video」/「腳本式影片」/「Video Production Line」** = ADR-015 開題、ADR-032 重寫技術、ADR-050 歸屬 Brook、ADR-056 收緊字幕 handoff 的 cross-cutting context。修修最高價值 content workflow：照稿錄 A-roll →（選配）拍掌 marker cleanup → Stage 4 Verified Projection → LLM storyboard plan（兩層 HITL）→ Hyperframes B-roll render → 出 DaVinci FCPXML → 修修微調 ≤30 分鐘上 YT。**不是** Line 1/2/3（podcast/book/literature → 多 channel 文字）的延伸——input/output shape 不同，是 sibling 不是 extension
 - **「Manifest」** = ~~ADR-015 workflow 的 single source of truth JSON schema~~ **Superseded（ADR-032/ADR-050）**：single source of truth 現為 `storyboard.yaml`（planner 輸出 + Bridge UI 就地編輯）；Manifest JSON 隨 markdown DSL parser 退役
 - **「LLM Router」** = `shared/llm_router.py` 解析 `(agent, task) → model_id`、`shared/llm.py` facade 跨 provider dispatch；ADR-026 加 auth 維度後，router 同時解析 `(agent, task) → auth_policy`。**不是**新建，是 2026-04-20 起的 Q1 hybrid 方案延伸
 - **「Auth policy」** = ADR-026 凍結的一次 LLM call 計費路徑語意，**三元值** `api` / `subscription_preferred` / `subscription_required`。`subscription_*` = 走 provider 訂閱 quota（Anthropic = Max Plan via `claude` CLI subprocess）；`api` = bare SDK + API key 計費。`_preferred` = 條件不滿足軟降 api + warn；`_required` = 條件不滿足 raise。預設 `subscription_preferred`（修修長期 Max Plan）
@@ -61,7 +63,7 @@ presentation layer（Web UI）。
 - **「mistake removal」/「cleanup stage」** = 拍掌 marker 偵測（修修錄錯時拍兩下手做 marker）→ ripple-delete。ADR-015 原 stage 1；ADR-050 D3 refit 為單一 video pipeline 的**選配前置 `cleanup` stage**（輸出形狀 — ripple-delete FCPXML vs 直接剪乾淨 mp4 — 於 ADR-050 實施 PR-4 跟修修確認後定）
 - **「B-roll segment」** = ADR-015 凍結、ADR-032 沿用的概念。Hyperframes **不 render 整支影片**，只 render 各 beat 為個別 mp4 clips（content-addressed `b_roll_<hash>.mp4`），FCPXML 把它們塞進 lane-1（V2）；A-roll 留 V1。架構反轉的核心
 - **「Mode A / Mode B」** = ~~ADR-015 引用視覺化雙模式（PyMuPDF bbox DocumentQuote / QuoteCard）~~ **Superseded（ADR-032）**：書/網頁引用改走 reader-playwright / web-playwright 錄真實頁面 + highlight 動畫（保留「引用真的來自這本書」的視覺契約），非書頁類走 Hyperframes；見 `memory/claude/project_broll_dual_path_architecture.md`
-- **「per-episode 目錄」** = `data/script_video/<episode-id>/` 自包含結構（ADR-032 §5 + ADR-050 D4）：episode.yaml（含 `stages:` provenance 欄位）+ raw_recording.mp4 + transcript.srt + refs.yaml（選配）+ storyboard.yaml + out/（content-addressed b_roll mp4 + episode.fcpxml）。~~跨集 embedding cache~~（BGE-M3 fuzzy match 路線已廢棄，ADR-032）
+- **「per-episode 目錄」** = `data/script_video/<episode-id>/` 自包含結構（ADR-032 §5 + ADR-050 D4 + ADR-056 handoff）：episode.yaml（含 `stages:` provenance 與 Verified Projection ID/hash）+ raw_recording.mp4 + projection manifest 所指的 verified transcript.srt + refs.yaml（選配）+ storyboard.yaml + out/（content-addressed b_roll mp4 + episode.fcpxml）。~~跨集 embedding cache~~（BGE-M3 fuzzy match 路線已廢棄，ADR-032）
 
 ## ADR location
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -38,11 +39,10 @@ SYNTHETIC_SRT = """\
 這個數字很驚人。
 """
 
-# After normalize_punctuation + normalize_numbers:
-# "11,000" → "11000"
-# "35%" stays (not a pure CN numeral)
+# Stage 5 receives the Verified Projection text byte-for-byte; no number or
+# punctuation normalization is allowed after the handoff.
 _NORMALIZED_START = "今天我們要聊一個研究"
-_NORMALIZED_STAT_START = "研究追蹤了11000名受試者長達20年"
+_NORMALIZED_STAT_START = "研究追蹤了11,000名受試者長達20年"
 
 _CANNED_BEATS = [
     {
@@ -61,8 +61,8 @@ _CANNED_BEATS = [
     },
     {
         "beat_id": 2,
-        "start_quote": "研究追蹤了11000名受試者長達20年",
-        "end_quote": "研究追蹤了11000名受試者長達20年",
+        "start_quote": "研究追蹤了11,000名受試者長達20年",
+        "end_quote": "研究追蹤了11,000名受試者長達20年",
         "broll_decision": "cutaway",
         "layout": "full_broll",
         "broll": {
@@ -94,6 +94,36 @@ def _write_episode_fixture(ep_dir: Path) -> None:
     (ep_dir / "transcript.srt").write_text(SYNTHETIC_SRT, encoding="utf-8")
     (ep_dir / "episode.yaml").write_text(
         "title: Test Episode\ntarget_duration: 30\n", encoding="utf-8"
+    )
+
+
+@pytest.fixture(autouse=True)
+def _verified_projection_unit_seam(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Older planner tests stay unit-scoped; the disk-verifier tracer lives separately."""
+
+    digest = "a" * 64
+
+    def load_fixture(*, expected_episode_id: str, **_kwargs):
+        return SimpleNamespace(
+            episode_id=expected_episode_id,
+            projection_id="projection-" + digest,
+            generation_id="generation-" + digest,
+            projection_sha256=digest,
+            manifest_sha256=digest,
+            quality_report_sha256=digest,
+            srt_sha256=digest,
+            srt_bytes=SYNTHETIC_SRT.encode("utf-8"),
+            manifest=SimpleNamespace(
+                canonical_hash=digest,
+                profile_hash=digest,
+                token_sequence_hash=digest,
+                output_hash=digest,
+            ),
+        )
+
+    monkeypatch.setattr(
+        "agents.brook.script_video.subtitle_handoff.require_verified_projection",
+        load_fixture,
     )
 
 

@@ -29,7 +29,7 @@ every field as machine-parsed, not human-read.
 ## Anchor contract (MANDATORY — hard fail on violation)
 
 `start_quote` and `end_quote` in every beat MUST be **exact substring copies** of the
-normalized transcript supplied below. Do not paraphrase, rewrite, abbreviate, or alter
+Verified Projection text supplied below. Do not paraphrase, rewrite, abbreviate, or alter
 any character. The downstream aligner runs `str.find()` on the transcript — any deviation
 raises `AnchorNotFoundError` and the beat will be rejected.
 
@@ -91,6 +91,6 @@ BRollSpec (only when broll_decision=cutaway):
 {episode_meta}
 ```
 
-## Normalized transcript
+## Verified Projection display text
 
 {transcript}
