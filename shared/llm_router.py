@@ -86,6 +86,7 @@ KNOWN_MODELS: tuple[str, ...] = (
     # OpenRouter BYOK）；native 時選到會 fail loud。slug 見 shared/openrouter_models.py。
     "gpt-5",
     "gpt-5-mini",
+    "gpt-5.6-terra",
 )
 
 
