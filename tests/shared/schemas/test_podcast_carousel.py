@@ -93,7 +93,6 @@ def pages(*, quote_variant: str = "B"):
                 page_id="cta",
                 episode_topic="創作者看不見的失敗",
                 emphasis="看不見的失敗",
-                engagement_question="你曾經因為哪次失敗改變做法？",
                 evidence=ev,
             ),
         ]
@@ -141,6 +140,30 @@ def test_emphasis_must_be_exact_substring():
             emphasis="不存在",
             bridge="繼續看。",
             evidence=[evidence()],
+        )
+
+
+def test_point_emphasis_must_be_in_headline_not_body():
+    with pytest.raises(ValidationError, match="point emphasis must be in headline"):
+        PointPage(
+            page_id="point-format",
+            headline="每種情境需要不同格式",
+            emphasis="擴圈",
+            body="短影音負責擴圈。",
+            evidence=[evidence()],
+        )
+
+
+def test_cta_v1_has_no_engagement_line():
+    with pytest.raises(ValidationError, match="engagement_question"):
+        CTAPage.model_validate(
+            {
+                "page_id": "cta",
+                "episode_topic": "完整收聽泛科學的內容生存策略",
+                "emphasis": "內容生存策略",
+                "engagement_question": "你要先改哪一項？",
+                "evidence": [evidence().model_dump(mode="json")],
+            }
         )
 
 

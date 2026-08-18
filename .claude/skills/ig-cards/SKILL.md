@@ -46,9 +46,10 @@ episode asset, not as packaging metadata or a transcript summary.
   guest answer; fall back to A only with a recorded evidence reason.
 - Lightly rewrite long questions and quotes only when meaning remains unchanged. Never stitch
   non-contiguous guest answers.
-- Use one emphasis substring per page. Character counts are guidance, not hard limits. Let the
-  renderer shrink text per region; flag text below the readable floor as `needs_review`.
-- Keep CTA platforms fixed to Apple Podcasts, Spotify, and YouTube.
+- Use one emphasis substring per page. Point emphasis must be an exact substring of the headline;
+  point body stays plain. Character counts are guidance, not hard limits. Let the renderer shrink
+  text per region; flag text below the readable floor as `needs_review`.
+- Keep CTA platforms fixed to Apple Podcasts, Spotify, and YouTube. CTA has no engagement line.
 
 ## Artifact contract
 

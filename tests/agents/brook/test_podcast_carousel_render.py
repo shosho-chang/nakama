@@ -79,7 +79,7 @@ def _spec() -> PodcastCarouselCopySpecV1:
             "role": "point",
             "page_id": "point-one",
             "headline": "Algorithms hide weak attempts",
-            "emphasis": "mostly sees",
+            "emphasis": "hide weak attempts",
             "body": "The audience mostly sees work that survives.",
             "evidence": [evidence],
         },
@@ -101,7 +101,6 @@ def _spec() -> PodcastCarouselCopySpecV1:
             "page_id": "cta",
             "episode_topic": "The failures we do not see",
             "emphasis": "failures we do not see",
-            "engagement_question": "Which failure changed your process?",
             "evidence": [evidence],
         },
     ]
@@ -201,5 +200,13 @@ def test_real_design_system_template_renders_every_page_role(tmp_path: Path):
     assert [page.role for page in manifest.pages] == ["cover", "hook", "point", "quote", "cta"]
     assert all(Path(page.image.path).is_file() for page in manifest.pages)
     assert all(page.fit.status == "fit" for page in manifest.pages)
+    assert manifest.pages[0].fit.regions["cover.cutout_height"] >= 850
+    assert manifest.pages[2].fit.regions["point.emphasis_lines"] == 1
+    assert manifest.pages[3].fit.regions["quote.answer_cutout_overlap"] == 0
+    render_input = (package / "revisions" / "r001" / "render_input.html").read_text(
+        encoding="utf-8"
+    )
+    assert "留言告訴我" not in render_input
+    assert ".engagement" not in render_input
     with Image.open(manifest.pages[-1].image.path).convert("RGB") as cta:
         assert cta.getpixel((12, 1338)) == (40, 37, 37)

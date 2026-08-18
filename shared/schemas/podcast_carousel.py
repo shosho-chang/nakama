@@ -111,7 +111,8 @@ class PointPage(_BasePage):
 
     @model_validator(mode="after")
     def _emphasis_in_copy(self) -> PointPage:
-        _assert_emphasis(self.emphasis, self.headline, self.body)
+        if self.emphasis not in self.headline:
+            raise ValueError("point emphasis must be in headline")
         return self
 
 
@@ -145,7 +146,6 @@ class CTAPage(_BasePage):
     role: Literal["cta"] = "cta"
     episode_topic: str = Field(min_length=1)
     emphasis: str = Field(min_length=1)
-    engagement_question: str = Field(min_length=1)
     platforms: tuple[Literal["apple_podcasts", "spotify", "youtube"], ...] = (
         "apple_podcasts",
         "spotify",
@@ -154,7 +154,7 @@ class CTAPage(_BasePage):
 
     @model_validator(mode="after")
     def _valid_cta(self) -> CTAPage:
-        _assert_emphasis(self.emphasis, self.episode_topic, self.engagement_question)
+        _assert_emphasis(self.emphasis, self.episode_topic)
         if self.platforms != ("apple_podcasts", "spotify", "youtube"):
             raise ValueError("Podcast Carousel v1 uses the three fixed CTA platforms")
         return self

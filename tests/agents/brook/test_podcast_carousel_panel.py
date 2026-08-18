@@ -69,7 +69,6 @@ def _index_and_spec(tmp_path):
                 "page_id": "cta",
                 "role": "cta",
                 "emphasis": "失敗",
-                "engagement_question": "哪次失敗改變了你？",
                 "evidence_ids": ["B0002"],
             },
         ],

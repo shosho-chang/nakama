@@ -99,7 +99,6 @@ def _inputs(tmp_path):
                 page_id="cta",
                 episode_topic="演算法藏起來的失敗",
                 emphasis="失敗",
-                engagement_question="你如何看待失敗？",
                 evidence=guest_evidence,
             ),
         ],

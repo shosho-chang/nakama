@@ -71,7 +71,6 @@ def _valid_response():
                 "page_id": "cta",
                 "role": "cta",
                 "emphasis": "失敗",
-                "engagement_question": "哪一次失敗讓你改變做法？",
                 "evidence_ids": ["B0002", "B0003"],
             },
         ],

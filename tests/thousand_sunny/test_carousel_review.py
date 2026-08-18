@@ -77,7 +77,6 @@ def _spec() -> PodcastCarouselCopySpecV1:
             "page_id": "cta",
             "episode_topic": "看不見的失敗",
             "emphasis": "看不見的失敗",
-            "engagement_question": "哪次失敗改變了你？",
             "evidence": [evidence],
         },
     ]

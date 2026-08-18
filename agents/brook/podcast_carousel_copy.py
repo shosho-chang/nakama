@@ -242,7 +242,6 @@ class _DraftPage(_DraftModel):
     host_question: str | None = None
     host_question_evidence_ids: list[str] = Field(default_factory=list)
     host_cutout: str | None = None
-    engagement_question: str | None = None
 
 
 class _DraftResponse(_DraftModel):
@@ -301,6 +300,7 @@ channel-native asset，不是逐字稿摘要，也不是把模板 placeholder �
 - 非引言頁用社群編輯聲音；不要假裝成主持人或來賓未說過的第一人稱。
 - 每頁 evidence_ids 只能填下方 transcript block ID；每個主張都要有 evidence。
 - emphasis 必須是同頁文案的完整原字串，每頁一處。
+- point 的 emphasis 必須出現在 headline；body 不承擔 emphasis。
 - EP{episode.number} 預設 quote variant {'A' if episode.number % 2 else 'B'}。
   B 必須使用直接相連的主持人問題與來賓回答；找不到才降級 A，
   並填 variant_override_reason。
@@ -308,7 +308,7 @@ channel-native asset，不是逐字稿摘要，也不是把模板 placeholder �
 - hook 使用 question + emphasis + bridge；point 使用 headline + emphasis + body。
 - cover 使用 headline + emphasis + guest cutout；quote 使用 text + emphasis + guest cutout，
   B 另填 host_question、host_question_evidence_ids、host_cutout。
-- cta 使用 episode_topic + emphasis + engagement_question；三平台由 renderer 固定，不輸出。
+- cta 使用 episode_topic + emphasis；三平台由 renderer 固定，不輸出留言互動行。
 - 所有 template 示例文字一律不可用。
 
 ## 輸出
@@ -321,7 +321,7 @@ channel-native asset，不是逐字稿摘要，也不是把模板 placeholder �
     {{"page_id":"hook","role":"hook","question":"...","emphasis":"...","bridge":"...","evidence_ids":["B0001"]}},
     {{"page_id":"point-topic","role":"point","headline":"...","emphasis":"...","body":"...","evidence_ids":["B0001"]}},
     {{"page_id":"quote","role":"quote","variant":"B","text":"...","emphasis":"...","cutout":"guest_x.png","host_question":"...","host_question_evidence_ids":["B0001"],"host_cutout":"host_x.png","evidence_ids":["B0002"]}},
-    {{"page_id":"cta","role":"cta","emphasis":"...","engagement_question":"...","evidence_ids":["B0001"]}}
+    {{"page_id":"cta","role":"cta","emphasis":"...","evidence_ids":["B0001"]}}
   ]
 }}
 {revision}
@@ -399,7 +399,6 @@ def _materialise_page(
         **common,
         episode_topic=episode.topic,
         emphasis=draft.emphasis,
-        engagement_question=_required(draft.engagement_question, "engagement_question", draft.role),
     )
 
 

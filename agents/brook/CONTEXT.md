@@ -137,6 +137,7 @@ _Avoid_: Second authoring source、mutable latest template、untracked template 
 - 文案長度沒有 hard limit；**Podcast Carousel Render** 對 headline、body、quote 等 content box 分別 fit，不因其中一區過長連帶縮小其他區塊，也不得截字、省略或自行改寫 **Display Copy**。
 - 文字必須低於 pilot 可讀範圍才能 fit 時採 **Fit Escalation**，不中止整份 render；最低可讀值以鄭國威 episode 的實際成圖與 review 結果校準，再決定是否凍結成 design token。
 - 每個核心文案區塊同時保存 **Display Copy** 與一個以上 **Transcript Evidence**。
+- 內容重點的唯一 emphasis 必須是 headline 的完整原字串；body 保持純文字，不套第二種強調語法。
 - 來賓金句與 B 版主持人提問也使用 **Display Copy**：可以縮寫或順句，但必須保留原意並連回原始 **Transcript Evidence**。
 - **Quote Layout Variant** 預設依 episode number 輪替：奇數集 A、偶數集 B，允許人工 override；同一集重跑不得隨機換版。B 找不到能可靠配對的主持人問題時降級為 A，不得補寫假的問題。
 - 一則來賓金句只能濃縮自一個連續問答區段；主持人短暫插話不切斷同一回答，但不同時間的段落不得拼成一句金句。
@@ -144,6 +145,7 @@ _Avoid_: Second authoring source、mutable latest template、untracked template 
 - **Content Sequence** 可以依 IG 閱讀節奏重新排列，不必遵守逐字稿時間順序；但不得顛倒同一故事的前因後果，也不得創造原訪談不存在的因果關係。
 - **Podcast Carousel Render** 只消費 **Podcast Carousel Copy Spec** 與 episode assets，不讀取模板 placeholder 作為內容。
 - **Podcast Carousel Template** 可以獨立演進視覺設計，但不能改變或生成 **Podcast Carousel Copy Spec** 的事實內容。
+- CTA 只顯示 episode topic 與 Apple Podcasts、Spotify、YouTube 三個固定平台入口，不顯示留言互動行。
 - 設計系統是 **Podcast Carousel Template** 的唯一 authoring source；每個 revision 以 **Template Snapshot** 與 hash 固定實際 render 版本，模板升級必須建立新 revision。
 
 ## Example dialogue
