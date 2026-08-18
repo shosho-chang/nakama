@@ -205,6 +205,23 @@ def test_review_submit_button_belongs_to_post_form_without_nested_forms(client):
     assert parser.submit_form["action"].endswith(f"/bridge/ig-cards/{EPISODE}/decide")
 
 
+def test_saved_board_names_review_round_and_exposes_saving_state(client):
+    app, _ = client
+    board = app.get(f"/bridge/ig-cards/{EPISODE}")
+    marker = 'name="manifest_sha256" value="'
+    manifest_sha = board.text.split(marker, 1)[1].split('"', 1)[0]
+
+    response = app.post(
+        f"/bridge/ig-cards/{EPISODE}/decide",
+        data={"manifest_sha256": manifest_sha},
+    )
+    assert response.status_code == 303
+
+    saved_board = app.get(f"/bridge/ig-cards/{EPISODE}?saved=1")
+    assert "第 1 輪 Review 已儲存" in saved_board.text
+    assert 'data-saving-label="儲存中…"' in saved_board.text
+
+
 def test_media_returns_verified_png(client):
     app, _ = client
     response = app.get(f"/bridge/ig-cards/{EPISODE}/media/cover")
