@@ -14,14 +14,27 @@ episode asset, not as packaging metadata or a transcript summary.
    `packaging/cutouts/*.png`. Allow `social_brief.md` but do not require it.
 2. Read content only from the cleaned transcript. Never copy example text from the Design
    System template; every visible claim must retain transcript evidence IDs and timestamps.
-3. Run `scripts/run_podcast_carousel.py` with episode metadata and the Design System template.
-   Load secrets from `NAKAMA_ENV_FILE` or the repo `.env`; never print them.
-4. Let the script run three independent lenses: IG Audience, Episode Editorial, and
-   Brand/Evidence. Accept only findings that pass deterministic page/evidence verification.
-   Revise and re-review; do not render when verified blockers remain or the panel cannot
-   converge within the configured rounds.
-5. Verify all PNGs are exactly 1080×1350 and inspect representative pages visually.
-6. Open `/bridge/ig-cards/<episode-folder>` in the authenticated Thousand Sunny app. The human
+3. The main agent reads the transcript and directly writes a fully evidence-materialised
+   `PodcastCarouselCopySpecV1`. Do not call an external LLM API in the canonical workflow.
+4. Blind-dispatch three independent Sub Agents. Give each the Copy Spec and transcript but not
+   the other reviews. Their fixed lenses are IG Audience, Episode Editorial, and Brand/Evidence.
+   The main agent deterministically verifies page/evidence references, synthesises accepted and
+   rejected findings, revises the Copy Spec, and re-runs all three reviews until the resulting
+   `PanelResult` has `status: converged`. A blocker or `needs_revision` status fails closed.
+5. Run the deterministic finaliser with the reviewed artifacts; it never drafts copy or invokes
+   reviewers:
+
+   ```powershell
+   python scripts/run_podcast_carousel.py <episode-dir> `
+     --copy-spec <copy_spec.v1.json> `
+     --panel-result <panel_result.v1.json> `
+     --template-dir <design-system-template-dir>
+   ```
+
+   Provider-backed `generate_copy_spec()` and `run_panel()` remain optional library APIs only.
+   They are not part of this canonical skill path and must never be invoked implicitly.
+6. Verify all PNGs are exactly 1080×1350 and inspect representative pages visually.
+7. Open `/bridge/ig-cards/<episode-folder>` in the authenticated Thousand Sunny app. The human
    gate closes only when every page in the same revision is approved.
 
 ## Fixed content contract
@@ -41,7 +54,7 @@ episode asset, not as packaging metadata or a transcript summary.
 
 Write to `<episode>/ig-carousel/`, next to `packaging/`:
 
-- `editorial/rNNN/copy_spec.v1.json` and `panel_result.v1.json`
+- `editorial/rNNN/copy_spec.v1.json` and `panel_result.v1.json` (canonical validated copies)
 - `revisions/rNNN/pages/NN.png`, render state, Copy Spec, and review manifest
 - content-addressed `templates/<sha256>/` snapshot
 - `current.json`, `review_feedback.v1.json`, and `run_summary.json`

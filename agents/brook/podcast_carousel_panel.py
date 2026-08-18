@@ -11,7 +11,6 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from agents.brook.podcast_carousel_copy import TranscriptIndex
-from shared.llm import ask_multi
 from shared.schemas.podcast_carousel import PodcastCarouselCopySpecV1
 
 _MODEL = "claude-sonnet-4-6"
@@ -61,10 +60,69 @@ class PanelSynthesis(_PanelModel):
 
 
 class PanelResult(_PanelModel):
+    episode_id: str = Field(min_length=1)
+    revision: str = Field(pattern=r"^r[0-9]{3,}$")
+    status: Literal["needs_revision", "blocked", "converged"]
     reviews: dict[str, PanelReview]
     verified_findings: list[PanelFinding]
     verification_rejections: list[RejectedFinding]
     synthesis: PanelSynthesis
+
+    @model_validator(mode="after")
+    def _valid_panel_state(self) -> PanelResult:
+        expected_lenses = {"ig_audience", "episode_editorial", "brand_evidence"}
+        if set(self.reviews) != expected_lenses:
+            raise ValueError("panel must contain exactly the three canonical reviewer lenses")
+        for lens, review in self.reviews.items():
+            if review.lens != lens:
+                raise ValueError(f"review lens mismatch: expected {lens}, got {review.lens}")
+
+        verified_ids = [finding.finding_id for finding in self.verified_findings]
+        if len(verified_ids) != len(set(verified_ids)):
+            raise ValueError("verified finding IDs must be unique")
+        known = set(verified_ids)
+        accepted = set(self.synthesis.accepted_finding_ids)
+        rejected = {finding.finding_id for finding in self.synthesis.rejected}
+        if accepted & rejected:
+            raise ValueError("synthesis cannot both accept and reject one finding")
+        if accepted | rejected != known:
+            raise ValueError("synthesis must account for every verified finding exactly once")
+
+        brand_high = {
+            finding.finding_id
+            for finding in self.reviews["brand_evidence"].findings
+            if finding.severity == "high" and finding.finding_id in known
+        }
+        if not brand_high.issubset(accepted):
+            raise ValueError("high brand/evidence findings cannot be rejected")
+
+        expected_status = "converged"
+        if self.synthesis.blockers:
+            expected_status = "blocked"
+        elif accepted or self.synthesis.revision_instructions:
+            expected_status = "needs_revision"
+        if self.status != expected_status:
+            raise ValueError(f"panel status must be {expected_status}")
+        if accepted and not self.synthesis.revision_instructions:
+            raise ValueError("accepted findings require revision instructions")
+        return self
+
+
+def assert_panel_renderable(
+    panel: PanelResult,
+    *,
+    spec: PodcastCarouselCopySpecV1,
+) -> None:
+    """Fail closed unless a matching three-lens panel has converged."""
+
+    if panel.episode_id != spec.episode_id:
+        raise ValueError("panel episode_id does not match Copy Spec")
+    if panel.revision != spec.revision:
+        raise ValueError("panel revision does not match Copy Spec")
+    if panel.status == "blocked" or panel.synthesis.blockers:
+        raise RuntimeError(f"editorial panel blockers: {panel.synthesis.blockers}")
+    if panel.status != "converged":
+        raise RuntimeError("editorial panel has not converged; revise and re-review before render")
 
 
 _LENS_BRIEFS = {
@@ -209,9 +267,16 @@ def run_panel(
     reviewer_call: Callable[[str, str], str] | None = None,
     synthesis_call: Callable[[str], str] | None = None,
 ) -> PanelResult:
-    """Run independent reviewers concurrently, verify, then synthesize."""
+    """Optionally run provider-backed reviewers, verify, then synthesize.
+
+    This explicit library API is not used by the canonical CLI. The normal
+    workflow dispatches three sub-agents and persists their panel result for
+    the deterministic runner to validate.
+    """
 
     def default_reviewer(_lens: str, prompt: str) -> str:
+        from shared.llm import ask_multi
+
         return ask_multi(
             [{"role": "user", "content": prompt}],
             system="你是獨立盲審 reviewer。只輸出指定 JSON，不得虛構引用。",
@@ -242,14 +307,18 @@ def run_panel(
             blockers=[],
         )
     else:
-        call_synthesis = synthesis_call or (
-            lambda prompt: ask_multi(
-                [{"role": "user", "content": prompt}],
-                system="你是主編。只輸出指定 JSON，所有判斷必須限於已查證 findings。",
-                model=_MODEL,
-                max_tokens=4096,
-            )
-        )
+        if synthesis_call is None:
+            from shared.llm import ask_multi
+
+            def call_synthesis(prompt: str) -> str:
+                return ask_multi(
+                    [{"role": "user", "content": prompt}],
+                    system="你是主編。只輸出指定 JSON，所有判斷必須限於已查證 findings。",
+                    model=_MODEL,
+                    max_tokens=4096,
+                )
+        else:
+            call_synthesis = synthesis_call
         synthesis = PanelSynthesis.model_validate(
             _extract_json(call_synthesis(_synthesis_prompt(verified)))
         )
@@ -268,7 +337,15 @@ def run_panel(
         if not required.issubset(accepted):
             raise ValueError("high brand/evidence findings cannot be rejected")
 
+    status = "converged"
+    if synthesis.blockers:
+        status = "blocked"
+    elif synthesis.accepted_finding_ids or synthesis.revision_instructions:
+        status = "needs_revision"
     return PanelResult(
+        episode_id=spec.episode_id,
+        revision=spec.revision,
+        status=status,
         reviews=reviews,
         verified_findings=verified,
         verification_rejections=verification_rejections,

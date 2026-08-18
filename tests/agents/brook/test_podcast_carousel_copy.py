@@ -95,6 +95,20 @@ def test_build_transcript_index_fails_closed_on_text_drift(tmp_path):
         build_transcript_index(prose, srt)
 
 
+def test_build_transcript_index_skips_punctuation_only_speaker_turn(tmp_path):
+    prose, srt = _write_transcript(tmp_path)
+    original = prose.read_text(encoding="utf-8")
+    prose.write_text("**張修修**：.。\n\n" + original, encoding="utf-8")
+
+    index = build_transcript_index(prose, srt)
+
+    assert len(index.blocks) == 3
+    assert index.blocks[0].block_id == "B0001"
+    assert index.blocks[0].speaker == "張修修"
+    assert index.blocks[0].t0 == 1.0
+    assert index.blocks[0].line_start == 3
+
+
 def test_generate_copy_spec_materialises_evidence_and_even_b_variant(tmp_path):
     prose, srt = _write_transcript(tmp_path)
     index = build_transcript_index(prose, srt)

@@ -11,7 +11,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from shared.llm import ask_multi
 from shared.schemas.podcast_carousel import (
     CarouselPage,
     CoverPage,
@@ -189,6 +188,12 @@ def build_transcript_index(prose_path: Path, srt_path: Path) -> TranscriptIndex:
         speaker = match.group("speaker").strip()
         text = match.group("text").strip()
         needle = _normalise(text)
+        if not needle:
+            # Some cleaned transcripts retain punctuation-only speaker turns.
+            # They carry no alignable semantic evidence, so skip them without
+            # advancing the SRT search cursor or guessing a time range.
+            line_cursor += consumed_lines
+            continue
         start = stream.find(needle, search_from)
         if start < 0:
             raise ValueError(
@@ -420,7 +425,14 @@ def generate_copy_spec(
     revision_findings: list[dict[str, Any]] | None = None,
     llm_call: Callable[[str], str] | None = None,
 ) -> PodcastCarouselCopySpecV1:
-    """Generate, validate, and evidence-materialise one primary Copy Spec."""
+    """Optionally generate and evidence-materialise one primary Copy Spec.
+
+    The canonical agent workflow constructs a fully materialised Copy Spec
+    before invoking the deterministic runner. Falling back to Nakama's
+    configured external LLM is retained only for callers that explicitly use
+    this library API without injecting ``llm_call``. Importing transcript and
+    validation utilities therefore never imports an LLM provider.
+    """
 
     prompt = _build_prompt(
         transcript=transcript,
@@ -431,17 +443,21 @@ def generate_copy_spec(
         prior_spec=prior_spec,
         revision_findings=revision_findings,
     )
-    call = llm_call or (
-        lambda value: ask_multi(
-            [{"role": "user", "content": value}],
-            system=(
-                "你是 Podcast 社群內容編輯。輸出只能是符合指定 schema 的純 JSON；"
-                "不可使用模板 placeholder，不可虛構逐字稿 evidence。"
-            ),
-            model=_MODEL,
-            max_tokens=16384,
-        )
-    )
+    if llm_call is None:
+        from shared.llm import ask_multi
+
+        def call(value: str) -> str:
+            return ask_multi(
+                [{"role": "user", "content": value}],
+                system=(
+                    "你是 Podcast 社群內容編輯。輸出只能是符合指定 schema 的純 JSON；"
+                    "不可使用模板 placeholder，不可虛構逐字稿 evidence。"
+                ),
+                model=_MODEL,
+                max_tokens=16384,
+            )
+    else:
+        call = llm_call
     last_error: Exception | None = None
     raw = ""
     for _attempt in range(2):

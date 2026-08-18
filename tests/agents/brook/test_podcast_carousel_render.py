@@ -79,7 +79,7 @@ def _spec() -> PodcastCarouselCopySpecV1:
             "role": "point",
             "page_id": "point-one",
             "headline": "Algorithms hide weak attempts",
-            "emphasis": "hide weak attempts",
+            "emphasis": "mostly sees",
             "body": "The audience mostly sees work that survives.",
             "evidence": [evidence],
         },
