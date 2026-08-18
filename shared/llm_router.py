@@ -182,13 +182,15 @@ _VALID_AUTH_POLICIES: frozenset[str] = frozenset(
 )
 
 DEFAULT_AUTH: dict[str, str] = {
-    # Default api — operators opt in to subscription via `AUTH_<AGENT>` env or
-    # `NAKAMA_REQUIRE_MAX_PLAN=1` (Codex audit §4: "default should not silently
-    # spend money when operator thought they were using Max", and the
-    # contrapositive — default should not silently consume Max Plan quota
-    # when operator didn't opt in).
-    "default": "api",
+    # 2026-08-19 flip（修修 2026-08-18 裁決「都改成預設使用訂閱額度」，ADR-026
+    # §Amendment 2026-08-19）：預設 subscription_preferred —— 有 OAuth token +
+    # CLI 就走訂閱，缺任一條件軟降 api 並記 fallback_reason（可稽核，非 silent）。
+    # 舊預設 "api" 的理由（Codex audit §4「不該默默花錢」）在 2026-08-17 額度
+    # 事故後反轉：現在「默默走 API 計費」才是要防的方向。要強制 API 計費的
+    # caller 用 AUTH_<AGENT>=api 顯式 opt-out。
+    "default": "subscription_preferred",
     # tool_use forced api: CLI subprocess can't carry raw tool-use JSON.
+    # （tool-use 要吃訂閱走 Agent SDK 路徑 —— 見 annotation_merger S2。）
     "tool_use": "api",
 }
 

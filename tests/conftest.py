@@ -98,6 +98,28 @@ def _prevent_real_google_calendar(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_subscription_dispatch_in_tests(request, monkeypatch):
+    """Stop tests from dispatching real ``claude -p`` subprocesses.
+
+    ADR-026 Amendment 2026-08-19 後 ``DEFAULT_AUTH["default"]`` 是
+    ``subscription_preferred``。dev 機器上 ``~/.claude/.credentials.json`` 與
+    ``claude`` binary 通常都在 → 未 mock 到 dispatch 層的測試會真的起 CLI
+    子進程（v3 Implementation deviation 記載的原始痛點，當年為此把預設留在
+    api）。這裡強制測試環境「無訂閱條件」→ ``subscription_preferred`` 軟降
+    api，測試行為與 flip 前逐位元相同。
+
+    CLI / dispatch 路徑自身的測試（test_claude_cli_client、
+    test_anthropic_auth_dispatch 等）在測試內自行 patch 這兩個函式 —— 測試層
+    的 patch 在本 fixture 之後套用、會蓋過它，不受影響（同
+    ``_prevent_real_google_calendar`` 的分層語意）。真要打訂閱的測試標
+    ``@pytest.mark.real_subscription``。
+    """
+    if request.node.get_closest_marker("real_subscription"):
+        return
+    monkeypatch.setattr("shared.anthropic_client._oauth_token_available", lambda: False)
+
+
+@pytest.fixture(autouse=True)
 def _isolated_incidents_pending(tmp_path: Path, monkeypatch):
     """Route shared.incident_archive default dir to tmp.
 

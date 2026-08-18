@@ -89,13 +89,19 @@ def test_transport_for_covers_all_branches(monkeypatch):
     monkeypatch.setenv("LLM_TRANSPORT", "openrouter")
     assert bm._transport_for({"provider": "google", "agent": "robin", "task": "x"}) == "openrouter"
     assert bm._transport_for({"provider": "openai", "agent": "robin", "task": "x"}) == "openrouter"
+    # ADR-026 Amendment 2026-08-19：anthropic + 預設 auth 現在是訂閱優先 → native
+    assert (
+        bm._transport_for({"provider": "anthropic", "agent": "nami", "task": "default"}) == "native"
+    )
+    # anthropic 要走 OpenRouter 需顯式 opt-out 訂閱（AUTH_*=api）
+    monkeypatch.setenv("AUTH_NAMI", "api")
     assert (
         bm._transport_for({"provider": "anthropic", "agent": "nami", "task": "default"})
         == "openrouter"
     )
     # xAI carve-out：OpenRouter 無 grok tier，恆 native
     assert bm._transport_for({"provider": "xai", "agent": "sanji", "task": "default"}) == "native"
-    # Anthropic 訂閱 → native（claude -p Max Plan）
+    # Anthropic 訂閱 hard-require → native（claude -p Max Plan）
     monkeypatch.setenv("AUTH_NAMI", "subscription_required")
     assert (
         bm._transport_for({"provider": "anthropic", "agent": "nami", "task": "default"}) == "native"
@@ -126,12 +132,17 @@ def test_get_shows_openrouter_transport_when_enabled(client, monkeypatch):
 
 
 def test_get_per_agent_transport_override(client, monkeypatch):
-    """LLM_TRANSPORT_<AGENT> 讓單一 agent 走 OpenRouter，面板逐列反映（全域仍 off）。"""
+    """LLM_TRANSPORT_<AGENT> 讓單一 agent 走 OpenRouter，面板逐列反映（全域仍 off）。
+
+    ADR-026 Amendment 2026-08-19 後 anthropic 預設走訂閱（native），要看到
+    openrouter 需同時顯式 AUTH_*=api opt-out。
+    """
     monkeypatch.delenv("LLM_TRANSPORT", raising=False)
     monkeypatch.setenv("LLM_TRANSPORT_NAMI", "openrouter")
+    monkeypatch.setenv("AUTH_NAMI", "api")
     c, _ = client
     resp = c.get("/bridge/models")
     assert resp.status_code == 200
-    # Nami（claude api）那列 → openrouter；其餘 agent 全域 off → native，兩者並存
+    # Nami（claude、顯式 api）那列 → openrouter；其餘 agent 全域 off → native，兩者並存
     assert "mdl-trans--openrouter" in resp.text
     assert "mdl-trans--native" in resp.text
