@@ -141,6 +141,7 @@ def test_design_system_cover_and_cta_use_reviewed_visual_contract():
     assert "--type-cover-title:112px" in source
     assert "--type-point-title:72px" in source
     assert "--type-point-body:44px" in source
+    assert "transform:rotate(-1.5deg)" in source
     assert 'target(title,"cover.headline",typeSize("--type-cover-title"),100,88,1.05)' in source
 
 
