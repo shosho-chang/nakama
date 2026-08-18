@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import json
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,27 @@ from shared.schemas.podcast_carousel import (
 )
 
 SHA = "a" * 64
+
+
+class _ReviewFormParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.forms: list[dict[str, str | None]] = []
+        self.nested_form = False
+        self.submit_form: dict[str, str | None] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = dict(attrs)
+        if tag == "form":
+            if self.forms:
+                self.nested_form = True
+            self.forms.append(attributes)
+        elif tag == "button" and attributes.get("type") == "submit":
+            self.submit_form = self.forms[-1] if self.forms else None
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "form" and self.forms:
+            self.forms.pop()
 EPISODE = "20260721 鄭國威"
 
 
@@ -169,6 +191,18 @@ def test_board_shows_all_cards_and_evidence_drawers(client):
     assert "grid-template-columns:repeat(5" not in response.text
     assert "逐字稿證據" in response.text
     assert "Approve" in response.text
+
+
+def test_review_submit_button_belongs_to_post_form_without_nested_forms(client):
+    app, _ = client
+    response = app.get(f"/bridge/ig-cards/{EPISODE}")
+    parser = _ReviewFormParser()
+    parser.feed(response.text)
+
+    assert parser.nested_form is False
+    assert parser.submit_form is not None
+    assert parser.submit_form["method"] == "post"
+    assert parser.submit_form["action"].endswith(f"/bridge/ig-cards/{EPISODE}/decide")
 
 
 def test_media_returns_verified_png(client):

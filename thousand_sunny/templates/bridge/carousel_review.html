@@ -52,24 +52,6 @@
         </label>
       </article>
 
-      <dialog class="carousel-evidence" id="evidence-{{ page.page_id }}">
-        <form method="dialog"><button aria-label="關閉證據">×</button></form>
-        <div class="sho-mono sho-mono-up">PAGE {{ '%02d'|format(page.page_number) }} · {{ page.page_id }}</div>
-        <h2>逐字稿證據</h2>
-        {% for evidence in page.copy_page.evidence %}
-        <article>
-          <header><strong>{{ evidence.speaker }}</strong><span>{{ '%.1f'|format(evidence.t0) }}–{{ '%.1f'|format(evidence.t1) }}s</span></header>
-          <p>{{ evidence.text }}</p>
-          <div class="sho-mono">{{ evidence.source_path }} · {{ evidence.evidence_id }}</div>
-        </article>
-        {% endfor %}
-        {% if page.copy_page.role == 'quote' and page.copy_page.host_question_evidence %}
-        <h3>主持人問題證據</h3>
-        {% for evidence in page.copy_page.host_question_evidence %}
-        <article><header><strong>{{ evidence.speaker }}</strong><span>{{ '%.1f'|format(evidence.t0) }}–{{ '%.1f'|format(evidence.t1) }}s</span></header><p>{{ evidence.text }}</p></article>
-        {% endfor %}
-        {% endif %}
-      </dialog>
     {% endfor %}
     </section>
     <footer class="carousel-actions">
@@ -77,6 +59,28 @@
       <button class="sho-btn" type="submit">儲存這一輪 Review</button>
     </footer>
   </form>
+
+  {% for row in rows %}
+    {% set page = row.page %}
+    <dialog class="carousel-evidence" id="evidence-{{ page.page_id }}">
+      <form method="dialog"><button aria-label="關閉證據">×</button></form>
+      <div class="sho-mono sho-mono-up">PAGE {{ '%02d'|format(page.page_number) }} · {{ page.page_id }}</div>
+      <h2>逐字稿證據</h2>
+      {% for evidence in page.copy_page.evidence %}
+      <article>
+        <header><strong>{{ evidence.speaker }}</strong><span>{{ '%.1f'|format(evidence.t0) }}–{{ '%.1f'|format(evidence.t1) }}s</span></header>
+        <p>{{ evidence.text }}</p>
+        <div class="sho-mono">{{ evidence.source_path }} · {{ evidence.evidence_id }}</div>
+      </article>
+      {% endfor %}
+      {% if page.copy_page.role == 'quote' and page.copy_page.host_question_evidence %}
+      <h3>主持人問題證據</h3>
+      {% for evidence in page.copy_page.host_question_evidence %}
+      <article><header><strong>{{ evidence.speaker }}</strong><span>{{ '%.1f'|format(evidence.t0) }}–{{ '%.1f'|format(evidence.t1) }}s</span></header><p>{{ evidence.text }}</p></article>
+      {% endfor %}
+      {% endif %}
+    </dialog>
+  {% endfor %}
 </main>
 <script>
 document.querySelectorAll('[data-evidence-target]').forEach((button) => {
