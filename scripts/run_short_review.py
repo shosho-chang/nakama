@@ -32,8 +32,10 @@ import sys
 import time
 from pathlib import Path
 
-sys.stdout.reconfigure(encoding="utf-8")
-sys.stderr.reconfigure(encoding="utf-8")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -74,6 +76,17 @@ FORMAT_REVIEW = {
 GAP_EXCLUDE_PREFIX = ("punch-",)
 
 
+def _uses_transcript_choreography(episode_dir: Path, cid: str) -> bool:
+    """True when kinetic titles are the complete, sole subtitle renderer."""
+    plan = episode_dir / TIGHTEN_DIR / f"{cid}_titles.json"
+    if not plan.exists():
+        return False
+    try:
+        return bool(json.loads(plan.read_text(encoding="utf-8")).get("covers_full_transcript"))
+    except (OSError, json.JSONDecodeError):
+        return False
+
+
 def _load_events(episode_dir: Path, cid: str) -> list[dict]:
     td = episode_dir / TIGHTEN_DIR
     events: list[dict] = []
@@ -94,10 +107,15 @@ def _load_events(episode_dir: Path, cid: str) -> list[dict]:
     p = td / f"{cid}_titles.json"
     if p.exists():
         for it in json.loads(p.read_text(encoding="utf-8"))["titles"]:
+            if "text" in it:
+                label = str(it["text"])
+            else:
+                states = it.get("states", [])
+                label = "\n".join(states[-1].get("lines", [])) if states else ""
             events.append(
                 {
                     "type": f"card-tier{it.get('tier', 2)}",
-                    "slug": it["text"].replace("\n", "/"),
+                    "slug": label.replace("\n", "/"),
                     "t0": float(it["t0"]),
                     "t1": float(it["t1"]),
                     "note": "",
@@ -233,21 +251,26 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
     fps = float(project.GetSetting("timelineFrameRate"))
     dur = (timeline.GetEndFrame() - timeline.GetStartFrame()) / fps
 
-    # 舊輪產物先清——事件增減會讓抽幀編號位移；舊 preview 留著會讓修修
-    # 分不清要看哪個（十九輪）
-    for stale in [
+    # 舊輪產物移入歷史，而非刪除。事件增減會讓抽幀編號位移；主 review
+    # 目錄只留本輪，但任何先前 preview 都能回看／回復。
+    stale_files = [
         *out_dir.glob("ev_*.png"),
         out_dir / "contact_sheet.png",
         *out_dir.glob("contact_sheet_*.png"),
         *out_dir.glob("*_preview*.mp4"),
         *out_dir.glob("*_raw*.mp4"),
-    ]:
+    ]
+    archive_dir = out_dir / "history" / time.strftime("%Y%m%dT%H%M%S")
+    for stale in stale_files:
+        if not stale.exists():
+            continue
         try:
-            stale.unlink(missing_ok=True)
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            stale.replace(archive_dir / stale.name)
         except PermissionError:
             # 修修正在播那支 preview → 檔案被鎖。不擋整條重建，
             # 後續 ffmpeg 會覆寫同名檔（覆寫比刪除寬容）
-            logger.warning("刪不掉（可能正在播放）：%s", stale.name)
+            logger.warning("無法封存（可能正在播放）：%s", stale.name)
 
     fcfg = FORMAT_REVIEW[c.get("format", "short")]
     pw, ph = fcfg["preview"]
@@ -266,7 +289,8 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
         import shutil
 
         shutil.copy(srts[-1], out_dir / "subs.srt")
-    if srts and fcfg["burn_srt"]:
+    title_choreography = _uses_transcript_choreography(episode_dir, cid)
+    if srts and fcfg["burn_srt"] and not title_choreography:
         # 交付檔名用「短N」開頭——修修不用對 punch-SN ↔ 短N 對照表（十九輪）
         burned = out_dir / f"{FORMAT_LABEL[c['format']]}{w['rank']}_preview.mp4"
         style = "FontName=Microsoft JhengHei,FontSize=14,Outline=1,MarginV=42"
@@ -289,14 +313,17 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
             text=True,
         )
         if proc.returncode == 0 and burned.exists():
-            preview.unlink(missing_ok=True)  # raw 無字幕版燒完即棄
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            preview.replace(archive_dir / preview.name)
             preview = burned
         else:
             logger.warning("字幕燒錄失敗，preview 無字幕: %s", proc.stderr[-200:])
     elif srts:
         # 長片：Resolve 已把字幕軌燒進來，只把 raw 改成交付檔名
         named = out_dir / f"{FORMAT_LABEL[c['format']]}{w['rank']}_preview.mp4"
-        named.unlink(missing_ok=True)
+        if named.exists():
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            named.replace(archive_dir / named.name)
         preview = preview.rename(named)
 
     # 縮圖牆：1fps、每列 10 張。長片切成 chunk_sec 一包——單張 7000px 高的
@@ -410,6 +437,7 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
         "frames": frames,
         "srt": srt,
         "preview": preview.name,
+        "subtitle_render_mode": "title_choreography" if title_choreography else "srt",
     }
     (out_dir / "events.json").write_text(
         json.dumps(packet, ensure_ascii=False, indent=1), encoding="utf-8"

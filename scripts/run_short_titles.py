@@ -13,9 +13,10 @@ hyperframes 渲出 **ProRes 4444 帶 alpha** 的普通 media clip（2026-07-26
 實測 DaVinci 合成 OK——順帶補掉 Brook DP 降級表「alpha 未過 DaVinci
 驗證」缺口），AppendToTimeline 想放哪放哪、想多長多長。
 
-輸入：highlights/tighten/<id>_titles.json（與 v1 同 schema）
+輸入：highlights/tighten/<id>_titles.json。既有 static card schema 保留；短片另可用
+``states`` 建立同一 overlay 內持續加行／換詞／升級尺寸的 kinetic sequence：
     {"titles": [{"text": "它會改變\\n你的耐心", "t0": 25.9, "t1": 27.8,
-                 "pos_y": 0.63}]}
+                  "pos_y": 0.63}]}
     t0/t1 = （緊·導播）timeline 秒（與 <id>_tight SRT 同軸）
 
 流程：逐卡 `npx hyperframes render`（cache：參數 hash 命中就跳過）→
@@ -41,11 +42,12 @@ import re
 import subprocess
 import sys
 import time
-from collections import Counter
 from pathlib import Path
 
-sys.stdout.reconfigure(encoding="utf-8")
-sys.stderr.reconfigure(encoding="utf-8")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -59,8 +61,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 COMP_DIR = REPO_ROOT / "video" / "compositions" / "punch_card"
 CARDS_DIR = "highlights/tighten/cards"
 COMP_SEC = 4.0  # punch_card.html data-duration——show_sec 上限（留 0.2s 裕度）
-# 三層字卡架構（修修 2026-07-26 九輪）：tier1=hero（每支≤1 張，全片最強一句，
-# 超大字）、tier2=標準 punch 卡、tier3=逐字字幕（走 subtitle track，不在本 script）
+KINETIC_COMP = "kinetic_sequence.html"
+KINETIC_COMP_SEC = 12.0
+# 三層字卡架構（修修 2026-07-26 九輪）：tier1=hero（每支 1–3 張，只能是
+# insight/closing）、tier2=標準 punch 卡、tier3=逐字字幕（走 subtitle track）
 # 格式參數（修修 2026-08-03 長片線）。短片欄 = 既有已驗收值，一個字沒動。
 #
 # 行寬上限的算法是「字級 × 字數 + padding ≤ 畫布寬」：
@@ -73,6 +77,10 @@ FORMAT_TITLES = {
         "comp": "punch_card.html",
         "max_line": 6,
         "max_line_hero": 5,
+        # Full-transcript choreography uses a quiet caption tier for ordinary
+        # speech.  Only emphasis/hero states use the old punch-card scale.
+        "max_line_caption": 10,
+        "max_line_emphasis": 7,
         "pos_y": {1: 0.58, 2: 0.66},
     },
     "long": {
@@ -89,7 +97,239 @@ FORMAT_TITLES = {
 # 內容的鋪陳，是不是也要有完整的規劃」）。每張卡必須標明在論證裡承擔哪一拍；
 # 寫不出 beat 的卡就是不該存在的卡。
 BEATS = ("hook", "mechanism", "evidence", "insight", "closing")
+SHORT_ANIMATIONS = ("swipe", "slam", "wipe", "word")
+SEQUENCE_TRANSITIONS = ("cut", "enter", "add", "replace", "promote", "type", "slam", "whip")
+SEQUENCE_STAGES = ("free", "rails")  # rails 僅用來辨識並拒絕舊版臨時圖樣
+SEQUENCE_EXITS = ("hard_cut", "whip")
+TEXT_ROLES = ("caption", "emphasis", "hero", "hybrid")
+OFFICIAL_PATTERN = "shards-gray-on-orange"
 SEC_PER_CARD = 4.5  # 密度上限：卡片總數 ≤ 片長 ÷ 4.5（範本 67s 22 張 ≈ 每 3s 一張）
+_DISPLAY_PUNCTUATION = re.compile(r"[，。？！；：、,.?!;:「」『』（）()《》〈〉【】〔〕—…·‧]")
+# 上下分割 opener 的兩張臉都佔中央區；置中的 transcript card 只能落在
+# 下方安全帶。0.84 是依 1080x1920 實際 render bbox（兩行約高 11%）加上
+# 臉框下緣餘裕所得，避免只檢查畫布邊界卻把字蓋在人臉上。
+SPLIT_OPENER_MIN_POS_Y = 0.84
+
+
+def _validate_split_opener_face_clearance(titles: list[dict], opener_sec: float) -> None:
+    """Fail closed when a centred title overlaps either split-opener face.
+
+    The split layout reserves the middle of each half for a face.  Title cards
+    are horizontally centred and can span most of the width, so the only legal
+    placement during the opener is the bottom safe band.
+    """
+    if opener_sec <= 0:
+        return
+    for index, title in enumerate(titles):
+        t0 = float(title.get("t0", 0.0))
+        t1 = float(title.get("t1", t0))
+        if t0 >= opener_sec or t1 <= 0:
+            continue
+        pos_y = float(title.get("pos_y", FORMAT_TITLES["short"]["pos_y"][2]))
+        if pos_y < SPLIT_OPENER_MIN_POS_Y:
+            raise SystemExit(
+                f"上下分割開場的字卡 {index} pos_y={pos_y:.2f} 會遮住下半格人臉；"
+                f"必須放到下方安全帶（pos_y >= {SPLIT_OPENER_MIN_POS_Y:.2f}）"
+            )
+
+
+def _validate_short_motion_grammar(titles: list[dict]) -> None:
+    """Fail closed when a short falls back to monotonous template motion.
+
+    The Zhong Ying Ep02 reference alternates entry grammar and line-size
+    hierarchy.  A plan with four or more cards must therefore use at least two
+    animations and two size signatures; three identical animations in a row
+    are never allowed.  This is planning validation only and does not touch
+    Resolve.
+    """
+    if not titles:
+        return
+    # kinetic sequence 自己在 `_validate_kinetic_sequence` 檢查 state 變化；這裡只
+    # 攔既有 static card 又退回單一模板的情況。
+    static_titles = [t for t in titles if not t.get("states")]
+    if not static_titles:
+        return
+    animations = [
+        str(t.get("animation", "slam" if int(t.get("tier", 2)) == 1 else "swipe"))
+        for t in static_titles
+    ]
+    bad = [a for a in animations if a not in SHORT_ANIMATIONS]
+    if bad:
+        raise SystemExit(
+            f"短片字卡 animation 不合法：{bad[0]!r}（要 {'/'.join(SHORT_ANIMATIONS)}）"
+        )
+    for index in range(2, len(animations)):
+        if len(set(animations[index - 2 : index + 1])) == 1:
+            raise SystemExit(
+                f"字卡 {index - 1}–{index + 1} 連續三張都用 {animations[index]!r}——"
+                "改用 swipe/slam/wipe/word 交替建立節奏"
+            )
+    if len(static_titles) >= 4 and len(set(animations)) < 2:
+        raise SystemExit("四張以上短片字卡至少要有兩種進場動畫")
+
+    sizes = {
+        (
+            float(t.get("card_scale", 1.0)),
+            float(t.get("line1_scale", 1.0)),
+            float(t.get("line2_scale", 1.0)),
+        )
+        for t in static_titles
+    }
+    if len(static_titles) >= 4 and len(sizes) < 2:
+        raise SystemExit("四張以上短片字卡至少要有兩組整卡／行級尺寸，避免模板感")
+
+
+def _title_text(title: dict) -> str:
+    """Human-readable label for either a static card or a kinetic sequence."""
+    if title.get("text"):
+        return str(title["text"])
+    states = title.get("states") or []
+    if not states:
+        return ""
+    return "\n".join(str(x) for x in states[-1].get("lines", []))
+
+
+def _validate_exact_transcript_span(index: int, displayed: str, source: str) -> None:
+    """Require every kinetic title to be a verbatim contiguous transcript span.
+
+    Line breaks and punctuation are presentation metadata, so they are ignored.
+    Word deletion, reordering and paraphrase are not.  This is intentionally
+    stricter than the retired character-overlap heuristic: the transcript is
+    now the single source of truth and title planning may only style it.
+    """
+    displayed_n, source_n = _norm(displayed), _norm(source)
+    if not displayed_n or displayed_n not in source_n:
+        raise SystemExit(
+            "sequence {}「{}」不是逐字稿的原文連續片段。\n"
+            "  來源逐字稿：{}\n"
+            "  字卡只可改斷行、大小與動態，不可刪字重組或改寫".format(
+                index, displayed.replace(chr(10), "／"), source
+            )
+        )
+
+
+def _validate_brand_pattern_usage(titles: list[dict]) -> None:
+    """One official branded pattern moment per short, reserved for a gold quote."""
+    if any(str(title.get("stage", "free")) == "rails" for title in titles):
+        raise SystemExit(
+            "stage=rails 是臨時繪製的三角形 pattern，已停用；"
+            "改用 brand_pattern 與正式品牌 shards 素材"
+        )
+    patterned = [title for title in titles if title.get("brand_pattern")]
+    if len(patterned) > 1:
+        raise SystemExit(f"品牌 pattern 全片只能出現一次，目前有 {len(patterned)} 次")
+    if not patterned:
+        return
+    spec = patterned[0]["brand_pattern"]
+    if not isinstance(spec, dict):
+        raise SystemExit("brand_pattern 必須是物件")
+    if spec.get("asset") != OFFICIAL_PATTERN:
+        raise SystemExit(f"brand_pattern 只能使用正式素材 {OFFICIAL_PATTERN!r}")
+    if spec.get("role") != "gold_quote":
+        raise SystemExit("brand_pattern 只保留給 role=gold_quote 的全片最重要金句")
+    at = float(spec.get("at", -1))
+    duration = float(spec.get("duration", 0))
+    show_sec = float(patterned[0].get("t1", 0)) - float(patterned[0].get("t0", 0))
+    if at < 0 or not 0.35 <= duration <= 1.5 or at + duration > show_sec:
+        raise SystemExit("brand_pattern 的 at/duration 超出字卡區間或時長不在 0.35–1.5s")
+
+
+def _validate_full_transcript_display(titles: list[dict]) -> None:
+    """Short-form transcript choreography is punctuation-free on screen."""
+    for sequence_index, title in enumerate(titles):
+        for state_index, state in enumerate(title.get("states") or []):
+            for line in state.get("lines") or []:
+                punctuation = _DISPLAY_PUNCTUATION.search(str(line))
+                if punctuation:
+                    raise SystemExit(
+                        "短片顯示文字不可含標點："
+                        f"sequence {sequence_index} state {state_index} "
+                        f"包含 {punctuation.group()!r}（{line}）"
+                    )
+
+
+def _validate_kinetic_sequence(index: int, title: dict, show_sec: float, fcfg: dict) -> None:
+    states = title.get("states") or []
+    if not 2 <= len(states) <= 8:
+        raise SystemExit(f"sequence {index} states={len(states)} 不合法（要 2–8 個）")
+    stage = str(title.get("stage", "free"))
+    if stage not in SEQUENCE_STAGES:
+        raise SystemExit(
+            f"sequence {index} stage={stage!r} 不合法（要 {'/'.join(SEQUENCE_STAGES)}）"
+        )
+    exit_style = str(title.get("exit", "hard_cut"))
+    if exit_style not in SEQUENCE_EXITS:
+        raise SystemExit(
+            f"sequence {index} exit={exit_style!r} 不合法（要 {'/'.join(SEQUENCE_EXITS)}）"
+        )
+
+    previous_at = -1.0
+    transitions = []
+    for state_index, state in enumerate(states):
+        at = float(state.get("at", -1))
+        if state_index == 0 and abs(at) > 0.05:
+            raise SystemExit(f"sequence {index} 第一個 state 必須從 at=0 開始")
+        if at <= previous_at or at >= show_sec - 0.12:
+            raise SystemExit(
+                f"sequence {index} state {state_index} at={at} 不合法；必須遞增且早於片尾"
+            )
+        previous_at = at
+        transition = str(state.get("transition", "enter" if state_index == 0 else "replace"))
+        if transition not in SEQUENCE_TRANSITIONS:
+            raise SystemExit(
+                f"sequence {index} state {state_index} transition={transition!r} 不合法"
+            )
+        transitions.append(transition)
+        lines = state.get("lines")
+        if (
+            not isinstance(lines, list)
+            or not 1 <= len(lines) <= 3
+            or not all(isinstance(line, str) and line.strip() for line in lines)
+        ):
+            raise SystemExit(f"sequence {index} state {state_index} lines 必須是 1–3 行非空文字")
+        state_tier = int(state.get("tier", title.get("tier", 2)))
+        if state_tier not in (1, 2):
+            raise SystemExit(f"sequence {index} state {state_index} tier={state_tier} 不合法")
+        role = str(state.get("role", "hero" if state_tier == 1 else "emphasis"))
+        if role not in TEXT_ROLES:
+            raise SystemExit(
+                f"sequence {index} state {state_index} role={role!r} 不合法"
+                f"（要 {'/'.join(TEXT_ROLES)}）"
+            )
+        if role == "caption" and len(lines) > 2:
+            raise SystemExit(
+                f"sequence {index} state {state_index} caption 最多 2 行；"
+                "一般逐字字卡不可把三個語意節拍同時堆在畫面上"
+            )
+        line_roles = state.get("line_roles")
+        if line_roles is not None:
+            if (
+                not isinstance(line_roles, list)
+                or len(line_roles) != len(lines)
+                or any(str(line_role) not in TEXT_ROLES for line_role in line_roles)
+            ):
+                raise SystemExit(
+                    f"sequence {index} state {state_index} line_roles 必須逐行提供"
+                    f"且只能是 {'/'.join(TEXT_ROLES)}"
+                )
+        if role == "caption":
+            limit = fcfg.get("max_line_caption", fcfg["max_line"])
+        elif role in ("emphasis", "hybrid"):
+            limit = fcfg.get("max_line_emphasis", fcfg["max_line"])
+        else:
+            limit = fcfg["max_line_hero"]
+        too_long = [line for line in lines if len(line) > limit]
+        if too_long:
+            raise SystemExit(f"sequence {index} state {state_index} 行超過 {limit} 字：{too_long}")
+        scales = state.get("scales", [1.0] * len(lines))
+        if len(scales) != len(lines) or any(not 0.72 <= float(v) <= 1.35 for v in scales):
+            raise SystemExit(
+                f"sequence {index} state {state_index} scales 必須逐行提供且介於 0.72–1.35"
+            )
+        if str(state.get("style", "orange")) not in ("orange", "hybrid"):
+            raise SystemExit(f"sequence {index} state {state_index} style 只允許 orange/hybrid")
+    if len(states) >= 4 and len(set(transitions)) < 2 and set(transitions) != {"cut"}:
+        raise SystemExit(f"sequence {index} 四個以上 state 不可全部使用同一 transition")
 
 
 def _card_hash(variables: dict, comp: str = "punch_card.html") -> str:
@@ -119,6 +359,28 @@ def _render_card(variables: dict, out_path: Path, comp: str = "punch_card.html")
         raise SystemExit(f"hyperframes render 失敗: {(proc.stderr or '')[-400:]}")
 
 
+def _validate_rendered_frame_safety(paths: list[Path]) -> None:
+    """Run the fail-closed safe-area gate on every frame before touching Resolve."""
+    candidates = [
+        REPO_ROOT / ".venv-v2" / "Scripts" / "python.exe",
+        REPO_ROOT / ".venv-v2" / "bin" / "python",
+        Path(sys.executable),
+    ]
+    python = next((candidate for candidate in candidates if candidate.exists()), None)
+    if python is None:
+        raise SystemExit("找不到可執行逐幀安全區檢查的 Python")
+    checker = REPO_ROOT / "scripts" / "check_title_frame_safety.py"
+    proc = subprocess.run(
+        [str(python), str(checker), *[str(path) for path in paths]],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    if proc.returncode != 0:
+        raise SystemExit("字卡逐幀安全區驗收失敗，未寫入 Resolve：\n" + proc.stdout[-5000:])
+    logger.info("逐幀安全區驗收通過：%d 個 overlay", len(paths))
+
+
 _PUNCT = r"[\s，。、？！「」『』（）()《》〈〉·,.?!:;\-—…]"
 
 
@@ -127,25 +389,140 @@ def _norm(s: str) -> str:
     return re.sub(_PUNCT, "", s)
 
 
-def _spoken_around(episode_dir: Path, cid: str, t0: float, t1: float) -> str:
-    """該時間點前後 ±1.5s 講者實際說的話——字卡必須是它的連續節錄。"""
+def _tight_srt_cues(episode_dir: Path, cid: str) -> dict[int, dict]:
+    """Load the latest reviewed SRT as the only lexical source for short titles."""
     srts = sorted((episode_dir / "highlights/srt").glob(f"{cid}_tight_r*.srt"))
     if not srts:
-        return ""
-    out = []
-    blocks = re.split(r"\n\s*\n", srts[-1].read_text(encoding="utf-8").strip())
-    for block in blocks:
-        ls = block.splitlines()
-        if len(ls) < 3:
+        return {}
+    cues: dict[int, dict] = {}
+    for block in re.split(r"\n\s*\n", srts[-1].read_text(encoding="utf-8-sig").strip()):
+        lines = block.splitlines()
+        if len(lines) < 3 or not lines[0].strip().isdigit():
             continue
-        m = re.match(r"(\d+):(\d+):(\d+),(\d+) --> (\d+):(\d+):(\d+),(\d+)", ls[1])
-        if not m:
+        match = re.match(r"(\d+):(\d+):(\d+),(\d+) --> (\d+):(\d+):(\d+),(\d+)", lines[1])
+        if not match:
             continue
-        s = int(m.group(2)) * 60 + int(m.group(3)) + int(m.group(4)) / 1000
-        e = int(m.group(6)) * 60 + int(m.group(7)) + int(m.group(8)) / 1000
-        if e > t0 - 1.5 and s < t1 + 1.5:
-            out.append(ls[2])
-    return "".join(out)
+        start = (
+            int(match.group(1)) * 3600
+            + int(match.group(2)) * 60
+            + int(match.group(3))
+            + int(match.group(4)) / 1000
+        )
+        end = (
+            int(match.group(5)) * 3600
+            + int(match.group(6)) * 60
+            + int(match.group(7))
+            + int(match.group(8)) / 1000
+        )
+        cue_id = int(lines[0].strip())
+        cues[cue_id] = {"t0": start, "t1": end, "text": "".join(lines[2:]).strip()}
+    return cues
+
+
+def _validate_transcript_driven_title(
+    index: int,
+    title: dict,
+    cues: dict[int, dict],
+    *,
+    require_full_state_coverage: bool = False,
+) -> None:
+    """Validate source custody and timing for a kinetic transcript title."""
+    source_ids = title.get("source_cues")
+    if (
+        not isinstance(source_ids, list)
+        or not source_ids
+        or not all(isinstance(cue_id, int) for cue_id in source_ids)
+    ):
+        raise SystemExit(f"sequence {index} 缺 source_cues；短片字卡必須指向最新 SRT，不可另寫文案")
+    missing = [cue_id for cue_id in source_ids if cue_id not in cues]
+    if missing:
+        raise SystemExit(f"sequence {index} source_cues 在最新 SRT 不存在：{missing}")
+    source = "".join(cues[cue_id]["text"] for cue_id in source_ids)
+    t0, t1 = float(title["t0"]), float(title["t1"])
+    if cues[source_ids[0]]["t0"] < t0 - 0.55 or cues[source_ids[-1]]["t1"] > t1 + 0.55:
+        raise SystemExit(
+            f"sequence {index} 的 t0/t1 沒有包住 source_cues {source_ids[0]}–{source_ids[-1]}"
+        )
+    for state_index, state in enumerate(title.get("states") or []):
+        state_source_ids = state.get("source_cues")
+        state_has_source = (
+            isinstance(state_source_ids, list)
+            and bool(state_source_ids)
+            and all(isinstance(cue_id, int) for cue_id in state_source_ids)
+        )
+        if require_full_state_coverage and not state_has_source:
+            raise SystemExit(
+                f"sequence {index} state {state_index} 缺 source_cues；"
+                "每個畫面狀態必須精確承接一段逐字稿"
+            )
+        if state_has_source and state_source_ids != list(
+            range(state_source_ids[0], state_source_ids[-1] + 1)
+        ):
+            raise SystemExit(
+                f"sequence {index} state {state_index} source_cues 必須連續：{state_source_ids}"
+            )
+        if state_has_source and any(cue_id not in source_ids for cue_id in state_source_ids):
+            raise SystemExit(
+                f"sequence {index} state {state_index} source_cues 不在 sequence 範圍內："
+                f"{state_source_ids}"
+            )
+        trigger = state.get("trigger_cue")
+        expected_trigger = state_source_ids[0] if state_has_source else None
+        trigger_valid = (
+            trigger == expected_trigger if require_full_state_coverage else trigger in source_ids
+        )
+        if not trigger_valid:
+            raise SystemExit(
+                f"sequence {index} state {state_index} 缺合法 trigger_cue；"
+                "必須等於該 state 第一個 source_cue"
+            )
+        absolute_at = t0 + float(state.get("at", 0))
+        cue = cues[trigger]
+        if absolute_at < cue["t0"] - 0.35 or absolute_at > cue["t1"] + 0.35:
+            raise SystemExit(
+                f"sequence {index} state {state_index} @{absolute_at:.3f}s 與"
+                f" trigger_cue={trigger}（{cue['t0']:.3f}–{cue['t1']:.3f}s）不同步"
+            )
+        displayed = "\n".join(state["lines"])
+        if require_full_state_coverage:
+            expected = "".join(cues[cue_id]["text"] for cue_id in state_source_ids)
+        else:
+            expected = source
+        if require_full_state_coverage and _norm(displayed) != _norm(expected):
+            raise SystemExit(
+                f"sequence {index} state {state_index} 不是 source_cues 的完整原文。\n"
+                f"  預期：{expected}\n  實際：{displayed.replace(chr(10), '／')}"
+            )
+        if not require_full_state_coverage:
+            _validate_exact_transcript_span(index, displayed, source)
+
+    state_ids = (
+        [cue_id for state in (title.get("states") or []) for cue_id in state.get("source_cues", [])]
+        if require_full_state_coverage
+        else source_ids
+    )
+    if require_full_state_coverage and state_ids != source_ids:
+        raise SystemExit(
+            f"sequence {index} 的 states 沒有依序完整承接 source_cues："
+            f"expected={source_ids} actual={state_ids}"
+        )
+
+
+def _validate_full_transcript_coverage(titles: list[dict], cues: dict[int, dict]) -> None:
+    """Require every latest-SRT cue to appear exactly once, in source order."""
+    expected = sorted(cues)
+    title_ids = [cue_id for title in titles for cue_id in title.get("source_cues", [])]
+    state_ids = [
+        cue_id
+        for title in titles
+        for state in title.get("states", [])
+        for cue_id in state.get("source_cues", [])
+    ]
+    if title_ids != expected or state_ids != expected:
+        raise SystemExit(
+            "逐字稿覆蓋不完整或 cue 重複／順序錯誤："
+            f"expected={expected} titles={title_ids} states={state_ids}"
+        )
 
 
 def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
@@ -157,8 +534,26 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     titles_path = episode_dir / TIGHTEN_DIR / f"{cid}_titles.json"
     if not titles_path.exists():
         raise SystemExit(f"{titles_path} 不存在——agent 先從 tight SRT 選 punch 時間點")
-    titles = json.loads(titles_path.read_text(encoding="utf-8"))["titles"]
+    plan = json.loads(titles_path.read_text(encoding="utf-8"))
+    titles = plan["titles"]
+    covers_full_transcript = bool(plan.get("covers_full_transcript", False))
+    transition_mode = str(plan.get("transition_mode", "kinetic"))
+    if transition_mode not in ("kinetic", "cut"):
+        raise SystemExit("transition_mode 只允許 kinetic/cut")
     titles.sort(key=lambda x: x["t0"])
+    if fmt == "short":
+        _validate_split_opener_face_clearance(
+            titles,
+            opener_sec=float(plan.get("split_opener_sec", 4.0)),
+        )
+        _validate_short_motion_grammar(titles)
+        _validate_brand_pattern_usage(titles)
+    tight_cues = _tight_srt_cues(episode_dir, cid)
+    if fmt == "short" and covers_full_transcript:
+        if not tight_cues:
+            raise SystemExit(f"找不到 {cid} 最新 tight SRT，不能驗證完整逐字稿覆蓋")
+        _validate_full_transcript_coverage(titles, tight_cues)
+        _validate_full_transcript_display(titles)
     heroes = [x for x in titles if int(x.get("tier", 2)) == 1]
     if not 1 <= len(heroes) <= 3:
         raise SystemExit(
@@ -168,7 +563,7 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     if bad_beat:
         raise SystemExit(
             "hero 的 beat 只能是 insight（論點）或 closing（收束）："
-            + "、".join(x["text"].replace(chr(10), "／") for x in bad_beat)
+            + "、".join(_title_text(x).replace(chr(10), "／") for x in bad_beat)
         )
 
     # 1) 逐卡 render（參數 hash cache）
@@ -177,65 +572,114 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     jobs = []
     for i, t in enumerate(titles):
         show_sec = round(float(t["t1"]) - float(t["t0"]), 2)
-        if not 0.5 <= show_sec <= COMP_SEC - 0.2:
+        states = t.get("states") or []
+        comp = KINETIC_COMP if states else fcfg["comp"]
+        comp_sec = KINETIC_COMP_SEC if states else COMP_SEC
+        if states and fmt != "short":
+            raise SystemExit("kinetic sequence 目前只支援直式短片")
+        if not 0.5 <= show_sec <= comp_sec - 0.2:
             raise SystemExit(
-                f"卡片 {i} 顯示 {show_sec}s 超出範圍（0.5–{COMP_SEC - 0.2}s）——"
-                "composition data-duration 固定 4s，更長的卡拆兩張或改 t1"
+                f"卡片 {i} 顯示 {show_sec}s 超出範圍（0.5–{comp_sec - 0.2}s）——"
+                f"{comp} data-duration 固定 {comp_sec:.0f}s，更長的 sequence 要按語意拆段"
             )
-        lines = t["text"].split("\n")
+        label = _title_text(t)
         beat = t.get("beat")
         if beat not in BEATS:
             raise SystemExit(
-                f"卡片 {i}「{t['text'].replace(chr(10), '／')}」缺 beat 或不合法"
+                f"卡片 {i}「{label.replace(chr(10), '／')}」缺 beat 或不合法"
                 f"（要 {'/'.join(BEATS)}）——寫不出它在論證裡的角色，就不該放這張卡"
             )
         tier = int(t.get("tier", 2))
         if tier not in (1, 2):
             raise SystemExit(f"卡片 {i} tier={tier} 不合法（1=hero 2=標準）")
-        # 字卡必須是**講者原話的連續節錄**，不是轉譯／總結（二十六輪血案：
-        # 「三分鐘的獎勵／十年的成果」是我自行合成的對比，講者從沒這樣說 →
-        # 字卡與耳朵聽到的對不上，變成干擾）。範本 22 張卡全是原話直接擷取。
-        # 「有意義的 summary」而不是逐字節錄（二十七輪修修裁決：可以改寫、
-        # 要有意義）。但**不可自行合成講者沒說的話**——用子序列比例把關：
-        # 卡片的字必須大多按原順序出現在該時段的原話裡（壓縮/省贅字 OK，
-        # 跨段拼貼會掉到門檻以下）。
-        spoken = _spoken_around(episode_dir, cid, float(t["t0"]), float(t["t1"]))
-        if spoken:
-            # 字元重疊比例（不強制順序——summary 常會調詞序、省贅字；
-            # 但憑空捏造的字會讓比例掉下來）
-            card_n, spoken_n = _norm(t["text"]), _norm(spoken)
-            pool = Counter(spoken_n)
-            hit = sum(1 for ch in card_n if pool[ch] > 0 and not pool.__setitem__(ch, pool[ch] - 1))
-            ratio = hit / max(1, len(card_n))
-            if ratio < 0.7:
+        if states:
+            _validate_kinetic_sequence(i, t, show_sec, fcfg)
+        # 短片 V2：逐字稿是唯一文字來源。企劃只能指 cue、斷行、指定層級與
+        # 動態；每一個畫面狀態都必須是來源 cue 的原文連續片段。
+        if fmt == "short":
+            if not states:
                 raise SystemExit(
-                    "卡片 {} 「{}」與該時段原話落差太大（按序命中 {:.0%}）。\n"
-                    "  該時段實際說的是：{}\n"
-                    "  可以壓縮改寫，但不可寫成講者沒說的意思".format(
-                        i, t["text"].replace(chr(10), "／"), ratio, spoken
-                    )
+                    f"短片卡片 {i} 必須使用 transcript-driven states，不能另寫 static 文案"
                 )
-        limit = fcfg["max_line_hero"] if tier == 1 else fcfg["max_line"]
-        too_long = [x for x in lines if len(x) > limit]
-        if too_long:
-            raise SystemExit(f"卡片 {i}（tier {tier}）行超過 {limit} 字：{too_long}——改寫或拆行")
-        variables = {
-            "line1": lines[0],
-            "line2": lines[1] if len(lines) > 1 else "",
-            "show_sec": show_sec,
-            "pos_y": float(t.get("pos_y", fcfg["pos_y"][tier])),
-            "tier": tier,
-        }
-        style = t.get("style", fcfg.get("style"))
-        if style:  # 短片無 style 概念——不進 variables，hash 不變
-            variables["style"] = style
-        h = _card_hash(variables, fcfg["comp"])
+            if not tight_cues:
+                raise SystemExit(f"找不到 {cid} 最新 tight SRT，不能產生短片文字編舞")
+            _validate_transcript_driven_title(
+                i,
+                t,
+                tight_cues,
+                require_full_state_coverage=covers_full_transcript,
+            )
+
+        pos_y = float(t.get("pos_y", fcfg["pos_y"][tier]))
+        if states:
+            variables = {
+                "sequence_json": json.dumps(
+                    {
+                        "states": states,
+                        "stage": "free",
+                        "exit": str(t.get("exit", "hard_cut")),
+                        "brand_pattern": t.get("brand_pattern"),
+                        "transition_mode": transition_mode,
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+                "show_sec": show_sec,
+                "pos_y": pos_y,
+            }
+        else:
+            lines = label.split("\n")
+            limit = fcfg["max_line_hero"] if tier == 1 else fcfg["max_line"]
+            too_long = [x for x in lines if len(x) > limit]
+            if too_long:
+                raise SystemExit(
+                    f"卡片 {i}（tier {tier}）行超過 {limit} 字：{too_long}——改寫或拆行"
+                )
+            variables = {
+                "line1": lines[0],
+                "line2": lines[1] if len(lines) > 1 else "",
+                "show_sec": show_sec,
+                "pos_y": pos_y,
+                "tier": tier,
+            }
+            card_scale = float(t.get("card_scale", 1.0))
+            if not 0.75 <= card_scale <= 1.15:
+                raise SystemExit(f"卡片 {i} card_scale={card_scale} 不合法（允許 0.75–1.15）")
+            variables["card_scale"] = card_scale
+            if fmt == "short":
+                animation = str(t.get("animation", "slam" if tier == 1 else "swipe"))
+                if animation not in SHORT_ANIMATIONS:
+                    raise SystemExit(
+                        f"卡片 {i} animation={animation!r} 不合法"
+                        f"（要 {'/'.join(SHORT_ANIMATIONS)}）"
+                    )
+                variables["animation"] = animation
+                for key in ("line1_scale", "line2_scale"):
+                    value = float(t.get(key, 1.0))
+                    if not 0.78 <= value <= 1.20:
+                        raise SystemExit(f"卡片 {i} {key}={value} 不合法（允許 0.78–1.20）")
+                    variables[key] = value
+            style = t.get("style", fcfg.get("style"))
+            if style:  # 短片無 style 概念——不進 variables，hash 不變
+                variables["style"] = style
+        h = _card_hash(variables, comp)
         mov = cards_dir / f"{cid}_{i}_{h}.mov"
         if not mov.exists():
-            _render_card(variables, mov, fcfg["comp"])
+            _render_card(variables, mov, comp)
         else:
             logger.info("cache hit: %s", mov.name)
-        jobs.append({"mov": mov, "t0": float(t["t0"]), "show_sec": show_sec, "text": t["text"]})
+        jobs.append(
+            {
+                "mov": mov,
+                "t0": float(t["t0"]),
+                "show_sec": show_sec,
+                "text": label,
+                "pos_y": pos_y,
+            }
+        )
+
+    if fmt == "short":
+        _validate_rendered_frame_safety([job["mov"] for job in jobs])
 
     # 2) Resolve：匯入 + 疊軌
     resolve = connect_resolve()
@@ -259,6 +703,17 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     if director is None:
         raise SystemExit(f"「{director_label}」不存在——先跑 run_short_director")
     project.SetCurrentTimeline(director)
+
+    removed_subtitles = 0
+    if fmt == "short" and covers_full_transcript:
+        # This plan is the subtitle renderer.  Keeping the Resolve subtitle
+        # track would duplicate every sentence at the bottom of frame.
+        for ti in range(1, director.GetTrackCount("subtitle") + 1):
+            subtitle_items = director.GetItemListInTrack("subtitle", ti) or []
+            if subtitle_items:
+                if not director.DeleteClips(subtitle_items):
+                    raise SystemExit(f"無法清除 subtitle track {ti}；中止以避免雙重字幕")
+                removed_subtitles += len(subtitle_items)
 
     dur = (director.GetEndFrame() - director.GetStartFrame()) / fps
     cap = max(3, int(dur / SEC_PER_CARD))
@@ -302,7 +757,7 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         overlays = [
             it
             for it in json.loads(broll_path.read_text(encoding="utf-8"))["items"]
-            if it["kind"] in ("sticker", "concept")
+            if it["kind"] in ("sticker", "icon_motion", "concept")
         ]
         for job in jobs:
             a0, a1 = job["t0"], job["t0"] + job["show_sec"]
@@ -352,8 +807,17 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
                 }
             ]
         )
-        if not ok:
+        if not ok or not ok[0]:
             raise SystemExit(f"疊軌失敗 @{job['t0']}")
+        placed = ok[0]
+        placed_source = placed.GetMediaPoolItem()
+        if placed_source is None:
+            raise SystemExit(f"字卡落軌後失去 Media Pool 來源 @{job['t0']}: {job['mov']}")
+        placed_path = placed_source.GetClipProperty("File Path") or ""
+        if Path(placed_path).resolve() != Path(job["mov"]).resolve():
+            raise SystemExit(
+                f"字卡來源錯誤 @{job['t0']}: expected={job['mov']} actual={placed_path}"
+            )
         made.append(
             {"text": job["text"].replace("\n", "/"), "at": job["t0"], "show_sec": job["show_sec"]}
         )
@@ -386,7 +850,14 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
             project.DeleteRenderJob(jid)
             stills.append(name)
 
-    return {"status": "titled", "timeline": director_label, "cards": made, "stills": stills}
+    return {
+        "status": "titled",
+        "timeline": director_label,
+        "cards": made,
+        "stills": stills,
+        "subtitle_mode": "title_choreography" if covers_full_transcript else "srt_track",
+        "removed_subtitle_items": removed_subtitles,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:

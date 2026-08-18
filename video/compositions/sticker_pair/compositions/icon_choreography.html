@@ -1,0 +1,115 @@
+<!-- nakama:component icon_choreography（短片情境 icon：進場、淘汰、聚焦、移動） -->
+<!doctype html>
+<html
+  lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"icons_json","type":"string","label":"Icon JSON","default":"[]"},
+    {"id":"steps_json","type":"string","label":"Motion steps JSON","default":"[]"},
+    {"id":"show_sec","type":"number","label":"顯示秒數","default":4}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body, #root { width: 1080px; height: 1920px; overflow: hidden; background: transparent; }
+      #root { position: relative; }
+      .icon {
+        position: absolute;
+        opacity: 0;
+        object-fit: contain;
+        transform-origin: 50% 55%;
+        filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.34));
+        will-change: transform, opacity, filter;
+      }
+      .focus-ring {
+        position: absolute;
+        width: 250px;
+        height: 250px;
+        margin: -125px 0 0 -125px;
+        border: 18px solid #e87000;
+        border-radius: 50%;
+        opacity: 0;
+        transform: scale(.4);
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="icon_choreography"
+      data-width="1080" data-height="1920" data-start="0" data-duration="8">
+      <div class="focus-ring" id="focus-ring"></div>
+    </div>
+    <script>
+      const vars = (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const icons = JSON.parse(String(vars.icons_json || "[]"));
+      const steps = JSON.parse(String(vars.steps_json || "[]"));
+      const showSec = Number(vars.show_sec || 4);
+      const root = document.getElementById("root");
+      const ring = document.getElementById("focus-ring");
+      const elements = new Map();
+
+      icons.forEach((icon) => {
+        const image = document.createElement("img");
+        image.className = "icon";
+        image.dataset.iconId = String(icon.id);
+        image.src = String(icon.src || "");
+        image.style.left = `${Number(icon.x || 50)}%`;
+        image.style.top = `${Number(icon.y || 42)}%`;
+        image.style.width = `${Number(icon.size || 12)}%`;
+        image.style.rotate = `${Number(icon.rotation || 0)}deg`;
+        root.appendChild(image);
+        elements.set(String(icon.id), image);
+        gsap.set(image, { xPercent: -50, yPercent: -50 });
+      });
+
+      const targetsFor = (step) => {
+        const ids = Array.isArray(step.ids) ? step.ids : [step.id];
+        return ids.map((id) => elements.get(String(id))).filter(Boolean);
+      };
+      const tl = gsap.timeline({ defaults: { transformOrigin: "50% 55%" } });
+
+      steps.forEach((step) => {
+        const at = Number(step.at || 0);
+        const targets = targetsFor(step);
+        const op = String(step.op || "");
+        if (op === "enter") {
+          tl.fromTo(targets,
+            { opacity: 0, scale: .18, yPercent: -10, rotation: -12, filter: "blur(12px)" },
+            { opacity: 1, scale: 1, yPercent: -50, rotation: 0, filter: "blur(0px)",
+              duration: .42, ease: "back.out(1.9)", stagger: Number(step.stagger || .08) }, at);
+        } else if (op === "fade") {
+          tl.to(targets, { opacity: 0, scale: .35, y: 70, filter: "blur(8px)",
+            duration: .28, ease: "power2.in", stagger: .04 }, at);
+        } else if (op === "move_to") {
+          tl.to(targets, { left: `${Number(step.x || 50)}%`, top: `${Number(step.y || 42)}%`,
+            scale: Number(step.scale || 1), duration: .52, ease: "power3.inOut" }, at);
+        } else if (op === "emphasis") {
+          const target = targets[0];
+          if (target) {
+            const bounds = icons.find((icon) => String(icon.id) === String(step.id)) || {};
+            ring.style.left = `${Number(bounds.x || 50)}%`;
+            ring.style.top = `${Number(bounds.y || 42)}%`;
+            tl.fromTo(ring, { opacity: 0, scale: .4, rotation: -24 },
+              { opacity: .95, scale: 1.05, rotation: 0, duration: .22, ease: "back.out(2)" }, at)
+              .to(ring, { opacity: 0, scale: 1.35, duration: .28, ease: "power2.out" }, at + .24)
+              .to(target, { scale: 1.28, duration: .15, ease: "power3.out" }, at)
+              .to(target, { scale: 1, duration: .22, ease: "back.out(2)" }, at + .15);
+          }
+        } else if (op === "exit") {
+          const direction = String(step.to || "right");
+          tl.to(targets, { opacity: 0, x: direction === "left" ? -420 : direction === "right" ? 420 : 0,
+            y: direction === "top" ? -360 : 0, rotation: direction === "left" ? -14 : 14,
+            scale: .82, duration: .34, filter: "blur(10px)", ease: "power3.in" }, at);
+        }
+      });
+
+      tl.to(".icon", { opacity: 0, scale: .7, duration: .18, ease: "power2.in" },
+        Math.max(.4, showSec - .18));
+      window.__timelines = window.__timelines || {};
+      window.__timelines.icon_choreography = tl;
+    </script>
+  </body>
+</html>

@@ -1,0 +1,208 @@
+<!-- nakama:component kinetic_sequence（短片動態句列：同 anchor 加行、換詞、尺寸升級） -->
+<!doctype html>
+<html
+  lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"sequence_json","type":"string","label":"Sequence JSON","default":"{}"},
+    {"id":"show_sec","type":"number","label":"顯示秒數","default":6},
+    {"id":"pos_y","type":"number","label":"垂直中心 0-1","default":0.63}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 900;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Eb.woff2") format("woff2");
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body, #root { width: 1080px; height: 1920px; overflow: hidden; background: transparent; }
+      #root { position: relative; }
+      .brand-rail {
+        position: absolute; left: -30px; width: 1140px; height: 150px; opacity: 0;
+        background: url("../assets/patterns/shards-gray-on-orange.png") center / cover no-repeat;
+        will-change: transform, opacity, filter;
+      }
+      #brand-top { top: 92px; background-position: 50% 22%; }
+      /* 字幕安全區：下 pattern 往上收，不碰 1080×1920 直式片的底部字幕。 */
+      #brand-bottom { bottom: 420px; background-position: 50% 78%; }
+      #anchor { position: absolute; left: 0; right: 0; height: 520px; }
+      .state-card {
+        position: absolute; inset: 0; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 10px; opacity: 0;
+        will-change: transform, opacity, filter;
+      }
+      .line-shell { display: inline-block; transform-origin: 50% 50%; }
+      .line {
+        display: inline-block; padding: 6px 34px 14px; white-space: nowrap;
+        background: #e87000; color: #fff;
+        font-family: "LINE Seed TW", "Noto Sans TC", sans-serif;
+        font-size: 150px; font-weight: 900; line-height: 1.16;
+        text-align: center;
+        will-change: transform, opacity, filter, clip-path;
+      }
+      /* Transcript is one choreographed system: most speech stays quiet;
+         emphasis and hero are scarce semantic accents, not default captions. */
+      .state-card.caption .line {
+        color: #171717; background: rgba(255, 255, 255, 0.94);
+        font-size: 72px; line-height: 1.22; padding: 5px 20px 11px;
+      }
+      .state-card.emphasis .line { font-size: 116px; line-height: 1.14; padding: 7px 28px 14px; }
+      .state-card.hero .line { font-size: 172px; line-height: 1.08; padding: 9px 28px 17px; }
+      .state-card .line.line-caption {
+        color: #171717; background: rgba(255, 255, 255, 0.94);
+        font-size: 72px; line-height: 1.22; padding: 5px 20px 11px;
+      }
+      .state-card .line.line-emphasis {
+        color: #fff; background: #e87000;
+        font-size: 116px; line-height: 1.14; padding: 7px 28px 14px;
+      }
+      .state-card .line.line-hero {
+        color: #fff; background: #e87000;
+        font-size: 172px; line-height: 1.08; padding: 9px 28px 17px;
+      }
+      .hybrid .line-shell:first-child .line { font-size: 94px; padding: 4px 22px 10px; }
+      .hybrid .line-shell:not(:first-child) .line {
+        color: #171717; background: #fff; font-size: 112px; padding: 6px 26px 12px;
+      }
+      .glyph { display: inline-block; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="kinetic_sequence"
+      data-width="1080" data-height="1920" data-start="0" data-duration="12">
+      <div class="brand-rail" id="brand-top"></div>
+      <div class="brand-rail" id="brand-bottom"></div>
+      <div id="anchor"></div>
+    </div>
+    <script>
+      const vars = (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const config = JSON.parse(String(vars.sequence_json || "{}"));
+      const states = Array.isArray(config.states) ? config.states : [];
+      const showSec = Number(vars.show_sec || 6);
+      const posY = Number(vars.pos_y || 0.63);
+      const anchor = document.getElementById("anchor");
+      anchor.style.top = `${posY * 100 - 13.5}%`;
+      const SAFE_LINE_WIDTH = 800;
+
+      function estimatedLineWidth(text, line) {
+        const style = getComputedStyle(line);
+        const fontSize = Number.parseFloat(style.fontSize) || 150;
+        const padding = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight);
+        const units = [...String(text)].reduce(
+          (sum, char) => sum + (/^[\x00-\x7F]$/.test(char) ? 0.64 : 1), 0
+        );
+        return units * fontSize + padding;
+      }
+
+      const cards = states.map((state, stateIndex) => {
+        const card = document.createElement("div");
+        const role = String(state.role || (Number(state.tier || 2) === 1 ? "hero" : "emphasis"));
+        card.className = `state-card ${role} ${state.style === "hybrid" ? "hybrid" : ""}`;
+        card.dataset.stateIndex = String(stateIndex);
+        const stateX = Math.max(-30, Math.min(30, Number(state.offset_x || 0)));
+        const stateRotation = Math.max(-1.8, Math.min(1.8, Number(state.rotation || 0)));
+        card.style.transform = `translateX(${stateX}px) rotate(${stateRotation}deg)`;
+        const lines = Array.isArray(state.lines) ? state.lines : [];
+        const scales = Array.isArray(state.scales) ? state.scales : [];
+        const lineRoles = Array.isArray(state.line_roles) ? state.line_roles : [];
+        const lineMetrics = [];
+        anchor.appendChild(card);
+        lines.forEach((text, lineIndex) => {
+          const shell = document.createElement("span");
+          shell.className = "line-shell";
+          const line = document.createElement("span");
+          const lineRole = String(lineRoles[lineIndex] || role);
+          line.className = `line line-${lineRole}`;
+          [...String(text)].forEach((ch) => {
+            const glyph = document.createElement("span");
+            glyph.className = "glyph";
+            glyph.textContent = ch;
+            line.appendChild(glyph);
+          });
+          shell.appendChild(line);
+          card.appendChild(shell);
+          const requestedScale = Number(scales[lineIndex] || 1);
+          const measured = Math.max(line.getBoundingClientRect().width, estimatedLineWidth(text, line));
+          const fittedScale = Math.min(requestedScale, SAFE_LINE_WIDTH / Math.max(1, measured));
+          lineMetrics.push({ shell, measured, fittedScale });
+        });
+        // Each transcript line is its own centred card. A shared left edge made
+        // short lines look visibly off-centre even when the group was centred.
+        lineMetrics.forEach(({ shell, fittedScale }) => {
+          shell.style.transform = `scale(${fittedScale})`;
+        });
+        return card;
+      });
+
+      const tl = gsap.timeline({ defaults: { transformOrigin: "50% 50%" } });
+      if (config.brand_pattern) {
+        const patternAt = Number(config.brand_pattern.at || 0);
+        const patternDuration = Number(config.brand_pattern.duration || 0.8);
+        tl.fromTo(".brand-rail", { opacity: 0, x: -60, filter: "blur(12px)" },
+          { opacity: 1, x: 0, filter: "blur(0px)", duration: 0.20,
+            ease: "power3.out", stagger: 0.04 }, patternAt)
+          .to(".brand-rail", { opacity: 0, x: 60, filter: "blur(10px)", duration: 0.18,
+            ease: "power2.in" }, Math.max(patternAt + 0.22, patternAt + patternDuration - 0.18));
+      }
+
+      states.forEach((state, index) => {
+        const at = Number(state.at || 0);
+        const card = cards[index];
+        const previous = index > 0 ? cards[index - 1] : null;
+        const transition = config.transition_mode === "cut"
+          ? "cut"
+          : String(state.transition || (index === 0 ? "enter" : "replace"));
+        if (previous) {
+          if (transition === "replace" || transition === "whip" || transition === "slam") {
+            tl.to(previous, { opacity: 0, x: transition === "whip" ? 34 : -22,
+              filter: "blur(12px)", duration: 0.13, ease: "power2.in" }, Math.max(0, at - 0.13));
+          } else {
+            tl.set(previous, { opacity: 0 }, at);
+          }
+        }
+        const lines = card.querySelectorAll(".line");
+        const glyphs = card.querySelectorAll(".glyph");
+        if (transition === "cut") {
+          tl.set(card, { opacity: 1, x: 0, scale: 1, rotation: 0, filter: "blur(0px)" }, at);
+        } else if (transition === "slam" || transition === "promote") {
+          tl.fromTo(card, { opacity: 0, scale: transition === "slam" ? 1.10 : 0.94,
+            rotation: transition === "slam" ? -1.2 : 0, filter: "blur(18px)" },
+            { opacity: 1, scale: 1.02, rotation: 0, filter: "blur(0px)", duration: 0.28,
+              ease: "power3.out" }, at)
+            .to(card, { scale: 1, duration: 0.16, ease: "power3.out" }, at + 0.27);
+        } else if (transition === "type") {
+          tl.set(card, { opacity: 1 }, at)
+            .fromTo(lines, { clipPath: "inset(0 100% 0 0)" },
+              { clipPath: "inset(0 0% 0 0)", duration: 0.24, ease: "power2.out", stagger: 0.10 }, at)
+            .fromTo(glyphs, { opacity: 0, y: 24 },
+              { opacity: 1, y: 0, duration: 0.16, ease: "power2.out", stagger: 0.045 }, at + 0.06);
+        } else if (transition === "add") {
+          tl.set(card, { opacity: 1 }, at);
+          const newest = card.querySelector(".line-shell:last-child");
+          tl.fromTo(newest, { opacity: 0, x: -24, filter: "blur(12px)" },
+            { opacity: 1, x: 0, filter: "blur(0px)", duration: 0.34, ease: "power3.out" }, at);
+        } else {
+          tl.fromTo(card, { opacity: 0, x: transition === "whip" ? -34 : -28,
+            filter: "blur(14px)" },
+            { opacity: 1, x: 0, filter: "blur(0px)", duration: 0.34,
+              ease: "power3.out" }, at);
+        }
+      });
+
+      const last = cards[cards.length - 1];
+      const exitAt = Math.max(0.45, showSec - 0.20);
+      if (last && config.exit === "whip") {
+        tl.to(last, { opacity: 0, x: 34, filter: "blur(14px)", duration: 0.18, ease: "power2.in" }, exitAt);
+      } else if (last) {
+        tl.set(last, { opacity: 0 }, showSec);
+      }
+      window.__timelines = window.__timelines || {};
+      window.__timelines.kinetic_sequence = tl;
+    </script>
+  </body>
+</html>

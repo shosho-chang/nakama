@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -226,6 +228,66 @@ def test_selection_order_must_match_checked_candidates(client):
 def test_path_traversal_rejected(client):
     response = client.get("/bridge/highlights/..", cookies=_auth_cookie(), follow_redirects=False)
     assert response.status_code in (404, 405)
+
+
+def test_selection_page_links_to_finished_review_when_manifest_is_ready(client, episode_root):
+    review = episode_root / "ep-001" / "highlights" / "review"
+    cut_dir = review / "R11"
+    cut_dir.mkdir(parents=True)
+    preview = cut_dir / "preview.mp4"
+    preview.write_bytes(b"review-preview")
+    subtitles = cut_dir / "subs.srt"
+    subtitles.write_text("1\n00:00:00,000 --> 00:00:01,000\n測試\n", encoding="utf-8")
+
+    manifest = {
+        "schema": "nakama.finished_cut_review_manifest.v1",
+        "episode_id": "ep-001",
+        "stage": 5,
+        "gate": {"kind": "finished_cut_review"},
+        "feedback_contract": {
+            "review_lanes": ["b_roll"],
+            "component_actions": {"b_roll": ["approve", "comment"]},
+        },
+        "cuts": [
+            {
+                "cut_id": "R11",
+                "title": "初剪",
+                "artifacts": {
+                    "preview": {
+                        "path": str(preview),
+                        "bytes": preview.stat().st_size,
+                        "sha256": hashlib.sha256(preview.read_bytes()).hexdigest(),
+                        "duration_seconds": 10.0,
+                    },
+                    "subtitles": {
+                        "path": str(subtitles),
+                        "bytes": subtitles.stat().st_size,
+                        "sha256": hashlib.sha256(subtitles.read_bytes()).hexdigest(),
+                    },
+                },
+                "components": [],
+            }
+        ],
+    }
+    (review / "finished_review_manifest_20260817.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+
+    response = client.get("/bridge/highlights/ep-001", cookies=_auth_cookie())
+
+    assert response.status_code == 200
+    assert 'href="/bridge/highlights/ep-001/finished"' in response.text
+    assert "進入初剪 Review" in response.text
+
+
+def test_review_selection_uses_background_without_accent_left_rail():
+    template = (
+        Path(__file__).resolve().parent.parent
+        / "thousand_sunny/templates/bridge/finished_review.html"
+    ).read_text(encoding="utf-8")
+
+    assert 'cut-tab[aria-selected="true"] { background: var(--sho-accent-soft)' in template
+    assert "border-left" not in template
 
 
 def test_accepts_a_chinese_episode_folder_and_keeps_rejection_feedback(client, episode_root):

@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest  # noqa: E402
-from run_short_broll import _data_uri, _fill_zoom  # noqa: E402
+from run_short_broll import _data_uri, _fill_zoom, _validate_icon_legibility  # noqa: E402
 
 
 class TestFillZoom:
@@ -42,6 +42,55 @@ class TestDataUri:
         p = tmp_path / "x.jpg"
         p.write_bytes(b"\xff\xd8\xff")
         assert _data_uri(p).startswith("data:image/jpeg;base64,")
+
+
+class TestIconLegibility:
+    def test_primary_icon_is_large_and_supporting_objects_are_bounded(self):
+        _validate_icon_legibility(
+            0,
+            {
+                "primary_icon_id": "sake",
+                "icons": [{"id": "sake", "size": 22}],
+            },
+        )
+
+    def test_primary_icon_cannot_be_tiny(self):
+        with pytest.raises(SystemExit, match="至少 18%"):
+            _validate_icon_legibility(
+                0,
+                {
+                    "primary_icon_id": "sake",
+                    "icons": [{"id": "sake", "size": 12}],
+                },
+            )
+
+    def test_primary_choreography_cannot_literalise_plural_as_five_tiny_icons(self):
+        with pytest.raises(SystemExit, match="最多 3 個"):
+            _validate_icon_legibility(
+                0,
+                {
+                    "primary_icon_id": "sake",
+                    "icons": [
+                        {"id": "sake", "size": 22},
+                        {"id": "a", "size": 12},
+                        {"id": "b", "size": 12},
+                        {"id": "c", "size": 12},
+                    ],
+                },
+            )
+
+    def test_ks1_fixture_uses_one_readable_primary_icon(self):
+        import json
+
+        root = Path(__file__).resolve().parent.parent
+        plan = json.loads(
+            (root / "tests/fixtures/short_reference/KS1_broll_semantic_v2.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        icon_item = next(item for item in plan["items"] if item["kind"] == "icon_motion")
+        assert len(icon_item["icons"]) == 1
+        _validate_icon_legibility(1, icon_item)
 
 
 # ── 長片格式（修修 2026-08-03 長片線）─────────────────────────────────────

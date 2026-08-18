@@ -9,7 +9,11 @@
     {"id":"line2","type":"string","label":"第二行（可空）","default":"你的耐心"},
     {"id":"show_sec","type":"number","label":"顯示秒數","default":2.0},
     {"id":"pos_y","type":"number","label":"卡片垂直中心 0-1","default":0.66},
-    {"id":"tier","type":"number","label":"層級 1=hero 2=標準","default":2}
+    {"id":"tier","type":"number","label":"層級 1=hero 2=標準","default":2},
+    {"id":"card_scale","type":"number","label":"整卡比例","default":1},
+    {"id":"line1_scale","type":"number","label":"第一行比例","default":1},
+    {"id":"line2_scale","type":"number","label":"第二行比例","default":1},
+    {"id":"animation","type":"string","label":"swipe/slam/wipe/word","default":"swipe"}
   ]'
 >
   <head>
@@ -34,7 +38,12 @@
       #card {
         position: absolute; left: 50%; top: var(--pos-y, 66%);
         transform: translate(-50%, -50%);
+        scale: var(--card-scale, 1);
         display: flex; flex-direction: column; align-items: center; gap: 10px;
+      }
+      .line-shell {
+        display: inline-block;
+        scale: var(--line-scale, 1);
       }
       .line {
         display: inline-block;
@@ -47,8 +56,10 @@
         padding: 6px 34px 14px;
         white-space: nowrap;
         opacity: 0;
+        will-change: transform, opacity, filter, clip-path;
       }
-      .line:nth-child(2) { margin-left: 60px; }
+      .line-shell:nth-child(2) { margin-left: 60px; }
+      .glyph { display: inline-block; }
       /* tier 1 = hero：超大字（6 字/行上限；168px×6+padding ≈ 1064 ≤ 1080） */
       /* tier1 必須「一眼看出比 tier2 大一級」（二十八輪修修：兩者看起來
          一樣大）。190px×5 字 + padding 56 = 1006 ≤ 1080，故 tier1 行寬
@@ -58,7 +69,7 @@
         padding: 10px 28px 18px;
         line-height: 1.1;
       }
-      .tier1 .line:nth-child(2) { margin-left: 40px; }
+      .tier1 .line-shell:nth-child(2) { margin-left: 40px; }
     </style>
   </head>
   <body>
@@ -72,8 +83,8 @@
       data-duration="4"
     >
       <div id="card">
-        <span class="line" id="l1"></span>
-        <span class="line" id="l2"></span>
+        <span class="line-shell" id="s1"><span class="line" id="l1"></span></span>
+        <span class="line-shell" id="s2"><span class="line" id="l2"></span></span>
       </div>
     </div>
     <script>
@@ -84,49 +95,94 @@
       const showSec = Number(vars.show_sec ?? 2.0);
       const posY = Number(vars.pos_y ?? 0.66);
       const tier = Number(vars.tier ?? 2);
+      const cardScale = Number(vars.card_scale ?? 1);
+      const line1Scale = Number(vars.line1_scale ?? 1);
+      const line2Scale = Number(vars.line2_scale ?? 1);
+      const animation = String(vars.animation ?? (tier === 1 ? "slam" : "swipe"));
 
-      document.getElementById("l1").textContent = line1;
+      const l1 = document.getElementById("l1");
       const l2 = document.getElementById("l2");
       if (line2) {
-        l2.textContent = line2;
       } else {
-        l2.remove();
+        document.getElementById("s2").remove();
       }
       const card = document.getElementById("card");
       card.style.top = `${posY * 100}%`;
+      card.style.setProperty("--card-scale", cardScale);
+      document.getElementById("s1").style.setProperty("--line-scale", line1Scale);
+      if (line2) document.getElementById("s2").style.setProperty("--line-scale", line2Scale);
       if (tier === 1) card.classList.add("tier1");
+
+      const putText = (el, text) => {
+        if (animation !== "word") {
+          el.textContent = text;
+          return;
+        }
+        [...text].forEach((ch) => {
+          const span = document.createElement("span");
+          span.className = "glyph";
+          span.textContent = ch;
+          el.appendChild(span);
+        });
+      };
+      putText(l1, line1);
+      if (line2) putText(l2, line2);
 
       window.__timelines = window.__timelines || {};
       const tl = gsap.timeline({ defaults: { transformOrigin: "50% 50%" } });
-      if (tier === 1) {
-        // hero 進場：大幅縮放彈入 + 微旋轉甩正（全片最強一句的儀式感）
+      if (animation === "slam") {
+        // 重擊：明顯尺寸跳變，給 hero / punchline 使用。
         tl.fromTo(
           ".line",
-          { opacity: 0, scale: 0.68, rotation: -2.2, y: 30 },
+          { opacity: 0, scale: 0.52, rotation: -2.5, y: 34, filter: "blur(14px)" },
           {
             opacity: 1,
-            scale: 1,
+            scale: 1.08,
             rotation: 0,
             y: 0,
-            duration: 0.5,
-            ease: "back.out(2.2)",
-            stagger: 0.12,
+            filter: "blur(0px)",
+            duration: 0.36,
+            ease: "power3.out",
+            stagger: 0.11,
           },
           0
-        );
-      } else {
-        // 標準進場：逐行由左 swipe + S 曲線 pop（範例語法）
+        ).to(".line", { scale: 1, duration: 0.16, ease: "back.out(2.4)" }, 0.34);
+      } else if (animation === "wipe") {
+        // 遮罩橫掃：橘塊和文字一起被水平擦入，對齊範本的動態模糊轉場。
         tl.fromTo(
           ".line",
-          { x: -70, opacity: 0, scale: 0.9 },
+          { x: -50, opacity: 1, clipPath: "inset(0 100% 0 0)", filter: "blur(10px)" },
           {
             x: 0,
             opacity: 1,
-            scale: 1,
-            duration: 0.42,
-            ease: "back.out(1.4)",
-            stagger: 0.09,
+            clipPath: "inset(0 0% 0 0)",
+            filter: "blur(0px)",
+            duration: 0.38,
+            ease: "power3.out",
+            stagger: 0.13,
           },
+          0
+        );
+      } else if (animation === "word") {
+        // 逐字建立：先展開橘塊，再逐字上浮；適合三段式命題與情緒收束。
+        tl.fromTo(
+          ".line",
+          { opacity: 1, clipPath: "inset(0 100% 0 0)" },
+          { clipPath: "inset(0 0% 0 0)", duration: 0.28, ease: "power2.out", stagger: 0.16 },
+          0
+        ).fromTo(
+          ".glyph",
+          { opacity: 0, y: 28, scale: 0.82 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.22, ease: "back.out(1.8)", stagger: 0.045 },
+          0.12
+        );
+      } else {
+        // 橫掃：安靜段的標準字卡，保留速度但不搶過 hero。
+        tl.fromTo(
+          ".line",
+          { x: -90, opacity: 0, scale: 0.9, filter: "blur(12px)" },
+          { x: 0, opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.4,
+            ease: "back.out(1.4)", stagger: 0.1 },
           0
         );
       }
