@@ -1,4 +1,4 @@
-"""LLM creative planner — normalized transcript → beats with layout + B-roll proposals.
+"""LLM creative planner — Verified Projection text → B-roll beat proposals.
 
 Loads (at runtime):
 - docs/design-system.md (brand context)
@@ -7,7 +7,7 @@ Loads (at runtime):
 - agents/brook/script_video/examples/ (cold-start: NOT loaded in Phase 1; gate len(examples) >= 5)
 
 LLM contract: every beat must include start_quote / end_quote that are
-exact substring copies of the supplied normalized transcript. Paraphrasing
+exact substring copies of the supplied Verified Projection. Paraphrasing
 or rewriting characters is forbidden — beat_aligner will hard-fail on miss.
 """
 
@@ -156,7 +156,7 @@ def plan_episode(
     """Call Claude Opus to produce storyboard beats for the episode.
 
     Args:
-        flat_text: normalized transcript (output of ``chinese_normalizer``).
+        flat_text: exact flattened display text from a Verified Projection SRT.
         episode_meta: contents of ``episode.yaml`` (or empty dict).
         hints: optional ``storyboard_hints.yaml`` payload (ADR-038 §D5). When
             provided and non-empty, a `<silence_hints>` advisory block is

@@ -16,7 +16,7 @@ Nakama 的內容創作工作流分七個 stage。新功能 / 規劃 / 優先序�
 | 1 | Discovery | 資料收集 | 外部世界（趨勢、文獻、新聞、社群） | 原料素材（PDF / URL / 音檔 / 書 / 主題清單） |
 | 2 | Reading + Annotation | 資料閱讀與註記 | 原料素材 | 劃線 + 筆記 + reading session |
 | 3 | Synthesis / Ingest | 資料整合 | 原料 + annotation | KB Wiki 頁面（Source / Concept / Entity）+ Promotion Manifest |
-| 4 | Atomic Content | 資料輸出（原子文章） | KB / annotation / Reading Context Package / 訪談音檔 | **Single source of truth canonical content**（手寫心得 / LLM 輔助稿 / transcribe 字幕檔） |
+| 4 | Atomic Content | 資料輸出（原子文章） | KB / annotation / Reading Context Package / 訪談音檔 | **Single source of truth canonical content**（手寫心得 / LLM 輔助稿 / Podcast Canonical Transcript） |
 | 5 | Multi-channel Production | 內容製作 | 原子文章 | 4 channel：影片 / 部落格 / FB post / IG carousel |
 | 6 | Publishing | 內容發布 | Multi-channel 內容 | 上線到 WP / YT / IG / FB / Newsletter / Community |
 | 7 | Monitoring + Optimization | 內容監控與優化 | 已發布內容 + 平台 analytics | SEO 分數 / 排名 / 觀眾回饋 → 回灌 Stage 1 |
@@ -29,7 +29,7 @@ Stage 4 的本質是產出一份 **canonical content 作為 Stage 5 fan-out 的 
 
 | Line | Atomic content 形式 | 產生方式 |
 |---|---|---|
-| Line 1 Podcast | 字幕檔（.srt） | Transcribe pipeline 自動產出（WhisperX + Auphonic + LLM 校正 + 多模態仲裁） |
+| Line 1 Podcast | **Canonical Transcript**（唯一文字真相）＋依版型衍生的 **Verified Projection**（SRT + manifest） | [Podcast Subtitle V2](docs/decisions/ADR-056-podcast-subtitle-v2.md)：Auphonic normalization → immutable Evidence → Correction Ledger → semantic projection → fail-closed gates；ASR / corrector / arbiter 是可替換 Adapter |
 | Line 2 讀書心得 | **修修在 Project 頁面手寫的心得文** | 修修本人手寫（可用 Reading Context Package / Writing Assist Surface 降低空白頁摩擦，但不由 LLM 代寫） |
 | Line 3 文獻科普 | LLM 輔助 outline + 修修加工的稿 | Robin 抽 KB → outline → Brook compose → 修修審稿 |
 
@@ -59,9 +59,9 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 | 影片 | **Video Production Line**（Brook own — ADR-032 技術設計 + [ADR-050](docs/decisions/ADR-050-video-production-line-brook-ownership.md) 歸屬；`agents/brook/script_video/` + `video/` Hyperframes compositions；機器已自 `agents/foundry/` 遷入完成，ADR-050 PR-3） | Line 2 / Line 3 / Line 1 訪問新書作者 |
 | 部落格 | Brook compose + Blog renderer | Line 1/2/3 |
 | FB post | Brook FB renderer（4 tonal variants） | Line 1/2/3 |
-| IG carousel | Brook IG renderer（5/7/5/10 卡 episode_type routing） | Line 1/2/3 |
+| IG carousel | Brook IG copy-spec renderer（5/7/5/10 卡 episode_type routing → `ig-cards.json`）＋待建 visual renderer（PNG/JPG batch） | Line 1a 已接 copy spec；Line 1b/2/3 待接線；visual production 全 line 未實作 |
 
-**Video Production Line 不是獨立 line**，是 Stage 5 影片 channel 的製作管線。三條 line 都可走它出影片（CONTEXT-MAP.md「Line N vs script-driven video」段已凍結為 sibling）。單一 workflow（ADR-050 D3）：錄影 →（選配）cleanup mistake removal（單擊掌 marker + WhisperX 字級對稿回溯；有完整逐字稿時直出 corrected transcript.srt，可省 `/transcribe`）→ storyboard plan（LLM + 兩層 HITL）→ Hyperframes render → FCPXML 進 DaVinci。無逐字稿時 cleanup 走 legacy double-clap 音訊模式、SRT 走 `/transcribe`。
+**Video Production Line 不是獨立 line**，是 Stage 5 影片 channel 的製作管線。三條 line 都可走它出影片（CONTEXT-MAP.md「Line N vs script-driven video」段已凍結為 sibling）。單一 workflow（ADR-050 D3）：錄影 →（選配）cleanup mistake removal → Stage 4 取得 Verified Projection → storyboard plan（LLM + 兩層 HITL）→ Hyperframes render → FCPXML 進 DaVinci。Stage 5 只接受 Projection ID + manifest，不接受裸 `raw.srt` / `transcript.srt`；Storyboard exact-copy anchor 與 episode provenance 分別沿用 ADR-032 / ADR-050 D4。
 
 ---
 
@@ -73,8 +73,8 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 
 | Line | 1 收集 | 2 閱讀 | 3 整合 | 4 原子文章 | 6 發布 | 7 監控 |
 |---|---|---|---|---|---|---|
-| **Line 1a Podcast 一般訪談** | n/a (有錄音) | n/a | n/a | ✅ transcribe → 字幕檔（atomic） | 🚧 Slice 10 reviewer + ❌ IG/YT/FB 自動發 | ❌ YT/IG insights |
-| **Line 1b Podcast 訪問新書作者** | n/a (有錄音 + 有書) | ⬜ Line 2 Reading Source + Reading Overlay | ⬜ Line 2 Source Promotion / annotation-only sync | ✅ transcribe → 字幕檔（atomic） | 同上 | 同上 |
+| **Line 1a Podcast 一般訪談** | n/a (有錄音) | n/a | n/a | 🚧 Podcast Subtitle V2：Canonical Transcript → Verified Projection（V1 production / V2 shadow-run） | ❌ IG/YT/FB 自動發布 | ❌ YT/IG insights |
+| **Line 1b Podcast 訪問新書作者** | n/a (有錄音 + 有書) | ⬜ Line 2 Reading Source + Reading Overlay | ⬜ Line 2 Source Promotion / annotation-only sync | 🚧 同上，另可 consume 書籍 refs 作 Evidence context | 同上 | 同上 |
 | **Line 2 讀書心得** | n/a (有書 / 文章 / web document) | ⬜ Reading Source + Reading Overlay（中/英/雙語閱讀） | ⬜ Source Promotion 或 annotation-only sync | ⬜ Reading Context Package → **修修 Project 頁面手寫** | ✅ WP only / ❌ 其他 channel | ❌ |
 | **Line 3 文獻科普** | ⬜ Zoro topic discovery | n/a | ⬜ 主題 retrieval → outline | ⬜ synthesize outline → 修修自寫（可用 Claude.ai 對話協助），LLM 不代寫正文（ADR-027） | ✅ WP only / ❌ 其他 channel | ✅ SEO 中控台 |
 
@@ -84,25 +84,25 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 
 每條 line 從 Stage 4 原子文章 fan out 成 4 channel，readiness 不一：
 
-| Line | 影片（script-driven video） | 部落格（Brook compose） | FB post（Brook FB renderer） | IG carousel（Brook IG renderer） |
-|---|---|---|---|---|
-| **Line 1a 一般訪談** | n/a 或 theme video（待規劃） | ✅ ship | ✅ ship | ✅ ship |
-| **Line 1b 訪問新書作者** | 🚧 Slice 2-5 | ✅ ship | ✅ ship | ✅ ship |
-| **Line 2 讀書心得** | 🚧 Slice 2-5 | ✅ Brook compose | ✅ FB renderer | ✅ IG renderer |
-| **Line 3 文獻科普** | 🚧 Slice 2-5（optional） | ✅ Brook compose | ✅ FB renderer | ✅ IG renderer |
+| Line | 影片（script-driven video） | 部落格（Brook compose） | FB post（Brook FB renderer） | IG copy spec（Brook IG renderer） | IG visual production（PNG/JPG） |
+|---|---|---|---|---|---|
+| **Line 1a 一般訪談** | n/a 或 theme video（待規劃） | ✅ ship | ✅ ship | ✅ `ig-cards.json`（5/7/5/10 routing） | ❌ 0 |
+| **Line 1b 訪問新書作者** | 🚧 Slice 2-5 | ✅ ship | ✅ ship | 🚧 extractor + adapter 有測試，無 runnable CLI caller | ❌ 0 |
+| **Line 2 讀書心得** | 🚧 Slice 2-5 | ✅ Brook compose | ✅ FB renderer | ❌ 無 extractor / wiring | ❌ 0 |
+| **Line 3 文獻科普** | 🚧 Slice 2-5（optional） | ✅ Brook compose | ✅ FB renderer | ❌ 無 extractor / wiring | ❌ 0 |
 
-**讀法**：Stage 5 製作工具基本到位（影片在 Slice 2-5 收尾），真正缺的不在 Stage 5 而在 Stage 4（原子文章不存在 → 無法 fan out）跟 Stage 6（4 channel render 完但只 WP 能自動發）。
+**讀法**：Stage 5 的文字型 channel renderer 基本到位，但 IG 目前只產生 copy spec JSON，尚未產生可上傳的 carousel 圖片，因此不能標為 channel ship。完整 IG path 必須依序通過：`ig-cards.json` → visual renderer / PNG batch → review gate → Stage 6 排程或發布。另 Line 1b/2/3 尚未接入 IG copy-spec runnable path；Stage 4 沒有原子內容的 line 也仍無法 fan out。
 
 ### Line 1 兩子模式說明
 
 **Line 1a 一般訪談**：
 - Stage 1-3 跳過（直接從錄音進 Stage 4）
-- Stage 4 = transcribe 字幕檔當 atomic content
-- Stage 5 走部落格 / FB / IG 三 channel；影片 channel 視需要做 theme video（Line 1 補位專案）
+- Stage 4 = Podcast Subtitle V2 的 Canonical Transcript 當 atomic content；SRT 是通過 hard gates 的 Verified Projection，不是文字真相
+- Stage 5 走部落格 / FB / IG 三 channel；其中 IG 目前只到 `ig-cards.json` copy spec，visual production 尚未實作；影片 channel 視需要做 theme video（Line 1 補位專案）
 
 **Line 1b 訪問新書作者**（Line 1 + Line 2 混合）：
 - 訪談前修修先讀那本書 → 走 Line 2 Stage 2-3 流程（閱讀 + annotation + ingest）
-- 訪談錄音 → Stage 4 transcribe
+- 訪談錄音 → Stage 4 Podcast Subtitle V2；書籍 refs 可進 Evidence / correction context，但不能直接覆寫 Canonical Transcript
 - Stage 5 可選走影片 channel（script-driven video 介紹該書）
 
 ### Line 2 Reading Source 子模式
@@ -129,7 +129,7 @@ Line 2 不再只視為「書」；ebook、inbox document、web document 都是 R
 | **Nami** (Secretary) | ✅ pubmed_lookup tool (Robin pass-through) + Gmail / Calendar / Vault notes | n/a | n/a | n/a | n/a | n/a | ⬜ daily briefing 接 SEO/cost data |
 | **Zoro** (Scout) | ✅ keyword research + autocomplete + trends + reddit + youtube + twitter | n/a | n/a | n/a | n/a | n/a | ⬜ topic discovery 接 SEO 反向 feed |
 | **Sanji** (Community) | ⬜ community FAQ discovery (從會員問題抽主題) | n/a | ⬜ member memory ingest | n/a | n/a | ❌ Fluent Community publisher | ⬜ engagement insight |
-| **Brook** (Scaffold + Repurpose + SEO Audit + Video Production, ADR-027/ADR-050) | n/a | n/a | ✅ synthesize（outline + evidence pool, ADR-021）；RCP 由 Robin own | scaffold only — outline / evidence 給修修自寫，**LLM 不代寫正文**（ADR-027 reminders not enforcement） | ✅ FB/IG/Blog renderer + repurpose engine + **Video Production Line**（SRT-first storyboard → Hyperframes → FCPXML，原 foundry，ADR-050）；🚧 Line 1b 訪談+research_pack 2b mode（ADR-027） | n/a | ✅ SEO audit + enrich (對既有文章) |
+| **Brook** (Scaffold + Repurpose + Podcast Subtitles + Video Production + SEO Audit, ADR-027/ADR-050/ADR-056) | n/a | n/a | ✅ synthesize（outline + evidence pool, ADR-021）；RCP 由 Robin own | scaffold only — outline / evidence 給修修自寫，**LLM 不代寫正文**（ADR-027 reminders not enforcement）；🚧 Podcast Subtitle V2（Canonical Transcript + Verified Projection） | ✅ Blog/FB text renderer + repurpose engine；🚧 IG copy spec（Line 1a `ig-cards.json` only）／❌ IG visual renderer；**Video Production Line**（Verified Projection exact-copy → storyboard → Hyperframes → FCPXML，ADR-050/ADR-056）；🚧 Line 1b 訪談+research_pack 2b mode（ADR-027） | n/a | ✅ SEO audit + enrich (對既有文章) |
 | **Franky** (Maintenance) | ✅ AI news digest cron | n/a | n/a | n/a | n/a | n/a | ✅ probe panel + R2 backup verify + GSC daily + cost tracking |
 | **Usopp** (Publisher) | n/a | n/a | n/a | n/a | n/a | ✅ WP publisher + approval queue HITL；❌ YT/IG/FB/Newsletter | n/a |
 
@@ -195,12 +195,12 @@ Reader UI 已支援 `==highlight==` + `> [!annotation]` markup，但這些標註
 | WordPress blog | ✅ Usopp full HITL | Line 1/2/3 |
 | YouTube（影片） | ❌ 0 | **Script-Driven Video 主出口** |
 | YouTube（podcast theme video） | ❌ 0 | Line 1 補位 |
-| IG carousel | ❌ 0（render 文字 / 缺貼圖 pipeline） | Line 1 主出口之一 |
+| IG carousel | ❌ 0（Stage 5 只有 `ig-cards.json` copy spec；缺 visual renderer / PNG batch，亦無 publisher） | Line 1 主出口之一 |
 | FB post | ❌ 0 | Line 1 主出口之一 |
 | Newsletter（Fluent CRM） | ❌ 0 | ADR-001 預留 |
 | Community（Fluent Community） | ❌ 0（Sanji 空殼） | 讀者互動主場 |
 
-**證據**：最緊急的 Line 1 跟 Script-Driven Video，**最終 channel 都不是 WordPress**。Line 1 IG carousel 已 render 文字、Script-Driven Video 已 emit FCPXML，但「真上 IG/YT」的 last mile 全要修修手動。
+**證據**：最緊急的 Line 1 跟 Script-Driven Video，**最終 channel 都不是 WordPress**。Line 1 IG carousel 只到 copy spec JSON、尚無圖片；Script-Driven Video 已 emit FCPXML，但「產出可上傳資產 → 真上 IG/YT」的 last mile 全要修修手動。
 
 **不做的代價**：Line 1 / Script-Driven Video 的「ship」是「半成品交給修修手貼」。摩擦穩定累積。
 
@@ -212,11 +212,11 @@ Reader UI 已支援 `==highlight==` + `> [!annotation]` markup，但這些標註
 
 如果只能挑 3 件最**結構性**的事（不是 feature，是 unblock 架構迴路）：
 
-1. **IG 半自動發布管線**（Stage 6）— Line 1/2/3 IG carousel render 完都卡在這。不用整片 IG API upload，先解 carousel 圖檔 batch 出檔 + Buffer/Later 排程匯入。最低工自動化、最高摩擦消除
+1. **IG visual production → 半自動發布 vertical slice**（Stage 5→6）— 先以 Line 1a 為 tracer bullet，把 `ig-cards.json` 轉成可 review 的 PNG batch，再支援 Buffer/Later/Meta Business Suite 匯入；不要先做 IG Graph API。Line 1b/2/3 等這條 E2E 成立後再接同一 contract
 2. **Annotation → KB 整合 owner**（Stage 2→3）— Line 2 critical path。先解 annotation 寫到哪、誰讀、何時用；具體實作等修修這週手跑流程後決定（修修明確要求 Stage 4 手寫過程不介入，但 Stage 3 整合素材可動）
 3. **SEO 中控台 → Zoro 反向 feed**（Stage 7→1）— 閉環 Discovery 迴路。一條 SQL view + Zoro report renderer 加 section，一週可做完
 
-這三件**做完之後**再去推 Line 3 Stage 1 (Zoro topic discovery) / Stage 4 LLM 輔助 skill / Script-Driven Video Slice 2-5。理由：這三件不解，後面做的東西都會撞同樣的牆（4 channel 都 render 完發不出去 / Line 2 input 沒整合 / 選題無資料支撐）。
+這三件**做完之後**再去推 Line 3 Stage 1 (Zoro topic discovery) / Stage 4 LLM 輔助 skill / Script-Driven Video Slice 2-5。理由：這三件不解，後面做的東西都會撞同樣的牆（文字或 timeline artifact 不是可發布資產 / Line 2 input 沒整合 / 選題無資料支撐）。
 
 **Line 2 流程未跑過注記**：修修明確要求這週手跑 Line 2 流程一次再決定加什麼功能，所以上面第 2 條「Annotation → KB 整合」具體實作要等手跑後痛點浮現再凍結。我不該在他跑流程前就 over-design Stage 2-3 細節。
 
