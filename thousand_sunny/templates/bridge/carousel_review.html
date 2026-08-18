@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Podcast Carousel · {{ episode_slug }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/carousel-review.css?v={{ asset_version }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='packaging') }}
+
+<header class="carousel-head">
+  <div>
+    <div class="sho-mono sho-mono-up">/bridge/ig-cards/{{ episode_slug }} · stage 5 gate</div>
+    <h1>Podcast Carousel <span>一眼檢查整組敘事</span></h1>
+  </div>
+  <dl class="carousel-ledger">
+    <div><dt>REVISION</dt><dd>{{ manifest.revision }}</dd></div>
+    <div><dt>PAGES</dt><dd>{{ rows|length }}</dd></div>
+    <div><dt>MODE</dt><dd>{{ manifest.publish_compatibility }}</dd></div>
+    <div><dt>GATE</dt><dd>{{ 'APPROVED' if approved else 'OPEN' }}</dd></div>
+  </dl>
+</header>
+
+<main class="carousel-workbench">
+  {% if saved %}<p class="carousel-notice" role="status">這一輪 Review 已寫入 audit trail。</p>{% endif %}
+  <form method="post" action="/bridge/ig-cards/{{ episode_slug }}/decide">
+    <input type="hidden" name="manifest_sha256" value="{{ manifest_sha256 }}">
+    <section class="carousel-grid" aria-label="Podcast Carousel 全部卡片">
+    {% for row in rows %}
+      {% set page = row.page %}
+      <article class="carousel-card" data-status="{{ row.status }}">
+        <header><span>{{ '%02d'|format(page.page_number) }}</span><strong>{{ page.role|replace('_', ' ') }}</strong></header>
+        <button class="carousel-image-button" type="button" data-evidence-target="evidence-{{ page.page_id }}" aria-label="查看第 {{ page.page_number }} 頁逐字稿證據">
+          <img src="/bridge/ig-cards/{{ episode_slug }}/media/{{ page.page_id }}" alt="第 {{ page.page_number }} 頁，{{ page.role }}">
+        </button>
+        {% if page.fit.status == 'needs_review' %}<p class="carousel-fit">字級需人工確認</p>{% endif %}
+        <fieldset>
+          <legend>這張卡片</legend>
+          <label><input type="radio" name="status_{{ page.page_id }}" value="approved" {% if row.status == 'approved' %}checked{% endif %}> Approve</label>
+          <label><input type="radio" name="status_{{ page.page_id }}" value="needs_changes" {% if row.status == 'needs_changes' %}checked{% endif %}> 需修改</label>
+          <label class="carousel-pending"><input type="radio" name="status_{{ page.page_id }}" value="pending" {% if row.status == 'pending' %}checked{% endif %}> 待決定</label>
+        </fieldset>
+        <label class="carousel-feedback">
+          <span>Feedback</span>
+          <textarea name="feedback_{{ page.page_id }}" maxlength="1200" placeholder="只寫這張需要改什麼">{{ row.feedback }}</textarea>
+        </label>
+      </article>
+
+      <dialog class="carousel-evidence" id="evidence-{{ page.page_id }}">
+        <form method="dialog"><button aria-label="關閉證據">×</button></form>
+        <div class="sho-mono sho-mono-up">PAGE {{ '%02d'|format(page.page_number) }} · {{ page.page_id }}</div>
+        <h2>逐字稿證據</h2>
+        {% for evidence in page.copy_page.evidence %}
+        <article>
+          <header><strong>{{ evidence.speaker }}</strong><span>{{ '%.1f'|format(evidence.t0) }}–{{ '%.1f'|format(evidence.t1) }}s</span></header>
+          <p>{{ evidence.text }}</p>
+          <div class="sho-mono">{{ evidence.source_path }} · {{ evidence.evidence_id }}</div>
+        </article>
+        {% endfor %}
+        {% if page.copy_page.role == 'quote' and page.copy_page.host_question_evidence %}
+        <h3>主持人問題證據</h3>
+        {% for evidence in page.copy_page.host_question_evidence %}
+        <article><header><strong>{{ evidence.speaker }}</strong><span>{{ '%.1f'|format(evidence.t0) }}–{{ '%.1f'|format(evidence.t1) }}s</span></header><p>{{ evidence.text }}</p></article>
+        {% endfor %}
+        {% endif %}
+      </dialog>
+    {% endfor %}
+    </section>
+    <footer class="carousel-actions">
+      <p><strong>整組通過規則：</strong>同一 revision 的每一張都必須 Approve。</p>
+      <button class="sho-btn" type="submit">儲存這一輪 Review</button>
+    </footer>
+  </form>
+</main>
+<script>
+document.querySelectorAll('[data-evidence-target]').forEach((button) => {
+  button.addEventListener('click', () => document.getElementById(button.dataset.evidenceTarget).showModal());
+});
+</script>
+</body>
+</html>

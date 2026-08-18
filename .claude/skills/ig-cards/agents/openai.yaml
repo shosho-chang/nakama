@@ -1,0 +1,4 @@
+interface:
+  display_name: "Podcast IG Carousel"
+  short_description: "Build evidence-backed podcast carousel assets"
+  default_prompt: "Use $ig-cards to turn this podcast episode into a reviewed 1080×1350 IG Carousel."
