@@ -27,6 +27,13 @@
   <div role="status" class="highlight-notice highlight-notice--success">已保存前三順位、逐段 feedback 與 veto override。</div>
   {% endif %}
 
+  {% if finished_review_ready %}
+  <div class="highlight-instruction">
+    <div><strong>三支初剪已完成</strong>　播放成片並逐項回饋 B-roll、Hero title 與 Fullscreen transition。</div>
+    <a class="sho-btn sho-btn--ghost" href="/bridge/highlights/{{ episode_slug }}/finished">進入初剪 Review</a>
+  </div>
+  {% endif %}
+
   <section class="highlight-theatre sho-panel" aria-labelledby="preview-heading">
     <div class="highlight-theatre__copy">
       <div class="sho-kicker"><span class="sho-kicker-n">001</span> PREVIEW</div>

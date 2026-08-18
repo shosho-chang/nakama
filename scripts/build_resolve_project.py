@@ -37,8 +37,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared.resolve_append import append_checked  # noqa: E402
 from shared.subtitle_finalize import finalize_srt_file  # noqa: E402
 
-sys.stdout.reconfigure(encoding="utf-8")
-sys.stderr.reconfigure(encoding="utf-8")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
 logger = logging.getLogger("resolve_project")
 
@@ -102,6 +104,19 @@ def _versioned_srt(episode_dir: Path) -> Path:
             logger.warning(f"斷句疑點 cue{f['cue']}: …{f['tail']}｜{f['head']}…（{f['reason']}）")
     logger.info(msg)
     return dst
+
+
+def _versioned_srt_exact(episode_dir: Path, source: Path) -> Path:
+    """Return an audited SRT unchanged for a first-time Resolve import.
+
+    The reviewed V2 file already has a unique path.  Importing it directly
+    avoids both Resolve's same-path cache and an unnecessary write beside the
+    episode media on a different volume.
+    """
+    if not source.exists():
+        raise FileNotFoundError(f"audited subtitle not found: {source}")
+    logger.info("Using audited SRT unchanged: %s", source)
+    return source
 
 
 def _probe(path: Path) -> dict:
@@ -189,10 +204,11 @@ def build_project(
     episode_dir: Path,
     *,
     video: Path | None = None,
+    subtitle: Path | None = None,
     dry_run: bool = False,
 ) -> dict:
     project_name = episode_dir.name
-    srt_path = episode_dir / SUBTITLE_NAME
+    srt_path = subtitle or (episode_dir / SUBTITLE_NAME)
     if not srt_path.exists():
         raise FileNotFoundError(f"找不到 {srt_path}（先跑 subtitle-correct）")
 
@@ -327,7 +343,12 @@ def build_project(
     # （模板軌已帶樣式，不可刪軌重建）
     if timeline.GetTrackCount("subtitle") == 0:
         timeline.AddTrack("subtitle")
-    srt_items = mp.ImportMedia([str(_versioned_srt(episode_dir))])
+    versioned_srt = (
+        _versioned_srt_exact(episode_dir, srt_path)
+        if subtitle is not None
+        else _versioned_srt(episode_dir)
+    )
+    srt_items = mp.ImportMedia([str(versioned_srt)])
     subtitle_ok = False
     if srt_items:
         appended = mp.AppendToTimeline(srt_items)

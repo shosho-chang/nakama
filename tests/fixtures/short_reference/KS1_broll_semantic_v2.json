@@ -1,0 +1,55 @@
+{
+  "_note": "48.8 秒緊剪版的三個重點 B-roll：職人動作、品質要求、讀者接收有價值內容後的開心反應；不再以 tacos 字面化『吃』。",
+  "items": [
+    {
+      "t0": 4.9,
+      "t1": 7.35,
+      "kind": "video",
+      "slug": "ks1-sushi-craft",
+      "src_in": 1.0,
+      "event_id": "KS1-stock-sushi-craft",
+      "note": "握壽司手部特寫，精準對齊老師傅一天做多少壽司。"
+    },
+    {
+      "t0": 7.45,
+      "t1": 10.65,
+      "kind": "icon_motion",
+      "slug": "ks1-many-to-one-sushi",
+      "y_pct": 30,
+      "size_pct": 22,
+      "primary_icon_id": "sake",
+      "note": "一個清楚可見的壽司主體，直接對齊觀眾入口的那一個；依 Gate feedback 移到左側。",
+      "icons": [
+        {"id": "sake", "file": "ks1-sushi-sake.png", "x": 16, "y": 30, "size": 22, "rotation": -2}
+      ],
+      "steps": [
+        {"at": 0.0, "op": "enter", "ids": ["sake"]},
+        {"at": 0.65, "op": "emphasis", "id": "sake"},
+        {"at": 1.25, "op": "move_to", "id": "sake", "x": 22, "y": 30, "scale": 1.18},
+        {"at": 2.55, "op": "exit", "id": "sake", "to": "left"}
+      ]
+    },
+    {
+      "t0": 28.9,
+      "t1": 31.15,
+      "kind": "video",
+      "slug": "ks1-quality-red-pencil",
+      "src_in": 1.0,
+      "event_id": "KS1-stock-quality-redline",
+      "source_url": "https://elements.envato.com/red-pencil-draws-straight-line-editing-printed-doc-5DLHXBL",
+      "sha256": "41DA15CC9042EB6634E314E1546E797626E865C063F4B8BAF760FDC5C151F4CD",
+      "note": "全新 Envato 素材：紅鉛筆逐行畫線，只覆蓋對品質特別要求；吹毛求疵回到來賓 A-roll。"
+    },
+    {
+      "t0": 44.9,
+      "t1": 48.25,
+      "kind": "video",
+      "slug": "ks1-audience-reading-reaction",
+      "src_in": 9.0,
+      "event_id": "KS1-stock-audience-reading",
+      "source_url": "https://app.envato.com/search/footage/fecb27d3-c277-4db6-869b-b8394902aa46",
+      "sha256": "0D03B26C19F060E1337D664C8F512C2D32C63CA221DCBBE006A957FF9A0E0653",
+      "note": "讀者讀到有價值內容後由專注轉為開心，對齊『觀眾看完內容會有什麼感覺』；撤回較差的 tacos 素材。"
+    }
+  ]
+}

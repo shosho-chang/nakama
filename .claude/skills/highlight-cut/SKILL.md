@@ -16,15 +16,16 @@ description: >
 
 ## 執行環境（v1 收斂裁決，修修 2026-07-27）
 
-**這個 skill 只能在 Claude Code + 本機跑，不走 CoWork / Computer Use。**
+**剪輯與 Resolve 寫入只能走本機 API；素材採購可用登入中的 Browser Computer Use。**
 
 理由是機制差異，不是偏好：
 - 本 skill 的 Resolve 操作全走**官方 Python Scripting API**
   （`DaVinciResolveScript`，見 `scripts/build_resolve_project.py`）——
   直接呼叫 timeline/item/Fusion 物件，逐幀關鍵影格、0.05s 精度的音效落點
   都靠它
-- CoWork 走 **Computer Use**（截圖→認畫面→點按鈕），做不到這種精度，
-  也擋不住版面變動
+- Resolve 剪輯不走 **Computer Use**（截圖→認畫面→點按鈕），因為它做不到
+  逐幀精度；但 Envato 搜尋、授權與下載依 brook-director 的 Computer Use
+  狀態機執行，素材落地後再回到 deterministic script
 - 前提：**Resolve Studio 執行中** + Preferences → System → General →
   External scripting using = **Local**；跑 Resolve 的 script 用
   `py -3.10`（3.14 沒有 Resolve 模組），pytest/ruff 用 `python`
@@ -289,8 +290,10 @@ v1 已退役），走 **hyperframes**（Brook 影片線 render 引擎）：
 `npx hyperframes render --format mov` 出 **ProRes 4444 帶 alpha** →
 普通 media clip 疊（緊·導播）track 3，落點/長度全自由。
 
-視覺：逐行橘塊 #E87000、LINE Seed TW 特黑、逐行 swipe-in + back-out pop、
-快收退場。**文字必須是講者原話**（範本語法），每行 ≤6 字（script 硬擋）。
+視覺：逐行橘塊 #E87000、LINE Seed TW 特黑、快收退場。短片卡片必須在
+`titles.json` 明示 `animation`（`swipe` / `slam` / `wipe` / `word`）、
+`card_scale`、`line1_scale`、`line2_scale`；同一張兩行可做大小反差。
+**文字必須是講者原話**（範本語法），每行 ≤6 字（script 硬擋）。
 卡片紀律：顯示 ~2s 就退（**概念卡可到 3s**——十五輪「閒下來沒事做」裁決）、
 `pos_y` 0.63 下移避臉。
 
@@ -312,10 +315,10 @@ v1 已退役），走 **hyperframes**（Brook 影片線 render 引擎）：
   「三分鐘就有小確幸」上了卡，真正的結論「對長遠的失去耐心」反而沒當 hero
 - **事實不上卡，除非本身是洞見**：「創業要 5 到 10 年」單獨只是陳述，
   跟「三分鐘」並列成對比卡才有張力
-- **密度上限 = 片長 ÷ 12s**（60s ≈ 5 張）。每句都想 highlight 反而稀釋
+- **密度上限 = 片長 ÷ 4.5s**（67s 範本最多約 14 張；不是要求塞滿）。每句都想 highlight 反而稀釋
 - `beat` 缺漏／`insight` 不是恰好一張且 tier 1 → 直接報錯
 
-**節拍不靠字卡撐**：卡片少了之後的視覺節奏由**換鏡與 B-roll** 負責。
+**節拍不只靠字卡撐**：卡片之外的視覺節奏由**換鏡與精準 B-roll** 負責。
 review packet 現在同時報「含換鏡 事件/分」與「素材+卡片 事件/分」——
 只有換鏡撐場的段落，後者會露餡。
 
@@ -343,12 +346,21 @@ hero（tier 1）另加一條：必須是**能單獨當引言卡發出去**的一
 （抽象概念名詞→關鍵字卡）。選完卡自問：「這支影片的概念骨架，光看字卡
 能不能拼出來？」拼不出來就是漏了。
 
-**三層字卡架構（修修九輪裁決）**：
-- **tier 1 = hero**：每支**最多 1 張**，放全片最強的一句。168px 超大字、
-  縮放彈入+微旋轉甩正、預設 pos_y 0.58。titles.json 標 `"tier": 1`
-- **tier 2 = 標準 punch 卡**（預設）：150px、2–3 張
+**三層字卡架構（修修九輪裁決；鐘穎 Ep02 重新量測 2026-08-17）**：
+- **tier 1 = hero**：每支 1–3 張，只放 `insight` 或 `closing`。190px 超大字、
+  `slam` 縮放彈入+微旋轉甩正、預設 pos_y 0.58。titles.json 標 `"tier": 1`
+- **tier 2 = 標準 punch 卡**（預設）：150px；依語意 beat 選點，不用固定張數
 - **tier 3 = 逐字字幕**：走現有 subtitle track（樣式改 DRT 模板全軌生效），
   **不走 render**——50–104 行逐行渲染成本高又失去 Resolve 內可編輯性
+
+**參考片的動態文法（67.57s / 1080×1920 / 30fps）**：
+- 普通字幕是小型黑字白底；tier 2 是橘底白字；tier 1 是明顯放大的橘底主張
+- 進場約 0.2–0.6s，搭配 slide/wipe、motion blur、逐字或逐行 stagger；不能每張同招
+- `swipe` 用在快速論點、`wipe` 用在轉折、`word` 用在逐步揭露、`slam` 留給 hero/payoff
+- 不得連續三張使用同一動畫；相鄰卡至少改動畫或行級大小。行縮放建議 0.84–1.16，
+  整卡縮放建議 0.88–1.02（script 的安全硬界仍較寬）
+- 每約 25–30s 至少安排一個較大的視覺段落（精準 B-roll、貼紙/插畫或 tier 1 hero），
+  其餘時間保留 talking-head 呼吸，不能為了密度把每句都做成卡
 
 流程：agent 從 `<id>_tight` SRT 選 punch 時間點 → 寫
 `highlights/tighten/<id>_titles.json`（t0/t1 = 緊·導播 timeline 秒）→
@@ -366,7 +378,7 @@ alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺�
 
 ## Step 9 — 素材層：B-roll / 貼紙 / 概念卡（修修 2026-07-27 通宵裁決，對標鐘穎波旬集）
 
-波旬範本解剖出四種素材語彙，全部走 `highlights/tighten/<id>_broll.json` +
+波旬範本解剖出五種素材語彙，全部走 `highlights/tighten/<id>_broll.json` +
 `run_short_broll.py`（schema 見 script docstring）：
 
 1. **stock video 切出**（比喻具象化：講跑車→跑車片、講孤立→窗邊人影）
@@ -377,6 +389,10 @@ alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺�
    → `video/compositions/sticker_pair/` hyperframes alpha → track 4
 4. **概念圖解卡**（兩插畫+雙向箭頭+橘塊標題，講抽象關係；首發「相關≠因果」）
    → `video/compositions/concept_card/` → track 4
+5. **情境 icon 動畫**（1–3 個透明 icon 依敘述做進入、靠近、阻擋、分離、移出、
+   堆疊或替換；動作本身要表達故事，不是待機漂浮）→ `icon_choreography` → track 4。
+   規劃 schema、Envato 素材處理、安全區與 QC 見
+   [`references/icon-motion.md`](references/icon-motion.md)
 
 **軌道契約**：1=主鏡、2=開場第二機+B-roll、3=punch 卡、4=貼紙/概念卡。
 
@@ -387,6 +403,10 @@ alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺�
   （修修的是 `E:\` 根目錄）**→ 搬到 episode `assets/broll/<slug>.<ext>`。
   photos 同理（`itemType=photos`，可不加 vertical——照片會裁）。
   ⚠️ 標題帶「Green」的多半是綠幕素材，樣張必驗（S3 通知手機血案）
+- **Envato icon／graphics**：情境 icon 動畫抓**靜態** SVG/PNG/AI/EPS 素材，保留
+  原始 zip／向量 receipt，再轉 2048px 透明 PNG；動畫由本地 composition 決定，
+  不下載不可控的預製 motion template。下載、SHA-256 與跨集去重同樣走
+  brook-director Envato Computer Use 狀態機
 - **irasutoya**（貼紙，免費、就是波旬範本用的風格）：搜尋頁 JS 撈
   blogger 圖 URL，`/s180-c/`→`/s800/` 抓全尺寸 →
   `assets/stickers/<name>.png`。商用單作品 ≤20 張的授權上限，夠用
@@ -402,7 +422,9 @@ alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺�
   畫面感語句→stock、抽象概念名詞→keyword 字卡（tier 2）、
   研究/論文引用→**evidence_doc：真論文第一頁 center 貼紙**（pymupdf 渲
   PDF p1 → 裁標題區 → `side:"center"`，禁用泛用 stock 代打——十五輪裁決）、
-  書名→書封、講故事/舉例→雙貼紙、抽象關係→概念卡
+  書名→書封、講故事/舉例→雙貼紙、抽象關係→概念卡、**角色／物件有相對位置
+  或動作（走進、擋住、離開、追逐、聚合、散開）→情境 icon 動畫**。只有角色名詞、
+  沒有可視動詞時仍用靜態貼紙，不為了「有動畫」硬造動作
 - 每點 1.5–4s（貼紙可到 6.5s）；兩個 cutaway 之間留談話呼吸（overlay 不限）
 - 避開：字卡窗口（titles.json）、**track 2 的開場分割 0–4s**（script 有
   重疊防呆）。**punch zoom 與具象比喻衝突時，縮短 punch 讓位 footage**
@@ -418,9 +440,14 @@ alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺�
   再產，見 v2 備忘**）**、AI 素材常見破綻：運鏡方向詭異（車尾逼近像倒車）、
   文化錯位（聯考配西方教室——在地語境名詞配亞洲素材）
 - mood：偏暖、自然光；同一支短片 stock 調性一致
+- **語意精準度優先於數量**：B-roll 必須對齊當下名詞/動作/場景，不能只對齊
+  整支影片的大主題。沒有合格素材時 fail closed 留 talking head，錯的 stock 比沒有差
+- **一個具體長段落 / 25–30s 是校準目標，不是硬配額**：素材必須能覆蓋一個完整
+  語意單位（約 3–7s），不可用已跨集重複或與台灣語境不符的舊素材湊數
 
-**驗證**：`--stills` 樣張逐張看（fill 構圖、貼紙不遮臉——`y_pct`/`size_pct`
-逐項可調、綠幕/浮水印攔截）。冪等：slug stem 比對清舊 item（素材換
+**驗證**：`--stills` 樣張逐張看（fill 構圖、貼紙／icon path 不遮臉和字幕——
+`y_pct`/`size_pct` 逐項可調、綠幕/浮水印攔截）；情境 icon 另輸出 10fps
+motion strip，逐 keyframe 驗證動作確實對應當下動詞。冪等：slug stem 比對清舊 item（素材換
 副檔名也清得掉）。
 
 ## Step 10 — 音效層（修修 2026-07-27 二十輪：SFX 先做、BGM 隨後）
@@ -434,6 +461,7 @@ alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺�
 | ramp punch | riser（swoosh） | t0−0.35（響區蓋放大過程） | 4 |
 | cut punch | impact（低沉「咚」） | t0 | 4 |
 | 貼紙 | pop ×2（左右錯拍 0.18s） | t0 | 3 |
+| 情境 icon 動畫 | pop（角色進場）／swish（明確位移 hit；每 sequence 最多 1 次） | semantic hit | 3 |
 | 概念卡 | pop | t0 | 3 |
 | tier2 卡 | swish（輕掃） | t0 | 2 |
 

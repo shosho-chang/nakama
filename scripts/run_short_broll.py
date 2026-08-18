@@ -1,10 +1,11 @@
 """short-broll：短片 B-roll / 貼紙 / 概念卡 — 對標鐘穎波旬集（修修 2026-07-27 通宵裁決）。
 
-波旬範本的四種素材語彙（`docs` 見 SKILL Step 7.6）：
+波旬範本的五種素材語彙（`docs` 見 SKILL Step 7.6）：
 1. stock video 切出（比喻具象化：黑暗隧道剪影、山頂雲海）→ video track 2 全幅
 2. stock photo（Ken Burns 慢推）→ video track 2 全幅
 3. 雙貼紙（irasutoya 風插畫貼講者兩側，講故事時）→ hyperframes alpha → track 4
 4. 概念圖解卡（兩插畫+雙向箭頭+橘塊標題）→ hyperframes alpha → track 4
+5. 情境 icon 動畫（圖像進場、淘汰、聚焦、位移）→ hyperframes alpha → track 4
 
 輸入：highlights/tighten/<id>_broll.json
     {"items": [
@@ -14,6 +15,9 @@
        "stickers": [{"file": "brain.png", "side": "left"}, ...]},
       {"t0": 40.1, "t1": 44.0, "kind": "concept", "slug": "causal", "comp": "concept_card",
        "vars": {"title": "相關 ≠ 因果", "left_icon": "smartphone.png", ...}}
+      {"t0": 10.0, "t1": 13.2, "kind": "icon_motion", "slug": "many-to-one",
+       "icons": [{"id": "a", "file": "sushi-a.png", "x": 15, "y": 42, "size": 12}],
+       "steps": [{"at": 0, "op": "enter", "ids": ["a"]}, ...]}
     ]}
     t0/t1 = （緊·導播）timeline 秒。素材檔在 episode assets/broll/<slug>.*、
     貼紙在 assets/stickers/*.png（irasutoya s800，透明背景）。
@@ -45,8 +49,10 @@ import sys
 import time
 from pathlib import Path
 
-sys.stdout.reconfigure(encoding="utf-8")
-sys.stderr.reconfigure(encoding="utf-8")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -59,6 +65,7 @@ logger = logging.getLogger("short_broll")
 REPO_ROOT = Path(__file__).resolve().parent.parent
 COMPS = {
     "sticker_pair": REPO_ROOT / "video" / "compositions" / "sticker_pair",
+    "icon_choreography": REPO_ROOT / "video" / "compositions" / "sticker_pair",
     "concept_card": REPO_ROOT / "video" / "compositions" / "concept_card",
     # 章節籤（修修 2026-08-04 grill：長片證據驅動語彙）——長片專屬，
     # 只有 *_wide.html；短片誤用會在 _card_hash 讀檔時 fail loud
@@ -94,6 +101,7 @@ FORMAT_BROLL = {
 # composition data-duration 上限（進場+待機+退場都要收在裡面）
 COMP_MAX_SEC = {
     "sticker_pair": 8.0,
+    "icon_choreography": 8.0,
     "concept_card": 6.0,
     "chapter_label": 8.0,
     "transition_title": 4.0,
@@ -110,6 +118,22 @@ KENBURNS_SCALE = 1.06  # photo 慢推幅度（波旬語彙：照片不能死著�
 def _data_uri(path: Path) -> str:
     mime = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
     return f"data:{mime};base64,{base64.b64encode(path.read_bytes()).decode('ascii')}"
+
+
+def _validate_icon_legibility(index: int, item: dict) -> None:
+    """A semantic icon scene needs one readable subject, not literal clutter."""
+    primary_id = str(item.get("primary_icon_id", "")).strip()
+    if not primary_id:
+        return  # legacy choreography remains compatible until explicitly migrated
+    icons = item.get("icons") or []
+    if len(icons) > 3:
+        raise SystemExit(f"item {index} 有主體的 icon_motion 最多 3 個 icons")
+    by_id = {str(icon.get("id", "")).strip(): icon for icon in icons}
+    if primary_id not in by_id:
+        raise SystemExit(f"item {index} primary_icon_id={primary_id!r} 不在 icons")
+    primary_size = float(by_id[primary_id].get("size", 0))
+    if primary_size < 18:
+        raise SystemExit(f"item {index} 主 icon 至少 18% 畫面寬，目前 {primary_size:g}%")
 
 
 def _card_hash(comp: str, variables: dict, suffix: str = "") -> str:
@@ -361,6 +385,54 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
                 if k in it:
                     variables[k] = it[k]
             card_jobs.append({"comp": comp, "vars": variables, "t0": t0, "span": span, "i": i})
+        elif kind == "icon_motion":
+            if fmt != "short":
+                raise SystemExit(f"item {i} icon_motion 目前只支援 short 畫幅")
+            comp = "icon_choreography"
+            if span > COMP_MAX_SEC[comp] - 0.3:
+                raise SystemExit(f"item {i} icon 動畫 {span}s 超過上限 {COMP_MAX_SEC[comp] - 0.3}s")
+            icons = it.get("icons", [])
+            if not 1 <= len(icons) <= 5:
+                raise SystemExit(f"item {i} icon_motion 必須有 1–5 個 icons")
+            _validate_icon_legibility(i, it)
+            icon_ids = [str(icon.get("id", "")).strip() for icon in icons]
+            if any(not icon_id for icon_id in icon_ids) or len(set(icon_ids)) != len(icon_ids):
+                raise SystemExit(f"item {i} icons 的 id 必須非空且唯一")
+            icon_vars = []
+            for icon in icons:
+                p = stickers_dir / str(icon["file"])
+                if not p.exists():
+                    raise SystemExit(f"assets/stickers/{icon['file']} 不存在")
+                icon_vars.append(
+                    {
+                        "id": str(icon["id"]),
+                        "src": _data_uri(p),
+                        "x": float(icon.get("x", 50)),
+                        "y": float(icon.get("y", 42)),
+                        "size": float(icon.get("size", 12)),
+                        "rotation": float(icon.get("rotation", 0)),
+                    }
+                )
+            allowed_ops = {"enter", "fade", "move_to", "emphasis", "exit"}
+            steps = it.get("steps", [])
+            previous_at = -1.0
+            for step in steps:
+                at = float(step.get("at", -1))
+                if at < previous_at or at < 0 or at > span:
+                    raise SystemExit(f"item {i} steps.at 必須遞增且落在 0–{span}s")
+                previous_at = at
+                if step.get("op") not in allowed_ops:
+                    raise SystemExit(f"item {i} step op={step.get('op')} 不合法")
+                targets = step.get("ids", [step.get("id")])
+                targets = [target for target in targets if target is not None]
+                if any(str(target) not in icon_ids for target in targets):
+                    raise SystemExit(f"item {i} step 指向不存在的 icon id")
+            variables = {
+                "show_sec": span,
+                "icons_json": json.dumps(icon_vars, ensure_ascii=False),
+                "steps_json": json.dumps(steps, ensure_ascii=False),
+            }
+            card_jobs.append({"comp": comp, "vars": variables, "t0": t0, "span": span, "i": i})
         elif kind == "concept":
             comp = it.get("comp", "concept_card")
             if comp not in COMPS:
@@ -386,7 +458,9 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
                 {"path": hits[0], "t0": t0, "t1": t1, "src_fps": src_fps or 30.0, "i": i}
             )
         else:
-            raise SystemExit(f"item {i} kind={kind} 不合法（video/photo/sticker/concept/badge）")
+            raise SystemExit(
+                f"item {i} kind={kind} 不合法（video/photo/sticker/icon_motion/concept/badge）"
+            )
 
     for job in card_jobs:
         h = _card_hash(job["comp"], job["vars"], suffix)

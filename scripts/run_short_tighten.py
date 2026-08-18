@@ -38,8 +38,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.stdout.reconfigure(encoding="utf-8")
-sys.stderr.reconfigure(encoding="utf-8")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -94,6 +96,9 @@ FORMAT_TIGHTEN = {
         "min_keep_seg": MIN_KEEP_SEG,
         "cut_filler": True,
         "cut_backchannel": True,
+        # 短片字卡逐字承接字幕；必須輸出 5–9 字呼吸單元，不能在重跑時
+        # 退回一個 cue 20–30 字的長句。
+        "fine_subtitles": True,
     },
     "long": {
         # 0.80 是實測定的，不是拍腦袋：謝伯讓 punch-L5（759s）在 -32dB 下的
@@ -108,6 +113,7 @@ FORMAT_TIGHTEN = {
         "min_keep_seg": 0.50,
         "cut_filler": False,
         "cut_backchannel": False,
+        "fine_subtitles": False,
     },
 }
 
@@ -153,6 +159,35 @@ def _load_winner(episode_dir: Path, cid: str) -> tuple[dict, dict]:
     if c is None or w is None:
         raise SystemExit(f"{cid} 不在 winners/candidates 中")
     return c, w
+
+
+def _subtitle_source_config(episode_dir: Path, cid: str) -> tuple[Path, float, float]:
+    """Resolve the text source and its two independent clock mappings.
+
+    Short cuts live on the raw media clock, while an editor-approved Resolve
+    subtitle snapshot can live on the edited timeline clock.  Corrected cue
+    text therefore needs ``subtitle_clock_offset`` to reach the media clock,
+    but ``words.json`` may already be on that media clock and must not inherit
+    the same shift.  Candidate metadata makes both mappings explicit instead
+    of silently falling back to the uncorrected recognition transcript.
+    """
+    default = episode_dir / "transcript.srt"
+    candidates_path = episode_dir / HIGHLIGHTS_DIR / "candidates.json"
+    if not candidates_path.exists():
+        return default, 0.0, 0.0
+    candidates = json.loads(candidates_path.read_text(encoding="utf-8")).get("candidates", [])
+    candidate = next((item for item in candidates if item.get("id") == cid), None)
+    if not candidate or not candidate.get("subtitle_source"):
+        return default, 0.0, 0.0
+
+    source = Path(str(candidate["subtitle_source"]))
+    if not source.is_absolute():
+        source = episode_dir / source
+    if not source.exists():
+        raise FileNotFoundError(f"{cid} 指定的字幕來源不存在: {source}")
+    subtitle_offset = float(candidate.get("subtitle_clock_offset", 0.0))
+    words_offset = float(candidate.get("words_clock_offset", subtitle_offset))
+    return source, subtitle_offset, words_offset
 
 
 def _detect_silences(
@@ -794,6 +829,7 @@ def _retime_srt(
     fine: bool = False,
     transcript: Path | None = None,
     clock_offset: float = 0.0,
+    words_clock_offset: float | None = None,
 ) -> tuple[Path, int]:
     """字幕依保留段塌縮重對時（版本化路徑繞 Resolve 快取）。
 
@@ -811,7 +847,20 @@ def _retime_srt(
     `clock_offset` = 逐字稿時鐘 − cuts 時鐘，換算時整份減掉；用
     `shared.pause_map.detect_audio_offset` 量測，不要手寫。
     """
-    cues = _parse_srt(Path(transcript) if transcript else episode_dir / "transcript.srt")
+    if transcript is None and clock_offset == 0.0 and words_clock_offset is None:
+        transcript, clock_offset, words_clock_offset = _subtitle_source_config(episode_dir, cid)
+    else:
+        transcript = Path(transcript) if transcript else episode_dir / "transcript.srt"
+        if words_clock_offset is None:
+            words_clock_offset = clock_offset
+    logger.info(
+        "%s: 字幕來源 %s（字幕鐘 %+.3fs；詞鐘 %+.3fs）",
+        cid,
+        transcript,
+        clock_offset,
+        words_clock_offset,
+    )
+    cues = _parse_srt(transcript)
     if clock_offset:
         logger.info("逐字稿時鐘校正 %+.3fs（逐字稿 → cuts 時鐘）", -clock_offset)
         cues = [(s - clock_offset, e - clock_offset, t) for s, e, t in cues]
@@ -843,9 +892,13 @@ def _retime_srt(
         if n_hot:
             logger.info(f"episode 熱詞 {n_hot} 個進 jieba")
         words = json.load(open(episode_dir / "subs" / "words.json", encoding="utf-8"))["words"]
-        if clock_offset:  # words.json 與逐字稿同鐘，一起校正
+        if words_clock_offset:
             words = [
-                {**w, "start": w["start"] - clock_offset, "end": w["end"] - clock_offset}
+                {
+                    **w,
+                    "start": w["start"] - words_clock_offset,
+                    "end": w["end"] - words_clock_offset,
+                }
                 for w in words
                 if w.get("start") is not None and w.get("end") is not None
             ]
@@ -887,7 +940,7 @@ def _retime_srt(
             # 比沒有停頓圖更糟——丟掉它，退回詞典判準，但大聲留紀錄。
             logger.error("%s: 停頓圖時鐘自檢不過（%s）——丟棄，退回詞典判準", cid, exc)
             pause = None
-    tl_words = _timeline_words(episode_dir, segs, clock_offset)
+    tl_words = _timeline_words(episode_dir, segs, words_clock_offset)
     if tl_words is None:
         logger.warning("%s: 沒有 words.json——字元時間退回 cue 內均分，停頓判定會失準", cid)
     # 黏著度語料用**整集**逐字稿，不是這一段——單一 cut 只有 ~2500 字，
@@ -1016,7 +1069,13 @@ def apply(episode_dir: Path, cid: str) -> dict:
         offset_frames += f1 - f0
 
     mp.SetCurrentFolder(root)
-    seg_srt, n_cues = _retime_srt(episode_dir, cid, segs, cuts)
+    seg_srt, n_cues = _retime_srt(
+        episode_dir,
+        cid,
+        segs,
+        cuts,
+        fine=bool(fcfg["fine_subtitles"]),
+    )
     srt_items = import_srt_tidy(mp, root, seg_srt)
     sub_ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
     pm.SaveProject()
