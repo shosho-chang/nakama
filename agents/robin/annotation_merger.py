@@ -36,13 +36,16 @@ v3 unified path (AnnotationSetV3):
 from __future__ import annotations
 
 import json
+import os
 import re
+import time
 
 from pydantic import BaseModel
 
 from shared.annotation_store import get_annotation_store
 from shared.config import get_vault_path
 from shared.kb_writer import KB_CONCEPTS_DIR, _load_page, _write_page_file
+from shared.llm_observability import record_call
 from shared.llm_router import get_model
 from shared.log import get_logger
 from shared.prompt_loader import load_prompt
@@ -145,6 +148,110 @@ def _replace_marker_block(body: str, source_slug: str, callout_block: str) -> st
 # LLM boundary (monkeypatch this in tests)
 # ---------------------------------------------------------------------------
 
+# ── Agent SDK 路徑（S2, flag-gated）────────────────────────────────────────
+# 計畫：docs/plans/2026-08-18-annotation-merger-agent-sdk-plan.md
+# ADR-026 的 tool-use 限制讓 forced tool_choice 走不了訂閱額度；SDK 路徑用
+# in-process MCP tool 的 capture 模式取得等價的結構化輸出（S0 實測 10/10）。
+
+_SDK_FLAG_ENV = "ROBIN_MERGE_USE_AGENT_SDK"
+
+# S0-Q1a：SDK 無 tool_choice 等價物 → 用 prompt 指令強制（Q1b 實測 10/10）。
+_SDK_FORCE_SUFFIX = (
+    "\n\nYou MUST submit your result by calling the merge_annotations tool "
+    "exactly once. Do not reply with plain text."
+)
+_SDK_RETRY_SUFFIX = (
+    "\n\nREMINDER: your previous attempt did not call the tool. You MUST call "
+    "the merge_annotations tool with the mapping now."
+)
+
+
+def _use_agent_sdk() -> bool:
+    return os.environ.get(_SDK_FLAG_ENV) == "1"
+
+
+def _sdk_merge_once(prompt: str, model: str) -> tuple[dict | None, object | None]:
+    """跑一次 SDK merge，回傳 ``(捕獲的 mapping 或 None, ResultMessage 或 None)``。
+
+    測試 seam：monkeypatch 這個函式即可測驗證 / 重試邏輯，不碰真 SDK。
+    SDK import 全部 lazy —— flag off 的環境（含未裝 SDK 的本機）零依賴。
+    """
+    import asyncio  # noqa: PLC0415
+
+    from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query  # noqa: PLC0415
+
+    from agents.robin.merger_tools import (  # noqa: PLC0415
+        MERGER_ALLOWED_TOOLS,
+        MERGER_SERVER_NAME,
+        build_merger_server,
+    )
+    from shared.agent_sdk import subscription_env  # noqa: PLC0415
+
+    box: dict = {}
+    options = ClaudeAgentOptions(
+        model=model,
+        tools=[],  # 安全紅線：無內建工具（Nami S0-Q1 實測背書）
+        setting_sources=[],
+        mcp_servers={MERGER_SERVER_NAME: build_merger_server(box)},
+        allowed_tools=MERGER_ALLOWED_TOOLS,
+        max_turns=3,  # S0 實測全部一輪內完成 tool 呼叫
+        # 承重牆：忘傳 env 時子進程的 ANTHROPIC_API_KEY 壓過 OAuth（實測優先
+        # 序），額度空時秒死於難解的「error result: success」（S0 findings）。
+        env=subscription_env(),
+    )
+
+    result_holder: list = []
+
+    async def _run() -> None:
+        async for message in query(prompt=prompt, options=options):
+            if isinstance(message, ResultMessage) and not result_holder:
+                result_holder.append(message)
+
+    asyncio.run(_run())
+    return box.get("mapping"), (result_holder[0] if result_holder else None)
+
+
+def _record_sdk_usage(result_msg: object | None, model: str, latency_ms: int) -> None:
+    """Session 級 usage 進 api_calls（S3）。失敗不影響主流程（對稱
+    ``shared.anthropic_client._record_anthropic_usage`` 的吞錯語意）。"""
+    try:
+        if result_msg is None:
+            return
+        usage = getattr(result_msg, "usage", None) or {}
+        record_call(
+            model=model,
+            input_tokens=int(usage.get("input_tokens", 0) or 0),
+            output_tokens=int(usage.get("output_tokens", 0) or 0),
+            cache_read_tokens=int(usage.get("cache_read_input_tokens", 0) or 0),
+            cache_write_tokens=int(usage.get("cache_creation_input_tokens", 0) or 0),
+            latency_ms=latency_ms,
+            auth_requested="subscription_preferred",
+            auth_actual="subscription",
+            cost_usd=getattr(result_msg, "total_cost_usd", None),
+        )
+    except Exception as e:  # noqa: BLE001 — cost tracking 不影響主流程
+        logger.debug("SDK merge cost tracking 失敗（忽略）：%s", e)
+
+
+def _ask_merger_llm_sdk(prompt: str) -> dict[str, str]:
+    """SDK 引擎（S2）：prompt 強制 + capture + 驗證 + 重試一次。
+
+    語意對映 :func:`_ask_merger_llm`：回傳淨化後 mapping；**空 dict 合法**
+    （代表無匹配，v1 語意）；兩次都沒交出 dict → ``MergerLLMError``
+    （例外語意與 tool_choice 版一致，caller 的錯誤處理不用改）。
+    """
+    model = get_model(agent="robin", task="annotation_merge")
+    t0 = time.perf_counter()
+    mapping, result_msg = _sdk_merge_once(prompt + _SDK_FORCE_SUFFIX, model)
+    if not isinstance(mapping, dict):
+        logger.warning("SDK merge 第一次未捕獲 mapping — 帶強化指令重試一次")
+        mapping, result_msg = _sdk_merge_once(prompt + _SDK_FORCE_SUFFIX + _SDK_RETRY_SUFFIX, model)
+    latency_ms = int((time.perf_counter() - t0) * 1000)
+    _record_sdk_usage(result_msg, model, latency_ms)
+    if not isinstance(mapping, dict):
+        raise MergerLLMError("merger LLM did not invoke merge_annotations tool (sdk)")
+    return {k: v for k, v in mapping.items() if isinstance(k, str) and isinstance(v, str)}
+
 
 def _ask_merger_llm(prompt: str) -> dict[str, str]:
     """Call LLM to map annotations → concept callout blocks using forced tool_use.
@@ -152,11 +259,17 @@ def _ask_merger_llm(prompt: str) -> dict[str, str]:
     Uses tool_choice to guarantee structured JSON output — eliminates the raw-text
     JSON parsing failures that occurred with the previous ask() approach.
 
+    ``ROBIN_MERGE_USE_AGENT_SDK=1`` 時改走 Agent SDK 訂閱路徑（S2）；
+    flag off 維持原 tool_choice 路徑逐位元不變。
+
     Returns:
         {concept_slug: callout_block_markdown_string}
     Raises:
         MergerLLMError: if the LLM did not invoke the merge_annotations tool.
     """
+    if _use_agent_sdk():
+        return _ask_merger_llm_sdk(prompt)
+
     from shared.llm import ask_with_tools
 
     response = ask_with_tools(
@@ -581,9 +694,11 @@ def _replace_v2_marker_block(body: str, book_id: str, callout_block: str) -> str
 
 
 def _ask_merger_llm_v2(items, concept_slugs: list[str]) -> dict[str, str]:
-    """LLM call for v2 book items → per-concept callout mapping (tool_use forced JSON)."""
-    from shared.llm import ask_with_tools
+    """LLM call for v2 book items → per-concept callout mapping (tool_use forced JSON).
 
+    ``ROBIN_MERGE_USE_AGENT_SDK=1`` 時改走 Agent SDK 訂閱路徑（S2），
+    prompt 內容不變；flag off 維持原 tool_choice 路徑逐位元不變。
+    """
     items_json = json.dumps(
         [i.model_dump() for i in items],
         ensure_ascii=False,
@@ -597,6 +712,11 @@ def _ask_merger_llm_v2(items, concept_slugs: list[str]) -> dict[str, str]:
         f"For each matched concept, produce a callout block attributed to the book source. "
         f"Only include concepts with a genuine thematic match."
     )
+
+    if _use_agent_sdk():
+        return _ask_merger_llm_sdk(prompt)
+
+    from shared.llm import ask_with_tools
 
     response = ask_with_tools(
         messages=[{"role": "user", "content": prompt}],
