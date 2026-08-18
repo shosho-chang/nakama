@@ -131,13 +131,17 @@ def test_template_snapshot_is_content_addressed(tmp_path: Path):
 def test_design_system_cover_and_cta_use_reviewed_visual_contract():
     source = (DESIGN_TEMPLATE / "PodcastCarouselRender.html").read_text(encoding="utf-8")
 
-    assert ".cover .em-orange{color:var(--white)" in source
+    assert ".cover .em-orange{display:table;color:var(--white)" in source
     assert "cover-headline-zone" in source
     assert ".cta-title .em-orange{color:var(--white)" in source
     assert 'createElementNS("http://www.w3.org/2000/svg","svg")' in source
     assert 'aria-label",name' in source
     assert '[["AP","Apple Podcasts"],["S","Spotify"],["YT","YouTube"]]' not in source
     assert "cover headline/cutout collision" in source
+    assert "--type-cover-title:112px" in source
+    assert "--type-point-title:72px" in source
+    assert "--type-point-body:44px" in source
+    assert 'target(title,"cover.headline",typeSize("--type-cover-title"),100,88,1.05)' in source
 
 
 @pytest.mark.skipif(not CHROME.is_file(), reason="system Chrome required")
@@ -201,6 +205,8 @@ def test_real_design_system_template_renders_every_page_role(tmp_path: Path):
     assert all(Path(page.image.path).is_file() for page in manifest.pages)
     assert all(page.fit.status == "fit" for page in manifest.pages)
     assert manifest.pages[0].fit.regions["cover.cutout_height"] >= 850
+    assert manifest.pages[0].fit.regions["cover.headline"] > manifest.pages[2].fit.regions["point.headline"]
+    assert manifest.pages[2].fit.regions["point.body"] >= 40
     assert manifest.pages[2].fit.regions["point.emphasis_lines"] == 1
     assert manifest.pages[3].fit.regions["quote.answer_cutout_overlap"] == 0
     render_input = (package / "revisions" / "r001" / "render_input.html").read_text(
