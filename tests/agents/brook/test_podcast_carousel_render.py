@@ -141,7 +141,10 @@ def test_design_system_cover_and_cta_use_reviewed_visual_contract():
     assert "--type-cover-title:112px" in source
     assert "--type-point-title:72px" in source
     assert "--type-point-body:44px" in source
-    assert "transform:rotate(-1.5deg)" in source
+    assert "transform:rotate(var(--emphasis-tilt,-1.5deg))" in source
+    assert 'canvas.style.setProperty("--emphasis-tilt",`${emphasisTilt}deg`)' in source
+    assert "--cover-emphasis-gap:.12em" in source
+    assert "--cover-emphasis-pad-x:.22em" in source
     assert 'target(title,"cover.headline",typeSize("--type-cover-title"),100,88,1.05)' in source
 
 
@@ -207,6 +210,11 @@ def test_real_design_system_template_renders_every_page_role(tmp_path: Path):
     assert all(page.fit.status == "fit" for page in manifest.pages)
     assert manifest.pages[0].fit.regions["cover.cutout_height"] >= 850
     assert manifest.pages[0].fit.regions["cover.headline"] > manifest.pages[2].fit.regions["point.headline"]
+    assert manifest.pages[0].fit.regions["cover.emphasis_gap"] >= 12
+    assert manifest.pages[0].fit.regions["cover.emphasis_padding_x"] >= 20
+    assert manifest.pages[0].fit.regions["cover.emphasis_padding_top"] >= 10
+    assert manifest.pages[1].fit.regions["emphasis.rotation_deg"] == -1.5
+    assert manifest.pages[2].fit.regions["emphasis.rotation_deg"] == 1.5
     assert manifest.pages[2].fit.regions["point.body"] >= 40
     assert manifest.pages[2].fit.regions["point.emphasis_lines"] == 1
     assert manifest.pages[3].fit.regions["quote.answer_cutout_overlap"] == 0
