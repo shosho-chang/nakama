@@ -15,7 +15,11 @@
 3. **2026-08-18 已實測**：Agent SDK 可走訂閱額度（`CLAUDE_CODE_OAUTH_TOKEN` + 清空子進程
    `ANTHROPIC_API_KEY`）— 見 `memory/claude/reference_agent_sdk_supports_oauth.md` 與
    `gateway/handlers/nami.py` 的 `_sdk_auth_env()`（PR #1173）。**本計畫不需要重新驗證這件事**
-4. 下一個動作：S0 探針（三個新未知，見下）
+4. ✅ **S0 探針已跑完（2026-08-18，四題全過）** — 實測結果在
+   `docs/research/2026-08-18-merger-sdk-spike-findings.md`。重點：SDK 無 `tool_choice`
+   等價物但 prompt 強制 10/10 過；Opus 4.7/4.8 訂閱可用；`to_thread` 20/20 穩定；
+   **`env=subscription_env()` 是承重牆，忘傳 = 秒死於難解錯誤**
+5. 下一個動作：S1（shared helper + merger MCP server，見下方六要素）
 
 ---
 
