@@ -305,6 +305,28 @@ def test_status_reads_runtime_progress_and_keeps_final_snapshot(env, monkeypatch
     assert uploaded.json()["progress"]["pct"] == 37.5
 
 
+def test_publish_worker_log_honors_runtime_data_dir(env, monkeypatch, tmp_path):
+    import thousand_sunny.routers.publish_review as pub_module
+
+    runtime_data = tmp_path / "worker-runtime-data"
+    monkeypatch.setenv("NAKAMA_DATA_DIR", str(runtime_data))
+    observed = {}
+
+    def fake_popen(command, **kwargs):
+        observed["command"] = command
+        observed["log_path"] = Path(kwargs["stdout"].name)
+        kwargs["stdout"].close()
+
+    monkeypatch.setattr(pub_module.subprocess, "Popen", fake_popen)
+    pub_module._spawn_publish_worker("episode", "cut", platform="instagram_reels")
+
+    assert observed["log_path"] == (
+        runtime_data / "upload_progress" / "episode_cut_instagram_reels.log"
+    )
+    assert observed["log_path"].exists()
+    assert observed["command"][-2:] == ["--platform", "instagram_reels"]
+
+
 def test_json_dumps_guard():
     """SRT 內容不經 json 序列化（避免有人未來把它塞進 JSON 回應）。"""
     assert json.dumps(srt_to_vtt(SRT), ensure_ascii=False).startswith('"WEBVTT')

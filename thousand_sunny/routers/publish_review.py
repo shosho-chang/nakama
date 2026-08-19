@@ -158,7 +158,7 @@ def _spawn_publish_worker(episode: str, cut_id: str, *, platform: str | None = N
     """Start the desktop dispatcher and keep its output in the existing progress log."""
     root = Path(__file__).resolve().parent.parent.parent
     script = root / "scripts" / "publish_dispatch.py"
-    log_dir = root / "data" / "upload_progress"
+    log_dir = _upload_progress_dir()
     log_dir.mkdir(parents=True, exist_ok=True)
     safe = f"{episode}_{cut_id}".replace("/", "_").replace("\\", "_")
     suffix = f"_{platform}" if platform else ""
