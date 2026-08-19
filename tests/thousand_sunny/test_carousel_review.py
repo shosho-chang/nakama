@@ -336,7 +336,17 @@ def client(tmp_path: Path, monkeypatch) -> tuple[TestClient, Path]:
     monkeypatch.setenv("DISABLE_ROBIN", "1")
     monkeypatch.delenv("WEB_PASSWORD", raising=False)
     monkeypatch.delenv("WEB_SECRET", raising=False)
-    monkeypatch.delenv("META_CAROUSEL_PUBLISH_CONFIGURED", raising=False)
+    for name in (
+        "META_GRAPH_API_VERSION",
+        "META_PAGE_ID",
+        "META_IG_USER_ID",
+        "META_PAGE_ACCESS_TOKEN",
+        "META_MEDIA_R2_ACCOUNT_ID",
+        "META_MEDIA_R2_ACCESS_KEY_ID",
+        "META_MEDIA_R2_SECRET_ACCESS_KEY",
+        "META_MEDIA_R2_BUCKET",
+    ):
+        monkeypatch.delenv(name, raising=False)
     import thousand_sunny.auth as auth_module
     import thousand_sunny.routers.carousel_review as review_module
 
@@ -965,7 +975,17 @@ def test_publish_page_and_status_route_load_handwritten_legacy_v1_job(client):
 
 def test_manual_only_manifest_never_advertises_meta_api(client, monkeypatch):
     app, root = client
-    monkeypatch.setenv("META_CAROUSEL_PUBLISH_CONFIGURED", "1")
+    for name in (
+        "META_GRAPH_API_VERSION",
+        "META_PAGE_ID",
+        "META_IG_USER_ID",
+        "META_PAGE_ACCESS_TOKEN",
+        "META_MEDIA_R2_ACCOUNT_ID",
+        "META_MEDIA_R2_ACCESS_KEY_ID",
+        "META_MEDIA_R2_SECRET_ACCESS_KEY",
+        "META_MEDIA_R2_BUCKET",
+    ):
+        monkeypatch.setenv(name, "configured-for-test")
     manifest_sha = _make_manifest_manual_only(root)
     approved = app.post(
         f"/bridge/ig-cards/{EPISODE}/approve",
@@ -1000,6 +1020,33 @@ def test_manual_only_manifest_never_advertises_meta_api(client, monkeypatch):
     assert job.json()["targets"][0]["strategy"] == "agent_browser"
     assert youtube.status_code == 400
     assert "最多接受 10 張圖片" in youtube.json()["detail"]
+
+
+def test_api_compatible_manifest_requires_all_meta_and_staging_settings(client, monkeypatch):
+    app, _ = client
+    manifest_sha = _manifest_sha(app)
+    app.post(
+        f"/bridge/ig-cards/{EPISODE}/approve",
+        data={"manifest_sha256": manifest_sha},
+    )
+    incomplete = app.get(f"/bridge/ig-cards/{EPISODE}/publish")
+    assert "META_GRAPH_API_VERSION" in incomplete.text
+    assert "meta_api" not in incomplete.text
+
+    for name in (
+        "META_GRAPH_API_VERSION",
+        "META_PAGE_ID",
+        "META_IG_USER_ID",
+        "META_PAGE_ACCESS_TOKEN",
+        "META_MEDIA_R2_ACCOUNT_ID",
+        "META_MEDIA_R2_ACCESS_KEY_ID",
+        "META_MEDIA_R2_SECRET_ACCESS_KEY",
+        "META_MEDIA_R2_BUCKET",
+    ):
+        monkeypatch.setenv(name, "configured-for-test")
+    configured = app.get(f"/bridge/ig-cards/{EPISODE}/publish")
+    assert "已設定 API" in configured.text
+    assert "meta_api" in configured.text
 
 
 def test_publish_submit_validates_caption_platforms_and_manifest_drift(client):

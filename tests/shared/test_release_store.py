@@ -78,6 +78,26 @@ def test_update_target_whitelist_and_status_domain(store):
         store.update_target(999999, status="approved")  # 不存在 fail loud
 
 
+def test_social_target_metadata_and_ineligible_status_persist(store):
+    rid = store.register_release("ep", "c1", "short", "f.mp4")
+    tid = store.ensure_target(rid, "facebook_reels")
+    store.update_target(
+        tid,
+        status="ineligible",
+        adapter="meta_graph",
+        idempotency_key="a" * 64,
+        checkpoint_json='{"upload_id":"u-1"}',
+        ineligibility_reason="over platform duration limit",
+    )
+
+    target = store.get_release("ep", "c1")["targets"][0]
+    assert target["status"] == "ineligible"
+    assert target["adapter"] == "meta_graph"
+    assert target["idempotency_key"] == "a" * 64
+    assert target["checkpoint_json"] == '{"upload_id":"u-1"}'
+    assert target["ineligibility_reason"] == "over platform duration limit"
+
+
 def test_list_releases_with_target_summary(store):
     rid = store.register_release("ep", "c1", "long", "f.mp4")
     store.ensure_target(rid, "youtube")
