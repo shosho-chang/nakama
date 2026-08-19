@@ -73,13 +73,15 @@
           {% if file_exists %}
           <video class="pub-video" controls preload="metadata"
                  src="/bridge/publish/media/{{ rel.episode }}/{{ rel.cut_id }}">
-            {# 長片成品不燒字幕（ADR-055 Q4b）；這條 track 就是實際會上架的那份 CC #}
-            {% if subs_name %}
+            {# 只有長片 sidecar policy 才預覽／上傳 CC；Short 字幕已燒入畫面。 #}
+            {% if cc_policy == 'sidecar_required' and subs_name %}
             <track kind="subtitles" srclang="zh-TW" label="CC（{{ subs_name }}）" default
                    src="/bridge/publish/subs/{{ rel.episode }}/{{ rel.cut_id }}">
             {% endif %}
           </video>
-          {% if subs_name %}
+          {% if cc_policy == 'burned_only' %}
+          <div class="pub-cap sho-mono">字幕已燒入畫面；此流程不另上 CC</div>
+          {% elif subs_name %}
           <div class="pub-cap sho-mono">字幕軌 {{ subs_name }}——同一份會上傳成 CC</div>
           {% else %}
           <div class="pub-cap sho-mono">⚠ 沒有 tight SRT——上傳時 CC 也會缺</div>
@@ -167,7 +169,7 @@
           {% else %}
           {% if t.error %}<p class="pub-error sho-mono">⚠ 上次失敗：{{ t.error }}</p>{% endif %}
           <p class="pub-upload-note" style="margin-top:0">
-            按上方「核准並上傳」→ 上傳為 private + 附 CC 字幕；到「公開時間」由
+            按上方「核准並上傳」→ 上傳為 private{% if cc_policy == 'sidecar_required' %} + 附 CC 字幕{% else %}（字幕已燒入，不另上 CC）{% endif %}；到「公開時間」由
             YouTube 的鐘自動轉公開（機器不需在線）。
           </p>
           {% endif %}

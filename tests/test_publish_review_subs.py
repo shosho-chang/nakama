@@ -149,6 +149,68 @@ def test_cut_page_warns_when_srt_missing(env):
     assert "CC 也會缺" in r.text
 
 
+def test_short_page_uses_burned_only_policy_even_if_tight_srt_exists(env):
+    client, ep = env
+    from shared import release_store
+
+    short = ep / "highlights" / "exports" / "SS1.mp4"
+    short.write_bytes(b"short-video")
+    # Deliberately leave a matching SRT: Short review must not discover or expose it.
+    (ep / "highlights" / "srt" / "SS1_tight_r099.srt").write_text(SRT, encoding="utf-8")
+    rid = release_store.register_release(ep.name, "SS1", "short", str(short))
+    release_store.ensure_target(rid, "youtube")
+
+    response = client.get("/bridge/publish/20260415%20ep/SS1")
+    assert response.status_code == 200
+    assert "<track" not in response.text
+    assert "字幕已燒入畫面；此流程不另上 CC" in response.text
+    assert "CC 也會缺" not in response.text
+    assert "SS1_tight_r099.srt" not in response.text
+
+
+def test_short_subs_route_is_not_available(env):
+    client, ep = env
+    from shared import release_store
+
+    short = ep / "highlights" / "exports" / "SS1.mp4"
+    short.write_bytes(b"short-video")
+    (ep / "highlights" / "srt" / "SS1_tight_r099.srt").write_text(SRT, encoding="utf-8")
+    rid = release_store.register_release(ep.name, "SS1", "short", str(short))
+    release_store.ensure_target(rid, "youtube")
+
+    response = client.get("/bridge/publish/subs/20260415%20ep/SS1")
+    assert response.status_code == 404
+    assert "燒入畫面" in response.json()["detail"]
+
+
+def test_status_reads_runtime_progress_and_keeps_final_snapshot(env, monkeypatch, tmp_path):
+    client, ep = env
+    from shared import release_store
+
+    rel = release_store.get_release(ep.name, "SL3")
+    target = next(t for t in rel["targets"] if t["platform"] == "youtube")
+    runtime_data = tmp_path / "runtime-data"
+    monkeypatch.setenv("NAKAMA_DATA_DIR", str(runtime_data))
+    progress_dir = runtime_data / "upload_progress"
+    progress_dir.mkdir(parents=True)
+    progress_file = progress_dir / f"{ep.name}_SL3.json"
+    progress_file.write_text(
+        json.dumps({"pct": 37.5, "bytes_uploaded": 3, "total_bytes": 8}),
+        encoding="utf-8",
+    )
+
+    release_store.update_target(target["id"], status="uploading")
+    uploading = client.get(f"/bridge/publish/{ep.name}/SL3/status")
+    assert uploading.status_code == 200
+    assert uploading.json()["progress"]["pct"] == 37.5
+
+    release_store.update_target(target["id"], status="uploaded", video_id="yt-test")
+    uploaded = client.get(f"/bridge/publish/{ep.name}/SL3/status")
+    assert uploaded.status_code == 200
+    assert uploaded.json()["status"] == "uploaded"
+    assert uploaded.json()["progress"]["pct"] == 37.5
+
+
 def test_json_dumps_guard():
     """SRT 內容不經 json 序列化（避免有人未來把它塞進 JSON 回應）。"""
     assert json.dumps(srt_to_vtt(SRT), ensure_ascii=False).startswith('"WEBVTT')

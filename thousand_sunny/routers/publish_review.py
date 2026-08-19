@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -42,6 +43,17 @@ _templates = Jinja2Templates(
 
 _TITLE_MAX = 100  # YT 標題硬上限
 _DESC_MAX = 5000  # YT 描述硬上限
+
+
+def _upload_progress_dir() -> Path:
+    root = Path(__file__).resolve().parent.parent.parent
+    data_dir = Path(os.environ.get("NAKAMA_DATA_DIR", "") or root / "data")
+    return data_dir / "upload_progress"
+
+
+def _upload_progress_file(episode: str, cut_id: str) -> Path:
+    safe = f"{episode}_{cut_id}".replace("/", "_").replace("\\", "_")
+    return _upload_progress_dir() / f"{safe}.json"
 
 
 def _asset_version() -> str:
@@ -155,7 +167,9 @@ def publish_cut(
     publish_local = ""
     if t.get("publish_at"):
         publish_local = t["publish_at"][:16]
-    subs = latest_tight_srt(_episode_dir(rel), cut_id)
+    cc_policy = "sidecar_required" if rel["format"] == "long" else "burned_only"
+    # Short 成品的字幕已燒入畫面；不要掃 tight SRT，否則 UI 會誤導為另上 CC。
+    subs = latest_tight_srt(_episode_dir(rel), cut_id) if cc_policy == "sidecar_required" else None
     return _templates.TemplateResponse(
         request,
         "publish_cut.html",
@@ -163,6 +177,7 @@ def publish_cut(
             "rel": rel,
             "t": t,
             "subs_name": subs.name if subs else None,
+            "cc_policy": cc_policy,
             "ab_alternates": _ab_alternates(episode, cut_id, t.get("title"))
             if rel["format"] == "long"
             else [],
@@ -213,6 +228,8 @@ def publish_subs(episode: str, cut_id: str, nakama_auth: str | None = Cookie(Non
     """
     _require_auth(nakama_auth)
     rel, _ = _yt_target(episode, cut_id)
+    if rel["format"] != "long":
+        raise HTTPException(status_code=404, detail="Short 字幕已燒入畫面，不提供 sidecar CC")
     srt = latest_tight_srt(_episode_dir(rel), cut_id)
     if srt is None:
         raise HTTPException(status_code=404, detail=f"{cut_id} 沒有 tight SRT")
@@ -285,7 +302,7 @@ def publish_approve_upload(
     # 上傳「後台沒反應」（2026-08-04）
     root = Path(__file__).resolve().parent.parent.parent
     script = root / "scripts" / "publish_upload.py"
-    log_dir = root / "data" / "upload_progress"
+    log_dir = _upload_progress_dir()
     log_dir.mkdir(parents=True, exist_ok=True)
     safe = f"{episode}_{cut_id}".replace("/", "_").replace("\\", "_")
     log_f = open(log_dir / f"{safe}.log", "a", encoding="utf-8")  # noqa: SIM115 — 交給子程序持有
@@ -306,10 +323,8 @@ def publish_status(
     _require_auth(nakama_auth)
     _, t = _yt_target(episode, cut_id)
     progress = None
-    if t["status"] == "uploading":
-        root = Path(__file__).resolve().parent.parent.parent
-        safe = f"{episode}_{cut_id}".replace("/", "_").replace("\\", "_")
-        pf = root / "data" / "upload_progress" / f"{safe}.json"
+    if t["status"] in ("uploading", "uploaded", "published", "failed"):
+        pf = _upload_progress_file(episode, cut_id)
         if pf.exists():
             try:
                 progress = json.loads(pf.read_text(encoding="utf-8"))
