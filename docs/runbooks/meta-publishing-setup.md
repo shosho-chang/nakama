@@ -305,14 +305,24 @@ bucket 名稱不得含 `backup`，也不可等於 `NAKAMA_R2_BACKUP_BUCKET`；�
 
 ### 4.2 建最小權限 R2 token
 
-1. 在 R2 Overview 的 **API Tokens** 按 **Manage**。
-2. 按 **Create Account API token** 或 **Create User API token**。
-3. Permission 選 **Object Read & Write**。
-4. Scope 選 **Apply to specific buckets only**，只選 `nakama-meta-staging`。
-5. 建立後立刻保存：
+1. 回到 **R2 Object Storage → Overview**。
+2. 右下方 **Account Details** 區塊點 **Manage API Tokens**。
+3. 在 **Account API Tokens** 區塊點 **Create Account API token**。這是持續運作的服務
+   credential；不要選只綁個人任職狀態的 User API token。
+4. **Token name** 輸入 `nakama-meta-staging-publisher`。
+5. **Permissions** 選 **Object Read & Write**。不要選 Admin Read & Write。
+6. **Specify bucket(s)** 選 **Apply to specific buckets only**。
+7. 點出現的 **Select...** 下拉選單，只選 `nakama-meta-staging`；確認沒有
+   `nakama-backup`、`xcloud-backup` 或其他 bucket。
+8. **TTL** 保持 **Forever**；此 token 已由 bucket scope 限權，之後另排 rotation。若改成有期限，
+   必須同時建立到期提醒，否則 unattended publish 會直接中斷。
+9. **Client IP Address Filtering** 的 Include 與 Exclude 都留空；桌機與未來 worker 的出口 IP
+   尚未固定，現在填入會造成合法上傳被擋。
+10. 點 **Create Account API Token**。
+11. 建立後立刻保存：
    - Access Key ID；
    - Secret Access Key。
-6. Secret 只顯示一次；遺失就 revoke 後重建，不要到 log 找。
+12. Secret 只顯示一次；遺失就 revoke 後重建，不要到 log 找。
 
 Read & Write 是必要的，因為 worker 會 `PutObject`、產生 `GetObject` presigned URL，最後
 `DeleteObject`。
