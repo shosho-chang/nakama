@@ -330,10 +330,19 @@ Read & Write 是必要的，因為 worker 會 `PutObject`、產生 `GetObject` p
 ### 4.3 加 1 天 lifecycle backstop
 
 1. 打開 `nakama-meta-staging` bucket。
-2. 進 **Settings → Object lifecycle rules → Add rule**。
-3. Prefix 填 `meta-stage/`。
-4. Action 選 expire／delete objects，時間設 **1 day after upload**。
-5. 儲存後回列表確認 rule 已 enabled。
+2. 點上方 **Settings** 頁籤。
+3. 在左側章節索引點 **Object Lifecycle Rules**，再點該區塊右側 **Add**。
+4. 右側表單的 **Object lifecycle rule is enabled** 保持開啟。
+5. **Rule name** 填 `delete-meta-stage-after-1-day`。
+6. **Rule scope → prefix** 填 `meta-stage/`。
+7. **Lifecycle action** 只勾 **Delete uploaded objects after**，數值填 `1`，單位保持
+   **Days**。
+8. 不要勾 **Abort incomplete multipart uploads after** 或
+   **Transition objects to Infrequent Access storage class after**；bucket 已經有獨立的預設
+   multipart abort rule。
+9. 點 **Save changes**。
+10. 回到規則列表，確認 `delete-meta-stage-after-1-day` 的 Prefix 是 `meta-stage/`、Action 是
+    1 day 後刪除、Status 是 **Enabled**。
 
 正常路徑會立即刪除；lifecycle 只處理斷電／process crash 留下的孤兒物件。
 
