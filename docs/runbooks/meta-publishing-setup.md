@@ -106,18 +106,58 @@ Professional account ID。
    - 你目前登入的使用者。
 5. 若 Instagram 還是 personal account，先在 Instagram App 內切換成 Business 或 Creator。
 
-### 1.2 建立或選擇 Meta App
+### 1.2 在目前的 `Nakama Usopp` App 加入 Instagram 發布權限
+
+以下步驟以 2026-08-19 實際看到的 Meta Dashboard 介面為準。這個專案使用
+**Instagram API with Facebook Login**；不要選預設的 **API setup with Instagram login**。
 
 1. 開啟 [Meta for Developers Apps](https://developers.facebook.com/apps/)。
-2. 選既有、由同一個 Business Portfolio 管理的 App；沒有才按 **Create App**。
-3. 建 App 時選能使用 Business／Facebook Login for Business 的用途；不要選純 consumer-only 的設定。
-4. 在 App Dashboard 加入／設定 **Facebook Login for Business** 與 Instagram API 能力。
-5. 到 **App roles／Roles**，確認你的 Facebook 使用者是 Admin、Developer 或 Tester，並接受邀請。
-6. 第一次只操作自己管理的資產時可先留在 Development mode；若未來要讓 App 使用者以外的人連接其資產，才進 App Review 申請 Advanced Access。
+2. 在 App 清單點 **Nakama Usopp**。
+3. 確認畫面左上方 App 名稱是 **Nakama Usopp**，右上方 **App Mode** 是
+   **In development**。第一次連接自己管理的 Page／Instagram 時先不要切成 Live。
+4. 在左側選單點 **Use cases**。
+5. 找到卡片 **Manage messaging & content on Instagram**。
+6. 在這張卡片右側點 **Customize**。
+7. 若跳出 **Learn how to customize use cases** 對話框，點右上角 **Close**。
+8. 進入 **Customize use case** 頁面後，點上方頁籤
+   **API setup with Facebook login**。不要停在 **API setup with Instagram login**。
+9. 確認頁面說明提到：Instagram professional account 已連到 Facebook Page，並透過
+   Facebook Login for Business 授權。若不是這段說明，先停止，不要繼續按。
+10. 往下找到 **1. Add required permissions**。
+11. 在 **Manage content on Instagram** 區塊確認目前列出：
+    - `instagram_basic`
+    - `instagram_content_publishing`（Dashboard 目前顯示的名稱）
+    - `pages_read_engagement`
+    - `business_management`
+    - `pages_show_list`
+12. 點這個區塊內的 **Add required content permissions**。
+13. 不要點下方 **Send messages on Instagram** 區塊的
+    **Add required messaging permissions**；目前的短影片／Carousel 發布不需要收發私訊。
+14. 這一輪也不要設定 **Configure webhooks**、不要進 **Complete app review**，也不要填
+    Callback URL、Verify token 或 App Secret。
 
-### 1.3 權限清單
+完成這 14 步的判定：Instagram 的內容發布權限已加入 App；尚未產生 access token，也尚未
+發出任何貼文。
 
-在產生 User access token 時至少選擇：
+### 1.3 在同一個 App 加入 Facebook Page 發布權限
+
+1. 在左側選單再次點 **Use cases**。
+2. 找到卡片 **Manage everything on your Page**。
+3. 在這張卡片右側點 **Customize**。
+4. 進入頁面後，確認上方選到 **Manage Pages**，並停在
+   **Permissions and features** 頁籤。
+5. 按 `Ctrl+F`，輸入 `pages_manage_posts`，再按 Enter。
+6. 找到名稱完全等於 **pages_manage_posts** 的那一列。說明文字會提到 App 可以建立、
+   編輯與刪除 Page 貼文。
+7. 在該列最右側點 **Add**。
+8. 不要順手加入 Page Mentions、Live Video API、email、messaging、ads 或 comments 權限。
+
+完成這 8 步的判定：`pages_manage_posts` 那一列不再顯示待加入的 **Add** 動作，或頁面明確
+顯示該權限已加入。到這裡先停；下一節才會產生 token。
+
+### 1.4 最終權限核對清單
+
+之後在產生 User access token 時，至少要能取得以下能力：
 
 ```text
 pages_show_list
@@ -127,10 +167,11 @@ instagram_basic
 instagram_content_publish
 ```
 
-除 `pages_manage_posts` 外，其餘四個 Instagram／Page discovery 與 Instagram publishing
-權限可由 Meta 的官方 Instagram collection 對照；`pages_manage_posts` 是此專案寫入 Facebook Page
-Reel／多圖貼文所需的 Page 發布權限。不要為了「先試試」加入 messaging、ads 或 comments
-權限。
+Dashboard 的按鈕目前把 Instagram 發布項目顯示為 `instagram_content_publishing`；官方 Graph
+API token／文件可能仍顯示 canonical scope `instagram_content_publish`。不要在 Dashboard 手動猜名稱，
+照第 1.2 節的 **Add required content permissions** 加入，再於 Graph API Explorer 實際核對 token
+可取得的 scope。`pages_manage_posts` 是此專案寫入 Facebook Page Reel／多圖貼文所需的 Page
+發布權限。
 
 ## 2. 取得 Page token、Page ID 與 IG user ID
 
@@ -143,7 +184,7 @@ Reel／多圖貼文所需的 Page 發布權限。不要為了「先試試」加�
 2. 右上角 App 下拉選擇第 1 節的 App，不能使用預設的其他 App。
 3. 選擇目前 App Dashboard 已支援且準備固定使用的 Graph API version；記下完整版本，格式如 `vXX.X`。
 4. 按 **Generate Access Token／Get User Access Token**。
-5. 勾選第 1.3 節的五個權限並完成 Facebook 授權。
+5. 勾選第 1.4 節的五個權限並完成 Facebook 授權。
 6. 不要把 token 貼到聊天、截圖、CLI argument 或 Git-tracked 檔案。
 
 ### 2.2 查 Page 與連結的 Instagram identity
