@@ -15,7 +15,9 @@ from agents.brook.podcast_carousel_render import (
 from shared.schemas.podcast_carousel import (
     CarouselLayoutOverridesV1,
     CoverLayoutOverride,
+    PageTextLayoutOverrideV1,
     PodcastCarouselCopySpecV1,
+    TextLayoutOverrideV1,
     receipt_for,
 )
 
@@ -192,6 +194,62 @@ def test_cover_layout_override_is_injected_and_changes_deterministic_content_has
     )
 
 
+@pytest.mark.skipif(not DESIGN_TEMPLATE.is_dir(), reason="canonical design template required")
+def test_text_layout_uses_canonical_editor_patch_and_locks_user_font_size(tmp_path: Path):
+    snapshot = snapshot_template(DESIGN_TEMPLATE, tmp_path / "package")
+    cutouts = tmp_path / "cutouts"
+    cutouts.mkdir()
+    for name in ("guest.png", "host.png"):
+        Image.new("RGBA", (48, 48), "#00000000").save(cutouts / name)
+    original = _spec()
+    edited = original.model_copy(
+        update={
+            "layout_overrides": CarouselLayoutOverridesV1(
+                text_regions=[
+                    PageTextLayoutOverrideV1(
+                        page_id="hook",
+                        role="hook",
+                        region="question",
+                        values=TextLayoutOverrideV1(
+                            x_px=64,
+                            y_px=240,
+                            width_px=880,
+                            font_start_px=104,
+                            lines=["Why do we ", "only see success?"],
+                        ),
+                    ),
+                ]
+            ),
+        }
+    )
+    destination = tmp_path / "render_input.html"
+    _write_render_input(
+        snapshot=snapshot,
+        spec=edited,
+        cutouts_dir=cutouts,
+        destination=destination,
+    )
+    source = destination.read_text(encoding="utf-8")
+    assert "window.applyEditorPatch=" in source
+    assert 'item.node.dataset.fitLocked!=="true"' in source
+    assert "applyManualLines" in source
+    assert "font_start_px" in source
+    assert "editor text regions overlap" in source
+    assert "editorProtectedCollisions" in source
+    assert "editor text/protected collision" in source
+    assert "editor text containment failure" in source
+    assert '".podcast-cover"' in source
+    assert '".search"' in source
+    assert '".platforms"' in source
+    assert '".bubble"' in source
+    assert '".quote-a .guest"' in source
+    assert "editorRect.right>editorSafeRight+overflowTolerance" in source
+    assert "editorRect.bottom>editorSafeBottom+overflowTolerance" in source
+    assert _content_sha(original, 1, snapshot.sha256, cutouts) != _content_sha(
+        edited, 1, snapshot.sha256, cutouts
+    )
+
+
 def test_design_system_cover_and_cta_use_reviewed_visual_contract():
     source = (DESIGN_TEMPLATE / "PodcastCarouselRender.html").read_text(encoding="utf-8")
 
@@ -328,3 +386,100 @@ def test_real_design_system_template_renders_every_page_role(tmp_path: Path):
     assert ".engagement" not in render_input
     with Image.open(manifest.pages[-1].image.path).convert("RGB") as cta:
         assert cta.getpixel((12, 1068)) == (40, 37, 37)
+
+
+@pytest.mark.skipif(
+    not CHROME.is_file() or not DESIGN_TEMPLATE.is_dir(),
+    reason="system Chrome and local Design System required",
+)
+def test_cover_editor_canonical_baseline_remains_fit(tmp_path: Path):
+    cutouts = tmp_path / "cutouts"
+    cutouts.mkdir()
+    Image.new("RGBA", (600, 900), "#00000000").save(cutouts / "guest.png")
+    Image.new("RGBA", (600, 900), "#00000000").save(cutouts / "host.png")
+    payload = _spec().model_dump(mode="json")
+    payload["pages"][0]["headline"] = "內容爆量，泛科學怎麼活？"
+    payload["pages"][0]["emphasis"] = "怎麼活"
+    payload["layout_overrides"]["text_regions"] = [
+        {
+            "page_id": "cover",
+            "role": "cover",
+            "region": "headline",
+            "values": {
+                "x_px": 64,
+                "y_px": 168,
+                "width_px": 976,
+                "font_start_px": 106,
+                "lines": None,
+            },
+        }
+    ]
+    spec = PodcastCarouselCopySpecV1.model_validate(payload)
+
+    manifest = render_carousel(
+        spec=spec,
+        package_root=tmp_path / "canonical-cover-baseline",
+        template_dir=DESIGN_TEMPLATE,
+        cutouts_dir=cutouts,
+        chrome=CHROME,
+    )
+
+    cover = manifest.pages[0].fit
+    assert cover.status == "fit", cover.notes
+    assert not any("cover.headline exceeds its editor safe region" in note for note in cover.notes)
+    for dimension in (
+        "scroll_overflow_x",
+        "scroll_overflow_y",
+        "left_overflow",
+        "top_overflow",
+        "right_overflow",
+        "bottom_overflow",
+    ):
+        assert cover.regions[f"cover.headline.editor_{dimension}"] <= 24
+    assert cover.regions["cover.headline_cutout_overlap_y"] <= 240
+
+
+@pytest.mark.skipif(
+    not CHROME.is_file() or not DESIGN_TEMPLATE.is_dir(),
+    reason="system Chrome and local Design System required",
+)
+def test_quote_a_text_cannot_collide_with_protected_guest_or_escape_bubble(tmp_path: Path):
+    cutouts = tmp_path / "cutouts"
+    cutouts.mkdir()
+    Image.new("RGBA", (600, 900), "#00000000").save(cutouts / "guest.png")
+    Image.new("RGBA", (600, 900), "#00000000").save(cutouts / "host.png")
+    payload = _spec().model_dump(mode="json")
+    payload["episode"]["number"] = 121
+    quote_page = next(page for page in payload["pages"] if page["page_id"] == "quote")
+    quote_page["variant"] = "A"
+    quote_page["host_question"] = None
+    quote_page["host_question_evidence"] = []
+    quote_page["host_cutout"] = None
+    payload["layout_overrides"]["text_regions"] = [
+        {
+            "page_id": "quote",
+            "role": "quote",
+            "region": "text",
+            "values": {
+                "x_px": 600,
+                "y_px": 640,
+                "width_px": 400,
+                "font_start_px": 68,
+                "lines": None,
+            },
+        }
+    ]
+    manifest = render_carousel(
+        spec=PodcastCarouselCopySpecV1.model_validate(payload),
+        package_root=tmp_path / "protected-quote",
+        template_dir=DESIGN_TEMPLATE,
+        cutouts_dir=cutouts,
+        chrome=CHROME,
+    )
+
+    quote = next(page.fit for page in manifest.pages if page.page_id == "quote")
+    assert quote.status == "needs_review"
+    assert any(
+        "editor text/protected collision" in note or "editor text containment failure" in note
+        for note in quote.notes
+    ), quote.notes

@@ -4,6 +4,12 @@
 **Status:** Accepted  
 **Amends:** ADR-014 RepurposeEngine Plug-in Interface
 
+## Decision chronology clarification (2026-08-19)
+
+The early workshop preference for an Instagram-first 1080x1350 canvas is superseded. Since the v15 cross-platform decision, the canonical master is 1080x1080 because the same artifact serves Instagram and YouTube Community. `PodcastCarouselRender.html`, the immutable Template Snapshot, render receipts, fit coordinates, and Review Gate editor must all use that square contract; a future 4:5 derivative would be a separate downstream asset, not a silent change to this flow.
+
+The Review Gate now supports deterministic per-page text layout overrides in addition to the legacy cover-cutout controls. This does not broaden the social-post schema: only the Podcast Episode role/region registry is editable, and future book or health-information designs still fork from this proven flow.
+
 **Contract update (2026-08-18):** 本 ADR workshop 早期允許 Re-hook 的決定，已被同日真實
 EP120 review 的使用者決策取代；下列 fixed structure 是目前有效契約。
 

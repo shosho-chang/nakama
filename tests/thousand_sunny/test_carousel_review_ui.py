@@ -103,7 +103,7 @@ def test_card_editor_uses_real_dom_structured_edits_and_manifest_scoped_draft() 
     assert "dataset.carouselResizeHandle" in BRIDGE
     assert "guest.addEventListener('pointerdown'" in BRIDGE
     assert "title_font_size_px" in TEMPLATE
-    assert "const editorDraftKey = `${storagePrefix}:editor:v1`" in TEMPLATE
+    assert "const editorDraftKey = `${storagePrefix}:editor:v2`" in TEMPLATE
     assert "copy_edits: copyEdits" in TEMPLATE
     assert "layout_overrides: editorState.layout" in TEMPLATE
     assert "published" not in TEMPLATE
@@ -178,5 +178,83 @@ def test_editor_mobile_scroll_reset_and_preserve_actions_are_explicit() -> None:
     assert "保留草稿並關閉" in TEMPLATE
     assert "preserveAndCloseEditor" in TEMPLATE
     assert "overscroll-behavior:contain" in CSS
-    assert ".carousel-editor__body { display:block; overflow-y:auto" in CSS
-    assert ".carousel-editor__preview,.carousel-editor__controls { overflow:visible; }" in CSS
+    assert ".carousel-editor__body { display:block; overflow-x:hidden; overflow-y:auto" in CSS
+
+
+def test_text_layout_editor_uses_canonical_patch_keyboard_and_accessible_handles() -> None:
+    assert 'data-text-layout-field="x_px"' in TEMPLATE
+    assert 'data-text-layout-field="width_px"' in TEMPLATE
+    assert 'data-text-layout-field="font_start_px"' in TEMPLATE
+    assert "text_layout_overrides:" in TEMPLATE
+    assert "window.applyEditorPatch(textLayouts)" in BRIDGE
+    assert "document.fonts.ready.then" in BRIDGE
+    assert "event.shiftKey ? 16 : 4" in BRIDGE
+    assert "--editor-handle-size" in BRIDGE
+    assert "editor-escape" in BRIDGE
+    assert "--sho-danger" not in CSS
+    assert (
+        ".carousel-editor__preview,.carousel-editor__controls { overflow:visible; padding:" in CSS
+    )
+
+
+def test_reset_rehydrates_selected_region_controls_and_invalidates_stale_diagnostics() -> None:
+    reset_handler = TEMPLATE.split(
+        "document.getElementById('carousel-editor-reset').addEventListener", 1
+    )[1].split("document.getElementById('carousel-editor-continue')", 1)[0]
+    assert "previewDiagnostics = null" in reset_handler
+    assert "editorFit.hidden = true" in reset_handler
+    assert "renderTextLayoutControls(currentEditorPage, editorTextRegion.value)" in reset_handler
+    assert "applyTextLayoutsToPreview(currentEditorPage)" in reset_handler
+    assert reset_handler.index("renderTextLayoutControls") < reset_handler.index(
+        "applyTextLayoutsToPreview"
+    )
+
+
+def test_region_selection_numeric_normalisation_and_diagnostics_are_one_state_machine() -> None:
+    assert "function selectTextRegion(" in TEMPLATE
+    assert "event.data.type === 'text-region-select'" in TEMPLATE
+    assert "normaliseTextLayoutValues" in TEMPLATE
+    assert "Number.isFinite" in TEMPLATE
+    assert "textLayoutSafeRects[`${page.role}.${region}`]" in TEMPLATE
+    assert "diagnosticsByPage" in TEMPLATE
+    assert "editorDraftFingerprint" in TEMPLATE
+    assert "pageHasCurrentFitDiagnostics" in TEMPLATE
+    assert "event.data.type === 'preview-error'" in TEMPLATE
+    assert "previewError" in TEMPLATE
+
+
+def test_manual_line_validation_apply_scope_and_loading_controls_are_explicit() -> None:
+    assert "validateManualLines" in TEMPLATE
+    assert "manualLinesError" in TEMPLATE
+    assert "editorTextLayout.setAttribute('aria-busy'" in TEMPLATE
+    assert "input.disabled = loading" in TEMPLATE
+    assert TEMPLATE.count("submitEditorChanges('all')") == 2
+    assert "套用所有待修改" in TEMPLATE
+
+
+def test_preview_interactions_are_selected_scaled_keyboard_and_pointer_safe() -> None:
+    assert "emit('text-region-select'" in BRIDGE
+    assert "data-text-region-selected" in BRIDGE
+    assert "--editor-handle-size" in BRIDGE
+    assert "set-visual-scale" in BRIDGE
+    assert "handle.addEventListener('keydown'" in BRIDGE
+    assert "setPointerCapture" in BRIDGE
+    assert "pointercancel" in BRIDGE
+    assert "refitNow = true" in BRIDGE
+    assert "node.setAttribute('aria-selected'" not in BRIDGE
+    assert TEMPLATE.count("sendPreview('set-visual-scale'") >= 2
+    assert "sizeEditorPreview();" in TEMPLATE
+
+
+def test_editor_accessibility_loading_recovery_and_empty_numbers_fail_closed() -> None:
+    assert "error.id = `carousel-editor-error-${page.page_id}-${name}`" in TEMPLATE
+    assert "input.setAttribute('aria-describedby', error.id)" in TEMPLATE
+    assert "input.setAttribute('aria-errormessage', error.id)" in TEMPLATE
+    assert "正在載入版面控制…" in TEMPLATE
+    assert "請逐張重新開啟以取得最新版面檢查" in TEMPLATE
+    assert TEMPLATE.count('type="number"') == 8
+    assert TEMPLATE.count('step="1" required') == 4
+    assert TEMPLATE.count('step="4" required') == 3
+    assert TEMPLATE.count('step="2" required') == 1
+    assert "values[name] === ''" in TEMPLATE
+    assert "values[input.dataset.layoutField] === ''" in TEMPLATE

@@ -16,6 +16,7 @@ from shared.schemas.podcast_carousel import (
     CarouselReviewFeedbackV1,
     CarouselReviewManifestV1,
     CarouselReviewPage,
+    CarouselTextLayoutEdit,
     CoverLayoutOverride,
     CoverPage,
     CTAPage,
@@ -26,6 +27,7 @@ from shared.schemas.podcast_carousel import (
     PointPage,
     QuotePage,
     TemplateSnapshot,
+    TextLayoutOverrideV1,
     TranscriptEvidence,
     receipt_for,
 )
@@ -155,6 +157,106 @@ def test_emphasis_must_be_exact_substring():
             emphasis="不存在",
             bridge="繼續看。",
             evidence=[evidence()],
+        )
+
+
+def test_manual_breaks_are_layout_lines_and_cannot_split_emphasis():
+    source = spec()
+    payload = source.model_dump(mode="json")
+    question = source.pages[1].question
+    emphasis = source.pages[1].emphasis
+    emphasis_at = question.index(emphasis)
+    payload["layout_overrides"]["text_regions"] = [
+        {
+            "page_id": "hook",
+            "role": "hook",
+            "region": "question",
+            "values": {
+                "x_px": 64,
+                "y_px": 240,
+                "width_px": 880,
+                "font_start_px": 104,
+                "lines": [question[:emphasis_at], question[emphasis_at:]],
+            },
+        }
+    ]
+    parsed = PodcastCarouselCopySpecV1.model_validate(payload)
+    assert parsed.layout_overrides.text_regions[0].values.lines
+    split_at = emphasis_at + max(1, len(emphasis) // 2)
+    payload["layout_overrides"]["text_regions"][0]["values"]["lines"] = [
+        question[:split_at],
+        question[split_at:],
+    ]
+    with pytest.raises(ValidationError, match="split emphasis"):
+        PodcastCarouselCopySpecV1.model_validate(payload)
+
+
+def test_text_layout_contract_is_allowlisted_snapped_and_inside_safe_area():
+    edit = CarouselTextLayoutEdit(
+        page_id="hook",
+        role="hook",
+        region="bridge",
+        artifact_sha256=SHA,
+        values=TextLayoutOverrideV1(x_px=64, y_px=720, width_px=880, font_start_px=34),
+    )
+    assert edit.values.model_dump() == {
+        "x_px": 64,
+        "y_px": 720,
+        "width_px": 880,
+        "font_start_px": 34,
+        "lines": None,
+    }
+    with pytest.raises(ValidationError, match="4px grid"):
+        TextLayoutOverrideV1(x_px=65, y_px=720, width_px=880, font_start_px=34)
+    with pytest.raises(ValidationError, match="2px step"):
+        TextLayoutOverrideV1(x_px=64, y_px=720, width_px=880, font_start_px=35)
+    with pytest.raises(ValidationError, match="safe rect"):
+        CarouselTextLayoutEdit(
+            page_id="hook",
+            role="hook",
+            region="bridge",
+            artifact_sha256=SHA,
+            values=TextLayoutOverrideV1(x_px=160, y_px=720, width_px=960, font_start_px=34),
+        )
+
+
+def test_cover_official_baseline_fits_safe_rect_and_repeated_emphasis_keeps_first_occurrence():
+    baseline = CarouselTextLayoutEdit(
+        page_id="cover",
+        role="cover",
+        region="headline",
+        artifact_sha256=SHA,
+        values=TextLayoutOverrideV1(x_px=64, y_px=168, width_px=976, font_start_px=106),
+    )
+    assert baseline.values.width_px == 976
+
+    source = spec()
+    payload = source.model_dump(mode="json")
+    payload["pages"][0]["headline"] = "foofoo"
+    payload["pages"][0]["emphasis"] = "foo"
+    payload["layout_overrides"]["text_regions"] = [
+        {
+            "page_id": "cover",
+            "role": "cover",
+            "region": "headline",
+            "values": {
+                "x_px": 64,
+                "y_px": 168,
+                "width_px": 976,
+                "font_start_px": 106,
+                "lines": ["fo", "ofoo"],
+            },
+        }
+    ]
+    with pytest.raises(ValidationError, match="split emphasis"):
+        PodcastCarouselCopySpecV1.model_validate(payload)
+    with pytest.raises(ValidationError, match="not editable"):
+        CarouselTextLayoutEdit(
+            page_id="cta",
+            role="cta",
+            region="body",
+            artifact_sha256=SHA,
+            values=TextLayoutOverrideV1(x_px=64, y_px=720, width_px=880, font_start_px=34),
         )
 
 
@@ -374,6 +476,30 @@ def test_each_role_display_copy_patch_roundtrips(role: str, fields: dict[str, st
         fields=fields,
     )
     assert CarouselCopyEdit.model_validate_json(edit.model_dump_json()) == edit
+
+
+def test_every_registry_display_field_rejects_crlf_without_layout_override():
+    source = spec()
+    page_indexes = {page.role: index for index, page in enumerate(source.pages)}
+    for role, fields in CAROUSEL_DISPLAY_COPY_FIELDS.items():
+        for field in fields:
+            payload = source.model_dump(mode="json")
+            page = payload["pages"][page_indexes[role]]
+            if page.get(field) is None:
+                continue
+            page[field] = f"{page[field]}\nforbidden"
+            with pytest.raises(ValidationError, match="CR/LF"):
+                PodcastCarouselCopySpecV1.model_validate(payload)
+
+
+def test_copy_edit_rejects_crlf_before_prospective_spec_validation():
+    with pytest.raises(ValidationError, match="CR/LF"):
+        CarouselCopyEdit(
+            page_id="cover",
+            role="cover",
+            artifact_sha256=SHA,
+            fields={"guest_title": "title\r\nsecond line"},
+        )
 
 
 def test_receipt_for_hashes_file(tmp_path):

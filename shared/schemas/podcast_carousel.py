@@ -21,6 +21,23 @@ CAROUSEL_DISPLAY_COPY_FIELDS: dict[str, tuple[str, ...]] = {
     "cta": ("episode_topic", "emphasis"),
 }
 CAROUSEL_REQUIRED_REVIEWS = ("ig_audience", "episode_editorial", "brand_evidence")
+CAROUSEL_TEXT_LAYOUT_REGIONS: dict[str, tuple[str, ...]] = {
+    "cover": ("headline",),
+    "hook": ("question", "bridge"),
+    "point": ("headline", "body"),
+    "quote": ("text", "host_question"),
+    "cta": ("episode_topic",),
+}
+CAROUSEL_TEXT_SAFE_RECTS: dict[tuple[str, str], tuple[int, int, int, int]] = {
+    ("cover", "headline"): (48, 120, 1040, 760),
+    ("hook", "question"): (48, 160, 1032, 820),
+    ("hook", "bridge"): (48, 400, 1032, 980),
+    ("point", "headline"): (48, 160, 1032, 760),
+    ("point", "body"): (48, 400, 1032, 980),
+    ("quote", "text"): (48, 160, 1032, 980),
+    ("quote", "host_question"): (448, 180, 992, 460),
+    ("cta", "episode_topic"): (48, 540, 1032, 820),
+}
 
 
 class CarouselModel(BaseModel):
@@ -78,8 +95,77 @@ class CoverLayoutOverride(CarouselModel):
     title_font_size_px: int = Field(default=106, ge=72, le=160)
 
 
+class TextLayoutOverrideV1(CarouselModel):
+    """One text region in canonical 1080px coordinates; height remains content-driven."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=False)
+
+    x_px: int = Field(ge=0, le=1000)
+    y_px: int = Field(ge=0, le=1080)
+    width_px: int = Field(ge=80, le=1080)
+    font_start_px: int = Field(ge=24, le=160)
+    lines: list[str] | None = Field(default=None, min_length=1, max_length=20)
+
+    @field_validator("x_px", "y_px", "width_px")
+    @classmethod
+    def _four_pixel_grid(cls, value: int) -> int:
+        if value % 4:
+            raise ValueError("text layout coordinates and width must use the 4px grid")
+        return value
+
+    @field_validator("font_start_px")
+    @classmethod
+    def _two_pixel_type_step(cls, value: int) -> int:
+        if value % 2:
+            raise ValueError("text layout font size must use a 2px step")
+        return value
+
+    @field_validator("lines")
+    @classmethod
+    def _valid_manual_lines(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return value
+        if any("\r" in line or "\n" in line for line in value):
+            raise ValueError("manual layout lines cannot contain CR or newline characters")
+        if any(not line.strip() for line in value):
+            raise ValueError("manual layout lines cannot contain blank lines")
+        return value
+
+
+class PageTextLayoutOverrideV1(CarouselModel):
+    """A stable page/region override stored in the Copy Spec."""
+
+    page_id: str
+    role: Literal["cover", "hook", "point", "quote", "cta"]
+    region: str = Field(min_length=1, max_length=40)
+    values: TextLayoutOverrideV1
+
+    @model_validator(mode="after")
+    def _allowlisted_region(self) -> PageTextLayoutOverrideV1:
+        if self.region not in CAROUSEL_TEXT_LAYOUT_REGIONS[self.role]:
+            raise ValueError(f"text layout region is not editable for {self.role}: {self.region}")
+        left, top, right, bottom = CAROUSEL_TEXT_SAFE_RECTS[(self.role, self.region)]
+        if not (
+            left <= self.values.x_px
+            and top <= self.values.y_px <= bottom
+            and self.values.x_px + self.values.width_px <= right
+        ):
+            raise ValueError(
+                f"text layout must remain inside the safe rect for {self.role}.{self.region}"
+            )
+        return self
+
+
 class CarouselLayoutOverridesV1(CarouselModel):
     cover: CoverLayoutOverride | None = None
+    text_regions: list[PageTextLayoutOverrideV1] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _unique_text_regions(self) -> CarouselLayoutOverridesV1:
+        keys = [(item.page_id, item.region) for item in self.text_regions]
+        if len(keys) != len(set(keys)):
+            raise ValueError("text layout page/region pairs must be unique")
+        return self
 
 
 class _BasePage(CarouselModel):
@@ -92,6 +178,14 @@ class _BasePage(CarouselModel):
         if not _PAGE_ID_RE.fullmatch(value):
             raise ValueError("page_id must be stable lowercase kebab-case")
         return value
+
+    @model_validator(mode="after")
+    def _single_line_display_copy(self) -> _BasePage:
+        for name in CAROUSEL_DISPLAY_COPY_FIELDS[self.role]:
+            value = getattr(self, name, None)
+            if value is not None and ("\r" in value or "\n" in value):
+                raise ValueError(f"display copy cannot contain CR/LF: {self.role}.{name}")
+        return self
 
 
 def _assert_emphasis(emphasis: str, *fields: str) -> None:
@@ -223,6 +317,33 @@ class PodcastCarouselCopySpecV1(CarouselModel):
         page_ids = [page.page_id for page in self.pages]
         if len(page_ids) != len(set(page_ids)):
             raise ValueError("page_id must be unique within a Copy Spec")
+        page_by_id = {page.page_id: page for page in self.pages}
+        for item in self.layout_overrides.text_regions:
+            page = page_by_id.get(item.page_id)
+            if page is None or page.role != item.role:
+                raise ValueError(f"text layout page/role does not match Copy Spec: {item.page_id}")
+            if item.region == "host_question" and not getattr(page, "host_question", None):
+                raise ValueError("host_question layout requires quote variant B")
+            if item.values.lines is not None:
+                display_copy = getattr(page, item.region)
+                if "\r" in display_copy or "\n" in display_copy:
+                    raise ValueError("manual line breaks belong in layout lines, not display copy")
+                if "".join(item.values.lines) != display_copy:
+                    raise ValueError("manual layout lines must concatenate exactly to display copy")
+                emphasis = getattr(page, "emphasis", None)
+                if item.region in {"headline", "question", "text", "episode_topic"}:
+                    emphasis_start = display_copy.index(emphasis)
+                    emphasis_end = emphasis_start + len(emphasis)
+                    cursor = 0
+                    preserves_occurrence = False
+                    for line in item.values.lines:
+                        line_end = cursor + len(line)
+                        if cursor <= emphasis_start and emphasis_end <= line_end:
+                            preserves_occurrence = True
+                            break
+                        cursor = line_end
+                    if not preserves_occurrence:
+                        raise ValueError("manual layout lines cannot split emphasis across lines")
         expected = "api_compatible" if len(self.pages) <= 10 else "manual_only"
         if self.publish_compatibility != expected:
             raise ValueError(f"publish_compatibility must be {expected} for this page count")
@@ -425,6 +546,8 @@ class CarouselCopyEdit(CarouselModel):
             )
         if any(not value.strip() for value in self.fields.values()):
             raise ValueError("edited display-copy fields cannot be empty")
+        if any("\r" in value or "\n" in value for value in self.fields.values()):
+            raise ValueError("edited display-copy fields cannot contain CR/LF")
         return self
 
 
@@ -444,10 +567,25 @@ class CarouselCoverLayoutEdit(CarouselModel):
         return value
 
 
+class CarouselTextLayoutEdit(PageTextLayoutOverrideV1):
+    """Revision-bound text-region layout edit."""
+
+    artifact_sha256: str
+
+    @field_validator("artifact_sha256")
+    @classmethod
+    def _valid_artifact_sha256(cls, value: str) -> str:
+        value = value.lower()
+        if not _SHA256_RE.fullmatch(value):
+            raise ValueError("artifact_sha256 must be a lowercase SHA-256 hex digest")
+        return value
+
+
 class CarouselEditorApplyRequest(CarouselModel):
     manifest_sha256: str
     copy_edits: list[CarouselCopyEdit] = Field(default_factory=list)
     layout_overrides: CarouselCoverLayoutEdit | None = None
+    text_layout_overrides: list[CarouselTextLayoutEdit] = Field(default_factory=list)
 
     @field_validator("manifest_sha256")
     @classmethod
@@ -459,11 +597,14 @@ class CarouselEditorApplyRequest(CarouselModel):
 
     @model_validator(mode="after")
     def _non_empty_edit(self) -> CarouselEditorApplyRequest:
-        if not self.copy_edits and self.layout_overrides is None:
+        if not self.copy_edits and self.layout_overrides is None and not self.text_layout_overrides:
             raise ValueError("at least one structured carousel edit is required")
         page_ids = [item.page_id for item in self.copy_edits]
         if len(page_ids) != len(set(page_ids)):
             raise ValueError("structured copy edit page IDs must be unique")
+        layout_keys = [(item.page_id, item.region) for item in self.text_layout_overrides]
+        if len(layout_keys) != len(set(layout_keys)):
+            raise ValueError("structured text layout page/region pairs must be unique")
         return self
 
 
@@ -533,6 +674,7 @@ class CarouselCorrectionJobV1(CarouselModel):
     feedback_items: list[CarouselCorrectionItem] = Field(default_factory=list)
     copy_edits: list[CarouselCopyEdit] = Field(default_factory=list)
     layout_overrides: CarouselCoverLayoutEdit | None = None
+    text_layout_overrides: list[CarouselTextLayoutEdit] = Field(default_factory=list)
     required_reviews: tuple[
         Literal["ig_audience"],
         Literal["episode_editorial"],
@@ -571,7 +713,12 @@ class CarouselCorrectionJobV1(CarouselModel):
 
     @model_validator(mode="after")
     def _valid_job_state(self) -> CarouselCorrectionJobV1:
-        if not self.feedback_items and not self.copy_edits and self.layout_overrides is None:
+        if (
+            not self.feedback_items
+            and not self.copy_edits
+            and self.layout_overrides is None
+            and not self.text_layout_overrides
+        ):
             raise ValueError("correction job requires feedback or a structured edit")
         page_ids = [item.page_id for item in self.feedback_items]
         if len(page_ids) != len(set(page_ids)):
@@ -579,6 +726,9 @@ class CarouselCorrectionJobV1(CarouselModel):
         copy_page_ids = [item.page_id for item in self.copy_edits]
         if len(copy_page_ids) != len(set(copy_page_ids)):
             raise ValueError("correction copy edit page IDs must be unique")
+        text_layout_keys = [(item.page_id, item.region) for item in self.text_layout_overrides]
+        if len(text_layout_keys) != len(set(text_layout_keys)):
+            raise ValueError("correction text layout page/region pairs must be unique")
         if self.required_reviews != CAROUSEL_REQUIRED_REVIEWS:
             raise ValueError("all three independent carousel reviews are required")
         if self.updated_at < self.created_at:

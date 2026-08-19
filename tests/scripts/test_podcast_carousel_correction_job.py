@@ -9,7 +9,9 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+import scripts.podcast_carousel_correction_job as correction_module
 from agents.brook.podcast_carousel_panel import PanelResult, PanelReview, PanelSynthesis
+from agents.brook.podcast_carousel_render import _content_sha
 from scripts.podcast_carousel_correction_job import (
     CorrectionJobTransitionError,
     claim_job,
@@ -32,6 +34,16 @@ from shared.schemas.podcast_carousel import (
 
 SHA = "a" * 64
 NOW = datetime(2026, 8, 19, 1, 0, tzinfo=UTC)
+REAL_TRUSTED_RERENDER_HASHES = correction_module._trusted_rerender_hashes
+
+
+@pytest.fixture(autouse=True)
+def _stub_deterministic_rerender(monkeypatch):
+    def trusted_hashes(*, result_manifest, page_ids, **_kwargs):
+        pages = {page.page_id: page.image.sha256 for page in result_manifest.pages}
+        return {page_id: pages[page_id] for page_id in page_ids}
+
+    monkeypatch.setattr(correction_module, "_trusted_rerender_hashes", trusted_hashes)
 
 
 def _write_revision(
@@ -41,6 +53,12 @@ def _write_revision(
     make_current: bool,
     copy_updates: dict[str, dict[str, object]] | None = None,
 ) -> tuple[Path, CarouselReviewManifestV1]:
+    cutouts_dir = package_root.parent / "packaging" / "cutouts"
+    cutouts_dir.mkdir(parents=True, exist_ok=True)
+    for cutout_name in ("guest.png", "host.png", "other-guest.png"):
+        cutout_path = cutouts_dir / cutout_name
+        if not cutout_path.exists():
+            cutout_path.write_bytes(f"stable:{cutout_name}".encode())
     evidence = {
         "evidence_id": "ev-1",
         "source_path": "transcript.md",
@@ -119,7 +137,9 @@ def _write_revision(
     copy_path = revision_dir / "copy_spec.v1.json"
     copy_path.write_text(spec.model_dump_json(indent=2), encoding="utf-8")
     render_input_path = revision_dir / "render_input.html"
-    render_input_path.write_text("<html>canonical render input</html>", encoding="utf-8")
+    render_input_path.write_text(
+        f"<html>canonical render input {revision}</html>", encoding="utf-8"
+    )
     review_pages = []
     for index, page in enumerate(spec.pages, start=1):
         image_path = pages_dir / f"{index:02d}.png"
@@ -129,7 +149,7 @@ def _write_revision(
                 page_id=page.page_id,
                 page_number=index,
                 role=page.role,
-                content_sha256=f"{index:x}" * 64,
+                content_sha256=_content_sha(spec, index - 1, "f" * 64, cutouts_dir),
                 image=receipt_for(image_path),
                 fit=PageFitDiagnostic(status="fit"),
                 copy_page=page,
@@ -169,6 +189,8 @@ def _completion_fixture(
     *,
     copy_updates: dict[str, dict[str, object]] | None = None,
 ):
+    if copy_updates is None:
+        copy_updates = {"cover": {"headline": "演算法隱藏失敗的新版本"}}
     manifest_path, _ = _write_revision(
         package_root,
         "r002",
@@ -514,7 +536,7 @@ def test_executor_metadata_is_platform_neutral_and_fail_closed(tmp_path: Path):
         fail_job(path, claim_token="claim-00000004", error="again")
 
 
-def test_cli_claim_progress_complete_mutates_only_job_json(tmp_path: Path):
+def test_cli_claim_progress_rejects_unattested_fake_completion(tmp_path: Path):
     package = tmp_path / "ig-carousel"
     queued = _queued(package)
     path = correction_job_path(package, queued.job_id)
@@ -588,14 +610,14 @@ def test_cli_claim_progress_complete_mutates_only_job_json(tmp_path: Path):
         encoding="utf-8",
         check=False,
     )
-    assert completed.returncode == 0, completed.stderr
-    json.loads(completed.stdout)
+    assert completed.returncode != 0
+    assert "deterministic carousel rerender attestation failed" in completed.stderr
 
     stored = load_job(path)
-    assert stored.status == "completed"
+    assert stored.status == "in_progress"
     assert stored.claim is not None
     assert stored.claim.executor == "codex"
-    assert stored.result_revision == "r002"
+    assert stored.result_revision is None
 
 
 def test_progress_review_strings_cannot_replace_panel_receipts(tmp_path: Path):
@@ -874,7 +896,7 @@ def test_structured_completion_requires_exact_requested_copy_changes(
         update["headline"] = "隱藏失敗的新標題"
     completion = _completion_fixture(
         package,
-        copy_updates={"cover": update} if update else None,
+        copy_updates={"cover": update} if update else {},
     )
     with pytest.raises(CorrectionJobTransitionError, match="exactly apply"):
         complete_job(
@@ -882,4 +904,148 @@ def test_structured_completion_requires_exact_requested_copy_changes(
             claim_token="claim-structured-integrity",
             **completion,
             now=NOW + timedelta(seconds=3),
+        )
+
+
+def test_structured_completion_recomputes_canonical_page_content_hash(tmp_path: Path):
+    package = tmp_path / "ig-carousel"
+    path = _active_structured_job(package)
+    completion = _completion_fixture(
+        package,
+        copy_updates={"cover": {"headline": "隱藏失敗的新標題"}},
+    )
+    manifest_path = completion["result_manifest_path"]
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["pages"][0]["content_sha256"] = "0" * 64
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    current_path = package / "current.json"
+    current = json.loads(current_path.read_text(encoding="utf-8"))
+    current["manifest_sha256"] = receipt_for(manifest_path).sha256
+    current_path.write_text(json.dumps(current), encoding="utf-8")
+
+    with pytest.raises(CorrectionJobTransitionError, match="canonical content hash"):
+        complete_job(
+            path,
+            claim_token="claim-structured-integrity",
+            **completion,
+            now=NOW + timedelta(seconds=3),
+        )
+
+
+def test_structured_completion_rejects_png_not_matching_deterministic_rerender(
+    tmp_path: Path, monkeypatch
+):
+    package = tmp_path / "ig-carousel"
+    path = _active_structured_job(package)
+    completion = _completion_fixture(
+        package,
+        copy_updates={"cover": {"headline": "隱藏失敗的新標題"}},
+    )
+    manifest_path = completion["result_manifest_path"]
+    manifest = CarouselReviewManifestV1.model_validate_json(
+        manifest_path.read_text(encoding="utf-8")
+    )
+    expected_cover_sha = manifest.pages[0].image.sha256
+    cover_path = Path(manifest.pages[0].image.path)
+    cover_path.write_bytes(b"arbitrary changed PNG")
+    payload = manifest.model_dump(mode="json")
+    payload["pages"][0]["image"] = receipt_for(cover_path).model_dump(mode="json")
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    current_path = package / "current.json"
+    current = json.loads(current_path.read_text(encoding="utf-8"))
+    current["manifest_sha256"] = receipt_for(manifest_path).sha256
+    current_path.write_text(json.dumps(current), encoding="utf-8")
+    monkeypatch.setattr(
+        correction_module,
+        "_trusted_rerender_hashes",
+        lambda **_kwargs: {"cover": expected_cover_sha},
+    )
+
+    with pytest.raises(CorrectionJobTransitionError, match="deterministic rerender"):
+        complete_job(
+            path,
+            claim_token="claim-structured-integrity",
+            **completion,
+            now=NOW + timedelta(seconds=3),
+        )
+
+
+def test_structured_completion_rejects_replaced_self_consistent_template_tree(
+    tmp_path: Path,
+):
+    package = tmp_path / "ig-carousel"
+    path = _active_structured_job(package)
+    requested_headline = load_job(path).copy_edits[0].fields["headline"]
+    completion = _completion_fixture(
+        package,
+        copy_updates={"cover": {"headline": requested_headline}},
+    )
+    manifest_path = completion["result_manifest_path"]
+    manifest = CarouselReviewManifestV1.model_validate_json(
+        manifest_path.read_text(encoding="utf-8")
+    )
+    spec = PodcastCarouselCopySpecV1.model_validate_json(
+        Path(manifest.copy_spec.path).read_text(encoding="utf-8")
+    )
+
+    replacement_root = package / "templates" / "executor-replacement"
+    replacement_root.mkdir(parents=True)
+    replacement_template = replacement_root / "PodcastCarouselRender.html"
+    replacement_template.write_text("executor-controlled template", encoding="utf-8")
+    replacement_sha = correction_module._digest_files(
+        [(replacement_template.name, replacement_template)]
+    )
+    render_input_path = Path(manifest.render_input.path)
+    render_input_path.write_text(
+        "executor-controlled render rebuilt from replacement template", encoding="utf-8"
+    )
+    cover_path = Path(manifest.pages[0].image.path)
+    cover_path.write_bytes(b"executor-controlled deterministic replacement PNG")
+
+    payload = manifest.model_dump(mode="json")
+    payload["template"]["root"] = str(replacement_root.resolve())
+    payload["template"]["sha256"] = replacement_sha
+    payload["render_input"] = receipt_for(render_input_path).model_dump(mode="json")
+    payload["pages"][0]["image"] = receipt_for(cover_path).model_dump(mode="json")
+    payload["pages"][0]["content_sha256"] = _content_sha(
+        spec,
+        0,
+        replacement_sha,
+        package.parent / "packaging" / "cutouts",
+    )
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    current_path = package / "current.json"
+    current = json.loads(current_path.read_text(encoding="utf-8"))
+    current["manifest_sha256"] = receipt_for(manifest_path).sha256
+    current_path.write_text(json.dumps(current), encoding="utf-8")
+
+    with pytest.raises(CorrectionJobTransitionError, match="template identity"):
+        complete_job(
+            path,
+            claim_token="claim-structured-integrity",
+            **completion,
+            now=NOW + timedelta(seconds=3),
+        )
+
+
+def test_trusted_rerender_rejects_self_reported_template_digest(tmp_path: Path):
+    package = tmp_path / "ig-carousel"
+    completion = _completion_fixture(package)
+    template_root = package / "template"
+    template_root.mkdir(parents=True)
+    (template_root / "untrusted.html").write_text("forged", encoding="utf-8")
+    manifest = CarouselReviewManifestV1.model_validate_json(
+        completion["result_manifest_path"].read_text(encoding="utf-8")
+    )
+    spec = PodcastCarouselCopySpecV1.model_validate_json(
+        Path(manifest.copy_spec.path).read_text(encoding="utf-8")
+    )
+
+    with pytest.raises(CorrectionJobTransitionError, match="template snapshot tree changed"):
+        REAL_TRUSTED_RERENDER_HASHES(
+            result_spec=spec,
+            source_template=manifest.template,
+            result_manifest=manifest,
+            package_root=package,
+            page_ids={"cover"},
         )
