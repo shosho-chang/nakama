@@ -46,6 +46,7 @@ from thousand_sunny.routers import (  # noqa: E402
     progress,
     projects,
     promotion_review,
+    publish_calendar,
     publish_review,
     repurpose,
     writing_assist,
@@ -100,6 +101,7 @@ app.include_router(bridge_project_thumbnails.page_router)
 app.include_router(packaging.page_router)
 app.include_router(highlight_review.page_router)
 app.include_router(carousel_review.page_router)
+app.include_router(publish_calendar.page_router)
 app.include_router(publish_review.page_router)
 app.include_router(bridge_weekly.page_router)
 app.include_router(bridge_zoro.page_router)

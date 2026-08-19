@@ -1,0 +1,139 @@
+{% macro calendar_item(item, mobile=false) -%}
+<a class="pc-item" href="{{ item.detail_url }}" data-status="{{ item.status }}">
+  <span class="pc-item__meta">
+    {% if mobile and item.calendar_at %}<time datetime="{{ item.calendar_at.isoformat() }}">{{ item.calendar_at.strftime('%m/%d %H:%M') }}</time>{% else %}{{ item.local_time_label }}{% endif %}
+    · {{ item.content_type | upper }}
+  </span>
+  <strong class="pc-item__title">{{ item.title }}</strong>
+  <span class="pc-item__target">{{ item.platform_label }}</span>
+  <span class="pc-item__state">{{ item.status | replace('_', ' ') }} · {{ item.date_basis_label }}</span>
+</a>
+{%- endmacro %}
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Publish Calendar · {{ month_value }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/publish-calendar.css?v={{ asset_version }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='publish') }}
+
+{% from "_breadcrumb.html" import breadcrumb %}
+{{ breadcrumb([
+  {"label": "PUBLISH · 發布審核", "href": "/bridge/publish", "is_current": false},
+  {"label": "CALENDAR · 發布月曆", "href": none, "is_current": true},
+]) }}
+
+<section class="page-header page-header--split">
+  <div>
+    <div class="nk-caps">STAGE 6 · PUBLISHING VISIBILITY</div>
+    <h1 class="page-title">發布月曆 <span class="zh">{{ month_label }}</span></h1>
+  </div>
+  <nav class="pc-view-nav" aria-label="發布檢視">
+    <a class="sho-btn--ghost" href="/bridge/publish">審核清單</a>
+    <a class="sho-btn" href="/bridge/publish/calendar?month={{ month_value }}&amp;episode={{ episode | urlencode }}" aria-current="page">發布月曆</a>
+  </nav>
+</section>
+
+<main class="page-main pc-main" data-calendar-surface aria-busy="false">
+  <div class="pc-loading" role="status" hidden>正在整理本機發布紀錄…</div>
+
+  <section class="pc-toolbar" aria-label="月曆篩選與導覽">
+    <nav class="pc-month-nav" aria-label="月份導覽">
+      {% if previous_url %}<a class="pc-month-nav__arrow" href="{{ previous_url }}" aria-label="上一個月">←</a>{% else %}<span class="pc-month-nav__arrow is-disabled" aria-disabled="true">←</span>{% endif %}
+      <strong>{{ month_label }}</strong>
+      {% if next_url %}<a class="pc-month-nav__arrow" href="{{ next_url }}" aria-label="下一個月">→</a>{% else %}<span class="pc-month-nav__arrow is-disabled" aria-disabled="true">→</span>{% endif %}
+    </nav>
+    <form class="pc-filter" method="get" action="/bridge/publish/calendar">
+      <input type="hidden" name="month" value="{{ month_value }}">
+      <label for="episode-filter">節目集數</label>
+      <select id="episode-filter" name="episode">
+        <option value="all"{% if episode == 'all' %} selected{% endif %}>全部內容</option>
+        {% for option in episode_options %}
+        <option value="{{ option }}"{% if episode == option %} selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+      <button class="sho-btn" type="submit">套用</button>
+    </form>
+  </section>
+
+  <aside class="pc-channel-identity" aria-label="YouTube 頻道識別">
+    <span class="sho-tag sho-tag--accent">Podcast YouTube</span>
+    <span>{{ podcast_youtube.name }}</span>
+    <span class="sho-mono">{{ podcast_youtube.handle }} · {{ podcast_youtube.channel_id }}</span>
+    <span class="sho-mono">Carousel 顯示 Community handoff；不宣稱 API 自動發布</span>
+  </aside>
+
+  {% if diagnostics %}
+  <section class="pc-state pc-state--warning" role="status" aria-label="部分資料警告">
+    <strong>部分資料無法讀取</strong>
+    <ul>{% for diagnostic in diagnostics %}<li>{{ diagnostic.message }}{% if diagnostic.source %} <span class="sho-mono">{{ diagnostic.source }}</span>{% endif %}</li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+
+  <section class="pc-calendar" aria-labelledby="calendar-heading">
+    <div class="pc-section-heading">
+      <div>
+        <div class="sho-kicker"><span class="sho-kicker-n">[ 001 ]</span> DATED ITEMS</div>
+        <h2 id="calendar-heading">{{ month_label }} · {{ dated_count }} 個平台項目</h2>
+      </div>
+      <span class="sho-mono">週日起始 · Asia/Taipei</span>
+    </div>
+
+    <table class="pc-month-grid">
+      <caption class="pc-visually-hidden">{{ month_label }}發布月曆，週日為第一欄</caption>
+      <thead><tr>{% for label in weekday_labels %}<th scope="col">{{ label }}</th>{% endfor %}</tr></thead>
+      <tbody>
+      {% for week in weeks %}
+        <tr>
+        {% for day in week %}
+          {% set day_items = items_by_date.get(day.value.isoformat(), []) %}
+          <td class="pc-day{% if not day.in_month %} is-outside{% endif %}"{% if not day.in_month %} aria-disabled="true"{% endif %}>
+            <time class="pc-day__number" datetime="{{ day.value.isoformat() }}" aria-label="{{ day.value.strftime('%Y-%m-%d') }}">{{ day.value.day }}</time>
+            {% if day.in_month %}<div class="pc-day__items">{% for item in day_items %}{{ calendar_item(item) }}{% endfor %}</div>{% endif %}
+          </td>
+        {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    <ol class="pc-agenda" aria-label="{{ month_label }}發布議程">
+      {% for group in agenda_days %}
+      <li class="pc-agenda__day">
+        <h3><time datetime="{{ group.date.isoformat() }}">{{ group.date.strftime('%m/%d') }}</time></h3>
+        <div>{% for item in group['items'] %}{{ calendar_item(item, true) }}{% endfor %}</div>
+      </li>
+      {% else %}
+      <li class="pc-state pc-state--empty">這個月份沒有可信日期的發布項目。</li>
+      {% endfor %}
+    </ol>
+    {% if not dated_count %}<p class="pc-state pc-state--empty pc-desktop-empty">這個月份沒有可信日期的發布項目。可切換集數或查看下方日期未定項目。</p>{% endif %}
+  </section>
+
+  <section class="pc-backlog" aria-labelledby="backlog-heading">
+    <div class="pc-section-heading">
+      <div>
+        <div class="sho-kicker"><span class="sho-kicker-n">[ 002 ]</span> UNDATED ITEMS</div>
+        <h2 id="backlog-heading">未列入月曆／日期未定 · {{ backlog | length }} 個平台項目</h2>
+      </div>
+      <span class="sho-mono">不使用 updated_at 或檔案時間推測發布日</span>
+    </div>
+    {% if backlog %}
+    <ol class="pc-backlog__list">
+      {% for item in backlog %}<li>{{ calendar_item(item, true) }}</li>{% endfor %}
+    </ol>
+    {% else %}
+    <p class="pc-state pc-state--empty">目前篩選範圍沒有日期未定項目。</p>
+    {% endif %}
+  </section>
+</main>
+</body>
+</html>
