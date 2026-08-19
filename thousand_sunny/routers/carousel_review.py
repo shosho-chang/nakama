@@ -8,7 +8,7 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Cookie, HTTPException
+from fastapi import APIRouter, Cookie, HTTPException, Response
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
@@ -20,6 +20,17 @@ from scripts.podcast_carousel_correction_job import (
     create_queued_job,
     list_jobs,
     load_job,
+)
+from scripts.podcast_carousel_publish_job import (
+    create_or_get_publish_job,
+    list_publish_jobs,
+    load_publish_job,
+    publish_job_path,
+)
+from shared.schemas.carousel_publish import (
+    CarouselPublishAsset,
+    CarouselPublishJobV1,
+    CarouselPublishTarget,
 )
 from shared.schemas.podcast_carousel import (
     CarouselCorrectionItem,
@@ -37,12 +48,19 @@ _templates = Jinja2Templates(
     directory=str(Path(__file__).resolve().parent.parent / "templates" / "bridge")
 )
 _MAX_FEEDBACK = 1200
+_MAX_CAPTION = 5000
 
 
 def _shosho_asset_version() -> str:
     static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
     digest = hashlib.sha1()
-    for name in ("tokens.css", "bridge.css", "bridge-pages.css", "carousel-review.css"):
+    for name in (
+        "tokens.css",
+        "bridge.css",
+        "bridge-pages.css",
+        "carousel-review.css",
+        "carousel-publish.css",
+    ):
         asset = static_dir / name
         if asset.is_file():
             digest.update(asset.read_bytes())
@@ -137,6 +155,94 @@ def _write_feedback(path: Path, feedback: CarouselReviewFeedbackV1) -> None:
     pending.replace(path)
 
 
+def _approved_revision(
+    package_root: Path,
+    manifest: CarouselReviewManifestV1,
+    manifest_sha256: str,
+) -> CarouselFeedbackRevision | None:
+    matching = [
+        revision
+        for revision in _load_feedback(package_root, manifest.episode_id).revisions
+        if revision.carousel_revision == manifest.revision
+        and revision.manifest_sha256 == manifest_sha256
+    ]
+    latest = matching[-1] if matching else None
+    return latest if latest is not None and latest.decision == "approved" else None
+
+
+def _require_approved_revision(
+    package_root: Path,
+    manifest: CarouselReviewManifestV1,
+    manifest_sha256: str,
+) -> CarouselFeedbackRevision:
+    approval = _approved_revision(package_root, manifest, manifest_sha256)
+    if approval is None:
+        raise HTTPException(
+            status_code=403,
+            detail="current carousel manifest has not passed the Review Gate",
+        )
+    return approval
+
+
+def _publish_capabilities() -> list[CarouselPublishTarget]:
+    meta_configured = os.environ.get("META_CAROUSEL_PUBLISH_CONFIGURED", "").strip() == "1"
+    meta_strategy = "meta_api" if meta_configured else "agent_browser"
+    meta_state = "configured" if meta_configured else "agent_browser_required"
+    meta_capability = "meta_api" if meta_configured else "browser_session"
+    meta_note = (
+        "Meta API transport is configured; executor must hold the meta_api capability."
+        if meta_configured
+        else (
+            "Meta API credentials/media transport are not configured; "
+            "use an authenticated agent browser."
+        )
+    )
+    return [
+        CarouselPublishTarget(
+            platform="instagram",
+            strategy=meta_strategy,
+            configuration_state=meta_state,
+            required_executor_capabilities=[meta_capability],
+            note=meta_note,
+        ),
+        CarouselPublishTarget(
+            platform="facebook_page",
+            strategy=meta_strategy,
+            configuration_state=meta_state,
+            required_executor_capabilities=[meta_capability],
+            note=meta_note,
+        ),
+        CarouselPublishTarget(
+            platform="youtube_community",
+            strategy="agent_browser_manual",
+            configuration_state="manual_only",
+            required_executor_capabilities=["browser_session"],
+            note=(
+                "YouTube Community has no supported Data API publish endpoint; "
+                "use an authenticated agent browser with manual confirmation."
+            ),
+        ),
+    ]
+
+
+def _publish_assets(manifest: CarouselReviewManifestV1) -> list[CarouselPublishAsset]:
+    return [
+        CarouselPublishAsset(
+            page_id=page.page_id,
+            page_number=page.page_number,
+            image=page.image,
+        )
+        for page in manifest.pages
+    ]
+
+
+def _publish_job_payload(episode_slug: str, job: CarouselPublishJobV1) -> dict:
+    return {
+        **job.model_dump(mode="json"),
+        "status_url": f"/bridge/ig-cards/{episode_slug}/publish/jobs/{job.job_id}",
+    }
+
+
 def _context(episode_slug: str) -> dict:
     package_root, manifest, manifest_sha256 = _load_manifest(episode_slug)
     feedback = _load_feedback(package_root, manifest.episode_id)
@@ -181,6 +287,110 @@ async def carousel_review_board(
     context = _context(episode_slug)
     context["saved"] = saved
     return _templates.TemplateResponse(request, "carousel_review.html", context)
+
+
+@page_router.get("/{episode_slug}/publish", response_class=HTMLResponse)
+async def carousel_publish_board(
+    request: Request,
+    episode_slug: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Render the explicit Stage 6 hand-off after Review Gate approval."""
+
+    if not check_auth(nakama_auth):
+        return RedirectResponse(
+            f"/login?next=/bridge/ig-cards/{episode_slug}/publish",
+            status_code=302,
+        )
+    package_root, manifest, manifest_sha256 = _load_manifest(episode_slug)
+    approval = _require_approved_revision(package_root, manifest, manifest_sha256)
+    matching_jobs = [
+        job
+        for job in list_publish_jobs(package_root)
+        if job.source_revision == manifest.revision
+        and job.source_manifest_sha256 == manifest_sha256
+    ]
+    latest_job = matching_jobs[-1] if matching_jobs else None
+    capabilities = _publish_capabilities()
+    return _templates.TemplateResponse(
+        request,
+        "carousel_publish.html",
+        {
+            "episode_slug": episode_slug,
+            "manifest": manifest,
+            "manifest_sha256": manifest_sha256,
+            "approval": approval,
+            "capabilities": capabilities,
+            "latest_job": latest_job,
+            "latest_job_payload": (
+                _publish_job_payload(episode_slug, latest_job) if latest_job else None
+            ),
+            "asset_version": _SHOSHO_ASSET_VERSION,
+        },
+    )
+
+
+@page_router.post("/{episode_slug}/publish/jobs")
+async def carousel_publish_create_job(
+    request: Request,
+    response: Response,
+    episode_slug: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Create a local Stage 6 job; this endpoint never publishes externally."""
+
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="authentication required")
+    package_root, manifest, manifest_sha256 = _load_manifest(episode_slug)
+    form = await request.form()
+    _assert_current_manifest(form, manifest_sha256)
+    approval = _require_approved_revision(package_root, manifest, manifest_sha256)
+    caption = str(form.get("caption", "")).strip()
+    if not caption:
+        raise HTTPException(status_code=400, detail="publish caption is required")
+    if len(caption) > _MAX_CAPTION:
+        raise HTTPException(status_code=400, detail="publish caption is too long")
+    requested = [str(value) for value in form.getlist("platforms")]
+    if not requested:
+        raise HTTPException(status_code=400, detail="select at least one publish platform")
+    if len(requested) != len(set(requested)):
+        raise HTTPException(status_code=400, detail="publish platforms must be unique")
+    capability_by_platform = {item.platform: item for item in _publish_capabilities()}
+    unknown = sorted(set(requested) - set(capability_by_platform))
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"unsupported publish platform: {unknown[0]}")
+    targets = [capability_by_platform[platform] for platform in requested]
+    job, created = create_or_get_publish_job(
+        package_root=package_root,
+        episode_id=manifest.episode_id,
+        source_revision=manifest.revision,
+        source_manifest_sha256=manifest_sha256,
+        approval_revision_number=approval.revision_number,
+        approved_at=approval.created_at,
+        caption=caption,
+        assets=_publish_assets(manifest),
+        targets=targets,
+    )
+    response.status_code = 201 if created else 200
+    return {**_publish_job_payload(episode_slug, job), "idempotent": not created}
+
+
+@page_router.get(
+    "/{episode_slug}/publish/jobs/{job_id}",
+    response_model=CarouselPublishJobV1,
+)
+async def carousel_publish_job_status(
+    episode_slug: str,
+    job_id: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="authentication required")
+    package_root = _episode_dir(episode_slug) / "ig-carousel"
+    try:
+        return load_publish_job(publish_job_path(package_root, job_id))
+    except (FileNotFoundError, OSError, ValueError, ValidationError) as error:
+        raise HTTPException(status_code=404, detail="publish job not found") from error
 
 
 @page_router.get("/{episode_slug}/media/{page_id}")
@@ -350,6 +560,7 @@ async def carousel_review_approve(
             "revision": manifest.revision,
             "manifest_sha256": manifest_sha256,
             "published": False,
+            "publish_url": f"/bridge/ig-cards/{episode_slug}/publish",
         }
     active = [
         job
@@ -381,6 +592,7 @@ async def carousel_review_approve(
         "revision": manifest.revision,
         "manifest_sha256": manifest_sha256,
         "published": False,
+        "publish_url": f"/bridge/ig-cards/{episode_slug}/publish",
     }
 
 

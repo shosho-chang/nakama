@@ -1,17 +1,17 @@
 ---
 name: ig-cards
-description: Produce or correct an evidence-backed Podcast Episode social carousel, including transcript-grounded copy, three-lens review, 1080x1080 rendering, visual QA, and Review Gate feedback jobs. Use for Podcast Carousel, IG 輪播, YouTube square posts, 社群圖卡, or revising an episode carousel package; do not use for book or health-information carousel templates.
+description: Produce, correct, approve, or prepare publishing of an evidence-backed Podcast Episode social carousel, including transcript-grounded copy, three-lens review, 1080x1080 rendering, Review Gate feedback jobs, and Stage 6 publish jobs. Use for Podcast Carousel, IG 輪播, YouTube square posts, 社群圖卡, revision correction, or an approved carousel publishing hand-off; do not use for book or health-information carousel templates.
 ---
 
 # Podcast IG Carousel
 
-Anchor this skill at Content Pipeline Stage 5 (製作). Treat the carousel as an independent episode asset, not packaging metadata or a chronological transcript summary.
+Anchor production and correction at Content Pipeline Stage 5 (製作). Enter Stage 6 (發布) only through the explicit Publish page after the current manifest is approved. Treat the carousel as an independent episode asset, not packaging metadata or a chronological transcript summary.
 
 ## Non-negotiable boundaries
 
 - Use the cleaned transcript as the factual source. Optional briefs may guide selection, but template text is placeholder only and must never become output copy.
 - Run the workflow with the current Claude Code or Codex agent. Do not call external LLM APIs, provider-backed copy generation, or a hidden/implicit provider.
-- Do not publish. Human Approve records approval only; it does not modify artifacts or trigger Stage 6.
+- Never treat Human Approve as Publish. Approve records approval only and returns the explicit Stage 6 page; publishing requires a separate user-created job.
 - Keep books, health-information carousels, and other future social templates outside this skill.
 
 ## Produce a revision
@@ -84,6 +84,40 @@ python scripts/podcast_carousel_correction_job.py complete `
 
 Claim only jobs whose source revision and manifest hash still match the reviewed package. Respect the active lease; reclaim only an expired claim. Report progress often enough to renew the lease while performing evidence review, copy correction, panel convergence, render, and page-by-page visual QA. Complete only after the result revision is newer than the source revision and all requested changes are present.
 
+## Stage 6 Publish contract
+
+1. Require the current `revision + manifest_sha256` to have a latest approved `CarouselFeedbackRevision`. If approval is absent or the manifest drifted, stop; never carry approval forward to another revision.
+2. Open `/bridge/ig-cards/<episode-folder>/publish` from the Approve response's same-origin `publish_url`.
+3. Review the square asset set again, enter the already reviewed caption, and select at least one platform. Treat caption + platform set as release input, not as Stage 5 copy generation.
+4. Read the displayed strategy honestly:
+   - Instagram / Facebook Page use `meta_api` only when credentials and media transport are explicitly configured; otherwise use `agent_browser`.
+   - YouTube Community always uses `agent_browser_manual`. YouTube Data API has no Community-post insert endpoint; never claim otherwise.
+5. Submit once to create an episode-local, revision-bound publish job. Identical revision, manifest, caption, and platform-set submissions return the same job.
+6. Claim only when the current Codex or Claude Code executor actually has every capability listed by the job. If no compatible executor is available, leave it `queued`.
+7. Perform platform actions outside the state CLI. Do not store secrets in the job. Complete with one result per selected platform containing a receipt/permalink or an error.
+
+The state tool is `scripts/podcast_carousel_publish_job.py`. It never publishes by itself:
+
+```powershell
+# Discover episode-local Stage 6 work.
+python scripts/podcast_carousel_publish_job.py list <episode-dir>/ig-carousel
+
+# Claim with real executor capabilities; read claim.claim_token from stdout.
+python scripts/podcast_carousel_publish_job.py claim <publish-job.json> `
+  --executor <codex|claude_code> --executor-id <current-agent-id> `
+  --capability <browser_session|meta_api>
+
+# Append monotonic progress; each accepted update renews the lease.
+python scripts/podcast_carousel_publish_job.py progress <publish-job.json> `
+  --claim-token <token> --step <name> --percent <0-100> --message <message>
+
+# Save one per-platform receipt/permalink or error after execution.
+python scripts/podcast_carousel_publish_job.py complete <publish-job.json> `
+  --claim-token <token> --results-json <results.json>
+```
+
+Never call `complete` before every selected platform has a result. Use `fail` for a job-level executor failure. Respect the lease and fencing token exactly as with correction jobs.
+
 ## Artifact contract
 
 Write to `<episode>/ig-carousel/`, next to `packaging/`:
@@ -91,6 +125,6 @@ Write to `<episode>/ig-carousel/`, next to `packaging/`:
 - `editorial/rNNN/copy_spec.v1.json` and `panel_result.v1.json`
 - `revisions/rNNN/pages/NN.png`, render state, Copy Spec, and review manifest
 - content-addressed `templates/<sha256>/` snapshot
-- `current.json`, `review_feedback.v1.json`, correction jobs, and `run_summary.json`
+- `current.json`, `review_feedback.v1.json`, correction jobs, publish jobs, and `run_summary.json`
 
 Keep template authoring in the Design System. A revision consumes an immutable template snapshot.

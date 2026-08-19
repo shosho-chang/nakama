@@ -445,10 +445,11 @@ approveButton.addEventListener('click', async () => {
     if (!(payload.approved === true || String(payload.status).toLowerCase() === 'approved')) {
       throw new Error('伺服器沒有確認 approved。');
     }
+    if (!payload.publish_url) throw new Error('伺服器沒有回傳 Stage 6 publish_url。');
     setApprovedState();
     approveButton.removeAttribute('aria-busy');
-    showJobState('completed', '這個 revision 已 Approve。正在重新載入。');
-    window.setTimeout(() => window.location.reload(), 700);
+    showJobState('completed', '這個 revision 已 Approve。正在前往 Stage 6 發布工作台。');
+    window.setTimeout(() => window.location.assign(sameOriginUrl(payload.publish_url)), 350);
   } catch (error) {
     busy = false;
     approveButton.textContent = approveButton.dataset.idleLabel;

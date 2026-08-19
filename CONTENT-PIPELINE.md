@@ -73,7 +73,7 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 
 | Line | 1 收集 | 2 閱讀 | 3 整合 | 4 原子文章 | 6 發布 | 7 監控 |
 |---|---|---|---|---|---|---|
-| **Line 1a Podcast 一般訪談** | n/a (有錄音) | n/a | n/a | ✅ transcribe → 字幕檔（atomic） | 🚧 Slice 10 reviewer + ❌ IG/YT/FB 自動發 | ❌ YT/IG insights |
+| **Line 1a Podcast 一般訪談** | n/a (有錄音) | n/a | n/a | ✅ transcribe → 字幕檔（atomic） | 🚧 Carousel approved-only Publish page + agent-neutral job 已實作；live IG/FB/YT adapter 尚未執行 | ❌ YT/IG insights |
 | **Line 1b Podcast 訪問新書作者** | n/a (有錄音 + 有書) | ⬜ Line 2 Reading Source + Reading Overlay | ⬜ Line 2 Source Promotion / annotation-only sync | ✅ transcribe → 字幕檔（atomic） | 同上 | 同上 |
 | **Line 2 讀書心得** | n/a (有書 / 文章 / web document) | ⬜ Reading Source + Reading Overlay（中/英/雙語閱讀） | ⬜ Source Promotion 或 annotation-only sync | ⬜ Reading Context Package → **修修 Project 頁面手寫** | ✅ WP only / ❌ 其他 channel | ❌ |
 | **Line 3 文獻科普** | ⬜ Zoro topic discovery | n/a | ⬜ 主題 retrieval → outline | ⬜ synthesize outline → 修修自寫（可用 Claude.ai 對話協助），LLM 不代寫正文（ADR-027） | ✅ WP only / ❌ 其他 channel | ✅ SEO 中控台 |
@@ -91,7 +91,7 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 | **Line 2 讀書心得** | 🚧 Slice 2-5 | ✅ Brook compose | ✅ FB renderer | ⬜ Podcast flow 穩定後 fork 書本模板／語言 |
 | **Line 3 文獻科普** | 🚧 Slice 2-5（optional） | ✅ Brook compose | ✅ FB renderer | ⬜ Podcast flow 穩定後 fork 身心健康資訊模板／語言 |
 
-**讀法**：舊 `IGRenderer` 只有文字 JSON，不能代表 Podcast Carousel 已完成。新的 channel-native Copy Spec、真實 PNG render 與 page-based Review Gate 已有可執行實作與測試；Stage 5 尚未宣告 ship，因為 EP120 的真實 transcript→agent panel→成圖 dogfood 還未在資料外傳授權下完成。Stage 6 publisher 尚未開始。
+**讀法**：舊 `IGRenderer` 只有文字 JSON，不能代表 Podcast Carousel 已完成。新的 channel-native Copy Spec、真實 PNG render 與 page-based Review Gate 已有可執行實作與測試；Stage 5 尚未宣告 ship，因為 EP120 的真實 transcript→agent panel→成圖 dogfood 還未在資料外傳授權下完成。Stage 6 已有 approved-only Publish page、revision-bound agent-neutral job、capability/lease 與逐平台 result contract；目前不做 live network publish。
 
 ### Line 1 兩子模式說明
 
@@ -195,7 +195,7 @@ Reader UI 已支援 `==highlight==` + `> [!annotation]` markup，但這些標註
 | WordPress blog | ✅ Usopp full HITL | Line 1/2/3 |
 | YouTube（影片） | ❌ 0 | **Script-Driven Video 主出口** |
 | YouTube（podcast theme video） | ❌ 0 | Line 1 補位 |
-| IG carousel | ⚠️ 0（Stage 5 implementation + fixture dogfood 完成，EP120 真實 dogfood 未完成；Stage 6 publisher 尚未開始） | Line 1 主出口之一 |
+| IG carousel | 🚧 Stage 6 Publish page + job contract 已實作；Meta transport / agent-browser live publish 尚未執行 | Line 1 主出口之一 |
 | FB post | ❌ 0 | Line 1 主出口之一 |
 | Newsletter（Fluent CRM） | ❌ 0 | ADR-001 預留 |
 | Community（Fluent Community） | ❌ 0（Sanji 空殼） | 讀者互動主場 |
@@ -204,7 +204,7 @@ Reader UI 已支援 `==highlight==` + `> [!annotation]` markup，但這些標註
 
 **不做的代價**：Line 1 / Script-Driven Video 的「ship」是「半成品交給修修手貼」。摩擦穩定累積。
 
-**建議**：發布層**不要再擴 Usopp** — Usopp 寫 WP 那套已複雜。改 ADR-001 line 38 預留 + 新開 `agents/usopp/` sub-publisher（`youtube_publisher.py` / `ig_publisher.py`），共用 approval_queue HITL 但 platform-specific adapter。**先做 IG（最痛）+ YT description/title metadata**。
+**目前方向**：Carousel 不擴充 Usopp WordPress `approval_queue`，也不重用 video `release_store`。ADR-065 採 episode-local Stage 6 Publish Job，由具備平台 capability 的 Codex 或 Claude Code executor 認領；平台 adapter 仍需獨立驗證。YouTube Community 只能走 agent-browser/manual，不宣稱 Data API insert。
 
 ---
 
@@ -212,7 +212,7 @@ Reader UI 已支援 `==highlight==` + `> [!annotation]` markup，但這些標註
 
 如果只能挑 3 件最**結構性**的事（不是 feature，是 unblock 架構迴路）：
 
-1. **Podcast IG Carousel EP120 dogfood**（Stage 5 → 6）— 取得逐字稿送既有 Claude API 的明確授權後，跑完 Copy Spec、三方 panel、真實 cutout PNG 與 Web App 人工 review；通過後才接半自動發布，Line 2/3 不先假設共用 Podcast 模板
+1. **Podcast IG Carousel EP120 dogfood**（Stage 5 → 6）— 跑完 Copy Spec、三方 subagent panel、真實 cutout PNG 與 Web App 人工 review；Approve 後以 ADR-065 Publish Job 接半自動發布。沒有相容 executor 時維持 queued，Line 2/3 不先假設共用 Podcast 模板
 2. **Annotation → KB 整合 owner**（Stage 2→3）— Line 2 critical path。先解 annotation 寫到哪、誰讀、何時用；具體實作等修修這週手跑流程後決定（修修明確要求 Stage 4 手寫過程不介入，但 Stage 3 整合素材可動）
 3. **SEO 中控台 → Zoro 反向 feed**（Stage 7→1）— 閉環 Discovery 迴路。一條 SQL view + Zoro report renderer 加 section，一週可做完
 

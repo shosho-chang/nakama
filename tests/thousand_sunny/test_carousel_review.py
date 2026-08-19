@@ -41,6 +41,8 @@ class _ReviewFormParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if tag == "form" and self.forms:
             self.forms.pop()
+
+
 EPISODE = "20260721 鄭國威"
 
 
@@ -194,6 +196,7 @@ def client(tmp_path: Path, monkeypatch) -> tuple[TestClient, Path]:
     monkeypatch.setenv("DISABLE_ROBIN", "1")
     monkeypatch.delenv("WEB_PASSWORD", raising=False)
     monkeypatch.delenv("WEB_SECRET", raising=False)
+    monkeypatch.delenv("META_CAROUSEL_PUBLISH_CONFIGURED", raising=False)
     import thousand_sunny.auth as auth_module
     import thousand_sunny.routers.carousel_review as review_module
 
@@ -339,13 +342,7 @@ def test_feedback_submit_creates_revision_bound_queued_job(client):
             "feedback": "放大來賓",
         }
     ]
-    job_path = (
-        root
-        / EPISODE
-        / "ig-carousel"
-        / "correction_jobs"
-        / f"{payload['job_id']}.json"
-    )
+    job_path = root / EPISODE / "ig-carousel" / "correction_jobs" / f"{payload['job_id']}.json"
     assert job_path.is_file()
     assert json.loads(job_path.read_text(encoding="utf-8"))["status"] == "queued"
 
@@ -424,11 +421,10 @@ def test_approve_records_latest_hash_without_publishing(client):
         "revision": "r001",
         "manifest_sha256": manifest_sha,
         "published": False,
+        "publish_url": f"/bridge/ig-cards/{EPISODE}/publish",
     }
     feedback = json.loads(
-        (root / EPISODE / "ig-carousel" / "review_feedback.v1.json").read_text(
-            encoding="utf-8"
-        )
+        (root / EPISODE / "ig-carousel" / "review_feedback.v1.json").read_text(encoding="utf-8")
     )
     assert feedback["revisions"][-1]["decision"] == "approved"
     assert not (root / EPISODE / "ig-carousel" / "published.json").exists()
@@ -446,9 +442,7 @@ def test_approve_is_idempotent_for_current_manifest(client):
     assert second.status_code == 200
     assert second.json() == first.json()
     feedback = json.loads(
-        (root / EPISODE / "ig-carousel" / "review_feedback.v1.json").read_text(
-            encoding="utf-8"
-        )
+        (root / EPISODE / "ig-carousel" / "review_feedback.v1.json").read_text(encoding="utf-8")
     )
     matching = [
         revision
@@ -458,6 +452,107 @@ def test_approve_is_idempotent_for_current_manifest(client):
         and revision["decision"] == "approved"
     ]
     assert len(matching) == 1
+
+
+def test_publish_page_requires_current_manifest_approval(client):
+    app, _ = client
+
+    response = app.get(f"/bridge/ig-cards/{EPISODE}/publish")
+
+    assert response.status_code == 403
+    assert "has not passed the Review Gate" in response.json()["detail"]
+
+
+def test_approved_manifest_opens_stage6_publish_page(client):
+    app, _ = client
+    manifest_sha = _manifest_sha(app)
+    approved = app.post(
+        f"/bridge/ig-cards/{EPISODE}/approve",
+        data={"manifest_sha256": manifest_sha},
+    )
+
+    response = app.get(approved.json()["publish_url"])
+
+    assert response.status_code == 200
+    assert "stage 6" in response.text.lower()
+    assert "Instagram" in response.text
+    assert "YouTube Community" in response.text
+    assert "agent_browser_manual" in response.text
+    assert "no supported Data API publish endpoint" in response.text
+
+
+def test_publish_submit_validates_caption_platforms_and_manifest_drift(client):
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+    app.post(
+        f"/bridge/ig-cards/{EPISODE}/approve",
+        data={"manifest_sha256": manifest_sha},
+    )
+
+    empty_caption = app.post(
+        f"/bridge/ig-cards/{EPISODE}/publish/jobs",
+        data={"manifest_sha256": manifest_sha, "platforms": "instagram"},
+    )
+    no_platform = app.post(
+        f"/bridge/ig-cards/{EPISODE}/publish/jobs",
+        data={"manifest_sha256": manifest_sha, "caption": "Approved caption"},
+    )
+    _advance_manifest_revision(root)
+    stale = app.post(
+        f"/bridge/ig-cards/{EPISODE}/publish/jobs",
+        data={
+            "manifest_sha256": manifest_sha,
+            "caption": "Approved caption",
+            "platforms": "instagram",
+        },
+    )
+
+    assert empty_caption.status_code == 400
+    assert no_platform.status_code == 400
+    assert stale.status_code == 409
+    assert app.get(f"/bridge/ig-cards/{EPISODE}/publish").status_code == 403
+
+
+def test_publish_submit_is_idempotent_and_refresh_restores_job(client):
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+    app.post(
+        f"/bridge/ig-cards/{EPISODE}/approve",
+        data={"manifest_sha256": manifest_sha},
+    )
+    data = {
+        "manifest_sha256": manifest_sha,
+        "caption": "本集整理四個讓內容活得更久的策略。",
+        "platforms": ["youtube_community", "instagram"],
+    }
+
+    first = app.post(f"/bridge/ig-cards/{EPISODE}/publish/jobs", data=data)
+    duplicate = app.post(
+        f"/bridge/ig-cards/{EPISODE}/publish/jobs",
+        data={**data, "platforms": ["instagram", "youtube_community"]},
+    )
+
+    assert first.status_code == 201
+    assert duplicate.status_code == 200
+    assert duplicate.json()["idempotent"] is True
+    assert duplicate.json()["job_id"] == first.json()["job_id"]
+    assert [target["platform"] for target in first.json()["targets"]] == [
+        "instagram",
+        "youtube_community",
+    ]
+    assert first.json()["targets"][0]["strategy"] == "agent_browser"
+    assert first.json()["targets"][1]["strategy"] == "agent_browser_manual"
+    jobs = list((root / EPISODE / "ig-carousel" / "publish_jobs").glob("pj-*.json"))
+    assert len(jobs) == 1
+    assert not (root / EPISODE / "ig-carousel" / "published.json").exists()
+
+    status = app.get(first.json()["status_url"])
+    refreshed = app.get(f"/bridge/ig-cards/{EPISODE}/publish")
+    assert status.status_code == 200
+    assert status.json()["status"] == "queued"
+    assert refreshed.status_code == 200
+    assert first.json()["job_id"] in refreshed.text
+    assert "本集整理四個讓內容活得更久的策略。" in refreshed.text
 
 
 def test_auth_redirect_uses_same_bridge_login_boundary(tmp_path: Path, monkeypatch):

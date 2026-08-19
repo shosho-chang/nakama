@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Podcast Carousel Publish · {{ episode_slug }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/carousel-publish.css?v={{ asset_version }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='packaging') }}
+
+<header class="publish-head">
+  <div>
+    <a class="sho-lk sho-mono sho-mono-up" href="/bridge/ig-cards/{{ episode_slug }}">← stage 5 review gate</a>
+    <div class="sho-mono sho-mono-up">/bridge/ig-cards/{{ episode_slug }}/publish · stage 6</div>
+    <h1>發布工作台 <span>核准內容與平台 hand-off</span></h1>
+  </div>
+  <dl class="publish-ledger">
+    <div><dt>REVISION</dt><dd>{{ manifest.revision }}</dd></div>
+    <div><dt>PAGES</dt><dd>{{ manifest.pages|length }}</dd></div>
+    <div><dt>APPROVAL</dt><dd>#{{ approval.revision_number }}</dd></div>
+    <div><dt>GATE</dt><dd>APPROVED</dd></div>
+  </dl>
+</header>
+
+<main class="publish-workbench">
+  <section class="publish-approved" aria-label="Approval boundary">
+    <strong>Stage 5 已核准。</strong>
+    <span>這一頁只建立 agent-neutral 發布工作；不會在瀏覽器 request 裡直接對外發佈。</span>
+  </section>
+
+  <section class="publish-preview" aria-labelledby="publish-preview-title">
+    <div class="publish-section-head">
+      <div>
+        <div class="sho-kicker"><span class="sho-kicker-n">[ 01 ]</span> APPROVED ASSET</div>
+        <h2 id="publish-preview-title">Square master · {{ manifest.pages|length }} 張</h2>
+      </div>
+      <span class="sho-tag">1080 × 1080</span>
+    </div>
+    <div class="publish-card-strip">
+    {% for page in manifest.pages %}
+      <figure class="publish-card">
+        <img src="/bridge/ig-cards/{{ episode_slug }}/media/{{ page.page_id }}"
+             alt="第 {{ page.page_number }} 張：{{ page.role }}">
+        <figcaption><span>{{ '%02d'|format(page.page_number) }}</span>{{ page.role }}</figcaption>
+      </figure>
+    {% endfor %}
+    </div>
+  </section>
+
+  <form id="publish-form"
+        action="/bridge/ig-cards/{{ episode_slug }}/publish/jobs"
+        method="post"
+        data-manifest-sha="{{ manifest_sha256 }}">
+    <input type="hidden" name="manifest_sha256" value="{{ manifest_sha256 }}">
+    <section class="publish-compose" aria-labelledby="publish-compose-title">
+      <div class="publish-caption">
+        <div class="publish-section-head">
+          <div>
+            <div class="sho-kicker"><span class="sho-kicker-n">[ 02 ]</span> CAPTION</div>
+            <h2 id="publish-compose-title">使用已審過的貼文文案</h2>
+          </div>
+          <span id="caption-count" class="sho-mono">0 / 5000</span>
+        </div>
+        <label for="publish-caption">Caption</label>
+        <textarea id="publish-caption" name="caption" maxlength="5000" required
+                  placeholder="貼上已完成社群審稿的 caption。">{{ latest_job.caption if latest_job else '' }}</textarea>
+        <p>Caption 與平台集合會成為 idempotency key；相同內容重送只會回到同一個 job。</p>
+      </div>
+
+      <fieldset class="publish-platforms">
+        <legend><span class="sho-kicker-n">[ 03 ]</span> TARGETS &amp; CAPABILITIES</legend>
+        {% set selected_platforms = latest_job.targets|map(attribute='platform')|list if latest_job else [] %}
+        {% for capability in capabilities %}
+        <label class="publish-platform" data-state="{{ capability.configuration_state }}">
+          <input type="checkbox" name="platforms" value="{{ capability.platform }}"
+                 {% if capability.platform in selected_platforms %}checked{% endif %}>
+          <span class="publish-platform__body">
+            <span class="publish-platform__name">
+              {% if capability.platform == 'instagram' %}Instagram{% elif capability.platform == 'facebook_page' %}Facebook Page{% else %}YouTube Community{% endif %}
+              <span class="sho-tag">{{ capability.strategy }}</span>
+            </span>
+            <span>{{ capability.note }}</span>
+            <span class="sho-mono">REQUIRES · {{ capability.required_executor_capabilities|join(', ') }}</span>
+          </span>
+        </label>
+        {% endfor %}
+      </fieldset>
+    </section>
+
+    <section class="publish-actions" aria-label="Create publish job">
+      <p><strong>不會立即發布。</strong> Job 會等待具備相容 capability 的 Codex 或 Claude Code agent 認領。</p>
+      <button id="publish-submit" class="sho-btn" type="submit">建立發布工作</button>
+    </section>
+  </form>
+
+  <section id="publish-job" class="publish-job" data-state="idle" tabindex="-1"
+           aria-live="polite" aria-busy="false" hidden>
+    <div>
+      <div class="sho-mono sho-mono-up">STAGE 6 JOB</div>
+      <h2 id="publish-job-title">等待建立</h2>
+      <p id="publish-job-summary"></p>
+    </div>
+    <ol id="publish-job-steps" class="publish-job__steps"></ol>
+    <progress id="publish-job-progress" max="100" value="0">0%</progress>
+    <div id="publish-job-results" class="publish-job__results"></div>
+  </section>
+</main>
+
+<script id="publish-latest-job" type="application/json">{{ latest_job_payload|tojson if latest_job_payload else 'null' }}</script>
+<script>
+const publishForm = document.getElementById('publish-form');
+const caption = document.getElementById('publish-caption');
+const captionCount = document.getElementById('caption-count');
+const submitButton = document.getElementById('publish-submit');
+const jobPanel = document.getElementById('publish-job');
+const jobTitle = document.getElementById('publish-job-title');
+const jobSummary = document.getElementById('publish-job-summary');
+const jobSteps = document.getElementById('publish-job-steps');
+const jobProgress = document.getElementById('publish-job-progress');
+const jobResults = document.getElementById('publish-job-results');
+const manifestSha = publishForm.dataset.manifestSha;
+const storagePrefix = `podcast-carousel-publish:${window.location.pathname}:${manifestSha}`;
+const draftKey = `${storagePrefix}:draft:v1`;
+const jobKey = `${storagePrefix}:job:v1`;
+let busy = false;
+let pollTimer = null;
+
+function storageGet(key) { try { return sessionStorage.getItem(key); } catch (error) { return null; } }
+function storageSet(key, value) { try { sessionStorage.setItem(key, value); } catch (error) { /* storage optional */ } }
+function storageRemove(key) { try { sessionStorage.removeItem(key); } catch (error) { /* storage optional */ } }
+function selectedPlatforms() { return [...publishForm.querySelectorAll('input[name="platforms"]:checked')].map((item) => item.value); }
+function sameOriginUrl(value) {
+  const url = new URL(value, window.location.href);
+  if (url.origin !== window.location.origin) throw new Error('Publish job URL 必須與工作台同網域。');
+  return url.href;
+}
+function updateFormState() {
+  captionCount.textContent = `${caption.value.length} / 5000`;
+  submitButton.disabled = busy || caption.value.trim().length === 0 || selectedPlatforms().length === 0;
+  submitButton.setAttribute('aria-disabled', String(submitButton.disabled));
+}
+function persistDraft() {
+  storageSet(draftKey, JSON.stringify({manifestSha, caption: caption.value, platforms: selectedPlatforms()}));
+}
+function restoreDraft() {
+  const raw = storageGet(draftKey);
+  if (!raw) return;
+  try {
+    const draft = JSON.parse(raw);
+    if (draft.manifestSha !== manifestSha) return;
+    caption.value = String(draft.caption || '');
+    const selected = new Set(draft.platforms || []);
+    publishForm.querySelectorAll('input[name="platforms"]').forEach((item) => { item.checked = selected.has(item.value); });
+  } catch (error) { storageRemove(draftKey); }
+}
+function showJob(state, title, summary, focus = false) {
+  jobPanel.hidden = false;
+  jobPanel.dataset.state = state;
+  jobPanel.setAttribute('aria-busy', String(['loading', 'queued', 'running'].includes(state)));
+  jobTitle.textContent = title;
+  jobSummary.textContent = summary;
+  if (focus) jobPanel.focus();
+}
+function responseDetail(response) {
+  return response.json().then((payload) => payload.detail || payload.error || JSON.stringify(payload))
+    .catch(() => `HTTP ${response.status}`);
+}
+function renderProgress(payload) {
+  jobSteps.replaceChildren();
+  const steps = Array.isArray(payload.progress) ? payload.progress : [];
+  let percent = 0;
+  steps.forEach((step) => {
+    percent = Math.max(percent, Number(step.progress_percent) || 0);
+    const item = document.createElement('li');
+    const label = document.createElement('span');
+    label.textContent = step.step || 'Agent step';
+    const status = document.createElement('span');
+    status.className = 'sho-mono';
+    status.textContent = step.message || `${step.progress_percent}%`;
+    item.append(label, status);
+    jobSteps.append(item);
+  });
+  jobProgress.value = percent;
+  jobProgress.textContent = `${percent}%`;
+}
+function renderResults(results) {
+  jobResults.replaceChildren();
+  (Array.isArray(results) ? results : []).forEach((result) => {
+    const row = document.createElement('article');
+    row.dataset.state = result.status;
+    const heading = document.createElement('strong');
+    heading.textContent = `${result.platform} · ${result.status}`;
+    row.append(heading);
+    if (result.permalink) {
+      const link = document.createElement('a');
+      link.className = 'sho-lk';
+      link.href = result.permalink;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = '開啟 permalink';
+      row.append(link);
+    } else {
+      const detail = document.createElement('span');
+      detail.textContent = result.receipt_id || result.error || '沒有 receipt';
+      row.append(detail);
+    }
+    jobResults.append(row);
+  });
+}
+async function pollJob(job) {
+  window.clearTimeout(pollTimer);
+  try {
+    const response = await fetch(sameOriginUrl(job.statusUrl), {credentials: 'same-origin', headers: {'Accept': 'application/json'}});
+    if (!response.ok) throw new Error(await responseDetail(response));
+    const payload = await response.json();
+    const status = String(payload.status || 'queued');
+    renderProgress(payload);
+    renderResults(payload.results);
+    if (status === 'completed') {
+      busy = false;
+      storageRemove(jobKey);
+      storageRemove(draftKey);
+      jobProgress.value = 100;
+      showJob('completed', '發布工作已完成', '逐平台 receipt、permalink 或 error 已保存。');
+      updateFormState();
+      return;
+    }
+    if (status === 'failed') {
+      busy = false;
+      storageRemove(jobKey);
+      showJob('failed', '發布工作失敗', payload.error || 'Executor 未完成工作。', true);
+      updateFormState();
+      return;
+    }
+    busy = true;
+    updateFormState();
+    showJob(status === 'queued' ? 'queued' : 'running',
+      status === 'queued' ? '等待相容 Agent' : 'Agent 執行中',
+      status === 'queued' ? 'Job 保持 queued，直到 Codex 或 Claude Code agent 認領。' : '正在依平台 strategy 執行並回報進度。');
+    storageSet(jobKey, JSON.stringify(job));
+    pollTimer = window.setTimeout(() => pollJob(job), 1800);
+  } catch (error) {
+    busy = true;
+    updateFormState();
+    showJob('error', '暫時無法讀取狀態', `${error.message}；5 秒後重試。`);
+    pollTimer = window.setTimeout(() => pollJob(job), 5000);
+  }
+}
+
+publishForm.addEventListener('input', () => { persistDraft(); updateFormState(); });
+publishForm.addEventListener('change', () => { persistDraft(); updateFormState(); });
+publishForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (submitButton.disabled) return;
+  busy = true;
+  updateFormState();
+  submitButton.setAttribute('aria-busy', 'true');
+  showJob('loading', '正在建立發布工作', '驗證 approval、manifest、caption 與平台 capability。', true);
+  try {
+    const response = await fetch(sameOriginUrl(publishForm.action), {
+      method: 'POST', body: new FormData(publishForm), credentials: 'same-origin', headers: {'Accept': 'application/json'},
+    });
+    if (!response.ok) throw new Error(await responseDetail(response));
+    const payload = await response.json();
+    const job = {manifestSha, jobId: payload.job_id, statusUrl: sameOriginUrl(payload.status_url)};
+    storageSet(jobKey, JSON.stringify(job));
+    storageRemove(draftKey);
+    await pollJob(job);
+  } catch (error) {
+    busy = false;
+    persistDraft();
+    updateFormState();
+    showJob('failed', '建立失敗', error.message, true);
+  }
+  submitButton.removeAttribute('aria-busy');
+});
+
+restoreDraft();
+updateFormState();
+let resumable = null;
+const storedJob = storageGet(jobKey);
+if (storedJob) {
+  try { resumable = JSON.parse(storedJob); } catch (error) { storageRemove(jobKey); }
+}
+if (!resumable) {
+  try {
+    const serverJob = JSON.parse(document.getElementById('publish-latest-job').textContent);
+    if (serverJob && serverJob.status_url) resumable = {manifestSha, jobId: serverJob.job_id, statusUrl: serverJob.status_url};
+  } catch (error) { /* no server-side job */ }
+}
+if (resumable && resumable.manifestSha === manifestSha) {
+  busy = true;
+  updateFormState();
+  showJob('loading', '恢復發布工作', '正在讀取 episode-local job 狀態。');
+  pollJob(resumable);
+}
+</script>
+</body>
+</html>
