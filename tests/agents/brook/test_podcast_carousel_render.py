@@ -131,7 +131,7 @@ def test_template_snapshot_is_content_addressed(tmp_path: Path):
 def test_design_system_cover_and_cta_use_reviewed_visual_contract():
     source = (DESIGN_TEMPLATE / "PodcastCarouselRender.html").read_text(encoding="utf-8")
 
-    assert ".cover .em-orange{display:table;color:var(--white)" in source
+    assert ".cover .em-orange{display:inline-block;color:var(--white)" in source
     assert "cover-headline-zone" in source
     assert ".cta-title .em-orange{color:var(--white)" in source
     assert "richWithPreferredBreak(title,page.episode_topic,page.emphasis" in source
@@ -139,9 +139,10 @@ def test_design_system_cover_and_cta_use_reviewed_visual_contract():
     assert 'aria-label",name' in source
     assert '[["AP","Apple Podcasts"],["S","Spotify"],["YT","YouTube"]]' not in source
     assert "cover headline/cutout overlap" in source
-    assert "--cover-cutout-overlap-limit:145px" in source
-    assert "right:-350px;bottom:-130px;height:900px;width:auto;z-index:4" in source
+    assert "--cover-cutout-overlap-limit:240px" in source
+    assert "right:-260px;bottom:-130px;height:900px;width:auto;z-index:4" in source
     assert "--type-cover-title:106px" in source
+    assert "richCover(title,page.headline,page.emphasis)" in source
     assert "--type-hook-title:104px" in source
     assert "--hook-optical-lift:-22px" in source
     assert "--type-point-title:72px" in source
@@ -225,7 +226,7 @@ def test_real_design_system_template_renders_every_page_role(tmp_path: Path):
     assert all(Path(page.image.path).is_file() for page in manifest.pages)
     assert all(page.fit.status == "fit" for page in manifest.pages)
     assert manifest.pages[0].fit.regions["cover.cutout_height"] >= 880
-    assert manifest.pages[0].fit.regions["cover.headline_cutout_overlap_y"] <= 145
+    assert manifest.pages[0].fit.regions["cover.headline_cutout_overlap_y"] <= 240
     assert (
         manifest.pages[0].fit.regions["cover.headline"]
         > manifest.pages[2].fit.regions["point.headline"]
