@@ -346,6 +346,127 @@ class CarouselReviewFeedbackV1(CarouselModel):
     revisions: list[CarouselFeedbackRevision] = Field(default_factory=list)
 
 
+class CarouselCorrectionItem(CarouselModel):
+    """One non-empty, revision-bound correction requested by the reviewer."""
+
+    page_id: str
+    artifact_sha256: str
+    feedback: str = Field(min_length=1, max_length=1200)
+
+    @field_validator("page_id")
+    @classmethod
+    def _valid_page_id(cls, value: str) -> str:
+        if not _PAGE_ID_RE.fullmatch(value):
+            raise ValueError("page_id must be stable lowercase kebab-case")
+        return value
+
+    @field_validator("artifact_sha256")
+    @classmethod
+    def _valid_sha256(cls, value: str) -> str:
+        value = value.lower()
+        if not _SHA256_RE.fullmatch(value):
+            raise ValueError("artifact_sha256 must be a lowercase SHA-256 hex digest")
+        return value
+
+
+class CarouselCorrectionClaim(CarouselModel):
+    executor: Literal["codex", "claude_code"]
+    executor_id: str = Field(min_length=1, max_length=200)
+    claim_token: str = Field(pattern=r"^[a-zA-Z0-9][a-zA-Z0-9._-]{7,127}$")
+    claimed_at: datetime
+    lease_seconds: int = Field(gt=0, le=86400)
+    lease_expires_at: datetime
+
+    @model_validator(mode="after")
+    def _valid_lease(self) -> CarouselCorrectionClaim:
+        if self.lease_expires_at <= self.claimed_at:
+            raise ValueError("claim lease must expire after it is acquired")
+        return self
+
+
+class CarouselCorrectionProgress(CarouselModel):
+    sequence: int = Field(gt=0)
+    step: str = Field(min_length=1, max_length=120)
+    progress_percent: int = Field(ge=0, le=100)
+    message: str = Field(default="", max_length=1200)
+    recorded_at: datetime
+
+
+class CarouselCorrectionJobV1(CarouselModel):
+    """Platform-neutral hand-off between the Review App and a local executor."""
+
+    schema_name: Literal["nakama.podcast_carousel_correction_job.v1"] = (
+        "nakama.podcast_carousel_correction_job.v1"
+    )
+    job_id: str = Field(pattern=r"^cj-[0-9a-f]{32}$")
+    episode_id: str = Field(min_length=1)
+    source_revision: str
+    source_manifest_sha256: str
+    status: Literal["queued", "claimed", "in_progress", "completed", "failed"] = "queued"
+    feedback_items: list[CarouselCorrectionItem] = Field(min_length=1)
+    created_at: datetime
+    updated_at: datetime
+    claim: CarouselCorrectionClaim | None = None
+    progress: list[CarouselCorrectionProgress] = Field(default_factory=list)
+    result_revision: str | None = None
+    error: str | None = Field(default=None, min_length=1, max_length=4000)
+
+    @field_validator("source_revision")
+    @classmethod
+    def _valid_source_revision(cls, value: str) -> str:
+        if not _REVISION_RE.fullmatch(value):
+            raise ValueError("source_revision must use rNNN format")
+        return value
+
+    @field_validator("source_manifest_sha256")
+    @classmethod
+    def _valid_manifest_sha256(cls, value: str) -> str:
+        value = value.lower()
+        if not _SHA256_RE.fullmatch(value):
+            raise ValueError("source_manifest_sha256 must be a lowercase SHA-256 hex digest")
+        return value
+
+    @field_validator("result_revision")
+    @classmethod
+    def _valid_result_revision(cls, value: str | None) -> str | None:
+        if value is not None and not _REVISION_RE.fullmatch(value):
+            raise ValueError("result_revision must use rNNN format")
+        return value
+
+    @model_validator(mode="after")
+    def _valid_job_state(self) -> CarouselCorrectionJobV1:
+        page_ids = [item.page_id for item in self.feedback_items]
+        if len(page_ids) != len(set(page_ids)):
+            raise ValueError("correction feedback page IDs must be unique")
+        if self.updated_at < self.created_at:
+            raise ValueError("updated_at cannot precede created_at")
+        if [item.sequence for item in self.progress] != list(range(1, len(self.progress) + 1)):
+            raise ValueError("correction progress sequence must be contiguous and one-based")
+        percents = [item.progress_percent for item in self.progress]
+        if percents != sorted(percents):
+            raise ValueError("correction progress percent cannot decrease")
+
+        if self.status == "queued":
+            if self.claim or self.progress or self.result_revision or self.error:
+                raise ValueError("queued correction job cannot contain execution state")
+        elif self.status == "claimed":
+            if not self.claim or self.progress or self.result_revision or self.error:
+                raise ValueError("claimed correction job requires only claim metadata")
+        elif self.status == "in_progress":
+            if not self.claim or not self.progress or self.result_revision or self.error:
+                raise ValueError("in_progress correction job requires claim and progress")
+        elif self.status == "completed":
+            if not self.claim or not self.progress or not self.result_revision or self.error:
+                raise ValueError(
+                    "completed correction job requires claim, progress, and result revision"
+                )
+            if int(self.result_revision[1:]) <= int(self.source_revision[1:]):
+                raise ValueError("result_revision must be newer than source_revision")
+        elif not self.claim or not self.error or self.result_revision:
+            raise ValueError("failed correction job requires claim and error only")
+        return self
+
+
 def receipt_for(path: Path) -> ArtifactReceipt:
     """Build an artifact receipt without loading a large file into memory."""
 

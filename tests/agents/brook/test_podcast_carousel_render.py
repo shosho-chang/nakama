@@ -32,8 +32,8 @@ def _template(tmp_path: Path) -> Path:
     (template / "PodcastCarouselRender.html").write_text(
         """<!doctype html>
 <html><head><!--__BASE_HREF__--><style>
-html,body{margin:0;width:1080px;height:1350px;overflow:hidden}
-#canvas{width:1080px;height:1350px;background:#f1eee8;color:#111;font:72px sans-serif}
+html,body{margin:0;width:1080px;height:1080px;overflow:hidden}
+#canvas{width:1080px;height:1080px;background:#f1eee8;color:#111;font:72px sans-serif}
 </style></head><body><div id="canvas"></div><script>
 const spec=/*__CAROUSEL_SPEC__*/null;
 const assets=/*__CAROUSEL_ASSETS__*/null;
@@ -134,17 +134,19 @@ def test_design_system_cover_and_cta_use_reviewed_visual_contract():
     assert ".cover .em-orange{display:table;color:var(--white)" in source
     assert "cover-headline-zone" in source
     assert ".cta-title .em-orange{color:var(--white)" in source
+    assert "richWithPreferredBreak(title,page.episode_topic,page.emphasis" in source
     assert 'createElementNS("http://www.w3.org/2000/svg","svg")' in source
     assert 'aria-label",name' in source
     assert '[["AP","Apple Podcasts"],["S","Spotify"],["YT","YouTube"]]' not in source
     assert "cover headline/cutout collision" in source
     assert "--type-cover-title:128px" in source
     assert "--type-hook-title:104px" in source
-    assert "--hook-optical-lift:-64px" in source
+    assert "--hook-optical-lift:-22px" in source
     assert "--type-point-title:72px" in source
     assert "--type-point-body:44px" in source
-    assert "--point-optical-lift:-72px" in source
-    assert "--cta-logo-top:224px" in source
+    assert "--point-optical-lift:-20px" in source
+    assert "--cta-logo-top:185px" in source
+    assert ".point .ghost-number{position:absolute;right:-40px;top:-20px" in source
     assert "transform:translateY(var(--point-optical-lift))" in source
     assert "#canvas.hook{background:var(--orange)}" in source
     assert ".hook .em-box{color:var(--ink);background:var(--white);border:0" in source
@@ -154,7 +156,8 @@ def test_design_system_cover_and_cta_use_reviewed_visual_contract():
     assert "transform:rotate(var(--emphasis-tilt,-1.5deg))" in source
     assert 'canvas.style.setProperty("--emphasis-tilt",`${emphasisTilt}deg`)' in source
     assert "--cover-emphasis-gap:18px" in source
-    assert "--cover-emphasis-pad-y:16px" in source
+    assert "--cover-emphasis-pad-top:10px" in source
+    assert "--cover-emphasis-pad-bottom:22px" in source
     assert "--cover-emphasis-pad-x:24px" in source
     assert 'target(title,"cover.headline",typeSize("--type-cover-title"),112,96,1.05)' in source
 
@@ -192,7 +195,7 @@ def test_render_outputs_exact_images_and_reuses_unchanged_pages(tmp_path: Path):
         assert receipt_for(image_path) == page.image
         assert image_path.stat().st_mtime_ns == mtimes[page.page_id]
         with Image.open(image_path) as image:
-            assert image.size == (1080, 1350)
+            assert image.size == (1080, 1080)
     current = json.loads((package / "current.json").read_text(encoding="utf-8"))
     assert current["revision"] == "r001"
 
@@ -219,15 +222,16 @@ def test_real_design_system_template_renders_every_page_role(tmp_path: Path):
     assert [page.role for page in manifest.pages] == ["cover", "hook", "point", "quote", "cta"]
     assert all(Path(page.image.path).is_file() for page in manifest.pages)
     assert all(page.fit.status == "fit" for page in manifest.pages)
-    assert manifest.pages[0].fit.regions["cover.cutout_height"] >= 980
-    assert manifest.pages[0].fit.regions["cover.headline"] > manifest.pages[2].fit.regions["point.headline"]
+    assert manifest.pages[0].fit.regions["cover.cutout_height"] >= 780
+    assert (
+        manifest.pages[0].fit.regions["cover.headline"]
+        > manifest.pages[2].fit.regions["point.headline"]
+    )
     assert manifest.pages[0].fit.regions["cover.emphasis_gap"] >= 12
     assert manifest.pages[0].fit.regions["cover.emphasis_padding_x"] >= 20
     assert manifest.pages[0].fit.regions["cover.emphasis_padding_top"] >= 10
-    assert (
-        manifest.pages[0].fit.regions["cover.emphasis_padding_top"]
-        == manifest.pages[0].fit.regions["cover.emphasis_padding_bottom"]
-    )
+    assert manifest.pages[0].fit.regions["cover.emphasis_padding_top"] == 10
+    assert manifest.pages[0].fit.regions["cover.emphasis_padding_bottom"] == 22
     assert (
         manifest.pages[0].fit.regions["cover.emphasis_padding_left"]
         == manifest.pages[0].fit.regions["cover.emphasis_padding_right"]
@@ -243,7 +247,7 @@ def test_real_design_system_template_renders_every_page_role(tmp_path: Path):
     assert manifest.pages[2].fit.regions["point.emphasis_padding_bottom"] == 12
     assert manifest.pages[2].fit.regions["point.emphasis_padding_left"] == 18
     assert manifest.pages[2].fit.regions["point.emphasis_padding_right"] == 18
-    assert manifest.pages[2].fit.regions["point.content_top"] <= 430
+    assert manifest.pages[2].fit.regions["point.content_top"] <= 380
     assert manifest.pages[3].fit.regions["quote.answer_cutout_overlap"] == 0
     assert manifest.pages[3].fit.regions["quote.question_divider_gap"] >= 24
     assert manifest.pages[4].fit.regions["cta.logo_gap_delta"] <= 16
@@ -253,4 +257,4 @@ def test_real_design_system_template_renders_every_page_role(tmp_path: Path):
     assert "留言告訴我" not in render_input
     assert ".engagement" not in render_input
     with Image.open(manifest.pages[-1].image.path).convert("RGB") as cta:
-        assert cta.getpixel((12, 1338)) == (40, 37, 37)
+        assert cta.getpixel((12, 1068)) == (40, 37, 37)

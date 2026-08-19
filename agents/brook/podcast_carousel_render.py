@@ -272,7 +272,7 @@ def render_carousel(
                 screenshot=image_path.resolve(),
             )
             with Image.open(image_path) as image:
-                if image.size != (1080, 1350):
+                if image.size != (1080, 1080):
                     raise ValueError(f"rendered page has wrong dimensions: {image.size}")
         image_receipt = receipt_for(image_path)
         next_state["pages"][page.page_id] = {

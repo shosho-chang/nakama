@@ -29,7 +29,13 @@
 </header>
 
 <main class="carousel-workbench">
-  <form id="carousel-review-form" method="post" action="/bridge/ig-cards/{{ episode_slug }}/decide" data-manifest-sha="{{ manifest_sha256 }}">
+  <form id="carousel-review-form"
+        method="post"
+        action="/bridge/ig-cards/{{ episode_slug }}/decide"
+         data-feedback-url="/bridge/ig-cards/{{ episode_slug }}/feedback"
+         data-approve-url="/bridge/ig-cards/{{ episode_slug }}/approve"
+         data-manifest-sha="{{ manifest_sha256 }}"
+         data-approved="{{ 'true' if approved else 'false' }}">
     <input type="hidden" name="manifest_sha256" value="{{ manifest_sha256 }}">
     <section class="carousel-grid" aria-label="Podcast Carousel 全部卡片">
     {% for row in rows %}
@@ -40,28 +46,61 @@
           <img src="/bridge/ig-cards/{{ episode_slug }}/media/{{ page.page_id }}" alt="第 {{ page.page_number }} 頁，{{ page.role }}">
         </button>
         {% if page.fit.status == 'needs_review' %}<p class="carousel-fit">字級需人工確認</p>{% endif %}
-        <fieldset>
-          <legend>這張卡片</legend>
-          <label><input type="radio" name="status_{{ page.page_id }}" value="approved" {% if row.status == 'approved' %}checked{% endif %}> Approve</label>
-          <label><input type="radio" name="status_{{ page.page_id }}" value="needs_changes" {% if row.status == 'needs_changes' %}checked{% endif %}> 需修改</label>
-          <label class="carousel-pending"><input type="radio" name="status_{{ page.page_id }}" value="pending" {% if row.status == 'pending' %}checked{% endif %}> 待決定</label>
-        </fieldset>
         <label class="carousel-feedback">
-          <span>Feedback</span>
-          <textarea name="feedback_{{ page.page_id }}" maxlength="1200" placeholder="只寫這張需要改什麼">{{ row.feedback }}</textarea>
+          <span data-feedback-label>{% if approved %}Feedback · 已鎖定{% else %}Feedback · 有需要修改才填{% endif %}</span>
+          <textarea id="feedback-{{ page.page_id }}"
+                    name="feedback_{{ page.page_id }}"
+                     data-feedback-input
+                     maxlength="1200"
+                     {% if approved %}readonly disabled aria-disabled="true"{% endif %}
+                     placeholder="只寫這張需要改什麼">{{ row.feedback }}</textarea>
         </label>
       </article>
 
     {% endfor %}
     </section>
     <footer class="carousel-actions">
-      <p><strong>整組通過規則：</strong>同一 revision 的每一張都必須 Approve。</p>
-      <div>
+      <p id="review-action-help" data-state="{{ 'approved' if approved else 'open' }}"><strong>{% if approved %}此 revision 已核准，等待發布流程。{% else %}有修改就填卡片 Feedback；全部留空時，才可手動 Approve。{% endif %}</strong></p>
+      <div class="carousel-actions__controls">
         <span id="review-save-status" class="carousel-notice" role="status" aria-live="polite" {% if not saved %}hidden{% endif %}>{% if saved %}第 {{ decision_count }} 輪 Review 已儲存。{% endif %}</span>
-        <button class="sho-btn" type="submit" data-idle-label="儲存這一輪 Review" data-saving-label="儲存中…">儲存這一輪 Review</button>
+        <div class="carousel-actions__buttons">
+          <button id="review-feedback-button"
+                  class="sho-btn carousel-submit carousel-submit--feedback"
+                  type="submit"
+                  data-idle-label="送出 0 則修改"
+                   data-loading-label="送出中…"
+                   data-saving-label="儲存中…"
+                   data-approved-label="已核准"
+                   aria-describedby="review-action-help"
+                   disabled>{{ '已核准' if approved else '送出 0 則修改' }}</button>
+          <button id="review-approve-button"
+                  class="sho-btn sho-btn--ghost carousel-submit carousel-submit--approve"
+                   type="button"
+                   data-idle-label="Approve"
+                   data-loading-label="Approve 中…"
+                   data-approved-label="已核准"
+                   aria-describedby="review-action-help"
+                   {% if approved %}disabled aria-disabled="true"{% endif %}>{{ '已核准' if approved else 'Approve' }}</button>
+        </div>
       </div>
     </footer>
   </form>
+
+  <section id="carousel-job-panel"
+           class="carousel-job"
+           data-state="idle"
+           tabindex="-1"
+           aria-labelledby="carousel-job-title"
+           aria-busy="false"
+           hidden>
+    <div>
+      <div class="sho-mono sho-mono-up">AGENT JOB</div>
+      <h2 id="carousel-job-title">修改進度</h2>
+      <p id="carousel-job-summary" role="status" aria-live="polite"></p>
+    </div>
+    <progress id="carousel-job-progress" max="1" value="0">0%</progress>
+    <ol id="carousel-job-steps" class="carousel-job__steps" aria-label="Agent 工作步驟"></ol>
+  </section>
 
   {% for row in rows %}
     {% set page = row.page %}
@@ -91,12 +130,23 @@ document.querySelectorAll('[data-evidence-target]').forEach((button) => {
 });
 
 const reviewForm = document.getElementById('carousel-review-form');
-const submitButton = reviewForm.querySelector('button[type="submit"]');
+const feedbackButton = document.getElementById('review-feedback-button');
+const approveButton = document.getElementById('review-approve-button');
+const feedbackInputs = [...reviewForm.querySelectorAll('[data-feedback-input]')];
 const saveStatus = document.getElementById('review-save-status');
 const reviewCount = document.getElementById('review-count');
 const gateStatus = document.getElementById('review-gate-status');
-const draftKey = `nakama.carousel-review-draft.v1:${reviewForm.dataset.manifestSha}`;
-let saving = false;
+const actionHelp = document.getElementById('review-action-help');
+const jobPanel = document.getElementById('carousel-job-panel');
+const jobSummary = document.getElementById('carousel-job-summary');
+const jobProgress = document.getElementById('carousel-job-progress');
+const jobSteps = document.getElementById('carousel-job-steps');
+const storagePrefix = `nakama.carousel-review:${reviewForm.dataset.manifestSha}`;
+const draftKey = `${storagePrefix}:draft:v2`;
+const jobKey = `${storagePrefix}:job:v1`;
+let approved = reviewForm.dataset.approved === 'true';
+let busy = false;
+let pollTimer = null;
 
 function setSaveStatus(message, state) {
   saveStatus.hidden = false;
@@ -104,92 +154,326 @@ function setSaveStatus(message, state) {
   saveStatus.dataset.state = state;
 }
 
-function readDraftValues() {
+function storageGet(key) {
+  try { return sessionStorage.getItem(key); } catch (error) { return null; }
+}
+
+function storageSet(key, value) {
+  try { sessionStorage.setItem(key, value); } catch (error) { /* storage may be unavailable */ }
+}
+
+function storageRemove(key) {
+  try { sessionStorage.removeItem(key); } catch (error) { /* storage may be unavailable */ }
+}
+
+function readFeedbackValues() {
   const values = {};
-  for (const [name, value] of new FormData(reviewForm).entries()) {
-    if (name !== 'manifest_sha256') values[name] = String(value);
+  for (const input of feedbackInputs) {
+    values[input.name] = input.value;
   }
   return values;
 }
 
-function persistDraft() {
-  const draft = {values: readDraftValues(), savedAt: Date.now()};
-  sessionStorage.setItem(draftKey, JSON.stringify(draft));
+function feedbackCount() {
+  return feedbackInputs.filter((input) => input.value.trim().length > 0).length;
+}
+
+function updateActions() {
+  const count = feedbackCount();
+  if (approved) {
+    feedbackInputs.forEach((input) => {
+      input.readOnly = true;
+      input.disabled = true;
+      input.setAttribute('aria-disabled', 'true');
+    });
+    feedbackButton.textContent = feedbackButton.dataset.approvedLabel;
+    approveButton.textContent = approveButton.dataset.approvedLabel;
+    feedbackButton.disabled = true;
+    approveButton.disabled = true;
+    feedbackButton.setAttribute('aria-disabled', 'true');
+    approveButton.setAttribute('aria-disabled', 'true');
+    return;
+  }
+  feedbackButton.textContent = busy ? feedbackButton.dataset.loadingLabel : `送出 ${count} 則修改`;
+  feedbackButton.disabled = approved || busy || count === 0;
+  approveButton.disabled = approved || busy || count > 0;
+  feedbackButton.setAttribute('aria-disabled', String(feedbackButton.disabled));
+  approveButton.setAttribute('aria-disabled', String(approveButton.disabled));
+}
+
+function setApprovedState() {
+  approved = true;
+  busy = false;
+  reviewForm.dataset.approved = 'true';
+  gateStatus.textContent = 'APPROVED';
+  actionHelp.dataset.state = 'approved';
+  actionHelp.querySelector('strong').textContent = '此 revision 已核准，等待發布流程。';
+  reviewForm.querySelectorAll('[data-feedback-label]').forEach((label) => {
+    label.textContent = 'Feedback · 已鎖定';
+  });
+  storageRemove(draftKey);
+  storageRemove(jobKey);
+  updateActions();
+}
+
+function persistDraft({announce = true} = {}) {
+  const draft = {manifestSha256: reviewForm.dataset.manifestSha, values: readFeedbackValues(), savedAt: Date.now()};
+  storageSet(draftKey, JSON.stringify(draft));
+  if (!announce) return;
   const time = new Date(draft.savedAt).toLocaleTimeString('zh-TW', {hour12: false});
   setSaveStatus(`本機草稿已暫存 ${time}`, 'draft');
 }
 
-function restoreDraft() {
-  const rawDraft = sessionStorage.getItem(draftKey);
-  if (!rawDraft) return;
-  try {
-    const draft = JSON.parse(rawDraft);
-    for (const [name, value] of Object.entries(draft.values || {})) {
-      const controls = [...reviewForm.elements].filter((control) => control.name === name);
-      for (const control of controls) {
-        if (control.type === 'radio') control.checked = control.value === value;
-        else control.value = value;
-      }
-    }
-    setSaveStatus('已還原 refresh 前未送出的本機草稿。', 'draft');
-  } catch (error) {
-    sessionStorage.removeItem(draftKey);
+function applyFeedbackValues(values) {
+  for (const input of feedbackInputs) {
+    if (Object.hasOwn(values || {}, input.name)) input.value = String(values[input.name]);
   }
 }
 
-reviewForm.addEventListener('input', persistDraft);
-reviewForm.addEventListener('change', persistDraft);
-restoreDraft();
+function restoreDraft({announce = true} = {}) {
+  const rawDraft = storageGet(draftKey);
+  if (!rawDraft) return false;
+  try {
+    const draft = JSON.parse(rawDraft);
+    if (draft.manifestSha256 !== reviewForm.dataset.manifestSha) return false;
+    applyFeedbackValues(draft.values);
+    if (announce && feedbackCount() > 0) setSaveStatus('已還原 refresh 前未送出的本機草稿。', 'draft');
+    return true;
+  } catch (error) {
+    storageRemove(draftKey);
+    return false;
+  }
+}
 
-reviewForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  if (saving) return;
-  saving = true;
-  persistDraft();
-  submitButton.disabled = true;
-  submitButton.textContent = submitButton.dataset.savingLabel;
-  submitButton.setAttribute('aria-busy', 'true');
+function showJobState(state, message, {focus = false} = {}) {
+  jobPanel.hidden = false;
+  jobPanel.dataset.state = state;
+  jobPanel.setAttribute('aria-busy', String(state === 'queued' || state === 'running' || state === 'loading'));
+  jobSummary.textContent = message;
+  if (focus) jobPanel.focus();
+}
 
+function sameOriginUrl(value) {
+  const url = new URL(value, window.location.href);
+  if (url.origin !== window.location.origin) throw new Error('Job status URL 必須與 Review Gate 同網域。');
+  return url.href;
+}
+
+function statusUrlForPayload(payload) {
+  if (payload.status_url) return sameOriginUrl(payload.status_url);
+  const feedbackUrl = new URL(reviewForm.dataset.feedbackUrl, window.location.href);
+  if (!feedbackUrl.pathname.endsWith('/feedback')) throw new Error('無法推導 job status URL。');
+  feedbackUrl.pathname = `${feedbackUrl.pathname.slice(0, -'/feedback'.length)}/jobs/${encodeURIComponent(payload.job_id)}`;
+  return sameOriginUrl(feedbackUrl.href);
+}
+
+async function responseDetail(response) {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    const payload = await response.json();
+    return payload.detail || payload.error || payload.message || JSON.stringify(payload);
+  }
+  return (await response.text()) || `HTTP ${response.status}`;
+}
+
+async function postForm(url, formData) {
+  const originalAction = reviewForm.action;
+  reviewForm.action = sameOriginUrl(url);
   try {
     const response = await fetch(reviewForm.action, {
       method: 'POST',
-      body: new FormData(reviewForm),
+      body: formData,
       credentials: 'same-origin',
+      headers: {'Accept': 'application/json'},
     });
-    if (!response.ok) {
-      const contentType = response.headers.get('content-type') || '';
-      const detail = contentType.includes('application/json')
-        ? (await response.json()).detail
-        : await response.text();
-      throw new Error(detail || `HTTP ${response.status}`);
-    }
-    const savedUrl = new URL(response.url);
-    if (!response.redirected || savedUrl.searchParams.get('saved') !== '1') {
-      throw new Error('伺服器沒有確認這一輪 Review 已寫入。');
-    }
-
-    sessionStorage.removeItem(draftKey);
-    const nextCount = Number(reviewCount.textContent) + 1;
-    reviewCount.textContent = String(nextCount);
-    const allApproved = [...reviewForm.querySelectorAll('.carousel-card')].every(
-      (card) => card.querySelector('input[type="radio"]:checked')?.value === 'approved'
-    );
-    gateStatus.textContent = allApproved ? 'APPROVED' : 'OPEN';
-    setSaveStatus(`第 ${nextCount} 輪 Review 已儲存。`, 'saved');
-    history.replaceState(null, '', response.url);
-    submitButton.textContent = '已儲存';
-    window.setTimeout(() => {
-      submitButton.textContent = submitButton.dataset.idleLabel;
-    }, 1200);
-  } catch (error) {
-    setSaveStatus(`儲存失敗：${error.message}`, 'error');
-    submitButton.textContent = '儲存失敗，請重試';
+    if (!response.ok) throw new Error(await responseDetail(response));
+    return await response.json();
   } finally {
-    saving = false;
-    submitButton.disabled = false;
-    submitButton.removeAttribute('aria-busy');
+    reviewForm.action = originalAction;
+  }
+}
+
+function renderJobSteps(steps) {
+  jobSteps.replaceChildren();
+  const safeSteps = Array.isArray(steps) ? steps : [];
+  let completed = 0;
+  let progressPercent = null;
+  safeSteps.forEach((step, index) => {
+    const item = typeof step === 'string' ? {label: step, status: 'pending'} : (step || {});
+    const percent = Number(item.progress_percent);
+    const hasPercent = Number.isFinite(percent);
+    const state = String(item.status || item.state || (hasPercent && percent >= 100 ? 'completed' : 'active')).toLowerCase();
+    if (['completed', 'complete', 'done', 'success', 'succeeded'].includes(state)) completed += 1;
+    if (hasPercent) progressPercent = Math.max(0, Math.min(100, percent));
+    const row = document.createElement('li');
+    row.dataset.state = state;
+    const label = document.createElement('span');
+    label.textContent = String(item.label || item.name || item.step || `步驟 ${index + 1}`);
+    const status = document.createElement('span');
+    status.className = 'sho-mono sho-mono-up';
+    status.textContent = String(item.message || (hasPercent ? `${progressPercent}%` : state));
+    row.append(label, status);
+    jobSteps.append(row);
+  });
+  if (progressPercent !== null) {
+    jobProgress.max = 100;
+    jobProgress.value = progressPercent;
+    jobProgress.textContent = `${progressPercent}%`;
+  } else {
+    jobProgress.max = Math.max(safeSteps.length, 1);
+    jobProgress.value = completed;
+    jobProgress.textContent = `${completed}/${safeSteps.length}`;
+  }
+}
+
+function normaliseJobStatus(payload) {
+  return String(payload.status || payload.job_status || 'queued').toLowerCase();
+}
+
+function restoreFailedFeedback(job) {
+  applyFeedbackValues(job.feedbackValues || {});
+  persistDraft({announce: false});
+  storageRemove(jobKey);
+  busy = false;
+  updateActions();
+}
+
+async function pollJob(job) {
+  window.clearTimeout(pollTimer);
+  try {
+    const response = await fetch(sameOriginUrl(job.statusUrl), {
+      credentials: 'same-origin',
+      headers: {'Accept': 'application/json'},
+    });
+    if (!response.ok) throw new Error(await responseDetail(response));
+    const payload = await response.json();
+    const status = normaliseJobStatus(payload);
+    renderJobSteps(payload.steps || payload.progress);
+    if (status === 'completed' || status === 'complete' || status === 'succeeded') {
+      jobProgress.value = jobProgress.max;
+      storageRemove(jobKey);
+      const revision = payload.result_revision ? ` 新 revision：${payload.result_revision}。` : '';
+      showJobState('completed', `修改完成。${revision}正在載入最新版本。`);
+      window.setTimeout(() => window.location.reload(), 700);
+      return;
+    }
+    if (status === 'failed' || status === 'error') {
+      restoreFailedFeedback(job);
+      showJobState('failed', `修改失敗：${payload.error || payload.message || 'Agent job 未完成'}。Feedback 已恢復，可重新送出。`, {focus: true});
+      return;
+    }
+    busy = true;
+    updateActions();
+    if (status === 'queued' || status === 'pending') {
+      showJobState('queued', '已排入佇列，正在等待 Agent 開始。');
+    } else {
+      showJobState('running', payload.message || 'Agent 正在依序處理修改。');
+    }
+    storageSet(jobKey, JSON.stringify(job));
+    pollTimer = window.setTimeout(() => pollJob(job), 1800);
+  } catch (error) {
+    busy = true;
+    updateActions();
+    showJobState('error', `暫時無法讀取進度：${error.message}。5 秒後自動重試。`);
+    pollTimer = window.setTimeout(() => pollJob(job), 5000);
+  }
+}
+
+reviewForm.addEventListener('input', () => {
+  if (approved) return;
+  persistDraft();
+  updateActions();
+});
+if (approved) {
+  storageRemove(draftKey);
+  storageRemove(jobKey);
+  updateActions();
+} else {
+  restoreDraft();
+  updateActions();
+}
+
+reviewForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const count = feedbackCount();
+  if (approved || busy || count === 0) return;
+  busy = true;
+  persistDraft({announce: false});
+  updateActions();
+  feedbackButton.setAttribute('aria-busy', 'true');
+  showJobState('loading', `正在送出 ${count} 則修改…`, {focus: true});
+
+  try {
+    const formData = new FormData();
+    formData.set('manifest_sha256', reviewForm.dataset.manifestSha);
+    feedbackInputs.forEach((input) => formData.set(input.name, input.value.trim()));
+    const feedbackValues = readFeedbackValues();
+    const payload = await postForm(reviewForm.dataset.feedbackUrl, formData);
+    if (!payload.job_id) throw new Error('伺服器未回傳 job_id。');
+    const job = {
+      manifestSha256: reviewForm.dataset.manifestSha,
+      jobId: String(payload.job_id),
+      statusUrl: statusUrlForPayload(payload),
+      feedbackValues,
+    };
+    storageRemove(draftKey);
+    storageSet(jobKey, JSON.stringify(job));
+    showJobState(normaliseJobStatus(payload), normaliseJobStatus(payload) === 'queued'
+      ? '已排入佇列，正在等待 Agent 開始。'
+      : '修改工作已建立，正在取得進度。');
+    await pollJob(job);
+  } catch (error) {
+    busy = false;
+    persistDraft({announce: false});
+    updateActions();
+    showJobState('failed', `送出失敗：${error.message}。Feedback 已保留，可重新送出。`, {focus: true});
+  }
+  feedbackButton.removeAttribute('aria-busy');
+});
+
+approveButton.addEventListener('click', async () => {
+  if (approved || busy || feedbackCount() > 0) return;
+  busy = true;
+  updateActions();
+  approveButton.textContent = approveButton.dataset.loadingLabel;
+  approveButton.setAttribute('aria-busy', 'true');
+  showJobState('loading', '正在送出 Approve…', {focus: true});
+  try {
+    const formData = new FormData();
+    formData.set('manifest_sha256', reviewForm.dataset.manifestSha);
+    const payload = await postForm(reviewForm.dataset.approveUrl, formData);
+    if (!(payload.approved === true || String(payload.status).toLowerCase() === 'approved')) {
+      throw new Error('伺服器沒有確認 approved。');
+    }
+    setApprovedState();
+    approveButton.removeAttribute('aria-busy');
+    showJobState('completed', '這個 revision 已 Approve。正在重新載入。');
+    window.setTimeout(() => window.location.reload(), 700);
+  } catch (error) {
+    busy = false;
+    approveButton.textContent = approveButton.dataset.idleLabel;
+    approveButton.removeAttribute('aria-busy');
+    updateActions();
+    showJobState('failed', `Approve 失敗：${error.message}。請重試。`, {focus: true});
   }
 });
+
+const resumableJobRaw = storageGet(jobKey);
+if (!approved && resumableJobRaw) {
+  try {
+    const resumableJob = JSON.parse(resumableJobRaw);
+    if (resumableJob.manifestSha256 === reviewForm.dataset.manifestSha && resumableJob.statusUrl) {
+      busy = true;
+      updateActions();
+      showJobState('queued', '已恢復修改工作，正在讀取真實進度。');
+      pollJob(resumableJob);
+    } else {
+      storageRemove(jobKey);
+    }
+  } catch (error) {
+    storageRemove(jobKey);
+  }
+}
 </script>
 </body>
 </html>

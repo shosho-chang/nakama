@@ -14,7 +14,16 @@ from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 from starlette.requests import Request
 
+from scripts.podcast_carousel_correction_job import (
+    CorrectionJobTransitionError,
+    correction_job_path,
+    create_queued_job,
+    list_jobs,
+    load_job,
+)
 from shared.schemas.podcast_carousel import (
+    CarouselCorrectionItem,
+    CarouselCorrectionJobV1,
     CarouselFeedbackRevision,
     CarouselPageDecision,
     CarouselReviewFeedbackV1,
@@ -131,7 +140,13 @@ def _write_feedback(path: Path, feedback: CarouselReviewFeedbackV1) -> None:
 def _context(episode_slug: str) -> dict:
     package_root, manifest, manifest_sha256 = _load_manifest(episode_slug)
     feedback = _load_feedback(package_root, manifest.episode_id)
-    latest = feedback.revisions[-1] if feedback.revisions else None
+    matching = [
+        revision
+        for revision in feedback.revisions
+        if revision.carousel_revision == manifest.revision
+        and revision.manifest_sha256 == manifest_sha256
+    ]
+    latest = matching[-1] if matching else None
     latest_by_id = {page.page_id: page for page in latest.pages} if latest else {}
     rows = []
     for page in manifest.pages:
@@ -148,7 +163,7 @@ def _context(episode_slug: str) -> dict:
         "manifest": manifest,
         "manifest_sha256": manifest_sha256,
         "rows": rows,
-        "decision_count": len(feedback.revisions),
+        "decision_count": len(matching),
         "approved": bool(latest and latest.decision == "approved"),
         "asset_version": _SHOSHO_ASSET_VERSION,
     }
@@ -181,6 +196,192 @@ async def carousel_review_media(
     if page is None:
         raise HTTPException(status_code=404, detail="carousel page not found")
     return FileResponse(page.image.path, media_type="image/png")
+
+
+def _assert_current_manifest(form, manifest_sha256: str) -> None:
+    if str(form.get("manifest_sha256", "")) != manifest_sha256:
+        raise HTTPException(
+            status_code=409,
+            detail="carousel revision changed; reload before saving",
+        )
+
+
+def _append_feedback_revision(
+    *,
+    package_root: Path,
+    manifest: CarouselReviewManifestV1,
+    manifest_sha256: str,
+    decisions: list[CarouselPageDecision],
+    decision: str,
+) -> None:
+    feedback_store = _load_feedback(package_root, manifest.episode_id)
+    feedback_store.revisions.append(
+        CarouselFeedbackRevision(
+            revision_number=len(feedback_store.revisions) + 1,
+            created_at=datetime.now(UTC),
+            carousel_revision=manifest.revision,
+            manifest_sha256=manifest_sha256,
+            decision=decision,
+            pages=decisions,
+        )
+    )
+    _write_feedback(_feedback_path(package_root), feedback_store)
+
+
+@page_router.post(
+    "/{episode_slug}/feedback",
+    response_model=CarouselCorrectionJobV1,
+    status_code=201,
+)
+async def carousel_review_feedback(
+    request: Request,
+    episode_slug: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Queue revision-bound corrections without invoking an executor."""
+
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="authentication required")
+    package_root, manifest, manifest_sha256 = _load_manifest(episode_slug)
+    form = await request.form()
+    _assert_current_manifest(form, manifest_sha256)
+    if any(str(form.get(f"status_{page.page_id}", "")) == "approved" for page in manifest.pages):
+        raise HTTPException(status_code=400, detail="approval must use the approve endpoint")
+
+    items: list[CarouselCorrectionItem] = []
+    decisions: list[CarouselPageDecision] = []
+    for page in manifest.pages:
+        feedback = str(form.get(f"feedback_{page.page_id}", "")).strip()
+        if len(feedback) > _MAX_FEEDBACK:
+            raise HTTPException(status_code=400, detail=f"feedback too long: {page.page_id}")
+        status = "needs_changes" if feedback else "pending"
+        decisions.append(
+            CarouselPageDecision(
+                page_id=page.page_id,
+                status=status,
+                feedback=feedback,
+                artifact_sha256=page.image.sha256,
+            )
+        )
+        if feedback:
+            items.append(
+                CarouselCorrectionItem(
+                    page_id=page.page_id,
+                    artifact_sha256=page.image.sha256,
+                    feedback=feedback,
+                )
+            )
+    if not items:
+        raise HTTPException(status_code=400, detail="at least one non-empty correction is required")
+
+    active = [
+        job
+        for job in list_jobs(package_root)
+        if job.source_revision == manifest.revision
+        and job.source_manifest_sha256 == manifest_sha256
+        and job.status in {"queued", "claimed", "in_progress"}
+    ]
+    if active:
+        raise HTTPException(status_code=409, detail="correction job is still active")
+    try:
+        job = create_queued_job(
+            package_root=package_root,
+            episode_id=manifest.episode_id,
+            source_revision=manifest.revision,
+            source_manifest_sha256=manifest_sha256,
+            feedback_items=items,
+        )
+    except CorrectionJobTransitionError as error:
+        raise HTTPException(status_code=409, detail="correction job is still active") from error
+    _append_feedback_revision(
+        package_root=package_root,
+        manifest=manifest,
+        manifest_sha256=manifest_sha256,
+        decisions=decisions,
+        decision="draft",
+    )
+    return job
+
+
+@page_router.get(
+    "/{episode_slug}/jobs/{job_id}",
+    response_model=CarouselCorrectionJobV1,
+)
+async def carousel_correction_job_status(
+    episode_slug: str,
+    job_id: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="authentication required")
+    package_root = _episode_dir(episode_slug) / "ig-carousel"
+    try:
+        job = load_job(correction_job_path(package_root, job_id))
+    except (FileNotFoundError, OSError, ValueError, ValidationError) as error:
+        raise HTTPException(status_code=404, detail="correction job not found") from error
+    return job
+
+
+@page_router.post("/{episode_slug}/approve")
+async def carousel_review_approve(
+    request: Request,
+    episode_slug: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Record a review approval only; publishing remains a separate stage."""
+
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="authentication required")
+    package_root, manifest, manifest_sha256 = _load_manifest(episode_slug)
+    form = await request.form()
+    _assert_current_manifest(form, manifest_sha256)
+    if any(str(form.get(f"feedback_{page.page_id}", "")).strip() for page in manifest.pages):
+        raise HTTPException(status_code=400, detail="approval cannot include correction feedback")
+    feedback_store = _load_feedback(package_root, manifest.episode_id)
+    already_approved = any(
+        revision.carousel_revision == manifest.revision
+        and revision.manifest_sha256 == manifest_sha256
+        and revision.decision == "approved"
+        for revision in feedback_store.revisions
+    )
+    if already_approved:
+        return {
+            "approved": True,
+            "revision": manifest.revision,
+            "manifest_sha256": manifest_sha256,
+            "published": False,
+        }
+    active = [
+        job
+        for job in list_jobs(package_root)
+        if job.source_revision == manifest.revision
+        and job.source_manifest_sha256 == manifest_sha256
+        and job.status in {"queued", "claimed", "in_progress"}
+    ]
+    if active:
+        raise HTTPException(status_code=409, detail="correction job is still active")
+    decisions = [
+        CarouselPageDecision(
+            page_id=page.page_id,
+            status="approved",
+            feedback="",
+            artifact_sha256=page.image.sha256,
+        )
+        for page in manifest.pages
+    ]
+    _append_feedback_revision(
+        package_root=package_root,
+        manifest=manifest,
+        manifest_sha256=manifest_sha256,
+        decisions=decisions,
+        decision="approved",
+    )
+    return {
+        "approved": True,
+        "revision": manifest.revision,
+        "manifest_sha256": manifest_sha256,
+        "published": False,
+    }
 
 
 @page_router.post("/{episode_slug}/decide")

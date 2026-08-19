@@ -75,12 +75,24 @@ _Avoid_: Content quality score、approval status
 _Avoid_: Copy-only approval、raw JSON approval、publish approval
 
 **Carousel Review Grid**:
-在同一頁一次顯示全部 carousel 卡片的總覽式 review layout；桌機以每列 5 張為基準，每張卡片下方只保留核准與最小 feedback 空間。
+在同一頁一次顯示全部 carousel 卡片的總覽式 review layout；桌機以每列 5 張為基準，每張卡片下方只保留最小 feedback 空間。非空 feedback 表示該頁要修改，空白表示該頁無修改要求。
 _Avoid_: Single-card viewer、swipe preview、full-size editor per card
 
 **Carousel Review Detail**:
 從 **Carousel Review Grid** 點擊單一卡片後開啟的側邊 panel，顯示放大成圖、結構化 Display Copy、逐字稿原文、說話者與時間位置；用於仔細閱讀與 evidence 查核，不取代總覽的 decision controls。
 _Avoid_: Always-expanded evidence、second approval surface、standalone page viewer
+
+**Carousel Correction Feedback**:
+Review Gate 中 revision-bound、page-bound 的非空修改指示；只有非空欄位會進入 correction job。空白不是單卡核准，只表示該頁沒有修改要求。
+_Avoid_: Per-card radio decision、blank-as-approval、free-floating comment
+
+**Carousel Correction Job**:
+由一個以上 **Carousel Correction Feedback** 建立的 agent-neutral 工作交接，狀態為 `queued → claimed → in_progress → completed|failed`；保存來源 revision、manifest hash、claim、progress 與結果 revision。
+_Avoid_: Provider-specific task、implicit executor、direct JSON mutation
+
+**Carousel Correction Executor**:
+實際承接整輪 E2E 修訂的當前 Codex 或 Claude Code agent；它 claim job、回報 progress、產生新 revision，並把 IG Audience、Episode Editorial、Brand and Evidence 分派給三個獨立 subagents。
+_Avoid_: External LLM API、hidden provider、reviewer-as-executor
 
 **Podcast Carousel Flow**:
 以 episode folder 為工作單位、只產 Podcast Carousel 的獨立 Stage 5 flow；不綁定 Blog／FB fan-out，其他 Social Post 等此 flow 穩定後再 fork。
@@ -91,7 +103,7 @@ _Avoid_: Multi-channel repurpose run、generic social renderer
 _Avoid_: Packaging subfolder、repurpose run directory
 
 **Podcast Carousel Render**:
-把 **Podcast Carousel Copy Spec**、episode cutouts 與 **Podcast Carousel Template** 組合成 1080×1350 圖片序列。
+把 **Podcast Carousel Copy Spec**、episode cutouts 與 **Podcast Carousel Template** 組合成 1080×1080 cross-platform square 圖片序列。
 _Avoid_: Copy extraction、IG copy generation
 
 **Fit Escalation**:
@@ -129,11 +141,14 @@ _Avoid_: Second authoring source、mutable latest template、untracked template 
 - **Carousel Review Gate** 與 finished-cut review 共用 Thousand Sunny process、登入與 feedback pattern，但使用獨立的 `/bridge/ig-cards/{episode_slug}` route 與 `nakama.podcast_carousel_review_manifest.v1` page-based contract。
 - Carousel page 不是 cut 或 timeline component；Carousel manifest 不得沿用 finished-cut manifest 的 cut、subtitle、timeline lane 語言。
 - **Carousel Review Gate** 的主要 surface 是 **Carousel Review Grid**，不是逐張切換的 viewer；桌機 10 張應能用兩列完成總覽。
-- **Carousel Review Grid** 不把逐字稿 evidence 常駐展開；點擊卡片開啟 **Carousel Review Detail** 查核完整內容，總覽卡片仍只保留成圖、decision 與 1–3 行 feedback。
-- 每張卡片有獨立的 `approved` 或 `needs_changes` decision 與簡短 feedback；整份 carousel 只有在同一 revision 的所有卡片都核准後才通過 gate。
-- v1 的 **Carousel Review Grid** 不提供 inline 文字編輯；`needs_changes` 使用每張卡片下方的 1–3 行簡短 feedback，由 Copy Skill 修改後重新 render。
-- Card feedback 綁定 revision 與 page identity；只重新產生受影響的頁面，除非 feedback 明確影響整體順序或 **Episode Highlight Arc**。
-- 修改 Display Copy 後必須重新 render 並建立新 revision；未受影響且 artifact hash 未改變的卡片可以保留核准，舊核准不得套到內容或圖片已變更的卡片。
+- **Carousel Review Grid** 不把逐字稿 evidence 常駐展開；點擊卡片開啟 **Carousel Review Detail** 查核完整內容，總覽卡片仍只保留成圖與 1–3 行 feedback。
+- 每頁 feedback 非空即為 **Carousel Correction Feedback**；空白只表示該頁無修改要求。Review Gate 不使用 per-card `approved`／`needs_changes` radio。
+- 送出任何非空 feedback 時，只把非空項目寫入一個 revision-bound **Carousel Correction Job**；這個動作不核准 carousel。
+- 所有 feedback 欄位皆空時才能執行整份 Approve。Approve 只記錄目前 revision 的人類核准，不修改 artifact、不建立 correction job，也不發布。
+- **Carousel Correction Job** 是 agent-neutral contract；目前 E2E agent 以 `codex` 或 `claude_code` claim，並以 claim token 回報單調 progress 與完成後的新 revision。若沒有 executor 在線，job 保持 `queued`。
+- **Carousel Correction Executor** 不得呼叫外部 LLM API 或隱性 provider；同一輪三個 panel lens 仍由互不知情的 subagents 執行，E2E agent 負責 evidence 查證、修訂、render 與逐頁視覺 QA。
+- Feedback 綁定 source revision、manifest hash、page identity 與 artifact hash；來源已漂移時不得 claim 或套用。局部 feedback 可以只修改受影響頁面，但若牽涉 Hook、順序或 **Episode Highlight Arc**，必須同步修訂所有受影響頁並重新跑 panel。
+- 修改 Display Copy 或圖片後必須建立更新的 revision；correction job 只有在新 revision 完成 panel、render 與逐頁 QA 後才能標記 `completed`。
 - 文案長度沒有 hard limit；**Podcast Carousel Render** 對 headline、body、quote 等 content box 分別 fit，不因其中一區過長連帶縮小其他區塊，也不得截字、省略或自行改寫 **Display Copy**。
 - 文字必須低於 pilot 可讀範圍才能 fit 時採 **Fit Escalation**，不中止整份 render；最低可讀值以鄭國威 episode 的實際成圖與 review 結果校準，再決定是否凍結成 design token。
 - 每個核心文案區塊同時保存 **Display Copy** 與一個以上 **Transcript Evidence**。

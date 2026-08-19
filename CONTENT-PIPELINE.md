@@ -59,7 +59,7 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 | 影片 | **Video Production Line**（Brook own — ADR-032 技術設計 + [ADR-050](docs/decisions/ADR-050-video-production-line-brook-ownership.md) 歸屬；`agents/brook/script_video/` + `video/` Hyperframes compositions；機器已自 `agents/foundry/` 遷入完成，ADR-050 PR-3） | Line 2 / Line 3 / Line 1 訪問新書作者 |
 | 部落格 | Brook compose + Blog renderer | Line 1/2/3 |
 | FB post | Brook FB renderer（4 tonal variants） | Line 1/2/3 |
-| IG carousel | Podcast 採獨立 `/ig-cards` episode-first flow（ADR-064；Copy Spec → agent panel → 1080×1350 render → Web App review）；舊 5/7/5/10 `IGRenderer` 只保留 compatibility，不是 canonical Podcast flow | Line 1 Podcast；Line 2/3 待 Podcast tracer bullet 跑順後各自 fork template/schema |
+| Social carousel | Podcast 採獨立 `/ig-cards` episode-first flow（ADR-064；Copy Spec → agent panel → 1080×1080 cross-platform square render → Web App review）；舊 5/7/5/10 `IGRenderer` 只保留 compatibility，不是 canonical Podcast flow | Line 1 Podcast；Line 2/3 待 Podcast tracer bullet 跑順後各自 fork template/schema |
 
 **Video Production Line 不是獨立 line**，是 Stage 5 影片 channel 的製作管線。三條 line 都可走它出影片（CONTEXT-MAP.md「Line N vs script-driven video」段已凍結為 sibling）。單一 workflow（ADR-050 D3）：錄影 →（選配）cleanup mistake removal（單擊掌 marker + WhisperX 字級對稿回溯；有完整逐字稿時直出 corrected transcript.srt，可省 `/transcribe`）→ storyboard plan（LLM + 兩層 HITL）→ Hyperframes render → FCPXML 進 DaVinci。無逐字稿時 cleanup 走 legacy double-clap 音訊模式、SRT 走 `/transcribe`。
 
@@ -86,7 +86,7 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 
 | Line | 影片（script-driven video） | 部落格（Brook compose） | FB post（Brook FB renderer） | IG carousel |
 |---|---|---|---|---|
-| **Line 1a 一般訪談** | n/a 或 theme video（待規劃） | ✅ ship | ✅ ship | 🚧 Podcast Copy/Panel/1080×1350 Render/Review Web App 已實作並通過 fixture dogfood；EP120 真實文案試跑待明確授權逐字稿送既有 Claude API |
+| **Line 1a 一般訪談** | n/a 或 theme video（待規劃） | ✅ ship | ✅ ship | 🚧 Podcast Copy/Panel/1080×1080 Render/Review Web App 已實作並以 EP120 dogfood；Review correction job 可由目前的 Codex 或 Claude Code agent claim，不綁定外部模型 API |
 | **Line 1b 訪問新書作者** | 🚧 Slice 2-5 | ✅ ship | ✅ ship | ⬜ 先驗證 Podcast flow；書本介紹型 Carousel 不共用 Podcast schema |
 | **Line 2 讀書心得** | 🚧 Slice 2-5 | ✅ Brook compose | ✅ FB renderer | ⬜ Podcast flow 穩定後 fork 書本模板／語言 |
 | **Line 3 文獻科普** | 🚧 Slice 2-5（optional） | ✅ Brook compose | ✅ FB renderer | ⬜ Podcast flow 穩定後 fork 身心健康資訊模板／語言 |

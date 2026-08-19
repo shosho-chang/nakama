@@ -14,7 +14,7 @@ async function main() {
   });
   try {
     const page = await browser.newPage({
-      viewport: { width: 1080, height: 1350 },
+      viewport: { width: 1080, height: 1080 },
       deviceScaleFactor: 1,
     });
     await page.goto(url, { waitUntil: "load", timeout: 30000 });

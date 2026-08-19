@@ -166,6 +166,27 @@ def _seed(root: Path) -> Path:
     return package
 
 
+def _manifest_sha(app: TestClient) -> str:
+    board = app.get(f"/bridge/ig-cards/{EPISODE}")
+    marker = 'name="manifest_sha256" value="'
+    return board.text.split(marker, 1)[1].split('"', 1)[0]
+
+
+def _advance_manifest_revision(root: Path, revision: str = "r002") -> str:
+    package = root / EPISODE / "ig-carousel"
+    current_path = package / "current.json"
+    current = json.loads(current_path.read_text(encoding="utf-8"))
+    manifest_path = Path(current["manifest"])
+    manifest = CarouselReviewManifestV1.model_validate_json(
+        manifest_path.read_text(encoding="utf-8")
+    ).model_copy(update={"revision": revision})
+    manifest_path.write_text(manifest.model_dump_json(), encoding="utf-8")
+    manifest_sha256 = receipt_for(manifest_path).sha256
+    current.update({"revision": revision, "manifest_sha256": manifest_sha256})
+    current_path.write_text(json.dumps(current), encoding="utf-8")
+    return manifest_sha256
+
+
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch) -> tuple[TestClient, Path]:
     _seed(tmp_path)
@@ -268,6 +289,175 @@ def test_needs_changes_requires_feedback(client):
         data={"manifest_sha256": manifest_sha, "status_cover": "needs_changes"},
     )
     assert response.status_code == 400
+
+
+def test_old_revision_feedback_does_not_pollute_new_manifest(client):
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+    saved = app.post(
+        f"/bridge/ig-cards/{EPISODE}/decide",
+        data={
+            "manifest_sha256": manifest_sha,
+            "status_cover": "needs_changes",
+            "feedback_cover": "只屬於舊 revision 的意見",
+        },
+    )
+    assert saved.status_code == 303
+
+    _advance_manifest_revision(root)
+    board = app.get(f"/bridge/ig-cards/{EPISODE}")
+
+    assert board.status_code == 200
+    assert "只屬於舊 revision 的意見" not in board.text
+    assert '<dd id="review-count">0</dd>' in board.text
+
+
+def test_feedback_submit_creates_revision_bound_queued_job(client):
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+
+    response = app.post(
+        f"/bridge/ig-cards/{EPISODE}/feedback",
+        data={
+            "manifest_sha256": manifest_sha,
+            "feedback_cover": "放大來賓",
+            "feedback_hook": "",
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["status"] == "queued"
+    assert payload["source_revision"] == "r001"
+    assert payload["source_manifest_sha256"] == manifest_sha
+    assert payload["feedback_items"] == [
+        {
+            "page_id": "cover",
+            "artifact_sha256": receipt_for(
+                root / EPISODE / "ig-carousel" / "revisions" / "r001" / "pages" / "01.png"
+            ).sha256,
+            "feedback": "放大來賓",
+        }
+    ]
+    job_path = (
+        root
+        / EPISODE
+        / "ig-carousel"
+        / "correction_jobs"
+        / f"{payload['job_id']}.json"
+    )
+    assert job_path.is_file()
+    assert json.loads(job_path.read_text(encoding="utf-8"))["status"] == "queued"
+
+    status = app.get(f"/bridge/ig-cards/{EPISODE}/jobs/{payload['job_id']}")
+    assert status.status_code == 200
+    assert status.json() == payload
+
+
+def test_feedback_submit_rejects_duplicate_active_job(client):
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+    data = {"manifest_sha256": manifest_sha, "feedback_cover": "make guest larger"}
+
+    first = app.post(f"/bridge/ig-cards/{EPISODE}/feedback", data=data)
+    duplicate = app.post(f"/bridge/ig-cards/{EPISODE}/feedback", data=data)
+
+    assert first.status_code == 201
+    assert duplicate.status_code == 409
+    jobs = list((root / EPISODE / "ig-carousel" / "correction_jobs").glob("cj-*.json"))
+    assert len(jobs) == 1
+
+
+def test_feedback_submit_rejects_empty_and_stale_requests(client):
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+
+    empty = app.post(
+        f"/bridge/ig-cards/{EPISODE}/feedback",
+        data={"manifest_sha256": manifest_sha},
+    )
+    assert empty.status_code == 400
+
+    _advance_manifest_revision(root)
+    stale = app.post(
+        f"/bridge/ig-cards/{EPISODE}/feedback",
+        data={"manifest_sha256": manifest_sha, "feedback_cover": "舊圖意見"},
+    )
+    assert stale.status_code == 409
+
+
+def test_approve_is_separate_from_correction_feedback(client):
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+
+    mixed = app.post(
+        f"/bridge/ig-cards/{EPISODE}/approve",
+        data={"manifest_sha256": manifest_sha, "feedback_cover": "仍需修改"},
+    )
+    assert mixed.status_code == 400
+
+    correction = app.post(
+        f"/bridge/ig-cards/{EPISODE}/feedback",
+        data={"manifest_sha256": manifest_sha, "feedback_cover": "仍需修改"},
+    )
+    assert correction.status_code == 201
+    blocked = app.post(
+        f"/bridge/ig-cards/{EPISODE}/approve",
+        data={"manifest_sha256": manifest_sha},
+    )
+    assert blocked.status_code == 409
+    assert not (root / EPISODE / "ig-carousel" / "published.json").exists()
+
+
+def test_approve_records_latest_hash_without_publishing(client):
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+
+    response = app.post(
+        f"/bridge/ig-cards/{EPISODE}/approve",
+        data={"manifest_sha256": manifest_sha},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "approved": True,
+        "revision": "r001",
+        "manifest_sha256": manifest_sha,
+        "published": False,
+    }
+    feedback = json.loads(
+        (root / EPISODE / "ig-carousel" / "review_feedback.v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert feedback["revisions"][-1]["decision"] == "approved"
+    assert not (root / EPISODE / "ig-carousel" / "published.json").exists()
+
+
+def test_approve_is_idempotent_for_current_manifest(client):
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+    data = {"manifest_sha256": manifest_sha}
+
+    first = app.post(f"/bridge/ig-cards/{EPISODE}/approve", data=data)
+    second = app.post(f"/bridge/ig-cards/{EPISODE}/approve", data=data)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json() == first.json()
+    feedback = json.loads(
+        (root / EPISODE / "ig-carousel" / "review_feedback.v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    matching = [
+        revision
+        for revision in feedback["revisions"]
+        if revision["carousel_revision"] == "r001"
+        and revision["manifest_sha256"] == manifest_sha
+        and revision["decision"] == "approved"
+    ]
+    assert len(matching) == 1
 
 
 def test_auth_redirect_uses_same_bridge_login_boundary(tmp_path: Path, monkeypatch):
