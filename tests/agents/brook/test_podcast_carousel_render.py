@@ -138,14 +138,21 @@ def test_design_system_cover_and_cta_use_reviewed_visual_contract():
     assert 'aria-label",name' in source
     assert '[["AP","Apple Podcasts"],["S","Spotify"],["YT","YouTube"]]' not in source
     assert "cover headline/cutout collision" in source
-    assert "--type-cover-title:112px" in source
+    assert "--type-cover-title:128px" in source
+    assert "--type-hook-title:104px" in source
     assert "--type-point-title:72px" in source
     assert "--type-point-body:44px" in source
+    assert "#canvas.hook{background:var(--orange)}" in source
+    assert ".hook .em-box{color:var(--ink);background:var(--white);border:0" in source
+    assert "border:0;display:inline-block" in source
+    assert "display:inline-block;white-space:nowrap" in source
+    assert "padding:12px 18px;line-height:1" in source
     assert "transform:rotate(var(--emphasis-tilt,-1.5deg))" in source
     assert 'canvas.style.setProperty("--emphasis-tilt",`${emphasisTilt}deg`)' in source
-    assert "--cover-emphasis-gap:.12em" in source
-    assert "--cover-emphasis-pad-x:.22em" in source
-    assert 'target(title,"cover.headline",typeSize("--type-cover-title"),100,88,1.05)' in source
+    assert "--cover-emphasis-gap:18px" in source
+    assert "--cover-emphasis-pad-y:16px" in source
+    assert "--cover-emphasis-pad-x:24px" in source
+    assert 'target(title,"cover.headline",typeSize("--type-cover-title"),112,96,1.05)' in source
 
 
 @pytest.mark.skipif(not CHROME.is_file(), reason="system Chrome required")
@@ -208,15 +215,29 @@ def test_real_design_system_template_renders_every_page_role(tmp_path: Path):
     assert [page.role for page in manifest.pages] == ["cover", "hook", "point", "quote", "cta"]
     assert all(Path(page.image.path).is_file() for page in manifest.pages)
     assert all(page.fit.status == "fit" for page in manifest.pages)
-    assert manifest.pages[0].fit.regions["cover.cutout_height"] >= 850
+    assert manifest.pages[0].fit.regions["cover.cutout_height"] >= 980
     assert manifest.pages[0].fit.regions["cover.headline"] > manifest.pages[2].fit.regions["point.headline"]
     assert manifest.pages[0].fit.regions["cover.emphasis_gap"] >= 12
     assert manifest.pages[0].fit.regions["cover.emphasis_padding_x"] >= 20
     assert manifest.pages[0].fit.regions["cover.emphasis_padding_top"] >= 10
-    assert manifest.pages[1].fit.regions["emphasis.rotation_deg"] == -1.5
-    assert manifest.pages[2].fit.regions["emphasis.rotation_deg"] == 1.5
+    assert (
+        manifest.pages[0].fit.regions["cover.emphasis_padding_top"]
+        == manifest.pages[0].fit.regions["cover.emphasis_padding_bottom"]
+    )
+    assert (
+        manifest.pages[0].fit.regions["cover.emphasis_padding_left"]
+        == manifest.pages[0].fit.regions["cover.emphasis_padding_right"]
+    )
+    assert manifest.pages[1].fit.regions["hook.background_is_orange"] == 1
+    assert manifest.pages[1].fit.regions["hook.emphasis_fill_is_white"] == 1
+    assert manifest.pages[1].fit.regions["hook.emphasis_lines"] == 1
+    assert manifest.pages[2].fit.regions["emphasis.rotation_deg"] == -1.5
     assert manifest.pages[2].fit.regions["point.body"] >= 40
     assert manifest.pages[2].fit.regions["point.emphasis_lines"] == 1
+    assert manifest.pages[2].fit.regions["point.emphasis_padding_top"] == 12
+    assert manifest.pages[2].fit.regions["point.emphasis_padding_bottom"] == 12
+    assert manifest.pages[2].fit.regions["point.emphasis_padding_left"] == 18
+    assert manifest.pages[2].fit.regions["point.emphasis_padding_right"] == 18
     assert manifest.pages[3].fit.regions["quote.answer_cutout_overlap"] == 0
     render_input = (package / "revisions" / "r001" / "render_input.html").read_text(
         encoding="utf-8"
