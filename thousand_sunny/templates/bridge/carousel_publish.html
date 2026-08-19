@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Podcast Carousel Publish · {{ episode_slug }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/carousel-publish.css?v={{ asset_version }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='packaging') }}
+
+<header class="publish-head">
+  <div>
+    <a class="sho-lk sho-mono sho-mono-up" href="/bridge/ig-cards/{{ episode_slug }}">← stage 5 review gate</a>
+    <div class="sho-mono sho-mono-up">/bridge/ig-cards/{{ episode_slug }}/publish · stage 6</div>
+    <h1>發布工作台 <span>核准內容與平台 hand-off</span></h1>
+  </div>
+  <dl class="publish-ledger">
+    <div><dt>REVISION</dt><dd>{{ manifest.revision }}</dd></div>
+    <div><dt>PAGES</dt><dd>{{ manifest.pages|length }}</dd></div>
+    <div><dt>APPROVAL</dt><dd>#{{ approval.revision_number }}</dd></div>
+    <div><dt>GATE</dt><dd>APPROVED</dd></div>
+  </dl>
+</header>
+
+<main class="publish-workbench">
+  <section class="publish-approved" aria-label="Approval boundary">
+    <strong>Stage 5 已核准。</strong>
+    <span>這一頁只建立 agent-neutral 發布工作；不會在瀏覽器 request 裡直接對外發佈。</span>
+  </section>
+
+  <section class="publish-preview" aria-labelledby="publish-preview-title">
+    <div class="publish-section-head">
+      <div>
+        <div class="sho-kicker"><span class="sho-kicker-n">[ 01 ]</span> APPROVED ASSET</div>
+        <h2 id="publish-preview-title">Square master · {{ manifest.pages|length }} 張</h2>
+      </div>
+      <span class="sho-tag">1080 × 1080</span>
+    </div>
+    <div class="publish-card-strip">
+    {% for page in manifest.pages %}
+      <figure class="publish-card">
+        <img src="/bridge/ig-cards/{{ episode_slug }}/media/{{ page.page_id }}"
+             alt="第 {{ page.page_number }} 張：{{ page.role }}">
+        <figcaption><span>{{ '%02d'|format(page.page_number) }}</span>{{ page.role }}</figcaption>
+      </figure>
+    {% endfor %}
+    </div>
+  </section>
+
+  <form id="publish-form"
+        action="/bridge/ig-cards/{{ episode_slug }}/publish/jobs"
+        method="post"
+        data-manifest-sha="{{ manifest_sha256 }}"
+        data-preflight-url="/bridge/ig-cards/{{ episode_slug }}/publish/preflight">
+    <input type="hidden" name="manifest_sha256" value="{{ manifest_sha256 }}">
+    <section class="publish-compose" aria-labelledby="publish-compose-title">
+      <div class="publish-caption">
+        <div class="publish-section-head">
+          <div>
+            <div class="sho-kicker"><span class="sho-kicker-n">[ 02 ]</span> 貼文文案</div>
+            <h2 id="publish-compose-title">使用已審過的貼文文案</h2>
+          </div>
+          <span id="caption-count" class="sho-mono">0 / 5000</span>
+        </div>
+        <label for="publish-caption">貼文文案</label>
+        <textarea id="publish-caption" name="caption" maxlength="5000" required
+                  placeholder="貼上已完成社群審稿的 caption。">{{ latest_job.caption if latest_job else '' }}</textarea>
+        <p>相同文案與平台重送時，會回到同一個發布工作，避免重複貼文。</p>
+        <div id="caption-compatibility" class="caption-compatibility" role="status" aria-live="polite"></div>
+      </div>
+
+      <fieldset class="publish-platforms">
+        <legend><span class="sho-kicker-n">[ 03 ]</span> 發布平台</legend>
+        {% set selected_platforms = latest_job.targets|map(attribute='platform')|list if latest_job else [] %}
+        {% for capability in capabilities %}
+        <label class="publish-platform" data-state="{{ 'ineligible' if not capability.eligible else capability.configuration_state }}"
+               data-strategy="{{ capability.strategy }}">
+          <input type="checkbox" name="platforms" value="{{ capability.platform }}"
+                 {% if capability.eligible and capability.platform in selected_platforms %}checked{% endif %}
+                 {% if not capability.eligible %}disabled aria-disabled="true"{% endif %}>
+          <span class="publish-platform__body">
+            <span class="publish-platform__name">
+              {% if capability.platform == 'instagram' %}Instagram{% elif capability.platform == 'facebook_page' %}Facebook Page{% else %}YouTube Community{% endif %}
+              <span class="sho-tag">{% if not capability.eligible %}此組合不可用{% elif capability.strategy == 'meta_api' %}已設定 API{% elif capability.strategy == 'agent_browser' %}瀏覽器操作{% else %}瀏覽器＋人工確認{% endif %}</span>
+            </span>
+            <span>{{ capability.note }}</span>
+            {% if capability.eligible %}<span class="sho-mono">{% if 'meta_api' in capability.required_executor_capabilities %}需要已設定的 Meta 發布權限{% else %}需要已登入的瀏覽器工作階段{% endif %}</span>{% endif %}
+          </span>
+        </label>
+        {% endfor %}
+      </fieldset>
+    </section>
+
+    <section class="publish-actions" aria-label="Create publish job">
+      <p><strong>不會立即發布。</strong> 發布工作會等待具備所需登入狀態的執行者認領。</p>
+      <label id="publish-republish-confirmation" class="publish-republish-confirmation" hidden>
+        <input id="confirm-republish" type="checkbox" name="confirm_republish" value="true">
+        <span><strong>我確認要再次發布目前勾選的平台。</strong> 只有已成功發布、且這次仍被勾選的平台需要確認；只選未完成或新平台不需要。</span>
+      </label>
+      <button id="publish-submit" class="sho-btn" type="submit">建立發布工作</button>
+    </section>
+  </form>
+
+  <section id="publish-job" class="publish-job" data-state="idle" tabindex="-1"
+           aria-live="polite" aria-busy="false" hidden>
+    <div>
+      <div class="sho-mono sho-mono-up">發布工作</div>
+      <h2 id="publish-job-title">等待建立</h2>
+      <p id="publish-job-summary"></p>
+    </div>
+    <ol id="publish-job-steps" class="publish-job__steps"></ol>
+    <progress id="publish-job-progress" max="100" value="0">0%</progress>
+    <div id="publish-job-results" class="publish-job__results"></div>
+    <button id="publish-context-retry" class="sho-btn sho-btn--ghost" type="button" hidden>重新檢查後再送出</button>
+    <aside id="publish-handoff" class="publish-handoff" hidden>
+      <strong>下一步：交給目前的 Codex 或 Claude Code 流程認領</strong>
+      <p>這個頁面只建立本機 handoff contract，不會呼叫 Anthropic API，也不會自行喚醒桌面 agent。若沒有把下方任一認領指令交給目前正在執行的 agent，工作會停在等待中，不會自行前進。</p>
+      <span class="sho-mono">工作編號 · <span id="publish-handoff-id"></span></span>
+      <label>Codex 認領指令<code id="publish-claim-codex"></code></label>
+      <label>Claude Code 認領指令<code id="publish-claim-claude"></code></label>
+    </aside>
+  </section>
+</main>
+
+<script id="publish-latest-job" type="application/json">{{ latest_job_payload|tojson if latest_job_payload else 'null' }}</script>
+<script id="publish-republish-required" type="application/json">{{ republish_required_platforms|tojson }}</script>
+<script>
+const publishForm = document.getElementById('publish-form');
+const caption = document.getElementById('publish-caption');
+const captionCount = document.getElementById('caption-count');
+const captionCompatibility = document.getElementById('caption-compatibility');
+const submitButton = document.getElementById('publish-submit');
+const republishPanel = document.getElementById('publish-republish-confirmation');
+const republishConfirmation = document.getElementById('confirm-republish');
+const contextRetry = document.getElementById('publish-context-retry');
+const jobPanel = document.getElementById('publish-job');
+const jobTitle = document.getElementById('publish-job-title');
+const jobSummary = document.getElementById('publish-job-summary');
+const jobSteps = document.getElementById('publish-job-steps');
+const jobProgress = document.getElementById('publish-job-progress');
+const jobResults = document.getElementById('publish-job-results');
+const handoff = document.getElementById('publish-handoff');
+const handoffId = document.getElementById('publish-handoff-id');
+const claimCodex = document.getElementById('publish-claim-codex');
+const claimClaude = document.getElementById('publish-claim-claude');
+const manifestSha = publishForm.dataset.manifestSha;
+const preflightUrl = publishForm.dataset.preflightUrl;
+const storagePrefix = `podcast-carousel-publish:${window.location.pathname}:${manifestSha}`;
+const draftKey = `${storagePrefix}:draft:v1`;
+const jobKey = `${storagePrefix}:job:v1`;
+let busy = false;
+let pollTimer = null;
+let republishRequiredPlatforms = new Set(JSON.parse(document.getElementById('publish-republish-required').textContent));
+
+function storageGet(key) { try { return sessionStorage.getItem(key); } catch (error) { return null; } }
+function storageSet(key, value) { try { sessionStorage.setItem(key, value); } catch (error) { /* storage optional */ } }
+function storageRemove(key) { try { sessionStorage.removeItem(key); } catch (error) { /* storage optional */ } }
+function selectedPlatforms() { return [...publishForm.querySelectorAll('input[name="platforms"]:checked:not(:disabled)')].map((item) => item.value); }
+function sameOriginUrl(value) {
+  const url = new URL(value, window.location.href);
+  if (url.origin !== window.location.origin) throw new Error('Publish job URL 必須與工作台同網域。');
+  return url.href;
+}
+function republishRequiredForSelection() {
+  return selectedPlatforms().some((platform) => republishRequiredPlatforms.has(platform));
+}
+function syncRepublishConfirmation() {
+  const required = republishRequiredForSelection();
+  republishPanel.hidden = !required;
+  republishConfirmation.required = required;
+  if (!required) republishConfirmation.checked = false;
+  return required;
+}
+function updateFormState() {
+  const count = Array.from(caption.value).length;
+  const platforms = selectedPlatforms();
+  const instagramOverLimit = platforms.includes('instagram') && count > 2200;
+  const republishRequired = syncRepublishConfirmation();
+  captionCount.textContent = `${count} / 5000`;
+  renderCaptionCompatibility();
+  submitButton.disabled = busy || caption.value.trim().length === 0 || platforms.length === 0
+    || instagramOverLimit
+    || (republishRequired && !republishConfirmation.checked);
+  submitButton.setAttribute('aria-disabled', String(submitButton.disabled));
+}
+async function refreshPublishPreflight() {
+  const response = await fetch(sameOriginUrl(preflightUrl), {
+    method: 'POST',
+    body: new FormData(publishForm),
+    credentials: 'same-origin',
+    headers: {'Accept': 'application/json'},
+  });
+  if (!response.ok) throw new Error(await responseDetail(response));
+  const payload = await response.json();
+  if (payload.source_manifest_sha256 !== manifestSha) throw new Error('目前輪播版本已更新，請重新載入頁面。');
+  republishRequiredPlatforms = new Set(payload.republish_required_platforms || []);
+  updateFormState();
+  return payload;
+}
+function persistDraft() {
+  storageSet(draftKey, JSON.stringify({manifestSha, caption: caption.value, platforms: selectedPlatforms()}));
+}
+function restoreDraft() {
+  const raw = storageGet(draftKey);
+  if (!raw) return;
+  try {
+    const draft = JSON.parse(raw);
+    if (draft.manifestSha !== manifestSha) return;
+    caption.value = String(draft.caption || '');
+    const selected = new Set(draft.platforms || []);
+    publishForm.querySelectorAll('input[name="platforms"]').forEach((item) => { item.checked = !item.disabled && selected.has(item.value); });
+  } catch (error) { storageRemove(draftKey); }
+}
+function renderCaptionCompatibility() {
+  const count = Array.from(caption.value).length;
+  const selected = new Set(selectedPlatforms());
+  const rows = [];
+  if (selected.has('instagram')) rows.push({
+    label: 'Instagram',
+    text: `${count} / 2,200 字${count > 2200 ? ' · 超過常用貼文上限，發布前必須縮短' : ''}`,
+    warning: count > 2200,
+  });
+  if (selected.has('facebook_page')) rows.push({
+    label: 'Facebook Page',
+    text: `${count} / 63,206 字${count > 63206 ? ' · 超過貼文上限，發布前必須縮短' : ''}`,
+    warning: count > 63206,
+  });
+  if (selected.has('youtube_community')) rows.push({
+    label: 'YouTube Community',
+    text: `${count} 字 · 會共用這份文案；連結、換行與平台當下字數限制要在已登入的瀏覽器預覽後確認`,
+    warning: false,
+  });
+  captionCompatibility.replaceChildren();
+  rows.forEach((row) => {
+    const item = document.createElement('p');
+    item.dataset.state = row.warning ? 'warning' : 'ok';
+    const label = document.createElement('strong');
+    label.textContent = `${row.label} · `;
+    item.append(label, document.createTextNode(row.text));
+    captionCompatibility.append(item);
+  });
+}
+function showJob(state, title, summary, focus = false) {
+  jobPanel.hidden = false;
+  jobPanel.dataset.state = state;
+  jobPanel.setAttribute('aria-busy', String(['loading', 'queued', 'running'].includes(state)));
+  jobTitle.textContent = title;
+  jobSummary.textContent = summary;
+  if (focus) jobPanel.focus();
+}
+function responseDetail(response) {
+  return response.json().then((payload) => payload.detail || payload.error || JSON.stringify(payload))
+    .catch(() => `HTTP ${response.status}`);
+}
+function renderProgress(payload) {
+  jobSteps.replaceChildren();
+  const steps = Array.isArray(payload.progress) ? payload.progress : [];
+  const targetStates = Array.isArray(payload.target_states) ? payload.target_states : [];
+  const platformLabel = {instagram: 'Instagram', facebook_page: 'Facebook Page', youtube_community: 'YouTube Community'};
+  const stateLabel = {pending: '等待中', in_progress: '執行中', published: '已發布', failed: '需要重試'};
+  let percent = 0;
+  targetStates.forEach((target) => {
+    const item = document.createElement('li');
+    const label = document.createElement('span');
+    label.textContent = platformLabel[target.platform] || target.platform;
+    const status = document.createElement('span');
+    status.className = 'sho-mono';
+    const key = String(target.idempotency_key || '').slice(0, 8);
+    status.textContent = `${stateLabel[target.status] || target.status}${key ? ` · 防重複 ${key}` : ''}`;
+    item.append(label, status);
+    jobSteps.append(item);
+  });
+  if (targetStates.length) percent = Math.round(100 * targetStates.filter((target) => target.status === 'published').length / targetStates.length);
+  steps.forEach((step) => {
+    percent = Math.max(percent, Number(step.progress_percent) || 0);
+    const item = document.createElement('li');
+    const label = document.createElement('span');
+    label.textContent = step.step || '執行步驟';
+    const status = document.createElement('span');
+    status.className = 'sho-mono';
+    status.textContent = step.message || `${step.progress_percent}%`;
+    item.append(label, status);
+    jobSteps.append(item);
+  });
+  jobProgress.value = percent;
+  jobProgress.textContent = `${percent}%`;
+}
+function renderResults(results) {
+  jobResults.replaceChildren();
+  const platformLabel = {instagram: 'Instagram', facebook_page: 'Facebook Page', youtube_community: 'YouTube Community'};
+  const stateLabel = {published: '已發布', failed: '未完成'};
+  (Array.isArray(results) ? results : []).forEach((result) => {
+    const row = document.createElement('article');
+    row.dataset.state = result.status;
+    const heading = document.createElement('strong');
+    heading.textContent = `${platformLabel[result.platform] || result.platform} · ${stateLabel[result.status] || result.status}`;
+    row.append(heading);
+    if (result.permalink) {
+      const link = document.createElement('a');
+      link.className = 'sho-lk';
+      link.href = result.permalink;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = '開啟永久連結';
+      row.append(link);
+    } else {
+      const detail = document.createElement('span');
+      detail.textContent = result.receipt_id || result.error || '沒有發布紀錄';
+      row.append(detail);
+    }
+    jobResults.append(row);
+  });
+}
+function renderHandoff(job, payload) {
+  const queued = String(payload.status || '') === 'queued';
+  handoff.hidden = !queued;
+  if (!queued) return;
+  const commands = job.claimCommands || {};
+  handoffId.textContent = payload.job_id || job.jobId || '';
+  claimCodex.textContent = commands.codex || '請在目前 Codex task 中提供上方工作編號。';
+  claimClaude.textContent = commands.claude_code || '請在目前 Claude Code task 中提供上方工作編號。';
+}
+function rememberPublishedPlatforms(payload) {
+  (Array.isArray(payload.results) ? payload.results : []).forEach((result) => {
+  });
+}
+function partialFailureSummary(payload) {
+  const platformLabel = {instagram: 'Instagram', facebook_page: 'Facebook Page', youtube_community: 'YouTube Community'};
+  const states = Array.isArray(payload.target_states) ? payload.target_states : [];
+  const published = states.filter((target) => target.status === 'published').map((target) => platformLabel[target.platform] || target.platform);
+  const unfinished = states.filter((target) => target.status !== 'published').map((target) => platformLabel[target.platform] || target.platform);
+  if (published.length && unfinished.length) {
+    return `${published.join('、')} 已成功發布並保留 checkpoint。重新建立相同工作時，只會重試 ${unfinished.join('、')}。`;
+  }
+  if (published.length) return `${published.join('、')} 的成功紀錄已保留；請檢查工作錯誤後再決定是否重試。`;
+  return `發布工作尚未完成。重新建立相同工作時，只會處理仍未成功的平台${unfinished.length ? `：${unfinished.join('、')}` : ''}。`;
+}
+async function pollJob(job) {
+  window.clearTimeout(pollTimer);
+  try {
+    const response = await fetch(sameOriginUrl(job.statusUrl), {credentials: 'same-origin', headers: {'Accept': 'application/json'}});
+    if (!response.ok) throw new Error(await responseDetail(response));
+    const payload = await response.json();
+    const status = String(payload.status || 'queued');
+    renderProgress(payload);
+    renderResults(payload.results);
+    renderHandoff(job, payload);
+    rememberPublishedPlatforms(payload);
+    if (status === 'completed') {
+      busy = false;
+      storageRemove(jobKey);
+      storageRemove(draftKey);
+      jobProgress.value = 100;
+      showJob('completed', '發布工作已完成', '逐平台 receipt、permalink 或 error 已保存。');
+      updateFormState();
+      return;
+    }
+    if (status === 'failed') {
+      busy = false;
+      storageRemove(jobKey);
+      const hasPublished = (payload.target_states || []).some((target) => target.status === 'published');
+      showJob('failed', hasPublished ? '部分平台發布未完成' : '發布工作未完成', partialFailureSummary(payload), true);
+      updateFormState();
+      return;
+    }
+    if (status === 'superseded') {
+      busy = false;
+      storageRemove(jobKey);
+      showJob('superseded', '發布核准已撤回', payload.superseded_reason || '已有較新的修改意見，請回到審核頁。', true);
+      updateFormState();
+      return;
+    }
+    busy = true;
+    updateFormState();
+    showJob(status === 'queued' ? 'queued' : 'running',
+      status === 'queued' ? '等待執行者' : '發布進行中',
+      status === 'queued' ? '工作會保持等待，直到具備所需登入狀態的執行者認領。' : '正在逐一處理發布平台並保存進度。');
+    storageSet(jobKey, JSON.stringify(job));
+    pollTimer = window.setTimeout(() => pollJob(job), 1800);
+  } catch (error) {
+    busy = true;
+    updateFormState();
+    showJob('error', '暫時無法讀取狀態', `${error.message}；5 秒後重試。`);
+    pollTimer = window.setTimeout(() => pollJob(job), 5000);
+  }
+}
+
+publishForm.addEventListener('input', () => { persistDraft(); updateFormState(); });
+publishForm.addEventListener('change', () => { persistDraft(); updateFormState(); });
+publishForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (submitButton.disabled) return;
+  try {
+    await refreshPublishPreflight();
+  } catch (error) {
+    showJob('error', '無法重新確認發布狀態', error.message, true);
+    return;
+  }
+  if (submitButton.disabled) {
+    showJob('error', '需要重新確認目前選擇', '發布狀態已更新；請確認目前勾選的平台與再次發布選項後再送出。', true);
+    return;
+  }
+  busy = true;
+  updateFormState();
+  submitButton.setAttribute('aria-busy', 'true');
+  showJob('loading', '正在建立發布工作', '驗證 approval、manifest、caption 與平台 capability。', true);
+  try {
+    const response = await fetch(sameOriginUrl(publishForm.action), {
+      method: 'POST', body: new FormData(publishForm), credentials: 'same-origin', headers: {'Accept': 'application/json'},
+    });
+    if (!response.ok) {
+      const detail = await responseDetail(response);
+      if (response.status === 409) {
+        busy = false;
+        await refreshPublishPreflight();
+        persistDraft();
+        contextRetry.hidden = false;
+        showJob('error', '發布狀態已更新', `${detail} 請重新檢查目前平台後再送出。`, true);
+        updateFormState();
+        submitButton.removeAttribute('aria-busy');
+        return;
+      }
+      throw new Error(detail);
+    }
+    const payload = await response.json();
+    const job = {
+      manifestSha,
+      jobId: payload.job_id,
+      statusUrl: sameOriginUrl(payload.status_url),
+      claimCommands: payload.claim_commands || {},
+    };
+    storageSet(jobKey, JSON.stringify(job));
+    storageRemove(draftKey);
+    contextRetry.hidden = true;
+    await pollJob(job);
+  } catch (error) {
+    busy = false;
+    persistDraft();
+    updateFormState();
+    showJob('failed', '建立失敗', error.message, true);
+  }
+  submitButton.removeAttribute('aria-busy');
+});
+
+contextRetry.addEventListener('click', async () => {
+  try {
+    await refreshPublishPreflight();
+    contextRetry.hidden = true;
+    showJob('idle', '可以重新送出', '已取得最新發布狀態；請確認平台與再次發布選項。', true);
+  } catch (error) {
+    showJob('error', '仍無法讀取最新狀態', error.message, true);
+  }
+});
+
+restoreDraft();
+updateFormState();
+let resumable = null;
+const storedJob = storageGet(jobKey);
+if (storedJob) {
+  try { resumable = JSON.parse(storedJob); } catch (error) { storageRemove(jobKey); }
+}
+if (!resumable) {
+  try {
+    const serverJob = JSON.parse(document.getElementById('publish-latest-job').textContent);
+    if (serverJob && serverJob.status_url) resumable = {
+      manifestSha,
+      jobId: serverJob.job_id,
+      statusUrl: serverJob.status_url,
+      claimCommands: serverJob.claim_commands || {},
+    };
+  } catch (error) { /* no server-side job */ }
+}
+if (resumable && resumable.manifestSha === manifestSha) {
+  busy = true;
+  updateFormState();
+  showJob('loading', '恢復發布工作', '正在讀取 episode-local job 狀態。');
+  pollJob(resumable);
+}
+</script>
+</body>
+</html>

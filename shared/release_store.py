@@ -41,10 +41,22 @@ _TARGET_FIELDS = frozenset(
         "url",
         "error",
         "upload_session_uri",
+        "adapter",
+        "idempotency_key",
+        "checkpoint_json",
+        "ineligibility_reason",
     }
 )
 
-VALID_STATUS = ("draft", "approved", "uploading", "uploaded", "published", "failed")
+VALID_STATUS = (
+    "draft",
+    "approved",
+    "uploading",
+    "uploaded",
+    "published",
+    "failed",
+    "ineligible",
+)
 
 
 def _now() -> str:
