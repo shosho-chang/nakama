@@ -89,6 +89,7 @@ def test_instagram_reel_create_poll_publish_permalink_checkpoint_order():
         "ig-1/media_publish",
         "media-1",
     ]
+    assert transport.calls[-1]["params"] == {"fields": "id,permalink"}
     assert saves[0] == {"container_id": "container-1"}
     assert saves[1]["container_finished"] is True
     assert saves[2]["media_id"] == "media-1"
@@ -162,6 +163,10 @@ def test_facebook_reel_start_upload_finish_reconcile_and_retry(tmp_path: Path):
         None,
     ]
     assert transport.uploads[0]["file_path"] == video
+    assert transport.uploads[0]["headers"] == {
+        "offset": "0",
+        "file_size": str(video.stat().st_size),
+    }
     assert saves[0]["video_id"] == "video-1"
     assert saves[1]["uploaded"] is True
     assert saves[2]["finished"] is True
@@ -206,9 +211,11 @@ def test_facebook_multi_photo_creates_unpublished_photos_and_one_feed_post():
         "page-1/feed",
         "page-1_post-1",
     ]
+    assert transport.calls[2]["params"] == {"fields": "id,permalink_url"}
     assert transport.calls[0]["data"]["published"] == "false"
     assert transport.calls[1]["data"]["attached_media"] == (
         '[{"media_fbid":"photo-1"},{"media_fbid":"photo-2"}]'
     )
     assert saves[0]["photo_ids"] == ["photo-1", "photo-2"]
     assert result.external_id == "page-1_post-1"
+    assert result.permalink == "https://fb.example/posts/1"

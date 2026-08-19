@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import io
 import json
 
 from agents.usopp.social_publish import approve_short_targets, ensure_short_targets
 from scripts.meta_publish_probe import main as probe_main
 from scripts.publish_dispatch import main as dispatch_main
+from scripts.publish_dispatch import write_json_output
 from shared.release_store import ensure_target, get_release, register_release, update_target
 
 
@@ -94,3 +96,14 @@ def test_publish_probe_side_effect_commands_are_dry_run_by_default(tmp_path, mon
         == 0
     )
     assert json.loads(capsys.readouterr().out)["dry_run"] is True
+
+
+def test_json_output_is_safe_on_cp1252_console():
+    raw = io.BytesIO()
+    console = io.TextIOWrapper(raw, encoding="cp1252")
+
+    write_json_output({"status": "completed", "caption": "中文標題"}, stream=console)
+    console.flush()
+
+    payload = raw.getvalue().decode("cp1252")
+    assert json.loads(payload) == {"status": "completed", "caption": "中文標題"}

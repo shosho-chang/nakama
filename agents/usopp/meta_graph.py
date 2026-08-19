@@ -238,7 +238,10 @@ class MetaGraphClient:
             self.transport.upload_file(
                 upload_url,
                 video_path,
-                headers={"file_size": str(video_path.stat().st_size)},
+                headers={
+                    "offset": "0",
+                    "file_size": str(video_path.stat().st_size),
+                },
             )
             checkpoint["uploaded"] = True
             self._save(checkpoint, save_checkpoint)
@@ -301,7 +304,9 @@ class MetaGraphClient:
             checkpoint["post_id"] = post_id
             self._save(checkpoint, save_checkpoint)
 
-        permalink = self._resolve_permalink(post_id, checkpoint, save_checkpoint)
+        permalink = self._resolve_permalink(
+            post_id, checkpoint, save_checkpoint, field="permalink_url"
+        )
         return self._result(post_id, permalink, checkpoint)
 
     def _request(
@@ -359,12 +364,14 @@ class MetaGraphClient:
         external_id: str,
         checkpoint: Checkpoint,
         save_checkpoint: SaveCheckpoint,
+        *,
+        field: str = "permalink",
     ) -> str | None:
         existing = checkpoint.get("permalink")
         if existing:
             return str(existing)
-        response = self._request("GET", external_id, params={"fields": "id,permalink"})
-        value = response.get("permalink") or response.get("permalink_url")
+        response = self._request("GET", external_id, params={"fields": f"id,{field}"})
+        value = response.get(field)
         permalink = str(value) if value else None
         checkpoint["permalink"] = permalink
         self._save(checkpoint, save_checkpoint)

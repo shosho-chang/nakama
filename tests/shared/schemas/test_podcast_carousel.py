@@ -390,6 +390,36 @@ def test_review_manifest_requires_contiguous_page_numbers():
         )
 
 
+def test_review_manifest_round_trips_optional_render_input_receipt():
+    copy_spec = spec()
+    receipt = ArtifactReceipt(path="C:/tmp/copy.json", bytes=10, sha256=SHA)
+    render_input = ArtifactReceipt(path="C:/tmp/render-input.json", bytes=20, sha256="b" * 64)
+    review_pages = [
+        CarouselReviewPage(
+            page_id=page.page_id,
+            page_number=index,
+            role=page.role,
+            content_sha256=SHA,
+            image=ArtifactReceipt(path=f"C:/tmp/{index}.png", bytes=10, sha256=SHA),
+            fit=PageFitDiagnostic(status="fit"),
+            copy_page=page,
+        )
+        for index, page in enumerate(copy_spec.pages, start=1)
+    ]
+    manifest = CarouselReviewManifestV1(
+        episode_id="ep120",
+        revision="r026",
+        copy_spec=receipt,
+        render_input=render_input,
+        template=TemplateSnapshot(root="C:/tmp/template", sha256=SHA),
+        publish_compatibility="api_compatible",
+        pages=review_pages,
+    )
+
+    restored = CarouselReviewManifestV1.model_validate_json(manifest.model_dump_json())
+    assert restored.render_input == render_input
+
+
 def test_approved_feedback_requires_all_pages_approved():
     decisions = [
         CarouselPageDecision(page_id="cover", status="approved", artifact_sha256=SHA),
