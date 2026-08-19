@@ -217,10 +217,11 @@ API token／文件可能仍顯示 canonical scope `instagram_content_publish`。
 
 ### 2.2 查 Page 與連結的 Instagram identity
 
-在 Graph API Explorer 輸入下列 GET path：
+先用不含 token 的查詢核對 identity。在 Graph API Explorer 上方的 path 輸入框中，刪除原本的
+`me?fields=id,name`，改成下列內容（輸入框左側已經有 `/`，不要再輸入前導斜線）：
 
 ```text
-/me/accounts?fields=name,access_token,tasks,instagram_business_account{id,username}
+me/accounts?fields=name,id,tasks,instagram_business_account{id,username}
 ```
 
 按 **Submit**。在回傳的 `data` 找到目標 Page，應該類似：
@@ -228,16 +229,16 @@ API token／文件可能仍顯示 canonical scope `instagram_content_publish`。
 ```json
 {
   "name": "目標 Page 名稱",
-  "access_token": "不要外洩的 Page token",
+  "id": "Facebook Page ID",
+  "tasks": ["CREATE_CONTENT", "MANAGE"],
   "instagram_business_account": {
     "id": "Instagram Graph ID",
     "username": "instagram_username"
-  },
-  "id": "Facebook Page ID",
-  "tasks": ["CREATE_CONTENT", "MANAGE"]
+  }
 }
 ```
 
+這份回傳不含 secret，可以核對 Page 名稱、Page ID、Instagram username 與 Instagram Graph ID。
 把值對應如下：
 
 | Graph 回傳欄位 | Nakama 設定 |
@@ -245,13 +246,28 @@ API token／文件可能仍顯示 canonical scope `instagram_content_publish`。
 | Explorer 選定的版本，例如 `vXX.X` | `META_GRAPH_API_VERSION` |
 | Page record 的 `id` | `META_PAGE_ID` |
 | `instagram_business_account.id` | `META_IG_USER_ID` |
-| Page record 的 `access_token` | `META_PAGE_ACCESS_TOKEN` |
 
 停止條件：
 
 - `data` 沒有目標 Page：檢查登入使用者的 Page access、App role 與 `pages_show_list`。
 - record 沒有 `instagram_business_account`：回第 1.1 節重新連結 Page 與 Instagram。
 - `tasks` 沒有建立／管理內容能力：先修正 Page／Business Portfolio 權限。
+
+### 2.3 將 User token 切換成目標 Page token
+
+identity 核對正確後才取得 Page token：
+
+1. 在 Explorer 右側點 **User or Page → Get Token**。
+2. 若下拉選單已直接列出目標 Page 名稱，點該 Page；否則點 **Get Page Access Token**，再選擇
+   同一個目標 Page。
+3. 若 Meta 再次要求授權，確認仍是同一個 Business Portfolio 與 Page，再點 **繼續**。
+4. 回到 Explorer，確認 **User or Page** 顯示目標 Page 名稱，而不是 Facebook 使用者名稱。
+5. 此時 **Access Token** 欄位已換成 Page token。只有在準備立刻寫入本機 ignored `.env` 時，
+   才點 **Copy Token**。
+6. 不要把 Page token 貼到聊天、截圖、Markdown、Bridge 表單或 shell command。
+
+把 Page token 對應到 `META_PAGE_ACCESS_TOKEN`。此 Token 仍可能過期；第一次 E2E 先使用 Explorer
+產生的 token，production 化時再改成明確的長效／system-user credential rotation 流程。
 
 ## 3. 把 Meta 設定寫進本機 `.env`
 
