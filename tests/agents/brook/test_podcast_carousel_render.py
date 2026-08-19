@@ -143,6 +143,7 @@ def test_design_system_cover_and_cta_use_reviewed_visual_contract():
     assert "right:-260px;bottom:-130px;height:900px;width:auto;z-index:4" in source
     assert "--type-cover-title:106px" in source
     assert "richCover(title,page.headline,page.emphasis)" in source
+    assert 'text.slice(0,emphasisAt)),el("br")' in source
     assert "--type-hook-title:104px" in source
     assert "--hook-optical-lift:-22px" in source
     assert "--type-point-title:72px" in source
