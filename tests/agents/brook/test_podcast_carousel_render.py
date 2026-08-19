@@ -140,7 +140,7 @@ def test_design_system_cover_and_cta_use_reviewed_visual_contract():
     assert '[["AP","Apple Podcasts"],["S","Spotify"],["YT","YouTube"]]' not in source
     assert "cover headline/cutout overlap" in source
     assert "--cover-cutout-overlap-limit:145px" in source
-    assert "right:-230px;bottom:-130px;height:900px;width:auto;z-index:4" in source
+    assert "right:-350px;bottom:-130px;height:900px;width:auto;z-index:4" in source
     assert "--type-cover-title:106px" in source
     assert "--type-hook-title:104px" in source
     assert "--hook-optical-lift:-22px" in source
