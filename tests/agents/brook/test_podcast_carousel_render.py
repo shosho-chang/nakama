@@ -143,6 +143,7 @@ def test_design_system_cover_and_cta_use_reviewed_visual_contract():
     assert "--type-point-title:72px" in source
     assert "--type-point-body:44px" in source
     assert "--point-optical-lift:-72px" in source
+    assert "--cta-logo-top:224px" in source
     assert "transform:translateY(var(--point-optical-lift))" in source
     assert "#canvas.hook{background:var(--orange)}" in source
     assert ".hook .em-box{color:var(--ink);background:var(--white);border:0" in source
@@ -243,6 +244,7 @@ def test_real_design_system_template_renders_every_page_role(tmp_path: Path):
     assert manifest.pages[2].fit.regions["point.content_top"] <= 430
     assert manifest.pages[3].fit.regions["quote.answer_cutout_overlap"] == 0
     assert manifest.pages[3].fit.regions["quote.question_divider_gap"] >= 24
+    assert manifest.pages[4].fit.regions["cta.logo_gap_delta"] <= 16
     render_input = (package / "revisions" / "r001" / "render_input.html").read_text(
         encoding="utf-8"
     )
