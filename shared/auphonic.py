@@ -7,11 +7,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -25,6 +27,8 @@ _API_BASE = "https://auphonic.com/api"
 # Auphonic production status codes
 _STATUS_DONE = 3
 _STATUS_ERROR = 2
+_RUNNING_STATUSES = {1, 4, 5, 6, 7, 8, 12, 13, 14, 15}
+_PRODUCTION_RECEIPT_NAME = "auphonic-production.v1.json"
 
 
 # ── 帳號管理 ──
@@ -124,6 +128,74 @@ def _load_env_defaults() -> dict:
 
 def _headers(api_key: str) -> dict[str, str]:
     return {"Authorization": f"bearer {api_key}"}
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(8 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _params_sha256(params: dict) -> str:
+    payload = json.dumps(params, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _write_production_receipt(path: Path, receipt: dict, *, stage: str) -> dict:
+    updated = {
+        **receipt,
+        "stage": stage,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps(updated, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, path)
+    return updated
+
+
+def _load_bound_production_receipt(
+    path: Path,
+    *,
+    source_path: Path,
+    source_sha256: str,
+    source_size_bytes: int,
+    params_sha256: str,
+) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Auphonic production receipt 無法讀取: {path}") from exc
+    expected = {
+        "schema": "nakama.auphonic-production.v1",
+        "source_path": str(source_path.resolve()),
+        "source_sha256": source_sha256,
+        "source_size_bytes": source_size_bytes,
+        "params_sha256": params_sha256,
+    }
+    drift = [key for key, value in expected.items() if receipt.get(key) != value]
+    if drift:
+        raise RuntimeError(
+            "Auphonic production receipt 與本次輸入不一致，拒絕建立重複 production: "
+            + ", ".join(drift)
+        )
+    if not receipt.get("production_uuid") or not receipt.get("account_email"):
+        raise RuntimeError("Auphonic production receipt 缺少 production UUID 或 account identity")
+    return receipt
+
+
+def _account_for_receipt(receipt: dict) -> AuphonicAccount:
+    email = receipt["account_email"]
+    for account in _load_accounts():
+        if account.email == email:
+            return account
+    raise RuntimeError(f"Auphonic production receipt 的帳號目前未設定: {email}")
 
 
 def _get_audio_duration(path: Path) -> float:
@@ -273,17 +345,21 @@ def _start_and_wait(
     api_key: str,
     uuid: str,
     *,
-    timeout: int = 600,
+    timeout: int = 3600,
     poll_interval: int = 5,
+    start: bool = True,
 ) -> dict:
     """開始處理並輪詢直到完成。"""
-    resp = httpx.post(
-        f"{_API_BASE}/production/{uuid}/start.json",
-        headers=_headers(api_key),
-        timeout=30,
-    )
-    resp.raise_for_status()
-    logger.info("開始處理...")
+    if start:
+        resp = httpx.post(
+            f"{_API_BASE}/production/{uuid}/start.json",
+            headers=_headers(api_key),
+            timeout=30,
+        )
+        resp.raise_for_status()
+        logger.info("開始處理...")
+    else:
+        logger.info(f"續接既有 production: {uuid}")
 
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -309,6 +385,16 @@ def _start_and_wait(
     raise TimeoutError(f"Auphonic 處理超時（{timeout}s）")
 
 
+def _get_production_data(api_key: str, uuid: str) -> dict:
+    resp = httpx.get(
+        f"{_API_BASE}/production/{uuid}.json",
+        headers=_headers(api_key),
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()["data"]
+
+
 def _download_result(api_key: str, production_data: dict, output_path: Path) -> Path:
     """下載處理完的音檔。"""
     output_files = production_data.get("output_files", [])
@@ -319,10 +405,21 @@ def _download_result(api_key: str, production_data: dict, output_path: Path) -> 
     if not download_url:
         raise RuntimeError("Auphonic output_files 缺 download_url")
 
-    resp = httpx.get(download_url, headers=_headers(api_key), timeout=300, follow_redirects=True)
-    resp.raise_for_status()
-
-    output_path.write_bytes(resp.content)
+    partial_path = output_path.with_suffix(output_path.suffix + ".part")
+    with httpx.stream(
+        "GET",
+        download_url,
+        headers=_headers(api_key),
+        timeout=300,
+        follow_redirects=True,
+    ) as resp:
+        resp.raise_for_status()
+        with partial_path.open("wb") as handle:
+            for chunk in resp.iter_bytes(chunk_size=8 * 1024 * 1024):
+                handle.write(chunk)
+            handle.flush()
+            os.fsync(handle.fileno())
+    os.replace(partial_path, output_path)
     logger.info(f"下載完成: {output_path}")
     return output_path
 
@@ -538,6 +635,54 @@ def normalize(audio_path: str | Path, *, output_dir: str | Path | None = None, *
     duration = _get_audio_duration(audio_path)
     logger.info(f"音檔長度: {duration:.1f}s ({duration / 60:.1f} min)")
     output_path = output_dir / f"{audio_path.stem}_normalized.wav"
+    source_sha256 = _sha256_file(audio_path)
+    source_size_bytes = audio_path.stat().st_size
+    params_digest = _params_sha256(params)
+    receipt_path = output_dir / _PRODUCTION_RECEIPT_NAME
+    receipt = _load_bound_production_receipt(
+        receipt_path,
+        source_path=audio_path,
+        source_sha256=source_sha256,
+        source_size_bytes=source_size_bytes,
+        params_sha256=params_digest,
+    )
+    wait_timeout = max(1800, int(duration))
+
+    if receipt is not None:
+        account = _account_for_receipt(receipt)
+        uuid = receipt["production_uuid"]
+        production_data = _get_production_data(account.api_key, uuid)
+        status = int(production_data.get("status", -1))
+        if status == _STATUS_ERROR:
+            raise RuntimeError(
+                f"Auphonic 既有 production 失敗: {production_data.get('status_string', status)}"
+            )
+        if status == _STATUS_DONE:
+            logger.info(f"既有 production 已完成，直接下載: {uuid}")
+        elif status in _RUNNING_STATUSES:
+            receipt = _write_production_receipt(receipt_path, receipt, stage="processing")
+            production_data = _start_and_wait(
+                account.api_key,
+                uuid,
+                timeout=wait_timeout,
+                start=False,
+            )
+        else:
+            if receipt.get("stage") == "created":
+                _upload_file(account.api_key, uuid, audio_path)
+                receipt = _write_production_receipt(receipt_path, receipt, stage="uploaded")
+            receipt = _write_production_receipt(receipt_path, receipt, stage="processing")
+            production_data = _start_and_wait(
+                account.api_key,
+                uuid,
+                timeout=wait_timeout,
+            )
+        _download_result(account.api_key, production_data, output_path)
+        _write_production_receipt(receipt_path, receipt, stage="downloaded")
+        if params["trim_jingle"]:
+            output_path = _align_trim(output_path, audio_path, params["jingle_seconds"])
+        return output_path
+
     try:
         account = _find_available_account(duration)
     except ValueError:
@@ -554,11 +699,28 @@ def normalize(audio_path: str | Path, *, output_dir: str | Path | None = None, *
 
     # 2. 建立 production + 上傳 + 處理
     uuid = _create_production(account.api_key, params=params)
+    receipt = _write_production_receipt(
+        receipt_path,
+        {
+            "schema": "nakama.auphonic-production.v1",
+            "source_path": str(audio_path.resolve()),
+            "source_sha256": source_sha256,
+            "source_size_bytes": source_size_bytes,
+            "params_sha256": params_digest,
+            "params": params,
+            "production_uuid": uuid,
+            "account_email": account.email,
+        },
+        stage="created",
+    )
     _upload_file(account.api_key, uuid, audio_path)
-    production_data = _start_and_wait(account.api_key, uuid)
+    receipt = _write_production_receipt(receipt_path, receipt, stage="uploaded")
+    receipt = _write_production_receipt(receipt_path, receipt, stage="processing")
+    production_data = _start_and_wait(account.api_key, uuid, timeout=wait_timeout)
 
     # 3. 下載結果
     _download_result(account.api_key, production_data, output_path)
+    _write_production_receipt(receipt_path, receipt, stage="downloaded")
 
     # 4. 裁切 Jingle（免費方案外加；對齊原始檔還原時間軸）
     if params["trim_jingle"]:

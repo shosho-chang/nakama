@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from shared.auphonic import (
+    _download_result,
     _find_available_account,
     _get_audio_duration,
     _load_accounts,
@@ -379,3 +380,98 @@ def test_normalize_override_params(tmp_path, monkeypatch):
 def test_normalize_file_not_found():
     with pytest.raises(FileNotFoundError, match="音檔不存在"):
         normalize("/nonexistent/audio.mp3")
+
+
+def test_normalize_persists_bound_uuid_before_upload(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUPHONIC_ACCOUNT_1", "test@test.com,test_key")
+    audio = tmp_path / "large.wav"
+    audio.write_bytes(b"source bytes")
+
+    from shared.auphonic import AuphonicAccount
+
+    account = AuphonicAccount(email="test@test.com", api_key="test_key")
+    with (
+        patch("shared.auphonic._get_audio_duration", return_value=4257.238),
+        patch("shared.auphonic._find_available_account", return_value=account),
+        patch("shared.auphonic._create_production", return_value="uuid-resumable"),
+        patch("shared.auphonic._upload_file", side_effect=RuntimeError("connection lost")),
+    ):
+        with pytest.raises(RuntimeError, match="connection lost"):
+            normalize(audio, output_dir=tmp_path, trim_jingle=False)
+
+    receipt = json.loads((tmp_path / "auphonic-production.v1.json").read_text())
+    assert receipt["schema"] == "nakama.auphonic-production.v1"
+    assert receipt["production_uuid"] == "uuid-resumable"
+    assert receipt["stage"] == "created"
+    assert receipt["source_size_bytes"] == len(b"source bytes")
+
+
+def test_normalize_resumes_remote_processing_without_duplicate_create(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUPHONIC_ACCOUNT_1", "test@test.com,test_key")
+    audio = tmp_path / "large.wav"
+    audio.write_bytes(b"source bytes")
+
+    from shared.auphonic import AuphonicAccount
+
+    account = AuphonicAccount(email="test@test.com", api_key="test_key")
+    with (
+        patch("shared.auphonic._get_audio_duration", return_value=4257.238),
+        patch("shared.auphonic._find_available_account", return_value=account),
+        patch("shared.auphonic._create_production", return_value="uuid-resumable"),
+        patch("shared.auphonic._upload_file", side_effect=RuntimeError("connection lost")),
+    ):
+        with pytest.raises(RuntimeError):
+            normalize(audio, output_dir=tmp_path, trim_jingle=False)
+
+    finished = {
+        "uuid": "uuid-resumable",
+        "status": 3,
+        "output_files": [{"download_url": "https://example.test/result.wav"}],
+    }
+    normalized = tmp_path / "large_normalized.wav"
+
+    def fake_download(_key, _data, path):
+        path.write_bytes(b"normalized")
+        return path
+
+    with (
+        patch("shared.auphonic._get_audio_duration", return_value=4257.238),
+        patch("shared.auphonic._create_production") as create,
+        patch("shared.auphonic._upload_file") as upload,
+        patch(
+            "shared.auphonic._get_production_data",
+            return_value={"uuid": "uuid-resumable", "status": 4},
+        ),
+        patch("shared.auphonic._start_and_wait", return_value=finished) as wait,
+        patch("shared.auphonic._download_result", side_effect=fake_download),
+    ):
+        result = normalize(audio, output_dir=tmp_path, trim_jingle=False)
+
+    assert result == normalized
+    create.assert_not_called()
+    upload.assert_not_called()
+    assert wait.call_args.kwargs["start"] is False
+    assert wait.call_args.kwargs["timeout"] >= 4257
+    receipt = json.loads((tmp_path / "auphonic-production.v1.json").read_text())
+    assert receipt["stage"] == "downloaded"
+
+
+def test_download_result_streams_to_atomic_partial_file(tmp_path):
+    response = MagicMock()
+    response.__enter__.return_value = response
+    response.__exit__.return_value = False
+    response.iter_bytes.return_value = [b"first", b"second"]
+    output = tmp_path / "normalized.wav"
+
+    with patch("shared.auphonic.httpx.stream", return_value=response) as stream:
+        result = _download_result(
+            "secret",
+            {"output_files": [{"download_url": "https://example.test/result.wav"}]},
+            output,
+        )
+
+    assert result == output
+    assert output.read_bytes() == b"firstsecond"
+    assert not output.with_suffix(".wav.part").exists()
+    response.raise_for_status.assert_called_once()
+    stream.assert_called_once()

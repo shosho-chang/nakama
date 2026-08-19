@@ -19,7 +19,11 @@ description: >
   閒聊、不 trim silence。
 - `Audio/1_COMBO-1.wav` 固定是主持人修修；`Audio/2_COMBO-2.wav` 固定是來賓。
 - 來賓身份先由本集訪綱、前期報告與訪談資料交叉確認；一致時不重問。
-- Auphonic、Memo GUI、人類核准、YouTube upload 都是明確 gate。不得冒充 reviewer。
+- 使用者明確命令「開始／跑／繼續」某一個可識別 Podcast 單集的 E2E，即同時授權把該集
+  canonical `Audio/Live-Mix.wav` 上傳 Auphonic；不要再次詢問。單純 review、盤點、診斷、
+  status 查詢，或 episode／canonical 音檔仍有歧義時，不構成上傳授權。
+- Memo GUI、人類核准、YouTube upload 仍是獨立明確 gate。不得冒充 reviewer，也不得把
+  Auphonic 的 E2E 授權延伸成 YouTube upload 授權。
 - Reference source 預設 `contextual`、零 authority scope。只有使用者提供 exact、
   source-bound authority attestation 才能提升；outline 永遠不能成為 authoritative。
 - 任一 hash、size、duration、receipt、episode 或 source binding 漂移立即停止。
@@ -34,7 +38,7 @@ description: >
 |---|---|---|
 | S0 INPUT | 三軌存在、可解碼、clock 相符；guest identity 有來源 | 異常才停 |
 | S1 REFERENCES | `episode-references.v2.json` 驗證通過 | 選來源；authority 逐來源明示 |
-| S2 NORMALIZED | `normalized.wav` + `normalized-handoff.v1.json` exact-match | Auphonic 外部上傳前 GO |
+| S2 NORMALIZED | `normalized.wav` + `normalized-handoff.v1.json` exact-match | 啟動／繼續該集 E2E 的命令即為 Auphonic GO |
 | S3 MEMO RECOGNITION | canonical review → typed recognition receipt/manifest | 聽過後才 accept |
 | S4 MEMO CUES | canonical cue review → typed SRT receipt | 看過 cue 後才 accept |
 | S5 V2 CANONICAL | V2 `run/status/review`，full audit packets 全部完成 | unresolved issue 決策 |
@@ -72,7 +76,8 @@ python scripts/podcast_subtitle_v2_references.py accept `
 
 ## S2 — Auphonic normalization
 
-先顯示 exact `Live-Mix.wav`、duration、size 與 action，取得外部上傳 GO 才執行：
+先顯示 exact `Live-Mix.wav`、duration、size 與 action。若使用者已命令開始／跑／繼續這個明確
+單集的 E2E，該命令就是外部上傳 GO，直接執行且不要重問；否則仍須先取得 GO：
 
 ```powershell
 python scripts/run_audio_prep.py "<episode>"
