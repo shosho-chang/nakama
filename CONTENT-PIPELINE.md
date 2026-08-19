@@ -73,7 +73,7 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 
 | Line | 1 收集 | 2 閱讀 | 3 整合 | 4 原子文章 | 6 發布 | 7 監控 |
 |---|---|---|---|---|---|---|
-| **Line 1a Podcast 一般訪談** | n/a (有錄音) | n/a | n/a | 🚧 Podcast Subtitle V2：Canonical Transcript → Verified Projection（V1 production / V2 shadow-run） | 🚧 Carousel Publish page、agent-neutral job 與 IG／FB adapter、YT Community handoff 已實作；supervised external probe 待另一工作階段 | ❌ YT/IG insights |
+| **Line 1a Podcast 一般訪談** | n/a (有錄音) | n/a | n/a | 🚧 Podcast Subtitle V2：Canonical Transcript → Verified Projection（V1 production / V2 shadow-run） | ✅ Long Highlight、Short 與 Carousel 已完成 Podcast YouTube／Instagram／Facebook supervised live probe；Publish Calendar 以共同 Campaign Anchor 排程並保留 per-platform 狀態 | ❌ YT/IG insights |
 | **Line 1b Podcast 訪問新書作者** | n/a (有錄音 + 有書) | ⬜ Line 2 Reading Source + Reading Overlay | ⬜ Line 2 Source Promotion / annotation-only sync | 🚧 同上，另可 consume 書籍 refs 作 Evidence context | 同上 | 同上 |
 | **Line 2 讀書心得** | n/a (有書 / 文章 / web document) | ⬜ Reading Source + Reading Overlay（中/英/雙語閱讀） | ⬜ Source Promotion 或 annotation-only sync | ⬜ Reading Context Package → **修修 Project 頁面手寫** | ✅ WP only / ❌ 其他 channel | ❌ |
 | **Line 3 文獻科普** | ⬜ Zoro topic discovery | n/a | ⬜ 主題 retrieval → outline | ⬜ synthesize outline → 修修自寫（可用 Claude.ai 對話協助），LLM 不代寫正文（ADR-027） | ✅ WP only / ❌ 其他 channel | ✅ SEO 中控台 |
@@ -131,7 +131,7 @@ Line 2 不再只視為「書」；ebook、inbox document、web document 都是 R
 | **Sanji** (Community) | ⬜ community FAQ discovery (從會員問題抽主題) | n/a | ⬜ member memory ingest | n/a | n/a | ❌ Fluent Community publisher | ⬜ engagement insight |
 | **Brook** (Scaffold + Repurpose + Podcast Subtitles + Video Production + SEO Audit, ADR-027/ADR-050/ADR-056) | n/a | n/a | ✅ synthesize（outline + evidence pool, ADR-021）；RCP 由 Robin own | scaffold only — outline / evidence 給修修自寫，**LLM 不代寫正文**（ADR-027 reminders not enforcement）；🚧 Podcast Subtitle V2（Canonical Transcript + Verified Projection） | ✅ Blog/FB text renderer + repurpose engine + canonical Podcast Carousel Copy/Panel/PNG/Review；**Video Production Line**（Verified Projection exact-copy → storyboard → Hyperframes → FCPXML，ADR-050/ADR-056）；🚧 Line 1b 訪談+research_pack 2b mode（ADR-027） | n/a | ✅ SEO audit + enrich (對既有文章) |
 | **Franky** (Maintenance) | ✅ AI news digest cron | n/a | n/a | n/a | n/a | n/a | ✅ probe panel + R2 backup verify + GSC daily + cost tracking |
-| **Usopp** (Publisher) | n/a | n/a | n/a | n/a | n/a | ✅ WP publisher + approval queue HITL；🚧 Podcast Carousel IG／FB adapters + YT Community handoff 已實作，supervised external probe 待完成；❌ Newsletter | n/a |
+| **Usopp** (Publisher) | n/a | n/a | n/a | n/a | n/a | ✅ WP publisher + approval queue HITL；Podcast Long／Short／Carousel 三平台 live probe；Publish Calendar grouped projection + Campaign Anchor scheduling；❌ Newsletter | n/a |
 
 **關鍵讀法**：
 - **Brook 跨 Stage 4/5/7 三層** — over-loaded，子模組已 13+，下一步要按 sub-context 切目錄（見觀察 #2）

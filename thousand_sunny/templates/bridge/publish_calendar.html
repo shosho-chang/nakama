@@ -1,13 +1,39 @@
 {% macro calendar_item(item, mobile=false) -%}
-<a class="pc-item" href="{{ item.detail_url }}" data-status="{{ item.status }}">
+<article class="pc-item" data-phase="{{ item.phase }}">
   <span class="pc-item__meta">
     {% if mobile and item.calendar_at %}<time datetime="{{ item.calendar_at.isoformat() }}">{{ item.calendar_at.strftime('%m/%d %H:%M') }}</time>{% else %}{{ item.local_time_label }}{% endif %}
     · {{ item.content_type | upper }}
   </span>
-  <strong class="pc-item__title">{{ item.title }}</strong>
-  <span class="pc-item__target">{{ item.platform_label }}</span>
-  <span class="pc-item__state">{{ item.status | replace('_', ' ') }} · {{ item.date_basis_label }}</span>
-</a>
+  <a class="pc-item__title" href="{{ item.detail_url }}"><strong>{{ item.title }}</strong></a>
+  <div class="pc-targets" aria-label="發布平台狀態">
+    {% for target in item.targets %}<span class="pc-target" data-status="{{ target.status }}">{{ target.platform_label }} · {{ target.status | replace('_', ' ') }}</span>{% endfor %}
+  </div>
+  <span class="pc-item__state">{{ phase_labels[item.phase] }} · {{ item.progress_label }} · {{ item.date_basis_label }}</span>
+  {% if item.schedule_editable %}
+  <form class="pc-schedule" method="post" action="/bridge/publish/calendar/{{ item.schedule_kind }}/{{ item.episode | urlencode }}/{{ item.schedule_id | urlencode }}/schedule">
+    <input type="hidden" name="month" value="{{ month_value }}">
+    <input type="hidden" name="return_episode" value="{{ episode }}">
+    <input type="hidden" name="expected_anchor_token" value="{{ item.expected_anchor_token }}">
+    <label>
+      <span>Campaign Anchor · 台北時間</span>
+      <input type="datetime-local" name="campaign_anchor_local" value="{{ item.campaign_anchor_local_value }}" aria-label="{{ item.title }} Campaign Anchor（台北時間）">
+    </label>
+    <div class="pc-schedule__actions">
+      <button class="sho-btn" type="submit" name="operation" value="set">{% if item.date_basis == 'scheduled' %}調整時間{% else %}設定排程{% endif %}</button>
+      {% if item.date_basis == 'scheduled' %}<button class="sho-btn--ghost" type="submit" name="operation" value="clear">移除日期</button>{% endif %}
+    </div>
+  </form>
+  {% else %}
+  <div class="pc-schedule pc-schedule--disabled" aria-label="排程已鎖定">
+    <label>
+      <span>Campaign Anchor · 台北時間</span>
+      <input type="datetime-local" value="{{ item.campaign_anchor_local_value }}" disabled>
+    </label>
+    <button class="sho-btn" type="button" disabled>無法調整</button>
+    <p>{{ item.schedule_disabled_reason }}</p>
+  </div>
+  {% endif %}
+</article>
 {%- endmacro %}
 <!DOCTYPE html>
 <html lang="zh-Hant">
@@ -71,6 +97,21 @@
     <span class="sho-mono">Carousel 顯示 Community handoff；不宣稱 API 自動發布</span>
   </aside>
 
+  <section class="pc-pipeline" aria-labelledby="pipeline-heading">
+    <div class="pc-section-heading">
+      <div>
+        <div class="sho-kicker"><span class="sho-kicker-n">[ 000 ]</span> PUBLISH PIPELINE</div>
+        <h2 id="pipeline-heading">目前篩選範圍 · {{ phase_counts | sum(attribute='count') }} 組內容</h2>
+      </div>
+      <span class="sho-mono">一組內容 · 一個 Campaign Anchor · 各平台狀態獨立</span>
+    </div>
+    <ol class="pc-pipeline__rail">
+      {% for stage in phase_counts %}
+      <li data-phase="{{ stage.phase }}"><span>{{ '%02d' | format(loop.index) }}</span><strong>{{ stage.label }}</strong><b>{{ stage.count }}</b></li>
+      {% endfor %}
+    </ol>
+  </section>
+
   {% if diagnostics %}
   <section class="pc-state pc-state--warning" role="status" aria-label="部分資料警告">
     <strong>部分資料無法讀取</strong>
@@ -82,7 +123,7 @@
     <div class="pc-section-heading">
       <div>
         <div class="sho-kicker"><span class="sho-kicker-n">[ 001 ]</span> DATED ITEMS</div>
-        <h2 id="calendar-heading">{{ month_label }} · {{ dated_count }} 個平台項目</h2>
+        <h2 id="calendar-heading">{{ month_label }} · {{ dated_count }} 組內容</h2>
       </div>
       <span class="sho-mono">週日起始 · Asia/Taipei</span>
     </div>
@@ -122,7 +163,7 @@
     <div class="pc-section-heading">
       <div>
         <div class="sho-kicker"><span class="sho-kicker-n">[ 002 ]</span> UNDATED ITEMS</div>
-        <h2 id="backlog-heading">未列入月曆／日期未定 · {{ backlog | length }} 個平台項目</h2>
+        <h2 id="backlog-heading">未列入月曆／日期未定 · {{ backlog | length }} 組內容</h2>
       </div>
       <span class="sho-mono">不使用 updated_at 或檔案時間推測發布日</span>
     </div>

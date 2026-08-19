@@ -1,7 +1,8 @@
 # ADR-055: 影片發布線架構 — 桌機 uploader、新表不沿用舊 queue、DB 當 SoT
 
 - **Status**: Accepted（D1/D2 為 2026-07-26 修修裁決的追認；D3 修修 2026-08-04
-  裁決通過——「依照你的建議繼續做下去」）
+  裁決通過——「依照你的建議繼續做下去」；D4 於 2026-08-20 依三平台實測後
+  的 Publish Calendar 規劃補充）
 - **Date**: 2026-08-04
 - **Context**: `docs/plans/2026-07-26-video-publishing-plan.md`（grill 全記錄）、
   ADR-054（packaging 交接契約）。Slice 0 探針已 PASS（#1124：OAuth + 上傳 +
@@ -50,6 +51,27 @@ committed state 的 canonical SoT）——這正是本 ADR 存在的理由，否
   episode 頁——那才是耐久知識
 - packaging 交接面維持 ADR-054 §7：vault `Attachments/packaging/` 的
   `packages.json` / `approval.json`（上游 skill 與 Bridge 寫，發布層只讀）
+
+## D4 — Release 只有一個 Campaign Anchor，Target 保持獨立（2026-08-20 amendment）
+
+Publish Calendar 的排程單位是 **Release**，不是個別 Release Target。每個 Release
+只有一個 **Campaign Anchor**；設定或移除時，控制面必須在單一 transaction 中把
+同一個 UTC instant materialize 到所有 Target 的 `publish_at`。若既有 Target 的
+`publish_at` 不一致，projection 必須標成需處理且不任選其中一個時間放進月曆。
+
+Campaign Anchor 不合併 Target 的執行責任：YouTube、Instagram、Facebook 仍各自
+保有 status、receipt、error 與 retry 邊界，因此單一平台失敗不會抹除其他平台的
+成功結果。Carousel 沿用相同語意，但 anchor 存在 episode-local Publish Job；只有
+`queued` job 可調整，claim 或發布開始後即鎖定。
+
+Campaign Anchor 寫入採 compare-and-set：表單必須帶回讀取時的 anchor token，若
+Release Target group 或 Carousel job 已被另一個操作者更新，舊表單必須回 409，
+不可無聲覆寫較新的發布意圖。
+
+**排程不等於核准，也不會觸發發布。** Calendar 只寫發布意圖；Release Target 的
+approval state 與 Carousel Review/Publish Job gate 仍是獨立狀態機。UI 必須同時顯示
+一張 Release／Carousel 卡、共同 anchor，以及各平台的獨立狀態，避免把「有日期」
+誤讀成「已核准」或「已上傳」。
 
 ## 後果
 

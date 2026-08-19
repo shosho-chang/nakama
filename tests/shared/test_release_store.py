@@ -2,6 +2,7 @@
 
 import importlib
 import sys
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,16 @@ def store(tmp_path, monkeypatch):
     importlib.reload(rs)
     yield rs
     state._conn = None
+
+
+def _set_anchor(store, episode: str, cut_id: str, anchor: datetime | None):
+    current = store.get_release_campaign_anchor(episode, cut_id)
+    return store.set_release_campaign_anchor(
+        episode,
+        cut_id,
+        anchor,
+        expected_anchor_token=current.expected_token,
+    )
 
 
 def test_register_release_upsert(store):
@@ -104,3 +115,122 @@ def test_list_releases_with_target_summary(store):
     rows = store.list_releases("ep")
     assert len(rows) == 1
     assert rows[0]["target_status"] == {"youtube": "draft"}
+
+
+def test_release_campaign_anchor_schedules_all_targets_at_one_utc_instant(store):
+    release_id = store.register_release("ep", "S01", "short", "f.mp4")
+    target_ids = [
+        store.ensure_target(release_id, platform)
+        for platform in ("youtube", "instagram_reels", "facebook_reels")
+    ]
+    store.update_target(target_ids[0], status="approved")
+    store.update_target(target_ids[1], status="failed")
+    anchor = datetime(2026, 8, 25, 9, 0, tzinfo=timezone(timedelta(hours=8)))
+
+    snapshot = _set_anchor(store, "ep", "S01", anchor)
+
+    release = store.get_release("ep", "S01")
+    assert {target["publish_at"] for target in release["targets"]} == {"2026-08-25T01:00:00+00:00"}
+    assert [target["status"] for target in release["targets"]] == [
+        "draft",
+        "failed",
+        "approved",
+    ]
+    assert snapshot.state == "shared"
+    assert snapshot.anchor_at == datetime(2026, 8, 25, 1, 0, tzinfo=UTC)
+
+
+def test_release_campaign_anchor_unschedule_clears_every_target(store):
+    release_id = store.register_release("ep", "S01", "short", "f.mp4")
+    for platform in ("youtube", "instagram_reels", "facebook_reels"):
+        store.ensure_target(release_id, platform)
+    _set_anchor(store, "ep", "S01", datetime(2026, 8, 25, tzinfo=UTC))
+
+    snapshot = _set_anchor(store, "ep", "S01", None)
+
+    assert snapshot.state == "none"
+    assert snapshot.anchor_at is None
+    assert all(value is None for _, value in snapshot.target_anchors)
+
+
+@pytest.mark.parametrize("locked_status", ["uploading", "uploaded", "published"])
+def test_release_campaign_anchor_rejects_locked_target_without_partial_write(store, locked_status):
+    release_id = store.register_release("ep", "S01", "short", "f.mp4")
+    youtube = store.ensure_target(release_id, "youtube")
+    instagram = store.ensure_target(release_id, "instagram_reels")
+    store.update_target(youtube, publish_at="2026-08-20T01:00:00+00:00")
+    store.update_target(
+        instagram,
+        status=locked_status,
+        publish_at="2026-08-20T01:00:00+00:00",
+    )
+
+    with pytest.raises(ValueError, match="已鎖定"):
+        _set_anchor(store, "ep", "S01", datetime(2026, 8, 25, tzinfo=UTC))
+
+    assert {target["publish_at"] for target in store.get_release("ep", "S01")["targets"]} == {
+        "2026-08-20T01:00:00+00:00"
+    }
+
+
+def test_release_campaign_anchor_surfaces_divergent_and_missing_target_values(store):
+    release_id = store.register_release("ep", "S01", "short", "f.mp4")
+    youtube = store.ensure_target(release_id, "youtube")
+    store.ensure_target(release_id, "instagram_reels")
+    none_snapshot = store.get_release_campaign_anchor("ep", "S01")
+    store.update_target(youtube, publish_at="2026-08-20T01:00:00+00:00")
+
+    snapshot = store.get_release_campaign_anchor("ep", "S01")
+
+    assert snapshot.state == "divergent"
+    assert snapshot.anchor_at is None
+    assert snapshot.expected_token != none_snapshot.expected_token
+    assert snapshot.target_anchors == (
+        ("instagram_reels", None),
+        ("youtube", "2026-08-20T01:00:00+00:00"),
+    )
+
+
+def test_release_campaign_anchor_rejects_stale_open_page_without_overwrite(store):
+    release_id = store.register_release("ep", "S01", "short", "f.mp4")
+    for platform in ("youtube", "instagram_reels", "facebook_reels"):
+        store.ensure_target(release_id, platform)
+    open_page = store.get_release_campaign_anchor("ep", "S01")
+    first_writer_anchor = datetime(2026, 8, 25, 1, tzinfo=UTC)
+    store.set_release_campaign_anchor(
+        "ep",
+        "S01",
+        first_writer_anchor,
+        expected_anchor_token=open_page.expected_token,
+    )
+
+    with pytest.raises(ValueError, match="stale Campaign Anchor"):
+        store.set_release_campaign_anchor(
+            "ep",
+            "S01",
+            datetime(2026, 8, 26, 1, tzinfo=UTC),
+            expected_anchor_token=open_page.expected_token,
+        )
+
+    current = store.get_release_campaign_anchor("ep", "S01")
+    assert current.anchor_at == first_writer_anchor
+
+
+def test_release_campaign_anchor_fails_closed_for_invalid_release_shape(store):
+    with pytest.raises(ValueError, match="不存在"):
+        store.set_release_campaign_anchor(
+            "missing", "S01", None, expected_anchor_token="release-anchor-v1:missing"
+        )
+
+    store.register_release("ep", "S01", "short", "f.mp4")
+    with pytest.raises(ValueError, match="沒有 targets"):
+        store.set_release_campaign_anchor(
+            "ep", "S01", None, expected_anchor_token="release-anchor-v1:no-targets"
+        )
+    with pytest.raises(ValueError, match="timezone-aware"):
+        store.set_release_campaign_anchor(
+            "ep",
+            "S01",
+            datetime(2026, 8, 25, 9, 0),
+            expected_anchor_token="release-anchor-v1:unused",
+        )

@@ -3,7 +3,10 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-from scripts.podcast_carousel_publish_job import _target_idempotency_key
+from scripts.podcast_carousel_publish_job import (
+    _target_idempotency_key,
+    carousel_campaign_anchor_token,
+)
 from shared.publish_calendar import (
     PODCAST_YOUTUBE_CHANNEL,
     PODCAST_YOUTUBE_CHANNEL_HANDLE,
@@ -13,7 +16,13 @@ from shared.publish_calendar import (
     build_publish_calendar,
     parse_month,
 )
-from shared.release_store import ensure_target, register_release, update_target
+from shared.release_store import (
+    ensure_target,
+    get_release_campaign_anchor,
+    register_release,
+    set_release_campaign_anchor,
+    update_target,
+)
 from shared.schemas.carousel_publish import (
     CarouselPublishClaim,
     CarouselPublishJobV1,
@@ -102,10 +111,11 @@ def _write_job(
     created_at: datetime,
     states: list[CarouselPublishTargetState],
     job_status: str,
+    campaign_anchor_at: datetime | None = None,
 ) -> None:
     targets = [_target(state.platform) for state in states]
     results = [state.checkpoint for state in states if state.checkpoint is not None]
-    claim = _claim(created_at) if job_status in {"completed", "failed"} else None
+    claim = _claim(created_at) if job_status in {"in_progress", "completed", "failed"} else None
     job = CarouselPublishJobV1(
         job_id=f"pj-{job_hex * 32}",
         episode_id="episode-alpha",
@@ -115,6 +125,7 @@ def _write_job(
         approval_revision_number=1,
         approved_at=created_at,
         request_fingerprint=fingerprint,
+        campaign_anchor_at=campaign_anchor_at,
         caption="Carousel 測試標題\n第二行",
         assets=[
             {
@@ -155,14 +166,15 @@ def test_taipei_release_projection_crosses_utc_day_and_month(tmp_path: Path) -> 
     assert item.calendar_at.isoformat() == "2026-09-01T00:30:00+08:00"
     assert item.date_basis == "scheduled"
     assert item.date_basis_label == "排程時間"
-    assert item.platform_label == "Podcast YouTube"
+    assert item.targets[0].platform_label == "Podcast YouTube"
+    assert item.phase == "scheduled"
     assert PODCAST_YOUTUBE_CHANNEL == (
         f"{PODCAST_YOUTUBE_CHANNEL_NAME} {PODCAST_YOUTUBE_CHANNEL_HANDLE}"
     )
     assert PODCAST_YOUTUBE_CHANNEL_ID == "UCvipegP35x3-OcAs--PgAig"
 
 
-def test_release_targets_are_platform_grained_and_missing_date_stays_backlog(
+def test_release_targets_are_grouped_into_one_publication_with_platform_states(
     tmp_path: Path,
 ) -> None:
     release_id = register_release(
@@ -170,16 +182,24 @@ def test_release_targets_are_platform_grained_and_missing_date_stays_backlog(
     )
     youtube = ensure_target(release_id, "youtube")
     instagram = ensure_target(release_id, "instagram_reels")
+    facebook = ensure_target(release_id, "facebook_reels")
     update_target(youtube, status="uploaded", title="無日期短片")
     update_target(instagram, status="failed", title="無日期短片", error="transport")
+    update_target(facebook, status="approved", title="無日期短片")
 
     projection = build_publish_calendar(tmp_path)
 
-    assert len(projection.items) == 2
-    assert {item.platform for item in projection.items} == {"youtube", "instagram_reels"}
-    assert all(item.calendar_at is None and item.date_basis is None for item in projection.items)
-    assert all(item.local_time_label == "日期未定" for item in projection.items)
-    assert all(item.date_basis_label == "日期未定" for item in projection.items)
+    assert len(projection.items) == 1
+    group = projection.items[0]
+    assert [(target.platform, target.status) for target in group.targets] == [
+        ("facebook_reels", "approved"),
+        ("instagram_reels", "failed"),
+        ("youtube", "uploaded"),
+    ]
+    assert group.calendar_at is None
+    assert group.date_basis is None
+    assert group.local_time_label == "日期未定"
+    assert group.phase == "attention"
     assert projection.episodes == ("backlog-only",)
 
 
@@ -218,9 +238,11 @@ def test_carousel_failed_completion_is_backlog_and_malformed_job_fails_soft(
     projection = build_publish_calendar(tmp_path)
 
     assert len(projection.items) == 1
-    assert projection.items[0].status == "failed"
-    assert projection.items[0].calendar_at is None
-    assert projection.items[0].detail_url == "/bridge/ig-cards/episode-alpha/publish"
+    group = projection.items[0]
+    assert group.targets[0].status == "failed"
+    assert group.phase == "attention"
+    assert group.calendar_at is None
+    assert group.detail_url == "/bridge/ig-cards/episode-alpha/publish"
     assert [item.code for item in projection.diagnostics] == ["carousel_job_invalid"]
 
 
@@ -253,14 +275,14 @@ def test_carousel_retry_deduplicates_and_preserves_carried_published_checkpoint(
 
     projection = build_publish_calendar(tmp_path)
 
-    assert len(projection.items) == 2
-    by_platform = {item.platform: item for item in projection.items}
+    assert len(projection.items) == 1
+    group = projection.items[0]
+    by_platform = {target.platform: target for target in group.targets}
     assert by_platform["instagram"].status == "published"
-    assert by_platform["instagram"].calendar_at.isoformat() == "2026-08-19T09:00:00+08:00"
-    assert by_platform["instagram"].date_basis == "published"
-    assert by_platform["instagram"].date_basis_label == "實際發布時間"
     assert by_platform["facebook_page"].status == "pending"
-    assert by_platform["facebook_page"].calendar_at is None
+    assert group.phase == "attention"
+    assert group.calendar_at is None
+    assert group.progress_label == "1/2 published"
 
 
 def test_carousel_published_checkpoint_crosses_into_taipei_next_month(tmp_path: Path) -> None:
@@ -278,4 +300,154 @@ def test_carousel_published_checkpoint_crosses_into_taipei_next_month(tmp_path: 
     item = build_publish_calendar(tmp_path).items[0]
 
     assert item.calendar_at.isoformat() == "2026-09-01T00:30:00+08:00"
-    assert item.platform_label == "Podcast YouTube · Community handoff"
+    assert item.targets[0].platform_label == "Podcast YouTube · Community handoff"
+    assert item.phase == "published"
+    assert item.date_basis == "published"
+
+
+def test_carousel_published_checkpoint_without_timezone_is_diagnostic_no_date(
+    tmp_path: Path,
+) -> None:
+    fingerprint = "0" * 64
+    created_at = datetime(2026, 8, 31, 16, 30, tzinfo=UTC)
+    _write_job(
+        tmp_path,
+        job_hex="5",
+        fingerprint=fingerprint,
+        created_at=created_at,
+        states=[
+            _state(
+                "youtube_community",
+                "published",
+                datetime(2026, 8, 31, 16, 30),
+                fingerprint,
+            )
+        ],
+        job_status="completed",
+    )
+
+    projection = build_publish_calendar(tmp_path)
+
+    assert projection.items[0].phase == "published"
+    assert projection.items[0].calendar_at is None
+    assert [diagnostic.code for diagnostic in projection.diagnostics] == [
+        "carousel_completed_at_invalid"
+    ]
+
+
+def test_release_pipeline_phase_mapping_and_one_anchor_one_placement(tmp_path: Path) -> None:
+    cases = [
+        ("draft", "draft", None, "needs_review"),
+        ("ready", "approved", None, "ready_to_schedule"),
+        ("scheduled", "approved", datetime(2026, 8, 25, tzinfo=UTC), "scheduled"),
+        ("running", "uploading", None, "in_progress"),
+        ("failed", "failed", None, "attention"),
+        ("done", "published", None, "published"),
+    ]
+    for cut_id, status, anchor, _phase in cases:
+        release_id = register_release("episode-phases", cut_id, "short", f"{cut_id}.mp4")
+        for platform in ("youtube", "instagram_reels", "facebook_reels"):
+            target_id = ensure_target(release_id, platform)
+            update_target(target_id, status=status)
+        if anchor is not None:
+            current = get_release_campaign_anchor("episode-phases", cut_id)
+            set_release_campaign_anchor(
+                "episode-phases",
+                cut_id,
+                anchor,
+                expected_anchor_token=current.expected_token,
+            )
+
+    projection = build_publish_calendar(tmp_path)
+    by_cut = {item.content_id: item for item in projection.items}
+
+    assert {cut_id: by_cut[cut_id].phase for cut_id, *_ in cases} == {
+        cut_id: phase for cut_id, _status, _anchor, phase in cases
+    }
+    assert len(by_cut["scheduled"].targets) == 3
+    assert by_cut["scheduled"].calendar_at.isoformat() == "2026-08-25T08:00:00+08:00"
+    assert (
+        by_cut["scheduled"].expected_anchor_token
+        == get_release_campaign_anchor("episode-phases", "scheduled").expected_token
+    )
+
+
+def test_release_partial_failure_takes_precedence_over_in_progress(tmp_path: Path) -> None:
+    release_id = register_release("episode-partial", "S01", "short", "S01.mp4")
+    statuses = {
+        "youtube": "uploading",
+        "instagram_reels": "failed",
+        "facebook_reels": "approved",
+    }
+    for platform, status in statuses.items():
+        target_id = ensure_target(release_id, platform)
+        update_target(target_id, status=status)
+
+    group = build_publish_calendar(tmp_path).items[0]
+
+    assert group.phase == "attention"
+
+
+def test_carousel_partial_failure_takes_precedence_over_in_progress(tmp_path: Path) -> None:
+    fingerprint = "1" * 64
+    updated_at = datetime(2026, 8, 25, tzinfo=UTC)
+    in_progress = CarouselPublishTargetState(
+        platform="instagram",
+        strategy="meta_api",
+        idempotency_key=_target_idempotency_key(fingerprint, "instagram"),
+        status="in_progress",
+        attempt_count=1,
+        attempt_id=f"pa-{'c' * 32}",
+        updated_at=updated_at,
+    )
+    _write_job(
+        tmp_path,
+        job_hex="6",
+        fingerprint=fingerprint,
+        created_at=updated_at,
+        states=[_state("facebook_page", "failed", updated_at, fingerprint), in_progress],
+        job_status="in_progress",
+    )
+
+    group = build_publish_calendar(tmp_path).items[0]
+
+    assert group.phase == "attention"
+
+
+def test_divergent_release_anchors_are_attention_and_never_choose_a_date(tmp_path: Path) -> None:
+    release_id = register_release("episode-divergent", "S01", "short", "S01.mp4")
+    youtube = ensure_target(release_id, "youtube")
+    instagram = ensure_target(release_id, "instagram_reels")
+    update_target(youtube, status="approved", publish_at="2026-08-25T01:00:00+00:00")
+    update_target(instagram, status="approved", publish_at="2026-08-26T01:00:00+00:00")
+
+    projection = build_publish_calendar(tmp_path)
+
+    assert projection.items[0].calendar_at is None
+    assert projection.items[0].phase == "attention"
+    assert any(item.code == "release_campaign_anchor_divergent" for item in projection.diagnostics)
+
+
+def test_queued_carousel_campaign_anchor_creates_one_scheduled_group(tmp_path: Path) -> None:
+    fingerprint = "f" * 64
+    anchor = datetime(2026, 8, 25, 1, tzinfo=UTC)
+    _write_job(
+        tmp_path,
+        job_hex="5",
+        fingerprint=fingerprint,
+        created_at=datetime(2026, 8, 19, tzinfo=UTC),
+        states=[
+            _state("facebook_page", "pending", anchor, fingerprint),
+            _state("instagram", "pending", anchor, fingerprint),
+        ],
+        job_status="queued",
+        campaign_anchor_at=anchor,
+    )
+
+    group = build_publish_calendar(tmp_path).items[0]
+
+    assert group.phase == "scheduled"
+    assert group.date_basis == "scheduled"
+    assert group.calendar_at.isoformat() == "2026-08-25T09:00:00+08:00"
+    assert len(group.targets) == 2
+    assert group.expected_anchor_token == carousel_campaign_anchor_token(anchor)

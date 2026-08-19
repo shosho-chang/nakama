@@ -15,6 +15,7 @@ from pydantic import ValidationError
 from scripts import podcast_carousel_publish_job as publish_job_module
 from scripts.podcast_carousel_publish_job import (
     PublishJobTransitionError,
+    carousel_campaign_anchor_token,
     checkpoint_publish_target,
     claim_publish_job,
     complete_publish_job,
@@ -28,6 +29,7 @@ from scripts.podcast_carousel_publish_job import (
     published_publish_platforms,
     republish_required_platforms,
     retire_unsafe_legacy_publish_job,
+    set_publish_job_campaign_anchor,
     start_publish_target,
     supersede_queued_publish_job,
     unfinished_publish_platforms,
@@ -162,6 +164,82 @@ def _bound_result(path: Path, result: CarouselPublishPlatformResult):
             "attempt_id": state.attempt_id,
         }
     )
+
+
+def test_queued_publish_job_campaign_anchor_can_be_scheduled_and_unscheduled(
+    tmp_path: Path,
+):
+    job = _queued(tmp_path)
+    path = publish_job_path(tmp_path, job.job_id)
+    anchor = datetime(2026, 8, 25, 1, 0, tzinfo=UTC)
+
+    scheduled = set_publish_job_campaign_anchor(
+        path,
+        campaign_anchor_at=anchor,
+        expected_anchor_token=carousel_campaign_anchor_token(job.campaign_anchor_at),
+        now=NOW + timedelta(minutes=1),
+    )
+    unscheduled = set_publish_job_campaign_anchor(
+        path,
+        campaign_anchor_at=None,
+        expected_anchor_token=carousel_campaign_anchor_token(scheduled.campaign_anchor_at),
+        now=NOW + timedelta(minutes=2),
+    )
+
+    assert scheduled.campaign_anchor_at == anchor
+    assert scheduled.status == "queued"
+    assert scheduled.target_states == job.target_states
+    assert scheduled.updated_at > job.updated_at
+    assert unscheduled.campaign_anchor_at is None
+    assert unscheduled.updated_at > scheduled.updated_at
+
+
+def test_carousel_campaign_anchor_rejects_stale_open_page_without_overwrite(
+    tmp_path: Path,
+):
+    job = _queued(tmp_path)
+    path = publish_job_path(tmp_path, job.job_id)
+    open_page_token = carousel_campaign_anchor_token(job.campaign_anchor_at)
+    first_writer_anchor = datetime(2026, 8, 25, 1, tzinfo=UTC)
+    set_publish_job_campaign_anchor(
+        path,
+        campaign_anchor_at=first_writer_anchor,
+        expected_anchor_token=open_page_token,
+        now=NOW + timedelta(minutes=1),
+    )
+
+    with pytest.raises(PublishJobTransitionError, match="stale Campaign Anchor"):
+        set_publish_job_campaign_anchor(
+            path,
+            campaign_anchor_at=datetime(2026, 8, 26, 1, tzinfo=UTC),
+            expected_anchor_token=open_page_token,
+            now=NOW + timedelta(minutes=2),
+        )
+
+    assert load_publish_job(path).campaign_anchor_at == first_writer_anchor
+
+
+def test_nonqueued_publish_job_rejects_campaign_anchor_without_mutation(tmp_path: Path):
+    job = _queued(tmp_path)
+    path = publish_job_path(tmp_path, job.job_id)
+    claimed = claim_publish_job(
+        path,
+        executor="codex",
+        executor_id="worker-1",
+        executor_capabilities=["browser_session"],
+        claim_token="claim-token-1234",
+        now=NOW + timedelta(seconds=1),
+    )
+
+    with pytest.raises(PublishJobTransitionError, match="queued"):
+        set_publish_job_campaign_anchor(
+            path,
+            campaign_anchor_at=datetime(2026, 8, 25, tzinfo=UTC),
+            expected_anchor_token=carousel_campaign_anchor_token(claimed.campaign_anchor_at),
+            now=NOW + timedelta(minutes=1),
+        )
+
+    assert load_publish_job(path) == claimed
 
 
 def test_claim_uses_materialized_release_bundle_after_episode_assets_change(tmp_path: Path):
