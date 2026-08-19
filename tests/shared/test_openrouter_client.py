@@ -125,10 +125,10 @@ def test_resolves_model_via_router_default(monkeypatch, _fake_response):
     with patch.object(orc, "get_client", return_value=fake_client):
         orc.ask_openrouter("hi")  # model=None
 
-    # DEFAULT_MODELS['default'] == claude-sonnet-4-6 → anthropic/claude-sonnet-4.6
+    # DEFAULT_MODELS['default'] == claude-opus-5 → anthropic/claude-opus-5
     assert (
         fake_client.chat.completions.create.call_args.kwargs["model"]
-        == "anthropic/claude-sonnet-4.6"
+        == "anthropic/claude-opus-5"
     )
 
 

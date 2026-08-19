@@ -40,7 +40,7 @@ def test_get_renders_matrix(client):
     assert resp.status_code == 200
     # 登記的 call site 出現在頁面
     assert "concept_merge" in resp.text
-    assert "claude-opus-4-7" in resp.text
+    assert "claude-opus-5" in resp.text
     assert "模型路由" in resp.text
 
 
@@ -48,13 +48,13 @@ def test_post_set_writes_override_and_redirects(client):
     c, r = client
     resp = c.post(
         "/bridge/models/set",
-        data={"agent": "robin", "task": "concept_merge", "model": "gemini-2.5-pro"},
+        data={"agent": "robin", "task": "concept_merge", "model": "grok-4-fast"},
         follow_redirects=False,
     )
     assert resp.status_code == 303
-    assert r.get_override("robin", "concept_merge") == "gemini-2.5-pro"
+    assert r.get_override("robin", "concept_merge") == "grok-4-fast"
     # 改後 get_model 即時反映
-    assert r.get_model("robin", "concept_merge") == "gemini-2.5-pro"
+    assert r.get_model("robin", "concept_merge") == "grok-4-fast"
 
 
 def test_post_set_rejects_unknown_model(client):
