@@ -9,7 +9,10 @@ Read this reference when composing, rendering, correcting, or visually reviewing
 - Confirm no visible string came from a template placeholder.
 - Use the frozen typography hierarchy. The cover title must be at least as large as a content-page title; Hook/point headline and body retain their assigned roles. Fit must not shrink body far below its role—crossing the readable floor is `needs_review`.
 - Give multiline titles breathing line-height. Headline frames must not feel cramped, and optical padding must match on all four sides.
-- A square migration is a real recomposition, not a crop. Rebalance the cover and both quote variants for 1:1; retain a large guest presence without letting the cutout collide with copy. On point pages, keep the oversized numeral low enough to act as background rather than crowd the header.
+- A square migration is a real recomposition, not a crop. Rebalance the cover and both quote variants for 1:1; retain a large guest presence without uncontrolled cutout/copy overlap. On point pages, keep the oversized numeral in a clearly subordinate background layer.
+- The Carousel Review Grid must use the same aspect ratio as the canonical render. A 1080×1080 master is previewed in a 1:1 container; never preserve a stale 4:5 CSS frame.
+- Treat the point numeral as a cropped background object: slight clipping at the top and right is intentional. Calibrate it behind the headline rather than forcing the whole glyph inside the canvas.
+- Cover cutouts need visible shoulder mass, not only a large face. It is acceptable for a smaller cover title to overlap the transparent/top edge of the cutout or lightly touch the hair, but record a bounded overlap metric so it cannot drift into covering the face.
 - Check the Hook→point logic and semantic entailment on every page. Preserve subject, stance, and causality; never turn productive AI use into fear of replacement or swap `收入交給流量` for `內容交給流量`.
 - Balance whitespace above the Hook and above each page's content optically, not by geometric centering alone. Raise body/content groups when they feel low.
 - Size guest and host cutouts assertively without obscuring headlines, body copy, labels, or required marks. Check the actual silhouette, not only its bounding box.
