@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Literal
@@ -76,6 +77,19 @@ class PanelResult(_PanelModel):
         for lens, review in self.reviews.items():
             if review.lens != lens:
                 raise ValueError(f"review lens mismatch: expected {lens}, got {review.lens}")
+
+        unreconciled = [finding for review in self.reviews.values() for finding in review.findings]
+        for finding in self.verified_findings:
+            try:
+                unreconciled.remove(finding)
+            except ValueError as error:
+                raise ValueError(
+                    "panel must reconcile every reviewer finding exactly once"
+                ) from error
+        if Counter(finding.finding_id for finding in unreconciled) != Counter(
+            finding.finding_id for finding in self.verification_rejections
+        ):
+            raise ValueError("panel must reconcile every reviewer finding exactly once")
 
         verified_ids = [finding.finding_id for finding in self.verified_findings]
         if len(verified_ids) != len(set(verified_ids)):

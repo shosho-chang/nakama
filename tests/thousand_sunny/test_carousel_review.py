@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from agents.brook.podcast_carousel_render import _digest_files
 from shared.schemas.podcast_carousel import (
     CarouselReviewManifestV1,
     CarouselReviewPage,
@@ -41,6 +42,8 @@ class _ReviewFormParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if tag == "form" and self.forms:
             self.forms.pop()
+
+
 EPISODE = "20260721 鄭國威"
 
 
@@ -126,6 +129,25 @@ def _seed(root: Path) -> Path:
     spec = _spec()
     copy_path = revision / "copy_spec.v1.json"
     copy_path.write_text(spec.model_dump_json(), encoding="utf-8")
+    template_root = package / "templates" / SHA
+    template_root.mkdir(parents=True)
+    (template_root / "preview.css").write_text("#canvas{width:1080px}", encoding="utf-8")
+    (template_root / "preview.js").write_text("window.previewLoaded=true", encoding="utf-8")
+    (template_root / "preview.png").write_bytes(b"trusted preview image")
+    template_files = [
+        (path.relative_to(template_root).as_posix(), path)
+        for path in template_root.rglob("*")
+        if path.is_file()
+    ]
+    template_sha256 = _digest_files(template_files)
+    render_input_path = revision / "render_input.html"
+    render_input_path.write_text(
+        '<!doctype html><html><head><base href="file:///snapshot/">'
+        '<link rel="stylesheet" href="preview.css"></head>'
+        '<body><div id="canvas" class="cover"><img class="guest" alt="來賓">'
+        '<h1 class="cover-title">看不見的失敗</h1></div></body></html>',
+        encoding="utf-8",
+    )
     review_pages = []
     for index, page in enumerate(spec.pages, start=1):
         image_path = pages_dir / f"{index:02d}.png"
@@ -145,7 +167,8 @@ def _seed(root: Path) -> Path:
         episode_id=spec.episode_id,
         revision=spec.revision,
         copy_spec=receipt_for(copy_path),
-        template=TemplateSnapshot(root=str(package / "templates" / SHA), sha256=SHA),
+        render_input=receipt_for(render_input_path),
+        template=TemplateSnapshot(root=str(template_root), sha256=template_sha256),
         publish_compatibility="api_compatible",
         pages=review_pages,
     )
@@ -179,7 +202,15 @@ def _advance_manifest_revision(root: Path, revision: str = "r002") -> str:
     manifest_path = Path(current["manifest"])
     manifest = CarouselReviewManifestV1.model_validate_json(
         manifest_path.read_text(encoding="utf-8")
-    ).model_copy(update={"revision": revision})
+    )
+    copy_path = Path(manifest.copy_spec.path)
+    copy_spec = PodcastCarouselCopySpecV1.model_validate_json(copy_path.read_text(encoding="utf-8"))
+    copy_path.write_text(
+        copy_spec.model_copy(update={"revision": revision}).model_dump_json(), encoding="utf-8"
+    )
+    manifest = manifest.model_copy(
+        update={"revision": revision, "copy_spec": receipt_for(copy_path)}
+    )
     manifest_path.write_text(manifest.model_dump_json(), encoding="utf-8")
     manifest_sha256 = receipt_for(manifest_path).sha256
     current.update({"revision": revision, "manifest_sha256": manifest_sha256})
@@ -211,7 +242,7 @@ def test_board_shows_all_cards_and_evidence_drawers(client):
     assert response.text.count('class="carousel-card"') == 5
     assert "grid-template-columns:repeat(5" not in response.text
     assert "逐字稿證據" in response.text
-    assert "Approve" in response.text
+    assert "核准" in response.text
 
 
 def test_review_submit_button_belongs_to_post_form_without_nested_forms(client):
@@ -239,7 +270,7 @@ def test_saved_board_names_review_round_and_exposes_saving_state(client):
     assert response.status_code == 303
 
     saved_board = app.get(f"/bridge/ig-cards/{EPISODE}?saved=1")
-    assert "第 1 輪 Review 已儲存" in saved_board.text
+    assert "第 1 輪檢查已儲存" in saved_board.text
     assert 'data-saving-label="儲存中…"' in saved_board.text
 
 
@@ -252,6 +283,21 @@ def test_review_board_persists_refresh_draft_and_submits_without_navigation(clie
     assert "fetch(reviewForm.action" in response.text
     assert 'id="review-save-status"' in response.text
     assert 'id="review-count"' in response.text
+
+
+def test_editor_pages_preserve_visual_field_order(client):
+    app, _ = client
+    response = app.get(f"/bridge/ig-cards/{EPISODE}")
+    marker = "const editorPages = "
+    editor_pages = json.loads(response.text.split(marker, 1)[1].split(";", 1)[0])
+
+    assert [page["field_order"] for page in editor_pages] == [
+        ["headline", "emphasis", "guest_name", "guest_title"],
+        ["question", "emphasis", "bridge"],
+        ["headline", "emphasis", "body"],
+        ["host_question", "text", "emphasis", "guest_name"],
+        ["episode_topic", "emphasis"],
+    ]
 
 
 def test_media_returns_verified_png(client):
@@ -339,13 +385,7 @@ def test_feedback_submit_creates_revision_bound_queued_job(client):
             "feedback": "放大來賓",
         }
     ]
-    job_path = (
-        root
-        / EPISODE
-        / "ig-carousel"
-        / "correction_jobs"
-        / f"{payload['job_id']}.json"
-    )
+    job_path = root / EPISODE / "ig-carousel" / "correction_jobs" / f"{payload['job_id']}.json"
     assert job_path.is_file()
     assert json.loads(job_path.read_text(encoding="utf-8"))["status"] == "queued"
 
@@ -426,9 +466,7 @@ def test_approve_records_latest_hash_without_publishing(client):
         "published": False,
     }
     feedback = json.loads(
-        (root / EPISODE / "ig-carousel" / "review_feedback.v1.json").read_text(
-            encoding="utf-8"
-        )
+        (root / EPISODE / "ig-carousel" / "review_feedback.v1.json").read_text(encoding="utf-8")
     )
     assert feedback["revisions"][-1]["decision"] == "approved"
     assert not (root / EPISODE / "ig-carousel" / "published.json").exists()
@@ -446,9 +484,7 @@ def test_approve_is_idempotent_for_current_manifest(client):
     assert second.status_code == 200
     assert second.json() == first.json()
     feedback = json.loads(
-        (root / EPISODE / "ig-carousel" / "review_feedback.v1.json").read_text(
-            encoding="utf-8"
-        )
+        (root / EPISODE / "ig-carousel" / "review_feedback.v1.json").read_text(encoding="utf-8")
     )
     matching = [
         revision
@@ -458,6 +494,164 @@ def test_approve_is_idempotent_for_current_manifest(client):
         and revision["decision"] == "approved"
     ]
     assert len(matching) == 1
+
+
+def test_structured_editor_apply_queues_copy_and_cover_layout_without_mutating_artifacts(client):
+    app, root = client
+    package = root / EPISODE / "ig-carousel"
+    manifest_sha = _manifest_sha(app)
+    copy_path = package / "revisions" / "r001" / "copy_spec.v1.json"
+    image_path = package / "revisions" / "r001" / "pages" / "01.png"
+    copy_before = copy_path.read_bytes()
+    image_before = receipt_for(image_path)
+
+    response = app.post(
+        f"/bridge/ig-cards/{EPISODE}/apply-edits",
+        json={
+            "manifest_sha256": manifest_sha,
+            "copy_edits": [
+                {
+                    "page_id": "cover",
+                    "role": "cover",
+                    "artifact_sha256": image_before.sha256,
+                    "fields": {"headline": "更清楚地看見失敗"},
+                }
+            ],
+            "layout_overrides": {
+                "page_id": "cover",
+                "artifact_sha256": image_before.sha256,
+                "values": {
+                    "guest_right_px": -180,
+                    "guest_bottom_px": -90,
+                    "guest_height_px": 980,
+                    "title_font_size_px": 112,
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["status"] == "queued"
+    assert payload["copy_edits"][0]["fields"] == {"headline": "更清楚地看見失敗"}
+    assert payload["layout_overrides"]["values"]["guest_height_px"] == 980
+    assert payload["required_reviews"] == [
+        "ig_audience",
+        "episode_editorial",
+        "brand_evidence",
+    ]
+    assert copy_path.read_bytes() == copy_before
+    assert receipt_for(image_path) == image_before
+    assert not (package / "published.json").exists()
+
+
+def test_structured_editor_fails_closed_on_noop_illegal_fields_bounds_and_manifest_drift(client):
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+    cover = receipt_for(root / EPISODE / "ig-carousel/revisions/r001/pages/01.png")
+    base = {
+        "manifest_sha256": manifest_sha,
+        "copy_edits": [
+            {
+                "page_id": "cover",
+                "role": "cover",
+                "artifact_sha256": cover.sha256,
+                "fields": {"headline": "看不見的失敗"},
+            }
+        ],
+    }
+    assert app.post(f"/bridge/ig-cards/{EPISODE}/apply-edits", json=base).status_code == 400
+    illegal = json.loads(json.dumps(base))
+    illegal["copy_edits"][0]["fields"] = {"cutout": "other.png"}
+    assert app.post(f"/bridge/ig-cards/{EPISODE}/apply-edits", json=illegal).status_code == 422
+    bounds = {
+        "manifest_sha256": manifest_sha,
+        "layout_overrides": {
+            "page_id": "cover",
+            "artifact_sha256": cover.sha256,
+            "values": {"guest_height_px": 2000},
+        },
+    }
+    assert app.post(f"/bridge/ig-cards/{EPISODE}/apply-edits", json=bounds).status_code == 422
+    stale = json.loads(json.dumps(base))
+    stale["manifest_sha256"] = "b" * 64
+    stale["copy_edits"][0]["fields"] = {"headline": "另一個失敗"}
+    assert app.post(f"/bridge/ig-cards/{EPISODE}/apply-edits", json=stale).status_code == 409
+
+
+def test_structured_editor_preview_uses_real_render_dom_and_scoped_snapshot_assets(client):
+    app, _ = client
+    manifest_sha = _manifest_sha(app)
+    preview = app.get(
+        f"/bridge/ig-cards/{EPISODE}/preview/cover",
+        params={"manifest_sha256": manifest_sha},
+    )
+    assert preview.status_code == 200
+    assert 'id="canvas" class="cover"' in preview.text
+    assert "file:///snapshot/" not in preview.text
+    assert "/preview-assets/" in preview.text
+    assert "nakama-carousel-editor-v1" in preview.text
+    assert "connect-src 'none'" in preview.headers["content-security-policy"]
+    base = preview.text.split('<base href="', 1)[1].split('"', 1)[0]
+    asset = app.get(f"{base}preview.css")
+    assert asset.status_code == 200
+
+
+@pytest.mark.parametrize("asset_name", ["preview.css", "preview.js", "preview.png"])
+def test_editor_preview_rejects_snapshot_asset_mutation_after_verification(client, asset_name):
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+    preview = app.get(
+        f"/bridge/ig-cards/{EPISODE}/preview/cover",
+        params={"manifest_sha256": manifest_sha},
+    )
+    base = preview.text.split('<base href="', 1)[1].split('"', 1)[0]
+    assert app.get(f"{base}preview.css").status_code == 200
+
+    template_root = root / EPISODE / "ig-carousel" / "templates" / SHA
+    (template_root / asset_name).write_bytes(b"tampered snapshot asset")
+
+    mutated = app.get(f"{base}{asset_name}")
+    assert mutated.status_code == 409
+    assert mutated.json()["detail"] == "carousel template snapshot changed"
+
+
+def test_legacy_manifest_keeps_review_open_but_disables_untrusted_editor(client):
+    app, root = client
+    package = root / EPISODE / "ig-carousel"
+    manifest_path = package / "revisions/r001/review_manifest.v1.json"
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload.pop("render_input")
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    current_path = package / "current.json"
+    current = json.loads(current_path.read_text(encoding="utf-8"))
+    current["manifest_sha256"] = receipt_for(manifest_path).sha256
+    current_path.write_text(json.dumps(current), encoding="utf-8")
+
+    board = app.get(f"/bridge/ig-cards/{EPISODE}")
+    assert board.status_code == 200
+    assert "此舊版本仍可檢查與填寫修改意見" in board.text
+    assert "需先產生含安全預覽收據的新版本" in board.text
+    preview = app.get(
+        f"/bridge/ig-cards/{EPISODE}/preview/cover",
+        params={"manifest_sha256": current["manifest_sha256"]},
+    )
+    assert preview.status_code == 409
+    assert "no trusted editor preview" in preview.json()["detail"]
+
+
+def test_editor_preview_rejects_tampered_render_input_receipt(client):
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+    render_input = root / EPISODE / "ig-carousel/revisions/r001/render_input.html"
+    render_input.write_text("<html>tampered</html>", encoding="utf-8")
+
+    preview = app.get(
+        f"/bridge/ig-cards/{EPISODE}/preview/cover",
+        params={"manifest_sha256": manifest_sha},
+    )
+    assert preview.status_code == 409
+    assert preview.json()["detail"] == "carousel render input changed"
 
 
 def test_auth_redirect_uses_same_bridge_login_boundary(tmp_path: Path, monkeypatch):
@@ -477,3 +671,13 @@ def test_auth_redirect_uses_same_bridge_login_boundary(tmp_path: Path, monkeypat
     response = app.get(f"/bridge/ig-cards/{EPISODE}")
     assert response.status_code == 302
     assert response.headers["location"].startswith("/login?next=/bridge/ig-cards/")
+    structured = app.post(
+        f"/bridge/ig-cards/{EPISODE}/apply-edits",
+        json={"manifest_sha256": SHA, "copy_edits": []},
+    )
+    assert structured.status_code == 401
+    preview = app.get(
+        f"/bridge/ig-cards/{EPISODE}/preview/cover",
+        params={"manifest_sha256": SHA},
+    )
+    assert preview.status_code == 401

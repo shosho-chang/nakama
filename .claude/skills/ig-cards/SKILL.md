@@ -1,6 +1,6 @@
 ---
 name: ig-cards
-description: Produce or correct an evidence-backed Podcast Episode social carousel, including transcript-grounded copy, three-lens review, 1080x1080 rendering, visual QA, and Review Gate feedback jobs. Use for Podcast Carousel, IG 輪播, YouTube square posts, 社群圖卡, or revising an episode carousel package; do not use for book or health-information carousel templates.
+description: Produce or correct an evidence-backed Podcast Episode social carousel, including transcript-grounded copy, three-lens review, 1080x1080 rendering, visual QA, and structured Review Gate edit jobs. Use for Podcast Carousel, IG 輪播, YouTube square posts, 社群圖卡, or revising an episode carousel package; do not use for book or health-information carousel templates.
 ---
 
 # Claude Code entrypoint

@@ -6,8 +6,18 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from agents.brook.podcast_carousel_render import render_carousel, snapshot_template
-from shared.schemas.podcast_carousel import PodcastCarouselCopySpecV1, receipt_for
+from agents.brook.podcast_carousel_render import (
+    _content_sha,
+    _write_render_input,
+    render_carousel,
+    snapshot_template,
+)
+from shared.schemas.podcast_carousel import (
+    CarouselLayoutOverridesV1,
+    CoverLayoutOverride,
+    PodcastCarouselCopySpecV1,
+    receipt_for,
+)
 
 CHROME = Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
 DESIGN_TEMPLATE = Path(
@@ -39,7 +49,21 @@ const spec=/*__CAROUSEL_SPEC__*/null;
 const assets=/*__CAROUSEL_ASSETS__*/null;
 const index=Number(new URLSearchParams(location.search).get('page')||0);
 document.querySelector('#canvas').textContent=spec.pages[index].role+' '+Object.keys(assets).length;
-document.body.dataset.fitDiagnostics=JSON.stringify({status:'fit',regions:{headline:72},notes:[]});
+const fitTargets=[{
+  node:document.querySelector('#canvas'),region:'headline',start:72,
+  absoluteMin:40,minReadable:48,lineHeight:1
+}];
+const fit=()=>{
+  const diagnostics={status:'fit',regions:{},notes:[]};
+  for(const item of fitTargets){
+    let size=item.start;
+    item.node.style.fontSize=`${size}px`;
+    diagnostics.regions[item.region]=size;
+  }
+  document.body.dataset.fitDiagnostics=JSON.stringify(diagnostics);
+  document.body.dataset.ready="1";
+};
+fit();
 </script></body></html>""",
         encoding="utf-8",
     )
@@ -128,6 +152,46 @@ def test_template_snapshot_is_content_addressed(tmp_path: Path):
     assert Path(first.root, "PodcastCarouselRender.html").is_file()
 
 
+def test_cover_layout_override_is_injected_and_changes_deterministic_content_hash(tmp_path: Path):
+    template = _template(tmp_path)
+    package = tmp_path / "package"
+    snapshot = snapshot_template(template, package)
+    cutouts = tmp_path / "cutouts"
+    cutouts.mkdir()
+    for name in ("guest.png", "host.png"):
+        Image.new("RGBA", (48, 48), "#00000000").save(cutouts / name)
+    original = _spec()
+    edited = original.model_copy(
+        update={
+            "layout_overrides": CarouselLayoutOverridesV1(
+                cover=CoverLayoutOverride(
+                    guest_right_px=-180,
+                    guest_bottom_px=-90,
+                    guest_height_px=980,
+                    title_font_size_px=112,
+                )
+            )
+        }
+    )
+    destination = tmp_path / "render_input.html"
+    _write_render_input(
+        snapshot=snapshot,
+        spec=edited,
+        cutouts_dir=cutouts,
+        destination=destination,
+    )
+    source = destination.read_text(encoding="utf-8")
+    assert "data-carousel-layout-overrides" in source
+    assert "right:-180px!important" in source
+    assert "--type-cover-title:112px" in source
+    assert "window.__carouselRefit=()=>" in source
+    assert "item.node.dataset.fitStart" in source
+    assert "return diagnostics" in source
+    assert _content_sha(original, 0, snapshot.sha256, cutouts) != _content_sha(
+        edited, 0, snapshot.sha256, cutouts
+    )
+
+
 def test_design_system_cover_and_cta_use_reviewed_visual_contract():
     source = (DESIGN_TEMPLATE / "PodcastCarouselRender.html").read_text(encoding="utf-8")
 
@@ -200,6 +264,7 @@ def test_render_outputs_exact_images_and_reuses_unchanged_pages(tmp_path: Path):
         assert image_path.stat().st_mtime_ns == mtimes[page.page_id]
         with Image.open(image_path) as image:
             assert image.size == (1080, 1080)
+    assert receipt_for(package / "revisions" / "r001" / "render_input.html") == second.render_input
     current = json.loads((package / "current.json").read_text(encoding="utf-8"))
     assert current["revision"] == "r001"
 

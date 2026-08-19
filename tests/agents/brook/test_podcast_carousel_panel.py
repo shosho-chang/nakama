@@ -6,7 +6,7 @@ from threading import Lock
 import pytest
 
 from agents.brook.podcast_carousel_copy import build_transcript_index, generate_copy_spec
-from agents.brook.podcast_carousel_panel import run_panel
+from agents.brook.podcast_carousel_panel import PanelResult, run_panel
 from shared.schemas.podcast_carousel import EpisodeMetadata
 
 
@@ -232,3 +232,64 @@ def test_synthesis_cannot_reject_verified_high_brand_finding(tmp_path):
             reviewer_call=reviewer,
             synthesis_call=synthesize,
         )
+
+
+def _finding(finding_id: str) -> dict[str, object]:
+    return {
+        "finding_id": finding_id,
+        "severity": "medium",
+        "page_id": None,
+        "claim": "reviewer found an editorial issue",
+        "page_copy_quote": None,
+        "evidence_ids": ["B0001"],
+        "suggested_change": "revise the unsupported copy",
+    }
+
+
+def _panel_payload_with_reviews(reviews: dict[str, dict[str, object]]) -> dict[str, object]:
+    return {
+        "episode_id": "ep120",
+        "revision": "r002",
+        "status": "converged",
+        "reviews": reviews,
+        "verified_findings": [],
+        "verification_rejections": [],
+        "synthesis": {
+            "accepted_finding_ids": [],
+            "rejected": [],
+            "revision_instructions": [],
+            "blockers": [],
+        },
+    }
+
+
+def test_panel_result_rejects_unreconciled_reviewer_findings():
+    reviews = {
+        lens: {
+            "lens": lens,
+            "verdict": "revise",
+            "findings": [_finding(f"{lens}-01")],
+        }
+        for lens in ("ig_audience", "episode_editorial", "brand_evidence")
+    }
+
+    with pytest.raises(ValueError, match="reconcile every reviewer finding"):
+        PanelResult.model_validate(_panel_payload_with_reviews(reviews))
+
+
+def test_panel_result_rejects_verification_outcomes_not_present_in_reviews():
+    reviews = {
+        lens: {"lens": lens, "verdict": "pass", "findings": []}
+        for lens in ("ig_audience", "episode_editorial", "brand_evidence")
+    }
+    payload = _panel_payload_with_reviews(reviews)
+    payload["verified_findings"] = [_finding("invented-01")]
+    payload["synthesis"] = {
+        "accepted_finding_ids": [],
+        "rejected": [{"finding_id": "invented-01", "reason": "not actionable"}],
+        "revision_instructions": [],
+        "blockers": [],
+    }
+
+    with pytest.raises(ValueError, match="reconcile every reviewer finding"):
+        PanelResult.model_validate(payload)

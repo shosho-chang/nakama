@@ -13,6 +13,15 @@ _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _REVISION_RE = re.compile(r"^r[0-9]{3,}$")
 _PAGE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
 
+CAROUSEL_DISPLAY_COPY_FIELDS: dict[str, tuple[str, ...]] = {
+    "cover": ("headline", "emphasis", "guest_name", "guest_title"),
+    "hook": ("question", "emphasis", "bridge"),
+    "point": ("headline", "emphasis", "body"),
+    "quote": ("host_question", "text", "emphasis", "guest_name"),
+    "cta": ("episode_topic", "emphasis"),
+}
+CAROUSEL_REQUIRED_REVIEWS = ("ig_audience", "episode_editorial", "brand_evidence")
+
 
 class CarouselModel(BaseModel):
     """Fail closed on contract drift."""
@@ -58,6 +67,19 @@ class EpisodeMetadata(CarouselModel):
     topic: str = Field(min_length=1)
     guest_name: str = Field(min_length=1)
     guest_title: str = Field(min_length=1)
+
+
+class CoverLayoutOverride(CarouselModel):
+    """Deterministic cover geometry in the 1080px render coordinate system."""
+
+    guest_right_px: int = Field(default=-260, ge=-540, le=240)
+    guest_bottom_px: int = Field(default=-130, ge=-400, le=240)
+    guest_height_px: int = Field(default=900, ge=480, le=1400)
+    title_font_size_px: int = Field(default=106, ge=72, le=160)
+
+
+class CarouselLayoutOverridesV1(CarouselModel):
+    cover: CoverLayoutOverride | None = None
 
 
 class _BasePage(CarouselModel):
@@ -177,6 +199,7 @@ class PodcastCarouselCopySpecV1(CarouselModel):
     editorial_direction_path: str | None = None
     pages: list[CarouselPage] = Field(min_length=5, max_length=20)
     publish_compatibility: Literal["api_compatible", "manual_only"]
+    layout_overrides: CarouselLayoutOverridesV1 = Field(default_factory=CarouselLayoutOverridesV1)
 
     @field_validator("revision")
     @classmethod
@@ -275,6 +298,7 @@ class CarouselReviewManifestV1(CarouselModel):
     stage: Literal[5] = 5
     revision: str
     copy_spec: ArtifactReceipt
+    render_input: ArtifactReceipt | None = None
     template: TemplateSnapshot
     publish_compatibility: Literal["api_compatible", "manual_only"]
     pages: list[CarouselReviewPage] = Field(min_length=5, max_length=20)
@@ -369,6 +393,80 @@ class CarouselCorrectionItem(CarouselModel):
         return value
 
 
+class CarouselCopyEdit(CarouselModel):
+    """One allowlisted display-copy patch bound to the rendered page artifact."""
+
+    page_id: str
+    role: Literal["cover", "hook", "point", "quote", "cta"]
+    artifact_sha256: str
+    fields: dict[str, str] = Field(min_length=1, max_length=4)
+
+    @field_validator("page_id")
+    @classmethod
+    def _valid_page_id(cls, value: str) -> str:
+        if not _PAGE_ID_RE.fullmatch(value):
+            raise ValueError("page_id must be stable lowercase kebab-case")
+        return value
+
+    @field_validator("artifact_sha256")
+    @classmethod
+    def _valid_artifact_sha256(cls, value: str) -> str:
+        value = value.lower()
+        if not _SHA256_RE.fullmatch(value):
+            raise ValueError("artifact_sha256 must be a lowercase SHA-256 hex digest")
+        return value
+
+    @model_validator(mode="after")
+    def _allowlisted_display_fields(self) -> CarouselCopyEdit:
+        invalid = set(self.fields) - set(CAROUSEL_DISPLAY_COPY_FIELDS[self.role])
+        if invalid:
+            raise ValueError(
+                f"display-copy fields are not editable for {self.role}: {sorted(invalid)}"
+            )
+        if any(not value.strip() for value in self.fields.values()):
+            raise ValueError("edited display-copy fields cannot be empty")
+        return self
+
+
+class CarouselCoverLayoutEdit(CarouselModel):
+    """Revision-bound cover layout edit; cutout identity is deliberately absent."""
+
+    page_id: Literal["cover"] = "cover"
+    artifact_sha256: str
+    values: CoverLayoutOverride
+
+    @field_validator("artifact_sha256")
+    @classmethod
+    def _valid_artifact_sha256(cls, value: str) -> str:
+        value = value.lower()
+        if not _SHA256_RE.fullmatch(value):
+            raise ValueError("artifact_sha256 must be a lowercase SHA-256 hex digest")
+        return value
+
+
+class CarouselEditorApplyRequest(CarouselModel):
+    manifest_sha256: str
+    copy_edits: list[CarouselCopyEdit] = Field(default_factory=list)
+    layout_overrides: CarouselCoverLayoutEdit | None = None
+
+    @field_validator("manifest_sha256")
+    @classmethod
+    def _valid_manifest_sha256(cls, value: str) -> str:
+        value = value.lower()
+        if not _SHA256_RE.fullmatch(value):
+            raise ValueError("manifest_sha256 must be a lowercase SHA-256 hex digest")
+        return value
+
+    @model_validator(mode="after")
+    def _non_empty_edit(self) -> CarouselEditorApplyRequest:
+        if not self.copy_edits and self.layout_overrides is None:
+            raise ValueError("at least one structured carousel edit is required")
+        page_ids = [item.page_id for item in self.copy_edits]
+        if len(page_ids) != len(set(page_ids)):
+            raise ValueError("structured copy edit page IDs must be unique")
+        return self
+
+
 class CarouselCorrectionClaim(CarouselModel):
     executor: Literal["codex", "claude_code"]
     executor_id: str = Field(min_length=1, max_length=200)
@@ -392,6 +490,35 @@ class CarouselCorrectionProgress(CarouselModel):
     recorded_at: datetime
 
 
+class CarouselReviewerReceipt(CarouselModel):
+    """One independently persisted reviewer result bound to its worker identity."""
+
+    lens: Literal["ig_audience", "episode_editorial", "brand_evidence"]
+    reviewer_id: str = Field(min_length=1, max_length=200)
+    review: ArtifactReceipt
+
+
+class CarouselCorrectionCompletionEvidence(CarouselModel):
+    """Immutable receipts required to close a correction job."""
+
+    result_manifest: ArtifactReceipt
+    panel_result: ArtifactReceipt
+    reviewers: tuple[CarouselReviewerReceipt, ...] = Field(min_length=3, max_length=3)
+
+    @model_validator(mode="after")
+    def _three_independent_reviewers(self) -> CarouselCorrectionCompletionEvidence:
+        lenses = [item.lens for item in self.reviewers]
+        if set(lenses) != set(CAROUSEL_REQUIRED_REVIEWS) or len(lenses) != len(set(lenses)):
+            raise ValueError("completion requires exactly the three canonical reviewer lenses")
+        reviewer_ids = [item.reviewer_id for item in self.reviewers]
+        if len(reviewer_ids) != len(set(reviewer_ids)):
+            raise ValueError("completion reviewer identities must be unique")
+        review_paths = [item.review.path for item in self.reviewers]
+        if len(review_paths) != len(set(review_paths)):
+            raise ValueError("completion reviewer artifacts must be distinct")
+        return self
+
+
 class CarouselCorrectionJobV1(CarouselModel):
     """Platform-neutral hand-off between the Review App and a local executor."""
 
@@ -403,12 +530,21 @@ class CarouselCorrectionJobV1(CarouselModel):
     source_revision: str
     source_manifest_sha256: str
     status: Literal["queued", "claimed", "in_progress", "completed", "failed"] = "queued"
-    feedback_items: list[CarouselCorrectionItem] = Field(min_length=1)
+    feedback_items: list[CarouselCorrectionItem] = Field(default_factory=list)
+    copy_edits: list[CarouselCopyEdit] = Field(default_factory=list)
+    layout_overrides: CarouselCoverLayoutEdit | None = None
+    required_reviews: tuple[
+        Literal["ig_audience"],
+        Literal["episode_editorial"],
+        Literal["brand_evidence"],
+    ] = CAROUSEL_REQUIRED_REVIEWS
     created_at: datetime
     updated_at: datetime
     claim: CarouselCorrectionClaim | None = None
+    source_manifest_receipt: ArtifactReceipt | None = None
     progress: list[CarouselCorrectionProgress] = Field(default_factory=list)
     result_revision: str | None = None
+    completion_evidence: CarouselCorrectionCompletionEvidence | None = None
     error: str | None = Field(default=None, min_length=1, max_length=4000)
 
     @field_validator("source_revision")
@@ -435,9 +571,16 @@ class CarouselCorrectionJobV1(CarouselModel):
 
     @model_validator(mode="after")
     def _valid_job_state(self) -> CarouselCorrectionJobV1:
+        if not self.feedback_items and not self.copy_edits and self.layout_overrides is None:
+            raise ValueError("correction job requires feedback or a structured edit")
         page_ids = [item.page_id for item in self.feedback_items]
         if len(page_ids) != len(set(page_ids)):
             raise ValueError("correction feedback page IDs must be unique")
+        copy_page_ids = [item.page_id for item in self.copy_edits]
+        if len(copy_page_ids) != len(set(copy_page_ids)):
+            raise ValueError("correction copy edit page IDs must be unique")
+        if self.required_reviews != CAROUSEL_REQUIRED_REVIEWS:
+            raise ValueError("all three independent carousel reviews are required")
         if self.updated_at < self.created_at:
             raise ValueError("updated_at cannot precede created_at")
         if [item.sequence for item in self.progress] != list(range(1, len(self.progress) + 1)):
@@ -447,22 +590,57 @@ class CarouselCorrectionJobV1(CarouselModel):
             raise ValueError("correction progress percent cannot decrease")
 
         if self.status == "queued":
-            if self.claim or self.progress or self.result_revision or self.error:
+            if (
+                self.claim
+                or self.source_manifest_receipt
+                or self.progress
+                or self.result_revision
+                or self.completion_evidence
+                or self.error
+            ):
                 raise ValueError("queued correction job cannot contain execution state")
         elif self.status == "claimed":
-            if not self.claim or self.progress or self.result_revision or self.error:
+            if (
+                not self.claim
+                or not self.source_manifest_receipt
+                or self.progress
+                or self.result_revision
+                or self.completion_evidence
+                or self.error
+            ):
                 raise ValueError("claimed correction job requires only claim metadata")
         elif self.status == "in_progress":
-            if not self.claim or not self.progress or self.result_revision or self.error:
+            if (
+                not self.claim
+                or not self.source_manifest_receipt
+                or not self.progress
+                or self.result_revision
+                or self.completion_evidence
+                or self.error
+            ):
                 raise ValueError("in_progress correction job requires claim and progress")
         elif self.status == "completed":
-            if not self.claim or not self.progress or not self.result_revision or self.error:
+            if (
+                not self.claim
+                or not self.source_manifest_receipt
+                or not self.progress
+                or not self.result_revision
+                or not self.completion_evidence
+                or self.error
+            ):
                 raise ValueError(
-                    "completed correction job requires claim, progress, and result revision"
+                    "completed correction job requires claim, progress, result revision, "
+                    "and verified completion evidence"
                 )
             if int(self.result_revision[1:]) <= int(self.source_revision[1:]):
                 raise ValueError("result_revision must be newer than source_revision")
-        elif not self.claim or not self.error or self.result_revision:
+        elif (
+            not self.claim
+            or not self.source_manifest_receipt
+            or not self.error
+            or self.result_revision
+            or self.completion_evidence
+        ):
             raise ValueError("failed correction job requires claim and error only")
         return self
 

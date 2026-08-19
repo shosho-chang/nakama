@@ -24,6 +24,9 @@ Skill 的可維護規格位於 repo-neutral `skills/ig-cards/`。Claude Code 的
 - 每輪只 render 一份主版本；進 render 前由 IG Audience、Episode Editorial、Brand and Evidence 三個獨立 lens 盲審，再由主 agent 對照逐字稿查證與收斂。
 - Podcast Carousel v1 固定為 `cover → one hook → ordered points → quote → CTA`；不接受 Re-hook。主要 Hook 必須能統攝後續多個受眾感興趣的訪談重點。
 - Canonical skill 由當前 Codex 或 Claude Code agent 執行，不呼叫外部 LLM API 或隱性 provider；三個 review lens 只透過獨立 subagents 執行。
-- Review Gate 的非空 feedback 建立 agent-neutral correction job；當前 E2E agent claim 後產生新 revision並回報 progress。有效 claim lease 期間不得被另一 executor 搶走；lease 過期後才能 reclaim，progress 會續租。沒有相容 executor 在線時保持 `queued`。
+- Review Gate 的非空 feedback 建立 agent-neutral correction job；當前 E2E agent 只有在 source current／artifact receipts 完整時才能 claim，之後產生新 revision 並回報 progress。有效 claim lease 期間不得被另一 executor 搶走；lease 過期後才能 reclaim，progress 會續租。沒有相容 executor 在線時保持 `queued`。
+- 建立／查詢 correction job 只是 file-state handoff，不是 dispatcher。Review Gate 顯示 job ID，使用者需回到目前執行該 episode 的 Codex／Claude Code task 讓 agent 明確 claim。
 - Review Gate 全空才可整份 Approve；Approve 不修改內容、不啟動 correction，也不發布。
+- Review Gate 的卡片 editor 可直接修改 allowlisted display copy；cover 另可提交 deterministic layout override。這些值只進入 revision-bound correction job，必須由 executor 產生新版、保存三個不同 subagent 的 review receipts、生成 matching converged panel 並完成全尺寸 visual QA。Completion 會驗 current result manifest／Copy Spec／PNG receipts 與 structured exact diff，不得把使用者編輯或 progress label 視為自動 approved。
+- Renderer 產生的 review manifest 同時收據化 `render_input.html` 並暴露同一 canonical refit API 給 sandbox editor。舊 manifest 的 receipt 欄位保持 optional 以維持 review 相容性，但不允許以未收據 HTML 開啟 editor。
 - 未來的書本與身心健康 social posts 不直接塞入 Podcast Carousel schema。

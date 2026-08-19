@@ -1,6 +1,6 @@
 ---
 name: ig-cards
-description: Produce or correct an evidence-backed Podcast Episode social carousel, including transcript-grounded copy, three-lens review, 1080x1080 rendering, visual QA, and Review Gate feedback jobs. Use for Podcast Carousel, IG 輪播, YouTube square posts, 社群圖卡, or revising an episode carousel package; do not use for book or health-information carousel templates.
+description: Produce or correct an evidence-backed Podcast Episode social carousel, including transcript-grounded copy, three-lens review, 1080x1080 rendering, visual QA, and structured Review Gate edit jobs. Use for Podcast Carousel, IG 輪播, YouTube square posts, 社群圖卡, or revising an episode carousel package; do not use for book or health-information carousel templates.
 ---
 
 # Podcast IG Carousel
@@ -60,6 +60,13 @@ Anchor this skill at Content Pipeline Stage 5 (製作). Treat the carousel as an
 - The correction job is agent-neutral. The current end-to-end agent (`codex` or `claude_code`) claims it; the three editorial lenses remain independent subagents inside that run.
 - A claim owns a time-bounded lease. Another Codex or Claude Code executor must not take a job while its lease is valid; it may reclaim only after expiry. Every accepted progress update renews the current lease.
 - If no compatible executor is online, leave the job `queued`. Never invent a claim, progress, or completion state.
+- Creating or polling a job does not dispatch or wake Codex/Claude Code. Show the job ID and explicitly hand it back to the Codex/Claude Code task currently executing that episode; that executor must run the claim CLI itself.
+- The card editor may patch only the existing display-copy allowlist for that role. It must never change `page_id`, `role`, transcript evidence, cutout identity, page order, or page count.
+- Cover layout editing is limited to deterministic 1080px coordinates: guest right, bottom, height, and cover-title font size. Treat the iframe as a live view of the real render DOM, never as a draggable flattened PNG.
+- A trusted editor preview requires the manifest's `render_input` receipt. Legacy manifests remain reviewable, but their editor stays disabled until the renderer creates a new revision; never edit an immutable legacy manifest in place.
+- Run the preview in an opaque-origin `sandbox="allow-scripts"` iframe. Parent/editor state crosses only the scoped `postMessage` bridge; do not add `allow-same-origin` or direct DOM access. The bridge must not access storage or APIs.
+- Validate emphasis as an exact substring of the role's primary display field before Apply. After every copy or layout change, rerun the renderer-exposed canonical refit function and surface fit/collision diagnostics; a visual text swap without refit is not an accurate preview.
+- Applying editor changes creates a revision-bound job with `copy_edits` and/or `layout_overrides`. It does not mutate the current Copy Spec or PNG. Carry the structured values into the next Copy Spec and deterministic render.
 
 ## Correction-job CLI contract
 
@@ -76,19 +83,24 @@ python scripts/podcast_carousel_correction_job.py progress `
   <path-to-correction-job.json> --claim-token <token> `
   --step <step-name> --percent <0-100> --message <short-message>
 
-# Complete only after a newer reviewed and visually verified revision exists.
+# Complete only with a current result manifest, three independent review
+# receipts, and the matching converged panel artifact.
 python scripts/podcast_carousel_correction_job.py complete `
   <path-to-correction-job.json> --claim-token <token> `
-  --result-revision <rNNN>
+  --result-manifest <review_manifest.v1.json> `
+  --panel-result <panel_result.v1.json> `
+  --reviewer-receipt ig_audience=<subagent-id>=<review.json> `
+  --reviewer-receipt episode_editorial=<subagent-id>=<review.json> `
+  --reviewer-receipt brand_evidence=<subagent-id>=<review.json>
 ```
 
-Claim only jobs whose source revision and manifest hash still match the reviewed package. Respect the active lease; reclaim only an expired claim. Report progress often enough to renew the lease while performing evidence review, copy correction, panel convergence, render, and page-by-page visual QA. Complete only after the result revision is newer than the source revision and all requested changes are present.
+Claim only jobs whose source revision is still current and whose manifest, Copy Spec, requested page artifacts, and every PNG still match their receipts. Respect the active lease; reclaim only an expired claim. Report progress often enough to renew the lease while performing evidence review, copy correction, panel convergence, render, and page-by-page visual QA. Progress step names are informational and never count as review evidence. Persist each independent subagent's `PanelReview` JSON with a distinct reviewer identity, then persist one `PanelResult` containing those exact three reviews. Completion derives the newer revision from the current result manifest and verifies its Copy Spec and every PNG receipt, the three reviewer receipts, and `assert_panel_renderable` against the matching converged panel. Structured copy/layout jobs additionally require an exact source-to-result diff: every requested value must be present and evidence, cutouts, identity, page order, and all unrequested fields must remain unchanged. Feedback-only jobs rely on the converged panel because free-form intent cannot be mechanically diffed.
 
 ## Artifact contract
 
 Write to `<episode>/ig-carousel/`, next to `packaging/`:
 
-- `editorial/rNNN/copy_spec.v1.json` and `panel_result.v1.json`
+- `editorial/rNNN/copy_spec.v1.json`, three independent review JSON files, and `panel_result.v1.json`
 - `revisions/rNNN/pages/NN.png`, render state, Copy Spec, and review manifest
 - content-addressed `templates/<sha256>/` snapshot
 - `current.json`, `review_feedback.v1.json`, correction jobs, and `run_summary.json`

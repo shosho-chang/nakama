@@ -6,12 +6,17 @@ import pytest
 from pydantic import ValidationError
 
 from shared.schemas.podcast_carousel import (
+    CAROUSEL_DISPLAY_COPY_FIELDS,
     ArtifactReceipt,
+    CarouselCopyEdit,
+    CarouselCoverLayoutEdit,
+    CarouselEditorApplyRequest,
     CarouselFeedbackRevision,
     CarouselPageDecision,
     CarouselReviewFeedbackV1,
     CarouselReviewManifestV1,
     CarouselReviewPage,
+    CoverLayoutOverride,
     CoverPage,
     CTAPage,
     EpisodeMetadata,
@@ -26,6 +31,16 @@ from shared.schemas.podcast_carousel import (
 )
 
 SHA = "a" * 64
+
+
+def test_display_copy_fields_are_allowlisted_in_visual_reading_order():
+    assert CAROUSEL_DISPLAY_COPY_FIELDS == {
+        "cover": ("headline", "emphasis", "guest_name", "guest_title"),
+        "hook": ("question", "emphasis", "bridge"),
+        "point": ("headline", "emphasis", "body"),
+        "quote": ("host_question", "text", "emphasis", "guest_name"),
+        "cta": ("episode_topic", "emphasis"),
+    }
 
 
 def evidence(evidence_id: str = "ev-1", *, speaker: str = "鄭國威") -> TranscriptEvidence:
@@ -266,6 +281,7 @@ def test_review_manifest_requires_contiguous_page_numbers():
             episode_id="ep120",
             revision="r001",
             copy_spec=receipt,
+            render_input=receipt,
             template=TemplateSnapshot(root="C:/tmp/template", sha256=SHA),
             publish_compatibility="api_compatible",
             pages=review_pages,
@@ -296,6 +312,68 @@ def test_approved_feedback_requires_all_pages_approved():
 def test_feedback_root_defaults_to_empty_revision_list():
     value = CarouselReviewFeedbackV1(episode_id="ep120")
     assert value.revisions == []
+
+
+def test_structured_editor_rejects_identity_evidence_and_empty_copy_changes():
+    base = {
+        "page_id": "cover",
+        "role": "cover",
+        "artifact_sha256": SHA,
+    }
+    with pytest.raises(ValidationError, match="not editable"):
+        CarouselCopyEdit(**base, fields={"cutout": "other.png"})
+    with pytest.raises(ValidationError, match="not editable"):
+        CarouselCopyEdit(**base, fields={"evidence": "changed"})
+    with pytest.raises(ValidationError, match="cannot be empty"):
+        CarouselCopyEdit(**base, fields={"headline": "  "})
+
+
+def test_structured_editor_layout_bounds_and_payload_roundtrip():
+    edit = CarouselEditorApplyRequest(
+        manifest_sha256=SHA,
+        copy_edits=[
+            CarouselCopyEdit(
+                page_id="point-algorithm",
+                role="point",
+                artifact_sha256=SHA,
+                fields={"headline": "新標題", "emphasis": "新標題"},
+            )
+        ],
+        layout_overrides=CarouselCoverLayoutEdit(
+            artifact_sha256=SHA,
+            values=CoverLayoutOverride(
+                guest_right_px=-180,
+                guest_bottom_px=-80,
+                guest_height_px=980,
+                title_font_size_px=112,
+            ),
+        ),
+    )
+    assert CarouselEditorApplyRequest.model_validate_json(edit.model_dump_json()) == edit
+    with pytest.raises(ValidationError, match="less than or equal to 1400"):
+        CoverLayoutOverride(guest_height_px=1401)
+    with pytest.raises(ValidationError, match="at least one structured"):
+        CarouselEditorApplyRequest(manifest_sha256=SHA)
+
+
+@pytest.mark.parametrize(
+    ("role", "fields"),
+    [
+        ("cover", {"headline": "封面", "emphasis": "封面"}),
+        ("hook", {"question": "問題？", "bridge": "承接"}),
+        ("point", {"headline": "重點", "body": "內文"}),
+        ("quote", {"text": "引言", "guest_name": "來賓"}),
+        ("cta", {"episode_topic": "主題", "emphasis": "主題"}),
+    ],
+)
+def test_each_role_display_copy_patch_roundtrips(role: str, fields: dict[str, str]):
+    edit = CarouselCopyEdit(
+        page_id=f"{role}-page",
+        role=role,
+        artifact_sha256=SHA,
+        fields=fields,
+    )
+    assert CarouselCopyEdit.model_validate_json(edit.model_dump_json()) == edit
 
 
 def test_receipt_for_hashes_file(tmp_path):

@@ -96,6 +96,21 @@ def _data_uri(path: Path) -> str:
     return f"data:{media_type};base64,{encoded}"
 
 
+def _layout_override_markup(spec: PodcastCarouselCopySpecV1) -> str:
+    cover = spec.layout_overrides.cover
+    if cover is None:
+        return ""
+    return (
+        "<style data-carousel-layout-overrides>\n"
+        f":root{{--type-cover-title:{cover.title_font_size_px}px}}\n"
+        ".cover .guest{"
+        f"right:{cover.guest_right_px}px!important;"
+        f"bottom:{cover.guest_bottom_px}px!important;"
+        f"height:{cover.guest_height_px}px!important"
+        "}\n</style>"
+    )
+
+
 def _write_render_input(
     *,
     snapshot: TemplateSnapshot,
@@ -137,6 +152,20 @@ def _write_render_input(
         "/*__CAROUSEL_SPEC__*/null",
         _safe_script_json(spec.model_dump(mode="json")),
     ).replace("/*__CAROUSEL_ASSETS__*/null", _safe_script_json(assets))
+    refit_markers = {
+        "const fit=()=>{": "const fit=window.__carouselRefit=()=>{",
+        "let size=item.start;": (
+            "let size=item.node.dataset.fitStart?Number(item.node.dataset.fitStart):item.start;"
+        ),
+        'document.body.dataset.ready="1";': ('document.body.dataset.ready="1";return diagnostics;'),
+    }
+    for marker, replacement in refit_markers.items():
+        if rendered.count(marker) != 1:
+            raise ValueError(f"render template must contain one canonical refit marker: {marker}")
+        rendered = rendered.replace(marker, replacement, 1)
+    if "</head>" not in rendered:
+        raise ValueError("render template must contain a closing head tag")
+    rendered = rendered.replace("</head>", f"{_layout_override_markup(spec)}</head>", 1)
     destination.write_text(rendered, encoding="utf-8", newline="\n")
 
 
@@ -148,8 +177,7 @@ def _playwright_environment() -> tuple[Path, dict[str, str]]:
     env = os.environ.copy()
     configured_modules = os.environ.get("NAKAMA_NODE_PATH") or env.get("NODE_PATH")
     codex_modules = (
-        Path.home()
-        / ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules"
+        Path.home() / ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules"
     )
     if configured_modules:
         env["NODE_PATH"] = configured_modules
@@ -196,6 +224,11 @@ def _content_sha(
         "page_number": page_index + 1,
         "page_total": len(spec.pages),
         "point_number": point_number,
+        "layout_override": (
+            spec.layout_overrides.cover.model_dump(mode="json")
+            if page.role == "cover" and spec.layout_overrides.cover is not None
+            else None
+        ),
         "cutout_sha256": {
             name: receipt_for(cutouts_dir / name).sha256
             for name in (
@@ -300,6 +333,7 @@ def render_carousel(
         episode_id=spec.episode_id,
         revision=spec.revision,
         copy_spec=receipt_for(copy_path),
+        render_input=receipt_for(render_input),
         template=snapshot,
         publish_compatibility=spec.publish_compatibility,
         pages=review_pages,
