@@ -301,7 +301,7 @@ channel-native asset，不是逐字稿摘要，也不是把模板 placeholder �
 - 每頁 evidence_ids 只能填下方 transcript block ID；每個主張都要有 evidence。
 - emphasis 必須是同頁文案的完整原字串，每頁一處。
 - point 的 emphasis 必須出現在 headline；body 不承擔 emphasis。
-- EP{episode.number} 預設 quote variant {'A' if episode.number % 2 else 'B'}。
+- EP{episode.number} 預設 quote variant {"A" if episode.number % 2 else "B"}。
   B 必須使用直接相連的主持人問題與來賓回答；找不到才降級 A，
   並填 variant_override_reason。
 - quote 可以縮短順句但不得改原意；不可拼接不同時間的回答。

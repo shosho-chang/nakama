@@ -156,9 +156,7 @@ def test_runner_only_validates_reviewed_artifacts_and_renders(tmp_path, monkeypa
         lambda **kwargs: rendered.append(kwargs),
     )
 
-    summary = run_podcast_carousel.run(
-        _args(episode_dir, template_dir, spec_path, panel_path)
-    )
+    summary = run_podcast_carousel.run(_args(episode_dir, template_dir, spec_path, panel_path))
 
     editorial = episode_dir / "ig-carousel" / "editorial" / "r001"
     assert (editorial / "copy_spec.v1.json").is_file()
@@ -229,6 +227,4 @@ def test_runner_fails_closed_until_panel_converges(
     )
 
     with pytest.raises(RuntimeError, match=message):
-        run_podcast_carousel.run(
-            _args(episode_dir, template_dir, spec_path, panel_path)
-        )
+        run_podcast_carousel.run(_args(episode_dir, template_dir, spec_path, panel_path))
