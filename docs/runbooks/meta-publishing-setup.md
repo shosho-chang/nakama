@@ -165,6 +165,7 @@ pages_read_engagement
 pages_manage_posts
 instagram_basic
 instagram_content_publish
+business_management
 ```
 
 Dashboard 的按鈕目前把 Instagram 發布項目顯示為 `instagram_content_publishing`；官方 Graph
@@ -181,11 +182,36 @@ API token／文件可能仍顯示 canonical scope `instagram_content_publish`。
 ### 2.1 產生 User access token
 
 1. 開啟 [Graph API Explorer](https://developers.facebook.com/tools/explorer/)。
-2. 右上角 App 下拉選擇第 1 節的 App，不能使用預設的其他 App。
-3. 選擇目前 App Dashboard 已支援且準備固定使用的 Graph API version；記下完整版本，格式如 `vXX.X`。
-4. 按 **Generate Access Token／Get User Access Token**。
-5. 勾選第 1.4 節的五個權限並完成 Facebook 授權。
-6. 不要把 token 貼到聊天、截圖、CLI argument 或 Git-tracked 檔案。
+2. 看右側 **Meta App** 下拉選單；選擇 **Nakama Usopp**。不要使用 Meta 預設 App。
+3. 看畫面上方 API path 左側的版本下拉選單。2026-08-19 實際介面顯示 `v26.0`；
+   先保留這個版本，並把 `v26.0` 記為後續的 `META_GRAPH_API_VERSION`。
+4. 在右側找到 **Permissions** 區塊，點 **Add a Permission**。
+5. 在展開選單點 **Pages**，逐一加入：
+   - `pages_show_list`
+   - `pages_read_engagement`
+   - `pages_manage_posts`
+6. 每加完一個權限，若選單自動收起，就再次點 **Add a Permission → Pages** 加下一個。
+7. 再點 **Add a Permission → Other**，逐一加入：
+   - `instagram_basic`
+   - `business_management`
+   - Instagram 發布權限：若 Explorer 顯示 `instagram_content_publish` 就選它；若只顯示
+     `instagram_content_publishing` 就選目前介面提供的那個。不要自行輸入不存在的名稱。
+8. 核對 **Permissions** 清單共有上述六項；不要加入 messaging、ads、comments 或 email。
+9. 點右側 **User or Page** 下方的 **Get Token**。
+10. 展開後會看到三個選項：
+    - **Get User Access Token**
+    - **Get App Token**
+    - **Get Page Access Token**
+11. 點 **Get User Access Token**。不要點另外兩個。
+12. Facebook 授權視窗出現後，由目前 App administrator 的 Facebook 帳號完成授權：
+    - 若先問是否以目前帳號繼續，確認帳號正確後點 **Continue／繼續**；
+    - 若要求選 Business Portfolio，選擇管理目標 Page 與 Instagram 的 Portfolio；
+    - 若要求選 Page，只選目標 Facebook Page；
+    - 若要求選 Instagram account，只選連到該 Page 的目標 Professional account；
+    - 權限確認頁保留第 1.4 節的六項，再點 **Save／Continue／儲存／繼續**。
+13. 回到 Explorer 後，右側 **Access Token** 欄位出現內容就代表 User token 已產生。
+14. 不要按 **Copy Token**，也不要把 token 貼到聊天、截圖、CLI argument 或 Git-tracked
+    檔案。後續只透過 Explorer 執行查詢，再把 Page token 寫進本機 ignored `.env`。
 
 ### 2.2 查 Page 與連結的 Instagram identity
 
