@@ -16,6 +16,11 @@ def test_each_card_has_feedback_only_and_no_decision_radios() -> None:
     assert "data-feedback-input" in TEMPLATE
 
 
+def test_review_grid_uses_square_carousel_previews() -> None:
+    assert "aspect-ratio:1/1" in CSS
+    assert "aspect-ratio:4/5" not in CSS
+
+
 def test_feedback_and_approve_actions_are_explicit_and_mutually_exclusive() -> None:
     assert 'id="review-feedback-button"' in TEMPLATE
     assert 'id="review-approve-button"' in TEMPLATE

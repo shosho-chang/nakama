@@ -138,15 +138,16 @@ def test_design_system_cover_and_cta_use_reviewed_visual_contract():
     assert 'createElementNS("http://www.w3.org/2000/svg","svg")' in source
     assert 'aria-label",name' in source
     assert '[["AP","Apple Podcasts"],["S","Spotify"],["YT","YouTube"]]' not in source
-    assert "cover headline/cutout collision" in source
-    assert "--type-cover-title:128px" in source
+    assert "cover headline/cutout overlap" in source
+    assert "--cover-cutout-overlap-limit:80px" in source
+    assert "--type-cover-title:112px" in source
     assert "--type-hook-title:104px" in source
     assert "--hook-optical-lift:-22px" in source
     assert "--type-point-title:72px" in source
     assert "--type-point-body:44px" in source
     assert "--point-optical-lift:-20px" in source
     assert "--cta-logo-top:185px" in source
-    assert ".point .ghost-number{position:absolute;right:-40px;top:-20px" in source
+    assert ".point .ghost-number{position:absolute;right:-40px;top:-70px" in source
     assert "transform:translateY(var(--point-optical-lift))" in source
     assert "#canvas.hook{background:var(--orange)}" in source
     assert ".hook .em-box{color:var(--ink);background:var(--white);border:0" in source
@@ -159,7 +160,7 @@ def test_design_system_cover_and_cta_use_reviewed_visual_contract():
     assert "--cover-emphasis-pad-top:10px" in source
     assert "--cover-emphasis-pad-bottom:22px" in source
     assert "--cover-emphasis-pad-x:24px" in source
-    assert 'target(title,"cover.headline",typeSize("--type-cover-title"),112,96,1.05)' in source
+    assert 'target(title,"cover.headline",typeSize("--type-cover-title"),104,92,1.05)' in source
 
 
 @pytest.mark.skipif(not CHROME.is_file(), reason="system Chrome required")
@@ -222,7 +223,8 @@ def test_real_design_system_template_renders_every_page_role(tmp_path: Path):
     assert [page.role for page in manifest.pages] == ["cover", "hook", "point", "quote", "cta"]
     assert all(Path(page.image.path).is_file() for page in manifest.pages)
     assert all(page.fit.status == "fit" for page in manifest.pages)
-    assert manifest.pages[0].fit.regions["cover.cutout_height"] >= 780
+    assert manifest.pages[0].fit.regions["cover.cutout_height"] >= 880
+    assert manifest.pages[0].fit.regions["cover.headline_cutout_overlap_y"] <= 80
     assert (
         manifest.pages[0].fit.regions["cover.headline"]
         > manifest.pages[2].fit.regions["point.headline"]

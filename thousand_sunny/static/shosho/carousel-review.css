@@ -13,7 +13,7 @@
 .carousel-card > header { display:flex; justify-content:space-between; padding:8px 0; color:var(--sho-muted); font-size:11px; letter-spacing:.06em; text-transform:uppercase; }
 .carousel-card > header span { color:var(--sho-accent-2); font-weight:800; }
 .carousel-image-button { display:block; width:100%; padding:0; border:1px solid var(--sho-line); border-radius:var(--sho-r-1); background:var(--sho-bg-2); cursor:zoom-in; overflow:hidden; }
-.carousel-image-button img { display:block; width:100%; height:auto; aspect-ratio:4/5; object-fit:cover; }
+.carousel-image-button img { display:block; width:100%; height:auto; aspect-ratio:1/1; object-fit:cover; }
 .carousel-image-button:focus-visible,.carousel-card textarea:focus-visible,.carousel-submit:focus-visible,.carousel-job:focus-visible { outline:none; box-shadow:var(--sho-focus); }
 .carousel-feedback { display:block; margin-top:8px; }
 .carousel-feedback span { display:block; margin-bottom:4px; color:var(--sho-muted); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
