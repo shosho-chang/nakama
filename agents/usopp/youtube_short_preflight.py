@@ -186,17 +186,17 @@ def preflight_short(
     else:
         display_ratio = None
     if display_ratio is not None and display_ratio > 1.001:
-        errors.append(
-            f"Short 必須是 vertical 或 square；display aspect ratio={display_ratio:.4f}"
-        )
+        errors.append(f"Short 必須是 vertical 或 square；display aspect ratio={display_ratio:.4f}")
 
     video_codec = str(video.get("codec_name") or "").lower() or None
     audio_codec = str(audio.get("codec_name") or "").lower() or None
     frame_rate = _fps(video)
     container = str(fmt.get("format_name") or "") or None
 
-    if width != 1080 or height != 1920 or (
-        parsed_sar is not None and abs(parsed_sar - 1.0) > 0.001
+    if (
+        width != 1080
+        or height != 1920
+        or (parsed_sar is not None and abs(parsed_sar - 1.0) > 0.001)
     ):
         warnings.append("建議交付 1080×1920、square pixels")
     if display_ratio is not None and not (

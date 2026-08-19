@@ -77,9 +77,7 @@ class _UploadYouTube:
 
 
 @pytest.mark.parametrize(("format_name", "caption_calls"), [("long", 1), ("short", 0)])
-def test_upload_one_routes_captions_by_format(
-    tmp_path, monkeypatch, format_name, caption_calls
-):
+def test_upload_one_routes_captions_by_format(tmp_path, monkeypatch, format_name, caption_calls):
     video = tmp_path / "episode" / "highlights" / "exports" / "cut.mp4"
     video.parent.mkdir(parents=True)
     video.write_bytes(b"video")
@@ -132,9 +130,7 @@ def test_run_exact_uploaded_target_skips_duplicate_without_loading_youtube(
     load_yt = MagicMock(side_effect=AssertionError("must not upload duplicate"))
     monkeypatch.setattr(publish_upload, "_load_yt", load_yt)
 
-    result = cmd_run(
-        SimpleNamespace(episode="ep", cut="short-1", force=False, dry_run=False)
-    )
+    result = cmd_run(SimpleNamespace(episode="ep", cut="short-1", force=False, dry_run=False))
     assert result == 0
     assert "已有 video_id" in capsys.readouterr().out
     load_yt.assert_not_called()
@@ -204,9 +200,7 @@ def test_reconcile_private_and_public_states(tmp_path, privacy, processing, expe
     assert result["status"] == expected
     assert stored["status"] == expected
     assert stored["video_id"] == "yt-short-1"
-    assert yt.resource.calls == [
-        {"part": "status,processingDetails", "id": "yt-short-1"}
-    ]
+    assert yt.resource.calls == [{"part": "status,processingDetails", "id": "yt-short-1"}]
 
 
 def test_reconcile_processing_rejection_marks_failed_with_reason(tmp_path):

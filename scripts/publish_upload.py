@@ -125,10 +125,14 @@ def reconcile_target(yt, release: dict, target: dict) -> dict:
     video_id = target.get("video_id")
     if not video_id:
         raise ValueError(f"{release['cut_id']} 沒有 video_id，不能 reconciliation")
-    response = yt.videos().list(
-        part="status,processingDetails",
-        id=video_id,
-    ).execute()
+    response = (
+        yt.videos()
+        .list(
+            part="status,processingDetails",
+            id=video_id,
+        )
+        .execute()
+    )
     items = response.get("items", []) if isinstance(response, dict) else []
     if not items:
         raise YouTubeVideoNotFoundError(
@@ -375,9 +379,7 @@ def cmd_run(args) -> int:
             else None
         )
         if target and target.get("video_id") and not args.force:
-            print(
-                f"{args.cut}: 已有 video_id（{target['video_id']}），skip——防重複上傳"
-            )
+            print(f"{args.cut}: 已有 video_id（{target['video_id']}），skip——防重複上傳")
             return 0
         raise SystemExit(f"{args.cut} 沒有可上傳的 youtube target（要先 --approve）")
     picked = []
