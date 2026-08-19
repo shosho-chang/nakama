@@ -4,12 +4,15 @@ import hashlib
 import json
 import subprocess
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
+from scripts import podcast_carousel_publish_job as publish_job_module
 from scripts.podcast_carousel_publish_job import (
     PublishJobTransitionError,
     checkpoint_publish_target,
@@ -21,6 +24,7 @@ from scripts.podcast_carousel_publish_job import (
     load_publish_job,
     progress_publish_job,
     publish_job_path,
+    publish_release_lock,
     published_publish_platforms,
     republish_required_platforms,
     retire_unsafe_legacy_publish_job,
@@ -1006,6 +1010,103 @@ def test_stale_lock_files_do_not_permanently_block_claim(tmp_path: Path):
     )
 
     assert claimed.status == "claimed"
+
+
+def test_release_lock_serializes_contending_processes(tmp_path: Path):
+    package = tmp_path / "ig-carousel"
+    package.mkdir()
+    child_code = """
+import sys
+from pathlib import Path
+from scripts.podcast_carousel_publish_job import publish_release_lock
+
+with publish_release_lock(Path(sys.argv[1])):
+    print("locked", flush=True)
+    sys.stdin.readline()
+"""
+    process = subprocess.Popen(
+        [sys.executable, "-c", child_code, str(package)],
+        cwd=Path(__file__).resolve().parents[2],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    contender_started = threading.Event()
+
+    def contend() -> None:
+        contender_started.set()
+        with publish_release_lock(package):
+            return
+
+    try:
+        assert process.stdout is not None
+        assert process.stdout.readline().strip() == "locked"
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            contender = pool.submit(contend)
+            assert contender_started.wait(timeout=1)
+            with pytest.raises(TimeoutError):
+                contender.result(timeout=0.2)
+
+            assert process.stdin is not None
+            process.stdin.write("release\n")
+            process.stdin.flush()
+            assert process.wait(timeout=5) == 0
+            contender.result(timeout=5)
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            process.wait(timeout=5)
+
+
+def test_release_lock_is_released_when_process_crashes(tmp_path: Path):
+    package = tmp_path / "ig-carousel"
+    package.mkdir()
+    child_code = """
+import os
+import sys
+from pathlib import Path
+from scripts.podcast_carousel_publish_job import publish_release_lock
+
+with publish_release_lock(Path(sys.argv[1])):
+    os._exit(0)
+"""
+    crashed = subprocess.run(
+        [sys.executable, "-c", child_code, str(package)],
+        cwd=Path(__file__).resolve().parents[2],
+        check=False,
+        timeout=5,
+    )
+
+    assert crashed.returncode == 0
+    with publish_release_lock(package):
+        pass
+
+
+def test_release_lock_contention_timeout_is_bounded_and_clear(tmp_path: Path, monkeypatch):
+    lock_path = tmp_path / "ig-carousel" / ".publish-release.lock"
+    monkeypatch.setattr(
+        publish_job_module,
+        "_try_acquire_file_lock",
+        lambda _handle: False,
+    )
+
+    with pytest.raises(
+        PublishJobTransitionError,
+        match="timed out after 0s waiting for publish state mutation lock",
+    ):
+        with publish_job_module._file_lock(lock_path, timeout_seconds=0):
+            pass
+
+
+def test_release_locks_for_different_packages_do_not_contend(tmp_path: Path):
+    package_a = tmp_path / "episode-a" / "ig-carousel"
+    package_b = tmp_path / "episode-b" / "ig-carousel"
+    package_a.mkdir(parents=True)
+    package_b.mkdir(parents=True)
+
+    with publish_release_lock(package_a), publish_release_lock(package_b):
+        pass
 
 
 def test_partial_checkpoint_survives_crash_reclaim_and_failed_retry(tmp_path: Path):

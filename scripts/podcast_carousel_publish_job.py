@@ -7,10 +7,12 @@ outside this state machine and report only receipts, permalinks, or errors.
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
 import os
 import sys
+import time
 from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -31,6 +33,8 @@ from shared.schemas.carousel_publish import (  # noqa: E402
 from shared.schemas.podcast_carousel import ArtifactReceipt, receipt_for  # noqa: E402
 
 DEFAULT_LEASE_SECONDS = 30 * 60
+DEFAULT_FILE_LOCK_TIMEOUT_SECONDS = 10.0
+FILE_LOCK_RETRY_INTERVAL_SECONDS = 0.05
 
 
 class PublishJobTransitionError(ValueError):
@@ -423,16 +427,7 @@ def _checkpoint_results(
     return [state.checkpoint for state in states if state.checkpoint is not None]
 
 
-@contextmanager
-def _file_lock(lock_path: Path):
-    """Use an OS lock so a crashed process cannot leave a permanent mutex."""
-
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT)
-    handle = os.fdopen(descriptor, "r+b", buffering=0)
-    if lock_path.stat().st_size == 0:
-        handle.write(b" ")
-    handle.seek(0)
+def _try_acquire_file_lock(handle) -> bool:
     try:
         if os.name == "nt":
             import msvcrt
@@ -443,8 +438,41 @@ def _file_lock(lock_path: Path):
 
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError as error:
+        if error.errno not in {errno.EACCES, errno.EAGAIN, errno.EDEADLK}:
+            raise
+        return False
+    return True
+
+
+@contextmanager
+def _file_lock(
+    lock_path: Path,
+    *,
+    timeout_seconds: float = DEFAULT_FILE_LOCK_TIMEOUT_SECONDS,
+):
+    """Wait boundedly for an OS lock; process exit releases the mutex."""
+
+    if timeout_seconds < 0:
+        raise ValueError("file lock timeout must not be negative")
+
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT)
+    handle = os.fdopen(descriptor, "r+b", buffering=0)
+    if lock_path.stat().st_size == 0:
+        handle.write(b" ")
+    handle.seek(0)
+    deadline = time.monotonic() + timeout_seconds
+    try:
+        while not _try_acquire_file_lock(handle):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise PublishJobTransitionError(
+                    f"timed out after {timeout_seconds:g}s waiting for publish state mutation lock"
+                )
+            time.sleep(min(FILE_LOCK_RETRY_INTERVAL_SECONDS, remaining))
+    except BaseException:
         handle.close()
-        raise PublishJobTransitionError("publish state is already being mutated") from error
+        raise
     try:
         metadata = json.dumps(
             {"pid": os.getpid(), "acquired_at": datetime.now(UTC).isoformat()}
@@ -475,8 +503,15 @@ def _job_lock(path: Path):
 
 
 @contextmanager
-def publish_release_lock(package_root: Path):
-    with _file_lock(package_root / ".publish-release.lock"):
+def publish_release_lock(
+    package_root: Path,
+    *,
+    timeout_seconds: float = DEFAULT_FILE_LOCK_TIMEOUT_SECONDS,
+):
+    with _file_lock(
+        package_root / ".publish-release.lock",
+        timeout_seconds=timeout_seconds,
+    ):
         yield
 
 

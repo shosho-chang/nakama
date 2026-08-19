@@ -26,6 +26,12 @@ DESIGN_TEMPLATE = Path(
     r"E:\Company\02_品牌資源_BrandAssets\Shosho Abnormal Universe Design System"
     r"\templates\ig-carousel-episode"
 )
+REVIEWED_TEMPLATE_FIXTURE = (
+    Path(__file__).resolve().parents[2]
+    / "fixtures"
+    / "podcast_carousel"
+    / "PodcastCarouselRender.html"
+)
 SHA = "a" * 64
 
 
@@ -251,7 +257,8 @@ def test_text_layout_uses_canonical_editor_patch_and_locks_user_font_size(tmp_pa
 
 
 def test_design_system_cover_and_cta_use_reviewed_visual_contract():
-    source = (DESIGN_TEMPLATE / "PodcastCarouselRender.html").read_text(encoding="utf-8")
+    assert REVIEWED_TEMPLATE_FIXTURE.is_file(), "reviewed visual-contract fixture is required"
+    source = REVIEWED_TEMPLATE_FIXTURE.read_text(encoding="utf-8")
 
     assert ".cover .em-orange{display:inline-block;color:var(--white)" in source
     assert "cover-headline-zone" in source
