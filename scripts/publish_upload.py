@@ -10,15 +10,18 @@
     # 單支重試 / 強制重傳
     python scripts/publish_upload.py --run --cut punch-L5 --episode "..." [--force]
 
+    # 同步已上傳影片的 processing / privacy 狀態（不建立新影片）
+    python scripts/publish_upload.py --reconcile --cut punch-S1 --episode "..."
+
 狀態機（ADR-055）：draft → approved → uploading → uploaded →（平台到點自動
 公開）published。failed 可重試。防重複上傳：target 已有 video_id 就 skip
 （--force 才重傳）；resumable session URI 逐 chunk 持久化——crash 後續傳
 不重傳（YT 無天然 idempotency key，這兩道就是防護）。
 
 上傳內容：檔案（releases.file_path）+ 標題/描述（Slice 2 回填）+ 縮圖
-（vault-relative → 絕對路徑，thumbnails.set）+ CC 字幕（tight SRT，
-captions.insert，zh-TW）。publishAt 有值就排程（upload 與 publish 時間
-解耦——Q2 凍結）。
+（vault-relative → 絕對路徑，thumbnails.set）+ 長片 CC 字幕（tight SRT，
+captions.insert，zh-TW）；Short 的字幕已燒入畫面，不另傳 CC。publishAt
+有值就排程（upload 與 publish 時間解耦——Q2 凍結）。
 
 OAuth：`data/youtube_token.json`（scripts/youtube_auth.py 一次性 consent；
 Slice 0 探針 #1124 已實測上傳/排程/無降權）。
@@ -47,6 +50,10 @@ _DATA_DIR = Path(
 TOKEN_PATH = _DATA_DIR / "youtube_token.json"
 PROGRESS_DIR = _DATA_DIR / "upload_progress"
 CHUNK_MB = 8  # resumable chunk；小檔一發、1.35GB 約 170 chunks
+
+
+class YouTubeVideoNotFoundError(RuntimeError):
+    """The stored video_id no longer resolves; never clear it or auto-replace it."""
 
 
 def _progress_file(episode: str, cut_id: str) -> Path:
@@ -111,6 +118,88 @@ def uploadable_targets(episode: str | None = None, cut: str | None = None) -> li
     return out
 
 
+def reconcile_target(yt, release: dict, target: dict) -> dict:
+    """Synchronise one stored YouTube target without creating a replacement."""
+    from shared.release_store import update_target
+
+    video_id = target.get("video_id")
+    if not video_id:
+        raise ValueError(f"{release['cut_id']} 沒有 video_id，不能 reconciliation")
+    response = (
+        yt.videos()
+        .list(
+            part="status,processingDetails",
+            id=video_id,
+        )
+        .execute()
+    )
+    items = response.get("items", []) if isinstance(response, dict) else []
+    if not items:
+        raise YouTubeVideoNotFoundError(
+            f"YouTube 找不到 video_id={video_id}；保留既有 ID，不會自動重傳"
+        )
+
+    item = items[0]
+    status = item.get("status") or {}
+    processing = item.get("processingDetails") or {}
+    privacy = status.get("privacyStatus")
+    upload_status = status.get("uploadStatus")
+    processing_status = processing.get("processingStatus")
+    publish_at = status.get("publishAt")
+
+    failed = upload_status in {"failed", "rejected", "deleted"} or processing_status == "terminated"
+    if failed:
+        reasons = [
+            status.get("failureReason"),
+            status.get("rejectionReason"),
+            processing.get("processingFailureReason"),
+        ]
+        reason = "; ".join(str(value) for value in reasons if value) or (
+            f"uploadStatus={upload_status}, processingStatus={processing_status}"
+        )
+        local_status = "failed"
+        error = f"YouTube processing failed/rejected: {reason}"
+    elif privacy == "public":
+        local_status = "published"
+        error = None
+    else:
+        local_status = "uploaded"
+        error = None
+
+    update_target(target["id"], status=local_status, error=error)
+    return {
+        "cut_id": release["cut_id"],
+        "video_id": video_id,
+        "status": local_status,
+        "privacy_status": privacy,
+        "upload_status": upload_status,
+        "processing_status": processing_status,
+        "publish_at": publish_at,
+        "error": error,
+    }
+
+
+def cmd_reconcile(args) -> int:
+    """Reconcile exactly one existing target; no insert/upload API is reachable here."""
+    from shared.release_store import get_release
+
+    rel = get_release(args.episode, args.cut)
+    if rel is None:
+        raise SystemExit(f"{args.cut} 未登錄")
+    target = next((item for item in rel["targets"] if item["platform"] == "youtube"), None)
+    if target is None:
+        raise SystemExit("youtube target 不存在")
+    if not target.get("video_id"):
+        raise SystemExit("target 沒有 video_id——先完成正常上傳")
+    yt = _load_yt()
+    try:
+        output = reconcile_target(yt, rel, target)
+    except YouTubeVideoNotFoundError as exc:
+        raise SystemExit(str(exc)) from exc
+    print(json.dumps({"reconciled": [output]}, ensure_ascii=False, indent=2))
+    return 0
+
+
 def build_insert_body(target: dict, release: dict) -> dict:
     """videos.insert body。title/description 必須已回填（Slice 2）——缺了 fail
     loud，不拿工作代號充當發布標題。"""
@@ -169,6 +258,8 @@ def cmd_cc_only(args) -> int:
     rel = get_release(args.episode, args.cc_only)
     if rel is None:
         raise SystemExit(f"{args.cc_only} 未登錄")
+    if rel["format"] == "short":
+        raise SystemExit("Short 字幕已燒入畫面，不可使用 --cc-only 重複上傳字幕")
     t = next((x for x in rel["targets"] if x["platform"] == "youtube"), None)
     if t is None or not t.get("video_id"):
         raise SystemExit("沒有 video_id——影片還沒上傳，走正常 --run")
@@ -226,17 +317,20 @@ def _upload_one(yt, item: dict, vault: Path) -> dict:
         yt.thumbnails().set(videoId=video_id, media_body=str(thumb)).execute()
         logger.info("%s: 縮圖 OK", cid)
 
-    # CC 字幕（tight SRT，Q4b：長片不燒、上 CC）。episode 目錄從 file_path
+    # CC 字幕（tight SRT，Q4b：長片不燒、上 CC；Short 已燒字、不另上 CC）。episode 目錄從 file_path
     # 推導（exports/<cut>.mp4 的上上上層）——不硬編磁碟位置。
     # ⚠️ CC 失敗**不算整支失敗**——影片已在平台上，標 failed 會誤導重試
     # 重傳整支（2026-08-04 實測：token 缺 force-ssl scope 時 CC 403，但
     # 影片+縮圖+排程都成功）。CC 缺就記在 error 欄，--cc-only 補傳。
     cc_error = None
-    try:
-        upload_captions(yt, video_id, video.parents[2], cid)
-    except Exception as exc:  # noqa: BLE001
-        cc_error = f"CC 字幕上傳失敗（影片本體 OK，可 --cc-only 補傳）: {str(exc)[:300]}"
-        logger.error("%s: %s", cid, cc_error)
+    if rel["format"] == "long":
+        try:
+            upload_captions(yt, video_id, video.parents[2], cid)
+        except Exception as exc:  # noqa: BLE001
+            cc_error = f"CC 字幕上傳失敗（影片本體 OK，可 --cc-only 補傳）: {str(exc)[:300]}"
+            logger.error("%s: %s", cid, cc_error)
+    else:
+        logger.info("%s: Short 字幕已燒入畫面——不另上 CC", cid)
 
     update_target(tid, status="uploaded", error=cc_error, upload_session_uri=None)
     return {
@@ -274,6 +368,19 @@ def cmd_run(args) -> int:
 
     items = uploadable_targets(args.episode, args.cut)
     if args.cut and not items:
+        # 已上傳 target 不在 uploadable_targets 狀態集合；精確重跑仍要明確回報
+        # duplicate guard，而不是用「沒有可上傳 target」讓操作者誤以為失敗。
+        from shared.release_store import get_release
+
+        rel = get_release(args.episode, args.cut) if args.episode else None
+        target = (
+            next((item for item in rel["targets"] if item["platform"] == "youtube"), None)
+            if rel
+            else None
+        )
+        if target and target.get("video_id") and not args.force:
+            print(f"{args.cut}: 已有 video_id（{target['video_id']}），skip——防重複上傳")
+            return 0
         raise SystemExit(f"{args.cut} 沒有可上傳的 youtube target（要先 --approve）")
     picked = []
     for it in items:
@@ -325,6 +432,11 @@ def main(argv: list[str] | None = None) -> int:
         "--schedule", help="publishAt（ISO8601 含時區，如 2026-08-10T20:00:00+08:00）"
     )
     parser.add_argument("--run", action="store_true", help="上傳全部 approved targets")
+    parser.add_argument(
+        "--reconcile",
+        action="store_true",
+        help="以 videos.list 同步一支已有 video_id 的 target（不建立影片）",
+    )
     parser.add_argument("--episode", help="episode 資料夾名（--approve 必填；--run 可選過濾）")
     parser.add_argument("--cut", help="--run 時只處理這支")
     parser.add_argument("--force", action="store_true", help="已有 video_id 也重傳")
@@ -339,6 +451,10 @@ def main(argv: list[str] | None = None) -> int:
         if not args.episode:
             raise SystemExit("--cc-only 需要 --episode")
         return cmd_cc_only(args)
+    if args.reconcile:
+        if not args.episode or not args.cut:
+            raise SystemExit("--reconcile 需要 --episode 與 --cut")
+        return cmd_reconcile(args)
     if args.run:
         return cmd_run(args)
     parser.print_help()

@@ -546,6 +546,10 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             url                TEXT,
             error              TEXT,
             upload_session_uri TEXT,
+            adapter            TEXT,
+            idempotency_key    TEXT,
+            checkpoint_json    TEXT,
+            ineligibility_reason TEXT,
             updated_at         TEXT NOT NULL,
             UNIQUE (release_id, platform)
         );
@@ -575,6 +579,12 @@ def _init_tables(conn: sqlite3.Connection) -> None:
         # 對這些 row 用 calc_cost 估算，有實際值的直接採用。Nullable 刻意區分「未知」與「$0」。
         "ALTER TABLE api_calls ADD COLUMN cost_usd REAL",
         "ALTER TABLE r2_backup_checks ADD COLUMN prefix TEXT NOT NULL DEFAULT ''",
+        # Stage 6 multi-platform publishing: adapter-owned durable checkpoints.
+        # Nullable keeps existing YouTube rows backward-compatible.
+        "ALTER TABLE release_targets ADD COLUMN adapter TEXT",
+        "ALTER TABLE release_targets ADD COLUMN idempotency_key TEXT",
+        "ALTER TABLE release_targets ADD COLUMN checkpoint_json TEXT",
+        "ALTER TABLE release_targets ADD COLUMN ineligibility_reason TEXT",
     ):
         try:
             conn.execute(col_ddl)
