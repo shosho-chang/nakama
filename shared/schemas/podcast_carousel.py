@@ -275,6 +275,7 @@ class CarouselReviewManifestV1(CarouselModel):
     stage: Literal[5] = 5
     revision: str
     copy_spec: ArtifactReceipt
+    render_input: ArtifactReceipt | None = None
     template: TemplateSnapshot
     publish_compatibility: Literal["api_compatible", "manual_only"]
     pages: list[CarouselReviewPage] = Field(min_length=5, max_length=20)

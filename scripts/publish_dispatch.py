@@ -32,6 +32,12 @@ from agents.usopp.social_publish import (  # noqa: E402
 from shared.release_store import get_release  # noqa: E402
 
 
+def write_json_output(payload: Any, *, stream=None) -> None:
+    """Write portable JSON even when the Windows console is not UTF-8."""
+    output = stream or sys.stdout
+    output.write(json.dumps(payload, ensure_ascii=True, indent=2) + "\n")
+
+
 class UrllibMetaTransport:
     """Small authenticated Graph transport; token never enters call payloads/logs."""
 
@@ -212,7 +218,7 @@ def dispatch_short(args: argparse.Namespace) -> int:
     assert release is not None
     selected = set(args.platform or []) or None
     if not args.execute:
-        print(json.dumps({"dry_run": True, "targets": _release_plan(release, selected)}, indent=2))
+        write_json_output({"dry_run": True, "targets": _release_plan(release, selected)})
         return 0
 
     adapters: dict[str, Any] = {}
@@ -232,7 +238,7 @@ def dispatch_short(args: argparse.Namespace) -> int:
         except Exception:
             pass
     results = dispatch_release(release, adapters, only_platforms=selected)
-    print(json.dumps({"dry_run": False, "results": results}, ensure_ascii=False, indent=2))
+    write_json_output({"dry_run": False, "results": results})
     return int(any(item["status"] == "failed" for item in results))
 
 
@@ -264,10 +270,10 @@ def dispatch_carousel(args: argparse.Namespace) -> int:
     if "youtube_community" in unfinished and not (
         args.youtube_community_permalink or args.youtube_community_post_id
     ):
-        print(json.dumps(_carousel_handoff(job), ensure_ascii=False, indent=2))
+        write_json_output(_carousel_handoff(job))
         return 2 if args.execute else 0
     if not args.execute:
-        print(json.dumps({"dry_run": True, "job_id": job.job_id, "targets": unfinished}, indent=2))
+        write_json_output({"dry_run": True, "job_id": job.job_id, "targets": unfinished})
         return 0
 
     capabilities = sorted(
@@ -352,7 +358,7 @@ def dispatch_carousel(args: argparse.Namespace) -> int:
 
     job = load_publish_job(path)
     completed = complete_publish_job(path, claim_token=token, results=job.results)
-    print(completed.model_dump_json(indent=2))
+    write_json_output(completed.model_dump(mode="json"))
     return int(completed.status == "failed")
 
 
