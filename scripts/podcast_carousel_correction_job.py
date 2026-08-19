@@ -3,21 +3,49 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
+import tempfile
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
+from pydantic import ValidationError
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from agents.brook.podcast_carousel_panel import (  # noqa: E402
+    PanelResult,
+    PanelReview,
+    assert_panel_renderable,
+)
+from agents.brook.podcast_carousel_render import (  # noqa: E402
+    _DEFAULT_CHROME,
+    _content_sha,
+    _digest_files,
+    _render_page,
+    _write_render_input,
+)
 from shared.schemas.podcast_carousel import (  # noqa: E402
+    CAROUSEL_REQUIRED_REVIEWS,
+    ArtifactReceipt,
+    CarouselCopyEdit,
     CarouselCorrectionClaim,
+    CarouselCorrectionCompletionEvidence,
     CarouselCorrectionItem,
     CarouselCorrectionJobV1,
     CarouselCorrectionProgress,
+    CarouselCoverLayoutEdit,
+    CarouselReviewerReceipt,
+    CarouselReviewManifestV1,
+    CarouselTextLayoutEdit,
+    PageTextLayoutOverrideV1,
+    PodcastCarouselCopySpecV1,
+    TemplateSnapshot,
+    receipt_for,
 )
 
 
@@ -26,6 +54,143 @@ class CorrectionJobTransitionError(ValueError):
 
 
 DEFAULT_LEASE_SECONDS = 30 * 60
+
+
+def _contained_file(path: Path, package_root: Path) -> Path:
+    try:
+        resolved = path.resolve(strict=True)
+        resolved.relative_to(package_root.resolve(strict=True))
+    except (FileNotFoundError, ValueError, OSError) as error:
+        raise CorrectionJobTransitionError(
+            f"carousel artifact is missing or outside package: {path}"
+        ) from error
+    if not resolved.is_file():
+        raise CorrectionJobTransitionError(f"carousel artifact is not a file: {path}")
+    return resolved
+
+
+def _verified_receipt(path: Path, package_root: Path) -> tuple[Path, ArtifactReceipt]:
+    contained = _contained_file(path, package_root)
+    return contained, receipt_for(contained)
+
+
+def _read_artifact_once(
+    path: Path,
+    package_root: Path,
+    *,
+    expected: ArtifactReceipt | None = None,
+    changed_message: str = "carousel artifact receipt changed",
+) -> tuple[Path, bytes, ArtifactReceipt]:
+    """Read one immutable artifact buffer and verify/parse that same buffer."""
+
+    contained = _contained_file(path, package_root)
+    try:
+        payload = contained.read_bytes()
+    except OSError as error:
+        raise CorrectionJobTransitionError(changed_message) from error
+    actual = ArtifactReceipt(
+        path=str(contained.resolve()),
+        bytes=len(payload),
+        sha256=hashlib.sha256(payload).hexdigest(),
+    )
+    if expected is not None and actual != expected:
+        raise CorrectionJobTransitionError(changed_message)
+    return contained, payload, actual
+
+
+def _verify_manifest_artifacts(
+    manifest: CarouselReviewManifestV1,
+    *,
+    package_root: Path,
+    require_render_input: bool = False,
+) -> PodcastCarouselCopySpecV1:
+    if manifest.render_input is None:
+        if require_render_input:
+            raise CorrectionJobTransitionError("result manifest has no render input receipt")
+    else:
+        _read_artifact_once(
+            Path(manifest.render_input.path),
+            package_root,
+            expected=manifest.render_input,
+            changed_message="carousel render input receipt changed",
+        )
+    _, copy_payload, _ = _read_artifact_once(
+        Path(manifest.copy_spec.path),
+        package_root,
+        expected=manifest.copy_spec,
+        changed_message="carousel Copy Spec receipt changed",
+    )
+    try:
+        spec = PodcastCarouselCopySpecV1.model_validate_json(copy_payload)
+    except (OSError, UnicodeDecodeError, ValidationError) as error:
+        raise CorrectionJobTransitionError("carousel Copy Spec is invalid") from error
+    if spec.episode_id != manifest.episode_id or spec.revision != manifest.revision:
+        raise CorrectionJobTransitionError("carousel Copy Spec identity does not match manifest")
+    if len(spec.pages) != len(manifest.pages):
+        raise CorrectionJobTransitionError("carousel Copy Spec page count does not match manifest")
+    for spec_page, manifest_page in zip(spec.pages, manifest.pages, strict=True):
+        if spec_page != manifest_page.copy_page:
+            raise CorrectionJobTransitionError(
+                f"carousel Copy Spec page differs from manifest: {manifest_page.page_id}"
+            )
+        _read_artifact_once(
+            Path(manifest_page.image.path),
+            package_root,
+            expected=manifest_page.image,
+            changed_message=f"carousel page artifact receipt changed: {manifest_page.page_id}",
+        )
+    return spec
+
+
+def _load_current_manifest(
+    package_root: Path,
+    *,
+    require_render_input: bool = False,
+) -> tuple[Path, ArtifactReceipt, CarouselReviewManifestV1, PodcastCarouselCopySpecV1]:
+    current_path = package_root / "current.json"
+    if not current_path.is_file():
+        raise CorrectionJobTransitionError("carousel current.json is missing")
+    try:
+        current = json.loads(current_path.read_text(encoding="utf-8"))
+        manifest_path, manifest_payload, manifest_receipt = _read_artifact_once(
+            Path(str(current["manifest"])), package_root
+        )
+        if current["manifest_sha256"] != manifest_receipt.sha256:
+            raise CorrectionJobTransitionError("current carousel manifest receipt changed")
+        manifest = CarouselReviewManifestV1.model_validate_json(manifest_payload)
+    except CorrectionJobTransitionError:
+        raise
+    except (OSError, UnicodeDecodeError, KeyError, TypeError, ValueError, ValidationError) as error:
+        raise CorrectionJobTransitionError("carousel current package is invalid") from error
+    if (
+        current.get("episode_id") != manifest.episode_id
+        or current.get("revision") != manifest.revision
+    ):
+        raise CorrectionJobTransitionError("carousel current identity does not match manifest")
+    spec = _verify_manifest_artifacts(
+        manifest,
+        package_root=package_root,
+        require_render_input=require_render_input,
+    )
+    return manifest_path, manifest_receipt, manifest, spec
+
+
+def _assert_source_integrity(job: CarouselCorrectionJobV1, package_root: Path) -> ArtifactReceipt:
+    _, manifest_receipt, manifest, _ = _load_current_manifest(package_root)
+    if manifest.episode_id != job.episode_id or manifest.revision != job.source_revision:
+        raise CorrectionJobTransitionError("correction source is no longer the current revision")
+    if manifest_receipt.sha256 != job.source_manifest_sha256:
+        raise CorrectionJobTransitionError("correction source manifest receipt changed")
+    page_receipts = {page.page_id: page.image.sha256 for page in manifest.pages}
+    requested = [*job.feedback_items, *job.copy_edits, *job.text_layout_overrides]
+    if job.layout_overrides is not None:
+        requested.append(job.layout_overrides)
+    for item in requested:
+        if page_receipts.get(item.page_id) != item.artifact_sha256:
+            raise CorrectionJobTransitionError(
+                f"correction source page receipt changed: {item.page_id}"
+            )
+    return manifest_receipt
 
 
 def correction_jobs_dir(package_root: Path) -> Path:
@@ -79,7 +244,10 @@ def create_queued_job(
     episode_id: str,
     source_revision: str,
     source_manifest_sha256: str,
-    feedback_items: list[CarouselCorrectionItem],
+    feedback_items: list[CarouselCorrectionItem] | None = None,
+    copy_edits: list[CarouselCopyEdit] | None = None,
+    layout_overrides: CarouselCoverLayoutEdit | None = None,
+    text_layout_overrides: list[CarouselTextLayoutEdit] | None = None,
     now: datetime | None = None,
     job_id: str | None = None,
 ) -> CarouselCorrectionJobV1:
@@ -90,7 +258,10 @@ def create_queued_job(
         episode_id=episode_id,
         source_revision=source_revision,
         source_manifest_sha256=source_manifest_sha256,
-        feedback_items=feedback_items,
+        feedback_items=feedback_items or [],
+        copy_edits=copy_edits or [],
+        layout_overrides=layout_overrides,
+        text_layout_overrides=text_layout_overrides or [],
         created_at=timestamp,
         updated_at=timestamp,
     )
@@ -146,6 +317,7 @@ def claim_job(
     with _job_lock(path):
         job = load_job(path)
         timestamp = now or datetime.now(UTC)
+        source_manifest_receipt = _assert_source_integrity(job, path.parent.parent)
         if job.status in {"claimed", "in_progress"}:
             if job.claim is None or timestamp < job.claim.lease_expires_at:
                 raise CorrectionJobTransitionError(
@@ -165,6 +337,7 @@ def claim_job(
                     lease_seconds=lease_seconds,
                     lease_expires_at=timestamp + timedelta(seconds=lease_seconds),
                 ),
+                "source_manifest_receipt": source_manifest_receipt,
             }
         )
         updated = CarouselCorrectionJobV1.model_validate(updated.model_dump())
@@ -218,11 +391,314 @@ def progress_job(
         return updated
 
 
+def _load_claimed_source_spec(
+    job: CarouselCorrectionJobV1,
+    package_root: Path,
+) -> PodcastCarouselCopySpecV1:
+    if job.source_manifest_receipt is None:
+        raise CorrectionJobTransitionError("correction claim has no verified source receipt")
+    _, manifest_payload, _ = _read_artifact_once(
+        Path(job.source_manifest_receipt.path),
+        package_root,
+        expected=job.source_manifest_receipt,
+        changed_message="claimed source manifest was changed after claim",
+    )
+    if job.source_manifest_receipt.sha256 != job.source_manifest_sha256:
+        raise CorrectionJobTransitionError("claimed source manifest does not match queued source")
+    try:
+        manifest = CarouselReviewManifestV1.model_validate_json(manifest_payload)
+    except (OSError, UnicodeDecodeError, ValidationError) as error:
+        raise CorrectionJobTransitionError("claimed source manifest is invalid") from error
+    if manifest.episode_id != job.episode_id or manifest.revision != job.source_revision:
+        raise CorrectionJobTransitionError("claimed source manifest identity changed")
+    return _verify_manifest_artifacts(manifest, package_root=package_root)
+
+
+def _load_claimed_source_manifest(
+    job: CarouselCorrectionJobV1, package_root: Path
+) -> CarouselReviewManifestV1:
+    if job.source_manifest_receipt is None:
+        raise CorrectionJobTransitionError("correction claim has no verified source receipt")
+    _, manifest_payload, _ = _read_artifact_once(
+        Path(job.source_manifest_receipt.path),
+        package_root,
+        expected=job.source_manifest_receipt,
+        changed_message="claimed source manifest was changed after claim",
+    )
+    if job.source_manifest_receipt.sha256 != job.source_manifest_sha256:
+        raise CorrectionJobTransitionError("claimed source manifest does not match queued source")
+    try:
+        manifest = CarouselReviewManifestV1.model_validate_json(manifest_payload)
+    except ValidationError as error:
+        raise CorrectionJobTransitionError("claimed source manifest is invalid") from error
+    if manifest.episode_id != job.episode_id or manifest.revision != job.source_revision:
+        raise CorrectionJobTransitionError("claimed source manifest identity changed")
+    return manifest
+
+
+def _assert_affected_pages_rerendered(
+    job: CarouselCorrectionJobV1,
+    *,
+    source_manifest: CarouselReviewManifestV1,
+    result_manifest: CarouselReviewManifestV1,
+    result_spec: PodcastCarouselCopySpecV1,
+    package_root: Path,
+) -> None:
+    affected = {item.page_id for item in job.feedback_items}
+    affected.update(item.page_id for item in job.copy_edits)
+    affected.update(item.page_id for item in job.text_layout_overrides)
+    if job.layout_overrides is not None:
+        affected.add("cover")
+    if not affected:
+        return
+    if source_manifest.render_input is None or result_manifest.render_input is None:
+        raise CorrectionJobTransitionError(
+            "structured edits require canonical render input receipts"
+        )
+    if source_manifest.render_input.sha256 == result_manifest.render_input.sha256:
+        raise CorrectionJobTransitionError("structured edits cannot reuse the source render input")
+    source_pages = {page.page_id: page for page in source_manifest.pages}
+    result_pages = {page.page_id: page for page in result_manifest.pages}
+    result_indexes = {page.page_id: index for index, page in enumerate(result_spec.pages)}
+    cutouts_dir = package_root.parent / "packaging" / "cutouts"
+    rerendered_hashes = _trusted_rerender_hashes(
+        result_spec=result_spec,
+        source_template=source_manifest.template,
+        result_manifest=result_manifest,
+        package_root=package_root,
+        page_ids=affected,
+    )
+    for page_id in affected:
+        source = source_pages.get(page_id)
+        result = result_pages.get(page_id)
+        if source is None or result is None:
+            raise CorrectionJobTransitionError(f"affected carousel page is missing: {page_id}")
+        if result.fit.status != "fit":
+            raise CorrectionJobTransitionError(f"affected carousel page does not fit: {page_id}")
+        if result.content_sha256 == source.content_sha256:
+            raise CorrectionJobTransitionError(
+                f"affected carousel content hash was reused: {page_id}"
+            )
+        expected_content_sha = _content_sha(
+            result_spec,
+            result_indexes[page_id],
+            result_manifest.template.sha256,
+            cutouts_dir,
+        )
+        if result.content_sha256 != expected_content_sha:
+            raise CorrectionJobTransitionError(
+                f"affected carousel canonical content hash is invalid: {page_id}"
+            )
+        if result.image.sha256 == source.image.sha256:
+            raise CorrectionJobTransitionError(f"affected carousel image was reused: {page_id}")
+        if result.image.sha256 != rerendered_hashes.get(page_id):
+            raise CorrectionJobTransitionError(
+                f"affected carousel PNG does not match deterministic rerender: {page_id}"
+            )
+
+
+def _trusted_rerender_hashes(
+    *,
+    result_spec: PodcastCarouselCopySpecV1,
+    source_template: TemplateSnapshot,
+    result_manifest: CarouselReviewManifestV1,
+    package_root: Path,
+    page_ids: set[str],
+) -> dict[str, str]:
+    """Rebuild trusted render input and rerender affected pages before completion."""
+
+    try:
+        if result_manifest.template != source_template:
+            raise CorrectionJobTransitionError(
+                "result template identity does not match correction source"
+            )
+        template_root = Path(result_manifest.template.root).resolve(strict=True)
+        template_root.relative_to(package_root.resolve(strict=True))
+        files = [
+            (path.relative_to(template_root).as_posix(), path)
+            for path in template_root.rglob("*")
+            if path.is_file()
+        ]
+        if _digest_files(files) != result_manifest.template.sha256:
+            raise CorrectionJobTransitionError("result template snapshot tree changed")
+        if result_manifest.render_input is None:
+            raise CorrectionJobTransitionError("result manifest has no render input receipt")
+        cutouts_dir = package_root.parent / "packaging" / "cutouts"
+        with tempfile.TemporaryDirectory(prefix="carousel-attest-", dir=package_root) as temp_value:
+            temp_root = Path(temp_value)
+            trusted_render_input = temp_root / "render_input.html"
+            _write_render_input(
+                snapshot=result_manifest.template,
+                spec=result_spec,
+                cutouts_dir=cutouts_dir,
+                destination=trusted_render_input,
+            )
+            trusted_receipt = receipt_for(trusted_render_input)
+            if (
+                trusted_receipt.bytes != result_manifest.render_input.bytes
+                or trusted_receipt.sha256 != result_manifest.render_input.sha256
+            ):
+                raise CorrectionJobTransitionError(
+                    "result render input does not match deterministic reconstruction"
+                )
+            indexes = {page.page_id: index for index, page in enumerate(result_spec.pages)}
+            hashes: dict[str, str] = {}
+            for page_id in page_ids:
+                index = indexes[page_id]
+                screenshot = temp_root / f"{index + 1:02d}.png"
+                _render_page(
+                    chrome=_DEFAULT_CHROME,
+                    url=f"{trusted_render_input.resolve().as_uri()}?page={index}",
+                    screenshot=screenshot,
+                )
+                hashes[page_id] = receipt_for(screenshot).sha256
+            return hashes
+    except CorrectionJobTransitionError:
+        raise
+    except (FileNotFoundError, KeyError, OSError, ValueError) as error:
+        raise CorrectionJobTransitionError(
+            "deterministic carousel rerender attestation failed"
+        ) from error
+
+
+def _assert_structured_edits_applied(
+    job: CarouselCorrectionJobV1,
+    *,
+    source_spec: PodcastCarouselCopySpecV1,
+    result_spec: PodcastCarouselCopySpecV1,
+) -> None:
+    if not job.copy_edits and job.layout_overrides is None and not job.text_layout_overrides:
+        return
+    expected = source_spec.model_dump(mode="json")
+    expected["revision"] = result_spec.revision
+    pages = {page["page_id"]: page for page in expected["pages"]}
+    for edit in job.copy_edits:
+        page = pages.get(edit.page_id)
+        if page is None or page["role"] != edit.role:
+            raise CorrectionJobTransitionError(
+                f"structured edit page identity changed: {edit.page_id}"
+            )
+        page.update(edit.fields)
+    if job.layout_overrides is not None:
+        expected["layout_overrides"]["cover"] = job.layout_overrides.values.model_dump(mode="json")
+    text_layouts = {
+        (item["page_id"], item["region"]): item
+        for item in expected["layout_overrides"].get("text_regions", [])
+    }
+    for edit in job.text_layout_overrides:
+        stored = PageTextLayoutOverrideV1(
+            page_id=edit.page_id,
+            role=edit.role,
+            region=edit.region,
+            values=edit.values,
+        )
+        text_layouts[(edit.page_id, edit.region)] = stored.model_dump(mode="json")
+    expected["layout_overrides"]["text_regions"] = list(text_layouts.values())
+    try:
+        expected_spec = PodcastCarouselCopySpecV1.model_validate(expected)
+    except ValidationError as error:
+        raise CorrectionJobTransitionError(
+            "structured edits do not produce a valid Copy Spec"
+        ) from error
+    if result_spec != expected_spec:
+        raise CorrectionJobTransitionError(
+            "result Copy Spec does not exactly apply the requested structured edits"
+        )
+
+
+def _verify_completion_evidence(
+    *,
+    job: CarouselCorrectionJobV1,
+    package_root: Path,
+    result_manifest_path: Path,
+    panel_result_path: Path,
+    reviewer_artifacts: list[tuple[str, str, Path]],
+) -> tuple[str, CarouselCorrectionCompletionEvidence]:
+    source_manifest = _load_claimed_source_manifest(job, package_root)
+    source_spec = _verify_manifest_artifacts(source_manifest, package_root=package_root)
+    current_manifest_path, manifest_receipt, manifest, spec = _load_current_manifest(
+        package_root,
+        require_render_input=True,
+    )
+    explicit_manifest = _contained_file(result_manifest_path, package_root)
+    if explicit_manifest != current_manifest_path:
+        raise CorrectionJobTransitionError("result manifest is not the current carousel manifest")
+    if manifest.episode_id != job.episode_id:
+        raise CorrectionJobTransitionError("result manifest episode does not match correction job")
+    if int(manifest.revision[1:]) <= int(job.source_revision[1:]):
+        raise CorrectionJobTransitionError("result revision is not newer than correction source")
+    if manifest.template != source_manifest.template:
+        raise CorrectionJobTransitionError(
+            "result template identity does not match correction source"
+        )
+    _assert_structured_edits_applied(job, source_spec=source_spec, result_spec=spec)
+    _assert_affected_pages_rerendered(
+        job,
+        source_manifest=source_manifest,
+        result_manifest=manifest,
+        result_spec=spec,
+        package_root=package_root,
+    )
+
+    supplied_lenses = [lens for lens, _, _ in reviewer_artifacts]
+    if set(supplied_lenses) != set(CAROUSEL_REQUIRED_REVIEWS) or len(supplied_lenses) != len(
+        set(supplied_lenses)
+    ):
+        raise CorrectionJobTransitionError(
+            "completion requires exactly one artifact for each canonical reviewer lens"
+        )
+    reviewer_ids = [reviewer_id for _, reviewer_id, _ in reviewer_artifacts]
+    if len(reviewer_ids) != len(set(reviewer_ids)):
+        raise CorrectionJobTransitionError("completion reviewer identities must be unique")
+
+    parsed_reviews: dict[str, PanelReview] = {}
+    reviewer_receipts: dict[str, CarouselReviewerReceipt] = {}
+    review_paths: set[Path] = set()
+    for lens, reviewer_id, review_path_value in reviewer_artifacts:
+        review_path, review_receipt = _verified_receipt(review_path_value, package_root)
+        if review_path in review_paths:
+            raise CorrectionJobTransitionError("completion reviewer artifacts must be distinct")
+        review_paths.add(review_path)
+        try:
+            review = PanelReview.model_validate_json(review_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, ValidationError) as error:
+            raise CorrectionJobTransitionError(f"reviewer artifact is invalid: {lens}") from error
+        if review.lens != lens:
+            raise CorrectionJobTransitionError(f"reviewer artifact lens mismatch: {lens}")
+        parsed_reviews[lens] = review
+        reviewer_receipts[lens] = CarouselReviewerReceipt(
+            lens=lens,
+            reviewer_id=reviewer_id,
+            review=review_receipt,
+        )
+
+    panel_path, panel_receipt = _verified_receipt(panel_result_path, package_root)
+    if panel_path in review_paths:
+        raise CorrectionJobTransitionError("panel result must be distinct from reviewer artifacts")
+    try:
+        panel = PanelResult.model_validate_json(panel_path.read_text(encoding="utf-8"))
+        assert_panel_renderable(panel, spec=spec)
+    except (OSError, UnicodeDecodeError, ValidationError, ValueError, RuntimeError) as error:
+        raise CorrectionJobTransitionError("carousel panel has not validly converged") from error
+    for lens in CAROUSEL_REQUIRED_REVIEWS:
+        if panel.reviews[lens] != parsed_reviews[lens]:
+            raise CorrectionJobTransitionError(f"panel review does not match receipt: {lens}")
+
+    evidence = CarouselCorrectionCompletionEvidence(
+        result_manifest=manifest_receipt,
+        panel_result=panel_receipt,
+        reviewers=tuple(reviewer_receipts[lens] for lens in CAROUSEL_REQUIRED_REVIEWS),
+    )
+    return manifest.revision, evidence
+
+
 def complete_job(
     path: Path,
     *,
     claim_token: str,
-    result_revision: str,
+    result_manifest_path: Path,
+    panel_result_path: Path,
+    reviewer_artifacts: list[tuple[str, str, Path]],
     now: datetime | None = None,
 ) -> CarouselCorrectionJobV1:
     with _job_lock(path):
@@ -231,11 +707,19 @@ def complete_job(
             raise CorrectionJobTransitionError(f"cannot complete correction job from {job.status}")
         timestamp = now or datetime.now(UTC)
         _assert_claim(job, claim_token, timestamp)
+        result_revision, completion_evidence = _verify_completion_evidence(
+            job=job,
+            package_root=path.parent.parent,
+            result_manifest_path=result_manifest_path,
+            panel_result_path=panel_result_path,
+            reviewer_artifacts=reviewer_artifacts,
+        )
         updated = job.model_copy(
             update={
                 "status": "completed",
                 "updated_at": timestamp,
                 "result_revision": result_revision,
+                "completion_evidence": completion_evidence,
             }
         )
         updated = CarouselCorrectionJobV1.model_validate(updated.model_dump())
@@ -268,6 +752,13 @@ def fail_job(
         return updated
 
 
+def _reviewer_artifact_arg(value: str) -> tuple[str, str, Path]:
+    parts = value.split("=", 2)
+    if len(parts) != 3 or not all(part.strip() for part in parts):
+        raise argparse.ArgumentTypeError("reviewer receipt must use LENS=REVIEWER_ID=PATH format")
+    return parts[0], parts[1], Path(parts[2])
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -289,7 +780,15 @@ def _parser() -> argparse.ArgumentParser:
     complete = commands.add_parser("complete")
     complete.add_argument("job", type=Path)
     complete.add_argument("--claim-token", required=True)
-    complete.add_argument("--result-revision", required=True)
+    complete.add_argument("--result-manifest", type=Path, required=True)
+    complete.add_argument("--panel-result", type=Path, required=True)
+    complete.add_argument(
+        "--reviewer-receipt",
+        action="append",
+        type=_reviewer_artifact_arg,
+        required=True,
+        metavar="LENS=REVIEWER_ID=PATH",
+    )
 
     fail = commands.add_parser("fail")
     fail.add_argument("job", type=Path)
@@ -320,7 +819,9 @@ def main() -> None:
         job = complete_job(
             args.job,
             claim_token=args.claim_token,
-            result_revision=args.result_revision,
+            result_manifest_path=args.result_manifest,
+            panel_result_path=args.panel_result,
+            reviewer_artifacts=args.reviewer_receipt,
         )
     else:
         job = fail_job(args.job, claim_token=args.claim_token, error=args.error)

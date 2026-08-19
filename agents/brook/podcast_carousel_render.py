@@ -96,6 +96,145 @@ def _data_uri(path: Path) -> str:
     return f"data:{media_type};base64,{encoded}"
 
 
+def _layout_override_markup(spec: PodcastCarouselCopySpecV1) -> str:
+    cover = spec.layout_overrides.cover
+    legacy = ""
+    if cover is not None:
+        legacy = (
+            f":root{{--type-cover-title:{cover.title_font_size_px}px}}\n"
+            ".cover .guest{"
+            f"right:{cover.guest_right_px}px!important;"
+            f"bottom:{cover.guest_bottom_px}px!important;"
+            f"height:{cover.guest_height_px}px!important"
+            "}\n"
+        )
+    return (
+        "<style data-carousel-layout-overrides>\n"
+        "[data-fit-region]{white-space:pre-wrap;height:auto}\n"
+        f"{legacy}</style>"
+    )
+
+
+_EDITOR_PATCH_SCRIPT = r"""
+  const canonicalTextSafeRects={
+    "cover.headline":[48,120,1040,760],"hook.question":[48,160,1032,820],
+    "hook.bridge":[48,400,1032,980],"point.headline":[48,160,1032,760],
+    "point.body":[48,400,1032,980],"quote.text":[48,160,1032,980],
+    "quote.host_question":[448,180,992,460],"cta.episode_topic":[48,540,1032,820]
+  };
+  const canonicalTextLayouts=()=>spec.layout_overrides?.text_regions||[];
+  let activeEditorPatch=canonicalTextLayouts();
+  const applyManualLines=(region,lines)=>{
+    if(!lines)return;
+    const node=canvas.querySelector(`[data-fit-region="${page.role}.${region}"]`);
+    if(!node)return;
+    const mark=node.querySelector(".em-box,.em-orange");
+    const emphasis=mark?.textContent||null,kind=mark?.className;
+    let emphasisApplied=false;
+    node.replaceChildren();
+    lines.forEach((line,index)=>{
+      if(index)node.append(el("br"));
+      const at=emphasis&&!emphasisApplied?line.indexOf(emphasis):-1;
+      if(at<0){node.append(document.createTextNode(line));return}
+      emphasisApplied=true;
+      node.append(document.createTextNode(line.slice(0,at)),el("span",kind,emphasis),document.createTextNode(line.slice(at+emphasis.length)));
+    });
+  };
+  window.applyEditorPatch=(patch=activeEditorPatch)=>{
+    activeEditorPatch=patch;
+    for(const item of patch.filter(candidate=>candidate.page_id===page.page_id)){
+      const node=canvas.querySelector(`[data-fit-region="${item.role}.${item.region}"]`);
+      if(!node)continue;
+      const value=item.values;
+      applyManualLines(item.region,value.lines);
+      node.style.width=`${value.width_px}px`;
+      node.style.maxWidth="none";node.style.height="auto";node.style.maxHeight="none";
+      node.style.fontSize=`${value.font_start_px}px`;
+      node.dataset.fitStart=String(value.font_start_px);node.dataset.fitLocked="true";
+      const safe=canonicalTextSafeRects[`${item.role}.${item.region}`];
+      if(safe){node.dataset.editorSafeLeft=String(safe[0]);node.dataset.editorSafeTop=String(safe[1]);node.dataset.editorSafeRight=String(safe[2]);node.dataset.editorSafeBottom=String(safe[3])}
+      node.style.transform="none";
+      const rect=node.getBoundingClientRect();
+      node.style.transform=`translate(${value.x_px-rect.left}px,${value.y_px-rect.top}px)`;
+    }
+  };
+"""
+
+_EDITOR_PROTECTED_SCRIPT = r"""
+    const editorRegionNode=(region)=>
+      fitTargets.find(item=>item.region===region)?.node;
+    const editorProtectedCollisions=[];
+    const editorContainments=[];
+    if(page.role==="cover"){
+      editorProtectedCollisions.push(
+        ["cover.headline",".header",0],
+        ["cover.headline",".guest-label",12]
+      );
+    }
+    if(page.role==="hook"){
+      editorProtectedCollisions.push(
+        ["hook.question",".header",0],
+        ["hook.bridge",".arrow",12]
+      );
+    }
+    if(page.role==="point"){
+      editorProtectedCollisions.push(
+        ["point.headline",".header",0],
+        ["point.body",".arrow",12]
+      );
+    }
+    if(page.role==="quote"&&page.variant==="A"){
+      editorProtectedCollisions.push(
+        ["quote.text",".header",0],
+        ["quote.text",".quote-a .guest",12]
+      );
+      editorContainments.push(["quote.text",".bubble",0]);
+    }
+    if(page.role==="quote"&&page.variant==="B"){
+      editorProtectedCollisions.push(["quote.host_question",".header",0]);
+    }
+    if(page.role==="cta"){
+      editorProtectedCollisions.push(
+        ["cta.episode_topic",".header",0],
+        ["cta.episode_topic",".podcast-cover",12],
+        ["cta.episode_topic",".search",12],
+        ["cta.episode_topic",".platforms",12]
+      );
+      editorContainments.push(["cta.episode_topic",".cta-copy",0]);
+    }
+    for(const [region,selector,gap] of editorProtectedCollisions){
+      const textNode=editorRegionNode(region);
+      const protectedNode=canvas.querySelector(selector);
+      if(textNode&&protectedNode&&overlap(
+        textNode.getBoundingClientRect(),
+        protectedNode.getBoundingClientRect(),
+        gap
+      )){
+        diagnostics.status="needs_review";
+        diagnostics.notes.push(
+          `editor text/protected collision: ${region} / ${selector}`
+        );
+      }
+    }
+    for(const [region,selector,inset] of editorContainments){
+      const textNode=editorRegionNode(region);
+      const protectedNode=canvas.querySelector(selector);
+      if(!textNode||!protectedNode)continue;
+      const inner=textNode.getBoundingClientRect();
+      const outer=protectedNode.getBoundingClientRect();
+      const contained=
+        inner.left>=outer.left+inset&&inner.top>=outer.top+inset&&
+        inner.right<=outer.right-inset&&inner.bottom<=outer.bottom-inset;
+      if(!contained){
+        diagnostics.status="needs_review";
+        diagnostics.notes.push(
+          `editor text containment failure: ${region} / ${selector}`
+        );
+      }
+    }
+"""
+
+
 def _write_render_input(
     *,
     snapshot: TemplateSnapshot,
@@ -137,6 +276,98 @@ def _write_render_input(
         "/*__CAROUSEL_SPEC__*/null",
         _safe_script_json(spec.model_dump(mode="json")),
     ).replace("/*__CAROUSEL_ASSETS__*/null", _safe_script_json(assets))
+    canonical_editor = "const fitTargets=[]" in rendered
+    refit_markers = {
+        "const fit=()=>{": (
+            f"{_EDITOR_PATCH_SCRIPT}\n  const fit=()=>{{" if canonical_editor else "const fit=()=>{"
+        ),
+        "let size=item.start;": (
+            "let size=item.node.dataset.fitStart?Number(item.node.dataset.fitStart):item.start;"
+        ),
+        'document.body.dataset.ready="1";': ('document.body.dataset.ready="1";return diagnostics;'),
+    }
+    for marker, replacement in refit_markers.items():
+        if rendered.count(marker) != 1:
+            raise ValueError(f"render template must contain one canonical refit marker: {marker}")
+        rendered = rendered.replace(marker, replacement, 1)
+    rendered = rendered.replace(
+        "const fit=()=>{",
+        "const fit=window.__carouselRefit=()=>{window.applyEditorPatch?.();",
+        1,
+    )
+    if canonical_editor:
+        rendered = rendered.replace(
+            "while(size>item.absoluteMin&&",
+            'while(item.node.dataset.fitLocked!=="true"&&size>item.absoluteMin&&',
+            1,
+        )
+        rendered = rendered.replace(
+            "diagnostics.regions[item.region]=size;if(size<item.minReadable)",
+            "diagnostics.regions[item.region]=size;"
+            "const editorRect=item.node.getBoundingClientRect(),"
+            "editorSafeLeft=Number(item.node.dataset.editorSafeLeft),"
+            "editorSafeTop=Number(item.node.dataset.editorSafeTop),"
+            "editorSafeRight=Number(item.node.dataset.editorSafeRight),"
+            "editorSafeBottom=Number(item.node.dataset.editorSafeBottom);"
+            'const editorLocked=item.node.dataset.fitLocked==="true";'
+            "if(editorLocked){"
+            "diagnostics.regions[`${item.region}.editor_scroll_overflow_x`]="
+            "item.node.scrollWidth-item.node.clientWidth;"
+            "diagnostics.regions[`${item.region}.editor_scroll_overflow_y`]="
+            "item.node.scrollHeight-item.node.clientHeight;"
+            "diagnostics.regions[`${item.region}.editor_left_overflow`]="
+            "editorSafeLeft-editorRect.left;"
+            "diagnostics.regions[`${item.region}.editor_top_overflow`]="
+            "editorSafeTop-editorRect.top;"
+            "diagnostics.regions[`${item.region}.editor_right_overflow`]="
+            "editorRect.right-editorSafeRight;"
+            "diagnostics.regions[`${item.region}.editor_bottom_overflow`]="
+            "editorRect.bottom-editorSafeBottom;}"
+            "const editorOverflow=editorLocked&&("
+            "item.node.scrollWidth>item.node.clientWidth+overflowTolerance||"
+            "item.node.scrollHeight>item.node.clientHeight+overflowTolerance||"
+            "editorRect.left<editorSafeLeft-overflowTolerance||"
+            "editorRect.top<editorSafeTop-overflowTolerance||"
+            "editorRect.right>editorSafeRight+overflowTolerance||"
+            "editorRect.bottom>editorSafeBottom+overflowTolerance);"
+            'if(editorOverflow){diagnostics.status="needs_review";'
+            "diagnostics.notes.push(`${item.region} exceeds its editor safe region`)}"
+            "if(size<item.minReadable)",
+            1,
+        )
+        rendered = rendered.replace(
+            "const richCover=(node,text,emphasis)=>{",
+            'const richCover=(node,text,emphasis)=>{if(text.includes("\\n"))'
+            'return rich(node,text,emphasis,"orange");',
+            1,
+        )
+        rendered = rendered.replace(
+            'const breakAt=text.indexOf("，");',
+            'const breakAt=text.includes("\\n")?-1:text.indexOf("，");',
+            1,
+        )
+        overlap_marker = (
+            "const overlap=(a,b,gap=0)=>a.right+gap>b.left&&a.left<b.right+gap&&"
+            "a.bottom+gap>b.top&&a.top<b.bottom+gap;"
+        )
+        if rendered.count(overlap_marker) != 1:
+            raise ValueError("render template must contain one canonical overlap marker")
+        rendered = rendered.replace(
+            overlap_marker,
+            overlap_marker
+            + _EDITOR_PROTECTED_SCRIPT
+            + "for(let first=0;first<fitTargets.length;first++){"
+            + "for(let second=first+1;second<fitTargets.length;second++){"
+            + "const a=fitTargets[first],b=fitTargets[second];"
+            + "if(overlap(a.node.getBoundingClientRect(),b.node.getBoundingClientRect(),12)){"
+            + 'diagnostics.status="needs_review";'
+            + "diagnostics.notes.push(`editor text regions overlap: ${a.region} / ${b.region}`)"
+            + "}}}",
+            1,
+        )
+    if "</head>" not in rendered:
+        raise ValueError("render template must contain a closing head tag")
+    rendered = rendered.replace("</head>", f"{_layout_override_markup(spec)}</head>", 1)
     destination.write_text(rendered, encoding="utf-8", newline="\n")
 
 
@@ -148,8 +379,7 @@ def _playwright_environment() -> tuple[Path, dict[str, str]]:
     env = os.environ.copy()
     configured_modules = os.environ.get("NAKAMA_NODE_PATH") or env.get("NODE_PATH")
     codex_modules = (
-        Path.home()
-        / ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules"
+        Path.home() / ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules"
     )
     if configured_modules:
         env["NODE_PATH"] = configured_modules
@@ -196,6 +426,16 @@ def _content_sha(
         "page_number": page_index + 1,
         "page_total": len(spec.pages),
         "point_number": point_number,
+        "layout_override": (
+            spec.layout_overrides.cover.model_dump(mode="json")
+            if page.role == "cover" and spec.layout_overrides.cover is not None
+            else None
+        ),
+        "text_layout_overrides": [
+            item.model_dump(mode="json")
+            for item in spec.layout_overrides.text_regions
+            if item.page_id == page.page_id
+        ],
         "cutout_sha256": {
             name: receipt_for(cutouts_dir / name).sha256
             for name in (
@@ -300,6 +540,7 @@ def render_carousel(
         episode_id=spec.episode_id,
         revision=spec.revision,
         copy_spec=receipt_for(copy_path),
+        render_input=receipt_for(render_input),
         template=snapshot,
         publish_compatibility=spec.publish_compatibility,
         pages=review_pages,

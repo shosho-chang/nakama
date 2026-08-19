@@ -1,6 +1,6 @@
 ---
 name: ig-cards
-description: Produce, correct, approve, or prepare publishing of an evidence-backed Podcast Episode social carousel, including transcript-grounded copy, three-lens review, 1080x1080 rendering, Review Gate feedback jobs, and Stage 6 publish jobs. Use for Podcast Carousel, IG 輪播, YouTube square posts, 社群圖卡, revision correction, or an approved carousel publishing hand-off; do not use for book or health-information carousel templates.
+description: Produce, correct, approve, or prepare publishing of an evidence-backed Podcast Episode social carousel, including transcript-grounded copy, three-lens review, 1080x1080 rendering, visual QA, structured Review Gate edit jobs, and Stage 6 publish jobs. Use for Podcast Carousel, IG 輪播, YouTube square posts, 社群圖卡, revision correction, or an approved carousel publishing hand-off; do not use for book or health-information carousel templates.
 ---
 
 # Podcast IG Carousel
@@ -60,6 +60,20 @@ Anchor production and correction at Content Pipeline Stage 5 (製作). Enter Sta
 - The correction job is agent-neutral. The current end-to-end agent (`codex` or `claude_code`) claims it; the three editorial lenses remain independent subagents inside that run.
 - A claim owns a time-bounded lease. Another Codex or Claude Code executor must not take a job while its lease is valid; it may reclaim only after expiry. Every accepted progress update renews the current lease.
 - If no compatible executor is online, leave the job `queued`. Never invent a claim, progress, or completion state.
+- Creating or polling a job does not dispatch or wake Codex/Claude Code. Show the job ID and explicitly hand it back to the Codex/Claude Code task currently executing that episode; that executor must run the claim CLI itself.
+- The card editor may patch only the existing display-copy allowlist for that role. It must never change `page_id`, `role`, transcript evidence, cutout identity, page order, or page count.
+- The square 1080x1080 master is the current cross-platform decision. It supersedes the early 1080x1350 Instagram-only proposal; do not infer a 4:5 canvas from older discussion.
+- Keep the legacy cover cutout controls. In addition, allow only the closed text-region registry: `cover.headline`, `hook.question|bridge`, `point.headline|body`, `quote.text` plus variant-B `quote.host_question`, and `cta.episode_topic`. Each override is page-bound and stores `x_px`, `y_px`, `width_px`, `font_start_px`, and optional `lines`; it never stores arbitrary height, rotation, colour, font family, or a new DOM selector.
+- Snap x/y/width to the 4px grid and font size to 2px. Enforce the server-owned safe rectangle for that region. Height remains content-driven. A user `font_start_px` is final: do not auto-shrink it; block Apply when canonical diagnostics report overflow or a protected-region collision.
+- Manual breaks live only in layout `lines`. Joining the lines must exactly reproduce Display Copy; reject CR, blank lines, and a break that splits the emphasis substring. Explicit lines override the cover/CTA automatic break heuristics.
+- Treat the iframe as a live view of the real render DOM, never as a draggable flattened PNG. The receipt-bound render input owns page structure, `applyEditorPatch(layout)`, and canonical refit. The preview bridge may use only its closed, role-aware Display Copy adapter plus interaction wiring; it must never construct alternate page structure or maintain a second layout renderer.
+- A trusted editor preview requires both the manifest's matching `render_input` receipt and the canonical `window.applyEditorPatch`/refit contract inside that immutable HTML. A receipt from a pre-contract renderer is not enough. Legacy manifests remain reviewable, but their editor stays disabled until the current renderer creates a new revision; never edit an immutable legacy manifest in place.
+- Run the preview in an opaque-origin `sandbox="allow-scripts"` iframe. Parent/editor state crosses only the scoped `postMessage` bridge; do not add `allow-same-origin` or direct DOM access. The bridge must not access storage or APIs.
+- Validate emphasis as an exact substring of the role's primary display field before Apply. Do not silently normalise across a manual newline. After every copy or layout change and `document.fonts.ready`, rerun the renderer-exposed canonical refit function and surface fit/collision diagnostics; a visual text swap without refit is not an accurate preview.
+- Provide equivalent number inputs and keyboard movement (Arrow = 4px, Shift+Arrow = 16px), visible focus, 44px resize handles, and an Esc path that returns focus to the invoking card. Reset affects only the current page and requires confirmation; draft storage is manifest-scoped and versioned.
+- Applying editor changes creates a revision-bound job with `copy_edits`, legacy cover `layout_overrides`, and/or `text_layout_overrides`. It does not mutate the current Copy Spec or PNG. Carry the structured values into the next Copy Spec and deterministic render.
+- Treat all registry Display Copy as single-line data. Reject CR/LF even when no text-layout override exists; manual breaks live only in `text_layout_overrides[].values.lines`.
+- Completion must verify the template snapshot tree, reconstruct the trusted render input from the exact result spec/template/cutouts, and deterministically rerender every affected feedback/edit page. Require exact PNG SHA equality; a changed receipt or self-reported content hash alone is not completion evidence.
 
 ## Correction-job CLI contract
 
@@ -76,13 +90,18 @@ python scripts/podcast_carousel_correction_job.py progress `
   <path-to-correction-job.json> --claim-token <token> `
   --step <step-name> --percent <0-100> --message <short-message>
 
-# Complete only after a newer reviewed and visually verified revision exists.
+# Complete only with a current result manifest, three independent review
+# receipts, and the matching converged panel artifact.
 python scripts/podcast_carousel_correction_job.py complete `
   <path-to-correction-job.json> --claim-token <token> `
-  --result-revision <rNNN>
+  --result-manifest <review_manifest.v1.json> `
+  --panel-result <panel_result.v1.json> `
+  --reviewer-receipt ig_audience=<subagent-id>=<review.json> `
+  --reviewer-receipt episode_editorial=<subagent-id>=<review.json> `
+  --reviewer-receipt brand_evidence=<subagent-id>=<review.json>
 ```
 
-Claim only jobs whose source revision and manifest hash still match the reviewed package. Respect the active lease; reclaim only an expired claim. Report progress often enough to renew the lease while performing evidence review, copy correction, panel convergence, render, and page-by-page visual QA. Complete only after the result revision is newer than the source revision and all requested changes are present.
+Claim only jobs whose source revision is still current and whose manifest, Copy Spec, requested page artifacts, and every PNG still match their receipts. Respect the active lease; reclaim only an expired claim. Report progress often enough to renew the lease while performing evidence review, copy correction, panel convergence, render, and page-by-page visual QA. Progress step names are informational and never count as review evidence. Persist each independent subagent's `PanelReview` JSON with a distinct reviewer identity, then persist one `PanelResult` containing those exact three reviews. Completion derives the newer revision from the current result manifest and verifies its Copy Spec and every PNG receipt, the three reviewer receipts, and `assert_panel_renderable` against the matching converged panel. Structured copy/layout jobs additionally require an exact source-to-result diff: every requested value must be present and evidence, cutouts, identity, page order, and all unrequested fields must remain unchanged. Every affected page must have canonical `fit` diagnostics and new content-hash/PNG receipts, and structured work must use a new receipt-bound render input; reusing the source render or image fails completion. Feedback-only jobs rely on the converged panel because free-form intent cannot be mechanically diffed.
 
 ## Stage 6 Publish contract
 
@@ -130,7 +149,7 @@ Never call `complete` before every selected platform has a result. Use `fail` fo
 
 Write to `<episode>/ig-carousel/`, next to `packaging/`:
 
-- `editorial/rNNN/copy_spec.v1.json` and `panel_result.v1.json`
+- `editorial/rNNN/copy_spec.v1.json`, three independent review JSON files, and `panel_result.v1.json`
 - `revisions/rNNN/pages/NN.png`, render state, Copy Spec, and review manifest
 - content-addressed `templates/<sha256>/` snapshot
 - `current.json`, `review_feedback.v1.json`, correction jobs, publish jobs, and `run_summary.json`
