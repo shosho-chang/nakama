@@ -127,8 +127,7 @@ def test_resolves_model_via_router_default(monkeypatch, _fake_response):
 
     # DEFAULT_MODELS['default'] == claude-opus-5 → anthropic/claude-opus-5
     assert (
-        fake_client.chat.completions.create.call_args.kwargs["model"]
-        == "anthropic/claude-opus-5"
+        fake_client.chat.completions.create.call_args.kwargs["model"] == "anthropic/claude-opus-5"
     )
 
 
