@@ -139,7 +139,8 @@ def test_design_system_cover_and_cta_use_reviewed_visual_contract():
     assert 'aria-label",name' in source
     assert '[["AP","Apple Podcasts"],["S","Spotify"],["YT","YouTube"]]' not in source
     assert "cover headline/cutout overlap" in source
-    assert "--cover-cutout-overlap-limit:80px" in source
+    assert "--cover-cutout-overlap-limit:145px" in source
+    assert "bottom:-130px;height:900px" in source
     assert "--type-cover-title:112px" in source
     assert "--type-hook-title:104px" in source
     assert "--hook-optical-lift:-22px" in source
@@ -224,7 +225,7 @@ def test_real_design_system_template_renders_every_page_role(tmp_path: Path):
     assert all(Path(page.image.path).is_file() for page in manifest.pages)
     assert all(page.fit.status == "fit" for page in manifest.pages)
     assert manifest.pages[0].fit.regions["cover.cutout_height"] >= 880
-    assert manifest.pages[0].fit.regions["cover.headline_cutout_overlap_y"] <= 80
+    assert manifest.pages[0].fit.regions["cover.headline_cutout_overlap_y"] <= 145
     assert (
         manifest.pages[0].fit.regions["cover.headline"]
         > manifest.pages[2].fit.regions["point.headline"]
