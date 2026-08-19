@@ -24,8 +24,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -35,10 +37,35 @@ for _s in (sys.stdout, sys.stderr):
     except Exception:
         pass
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
+
+from composition_receipt import build_receipt_plan  # noqa: E402
 
 from shared.config import get_vault_path  # noqa: E402
 from shared.schemas.packaging import PackagesFileV1  # noqa: E402
+
+
+def _atomic_copy(src: Path, dst: Path) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{dst.name}.", dir=dst.parent)
+    os.close(fd)
+    try:
+        shutil.copy2(src, tmp_name)
+        os.replace(tmp_name, dst)
+    finally:
+        Path(tmp_name).unlink(missing_ok=True)
+
+
+def _atomic_text(path: Path, value: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(value)
+        os.replace(tmp_name, path)
+    finally:
+        Path(tmp_name).unlink(missing_ok=True)
 
 
 def to_vault_relative(path_str: str, vault_root: Path) -> str:
@@ -57,7 +84,6 @@ def to_vault_relative(path_str: str, vault_root: Path) -> str:
 def attach(packaging_dir: Path, cut_id: str, episode_slug: str, specs: list[dict]) -> Path:
     vault_root = get_vault_path()
     vault_pkg_dir = vault_root / "Attachments" / "packaging" / episode_slug
-    vault_pkg_dir.mkdir(parents=True, exist_ok=True)
 
     packages_path = packaging_dir / "packages.json"
     data = json.loads(packages_path.read_text(encoding="utf-8"))
@@ -66,6 +92,19 @@ def attach(packaging_dir: Path, cut_id: str, episode_slug: str, specs: list[dict
     if not cuts:
         raise ValueError(f"cut_id {cut_id!r} not found in {packages_path}")
     cut = cuts[0]
+
+    receipt_plans = []
+    if cut.get("format") == "long":
+        receipt_plans = [
+            build_receipt_plan(
+                spec=spec,
+                episode=data["episode"],
+                cut_id=cut_id,
+                episode_slug=episode_slug,
+                vault_root=vault_root,
+            )
+            for spec in specs
+        ]
 
     packages = []
     png_copies: list[tuple[Path, Path]] = []
@@ -128,10 +167,17 @@ def attach(packaging_dir: Path, cut_id: str, episode_slug: str, specs: list[dict
         print(f"[note] 尚未配封面的長片（本次不驗證）：{', '.join(pending)}", file=sys.stderr)
 
     for src_png, dst_png in png_copies:
-        shutil.copy2(src_png, dst_png)
+        _atomic_copy(src_png, dst_png)
+    for plan in receipt_plans:
+        _atomic_copy(plan.center_source, vault_pkg_dir / plan.center_name)
+        _atomic_copy(plan.sidecar_source, vault_pkg_dir / plan.sidecar_name)
+        _atomic_text(
+            vault_pkg_dir / "composition_receipts" / plan.receipt_name,
+            json.dumps(plan.payload, ensure_ascii=False, indent=2) + "\n",
+        )
     text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
-    packages_path.write_text(text, encoding="utf-8")
-    (vault_pkg_dir / "packages.json").write_text(text, encoding="utf-8")
+    _atomic_text(packages_path, text)
+    _atomic_text(vault_pkg_dir / "packages.json", text)
     return vault_pkg_dir / "packages.json"
 
 

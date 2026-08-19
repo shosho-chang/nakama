@@ -162,6 +162,10 @@ def write_winners(
     picked_by: str = "修修 (gate)",
 ) -> Path:
     """Write the established winners schema without dropping excluded groups."""
+    candidates_doc = _load_object(hl_dir / "candidates.json", required=True)
+    subtitle_lineage = candidates_doc.get("subtitle_lineage")
+    if subtitle_lineage is not None and not isinstance(subtitle_lineage, dict):
+        raise HighlightDataError("candidates.json subtitle_lineage must be an object")
     by_id = {row["id"]: row for row in rows}
     missing = [candidate_id for candidate_id in picks if candidate_id not in by_id]
     if missing:
@@ -187,6 +191,8 @@ def write_winners(
     existing = _load_object(hl_dir / "winners.json")
     if existing.get("excluded_group") is not None:
         payload["excluded_group"] = existing["excluded_group"]
+    if subtitle_lineage is not None:
+        payload["subtitle_lineage"] = subtitle_lineage
     return _atomic_json_write(hl_dir / "winners.json", payload)
 
 

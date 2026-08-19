@@ -334,6 +334,42 @@
       }
       document.getElementById("caption").textContent = vars.caption || "";
 
+      // The packaging gate consumes geometry from this exact render.  Report
+      // browser-computed boxes over loopback; callers must fail closed when the
+      // callback or any protected selector is missing.
+      if (vars.__composition_measurement_url) {
+        const rect = (id) => {
+          const el = document.getElementById(id);
+          if (!el || getComputedStyle(el).display === "none") return null;
+          const r = el.getBoundingClientRect();
+          return { x: r.x, y: r.y, width: r.width, height: r.height };
+        };
+        const imagesReady = [...document.images].map((img) => {
+          if (!img.src || img.complete) return Promise.resolve();
+          return new Promise((resolve) => {
+            img.addEventListener("load", resolve, { once: true });
+            img.addEventListener("error", resolve, { once: true });
+          });
+        });
+        Promise.all(imagesReady).then(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+          const payload = {
+            canvas: { width: root.getBoundingClientRect().width, height: root.getBoundingClientRect().height },
+            bboxes: {
+              protected_center_bbox: rect("card-layer"),
+              host_bbox: rect("host"),
+              guest_bbox: rect("guest"),
+              title_bbox: rect("caption"),
+            },
+          };
+          fetch(vars.__composition_measurement_url, {
+            method: "POST",
+            mode: "no-cors",
+            headers: { "Content-Type": "text/plain" },
+            body: JSON.stringify(payload),
+          });
+        })));
+      }
+
       window.__timelines = window.__timelines || {};
       window.__timelines["thumbnail-reaction"] = gsap.timeline({ paused: true });
     </script>

@@ -28,7 +28,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
-from shared.config import get_db_path, get_vault_path
+from shared.config import get_runtime_data_dir, get_vault_path
 from shared.log import get_logger
 from shared.release_store import get_release, list_releases, update_target
 from shared.tight_srt import latest_tight_srt, srt_to_vtt
@@ -117,8 +117,36 @@ def _copy_fields(title: str, description: str, publish_at_local: str) -> dict:
 
 def _upload_data_dir() -> Path:
     """Return the machine-shared runtime data directory, including in a worktree."""
-    configured = os.environ.get("NAKAMA_DATA_DIR")
-    return Path(configured) if configured else get_db_path().parent
+    return get_runtime_data_dir()
+
+
+def _spawn_publish_worker(episode: str, cut_id: str, *worker_args: str) -> Path:
+    """Start the desktop publisher with the same runtime data directory as Bridge."""
+
+    data_dir = _upload_data_dir()
+    root = Path(__file__).resolve().parent.parent.parent
+    script = root / "scripts" / "publish_upload.py"
+    log_dir = data_dir / "upload_progress"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    safe = f"{episode}_{cut_id}".replace("/", "_").replace("\\", "_")
+    log_path = log_dir / f"{safe}.log"
+    log_f = open(log_path, "a", encoding="utf-8")  # noqa: SIM115
+    child_env = os.environ.copy()
+    child_env["NAKAMA_DATA_DIR"] = str(data_dir)
+    try:
+        subprocess.Popen(
+            [sys.executable, str(script), *worker_args, "--episode", episode],
+            cwd=str(root),
+            env=child_env,
+            stdout=log_f,
+            stderr=subprocess.STDOUT,
+        )
+    finally:
+        # The child inherits/duplicates the handle during Popen.  The Bridge
+        # worker must release its copy so repeated retries do not leak handles
+        # or keep progress logs locked on Windows.
+        log_f.close()
+    return log_path
 
 
 @page_router.get("", response_class=HTMLResponse, response_model=None)
@@ -308,22 +336,36 @@ def publish_approve_upload(
     # 與 CLI 同一條路：subprocess 跑 uploader（狀態轉移由它寫 DB，頁面 poll）。
     # stdout/stderr 落 log 檔——先前 DEVNULL 把 token 缺失的死訊吞掉，修修按了
     # 上傳「後台沒反應」（2026-08-04）
-    root = Path(__file__).resolve().parent.parent.parent
-    script = root / "scripts" / "publish_upload.py"
-    log_dir = data_dir / "upload_progress"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    safe = f"{episode}_{cut_id}".replace("/", "_").replace("\\", "_")
-    log_f = open(log_dir / f"{safe}.log", "a", encoding="utf-8")  # noqa: SIM115 — 交給子程序持有
-    child_env = os.environ.copy()
-    child_env["NAKAMA_DATA_DIR"] = str(data_dir)
-    subprocess.Popen(
-        [sys.executable, str(script), "--run", "--episode", episode, "--cut", cut_id],
-        cwd=str(root),
-        env=child_env,
-        stdout=log_f,
-        stderr=subprocess.STDOUT,
-    )
-    logger.info("publish approve+upload: %s/%s（log: %s.log）", episode, cut_id, safe)
+    log_path = _spawn_publish_worker(episode, cut_id, "--run", "--cut", cut_id)
+    logger.info("publish approve+upload: %s/%s（log: %s）", episode, cut_id, log_path)
+    return RedirectResponse(f"/bridge/publish/{episode}/{cut_id}", status_code=303)
+
+
+@page_router.post("/{episode}/{cut_id}/retry-cc")
+def publish_retry_cc(
+    episode: str,
+    cut_id: str,
+    nakama_auth: str | None = Cookie(None),
+) -> RedirectResponse:
+    """Retry only zh-TW CC for an existing video; never creates a video upload."""
+
+    _require_auth(nakama_auth)
+    _, target = _yt_target(episode, cut_id)
+    if not target.get("video_id"):
+        raise HTTPException(status_code=409, detail="影片尚未上傳，不能只補 CC")
+    if target["status"] in ("approved", "uploading"):
+        raise HTTPException(status_code=409, detail="影片仍在上傳，稍後再補 CC")
+    if target.get("caption_status") == "serving":
+        raise HTTPException(status_code=409, detail="zh-TW CC 已在 serving，不需重傳")
+    token_path = _upload_data_dir() / "youtube_token.json"
+    if not token_path.is_file():
+        raise HTTPException(
+            status_code=409,
+            detail=f"找不到 {token_path}——先跑 python scripts/youtube_auth.py",
+        )
+    update_target(target["id"], caption_status="processing", reconciliation_error=None)
+    log_path = _spawn_publish_worker(episode, cut_id, "--cc-only", cut_id)
+    logger.info("publish CC-only retry: %s/%s（log: %s）", episode, cut_id, log_path)
     return RedirectResponse(f"/bridge/publish/{episode}/{cut_id}", status_code=303)
 
 
@@ -345,11 +387,23 @@ def publish_status(
     return JSONResponse(
         {
             "status": t["status"],
+            "upload_status": t["status"],
             "progress": progress,
             "video_id": t.get("video_id"),
             "url": t.get("url"),
             "error": t.get("error"),
             "publish_at": t.get("publish_at"),
+            "processing_status": t.get("video_processing_status"),
+            "caption_status": t.get("caption_status"),
+            "privacy_status": t.get("platform_privacy_status"),
+            "platform_publish_at": t.get("platform_publish_at"),
+            "reconciliation_error": t.get("reconciliation_error"),
+            "last_reconciled_at": t.get("last_reconciled_at"),
+            "published": t.get("platform_privacy_status") == "public"
+            or t["status"] == "published",
+            "can_retry_cc": bool(t.get("video_id"))
+            and t.get("caption_status") != "serving"
+            and t["status"] not in ("approved", "uploading"),
             "checked_at": datetime.now(timezone.utc).isoformat(),
         }
     )

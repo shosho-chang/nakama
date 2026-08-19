@@ -785,3 +785,141 @@ def _status_args(bundle: dict[str, Path]) -> list[str]:
         "--cue-acceptance-receipt",
         str(bundle["cue_receipt"]),
     ]
+
+
+def test_memo_srt_is_a_complete_recognition_import_without_handwritten_tokens(
+    tmp_path: Path,
+) -> None:
+    audio = _wav(tmp_path / "normalized.wav", duration_ms=2_000)
+    handoff = tmp_path / "normalized-handoff.json"
+    evidence_cli.main(
+        [
+            "seal-normalized",
+            "--audio",
+            str(audio),
+            "--output",
+            str(handoff),
+            "--accepted-at",
+            "2026-08-19T01:00:00+08:00",
+        ]
+    )
+    memo_srt = tmp_path / "memo-recognition.srt"
+    memo_srt.write_text(
+        "1\n00:00:00,100 --> 00:00:00,900\n高薪賽道\n\n"
+        "2\n00:00:01,000 --> 00:00:01,800\n科技工作講\n",
+        encoding="utf-8",
+    )
+    review = tmp_path / "memo-recognition-review.json"
+
+    assert evidence_cli.main(
+        [
+            "prepare-recognition",
+            "--normalized-audio",
+            str(audio),
+            "--normalized-manifest",
+            str(handoff),
+            "--source-export",
+            str(memo_srt),
+            "--source-export-kind",
+            "memo_srt",
+            "--memo-version",
+            "1.7.5",
+            "--language",
+            "zh",
+            "--prompt",
+            "抹布 陳暐軒",
+            "--output",
+            str(review),
+        ]
+    ) == 0
+    review_payload = json.loads(review.read_bytes())
+    assert [token["id"] for token in review_payload["tokens"]] == [
+        "memo-token-000001",
+        "memo-token-000002",
+    ]
+    assert [token["text"] for token in review_payload["tokens"]] == [
+        "高薪賽道",
+        "科技工作講",
+    ]
+
+    receipt = tmp_path / "memo-recognition-acceptance.json"
+    manifest = tmp_path / "memo-recognition.json"
+    assert evidence_cli.main(
+        [
+            "accept-recognition",
+            "--review",
+            str(review),
+            "--normalized-audio",
+            str(audio),
+            "--normalized-manifest",
+            str(handoff),
+            "--source-export",
+            str(memo_srt),
+            "--reviewer",
+            "shosho",
+            "--accepted-at",
+            "2026-08-19T01:30:00+08:00",
+            "--confirm-reviewed",
+            "--receipt-output",
+            str(receipt),
+            "--manifest-output",
+            str(manifest),
+        ]
+    ) == 0
+    imported, _ = load_memo_recognition_manifest(manifest)
+    assert imported.source_export_sha256 == hash_file(memo_srt)
+    assert imported.tokens[1].end_ms == 1_800
+
+
+@pytest.mark.parametrize(
+    ("srt_text", "error"),
+    [
+        ("1\nmissing timing\ntext\n", "invalid Memo recognition SRT"),
+        (
+            "1\n00:00:00,100 --> 00:00:01,000\nA\n\n"
+            "2\n00:00:00,900 --> 00:00:01,500\nB\n",
+            "overlaps",
+        ),
+        ("1\n00:00:00,100 --> 00:00:02,500\n太長\n", "exceeds normalized audio"),
+    ],
+)
+def test_memo_srt_import_rejects_malformed_overlap_or_out_of_duration(
+    tmp_path: Path, srt_text: str, error: str
+) -> None:
+    audio = _wav(tmp_path / "normalized.wav", duration_ms=2_000)
+    handoff = tmp_path / "normalized-handoff.json"
+    evidence_cli.main(
+        [
+            "seal-normalized",
+            "--audio",
+            str(audio),
+            "--output",
+            str(handoff),
+            "--accepted-at",
+            "2026-08-19T01:00:00+08:00",
+        ]
+    )
+    memo_srt = tmp_path / "memo-recognition.srt"
+    memo_srt.write_text(srt_text, encoding="utf-8")
+    with pytest.raises(ValueError, match=error):
+        evidence_cli.main(
+            [
+                "prepare-recognition",
+                "--normalized-audio",
+                str(audio),
+                "--normalized-manifest",
+                str(handoff),
+                "--source-export",
+                str(memo_srt),
+                "--source-export-kind",
+                "memo_srt",
+                "--memo-version",
+                "1.7.5",
+                "--language",
+                "zh",
+                "--prompt",
+                "抹布",
+                "--output",
+                str(tmp_path / "review.json"),
+            ]
+        )

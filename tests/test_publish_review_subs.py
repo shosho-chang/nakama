@@ -149,6 +149,65 @@ def test_cut_page_warns_when_srt_missing(env):
     assert "CC 也會缺" in r.text
 
 
+def test_status_distinguishes_upload_processing_caption_and_platform_publish(env):
+    client, _ = env
+    from shared.release_store import get_release, update_target
+
+    target = get_release("20260415 ep", "SL3")["targets"][0]
+    update_target(
+        target["id"],
+        status="uploaded",
+        video_id="video-1",
+        video_processing_status="processed",
+        platform_privacy_status="public",
+        caption_status="missing",
+        reconciliation_error="zh-TW caption missing",
+        last_reconciled_at="2026-08-19T00:00:00+00:00",
+    )
+
+    payload = client.get("/bridge/publish/20260415%20ep/SL3/status").json()
+
+    assert payload["upload_status"] == "uploaded"
+    assert payload["processing_status"] == "processed"
+    assert payload["caption_status"] == "missing"
+    assert payload["privacy_status"] == "public"
+    assert payload["published"] is True
+    assert payload["can_retry_cc"] is True
+    assert payload["last_reconciled_at"] == "2026-08-19T00:00:00+00:00"
+
+
+def test_retry_cc_route_starts_cc_only_worker_without_reupload(
+    env,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    client, episode_dir = env
+    import thousand_sunny.routers.publish_review as publish_review
+    from shared.release_store import get_release, update_target
+
+    target = get_release("20260415 ep", "SL3")["targets"][0]
+    update_target(
+        target["id"],
+        status="uploaded",
+        video_id="video-1",
+        caption_status="missing",
+    )
+    (episode_dir.parent / "youtube_token.json").write_text("{}", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(
+        publish_review.subprocess,
+        "Popen",
+        lambda command, **kwargs: calls.append((command, kwargs)),
+    )
+
+    response = client.post("/bridge/publish/20260415%20ep/SL3/retry-cc")
+
+    assert response.status_code == 303
+    command, kwargs = calls[0]
+    assert "--cc-only" in command
+    assert "--run" not in command
+    assert kwargs["env"]["NAKAMA_DATA_DIR"] == str(episode_dir.parent)
+
+
 def test_json_dumps_guard():
     """SRT 內容不經 json 序列化（避免有人未來把它塞進 JSON 回應）。"""
     assert json.dumps(srt_to_vtt(SRT), ensure_ascii=False).startswith('"WEBVTT')

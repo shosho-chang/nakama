@@ -13,6 +13,7 @@ Coverage:
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 from datetime import datetime, timezone
@@ -83,6 +84,80 @@ def _packages_data() -> dict:
     }
 
 
+def _write_composition_receipt(
+    vault: Path,
+    *,
+    cut_id: str = "punch-L1",
+    rank: int = 1,
+    host_bbox: dict | None = None,
+    guest_bbox: dict | None = None,
+    title_bbox: dict | None = None,
+    create_center_asset: bool = True,
+) -> Path:
+    ep = vault / "Attachments" / "packaging" / "20260723-xieboran"
+    receipts = ep / "composition_receipts"
+    receipts.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema": "nakama.long_thumbnail_composition.v2",
+        "episode": "20260723 謝伯讓",
+        "cut_id": cut_id,
+        "package_rank": rank,
+        "thumbnail_png": (f"Attachments/packaging/20260723-xieboran/pkg-punch-L1-{rank}.png"),
+        "canvas_width": 1280,
+        "canvas_height": 720,
+        "center_visual_asset": (
+            f"Attachments/packaging/20260723-xieboran/center-{cut_id}-r{rank}.png"
+        ),
+        "protected_center_bbox": {"x": 420, "y": 100, "width": 440, "height": 520},
+        "host_bbox": host_bbox or {"x": 0, "y": 40, "width": 380, "height": 680},
+        "guest_bbox": guest_bbox or {"x": 900, "y": 40, "width": 380, "height": 680},
+        "title_bbox": title_bbox,
+        "max_protected_overlap_ratio": 0.05,
+    }
+    center_path = ep / f"center-{cut_id}-r{rank}.png"
+    thumbnail_path = ep / f"pkg-punch-L1-{rank}.png"
+    if not thumbnail_path.exists():
+        thumbnail_path.write_bytes(b"thumbnail")
+    if create_center_asset:
+        center_path.write_bytes(b"center visual")
+    sidecar_path = ep / f"pkg-punch-L1-{rank}.png.composition.json"
+    sidecar = {
+        "schema": "nakama.thumbnail_composition_measurement.v1",
+        "composition": "thumbnail_reaction",
+        "renderer": {"name": "hyperframes", "version": "0.6.42"},
+        "png_sha256": hashlib.sha256(thumbnail_path.read_bytes()).hexdigest(),
+        "assets": {
+            "prop_image_data_url": {
+                "sha256": hashlib.sha256(center_path.read_bytes()).hexdigest()
+                if center_path.exists()
+                else "0" * 64
+            }
+        },
+        "canvas": {"width": 1280, "height": 720},
+        "bboxes": {
+            "protected_center_bbox": payload["protected_center_bbox"],
+            "host_bbox": payload["host_bbox"],
+            "guest_bbox": payload["guest_bbox"],
+            "title_bbox": payload["title_bbox"],
+        },
+    }
+    sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
+    payload.update(
+        {
+            "thumbnail_sha256": hashlib.sha256(thumbnail_path.read_bytes()).hexdigest(),
+            "center_visual_sha256": hashlib.sha256(center_path.read_bytes()).hexdigest()
+            if center_path.exists()
+            else "0" * 64,
+            "measurement_sidecar": (f"Attachments/packaging/20260723-xieboran/{sidecar_path.name}"),
+            "measurement_sidecar_sha256": hashlib.sha256(sidecar_path.read_bytes()).hexdigest(),
+            "renderer_identity": "hyperframes@0.6.42",
+        }
+    )
+    path = receipts / f"{cut_id}-r{rank}.json"
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
 @pytest.fixture
 def vault(tmp_path):
     ep = tmp_path / "Attachments" / "packaging" / "20260723-xieboran"
@@ -90,6 +165,8 @@ def vault(tmp_path):
     (ep / "packages.json").write_text(
         json.dumps(_packages_data(), ensure_ascii=False), encoding="utf-8"
     )
+    for rank in (1, 2, 3):
+        _write_composition_receipt(tmp_path, rank=rank)
     return tmp_path
 
 
@@ -157,6 +234,30 @@ def test_list_sync_conflict_fails_loud(client, vault):
     assert "Syncthing conflict" in r.text
     # conflict 集不可點進 board（無連結）
     assert 'href="/bridge/packaging/20260723-xieboran"' not in r.text
+
+
+def test_board_shows_live_composition_verification(client):
+    response = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert response.status_code == 200
+    assert response.text.count("COMPOSITION VERIFIED") == 3
+
+
+def test_board_shows_blocked_composition_reason(client, vault):
+    (
+        vault
+        / "Attachments"
+        / "packaging"
+        / "20260723-xieboran"
+        / "composition_receipts"
+        / "punch-L1-r1.json"
+    ).unlink()
+
+    response = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert response.status_code == 200
+    assert "COMPOSITION BLOCKED" in response.text
+    assert "composition receipt" in response.text
 
 
 # ---------------------------------------------------------------------------
@@ -866,9 +967,7 @@ def test_title_edit_records_original_when_key_exists_as_null(client, vault):
 
 
 def test_focused_board_only_shows_selected_cut(router_client):
-    response = router_client.get(
-        "/bridge/packaging/20260723-xieboran?cut=punch-L1"
-    )
+    response = router_client.get("/bridge/packaging/20260723-xieboran?cut=punch-L1")
 
     assert response.status_code == 200
     assert "punch-L1" in response.text
@@ -911,9 +1010,7 @@ def test_packaging_approval_hands_selected_title_and_thumbnail_to_publish(
             42,
             {
                 "title": "標題 rank 2",
-                "thumbnail_path": (
-                    "Attachments/packaging/20260723-xieboran/pkg-punch-L1-2.png"
-                ),
+                "thumbnail_path": ("Attachments/packaging/20260723-xieboran/pkg-punch-L1-2.png"),
             },
         )
     ]
@@ -956,9 +1053,7 @@ def test_pending_board_polls_without_full_page_reload(router_client, monkeypatch
     assert "fetch(window.location.href" in response.text
 
 
-def test_pending_board_applies_packaging_after_render_finishes(
-    router_client, vault, monkeypatch
-):
+def test_pending_board_applies_packaging_after_render_finishes(router_client, vault, monkeypatch):
     import thousand_sunny.routers.packaging as pkg_module
 
     approval = {
@@ -979,9 +1074,7 @@ def test_pending_board_applies_packaging_after_render_finishes(
     monkeypatch.setattr(
         pkg_module,
         "get_release",
-        lambda episode, cut_id: {
-            "targets": [{"id": 88, "platform": "youtube", "status": "draft"}]
-        },
+        lambda episode, cut_id: {"targets": [{"id": 88, "platform": "youtube", "status": "draft"}]},
     )
     monkeypatch.setattr(
         pkg_module,
@@ -1003,9 +1096,7 @@ def test_pending_board_applies_packaging_after_render_finishes(
             88,
             {
                 "title": "標題 rank 3",
-                "thumbnail_path": (
-                    "Attachments/packaging/20260723-xieboran/pkg-punch-L1-3.png"
-                ),
+                "thumbnail_path": ("Attachments/packaging/20260723-xieboran/pkg-punch-L1-3.png"),
             },
         )
     ]
@@ -1067,3 +1158,256 @@ def test_render_receipt_is_registered_by_web_runtime(monkeypatch, tmp_path):
     assert args[:3] == ("20260721 鄭國威", "R11", "long")
     assert Path(args[3]) == video
     assert kwargs["file_bytes"] == video.stat().st_size
+
+
+def test_long_package_without_composition_receipt_cannot_be_approved(
+    router_client, vault, monkeypatch
+):
+    """A long-highlight thumbnail needs a verified center-visual composition receipt."""
+    import thousand_sunny.routers.packaging as pkg_module
+
+    monkeypatch.setattr(
+        pkg_module,
+        "get_release",
+        lambda episode, cut_id: {"targets": [{"id": 42, "platform": "youtube", "status": "draft"}]},
+    )
+    monkeypatch.setattr(pkg_module, "update_target", lambda target_id, **fields: None)
+    (
+        vault
+        / "Attachments"
+        / "packaging"
+        / "20260723-xieboran"
+        / "composition_receipts"
+        / "punch-L1-r1.json"
+    ).unlink()
+    response = router_client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 409
+    assert "composition receipt" in response.text
+
+
+def test_long_package_center_visual_cannot_be_occluded(router_client, vault, monkeypatch):
+    import thousand_sunny.routers.packaging as pkg_module
+
+    _write_composition_receipt(
+        vault,
+        host_bbox={"x": 300, "y": 40, "width": 380, "height": 680},
+    )
+    monkeypatch.setattr(
+        pkg_module,
+        "get_release",
+        lambda episode, cut_id: {"targets": [{"id": 42, "platform": "youtube", "status": "draft"}]},
+    )
+    monkeypatch.setattr(pkg_module, "update_target", lambda target_id, **fields: None)
+
+    response = router_client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code in {409, 422}
+    assert "host_bbox" in response.text
+    assert "protected center" in response.text
+
+
+@pytest.mark.parametrize("tamper", ["legacy-v1", "thumbnail-bytes"])
+def test_long_package_rejects_legacy_or_tampered_evidence(
+    router_client, vault, monkeypatch, tamper
+):
+    import thousand_sunny.routers.packaging as pkg_module
+
+    ep = vault / "Attachments" / "packaging" / "20260723-xieboran"
+    if tamper == "legacy-v1":
+        receipt = ep / "composition_receipts" / "punch-L1-r1.json"
+        payload = json.loads(receipt.read_text(encoding="utf-8"))
+        payload["schema"] = "nakama.long_thumbnail_composition.v1"
+        receipt.write_text(json.dumps(payload), encoding="utf-8")
+    else:
+        (ep / "pkg-punch-L1-1.png").write_bytes(b"tampered after receipt")
+    monkeypatch.setattr(
+        pkg_module,
+        "get_release",
+        lambda episode, cut_id: {"targets": [{"id": 42, "platform": "youtube", "status": "draft"}]},
+    )
+    monkeypatch.setattr(pkg_module, "update_target", lambda target_id, **fields: None)
+
+    response = router_client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
+        follow_redirects=False,
+    )
+    assert response.status_code in {409, 422}
+
+
+def test_long_package_center_visual_asset_must_exist(router_client, vault, monkeypatch):
+    import thousand_sunny.routers.packaging as pkg_module
+
+    _write_composition_receipt(vault, create_center_asset=False)
+    (vault / "Attachments" / "packaging" / "20260723-xieboran" / "center-punch-L1-r1.png").unlink()
+    monkeypatch.setattr(
+        pkg_module,
+        "get_release",
+        lambda episode, cut_id: {"targets": [{"id": 42, "platform": "youtube", "status": "draft"}]},
+    )
+    monkeypatch.setattr(pkg_module, "update_target", lambda target_id, **fields: None)
+
+    response = router_client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 409
+    assert "center visual asset" in response.text
+
+
+def test_valid_long_composition_can_be_approved(router_client, monkeypatch):
+    import thousand_sunny.routers.packaging as pkg_module
+
+    monkeypatch.setattr(
+        pkg_module,
+        "get_release",
+        lambda episode, cut_id: {"targets": [{"id": 42, "platform": "youtube", "status": "draft"}]},
+    )
+    monkeypatch.setattr(pkg_module, "update_target", lambda target_id, **fields: None)
+
+    response = router_client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "2"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+
+
+def test_short_approval_does_not_require_composition_receipt(router_client, monkeypatch):
+    import thousand_sunny.routers.packaging as pkg_module
+
+    monkeypatch.setattr(
+        pkg_module,
+        "get_release",
+        lambda episode, cut_id: {"targets": [{"id": 42, "platform": "youtube", "status": "draft"}]},
+    )
+    monkeypatch.setattr(pkg_module, "update_target", lambda target_id, **fields: None)
+
+    response = router_client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-S1", "decision": "approve", "primary_package": "1"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+
+
+def test_packaging_approval_starts_missing_description_draft(router_client, monkeypatch):
+    import thousand_sunny.routers.packaging as pkg_module
+
+    release = {
+        "targets": [
+            {
+                "id": 42,
+                "platform": "youtube",
+                "status": "draft",
+                "description": "",
+                "error": None,
+            }
+        ]
+    }
+    started = []
+    monkeypatch.setattr(pkg_module, "get_release", lambda episode, cut_id: release)
+    monkeypatch.setattr(pkg_module, "update_target", lambda target_id, **fields: None)
+    monkeypatch.setattr(
+        pkg_module,
+        "_start_description_draft",
+        lambda episode, cut_id, target_id: started.append((episode, cut_id, target_id)),
+    )
+
+    response = router_client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "description_pending=1" in response.headers["location"]
+    assert started == [("20260723 謝伯讓", "punch-L1", 42)]
+
+
+def test_description_interruption_is_visible_and_retryable(client, monkeypatch):
+    import thousand_sunny.routers.packaging as pkg_module
+
+    client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
+        follow_redirects=False,
+    )
+    monkeypatch.setattr(
+        pkg_module,
+        "get_release",
+        lambda episode, cut_id: {
+            "targets": [
+                {
+                    "id": 42,
+                    "platform": "youtube",
+                    "status": "draft",
+                    "description": "",
+                    "error": "DESCRIPTION_DRAFT_INTERRUPTED: RuntimeError: subscription unavailable",
+                }
+            ]
+        },
+    )
+
+    response = client.get("/bridge/packaging/20260723-xieboran?cut=punch-L1&description_pending=1")
+
+    assert response.status_code == 200
+    assert "DESCRIPTION INTERRUPTED" in response.text
+    assert "subscription unavailable" in response.text
+    assert "重試產生 Description" in response.text
+
+
+def test_description_generation_status_is_visible(client, monkeypatch):
+    import thousand_sunny.routers.packaging as pkg_module
+    from shared.background_job import atomic_job_write, new_job
+
+    client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
+        follow_redirects=False,
+    )
+    monkeypatch.setattr(
+        pkg_module,
+        "get_release",
+        lambda episode, cut_id: {
+            "targets": [
+                {
+                    "id": 42,
+                    "platform": "youtube",
+                    "status": "draft",
+                    "description": "",
+                    "error": "DESCRIPTION_DRAFT_GENERATING",
+                }
+            ]
+        },
+    )
+    job_path = pkg_module._description_job_path("20260723 謝伯讓", "punch-L1")
+    atomic_job_write(
+        job_path,
+        new_job(
+            status="generating",
+            timeout_seconds=900,
+            episode="20260723 謝伯讓",
+            cut_id="punch-L1",
+            target_id=42,
+        ),
+    )
+
+    response = client.get("/bridge/packaging/20260723-xieboran?cut=punch-L1&description_pending=1")
+
+    assert response.status_code == 200
+    assert "正在產生 Description 草稿" in response.text
+    assert "pollDescription" in response.text

@@ -26,10 +26,20 @@ Tests：tests/test_video_description.py。
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
+from typing import Callable
 
 _TEMPLATES = Path(__file__).resolve().parent / "templates"
 FOOTER_FILE = _TEMPLATES / "video_description_footer.md"
+_DESCRIPTION_MODEL = "claude-sonnet-4-6"
+_AI_SLOP_PATTERNS = (
+    re.compile(r"不是[^。！？\n]{0,40}[，,、]?\s*而是"),
+    re.compile(r"不只[^。！？\n]{0,40}[，,、]?\s*更(?:是|要|能)?"),
+    re.compile(r"這一段會"),
+    re.compile(r"帶你看"),
+    re.compile(r"深入探討"),
+)
 
 
 def fmt_ts(sec: float) -> str:
@@ -112,6 +122,91 @@ def build_description(
     if footer.strip():
         blocks.append(footer.strip())
     return "\n\n".join(b for b in blocks if b)
+
+
+def validate_description_hook(hook: str) -> str:
+    """Reject empty or templated hooks before they enter the editable Release draft."""
+    cleaned = hook.strip()
+    if not cleaned:
+        raise ValueError("description hook 不可為空")
+    matches = [pattern.pattern for pattern in _AI_SLOP_PATTERNS if pattern.search(cleaned)]
+    if matches:
+        raise ValueError(f"description hook 命中 AI slop：{', '.join(matches)}")
+    return cleaned
+
+
+def build_description_prompt(
+    episode_dir: Path,
+    *,
+    cut_id: str,
+    title: str,
+    citations: list[str],
+    chapters: list[tuple[float, str]],
+) -> str:
+    """Build the bounded, evidence-fed request used by the subscription LLM seam."""
+    srt_dir = episode_dir / "highlights" / "srt"
+    srt_files = sorted(srt_dir.glob(f"{cut_id}_tight_r*.srt")) if srt_dir.exists() else []
+    if not srt_files:
+        raise FileNotFoundError(f"找不到 {cut_id} tight SRT；不可只看標題腦補 description")
+    transcript = srt_files[-1].read_text(encoding="utf-8")[:12000]
+    chapter_text = "、".join(title for _, title in chapters) or "（無章節）"
+    citation_text = "；".join(citations) or "（無引用）"
+    return f"""請替 YouTube 長 highlight 寫 description 最前面的 2–3 個短段落。
+
+規則：
+- 用繁體中文、第一人稱、口語但精確；直接說這支影片談了什麼，以及觀眾為什麼值得看。
+- 不要重複標題，不要虛構逐字稿沒有的內容，不要下醫療承諾。
+- 禁用「不是 X，而是 Y」「不只 X，更是 Y」「這一段會」「帶你看」「深入探討」。
+- 只輸出 hook 本文，不要標題、條列、Markdown 或 CTA。固定 CTA 由程式另外接上。
+
+集數：{episode_dir.name}
+cut：{cut_id}
+核准標題：{title}
+章節：{chapter_text}
+引用：{citation_text}
+
+本支 tight 字幕（唯一內容依據）：
+{transcript}
+"""
+
+
+def subscription_hook_generator(prompt: str) -> str:
+    """Generate through the Claude subscription path; never fall back to API billing."""
+    from shared.anthropic_client import ask_claude
+
+    return ask_claude(
+        prompt,
+        model=_DESCRIPTION_MODEL,
+        max_tokens=500,
+        auth_policy="subscription_required",
+    )
+
+
+def generate_description_draft(
+    episode_dir: Path,
+    packages: dict,
+    approval: dict,
+    cut_id: str,
+    *,
+    hook_generator: Callable[[str], str] | None = None,
+) -> tuple[dict, str]:
+    """Generate and assemble one editable description draft from approved evidence."""
+    package = chosen_package(packages, approval, cut_id)
+    citations = load_citations(packages, cut_id)
+    broll_path = episode_dir / "highlights" / "tighten" / f"{cut_id}_broll.json"
+    chapters: list[tuple[float, str]] = []
+    if broll_path.exists():
+        items = json.loads(broll_path.read_text(encoding="utf-8"))["items"]
+        chapters = chapters_from_broll(items)
+    prompt = build_description_prompt(
+        episode_dir,
+        cut_id=cut_id,
+        title=package["title"],
+        citations=citations,
+        chapters=chapters,
+    )
+    hook = validate_description_hook((hook_generator or subscription_hook_generator)(prompt))
+    return package, build_description(hook, chapters, citations, load_footer())
 
 
 def load_footer() -> str:

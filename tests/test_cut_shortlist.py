@@ -156,3 +156,21 @@ def test_vetoed_pick_allowed_but_warned(episode, capsys):
     rows = shortlist.collect(hl, "long")
     shortlist.write_winners(hl, rows, ["C1"])
     assert "C1" in capsys.readouterr().err
+
+
+def test_winners_preserve_verified_projection_lineage(episode):
+    hl = episode / "highlights"
+    candidates_path = hl / "candidates.json"
+    candidates = json.loads(candidates_path.read_text(encoding="utf-8"))
+    candidates["subtitle_lineage"] = {
+        "subtitle_mode": "verified-v2",
+        "projection_id": "projection-123",
+        "generation_id": "generation-123",
+    }
+    candidates_path.write_text(json.dumps(candidates), encoding="utf-8")
+
+    rows = shortlist.collect(hl, "long")
+    shortlist.write_winners(hl, rows, ["A1"])
+
+    winners = json.loads((hl / "winners.json").read_text(encoding="utf-8"))
+    assert winners["subtitle_lineage"] == candidates["subtitle_lineage"]

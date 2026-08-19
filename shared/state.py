@@ -546,6 +546,14 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             url                TEXT,
             error              TEXT,
             upload_session_uri TEXT,
+            thumbnail_status   TEXT,
+            caption_id         TEXT,
+            video_processing_status TEXT,
+            platform_privacy_status TEXT,
+            platform_publish_at TEXT,
+            caption_status TEXT,
+            reconciliation_error TEXT,
+            last_reconciled_at TEXT,
             updated_at         TEXT NOT NULL,
             UNIQUE (release_id, platform)
         );
@@ -575,6 +583,14 @@ def _init_tables(conn: sqlite3.Connection) -> None:
         # 對這些 row 用 calc_cost 估算，有實際值的直接採用。Nullable 刻意區分「未知」與「$0」。
         "ALTER TABLE api_calls ADD COLUMN cost_usd REAL",
         "ALTER TABLE r2_backup_checks ADD COLUMN prefix TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE release_targets ADD COLUMN thumbnail_status TEXT",
+        "ALTER TABLE release_targets ADD COLUMN caption_id TEXT",
+        "ALTER TABLE release_targets ADD COLUMN video_processing_status TEXT",
+        "ALTER TABLE release_targets ADD COLUMN platform_privacy_status TEXT",
+        "ALTER TABLE release_targets ADD COLUMN platform_publish_at TEXT",
+        "ALTER TABLE release_targets ADD COLUMN caption_status TEXT",
+        "ALTER TABLE release_targets ADD COLUMN reconciliation_error TEXT",
+        "ALTER TABLE release_targets ADD COLUMN last_reconciled_at TEXT",
     ):
         try:
             conn.execute(col_ddl)

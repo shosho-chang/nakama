@@ -225,6 +225,44 @@ render → `occlusion_check` 兩輪內插收斂 → `face_measure render` gate �
 `rendered_png` 與該 rank 的 package 縮圖。**強表情素材要先備好**（見下節），
 否則他在 gate 上只能從弱表情裡挑。
 
+### Step 4.8 — 長 highlight composition receipt（沒有就不能 Approve）
+
+每一張長 highlight 必須用 `thumbnail_reaction` render；composition 會透過 loopback callback
+回傳同一次 render 的 DOM `getBoundingClientRect()`，並與 PNG 原子寫出
+`<thumbnail>.png.composition.json`。`attach_packages.py` 的每筆 spec 必須提供
+`render_spec`（該次 render_still JSON）；attach 會重驗 renderer/composition、variables、素材與
+PNG hash，通過後自動把中央圖、measurement sidecar 與 receipt 寫到 vault：
+`Attachments/packaging/<episode-slug>/composition_receipts/<cut-id>-r<rank>.json`。
+中央必須是圖像素材，不能用文字代替。`center_visual_asset` 要先複製到同一集 packaging
+目錄，使用 vault-relative 路徑；receipt 不能指到 episode 外或不存在的檔案。
+
+```json
+{
+  "schema": "nakama.long_thumbnail_composition.v2",
+  "episode": "<packages.json episode exact value>",
+  "cut_id": "<cut-id>",
+  "package_rank": 1,
+  "thumbnail_png": "<packages.json selected thumbnail_png exact value>",
+  "canvas_width": 1280,
+  "canvas_height": 720,
+  "center_visual_asset": "Attachments/packaging/<slug>/center-<cut-id>-r1.png",
+  "thumbnail_sha256": "<64 lowercase hex>",
+  "center_visual_sha256": "<64 lowercase hex>",
+  "measurement_sidecar": "Attachments/packaging/<slug>/<thumbnail>.composition.json",
+  "measurement_sidecar_sha256": "<64 lowercase hex>",
+  "renderer_identity": "hyperframes@<version>",
+  "protected_center_bbox": {"x": 420, "y": 100, "width": 440, "height": 520},
+  "host_bbox": {"x": 0, "y": 40, "width": 380, "height": 680},
+  "guest_bbox": {"x": 900, "y": 40, "width": 380, "height": 680},
+  "title_bbox": null,
+  "max_protected_overlap_ratio": 0.05
+}
+```
+
+所有 bbox 都是 1280×720 成品 DOM 實測值，不准手填或拿 spec/CSS 預估值代替。Bridge 會
+重新 hash PNG、中央圖與 sidecar，並核對 sidecar identity/bbox；舊 v1、任一檔缺失或漂移、
+host／guest／title 與中央保護區重疊超過 5%，都會 `COMPOSITION BLOCKED`。短片不走此 gate。
+
 ### 強表情素材怎麼找（不要只抽你想得到的那幾段）
 
 鄭國威集教訓：只抽 9 個窗（106 分鐘裡的 9 分鐘）→ vision agent 回報「全部候選
@@ -262,6 +300,7 @@ working set 與 vault 雙寫（ADR-054 D10）。驗證錯誤讀訊息修 specs�
 │                               每次 render 覆蓋同名檔，永遠只有現在這一版
 └── packaging/
     ├── packages.json geometry.json keywords.json title_trace.json
+    ├── composition_receipts/    ← 長 highlight 每個 package 的中央主圖／bbox 驗證
     ├── manifest.json specs.json  pkg-<cut_id>-<rank>.png（packages.json 引用的）
     ├── briefs/ cutouts/ review_sheets/
     └── _work/                ← spec_*、_textonly-*、抽格 frames、比較板變體

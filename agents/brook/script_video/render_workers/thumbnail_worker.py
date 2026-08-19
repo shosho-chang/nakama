@@ -28,12 +28,20 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import logging
+import os
 import shutil
+import tempfile
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+_MEASUREMENT_SCHEMA = "nakama.thumbnail_composition_measurement.v1"
+_MEASURED_SELECTORS = ("protected_center_bbox", "host_bbox", "guest_bbox", "title_bbox")
 
 # repo_root/agents/brook/script_video/render_workers/thumbnail_worker.py → repo_root
 _REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -50,6 +58,80 @@ class ThumbnailRenderError(Exception):
         self.out_png = out_png
         self.stderr_tail = stderr_tail
         super().__init__(f"thumbnail render failed (target={out_png.name}): {stderr_tail!r}")
+
+
+def _sha256_bytes(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+class _MeasurementReceiver:
+    """One-shot loopback receiver used by the rendered DOM to return actual boxes."""
+
+    def __init__(self) -> None:
+        self.payload: dict | None = None
+        self.event = threading.Event()
+        receiver = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:  # noqa: N802 - stdlib callback name
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    receiver.payload = json.loads(self.rfile.read(length))
+                    self.send_response(204)
+                except Exception:
+                    receiver.payload = None
+                    self.send_response(400)
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                receiver.event.set()
+
+            def log_message(self, _format: str, *_args: object) -> None:
+                return
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    @property
+    def url(self) -> str:
+        return f"http://127.0.0.1:{self.server.server_port}/measurement"
+
+    def __enter__(self) -> _MeasurementReceiver:
+        self.thread.start()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=1)
+
+
+def _validate_measurement(payload: dict | None, out_png: Path) -> dict:
+    if not isinstance(payload, dict):
+        raise ThumbnailRenderError(out_png, "composition emitted no DOM measurement")
+    canvas = payload.get("canvas")
+    boxes = payload.get("bboxes")
+    if not isinstance(canvas, dict) or canvas.get("width") != 1280 or canvas.get("height") != 720:
+        raise ThumbnailRenderError(out_png, "composition measurement has invalid canvas")
+    if not isinstance(boxes, dict):
+        raise ThumbnailRenderError(out_png, "composition measurement has no bboxes")
+    for selector in _MEASURED_SELECTORS[:3]:
+        box = boxes.get(selector)
+        if not isinstance(box, dict) or any(
+            box.get(k) is None for k in ("x", "y", "width", "height")
+        ):
+            raise ThumbnailRenderError(out_png, f"composition selector missing: {selector}")
+    return {"canvas": canvas, "bboxes": boxes}
+
+
+def _atomic_write(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+        os.replace(tmp_name, path)
+    finally:
+        Path(tmp_name).unlink(missing_ok=True)
 
 
 def _to_data_url(path: Path) -> str:
@@ -97,6 +179,7 @@ async def _render_still(
     variables: dict,
     out_png: Path,
     video_dir: Path,
+    measurement_context: dict | None = None,
 ) -> Path:
     """Common Hyperframes execution path — used by both YouTube + Podcast renders.
 
@@ -114,10 +197,11 @@ async def _render_still(
         shutil.rmtree(frames_dir, ignore_errors=True)
     frames_dir.mkdir(parents=True)
 
-    variables_file.write_text(
-        json.dumps(variables, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    receiver = _MeasurementReceiver() if measurement_context is not None else None
+    if receiver is not None:
+        variables = {**variables, "__composition_measurement_url": receiver.url}
+        receiver.__enter__()
+    variables_file.write_text(json.dumps(variables, ensure_ascii=False), encoding="utf-8")
 
     argv = _build_argv(composition, variables_file, frames_dir)
     # Windows 的 npx 是 npx.cmd — CreateProcess 不吃 PATHEXT，spawn 前解析成完整路徑。
@@ -128,13 +212,18 @@ async def _render_still(
         composition,
     )
 
-    proc = await asyncio.create_subprocess_exec(
-        *argv,
-        cwd=str(video_dir),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    _, stderr_bytes = await proc.communicate()
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            cwd=str(video_dir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr_bytes = await proc.communicate()
+    finally:
+        if receiver is not None:
+            receiver.event.wait(timeout=2)
+            receiver.__exit__(None, None, None)
 
     if proc.returncode != 0:
         tail = stderr_bytes.decode(errors="replace")[-500:]
@@ -148,12 +237,45 @@ async def _render_still(
             f"hyperframes produced no PNGs in {frames_dir}",
         )
 
-    shutil.copy2(pngs[0], out_png)
+    frame_bytes = pngs[0].read_bytes()
+    if receiver is not None:
+        measured = _validate_measurement(receiver.payload, out_png)
+        public_variables = {k: v for k, v in variables.items() if not k.startswith("__")}
+        image_evidence = {
+            name: {
+                "path": str(path.resolve()),
+                "sha256": _sha256_bytes(path.read_bytes()),
+            }
+            for name, path in measurement_context["images"].items()
+        }
+        package = json.loads((video_dir / "package.json").read_text(encoding="utf-8"))
+        hyperframes_version = (package.get("dependencies") or {}).get("hyperframes")
+        composition_source = video_dir / composition / "index.html"
+        sidecar = {
+            "schema": _MEASUREMENT_SCHEMA,
+            "composition": measurement_context["composition"],
+            "renderer": {"name": "hyperframes", "version": hyperframes_version},
+            "composition_sha256": _sha256_bytes(composition_source.read_bytes()),
+            **measured,
+            "assets": image_evidence,
+            "variables_sha256": _sha256_bytes(
+                json.dumps(
+                    public_variables, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+                ).encode()
+            ),
+            "png_sha256": _sha256_bytes(frame_bytes),
+        }
+        _atomic_write(out_png, frame_bytes)
+        _atomic_write(
+            out_png.with_suffix(out_png.suffix + ".composition.json"),
+            (json.dumps(sidecar, ensure_ascii=False, indent=2) + "\n").encode(),
+        )
+    else:
+        _atomic_write(out_png, frame_bytes)
 
     # Cleanup intermediates only on success.
     shutil.rmtree(frames_dir, ignore_errors=True)
     variables_file.unlink(missing_ok=True)
-
     logger.info("thumbnail render done: %s", out_png)
     return out_png
 
@@ -176,8 +298,19 @@ async def render_thumbnail(
         if not path.exists():
             raise FileNotFoundError(f"{var_name}: image not found: {path}")
         merged[var_name] = _to_data_url(path)
+    measurement_context = None
+    if composition == "thumbnail_reaction":
+        required = {"prop_image_data_url", "host_cutout_data_url", "guest_cutout_data_url"}
+        missing = required.difference(images or {})
+        if missing:
+            raise ValueError(f"thumbnail_reaction measurement requires images: {sorted(missing)}")
+        measurement_context = {"composition": composition, "images": dict(images or {})}
     return await _render_still(
-        f"compositions/{composition}", merged, out_png, video_dir or DEFAULT_VIDEO_DIR
+        f"compositions/{composition}",
+        merged,
+        out_png,
+        video_dir or DEFAULT_VIDEO_DIR,
+        measurement_context,
     )
 
 

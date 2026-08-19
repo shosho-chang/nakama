@@ -174,23 +174,38 @@ Step 6 起重走。修修手改過的 timeline 尾端見 Step 6–7 的 `--refre
 - description 固定結構：2–3 段內容 hook → `⏱` 章節 → 固定 footer。footer 一律讀
   `agents/usopp/templates/video_description_footer.md`，禁止在 prompt 裡複製舊版。
 - 交付前逐句掃描「不是／而是」「不只／更」「這一段會」「帶你看」「深入探討」；命中就重寫。
+- Packaging 核准、正式 export 登錄成 Release 後，Bridge 會呼叫
+  `scripts/publish_description.py <episode> --cut <cut> --auto`，只走
+  `auth_policy="subscription_required"`。成功後才進 Publish review，description 保持可編輯。
+- 畫面顯示 `DESCRIPTION_DRAFT_INTERRUPTED` 代表 provider／證據暫不可用；在同一頁按「重試產生
+  Description」續跑。空白 description 不得直接進 Publish review。Release 已有非空 description
+  一律視為人工稿，重跑不得覆蓋。
+- prompt 與機械 AI-slop gate 的 canonical 實作在 `agents/usopp/video_description.py`；Skill、
+  Claude Code 或 Codex 都必須呼叫這個 seam，不可另寫一份 prompt 漂移。
 
 ### 發布授權、進度與 CC 補傳
 
 - worktree 的 uploader、Web App 與 OAuth 必須共用 `NAKAMA_DATA_DIR`；不可各自在
   worktree 產生 token 或 progress。
-- token scopes 必須包含 `youtube.upload`、`youtube`、`youtube.force-ssl`。
-- 影片本體成功但 CC 失敗時禁止重傳影片；只跑 `publish_upload.py --cc-only`。
+- token scopes 必須包含 `youtube.upload`、`youtube.force-ssl`。
+- 明確核准初次 upload 後，CLI 路徑是
+  `python scripts/publish_upload.py --approve <cut> --episode "<episode>"`，接著
+  `python scripts/publish_upload.py --run --episode "<episode>" --cut <cut>`；Bridge 的
+  「核准並上傳」按鈕走同一 worker。未取得該次明確核准前兩條都不可執行。
+- 影片本體成功但 CC 失敗時禁止重傳影片；只跑
+  `python scripts/publish_upload.py --cc-only <cut> --episode "<episode>"`。
 - upload status 必須讀同一個 `NAKAMA_DATA_DIR/upload_progress/`。
 
 ## 收斂後的運行模式（修修 2026-08-04 裁決：剪輯線免 HITL）
 
 util-L4 完成後修修裁決：「長影片的剪輯已經慢慢可以收斂了，以後都可以不用
-經過 Human in the Loop。」自此每支長片 Step 6–11 **端到端自動跑完**（含
-hero 自裁、stock 演算法、視覺語彙套定版系統），修修只在兩個發布 gate 出現：
+經過 Human in the Loop。」自此每支長片 Step 6–11 的**製作動作自動跑完**（含
+hero 自裁、stock 演算法、視覺語彙套定版系統），但產物仍需在三個 gate 停下來：
 
-1. **Packaging gate**（PACKAGING 頁選主打組——TF-duo 三組由 thumbnail 線自動產）
-2. **發布審核頁**（/bridge/publish 看 preview、潤文案、排程上傳）
+1. **Finished-cut gate**（`/bridge/highlights/<episode>/finished` 看 preview 與 final QA，
+   核准後才觸發 full-resolution `publish_prep`）
+2. **Packaging gate**（PACKAGING 頁選主打組——TF-duo 三組由 thumbnail 線自動產）
+3. **發布審核頁**（/bridge/publish 看 preview、潤文案、明確核准排程／上傳）
 
 preview 照樣交付（他要看隨時能看），但**不阻塞產線**。
 

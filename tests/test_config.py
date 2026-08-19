@@ -15,6 +15,7 @@ def _reset_config(monkeypatch):
     config._config = None
     monkeypatch.delenv("VAULT_PATH", raising=False)
     monkeypatch.delenv("DB_PATH", raising=False)
+    monkeypatch.delenv("NAKAMA_DATA_DIR", raising=False)
     yield
     config._config = None
 
@@ -94,3 +95,38 @@ def test_get_db_path_falls_back_to_yaml(tmp_path, monkeypatch):
         yaml_text="vault_path: /yaml/vault\ndb_path: /yaml/db\n",
     )
     assert config.get_db_path() == Path("/yaml/db")
+
+
+def test_runtime_data_dir_uses_canonical_parent_dotenv_from_worktree(tmp_path, monkeypatch):
+    """A sibling worktree must share the canonical DB/token/progress directory."""
+    import shared.config as config
+
+    canonical = tmp_path / "nakama"
+    worktree = canonical / "worktrees" / "feature"
+    worktree.mkdir(parents=True)
+    data_dir = canonical / "data"
+    (canonical / ".env").write_text(
+        f"DB_PATH={data_dir / 'state.db'}\n", encoding="utf-8"
+    )
+    (worktree / "config.yaml").write_text(
+        "vault_path: /yaml/vault\ndb_path: worktree-shadow/state.db\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config, "_ROOT", worktree)
+
+    assert config.get_runtime_data_dir() == data_dir
+
+
+def test_runtime_data_dir_explicit_override_wins(tmp_path, monkeypatch):
+    import shared.config as config
+
+    _isolate_root(
+        tmp_path,
+        monkeypatch,
+        env_text="DB_PATH=/dotenv/db/state.db\n",
+        yaml_text="vault_path: /yaml/vault\ndb_path: /yaml/db/state.db\n",
+    )
+    monkeypatch.setenv("NAKAMA_DATA_DIR", "/operator/runtime")
+
+    assert config.get_runtime_data_dir() == Path("/operator/runtime")
+    assert config.get_db_path() == Path("/operator/runtime/state.db")

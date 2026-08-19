@@ -33,12 +33,20 @@ description: >
 
 ## 前提
 
-episode 已完成 podcast-pipeline 至 resolve-project（`transcript.srt` 說話者已切、
-Resolve 專案存在且 Resolve 開著）。
+episode 已完成 podcast-pipeline 至 resolve-project；該步已把 Verified Projection 原子持久化到
+`<episode>/.stage5/verified-subtitle-handoff.v2.json`。Resolve 專案存在且 Resolve 開著。
+正式流程不得讀 episode root `transcript.srt`；它只屬於 `explicit legacy forensic`。
 
 ## Step 1 — 開採（3 miner subagent 平行）
 
-派 3 個 Opus subagent，各讀完整 `transcript.srt` + `refs/` 訪綱，視角分工：
+先取得唯一合法 mining input：
+
+```powershell
+python scripts/run_highlight_cut.py <episode> --mining-input
+```
+
+只把輸出中的 persisted Verified Projection `srt_path` 交給 3 個 Opus subagent，並各讀完整該
+SRT + `refs/` 訪綱；不得自行改讀 root `transcript.srt`。視角分工：
 
 - **故事弧**：起承轉合完整、能獨立成篇的論述段
 - **金句爆點**：反直覺、情緒強、可當 hook 的瞬間，往外擴到自然邊界
@@ -63,6 +71,10 @@ Resolve 專案存在且 Resolve 開著）。
 ```
 python scripts/run_highlight_cut.py <episode> --validate
 ```
+
+`--validate` 會把同一份 projection/generation/manifest/SRT lineage 寫入 `candidates.json`；
+shortlist 會原樣帶入 `winners.json`。`--materialize` 與 `--refresh-subs` 只接受完全相同 lineage，
+handoff 缺失、stale 或 tamper 一律停下。
 
 （吸附 cue 邊界、長度帶檢查、同格式重疊 >50% 標 **variant 群組**——
 **不淘汰**。2026-07-26 教訓：評分前用 rationale 長度去重，害「數位排毒+

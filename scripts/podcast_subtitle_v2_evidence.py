@@ -78,9 +78,26 @@ class _MemoRecognitionReviewV1(_StrictModel):
     source_export_sha256: str
     source_export_size_bytes: int
     source_export_kind: Literal["memo_stdout", "memo_srt", "memo_json"]
+    token_source: Literal["canonical_token_export", "memo_srt"]
     token_export_sha256: str
     unresolved_findings: tuple[str, ...] = ()
     tokens: tuple[MemoRecognitionTokenV1, ...]
+
+    @model_validator(mode="after")
+    def _valid_tokens(self) -> "_MemoRecognitionReviewV1":
+        validated = _MemoTokenExportV1(tokens=self.tokens)
+        if validated.tokens[-1].end_ms > self.normalized_audio_duration_ms:
+            raise ValueError("Memo recognition token exceeds normalized audio duration")
+        previous_end = -1
+        for token in validated.tokens:
+            if token.start_ms < previous_end:
+                raise ValueError("Memo recognition tokens must be ordered and non-overlapping")
+            previous_end = token.end_ms
+        if self.source_export_kind == "memo_srt" and self.token_source != "memo_srt":
+            raise ValueError("Memo SRT recognition must derive tokens from the exact SRT bytes")
+        if self.source_export_kind != "memo_srt" and self.token_source != "canonical_token_export":
+            raise ValueError("Memo JSON/stdout recognition requires a canonical token export")
+        return self
 
 
 def _write_new(path: Path, payload: bytes) -> None:
@@ -126,11 +143,13 @@ def _prepare_recognition(args: argparse.Namespace) -> int:
     verified = VerifiedNormalizedAudioHandoffAdapter(handoff).normalize(
         NormalizeRequest(source_audio=audio, expected_source_hash=hash_file(audio))
     )
-    token_path = Path(args.tokens_json)
-    token_export = _load_canonical_model(token_path, _MemoTokenExportV1)
-    assert isinstance(token_export, _MemoTokenExportV1)
     source_export = Path(args.source_export)
     source_hash, source_size = measure_regular_file(source_export)
+    tokens, token_hash, token_source = _recognition_tokens(
+        source_export=source_export,
+        source_export_kind=args.source_export_kind,
+        tokens_json=args.tokens_json,
+    )
     review = _MemoRecognitionReviewV1(
         memo_version=args.memo_version,
         language=args.language,
@@ -142,9 +161,10 @@ def _prepare_recognition(args: argparse.Namespace) -> int:
         source_export_sha256=source_hash,
         source_export_size_bytes=source_size,
         source_export_kind=args.source_export_kind,
-        token_export_sha256=sha256_bytes(token_path.read_bytes()),
+        token_source=token_source,
+        token_export_sha256=token_hash,
         unresolved_findings=tuple(args.unresolved_finding),
-        tokens=token_export.tokens,
+        tokens=tokens,
     )
     _write_new(Path(args.output), canonical_json_bytes(review))
     return 0
@@ -175,13 +195,15 @@ def _accept_recognition(args: argparse.Namespace) -> int:
         loaded.source_export_size_bytes,
     ):
         raise ValueError("Memo source export differs from prepared recognition review")
-    token_path = Path(args.tokens_json)
-    token_bytes = token_path.read_bytes()
-    token_export = _load_canonical_model(token_path, _MemoTokenExportV1)
-    assert isinstance(token_export, _MemoTokenExportV1)
+    tokens, token_hash, token_source = _recognition_tokens(
+        source_export=source,
+        source_export_kind=loaded.source_export_kind,
+        tokens_json=args.tokens_json,
+    )
     if (
-        sha256_bytes(token_bytes) != loaded.token_export_sha256
-        or token_export.tokens != loaded.tokens
+        token_hash != loaded.token_export_sha256
+        or token_source != loaded.token_source
+        or tokens != loaded.tokens
     ):
         raise ValueError("Memo token export differs from prepared recognition review")
     accepted_at = datetime.fromisoformat(args.accepted_at)
@@ -218,6 +240,39 @@ def _accept_recognition(args: argparse.Namespace) -> int:
     _write_new(receipt_output, receipt_bytes)
     _write_new(manifest_output, canonical_json_bytes(manifest))
     return 0
+
+
+def _recognition_tokens(
+    *,
+    source_export: Path,
+    source_export_kind: str,
+    tokens_json: str | None,
+) -> tuple[tuple[MemoRecognitionTokenV1, ...], str, str]:
+    if source_export_kind == "memo_srt":
+        if tokens_json is not None:
+            raise ValueError("Memo SRT recognition forbids a separate --tokens-json")
+        payload = source_export.read_bytes()
+        try:
+            cues = parse_srt(payload.decode("utf-8-sig"))
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise ValueError(f"invalid Memo recognition SRT: {exc}") from exc
+        tokens = tuple(
+            MemoRecognitionTokenV1(
+                id=f"memo-token-{index:06d}",
+                text=cue.text,
+                start_ms=cue.start_ms,
+                end_ms=cue.end_ms,
+            )
+            for index, cue in enumerate(cues, start=1)
+        )
+        return tokens, sha256_bytes(payload), "memo_srt"
+    if tokens_json is None:
+        raise ValueError("Memo JSON/stdout recognition requires --tokens-json")
+    token_path = Path(tokens_json)
+    token_bytes = token_path.read_bytes()
+    token_export = _load_canonical_model(token_path, _MemoTokenExportV1)
+    assert isinstance(token_export, _MemoTokenExportV1)
+    return token_export.tokens, sha256_bytes(token_bytes), "canonical_token_export"
 
 
 def _prepare_cues(args: argparse.Namespace) -> int:
@@ -374,7 +429,7 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
         choices=("memo_stdout", "memo_srt", "memo_json"),
     )
-    recognition.add_argument("--tokens-json", required=True)
+    recognition.add_argument("--tokens-json")
     recognition.add_argument("--memo-version", required=True)
     recognition.add_argument("--language", required=True)
     recognition.add_argument("--prompt", required=True)
@@ -386,7 +441,7 @@ def _parser() -> argparse.ArgumentParser:
     accept_recognition.add_argument("--normalized-audio", required=True)
     accept_recognition.add_argument("--normalized-manifest", required=True)
     accept_recognition.add_argument("--source-export", required=True)
-    accept_recognition.add_argument("--tokens-json", required=True)
+    accept_recognition.add_argument("--tokens-json")
     accept_recognition.add_argument("--reviewer", required=True)
     accept_recognition.add_argument("--accepted-at", required=True)
     accept_recognition.add_argument("--confirm-reviewed", action="store_true", required=True)

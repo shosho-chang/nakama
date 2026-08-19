@@ -1,0 +1,9 @@
+-- YouTube upload/reconciliation state. Canonical mirror: shared/state.py.
+ALTER TABLE release_targets ADD COLUMN thumbnail_status TEXT;
+ALTER TABLE release_targets ADD COLUMN caption_id TEXT;
+ALTER TABLE release_targets ADD COLUMN video_processing_status TEXT;
+ALTER TABLE release_targets ADD COLUMN platform_privacy_status TEXT;
+ALTER TABLE release_targets ADD COLUMN platform_publish_at TEXT;
+ALTER TABLE release_targets ADD COLUMN caption_status TEXT;
+ALTER TABLE release_targets ADD COLUMN reconciliation_error TEXT;
+ALTER TABLE release_targets ADD COLUMN last_reconciled_at TEXT;

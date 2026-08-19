@@ -14,6 +14,8 @@ Coverage:
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import importlib.util
 import json
 import sys
@@ -342,13 +344,73 @@ def _midstate_packages_file() -> dict:
 
 
 def _spec(n: int, png: Path, vault: Path) -> dict:
+    host = vault / "Attachments" / "cutouts" / "shosho" / "surprised" / "1.png"
+    guest = (
+        vault
+        / "Attachments"
+        / "cutouts"
+        / "podcast"
+        / "20260723-xieboran"
+        / "guest_v1_thoughtful.png"
+    )
+    center = png.parent / f"center-source-{n}.png"
+    for path, payload in ((host, b"host"), (guest, b"guest"), (center, b"center")):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+    variables = {"caption": ""}
+    images = {
+        "prop_image_data_url": str(center),
+        "host_cutout_data_url": str(host),
+        "guest_cutout_data_url": str(guest),
+    }
+    render_spec = png.with_suffix(".render.json")
+    render_spec.write_text(
+        json.dumps({"composition": "thumbnail_reaction", "variables": variables, "images": images}),
+        encoding="utf-8",
+    )
+    merged = dict(variables)
+    for name, raw in images.items():
+        path = Path(raw)
+        merged[name] = (
+            f"data:image/png;base64,{base64.b64encode(path.read_bytes()).decode('ascii')}"
+        )
+    sidecar = {
+        "schema": "nakama.thumbnail_composition_measurement.v1",
+        "composition": "thumbnail_reaction",
+        "renderer": {"name": "hyperframes", "version": "0.6.42"},
+        "composition_sha256": hashlib.sha256(
+            (_REPO / "video" / "compositions" / "thumbnail_reaction" / "index.html").read_bytes()
+        ).hexdigest(),
+        "canvas": {"width": 1280, "height": 720},
+        "bboxes": {
+            "protected_center_bbox": {"x": 420, "y": 100, "width": 440, "height": 520},
+            "host_bbox": {"x": 0, "y": 40, "width": 380, "height": 680},
+            "guest_bbox": {"x": 900, "y": 40, "width": 380, "height": 680},
+            "title_bbox": None,
+        },
+        "assets": {
+            name: {
+                "path": str(Path(raw).resolve()),
+                "sha256": hashlib.sha256(Path(raw).read_bytes()).hexdigest(),
+            }
+            for name, raw in images.items()
+        },
+        "variables_sha256": hashlib.sha256(
+            json.dumps(merged, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest(),
+        "png_sha256": hashlib.sha256(png.read_bytes()).hexdigest(),
+    }
+    png.with_suffix(png.suffix + ".composition.json").write_text(
+        json.dumps(sidecar), encoding="utf-8"
+    )
     return {
         "title_rank": n,
         "thumbnail": str(png),
         "thumb_archetype_id": "T-V8",
         "joint_pairing_id": "JP-1",
-        "host_cutout": str(vault / "Attachments" / "cutouts" / "shosho" / "surprised" / "1.png"),
+        "host_cutout": str(host),
         "guest_cutout": "Attachments/cutouts/podcast/20260723-xieboran/guest_v1_thoughtful.png",
+        "render_spec": str(render_spec),
     }
 
 
@@ -381,6 +443,56 @@ def test_attach_fills_validates_and_dual_lands(monkeypatch, tmp_path):
         assert (
             vault / "Attachments" / "packaging" / "20260723-xieboran" / f"pkg-punch-L1-{n}.png"
         ).exists()
+        receipt = (
+            vault
+            / "Attachments"
+            / "packaging"
+            / "20260723-xieboran"
+            / "composition_receipts"
+            / f"punch-L1-r{n}.json"
+        )
+        payload = json.loads(receipt.read_text(encoding="utf-8"))
+        assert payload["schema"] == "nakama.long_thumbnail_composition.v2"
+        assert payload["thumbnail_sha256"]
+        assert payload["measurement_sidecar_sha256"]
+        assert payload["protected_center_bbox"]["x"] == 420.0
+        assert (vault / payload["center_visual_asset"]).is_file()
+
+
+@pytest.mark.parametrize(
+    "failure", ["missing-sidecar", "png-tamper", "asset-path-drift", "overlap"]
+)
+def test_attach_composition_evidence_failures_land_nothing(monkeypatch, tmp_path, failure):
+    vault = tmp_path / "vault"
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    working = tmp_path / "packaging"
+    working.mkdir()
+    original = json.dumps(_midstate_packages_file(), ensure_ascii=False)
+    (working / "packages.json").write_text(original, encoding="utf-8")
+    specs = []
+    for n in (1, 2, 3):
+        png = working / f"pkg-punch-L1-{n}.png"
+        png.write_bytes(b"png")
+        specs.append(_spec(n, png, vault))
+    sidecar_path = Path(specs[0]["thumbnail"] + ".composition.json")
+    if failure == "missing-sidecar":
+        sidecar_path.unlink()
+    elif failure == "png-tamper":
+        Path(specs[0]["thumbnail"]).write_bytes(b"tampered")
+    else:
+        evidence = json.loads(sidecar_path.read_text())
+        if failure == "asset-path-drift":
+            evidence["assets"]["prop_image_data_url"]["path"] = str(tmp_path / "wrong.png")
+        else:
+            evidence["bboxes"]["host_bbox"] = {"x": 400, "y": 100, "width": 400, "height": 520}
+        sidecar_path.write_text(json.dumps(evidence), encoding="utf-8")
+
+    with pytest.raises((FileNotFoundError, ValueError)):
+        attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+    assert (working / "packages.json").read_text(encoding="utf-8") == original
+    vault_dir = vault / "Attachments" / "packaging" / "20260723-xieboran"
+    assert not vault_dir.exists()
 
 
 def test_attach_rejects_cjk_png_and_lands_nothing(monkeypatch, tmp_path):

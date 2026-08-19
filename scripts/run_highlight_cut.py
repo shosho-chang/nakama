@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from agents.brook.podcast_subtitles.handoff import ProjectionVerifierFactory  # noqa: E402
 from agents.brook.script_video.subtitle_handoff import (  # noqa: E402
+    Stage5SubtitleContractError,
     Stage5SubtitleRequest,
     Stage5SubtitleSelection,
 )
@@ -102,6 +103,43 @@ def _subtitle_lineage(subtitle: Stage5SubtitleSelection) -> dict:
     }
 
 
+def _bind_or_verify_lineage(
+    document: dict,
+    subtitle: Stage5SubtitleSelection,
+    *,
+    allow_bind: bool,
+    label: str,
+) -> None:
+    expected = _subtitle_lineage(subtitle)
+    actual = document.get("subtitle_lineage")
+    if actual is None and allow_bind:
+        document["subtitle_lineage"] = expected
+        return
+    if actual != expected:
+        raise Stage5SubtitleContractError(
+            f"{label} subtitle lineage differs from the persisted Verified Projection"
+        )
+
+
+def mining_input(
+    episode_dir: Path,
+    *,
+    subtitle_request: Stage5SubtitleRequest | None = None,
+    verifier_factory: ProjectionVerifierFactory | None = None,
+) -> dict:
+    """Return the sole verified SRT source that highlight miners may read."""
+
+    subtitle = (subtitle_request or Stage5SubtitleRequest()).open(
+        episode_dir,
+        factory=verifier_factory,
+    )
+    return {
+        "status": "mining-input",
+        "srt_path": str(subtitle.srt_path),
+        **_subtitle_lineage(subtitle),
+    }
+
+
 def validate(
     episode_dir: Path,
     *,
@@ -115,6 +153,12 @@ def validate(
     )
     cand_path = episode_dir / HIGHLIGHTS_DIR / CANDIDATES_NAME
     data = json.loads(cand_path.read_text(encoding="utf-8"))
+    _bind_or_verify_lineage(
+        data,
+        subtitle,
+        allow_bind=True,
+        label="candidates.json",
+    )
     cues = _parse_srt(subtitle.srt_path)
     starts = [c[0] for c in cues]
     ends = [c[1] for c in cues]
@@ -228,8 +272,22 @@ def materialize(
         factory=verifier_factory,
     )
     hdir = episode_dir / HIGHLIGHTS_DIR
-    cands = json.loads((hdir / CANDIDATES_NAME).read_text(encoding="utf-8"))["candidates"]
-    winners = json.loads((hdir / WINNERS_NAME).read_text(encoding="utf-8"))["winners"]
+    candidates_doc = json.loads((hdir / CANDIDATES_NAME).read_text(encoding="utf-8"))
+    winners_doc = json.loads((hdir / WINNERS_NAME).read_text(encoding="utf-8"))
+    _bind_or_verify_lineage(
+        candidates_doc,
+        subtitle,
+        allow_bind=False,
+        label="candidates.json",
+    )
+    _bind_or_verify_lineage(
+        winners_doc,
+        subtitle,
+        allow_bind=False,
+        label="winners.json",
+    )
+    cands = candidates_doc["candidates"]
+    winners = winners_doc["winners"]
     by_id = {c["id"]: c for c in cands}
     missing = [w["id"] for w in winners if w["id"] not in by_id]
     if missing:
@@ -411,8 +469,22 @@ def refresh_subs(
         factory=verifier_factory,
     )
     hdir = episode_dir / HIGHLIGHTS_DIR
-    cands = json.loads((hdir / CANDIDATES_NAME).read_text(encoding="utf-8"))["candidates"]
-    winners = json.loads((hdir / WINNERS_NAME).read_text(encoding="utf-8"))["winners"]
+    candidates_doc = json.loads((hdir / CANDIDATES_NAME).read_text(encoding="utf-8"))
+    winners_doc = json.loads((hdir / WINNERS_NAME).read_text(encoding="utf-8"))
+    _bind_or_verify_lineage(
+        candidates_doc,
+        subtitle,
+        allow_bind=False,
+        label="candidates.json",
+    )
+    _bind_or_verify_lineage(
+        winners_doc,
+        subtitle,
+        allow_bind=False,
+        label="winners.json",
+    )
+    cands = candidates_doc["candidates"]
+    winners = winners_doc["winners"]
     by_id = {c["id"]: c for c in cands}
 
     resolve = connect_resolve()
@@ -483,6 +555,11 @@ def main(argv: list[str] | None = None) -> int:
         "--validate", action="store_true", help="候選吸附/長度帶/去重（改寫 candidates.json）"
     )
     parser.add_argument(
+        "--mining-input",
+        action="store_true",
+        help="輸出 highlight miners 唯一可讀的 persisted Verified Projection SRT",
+    )
+    parser.add_argument(
         "--materialize", action="store_true", help="當選段建 timeline + 全候選打 marker"
     )
     parser.add_argument(
@@ -515,7 +592,9 @@ def main(argv: list[str] | None = None) -> int:
         logger.error(f"episode 資料夾不存在: {episode_dir}")
         return 1
     started = time.time()
-    if args.validate:
+    if args.mining_input:
+        result = mining_input(episode_dir, subtitle_request=subtitle_request)
+    elif args.validate:
         result = validate(episode_dir, subtitle_request=subtitle_request)
     elif args.materialize:
         result = materialize(
@@ -526,7 +605,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.refresh_subs:
         result = refresh_subs(episode_dir, subtitle_request=subtitle_request)
     else:
-        logger.error("指定 --validate 或 --materialize")
+        logger.error("指定 --mining-input、--validate、--materialize 或 --refresh-subs")
         return 2
     result["elapsed_sec"] = round(time.time() - started, 1)
     print(json.dumps(result, ensure_ascii=False, indent=2))

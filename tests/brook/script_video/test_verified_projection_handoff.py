@@ -12,6 +12,7 @@ from agents.brook.script_video.subtitle_handoff import (
     Stage5SubtitleArtifactConflictError,
     Stage5SubtitleContractError,
     Stage5SubtitleRequest,
+    current_stage5_handoff_path,
     open_stage5_subtitle,
     select_stage5_subtitle,
 )
@@ -98,7 +99,7 @@ def test_bare_episode_transcript_requires_explicit_legacy_mode(tmp_path: Path) -
     bare_srt = tmp_path / "transcript.srt"
     bare_srt.write_bytes(b"bare legacy subtitle\n")
 
-    with pytest.raises(Stage5SubtitleContractError, match="projection_id"):
+    with pytest.raises(Stage5SubtitleContractError, match="persisted"):
         select_stage5_subtitle(episode_root=tmp_path)
 
     selected = select_stage5_subtitle(episode_root=tmp_path, legacy_v1=True)
@@ -106,6 +107,147 @@ def test_bare_episode_transcript_requires_explicit_legacy_mode(tmp_path: Path) -
     assert selected.mode == "legacy-v1"
     assert selected.srt_path == bare_srt
     assert selected.handoff is None
+
+
+def test_explicit_projection_persists_current_handoff_and_default_ignores_root_v1(
+    tmp_path: Path,
+) -> None:
+    _module, accepted, projected = _project_fixture(tmp_path, episode_id="episode-stage5")
+    (tmp_path / "transcript.srt").write_bytes(b"ROOT V1 MUST NEVER WIN\n")
+    request = Stage5SubtitleRequest(
+        projection_id=projected.projection_id,
+        expected_episode_id="episode-stage5",
+        expected_generation_id=accepted.generation_id,
+        expected_manifest_sha256=projected.manifest_sha256,
+    )
+
+    explicit = request.open(tmp_path, factory=_fixture_factory)
+    persisted = current_stage5_handoff_path(tmp_path)
+    assert persisted.is_file()
+
+    reopened = Stage5SubtitleRequest().open(tmp_path, factory=_fixture_factory)
+    assert reopened.mode == "verified-v2"
+    assert reopened.srt_path == explicit.srt_path
+    assert reopened.srt_path.read_bytes() == projected.srt_bytes
+    assert b"ROOT V1" not in reopened.srt_path.read_bytes()
+
+
+@pytest.mark.parametrize("artifact", ("current", "srt"))
+def test_persisted_handoff_tamper_fails_closed(tmp_path: Path, artifact: str) -> None:
+    _module, accepted, projected = _project_fixture(tmp_path, episode_id="episode-stage5")
+    selected = Stage5SubtitleRequest(
+        projection_id=projected.projection_id,
+        expected_episode_id="episode-stage5",
+        expected_generation_id=accepted.generation_id,
+        expected_manifest_sha256=projected.manifest_sha256,
+    ).open(tmp_path, factory=_fixture_factory)
+    target = current_stage5_handoff_path(tmp_path) if artifact == "current" else selected.srt_path
+    target.write_bytes(target.read_bytes() + b"tamper")
+
+    with pytest.raises(Stage5SubtitleContractError):
+        Stage5SubtitleRequest().open(tmp_path, factory=_fixture_factory)
+
+
+def test_highlight_mining_validate_materialize_share_persisted_projection_lineage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _module, accepted, projected = _project_fixture(tmp_path, episode_id="episode-stage5")
+    Stage5SubtitleRequest(
+        projection_id=projected.projection_id,
+        expected_episode_id="episode-stage5",
+        expected_generation_id=accepted.generation_id,
+        expected_manifest_sha256=projected.manifest_sha256,
+    ).open(tmp_path, factory=_fixture_factory)
+    (tmp_path / "transcript.srt").write_bytes(b"ROOT V1 MUST NEVER WIN\n")
+    highlights = tmp_path / "highlights"
+    highlights.mkdir()
+    (highlights / "candidates.json").write_text(
+        json.dumps(
+            {
+                "candidates": [
+                    {
+                        "id": "L1",
+                        "format": "long",
+                        "t_start": 0.0,
+                        "t_end": 361.0,
+                        "title": "verified",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    (highlights / "winners.json").write_text(
+        json.dumps({"winners": [{"id": "L1", "rank": 1}]}), encoding="utf-8"
+    )
+    scripts = Path(__file__).resolve().parents[3] / "scripts"
+    monkeypatch.syspath_prepend(str(scripts))
+    sys.modules.pop("run_highlight_cut", None)
+    import run_highlight_cut
+
+    mining = run_highlight_cut.mining_input(tmp_path, verifier_factory=_fixture_factory)
+    assert Path(mining["srt_path"]).read_bytes() == projected.srt_bytes
+    assert mining["projection_id"] == projected.projection_id
+
+    validated = run_highlight_cut.validate(tmp_path, verifier_factory=_fixture_factory)
+    candidates = json.loads((highlights / "candidates.json").read_text(encoding="utf-8"))
+    assert candidates["subtitle_lineage"]["projection_id"] == projected.projection_id
+    winners = json.loads((highlights / "winners.json").read_text(encoding="utf-8"))
+    winners["subtitle_lineage"] = candidates["subtitle_lineage"]
+    (highlights / "winners.json").write_text(json.dumps(winners), encoding="utf-8")
+
+    plan = run_highlight_cut.materialize(
+        tmp_path,
+        dry_run=True,
+        verifier_factory=_fixture_factory,
+    )
+    assert plan["projection_id"] == validated["projection_id"] == projected.projection_id
+
+    candidates["subtitle_lineage"]["projection_id"] = "stale-projection"
+    (highlights / "candidates.json").write_text(json.dumps(candidates), encoding="utf-8")
+    with pytest.raises(Stage5SubtitleContractError, match="lineage"):
+        run_highlight_cut.materialize(
+            tmp_path,
+            dry_run=True,
+            verifier_factory=_fixture_factory,
+        )
+
+
+def test_refresh_rejects_stale_lineage_before_resolve_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _module, accepted, projected = _project_fixture(tmp_path, episode_id="episode-stage5")
+    Stage5SubtitleRequest(
+        projection_id=projected.projection_id,
+        expected_episode_id="episode-stage5",
+        expected_generation_id=accepted.generation_id,
+        expected_manifest_sha256=projected.manifest_sha256,
+    ).open(tmp_path, factory=_fixture_factory)
+    highlights = tmp_path / "highlights"
+    highlights.mkdir()
+    stale = {"subtitle_mode": "verified-v2", "projection_id": "stale"}
+    (highlights / "candidates.json").write_text(
+        json.dumps({"subtitle_lineage": stale, "candidates": []}), encoding="utf-8"
+    )
+    (highlights / "winners.json").write_text(
+        json.dumps({"subtitle_lineage": stale, "winners": []}), encoding="utf-8"
+    )
+    scripts = Path(__file__).resolve().parents[3] / "scripts"
+    monkeypatch.syspath_prepend(str(scripts))
+    sys.modules.pop("run_highlight_cut", None)
+    sys.modules.pop("build_resolve_project", None)
+    import build_resolve_project
+    import run_highlight_cut
+
+    monkeypatch.setattr(
+        build_resolve_project,
+        "connect_resolve",
+        lambda: (_ for _ in ()).throw(AssertionError("stale lineage touched Resolve")),
+    )
+    with pytest.raises(Stage5SubtitleContractError, match="lineage"):
+        run_highlight_cut.refresh_subs(tmp_path, verifier_factory=_fixture_factory)
 
 
 def test_resolve_build_rejects_wrong_projection_binding_before_media_or_resolve(

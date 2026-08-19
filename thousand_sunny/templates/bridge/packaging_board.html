@@ -37,6 +37,21 @@
     <span>完成後會自動進入 Publish review，這裡不會拿 review preview 代替正式檔。</span>
   </div>
   {% endif %}
+  {% if description_pending and description_state == 'generating' %}
+  <div class="pkg-release-pending" role="status" aria-live="polite">
+    <strong>正在產生 Description 草稿</strong>
+    <span>使用 subscription LLM；完成後會進入可手動修改的 Publish review，不會自動核准或上傳。</span>
+  </div>
+  {% elif description_pending and description_state == 'interrupted' %}
+  <div class="pkg-description-interrupted" role="alert">
+    <strong>DESCRIPTION INTERRUPTED</strong>
+    <span>{{ description_error }}</span>
+    <form method="post" action="/bridge/packaging/{{ episode_slug }}/description/retry">
+      <input type="hidden" name="cut_id" value="{{ focused_cut }}">
+      <button class="sho-btn sho-btn--ghost" type="submit">重試產生 Description</button>
+    </form>
+  </div>
+  {% endif %}
   <p class="sho-mono pkg-hint">重抽標題或封面 → 回 Cowork 跑 <code>title-brainstorm --batch</code> / <code>thumbnail-brainstorm</code>（gate 零 LLM，只裁決不生成）。</p>
 
   {% for view in cuts %}
@@ -347,7 +362,8 @@
         <fieldset class="pkg-cards">
           <legend class="sho-mono-up">選 primary package（三個都願意花早期 impression 測才 approve）</legend>
           {% for item in view.packages %}
-          <label class="pkg-card{% if approval and approval.approved and approval.primary_package == item.pkg.title_rank %} pkg-card--primary{% endif %}">
+          <label class="pkg-card{% if approval and approval.approved and approval.primary_package == item.pkg.title_rank %} pkg-card--primary{% endif %}"
+                 data-composition-verified="{{ 'true' if item.composition.verified else 'false' }}">
             <input type="radio" name="primary_package" value="{{ item.pkg.title_rank }}"
                    {% if approval and approval.approved and approval.primary_package == item.pkg.title_rank %}checked{% endif %}
                    {% if not approval or not approval.approved %}{% if loop.first %}checked{% endif %}{% endif %}>
@@ -355,6 +371,11 @@
                  alt="package {{ item.pkg.title_rank }} 封面：{{ item.title.text if item.title else '' }}" loading="lazy">
             <div class="pkg-card-title">{{ item.title.text if item.title else '（缺 rank ' ~ item.pkg.title_rank ~ ' 標題）' }}</div>
             <div class="sho-mono pkg-card-meta">#{{ item.pkg.title_rank }} · {{ item.pkg.thumb_archetype_id }} · {{ item.pkg.joint_pairing_id }}</div>
+            <div class="sho-mono pkg-composition-status{% if not item.composition.verified %} pkg-composition-status--blocked{% endif %}"
+                 role="status" data-composition-verified="{{ 'true' if item.composition.verified else 'false' }}">
+              {% if item.composition.verified %}COMPOSITION VERIFIED{% else %}COMPOSITION BLOCKED{% endif %}
+              <span>{{ item.composition.reason }}</span>
+            </div>
           </label>
           {% endfor %}
         </fieldset>
@@ -380,6 +401,7 @@
           <button class="sho-btn" type="submit" name="decision" value="approve">Approve</button>
           <button class="sho-btn sho-btn--ghost" type="submit" name="decision" value="reject">Reject（附理由）</button>
         </div>
+        <p class="sho-mono pkg-approve-error" role="alert" aria-live="assertive"></p>
       </form>
 
       {% else %}{# short cut #}
@@ -423,8 +445,13 @@
   .pkg-focus a { color: var(--sho-text-2); }
   .pkg-release-pending { display: grid; gap: var(--sho-s-1); border-left: 3px solid var(--sho-accent); background: var(--sho-accent-soft); padding: var(--sho-s-3) var(--sho-s-4); }
   .pkg-release-pending span { color: var(--sho-text-2); }
+  .pkg-description-interrupted { display: grid; gap: var(--sho-s-2); border-left: 3px solid var(--sho-error); background: var(--sho-bg-2); padding: var(--sho-s-3) var(--sho-s-4); }
+  .pkg-description-interrupted span, .pkg-approve-error { color: var(--sho-error); }
   .pkg-hint { margin: 0 0 var(--sho-s-4); }
   .pkg-hint code { font-size: 12px; }
+  .pkg-composition-status { display: grid; gap: var(--sho-s-1); color: var(--sho-success); }
+  .pkg-composition-status span { color: var(--sho-text-2); text-transform: none; }
+  .pkg-composition-status--blocked { color: var(--sho-error); }
   .pkg-brand-flags { margin-bottom: var(--sho-s-3); display: flex; gap: var(--sho-s-2); flex-wrap: wrap; }
   .pkg-flag {
     color: var(--sho-error); border: 1px solid color-mix(in oklch, var(--sho-error) 45%, transparent);
@@ -745,6 +772,17 @@
     for (const stage of document.querySelectorAll(".pkg-stage")) stageScale(stage);
   });
   syncStages();
+
+  for (const form of document.querySelectorAll(".pkg-approve-form:not(.pkg-approve-form--short)")) {
+    form.addEventListener("submit", (event) => {
+      if (event.submitter?.value !== "approve") return;
+      const selected = form.querySelector('input[name="primary_package"]:checked')?.closest(".pkg-card");
+      if (selected?.dataset.compositionVerified === "true") return;
+      event.preventDefault();
+      const error = form.querySelector(".pkg-approve-error");
+      if (error) error.textContent = "COMPOSITION BLOCKED：中央主圖或保護區尚未通過驗證。";
+    });
+  }
 </script>
 {% if release_pending %}
 <script>
@@ -764,6 +802,31 @@
     window.setTimeout(pollRelease, 5000);
   };
   window.setTimeout(pollRelease, 5000);
+</script>
+{% endif %}
+{% if description_pending and description_state == 'generating' %}
+<script>
+  const pollDescription = async () => {
+    try {
+      const response = await fetch(window.location.href, {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      if (response.redirected && response.url !== window.location.href) {
+        window.location.assign(response.url);
+        return;
+      }
+      const body = await response.text();
+      if (body.includes("DESCRIPTION INTERRUPTED")) {
+        window.location.reload();
+        return;
+      }
+    } catch (_) {
+      // The local worker may still be finishing while Bridge reconnects.
+    }
+    window.setTimeout(pollDescription, 3000);
+  };
+  window.setTimeout(pollDescription, 3000);
 </script>
 {% endif %}
 </body>

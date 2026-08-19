@@ -283,9 +283,12 @@ def main(argv: list[str] | None = None) -> int:
         help="只由 Resolve 匯出並寫 receipt；DB 登錄交給 Web App 的相容 Python",
     )
     parser.add_argument("--receipt", type=Path, help="--render-only 的 JSON receipt 落點")
+    parser.add_argument("--attempt-id", help="Web background attempt identity")
     args = parser.parse_args(argv)
     if args.render_only != bool(args.receipt):
         raise SystemExit("--render-only 與 --receipt 必須一起使用")
+    if bool(args.attempt_id) != bool(args.receipt):
+        raise SystemExit("--attempt-id 與 --receipt 必須一起使用")
 
     episode_dir = Path(args.episode)
     if not episode_dir.exists():
@@ -335,6 +338,8 @@ def main(argv: list[str] | None = None) -> int:
         "episode": episode_dir.name,
         "count": len(results),
         "cuts": results,
+        "attempt_id": args.attempt_id,
+        "exit_code": 0,
     }
     if args.receipt:
         args.receipt.parent.mkdir(parents=True, exist_ok=True)
