@@ -25,8 +25,11 @@ Tests：`tests/shared/test_release_store.py`。
 
 from __future__ import annotations
 
+import hashlib
+import json
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from shared.state import _get_conn
 
@@ -57,6 +60,35 @@ VALID_STATUS = (
     "failed",
     "ineligible",
 )
+_CAMPAIGN_ANCHOR_EDITABLE_STATUSES = frozenset({"draft", "approved", "failed"})
+
+
+@dataclass(frozen=True, slots=True)
+class ReleaseCampaignAnchor:
+    """Observable shared-anchor state for one Release."""
+
+    state: Literal["none", "shared", "divergent"]
+    anchor_at: datetime | None
+    target_anchors: tuple[tuple[str, str | None], ...]
+
+    @property
+    def expected_token(self) -> str:
+        """Opaque compare-and-set token for the exact observed target-anchor group."""
+
+        payload = {
+            "state": self.state,
+            "targets": [
+                [platform, _canonical_anchor_token_value(raw_anchor)]
+                for platform, raw_anchor in self.target_anchors
+            ],
+        }
+        encoded = json.dumps(
+            payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        return "release-anchor-v1:" + hashlib.sha256(encoded).hexdigest()
 
 
 def _now() -> str:
@@ -157,6 +189,125 @@ def list_releases(episode: Optional[str] = None) -> list[dict[str, Any]]:
         }
         out.append(rel)
     return out
+
+
+def _parse_aware_utc(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def _canonical_anchor_token_value(value: str | None) -> str | None:
+    if value is None:
+        return None
+    parsed = _parse_aware_utc(value)
+    return "utc:" + parsed.isoformat() if parsed is not None else "raw:" + value
+
+
+def _campaign_anchor_snapshot(targets: list[dict[str, Any]]) -> ReleaseCampaignAnchor:
+    target_anchors = tuple(
+        (str(target["platform"]), target.get("publish_at")) for target in targets
+    )
+    raw_values = [target.get("publish_at") for target in targets]
+    if raw_values and all(value is None for value in raw_values):
+        return ReleaseCampaignAnchor("none", None, target_anchors)
+    parsed = [_parse_aware_utc(value) for value in raw_values]
+    if parsed and all(value is not None and value == parsed[0] for value in parsed):
+        return ReleaseCampaignAnchor("shared", parsed[0], target_anchors)
+    return ReleaseCampaignAnchor("divergent", None, target_anchors)
+
+
+def get_release_campaign_anchor(episode: str, cut_id: str) -> ReleaseCampaignAnchor:
+    """Read one Release's shared Campaign Anchor without selecting divergent values."""
+
+    release = get_release(episode, cut_id)
+    if release is None:
+        raise ValueError(f"release 不存在: {episode}/{cut_id}")
+    targets = release["targets"]
+    if not targets:
+        raise ValueError(f"release 沒有 targets: {episode}/{cut_id}")
+    return _campaign_anchor_snapshot(targets)
+
+
+def set_release_campaign_anchor(
+    episode: str,
+    cut_id: str,
+    campaign_anchor_at: datetime | None,
+    *,
+    expected_anchor_token: str,
+) -> ReleaseCampaignAnchor:
+    """Compare-and-set one shared Campaign Anchor for every Release Target."""
+
+    if campaign_anchor_at is not None and (
+        campaign_anchor_at.tzinfo is None or campaign_anchor_at.utcoffset() is None
+    ):
+        raise ValueError("campaign anchor must be timezone-aware")
+    normalized = (
+        campaign_anchor_at.astimezone(timezone.utc).isoformat()
+        if campaign_anchor_at is not None
+        else None
+    )
+    conn = _get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        release = conn.execute(
+            "SELECT id FROM releases WHERE episode = ? AND cut_id = ?", (episode, cut_id)
+        ).fetchone()
+        if release is None:
+            raise ValueError(f"release 不存在: {episode}/{cut_id}")
+        targets = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM release_targets WHERE release_id = ? ORDER BY platform",
+                (release["id"],),
+            ).fetchall()
+        ]
+        if not targets:
+            raise ValueError(f"release 沒有 targets: {episode}/{cut_id}")
+        current = _campaign_anchor_snapshot(targets)
+        if current.expected_token != expected_anchor_token:
+            raise ValueError("stale Campaign Anchor; reload before scheduling")
+        blocked = [
+            target["platform"]
+            for target in targets
+            if target["status"] not in _CAMPAIGN_ANCHOR_EDITABLE_STATUSES
+        ]
+        if blocked:
+            raise ValueError("campaign anchor 已鎖定: " + ", ".join(blocked))
+        cursor = conn.execute(
+            """
+            UPDATE release_targets
+            SET publish_at = ?, updated_at = ?
+            WHERE release_id = ? AND status IN (?, ?, ?)
+            """,
+            (
+                normalized,
+                _now(),
+                release["id"],
+                *sorted(_CAMPAIGN_ANCHOR_EDITABLE_STATUSES),
+            ),
+        )
+        if cursor.rowcount != len(targets):
+            raise ValueError("campaign anchor 更新期間 Release Targets 已變更")
+        updated_targets = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM release_targets WHERE release_id = ? ORDER BY platform",
+                (release["id"],),
+            ).fetchall()
+        ]
+        result = _campaign_anchor_snapshot(updated_targets)
+        conn.commit()
+        return result
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def update_target(target_id: int, **fields: Any) -> None:

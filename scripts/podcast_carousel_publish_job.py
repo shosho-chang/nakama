@@ -764,6 +764,56 @@ def supersede_queued_publish_job(
         return updated
 
 
+def carousel_campaign_anchor_token(campaign_anchor_at: datetime | None) -> str:
+    """Return the serialized compare-and-set token for one Carousel anchor."""
+
+    if campaign_anchor_at is None:
+        return "carousel-anchor-v1:none"
+    if campaign_anchor_at.tzinfo is None or campaign_anchor_at.utcoffset() is None:
+        raise PublishJobTransitionError("campaign anchor must be timezone-aware")
+    return "carousel-anchor-v1:utc:" + campaign_anchor_at.astimezone(UTC).isoformat()
+
+
+def set_publish_job_campaign_anchor(
+    path: Path,
+    *,
+    campaign_anchor_at: datetime | None,
+    expected_anchor_token: str,
+    now: datetime | None = None,
+) -> CarouselPublishJobV1:
+    """Atomically set or clear the Campaign Anchor of one queued publish job."""
+
+    if campaign_anchor_at is not None and (
+        campaign_anchor_at.tzinfo is None or campaign_anchor_at.utcoffset() is None
+    ):
+        raise PublishJobTransitionError("campaign anchor must be timezone-aware")
+    normalized_anchor = (
+        campaign_anchor_at.astimezone(UTC) if campaign_anchor_at is not None else None
+    )
+    with _job_lock(path):
+        job = load_publish_job(path)
+        if job.status != "queued":
+            raise PublishJobTransitionError("only a queued publish job can change its anchor")
+        if carousel_campaign_anchor_token(job.campaign_anchor_at) != expected_anchor_token:
+            raise PublishJobTransitionError("stale Campaign Anchor; reload before scheduling")
+        timestamp = now or datetime.now(UTC)
+        if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+            raise PublishJobTransitionError("publish job update time must be timezone-aware")
+        timestamp = timestamp.astimezone(UTC)
+        if timestamp <= job.updated_at:
+            timestamp = job.updated_at.astimezone(UTC) + timedelta(microseconds=1)
+        updated = CarouselPublishJobV1.model_validate(
+            job.model_copy(
+                update={
+                    "campaign_anchor_at": normalized_anchor,
+                    "updated_at": timestamp,
+                }
+            ).model_dump()
+        )
+        _atomic_write(path, updated)
+        return updated
+
+
 def claim_publish_job(
     path: Path,
     *,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
+from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
@@ -9,7 +10,12 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from shared.publish_calendar import CalendarDiagnostic, CalendarItem, CalendarProjection
+from shared.publish_calendar import (
+    CalendarDiagnostic,
+    CalendarItem,
+    CalendarProjection,
+    PlatformTargetView,
+)
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 
@@ -23,12 +29,15 @@ def _projection() -> CalendarProjection:
                 content_id="S01",
                 title="Short 已排程",
                 content_type="short",
-                platform="youtube",
-                platform_label="Podcast YouTube",
-                status="approved",
+                targets=(PlatformTargetView("youtube", "Podcast YouTube", "approved"),),
+                phase="scheduled",
                 calendar_at=datetime(2026, 9, 1, 9, 0, tzinfo=TAIPEI),
                 date_basis="scheduled",
                 detail_url="/bridge/publish/episode-alpha/S01",
+                schedule_kind="release",
+                schedule_id="S01",
+                schedule_editable=True,
+                expected_anchor_token="release-anchor-v1:test",
             ),
             CalendarItem(
                 item_id="carousel:episode-beta:x:instagram",
@@ -36,12 +45,16 @@ def _projection() -> CalendarProjection:
                 content_id="r026",
                 title="Carousel 已發布但日期未知",
                 content_type="carousel",
-                platform="instagram",
-                platform_label="Instagram Carousel",
-                status="published",
+                targets=(PlatformTargetView("instagram", "Instagram Carousel", "published"),),
+                phase="published",
                 calendar_at=None,
                 date_basis=None,
                 detail_url="/bridge/ig-cards/episode-beta/publish",
+                schedule_kind="carousel",
+                schedule_id=f"pj-{'a' * 32}",
+                schedule_editable=False,
+                expected_anchor_token="carousel-anchor-v1:none",
+                schedule_disabled_reason="發布執行已開始，Campaign Anchor 已鎖定。",
             ),
         ),
         diagnostics=(
@@ -102,8 +115,15 @@ def test_calendar_route_renders_dated_and_backlog_with_existing_detail_links(
     assert "@abnormal-human-research" in response.text
     assert "UCvipegP35x3-OcAs--PgAig" in response.text
     assert "未列入月曆／日期未定" in response.text
-    assert "published · 日期未定" in response.text
-    assert "待排程" not in response.text
+    assert "已發布 · 1/1 published · 日期未定" in response.text
+    assert "待排程" in response.text
+    assert 'data-phase="scheduled"' in response.text
+    assert "一組內容 · 一個 Campaign Anchor · 各平台狀態獨立" in response.text
+    assert "Instagram Carousel · published" in response.text
+    assert 'name="campaign_anchor_local" value="2026-09-01T09:00"' in response.text
+    assert 'name="operation" value="clear"' in response.text
+    assert "發布執行已開始，Campaign Anchor 已鎖定。" in response.text
+    assert 'type="button" disabled' in response.text
 
 
 def test_episode_filter_applies_to_dated_items_and_backlog_and_preserves_month(
@@ -161,3 +181,292 @@ def test_calendar_render_path_needs_no_platform_credentials_or_external_api(
 
     assert response.status_code == 200
     assert "這個月份沒有可信日期的發布項目" in response.text
+
+
+def test_release_schedule_converts_taipei_local_to_shared_utc_and_preserves_view(
+    calendar_client: TestClient, monkeypatch
+) -> None:
+    import thousand_sunny.routers.publish_calendar as calendar_router
+
+    captured: list[tuple[str, str, datetime | None, str]] = []
+    monkeypatch.setattr(
+        calendar_router,
+        "set_release_campaign_anchor",
+        lambda episode, cut_id, anchor, *, expected_anchor_token: captured.append(
+            (episode, cut_id, anchor, expected_anchor_token)
+        ),
+    )
+
+    response = calendar_client.post(
+        "/bridge/publish/calendar/release/episode-alpha/S01/schedule",
+        data={
+            "operation": "set",
+            "campaign_anchor_local": "2026-09-02T09:30",
+            "expected_anchor_token": "release-anchor-v1:test",
+            "month": "2026-09",
+            "return_episode": "episode-alpha",
+        },
+    )
+
+    assert response.status_code == 303
+    assert captured == [
+        (
+            "episode-alpha",
+            "S01",
+            datetime(2026, 9, 2, 1, 30, tzinfo=UTC),
+            "release-anchor-v1:test",
+        )
+    ]
+    assert response.headers["location"] == (
+        "/bridge/publish/calendar?month=2026-09&episode=episode-alpha"
+    )
+
+
+def test_release_unschedule_clears_shared_anchor(calendar_client: TestClient, monkeypatch) -> None:
+    import thousand_sunny.routers.publish_calendar as calendar_router
+
+    captured: list[datetime | None] = []
+    monkeypatch.setattr(
+        calendar_router,
+        "set_release_campaign_anchor",
+        lambda _episode, _cut_id, anchor, *, expected_anchor_token: captured.append(anchor),
+    )
+
+    response = calendar_client.post(
+        "/bridge/publish/calendar/release/episode-alpha/S01/schedule",
+        data={
+            "operation": "clear",
+            "expected_anchor_token": "release-anchor-v1:test",
+            "month": "2026-09",
+            "return_episode": "all",
+        },
+    )
+
+    assert response.status_code == 303
+    assert captured == [None]
+
+
+def test_carousel_schedule_updates_queued_job_and_preserves_view(
+    calendar_client: TestClient, monkeypatch, tmp_path: Path
+) -> None:
+    import thousand_sunny.routers.publish_calendar as calendar_router
+
+    package_root = tmp_path / "episode-alpha" / "ig-carousel"
+    package_root.mkdir(parents=True)
+    monkeypatch.setenv("PODCAST_EPISODES_ROOT", str(tmp_path))
+    captured: list[tuple[Path, datetime | None]] = []
+    monkeypatch.setattr(
+        calendar_router,
+        "set_publish_job_campaign_anchor",
+        lambda path, *, campaign_anchor_at, expected_anchor_token: captured.append(
+            (path, campaign_anchor_at)
+        ),
+    )
+    job_id = f"pj-{'b' * 32}"
+
+    response = calendar_client.post(
+        f"/bridge/publish/calendar/carousel/episode-alpha/{job_id}/schedule",
+        data={
+            "operation": "set",
+            "campaign_anchor_local": "2026-09-03T09:00",
+            "expected_anchor_token": "carousel-anchor-v1:none",
+            "month": "2026-09",
+            "return_episode": "episode-alpha",
+        },
+    )
+
+    assert response.status_code == 303
+    assert captured == [
+        (
+            package_root / "publish_jobs" / f"{job_id}.json",
+            datetime(2026, 9, 3, 1, 0, tzinfo=UTC),
+        )
+    ]
+    assert response.headers["location"].endswith("month=2026-09&episode=episode-alpha")
+
+
+@pytest.mark.parametrize(
+    ("path", "data", "expected_status"),
+    [
+        (
+            "/bridge/publish/calendar/release/episode-alpha/S01/schedule",
+            {
+                "operation": "set",
+                "campaign_anchor_local": "not-a-date",
+                "expected_anchor_token": "release-anchor-v1:test",
+                "month": "2026-09",
+            },
+            400,
+        ),
+        (
+            "/bridge/publish/calendar/release/episode-alpha/S01/schedule",
+            {
+                "operation": "clear",
+                "expected_anchor_token": "release-anchor-v1:test",
+                "month": "2026-9",
+            },
+            400,
+        ),
+        (
+            "/bridge/publish/calendar/release/episode-alpha/bad:cut/schedule",
+            {
+                "operation": "clear",
+                "expected_anchor_token": "release-anchor-v1:test",
+                "month": "2026-09",
+            },
+            400,
+        ),
+    ],
+)
+def test_schedule_routes_fail_closed(
+    calendar_client: TestClient, path: str, data: dict[str, str], expected_status: int
+) -> None:
+    assert calendar_client.post(path, data=data).status_code == expected_status
+
+
+def test_schedule_route_requires_authentication_before_mutation(monkeypatch) -> None:
+    import thousand_sunny.routers.publish_calendar as calendar_router
+
+    called = False
+
+    def mutate(*_args) -> None:
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(calendar_router, "check_auth", lambda _cookie: False)
+    monkeypatch.setattr(calendar_router, "set_release_campaign_anchor", mutate)
+    app = FastAPI()
+    app.include_router(calendar_router.page_router)
+
+    response = TestClient(app).post(
+        "/bridge/publish/calendar/release/episode-alpha/S01/schedule",
+        data={
+            "operation": "clear",
+            "expected_anchor_token": "release-anchor-v1:test",
+            "month": "2026-09",
+        },
+    )
+
+    assert response.status_code == 401
+    assert called is False
+
+
+def test_illegal_release_transition_is_conflict(calendar_client: TestClient, monkeypatch) -> None:
+    import thousand_sunny.routers.publish_calendar as calendar_router
+
+    def reject(*_args, **_kwargs) -> None:
+        raise ValueError("Campaign Anchor is locked")
+
+    monkeypatch.setattr(calendar_router, "set_release_campaign_anchor", reject)
+
+    response = calendar_client.post(
+        "/bridge/publish/calendar/release/episode-alpha/S01/schedule",
+        data={
+            "operation": "clear",
+            "expected_anchor_token": "release-anchor-v1:test",
+            "month": "2026-09",
+        },
+    )
+
+    assert response.status_code == 409
+
+
+def test_release_open_page_stale_anchor_cannot_overwrite_newer_schedule(
+    calendar_client: TestClient, monkeypatch
+) -> None:
+    import thousand_sunny.routers.publish_calendar as calendar_router
+
+    open_page_token = "release-anchor-v1:test"
+    response = calendar_client.get("/bridge/publish/calendar?month=2026-09&episode=all")
+    assert f'name="expected_anchor_token" value="{open_page_token}"' in response.text
+    first_writer_anchor = datetime(2026, 9, 5, 1, tzinfo=UTC)
+    current = {"token": "release-anchor-v1:newer", "anchor": first_writer_anchor}
+
+    def compare_and_set(
+        _episode: str,
+        _cut_id: str,
+        anchor: datetime | None,
+        *,
+        expected_anchor_token: str,
+    ) -> None:
+        if expected_anchor_token != current["token"]:
+            raise ValueError("stale Campaign Anchor; reload before scheduling")
+        current.update(token="release-anchor-v1:written", anchor=anchor)
+
+    monkeypatch.setattr(calendar_router, "set_release_campaign_anchor", compare_and_set)
+
+    stale_response = calendar_client.post(
+        "/bridge/publish/calendar/release/episode-alpha/S01/schedule",
+        data={
+            "operation": "set",
+            "campaign_anchor_local": "2026-09-06T09:00",
+            "expected_anchor_token": open_page_token,
+            "month": "2026-09",
+            "return_episode": "all",
+        },
+    )
+
+    assert stale_response.status_code == 409
+    assert current == {"token": "release-anchor-v1:newer", "anchor": first_writer_anchor}
+
+
+def test_carousel_open_page_stale_anchor_cannot_overwrite_newer_schedule(
+    calendar_client: TestClient, monkeypatch, tmp_path: Path
+) -> None:
+    import thousand_sunny.routers.publish_calendar as calendar_router
+
+    open_page_token = "carousel-anchor-v1:none"
+    queued_carousel = replace(
+        _projection().items[1],
+        targets=(PlatformTargetView("instagram", "Instagram Carousel", "pending"),),
+        phase="ready_to_schedule",
+        schedule_editable=True,
+        schedule_disabled_reason=None,
+    )
+    monkeypatch.setattr(
+        calendar_router,
+        "build_publish_calendar",
+        lambda _root: CalendarProjection(items=(queued_carousel,), diagnostics=()),
+    )
+    response = calendar_client.get("/bridge/publish/calendar?month=2026-09&episode=all")
+    assert f'name="expected_anchor_token" value="{open_page_token}"' in response.text
+    package_root = tmp_path / "episode-alpha" / "ig-carousel"
+    package_root.mkdir(parents=True)
+    monkeypatch.setenv("PODCAST_EPISODES_ROOT", str(tmp_path))
+    first_writer_anchor = datetime(2026, 9, 5, 1, tzinfo=UTC)
+    current = {
+        "token": "carousel-anchor-v1:utc:2026-09-05T01:00:00+00:00",
+        "anchor": first_writer_anchor,
+    }
+
+    def compare_and_set(
+        _path: Path,
+        *,
+        campaign_anchor_at: datetime | None,
+        expected_anchor_token: str,
+    ) -> None:
+        if expected_anchor_token != current["token"]:
+            raise calendar_router.PublishJobTransitionError(
+                "stale Campaign Anchor; reload before scheduling"
+            )
+        current.update(token="carousel-anchor-v1:written", anchor=campaign_anchor_at)
+
+    monkeypatch.setattr(calendar_router, "set_publish_job_campaign_anchor", compare_and_set)
+    job_id = f"pj-{'a' * 32}"
+
+    stale_response = calendar_client.post(
+        f"/bridge/publish/calendar/carousel/episode-alpha/{job_id}/schedule",
+        data={
+            "operation": "set",
+            "campaign_anchor_local": "2026-09-06T09:00",
+            "expected_anchor_token": open_page_token,
+            "month": "2026-09",
+            "return_episode": "all",
+        },
+    )
+
+    assert stale_response.status_code == 409
+    assert current == {
+        "token": "carousel-anchor-v1:utc:2026-09-05T01:00:00+00:00",
+        "anchor": first_writer_anchor,
+    }

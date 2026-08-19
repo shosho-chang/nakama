@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -177,6 +177,7 @@ class CarouselPublishJobV1(PublishModel):
     approval_revision_number: int = Field(gt=0)
     approved_at: datetime
     request_fingerprint: str
+    campaign_anchor_at: datetime | None = None
     retry_of_job_id: str | None = Field(default=None, pattern=r"^pj-[0-9a-f]{32}$")
     caption: str = Field(min_length=1, max_length=5000)
     assets: list[CarouselPublishAsset] = Field(min_length=1, max_length=20)
@@ -209,6 +210,15 @@ class CarouselPublishJobV1(PublishModel):
         if not _SHA256_RE.fullmatch(value):
             raise ValueError("publish hash must be a lowercase SHA-256 hex digest")
         return value
+
+    @field_validator("campaign_anchor_at")
+    @classmethod
+    def _valid_campaign_anchor(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("campaign_anchor_at must be timezone-aware")
+        return value.astimezone(timezone.utc)
 
     @model_validator(mode="after")
     def _valid_job(self) -> CarouselPublishJobV1:

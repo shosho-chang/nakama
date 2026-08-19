@@ -37,13 +37,18 @@ def test_mobile_390_contract_uses_readable_agenda_without_horizontal_scroll() ->
     assert "body.sho .pc-backlog__list" in CSS
     assert "flex-direction: column;" in CSS
     assert "overflow-wrap: anywhere;" in CSS
+    assert "body.sho .pc-schedule__actions button" in CSS
+    assert "width: 100%;" in CSS
 
 
-def test_calendar_shows_type_platform_status_basis_and_podcast_youtube_identity() -> None:
+def test_calendar_shows_group_targets_phase_basis_and_podcast_youtube_identity() -> None:
     for token in (
         "item.content_type",
-        "item.platform_label",
-        "item.status",
+        "item.targets",
+        "target.platform_label",
+        "target.status",
+        "item.phase",
+        "item.progress_label",
         "item.date_basis_label",
         "Podcast YouTube",
         "podcast_youtube.name",
@@ -65,6 +70,9 @@ def test_channel_identity_has_one_shared_source_of_truth() -> None:
     assert "《張修修的不正常人類研究所》" not in TEMPLATE
     assert "@abnormal-human-research" not in TEMPLATE
     assert "UCvipegP35x3-OcAs--PgAig" not in TEMPLATE
+    assert 'PODCAST_YOUTUBE_CHANNEL_NAME = "《張修修的不正常人類研究所》"' in DOMAIN
+    assert 'PODCAST_YOUTUBE_CHANNEL_HANDLE = "@abnormal-human-research"' in DOMAIN
+    assert 'PODCAST_YOUTUBE_CHANNEL_ID = "UCvipegP35x3-OcAs--PgAig"' in DOMAIN
 
 
 def test_unknown_date_and_basis_copy_is_neutral_and_not_duplicate_status() -> None:
@@ -72,6 +80,23 @@ def test_unknown_date_and_basis_copy_is_neutral_and_not_duplicate_status() -> No
     assert "item.date_basis_label" in TEMPLATE
     assert "item.date_basis or 'unscheduled'" not in TEMPLATE
     assert "待排程" not in TEMPLATE
+
+
+def test_pipeline_and_campaign_anchor_controls_are_server_rendered_and_accessible() -> None:
+    for token in (
+        'class="pc-pipeline__rail"',
+        "phase_counts",
+        "一組內容 · 一個 Campaign Anchor · 各平台狀態獨立",
+        'method="post"',
+        'name="campaign_anchor_local"',
+        'name="expected_anchor_token"',
+        'type="datetime-local"',
+        'name="operation" value="set"',
+        'name="operation" value="clear"',
+        "item.schedule_disabled_reason",
+        'type="button" disabled',
+    ):
+        assert token in TEMPLATE
 
 
 def test_calendar_designs_empty_warning_loading_focus_hover_disabled_and_reduced_motion() -> None:
@@ -82,6 +107,7 @@ def test_calendar_designs_empty_warning_loading_focus_hover_disabled_and_reduced
         'aria-busy="false"',
         'aria-disabled="true"',
         ":hover",
+        ":active",
         ":focus-visible",
         "@media (prefers-reduced-motion: reduce)",
     ):
