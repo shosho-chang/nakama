@@ -162,6 +162,10 @@ def test_facebook_reel_start_upload_finish_reconcile_and_retry(tmp_path: Path):
         None,
     ]
     assert transport.uploads[0]["file_path"] == video
+    assert transport.uploads[0]["headers"] == {
+        "offset": "0",
+        "file_size": str(video.stat().st_size),
+    }
     assert saves[0]["video_id"] == "video-1"
     assert saves[1]["uploaded"] is True
     assert saves[2]["finished"] is True

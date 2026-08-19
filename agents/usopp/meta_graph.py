@@ -238,7 +238,10 @@ class MetaGraphClient:
             self.transport.upload_file(
                 upload_url,
                 video_path,
-                headers={"file_size": str(video_path.stat().st_size)},
+                headers={
+                    "offset": "0",
+                    "file_size": str(video_path.stat().st_size),
+                },
             )
             checkpoint["uploaded"] = True
             self._save(checkpoint, save_checkpoint)
