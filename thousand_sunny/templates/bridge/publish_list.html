@@ -18,11 +18,15 @@
   {"label": "PUBLISH · 發布審核", "href": none, "is_current": true},
 ]) }}
 
-<section class="page-header">
+<section class="page-header page-header--split">
   <div>
     <div class="nk-caps">/bridge/publish · 上架前最後確認</div>
     <h1 class="page-title">發布審核 <span class="zh">{{ releases | length }} 支已登錄</span></h1>
   </div>
+  <nav aria-label="發布檢視">
+    <a class="sho-btn" href="/bridge/publish" aria-current="page">審核清單</a>
+    <a class="sho-btn--ghost" href="/bridge/publish/calendar">發布月曆</a>
+  </nav>
 </section>
 
 <main class="page-main page-main--stack">

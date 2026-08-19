@@ -1,0 +1,402 @@
+/* Stage 6 Publish Calendar — dense, hairline-led ops surface. */
+
+body.sho .pc-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sho-s-5);
+  min-width: 0;
+}
+
+body.sho .pc-view-nav,
+body.sho .pc-toolbar,
+body.sho .pc-month-nav,
+body.sho .pc-filter,
+body.sho .pc-channel-identity,
+body.sho .pc-section-heading {
+  display: flex;
+  align-items: center;
+}
+
+body.sho .pc-view-nav,
+body.sho .pc-month-nav,
+body.sho .pc-filter,
+body.sho .pc-channel-identity {
+  gap: var(--sho-s-3);
+}
+
+body.sho .pc-view-nav a {
+  text-decoration: none;
+}
+
+body.sho .pc-view-nav a[aria-current="page"] {
+  border-color: var(--sho-accent-line);
+}
+
+body.sho .pc-toolbar {
+  justify-content: space-between;
+  gap: var(--sho-s-5);
+  padding: var(--sho-s-4);
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+}
+
+body.sho .pc-month-nav strong {
+  min-width: 9em;
+  text-align: center;
+  color: var(--sho-ink);
+  font-size: 16px;
+}
+
+body.sho .pc-month-nav__arrow {
+  display: inline-grid;
+  place-items: center;
+  width: var(--sho-s-6);
+  height: var(--sho-s-6);
+  color: var(--sho-text);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+  text-decoration: none;
+  transition: border-color var(--sho-t-fast) var(--sho-ease),
+    color var(--sho-t-fast) var(--sho-ease);
+}
+
+body.sho .pc-month-nav__arrow:hover {
+  color: var(--sho-text-2);
+  border-color: var(--sho-accent-line);
+}
+
+body.sho .pc-month-nav__arrow.is-disabled {
+  color: var(--sho-muted);
+  background: var(--sho-bg-2);
+  border-color: var(--sho-line);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+body.sho .pc-filter label {
+  color: var(--sho-text-2);
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+body.sho .pc-filter select {
+  max-width: 26rem;
+  min-height: var(--sho-s-6);
+  padding: 0 var(--sho-s-3);
+  color: var(--sho-text);
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+  font: inherit;
+}
+
+body.sho .pc-filter select:focus-visible,
+body.sho .pc-month-nav__arrow:focus-visible,
+body.sho .pc-item:focus-visible,
+body.sho .pc-view-nav a:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+
+body.sho .pc-channel-identity {
+  flex-wrap: wrap;
+  padding: var(--sho-s-3) var(--sho-s-4);
+  color: var(--sho-text-2);
+  background: var(--sho-bg);
+  border-left: 2px solid var(--sho-accent);
+  border-block: 1px solid var(--sho-line);
+}
+
+body.sho .pc-state {
+  margin: 0;
+  padding: var(--sho-s-4);
+  color: var(--sho-text-2);
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  line-height: 1.65;
+}
+
+body.sho .pc-state ul {
+  margin: var(--sho-s-2) 0 0;
+  padding-left: var(--sho-s-5);
+}
+
+body.sho .pc-state--warning {
+  border-left: 3px solid var(--sho-warning);
+  background: color-mix(in oklch, var(--sho-warning) 7%, var(--sho-bg));
+}
+
+body.sho .pc-state--error {
+  border-left: 3px solid var(--sho-error);
+  background: color-mix(in oklch, var(--sho-error) 7%, var(--sho-bg));
+}
+
+body.sho .pc-state--empty {
+  color: var(--sho-muted);
+  border-style: dashed;
+}
+
+body.sho .pc-loading {
+  padding: var(--sho-s-3) var(--sho-s-4);
+  color: var(--sho-text-2);
+  background: color-mix(in oklch, var(--sho-info) 7%, var(--sho-bg));
+  border-left: 3px solid var(--sho-info);
+}
+
+body.sho [aria-busy="true"] .pc-loading {
+  display: block;
+}
+
+body.sho .pc-calendar,
+body.sho .pc-backlog {
+  min-width: 0;
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+}
+
+body.sho .pc-section-heading {
+  justify-content: space-between;
+  gap: var(--sho-s-4);
+  padding: var(--sho-s-4);
+  border-bottom: 1px solid var(--sho-line);
+}
+
+body.sho .pc-section-heading h2 {
+  margin: var(--sho-s-1) 0 0;
+  color: var(--sho-ink);
+  font-size: 18px;
+  line-height: 1.4;
+}
+
+body.sho .pc-month-grid {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+body.sho .pc-month-grid th {
+  padding: var(--sho-s-2);
+  color: var(--sho-muted);
+  background: var(--sho-bg-2);
+  border-bottom: 1px solid var(--sho-line);
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+body.sho .pc-month-grid th + th,
+body.sho .pc-month-grid td + td {
+  border-left: 1px solid var(--sho-line);
+}
+
+body.sho .pc-month-grid tr + tr td {
+  border-top: 1px solid var(--sho-line);
+}
+
+body.sho .pc-day {
+  height: 9rem;
+  padding: var(--sho-s-2);
+  vertical-align: top;
+  background: var(--sho-bg);
+}
+
+body.sho .pc-day.is-outside {
+  color: var(--sho-muted);
+  background: var(--sho-bg-2);
+}
+
+body.sho .pc-day__number {
+  display: block;
+  margin-bottom: var(--sho-s-2);
+  color: var(--sho-text-2);
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+body.sho .pc-day__items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sho-s-1);
+  min-width: 0;
+}
+
+body.sho .pc-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--sho-s-2);
+  color: var(--sho-text);
+  background: var(--sho-bg-2);
+  border: 1px solid var(--sho-line);
+  border-left: 2px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+  text-decoration: none;
+  transition: border-color var(--sho-t-fast) var(--sho-ease),
+    background var(--sho-t-fast) var(--sho-ease);
+}
+
+body.sho .pc-item:hover {
+  background: var(--sho-bg-3);
+  border-color: var(--sho-line-2);
+  border-left-color: var(--sho-accent);
+}
+
+body.sho .pc-item[data-status="published"],
+body.sho .pc-item[data-status="uploaded"] {
+  border-left-color: var(--sho-success);
+}
+
+body.sho .pc-item[data-status="failed"] {
+  border-left-color: var(--sho-error);
+}
+
+body.sho .pc-item[data-status="in_progress"],
+body.sho .pc-item[data-status="uploading"],
+body.sho .pc-item[data-status="claimed"] {
+  border-left-color: var(--sho-info);
+}
+
+body.sho .pc-item__meta,
+body.sho .pc-item__target,
+body.sho .pc-item__state {
+  overflow-wrap: anywhere;
+  color: var(--sho-muted);
+  font-family: var(--sho-font-mono);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+body.sho .pc-item__title {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--sho-text);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+body.sho .pc-agenda {
+  display: none;
+}
+
+body.sho .pc-desktop-empty {
+  margin: var(--sho-s-4);
+}
+
+body.sho .pc-backlog__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sho-s-3);
+  margin: 0;
+  padding: var(--sho-s-4);
+  list-style: none;
+}
+
+body.sho .pc-backlog > .pc-state {
+  margin: var(--sho-s-4);
+}
+
+body.sho .pc-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 640px) {
+  body.sho.bridge-page--scroll {
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
+  body.sho .page-header,
+  body.sho .pc-main {
+    padding-inline: var(--sho-s-3);
+  }
+
+  body.sho .pc-view-nav,
+  body.sho .pc-toolbar,
+  body.sho .pc-filter,
+  body.sho .pc-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  body.sho .pc-view-nav {
+    width: 100%;
+  }
+
+  body.sho .pc-view-nav a,
+  body.sho .pc-filter button,
+  body.sho .pc-filter select {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: none;
+  }
+
+  body.sho .pc-month-nav {
+    justify-content: space-between;
+  }
+
+  body.sho .pc-channel-identity > * {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  body.sho .pc-month-grid,
+  body.sho .pc-desktop-empty {
+    display: none;
+  }
+
+  body.sho .pc-agenda {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sho-s-4);
+    margin: 0;
+    padding: var(--sho-s-4);
+    list-style: none;
+  }
+
+  body.sho .pc-agenda__day h3 {
+    margin: 0 0 var(--sho-s-2);
+    color: var(--sho-text-2);
+    font-family: var(--sho-font-mono);
+    font-size: 12px;
+  }
+
+  body.sho .pc-agenda__day > div {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sho-s-2);
+  }
+
+  body.sho .pc-item__title {
+    font-size: 13px;
+    -webkit-line-clamp: 3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.sho .pc-item,
+  body.sho .pc-month-nav__arrow {
+    transition: none;
+  }
+}
