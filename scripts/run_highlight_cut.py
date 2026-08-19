@@ -34,6 +34,11 @@ sys.stderr.reconfigure(encoding="utf-8")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from agents.brook.podcast_subtitles.handoff import ProjectionVerifierFactory  # noqa: E402
+from agents.brook.script_video.subtitle_handoff import (  # noqa: E402
+    Stage5SubtitleRequest,
+    Stage5SubtitleSelection,
+)
 from shared.resolve_append import append_checked  # noqa: E402
 from shared.subtitle_finalize import finalize_cues  # noqa: E402
 
@@ -82,11 +87,35 @@ def _fmt_min(seconds: float) -> str:
     return f"{int(seconds // 60)}:{int(seconds % 60):02d}"
 
 
-def validate(episode_dir: Path) -> dict:
+def _subtitle_lineage(subtitle: Stage5SubtitleSelection) -> dict:
+    if subtitle.handoff is None:
+        return {"subtitle_mode": subtitle.mode}
+    verified = subtitle.handoff.verified
+    return {
+        "subtitle_mode": subtitle.mode,
+        "projection_id": verified.projection_id,
+        "generation_id": verified.generation_id,
+        "episode_id": verified.episode_id,
+        "projection_manifest_sha256": verified.manifest_sha256,
+        "subtitle_handoff_receipt": str(subtitle.handoff.receipt_path),
+        "subtitle_srt_sha256": verified.srt_sha256,
+    }
+
+
+def validate(
+    episode_dir: Path,
+    *,
+    subtitle_request: Stage5SubtitleRequest | None = None,
+    verifier_factory: ProjectionVerifierFactory | None = None,
+) -> dict:
     """候選正規化：吸附 cue 邊界、長度帶檢查、同格式重疊去重。原地改寫 candidates.json。"""
+    subtitle = (subtitle_request or Stage5SubtitleRequest()).open(
+        episode_dir,
+        factory=verifier_factory,
+    )
     cand_path = episode_dir / HIGHLIGHTS_DIR / CANDIDATES_NAME
     data = json.loads(cand_path.read_text(encoding="utf-8"))
-    cues = _parse_srt(episode_dir / "transcript.srt")
+    cues = _parse_srt(subtitle.srt_path)
     starts = [c[0] for c in cues]
     ends = [c[1] for c in cues]
 
@@ -120,6 +149,7 @@ def validate(episode_dir: Path) -> dict:
         "kept": counts,
         "variant_groups": n_groups,
         "band_issues": issues,
+        **_subtitle_lineage(subtitle),
     }
 
 
@@ -144,13 +174,20 @@ def _variant_groups(candidates: list[dict]) -> dict[str, str]:
     return {cid: find(cid) for cid in parent}
 
 
-def _segment_srt(episode_dir: Path, cid: str, t_start: float, t_end: float) -> Path:
+def _segment_srt(
+    episode_dir: Path,
+    cid: str,
+    t_start: float,
+    t_end: float,
+    *,
+    subtitle: Stage5SubtitleSelection,
+) -> Path:
     """裁出段落字幕（時間平移到 0 起點），版本化路徑繞 Resolve 路徑快取。
 
     副本套修修 2026-08-05 字幕定版兩規則（句尾零標點 + cue 間 ≤3s 空隙補平）
     ——transcript.srt 本體不動。
     """
-    cues = _parse_srt(episode_dir / "transcript.srt")
+    cues = _parse_srt(subtitle.srt_path)
     out_dir = episode_dir / SEG_SRT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     n = 1
@@ -177,9 +214,19 @@ def _segment_srt(episode_dir: Path, cid: str, t_start: float, t_end: float) -> P
     return dst
 
 
-def materialize(episode_dir: Path, *, dry_run: bool = False) -> dict:
+def materialize(
+    episode_dir: Path,
+    *,
+    dry_run: bool = False,
+    subtitle_request: Stage5SubtitleRequest | None = None,
+    verifier_factory: ProjectionVerifierFactory | None = None,
+) -> dict:
     from build_resolve_project import _template_path, connect_resolve, find_main_video
 
+    subtitle = (subtitle_request or Stage5SubtitleRequest()).open(
+        episode_dir,
+        factory=verifier_factory,
+    )
     hdir = episode_dir / HIGHLIGHTS_DIR
     cands = json.loads((hdir / CANDIDATES_NAME).read_text(encoding="utf-8"))["candidates"]
     winners = json.loads((hdir / WINNERS_NAME).read_text(encoding="utf-8"))["winners"]
@@ -202,7 +249,12 @@ def materialize(episode_dir: Path, *, dry_run: bool = False) -> dict:
             }
         )
     if dry_run:
-        return {"status": "dry-run", "timelines": plan, "markers": len(cands)}
+        return {
+            "status": "dry-run",
+            "timelines": plan,
+            "markers": len(cands),
+            **_subtitle_lineage(subtitle),
+        }
 
     resolve = connect_resolve()
     pm = resolve.GetProjectManager()
@@ -313,7 +365,13 @@ def materialize(episode_dir: Path, *, dry_run: bool = False) -> dict:
         if placed < 1:
             raise SystemExit(f"{label}: 影片上軌後 v1 仍是空的")
         mp.SetCurrentFolder(root)
-        seg_srt = _segment_srt(episode_dir, c["id"], c["t_start"], c["t_end"])
+        seg_srt = _segment_srt(
+            episode_dir,
+            c["id"],
+            c["t_start"],
+            c["t_end"],
+            subtitle=subtitle,
+        )
         srt_items = mp.ImportMedia([str(seg_srt)])
         sub_ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
         made.append(
@@ -326,10 +384,20 @@ def materialize(episode_dir: Path, *, dry_run: bool = False) -> dict:
 
     project.SetCurrentTimeline(main_tl)
     pm.SaveProject()
-    return {"status": "materialized", "timelines": made, "markers": len(cands)}
+    return {
+        "status": "materialized",
+        "timelines": made,
+        "markers": len(cands),
+        **_subtitle_lineage(subtitle),
+    }
 
 
-def refresh_subs(episode_dir: Path) -> dict:
+def refresh_subs(
+    episode_dir: Path,
+    *,
+    subtitle_request: Stage5SubtitleRequest | None = None,
+    verifier_factory: ProjectionVerifierFactory | None = None,
+) -> dict:
     """精華 timeline **只換字幕不動剪輯**（transcript.srt 更新後用）。
 
     修修可能已在精華 timeline 上剪輯——materialize 重建會毀掉他的工作，
@@ -338,6 +406,10 @@ def refresh_subs(episode_dir: Path) -> dict:
     """
     from build_resolve_project import connect_resolve
 
+    subtitle = (subtitle_request or Stage5SubtitleRequest()).open(
+        episode_dir,
+        factory=verifier_factory,
+    )
     hdir = episode_dir / HIGHLIGHTS_DIR
     cands = json.loads((hdir / CANDIDATES_NAME).read_text(encoding="utf-8"))["candidates"]
     winners = json.loads((hdir / WINNERS_NAME).read_text(encoding="utf-8"))["winners"]
@@ -383,7 +455,13 @@ def refresh_subs(episode_dir: Path) -> dict:
         if stale:
             mp.DeleteClips(stale)
         mp.SetCurrentFolder(root)
-        seg_srt = _segment_srt(episode_dir, c["id"], c["t_start"], c["t_end"])
+        seg_srt = _segment_srt(
+            episode_dir,
+            c["id"],
+            c["t_start"],
+            c["t_end"],
+            subtitle=subtitle,
+        )
         srt_items = mp.ImportMedia([str(seg_srt)])
         ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
         done.append(
@@ -394,7 +472,7 @@ def refresh_subs(episode_dir: Path) -> dict:
             }
         )
     pm.SaveProject()
-    return {"status": "subs-refreshed", "timelines": done}
+    return {"status": "subs-refreshed", "timelines": done, **_subtitle_lineage(subtitle)}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -413,18 +491,40 @@ def main(argv: list[str] | None = None) -> int:
         help="精華 timeline 只換字幕不動剪輯（transcript.srt 更新後用）",
     )
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--legacy-v1",
+        action="store_true",
+        help="明確使用 episode/transcript.srt；正式 V2 流程禁止使用",
+    )
+    parser.add_argument("--projection-id")
+    parser.add_argument("--expected-episode-id")
+    parser.add_argument("--expected-generation-id")
+    parser.add_argument("--expected-manifest-sha256")
+    parser.add_argument("--reference-manifest")
     args = parser.parse_args(argv)
+    subtitle_request = Stage5SubtitleRequest(
+        legacy_v1=args.legacy_v1,
+        projection_id=args.projection_id,
+        expected_episode_id=args.expected_episode_id,
+        expected_generation_id=args.expected_generation_id,
+        expected_manifest_sha256=args.expected_manifest_sha256,
+        reference_manifest=args.reference_manifest,
+    )
     episode_dir = Path(args.episode)
     if not episode_dir.is_dir():
         logger.error(f"episode 資料夾不存在: {episode_dir}")
         return 1
     started = time.time()
     if args.validate:
-        result = validate(episode_dir)
+        result = validate(episode_dir, subtitle_request=subtitle_request)
     elif args.materialize:
-        result = materialize(episode_dir, dry_run=args.dry_run)
+        result = materialize(
+            episode_dir,
+            dry_run=args.dry_run,
+            subtitle_request=subtitle_request,
+        )
     elif args.refresh_subs:
-        result = refresh_subs(episode_dir)
+        result = refresh_subs(episode_dir, subtitle_request=subtitle_request)
     else:
         logger.error("指定 --validate 或 --materialize")
         return 2

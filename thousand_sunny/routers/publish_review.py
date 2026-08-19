@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -27,7 +28,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
-from shared.config import get_vault_path
+from shared.config import get_db_path, get_vault_path
 from shared.log import get_logger
 from shared.release_store import get_release, list_releases, update_target
 from shared.tight_srt import latest_tight_srt, srt_to_vtt
@@ -96,6 +97,28 @@ def taipei_to_iso(dt_local: str) -> str:
     if dt.tzinfo is not None:
         return dt.isoformat()
     return dt.isoformat() + "+08:00"
+
+
+def _copy_fields(title: str, description: str, publish_at_local: str) -> dict:
+    """Validate and normalize the editable YouTube metadata fields."""
+    title = title.strip()
+    if not title or len(title) > _TITLE_MAX:
+        raise HTTPException(status_code=422, detail=f"標題必填且 ≤{_TITLE_MAX} 字")
+    if len(description) > _DESC_MAX:
+        raise HTTPException(status_code=422, detail=f"描述 ≤{_DESC_MAX} 字")
+    if "{{TODO_" in description:
+        raise HTTPException(status_code=422, detail="描述還有 {{TODO_*}} 佔位符——先填掉")
+    return {
+        "title": title,
+        "description": description,
+        "publish_at": taipei_to_iso(publish_at_local) if publish_at_local else None,
+    }
+
+
+def _upload_data_dir() -> Path:
+    """Return the machine-shared runtime data directory, including in a worktree."""
+    configured = os.environ.get("NAKAMA_DATA_DIR")
+    return Path(configured) if configured else get_db_path().parent
 
 
 @page_router.get("", response_class=HTMLResponse, response_model=None)
@@ -250,18 +273,7 @@ def publish_save(
     _, t = _yt_target(episode, cut_id)
     if t["status"] in ("uploading", "uploaded", "published"):
         raise HTTPException(status_code=409, detail="已上傳/上傳中——文案鎖定")
-    title = title.strip()
-    if not title or len(title) > _TITLE_MAX:
-        raise HTTPException(status_code=422, detail=f"標題必填且 ≤{_TITLE_MAX} 字")
-    if len(description) > _DESC_MAX:
-        raise HTTPException(status_code=422, detail=f"描述 ≤{_DESC_MAX} 字")
-    if "{{TODO_" in description:
-        raise HTTPException(status_code=422, detail="描述還有 {{TODO_*}} 佔位符——先填掉")
-    fields: dict = {"title": title, "description": description}
-    if publish_at_local:
-        fields["publish_at"] = taipei_to_iso(publish_at_local)
-    else:
-        fields["publish_at"] = None
+    fields = _copy_fields(title, description, publish_at_local)
     update_target(t["id"], **fields)
     logger.info("publish save: %s/%s", episode, cut_id)
     return RedirectResponse(f"/bridge/publish/{episode}/{cut_id}", status_code=303)
@@ -269,29 +281,45 @@ def publish_save(
 
 @page_router.post("/{episode}/{cut_id}/approve-upload")
 def publish_approve_upload(
-    episode: str, cut_id: str, nakama_auth: str | None = Cookie(None)
+    episode: str,
+    cut_id: str,
+    title: str = Form(...),
+    description: str = Form(...),
+    publish_at_local: str = Form(""),
+    nakama_auth: str | None = Cookie(None),
 ) -> RedirectResponse:
     _require_auth(nakama_auth)
     rel, t = _yt_target(episode, cut_id)
     if t["status"] in ("uploading", "uploaded", "published"):
         raise HTTPException(status_code=409, detail="已上傳/上傳中")
-    if not t.get("title") or not t.get("description"):
-        raise HTTPException(status_code=422, detail="先儲存 Title/Description 才能上傳")
+    fields = _copy_fields(title, description, publish_at_local)
+    update_target(t["id"], **fields)
     if not Path(rel["file_path"]).exists():
-        raise HTTPException(status_code=422, detail="成品檔不存在——重跑 publish_prep")
-    update_target(t["id"], status="approved")
+        error = "成品檔不存在——重跑 publish_prep"
+        update_target(t["id"], status="failed", error=error)
+        return RedirectResponse(f"/bridge/publish/{episode}/{cut_id}", status_code=303)
+    data_dir = _upload_data_dir()
+    token_path = data_dir / "youtube_token.json"
+    if not token_path.is_file():
+        error = f"找不到 {token_path}——先跑 python scripts/youtube_auth.py"
+        update_target(t["id"], status="failed", error=error)
+        return RedirectResponse(f"/bridge/publish/{episode}/{cut_id}", status_code=303)
+    update_target(t["id"], status="approved", error=None)
     # 與 CLI 同一條路：subprocess 跑 uploader（狀態轉移由它寫 DB，頁面 poll）。
     # stdout/stderr 落 log 檔——先前 DEVNULL 把 token 缺失的死訊吞掉，修修按了
     # 上傳「後台沒反應」（2026-08-04）
     root = Path(__file__).resolve().parent.parent.parent
     script = root / "scripts" / "publish_upload.py"
-    log_dir = root / "data" / "upload_progress"
+    log_dir = data_dir / "upload_progress"
     log_dir.mkdir(parents=True, exist_ok=True)
     safe = f"{episode}_{cut_id}".replace("/", "_").replace("\\", "_")
     log_f = open(log_dir / f"{safe}.log", "a", encoding="utf-8")  # noqa: SIM115 — 交給子程序持有
+    child_env = os.environ.copy()
+    child_env["NAKAMA_DATA_DIR"] = str(data_dir)
     subprocess.Popen(
         [sys.executable, str(script), "--run", "--episode", episode, "--cut", cut_id],
         cwd=str(root),
+        env=child_env,
         stdout=log_f,
         stderr=subprocess.STDOUT,
     )
@@ -307,9 +335,8 @@ def publish_status(
     _, t = _yt_target(episode, cut_id)
     progress = None
     if t["status"] == "uploading":
-        root = Path(__file__).resolve().parent.parent.parent
         safe = f"{episode}_{cut_id}".replace("/", "_").replace("\\", "_")
-        pf = root / "data" / "upload_progress" / f"{safe}.json"
+        pf = _upload_data_dir() / "upload_progress" / f"{safe}.json"
         if pf.exists():
             try:
                 progress = json.loads(pf.read_text(encoding="utf-8"))

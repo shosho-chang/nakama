@@ -19,17 +19,20 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Cookie, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 from starlette.requests import Request
 
 from shared.config import get_vault_path
 from shared.log import get_logger
+from shared.release_store import ensure_target, get_release, register_release, update_target
 from shared.schemas.packaging import (
     ApprovalFileV1,
     ApprovalV1,
@@ -226,6 +229,104 @@ def _board_context(episode_slug: str) -> dict:
     }
 
 
+def _publish_url(episode: str, cut_id: str) -> str:
+    return f"/bridge/publish/{quote(episode, safe='')}/{quote(cut_id, safe='')}"
+
+
+def _ensure_publish_prep(episode: str, cut_id: str) -> None:
+    """Start or resume the full-resolution export for an approved package."""
+    root_value = os.environ.get("PODCAST_EPISODES_ROOT", "").strip()
+    if not root_value:
+        raise HTTPException(status_code=503, detail="PODCAST_EPISODES_ROOT 未設定")
+    root = Path(root_value).resolve()
+    episode_dir = (root / episode).resolve()
+    try:
+        episode_dir.relative_to(root)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=403, detail="episode 路徑超出 PODCAST_EPISODES_ROOT"
+        ) from exc
+    if not episode_dir.is_dir():
+        raise HTTPException(status_code=404, detail=f"episode 不存在: {episode}")
+    from thousand_sunny.routers.highlight_review import _start_publish_prep
+
+    _start_publish_prep(episode_dir, cut_id)
+
+
+def _release_from_receipt(episode: str, cut_id: str) -> dict | None:
+    """Validate a Resolve receipt and register it with the Web runtime."""
+    release = get_release(episode, cut_id)
+    if release is not None:
+        return release
+    root_value = os.environ.get("PODCAST_EPISODES_ROOT", "").strip()
+    if not root_value:
+        return None
+    root = Path(root_value).resolve()
+    episode_dir = (root / episode).resolve()
+    try:
+        episode_dir.relative_to(root)
+    except ValueError:
+        return None
+    receipt = episode_dir / "highlights" / "exports" / f".publish_prep_{cut_id}.json"
+    if not receipt.is_file():
+        return None
+    try:
+        payload = json.loads(receipt.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if payload.get("status") != "rendered" or payload.get("episode") != episode:
+        return None
+    rows = [row for row in payload.get("cuts", []) if row.get("cut_id") == cut_id]
+    if len(rows) != 1:
+        raise HTTPException(status_code=409, detail="publish_prep receipt 缺少唯一 cut")
+    row = rows[0]
+    file_path = Path(str(row.get("file", ""))).resolve()
+    exports_dir = (episode_dir / "highlights" / "exports").resolve()
+    try:
+        file_path.relative_to(exports_dir)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="publish_prep receipt 成品路徑越界") from exc
+    if not file_path.is_file() or file_path.stat().st_size != int(row.get("file_bytes", -1)):
+        raise HTTPException(status_code=409, detail="publish_prep receipt 與成品檔不一致")
+    release_id = register_release(
+        episode,
+        cut_id,
+        str(row.get("format", "")),
+        str(file_path),
+        work_title=str(row.get("work_title", "")),
+        file_bytes=file_path.stat().st_size,
+        duration_sec=float(row.get("duration_sec", 0)),
+    )
+    ensure_target(release_id, "youtube")
+    logger.info("publish_prep receipt registered: %s/%s", episode, cut_id)
+    return get_release(episode, cut_id)
+
+
+def _apply_packaging_to_release(
+    pkg: PackagesFileV1, cut_id: str, primary_package: int, release: dict
+) -> None:
+    cut = next((row for row in pkg.cuts if row.cut_id == cut_id), None)
+    if cut is None:
+        raise HTTPException(status_code=404, detail=f"cut not found: {cut_id}")
+    target = next((row for row in release["targets"] if row["platform"] == "youtube"), None)
+    if target is None:
+        raise HTTPException(status_code=409, detail="youtube release target 不存在")
+    if target["status"] in {"uploading", "uploaded", "published"}:
+        raise HTTPException(status_code=409, detail="影片已進入上傳流程，不能更換 Packaging")
+    title_by_rank = {row.rank: row.text for row in cut.titles}
+    if primary_package not in title_by_rank:
+        raise HTTPException(status_code=409, detail="primary package 的標題不存在")
+    fields = {"title": title_by_rank[primary_package]}
+    if cut.format == "long":
+        selected_package = next(
+            (row for row in cut.packages if row.title_rank == primary_package), None
+        )
+        if selected_package is None:
+            raise HTTPException(status_code=409, detail="primary package 不存在")
+        fields["thumbnail_path"] = selected_package.thumbnail_png
+    update_target(target["id"], **fields)
+
+
 @page_router.get("", response_class=HTMLResponse)
 async def packaging_list(request: Request, nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
@@ -237,22 +338,68 @@ async def packaging_list(request: Request, nakama_auth: str | None = Cookie(None
     )
 
 
+@page_router.get("/{episode_slug}/thumbnail/{filename}")
+async def packaging_thumbnail(
+    episode_slug: str,
+    filename: str,
+    nakama_auth: str | None = Cookie(None),
+) -> FileResponse:
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    if filename != Path(filename).name or not filename.lower().endswith(".png"):
+        raise HTTPException(status_code=403, detail="僅限 Packaging PNG")
+    ctx = _board_context(episode_slug)
+    refs = {
+        package.thumbnail_png
+        for cut in ctx["pkg"].cuts
+        for package in cut.packages
+        if Path(package.thumbnail_png).name == filename
+    }
+    if len(refs) != 1:
+        raise HTTPException(status_code=404, detail="Packaging 縮圖不存在或不唯一")
+    path = get_vault_path() / refs.pop()
+    try:
+        path.resolve().relative_to((_packaging_root() / episode_slug).resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="Packaging 縮圖超出 episode 目錄") from exc
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Packaging 縮圖檔不存在")
+    return FileResponse(path, media_type="image/png")
+
+
 @page_router.get("/{episode_slug}", response_class=HTMLResponse)
 async def packaging_board(
     request: Request,
     episode_slug: str,
     edited: str | None = None,
     composed: str | None = None,
+    cut: str | None = None,
+    release_pending: str | None = None,
     nakama_auth: str | None = Cookie(None),
 ):
     if not check_auth(nakama_auth):
         return RedirectResponse(f"/login?next=/bridge/packaging/{episode_slug}", status_code=302)
     ctx = _board_context(episode_slug)
+    if cut:
+        focused = [view for view in ctx["cuts"] if view["cut"].cut_id == cut]
+        if not focused:
+            raise HTTPException(status_code=404, detail=f"cut not found: {cut}")
+        ctx["cuts"] = focused
+    if release_pending and cut:
+        release = _release_from_receipt(ctx["pkg"].episode, cut)
+        if release is not None:
+            approval = ctx["cuts"][0]["approval"]
+            if approval is None or not approval.approved:
+                raise HTTPException(status_code=409, detail="Packaging 尚未核准")
+            _apply_packaging_to_release(ctx["pkg"], cut, approval.primary_package, release)
+            return RedirectResponse(_publish_url(ctx["pkg"].episode, cut), status_code=303)
     ctx["asset_version"] = _SHOSHO_ASSET_VERSION
     # 剛改完字的那支：改字區保持展開（見 packaging_edit_title 的 redirect 註解）
     ctx["edited_cut"] = edited
     # 剛存完配方那支：組封面區保持展開（同 edited 的理由 — <details> 會因重載收起）
     ctx["composed_cut"] = composed
+    ctx["focused_cut"] = cut
+    ctx["release_pending"] = bool(release_pending)
     return _templates.TemplateResponse(request, "packaging_board.html", ctx)
 
 
@@ -303,7 +450,16 @@ async def packaging_approve(
         updated.model_dump_json(indent=2) + "\n", encoding="utf-8"
     )
     logger.info("packaging approve: %s/%s approved=%s", episode_slug, cut_id, approved)
-    return RedirectResponse(f"/bridge/packaging/{episode_slug}", status_code=303)
+    focused_board = f"/bridge/packaging/{quote(episode_slug, safe='')}?cut={quote(cut_id, safe='')}"
+    if not approved:
+        return RedirectResponse(focused_board, status_code=303)
+    release = _release_from_receipt(pkg.episode, cut_id)
+    if release is None:
+        _ensure_publish_prep(pkg.episode, cut_id)
+        return RedirectResponse(f"{focused_board}&release_pending=1", status_code=303)
+    _apply_packaging_to_release(pkg, cut_id, primary_package or 1, release)
+    logger.info("packaging -> publish handoff: %s/%s", pkg.episode, cut_id)
+    return RedirectResponse(_publish_url(pkg.episode, cut_id), status_code=303)
 
 
 @page_router.post("/{episode_slug}/variant")

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import platform
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -97,6 +98,47 @@ class MemoRecognitionManifestV1(_StrictModel):
             if token.end_ms > self.normalized_audio_duration_ms:
                 raise ValueError("Memo recognition token exceeds normalized audio")
             previous_end = token.end_ms
+        return self
+
+
+class MemoRecognitionAcceptanceReceiptV1(_StrictModel):
+    """Explicit human acceptance of one prepared Memo recognition review."""
+
+    schema_version: Literal[1] = 1
+    contract: Literal["accepted-memo-recognition-v1"] = "accepted-memo-recognition-v1"
+    accepted: Literal[True] = True
+    normalized_audio_sha256: str
+    normalized_audio_size_bytes: int = Field(gt=0)
+    normalized_audio_duration_ms: int = Field(gt=0)
+    normalized_handoff_manifest_sha256: str
+    source_export_sha256: str
+    source_export_size_bytes: int = Field(gt=0)
+    review_manifest_sha256: str
+    token_export_sha256: str
+    reviewer: str
+    accepted_at: datetime
+    unresolved_findings: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _accepted(self) -> "MemoRecognitionAcceptanceReceiptV1":
+        for label, value in (
+            ("normalized audio", self.normalized_audio_sha256),
+            ("normalized handoff", self.normalized_handoff_manifest_sha256),
+            ("source export", self.source_export_sha256),
+            ("review manifest", self.review_manifest_sha256),
+            ("token export", self.token_export_sha256),
+        ):
+            if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+                raise ValueError(f"Memo recognition {label} digest must be lowercase SHA-256")
+        if (
+            not self.reviewer.strip()
+            or self.reviewer != self.reviewer.strip()
+            or self.accepted_at.tzinfo is None
+            or self.unresolved_findings
+        ):
+            raise ValueError(
+                "Memo recognition acceptance must be explicit, identified, and resolved"
+            )
         return self
 
 
@@ -258,6 +300,7 @@ class MemoRecognizerAdapter:
 
 
 __all__ = [
+    "MemoRecognitionAcceptanceReceiptV1",
     "MemoRecognitionManifestV1",
     "MemoRecognitionTokenV1",
     "MemoRecognizerAdapter",

@@ -417,18 +417,78 @@ class MemoSrtAcceptanceReceiptV1(_StrictModel):
     accepted: Literal[True] = True
     source_export_sha256: str
     source_export_size_bytes: int = Field(gt=0)
+    recognition_manifest_sha256: str | None = None
+    review_manifest_sha256: str | None = None
     reviewer: str
     accepted_at: datetime
+    unresolved_findings: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def _valid(self) -> "MemoSrtAcceptanceReceiptV1":
+        optional_digests = (self.recognition_manifest_sha256, self.review_manifest_sha256)
+        if any(optional_digests) != all(optional_digests):
+            raise ValueError("Memo SRT acceptance lineage must be complete")
+        if any(
+            value is not None
+            and (
+                len(value) != 64
+                or any(character not in "0123456789abcdef" for character in value)
+            )
+            for value in optional_digests
+        ):
+            raise ValueError("Memo SRT acceptance lineage digest must be lowercase SHA-256")
         if (
             len(self.source_export_sha256) != 64
             or any(character not in "0123456789abcdef" for character in self.source_export_sha256)
             or not self.reviewer.strip()
+            or self.reviewer != self.reviewer.strip()
             or self.accepted_at.tzinfo is None
+            or self.unresolved_findings
         ):
             raise ValueError("Memo SRT acceptance receipt is incomplete")
+        return self
+
+
+class MemoSrtReviewCueV1(_StrictModel):
+    id: str
+    source_index: int = Field(gt=0)
+    start_ms: int = Field(ge=0)
+    end_ms: int = Field(gt=0)
+    text: str
+
+    @model_validator(mode="after")
+    def _complete(self) -> "MemoSrtReviewCueV1":
+        if not self.text.strip() or self.end_ms <= self.start_ms:
+            raise ValueError("Memo SRT review cue must contain text and positive timing")
+        return self
+
+
+class MemoSrtReviewManifestV1(_StrictModel):
+    """Prepared, unaccepted review inventory for one Memo GUI SRT."""
+
+    schema_version: Literal[1] = 1
+    contract: Literal["memo-srt-review-v1"] = "memo-srt-review-v1"
+    recognition_manifest_sha256: str
+    source_export_sha256: str
+    source_export_size_bytes: int = Field(gt=0)
+    unresolved_findings: tuple[str, ...] = ()
+    cues: tuple[MemoSrtReviewCueV1, ...]
+
+    @model_validator(mode="after")
+    def _valid(self) -> "MemoSrtReviewManifestV1":
+        for label, value in (
+            ("recognition", self.recognition_manifest_sha256),
+            ("source export", self.source_export_sha256),
+        ):
+            if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+                raise ValueError(f"Memo SRT review {label} digest must be lowercase SHA-256")
+        if not self.cues:
+            raise ValueError("Memo SRT review requires at least one cue")
+        for index, cue in enumerate(self.cues, start=1):
+            if cue.id != f"memo-cue-{index:06d}":
+                raise ValueError("Memo SRT review cue IDs must be canonical and sequential")
+            if index > 1 and cue.start_ms < self.cues[index - 2].end_ms:
+                raise ValueError("Memo SRT review cues must be ordered and non-overlapping")
         return self
 
 
@@ -575,5 +635,7 @@ __all__ = [
     "MemoSourceCueV1",
     "MemoSrtAcceptanceReceiptV1",
     "MemoSrtBoundaryAuthorityV1",
+    "MemoSrtReviewCueV1",
+    "MemoSrtReviewManifestV1",
     "load_memo_boundary_manifest",
 ]

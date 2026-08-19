@@ -16,8 +16,10 @@ from __future__ import annotations
 import importlib
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 
@@ -104,8 +106,26 @@ def client(monkeypatch, vault):
 
     importlib.reload(auth_module)
     importlib.reload(pkg_module)
+    monkeypatch.setattr(pkg_module, "_ensure_publish_prep", lambda episode, cut_id: None)
     importlib.reload(app_module)
     return TestClient(app_module.app)
+
+
+@pytest.fixture
+def router_client(monkeypatch, vault):
+    """Isolated router app for the packaging-to-publish handoff."""
+    monkeypatch.delenv("WEB_PASSWORD", raising=False)
+    monkeypatch.delenv("WEB_SECRET", raising=False)
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    import thousand_sunny.auth as auth_module
+    import thousand_sunny.routers.packaging as pkg_module
+
+    importlib.reload(auth_module)
+    importlib.reload(pkg_module)
+    monkeypatch.setattr(pkg_module, "_ensure_publish_prep", lambda episode, cut_id: None)
+    app = FastAPI()
+    app.include_router(pkg_module.page_router)
+    return TestClient(app)
 
 
 # ---------------------------------------------------------------------------
@@ -843,3 +863,207 @@ def test_title_edit_records_original_when_key_exists_as_null(client, vault):
     assert target["text"] == "改過的標題"
     assert target["original_text"] == "標題 rank 2"
     assert target["edited_at"] is not None
+
+
+def test_focused_board_only_shows_selected_cut(router_client):
+    response = router_client.get(
+        "/bridge/packaging/20260723-xieboran?cut=punch-L1"
+    )
+
+    assert response.status_code == 200
+    assert "punch-L1" in response.text
+    assert "punch-S1" not in response.text
+
+
+def test_packaging_approval_hands_selected_title_and_thumbnail_to_publish(
+    router_client, monkeypatch
+):
+    import thousand_sunny.routers.packaging as pkg_module
+
+    updates: list[tuple[int, dict]] = []
+    monkeypatch.setattr(
+        pkg_module,
+        "get_release",
+        lambda episode, cut_id: {
+            "episode": episode,
+            "cut_id": cut_id,
+            "targets": [{"id": 42, "platform": "youtube", "status": "draft"}],
+        },
+    )
+    monkeypatch.setattr(
+        pkg_module,
+        "update_target",
+        lambda target_id, **fields: updates.append((target_id, fields)),
+    )
+
+    response = router_client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "2"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == (
+        "/bridge/publish/20260723%20%E8%AC%9D%E4%BC%AF%E8%AE%93/punch-L1"
+    )
+    assert updates == [
+        (
+            42,
+            {
+                "title": "標題 rank 2",
+                "thumbnail_path": (
+                    "Attachments/packaging/20260723-xieboran/pkg-punch-L1-2.png"
+                ),
+            },
+        )
+    ]
+
+
+def test_packaging_approval_waits_for_full_resolution_release(router_client, monkeypatch):
+    import thousand_sunny.routers.packaging as pkg_module
+
+    monkeypatch.setattr(pkg_module, "get_release", lambda episode, cut_id: None)
+    starts: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        pkg_module,
+        "_ensure_publish_prep",
+        lambda episode, cut_id: starts.append((episode, cut_id)),
+        raising=False,
+    )
+    response = router_client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == (
+        "/bridge/packaging/20260723-xieboran?cut=punch-L1&release_pending=1"
+    )
+    assert starts == [("20260723 謝伯讓", "punch-L1")]
+
+
+def test_pending_board_polls_without_full_page_reload(router_client, monkeypatch):
+    import thousand_sunny.routers.packaging as pkg_module
+
+    monkeypatch.setattr(pkg_module, "get_release", lambda episode, cut_id: None)
+    response = router_client.get(
+        "/bridge/packaging/20260723-xieboran?cut=punch-L1&release_pending=1"
+    )
+
+    assert response.status_code == 200
+    assert "window.location.reload()" not in response.text
+    assert "fetch(window.location.href" in response.text
+
+
+def test_pending_board_applies_packaging_after_render_finishes(
+    router_client, vault, monkeypatch
+):
+    import thousand_sunny.routers.packaging as pkg_module
+
+    approval = {
+        "episode": "20260723 謝伯讓",
+        "approvals": [
+            {
+                "cut_id": "punch-L1",
+                "approved": True,
+                "primary_package": 3,
+                "reject_note": None,
+                "decided_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ],
+    }
+    path = vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json"
+    path.write_text(json.dumps(approval, ensure_ascii=False), encoding="utf-8")
+    updates: list[tuple[int, dict]] = []
+    monkeypatch.setattr(
+        pkg_module,
+        "get_release",
+        lambda episode, cut_id: {
+            "targets": [{"id": 88, "platform": "youtube", "status": "draft"}]
+        },
+    )
+    monkeypatch.setattr(
+        pkg_module,
+        "update_target",
+        lambda target_id, **fields: updates.append((target_id, fields)),
+    )
+
+    response = router_client.get(
+        "/bridge/packaging/20260723-xieboran?cut=punch-L1&release_pending=1",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == (
+        "/bridge/publish/20260723%20%E8%AC%9D%E4%BC%AF%E8%AE%93/punch-L1"
+    )
+    assert updates == [
+        (
+            88,
+            {
+                "title": "標題 rank 3",
+                "thumbnail_path": (
+                    "Attachments/packaging/20260723-xieboran/pkg-punch-L1-3.png"
+                ),
+            },
+        )
+    ]
+
+
+def test_render_receipt_is_registered_by_web_runtime(monkeypatch, tmp_path):
+    import thousand_sunny.routers.packaging as pkg_module
+
+    episodes = tmp_path / "episodes"
+    exports = episodes / "20260721 鄭國威" / "highlights" / "exports"
+    exports.mkdir(parents=True)
+    video = exports / "R11.mp4"
+    video.write_bytes(b"full-resolution-master")
+    receipt = exports / ".publish_prep_R11.json"
+    receipt.write_text(
+        json.dumps(
+            {
+                "status": "rendered",
+                "episode": "20260721 鄭國威",
+                "cuts": [
+                    {
+                        "cut_id": "R11",
+                        "format": "long",
+                        "work_title": "職人精神",
+                        "file": str(video),
+                        "file_bytes": video.stat().st_size,
+                        "duration_sec": 421.4,
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    state: dict[str, object] = {"release": None, "registered": None}
+    monkeypatch.setenv("PODCAST_EPISODES_ROOT", str(episodes))
+    monkeypatch.setattr(pkg_module, "get_release", lambda episode, cut_id: state["release"])
+
+    def register(*args, **kwargs):
+        state["registered"] = (args, kwargs)
+        return 7
+
+    def ensure(release_id, platform):
+        state["release"] = {
+            "id": release_id,
+            "episode": "20260721 鄭國威",
+            "cut_id": "R11",
+            "targets": [{"id": 9, "platform": platform, "status": "draft"}],
+        }
+        return 9
+
+    monkeypatch.setattr(pkg_module, "register_release", register)
+    monkeypatch.setattr(pkg_module, "ensure_target", ensure)
+
+    release = pkg_module._release_from_receipt("20260721 鄭國威", "R11")
+
+    assert release == state["release"]
+    args, kwargs = state["registered"]
+    assert args[:3] == ("20260721 鄭國威", "R11", "long")
+    assert Path(args[3]) == video
+    assert kwargs["file_bytes"] == video.stat().st_size

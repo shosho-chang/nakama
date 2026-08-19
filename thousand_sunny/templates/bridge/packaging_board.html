@@ -28,6 +28,15 @@
 </section>
 
 <main class="page-main page-main--stack">
+  {% if focused_cut %}
+  <p class="sho-mono pkg-focus"><a href="/bridge/packaging/{{ episode_slug }}">← 查看本集全部 cuts</a> · 目前只審 {{ focused_cut }}</p>
+  {% endif %}
+  {% if release_pending %}
+  <div class="pkg-release-pending" role="status" aria-live="polite">
+    <strong>Packaging 已核准；正在由 Resolve 匯出全解析成品。</strong>
+    <span>完成後會自動進入 Publish review，這裡不會拿 review preview 代替正式檔。</span>
+  </div>
+  {% endif %}
   <p class="sho-mono pkg-hint">重抽標題或封面 → 回 Cowork 跑 <code>title-brainstorm --batch</code> / <code>thumbnail-brainstorm</code>（gate 零 LLM，只裁決不生成）。</p>
 
   {% for view in cuts %}
@@ -342,7 +351,7 @@
             <input type="radio" name="primary_package" value="{{ item.pkg.title_rank }}"
                    {% if approval and approval.approved and approval.primary_package == item.pkg.title_rank %}checked{% endif %}
                    {% if not approval or not approval.approved %}{% if loop.first %}checked{% endif %}{% endif %}>
-            <img src="/bridge/projects/gate/thumbnail/packaging/{{ episode_slug }}/{{ item.pkg.thumbnail_png.split('/')[-1] }}"
+            <img src="/bridge/packaging/{{ episode_slug }}/thumbnail/{{ item.pkg.thumbnail_png.split('/')[-1] }}"
                  alt="package {{ item.pkg.title_rank }} 封面：{{ item.title.text if item.title else '' }}" loading="lazy">
             <div class="pkg-card-title">{{ item.title.text if item.title else '（缺 rank ' ~ item.pkg.title_rank ~ ' 標題）' }}</div>
             <div class="sho-mono pkg-card-meta">#{{ item.pkg.title_rank }} · {{ item.pkg.thumb_archetype_id }} · {{ item.pkg.joint_pairing_id }}</div>
@@ -410,6 +419,10 @@
 </main>
 
 <style>
+  .pkg-focus { margin: 0; }
+  .pkg-focus a { color: var(--sho-text-2); }
+  .pkg-release-pending { display: grid; gap: var(--sho-s-1); border-left: 3px solid var(--sho-accent); background: var(--sho-accent-soft); padding: var(--sho-s-3) var(--sho-s-4); }
+  .pkg-release-pending span { color: var(--sho-text-2); }
   .pkg-hint { margin: 0 0 var(--sho-s-4); }
   .pkg-hint code { font-size: 12px; }
   .pkg-brand-flags { margin-bottom: var(--sho-s-3); display: flex; gap: var(--sho-s-2); flex-wrap: wrap; }
@@ -733,5 +746,25 @@
   });
   syncStages();
 </script>
+{% if release_pending %}
+<script>
+  const pollRelease = async () => {
+    try {
+      const response = await fetch(window.location.href, {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      if (response.redirected && response.url !== window.location.href) {
+        window.location.assign(response.url);
+        return;
+      }
+    } catch (_) {
+      // Resolve may still be working while the local app briefly reconnects.
+    }
+    window.setTimeout(pollRelease, 5000);
+  };
+  window.setTimeout(pollRelease, 5000);
+</script>
+{% endif %}
 </body>
 </html>

@@ -162,6 +162,27 @@ Step 6 起重走。修修手改過的 timeline 尾端見 Step 6–7 的 `--refre
 長片定版後 → 發布線（`publish_prep.py` render+登錄 → 描述生成 → uploader，
 見 `docs/plans/2026-07-26-video-publishing-plan.md` + ADR-054）。
 
+### YouTube description 文體（長 highlight 專用）
+
+生成或改寫 `/bridge/publish` 的長 highlight 文案時，以下是發布契約：
+
+- 第一段直接進入來賓面對的具體處境；不要先下「這支影片在談……」之類的總論。
+- 禁用「不是 X，而是 Y」「不只 X，更是 Y」等 AI 對偶句，改成直接肯定句。
+- 刪掉「這一段會從 A 一路談到 B」等自我導覽句；章節已負責導航。
+- 每段只推進一件事；用具體人物、作品、數字與動作取代抽象形容詞。
+- 不得捏造獨特性或動機；沒有逐字稿證據就不寫。
+- description 固定結構：2–3 段內容 hook → `⏱` 章節 → 固定 footer。footer 一律讀
+  `agents/usopp/templates/video_description_footer.md`，禁止在 prompt 裡複製舊版。
+- 交付前逐句掃描「不是／而是」「不只／更」「這一段會」「帶你看」「深入探討」；命中就重寫。
+
+### 發布授權、進度與 CC 補傳
+
+- worktree 的 uploader、Web App 與 OAuth 必須共用 `NAKAMA_DATA_DIR`；不可各自在
+  worktree 產生 token 或 progress。
+- token scopes 必須包含 `youtube.upload`、`youtube`、`youtube.force-ssl`。
+- 影片本體成功但 CC 失敗時禁止重傳影片；只跑 `publish_upload.py --cc-only`。
+- upload status 必須讀同一個 `NAKAMA_DATA_DIR/upload_progress/`。
+
 ## 收斂後的運行模式（修修 2026-08-04 裁決：剪輯線免 HITL）
 
 util-L4 完成後修修裁決：「長影片的剪輯已經慢慢可以收斂了，以後都可以不用

@@ -107,7 +107,7 @@
     </div>
 
     <div>
-      <form class="section" method="post"
+      <form class="section" id="publishForm" method="post"
             action="/bridge/publish/{{ rel.episode }}/{{ rel.cut_id }}/save">
         <header class="section-head">
           <div class="section-marker">文案 · 排程</div>
@@ -138,8 +138,9 @@
           {% if not locked %}
           <div class="pub-form-foot">
             <button class="sho-btn sho-btn--ghost" type="submit">儲存文案與排程</button>
-            <button class="sho-btn" type="submit" form="approveForm"
-                    {% if not t.title or not t.description %}disabled title="先儲存 Title/Description"{% endif %}>
+            <button class="sho-btn" type="submit"
+                    formaction="/bridge/publish/{{ rel.episode }}/{{ rel.cut_id }}/approve-upload"
+                    onclick="return confirm('確認儲存這版文案並上傳？\n\n上傳為 private{{ '，並排程 ' + t.publish_at + ' 自動公開' if t.publish_at else '（未排程，之後可再設）' }}。')">
               核准並上傳
             </button>
           </div>
@@ -173,13 +174,6 @@
           {% endif %}
         </div>
       </article>
-
-      {% if not locked %}
-      <form id="approveForm" method="post"
-            action="/bridge/publish/{{ rel.episode }}/{{ rel.cut_id }}/approve-upload"
-            onsubmit="return confirm('確認核准並上傳？\n\n上傳為 private{{ '，並排程 ' + t.publish_at + ' 自動公開' if t.publish_at else '（未排程，之後可再設）' }}。')">
-      </form>
-      {% endif %}
 
       {% if ab_alternates %}
       <article class="section">

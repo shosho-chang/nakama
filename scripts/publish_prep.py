@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -276,7 +277,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="發布線 Slice 1：render 成品 + 登錄草稿 Release")
     parser.add_argument("episode", help="episode 資料夾（G:\\footages\\...）")
     parser.add_argument("--cut", help="只出這一支（winner id，如 punch-L5）")
+    parser.add_argument(
+        "--render-only",
+        action="store_true",
+        help="只由 Resolve 匯出並寫 receipt；DB 登錄交給 Web App 的相容 Python",
+    )
+    parser.add_argument("--receipt", type=Path, help="--render-only 的 JSON receipt 落點")
     args = parser.parse_args(argv)
+    if args.render_only != bool(args.receipt):
+        raise SystemExit("--render-only 與 --receipt 必須一起使用")
 
     episode_dir = Path(args.episode)
     if not episode_dir.exists():
@@ -286,7 +295,8 @@ def main(argv: list[str] | None = None) -> int:
 
     from build_resolve_project import connect_resolve  # Resolve 依賴延後 import
 
-    from shared.release_store import ensure_target, register_release
+    if not args.render_only:
+        from shared.release_store import ensure_target, register_release
 
     resolve = connect_resolve()
     pm = resolve.GetProjectManager()
@@ -299,33 +309,41 @@ def main(argv: list[str] | None = None) -> int:
     results = []
     for cut in cuts:
         info = export_cut(resolve, project, episode_dir, cut)
-        release_id = register_release(
-            episode_dir.name,
-            info["cut_id"],
-            info["format"],
-            info["file"],
-            work_title=info["work_title"],
-            file_bytes=info["file_bytes"],
-            duration_sec=info["duration_sec"],
-        )
-        target_id = ensure_target(release_id, "youtube")
-        info["release_id"] = release_id
-        info["youtube_target_id"] = target_id
+        if not args.render_only:
+            release_id = register_release(
+                episode_dir.name,
+                info["cut_id"],
+                info["format"],
+                info["file"],
+                work_title=info["work_title"],
+                file_bytes=info["file_bytes"],
+                duration_sec=info["duration_sec"],
+            )
+            target_id = ensure_target(release_id, "youtube")
+            info["release_id"] = release_id
+            info["youtube_target_id"] = target_id
+            logger.info(
+                "登錄 release #%d（%s）→ youtube target #%d（draft）",
+                release_id,
+                info["cut_id"],
+                target_id,
+            )
         results.append(info)
-        logger.info(
-            "登錄 release #%d（%s）→ youtube target #%d（draft）",
-            release_id,
-            info["cut_id"],
-            target_id,
-        )
 
-    print(
-        json.dumps(
-            {"status": "registered", "count": len(results), "cuts": results},
-            ensure_ascii=False,
-            indent=1,
+    payload = {
+        "status": "rendered" if args.render_only else "registered",
+        "episode": episode_dir.name,
+        "count": len(results),
+        "cuts": results,
+    }
+    if args.receipt:
+        args.receipt.parent.mkdir(parents=True, exist_ok=True)
+        temporary = args.receipt.with_suffix(args.receipt.suffix + f".{os.getpid()}.tmp")
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
-    )
+        os.replace(temporary, args.receipt)
+    print(json.dumps(payload, ensure_ascii=False, indent=1))
     return 0
 
 

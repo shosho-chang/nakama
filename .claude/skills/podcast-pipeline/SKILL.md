@@ -2,8 +2,9 @@
 name: podcast-pipeline
 description: >
   訪談集全產線編排：episode 資料夾一路走完 audio-prep → subtitle-gen →
-  subtitle-correct → resolve-project → highlight-cut → packaging
-  （標題×封面 → gate），段間停下給使用者確認中間產物。Use when the user
+  subtitle-correct → resolve-project → highlight-cut → finished-cut review →
+  packaging（標題×封面）→ publish review → YouTube upload + CC，段間停下給使用者
+  確認中間產物。Use when the user
   points at a footage episode folder (e.g. G:\footages\20260723 謝伯讓)
   and says 「跑字幕產線」「整條跑完」「podcast pipeline」「幫我把這集的
   字幕做出來」「一路跑到 gate」, or wants to resume a half-done episode
@@ -17,7 +18,16 @@ description: >
 `/resolve-project`、`/highlight-cut`、`title-brainstorm --batch`、
 `/thumbnail-brainstorm`）照它的手冊做。
 
-## 進度偵測（依檔案存在判斷）
+## 固定錄音素材契約（使用者已核准，不得每集重問）
+
+- `Audio/Live-Mix.wav`（口語可能簡稱 `Live.wav`）是完整訪談的 canonical program mix；
+  保留完整 program clock，不裁收工閒聊、不做 silence trim。
+- `Audio/1_COMBO-1.wav` 固定是主持人修修；`Audio/2_COMBO-2.wav` 固定是來賓。
+- 來賓姓名與身分先從該集訪綱、前期研究報告與訪談彈藥卡推定；資料一致時直接採用並附來源。
+- 只有來源缺失／無法解碼、三軌時長明顯不一致、program mix 不是雙聲道，或使用者
+  明確覆寫規則時，才把素材契約列為 blocking gate。
+
+## 進度偵測（依 receipt、gate 與外部狀態共同判斷）
 
 | 檔案 | 意義 |
 |---|---|
@@ -30,8 +40,12 @@ description: >
 | `highlights/選段候選表.md`（無 winners.json） | 盲審排完、**卡在選段 gate** → 把表貼給修修等他挑（見下方 HITL 第 5 條）|
 | `highlights/winners.json` + `highlights/選段企劃-*.md` | highlight-cut 完成 → 下一步 packaging |
 | `packaging/manifest.json` | packaging 進行中/完成 — 用 `python scripts/packaging_manifest.py status` 判斷該續哪支（見下節），全完成 → 去 gate review |
+| `highlights/qa_final.json` 全部 critical cleared + finished review `approved_cut` | 成片核准 → 可啟動該 cut 的 publish render；缺任一項不得進 packaging/publish |
+| vault `packages.json` + `approval.json` 核准該 cut | packaging gate 完成；下一步登錄 Release 並產生 description |
+| release target 有 title + description + thumbnail，status=`draft` | publish review 可用；description 空白不是完成狀態 |
+| release target 有 `video_id` 且 CC error 為空 | YouTube upload + CC 完成；Studio 手動公開後仍須 reconciliation |
 
-都沒有 → 從 audio-prep 開始。
+都沒有 → 從 audio-prep 開始。後段檔案存在不代表前段 gate 已完成；必要條件必須取交集。
 
 **說話者切分**（correct 之後、上 Resolve 之前）：episode 有分軌 mic
 （Audio/ 內兩軌以上人聲）就跑 `python scripts/run_speaker_split.py <episode>`——
