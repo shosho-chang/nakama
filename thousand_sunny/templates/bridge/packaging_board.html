@@ -41,12 +41,12 @@
           <span class="zh">{{ cut.visual_recipe }} · {{ cut.aspect }}</span>
         </h2>
       </div>
-      {% if approval %}
-        {% if approval.approved %}
-        <span class="sho-tag sho-tag--accent">APPROVED · PKG {{ approval.primary_package }}</span>
-        {% else %}
-        <span class="sho-tag pkg-tag-rejected">REJECTED</span>
-        {% endif %}
+      {# decision 是 2026-08-14 新增：只挑變體不算裁決。舊檔沒這欄（None）→ 用
+         approved 回退判讀，維持既有集數的顯示。#}
+      {% if approval and approval.approved %}
+      <span class="sho-tag sho-tag--accent">APPROVED · PKG {{ approval.primary_package }}</span>
+      {% elif approval and (approval.decision == 'reject' or (approval.decision is none and approval.selected_variant is none and approval.bigtext_request is none and approval.render_request is none)) %}
+      <span class="sho-tag pkg-tag-rejected">REJECTED</span>
       {% else %}
       <span class="section-status idle">PENDING</span>
       {% endif %}
@@ -119,6 +119,219 @@
         </form>
         {% endfor %}
       </details>
+
+      {# 組封面配方（修修 2026-08-14 裁決：先選標題／大字／臉，再 render 一次）。
+         gate 只寫配方，出圖在桌機端——所以這裡沒有預覽，只有「存配方」。#}
+      <details class="pkg-compose" id="compose-{{ cut.cut_id }}"
+               {% if composed_cut == cut.cut_id %}open{% endif %}>
+        <summary class="sho-mono-up">組封面：選標題 ＋ 打大字 ＋ 挑臉（存完我再 render 一次）</summary>
+        {% set req = approval.render_request if approval else none %}
+        <form method="post" action="/bridge/packaging/{{ episode_slug }}/compose" class="pkg-compose-form">
+          <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
+
+          <div class="field">
+            <label class="field-label" for="cr-{{ cut.cut_id }}">用哪一條標題</label>
+            <select class="sho-input" id="cr-{{ cut.cut_id }}" name="title_rank">
+              {% for t in cut.titles|sort(attribute='rank') %}
+              <option value="{{ t.rank }}" {% if req and req.title_rank == t.rank %}selected{% endif %}>
+                #{{ t.rank }} {{ t.text }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          {# 候選池（修修 2026-08-14）：桌機 brainstorm 完寫進 packages.json，
+             這裡只是清單 ＋「填入」把文字塞進下面的格子（純瀏覽器端，零 LLM）。#}
+          {% if cut.brainstorm and (cut.brainstorm.titles or cut.brainstorm.bigtexts) %}
+          <details class="pkg-pool">
+            <summary class="sho-mono-up">候選池：標題 {{ cut.brainstorm.titles | length }} 條 · 大字 {{ cut.brainstorm.bigtexts | length }} 組（點「填入」帶進格子）</summary>
+            {% if cut.brainstorm.bigtexts %}
+            <ul class="pkg-pool-list">
+              {% for b in cut.brainstorm.bigtexts %}
+              <li>
+                <button type="button" class="sho-btn sho-btn--ghost pkg-fill"
+                        data-cut="{{ cut.cut_id }}"
+                        data-l1="{{ b.lines[0] }}"
+                        data-l2="{{ b.lines[1] if b.lines|length > 1 else '' }}"
+                        data-hl="{{ b.highlight }}">填入</button>
+                <span class="pkg-pool-text">{{ b.lines | join('／') }}</span>
+                {% if b.highlight %}<span class="sho-mono">橘框：{{ b.highlight }}</span>{% endif %}
+                {% if b.angle %}<span class="sho-mono">— {{ b.angle }}</span>{% endif %}
+              </li>
+              {% endfor %}
+            </ul>
+            {% endif %}
+            {% if cut.brainstorm.titles %}
+            <ul class="pkg-pool-list pkg-pool-titles">
+              {% for bt in cut.brainstorm.titles %}
+              <li><span class="pkg-pool-text">{{ bt.text }}</span>
+                  {% if bt.angle %}<span class="sho-mono">— {{ bt.angle }}</span>{% endif %}
+                  {% if bt.note %}<span class="sho-mono">（{{ bt.note }}）</span>{% endif %}</li>
+              {% endfor %}
+            </ul>
+            <p class="sho-mono pkg-pool-hint">標題候選要用哪條 → 複製貼進上面〈改標題文字〉的格子存檔（標題文字是 packages.json 的資料，不是這裡的池子）。</p>
+            {% endif %}
+          </details>
+          {% endif %}
+
+          <div class="pkg-compose-text">
+            <div class="field">
+              <label class="field-label" for="b1-{{ cut.cut_id }}">封面大字 第一行</label>
+              <input class="sho-input" id="b1-{{ cut.cut_id }}" name="big_text_1" maxlength="40"
+                     value="{{ req.big_text[0] if req and req.big_text|length > 0 else '' }}">
+            </div>
+            <div class="field">
+              <label class="field-label" for="b2-{{ cut.cut_id }}">第二行</label>
+              <input class="sho-input" id="b2-{{ cut.cut_id }}" name="big_text_2" maxlength="40"
+                     value="{{ req.big_text[1] if req and req.big_text|length > 1 else '' }}">
+            </div>
+            <div class="field">
+              <label class="field-label" for="b3-{{ cut.cut_id }}">第三行（可空）</label>
+              <input class="sho-input" id="b3-{{ cut.cut_id }}" name="big_text_3" maxlength="40"
+                     value="{{ req.big_text[2] if req and req.big_text|length > 2 else '' }}">
+            </div>
+            <div class="field">
+              <label class="field-label" for="hl-{{ cut.cut_id }}">橘框詞（要在大字裡）</label>
+              <input class="sho-input" id="hl-{{ cut.cut_id }}" name="highlight_text" maxlength="40"
+                     value="{{ req.highlight_text if req else '' }}">
+            </div>
+            <div class="field">
+              {# composition 是整塊縮字不換行：fontSize = 100 * 這個值 / 實際行寬。
+                 所以這格就是字級旋鈕（修修 2026-08-15：「封面抬頭的大小可以讓我
+                 調整嗎」）。字級由預覽即時算給他看，不用他自己換算。#}
+              <label class="field-label" for="tw-{{ cut.cut_id }}">
+                大字寬度 <span class="pkg-fontsize" data-cut="{{ cut.cut_id }}"></span>
+              </label>
+              <input class="sho-input" id="tw-{{ cut.cut_id }}" name="title_max_width"
+                     type="number" step="10" min="300" max="1000"
+                     value="{{ req.title_max_width if req else 580 }}">
+            </div>
+            <div class="field">
+              <label class="field-label" for="gc-{{ cut.cut_id }}">來賓抬頭</label>
+              <input class="sho-input" id="gc-{{ cut.cut_id }}" name="guest_credit" maxlength="40"
+                     value="{{ req.guest_credit if req else '' }}">
+            </div>
+          </div>
+
+          {% for role, label in [('host', '修修'), ('guest', '來賓')] %}
+          <fieldset class="pkg-cards pkg-cutout-set">
+            <legend class="sho-mono-up">{{ label }}的臉</legend>
+            {% for c in cutouts[role] %}
+            {% set current = (req.host_cutout if role == 'host' else req.guest_cutout) if req else none %}
+            <label class="pkg-card pkg-card--cutout{% if current == c.vault_path %} pkg-card--primary{% endif %}">
+              <input type="radio" name="{{ role }}_cutout" value="{{ c.vault_path }}"
+                     {% if current == c.vault_path %}checked{% elif not current and loop.first %}checked{% endif %}>
+              <img src="/bridge/projects/gate/thumbnail/cutout/{{ episode_slug }}/{{ c.file }}"
+                   alt="{{ label }} {{ c.emotion }}" loading="lazy">
+              <div class="sho-mono pkg-card-meta">{{ c.emotion or c.file }}</div>
+            </label>
+            {% else %}
+            <p class="sho-mono pkg-brief-missing">（這集還沒有 {{ label }} 的 cutout — 桌機端跑 thumbnail-brainstorm 產生）</p>
+            {% endfor %}
+          </fieldset>
+          {% endfor %}
+
+          {# 排版預覽（修修 2026-08-15：「有辦法讓我直接在 web UI 去做調整嗎？讓我
+             可以縮放跟移動位置？」）。舞台是 1280×720 的等比縮小版，CSS 跟
+             composition 同一份寫法，所以拖出來的位置就是 render 出來的位置。
+             仍然零 LLM、零 render——這裡只改六個數字，出圖還是桌機端那隻手。#}
+          {% set g = req.geometry if req else none %}
+          <fieldset class="pkg-stage-set">
+            <legend class="sho-mono-up">排版：拖曳移動、滾輪縮放（或直接改數字）</legend>
+            <div class="pkg-stage" data-cut="{{ cut.cut_id }}">
+              <div class="pkg-stage-inner">
+                <img class="st-bg" src="/bridge/thumbnail/still-asset/bg" alt="">
+                <img class="st-person st-host" data-role="host" alt="修修" draggable="false"
+                     src="/bridge/projects/gate/thumbnail/cutout/{{ episode_slug }}/{{ (req.host_cutout if req else cutouts.host[0].vault_path if cutouts.host else '').split('/')[-1] }}">
+                <img class="st-person st-guest" data-role="guest" alt="來賓" draggable="false"
+                     src="/bridge/projects/gate/thumbnail/cutout/{{ episode_slug }}/{{ (req.guest_cutout if req else cutouts.guest[0].vault_path if cutouts.guest else '').split('/')[-1] }}">
+                <div class="st-text">
+                  <div class="st-title"></div>
+                  <div class="st-credit"></div>
+                </div>
+                <img class="st-logo" src="/bridge/thumbnail/still-asset/logo" alt="">
+              </div>
+            </div>
+            <div class="pkg-stage-ctl">
+              <label class="pkg-stage-mode">
+                <input type="checkbox" name="geometry_mode" value="manual"
+                       {% if req and req.geometry_manual %}checked{% endif %}>
+                用我調的位置（不勾＝每次重新自動解算）
+              </label>
+              <div class="pkg-stage-nums">
+                {% for role, label in [('host', '修修'), ('guest', '來賓')] %}
+                {% for axis, ax_label in [('height', '大小'), ('x', '左右'), ('y', '上下')] %}
+                <label class="field">
+                  <span class="field-label">{{ label }}{{ ax_label }}</span>
+                  {# step 必須是 any：Chrome 的 step 基準點是 **初始 value**，不是 0。
+                     step="0.1" 配上兩位小數的種子值（-21.69）會讓合法值變成
+                     -21.69/-21.59/…，拖曳出來的數字十次有九次落在格子外，按存配方
+                     就跳「請輸入有效值」。修修 2026-08-15 回報的「數字不符合」。 #}
+                  <input class="sho-input" type="number" step="any" data-geo="{{ role }}_{{ axis }}"
+                         name="{{ role }}_{{ axis }}_pct"
+                         value="{{ g[role ~ '_' ~ axis ~ '_pct'] if g else '' }}">
+                </label>
+                {% endfor %}
+                {% endfor %}
+              </div>
+              <p class="sho-mono pkg-stage-hint">
+                預覽用 text_center 50% 畫；實際出圖會再依左右遮蔽微調置中，字塊位置可能差 1–2%。
+              </p>
+            </div>
+          </fieldset>
+
+          <div class="pkg-actions">
+            <button class="sho-btn" type="submit">存配方（我再 render）</button>
+          </div>
+          {% if req %}
+          <p class="sho-mono pkg-title-orig">
+            目前配方：#{{ req.title_rank }} · 大字「{{ req.big_text | join('／') }}」·
+            {{ req.host_cutout.split('/')[-1] }} ＋ {{ req.guest_cutout.split('/')[-1] }}
+            {% if req.rendered_png %}· 已出圖 {{ req.rendered_png }}{% else %}· <strong>等我 render</strong>{% endif %}
+          </p>
+          {% endif %}
+        </form>
+      </details>
+
+      {# 封面變體勾選（修修 2026-08-14 裁決）：臉與封面大字都要能挑。變體 PNG 是
+         桌機端先 render 完的，這裡純勾選 — VPS 不 render、不叫 LLM（D11）。#}
+      {% set has_variants = view.packages | map(attribute='pkg') | map(attribute='variants') | select | list | length > 0 %}
+      {% if has_variants %}
+      <details class="pkg-variants" id="variants-{{ cut.cut_id }}">
+        <summary class="sho-mono-up">挑封面：臉與大字的變體</summary>
+        <form method="post" action="/bridge/packaging/{{ episode_slug }}/variant" class="pkg-variant-form">
+          <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
+          {% for item in view.packages %}
+          {% if item.pkg.variants %}
+          <fieldset class="pkg-cards pkg-variant-set">
+            <legend class="sho-mono-up">#{{ item.pkg.title_rank }} {{ item.title.text if item.title else '' }}</legend>
+            {% for v in item.pkg.variants %}
+            <label class="pkg-card pkg-card--variant{% if approval and approval.selected_variant == v.variant_id %} pkg-card--primary{% endif %}">
+              <input type="radio" name="selected_variant" value="{{ v.variant_id }}"
+                     {% if approval and approval.selected_variant == v.variant_id %}checked{% endif %}>
+              <img src="/bridge/projects/gate/thumbnail/packaging/{{ episode_slug }}/{{ v.thumbnail_png.split('/')[-1] }}"
+                   alt="變體 {{ v.variant_id }}" loading="lazy">
+              <div class="sho-mono pkg-card-meta">{{ v.variant_id }} · 大字「{{ v.big_text | join('／') }}」</div>
+            </label>
+            {% endfor %}
+          </fieldset>
+          {% endif %}
+          {% endfor %}
+          <div class="field">
+            <label class="field-label" for="bt-{{ cut.cut_id }}">
+              大字都不對？打你要的（格式：<code>第一行／第二行[橘框詞]</code>）——
+              <strong>不是即時的</strong>：VPS 不能 render，桌機端讀到後重出一張變體
+            </label>
+            <input class="sho-input" id="bt-{{ cut.cut_id }}" name="bigtext_request" maxlength="2000"
+                   placeholder="沒有資源／怎麼[活下來]"
+                   value="{{ approval.bigtext_request or '' if approval else '' }}">
+          </div>
+          <div class="pkg-actions">
+            <button class="sho-btn sho-btn--ghost" type="submit">存選擇</button>
+          </div>
+        </form>
+      </details>
+      {% endif %}
 
       <form method="post" action="/bridge/packaging/{{ episode_slug }}/approve" class="pkg-approve-form">
         <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
@@ -214,6 +427,24 @@
   }
   .pkg-card:hover { border-color: var(--sho-accent-line); }
   .pkg-card:has(input:checked) { border-color: var(--sho-accent); background: var(--sho-accent-soft); }
+  .pkg-variants { margin: 12px 0 4px; }
+  .pkg-variant-set { margin-bottom: 14px; }
+  .pkg-card--variant img { width: 100%; display: block; }
+  .pkg-compose { margin: 12px 0; }
+  .pkg-compose-text { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+  .pkg-fontsize { color: var(--sho-muted); font-variant-numeric: tabular-nums; }
+  .pkg-cutout-set { margin-bottom: 14px; }
+  .pkg-pool { margin-bottom: 14px; }
+  .pkg-pool-list { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 6px; }
+  .pkg-pool-list li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pkg-pool-text { font-weight: 600; }
+  .pkg-pool-titles li { padding-left: 4px; }
+  .pkg-pool-hint { opacity: 0.75; }
+  .pkg-card--cutout img { width: 100%; display: block; background: #1a1a1a; }
+  .pkg-card--cutout .pkg-card-meta { padding: 6px 8px 8px; }
+  @media (max-width: 720px) { .pkg-compose-text { grid-template-columns: 1fr; } }
+  .pkg-card--variant .pkg-card-meta { padding: 6px 8px 8px; }
+
   .pkg-card:has(input:focus-visible) { box-shadow: var(--sho-focus); }
   .pkg-card input[type="radio"] { position: absolute; opacity: 0; }
   .pkg-card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--sho-r-1); display: block; background: var(--sho-bg-3); }
@@ -254,6 +485,253 @@
   .pkg-decided { margin-top: var(--sho-s-3); }
   .pkg-coverframe-note { margin: var(--sho-s-3) 0; }
   .pkg-cut + .pkg-cut { margin-top: var(--sho-s-5); }
+
+  /* 排版舞台（修修 2026-08-15）：1280×720 的等比縮小版。CSS 刻意跟
+     video/compositions/thumbnail_full/index.html 同一份寫法 —— 兩邊要是漂了，
+     預覽就會騙人。改那邊記得改這裡。 */
+  .pkg-stage-set { border: 0; padding: 0; margin: var(--sho-s-4) 0 0; }
+  .pkg-stage-set > legend { padding: 0 0 var(--sho-s-2); color: var(--sho-muted); }
+  .pkg-stage {
+    position: relative; width: 100%; max-width: 640px; aspect-ratio: 16 / 9;
+    overflow: hidden; border-radius: var(--sho-radius-2, 8px);
+    border: 1px solid var(--sho-line); background: #1a1a1a;
+    touch-action: none; overscroll-behavior: contain;
+  }
+  .pkg-stage-inner {
+    position: absolute; top: 0; left: 0; width: 1280px; height: 720px;
+    transform: scale(var(--s, 0.5)); transform-origin: top left;
+    --glow: rgba(243,116,37,0.5); --glow-soft: rgba(243,116,37,0.3); --fade: 9%;
+  }
+  .st-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+  .st-person {
+    position: absolute; bottom: 0; z-index: 5; object-fit: contain; cursor: grab;
+    filter: drop-shadow(0 0 36px var(--glow)) drop-shadow(0 0 90px var(--glow-soft));
+  }
+  .st-person:active { cursor: grabbing; }
+  .st-host {
+    left: var(--host-x, -2%); bottom: var(--host-y, 0%); height: var(--host-h, 108%);
+    object-position: bottom left;
+    -webkit-mask-image: linear-gradient(to left, transparent 0, #000 var(--fade));
+    mask-image: linear-gradient(to left, transparent 0, #000 var(--fade));
+  }
+  .st-guest {
+    right: var(--guest-x, -2%); bottom: var(--guest-y, 0%); height: var(--guest-h, 108%);
+    object-position: bottom right;
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade));
+    mask-image: linear-gradient(to right, transparent 0, #000 var(--fade));
+  }
+  .st-text {
+    position: absolute; left: 50%; top: 44%; transform: translate(-50%, -50%);
+    z-index: 4; width: 580px; text-align: center;
+  }
+  .st-title {
+    color: #fff; font-family: "LINE Seed TW_TTF Bold", "LINE Seed TW_TTF",
+      "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    font-weight: 700; font-size: 100px; line-height: 1.24;
+    letter-spacing: 0.005em; white-space: nowrap;
+  }
+  .st-title .hl {
+    display: inline-block; background: #F37425; border-radius: 14px;
+    padding: 14px 14px 5px; line-height: 1.02;
+  }
+  .st-credit {
+    margin-top: 22px; color: rgba(255,255,255,0.94); font-size: 38px;
+    letter-spacing: 0.06em; white-space: nowrap;
+    font-family: "LINE Seed TW_TTF Regular", "LINE Seed TW_TTF",
+      "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  }
+  .st-logo { position: absolute; left: 52px; bottom: 52px; height: 92px; z-index: 6; }
+  .pkg-stage-ctl { margin-top: var(--sho-s-3); }
+  .pkg-stage-mode { display: flex; gap: var(--sho-s-2); align-items: center; }
+  .pkg-stage-nums {
+    display: grid; grid-template-columns: repeat(6, 1fr);
+    gap: var(--sho-s-2); margin-top: var(--sho-s-2);
+  }
+  .pkg-stage-hint { margin: var(--sho-s-2) 0 0; color: var(--sho-muted); }
+  @media (max-width: 720px) { .pkg-stage-nums { grid-template-columns: repeat(3, 1fr); } }
 </style>
+<script>
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest(".pkg-fill");
+    if (!btn) return;
+    const cut = btn.dataset.cut;
+    const set = (id, val) => { const el = document.getElementById(id + "-" + cut); if (el) el.value = val; };
+    set("b1", btn.dataset.l1);
+    set("b2", btn.dataset.l2);
+    set("hl", btn.dataset.hl);
+    document.getElementById("b1-" + cut)?.focus();
+    syncStages();
+  });
+
+  // ── 排版舞台（修修 2026-08-15：「讓我可以縮放跟移動位置」）─────────────────
+  // 六個數字是唯一的真相來源：拖曳/滾輪改數字，數字驅動 CSS 變數，送出時就是
+  // 那六個數字。數字欄位本身可鍵盤輸入 → 不靠滑鼠也能調（a11y）。
+  const STAGE_DEFAULT = { host_height: 108, host_x: -2, host_y: 0,
+                          guest_height: 108, guest_x: -2, guest_y: 0 };
+
+  function stageInputs(stage) {
+    const form = stage.closest("form");
+    const out = {};
+    for (const el of form.querySelectorAll("[data-geo]")) out[el.dataset.geo] = el;
+    return out;
+  }
+
+  function applyStage(stage) {
+    const inner = stage.querySelector(".pkg-stage-inner");
+    const inputs = stageInputs(stage);
+    for (const [key, el] of Object.entries(inputs)) {
+      const v = el.value === "" ? STAGE_DEFAULT[key] : parseFloat(el.value);
+      if (Number.isNaN(v)) continue;
+      const [role, axis] = key.split("_");
+      inner.style.setProperty(`--${role}-${axis === "height" ? "h" : axis}`, v + "%");
+    }
+  }
+
+  function stageScale(stage) {
+    stage.style.setProperty("--s", stage.clientWidth / 1280);
+  }
+
+  // 大字：把 highlight_text 那段包成橘框（跟 composition 同規則：只包第一次）
+  function syncStageText(stage) {
+    const form = stage.closest("form");
+    const cut = stage.dataset.cut;
+    const val = (p) => (form.querySelector(`#${p}-${CSS.escape(cut)}`) || {}).value || "";
+    const hl = val("hl").trim();
+    const box = stage.querySelector(".st-title");
+    box.textContent = "";
+    let used = false;
+    for (const line of [val("b1"), val("b2"), val("b3")].map((s) => s.trim()).filter(Boolean)) {
+      const div = document.createElement("div");
+      const i = hl ? line.indexOf(hl) : -1;
+      if (i >= 0 && !used) {
+        div.append(line.slice(0, i));
+        const span = document.createElement("span");
+        span.className = "hl";
+        span.textContent = hl;
+        div.append(span, line.slice(i + hl.length));
+        used = true;
+      } else {
+        div.textContent = line;
+      }
+      box.append(div);
+    }
+    // credit 是配方的一部分了，預覽直接顯示真值（空的話跟 composition 一樣收合）
+    const credit = stage.querySelector(".st-credit");
+    credit.textContent = val("gc").trim();
+    credit.style.display = credit.textContent ? "" : "none";
+    fitStageTitle(stage);
+  }
+
+  // 跟 composition 同一條規則：行寬超出 title_max_width 就整塊縮字（不換行）。
+  // 少了這段預覽會騙人——修修 2026-08-15 的 7 字大字在 gate 上是 100px，
+  // 實際出圖是 82px，他以為字被裁掉，其實是縮完之後兩端跑到臉底下。
+  function fitStageTitle(stage) {
+    const form = stage.closest("form");
+    const box = stage.querySelector(".st-title");
+    const maxW = parseInt(form.querySelector('[name="title_max_width"]')?.value, 10) || 580;
+    stage.querySelector(".st-text").style.width = maxW + "px";
+    box.style.fontSize = "100px";
+    const w = box.scrollWidth;
+    const size = w > maxW ? Math.floor((100 * maxW) / w) : 100;
+    if (size < 100) box.style.fontSize = size + "px";
+    const label = form.querySelector(".pkg-fontsize");
+    if (label) label.textContent = `（字級 ${size}px${size < 100 ? "，已自動縮小" : ""}）`;
+  }
+
+  // 換臉時預覽跟著換（radio 的 value 是 vault 相對路徑，取檔名即可）
+  function syncStageFaces(stage) {
+    const form = stage.closest("form");
+    for (const role of ["host", "guest"]) {
+      const picked = form.querySelector(`input[name="${role}_cutout"]:checked`);
+      if (!picked) continue;
+      const file = picked.value.split("/").pop();
+      const img = stage.querySelector(`.st-${role}`);
+      const next = img.src.replace(/[^/]+$/, encodeURIComponent(file));
+      if (img.src !== next) img.src = next;
+    }
+  }
+
+  function syncStages() {
+    for (const stage of document.querySelectorAll(".pkg-stage")) {
+      stageScale(stage);
+      syncStageText(stage);
+      syncStageFaces(stage);
+      applyStage(stage);
+    }
+  }
+
+  // 拖曳＝改 x/y。host 的 x 從左算、guest 從右算，所以 guest 的水平位移要反號
+  // （跟 composition 的 left/right 對稱寫法一致）。
+  let drag = null;
+  document.addEventListener("pointerdown", (e) => {
+    const person = e.target.closest(".st-person");
+    if (!person) return;
+    const stage = person.closest(".pkg-stage");
+    const role = person.dataset.role;
+    const inputs = stageInputs(stage);
+    const num = (k) => (inputs[k].value === "" ? STAGE_DEFAULT[k] : parseFloat(inputs[k].value));
+    drag = { stage, role, inputs, x0: e.clientX, y0: e.clientY,
+             sx: num(role + "_x"), sy: num(role + "_y"),
+             s: stage.clientWidth / 1280 };
+    person.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  document.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const dx = (e.clientX - drag.x0) / drag.s / 1280 * 100;
+    const dy = (e.clientY - drag.y0) / drag.s / 720 * 100;
+    const signX = drag.role === "guest" ? -1 : 1;   // guest 貼右緣，右移＝數字變小
+    drag.inputs[drag.role + "_x"].value = (drag.sx + signX * dx).toFixed(2);
+    drag.inputs[drag.role + "_y"].value = (drag.sy - dy).toFixed(2);  // y 從底部算
+    applyStage(drag.stage);
+    markManual(drag.stage);
+  });
+  document.addEventListener("pointerup", () => { drag = null; });
+
+  // 滾輪＝縮放（游標停在誰身上就縮誰）
+  document.addEventListener("wheel", (e) => {
+    const person = e.target.closest(".st-person");
+    if (!person) return;
+    e.preventDefault();
+    const stage = person.closest(".pkg-stage");
+    const inputs = stageInputs(stage);
+    const key = person.dataset.role + "_height";
+    const cur = inputs[key].value === "" ? STAGE_DEFAULT[key] : parseFloat(inputs[key].value);
+    inputs[key].value = Math.min(400, Math.max(20, cur + (e.deltaY < 0 ? 1 : -1))).toFixed(2);
+    applyStage(stage);
+    markManual(stage);
+  }, { passive: false });
+
+  // 手動動過就自動勾「用我調的位置」——不然辛苦拖完按存檔又被 solver 蓋掉
+  function markManual(stage) {
+    const box = stage.closest("form").querySelector('input[name="geometry_mode"]');
+    if (box && !box.checked) box.checked = true;
+  }
+
+  document.addEventListener("input", (e) => {
+    const form = e.target.closest("form");
+    if (!form) return;
+    const stage = form.querySelector(".pkg-stage");
+    if (!stage) return;
+    if (e.target.matches("[data-geo]")) { applyStage(stage); markManual(stage); }
+    if (e.target.matches('input[name^="big_text"], input[name="highlight_text"], input[name="guest_credit"]')) {
+      syncStageText(stage);
+    }
+    if (e.target.matches('input[name="title_max_width"]')) fitStageTitle(stage);
+  });
+  document.addEventListener("change", (e) => {
+    if (!e.target.matches('input[name$="_cutout"]')) return;
+    const stage = e.target.closest("form")?.querySelector(".pkg-stage");
+    if (stage) syncStageFaces(stage);
+  });
+  // <details> 收合時 clientWidth 是 0，展開才量得到縮放比
+  document.addEventListener("toggle", (e) => {
+    if (e.target.tagName === "DETAILS" && e.target.open) syncStages();
+  }, true);
+  window.addEventListener("resize", () => {
+    for (const stage of document.querySelectorAll(".pkg-stage")) stageScale(stage);
+  });
+  syncStages();
+</script>
 </body>
 </html>

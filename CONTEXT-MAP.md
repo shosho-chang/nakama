@@ -13,7 +13,7 @@ presentation layer（Web UI）。
 - **Nami** — Secretary：行事曆、Email triage、task 排程、daily briefing
 - **Zoro** — Scout（**向外搜尋**）：keyword research、SERP / Trends / Reddit / YouTube 偵察 — 從外部世界拉情報回來
 - **Sanji** — Community Manager：Fluent Community 社群營運、會員問答
-- **Brook** — Composer（**對內加工**）：將素材 compose 成各平台格式（Blog / IG / YouTube / Newsletter）+ 既有部落格 SEO audit / enrich — 處理「已知/已存在」的內容
+- **Brook** — Composer（**對內加工**）：將素材 compose 成各平台格式（Blog / IG / YouTube / Newsletter）+ 既有部落格 SEO audit / enrich — 處理「已知/已存在」的內容；repurpose 詞彙見 [agents/brook/CONTEXT.md](agents/brook/CONTEXT.md)
 - **Franky** — System Maintenance：套件更新、CVE 掃描、health check、news digest
 - **Usopp** — Publisher：發布到 WordPress / YouTube / Fluent CRM；core community publisher 待開
 

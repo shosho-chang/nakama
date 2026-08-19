@@ -28,9 +28,13 @@ import sys
 from pathlib import Path
 
 from shared.highlight_shortlist import (
-    HighlightDataError,
     SCORERS,
+    HighlightDataError,
+)
+from shared.highlight_shortlist import (
     collect as _collect,
+)
+from shared.highlight_shortlist import (
     write_winners as _write_winners,
 )
 
@@ -84,7 +88,9 @@ def render_table(rows: list[dict], fmt: str) -> str:
 def write_winners(hl_dir: Path, rows: list[dict], picks: list[str]) -> Path:
     """Compatibility wrapper preserving the CLI's SystemExit error contract."""
     try:
-        picked_veto = [p for p in picks if any(r["id"] == p and r["brand_severity"] == "veto" for r in rows)]
+        picked_veto = [
+            p for p in picks if any(r["id"] == p and r["brand_severity"] == "veto" for r in rows)
+        ]
         if picked_veto:
             print(f"⚠️ 注意：{picked_veto} 是 brand-lens 否決段，仍照你的指定寫入", file=sys.stderr)
         return _write_winners(hl_dir, rows, picks)

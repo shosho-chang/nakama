@@ -11,12 +11,17 @@ from fastapi.testclient import TestClient
 
 
 def _candidate(candidate_id: str, *, veto: bool = False) -> dict:
+    index = int(candidate_id[1:])
     return {
         "id": candidate_id,
         "format": "long",
         "variant_group": f"group-{candidate_id}",
         "title": f"候選 {candidate_id}",
         "hook": f"{candidate_id} 的 hook",
+        "rationale": f"reason {candidate_id}",
+        "transcript": f"transcript evidence {candidate_id}",
+        "t_start": index * 100,
+        "t_end": index * 100 + 120,
         "duration_sec": 120.0,
         "veto": veto,
     }
@@ -31,6 +36,7 @@ def episode_root(tmp_path):
     (highlights / "candidates.json").write_text(
         json.dumps({"candidates": candidates}, ensure_ascii=False), encoding="utf-8"
     )
+    (tmp_path / "ep-001" / "Default_program.mp4").write_bytes(b"test-video")
     for scorer, base in (("azhe", 90), ("kevin", 80), ("shufen", 70)):
         (highlights / f"review_{scorer}.json").write_text(
             json.dumps(
@@ -40,7 +46,10 @@ def episode_root(tmp_path):
             encoding="utf-8",
         )
     (highlights / "lens_brand.json").write_text(
-        json.dumps({"findings": [{"id": "L3", "severity": "veto", "issue": "品牌 veto"}]}, ensure_ascii=False),
+        json.dumps(
+            {"findings": [{"id": "L3", "severity": "veto", "issue": "品牌 veto"}]},
+            ensure_ascii=False,
+        ),
         encoding="utf-8",
     )
     return tmp_path
@@ -92,6 +101,17 @@ def test_shows_at_most_five_ranked_candidates(client):
     assert "品牌 veto" in response.text
 
 
+def test_invalid_candidate_timecodes_fail_loud(client, episode_root):
+    candidates_path = episode_root / "ep-001" / "highlights" / "candidates.json"
+    payload = json.loads(candidates_path.read_text(encoding="utf-8"))
+    payload["candidates"][0]["t_end"] = "not-a-number"
+    candidates_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    response = client.get("/bridge/highlights/ep-001", cookies=_auth_cookie())
+    assert response.status_code == 422
+    assert "invalid timecodes" in response.text
+
+
 def test_decision_requires_exactly_three_distinct_candidates(client):
     response = client.post(
         "/bridge/highlights/ep-001/decide",
@@ -100,6 +120,32 @@ def test_decision_requires_exactly_three_distinct_candidates(client):
     )
     assert response.status_code == 400
     assert "exactly three" in response.text
+
+
+def test_review_page_exposes_preview_and_evidence(client):
+    response = client.get("/bridge/highlights/ep-001", cookies=_auth_cookie())
+    assert response.status_code == 200
+    assert 'id="highlight-player"' in response.text
+    assert "transcript evidence L1" in response.text
+    assert 'data-start="100.0"' in response.text
+
+
+def test_authenticated_program_media_endpoint(client):
+    assert client.get("/bridge/highlights/ep-001/media").status_code == 401
+    response = client.get("/bridge/highlights/ep-001/media", cookies=_auth_cookie())
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "video/mp4"
+
+
+def test_program_media_supports_range_requests_for_seeking(client):
+    response = client.get(
+        "/bridge/highlights/ep-001/media",
+        headers={"Range": "bytes=2-5"},
+        cookies=_auth_cookie(),
+    )
+    assert response.status_code == 206
+    assert response.headers["content-range"] == "bytes 2-5/10"
+    assert response.content == b"st-v"
 
 
 def test_veto_requires_explicit_override(client):
@@ -121,7 +167,10 @@ def test_writes_compatible_winners_and_append_only_feedback(client, episode_root
         "feedback_L3": "理解風險後仍選",
     }
     response = client.post(
-        "/bridge/highlights/ep-001/decide", data=data, cookies=_auth_cookie(), follow_redirects=False
+        "/bridge/highlights/ep-001/decide",
+        data=data,
+        cookies=_auth_cookie(),
+        follow_redirects=False,
     )
     assert response.status_code == 303
     assert response.headers["location"] == "/bridge/highlights/ep-001?saved=1"
@@ -134,11 +183,44 @@ def test_writes_compatible_winners_and_append_only_feedback(client, episode_root
     assert audit["decisions"][0]["feedback"]["L1"] == "成片開頭最有力"
     assert audit["decisions"][0]["override_veto_ids"] == ["L3"]
     response = client.post(
-        "/bridge/highlights/ep-001/decide", data=data, cookies=_auth_cookie(), follow_redirects=False
+        "/bridge/highlights/ep-001/decide",
+        data=data,
+        cookies=_auth_cookie(),
+        follow_redirects=False,
     )
     assert response.status_code == 303
     audit = json.loads((highlights / "review_feedback.json").read_text(encoding="utf-8"))
     assert len(audit["decisions"]) == 2
+
+
+def test_explicit_selection_order_becomes_winner_rank(client, episode_root):
+    response = client.post(
+        "/bridge/highlights/ep-001/decide",
+        data={
+            "candidate_id": ["L1", "L2", "L4"],
+            "selection_order": "L4,L1,L2",
+        },
+        cookies=_auth_cookie(),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    winners = json.loads(
+        (episode_root / "ep-001" / "highlights" / "winners.json").read_text(encoding="utf-8")
+    )
+    assert [winner["id"] for winner in winners["winners"]] == ["L4", "L1", "L2"]
+
+
+def test_selection_order_must_match_checked_candidates(client):
+    response = client.post(
+        "/bridge/highlights/ep-001/decide",
+        data={
+            "candidate_id": ["L1", "L2", "L4"],
+            "selection_order": "L4,L1,L5",
+        },
+        cookies=_auth_cookie(),
+    )
+    assert response.status_code == 400
+    assert "selection order" in response.text
 
 
 def test_path_traversal_rejected(client):
@@ -160,5 +242,7 @@ def test_accepts_a_chinese_episode_folder_and_keeps_rejection_feedback(client, e
         follow_redirects=False,
     )
     assert response.status_code == 303
-    audit = json.loads((episode / "highlights" / "review_feedback.json").read_text(encoding="utf-8"))
+    audit = json.loads(
+        (episode / "highlights" / "review_feedback.json").read_text(encoding="utf-8")
+    )
     assert audit["decisions"][0]["feedback"]["L5"] == "論點與 L2 重疊，這次不選"

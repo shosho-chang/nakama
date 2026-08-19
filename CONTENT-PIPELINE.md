@@ -59,7 +59,7 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 | 影片 | **Video Production Line**（Brook own — ADR-032 技術設計 + [ADR-050](docs/decisions/ADR-050-video-production-line-brook-ownership.md) 歸屬；`agents/brook/script_video/` + `video/` Hyperframes compositions；機器已自 `agents/foundry/` 遷入完成，ADR-050 PR-3） | Line 2 / Line 3 / Line 1 訪問新書作者 |
 | 部落格 | Brook compose + Blog renderer | Line 1/2/3 |
 | FB post | Brook FB renderer（4 tonal variants） | Line 1/2/3 |
-| IG carousel | Brook IG renderer（5/7/5/10 卡 episode_type routing） | Line 1/2/3 |
+| Social carousel | Podcast 採獨立 `/ig-cards` episode-first flow（ADR-064；Copy Spec → agent panel → 1080×1080 cross-platform square render → Web App review）；舊 5/7/5/10 `IGRenderer` 只保留 compatibility，不是 canonical Podcast flow | Line 1 Podcast；Line 2/3 待 Podcast tracer bullet 跑順後各自 fork template/schema |
 
 **Video Production Line 不是獨立 line**，是 Stage 5 影片 channel 的製作管線。三條 line 都可走它出影片（CONTEXT-MAP.md「Line N vs script-driven video」段已凍結為 sibling）。單一 workflow（ADR-050 D3）：錄影 →（選配）cleanup mistake removal（單擊掌 marker + WhisperX 字級對稿回溯；有完整逐字稿時直出 corrected transcript.srt，可省 `/transcribe`）→ storyboard plan（LLM + 兩層 HITL）→ Hyperframes render → FCPXML 進 DaVinci。無逐字稿時 cleanup 走 legacy double-clap 音訊模式、SRT 走 `/transcribe`。
 
@@ -73,7 +73,7 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 
 | Line | 1 收集 | 2 閱讀 | 3 整合 | 4 原子文章 | 6 發布 | 7 監控 |
 |---|---|---|---|---|---|---|
-| **Line 1a Podcast 一般訪談** | n/a (有錄音) | n/a | n/a | ✅ transcribe → 字幕檔（atomic） | 🚧 Slice 10 reviewer + ❌ IG/YT/FB 自動發 | ❌ YT/IG insights |
+| **Line 1a Podcast 一般訪談** | n/a (有錄音) | n/a | n/a | ✅ transcribe → 字幕檔（atomic） | 🚧 Carousel approved-only Publish page + agent-neutral job 已實作；live IG/FB/YT adapter 尚未執行 | ❌ YT/IG insights |
 | **Line 1b Podcast 訪問新書作者** | n/a (有錄音 + 有書) | ⬜ Line 2 Reading Source + Reading Overlay | ⬜ Line 2 Source Promotion / annotation-only sync | ✅ transcribe → 字幕檔（atomic） | 同上 | 同上 |
 | **Line 2 讀書心得** | n/a (有書 / 文章 / web document) | ⬜ Reading Source + Reading Overlay（中/英/雙語閱讀） | ⬜ Source Promotion 或 annotation-only sync | ⬜ Reading Context Package → **修修 Project 頁面手寫** | ✅ WP only / ❌ 其他 channel | ❌ |
 | **Line 3 文獻科普** | ⬜ Zoro topic discovery | n/a | ⬜ 主題 retrieval → outline | ⬜ synthesize outline → 修修自寫（可用 Claude.ai 對話協助），LLM 不代寫正文（ADR-027） | ✅ WP only / ❌ 其他 channel | ✅ SEO 中控台 |
@@ -84,14 +84,14 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 
 每條 line 從 Stage 4 原子文章 fan out 成 4 channel，readiness 不一：
 
-| Line | 影片（script-driven video） | 部落格（Brook compose） | FB post（Brook FB renderer） | IG carousel（Brook IG renderer） |
+| Line | 影片（script-driven video） | 部落格（Brook compose） | FB post（Brook FB renderer） | IG carousel |
 |---|---|---|---|---|
-| **Line 1a 一般訪談** | n/a 或 theme video（待規劃） | ✅ ship | ✅ ship | ✅ ship |
-| **Line 1b 訪問新書作者** | 🚧 Slice 2-5 | ✅ ship | ✅ ship | ✅ ship |
-| **Line 2 讀書心得** | 🚧 Slice 2-5 | ✅ Brook compose | ✅ FB renderer | ✅ IG renderer |
-| **Line 3 文獻科普** | 🚧 Slice 2-5（optional） | ✅ Brook compose | ✅ FB renderer | ✅ IG renderer |
+| **Line 1a 一般訪談** | n/a 或 theme video（待規劃） | ✅ ship | ✅ ship | 🚧 Podcast Copy/Panel/1080×1080 Render/Review Web App 已實作並以 EP120 dogfood；Review correction job 可由目前的 Codex 或 Claude Code agent claim，不綁定外部模型 API |
+| **Line 1b 訪問新書作者** | 🚧 Slice 2-5 | ✅ ship | ✅ ship | ⬜ 先驗證 Podcast flow；書本介紹型 Carousel 不共用 Podcast schema |
+| **Line 2 讀書心得** | 🚧 Slice 2-5 | ✅ Brook compose | ✅ FB renderer | ⬜ Podcast flow 穩定後 fork 書本模板／語言 |
+| **Line 3 文獻科普** | 🚧 Slice 2-5（optional） | ✅ Brook compose | ✅ FB renderer | ⬜ Podcast flow 穩定後 fork 身心健康資訊模板／語言 |
 
-**讀法**：Stage 5 製作工具基本到位（影片在 Slice 2-5 收尾），真正缺的不在 Stage 5 而在 Stage 4（原子文章不存在 → 無法 fan out）跟 Stage 6（4 channel render 完但只 WP 能自動發）。
+**讀法**：舊 `IGRenderer` 只有文字 JSON，不代表 Podcast Carousel。新的 channel-native Copy Spec、三方 agent panel、1080×1080 PNG renderer、逐卡文字／版面編輯與 page-based Review Gate 已由 EP120 r024 完成真實 dogfood，Stage 5 tracer bullet 已 ship。Stage 6 已有 approved-only Publish page、revision-bound agent-neutral job、capability/lease、逐平台 checkpoint 與 result contract；目前仍是本機安全 handoff，不會自行喚醒 agent，也尚未接 live network publish adapter。
 
 ### Line 1 兩子模式說明
 
@@ -129,13 +129,13 @@ Line 2 不再只視為「書」；ebook、inbox document、web document 都是 R
 | **Nami** (Secretary) | ✅ pubmed_lookup tool (Robin pass-through) + Gmail / Calendar / Vault notes | n/a | n/a | n/a | n/a | n/a | ⬜ daily briefing 接 SEO/cost data |
 | **Zoro** (Scout) | ✅ keyword research + autocomplete + trends + reddit + youtube + twitter | n/a | n/a | n/a | n/a | n/a | ⬜ topic discovery 接 SEO 反向 feed |
 | **Sanji** (Community) | ⬜ community FAQ discovery (從會員問題抽主題) | n/a | ⬜ member memory ingest | n/a | n/a | ❌ Fluent Community publisher | ⬜ engagement insight |
-| **Brook** (Scaffold + Repurpose + SEO Audit + Video Production, ADR-027/ADR-050) | n/a | n/a | ✅ synthesize（outline + evidence pool, ADR-021）；RCP 由 Robin own | scaffold only — outline / evidence 給修修自寫，**LLM 不代寫正文**（ADR-027 reminders not enforcement） | ✅ FB/IG/Blog renderer + repurpose engine + **Video Production Line**（SRT-first storyboard → Hyperframes → FCPXML，原 foundry，ADR-050）；🚧 Line 1b 訪談+research_pack 2b mode（ADR-027） | n/a | ✅ SEO audit + enrich (對既有文章) |
+| **Brook** (Scaffold + Repurpose + SEO Audit + Video Production, ADR-027/ADR-050) | n/a | n/a | ✅ synthesize（outline + evidence pool, ADR-021）；RCP 由 Robin own | scaffold only — outline / evidence 給修修自寫，**LLM 不代寫正文**（ADR-027 reminders not enforcement） | ✅ FB/Blog renderer + legacy IG text renderer + repurpose engine + **Video Production Line** + canonical Podcast Carousel Copy/Panel/PNG/Review；EP120 r024 已完成真實 dogfood（ADR-064）；Line 1b research_pack 2b mode 待做（ADR-027） | n/a | ✅ SEO audit + enrich (對既有文章) |
 | **Franky** (Maintenance) | ✅ AI news digest cron | n/a | n/a | n/a | n/a | n/a | ✅ probe panel + R2 backup verify + GSC daily + cost tracking |
 | **Usopp** (Publisher) | n/a | n/a | n/a | n/a | n/a | ✅ WP publisher + approval queue HITL；❌ YT/IG/FB/Newsletter | n/a |
 
 **關鍵讀法**：
 - **Brook 跨 Stage 4/5/7 三層** — over-loaded，子模組已 13+，下一步要按 sub-context 切目錄（見觀察 #2）
-- **Stage 6 只有 Usopp，Usopp 只有 WordPress** — 多 channel publishing 是最大缺口（見觀察 #4）
+- **Stage 6 已有 Podcast Carousel agent-neutral handoff contract**，但 live IG／FB／YouTube adapter 與 agent dispatcher／wakeup 仍是最大缺口（見觀察 #4）；Usopp 仍只負責 WordPress。
 - **Sanji 全 row 空白** — 規劃 community engagement 必須補的 agent
 - **Stage 2/3 owner 模糊** — Reader UI 在 Thousand Sunny、ingest 在 Robin、annotation 沒人讀（見觀察 #3）
 - **Stage 4 對 Line 2 沒 agent cell** — 修修手寫心得是刻意設計，agent 不介入；只在 Stage 3（整合素材到 KB）+ Stage 5（拿手寫稿做 channel）服務
@@ -167,7 +167,7 @@ ADR-001 把 Brook 定為 Composer，但實際職責橫跨 5 個子領域、`agen
 |---|---|---|
 | 文章 compose | `compose.py` | 4 |
 | SEO audit + enrich | `audit_runner.py` + `seo_block.py` + `seo_narrow.py` | 7 |
-| Repurpose engine | `repurpose_engine.py` + 3 renderer | 5 |
+| Repurpose engine | `repurpose_engine.py` + 3 legacy renderer；Podcast Carousel 另走 episode-first flow（ADR-064） | 5 |
 | Script-driven video | `script_video/` 7 module | 4+5 |
 | Style profile / compliance | `style_profile_loader.py` | 4 |
 
@@ -195,16 +195,16 @@ Reader UI 已支援 `==highlight==` + `> [!annotation]` markup，但這些標註
 | WordPress blog | ✅ Usopp full HITL | Line 1/2/3 |
 | YouTube（影片） | ❌ 0 | **Script-Driven Video 主出口** |
 | YouTube（podcast theme video） | ❌ 0 | Line 1 補位 |
-| IG carousel | ❌ 0（render 文字 / 缺貼圖 pipeline） | Line 1 主出口之一 |
+| IG carousel | 🚧 Stage 6 Publish page + job contract 已實作；Meta transport / agent-browser live publish 尚未執行 | Line 1 主出口之一 |
 | FB post | ❌ 0 | Line 1 主出口之一 |
 | Newsletter（Fluent CRM） | ❌ 0 | ADR-001 預留 |
 | Community（Fluent Community） | ❌ 0（Sanji 空殼） | 讀者互動主場 |
 
-**證據**：最緊急的 Line 1 跟 Script-Driven Video，**最終 channel 都不是 WordPress**。Line 1 IG carousel 已 render 文字、Script-Driven Video 已 emit FCPXML，但「真上 IG/YT」的 last mile 全要修修手動。
+**證據**：最緊急的 Line 1 跟 Script-Driven Video，**最終 channel 都不是 WordPress**。Line 1 舊 IG flow 只產文字 JSON，尚未形成可 review 的獨立圖片 asset；Script-Driven Video 已 emit FCPXML，但「真上 IG/YT」的 last mile 仍要修修手動。
 
 **不做的代價**：Line 1 / Script-Driven Video 的「ship」是「半成品交給修修手貼」。摩擦穩定累積。
 
-**建議**：發布層**不要再擴 Usopp** — Usopp 寫 WP 那套已複雜。改 ADR-001 line 38 預留 + 新開 `agents/usopp/` sub-publisher（`youtube_publisher.py` / `ig_publisher.py`），共用 approval_queue HITL 但 platform-specific adapter。**先做 IG（最痛）+ YT description/title metadata**。
+**目前方向**：Carousel 不擴充 Usopp WordPress `approval_queue`，也不重用 video `release_store`。ADR-065 採 episode-local Stage 6 Publish Job，由具備平台 capability 的 Codex 或 Claude Code executor 認領；平台 adapter 仍需獨立驗證。YouTube Community 只能走 agent-browser/manual，不宣稱 Data API insert。
 
 ---
 
@@ -212,7 +212,7 @@ Reader UI 已支援 `==highlight==` + `> [!annotation]` markup，但這些標註
 
 如果只能挑 3 件最**結構性**的事（不是 feature，是 unblock 架構迴路）：
 
-1. **IG 半自動發布管線**（Stage 6）— Line 1/2/3 IG carousel render 完都卡在這。不用整片 IG API upload，先解 carousel 圖檔 batch 出檔 + Buffer/Later 排程匯入。最低工自動化、最高摩擦消除
+1. **Podcast Carousel Stage 6 dispatcher + live adapter tracer bullet** — Stage 5 的 EP120 r024 dogfood 已完成；下一步讓目前執行 E2E 的 Codex／Claude Code 能主動認領 Publish Job，先以可回復測試貼文驗證 IG／FB browser 或 Meta transport，再驗證 YouTube Community browser/manual。沒有相容 executor 時維持 queued，Line 2/3 不先假設共用 Podcast 模板
 2. **Annotation → KB 整合 owner**（Stage 2→3）— Line 2 critical path。先解 annotation 寫到哪、誰讀、何時用；具體實作等修修這週手跑流程後決定（修修明確要求 Stage 4 手寫過程不介入，但 Stage 3 整合素材可動）
 3. **SEO 中控台 → Zoro 反向 feed**（Stage 7→1）— 閉環 Discovery 迴路。一條 SQL view + Zoro report renderer 加 section，一週可做完
 

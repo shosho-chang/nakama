@@ -42,6 +42,7 @@ from shared import agent_memory, episodic_memory
 from shared.agent_memory import VALID_TYPES, UserMemory
 from shared.episodic_memory import EpisodicMemory
 from shared.llm import ask
+from shared.llm_context import set_current_agent
 from shared.log import get_logger
 from shared.state import _get_conn
 
@@ -337,6 +338,12 @@ def reflect(
     but do not mutate. ``apply=True`` commits. Safe to run repeatedly; converges
     because each pass shrinks duplicates/contradictions and stamps reviewed rows.
     """
+    # Reflection has no natural agent identity of its own (it runs across every
+    # agent's memories in one `--all` pass) — tag it as a distinct pseudo-agent
+    # so cost tracking + ADR-026 auth/transport routing (AUTH_MEMORY_REFLECTION /
+    # LLM_TRANSPORT_MEMORY_REFLECTION) has something to key on, instead of
+    # silently falling through DEFAULT_AUTH/DEFAULT_MODELS with no context.
+    set_current_agent("memory_reflection")
     memories = agent_memory.list_active(agent, user_id)
     episodic = episodic_memory.list_recent(agent, user_id, days=30, include_promoted=False)
     result = ReflectionResult(

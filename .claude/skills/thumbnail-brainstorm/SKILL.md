@@ -11,9 +11,10 @@ description: >
   本 skill 只呼叫、不重新發明。
 ---
 
-# thumbnail-brainstorm — 封面 brainstorm 手冊（v2.5）
+# thumbnail-brainstorm — 封面 brainstorm 手冊（v2.6）
 
-**版本：v2.5（2026-08-05，安吉集三輪事故定版——scale 每角色鎖定、
+**版本：v2.6（2026-08-14，鄭國威集——內側 fade 吃臉事故 + gate 變體板；
+v2.5 = 安吉集三輪事故定版——scale 每角色鎖定、
 地標只准 face_measure 程式量、渲染成品 QA 是交付 gate；
 v2.4 = 表情同調規則 + 表情版 scale 繼承；
 v2.3 = TF 式雙臉版式 SOP + layout_solve 確定性求解；
@@ -192,6 +193,52 @@ spec 的 variables 見各 composition 檔頭註解。**定案參數表在
 ⚠️ **順序有依賴**：先定眼線（改 height）→ 再校遮蔽平衡（改 text_center）。
 放大來賓後遮蔽平衡必然漂掉，一定要重跑（謝伯讓集實測 +574 → +1985）。
 
+## Step 4.6 — 變體板（修修 2026-08-14 裁決：臉與大字要能在 gate 上挑）
+
+一張定稿不夠——**臉的表情與封面大字都是品味量**，端一張上去等於替修修決定。
+每條標題 render **一組變體**（建議 3 個表情對 × 2 個大字 = 6 張），連同定稿一起
+`attach_packages.py` 回填（spec 加 `variants` 欄位），gate 上就是勾選題。
+
+```
+變體命名：var-r{rank}-{pair}-{bigtext}.png（ASCII，variant_id 同名去掉 var-/.png）
+幾何：scale 已鎖定，表情對的 y/x 沿用 solver 解；只有大字換行寬度變 → 逐張跑 occlusion_check
+```
+
+- **gate 端零 render、零 LLM**（ADR-054 D11 不變）：PNG 桌機先做完，Bridge 只勾。
+- 大字都不滿意 → 修修在 gate 打 `第一行／第二行[橘框詞]` 進 `bigtext_request`，
+  **桌機端下次跑本 skill 時讀它重出一張新變體**（不是即時，UI 已標示）。
+- 變體不必每張都過 Step 4.5 全套；**但被勾選的那張進交付前一定要跑**
+  （`face_measure render` + `occlusion_check`）。
+
+## Step 4.7 — 修修在 gate 組配方 → **render 一次**（修修 2026-08-14 定案流程）
+
+他要的流程不是「先窮舉變體再挑」，是「**先把標題、大字、臉選定，再 render 一次**」。
+gate 的〈組封面〉區寫 `approval.json` 的 `render_request`（title_rank／host_cutout／
+guest_cutout／big_text／highlight_text），桌機端跑：
+
+```bash
+python .claude/skills/thumbnail-brainstorm/scripts/render_request.py   --episode-slug <slug> --packaging-dir "<ep>/packaging" --cut-id <cut>
+```
+
+script 內建：scale 鎖定（基準 cutout 解一次）→ 只解 y（眼線對齊來賓）與 x →
+render → `occlusion_check` 兩輪內插收斂 → `face_measure render` gate → 回填
+`rendered_png` 與該 rank 的 package 縮圖。**強表情素材要先備好**（見下節），
+否則他在 gate 上只能從弱表情裡挑。
+
+### 強表情素材怎麼找（不要只抽你想得到的那幾段）
+
+鄭國威集教訓：只抽 9 個窗（106 分鐘裡的 9 分鐘）→ vision agent 回報「全部候選
+沒有一格眼睛睜大」，修修回「表情都差強人意」。正確做法是**用資料找段落**：
+
+1. 兩人各自的 mic 軌能量 → 逐 20 秒窗取 95th percentile → 每人 top 12 高能量窗
+   （笑聲與激動段自然落在這裡；guest 另外要求該窗自己詞占比 ≥0.6 才過機位驗證）
+2. 這些窗抽格（每窗 ~10 格）
+3. **mediapipe blendshapes 量表情強度**（`mouthSmile` / `jawOpen` / `eyeWide` /
+   `browInnerUp`，`eyeBlink>0.5` 淘汰）→ 每個類別取 top N 給人眼複驗
+4. 定稿進 `cutouts_manifest.json` — gate 的臉挑選器只列 validated 清單
+
+實測差異：舊法 host 最強 smile 0.37；新法 smile 0.88–0.93 + jawOpen 0.5+（真的大笑）。
+
 ## Step 5 — 回填 + 驗證 + 雙落點
 
 寫 `specs.json`（3 筆：title_rank／thumbnail 本地路徑／thumb_archetype_id／
@@ -206,6 +253,22 @@ python .claude/skills/thumbnail-brainstorm/scripts/attach_packages.py \
 script 會：PNG 複製進 vault `Attachments/packaging/<slug>/`、cutout 路徑轉
 vault-relative、整檔過 `PackagesFileV1` 驗證（失敗即不落任何一份）、
 working set 與 vault 雙寫（ADR-054 D10）。驗證錯誤讀訊息修 specs，不改 schema。
+
+### 目錄分層（修修 2026-08-15：「package 那個資料夾裡面太亂了」）
+
+```
+<episode>/
+├── final/                    ← 上架就看這裡：cover-<cut_id>.png ＋ title-<cut_id>.txt
+│                               每次 render 覆蓋同名檔，永遠只有現在這一版
+└── packaging/
+    ├── packages.json geometry.json keywords.json title_trace.json
+    ├── manifest.json specs.json  pkg-<cut_id>-<rank>.png（packages.json 引用的）
+    ├── briefs/ cutouts/ review_sheets/
+    └── _work/                ← spec_*、_textonly-*、抽格 frames、比較板變體
+```
+
+`render_request.py` 的中間產物一律寫進 `_work/`；`_transparent1px.png` 缺了會自動
+補（以前靠人手放，新集數會 render 失敗）。根目錄只留定稿與資料檔。
 
 ## Run log 格式（append 於 `<ep>/run_log.md`）
 
@@ -316,6 +379,22 @@ E2E 每跑完一集（gate approve 過），可固化的教訓 **append 進本�
 版本號**（經 PR）。
 
 ### 教訓紀錄
+
+**v2.6（2026-08-14，鄭國威集——內側 fade 把主持人的臉吃掉）**
+
+27. **`inner_edge_fade_pct` 吃的是「元素內側 9% 寬」，不管那裡是不是臉**。本集把
+    host 裁切框右界切在 0.505（＝他身體輪廓邊緣），而他側身朝向畫面中央 →
+    **他的臉就是剪影最內側的東西**，9%（66px）整條壓在額頭與髮際線上；橘色
+    glow 沿剪影畫，也跟著被衰減（實測剪影外圈 R−B：host 42.1 vs guest 60.9）。
+    來賓那側同一條規則什麼事都沒有，因為他的臉離內側界還有 120px 肩膀。
+    **裁切框的內側界不只要落在自然物件邊緣，還要留至少 fade 寬度（9% 元素寬）
+    的非臉部素材給它吃**——本集改成含整支麥克風（x 0.21–0.62）後，兩人 glow
+    回到 63.6 / 61.1。
+28. **「臉不見了」不會只有一個原因，要逐項量**：修修回報「肩膀、麥克風、臉、
+    光暈全被遮住」，實際是兩件事疊加——fade 吃臉（量得出：fade on/off 逐像素
+    diff 只落在 x 358–735）＋ **我把麥克風與下半身直接裁掉了**（crop y 0–0.62
+    切掉杯子與手時連麥克風一起切）。第一次回答只講了 fade，被打回。**回報視覺
+    問題時，把「我改了什麼」逐項列出來對照，不要只解釋最先想到的那一個。**
 
 **v2.5（2026-08-05，安吉集封面三輪同類投訴——scale 鎖定 + 渲染 QA 定版）**
 
