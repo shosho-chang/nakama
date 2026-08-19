@@ -4,9 +4,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = (ROOT / "thousand_sunny/templates/bridge/carousel_review.html").read_text(
     encoding="utf-8"
 )
-CSS = (ROOT / "thousand_sunny/static/shosho/carousel-review.css").read_text(
-    encoding="utf-8"
-)
+CSS = (ROOT / "thousand_sunny/static/shosho/carousel-review.css").read_text(encoding="utf-8")
 
 
 def test_each_card_has_feedback_only_and_no_decision_radios() -> None:
@@ -34,8 +32,8 @@ def test_feedback_and_approve_actions_are_explicit_and_mutually_exclusive() -> N
 
 
 def test_approved_revision_is_rendered_and_kept_read_only() -> None:
-    assert 'data-approved="{{ \'true\' if approved else \'false\' }}"' in TEMPLATE
-    assert "{% if approved %}readonly disabled aria-disabled=\"true\"{% endif %}" in TEMPLATE
+    assert "data-approved=\"{{ 'true' if approved else 'false' }}\"" in TEMPLATE
+    assert '{% if approved %}readonly disabled aria-disabled="true"{% endif %}' in TEMPLATE
     assert "此 revision 已核准，等待發布流程。" in TEMPLATE
     assert "{% if approved %}Feedback · 已鎖定{% else %}" in TEMPLATE
     assert "let approved = reviewForm.dataset.approved === 'true'" in TEMPLATE
@@ -47,8 +45,12 @@ def test_approved_revision_is_rendered_and_kept_read_only() -> None:
     assert "function setApprovedState()" in TEMPLATE
     assert "setApprovedState();" in TEMPLATE
     assert "label.textContent = 'Feedback · 已鎖定'" in TEMPLATE
-    assert '#review-action-help' not in CSS
+    assert "#review-action-help" not in CSS
     assert '.carousel-actions p[data-state="approved"]' in CSS
+    assert 'aria-label="Stage 6 發布狀態"' in TEMPLATE
+    assert "latest_publish_status_label" in TEMPLATE
+    assert 'href="{{ publish_url }}"' in TEMPLATE
+    assert '.carousel-publish-status[data-state="completed"]' in CSS
 
 
 def test_manifest_scoped_draft_and_job_survive_refresh() -> None:
@@ -83,3 +85,13 @@ def test_accessible_status_and_five_column_visual_contract() -> None:
     assert "var(--sho-font-zh)" in CSS
     assert "@media (prefers-reduced-motion:reduce)" in CSS
     assert "#ff" not in CSS.lower()
+
+
+def test_mobile_ledger_wraps_all_cells_without_horizontal_scrolling() -> None:
+    assert "@media (max-width:720px)" in CSS
+    assert "grid-template-columns:repeat(3,minmax(0,1fr))" in CSS
+    assert ".carousel-ledger div { min-width:0; padding:8px; }" in CSS
+    assert ".carousel-ledger dd { overflow-wrap:anywhere; }" in CSS
+    assert "@media (max-width:480px)" in CSS
+    assert "grid-template-columns:repeat(2,minmax(0,1fr))" in CSS
+    assert ".carousel-ledger { margin-top:16px; overflow:auto; }" not in CSS

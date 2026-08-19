@@ -86,6 +86,21 @@
     </footer>
   </form>
 
+  {% if approved %}
+  <section class="carousel-publish-status"
+           data-state="{{ latest_publish_job.status if latest_publish_job else 'not_started' }}"
+           aria-label="Stage 6 發布狀態">
+    <div>
+      <div class="sho-mono sho-mono-up">STAGE 6 · 發布狀態</div>
+      <strong>{{ latest_publish_status_label }}</strong>
+      {% if latest_publish_job %}<span class="sho-mono">{{ latest_publish_job.job_id }}</span>{% endif %}
+    </div>
+    <a class="sho-btn sho-btn--ghost" href="{{ publish_url }}">
+      {{ '查看發布工作' if latest_publish_job else '前往發布設定' }}
+    </a>
+  </section>
+  {% endif %}
+
   <section id="carousel-job-panel"
            class="carousel-job"
            data-state="idle"

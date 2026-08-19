@@ -1,15 +1,30 @@
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from datetime import UTC, datetime
 from html.parser import HTMLParser
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from scripts.podcast_carousel_correction_job import claim_job, fail_job
+from scripts.podcast_carousel_publish_job import (
+    checkpoint_publish_target,
+    claim_publish_job,
+    complete_publish_job,
+    publish_job_path,
+    start_publish_target,
+)
+from shared.schemas.carousel_publish import CarouselPublishPlatformResult
 from shared.schemas.podcast_carousel import (
     CarouselReviewManifestV1,
     CarouselReviewPage,
@@ -189,6 +204,94 @@ def _advance_manifest_revision(root: Path, revision: str = "r002") -> str:
     return manifest_sha256
 
 
+def _make_manifest_manual_only(root: Path) -> str:
+    package = root / EPISODE / "ig-carousel"
+    current_path = package / "current.json"
+    current = json.loads(current_path.read_text(encoding="utf-8"))
+    manifest_path = Path(current["manifest"])
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    point = payload["pages"][2]
+    expanded = payload["pages"][:3]
+    for page_number in range(4, 10):
+        clone = json.loads(json.dumps(point))
+        clone["page_id"] = f"point-{page_number}"
+        clone["page_number"] = page_number
+        clone["copy_page"]["page_id"] = clone["page_id"]
+        expanded.append(clone)
+    for page_number, original in enumerate(payload["pages"][-2:], start=10):
+        original["page_number"] = page_number
+        expanded.append(original)
+    payload["pages"] = expanded
+    payload["publish_compatibility"] = "manual_only"
+    manifest = CarouselReviewManifestV1.model_validate(payload)
+    manifest_path.write_text(manifest.model_dump_json(), encoding="utf-8")
+    manifest_sha256 = receipt_for(manifest_path).sha256
+    current["manifest_sha256"] = manifest_sha256
+    current_path.write_text(json.dumps(current), encoding="utf-8")
+    return manifest_sha256
+
+
+def _write_legacy_publish_job(root: Path, manifest_sha256: str) -> str:
+    package = root / EPISODE / "ig-carousel"
+    current = json.loads((package / "current.json").read_text(encoding="utf-8"))
+    manifest = json.loads(Path(current["manifest"]).read_text(encoding="utf-8"))
+    caption = "Legacy approved caption"
+    fingerprint_payload = {
+        "source_revision": "r001",
+        "source_manifest_sha256": manifest_sha256,
+        "caption": caption,
+        "platforms": ["instagram"],
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(
+            fingerprint_payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    job_id = "pj-" + "8" * 32
+    payload = {
+        "schema_name": "nakama.podcast_carousel_publish_job.v1",
+        "job_id": job_id,
+        "episode_id": "ep120",
+        "source_revision": "r001",
+        "source_manifest_sha256": manifest_sha256,
+        "approval_revision_number": 1,
+        "approved_at": "2026-08-19T03:00:00Z",
+        "request_fingerprint": fingerprint,
+        "caption": caption,
+        "assets": [
+            {
+                "page_id": page["page_id"],
+                "page_number": page["page_number"],
+                "image": page["image"],
+            }
+            for page in manifest["pages"]
+        ],
+        "targets": [
+            {
+                "platform": "instagram",
+                "strategy": "agent_browser",
+                "configuration_state": "agent_browser_required",
+                "required_executor_capabilities": ["browser_session"],
+                "note": "Legacy browser target.",
+            }
+        ],
+        "status": "queued",
+        "created_at": "2026-08-19T03:00:00Z",
+        "updated_at": "2026-08-19T03:00:00Z",
+        "claim": None,
+        "progress": [],
+        "results": [],
+        "error": None,
+    }
+    path = package / "publish_jobs" / f"{job_id}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return job_id
+
+
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch) -> tuple[TestClient, Path]:
     _seed(tmp_path)
@@ -280,6 +383,54 @@ def test_all_approved_closes_gate_and_appends_audit_revision(client):
     )
     assert payload["revisions"][-1]["decision"] == "approved"
     assert len(payload["revisions"][-1]["pages"]) == 5
+
+
+@pytest.mark.parametrize(
+    ("status", "label"),
+    [
+        ("queued", "等待執行者認領"),
+        ("claimed", "執行者已認領"),
+        ("in_progress", "發布進行中"),
+        ("completed", "發布已完成"),
+        ("failed", "發布未完成，可重試"),
+        ("superseded", "發布核准已撤回"),
+    ],
+)
+def test_approved_review_board_links_latest_matching_publish_status(
+    client,
+    monkeypatch,
+    status: str,
+    label: str,
+):
+    app, _ = client
+    manifest_sha = _manifest_sha(app)
+    app.post(
+        f"/bridge/ig-cards/{EPISODE}/approve",
+        data={"manifest_sha256": manifest_sha},
+    )
+    import thousand_sunny.routers.carousel_review as review_module
+
+    monkeypatch.setattr(
+        review_module,
+        "list_publish_jobs",
+        lambda _: [
+            SimpleNamespace(
+                job_id="pj-" + "a" * 32,
+                source_revision="r001",
+                source_manifest_sha256=manifest_sha,
+                status=status,
+            )
+        ],
+    )
+
+    board = app.get(f"/bridge/ig-cards/{EPISODE}")
+
+    assert board.status_code == 200
+    assert label in board.text
+    assert f'data-state="{status}"' in board.text
+    assert f'href="/bridge/ig-cards/{EPISODE}/publish"' in board.text
+    assert "pj-" + "a" * 32 in board.text
+    assert "readonly disabled" in board.text
 
 
 def test_needs_changes_requires_feedback(client):
@@ -454,6 +605,217 @@ def test_approve_is_idempotent_for_current_manifest(client):
     assert len(matching) == 1
 
 
+def test_historical_approval_does_not_bypass_active_correction(client):
+    app, _ = client
+    manifest_sha = _manifest_sha(app)
+    assert (
+        app.post(
+            f"/bridge/ig-cards/{EPISODE}/approve",
+            data={"manifest_sha256": manifest_sha},
+        ).status_code
+        == 200
+    )
+    correction = app.post(
+        f"/bridge/ig-cards/{EPISODE}/feedback",
+        data={"manifest_sha256": manifest_sha, "feedback_cover": "new correction"},
+    )
+
+    repeated = app.post(
+        f"/bridge/ig-cards/{EPISODE}/approve",
+        data={"manifest_sha256": manifest_sha},
+    )
+
+    assert correction.status_code == 201
+    assert repeated.status_code == 409
+    assert repeated.json()["detail"] == "correction job is still active"
+
+
+def test_latest_matching_draft_requires_a_new_approval_after_correction_fails(client):
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+    assert (
+        app.post(
+            f"/bridge/ig-cards/{EPISODE}/approve",
+            data={"manifest_sha256": manifest_sha},
+        ).status_code
+        == 200
+    )
+    correction = app.post(
+        f"/bridge/ig-cards/{EPISODE}/feedback",
+        data={"manifest_sha256": manifest_sha, "feedback_cover": "new correction"},
+    ).json()
+    job_path = root / EPISODE / "ig-carousel" / "correction_jobs" / f"{correction['job_id']}.json"
+    claim_job(
+        job_path,
+        executor="codex",
+        executor_id="review-worker",
+        claim_token="claim-review-0001",
+    )
+    fail_job(
+        job_path,
+        claim_token="claim-review-0001",
+        error="correction could not converge",
+    )
+
+    approved = app.post(
+        f"/bridge/ig-cards/{EPISODE}/approve",
+        data={"manifest_sha256": manifest_sha},
+    )
+
+    assert approved.status_code == 200
+    feedback = json.loads(
+        (root / EPISODE / "ig-carousel" / "review_feedback.v1.json").read_text(encoding="utf-8")
+    )
+    matching_approvals = [
+        revision
+        for revision in feedback["revisions"]
+        if revision["carousel_revision"] == "r001"
+        and revision["manifest_sha256"] == manifest_sha
+        and revision["decision"] == "approved"
+    ]
+    assert len(matching_approvals) == 2
+
+
+@pytest.mark.parametrize(
+    ("approval_endpoint", "approval_status"),
+    [("approve", 200), ("decide", 303)],
+)
+def test_approval_and_feedback_race_is_serialized_by_release_lock(
+    client,
+    monkeypatch,
+    approval_endpoint: str,
+    approval_status: int,
+):
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+    import thousand_sunny.routers.carousel_review as review_module
+
+    original_lock = review_module.publish_release_lock
+    original_append = review_module._append_feedback_revision
+    lock_attempts = 0
+    attempts_guard = threading.Lock()
+    second_lock_attempted = threading.Event()
+    approval_append_entered = threading.Event()
+    release_approval = threading.Event()
+
+    @contextmanager
+    def observed_release_lock(package_root):
+        nonlocal lock_attempts
+        with attempts_guard:
+            lock_attempts += 1
+            if lock_attempts == 2:
+                second_lock_attempted.set()
+        with original_lock(package_root):
+            yield
+
+    def delayed_append(**kwargs):
+        if kwargs["decision"] == "approved":
+            approval_append_entered.set()
+            assert release_approval.wait(timeout=5)
+        return original_append(**kwargs)
+
+    monkeypatch.setattr(review_module, "publish_release_lock", observed_release_lock)
+    monkeypatch.setattr(review_module, "_append_feedback_revision", delayed_append)
+    approval_data = {"manifest_sha256": manifest_sha}
+    if approval_endpoint == "decide":
+        approval_data.update(
+            {
+                f"status_{page_id}": "approved"
+                for page_id in ("cover", "hook", "point-one", "quote", "cta")
+            }
+        )
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            approval_future = pool.submit(
+                app.post,
+                f"/bridge/ig-cards/{EPISODE}/{approval_endpoint}",
+                data=approval_data,
+            )
+            assert approval_append_entered.wait(timeout=5)
+            feedback_future = pool.submit(
+                app.post,
+                f"/bridge/ig-cards/{EPISODE}/feedback",
+                data={
+                    "manifest_sha256": manifest_sha,
+                    "feedback_cover": "race-safe correction",
+                },
+            )
+            assert second_lock_attempted.wait(timeout=5)
+            assert not feedback_future.done()
+            release_approval.set()
+            approval = approval_future.result(timeout=5)
+            feedback = feedback_future.result(timeout=5)
+    finally:
+        release_approval.set()
+
+    assert approval.status_code == approval_status
+    assert feedback.status_code == 201
+    audit = json.loads(
+        (root / EPISODE / "ig-carousel" / "review_feedback.v1.json").read_text(encoding="utf-8")
+    )
+    assert [revision["decision"] for revision in audit["revisions"][-2:]] == [
+        "approved",
+        "draft",
+    ]
+
+
+def test_legacy_decide_draft_supersedes_queued_publish(client):
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+    app.post(
+        f"/bridge/ig-cards/{EPISODE}/approve",
+        data={"manifest_sha256": manifest_sha},
+    )
+    publish = app.post(
+        f"/bridge/ig-cards/{EPISODE}/publish/jobs",
+        data={
+            "manifest_sha256": manifest_sha,
+            "caption": "Queued before legacy draft save",
+            "platforms": "instagram",
+        },
+    ).json()
+
+    saved = app.post(
+        f"/bridge/ig-cards/{EPISODE}/decide",
+        data={"manifest_sha256": manifest_sha},
+    )
+
+    assert saved.status_code == 303
+    job = json.loads(
+        publish_job_path(root / EPISODE / "ig-carousel", publish["job_id"]).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert job["status"] == "superseded"
+    assert "review draft" in job["superseded_reason"]
+
+
+def test_legacy_decide_cannot_approve_during_active_correction(client):
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+    correction = app.post(
+        f"/bridge/ig-cards/{EPISODE}/feedback",
+        data={"manifest_sha256": manifest_sha, "feedback_cover": "active correction"},
+    )
+    data = {"manifest_sha256": manifest_sha}
+    data.update(
+        {
+            f"status_{page_id}": "approved"
+            for page_id in ("cover", "hook", "point-one", "quote", "cta")
+        }
+    )
+
+    response = app.post(f"/bridge/ig-cards/{EPISODE}/decide", data=data)
+
+    assert correction.status_code == 201
+    assert response.status_code == 409
+    audit = json.loads(
+        (root / EPISODE / "ig-carousel" / "review_feedback.v1.json").read_text(encoding="utf-8")
+    )
+    assert audit["revisions"][-1]["decision"] == "draft"
+
+
 def test_publish_page_requires_current_manifest_approval(client):
     app, _ = client
 
@@ -477,8 +839,66 @@ def test_approved_manifest_opens_stage6_publish_page(client):
     assert "stage 6" in response.text.lower()
     assert "Instagram" in response.text
     assert "YouTube Community" in response.text
-    assert "agent_browser_manual" in response.text
-    assert "no supported Data API publish endpoint" in response.text
+    assert "瀏覽器＋人工確認" in response.text
+    assert "沒有可用的自動發布端點" in response.text
+
+
+def test_publish_page_and_status_route_load_handwritten_legacy_v1_job(client):
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+    approved = app.post(
+        f"/bridge/ig-cards/{EPISODE}/approve",
+        data={"manifest_sha256": manifest_sha},
+    )
+    job_id = _write_legacy_publish_job(root, manifest_sha)
+
+    page = app.get(approved.json()["publish_url"])
+    status = app.get(f"/bridge/ig-cards/{EPISODE}/publish/jobs/{job_id}")
+
+    assert page.status_code == 200
+    assert job_id in page.text
+    assert status.status_code == 200
+    assert status.json()["job_id"] == job_id
+    assert status.json()["source_publish_compatibility"] is None
+
+
+def test_manual_only_manifest_never_advertises_meta_api(client, monkeypatch):
+    app, root = client
+    monkeypatch.setenv("META_CAROUSEL_PUBLISH_CONFIGURED", "1")
+    manifest_sha = _make_manifest_manual_only(root)
+    approved = app.post(
+        f"/bridge/ig-cards/{EPISODE}/approve",
+        data={"manifest_sha256": manifest_sha},
+    )
+    assert approved.status_code == 200
+
+    page = app.get(approved.json()["publish_url"])
+    job = app.post(
+        f"/bridge/ig-cards/{EPISODE}/publish/jobs",
+        data={
+            "manifest_sha256": manifest_sha,
+            "caption": "Manual-only carousel",
+            "platforms": "instagram",
+        },
+    )
+    youtube = app.post(
+        f"/bridge/ig-cards/{EPISODE}/publish/jobs",
+        data={
+            "manifest_sha256": manifest_sha,
+            "caption": "Manual-only carousel",
+            "platforms": "youtube_community",
+        },
+    )
+
+    assert page.status_code == 200
+    assert "meta_api" not in page.text
+    youtube_input = page.text.split('value="youtube_community"', 1)[1].split(">", 1)[0]
+    assert "disabled" in youtube_input
+    assert "最多接受 10 張圖片" in page.text
+    assert job.status_code == 201
+    assert job.json()["targets"][0]["strategy"] == "agent_browser"
+    assert youtube.status_code == 400
+    assert "最多接受 10 張圖片" in youtube.json()["detail"]
 
 
 def test_publish_submit_validates_caption_platforms_and_manifest_drift(client):
@@ -513,6 +933,56 @@ def test_publish_submit_validates_caption_platforms_and_manifest_drift(client):
     assert app.get(f"/bridge/ig-cards/{EPISODE}/publish").status_code == 403
 
 
+def test_instagram_caption_boundary_does_not_limit_other_platforms(client):
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+    app.post(
+        f"/bridge/ig-cards/{EPISODE}/approve",
+        data={"manifest_sha256": manifest_sha},
+    )
+
+    instagram_at_limit = app.post(
+        f"/bridge/ig-cards/{EPISODE}/publish/jobs",
+        data={
+            "manifest_sha256": manifest_sha,
+            "caption": "字" * 2200,
+            "platforms": "instagram",
+        },
+    )
+    instagram_over_limit = app.post(
+        f"/bridge/ig-cards/{EPISODE}/publish/jobs",
+        data={
+            "manifest_sha256": manifest_sha,
+            "caption": "字" * 2201,
+            "platforms": "instagram",
+        },
+    )
+    facebook_over_instagram_limit = app.post(
+        f"/bridge/ig-cards/{EPISODE}/publish/jobs",
+        data={
+            "manifest_sha256": manifest_sha,
+            "caption": "字" * 2201,
+            "platforms": "facebook_page",
+        },
+    )
+    youtube_over_instagram_limit = app.post(
+        f"/bridge/ig-cards/{EPISODE}/publish/jobs",
+        data={
+            "manifest_sha256": manifest_sha,
+            "caption": "字" * 2201,
+            "platforms": "youtube_community",
+        },
+    )
+
+    assert instagram_at_limit.status_code == 201
+    assert instagram_over_limit.status_code == 400
+    assert "2,200" in instagram_over_limit.json()["detail"]
+    assert facebook_over_instagram_limit.status_code == 201
+    assert youtube_over_instagram_limit.status_code == 201
+    jobs = list((root / EPISODE / "ig-carousel" / "publish_jobs").glob("pj-*.json"))
+    assert len(jobs) == 3
+
+
 def test_publish_submit_is_idempotent_and_refresh_restores_job(client):
     app, root = client
     manifest_sha = _manifest_sha(app)
@@ -531,17 +1001,30 @@ def test_publish_submit_is_idempotent_and_refresh_restores_job(client):
         f"/bridge/ig-cards/{EPISODE}/publish/jobs",
         data={**data, "platforms": ["instagram", "youtube_community"]},
     )
+    overlapping = app.post(
+        f"/bridge/ig-cards/{EPISODE}/publish/jobs",
+        data={
+            **data,
+            "caption": "Different caption while the first job is active",
+            "platforms": "instagram",
+        },
+    )
 
     assert first.status_code == 201
     assert duplicate.status_code == 200
     assert duplicate.json()["idempotent"] is True
     assert duplicate.json()["job_id"] == first.json()["job_id"]
+    assert overlapping.status_code == 409
+    assert "active publish job" in overlapping.json()["detail"]
     assert [target["platform"] for target in first.json()["targets"]] == [
         "instagram",
         "youtube_community",
     ]
     assert first.json()["targets"][0]["strategy"] == "agent_browser"
     assert first.json()["targets"][1]["strategy"] == "agent_browser_manual"
+    assert "--executor codex" in first.json()["claim_commands"]["codex"]
+    assert "--executor claude_code" in first.json()["claim_commands"]["claude_code"]
+    assert "--capability browser_session" in first.json()["claim_commands"]["codex"]
     jobs = list((root / EPISODE / "ig-carousel" / "publish_jobs").glob("pj-*.json"))
     assert len(jobs) == 1
     assert not (root / EPISODE / "ig-carousel" / "published.json").exists()
@@ -553,6 +1036,188 @@ def test_publish_submit_is_idempotent_and_refresh_restores_job(client):
     assert refreshed.status_code == 200
     assert first.json()["job_id"] in refreshed.text
     assert "本集整理四個讓內容活得更久的策略。" in refreshed.text
+
+
+def test_partial_publish_failure_requires_republish_confirmation_in_ui_and_server(client):
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+    app.post(
+        f"/bridge/ig-cards/{EPISODE}/approve",
+        data={"manifest_sha256": manifest_sha},
+    )
+    created = app.post(
+        f"/bridge/ig-cards/{EPISODE}/publish/jobs",
+        data={
+            "manifest_sha256": manifest_sha,
+            "caption": "Initial cross-platform release",
+            "platforms": ["instagram", "youtube_community"],
+        },
+    ).json()
+    context_before = app.get(f"/bridge/ig-cards/{EPISODE}/publish/context")
+    assert context_before.status_code == 200
+    assert context_before.json()["published_platforms"] == []
+    path = publish_job_path(root / EPISODE / "ig-carousel", created["job_id"])
+    claim_publish_job(
+        path,
+        executor="codex",
+        executor_id="release-worker",
+        executor_capabilities=["browser_session"],
+        claim_token="claim-partial-ui-0001",
+    )
+    completed_at = datetime.now(UTC)
+    results = [
+        CarouselPublishPlatformResult(
+            platform="instagram",
+            strategy="agent_browser",
+            status="published",
+            receipt_id="ig-partial-ui-receipt",
+            completed_at=completed_at,
+        ),
+        CarouselPublishPlatformResult(
+            platform="youtube_community",
+            strategy="agent_browser_manual",
+            status="failed",
+            error="manual confirmation declined",
+            completed_at=completed_at,
+        ),
+    ]
+    for index, result in enumerate(results):
+        started = start_publish_target(
+            path,
+            claim_token="claim-partial-ui-0001",
+            platform=result.platform,
+        )
+        state = next(state for state in started.target_states if state.platform == result.platform)
+        result = result.model_copy(
+            update={
+                "idempotency_key": state.idempotency_key,
+                "attempt_id": state.attempt_id,
+            }
+        )
+        results[index] = result
+        checkpoint_publish_target(
+            path,
+            claim_token="claim-partial-ui-0001",
+            result=result,
+        )
+    complete_publish_job(path, claim_token="claim-partial-ui-0001", results=results)
+    retry_preflight = app.post(
+        f"/bridge/ig-cards/{EPISODE}/publish/preflight",
+        data={
+            "manifest_sha256": manifest_sha,
+            "caption": "Initial cross-platform release",
+            "platforms": ["instagram", "youtube_community"],
+        },
+    )
+    repost_preflight = app.post(
+        f"/bridge/ig-cards/{EPISODE}/publish/preflight",
+        data={
+            "manifest_sha256": manifest_sha,
+            "caption": "Different Instagram release",
+            "platforms": ["instagram"],
+        },
+    )
+
+    page = app.get(f"/bridge/ig-cards/{EPISODE}/publish")
+    context_after = app.get(f"/bridge/ig-cards/{EPISODE}/publish/context")
+    unfinished_only = app.post(
+        f"/bridge/ig-cards/{EPISODE}/publish/jobs",
+        data={
+            "manifest_sha256": manifest_sha,
+            "caption": "Retry only the unfinished YouTube release",
+            "platforms": "youtube_community",
+        },
+    )
+    blocked = app.post(
+        f"/bridge/ig-cards/{EPISODE}/publish/jobs",
+        data={
+            "manifest_sha256": manifest_sha,
+            "caption": "Different Instagram release",
+            "platforms": "instagram",
+        },
+    )
+    confirmed = app.post(
+        f"/bridge/ig-cards/{EPISODE}/publish/jobs",
+        data={
+            "manifest_sha256": manifest_sha,
+            "caption": "Different Instagram release",
+            "platforms": "instagram",
+            "confirm_republish": "true",
+        },
+    )
+
+    assert page.status_code == 200
+    assert retry_preflight.json()["republish_required_platforms"] == []
+    assert repost_preflight.json()["republish_required_platforms"] == ["instagram"]
+    assert 'name="confirm_republish" value="true"' in page.text
+    assert context_after.status_code == 200
+    assert context_after.json()["published_platforms"] == ["instagram"]
+    assert unfinished_only.status_code == 201
+    assert blocked.status_code == 409
+    assert "explicit confirmation" in blocked.json()["detail"]
+    assert confirmed.status_code == 201
+
+
+def test_new_feedback_supersedes_queued_publish_before_revoking_approval(client):
+    app, _ = client
+    manifest_sha = _manifest_sha(app)
+    app.post(
+        f"/bridge/ig-cards/{EPISODE}/approve",
+        data={"manifest_sha256": manifest_sha},
+    )
+    publish = app.post(
+        f"/bridge/ig-cards/{EPISODE}/publish/jobs",
+        data={
+            "manifest_sha256": manifest_sha,
+            "caption": "Approved release caption",
+            "platforms": "instagram",
+        },
+    ).json()
+
+    correction = app.post(
+        f"/bridge/ig-cards/{EPISODE}/feedback",
+        data={"manifest_sha256": manifest_sha, "feedback_cover": "change the cover"},
+    )
+    status = app.get(publish["status_url"])
+
+    assert correction.status_code == 201
+    assert status.status_code == 200
+    assert status.json()["status"] == "superseded"
+    assert "revoked the release approval" in status.json()["superseded_reason"]
+
+
+def test_new_feedback_fails_closed_while_publish_is_claimed(client):
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+    app.post(
+        f"/bridge/ig-cards/{EPISODE}/approve",
+        data={"manifest_sha256": manifest_sha},
+    )
+    publish = app.post(
+        f"/bridge/ig-cards/{EPISODE}/publish/jobs",
+        data={
+            "manifest_sha256": manifest_sha,
+            "caption": "Approved release caption",
+            "platforms": "instagram",
+        },
+    ).json()
+    path = publish_job_path(root / EPISODE / "ig-carousel", publish["job_id"])
+    claim_publish_job(
+        path,
+        executor="codex",
+        executor_id="release-worker",
+        executor_capabilities=["browser_session"],
+        claim_token="claim-release-0001",
+    )
+
+    correction = app.post(
+        f"/bridge/ig-cards/{EPISODE}/feedback",
+        data={"manifest_sha256": manifest_sha, "feedback_cover": "change the cover"},
+    )
+
+    assert correction.status_code == 409
+    assert "publish job is active" in correction.json()["detail"]
+    assert app.get(publish["status_url"]).json()["status"] == "claimed"
 
 
 def test_auth_redirect_uses_same_bridge_login_boundary(tmp_path: Path, monkeypatch):

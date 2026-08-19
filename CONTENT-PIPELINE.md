@@ -91,7 +91,7 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 | **Line 2 讀書心得** | 🚧 Slice 2-5 | ✅ Brook compose | ✅ FB renderer | ⬜ Podcast flow 穩定後 fork 書本模板／語言 |
 | **Line 3 文獻科普** | 🚧 Slice 2-5（optional） | ✅ Brook compose | ✅ FB renderer | ⬜ Podcast flow 穩定後 fork 身心健康資訊模板／語言 |
 
-**讀法**：舊 `IGRenderer` 只有文字 JSON，不能代表 Podcast Carousel 已完成。新的 channel-native Copy Spec、真實 PNG render 與 page-based Review Gate 已有可執行實作與測試；Stage 5 尚未宣告 ship，因為 EP120 的真實 transcript→agent panel→成圖 dogfood 還未在資料外傳授權下完成。Stage 6 已有 approved-only Publish page、revision-bound agent-neutral job、capability/lease 與逐平台 result contract；目前不做 live network publish。
+**讀法**：舊 `IGRenderer` 只有文字 JSON，不代表 Podcast Carousel。新的 channel-native Copy Spec、三方 agent panel、1080×1080 PNG renderer、逐卡文字／版面編輯與 page-based Review Gate 已由 EP120 r024 完成真實 dogfood，Stage 5 tracer bullet 已 ship。Stage 6 已有 approved-only Publish page、revision-bound agent-neutral job、capability/lease、逐平台 checkpoint 與 result contract；目前仍是本機安全 handoff，不會自行喚醒 agent，也尚未接 live network publish adapter。
 
 ### Line 1 兩子模式說明
 
@@ -129,13 +129,13 @@ Line 2 不再只視為「書」；ebook、inbox document、web document 都是 R
 | **Nami** (Secretary) | ✅ pubmed_lookup tool (Robin pass-through) + Gmail / Calendar / Vault notes | n/a | n/a | n/a | n/a | n/a | ⬜ daily briefing 接 SEO/cost data |
 | **Zoro** (Scout) | ✅ keyword research + autocomplete + trends + reddit + youtube + twitter | n/a | n/a | n/a | n/a | n/a | ⬜ topic discovery 接 SEO 反向 feed |
 | **Sanji** (Community) | ⬜ community FAQ discovery (從會員問題抽主題) | n/a | ⬜ member memory ingest | n/a | n/a | ❌ Fluent Community publisher | ⬜ engagement insight |
-| **Brook** (Scaffold + Repurpose + SEO Audit + Video Production, ADR-027/ADR-050) | n/a | n/a | ✅ synthesize（outline + evidence pool, ADR-021）；RCP 由 Robin own | scaffold only — outline / evidence 給修修自寫，**LLM 不代寫正文**（ADR-027 reminders not enforcement） | ✅ FB/Blog renderer + legacy IG text renderer + repurpose engine + **Video Production Line**；🚧 canonical Podcast Carousel Copy/Panel/PNG/Review 已實作、待 EP120 真實資料 dogfood（ADR-064）與 Line 1b research_pack 2b mode（ADR-027） | n/a | ✅ SEO audit + enrich (對既有文章) |
+| **Brook** (Scaffold + Repurpose + SEO Audit + Video Production, ADR-027/ADR-050) | n/a | n/a | ✅ synthesize（outline + evidence pool, ADR-021）；RCP 由 Robin own | scaffold only — outline / evidence 給修修自寫，**LLM 不代寫正文**（ADR-027 reminders not enforcement） | ✅ FB/Blog renderer + legacy IG text renderer + repurpose engine + **Video Production Line** + canonical Podcast Carousel Copy/Panel/PNG/Review；EP120 r024 已完成真實 dogfood（ADR-064）；Line 1b research_pack 2b mode 待做（ADR-027） | n/a | ✅ SEO audit + enrich (對既有文章) |
 | **Franky** (Maintenance) | ✅ AI news digest cron | n/a | n/a | n/a | n/a | n/a | ✅ probe panel + R2 backup verify + GSC daily + cost tracking |
 | **Usopp** (Publisher) | n/a | n/a | n/a | n/a | n/a | ✅ WP publisher + approval queue HITL；❌ YT/IG/FB/Newsletter | n/a |
 
 **關鍵讀法**：
 - **Brook 跨 Stage 4/5/7 三層** — over-loaded，子模組已 13+，下一步要按 sub-context 切目錄（見觀察 #2）
-- **Stage 6 只有 Usopp，Usopp 只有 WordPress** — 多 channel publishing 是最大缺口（見觀察 #4）
+- **Stage 6 已有 Podcast Carousel agent-neutral handoff contract**，但 live IG／FB／YouTube adapter 與 agent dispatcher／wakeup 仍是最大缺口（見觀察 #4）；Usopp 仍只負責 WordPress。
 - **Sanji 全 row 空白** — 規劃 community engagement 必須補的 agent
 - **Stage 2/3 owner 模糊** — Reader UI 在 Thousand Sunny、ingest 在 Robin、annotation 沒人讀（見觀察 #3）
 - **Stage 4 對 Line 2 沒 agent cell** — 修修手寫心得是刻意設計，agent 不介入；只在 Stage 3（整合素材到 KB）+ Stage 5（拿手寫稿做 channel）服務
@@ -212,7 +212,7 @@ Reader UI 已支援 `==highlight==` + `> [!annotation]` markup，但這些標註
 
 如果只能挑 3 件最**結構性**的事（不是 feature，是 unblock 架構迴路）：
 
-1. **Podcast IG Carousel EP120 dogfood**（Stage 5 → 6）— 跑完 Copy Spec、三方 subagent panel、真實 cutout PNG 與 Web App 人工 review；Approve 後以 ADR-065 Publish Job 接半自動發布。沒有相容 executor 時維持 queued，Line 2/3 不先假設共用 Podcast 模板
+1. **Podcast Carousel Stage 6 dispatcher + live adapter tracer bullet** — Stage 5 的 EP120 r024 dogfood 已完成；下一步讓目前執行 E2E 的 Codex／Claude Code 能主動認領 Publish Job，先以可回復測試貼文驗證 IG／FB browser 或 Meta transport，再驗證 YouTube Community browser/manual。沒有相容 executor 時維持 queued，Line 2/3 不先假設共用 Podcast 模板
 2. **Annotation → KB 整合 owner**（Stage 2→3）— Line 2 critical path。先解 annotation 寫到哪、誰讀、何時用；具體實作等修修這週手跑流程後決定（修修明確要求 Stage 4 手寫過程不介入，但 Stage 3 整合素材可動）
 3. **SEO 中控台 → Zoro 反向 feed**（Stage 7→1）— 閉環 Discovery 迴路。一條 SQL view + Zoro report renderer 加 section，一週可做完
 

@@ -22,10 +22,16 @@ from scripts.podcast_carousel_correction_job import (
     load_job,
 )
 from scripts.podcast_carousel_publish_job import (
+    PublishJobTransitionError,
     create_or_get_publish_job,
     list_publish_jobs,
     load_publish_job,
     publish_job_path,
+    publish_release_lock,
+    published_publish_platforms,
+    republish_required_platforms,
+    supersede_queued_publish_job,
+    unfinished_publish_platforms,
 )
 from shared.schemas.carousel_publish import (
     CarouselPublishAsset,
@@ -49,6 +55,15 @@ _templates = Jinja2Templates(
 )
 _MAX_FEEDBACK = 1200
 _MAX_CAPTION = 5000
+_INSTAGRAM_MAX_CAPTION = 2200
+_PUBLISH_STATUS_LABELS = {
+    "queued": "等待執行者認領",
+    "claimed": "執行者已認領",
+    "in_progress": "發布進行中",
+    "completed": "發布已完成",
+    "failed": "發布未完成，可重試",
+    "superseded": "發布核准已撤回",
+}
 
 
 def _shosho_asset_version() -> str:
@@ -184,18 +199,27 @@ def _require_approved_revision(
     return approval
 
 
-def _publish_capabilities() -> list[CarouselPublishTarget]:
-    meta_configured = os.environ.get("META_CAROUSEL_PUBLISH_CONFIGURED", "").strip() == "1"
+def _publish_capabilities(
+    publish_compatibility: str, asset_count: int
+) -> list[CarouselPublishTarget]:
+    meta_configured = (
+        publish_compatibility == "api_compatible"
+        and os.environ.get("META_CAROUSEL_PUBLISH_CONFIGURED", "").strip() == "1"
+    )
     meta_strategy = "meta_api" if meta_configured else "agent_browser"
     meta_state = "configured" if meta_configured else "agent_browser_required"
     meta_capability = "meta_api" if meta_configured else "browser_session"
-    meta_note = (
-        "Meta API transport is configured; executor must hold the meta_api capability."
-        if meta_configured
-        else (
-            "Meta API credentials/media transport are not configured; "
-            "use an authenticated agent browser."
+    if publish_compatibility == "manual_only":
+        meta_note = "這組輪播需使用已登入的瀏覽器發布；即使已設定 Meta 發布連線，也不能改走 API。"
+    else:
+        meta_note = (
+            "已設定 Meta 發布連線；認領的 agent 必須具備對應發布權限。"
+            if meta_configured
+            else ("尚未設定 Meta 發布連線；請使用已登入該平台的瀏覽器工作階段。")
         )
+    youtube_eligible = asset_count <= 10
+    youtube_reason = (
+        None if youtube_eligible else "YouTube Community 最多接受 10 張圖片；這組輪播已超過上限。"
     )
     return [
         CarouselPublishTarget(
@@ -218,9 +242,12 @@ def _publish_capabilities() -> list[CarouselPublishTarget]:
             configuration_state="manual_only",
             required_executor_capabilities=["browser_session"],
             note=(
-                "YouTube Community has no supported Data API publish endpoint; "
-                "use an authenticated agent browser with manual confirmation."
+                youtube_reason
+                or "YouTube Community 沒有可用的自動發布端點；"
+                "請使用已登入的瀏覽器，並在送出前人工確認。"
             ),
+            eligible=youtube_eligible,
+            ineligibility_reason=youtube_reason,
         ),
     ]
 
@@ -236,11 +263,88 @@ def _publish_assets(manifest: CarouselReviewManifestV1) -> list[CarouselPublishA
     ]
 
 
-def _publish_job_payload(episode_slug: str, job: CarouselPublishJobV1) -> dict:
+def _publish_job_payload(
+    episode_slug: str,
+    package_root: Path,
+    job: CarouselPublishJobV1,
+) -> dict:
+    unfinished = set(unfinished_publish_platforms(job))
+    capabilities = sorted(
+        {
+            capability
+            for target in job.targets
+            if target.platform in unfinished
+            for capability in target.required_executor_capabilities
+        }
+    )
+    job_file = publish_job_path(package_root, job.job_id)
+
+    def claim_command(executor: str) -> str:
+        capability_args = "".join(f" --capability {capability}" for capability in capabilities)
+        return (
+            "python scripts/podcast_carousel_publish_job.py claim "
+            f'"{job_file}" --executor {executor} '
+            f"--executor-id <agent-id>{capability_args}"
+        )
+
     return {
         **job.model_dump(mode="json"),
         "status_url": f"/bridge/ig-cards/{episode_slug}/publish/jobs/{job.job_id}",
+        "claim_commands": {
+            "codex": claim_command("codex"),
+            "claude_code": claim_command("claude_code"),
+        },
     }
+
+
+def _matching_publish_jobs(
+    package_root: Path,
+    manifest: CarouselReviewManifestV1,
+    manifest_sha256: str,
+) -> list[CarouselPublishJobV1]:
+    return [
+        job
+        for job in list_publish_jobs(package_root)
+        if job.source_revision == manifest.revision
+        and job.source_manifest_sha256 == manifest_sha256
+    ]
+
+
+def _published_platforms(jobs: list[CarouselPublishJobV1]) -> list[str]:
+    return sorted({platform for job in jobs for platform in published_publish_platforms(job)})
+
+
+def _validated_publish_request(form, manifest: CarouselReviewManifestV1):
+    caption = str(form.get("caption", "")).strip()
+    if not caption:
+        raise HTTPException(status_code=400, detail="publish caption is required")
+    if len(caption) > _MAX_CAPTION:
+        raise HTTPException(status_code=400, detail="publish caption is too long")
+    requested = [str(value) for value in form.getlist("platforms")]
+    if not requested:
+        raise HTTPException(status_code=400, detail="select at least one publish platform")
+    if len(requested) != len(set(requested)):
+        raise HTTPException(status_code=400, detail="publish platforms must be unique")
+    if "instagram" in requested and len(caption) > _INSTAGRAM_MAX_CAPTION:
+        raise HTTPException(
+            status_code=400,
+            detail="Instagram caption cannot exceed 2,200 characters",
+        )
+    capability_by_platform = {
+        item.platform: item
+        for item in _publish_capabilities(manifest.publish_compatibility, len(manifest.pages))
+    }
+    unknown = sorted(set(requested) - set(capability_by_platform))
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"unsupported publish platform: {unknown[0]}")
+    targets = [capability_by_platform[platform] for platform in requested]
+    ineligible = next((target for target in targets if not target.eligible), None)
+    if ineligible is not None:
+        raise HTTPException(
+            status_code=400,
+            detail=ineligible.ineligibility_reason or "publish platform is not eligible",
+        )
+    return caption, targets
 
 
 def _context(episode_slug: str) -> dict:
@@ -253,6 +357,8 @@ def _context(episode_slug: str) -> dict:
         and revision.manifest_sha256 == manifest_sha256
     ]
     latest = matching[-1] if matching else None
+    matching_publish_jobs = _matching_publish_jobs(package_root, manifest, manifest_sha256)
+    latest_publish_job = matching_publish_jobs[-1] if matching_publish_jobs else None
     latest_by_id = {page.page_id: page for page in latest.pages} if latest else {}
     rows = []
     for page in manifest.pages:
@@ -271,6 +377,13 @@ def _context(episode_slug: str) -> dict:
         "rows": rows,
         "decision_count": len(matching),
         "approved": bool(latest and latest.decision == "approved"),
+        "latest_publish_job": latest_publish_job,
+        "latest_publish_status_label": (
+            _PUBLISH_STATUS_LABELS[latest_publish_job.status]
+            if latest_publish_job
+            else "尚未建立發布工作"
+        ),
+        "publish_url": f"/bridge/ig-cards/{episode_slug}/publish",
         "asset_version": _SHOSHO_ASSET_VERSION,
     }
 
@@ -304,14 +417,21 @@ async def carousel_publish_board(
         )
     package_root, manifest, manifest_sha256 = _load_manifest(episode_slug)
     approval = _require_approved_revision(package_root, manifest, manifest_sha256)
-    matching_jobs = [
-        job
-        for job in list_publish_jobs(package_root)
-        if job.source_revision == manifest.revision
-        and job.source_manifest_sha256 == manifest_sha256
-    ]
+    matching_jobs = _matching_publish_jobs(package_root, manifest, manifest_sha256)
     latest_job = matching_jobs[-1] if matching_jobs else None
-    capabilities = _publish_capabilities()
+    capabilities = _publish_capabilities(manifest.publish_compatibility, len(manifest.pages))
+    republish_required = (
+        republish_required_platforms(
+            package_root=package_root,
+            source_revision=manifest.revision,
+            source_manifest_sha256=manifest_sha256,
+            source_publish_compatibility=manifest.publish_compatibility,
+            caption=latest_job.caption,
+            targets=latest_job.targets,
+        )
+        if latest_job is not None
+        else []
+    )
     return _templates.TemplateResponse(
         request,
         "carousel_publish.html",
@@ -322,12 +442,68 @@ async def carousel_publish_board(
             "approval": approval,
             "capabilities": capabilities,
             "latest_job": latest_job,
+            "republish_required_platforms": republish_required,
             "latest_job_payload": (
-                _publish_job_payload(episode_slug, latest_job) if latest_job else None
+                _publish_job_payload(episode_slug, package_root, latest_job) if latest_job else None
             ),
             "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
+
+
+@page_router.post("/{episode_slug}/publish/preflight")
+async def carousel_publish_preflight(
+    request: Request,
+    episode_slug: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Revalidate the exact Stage 6 request immediately before submission."""
+
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="authentication required")
+    form = await request.form()
+    package_root = _episode_dir(episode_slug) / "ig-carousel"
+    with publish_release_lock(package_root):
+        package_root, manifest, manifest_sha256 = _load_manifest(episode_slug)
+        _assert_current_manifest(form, manifest_sha256)
+        _require_approved_revision(package_root, manifest, manifest_sha256)
+        caption, targets = _validated_publish_request(form, manifest)
+        required = republish_required_platforms(
+            package_root=package_root,
+            source_revision=manifest.revision,
+            source_manifest_sha256=manifest_sha256,
+            source_publish_compatibility=manifest.publish_compatibility,
+            caption=caption,
+            targets=targets,
+        )
+    return {
+        "source_revision": manifest.revision,
+        "source_manifest_sha256": manifest_sha256,
+        "republish_required_platforms": required,
+    }
+
+
+@page_router.get("/{episode_slug}/publish/context")
+async def carousel_publish_context(
+    episode_slug: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Return fresh release context for client-side republish revalidation."""
+
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="authentication required")
+    package_root, manifest, manifest_sha256 = _load_manifest(episode_slug)
+    _require_approved_revision(package_root, manifest, manifest_sha256)
+    matching_jobs = _matching_publish_jobs(package_root, manifest, manifest_sha256)
+    latest_job = matching_jobs[-1] if matching_jobs else None
+    return {
+        "source_revision": manifest.revision,
+        "source_manifest_sha256": manifest_sha256,
+        "published_platforms": _published_platforms(matching_jobs),
+        "latest_job": (
+            _publish_job_payload(episode_slug, package_root, latest_job) if latest_job else None
+        ),
+    }
 
 
 @page_router.post("/{episode_slug}/publish/jobs")
@@ -341,38 +517,35 @@ async def carousel_publish_create_job(
 
     if not check_auth(nakama_auth):
         raise HTTPException(status_code=401, detail="authentication required")
-    package_root, manifest, manifest_sha256 = _load_manifest(episode_slug)
     form = await request.form()
-    _assert_current_manifest(form, manifest_sha256)
-    approval = _require_approved_revision(package_root, manifest, manifest_sha256)
-    caption = str(form.get("caption", "")).strip()
-    if not caption:
-        raise HTTPException(status_code=400, detail="publish caption is required")
-    if len(caption) > _MAX_CAPTION:
-        raise HTTPException(status_code=400, detail="publish caption is too long")
-    requested = [str(value) for value in form.getlist("platforms")]
-    if not requested:
-        raise HTTPException(status_code=400, detail="select at least one publish platform")
-    if len(requested) != len(set(requested)):
-        raise HTTPException(status_code=400, detail="publish platforms must be unique")
-    capability_by_platform = {item.platform: item for item in _publish_capabilities()}
-    unknown = sorted(set(requested) - set(capability_by_platform))
-    if unknown:
-        raise HTTPException(status_code=400, detail=f"unsupported publish platform: {unknown[0]}")
-    targets = [capability_by_platform[platform] for platform in requested]
-    job, created = create_or_get_publish_job(
-        package_root=package_root,
-        episode_id=manifest.episode_id,
-        source_revision=manifest.revision,
-        source_manifest_sha256=manifest_sha256,
-        approval_revision_number=approval.revision_number,
-        approved_at=approval.created_at,
-        caption=caption,
-        assets=_publish_assets(manifest),
-        targets=targets,
-    )
+    allow_republish = str(form.get("confirm_republish", "")).lower() == "true"
+    package_root = _episode_dir(episode_slug) / "ig-carousel"
+    with publish_release_lock(package_root):
+        package_root, manifest, manifest_sha256 = _load_manifest(episode_slug)
+        _assert_current_manifest(form, manifest_sha256)
+        approval = _require_approved_revision(package_root, manifest, manifest_sha256)
+        caption, targets = _validated_publish_request(form, manifest)
+        try:
+            job, created = create_or_get_publish_job(
+                package_root=package_root,
+                episode_id=manifest.episode_id,
+                source_revision=manifest.revision,
+                source_manifest_sha256=manifest_sha256,
+                source_publish_compatibility=manifest.publish_compatibility,
+                approval_revision_number=approval.revision_number,
+                approved_at=approval.created_at,
+                caption=caption,
+                assets=_publish_assets(manifest),
+                targets=targets,
+                allow_republish=allow_republish,
+            )
+        except PublishJobTransitionError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
     response.status_code = 201 if created else 200
-    return {**_publish_job_payload(episode_slug, job), "idempotent": not created}
+    return {
+        **_publish_job_payload(episode_slug, package_root, job),
+        "idempotent": not created,
+    }
 
 
 @page_router.get(
@@ -484,32 +657,55 @@ async def carousel_review_feedback(
     if not items:
         raise HTTPException(status_code=400, detail="at least one non-empty correction is required")
 
-    active = [
-        job
-        for job in list_jobs(package_root)
-        if job.source_revision == manifest.revision
-        and job.source_manifest_sha256 == manifest_sha256
-        and job.status in {"queued", "claimed", "in_progress"}
-    ]
-    if active:
-        raise HTTPException(status_code=409, detail="correction job is still active")
-    try:
-        job = create_queued_job(
+    with publish_release_lock(package_root):
+        active = [
+            correction_job
+            for correction_job in list_jobs(package_root)
+            if correction_job.source_revision == manifest.revision
+            and correction_job.source_manifest_sha256 == manifest_sha256
+            and correction_job.status in {"queued", "claimed", "in_progress"}
+        ]
+        if active:
+            raise HTTPException(status_code=409, detail="correction job is still active")
+
+        matching_publish = [
+            publish_job
+            for publish_job in list_publish_jobs(package_root)
+            if publish_job.source_revision == manifest.revision
+            and publish_job.source_manifest_sha256 == manifest_sha256
+        ]
+        if any(
+            publish_job.status in {"claimed", "in_progress"} for publish_job in matching_publish
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="publish job is active; fail it before requesting corrections",
+            )
+        for publish_job in matching_publish:
+            if publish_job.status == "queued":
+                supersede_queued_publish_job(
+                    publish_job_path(package_root, publish_job.job_id),
+                    reason="new correction feedback revoked the release approval",
+                    release_locked=True,
+                )
+
+        try:
+            job = create_queued_job(
+                package_root=package_root,
+                episode_id=manifest.episode_id,
+                source_revision=manifest.revision,
+                source_manifest_sha256=manifest_sha256,
+                feedback_items=items,
+            )
+        except CorrectionJobTransitionError as error:
+            raise HTTPException(status_code=409, detail="correction job is still active") from error
+        _append_feedback_revision(
             package_root=package_root,
-            episode_id=manifest.episode_id,
-            source_revision=manifest.revision,
-            source_manifest_sha256=manifest_sha256,
-            feedback_items=items,
+            manifest=manifest,
+            manifest_sha256=manifest_sha256,
+            decisions=decisions,
+            decision="draft",
         )
-    except CorrectionJobTransitionError as error:
-        raise HTTPException(status_code=409, detail="correction job is still active") from error
-    _append_feedback_revision(
-        package_root=package_root,
-        manifest=manifest,
-        manifest_sha256=manifest_sha256,
-        decisions=decisions,
-        decision="draft",
-    )
     return job
 
 
@@ -547,46 +743,41 @@ async def carousel_review_approve(
     _assert_current_manifest(form, manifest_sha256)
     if any(str(form.get(f"feedback_{page.page_id}", "")).strip() for page in manifest.pages):
         raise HTTPException(status_code=400, detail="approval cannot include correction feedback")
-    feedback_store = _load_feedback(package_root, manifest.episode_id)
-    already_approved = any(
-        revision.carousel_revision == manifest.revision
-        and revision.manifest_sha256 == manifest_sha256
-        and revision.decision == "approved"
-        for revision in feedback_store.revisions
-    )
-    if already_approved:
-        return {
-            "approved": True,
-            "revision": manifest.revision,
-            "manifest_sha256": manifest_sha256,
-            "published": False,
-            "publish_url": f"/bridge/ig-cards/{episode_slug}/publish",
-        }
-    active = [
-        job
-        for job in list_jobs(package_root)
-        if job.source_revision == manifest.revision
-        and job.source_manifest_sha256 == manifest_sha256
-        and job.status in {"queued", "claimed", "in_progress"}
-    ]
-    if active:
-        raise HTTPException(status_code=409, detail="correction job is still active")
-    decisions = [
-        CarouselPageDecision(
-            page_id=page.page_id,
-            status="approved",
-            feedback="",
-            artifact_sha256=page.image.sha256,
-        )
-        for page in manifest.pages
-    ]
-    _append_feedback_revision(
-        package_root=package_root,
-        manifest=manifest,
-        manifest_sha256=manifest_sha256,
-        decisions=decisions,
-        decision="approved",
-    )
+    with publish_release_lock(package_root):
+        feedback_store = _load_feedback(package_root, manifest.episode_id)
+        active = [
+            job
+            for job in list_jobs(package_root)
+            if job.source_revision == manifest.revision
+            and job.source_manifest_sha256 == manifest_sha256
+            and job.status in {"queued", "claimed", "in_progress"}
+        ]
+        if active:
+            raise HTTPException(status_code=409, detail="correction job is still active")
+        matching_revisions = [
+            revision
+            for revision in feedback_store.revisions
+            if revision.carousel_revision == manifest.revision
+            and revision.manifest_sha256 == manifest_sha256
+        ]
+        latest_matching = matching_revisions[-1] if matching_revisions else None
+        if latest_matching is None or latest_matching.decision != "approved":
+            decisions = [
+                CarouselPageDecision(
+                    page_id=page.page_id,
+                    status="approved",
+                    feedback="",
+                    artifact_sha256=page.image.sha256,
+                )
+                for page in manifest.pages
+            ]
+            _append_feedback_revision(
+                package_root=package_root,
+                manifest=manifest,
+                manifest_sha256=manifest_sha256,
+                decisions=decisions,
+                decision="approved",
+            )
     return {
         "approved": True,
         "revision": manifest.revision,
@@ -628,17 +819,42 @@ async def carousel_review_decide(
             )
         except ValidationError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
-    feedback_store = _load_feedback(package_root, manifest.episode_id)
     decision = "approved" if all(item.status == "approved" for item in decisions) else "draft"
-    feedback_store.revisions.append(
-        CarouselFeedbackRevision(
-            revision_number=len(feedback_store.revisions) + 1,
-            created_at=datetime.now(UTC),
-            carousel_revision=manifest.revision,
+    with publish_release_lock(package_root):
+        if decision == "approved":
+            active_corrections = [
+                job
+                for job in list_jobs(package_root)
+                if job.source_revision == manifest.revision
+                and job.source_manifest_sha256 == manifest_sha256
+                and job.status in {"queued", "claimed", "in_progress"}
+            ]
+            if active_corrections:
+                raise HTTPException(status_code=409, detail="correction job is still active")
+        else:
+            matching_publish = [
+                job
+                for job in list_publish_jobs(package_root)
+                if job.source_revision == manifest.revision
+                and job.source_manifest_sha256 == manifest_sha256
+            ]
+            if any(job.status in {"claimed", "in_progress"} for job in matching_publish):
+                raise HTTPException(
+                    status_code=409,
+                    detail="publish job is active; fail it before saving a review draft",
+                )
+            for job in matching_publish:
+                if job.status == "queued":
+                    supersede_queued_publish_job(
+                        publish_job_path(package_root, job.job_id),
+                        reason="new review draft revoked the release approval",
+                        release_locked=True,
+                    )
+        _append_feedback_revision(
+            package_root=package_root,
+            manifest=manifest,
             manifest_sha256=manifest_sha256,
+            decisions=decisions,
             decision=decision,
-            pages=decisions,
         )
-    )
-    _write_feedback(_feedback_path(package_root), feedback_store)
     return RedirectResponse(f"/bridge/ig-cards/{episode_slug}?saved=1", status_code=303)

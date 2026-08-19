@@ -86,15 +86,17 @@ Claim only jobs whose source revision and manifest hash still match the reviewed
 
 ## Stage 6 Publish contract
 
-1. Require the current `revision + manifest_sha256` to have a latest approved `CarouselFeedbackRevision`. If approval is absent or the manifest drifted, stop; never carry approval forward to another revision.
+1. Require the current `revision + manifest_sha256` to have a latest approved `CarouselFeedbackRevision`. Check active correction jobs before treating Approve as idempotent; a historical approval never overrides a newer draft or active correction. If approval is absent or the manifest drifted, stop; never carry approval forward to another revision.
 2. Open `/bridge/ig-cards/<episode-folder>/publish` from the Approve response's same-origin `publish_url`.
-3. Review the square asset set again, enter the already reviewed caption, and select at least one platform. Treat caption + platform set as release input, not as Stage 5 copy generation.
+3. Review the square asset set again, enter the already reviewed caption, and select at least one platform. Read the per-platform character and shared-caption warnings before handoff. If Instagram is selected, block captions over 2,200 characters at both client and server boundaries; do not rewrite them in the executor. Treat caption + platform set as release input, not as Stage 5 copy generation.
 4. Read the displayed strategy honestly:
-   - Instagram / Facebook Page use `meta_api` only when credentials and media transport are explicitly configured; otherwise use `agent_browser`.
-   - YouTube Community always uses `agent_browser_manual`. YouTube Data API has no Community-post insert endpoint; never claim otherwise.
-5. Submit once to create an episode-local, revision-bound publish job. Identical revision, manifest, caption, and platform-set submissions return the same job.
-6. Claim only when the current Codex or Claude Code executor actually has every capability listed by the job. If no compatible executor is available, leave it `queued`.
-7. Perform platform actions outside the state CLI. Do not store secrets in the job. Complete with one result per selected platform containing a receipt/permalink or an error.
+   - Instagram / Facebook Page use `meta_api` only when the manifest is `api_compatible` and credentials plus media transport are explicitly configured. A `manual_only` manifest always uses `agent_browser`.
+   - YouTube Community always uses `agent_browser_manual` and accepts at most 10 images. Disable and reject it for larger carousels. YouTube Data API has no Community-post insert endpoint; never claim otherwise.
+5. Submit once to create an episode-local, revision-bound publish job. Identical revision, manifest, caption, and platform-set submissions return the latest non-failed matching job. If that job failed, resubmit the same input to create a queued retry linked by `retry_of_job_id`. Reject a different request that overlaps any queued / claimed / in-progress platform. After a successful publish, require the explicit republish checkbox before creating a different request for an already-published platform.
+6. Treat the Web page as a handoff surface, not an agent dispatcher. It does not call Anthropic API or wake a desktop agent. For a queued job, use the displayed job ID and local Codex or Claude Code claim command in the already-running agent workflow.
+7. Claim only when the current Codex or Claude Code executor actually has every capability required by unfinished targets. Claim revalidates approval, `current.json`, request fingerprint, and every receipt in the immutable per-job release bundle. External publishing must use only bundle asset paths, never mutable episode revision paths.
+8. Before each external platform action, run `start-target` and retain both its stable `idempotency_key` and new `attempt_id`. Immediately checkpoint with those exact bindings plus receipt/permalink or error. After an expired lease, reconcile an in-progress target with the same binding; do not restart or job-fail an uncertain target. Skip every target already marked `published`, even if a later retry proposes another strategy.
+9. Perform platform actions outside the state CLI. Do not store secrets in the job. Call `complete` only after every selected platform has a checkpoint. Any failed target makes the job retryable `failed`, while published checkpoints remain carried through the whole retry lineage. Jobs without an immutable bundle are non-executable; use `retire-legacy` only after the lease expires, then create a safe replacement.
 
 The state tool is `scripts/podcast_carousel_publish_job.py`. It never publishes by itself:
 
@@ -110,6 +112,12 @@ python scripts/podcast_carousel_publish_job.py claim <publish-job.json> `
 # Append monotonic progress; each accepted update renews the lease.
 python scripts/podcast_carousel_publish_job.py progress <publish-job.json> `
   --claim-token <token> --step <name> --percent <0-100> --message <message>
+
+# Fence one platform attempt, then checkpoint it immediately after the side effect.
+python scripts/podcast_carousel_publish_job.py start-target <publish-job.json> `
+  --claim-token <token> --platform <platform>
+python scripts/podcast_carousel_publish_job.py checkpoint <publish-job.json> `
+  --claim-token <token> --result-json <single-platform-result.json>
 
 # Save one per-platform receipt/permalink or error after execution.
 python scripts/podcast_carousel_publish_job.py complete <publish-job.json> `
