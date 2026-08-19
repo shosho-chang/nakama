@@ -163,6 +163,7 @@ Professional account ID。
 pages_show_list
 pages_read_engagement
 pages_manage_posts
+publish_video
 instagram_basic
 instagram_content_publish
 business_management
@@ -190,13 +191,14 @@ API token／文件可能仍顯示 canonical scope `instagram_content_publish`。
    - `pages_show_list`
    - `pages_read_engagement`
    - `pages_manage_posts`
+   - `publish_video`
 6. 每加完一個權限，若選單自動收起，就再次點 **Add a Permission → Pages** 加下一個。
 7. 再點 **Add a Permission → Other**，逐一加入：
    - `instagram_basic`
    - `business_management`
    - Instagram 發布權限：若 Explorer 顯示 `instagram_content_publish` 就選它；若只顯示
      `instagram_content_publishing` 就選目前介面提供的那個。不要自行輸入不存在的名稱。
-8. 核對 **Permissions** 清單共有上述六項；不要加入 messaging、ads、comments 或 email。
+8. 核對 **Permissions** 清單共有上述七項；不要加入 messaging、ads、comments 或 email。
 9. 點右側 **User or Page** 下方的 **Get Token**。
 10. 展開後會看到三個選項：
     - **Get User Access Token**
@@ -208,7 +210,7 @@ API token／文件可能仍顯示 canonical scope `instagram_content_publish`。
     - 若要求選 Business Portfolio，選擇管理目標 Page 與 Instagram 的 Portfolio；
     - 若要求選 Page，只選目標 Facebook Page；
     - 若要求選 Instagram account，只選連到該 Page 的目標 Professional account；
-    - 權限確認頁保留第 1.4 節的六項，再點 **Save／Continue／儲存／繼續**。
+    - 權限確認頁保留第 1.4 節的七項，再點 **Save／Continue／儲存／繼續**。
 13. 回到 Explorer 後，右側 **Access Token** 欄位出現內容就代表 User token 已產生。
 14. 不要按 **Copy Token**，也不要把 token 貼到聊天、截圖、CLI argument 或 Git-tracked
     檔案。後續只透過 Explorer 執行查詢，再把 Page token 寫進本機 ignored `.env`。
