@@ -79,7 +79,8 @@
         <legend><span class="sho-kicker-n">[ 03 ]</span> 發布平台</legend>
         {% set selected_platforms = latest_job.targets|map(attribute='platform')|list if latest_job else [] %}
         {% for capability in capabilities %}
-        <label class="publish-platform" data-state="{{ 'ineligible' if not capability.eligible else capability.configuration_state }}">
+        <label class="publish-platform" data-state="{{ 'ineligible' if not capability.eligible else capability.configuration_state }}"
+               data-strategy="{{ capability.strategy }}">
           <input type="checkbox" name="platforms" value="{{ capability.platform }}"
                  {% if capability.eligible and capability.platform in selected_platforms %}checked{% endif %}
                  {% if not capability.eligible %}disabled aria-disabled="true"{% endif %}>

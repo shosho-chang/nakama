@@ -49,8 +49,7 @@ def _copy_verified(source: Path, destination: Path, source_hash: str) -> None:
         destination_hash = sha256_file(destination)
         if destination_hash != source_hash:
             raise RuntimeError(
-                "copy 後 SHA-256 不一致: "
-                f"source={source_hash} destination={destination_hash}"
+                f"copy 後 SHA-256 不一致: source={source_hash} destination={destination_hash}"
             )
     except Exception:
         if created:
@@ -112,10 +111,7 @@ def register_external_short(
             raise ValueError(f"canonical destination 不是檔案: {canonical}")
         canonical_hash = sha256_file(canonical)
         if canonical_hash != source_hash:
-            raise ValueError(
-                "canonical destination 已存在且 SHA-256 不同；拒絕覆寫: "
-                f"{canonical}"
-            )
+            raise ValueError(f"canonical destination 已存在且 SHA-256 不同；拒絕覆寫: {canonical}")
     elif source_resolved == canonical_resolved:
         raise ValueError(f"canonical source 不存在: {canonical}")
     else:
@@ -136,6 +132,12 @@ def register_external_short(
         duration_sec=result.duration_sec,
     )
     target_id = ensure_target(release_id, "youtube")
+    from agents.usopp.social_publish import ensure_short_targets
+    from shared.release_store import get_release
+
+    release = get_release(episode.name, cut_id)
+    assert release is not None
+    targets = ensure_short_targets(release)
     return {
         "status": "registered",
         "episode": episode.name,
@@ -145,6 +147,7 @@ def register_external_short(
         "sha256": canonical_hash,
         "release_id": release_id,
         "youtube_target_id": target_id,
+        "target_ids": {target["platform"]: target["id"] for target in targets},
         "acknowledgements": {
             "captions_burned": True,
             "rights_cleared": True,

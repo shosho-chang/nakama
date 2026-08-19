@@ -202,10 +202,20 @@ def _require_approved_revision(
 def _publish_capabilities(
     publish_compatibility: str, asset_count: int
 ) -> list[CarouselPublishTarget]:
-    meta_configured = (
-        publish_compatibility == "api_compatible"
-        and os.environ.get("META_CAROUSEL_PUBLISH_CONFIGURED", "").strip() == "1"
+    required_meta_settings = (
+        "META_GRAPH_API_VERSION",
+        "META_PAGE_ID",
+        "META_IG_USER_ID",
+        "META_PAGE_ACCESS_TOKEN",
+        "META_MEDIA_R2_ACCOUNT_ID",
+        "META_MEDIA_R2_ACCESS_KEY_ID",
+        "META_MEDIA_R2_SECRET_ACCESS_KEY",
+        "META_MEDIA_R2_BUCKET",
     )
+    missing_meta_settings = [
+        name for name in required_meta_settings if not os.environ.get(name, "").strip()
+    ]
+    meta_configured = publish_compatibility == "api_compatible" and not missing_meta_settings
     meta_strategy = "meta_api" if meta_configured else "agent_browser"
     meta_state = "configured" if meta_configured else "agent_browser_required"
     meta_capability = "meta_api" if meta_configured else "browser_session"
@@ -215,7 +225,11 @@ def _publish_capabilities(
         meta_note = (
             "已設定 Meta 發布連線；認領的 agent 必須具備對應發布權限。"
             if meta_configured
-            else ("尚未設定 Meta 發布連線；請使用已登入該平台的瀏覽器工作階段。")
+            else (
+                "Meta API 尚未完整設定（缺少："
+                + "、".join(missing_meta_settings)
+                + "）；請使用已登入該平台的瀏覽器工作階段。"
+            )
         )
     youtube_eligible = asset_count <= 10
     youtube_reason = (

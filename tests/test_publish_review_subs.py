@@ -183,6 +183,100 @@ def test_short_subs_route_is_not_available(env):
     assert "燒入畫面" in response.json()["detail"]
 
 
+def test_short_approval_persists_all_targets_and_74s_facebook_is_ineligible(env, monkeypatch):
+    client, ep = env
+    import thousand_sunny.routers.publish_review as pub_module
+    from shared import release_store
+
+    for name in (*pub_module._META_SETTINGS, *pub_module._META_STAGING_SETTINGS):
+        monkeypatch.delenv(name, raising=False)
+
+    short = ep / "highlights" / "exports" / "SS74.mp4"
+    short.write_bytes(b"short-video")
+    rid = release_store.register_release(
+        ep.name, "SS74", "short", str(short), duration_sec=74, file_bytes=11
+    )
+    youtube_id = release_store.ensure_target(rid, "youtube")
+    release_store.update_target(youtube_id, title="74 秒 Short", description="已審文案")
+    commands = []
+    monkeypatch.setattr(
+        pub_module.subprocess, "Popen", lambda command, **kwargs: commands.append(command)
+    )
+
+    response = client.post(f"/bridge/publish/{ep.name}/SS74/approve-upload")
+    assert response.status_code == 303
+    release = release_store.get_release(ep.name, "SS74")
+    by_platform = {target["platform"]: target for target in release["targets"]}
+    assert by_platform["youtube"]["status"] == "approved"
+    assert by_platform["instagram_reels"]["status"] == "approved"
+    assert by_platform["facebook_reels"]["status"] == "ineligible"
+    assert "60 seconds" in by_platform["facebook_reels"]["ineligibility_reason"]
+    assert len(commands) == 1
+    assert commands[0][-1] == "--execute"
+
+    page = client.get(f"/bridge/publish/{ep.name}/SS74")
+    assert page.status_code == 200
+    assert "Instagram Reels" in page.text
+    assert "Facebook Page Reels" in page.text
+    assert "INELIGIBLE" in page.text
+    assert "NOT EXECUTABLE · missing META_GRAPH_API_VERSION" in page.text
+
+
+def test_short_partial_failure_refresh_and_retry_only_failed_target(env, monkeypatch):
+    client, ep = env
+    import thousand_sunny.routers.publish_review as pub_module
+    from agents.usopp.social_publish import approve_short_targets
+    from shared import release_store
+
+    short = ep / "highlights" / "exports" / "SS59.mp4"
+    short.write_bytes(b"short-video")
+    rid = release_store.register_release(
+        ep.name, "SS59", "short", str(short), duration_sec=59, file_bytes=11
+    )
+    youtube_id = release_store.ensure_target(rid, "youtube")
+    release_store.update_target(youtube_id, title="59 秒 Short", description="已審文案")
+    release = release_store.get_release(ep.name, "SS59")
+    approve_short_targets(release, release["targets"][0])
+    release = release_store.get_release(ep.name, "SS59")
+    by_platform = {target["platform"]: target for target in release["targets"]}
+    release_store.update_target(
+        by_platform["youtube"]["id"],
+        status="uploaded",
+        video_id="yt-ok",
+        url="https://youtu.be/yt-ok",
+    )
+    release_store.update_target(
+        by_platform["instagram_reels"]["id"], status="failed", error="IG probe failure"
+    )
+    release_store.update_target(
+        by_platform["facebook_reels"]["id"], status="published", video_id="fb-ok"
+    )
+
+    page = client.get(f"/bridge/publish/{ep.name}/SS59")
+    assert page.status_code == 200
+    assert page.text.count("只重試此平台") == 1
+    assert "/retry/instagram_reels" in page.text
+    status = client.get(f"/bridge/publish/{ep.name}/SS59/status").json()
+    assert {item["platform"]: item["status"] for item in status["targets"]} == {
+        "youtube": "uploaded",
+        "instagram_reels": "failed",
+        "facebook_reels": "published",
+    }
+
+    commands = []
+    monkeypatch.setattr(
+        pub_module.subprocess, "Popen", lambda command, **kwargs: commands.append(command)
+    )
+    retried = client.post(f"/bridge/publish/{ep.name}/SS59/retry/instagram_reels")
+    assert retried.status_code == 303
+    assert commands[0][-2:] == ["--platform", "instagram_reels"]
+    refreshed = release_store.get_release(ep.name, "SS59")
+    after = {target["platform"]: target for target in refreshed["targets"]}
+    assert after["instagram_reels"]["status"] == "approved"
+    assert after["youtube"]["status"] == "uploaded"
+    assert after["facebook_reels"]["status"] == "published"
+
+
 def test_status_reads_runtime_progress_and_keeps_final_snapshot(env, monkeypatch, tmp_path):
     client, ep = env
     from shared import release_store

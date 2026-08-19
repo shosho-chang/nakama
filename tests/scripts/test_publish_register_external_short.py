@@ -58,22 +58,28 @@ def test_register_copies_hashes_and_creates_draft_release(tmp_path):
     assert release["file_path"] == str(canonical.resolve())
     assert release["duration_sec"] == 61.25
     assert release["file_bytes"] == len(source.read_bytes())
-    assert release["targets"][0]["platform"] == "youtube"
-    assert release["targets"][0]["status"] == "draft"
+    targets = {target["platform"]: target for target in release["targets"]}
+    assert set(targets) == {"youtube", "instagram_reels", "facebook_reels"}
+    assert targets["youtube"]["status"] == "draft"
+    assert targets["instagram_reels"]["status"] == "draft"
+    assert targets["facebook_reels"]["status"] == "ineligible"
+    assert output["target_ids"] == {platform: target["id"] for platform, target in targets.items()}
 
 
 def test_same_source_and_cut_are_idempotent_and_preserve_target_state(tmp_path):
     first, episode, _ = _register(tmp_path)
     release = get_release(episode.name, "partner-S01")
-    update_target(release["targets"][0]["id"], status="approved", title="已審標題")
+    youtube = next(target for target in release["targets"] if target["platform"] == "youtube")
+    update_target(youtube["id"], status="approved", title="已審標題")
 
     second, _, _ = _register(tmp_path)
     after = get_release(episode.name, "partner-S01")
     assert second["copied"] is False
     assert first["release_id"] == second["release_id"]
     assert first["youtube_target_id"] == second["youtube_target_id"]
-    assert after["targets"][0]["status"] == "approved"
-    assert after["targets"][0]["title"] == "已審標題"
+    youtube_after = next(target for target in after["targets"] if target["platform"] == "youtube")
+    assert youtube_after["status"] == "approved"
+    assert youtube_after["title"] == "已審標題"
 
 
 def test_existing_destination_with_different_hash_fails_closed(tmp_path):
@@ -101,7 +107,7 @@ def test_existing_destination_with_different_hash_fails_closed(tmp_path):
 def test_existing_video_id_blocks_reimport_without_touching_file(tmp_path):
     _, episode, _ = _register(tmp_path)
     release = get_release(episode.name, "partner-S01")
-    target = release["targets"][0]
+    target = next(target for target in release["targets"] if target["platform"] == "youtube")
     update_target(target["id"], status="uploaded", video_id="yt-existing")
     canonical = episode / "highlights" / "exports" / "partner-S01.mp4"
     before = canonical.read_bytes()
@@ -109,7 +115,11 @@ def test_existing_video_id_blocks_reimport_without_touching_file(tmp_path):
     with pytest.raises(ValueError, match="已有 video_id=yt-existing"):
         _register(tmp_path)
     assert canonical.read_bytes() == before
-    after = get_release(episode.name, "partner-S01")["targets"][0]
+    after = next(
+        target
+        for target in get_release(episode.name, "partner-S01")["targets"]
+        if target["platform"] == "youtube"
+    )
     assert after["status"] == "uploaded"
     assert after["video_id"] == "yt-existing"
 
@@ -118,9 +128,7 @@ def test_existing_video_id_blocks_reimport_without_touching_file(tmp_path):
     ("captions_burned", "rights_cleared", "needle"),
     [(False, True, "captions-burned"), (True, False, "rights-cleared")],
 )
-def test_acknowledgements_are_required(
-    tmp_path, captions_burned, rights_cleared, needle
-):
+def test_acknowledgements_are_required(tmp_path, captions_burned, rights_cleared, needle):
     episode = tmp_path / "ep"
     episode.mkdir()
     source = tmp_path / "delivery.mp4"
