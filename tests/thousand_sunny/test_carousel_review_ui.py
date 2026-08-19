@@ -22,6 +22,18 @@ def test_review_grid_uses_square_carousel_previews() -> None:
     assert "aspect-ratio:4/5" not in CSS
 
 
+def test_evidence_panel_closes_only_for_backdrop_clicks() -> None:
+    assert "function closeEvidenceOnBackdrop(event)" in TEMPLATE
+    assert "event.currentTarget" in TEMPLATE
+    assert "event.target !== dialog" in TEMPLATE
+    assert "dialog.getBoundingClientRect()" in TEMPLATE
+    assert "event.clientX < bounds.left" in TEMPLATE
+    assert "event.clientX > bounds.right" in TEMPLATE
+    assert "event.clientY < bounds.top" in TEMPLATE
+    assert "event.clientY > bounds.bottom" in TEMPLATE
+    assert "dialog.addEventListener('click', closeEvidenceOnBackdrop)" in TEMPLATE
+
+
 def test_feedback_and_approve_actions_are_explicit_and_mutually_exclusive() -> None:
     assert 'id="review-feedback-button"' in TEMPLATE
     assert 'id="review-approve-button"' in TEMPLATE

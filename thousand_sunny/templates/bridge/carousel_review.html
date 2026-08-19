@@ -197,6 +197,21 @@ document.querySelectorAll('[data-evidence-target]').forEach((button) => {
   button.addEventListener('click', () => document.getElementById(button.dataset.evidenceTarget).showModal());
 });
 
+function closeEvidenceOnBackdrop(event) {
+  const dialog = event.currentTarget;
+  if (event.target !== dialog) return;
+  const bounds = dialog.getBoundingClientRect();
+  const outside = event.clientX < bounds.left
+    || event.clientX > bounds.right
+    || event.clientY < bounds.top
+    || event.clientY > bounds.bottom;
+  if (outside) dialog.close();
+}
+
+document.querySelectorAll('.carousel-evidence').forEach((dialog) => {
+  dialog.addEventListener('click', closeEvidenceOnBackdrop);
+});
+
 const reviewForm = document.getElementById('carousel-review-form');
 const feedbackButton = document.getElementById('review-feedback-button');
 const approveButton = document.getElementById('review-approve-button');
