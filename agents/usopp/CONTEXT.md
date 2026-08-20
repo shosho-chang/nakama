@@ -20,6 +20,14 @@ _Avoid_: Per-platform publish time, calendar event
 A time-oriented representation of Release state; it is not an independent scheduling source of truth.
 _Avoid_: Calendar record, schedule database
 
+**Native Arm**:
+An ahead-of-time platform acceptance for a future Campaign Anchor. YouTube `publishAt` and Facebook `SCHEDULED` are stored locally as `uploaded`; neither is proof that the content is public.
+_Avoid_: Published, completed schedule
+
+**Due Dispatcher**:
+The supervised desktop worker that scans shared Campaign Anchors and, at or after the anchor, atomically dispatches only unfinished Instagram Reels targets. It reports heartbeat health and never auto-retries terminal failures.
+_Avoid_: Scheduler database, Instagram native schedule, endless retry worker
+
 ## Relationships
 
 - A **Release** contains one or more **Release Targets**.
@@ -27,6 +35,8 @@ _Avoid_: Calendar record, schedule database
 - Every selected **Release Target** inherits the same **Campaign Anchor**.
 - A **Calendar Projection** displays the **Campaign Anchor** and actual platform outcomes.
 - Changing a **Campaign Anchor** does not approve or publish a **Release**.
+- A future Short may be **Native Armed** on YouTube and Facebook while its Instagram Release Target remains `approved` for the **Due Dispatcher**.
+- The **Due Dispatcher** uses the Release Target `status + updated_at` lease and preserves checkpoints when reclaiming stale `uploading`; explicit operator retry resets only one failed Target.
 
 ## Example dialogue
 

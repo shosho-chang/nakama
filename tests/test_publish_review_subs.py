@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -220,6 +221,65 @@ def test_short_approval_persists_all_targets_and_74s_facebook_is_ineligible(env,
     assert "Facebook Page Reels" in page.text
     assert "INELIGIBLE" in page.text
     assert "NOT EXECUTABLE · missing META_GRAPH_API_VERSION" in page.text
+
+
+def test_future_short_approval_starts_one_native_only_dispatcher(env, monkeypatch):
+    client, ep = env
+    import thousand_sunny.routers.publish_review as pub_module
+    from shared import release_store
+
+    short = ep / "highlights" / "exports" / "SS59-future.mp4"
+    short.write_bytes(b"short-video")
+    release_id = release_store.register_release(
+        ep.name,
+        "SS59-future",
+        "short",
+        str(short),
+        duration_sec=59,
+        file_bytes=11,
+    )
+    youtube_id = release_store.ensure_target(release_id, "youtube")
+    release_store.update_target(
+        youtube_id,
+        title="Future Short",
+        description="已審文案",
+        publish_at="2026-08-25T09:00:00+08:00",
+    )
+    monkeypatch.setattr(
+        pub_module,
+        "_utc_now",
+        lambda: datetime(2026, 8, 20, 1, 0, tzinfo=timezone.utc),
+    )
+    commands = []
+    monkeypatch.setattr(
+        pub_module.subprocess,
+        "Popen",
+        lambda command, **kwargs: commands.append(command),
+    )
+
+    response = client.post(f"/bridge/publish/{ep.name}/SS59-future/approve-upload")
+
+    assert response.status_code == 303
+    assert len(commands) == 1
+    command = commands[0]
+    assert command.count("--platform") == 2
+    assert command[-4:] == [
+        "--platform",
+        "youtube",
+        "--platform",
+        "facebook_reels",
+    ]
+    release = release_store.get_release(ep.name, "SS59-future")
+    statuses = {target["platform"]: target["status"] for target in release["targets"]}
+    assert statuses == {
+        "facebook_reels": "approved",
+        "instagram_reels": "approved",
+        "youtube": "approved",
+    }
+    page = client.get(f"/bridge/publish/{ep.name}/SS59-future")
+    assert "YouTube 與 Facebook 會先上傳並用平台原生排程武裝" in page.text
+    assert "Instagram 會在 Campaign Anchor 到點後由桌面 Due Dispatcher 送出" in page.text
+    assert "不證明內容已公開" in page.text
 
 
 def test_short_partial_failure_refresh_and_retry_only_failed_target(env, monkeypatch):

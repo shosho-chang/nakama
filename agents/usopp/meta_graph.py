@@ -13,6 +13,7 @@ import json
 import os
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, MutableMapping, Protocol
 
@@ -212,9 +213,14 @@ class MetaGraphClient:
         *,
         video_path: Path,
         description: str,
+        scheduled_at: datetime | None = None,
         checkpoint: Checkpoint,
         save_checkpoint: SaveCheckpoint,
     ) -> MetaPublishResult:
+        if scheduled_at is not None:
+            if scheduled_at.tzinfo is None or scheduled_at.utcoffset() is None:
+                raise ValueError("scheduled_at must be timezone-aware")
+            scheduled_at = scheduled_at.astimezone(timezone.utc)
         video_path = Path(video_path)
         if not video_path.is_file():
             raise MetaGraphError(f"Facebook Reel file does not exist: {video_path}")
@@ -247,17 +253,24 @@ class MetaGraphClient:
             self._save(checkpoint, save_checkpoint)
 
         if not checkpoint.get("finished"):
+            finish_mode = "scheduled" if scheduled_at is not None else "published"
+            finish_data: dict[str, Any] = {
+                "upload_phase": "finish",
+                "video_id": video_id,
+                "video_state": "SCHEDULED" if scheduled_at is not None else "PUBLISHED",
+                "description": description,
+            }
+            if scheduled_at is not None:
+                finish_data["scheduled_publish_time"] = int(scheduled_at.timestamp())
             self._request(
                 "POST",
                 f"{self.config.page_id}/video_reels",
-                data={
-                    "upload_phase": "finish",
-                    "video_id": video_id,
-                    "video_state": "PUBLISHED",
-                    "description": description,
-                },
+                data=finish_data,
             )
             checkpoint["finished"] = True
+            checkpoint["finish_mode"] = finish_mode
+            if scheduled_at is not None:
+                checkpoint["scheduled_publish_time"] = int(scheduled_at.timestamp())
             self._save(checkpoint, save_checkpoint)
 
         permalink = self._poll_facebook_video(video_id)

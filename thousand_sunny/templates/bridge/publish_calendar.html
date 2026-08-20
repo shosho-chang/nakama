@@ -97,6 +97,25 @@
     <span class="sho-mono">Carousel 顯示 Community handoff；不宣稱 API 自動發布</span>
   </aside>
 
+  <section class="pc-worker" data-worker-health="{{ short_due_worker.state }}" aria-labelledby="short-due-worker-heading">
+    <div>
+      <div class="sho-kicker"><span class="sho-kicker-n">[ LIVE ]</span> SHORT DUE WORKER</div>
+      <h2 id="short-due-worker-heading">Short Due Dispatcher</h2>
+    </div>
+    <span class="sho-tag pc-worker__state" role="status" aria-label="Short Due Dispatcher 狀態：{{ short_due_worker_label }}">{{ short_due_worker_label }}</span>
+    <dl>
+      <div><dt>LAST RUN</dt><dd>{% if short_due_worker.last_run_at %}<time datetime="{{ short_due_worker.last_run_at.isoformat() }}">{{ short_due_worker.last_run_at.astimezone(taipei).strftime('%Y-%m-%d %H:%M:%S') }}</time>{% else %}尚無紀錄{% endif %}</dd></div>
+      <div><dt>LAST SUCCESS</dt><dd>{% if short_due_worker.last_success_at %}<time datetime="{{ short_due_worker.last_success_at.isoformat() }}">{{ short_due_worker.last_success_at.astimezone(taipei).strftime('%Y-%m-%d %H:%M:%S') }}</time>{% else %}尚無成功紀錄{% endif %}</dd></div>
+      <div><dt>FAILURE STREAK</dt><dd>{{ short_due_worker.consecutive_failures }}</dd></div>
+    </dl>
+  </section>
+  {% if short_due_worker_warning %}
+  <aside class="pc-state pc-state--warning" role="alert" aria-label="Short Due Dispatcher 需要處理">
+    <strong>未來 Short 仍等待 Instagram 到點投遞，但 Due Dispatcher 目前不是在線狀態。</strong>
+    <span>請在桌機前景啟動 <span class="sho-mono">publish_due.py --watch --execute</span>，並確認本區狀態轉為「在線」；這項警告不會改動 Campaign Anchor 或 Release Target。</span>
+  </aside>
+  {% endif %}
+
   <section class="pc-pipeline" aria-labelledby="pipeline-heading">
     <div class="pc-section-heading">
       <div>

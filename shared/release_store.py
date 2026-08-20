@@ -27,8 +27,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, Optional
 
 from shared.state import _get_conn
@@ -61,6 +62,8 @@ VALID_STATUS = (
     "ineligible",
 )
 _CAMPAIGN_ANCHOR_EDITABLE_STATUSES = frozenset({"draft", "approved", "failed"})
+TARGET_CLAIM_STALE_AFTER = timedelta(minutes=15)
+_CLAIM_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True, slots=True)
@@ -328,3 +331,50 @@ def update_target(target_id: int, **fields: Any) -> None:
         )
     if cur.rowcount == 0:
         raise ValueError(f"release_target id={target_id} 不存在")
+
+
+def claim_target(
+    target_id: int,
+    *,
+    now: datetime | None = None,
+    stale_after: timedelta = TARGET_CLAIM_STALE_AFTER,
+    expected_publish_at: str | None = None,
+) -> dict[str, Any] | None:
+    """Atomically claim one approved or stale-uploading Release Target.
+
+    ``updated_at`` is the lease heartbeat.  Checkpoint writes refresh it via
+    :func:`update_target`, so an in-flight adapter is reclaimable only after
+    ``TARGET_CLAIM_STALE_AFTER`` without adding a second lease model.  When
+    supplied, ``expected_publish_at`` adds an exact compare-and-set guard for
+    callers whose eligibility depends on the scheduled instant.
+    """
+
+    claimed_at = now or datetime.now(timezone.utc)
+    if claimed_at.tzinfo is None or claimed_at.utcoffset() is None:
+        raise ValueError("claim now must be timezone-aware")
+    if stale_after <= timedelta(0):
+        raise ValueError("stale_after must be positive")
+    claimed_at = claimed_at.astimezone(timezone.utc)
+    stale_cutoff = claimed_at - stale_after
+    publish_at_guard = " AND publish_at = ?" if expected_publish_at is not None else ""
+    params: list[Any] = [claimed_at.isoformat(), target_id, stale_cutoff.isoformat()]
+    if expected_publish_at is not None:
+        params.append(expected_publish_at)
+    conn = _get_conn()
+    with _CLAIM_LOCK:
+        row = conn.execute(
+            f"""
+            UPDATE release_targets
+            SET status = 'uploading', error = NULL, updated_at = ?
+            WHERE id = ?
+              AND (
+                status = 'approved'
+                OR (status = 'uploading' AND updated_at <= ?)
+              )
+              {publish_at_guard}
+            RETURNING *
+            """,
+            params,
+        ).fetchone()
+        conn.commit()
+    return dict(row) if row is not None else None
