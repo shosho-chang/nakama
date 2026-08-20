@@ -17,6 +17,7 @@ from publish_upload import (  # noqa: E402
     build_insert_body,
     cmd_cc_only,
     cmd_run,
+    observe_youtube_video,
     reconcile_target,
     to_utc_iso,
 )
@@ -162,6 +163,85 @@ class _ListYouTube:
         return self.resource
 
 
+@pytest.mark.parametrize(
+    ("response", "outcome", "evidence", "certain"),
+    [
+        (
+            {
+                "items": [
+                    {
+                        "status": {"privacyStatus": "public", "uploadStatus": "processed"},
+                        "processingDetails": {"processingStatus": "succeeded"},
+                    }
+                ]
+            },
+            "published",
+            "public",
+            True,
+        ),
+        (
+            {
+                "items": [
+                    {
+                        "status": {"privacyStatus": "private", "uploadStatus": "uploaded"},
+                        "processingDetails": {"processingStatus": "processing"},
+                    }
+                ]
+            },
+            "pending",
+            "processing",
+            True,
+        ),
+        (
+            {
+                "items": [
+                    {
+                        "status": {
+                            "privacyStatus": "private",
+                            "uploadStatus": "rejected",
+                            "rejectionReason": "copyright",
+                        },
+                        "processingDetails": {"processingStatus": "terminated"},
+                    }
+                ]
+            },
+            "failed",
+            "processing_failed",
+            True,
+        ),
+        (
+            {
+                "items": [
+                    {
+                        "status": {
+                            "privacyStatus": "public",
+                            "uploadStatus": "rejected",
+                        },
+                        "processingDetails": {"processingStatus": "terminated"},
+                    }
+                ]
+            },
+            "pending",
+            "unknown",
+            False,
+        ),
+        ({"items": [{"status": {}, "processingDetails": {}}]}, "pending", "unknown", False),
+    ],
+)
+def test_observe_youtube_video_classifies_one_read_without_mutation(
+    response, outcome, evidence, certain
+):
+    youtube = _ListYouTube(response)
+
+    observation = observe_youtube_video(youtube, "yt-1")
+
+    assert observation.outcome == outcome
+    assert observation.evidence_category == evidence
+    assert observation.certain is certain
+    assert observation.permalink is None
+    assert youtube.resource.calls == [{"part": "status,processingDetails", "id": "yt-1"}]
+
+
 def _stored_target(tmp_path, *, cut_id="short-1"):
     from shared.release_store import ensure_target, get_release, register_release, update_target
 
@@ -201,6 +281,10 @@ def test_reconcile_private_and_public_states(tmp_path, privacy, processing, expe
     assert stored["status"] == expected
     assert stored["video_id"] == "yt-short-1"
     assert yt.resource.calls == [{"part": "status,processingDetails", "id": "yt-short-1"}]
+    assert result["privacy_status"] == privacy
+    assert result["processing_status"] == processing
+    assert result["upload_status"] == "processed"
+    assert "publish_at" in result
 
 
 def test_reconcile_processing_rejection_marks_failed_with_reason(tmp_path):

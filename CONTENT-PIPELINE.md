@@ -73,7 +73,7 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 
 | Line | 1 收集 | 2 閱讀 | 3 整合 | 4 原子文章 | 6 發布 | 7 監控 |
 |---|---|---|---|---|---|---|
-| **Line 1a Podcast 一般訪談** | n/a (有錄音) | n/a | n/a | 🚧 Podcast Subtitle V2：Canonical Transcript → Verified Projection（V1 production / V2 shadow-run） | ✅ Long Highlight、Short 與 Carousel 已完成 Podcast YouTube／Instagram／Facebook supervised live probe；Short 未來 Campaign Anchor 會先 Native Arm YouTube／Facebook，Instagram 由桌機 Due Dispatcher 到點投遞；Publish Calendar 保留 per-platform truth 與 worker health | ❌ YT/IG insights |
+| **Line 1a Podcast 一般訪談** | n/a (有錄音) | n/a | n/a | 🚧 Podcast Subtitle V2：Canonical Transcript → Verified Projection（V1 production / V2 shadow-run） | ✅ Long Highlight、Short 與 Carousel 已完成 Podcast YouTube／Instagram／Facebook supervised live probe；Short 未來 Campaign Anchor 會先 Native Arm YouTube／Facebook，Instagram 由桌機 Due Dispatcher 到點投遞；Outcome Reconciler 只以明確平台證據確認到點 native outcome；Publish Calendar 保留 per-platform truth 與兩個 worker 的獨立 health | ❌ YT/IG insights |
 | **Line 1b Podcast 訪問新書作者** | n/a (有錄音 + 有書) | ⬜ Line 2 Reading Source + Reading Overlay | ⬜ Line 2 Source Promotion / annotation-only sync | 🚧 同上，另可 consume 書籍 refs 作 Evidence context | 同上 | 同上 |
 | **Line 2 讀書心得** | n/a (有書 / 文章 / web document) | ⬜ Reading Source + Reading Overlay（中/英/雙語閱讀） | ⬜ Source Promotion 或 annotation-only sync | ⬜ Reading Context Package → **修修 Project 頁面手寫** | ✅ WP only / ❌ 其他 channel | ❌ |
 | **Line 3 文獻科普** | ⬜ Zoro topic discovery | n/a | ⬜ 主題 retrieval → outline | ⬜ synthesize outline → 修修自寫（可用 Claude.ai 對話協助），LLM 不代寫正文（ADR-027） | ✅ WP only / ❌ 其他 channel | ✅ SEO 中控台 |

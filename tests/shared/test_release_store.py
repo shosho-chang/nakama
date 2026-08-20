@@ -5,6 +5,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
+from threading import Barrier
 
 import pytest
 
@@ -145,6 +146,119 @@ def test_claim_target_rejects_nonclaimable_terminal_or_unapproved_status(store, 
     store.update_target(target_id, status=status)
 
     assert store.claim_target(target_id, now=datetime(2026, 8, 20, tzinfo=UTC)) is None
+
+
+def test_confirm_target_outcome_has_one_uploaded_same_video_winner(store):
+    release_id = store.register_release("ep", "S01", "short", "f.mp4")
+    target_id = store.ensure_target(release_id, "youtube")
+    store.update_target(target_id, status="uploaded", video_id="yt-1")
+    observed = store.get_release("ep", "S01")["targets"][0]
+
+    first = store.confirm_target_outcome(
+        target_id,
+        expected_video_id="yt-1",
+        expected_updated_at=observed["updated_at"],
+        status="published",
+        url="https://youtu.be/yt-1",
+    )
+    stale = store.confirm_target_outcome(
+        target_id,
+        expected_video_id="yt-1",
+        expected_updated_at=observed["updated_at"],
+        status="failed",
+        error="must not overwrite",
+    )
+
+    target = store.get_release("ep", "S01")["targets"][0]
+    assert first is True
+    assert stale is False
+    assert target["status"] == "published"
+    assert target["video_id"] == "yt-1"
+    assert target["url"] == "https://youtu.be/yt-1"
+    assert target["error"] is None
+
+
+def test_confirm_target_outcome_rejects_changed_video_identity(store):
+    release_id = store.register_release("ep", "S01", "short", "f.mp4")
+    target_id = store.ensure_target(release_id, "facebook_reels")
+    store.update_target(target_id, status="uploaded", video_id="fb-new")
+    observed = store.get_release("ep", "S01")["targets"][0]
+
+    changed = store.confirm_target_outcome(
+        target_id,
+        expected_video_id="fb-old",
+        expected_updated_at=observed["updated_at"],
+        status="published",
+        url="https://facebook.example/reel/new",
+    )
+
+    target = store.get_release("ep", "S01")["targets"][0]
+    assert changed is False
+    assert target["status"] == "uploaded"
+    assert target["video_id"] == "fb-new"
+    assert target["url"] is None
+
+
+def test_confirm_target_outcome_has_exactly_one_concurrent_winner(store):
+    release_id = store.register_release("ep", "S01", "short", "f.mp4")
+    target_id = store.ensure_target(release_id, "youtube")
+    store.update_target(target_id, status="uploaded", video_id="yt-1")
+    observed = store.get_release("ep", "S01")["targets"][0]
+    ready = Barrier(2)
+
+    def confirm(status):
+        ready.wait()
+        return store.confirm_target_outcome(
+            target_id,
+            expected_video_id="yt-1",
+            expected_updated_at=observed["updated_at"],
+            status=status,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(confirm, ("published", "failed")))
+
+    assert sorted(results) == [False, True]
+    assert store.get_release("ep", "S01")["targets"][0]["status"] in {
+        "published",
+        "failed",
+    }
+
+
+def test_confirm_target_outcome_does_not_share_update_target_transaction(store):
+    release_id = store.register_release("ep", "S01", "short", "f.mp4")
+    youtube_id = store.ensure_target(release_id, "youtube")
+    instagram_id = store.ensure_target(release_id, "instagram_reels")
+    store.update_target(youtube_id, status="uploaded", video_id="yt-1")
+    observed = next(
+        target
+        for target in store.get_release("ep", "S01")["targets"]
+        if target["platform"] == "youtube"
+    )
+    ready = Barrier(2)
+
+    def confirm():
+        ready.wait()
+        return store.confirm_target_outcome(
+            youtube_id,
+            expected_video_id="yt-1",
+            expected_updated_at=observed["updated_at"],
+            status="published",
+        )
+
+    def update_sibling():
+        ready.wait()
+        store.update_target(instagram_id, status="approved")
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        confirm_future = executor.submit(confirm)
+        update_future = executor.submit(update_sibling)
+        assert confirm_future.result() is True
+        assert update_future.result() is None
+
+    targets = {target["platform"]: target for target in store.get_release("ep", "S01")["targets"]}
+    assert targets["youtube"]["status"] == "published"
+    assert targets["instagram_reels"]["status"] == "approved"
 
 
 def test_social_target_metadata_and_ineligible_status_persist(store):

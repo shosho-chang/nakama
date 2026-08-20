@@ -76,6 +76,22 @@ def test_calendar_discloses_due_worker_health_and_native_arm_truth() -> None:
     assert "uploaded means public" not in TEMPLATE
 
 
+def test_calendar_discloses_outcome_reconciler_and_overdue_confirmation_truth() -> None:
+    for token in (
+        "Outcome Reconciler",
+        'data-worker-kind="outcome-reconciler"',
+        "outcome_reconciler.last_run_at",
+        "outcome_reconciler.last_success_at",
+        "outcome_reconciler.consecutive_failures",
+        "target.confirmation_overdue",
+        "等待公開確認",
+        "publish_reconcile.py --once --execute",
+    ):
+        assert token in TEMPLATE
+    assert "uploaded = published" not in TEMPLATE
+    assert ".pc-target__confirmation" in CSS
+
+
 def test_channel_identity_has_one_shared_source_of_truth() -> None:
     for constant in (
         "PODCAST_YOUTUBE_CHANNEL_NAME",

@@ -11,6 +11,7 @@ from scripts.podcast_carousel_publish_job import (
 )
 from shared.heartbeat import Heartbeat
 from shared.publish_calendar import (
+    OUTCOME_RECONCILER_STALE_AFTER,
     PODCAST_YOUTUBE_CHANNEL,
     PODCAST_YOUTUBE_CHANNEL_HANDLE,
     PODCAST_YOUTUBE_CHANNEL_ID,
@@ -19,6 +20,7 @@ from shared.publish_calendar import (
     build_month_grid,
     build_publish_calendar,
     future_short_requires_due_worker,
+    outcome_reconciler_health,
     parse_month,
     short_due_worker_health,
     short_execution_readiness,
@@ -702,6 +704,27 @@ def test_due_unfinished_native_armed_short_becomes_in_progress(tmp_path: Path) -
     assert build_publish_calendar(tmp_path, now=now).items[0].phase == "in_progress"
 
 
+def test_due_uploaded_native_targets_wait_for_outcome_confirmation(tmp_path: Path) -> None:
+    now = datetime(2026, 8, 20, 1, tzinfo=UTC)
+    anchor = now - timedelta(minutes=1)
+    release_id = register_release("episode", "S-native", "short", str(tmp_path / "S.mp4"))
+    for platform in ("youtube", "facebook_reels"):
+        target_id = ensure_target(release_id, platform)
+        update_target(
+            target_id,
+            status="uploaded",
+            video_id=f"{platform}-1",
+            publish_at=anchor.isoformat(),
+        )
+
+    item = build_publish_calendar(tmp_path, now=now).items[0]
+
+    assert item.phase == "in_progress"
+    assert item.progress_label == "0/2 published"
+    assert all(target.confirmation_overdue for target in item.targets)
+    assert all(target.status == "uploaded" for target in item.targets)
+
+
 def test_short_due_worker_health_maps_never_online_stale_and_failing():
     now = datetime(2026, 8, 20, 1, tzinfo=UTC)
     online_row = Heartbeat(
@@ -733,3 +756,42 @@ def test_short_due_worker_health_maps_never_online_stale_and_failing():
     assert short_due_worker_health(online_row, now=now).state == "online"
     assert short_due_worker_health(stale_row, now=now).state == "stale"
     assert short_due_worker_health(failing_row, now=now).state == "failing"
+
+
+def test_outcome_reconciler_health_has_independent_identity_and_states():
+    now = datetime(2026, 8, 20, 1, tzinfo=UTC)
+    online = Heartbeat(
+        job_name="usopp-release-outcome-reconciler",
+        last_success_at=now,
+        last_run_at=now,
+        last_status="success",
+        last_error=None,
+        consecutive_failures=0,
+        updated_at=now,
+    )
+    stale = Heartbeat(
+        **{
+            **online.__dict__,
+            "last_run_at": now - OUTCOME_RECONCILER_STALE_AFTER - timedelta(seconds=1),
+        }
+    )
+    jitter = Heartbeat(
+        **{
+            **online.__dict__,
+            "last_run_at": now - timedelta(minutes=5, seconds=1),
+        }
+    )
+    failing = Heartbeat(
+        **{
+            **online.__dict__,
+            "last_status": "fail",
+            "last_error": "one observation uncertain",
+            "consecutive_failures": 1,
+        }
+    )
+
+    assert outcome_reconciler_health(None, now=now).state == "never_seen"
+    assert outcome_reconciler_health(online, now=now).state == "online"
+    assert outcome_reconciler_health(jitter, now=now).state == "online"
+    assert outcome_reconciler_health(stale, now=now).state == "stale"
+    assert outcome_reconciler_health(failing, now=now).state == "failing"

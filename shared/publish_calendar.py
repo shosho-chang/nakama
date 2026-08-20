@@ -32,6 +32,8 @@ PODCAST_YOUTUBE_CHANNEL_HANDLE = "@abnormal-human-research"
 PODCAST_YOUTUBE_CHANNEL_ID = "UCvipegP35x3-OcAs--PgAig"
 PODCAST_YOUTUBE_CHANNEL = f"{PODCAST_YOUTUBE_CHANNEL_NAME} {PODCAST_YOUTUBE_CHANNEL_HANDLE}"
 SHORT_DUE_WORKER_STALE_AFTER = timedelta(minutes=5)
+OUTCOME_RECONCILER_STALE_AFTER = timedelta(minutes=15)
+_NATIVE_OUTCOME_PLATFORMS = frozenset({"youtube", "facebook_reels"})
 
 ContentType = Literal["long", "short", "carousel"]
 DateBasis = Literal["scheduled", "published"]
@@ -64,6 +66,7 @@ class PlatformTargetView:
     permalink: str | None = None
     receipt_id: str | None = None
     retryable: bool = False
+    confirmation_overdue: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,6 +162,15 @@ class ShortDueWorkerHealth:
 
 
 @dataclass(frozen=True, slots=True)
+class OutcomeReconcilerHealth:
+    state: Literal["never_seen", "online", "stale", "failing"]
+    last_run_at: datetime | None
+    last_success_at: datetime | None
+    consecutive_failures: int
+    last_error: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class ShortExecutionReadiness:
     """Server-renderable readiness for the existing Short approval route."""
 
@@ -229,6 +241,36 @@ def short_due_worker_health(
     else:
         state = "online"
     return ShortDueWorkerHealth(
+        state,
+        row.last_run_at,
+        row.last_success_at,
+        row.consecutive_failures,
+        row.last_error,
+    )
+
+
+def outcome_reconciler_health(
+    row: Heartbeat | None,
+    *,
+    now: datetime | None = None,
+    stale_after: timedelta = OUTCOME_RECONCILER_STALE_AFTER,
+) -> OutcomeReconcilerHealth:
+    """Project the Outcome Reconciler heartbeat without merging worker identities."""
+
+    current = now or datetime.now(UTC)
+    if current.tzinfo is None or current.utcoffset() is None:
+        raise ValueError("reconciler health clock must be timezone-aware")
+    if stale_after <= timedelta(0):
+        raise ValueError("reconciler stale threshold must be positive")
+    if row is None:
+        return OutcomeReconcilerHealth("never_seen", None, None, 0, None)
+    if row.last_status == "fail" or row.consecutive_failures > 0:
+        state = "failing"
+    elif current.astimezone(UTC) - row.last_run_at.astimezone(UTC) > stale_after:
+        state = "stale"
+    else:
+        state = "online"
+    return OutcomeReconcilerHealth(
         state,
         row.last_run_at,
         row.last_success_at,
@@ -316,6 +358,7 @@ def _platform_view(
     permalink: object = None,
     receipt_id: object = None,
     retryable: bool = False,
+    confirmation_overdue: bool = False,
 ) -> PlatformTargetView:
     return PlatformTargetView(
         platform=platform,
@@ -325,6 +368,7 @@ def _platform_view(
         permalink=_safe_external_url(permalink),
         receipt_id=str(receipt_id).strip() if receipt_id else None,
         retryable=retryable,
+        confirmation_overdue=confirmation_overdue,
     )
 
 
@@ -426,6 +470,13 @@ def _release_items(*, now: datetime) -> tuple[list[CalendarItem], list[CalendarD
                 permalink=target.get("url"),
                 receipt_id=target.get("video_id"),
                 retryable=content_type == "short" and status == "failed",
+                confirmation_overdue=(
+                    anchor.state == "shared"
+                    and anchor.anchor_at is not None
+                    and anchor.anchor_at.astimezone(UTC) <= now
+                    and target.get("platform") in _NATIVE_OUTCOME_PLATFORMS
+                    and status == "uploaded"
+                ),
             )
             for target, status in zip(targets, statuses, strict=True)
         )
@@ -722,3 +773,11 @@ def future_short_requires_due_worker(
         )
         for item in items
     )
+
+
+def overdue_native_confirmation_exists(
+    items: tuple[CalendarItem, ...] | list[CalendarItem],
+) -> bool:
+    """Whether any projected native target awaits explicit public evidence."""
+
+    return any(target.confirmation_overdue for item in items for target in item.targets)

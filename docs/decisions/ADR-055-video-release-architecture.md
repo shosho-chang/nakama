@@ -2,7 +2,8 @@
 
 - **Status**: Accepted（D1/D2 為 2026-07-26 修修裁決的追認；D3 修修 2026-08-04
   裁決通過——「依照你的建議繼續做下去」；D4 於 2026-08-20 依三平台實測後
-  的 Publish Calendar 規劃補充；D5 於 2026-08-20 完成 Short due-dispatch slice）
+  的 Publish Calendar 規劃補充；D5 於 2026-08-20 完成 Short due-dispatch slice；
+  D6 於 2026-08-20 補上 Native Arm 公開結果確認）
 - **Date**: 2026-08-04
 - **Context**: `docs/plans/2026-07-26-video-publishing-plan.md`（grill 全記錄）、
   ADR-054（packaging 交接契約）。Slice 0 探針已 PASS（#1124：OAuth + 上傳 +
@@ -92,6 +93,35 @@ Due Dispatcher 是小型、Short-only orchestration layer，不建第二張 sche
 `usopp-short-due-dispatcher` heartbeat。Calendar 只投影 heartbeat 為
 `never_seen | online | stale | failing`，必要時警告未來 Instagram dependency；警告不改
 Campaign Anchor 或 Target state。永久服務安裝與真實 probe 仍需另一次 supervised 操作。
+
+## D6 — Outcome Reconciler 只確認明確平台結果（2026-08-20 amendment）
+
+YouTube／Facebook Native Arm 成功只證明平台接受排程，因此本地保持 `uploaded`。
+**Outcome Reconciler** 是獨立 observer：只掃描 `status=uploaded`、平台為 `youtube`／
+`facebook_reels`、具 `video_id`、Campaign Anchor 一致且已到點的 Target；預設 dry-run
+完全不載入平台 client、不寫 heartbeat、不改 Target。missing／malformed／divergent anchor、
+重複平台 identity 或缺 identity 一律 diagnostic 並 fail closed。限制到 `anchor <= now` 是
+第一版刻意的 no-early-observation trade-off；排程日前的 processing rejection 不由這個 slice
+提前處理，後續若要 lookahead 必須另行裁決。
+
+Execute 每個 Target 只做一次 GET。YouTube 只有 `privacyStatus=public` 能確認
+`published`；明確 upload rejection／processing termination 才確認 `failed`。Facebook 即使
+`publishing_phase=complete` 且已有 permalink，也仍不足以證明公開；只有 top-level
+`published is true` 加安全 HTTP(S) permalink 才確認 `published`。任一 processing／publishing
+phase 明確 `failed|error|expired` 可確認 `failed`；但 contradictory evidence、private、scheduled、
+processing、not-found、transport、auth 或未知 response 都維持 `uploaded`，不自動 retry、reupload
+或 recreate。
+
+本地確認走單一 conditional SQL mutation：winner 必須仍是同一筆 `uploaded + video_id +
+updated_at` snapshot，而且不得存在同平台同 `video_id` sibling，才能轉 `published|failed`
+並安全寫入 permalink；duplicate guard 與 outcome transition 位於同一 SQL statement。正常 concurrent winner
+產生 `stale_snapshot` 而不覆寫、也不把 heartbeat 打紅；DB error 或平台不確定性則讓
+`usopp-release-outcome-reconciler` heartbeat failing，但 siblings 繼續觀察。輸出與 durable error
+只使用 allowlisted evidence category，不保存 raw token、transport error、checkpoint、signed URL
+或 caption。Calendar 只讀 DB + heartbeat，將到點仍 `uploaded` 的 native Target 顯示為
+「等待公開確認」，絕不把時間經過當成 `published`。
+只有無 exact scope 的全域 execute 可寫這個 global heartbeat；精確 episode/cut 操作不會讓
+Calendar 誤判其他 overdue Targets 已受監控。
 
 ## 後果
 

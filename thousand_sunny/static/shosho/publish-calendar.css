@@ -457,6 +457,7 @@ body.sho .pc-target > span:first-child {
 }
 
 body.sho .pc-target__error,
+body.sho .pc-target__confirmation,
 body.sho .pc-target__receipt,
 body.sho .pc-target a {
   color: var(--sho-text-2);
@@ -467,6 +468,12 @@ body.sho .pc-target a {
 body.sho .pc-target__error {
   padding-left: var(--sho-s-1);
   border-left: 2px solid var(--sho-error);
+}
+
+body.sho .pc-target__confirmation {
+  padding-left: var(--sho-s-1);
+  color: var(--sho-text-2);
+  border-left: 2px solid var(--sho-warning);
 }
 
 body.sho .pc-target a {

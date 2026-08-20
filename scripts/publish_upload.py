@@ -34,8 +34,10 @@ import json
 import logging
 import os
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
@@ -54,6 +56,21 @@ CHUNK_MB = 8  # resumable chunk；小檔一發、1.35GB 約 170 chunks
 
 class YouTubeVideoNotFoundError(RuntimeError):
     """The stored video_id no longer resolves; never clear it or auto-replace it."""
+
+
+@dataclass(frozen=True, slots=True)
+class YouTubeVideoObservation:
+    """One read-only platform observation, safe to pass to orchestration code."""
+
+    outcome: Literal["published", "failed", "pending"]
+    evidence_category: str
+    certain: bool
+    error: str | None = None
+    permalink: str | None = None
+    privacy_status: str | None = None
+    upload_status: str | None = None
+    processing_status: str | None = None
+    publish_at: str | None = None
 
 
 def _progress_file(episode: str, cut_id: str) -> Path:
@@ -89,6 +106,22 @@ def _load_yt():
     return build("youtube", "v3", credentials=creds)
 
 
+def load_youtube_observer():
+    """Build a read-only observer client without refresh network or token writes."""
+
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+
+    if not TOKEN_PATH.exists():
+        raise SystemExit("YouTube observer credentials unavailable")
+    creds = Credentials.from_authorized_user_file(str(TOKEN_PATH))
+    if not creds.valid:
+        raise SystemExit(
+            "YouTube observer credentials are invalid; refresh in a supervised auth session"
+        )
+    return build("youtube", "v3", credentials=creds)
+
+
 def to_utc_iso(ts: str) -> str:
     """publish_at → RFC3339 UTC（YT API 要求）。naive 時間拒收——排程是硬承諾，
     時區不能用猜的。"""
@@ -118,13 +151,12 @@ def uploadable_targets(episode: str | None = None, cut: str | None = None) -> li
     return out
 
 
-def reconcile_target(yt, release: dict, target: dict) -> dict:
-    """Synchronise one stored YouTube target without creating a replacement."""
-    from shared.release_store import update_target
+def observe_youtube_video(yt, video_id: str) -> YouTubeVideoObservation:
+    """Read one YouTube video once; never insert, upload, or mutate local state."""
 
-    video_id = target.get("video_id")
+    video_id = video_id.strip()
     if not video_id:
-        raise ValueError(f"{release['cut_id']} 沒有 video_id，不能 reconciliation")
+        raise ValueError("YouTube video_id must be non-empty")
     response = (
         yt.videos()
         .list(
@@ -146,8 +178,20 @@ def reconcile_target(yt, release: dict, target: dict) -> dict:
     upload_status = status.get("uploadStatus")
     processing_status = processing.get("processingStatus")
     publish_at = status.get("publishAt")
-
     failed = upload_status in {"failed", "rejected", "deleted"} or processing_status == "terminated"
+    observation_fields = {
+        "privacy_status": privacy,
+        "upload_status": upload_status,
+        "processing_status": processing_status,
+        "publish_at": publish_at,
+    }
+    if failed and privacy == "public":
+        return YouTubeVideoObservation(
+            "pending",
+            "unknown",
+            False,
+            **observation_fields,
+        )
     if failed:
         reasons = [
             status.get("failureReason"),
@@ -157,24 +201,47 @@ def reconcile_target(yt, release: dict, target: dict) -> dict:
         reason = "; ".join(str(value) for value in reasons if value) or (
             f"uploadStatus={upload_status}, processingStatus={processing_status}"
         )
-        local_status = "failed"
-        error = f"YouTube processing failed/rejected: {reason}"
-    elif privacy == "public":
-        local_status = "published"
-        error = None
-    else:
-        local_status = "uploaded"
-        error = None
+        return YouTubeVideoObservation(
+            "failed",
+            "processing_failed",
+            True,
+            f"YouTube processing failed/rejected: {reason}",
+            **observation_fields,
+        )
+    if privacy == "public":
+        return YouTubeVideoObservation("published", "public", True, **observation_fields)
+    if processing_status in {"processing", "queued"}:
+        return YouTubeVideoObservation("pending", "processing", True, **observation_fields)
+    if privacy in {"private", "unlisted"}:
+        return YouTubeVideoObservation("pending", "private", True, **observation_fields)
+    return YouTubeVideoObservation("pending", "unknown", False, **observation_fields)
+
+
+def reconcile_target(yt, release: dict, target: dict) -> dict:
+    """Synchronise one stored YouTube target without creating a replacement."""
+    from shared.release_store import update_target
+
+    video_id = target.get("video_id")
+    if not video_id:
+        raise ValueError(f"{release['cut_id']} 沒有 video_id，不能 reconciliation")
+    observation = observe_youtube_video(yt, str(video_id))
+    local_status = {
+        "published": "published",
+        "failed": "failed",
+        "pending": "uploaded",
+    }[observation.outcome]
+    error = observation.error
 
     update_target(target["id"], status=local_status, error=error)
     return {
         "cut_id": release["cut_id"],
         "video_id": video_id,
         "status": local_status,
-        "privacy_status": privacy,
-        "upload_status": upload_status,
-        "processing_status": processing_status,
-        "publish_at": publish_at,
+        "privacy_status": observation.privacy_status,
+        "upload_status": observation.upload_status,
+        "processing_status": observation.processing_status,
+        "publish_at": observation.publish_at,
+        "evidence_category": observation.evidence_category,
         "error": error,
     }
 

@@ -28,6 +28,10 @@ _Avoid_: Published, completed schedule
 The supervised desktop worker that scans shared Campaign Anchors and, at or after the anchor, atomically dispatches only unfinished Instagram Reels targets. It reports heartbeat health and never auto-retries terminal failures.
 _Avoid_: Scheduler database, Instagram native schedule, endless retry worker
 
+**Outcome Reconciler**:
+The observer that runs after a Native Arm is due, reads a platform's public outcome once, and conditionally confirms the matching local Release Target outcome. It never schedules, publishes, retries, uploads, or recreates content.
+_Avoid_: Scheduler, Publisher, Retry Worker, publish clock
+
 ## Relationships
 
 - A **Release** contains one or more **Release Targets**.
@@ -37,6 +41,8 @@ _Avoid_: Scheduler database, Instagram native schedule, endless retry worker
 - Changing a **Campaign Anchor** does not approve or publish a **Release**.
 - A future Short may be **Native Armed** on YouTube and Facebook while its Instagram Release Target remains `approved` for the **Due Dispatcher**.
 - The **Due Dispatcher** uses the Release Target `status + updated_at` lease and preserves checkpoints when reclaiming stale `uploading`; explicit operator retry resets only one failed Target.
+- The **Outcome Reconciler** observes only due `uploaded` YouTube/Facebook Native Arms with a stable platform identity, then uses `status + video_id + updated_at` compare-and-set before confirming `published` or explicit terminal `failed`.
+- The **Outcome Reconciler** treats private, processing, scheduled, missing, contradictory, transport, and authentication evidence as non-public; uncertainty never becomes a terminal Release Target state.
 
 ## Example dialogue
 

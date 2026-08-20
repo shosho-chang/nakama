@@ -8,6 +8,7 @@ Public API（其餘 `_*` 私有；caller 看不到 SQL 與 row 形狀）：
     get_release(episode, cut_id)                     # 一筆 release + 其 targets
     list_releases(episode=None)                      # 清單（審核頁/CLI 用）
     update_target(target_id, **fields)               # 狀態機轉移 + 文案回填
+    confirm_target_outcome(...)                      # uploaded + video_id CAS 確認結果
 
 隱藏的設計約束：
 
@@ -27,10 +28,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, Optional
+from urllib.parse import urlsplit
 
 from shared.state import _get_conn
 
@@ -331,6 +334,73 @@ def update_target(target_id: int, **fields: Any) -> None:
         )
     if cur.rowcount == 0:
         raise ValueError(f"release_target id={target_id} 不存在")
+
+
+def confirm_target_outcome(
+    target_id: int,
+    *,
+    expected_video_id: str,
+    expected_updated_at: str,
+    status: Literal["published", "failed"],
+    url: str | None = None,
+    error: str | None = None,
+) -> bool:
+    """Confirm one native outcome while the scanned target identity still wins."""
+
+    video_id = expected_video_id.strip()
+    if not video_id:
+        raise ValueError("expected_video_id must be non-empty")
+    if status not in {"published", "failed"}:
+        raise ValueError("outcome status must be published or failed")
+    observed_at = expected_updated_at.strip()
+    if not observed_at:
+        raise ValueError("expected_updated_at must be non-empty")
+    if url is not None:
+        if "\\" in url or any(ord(character) < 32 or ord(character) == 127 for character in url):
+            raise ValueError("outcome URL contains unsafe characters")
+        parsed = urlsplit(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("outcome URL must be absolute HTTP(S)")
+    # ``shared.state`` deliberately exposes one process-global connection for
+    # legacy callers.  A connection transaction is not thread-owned, however:
+    # concurrent ``with conn`` blocks can commit each other's transaction.  The
+    # reconciler CAS therefore gets a short-lived connection so SQLite, rather
+    # than a Python context-manager race, serialises competing writers.
+    state_conn = _get_conn()
+    database_row = state_conn.execute("PRAGMA database_list").fetchone()
+    database_path = str(database_row[2]) if database_row is not None else ""
+    if not database_path or database_path == ":memory:":
+        raise RuntimeError("outcome CAS requires a file-backed state database")
+    conn = sqlite3.connect(database_path, timeout=30.0)
+    try:
+        conn.execute("PRAGMA busy_timeout=30000")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        journal_mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+        if str(journal_mode).lower() != "wal":
+            raise RuntimeError("outcome CAS requires the canonical WAL state database")
+        cursor = conn.execute(
+            """
+            UPDATE release_targets
+            SET status = ?, url = COALESCE(?, url), error = ?, updated_at = ?
+            WHERE id = ? AND status = 'uploaded' AND video_id = ? AND updated_at = ?
+              AND NOT EXISTS (
+                SELECT 1
+                FROM release_targets AS sibling
+                WHERE sibling.id != release_targets.id
+                  AND sibling.platform = release_targets.platform
+                  AND sibling.video_id = release_targets.video_id
+              )
+            """,
+            (status, url, error, _now(), target_id, video_id, observed_at),
+        )
+        conn.commit()
+        return cursor.rowcount == 1
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def claim_target(
