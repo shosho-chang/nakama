@@ -392,6 +392,24 @@ def test_release_partial_failure_takes_precedence_over_in_progress(tmp_path: Pat
     assert group.phase == "attention"
 
 
+def test_ineligible_target_is_visible_but_excluded_from_release_completion(tmp_path: Path) -> None:
+    release_id = register_release("episode-coverage", "S74", "short", "S74.mp4")
+    statuses = {
+        "youtube": "published",
+        "instagram_reels": "published",
+        "facebook_reels": "ineligible",
+    }
+    for platform, status in statuses.items():
+        target_id = ensure_target(release_id, platform)
+        update_target(target_id, status=status)
+
+    group = build_publish_calendar(tmp_path).items[0]
+
+    assert group.phase == "published"
+    assert group.progress_label == "2/2 published"
+    assert {target.platform: target.status for target in group.targets} == statuses
+
+
 def test_carousel_partial_failure_takes_precedence_over_in_progress(tmp_path: Path) -> None:
     fingerprint = "1" * 64
     updated_at = datetime(2026, 8, 25, tzinfo=UTC)

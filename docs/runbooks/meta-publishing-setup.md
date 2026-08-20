@@ -77,6 +77,16 @@ $python = (Get-Command python).Source
 & $python -c "import boto3, fastapi, pydantic, uvicorn, yaml; print('Python dependencies OK')"
 ```
 
+再執行 Stage 6 發布 preflight。這個命令只檢查目前 Python 的 `boto3`、Meta 設定與
+R2 staging 設定，不呼叫外部 API、不讀取 Release state，也不輸出 credential value：
+
+```powershell
+& $python scripts/publish_dispatch.py --preflight --platform instagram_reels
+```
+
+輸出必須包含 `"preflight": true` 與 `"network_calls": false`；若 `"ok": false`，
+依各 component 的 `action` 修復後重跑，不可直接進入 `--execute`。
+
 若 import 失敗，先建立這個 worktree 專用的 venv；`py -0p` 可列出已安裝 Python：
 
 ```powershell

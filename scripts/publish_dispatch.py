@@ -7,6 +7,7 @@ flag; credentials are read only inside the corresponding live adapter.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import sys
 import urllib.error
@@ -18,13 +19,19 @@ from typing import Any, Callable, Mapping
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agents.usopp.media_staging import MediaStager, MediaStagingConfig  # noqa: E402
+from agents.usopp.media_staging import (  # noqa: E402
+    MediaStager,
+    MediaStagingConfig,
+    MediaStagingError,
+)
 from agents.usopp.meta_graph import (  # noqa: E402
     MetaGraphClient,
     MetaGraphConfig,
+    MetaGraphConfigurationError,
     MetaGraphError,
 )
 from agents.usopp.social_publish import (  # noqa: E402
+    SHORT_PLATFORMS,
     AdapterResult,
     dispatch_release,
     ensure_short_targets,
@@ -112,6 +119,132 @@ class UrllibMetaTransport:
 def build_meta_client() -> MetaGraphClient:
     config = MetaGraphConfig.from_env()
     return MetaGraphClient(config, UrllibMetaTransport(config))
+
+
+_PLATFORM_LABELS = {
+    "youtube": "YouTube Shorts",
+    "instagram_reels": "Instagram Reels",
+    "facebook_reels": "Facebook Reels",
+}
+
+
+def _adapter_setup_error(platform: str, component: str, exc: Exception) -> str:
+    """Return a secret-free, actionable adapter construction failure."""
+
+    safe_detail = ""
+    if isinstance(exc, (MetaGraphConfigurationError, MediaStagingError)):
+        safe_detail = f": {exc}"
+    return (
+        f"{_PLATFORM_LABELS.get(platform, platform)} adapter initialization failed "
+        f"during {component} ({type(exc).__name__}){safe_detail}; "
+        "run `python scripts/publish_dispatch.py --preflight --platform "
+        f"{platform}` and fix the reported configuration/dependency"
+    )
+
+
+def build_short_adapters(
+    selected: set[str] | None,
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Build only selected adapters and retain per-target setup diagnostics."""
+
+    requested = set(SHORT_PLATFORMS if selected is None else selected)
+    adapters: dict[str, Any] = {}
+    setup_errors: dict[str, str] = {}
+    if "youtube" in requested:
+        adapters["youtube"] = YouTubeShortAdapter()
+
+    meta_platforms = requested.intersection({"instagram_reels", "facebook_reels"})
+    client: MetaGraphClient | None = None
+    if meta_platforms:
+        try:
+            client = build_meta_client()
+        except Exception as exc:
+            for platform in meta_platforms:
+                setup_errors[platform] = _adapter_setup_error(
+                    platform, "Meta Graph configuration", exc
+                )
+
+    if client is not None and "facebook_reels" in requested:
+        adapters["facebook_reels"] = FacebookReelAdapter(client)
+    if client is not None and "instagram_reels" in requested:
+        try:
+            adapters["instagram_reels"] = InstagramReelAdapter(
+                client, MediaStager(MediaStagingConfig.from_env())
+            )
+        except Exception as exc:
+            setup_errors["instagram_reels"] = _adapter_setup_error(
+                "instagram_reels", "R2 media staging startup", exc
+            )
+    return adapters, setup_errors
+
+
+def publish_dependency_preflight(selected: set[str] | None) -> dict[str, Any]:
+    """Validate selected live dependencies without network or state mutation."""
+
+    requested = set(SHORT_PLATFORMS if selected is None else selected)
+    checks: list[dict[str, Any]] = []
+
+    def config_check(component: str, loader: Callable[[], Any], action: str) -> None:
+        try:
+            loader()
+        except Exception as exc:
+            detail = (
+                str(exc)
+                if isinstance(exc, (MetaGraphConfigurationError, MediaStagingError))
+                else type(exc).__name__
+            )
+            checks.append(
+                {
+                    "component": component,
+                    "ok": False,
+                    "error_type": type(exc).__name__,
+                    "message": detail,
+                    "action": action,
+                }
+            )
+        else:
+            checks.append({"component": component, "ok": True})
+
+    if requested.intersection({"instagram_reels", "facebook_reels"}):
+        config_check(
+            "Meta Graph configuration",
+            MetaGraphConfig.from_env,
+            "set the named META_* variables in the supervised runtime",
+        )
+    if "instagram_reels" in requested:
+        config_check(
+            "R2 media staging configuration",
+            MediaStagingConfig.from_env,
+            "set the named META_MEDIA_R2_* variables for the staging bucket",
+        )
+        if importlib.util.find_spec("boto3") is None:
+            checks.append(
+                {
+                    "component": "boto3 dependency",
+                    "ok": False,
+                    "error_type": "ModuleNotFoundError",
+                    "message": "boto3 is not installed in this Python environment",
+                    "action": "run this Python with `-m pip install -r requirements.txt`",
+                }
+            )
+        else:
+            checks.append(
+                {
+                    "component": "boto3 dependency",
+                    "ok": True,
+                    "action": (
+                        "if missing, run this Python with `-m pip install -r requirements.txt`"
+                    ),
+                }
+            )
+
+    return {
+        "preflight": True,
+        "network_calls": False,
+        "selected_platforms": sorted(requested),
+        "ok": all(check["ok"] for check in checks),
+        "checks": checks,
+    }
 
 
 def _checkpoint(target: Mapping[str, Any]) -> dict[str, Any]:
@@ -247,23 +380,13 @@ def dispatch_short(args: argparse.Namespace) -> int:
         write_json_output({"dry_run": True, "targets": _release_plan(release, selected)})
         return 0
 
-    adapters: dict[str, Any] = {}
-    if selected is None or "youtube" in selected:
-        adapters["youtube"] = YouTubeShortAdapter()
-    try:
-        client = build_meta_client()
-    except Exception:
-        client = None
-    if client is not None and (selected is None or "facebook_reels" in selected):
-        adapters["facebook_reels"] = FacebookReelAdapter(client)
-    if client is not None and (selected is None or "instagram_reels" in selected):
-        try:
-            adapters["instagram_reels"] = InstagramReelAdapter(
-                client, MediaStager(MediaStagingConfig.from_env())
-            )
-        except Exception:
-            pass
-    results = dispatch_release(release, adapters, only_platforms=selected)
+    adapters, setup_errors = build_short_adapters(selected)
+    results = dispatch_release(
+        release,
+        adapters,
+        only_platforms=selected,
+        adapter_setup_errors=setup_errors,
+    )
     write_json_output({"dry_run": False, "results": results})
     return int(any(item["status"] == "failed" for item in results))
 
@@ -393,9 +516,14 @@ def build_parser() -> argparse.ArgumentParser:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--release", action="store_true", help="dispatch one Short release")
     mode.add_argument("--carousel-job", help="dispatch one approved Carousel job JSON")
+    mode.add_argument(
+        "--preflight",
+        action="store_true",
+        help="validate selected publish dependencies without network or state writes",
+    )
     parser.add_argument("--episode")
     parser.add_argument("--cut")
-    parser.add_argument("--platform", action="append")
+    parser.add_argument("--platform", action="append", choices=SHORT_PLATFORMS)
     execution = parser.add_mutually_exclusive_group()
     execution.add_argument("--execute", action="store_true", help="allow external writes")
     execution.add_argument("--dry-run", action="store_true", help="print the plan only (default)")
@@ -406,6 +534,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.preflight:
+        payload = publish_dependency_preflight(set(args.platform or []) or None)
+        write_json_output(payload)
+        return int(not payload["ok"])
     if args.release:
         if not args.episode or not args.cut:
             raise SystemExit("--release requires --episode and --cut")

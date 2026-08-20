@@ -10,6 +10,7 @@ from agents.usopp.meta_graph import (
     MetaGraphClient,
     MetaGraphConfig,
     MetaGraphConfigurationError,
+    MetaGraphError,
 )
 
 
@@ -251,6 +252,145 @@ def test_facebook_reel_rejects_naive_schedule_before_transport_mutation(tmp_path
 
     assert transport.calls == []
     assert transport.uploads == []
+
+
+def test_facebook_finish_rejection_invalidates_session_before_retry(tmp_path: Path):
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"video")
+    rejected = FakeTransport(
+        [
+            {"video_id": "expired-video", "upload_url": "https://upload.example/expired"},
+            {"error": {"message": "upload session expired"}},
+        ]
+    )
+    checkpoint: dict[str, Any] = {}
+    saves: list[dict[str, Any]] = []
+
+    with pytest.raises(MetaGraphError, match="upload session expired"):
+        MetaGraphClient(config(), rejected).publish_facebook_reel(
+            video_path=video,
+            description="description",
+            checkpoint=checkpoint,
+            save_checkpoint=saves.append,
+        )
+
+    assert saves[-1] == {
+        "facebook_reel_restart_required": True,
+        "facebook_reel_restart_reason": "finish_rejected",
+    }
+    assert checkpoint == saves[-1]
+
+    retry = FakeTransport(
+        [
+            {"video_id": "new-video", "upload_url": "https://upload.example/new"},
+            {"success": True},
+            {
+                "status": {"processing_phase": {"status": "complete"}},
+                "permalink_url": "/reel/new-video/",
+            },
+        ]
+    )
+    result = MetaGraphClient(config(), retry).publish_facebook_reel(
+        video_path=video,
+        description="description",
+        checkpoint=checkpoint,
+        save_checkpoint=saves.append,
+    )
+
+    assert retry.calls[0]["data"] == {"upload_phase": "start"}
+    assert len(retry.uploads) == 1
+    assert result.external_id == "new-video"
+    assert result.permalink == "https://www.facebook.com/reel/new-video/"
+    assert "facebook_reel_restart_required" not in checkpoint
+
+
+def test_facebook_unknown_finish_transport_failure_preserves_session_for_reconcile(
+    tmp_path: Path,
+):
+    class TransientFinishTransport(FakeTransport):
+        def request(self, method, path, *, params=None, data=None):
+            if data and data.get("upload_phase") == "finish":
+                self.calls.append({"method": method, "path": path, "params": params, "data": data})
+                raise TimeoutError("transport outcome unknown")
+            return super().request(method, path, params=params, data=data)
+
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"video")
+    transport = TransientFinishTransport(
+        [{"video_id": "video-unknown", "upload_url": "https://upload.example/unknown"}]
+    )
+    checkpoint: dict[str, Any] = {}
+
+    with pytest.raises(TimeoutError, match="outcome unknown"):
+        MetaGraphClient(config(), transport).publish_facebook_reel(
+            video_path=video,
+            description="description",
+            checkpoint=checkpoint,
+            save_checkpoint=lambda _: None,
+        )
+
+    assert checkpoint == {
+        "video_id": "video-unknown",
+        "upload_url": "https://upload.example/unknown",
+        "uploaded": True,
+    }
+    assert "facebook_reel_restart_required" not in checkpoint
+
+
+def test_facebook_graph_transient_finish_error_preserves_session(tmp_path: Path):
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"video")
+    transport = FakeTransport(
+        [
+            {"video_id": "video-transient", "upload_url": "https://upload.example/transient"},
+            {"error": {"message": "try again", "is_transient": True}},
+        ]
+    )
+    checkpoint: dict[str, Any] = {}
+
+    with pytest.raises(MetaGraphError, match="try again"):
+        MetaGraphClient(config(), transport).publish_facebook_reel(
+            video_path=video,
+            description="description",
+            checkpoint=checkpoint,
+            save_checkpoint=lambda _: None,
+        )
+
+    assert checkpoint == {
+        "video_id": "video-transient",
+        "upload_url": "https://upload.example/transient",
+        "uploaded": True,
+    }
+    assert "facebook_reel_restart_required" not in checkpoint
+
+
+def test_facebook_absolute_permalink_is_preserved(tmp_path: Path):
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"video")
+    checkpoint = {
+        "video_id": "video-1",
+        "upload_url": "https://upload.example/session",
+        "uploaded": True,
+        "finished": True,
+    }
+    expected = "https://business.facebook.com/reel/video-1/?ref=share"
+    transport = FakeTransport(
+        [
+            {
+                "status": {"processing_phase": {"status": "complete"}},
+                "permalink_url": expected,
+            }
+        ]
+    )
+
+    result = MetaGraphClient(config(), transport).publish_facebook_reel(
+        video_path=video,
+        description="description",
+        checkpoint=checkpoint,
+        save_checkpoint=lambda _: None,
+    )
+
+    assert result.permalink == expected
 
 
 def test_facebook_multi_photo_creates_unpublished_photos_and_one_feed_post():

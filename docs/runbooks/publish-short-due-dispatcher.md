@@ -71,13 +71,17 @@ E:\nakama\.venv-v2\Scripts\python.exe -c "from shared.release_store import get_r
 Do not reuse published media. Prepare a newly unpublished Short, confirm all Stage 5 assets/copy, and first run:
 
 ```powershell
-E:\nakama\.venv-v2\Scripts\python.exe scripts\publish_due.py --once
+E:\nakama\.venv-v2\Scripts\python.exe scripts\publish_due.py --once --episode <EPISODE> --cut <CUT_ID>
 ```
 
 Review the JSON identity, shared Campaign Anchor, and selected Instagram Target. In Bridge, approve the future Short and verify YouTube/Facebook become native-armed while Instagram remains `approved`. Only with the operator present, correct credentials loaded, rollback expectations agreed, and the new Short still unpublished should a separate supervised session run:
 
 ```powershell
-E:\nakama\.venv-v2\Scripts\python.exe scripts\publish_due.py --once --execute
+E:\nakama\.venv-v2\Scripts\python.exe scripts\publish_due.py --once --execute --episode <EPISODE> --cut <CUT_ID>
 ```
+
+`--episode` 與 `--cut` 必須成對且完全符合既有 Short Release；缺一、空值或 identity
+不存在都會 fail closed。這個 exact scope 只供 supervised due-run；不帶 filter 的
+`--watch --execute` 保留為正常 daemon 行為。
 
 Verify the Instagram receipt independently. An `uploaded` YouTube/Facebook Target or accepted native schedule is not proof of public publication.

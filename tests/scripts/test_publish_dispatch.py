@@ -68,10 +68,79 @@ def test_missing_meta_configuration_fails_only_selected_target(tmp_path, monkeyp
     json.loads(capsys.readouterr().out)
     targets = {target["platform"]: target for target in get_release("episode", "S1")["targets"]}
     assert targets["instagram_reels"]["status"] == "failed"
-    assert "no adapter configured" in targets["instagram_reels"]["error"]
+    assert "Instagram Reels adapter initialization failed" in targets["instagram_reels"]["error"]
+    assert "MetaGraphConfigurationError" in targets["instagram_reels"]["error"]
+    assert "--preflight" in targets["instagram_reels"]["error"]
+    assert "no adapter configured" not in targets["instagram_reels"]["error"]
     assert targets["youtube"]["status"] == "approved"
     assert targets["facebook_reels"]["status"] == "approved"
     assert release["id"] == get_release("episode", "S1")["id"]
+
+
+def test_preflight_is_secret_free_actionable_and_does_not_mutate_release(
+    tmp_path, monkeypatch, capsys
+):
+    _approved_short(tmp_path)
+    for name in (
+        "META_GRAPH_API_VERSION",
+        "META_PAGE_ID",
+        "META_IG_USER_ID",
+        "META_PAGE_ACCESS_TOKEN",
+        "META_MEDIA_R2_ACCOUNT_ID",
+        "META_MEDIA_R2_ACCESS_KEY_ID",
+        "META_MEDIA_R2_SECRET_ACCESS_KEY",
+        "META_MEDIA_R2_BUCKET",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    assert dispatch_main(["--preflight", "--platform", "instagram_reels"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["preflight"] is True
+    assert payload["ok"] is False
+    assert {check["component"] for check in payload["checks"]} == {
+        "Meta Graph configuration",
+        "R2 media staging configuration",
+        "boto3 dependency",
+    }
+    assert "pip install -r requirements.txt" in repr(payload)
+    assert "META_PAGE_ACCESS_TOKEN" in repr(payload)
+    assert all(target["status"] == "approved" for target in get_release("episode", "S1")["targets"])
+
+
+def test_missing_r2_configuration_names_instagram_startup_context(tmp_path, monkeypatch, capsys):
+    _approved_short(tmp_path)
+    monkeypatch.setattr("scripts.publish_dispatch.build_meta_client", lambda: object())
+    for name in (
+        "META_MEDIA_R2_ACCOUNT_ID",
+        "META_MEDIA_R2_ACCESS_KEY_ID",
+        "META_MEDIA_R2_SECRET_ACCESS_KEY",
+        "META_MEDIA_R2_BUCKET",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    assert (
+        dispatch_main(
+            [
+                "--release",
+                "--episode",
+                "episode",
+                "--cut",
+                "S1",
+                "--platform",
+                "instagram_reels",
+                "--execute",
+            ]
+        )
+        == 1
+    )
+    result = json.loads(capsys.readouterr().out)["results"][0]
+
+    assert result["called"] is False
+    assert "R2 media staging startup" in result["error"]
+    assert "MediaStagingError" in result["error"]
+    assert "META_MEDIA_R2_BUCKET" in result["error"]
+    assert "--preflight" in result["error"]
 
 
 def test_publish_probe_side_effect_commands_are_dry_run_by_default(tmp_path, monkeypatch, capsys):

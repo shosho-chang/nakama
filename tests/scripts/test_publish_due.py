@@ -106,6 +106,62 @@ def test_at_anchor_instagram_is_dispatched_exactly_once():
     assert adapter.calls == ["S1"]
 
 
+def test_exact_scope_dispatches_only_matching_episode_and_cut():
+    now = datetime(2026, 8, 20, 1, 0, tzinfo=UTC)
+    _short("S-selected", now)
+    _short("S-other", now)
+    adapter = FakeInstagramAdapter()
+
+    code, payload = run_cycle(
+        execute=True,
+        now=now,
+        episode="episode",
+        cut="S-selected",
+        adapters={"instagram_reels": adapter},
+        record_success=lambda _: None,
+        record_failure=lambda *_: None,
+    )
+
+    assert code == 0
+    assert payload["scope"] == {"episode": "episode", "cut": "S-selected"}
+    assert adapter.calls == ["S-selected"]
+    other = next(
+        target
+        for target in get_release("episode", "S-other")["targets"]
+        if target["platform"] == "instagram_reels"
+    )
+    assert other["status"] == "approved"
+
+
+def test_exact_scope_missing_pair_or_unknown_release_fails_closed():
+    now = datetime(2026, 8, 20, 1, 0, tzinfo=UTC)
+    _short("S-existing", now)
+    adapter = FakeInstagramAdapter()
+
+    with pytest.raises(ValueError, match="together"):
+        scan_due(now=now, episode="episode")
+    with pytest.raises(ValueError, match="non-empty"):
+        scan_due(now=now, episode="", cut="")
+    code, payload = run_cycle(
+        execute=True,
+        now=now,
+        episode="wrong-episode",
+        cut="S-existing",
+        adapters={"instagram_reels": adapter},
+        record_success=lambda _: None,
+        record_failure=lambda *_: None,
+    )
+
+    assert code == 1
+    assert payload["scan_error"] == "ValueError"
+    assert adapter.calls == []
+
+    with pytest.raises(SystemExit):
+        main(["--once", "--episode", "episode"])
+    with pytest.raises(SystemExit):
+        main(["--once", "--episode", "", "--cut", ""])
+
+
 def test_scan_candidate_rescheduled_to_future_is_not_dispatched(monkeypatch):
     import scripts.publish_due as due
 
@@ -310,6 +366,35 @@ def test_watch_rejects_nonpositive_interval_and_stops_cleanly(monkeypatch):
     )
     monkeypatch.setattr(due.time, "sleep", lambda _: (_ for _ in ()).throw(KeyboardInterrupt))
     assert main(["--watch", "--execute", "--poll-seconds", "1"]) == 0
+
+
+def test_watch_passes_exact_scope_to_every_cycle(monkeypatch):
+    import scripts.publish_due as due
+
+    calls = []
+
+    def fake_cycle(**kwargs):
+        calls.append(kwargs)
+        return 0, {"dry_run": not kwargs["execute"], "results": []}
+
+    monkeypatch.setattr(due, "run_cycle", fake_cycle)
+    monkeypatch.setattr(due.time, "sleep", lambda _: (_ for _ in ()).throw(KeyboardInterrupt))
+
+    assert (
+        main(
+            [
+                "--watch",
+                "--episode",
+                "episode",
+                "--cut",
+                "S1",
+                "--poll-seconds",
+                "1",
+            ]
+        )
+        == 0
+    )
+    assert calls == [{"execute": False, "episode": "episode", "cut": "S1"}]
 
 
 def test_live_scan_failure_records_secret_free_failure_and_returns_nonzero(monkeypatch):

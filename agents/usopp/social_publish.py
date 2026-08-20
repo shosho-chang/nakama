@@ -229,6 +229,7 @@ def dispatch_release(
     claim_now: datetime | None = None,
     claim_stale_after: timedelta = TARGET_CLAIM_STALE_AFTER,
     expected_publish_at_by_platform: Mapping[str, str] | None = None,
+    adapter_setup_errors: Mapping[str, str] | None = None,
 ) -> list[dict]:
     """Dispatch eligible targets independently and persist each outcome.
 
@@ -261,7 +262,9 @@ def dispatch_release(
 
         adapter = adapter_by_platform.get(platform)
         if adapter is None:
-            error = f"no adapter configured for {platform}"
+            error = (
+                adapter_setup_errors.get(platform) if adapter_setup_errors is not None else None
+            ) or f"no adapter configured for {platform}"
             update_target(target["id"], status="failed", error=error)
             results.append(
                 {"platform": platform, "status": "failed", "called": False, "error": error}
