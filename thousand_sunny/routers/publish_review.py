@@ -22,7 +22,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlsplit
 
 from fastapi import APIRouter, Cookie, Form, HTTPException, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
@@ -31,6 +31,7 @@ from starlette.requests import Request
 
 from shared.config import get_vault_path
 from shared.log import get_logger
+from shared.publish_calendar import short_execution_readiness
 from shared.release_store import get_release, list_releases, update_target
 from shared.tight_srt import latest_tight_srt, srt_to_vtt
 from thousand_sunny.auth import check_auth
@@ -102,6 +103,28 @@ def _login_redirect(request: Request) -> RedirectResponse:
 
     與 bridge 其餘頁面（bridge_index 等）同一個慣例。"""
     return RedirectResponse(f"/login?next={quote(request.url.path, safe='/')}", status_code=302)
+
+
+def _mutation_return_url(return_to: str, *, episode: str, cut_id: str) -> str:
+    """Allow only an exact relative Calendar path; otherwise return to review."""
+
+    fallback = f"/bridge/publish/{quote(episode, safe='')}/{quote(cut_id, safe='')}"
+    decoded = unquote(return_to)
+    if (
+        not return_to
+        or "\\" in decoded
+        or any(ord(character) < 32 or ord(character) == 127 for character in decoded)
+    ):
+        return fallback
+    parsed = urlsplit(decoded)
+    if (
+        parsed.scheme
+        or parsed.netloc
+        or parsed.fragment
+        or parsed.path != "/bridge/publish/calendar"
+    ):
+        return fallback
+    return return_to
 
 
 def _yt_target(episode: str, cut_id: str) -> tuple[dict, dict]:
@@ -400,9 +423,13 @@ def publish_save(
 
 @page_router.post("/{episode}/{cut_id}/approve-upload")
 def publish_approve_upload(
-    episode: str, cut_id: str, nakama_auth: str | None = Cookie(None)
+    episode: str,
+    cut_id: str,
+    return_to: str = Form(""),
+    nakama_auth: str | None = Cookie(None),
 ) -> RedirectResponse:
     _require_auth(nakama_auth)
+    return_url = _mutation_return_url(return_to, episode=episode, cut_id=cut_id)
     rel, t = _yt_target(episode, cut_id)
     if t["status"] in ("uploading", "uploaded", "published"):
         raise HTTPException(status_code=409, detail="已上傳/上傳中")
@@ -411,6 +438,9 @@ def publish_approve_upload(
     if not Path(rel["file_path"]).exists():
         raise HTTPException(status_code=422, detail="成品檔不存在——重跑 publish_prep")
     if rel["format"] == "short":
+        readiness = short_execution_readiness(rel)
+        if not readiness.ready:
+            raise HTTPException(status_code=422, detail=readiness.reason)
         from agents.usopp.social_publish import approve_short_targets
 
         try:
@@ -429,7 +459,7 @@ def publish_approve_upload(
         else:
             _spawn_publish_worker(episode, cut_id)
         logger.info("publish approve+dispatch: %s/%s（Short multi-target）", episode, cut_id)
-        return RedirectResponse(f"/bridge/publish/{episode}/{cut_id}", status_code=303)
+        return RedirectResponse(return_url, status_code=303)
 
     update_target(t["id"], status="approved")
     # 與 CLI 同一條路：subprocess 跑 uploader（狀態轉移由它寫 DB，頁面 poll）。
@@ -448,7 +478,7 @@ def publish_approve_upload(
         stderr=subprocess.STDOUT,
     )
     logger.info("publish approve+upload: %s/%s（log: %s.log）", episode, cut_id, safe)
-    return RedirectResponse(f"/bridge/publish/{episode}/{cut_id}", status_code=303)
+    return RedirectResponse(return_url, status_code=303)
 
 
 @page_router.post("/{episode}/{cut_id}/retry/{platform}")
@@ -456,6 +486,7 @@ def publish_retry_target(
     episode: str,
     cut_id: str,
     platform: str,
+    return_to: str = Form(""),
     nakama_auth: str | None = Cookie(None),
 ) -> RedirectResponse:
     """Retry exactly one failed target; successful siblings are never reopened."""
@@ -471,7 +502,9 @@ def publish_retry_target(
     update_target(target["id"], status="approved", error=None)
     _spawn_publish_worker(episode, cut_id, platform=platform)
     logger.info("publish target retry: %s/%s/%s", episode, cut_id, platform)
-    return RedirectResponse(f"/bridge/publish/{episode}/{cut_id}", status_code=303)
+    return RedirectResponse(
+        _mutation_return_url(return_to, episode=episode, cut_id=cut_id), status_code=303
+    )
 
 
 @page_router.get("/{episode}/{cut_id}/status")

@@ -96,8 +96,12 @@ body.sho .pc-filter select {
 body.sho .pc-filter select:focus-visible,
 body.sho .pc-month-nav__arrow:focus-visible,
 body.sho .pc-item__title:focus-visible,
+body.sho .pc-target a:focus-visible,
 body.sho .pc-schedule input:focus-visible,
 body.sho .pc-schedule button:focus-visible,
+body.sho .pc-execution button:focus-visible,
+body.sho .pc-execution__detail:focus-visible,
+body.sho .pc-retry button:focus-visible,
 body.sho .pc-view-nav a:focus-visible {
   outline: none;
   box-shadow: var(--sho-focus);
@@ -241,7 +245,10 @@ body.sho .pc-section-heading h2 {
 
 body.sho .pc-month-nav__arrow:active,
 body.sho .pc-item__title:active,
-body.sho .pc-schedule button:active {
+body.sho .pc-schedule button:active,
+body.sho .pc-execution button:active,
+body.sho .pc-execution__detail:active,
+body.sho .pc-retry button:active {
   transform: translateY(1px);
 }
 
@@ -430,9 +437,12 @@ body.sho .pc-targets {
 }
 
 body.sho .pc-target {
+  display: grid;
+  flex: 1 1 100%;
+  gap: 2px;
   max-width: 100%;
   padding: 2px var(--sho-s-1);
-  overflow: hidden;
+  overflow-wrap: anywhere;
   color: var(--sho-text-2);
   background: var(--sho-bg);
   border: 1px solid var(--sho-line-2);
@@ -440,8 +450,32 @@ body.sho .pc-target {
   font-family: var(--sho-font-mono);
   font-size: 8px;
   line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+body.sho .pc-target > span:first-child {
+  font-weight: 600;
+}
+
+body.sho .pc-target__error,
+body.sho .pc-target__receipt,
+body.sho .pc-target a {
+  color: var(--sho-text-2);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+body.sho .pc-target__error {
+  padding-left: var(--sho-s-1);
+  border-left: 2px solid var(--sho-error);
+}
+
+body.sho .pc-target a {
+  text-decoration-color: var(--sho-line-2);
+  text-underline-offset: 2px;
+}
+
+body.sho .pc-target a:hover {
+  text-decoration-color: var(--sho-accent);
 }
 
 body.sho .pc-target[data-status="published"] {
@@ -458,8 +492,6 @@ body.sho .pc-schedule {
   flex-direction: column;
   gap: var(--sho-s-1);
   margin-top: var(--sho-s-1);
-  padding-top: var(--sho-s-2);
-  border-top: 1px solid var(--sho-line);
 }
 
 body.sho .pc-schedule label,
@@ -507,6 +539,74 @@ body.sho .pc-schedule--disabled p {
   color: var(--sho-muted);
   font-size: 9px;
   line-height: 1.45;
+}
+
+body.sho .pc-control {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sho-s-1);
+  min-width: 0;
+  margin-top: var(--sho-s-1);
+  padding-top: var(--sho-s-2);
+  border-top: 1px solid var(--sho-line);
+}
+
+body.sho .pc-control--execution {
+  padding-left: var(--sho-s-1);
+  border-left: 2px solid var(--sho-line-2);
+}
+
+body.sho .pc-control__label {
+  color: var(--sho-muted);
+  font-family: var(--sho-font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+body.sho .pc-control p {
+  margin: 0;
+  color: var(--sho-text-2);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+body.sho .pc-execution,
+body.sho .pc-retry {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sho-s-1);
+  min-width: 0;
+  margin: 0;
+}
+
+body.sho .pc-execution button,
+body.sho .pc-execution__detail,
+body.sho .pc-retry button,
+body.sho .pc-control--execution > button {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 28px;
+  padding: var(--sho-s-1) var(--sho-s-2);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+body.sho .pc-execution__detail {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+body.sho .pc-execution__reason {
+  padding-left: var(--sho-s-1);
+  border-left: 2px solid var(--sho-warning);
+}
+
+body.sho .pc-control--execution > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
 }
 
 body.sho .pc-agenda {
@@ -634,7 +734,12 @@ body.sho .pc-visually-hidden {
 
   body.sho .pc-schedule__actions,
   body.sho .pc-schedule__actions button,
-  body.sho .pc-schedule--disabled > button {
+  body.sho .pc-schedule--disabled > button,
+  body.sho .pc-execution,
+  body.sho .pc-execution button,
+  body.sho .pc-execution__detail,
+  body.sho .pc-retry,
+  body.sho .pc-retry button {
     width: 100%;
   }
 }
@@ -647,7 +752,10 @@ body.sho .pc-visually-hidden {
 
   body.sho .pc-month-nav__arrow:active,
   body.sho .pc-item__title:active,
-  body.sho .pc-schedule button:active {
+  body.sho .pc-schedule button:active,
+  body.sho .pc-execution button:active,
+  body.sho .pc-execution__detail:active,
+  body.sho .pc-retry button:active {
     transform: none;
   }
 }

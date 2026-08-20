@@ -116,6 +116,34 @@ def test_pipeline_and_campaign_anchor_controls_are_server_rendered_and_accessibl
         assert token in TEMPLATE
 
 
+def test_schedule_intent_and_live_execution_are_distinct_semantic_controls() -> None:
+    for token in (
+        'class="pc-control pc-control--schedule"',
+        "只設定發布意圖；不會核准、不會投遞。",
+        'class="pc-control pc-control--execution"',
+        'action="/bridge/publish/{{ item.episode | urlencode }}/'
+        '{{ item.content_id | urlencode }}/approve-upload"',
+        'name="return_to"',
+        "核准並投遞三平台",
+        "只重試此平台",
+        "真實平台 side effect",
+        "檢查素材與文案",
+        "開啟三平台發布工作",
+        "browser/manual handoff",
+        'target="_blank" rel="noopener noreferrer"',
+    ):
+        assert token in TEMPLATE
+
+    for selector in (
+        ".pc-control--execution",
+        ".pc-execution__reason",
+        ".pc-execution button:focus-visible",
+        ".pc-retry button:focus-visible",
+        ".pc-control--execution > button:disabled",
+    ):
+        assert selector in CSS
+
+
 def test_calendar_designs_empty_warning_loading_focus_hover_disabled_and_reduced_motion() -> None:
     for state in (
         "pc-state--empty",

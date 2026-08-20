@@ -241,6 +241,7 @@ def publish_calendar_page(
             },
             "previous_url": _shift_url(month_start, episode, -1),
             "next_url": _shift_url(month_start, episode, 1),
+            "calendar_return_url": _calendar_url(month_start, episode),
             "asset_version": _asset_version(),
         },
     )

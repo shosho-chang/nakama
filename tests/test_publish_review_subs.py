@@ -12,6 +12,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 from fastapi.testclient import TestClient
@@ -282,6 +283,145 @@ def test_future_short_approval_starts_one_native_only_dispatcher(env, monkeypatc
     assert "不證明內容已公開" in page.text
 
 
+def test_short_approval_returns_to_exact_calendar_view(env, monkeypatch):
+    client, ep = env
+    import thousand_sunny.routers.publish_review as pub_module
+    from shared import release_store
+
+    short = ep / "highlights" / "exports" / "SS-calendar.mp4"
+    short.write_bytes(b"short-video")
+    release_id = release_store.register_release(ep.name, "SS-calendar", "short", str(short))
+    youtube_id = release_store.ensure_target(release_id, "youtube")
+    release_store.update_target(youtube_id, title="Calendar Short", description="已審文案")
+    monkeypatch.setattr(pub_module, "_spawn_publish_worker", lambda *_args, **_kwargs: None)
+    return_to = "/bridge/publish/calendar?month=2026-09&episode=episode-alpha"
+
+    response = client.post(
+        f"/bridge/publish/{ep.name}/SS-calendar/approve-upload",
+        data={"return_to": return_to},
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == return_to
+
+
+def test_calendar_get_and_campaign_anchor_submit_do_not_dispatch_before_explicit_approval(
+    env, monkeypatch
+):
+    client, ep = env
+    import thousand_sunny.routers.publish_review as pub_module
+    from shared import release_store
+
+    short = ep / "highlights" / "exports" / "SS-explicit.mp4"
+    short.write_bytes(b"short-video")
+    release_id = release_store.register_release(ep.name, "SS-explicit", "short", str(short))
+    youtube_id = release_store.ensure_target(release_id, "youtube")
+    release_store.update_target(youtube_id, title="Explicit submit", description="已審文案")
+    spawned = []
+    monkeypatch.setattr(
+        pub_module,
+        "_spawn_publish_worker",
+        lambda *_args, **kwargs: spawned.append(kwargs),
+    )
+
+    page = client.get("/bridge/publish/calendar?month=2026-09&episode=all")
+    assert page.status_code == 200
+    assert spawned == []
+
+    anchor = release_store.get_release_campaign_anchor(ep.name, "SS-explicit")
+    scheduled = client.post(
+        f"/bridge/publish/calendar/release/{ep.name}/SS-explicit/schedule",
+        data={
+            "operation": "set",
+            "campaign_anchor_local": "2026-09-08T09:00",
+            "expected_anchor_token": anchor.expected_token,
+            "month": "2026-09",
+            "return_episode": "all",
+        },
+    )
+    assert scheduled.status_code == 303
+    assert spawned == []
+
+    approved = client.post(f"/bridge/publish/{ep.name}/SS-explicit/approve-upload")
+    assert approved.status_code == 303
+    assert len(spawned) == 1
+
+
+def test_repeated_short_approval_waiting_for_worker_fails_closed(env, monkeypatch):
+    client, ep = env
+    import thousand_sunny.routers.publish_review as pub_module
+    from shared import release_store
+
+    short = ep / "highlights" / "exports" / "SS-repeat.mp4"
+    short.write_bytes(b"short-video")
+    release_id = release_store.register_release(ep.name, "SS-repeat", "short", str(short))
+    youtube_id = release_store.ensure_target(release_id, "youtube")
+    release_store.update_target(youtube_id, title="Repeat guard", description="已審文案")
+    spawned = []
+    monkeypatch.setattr(
+        pub_module,
+        "_spawn_publish_worker",
+        lambda *_args, **kwargs: spawned.append(kwargs),
+    )
+
+    first = client.post(f"/bridge/publish/{ep.name}/SS-repeat/approve-upload")
+    assert first.status_code == 303
+    assert len(spawned) == 1
+
+    repeated = client.post(f"/bridge/publish/{ep.name}/SS-repeat/approve-upload")
+    assert repeated.status_code == 422
+    assert "已核准；等待 worker 認領或投遞啟動中" in repeated.json()["detail"]
+    assert len(spawned) == 1
+
+    from shared.publish_calendar import build_publish_calendar
+
+    item = next(
+        item
+        for item in build_publish_calendar(None).items
+        if item.episode == ep.name and item.content_id == "SS-repeat"
+    )
+    assert item.execution_ready is False
+    assert item.execution_reason == "已核准；等待 worker 認領或投遞啟動中。"
+
+    refreshed = client.get("/bridge/publish/calendar?month=2026-08&episode=all")
+    assert refreshed.status_code == 200
+    assert "已核准；等待 worker 認領或投遞啟動中。" in refreshed.text
+
+
+@pytest.mark.parametrize(
+    "unsafe_return_to",
+    [
+        "https://evil.example/steal",
+        "//evil.example/steal",
+        "\\evil.example\\steal",
+        "/bridge/publish/other",
+        "/bridge/publish/calendar/../other",
+        "/bridge/publish/calendar%2f..%2fother",
+        "/bridge/publish/calendar?month=2026-09%0d%0aLocation:%20https://evil.example",
+        "/bridge/publish/calendar#outside",
+    ],
+)
+def test_short_approval_rejects_unsafe_return_to(env, monkeypatch, unsafe_return_to):
+    client, ep = env
+    import thousand_sunny.routers.publish_review as pub_module
+    from shared import release_store
+
+    short = ep / "highlights" / "exports" / "SS-unsafe.mp4"
+    short.write_bytes(b"short-video")
+    release_id = release_store.register_release(ep.name, "SS-unsafe", "short", str(short))
+    youtube_id = release_store.ensure_target(release_id, "youtube")
+    release_store.update_target(youtube_id, title="Unsafe return", description="已審文案")
+    monkeypatch.setattr(pub_module, "_spawn_publish_worker", lambda *_args, **_kwargs: None)
+
+    response = client.post(
+        f"/bridge/publish/{ep.name}/SS-unsafe/approve-upload",
+        data={"return_to": unsafe_return_to},
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == (f"/bridge/publish/{quote(ep.name, safe='')}/SS-unsafe")
+
+
 def test_short_partial_failure_refresh_and_retry_only_failed_target(env, monkeypatch):
     client, ep = env
     import thousand_sunny.routers.publish_review as pub_module
@@ -327,14 +467,49 @@ def test_short_partial_failure_refresh_and_retry_only_failed_target(env, monkeyp
     monkeypatch.setattr(
         pub_module.subprocess, "Popen", lambda command, **kwargs: commands.append(command)
     )
-    retried = client.post(f"/bridge/publish/{ep.name}/SS59/retry/instagram_reels")
+    return_to = "/bridge/publish/calendar?month=2026-09&episode=all"
+    retried = client.post(
+        f"/bridge/publish/{ep.name}/SS59/retry/instagram_reels",
+        data={"return_to": return_to},
+    )
     assert retried.status_code == 303
+    assert retried.headers["location"] == return_to
     assert commands[0][-2:] == ["--platform", "instagram_reels"]
     refreshed = release_store.get_release(ep.name, "SS59")
     after = {target["platform"]: target for target in refreshed["targets"]}
     assert after["instagram_reels"]["status"] == "approved"
     assert after["youtube"]["status"] == "uploaded"
     assert after["facebook_reels"]["status"] == "published"
+
+
+def test_short_group_approval_rejects_failed_target_and_does_not_dispatch(env, monkeypatch):
+    client, ep = env
+    import thousand_sunny.routers.publish_review as pub_module
+    from shared import release_store
+
+    short = ep / "highlights" / "exports" / "SS-failed.mp4"
+    short.write_bytes(b"short-video")
+    release_id = release_store.register_release(ep.name, "SS-failed", "short", str(short))
+    youtube_id = release_store.ensure_target(release_id, "youtube")
+    release_store.update_target(
+        youtube_id,
+        status="failed",
+        title="已審標題",
+        description="已審描述",
+        error="transport failed",
+    )
+    commands = []
+    monkeypatch.setattr(
+        pub_module, "_spawn_publish_worker", lambda *_args, **_kwargs: commands.append(1)
+    )
+
+    response = client.post(f"/bridge/publish/{ep.name}/SS-failed/approve-upload")
+
+    assert response.status_code == 422
+    assert "只重試失敗平台" in response.json()["detail"]
+    assert commands == []
+    target = release_store.get_release(ep.name, "SS-failed")["targets"][0]
+    assert target["status"] == "failed"
 
 
 def test_status_reads_runtime_progress_and_keeps_final_snapshot(env, monkeypatch, tmp_path):

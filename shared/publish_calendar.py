@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Literal
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
@@ -60,6 +60,10 @@ class PlatformTargetView:
     platform: str
     platform_label: str
     status: str
+    error: str | None = None
+    permalink: str | None = None
+    receipt_id: str | None = None
+    retryable: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +85,8 @@ class CalendarItem:
     schedule_editable: bool
     expected_anchor_token: str
     schedule_disabled_reason: str | None = None
+    execution_ready: bool = False
+    execution_reason: str = "請先開啟發布審核頁確認。"
 
     @property
     def local_date(self) -> date | None:
@@ -150,6 +156,55 @@ class ShortDueWorkerHealth:
     last_success_at: datetime | None
     consecutive_failures: int
     last_error: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ShortExecutionReadiness:
+    """Server-renderable readiness for the existing Short approval route."""
+
+    ready: bool
+    reason: str
+
+
+def short_execution_readiness(release: dict) -> ShortExecutionReadiness:
+    """Check local artifacts and reviewed copy without touching platform adapters."""
+
+    if release.get("format") != "short":
+        return ShortExecutionReadiness(False, "只有 Short 可從月曆直接核准並投遞。")
+    if not Path(str(release.get("file_path") or "")).is_file():
+        return ShortExecutionReadiness(False, "成品檔不存在；請重新產出或檢查素材路徑。")
+    targets = release.get("targets") or []
+    primary = next((target for target in targets if target.get("platform") == "youtube"), None)
+    if primary is None:
+        return ShortExecutionReadiness(False, "缺少主要 YouTube Target；請重新執行 publish_prep。")
+    if not str(primary.get("title") or "").strip():
+        return ShortExecutionReadiness(False, "缺少主要標題；請先檢查素材與文案。")
+    if not str(primary.get("description") or "").strip():
+        return ShortExecutionReadiness(False, "缺少主要描述；請先檢查素材與文案。")
+    statuses = {str(target.get("status") or "draft") for target in targets}
+    known_statuses = {
+        "draft",
+        "approved",
+        "uploading",
+        "uploaded",
+        "published",
+        "failed",
+        "ineligible",
+    }
+    if statuses - known_statuses:
+        return ShortExecutionReadiness(False, "Release Target 狀態無法執行；請先檢查發布紀錄。")
+    if "failed" in statuses:
+        return ShortExecutionReadiness(False, "有平台投遞失敗；請只重試失敗平台。")
+    eligible_statuses = statuses - {"ineligible"}
+    if "approved" in eligible_statuses:
+        if "draft" in eligible_statuses:
+            return ShortExecutionReadiness(
+                False, "Target 核准狀態不一致；請等待 worker 認領或檢查發布紀錄。"
+            )
+        return ShortExecutionReadiness(False, "已核准；等待 worker 認領或投遞啟動中。")
+    if eligible_statuses != {"draft"}:
+        return ShortExecutionReadiness(False, "此 Short 已開始或完成投遞；不可再次整組核准。")
+    return ShortExecutionReadiness(True, "素材與主要文案已齊，可核准並投遞。")
 
 
 def short_due_worker_health(
@@ -239,11 +294,37 @@ def _detail_url(prefix: str, episode: str, content_id: str | None = None) -> str
     return f"{prefix}/{encoded_episode}/{quote(content_id, safe='')}"
 
 
-def _platform_view(platform: str, status: str) -> PlatformTargetView:
+def _safe_external_url(value: object) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    candidate = value.strip()
+    if "\\" in candidate or any(
+        ord(character) < 32 or ord(character) == 127 for character in candidate
+    ):
+        return None
+    parsed = urlsplit(candidate)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    return candidate
+
+
+def _platform_view(
+    platform: str,
+    status: str,
+    *,
+    error: object = None,
+    permalink: object = None,
+    receipt_id: object = None,
+    retryable: bool = False,
+) -> PlatformTargetView:
     return PlatformTargetView(
         platform=platform,
         platform_label=_PLATFORM_LABELS.get(platform, platform.replace("_", " ").title()),
         status=status,
+        error=str(error).strip() if error else None,
+        permalink=_safe_external_url(permalink),
+        receipt_id=str(receipt_id).strip() if receipt_id else None,
+        retryable=retryable,
     )
 
 
@@ -338,13 +419,21 @@ def _release_items(*, now: datetime) -> tuple[list[CalendarItem], list[CalendarD
             )
         statuses = [str(target.get("status") or "draft") for target in targets]
         target_views = tuple(
-            _platform_view(str(target.get("platform", "unknown")), status)
+            _platform_view(
+                str(target.get("platform", "unknown")),
+                status,
+                error=target.get("error") or target.get("ineligibility_reason"),
+                permalink=target.get("url"),
+                receipt_id=target.get("video_id"),
+                retryable=content_type == "short" and status == "failed",
+            )
             for target, status in zip(targets, statuses, strict=True)
         )
         youtube = next(
             (target for target in targets if target.get("platform") == "youtube"), targets[0]
         )
         editable = all(status in {"draft", "approved", "failed"} for status in statuses)
+        execution = short_execution_readiness(release)
         items.append(
             CalendarItem(
                 item_id=f"release:{release.get('id', cut_id)}",
@@ -369,6 +458,8 @@ def _release_items(*, now: datetime) -> tuple[list[CalendarItem], list[CalendarD
                 schedule_disabled_reason=(
                     None if editable else "上傳或發布已開始，Campaign Anchor 已鎖定。"
                 ),
+                execution_ready=execution.ready,
+                execution_reason=execution.reason,
             )
         )
     return items, diagnostics
@@ -408,6 +499,15 @@ def _current_platform_status(job: CarouselPublishJobV1, platform: str) -> str:
         return state.status
     result = next((result for result in job.results if result.platform == platform), None)
     return result.status if result is not None else job.status
+
+
+def _current_platform_result(
+    job: CarouselPublishJobV1, platform: str
+) -> CarouselPublishPlatformResult | None:
+    state = _target_state(job, platform)
+    if state is not None and state.checkpoint is not None:
+        return state.checkpoint
+    return next((result for result in job.results if result.platform == platform), None)
 
 
 def _carousel_title(job: CarouselPublishJobV1) -> str:
@@ -533,6 +633,20 @@ def _carousel_items(
         if latest.status == "superseded" and not fully_published:
             continue
         editable = latest.status == "queued"
+        target_views = []
+        for target, status in zip(latest.targets, statuses, strict=True):
+            result = successful_by_platform[target.platform] or _current_platform_result(
+                latest, target.platform
+            )
+            target_views.append(
+                _platform_view(
+                    target.platform,
+                    status,
+                    error=result.error if result is not None else None,
+                    permalink=result.permalink if result is not None else None,
+                    receipt_id=result.receipt_id if result is not None else None,
+                )
+            )
         items.append(
             CalendarItem(
                 item_id=f"carousel:{episode}:{fingerprint}",
@@ -540,10 +654,7 @@ def _carousel_items(
                 content_id=latest.source_revision,
                 title=_carousel_title(latest),
                 content_type="carousel",
-                targets=tuple(
-                    _platform_view(target.platform, status)
-                    for target, status in zip(latest.targets, statuses, strict=True)
-                ),
+                targets=tuple(target_views),
                 phase=_carousel_phase(latest, statuses),
                 calendar_at=calendar_at,
                 date_basis=date_basis,
@@ -555,6 +666,7 @@ def _carousel_items(
                 schedule_disabled_reason=(
                     None if editable else "發布執行已開始，Campaign Anchor 已鎖定。"
                 ),
+                execution_reason="從既有 Publish page 建立或接續三平台發布工作。",
             )
         )
     return items, diagnostics
