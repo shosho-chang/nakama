@@ -13,9 +13,16 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import Any, Callable, Literal, Mapping, Protocol, Sequence, runtime_checkable
 
-from shared.release_store import ensure_target, get_release, update_target
+from shared.release_store import (
+    TARGET_CLAIM_STALE_AFTER,
+    claim_target,
+    ensure_target,
+    get_release,
+    update_target,
+)
 
 SHORT_PLATFORMS = ("youtube", "instagram_reels", "facebook_reels")
 _ADAPTER_BY_PLATFORM = {
@@ -218,12 +225,19 @@ def dispatch_release(
     release: dict,
     adapters: Mapping[str, SocialPublishAdapter] | Sequence[SocialPublishAdapter],
     only_platforms: Sequence[str] | set[str] | None = None,
+    *,
+    claim_now: datetime | None = None,
+    claim_stale_after: timedelta = TARGET_CLAIM_STALE_AFTER,
+    expected_publish_at_by_platform: Mapping[str, str] | None = None,
 ) -> list[dict]:
     """Dispatch eligible targets independently and persist each outcome.
 
-    Published and ineligible targets are never called.  Consequently, retrying
-    a partially failed fan-out invokes only failed targets.  Adapter checkpoint
-    callbacks are durable immediately, including when the adapter later raises.
+    Only atomically claimed approved or stale-uploading targets are called.
+    Explicit operator retry must first reset one failed target to approved.
+    Adapter checkpoint callbacks are durable immediately, including when the
+    adapter later raises, and refresh the stale-recovery lease timestamp.  A
+    due dispatcher can additionally bind its claim to a previously re-read
+    publish time; ordinary immediate dispatchers omit that optional guard.
     """
 
     adapter_by_platform = _adapter_map(adapters)
@@ -241,7 +255,7 @@ def dispatch_release(
         if current_status in {"published", "ineligible"}:
             results.append({"platform": platform, "status": current_status, "called": False})
             continue
-        if current_status not in {"approved", "failed", "uploading"}:
+        if current_status not in {"approved", "uploading"}:
             results.append({"platform": platform, "status": current_status, "called": False})
             continue
 
@@ -257,7 +271,27 @@ def dispatch_release(
         key = target.get("idempotency_key") or _stable_idempotency_key(fresh, platform)
         if not target.get("idempotency_key"):
             update_target(target["id"], idempotency_key=key)
-        update_target(target["id"], status="uploading", error=None)
+        claimed = claim_target(
+            target["id"],
+            now=claim_now,
+            stale_after=claim_stale_after,
+            expected_publish_at=(
+                expected_publish_at_by_platform.get(platform)
+                if expected_publish_at_by_platform is not None
+                else None
+            ),
+        )
+        if claimed is None:
+            current = _target_map(_fresh_release(fresh))[platform]
+            results.append(
+                {
+                    "platform": platform,
+                    "status": current["status"],
+                    "called": False,
+                }
+            )
+            continue
+        target = claimed
 
         def save_checkpoint(data: Mapping[str, Any], *, target_id: int = target["id"]) -> None:
             update_target(target_id, checkpoint_json=_canonical_checkpoint(data))

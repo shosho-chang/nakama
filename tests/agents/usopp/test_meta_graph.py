@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -170,6 +171,14 @@ def test_facebook_reel_start_upload_finish_reconcile_and_retry(tmp_path: Path):
     assert saves[0]["video_id"] == "video-1"
     assert saves[1]["uploaded"] is True
     assert saves[2]["finished"] is True
+    assert saves[2]["finish_mode"] == "published"
+    finish = next(
+        call
+        for call in transport.calls
+        if call["data"] and call["data"].get("upload_phase") == "finish"
+    )
+    assert finish["data"]["video_state"] == "PUBLISHED"
+    assert "scheduled_publish_time" not in finish["data"]
     assert result.permalink == "https://fb.example/reel/1"
 
     retry_transport = FakeTransport(
@@ -188,6 +197,60 @@ def test_facebook_reel_start_upload_finish_reconcile_and_retry(tmp_path: Path):
     )
     assert retry_transport.uploads == []
     assert len(retry_transport.calls) == 1
+
+
+def test_future_facebook_reel_uses_native_schedule_and_checkpoints_acceptance(tmp_path: Path):
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"video")
+    transport = FakeTransport(
+        [
+            {"video_id": "video-1", "upload_url": "https://upload.example/session"},
+            {"success": True},
+            {
+                "status": {"processing_phase": {"status": "complete"}},
+                "permalink_url": "https://fb.example/reel/1",
+            },
+        ]
+    )
+    checkpoint: dict[str, Any] = {}
+    scheduled_at = datetime(2026, 8, 25, 1, 0, tzinfo=UTC)
+
+    MetaGraphClient(config(), transport).publish_facebook_reel(
+        video_path=video,
+        description="description",
+        scheduled_at=scheduled_at,
+        checkpoint=checkpoint,
+        save_checkpoint=lambda _: None,
+    )
+
+    finish = next(
+        call
+        for call in transport.calls
+        if call["data"] and call["data"].get("upload_phase") == "finish"
+    )
+    assert finish["data"]["video_state"] == "SCHEDULED"
+    assert finish["data"]["scheduled_publish_time"] == int(scheduled_at.timestamp())
+    assert checkpoint["finished"] is True
+    assert checkpoint["finish_mode"] == "scheduled"
+    assert checkpoint["scheduled_publish_time"] == int(scheduled_at.timestamp())
+
+
+def test_facebook_reel_rejects_naive_schedule_before_transport_mutation(tmp_path: Path):
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"video")
+    transport = FakeTransport([])
+
+    with pytest.raises(ValueError, match="timezone-aware"):
+        MetaGraphClient(config(), transport).publish_facebook_reel(
+            video_path=video,
+            description="description",
+            scheduled_at=datetime(2026, 8, 25, 1, 0),
+            checkpoint={},
+            save_checkpoint=lambda _: None,
+        )
+
+    assert transport.calls == []
+    assert transport.uploads == []
 
 
 def test_facebook_multi_photo_creates_unpublished_photos_and_one_feed_post():

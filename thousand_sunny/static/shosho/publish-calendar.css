@@ -142,6 +142,69 @@ body.sho .pc-state--empty {
   border-style: dashed;
 }
 
+body.sho .pc-worker {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) auto minmax(20rem, 2fr);
+  gap: var(--sho-s-4);
+  align-items: center;
+  min-width: 0;
+  padding: var(--sho-s-4);
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+}
+
+body.sho .pc-worker h2 {
+  margin: var(--sho-s-1) 0 0;
+  color: var(--sho-ink);
+  font-size: 16px;
+}
+
+body.sho .pc-worker dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sho-s-3);
+  min-width: 0;
+  margin: 0;
+}
+
+body.sho .pc-worker dl div {
+  min-width: 0;
+  padding-left: var(--sho-s-3);
+  border-left: 1px solid var(--sho-line);
+}
+
+body.sho .pc-worker dt,
+body.sho .pc-worker dd {
+  overflow-wrap: anywhere;
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+body.sho .pc-worker dt {
+  color: var(--sho-muted);
+  letter-spacing: 0.06em;
+}
+
+body.sho .pc-worker dd {
+  margin: var(--sho-s-1) 0 0;
+  color: var(--sho-text-2);
+}
+
+body.sho .pc-worker[data-worker-health="online"] .pc-worker__state {
+  border-color: color-mix(in oklch, var(--sho-success) 55%, var(--sho-line));
+}
+
+body.sho .pc-worker[data-worker-health="stale"] .pc-worker__state,
+body.sho .pc-worker[data-worker-health="never_seen"] .pc-worker__state {
+  border-color: color-mix(in oklch, var(--sho-warning) 55%, var(--sho-line));
+}
+
+body.sho .pc-worker[data-worker-health="failing"] .pc-worker__state {
+  border-color: color-mix(in oklch, var(--sho-error) 55%, var(--sho-line));
+}
+
 body.sho .pc-loading {
   padding: var(--sho-s-3) var(--sho-s-4);
   color: var(--sho-text-2);
@@ -492,9 +555,20 @@ body.sho .pc-visually-hidden {
   body.sho .pc-view-nav,
   body.sho .pc-toolbar,
   body.sho .pc-filter,
-  body.sho .pc-section-heading {
+  body.sho .pc-section-heading,
+  body.sho .pc-worker {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  body.sho .pc-worker dl {
+    grid-template-columns: 1fr;
+  }
+
+  body.sho .pc-worker {
+    box-sizing: border-box;
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   body.sho .pc-view-nav {

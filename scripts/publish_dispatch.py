@@ -14,7 +14,7 @@ import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -175,20 +175,46 @@ class InstagramReelAdapter:
 class FacebookReelAdapter:
     platform = "facebook_reels"
 
-    def __init__(self, client: MetaGraphClient) -> None:
+    def __init__(
+        self,
+        client: MetaGraphClient,
+        *,
+        now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    ) -> None:
         self.client = client
+        self.now = now
+
+    def _future_anchor(self, target: Mapping[str, Any]) -> datetime | None:
+        raw = target.get("publish_at")
+        if raw in {None, ""}:
+            return None
+        try:
+            anchor = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("Campaign Anchor must be a valid timezone-aware datetime") from exc
+        if anchor.tzinfo is None or anchor.utcoffset() is None:
+            raise ValueError("Campaign Anchor must be timezone-aware")
+        current = self.now()
+        if current.tzinfo is None or current.utcoffset() is None:
+            raise ValueError("adapter clock must be timezone-aware")
+        anchor = anchor.astimezone(UTC)
+        return anchor if anchor > current.astimezone(UTC) else None
 
     def publish(self, *, release, target, idempotency_key, checkpoint):
         del idempotency_key
         state = _checkpoint(target)
+        scheduled_at = self._future_anchor(target)
         result = self.client.publish_facebook_reel(
             video_path=Path(str(release["file_path"])),
             description=str(target.get("description") or target.get("title") or ""),
+            scheduled_at=scheduled_at,
             checkpoint=state,
             save_checkpoint=lambda value: checkpoint(value),
         )
         return AdapterResult(
-            status="published",
+            status=(
+                "uploaded" if result.checkpoint.get("finish_mode") == "scheduled" else "published"
+            ),
             external_id=result.external_id,
             url=result.permalink,
             checkpoint=result.checkpoint,

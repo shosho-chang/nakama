@@ -19,6 +19,7 @@ from scripts.podcast_carousel_publish_job import (
     publish_job_path,
     set_publish_job_campaign_anchor,
 )
+from shared.heartbeat import get_heartbeat
 from shared.publish_calendar import (
     PODCAST_YOUTUBE_CHANNEL_HANDLE,
     PODCAST_YOUTUBE_CHANNEL_ID,
@@ -27,8 +28,10 @@ from shared.publish_calendar import (
     CalendarItem,
     build_month_grid,
     build_publish_calendar,
+    future_short_requires_due_worker,
     parse_month,
     shift_month,
+    short_due_worker_health,
 )
 from shared.release_store import set_release_campaign_anchor
 from thousand_sunny.auth import check_auth
@@ -46,6 +49,17 @@ _PHASE_LABELS = {
     "attention": "需處理",
     "published": "已發布",
 }
+_SHORT_DUE_WORKER_JOB = "usopp-short-due-dispatcher"
+_WORKER_HEALTH_LABELS = {
+    "never_seen": "尚未執行",
+    "online": "在線",
+    "stale": "逾時",
+    "failing": "失敗",
+}
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 def _asset_version() -> str:
@@ -192,6 +206,12 @@ def publish_calendar_page(
         for diagnostic in projection.diagnostics
         if episode == "all" or diagnostic.episode in {None, episode}
     ]
+    observed_now = _utc_now()
+    worker_health = short_due_worker_health(
+        get_heartbeat(_SHORT_DUE_WORKER_JOB),
+        now=observed_now,
+    )
+    due_worker_required = future_short_requires_due_worker(projection.items, now=observed_now)
     return _templates.TemplateResponse(
         request,
         "publish_calendar.html",
@@ -210,6 +230,10 @@ def publish_calendar_page(
             "diagnostics": diagnostics,
             "phase_counts": phase_counts,
             "phase_labels": _PHASE_LABELS,
+            "short_due_worker": worker_health,
+            "short_due_worker_label": _WORKER_HEALTH_LABELS[worker_health.state],
+            "short_due_worker_warning": (due_worker_required and worker_health.state != "online"),
+            "taipei": TAIPEI,
             "podcast_youtube": {
                 "name": PODCAST_YOUTUBE_CHANNEL_NAME,
                 "handle": PODCAST_YOUTUBE_CHANNEL_HANDLE,

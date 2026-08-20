@@ -73,7 +73,7 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 
 | Line | 1 收集 | 2 閱讀 | 3 整合 | 4 原子文章 | 6 發布 | 7 監控 |
 |---|---|---|---|---|---|---|
-| **Line 1a Podcast 一般訪談** | n/a (有錄音) | n/a | n/a | 🚧 Podcast Subtitle V2：Canonical Transcript → Verified Projection（V1 production / V2 shadow-run） | ✅ Long Highlight、Short 與 Carousel 已完成 Podcast YouTube／Instagram／Facebook supervised live probe；Publish Calendar 以共同 Campaign Anchor 排程並保留 per-platform 狀態 | ❌ YT/IG insights |
+| **Line 1a Podcast 一般訪談** | n/a (有錄音) | n/a | n/a | 🚧 Podcast Subtitle V2：Canonical Transcript → Verified Projection（V1 production / V2 shadow-run） | ✅ Long Highlight、Short 與 Carousel 已完成 Podcast YouTube／Instagram／Facebook supervised live probe；Short 未來 Campaign Anchor 會先 Native Arm YouTube／Facebook，Instagram 由桌機 Due Dispatcher 到點投遞；Publish Calendar 保留 per-platform truth 與 worker health | ❌ YT/IG insights |
 | **Line 1b Podcast 訪問新書作者** | n/a (有錄音 + 有書) | ⬜ Line 2 Reading Source + Reading Overlay | ⬜ Line 2 Source Promotion / annotation-only sync | 🚧 同上，另可 consume 書籍 refs 作 Evidence context | 同上 | 同上 |
 | **Line 2 讀書心得** | n/a (有書 / 文章 / web document) | ⬜ Reading Source + Reading Overlay（中/英/雙語閱讀） | ⬜ Source Promotion 或 annotation-only sync | ⬜ Reading Context Package → **修修 Project 頁面手寫** | ✅ WP only / ❌ 其他 channel | ❌ |
 | **Line 3 文獻科普** | ⬜ Zoro topic discovery | n/a | ⬜ 主題 retrieval → outline | ⬜ synthesize outline → 修修自寫（可用 Claude.ai 對話協助），LLM 不代寫正文（ADR-027） | ✅ WP only / ❌ 其他 channel | ✅ SEO 中控台 |
@@ -91,7 +91,7 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 | **Line 2 讀書心得** | 🚧 Slice 2-5 | ✅ Brook compose | ✅ FB renderer | ⬜ Podcast flow 穩定後 fork 書本模板／語言 |
 | **Line 3 文獻科普** | 🚧 Slice 2-5（optional） | ✅ Brook compose | ✅ FB renderer | ⬜ Podcast flow 穩定後 fork 身心健康資訊模板／語言 |
 
-**讀法**：舊 `IGRenderer` 只有文字 JSON，不代表 Podcast Carousel。新的 channel-native Copy Spec、三方 agent panel、1080×1080 PNG renderer、逐卡文字／版面編輯與 page-based Review Gate 已由 EP120 r024 完成真實 dogfood，Stage 5 tracer bullet 已 ship。Stage 6 已有 approved-only Publish page、revision-bound agent-neutral job、capability/lease、逐平台 checkpoint、IG／FB adapters 與 YouTube Community browser handoff；系統不會自行喚醒 agent，supervised external probe 留待獨立發布工作階段。
+**讀法**：舊 `IGRenderer` 只有文字 JSON，不代表 Podcast Carousel。新的 channel-native Copy Spec、三方 agent panel、1080×1080 PNG renderer、逐卡文字／版面編輯與 page-based Review Gate 已由 EP120 r024 完成真實 dogfood，Stage 5 tracer bullet 已 ship。Stage 6 已有 approved-only Publish page、Short 原子 Target claim／stale checkpoint resume、YouTube／Facebook Native Arm、Instagram Due Dispatcher + heartbeat，以及 Carousel revision-bound agent-neutral job、capability/lease、IG／FB adapters 與 YouTube Community browser handoff。Due Dispatcher 不會自動重試 failed Target，永久啟動與後續真實 probe 留待獨立 supervised 操作。
 
 ### Line 1 兩子模式說明
 
@@ -131,7 +131,7 @@ Line 2 不再只視為「書」；ebook、inbox document、web document 都是 R
 | **Sanji** (Community) | ⬜ community FAQ discovery (從會員問題抽主題) | n/a | ⬜ member memory ingest | n/a | n/a | ❌ Fluent Community publisher | ⬜ engagement insight |
 | **Brook** (Scaffold + Repurpose + Podcast Subtitles + Video Production + SEO Audit, ADR-027/ADR-050/ADR-056) | n/a | n/a | ✅ synthesize（outline + evidence pool, ADR-021）；RCP 由 Robin own | scaffold only — outline / evidence 給修修自寫，**LLM 不代寫正文**（ADR-027 reminders not enforcement）；🚧 Podcast Subtitle V2（Canonical Transcript + Verified Projection） | ✅ Blog/FB text renderer + repurpose engine + canonical Podcast Carousel Copy/Panel/PNG/Review；**Video Production Line**（Verified Projection exact-copy → storyboard → Hyperframes → FCPXML，ADR-050/ADR-056）；🚧 Line 1b 訪談+research_pack 2b mode（ADR-027） | n/a | ✅ SEO audit + enrich (對既有文章) |
 | **Franky** (Maintenance) | ✅ AI news digest cron | n/a | n/a | n/a | n/a | n/a | ✅ probe panel + R2 backup verify + GSC daily + cost tracking |
-| **Usopp** (Publisher) | n/a | n/a | n/a | n/a | n/a | ✅ WP publisher + approval queue HITL；Podcast Long／Short／Carousel 三平台 live probe；Publish Calendar grouped projection + Campaign Anchor scheduling；❌ Newsletter | n/a |
+| **Usopp** (Publisher) | n/a | n/a | n/a | n/a | n/a | ✅ WP publisher + approval queue HITL；Podcast Long／Short／Carousel 三平台 live probe；Short Native Arm + Instagram Due Dispatcher；Publish Calendar grouped projection + Campaign Anchor + worker readiness；❌ Newsletter | n/a |
 
 **關鍵讀法**：
 - **Brook 跨 Stage 4/5/7 三層** — over-loaded，子模組已 13+，下一步要按 sub-context 切目錄（見觀察 #2）

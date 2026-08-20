@@ -21,6 +21,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Sequence
 from urllib.parse import quote
 
 from fastapi import APIRouter, Cookie, Form, HTTPException, Response
@@ -154,14 +155,23 @@ def _platform_targets(rel: dict) -> list[dict]:
     return rows
 
 
-def _spawn_publish_worker(episode: str, cut_id: str, *, platform: str | None = None) -> None:
+def _spawn_publish_worker(
+    episode: str,
+    cut_id: str,
+    *,
+    platform: str | None = None,
+    platforms: Sequence[str] | None = None,
+) -> None:
     """Start the desktop dispatcher and keep its output in the existing progress log."""
+    if platform and platforms:
+        raise ValueError("choose platform or platforms, not both")
+    selected = tuple(platforms or ((platform,) if platform else ()))
     root = Path(__file__).resolve().parent.parent.parent
     script = root / "scripts" / "publish_dispatch.py"
     log_dir = _upload_progress_dir()
     log_dir.mkdir(parents=True, exist_ok=True)
     safe = f"{episode}_{cut_id}".replace("/", "_").replace("\\", "_")
-    suffix = f"_{platform}" if platform else ""
+    suffix = "_" + "_".join(selected) if selected else ""
     log_f = open(  # noqa: SIM115 — child process owns this handle
         log_dir / f"{safe}{suffix}.log", "a", encoding="utf-8"
     )
@@ -175,14 +185,33 @@ def _spawn_publish_worker(episode: str, cut_id: str, *, platform: str | None = N
         cut_id,
         "--execute",
     ]
-    if platform:
-        command.extend(("--platform", platform))
+    for selected_platform in selected:
+        command.extend(("--platform", selected_platform))
     subprocess.Popen(
         command,
         cwd=str(root),
         stdout=log_f,
         stderr=subprocess.STDOUT,
     )
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _has_future_campaign_anchor(value: object, *, now: datetime | None = None) -> bool:
+    if value in {None, ""}:
+        return False
+    try:
+        anchor = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("Campaign Anchor 必須是有效且含時區的時間") from exc
+    if anchor.tzinfo is None or anchor.utcoffset() is None:
+        raise ValueError("Campaign Anchor 必須包含時區")
+    current = now or _utc_now()
+    if current.tzinfo is None or current.utcoffset() is None:
+        raise ValueError("approval clock 必須包含時區")
+    return anchor.astimezone(timezone.utc) > current.astimezone(timezone.utc)
 
 
 def taipei_to_iso(dt_local: str) -> str:
@@ -384,8 +413,21 @@ def publish_approve_upload(
     if rel["format"] == "short":
         from agents.usopp.social_publish import approve_short_targets
 
-        approve_short_targets(rel, t)
-        _spawn_publish_worker(episode, cut_id)
+        try:
+            future_anchor = _has_future_campaign_anchor(t.get("publish_at"))
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        targets = approve_short_targets(rel, t)
+        if future_anchor:
+            native_platforms = tuple(
+                target["platform"]
+                for target in targets
+                if target["platform"] in {"youtube", "facebook_reels"}
+                and target["status"] == "approved"
+            )
+            _spawn_publish_worker(episode, cut_id, platforms=native_platforms)
+        else:
+            _spawn_publish_worker(episode, cut_id)
         logger.info("publish approve+dispatch: %s/%s（Short multi-target）", episode, cut_id)
         return RedirectResponse(f"/bridge/publish/{episode}/{cut_id}", status_code=303)
 

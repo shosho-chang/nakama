@@ -106,7 +106,7 @@ def test_74_second_short_persists_facebook_ineligible_without_blocking_others(
     assert "60 seconds" in by_platform["facebook_reels"]["ineligibility_reason"]
 
 
-def test_partial_failure_retry_calls_only_failed_facebook(release_store):
+def test_explicit_partial_failure_retry_calls_only_failed_facebook(release_store):
     release = _short(release_store, 59)
     _approve(release)
     adapters = {
@@ -135,6 +135,8 @@ def test_partial_failure_retry_calls_only_failed_facebook(release_store):
         "upload_id": "durable-before-failure"
     }
 
+    failed = persisted["facebook_reels"]
+    release_store.update_target(failed["id"], status="approved", error=None)
     second = dispatch_release(release, adapters)
 
     assert {item["platform"]: item["called"] for item in second} == {
@@ -146,6 +148,19 @@ def test_partial_failure_retry_calls_only_failed_facebook(release_store):
     assert len(adapters["instagram_reels"].calls) == 1
     assert len(adapters["facebook_reels"].calls) == 2
     assert adapters["facebook_reels"].calls[1]["checkpoint_json"] is not None
+
+
+def test_failed_target_is_not_automatically_retried(release_store):
+    release = _short(release_store, 59)
+    _approve(release)
+    instagram = FakeAdapter("instagram_reels", [RuntimeError("terminal failure")])
+
+    first = dispatch_release(release, {"instagram_reels": instagram}, ["instagram_reels"])
+    second = dispatch_release(release, {"instagram_reels": instagram}, ["instagram_reels"])
+
+    assert first[0]["status"] == "failed"
+    assert second == [{"platform": "instagram_reels", "status": "failed", "called": False}]
+    assert len(instagram.calls) == 1
 
 
 def test_74_second_dispatch_never_calls_facebook_adapter(release_store):
@@ -218,6 +233,7 @@ def test_youtube_community_requires_handoff_receipt_before_published(release_sto
             )
         ],
     )
+    release_store.update_target(stored["id"], status="approved", error=None)
     dispatch_release(release, {"youtube_community": receipt}, ["youtube_community"])
     stored = next(
         target

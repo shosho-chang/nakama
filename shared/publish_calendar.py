@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import calendar
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
 
+from shared.heartbeat import Heartbeat
 from shared.log import get_logger
 from shared.release_store import get_release, get_release_campaign_anchor, list_releases
 from shared.schemas.carousel_publish import (
@@ -30,6 +31,7 @@ PODCAST_YOUTUBE_CHANNEL_NAME = "《張修修的不正常人類研究所》"
 PODCAST_YOUTUBE_CHANNEL_HANDLE = "@abnormal-human-research"
 PODCAST_YOUTUBE_CHANNEL_ID = "UCvipegP35x3-OcAs--PgAig"
 PODCAST_YOUTUBE_CHANNEL = f"{PODCAST_YOUTUBE_CHANNEL_NAME} {PODCAST_YOUTUBE_CHANNEL_HANDLE}"
+SHORT_DUE_WORKER_STALE_AFTER = timedelta(minutes=5)
 
 ContentType = Literal["long", "short", "carousel"]
 DateBasis = Literal["scheduled", "published"]
@@ -135,6 +137,45 @@ class CalendarDay:
     in_month: bool
 
 
+@dataclass(frozen=True, slots=True)
+class ShortDueWorkerHealth:
+    state: Literal["never_seen", "online", "stale", "failing"]
+    last_run_at: datetime | None
+    last_success_at: datetime | None
+    consecutive_failures: int
+    last_error: str | None
+
+
+def short_due_worker_health(
+    row: Heartbeat | None,
+    *,
+    now: datetime | None = None,
+    stale_after: timedelta = SHORT_DUE_WORKER_STALE_AFTER,
+) -> ShortDueWorkerHealth:
+    """Project one durable heartbeat into explicit due-worker readiness."""
+
+    current = now or datetime.now(UTC)
+    if current.tzinfo is None or current.utcoffset() is None:
+        raise ValueError("worker health clock must be timezone-aware")
+    if stale_after <= timedelta(0):
+        raise ValueError("worker stale threshold must be positive")
+    if row is None:
+        return ShortDueWorkerHealth("never_seen", None, None, 0, None)
+    if row.last_status == "fail" or row.consecutive_failures > 0:
+        state = "failing"
+    elif current.astimezone(UTC) - row.last_run_at.astimezone(UTC) > stale_after:
+        state = "stale"
+    else:
+        state = "online"
+    return ShortDueWorkerHealth(
+        state,
+        row.last_run_at,
+        row.last_success_at,
+        row.consecutive_failures,
+        row.last_error,
+    )
+
+
 def parse_month(value: str | None, *, now: datetime | None = None) -> date:
     """Parse a strict ``YYYY-MM`` query, defaulting to the Taipei current month."""
 
@@ -206,25 +247,41 @@ def _carousel_anchor_token(campaign_anchor_at: datetime | None) -> str:
     return "carousel-anchor-v1:utc:" + campaign_anchor_at.astimezone(UTC).isoformat()
 
 
-def _release_phase(statuses: list[str], *, anchor_state: str) -> PipelinePhase:
+def _release_phase(
+    statuses: list[str],
+    *,
+    anchor_state: str,
+    anchor_at: datetime | None,
+    now: datetime,
+) -> PipelinePhase:
     if statuses and all(status == "published" for status in statuses):
         return "published"
     if anchor_state == "divergent" or any(
         status in {"failed", "ineligible"} for status in statuses
     ):
         return "attention"
+    if (
+        anchor_state == "shared"
+        and anchor_at is not None
+        and anchor_at > now
+        and statuses
+        and all(status in {"approved", "uploaded"} for status in statuses)
+    ):
+        return "scheduled"
     if any(status in {"uploading", "uploaded"} for status in statuses):
         return "in_progress"
     if any(status == "draft" for status in statuses):
         return "needs_review"
-    if anchor_state == "shared":
+    if anchor_state == "shared" and anchor_at is not None and anchor_at > now:
         return "scheduled"
+    if anchor_state == "shared" and statuses and all(status == "approved" for status in statuses):
+        return "in_progress"
     if statuses and all(status == "approved" for status in statuses):
         return "ready_to_schedule"
     return "attention"
 
 
-def _release_items() -> tuple[list[CalendarItem], list[CalendarDiagnostic]]:
+def _release_items(*, now: datetime) -> tuple[list[CalendarItem], list[CalendarDiagnostic]]:
     items: list[CalendarItem] = []
     diagnostics: list[CalendarDiagnostic] = []
     for summary in list_releases():
@@ -287,7 +344,12 @@ def _release_items() -> tuple[list[CalendarItem], list[CalendarDiagnostic]]:
                 title=str(youtube.get("title") or release.get("work_title") or cut_id),
                 content_type=content_type,
                 targets=target_views,
-                phase=_release_phase(statuses, anchor_state=anchor.state),
+                phase=_release_phase(
+                    statuses,
+                    anchor_state=anchor.state,
+                    anchor_at=anchor.anchor_at,
+                    now=now,
+                ),
                 calendar_at=calendar_at,
                 date_basis="scheduled" if calendar_at else None,
                 detail_url=_detail_url("/bridge/publish", episode, cut_id),
@@ -489,10 +551,18 @@ def _carousel_items(
     return items, diagnostics
 
 
-def build_publish_calendar(episodes_root: Path | None) -> CalendarProjection:
+def build_publish_calendar(
+    episodes_root: Path | None,
+    *,
+    now: datetime | None = None,
+) -> CalendarProjection:
     """Load the complete, read-only Stage 6 projection without external APIs."""
 
-    release_items, release_diagnostics = _release_items()
+    observed_now = now or datetime.now(UTC)
+    if observed_now.tzinfo is None or observed_now.utcoffset() is None:
+        raise ValueError("Calendar clock must be timezone-aware")
+    observed_now = observed_now.astimezone(UTC)
+    release_items, release_diagnostics = _release_items(now=observed_now)
     carousel_items, carousel_diagnostics = _carousel_items(episodes_root)
     items = sorted(
         [*release_items, *carousel_items],
@@ -507,4 +577,27 @@ def build_publish_calendar(episodes_root: Path | None) -> CalendarProjection:
     return CalendarProjection(
         items=tuple(items),
         diagnostics=tuple([*release_diagnostics, *carousel_diagnostics]),
+    )
+
+
+def future_short_requires_due_worker(
+    items: tuple[CalendarItem, ...] | list[CalendarItem],
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """Whether a future Short still relies on Instagram due-time execution."""
+
+    current = now or datetime.now(UTC)
+    if current.tzinfo is None or current.utcoffset() is None:
+        raise ValueError("due dependency clock must be timezone-aware")
+    current = current.astimezone(UTC)
+    return any(
+        item.content_type == "short"
+        and item.calendar_at is not None
+        and item.calendar_at.astimezone(UTC) > current
+        and any(
+            target.platform == "instagram_reels" and target.status in {"approved", "uploading"}
+            for target in item.targets
+        )
+        for item in items
     )

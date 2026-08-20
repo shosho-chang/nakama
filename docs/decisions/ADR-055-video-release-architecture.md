@@ -2,7 +2,7 @@
 
 - **Status**: Accepted（D1/D2 為 2026-07-26 修修裁決的追認；D3 修修 2026-08-04
   裁決通過——「依照你的建議繼續做下去」；D4 於 2026-08-20 依三平台實測後
-  的 Publish Calendar 規劃補充）
+  的 Publish Calendar 規劃補充；D5 於 2026-08-20 完成 Short due-dispatch slice）
 - **Date**: 2026-08-04
 - **Context**: `docs/plans/2026-07-26-video-publishing-plan.md`（grill 全記錄）、
   ADR-054（packaging 交接契約）。Slice 0 探針已 PASS（#1124：OAuth + 上傳 +
@@ -72,6 +72,26 @@ Release Target group 或 Carousel job 已被另一個操作者更新，舊表單
 approval state 與 Carousel Review/Publish Job gate 仍是獨立狀態機。UI 必須同時顯示
 一張 Release／Carousel 卡、共同 anchor，以及各平台的獨立狀態，避免把「有日期」
 誤讀成「已核准」或「已上傳」。
+
+## D5 — Short 每平台執行政策：Native Arm + Due Dispatcher（2026-08-20 amendment）
+
+第一版 Short 仍只有一個 Campaign Anchor，但三平台的 clock owner 不相同。未來
+anchor 核准後，YouTube 用原生 `publishAt`、Facebook Page Reels 用
+`video_state=SCHEDULED` + `scheduled_publish_time` 先行 **Native Arm**；兩者在本機
+只標 `uploaded`，因為平台接受排程不等於已公開。Instagram Reels 保持 `approved`，
+直到桌機 **Due Dispatcher** 在 anchor 到點後走既有 container + `media_publish`。
+
+Release Target dispatch 前必須用單一 conditional SQL mutation 把 `approved` claim 為
+`uploading`。`updated_at` 是 lease heartbeat；adapter checkpoint 寫入會刷新它。只有
+超過明示 stale threshold 的 `uploading` 可保留 checkpoint 回收續跑。`failed` 不在自動
+claim 集合；Bridge 的既有單平台 retry 先把指定 Target 重設為 `approved`，成功 sibling
+永不重開。這個 contract 同時防止人工 dispatcher 與 due worker 對同一 Target 重複呼叫。
+
+Due Dispatcher 是小型、Short-only orchestration layer，不建第二張 scheduling table，
+也不碰 Carousel。預設 one-shot dry-run；live mode 才可 claim/call adapter 並寫
+`usopp-short-due-dispatcher` heartbeat。Calendar 只投影 heartbeat 為
+`never_seen | online | stale | failing`，必要時警告未來 Instagram dependency；警告不改
+Campaign Anchor 或 Target state。永久服務安裝與真實 probe 仍需另一次 supervised 操作。
 
 ## 後果
 

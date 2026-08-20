@@ -39,6 +39,7 @@ def test_mobile_390_contract_uses_readable_agenda_without_horizontal_scroll() ->
     assert "overflow-wrap: anywhere;" in CSS
     assert "body.sho .pc-schedule__actions button" in CSS
     assert "width: 100%;" in CSS
+    assert "grid-template-columns: minmax(0, 1fr);" in CSS
 
 
 def test_calendar_shows_group_targets_phase_basis_and_podcast_youtube_identity() -> None:
@@ -57,6 +58,22 @@ def test_calendar_shows_group_targets_phase_basis_and_podcast_youtube_identity()
         "Community handoff",
     ):
         assert token in TEMPLATE
+
+
+def test_calendar_discloses_due_worker_health_and_native_arm_truth() -> None:
+    for token in (
+        "Short Due Dispatcher",
+        "data-worker-health",
+        "short_due_worker.last_run_at",
+        "short_due_worker.last_success_at",
+        "short_due_worker.consecutive_failures",
+        'role="status"',
+        'role="alert"',
+        "Instagram 到點投遞",
+        "publish_due.py --watch --execute",
+    ):
+        assert token in TEMPLATE
+    assert "uploaded means public" not in TEMPLATE
 
 
 def test_channel_identity_has_one_shared_source_of_truth() -> None:

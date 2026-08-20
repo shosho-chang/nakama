@@ -10,6 +10,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from shared.heartbeat import Heartbeat
 from shared.publish_calendar import (
     CalendarDiagnostic,
     CalendarItem,
@@ -124,6 +125,55 @@ def test_calendar_route_renders_dated_and_backlog_with_existing_detail_links(
     assert 'name="operation" value="clear"' in response.text
     assert "發布執行已開始，Campaign Anchor 已鎖定。" in response.text
     assert 'type="button" disabled' in response.text
+
+
+def test_future_instagram_dependency_warns_until_due_worker_is_online(monkeypatch) -> None:
+    import thousand_sunny.routers.publish_calendar as calendar_router
+
+    now = datetime(2026, 8, 20, 1, tzinfo=UTC)
+    future = replace(
+        _projection().items[0],
+        targets=(
+            PlatformTargetView("youtube", "Podcast YouTube", "uploaded"),
+            PlatformTargetView("instagram_reels", "Instagram Reels", "approved"),
+            PlatformTargetView("facebook_reels", "Facebook Page Reels", "uploaded"),
+        ),
+        calendar_at=datetime(2026, 8, 25, 9, tzinfo=TAIPEI),
+    )
+    monkeypatch.setattr(calendar_router, "check_auth", lambda _cookie: True)
+    monkeypatch.setattr(
+        calendar_router,
+        "build_publish_calendar",
+        lambda _root: CalendarProjection(items=(future,), diagnostics=()),
+    )
+    monkeypatch.setattr(calendar_router, "_utc_now", lambda: now)
+    monkeypatch.setattr(calendar_router, "get_heartbeat", lambda _job: None)
+    app = FastAPI()
+    app.include_router(calendar_router.page_router)
+    client = TestClient(app)
+
+    missing = client.get("/bridge/publish/calendar?month=2026-08")
+    assert missing.status_code == 200
+    assert 'data-worker-health="never_seen"' in missing.text
+    assert 'role="alert"' in missing.text
+    assert "publish_due.py --watch --execute" in missing.text
+
+    online = Heartbeat(
+        job_name="usopp-short-due-dispatcher",
+        last_success_at=now,
+        last_run_at=now,
+        last_status="success",
+        last_error=None,
+        consecutive_failures=0,
+        updated_at=now,
+    )
+    monkeypatch.setattr(calendar_router, "get_heartbeat", lambda _job: online)
+    healthy = client.get("/bridge/publish/calendar?month=2026-08")
+    assert 'data-worker-health="online"' in healthy.text
+    assert 'role="alert"' not in healthy.text
+    assert "LAST RUN" in healthy.text
+    assert "LAST SUCCESS" in healthy.text
+    assert "FAILURE STREAK" in healthy.text
 
 
 def test_episode_filter_applies_to_dated_items_and_backlog_and_preserves_month(

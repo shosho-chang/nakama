@@ -7,14 +7,18 @@ from scripts.podcast_carousel_publish_job import (
     _target_idempotency_key,
     carousel_campaign_anchor_token,
 )
+from shared.heartbeat import Heartbeat
 from shared.publish_calendar import (
     PODCAST_YOUTUBE_CHANNEL,
     PODCAST_YOUTUBE_CHANNEL_HANDLE,
     PODCAST_YOUTUBE_CHANNEL_ID,
     PODCAST_YOUTUBE_CHANNEL_NAME,
+    SHORT_DUE_WORKER_STALE_AFTER,
     build_month_grid,
     build_publish_calendar,
+    future_short_requires_due_worker,
     parse_month,
+    short_due_worker_health,
 )
 from shared.release_store import (
     ensure_target,
@@ -451,3 +455,83 @@ def test_queued_carousel_campaign_anchor_creates_one_scheduled_group(tmp_path: P
     assert group.calendar_at.isoformat() == "2026-08-25T09:00:00+08:00"
     assert len(group.targets) == 2
     assert group.expected_anchor_token == carousel_campaign_anchor_token(anchor)
+
+
+def test_future_native_armed_short_remains_scheduled_and_depends_on_due_worker(
+    tmp_path: Path,
+) -> None:
+    now = datetime(2026, 8, 20, 1, tzinfo=UTC)
+    anchor = now + timedelta(days=1)
+    release_id = register_release("episode", "S-native", "short", "S-native.mp4")
+    target_ids = {
+        platform: ensure_target(release_id, platform)
+        for platform in ("youtube", "instagram_reels", "facebook_reels")
+    }
+    for target_id in target_ids.values():
+        update_target(target_id, status="approved")
+    current = get_release_campaign_anchor("episode", "S-native")
+    set_release_campaign_anchor(
+        "episode",
+        "S-native",
+        anchor,
+        expected_anchor_token=current.expected_token,
+    )
+    update_target(target_ids["youtube"], status="uploaded")
+    update_target(target_ids["facebook_reels"], status="uploaded")
+
+    projection = build_publish_calendar(tmp_path, now=now)
+
+    assert projection.items[0].phase == "scheduled"
+    assert future_short_requires_due_worker(projection.items, now=now) is True
+
+
+def test_due_unfinished_native_armed_short_becomes_in_progress(tmp_path: Path) -> None:
+    now = datetime(2026, 8, 20, 1, tzinfo=UTC)
+    release_id = register_release("episode", "S-due", "short", "S-due.mp4")
+    target_ids = [
+        ensure_target(release_id, platform)
+        for platform in ("youtube", "instagram_reels", "facebook_reels")
+    ]
+    for target_id in target_ids:
+        update_target(target_id, status="approved")
+    current = get_release_campaign_anchor("episode", "S-due")
+    set_release_campaign_anchor(
+        "episode", "S-due", now, expected_anchor_token=current.expected_token
+    )
+    update_target(target_ids[0], status="uploaded")
+    update_target(target_ids[2], status="uploaded")
+
+    assert build_publish_calendar(tmp_path, now=now).items[0].phase == "in_progress"
+
+
+def test_short_due_worker_health_maps_never_online_stale_and_failing():
+    now = datetime(2026, 8, 20, 1, tzinfo=UTC)
+    online_row = Heartbeat(
+        job_name="usopp-short-due-dispatcher",
+        last_success_at=now - timedelta(minutes=1),
+        last_run_at=now - timedelta(minutes=1),
+        last_status="success",
+        last_error=None,
+        consecutive_failures=0,
+        updated_at=now - timedelta(minutes=1),
+    )
+    stale_row = Heartbeat(
+        **{
+            **online_row.__dict__,
+            "last_success_at": now - SHORT_DUE_WORKER_STALE_AFTER - timedelta(seconds=1),
+            "last_run_at": now - SHORT_DUE_WORKER_STALE_AFTER - timedelta(seconds=1),
+        }
+    )
+    failing_row = Heartbeat(
+        **{
+            **online_row.__dict__,
+            "last_status": "fail",
+            "last_error": "one target failed",
+            "consecutive_failures": 2,
+        }
+    )
+
+    assert short_due_worker_health(None, now=now).state == "never_seen"
+    assert short_due_worker_health(online_row, now=now).state == "online"
+    assert short_due_worker_health(stale_row, now=now).state == "stale"
+    assert short_due_worker_health(failing_row, now=now).state == "failing"

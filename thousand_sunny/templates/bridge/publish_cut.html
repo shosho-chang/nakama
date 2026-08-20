@@ -190,6 +190,11 @@
           <div class="section-marker">上架狀態</div>
         </header>
         <div class="pub-body">
+          {% if rel.format == 'short' %}
+          <p class="pub-upload-note" data-short-dispatch-policy>
+            有未來 Campaign Anchor 時，YouTube 與 Facebook 會先上傳並用平台原生排程武裝；Instagram 會在 Campaign Anchor 到點後由桌面 Due Dispatcher 送出，Meta 處理 container 可能使完成時間稍晚。已排程或 uploaded 只代表平台已接受，不證明內容已公開。
+          </p>
+          {% endif %}
           {% if t.status in ('approved', 'uploading') %}
           <p class="pub-status-line sho-mono" id="upline">
             {{ '上傳中…' if t.status == 'uploading' else '已核准——上傳啟動中…' }}

@@ -2,6 +2,7 @@
 
 import importlib
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -87,6 +88,63 @@ def test_update_target_whitelist_and_status_domain(store):
         store.update_target(tid, status="done")  # 值域外
     with pytest.raises(ValueError):
         store.update_target(999999, status="approved")  # 不存在 fail loud
+
+
+def test_claim_target_has_exactly_one_concurrent_winner(store):
+    release_id = store.register_release("ep", "S01", "short", "f.mp4")
+    target_id = store.ensure_target(release_id, "instagram_reels")
+    store.update_target(target_id, status="approved")
+    now = datetime(2026, 8, 20, 1, 0, tzinfo=UTC)
+
+    adapter_calls = []
+
+    def claim_then_call_adapter(_):
+        claim = store.claim_target(target_id, now=now)
+        if claim is not None:
+            adapter_calls.append(claim["id"])
+        return claim
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        claims = list(executor.map(claim_then_call_adapter, range(2)))
+
+    assert sum(claim is not None for claim in claims) == 1
+    assert adapter_calls == [target_id]
+    assert store.get_release("ep", "S01")["targets"][0]["status"] == "uploading"
+
+
+def test_claim_target_rejects_fresh_uploading_and_reclaims_stale_checkpoint(store):
+    release_id = store.register_release("ep", "S01", "short", "f.mp4")
+    target_id = store.ensure_target(release_id, "instagram_reels")
+    store.update_target(
+        target_id,
+        status="approved",
+        checkpoint_json='{"container_id":"ig-resume"}',
+    )
+    started = datetime(2026, 8, 20, 1, 0, tzinfo=UTC)
+    first = store.claim_target(target_id, now=started)
+
+    fresh = store.claim_target(
+        target_id,
+        now=started + store.TARGET_CLAIM_STALE_AFTER - timedelta(seconds=1),
+    )
+    stale = store.claim_target(
+        target_id,
+        now=started + store.TARGET_CLAIM_STALE_AFTER + timedelta(seconds=1),
+    )
+
+    assert first is not None
+    assert fresh is None
+    assert stale is not None
+    assert stale["checkpoint_json"] == '{"container_id":"ig-resume"}'
+
+
+@pytest.mark.parametrize("status", ["draft", "failed", "uploaded", "published", "ineligible"])
+def test_claim_target_rejects_nonclaimable_terminal_or_unapproved_status(store, status):
+    release_id = store.register_release("ep", status, "short", "f.mp4")
+    target_id = store.ensure_target(release_id, "instagram_reels")
+    store.update_target(target_id, status=status)
+
+    assert store.claim_target(target_id, now=datetime(2026, 8, 20, tzinfo=UTC)) is None
 
 
 def test_social_target_metadata_and_ineligible_status_persist(store):
