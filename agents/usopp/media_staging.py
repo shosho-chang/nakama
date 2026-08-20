@@ -82,7 +82,13 @@ class MediaStagingConfig:
 
     def build_client(self) -> S3StagingClient:
         """Build an S3-compatible client only after configuration is validated."""
-        import boto3
+        try:
+            import boto3
+        except ImportError as exc:
+            raise MediaStagingError(
+                "R2 media staging dependency boto3 is missing; "
+                "run this environment's Python with `-m pip install -r requirements.txt`"
+            ) from exc
 
         return boto3.client(
             "s3",

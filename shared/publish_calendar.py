@@ -106,11 +106,17 @@ class CalendarItem:
 
     @property
     def published_count(self) -> int:
-        return sum(target.status == "published" for target in self.targets)
+        return sum(
+            target.status == "published" for target in self.targets if target.status != "ineligible"
+        )
+
+    @property
+    def eligible_target_count(self) -> int:
+        return sum(target.status != "ineligible" for target in self.targets)
 
     @property
     def progress_label(self) -> str:
-        return f"{self.published_count}/{len(self.targets)} published"
+        return f"{self.published_count}/{self.eligible_target_count} published"
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,29 +260,32 @@ def _release_phase(
     anchor_at: datetime | None,
     now: datetime,
 ) -> PipelinePhase:
-    if statuses and all(status == "published" for status in statuses):
+    eligible_statuses = [status for status in statuses if status != "ineligible"]
+    if eligible_statuses and all(status == "published" for status in eligible_statuses):
         return "published"
-    if anchor_state == "divergent" or any(
-        status in {"failed", "ineligible"} for status in statuses
-    ):
+    if anchor_state == "divergent" or any(status == "failed" for status in eligible_statuses):
         return "attention"
     if (
         anchor_state == "shared"
         and anchor_at is not None
         and anchor_at > now
-        and statuses
-        and all(status in {"approved", "uploaded"} for status in statuses)
+        and eligible_statuses
+        and all(status in {"approved", "uploaded"} for status in eligible_statuses)
     ):
         return "scheduled"
-    if any(status in {"uploading", "uploaded"} for status in statuses):
+    if any(status in {"uploading", "uploaded"} for status in eligible_statuses):
         return "in_progress"
-    if any(status == "draft" for status in statuses):
+    if any(status == "draft" for status in eligible_statuses):
         return "needs_review"
     if anchor_state == "shared" and anchor_at is not None and anchor_at > now:
         return "scheduled"
-    if anchor_state == "shared" and statuses and all(status == "approved" for status in statuses):
+    if (
+        anchor_state == "shared"
+        and eligible_statuses
+        and all(status == "approved" for status in eligible_statuses)
+    ):
         return "in_progress"
-    if statuses and all(status == "approved" for status in statuses):
+    if eligible_statuses and all(status == "approved" for status in eligible_statuses):
         return "ready_to_schedule"
     return "attention"
 

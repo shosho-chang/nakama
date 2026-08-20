@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -104,3 +105,16 @@ def test_cleanup_deduplicates_keys_and_rejects_non_staging_key():
     with pytest.raises(MediaStagingError, match="failed to clean"):
         stager.cleanup(["backups/do-not-delete"])
     assert fake.deletes == [("nakama-meta-staging", key)]
+
+
+def test_missing_boto3_dependency_names_component_and_install_action(monkeypatch):
+    monkeypatch.setitem(sys.modules, "boto3", None)
+
+    with pytest.raises(MediaStagingError) as exc:
+        config().build_client()
+
+    message = str(exc.value)
+    assert "R2 media staging" in message
+    assert "boto3" in message
+    assert "pip install -r requirements.txt" in message
+    assert config().secret_access_key not in message

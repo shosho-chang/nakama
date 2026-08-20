@@ -26,6 +26,14 @@ class MetaGraphConfigurationError(MetaGraphError):
     """Required Meta settings are missing or invalid."""
 
 
+class MetaGraphRejectedError(MetaGraphError):
+    """Meta returned an explicit Graph error for a valid transport response."""
+
+    def __init__(self, message: str, *, is_transient: bool | None = None) -> None:
+        super().__init__(message)
+        self.is_transient = is_transient
+
+
 class MetaGraphTransport(Protocol):
     """Authenticated transport boundary used by :class:`MetaGraphClient`."""
 
@@ -225,6 +233,19 @@ class MetaGraphClient:
         if not video_path.is_file():
             raise MetaGraphError(f"Facebook Reel file does not exist: {video_path}")
 
+        restart_required = bool(checkpoint.get("facebook_reel_restart_required"))
+        if restart_required:
+            for key in (
+                "video_id",
+                "upload_url",
+                "uploaded",
+                "finished",
+                "finish_mode",
+                "scheduled_publish_time",
+                "permalink",
+            ):
+                checkpoint.pop(key, None)
+
         video_id = self._checkpoint_id(checkpoint, "video_id")
         upload_url = self._checkpoint_id(checkpoint, "upload_url")
         if not video_id or not upload_url:
@@ -237,6 +258,8 @@ class MetaGraphClient:
             upload_url = str(response.get("upload_url") or "").strip()
             if not upload_url:
                 raise MetaGraphError("Facebook Reel start response missing upload_url")
+            checkpoint.pop("facebook_reel_restart_required", None)
+            checkpoint.pop("facebook_reel_restart_reason", None)
             checkpoint.update({"video_id": video_id, "upload_url": upload_url})
             self._save(checkpoint, save_checkpoint)
 
@@ -262,11 +285,29 @@ class MetaGraphClient:
             }
             if scheduled_at is not None:
                 finish_data["scheduled_publish_time"] = int(scheduled_at.timestamp())
-            self._request(
-                "POST",
-                f"{self.config.page_id}/video_reels",
-                data=finish_data,
-            )
+            try:
+                self._request(
+                    "POST",
+                    f"{self.config.page_id}/video_reels",
+                    data=finish_data,
+                )
+            except MetaGraphRejectedError as exc:
+                if exc.is_transient is True:
+                    raise
+                for key in (
+                    "video_id",
+                    "upload_url",
+                    "uploaded",
+                    "finished",
+                    "finish_mode",
+                    "scheduled_publish_time",
+                    "permalink",
+                ):
+                    checkpoint.pop(key, None)
+                checkpoint["facebook_reel_restart_required"] = True
+                checkpoint["facebook_reel_restart_reason"] = "finish_rejected"
+                self._save(checkpoint, save_checkpoint)
+                raise
             checkpoint["finished"] = True
             checkpoint["finish_mode"] = finish_mode
             if scheduled_at is not None:
@@ -336,7 +377,11 @@ class MetaGraphClient:
         error = response.get("error")
         if error:
             message = error.get("message") if isinstance(error, Mapping) else str(error)
-            raise MetaGraphError(f"Meta {method} {path} failed: {message}")
+            is_transient = error.get("is_transient") if isinstance(error, Mapping) else None
+            raise MetaGraphRejectedError(
+                f"Meta {method} {path} failed: {message}",
+                is_transient=is_transient if isinstance(is_transient, bool) else None,
+            )
         return response
 
     def _poll_ig_container(self, container_id: str) -> None:
@@ -365,12 +410,23 @@ class MetaGraphClient:
                 status = str(status_value or "").upper()
             if status in {"COMPLETE", "COMPLETED", "READY", "PUBLISHED"}:
                 value = response.get("permalink_url")
-                return str(value) if value else None
+                return self._normalize_facebook_permalink(value)
             if status in {"ERROR", "FAILED", "EXPIRED"}:
                 raise MetaGraphError(f"Facebook video {video_id} ended as {status}")
             if attempt + 1 < self.max_poll_attempts:
                 self.sleep(self.poll_interval_seconds)
         raise MetaGraphError(f"Facebook video {video_id} did not finish in time")
+
+    @staticmethod
+    def _normalize_facebook_permalink(value: object) -> str | None:
+        if not value:
+            return None
+        permalink = str(value)
+        if permalink.startswith(("http://", "https://")):
+            return permalink
+        if permalink.startswith("/reel/"):
+            return "https://www.facebook.com" + permalink
+        return permalink
 
     def _resolve_permalink(
         self,

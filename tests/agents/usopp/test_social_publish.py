@@ -163,6 +163,37 @@ def test_failed_target_is_not_automatically_retried(release_store):
     assert len(instagram.calls) == 1
 
 
+def test_adapter_setup_error_is_persisted_instead_of_generic_missing_adapter(release_store):
+    release = _short(release_store, 59)
+    _approve(release)
+    error = (
+        "Instagram Reels adapter initialization failed (MediaStagingError); "
+        "run publish_dispatch.py --preflight and configure R2 media staging"
+    )
+
+    result = dispatch_release(
+        release,
+        {},
+        ["instagram_reels"],
+        adapter_setup_errors={"instagram_reels": error},
+    )
+
+    assert result == [
+        {
+            "platform": "instagram_reels",
+            "status": "failed",
+            "called": False,
+            "error": error,
+        }
+    ]
+    stored = next(
+        target
+        for target in release_store.get_release("ep", "short-59")["targets"]
+        if target["platform"] == "instagram_reels"
+    )
+    assert stored["error"] == error
+
+
 def test_74_second_dispatch_never_calls_facebook_adapter(release_store):
     release = _short(release_store, 74)
     _approve(release)
