@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -360,8 +361,24 @@ def confirm_target_outcome(
         parsed = urlsplit(url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValueError("outcome URL must be absolute HTTP(S)")
-    conn = _get_conn()
-    with conn:
+    # ``shared.state`` deliberately exposes one process-global connection for
+    # legacy callers.  A connection transaction is not thread-owned, however:
+    # concurrent ``with conn`` blocks can commit each other's transaction.  The
+    # reconciler CAS therefore gets a short-lived connection so SQLite, rather
+    # than a Python context-manager race, serialises competing writers.
+    state_conn = _get_conn()
+    database_row = state_conn.execute("PRAGMA database_list").fetchone()
+    database_path = str(database_row[2]) if database_row is not None else ""
+    if not database_path or database_path == ":memory:":
+        raise RuntimeError("outcome CAS requires a file-backed state database")
+    conn = sqlite3.connect(database_path, timeout=30.0)
+    try:
+        conn.execute("PRAGMA busy_timeout=30000")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        journal_mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+        if str(journal_mode).lower() != "wal":
+            raise RuntimeError("outcome CAS requires the canonical WAL state database")
         cursor = conn.execute(
             """
             UPDATE release_targets
@@ -377,7 +394,13 @@ def confirm_target_outcome(
             """,
             (status, url, error, _now(), target_id, video_id, observed_at),
         )
-    return cursor.rowcount == 1
+        conn.commit()
+        return cursor.rowcount == 1
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def claim_target(
