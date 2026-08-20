@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from scripts.podcast_carousel_publish_job import (
     _target_idempotency_key,
     carousel_campaign_anchor_token,
@@ -19,6 +21,7 @@ from shared.publish_calendar import (
     future_short_requires_due_worker,
     parse_month,
     short_due_worker_health,
+    short_execution_readiness,
 )
 from shared.release_store import (
     ensure_target,
@@ -207,6 +210,176 @@ def test_release_targets_are_grouped_into_one_publication_with_platform_states(
     assert projection.episodes == ("backlog-only",)
 
 
+def test_short_with_canonical_file_and_reviewed_copy_is_ready_for_explicit_execution(
+    tmp_path: Path,
+) -> None:
+    canonical = tmp_path / "S-ready.mp4"
+    canonical.write_bytes(b"short")
+    release_id = register_release(
+        "episode-ready", "S-ready", "short", str(canonical), work_title="可投遞 Short"
+    )
+    youtube = ensure_target(release_id, "youtube")
+    update_target(youtube, status="draft", title="主要標題", description="主要描述")
+
+    item = build_publish_calendar(tmp_path).items[0]
+
+    assert item.execution_ready is True
+    assert item.execution_reason == "素材與主要文案已齊，可核准並投遞。"
+
+
+def test_failed_short_exposes_only_target_scoped_retry_evidence(tmp_path: Path) -> None:
+    canonical = tmp_path / "S-failed.mp4"
+    canonical.write_bytes(b"short")
+    release_id = register_release("episode-failed", "S-failed", "short", str(canonical))
+    youtube = ensure_target(release_id, "youtube")
+    update_target(
+        youtube,
+        status="failed",
+        title="主要標題",
+        description="主要描述",
+        error="YouTube transport failed",
+        url="https://youtube.example/receipt",
+        video_id="yt-receipt-1",
+    )
+
+    item = build_publish_calendar(tmp_path).items[0]
+    target = item.targets[0]
+
+    assert item.execution_ready is False
+    assert item.execution_reason == "有平台投遞失敗；請只重試失敗平台。"
+    assert target.retryable is True
+    assert target.error == "YouTube transport failed"
+    assert target.permalink == "https://youtube.example/receipt"
+    assert target.receipt_id == "yt-receipt-1"
+
+
+def test_release_projection_drops_non_http_platform_permalink(tmp_path: Path) -> None:
+    release_id = register_release("episode-url", "S-url", "short", str(tmp_path / "S-url.mp4"))
+    youtube = ensure_target(release_id, "youtube")
+    update_target(
+        youtube,
+        status="published",
+        title="已發布",
+        description="描述",
+        url="javascript:alert(1)",
+    )
+
+    target = build_publish_calendar(tmp_path).items[0].targets[0]
+
+    assert target.permalink is None
+
+
+@pytest.mark.parametrize(
+    ("release", "reason"),
+    [
+        (
+            {
+                "format": "short",
+                "file_path": "C:/does-not-exist/S01.mp4",
+                "targets": [
+                    {
+                        "platform": "youtube",
+                        "status": "draft",
+                        "title": "標題",
+                        "description": "描述",
+                    }
+                ],
+            },
+            "成品檔不存在；請重新產出或檢查素材路徑。",
+        ),
+        (
+            {"format": "short", "file_path": __file__, "targets": []},
+            "缺少主要 YouTube Target；請重新執行 publish_prep。",
+        ),
+        (
+            {
+                "format": "short",
+                "file_path": __file__,
+                "targets": [{"platform": "youtube", "status": "draft", "description": "描述"}],
+            },
+            "缺少主要標題；請先檢查素材與文案。",
+        ),
+        (
+            {
+                "format": "short",
+                "file_path": __file__,
+                "targets": [{"platform": "youtube", "status": "draft", "title": "標題"}],
+            },
+            "缺少主要描述；請先檢查素材與文案。",
+        ),
+        (
+            {
+                "format": "short",
+                "file_path": __file__,
+                "targets": [
+                    {
+                        "platform": "youtube",
+                        "status": "uploading",
+                        "title": "標題",
+                        "description": "描述",
+                    }
+                ],
+            },
+            "此 Short 已開始或完成投遞；不可再次整組核准。",
+        ),
+        (
+            {
+                "format": "short",
+                "file_path": __file__,
+                "targets": [
+                    {
+                        "platform": "youtube",
+                        "status": "approved",
+                        "title": "標題",
+                        "description": "描述",
+                    },
+                    {"platform": "instagram_reels", "status": "approved"},
+                ],
+            },
+            "已核准；等待 worker 認領或投遞啟動中。",
+        ),
+        (
+            {
+                "format": "short",
+                "file_path": __file__,
+                "targets": [
+                    {
+                        "platform": "youtube",
+                        "status": "approved",
+                        "title": "標題",
+                        "description": "描述",
+                    },
+                    {"platform": "instagram_reels", "status": "draft"},
+                ],
+            },
+            "Target 核准狀態不一致；請等待 worker 認領或檢查發布紀錄。",
+        ),
+        (
+            {
+                "format": "short",
+                "file_path": __file__,
+                "targets": [
+                    {
+                        "platform": "youtube",
+                        "status": "unknown",
+                        "title": "標題",
+                        "description": "描述",
+                    }
+                ],
+            },
+            "Release Target 狀態無法執行；請先檢查發布紀錄。",
+        ),
+    ],
+)
+def test_short_execution_readiness_fails_closed_with_actionable_reason(
+    release: dict, reason: str
+) -> None:
+    readiness = short_execution_readiness(release)
+
+    assert readiness.ready is False
+    assert readiness.reason == reason
+
+
 def test_month_parser_and_grid_are_strict_and_sunday_first() -> None:
     assert parse_month("2026-08") == date(2026, 8, 1)
     grid = build_month_grid(date(2026, 8, 1))
@@ -244,6 +417,7 @@ def test_carousel_failed_completion_is_backlog_and_malformed_job_fails_soft(
     assert len(projection.items) == 1
     group = projection.items[0]
     assert group.targets[0].status == "failed"
+    assert group.targets[0].error == "facebook_page failed"
     assert group.phase == "attention"
     assert group.calendar_at is None
     assert group.detail_url == "/bridge/ig-cards/episode-alpha/publish"
@@ -305,6 +479,7 @@ def test_carousel_published_checkpoint_crosses_into_taipei_next_month(tmp_path: 
 
     assert item.calendar_at.isoformat() == "2026-09-01T00:30:00+08:00"
     assert item.targets[0].platform_label == "Podcast YouTube · Community handoff"
+    assert item.targets[0].receipt_id == "receipt-youtube_community"
     assert item.phase == "published"
     assert item.date_basis == "published"
 
@@ -480,13 +655,16 @@ def test_future_native_armed_short_remains_scheduled_and_depends_on_due_worker(
 ) -> None:
     now = datetime(2026, 8, 20, 1, tzinfo=UTC)
     anchor = now + timedelta(days=1)
-    release_id = register_release("episode", "S-native", "short", "S-native.mp4")
+    canonical = tmp_path / "S-native.mp4"
+    canonical.write_bytes(b"short")
+    release_id = register_release("episode", "S-native", "short", str(canonical))
     target_ids = {
         platform: ensure_target(release_id, platform)
         for platform in ("youtube", "instagram_reels", "facebook_reels")
     }
     for target_id in target_ids.values():
         update_target(target_id, status="approved")
+    update_target(target_ids["youtube"], title="Future Short", description="已審文案")
     current = get_release_campaign_anchor("episode", "S-native")
     set_release_campaign_anchor(
         "episode",
@@ -500,6 +678,8 @@ def test_future_native_armed_short_remains_scheduled_and_depends_on_due_worker(
     projection = build_publish_calendar(tmp_path, now=now)
 
     assert projection.items[0].phase == "scheduled"
+    assert projection.items[0].execution_ready is False
+    assert projection.items[0].execution_reason == "已核准；等待 worker 認領或投遞啟動中。"
     assert future_short_requires_due_worker(projection.items, now=now) is True
 
 

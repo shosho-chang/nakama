@@ -127,6 +127,73 @@ def test_calendar_route_renders_dated_and_backlog_with_existing_detail_links(
     assert 'type="button" disabled' in response.text
 
 
+def test_calendar_renders_separate_short_execution_and_exact_failed_retry_controls(
+    calendar_client: TestClient, monkeypatch
+) -> None:
+    import thousand_sunny.routers.publish_calendar as calendar_router
+
+    ready = replace(
+        _projection().items[0],
+        targets=(
+            PlatformTargetView("youtube", "Podcast YouTube", "draft"),
+            PlatformTargetView("instagram_reels", "Instagram Reels", "draft"),
+            PlatformTargetView("facebook_reels", "Facebook Page Reels", "draft"),
+        ),
+        execution_ready=True,
+        execution_reason="素材與主要文案已齊，可核准並投遞。",
+    )
+    failed = replace(
+        ready,
+        item_id="release:failed",
+        content_id="S02",
+        title="Short 單平台失敗",
+        targets=(
+            PlatformTargetView("youtube", "Podcast YouTube", "uploaded"),
+            PlatformTargetView(
+                "instagram_reels",
+                "Instagram Reels",
+                "failed",
+                error="IG transport failed",
+                retryable=True,
+            ),
+            PlatformTargetView(
+                "facebook_reels",
+                "Facebook Page Reels",
+                "published",
+                permalink="https://facebook.example/post/1",
+                receipt_id="fb-receipt-1",
+            ),
+        ),
+        phase="attention",
+        calendar_at=None,
+        date_basis=None,
+        execution_ready=False,
+        execution_reason="有平台投遞失敗；請只重試失敗平台。",
+    )
+    carousel = _projection().items[1]
+    monkeypatch.setattr(
+        calendar_router,
+        "build_publish_calendar",
+        lambda _root: CalendarProjection(items=(ready, failed, carousel), diagnostics=()),
+    )
+
+    response = calendar_client.get("/bridge/publish/calendar?month=2026-09&episode=all")
+
+    assert response.status_code == 200
+    assert response.text.count('class="pc-execution"') == 2
+    assert response.text.count('action="/bridge/publish/episode-alpha/S01/approve-upload"') == 2
+    assert 'value="/bridge/publish/calendar?month=2026-09&amp;episode=all"' in response.text
+    assert response.text.count(">只重試此平台</button>") == 1
+    assert 'action="/bridge/publish/episode-alpha/S02/retry/instagram_reels"' in response.text
+    assert "IG transport failed" in response.text
+    assert 'target="_blank" rel="noopener noreferrer"' in response.text
+    assert "Receipt · fb-receipt-1" in response.text
+    assert "有平台投遞失敗；請只重試失敗平台。" in response.text
+    assert "檢查素材與文案" in response.text
+    assert "開啟三平台發布工作" in response.text
+    assert "YouTube Community 永遠是 browser/manual handoff" in response.text
+
+
 def test_future_instagram_dependency_warns_until_due_worker_is_online(monkeypatch) -> None:
     import thousand_sunny.routers.publish_calendar as calendar_router
 

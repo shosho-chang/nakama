@@ -97,6 +97,13 @@ Campaign Anchor 或 Target state。永久服務安裝與真實 probe 仍需另�
 
 - 發布層 code 歸屬（plan §4.2）：`agents/usopp/` 但與 WP 線平行不共用零件；
   `CONTENT-PIPELINE.md:207` 的自我矛盾句要一併修——**下個 slice 處理**
+- Publish Calendar 可在同一張 Release 卡提供 execution control，但必須與 Campaign Anchor
+  intent form 分區，且只能 POST 到既有 approve-upload／單平台 retry route；Calendar projection
+  不載入 adapter、不自行 dispatch。Calendar readiness 是操作提示，mutation route 仍需重驗
+  canonical file、主要文案與 Target state。成功後的 `return_to` 僅接受精確相對
+  `/bridge/publish/calendar` 路徑，任何 absolute／protocol-relative／traversal／control character
+  一律回安全的 Release review fallback。整組 approve 只接受尚未核准的 `draft` Target；一旦
+  已轉為 `approved`，即使 worker 尚未 claim，也必須視為等待認領並拒絕重複 spawn。
 - 重複上傳防護：無平台天然 idempotency key → DB claim + `video_id` 上傳完成
   即寫 + `upload_session_uri` 持久化（crash 續傳不重傳）
 - Q4b 字幕實測與計畫假設相反（長片 Resolve render 會燒模板軌、短片燒不進）

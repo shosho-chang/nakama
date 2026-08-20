@@ -6,9 +6,25 @@
   </span>
   <a class="pc-item__title" href="{{ item.detail_url }}"><strong>{{ item.title }}</strong></a>
   <div class="pc-targets" aria-label="發布平台狀態">
-    {% for target in item.targets %}<span class="pc-target" data-status="{{ target.status }}">{{ target.platform_label }} · {{ target.status | replace('_', ' ') }}</span>{% endfor %}
+    {% for target in item.targets %}
+    <div class="pc-target" data-status="{{ target.status }}">
+      <span>{{ target.platform_label }} · {{ target.status | replace('_', ' ') }}</span>
+      {% if target.error %}<span class="pc-target__error" role="status">{{ target.error }}</span>{% endif %}
+      {% if target.receipt_id %}<span class="pc-target__receipt">Receipt · {{ target.receipt_id }}</span>{% endif %}
+      {% if target.permalink %}<a href="{{ target.permalink }}" target="_blank" rel="noopener noreferrer">開啟平台紀錄</a>{% endif %}
+      {% if item.content_type == 'short' and target.retryable %}
+      <form class="pc-retry" method="post" action="/bridge/publish/{{ item.episode | urlencode }}/{{ item.content_id | urlencode }}/retry/{{ target.platform | urlencode }}" onsubmit="return confirm('這會立即只重試此平台，並產生真實平台 side effect。確定繼續？')">
+        <input type="hidden" name="return_to" value="{{ calendar_return_url }}">
+        <button class="sho-btn--ghost" type="submit">只重試此平台</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
   </div>
   <span class="pc-item__state">{{ phase_labels[item.phase] }} · {{ item.progress_label }} · {{ item.date_basis_label }}</span>
+  <section class="pc-control pc-control--schedule" aria-label="Campaign Anchor 設定；只寫發布意圖，不會核准或投遞">
+  <span class="pc-control__label">01 · CAMPAIGN ANCHOR</span>
+  <p>只設定發布意圖；不會核准、不會投遞。</p>
   {% if item.schedule_editable %}
   <form class="pc-schedule" method="post" action="/bridge/publish/calendar/{{ item.schedule_kind }}/{{ item.episode | urlencode }}/{{ item.schedule_id | urlencode }}/schedule">
     <input type="hidden" name="month" value="{{ month_value }}">
@@ -33,6 +49,30 @@
     <p>{{ item.schedule_disabled_reason }}</p>
   </div>
   {% endif %}
+  </section>
+
+  <section class="pc-control pc-control--execution" aria-label="發布執行控制">
+    <span class="pc-control__label">02 · EXECUTION</span>
+    {% if item.content_type == 'short' %}
+      {% if item.execution_ready %}
+      <p>{{ item.execution_reason }} 此操作會呼叫既有 dispatcher，可能立即在外部平台建立上傳或發布。</p>
+      <form class="pc-execution" method="post" action="/bridge/publish/{{ item.episode | urlencode }}/{{ item.content_id | urlencode }}/approve-upload" onsubmit="return confirm('這會核准 Short 並立即啟動符合資格的平台投遞；未來 Anchor 會先武裝 YouTube／Facebook，Instagram 等待到點。確定繼續？')">
+        <input type="hidden" name="return_to" value="{{ calendar_return_url }}">
+        <button class="sho-btn" type="submit">核准並投遞三平台</button>
+      </form>
+      {% else %}
+      <p class="pc-execution__reason" role="status">{{ item.execution_reason }}</p>
+      <button class="sho-btn" type="button" disabled aria-disabled="true">核准並投遞三平台</button>
+      <a class="sho-lk pc-execution__detail" href="{{ item.detail_url }}">檢查素材與文案</a>
+      {% endif %}
+    {% elif item.content_type == 'carousel' %}
+    <p>前往既有 Publish page 建立或接續三平台工作；此連結不建立 job，也不執行外部操作。YouTube Community 永遠是 browser/manual handoff，不宣稱 Data API insert。</p>
+    <a class="sho-btn--ghost pc-execution__detail" href="{{ item.detail_url }}">開啟三平台發布工作</a>
+    {% else %}
+    <p>長片仍由完整審核頁核准與上傳。</p>
+    <a class="sho-lk pc-execution__detail" href="{{ item.detail_url }}">開啟發布審核</a>
+    {% endif %}
+  </section>
 </article>
 {%- endmacro %}
 <!DOCTYPE html>
