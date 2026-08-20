@@ -147,6 +147,81 @@ def test_claim_target_rejects_nonclaimable_terminal_or_unapproved_status(store, 
     assert store.claim_target(target_id, now=datetime(2026, 8, 20, tzinfo=UTC)) is None
 
 
+def test_confirm_target_outcome_has_one_uploaded_same_video_winner(store):
+    release_id = store.register_release("ep", "S01", "short", "f.mp4")
+    target_id = store.ensure_target(release_id, "youtube")
+    store.update_target(target_id, status="uploaded", video_id="yt-1")
+    observed = store.get_release("ep", "S01")["targets"][0]
+
+    first = store.confirm_target_outcome(
+        target_id,
+        expected_video_id="yt-1",
+        expected_updated_at=observed["updated_at"],
+        status="published",
+        url="https://youtu.be/yt-1",
+    )
+    stale = store.confirm_target_outcome(
+        target_id,
+        expected_video_id="yt-1",
+        expected_updated_at=observed["updated_at"],
+        status="failed",
+        error="must not overwrite",
+    )
+
+    target = store.get_release("ep", "S01")["targets"][0]
+    assert first is True
+    assert stale is False
+    assert target["status"] == "published"
+    assert target["video_id"] == "yt-1"
+    assert target["url"] == "https://youtu.be/yt-1"
+    assert target["error"] is None
+
+
+def test_confirm_target_outcome_rejects_changed_video_identity(store):
+    release_id = store.register_release("ep", "S01", "short", "f.mp4")
+    target_id = store.ensure_target(release_id, "facebook_reels")
+    store.update_target(target_id, status="uploaded", video_id="fb-new")
+    observed = store.get_release("ep", "S01")["targets"][0]
+
+    changed = store.confirm_target_outcome(
+        target_id,
+        expected_video_id="fb-old",
+        expected_updated_at=observed["updated_at"],
+        status="published",
+        url="https://facebook.example/reel/new",
+    )
+
+    target = store.get_release("ep", "S01")["targets"][0]
+    assert changed is False
+    assert target["status"] == "uploaded"
+    assert target["video_id"] == "fb-new"
+    assert target["url"] is None
+
+
+def test_confirm_target_outcome_has_exactly_one_concurrent_winner(store):
+    release_id = store.register_release("ep", "S01", "short", "f.mp4")
+    target_id = store.ensure_target(release_id, "youtube")
+    store.update_target(target_id, status="uploaded", video_id="yt-1")
+    observed = store.get_release("ep", "S01")["targets"][0]
+
+    def confirm(status):
+        return store.confirm_target_outcome(
+            target_id,
+            expected_video_id="yt-1",
+            expected_updated_at=observed["updated_at"],
+            status=status,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(confirm, ("published", "failed")))
+
+    assert sorted(results) == [False, True]
+    assert store.get_release("ep", "S01")["targets"][0]["status"] in {
+        "published",
+        "failed",
+    }
+
+
 def test_social_target_metadata_and_ineligible_status_persist(store):
     rid = store.register_release("ep", "c1", "short", "f.mp4")
     tid = store.ensure_target(rid, "facebook_reels")

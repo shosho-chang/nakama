@@ -29,6 +29,8 @@ from shared.publish_calendar import (
     build_month_grid,
     build_publish_calendar,
     future_short_requires_due_worker,
+    outcome_reconciler_health,
+    overdue_native_confirmation_exists,
     parse_month,
     shift_month,
     short_due_worker_health,
@@ -50,6 +52,7 @@ _PHASE_LABELS = {
     "published": "已發布",
 }
 _SHORT_DUE_WORKER_JOB = "usopp-short-due-dispatcher"
+_OUTCOME_RECONCILER_JOB = "usopp-release-outcome-reconciler"
 _WORKER_HEALTH_LABELS = {
     "never_seen": "尚未執行",
     "online": "在線",
@@ -212,6 +215,11 @@ def publish_calendar_page(
         now=observed_now,
     )
     due_worker_required = future_short_requires_due_worker(projection.items, now=observed_now)
+    reconciler_health = outcome_reconciler_health(
+        get_heartbeat(_OUTCOME_RECONCILER_JOB),
+        now=observed_now,
+    )
+    confirmation_overdue = overdue_native_confirmation_exists(filtered)
     return _templates.TemplateResponse(
         request,
         "publish_calendar.html",
@@ -233,6 +241,11 @@ def publish_calendar_page(
             "short_due_worker": worker_health,
             "short_due_worker_label": _WORKER_HEALTH_LABELS[worker_health.state],
             "short_due_worker_warning": (due_worker_required and worker_health.state != "online"),
+            "outcome_reconciler": reconciler_health,
+            "outcome_reconciler_label": _WORKER_HEALTH_LABELS[reconciler_health.state],
+            "outcome_reconciler_warning": (
+                confirmation_overdue and reconciler_health.state != "online"
+            ),
             "taipei": TAIPEI,
             "podcast_youtube": {
                 "name": PODCAST_YOUTUBE_CHANNEL_NAME,

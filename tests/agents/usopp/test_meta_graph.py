@@ -63,6 +63,109 @@ def test_credential_probe_reads_page_and_instagram_without_leaking_token():
     assert "secret-never-in-call" not in repr(transport.calls)
 
 
+@pytest.mark.parametrize(
+    ("response", "outcome", "evidence", "certain"),
+    [
+        (
+            {
+                "status": {
+                    "processing_phase": {"status": "complete"},
+                    "publishing_phase": {"status": "complete"},
+                },
+                "published": True,
+                "permalink_url": "https://facebook.example/reel/1",
+            },
+            "published",
+            "public",
+            True,
+        ),
+        (
+            {
+                "status": {"processing_phase": {"status": "complete"}},
+                "published": False,
+                "permalink_url": "https://facebook.example/reel/1",
+            },
+            "pending",
+            "processing",
+            True,
+        ),
+        (
+            {"status": {"publishing_phase": {"status": "failed"}}},
+            "failed",
+            "publishing_failed",
+            True,
+        ),
+        (
+            {
+                "status": {"publishing_phase": {"status": "published"}},
+                "published": True,
+                "permalink_url": "javascript:alert(1)",
+            },
+            "pending",
+            "unsafe_permalink",
+            False,
+        ),
+        (
+            {
+                "status": {"publishing_phase": {"status": "scheduled"}},
+                "published": False,
+            },
+            "pending",
+            "scheduled",
+            True,
+        ),
+        (
+            {
+                "status": {"publishing_phase": {"status": "complete"}},
+                "published": False,
+                "permalink_url": "https://facebook.example/reel/1",
+            },
+            "pending",
+            "private",
+            True,
+        ),
+        (
+            {
+                "status": {"publishing_phase": {"status": "complete"}},
+                "permalink_url": "https://facebook.example/reel/1",
+            },
+            "pending",
+            "unknown",
+            False,
+        ),
+        (
+            {
+                "status": {"publishing_phase": {"status": "error"}},
+                "published": True,
+                "permalink_url": "https://facebook.example/reel/1",
+            },
+            "pending",
+            "unknown",
+            False,
+        ),
+        ({"status": {}}, "pending", "unknown", False),
+    ],
+)
+def test_observe_facebook_reel_is_one_strict_read(response, outcome, evidence, certain):
+    transport = FakeTransport([response])
+    client = MetaGraphClient(config(), transport)
+
+    observation = client.observe_facebook_reel("video-1")
+
+    assert observation.outcome == outcome
+    assert observation.evidence_category == evidence
+    assert observation.certain is certain
+    assert transport.uploads == []
+    assert transport.calls == [
+        {
+            "method": "GET",
+            "path": "video-1",
+            "params": {"fields": "id,status,published,permalink_url"},
+            "data": None,
+        }
+    ]
+
+
 def test_instagram_reel_create_poll_publish_permalink_checkpoint_order():
     transport = FakeTransport(
         [

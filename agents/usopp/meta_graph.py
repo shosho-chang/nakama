@@ -15,7 +15,8 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Mapping, MutableMapping, Protocol
+from typing import Any, Callable, Literal, Mapping, MutableMapping, Protocol
+from urllib.parse import urlsplit
 
 
 class MetaGraphError(RuntimeError):
@@ -95,6 +96,17 @@ class MetaPublishResult:
     checkpoint: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class FacebookReelObservation:
+    """One non-polling, read-only Facebook Reel outcome observation."""
+
+    outcome: Literal["published", "failed", "pending"]
+    evidence_category: str
+    certain: bool
+    permalink: str | None = None
+    error: str | None = None
+
+
 class MetaGraphClient:
     """Publish Instagram/Facebook media while persisting crash checkpoints."""
 
@@ -120,6 +132,68 @@ class MetaGraphClient:
         page = self._request("GET", self.config.page_id, params={"fields": "id,name"})
         instagram = self._request("GET", self.config.ig_user_id, params={"fields": "id,username"})
         return {"page": dict(page), "instagram": dict(instagram)}
+
+    def observe_facebook_reel(self, video_id: str) -> FacebookReelObservation:
+        """Read one Reel once without polling or reaching any publish endpoint."""
+
+        identity = video_id.strip()
+        if not identity:
+            raise ValueError("Facebook video_id must be non-empty")
+        response = self._request(
+            "GET",
+            identity,
+            params={"fields": "id,status,published,permalink_url"},
+        )
+        raw_status = response.get("status")
+        status = raw_status if isinstance(raw_status, Mapping) else {}
+
+        def phase(name: str) -> str:
+            value = status.get(name)
+            if isinstance(value, Mapping):
+                value = value.get("status")
+            return str(value or "").strip().lower()
+
+        processing = phase("processing_phase")
+        publishing = phase("publishing_phase")
+        failed_values = {"failed", "error", "expired"}
+        published = response.get("published")
+        if published is True and (publishing in failed_values or processing in failed_values):
+            return FacebookReelObservation("pending", "unknown", False)
+        if publishing in failed_values:
+            return FacebookReelObservation(
+                "failed",
+                "publishing_failed",
+                True,
+                error=f"Facebook publishing phase ended as {publishing}",
+            )
+        if processing in failed_values:
+            return FacebookReelObservation(
+                "failed",
+                "processing_failed",
+                True,
+                error=f"Facebook processing phase ended as {processing}",
+            )
+        if published is True:
+            permalink = self._safe_facebook_permalink(response.get("permalink_url"))
+            if permalink is not None:
+                return FacebookReelObservation("published", "public", True, permalink=permalink)
+            return FacebookReelObservation("pending", "unsafe_permalink", False)
+        if published is not False:
+            return FacebookReelObservation("pending", "unknown", False)
+        if publishing == "scheduled":
+            return FacebookReelObservation("pending", "scheduled", True)
+        if processing in {
+            "complete",
+            "completed",
+            "ready",
+            "processing",
+            "in_progress",
+            "pending",
+        }:
+            return FacebookReelObservation("pending", "processing", True)
+        if published is False:
+            return FacebookReelObservation("pending", "private", True)
+        return FacebookReelObservation("pending", "unknown", False)
 
     def publish_instagram_reel(
         self,
@@ -426,6 +500,20 @@ class MetaGraphClient:
             return permalink
         if permalink.startswith("/reel/"):
             return "https://www.facebook.com" + permalink
+        return permalink
+
+    @staticmethod
+    def _safe_facebook_permalink(value: object) -> str | None:
+        permalink = MetaGraphClient._normalize_facebook_permalink(value)
+        if not permalink:
+            return None
+        if "\\" in permalink or any(
+            ord(character) < 32 or ord(character) == 127 for character in permalink
+        ):
+            return None
+        parsed = urlsplit(permalink)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return None
         return permalink
 
     def _resolve_permalink(

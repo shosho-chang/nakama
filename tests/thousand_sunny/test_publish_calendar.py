@@ -243,6 +243,63 @@ def test_future_instagram_dependency_warns_until_due_worker_is_online(monkeypatc
     assert "FAILURE STREAK" in healthy.text
 
 
+def test_due_uploaded_target_shows_independent_reconciler_health(monkeypatch) -> None:
+    import thousand_sunny.routers.publish_calendar as calendar_router
+
+    now = datetime(2026, 8, 20, 1, tzinfo=UTC)
+    overdue = replace(
+        _projection().items[0],
+        targets=(
+            PlatformTargetView(
+                "youtube",
+                "Podcast YouTube",
+                "uploaded",
+                confirmation_overdue=True,
+            ),
+        ),
+        calendar_at=datetime(2026, 8, 20, 8, 30, tzinfo=TAIPEI),
+        phase="in_progress",
+    )
+    monkeypatch.setattr(calendar_router, "check_auth", lambda _cookie: True)
+    monkeypatch.setattr(
+        calendar_router,
+        "build_publish_calendar",
+        lambda _root: CalendarProjection(items=(overdue,), diagnostics=()),
+    )
+    monkeypatch.setattr(calendar_router, "_utc_now", lambda: now)
+    monkeypatch.setattr(calendar_router, "get_heartbeat", lambda _job: None)
+    app = FastAPI()
+    app.include_router(calendar_router.page_router)
+    client = TestClient(app)
+
+    missing = client.get("/bridge/publish/calendar?month=2026-08")
+    assert missing.status_code == 200
+    assert "Outcome Reconciler" in missing.text
+    assert 'data-worker-kind="outcome-reconciler"' in missing.text
+    assert 'data-worker-health="never_seen"' in missing.text
+    assert "等待公開確認" in missing.text
+    assert "公開結果待確認" in missing.text
+    assert "uploaded · 等待公開確認" in missing.text
+
+    online = Heartbeat(
+        job_name="usopp-release-outcome-reconciler",
+        last_success_at=now,
+        last_run_at=now,
+        last_status="success",
+        last_error=None,
+        consecutive_failures=0,
+        updated_at=now,
+    )
+    monkeypatch.setattr(
+        calendar_router,
+        "get_heartbeat",
+        lambda job: online if job == "usopp-release-outcome-reconciler" else None,
+    )
+    healthy = client.get("/bridge/publish/calendar?month=2026-08")
+    assert 'data-worker-kind="outcome-reconciler" data-worker-health="online"' in healthy.text
+    assert "公開結果待確認；Outcome Reconciler" not in healthy.text
+
+
 def test_episode_filter_applies_to_dated_items_and_backlog_and_preserves_month(
     calendar_client: TestClient,
 ) -> None:

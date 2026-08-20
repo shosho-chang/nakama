@@ -9,6 +9,7 @@
     {% for target in item.targets %}
     <div class="pc-target" data-status="{{ target.status }}">
       <span>{{ target.platform_label }} · {{ target.status | replace('_', ' ') }}</span>
+      {% if target.confirmation_overdue %}<span class="pc-target__confirmation" role="status">uploaded · 等待公開確認</span>{% endif %}
       {% if target.error %}<span class="pc-target__error" role="status">{{ target.error }}</span>{% endif %}
       {% if target.receipt_id %}<span class="pc-target__receipt">Receipt · {{ target.receipt_id }}</span>{% endif %}
       {% if target.permalink %}<a href="{{ target.permalink }}" target="_blank" rel="noopener noreferrer">開啟平台紀錄</a>{% endif %}
@@ -153,6 +154,25 @@
   <aside class="pc-state pc-state--warning" role="alert" aria-label="Short Due Dispatcher 需要處理">
     <strong>未來 Short 仍等待 Instagram 到點投遞，但 Due Dispatcher 目前不是在線狀態。</strong>
     <span>請在桌機前景啟動 <span class="sho-mono">publish_due.py --watch --execute</span>，並確認本區狀態轉為「在線」；這項警告不會改動 Campaign Anchor 或 Release Target。</span>
+  </aside>
+  {% endif %}
+
+  <section class="pc-worker" data-worker-kind="outcome-reconciler" data-worker-health="{{ outcome_reconciler.state }}" aria-labelledby="outcome-reconciler-heading">
+    <div>
+      <div class="sho-kicker"><span class="sho-kicker-n">[ READ ]</span> NATIVE OUTCOMES</div>
+      <h2 id="outcome-reconciler-heading">Outcome Reconciler</h2>
+    </div>
+    <span class="sho-tag pc-worker__state" role="status" aria-label="Outcome Reconciler 狀態：{{ outcome_reconciler_label }}">{{ outcome_reconciler_label }}</span>
+    <dl>
+      <div><dt>LAST RUN</dt><dd>{% if outcome_reconciler.last_run_at %}<time datetime="{{ outcome_reconciler.last_run_at.isoformat() }}">{{ outcome_reconciler.last_run_at.astimezone(taipei).strftime('%Y-%m-%d %H:%M:%S') }}</time>{% else %}尚無紀錄{% endif %}</dd></div>
+      <div><dt>LAST SUCCESS</dt><dd>{% if outcome_reconciler.last_success_at %}<time datetime="{{ outcome_reconciler.last_success_at.isoformat() }}">{{ outcome_reconciler.last_success_at.astimezone(taipei).strftime('%Y-%m-%d %H:%M:%S') }}</time>{% else %}尚無成功紀錄{% endif %}</dd></div>
+      <div><dt>FAILURE STREAK</dt><dd>{{ outcome_reconciler.consecutive_failures }}</dd></div>
+    </dl>
+  </section>
+  {% if outcome_reconciler_warning %}
+  <aside class="pc-state pc-state--warning" role="alert" aria-label="Outcome Reconciler 需要處理">
+    <strong>公開結果待確認；Outcome Reconciler 目前不是在線狀態。</strong>
+    <span>請由操作者在桌機前景執行 <span class="sho-mono">publish_reconcile.py --once --execute</span>。這項唯讀平台確認不會重傳、重試或建立內容。</span>
   </aside>
   {% endif %}
 
