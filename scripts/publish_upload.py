@@ -44,6 +44,11 @@ sys.stderr.reconfigure(encoding="utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from agents.usopp.youtube_credentials import (  # noqa: E402
+    YouTubeCredentialError,
+    load_youtube_client,
+)
+
 logger = logging.getLogger("publish_upload")
 
 _DATA_DIR = Path(
@@ -90,36 +95,20 @@ def write_progress(episode: str, cut_id: str, pct: float, note: str = "") -> Non
 
 
 def _load_yt():
-    from google.auth.transport.requests import Request
-    from google.oauth2.credentials import Credentials
-    from googleapiclient.discovery import build
+    return _load_stage6_youtube_client()
 
-    if not TOKEN_PATH.exists():
-        raise SystemExit(f"找不到 {TOKEN_PATH}——先跑 python scripts/youtube_auth.py")
-    creds = Credentials.from_authorized_user_file(str(TOKEN_PATH))
-    if not creds.valid:
-        if creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-            TOKEN_PATH.write_text(creds.to_json())
-        else:
-            raise SystemExit("token 無效且無法 refresh——重跑 scripts/youtube_auth.py")
-    return build("youtube", "v3", credentials=creds)
+
+def _load_stage6_youtube_client():
+    try:
+        return load_youtube_client(TOKEN_PATH)
+    except YouTubeCredentialError as exc:
+        raise SystemExit(str(exc)) from None
 
 
 def load_youtube_observer():
-    """Build a read-only observer client without refresh network or token writes."""
+    """Build a read-only observer client with the shared credential lifecycle."""
 
-    from google.oauth2.credentials import Credentials
-    from googleapiclient.discovery import build
-
-    if not TOKEN_PATH.exists():
-        raise SystemExit("YouTube observer credentials unavailable")
-    creds = Credentials.from_authorized_user_file(str(TOKEN_PATH))
-    if not creds.valid:
-        raise SystemExit(
-            "YouTube observer credentials are invalid; refresh in a supervised auth session"
-        )
-    return build("youtube", "v3", credentials=creds)
+    return _load_stage6_youtube_client()
 
 
 def to_utc_iso(ts: str) -> str:

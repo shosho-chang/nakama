@@ -3,7 +3,8 @@
 - **Status**: Accepted（D1/D2 為 2026-07-26 修修裁決的追認；D3 修修 2026-08-04
   裁決通過——「依照你的建議繼續做下去」；D4 於 2026-08-20 依三平台實測後
   的 Publish Calendar 規劃補充；D5 於 2026-08-20 完成 Short due-dispatch slice；
-  D6 於 2026-08-20 補上 Native Arm 公開結果確認）
+  D6 於 2026-08-20 補上 Native Arm 公開結果確認；D7 於 2026-08-21 收斂
+  YouTube credential lifecycle）
 - **Date**: 2026-08-04
 - **Context**: `docs/plans/2026-07-26-video-publishing-plan.md`（grill 全記錄）、
   ADR-054（packaging 交接契約）。Slice 0 探針已 PASS（#1124：OAuth + 上傳 +
@@ -122,6 +123,21 @@ updated_at` snapshot，而且不得存在同平台同 `video_id` sibling，才�
 「等待公開確認」，絕不把時間經過當成 `published`。
 只有無 exact scope 的全域 execute 可寫這個 global heartbeat；精確 episode/cut 操作不會讓
 Calendar 誤判其他 overdue Targets 已受監控。
+
+## D7 — Stage 6 共用 YouTube credential lifecycle（2026-08-21 amendment）
+
+桌機 Uploader 與 Outcome Reconciler 的 YouTube observer 必須經過同一個 Usopp-owned
+credential loader。短效 access token 到期但仍有 refresh credential 時，loader 只做一次
+refresh，成功後先把完整 authorized-user JSON 寫到同目錄的唯一 temporary file、flush +
+fsync，再用 atomic replace 更新 token；有效 token 不 refresh 也不重寫。多個桌機流程同時
+啟動時可能各自 refresh，但讀者只會看到舊或新的完整 JSON，不會看到部分檔案。
+
+Credential load、refresh 與 persistence error 對 Stage 6 caller 只暴露 secret-free 操作分類，
+不保存 provider raw error。缺 refresh credential、malformed token 或 Google 明確回覆
+`invalid_grant` 才要求重新執行 `scripts/youtube_auth.py`；其他 refresh transport failure 或
+atomic persistence failure 保留最後可解析 token，要求稍後重跑 worker，不把短暫故障誤報成
+授權遭撤銷。這個 auth refresh 不改變 D6：Outcome Reconciler 仍只對每個候選做一次平台
+outcome GET，不 upload、publish、retry Release Target 或改 Campaign Anchor。
 
 ## 後果
 

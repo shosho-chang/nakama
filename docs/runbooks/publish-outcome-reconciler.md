@@ -11,6 +11,14 @@ Instagram 或 Carousel。預設是 one-shot dry-run；真實 `--execute` 必須�
 `published=true` 與安全 HTTP(S) permalink。processing、scheduled、private、phase complete、
 not-found、auth／transport error 或 contradictory response 都不會被改成 published。
 
+YouTube access token 本來就是短效 credential。Execute 初始化 observer 時會與 Uploader
+共用受控 loader：token 尚有效時直接使用；access token 已到期且 refresh credential 仍有效時，
+只 refresh 一次並 atomic 保存後繼續，不需要人工重新 OAuth。這次 auth exchange 不是發布
+操作，也不增加每個候選的一次 outcome GET。只有下列情況才重跑
+`python scripts/youtube_auth.py`：token malformed、缺 refresh credential，或 Google 明確拒絕
+refresh（`invalid_grant`，例如授權遭撤銷）。短暫 refresh transport error 或 token persistence
+error 先保留最後可解析 token，稍後重跑 worker；不要因此撤銷或重建 OAuth consent。
+
 ## 1. 先跑本機安全測試
 
 下列測試使用 temporary SQLite 與 fake observer；不讀 production state、不載入真實 client、
@@ -75,6 +83,10 @@ Execute 只初始化候選所需的平台 observer；每個候選只做一次 GE
 `stale_snapshot` 並保留對方結果。任何 observer／DB uncertainty 都讓本輪回傳 nonzero 與
 code-only diagnostic；全域 run 另寫 failing heartbeat，exact-scope 則不寫 global heartbeat。
 Target 保持原狀，siblings 仍繼續；不會觸發 retry 或 upload。
+
+若 YouTube observer setup 失敗，輸出只會顯示 `youtube_observer_setup_failed`，不會包含
+token、client secret、token path 或 provider raw error。先依上方 credential 分類處理；不要
+清除既有 Release Target 的 video ID，也不要用 `--force` 建立 replacement upload。
 
 Exact-scope execute／watch 不寫 global heartbeat，避免只監看一支 Release 卻讓 Calendar 誤以為
 所有 overdue Targets 都受監控；只有不帶 `--episode`／`--cut` 的全域 execute 能更新 Calendar
