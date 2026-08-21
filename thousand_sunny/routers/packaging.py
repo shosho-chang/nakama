@@ -65,6 +65,8 @@ _DESCRIPTION_GENERATING = "DESCRIPTION_DRAFT_GENERATING"
 _DESCRIPTION_INTERRUPTED = "DESCRIPTION_DRAFT_INTERRUPTED:"
 _DESCRIPTION_TIMEOUT_SECONDS = 900
 _DESCRIPTION_PROCESSES: dict[tuple[str, str], subprocess.Popen] = {}
+_PUBLISH_PREP_TIMEOUT_SECONDS = 7200
+_PUBLISH_PREP_PROCESSES: dict[tuple[str, str], subprocess.Popen] = {}
 
 
 class CompositionBBoxV1(BaseModel):
@@ -649,6 +651,25 @@ def _ensure_description_handoff(episode: str, cut_id: str, release: dict) -> str
     return "generating"
 
 
+def _publish_prep_state(episode_dir: Path, cut_id: str) -> dict | None:
+    receipt = episode_dir / "highlights" / "exports" / f".publish_prep_{cut_id}.json"
+    payload = load_job(receipt)
+    if not payload or payload.get("status") != "rendering":
+        return payload
+    key = (str(episode_dir.resolve()), cut_id)
+    process = _PUBLISH_PREP_PROCESSES.get(key)
+    exit_code = process.poll() if process is not None else None
+    if (process is not None and exit_code is not None) or job_expired(payload):
+        reason = (
+            f"background child exited ({exit_code})"
+            if process is not None and exit_code is not None
+            else "background attempt exceeded its deadline"
+        )
+        payload = {**payload, "status": "failed", "exit_code": exit_code, "error": reason}
+        atomic_job_write(receipt, payload)
+    return payload
+
+
 def _ensure_publish_prep(episode: str, cut_id: str) -> None:
     """Start or resume the full-resolution export for an approved package."""
     root_value = os.environ.get("PODCAST_EPISODES_ROOT", "").strip()
@@ -664,9 +685,61 @@ def _ensure_publish_prep(episode: str, cut_id: str) -> None:
         ) from exc
     if not episode_dir.is_dir():
         raise HTTPException(status_code=404, detail=f"episode 不存在: {episode}")
-    from thousand_sunny.routers.highlight_review import _start_publish_prep
-
-    _start_publish_prep(episode_dir, cut_id)
+    key = (str(episode_dir.resolve()), cut_id)
+    running = _PUBLISH_PREP_PROCESSES.get(key)
+    root_path = Path(__file__).resolve().parent.parent.parent
+    script = root_path / "scripts" / "publish_prep.py"
+    data_dir = Path(os.environ.get("NAKAMA_DATA_DIR") or get_db_path().parent)
+    log_dir = data_dir / "publish_prep"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    receipt = episode_dir / "highlights" / "exports" / f".publish_prep_{cut_id}.json"
+    current = _publish_prep_state(episode_dir, cut_id)
+    if current and current.get("status") == "rendered":
+        return
+    if running is not None and running.poll() is None:
+        return
+    if current and current.get("status") == "rendering" and not job_expired(current):
+        return
+    job = new_job(
+        status="rendering",
+        timeout_seconds=_PUBLISH_PREP_TIMEOUT_SECONDS,
+        episode=episode_dir.name,
+        cut_id=cut_id,
+    )
+    atomic_job_write(receipt, job)
+    safe_episode = episode_dir.name.replace("/", "_").replace("\\", "_")
+    log_file = open(  # noqa: SIM115 -- Popen duplicates the descriptor
+        log_dir / f"{safe_episode}_{cut_id}.log", "a", encoding="utf-8"
+    )
+    configured = os.environ.get("NAKAMA_RESOLVE_PYTHON", "").strip()
+    command = [configured, str(script)] if configured else [sys.executable, str(script)]
+    try:
+        process = subprocess.Popen(
+            [
+                *command,
+                str(episode_dir),
+                "--cut",
+                cut_id,
+                "--render-only",
+                "--receipt",
+                str(receipt),
+                "--attempt-id",
+                str(job["attempt_id"]),
+            ],
+            cwd=str(root_path),
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+        )
+    except OSError as exc:
+        log_file.close()
+        atomic_job_write(
+            receipt,
+            {**job, "status": "failed", "exit_code": None, "error": f"OSError: {exc}"},
+        )
+        raise HTTPException(status_code=503, detail=f"無法啟動最終成品匯出：{exc}") from exc
+    _PUBLISH_PREP_PROCESSES[key] = process
+    atomic_job_write(receipt, {**job, "pid": process.pid})
+    log_file.close()
 
 
 def _release_from_receipt(episode: str, cut_id: str) -> dict | None:
@@ -686,8 +759,6 @@ def _release_from_receipt(episode: str, cut_id: str) -> dict | None:
     receipt = episode_dir / "highlights" / "exports" / f".publish_prep_{cut_id}.json"
     if not receipt.is_file():
         return None
-    from thousand_sunny.routers.highlight_review import _publish_prep_state
-
     _publish_prep_state(episode_dir, cut_id)
     try:
         payload = json.loads(receipt.read_text(encoding="utf-8"))

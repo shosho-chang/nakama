@@ -1656,9 +1656,11 @@ def test_description_interruption_is_visible_and_retryable(client, monkeypatch):
     assert "重試產生 Description" in response.text
 
 
-def test_description_generation_status_is_visible(client, monkeypatch):
+def test_description_generation_status_is_visible(client, monkeypatch, tmp_path):
     import thousand_sunny.routers.packaging as pkg_module
     from shared.background_job import atomic_job_write, new_job
+
+    monkeypatch.setenv("NAKAMA_DATA_DIR", str(tmp_path / "data"))
 
     client.post(
         "/bridge/packaging/20260723-xieboran/approve",
