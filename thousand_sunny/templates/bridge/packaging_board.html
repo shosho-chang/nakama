@@ -421,11 +421,10 @@
       </details>
       {% endif %}
 
-      <form method="post" action="/bridge/packaging/{{ episode_slug }}/approve" class="pkg-approve-form"
-            data-requires-composition="{{ 'true' if cut.cut_id != 'full' else 'false' }}">
+      <form method="post" action="/bridge/packaging/{{ episode_slug }}/approve" class="pkg-approve-form">
         <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
         <fieldset class="pkg-cards">
-          <legend class="sho-mono-up">選 primary package（三個都願意花早期 impression 測才 approve）</legend>
+          <legend class="sho-mono-up">選 primary package（你的 Approve 具有最高權限；機械檢查只作提醒）</legend>
           {% for item in view.packages %}
           <label class="pkg-card{% if approval and approval.approved and approval.primary_package == item.pkg.title_rank %} pkg-card--primary{% endif %}"
                  data-composition-verified="{{ 'true' if cut.cut_id == 'full' or item.composition.verified else 'false' }}">
@@ -442,9 +441,9 @@
               <span>完整節目使用書封背景版，不需要長精華的中央主圖／保護區驗證。</span>
             </div>
             {% else %}
-            <div class="sho-mono pkg-composition-status{% if not item.composition.verified %} pkg-composition-status--blocked{% endif %}"
+            <div class="sho-mono pkg-composition-status{% if not item.composition.verified %} pkg-composition-status--warning{% endif %}"
                  role="status" data-composition-verified="{{ 'true' if item.composition.verified else 'false' }}">
-              {% if item.composition.verified %}COMPOSITION VERIFIED{% else %}COMPOSITION BLOCKED{% endif %}
+              {% if item.composition.verified %}COMPOSITION VERIFIED{% else %}COMPOSITION WARNING · HUMAN APPROVAL OVERRIDES{% endif %}
               <span>{{ item.composition.reason }}</span>
             </div>
             {% endif %}
@@ -470,7 +469,7 @@
                     rows="2" maxlength="2000">{{ approval.reject_note or '' if approval else '' }}</textarea>
         </div>
         <div class="pkg-actions">
-          <button class="sho-btn" type="submit" name="decision" value="approve">Approve</button>
+          <button class="sho-btn" type="submit" name="decision" value="approve">Approve（人工決定優先）</button>
           <button class="sho-btn sho-btn--ghost" type="submit" name="decision" value="reject">Reject（附理由）</button>
         </div>
         <p class="sho-mono pkg-approve-error" role="alert" aria-live="assertive"></p>
@@ -523,7 +522,7 @@
   .pkg-hint code { font-size: 12px; }
   .pkg-composition-status { display: grid; gap: var(--sho-s-1); color: var(--sho-success); }
   .pkg-composition-status span { color: var(--sho-text-2); text-transform: none; }
-  .pkg-composition-status--blocked { color: var(--sho-error); }
+  .pkg-composition-status--warning { color: var(--sho-warning); }
   .pkg-brand-flags { margin-bottom: var(--sho-s-3); display: flex; gap: var(--sho-s-2); flex-wrap: wrap; }
   .pkg-flag {
     color: var(--sho-error); border: 1px solid color-mix(in oklch, var(--sho-error) 45%, transparent);
@@ -955,16 +954,6 @@
     loadPackageRecipe(tab);
   }
 
-  for (const form of document.querySelectorAll('.pkg-approve-form[data-requires-composition="true"]')) {
-    form.addEventListener("submit", (event) => {
-      if (event.submitter?.value !== "approve") return;
-      const selected = form.querySelector('input[name="primary_package"]:checked')?.closest(".pkg-card");
-      if (selected?.dataset.compositionVerified === "true") return;
-      event.preventDefault();
-      const error = form.querySelector(".pkg-approve-error");
-      if (error) error.textContent = "COMPOSITION BLOCKED：中央主圖或保護區尚未通過驗證。";
-    });
-  }
 </script>
 {% if release_pending %}
 <script>

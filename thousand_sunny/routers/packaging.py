@@ -912,23 +912,14 @@ async def packaging_approve(
         raise HTTPException(status_code=409, detail="長片尚無 package，先跑 thumbnail-brainstorm")
 
     ep_dir = _packaging_root() / episode_slug
-    # `format=long` includes both the complete episode (N1 thumbnail_full) and
-    # long highlights (N2 thumbnail_reaction).  The center-visual composition
-    # receipt is an N2-only contract; requiring it for `cut_id=full` previously
-    # forced the revision agent to render the wrong orange-center layout.
-    if approved and cut.format == "long" and cut_id != "full":
-        selected_package = next(
-            (row for row in cut.packages if row.title_rank == primary_package), None
-        )
-        if selected_package is None:
-            raise HTTPException(status_code=409, detail="primary package 不存在")
-        _load_composition_receipt(
-            ep_dir,
-            episode=pkg.episode,
-            cut_id=cut_id,
-            package_rank=primary_package or 1,
-            thumbnail_png=selected_package.thumbnail_png,
-        )
+    if approved and cut.format == "long" and not any(
+        row.title_rank == primary_package for row in cut.packages
+    ):
+        raise HTTPException(status_code=409, detail="primary package 不存在")
+    # Human approval is the final taste decision. Composition receipts and
+    # protected-center checks remain visible diagnostics on the board, but they
+    # must never veto an explicit Approve. Structural failures above still stop
+    # the request because there would be no concrete package to publish.
     existing = _load_approvals(ep_dir, pkg.episode)
     prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
     decided_at = datetime.now(timezone.utc)

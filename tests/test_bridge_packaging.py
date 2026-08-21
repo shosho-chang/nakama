@@ -256,7 +256,7 @@ def test_board_shows_blocked_composition_reason(client, vault):
     response = client.get("/bridge/packaging/20260723-xieboran")
 
     assert response.status_code == 200
-    assert "COMPOSITION BLOCKED" in response.text
+    assert "COMPOSITION WARNING · HUMAN APPROVAL OVERRIDES" in response.text
     assert "composition receipt" in response.text
 
 
@@ -1435,18 +1435,14 @@ def test_render_receipt_is_registered_by_web_runtime(monkeypatch, tmp_path):
     assert kwargs["file_bytes"] == video.stat().st_size
 
 
-def test_long_package_without_composition_receipt_cannot_be_approved(
+def test_human_can_approve_long_package_without_composition_receipt(
     router_client, vault, monkeypatch
 ):
-    """A long-highlight thumbnail needs a verified center-visual composition receipt."""
+    """Composition evidence is advisory once a human explicitly approves."""
     import thousand_sunny.routers.packaging as pkg_module
 
-    monkeypatch.setattr(
-        pkg_module,
-        "get_release",
-        lambda episode, cut_id: {"targets": [{"id": 42, "platform": "youtube", "status": "draft"}]},
-    )
-    monkeypatch.setattr(pkg_module, "update_target", lambda target_id, **fields: None)
+    monkeypatch.setattr(pkg_module, "_release_from_receipt", lambda episode, cut_id: None)
+    monkeypatch.setattr(pkg_module, "_ensure_publish_prep", lambda episode, cut_id: None)
     (
         vault
         / "Attachments"
@@ -1461,8 +1457,7 @@ def test_long_package_without_composition_receipt_cannot_be_approved(
         follow_redirects=False,
     )
 
-    assert response.status_code == 409
-    assert "composition receipt" in response.text
+    assert response.status_code == 303
 
 
 def test_full_episode_does_not_require_long_highlight_composition_receipt(
@@ -1481,8 +1476,9 @@ def test_full_episode_does_not_require_long_highlight_composition_receipt(
 
     board = router_client.get("/bridge/packaging/20260723-xieboran")
     assert board.status_code == 200
-    assert 'data-requires-composition="false"' in board.text
     assert "N1 FULL EPISODE · COMPOSITION GATE NOT APPLICABLE" in board.text
+    assert "Approve（人工決定優先）" in board.text
+    assert "COMPOSITION BLOCKED：中央主圖或保護區尚未通過驗證。" not in board.text
 
     response = router_client.post(
         "/bridge/packaging/20260723-xieboran/approve",
@@ -1493,19 +1489,15 @@ def test_full_episode_does_not_require_long_highlight_composition_receipt(
     assert response.status_code == 303
 
 
-def test_long_package_center_visual_cannot_be_occluded(router_client, vault, monkeypatch):
+def test_human_can_override_occluded_center_visual_warning(router_client, vault, monkeypatch):
     import thousand_sunny.routers.packaging as pkg_module
 
     _write_composition_receipt(
         vault,
         host_bbox={"x": 300, "y": 40, "width": 380, "height": 680},
     )
-    monkeypatch.setattr(
-        pkg_module,
-        "get_release",
-        lambda episode, cut_id: {"targets": [{"id": 42, "platform": "youtube", "status": "draft"}]},
-    )
-    monkeypatch.setattr(pkg_module, "update_target", lambda target_id, **fields: None)
+    monkeypatch.setattr(pkg_module, "_release_from_receipt", lambda episode, cut_id: None)
+    monkeypatch.setattr(pkg_module, "_ensure_publish_prep", lambda episode, cut_id: None)
 
     response = router_client.post(
         "/bridge/packaging/20260723-xieboran/approve",
@@ -1513,13 +1505,11 @@ def test_long_package_center_visual_cannot_be_occluded(router_client, vault, mon
         follow_redirects=False,
     )
 
-    assert response.status_code in {409, 422}
-    assert "host_bbox" in response.text
-    assert "protected center" in response.text
+    assert response.status_code == 303
 
 
 @pytest.mark.parametrize("tamper", ["legacy-v1", "thumbnail-bytes"])
-def test_long_package_rejects_legacy_or_tampered_evidence(
+def test_human_can_override_legacy_or_tampered_composition_warning(
     router_client, vault, monkeypatch, tamper
 ):
     import thousand_sunny.routers.packaging as pkg_module
@@ -1532,32 +1522,26 @@ def test_long_package_rejects_legacy_or_tampered_evidence(
         receipt.write_text(json.dumps(payload), encoding="utf-8")
     else:
         (ep / "pkg-punch-L1-1.png").write_bytes(b"tampered after receipt")
-    monkeypatch.setattr(
-        pkg_module,
-        "get_release",
-        lambda episode, cut_id: {"targets": [{"id": 42, "platform": "youtube", "status": "draft"}]},
-    )
-    monkeypatch.setattr(pkg_module, "update_target", lambda target_id, **fields: None)
+    monkeypatch.setattr(pkg_module, "_release_from_receipt", lambda episode, cut_id: None)
+    monkeypatch.setattr(pkg_module, "_ensure_publish_prep", lambda episode, cut_id: None)
 
     response = router_client.post(
         "/bridge/packaging/20260723-xieboran/approve",
         data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
         follow_redirects=False,
     )
-    assert response.status_code in {409, 422}
+    assert response.status_code == 303
 
 
-def test_long_package_center_visual_asset_must_exist(router_client, vault, monkeypatch):
+def test_human_can_override_missing_center_visual_asset_warning(
+    router_client, vault, monkeypatch
+):
     import thousand_sunny.routers.packaging as pkg_module
 
     _write_composition_receipt(vault, create_center_asset=False)
     (vault / "Attachments" / "packaging" / "20260723-xieboran" / "center-punch-L1-r1.png").unlink()
-    monkeypatch.setattr(
-        pkg_module,
-        "get_release",
-        lambda episode, cut_id: {"targets": [{"id": 42, "platform": "youtube", "status": "draft"}]},
-    )
-    monkeypatch.setattr(pkg_module, "update_target", lambda target_id, **fields: None)
+    monkeypatch.setattr(pkg_module, "_release_from_receipt", lambda episode, cut_id: None)
+    monkeypatch.setattr(pkg_module, "_ensure_publish_prep", lambda episode, cut_id: None)
 
     response = router_client.post(
         "/bridge/packaging/20260723-xieboran/approve",
@@ -1565,8 +1549,7 @@ def test_long_package_center_visual_asset_must_exist(router_client, vault, monke
         follow_redirects=False,
     )
 
-    assert response.status_code == 409
-    assert "center visual asset" in response.text
+    assert response.status_code == 303
 
 
 def test_valid_long_composition_can_be_approved(router_client, monkeypatch):
