@@ -284,6 +284,21 @@ def test_render_v2_passes_spec_to_worker(monkeypatch, tmp_path):
     assert seen["images"]["host_cutout_data_url"] == tmp_path / "h.png"
 
 
+def test_author_interview_book_cover_layer_is_documented_and_supported():
+    skill = (_REPO / ".claude/skills/thumbnail-brainstorm/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    composition = (_REPO / "video/compositions/thumbnail_full/index.html").read_text(
+        encoding="utf-8"
+    )
+    assert "N1 作者／新書訪談" in skill
+    assert "book_cover_data_url" in skill
+    assert 'id="book-layer"' in composition
+    assert '"book_cover_data_url"' in composition
+    assert "book_cover_opacity" in composition
+    assert "book_cover_brightness" in composition
+
+
 def test_render_thumbnail_missing_image_fails_loud(tmp_path):
     from agents.brook.script_video.render_workers.thumbnail_worker import render_thumbnail
 
@@ -457,6 +472,52 @@ def test_attach_fills_validates_and_dual_lands(monkeypatch, tmp_path):
         assert payload["measurement_sidecar_sha256"]
         assert payload["protected_center_bbox"]["x"] == 420.0
         assert (vault / payload["center_visual_asset"]).is_file()
+
+
+def test_attach_full_program_n1_does_not_require_long_highlight_sidecar(
+    monkeypatch, tmp_path
+):
+    vault = tmp_path / "vault"
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    working = tmp_path / "packaging"
+    working.mkdir()
+    data = _midstate_packages_file()
+    data["cuts"][0]["cut_id"] = "full"
+    (working / "packages.json").write_text(
+        json.dumps(data, ensure_ascii=False), encoding="utf-8"
+    )
+
+    specs = []
+    host = vault / "Attachments/cutouts/podcast/episode/host.png"
+    guest = vault / "Attachments/cutouts/podcast/episode/guest.png"
+    host.parent.mkdir(parents=True)
+    host.write_bytes(b"host")
+    guest.write_bytes(b"guest")
+    for n in (1, 2, 3):
+        png = working / f"pkg-full-{n}.png"
+        png.write_bytes(b"png")
+        specs.append(
+            {
+                "title_rank": n,
+                "thumbnail": str(png),
+                "thumb_archetype_id": "T-V7",
+                "joint_pairing_id": "author-book-n1",
+                "host_cutout": str(host),
+                "guest_cutout": str(guest),
+            }
+        )
+
+    out = attach_packages.attach(working, "full", "episode", specs)
+    assert out.is_file()
+    assert (
+        len(
+            json.loads((working / "packages.json").read_text(encoding="utf-8"))["cuts"][0][
+                "packages"
+            ]
+        )
+        == 3
+    )
+    assert not (vault / "Attachments/packaging/episode/composition_receipts").exists()
 
 
 @pytest.mark.parametrize(

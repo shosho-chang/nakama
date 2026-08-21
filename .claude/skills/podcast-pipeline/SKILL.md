@@ -65,6 +65,7 @@ ADR-063 已於 2026-08-21 通過 code、schema、consumer、routing 與 focused 
 | S5 MAJOR AUDIO | 所有 major-risk components 有 Faster＋Qwen evidence；衝突 retain Memo | 無普通人工 gate |
 | S6 RELEASE | release／ledger／manifest／handoff hash-bound，fresh replay byte-identical | 無普通人工 gate |
 | S7 RESOLVE | project/timeline 建立，字幕 handoff exact-copy | 非字幕 GUI requirement 不算 editorial gate |
+| S7P FULL PACKAGING | 完整節目 title／thumbnail／description variants 已產生 | 可非阻塞 review；發布前必須核准 |
 | S8 HIGHLIGHTS | mining、validate、persona review、long shortlist 完成 | **Highlight shortlist review** |
 | S9 LONGFORM | winners materialize；tightening/director/titles/b-roll/SFX/render | finished-cut review |
 | S10 PACKAGING | title／thumbnail／description variants 完整 | packaging review |
@@ -303,7 +304,7 @@ Finalization 必須證明 100% text-audit coverage、major reviewed == major tot
 retention 明列、sequential/non-empty/positive/zero-overlap cues、hash／size／relative-path 互綁、fresh replay
 byte-identical，以及 partial/destination collision fail closed。`release.srt` 存在本身不代表完成。
 
-## S7–S8 — Resolve to Highlight shortlist
+## S7–S8 — Resolve, full-program packaging, then Highlight shortlist
 
 Stage 5 consumers 預設發現並驗證
 `<episode>/subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json`；fresh episode 不傳字幕 flag。
@@ -321,7 +322,13 @@ if (-not (Test-Path -LiteralPath $env:RESOLVE_SUBTITLE_TEMPLATE)) { throw "Resol
   scripts\build_resolve_project.py "<episode>"
 ```
 
-Actual build exit 0 後，立即啟用 `highlight-cut` skill，完整執行 Step 1 到 Step 2.4，不得從
+Actual build exit 0 後，在開始 miners 前，先對 `cut_id=full` 啟動 `title-brainstorm` 與
+`thumbnail-brainstorm`，產生完整節目的三組 title／thumbnail／description 草稿。這一步不依賴
+Highlight winner；評審可與 S8 並行，未核准不得進完整節目發布，但不得阻塞 Highlight mining。
+作者／新書訪談的完整節目封面，若有可驗證書封，必須使用 N1 的暗色書封中景；詳細參數以
+`thumbnail-brainstorm` 為準。
+
+完整節目 packaging staging 完成後，立即啟用 `highlight-cut` skill，完整執行 Step 1 到 Step 2.4，不得從
 `--mining-input` 直接跳 `--validate`。Exact routing 是：
 
 ```text

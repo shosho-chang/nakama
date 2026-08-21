@@ -72,6 +72,17 @@ def test_skill_exposes_memo_dual_audit_as_the_only_default_subtitle_route() -> N
     assert "python scripts/" not in production
 
 
+def test_full_program_packaging_runs_after_resolve_without_blocking_highlights() -> None:
+    text, production, _legacy = _sections()
+    assert "S7P FULL PACKAGING" in production
+    assert "cut_id=full" in production
+    assert "不依賴\nHighlight winner" in production
+    assert "不得阻塞 Highlight mining" in production
+    assert "暗色書封中景" in production
+    assert production.index("Actual build exit 0") < production.index("cut_id=full")
+    assert production.index("cut_id=full") < production.index("--mining-input")
+
+
 def test_adr_063_is_active_with_clean_episode_operational_smoke() -> None:
     adr = ADR_063.read_text(encoding="utf-8")
     skill = SKILL.read_text(encoding="utf-8")

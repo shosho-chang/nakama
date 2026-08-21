@@ -11,9 +11,10 @@ description: >
   本 skill 只呼叫、不重新發明。
 ---
 
-# thumbnail-brainstorm — 封面 brainstorm 手冊（v2.6）
+# thumbnail-brainstorm — 封面 brainstorm 手冊（v2.7）
 
-**版本：v2.6（2026-08-14，鄭國威集——內側 fade 吃臉事故 + gate 變體板；
+**版本：v2.7（2026-08-21，作者訪談的暗色書封中景；
+v2.6 = 鄭國威集——內側 fade 吃臉事故 + gate 變體板；
 v2.5 = 安吉集三輪事故定版——scale 每角色鎖定、
 地標只准 face_measure 程式量、渲染成品 QA 是交付 gate；
 v2.4 = 表情同調規則 + 表情版 scale 繼承；
@@ -172,6 +173,11 @@ spec 的 variables 見各 composition 檔頭註解。**定案參數表在
 - **N1 完整訪談**：兩人 glow + 內緣 fade 9% + 字塊 z4（在人之下 → 字尾塞肩後）、
   字 Bold 無陰影、橘框 padding 14/14/5、`guest_credit`（頭銜＋姓名）、
   左下頻道 logo 92px、`text_center_pct` 每包微調
+- **N1 作者／新書訪談**：有可驗證的實際書封時，以
+  `book_cover_data_url` 置中作低亮度中景，書封必須完整可辨識但不得壓過標題與人臉；
+  預設 `book_cover_opacity: 0.38`、`book_cover_brightness: 0.52`、
+  `book_cover_height_pct: 94`。主持人／來賓依然在左右邊緣，不把書封放成取代中央圖的 N2；
+  只能用出版社、書店或使用者提供的書封，在 run log 記錄來源與 SHA-256。
 - **N2 精華長片**：右來賓 75%→頭56% + 左 Envato prop 卡（`prop_left_pct` 15／
   `prop_width_pct` 52，躲肩後）、零文字、`frame_style: hybrid`（品牌斜切框＋碎片）、
   logo `below-card` 96px、accent `#F37425`

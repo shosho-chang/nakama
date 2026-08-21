@@ -94,7 +94,10 @@ def attach(packaging_dir: Path, cut_id: str, episode_slug: str, specs: list[dict
     cut = cuts[0]
 
     receipt_plans = []
-    if cut.get("format") == "long":
+    # Composition receipts protect the N2 long-highlight center image contract.
+    # The canonical full-program cut uses N1 text + optional dimmed book cover and
+    # therefore has no protected-center measurement sidecar by design.
+    if cut.get("format") == "long" and cut_id != "full":
         receipt_plans = [
             build_receipt_plan(
                 spec=spec,
