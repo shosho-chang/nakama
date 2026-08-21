@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from shared.schemas.podcast_subtitles_v2 import CanonicalTranscript, RecognitionEvidence
 
+from .adapters.memo_recognition import MemoAgentAuditRefV1
 from .display_metrics import display_columns, reading_units
 from .hashing import canonical_json_bytes, hash_file, hash_object, sha256_bytes
 from .memo_projection import (
@@ -410,24 +411,38 @@ class MemoBoundaryAuthorityV1:
 
 
 class MemoSrtAcceptanceReceiptV1(_StrictModel):
-    """Small operator receipt binding one accepted Memo GUI SRT export."""
+    """Receipt binding one accepted Memo SRT export and its review authority."""
 
     schema_version: Literal[1] = 1
     contract: Literal["accepted-memo-gui-srt-v1"] = "accepted-memo-gui-srt-v1"
     accepted: Literal[True] = True
     source_export_sha256: str
     source_export_size_bytes: int = Field(gt=0)
+    raw_source_export_sha256: str | None = None
+    raw_source_export_size_bytes: int | None = Field(default=None, gt=0)
+    source_repair_receipt_sha256: str | None = None
     recognition_manifest_sha256: str | None = None
     review_manifest_sha256: str | None = None
     reviewer: str
     accepted_at: datetime
     unresolved_findings: tuple[str, ...] = ()
+    episode_id: str | None = None
+    agent_audits: tuple[MemoAgentAuditRefV1, ...] = ()
 
     @model_validator(mode="after")
     def _valid(self) -> "MemoSrtAcceptanceReceiptV1":
         optional_digests = (self.recognition_manifest_sha256, self.review_manifest_sha256)
         if any(optional_digests) != all(optional_digests):
             raise ValueError("Memo SRT acceptance lineage must be complete")
+        repair_lineage = (
+            self.raw_source_export_sha256,
+            self.raw_source_export_size_bytes,
+            self.source_repair_receipt_sha256,
+        )
+        if any(value is not None for value in repair_lineage) != all(
+            value is not None for value in repair_lineage
+        ):
+            raise ValueError("Memo SRT source repair lineage must be complete")
         if any(
             value is not None
             and (
@@ -437,6 +452,11 @@ class MemoSrtAcceptanceReceiptV1(_StrictModel):
             for value in optional_digests
         ):
             raise ValueError("Memo SRT acceptance lineage digest must be lowercase SHA-256")
+        for value in (self.raw_source_export_sha256, self.source_repair_receipt_sha256):
+            if value is not None and (
+                len(value) != 64 or any(char not in "0123456789abcdef" for char in value)
+            ):
+                raise ValueError("Memo SRT source repair digest must be lowercase SHA-256")
         if (
             len(self.source_export_sha256) != 64
             or any(character not in "0123456789abcdef" for character in self.source_export_sha256)
@@ -446,6 +466,18 @@ class MemoSrtAcceptanceReceiptV1(_StrictModel):
             or self.unresolved_findings
         ):
             raise ValueError("Memo SRT acceptance receipt is incomplete")
+        if bool(self.episode_id) != bool(self.agent_audits):
+            raise ValueError("Memo cue agent-quorum lineage must be complete")
+        if self.agent_audits and (
+            self.reviewer != "agent-quorum"
+            or len(self.agent_audits) != 2
+            or len({audit.worker_id for audit in self.agent_audits}) != 2
+            or any(
+                audit.contract != "memo-cue-worker-audit-v1"
+                for audit in self.agent_audits
+            )
+        ):
+            raise ValueError("Memo cue agent quorum requires two independent audits")
         return self
 
 
@@ -464,13 +496,16 @@ class MemoSrtReviewCueV1(_StrictModel):
 
 
 class MemoSrtReviewManifestV1(_StrictModel):
-    """Prepared, unaccepted review inventory for one Memo GUI SRT."""
+    """Prepared, unaccepted review inventory for one Memo SRT."""
 
     schema_version: Literal[1] = 1
     contract: Literal["memo-srt-review-v1"] = "memo-srt-review-v1"
     recognition_manifest_sha256: str
     source_export_sha256: str
     source_export_size_bytes: int = Field(gt=0)
+    raw_source_export_sha256: str | None = None
+    raw_source_export_size_bytes: int | None = Field(default=None, gt=0)
+    source_repair_receipt_sha256: str | None = None
     unresolved_findings: tuple[str, ...] = ()
     cues: tuple[MemoSrtReviewCueV1, ...]
 
@@ -482,6 +517,20 @@ class MemoSrtReviewManifestV1(_StrictModel):
         ):
             if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
                 raise ValueError(f"Memo SRT review {label} digest must be lowercase SHA-256")
+        repair_lineage = (
+            self.raw_source_export_sha256,
+            self.raw_source_export_size_bytes,
+            self.source_repair_receipt_sha256,
+        )
+        if any(value is not None for value in repair_lineage) != all(
+            value is not None for value in repair_lineage
+        ):
+            raise ValueError("Memo SRT review repair lineage must be complete")
+        for value in (self.raw_source_export_sha256, self.source_repair_receipt_sha256):
+            if value is not None and (
+                len(value) != 64 or any(char not in "0123456789abcdef" for char in value)
+            ):
+                raise ValueError("Memo SRT review repair digest must be lowercase SHA-256")
         if not self.cues:
             raise ValueError("Memo SRT review requires at least one cue")
         for index, cue in enumerate(self.cues, start=1):
@@ -493,7 +542,7 @@ class MemoSrtReviewManifestV1(_StrictModel):
 
 
 class MemoSrtBoundaryAuthorityV1:
-    """Project corrected Canonical text onto an accepted Memo GUI SRT.
+    """Project corrected Canonical text onto an accepted Memo SRT.
 
     This is the production form of the Zheng Guowei projection contract:
     global text alignment, token-edge snap, adjacent Memo cue merge, exact
@@ -513,7 +562,7 @@ class MemoSrtBoundaryAuthorityV1:
         try:
             self.memo_cues: tuple[MemoCue, ...] = parse_srt(memo_srt_bytes.decode("utf-8-sig"))
         except (UnicodeDecodeError, ValueError) as exc:
-            raise AdapterInputError(f"invalid accepted Memo GUI SRT: {exc}") from exc
+            raise AdapterInputError(f"invalid accepted Memo SRT: {exc}") from exc
         self.memo_srt_bytes = memo_srt_bytes
         self.acceptance_receipt = acceptance_receipt
         self.acceptance_receipt_bytes = acceptance_receipt_bytes
@@ -562,7 +611,7 @@ class MemoSrtBoundaryAuthorityV1:
             sha256_bytes(memo_srt_bytes) != receipt.source_export_sha256
             or len(memo_srt_bytes) != receipt.source_export_size_bytes
         ):
-            raise AdapterIntegrityError("Memo GUI SRT differs from its acceptance receipt")
+            raise AdapterIntegrityError("Memo SRT differs from its acceptance receipt")
         return cls(
             memo_srt_bytes=memo_srt_bytes,
             acceptance_receipt=receipt,

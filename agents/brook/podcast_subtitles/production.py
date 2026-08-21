@@ -18,7 +18,9 @@ from .adapters import (
     VerifiedNormalizedAudioHandoffAdapter,
 )
 from .audio_audit_execution import AudioFullAuditExecutor, build_audio_audit_adapter_identity
+from .audio_audit_selection import default_audio_audit_selection_policy
 from .composition import FactoryContextV1
+from .hashing import hash_file, hash_object
 from .memo_boundary import MemoSrtBoundaryAuthorityV1
 from .module import AdapterIdentity, NativeFullAuditBundle, PodcastSubtitleV2
 from .recognition_policy import PRODUCTION_RECOGNITION_INDEPENDENCE_POLICY
@@ -26,6 +28,7 @@ from .store import GenerationStore
 from .text_audit_execution import TextFullAuditExecutor, build_text_audit_adapter_identity
 
 _PREFIX = "PODCAST_SUBTITLE_V2_"
+_LEGACY_PAID_GEMINI_SETTING = f"{_PREFIX}ALLOW_PAID_GEMINI"
 _PATH_SETTINGS = (
     "NORMALIZED_HANDOFF_MANIFEST",
     "MEMO_RECOGNITION_MANIFEST",
@@ -37,6 +40,7 @@ _PATH_SETTINGS = (
 _KNOWN_SETTINGS = frozenset(
     {f"{_PREFIX}{name}" for name in _PATH_SETTINGS}
     | {
+        _LEGACY_PAID_GEMINI_SETTING,
         f"{_PREFIX}ENABLE_QWEN_CORROBORATION",
         f"{_PREFIX}QWEN_MODEL",
         f"{_PREFIX}QWEN_MODEL_REVISION",
@@ -69,6 +73,39 @@ _KNOWN_SETTINGS = frozenset(
 
 class ProductionConfigurationError(ValueError):
     pass
+
+
+def production_source_inventory_digest() -> str:
+    """Measure the exact Podcast Subtitle V2 Python source inventory.
+
+    Checkpoint compatibility must move when orchestration code moves, even if
+    provider/model identities remain unchanged.  A sorted package-wide source
+    inventory is explicit, reproducible, and fails closed for every production
+    module participating in the local pipeline.
+    """
+
+    package_root = Path(__file__).resolve().parent
+    sources = tuple(
+        sorted(
+            package_root.rglob("*.py"),
+            key=lambda path: path.relative_to(package_root).as_posix(),
+        )
+    )
+    if not sources:
+        raise ProductionConfigurationError("Podcast Subtitle V2 source inventory is empty")
+    return hash_object(
+        {
+            "schema_version": 1,
+            "package": "agents.brook.podcast_subtitles",
+            "files": tuple(
+                {
+                    "path": path.relative_to(package_root).as_posix(),
+                    "sha256": hash_file(path),
+                }
+                for path in sources
+            ),
+        }
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,6 +193,11 @@ def _immutable(env: Mapping[str, str], name: str) -> str:
 
 
 def load_production_config(environ: Mapping[str, str]) -> ProductionConfig:
+    legacy_paid_gemini = environ.get(_LEGACY_PAID_GEMINI_SETTING)
+    if legacy_paid_gemini is not None and legacy_paid_gemini != "false":
+        raise ProductionConfigurationError(
+            f"unknown Podcast Subtitle V2 setting: {_LEGACY_PAID_GEMINI_SETTING}"
+        )
     unknown = sorted(
         name for name in environ if name.startswith(_PREFIX) and name not in _KNOWN_SETTINGS
     )
@@ -286,6 +328,7 @@ def build_production(context: FactoryContextV1) -> PodcastSubtitleV2:
             ),
             workspace_root=workspace,
         ),
+        audio_selection_policy=default_audio_audit_selection_policy(),
     )
     semantic = SemanticAnalyzerAdapter(
         model=config.semantic_model,
@@ -332,6 +375,9 @@ def build_production(context: FactoryContextV1) -> PodcastSubtitleV2:
             PRODUCTION_RECOGNITION_INDEPENDENCE_POLICY if len(recognizers) > 1 else None
         ),
         memo_boundary_authority_factory=boundary_factory,
+        code_version=(
+            "production-source-inventory-v1:" + production_source_inventory_digest()
+        ),
     )
     if bundle:
         bundle.assert_module_binding(module)
@@ -343,4 +389,5 @@ __all__ = [
     "ProductionConfigurationError",
     "build_production",
     "load_production_config",
+    "production_source_inventory_digest",
 ]

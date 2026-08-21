@@ -21,10 +21,14 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
+import math
+import os
 import re
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -53,6 +57,22 @@ BIN_NAME = "Highlights"
 # 長度帶（grill Q4b）：目標帶 miner 已把關，script 只擋容忍帶外 + 平台硬上限
 BANDS = {"long": (6 * 60, 18 * 60, None), "short": (40, 180, 180)}
 FORMAT_LABEL = {"long": "長", "short": "短"}
+MINER_ROLES = ("story", "punch", "value")
+MINER_OUTPUT_CONTRACT = "podcast-highlight-miner-output-v1"
+CANDIDATES_CONTRACT = "podcast-highlight-candidates-v1"
+_MINER_CANDIDATE_FIELDS = {
+    "id",
+    "format",
+    "t_start",
+    "t_end",
+    "title",
+    "hook",
+    "rationale",
+    "miner",
+    "head_trim",
+    "cue_start",
+    "cue_end",
+}
 _TS = re.compile(r"(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})")
 
 
@@ -89,18 +109,7 @@ def _fmt_min(seconds: float) -> str:
 
 
 def _subtitle_lineage(subtitle: Stage5SubtitleSelection) -> dict:
-    if subtitle.handoff is None:
-        return {"subtitle_mode": subtitle.mode}
-    verified = subtitle.handoff.verified
-    return {
-        "subtitle_mode": subtitle.mode,
-        "projection_id": verified.projection_id,
-        "generation_id": verified.generation_id,
-        "episode_id": verified.episode_id,
-        "projection_manifest_sha256": verified.manifest_sha256,
-        "subtitle_handoff_receipt": str(subtitle.handoff.receipt_path),
-        "subtitle_srt_sha256": verified.srt_sha256,
-    }
+    return subtitle.identity()
 
 
 def _bind_or_verify_lineage(
@@ -117,8 +126,247 @@ def _bind_or_verify_lineage(
         return
     if actual != expected:
         raise Stage5SubtitleContractError(
-            f"{label} subtitle lineage differs from the persisted Verified Projection"
+            f"{label} subtitle lineage differs from the selected Stage 5 subtitle identity"
         )
+
+
+def _sha256(raw: bytes) -> str:
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _atomic_json_write(path: Path, payload: dict) -> None:
+    encoded = (
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=path.parent,
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_name, path)
+    finally:
+        Path(temporary_name).unlink(missing_ok=True)
+
+
+def _load_miner_output(
+    path: Path,
+    *,
+    role: str,
+    subtitle: Stage5SubtitleSelection,
+    cues: list[tuple[float, float, str]],
+) -> tuple[list[dict], dict[str, str]]:
+    try:
+        raw = path.read_bytes()
+        payload = json.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise Stage5SubtitleContractError(
+            f"{role} miner output is missing or invalid: {path}"
+        ) from exc
+    required = {
+        "schema_version",
+        "contract",
+        "miner_role",
+        "source_srt_sha256",
+        "subtitle_lineage",
+        "candidates",
+    }
+    if not isinstance(payload, dict) or set(payload) != required:
+        raise Stage5SubtitleContractError(f"{role} miner output schema drift")
+    lineage = _subtitle_lineage(subtitle)
+    if (
+        payload.get("schema_version") != 1
+        or payload.get("contract") != MINER_OUTPUT_CONTRACT
+        or payload.get("miner_role") != role
+        or payload.get("source_srt_sha256") != lineage.get("subtitle_srt_sha256")
+        or payload.get("subtitle_lineage") != lineage
+    ):
+        raise Stage5SubtitleContractError(f"{role} miner source/lineage drift")
+    candidates = payload.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        raise Stage5SubtitleContractError(f"{role} miner candidates must be non-empty")
+    cue_count = len(cues)
+    seen: set[str] = set()
+    format_counts = {"long": 0, "short": 0}
+    normalized: list[dict] = []
+    for index, candidate in enumerate(candidates):
+        if not isinstance(candidate, dict) or set(candidate) != _MINER_CANDIDATE_FIELDS:
+            raise Stage5SubtitleContractError(
+                f"{role} miner candidate {index} schema drift"
+            )
+        candidate_id = candidate.get("id")
+        if not isinstance(candidate_id, str) or not candidate_id or candidate_id in seen:
+            raise Stage5SubtitleContractError(
+                f"{role} miner candidate id is invalid or duplicated"
+            )
+        seen.add(candidate_id)
+        fmt = candidate.get("format")
+        if fmt not in BANDS:
+            raise Stage5SubtitleContractError(
+                f"{role} miner candidate {candidate_id} format is invalid"
+            )
+        format_counts[fmt] += 1
+        expected_id = re.compile(
+            rf"^{re.escape(role)}-{'L' if fmt == 'long' else 'S'}(?:0[1-9]|[1-9][0-9])$"
+        )
+        if expected_id.fullmatch(candidate_id) is None:
+            raise Stage5SubtitleContractError(
+                f"{role} miner candidate id does not match its role and format: {candidate_id}"
+            )
+        start, end = candidate.get("t_start"), candidate.get("t_end")
+        if (
+            not isinstance(start, (int, float))
+            or isinstance(start, bool)
+            or not isinstance(end, (int, float))
+            or isinstance(end, bool)
+            or not math.isfinite(float(start))
+            or not math.isfinite(float(end))
+            or float(start) < 0
+            or float(end) <= float(start)
+        ):
+            raise Stage5SubtitleContractError(
+                f"{role} miner candidate {candidate_id} time range is invalid"
+            )
+        duration = float(end) - float(start)
+        minimum, maximum, _hard_limit = BANDS[fmt]
+        if not minimum <= duration <= maximum:
+            raise Stage5SubtitleContractError(
+                f"{role} miner candidate {candidate_id} is outside {fmt} duration tolerance"
+            )
+        cue_start = candidate.get("cue_start")
+        cue_end = candidate.get("cue_end")
+        if (
+            type(cue_start) is not int
+            or type(cue_end) is not int
+            or cue_start < 1
+            or cue_end < cue_start
+            or cue_end > cue_count
+        ):
+            raise Stage5SubtitleContractError(
+                f"{role} miner candidate {candidate_id} cue range is invalid"
+            )
+        cue_start_time = cues[cue_start - 1][0]
+        cue_end_time = cues[cue_end - 1][1]
+        if float(start) != cue_start_time or float(end) != cue_end_time:
+            raise Stage5SubtitleContractError(
+                f"{role} miner candidate {candidate_id} timing differs from cue boundaries"
+            )
+        for field in ("title", "hook", "rationale", "miner"):
+            if not isinstance(candidate.get(field), str) or not candidate[field].strip():
+                raise Stage5SubtitleContractError(
+                    f"{role} miner candidate {candidate_id} {field} is invalid"
+                )
+        if candidate["miner"] != role:
+            raise Stage5SubtitleContractError(
+                f"{role} miner candidate {candidate_id} miner field differs from role"
+            )
+        cue_range_transcript = "\n".join(
+            cue[2] for cue in cues[cue_start - 1 : cue_end]
+        )
+        if candidate["hook"] not in cue_range_transcript:
+            raise Stage5SubtitleContractError(
+                f"{role} miner candidate {candidate_id} hook is not a raw transcript substring"
+            )
+        head_trim = candidate.get("head_trim")
+        if head_trim is not None and (
+            not isinstance(head_trim, (int, float))
+            or isinstance(head_trim, bool)
+            or not math.isfinite(float(head_trim))
+            or float(head_trim) < 0
+        ):
+            raise Stage5SubtitleContractError(
+                f"{role} miner candidate {candidate_id} head_trim is invalid"
+            )
+        normalized.append(
+            {
+                **candidate,
+                "t_start": float(start),
+                "t_end": float(end),
+                "head_trim": None if head_trim is None else float(head_trim),
+            }
+        )
+    if format_counts["long"] < 3 or format_counts["short"] < 3:
+        raise Stage5SubtitleContractError(
+            f"{role} miner output requires at least 3 long and 3 short candidates"
+        )
+    return normalized, {
+        "role": role,
+        "path": str(path),
+        "sha256": _sha256(raw),
+    }
+
+
+def merge_miners(
+    episode_dir: Path,
+    *,
+    miner_paths: dict[str, Path] | None = None,
+    subtitle_request: Stage5SubtitleRequest | None = None,
+    verifier_factory: ProjectionVerifierFactory | None = None,
+) -> dict:
+    """Strictly merge three subscription-worker outputs into candidates.json."""
+
+    subtitle = (subtitle_request or Stage5SubtitleRequest()).open(
+        episode_dir,
+        factory=verifier_factory,
+    )
+    hdir = episode_dir / HIGHLIGHTS_DIR
+    paths = miner_paths or {
+        role: hdir / f"miner-{role}.json" for role in MINER_ROLES
+    }
+    if set(paths) != set(MINER_ROLES):
+        raise Stage5SubtitleContractError(
+            "miner merge requires exactly story, punch, and value outputs"
+        )
+    cues = _parse_srt(subtitle.srt_path)
+    merged: list[dict] = []
+    inputs: list[dict[str, str]] = []
+    ids: set[str] = set()
+    for role in MINER_ROLES:
+        candidates, receipt = _load_miner_output(
+            Path(paths[role]),
+            role=role,
+            subtitle=subtitle,
+            cues=cues,
+        )
+        for candidate in candidates:
+            if candidate["id"] in ids:
+                raise Stage5SubtitleContractError(
+                    f"duplicate candidate id across miners: {candidate['id']}"
+                )
+            ids.add(candidate["id"])
+            merged.append(candidate)
+        inputs.append(receipt)
+    merged.sort(key=lambda item: (item["format"], item["t_start"], item["t_end"], item["id"]))
+    lineage = _subtitle_lineage(subtitle)
+    payload = {
+        "schema_version": 1,
+        "contract": CANDIDATES_CONTRACT,
+        "source_srt_sha256": lineage["subtitle_srt_sha256"],
+        "subtitle_lineage": lineage,
+        "miner_inputs": inputs,
+        "candidates": merged,
+    }
+    candidate_path = hdir / CANDIDATES_NAME
+    _atomic_json_write(candidate_path, payload)
+    return {
+        "status": "miners-merged",
+        "candidate_count": len(merged),
+        "long_candidate_count": sum(1 for item in merged if item["format"] == "long"),
+        "candidates_path": str(candidate_path),
+        **lineage,
+    }
 
 
 def mining_input(
@@ -171,11 +419,12 @@ def validate(
         c["t_end"] = min((e for e in ends if e >= e0 - 0.5), default=e0)
         dur = c["t_end"] - c["t_start"]
         c["duration_sec"] = round(dur, 1)
-        lo, hi, hard = BANDS[c["format"]]
-        if hard and dur > hard:
-            issues.append(f"{c['id']}: {_fmt_min(dur)} 超過平台硬上限 {hard}s — 必須修")
-        elif not (lo <= dur <= hi):
-            issues.append(f"{c['id']}: {_fmt_min(dur)} 落在容忍帶外（{lo}-{hi}s）")
+        lo, hi, _hard = BANDS[c["format"]]
+        if not lo <= dur <= hi:
+            raise Stage5SubtitleContractError(
+                f"candidate {c['id']} is outside {c['format']} duration tolerance "
+                f"({_fmt_min(dur)}; required {lo}-{hi}s)"
+            )
 
     # 同格式重疊 >50% → **不淘汰**，標 variant 群組（修修 2026-07-26 裁決：
     # 去重在評分前用 rationale 長度決生死，害「數位排毒+睡眠運動」整塊從未
@@ -185,7 +434,7 @@ def validate(
     for c in data["candidates"]:
         c["variant_group"] = groups[c["id"]]
     data["candidates"].sort(key=lambda x: (x["format"], x["t_start"]))
-    cand_path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    _atomic_json_write(cand_path, data)
     counts = {f: sum(1 for c in data["candidates"] if c["format"] == f) for f in ("long", "short")}
     n_groups = len(set(groups.values()))
     return {
@@ -557,8 +806,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--mining-input",
         action="store_true",
-        help="輸出 highlight miners 唯一可讀的 persisted Verified Projection SRT",
+        help="輸出 highlight miners 唯一可讀的 hash-bound Stage 5 SRT",
     )
+    parser.add_argument(
+        "--merge-miners",
+        action="store_true",
+        help="strict merge story/punch/value miner outputs, then validate candidates",
+    )
+    parser.add_argument("--miner-story")
+    parser.add_argument("--miner-punch")
+    parser.add_argument("--miner-value")
     parser.add_argument(
         "--materialize", action="store_true", help="當選段建 timeline + 全候選打 marker"
     )
@@ -578,9 +835,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--expected-generation-id")
     parser.add_argument("--expected-manifest-sha256")
     parser.add_argument("--reference-manifest")
+    parser.add_argument(
+        "--subtitle-release-handoff",
+        help=(
+            "episode-local official Memo Dual-Audit Stage 5 handoff JSON; "
+            "omitted means subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json"
+        ),
+    )
+    parser.add_argument(
+        "--degraded-release-handoff",
+        help="episode-local degraded dual-ASR Stage 5 handoff JSON",
+    )
     args = parser.parse_args(argv)
     subtitle_request = Stage5SubtitleRequest(
         legacy_v1=args.legacy_v1,
+        subtitle_release_handoff=args.subtitle_release_handoff,
+        degraded_release_handoff=args.degraded_release_handoff,
         projection_id=args.projection_id,
         expected_episode_id=args.expected_episode_id,
         expected_generation_id=args.expected_generation_id,
@@ -594,6 +864,24 @@ def main(argv: list[str] | None = None) -> int:
     started = time.time()
     if args.mining_input:
         result = mining_input(episode_dir, subtitle_request=subtitle_request)
+    elif args.merge_miners:
+        explicit_paths = {
+            "story": args.miner_story,
+            "punch": args.miner_punch,
+            "value": args.miner_value,
+        }
+        supplied = {role: value for role, value in explicit_paths.items() if value}
+        if supplied and set(supplied) != set(MINER_ROLES):
+            raise Stage5SubtitleContractError(
+                "explicit miner paths require --miner-story, --miner-punch, and --miner-value"
+            )
+        merge_result = merge_miners(
+            episode_dir,
+            miner_paths={role: Path(value) for role, value in supplied.items()} or None,
+            subtitle_request=subtitle_request,
+        )
+        validation = validate(episode_dir, subtitle_request=subtitle_request)
+        result = {**merge_result, "validation": validation}
     elif args.validate:
         result = validate(episode_dir, subtitle_request=subtitle_request)
     elif args.materialize:
@@ -605,7 +893,9 @@ def main(argv: list[str] | None = None) -> int:
     elif args.refresh_subs:
         result = refresh_subs(episode_dir, subtitle_request=subtitle_request)
     else:
-        logger.error("指定 --mining-input、--validate、--materialize 或 --refresh-subs")
+        logger.error(
+            "指定 --mining-input、--merge-miners、--validate、--materialize 或 --refresh-subs"
+        )
         return 2
     result["elapsed_sec"] = round(time.time() - started, 1)
     print(json.dumps(result, ensure_ascii=False, indent=2))

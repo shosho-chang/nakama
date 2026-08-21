@@ -6,6 +6,7 @@ module so a decision always produces the same ``winners.json`` contract.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -58,50 +59,140 @@ def _atomic_json_write(path: Path, payload: dict[str, Any]) -> Path:
 
 def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
     """Join candidates, persona scores and brand lens, ordered by median score."""
-    candidates_doc = _load_object(hl_dir / "candidates.json", required=True)
+    candidates_path = hl_dir / "candidates.json"
+    candidates_doc = _load_object(candidates_path, required=True)
+    candidates_sha256 = hashlib.sha256(candidates_path.read_bytes()).hexdigest()
     candidates = candidates_doc.get("candidates")
     if not isinstance(candidates, list):
         raise HighlightDataError("candidates.json requires a candidates array")
-
-    scores: dict[str, dict[str, float]] = {}
-    review_notes: dict[str, dict[str, str]] = {}
-    for who in SCORERS:
-        review = _load_object(hl_dir / f"review_{who}.json")
-        rows = review.get("scores", [])
-        if not isinstance(rows, list):
-            raise HighlightDataError(f"review_{who}.json scores must be an array")
-        for row in rows:
-            if not isinstance(row, dict) or not isinstance(row.get("id"), str):
-                raise HighlightDataError(f"review_{who}.json contains an invalid score row")
-            total = row.get("total")
-            if isinstance(total, (int, float)) and not isinstance(total, bool):
-                scores.setdefault(row["id"], {})[who] = float(total)
-            for field in ("rationale", "reason", "summary", "notes"):
-                note = row.get(field)
-                if isinstance(note, str) and note.strip():
-                    review_notes.setdefault(row["id"], {})[who] = note.strip()[:800]
-                    break
-
-    brand: dict[str, dict[str, Any]] = {}
-    lens = _load_object(hl_dir / "lens_brand.json")
-    findings = lens.get("findings", [])
-    if not isinstance(findings, list):
-        raise HighlightDataError("lens_brand.json findings must be an array")
-    for finding in findings:
-        if isinstance(finding, dict) and isinstance(finding.get("id"), str):
-            brand[finding["id"]] = finding
-
-    result: list[dict[str, Any]] = []
-    ids: set[str] = set()
+    candidate_ids: list[str] = []
     for candidate in candidates:
-        if not isinstance(candidate, dict) or candidate.get("format") != fmt:
+        if not isinstance(candidate, dict):
+            raise HighlightDataError("candidates.json contains a non-object candidate")
+        if candidate.get("format") != fmt:
             continue
         candidate_id = candidate.get("id")
         if not isinstance(candidate_id, str) or not candidate_id.strip():
             raise HighlightDataError("each displayed candidate requires a non-empty string id")
-        if candidate_id in ids:
+        if candidate_id in candidate_ids:
             raise HighlightDataError(f"duplicate candidate id: {candidate_id}")
-        ids.add(candidate_id)
+        candidate_ids.append(candidate_id)
+    if not candidate_ids:
+        return []
+    expected_ids = set(candidate_ids)
+
+    scores: dict[str, dict[str, float]] = {}
+    review_notes: dict[str, dict[str, str]] = {}
+    for who in SCORERS:
+        review_path = hl_dir / f"review_{who}.json"
+        review = _load_object(review_path, required=True)
+        if review.get("source_sha256") != candidates_sha256:
+            raise HighlightDataError(
+                f"review_{who}.json source_sha256 differs from candidates.json"
+            )
+        rows = review.get("scores")
+        if not isinstance(rows, list):
+            raise HighlightDataError(f"review_{who}.json scores must be an array")
+        seen: set[str] = set()
+        for row in rows:
+            if not isinstance(row, dict) or not isinstance(row.get("id"), str):
+                raise HighlightDataError(f"review_{who}.json contains an invalid score row")
+            candidate_id = row["id"]
+            if candidate_id in seen:
+                raise HighlightDataError(
+                    f"review_{who}.json contains duplicate id: {candidate_id}"
+                )
+            seen.add(candidate_id)
+            total = row.get("total")
+            if (
+                not isinstance(total, (int, float))
+                or isinstance(total, bool)
+                or not math.isfinite(float(total))
+            ):
+                raise HighlightDataError(
+                    f"review_{who}.json total is invalid for {candidate_id}"
+                )
+            scores.setdefault(candidate_id, {})[who] = float(total)
+            for field in ("rationale", "reason", "summary", "notes"):
+                note = row.get(field)
+                if isinstance(note, str) and note.strip():
+                    review_notes.setdefault(candidate_id, {})[who] = note.strip()[:800]
+                    break
+        if seen != expected_ids:
+            missing = sorted(expected_ids - seen)
+            extra = sorted(seen - expected_ids)
+            raise HighlightDataError(
+                f"review_{who}.json candidate coverage drift; missing={missing}, extra={extra}"
+            )
+
+    brand: dict[str, dict[str, Any]] = {}
+    lens_path = hl_dir / "lens_brand.json"
+    lens = _load_object(lens_path, required=True)
+    if lens.get("source_sha256") != candidates_sha256:
+        raise HighlightDataError(
+            "lens_brand.json source_sha256 differs from candidates.json"
+        )
+    findings = lens.get("findings")
+    if not isinstance(findings, list):
+        raise HighlightDataError("lens_brand.json findings must be an array")
+    for finding in findings:
+        if not isinstance(finding, dict) or not isinstance(finding.get("id"), str):
+            raise HighlightDataError("lens_brand.json contains an invalid finding")
+        candidate_id = finding["id"]
+        if candidate_id in brand:
+            raise HighlightDataError(
+                f"lens_brand.json contains duplicate id: {candidate_id}"
+            )
+        brand[candidate_id] = finding
+    brand_ids = set(brand)
+    if brand_ids != expected_ids:
+        missing = sorted(expected_ids - brand_ids)
+        extra = sorted(brand_ids - expected_ids)
+        raise HighlightDataError(
+            f"lens_brand.json candidate coverage drift; missing={missing}, extra={extra}"
+        )
+
+    renee = _load_object(hl_dir / "lens_renee.json", required=True)
+    if set(renee) != {"lens", "source_sha256", "findings"} or renee.get("lens") != "renee":
+        raise HighlightDataError("lens_renee.json schema drift")
+    if renee.get("source_sha256") != candidates_sha256:
+        raise HighlightDataError(
+            "lens_renee.json source_sha256 differs from candidates.json"
+        )
+    renee_findings = renee.get("findings")
+    if not isinstance(renee_findings, list):
+        raise HighlightDataError("lens_renee.json findings must be an array")
+    renee_ids: set[str] = set()
+    for finding in renee_findings:
+        required_fields = {"id", "hook_risk", "retention_risk", "boundary_action"}
+        if not isinstance(finding, dict) or set(finding) != required_fields:
+            raise HighlightDataError("lens_renee.json contains an invalid finding")
+        for field in required_fields:
+            if not isinstance(finding[field], str):
+                raise HighlightDataError(
+                    f"lens_renee.json {field} must be a string"
+                )
+        candidate_id = finding["id"]
+        if not candidate_id:
+            raise HighlightDataError("lens_renee.json id must be a non-empty string")
+        if candidate_id in renee_ids:
+            raise HighlightDataError(
+                f"lens_renee.json contains duplicate id: {candidate_id}"
+            )
+        renee_ids.add(candidate_id)
+    if renee_ids != expected_ids:
+        missing = sorted(expected_ids - renee_ids)
+        extra = sorted(renee_ids - expected_ids)
+        raise HighlightDataError(
+            f"lens_renee.json candidate coverage drift; missing={missing}, extra={extra}"
+        )
+
+    result: list[dict[str, Any]] = []
+    for candidate in candidates:
+        if not isinstance(candidate, dict) or candidate.get("format") != fmt:
+            continue
+        candidate_id = candidate.get("id")
+        assert isinstance(candidate_id, str)
         candidate_scores = scores.get(candidate_id, {})
         values = list(candidate_scores.values())
         finding = brand.get(candidate_id, {})

@@ -65,6 +65,10 @@ from shared.schemas.podcast_subtitles_v2_correction import (
     CorrectionReferenceExcerptSliceV2,
     CorrectionSourceBindingV2,
 )
+from shared.schemas.podcast_subtitles_v2_selective_audio import (
+    ModalityAuditExecutionPlanV3,
+    SelectiveAudioAuditExecutionRecordV3,
+)
 
 from .hashing import canonical_json_bytes, hash_file, hash_object, sha256_bytes
 
@@ -126,7 +130,7 @@ class AudioAuditRunner(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class AudioAuditRunResult:
-    record: AudioAuditExecutionRecordV2
+    record: AudioAuditExecutionRecordV2 | SelectiveAudioAuditExecutionRecordV3
     request_bytes: tuple[bytes, ...]
     response_bytes: tuple[bytes, ...]
     clip_bytes: tuple[bytes, ...]
@@ -390,11 +394,16 @@ def _parse_clip(
 
 
 def _validate_execution_lineage(
-    execution_plan: CorrectionAuditExecutionPlanV2,
+    execution_plan: CorrectionAuditExecutionPlanV2 | ModalityAuditExecutionPlanV3,
     audit_plan: AuditPlan,
 ) -> tuple[CorrectionAuditPacketV2, ...]:
     try:
-        validated_execution = CorrectionAuditExecutionPlanV2.model_validate_json(
+        execution_model = (
+            ModalityAuditExecutionPlanV3
+            if isinstance(execution_plan, ModalityAuditExecutionPlanV3)
+            else CorrectionAuditExecutionPlanV2
+        )
+        validated_execution = execution_model.model_validate_json(
             canonical_json_bytes(execution_plan)
         )
         validated_audit = AuditPlan.model_validate_json(canonical_json_bytes(audit_plan))
@@ -404,15 +413,29 @@ def _validate_execution_lineage(
         ) from exc
     if validated_execution != execution_plan or validated_audit != audit_plan:
         raise AudioAuditExecutionError("audio audit execution inputs are not exact artifacts")
+    if isinstance(execution_plan, ModalityAuditExecutionPlanV3) and (
+        execution_plan.modality != "audio"
+    ):
+        raise AudioAuditExecutionError("audio audit rejects text-only execution")
+    exact_cells = tuple(item.id for item in audit_plan.cells)
+    exact_required = {
+        item.id for item in audit_plan.cells if item.applicability == "required"
+    }
+    coverage_matches = (
+        set(execution_plan.all_cell_ids) == set(exact_cells)
+        and set(execution_plan.required_cell_ids)
+        == exact_required & set(execution_plan.owned_cell_ids)
+        if isinstance(execution_plan, ModalityAuditExecutionPlanV3)
+        else execution_plan.all_cell_ids == exact_cells
+        and set(execution_plan.required_cell_ids) == exact_required
+    )
     if (
         execution_plan.episode_id != audit_plan.episode_id
         or execution_plan.generation_id != audit_plan.generation_id
         or execution_plan.audit_plan_hash != sha256_bytes(canonical_json_bytes(audit_plan))
         or execution_plan.audit_plan_content_hash != audit_plan.content_hash
         or execution_plan.audit_input_hash != audit_plan.inputs.content_hash
-        or execution_plan.all_cell_ids != tuple(item.id for item in audit_plan.cells)
-        or execution_plan.required_cell_ids
-        != tuple(item.id for item in audit_plan.cells if item.applicability == "required")
+        or not coverage_matches
     ):
         raise AudioAuditExecutionError("audio audit execution plan differs from AuditPlan")
     packets = tuple(item for item in execution_plan.packets if item.modality == "audio")
@@ -766,7 +789,7 @@ class AudioFullAuditExecutor:
 
     def build_requests(
         self,
-        execution_plan: CorrectionAuditExecutionPlanV2,
+        execution_plan: CorrectionAuditExecutionPlanV2 | ModalityAuditExecutionPlanV3,
         source_artifacts: Mapping[str, bytes],
     ) -> tuple[AudioAuditProviderRequestV2, ...]:
         packets = _validate_execution_lineage_placeholder(execution_plan)
@@ -1043,7 +1066,7 @@ class AudioFullAuditExecutor:
 
     def _assemble(
         self,
-        execution_plan: CorrectionAuditExecutionPlanV2,
+        execution_plan: CorrectionAuditExecutionPlanV2 | ModalityAuditExecutionPlanV3,
         audit_plan: AuditPlan,
         source_artifacts: Mapping[str, bytes],
         requests: tuple[AudioAuditProviderRequestV2, ...],
@@ -1097,6 +1120,22 @@ class AudioFullAuditExecutor:
                 ) from exc
             assessments.extend(parsed)
             receipts.append(receipt)
+
+        if isinstance(execution_plan, ModalityAuditExecutionPlanV3):
+            record = self._assemble_selective_record(
+                execution_plan,
+                audit_plan,
+                requests,
+                tuple(journals),
+                tuple(receipts),
+                tuple(assessments),
+            )
+            return AudioAuditRunResult(
+                record=record,
+                request_bytes=request_bytes,
+                response_bytes=responses,
+                clip_bytes=clip_bytes,
+            )
 
         assessment_by_cell = {item.cell_id: item for item in assessments}
         packet_by_cell = {
@@ -1246,9 +1285,138 @@ class AudioFullAuditExecutor:
             clip_bytes=clip_bytes,
         )
 
+    def _assemble_selective_record(
+        self,
+        execution_plan: ModalityAuditExecutionPlanV3,
+        audit_plan: AuditPlan,
+        requests: tuple[AudioAuditProviderRequestV2, ...],
+        journals: tuple[AudioAuditInvocationJournalV2, ...],
+        receipts: tuple[AudioAuditProviderResponseReceiptV2, ...],
+        assessments: tuple[AudioAuditCellAssessmentV2, ...],
+    ) -> SelectiveAudioAuditExecutionRecordV3:
+        """Classify only owned selected spans; context never enters metrics."""
+
+        packet_by_id = {item.id: item for item in execution_plan.packets}
+        cell_by_id = {item.id: item for item in audit_plan.cells}
+        material: set[str] = set()
+        major: set[str] = set()
+        unresolved: set[str] = set()
+        catastrophic: set[str] = set()
+        major_categories = {
+            "reference_name_term",
+            "numeric_expression",
+            "negation_polarity",
+            "speaker_identity",
+            "speech_coverage",
+        }
+        for assessment in assessments:
+            packet = packet_by_id[assessment.packet_id]
+            if len(packet.owned_span_ids) != 1:
+                raise AudioAuditExecutionError(
+                    "selective audio classification requires one owned span per packet"
+                )
+            span_id = packet.owned_span_ids[0]
+            cell = cell_by_id[assessment.cell_id]
+            if assessment.status == "finding":
+                material.add(span_id)
+                if cell.category in major_categories:
+                    major.add(span_id)
+                if (
+                    cell.category == "speech_coverage"
+                    and packet.window_end_ms - packet.window_start_ms >= 10_000
+                ):
+                    catastrophic.add(span_id)
+            elif assessment.status in ("unresolved_insufficient_evidence", "conflict"):
+                unresolved.add(span_id)
+        span_order = {
+            span_id: index for index, span_id in enumerate(execution_plan.owned_span_ids)
+        }
+        def ordered(values: set[str]) -> tuple[str, ...]:
+            return tuple(sorted(values, key=span_order.__getitem__))
+
+        discoveries: list[AudioDiscoveredCandidateV2] = []
+        for assessment in assessments:
+            if assessment.status != "finding":
+                continue
+            assert assessment.observed_text is not None
+            assert assessment.candidate_text is not None
+            assert assessment.evidence_basis is not None
+            candidate_payload = {
+                "schema_version": 2,
+                "assessment_id": assessment.id,
+                "cell_id": assessment.cell_id,
+                "target_id": assessment.target_id,
+                "packet_id": assessment.packet_id,
+                "clip_hash": assessment.cited_clip_hash,
+                "affected_token_ids": assessment.affected_token_ids,
+                "observed_text": assessment.observed_text,
+                "candidate_text": assessment.candidate_text,
+                "cited_span_ids": assessment.cited_span_ids,
+                "cited_recognition_evidence_ids": (
+                    assessment.cited_recognition_evidence_ids
+                ),
+                "cited_reference_evidence_ids": assessment.cited_reference_evidence_ids,
+                "trigger_signal_ids": assessment.trigger_signal_ids,
+                "trigger_group_ids": assessment.trigger_group_ids,
+                "evidence_basis": assessment.evidence_basis,
+                "authority": (
+                    "audio_audit_discovery_not_correction_decision_or_arbitration"
+                ),
+                "requires_audio_arbitration": True,
+                "is_audio_evidence": True,
+            }
+            candidate_hash = hash_object(candidate_payload)
+            discoveries.append(
+                AudioDiscoveredCandidateV2(
+                    **candidate_payload,
+                    id=candidate_hash,
+                    content_hash=candidate_hash,
+                )
+            )
+        discoveries.sort(key=lambda item: item.id)
+        payload = {
+            "schema_version": 3,
+            "execution_plan_id": execution_plan.id,
+            "execution_plan_content_hash": execution_plan.content_hash,
+            "selection_plan_id": execution_plan.selection_plan_id,
+            "selection_plan_content_hash": execution_plan.selection_plan_content_hash,
+            "tier": execution_plan.tier,
+            "audit_plan_hash": execution_plan.audit_plan_hash,
+            "audit_plan_content_hash": audit_plan.content_hash,
+            "policy_hash": self._policy.content_hash,
+            "adapter_identity_hash": self._identity.content_hash,
+            "request_ids": tuple(item.id for item in requests),
+            "invocation_journals": journals,
+            "response_receipts": receipts,
+            "assessments": assessments,
+            "selected_owned_span_ids": execution_plan.owned_span_ids,
+            "selected_owned_cell_ids": execution_plan.owned_cell_ids,
+            "selected_required_cell_ids": execution_plan.required_cell_ids,
+            "assessed_cell_ids": tuple(item.cell_id for item in assessments),
+            "discovered_candidates": tuple(discoveries),
+            "material_span_ids": ordered(material),
+            "major_span_ids": ordered(major),
+            "unresolved_span_ids": ordered(unresolved),
+            "catastrophic_span_ids": ordered(catastrophic),
+            "execution_status": "complete_selective_audio_delta",
+            "coverage_statement": (
+                "exact_selected_delta_required_cells_assessed_"
+                "unselected_cells_have_no_disposition"
+            ),
+            "authority": "not_correction_decisions_or_release_approval",
+        }
+        if payload["selection_plan_id"] is None or payload["tier"] is None:
+            raise AudioAuditExecutionError("selective audio execution lacks selection lineage")
+        digest = hash_object(payload)
+        return SelectiveAudioAuditExecutionRecordV3(
+            **payload,
+            id=digest,
+            content_hash=digest,
+        )
+
     def execute(
         self,
-        execution_plan: CorrectionAuditExecutionPlanV2,
+        execution_plan: CorrectionAuditExecutionPlanV2 | ModalityAuditExecutionPlanV3,
         audit_plan: AuditPlan,
         source_artifacts: Mapping[str, bytes],
     ) -> AudioAuditRunResult:
@@ -1421,7 +1589,7 @@ class AudioFullAuditExecutor:
 
     def replay(
         self,
-        execution_plan: CorrectionAuditExecutionPlanV2,
+        execution_plan: CorrectionAuditExecutionPlanV2 | ModalityAuditExecutionPlanV3,
         audit_plan: AuditPlan,
         source_artifacts: Mapping[str, bytes],
         stored: AudioAuditRunResult,
@@ -1446,16 +1614,25 @@ class AudioFullAuditExecutor:
 
 
 def _validate_execution_lineage_placeholder(
-    execution_plan: CorrectionAuditExecutionPlanV2,
+    execution_plan: CorrectionAuditExecutionPlanV2 | ModalityAuditExecutionPlanV3,
 ) -> tuple[CorrectionAuditPacketV2, ...]:
+    execution_model = (
+        ModalityAuditExecutionPlanV3
+        if isinstance(execution_plan, ModalityAuditExecutionPlanV3)
+        else CorrectionAuditExecutionPlanV2
+    )
     try:
-        validated = CorrectionAuditExecutionPlanV2.model_validate_json(
+        validated = execution_model.model_validate_json(
             canonical_json_bytes(execution_plan)
         )
     except ValidationError as exc:
         raise AudioAuditExecutionError("audio execution plan is internally invalid") from exc
     if validated != execution_plan:
         raise AudioAuditExecutionError("audio execution plan is not an exact artifact")
+    if isinstance(execution_plan, ModalityAuditExecutionPlanV3) and (
+        execution_plan.modality != "audio"
+    ):
+        raise AudioAuditExecutionError("audio executor rejects text-only execution")
     packets = tuple(item for item in execution_plan.packets if item.modality == "audio")
     if not packets:
         raise AudioAuditExecutionError("audio execution plan has no audio packets")

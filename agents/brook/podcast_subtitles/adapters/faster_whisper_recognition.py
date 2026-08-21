@@ -65,6 +65,8 @@ from .timing_grouping import (
 
 FasterWhisperRunner = Callable[[Path, RecognitionRequest], Mapping[str, object]]
 _HEX_DIGITS = frozenset("0123456789abcdef")
+_PROVIDER_TIMESTAMP_QUANTUM_SECONDS = 0.02
+_FLOAT_COMPARISON_EPSILON_SECONDS = 1e-9
 
 
 class _EnvelopeContract(BaseModel):
@@ -126,13 +128,33 @@ class _ProviderObservation(_EnvelopeContract):
                 raise ValueError(
                     "Faster-Whisper segment text must equal its exact word observation text"
                 )
-            for word in segment.words:
+            for word_index, word in enumerate(segment.words):
                 if word.start < previous_word_end:
                     raise ValueError("Faster-Whisper words overlap or move backwards")
-                # Zero-duration provider points may sit on a segment seam.  A
-                # positive word interval, however, must belong to its segment.
-                if word.end > word.start and (word.start < segment.start or word.end > segment.end):
-                    raise ValueError("Faster-Whisper word exceeds its provider segment")
+                # Faster-Whisper quantizes word timestamps to 20 ms.  Its
+                # decoded segment boundary can therefore differ from the first
+                # or last word by one provider quantum.  Preserve both raw
+                # observations, but reject larger topology disagreements.
+                tolerance = (
+                    _PROVIDER_TIMESTAMP_QUANTUM_SECONDS
+                    + _FLOAT_COMPARISON_EPSILON_SECONDS
+                )
+                starts_too_early = segment.start - word.start > tolerance
+                first_word_crosses_segment_start = (
+                    word_index == 0 and word.end + tolerance >= segment.start
+                )
+                if word.end > word.start and (
+                    (starts_too_early and not first_word_crosses_segment_start)
+                    or word.end - segment.end > tolerance
+                ):
+                    raise ValueError(
+                        "Faster-Whisper word exceeds its provider segment: "
+                        f"segment_id={segment.id}, "
+                        f"segment=[{segment.start}, {segment.end}], "
+                        f"word={word.word!r}, word_interval=[{word.start}, {word.end}], "
+                        f"early_delta={max(0.0, segment.start - word.start)}, "
+                        f"late_delta={max(0.0, word.end - segment.end)}"
+                    )
                 previous_word_end = word.end
         return self
 

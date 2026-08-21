@@ -7,8 +7,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -19,6 +21,21 @@ _spec = importlib.util.spec_from_file_location("run_cut_shortlist", _MOD_PATH)
 shortlist = importlib.util.module_from_spec(_spec)
 sys.modules["run_cut_shortlist"] = shortlist
 _spec.loader.exec_module(shortlist)
+
+
+def test_direct_script_help_bootstraps_repo_imports() -> None:
+    result = subprocess.run(
+        [sys.executable, str(_MOD_PATH), "--help"],
+        cwd=_MOD_PATH.parents[1],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "選段 gate" in result.stdout
 
 
 def _cand(cid: str, group: str, title: str) -> dict:
@@ -36,7 +53,8 @@ def _cand(cid: str, group: str, title: str) -> dict:
 def episode(tmp_path):
     hl = tmp_path / "highlights"
     hl.mkdir()
-    (hl / "candidates.json").write_text(
+    candidates_path = hl / "candidates.json"
+    candidates_path.write_text(
         json.dumps(
             {
                 "candidates": [
@@ -51,6 +69,7 @@ def episode(tmp_path):
         ),
         encoding="utf-8",
     )
+    source_sha256 = hashlib.sha256(candidates_path.read_bytes()).hexdigest()
     # 中位數 vs 平均：A2 的平均 (60+90+91)/3 = 80.3，中位數 90 → 中位數規則下 A2 > B1
     totals = {
         "azhe": {"A1": 95, "A2": 60, "B1": 85, "C1": 70},
@@ -60,7 +79,11 @@ def episode(tmp_path):
     for who, rows in totals.items():
         (hl / f"review_{who}.json").write_text(
             json.dumps(
-                {"persona": who, "scores": [{"id": i, "total": t} for i, t in rows.items()]},
+                {
+                    "persona": who,
+                    "source_sha256": source_sha256,
+                    "scores": [{"id": i, "total": t} for i, t in rows.items()],
+                },
                 ensure_ascii=False,
             ),
             encoding="utf-8",
@@ -69,7 +92,10 @@ def episode(tmp_path):
         json.dumps(
             {
                 "lens": "brand",
+                "source_sha256": source_sha256,
                 "findings": [
+                    {"id": "A1", "severity": "", "issue": "", "mitigation": ""},
+                    {"id": "A2", "severity": "", "issue": "", "mitigation": ""},
                     {
                         "id": "C1",
                         "severity": "veto",
@@ -82,6 +108,25 @@ def episode(tmp_path):
                         "issue": "標題不要停在某句",
                         "mitigation": "改過去式",
                     },
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (hl / "lens_renee.json").write_text(
+        json.dumps(
+            {
+                "lens": "renee",
+                "source_sha256": source_sha256,
+                "findings": [
+                    {
+                        "id": candidate_id,
+                        "hook_risk": "",
+                        "retention_risk": "",
+                        "boundary_action": "keep",
+                    }
+                    for candidate_id in ("A1", "A2", "B1", "C1")
                 ],
             },
             ensure_ascii=False,
@@ -168,9 +213,128 @@ def test_winners_preserve_verified_projection_lineage(episode):
         "generation_id": "generation-123",
     }
     candidates_path.write_text(json.dumps(candidates), encoding="utf-8")
+    source_sha256 = hashlib.sha256(candidates_path.read_bytes()).hexdigest()
+    for name in (
+        "review_azhe.json",
+        "review_kevin.json",
+        "review_shufen.json",
+        "lens_brand.json",
+        "lens_renee.json",
+    ):
+        path = hl / name
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["source_sha256"] = source_sha256
+        path.write_text(json.dumps(payload), encoding="utf-8")
 
     rows = shortlist.collect(hl, "long")
     shortlist.write_winners(hl, rows, ["A1"])
 
     winners = json.loads((hl / "winners.json").read_text(encoding="utf-8"))
     assert winners["subtitle_lineage"] == candidates["subtitle_lineage"]
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["review_azhe.json", "review_kevin.json", "review_shufen.json", "lens_brand.json"],
+)
+def test_missing_required_review_fails_closed(episode, name):
+    path = episode / "highlights" / name
+    path.rename(path.with_suffix(".missing"))
+
+    with pytest.raises(SystemExit, match="missing required highlight input"):
+        shortlist.collect(episode / "highlights", "long")
+
+
+def test_missing_renee_lens_fails_closed(episode):
+    path = episode / "highlights" / "lens_renee.json"
+    path.rename(path.with_suffix(".missing"))
+
+    with pytest.raises(SystemExit, match="missing required highlight input"):
+        shortlist.collect(episode / "highlights", "long")
+
+
+def test_review_partial_coverage_fails_closed(episode):
+    path = episode / "highlights" / "review_azhe.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["scores"] = []
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="coverage drift"):
+        shortlist.collect(episode / "highlights", "long")
+
+
+def test_brand_partial_coverage_fails_closed(episode):
+    path = episode / "highlights" / "lens_brand.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["findings"] = []
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="coverage drift"):
+        shortlist.collect(episode / "highlights", "long")
+
+
+def test_stale_review_source_hash_fails_closed(episode):
+    path = episode / "highlights" / "review_kevin.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["source_sha256"] = "0" * 64
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="source_sha256"):
+        shortlist.collect(episode / "highlights", "long")
+
+
+def test_stale_renee_source_hash_fails_closed(episode):
+    path = episode / "highlights" / "lens_renee.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["source_sha256"] = "0" * 64
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="lens_renee.json source_sha256"):
+        shortlist.collect(episode / "highlights", "long")
+
+
+def test_renee_partial_coverage_fails_closed(episode):
+    path = episode / "highlights" / "lens_renee.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["findings"] = payload["findings"][:-1]
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="lens_renee.json candidate coverage drift"):
+        shortlist.collect(episode / "highlights", "long")
+
+
+def test_renee_extra_candidate_fails_closed(episode):
+    path = episode / "highlights" / "lens_renee.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["findings"].append(
+        {
+            "id": "EXTRA",
+            "hook_risk": "",
+            "retention_risk": "",
+            "boundary_action": "keep",
+        }
+    )
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match=r"extra=\['EXTRA'\]"):
+        shortlist.collect(episode / "highlights", "long")
+
+
+def test_renee_duplicate_candidate_fails_closed(episode):
+    path = episode / "highlights" / "lens_renee.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["findings"].append(payload["findings"][0])
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="duplicate id: A1"):
+        shortlist.collect(episode / "highlights", "long")
+
+
+def test_renee_non_string_finding_field_fails_closed(episode):
+    path = episode / "highlights" / "lens_renee.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["findings"][0]["retention_risk"] = None
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="retention_risk must be a string"):
+        shortlist.collect(episode / "highlights", "long")

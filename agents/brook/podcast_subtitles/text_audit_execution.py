@@ -38,6 +38,9 @@ from shared.schemas.podcast_subtitles_v2_correction import (
     CorrectionReferenceExcerptSliceV2,
     CorrectionSourceBindingV2,
 )
+from shared.schemas.podcast_subtitles_v2_selective_audio import (
+    ModalityAuditExecutionPlanV3,
+)
 from shared.schemas.podcast_subtitles_v2_text_audit import (
     TextAuditAdapterIdentityV2,
     TextAuditArtifactDigestV2,
@@ -309,11 +312,16 @@ def _parse_source_document(
 
 
 def _validate_execution_lineage(
-    execution_plan: CorrectionAuditExecutionPlanV2,
+    execution_plan: CorrectionAuditExecutionPlanV2 | ModalityAuditExecutionPlanV3,
     audit_plan: AuditPlan,
 ) -> tuple[CorrectionAuditPacketV2, ...]:
     try:
-        validated_execution = CorrectionAuditExecutionPlanV2.model_validate_json(
+        execution_model = (
+            ModalityAuditExecutionPlanV3
+            if isinstance(execution_plan, ModalityAuditExecutionPlanV3)
+            else CorrectionAuditExecutionPlanV2
+        )
+        validated_execution = execution_model.model_validate_json(
             canonical_json_bytes(execution_plan)
         )
         validated_audit = AuditPlan.model_validate_json(canonical_json_bytes(audit_plan))
@@ -323,15 +331,28 @@ def _validate_execution_lineage(
         ) from exc
     if validated_execution != execution_plan or validated_audit != audit_plan:
         raise TextAuditExecutionError("text audit execution inputs are not exact artifacts")
+    if isinstance(execution_plan, ModalityAuditExecutionPlanV3) and (
+        execution_plan.modality != "text"
+    ):
+        raise TextAuditExecutionError("text audit rejects audio-only execution")
+    exact_cells = tuple(item.id for item in audit_plan.cells)
+    exact_required = tuple(
+        item.id for item in audit_plan.cells if item.applicability == "required"
+    )
+    cell_coverage_matches = (
+        set(execution_plan.all_cell_ids) == set(exact_cells)
+        and set(execution_plan.required_cell_ids) == set(exact_required)
+        if isinstance(execution_plan, ModalityAuditExecutionPlanV3)
+        else execution_plan.all_cell_ids == exact_cells
+        and execution_plan.required_cell_ids == exact_required
+    )
     if (
         execution_plan.episode_id != audit_plan.episode_id
         or execution_plan.generation_id != audit_plan.generation_id
         or execution_plan.audit_plan_hash != sha256_bytes(canonical_json_bytes(audit_plan))
         or execution_plan.audit_plan_content_hash != audit_plan.content_hash
         or execution_plan.audit_input_hash != audit_plan.inputs.content_hash
-        or execution_plan.all_cell_ids != tuple(item.id for item in audit_plan.cells)
-        or execution_plan.required_cell_ids
-        != tuple(item.id for item in audit_plan.cells if item.applicability == "required")
+        or not cell_coverage_matches
     ):
         raise TextAuditExecutionError("text audit execution plan differs from AuditPlan")
     packets = tuple(item for item in execution_plan.packets if item.modality == "text")
@@ -718,11 +739,16 @@ class TextFullAuditExecutor:
 
     def build_requests(
         self,
-        execution_plan: CorrectionAuditExecutionPlanV2,
+        execution_plan: CorrectionAuditExecutionPlanV2 | ModalityAuditExecutionPlanV3,
         source_artifacts: Mapping[str, bytes],
     ) -> tuple[TextAuditProviderRequestV2, ...]:
         try:
-            validated_execution = CorrectionAuditExecutionPlanV2.model_validate_json(
+            execution_model = (
+                ModalityAuditExecutionPlanV3
+                if isinstance(execution_plan, ModalityAuditExecutionPlanV3)
+                else CorrectionAuditExecutionPlanV2
+            )
+            validated_execution = execution_model.model_validate_json(
                 canonical_json_bytes(execution_plan)
             )
         except ValidationError as exc:
@@ -731,6 +757,10 @@ class TextFullAuditExecutor:
             ) from exc
         if validated_execution != execution_plan:
             raise TextAuditExecutionError("text audit execution plan is not an exact artifact")
+        if isinstance(execution_plan, ModalityAuditExecutionPlanV3) and (
+            execution_plan.modality != "text"
+        ):
+            raise TextAuditExecutionError("text audit rejects audio-only execution")
         packets = tuple(item for item in execution_plan.packets if item.modality == "text")
         if not packets:
             raise TextAuditExecutionError("text audit execution plan has no text packets")
@@ -842,7 +872,7 @@ class TextFullAuditExecutor:
 
     def import_responses(
         self,
-        execution_plan: CorrectionAuditExecutionPlanV2,
+        execution_plan: CorrectionAuditExecutionPlanV2 | ModalityAuditExecutionPlanV3,
         audit_plan: AuditPlan,
         source_artifacts: Mapping[str, bytes],
         responses: Sequence[bytes],
@@ -1093,7 +1123,7 @@ class TextFullAuditExecutor:
 
     def execute(
         self,
-        execution_plan: CorrectionAuditExecutionPlanV2,
+        execution_plan: CorrectionAuditExecutionPlanV2 | ModalityAuditExecutionPlanV3,
         audit_plan: AuditPlan,
         source_artifacts: Mapping[str, bytes],
     ) -> TextAuditRunResult:
@@ -1144,7 +1174,7 @@ class TextFullAuditExecutor:
 
     def replay(
         self,
-        execution_plan: CorrectionAuditExecutionPlanV2,
+        execution_plan: CorrectionAuditExecutionPlanV2 | ModalityAuditExecutionPlanV3,
         audit_plan: AuditPlan,
         source_artifacts: Mapping[str, bytes],
         stored: TextAuditRunResult,

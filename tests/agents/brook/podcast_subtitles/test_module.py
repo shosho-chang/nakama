@@ -168,6 +168,27 @@ def _evidence(
     )
 
 
+def test_verified_receipt_audio_paths_reuse_identical_cas_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module, _audio = _module(tmp_path / "episode")
+    source = tmp_path / "same.wav"
+    source.write_bytes(b"same-audio")
+    receipt = _accepted_receipt(source, source)
+    calls: list[tuple[str, int]] = []
+
+    def audio_path(sha256: str, *, size_bytes: int) -> Path:
+        calls.append((sha256, size_bytes))
+        return source
+
+    monkeypatch.setattr(module.store, "audio_path", audio_path)
+
+    source_path, normalized_path = module._verified_receipt_audio_paths(receipt)
+
+    assert source_path == normalized_path == source
+    assert calls == [(receipt.source.sha256, receipt.source.size_bytes)]
+
+
 class _BoundFixtureRecognizer:
     """Fixture recognizer whose invocation is deliberately bound at call time."""
 
@@ -2822,6 +2843,23 @@ def test_audio_mutation_during_normalization_or_recognition_fails_closed(
         recognition_module.create(
             CreateRequest(episode_id="episode-mutated-normalized", source_audio=source)
         )
+    assert not tuple(recognition_module.store.audio_staging_dir.iterdir())
+
+
+def test_speech_coverage_exception_leaves_no_audio_staging(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module, source = _module(tmp_path)
+
+    def fail_coverage(_request):
+        raise RuntimeError("fixture speech coverage crash")
+
+    monkeypatch.setattr(module._speech_coverage_analyzer, "analyze", fail_coverage)
+
+    with pytest.raises(RuntimeError, match="speech coverage crash"):
+        module.create(CreateRequest(episode_id="episode-coverage-crash", source_audio=source))
+    assert not tuple(module.store.audio_staging_dir.iterdir())
 
 
 def test_generation_reloads_from_owned_audio_after_external_files_disappear(
@@ -3108,6 +3146,7 @@ def test_module_rejects_malicious_attribution_before_adapter_verify(
                 ),
             )
         )
+    assert not tuple(module.store.audio_staging_dir.iterdir())
 
 
 def test_persisted_speaker_label_swap_is_rejected_on_restart(tmp_path: Path) -> None:

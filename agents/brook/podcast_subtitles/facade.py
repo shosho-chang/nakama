@@ -11,7 +11,11 @@ from .errors import GenerationNotFoundError
 from .hashing import hash_object
 from .module import (
     CreateRequest,
+    EvidencePrefixMigrationOutcome,
+    EvidencePrefixMigrationRequest,
     GenerationOutcome,
+    NativeAuditBasisMigrationOutcome,
+    NativeAuditBasisMigrationRequest,
     PodcastSubtitleV2,
     ProjectOutcome,
     ProjectRequest,
@@ -61,6 +65,16 @@ class PodcastSubtitleFacade:
 
     def run(self, request: CreateRequest) -> GenerationOutcome:
         return self.module.create(request)
+
+    def migrate_evidence_prefix(
+        self, request: EvidencePrefixMigrationRequest
+    ) -> EvidencePrefixMigrationOutcome:
+        return self.module.migrate_evidence_prefix(request)
+
+    def migrate_native_audit_basis(
+        self, request: NativeAuditBasisMigrationRequest
+    ) -> NativeAuditBasisMigrationOutcome:
+        return self.module.migrate_native_audit_basis(request)
 
     def status(self) -> StatusView:
         checkpoint = self.module.store.load_latest_create_checkpoint()

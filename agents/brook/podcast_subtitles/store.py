@@ -16,7 +16,17 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Mapping
 
-from .checkpoint import CreateCheckpoint
+from .checkpoint import (
+    EVIDENCE_PREFIX_MIGRATION_ARTIFACT,
+    CreateCheckpoint,
+    EvidencePrefixMigrationReceiptV1,
+    EvidencePrefixMigrationReceiptV2,
+    NativeAuditBasisMigrationReceiptV1,
+    evidence_prefix_migration_artifact,
+    is_evidence_prefix_migration_artifact,
+    is_native_audit_basis_migration_artifact,
+    native_audit_basis_migration_artifact,
+)
 from .errors import (
     ArtifactHashMismatchError,
     GenerationConflictError,
@@ -247,6 +257,12 @@ class GenerationStore:
         self.resolution_journal_path = self.transactions_dir / _RESOLUTION_JOURNAL_NAME
         self.episode_lock_path = self.transactions_dir / "episode.lock"
         self._lock = threading.RLock()
+        # A store instance is one verified session.  Opening a checkpoint still
+        # hashes its complete immutable artifact set once; subsequent artifact
+        # reads re-check the canonical record and the requested artifact only.
+        # A fresh store/process has an empty cache and therefore performs the
+        # complete verification again.
+        self._verified_create_checkpoints: dict[str, StoredCreateCheckpoint] = {}
 
     @contextmanager
     def episode_transaction(self):
@@ -695,6 +711,266 @@ class GenerationStore:
             )
         return payload
 
+    @staticmethod
+    def _validate_evidence_prefix_migration(
+        *,
+        checkpoint: CreateCheckpoint,
+        previous: CreateCheckpoint,
+        encoded: Mapping[str, bytes],
+    ) -> None:
+        """Validate the sole identity-changing create-checkpoint edge."""
+
+        old_artifacts = dict(previous.artifact_hashes)
+        child_artifacts = dict(checkpoint.artifact_hashes)
+        added = set(child_artifacts) - set(old_artifacts)
+        changed_or_missing = {
+            name
+            for name, digest in old_artifacts.items()
+            if child_artifacts.get(name) != digest
+        }
+        if (
+            len(added) != 1
+            or changed_or_missing
+            or not is_evidence_prefix_migration_artifact(next(iter(added)))
+        ):
+            raise GenerationIsolationError(
+                "evidence-ready migration must preserve its predecessor and append one receipt"
+            )
+        receipt_name = next(iter(added))
+        receipt_payload = encoded.get(receipt_name)
+        if receipt_payload is None:
+            raise GenerationIsolationError(
+                "evidence-ready identity migration lacks its typed receipt"
+            )
+        old_migration_names = tuple(
+            sorted(name for name in old_artifacts if is_evidence_prefix_migration_artifact(name))
+        )
+        try:
+            if not old_migration_names:
+                if receipt_name != EVIDENCE_PREFIX_MIGRATION_ARTIFACT:
+                    raise ValueError("first migration must retain the V1 artifact name")
+                receipt: EvidencePrefixMigrationReceiptV1 | EvidencePrefixMigrationReceiptV2 = (
+                    EvidencePrefixMigrationReceiptV1.model_validate_json(
+                        receipt_payload, strict=True
+                    )
+                )
+            else:
+                if receipt_name == EVIDENCE_PREFIX_MIGRATION_ARTIFACT:
+                    raise ValueError("migration ledger receipt overwrote the V1 receipt")
+                receipt = EvidencePrefixMigrationReceiptV2.model_validate_json(
+                    receipt_payload, strict=True
+                )
+                if evidence_prefix_migration_artifact(receipt.id) != receipt_name:
+                    raise ValueError("migration ledger artifact is not content addressed")
+        except (TypeError, ValueError) as exc:
+            raise GenerationIsolationError(
+                "evidence-ready migration receipt is invalid"
+            ) from exc
+        if canonical_json_bytes(receipt) != receipt_payload:
+            raise GenerationIsolationError(
+                "evidence-ready migration receipt bytes are not canonical"
+            )
+        unchanged = (
+            "episode_id",
+            "source",
+            "invocation_id",
+            "normalized",
+            "normalization_receipt_hash",
+            "reference_enrollment_hash",
+            "speaker_track_binding_hash",
+            "expected_active_generation_id",
+        )
+        expected_receipt: dict[str, object] = {
+            "episode_id": checkpoint.episode_id,
+            "old_checkpoint_id": previous.id,
+            "old_checkpoint_record_hash": sha256_bytes(canonical_json_bytes(previous)),
+            "old_operation_key": previous.operation_key,
+            "new_operation_key": checkpoint.operation_key,
+            "old_input_binding_hash": previous.input_binding_hash,
+            "new_input_binding_hash": checkpoint.input_binding_hash,
+            "old_policy_hash": previous.policy_hash,
+            "new_policy_hash": checkpoint.policy_hash,
+            "old_code_hash": previous.code_hash,
+            "new_code_hash": checkpoint.code_hash,
+            "old_adapter_identity_set_hash": hash_object(previous.adapter_identities),
+            "new_adapter_identity_set_hash": hash_object(checkpoint.adapter_identities),
+        }
+        if isinstance(receipt, EvidencePrefixMigrationReceiptV1):
+            expected_receipt["evidence_artifact_set_hash"] = hash_object(
+                tuple(sorted(old_artifacts.items()))
+            )
+        else:
+            prior_receipts: list[
+                EvidencePrefixMigrationReceiptV1 | EvidencePrefixMigrationReceiptV2
+            ] = []
+            for name in old_migration_names:
+                payload = encoded.get(name)
+                if payload is None:
+                    raise GenerationIsolationError(
+                        "evidence-ready migration did not preserve its receipt ledger"
+                    )
+                try:
+                    parsed = (
+                        EvidencePrefixMigrationReceiptV1.model_validate_json(payload, strict=True)
+                        if name == EVIDENCE_PREFIX_MIGRATION_ARTIFACT
+                        else EvidencePrefixMigrationReceiptV2.model_validate_json(
+                            payload, strict=True
+                        )
+                    )
+                except (TypeError, ValueError) as exc:
+                    raise GenerationIsolationError(
+                        "evidence-ready migration predecessor ledger is invalid"
+                    ) from exc
+                if canonical_json_bytes(parsed) != payload:
+                    raise GenerationIsolationError(
+                        "evidence-ready migration predecessor ledger is not canonical"
+                    )
+                prior_receipts.append(parsed)
+            legacy = [
+                item
+                for item in prior_receipts
+                if isinstance(item, EvidencePrefixMigrationReceiptV1)
+            ]
+            refreshes = sorted(
+                (
+                    item
+                    for item in prior_receipts
+                    if isinstance(item, EvidencePrefixMigrationReceiptV2)
+                ),
+                key=lambda item: item.sequence,
+            )
+            if len(legacy) != 1:
+                raise GenerationIsolationError("evidence-ready migration ledger lacks its V1 root")
+            head_id = legacy[0].id
+            for expected_sequence, prior in enumerate(refreshes, start=2):
+                if (
+                    prior.sequence != expected_sequence
+                    or prior.previous_migration_receipt_id != head_id
+                ):
+                    raise GenerationIsolationError(
+                        "evidence-ready migration ledger sequence is invalid"
+                    )
+                head_id = prior.id
+            base_artifacts = {
+                name: digest
+                for name, digest in old_artifacts.items()
+                if not is_evidence_prefix_migration_artifact(name)
+            }
+            expected_receipt.update(
+                {
+                    "sequence": len(prior_receipts) + 1,
+                    "previous_migration_receipt_id": head_id,
+                    "predecessor_artifact_set_hash": hash_object(
+                        tuple(sorted(old_artifacts.items()))
+                    ),
+                    "evidence_artifact_set_hash": hash_object(
+                        tuple(sorted(base_artifacts.items()))
+                    ),
+                }
+            )
+        if (
+            checkpoint.previous_checkpoint_id != previous.id
+            or any(getattr(checkpoint, name) != getattr(previous, name) for name in unchanged)
+            or any(getattr(receipt, name) != value for name, value in expected_receipt.items())
+        ):
+            raise GenerationIsolationError(
+                "evidence-ready migration changed evidence or crossed its exact lineage"
+            )
+        for name, expected_hash in old_artifacts.items():
+            payload = encoded.get(name)
+            if payload is None or sha256_bytes(payload) != expected_hash:
+                raise GenerationIsolationError(
+                    "evidence-ready migration did not preserve every evidence byte"
+                )
+
+    @staticmethod
+    def _validate_native_audit_basis_migration(
+        *,
+        checkpoint: CreateCheckpoint,
+        previous: CreateCheckpoint,
+        encoded: Mapping[str, bytes],
+    ) -> None:
+        old_artifacts = dict(previous.artifact_hashes)
+        child_artifacts = dict(checkpoint.artifact_hashes)
+        added = set(child_artifacts) - set(old_artifacts)
+        changed = {
+            name for name, digest in old_artifacts.items() if child_artifacts.get(name) != digest
+        }
+        if len(added) != 1 or changed:
+            raise GenerationIsolationError(
+                "native audit basis migration must preserve every predecessor artifact"
+            )
+        receipt_name = next(iter(added))
+        if not is_native_audit_basis_migration_artifact(receipt_name):
+            raise GenerationIsolationError(
+                "native audit basis migration must append one content-addressed receipt"
+            )
+        payload = encoded.get(receipt_name)
+        try:
+            if payload is None:
+                raise ValueError("missing receipt")
+            receipt = NativeAuditBasisMigrationReceiptV1.model_validate_json(
+                payload, strict=True
+            )
+        except (TypeError, ValueError) as exc:
+            raise GenerationIsolationError(
+                "native audit basis migration receipt is invalid"
+            ) from exc
+        if (
+            canonical_json_bytes(receipt) != payload
+            or native_audit_basis_migration_artifact(receipt.id) != receipt_name
+        ):
+            raise GenerationIsolationError(
+                "native audit basis migration receipt is not canonical/content-addressed"
+            )
+        unchanged = (
+            "episode_id",
+            "source",
+            "invocation_id",
+            "normalized",
+            "normalization_receipt_hash",
+            "reference_enrollment_hash",
+            "speaker_track_binding_hash",
+            "expected_active_generation_id",
+            "adapter_identities",
+        )
+        base_artifacts = {
+            name: digest
+            for name, digest in old_artifacts.items()
+            if not is_native_audit_basis_migration_artifact(name)
+        }
+        expected = {
+            "episode_id": checkpoint.episode_id,
+            "old_checkpoint_id": previous.id,
+            "old_checkpoint_record_hash": sha256_bytes(canonical_json_bytes(previous)),
+            "old_operation_key": previous.operation_key,
+            "new_operation_key": checkpoint.operation_key,
+            "old_input_binding_hash": previous.input_binding_hash,
+            "new_input_binding_hash": checkpoint.input_binding_hash,
+            "old_policy_hash": previous.policy_hash,
+            "new_policy_hash": checkpoint.policy_hash,
+            "old_code_hash": previous.code_hash,
+            "new_code_hash": checkpoint.code_hash,
+            "old_adapter_identity_set_hash": hash_object(previous.adapter_identities),
+            "new_adapter_identity_set_hash": hash_object(checkpoint.adapter_identities),
+            "predecessor_artifact_set_hash": hash_object(tuple(sorted(old_artifacts.items()))),
+            "basis_artifact_set_hash": hash_object(tuple(sorted(base_artifacts.items()))),
+        }
+        if (
+            checkpoint.previous_checkpoint_id != previous.id
+            or any(getattr(checkpoint, name) != getattr(previous, name) for name in unchanged)
+            or any(getattr(receipt, name) != value for name, value in expected.items())
+        ):
+            raise GenerationIsolationError(
+                "native audit basis migration crossed its exact code-only lineage"
+            )
+        for name, expected_hash in old_artifacts.items():
+            artifact = encoded.get(name)
+            if artifact is None or sha256_bytes(artifact) != expected_hash:
+                raise GenerationIsolationError(
+                    "native audit basis migration did not preserve every predecessor byte"
+                )
+
     def commit_create_checkpoint(
         self,
         checkpoint: CreateCheckpoint,
@@ -749,10 +1025,26 @@ class GenerationStore:
                     f"expected previous={checkpoint.previous_checkpoint_id!r}, "
                     f"actual={current_id!r}"
                 )
+            is_evidence_migration = False
+            is_basis_migration = False
+            if checkpoint.stage == "evidence_ready" and checkpoint.previous_checkpoint_id:
+                previous_for_migration = self._load_create_checkpoint_directory(
+                    checkpoint.previous_checkpoint_id
+                ).checkpoint
+                is_evidence_migration = previous_for_migration.stage == "evidence_ready"
+            if checkpoint.stage == "native_audit_basis_ready" and checkpoint.previous_checkpoint_id:
+                previous_for_basis_migration = self._load_create_checkpoint_directory(
+                    checkpoint.previous_checkpoint_id
+                ).checkpoint
+                is_basis_migration = (
+                    previous_for_basis_migration.stage == "native_audit_basis_ready"
+                )
             if (
                 current is not None
                 and current.get("operation_key") != checkpoint.operation_key
                 and not starts_after_terminal
+                and not is_evidence_migration
+                and not is_basis_migration
             ):
                 raise GenerationIsolationError(
                     "Create Checkpoint operation binding changed during commit"
@@ -766,8 +1058,15 @@ class GenerationStore:
                 previous = self._load_create_checkpoint_directory(previous_id).checkpoint
                 expected_stages = {
                     "started": {"evidence_ready"},
-                    "evidence_ready": {"correction_ready", "native_audit_basis_ready"},
-                    "native_audit_basis_ready": {"native_text_audit_ready"},
+                    "evidence_ready": {
+                        "evidence_ready",
+                        "correction_ready",
+                        "native_audit_basis_ready",
+                    },
+                    "native_audit_basis_ready": {
+                        "native_audit_basis_ready",
+                        "native_text_audit_ready",
+                    },
                     "native_text_audit_ready": {"native_audio_audit_ready"},
                     "native_audio_audit_ready": {"complete"},
                     "correction_ready": {"audio_audit_ready"},
@@ -789,7 +1088,21 @@ class GenerationStore:
                     "adapter_identities",
                     "expected_active_generation_id",
                 )
-                if any(getattr(checkpoint, name) != getattr(previous, name) for name in inherited):
+                if is_evidence_migration:
+                    self._validate_evidence_prefix_migration(
+                        checkpoint=checkpoint,
+                        previous=previous,
+                        encoded=encoded,
+                    )
+                elif is_basis_migration:
+                    self._validate_native_audit_basis_migration(
+                        checkpoint=checkpoint,
+                        previous=previous,
+                        encoded=encoded,
+                    )
+                elif any(
+                    getattr(checkpoint, name) != getattr(previous, name) for name in inherited
+                ):
                     raise GenerationIsolationError("Create Checkpoint inherited identity changed")
                 if previous.stage != "started" and (
                     checkpoint.invocation_id != previous.invocation_id
@@ -898,7 +1211,9 @@ class GenerationStore:
                     "Create Checkpoint artifact hash mismatch: "
                     f"checkpoint={checkpoint_id}, artifact={safe_name}"
                 )
-        return StoredCreateCheckpoint(checkpoint=checkpoint, directory=directory)
+        stored = StoredCreateCheckpoint(checkpoint=checkpoint, directory=directory)
+        self._verified_create_checkpoints[checkpoint_id] = stored
+        return stored
 
     def load_create_checkpoint(
         self,
@@ -969,14 +1284,27 @@ class GenerationStore:
         stored: StoredCreateCheckpoint,
         name: str,
     ) -> bytes:
-        """Read one checkpoint artifact only after revalidating all stage bytes."""
+        """Read one artifact inside an already fully verified store session."""
 
-        verified = self._load_create_checkpoint_directory(stored.checkpoint.id)
+        verified = self._verified_create_checkpoints.get(stored.checkpoint.id)
+        if (
+            verified is None
+            or verified.checkpoint != stored.checkpoint
+            or verified.directory != stored.directory
+        ):
+            verified = self._load_create_checkpoint_directory(stored.checkpoint.id)
+        record_path = verified.directory / _CREATE_CHECKPOINT_RECORD_NAME
+        if hash_file(record_path) != sha256_bytes(canonical_json_bytes(verified.checkpoint)):
+            self._verified_create_checkpoints.pop(stored.checkpoint.id, None)
+            raise ArtifactHashMismatchError(
+                f"Create Checkpoint record changed after verification: {stored.checkpoint.id}"
+            )
         safe_name = _safe_artifact_name(name)
         if safe_name not in verified.checkpoint.artifact_hashes:
             raise GenerationNotFoundError(f"artifact not found in Create Checkpoint: {safe_name}")
         payload = (verified.directory / Path(safe_name)).read_bytes()
         if sha256_bytes(payload) != verified.checkpoint.artifact_hashes[safe_name]:
+            self._verified_create_checkpoints.pop(stored.checkpoint.id, None)
             raise ArtifactHashMismatchError(
                 f"Create Checkpoint artifact changed after verification: {safe_name}"
             )
