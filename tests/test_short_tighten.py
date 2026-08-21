@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
@@ -227,6 +229,97 @@ def test_long_tighten_keeps_filler_and_backchannel():
     # 每個門檻都比短片鬆（實測依據見 FORMAT_TIGHTEN 註解）
     for k in ("min_pause", "keep_head", "keep_tail", "min_cut", "min_keep_seg"):
         assert long_[k] > short[k], k
+
+
+def test_long_detect_uses_official_stage5_without_legacy_aliases(tmp_path, monkeypatch):
+    import run_short_tighten as tighten
+
+    highlights = tmp_path / "highlights"
+    highlights.mkdir()
+    (highlights / "candidates.json").write_text(
+        json.dumps(
+            {
+                "candidates": [
+                    {
+                        "id": "value-L01",
+                        "format": "long",
+                        "t_start": 10.0,
+                        "t_end": 20.0,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    (highlights / "winners.json").write_text(
+        json.dumps({"winners": [{"id": "value-L01", "rank": 1}]}),
+        encoding="utf-8",
+    )
+    official_srt = tmp_path / "subtitle-release" / "memo-dual-audit-v1" / "release.srt"
+    official_srt.parent.mkdir(parents=True)
+    official_srt.write_text("1\n00:00:10,000 --> 00:00:20,000\n正式字幕\n", encoding="utf-8")
+    lineage = {"subtitle_mode": "memo-dual-audit-v1", "subtitle_srt_sha256": "abc"}
+    selection = SimpleNamespace(srt_path=official_srt, identity=lambda: lineage)
+    monkeypatch.setattr(
+        tighten.Stage5SubtitleRequest,
+        "open",
+        lambda self, episode_dir: selection,
+    )
+    monkeypatch.setattr(tighten, "_detect_silences", lambda *args, **kwargs: [(12.0, 13.2)])
+
+    result = tighten.detect(tmp_path, "value-L01")
+
+    assert result["status"] == "detected"
+    payload = json.loads(Path(result["file"]).read_text(encoding="utf-8"))
+    assert payload["subtitle_lineage"] == lineage
+    assert payload["cuts"] == [
+        {"t0": 12.2, "t1": 13.05, "kind": "pause", "dur": 1.2, "keep": True}
+    ]
+    assert not (tmp_path / "transcript.srt").exists()
+    assert not (tmp_path / "subs" / "words.json").exists()
+
+
+def test_cut_lineage_mismatch_requires_redetect():
+    import pytest
+    from run_short_tighten import _assert_cut_subtitle_lineage
+
+    with pytest.raises(SystemExit, match="已過期"):
+        _assert_cut_subtitle_lineage(
+            {"subtitle_lineage": {"subtitle_srt_sha256": "old"}},
+            {"subtitle_srt_sha256": "new"},
+        )
+
+
+def test_retime_without_word_timing_preserves_release_cue_boundaries(tmp_path, monkeypatch):
+    import run_short_tighten as tighten
+
+    import shared.subtitle_reboundary as rebounding
+
+    official_srt = tmp_path / "release.srt"
+    official_srt.write_text(
+        "1\n00:00:10,000 --> 00:00:12,000\n正式字幕第一句\n\n"
+        "2\n00:00:12,000 --> 00:00:14,000\n正式字幕第二句\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(tighten, "_tight_pause_map", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        rebounding,
+        "repair_cues",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("must not guess boundaries")),
+    )
+
+    result, cue_count = tighten._retime_srt(
+        tmp_path,
+        "value-L01",
+        [(10.0, 14.0)],
+        [],
+        transcript=official_srt,
+    )
+
+    assert cue_count == 2
+    rendered = result.read_text(encoding="utf-8")
+    assert "00:00:00,000 --> 00:00:02,000\n正式字幕第一句" in rendered
+    assert "00:00:02,000 --> 00:00:04,000\n正式字幕第二句" in rendered
 
 
 def test_long_keep_segments_absorbs_bigger_islands():

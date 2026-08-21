@@ -25,6 +25,7 @@ zoom punch-in，全景機位不用。參考範本：E:\\data 鐘穎 ×3（外包
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import sys
@@ -39,11 +40,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from run_highlight_cut import FORMAT_LABEL  # noqa: E402
 from run_short_tighten import (  # noqa: E402
     TIGHTEN_DIR,
+    _assert_cut_subtitle_lineage,
     _keep_segments,
     _load_winner,
+    _open_production_subtitle,
     _retime_srt,
     import_srt_tidy,
 )
+
+from agents.brook.script_video.subtitle_handoff import Stage5SubtitleRequest  # noqa: E402
 
 logger = logging.getLogger("short_director")
 
@@ -153,11 +158,71 @@ def _panel_props(cfg: dict, spk: int, top: bool) -> dict[str, float]:
     }
 
 
+def _speaker_timing_tokens(episode_dir: Path) -> list[dict]:
+    """Load fresh, episode-bound timing tokens for speaker switching."""
+    legacy = episode_dir / "subs" / "words.json"
+    if legacy.is_file():
+        raw = json.loads(legacy.read_text(encoding="utf-8"))
+        words = raw.get("words") if isinstance(raw, dict) else raw
+        if not isinstance(words, list):
+            raise SystemExit(f"{legacy} 的 words 必須是 array")
+        return words
+
+    selection = Stage5SubtitleRequest().open(episode_dir)
+    handoff = selection.handoff
+    ledger_path = getattr(handoff, "release_ledger_path", None)
+    if selection.mode != "memo-dual-audit-v1" or not isinstance(ledger_path, Path):
+        raise SystemExit(
+            "導播缺少正式 speaker timing evidence（無 words.json／Memo release ledger）"
+        )
+    ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+    ref = ledger.get("inputs", {}).get("memo_recognition_evidence")
+    if not isinstance(ref, dict) or set(ref) != {"path", "sha256", "size_bytes"}:
+        raise SystemExit("release ledger 的 memo_recognition_evidence schema 不完整")
+    evidence_path = (episode_dir / ref["path"]).resolve()
+    root = episode_dir.resolve()
+    if evidence_path != root and root not in evidence_path.parents:
+        raise SystemExit("memo_recognition_evidence path escape")
+    evidence_raw = evidence_path.read_bytes()
+    if (
+        len(evidence_raw) != ref["size_bytes"]
+        or hashlib.sha256(evidence_raw).hexdigest() != ref["sha256"]
+    ):
+        raise SystemExit("memo_recognition_evidence bytes 與 release ledger 不符")
+    evidence = json.loads(evidence_raw)
+    if (
+        evidence.get("contract") != "memo-recognition-evidence-v1"
+        or evidence.get("normalized_audio_sha256") != ledger.get("normalized_audio_sha256")
+    ):
+        raise SystemExit("memo_recognition_evidence identity 與 release ledger 不符")
+    tokens = evidence.get("tokens")
+    if not isinstance(tokens, list) or not tokens:
+        raise SystemExit("memo_recognition_evidence tokens 必須是 non-empty array")
+    words: list[dict] = []
+    previous_end = -1
+    for index, token in enumerate(tokens):
+        if not isinstance(token, dict):
+            raise SystemExit(f"Memo token {index} 必須是 object")
+        text, start_ms, end_ms = token.get("text"), token.get("start_ms"), token.get("end_ms")
+        if (
+            not isinstance(text, str)
+            or not text.strip()
+            or type(start_ms) is not int
+            or type(end_ms) is not int
+            or start_ms < previous_end
+            or end_ms <= start_ms
+        ):
+            raise SystemExit(f"Memo token {index} timing/text 無效")
+        words.append({"word": text, "start": start_ms / 1000, "end": end_ms / 1000})
+        previous_end = end_ms
+    return words
+
+
 def _word_speakers(episode_dir: Path, t0: float, t1: float) -> list[tuple[float, float, int]]:
-    """[t0,t1] 內詞級說話者 → (start, end, speaker) 詞列表。"""
+    """[t0,t1] 內 timing-token 說話者 → (start, end, speaker) 列表。"""
     from shared.speaker_assign import assign_word_speakers, detect_mic_tracks, load_envelopes
 
-    words = json.load(open(episode_dir / "subs" / "words.json", encoding="utf-8"))["words"]
+    words = _speaker_timing_tokens(episode_dir)
     mics = detect_mic_tracks(episode_dir / "Audio")
     envs = load_envelopes(mics, reference=episode_dir / "normalized.wav")
     spk = assign_word_speakers(words, envs)
@@ -393,13 +458,16 @@ def direct(
     from run_short_tighten import FORMAT_TIGHTEN
 
     c, w = _load_winner(episode_dir, cid)
+    subtitle = _open_production_subtitle(episode_dir)
     fmt = c.get("format", "short")
     t0, t1 = float(c["t_start"]), float(c["t_end"])
     cfg = _load_cfg(episode_dir, fmt)
     cuts_path = episode_dir / TIGHTEN_DIR / f"{cid}_cuts.json"
     if not cuts_path.exists():
         raise SystemExit(f"{cuts_path} 不存在——先跑 run_short_tighten --detect + 複審")
-    cuts = json.loads(cuts_path.read_text(encoding="utf-8"))["cuts"]
+    cuts_doc = json.loads(cuts_path.read_text(encoding="utf-8"))
+    _assert_cut_subtitle_lineage(cuts_doc, subtitle.identity())
+    cuts = cuts_doc["cuts"]
     if any(x.get("keep") is None for x in cuts):
         raise SystemExit("cuts.json 有未複審項（keep=null）——先複審")
     segs = _keep_segments(t0, t1, cuts, FORMAT_TIGHTEN[fmt]["min_keep_seg"])
@@ -590,7 +658,14 @@ def direct(
         offset_frames += f1 - f0
 
     mp.SetCurrentFolder(root)
-    seg_srt, n_cues = _retime_srt(episode_dir, cid, segs, cuts, fine=cfg["fine_subs"])
+    seg_srt, n_cues = _retime_srt(
+        episode_dir,
+        cid,
+        segs,
+        cuts,
+        fine=cfg["fine_subs"],
+        transcript=subtitle.srt_path,
+    )
     srt_items = import_srt_tidy(mp, root, seg_srt)
     sub_ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
     # 收尾驗證：實際上軌數 = shot 數（fail loud——報成功但 timeline 空的血案不再）
@@ -620,6 +695,7 @@ def direct(
         "punch_ramps": n_punch,
         "subtitles": sub_ok,
         "cues": n_cues,
+        **subtitle.identity(),
         "stills": stills,
     }
 

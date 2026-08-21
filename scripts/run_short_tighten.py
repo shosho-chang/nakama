@@ -52,6 +52,7 @@ from run_highlight_cut import (  # noqa: E402
     _ts,
 )
 
+from agents.brook.script_video.subtitle_handoff import Stage5SubtitleRequest  # noqa: E402
 from shared.subtitle_finalize import finalize_cues  # noqa: E402
 
 logger = logging.getLogger("short_tighten")
@@ -155,6 +156,43 @@ def _load_winner(episode_dir: Path, cid: str) -> tuple[dict, dict]:
     return c, w
 
 
+def _open_production_subtitle(episode_dir: Path):
+    """Open the current Stage 5 subtitle and re-verify its release lineage.
+
+    ADR-063 episodes do not create the legacy ``transcript.srt`` or
+    ``subs/words.json`` aliases.  Every tightening pass must therefore use the
+    same Stage 5 selector as Resolve/highlight materialization instead of
+    silently falling back to those historical paths.
+    """
+    return Stage5SubtitleRequest().open(episode_dir)
+
+
+def _optional_words(episode_dir: Path) -> list[dict]:
+    """Return legacy word timings when present; absence is a safe degradation.
+
+    Memo Dual-Audit V1 currently releases cue-level timings, not authenticated
+    word-level timings.  Pause cuts remain audio-derived, while filler/stutter
+    proposals are simply omitted until a word-timing artifact is formally
+    added to the release contract.
+    """
+    path = episode_dir / "subs" / "words.json"
+    if not path.is_file():
+        return []
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    words = raw.get("words") if isinstance(raw, dict) else raw
+    if not isinstance(words, list):
+        raise SystemExit(f"{path} 的 words 必須是 array")
+    return words
+
+
+def _assert_cut_subtitle_lineage(cuts_doc: dict, actual: dict) -> None:
+    expected = cuts_doc.get("subtitle_lineage")
+    if expected is None:
+        raise SystemExit("cuts.json 缺 subtitle_lineage——請重新執行 --detect")
+    if expected != actual:
+        raise SystemExit("cuts.json subtitle_lineage 已過期——請重新執行 --detect")
+
+
 def _detect_silences(
     audio: Path, t0: float, t1: float, min_pause: float = MIN_PAUSE
 ) -> list[tuple[float, float]]:
@@ -191,10 +229,11 @@ def _detect_silences(
 
 def detect(episode_dir: Path, cid: str) -> dict:
     c, _w = _load_winner(episode_dir, cid)
+    subtitle = _open_production_subtitle(episode_dir)
     fmt = c.get("format", "short")
     cfg = FORMAT_TIGHTEN[fmt]
     t0, t1 = float(c["t_start"]), float(c["t_end"])
-    words = json.load(open(episode_dir / "subs" / "words.json", encoding="utf-8"))["words"]
+    words = _optional_words(episode_dir) if cfg["cut_filler"] else []
     seg_words = [x for x in words if t0 <= x.get("start", 0) < t1]
 
     cuts: list[dict] = []
@@ -261,7 +300,7 @@ def detect(episode_dir: Path, cid: str) -> dict:
 
     # 3) backchannel cue（整句只有附和詞，keep=null——要人工確認沒壓到
     #    來賓語音；能量分析對重疊 backchannel 是盲的，見 SKILL.md 已知極限）
-    srt_cues = _parse_srt(episode_dir / "transcript.srt") if cfg["cut_backchannel"] else []
+    srt_cues = _parse_srt(subtitle.srt_path) if cfg["cut_backchannel"] else []
     for s, e, text in srt_cues:
         if t0 <= s and e <= t1 and text.replace(" ", "") in BACKCHANNEL_TEXTS:
             cuts.append(
@@ -279,7 +318,13 @@ def detect(episode_dir: Path, cid: str) -> dict:
     out_dir = episode_dir / TIGHTEN_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{cid}_cuts.json"
-    payload = {"id": cid, "t_start": t0, "t_end": t1, "cuts": cuts}
+    payload = {
+        "id": cid,
+        "t_start": t0,
+        "t_end": t1,
+        "subtitle_lineage": subtitle.identity(),
+        "cuts": cuts,
+    }
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
     n_review = sum(1 for x in cuts if x["keep"] is None)
     return {
@@ -889,12 +934,17 @@ def _retime_srt(
             pause = None
     tl_words = _timeline_words(episode_dir, segs, clock_offset)
     if tl_words is None:
-        logger.warning("%s: 沒有 words.json——字元時間退回 cue 內均分，停頓判定會失準", cid)
-    # 黏著度語料用**整集**逐字稿，不是這一段——單一 cut 只有 ~2500 字，
-    # 字元 bigram 統計會稀疏到抓不到任何東西
-    from shared.word_cohesion import Cohesion
+        logger.warning(
+            "%s: 沒有正式 word-level timing——保留 release cue 邊界，不做猜測式重切",
+            cid,
+        )
+        rb = {"moved": 0}
+    else:
+        # 黏著度語料用**整集**逐字稿，不是這一段——單一 cut 只有 ~2500 字，
+        # 字元 bigram 統計會稀疏到抓不到任何東西
+        from shared.word_cohesion import Cohesion
 
-    rows, rb = repair_cues(rows, words=tl_words, pause=pause, cohesion=Cohesion(cues))
+        rows, rb = repair_cues(rows, words=tl_words, pause=pause, cohesion=Cohesion(cues))
     if rb["moved"]:
         logger.info(f"{cid}: 切點重修 {rb['moved']} 處（切點搬到音檔靜音處）")
     # 顯示層定版（修修 2026-08-05）：句尾零標點 + cue 間 ≤3s 空隙補平連續顯示
@@ -917,13 +967,16 @@ def apply(episode_dir: Path, cid: str) -> dict:
     )
 
     c, w = _load_winner(episode_dir, cid)
+    subtitle = _open_production_subtitle(episode_dir)
     fmt = c.get("format", "short")
     fcfg = FORMAT_TIGHTEN[fmt]
     t0, t1 = float(c["t_start"]), float(c["t_end"])
     cuts_path = episode_dir / TIGHTEN_DIR / f"{cid}_cuts.json"
     if not cuts_path.exists():
         raise SystemExit(f"{cuts_path} 不存在——先跑 --detect")
-    cuts = json.loads(cuts_path.read_text(encoding="utf-8"))["cuts"]
+    cuts_doc = json.loads(cuts_path.read_text(encoding="utf-8"))
+    _assert_cut_subtitle_lineage(cuts_doc, subtitle.identity())
+    cuts = cuts_doc["cuts"]
     pending = [x for x in cuts if x.get("keep") is None]
     if pending:
         raise SystemExit(f"{len(pending)} 個候選未複審（keep=null）——agent 先把 cuts.json 複審完")
@@ -1016,7 +1069,13 @@ def apply(episode_dir: Path, cid: str) -> dict:
         offset_frames += f1 - f0
 
     mp.SetCurrentFolder(root)
-    seg_srt, n_cues = _retime_srt(episode_dir, cid, segs, cuts)
+    seg_srt, n_cues = _retime_srt(
+        episode_dir,
+        cid,
+        segs,
+        cuts,
+        transcript=subtitle.srt_path,
+    )
     srt_items = import_srt_tidy(mp, root, seg_srt)
     sub_ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
     pm.SaveProject()
@@ -1030,6 +1089,7 @@ def apply(episode_dir: Path, cid: str) -> dict:
         "duration": f"{t1 - t0:.1f}s → {t1 - t0 - removed:.1f}s",
         "subtitles": sub_ok,
         "cues": n_cues,
+        **subtitle.identity(),
     }
 
 
