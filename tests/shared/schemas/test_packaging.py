@@ -21,10 +21,12 @@ import pytest
 from pydantic import ValidationError
 
 from shared.schemas.packaging import (
+    ApprovalFileV1,
     ApprovalV1,
     CutV1,
     PackagesFileV1,
     PackageV1,
+    PackagingRevisionJobV1,
     TitleV1,
     parse_approval,
     parse_packages,
@@ -321,6 +323,26 @@ def test_approval_primary_package_too_large():
     data["primary_package"] = 4
     with pytest.raises(ValidationError):
         ApprovalV1(**data)
+
+
+def test_approval_file_accepts_typed_revision_job_from_desktop_worker():
+    revision = PackagingRevisionJobV1(
+        request_id="revision-6d86eca76734f1fb",
+        feedback="背景書封再暗一點",
+        requested_at=datetime.now(timezone.utc),
+        source_packages_sha256="a" * 64,
+        source_assets={
+            "Attachments/packaging/20260805-linzhichen/thumbnail.png": "b" * 64
+        },
+        status="ready_for_review",
+        attempt=1,
+        result_receipt="revisions/revision-6d86eca76734f1fb/result.json",
+    )
+    approval = ApprovalV1(**_approval_data(), revision_job=revision)
+
+    parsed = ApprovalFileV1(episode="20260805-linzhichen", approvals=[approval])
+
+    assert parsed.approvals[0].revision_job == revision
 
 
 # ---------------------------------------------------------------------------
