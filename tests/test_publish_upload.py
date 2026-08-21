@@ -137,6 +137,24 @@ def test_run_exact_uploaded_target_skips_duplicate_without_loading_youtube(
     load_yt.assert_not_called()
 
 
+def test_uploader_and_observer_share_controlled_credential_loader(tmp_path, monkeypatch):
+    token_path = tmp_path / "youtube_token.json"
+    token_path.write_text('{"fixture":"redacted"}', encoding="utf-8")
+    clients = [object(), object()]
+    calls = []
+
+    def controlled_loader(path):
+        calls.append(path)
+        return clients[len(calls) - 1]
+
+    monkeypatch.setattr(publish_upload, "TOKEN_PATH", token_path)
+    monkeypatch.setattr(publish_upload, "load_youtube_client", controlled_loader, raising=False)
+
+    assert publish_upload._load_yt() is clients[0]
+    assert publish_upload.load_youtube_observer() is clients[1]
+    assert calls == [token_path, token_path]
+
+
 class _ListRequest:
     def __init__(self, response):
         self.response = response
