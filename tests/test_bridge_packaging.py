@@ -345,7 +345,84 @@ def test_reject_with_note_upserts(client, vault):
     assert entry.reject_note == "三張表情太像，重抽"
 
     board = client.get("/bridge/packaging/20260723-xieboran")
-    assert "REJECTED" in board.text
+    assert "REVISION QUEUED" in board.text
+
+
+def test_reject_with_feedback_queues_agent_revision(client, vault):
+    response = client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={
+            "cut_id": "punch-L1",
+            "decision": "reject",
+            "reject_note": "人物 cutout 不自然，書封白底要去掉",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    approval_path = (
+        vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json"
+    )
+    entry = json.loads(approval_path.read_text(encoding="utf-8"))["approvals"][0]
+    assert entry["approved"] is False
+    assert entry["revision_job"]["status"] == "queued"
+    assert entry["revision_job"]["feedback"] == "人物 cutout 不自然，書封白底要去掉"
+    assert entry["revision_job"]["request_id"].startswith("revision-")
+
+    board = client.get("/bridge/packaging/20260723-xieboran")
+    assert "REVISION QUEUED" in board.text
+
+
+def test_reject_without_feedback_does_not_queue_revision(client, vault):
+    response = client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "reject", "reject_note": "   "},
+        follow_redirects=False,
+    )
+    assert response.status_code == 400
+    assert "Agent" in response.text
+    assert not (
+        vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json"
+    ).exists()
+
+
+def test_failed_revision_can_be_retried_without_approving(client, vault):
+    client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "reject", "reject_note": "重做 cutout"},
+        follow_redirects=False,
+    )
+    approval_path = (
+        vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json"
+    )
+    payload = json.loads(approval_path.read_text(encoding="utf-8"))
+    job = payload["approvals"][0]["revision_job"]
+    job.update(
+        {
+            "status": "failed",
+            "attempt": 1,
+            "started_at": "2026-08-21T06:00:00+00:00",
+            "finished_at": "2026-08-21T06:01:00+00:00",
+            "error": "renderer failed",
+        }
+    )
+    approval_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    board = client.get("/bridge/packaging/20260723-xieboran")
+    assert "REVISION FAILED" in board.text
+    assert "renderer failed" in board.text
+
+    response = client.post(
+        "/bridge/packaging/20260723-xieboran/revision/retry",
+        data={"cut_id": "punch-L1"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    saved = json.loads(approval_path.read_text(encoding="utf-8"))["approvals"][0]
+    assert saved["approved"] is False
+    assert saved["revision_job"]["status"] == "queued"
+    assert saved["revision_job"]["attempt"] == 1
+    assert saved["revision_job"]["error"] is None
 
 
 def test_approve_requires_primary_package(client):
@@ -670,13 +747,13 @@ def test_variant_pick_alone_is_not_a_rejection(client, vault_with_variants):
     board = client.get("/bridge/packaging/20260723-xieboran")
     assert "PENDING" in board.text
     assert "REJECTED" not in board.text
-    # 真的按 Reject 才是 REJECTED
+    # 真的按 Reject 才會建立 revision queue
     client.post(
         "/bridge/packaging/20260723-xieboran/approve",
         data={"cut_id": "punch-L1", "decision": "reject", "reject_note": "臉不對"},
         follow_redirects=False,
     )
-    assert "REJECTED" in client.get("/bridge/packaging/20260723-xieboran").text
+    assert "REVISION QUEUED" in client.get("/bridge/packaging/20260723-xieboran").text
 
 
 def test_legacy_approval_without_decision_still_shows_rejected(client, vault):

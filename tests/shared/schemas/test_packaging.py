@@ -25,6 +25,7 @@ from shared.schemas.packaging import (
     CutV1,
     PackagesFileV1,
     PackageV1,
+    PackagingRevisionJobV1,
     TitleV1,
     parse_approval,
     parse_packages,
@@ -110,6 +111,17 @@ def _approval_data() -> dict:
         "reject_note": None,
         "decided_at": datetime(2026, 7, 27, 12, 0, 0, tzinfo=timezone.utc).isoformat(),
     }
+
+
+def test_revision_job_rejects_asset_path_escape():
+    with pytest.raises(ValidationError, match="source_assets"):
+        PackagingRevisionJobV1(
+            request_id="revision-0123456789abcdef",
+            feedback="重做",
+            requested_at="2026-08-21T06:00:00+00:00",
+            source_packages_sha256="a" * 64,
+            source_assets={"../../outside.png": "b" * 64},
+        )
 
 
 # ---------------------------------------------------------------------------

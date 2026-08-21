@@ -43,6 +43,7 @@ from shared.schemas.packaging import (
     ApprovalV1,
     GeometryV1,
     PackagesFileV1,
+    PackagingRevisionJobV1,
     RenderRequestV1,
     parse_approval_file,
     parse_packages,
@@ -334,6 +335,7 @@ def _load_composition_receipt(
     cut_id: str,
     package_rank: int,
     thumbnail_png: str,
+    vault_root: Path | None = None,
 ) -> LongThumbnailCompositionReceiptV2:
     path = _composition_receipt_path(ep_dir, cut_id, package_rank)
     if not path.is_file():
@@ -369,7 +371,7 @@ def _load_composition_receipt(
         or Path(asset_ref).suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}
     ):
         raise HTTPException(status_code=422, detail="center visual asset 路徑無效")
-    vault_root = get_vault_path().resolve()
+    vault_root = (vault_root or get_vault_path()).resolve()
     asset_path = (vault_root / asset_ref).resolve()
     try:
         asset_path.relative_to(ep_dir.resolve())
@@ -792,6 +794,12 @@ async def packaging_board(
     ctx["description_pending"] = bool(description_pending)
     ctx["description_state"] = description_state
     ctx["description_error"] = description_error
+    ctx["revision_polling"] = any(
+        view["approval"]
+        and view["approval"].revision_job
+        and view["approval"].revision_job.status in {"queued", "running"}
+        for view in ctx["cuts"]
+    )
     return _templates.TemplateResponse(request, "packaging_board.html", ctx)
 
 
@@ -810,8 +818,11 @@ async def packaging_approve(
     if decision not in ("approve", "reject"):
         raise HTTPException(status_code=400, detail=f"unknown decision: {decision!r}")
     approved = decision == "approve"
+    feedback = reject_note.strip()
     if approved and primary_package is None:
         raise HTTPException(status_code=400, detail="approve 需要指定 primary_package (1–3)")
+    if not approved and not feedback:
+        raise HTTPException(status_code=400, detail="Reject 需要填寫 feedback，Agent 才能重做")
 
     ctx = _board_context(episode_slug)  # 同時擋 conflict / 壞檔
     pkg: PackagesFileV1 = ctx["pkg"]
@@ -837,17 +848,41 @@ async def packaging_approve(
         )
     existing = _load_approvals(ep_dir, pkg.episode)
     prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
+    decided_at = datetime.now(timezone.utc)
+    revision_job = None
+    if not approved:
+        source_assets: dict[str, str] = {}
+        for package in cut.packages:
+            asset = get_vault_path() / package.thumbnail_png
+            if asset.is_file():
+                source_assets[package.thumbnail_png] = hashlib.sha256(
+                    asset.read_bytes()
+                ).hexdigest()
+        request_seed = "\0".join(
+            (pkg.episode, cut_id, decided_at.isoformat(), feedback)
+        ).encode("utf-8")
+        revision_job = PackagingRevisionJobV1(
+            request_id=f"revision-{hashlib.sha256(request_seed).hexdigest()[:16]}",
+            feedback=feedback,
+            requested_at=decided_at,
+            source_packages_sha256=hashlib.sha256(
+                (ep_dir / "packages.json").read_bytes()
+            ).hexdigest(),
+            source_assets=source_assets,
+        )
     entry = ApprovalV1(
         cut_id=cut_id,
         approved=approved,
         primary_package=primary_package if approved else 1,
-        reject_note=reject_note.strip() or None,
-        decided_at=datetime.now(timezone.utc),
+        reject_note=feedback or None,
+        decided_at=decided_at,
         decision=decision,
         # 挑臉／打大字是另一支 form 寫的，approve 不可以把它們洗掉
         # （2026-08-14 browser UAT 抓到：勾完變體再 approve，選擇整個不見）。
         selected_variant=prev.selected_variant if prev else None,
         bigtext_request=prev.bigtext_request if prev else None,
+        render_request=prev.render_request if prev else None,
+        revision_job=revision_job,
     )
     others = [a for a in existing.approvals if a.cut_id != cut_id]
     updated = ApprovalFileV1(episode=pkg.episode, approvals=[*others, entry])
@@ -893,6 +928,49 @@ async def packaging_retry_description(
     return RedirectResponse(f"{focused_board}&description_pending=1", status_code=303)
 
 
+@page_router.post("/{episode_slug}/revision/retry")
+async def packaging_retry_revision(
+    episode_slug: str,
+    cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
+    nakama_auth: str | None = Cookie(None),
+):
+    """Requeue one failed revision; the worker still cannot approve the result."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/packaging", status_code=302)
+    ctx = _board_context(episode_slug)
+    ep_dir = _packaging_root() / episode_slug
+    approvals = _load_approvals(ep_dir, ctx["pkg"].episode)
+    previous = next((row for row in approvals.approvals if row.cut_id == cut_id), None)
+    if previous is None or previous.revision_job is None:
+        raise HTTPException(status_code=404, detail="revision job not found")
+    if previous.revision_job.status != "failed":
+        raise HTTPException(status_code=409, detail="只有 failed revision 可以重試")
+    revision = previous.revision_job.model_copy(
+        update={
+            "status": "queued",
+            "started_at": None,
+            "finished_at": None,
+            "result_receipt": None,
+            "error": None,
+        }
+    )
+    retried = previous.model_copy(
+        update={"approved": False, "decision": "reject", "revision_job": revision}
+    )
+    updated = ApprovalFileV1(
+        episode=approvals.episode,
+        approvals=[retried if row.cut_id == cut_id else row for row in approvals.approvals],
+    )
+    pending = ep_dir / "approval.json.tmp"
+    pending.write_text(updated.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    pending.replace(ep_dir / "approval.json")
+    logger.info("packaging revision retry: %s/%s", episode_slug, cut_id)
+    return RedirectResponse(
+        f"/bridge/packaging/{quote(episode_slug, safe='')}?cut={quote(cut_id, safe='')}",
+        status_code=303,
+    )
+
+
 @page_router.post("/{episode_slug}/variant")
 async def packaging_select_variant(
     episode_slug: str,
@@ -932,6 +1010,8 @@ async def packaging_select_variant(
     ep_dir = _packaging_root() / episode_slug
     existing = _load_approvals(ep_dir, pkg.episode)
     prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
+    if prev and prev.revision_job and prev.revision_job.status in {"queued", "running"}:
+        raise HTTPException(status_code=409, detail="Packaging revision 正在處理，完成後再改變體")
     entry = ApprovalV1(
         cut_id=cut_id,
         approved=prev.approved if prev else False,
@@ -945,6 +1025,8 @@ async def packaging_select_variant(
             variant if variant is not None else (prev.selected_variant if prev else None)
         ),
         bigtext_request=bigtext_request.strip() or None,
+        render_request=prev.render_request if prev else None,
+        revision_job=prev.revision_job if prev else None,
     )
     others = [a for a in existing.approvals if a.cut_id != cut_id]
     updated = ApprovalFileV1(episode=pkg.episode, approvals=[*others, entry])
@@ -1054,6 +1136,8 @@ async def packaging_compose(
     except ValidationError as exc:
         raise HTTPException(status_code=400, detail=f"配方驗證失敗：{str(exc)[:300]}") from exc
 
+    if prev and prev.revision_job and prev.revision_job.status in {"queued", "running"}:
+        raise HTTPException(status_code=409, detail="Packaging revision 正在處理，完成後再存配方")
     entry = ApprovalV1(
         cut_id=cut_id,
         approved=prev.approved if prev else False,
@@ -1064,6 +1148,7 @@ async def packaging_compose(
         selected_variant=prev.selected_variant if prev else None,
         bigtext_request=prev.bigtext_request if prev else None,
         render_request=req,
+        revision_job=prev.revision_job if prev else None,
     )
     others = [a for a in existing.approvals if a.cut_id != cut_id]
     updated = ApprovalFileV1(episode=pkg.episode, approvals=[*others, entry])

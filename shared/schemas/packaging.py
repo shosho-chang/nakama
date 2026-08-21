@@ -326,6 +326,48 @@ class RenderRequestV1(BaseModel):
         return self
 
 
+class PackagingRevisionJobV1(BaseModel):
+    """A human rejection queued for a desktop packaging revision agent."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract: Literal["packaging-revision-job-v1"] = "packaging-revision-job-v1"
+    request_id: str = Field(pattern=r"^revision-[a-f0-9]{16}$")
+    feedback: str = Field(min_length=1, max_length=2000)
+    requested_at: AwareDatetime
+    source_packages_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    source_assets: dict[str, str]
+    status: Literal["queued", "running", "ready_for_review", "failed"] = "queued"
+    attempt: int = Field(default=0, ge=0)
+    started_at: AwareDatetime | None = None
+    finished_at: AwareDatetime | None = None
+    result_receipt: str | None = None
+    error: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_paths_and_hashes(self) -> "PackagingRevisionJobV1":
+        for path, digest in self.source_assets.items():
+            parts = PurePosixPath(path).parts
+            if (
+                _is_abs_path(path)
+                or "\\" in path
+                or ".." in parts
+                or not path.startswith("Attachments/packaging/")
+                or not re.fullmatch(r"[a-f0-9]{64}", digest)
+            ):
+                raise ValueError(f"source_assets contains unsafe path/hash: {path!r}")
+        if self.result_receipt is not None:
+            parts = PurePosixPath(self.result_receipt).parts
+            if (
+                _is_abs_path(self.result_receipt)
+                or "\\" in self.result_receipt
+                or ".." in parts
+                or not self.result_receipt.startswith(f"revisions/{self.request_id}/")
+            ):
+                raise ValueError("result_receipt must stay inside this revision directory")
+        return self
+
+
 class ApprovalV1(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -344,6 +386,9 @@ class ApprovalV1(BaseModel):
     bigtext_request: str | None = None
     # 「先選好、再 render 一次」的配方（每支最多一份；要換就覆蓋）。
     render_request: RenderRequestV1 | None = None
+    # Reject 會建立一筆 revision job；桌機 watcher 認領後交給獨立 Agent 重做，
+    # 完成只回到 ready_for_review，永遠不由 worker 自動核准。
+    revision_job: PackagingRevisionJobV1 | None = None
 
 
 def parse_packages(path: "Path | str") -> PackagesFileV1:
