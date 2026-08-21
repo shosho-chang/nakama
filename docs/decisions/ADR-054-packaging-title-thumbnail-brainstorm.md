@@ -37,6 +37,7 @@
 | D14 | resume/冪等：working set `manifest.json` 逐段記進度；推導鏈逐支落地 `title_trace.json`；失敗停段不跳段 | 附錄 A14 |
 | D15 | **交接契約（收 publish handoff §3/§5）**：發布層只讀 vault packaging 目錄的 `packages.json` + `approval.json`，不再有第三份交接檔；citations/brand_flags 由 packaging skill 從 `review_brandlens.json`（機器可讀）填入 | 附錄 D |
 | D16 | **編排入口 = 擴充 `podcast-pipeline`**（原 OQ1，修修 2026-07-26 裁決）：packaging 作為它在 highlight-cut 之後的新末段，沿用其「依檔案存在判斷進度、段間停下」機制（= D14 的 resume 邊界）。Cowork 啟動整條；HITL 在 Web UI（Bridge 讀 vault packaging 目錄 — Syncthing 是既有同步面）。不新開 orchestrator skill、highlight-cut 不長大。**兩個前置**：① title-brainstorm 執行權**移交 packaging 段** — highlight-cut Step 4 降為規則指標（packaging 上線前照舊，上線後不重跑，標題候選單一落點 packages.json，選段企劃報告不再存候選）— 否則同批 panel pass 跑兩次、quota 翻倍 ② podcast-pipeline 進度偵測表需先納入 highlight-cut（檔案 marker：`candidates.json`/`winners.json`），其現行「Resolve 內已有同名 project ＝ 全部完成」末列語意隨之修正 | — |
+| D17 | **Reject 是 revision command，不是死狀態**（2026-08-21）：Bridge 仍零 LLM，只封存 feedback + source hashes 為 `revision_job`；桌機 watcher 備份舊版後啟動 bounded Agent，驗證輸出後只回 `ready_for_review`，不得自動核准。失敗 fail loud，只有人工 Retry 才重跑。 | thumbnail-brainstorm Step 4.9 |
 
 ### 連動改動（同 PR）
 

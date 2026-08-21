@@ -53,6 +53,17 @@
       #bgimg {
         width: 100%; height: 100%; object-fit: cover; display: none;
       }
+      /* 作者訪談：書封是可辨識的中景，不是第一視覺層。 */
+      #book-layer {
+        position: absolute; inset: 0; z-index: 1; display: none;
+        align-items: center; justify-content: center; overflow: hidden;
+      }
+      #book-cover {
+        height: var(--book-h, 94%); width: auto; max-width: 50%; object-fit: contain;
+        opacity: var(--book-opacity, 0.38);
+        filter: brightness(var(--book-brightness, 0.52)) saturate(0.78)
+                drop-shadow(0 12px 34px rgba(0,0,0,0.55));
+      }
       /* 人物在字塊之上（z5 > 字 z4）— 字尾塞進肩/髮後方形成分層（N2 同邏輯，
          2026-07-29 修修裁決沿用）；glow 沿 alpha 輪廓、內側緣漸隱蓋掉裁框硬邊 */
       #host, #guest {
@@ -78,6 +89,14 @@
         position: absolute; left: var(--text-x, 50%); top: 44%;
         transform: translate(-50%, -50%);
         z-index: 4; width: 580px; text-align: center;
+      }
+      /* 書封模式參考作者訪談封面：中央文案必須壓在麥克風懸臂之上。
+         人臉已經外移到左右邊緣，所以不會用文字蓋臉。 */
+      #root.book-mode #text-block { z-index: 7; }
+      #root.book-mode #credit {
+        display: table; margin-left: auto; margin-right: auto;
+        padding: 5px 18px 9px; border-radius: 10px;
+        background: rgba(20,20,20,0.68);
       }
       #title {
         color: #FFFFFF;
@@ -153,6 +172,10 @@
         "host_cutout_data_url":  { "type": "string", "default": "" },
         "guest_cutout_data_url": { "type": "string", "default": "" },
         "bg_image_data_url":     { "type": "string", "default": "" },
+        "book_cover_data_url":   { "type": "string", "default": "" },
+        "book_cover_opacity":    { "type": "number", "default": 0.38 },
+        "book_cover_brightness": { "type": "number", "default": 0.52 },
+        "book_cover_height_pct": { "type": "number", "default": 94 },
         "host_height_pct":       { "type": "number", "default": 108 },
         "guest_height_pct":      { "type": "number", "default": 108 },
         "host_x_pct":            { "type": "number", "default": -2 },
@@ -165,6 +188,7 @@
       }'
     >
       <div id="bgfill"><img id="bgimg" alt="" /></div>
+      <div id="book-layer"><img id="book-cover" alt="" /></div>
       <img id="host" alt="" />
       <img id="guest" alt="" />
       <div id="text-block">
@@ -225,6 +249,20 @@
         const bg = document.getElementById("bgimg");
         bg.src = vars.bg_image_data_url;
         bg.style.display = "block";
+      }
+
+      if (vars.book_cover_data_url) {
+        const layer = document.getElementById("book-layer");
+        const cover = document.getElementById("book-cover");
+        cover.src = vars.book_cover_data_url;
+        root.style.setProperty("--book-opacity",
+          vars.book_cover_opacity !== undefined ? vars.book_cover_opacity : 0.38);
+        root.style.setProperty("--book-brightness",
+          vars.book_cover_brightness !== undefined ? vars.book_cover_brightness : 0.52);
+        root.style.setProperty("--book-h",
+          (vars.book_cover_height_pct !== undefined ? vars.book_cover_height_pct : 94) + "%");
+        layer.style.display = "flex";
+        root.classList.add("book-mode");
       }
 
       // 兩行標題；highlight_text 那段包橘底框（恰好一次）
