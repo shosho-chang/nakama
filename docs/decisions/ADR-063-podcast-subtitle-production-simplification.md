@@ -177,10 +177,11 @@ review, and explicit YouTube upload approval.
    not import or invoke them.
 4. Update Podcast and transcription skills to describe only this ADR as the default production path.
 5. Keep all old checkpoints and evidence immutable. Do not rename or rewrite 抹布 artifacts.
-6. Run the operational smoke on the next clean episode. 抹布 is a backward-compatibility fixture, not a
-   clean acceptance fixture, because its Program Feed contains a source bitstream fault and its subtitle
-   bundle predates this contract. This operational smoke remains pending and does not reverse the completed
-   code cutover.
+6. The clean-episode operational smoke completed on `20260805 林之晨`: Auphonic, Memo, dual audit,
+   major-risk dual ASR, hash-bound release, actual Resolve project/timeline, three blind miners, five blind
+   reviews, and strict long Highlight shortlist all completed without an ordinary human gate before the
+   shortlist. 抹布 remains a backward-compatibility fixture because its Program Feed contains a source
+   bitstream fault and its subtitle bundle predates this contract.
 7. Code, schema, consumer, routing, and focused regression gates passed on 2026-08-21; this ADR is therefore
    `Accepted / Active`. Record the release contract hashes in the next clean episode handoff.
 
@@ -205,9 +206,18 @@ E:\nakama\.venv-v2\Scripts\python.exe -m pytest -q tests/scripts/test_podcast_su
 - `git diff --check`: exit **0**;
 - final severity count: **P0 = 0, P1 = 0**.
 
-These results activate the repository production contract and default routing. They do not claim that a new
-interview has completed the operational E2E. The next clean episode smoke from Auphonic through Highlight
-shortlist review is still pending; 抹布 remains legacy/backward-compatibility evidence only.
+These results activated the repository production contract and default routing. The separate clean-episode
+operational smoke completed later the same day on `20260805 林之晨`:
+
+- release SRT SHA-256: `74121675c36d5201ac700625402da914f7ead0790620d1eb423d547859db2f98`;
+- Stage 5 handoff SHA-256: `da5ad24e962868db561bf617e9987f90679ea0623da3c5406d8384c342e08efb`;
+- long shortlist SHA-256: `4c8badcf05388f0a592b078563a639b8b87c65b9e843fa7174c28d05149aeede`;
+- first approved worktree write to shortlist gate: `5,720.397 s` (`95.340 min`);
+- final focused regression: `104 passed`, Ruff passed, `git diff --check` exit 0;
+- no `winners.json` and no YouTube upload.
+
+The smoke encountered and closed production-shaped PCM24, null-proposal, miner-lineage, and review-envelope
+case/citation gaps before reaching the gate. 抹布 remains legacy/backward-compatibility evidence only.
 
 ## Acceptance criteria
 
@@ -222,9 +232,9 @@ shortlist review is still pending; 抹布 remains legacy/backward-compatibility 
   conflict tests fail closed or retain source text as specified.
 - Resolve and highlight consumers accept `podcast-subtitle-stage5-memo-dual-audit-handoff-v1` in
   `memo-dual-audit-v1` mode without the historical degraded flag.
-- Operational follow-up: prove on the next clean episode that the active route advances automatically through
-  Resolve and highlight mining to Highlight shortlist review unless a predeclared catastrophic condition
-  occurs. This smoke is not part of the completed code cutover evidence above.
+- Clean operational follow-up: `20260805 林之晨` proved the active route advances through actual Resolve,
+  three-miner validation, five-review QA, and Highlight shortlist review without an ordinary pre-shortlist
+  human gate. This is operational evidence separate from the code-cutover test record above.
 - Three lineage-bound miner outputs pass `--merge-miners`; strict review source-hash and complete-coverage
   checks pass before the long shortlist is rendered.
 - Production documents call the cutover active only after the 2026-08-21 code and integration verification

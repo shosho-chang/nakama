@@ -461,8 +461,10 @@ degraded 與新正式路徑互斥，舊路只能 explicit 使用。
 
 2026-08-21 獨立 QA 已對 code／schema／consumer、skill routing 與 relevant regression 發出
 **CODE CUTOVER GO**：targeted 38 passed、focused 249 passed、Ruff PASS、CLI help PASS、
-`git diff --check` exit 0，且 P0 = 0、P1 = 0。ADR-063 現為 **Accepted / Active**。這不表示
-新集 clean operational E2E 已跑；下一集從 Auphonic 到 Highlight shortlist review 的 smoke 仍待執行。
+`git diff --check` exit 0，且 P0 = 0、P1 = 0。ADR-063 現為 **Accepted / Active**。後續
+`20260805 林之晨` 已完成 clean operational E2E：Auphonic → Memo Dual-Audit Release V1 → actual Resolve
+project/timeline → 三 miner → 五份 blind review＋雙輪 QA → long Highlight shortlist gate。release SRT SHA
+`74121675...2f98`、Stage5 handoff `da5ad24e...8efb`、shortlist `4c8badcf...aeede`；未選 winner、未上傳 YouTube。
 
 抹布仍維持以下特殊規則：
 

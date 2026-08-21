@@ -87,13 +87,19 @@ def _ref(root: Path, path: Path) -> dict[str, object]:
     }
 
 
-def _pcm_wav(duration_ms: int = 3000) -> bytes:
+def _pcm_wav(
+    duration_ms: int = 3000,
+    *,
+    sample_width_bytes: int = 2,
+    channels: int = 1,
+) -> bytes:
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as handle:
-        handle.setnchannels(1)
-        handle.setsampwidth(2)
+        handle.setnchannels(channels)
+        handle.setsampwidth(sample_width_bytes)
         handle.setframerate(16_000)
-        handle.writeframes(b"\0\0" * (16_000 * duration_ms // 1000))
+        frame = b"\0" * (sample_width_bytes * channels)
+        handle.writeframes(frame * (16_000 * duration_ms // 1000))
     return buffer.getvalue()
 
 
@@ -185,8 +191,10 @@ def _memo_execution_lineage(root: Path, *, audio: bytes, memo: bytes) -> dict[st
     }
 
 
-def _early_inputs(root: Path, *, cue_count: int = 4) -> bytes:
-    audio = _pcm_wav(max(6000, (cue_count + 1) * 1000))
+def _early_inputs(
+    root: Path, *, cue_count: int = 4, audio: bytes | None = None
+) -> bytes:
+    audio = audio or _pcm_wav(max(6000, (cue_count + 1) * 1000))
     memo = _srt(cue_count)
     memo_execution = _memo_execution_lineage(root, audio=audio, memo=memo)
     handoff = _canonical(
@@ -1128,7 +1136,10 @@ def test_production_runner_has_no_formal_module_import() -> None:
 def test_prepare_major_audio_and_run_both_official_asr_families(
     tmp_path: Path,
 ) -> None:
-    _early_inputs(tmp_path)
+    _early_inputs(
+        tmp_path,
+        audio=_pcm_wav(6000, sample_width_bytes=3, channels=2),
+    )
     _text_inputs(tmp_path, unresolved="major")
     request_path = release.init_request(tmp_path, episode_id="fixture-episode")
     request = release.seal_request(request_path)
@@ -1142,6 +1153,8 @@ def test_prepare_major_audio_and_run_both_official_asr_families(
     assert plan["jobs"][0]["target"] == {"start_ms": 2000, "end_ms": 2900}
     clip = tmp_path / plan["jobs"][0]["clip"]["path"]
     with wave.open(str(clip), "rb") as handle:
+        assert handle.getnchannels() == 2
+        assert handle.getsampwidth() == 3
         assert handle.getnframes() == 16_000 * 2_900 // 1000
 
     calls: list[str] = []
@@ -1271,6 +1284,15 @@ def test_audio_decision_accepts_only_exact_audit_candidate_and_replays(
     request = release.seal_request(request_path)
     with pytest.raises(release.SubtitleReleaseError, match="fresh audit/dual-ASR"):
         release.build_release(request)
+
+
+def test_audio_decision_candidates_ignore_explicit_null_audit_proposals() -> None:
+    unresolved_item = {
+        "a_proposals": [None],
+        "b_proposals": ["既有文字候選"],
+    }
+
+    assert release._audit_candidates(unresolved_item) == ("既有文字候選",)
 
 
 def test_prepare_major_audio_zero_major_is_complete_empty_plan(tmp_path: Path) -> None:

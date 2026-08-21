@@ -34,8 +34,9 @@ acceptance fixture，也不得重跑或改名既有字幕 bundle。
 - Default handoff：`<episode>/subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json`
 
 ADR-063 已於 2026-08-21 通過 code、schema、consumer、routing 與 focused regression gates，
-狀態為 **Accepted / Active**。這是 production code cutover，不代表新訪談已完成 operational E2E；
-下一集 clean episode 從 Auphonic 到 Highlight shortlist review 的 smoke 仍待執行。
+狀態為 **Accepted / Active**。`20260805 林之晨` 同日完成 clean operational E2E smoke：從 Auphonic
+一路到 actual Resolve project/timeline 與 long Highlight shortlist gate；沒有在 shortlist 前加入一般人工 gate，
+也沒有自動選 winner 或上傳 YouTube。抹布仍只算 legacy/backward-compatibility fixture。
 
 ## Standing authorization and human gates
 

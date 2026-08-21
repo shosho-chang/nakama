@@ -72,7 +72,7 @@ def test_skill_exposes_memo_dual_audit_as_the_only_default_subtitle_route() -> N
     assert "python scripts/" not in production
 
 
-def test_adr_063_is_active_without_claiming_operational_episode_smoke() -> None:
+def test_adr_063_is_active_with_clean_episode_operational_smoke() -> None:
     adr = ADR_063.read_text(encoding="utf-8")
     skill = SKILL.read_text(encoding="utf-8")
     assert "- Status: Accepted / Active" in adr
@@ -80,9 +80,15 @@ def test_adr_063_is_active_without_claiming_operational_episode_smoke() -> None:
     assert "**38 passed**" in adr
     assert "**249 passed**" in adr
     assert "P0 = 0, P1 = 0" in adr
-    assert "operational smoke remains pending" in adr
+    assert "20260805 林之晨" in adr
+    assert "74121675c36d5201ac700625402da914f7ead0790620d1eb423d547859db2f98" in adr
+    assert "da5ad24e962868db561bf617e9987f90679ea0623da3c5406d8384c342e08efb" in adr
+    assert "4c8badcf05388f0a592b078563a639b8b87c65b9e843fa7174c28d05149aeede" in adr
+    assert "5,720.397 s" in adr
+    assert "no `winners.json` and no YouTube upload" in adr
     assert "Accepted / Active" in skill
-    assert "operational E2E" in skill
+    assert "clean operational E2E smoke" in skill
+    assert "operational smoke remains pending" not in adr + skill
     assert "implementation cutover pending verification" not in adr + skill
 
 
@@ -156,6 +162,8 @@ def test_s3_and_s4_runbook_has_exact_ordered_producers_and_contracts() -> None:
     )
     downstream = s3.split("### 2. Prepare recognition evidence", maxsplit=1)[1]
     assert downstream.count("@repairLineageArgs `") == 4
+    assert "no trailing LF/newline" in s3
+    assert "do not weaken the acceptance validator" in normalized_s3
 
     s4_ordered = (
         '"agent": "A"',
@@ -181,6 +189,10 @@ def test_s3_and_s4_runbook_has_exact_ordered_producers_and_contracts() -> None:
         '"needs_audio"',
         "exactly cover every base queue component",
         "cannot invent proposal authority",
+        "include explicit JSON `null`",
+        "`b_risks` is `list[str]`",
+        "`accept_identical`",
+        "`accept_single`",
     ):
         assert marker in s4
 
@@ -424,6 +436,8 @@ def test_highlight_skill_defines_executable_agent_owned_mining_and_review_contra
         '"contract": "podcast-highlight-miner-output-v1"',
         '"source_srt_sha256"',
         '"subtitle_lineage"',
+        "`status`／`srt_path`／`elapsed_sec`",
+        "不得把 `elapsed_sec` 這類執行耗時混入 identity",
         "--merge-miners",
         "podcast-highlight-candidates-v1",
         "highlights/candidates.json",
@@ -433,6 +447,8 @@ def test_highlight_skill_defines_executable_agent_owned_mining_and_review_contra
         "highlights/lens_brand.json",
         "highlights/lens_renee.json",
         '"source_sha256"',
+        "`hashlib.sha256(...).hexdigest()` 的小寫 hex",
+        "PowerShell `Get-FileHash` 的大寫顯示",
         "quote citations",
         "只有五份 review outputs 都驗證通過",
         'run_cut_shortlist.py "<episode>" --format long',

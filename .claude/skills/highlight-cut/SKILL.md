@@ -93,8 +93,9 @@ Orchestrator 必須平行 dispatch 三個互相隔離、不能讀彼此輸出的
 }
 ```
 
-`subtitle_lineage` 是 mining-input 除 `status`／`srt_path` 外的完整 identity object；不得刪欄或自行
-重建。`source_srt_sha256` raw exact copy 其中的 `subtitle_srt_sha256`。ID 固定以 miner role 開頭，避免
+`subtitle_lineage` 是 mining-input 排除診斷欄位 `status`／`srt_path`／`elapsed_sec` 後的完整
+identity object；不得刪欄、自行重建，也不得把 `elapsed_sec` 這類執行耗時混入 identity。
+`source_srt_sha256` raw exact copy 其中的 `subtitle_srt_sha256`。ID 固定以 miner role 開頭，避免
 跨 worker 撞名。`head_trim` 是 cue 內要去除的秒數或 `null`，不是文字。
 
 每個 candidate 必須滿足：`t_start < t_end`；long 目標 8–12 分鐘、容忍 6–18；short 目標
@@ -135,7 +136,8 @@ persona 全部覆蓋每個 candidate；brand 覆蓋全體；Renee 只覆蓋 long
 
 Persona `total` 必須 finite 0–100；這次 long gate 的三份 scoring file 與 brand findings IDs 必須 exact
 等於 long candidate IDs、無重複、無遺漏；每份 `source_sha256` 必須 raw exact 等於 finalized
-`candidates.json` SHA-256。所有引用原句須為 candidate time range 內 transcript raw substring。Brand veto 只標紅、不能
+`candidates.json` SHA-256，並使用 `hashlib.sha256(...).hexdigest()` 的小寫 hex，不得改成
+PowerShell `Get-FileHash` 的大寫顯示。所有引用原句須為 candidate time range 內 transcript raw substring。Brand veto 只標紅、不能
 自動排除。另派一個 QA pass 驗證 schema、coverage 與 quote citations；任何整份 review citation 錯誤就
 作廢並 blind rerun 該 reviewer，不能局部補分。
 

@@ -577,7 +577,7 @@ def _validate_model_evidence(
     if (
         pcm["channels"] not in {1, 2}
         or pcm["sample_rate_hz"] < 8_000
-        or pcm["sample_width_bytes"] != 2
+        or pcm["sample_width_bytes"] not in {2, 3}
         or pcm["frame_count"] <= 0
         or clip["pcm"] != pcm
     ):
@@ -1084,10 +1084,11 @@ def _audit_candidates(unresolved_item: Mapping[str, Any]) -> tuple[str, ...]:
     for field in ("a_proposals", "b_proposals"):
         proposals = decision.get(field)
         if not isinstance(proposals, list) or any(
-            not isinstance(value, str) or not value.strip() for value in proposals
+            value is not None and (not isinstance(value, str) or not value.strip())
+            for value in proposals
         ):
             raise SubtitleReleaseError("unresolved audit proposals are malformed")
-        candidates.extend(proposals)
+        candidates.extend(value for value in proposals if value is not None)
     return tuple(dict.fromkeys(candidates))
 
 
@@ -1657,7 +1658,7 @@ def _read_pcm_wav(raw: bytes, *, label: str) -> tuple[dict[str, int], bytes]:
     if (
         pcm["channels"] not in {1, 2}
         or pcm["sample_rate_hz"] < 8_000
-        or pcm["sample_width_bytes"] != 2
+        or pcm["sample_width_bytes"] not in {2, 3}
         or pcm["frame_count"] <= 0
     ):
         raise SubtitleReleaseError(f"{label} PCM format is unsupported")

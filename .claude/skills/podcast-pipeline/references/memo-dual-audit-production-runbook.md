@@ -167,6 +167,11 @@ another's result. Each writes canonical JSON to isolated paths
 }
 ```
 
+Here `canonical JSON` means the exact `canonical_json_bytes(...)` representation: UTF-8 without BOM,
+sorted compact keys, and **no trailing LF/newline**. An agent runtime whose patch writer adds a final LF
+must run a deterministic canonical serialization step before episode-local deployment; do not weaken the
+acceptance validator to tolerate alternate bytes.
+
 `reviewed_item_count` equals the exact `tokens` length. The review embeds an episode-local
 `memo_execution_receipt` reference containing the receipt/output paths and exact receipt, runner, model,
 input WAV, SRT, stdout, and stderr hashes. Both workers copy its receipt digest exactly. Only deterministic
@@ -422,6 +427,16 @@ Items exactly cover every base queue component once. Input hashes and episode ID
 risk metadata, original text, and `major_risk` are copied/derived from source audits and queue; Arbitration
 cannot invent proposal authority. Every major-risk component stays `keep_unresolved`. A non-major acceptance
 must use an approved decision, high confidence, and an exact proposal already present in A or B.
+
+Importer-exact details that must not be inferred from the example:
+
+- `a_proposals` and `b_proposals` preserve the base queue lineage order and include explicit JSON `null`
+  for a source audit record whose `proposed` value is null; do not sort or deduplicate them;
+- `b_risks` is `list[str]`: for each lineage entry whose agent is `B` and collection is `risk_cues`, append
+  that raw audit record's `category` string in lineage order;
+- the only decision values are `keep_unresolved`, `accept_a`, `accept_b`, `accept_identical`, and
+  `accept_single`. The named accept mode must match the exact derived side(s); a major-risk item may use only
+  `keep_unresolved`.
 
 ### Apply official arbitration
 
