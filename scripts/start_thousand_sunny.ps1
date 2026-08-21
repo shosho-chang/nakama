@@ -7,7 +7,7 @@
 # Stop:      Stop-ScheduledTask -TaskName 'Nakama-ThousandSunny'  (or taskkill /F /IM python.exe)
 
 $repo = 'E:\nakama'
-$venvPy = Join-Path $repo '.venv\Scripts\python.exe'
+$venvPy = Join-Path $repo '.venv-v2\Scripts\python.exe'
 $logDir = Join-Path $repo 'logs'
 $logFile = Join-Path $logDir 'thousand-sunny.log'
 
@@ -32,10 +32,11 @@ Start-Process -FilePath $venvPy `
     -WindowStyle Hidden `
     -NoNewWindow:$false
 
-# --- packaging render watcher -------------------------------------------------
-# 修修在 gate 上按「存配方」→ approval.json 多一份 render_request；render 需要
-# Chrome/hyperframes/字型，只能在桌機跑（ADR-054 D11），所以這支跟 Bridge 一起
-# 開機起來盯著。同一份配方只出一次圖（時間戳比對），失敗寫 log 不重試。
+# --- packaging desktop worker ------------------------------------------------
+# 兩種工作共用同一個 desktop watcher：
+# 1) gate「存配方」→ render_request → render 一次。
+# 2) gate Reject + feedback → revision_job → bounded Codex agent 重做 → 回到 re-review。
+# 兩者都需要桌機檔案／renderer；revision 失敗不會無限重試，也絕不自動核准。
 $watcherArgs = @('scripts/render_watcher.py', '--interval', '5')
 Start-Process -FilePath $venvPy `
     -ArgumentList $watcherArgs `

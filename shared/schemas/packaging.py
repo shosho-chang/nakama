@@ -107,6 +107,10 @@ class PackageV1(BaseModel):
     joint_pairing_id: str
     host_cutout: str
     guest_cutout: str
+    # The recipe belongs to the package it renders.  Older packages predate the
+    # editor and remain readable with an explicit None (the UI must show that
+    # absence instead of borrowing another package/cut-level request).
+    render_recipe: "RenderRequestV1 | None" = None
     # 空 list = 這支還沒產變體（舊集數／短片）；gate 就退化成單張顯示。
     variants: list[VariantV1] = Field(default_factory=list)
 
@@ -298,6 +302,13 @@ class RenderRequestV1(BaseModel):
     # 上一份 spec 撈——2026-08-15 把中間產物搬進 _work/ 就撈不到，整行從封面消失。
     # 收進配方後 gate 看得到也改得動，不再靠檔案系統的巧合。
     guest_credit: str = Field(default="", max_length=40)
+    # N1 author interviews use the book as a dark, full-height background.
+    # Keeping these values in the package recipe makes a Web rerender lossless;
+    # previously render_request.py silently fell back to a plain background.
+    book_cover: str | None = None
+    book_cover_opacity: float = Field(default=0.42, ge=0, le=1)
+    book_cover_brightness: float = Field(default=0.38, ge=0, le=1)
+    book_cover_height_pct: float = Field(default=100, ge=20, le=150)
     requested_at: AwareDatetime
     # geometry 兩種來源，靠 geometry_manual 分辨：
     #   False（預設）— solver 解完寫回來的，只當 gate 拖曳介面的起點，下次照樣重解
@@ -323,7 +334,19 @@ class RenderRequestV1(BaseModel):
                 f"highlight_text {self.highlight_text!r} 不在 big_text 內"
                 "（橘框詞必須是大字的子字串，否則 render 出來不會有框）"
             )
+        if self.book_cover is not None:
+            if _is_abs_path(self.book_cover):
+                raise ValueError("book_cover must be a vault-relative path")
+            parts = PurePosixPath(self.book_cover).parts
+            if "\\" in self.book_cover or ".." in parts:
+                raise ValueError("book_cover must be a safe vault-relative path")
         return self
+
+
+# PackageV1 is declared before RenderRequestV1 because it is the long-standing
+# public schema order.  Resolve the single forward reference after the recipe
+# contract exists instead of duplicating its fields in another model.
+PackageV1.model_rebuild()
 
 
 class PackagingRevisionJobV1(BaseModel):

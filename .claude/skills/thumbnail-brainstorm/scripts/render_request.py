@@ -2,18 +2,19 @@
 """render_request.py — 吃 gate 上組好的封面配方，render 一次（修修 2026-08-14 裁決）。
 
     python render_request.py --episode-slug 20260721-zhengguowei \
-        --packaging-dir "G:/Footages/20260721 鄭國威/packaging" --cut-id full
+        --packaging-dir "G:/Footages/20260721 鄭國威/packaging" --cut-id full \
+        --package-rank 3
 
 修修原話：「先把標題、大字跟 cutout 選定之後，你再去做 render，這樣 render 一次
 就好了。」gate（VPS）只寫 `approval.json` 的 `render_request`；出圖在桌機端，
 就是本 script：
 
-1. 讀 render_request（哪條標題／哪兩張臉／大字＋橘框詞）
+1. 讀所選 package 的 render_recipe（哪條標題／哪兩張臉／大字＋橘框詞）
 2. 幾何走 solver：scale 由**基準 cutout 解一次後鎖定**（同角色同裁切框 → 同
    pixel scale，v2.5 教訓 19），本張只解 y（眼線對齊）與 x（各自 head_cols）
 3. render → `occlusion_check` 兩輪線性內插收斂字塊左右遮蔽平衡
 4. `face_measure render` 交付 gate（量成品像素，不是量參數）
-5. 回填 `render_request.rendered_png`，並把該 rank 的 package 縮圖換成這張
+5. 只回填所選 package 的 `render_recipe.rendered_png` 與縮圖
 
 不做的事：不改標題文字（那是 gate 的 `/title`）、不自己挑臉（那是修修的事）。
 """
@@ -98,6 +99,54 @@ def _run(cmd: list[str]) -> subprocess.CompletedProcess:
     )
 
 
+def _book_cover_layer(req: dict, vault: Path) -> tuple[dict, dict]:
+    """Return the lossless N1 author/book layer carried by a package recipe."""
+    if not req.get("book_cover"):
+        return {}, {}
+    return (
+        {
+            "book_cover_opacity": float(req.get("book_cover_opacity", 0.42)),
+            "book_cover_brightness": float(req.get("book_cover_brightness", 0.38)),
+            "book_cover_height_pct": float(req.get("book_cover_height_pct", 100)),
+        },
+        {"book_cover_data_url": str(vault / req["book_cover"])},
+    )
+
+
+def _update_selected_package(data: dict, cut_id: str, package_rank: int, req: dict) -> None:
+    """Update exactly one package; fail loud instead of drifting another rank."""
+    for cut in data.get("cuts", []):
+        if cut.get("cut_id") != cut_id:
+            continue
+        for package in cut.get("packages", []):
+            if package.get("title_rank") == package_rank:
+                package["thumbnail_png"] = req["rendered_png"]
+                package["host_cutout"] = req["host_cutout"]
+                package["guest_cutout"] = req["guest_cutout"]
+                package["render_recipe"] = req
+                return
+        raise SystemExit(f"{cut_id} 找不到 package rank {package_rank}")
+    raise SystemExit(f"找不到 cut {cut_id}")
+
+
+def _write_selected_package(
+    paths: list[Path], cut_id: str, package_rank: int, req: dict
+) -> None:
+    """Apply the same selected-package update to working and vault contracts."""
+    for path in paths:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        _update_selected_package(data, cut_id, package_rank, req)
+        path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+
+
+def _matches_legacy_approval_request(entry: dict | None, req: dict) -> bool:
+    """Only mirror a real legacy request; JSON ``null`` is not a request mapping."""
+    legacy = entry.get("render_request") if entry else None
+    return isinstance(legacy, dict) and legacy.get("requested_at") == req.get("requested_at")
+
+
 def _landmarks(manifest: dict, name: str) -> dict:
     entry = (manifest.get("validated") or {}).get(name)
     if entry is None or not entry.get("landmarks_px"):
@@ -138,6 +187,7 @@ def main() -> int:
     ap.add_argument("--episode-slug", required=True)
     ap.add_argument("--packaging-dir", type=Path, required=True)
     ap.add_argument("--cut-id", required=True)
+    ap.add_argument("--package-rank", type=int, choices=(1, 2, 3))
     ap.add_argument("--host-baseline", default="host_v1_serious.png")
     ap.add_argument("--guest-baseline", default="guest_v1_serious.png")
     ap.add_argument("--credit", default="", help="來賓 credit（頭銜＋姓名）；空 = 沿用上一張 spec")
@@ -173,29 +223,40 @@ def main() -> int:
     ep_vault = vault / "Attachments" / "packaging" / args.episode_slug
     cut_dir = vault / "Attachments" / "cutouts" / "podcast" / args.episode_slug
     manifest = json.loads((cut_dir / "cutouts_manifest.json").read_text(encoding="utf-8"))
-    approval = json.loads((ep_vault / "approval.json").read_text(encoding="utf-8"))
-
+    approval_path = ep_vault / "approval.json"
+    approval = (
+        json.loads(approval_path.read_text(encoding="utf-8"))
+        if approval_path.is_file()
+        else {"approvals": []}
+    )
     entry = next((a for a in approval["approvals"] if a["cut_id"] == args.cut_id), None)
-    if entry is None or not entry.get("render_request"):
-        raise SystemExit(f"{args.cut_id} 沒有 render_request——請修修先在 gate 上組配方")
-    req = entry["render_request"]
+    vault_packages = json.loads((ep_vault / "packages.json").read_text(encoding="utf-8"))
+    if args.package_rank is not None:
+        raw_cut = next((c for c in vault_packages["cuts"] if c["cut_id"] == args.cut_id), None)
+        raw_package = next(
+            (
+                package
+                for package in (raw_cut or {}).get("packages", [])
+                if package["title_rank"] == args.package_rank
+            ),
+            None,
+        )
+        if raw_package is None or not raw_package.get("render_recipe"):
+            raise SystemExit(
+                f"{args.cut_id} package {args.package_rank} 沒有 render_recipe——"
+                "請修修先在 gate 選定 package 再存配方"
+            )
+        req = raw_package["render_recipe"]
+    else:
+        # Transitional fallback for approval files written before per-package recipes.
+        if entry is None or not entry.get("render_request"):
+            raise SystemExit(f"{args.cut_id} 沒有 render_request——請修修先在 gate 上組配方")
+        req = entry["render_request"]
+    package_rank = args.package_rank or int(req["title_rank"])
 
     host_name = Path(req["host_cutout"]).name
     guest_name = Path(req["guest_cutout"]).name
 
-    # scale 鎖定：基準 cutout 解一次（同角色同裁切框 = 同 scale，v2.5 教訓 19）
-    hb, gb = _landmarks(manifest, args.host_baseline), _landmarks(manifest, args.guest_baseline)
-    host_h = TARGET_HEAD_PX / (hb["chin"] - hb["head_top"]) * float(hb["cutout_h"]) / CANVAS_H * 100
-    guest_h = (
-        TARGET_HEAD_PX
-        * args.guest_face_boost
-        / (gb["chin"] - gb["head_top"])
-        * float(gb["cutout_h"])
-        / CANVAS_H
-        * 100
-    )
-
-    hlm, glm = _landmarks(manifest, host_name), _landmarks(manifest, guest_name)
     given_geo = req.get("geometry") if req.get("geometry_manual") else None
     if given_geo:
         # 修修在 gate 上拖過了 → 照他的來，不再解算（2026-08-15：「cutout 的位置跟
@@ -204,6 +265,26 @@ def main() -> int:
         guest = {k: given_geo[f"guest_{k}"] for k in ("height_pct", "x_pct", "y_pct")}
         print(f"[geometry] 用 gate 上調好的位置：host {host} guest {guest}")
     else:
+        # scale 鎖定：基準 cutout 解一次（同角色同裁切框 = 同 scale）。Manual
+        # recipes deliberately skip landmarks so records-only full-body cutouts remain usable.
+        hb = _landmarks(manifest, args.host_baseline)
+        gb = _landmarks(manifest, args.guest_baseline)
+        host_h = (
+            TARGET_HEAD_PX
+            / (hb["chin"] - hb["head_top"])
+            * float(hb["cutout_h"])
+            / CANVAS_H
+            * 100
+        )
+        guest_h = (
+            TARGET_HEAD_PX
+            * args.guest_face_boost
+            / (gb["chin"] - gb["head_top"])
+            * float(gb["cutout_h"])
+            / CANVAS_H
+            * 100
+        )
+        hlm, glm = _landmarks(manifest, host_name), _landmarks(manifest, guest_name)
         guest = _solve(glm, guest_h, args.eye_target, GUEST_HEAD_X, "guest")
         host = _solve(hlm, host_h, guest["eye"], HOST_HEAD_X, "host")  # 眼線對齊來賓
         print(
@@ -248,6 +329,7 @@ def main() -> int:
         Image.new("RGBA", (1, 1), (0, 0, 0, 0)).save(blank)
 
     def build(center: float, textonly: bool) -> Path:
+        book_variables, book_images = _book_cover_layer(req, vault)
         spec = {
             "variables": {
                 "title_lines": req["big_text"],
@@ -268,12 +350,14 @@ def main() -> int:
                 "person_glow_color": "#F37425",
                 "inner_edge_fade_pct": 9,
                 "palette": {"accent": "#F37425"},
+                **book_variables,
             },
             "images": {
                 "host_cutout_data_url": str(blank if textonly else cut_dir / host_name),
                 "guest_cutout_data_url": str(blank if textonly else cut_dir / guest_name),
                 "bg_image_data_url": r"E:/data/podcast thumbnail background.png",
                 "logo_data_url": r"E:/data/podcast thumbnail props/channel_logo_face_white.png",
+                **book_images,
             },
         }
         suffix = "_textonly" if textonly else ""
@@ -281,7 +365,7 @@ def main() -> int:
         path.write_text(json.dumps(spec, ensure_ascii=False, indent=2), encoding="utf-8")
         return path
 
-    out = args.packaging_dir / f"pkg-{args.cut_id}-{req['title_rank']}{args.out_suffix}.png"
+    out = args.packaging_dir / f"pkg-{args.cut_id}-{package_rank}{args.out_suffix}.png"
     tout = work_dir / f"_textonly-req-{args.cut_id}.png"
     render = str(_SKILL_DIR / "render_still.py")
     occ = str(_SKILL_DIR / "occlusion_check.py")
@@ -373,7 +457,7 @@ def main() -> int:
         print(f"→ {out}（比較板，未回填）")
         return 0
 
-    # 回填：vault 複製一份 + render_request.rendered_png + 該 rank 的 package 縮圖
+    # 回填：vault 複製一份 + 所選 package recipe；其他兩個 package 不動。
     dst = ep_vault / out.name
     dst.write_bytes(out.read_bytes())
     req["rendered_png"] = f"Attachments/packaging/{args.episode_slug}/{out.name}"
@@ -388,20 +472,17 @@ def main() -> int:
         "guest_x_pct": round(float(guest["x_pct"]), 2),
         "guest_y_pct": round(float(guest["y_pct"]), 2),
     }
-    (ep_vault / "approval.json").write_text(
-        json.dumps(approval, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    if _matches_legacy_approval_request(entry, req):
+        entry["render_request"] = req  # legacy watcher/UI compatibility only
+        approval_path.write_text(
+            json.dumps(approval, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+    _write_selected_package(
+        [args.packaging_dir / "packages.json", ep_vault / "packages.json"],
+        args.cut_id,
+        package_rank,
+        req,
     )
-    for path in (args.packaging_dir / "packages.json", ep_vault / "packages.json"):
-        data = json.loads(path.read_text(encoding="utf-8"))
-        for cut in data["cuts"]:
-            if cut["cut_id"] != args.cut_id:
-                continue
-            for p in cut["packages"]:
-                if p["title_rank"] == req["title_rank"]:
-                    p["thumbnail_png"] = req["rendered_png"]
-                    p["host_cutout"] = req["host_cutout"]
-                    p["guest_cutout"] = req["guest_cutout"]
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     # 定稿夾（修修 2026-08-15）：上架只需要兩樣東西——封面跟標題。檔名固定、
     # 每次 render 覆蓋，所以這個資料夾永遠只有「現在這一版」，不會越積越多。

@@ -39,11 +39,101 @@ def _load(name: str):
 guest_cutout = _load("guest_cutout")
 render_still = _load("render_still")
 attach_packages = _load("attach_packages")
+render_request = _load("render_request")
 
 
 # ---------------------------------------------------------------------------
 # guest_cutout.sample — 機位交叉驗證
 # ---------------------------------------------------------------------------
+
+
+def test_render_request_preserves_author_book_layer(tmp_path):
+    vault = tmp_path / "vault"
+    recipe = {
+        "book_cover": "Attachments/packaging/episode/book-cover.png",
+        "book_cover_opacity": 0.42,
+        "book_cover_brightness": 0.38,
+        "book_cover_height_pct": 100,
+    }
+
+    variables, images = render_request._book_cover_layer(recipe, vault)
+
+    assert images["book_cover_data_url"] == str(
+        vault / "Attachments/packaging/episode/book-cover.png"
+    )
+    assert variables == {
+        "book_cover_opacity": 0.42,
+        "book_cover_brightness": 0.38,
+        "book_cover_height_pct": 100.0,
+    }
+
+
+def test_render_request_updates_only_selected_package_recipe():
+    data = {
+        "cuts": [
+            {
+                "cut_id": "full",
+                "packages": [
+                    {"title_rank": rank, "thumbnail_png": f"old-{rank}.png", "render_recipe": {"title_rank": rank}}
+                    for rank in (1, 2, 3)
+                ],
+            }
+        ]
+    }
+    request = {
+        "title_rank": 3,
+        "rendered_png": "new-3.png",
+        "host_cutout": "host-3.png",
+        "guest_cutout": "guest-3.png",
+    }
+
+    render_request._update_selected_package(data, "full", 3, request)
+
+    assert data["cuts"][0]["packages"][0]["thumbnail_png"] == "old-1.png"
+    assert data["cuts"][0]["packages"][1]["thumbnail_png"] == "old-2.png"
+    assert data["cuts"][0]["packages"][2]["thumbnail_png"] == "new-3.png"
+    assert data["cuts"][0]["packages"][2]["render_recipe"] == request
+
+
+def test_render_request_syncs_selected_recipe_to_working_and_vault(tmp_path):
+    paths = [tmp_path / "working.json", tmp_path / "vault.json"]
+    original = {
+        "cuts": [
+            {
+                "cut_id": "full",
+                "packages": [
+                    {"title_rank": rank, "thumbnail_png": f"old-{rank}.png"}
+                    for rank in (1, 2, 3)
+                ],
+            }
+        ]
+    }
+    for path in paths:
+        path.write_text(json.dumps(original), encoding="utf-8")
+    request = {
+        "title_rank": 3,
+        "rendered_png": "new-3.png",
+        "host_cutout": "host-3.png",
+        "guest_cutout": "guest-3.png",
+    }
+
+    render_request._write_selected_package(paths, "full", 3, request)
+
+    results = [json.loads(path.read_text(encoding="utf-8")) for path in paths]
+    assert results[0] == results[1]
+    assert results[0]["cuts"][0]["packages"][0]["thumbnail_png"] == "old-1.png"
+    assert results[0]["cuts"][0]["packages"][2]["render_recipe"] == request
+
+
+def test_render_request_ignores_null_legacy_approval_request():
+    request = {"requested_at": "2026-08-21T08:05:28+00:00"}
+
+    assert not render_request._matches_legacy_approval_request(
+        {"render_request": None}, request
+    )
+    assert render_request._matches_legacy_approval_request(
+        {"render_request": dict(request)}, request
+    )
 
 
 def _words_fixture(dominant: int, fraction: float, n: int = 10) -> tuple[list[dict], list[int]]:

@@ -182,28 +182,50 @@ def _load_brief(ep_dir: Path, cut_id: str) -> dict | None:
 def _load_cutout_choices(episode_slug: str) -> dict[str, list[dict]]:
     """列出這集可選的 cutout（vault `Attachments/cutouts/podcast/<slug>/`）。
 
-    只讀 `cutouts_manifest.json` 的 validated 清單——中間迭代檔（`_iterations/`、
-    未定稿的版本）不該出現在挑選器裡（skill v2.2 教訓 15：cutout 資料夾是迭代
-    歷史不是素材庫）。manifest 不在就退回列頂層 PNG，但標記 unvalidated。
+    `records` 是本集所有已產出的正式 cutout；`validated` 只是量測狀態，不能拿來
+    當 picker 過濾器。只收 records 中且頂層 PNG 實際存在的項目，避免把迭代路徑
+    或 stale manifest row 呈現成可選素材。舊 manifest 沒 records 才退回 validated，
+    再舊則列頂層 PNG，三條路徑都 fail-visible 標示 validated 狀態。
     """
     d = get_vault_path() / "Attachments" / "cutouts" / "podcast" / episode_slug
     out: dict[str, list[dict]] = {"host": [], "guest": []}
     if not d.is_dir():
         return out
     manifest = d / "cutouts_manifest.json"
-    names: list[str]
-    validated = True
+    rows: list[dict] = []
+    validated_names: set[str] = set()
     if manifest.is_file():
         try:
-            names = sorted(json.loads(manifest.read_text(encoding="utf-8")).get("validated", {}))
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            validated_names = set((payload.get("validated") or {}).keys())
+            for record in payload.get("records") or []:
+                if not isinstance(record, dict) or not isinstance(record.get("file"), str):
+                    continue
+                rows.append(record)
+            if not rows:
+                rows = [{"file": name} for name in sorted(validated_names)]
         except json.JSONDecodeError:
-            names, validated = sorted(p.name for p in d.glob("*.png")), False
-    else:
-        names, validated = sorted(p.name for p in d.glob("*.png")), False
-    for name in names:
-        if not (d / name).is_file():
+            rows = []
+    if not rows:
+        rows = [{"file": p.name} for p in sorted(d.glob("*.png"))]
+    seen: set[str] = set()
+    for record in rows:
+        name = record["file"]
+        if name in seen:
             continue
-        role = "host" if name.startswith("host") else "guest" if name.startswith("guest") else None
+        seen.add(name)
+        asset = d / name
+        if not asset.is_file():
+            continue
+        role = record.get("role")
+        if role not in {"host", "guest"}:
+            role = (
+                "host"
+                if name.startswith("host")
+                else "guest"
+                if name.startswith("guest")
+                else None
+            )
         if role is None:
             continue
         parts = name.removesuffix(".png").split("_")
@@ -211,8 +233,12 @@ def _load_cutout_choices(episode_slug: str) -> dict[str, list[dict]]:
             {
                 "file": name,
                 "vault_path": f"Attachments/cutouts/podcast/{episode_slug}/{name}",
-                "emotion": parts[-1] if len(parts) >= 3 else "",
-                "validated": validated,
+                "emotion": record.get("emotion") or (parts[-1] if len(parts) >= 3 else ""),
+                "validated": bool(record.get("validated") or name in validated_names),
+                # The selector intentionally uses stable filenames so saved recipes do not
+                # drift.  The preview URL therefore needs a content version; otherwise a
+                # replaced PNG remains visually stale in the browser cache.
+                "version": hashlib.sha256(asset.read_bytes()).hexdigest(),
             }
         )
     return out
@@ -306,12 +332,31 @@ def _board_context(episode_slug: str) -> dict:
                     ),
                 }
             )
+        recipe_payload = [
+            {
+                "package_rank": item["pkg"].title_rank,
+                "title_rank": (
+                    item["pkg"].render_recipe.title_rank
+                    if item["pkg"].render_recipe
+                    else item["pkg"].title_rank
+                ),
+                "host_cutout": item["pkg"].host_cutout,
+                "guest_cutout": item["pkg"].guest_cutout,
+                "recipe": (
+                    item["pkg"].render_recipe.model_dump(mode="json")
+                    if item["pkg"].render_recipe
+                    else None
+                ),
+            }
+            for item in package_views
+        ]
         view = {
             "cut": cut,
             "approval": approval_by_cut.get(cut.cut_id),
             "packages": package_views,
             "runners_up": [t for t in cut.titles if t.rank >= 4],
             "brief": _load_brief(ep_dir, cut.cut_id),
+            "recipe_payload": recipe_payload,
         }
         cuts.append(view)
     return {
@@ -741,12 +786,45 @@ async def packaging_thumbnail(
     return FileResponse(path, media_type="image/png")
 
 
+@page_router.get("/{episode_slug}/recipe-asset/{filename}")
+async def packaging_recipe_asset(
+    episode_slug: str,
+    filename: str,
+    nakama_auth: str | None = Cookie(None),
+) -> FileResponse:
+    """Serve only an episode-local PNG explicitly referenced by a package recipe."""
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    if filename != Path(filename).name or not filename.lower().endswith(".png"):
+        raise HTTPException(status_code=403, detail="僅限 Packaging recipe PNG")
+    ctx = _board_context(episode_slug)
+    refs = {
+        package.render_recipe.book_cover
+        for cut in ctx["pkg"].cuts
+        for package in cut.packages
+        if package.render_recipe
+        and package.render_recipe.book_cover
+        and Path(package.render_recipe.book_cover).name == filename
+    }
+    if len(refs) != 1:
+        raise HTTPException(status_code=404, detail="Recipe asset 不存在或不唯一")
+    path = get_vault_path() / refs.pop()
+    try:
+        path.resolve().relative_to((_packaging_root() / episode_slug).resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="Recipe asset 超出 episode 目錄") from exc
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Recipe asset 檔不存在")
+    return FileResponse(path, media_type="image/png")
+
+
 @page_router.get("/{episode_slug}", response_class=HTMLResponse)
 async def packaging_board(
     request: Request,
     episode_slug: str,
     edited: str | None = None,
     composed: str | None = None,
+    package_rank: int | None = None,
     cut: str | None = None,
     release_pending: str | None = None,
     description_pending: str | None = None,
@@ -789,6 +867,7 @@ async def packaging_board(
     ctx["edited_cut"] = edited
     # 剛存完配方那支：組封面區保持展開（同 edited 的理由 — <details> 會因重載收起）
     ctx["composed_cut"] = composed
+    ctx["editor_package_rank"] = package_rank
     ctx["focused_cut"] = cut
     ctx["release_pending"] = bool(release_pending)
     ctx["description_pending"] = bool(description_pending)
@@ -833,7 +912,11 @@ async def packaging_approve(
         raise HTTPException(status_code=409, detail="長片尚無 package，先跑 thumbnail-brainstorm")
 
     ep_dir = _packaging_root() / episode_slug
-    if approved and cut.format == "long":
+    # `format=long` includes both the complete episode (N1 thumbnail_full) and
+    # long highlights (N2 thumbnail_reaction).  The center-visual composition
+    # receipt is an N2-only contract; requiring it for `cut_id=full` previously
+    # forced the revision agent to render the wrong orange-center layout.
+    if approved and cut.format == "long" and cut_id != "full":
         selected_package = next(
             (row for row in cut.packages if row.title_rank == primary_package), None
         )
@@ -1047,6 +1130,7 @@ async def packaging_select_variant(
 async def packaging_compose(
     episode_slug: str,
     cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
+    package_rank: int | None = Form(None, ge=1, le=3),
     title_rank: int = Form(..., ge=1, le=5),
     host_cutout: str = Form(..., max_length=_EP_SLUG_MAX * 4),
     guest_cutout: str = Form(..., max_length=_EP_SLUG_MAX * 4),
@@ -1056,6 +1140,10 @@ async def packaging_compose(
     highlight_text: str = Form("", max_length=40),
     title_max_width: int = Form(580, ge=300, le=1000),
     guest_credit: str = Form("", max_length=40),
+    book_cover: str = Form("", max_length=_EP_SLUG_MAX * 4),
+    book_cover_opacity: float = Form(0.42, ge=0, le=1),
+    book_cover_brightness: float = Form(0.38, ge=0, le=1),
+    book_cover_height_pct: float = Form(100, ge=20, le=150),
     geometry_mode: str = Form("auto", max_length=8),
     host_height_pct: float = Form(0.0),
     host_x_pct: float = Form(0.0),
@@ -1079,12 +1167,28 @@ async def packaging_compose(
     cut = next((c for c in pkg.cuts if c.cut_id == cut_id), None)
     if cut is None:
         raise HTTPException(status_code=404, detail=f"cut not found: {cut_id}")
+    target_rank = package_rank or title_rank  # legacy forms used title_rank as the package id
+    target_package = next((p for p in cut.packages if p.title_rank == target_rank), None)
+    if target_package is None:
+        raise HTTPException(status_code=404, detail=f"package not found: rank {target_rank}")
 
     choices = ctx["cutouts"]
     known = {c["vault_path"] for c in choices["host"]} | {c["vault_path"] for c in choices["guest"]}
     for label, val in (("host_cutout", host_cutout), ("guest_cutout", guest_cutout)):
         if val not in known:
             raise HTTPException(status_code=404, detail=f"{label} 不在本集 cutout 清單：{val}")
+
+    ep_dir = _packaging_root() / episode_slug
+    if book_cover:
+        book_path = get_vault_path() / book_cover
+        try:
+            book_path.resolve().relative_to(ep_dir.resolve())
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=403, detail="book_cover 必須位於本集 episode 目錄"
+            ) from exc
+        if book_path.suffix.lower() != ".png" or not book_path.is_file():
+            raise HTTPException(status_code=404, detail="本集 book_cover PNG 不存在")
 
     lines = [ln.strip() for ln in (big_text_1, big_text_2, big_text_3) if ln.strip()]
     if not lines:
@@ -1114,11 +1218,14 @@ async def packaging_compose(
                 status_code=400, detail=f"位置/大小超出範圍：{str(exc)[:300]}"
             ) from exc
 
-    ep_dir = _packaging_root() / episode_slug
     existing = _load_approvals(ep_dir, pkg.episode)
     prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
-    if geometry is None and prev and prev.render_request:
-        geometry = prev.render_request.geometry  # auto：留著當下次拖曳的起點
+    if geometry is None and target_package.render_recipe:
+        geometry = target_package.render_recipe.geometry
+    elif geometry is None and prev and prev.render_request:
+        # Backward compatibility for pre-recipe approval files.  It is only an
+        # initial seed; the board never presents it as another package's state.
+        geometry = prev.render_request.geometry
 
     try:
         req = RenderRequestV1(
@@ -1129,6 +1236,10 @@ async def packaging_compose(
             highlight_text=hl,
             title_max_width=title_max_width,
             guest_credit=guest_credit.strip(),
+            book_cover=book_cover.strip() or None,
+            book_cover_opacity=book_cover_opacity,
+            book_cover_brightness=book_cover_brightness,
+            book_cover_height_pct=book_cover_height_pct,
             requested_at=datetime.now(timezone.utc),
             geometry=geometry,
             geometry_manual=manual,
@@ -1155,17 +1266,35 @@ async def packaging_compose(
     (ep_dir / "approval.json").write_text(
         updated.model_dump_json(indent=2) + "\n", encoding="utf-8"
     )
+    # Persist the recipe on the package it actually renders.  approval.render_request
+    # remains a temporary dispatch envelope for old desktop watchers, not UI state.
+    packages_path = ep_dir / "packages.json"
+    packages_data = json.loads(packages_path.read_text(encoding="utf-8"))
+    for raw_cut in packages_data["cuts"]:
+        if raw_cut["cut_id"] != cut_id:
+            continue
+        for raw_package in raw_cut["packages"]:
+            if raw_package["title_rank"] == target_rank:
+                raw_package["render_recipe"] = req.model_dump(mode="json")
+                break
+        break
+    PackagesFileV1.model_validate(packages_data)
+    packages_path.write_text(
+        json.dumps(packages_data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
     logger.info(
         "packaging compose: %s/%s rank=%s host=%s guest=%s text=%s",
         episode_slug,
         cut_id,
-        title_rank,
+        target_rank,
         Path(host_cutout).name,
         Path(guest_cutout).name,
         lines,
     )
     return RedirectResponse(
-        f"/bridge/packaging/{episode_slug}?composed={cut_id}#compose-{cut_id}", status_code=303
+        f"/bridge/packaging/{episode_slug}?composed={cut_id}&package_rank={target_rank}"
+        f"#compose-{cut_id}",
+        status_code=303,
     )
 
 
