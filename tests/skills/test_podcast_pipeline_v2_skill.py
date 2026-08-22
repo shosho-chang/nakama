@@ -22,6 +22,7 @@ RUNBOOK = Path(
 CANONICAL_TRANSCRIBE_SKILL = Path(r"E:\nakama\.agents\skills\transcribe\SKILL.md")
 VENV_PYTHON = Path(r"E:\nakama\.venv-v2\Scripts\python.exe")
 ADR_063 = Path("docs/decisions/ADR-063-podcast-subtitle-production-simplification.md")
+ADR_064 = Path("docs/decisions/ADR-064-podcast-editorial-master-before-repurpose.md")
 
 
 def _sections() -> tuple[str, str, str]:
@@ -72,15 +73,32 @@ def test_skill_exposes_memo_dual_audit_as_the_only_default_subtitle_route() -> N
     assert "python scripts/" not in production
 
 
-def test_full_program_packaging_runs_after_resolve_without_blocking_highlights() -> None:
+def test_editorial_master_gate_precedes_packaging_and_highlights() -> None:
     text, production, _legacy = _sections()
+    assert "S7E EDITORIAL MASTER" in production
+    assert "podcast-editorial-master-v1" in production
+    assert "EDITORIAL_MASTER_RUNTIME_NOT_IMPLEMENTED" in production
+    assert "不得退回 raw program feed" in production
     assert "S7P FULL PACKAGING" in production
     assert "cut_id=full" in production
     assert "不依賴\nHighlight winner" in production
     assert "不得阻塞 Highlight mining" in production
     assert "暗色書封中景" in production
-    assert production.index("Actual build exit 0") < production.index("cut_id=full")
+    assert production.index("Actual build exit 0") < production.index(
+        "Editorial Master receipt 驗證成功"
+    )
+    assert production.index("Editorial Master receipt 驗證成功") < production.index("cut_id=full")
     assert production.index("cut_id=full") < production.index("--mining-input")
+
+
+def test_adr_064_records_runtime_cutover_as_pending_without_raw_fallback() -> None:
+    adr = ADR_064.read_text(encoding="utf-8")
+    assert "- Status: Accepted / Runtime cutover pending" in adr
+    assert "podcast-editorial-master-v1" in adr
+    assert "raw 1320.300–1323.140" in adr
+    assert "value-L02` and `punch-L04` remain raw-derived" in adr
+    assert "EDITORIAL_MASTER_RUNTIME_NOT_IMPLEMENTED" in adr
+    assert "P9 implementation task prompt" in adr
 
 
 def test_adr_063_is_active_with_clean_episode_operational_smoke() -> None:

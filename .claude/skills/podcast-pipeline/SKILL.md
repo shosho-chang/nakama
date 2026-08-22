@@ -38,6 +38,12 @@ ADR-063 已於 2026-08-21 通過 code、schema、consumer、routing 與 focused 
 一路到 actual Resolve project/timeline 與 long Highlight shortlist gate；沒有在 shortlist 前加入一般人工 gate，
 也沒有自動選 winner 或上傳 YouTube。抹布仍只算 legacy/backward-compatibility fixture。
 
+**2026-08-22 amendment（ADR-064）**：上述 smoke 只證明 raw-feed route 可執行，沒有證明 content
+repurpose 繼承人工剪過的完整節目。新的 production 決策是：使用者核准的 **Editorial Master** 才是
+long Highlight、Short、Instagram carousel 與其他 derivatives 的唯一 media/timebase source。Runtime
+cutover 尚未完成；因此 fresh episode 建好 base Resolve timeline 後必須停在 Editorial Master gate，
+不得從 `Default_*.mp4`／`normalized.wav` 繼續並冒充新流程完成。
+
 ## Standing authorization and human gates
 
 - `Audio/Live-Mix.wav` 是完整訪談 canonical program mix。保留完整 clock；不裁收工閒聊、不 trim silence。
@@ -47,11 +53,12 @@ ADR-063 已於 2026-08-21 通過 code、schema、consumer、routing 與 focused 
   Auphonic、agent 執行 Memo bundled runner，並把逐字稿／references／必要 bounded audio clips 交給
   已設定 subscription workers。不要逐步重問。
 - 上述授權不包含新的 paid API／provider／data destination，也不包含 YouTube upload。
-- 普通 E2E 的第一個人類 editorial gate 是 **Highlight shortlist review**。在此之前只有
+- 普通 E2E 的第一個人類 editorial gate 是 **Editorial Master approval**。在此之前只有
   wrong episode/audio、hash／coverage／timebase catastrophic failure，或未獲授權的 provider/destination 變更
   可以停止。
 - 雙 text audit 或雙 ASR 的一般衝突不是 human gate：保留 Memo 原文、寫入 ledger、繼續。
-- 之後的人類 gate 依序是 finished-cut review、packaging review、explicit YouTube upload approval。
+- 之後的人類 gate 依序是 Highlight shortlist、finished-cut review、packaging review、explicit YouTube
+  upload approval。
 
 ## State machine
 
@@ -65,6 +72,7 @@ ADR-063 已於 2026-08-21 通過 code、schema、consumer、routing 與 focused 
 | S5 MAJOR AUDIO | 所有 major-risk components 有 Faster＋Qwen evidence；衝突 retain Memo | 無普通人工 gate |
 | S6 RELEASE | release／ledger／manifest／handoff hash-bound，fresh replay byte-identical | 無普通人工 gate |
 | S7 RESOLVE | project/timeline 建立，字幕 handoff exact-copy | 非字幕 GUI requirement 不算 editorial gate |
+| S7E EDITORIAL MASTER | Intro/Outro、完整節目人工剪輯、master media/SRT/receipt hash-bound | **Editorial Master approval** |
 | S7P FULL PACKAGING | 完整節目 title／thumbnail／description variants 已產生 | 可非阻塞 review；發布前必須核准 |
 | S8 HIGHLIGHTS | mining、validate、persona review、long shortlist 完成 | **Highlight shortlist review** |
 | S9 LONGFORM | winners materialize；tightening/director/titles/b-roll/SFX/render | finished-cut review |
@@ -304,7 +312,7 @@ Finalization 必須證明 100% text-audit coverage、major reviewed == major tot
 retention 明列、sequential/non-empty/positive/zero-overlap cues、hash／size／relative-path 互綁、fresh replay
 byte-identical，以及 partial/destination collision fail closed。`release.srt` 存在本身不代表完成。
 
-## S7–S8 — Resolve, full-program packaging, then Highlight shortlist
+## S7–S8 — Resolve, Editorial Master, packaging, then Highlight shortlist
 
 Stage 5 consumers 預設發現並驗證
 `<episode>/subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json`；fresh episode 不傳字幕 flag。
@@ -322,7 +330,17 @@ if (-not (Test-Path -LiteralPath $env:RESOLVE_SUBTITLE_TEMPLATE)) { throw "Resol
   scripts\build_resolve_project.py "<episode>"
 ```
 
-Actual build exit 0 後，在開始 miners 前，先對 `cut_id=full` 啟動 `title-brainstorm` 與
+Actual build exit 0 只代表 base timeline 建立成功；agent 必須把 base full-program timeline 交給使用者。
+此時 normalization／subtitle
+已完成，而使用者可放入自己錄好的 Intro／Outro，完整觀看並移除咳嗽、道歉、卡頓、中斷與不要的段落。
+使用者明確核准並鎖定後，才可建立 `podcast-editorial-master-v1` receipt 並開始任何 repurpose。
+
+截至 2026-08-22，receipt producer、master-SRT retime 與下游 consumer cutover 尚未實作。遇到 fresh
+episode 必須回報 `EDITORIAL_MASTER_RUNTIME_NOT_IMPLEMENTED`；不得退回 raw program feed 繼續跑。
+`20260805 林之晨` 的 `value-L01` 是人工補修例外；`value-L02`／`punch-L04` 仍是 raw-derived，不能
+宣稱已通過 Editorial Master lineage。
+
+Editorial Master receipt 驗證成功後，在開始 miners 前，先對 `cut_id=full` 啟動 `title-brainstorm` 與
 `thumbnail-brainstorm`，產生完整節目的三組 title／thumbnail／description 草稿。這一步不依賴
 Highlight winner；評審可與 S8 並行，未核准不得進完整節目發布，但不得阻塞 Highlight mining。
 作者／新書訪談的完整節目封面，若有可驗證書封，必須使用 N1 的暗色書封中景；詳細參數以
