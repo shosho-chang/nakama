@@ -140,6 +140,79 @@ FluentCommunity 的 WP-CLI 指令只有 `migrate_from_bb` / `sync_x_profile` / `
 
 ---
 
+## Gamification Add-on（自研，grill 進行中）
+
+**Gamification Add-on** = 自由艦隊的自研遊戲化系統，由「WP plugin（笨層）＋ nakama/Sanji（聰明層）」
+組成。2026-08-22 grill 裁決：
+
+- **智慧放 nakama**：plugin 只做 hook 捕捉、持有 ledger、暴露窄 API；所有規則（點數判定、
+  streak、防刷、賽季結算）與打卡視覺判定都在 nakama 端，Sanji 是大腦。
+- **自用工具，不商品化**——若未來要把 plugin 當產品賣給其他 FluentCommunity 站長，
+  此架構須重新評估（規則引擎得搬回 PHP）。
+_Avoid_: 在 PHP 內實作任何規則邏輯（那是 nakama 的職責）
+
+**Ledger（事件帳本）** = gamification 的唯一真相源，**住在 WP MySQL 的 plugin 自有資料表**
+（與 vendor 表零耦合）。裁決理由：wpvivid 全站備份讓社群資料與經濟資料原子一致（災難還原
+不會 split-brain）；PHP hook 捕捉與觸發動作同庫、零丟失；portal 顯示讀本地不依賴 nakama 存活。
+記人用 `user_id ＋ email snapshot` 雙鍵——email 是跨平台耐久身分，日後離開 WordPress 一句
+dump 就能搬家。nakama 端（state.db）只放**可重建的衍生投影**（儀表板/分析用），不是第二真相源。
+_Avoid_: 把帳本放 state.db（agent 營運庫炸掉不該傷會員資產）；雙寫鏡像（同步 bug 溫床）
+
+**Ledger 存取路徑** = production 讀寫一律走 plugin 的窄 REST API（`/wp-json/nakama-gam/v1/`，
+app password auth，沿用既有 WP 整合模式）。裁決理由：加點的副作用是 WP-native 的
+（xprofile.meta badge 序列化、object cache flush、`do_action`），集中在 PHP 一個口做；
+invariant 單點執行；契約可版本化。nakama 用 cursor 增量拉事件回 state.db 投影，
+新分析查詢在 Python 端做，不加 PHP 端點。**直連 SQL 只保留給唯讀 ad-hoc 營運查詢**
+（ssh + `wp db query`），production 迴圈禁用。
+_Avoid_: Python 直寫 MySQL 改帳（會繞過 WP 序列化/快取/hook 副作用，上週已驗證的雷區）
+
+**事件流向** = 單向 pull：PHP hook 捕捉寫本地 events 表（原生訊號＋`checkin_submitted`），
+Sanji 每 1–2 分鐘 cursor 輪詢處理。WP 不知道 nakama 存在；nakama 重啟從 cursor 續跑，天然補課。
+_Avoid_: webhook push（反向依賴＋retry/dead-letter 維護負擔；沒有秒級需求就不引入）
+
+**帳本會計紀律** = append-only 事件流，三鐵則：①永不 UPDATE/DELETE 歷史——改錯帳開
+**沖正事件**（負值、reason 指向原事件 id），補償走「船長特別獎」正向事件，光明正大；
+②每筆事件帶 `idempotency_key`（如 `checkin:{user_id}:{date}`）＋ DB unique constraint，
+重跑/重放/補課不重複入帳，防線在 DB 層；③每筆授予帶 `rule_version`——規則改版只影響未來，
+永不回溯重算（Starbucks 教訓的技術配套）。餘額（貝里）與里程（XP）是衍生投影：cache 表
+加速顯示、每日對帳重算校驗、壞了砍掉重建，帳本永遠是真相。
+_Avoid_: 直接改 DB 數字「修帳」（透明度是社群信任的一部分，帳目要可稽核可申訴）
+
+**回饋節奏（對外承諾）** = 兩層：①個人加點回饋即時（Sanji 分鐘級回覆，這是習慣迴圈核心，
+不等批次）；②聚合統計（榜單/週狀態）每日 05:00 批次更新，對外公開此節奏。
+**每日對帳排程（daily reconciliation）架構上必要**——streak 斷檔是「事件的缺席」，
+只有排程掃描能偵測；它同時是 Sanji 停機的補課 safety net。對外承諾寫寬（「最晚隔日
+05:00 入帳」），實際體驗分鐘級——承諾寬鬆給營運留 slack。
+
+**Sanji runtime** = Agent SDK ＋ subscription quota，照抄 Nami 模式
+（`gateway/handlers/nami.py` 的 `_sdk_auth_env()`：注入 `CLAUDE_CODE_OAUTH_TOKEN`
+並清空 `ANTHROPIC_API_KEY` 強制走訂閱 OAuth；2026-08-18 已實測背書）。輪詢 loop 本身
+零 LLM；判定批次才呼叫 `query()`。判定走兩層模型（便宜模型為主、曖昧升級，省 quota）。
+quota 耗盡的故障模式被 cursor＋每日對帳自然吸收（延遲、不丟失，承諾不破）。
+API 計費是明確 opt-in 的 fallback（規模化到非個人自動化時再翻）。
+
+**Sanji 社群身分** = 正式成員帳號（專屬 WP user＋xprofile、`is_verified=1`、專屬徽章），
+**排除在點數經濟與榜單之外**（與測試帳號 user 8/9/10 同一份排除名單）。發文/回覆走
+plugin 端點內呼 FluentCommunity PHP Model 層，原生通知（鈴鐺/email）正常觸發。
+名字、頭像、口吻＝品牌決策，歸修修。
+
+**回覆通道** = 成功判定→**打卡貼文留言區公開回覆**（「+10 貝里｜連續 N 天」；會員收原生
+鈴鐺通知，社會證明公開可見，帳目透明）。**DM 只用於例外**：退件（公開退件丟臉，紅線）、
+異常提醒、選配週摘要。fluent-messaging 程式化發送介面**未驗證**，驗證前不承諾 DM 功能。
+_Avoid_: 把成功回饋塞進 DM（打卡空間會死寂，對沉默多數零拉力）
+
+**程式碼佈局與部署**（2026-08-22 裁決，細節授權 Claude 判斷）= PHP plugin 住 repo 根目錄
+`wp/fleet-gamification/`（依 `video/` 先例：不同 runtime 的子專案住根目錄，ownership 歸
+Sanji context、CONTEXT-MAP 註記）；Sanji 服務住 `agents/sanji/`、跑獨立 systemd
+`nakama-sanji`（不進 gateway——那是 Slack 專用容器）；部署一律走 `scripts/deploy_vps.sh`
+擴充（diff-driven rsync plugin ＋ restart 服務＋部署後煙霧測試），不開第二條 deploy 路。
+
+**規模與測試約束** = 系統目標壽命 10 年、未來同時在線**千人級**；持續修改與擴增是常態。
+**目前不設 staging**——創始船長世代兼任測試員角色，plugin 屬加法式改動（自有表/端點，
+不碰 vendor 行為），爆炸半徑=「gamification 失效」而非「社群壞掉」。規模化警戒線：
+千人級活躍時打卡判定量（~30K 次/月）會超出 subscription quota 合理範圍，屆時觸發
+API 計費切換（環境變數即可翻）。
+
 ## 相關文件
 
 - [`docs/capabilities/fluent-client.md`](../../docs/capabilities/fluent-client.md) — Fluent 全家桶統一
