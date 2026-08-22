@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Desktop media worker — package renders plus packaging/finished-cut revisions.
+"""Desktop media worker — package renders plus packaging revisions.
 
 修修：「我按下存配方了，所以你不會自動 render 嗎？」——不會，因為 render 需要
 Chrome／hyperframes／LINE Seed 字型，那些只在桌機（ADR-054 D11：VPS 叫不到桌機）。
@@ -18,8 +18,6 @@ Chrome／hyperframes／LINE Seed 字型，那些只在桌機（ADR-054 D11：VPS
   （requested_at 沒變就不再跑，避免壞配方把 GPU/CPU 打滿）
 - Reject + feedback 產生的 `revision_job.status=queued` → 備份舊版、啟動一個 bounded
   Codex packaging agent、驗證 working/vault/schema/PNG 後只標 `ready_for_review`；永不自動核准
-- Finished-cut 保存 feedback → 同一個 supervisor 掃 episode-local durable queue，啟動 bounded
-  revision agent；成功後回到 human re-review，失敗還原舊 preview/manifest
 
 手動跑：
     python scripts/render_watcher.py --once      # 掃一輪就結束（測試用）
@@ -51,12 +49,6 @@ for _s in (sys.stdout, sys.stderr):
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from scripts.finished_review_watcher import (  # noqa: E402
-    pending_revision_jobs as pending_finished_revision_jobs,
-)
-from scripts.finished_review_watcher import (  # noqa: E402
-    run_revision_job as run_finished_revision_job,
-)
 from shared.config import get_vault_path  # noqa: E402
 from shared.schemas.packaging import parse_packages  # noqa: E402
 from thousand_sunny.routers.packaging import _load_composition_receipt  # noqa: E402
@@ -65,18 +57,6 @@ RENDER_REQUEST = (
     _REPO / ".claude" / "skills" / "thumbnail-brainstorm" / "scripts" / "render_request.py"
 )
 FOOTAGE_ROOTS = (Path("G:/Footages"), Path("G:/footages"))
-
-
-def run_finished_revision_queue_once(
-    episodes_root: Path,
-    *,
-    runner: Callable[[dict], bool] = run_finished_revision_job,
-) -> int:
-    """Claim every queued finished-cut revision once during the watcher scan."""
-    completed = 0
-    for revision in pending_finished_revision_jobs(episodes_root):
-        completed += int(bool(runner(revision)))
-    return completed
 
 
 def _log(msg: str, log_path: Path | None) -> None:
@@ -732,8 +712,6 @@ def main() -> int:
 
     while True:
         state = load_state(args.state)
-        episodes_root = Path(os.environ.get("PODCAST_EPISODES_ROOT", "G:/Footages"))
-        run_finished_revision_queue_once(episodes_root)
         for revision in pending_revision_jobs(vault):
             run_revision_job(revision, log_path=args.log)
         for job in pending_requests(vault, state):

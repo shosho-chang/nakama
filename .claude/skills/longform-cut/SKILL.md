@@ -134,10 +134,17 @@ path escape、glob slug 或 hash drift 都 fail closed。只有通過後才能�
 
 Stock Video 下載與授權證據收集是上游 acquisition worker 的工作；Finished Revision
 Agent 只生 plan，不得自報來源或授權。Acquisition 交付 `trusted_asset_sources.json`，
-並將各 `filename` 的影片放在 JSON 同目錄。先 dry-run：
+並將各 `filename` 的影片放在 JSON 同目錄。Finished Revision／Resolve 必須使用
+FusionScript 相容的 Python 3.10，不可由 `.venv-v2` 的 render watcher 消費：
 
 ```powershell
-python scripts/finished_review_watcher.py --episodes-root "G:\Footages" `
+$resolvePy = 'C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe'
+```
+
+先 dry-run：
+
+```powershell
+& $resolvePy scripts/finished_review_watcher.py --episodes-root "G:\Footages" `
   --reconcile-episode "<episode>" `
   --trusted-asset-sources "<acquisition-dir>\trusted_asset_sources.json"
 ```
@@ -146,7 +153,7 @@ Dry-run 會 fresh 驗 schema、path containment、bytes、SHA-256、ffprobe、so
 timezone-aware `acquired_at`，但不寫 episode。確認後在同一命令加 `--apply-reconcile`：
 
 ```powershell
-python scripts/finished_review_watcher.py --episodes-root "G:\Footages" `
+& $resolvePy scripts/finished_review_watcher.py --episodes-root "G:\Footages" `
   --reconcile-episode "<episode>" `
   --trusted-asset-sources "<acquisition-dir>\trusted_asset_sources.json" `
   --apply-reconcile
@@ -162,13 +169,25 @@ provenance 的素材，但不得覆寫；任何漂移都必須在 Agent 或 Reso
 若 worker 在 Agent／Resolve 前失敗，不可手改 feedback JSON。先做只讀 rollback 驗證：
 
 ```powershell
-python scripts/finished_review_watcher.py --episodes-root "G:\Footages" `
+& $resolvePy scripts/finished_review_watcher.py --episodes-root "G:\Footages" `
   --retry-episode "<episode>" --retry-failed "<request-id>"
 ```
 
 只有輸出 `rollback_verified: true` 才可在同一命令加 `--apply-retry`。Retry 保留原本的
 content-addressed request ID 與舊 failure receipt，下一 attempt 寫入獨立子目錄；來源 manifest、
 preview 或 rollback inventory 有任何漂移就拒絕 requeue。
+
+若舊 worker 因 ABI `SystemExit` 留在 `running`，先用 Python 3.10 做只讀 recovery：
+
+```powershell
+& $resolvePy scripts/finished_review_watcher.py --episodes-root "G:\Footages" `
+  --recover-episode "<episode>" --recover-running "<request-id>"
+```
+
+只有 PID/session 已不存在、agent logs 完整、backup 與 pre-snapshot 一致，且 Resolve read-only
+probe 證明沒有 `__revision_backup__`／`__revision_work__` Timeline 時，才可加
+`--apply-recovery`。Recovery 會 restore partial promotion、寫 recovery receipt 並標 failed；
+之後再走上一段 dry retry → `--apply-retry`，不得手改 feedback。
 
 軌道契約：v1 主鏡（導播）/ v2 滿版 stock / v3 hero / v4 名牌+轉場卡+論文卡 /
 v5 badge；a1 對白 / a2 SFX。

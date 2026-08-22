@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
 from copy import deepcopy
 from pathlib import Path
@@ -18,10 +19,10 @@ from scripts.finished_review_watcher import (
     pending_revision_jobs,
     prepare_trusted_asset_handoff,
     reconcile_missing_revision_job,
+    recover_running_revision_job,
     retry_failed_revision_job,
     run_revision_job,
 )
-from scripts.render_watcher import run_finished_revision_queue_once
 
 
 def _sha(path: Path) -> str:
@@ -283,16 +284,16 @@ def test_worker_picks_up_once_and_leaves_a_result_receipt(tmp_path):
     )
 
 
-def test_existing_desktop_supervisor_scans_finished_revision_queue(tmp_path):
-    _write_queued_job(tmp_path)
-    picked_up: list[str] = []
+def test_finished_revision_has_dedicated_python310_supervisor_not_render_watcher():
+    repo = Path(__file__).parents[1]
+    startup = (repo / "scripts/start_thousand_sunny.ps1").read_text(encoding="utf-8")
+    render_watcher = (repo / "scripts/render_watcher.py").read_text(encoding="utf-8")
 
-    def runner(work: dict) -> bool:
-        picked_up.append(work["request_id"])
-        return True
-
-    assert run_finished_revision_queue_once(tmp_path, runner=runner) == 1
-    assert picked_up == ["finished-revision-abc123"]
+    assert r"C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" in startup
+    assert "scripts/finished_review_watcher.py" in startup
+    assert "finished-review-watcher.out.log" in startup
+    assert "run_finished_revision_queue_once" not in render_watcher
+    assert "pending_finished_revision_jobs" not in render_watcher
 
 
 def test_explicit_reconcile_marks_legacy_feedback_awaiting_assets_without_touching_dry_run(
@@ -572,6 +573,31 @@ def test_verifier_failure_rolls_back_promoted_sidefiles_recipes_visuals_and_asse
     assert not (episode / "highlights/materialization/value-L01.json").exists()
 
 
+def test_resolve_abi_system_exit_is_contained_and_rolls_back_promoted_inputs(
+    monkeypatch, tmp_path
+):
+    episode, manifest, feedback = _write_queued_job(tmp_path)
+    old_manifest = manifest.read_bytes()
+    old_recipe = (episode / "highlights/tighten/value-L01_titles.json").read_bytes()
+    monkeypatch.setattr(
+        "scripts.finished_review_watcher._ResolveTimelineTransaction.begin",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(SystemExit(1)),
+    )
+
+    assert not run_revision_job(
+        pending_revision_jobs(tmp_path)[0],
+        agent_runner=_successful_agent,
+        output_verifier=_fixture_verifier,
+    )
+    saved = json.loads(feedback.read_text(encoding="utf-8"))["revisions"][-1][
+        "revision_job"
+    ]
+    assert saved["status"] == "failed"
+    assert "SystemExit" in saved["error"] or "Resolve" in saved["error"]
+    assert manifest.read_bytes() == old_manifest
+    assert (episode / "highlights/tighten/value-L01_titles.json").read_bytes() == old_recipe
+
+
 def test_failed_cleanly_rolled_back_job_can_be_explicitly_retried(tmp_path):
     episode, _manifest, feedback = _write_queued_job(tmp_path)
 
@@ -645,6 +671,103 @@ def test_failed_job_retry_rejects_artifact_drift_without_requeueing(tmp_path):
     ]
     assert saved["status"] == "failed"
     assert pending_revision_jobs(tmp_path) == []
+
+
+def test_orphan_running_recovery_restores_partial_promotion_before_attempt_three(tmp_path):
+    episode, _manifest, feedback = _write_queued_job(tmp_path)
+    old_recipe = (episode / "highlights/tighten/value-L01_titles.json").read_bytes()
+
+    def failed_agent(_context: dict) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(["fixture-agent"], 2, "", "first failure")
+
+    assert not run_revision_job(
+        pending_revision_jobs(tmp_path)[0], agent_runner=failed_agent
+    )
+    first_failed = json.loads(feedback.read_text(encoding="utf-8"))["revisions"][-1][
+        "revision_job"
+    ]
+    request_id = first_failed["request_id"]
+    assert retry_failed_revision_job(
+        tmp_path, episode_id=episode.name, request_id=request_id, apply=True
+    )["status"] == "queued"
+
+    request_root = episode / "highlights/review/revisions" / request_id
+    attempt_two = request_root / "attempts/2"
+    attempt_two.mkdir(parents=True)
+    shutil.copytree(request_root / "before", attempt_two / "before")
+    shutil.copy2(request_root / "request.json", attempt_two / "request.json")
+    (attempt_two / "output").mkdir()
+    (attempt_two / "agent.stdout.log").write_text("staged\n", encoding="utf-8")
+    (attempt_two / "agent.stderr.log").write_text("", encoding="utf-8")
+    (episode / "highlights/tighten/value-L01_titles.json").write_text(
+        '{"partially_promoted": true}', encoding="utf-8"
+    )
+    audit = json.loads(feedback.read_text(encoding="utf-8"))
+    job = audit["revisions"][-1]["revision_job"]
+    job.update(
+        {
+            "status": "running",
+            "attempt": 2,
+            "worker_pid": 999_999_999,
+            "worker_session_id": "orphan-session",
+            "result_receipt": None,
+        }
+    )
+    feedback.write_text(json.dumps(audit, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="still active"):
+        recover_running_revision_job(
+            tmp_path,
+            episode_id=episode.name,
+            request_id=request_id,
+            apply=True,
+            process_probe=lambda _pid, _session: True,
+            resolve_probe=lambda *_args: {"revision_timelines": []},
+        )
+    with pytest.raises(RuntimeError, match="Timelines still exist"):
+        recover_running_revision_job(
+            tmp_path,
+            episode_id=episode.name,
+            request_id=request_id,
+            apply=True,
+            process_probe=lambda _pid, _session: False,
+            resolve_probe=lambda *_args: {
+                "revision_timelines": ["derived__revision_work__abc123"]
+            },
+        )
+
+    dry = recover_running_revision_job(
+        tmp_path,
+        episode_id=episode.name,
+        request_id=request_id,
+        apply=False,
+        process_probe=lambda _pid, _session: False,
+        resolve_probe=lambda *_args: {"revision_timelines": []},
+    )
+    assert dry["status"] == "would_recover"
+    assert dry["current_matches_before"] is False
+    assert (episode / "highlights/tighten/value-L01_titles.json").read_bytes() != old_recipe
+
+    recovered = recover_running_revision_job(
+        tmp_path,
+        episode_id=episode.name,
+        request_id=request_id,
+        apply=True,
+        process_probe=lambda _pid, _session: False,
+        resolve_probe=lambda *_args: {"revision_timelines": []},
+    )
+    assert recovered["status"] == "failed"
+    assert (episode / "highlights/tighten/value-L01_titles.json").read_bytes() == old_recipe
+    saved = json.loads(feedback.read_text(encoding="utf-8"))["revisions"][-1][
+        "revision_job"
+    ]
+    assert saved["status"] == "failed"
+    assert "recovery.json" in saved["result_receipt"]
+    assert retry_failed_revision_job(
+        tmp_path, episode_id=episode.name, request_id=request_id, apply=True
+    )["status"] == "queued"
+    queued = pending_revision_jobs(tmp_path)[0]
+    assert queued["job"]["attempt"] == 2
     assert not (
         episode / "highlights/tighten/value-L01_broll_materialization.json"
     ).exists()
@@ -902,6 +1025,31 @@ def test_timeline_transaction_rolls_back_partial_mutation_to_original_uid(
     assert canonical[0].GetUniqueId() == "original-uid"
     assert not hasattr(canonical[0], "mutated")
 
+    save_calls = 0
+
+    def save_with_abi_exit():
+        nonlocal save_calls
+        save_calls += 1
+        if save_calls == 1:
+            raise SystemExit(77)
+        return True
+
+    manager.SaveProject = save_with_abi_exit
+    with pytest.raises(SystemExit, match="77"):
+        _ResolveTimelineTransaction.begin(
+            episode,
+            {"value-L01": "長1 - value-L01（緊·導播）"},
+            "finished-revision-systemexit77",
+        )
+    canonical = [
+        timeline
+        for timeline in project.timelines
+        if timeline.GetName() == "長1 - value-L01（緊·導播）"
+    ]
+    assert len(canonical) == 1
+    assert canonical[0].GetUniqueId() == "original-uid"
+    assert all("__revision_" not in timeline.GetName() for timeline in project.timelines)
+
 
 def test_default_trusted_apply_calls_existing_pipeline_before_commit(monkeypatch, tmp_path):
     episode = tmp_path / "20260805 林之晨"
@@ -1067,6 +1215,54 @@ def test_job_status_io_failure_rolls_back_prepared_timeline_and_filesystem(
     audit = json.loads(feedback.read_text(encoding="utf-8"))
     assert audit["revisions"][0]["revision_job"]["status"] == "failed"
     assert "fsync failure" in audit["revisions"][0]["revision_job"]["error"]
+
+
+def test_finalize_system_exit_preserves_durable_success_and_new_output(tmp_path):
+    episode, manifest, feedback = _write_queued_job(tmp_path)
+    original_manifest = manifest.read_bytes()
+    preview = Path(
+        json.loads(manifest.read_text(encoding="utf-8"))["cuts"][0]["artifacts"][
+            "preview"
+        ]["path"]
+    )
+    original_preview = preview.read_bytes()
+    transaction = _ResolveTimelineTransaction(None, None, [])
+    calls: list[str] = []
+    transaction.rollback = lambda: calls.append("rollback") or {"rolled_back": True}
+
+    def finalize():
+        calls.append("finalize")
+        raise SystemExit(91)
+
+    transaction.finalize = finalize
+
+    def trusted(context: dict) -> dict:
+        result = _fixture_trusted_apply(context)
+        result["timeline_transaction"] = {"prepared": True}
+        result["_timeline_transaction_handle"] = transaction
+        return result
+
+    assert run_revision_job(
+        pending_revision_jobs(tmp_path)[0],
+        agent_runner=_successful_agent,
+        output_verifier=_fixture_verifier,
+        trusted_apply=trusted,
+    )
+    assert calls == ["finalize"]
+    assert manifest.read_bytes() != original_manifest
+    assert preview.read_bytes() != original_preview
+    audit = json.loads(feedback.read_text(encoding="utf-8"))
+    job = audit["revisions"][0]["revision_job"]
+    assert job["status"] == "succeeded"
+    assert job["output_manifest_sha256"] == _sha(manifest)
+    receipt = json.loads(
+        (episode / "highlights/review" / job["result_receipt"]).read_text(
+            encoding="utf-8"
+        )
+    )
+    cleanup = receipt["trusted_apply"]["timeline_transaction"]
+    assert cleanup["backup_cleanup_pending"] is True
+    assert "SystemExit: 91" in cleanup["backup_cleanup_error"]
 
 
 def test_existing_broll_asset_drift_is_rejected_before_trusted_apply(tmp_path):

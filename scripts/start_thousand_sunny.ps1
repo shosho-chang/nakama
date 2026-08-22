@@ -8,6 +8,7 @@
 
 $repo = 'E:\nakama'
 $venvPy = Join-Path $repo '.venv-v2\Scripts\python.exe'
+$resolvePy = 'C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe'
 $logDir = Join-Path $repo 'logs'
 $logFile = Join-Path $logDir 'thousand-sunny.log'
 
@@ -33,16 +34,28 @@ Start-Process -FilePath $venvPy `
     -NoNewWindow:$false
 
 # --- packaging desktop worker ------------------------------------------------
-# 三種工作共用同一個 desktop watcher：
+# 兩種不依賴 Resolve ABI 的工作共用 render watcher：
 # 1) gate「存配方」→ render_request → render 一次。
 # 2) gate Reject + feedback → revision_job → bounded Codex agent 重做 → 回到 re-review。
-# 3) finished-cut「保存草稿」且含 feedback → bounded Agent 重建 preview/manifest。
-# 三者都需要桌機檔案／renderer；revision 失敗不會無限重試，也絕不自動核准。
+# Finished-cut revision 由下方 Python 3.10 supervisor 獨佔，避免 fusionscript ABI 錯誤與雙重消費。
 $watcherArgs = @('scripts/render_watcher.py', '--interval', '5')
 Start-Process -FilePath $venvPy `
     -ArgumentList $watcherArgs `
     -WorkingDirectory $repo `
     -RedirectStandardOutput (Join-Path $logDir 'render-watcher.out.log') `
     -RedirectStandardError (Join-Path $logDir 'render-watcher.err.log') `
+    -WindowStyle Hidden `
+    -NoNewWindow:$false
+
+# --- finished-cut revision worker (Resolve/Fusion Python 3.10 ABI) -----------
+if (-not (Test-Path -LiteralPath $resolvePy -PathType Leaf)) {
+    throw "Resolve-compatible Python 3.10 not found: $resolvePy"
+}
+$finishedWatcherArgs = @('scripts/finished_review_watcher.py', '--interval', '5')
+Start-Process -FilePath $resolvePy `
+    -ArgumentList $finishedWatcherArgs `
+    -WorkingDirectory $repo `
+    -RedirectStandardOutput (Join-Path $logDir 'finished-review-watcher.out.log') `
+    -RedirectStandardError (Join-Path $logDir 'finished-review-watcher.err.log') `
     -WindowStyle Hidden `
     -NoNewWindow:$false

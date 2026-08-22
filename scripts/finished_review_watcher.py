@@ -621,6 +621,264 @@ def retry_failed_revision_job(
     return response
 
 
+def _worker_process_is_running(pid: int | None, _session_id: str | None) -> bool:
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _resolve_revision_timeline_probe(
+    episode_dir: Path, allowed: dict, request_id: str
+) -> dict:
+    """Read-only proof that a crashed attempt left no revision Timeline behind."""
+    try:
+        from scripts.build_resolve_project import connect_resolve
+
+        resolve = connect_resolve()
+        project_manager = resolve.GetProjectManager()
+        project = project_manager.GetCurrentProject()
+        if project is None or project.GetName() != episode_dir.name:
+            project = project_manager.LoadProject(episode_dir.name)
+        if project is None:
+            raise RuntimeError(f"Resolve project not found: {episode_dir.name}")
+        names = [timeline.GetName() for timeline in _project_timelines(project)]
+    except KeyboardInterrupt:
+        raise
+    except BaseException as exc:
+        raise RuntimeError(f"Resolve recovery probe failed: {type(exc).__name__}: {exc}") from exc
+    expected = allowed.get("resolve_timelines")
+    if not isinstance(expected, dict):
+        raise RuntimeError("running revision lacks bound Resolve Timelines")
+    revision_names = sorted(
+        name
+        for name in names
+        if any(
+            name.startswith(f"{canonical}__revision_backup__")
+            or name.startswith(f"{canonical}__revision_work__")
+            for canonical in expected.values()
+        )
+    )
+    return {
+        "project": episode_dir.name,
+        "request_id": request_id,
+        "revision_timelines": revision_names,
+    }
+
+
+def _recovery_rollback_state(
+    episode_dir: Path, review_dir: Path, attempt_dir: Path, request: dict
+) -> tuple[dict, dict]:
+    allowed = request.get("allowed_changes")
+    pre_snapshot = request.get("pre_snapshot")
+    if not isinstance(allowed, dict) or not isinstance(pre_snapshot, dict):
+        raise RuntimeError("running revision lacks a rollback snapshot")
+    before_dir = attempt_dir / "before"
+    if not before_dir.is_dir():
+        raise RuntimeError("running revision rollback backup is missing")
+    tree_relatives: list[str] = []
+    for key in (
+        "trusted_output_review_cut_dirs",
+        "trusted_output_stills_visual_dirs",
+    ):
+        values = allowed.get(key)
+        if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+            raise RuntimeError(f"running revision has invalid {key}")
+        tree_relatives.extend(values)
+    assets_relative = allowed.get("new_broll_assets_dir")
+    if not isinstance(assets_relative, str):
+        raise RuntimeError("running revision has invalid B-roll asset directory")
+    tree_relatives.append(assets_relative)
+
+    trees: list[dict] = []
+    backup_inventory: dict[str, dict[str, int | str]] = {}
+    for relative in tree_relatives:
+        destination = _contained(
+            episode_dir / relative, episode_dir, "recovery rollback target"
+        )
+        destination_relative = destination.resolve().relative_to(episode_dir.resolve())
+        backup = _contained(
+            before_dir / "trees" / destination_relative,
+            before_dir,
+            "recovery tree backup",
+        )
+        existed = backup.is_dir()
+        if existed:
+            for item in sorted(path for path in backup.rglob("*") if path.is_file()):
+                logical = destination_relative / item.relative_to(backup)
+                backup_inventory[logical.as_posix()] = {
+                    "bytes": item.stat().st_size,
+                    "sha256": _sha256(item),
+                }
+        trees.append(
+            {"destination": str(destination), "backup": str(backup), "existed": existed}
+        )
+
+    file_relatives: list[str] = []
+    for key in ("tighten_files", "trusted_output_receipts"):
+        values = allowed.get(key)
+        if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+            raise RuntimeError(f"running revision has invalid {key}")
+        file_relatives.extend(values)
+    manifest_prefix = (Path("highlights") / "review").as_posix() + "/"
+    file_relatives.extend(
+        relative
+        for relative in pre_snapshot
+        if relative.startswith(manifest_prefix)
+        and Path(relative).name.startswith("finished_review_manifest_")
+        and Path(relative).suffix == ".json"
+    )
+    files: list[dict] = []
+    for relative in sorted(set(file_relatives)):
+        destination = _contained(
+            episode_dir / relative, episode_dir, "recovery rollback file"
+        )
+        destination_relative = destination.resolve().relative_to(episode_dir.resolve())
+        backup = _contained(
+            before_dir / "files" / destination_relative,
+            before_dir,
+            "recovery file backup",
+        )
+        existed = backup.is_file()
+        if existed:
+            backup_inventory[destination_relative.as_posix()] = {
+                "bytes": backup.stat().st_size,
+                "sha256": _sha256(backup),
+            }
+        files.append(
+            {"destination": str(destination), "backup": str(backup), "existed": existed}
+        )
+    if backup_inventory != pre_snapshot:
+        raise RuntimeError("running revision rollback backup does not match pre-snapshot")
+    return {"trees": trees, "files": files, "pre_inventory": pre_snapshot}, allowed
+
+
+def recover_running_revision_job(
+    episodes_root: Path,
+    *,
+    episode_id: str,
+    request_id: str,
+    apply: bool = False,
+    process_probe: Callable[[int | None, str | None], bool] = _worker_process_is_running,
+    resolve_probe: Callable[[Path, dict, str], dict] = _resolve_revision_timeline_probe,
+) -> dict:
+    """Recover one orphan ``running`` attempt after proving its process and Timeline are absent."""
+    if Path(episode_id).name != episode_id or not re.fullmatch(r"[A-Za-z0-9._-]+", request_id):
+        raise RuntimeError("recovery episode or request id is unsafe")
+    episodes_root = Path(episodes_root)
+    episode_dir = _contained(episodes_root / episode_id, episodes_root, "recovery episode")
+    review_dir = episode_dir / "highlights" / "review"
+    feedback_paths = [review_dir / name for name in _FEEDBACK_FILES]
+    feedback_paths = [path for path in feedback_paths if path.is_file()]
+    if len(feedback_paths) != 1:
+        raise RuntimeError("recovery requires exactly one finished review feedback file")
+    feedback_path = feedback_paths[0]
+    audit = _load_feedback(feedback_path)
+    matches = [
+        (index, revision.get("revision_job"))
+        for index, revision in enumerate(audit["revisions"])
+        if isinstance(revision, dict)
+        and isinstance(revision.get("revision_job"), dict)
+        and revision["revision_job"].get("request_id") == request_id
+    ]
+    if len(matches) != 1:
+        raise RuntimeError("recovery request id must identify exactly one revision")
+    index, job = matches[0]
+    if job.get("status") != "running":
+        raise RuntimeError("only a running finished revision job can be recovered")
+    attempt = job.get("attempt")
+    if not isinstance(attempt, int) or attempt < 1:
+        raise RuntimeError("running revision has no active attempt")
+    worker_pid = job.get("worker_pid")
+    worker_session = job.get("worker_session_id")
+    if process_probe(worker_pid, worker_session):
+        raise RuntimeError("finished revision worker process/session is still active")
+    request_root = _contained(
+        review_dir / "revisions" / request_id,
+        review_dir / "revisions",
+        "recovery request root",
+    )
+    attempt_dir = request_root if attempt == 1 else request_root / "attempts" / str(attempt)
+    for log_name in ("agent.stdout.log", "agent.stderr.log"):
+        if not (attempt_dir / log_name).is_file():
+            raise RuntimeError(f"running revision attempt log is incomplete: {log_name}")
+    try:
+        request = json.loads((attempt_dir / "request.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("running revision request receipt is unreadable") from exc
+    if request.get("request_id") != request_id:
+        raise RuntimeError("running revision request receipt does not match job")
+    rollback_state, allowed = _recovery_rollback_state(
+        episode_dir, review_dir, attempt_dir, request
+    )
+    resolve_state = resolve_probe(episode_dir, allowed, request_id)
+    revision_timelines = (
+        resolve_state.get("revision_timelines") if isinstance(resolve_state, dict) else None
+    )
+    if not isinstance(revision_timelines, list) or revision_timelines:
+        raise RuntimeError("Resolve revision Timelines still exist; refusing filesystem recovery")
+    current_inventory = _retry_target_inventory(episode_dir, review_dir, allowed)
+    response = {
+        "status": "would_recover",
+        "episode_id": episode_id,
+        "request_id": request_id,
+        "attempt": attempt,
+        "worker_process_absent": True,
+        "attempt_logs_complete": True,
+        "resolve_revision_timelines_absent": True,
+        "rollback_backup_verified": True,
+        "current_matches_before": current_inventory == rollback_state["pre_inventory"],
+    }
+    if not apply:
+        return response
+    _restore_revision_targets(rollback_state, review_dir)
+    restored_inventory = _retry_target_inventory(episode_dir, review_dir, allowed)
+    if restored_inventory != rollback_state["pre_inventory"]:
+        raise RuntimeError("orphan recovery could not restore the pre-snapshot")
+    recovered_at = datetime.now(timezone.utc).isoformat()
+    receipt_path = attempt_dir / "recovery.json"
+    _atomic_json(
+        receipt_path,
+        {
+            "contract": "finished-cut-revision-result-v1",
+            "request_id": request_id,
+            "status": "failed",
+            "recovered_at": recovered_at,
+            "attempt": attempt,
+            "reason": "orphan running worker recovered after clean rollback proof",
+            "resolve_probe": resolve_state,
+            "pre_snapshot_sha256": _json_sha256(rollback_state["pre_inventory"]),
+            "approved": False,
+        },
+    )
+    work = {
+        "episode_dir": episode_dir,
+        "review_dir": review_dir,
+        "feedback_path": feedback_path,
+        "revision_index": index,
+        "request_id": request_id,
+        "job": job,
+    }
+    _update_job(
+        work,
+        {
+            "status": "failed",
+            "finished_at": recovered_at,
+            "result_receipt": receipt_path.relative_to(review_dir).as_posix(),
+            "error": "orphan running worker recovered; previous artifacts restored",
+            "recovered_at": recovered_at,
+        },
+        required_status="running",
+    )
+    response["status"] = "failed"
+    response["recovery_receipt"] = receipt_path.relative_to(review_dir).as_posix()
+    response["current_matches_before"] = True
+    return response
+
+
 def _update_job(
     work: dict,
     updates: dict,
@@ -1365,7 +1623,10 @@ class _ResolveTimelineTransaction:
             if not project_manager.SaveProject():
                 raise RuntimeError("Resolve SaveProject failed while opening revision transaction")
             return transaction
-        except Exception:
+        except KeyboardInterrupt:
+            transaction.rollback()
+            raise
+        except BaseException:
             transaction.rollback()
             raise
 
@@ -1457,13 +1718,14 @@ def _trusted_apply_revision(context: dict) -> dict:
 
     episode_dir = Path(context["episode_dir"])
     requested = list(context["request"]["requested_cut_ids"])
-    transaction = _ResolveTimelineTransaction.begin(
-        episode_dir,
-        dict(context["allowed_changes"]["resolve_timelines"]),
-        str(context["request_id"]),
-    )
+    transaction: _ResolveTimelineTransaction | None = None
     operations: list[dict] = []
     try:
+        transaction = _ResolveTimelineTransaction.begin(
+            episode_dir,
+            dict(context["allowed_changes"]["resolve_timelines"]),
+            str(context["request_id"]),
+        )
         for cut_id in requested:
             stills = episode_dir / "highlights" / "stills" / f"{cut_id}-visuals"
             operations.append(
@@ -1504,12 +1766,16 @@ def _trusted_apply_revision(context: dict) -> dict:
             "output_acceptance": acceptance,
         }
     except KeyboardInterrupt:
-        transaction.rollback()
+        if transaction is not None:
+            transaction.rollback()
         raise
     except BaseException as exc:
-        rollback = transaction.rollback()
+        rollback = transaction.rollback() if transaction is not None else {
+            "status": "not_started",
+            "reason": "Resolve connection/transaction did not open",
+        }
         raise _TrustedApplyError(
-            str(exc), operations=operations, rollback=rollback
+            f"{type(exc).__name__}: {exc}", operations=operations, rollback=rollback
         ) from exc
 
 
@@ -1625,6 +1891,10 @@ def run_revision_job(
             {
                 "status": "running",
                 "attempt": int(request.get("attempt", 0)) + 1,
+                "worker_pid": os.getpid(),
+                "worker_session_id": hashlib.sha256(
+                    f"{request_id}:{attempt_number}:{os.getpid()}:{started_at.isoformat()}".encode()
+                ).hexdigest()[:24],
                 "started_at": started_at.isoformat(),
                 "finished_at": None,
                 "result_receipt": None,
@@ -1738,19 +2008,33 @@ def run_revision_job(
         )
         job_succeeded = True
         if timeline_handle is not None:
+            def persist_cleanup_state() -> None:
+                result_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+                result_payload["trusted_apply"]["timeline_transaction"] = timeline_state
+                _atomic_json(receipt_path, result_payload)
+
             try:
                 cleanup = timeline_handle.finalize()
                 timeline_state.update(cleanup)
                 timeline_state["backup_cleanup_pending"] = not bool(
                     cleanup.get("backup_cleanup_saved")
                 )
-                result_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
-                result_payload["trusted_apply"]["timeline_transaction"] = timeline_state
-                _atomic_json(receipt_path, result_payload)
-            except Exception as cleanup_exc:
+                persist_cleanup_state()
+            except KeyboardInterrupt as cleanup_exc:
+                timeline_state["backup_cleanup_pending"] = True
+                timeline_state["backup_cleanup_error"] = (
+                    f"{type(cleanup_exc).__name__}: {cleanup_exc}"
+                )[-500:]
+                persist_cleanup_state()
+                raise
+            except BaseException as cleanup_exc:
                 # Canonical output and succeeded receipt are already durable;
                 # retaining the original backup is safe and recoverable.
-                timeline_state["backup_cleanup_error"] = str(cleanup_exc)[-500:]
+                timeline_state["backup_cleanup_pending"] = True
+                timeline_state["backup_cleanup_error"] = (
+                    f"{type(cleanup_exc).__name__}: {cleanup_exc}"
+                )[-500:]
+                persist_cleanup_state()
         return True
     except KeyboardInterrupt:
         if job_succeeded:
@@ -1770,7 +2054,11 @@ def run_revision_job(
             },
         )
         raise
-    except Exception as exc:
+    except BaseException as exc:
+        if job_succeeded:
+            # Succeeded job/result and canonical Resolve output are already durable.
+            # Never roll filesystem bytes or job state back after this commit point.
+            raise
         if timeline_handle is not None and not job_succeeded:
             try:
                 timeline_handle.rollback()
@@ -1860,6 +2148,20 @@ def main() -> int:
         action="store_true",
         help="requeue the verified failed request (default retry is read-only)",
     )
+    parser.add_argument(
+        "--recover-episode",
+        help="episode folder containing an orphan running revision request",
+    )
+    parser.add_argument(
+        "--recover-running",
+        metavar="REQUEST_ID",
+        help="verify one orphan running attempt before deterministic rollback",
+    )
+    parser.add_argument(
+        "--apply-recovery",
+        action="store_true",
+        help="restore the verified orphan and mark it failed (default is read-only)",
+    )
     args = parser.parse_args()
     if args.apply_reconcile and not args.reconcile_episode:
         parser.error("--apply-reconcile requires --reconcile-episode")
@@ -1871,6 +2173,21 @@ def main() -> int:
         parser.error("--apply-retry requires --retry-failed")
     if args.retry_failed and args.reconcile_episode:
         parser.error("retry and reconcile are separate operations")
+    if bool(args.recover_episode) != bool(args.recover_running):
+        parser.error("--recover-episode and --recover-running must be provided together")
+    if args.apply_recovery and not args.recover_running:
+        parser.error("--apply-recovery requires --recover-running")
+    if args.recover_running and (args.reconcile_episode or args.retry_failed):
+        parser.error("recovery, retry, and reconcile are separate operations")
+    if args.recover_running:
+        result = recover_running_revision_job(
+            args.episodes_root,
+            episode_id=args.recover_episode,
+            request_id=args.recover_running,
+            apply=args.apply_recovery,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
     if args.retry_failed:
         result = retry_failed_revision_job(
             args.episodes_root,
