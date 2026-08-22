@@ -64,7 +64,10 @@ def _validate_trusted_asset_sources(
     asset_path: Callable[[str], Path],
 ) -> tuple[dict, dict[str, Path]]:
     """Freshly validate a canonical acquisition map and every named media file."""
-    from agents.brook.script_video.highlight_broll import probe_stock_video
+    from agents.brook.script_video.highlight_broll import (
+        parse_provenance_acquired_at,
+        probe_stock_video,
+    )
 
     if not isinstance(sources, dict) or not sources:
         raise RuntimeError("trusted asset sources must be a non-empty object")
@@ -94,13 +97,10 @@ def _validate_trusted_asset_sources(
             parsed = urlparse(str(provenance.get(key) or ""))
             if parsed.scheme not in {"http", "https"} or not parsed.netloc:
                 raise RuntimeError(f"trusted asset provenance URL is invalid: {slug}.{key}")
-        acquired_at = str(provenance.get("acquired_at") or "")
         try:
-            acquired = datetime.fromisoformat(acquired_at.replace("Z", "+00:00"))
+            parse_provenance_acquired_at(provenance.get("acquired_at"))
         except ValueError as exc:
             raise RuntimeError(f"trusted asset acquired_at is invalid: {slug}") from exc
-        if acquired.tzinfo is None:
-            raise RuntimeError(f"trusted asset acquired_at lacks timezone: {slug}")
         evidence = [
             provenance.get("license_url"),
             provenance.get("terms_url"),

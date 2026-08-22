@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 from datetime import datetime
@@ -28,6 +29,28 @@ VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".m4v"}
 
 class BrollContractError(ValueError):
     """The Stock Video plan or its materialized receipt is not trustworthy."""
+
+
+def parse_provenance_acquired_at(value: Any) -> datetime:
+    """Parse timezone-aware ISO-8601 consistently on Python 3.10 through 3.12."""
+    text = str(value or "").strip()
+    normalized = f"{text[:-1]}+00:00" if text.endswith("Z") else text
+    fractional = re.fullmatch(
+        r"(?P<prefix>.+T\d{2}:\d{2}:\d{2})\.(?P<fraction>\d+)(?P<offset>[+-]\d{2}:\d{2})",
+        normalized,
+    )
+    if fractional and len(fractional.group("fraction")) > 6:
+        normalized = (
+            f"{fractional.group('prefix')}."
+            f"{fractional.group('fraction')[:6]}{fractional.group('offset')}"
+        )
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise ValueError("invalid ISO-8601 provenance timestamp") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("provenance timestamp must be timezone-aware")
+    return parsed
 
 
 def _sha256(path: Path) -> str:
@@ -165,13 +188,10 @@ def _provenance(item: dict[str, Any], slug: str) -> dict[str, str]:
     if not isinstance(raw, dict):
         raise BrollContractError(f"Stock Video {slug} 缺少 provenance")
     source_url = _http_url(raw.get("source_url"), "source_url")
-    acquired_at = str(raw.get("acquired_at") or "").strip()
     try:
-        acquired = datetime.fromisoformat(acquired_at.replace("Z", "+00:00"))
+        acquired = parse_provenance_acquired_at(raw.get("acquired_at"))
     except ValueError as exc:
         raise BrollContractError(f"Stock Video {slug} provenance.acquired_at 無效") from exc
-    if acquired.tzinfo is None:
-        raise BrollContractError(f"Stock Video {slug} provenance.acquired_at 必須含 timezone")
     evidence: dict[str, str] = {}
     for key in ("license_url", "terms_url"):
         if raw.get(key):

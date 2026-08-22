@@ -43,7 +43,7 @@ def _write_acquisition_source(root: Path) -> tuple[Path, dict]:
             "sha256": _sha(media),
             "provenance": {
                 "source_url": f"https://example.test/video/{index}",
-                "acquired_at": "2026-08-22T12:00:00+08:00",
+                "acquired_at": "2026-08-22T04:48:53.1292202Z",
                 "license_url": "https://example.test/license",
             },
         }

@@ -11,10 +11,20 @@ import pytest
 from agents.brook.script_video.highlight_broll import (
     BrollContractError,
     build_broll_receipt,
+    parse_provenance_acquired_at,
     verify_broll_receipt,
 )
 
 MASTER = {"contract": "podcast-editorial-master-v1", "content_hash": "a" * 64}
+
+
+def test_provenance_timestamp_parser_is_python310_safe_and_timezone_strict() -> None:
+    parsed = parse_provenance_acquired_at("2026-08-22T04:48:53.1292202Z")
+    assert parsed.isoformat() == "2026-08-22T04:48:53.129220+00:00"
+    with pytest.raises(ValueError, match="invalid ISO-8601"):
+        parse_provenance_acquired_at("not-a-time")
+    with pytest.raises(ValueError, match="timezone-aware"):
+        parse_provenance_acquired_at("2026-08-22T04:48:53.129220")
 
 
 def _provenance(index: int) -> dict[str, str]:
