@@ -159,6 +159,17 @@ Bridge 日後 Save Draft 會自動讀這個 handoff。0-stock long Highlight 若
 成功後不得清除。後續 revision 可重用 episode 內完全相同 filename／bytes／SHA-256／ffprobe／
 provenance 的素材，但不得覆寫；任何漂移都必須在 Agent 或 Resolve 啟動前 fail closed。
 
+若 worker 在 Agent／Resolve 前失敗，不可手改 feedback JSON。先做只讀 rollback 驗證：
+
+```powershell
+python scripts/finished_review_watcher.py --episodes-root "G:\Footages" `
+  --retry-episode "<episode>" --retry-failed "<request-id>"
+```
+
+只有輸出 `rollback_verified: true` 才可在同一命令加 `--apply-retry`。Retry 保留原本的
+content-addressed request ID 與舊 failure receipt，下一 attempt 寫入獨立子目錄；來源 manifest、
+preview 或 rollback inventory 有任何漂移就拒絕 requeue。
+
 軌道契約：v1 主鏡（導播）/ v2 滿版 stock / v3 hero / v4 名牌+轉場卡+論文卡 /
 v5 badge；a1 對白 / a2 SFX。
 

@@ -18,6 +18,7 @@ from scripts.finished_review_watcher import (
     pending_revision_jobs,
     prepare_trusted_asset_handoff,
     reconcile_missing_revision_job,
+    retry_failed_revision_job,
     run_revision_job,
 )
 from scripts.render_watcher import run_finished_revision_queue_once
@@ -569,6 +570,81 @@ def test_verifier_failure_rolls_back_promoted_sidefiles_recipes_visuals_and_asse
     assert (assets / "existing.mp4").read_bytes() == originals["asset"]
     assert not (assets / "job-new.mp4").exists()
     assert not (episode / "highlights/materialization/value-L01.json").exists()
+
+
+def test_failed_cleanly_rolled_back_job_can_be_explicitly_retried(tmp_path):
+    episode, _manifest, feedback = _write_queued_job(tmp_path)
+
+    def failed_agent(_context: dict) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(["fixture-agent"], 2, "", "CLI parser failed")
+
+    assert not run_revision_job(
+        pending_revision_jobs(tmp_path)[0], agent_runner=failed_agent
+    )
+    failed = json.loads(feedback.read_text(encoding="utf-8"))["revisions"][-1][
+        "revision_job"
+    ]
+    assert failed["status"] == "failed"
+    request_id = failed["request_id"]
+
+    dry_run = retry_failed_revision_job(
+        tmp_path, episode_id=episode.name, request_id=request_id, apply=False
+    )
+    assert dry_run["status"] == "would_retry"
+    assert pending_revision_jobs(tmp_path) == []
+
+    applied = retry_failed_revision_job(
+        tmp_path, episode_id=episode.name, request_id=request_id, apply=True
+    )
+    assert applied["status"] == "queued"
+    queued = pending_revision_jobs(tmp_path)
+    assert len(queued) == 1
+    assert queued[0]["request_id"] == request_id
+
+    assert run_revision_job(
+        queued[0],
+        agent_runner=_successful_agent,
+        output_verifier=_fixture_verifier,
+        trusted_apply=_fixture_trusted_apply,
+    )
+    saved = json.loads(feedback.read_text(encoding="utf-8"))["revisions"][-1][
+        "revision_job"
+    ]
+    assert saved["status"] == "succeeded"
+    assert saved["attempt"] == 2
+    assert saved["previous_result_receipts"]
+    assert saved["result_receipt"].startswith(f"revisions/{request_id}/attempts/2/")
+
+
+def test_failed_job_retry_rejects_artifact_drift_without_requeueing(tmp_path):
+    episode, manifest, feedback = _write_queued_job(tmp_path)
+
+    def failed_agent(_context: dict) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(["fixture-agent"], 2, "", "CLI parser failed")
+
+    assert not run_revision_job(
+        pending_revision_jobs(tmp_path)[0], agent_runner=failed_agent
+    )
+    manifest_payload = json.loads(manifest.read_text(encoding="utf-8"))
+    Path(manifest_payload["cuts"][0]["artifacts"]["preview"]["path"]).write_bytes(
+        b"drifted-after-clean-rollback"
+    )
+    failed = json.loads(feedback.read_text(encoding="utf-8"))["revisions"][-1][
+        "revision_job"
+    ]
+
+    with pytest.raises(RuntimeError, match="rollback is not clean"):
+        retry_failed_revision_job(
+            tmp_path,
+            episode_id=episode.name,
+            request_id=failed["request_id"],
+            apply=True,
+        )
+    saved = json.loads(feedback.read_text(encoding="utf-8"))["revisions"][-1][
+        "revision_job"
+    ]
+    assert saved["status"] == "failed"
+    assert pending_revision_jobs(tmp_path) == []
     assert not (
         episode / "highlights/tighten/value-L01_broll_materialization.json"
     ).exists()
@@ -605,6 +681,8 @@ def test_agent_command_writes_only_episode_local_job_output(monkeypatch, tmp_pat
     )
 
     assert "--add-dir" not in captured["command"]
+    assert "--approve-for-me" not in captured["command"]
+    assert "--dangerously-bypass-approvals-and-sandbox" not in captured["command"]
     assert captured["command"][captured["command"].index("--sandbox") + 1] == "workspace-write"
     assert Path(captured["cwd"]) == job_dir / "output"
     assert str(job_dir / "output") in captured["prompt"]

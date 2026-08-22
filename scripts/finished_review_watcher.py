@@ -464,6 +464,163 @@ def reconcile_missing_revision_job(
     return result
 
 
+def _retry_target_inventory(episode_dir: Path, review_dir: Path, allowed: dict) -> dict:
+    """Rebuild the exact filesystem inventory covered by a revision rollback."""
+    inventory: dict[str, dict[str, int | str]] = {}
+    tree_keys = (
+        "trusted_output_review_cut_dirs",
+        "trusted_output_stills_visual_dirs",
+    )
+    tree_relatives: list[str] = []
+    for key in tree_keys:
+        values = allowed.get(key)
+        if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+            raise RuntimeError(f"failed revision request has invalid {key}")
+        tree_relatives.extend(values)
+    assets_relative = allowed.get("new_broll_assets_dir")
+    if not isinstance(assets_relative, str):
+        raise RuntimeError("failed revision request has invalid B-roll asset directory")
+    tree_relatives.append(assets_relative)
+    for relative in tree_relatives:
+        target = _contained(episode_dir / relative, episode_dir, "retry rollback target")
+        inventory.update(_tree_inventory(target, relative_to=episode_dir))
+
+    for key in ("tighten_files", "trusted_output_receipts"):
+        values = allowed.get(key)
+        if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+            raise RuntimeError(f"failed revision request has invalid {key}")
+        for relative in values:
+            target = _contained(episode_dir / relative, episode_dir, "retry rollback file")
+            if target.is_file():
+                inventory.update(_tree_inventory(target, relative_to=episode_dir))
+    for manifest in sorted(review_dir.glob("finished_review_manifest_*.json")):
+        inventory.update(_tree_inventory(manifest, relative_to=episode_dir))
+    return inventory
+
+
+def retry_failed_revision_job(
+    episodes_root: Path,
+    *,
+    episode_id: str,
+    request_id: str,
+    apply: bool = False,
+) -> dict:
+    """Requeue one failed request only after proving rollback restored its inputs."""
+    if Path(episode_id).name != episode_id or not re.fullmatch(r"[A-Za-z0-9._-]+", request_id):
+        raise RuntimeError("retry episode or request id is unsafe")
+    episodes_root = Path(episodes_root)
+    episode_dir = _contained(episodes_root / episode_id, episodes_root, "retry episode")
+    review_dir = episode_dir / "highlights" / "review"
+    feedback_paths = [review_dir / name for name in _FEEDBACK_FILES]
+    feedback_paths = [path for path in feedback_paths if path.is_file()]
+    if len(feedback_paths) != 1:
+        raise RuntimeError("retry requires exactly one finished review feedback file")
+    feedback_path = feedback_paths[0]
+    audit = _load_feedback(feedback_path)
+    matches = [
+        (index, revision, revision.get("revision_job"))
+        for index, revision in enumerate(audit["revisions"])
+        if isinstance(revision, dict)
+        and isinstance(revision.get("revision_job"), dict)
+        and revision["revision_job"].get("request_id") == request_id
+    ]
+    if len(matches) != 1:
+        raise RuntimeError("retry request id must identify exactly one revision")
+    index, _revision, job = matches[0]
+    if job.get("status") != "failed":
+        raise RuntimeError("only a failed finished revision job can be retried")
+    attempt = job.get("attempt")
+    if not isinstance(attempt, int) or attempt < 1:
+        raise RuntimeError("failed revision has no completed attempt")
+    request_root = _contained(
+        review_dir / "revisions" / request_id,
+        review_dir / "revisions",
+        "retry request root",
+    )
+    attempt_dir = request_root if attempt == 1 else request_root / "attempts" / str(attempt)
+    try:
+        request = json.loads((attempt_dir / "request.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("failed revision request receipt is unreadable") from exc
+    if request.get("request_id") != request_id:
+        raise RuntimeError("failed revision request receipt does not match job")
+    pre_snapshot = request.get("pre_snapshot")
+    allowed = request.get("allowed_changes")
+    if not isinstance(pre_snapshot, dict) or not isinstance(allowed, dict):
+        raise RuntimeError("failed revision lacks a rollback snapshot")
+    current_inventory = _retry_target_inventory(episode_dir, review_dir, allowed)
+    if current_inventory != pre_snapshot:
+        raise RuntimeError("failed revision rollback is not clean; refusing retry")
+
+    manifest_name = job.get("manifest_filename")
+    if not isinstance(manifest_name, str) or Path(manifest_name).name != manifest_name:
+        raise RuntimeError("failed revision manifest filename is invalid")
+    manifest_path = _contained(review_dir / manifest_name, review_dir, "retry source manifest")
+    if _sha256(manifest_path) != job.get("source_manifest_sha256"):
+        raise RuntimeError("failed revision source manifest was not restored")
+    requested = job.get("requested_cut_ids")
+    if not isinstance(requested, list) or not requested:
+        raise RuntimeError("failed revision has no requested cuts")
+    source_cuts = _manifest_cuts(manifest_path, review_dir, requested)
+    for cut_id in requested:
+        preview = Path(source_cuts[cut_id]["artifacts"]["preview"]["path"])
+        if _sha256(preview) != job.get("source_preview_sha256", {}).get(cut_id):
+            raise RuntimeError(f"failed revision preview was not restored: {cut_id}")
+
+    result_relative = job.get("result_receipt")
+    if not isinstance(result_relative, str):
+        raise RuntimeError("failed revision has no failure receipt")
+    result_path = _contained(review_dir / result_relative, review_dir, "retry failure receipt")
+    try:
+        result = json.loads(result_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("failed revision failure receipt is unreadable") from exc
+    if result.get("request_id") != request_id or result.get("status") != "failed":
+        raise RuntimeError("failed revision failure receipt does not match job")
+    response = {
+        "status": "would_retry",
+        "episode_id": episode_id,
+        "request_id": request_id,
+        "previous_attempt": attempt,
+        "previous_result_receipt": result_relative,
+        "rollback_verified": True,
+    }
+    if not apply:
+        return response
+    previous_receipts = job.get("previous_result_receipts")
+    if previous_receipts is None:
+        previous_receipts = []
+    if not isinstance(previous_receipts, list) or not all(
+        isinstance(value, str) for value in previous_receipts
+    ):
+        raise RuntimeError("failed revision previous receipt history is invalid")
+    if result_relative not in previous_receipts:
+        previous_receipts = [*previous_receipts, result_relative]
+    work = {
+        "episode_dir": episode_dir,
+        "review_dir": review_dir,
+        "feedback_path": feedback_path,
+        "revision_index": index,
+        "request_id": request_id,
+        "job": job,
+    }
+    _update_job(
+        work,
+        {
+            "status": "queued",
+            "started_at": None,
+            "finished_at": None,
+            "result_receipt": None,
+            "error": None,
+            "retry_requested_at": datetime.now(timezone.utc).isoformat(),
+            "previous_result_receipts": previous_receipts,
+        },
+        required_status="failed",
+    )
+    response["status"] = "queued"
+    return response
+
+
 def _update_job(
     work: dict,
     updates: dict,
@@ -580,7 +737,6 @@ Hero Title replacement 內的
         "--ephemeral",
         "--ignore-rules",
         "--skip-git-repo-check",
-        "--approve-for-me",
         "--sandbox",
         "workspace-write",
         "--cd",
@@ -1405,7 +1561,13 @@ def run_revision_job(
         )
         return False
     manifest_path = _contained(review_dir / manifest_name, review_dir, "source manifest")
-    job_dir = review_dir / "revisions" / request_id
+    attempt_number = int(request.get("attempt", 0)) + 1
+    request_root = review_dir / "revisions" / request_id
+    job_dir = (
+        request_root
+        if attempt_number == 1
+        else request_root / "attempts" / str(attempt_number)
+    )
     before_dir = job_dir / "before"
     output_root = job_dir / "output"
     started_at = datetime.now(timezone.utc)
@@ -1684,11 +1846,40 @@ def main() -> int:
             "episode handoff when --apply-reconcile is set"
         ),
     )
+    parser.add_argument(
+        "--retry-episode",
+        help="episode folder containing the failed finished revision request",
+    )
+    parser.add_argument(
+        "--retry-failed",
+        metavar="REQUEST_ID",
+        help="verify clean rollback and prepare one failed request for retry",
+    )
+    parser.add_argument(
+        "--apply-retry",
+        action="store_true",
+        help="requeue the verified failed request (default retry is read-only)",
+    )
     args = parser.parse_args()
     if args.apply_reconcile and not args.reconcile_episode:
         parser.error("--apply-reconcile requires --reconcile-episode")
     if args.trusted_asset_sources and not args.reconcile_episode:
         parser.error("--trusted-asset-sources requires --reconcile-episode")
+    if bool(args.retry_episode) != bool(args.retry_failed):
+        parser.error("--retry-episode and --retry-failed must be provided together")
+    if args.apply_retry and not args.retry_failed:
+        parser.error("--apply-retry requires --retry-failed")
+    if args.retry_failed and args.reconcile_episode:
+        parser.error("retry and reconcile are separate operations")
+    if args.retry_failed:
+        result = retry_failed_revision_job(
+            args.episodes_root,
+            episode_id=args.retry_episode,
+            request_id=args.retry_failed,
+            apply=args.apply_retry,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
     if args.reconcile_episode:
         result = reconcile_missing_revision_job(
             args.episodes_root,
