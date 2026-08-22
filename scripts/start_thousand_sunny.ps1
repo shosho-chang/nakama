@@ -33,10 +33,11 @@ Start-Process -FilePath $venvPy `
     -NoNewWindow:$false
 
 # --- packaging desktop worker ------------------------------------------------
-# 兩種工作共用同一個 desktop watcher：
+# 三種工作共用同一個 desktop watcher：
 # 1) gate「存配方」→ render_request → render 一次。
 # 2) gate Reject + feedback → revision_job → bounded Codex agent 重做 → 回到 re-review。
-# 兩者都需要桌機檔案／renderer；revision 失敗不會無限重試，也絕不自動核准。
+# 3) finished-cut「保存草稿」且含 feedback → bounded Agent 重建 preview/manifest。
+# 三者都需要桌機檔案／renderer；revision 失敗不會無限重試，也絕不自動核准。
 $watcherArgs = @('scripts/render_watcher.py', '--interval', '5')
 Start-Process -FilePath $venvPy `
     -ArgumentList $watcherArgs `

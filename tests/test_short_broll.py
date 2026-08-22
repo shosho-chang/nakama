@@ -13,6 +13,19 @@ import pytest  # noqa: E402
 from run_short_broll import _data_uri, _fill_zoom, _guest_namecard_job  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _stub_stock_video_probe(monkeypatch):
+    monkeypatch.setattr(
+        "agents.brook.script_video.highlight_broll.probe_stock_video",
+        lambda _path: {
+            "duration_seconds": 5.0,
+            "video_streams": [
+                {"index": 0, "codec_name": "h264", "width": 16, "height": 16}
+            ],
+        },
+    )
+
+
 def _master_selection(episode: Path):
     master_dir = episode / "editorial-master" / "v1"
     master_dir.mkdir(parents=True)
@@ -54,8 +67,27 @@ def _write_broll_inputs(episode: Path, lineage: dict, *, winner_lineage: dict | 
         ),
         encoding="utf-8",
     )
+    assets = episode / "assets" / "broll"
+    assets.mkdir(parents=True)
+    items = []
+    for index in range(3):
+        slug = f"stock-{index}"
+        (assets / f"{slug}.mp4").write_bytes(f"asset-{index}".encode())
+        items.append(
+            {
+                "kind": "video",
+                "slug": slug,
+                "t0": 1.0 + index * 2,
+                "t1": 2.0 + index * 2,
+                "provenance": {
+                    "source_url": f"https://stock.example.test/{slug}",
+                    "license_id": f"license-{index}",
+                    "acquired_at": "2026-08-22T10:00:00+08:00",
+                },
+            }
+        )
     (tighten / "value-L01_broll.json").write_text(
-        json.dumps({"items": []}), encoding="utf-8"
+        json.dumps({"items": items}), encoding="utf-8"
     )
 
 
@@ -126,6 +158,7 @@ def test_apply_rejects_stale_winner_before_connecting_to_resolve(tmp_path, monke
     master, identity = _master_selection(tmp_path)
     _write_broll_inputs(tmp_path, identity, winner_lineage={"content_hash": "stale"})
     monkeypatch.setattr(broll, "_open_editorial_master", lambda _episode: master, raising=False)
+    monkeypatch.setattr(broll, "_probe_meta", lambda _path: (1.0, 30.0))
     monkeypatch.setattr(
         build_resolve_project,
         "connect_resolve",
@@ -148,6 +181,7 @@ def test_apply_rejects_stale_materialization_range_before_resolve_mutation(
     _write_materialization(tmp_path, master, timeline, end_sec=19.0)
     mutations: list[str] = []
     monkeypatch.setattr(broll, "_open_editorial_master", lambda _episode: master)
+    monkeypatch.setattr(broll, "_probe_meta", lambda _path: (1.0, 30.0))
     monkeypatch.setattr(
         build_resolve_project,
         "connect_resolve",
@@ -173,6 +207,7 @@ def test_apply_rejects_raw_live_aroll_before_resolve_mutation(tmp_path, monkeypa
     live_timeline = _timeline(name, "director-uid", raw)
     mutations: list[str] = []
     monkeypatch.setattr(broll, "_open_editorial_master", lambda _episode: master)
+    monkeypatch.setattr(broll, "_probe_meta", lambda _path: (1.0, 30.0))
     monkeypatch.setattr(
         build_resolve_project,
         "connect_resolve",
@@ -208,6 +243,7 @@ def test_apply_reopens_master_after_preparation_before_resolve_mutation(
     timeline = _timeline("長1 - Master cut（緊·導播）", "director-uid", master.media_path)
     mutations: list[str] = []
     monkeypatch.setattr(broll, "_open_editorial_master", open_master)
+    monkeypatch.setattr(broll, "_probe_meta", lambda _path: (1.0, 30.0))
     monkeypatch.setattr(
         build_resolve_project,
         "connect_resolve",

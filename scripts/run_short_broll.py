@@ -59,6 +59,12 @@ from run_short_tighten import (  # noqa: E402
 )
 
 from agents.brook.script_video.editorial_master import EditorialMasterContractError  # noqa: E402
+from agents.brook.script_video.highlight_broll import (  # noqa: E402
+    BrollContractError,
+    build_broll_receipt,
+    receipt_path,
+    write_broll_receipt,
+)
 from agents.brook.script_video.identity_placement import (  # noqa: E402
     IdentityPlacementError,
     verify_identity_placement,
@@ -406,6 +412,39 @@ def _verify_director_materialization(
         raise SystemExit(f"B-roll materialization receipt 驗證失敗：{exc}") from exc
 
 
+def validate_plan(episode_dir: Path, cid: str) -> dict:
+    """Read-only Stock Video preflight for agent-authored B-roll plans."""
+
+    master = _open_editorial_master(episode_dir)
+    candidate, _winner = _load_winner(episode_dir, cid, master.identity())
+    path = episode_dir / TIGHTEN_DIR / f"{cid}_broll.json"
+    if not path.is_file():
+        raise SystemExit(f"{path} 不存在——agent 先從 tight SRT 規劃素材點")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        items = payload["items"]
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise SystemExit(f"{path} 不是合法 B-roll plan") from exc
+    try:
+        receipt = build_broll_receipt(
+            episode_dir,
+            cid,
+            str(candidate["format"]),
+            items,
+            master.identity(),
+        )
+    except BrollContractError as exc:
+        raise SystemExit(f"Stock Video production gate 失敗：{exc}") from exc
+    return {
+        "status": "plan-valid",
+        "cut_id": cid,
+        "format": candidate["format"],
+        "stock_video_count": receipt["stock_video_count"],
+        "stock_videos": receipt["stock_videos"],
+        "content_hash": receipt["content_hash"],
+    }
+
+
 def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     from build_resolve_project import connect_resolve
 
@@ -419,6 +458,12 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     if not broll_path.exists():
         raise SystemExit(f"{broll_path} 不存在——agent 先從 tight SRT 規劃素材點")
     items = json.loads(broll_path.read_text(encoding="utf-8"))["items"]
+    try:
+        broll_receipt = build_broll_receipt(
+            episode_dir, cid, str(fmt), items, master.identity()
+        )
+    except BrollContractError as exc:
+        raise SystemExit(f"Stock Video production gate 失敗：{exc}") from exc
     items.sort(key=lambda x: x["t0"])
     assets_dir = episode_dir / "assets" / "broll"
     stickers_dir = episode_dir / "assets" / "stickers"
@@ -551,6 +596,14 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     # earlier preflight identity remaining fresh.
     master = _open_editorial_master(episode_dir)
     c, w = _load_winner(episode_dir, cid, master.identity())
+    try:
+        fresh_broll_receipt = build_broll_receipt(
+            episode_dir, cid, str(c["format"]), items, master.identity()
+        )
+    except BrollContractError as exc:
+        raise SystemExit(f"Stock Video production gate 失敗：{exc}") from exc
+    if fresh_broll_receipt != broll_receipt:
+        raise SystemExit("Stock Video plan／素材在準備期間發生變更，未修改 Resolve")
     director_label = f"{FORMAT_LABEL[c['format']]}{w['rank']} - {c['title']}（緊·導播）"
     director = None
     for i in range(1, project.GetTimelineCount() + 1):
@@ -729,6 +782,17 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
 
     mp.SetCurrentFolder(root)
     pm.SaveProject()
+    try:
+        post_apply_broll_receipt = build_broll_receipt(
+            episode_dir, cid, str(c["format"]), items, master.identity()
+        )
+    except BrollContractError as exc:
+        raise SystemExit(f"Stock Video materialization receipt 寫入失敗：{exc}") from exc
+    if post_apply_broll_receipt != broll_receipt:
+        raise SystemExit("Stock Video plan／素材在疊軌期間發生變更；未發布 materialization receipt")
+    committed_broll_receipt = write_broll_receipt(
+        episode_dir, cid, str(c["format"]), items, master.identity()
+    )
 
     stills = []
     if stills_dir is not None:
@@ -756,7 +820,14 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
             project.DeleteRenderJob(jid)
             stills.append(name)
 
-    return {"status": "brolled", "timeline": director_label, "items": made, "stills": stills}
+    return {
+        "status": "brolled",
+        "timeline": director_label,
+        "items": made,
+        "stills": stills,
+        "stock_video_count": committed_broll_receipt["stock_video_count"],
+        "stock_video_receipt": str(receipt_path(episode_dir, cid)),
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -765,8 +836,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("episode", help="episode 資料夾")
     parser.add_argument("--id", required=True, help="winner id（如 punch-S1）")
     parser.add_argument("--stills", help="物化後渲樣張到此資料夾")
+    parser.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="只驗 Stock Video 數量、路徑與 hash，不連 Resolve／不寫 receipt",
+    )
     args = parser.parse_args(argv)
-    result = apply(Path(args.episode), args.id, Path(args.stills) if args.stills else None)
+    result = (
+        validate_plan(Path(args.episode), args.id)
+        if args.validate_only
+        else apply(Path(args.episode), args.id, Path(args.stills) if args.stills else None)
+    )
     print(json.dumps(result, ensure_ascii=False, indent=1))
     return 0
 

@@ -91,7 +91,7 @@ roll back。根因有二：(1) 短片語彙是為了留住滑動的人，長片�
 | **來賓名牌** | 介紹 | `chapter_label_wide` `align:"left"` + `sub` + `style:"paper"`＝半透明紙卡＋手繪橘豎筆觸＋**逐元素進退場**（卡落→tick 畫出→姓名滑入→頭銜淡入；修修：「整個區塊一起跑出來沒經過設計」）。落**來賓第一個實質單獨鏡頭內**（查 timeline v1 軌首個 ≥3s 的 CAM2 段，貼切點進、退場收在段內；碎片鏡頭 <1s 掛不了名牌）。⚠️ 開場 badge 窗必須在名牌進場前收掉——左下角同框=擠 | 1 |
 | **論文第一頁卡** | 信任感 | 真 PDF 第一頁彈入（`sticker_pair_wide` center 模式；禁 stock 代打）。唯一的證物類型（書封/人名/數據卡都不做——grill 裁決） | 提到具體研究時 |
 | **Hero 大字卡** | 錨點 | `punch_card_wide` tier1 150px + `style:"paper"`（FORMAT_TITLES long 預設）＝半透明紙白卡＋ink 字＋**橘色手繪畫線動畫**（SVG 描邊，進場後 0.75s 逐行由左畫到右）。**agent 自裁**（修修 2026-08-04 收斂裁決：剪輯線免 HITL——選轉折點、貼原話、驗語檢查把關；曾經的「提案→裁決」流程退役） | 2–4 |
-| **滿版 stock** | 情境具象化 | 描述情境的時刻滿版實拍。**選點走演算法不逐支請示**（修修：「這套策略要能應用在之後的長影片」）：① `run_short_review` 的 `content_gaps` 掃真空段（>75s 無強事件；換鏡是弱事件不算）② 每段塞 1 支、段長 ≥100s 最多 2 支且間隔 ≥40s ③ 選句優先序：**「比方說/例如」舉例句 > 具體可拍場景（動作/地點）**，抽象論述不選、關鍵論點段不蓋 ④ 橫式 4K 實拍（Envato）、**同支素材全片唯一（一片一用）**且主題不重複、長度切齊被強調句、`src_in` 跳廢頭 ⑤ 密度=分佈優先，非固定總量；塞完重掃殘餘真空迭代到收斂 ⑥ **觸發 ≠ 必塞**：真空段內找不到具體情境句（全是抽象論述/書的內容）→ 保留 talking head 並記錄——硬湊是 v1 整版被打掉的根因。直式素材只有特寫類能裁著用 | 每 75s+ 真空段 1–2 |
+| **Stock Video（Stock Village）** | 情境具象化 | 描述情境的時刻滿版實拍。**每支 long Highlight 至少 3 個真正 stock footage events**；guest-namecard、Hero Title、transition、badge、紙紋、photo 與 generated card 都不計數。選點走演算法不逐支請示：①先找「比方說/例如」舉例句與具體可拍的動作／地點；抽象論述本身不硬配隱喻，但必須繼續在片內其他具體段落找滿 3 個，找不到就維持 revision-required，不得讓 finished review 假裝完成 ② `content_gaps`（>75s 無強事件）作分佈輔助，每段 1 支、≥100s 可 2 支且間隔 ≥40s ③橫式 4K 實拍（Envato）、同支素材與相同檔案 hash 全片唯一，長度切齊被強調句、`src_in` 跳廢頭 ④直式素材只有特寫類能裁著用。production gate 逐檔驗 episode-local path、bytes、SHA-256、time range 與 Editorial Master lineage | **至少 3；之後依 content gap 加量** |
 
 **stand-in 鐵則（修修 2026-08-06）**：stock 描述「修修本人做某事」的情境時，
 一律用固定 stand-in 模特兒（Envato `YuriArcursPeopleimages` 帳號、臉部參考與
@@ -116,10 +116,48 @@ stock 上軌（含手剪情境）必守 brook-dp〈選片鐵則〉節——①�
 ```
 # titles.json 只放 tier1 hero；broll.json 放轉場卡/名牌/論文卡/badge/stock
 python scripts/run_short_titles.py <episode> --id punch-L5
+python scripts/run_short_broll.py  <episode> --id punch-L5 --validate-only
 python scripts/run_short_broll.py  <episode> --id punch-L5 [--stills <dir>]
 python scripts/run_short_sfx.py    <episode> --id punch-L5     # 不跑 bgm
 python scripts/run_short_review.py <episode> --id punch-L5
+python scripts/build_finished_review_manifest.py <episode> --verify
 ```
+
+`--validate-only` 是不連 Resolve 的 deterministic gate：0／1／2 個 Stock Video、缺檔、同檔重用、
+path escape、glob slug 或 hash drift 都 fail closed。只有通過後才能真正上軌；`run_short_review`
+會 fresh verify materialization receipt，finished manifest 再次要求至少 3 個並顯示真實 count。
+`build_finished_review_manifest.py --verify` 是 finished review／revision worker／Bridge Approve 共用的
+唯一 authoritative verifier：從 current plan、materialization receipt、實檔 hash 與 events fresh rebuild，
+再和 manifest exact compare；不得只相信 manifest 自報的 `asset_category` 或 count。
+
+### Finished revision 的 trusted Stock Video handoff
+
+Stock Video 下載與授權證據收集是上游 acquisition worker 的工作；Finished Revision
+Agent 只生 plan，不得自報來源或授權。Acquisition 交付 `trusted_asset_sources.json`，
+並將各 `filename` 的影片放在 JSON 同目錄。先 dry-run：
+
+```powershell
+python scripts/finished_review_watcher.py --episodes-root "G:\Footages" `
+  --reconcile-episode "<episode>" `
+  --trusted-asset-sources "<acquisition-dir>\trusted_asset_sources.json"
+```
+
+Dry-run 會 fresh 驗 schema、path containment、bytes、SHA-256、ffprobe、source/license URL 與
+timezone-aware `acquired_at`，但不寫 episode。確認後在同一命令加 `--apply-reconcile`：
+
+```powershell
+python scripts/finished_review_watcher.py --episodes-root "G:\Footages" `
+  --reconcile-episode "<episode>" `
+  --trusted-asset-sources "<acquisition-dir>\trusted_asset_sources.json" `
+  --apply-reconcile
+```
+
+Apply 會先建 episode-local content-addressed handoff，再把 sources hash 綁入 request ID。
+Bridge 日後 Save Draft 會自動讀這個 handoff。0-stock long Highlight 若還沒有已核准
+素材，job 必須顯示 `awaiting_stock_assets`；不得派 worker 後才模糊地 failed。
+`highlights/revision-inputs/current.json` 是可重用的核准來源指標，不是一次性 queue message；
+成功後不得清除。後續 revision 可重用 episode 內完全相同 filename／bytes／SHA-256／ffprobe／
+provenance 的素材，但不得覆寫；任何漂移都必須在 Agent 或 Resolve 啟動前 fail closed。
 
 軌道契約：v1 主鏡（導播）/ v2 滿版 stock / v3 hero / v4 名牌+轉場卡+論文卡 /
 v5 badge；a1 對白 / a2 SFX。

@@ -300,6 +300,11 @@ critical 必修才能交付。修法：`line_moves_*.json` 支援三種操作—
 負責（開採出的長片 winners 也在這裡產生）；長片的緊湊化/導播/視覺語彙/
 SFX/QC 全部見 `.claude/skills/longform-cut/SKILL.md`。
 
+交接硬門檻：每支 long Highlight 在 finished review 前必須有至少 **3 個 Stock Video
+（Stock Village）** asset-backed events；guest-namecard、Hero Title、transition、badge、紙紋、
+photo 與 generated card 不計數。先跑 `run_short_broll.py <episode> --id <id> --validate-only`，
+不足或素材 receipt 漂移時維持 revision-required，不可提交 finished review。
+
 Script 層仍共用 `run_short_*.py`（`FORMAT_*` 參數表）——改 script 時兩線
 測試都要跑。以下 Step 6–11 為**短片線**。
 

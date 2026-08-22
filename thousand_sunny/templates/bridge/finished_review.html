@@ -12,6 +12,9 @@
 <style>
   .finished-gate { box-sizing: border-box; width: 100%; max-width: 1440px; margin: 0 auto; padding: var(--sho-s-4) var(--sho-gutter) var(--sho-s-8); }
   .finished-status { border-left: 3px solid var(--sho-success); background: color-mix(in oklch, var(--sho-success) 8%, transparent); margin: 0 0 var(--sho-s-4); padding: var(--sho-s-2) var(--sho-s-3); }
+  .finished-status--working { border-left-color: var(--sho-info); background: color-mix(in oklch, var(--sho-info) 8%, transparent); }
+  .finished-status--error { border-left-color: var(--sho-error); background: color-mix(in oklch, var(--sho-error) 8%, transparent); }
+  .finished-status p { margin: var(--sho-s-1) 0 0; }
   .finished-intro { color: var(--sho-text-2); line-height: 1.7; margin: 0 0 var(--sho-s-4); }
   .format-switch { display: inline-flex; align-items: center; gap: var(--sho-s-1); border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-pill); padding: 3px; margin-bottom: var(--sho-s-4); }
   .format-switch__link { border-radius: var(--sho-r-pill); color: var(--sho-text-2); font-size: .82rem; font-weight: 700; padding: var(--sho-s-1) var(--sho-s-3); text-decoration: none; }
@@ -33,6 +36,8 @@
   .cut-pane__head h2 { font-size: 1.15rem; line-height: 1.45; margin: 0 0 var(--sho-s-2); }
   .cut-decision { display: flex; flex-wrap: wrap; gap: var(--sho-s-3); }
   .cut-decision label { cursor: pointer; }
+  .cut-feedback { border-bottom: 1px solid var(--sho-line); padding: var(--sho-s-3) 0 var(--sho-s-4); }
+  .cut-feedback__hint { color: var(--sho-muted); font-size: .78rem; line-height: 1.6; margin: 0; }
   .lane { margin-top: var(--sho-s-5); }
   .lane-title { color: var(--sho-muted); font-size: .74rem; letter-spacing: .08em; margin: 0; padding-bottom: var(--sho-s-2); }
   .component { border-top: 1px solid var(--sho-line); padding: var(--sho-s-3) 0 var(--sho-s-4); }
@@ -67,7 +72,19 @@
   <div class="header-meta sho-mono">REV {{ revision_count }} · {{ manifest.cuts|length }} CUTS</div>
 </section>
 <main class="finished-gate">
-  {% if saved %}<p class="finished-status" role="status">這一版 feedback 已保存；舊 revision 沒有被覆蓋。</p>{% endif %}
+  {% set revision_job = latest_revision.revision_job if latest_revision and latest_revision.revision_job else none %}
+  {% if revision_job and revision_job.status in ['queued', 'running'] %}
+  <div class="finished-status finished-status--working" role="status" aria-live="polite">
+    <strong>Feedback 已保存為 REV {{ revision_count }}；Agent revision {{ '正在處理' if revision_job.status == 'running' else '已排入佇列' }}。</strong>
+    <p class="sho-mono">REQUEST {{ revision_job.request_id }}</p>
+  </div>
+  {% elif revision_job and revision_job.status == 'awaiting_stock_assets' %}
+  <div class="finished-status" role="status" aria-live="polite"><strong>Feedback 已保存；正在等待已核准的 Stock Video 素材。</strong><p>素材的來源、授權與檔案驗證完成後，Agent revision 會再進入佇列。</p><p class="sho-mono">REQUEST {{ revision_job.request_id }}</p></div>
+  {% elif revision_job and revision_job.status in ['succeeded', 'ready_for_review'] %}
+  <div class="finished-status" role="status" aria-live="polite"><strong>Agent revision 已完成，可以開始 review 新版。</strong><p class="sho-mono">REQUEST {{ revision_job.request_id }}</p></div>
+  {% elif revision_job and revision_job.status == 'failed' %}
+  <div class="finished-status finished-status--error" role="alert"><strong>Agent revision 失敗。</strong><p>{{ revision_job.error or '沒有提供錯誤細節。' }}</p><p class="sho-mono">REQUEST {{ revision_job.request_id }}</p></div>
+  {% elif saved %}<p class="finished-status" role="status">Feedback 已保存為 REV {{ revision_count }}；舊 revision 沒有被覆蓋。</p>{% endif %}
   {% if approved %}<p class="finished-status" role="status">{{ manifest.cuts|length }} 支初剪已全部核准，review gate 已落盤。</p>{% endif %}
   <nav class="format-switch" aria-label="選擇成片格式">
     <a class="format-switch__link" href="/bridge/highlights/{{ episode_slug }}/finished" {% if review_format == 'long' %}aria-current="page"{% endif %}>長影片</a>
@@ -109,14 +126,28 @@
             <h2>{{ cut.title }}</h2>
             <fieldset class="cut-decision">
               <legend class="sho-mono">CUT DECISION</legend>
-              <label><input type="radio" name="cut_status__{{ cut.cut_id }}" value="approved" {% if cut.saved_status == 'approved' %}checked{% endif %}> 核准這支</label>
+              <label><input type="radio" name="cut_status__{{ cut.cut_id }}" value="approved" {% if cut.saved_status == 'approved' %}checked{% endif %} {% if cut.stock_video_missing is defined and cut.stock_video_missing > 0 %}disabled{% endif %}> 核准這支</label>
               <label><input type="radio" name="cut_status__{{ cut.cut_id }}" value="needs_changes" {% if cut.saved_status == 'needs_changes' %}checked{% endif %}> 需要修改</label>
             </fieldset>
           </header>
 
+          {% if cut.stock_video_missing is defined and cut.stock_video_missing > 0 %}
+          <div class="finished-status finished-status--error" role="status">
+            <strong>REVISION REQUIRED：Stock Video 目前 {{ cut.stock_video_count }} 個，還缺 {{ cut.stock_video_missing }} 個。</strong>
+            <p>guest-namecard、Hero Title、transition、badge、紙紋、photo 與 generated card 不計入最低 3 個。</p>
+          </div>
+          {% endif %}
+
+          <section class="cut-feedback" aria-labelledby="cut-feedback-label-{{ cut.cut_id }}">
+            <label class="field-label" id="cut-feedback-label-{{ cut.cut_id }}">整支影片的整體 feedback
+              <textarea name="cut_feedback__{{ cut.cut_id }}" maxlength="5000" rows="5" placeholder="例如：整體節奏、故事順序、哪些段落要刪、希望 Agent 重做時優先處理什麼">{{ cut.saved_overall_feedback }}</textarea>
+              <span class="cut-feedback__hint">只屬於 {{ cut.cut_id }}；保存後會和 component feedback 一起交給 revision。</span>
+            </label>
+          </section>
+
           {% for lane in manifest.feedback_contract.review_lanes %}
           <section class="lane" aria-labelledby="lane-{{ cut.cut_id }}-{{ lane }}">
-            <h3 class="lane-title sho-mono" id="lane-{{ cut.cut_id }}-{{ lane }}">{{ manifest.lane_labels[lane] }}</h3>
+            <h3 class="lane-title sho-mono" id="lane-{{ cut.cut_id }}-{{ lane }}">{{ manifest.lane_labels[lane] }} · {% if lane == 'b_roll' and cut.stock_video_count is defined %}{{ cut.stock_video_count }}{% else %}{{ cut.review_components | selectattr('lane', 'equalto', lane) | list | length }}{% endif %}</h3>
             {% set lane_components = cut.review_components | selectattr('lane', 'equalto', lane) | list %}
             {% if lane_components %}
               {% for component in lane_components %}
@@ -133,7 +164,11 @@
                     </select>
                   </label>
                   <label class="field-label" data-replacement-field>替換素材／新文字／新類型
+                    {% if component.lane in ['hero_title', 'fullscreen_transition', 'title_card'] %}
+                    <textarea name="component_replacement__{{ component.component_id }}" maxlength="500" rows="3" placeholder="可按 Enter 決定畫面上的換行">{{ component.saved_replacement }}</textarea>
+                    {% else %}
                     <input type="text" name="component_replacement__{{ component.component_id }}" value="{{ component.saved_replacement }}" maxlength="500">
+                    {% endif %}
                   </label>
                   <label class="field-label" data-move-field>移到第幾秒
                     <input type="number" name="component_move__{{ component.component_id }}" value="{{ component.saved_move }}" min="0" max="{{ cut.artifacts.preview.duration_seconds }}" step="0.01" inputmode="decimal">
@@ -153,7 +188,7 @@
       </div>
     </div>
     <div class="review-actions">
-      <output class="review-actions__status" id="review-status" aria-live="polite">尚未儲存新的變更</output>
+      <output class="review-actions__status" id="review-status" aria-live="polite">{% if revision_job and revision_job.status == 'queued' %}Agent revision 已排入佇列{% elif revision_job and revision_job.status == 'running' %}Agent revision 正在處理{% elif revision_job and revision_job.status == 'awaiting_stock_assets' %}等待已核准的 Stock Video 素材{% elif revision_job and revision_job.status in ['succeeded', 'ready_for_review'] %}修正版已完成，請重新 review{% elif revision_job and revision_job.status == 'failed' %}Agent revision 失敗，請查看上方原因{% elif saved %}Feedback 已保存{% else %}尚未儲存新的變更{% endif %}</output>
       <button type="submit" class="review-button" data-submit-action="save_draft">保存草稿</button>
       {% if review_format == 'long' %}
       <button type="submit" class="review-button review-button--approve" id="approve-cut" data-submit-action="approve_cut" disabled>核准 {{ manifest.cuts[0].cut_id }} → Packaging</button>
@@ -222,8 +257,9 @@
     const needsReplacement = ['replace_asset', 'change_type', 'edit_text'].includes(select.value);
     const needsMove = select.value === 'move';
     replacement.hidden = !needsReplacement;
-    replacement.querySelector('input').disabled = !needsReplacement;
-    replacement.querySelector('input').required = needsReplacement;
+    const replacementControl = replacement.querySelector('input, textarea');
+    replacementControl.disabled = !needsReplacement;
+    replacementControl.required = needsReplacement;
     move.hidden = !needsMove;
     move.querySelector('input').disabled = !needsMove;
     move.querySelector('input').required = needsMove;
@@ -231,6 +267,7 @@
   document.querySelectorAll('[data-action-select]').forEach(select => { syncFields(select); select.addEventListener('change', () => syncFields(select)); });
   player.addEventListener('loadedmetadata', () => { timeReadout.textContent = `${stamp(player.currentTime)} / ${stamp(player.duration || 0)}`; });
   player.addEventListener('timeupdate', () => { timeReadout.textContent = `${stamp(player.currentTime)} / ${stamp(player.duration || 0)}`; });
+  form.addEventListener('input', () => { status.textContent = '有尚未儲存的變更'; });
   form.addEventListener('change', () => { status.textContent = '有尚未儲存的變更'; syncApproval(); });
   form.querySelectorAll('[data-submit-action]').forEach(button => button.addEventListener('click', () => {
     submitAction.value = button.dataset.submitAction;
@@ -239,6 +276,8 @@
   form.addEventListener('submit', event => {
     if (!form.checkValidity()) { event.preventDefault(); form.reportValidity(); status.textContent = '有欄位尚未填完，請檢查標示的位置'; return; }
     status.textContent = '正在保存 review revision…';
+    form.setAttribute('aria-busy', 'true');
+    form.querySelectorAll('[data-submit-action]').forEach(button => { button.disabled = true; });
   });
   syncApproval();
 })();

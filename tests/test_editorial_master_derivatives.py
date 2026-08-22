@@ -211,30 +211,102 @@ def test_candidate_and_winner_lineage_are_both_fresh(tmp_path):
 def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path, monkeypatch):
     import build_finished_review_manifest as producer
 
+    monkeypatch.setattr(
+        "agents.brook.script_video.highlight_broll.probe_stock_video",
+        lambda _path: {
+            "duration_seconds": 5.0,
+            "video_streams": [
+                {"index": 0, "codec_name": "h264", "width": 16, "height": 16}
+            ],
+        },
+    )
     master, identity = _selection(tmp_path)
     _candidate_files(tmp_path, lineage=identity)
     monkeypatch.setattr(producer, "_open_master", lambda episode: master)
     asset_dir = tmp_path / "assets" / "broll"
     asset_dir.mkdir(parents=True)
-    (asset_dir / "factory.mp4").write_bytes(b"asset")
+    for index in range(3):
+        (asset_dir / f"factory-{index}.mp4").write_bytes(f"asset-{index}".encode())
+    broll_items = [
+        {
+            "kind": "video",
+            "slug": f"factory-{index}",
+            "t0": 1.0 + index * 10,
+            "t1": 4.0 + index * 10,
+            "provenance": {
+                "source_url": f"https://stock.example.test/factory-{index}",
+                "license_id": f"license-{index}",
+                "acquired_at": "2026-08-22T10:00:00+08:00",
+            },
+        }
+        for index in range(3)
+    ]
+    tighten = tmp_path / "highlights" / "tighten"
+    tighten.mkdir(parents=True)
+    (tighten / "value-L01_broll.json").write_text(
+        json.dumps({"items": broll_items}), encoding="utf-8"
+    )
+    from agents.brook.script_video.highlight_broll import (
+        receipt_identity,
+        write_broll_receipt,
+    )
+
+    broll_receipt = write_broll_receipt(
+        tmp_path, "value-L01", "long", broll_items, identity
+    )
     cut_dir = tmp_path / "highlights" / "review" / "value-L01"
     cut_dir.mkdir(parents=True)
     (cut_dir / "preview.mp4").write_bytes(b"preview")
     (cut_dir / "subs.srt").write_text("1\n00:00:00,000 --> 00:00:02,000\n字幕\n", encoding="utf-8")
     packet = {
         "editorial_master_lineage": identity,
+        "stock_video_lineage": receipt_identity(broll_receipt),
         "timeline": "長1 - Master cut（緊·導播）",
         "duration_sec": 60.0,
         "preview": "preview.mp4",
         "events": [
-            {"type": "video", "slug": "factory", "t0": 1.0, "t1": 4.0},
+            {"type": "video", "slug": "factory-0", "t0": 1.0, "t1": 4.0},
+            {"type": "video", "slug": "factory-1", "t0": 11.0, "t1": 14.0},
+            {"type": "video", "slug": "factory-2", "t0": 21.0, "t1": 24.0},
             {"type": "guest-namecard", "slug": "guest", "t0": 5.0, "t1": 8.0},
             {"type": "card-tier2", "slug": "重點", "t0": 9.0, "t1": 12.0},
             {"type": "badge", "slug": "brand", "t0": 12.0, "t1": 20.0},
             {"type": "transition", "slug": "chapter", "t0": 20.0, "t1": 23.0},
+            {"type": "card-tier1", "slug": "沒有任何/保證了", "t0": 31.0, "t1": 34.0},
         ],
     }
     (cut_dir / "events.json").write_text(json.dumps(packet), encoding="utf-8")
+    (cut_dir.parent / "finished_review_manifest_20260822.json").write_text(
+        json.dumps(
+            {
+                "schema": "nakama.finished_cut_review_manifest.v1",
+                "episode_id": tmp_path.name,
+                "cuts": [
+                    {
+                        "cut_id": "value-L01",
+                        "components": [
+                            {
+                                "component_id": "value-L01-hero-001",
+                                "lane": "hero_title",
+                                "t0": 9.0,
+                                "t1": 12.0,
+                                "text": "重點",
+                            },
+                            {
+                                "component_id": "value-L01-hero-002",
+                                "lane": "hero_title",
+                                "t0": 31.0,
+                                "t1": 34.0,
+                                "text": "沒有任何\n保證了",
+                            },
+                        ],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
 
     output = producer.build_manifest(tmp_path)
     first = output.read_bytes()
@@ -243,16 +315,170 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
     payload = json.loads(first)
     cut = payload["cuts"][0]
     assert payload["editorial_master_lineage"] == identity
-    assert cut["visual_treatment_counts"]["b_roll"] == 1
+    assert cut["visual_treatment_counts"]["b_roll"] == 3
+    assert cut["stock_video_count"] == 3
     assert cut["visual_treatment_counts"]["identity_card"] == 1
-    assert cut["visual_treatment_counts"]["hero_title"] == 1
+    assert cut["visual_treatment_counts"]["hero_title"] == 2
     assert cut["visual_treatment_counts"]["badge"] == 1
     assert cut["visual_treatment_counts"]["fullscreen_transition"] == 1
     broll = next(item for item in cut["components"] if item["lane"] == "b_roll")
-    assert broll["asset"]["sha256"] == hashlib.sha256(b"asset").hexdigest()
+    assert broll["asset"]["sha256"] == hashlib.sha256(b"asset-0").hexdigest()
+    assert broll["asset_category"] == "stock_video"
     assert cut["artifacts"]["events"]["sha256"] == hashlib.sha256(
         (cut_dir / "events.json").read_bytes()
     ).hexdigest()
+    hero_ids = [
+        row["component_id"] for row in cut["components"] if row["lane"] == "hero_title"
+    ]
+    assert hero_ids == ["value-L01-hero-001", "value-L01-hero-002"]
+    identity_registry = json.loads(
+        (cut_dir.parent / "finished_review_component_identity.v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert identity_registry["source_manifest"]["filename"] == (
+        "finished_review_manifest_20260822.json"
+    )
+    assert [
+        row["component_id"] for row in identity_registry["cuts"]["value-L01"]
+    ] == ["value-L01-hero-001", "value-L01-hero-002"]
+
+    verified = producer.verify_finished_review_cut(
+        tmp_path, "value-L01", output, feedback_rows=[]
+    )
+    assert verified["stock_video_count"] == 3
+    assert verified["manifest_sha256"] == hashlib.sha256(output.read_bytes()).hexdigest()
+    with pytest.raises(SystemExit, match="replacement 未 exact 套用"):
+        producer.verify_finished_review_cut(
+            tmp_path,
+            "value-L01",
+            output,
+            feedback_rows=[
+                {
+                    "cut_id": "value-L01",
+                    "component_id": "value-L01-hero-001",
+                    "action": "edit_text",
+                    "replacement": "新的\n兩行 Hero",
+                }
+            ],
+        )
+
+    packet["events"][4]["slug"] = "新的/兩行 Hero"
+    (cut_dir / "events.json").write_text(json.dumps(packet), encoding="utf-8")
+    producer.build_manifest(tmp_path)
+    edited = producer.verify_finished_review_cut(
+        tmp_path,
+        "value-L01",
+        output,
+        feedback_rows=[
+            {
+                "cut_id": "value-L01",
+                "component_id": "value-L01-hero-001",
+                "action": "edit_text",
+                "replacement": "新的\n兩行 Hero",
+            }
+        ],
+    )
+    assert edited["approved"] is False
+    with pytest.raises(SystemExit, match="preview 沒有改變"):
+        producer.verify_finished_review_cut(
+            tmp_path,
+            "value-L01",
+            output,
+            source_preview_sha256=edited["preview_sha256"],
+            require_preview_change=True,
+        )
+    rereview = producer.verify_finished_review_cut(
+        tmp_path,
+        "value-L01",
+        output,
+        source_preview_sha256="0" * 64,
+        require_preview_change=True,
+    )
+    assert rereview["status"] == "verified_for_human_rereview"
+    assert rereview["approved"] is False
+
+
+def test_finished_manifest_rejects_arbitrary_legacy_component_id_remap(tmp_path):
+    import build_finished_review_manifest as producer
+
+    review = tmp_path / "highlights" / "review"
+    review.mkdir(parents=True)
+    (review / "finished_review_manifest_20260822.json").write_text(
+        json.dumps(
+            {
+                "schema": "nakama.finished_cut_review_manifest.v1",
+                "episode_id": tmp_path.name,
+                "cuts": [
+                    {
+                        "cut_id": "value-L01",
+                        "components": [
+                            {
+                                "component_id": "value-L01-agent-invented-999",
+                                "lane": "hero_title",
+                                "t0": 101.82,
+                                "t1": 103.9,
+                                "text": "與其去教\n三國的故事",
+                            }
+                        ],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit, match="不接受任意 remap"):
+        producer.build_manifest(tmp_path)
+
+
+def test_authoritative_verifier_rejects_forged_stock_labels_without_receipt(
+    tmp_path, monkeypatch
+):
+    import build_finished_review_manifest as producer
+
+    master, identity = _selection(tmp_path)
+    _candidate_files(tmp_path, lineage=identity)
+    monkeypatch.setattr(producer, "_open_master", lambda episode: master)
+    assets = tmp_path / "assets" / "broll"
+    assets.mkdir(parents=True)
+    events = []
+    for index in range(3):
+        (assets / f"fake-{index}.mp4").write_bytes(f"fake-{index}".encode())
+        events.append(
+            {
+                "type": "video",
+                "asset_category": "stock_video",
+                "slug": f"fake-{index}",
+                "t0": 1 + index * 2,
+                "t1": 2 + index * 2,
+            }
+        )
+    cut_dir = tmp_path / "highlights" / "review" / "value-L01"
+    cut_dir.mkdir(parents=True)
+    (cut_dir / "preview.mp4").write_bytes(b"preview")
+    (cut_dir / "subs.srt").write_text("subs", encoding="utf-8")
+    (cut_dir / "events.json").write_text(
+        json.dumps(
+            {
+                "editorial_master_lineage": identity,
+                "stock_video_lineage": {
+                    "contract": "podcast-long-highlight-stock-video-v1",
+                    "cut_id": "value-L01",
+                    "content_hash": "f" * 64,
+                    "stock_video_count": 3,
+                },
+                "duration_sec": 10,
+                "preview": "preview.mp4",
+                "events": events,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit, match="materialization receipt"):
+        producer.build_manifest(tmp_path)
 
 
 def test_long_review_packet_refreshes_contract_manifest():
@@ -320,10 +546,50 @@ def test_finished_manifest_rejects_broll_slug_path_escape(tmp_path, monkeypatch)
 def test_finished_manifest_ignores_unknown_review_packet(tmp_path, monkeypatch):
     import build_finished_review_manifest as producer
 
+    monkeypatch.setattr(
+        "agents.brook.script_video.highlight_broll.probe_stock_video",
+        lambda _path: {
+            "duration_seconds": 5.0,
+            "video_streams": [
+                {"index": 0, "codec_name": "h264", "width": 16, "height": 16}
+            ],
+        },
+    )
     master, identity = _selection(tmp_path)
     _candidate_files(tmp_path, lineage=identity)
     monkeypatch.setattr(producer, "_open_master", lambda episode: master)
     review = tmp_path / "highlights" / "review"
+    assets = tmp_path / "assets" / "broll"
+    assets.mkdir(parents=True)
+    for index in range(3):
+        (assets / f"stock-{index}.mp4").write_bytes(f"stock-{index}".encode())
+    broll_items = [
+        {
+            "kind": "video",
+            "slug": f"stock-{index}",
+            "t0": 2 + index * 2,
+            "t1": 4 + index * 2,
+            "provenance": {
+                "source_url": f"https://stock.example.test/stock-{index}",
+                "license_id": f"license-{index}",
+                "acquired_at": "2026-08-22T10:00:00+08:00",
+            },
+        }
+        for index in range(3)
+    ]
+    tighten = tmp_path / "highlights" / "tighten"
+    tighten.mkdir(parents=True)
+    (tighten / "value-L01_broll.json").write_text(
+        json.dumps({"items": broll_items}), encoding="utf-8"
+    )
+    from agents.brook.script_video.highlight_broll import (
+        receipt_identity,
+        write_broll_receipt,
+    )
+
+    broll_receipt = write_broll_receipt(
+        tmp_path, "value-L01", "long", broll_items, identity
+    )
     for cut_id in ("value-L01", "unknown-L99"):
         cut_dir = review / cut_id
         cut_dir.mkdir(parents=True)
@@ -333,9 +599,15 @@ def test_finished_manifest_ignores_unknown_review_packet(tmp_path, monkeypatch):
             json.dumps(
                 {
                     "editorial_master_lineage": master.identity(),
+                    "stock_video_lineage": receipt_identity(broll_receipt),
                     "duration_sec": 10,
                     "preview": "preview.mp4",
-                    "events": [{"type": "card-tier2", "slug": "title", "t0": 1, "t1": 2}],
+                    "events": [
+                        {"type": "card-tier2", "slug": "title", "t0": 1, "t1": 2},
+                        {"type": "video", "slug": "stock-0", "t0": 2, "t1": 4},
+                        {"type": "video", "slug": "stock-1", "t0": 4, "t1": 6},
+                        {"type": "video", "slug": "stock-2", "t0": 6, "t1": 8},
+                    ],
                 }
             ),
             encoding="utf-8",

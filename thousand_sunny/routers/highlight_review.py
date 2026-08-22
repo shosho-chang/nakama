@@ -23,6 +23,11 @@ from agents.brook.script_video.editorial_master import (
     EditorialMasterContractError,
     EditorialMasterRequest,
 )
+from scripts.build_finished_review_manifest import verify_finished_review_manifest
+from scripts.finished_review_watcher import (
+    load_episode_trusted_asset_handoff,
+    revision_requires_stock_assets,
+)
 from shared.background_job import atomic_job_write, job_expired, load_job, new_job
 from shared.config import get_db_path, get_vault_path
 from shared.highlight_shortlist import (
@@ -43,6 +48,7 @@ _templates = Jinja2Templates(
 _MAX_CANDIDATES = 5
 _MAX_FEEDBACK = 2000
 _MAX_REPLACEMENT = 500
+_MAX_OVERALL_FEEDBACK = 5000
 _FINISHED_MANIFEST_SCHEMA = "nakama.finished_cut_review_manifest.v1"
 _FINISHED_FEEDBACK_SCHEMA = "nakama.finished_cut_review_feedback.v1"
 _FINISHED_FEEDBACK_FILE = "finished_review_feedback.v1.json"
@@ -58,7 +64,7 @@ _ACTION_LABELS = {
     "comment": "留言",
 }
 _LANE_LABELS = {
-    "b_roll": "B-ROLL",
+    "b_roll": "STOCK VIDEO（Stock Village） / B-ROLL",
     "hero_title": "HERO TITLE",
     "fullscreen_transition": "FULLSCREEN TRANSITION",
     "title_card": "字卡與斷句",
@@ -414,9 +420,11 @@ def _load_finished_manifest(episode_slug: str) -> dict[str, Any]:
     path = _latest_finished_manifest_path(review_dir)
     try:
         raw = path.read_bytes()
-        manifest = json.loads(raw.decode("utf-8-sig"))
+        manifest = verify_finished_review_manifest(_episode_dir(episode_slug), path)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise _manifest_error(f"cannot read {path.name}") from exc
+    except SystemExit as exc:
+        raise _manifest_error(str(exc)) from exc
     if not isinstance(manifest, dict):
         raise _manifest_error("root must be an object")
     if manifest.get("schema") != _FINISHED_MANIFEST_SCHEMA:
@@ -489,6 +497,7 @@ def _load_finished_manifest(episode_slug: str) -> dict[str, Any]:
         if not isinstance(components, list):
             raise _manifest_error(f"{cut_id} components must be a list")
         review_components: list[dict[str, Any]] = []
+        stock_video_count = 0
         for component in components:
             if not isinstance(component, dict):
                 raise _manifest_error(f"{cut_id} component must be an object")
@@ -521,8 +530,13 @@ def _load_finished_manifest(episode_slug: str) -> dict[str, Any]:
             normalized["actions"] = [
                 {"value": action, "label": _ACTION_LABELS[action]} for action in actions[lane]
             ]
+            if lane == "b_roll" and normalized.get("asset_category") == "stock_video":
+                stock_video_count += 1
             review_components.append(normalized)
         cut["review_components"] = review_components
+        if str(cut.get("format") or "long") == "long":
+            cut["stock_video_count"] = stock_video_count
+            cut["stock_video_missing"] = max(0, 3 - stock_video_count)
     manifest["_path"] = path
     manifest["_review_dir"] = review_dir
     manifest["_sha256"] = hashlib.sha256(raw).hexdigest()
@@ -613,6 +627,88 @@ def _atomic_json_write(path: Path, payload: dict[str, Any]) -> None:
         temporary.flush()
         os.fsync(temporary.fileno())
     os.replace(temporary.name, path)
+
+
+def _finished_revision_job(
+    *,
+    manifest: dict[str, Any],
+    audit: dict[str, Any],
+    cut_statuses: dict[str, str],
+    component_feedback: list[dict[str, Any]],
+    overall_feedback: dict[str, str],
+    preview_sha256: dict[str, str],
+) -> dict[str, Any] | None:
+    """Build one content-addressed desktop revision request.
+
+    Saving an untouched draft remains a cheap append-only checkpoint.  Any explicit
+    request for changes or written feedback becomes durable work for the desktop
+    worker.  Re-saving byte-identical feedback reuses the existing job instead of
+    dispatching the same agent task twice.
+    """
+    requested_cut_ids = sorted(
+        cut_id
+        for cut_id, status in cut_statuses.items()
+        if status == "needs_changes"
+        or cut_id in overall_feedback
+        or any(row.get("cut_id") == cut_id for row in component_feedback)
+    )
+    if not requested_cut_ids:
+        return None
+    request = {
+        "episode_id": manifest["episode_id"],
+        "review_format": manifest.get("review_format", "long"),
+        "manifest_filename": Path(manifest["_path"]).name,
+        "source_manifest_sha256": manifest["_sha256"],
+        "source_preview_sha256": preview_sha256,
+        "requested_cut_ids": requested_cut_ids,
+        "cut_statuses": cut_statuses,
+        "component_feedback": component_feedback,
+        "overall_feedback": overall_feedback,
+    }
+    episode_dir = Path(manifest["_path"]).parents[2]
+    try:
+        trusted_handoff = load_episode_trusted_asset_handoff(episode_dir)
+        needs_stock_assets = (
+            False
+            if manifest.get("review_format") == "short"
+            else revision_requires_stock_assets(
+                episode_dir,
+                Path(manifest["_path"]),
+                requested_cut_ids,
+            )
+        )
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=422, detail=f"trusted acquisition handoff invalid: {exc}"
+        ) from exc
+    if trusted_handoff is not None:
+        request["trusted_asset_sources"] = trusted_handoff["sources"]
+        request["trusted_asset_sources_sha256"] = trusted_handoff["sources_sha256"]
+        request["trusted_asset_handoff"] = trusted_handoff["handoff"]
+    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    request_id = f"finished-revision-{hashlib.sha256(canonical.encode('utf-8')).hexdigest()[:20]}"
+    for prior in reversed(audit.get("revisions", [])):
+        if not isinstance(prior, dict):
+            continue
+        prior_job = prior.get("revision_job")
+        if isinstance(prior_job, dict) and prior_job.get("request_id") == request_id:
+            return dict(prior_job)
+    return {
+        "contract": "finished-cut-revision-job-v1",
+        "request_id": request_id,
+        "status": (
+            "awaiting_stock_assets"
+            if needs_stock_assets and trusted_handoff is None
+            else "queued"
+        ),
+        "attempt": 0,
+        "requested_at": datetime.now(timezone.utc).isoformat(),
+        "started_at": None,
+        "finished_at": None,
+        "result_receipt": None,
+        "error": None,
+        **request,
+    }
 
 
 def _verified_editorial_master(episode_dir: Path):
@@ -814,7 +910,15 @@ async def finished_review_board(
     current_revisions = [
         revision
         for revision in revisions
-        if isinstance(revision, dict) and revision.get("manifest_sha256") == manifest["_sha256"]
+        if isinstance(revision, dict)
+        and (
+            revision.get("manifest_sha256") == manifest["_sha256"]
+            or (
+                isinstance(revision.get("revision_job"), dict)
+                and revision["revision_job"].get("output_manifest_sha256")
+                == manifest["_sha256"]
+            )
+        )
     ]
     latest = current_revisions[-1] if current_revisions else {}
     cut_statuses = latest.get("cut_statuses", {}) if isinstance(latest, dict) else {}
@@ -837,6 +941,10 @@ async def finished_review_board(
             component["saved_replacement"] = prior.get("replacement", "")
             component["saved_move"] = prior.get("move_to_seconds", "")
             component["saved_remember"] = bool(prior.get("remember_preference"))
+        saved_overall = latest.get("overall_feedback", {}) if isinstance(latest, dict) else {}
+        cut["saved_overall_feedback"] = (
+            saved_overall.get(cut["cut_id"], "") if isinstance(saved_overall, dict) else ""
+        )
     return _templates.TemplateResponse(
         request,
         "finished_review.html",
@@ -850,6 +958,7 @@ async def finished_review_board(
             "review_format": review_format,
             "review_query": "?format=short" if review_format == "short" else "",
             "asset_version": _SHOSHO_ASSET_VERSION,
+            "latest_revision": latest,
         },
     )
 
@@ -1037,6 +1146,7 @@ async def finished_review_save(
     }
     dynamic_prefixes = (
         "cut_status__",
+        "cut_feedback__",
         "component_action__",
         "component_comment__",
         "component_replacement__",
@@ -1046,20 +1156,45 @@ async def finished_review_save(
     for key, _ in form.multi_items():
         if key.startswith("cut_status__") and key.removeprefix("cut_status__") not in cuts_by_id:
             raise HTTPException(status_code=400, detail="unknown cut in review form")
-        for prefix in dynamic_prefixes[1:]:
+        if (
+            key.startswith("cut_feedback__")
+            and key.removeprefix("cut_feedback__") not in cuts_by_id
+        ):
+            raise HTTPException(status_code=400, detail="unknown cut feedback in review form")
+        for prefix in dynamic_prefixes[2:]:
             if key.startswith(prefix) and key.removeprefix(prefix) not in components_by_id:
                 raise HTTPException(status_code=400, detail="unknown component in review form")
 
     cut_statuses: dict[str, str] = {}
+    overall_feedback: dict[str, str] = {}
     for cut_id in cuts_by_id:
         status = _single_form_value(form, f"cut_status__{cut_id}", "pending")
         if status not in {"pending", "approved", "needs_changes"}:
             raise HTTPException(status_code=400, detail=f"invalid review status for {cut_id}")
         cut_statuses[cut_id] = status
+        raw_feedback = _single_form_value(form, f"cut_feedback__{cut_id}")
+        if len(raw_feedback) > _MAX_OVERALL_FEEDBACK:
+            raise HTTPException(
+                status_code=400,
+                detail=f"overall feedback for {cut_id} exceeds {_MAX_OVERALL_FEEDBACK} characters",
+            )
+        if raw_feedback.strip():
+            overall_feedback[cut_id] = raw_feedback
     if submit_action == "approve_all" and any(
         status != "approved" for status in cut_statuses.values()
     ):
         raise HTTPException(status_code=400, detail="approve_all requires every cut to be approved")
+    if submit_action == "approve_all":
+        blocked = [
+            cut_id
+            for cut_id, cut in cuts_by_id.items()
+            if int(cut.get("stock_video_missing") or 0) > 0
+        ]
+        if blocked:
+            raise HTTPException(
+                status_code=409,
+                detail=f"long Highlight Stock Video 尚未達 3 個：{', '.join(blocked)}",
+            )
     packaging_episode: str | None = None
     approved_episode_dir: Path | None = None
     if submit_action == "approve_cut":
@@ -1067,6 +1202,11 @@ async def finished_review_save(
             raise HTTPException(status_code=400, detail="unknown selected cut")
         if cut_statuses[selected_cut_id] != "approved":
             raise HTTPException(status_code=400, detail="selected cut must be approved")
+        if int(cuts_by_id[selected_cut_id].get("stock_video_missing") or 0) > 0:
+            raise HTTPException(
+                status_code=409,
+                detail=f"{selected_cut_id} Stock Video 尚未達 3 個，不能進 Packaging",
+            )
         approved_episode_dir = _episode_dir(episode_slug)
         _require_final_qa_clear(approved_episode_dir, selected_cut_id)
         packaging_episode = _find_packaging_episode(manifest["episode_id"], selected_cut_id)
@@ -1164,10 +1304,22 @@ async def finished_review_save(
         ),
         "cut_statuses": cut_statuses,
         "component_feedback": component_feedback,
+        "overall_feedback": overall_feedback,
         "preference_candidates": preference_candidates,
     }
     if submit_action == "approve_cut":
         revision["selected_cut_id"] = selected_cut_id
+    if submit_action == "save_draft":
+        revision_job = _finished_revision_job(
+            manifest=manifest,
+            audit=audit,
+            cut_statuses=cut_statuses,
+            component_feedback=component_feedback,
+            overall_feedback=overall_feedback,
+            preview_sha256=preview_sha256,
+        )
+        if revision_job is not None:
+            revision["revision_job"] = revision_job
     audit["revisions"].append(revision)
     _atomic_json_write(_feedback_path(manifest), audit)
     if submit_action == "approve_cut":

@@ -13,6 +13,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from scripts.finished_review_watcher import prepare_trusted_asset_handoff
+
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -34,10 +36,29 @@ def _write_manifest(episode: Path, *, feedback_file: str | None = None) -> Path:
                 "component_id": f"{cut_id}-broll",
                 "lane": "b_roll",
                 "kind": "video",
+                "asset_category": "stock_video",
                 "slug": "sushi-closeup",
                 "note": "對齊將太的壽司",
                 "t0": 10.0,
                 "t1": 14.0,
+            },
+            {
+                "component_id": f"{cut_id}-broll-2",
+                "lane": "b_roll",
+                "kind": "video",
+                "asset_category": "stock_video",
+                "slug": "chef-workflow",
+                "t0": 40.0,
+                "t1": 44.0,
+            },
+            {
+                "component_id": f"{cut_id}-broll-3",
+                "lane": "b_roll",
+                "kind": "video",
+                "asset_category": "stock_video",
+                "slug": "restaurant-service",
+                "t0": 50.0,
+                "t1": 54.0,
             },
             {
                 "component_id": f"{cut_id}-hero",
@@ -64,6 +85,7 @@ def _write_manifest(episode: Path, *, feedback_file: str | None = None) -> Path:
         cuts.append(
             {
                 "cut_id": cut_id,
+                "format": "long",
                 "title": title,
                 "artifacts": {
                     "preview": {
@@ -153,6 +175,11 @@ def client(monkeypatch, finished_episode):
 
     importlib.reload(auth_module)
     importlib.reload(review_module)
+    monkeypatch.setattr(
+        review_module,
+        "verify_finished_review_manifest",
+        lambda _episode, path: json.loads(path.read_text(encoding="utf-8")),
+    )
     app = FastAPI()
     app.include_router(review_module.page_router)
     return TestClient(app)
@@ -203,6 +230,7 @@ def _valid_review(manifest: Path) -> dict[str, object]:
         "component_remember__R11-broll": "on",
         "component_action__R11-hero": "move",
         "component_move__R11-hero": "21.25",
+        "cut_feedback__R11": "整體節奏太慢。\n請保留開頭，但壓短中段。",
     }
 
 
@@ -246,6 +274,59 @@ def test_chinese_page_only_lists_review_lanes_and_seek_metadata(client):
     assert 'kind="captions"' in response.text
     assert "B-ROLL" in response.text
     assert "HERO TITLE" in response.text
+
+
+def test_long_review_context_fails_closed_when_authoritative_verifier_rejects(
+    client, monkeypatch
+):
+    import thousand_sunny.routers.highlight_review as review_module
+
+    def reject(_episode, _manifest):
+        raise SystemExit("forged Stock Video labels without receipt")
+
+    monkeypatch.setattr(review_module, "verify_finished_review_manifest", reject)
+    response = client.get(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished",
+        cookies=_auth_cookie(),
+    )
+    assert response.status_code == 422
+    assert "without receipt" in response.text
+
+
+def test_long_review_shows_true_stock_video_deficit_and_blocks_approval(
+    client, finished_episode
+):
+    _, _, manifest = finished_episode
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    for component in payload["cuts"][0]["components"]:
+        component.pop("asset_category", None)
+    manifest.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    page = client.get(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished",
+        cookies=_auth_cookie(),
+    )
+    assert page.status_code == 200
+    assert "Stock Video 目前 0 個，還缺 3 個" in page.text
+    assert "guest-namecard" in page.text
+
+    form = _valid_review(manifest)
+    form.update(
+        {
+            "submit_action": "approve_cut",
+            "selected_cut_id": "R11",
+            "cut_status__R11": "approved",
+            "cut_status__R12": "pending",
+            "cut_status__R3": "pending",
+        }
+    )
+    response = client.post(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished/review",
+        data=form,
+        cookies=_auth_cookie(),
+    )
+    assert response.status_code == 409
+    assert "Stock Video" in response.text
 
 
 def test_media_and_vtt_are_served_from_manifest_inventory(client, finished_episode):
@@ -314,6 +395,261 @@ def test_valid_feedback_round_trip_is_append_only_and_uses_fixed_path(
     assert [row["revision"] for row in audit["revisions"]] == [1, 2]
 
 
+def test_save_draft_with_requested_changes_queues_durable_revision_job(
+    client, finished_episode
+):
+    _, episode, manifest = finished_episode
+
+    response = client.post(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished/review",
+        data=_valid_review(manifest),
+        cookies=_auth_cookie(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303, response.text
+    audit = json.loads(
+        (episode / "highlights/review/finished_review_feedback.v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    revision = audit["revisions"][-1]
+    assert revision["overall_feedback"] == {
+        "R11": "整體節奏太慢。\n請保留開頭，但壓短中段。"
+    }
+    assert revision["revision_job"]["status"] == "queued"
+    assert revision["revision_job"]["contract"] == "finished-cut-revision-job-v1"
+    assert revision["revision_job"]["request_id"].startswith("finished-revision-")
+    assert revision["revision_job"]["source_manifest_sha256"] == _manifest_sha(manifest)
+
+    page = client.get(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished",
+        cookies=_auth_cookie(),
+    )
+    assert page.status_code == 200
+    assert "Agent revision 已排入佇列" in page.text
+    assert revision["revision_job"]["request_id"] in page.text
+
+
+def test_future_save_draft_auto_attaches_episode_local_trusted_handoff(
+    monkeypatch, client, finished_episode, tmp_path
+):
+    _, episode, manifest = finished_episode
+    acquisition = tmp_path / "acquisition"
+    acquisition.mkdir()
+    sources = {}
+    for index in range(3):
+        slug = f"route-stock-{index}"
+        media = acquisition / f"{slug}.mp4"
+        media.write_bytes(f"route-video-{index}".encode())
+        sources[slug] = {
+            "filename": media.name,
+            "bytes": media.stat().st_size,
+            "sha256": _sha256(media),
+            "provenance": {
+                "source_url": f"https://example.test/video/{index}",
+                "acquired_at": "2026-08-22T12:00:00+08:00",
+                "license_id": f"route-license-{index}",
+            },
+        }
+    source_manifest = acquisition / "trusted_asset_sources.json"
+    source_manifest.write_text(json.dumps(sources), encoding="utf-8")
+    monkeypatch.setattr(
+        "agents.brook.script_video.highlight_broll.probe_stock_video",
+        lambda _path: {"duration_seconds": 2.0, "video_streams": [{}]},
+    )
+    prepared = prepare_trusted_asset_handoff(
+        episode, source_manifest, apply=True
+    )
+
+    response = client.post(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished/review",
+        data=_valid_review(manifest),
+        cookies=_auth_cookie(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303, response.text
+    audit = json.loads(
+        (episode / "highlights/review/finished_review_feedback.v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    job = audit["revisions"][-1]["revision_job"]
+    assert job["status"] == "queued"
+    assert job["trusted_asset_sources"] == sources
+    assert job["trusted_asset_sources_sha256"] == prepared["sources_sha256"]
+    assert prepared["sources_sha256"] in job["trusted_asset_handoff"]["root"]
+
+
+def test_failed_revision_job_remains_visible_after_reload(client, finished_episode):
+    _, episode, manifest = finished_episode
+    endpoint = "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished/review"
+    assert (
+        client.post(
+            endpoint,
+            data=_valid_review(manifest),
+            cookies=_auth_cookie(),
+            follow_redirects=False,
+        ).status_code
+        == 303
+    )
+    feedback_path = episode / "highlights/review/finished_review_feedback.v1.json"
+    audit = json.loads(feedback_path.read_text(encoding="utf-8"))
+    audit["revisions"][-1]["revision_job"].update(
+        {"status": "failed", "error": "Hero title render failed"}
+    )
+    feedback_path.write_text(json.dumps(audit, ensure_ascii=False), encoding="utf-8")
+
+    page = client.get(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished",
+        cookies=_auth_cookie(),
+    )
+
+    assert page.status_code == 200
+    assert 'role="alert"' in page.text
+    assert "Agent revision 失敗" in page.text
+    assert "Hero title render failed" in page.text
+
+
+def test_awaiting_stock_assets_is_visible_instead_of_generic_failure(
+    client, finished_episode
+):
+    _, episode, manifest = finished_episode
+    endpoint = "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished/review"
+    assert (
+        client.post(
+            endpoint,
+            data=_valid_review(manifest),
+            cookies=_auth_cookie(),
+            follow_redirects=False,
+        ).status_code
+        == 303
+    )
+    feedback_path = episode / "highlights/review/finished_review_feedback.v1.json"
+    audit = json.loads(feedback_path.read_text(encoding="utf-8"))
+    audit["revisions"][-1]["revision_job"]["status"] = "awaiting_stock_assets"
+    feedback_path.write_text(json.dumps(audit, ensure_ascii=False), encoding="utf-8")
+
+    page = client.get(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished",
+        cookies=_auth_cookie(),
+    )
+
+    assert page.status_code == 200
+    assert "等待已核准的 Stock Video 素材" in page.text
+    assert "Agent revision 失敗" not in page.text
+
+
+def test_succeeded_revision_job_requests_a_new_human_review(client, finished_episode):
+    _, episode, manifest = finished_episode
+    endpoint = "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished/review"
+    assert (
+        client.post(
+            endpoint,
+            data=_valid_review(manifest),
+            cookies=_auth_cookie(),
+            follow_redirects=False,
+        ).status_code
+        == 303
+    )
+    feedback_path = episode / "highlights/review/finished_review_feedback.v1.json"
+    audit = json.loads(feedback_path.read_text(encoding="utf-8"))
+    manifest_payload = json.loads(manifest.read_text(encoding="utf-8"))
+    manifest_payload["cuts"][0]["title"] = "Agent revised title"
+    manifest.write_text(json.dumps(manifest_payload, ensure_ascii=False), encoding="utf-8")
+    audit["revisions"][-1]["revision_job"].update(
+        {
+            "status": "succeeded",
+            "output_manifest_sha256": _manifest_sha(manifest),
+        }
+    )
+    feedback_path.write_text(json.dumps(audit, ensure_ascii=False), encoding="utf-8")
+
+    page = client.get(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished",
+        cookies=_auth_cookie(),
+    )
+
+    assert page.status_code == 200
+    assert "Agent revision 已完成，可以開始 review 新版" in page.text
+    assert "修正版已完成，請重新 review" in page.text
+
+
+def test_text_components_accept_and_reload_multiline_replacement(client, finished_episode):
+    _, episode, manifest = finished_episode
+    form = _valid_review(manifest)
+    form.update(
+        {
+            "component_action__R11-hero": "edit_text",
+            "component_replacement__R11-hero": "分工不是混亂\n人要變通才有價值",
+        }
+    )
+    endpoint = "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished/review"
+
+    response = client.post(endpoint, data=form, cookies=_auth_cookie(), follow_redirects=False)
+
+    assert response.status_code == 303
+    audit = json.loads(
+        (episode / "highlights/review/finished_review_feedback.v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    hero = next(
+        row
+        for row in audit["revisions"][-1]["component_feedback"]
+        if row["component_id"] == "R11-hero"
+    )
+    assert hero["replacement"] == "分工不是混亂\n人要變通才有價值"
+
+    page = client.get(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished?saved=1",
+        cookies=_auth_cookie(),
+    )
+    assert page.status_code == 200
+    assert (
+        '<textarea name="component_replacement__R11-hero"' in page.text
+    )
+    assert "分工不是混亂\n人要變通才有價值</textarea>" in page.text
+    assert '<input type="text" name="component_replacement__R11-broll"' in page.text
+
+
+def test_cut_overall_feedback_round_trip_stays_with_its_cut(client, finished_episode):
+    _, episode, manifest = finished_episode
+    form = _valid_review(manifest)
+    form.update(
+        {
+            "cut_feedback__R11": "整體節奏太平。\nHero title 請保留手動換行。",
+            "cut_feedback__R12": "開頭更快進主題。",
+        }
+    )
+    endpoint = "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished/review"
+
+    response = client.post(endpoint, data=form, cookies=_auth_cookie(), follow_redirects=False)
+
+    assert response.status_code == 303
+    audit = json.loads(
+        (episode / "highlights/review/finished_review_feedback.v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert audit["revisions"][-1]["overall_feedback"] == {
+        "R11": "整體節奏太平。\nHero title 請保留手動換行。",
+        "R12": "開頭更快進主題。",
+    }
+
+    page = client.get(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished?saved=1",
+        cookies=_auth_cookie(),
+    )
+    assert page.status_code == 200
+    assert 'name="cut_feedback__R11"' in page.text
+    assert "整體節奏太平。\nHero title 請保留手動換行。</textarea>" in page.text
+    assert 'name="cut_feedback__R12"' in page.text
+    assert "開頭更快進主題。</textarea>" in page.text
+    assert 'name="cut_feedback__R3"' in page.text
+
+
 def test_feedback_rejects_same_size_preview_revision_mismatch(client, finished_episode):
     _, episode, manifest = finished_episode
     preview = episode / "highlights/review/R11/R11.mp4"
@@ -342,6 +678,13 @@ def test_rejects_stale_manifest_unknown_component_and_unknown_action(client, fin
     unknown["component_action__not-in-manifest"] = "remove"
     assert client.post(endpoint, data=unknown, cookies=_auth_cookie()).status_code == 400
 
+    unknown_cut_feedback = _valid_review(manifest)
+    unknown_cut_feedback["cut_feedback__not-in-manifest"] = "不應被接受"
+    assert (
+        client.post(endpoint, data=unknown_cut_feedback, cookies=_auth_cookie()).status_code
+        == 400
+    )
+
     bad_action = _valid_review(manifest)
     bad_action["component_action__R11-broll"] = "edit_text"
     assert client.post(endpoint, data=bad_action, cookies=_auth_cookie()).status_code == 400
@@ -355,6 +698,9 @@ def test_move_range_and_text_limits_are_validated(client, finished_episode):
     assert client.post(endpoint, data=form, cookies=_auth_cookie()).status_code == 400
     form = _valid_review(manifest)
     form["component_comment__R11-broll"] = "x" * 2001
+    assert client.post(endpoint, data=form, cookies=_auth_cookie()).status_code == 400
+    form = _valid_review(manifest)
+    form["cut_feedback__R11"] = "x" * 5001
     assert client.post(endpoint, data=form, cookies=_auth_cookie()).status_code == 400
 
 

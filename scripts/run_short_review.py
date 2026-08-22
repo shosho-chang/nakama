@@ -46,6 +46,13 @@ from run_short_tighten import (  # noqa: E402
 )
 
 from agents.brook.script_video.editorial_master import EditorialMasterContractError  # noqa: E402
+from agents.brook.script_video.highlight_broll import (  # noqa: E402
+    BrollContractError,
+    verify_broll_receipt,
+)
+from agents.brook.script_video.highlight_broll import (  # noqa: E402
+    receipt_identity as broll_receipt_identity,
+)
 from agents.brook.script_video.identity_placement import (  # noqa: E402
     IdentityPlacementError,
     verify_identity_placement,
@@ -135,15 +142,16 @@ def _load_events(episode_dir: Path, cid: str) -> list[dict]:
         for it in json.loads(p.read_text(encoding="utf-8"))["items"]:
             if it["kind"] == "badge":
                 continue  # 全片常駐 watermark，不是「視覺事件」——進事件表會污染節拍分析
-            events.append(
-                {
+            event = {
                     "type": it["kind"],
                     "slug": it.get("slug", ""),
                     "t0": float(it["t0"]),
                     "t1": float(it["t1"]),
                     "note": it.get("note", ""),
                 }
-            )
+            if it["kind"] == "video":
+                event["asset_category"] = "stock_video"
+            events.append(event)
     p = td / f"{cid}_titles.json"
     if p.exists():
         for it in json.loads(p.read_text(encoding="utf-8"))["titles"]:
@@ -292,6 +300,17 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
     master = _open_editorial_master(episode_dir)
     master_identity = master.identity()
     c, w = _load_winner(episode_dir, cid, master_identity)
+    broll_plan_path = episode_dir / TIGHTEN_DIR / f"{cid}_broll.json"
+    broll_plan = json.loads(broll_plan_path.read_text(encoding="utf-8"))["items"]
+    stock_video_lineage = None
+    if c.get("format") == "long":
+        try:
+            stock_video_receipt = verify_broll_receipt(
+                episode_dir, cid, "long", broll_plan, master_identity
+            )
+        except BrollContractError as exc:
+            raise SystemExit(f"finished review Stock Video gate 失敗：{exc}") from exc
+        stock_video_lineage = broll_receipt_identity(stock_video_receipt)
     events = _load_events(episode_dir, cid)
     if not events:
         raise SystemExit(f"{cid} 沒有任何事件 JSON——先跑 broll/titles 企劃")
@@ -496,6 +515,7 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
 
     packet = {
         "editorial_master_lineage": master_identity,
+        "stock_video_lineage": stock_video_lineage,
         "identity_placement_lineage": identity_placement_lineage,
         "timeline": label,
         "duration_sec": round(dur, 1),

@@ -75,9 +75,11 @@ second. A ripple edit must deterministically rebase later events. A guest identi
 pass a speaker-placement check: it begins on the guest's first substantive speech, never during a long host
 opening. For `value-L01`, the user-approved placement is 43.0–48.2 seconds.
 
-The finished-cut UI must distinguish asset-backed B-roll from titles, badges and fullscreen transitions.
-Zero asset-backed B-roll is allowed when no concrete visual is trustworthy; it must not be confused with
-the absence of all visual treatments. Editorial defects such as coughs are cuts, not B-roll opportunities.
+The finished-cut UI must distinguish **Stock Video (Stock Village)** from photos, identity cards, Hero Titles,
+badges, paper textures, generated cards and fullscreen transitions. Every long Highlight requires at least
+three distinct, asset-backed Stock Video events before finished review. Abstract passages still must not be
+covered with misleading metaphors: the Director must find three concrete, filmable moments elsewhere in the
+cut or keep the cut revision-required. Editorial defects such as coughs are cuts, not Stock Video opportunities.
 
 ## Current episode status
 
