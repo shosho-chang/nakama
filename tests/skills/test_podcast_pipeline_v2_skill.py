@@ -77,27 +77,46 @@ def test_editorial_master_gate_precedes_packaging_and_highlights() -> None:
     text, production, _legacy = _sections()
     assert "S7E EDITORIAL MASTER" in production
     assert "podcast-editorial-master-v1" in production
-    assert "EDITORIAL_MASTER_RUNTIME_NOT_IMPLEMENTED" in production
-    assert "不得退回 raw program feed" in production
+    assert "EDITORIAL_MASTER_RUNTIME_NOT_IMPLEMENTED" not in production
+    assert "silent fallback" in production
+    assert "--human-approved --approved-by" in production
     assert "S7P FULL PACKAGING" in production
     assert "cut_id=full" in production
     assert "不依賴\nHighlight winner" in production
     assert "不得阻塞 Highlight mining" in production
     assert "暗色書封中景" in production
     assert production.index("Actual build exit 0") < production.index(
-        "Editorial Master receipt 驗證成功"
+        "podcast_editorial_master.py inspect"
     )
-    assert production.index("Editorial Master receipt 驗證成功") < production.index("cut_id=full")
+    exporter = (
+        "podcast_editorial_master.py inspect",
+        "podcast_editorial_master.py status",
+        "podcast_editorial_master.py seal",
+        "podcast_editorial_master.py verify",
+    )
+    exporter_positions = [production.index(marker) for marker in exporter]
+    assert exporter_positions == sorted(exporter_positions)
+    exporter_route = production.split("Human approval 之前", maxsplit=1)[1].split(
+        "第一次 `status`", maxsplit=1
+    )[0]
+    python310 = r"C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe"
+    assert exporter_route.count(python310) == 3
+    assert (
+        r"E:\nakama\.venv-v2\Scripts\python.exe "
+        r'scripts\podcast_editorial_master.py status "<episode>"'
+    ) in exporter_route
+    assert production.index("podcast_editorial_master.py verify") < production.index(
+        "cut_id=full"
+    )
     assert production.index("cut_id=full") < production.index("--mining-input")
 
 
-def test_adr_064_records_runtime_cutover_as_pending_without_raw_fallback() -> None:
+def test_adr_064_records_editorial_master_without_raw_fallback() -> None:
     adr = ADR_064.read_text(encoding="utf-8")
-    assert "- Status: Accepted / Runtime cutover pending" in adr
+    assert "- Status: Accepted" in adr
     assert "podcast-editorial-master-v1" in adr
     assert "raw 1320.300–1323.140" in adr
     assert "value-L02` and `punch-L04` remain raw-derived" in adr
-    assert "EDITORIAL_MASTER_RUNTIME_NOT_IMPLEMENTED" in adr
     assert "P9 implementation task prompt" in adr
 
 
@@ -269,6 +288,8 @@ def test_production_cli_help_smoke_uses_repo_venv() -> None:
         "scripts/podcast_subtitle_v2_evidence.py",
         "scripts/podcast_subtitle_v2_simple_step7.py",
         "scripts/podcast_subtitle_release.py",
+        "scripts/podcast_editorial_master.py",
+        "scripts/podcast_identity_placement.py",
         "scripts/run_highlight_cut.py",
         "scripts/run_cut_shortlist.py",
     )
@@ -456,15 +477,17 @@ def test_highlight_skill_defines_executable_agent_owned_mining_and_review_contra
     assert section_positions == sorted(section_positions)
 
     required_production = (
-        "memo-dual-audit-v1",
-        "STAGE5-HANDOFF.json",
+        "podcast-editorial-master-v1",
+        "EDITORIAL-MASTER.json",
+        "master.srt",
+        "master.mp4",
         'run_highlight_cut.py "<episode>" --mining-input',
         "highlights/miner-story.json",
         "highlights/miner-punch.json",
         "highlights/miner-value.json",
         '"contract": "podcast-highlight-miner-output-v1"',
         '"source_srt_sha256"',
-        '"subtitle_lineage"',
+        '"editorial_master_lineage"',
         "`status`／`srt_path`／`elapsed_sec`",
         "不得把 `elapsed_sec` 這類執行耗時混入 identity",
         "--merge-miners",
@@ -504,6 +527,88 @@ def test_highlight_skill_defines_executable_agent_owned_mining_and_review_contra
     assert "py -3.10" not in production
     assert "--degraded-release-handoff" in legacy
     assert "Formal Subtitle V2" in legacy
+
+
+def test_identity_placement_route_is_quorum_bound_and_fail_closed() -> None:
+    podcast, production, _legacy = _sections()
+    highlight = HIGHLIGHT_SKILL.read_text(encoding="utf-8")
+    required = (
+        "podcast-identity-placement-v1",
+        "podcast-identity-placement-worker-audit-v1",
+        "podcast_identity_placement.py accept",
+        "podcast_identity_placement.py emit-event",
+        "podcast_identity_placement.py verify",
+        '"worker_id"',
+        '"editorial_master"',
+        '"cut_srt"',
+        '"accepted_guest_cue"',
+        '"text_sha256"',
+        "IDENTITY-PLACEMENT.json",
+        "free-string",
+        "同 worker",
+        "stale hash",
+        "path escape",
+        "衝突／無法判定才回使用者",
+        "43.0–48.2",
+    )
+    for marker in required:
+        assert marker in production, f"podcast identity route missing: {marker}"
+
+    highlight_required = (
+        "podcast-identity-placement-worker-audit-v1",
+        "podcast_identity_placement.py accept",
+        "podcast_identity_placement.py emit-event",
+        "podcast_identity_placement.py verify",
+        "Editorial Master identity",
+        "cut SRT",
+        "same worker",
+        "cross-episode/path escape",
+        "只有兩 audit 衝突或皆無法可靠\n判斷才是 HITL",
+        "43.0 秒",
+        "48.2 秒",
+        r"C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe",
+        "inspect`、`seal`、`verify --live`",
+    )
+    for marker in highlight_required:
+        assert marker in highlight, f"highlight identity route missing: {marker}"
+
+    route = production.split("## S9", maxsplit=1)[1].split("## S10", maxsplit=1)[0]
+    ordered = (
+        "run_short_tighten.py",
+        "podcast_identity_placement.py accept",
+        "podcast_identity_placement.py emit-event",
+        "podcast_identity_placement.py verify",
+        "run_short_director.py",
+        "run_short_broll.py",
+        "run_short_titles.py",
+        "run_short_review.py",
+    )
+    positions = [route.index(marker) for marker in ordered]
+    assert positions == sorted(positions)
+    assert "podcast_identity_placement.py status" in podcast
+    assert '--name "<guest-name>" --title "<guest-title>"' in route
+    assert "--guest-namecard-start" not in route
+    assert '"subtitle_lineage"' not in production
+
+
+def test_identity_skill_command_paths_match_runtime_contract() -> None:
+    _text, production, _legacy = _sections()
+    route = production.split(
+        "scripts\\podcast_identity_placement.py accept", maxsplit=1
+    )[1].split("scripts\\run_short_director.py", maxsplit=1)[0]
+    assert (
+        '--cut-srt "<episode>/highlights/srt/<winner-id>_tight_rNNN.srt"'
+        in route
+    )
+    assert (
+        '--audit-a "<episode>/highlights/identity-placement/'
+        '<winner-id>/identity-audit-a.json"'
+    ) in route
+    assert (
+        '--audit-b "<episode>/highlights/identity-placement/'
+        '<winner-id>/identity-audit-b.json"'
+    ) in route
+    assert "highlights/review/<winner-id>/subs.srt" not in production
 
 
 def test_formal_v2_and_degraded_routes_are_explicit_legacy_only() -> None:

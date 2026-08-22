@@ -233,6 +233,39 @@ def test_winners_preserve_verified_projection_lineage(episode):
     assert winners["subtitle_lineage"] == candidates["subtitle_lineage"]
 
 
+def test_winners_preserve_editorial_master_lineage(episode):
+    hl = episode / "highlights"
+    candidates_path = hl / "candidates.json"
+    candidates = json.loads(candidates_path.read_text(encoding="utf-8"))
+    candidates["editorial_master_lineage"] = {
+        "contract": "podcast-editorial-master-v1",
+        "episode_id": episode.name,
+        "content_hash": "1" * 64,
+        "master_media_sha256": "2" * 64,
+        "master_srt_sha256": "3" * 64,
+        "editorial_master_receipt": "editorial-master/v1/EDITORIAL-MASTER.json",
+    }
+    candidates_path.write_text(json.dumps(candidates), encoding="utf-8")
+    source_sha256 = hashlib.sha256(candidates_path.read_bytes()).hexdigest()
+    for name in (
+        "review_azhe.json",
+        "review_kevin.json",
+        "review_shufen.json",
+        "lens_brand.json",
+        "lens_renee.json",
+    ):
+        path = hl / name
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["source_sha256"] = source_sha256
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+    rows = shortlist.collect(hl, "long")
+    shortlist.write_winners(hl, rows, ["A1"])
+
+    winners = json.loads((hl / "winners.json").read_text(encoding="utf-8"))
+    assert winners["editorial_master_lineage"] == candidates["editorial_master_lineage"]
+
+
 @pytest.mark.parametrize(
     "name",
     ["review_azhe.json", "review_kevin.json", "review_shufen.json", "lens_brand.json"],

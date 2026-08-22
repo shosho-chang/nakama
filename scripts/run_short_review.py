@@ -39,7 +39,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from run_highlight_cut import FORMAT_LABEL  # noqa: E402
-from run_short_tighten import TIGHTEN_DIR, _load_winner  # noqa: E402
+from run_short_tighten import (  # noqa: E402
+    TIGHTEN_DIR,
+    _load_winner,
+    _open_editorial_master,
+)
+
+from agents.brook.script_video.editorial_master import EditorialMasterContractError  # noqa: E402
+from agents.brook.script_video.identity_placement import (  # noqa: E402
+    IdentityPlacementError,
+    verify_identity_placement,
+)
+from shared.highlight_materialization import (  # noqa: E402
+    HighlightSource,
+    verify_materialization_receipt,
+)
 
 logger = logging.getLogger("short_review")
 
@@ -72,6 +86,45 @@ FORMAT_REVIEW = {
 # punch zoom 是「同機位縮放」不是新視覺事件——算進去會遮蔽真死區
 # （兩位盲審獨立指出）。缺口只計換鏡素材與卡片。
 GAP_EXCLUDE_PREFIX = ("punch-",)
+
+
+def _verify_materialization_receipt(
+    episode_dir: Path,
+    cid: str,
+    timeline,
+    editorial_master_lineage: dict,
+    *,
+    cut_format: str,
+    t_start: float,
+    t_end: float,
+    fps: float,
+) -> dict:
+    """Bind the selected live Resolve Timeline to its Master source marker."""
+    master = _open_editorial_master(episode_dir)
+    if master.identity() != editorial_master_lineage:
+        raise SystemExit("review packet Editorial Master lineage drift")
+    source = HighlightSource(
+        srt_path=master.srt_path,
+        media_path=master.media_path,
+        lineage=master.identity(),
+    )
+    try:
+        return verify_materialization_receipt(
+            episode_dir,
+            cid,
+            source=source,
+            timeline=timeline,
+            expected_timeline_name=timeline.GetName(),
+            expected_format=cut_format,
+            expected_source_range={
+                "start_sec": float(t_start),
+                "end_sec": float(t_end),
+                "start_frame": int(float(t_start) * fps),
+                "end_frame": int(float(t_end) * fps),
+            },
+        )
+    except EditorialMasterContractError as exc:
+        raise SystemExit(f"review packet materialization receipt 驗證失敗：{exc}") from exc
 
 
 def _load_events(episode_dir: Path, cid: str) -> list[dict]:
@@ -117,6 +170,38 @@ def _load_events(episode_dir: Path, cid: str) -> list[dict]:
             )
     events.sort(key=lambda x: x["t0"])
     return events
+
+
+def _verify_guest_identity_events(
+    episode_dir: Path,
+    cid: str,
+    events: list[dict],
+    editorial_master,
+) -> dict | None:
+    """Fail before render if any guest namecard is not quorum-anchored."""
+
+    guest_cards = [
+        event
+        for event in events
+        if str(event.get("type", "")).lower().replace("_", "-") == "guest-namecard"
+    ]
+    if not guest_cards:
+        return None
+    selected = None
+    try:
+        for event in guest_cards:
+            selected = verify_identity_placement(
+                episode_dir,
+                cut_id=cid,
+                guest_namecard_start=float(event["t0"]),
+                guest_namecard_end=float(event["t1"]),
+                editorial_master=editorial_master,
+            )
+    except (IdentityPlacementError, KeyError, TypeError, ValueError) as exc:
+        raise SystemExit(f"guest identity-card placement 驗證失敗：{exc}") from exc
+    if selected is None:  # pragma: no cover - guarded by guest_cards
+        raise SystemExit("guest identity-card placement 驗證沒有產生 selection")
+    return selected.identity()
 
 
 def _load_srt_lines(episode_dir: Path, cid: str) -> list[dict]:
@@ -204,10 +289,15 @@ def _ffmpeg(args: list[str]) -> None:
 def build_packet(episode_dir: Path, cid: str) -> dict:
     from build_resolve_project import connect_resolve
 
-    c, w = _load_winner(episode_dir, cid)
+    master = _open_editorial_master(episode_dir)
+    master_identity = master.identity()
+    c, w = _load_winner(episode_dir, cid, master_identity)
     events = _load_events(episode_dir, cid)
     if not events:
         raise SystemExit(f"{cid} 沒有任何事件 JSON——先跑 broll/titles 企劃")
+    identity_placement_lineage = _verify_guest_identity_events(
+        episode_dir, cid, events, master
+    )
     srt = _load_srt_lines(episode_dir, cid)
 
     out_dir = episode_dir / REVIEW_DIR / cid
@@ -229,8 +319,18 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
             break
     if timeline is None:
         raise SystemExit(f"「{label}」不存在")
-    project.SetCurrentTimeline(timeline)
     fps = float(project.GetSetting("timelineFrameRate"))
+    _verify_materialization_receipt(
+        episode_dir,
+        cid,
+        timeline,
+        master_identity,
+        cut_format=str(c["format"]),
+        t_start=float(c["t_start"]),
+        t_end=float(c["t_end"]),
+        fps=fps,
+    )
+    project.SetCurrentTimeline(timeline)
     dur = (timeline.GetEndFrame() - timeline.GetStartFrame()) / fps
 
     # 舊輪產物先清——事件增減會讓抽幀編號位移；舊 preview 留著會讓修修
@@ -395,6 +495,8 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
     )
 
     packet = {
+        "editorial_master_lineage": master_identity,
+        "identity_placement_lineage": identity_placement_lineage,
         "timeline": label,
         "duration_sec": round(dur, 1),
         "events_per_min": round(len(events) / (dur / 60), 1),
@@ -414,6 +516,14 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
     (out_dir / "events.json").write_text(
         json.dumps(packet, ensure_ascii=False, indent=1), encoding="utf-8"
     )
+    finished_manifest = None
+    if c.get("format") == "long":
+        # Long finished-review is contract-backed.  Rebuild the deterministic
+        # inventory immediately after the packet lands so the Bridge never
+        # depends on a hand-authored manifest.
+        from build_finished_review_manifest import build_manifest
+
+        finished_manifest = str(build_manifest(episode_dir, review_format="long"))
     return {
         "status": "packet",
         "dir": str(out_dir),
@@ -426,6 +536,7 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
         "content_gaps": [{k: g[k] for k in ("from", "to", "sec")} for g in content_gaps],
         "contact_sheets": [x["file"] for x in sheets],
         "frames": len(frames),
+        "finished_manifest": finished_manifest,
     }
 
 

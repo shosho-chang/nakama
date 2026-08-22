@@ -231,7 +231,7 @@ def test_long_tighten_keeps_filler_and_backchannel():
         assert long_[k] > short[k], k
 
 
-def test_long_detect_uses_official_stage5_without_legacy_aliases(tmp_path, monkeypatch):
+def test_long_detect_uses_editorial_master_without_legacy_aliases(tmp_path, monkeypatch):
     import run_short_tighten as tighten
 
     highlights = tmp_path / "highlights"
@@ -258,20 +258,24 @@ def test_long_detect_uses_official_stage5_without_legacy_aliases(tmp_path, monke
     official_srt = tmp_path / "subtitle-release" / "memo-dual-audit-v1" / "release.srt"
     official_srt.parent.mkdir(parents=True)
     official_srt.write_text("1\n00:00:10,000 --> 00:00:20,000\n正式字幕\n", encoding="utf-8")
-    lineage = {"subtitle_mode": "memo-dual-audit-v1", "subtitle_srt_sha256": "abc"}
-    selection = SimpleNamespace(srt_path=official_srt, identity=lambda: lineage)
-    monkeypatch.setattr(
-        tighten.Stage5SubtitleRequest,
-        "open",
-        lambda self, episode_dir: selection,
+    lineage = {"contract": "podcast-editorial-master-v1", "content_hash": "a" * 64}
+    for path in (highlights / "candidates.json", highlights / "winners.json"):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["editorial_master_lineage"] = lineage
+        path.write_text(json.dumps(payload), encoding="utf-8")
+    selection = SimpleNamespace(
+        media_path=tmp_path / "editorial-master/v1/master.mp4",
+        srt_path=official_srt,
+        identity=lambda: lineage,
     )
+    monkeypatch.setattr(tighten, "_open_editorial_master", lambda episode_dir: selection)
     monkeypatch.setattr(tighten, "_detect_silences", lambda *args, **kwargs: [(12.0, 13.2)])
 
     result = tighten.detect(tmp_path, "value-L01")
 
     assert result["status"] == "detected"
     payload = json.loads(Path(result["file"]).read_text(encoding="utf-8"))
-    assert payload["subtitle_lineage"] == lineage
+    assert payload["editorial_master_lineage"] == lineage
     assert payload["cuts"] == [
         {"t0": 12.2, "t1": 13.05, "kind": "pause", "dur": 1.2, "keep": True}
     ]
@@ -285,8 +289,8 @@ def test_cut_lineage_mismatch_requires_redetect():
 
     with pytest.raises(SystemExit, match="已過期"):
         _assert_cut_subtitle_lineage(
-            {"subtitle_lineage": {"subtitle_srt_sha256": "old"}},
-            {"subtitle_srt_sha256": "new"},
+            {"editorial_master_lineage": {"content_hash": "old"}},
+            {"content_hash": "new"},
         )
 
 

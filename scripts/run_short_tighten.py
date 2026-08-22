@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import re
 import subprocess
 import sys
@@ -52,7 +53,16 @@ from run_highlight_cut import (  # noqa: E402
     _ts,
 )
 
-from agents.brook.script_video.subtitle_handoff import Stage5SubtitleRequest  # noqa: E402
+from agents.brook.script_video.editorial_master import (  # noqa: E402
+    EditorialMasterContractError,
+    EditorialMasterRequest,
+)
+from shared.highlight_materialization import (  # noqa: E402
+    HighlightSource,
+    build_materialization_receipt,
+    write_materialization_receipt,
+)
+from shared.resolve_append import append_checked  # noqa: E402
 from shared.subtitle_finalize import finalize_cues  # noqa: E402
 
 logger = logging.getLogger("short_tighten")
@@ -145,26 +155,117 @@ def import_srt_tidy(mp, root, seg_srt: Path):
     return items
 
 
-def _load_winner(episode_dir: Path, cid: str) -> tuple[dict, dict]:
+def _verified_master_media_pool_item(mp, root, media_path: Path):
+    """Return only a media-pool item whose current File Path is the Master.
+
+    Resolve keys clips by display name in many scripts.  A stale/raw clip named
+    ``master.mp4`` must not be mistaken for the hash-verified episode artifact.
+    """
+    expected = os.path.normcase(str(media_path.resolve()))
+
+    def clip_path(item) -> str:
+        try:
+            return os.path.normcase(str(Path(item.GetClipProperty("File Path") or "").resolve()))
+        except (AttributeError, OSError, TypeError):
+            return ""
+
+    same_name = [item for item in (root.GetClipList() or []) if item.GetName() == media_path.name]
+    exact = [item for item in same_name if clip_path(item) == expected]
+    if exact:
+        return exact[0]
+    if same_name:
+        raise SystemExit(
+            f"media pool 的 {media_path.name} 指向其他來源——拒絕以同名素材冒充 Editorial Master"
+        )
+    imported = mp.ImportMedia([str(media_path)]) or []
+    if not imported or clip_path(imported[0]) != expected:
+        raise SystemExit(f"Editorial Master 匯入或 File Path 驗證失敗：{media_path}")
+    return imported[0]
+
+
+def _commit_materialization_receipt(
+    episode_dir: Path,
+    *,
+    cid: str,
+    cut_format: str,
+    timeline,
+    t0: float,
+    t1: float,
+    fps: float,
+    master,
+) -> Path:
+    source = HighlightSource(
+        srt_path=master.srt_path,
+        media_path=master.media_path,
+        lineage=master.identity(),
+    )
+    try:
+        payload = build_materialization_receipt(
+            episode_dir,
+            cut_id=cid,
+            cut_format=cut_format,
+            timeline=timeline,
+            source_range={
+                "start_sec": t0,
+                "end_sec": t1,
+                "start_frame": int(t0 * fps),
+                "end_frame": int(t1 * fps),
+            },
+            source=source,
+        )
+        # Tighten and director intentionally promote the same cut marker.  The
+        # shared writer permits replacement only when Master lineage and range
+        # are exact, while requiring the new live Timeline identity.
+        return write_materialization_receipt(episode_dir, payload, replace=True)
+    except EditorialMasterContractError as exc:
+        raise SystemExit(f"materialization receipt 失敗：{exc}") from exc
+
+
+def _load_winner(
+    episode_dir: Path,
+    cid: str,
+    editorial_master_lineage: dict | None = None,
+) -> tuple[dict, dict]:
     hdir = episode_dir / HIGHLIGHTS_DIR
-    cands = json.loads((hdir / "candidates.json").read_text(encoding="utf-8"))["candidates"]
-    winners = json.loads((hdir / "winners.json").read_text(encoding="utf-8"))["winners"]
+    candidates_doc = json.loads((hdir / "candidates.json").read_text(encoding="utf-8"))
+    winners_doc = json.loads((hdir / "winners.json").read_text(encoding="utf-8"))
+    cands = candidates_doc["candidates"]
+    winners = winners_doc["winners"]
     c = next((x for x in cands if x["id"] == cid), None)
     w = next((x for x in winners if x["id"] == cid), None)
     if c is None or w is None:
         raise SystemExit(f"{cid} 不在 winners/candidates 中")
+    if editorial_master_lineage is not None:
+        for source_name, document in (
+            ("candidates.json", candidates_doc),
+            ("winners.json", winners_doc),
+        ):
+            if document.get("editorial_master_lineage") != editorial_master_lineage:
+                raise SystemExit(
+                    f"{cid} {source_name} Editorial Master lineage 缺失或已過期——請重新 shortlist"
+                )
     return c, w
 
 
-def _open_production_subtitle(episode_dir: Path):
-    """Open the current Stage 5 subtitle and re-verify its release lineage.
+def _open_editorial_master(episode_dir: Path):
+    """Open the verified Editorial Master or fail closed.
 
-    ADR-063 episodes do not create the legacy ``transcript.srt`` or
-    ``subs/words.json`` aliases.  Every tightening pass must therefore use the
-    same Stage 5 selector as Resolve/highlight materialization instead of
-    silently falling back to those historical paths.
+    Repurpose is deliberately downstream of the human-approved full-program
+    edit.  There is no fallback to the Stage 5 release clock, raw program feed,
+    camera files, or ``normalized.wav``.
     """
-    return Stage5SubtitleRequest().open(episode_dir)
+    try:
+        return EditorialMasterRequest(
+            episode_dir,
+            expected_episode_id=episode_dir.name,
+        ).open()
+    except EditorialMasterContractError as exc:
+        raise SystemExit(f"Editorial Master 驗證失敗：{exc}") from exc
+
+
+# Historical import used by a few downstream scripts.  Keep the symbol while
+# changing its semantics to the only production subtitle source.
+_open_production_subtitle = _open_editorial_master
 
 
 def _optional_words(episode_dir: Path) -> list[dict]:
@@ -185,12 +286,15 @@ def _optional_words(episode_dir: Path) -> list[dict]:
     return words
 
 
-def _assert_cut_subtitle_lineage(cuts_doc: dict, actual: dict) -> None:
-    expected = cuts_doc.get("subtitle_lineage")
+def _assert_cut_master_lineage(cuts_doc: dict, actual: dict) -> None:
+    expected = cuts_doc.get("editorial_master_lineage")
     if expected is None:
-        raise SystemExit("cuts.json 缺 subtitle_lineage——請重新執行 --detect")
+        raise SystemExit("cuts.json 缺 editorial_master_lineage——請重新執行 --detect")
     if expected != actual:
-        raise SystemExit("cuts.json subtitle_lineage 已過期——請重新執行 --detect")
+        raise SystemExit("cuts.json Editorial Master lineage 已過期——請重新執行 --detect")
+
+
+_assert_cut_subtitle_lineage = _assert_cut_master_lineage
 
 
 def _detect_silences(
@@ -228,19 +332,20 @@ def _detect_silences(
 
 
 def detect(episode_dir: Path, cid: str) -> dict:
-    c, _w = _load_winner(episode_dir, cid)
-    subtitle = _open_production_subtitle(episode_dir)
+    master = _open_editorial_master(episode_dir)
+    c, _w = _load_winner(episode_dir, cid, master.identity())
     fmt = c.get("format", "short")
     cfg = FORMAT_TIGHTEN[fmt]
     t0, t1 = float(c["t_start"]), float(c["t_end"])
-    words = _optional_words(episode_dir) if cfg["cut_filler"] else []
+    # Legacy words are on the raw/normalized clock.  V1 intentionally has no
+    # edit map, so using them against the Master clock could cut the wrong word.
+    words: list[dict] = []
     seg_words = [x for x in words if t0 <= x.get("start", 0) < t1]
 
     cuts: list[dict] = []
 
     # 1) 真實靜音 → pause cut（機械可信，keep=true）
-    audio = episode_dir / "normalized.wav"
-    for s, e in _detect_silences(audio, t0, t1, cfg["min_pause"]):
+    for s, e in _detect_silences(master.media_path, t0, t1, cfg["min_pause"]):
         # 段首/段尾的靜音整段剪掉（不留呼吸），中間的留頭尾空隙
         cs = t0 if s <= t0 + 0.05 else s + cfg["keep_head"]
         ce = t1 if e >= t1 - 0.05 else e - cfg["keep_tail"]
@@ -300,7 +405,7 @@ def detect(episode_dir: Path, cid: str) -> dict:
 
     # 3) backchannel cue（整句只有附和詞，keep=null——要人工確認沒壓到
     #    來賓語音；能量分析對重疊 backchannel 是盲的，見 SKILL.md 已知極限）
-    srt_cues = _parse_srt(subtitle.srt_path) if cfg["cut_backchannel"] else []
+    srt_cues = _parse_srt(master.srt_path) if cfg["cut_backchannel"] else []
     for s, e, text in srt_cues:
         if t0 <= s and e <= t1 and text.replace(" ", "") in BACKCHANNEL_TEXTS:
             cuts.append(
@@ -322,7 +427,7 @@ def detect(episode_dir: Path, cid: str) -> dict:
         "id": cid,
         "t_start": t0,
         "t_end": t1,
-        "subtitle_lineage": subtitle.identity(),
+        "editorial_master_lineage": master.identity(),
         "cuts": cuts,
     }
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -385,7 +490,12 @@ def _timeline_words(
     return out or None
 
 
-def _tight_pause_map(episode_dir: Path, segs: list[tuple[float, float]], cid: str):
+def _tight_pause_map(
+    episode_dir: Path,
+    segs: list[tuple[float, float]],
+    cid: str,
+    source_media: Path | None = None,
+):
     """緊湊後 timeline 專用的停頓圖（斷句主判準）。
 
     音檔 `normalized.wav` 是 **feed 時鐘**，cue 是 timeline 時鐘，靠保留段映射
@@ -394,7 +504,7 @@ def _tight_pause_map(episode_dir: Path, segs: list[tuple[float, float]], cid: st
     """
     from shared.pause_map import PauseMap, build_envelope, cache_path_for
 
-    audio = episode_dir / "normalized.wav"
+    audio = source_media or episode_dir / "normalized.wav"
     if not audio.exists():
         logger.warning("%s: 找不到 %s——斷句退回詞典判準（已知會漏集別詞彙）", cid, audio.name)
         return None
@@ -839,6 +949,8 @@ def _retime_srt(
     fine: bool = False,
     transcript: Path | None = None,
     clock_offset: float = 0.0,
+    source_media: Path | None = None,
+    allow_legacy_words: bool = True,
 ) -> tuple[Path, int]:
     """字幕依保留段塌縮重對時（版本化路徑繞 Resolve 快取）。
 
@@ -923,7 +1035,7 @@ def _retime_srt(
     # ——重對時之後、定版之前把切點搬回合法語意邊界
     from shared.subtitle_reboundary import repair_cues
 
-    pause = _tight_pause_map(episode_dir, segs, cid)
+    pause = _tight_pause_map(episode_dir, segs, cid, source_media)
     if pause is not None:
         try:
             pause.sanity_check([r[0] for r in rows[1:]], [(r[0] + r[1]) / 2 for r in rows])
@@ -932,7 +1044,7 @@ def _retime_srt(
             # 比沒有停頓圖更糟——丟掉它，退回詞典判準，但大聲留紀錄。
             logger.error("%s: 停頓圖時鐘自檢不過（%s）——丟棄，退回詞典判準", cid, exc)
             pause = None
-    tl_words = _timeline_words(episode_dir, segs, clock_offset)
+    tl_words = _timeline_words(episode_dir, segs, clock_offset) if allow_legacy_words else None
     if tl_words is None:
         logger.warning(
             "%s: 沒有正式 word-level timing——保留 release cue 邊界，不做猜測式重切",
@@ -963,11 +1075,10 @@ def apply(episode_dir: Path, cid: str) -> dict:
         _template_path,
         _template_path_short,
         connect_resolve,
-        find_main_video,
     )
 
-    c, w = _load_winner(episode_dir, cid)
-    subtitle = _open_production_subtitle(episode_dir)
+    master = _open_editorial_master(episode_dir)
+    c, w = _load_winner(episode_dir, cid, master.identity())
     fmt = c.get("format", "short")
     fcfg = FORMAT_TIGHTEN[fmt]
     t0, t1 = float(c["t_start"]), float(c["t_end"])
@@ -975,7 +1086,7 @@ def apply(episode_dir: Path, cid: str) -> dict:
     if not cuts_path.exists():
         raise SystemExit(f"{cuts_path} 不存在——先跑 --detect")
     cuts_doc = json.loads(cuts_path.read_text(encoding="utf-8"))
-    _assert_cut_subtitle_lineage(cuts_doc, subtitle.identity())
+    _assert_cut_master_lineage(cuts_doc, master.identity())
     cuts = cuts_doc["cuts"]
     pending = [x for x in cuts if x.get("keep") is None]
     if pending:
@@ -995,12 +1106,9 @@ def apply(episode_dir: Path, cid: str) -> dict:
     mp = project.GetMediaPool()
     root = mp.GetRootFolder()
 
-    main_video = find_main_video(episode_dir, None)
-    clips = {(x.GetName() or ""): x for x in (root.GetClipList() or [])}
-    vid = clips.get(main_video.name)
-    aud = clips.get("normalized.wav")
-    if vid is None:
-        raise SystemExit(f"media pool 找不到主影片 {main_video.name}")
+    vid = _verified_master_media_pool_item(mp, root, master.media_path)
+    # The approved Master's embedded audio is the only legal audio source.
+    aud = vid
 
     label = f"{FORMAT_LABEL[c['format']]}{w['rank']} - {c['title']}（緊）"
     # 冪等：同名舊 timeline 先刪
@@ -1054,7 +1162,8 @@ def apply(episode_dir: Path, cid: str) -> dict:
         if not ok_v or (isinstance(ok_v, list) and ok_v[0] is None):
             raise SystemExit(f"{label}: 影片段 {seg_s:.1f}-{seg_e:.1f} 上軌失敗（回 {ok_v!r}）")
         if aud is not None:
-            mp.AppendToTimeline(
+            append_checked(
+                mp,
                 [
                     {
                         "mediaPoolItem": aud,
@@ -1064,7 +1173,8 @@ def apply(episode_dir: Path, cid: str) -> dict:
                         "endFrame": f1,
                         "recordFrame": tl_start + offset_frames,
                     }
-                ]
+                ],
+                f"{label}: Master audio {seg_s:.1f}-{seg_e:.1f}",
             )
         offset_frames += f1 - f0
 
@@ -1074,11 +1184,26 @@ def apply(episode_dir: Path, cid: str) -> dict:
         cid,
         segs,
         cuts,
-        transcript=subtitle.srt_path,
+        transcript=master.srt_path,
+        source_media=master.media_path,
+        allow_legacy_words=False,
     )
     srt_items = import_srt_tidy(mp, root, seg_srt)
     sub_ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
-    pm.SaveProject()
+    if not sub_ok:
+        raise SystemExit(f"{label}: Editorial Master 字幕上軌失敗，不寫 materialization receipt")
+    if not pm.SaveProject():
+        raise SystemExit(f"{label}: Resolve SaveProject 失敗，不寫 materialization receipt")
+    materialization_receipt = _commit_materialization_receipt(
+        episode_dir,
+        cid=cid,
+        cut_format=fmt,
+        timeline=tl,
+        t0=t0,
+        t1=t1,
+        fps=fps,
+        master=master,
+    )
     return {
         "status": "tightened",
         "format": fmt,
@@ -1089,7 +1214,8 @@ def apply(episode_dir: Path, cid: str) -> dict:
         "duration": f"{t1 - t0:.1f}s → {t1 - t0 - removed:.1f}s",
         "subtitles": sub_ok,
         "cues": n_cues,
-        **subtitle.identity(),
+        "materialization_receipt": str(materialization_receipt),
+        **master.identity(),
     }
 
 

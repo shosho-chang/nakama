@@ -1,13 +1,223 @@
-"""run_short_broll 純函式測試（Resolve 疊軌部分靠 --stills 樣張驗證）。"""
+"""run_short_broll behavior and pure-function tests."""
 
+import hashlib
+import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest  # noqa: E402
-from run_short_broll import _data_uri, _fill_zoom  # noqa: E402
+from run_short_broll import _data_uri, _fill_zoom, _guest_namecard_job  # noqa: E402
+
+
+def _master_selection(episode: Path):
+    master_dir = episode / "editorial-master" / "v1"
+    master_dir.mkdir(parents=True)
+    media = master_dir / "master.mp4"
+    media.write_bytes(b"approved-program")
+    srt = master_dir / "master.srt"
+    srt.write_text("1\n00:00:10,000 --> 00:00:20,000\n正式母版\n", encoding="utf-8")
+    identity = {
+        "contract": "podcast-editorial-master-v1",
+        "episode_id": episode.name,
+        "content_hash": "a" * 64,
+        "master_media_sha256": hashlib.sha256(media.read_bytes()).hexdigest(),
+        "master_srt_sha256": hashlib.sha256(srt.read_bytes()).hexdigest(),
+    }
+    return SimpleNamespace(media_path=media, srt_path=srt, identity=lambda: identity), identity
+
+
+def _write_broll_inputs(episode: Path, lineage: dict, *, winner_lineage: dict | None = None):
+    highlights = episode / "highlights"
+    tighten = highlights / "tighten"
+    tighten.mkdir(parents=True)
+    candidate = {
+        "id": "value-L01",
+        "format": "long",
+        "t_start": 10.0,
+        "t_end": 20.0,
+        "title": "Master cut",
+    }
+    (highlights / "candidates.json").write_text(
+        json.dumps({"editorial_master_lineage": lineage, "candidates": [candidate]}),
+        encoding="utf-8",
+    )
+    (highlights / "winners.json").write_text(
+        json.dumps(
+            {
+                "editorial_master_lineage": winner_lineage or lineage,
+                "winners": [{"id": "value-L01", "rank": 1, "title": "Master cut"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tighten / "value-L01_broll.json").write_text(
+        json.dumps({"items": []}), encoding="utf-8"
+    )
+
+
+def _timeline(name: str, uid: str, source_path: Path):
+    media_pool_item = SimpleNamespace(
+        GetClipProperty=lambda key: str(source_path) if key == "File Path" else ""
+    )
+    item = SimpleNamespace(
+        GetMediaPoolItem=lambda: media_pool_item,
+        GetName=lambda: source_path.name,
+    )
+    return SimpleNamespace(
+        GetName=lambda: name,
+        GetUniqueId=lambda: uid,
+        GetItemListInTrack=lambda track_type, index: (
+            [item] if track_type in {"video", "audio"} and index == 1 else []
+        ),
+        GetTrackCount=lambda _track_type: 1,
+    )
+
+
+def _resolve_for_timeline(episode: Path, timeline, mutations: list[str]):
+    root = SimpleNamespace(GetSubFolderList=lambda: [])
+    media_pool = SimpleNamespace(GetRootFolder=lambda: root)
+    project = SimpleNamespace(
+        GetName=lambda: episode.name,
+        GetSetting=lambda key: "30" if key == "timelineFrameRate" else "",
+        GetMediaPool=lambda: media_pool,
+        GetTimelineCount=lambda: 1,
+        GetTimelineByIndex=lambda index: timeline if index == 1 else None,
+        SetCurrentTimeline=lambda _timeline: mutations.append("SetCurrentTimeline") or True,
+    )
+    manager = SimpleNamespace(GetCurrentProject=lambda: project)
+    return SimpleNamespace(GetProjectManager=lambda: manager)
+
+
+def _write_materialization(episode: Path, master, timeline, *, end_sec: float = 20.0):
+    from shared.highlight_materialization import (
+        HighlightSource,
+        build_materialization_receipt,
+        write_materialization_receipt,
+    )
+
+    receipt = build_materialization_receipt(
+        episode,
+        cut_id="value-L01",
+        cut_format="long",
+        timeline=timeline,
+        source_range={
+            "start_sec": 10.0,
+            "end_sec": end_sec,
+            "start_frame": 300,
+            "end_frame": int(end_sec * 30),
+        },
+        source=HighlightSource(
+            srt_path=master.srt_path,
+            media_path=master.media_path,
+            lineage=master.identity(),
+        ),
+    )
+    write_materialization_receipt(episode, receipt)
+
+
+def test_apply_rejects_stale_winner_before_connecting_to_resolve(tmp_path, monkeypatch):
+    import build_resolve_project
+    import run_short_broll as broll
+
+    master, identity = _master_selection(tmp_path)
+    _write_broll_inputs(tmp_path, identity, winner_lineage={"content_hash": "stale"})
+    monkeypatch.setattr(broll, "_open_editorial_master", lambda _episode: master, raising=False)
+    monkeypatch.setattr(
+        build_resolve_project,
+        "connect_resolve",
+        lambda: (_ for _ in ()).throw(AssertionError("Resolve must not be opened")),
+    )
+
+    with pytest.raises(SystemExit, match="winners.json Editorial Master lineage"):
+        broll.apply(tmp_path, "value-L01")
+
+
+def test_apply_rejects_stale_materialization_range_before_resolve_mutation(
+    tmp_path, monkeypatch
+):
+    import build_resolve_project
+    import run_short_broll as broll
+
+    master, identity = _master_selection(tmp_path)
+    _write_broll_inputs(tmp_path, identity)
+    timeline = _timeline("長1 - Master cut（緊·導播）", "director-uid", master.media_path)
+    _write_materialization(tmp_path, master, timeline, end_sec=19.0)
+    mutations: list[str] = []
+    monkeypatch.setattr(broll, "_open_editorial_master", lambda _episode: master)
+    monkeypatch.setattr(
+        build_resolve_project,
+        "connect_resolve",
+        lambda: _resolve_for_timeline(tmp_path, timeline, mutations),
+    )
+
+    with pytest.raises(SystemExit, match="source range"):
+        broll.apply(tmp_path, "value-L01")
+    assert mutations == []
+
+
+def test_apply_rejects_raw_live_aroll_before_resolve_mutation(tmp_path, monkeypatch):
+    import build_resolve_project
+    import run_short_broll as broll
+
+    master, identity = _master_selection(tmp_path)
+    _write_broll_inputs(tmp_path, identity)
+    name = "長1 - Master cut（緊·導播）"
+    receipt_timeline = _timeline(name, "director-uid", master.media_path)
+    _write_materialization(tmp_path, master, receipt_timeline)
+    raw = tmp_path / "Default_program.mp4"
+    raw.write_bytes(b"raw-program")
+    live_timeline = _timeline(name, "director-uid", raw)
+    mutations: list[str] = []
+    monkeypatch.setattr(broll, "_open_editorial_master", lambda _episode: master)
+    monkeypatch.setattr(
+        build_resolve_project,
+        "connect_resolve",
+        lambda: _resolve_for_timeline(tmp_path, live_timeline, mutations),
+    )
+
+    with pytest.raises(SystemExit, match="not exact master media"):
+        broll.apply(tmp_path, "value-L01")
+    assert mutations == []
+
+
+def test_apply_reopens_master_after_preparation_before_resolve_mutation(
+    tmp_path, monkeypatch
+):
+    import build_resolve_project
+    import run_short_broll as broll
+
+    master, identity = _master_selection(tmp_path)
+    _write_broll_inputs(tmp_path, identity)
+    changed_identity = {**identity, "content_hash": "b" * 64}
+    changed_master = SimpleNamespace(
+        media_path=master.media_path,
+        srt_path=master.srt_path,
+        identity=lambda: changed_identity,
+    )
+    calls = 0
+
+    def open_master(_episode):
+        nonlocal calls
+        calls += 1
+        return master if calls == 1 else changed_master
+
+    timeline = _timeline("長1 - Master cut（緊·導播）", "director-uid", master.media_path)
+    mutations: list[str] = []
+    monkeypatch.setattr(broll, "_open_editorial_master", open_master)
+    monkeypatch.setattr(
+        build_resolve_project,
+        "connect_resolve",
+        lambda: _resolve_for_timeline(tmp_path, timeline, mutations),
+    )
+
+    with pytest.raises(SystemExit, match="candidates.json Editorial Master lineage"):
+        broll.apply(tmp_path, "value-L01")
+    assert calls == 2
+    assert mutations == []
 
 
 class TestFillZoom:
@@ -42,6 +252,69 @@ class TestDataUri:
         p = tmp_path / "x.jpg"
         p.write_bytes(b"\xff\xd8\xff")
         assert _data_uri(p).startswith("data:image/jpeg;base64,")
+
+
+class TestGuestNamecardJob:
+    class _Placement:
+        @staticmethod
+        def identity():
+            return {"contract": "podcast-identity-placement-v1", "content_hash": "a" * 64}
+
+    def test_maps_sealed_event_to_existing_wide_chapter_label(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            "run_short_broll.verify_identity_placement",
+            lambda *_args, **_kwargs: self._Placement(),
+        )
+        lineage = self._Placement.identity()
+        job = _guest_namecard_job(
+            tmp_path,
+            "value-L01",
+            "long",
+            {
+                "t0": 43.0,
+                "t1": 48.2,
+                "kind": "guest-namecard",
+                "name": "林之晨",
+                "title": "《逆分工》共同作者",
+                "style": "paper",
+                "identity_placement": lineage,
+            },
+            3,
+        )
+        assert job == {
+            "comp": "chapter_label",
+            "vars": {
+                "show_sec": 5.2,
+                "label": "林之晨",
+                "sub": "《逆分工》共同作者",
+                "align": "left",
+                "style": "paper",
+            },
+            "t0": 43.0,
+            "span": 5.2,
+            "i": 3,
+            "kind": "guest-namecard",
+        }
+
+    def test_stale_identity_lineage_fails_closed(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            "run_short_broll.verify_identity_placement",
+            lambda *_args, **_kwargs: self._Placement(),
+        )
+        with pytest.raises(SystemExit, match="identity lineage 已過期"):
+            _guest_namecard_job(
+                tmp_path,
+                "value-L01",
+                "long",
+                {
+                    "t0": 43.0,
+                    "t1": 48.2,
+                    "name": "林之晨",
+                    "title": "《逆分工》共同作者",
+                    "identity_placement": {"content_hash": "stale"},
+                },
+                0,
+            )
 
 
 # ── 長片格式（修修 2026-08-03 長片線）─────────────────────────────────────

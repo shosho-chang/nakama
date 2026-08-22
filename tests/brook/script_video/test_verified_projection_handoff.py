@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from agents.brook.podcast_subtitles.errors import GenerationIsolationError
+from agents.brook.script_video.editorial_master import EditorialMasterContractError
 from agents.brook.script_video.subtitle_handoff import (
     Stage5SubtitleArtifactConflictError,
     Stage5SubtitleContractError,
@@ -555,7 +556,7 @@ def test_resolve_preserves_exact_official_release_srt_bytes(
     assert versioned.read_bytes() == selected.srt_path.read_bytes()
 
 
-def test_resolve_and_highlight_cli_wire_official_release_handoff(
+def test_resolve_accepts_stage5_handoff_but_highlight_requires_editorial_master(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -576,7 +577,7 @@ def test_resolve_and_highlight_cli_wire_official_release_handoff(
     assert parsed.subtitle_request == Stage5SubtitleRequest(
         subtitle_release_handoff=str(handoff_relative)
     )
-    assert (
+    with pytest.raises(SystemExit) as stopped:
         run_highlight_cut.main(
             [
                 str(tmp_path),
@@ -585,8 +586,7 @@ def test_resolve_and_highlight_cli_wire_official_release_handoff(
                 str(handoff_relative),
             ]
         )
-        == 0
-    )
+    assert stopped.value.code == 2
 
 
 def test_resolve_dry_run_uses_default_official_release_and_exact_srt(
@@ -1003,7 +1003,7 @@ def test_degraded_release_handoff_replays_same_serializable_identity(
     }
 
 
-def test_resolve_and_highlight_cli_accept_degraded_release_handoff(
+def test_resolve_accepts_degraded_handoff_but_highlight_requires_editorial_master(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1021,7 +1021,7 @@ def test_resolve_and_highlight_cli_accept_degraded_release_handoff(
     assert parsed.subtitle_request == Stage5SubtitleRequest(
         degraded_release_handoff=str(handoff_relative)
     )
-    assert (
+    with pytest.raises(SystemExit) as stopped:
         run_highlight_cut.main(
             [
                 str(tmp_path),
@@ -1030,8 +1030,7 @@ def test_resolve_and_highlight_cli_accept_degraded_release_handoff(
                 str(handoff_relative),
             ]
         )
-        == 0
-    )
+    assert stopped.value.code == 2
 
 
 def test_formal_stage5_handoff_materializes_exact_verified_srt_and_lineage(
@@ -1159,7 +1158,7 @@ def test_formal_persisted_handoff_is_ignored_by_production_default(
         Stage5SubtitleRequest().open(tmp_path, factory=_fixture_factory)
 
 
-def test_highlight_mining_validate_materialize_share_persisted_projection_lineage(
+def test_highlight_rejects_stage5_projection_as_direct_production_source(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1197,42 +1196,20 @@ def test_highlight_mining_validate_materialize_share_persisted_projection_lineag
     sys.modules.pop("run_highlight_cut", None)
     import run_highlight_cut
 
-    mining = run_highlight_cut.mining_input(
-        tmp_path,
-        subtitle_request=request,
-        verifier_factory=_fixture_factory,
-    )
-    assert Path(mining["srt_path"]).read_bytes() == projected.srt_bytes
-    assert mining["projection_id"] == projected.projection_id
-
-    validated = run_highlight_cut.validate(
-        tmp_path,
-        subtitle_request=request,
-        verifier_factory=_fixture_factory,
-    )
-    candidates = json.loads((highlights / "candidates.json").read_text(encoding="utf-8"))
-    assert candidates["subtitle_lineage"]["projection_id"] == projected.projection_id
-    winners = json.loads((highlights / "winners.json").read_text(encoding="utf-8"))
-    winners["subtitle_lineage"] = candidates["subtitle_lineage"]
-    (highlights / "winners.json").write_text(json.dumps(winners), encoding="utf-8")
-
-    plan = run_highlight_cut.materialize(
-        tmp_path,
-        dry_run=True,
-        subtitle_request=request,
-        verifier_factory=_fixture_factory,
-    )
-    assert plan["projection_id"] == validated["projection_id"] == projected.projection_id
-
-    candidates["subtitle_lineage"]["projection_id"] = "stale-projection"
-    (highlights / "candidates.json").write_text(json.dumps(candidates), encoding="utf-8")
-    with pytest.raises(Stage5SubtitleContractError, match="lineage"):
-        run_highlight_cut.materialize(
-            tmp_path,
-            dry_run=True,
-            subtitle_request=request,
-            verifier_factory=_fixture_factory,
-        )
+    original = (highlights / "candidates.json").read_bytes()
+    for operation, kwargs in (
+        (run_highlight_cut.mining_input, {}),
+        (run_highlight_cut.validate, {}),
+        (run_highlight_cut.materialize, {"dry_run": True}),
+    ):
+        with pytest.raises(EditorialMasterContractError, match="Stage5-only"):
+            operation(
+                tmp_path,
+                **kwargs,
+                subtitle_request=request,
+                verifier_factory=_fixture_factory,
+            )
+    assert (highlights / "candidates.json").read_bytes() == original
 
 
 def test_refresh_rejects_stale_lineage_before_resolve_mutation(
@@ -1267,7 +1244,7 @@ def test_refresh_rejects_stale_lineage_before_resolve_mutation(
         "connect_resolve",
         lambda: (_ for _ in ()).throw(AssertionError("stale lineage touched Resolve")),
     )
-    with pytest.raises(Stage5SubtitleContractError, match="lineage"):
+    with pytest.raises(EditorialMasterContractError, match="Stage5-only"):
         run_highlight_cut.refresh_subs(
             tmp_path,
             subtitle_request=request,
@@ -1337,7 +1314,7 @@ def test_resolve_cli_exposes_formal_identity_and_explicit_legacy_switch(
     assert legacy.subtitle_request == Stage5SubtitleRequest(legacy_v1=True)
 
 
-def test_highlight_validation_rejects_wrong_binding_before_candidate_mutation(
+def test_highlight_validation_rejects_any_stage5_binding_before_candidate_mutation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1351,7 +1328,7 @@ def test_highlight_validation_rejects_wrong_binding_before_candidate_mutation(
     sys.modules.pop("run_highlight_cut", None)
     import run_highlight_cut
 
-    with pytest.raises(GenerationIsolationError):
+    with pytest.raises(EditorialMasterContractError, match="Stage5-only"):
         run_highlight_cut.validate(
             tmp_path,
             subtitle_request=Stage5SubtitleRequest(

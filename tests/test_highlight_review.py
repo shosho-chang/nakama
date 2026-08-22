@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
@@ -33,21 +35,73 @@ def episode_root(tmp_path):
     highlights.mkdir(parents=True)
     candidates = [_candidate(f"L{i}") for i in range(1, 7)]
     candidates[2] = _candidate("L3", veto=True)
-    (highlights / "candidates.json").write_text(
-        json.dumps({"candidates": candidates}, ensure_ascii=False), encoding="utf-8"
+    candidates_path = highlights / "candidates.json"
+    candidates_path.write_text(
+        json.dumps(
+            {
+                "editorial_master_lineage": {
+                    "contract": "podcast-editorial-master-v1",
+                    "episode_id": "ep-001",
+                    "content_hash": "1" * 64,
+                    "master_media_sha256": "2" * 64,
+                    "master_srt_sha256": "3" * 64,
+                    "editorial_master_receipt": (
+                        "editorial-master/v1/EDITORIAL-MASTER.json"
+                    ),
+                },
+                "candidates": candidates,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
     )
+    source_sha256 = hashlib.sha256(candidates_path.read_bytes()).hexdigest()
     (tmp_path / "ep-001" / "Default_program.mp4").write_bytes(b"test-video")
     for scorer, base in (("azhe", 90), ("kevin", 80), ("shufen", 70)):
         (highlights / f"review_{scorer}.json").write_text(
             json.dumps(
-                {"scores": [{"id": f"L{i}", "total": base - i} for i in range(1, 7)]},
+                {
+                    "source_sha256": source_sha256,
+                    "scores": [
+                        {"id": f"L{i}", "total": base - i} for i in range(1, 7)
+                    ],
+                },
                 ensure_ascii=False,
             ),
             encoding="utf-8",
         )
     (highlights / "lens_brand.json").write_text(
         json.dumps(
-            {"findings": [{"id": "L3", "severity": "veto", "issue": "品牌 veto"}]},
+            {
+                "source_sha256": source_sha256,
+                "findings": [
+                    {
+                        "id": f"L{i}",
+                        "severity": "veto" if i == 3 else None,
+                        "issue": "品牌 veto" if i == 3 else "",
+                    }
+                    for i in range(1, 7)
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (highlights / "lens_renee.json").write_text(
+        json.dumps(
+            {
+                "lens": "renee",
+                "source_sha256": source_sha256,
+                "findings": [
+                    {
+                        "id": f"L{i}",
+                        "hook_risk": "",
+                        "retention_risk": "",
+                        "boundary_action": "keep",
+                    }
+                    for i in range(1, 7)
+                ],
+            },
             ensure_ascii=False,
         ),
         encoding="utf-8",
@@ -65,6 +119,7 @@ def client(monkeypatch, episode_root):
 
     importlib.reload(auth_module)
     importlib.reload(highlight_module)
+    _install_verified_master(monkeypatch, episode_root)
     # The full application imports every optional agent integration.  This test is
     # intentionally an HTTP contract test for the gate itself, not an integration
     # test that requires configured LLM or calendar clients.
@@ -77,6 +132,39 @@ def _auth_cookie():
     from thousand_sunny.auth import make_token
 
     return {"nakama_auth": make_token("gate-password")}
+
+
+def _rebind_review_inputs(candidates_path) -> None:
+    """Keep evidence fresh when a test intentionally mutates candidate bytes."""
+
+    source_sha256 = hashlib.sha256(candidates_path.read_bytes()).hexdigest()
+    highlights = candidates_path.parent
+    for name in (
+        "review_azhe.json",
+        "review_kevin.json",
+        "review_shufen.json",
+        "lens_brand.json",
+        "lens_renee.json",
+    ):
+        path = highlights / name
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["source_sha256"] = source_sha256
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _install_verified_master(monkeypatch, episode_root):
+    import thousand_sunny.routers.highlight_review as highlight_module
+
+    episode = episode_root / "ep-001"
+    media = episode / "editorial-master" / "v1" / "master.mp4"
+    media.parent.mkdir(parents=True, exist_ok=True)
+    media.write_bytes(b"master-video")
+    lineage = json.loads(
+        (episode / "highlights" / "candidates.json").read_text(encoding="utf-8")
+    )["editorial_master_lineage"]
+    selection = SimpleNamespace(media_path=media, identity=lambda: lineage)
+    monkeypatch.setattr(highlight_module.EditorialMasterRequest, "open", lambda self: selection)
+    return media, lineage
 
 
 def test_auth_redirect(client):
@@ -106,6 +194,7 @@ def test_invalid_candidate_timecodes_fail_loud(client, episode_root):
     payload = json.loads(candidates_path.read_text(encoding="utf-8"))
     payload["candidates"][0]["t_end"] = "not-a-number"
     candidates_path.write_text(json.dumps(payload), encoding="utf-8")
+    _rebind_review_inputs(candidates_path)
 
     response = client.get("/bridge/highlights/ep-001", cookies=_auth_cookie())
     assert response.status_code == 422
@@ -137,6 +226,108 @@ def test_authenticated_program_media_endpoint(client):
     assert response.headers["content-type"] == "video/mp4"
 
 
+def test_program_media_serves_verified_editorial_master_not_raw(
+    client, episode_root, monkeypatch
+):
+    media, _ = _install_verified_master(monkeypatch, episode_root)
+
+    response = client.get("/bridge/highlights/ep-001/media", cookies=_auth_cookie())
+
+    assert response.status_code == 200
+    assert response.content == media.read_bytes()
+    assert response.content != (episode_root / "ep-001" / "Default_program.mp4").read_bytes()
+
+
+def test_program_media_does_not_fallback_to_raw_when_master_verification_fails(
+    client, monkeypatch
+):
+    import thousand_sunny.routers.highlight_review as highlight_module
+
+    def fail_open(_request):
+        raise highlight_module.EditorialMasterContractError("tampered master")
+
+    monkeypatch.setattr(highlight_module.EditorialMasterRequest, "open", fail_open)
+
+    response = client.get("/bridge/highlights/ep-001/media", cookies=_auth_cookie())
+
+    assert response.status_code == 422
+    assert "tampered master" in response.text
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "/bridge/highlights/ep-001",
+        "/bridge/highlights/ep-001/media",
+    ],
+)
+def test_page_and_media_reject_stale_candidate_master_lineage(client, episode_root, url):
+    candidates_path = episode_root / "ep-001" / "highlights" / "candidates.json"
+    payload = json.loads(candidates_path.read_text(encoding="utf-8"))
+    payload["editorial_master_lineage"]["content_hash"] = "f" * 64
+    candidates_path.write_text(json.dumps(payload), encoding="utf-8")
+    _rebind_review_inputs(candidates_path)
+
+    response = client.get(url, cookies=_auth_cookie())
+
+    assert response.status_code == 422
+    assert "lineage" in response.text
+
+
+def test_decide_rejects_stale_master_lineage_before_writing(client, episode_root):
+    candidates_path = episode_root / "ep-001" / "highlights" / "candidates.json"
+    payload = json.loads(candidates_path.read_text(encoding="utf-8"))
+    payload["editorial_master_lineage"]["content_hash"] = "f" * 64
+    candidates_path.write_text(json.dumps(payload), encoding="utf-8")
+    _rebind_review_inputs(candidates_path)
+
+    response = client.post(
+        "/bridge/highlights/ep-001/decide",
+        data={"candidate_id": ["L1", "L2", "L4"]},
+        cookies=_auth_cookie(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 422
+    highlights = episode_root / "ep-001" / "highlights"
+    assert not (highlights / "winners.json").exists()
+    assert not (highlights / "review_feedback.json").exists()
+
+
+def test_decide_rechecks_master_immediately_before_durable_write(
+    client, episode_root, monkeypatch
+):
+    import thousand_sunny.routers.highlight_review as highlight_module
+
+    candidates_path = episode_root / "ep-001" / "highlights" / "candidates.json"
+    lineage = json.loads(candidates_path.read_text(encoding="utf-8"))[
+        "editorial_master_lineage"
+    ]
+    calls = 0
+
+    def changing_master(_request):
+        nonlocal calls
+        calls += 1
+        current = lineage if calls == 1 else {**lineage, "content_hash": "f" * 64}
+        return SimpleNamespace(
+            media_path=episode_root / "ep-001" / "editorial-master" / "v1" / "master.mp4",
+            identity=lambda: current,
+        )
+
+    monkeypatch.setattr(highlight_module.EditorialMasterRequest, "open", changing_master)
+
+    response = client.post(
+        "/bridge/highlights/ep-001/decide",
+        data={"candidate_id": ["L1", "L2", "L4"]},
+        cookies=_auth_cookie(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 422
+    assert calls == 2
+    assert not (episode_root / "ep-001" / "highlights" / "winners.json").exists()
+
+
 def test_program_media_supports_range_requests_for_seeking(client):
     response = client.get(
         "/bridge/highlights/ep-001/media",
@@ -144,8 +335,8 @@ def test_program_media_supports_range_requests_for_seeking(client):
         cookies=_auth_cookie(),
     )
     assert response.status_code == 206
-    assert response.headers["content-range"] == "bytes 2-5/10"
-    assert response.content == b"st-v"
+    assert response.headers["content-range"] == "bytes 2-5/12"
+    assert response.content == b"ster"
 
 
 def test_veto_requires_explicit_override(client):

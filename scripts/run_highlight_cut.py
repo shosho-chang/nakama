@@ -1,4 +1,4 @@
-"""highlight-cut：訪談集精華選段 — 候選驗證 + Resolve 物化。
+"""highlight-cut：從人類核准 Editorial Master 選段並物化。
 
 修修 2026-07-25（grill 凍結，見 docs/plans/2026-07-25-highlight-cut-plan.md）：
 整集訪談切長片（8–12min 橫式）與短片（60–120s 直式）候選，persona 盲審選
@@ -6,8 +6,9 @@
 
 - `--validate`：候選邊界吸附 cue、長度帶檢查、同格式重疊去重（>50% 留強者）
 - `--materialize`：當選段建獨立 timeline（長片 16:9 帶字幕樣式模板／短片
-  1080×1920 直式）+ 全部候選在主 timeline 打 marker（當選紅/落選藍）。冪等：
-  同名 timeline 先刪重建、marker 先清再打
+  1080×1920 直式）。核准的 Editorial Master timeline 是不可變 trust root，
+  不再寫入 candidate marker。每支 timeline 必須有 hash-bound materialization
+  receipt；同名舊 raw timeline 或異版 receipt 一律 fail closed。
 
 開採與盲審由 highlight-cut skill 的 Cowork subagent 完成（零 API 錢），
 本 script 不呼叫任何 LLM。
@@ -39,10 +40,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from agents.brook.podcast_subtitles.handoff import ProjectionVerifierFactory  # noqa: E402
+from agents.brook.script_video.editorial_master import (  # noqa: E402
+    EditorialMasterContractError,
+    EditorialMasterRequest,
+    EditorialMasterSelection,
+)
 from agents.brook.script_video.subtitle_handoff import (  # noqa: E402
     Stage5SubtitleContractError,
     Stage5SubtitleRequest,
-    Stage5SubtitleSelection,
+)
+from shared.highlight_materialization import (  # noqa: E402
+    EDITORIAL_MASTER_LINEAGE_KEY,
+    HighlightSource,
+    build_materialization_receipt,
+    verify_materialization_receipt,
+    write_materialization_receipt,
+)
+from shared.highlight_materialization import (  # noqa: E402
+    materialization_path as _materialization_path,
 )
 from shared.resolve_append import append_checked  # noqa: E402
 from shared.subtitle_finalize import finalize_cues  # noqa: E402
@@ -74,6 +89,42 @@ _MINER_CANDIDATE_FIELDS = {
     "cue_end",
 }
 _TS = re.compile(r"(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})")
+
+
+def _open_highlight_source(
+    episode_dir: Path,
+    *,
+    editorial_master_request: EditorialMasterRequest | None = None,
+    subtitle_request: Stage5SubtitleRequest | None = None,
+    verifier_factory: ProjectionVerifierFactory | None = None,
+) -> HighlightSource:
+    """Open Editorial Master by default; Stage5-only access is explicit forensic legacy."""
+
+    if subtitle_request is not None:
+        if not subtitle_request.legacy_v1:
+            raise EditorialMasterContractError(
+                "Stage5-only Highlight source is forbidden; seal an Editorial Master "
+                "or explicitly request --legacy-v1 for forensic use"
+            )
+        subtitle = subtitle_request.open(episode_dir, factory=verifier_factory)
+        return HighlightSource(
+            srt_path=subtitle.srt_path,
+            media_path=None,
+            lineage=subtitle.identity(),
+            legacy=True,
+        )
+    selected: EditorialMasterSelection = (
+        editorial_master_request
+        or EditorialMasterRequest(
+            episode_root=episode_dir,
+            expected_episode_id=episode_dir.name,
+        )
+    ).open()
+    return HighlightSource(
+        srt_path=selected.srt_path,
+        media_path=selected.media_path,
+        lineage=selected.identity(),
+    )
 
 
 def _parse_srt(path: Path) -> list[tuple[float, float, str]]:
@@ -108,25 +159,30 @@ def _fmt_min(seconds: float) -> str:
     return f"{int(seconds // 60)}:{int(seconds % 60):02d}"
 
 
-def _subtitle_lineage(subtitle: Stage5SubtitleSelection) -> dict:
-    return subtitle.identity()
+def _source_lineage(source: HighlightSource) -> dict[str, object]:
+    return dict(source.lineage)
+
+
+def _lineage_key(source: HighlightSource) -> str:
+    return "subtitle_lineage" if source.legacy else EDITORIAL_MASTER_LINEAGE_KEY
 
 
 def _bind_or_verify_lineage(
     document: dict,
-    subtitle: Stage5SubtitleSelection,
+    source: HighlightSource,
     *,
     allow_bind: bool,
     label: str,
 ) -> None:
-    expected = _subtitle_lineage(subtitle)
-    actual = document.get("subtitle_lineage")
+    key = _lineage_key(source)
+    expected = _source_lineage(source)
+    actual = document.get(key)
     if actual is None and allow_bind:
-        document["subtitle_lineage"] = expected
+        document[key] = expected
         return
     if actual != expected:
-        raise Stage5SubtitleContractError(
-            f"{label} subtitle lineage differs from the selected Stage 5 subtitle identity"
+        raise EditorialMasterContractError(
+            f"{label} {key} differs from the selected Highlight source identity"
         )
 
 
@@ -165,7 +221,7 @@ def _load_miner_output(
     path: Path,
     *,
     role: str,
-    subtitle: Stage5SubtitleSelection,
+    source: HighlightSource,
     cues: list[tuple[float, float, str]],
 ) -> tuple[list[dict], dict[str, str]]:
     try:
@@ -175,23 +231,29 @@ def _load_miner_output(
         raise Stage5SubtitleContractError(
             f"{role} miner output is missing or invalid: {path}"
         ) from exc
+    lineage_key = _lineage_key(source)
     required = {
         "schema_version",
         "contract",
         "miner_role",
         "source_srt_sha256",
-        "subtitle_lineage",
+        lineage_key,
         "candidates",
     }
     if not isinstance(payload, dict) or set(payload) != required:
         raise Stage5SubtitleContractError(f"{role} miner output schema drift")
-    lineage = _subtitle_lineage(subtitle)
+    lineage = _source_lineage(source)
+    expected_srt_sha256 = (
+        lineage.get("subtitle_srt_sha256")
+        if source.legacy
+        else lineage.get("master_srt_sha256")
+    )
     if (
         payload.get("schema_version") != 1
         or payload.get("contract") != MINER_OUTPUT_CONTRACT
         or payload.get("miner_role") != role
-        or payload.get("source_srt_sha256") != lineage.get("subtitle_srt_sha256")
-        or payload.get("subtitle_lineage") != lineage
+        or payload.get("source_srt_sha256") != expected_srt_sha256
+        or payload.get(lineage_key) != lineage
     ):
         raise Stage5SubtitleContractError(f"{role} miner source/lineage drift")
     candidates = payload.get("candidates")
@@ -312,14 +374,17 @@ def merge_miners(
     episode_dir: Path,
     *,
     miner_paths: dict[str, Path] | None = None,
+    editorial_master_request: EditorialMasterRequest | None = None,
     subtitle_request: Stage5SubtitleRequest | None = None,
     verifier_factory: ProjectionVerifierFactory | None = None,
 ) -> dict:
     """Strictly merge three subscription-worker outputs into candidates.json."""
 
-    subtitle = (subtitle_request or Stage5SubtitleRequest()).open(
+    source = _open_highlight_source(
         episode_dir,
-        factory=verifier_factory,
+        editorial_master_request=editorial_master_request,
+        subtitle_request=subtitle_request,
+        verifier_factory=verifier_factory,
     )
     hdir = episode_dir / HIGHLIGHTS_DIR
     paths = miner_paths or {
@@ -329,7 +394,7 @@ def merge_miners(
         raise Stage5SubtitleContractError(
             "miner merge requires exactly story, punch, and value outputs"
         )
-    cues = _parse_srt(subtitle.srt_path)
+    cues = _parse_srt(source.srt_path)
     merged: list[dict] = []
     inputs: list[dict[str, str]] = []
     ids: set[str] = set()
@@ -337,7 +402,7 @@ def merge_miners(
         candidates, receipt = _load_miner_output(
             Path(paths[role]),
             role=role,
-            subtitle=subtitle,
+            source=source,
             cues=cues,
         )
         for candidate in candidates:
@@ -349,12 +414,18 @@ def merge_miners(
             merged.append(candidate)
         inputs.append(receipt)
     merged.sort(key=lambda item: (item["format"], item["t_start"], item["t_end"], item["id"]))
-    lineage = _subtitle_lineage(subtitle)
+    lineage = _source_lineage(source)
+    lineage_key = _lineage_key(source)
+    source_srt_sha256 = (
+        lineage["subtitle_srt_sha256"]
+        if source.legacy
+        else lineage["master_srt_sha256"]
+    )
     payload = {
         "schema_version": 1,
         "contract": CANDIDATES_CONTRACT,
-        "source_srt_sha256": lineage["subtitle_srt_sha256"],
-        "subtitle_lineage": lineage,
+        "source_srt_sha256": source_srt_sha256,
+        lineage_key: lineage,
         "miner_inputs": inputs,
         "candidates": merged,
     }
@@ -372,42 +443,49 @@ def merge_miners(
 def mining_input(
     episode_dir: Path,
     *,
+    editorial_master_request: EditorialMasterRequest | None = None,
     subtitle_request: Stage5SubtitleRequest | None = None,
     verifier_factory: ProjectionVerifierFactory | None = None,
 ) -> dict:
     """Return the sole verified SRT source that highlight miners may read."""
 
-    subtitle = (subtitle_request or Stage5SubtitleRequest()).open(
+    source = _open_highlight_source(
         episode_dir,
-        factory=verifier_factory,
+        editorial_master_request=editorial_master_request,
+        subtitle_request=subtitle_request,
+        verifier_factory=verifier_factory,
     )
     return {
         "status": "mining-input",
-        "srt_path": str(subtitle.srt_path),
-        **_subtitle_lineage(subtitle),
+        "srt_path": str(source.srt_path),
+        "media_path": str(source.media_path) if source.media_path else None,
+        **_source_lineage(source),
     }
 
 
 def validate(
     episode_dir: Path,
     *,
+    editorial_master_request: EditorialMasterRequest | None = None,
     subtitle_request: Stage5SubtitleRequest | None = None,
     verifier_factory: ProjectionVerifierFactory | None = None,
 ) -> dict:
     """候選正規化：吸附 cue 邊界、長度帶檢查、同格式重疊去重。原地改寫 candidates.json。"""
-    subtitle = (subtitle_request or Stage5SubtitleRequest()).open(
+    source = _open_highlight_source(
         episode_dir,
-        factory=verifier_factory,
+        editorial_master_request=editorial_master_request,
+        subtitle_request=subtitle_request,
+        verifier_factory=verifier_factory,
     )
     cand_path = episode_dir / HIGHLIGHTS_DIR / CANDIDATES_NAME
     data = json.loads(cand_path.read_text(encoding="utf-8"))
     _bind_or_verify_lineage(
         data,
-        subtitle,
-        allow_bind=True,
+        source,
+        allow_bind=source.legacy,
         label="candidates.json",
     )
-    cues = _parse_srt(subtitle.srt_path)
+    cues = _parse_srt(source.srt_path)
     starts = [c[0] for c in cues]
     ends = [c[1] for c in cues]
 
@@ -442,7 +520,7 @@ def validate(
         "kept": counts,
         "variant_groups": n_groups,
         "band_issues": issues,
-        **_subtitle_lineage(subtitle),
+        **_source_lineage(source),
     }
 
 
@@ -473,14 +551,14 @@ def _segment_srt(
     t_start: float,
     t_end: float,
     *,
-    subtitle: Stage5SubtitleSelection,
+    source: HighlightSource,
 ) -> Path:
-    """裁出段落字幕（時間平移到 0 起點），版本化路徑繞 Resolve 路徑快取。
+    """裁出 Master 段落字幕（時間平移到 0 起點），版本化路徑繞 Resolve 路徑快取。
 
     副本套修修 2026-08-05 字幕定版兩規則（句尾零標點 + cue 間 ≤3s 空隙補平）
-    ——transcript.srt 本體不動。
+    ——Master SRT 本體不動。
     """
-    cues = _parse_srt(subtitle.srt_path)
+    cues = _parse_srt(source.srt_path)
     out_dir = episode_dir / SEG_SRT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     n = 1
@@ -511,27 +589,30 @@ def materialize(
     episode_dir: Path,
     *,
     dry_run: bool = False,
+    editorial_master_request: EditorialMasterRequest | None = None,
     subtitle_request: Stage5SubtitleRequest | None = None,
     verifier_factory: ProjectionVerifierFactory | None = None,
 ) -> dict:
     from build_resolve_project import _template_path, connect_resolve, find_main_video
 
-    subtitle = (subtitle_request or Stage5SubtitleRequest()).open(
+    source = _open_highlight_source(
         episode_dir,
-        factory=verifier_factory,
+        editorial_master_request=editorial_master_request,
+        subtitle_request=subtitle_request,
+        verifier_factory=verifier_factory,
     )
     hdir = episode_dir / HIGHLIGHTS_DIR
     candidates_doc = json.loads((hdir / CANDIDATES_NAME).read_text(encoding="utf-8"))
     winners_doc = json.loads((hdir / WINNERS_NAME).read_text(encoding="utf-8"))
     _bind_or_verify_lineage(
         candidates_doc,
-        subtitle,
+        source,
         allow_bind=False,
         label="candidates.json",
     )
     _bind_or_verify_lineage(
         winners_doc,
-        subtitle,
+        source,
         allow_bind=False,
         label="winners.json",
     )
@@ -542,8 +623,6 @@ def materialize(
     if missing:
         raise SystemExit(f"winners 引用不存在的候選 id: {missing}（candidates.json 去重後失效？）")
     winners = sorted(winners, key=lambda x: (by_id[x["id"]]["format"], x.get("rank", 9)))
-    win_ids = {w["id"] for w in winners}
-
     plan = []
     for w in winners:
         c = by_id[w["id"]]
@@ -559,8 +638,9 @@ def materialize(
         return {
             "status": "dry-run",
             "timelines": plan,
-            "markers": len(cands),
-            **_subtitle_lineage(subtitle),
+            "markers": 0,
+            "markers_skipped_to_preserve_master": len(cands),
+            **_source_lineage(source),
         }
 
     resolve = connect_resolve()
@@ -575,43 +655,73 @@ def materialize(
     mp = project.GetMediaPool()
     root = mp.GetRootFolder()
 
-    # 素材 item：主影片 + normalized 音檔（都已在 media pool，依名尋回）
-    main_video = find_main_video(episode_dir, None)
+    # Production 只可使用已驗證 Master MP4 的嵌入式畫面＋混音。
+    # Explicit legacy 才允許舊 Default_*.mp4 + normalized.wav 取證路徑。
     clips = {(c.GetName() or ""): c for c in (root.GetClipList() or [])}
-    vid = clips.get(main_video.name)
-    aud = clips.get("normalized.wav")
-    if vid is None:
-        raise SystemExit(f"media pool 找不到主影片 {main_video.name}")
+    aud = None
+    if source.legacy:
+        main_video = find_main_video(episode_dir, None)
+        vid = clips.get(main_video.name)
+        aud = clips.get("normalized.wav")
+        missing_media = main_video.name
+    else:
+        assert source.media_path is not None
+        master_path = source.media_path.resolve()
 
-    # 主 timeline：清舊 marker（紅/藍）→ 全候選重打
-    main_tl = None
-    for i in range(1, project.GetTimelineCount() + 1):
-        tl = project.GetTimelineByIndex(i)
-        if tl and tl.GetName() == project_name:
-            main_tl = tl
-            break
-    if main_tl is None:
-        raise SystemExit(f"主 timeline「{project_name}」不存在")
-    for color in ("Red", "Blue"):
-        main_tl.DeleteMarkersByColor(color)
-    for c in cands:
-        color = "Red" if c["id"] in win_ids else "Blue"
-        frame = int(c["t_start"] * fps)
-        dur = int((c["t_end"] - c["t_start"]) * fps)
-        main_tl.AddMarker(frame, color, f"[{c['id']}] {c['title']}", c.get("hook", ""), dur)
+        def clip_path(clip) -> Path | None:
+            try:
+                raw = clip.GetClipProperty("File Path")
+            except Exception:
+                return None
+            if not isinstance(raw, str) or not raw:
+                return None
+            return Path(raw).resolve()
+
+        vid = next((clip for clip in clips.values() if clip_path(clip) == master_path), None)
+        if vid is None:
+            imported = mp.ImportMedia([str(master_path)]) or []
+            vid = next((clip for clip in imported if clip_path(clip) == master_path), None)
+        missing_media = str(master_path)
+    if vid is None:
+        raise SystemExit(f"media pool 找不到 Highlight source {missing_media}")
+    previous_tl = project.GetCurrentTimeline()
 
     # Highlights bin（timeline 物件落在建立當下的 current folder）
     hbin = next(
         (f for f in root.GetSubFolderList() if f.GetName() == BIN_NAME), None
     ) or mp.AddSubFolder(root, BIN_NAME)
 
-    # 冪等：刪同名舊 timeline
+    # Master route 不可靠名稱無聲接受或覆寫舊 raw timeline。
     existing_names = {p["timeline"] for p in plan}
+    timelines_by_name = {
+        timeline.GetName(): timeline
+        for index in range(1, project.GetTimelineCount() + 1)
+        if (timeline := project.GetTimelineByIndex(index)) is not None
+    }
+    if not source.legacy:
+        candidate_by_timeline = {
+            f"{FORMAT_LABEL[c['format']]}{w['rank']} - {c['title']}": c["id"]
+            for w in winners
+            for c in [by_id[w["id"]]]
+        }
+        unbound = [
+            name
+            for name in existing_names & set(timelines_by_name)
+            if not _materialization_path(
+                episode_dir,
+                candidate_by_timeline[name],
+            ).is_file()
+        ]
+        if unbound:
+            raise EditorialMasterContractError(
+                "existing Highlight timeline has no Editorial Master materialization receipt: "
+                + ", ".join(sorted(unbound))
+            )
     stale = [
         project.GetTimelineByIndex(i)
         for i in range(1, project.GetTimelineCount() + 1)
         if (t := project.GetTimelineByIndex(i)) and t.GetName() in existing_names
-    ]
+    ] if source.legacy else []
     if stale:
         mp.DeleteTimelines(stale)
 
@@ -621,6 +731,35 @@ def materialize(
         c = by_id[w["id"]]
         label = f"{FORMAT_LABEL[c['format']]}{w['rank']} - {c['title']}"
         f0, f1 = int(c["t_start"] * fps), int(c["t_end"] * fps)
+        receipt_path = _materialization_path(episode_dir, c["id"])
+        if not source.legacy and receipt_path.is_file():
+            existing_timeline = timelines_by_name.get(label)
+            if existing_timeline is None:
+                raise EditorialMasterContractError(
+                    f"materialization receipt exists but Resolve timeline is missing: {label}"
+                )
+            verify_materialization_receipt(
+                episode_dir,
+                c["id"],
+                source=source,
+                timeline=existing_timeline,
+                expected_timeline_name=label,
+                expected_format=c["format"],
+                expected_source_range={
+                    "start_sec": c["t_start"],
+                    "end_sec": c["t_end"],
+                    "start_frame": f0,
+                    "end_frame": f1,
+                },
+            )
+            made.append(
+                {
+                    "timeline": label,
+                    "status": "already-materialized",
+                    "materialization_receipt": str(receipt_path),
+                }
+            )
+            continue
         mp.SetCurrentFolder(hbin)
         # 長短片都從樣式模板長 timeline（短片再覆寫成直式解析度）——
         # 模板是本機檔（data/* gitignored），不存在時退回無樣式並大聲警告
@@ -648,12 +787,19 @@ def materialize(
         # ⚠️ 走 append_checked：新建的 timeline 上第一次 append 常回 `[None]`
         # （truthy，`if not ok_v` 判不出來）——2026-08-05 安吉集三條 timeline
         # 全部 v1 空、卻回報 materialized。判 [None] + 重試才擋得住。
-        append_checked(
-            mp,
-            [{"mediaPoolItem": vid, "mediaType": 1, "startFrame": f0, "endFrame": f1}],
-            f"{label} 影片",
-        )
-        if aud is not None:
+        if source.legacy:
+            append_checked(
+                mp,
+                [{"mediaPoolItem": vid, "mediaType": 1, "startFrame": f0, "endFrame": f1}],
+                f"{label} 影片",
+            )
+        else:
+            append_checked(
+                mp,
+                [{"mediaPoolItem": vid, "startFrame": f0, "endFrame": f1}],
+                f"{label} Editorial Master A/V",
+            )
+        if source.legacy and aud is not None:
             append_checked(
                 mp,
                 [
@@ -671,16 +817,20 @@ def materialize(
         placed = len(tl.GetItemListInTrack("video", 1) or [])
         if placed < 1:
             raise SystemExit(f"{label}: 影片上軌後 v1 仍是空的")
+        if not source.legacy and len(tl.GetItemListInTrack("audio", 1) or []) < 1:
+            raise SystemExit(f"{label}: Editorial Master A/V append 後 a1 仍是空的")
         mp.SetCurrentFolder(root)
         seg_srt = _segment_srt(
             episode_dir,
             c["id"],
             c["t_start"],
             c["t_end"],
-            subtitle=subtitle,
+            source=source,
         )
         srt_items = mp.ImportMedia([str(seg_srt)])
         sub_ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
+        if not sub_ok:
+            raise SystemExit(f"{label}: Master 段落字幕上軌失敗")
         made.append(
             {
                 "timeline": label,
@@ -688,24 +838,43 @@ def materialize(
                 "items": len(tl.GetItemListInTrack("subtitle", 1) or []),
             }
         )
+        if not source.legacy:
+            receipt = build_materialization_receipt(
+                episode_dir,
+                cut_id=c["id"],
+                cut_format=c["format"],
+                timeline=tl,
+                source_range={
+                    "start_sec": c["t_start"],
+                    "end_sec": c["t_end"],
+                    "start_frame": f0,
+                    "end_frame": f1,
+                },
+                source=source,
+            )
+            committed = write_materialization_receipt(episode_dir, receipt)
+            made[-1]["materialization_receipt"] = str(committed)
 
-    project.SetCurrentTimeline(main_tl)
+    if previous_tl is not None:
+        project.SetCurrentTimeline(previous_tl)
     pm.SaveProject()
     return {
         "status": "materialized",
         "timelines": made,
-        "markers": len(cands),
-        **_subtitle_lineage(subtitle),
+        "markers": 0,
+        "markers_skipped_to_preserve_master": len(cands),
+        **_source_lineage(source),
     }
 
 
 def refresh_subs(
     episode_dir: Path,
     *,
+    editorial_master_request: EditorialMasterRequest | None = None,
     subtitle_request: Stage5SubtitleRequest | None = None,
     verifier_factory: ProjectionVerifierFactory | None = None,
 ) -> dict:
-    """精華 timeline **只換字幕不動剪輯**（transcript.srt 更新後用）。
+    """精華 timeline **只換字幕不動剪輯**（重上 receipt 綁定的 Master SRT）。
 
     修修可能已在精華 timeline 上剪輯——materialize 重建會毀掉他的工作，
     本模式只清字幕內容重上（軌與樣式保留，比照 build_resolve_project
@@ -713,22 +882,24 @@ def refresh_subs(
     """
     from build_resolve_project import connect_resolve
 
-    subtitle = (subtitle_request or Stage5SubtitleRequest()).open(
+    source = _open_highlight_source(
         episode_dir,
-        factory=verifier_factory,
+        editorial_master_request=editorial_master_request,
+        subtitle_request=subtitle_request,
+        verifier_factory=verifier_factory,
     )
     hdir = episode_dir / HIGHLIGHTS_DIR
     candidates_doc = json.loads((hdir / CANDIDATES_NAME).read_text(encoding="utf-8"))
     winners_doc = json.loads((hdir / WINNERS_NAME).read_text(encoding="utf-8"))
     _bind_or_verify_lineage(
         candidates_doc,
-        subtitle,
+        source,
         allow_bind=False,
         label="candidates.json",
     )
     _bind_or_verify_lineage(
         winners_doc,
-        subtitle,
+        source,
         allow_bind=False,
         label="winners.json",
     )
@@ -781,7 +952,7 @@ def refresh_subs(
             c["id"],
             c["t_start"],
             c["t_end"],
-            subtitle=subtitle,
+            source=source,
         )
         srt_items = mp.ImportMedia([str(seg_srt)])
         ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
@@ -793,7 +964,7 @@ def refresh_subs(
             }
         )
     pm.SaveProject()
-    return {"status": "subs-refreshed", "timelines": done, **_subtitle_lineage(subtitle)}
+    return {"status": "subs-refreshed", "timelines": done, **_source_lineage(source)}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -806,7 +977,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--mining-input",
         action="store_true",
-        help="輸出 highlight miners 唯一可讀的 hash-bound Stage 5 SRT",
+        help="輸出 highlight miners 唯一可讀的 hash-bound Editorial Master SRT",
     )
     parser.add_argument(
         "--merge-miners",
@@ -817,18 +988,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--miner-punch")
     parser.add_argument("--miner-value")
     parser.add_argument(
-        "--materialize", action="store_true", help="當選段建 timeline + 全候選打 marker"
+        "--materialize", action="store_true", help="從 Editorial Master A/V 建立當選段 timeline"
     )
     parser.add_argument(
         "--refresh-subs",
         action="store_true",
-        help="精華 timeline 只換字幕不動剪輯（transcript.srt 更新後用）",
+        help="精華 timeline 只換 Master 字幕不動剪輯",
     )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
         "--legacy-v1",
         action="store_true",
-        help="明確使用 episode/transcript.srt；正式 V2 流程禁止使用",
+        help="取證專用：明確使用舊 Stage5/raw source；production 禁止使用",
     )
     parser.add_argument("--projection-id")
     parser.add_argument("--expected-episode-id")
@@ -847,23 +1018,48 @@ def main(argv: list[str] | None = None) -> int:
         help="episode-local degraded dual-ASR Stage 5 handoff JSON",
     )
     args = parser.parse_args(argv)
-    subtitle_request = Stage5SubtitleRequest(
-        legacy_v1=args.legacy_v1,
-        subtitle_release_handoff=args.subtitle_release_handoff,
-        degraded_release_handoff=args.degraded_release_handoff,
-        projection_id=args.projection_id,
-        expected_episode_id=args.expected_episode_id,
-        expected_generation_id=args.expected_generation_id,
-        expected_manifest_sha256=args.expected_manifest_sha256,
-        reference_manifest=args.reference_manifest,
-    )
     episode_dir = Path(args.episode)
     if not episode_dir.is_dir():
         logger.error(f"episode 資料夾不存在: {episode_dir}")
         return 1
+    legacy_options = (
+        args.subtitle_release_handoff,
+        args.degraded_release_handoff,
+        args.projection_id,
+        args.expected_generation_id,
+        args.expected_manifest_sha256,
+        args.reference_manifest,
+    )
+    if not args.legacy_v1 and any(value is not None for value in legacy_options):
+        parser.error(
+            "Stage5 handoff/projection options require explicit --legacy-v1; "
+            "production Highlight uses Editorial Master"
+        )
+    subtitle_request = None
+    if args.legacy_v1:
+        subtitle_request = Stage5SubtitleRequest(
+            legacy_v1=True,
+            subtitle_release_handoff=args.subtitle_release_handoff,
+            degraded_release_handoff=args.degraded_release_handoff,
+            projection_id=args.projection_id,
+            expected_episode_id=args.expected_episode_id,
+            expected_generation_id=args.expected_generation_id,
+            expected_manifest_sha256=args.expected_manifest_sha256,
+            reference_manifest=args.reference_manifest,
+        )
+    editorial_master_request = None
+    if not args.legacy_v1:
+        editorial_master_request = EditorialMasterRequest(
+            episode_root=episode_dir,
+            expected_episode_id=args.expected_episode_id or episode_dir.name,
+        )
     started = time.time()
     if args.mining_input:
-        result = mining_input(episode_dir, subtitle_request=subtitle_request)
+        result = mining_input(
+            episode_dir,
+            editorial_master_request=editorial_master_request,
+            subtitle_request=subtitle_request,
+        )
     elif args.merge_miners:
         explicit_paths = {
             "story": args.miner_story,
@@ -878,20 +1074,34 @@ def main(argv: list[str] | None = None) -> int:
         merge_result = merge_miners(
             episode_dir,
             miner_paths={role: Path(value) for role, value in supplied.items()} or None,
+            editorial_master_request=editorial_master_request,
             subtitle_request=subtitle_request,
         )
-        validation = validate(episode_dir, subtitle_request=subtitle_request)
+        validation = validate(
+            episode_dir,
+            editorial_master_request=editorial_master_request,
+            subtitle_request=subtitle_request,
+        )
         result = {**merge_result, "validation": validation}
     elif args.validate:
-        result = validate(episode_dir, subtitle_request=subtitle_request)
+        result = validate(
+            episode_dir,
+            editorial_master_request=editorial_master_request,
+            subtitle_request=subtitle_request,
+        )
     elif args.materialize:
         result = materialize(
             episode_dir,
             dry_run=args.dry_run,
+            editorial_master_request=editorial_master_request,
             subtitle_request=subtitle_request,
         )
     elif args.refresh_subs:
-        result = refresh_subs(episode_dir, subtitle_request=subtitle_request)
+        result = refresh_subs(
+            episode_dir,
+            editorial_master_request=editorial_master_request,
+            subtitle_request=subtitle_request,
+        )
     else:
         logger.error(
             "指定 --mining-input、--merge-miners、--validate、--materialize 或 --refresh-subs"

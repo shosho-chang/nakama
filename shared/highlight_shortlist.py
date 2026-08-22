@@ -257,6 +257,13 @@ def write_winners(
     subtitle_lineage = candidates_doc.get("subtitle_lineage")
     if subtitle_lineage is not None and not isinstance(subtitle_lineage, dict):
         raise HighlightDataError("candidates.json subtitle_lineage must be an object")
+    editorial_master_lineage = candidates_doc.get("editorial_master_lineage")
+    if editorial_master_lineage is not None and not isinstance(
+        editorial_master_lineage, dict
+    ):
+        raise HighlightDataError(
+            "candidates.json editorial_master_lineage must be an object"
+        )
     by_id = {row["id"]: row for row in rows}
     missing = [candidate_id for candidate_id in picks if candidate_id not in by_id]
     if missing:
@@ -284,6 +291,8 @@ def write_winners(
         payload["excluded_group"] = existing["excluded_group"]
     if subtitle_lineage is not None:
         payload["subtitle_lineage"] = subtitle_lineage
+    if editorial_master_lineage is not None:
+        payload["editorial_master_lineage"] = editorial_master_lineage
     return _atomic_json_write(hl_dir / "winners.json", payload)
 
 

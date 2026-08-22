@@ -32,18 +32,24 @@ description: >
 - Sandcastle / 雲端 runner 同樣不適用（沒有 Resolve、沒有素材碟）；
   唯一可外包的是純 render 類工作（hyperframes 卡片），疊軌仍要本機
 
-## 前提與唯一正式字幕來源
+## 前提與唯一正式 media/timebase
 
-Episode 已完成 Podcast Pipeline 的 `memo-dual-audit-v1` release。正式預設由
-`run_highlight_cut.py` 自動發現並驗證：
+Episode 已完成 Podcast Pipeline 的 `memo-dual-audit-v1` release、Resolve 全節目人工剪輯與
+`podcast-editorial-master-v1` approval。正式預設由 `run_highlight_cut.py` 自動發現並驗證：
 
 ```text
-<episode>/subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json
+<episode>/editorial-master/v1/EDITORIAL-MASTER.json
+<episode>/editorial-master/v1/master.srt
+<episode>/editorial-master/v1/master.mp4
 ```
 
-不傳任何字幕 flag；不得讀 episode root `transcript.srt`。Resolve project/timeline 已由同一 handoff
-真正建立，不是只有 dry-run。若專案尚未建立，回到 podcast-pipeline 執行 Resolve actual build，不能
-略過後假裝 highlights 已可 materialize。
+不傳任何字幕／media flag；不得讀 episode root `transcript.srt`、Stage 5 release SRT、
+`Default_*.mp4`、camera files 或 `normalized.wav`。Stage 5 handoff 只保留在 Editorial Master provenance，
+不是 Highlight timebase。若 receipt 缺少、stale、cross-episode 或 tampered，回到 `podcast-pipeline`
+的 Editorial Master `inspect/status/seal/verify` route；不得 fallback。
+其中會連 Resolve 的 `inspect`、`seal`、`verify --live` 必須使用
+`C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe`；只有 offline `status` 與不帶
+`--live` 的 `verify` 可使用 `E:\nakama\.venv-v2\Scripts\python.exe`。
 
 ## Step 1 — 取得 mining input
 
@@ -52,7 +58,7 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\run_highlight_cut.py "<episode>" -
 ```
 
 把 stdout JSON 原樣保存為 `highlights/mining-input.json`。它至少包含 `status=mining-input`、唯一
-`srt_path` 與完整 `subtitle_lineage`。三個 miners 只讀該 `srt_path`、訪綱、前期報告與 episode
+`srt_path` 與完整 `editorial_master_lineage`。三個 miners 只讀該 `srt_path`、訪綱、前期報告與 episode
 references；不得自行尋找別的 SRT。
 
 ## Step 1.1 — agent-owned 3-miner dispatch
@@ -74,7 +80,7 @@ Orchestrator 必須平行 dispatch 三個互相隔離、不能讀彼此輸出的
   "contract": "podcast-highlight-miner-output-v1",
   "miner_role": "story|punch|value",
   "source_srt_sha256": "copy mining-input subtitle_srt_sha256",
-  "subtitle_lineage": {},
+  "editorial_master_lineage": {},
   "candidates": [
     {
       "id": "story-L01|story-S01",
@@ -93,19 +99,20 @@ Orchestrator 必須平行 dispatch 三個互相隔離、不能讀彼此輸出的
 }
 ```
 
-`subtitle_lineage` 是 mining-input 排除診斷欄位 `status`／`srt_path`／`elapsed_sec` 後的完整
+`editorial_master_lineage` 是 mining-input 排除診斷欄位 `status`／`srt_path`／`elapsed_sec` 後的完整
 identity object；不得刪欄、自行重建，也不得把 `elapsed_sec` 這類執行耗時混入 identity。
-`source_srt_sha256` raw exact copy 其中的 `subtitle_srt_sha256`。ID 固定以 miner role 開頭，避免
+`source_srt_sha256` raw exact copy 其中的 `master_srt_sha256`。ID 固定以 miner role 開頭，避免
 跨 worker 撞名。`head_trim` 是 cue 內要去除的秒數或 `null`，不是文字。
 
 每個 candidate 必須滿足：`t_start < t_end`；long 目標 8–12 分鐘、容忍 6–18；short 目標
 60–120 秒、容忍 40–180 且硬上限 180；hook 必須是時間範圍內 raw transcript substring。內容邊界
 優先，不在論述中間切；開頭從提問／轉場／完整論點開始，若同 cue 含上一題殘尾就填 `head_trim`；
-結尾必須觀點落地。Worker 不得自行加 `subtitle_lineage` 以外的 source 或讀 root transcript。
+結尾必須觀點落地。Worker 不得另尋或添加 `editorial_master_lineage` 以外的 source，也不得讀 root
+transcript。
 
 ## Step 1.2 — deterministic merge to candidates.json
 
-三份檔案都存在後，orchestrator 必須先做 schema、完整 SRT path、exact `subtitle_lineage`、candidate
+三份檔案都存在後，orchestrator 必須先做 schema、完整 SRT path、exact `editorial_master_lineage`、candidate
 count、finite timing、format、hook substring 與 duplicate local ID 驗證；任一失敗只重跑該 miner。
 不可在這裡問使用者。
 
@@ -115,11 +122,12 @@ count、finite timing、format、hook substring 與 duplicate local ID 驗證；
 E:\nakama\.venv-v2\Scripts\python.exe scripts\run_highlight_cut.py "<episode>" --merge-miners
 ```
 
-`--merge-miners` 固定讀上方三個 default paths，嚴格驗 contract、role、SRT hash、完整 lineage、exact
+`--merge-miners` 固定讀上方三個 default paths，嚴格驗 contract、role、Master SRT hash、完整 lineage、exact
 candidate keys、cue range、finite timing、每家至少一個 long、跨 worker ID 唯一；以
 `(format,t_start,t_end,id)` 排序，原子寫 `podcast-highlight-candidates-v1`
 `highlights/candidates.json`，接著在同一次 command 執行 validate。Validator 吸附 cue 邊界、計算
-duration、將同格式重疊 >50% 標為 variant group（不淘汰）。任何 handoff／SRT drift 都 fail closed。
+duration、將同格式重疊 >50% 標為 variant group（不淘汰）。任何 Master receipt／media／SRT drift
+都 fail closed。
 
 ## Step 2 — agent-owned blind persona and lens review
 
@@ -212,9 +220,40 @@ ADR-056 Formal Subtitle V2 的 projection handoff、`--degraded-release-handoff`
   timeline（字幕先橫式樣式——修修調完第一支「Shosho Shorts」track style 後，
   用 build_resolve_project `--make-template` 概念存直式模板，之後自動）
 - timeline 進 `Highlights` bin，命名 `長1 - <標題>`
-- 主 timeline 全候選打 marker（當選紅／落選藍），冪等（重跑先清舊）
+- 每支 timeline 只從 verified `master.mp4` source range 建立；寫入
+  `podcast-highlight-materialization-v1` receipt，綁 Master identity、source range 與 Timeline UID。
+  核准的 Editorial Master 不可變，不再在主 timeline 寫 candidate marker
 - 上軌 SRT 為**顯示層定版副本**（句尾零標點 + cue 間 ≤3s 空隙補平——修修
   2026-08-05 裁決；transcript.srt 本體不動，規則見 subtitle-correct skill）
+
+## Step 3.1 — 來賓 identity-card placement（agent quorum）
+
+Tightening 完成、`highlights/srt/<id>_tight_r*.srt` 實際最新版的 exact path 固定後，兩個互相隔離的
+workers 各自判定
+來賓第一個 substantive speech cue。Audit contract 是
+`podcast-identity-placement-worker-audit-v1`；必須 raw exact copy Editorial Master identity、cut SRT
+path/hash/bytes/cue count，並引用 exact cue number/start/end/text/text hash。兩份 audit 只能在 worker ID
+不同且 exact cue agreement 時由下列命令接受：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_identity_placement.py accept "<episode>" `
+  --cut-id <id> --cut-srt "<episode>/highlights/srt/<id>_tight_rNNN.srt" `
+  --audit-a "<episode>/highlights/identity-placement/<id>/identity-audit-a.json" `
+  --audit-b "<episode>/highlights/identity-placement/<id>/identity-audit-b.json"
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_identity_placement.py emit-event "<episode>" `
+  --cut-id <id> --name "<guest-name>" --title "<guest-title>"
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_identity_placement.py verify "<episode>" --cut-id <id>
+```
+
+Free-string 自報、same worker、不同 cue、stale SRT/Master hash、cross-episode/path escape、accepted cue
+超過 180 秒，或 guest-namecard 早於／漂出 accepted cue 都 fail closed。只有兩 audit 衝突或皆無法可靠
+判斷才是 HITL；一致時不得要求使用者再核准。林之晨 `value-L01` 的 regression fixture 是
+guest cue/card start 43.0 秒、card end 48.2 秒。
+
+`emit-event` 是 deterministic producer：以 accepted cue 起點與預設 5.2 秒寫入 canonical
+`highlights/tighten/<id>_broll.json`；姓名／title 由 agent 從訪綱與前期報告取得。`verify` fresh 驗 recipe
+與 identity lineage，再由 `run_short_broll.py` 使用既有 16:9 `chapter_label` 左對齊名牌 composition render，
+不需新增視覺模板或一般 human gate。實際順序固定為 director → broll → titles。
 
 ## Step 4 — 標題（長短片分流，修修 2026-07-26 二修裁決；ADR-054 D4/D13/D16）
 

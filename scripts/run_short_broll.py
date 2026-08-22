@@ -52,7 +52,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from run_highlight_cut import FORMAT_LABEL  # noqa: E402
-from run_short_tighten import TIGHTEN_DIR, _load_winner  # noqa: E402
+from run_short_tighten import (  # noqa: E402
+    TIGHTEN_DIR,
+    _load_winner,
+    _open_editorial_master,
+)
+
+from agents.brook.script_video.editorial_master import EditorialMasterContractError  # noqa: E402
+from agents.brook.script_video.identity_placement import (  # noqa: E402
+    IdentityPlacementError,
+    verify_identity_placement,
+)
+from shared.highlight_materialization import (  # noqa: E402
+    HighlightSource,
+    verify_materialization_receipt,
+)
 
 logger = logging.getLogger("short_broll")
 
@@ -277,6 +291,65 @@ def _fill_zoom(res: str, sar: float = 1.0, canvas: tuple[int, int] | None = None
     return max(cw / (w * fit), ch / (h * fit))
 
 
+def _guest_namecard_job(
+    episode_dir: Path,
+    cid: str,
+    fmt: str,
+    item: dict,
+    index: int,
+) -> dict:
+    """Turn a sealed guest-namecard recipe event into an existing renderer job."""
+
+    if fmt != "long":
+        raise SystemExit("guest-namecard 目前只支援 long highlight 16:9 composition")
+    try:
+        t0, t1 = float(item["t0"]), float(item["t1"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SystemExit(f"item {index} guest-namecard timestamps 不合法") from exc
+    span = round(t1 - t0, 2)
+    comp = "chapter_label"
+    if span < 0.8 or span > COMP_MAX_SEC[comp] - 0.3:
+        raise SystemExit(
+            f"item {index} guest-namecard {span}s 不在 [0.8, {COMP_MAX_SEC[comp] - 0.3}]"
+        )
+    try:
+        placement = verify_identity_placement(
+            episode_dir,
+            cut_id=cid,
+            guest_namecard_start=t0,
+            guest_namecard_end=t1,
+        )
+    except IdentityPlacementError as exc:
+        raise SystemExit(
+            f"item {index} guest-namecard placement 驗證失敗：{exc}"
+        ) from exc
+    if item.get("identity_placement") != placement.identity():
+        raise SystemExit(f"item {index} guest-namecard identity lineage 已過期")
+    name = item.get("name")
+    title = item.get("title")
+    style = item.get("style", "paper")
+    if not isinstance(name, str) or not name.strip() or name != name.strip():
+        raise SystemExit(f"item {index} guest-namecard 缺少或未 trim name")
+    if not isinstance(title, str) or not title.strip() or title != title.strip():
+        raise SystemExit(f"item {index} guest-namecard 缺少或未 trim title")
+    if style not in {"paper", "ink", "orange"}:
+        raise SystemExit(f"item {index} guest-namecard style 不合法")
+    return {
+        "comp": comp,
+        "vars": {
+            "show_sec": span,
+            "label": name,
+            "sub": title,
+            "align": "left",
+            "style": style,
+        },
+        "t0": t0,
+        "span": span,
+        "i": index,
+        "kind": "guest-namecard",
+    }
+
+
 def _ken_burns(item, span_sec: float, fps: float, zoom_hi: float) -> bool:
     """photo 慢推：Fusion Transform 線性 Size 1.0→zoom_hi（Pivot 預設畫面中心）。"""
     comp = item.GetFusionCompByIndex(1) if item.GetFusionCompCount() > 0 else item.AddFusionComp()
@@ -300,10 +373,44 @@ end)
     return True
 
 
+def _verify_director_materialization(
+    episode_dir: Path,
+    cid: str,
+    candidate: dict,
+    timeline,
+    master,
+    fps: float,
+) -> dict:
+    """Bind the live director Timeline to the current candidate and Master."""
+
+    try:
+        return verify_materialization_receipt(
+            episode_dir,
+            cid,
+            source=HighlightSource(
+                srt_path=master.srt_path,
+                media_path=master.media_path,
+                lineage=master.identity(),
+            ),
+            timeline=timeline,
+            expected_timeline_name=timeline.GetName(),
+            expected_format=str(candidate["format"]),
+            expected_source_range={
+                "start_sec": float(candidate["t_start"]),
+                "end_sec": float(candidate["t_end"]),
+                "start_frame": int(float(candidate["t_start"]) * fps),
+                "end_frame": int(float(candidate["t_end"]) * fps),
+            },
+        )
+    except EditorialMasterContractError as exc:
+        raise SystemExit(f"B-roll materialization receipt 驗證失敗：{exc}") from exc
+
+
 def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     from build_resolve_project import connect_resolve
 
-    c, w = _load_winner(episode_dir, cid)
+    master = _open_editorial_master(episode_dir)
+    c, w = _load_winner(episode_dir, cid, master.identity())
     fmt = c.get("format", "short")
     fcfg = FORMAT_BROLL[fmt]
     canvas = tuple(fcfg["canvas"])
@@ -377,6 +484,8 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
                 else:
                     variables[k] = v
             card_jobs.append({"comp": comp, "vars": variables, "t0": t0, "span": span, "i": i})
+        elif kind == "guest-namecard":
+            card_jobs.append(_guest_namecard_job(episode_dir, cid, fmt, it, i))
         elif kind == "badge":
             hits = sorted(assets_dir.glob(f"{it['slug']}.*"))
             if not hits:
@@ -386,7 +495,10 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
                 {"path": hits[0], "t0": t0, "t1": t1, "src_fps": src_fps or 30.0, "i": i}
             )
         else:
-            raise SystemExit(f"item {i} kind={kind} 不合法（video/photo/sticker/concept/badge）")
+            raise SystemExit(
+                f"item {i} kind={kind} 不合法"
+                "（video/photo/sticker/concept/guest-namecard/badge）"
+            )
 
     for job in card_jobs:
         h = _card_hash(job["comp"], job["vars"], suffix)
@@ -434,6 +546,11 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     mp = project.GetMediaPool()
     root = mp.GetRootFolder()
 
+    # Card rendering above can take minutes. Re-open the trust root and winner
+    # immediately before the first Resolve mutation instead of relying on the
+    # earlier preflight identity remaining fresh.
+    master = _open_editorial_master(episode_dir)
+    c, w = _load_winner(episode_dir, cid, master.identity())
     director_label = f"{FORMAT_LABEL[c['format']]}{w['rank']} - {c['title']}（緊·導播）"
     director = None
     for i in range(1, project.GetTimelineCount() + 1):
@@ -443,6 +560,7 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
             break
     if director is None:
         raise SystemExit(f"「{director_label}」不存在——先跑 run_short_director")
+    _verify_director_materialization(episode_dir, cid, c, director, master, fps)
     project.SetCurrentTimeline(director)
 
     # 冪等清場（timeline items）：**媒體路徑歸屬判定**——本 timeline 上凡是
@@ -559,7 +677,12 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         if not ok or (isinstance(ok, list) and ok[0] is None):  # [None]=失敗（2026-08-04）
             raise SystemExit(f"疊軌失敗 @{job['t0']}（track {CARD_TRACK}）")
         made.append(
-            {"slug": job["mov"].stem, "kind": job["comp"], "at": job["t0"], "sec": job["span"]}
+            {
+                "slug": job["mov"].stem,
+                "kind": job.get("kind", job["comp"]),
+                "at": job["t0"],
+                "sec": job["span"],
+            }
         )
 
     for job in badge_jobs:

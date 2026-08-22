@@ -19,6 +19,10 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
+from agents.brook.script_video.editorial_master import (
+    EditorialMasterContractError,
+    EditorialMasterRequest,
+)
 from shared.background_job import atomic_job_write, job_expired, load_job, new_job
 from shared.config import get_db_path, get_vault_path
 from shared.highlight_shortlist import (
@@ -611,8 +615,39 @@ def _atomic_json_write(path: Path, payload: dict[str, Any]) -> None:
     os.replace(temporary.name, path)
 
 
+def _verified_editorial_master(episode_dir: Path):
+    try:
+        master = EditorialMasterRequest(
+            episode_dir,
+            expected_episode_id=episode_dir.name,
+        ).open()
+    except EditorialMasterContractError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Editorial Master verification failed: {exc}",
+        ) from exc
+
+    candidates_path = episode_dir / "highlights" / "candidates.json"
+    try:
+        candidates_doc = json.loads(candidates_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"candidates.json is missing or unreadable: {exc}",
+        ) from exc
+    if not isinstance(candidates_doc, dict):
+        raise HTTPException(status_code=422, detail="candidates.json must be an object")
+    if candidates_doc.get("editorial_master_lineage") != master.identity():
+        raise HTTPException(
+            status_code=422,
+            detail="candidates.json Editorial Master lineage is stale or mismatched",
+        )
+    return master
+
+
 def _context(episode_slug: str) -> dict:
     episode_dir = _episode_dir(episode_slug)
+    _verified_editorial_master(episode_dir)
     highlights_dir = episode_dir / "highlights"
     try:
         rows = collect(highlights_dir, "long")
@@ -654,10 +689,7 @@ def _context(episode_slug: str) -> dict:
 
 def _program_video(episode_slug: str) -> Path:
     episode_dir = _episode_dir(episode_slug)
-    candidates = sorted(episode_dir.glob("Default_*.mp4"))
-    if not candidates:
-        raise HTTPException(status_code=404, detail="program video not found")
-    return candidates[0]
+    return Path(_verified_editorial_master(episode_dir).media_path)
 
 
 @page_router.get("/{episode_slug}", response_class=HTMLResponse)
@@ -738,7 +770,12 @@ async def highlight_review_decide(
         if value:
             feedback[candidate_id] = value
 
-    highlights_dir = _episode_dir(episode_slug) / "highlights"
+    episode_dir = _episode_dir(episode_slug)
+    # ``await request.form()`` yields control after the page-context check.  Re-open
+    # the trust root immediately before durable writes so a replaced Master or
+    # candidates document cannot be copied into winners.json through that gap.
+    _verified_editorial_master(episode_dir)
+    highlights_dir = episode_dir / "highlights"
     try:
         # Validate and prepare every input before either durable write. Each write
         # itself is atomic; the audit entry preserves earlier decisions.

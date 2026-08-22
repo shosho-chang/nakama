@@ -32,6 +32,9 @@ acceptance fixture，也不得重跑或改名既有字幕 bundle。
 - Stage 5 mode：`memo-dual-audit-v1`
 - Output root：`<episode>/subtitle-release/memo-dual-audit-v1/`
 - Default handoff：`<episode>/subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json`
+- Editorial Master：`podcast-editorial-master-v1`
+- Editorial Master root：`<episode>/editorial-master/v1/`
+- Identity placement：`podcast-identity-placement-v1`
 
 ADR-063 已於 2026-08-21 通過 code、schema、consumer、routing 與 focused regression gates，
 狀態為 **Accepted / Active**。`20260805 林之晨` 同日完成 clean operational E2E smoke：從 Auphonic
@@ -39,10 +42,10 @@ ADR-063 已於 2026-08-21 通過 code、schema、consumer、routing 與 focused 
 也沒有自動選 winner 或上傳 YouTube。抹布仍只算 legacy/backward-compatibility fixture。
 
 **2026-08-22 amendment（ADR-064）**：上述 smoke 只證明 raw-feed route 可執行，沒有證明 content
-repurpose 繼承人工剪過的完整節目。新的 production 決策是：使用者核准的 **Editorial Master** 才是
-long Highlight、Short、Instagram carousel 與其他 derivatives 的唯一 media/timebase source。Runtime
-cutover 尚未完成；因此 fresh episode 建好 base Resolve timeline 後必須停在 Editorial Master gate，
-不得從 `Default_*.mp4`／`normalized.wav` 繼續並冒充新流程完成。
+repurpose 繼承人工剪過的完整節目。使用者核准的 **Editorial Master** 是 long Highlight、Short、
+Instagram carousel 與其他 derivatives 的唯一 media/timebase source。Exporter、verifier 與下游
+consumer 已切換；缺少／stale／tampered receipt 一律 fail closed，不得從 `Default_*.mp4`、camera files、
+`normalized.wav` 或 Stage 5 release SRT silent fallback。
 
 ## Standing authorization and human gates
 
@@ -335,10 +338,23 @@ Actual build exit 0 只代表 base timeline 建立成功；agent 必須把 base 
 已完成，而使用者可放入自己錄好的 Intro／Outro，完整觀看並移除咳嗽、道歉、卡頓、中斷與不要的段落。
 使用者明確核准並鎖定後，才可建立 `podcast-editorial-master-v1` receipt 並開始任何 repurpose。
 
-截至 2026-08-22，receipt producer、master-SRT retime 與下游 consumer cutover 尚未實作。遇到 fresh
-episode 必須回報 `EDITORIAL_MASTER_RUNTIME_NOT_IMPLEMENTED`；不得退回 raw program feed 繼續跑。
-`20260805 林之晨` 的 `value-L01` 是人工補修例外；`value-L02`／`punch-L04` 仍是 raw-derived，不能
-宣稱已通過 Editorial Master lineage。
+Human approval 之前只能 `inspect`，不得自行傳 `--human-approved`。核准後 exact exporter route 是：
+
+```powershell
+& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" `
+  scripts\podcast_editorial_master.py inspect "<episode>" --project "<project>" --timeline "<timeline>"
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_editorial_master.py status "<episode>"
+& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" `
+  scripts\podcast_editorial_master.py seal "<episode>" --project "<project>" --timeline "<timeline>" `
+  --human-approved --approved-by "<human-id>"
+& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" `
+  scripts\podcast_editorial_master.py verify "<episode>" --project "<project>" --timeline "<timeline>" --live
+```
+
+第一次 `status` 回 missing／exit 1 是可觀察的 pre-seal 狀態；seal 後再跑 `status` 必須是 ready／exit 0，
+再用 `verify --live` 比對當前 Resolve Timeline。`seal` 自動重開 official Stage 5 handoff；不得手寫 lineage。
+完成時固定驗證 `master.mp4`、`master.srt`、`timeline-snapshot.json`、`EDITORIAL-MASTER.json` 四件，receipt
+最後寫入。既有不同 bytes、wrong episode、Timeline UID drift 或 hash drift 必須停止，不能 rerender 覆蓋。
 
 Editorial Master receipt 驗證成功後，在開始 miners 前，先對 `cut_id=full` 啟動 `title-brainstorm` 與
 `thumbnail-brainstorm`，產生完整節目的三組 title／thumbnail／description 草稿。這一步不依賴
@@ -387,17 +403,54 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\run_cut_shortlist.py "<episode>" -
 
 ## S9 — long highlight and finished-cut review
 
-對每個 long winner 依序跑 tightening、director、titles、b-roll、SFX、review：
+對每個 long winner 依序跑 tightening，再封存 guest identity placement，最後跑 director、titles、b-roll、
+SFX、review。Tightening／director 都只能使用 Editorial Master media/timebase：
 
 ```powershell
 & "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_tighten.py "<episode>" --detect --id <winner-id>
 & "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_tighten.py "<episode>" --apply --id <winner-id>
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_identity_placement.py accept "<episode>" `
+  --cut-id <winner-id> --cut-srt "<episode>/highlights/srt/<winner-id>_tight_rNNN.srt" `
+  --audit-a "<episode>/highlights/identity-placement/<winner-id>/identity-audit-a.json" `
+  --audit-b "<episode>/highlights/identity-placement/<winner-id>/identity-audit-b.json"
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_identity_placement.py status "<episode>" --cut-id <winner-id>
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_identity_placement.py emit-event "<episode>" `
+  --cut-id <winner-id> --name "<guest-name>" --title "<guest-title>"
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_identity_placement.py verify "<episode>" --cut-id <winner-id>
 & "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_director.py "<episode>" --id <winner-id> --stills "<stills-dir>"
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_titles.py "<episode>" --id <winner-id>
 & "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_broll.py "<episode>" --id <winner-id> --stills "<stills-dir>"
+& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_titles.py "<episode>" --id <winner-id>
 & "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_sfx.py "<episode>" --id <winner-id>
 & "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_review.py "<episode>" --id <winner-id>
 ```
+
+`accept` 之前先 resolve `<winner-id>_tight_r*.srt` 中實際最新版的 exact path，再 dispatch 兩個互相隔離、
+不可讀彼此輸出的 subscription workers。兩者只讀同一 cut-specific SRT 與必要訪綱／前期資料，判斷
+「來賓第一個 substantive speech cue」，各寫一份 strict JSON：
+
+```json
+{
+  "contract": "podcast-identity-placement-worker-audit-v1",
+  "episode_id": "<episode folder basename>",
+  "cut_id": "<winner-id>",
+  "worker_id": "<distinct stable worker identity>",
+  "editorial_master": {},
+  "cut_srt": {"path": "...", "bytes": 0, "sha256": "...", "cue_count": 0},
+  "accepted_guest_cue": {"number": 1, "start_sec": 0.0, "end_sec": 0.0, "text": "...", "text_sha256": "..."},
+  "verdict": "accept_first_substantive_guest_cue",
+  "rationale": "內容證據；不是自報 speaker diarization"
+}
+```
+
+`editorial_master` 與 `cut_srt` 必須 raw exact copy verified identities；cue number／timestamps／text／hash
+必須 exact 對應 SRT。只有兩個不同 worker 對同一 cue 完全一致，`accept` 才原子寫 cut-local
+`IDENTITY-PLACEMENT.json`。同 worker、free-string 自報、不同 cue、stale hash、path escape、first guest cue
+超過 180 秒都 fail closed。衝突／無法判定才回使用者；一致時不得新增普通 human gate。任何
+`emit-event` 會直接以 accepted cue 起點、預設 5.2 秒，原子寫入既有
+`highlights/tighten/<winner-id>_broll.json`，由 `run_short_broll.py` 映射到既有 16:9
+`chapter_label` 左對齊名牌 composition；來賓姓名／title 由 agent 從訪綱與前期報告取得，不新增一般
+human gate。`verify` 必須在 renderer 前 fresh 重讀 canonical recipe；開始點不得早於或漂出 accepted cue，
+identity lineage 過期也 fail closed。林之晨 `value-L01` 的已核准 fixture 是 43.0–48.2 秒。
 
 在 `/bridge/highlights/<episode>/finished` 停下來。Approval 後的 full-resolution `publish_prep` 必須有
 pid/start/deadline/exit receipt；child crash／逾時轉 failed 並允許 retry，未完成不能跳 Packaging。
