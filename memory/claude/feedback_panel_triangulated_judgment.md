@@ -1,12 +1,14 @@
 ---
 name: panel triangulated judgment
-description: 高風險決策若已跑 multi-agent-panel 拿到 Codex+Gemini 兩家獨立 audit，使用者偏好 Claude 直接判而非 defer 回 user
+description: 高風險決策若已跑 multi-agent-panel 拿到多個獨立 audit，使用者偏好 Claude 整合後直接判而非 defer 回 user（2026-08-22：panel 改為 subagent 版，此偏好不變）
 type: feedback
 ---
 
-當高風險決策（ADR、架構選擇）已透過 `multi-agent-panel` skill 取得 Codex + Gemini 獨立 audit 後，**修修偏好 Claude 整合三家意見直接判，不要再 defer fork 選擇給 user**。
+當高風險決策（ADR、架構選擇）已透過 `multi-agent-panel` skill 取得多份**獨立** audit 後，**修修偏好 Claude 整合各方意見直接判，不要再 defer fork 選擇給 user**。
 
-**Why**：修修原話「既然你現在已經有了三家的意見，我想應該會比我來判斷還準」（2026-05-07 ADR-021 panel review）。三家 audit 已經消化掉 single-LLM 的 confirmation bias，整合矩陣本身就是 high-confidence 的信號；再 defer 回 user 只是把 cognitive load 推回去，對決策品質沒貢獻。修修的 expertise 在內容創作 + 系統 stated preferences（vault 簡潔、Obsidian access pattern），這些 panel 已 explicit 納入考量。
+> 2026-08-22 更新：panel 已從「Codex+Gemini 外部 CLI」改為「Fable/Opus/Sonnet parallel subagent」（見 [[project_multi_agent_panel_skill_todo]]）。**此偏好不隨之改變**——支撐它的是「已有多份獨立審查」這個條件，不是審查者的廠商。但同家族 panel 的去偏效果較弱，若三位 reviewer 一致同意某事，要留意那可能是共同盲點而非高信心信號。
+
+**Why**：修修原話「既然你現在已經有了三家的意見，我想應該會比我來判斷還準」（2026-05-07 ADR-021 panel review）。多份獨立 audit 已經消化掉 single-pass 的 confirmation bias，整合矩陣本身就是 high-confidence 的信號；再 defer 回 user 只是把 cognitive load 推回去，對決策品質沒貢獻。修修的 expertise 在內容創作 + 系統 stated preferences（vault 簡潔、Obsidian access pattern），這些 panel 已 explicit 納入考量。
 
 **How to apply**：
 

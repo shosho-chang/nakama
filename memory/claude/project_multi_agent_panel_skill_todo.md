@@ -1,90 +1,54 @@
 ---
-name: Multi-agent panel skill — 已 freeze (2026-05-06)
-description: 2026-05-06 ADR-020 audit 過程實證 multi-model panel 比單 Claude 高 signal；同日用 skill-creator 凍結成 user-level `multi-agent-panel` skill at `C:/Users/Shosho/.claude/skills/multi-agent-panel/`（SKILL.md + 3 references + Gemini dispatch template）
+name: Multi-agent panel skill — 已改為 subagent 版 (2026-08-22 rewrite)
+description: user-level `multi-agent-panel` skill at C:/Users/Shosho/.claude/skills/；2026-08-22 修修裁決退場 Codex/Gemini 外部 CLI（燒外部 credit + plugin 過期），改為 subscription quota 下的 parallel subagent（Fable/Opus/Sonnet 各一 lens）
 type: project
 created: 2026-05-06
-status: frozen
+updated: 2026-08-22
+status: frozen (v2)
 ---
 
-## ✅ Skill freeze status (2026-05-06)
+## 現況：v2 = subagent panel（2026-08-22 修修裁決）
 
-User-level skill `multi-agent-panel` 已 ship at `C:/Users/Shosho/.claude/skills/multi-agent-panel/`:
-- `SKILL.md` — 5-step workflow + auto-detect graceful degradation
-- `references/model-strengths.md` — 4-model cheat sheet + observation log
-- `references/dispatch-prompts.md` — Codex + Gemini canonical audit prompt template
-- `references/integration-matrix.md` — 3-way integration table format
-- `assets/gemini_dispatch_template.py` — Python dispatch script template
+**修修原話**：「Panel Review 的 plugin 已經過期了…我現在不要再花 Gemini 跟 CodeX 的 credit，
+你直接派三個 sub-agent 去給他們不同的任務…可以派一個 Fable、一個 Opus、一個 Sonnet，
+讓他們依照他們的能力，給他們不同的任務去 review。」
 
-Skill description 強 trigger on: panel review / second opinion / cross-model audit / ADR review / strategic decision / contract drift。
+Skill 位置：`C:/Users/Shosho/.claude/skills/multi-agent-panel/SKILL.md`（已改寫）
 
-下次跑 panel 走 `/multi-agent-panel` 或 Claude 自動觸發即可。Observations log 會持續 append（每次跑 panel 後 update model-strengths.md 末段）。
+**v2 panel 組成**——依任務難度而非年資配 model：
 
-## Trigger / use cases
-
-修修明確要的 multi-agent panel 流程 — 5/6 ADR-020 audit 過程驗證有效，待之後用 skill-creator 凍結成 skill。
-
-適用情境（從觀察到實證的）:
-
-1. **Architecture brainstorm** — 各 model 各提 1 個方向，互相 critique
-2. **Strategic decision audit**（如 ADR-020）— 拿不同立場切入既有 Claude 分析
-3. **Code review** — 各 model 用不同 lens（correctness / security / API design / test gap / refactor opportunity）
-4. **Edge-case /破壞測試 generation** — Claude conservative + GPT-5 aggressive + Gemini factual edge
-5. **Spec / contract drift detection** — 多 ADR 跨文件 audit，多 model 的 fact-grounding bias 不同
-
-## 各家 model 強項 cheat sheet（5/6 實證 + 既有經驗）
-
-| Model | 強項 | 弱項 |
+| Model | 適合 | 典型 lens |
 |---|---|---|
-| Claude (主線 agent / Anthropic) | nuance / 長 context coherence / 寫作 voice / 多語言細膩 / refusal pattern | 過度 confident / 自己分析的 bias 不容易自抓 / 過度 cautious |
-| GPT-5 / Codex (OpenAI) | code grounding / 數字驗證 / push-back posture / 法律分析務實 / spec drift detection | 中文不細膩 / verbose / 「I would」first-person 過多 / 過度保守某些 risk（如 copyright）|
-| Gemini (Google) | multimodal / 數學 / multilingual / 長 context fact recall | reasoning chain 不如 Claude/GPT / 風格刻板 |
-| xAI Grok（按需）| 「啦啦隊」立場 — 看到「方向其實 work 別過度悲觀」的點 | 不適合單跑 audit；triangulate 中當第三 voice 有用 |
+| `fable` | 最難、最開放式的推理；長期失效模式；抓出「題目本身問錯了」 | 對抗性架構批判 |
+| `opus` | 嚴謹的事實查核與窮盡交叉比對 | 事實查核＋可實作性驗證 |
+| `sonnet` | 務實、範圍明確的分析 | 維運現實（負擔／腐爛／複雜度預算） |
 
-## 5 步驟流程草稿（ADR-020 過程實證）
+**去偏誤的誠實聲明**（已寫進 skill）：同家族 subagent 的去偏效果**弱於**跨廠商。
+仍然有效的機制依序是：①**context 獨立**（subagent 看不到 drafter 的推理過程，冷讀 artifact
+——所以**絕不能用 `subagent_type: "fork"`**，fork 會繼承 context 連帶繼承偏誤）；
+②**lens 專門化**（panel 實際價值大半來自這裡）；③能力分層；④對抗性 framing。
+遇到「共同盲點的代價是災難性且不可逆」的決策（存放使用者資產的資料模型、安全邊界、
+有法律效力的契約），要明講並讓修修決定要不要花外部 credit。
 
-```
-Step 1: Claude 主線寫 draft（plan / ADR / code design）
-Step 2: dispatch Codex (GPT-5) audit — push-back posture，要它「不要 rubber-stamp Claude 的分析」
-Step 3: dispatch Gemini audit — 從不同 lens（multimodal / fact recall / 不同切入點）
-Step 4: 主線整合三方 audit → 標出 agreement / disagreement
-Step 5: 修修拍板（哪些 push-back 採納 / 哪些打折扣 / 整合 v2 草稿）
-```
+## 退場的東西
 
-## 5/6 ADR-020 audit 實證 — Codex 抓到 Claude 漏看的 3 件事
-
-1. `shared/kb_writer.py:591-786` 實作其實在 — Claude 講「沒寫 body 這個 step」，更精確是「step 存在但 ADR-016 並行 pipeline bypass」
-2. `concept-extract.md` 自己 stale — output `create`/`update` 兩 action vs ADR-011 規範的 4-action（沉默 contract drift #2）
-3. ch5 vault 用 `![[tab.md]]` transclusion — 違反 `chapter-summary.md:174-181` 規定的 inline markdown（spec/impl drift）
-
-這 3 件 Claude 都沒抓到，因為 Claude 自己寫的分析 + 自己讀檔，confirmation bias 強。GPT-5 的 fact-grounded + push-back posture 是天然解。
-
-## Prompt 語言策略
-
-dispatch 給外部 LLM (Codex/Gemini) prompt **用英文**:
-- 訓練資料英文佔比高，instruction 解析精確
-- file path / ADR id / code symbol 是英文，混語言干擾
-- token 效率（中文 token 數常 2x 英文）
-
-對外（跟修修）繁中 per CLAUDE.md。對內（dispatch LLM）英文。
+- `assets/gemini_dispatch_template.py` — 隨外部流程退役
+- `references/dispatch-prompts.md` — 為 Codex/Gemini 寫的；6-section 結構與 push-back
+  invariants 仍可轉用，dispatch 機制已失效
+- Codex 走 ChatGPT subscription auth、Gemini 走 API key 的偵測與 graceful degradation matrix
 
 ## 跟既有 memory 的關係
 
-- [project_multi_model_panel_methodology.md](project_multi_model_panel_methodology.md) — 既有「三家模型 triangulate（Gemini 吹哨 / Claude 仲裁 / Grok 啦啦隊）」方法論。本筆記是其**5-step workflow 具體化** + 5/6 實證更新
-- [project_skills_development.md](project_skills_development.md) — Skills 開發體系；本流程之後走這個 pipeline 凍結成 skill
-- [feedback_subagent_prompt_must_inline_principles.md](feedback_subagent_prompt_must_inline_principles.md) — dispatch 外部 LLM 必 inline 適用最高指導原則（品質 > 速度 > 成本 等）；本流程適用
+- [feedback_multi_agent_review_three_lens.md](feedback_multi_agent_review_three_lens.md) —
+  **重要前例**：PR review 早就在用「3 個 parallel general-purpose agent 分不同 lens」
+  （PR #320 實證 2 blocker + 6 major）。v2 panel 等於把這個已驗證的模式擴用到策略決策，
+  並加上 model 分層。該筆的 lens 分工紀律（**明列 skip list 避免 reviewer 重疊**）直接適用
+- [feedback_panel_triangulated_judgment.md](feedback_panel_triangulated_judgment.md) —
+  panel 完由 Claude 直接判、不 defer 回 user
+- [project_multi_model_panel_methodology.md](project_multi_model_panel_methodology.md) — 舊三家方法論（歷史）
 
-## TODO: skill-creator 凍結成 skill
+## 歷史（v1，2026-05-06 ADR-020 實證）
 
-ADR-020 凍結後（流程跑完一次完整實證），用 skill-creator 把這個流程做成 `multi-agent-panel` skill:
-
-- skill 觸發 trigger（修修說「panel review」/「找其他 model 看一下」/「要 second opinion」）
-- 各 model 強項 cheat sheet（持續更新，每次 panel 跑完後 update）
-- 5 步驟 workflow + prompt 範本（含「不要 rubber-stamp」push-back posture 寫法）
-- 結果整合 template（agreement / disagreement / 採納度）
-- 跨 model dispatch 機制（已有 codex:rescue + 待加 Gemini 的 dispatch path）
-
-## References
-
-- ADR-020 audit session 2026-05-06（這次實證 case study）
-- Codex audit task task-motib9le-isaj8u（result: 6-section 1500+ word 報告）
-- Codex 用 ChatGPT subscription auth → OpenAI Platform usage dashboard 看不到 token；ChatGPT side 有自己 quota
+v1 是 Claude draft → Codex (GPT-5) push-back audit → Gemini 不同推理鏈 audit → 整合矩陣。
+Codex 當時抓到 Claude 自審漏掉的 3 件 contract drift，Gemini 抓到多語言面向——
+**這證明的是「獨立視角有效」，不是「必須跨廠商」**，v2 用 context 獨立 + lens 分工承接同樣效果。
