@@ -104,6 +104,21 @@ class Store:
             d -= timedelta(days=1)
         return streak
 
+    def has_any_checkin_before(self, user_id: int, day: str) -> bool:
+        """``day`` 之前有沒有任何打卡史（回歸語氣 vs 新人語氣的分界）。"""
+        row = self._conn.execute(
+            "SELECT 1 FROM sanji_checkin_days WHERE user_id = ? AND day < ? LIMIT 1",
+            (user_id, day),
+        ).fetchone()
+        return row is not None
+
+    def users_checked_in_on(self, day: str) -> list[int]:
+        """某日有打卡紀錄的使用者（每日對帳的抽核對象）。"""
+        rows = self._conn.execute(
+            "SELECT DISTINCT user_id FROM sanji_checkin_days WHERE day = ?", (day,)
+        ).fetchall()
+        return [int(r["user_id"]) for r in rows]
+
     # ── 判定佇列（漏斗 ⑥⑦：provisional / 48h fail-open） ─────────
     def enqueue_judgment(
         self, event_id: int, feed_id: int, user_id: int, day: str, season: str
