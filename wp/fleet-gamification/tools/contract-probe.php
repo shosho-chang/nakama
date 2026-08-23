@@ -12,7 +12,7 @@
  * ⚠️ 唯讀：本腳本不寫任何資料。
  */
 
-declare( strict_types=1 );
+// 註：本檔跑在 wp eval-file 的 eval 語境——不得使用 declare(strict_types)（必須是檔案第一語句）。
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit( "run via wp eval-file\n" );
