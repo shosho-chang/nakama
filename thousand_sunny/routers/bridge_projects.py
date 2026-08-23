@@ -124,6 +124,7 @@ def _shosho_asset_version() -> str:
         "bridge-projects.css",
         "theme.js",
         "bridge-projects.js",
+        "bridge-weekly.js",  # detail.html links it with ?v= — must cache-bust JS fixes too
     ):
         path = static_dir / css
         if path.exists():
