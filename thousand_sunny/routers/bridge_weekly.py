@@ -74,6 +74,7 @@ def _shosho_asset_version() -> str:
         "pomodoro-dock.css",
         "bridge-weekly.css",
         "theme.js",
+        "bridge-weekly.js",  # the page links it with ?v= — a JS-only fix must cache-bust too
     ):
         path = static_dir / css
         if path.exists():
@@ -117,10 +118,12 @@ _PLAN_ERRORS = {
     # 新增任務 (v3-H Slice 2)
     "title": "任務標題不能空白。",
     "task_exists": "已有同名任務（同專案）——換個標題，或先到 Obsidian 確認。",
+    "time_needs_date": "指定開始時間需要同時指定日期——任務尚未建立。",
 }
 
 _SAVED_MSGS = {
     "task_new": "✓ 已新增任務。",
+    "task_new_scheduled": "✓ 已新增任務並排入行程。",
     "task_deleted": "✓ 已刪除任務。",
     "plan": "✓ 已儲存本週計畫。",
     "review": "✓ 已存週回顧。",
@@ -345,13 +348,19 @@ async def weekly_task_new(
     category: str = Form("work"),
     priority: str = Form("normal"),
     est_pomodoros: int = Form(4),
+    entry_date: str = Form(""),  # 建立時直接排程 — blank ⇒ bare create (排入 later)
+    entry_time: str = Form(""),  # blank ⇒ all-day (mirrors the merged 排入 form)
     week: str = Form(""),
     nakama_auth: str | None = Cookie(None),
 ):
     """v3-H Slice 2: create a new task from the dashboard. Project optional (blank =
-    standalone). BARE creation — scheduling stays the per-entry 排入 flow. Shares the
-    dual-write creator (``create_task``) with Nami's Slack ``create_task`` so chat +
-    web emit identical files."""
+    standalone). Shares the dual-write creator (``create_task``) with Nami's Slack
+    ``create_task`` so chat + web emit identical files.
+
+    修修 (2026-08-23): the form now carries an optional 日期/時間 — when a date is
+    given, the freshly-created task goes straight through ``schedule_entry`` (the
+    same plan+calendar path as the row's merged 排入), so 建立+排程 is one submit.
+    Blank date keeps the original bare-create + ?focus flow."""
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
     wk_key = _safe_week_key(week)
@@ -364,9 +373,24 @@ async def weekly_task_new(
         category = "work"
     if priority not in {"low", "normal", "high"}:
         priority = "normal"
+    # Validate the optional schedule fields BEFORE the vault write — a bad date/time
+    # rejects the whole submit with nothing created (no half-made task to clean up).
+    ed = None
+    et = None
+    if entry_date.strip():
+        ed = _parse_entry_date(entry_date)
+        if ed is None:
+            return _back(wk_key, "date")
+    if entry_time.strip():
+        if ed is None:
+            return _back(wk_key, "time_needs_date")
+        et = _parse_entry_time(entry_time)
+        if et is None:
+            return _back(wk_key, "time")
+    vault = get_vault_path()
     try:
         created = create_task(
-            vault_root=get_vault_path(),
+            vault_root=vault,
             project_slug=project.strip() or None,
             task_name=name,
             estimated_pomodoros=est_pomodoros,
@@ -375,10 +399,48 @@ async def weekly_task_new(
         )
     except ProjectWriteError:
         return _back(wk_key, "task_exists")
-    # v3-I: land on the new row with its 排入 chip focused so 修修 adds a time
-    # immediately (修修: bare-create is fine, just jump me to the chip).
     new_slug = unicodedata.normalize("NFC", created.stem)
-    return _back(wk_key, saved="task_new", slug=new_slug, focus=True)
+    if ed is None:
+        # v3-I: land on the new row with its 排入 chip focused so 修修 adds a time
+        # immediately (修修: bare-create is fine, just jump me to the chip).
+        return _back(wk_key, saved="task_new", slug=new_slug, focus=True)
+    # 排程 — identical semantics to /weekly/plan (v3-E: time ⇒ timed block, blank ⇒
+    # all-day event; v3-G: land on the scheduled date's week so the chip is visible).
+    dest_week = week_for_date(ed).file_key
+    start = datetime.combine(ed, et or datetime.min.time())  # naive Asia/Taipei (D4)
+    try:
+        outcome = calendar_scheduler.schedule_entry(
+            vault,
+            new_slug,
+            start=start,
+            pomodoros=est_pomodoros,
+            title=name,
+            all_day=et is None,
+            reason=None,
+            force=False,
+        )
+    except WeekendReasonRequired:
+        # The task exists; only the schedule was refused (weekend needs a reason and
+        # this form carries none) — land on the row's 排入 chip, which has the field.
+        return _back(wk_key, "weekend", slug=new_slug, focus=True)
+    except (TaskNotFoundError, WeeklyWriteError) as exc:
+        logger.warning("weekly_task_new schedule_entry: %s", exc)
+        return _back(wk_key, "task", slug=new_slug, focus=True)
+    st = outcome.calendar_status
+    if st == calendar_scheduler.CREATED:
+        return _back(dest_week, saved="task_new_scheduled", slug=new_slug)
+    if st == calendar_scheduler.CONFLICT:
+        # Task created, schedule pre-checked and refused — pop the same conflict modal
+        # as 排入 (強排 / 改時間 / 取消排程 all operate on the now-existing row).
+        extra = _conflict_modal_params(
+            new_slug, entry_date.strip(), entry_time.strip(), est_pomodoros, None, outcome.conflicts
+        )
+        return _back(
+            wk_key, "cal_conflict", slug=new_slug, focus=True, n=len(outcome.conflicts), extra=extra
+        )
+    if st == calendar_scheduler.UNAVAILABLE:
+        return _back(dest_week, "cal_unavailable", slug=new_slug)
+    return _back(dest_week, "cal_failed", slug=new_slug)  # FAILED — event rolled back
 
 
 @page_router.post("/weekly/plan")
