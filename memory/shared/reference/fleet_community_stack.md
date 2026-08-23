@@ -43,8 +43,11 @@ cd /var/www/fleet.shosho.tw && sudo -u u2_fleet_shosho wp <command>
 
 - **LiteSpeed object cache drop-in 啟用中**（`wp-content/object-cache.php`）。裸 SQL 寫入後舊快取
   不會失效。
-- **`sql_mode` 不含 `STRICT_TRANS_TABLES`**。FluentCommunity 依賴這點把空字串塞進
-  `enum('active','blocked','pending')` 當作「自行停用」狀態。
+- **`sql_mode` 是分層的**（2026-08-22 複驗，修正舊說法「不含 strict」）：伺服器 global
+  **含** `STRICT_TRANS_TABLES`；是 WordPress 的 `wpdb::set_sql_mode()` 在 WP session 把
+  strict 剝掉，FluentCommunity 才能把空字串塞進 `enum('active','blocked','pending')` 當
+  「自行停用」狀態。⚠️ 走 `wp db query`／mysql CLI 的直寫跑在 **strict** 下，
+  `SET status=''` 這類寫入**會直接失敗**——寫入務必走 plugin Model 層（`wp eval-file`）。
 - 站上另有第三方 `fca-*` 系列 addon（`fca-content-manager` / `fca-events-pro` / `fca-hub` /
   `fca-multi-reactions` / `fca-pwa`），會讀 `fcom_*` 表，`fca-content-manager` 也會寫
   `fcom_space_user`。改動社群資料時記得它們的存在。
