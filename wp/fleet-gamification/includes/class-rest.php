@@ -148,7 +148,7 @@ final class Rest {
 		$limit = max( 1, min( 500, absint( $req['limit'] ) ) );
 		$types = self::csv_keys( (string) $req['types'] );
 
-		$sql = 'SELECT id, event_type, user_id, user_email, object_type, object_id, meta, created_at FROM ' .
+		$sql = 'SELECT id, event_type, user_id, user_email, object_type, object_id, meta, dedupe_key, created_at FROM ' .
 			Ledger::events_table() . ' WHERE id > %d';
 		$params = array( $after );
 		if ( $types ) {
