@@ -35,6 +35,7 @@ final class Plugin {
 
 		// REST 永遠註冊（/health 不受開關影響；業務端點內部自行檢查開關回 503）。
 		if ( class_exists( '\NakamaGam\Rest' ) ) {
+			self::ensure_roles(); // 依賴 Rest::CAP，必須在 require 之後
 			Rest::register();
 		}
 
@@ -44,6 +45,29 @@ final class Plugin {
 
 		if ( class_exists( '\NakamaGam\Capture' ) ) {
 			Capture::register();
+		}
+	}
+
+	/**
+	 * 服務角色與 capability（idempotent，roles 快取在 alloptions，檢查近乎免費）。
+	 * sanji 服務帳號＝一般社群成員 WP user ＋ 這個角色——最小權限，不是 administrator；
+	 * administrator 同步拿 cap 供營運除錯。
+	 */
+	private static function ensure_roles(): void {
+		if ( null === get_role( 'nakama_gam_service' ) ) {
+			add_role(
+				'nakama_gam_service',
+				'Gamification Service',
+				array(
+					'read'           => true,
+					Rest::CAP        => true,
+				)
+			);
+		}
+
+		$admin = get_role( 'administrator' );
+		if ( $admin && ! $admin->has_cap( Rest::CAP ) ) {
+			$admin->add_cap( Rest::CAP );
 		}
 	}
 }

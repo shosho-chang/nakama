@@ -1,0 +1,2 @@
+# 部署目標是 Linux（rsync 到 VPS）——整個子專案鎖 LF，Windows worktree 不得引入 CRLF。
+* text=auto eol=lf
