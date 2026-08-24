@@ -32,9 +32,9 @@ from fastapi import APIRouter, Cookie, Form, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
-from shared.background_job import atomic_job_write, job_expired, load_job, new_job
 from starlette.requests import Request
 
+from shared.background_job import atomic_job_write, job_expired, load_job, new_job
 from shared.config import get_db_path, get_vault_path
 from shared.log import get_logger
 from shared.release_store import ensure_target, get_release, register_release, update_target
