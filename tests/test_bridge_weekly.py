@@ -354,6 +354,7 @@ class TestRender:
         assert 'action="/bridge/weekly/plan/remove"' in body
         assert 'name="entry_time"' in body  # the merged form carries an optional time
         assert 'action="/bridge/weekly/sync-scheduled"' not in body  # retired in v3-B
+        assert "wk-ci-time" in body  # 修修 (2026-08-24): daily bullet 時段 cell
         assert "測試任務" in body
 
     def test_no_error_banner_by_default(self, client):
@@ -650,6 +651,50 @@ class TestTaskDetail:
         assert all(e["endTime"].startswith("2020-01-15") for e in entries)
         assert all(e["startTime"].startswith("2020-01-15") for e in entries)
         assert len({e["startTime"] for e in entries}) == 3  # no overlap-collapse
+
+    def test_log_manual_anchors_at_planned_time(self, client, tmp_path):
+        """修修 (2026-08-24): manual +1 on a day whose plan entry is TIMED anchors at
+        the planned END — backfilled 🍅 land inside the scheduled session (and its
+        week), not at `now`. Repeated clicks stack backwards through the window."""
+        timed = SAMPLE_TASK.replace(
+            "plan:\n  - date: 2026-06-03\n    pomodoros: 2",
+            "plan:\n  - date: 2026-06-03\n    pomodoros: 2\n"
+            "    start: '2026-06-03T09:00:00+08:00'\n    end: '2026-06-03T10:00:00+08:00'",
+        )
+        _task_path(tmp_path).write_text(timed, encoding="utf-8")
+        for _ in range(2):
+            client.post(
+                "/bridge/weekly/task/測試任務/log",
+                data={
+                    "mode": "pomodoro",
+                    "manual": "1",
+                    "entry_date": "2026-06-03",
+                    "week": WEEK_KEY,
+                },
+                follow_redirects=False,
+            )
+        first, second = _time_entries(tmp_path)[-2:]
+        assert first["endTime"].startswith("2026-06-03T10:00")  # planned end, not 23:59/now
+        assert first["startTime"].startswith("2026-06-03T09:35")
+        assert second["endTime"].startswith("2026-06-03T09:35")  # stacks backward in-window
+        assert second["startTime"].startswith("2026-06-03T09:10")
+
+    def test_log_manual_untimed_past_day_keeps_2359_anchor(self, client, tmp_path):
+        """SAMPLE_TASK's 2026-06-03 plan entry is plan-only (no start/end) — the manual
+        backfill keeps the original 23:59 backward-stacking anchor."""
+        client.post(
+            "/bridge/weekly/task/測試任務/log",
+            data={"mode": "pomodoro", "manual": "1", "entry_date": "2026-06-03", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        e = _time_entries(tmp_path)[-1]
+        assert e["endTime"].startswith("2026-06-03T23:59")
+
+    def test_task_page_backfill_defaults_to_last_scheduled_day(self, client):
+        """修修 (2026-08-24): 補記日期 prefills with the task's most recent scheduled
+        day (≤ today) so a review-backfill needs no manual date pick."""
+        body = client.get("/bridge/weekly/task/測試任務").text
+        assert 'id="tk-backfill-date" value="2026-06-03"' in body
 
     def test_log_future_entry_date_falls_back_to_today(self, client, tmp_path):
         """A future (or today's) entry_date is ignored — the block is stamped `now`, never
