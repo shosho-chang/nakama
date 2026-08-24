@@ -1,7 +1,7 @@
 # Reference — 自由艦隊 gamification 系統（上線後的操作事實）
 
 **Type:** reference
-**Created:** 2026-08-24（分享期 T0 當日）
+**Created:** 2026-08-24（分享期 T0 當日）；**Updated:** 2026-08-24（等級 v3＋身份軌）
 **Confidence:** high（全部為 production 實測值）
 
 ## 現況
@@ -26,6 +26,20 @@
 **`bookmark_received`（被收藏 100 XP／10 貝里）**——修修 2026-08-24 裁決「先鼓勵分享」。
 登入分（`presence_day`）**照捕捉但不入帳**；日後開啟＝改 env `GAM_SCORED_SOURCES`，不回溯。
 
+## 等級與身份（2026-08-24 定稿）
+
+- **等級稱號 v3 ＝ 偉大航路 15 島**（風車村→巴拉蒂→可可亞西村→顛倒山→雙子岬→磁鼓島→
+  阿拉巴斯坦→水之都→司法島→魚人島→佐烏→蛋糕島→和之國→艾爾巴夫→拉夫德魯）；
+  Lv.15＝150,000。曲線與稱號**只存在 `agents/sanji/rules.py`**，plugin 只拿等級帶四欄畫進度條。
+  門檻只准調低（CI `test_thresholds_never_rise` 擋），**公告日後凍結**。
+- **身份三態**：艦長（修修，admin 判定）／船長（在啟航宣言 space 發過文，
+  user meta `nakama_gam_captain_since`，一生一次）／見習船長（預設）。
+  option `nakama_gam_declaration_space`＝**2**（slug `manifesto`）。身份不給 XP。
+- 文案：進度＝「距離{下一座島}還有 N 海里」（1 XP＝1 海里）；滿級「已抵達拉夫德魯」；
+  找人＝「私訊 Sanji 或**艦長**」（船長現在指全體成員）。
+- **改名／改門檻不用遷移**：每日對帳第 5 項（等級回沖）全表按當前曲線重算，隔夜收斂；
+  急的話 `POST /nakama-gam/v1/balances/restamp`。
+
 ## 三個 vendor 縫隙（原始碼證實，勿「修掉」對策）
 
 1. **收藏沒有 hook**——`react_added`/`react_removed` 被 `if ($type == 'like')` gate 住。
@@ -44,6 +58,9 @@
 
 ## 操作備忘
 
+- ⚠️ **merge ≠ deployed**（2026-08-24 踩過）：rules.py 進 main 後 VPS Sanji 服務**不會自己換腦**，
+  沒跑 deploy 前它持續用舊曲線蓋 level 欄（新會員被蓋成佔位「Lv.1」）。金額不受影響、
+  回沖會自癒，但 **agents/sanji 的 PR 合併後要儘快跑 deploy_vps.sh**。
 - 部署：`ssh nakama-vps 'cd /home/nakama && ./scripts/deploy_vps.sh'`
   （會 pull main、按路徑重啟服務、plugin lint→rsync→contract probe，probe 紅燈 exit 5）
 - Contract probe（22 checks，一分鐘）：
