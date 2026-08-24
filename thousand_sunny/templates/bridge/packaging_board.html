@@ -28,6 +28,30 @@
 </section>
 
 <main class="page-main page-main--stack">
+  {% if focused_cut %}
+  <p class="sho-mono pkg-focus"><a href="/bridge/packaging/{{ episode_slug }}">← 查看本集全部 cuts</a> · 目前只審 {{ focused_cut }}</p>
+  {% endif %}
+  {% if release_pending %}
+  <div class="pkg-release-pending" role="status" aria-live="polite">
+    <strong>Packaging 已核准；正在由 Resolve 匯出全解析成品。</strong>
+    <span>完成後會自動進入 Publish review，這裡不會拿 review preview 代替正式檔。</span>
+  </div>
+  {% endif %}
+  {% if description_pending and description_state == 'generating' %}
+  <div class="pkg-release-pending" role="status" aria-live="polite">
+    <strong>正在產生 Description 草稿</strong>
+    <span>使用 subscription LLM；完成後會進入可手動修改的 Publish review，不會自動核准或上傳。</span>
+  </div>
+  {% elif description_pending and description_state == 'interrupted' %}
+  <div class="pkg-description-interrupted" role="alert">
+    <strong>DESCRIPTION INTERRUPTED</strong>
+    <span>{{ description_error }}</span>
+    <form method="post" action="/bridge/packaging/{{ episode_slug }}/description/retry">
+      <input type="hidden" name="cut_id" value="{{ focused_cut }}">
+      <button class="sho-btn sho-btn--ghost" type="submit">重試產生 Description</button>
+    </form>
+  </div>
+  {% endif %}
   <p class="sho-mono pkg-hint">重抽標題或封面 → 回 Cowork 跑 <code>title-brainstorm --batch</code> / <code>thumbnail-brainstorm</code>（gate 零 LLM，只裁決不生成）。</p>
 
   {% for view in cuts %}
@@ -45,6 +69,14 @@
          approved 回退判讀，維持既有集數的顯示。#}
       {% if approval and approval.approved %}
       <span class="sho-tag sho-tag--accent">APPROVED · PKG {{ approval.primary_package }}</span>
+      {% elif approval and approval.revision_job and approval.revision_job.status == 'queued' %}
+      <span class="sho-tag pkg-tag-revision">REVISION QUEUED</span>
+      {% elif approval and approval.revision_job and approval.revision_job.status == 'running' %}
+      <span class="sho-tag pkg-tag-revision">REVISION RUNNING</span>
+      {% elif approval and approval.revision_job and approval.revision_job.status == 'ready_for_review' %}
+      <span class="sho-tag pkg-tag-ready">READY FOR RE-REVIEW</span>
+      {% elif approval and approval.revision_job and approval.revision_job.status == 'failed' %}
+      <span class="sho-tag pkg-tag-rejected">REVISION FAILED</span>
       {% elif approval and (approval.decision == 'reject' or (approval.decision is none and approval.selected_variant is none and approval.bigtext_request is none and approval.render_request is none)) %}
       <span class="sho-tag pkg-tag-rejected">REJECTED</span>
       {% else %}
@@ -52,6 +84,25 @@
       {% endif %}
     </header>
     <div class="section-body">
+
+      {% if approval and approval.revision_job %}
+      <div class="pkg-revision-state pkg-revision-state--{{ approval.revision_job.status }}" role="status" aria-live="polite"{% if approval.revision_job.status in ['queued', 'running'] %} data-revision-live="true"{% endif %}>
+        <div>
+          <strong class="sho-mono-up">PACKAGING REVISION · {{ approval.revision_job.status | replace('_', ' ') }}</strong>
+          <p>{{ approval.revision_job.feedback }}</p>
+          <span class="sho-mono">request {{ approval.revision_job.request_id }} · attempt {{ approval.revision_job.attempt }}</span>
+          {% if approval.revision_job.error %}
+          <p class="pkg-revision-error">{{ approval.revision_job.error }}</p>
+          {% endif %}
+        </div>
+        {% if approval.revision_job.status == 'failed' %}
+        <form method="post" action="/bridge/packaging/{{ episode_slug }}/revision/retry">
+          <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
+          <button class="sho-btn sho-btn--ghost" type="submit">Retry revision</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
 
       {% if cut.brand_flags %}
       <div class="pkg-brand-flags" role="alert">
@@ -125,9 +176,35 @@
       <details class="pkg-compose" id="compose-{{ cut.cut_id }}"
                {% if composed_cut == cut.cut_id %}open{% endif %}>
         <summary class="sho-mono-up">組封面：選標題 ＋ 打大字 ＋ 挑臉（存完我再 render 一次）</summary>
-        {% set req = approval.render_request if approval else none %}
+        {% set editor = namespace(pkg=none) %}
+        {% for item in view.packages %}
+          {% if editor.pkg is none and editor_package_rank and item.pkg.title_rank == editor_package_rank %}{% set editor.pkg = item.pkg %}{% endif %}
+        {% endfor %}
+        {% for item in view.packages %}
+          {% if editor.pkg is none and item.pkg.render_recipe %}{% set editor.pkg = item.pkg %}{% endif %}
+        {% endfor %}
+        {% if editor.pkg is none and view.packages %}{% set editor.pkg = view.packages[0].pkg %}{% endif %}
+        {% set req = editor.pkg.render_recipe if editor.pkg else none %}
         <form method="post" action="/bridge/packaging/{{ episode_slug }}/compose" class="pkg-compose-form">
           <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
+          <input type="hidden" name="package_rank" value="{{ editor.pkg.title_rank if editor.pkg else 1 }}">
+
+          <fieldset class="pkg-recipe-picker">
+            <legend class="sho-mono-up">編輯哪一個 package</legend>
+            <div class="pkg-recipe-tabs" role="tablist" aria-label="選擇要編輯的 package">
+              {% for item in view.packages %}
+              <button type="button" class="sho-btn sho-btn--ghost pkg-recipe-tab"
+                      role="tab" data-package-rank="{{ item.pkg.title_rank }}"
+                      aria-selected="{{ 'true' if editor.pkg and editor.pkg.title_rank == item.pkg.title_rank else 'false' }}">
+                Package #{{ item.pkg.title_rank }}
+              </button>
+              {% endfor %}
+            </div>
+            <p class="sho-mono pkg-recipe-missing" role="status" hidden>
+              這個 package 尚無可還原的 render recipe；目前只帶入它自己的標題與 cutout，其他欄位不會借用別張 package。
+            </p>
+            <script type="application/json" class="pkg-recipe-data">{{ view.recipe_payload | tojson }}</script>
+          </fieldset>
 
           <div class="field">
             <label class="field-label" for="cr-{{ cut.cut_id }}">用哪一條標題</label>
@@ -214,14 +291,15 @@
           </div>
 
           {% for role, label in [('host', '修修'), ('guest', '來賓')] %}
-          <fieldset class="pkg-cards pkg-cutout-set">
+          <fieldset class="pkg-cards pkg-cutout-set pkg-cutout-grid">
             <legend class="sho-mono-up">{{ label }}的臉</legend>
             {% for c in cutouts[role] %}
             {% set current = (req.host_cutout if role == 'host' else req.guest_cutout) if req else none %}
             <label class="pkg-card pkg-card--cutout{% if current == c.vault_path %} pkg-card--primary{% endif %}">
               <input type="radio" name="{{ role }}_cutout" value="{{ c.vault_path }}"
+                     data-preview-url="/bridge/projects/gate/thumbnail/cutout/{{ episode_slug }}/{{ c.file }}?v={{ c.version }}"
                      {% if current == c.vault_path %}checked{% elif not current and loop.first %}checked{% endif %}>
-              <img src="/bridge/projects/gate/thumbnail/cutout/{{ episode_slug }}/{{ c.file }}"
+              <img src="/bridge/projects/gate/thumbnail/cutout/{{ episode_slug }}/{{ c.file }}?v={{ c.version }}"
                    alt="{{ label }} {{ c.emotion }}" loading="lazy">
               <div class="sho-mono pkg-card-meta">{{ c.emotion or c.file }}</div>
             </label>
@@ -230,6 +308,11 @@
             {% endfor %}
           </fieldset>
           {% endfor %}
+
+          <input type="hidden" name="book_cover" value="{{ req.book_cover if req and req.book_cover else '' }}">
+          <input type="hidden" name="book_cover_opacity" value="{{ req.book_cover_opacity if req else 0.42 }}">
+          <input type="hidden" name="book_cover_brightness" value="{{ req.book_cover_brightness if req else 0.38 }}">
+          <input type="hidden" name="book_cover_height_pct" value="{{ req.book_cover_height_pct if req else 100 }}">
 
           {# 排版預覽（修修 2026-08-15：「有辦法讓我直接在 web UI 去做調整嗎？讓我
              可以縮放跟移動位置？」）。舞台是 1280×720 的等比縮小版，CSS 跟
@@ -241,6 +324,8 @@
             <div class="pkg-stage" data-cut="{{ cut.cut_id }}">
               <div class="pkg-stage-inner">
                 <img class="st-bg" src="/bridge/thumbnail/still-asset/bg" alt="">
+                <img class="st-book" alt="書封背景"
+                     {% if req and req.book_cover %}src="/bridge/packaging/{{ episode_slug }}/recipe-asset/{{ req.book_cover.split('/')[-1] }}"{% endif %}>
                 <img class="st-person st-host" data-role="host" alt="修修" draggable="false"
                      src="/bridge/projects/gate/thumbnail/cutout/{{ episode_slug }}/{{ (req.host_cutout if req else cutouts.host[0].vault_path if cutouts.host else '').split('/')[-1] }}">
                 <img class="st-person st-guest" data-role="guest" alt="來賓" draggable="false"
@@ -338,14 +423,20 @@
         <fieldset class="pkg-cards">
           <legend class="sho-mono-up">選 primary package（三個都願意花早期 impression 測才 approve）</legend>
           {% for item in view.packages %}
-          <label class="pkg-card{% if approval and approval.approved and approval.primary_package == item.pkg.title_rank %} pkg-card--primary{% endif %}">
+          <label class="pkg-card{% if approval and approval.approved and approval.primary_package == item.pkg.title_rank %} pkg-card--primary{% endif %}"
+                 data-composition-verified="{{ 'true' if item.composition.verified else 'false' }}">
             <input type="radio" name="primary_package" value="{{ item.pkg.title_rank }}"
                    {% if approval and approval.approved and approval.primary_package == item.pkg.title_rank %}checked{% endif %}
                    {% if not approval or not approval.approved %}{% if loop.first %}checked{% endif %}{% endif %}>
-            <img src="/bridge/projects/gate/thumbnail/packaging/{{ episode_slug }}/{{ item.pkg.thumbnail_png.split('/')[-1] }}"
+            <img src="/bridge/packaging/{{ episode_slug }}/thumbnail/{{ item.pkg.thumbnail_png.split('/')[-1] }}"
                  alt="package {{ item.pkg.title_rank }} 封面：{{ item.title.text if item.title else '' }}" loading="lazy">
             <div class="pkg-card-title">{{ item.title.text if item.title else '（缺 rank ' ~ item.pkg.title_rank ~ ' 標題）' }}</div>
             <div class="sho-mono pkg-card-meta">#{{ item.pkg.title_rank }} · {{ item.pkg.thumb_archetype_id }} · {{ item.pkg.joint_pairing_id }}</div>
+            <div class="sho-mono pkg-composition-status{% if not item.composition.verified %} pkg-composition-status--blocked{% endif %}"
+                 role="status" data-composition-verified="{{ 'true' if item.composition.verified else 'false' }}">
+              {% if item.composition.verified %}COMPOSITION VERIFIED{% else %}COMPOSITION BLOCKED{% endif %}
+              <span>{{ item.composition.reason }}</span>
+            </div>
           </label>
           {% endfor %}
         </fieldset>
@@ -371,6 +462,7 @@
           <button class="sho-btn" type="submit" name="decision" value="approve">Approve</button>
           <button class="sho-btn sho-btn--ghost" type="submit" name="decision" value="reject">Reject（附理由）</button>
         </div>
+        <p class="sho-mono pkg-approve-error" role="alert" aria-live="assertive"></p>
       </form>
 
       {% else %}{# short cut #}
@@ -410,14 +502,31 @@
 </main>
 
 <style>
+  .pkg-focus { margin: 0; }
+  .pkg-focus a { color: var(--sho-text-2); }
+  .pkg-release-pending { display: grid; gap: var(--sho-s-1); border-left: 3px solid var(--sho-accent); background: var(--sho-accent-soft); padding: var(--sho-s-3) var(--sho-s-4); }
+  .pkg-release-pending span { color: var(--sho-text-2); }
+  .pkg-description-interrupted { display: grid; gap: var(--sho-s-2); border-left: 3px solid var(--sho-error); background: var(--sho-bg-2); padding: var(--sho-s-3) var(--sho-s-4); }
+  .pkg-description-interrupted span, .pkg-approve-error { color: var(--sho-error); }
   .pkg-hint { margin: 0 0 var(--sho-s-4); }
   .pkg-hint code { font-size: 12px; }
+  .pkg-composition-status { display: grid; gap: var(--sho-s-1); color: var(--sho-success); }
+  .pkg-composition-status span { color: var(--sho-text-2); text-transform: none; }
+  .pkg-composition-status--blocked { color: var(--sho-error); }
   .pkg-brand-flags { margin-bottom: var(--sho-s-3); display: flex; gap: var(--sho-s-2); flex-wrap: wrap; }
   .pkg-flag {
     color: var(--sho-error); border: 1px solid color-mix(in oklch, var(--sho-error) 45%, transparent);
     border-radius: var(--sho-r-1); padding: 2px var(--sho-s-2); font-size: 12px;
   }
   .pkg-tag-rejected { color: var(--sho-error); border-color: color-mix(in oklch, var(--sho-error) 45%, transparent); }
+  .pkg-tag-revision { color: var(--sho-info); border-color: color-mix(in oklch, var(--sho-info) 45%, transparent); }
+  .pkg-tag-ready { color: var(--sho-success); border-color: color-mix(in oklch, var(--sho-success) 45%, transparent); }
+  .pkg-revision-state { display: flex; justify-content: space-between; gap: var(--sho-s-4); align-items: start; padding: var(--sho-s-3); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1); background: var(--sho-bg-2); }
+  .pkg-revision-state p { margin: var(--sho-s-1) 0; color: var(--sho-text-2); }
+  .pkg-revision-state--queued, .pkg-revision-state--running { border-color: color-mix(in oklch, var(--sho-info) 45%, var(--sho-line)); }
+  .pkg-revision-state--ready_for_review { border-color: color-mix(in oklch, var(--sho-success) 45%, var(--sho-line)); }
+  .pkg-revision-state--failed { border-color: color-mix(in oklch, var(--sho-error) 45%, var(--sho-line)); }
+  .pkg-revision-error { color: var(--sho-error) !important; }
   .pkg-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--sho-s-4); border: 0; padding: 0; margin: 0 0 var(--sho-s-4); }
   .pkg-cards legend { margin-bottom: var(--sho-s-3); color: var(--sho-muted); }
   .pkg-card {
@@ -431,6 +540,10 @@
   .pkg-variant-set { margin-bottom: 14px; }
   .pkg-card--variant img { width: 100%; display: block; }
   .pkg-compose { margin: 12px 0; }
+  .pkg-recipe-picker { border: 0; padding: 0; margin: 0 0 var(--sho-s-4); }
+  .pkg-recipe-tabs { display: flex; gap: var(--sho-s-2); flex-wrap: wrap; margin-top: var(--sho-s-2); }
+  .pkg-recipe-tab[aria-selected="true"] { border-color: var(--sho-accent); background: var(--sho-accent-soft); }
+  .pkg-recipe-missing { color: var(--sho-error); margin: var(--sho-s-2) 0 0; }
   .pkg-compose-text { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
   .pkg-fontsize { color: var(--sho-muted); font-variant-numeric: tabular-nums; }
   .pkg-cutout-set { margin-bottom: 14px; }
@@ -448,6 +561,13 @@
   .pkg-card:has(input:focus-visible) { box-shadow: var(--sho-focus); }
   .pkg-card input[type="radio"] { position: absolute; opacity: 0; }
   .pkg-card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--sho-r-1); display: block; background: var(--sho-bg-3); }
+  .pkg-cutout-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--sho-s-2); }
+  .pkg-cutout-grid .pkg-card { padding: var(--sho-s-2); min-width: 0; }
+  .pkg-cutout-grid .pkg-card img { aspect-ratio: 3 / 4; object-fit: contain; object-position: center bottom; }
+  .pkg-cutout-grid .pkg-card-meta { overflow-wrap: anywhere; }
+  @media (max-width: 1200px) { .pkg-cutout-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+  @media (max-width: 840px) { .pkg-cutout-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 520px) { .pkg-cutout-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .pkg-card-title { margin-top: var(--sho-s-2); font-weight: 600; line-height: 1.6; }
   .pkg-card-meta { margin-top: var(--sho-s-1); }
   .pkg-card--primary { border-color: var(--sho-accent); }
@@ -503,6 +623,13 @@
     --glow: rgba(243,116,37,0.5); --glow-soft: rgba(243,116,37,0.3); --fade: 9%;
   }
   .st-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+  .st-book {
+    position: absolute; left: 50%; top: 50%; z-index: 2; width: auto; max-width: 50%;
+    height: var(--book-h, 94%); object-fit: contain; transform: translate(-50%, -50%);
+    opacity: var(--book-opacity, 0.38);
+    filter: brightness(var(--book-brightness, 0.52)) saturate(0.78);
+  }
+  .st-book:not([src]) { display: none; }
   .st-person {
     position: absolute; bottom: 0; z-index: 5; object-fit: contain; cursor: grab;
     filter: drop-shadow(0 0 36px var(--glow)) drop-shadow(0 0 90px var(--glow-soft));
@@ -561,6 +688,60 @@
     set("hl", btn.dataset.hl);
     document.getElementById("b1-" + cut)?.focus();
     syncStages();
+  });
+
+  function loadPackageRecipe(button) {
+    const form = button.closest(".pkg-compose-form");
+    const payload = JSON.parse(form.querySelector(".pkg-recipe-data").textContent);
+    const row = payload.find((item) => item.package_rank === Number(button.dataset.packageRank));
+    if (!row) return;
+    const recipe = row.recipe;
+    const setValue = (name, value) => {
+      const field = form.querySelector(`[name="${name}"]`);
+      if (field) field.value = value ?? "";
+    };
+    setValue("package_rank", row.package_rank);
+    setValue("title_rank", recipe?.title_rank ?? row.title_rank);
+    for (let i = 1; i <= 3; i += 1) setValue(`big_text_${i}`, recipe?.big_text?.[i - 1] ?? "");
+    setValue("highlight_text", recipe?.highlight_text ?? "");
+    setValue("title_max_width", recipe?.title_max_width ?? 580);
+    setValue("guest_credit", recipe?.guest_credit ?? "");
+    setValue("book_cover", recipe?.book_cover ?? "");
+    setValue("book_cover_opacity", recipe?.book_cover_opacity ?? 0.42);
+    setValue("book_cover_brightness", recipe?.book_cover_brightness ?? 0.38);
+    setValue("book_cover_height_pct", recipe?.book_cover_height_pct ?? 100);
+    for (const role of ["host", "guest"]) {
+      const wanted = recipe?.[`${role}_cutout`] ?? row[`${role}_cutout`];
+      const picked = [...form.querySelectorAll(`input[name="${role}_cutout"]`)]
+        .find((input) => input.value === wanted);
+      for (const input of form.querySelectorAll(`input[name="${role}_cutout"]`)) {
+        input.checked = input === picked;
+      }
+    }
+    const geometry = recipe?.geometry ?? null;
+    for (const input of form.querySelectorAll("[data-geo]")) {
+      const key = input.dataset.geo.replace("_height", "_height_pct")
+        .replace("_x", "_x_pct").replace("_y", "_y_pct");
+      input.value = geometry?.[key] ?? "";
+    }
+    const manual = form.querySelector('input[name="geometry_mode"]');
+    if (manual) manual.checked = Boolean(recipe?.geometry_manual);
+    form.querySelector(".pkg-recipe-missing").hidden = Boolean(recipe);
+    for (const tab of form.querySelectorAll(".pkg-recipe-tab")) {
+      tab.setAttribute("aria-selected", String(tab === button));
+    }
+    const stage = form.querySelector(".pkg-stage");
+    if (stage) {
+      syncStageText(stage);
+      syncStageFaces(stage);
+      syncStageBook(stage);
+      applyStage(stage);
+    }
+  }
+
+  document.addEventListener("click", (event) => {
+    const tab = event.target.closest(".pkg-recipe-tab");
+    if (tab) loadPackageRecipe(tab);
   });
 
   // ── 排版舞台（修修 2026-08-15：「讓我可以縮放跟移動位置」）─────────────────
@@ -644,11 +825,32 @@
     for (const role of ["host", "guest"]) {
       const picked = form.querySelector(`input[name="${role}_cutout"]:checked`);
       if (!picked) continue;
-      const file = picked.value.split("/").pop();
       const img = stage.querySelector(`.st-${role}`);
-      const next = img.src.replace(/[^/]+$/, encodeURIComponent(file));
-      if (img.src !== next) img.src = next;
+      const next = picked.dataset.previewUrl;
+      if (next && img.src !== new URL(next, window.location.origin).href) img.src = next;
     }
+  }
+
+  function syncStageBook(stage) {
+    const form = stage.closest("form");
+    const path = form.querySelector('[name="book_cover"]')?.value || "";
+    const image = stage.querySelector(".st-book");
+    if (!path) {
+      image.removeAttribute("src");
+      return;
+    }
+    const file = path.split("/").pop();
+    const base = new URL(form.action, window.location.origin).pathname
+      .replace(/\/compose$/, "/recipe-asset/");
+    image.src = base + encodeURIComponent(file);
+    const inner = stage.querySelector(".pkg-stage-inner");
+    const val = (name, fallback) => {
+      const parsed = parseFloat(form.querySelector(`[name="${name}"]`)?.value);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    };
+    inner.style.setProperty("--book-opacity", val("book_cover_opacity", 0.42));
+    inner.style.setProperty("--book-brightness", val("book_cover_brightness", 0.38));
+    inner.style.setProperty("--book-h", val("book_cover_height_pct", 100) + "%");
   }
 
   function syncStages() {
@@ -656,6 +858,7 @@
       stageScale(stage);
       syncStageText(stage);
       syncStageFaces(stage);
+      syncStageBook(stage);
       applyStage(stage);
     }
   }
@@ -732,6 +935,72 @@
     for (const stage of document.querySelectorAll(".pkg-stage")) stageScale(stage);
   });
   syncStages();
+  for (const tab of document.querySelectorAll('.pkg-recipe-tab[aria-selected="true"]')) {
+    loadPackageRecipe(tab);
+  }
+
+  for (const form of document.querySelectorAll(".pkg-approve-form:not(.pkg-approve-form--short)")) {
+    form.addEventListener("submit", (event) => {
+      if (event.submitter?.value !== "approve") return;
+      const selected = form.querySelector('input[name="primary_package"]:checked')?.closest(".pkg-card");
+      if (selected?.dataset.compositionVerified === "true") return;
+      event.preventDefault();
+      const error = form.querySelector(".pkg-approve-error");
+      if (error) error.textContent = "COMPOSITION BLOCKED：中央主圖或保護區尚未通過驗證。";
+    });
+  }
 </script>
+{% if release_pending %}
+<script>
+  const pollRelease = async () => {
+    try {
+      const response = await fetch(window.location.href, {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      if (response.redirected && response.url !== window.location.href) {
+        window.location.assign(response.url);
+        return;
+      }
+    } catch (_) {
+      // Resolve may still be working while the local app briefly reconnects.
+    }
+    window.setTimeout(pollRelease, 5000);
+  };
+  window.setTimeout(pollRelease, 5000);
+</script>
+{% endif %}
+{% if description_pending and description_state == 'generating' %}
+<script>
+  const pollDescription = async () => {
+    try {
+      const response = await fetch(window.location.href, {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      if (response.redirected && response.url !== window.location.href) {
+        window.location.assign(response.url);
+        return;
+      }
+      const body = await response.text();
+      if (body.includes("DESCRIPTION INTERRUPTED")) {
+        window.location.reload();
+        return;
+      }
+    } catch (_) {
+      // The local worker may still be finishing while Bridge reconnects.
+    }
+    window.setTimeout(pollDescription, 3000);
+  };
+  window.setTimeout(pollDescription, 3000);
+</script>
+{% endif %}
+{% if revision_polling %}
+<script>
+  if (document.querySelector('[data-revision-live="true"]')) {
+    window.setTimeout(() => window.location.reload(), 5000);
+  }
+</script>
+{% endif %}
 </body>
 </html>

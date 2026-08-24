@@ -19,22 +19,31 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
+import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Cookie, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from shared.background_job import atomic_job_write, job_expired, load_job, new_job
 from starlette.requests import Request
 
-from shared.config import get_vault_path
+from shared.config import get_db_path, get_vault_path
 from shared.log import get_logger
+from shared.release_store import ensure_target, get_release, register_release, update_target
 from shared.schemas.packaging import (
     ApprovalFileV1,
     ApprovalV1,
     GeometryV1,
     PackagesFileV1,
+    PackagingRevisionJobV1,
     RenderRequestV1,
     parse_approval_file,
     parse_packages,
@@ -51,6 +60,80 @@ _templates = Jinja2Templates(
 _EP_SLUG_MAX = 80
 _TITLE_MAX = 200
 _NOTE_MAX = 2000
+_SAFE_RECEIPT_ID = re.compile(r"^[A-Za-z0-9._-]+$")
+_DESCRIPTION_GENERATING = "DESCRIPTION_DRAFT_GENERATING"
+_DESCRIPTION_INTERRUPTED = "DESCRIPTION_DRAFT_INTERRUPTED:"
+_DESCRIPTION_TIMEOUT_SECONDS = 900
+_DESCRIPTION_PROCESSES: dict[tuple[str, str], subprocess.Popen] = {}
+
+
+class CompositionBBoxV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    x: float = Field(ge=0)
+    y: float = Field(ge=0)
+    width: float = Field(gt=0)
+    height: float = Field(gt=0)
+
+
+class LongThumbnailCompositionReceiptV2(BaseModel):
+    """Measured long-highlight composition accepted by the packaging gate."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_: Literal["nakama.long_thumbnail_composition.v2"] = Field(alias="schema")
+    episode: str
+    cut_id: str
+    package_rank: int = Field(ge=1, le=3)
+    thumbnail_png: str
+    canvas_width: int = Field(gt=0)
+    canvas_height: int = Field(gt=0)
+    center_visual_asset: str = Field(min_length=1)
+    thumbnail_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    center_visual_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    measurement_sidecar: str = Field(min_length=1)
+    measurement_sidecar_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    renderer_identity: str = Field(min_length=1)
+    protected_center_bbox: CompositionBBoxV1
+    host_bbox: CompositionBBoxV1
+    guest_bbox: CompositionBBoxV1
+    title_bbox: CompositionBBoxV1 | None = None
+    max_protected_overlap_ratio: float = Field(default=0.05, ge=0, le=0.05)
+
+    @model_validator(mode="after")
+    def _bounds_fit_canvas(self) -> "LongThumbnailCompositionReceiptV2":
+        for name in ("protected_center_bbox", "host_bbox", "guest_bbox", "title_bbox"):
+            box = getattr(self, name)
+            if box is None:
+                continue
+            if box.x + box.width > self.canvas_width or box.y + box.height > self.canvas_height:
+                raise ValueError(f"{name} exceeds canvas bounds")
+        protected = self.protected_center_bbox
+        if not (
+            protected.x <= self.canvas_width / 2 <= protected.x + protected.width
+            and protected.width * protected.height >= self.canvas_width * self.canvas_height * 0.15
+        ):
+            raise ValueError("protected_center_bbox 必須覆蓋畫布中央且至少占畫布 15%")
+        protected_area = protected.width * protected.height
+        for name in ("host_bbox", "guest_bbox", "title_bbox"):
+            box = getattr(self, name)
+            if box is None:
+                continue
+            overlap_width = max(
+                0.0,
+                min(box.x + box.width, protected.x + protected.width) - max(box.x, protected.x),
+            )
+            overlap_height = max(
+                0.0,
+                min(box.y + box.height, protected.y + protected.height) - max(box.y, protected.y),
+            )
+            overlap_ratio = overlap_width * overlap_height / protected_area
+            if overlap_ratio > self.max_protected_overlap_ratio:
+                raise ValueError(
+                    f"{name} overlaps protected center by {overlap_ratio:.3f}; "
+                    f"maximum is {self.max_protected_overlap_ratio:.3f}"
+                )
+        return self
 
 
 def _shosho_asset_version() -> str:
@@ -99,28 +182,46 @@ def _load_brief(ep_dir: Path, cut_id: str) -> dict | None:
 def _load_cutout_choices(episode_slug: str) -> dict[str, list[dict]]:
     """列出這集可選的 cutout（vault `Attachments/cutouts/podcast/<slug>/`）。
 
-    只讀 `cutouts_manifest.json` 的 validated 清單——中間迭代檔（`_iterations/`、
-    未定稿的版本）不該出現在挑選器裡（skill v2.2 教訓 15：cutout 資料夾是迭代
-    歷史不是素材庫）。manifest 不在就退回列頂層 PNG，但標記 unvalidated。
+    `records` 是本集所有已產出的正式 cutout；`validated` 只是量測狀態，不能拿來
+    當 picker 過濾器。只收 records 中且頂層 PNG 實際存在的項目，避免把迭代路徑
+    或 stale manifest row 呈現成可選素材。舊 manifest 沒 records 才退回 validated，
+    再舊則列頂層 PNG，三條路徑都 fail-visible 標示 validated 狀態。
     """
     d = get_vault_path() / "Attachments" / "cutouts" / "podcast" / episode_slug
     out: dict[str, list[dict]] = {"host": [], "guest": []}
     if not d.is_dir():
         return out
     manifest = d / "cutouts_manifest.json"
-    names: list[str]
-    validated = True
+    rows: list[dict] = []
+    validated_names: set[str] = set()
     if manifest.is_file():
         try:
-            names = sorted(json.loads(manifest.read_text(encoding="utf-8")).get("validated", {}))
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            validated_names = set((payload.get("validated") or {}).keys())
+            for record in payload.get("records") or []:
+                if not isinstance(record, dict) or not isinstance(record.get("file"), str):
+                    continue
+                rows.append(record)
+            if not rows:
+                rows = [{"file": name} for name in sorted(validated_names)]
         except json.JSONDecodeError:
-            names, validated = sorted(p.name for p in d.glob("*.png")), False
-    else:
-        names, validated = sorted(p.name for p in d.glob("*.png")), False
-    for name in names:
-        if not (d / name).is_file():
+            rows = []
+    if not rows:
+        rows = [{"file": p.name} for p in sorted(d.glob("*.png"))]
+    seen: set[str] = set()
+    for record in rows:
+        name = record["file"]
+        if name in seen:
             continue
-        role = "host" if name.startswith("host") else "guest" if name.startswith("guest") else None
+        seen.add(name)
+        asset = d / name
+        if not asset.is_file():
+            continue
+        role = record.get("role")
+        if role not in {"host", "guest"}:
+            role = (
+                "host" if name.startswith("host") else "guest" if name.startswith("guest") else None
+            )
         if role is None:
             continue
         parts = name.removesuffix(".png").split("_")
@@ -128,8 +229,12 @@ def _load_cutout_choices(episode_slug: str) -> dict[str, list[dict]]:
             {
                 "file": name,
                 "vault_path": f"Attachments/cutouts/podcast/{episode_slug}/{name}",
-                "emotion": parts[-1] if len(parts) >= 3 else "",
-                "validated": validated,
+                "emotion": record.get("emotion") or (parts[-1] if len(parts) >= 3 else ""),
+                "validated": bool(record.get("validated") or name in validated_names),
+                # The selector intentionally uses stable filenames so saved recipes do not
+                # drift.  The preview URL therefore needs a content version; otherwise a
+                # replaced PNG remains visually stale in the browser cache.
+                "version": hashlib.sha256(asset.read_bytes()).hexdigest(),
             }
         )
     return out
@@ -208,14 +313,46 @@ def _board_context(episode_slug: str) -> dict:
     cuts = []
     for cut in pkg.cuts:
         titles_by_rank = {t.rank: t for t in cut.titles}
+        package_views = []
+        for package in cut.packages:
+            package_views.append(
+                {
+                    "pkg": package,
+                    "title": titles_by_rank.get(package.title_rank),
+                    "composition": _composition_status(
+                        ep_dir,
+                        episode=pkg.episode,
+                        cut_id=cut.cut_id,
+                        package_rank=package.title_rank,
+                        thumbnail_png=package.thumbnail_png,
+                    ),
+                }
+            )
+        recipe_payload = [
+            {
+                "package_rank": item["pkg"].title_rank,
+                "title_rank": (
+                    item["pkg"].render_recipe.title_rank
+                    if item["pkg"].render_recipe
+                    else item["pkg"].title_rank
+                ),
+                "host_cutout": item["pkg"].host_cutout,
+                "guest_cutout": item["pkg"].guest_cutout,
+                "recipe": (
+                    item["pkg"].render_recipe.model_dump(mode="json")
+                    if item["pkg"].render_recipe
+                    else None
+                ),
+            }
+            for item in package_views
+        ]
         view = {
             "cut": cut,
             "approval": approval_by_cut.get(cut.cut_id),
-            "packages": [
-                {"pkg": p, "title": titles_by_rank.get(p.title_rank)} for p in cut.packages
-            ],
+            "packages": package_views,
             "runners_up": [t for t in cut.titles if t.rank >= 4],
             "brief": _load_brief(ep_dir, cut.cut_id),
+            "recipe_payload": recipe_payload,
         }
         cuts.append(view)
     return {
@@ -224,6 +361,385 @@ def _board_context(episode_slug: str) -> dict:
         "cuts": cuts,
         "cutouts": _load_cutout_choices(episode_slug),
     }
+
+
+def _composition_receipt_path(ep_dir: Path, cut_id: str, package_rank: int) -> Path:
+    if not _SAFE_RECEIPT_ID.fullmatch(cut_id):
+        raise HTTPException(status_code=409, detail="composition receipt cut_id 不安全")
+    return ep_dir / "composition_receipts" / f"{cut_id}-r{package_rank}.json"
+
+
+def _load_composition_receipt(
+    ep_dir: Path,
+    *,
+    episode: str,
+    cut_id: str,
+    package_rank: int,
+    thumbnail_png: str,
+    vault_root: Path | None = None,
+) -> LongThumbnailCompositionReceiptV2:
+    path = _composition_receipt_path(ep_dir, cut_id, package_rank)
+    if not path.is_file():
+        raise HTTPException(
+            status_code=409,
+            detail=f"composition receipt 缺失: {path.name}；長 highlight 必須保留中央主圖",
+        )
+    try:
+        receipt = LongThumbnailCompositionReceiptV2.model_validate_json(
+            path.read_text(encoding="utf-8")
+        )
+    except (OSError, ValidationError) as exc:
+        raise HTTPException(
+            status_code=422, detail=f"composition receipt 無效: {str(exc)[:500]}"
+        ) from exc
+    expected = (episode, cut_id, package_rank, thumbnail_png)
+    actual = (
+        receipt.episode,
+        receipt.cut_id,
+        receipt.package_rank,
+        receipt.thumbnail_png,
+    )
+    if actual != expected:
+        raise HTTPException(
+            status_code=409,
+            detail="composition receipt 與 selected package 不一致",
+        )
+    asset_ref = receipt.center_visual_asset.replace("\\", "/")
+    if (
+        asset_ref.startswith("/")
+        or re.match(r"^[A-Za-z]:/", asset_ref)
+        or ".." in Path(asset_ref).parts
+        or Path(asset_ref).suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}
+    ):
+        raise HTTPException(status_code=422, detail="center visual asset 路徑無效")
+    vault_root = (vault_root or get_vault_path()).resolve()
+    asset_path = (vault_root / asset_ref).resolve()
+    try:
+        asset_path.relative_to(ep_dir.resolve())
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="center visual asset 必須位於該集 packaging 目錄",
+        ) from exc
+    if not asset_path.is_file():
+        raise HTTPException(status_code=409, detail="center visual asset 檔案不存在")
+    thumbnail_ref = receipt.thumbnail_png.replace("\\", "/")
+    sidecar_ref = receipt.measurement_sidecar.replace("\\", "/")
+    for label, ref in (("thumbnail", thumbnail_ref), ("measurement sidecar", sidecar_ref)):
+        if ref.startswith("/") or re.match(r"^[A-Za-z]:/", ref) or ".." in Path(ref).parts:
+            raise HTTPException(status_code=422, detail=f"{label} 路徑無效")
+    thumbnail_path = (vault_root / thumbnail_ref).resolve()
+    sidecar_path = (vault_root / sidecar_ref).resolve()
+    try:
+        thumbnail_path.relative_to(ep_dir.resolve())
+        sidecar_path.relative_to(ep_dir.resolve())
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail="composition evidence 必須位於該集 packaging 目錄"
+        ) from exc
+    for label, evidence_path, expected_hash in (
+        ("thumbnail", thumbnail_path, receipt.thumbnail_sha256),
+        ("center visual", asset_path, receipt.center_visual_sha256),
+        ("measurement sidecar", sidecar_path, receipt.measurement_sidecar_sha256),
+    ):
+        if not evidence_path.is_file():
+            raise HTTPException(status_code=409, detail=f"{label} 檔案不存在")
+        if hashlib.sha256(evidence_path.read_bytes()).hexdigest() != expected_hash:
+            raise HTTPException(status_code=409, detail=f"{label} hash 不一致")
+    try:
+        measurement = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=422, detail="measurement sidecar 無效") from exc
+    renderer = measurement.get("renderer") or {}
+    measured_identity = f"{renderer.get('name')}@{renderer.get('version')}"
+    center_hash = (measurement.get("assets") or {}).get("prop_image_data_url", {}).get("sha256")
+    if (
+        measurement.get("schema") != "nakama.thumbnail_composition_measurement.v1"
+        or measurement.get("composition") != "thumbnail_reaction"
+        or measured_identity != receipt.renderer_identity
+        or measurement.get("png_sha256") != receipt.thumbnail_sha256
+        or center_hash != receipt.center_visual_sha256
+    ):
+        raise HTTPException(status_code=409, detail="measurement sidecar identity/hash 不一致")
+    measured_canvas = measurement.get("canvas") or {}
+    measured_boxes = measurement.get("bboxes") or {}
+    expected_boxes = {
+        "protected_center_bbox": receipt.protected_center_bbox.model_dump(),
+        "host_bbox": receipt.host_bbox.model_dump(),
+        "guest_bbox": receipt.guest_bbox.model_dump(),
+        "title_bbox": receipt.title_bbox.model_dump() if receipt.title_bbox else None,
+    }
+    if (
+        measured_canvas != {"width": receipt.canvas_width, "height": receipt.canvas_height}
+        or measured_boxes != expected_boxes
+    ):
+        raise HTTPException(status_code=409, detail="measurement sidecar bbox 與 receipt 不一致")
+    return receipt
+
+
+def _composition_status(
+    ep_dir: Path,
+    *,
+    episode: str,
+    cut_id: str,
+    package_rank: int,
+    thumbnail_png: str,
+) -> dict:
+    try:
+        receipt = _load_composition_receipt(
+            ep_dir,
+            episode=episode,
+            cut_id=cut_id,
+            package_rank=package_rank,
+            thumbnail_png=thumbnail_png,
+        )
+    except HTTPException as exc:
+        return {"verified": False, "reason": str(exc.detail)}
+    return {
+        "verified": True,
+        "reason": "中央主圖與人物／標題保護區已驗證",
+        "center_visual_asset": receipt.center_visual_asset,
+    }
+
+
+def _publish_url(episode: str, cut_id: str) -> str:
+    return f"/bridge/publish/{quote(episode, safe='')}/{quote(cut_id, safe='')}"
+
+
+def _youtube_target(release: dict) -> dict:
+    target = next((row for row in release["targets"] if row["platform"] == "youtube"), None)
+    if target is None:
+        raise HTTPException(status_code=409, detail="youtube release target 不存在")
+    return target
+
+
+def _description_job_path(episode: str, cut_id: str) -> Path:
+    data_dir = Path(os.environ.get("NAKAMA_DATA_DIR") or get_db_path().parent)
+    safe = f"{episode}_{cut_id}".replace("/", "_").replace("\\", "_")
+    return data_dir / "description_progress" / f"{safe}.job.json"
+
+
+def _description_state(
+    release: dict, episode: str | None = None, cut_id: str | None = None
+) -> tuple[str, str | None]:
+    target = _youtube_target(release)
+    # Compatibility for old receipts/tests that predate the description column in the view.
+    if "description" not in target:
+        return "ready", None
+    if str(target.get("description") or "").strip():
+        return "ready", None
+    error = str(target.get("error") or "")
+    if error.startswith(_DESCRIPTION_INTERRUPTED):
+        return "interrupted", error
+    if error == _DESCRIPTION_GENERATING:
+        if episode and cut_id:
+            receipt_path = _description_job_path(episode, cut_id)
+            job = load_job(receipt_path)
+            process = _DESCRIPTION_PROCESSES.get((episode, cut_id))
+            exit_code = process.poll() if process is not None else None
+            stale = (
+                job is None or job_expired(job) or (process is not None and exit_code is not None)
+            )
+            if stale:
+                reason = (
+                    f"background child exited ({exit_code})"
+                    if process is not None and exit_code is not None
+                    else "background attempt exceeded its deadline or receipt is missing"
+                )
+                interrupted = f"{_DESCRIPTION_INTERRUPTED} {reason}"
+                update_target(int(target["id"]), error=interrupted)
+                if job is not None:
+                    atomic_job_write(
+                        receipt_path,
+                        {**job, "status": "failed", "exit_code": exit_code, "error": reason},
+                    )
+                return "interrupted", interrupted
+        return "generating", None
+    return "missing", None
+
+
+def _episode_dir(episode: str) -> Path:
+    configured = os.environ.get("PODCAST_EPISODES_ROOT", "").strip()
+    if not configured:
+        raise HTTPException(status_code=503, detail="PODCAST_EPISODES_ROOT 未設定")
+    root = Path(configured).resolve()
+    episode_dir = (root / episode).resolve()
+    try:
+        episode_dir.relative_to(root)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail="episode 路徑超出 PODCAST_EPISODES_ROOT",
+        ) from exc
+    if not episode_dir.is_dir():
+        raise HTTPException(status_code=404, detail=f"episode 不存在: {episode}")
+    return episode_dir
+
+
+def _start_description_draft(episode: str, cut_id: str, target_id: int) -> None:
+    """Start subscription-backed description generation without blocking the review UI."""
+    episode_dir = _episode_dir(episode)
+    receipt = _description_job_path(episode, cut_id)
+    current = load_job(receipt)
+    running = _DESCRIPTION_PROCESSES.get((episode, cut_id))
+    if running is not None and running.poll() is None:
+        return
+    if current and current.get("status") == "generating" and not job_expired(current):
+        return
+    job = new_job(
+        status="generating",
+        timeout_seconds=_DESCRIPTION_TIMEOUT_SECONDS,
+        episode=episode,
+        cut_id=cut_id,
+        target_id=target_id,
+    )
+    atomic_job_write(receipt, job)
+    update_target(target_id, error=_DESCRIPTION_GENERATING)
+    root = Path(__file__).resolve().parent.parent.parent
+    script = root / "scripts" / "publish_description.py"
+    data_dir = Path(os.environ.get("NAKAMA_DATA_DIR") or get_db_path().parent)
+    log_dir = data_dir / "description_progress"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    safe = f"{episode}_{cut_id}".replace("/", "_").replace("\\", "_")
+    log_file = open(log_dir / f"{safe}.log", "a", encoding="utf-8")  # noqa: SIM115
+    try:
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                str(script),
+                str(episode_dir),
+                "--cut",
+                cut_id,
+                "--auto",
+                "--job-receipt",
+                str(receipt),
+                "--attempt-id",
+                str(job["attempt_id"]),
+            ],
+            cwd=str(root),
+            env=os.environ.copy(),
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+        )
+        _DESCRIPTION_PROCESSES[(episode, cut_id)] = process
+        atomic_job_write(receipt, {**job, "pid": process.pid})
+    except OSError as exc:
+        atomic_job_write(
+            receipt,
+            {**job, "status": "failed", "exit_code": None, "error": f"OSError: {exc}"},
+        )
+        update_target(target_id, error=f"{_DESCRIPTION_INTERRUPTED} OSError: {exc}")
+        raise HTTPException(status_code=503, detail=f"無法啟動 description draft：{exc}") from exc
+    finally:
+        # Popen duplicates/inherits the handle it needs; the web worker must not
+        # retain one descriptor per description attempt for its entire lifetime.
+        log_file.close()
+
+
+def _ensure_description_handoff(episode: str, cut_id: str, release: dict) -> str:
+    state, _ = _description_state(release, episode, cut_id)
+    if state == "ready" or state == "generating":
+        return state
+    target = _youtube_target(release)
+    _start_description_draft(episode, cut_id, int(target["id"]))
+    return "generating"
+
+
+def _ensure_publish_prep(episode: str, cut_id: str) -> None:
+    """Start or resume the full-resolution export for an approved package."""
+    root_value = os.environ.get("PODCAST_EPISODES_ROOT", "").strip()
+    if not root_value:
+        raise HTTPException(status_code=503, detail="PODCAST_EPISODES_ROOT 未設定")
+    root = Path(root_value).resolve()
+    episode_dir = (root / episode).resolve()
+    try:
+        episode_dir.relative_to(root)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=403, detail="episode 路徑超出 PODCAST_EPISODES_ROOT"
+        ) from exc
+    if not episode_dir.is_dir():
+        raise HTTPException(status_code=404, detail=f"episode 不存在: {episode}")
+    from thousand_sunny.routers.highlight_review import _start_publish_prep
+
+    _start_publish_prep(episode_dir, cut_id)
+
+
+def _release_from_receipt(episode: str, cut_id: str) -> dict | None:
+    """Validate a Resolve receipt and register it with the Web runtime."""
+    release = get_release(episode, cut_id)
+    if release is not None:
+        return release
+    root_value = os.environ.get("PODCAST_EPISODES_ROOT", "").strip()
+    if not root_value:
+        return None
+    root = Path(root_value).resolve()
+    episode_dir = (root / episode).resolve()
+    try:
+        episode_dir.relative_to(root)
+    except ValueError:
+        return None
+    receipt = episode_dir / "highlights" / "exports" / f".publish_prep_{cut_id}.json"
+    if not receipt.is_file():
+        return None
+    from thousand_sunny.routers.highlight_review import _publish_prep_state
+
+    _publish_prep_state(episode_dir, cut_id)
+    try:
+        payload = json.loads(receipt.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if payload.get("status") != "rendered" or payload.get("episode") != episode:
+        return None
+    rows = [row for row in payload.get("cuts", []) if row.get("cut_id") == cut_id]
+    if len(rows) != 1:
+        raise HTTPException(status_code=409, detail="publish_prep receipt 缺少唯一 cut")
+    row = rows[0]
+    file_path = Path(str(row.get("file", ""))).resolve()
+    exports_dir = (episode_dir / "highlights" / "exports").resolve()
+    try:
+        file_path.relative_to(exports_dir)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="publish_prep receipt 成品路徑越界") from exc
+    if not file_path.is_file() or file_path.stat().st_size != int(row.get("file_bytes", -1)):
+        raise HTTPException(status_code=409, detail="publish_prep receipt 與成品檔不一致")
+    release_id = register_release(
+        episode,
+        cut_id,
+        str(row.get("format", "")),
+        str(file_path),
+        work_title=str(row.get("work_title", "")),
+        file_bytes=file_path.stat().st_size,
+        duration_sec=float(row.get("duration_sec", 0)),
+    )
+    ensure_target(release_id, "youtube")
+    logger.info("publish_prep receipt registered: %s/%s", episode, cut_id)
+    return get_release(episode, cut_id)
+
+
+def _apply_packaging_to_release(
+    pkg: PackagesFileV1, cut_id: str, primary_package: int, release: dict
+) -> None:
+    cut = next((row for row in pkg.cuts if row.cut_id == cut_id), None)
+    if cut is None:
+        raise HTTPException(status_code=404, detail=f"cut not found: {cut_id}")
+    target = next((row for row in release["targets"] if row["platform"] == "youtube"), None)
+    if target is None:
+        raise HTTPException(status_code=409, detail="youtube release target 不存在")
+    if target["status"] in {"uploading", "uploaded", "published"}:
+        raise HTTPException(status_code=409, detail="影片已進入上傳流程，不能更換 Packaging")
+    title_by_rank = {row.rank: row.text for row in cut.titles}
+    if primary_package not in title_by_rank:
+        raise HTTPException(status_code=409, detail="primary package 的標題不存在")
+    fields = {"title": title_by_rank[primary_package]}
+    if cut.format == "long":
+        selected_package = next(
+            (row for row in cut.packages if row.title_rank == primary_package), None
+        )
+        if selected_package is None:
+            raise HTTPException(status_code=409, detail="primary package 不存在")
+        fields["thumbnail_path"] = selected_package.thumbnail_png
+    update_target(target["id"], **fields)
 
 
 @page_router.get("", response_class=HTMLResponse)
@@ -237,22 +753,128 @@ async def packaging_list(request: Request, nakama_auth: str | None = Cookie(None
     )
 
 
+@page_router.get("/{episode_slug}/thumbnail/{filename}")
+async def packaging_thumbnail(
+    episode_slug: str,
+    filename: str,
+    nakama_auth: str | None = Cookie(None),
+) -> FileResponse:
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    if filename != Path(filename).name or not filename.lower().endswith(".png"):
+        raise HTTPException(status_code=403, detail="僅限 Packaging PNG")
+    ctx = _board_context(episode_slug)
+    refs = {
+        package.thumbnail_png
+        for cut in ctx["pkg"].cuts
+        for package in cut.packages
+        if Path(package.thumbnail_png).name == filename
+    }
+    if len(refs) != 1:
+        raise HTTPException(status_code=404, detail="Packaging 縮圖不存在或不唯一")
+    path = get_vault_path() / refs.pop()
+    try:
+        path.resolve().relative_to((_packaging_root() / episode_slug).resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="Packaging 縮圖超出 episode 目錄") from exc
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Packaging 縮圖檔不存在")
+    return FileResponse(path, media_type="image/png")
+
+
+@page_router.get("/{episode_slug}/recipe-asset/{filename}")
+async def packaging_recipe_asset(
+    episode_slug: str,
+    filename: str,
+    nakama_auth: str | None = Cookie(None),
+) -> FileResponse:
+    """Serve only an episode-local PNG explicitly referenced by a package recipe."""
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    if filename != Path(filename).name or not filename.lower().endswith(".png"):
+        raise HTTPException(status_code=403, detail="僅限 Packaging recipe PNG")
+    ctx = _board_context(episode_slug)
+    refs = {
+        package.render_recipe.book_cover
+        for cut in ctx["pkg"].cuts
+        for package in cut.packages
+        if package.render_recipe
+        and package.render_recipe.book_cover
+        and Path(package.render_recipe.book_cover).name == filename
+    }
+    if len(refs) != 1:
+        raise HTTPException(status_code=404, detail="Recipe asset 不存在或不唯一")
+    path = get_vault_path() / refs.pop()
+    try:
+        path.resolve().relative_to((_packaging_root() / episode_slug).resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="Recipe asset 超出 episode 目錄") from exc
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Recipe asset 檔不存在")
+    return FileResponse(path, media_type="image/png")
+
+
 @page_router.get("/{episode_slug}", response_class=HTMLResponse)
 async def packaging_board(
     request: Request,
     episode_slug: str,
     edited: str | None = None,
     composed: str | None = None,
+    package_rank: int | None = None,
+    cut: str | None = None,
+    release_pending: str | None = None,
+    description_pending: str | None = None,
     nakama_auth: str | None = Cookie(None),
 ):
     if not check_auth(nakama_auth):
         return RedirectResponse(f"/login?next=/bridge/packaging/{episode_slug}", status_code=302)
     ctx = _board_context(episode_slug)
+    if cut:
+        focused = [view for view in ctx["cuts"] if view["cut"].cut_id == cut]
+        if not focused:
+            raise HTTPException(status_code=404, detail=f"cut not found: {cut}")
+        ctx["cuts"] = focused
+    if release_pending and cut:
+        release = _release_from_receipt(ctx["pkg"].episode, cut)
+        if release is not None:
+            approval = ctx["cuts"][0]["approval"]
+            if approval is None or not approval.approved:
+                raise HTTPException(status_code=409, detail="Packaging 尚未核准")
+            _apply_packaging_to_release(ctx["pkg"], cut, approval.primary_package, release)
+            description_state = _ensure_description_handoff(ctx["pkg"].episode, cut, release)
+            if description_state == "ready":
+                return RedirectResponse(_publish_url(ctx["pkg"].episode, cut), status_code=303)
+            focused_board = (
+                f"/bridge/packaging/{quote(episode_slug, safe='')}?cut={quote(cut, safe='')}"
+            )
+            return RedirectResponse(f"{focused_board}&description_pending=1", status_code=303)
+    description_state = None
+    description_error = None
+    if description_pending and cut:
+        release = get_release(ctx["pkg"].episode, cut)
+        if release is not None:
+            description_state, description_error = _description_state(
+                release, ctx["pkg"].episode, cut
+            )
+            if description_state == "ready":
+                return RedirectResponse(_publish_url(ctx["pkg"].episode, cut), status_code=303)
     ctx["asset_version"] = _SHOSHO_ASSET_VERSION
     # 剛改完字的那支：改字區保持展開（見 packaging_edit_title 的 redirect 註解）
     ctx["edited_cut"] = edited
     # 剛存完配方那支：組封面區保持展開（同 edited 的理由 — <details> 會因重載收起）
     ctx["composed_cut"] = composed
+    ctx["editor_package_rank"] = package_rank
+    ctx["focused_cut"] = cut
+    ctx["release_pending"] = bool(release_pending)
+    ctx["description_pending"] = bool(description_pending)
+    ctx["description_state"] = description_state
+    ctx["description_error"] = description_error
+    ctx["revision_polling"] = any(
+        view["approval"]
+        and view["approval"].revision_job
+        and view["approval"].revision_job.status in {"queued", "running"}
+        for view in ctx["cuts"]
+    )
     return _templates.TemplateResponse(request, "packaging_board.html", ctx)
 
 
@@ -271,8 +893,11 @@ async def packaging_approve(
     if decision not in ("approve", "reject"):
         raise HTTPException(status_code=400, detail=f"unknown decision: {decision!r}")
     approved = decision == "approve"
+    feedback = reject_note.strip()
     if approved and primary_package is None:
         raise HTTPException(status_code=400, detail="approve 需要指定 primary_package (1–3)")
+    if not approved and not feedback:
+        raise HTTPException(status_code=400, detail="Reject 需要填寫 feedback，Agent 才能重做")
 
     ctx = _board_context(episode_slug)  # 同時擋 conflict / 壞檔
     pkg: PackagesFileV1 = ctx["pkg"]
@@ -283,19 +908,60 @@ async def packaging_approve(
         raise HTTPException(status_code=409, detail="長片尚無 package，先跑 thumbnail-brainstorm")
 
     ep_dir = _packaging_root() / episode_slug
+    # `format=long` includes both the complete episode (N1 thumbnail_full) and
+    # long highlights (N2 thumbnail_reaction).  The center-visual composition
+    # receipt is an N2-only contract; requiring it for `cut_id=full` previously
+    # forced the revision agent to render the wrong orange-center layout.
+    if approved and cut.format == "long" and cut_id != "full":
+        selected_package = next(
+            (row for row in cut.packages if row.title_rank == primary_package), None
+        )
+        if selected_package is None:
+            raise HTTPException(status_code=409, detail="primary package 不存在")
+        _load_composition_receipt(
+            ep_dir,
+            episode=pkg.episode,
+            cut_id=cut_id,
+            package_rank=primary_package or 1,
+            thumbnail_png=selected_package.thumbnail_png,
+        )
     existing = _load_approvals(ep_dir, pkg.episode)
     prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
+    decided_at = datetime.now(timezone.utc)
+    revision_job = None
+    if not approved:
+        source_assets: dict[str, str] = {}
+        for package in cut.packages:
+            asset = get_vault_path() / package.thumbnail_png
+            if asset.is_file():
+                source_assets[package.thumbnail_png] = hashlib.sha256(
+                    asset.read_bytes()
+                ).hexdigest()
+        request_seed = "\0".join((pkg.episode, cut_id, decided_at.isoformat(), feedback)).encode(
+            "utf-8"
+        )
+        revision_job = PackagingRevisionJobV1(
+            request_id=f"revision-{hashlib.sha256(request_seed).hexdigest()[:16]}",
+            feedback=feedback,
+            requested_at=decided_at,
+            source_packages_sha256=hashlib.sha256(
+                (ep_dir / "packages.json").read_bytes()
+            ).hexdigest(),
+            source_assets=source_assets,
+        )
     entry = ApprovalV1(
         cut_id=cut_id,
         approved=approved,
         primary_package=primary_package if approved else 1,
-        reject_note=reject_note.strip() or None,
-        decided_at=datetime.now(timezone.utc),
+        reject_note=feedback or None,
+        decided_at=decided_at,
         decision=decision,
         # 挑臉／打大字是另一支 form 寫的，approve 不可以把它們洗掉
         # （2026-08-14 browser UAT 抓到：勾完變體再 approve，選擇整個不見）。
         selected_variant=prev.selected_variant if prev else None,
         bigtext_request=prev.bigtext_request if prev else None,
+        render_request=prev.render_request if prev else None,
+        revision_job=revision_job,
     )
     others = [a for a in existing.approvals if a.cut_id != cut_id]
     updated = ApprovalFileV1(episode=pkg.episode, approvals=[*others, entry])
@@ -303,7 +969,85 @@ async def packaging_approve(
         updated.model_dump_json(indent=2) + "\n", encoding="utf-8"
     )
     logger.info("packaging approve: %s/%s approved=%s", episode_slug, cut_id, approved)
-    return RedirectResponse(f"/bridge/packaging/{episode_slug}", status_code=303)
+    focused_board = f"/bridge/packaging/{quote(episode_slug, safe='')}?cut={quote(cut_id, safe='')}"
+    if not approved:
+        return RedirectResponse(focused_board, status_code=303)
+    release = _release_from_receipt(pkg.episode, cut_id)
+    if release is None:
+        _ensure_publish_prep(pkg.episode, cut_id)
+        return RedirectResponse(f"{focused_board}&release_pending=1", status_code=303)
+    _apply_packaging_to_release(pkg, cut_id, primary_package or 1, release)
+    description_state = _ensure_description_handoff(pkg.episode, cut_id, release)
+    logger.info("packaging -> publish handoff: %s/%s", pkg.episode, cut_id)
+    if description_state != "ready":
+        return RedirectResponse(f"{focused_board}&description_pending=1", status_code=303)
+    return RedirectResponse(_publish_url(pkg.episode, cut_id), status_code=303)
+
+
+@page_router.post("/{episode_slug}/description/retry")
+async def packaging_retry_description(
+    episode_slug: str,
+    cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
+    nakama_auth: str | None = Cookie(None),
+):
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/packaging", status_code=302)
+    ctx = _board_context(episode_slug)
+    approval = next((row["approval"] for row in ctx["cuts"] if row["cut"].cut_id == cut_id), None)
+    if approval is None or not approval.approved:
+        raise HTTPException(status_code=409, detail="Packaging 尚未核准")
+    release = get_release(ctx["pkg"].episode, cut_id)
+    if release is None:
+        raise HTTPException(status_code=409, detail="publish_prep 尚未完成")
+    state, _ = _description_state(release, ctx["pkg"].episode, cut_id)
+    if state not in {"ready", "generating"}:
+        target = _youtube_target(release)
+        _start_description_draft(ctx["pkg"].episode, cut_id, int(target["id"]))
+    focused_board = f"/bridge/packaging/{quote(episode_slug, safe='')}?cut={quote(cut_id, safe='')}"
+    return RedirectResponse(f"{focused_board}&description_pending=1", status_code=303)
+
+
+@page_router.post("/{episode_slug}/revision/retry")
+async def packaging_retry_revision(
+    episode_slug: str,
+    cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
+    nakama_auth: str | None = Cookie(None),
+):
+    """Requeue one failed revision; the worker still cannot approve the result."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/packaging", status_code=302)
+    ctx = _board_context(episode_slug)
+    ep_dir = _packaging_root() / episode_slug
+    approvals = _load_approvals(ep_dir, ctx["pkg"].episode)
+    previous = next((row for row in approvals.approvals if row.cut_id == cut_id), None)
+    if previous is None or previous.revision_job is None:
+        raise HTTPException(status_code=404, detail="revision job not found")
+    if previous.revision_job.status != "failed":
+        raise HTTPException(status_code=409, detail="只有 failed revision 可以重試")
+    revision = previous.revision_job.model_copy(
+        update={
+            "status": "queued",
+            "started_at": None,
+            "finished_at": None,
+            "result_receipt": None,
+            "error": None,
+        }
+    )
+    retried = previous.model_copy(
+        update={"approved": False, "decision": "reject", "revision_job": revision}
+    )
+    updated = ApprovalFileV1(
+        episode=approvals.episode,
+        approvals=[retried if row.cut_id == cut_id else row for row in approvals.approvals],
+    )
+    pending = ep_dir / "approval.json.tmp"
+    pending.write_text(updated.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    pending.replace(ep_dir / "approval.json")
+    logger.info("packaging revision retry: %s/%s", episode_slug, cut_id)
+    return RedirectResponse(
+        f"/bridge/packaging/{quote(episode_slug, safe='')}?cut={quote(cut_id, safe='')}",
+        status_code=303,
+    )
 
 
 @page_router.post("/{episode_slug}/variant")
@@ -345,6 +1089,8 @@ async def packaging_select_variant(
     ep_dir = _packaging_root() / episode_slug
     existing = _load_approvals(ep_dir, pkg.episode)
     prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
+    if prev and prev.revision_job and prev.revision_job.status in {"queued", "running"}:
+        raise HTTPException(status_code=409, detail="Packaging revision 正在處理，完成後再改變體")
     entry = ApprovalV1(
         cut_id=cut_id,
         approved=prev.approved if prev else False,
@@ -358,6 +1104,8 @@ async def packaging_select_variant(
             variant if variant is not None else (prev.selected_variant if prev else None)
         ),
         bigtext_request=bigtext_request.strip() or None,
+        render_request=prev.render_request if prev else None,
+        revision_job=prev.revision_job if prev else None,
     )
     others = [a for a in existing.approvals if a.cut_id != cut_id]
     updated = ApprovalFileV1(episode=pkg.episode, approvals=[*others, entry])
@@ -378,6 +1126,7 @@ async def packaging_select_variant(
 async def packaging_compose(
     episode_slug: str,
     cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
+    package_rank: int | None = Form(None, ge=1, le=3),
     title_rank: int = Form(..., ge=1, le=5),
     host_cutout: str = Form(..., max_length=_EP_SLUG_MAX * 4),
     guest_cutout: str = Form(..., max_length=_EP_SLUG_MAX * 4),
@@ -387,6 +1136,10 @@ async def packaging_compose(
     highlight_text: str = Form("", max_length=40),
     title_max_width: int = Form(580, ge=300, le=1000),
     guest_credit: str = Form("", max_length=40),
+    book_cover: str = Form("", max_length=_EP_SLUG_MAX * 4),
+    book_cover_opacity: float = Form(0.42, ge=0, le=1),
+    book_cover_brightness: float = Form(0.38, ge=0, le=1),
+    book_cover_height_pct: float = Form(100, ge=20, le=150),
     geometry_mode: str = Form("auto", max_length=8),
     host_height_pct: float = Form(0.0),
     host_x_pct: float = Form(0.0),
@@ -410,12 +1163,28 @@ async def packaging_compose(
     cut = next((c for c in pkg.cuts if c.cut_id == cut_id), None)
     if cut is None:
         raise HTTPException(status_code=404, detail=f"cut not found: {cut_id}")
+    target_rank = package_rank or title_rank  # legacy forms used title_rank as the package id
+    target_package = next((p for p in cut.packages if p.title_rank == target_rank), None)
+    if target_package is None:
+        raise HTTPException(status_code=404, detail=f"package not found: rank {target_rank}")
 
     choices = ctx["cutouts"]
     known = {c["vault_path"] for c in choices["host"]} | {c["vault_path"] for c in choices["guest"]}
     for label, val in (("host_cutout", host_cutout), ("guest_cutout", guest_cutout)):
         if val not in known:
             raise HTTPException(status_code=404, detail=f"{label} 不在本集 cutout 清單：{val}")
+
+    ep_dir = _packaging_root() / episode_slug
+    if book_cover:
+        book_path = get_vault_path() / book_cover
+        try:
+            book_path.resolve().relative_to(ep_dir.resolve())
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=403, detail="book_cover 必須位於本集 episode 目錄"
+            ) from exc
+        if book_path.suffix.lower() != ".png" or not book_path.is_file():
+            raise HTTPException(status_code=404, detail="本集 book_cover PNG 不存在")
 
     lines = [ln.strip() for ln in (big_text_1, big_text_2, big_text_3) if ln.strip()]
     if not lines:
@@ -445,11 +1214,14 @@ async def packaging_compose(
                 status_code=400, detail=f"位置/大小超出範圍：{str(exc)[:300]}"
             ) from exc
 
-    ep_dir = _packaging_root() / episode_slug
     existing = _load_approvals(ep_dir, pkg.episode)
     prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
-    if geometry is None and prev and prev.render_request:
-        geometry = prev.render_request.geometry  # auto：留著當下次拖曳的起點
+    if geometry is None and target_package.render_recipe:
+        geometry = target_package.render_recipe.geometry
+    elif geometry is None and prev and prev.render_request:
+        # Backward compatibility for pre-recipe approval files.  It is only an
+        # initial seed; the board never presents it as another package's state.
+        geometry = prev.render_request.geometry
 
     try:
         req = RenderRequestV1(
@@ -460,6 +1232,10 @@ async def packaging_compose(
             highlight_text=hl,
             title_max_width=title_max_width,
             guest_credit=guest_credit.strip(),
+            book_cover=book_cover.strip() or None,
+            book_cover_opacity=book_cover_opacity,
+            book_cover_brightness=book_cover_brightness,
+            book_cover_height_pct=book_cover_height_pct,
             requested_at=datetime.now(timezone.utc),
             geometry=geometry,
             geometry_manual=manual,
@@ -467,6 +1243,8 @@ async def packaging_compose(
     except ValidationError as exc:
         raise HTTPException(status_code=400, detail=f"配方驗證失敗：{str(exc)[:300]}") from exc
 
+    if prev and prev.revision_job and prev.revision_job.status in {"queued", "running"}:
+        raise HTTPException(status_code=409, detail="Packaging revision 正在處理，完成後再存配方")
     entry = ApprovalV1(
         cut_id=cut_id,
         approved=prev.approved if prev else False,
@@ -477,23 +1255,42 @@ async def packaging_compose(
         selected_variant=prev.selected_variant if prev else None,
         bigtext_request=prev.bigtext_request if prev else None,
         render_request=req,
+        revision_job=prev.revision_job if prev else None,
     )
     others = [a for a in existing.approvals if a.cut_id != cut_id]
     updated = ApprovalFileV1(episode=pkg.episode, approvals=[*others, entry])
     (ep_dir / "approval.json").write_text(
         updated.model_dump_json(indent=2) + "\n", encoding="utf-8"
     )
+    # Persist the recipe on the package it actually renders.  approval.render_request
+    # remains a temporary dispatch envelope for old desktop watchers, not UI state.
+    packages_path = ep_dir / "packages.json"
+    packages_data = json.loads(packages_path.read_text(encoding="utf-8"))
+    for raw_cut in packages_data["cuts"]:
+        if raw_cut["cut_id"] != cut_id:
+            continue
+        for raw_package in raw_cut["packages"]:
+            if raw_package["title_rank"] == target_rank:
+                raw_package["render_recipe"] = req.model_dump(mode="json")
+                break
+        break
+    PackagesFileV1.model_validate(packages_data)
+    packages_path.write_text(
+        json.dumps(packages_data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
     logger.info(
         "packaging compose: %s/%s rank=%s host=%s guest=%s text=%s",
         episode_slug,
         cut_id,
-        title_rank,
+        target_rank,
         Path(host_cutout).name,
         Path(guest_cutout).name,
         lines,
     )
     return RedirectResponse(
-        f"/bridge/packaging/{episode_slug}?composed={cut_id}#compose-{cut_id}", status_code=303
+        f"/bridge/packaging/{episode_slug}?composed={cut_id}&package_rank={target_rank}"
+        f"#compose-{cut_id}",
+        status_code=303,
     )
 
 

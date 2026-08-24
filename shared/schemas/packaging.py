@@ -107,6 +107,10 @@ class PackageV1(BaseModel):
     joint_pairing_id: str
     host_cutout: str
     guest_cutout: str
+    # The recipe belongs to the package it renders.  Older packages predate the
+    # editor and remain readable with an explicit None (the UI must show that
+    # absence instead of borrowing another package/cut-level request).
+    render_recipe: "RenderRequestV1 | None" = None
     # 空 list = 這支還沒產變體（舊集數／短片）；gate 就退化成單張顯示。
     variants: list[VariantV1] = Field(default_factory=list)
 
@@ -298,6 +302,13 @@ class RenderRequestV1(BaseModel):
     # 上一份 spec 撈——2026-08-15 把中間產物搬進 _work/ 就撈不到，整行從封面消失。
     # 收進配方後 gate 看得到也改得動，不再靠檔案系統的巧合。
     guest_credit: str = Field(default="", max_length=40)
+    # N1 author interviews use the book as a dark, full-height background.
+    # Keeping these values in the package recipe makes a Web rerender lossless;
+    # previously render_request.py silently fell back to a plain background.
+    book_cover: str | None = None
+    book_cover_opacity: float = Field(default=0.42, ge=0, le=1)
+    book_cover_brightness: float = Field(default=0.38, ge=0, le=1)
+    book_cover_height_pct: float = Field(default=100, ge=20, le=150)
     requested_at: AwareDatetime
     # geometry 兩種來源，靠 geometry_manual 分辨：
     #   False（預設）— solver 解完寫回來的，只當 gate 拖曳介面的起點，下次照樣重解
@@ -323,6 +334,60 @@ class RenderRequestV1(BaseModel):
                 f"highlight_text {self.highlight_text!r} 不在 big_text 內"
                 "（橘框詞必須是大字的子字串，否則 render 出來不會有框）"
             )
+        if self.book_cover is not None:
+            if _is_abs_path(self.book_cover):
+                raise ValueError("book_cover must be a vault-relative path")
+            parts = PurePosixPath(self.book_cover).parts
+            if "\\" in self.book_cover or ".." in parts:
+                raise ValueError("book_cover must be a safe vault-relative path")
+        return self
+
+
+# PackageV1 is declared before RenderRequestV1 because it is the long-standing
+# public schema order.  Resolve the single forward reference after the recipe
+# contract exists instead of duplicating its fields in another model.
+PackageV1.model_rebuild()
+
+
+class PackagingRevisionJobV1(BaseModel):
+    """A human rejection queued for a desktop packaging revision agent."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract: Literal["packaging-revision-job-v1"] = "packaging-revision-job-v1"
+    request_id: str = Field(pattern=r"^revision-[a-f0-9]{16}$")
+    feedback: str = Field(min_length=1, max_length=2000)
+    requested_at: AwareDatetime
+    source_packages_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    source_assets: dict[str, str]
+    status: Literal["queued", "running", "ready_for_review", "failed"] = "queued"
+    attempt: int = Field(default=0, ge=0)
+    started_at: AwareDatetime | None = None
+    finished_at: AwareDatetime | None = None
+    result_receipt: str | None = None
+    error: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_paths_and_hashes(self) -> "PackagingRevisionJobV1":
+        for path, digest in self.source_assets.items():
+            parts = PurePosixPath(path).parts
+            if (
+                _is_abs_path(path)
+                or "\\" in path
+                or ".." in parts
+                or not path.startswith("Attachments/packaging/")
+                or not re.fullmatch(r"[a-f0-9]{64}", digest)
+            ):
+                raise ValueError(f"source_assets contains unsafe path/hash: {path!r}")
+        if self.result_receipt is not None:
+            parts = PurePosixPath(self.result_receipt).parts
+            if (
+                _is_abs_path(self.result_receipt)
+                or "\\" in self.result_receipt
+                or ".." in parts
+                or not self.result_receipt.startswith(f"revisions/{self.request_id}/")
+            ):
+                raise ValueError("result_receipt must stay inside this revision directory")
         return self
 
 
@@ -344,6 +409,9 @@ class ApprovalV1(BaseModel):
     bigtext_request: str | None = None
     # 「先選好、再 render 一次」的配方（每支最多一份；要換就覆蓋）。
     render_request: RenderRequestV1 | None = None
+    # Reject 會建立一筆 revision job；桌機 watcher 認領後交給獨立 Agent 重做，
+    # 完成只回到 ready_for_review，永遠不由 worker 自動核准。
+    revision_job: PackagingRevisionJobV1 | None = None
 
 
 def parse_packages(path: "Path | str") -> PackagesFileV1:
