@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import date, datetime
 
 # 規則版本——任何分數表 / 曲線 / 鍵格式變動都要 bump（格式：YYYY.MM.DD-vN）
-RULE_VERSION = "2026.08.23-v1"
+RULE_VERSION = "2026.08.24-v1"
 
 # ── 分數表（XP 一律 10 的倍數；貝里 = XP ÷ 10，恆為整數）──────────────
 XP_TABLE: dict[str, int] = {
@@ -22,8 +22,8 @@ XP_TABLE: dict[str, int] = {
     "checkin_day": 10,  # 挑戰打卡一天（Sanji 判定通過後）
     "streak_7": 30,  # 連續 7 天獎（當場入袋，斷了重新數、可再得）
     "full_attendance": 200,  # 全勤獎（賽季結算時發）
-    "like_received": 30,  # 貼文被讚（他人驗證）
-    "bookmark_received": 150,  # 貼文被收藏（最強品質訊號，讚的 5 倍）
+    "like_received": 10,  # 貼文被讚（他人驗證；一個讚＝一天登入的心理錨點）
+    "bookmark_received": 100,  # 貼文被收藏（最強品質訊號，讚的 10 倍）
     "lesson_completed": 50,  # 完成單課
     "course_completed": 300,  # 完成整門課
     "quiz_passed": 50,  # 通過測驗

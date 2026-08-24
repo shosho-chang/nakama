@@ -31,6 +31,23 @@ final class Rest {
 
 	public static function register(): void {
 		add_action( 'rest_api_init', array( self::class, 'routes' ) );
+		// ⚠️ LiteSpeed page cache 會快取 REST GET（2026-08-24 實測：帶認證的 /health
+		// 回應被 cache、原樣餵給匿名請求）。整個 namespace 一律 no-cache。
+		add_filter( 'rest_post_dispatch', array( self::class, 'no_cache_headers' ), 10, 3 );
+	}
+
+	/**
+	 * @param \WP_REST_Response $result
+	 * @param \WP_REST_Server   $server
+	 * @param \WP_REST_Request  $request
+	 * @return \WP_REST_Response
+	 */
+	public static function no_cache_headers( $result, $server, $request ) {
+		if ( str_starts_with( (string) $request->get_route(), '/' . self::NS ) ) {
+			$result->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0' );
+			$result->header( 'X-LiteSpeed-Cache-Control', 'no-cache' );
+		}
+		return $result;
 	}
 
 	public static function routes(): void {
