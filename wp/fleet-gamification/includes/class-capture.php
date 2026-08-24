@@ -38,7 +38,7 @@ final class Capture {
 		// 讚被移除：只帶 $feed（不知道誰移除）→ 記 marker，對帳 recount。
 		add_action( 'fluent_community/feed/react_removed', array( self::class, 'on_react_removed' ), 10, 1 );
 
-		// 留言：CommentsController.php:181（帶 $comment, $feed, $mentions）。觀測用，🔴 不計分。
+		// 留言：CommentsController.php:181（帶 $comment, $feed, $mentions）。🟢 計分（受益人=貼文作者）。
 		add_action( 'fluent_community/comment_added', array( self::class, 'on_comment_added' ), 10, 2 );
 
 		// 課程：CourseHelper.php:211（$lesson, $userId）、:278/:290（$course, $userId）。
@@ -186,23 +186,31 @@ final class Capture {
 		);
 	}
 
-	/** 留言：觀測指標（進儀表板、不進計分公式）。 */
+	/**
+	 * 被留言。與 reaction 同構：事件主體（user_id）= 受益人 = 貼文作者，
+	 * 留言者記在 meta.actor_id。自留/Sanji 留言照記——排除是規則引擎的事。
+	 * （2026-08-24 前的舊事件型別 comment_added 以留言者為主體，已停用；
+	 * 規則引擎對它回 None，舊列無害。）
+	 */
 	public static function on_comment_added( $comment, $feed ): void {
+		$owner_id     = absint( $feed->user_id ?? 0 );
+		$feed_id      = absint( $feed->id ?? 0 );
 		$commenter_id = absint( $comment->user_id ?? 0 );
 		$comment_id   = absint( $comment->id ?? 0 );
-		if ( ! $commenter_id || ! $comment_id ) {
+		if ( ! $owner_id || ! $feed_id || ! $commenter_id || ! $comment_id ) {
 			return;
 		}
 
 		Ledger::record_event(
 			array(
-				'event_type'  => 'comment_added',
-				'user_id'     => $commenter_id,
-				'object_type' => 'comment',
-				'object_id'   => $comment_id,
+				'event_type'  => 'comment_received',
+				'user_id'     => $owner_id,
+				'object_type' => 'feed',
+				'object_id'   => $feed_id,
 				'meta'        => array(
-					'feed_id'  => absint( $feed->id ?? 0 ),
-					'space_id' => absint( $feed->space_id ?? 0 ),
+					'actor_id'   => $commenter_id,
+					'comment_id' => $comment_id,
+					'space_id'   => absint( $feed->space_id ?? 0 ),
 				),
 				'dedupe_key'  => "comment:{$comment_id}",
 			)

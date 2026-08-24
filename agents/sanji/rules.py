@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import date, datetime
 
 # 規則版本——任何分數表 / 曲線 / 鍵格式變動都要 bump（格式：YYYY.MM.DD-vN）
-RULE_VERSION = "2026.08.24-v3"
+RULE_VERSION = "2026.08.24-v4"
 
 # ── 分數表（XP 一律 10 的倍數；貝里 = XP ÷ 10，恆為整數）──────────────
 XP_TABLE: dict[str, int] = {
@@ -23,6 +23,7 @@ XP_TABLE: dict[str, int] = {
     "streak_7": 30,  # 連續 7 天獎（當場入袋，斷了重新數、可再得）
     "full_attendance": 200,  # 全勤獎（賽季結算時發）
     "like_received": 10,  # 貼文被讚（他人驗證；一個讚＝一天登入的心理錨點）
+    "comment_received": 30,  # 貼文被留言（同文同人只計一次；寫留言的承諾≈三個讚）
     "bookmark_received": 100,  # 貼文被收藏（最強品質訊號，讚的 10 倍）
     "lesson_completed": 50,  # 完成單課
     "course_completed": 300,  # 完成整門課
@@ -202,6 +203,17 @@ def grant_for_event(ev: dict, *, sanji_user_id: int) -> dict | None:
         return _grant(
             user_id, "course_completed", f"course:{user_id}:{course_id}", ref_event_id=eid
         )
+
+    if etype == "comment_received":
+        # 受益人 = 貼文作者。同一篇文每位不同留言者只計一次（冪等鍵擋樓層灌分）；
+        # 自己留言、Sanji 留言不計；留言後刪除不追回（引發過回應是已發生的事實）。
+        actor = int(meta.get("actor_id", 0))
+        if not actor or actor == user_id or actor == sanji_user_id:
+            return None
+        feed_id = int(ev.get("object_id", 0))
+        if not feed_id:
+            return None  # 沒有 feed 參照就無法保證「一文一人一次」——寧可不入帳
+        return _grant(user_id, "comment_received", f"comment:{feed_id}:{actor}", ref_event_id=eid)
 
     if etype == "reaction_added":
         # 只有 like 計分；自讚不計。受益人 = 貼文作者（事件的 user_id）。
