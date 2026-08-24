@@ -1,6 +1,9 @@
 <?php
 /**
- * Portal UI——會員面的最小顯示：側欄「我的航海帳」卡片（自己的 XP 與貝里）。
+ * Portal UI——會員面的最小顯示：側欄「我的航海帳」卡片（自己的等級與 XP）。
+ *
+ * 貝里暫不顯示：現階段沒有商店、花不掉的幣只會教會成員「這些數字是裝飾」，
+ * 等商店上線再一次揭曉累積額（帳本一直在記，沒有人少拿）。
  *
  * 掛點：`fluent_community/portal_sidebar`（app/Views/portal/portal.php:9 直接
  * do_action 於側欄 PHP 模板內——不碰 Vue、不注入 JS，vendor 升級面最小）。
@@ -37,21 +40,25 @@ final class PortalUi {
 		global $wpdb;
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
-				'SELECT xp_total, berry_balance FROM ' . Ledger::balances_table() . ' WHERE user_id = %d',
+				'SELECT xp_total, level, level_label FROM ' . Ledger::balances_table() . ' WHERE user_id = %d',
 				get_current_user_id()
 			),
 			ARRAY_A
 		);
 		$xp    = $row ? (int) $row['xp_total'] : 0;
-		$berry = $row ? (int) $row['berry_balance'] : 0;
+		$level = $row ? (int) $row['level'] : 0;
+		$title = $row ? (string) $row['level_label'] : '';
 
 		?>
 		<div class="nakama-gam-wallet">
 			<div class="nakama-gam-wallet__label">⚓ 我的航海帳</div>
 			<div class="nakama-gam-wallet__nums">
-				經驗值 <b><?php echo esc_html( number_format_i18n( $xp ) ); ?></b>
-				<span class="nakama-gam-wallet__sep">·</span>
-				貝里 <b><?php echo esc_html( number_format_i18n( $berry ) ); ?></b>
+				<?php if ( $level > 0 ) : ?>
+					<b>Lv.<?php echo esc_html( (string) $level ); ?></b>
+					<?php echo esc_html( $title ); ?>
+					<span class="nakama-gam-wallet__sep">·</span>
+				<?php endif; ?>
+				<b><?php echo esc_html( number_format_i18n( $xp ) ); ?></b> XP
 			</div>
 		</div>
 		<style>

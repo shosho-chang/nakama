@@ -28,8 +28,21 @@ _DISABLED_SLEEP = 600  # 止血開關關閉時的輪詢間隔
 _ERROR_SLEEP = 60
 
 
+def level_fields(xp_total: int) -> dict:
+    """等級帶四欄——投影要畫進度條，但 plugin 仍拿不到整張曲線。"""
+    level, floor, nxt = rules.level_band(xp_total)
+    return {
+        "level_after": level,
+        "level_label": rules.level_label(level),
+        "level_min_xp": floor,
+        "next_level_xp": nxt,
+        # 滿級 → 空字串（UI 據此切「已達最高階」）
+        "next_level_label": rules.level_label(level + 1) if nxt else "",
+    }
+
+
 class LevelStamper:
-    """替每筆 grant 算 level_after（等級曲線只存在 nakama；plugin 不知道門檻）。
+    """替每筆 grant 算等級帶（等級曲線只存在 nakama；plugin 不知道門檻）。
 
     以 WP balances 為基準、批內累加——同一輪多筆授予會拿到遞增後的正確等級。
     """
@@ -43,9 +56,7 @@ class LevelStamper:
         if uid not in self._xp:
             self._xp[uid] = int(self._client.balance(uid).get("xp_total", 0))
         self._xp[uid] += int(grant["xp"])
-        level = rules.level_for(self._xp[uid])
-        grant["level_after"] = level
-        grant["level_label"] = rules.level_label(level)
+        grant.update(level_fields(self._xp[uid]))
         return grant
 
 

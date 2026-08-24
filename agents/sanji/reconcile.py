@@ -1,11 +1,13 @@
 """每日對帳（05:00）——architecture 上必要的排程：
 streak 斷檔是「事件的缺席」，只有排程掃描能偵測；它同時是 Sanji 停機的補課 safety net。
 
-四件事：
+五件事：
   1. 收藏掃描：vendor 對 bookmark 不發 hook（原始碼證實）→ 增量掃 reactions 補入帳
   2. fail-open：滯留 >48h 的待判定案自動放行（``auto_approved_by_timeout``，留痕）
   3. 斷流偵測：events cursor 自上次對帳未動 → 告警（靜默失效的主防線）
   4. 投影抽核：昨日活躍者 balances vs 帳本重算，落差告警（idempotency 破洞偵測）
+  5. 等級回沖：全表依「當前曲線」重算等級帶——曲線校準後不必寫一次性 backfill，
+     隔夜自動收斂（門檻只降不升，所以回沖永遠不會讓人掉級）
 
 告警走 shared.alerts（Slack，Franky 既有管道）。
 """
@@ -15,7 +17,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from agents.sanji import rules
-from agents.sanji.loop import LevelStamper, award_checkin
+from agents.sanji.loop import LevelStamper, award_checkin, level_fields
 from agents.sanji.settings import SanjiConfig
 from agents.sanji.store import Store
 from agents.sanji.wp_client import GamAPIError, WPClient
@@ -34,6 +36,7 @@ def run(cfg: SanjiConfig, client: WPClient, store: Store) -> dict:
         ("fail_open", _sweep_fail_open),
         ("flow", _check_event_flow),
         ("balances", _audit_balances),
+        ("levels", _restamp_levels),
     ):
         try:
             summary[name] = fn(cfg, client, store)
@@ -162,3 +165,46 @@ def _audit_balances(cfg: SanjiConfig, client: WPClient, store: Store) -> dict:
             )
 
     return {"audited": len(users), "mismatches": mismatches}
+
+
+# ── 5. 等級回沖 ──────────────────────────────────────────────────
+def _restamp_levels(cfg: SanjiConfig, client: WPClient, store: Store) -> dict:
+    """全表把 xp_total 重新換算成等級帶，只回沖有變的人。
+
+    等級是 xp_total 的純函式，所以這件事冪等、可重跑。
+    存在的理由：曲線重新校準後（例如 2026-08-24 的 v2），既有成員的投影還停在
+    舊等級——不做這個就得等他下一筆入帳才更新，profile 上會顯示過期稱號。
+    """
+    after_uid = 0
+    scanned = 0
+    changed: list[dict] = []
+
+    while True:
+        page = client.balances(after_uid, limit=200)
+        items = page.get("items") or []
+        if not items:
+            break
+        for row in items:
+            uid = int(row.get("user_id", 0))
+            after_uid = max(after_uid, uid)
+            scanned += 1
+            want = level_fields(int(row.get("xp_total", 0)))
+            same = (
+                int(row.get("level", 0)) == want["level_after"]
+                and str(row.get("level_label", "")) == want["level_label"]
+                and int(row.get("level_min_xp", -1)) == want["level_min_xp"]
+                and int(row.get("next_level_xp", -1)) == want["next_level_xp"]
+                and str(row.get("next_level_label", "")) == want["next_level_label"]
+            )
+            if not same:
+                changed.append({"user_id": uid, **want})
+        if len(items) < 200:
+            break
+
+    updated = 0
+    for i in range(0, len(changed), 500):
+        updated += int(client.restamp_levels(changed[i : i + 500]).get("updated", 0))
+
+    if updated:
+        logger.info(f"[reconcile] restamped {updated}/{scanned} levels")
+    return {"scanned": scanned, "restamped": updated}

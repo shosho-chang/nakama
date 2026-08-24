@@ -103,3 +103,15 @@ class WPClient:
     def balance(self, user_id: int, *, rebuild: bool = False) -> dict:
         params = {"rebuild": "1"} if rebuild else {}
         return self._request("GET", f"/balances/{user_id}", params=params)
+
+    def balances(self, after_user_id: int = 0, *, limit: int = 200) -> dict:
+        """投影列舉（游標式，user_id 遞增）。"""
+        return self._request(
+            "GET", "/balances", params={"after_user_id": after_user_id, "limit": limit}
+        )
+
+    def restamp_levels(self, items: list[dict]) -> dict:
+        """只回沖等級帶、不動帳（≤500/批）。"""
+        if len(items) > 500:
+            raise ValueError("max 500 restamp items per batch")
+        return self._request("POST", "/balances/restamp", json={"items": items})

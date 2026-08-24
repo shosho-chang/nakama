@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import date, datetime
 
 # 規則版本——任何分數表 / 曲線 / 鍵格式變動都要 bump（格式：YYYY.MM.DD-vN）
-RULE_VERSION = "2026.08.24-v1"
+RULE_VERSION = "2026.08.24-v2"
 
 # ── 分數表（XP 一律 10 的倍數；貝里 = XP ÷ 10，恆為整數）──────────────
 XP_TABLE: dict[str, int] = {
@@ -32,24 +32,54 @@ XP_TABLE: dict[str, int] = {
 # 挑戰榜只計這些來源（榜單 = SUM(xp) WHERE season=本季 AND source IN 挑戰類）
 CHALLENGE_SOURCES = frozenset({"checkin_day", "streak_7", "full_attendance"})
 
-# ── 等級曲線（15 階，指數；門檻 = 生涯里程 XP）────────────────────────
+# ── 等級曲線（15 階；門檻 = 生涯里程 XP，只增不減）───────────────────
+#
+# 2026-08-24 依實際權重（被讚 10 / 被收藏 100）重新校準，校準器：
+#     python -m agents.sanji.level_curve_sim
+#
+# 設計約束（依優先序）：
+#  1. 第一個讚就升 Lv.2——新人當天要拿到第一次回饋（Octalysis 上船期）
+#  2. 分享期（只計被讚／被收藏）一年內每種原型都看得到位移
+#  3. 全經濟開啟後十年，最投入者約 L14–15、潛水型約 L9——曲線仍有空間
+#
+# ⚠️ 門檻只准調低、永不調高：調高會讓既有成員「掉級」，那是不可逆的信任破壞。
+#    （本次全部低於前一版，故無人掉級。）
 LEVEL_THRESHOLDS: list[tuple[int, int]] = [
     (1, 0),
-    (2, 100),
-    (3, 300),
-    (4, 1_000),
-    (5, 2_500),
-    (6, 5_000),
-    (7, 9_000),
-    (8, 15_000),
-    (9, 24_000),
-    (10, 35_000),
-    (11, 50_000),
-    (12, 70_000),
-    (13, 100_000),
-    (14, 140_000),
-    (15, 200_000),
+    (2, 10),
+    (3, 50),
+    (4, 150),
+    (5, 400),
+    (6, 1_000),
+    (7, 2_000),
+    (8, 4_000),
+    (9, 7_000),
+    (10, 12_000),
+    (11, 20_000),
+    (12, 32_000),
+    (13, 52_000),
+    (14, 85_000),
+    (15, 140_000),
 ]
+
+# 等級稱號（航海位階：上船 → 掌舵 → 遠航）
+LEVEL_LABELS: dict[int, str] = {
+    1: "見習水手",
+    2: "水手",
+    3: "船員",
+    4: "資深船員",
+    5: "瞭望手",
+    6: "舵手",
+    7: "航海士",
+    8: "大副",
+    9: "船長",
+    10: "遠洋船長",
+    11: "艦長",
+    12: "艦隊長",
+    13: "提督",
+    14: "大提督",
+    15: "傳說航海家",
+}
 
 
 def berry_of(xp: int) -> int:
@@ -67,8 +97,24 @@ def level_for(xp_total: int) -> int:
 
 
 def level_label(level: int) -> str:
-    """等級稱號。命名歸修修（艦隊世界觀），定稿前用 Lv.N 佔位。"""
-    return f"Lv.{level}"
+    """等級稱號（未知等級退回 Lv.N，不炸）。"""
+    return LEVEL_LABELS.get(level, f"Lv.{level}")
+
+
+def level_band(xp_total: int) -> tuple[int, int, int]:
+    """生涯里程 → (等級, 本級門檻, 下一級門檻)。下一級門檻 0 = 已滿級。
+
+    plugin 拿這三個數就能畫進度條，仍然不知道整張曲線（規則不外流）。
+    """
+    level = level_for(xp_total)
+    floor = 0
+    nxt = 0
+    for n, need in LEVEL_THRESHOLDS:
+        if n == level:
+            floor = need
+        elif n == level + 1:
+            nxt = need
+    return level, floor, nxt
 
 
 def season_of(d: date) -> str:
