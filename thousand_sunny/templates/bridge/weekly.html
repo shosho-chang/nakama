@@ -293,6 +293,9 @@
                       <ul class="wk-cat-items">
                         {% for it in cat['items'] %}
                           <li class="wk-cat-item {{ 'done' if it.done }}">
+                            {# 修修 (2026-08-24): 時段 cell first — always rendered (may be
+                               empty) so the invisible-table columns stay aligned. #}
+                            <span class="wk-ci-time">{{ it.time_range }}</span>
                             {# v3-I follow-up (修修): the DAILY checkbox marks 'that day's
                                work done' (plan-entry done for this date) — NOT the whole
                                task. Posts /day-done with the day's date; item crosses out

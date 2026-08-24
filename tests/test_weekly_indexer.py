@@ -465,6 +465,64 @@ def test_daily_merges_growth_into_other_and_carries_meta(tmp_path, monkeypatch):
     assert item["project"] == "專案A"
 
 
+def test_daily_items_sorted_by_time_with_range(tmp_path, monkeypatch):
+    """修修 (2026-08-24): the daily bullet orders items by scheduled time (timed first,
+    ascending; all-day / untimed after in original order) and each item carries a 24h
+    時段 prefix「HH:MM–HH:MM」（untimed → ""）."""
+    monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
+    base = {"category": "work", "預估🍅": 2, "status": "to-do", "tags": ["task"]}
+    _task(
+        tmp_path,
+        "下午的事.md",
+        {
+            "title": "下午的事",
+            **base,
+            "plan": [
+                {
+                    "date": "2026-06-01",
+                    "pomodoros": 2,
+                    "start": "2026-06-01T14:00:00+08:00",
+                    "end": "2026-06-01T15:00:00+08:00",
+                }
+            ],
+        },
+    )
+    _task(
+        tmp_path,
+        "早上的事.md",
+        {
+            "title": "早上的事",
+            **base,
+            "plan": [
+                {
+                    "date": "2026-06-01",
+                    "pomodoros": 2,
+                    "start": "2026-06-01T09:00:00+08:00",
+                    "end": "2026-06-01T10:00:00+08:00",
+                }
+            ],
+        },
+    )
+    _task(
+        tmp_path,
+        "整天的事.md",
+        {
+            "title": "整天的事",
+            **base,
+            "plan": [
+                {"date": "2026-06-01", "pomodoros": 1, "start": "2026-06-01", "end": "2026-06-02"}
+            ],
+        },
+    )
+    v = WeeklyIndexer(tmp_path).view(week_for_date(date(2026, 6, 1)))
+    mon = next(d for d in v.days if d["date"] == "2026-06-01")
+    work = next(c for c in mon["categories"] if c["slug"] == "work")["items"]
+    assert [it["name"] for it in work] == ["早上的事", "下午的事", "整天的事"]
+    assert work[0]["time_range"] == "09:00–10:00"
+    assert work[1]["time_range"] == "14:00–15:00"
+    assert work[2]["time_range"] == ""  # all-day → no 時段 prefix
+
+
 def test_est_pomodoros_falls_back_to_plan_sum(tmp_path):
     """A calendar-linked task created without 預估🍅 carries its estimate only on
     plan[] — find_task should sum those so 預估 shows a real number, not 0/"-"
