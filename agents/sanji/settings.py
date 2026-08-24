@@ -21,6 +21,9 @@ class SanjiConfig:
     sanji_user_id: int  # 排除在點數經濟外的機器人 WP user id
     poll_seconds: int = 90  # 輪詢間隔（分鐘級回饋的心跳）
     fail_open_hours: int = 48  # 判定滯留自動放行門檻（漏斗⑦）
+    # 分階段上線的計分範圍（修修 2026-08-24：先鼓勵分享，登入分之後再開）。
+    # 事件照捕捉、cursor 照走——不在範圍內的來源只是不入帳；日後加開不回溯。
+    scored_sources: frozenset[str] = frozenset({"like_received", "bookmark_received"})
 
 
 def load() -> SanjiConfig:
@@ -45,6 +48,13 @@ def load() -> SanjiConfig:
     if missing:
         raise RuntimeError(f"sanji config missing: {', '.join(missing)}（檢查 .env）")
 
+    scored_env = os.environ.get("GAM_SCORED_SOURCES", "").strip()
+    scored = (
+        frozenset(t.strip() for t in scored_env.split(",") if t.strip())
+        if scored_env
+        else SanjiConfig.scored_sources
+    )
+
     return SanjiConfig(
         wp_base_url=base,
         wp_user=user,
@@ -52,4 +62,5 @@ def load() -> SanjiConfig:
         sanji_user_id=sanji_uid,
         poll_seconds=int(os.environ.get("GAM_POLL_SECONDS", "90") or 90),
         fail_open_hours=int(os.environ.get("GAM_FAIL_OPEN_HOURS", "48") or 48),
+        scored_sources=scored,
     )

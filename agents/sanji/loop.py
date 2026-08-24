@@ -132,7 +132,7 @@ class SanjiLoop:
                 self._handle_checkin(ev)
             else:
                 g = rules.grant_for_event(ev, sanji_user_id=self.cfg.sanji_user_id)
-                if g:
+                if g and g["source"] in self.cfg.scored_sources:
                     deterministic.append(g)
 
         if deterministic:

@@ -26,6 +26,7 @@ final class Plugin {
 			'includes/class-fc-bridge.php'   => '\NakamaGam\FcBridge',
 			'includes/class-rest.php'        => '\NakamaGam\Rest',
 			'includes/class-projections.php' => '\NakamaGam\Projections',
+			'includes/class-portal-ui.php'   => '\NakamaGam\PortalUi',
 		);
 		foreach ( $optional as $file => $class ) {
 			if ( file_exists( NAKAMA_GAM_PATH . $file ) ) {
@@ -45,6 +46,9 @@ final class Plugin {
 
 		if ( class_exists( '\NakamaGam\Capture' ) ) {
 			Capture::register();
+		}
+		if ( class_exists( '\NakamaGam\PortalUi' ) ) {
+			PortalUi::register();
 		}
 	}
 

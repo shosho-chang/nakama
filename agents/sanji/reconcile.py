@@ -73,7 +73,7 @@ def _sweep_bookmarks(cfg: SanjiConfig, client: WPClient, store: Store) -> dict:
                 except GamAPIError:
                     owner_cache[feed_id] = 0  # 貼文已刪——收藏不入帳
             g = rules.grant_for_bookmark(row, owner_cache[feed_id], sanji_user_id=cfg.sanji_user_id)
-            if g:
+            if g and g["source"] in cfg.scored_sources:
                 grants.append(g)
 
         if grants:
