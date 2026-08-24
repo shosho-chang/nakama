@@ -115,8 +115,8 @@ final class VoyagePage {
 		var sec=sectionEl(); if(!sec) return false;
 		hidden={el:sec,d:sec.style.display}; sec.style.display='none';
 		box=document.createElement('section');
-		box.className=sec.className+' nakama-voyage-pane'; // 繼承灰色 block 的版型
-		box.innerHTML='<div style="padding:2.5rem;text-align:center;opacity:.55">載入航海日誌…</div>';
+		box.className=sec.className+' nakama-voyage-pane'; // 繼承 section 版型（el-container 是 flex）
+		box.innerHTML='<main class="el-main fcom_main"><div class="nkv" style="text-align:center;opacity:.55">載入航海日誌…</div></main>';
 		sec.parentElement.insertBefore(box, sec);
 		var ul=document.querySelector('ul.fcom_profile_nav');
 		if(ul){
@@ -127,8 +127,8 @@ final class VoyagePage {
 		ACTIVE=true;
 		fetch('/?fleet_voyage='+encodeURIComponent(username)+'&embed=1',{credentials:'same-origin'})
 			.then(function(r){ if(!r.ok){ throw new Error(r.status); } return r.text(); })
-			.then(function(h){ if(ACTIVE&&box){ box.innerHTML=h; } })
-			.catch(function(){ if(ACTIVE&&box){ box.innerHTML='<div style="padding:2rem;text-align:center">載入失敗，<a href="/?fleet_voyage='+encodeURIComponent(username)+'">改用完整頁開啟 →</a></div>'; } });
+			.then(function(h){ if(ACTIVE&&box){ box.innerHTML='<main class="el-main fcom_main">'+h+'</main>'; } })
+			.catch(function(){ if(ACTIVE&&box){ box.innerHTML='<main class="el-main fcom_main"><div class="nkv" style="text-align:center">載入失敗，<a href="/?fleet_voyage='+encodeURIComponent(username)+'">改用完整頁開啟 →</a></div></main>'; } });
 		return true;
 	}
 	function sync(){
@@ -145,7 +145,18 @@ final class VoyagePage {
 			if(!ACTIVE){ history.pushState(null,'',mine.getAttribute('href')); sync(); }
 			return;
 		}
-		if(ACTIVE && e.target.closest('ul.fcom_profile_nav a')){ deactivate(); } // 先還原，再讓 Vue 接手路由
+		if(ACTIVE){
+			var other=e.target.closest('ul.fcom_profile_nav a');
+			if(other){
+				var targetPath=new URL(other.href, location.origin).pathname;
+				deactivate(); // 先還原，再讓 Vue 接手路由
+				/* Vue 內部路由若「已在」目標 tab（進 voyage 前的那個 tab），它視為同路由
+				   不導航也不改網址 → 網址卡在 /voyage。給它 80ms，沒動作就由我們矯正。 */
+				setTimeout(function(){
+					if(RE.test(location.pathname) && !ACTIVE){ _rawReplace(history.state,'',targetPath); }
+				},80);
+			}
+		}
 	}, true);
 
 	/* head script 比 vendor bundle 先註冊——同 target 依註冊順序執行：
@@ -245,7 +256,10 @@ final class VoyagePage {
 		?>
 <div class="nkv">
 <style>
-	.nkv{ font-size:14.5px; line-height:1.8; margin-top:14px }
+	/* 與其他 tab 的內容卡同配方（vendor .about_wrap 規則：var 主題變數，暗色自動跟隨） */
+	.nkv{ font-size:14.5px; line-height:1.8; display:block;
+		background:var(--fcom-primary-bg, white); color:var(--fcom-menu-text, #545861);
+		border-radius:5px; padding:20px; margin-bottom:20px }
 	.nkv .nkv-cards{ display:grid; grid-template-columns:1fr 1fr; gap:.7rem; margin-bottom:1.1rem }
 	.nkv .nkv-card{ border:1px solid rgba(125,125,125,.22); border-radius:12px; padding:.9rem 1.1rem }
 	.nkv .nkv-k{ font-size:.72rem; opacity:.6; letter-spacing:.05em }
