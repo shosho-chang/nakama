@@ -418,7 +418,9 @@
       </details>
       {% endif %}
 
-      <form method="post" action="/bridge/packaging/{{ episode_slug }}/approve" class="pkg-approve-form">
+      {# composition gate 與 server 對齊：long 且非 full 才需要 receipt（packaging_approve 的豁免） #}
+      <form method="post" action="/bridge/packaging/{{ episode_slug }}/approve" class="pkg-approve-form"
+            data-composition-required="{{ 'true' if cut.cut_id != 'full' else 'false' }}">
         <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
         <fieldset class="pkg-cards">
           <legend class="sho-mono-up">選 primary package（三個都願意花早期 impression 測才 approve）</legend>
@@ -432,11 +434,13 @@
                  alt="package {{ item.pkg.title_rank }} 封面：{{ item.title.text if item.title else '' }}" loading="lazy">
             <div class="pkg-card-title">{{ item.title.text if item.title else '（缺 rank ' ~ item.pkg.title_rank ~ ' 標題）' }}</div>
             <div class="sho-mono pkg-card-meta">#{{ item.pkg.title_rank }} · {{ item.pkg.thumb_archetype_id }} · {{ item.pkg.joint_pairing_id }}</div>
+            {% if cut.cut_id != 'full' %}
             <div class="sho-mono pkg-composition-status{% if not item.composition.verified %} pkg-composition-status--blocked{% endif %}"
                  role="status" data-composition-verified="{{ 'true' if item.composition.verified else 'false' }}">
               {% if item.composition.verified %}COMPOSITION VERIFIED{% else %}COMPOSITION BLOCKED{% endif %}
               <span>{{ item.composition.reason }}</span>
             </div>
+            {% endif %}
           </label>
           {% endfor %}
         </fieldset>
@@ -454,7 +458,7 @@
         {% endif %}
 
         <div class="field">
-          <label class="field-label" for="note-{{ cut.cut_id }}">REJECT NOTE ·（否決理由，taste capture — 選填）</label>
+          <label class="field-label" for="note-{{ cut.cut_id }}">REJECT NOTE ·（否決理由，taste capture — Reject 必填，approve 免填）</label>
           <textarea class="sho-input pkg-note" id="note-{{ cut.cut_id }}" name="reject_note"
                     rows="2" maxlength="2000">{{ approval.reject_note or '' if approval else '' }}</textarea>
         </div>
@@ -482,10 +486,11 @@
         <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
         <input type="hidden" name="primary_package" value="1">
         <div class="field">
-          <label class="field-label" for="snote-{{ cut.cut_id }}">REJECT NOTE ·（選填）</label>
+          <label class="field-label" for="snote-{{ cut.cut_id }}">REJECT NOTE ·（Reject 必填，approve 免填）</label>
           <textarea class="sho-input pkg-note" id="snote-{{ cut.cut_id }}" name="reject_note"
                     rows="2" maxlength="2000">{{ approval.reject_note or '' if approval else '' }}</textarea>
         </div>
+        <p class="sho-mono pkg-approve-error" role="alert" aria-live="assertive"></p>
         <div class="pkg-actions">
           <button class="sho-btn" type="submit" name="decision" value="approve">Approve</button>
           <button class="sho-btn sho-btn--ghost" type="submit" name="decision" value="reject">Reject</button>
@@ -942,11 +947,25 @@
   for (const form of document.querySelectorAll(".pkg-approve-form:not(.pkg-approve-form--short)")) {
     form.addEventListener("submit", (event) => {
       if (event.submitter?.value !== "approve") return;
+      if (form.dataset.compositionRequired !== "true") return;  // full（N1）server 端豁免 receipt
       const selected = form.querySelector('input[name="primary_package"]:checked')?.closest(".pkg-card");
       if (selected?.dataset.compositionVerified === "true") return;
       event.preventDefault();
       const error = form.querySelector(".pkg-approve-error");
       if (error) error.textContent = "COMPOSITION BLOCKED：中央主圖或保護區尚未通過驗證。";
+    });
+  }
+
+  // server 端 reject 必填 feedback（400）；前端先擋住，避免整頁跳 JSON 錯誤丟失表單狀態
+  for (const form of document.querySelectorAll(".pkg-approve-form")) {
+    form.addEventListener("submit", (event) => {
+      if (event.submitter?.value !== "reject") return;
+      const note = form.querySelector('textarea[name="reject_note"]');
+      if (note && note.value.trim()) return;
+      event.preventDefault();
+      const error = form.querySelector(".pkg-approve-error");
+      if (error) error.textContent = "Reject 需要填寫 feedback，Agent 才能重做。";
+      note?.focus();
     });
   }
 </script>
@@ -983,7 +1002,10 @@
         return;
       }
       const body = await response.text();
-      if (body.includes("DESCRIPTION INTERRUPTED")) {
+      // 拆開字面量：完整字串只出現在 interrupted banner 的 markup，
+      // 不能出現在本 script 自身源碼（否則 generating 期間每 3 秒誤 reload）
+      const marker = 'class="pkg-description-' + 'interrupted"';
+      if (body.includes(marker)) {
         window.location.reload();
         return;
       }

@@ -3,13 +3,15 @@
 穩態唯一人工介入點：修修看每支長片的 3 個 package（標題×封面綁定）後 approve。
 資料面 SoT = vault `Attachments/packaging/<episode_slug>/`（Syncthing 同步）：
 
-- packages.json  — packaging skill 寫（titles + packages），本 router 只讀
+- packages.json  — packaging skill 寫（titles + packages）；本 router 有兩個
+  寫入例外：短片標題改字（D4）與 compose 存配方（per-package `render_recipe`，
+  2026-08-21 cutout-cache 熱修收編），皆整檔過 PackagesFileV1 驗證後才落盤
 - approval.json  — 本 router 唯一寫入者（ApprovalFileV1；與 packages.json 分檔
-  縮小 Syncthing conflict 破壞面 — ADR-054 A10③）
+  縮小 Syncthing conflict 破壞面 — ADR-054 A10③）；reject 時同步排入
+  `revision_job`（PackagingRevisionJobV1，桌機 Cowork revision 流程消費）
 
 **UI 零 LLM**（D11）：無 brainstorm / reroll 按鈕；重抽路徑 = 回 Cowork 跑
-thumbnail-brainstorm。短片標題可改字（LLM 直出僅是初稿 — D4），寫回 packages.json
-是本 router 對該檔唯一的寫入例外，且整檔過 PackagesFileV1 驗證後才落盤。
+thumbnail-brainstorm。
 
 Syncthing conflict policy（docs/VAULT-LAYOUT.md）：目錄內出現 `*.sync-conflict-*`
 即 fail loud — 列表頁該集標錯、board 拒開，不靜默讀任一版本。
@@ -743,7 +745,7 @@ def _apply_packaging_to_release(
 
 
 @page_router.get("", response_class=HTMLResponse)
-async def packaging_list(request: Request, nakama_auth: str | None = Cookie(None)):
+def packaging_list(request: Request, nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/packaging", status_code=302)
     return _templates.TemplateResponse(
@@ -754,7 +756,7 @@ async def packaging_list(request: Request, nakama_auth: str | None = Cookie(None
 
 
 @page_router.get("/{episode_slug}/thumbnail/{filename}")
-async def packaging_thumbnail(
+def packaging_thumbnail(
     episode_slug: str,
     filename: str,
     nakama_auth: str | None = Cookie(None),
@@ -783,7 +785,7 @@ async def packaging_thumbnail(
 
 
 @page_router.get("/{episode_slug}/recipe-asset/{filename}")
-async def packaging_recipe_asset(
+def packaging_recipe_asset(
     episode_slug: str,
     filename: str,
     nakama_auth: str | None = Cookie(None),
@@ -815,7 +817,7 @@ async def packaging_recipe_asset(
 
 
 @page_router.get("/{episode_slug}", response_class=HTMLResponse)
-async def packaging_board(
+def packaging_board(
     request: Request,
     episode_slug: str,
     edited: str | None = None,
@@ -879,7 +881,7 @@ async def packaging_board(
 
 
 @page_router.post("/{episode_slug}/approve")
-async def packaging_approve(
+def packaging_approve(
     episode_slug: str,
     cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
     decision: str = Form(...),
@@ -985,7 +987,7 @@ async def packaging_approve(
 
 
 @page_router.post("/{episode_slug}/description/retry")
-async def packaging_retry_description(
+def packaging_retry_description(
     episode_slug: str,
     cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
     nakama_auth: str | None = Cookie(None),
@@ -1008,7 +1010,7 @@ async def packaging_retry_description(
 
 
 @page_router.post("/{episode_slug}/revision/retry")
-async def packaging_retry_revision(
+def packaging_retry_revision(
     episode_slug: str,
     cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
     nakama_auth: str | None = Cookie(None),
@@ -1051,7 +1053,7 @@ async def packaging_retry_revision(
 
 
 @page_router.post("/{episode_slug}/variant")
-async def packaging_select_variant(
+def packaging_select_variant(
     episode_slug: str,
     cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
     selected_variant: str = Form("", max_length=_EP_SLUG_MAX),
@@ -1123,7 +1125,7 @@ async def packaging_select_variant(
 
 
 @page_router.post("/{episode_slug}/compose")
-async def packaging_compose(
+def packaging_compose(
     episode_slug: str,
     cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
     package_rank: int | None = Form(None, ge=1, le=3),
@@ -1295,7 +1297,7 @@ async def packaging_compose(
 
 
 @page_router.post("/{episode_slug}/title")
-async def packaging_edit_title(
+def packaging_edit_title(
     episode_slug: str,
     cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
     title_text: str = Form(..., max_length=_TITLE_MAX),
