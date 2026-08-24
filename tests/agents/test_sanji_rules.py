@@ -215,10 +215,17 @@ def test_checkin_and_quiz_never_auto_grant():
 
 def test_bookmark_grant_from_scan_row():
     g = rules.grant_for_bookmark(
-        {"id": 88, "user_id": 7}, feed_owner_id=42, sanji_user_id=SANJI_UID
+        {"id": 88, "user_id": 7, "object_id": 900}, feed_owner_id=42, sanji_user_id=SANJI_UID
     )
     assert g is not None
     assert (g["xp"], g["idempotency_key"]) == (100, "bookmark:react:88")
+    assert g["reason"] == "feed:900"  # 貼文參照——按內容彙整的歸戶依據
+
+    # 缺 feed 參照仍入帳（錢不能因顯示需求而漏），reason 留空
+    g2 = rules.grant_for_bookmark(
+        {"id": 90, "user_id": 7}, feed_owner_id=42, sanji_user_id=SANJI_UID
+    )
+    assert g2 is not None and g2["reason"] == ""
     # 自藏不計
     assert (
         rules.grant_for_bookmark(

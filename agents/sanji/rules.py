@@ -244,7 +244,15 @@ def grant_for_bookmark(row: dict, feed_owner_id: int, *, sanji_user_id: int) -> 
     react_id = int(row.get("id", 0))
     if not react_id:
         return None
-    return _grant(feed_owner_id, "bookmark_received", f"bookmark:react:{react_id}")
+    # reason 帶貼文參照（feed:{id}）——航海日誌按內容彙整靠它歸戶。
+    # 這是 audit 註記不是經濟值，金額與冪等鍵不變，不 bump RULE_VERSION。
+    feed_id = int(row.get("object_id", 0))
+    return _grant(
+        feed_owner_id,
+        "bookmark_received",
+        f"bookmark:react:{react_id}",
+        reason=f"feed:{feed_id}" if feed_id else "",
+    )
 
 
 def grant_for_checkin(
