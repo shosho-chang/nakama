@@ -1234,6 +1234,13 @@ async def weekly_task_detail(
     except TaskNotFoundError:
         return _back(wk_key, "task")
 
+    # 修修 (2026-08-24): 補記日期 defaults to the task's most recent scheduled day
+    # (≤ today) — reviewing a past task then pressing +1 lands the 🍅 on the planned
+    # session without touching the picker. No past schedule → today (原行為)。
+    today = today_taipei()
+    past_sched = [d for d in task.schedule_dates() if d <= today]
+    backfill_default = max(past_sched) if past_sched else today
+
     # Calendar scheduling reads/writes per-entry here, identical to the dashboard row
     # (修修: stop the two surfaces diverging). The template iterates ``task.plan`` —
     # each entry carries its own ``is_linked`` / ``time_label`` (v3-A) — and posts the
@@ -1250,7 +1257,9 @@ async def weekly_task_detail(
             "obsidian_uri": _obsidian_uri(vault, task.relative_path),
             "task_body": task_body,
             "task_token": task_token,
-            "today_iso": today_taipei().isoformat(),  # default date for the merged 排入 picker
+            "today_iso": today.isoformat(),  # default date for the merged 排入 picker
+            # 補記日期 default: latest scheduled day ≤ today (修修 2026-08-24)
+            "backfill_default_iso": backfill_default.isoformat(),
             "asset_version": _SHOSHO_ASSET_VERSION,
             "error_msg": _TASK_ERRORS.get(err) if err else None,
             "saved_msg": _TASK_SAVED.get(saved) if saved else None,
@@ -1311,7 +1320,25 @@ async def weekly_task_log(
     # 今天，補上週的工作會漏進本週 (修修回報的 bug)。給了過去的日期就把 block 錨在那天的 23:59，
     # 讓 log_time_entry 的「往回堆疊」把連續 N 顆疊在當天內、不跨到前一天。未來/今天 → 用現在。
     ed = _parse_entry_date(entry_date) if entry_date.strip() else None
-    if ed is not None and ed < end.date():
+    # 修修 (2026-08-24): 手動 +1 的時間戳要跟著任務「之前安排的時間」走 — review 舊任務補
+    # 番茄時蓋 now 會灌進本週數字。目標日（entry_date，留空＝今天）若有 TIMED plan entry，
+    # 錨在其排程結束時間（clamp 到 now，不產生未來戳記）；「往回堆疊」讓連續 N 顆由後往前
+    # 填滿排程時窗。無 timed entry → 維持原行為（過去→23:59、今天→now）。
+    planned_end: datetime | None = None
+    if manual:
+        target = ed if (ed is not None and ed <= end.date()) else end.date()
+        t = WeeklyIndexer(get_vault_path()).find_task(slug)
+        e = t.entry_on(target) if t is not None else None
+        if e is not None and e.end and "T" in e.end:
+            try:
+                planned_end = datetime.fromisoformat(e.end)
+            except ValueError:
+                planned_end = None
+            if planned_end is not None and planned_end.tzinfo is None:
+                planned_end = planned_end.replace(tzinfo=TAIPEI)  # 舊資料可能無 offset
+    if planned_end is not None:
+        end = min(planned_end, end)
+    elif ed is not None and ed < end.date():
         end = datetime.combine(ed, time(23, 59), tzinfo=TAIPEI)
     # Live timer → actual elapsed (capped at the nominal block, floored at 1 min so
     # a stray 0 doesn't make a non-positive span); manual button → full nominal block.

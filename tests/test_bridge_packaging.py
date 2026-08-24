@@ -13,6 +13,7 @@ Coverage:
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 from datetime import datetime, timezone
@@ -108,6 +109,72 @@ def client(monkeypatch, vault):
     return TestClient(app_module.app)
 
 
+def _write_composition_receipt(vault, rank: int, cut_id: str = "punch-L1") -> None:
+    """長 highlight approve 的前置：中央主圖 composition receipt（三重 hash 對齊）。"""
+    ep_rel = "Attachments/packaging/20260723-xieboran"
+    thumb_rel = f"{ep_rel}/pkg-{cut_id}-{rank}.png"
+    thumb = vault / thumb_rel
+    thumb.parent.mkdir(parents=True, exist_ok=True)
+    thumb.write_bytes(bytes.fromhex("89504e470d0a1a0a") + f"{cut_id}-{rank}".encode())
+    center_rel = f"{ep_rel}/center-{cut_id}-r{rank}.png"
+    (vault / center_rel).write_bytes(bytes.fromhex("89504e470d0a1a0a") + b"center")
+    boxes = {
+        "protected_center_bbox": {"x": 320.0, "y": 180.0, "width": 640.0, "height": 360.0},
+        "host_bbox": {"x": 0.0, "y": 560.0, "width": 160.0, "height": 160.0},
+        "guest_bbox": {"x": 1120.0, "y": 560.0, "width": 160.0, "height": 160.0},
+        "title_bbox": None,
+    }
+    thumb_sha = hashlib.sha256(thumb.read_bytes()).hexdigest()
+    center_sha = hashlib.sha256((vault / center_rel).read_bytes()).hexdigest()
+    sidecar_rel = f"{ep_rel}/composition_receipts/{cut_id}-r{rank}.measurement.json"
+    sidecar = vault / sidecar_rel
+    sidecar.parent.mkdir(parents=True, exist_ok=True)
+    sidecar.write_text(
+        json.dumps(
+            {
+                "schema": "nakama.thumbnail_composition_measurement.v1",
+                "composition": "thumbnail_reaction",
+                "renderer": {"name": "pytest", "version": "1"},
+                "png_sha256": thumb_sha,
+                "assets": {"prop_image_data_url": {"sha256": center_sha}},
+                "canvas": {"width": 1280, "height": 720},
+                "bboxes": boxes,
+            }
+        ),
+        encoding="utf-8",
+    )
+    receipt = {
+        "schema": "nakama.long_thumbnail_composition.v2",
+        "episode": "20260723 謝伯讓",
+        "cut_id": cut_id,
+        "package_rank": rank,
+        "thumbnail_png": thumb_rel,
+        "canvas_width": 1280,
+        "canvas_height": 720,
+        "center_visual_asset": center_rel,
+        "thumbnail_sha256": thumb_sha,
+        "center_visual_sha256": center_sha,
+        "measurement_sidecar": sidecar_rel,
+        "measurement_sidecar_sha256": hashlib.sha256(sidecar.read_bytes()).hexdigest(),
+        "renderer_identity": "pytest@1",
+        "protected_center_bbox": boxes["protected_center_bbox"],
+        "host_bbox": boxes["host_bbox"],
+        "guest_bbox": boxes["guest_bbox"],
+        "title_bbox": None,
+    }
+    (vault / ep_rel / "composition_receipts" / f"{cut_id}-r{rank}.json").write_text(
+        json.dumps(receipt, ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def _stub_publish_prep(monkeypatch) -> None:
+    """approve 成功後會啟動桌機側 publish_prep 匯出；測試環境以 no-op 取代。"""
+    import thousand_sunny.routers.packaging as pkg_module
+
+    monkeypatch.delenv("PODCAST_EPISODES_ROOT", raising=False)
+    monkeypatch.setattr(pkg_module, "_ensure_publish_prep", lambda episode, cut_id: None)
+
+
 # ---------------------------------------------------------------------------
 # 列表
 # ---------------------------------------------------------------------------
@@ -177,7 +244,9 @@ def test_board_unknown_episode_404(client):
 # ---------------------------------------------------------------------------
 
 
-def test_approve_writes_approval_file_and_reload_shows_state(client, vault):
+def test_approve_writes_approval_file_and_reload_shows_state(client, vault, monkeypatch):
+    _write_composition_receipt(vault, rank=2)
+    _stub_publish_prep(monkeypatch)
     r = client.post(
         "/bridge/packaging/20260723-xieboran/approve",
         data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "2"},
@@ -202,7 +271,9 @@ def test_approve_writes_approval_file_and_reload_shows_state(client, vault):
     assert ">1<" in lst.text or "1</td>" in lst.text.replace(" ", "")
 
 
-def test_reject_with_note_upserts(client, vault):
+def test_reject_with_note_upserts(client, vault, monkeypatch):
+    _write_composition_receipt(vault, rank=1)
+    _stub_publish_prep(monkeypatch)
     client.post(
         "/bridge/packaging/20260723-xieboran/approve",
         data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
@@ -223,8 +294,9 @@ def test_reject_with_note_upserts(client, vault):
     assert entry.approved is False
     assert entry.reject_note == "三張表情太像，重抽"
 
+    # reject 現在同時排入 revision job（agent 重做），board 顯示 REVISION QUEUED
     board = client.get("/bridge/packaging/20260723-xieboran")
-    assert "REJECTED" in board.text
+    assert "REVISION QUEUED" in board.text
 
 
 def test_approve_requires_primary_package(client):
@@ -243,6 +315,43 @@ def test_approve_unknown_cut_404(client):
         follow_redirects=False,
     )
     assert r.status_code == 404
+
+
+def test_approve_long_highlight_requires_composition_receipt(client):
+    """長 highlight（非 full）沒有 composition receipt 不可 approve（中央主圖保護）。"""
+    r = client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 409
+    assert "composition receipt" in r.json()["detail"]
+
+
+def test_reject_requires_feedback(client):
+    r = client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "reject"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 400
+
+
+def test_reject_creates_revision_job(client, vault):
+    client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "reject", "reject_note": "三張表情太像，重抽"},
+        follow_redirects=False,
+    )
+    saved = json.loads(
+        (vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    job = saved["approvals"][0]["revision_job"]
+    assert job["status"] == "queued"
+    assert job["feedback"] == "三張表情太像，重抽"
+    assert job["request_id"].startswith("revision-")
 
 
 # ---------------------------------------------------------------------------
@@ -463,7 +572,9 @@ def test_variant_select_writes_approval_without_approving(client, vault_with_var
     assert entry["approved"] is False  # 挑臉不等於拍板
 
 
-def test_variant_select_keeps_existing_approval(client, vault_with_variants):
+def test_variant_select_keeps_existing_approval(client, vault_with_variants, monkeypatch):
+    _write_composition_receipt(vault_with_variants, rank=2)
+    _stub_publish_prep(monkeypatch)
     client.post(
         "/bridge/packaging/20260723-xieboran/approve",
         data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "2"},
@@ -512,8 +623,10 @@ def test_board_shows_variant_thumbnails(client, vault_with_variants):
     assert "var-r1-a.png" in board.text and "var-r1-b.png" in board.text
 
 
-def test_approve_does_not_wipe_selected_variant(client, vault_with_variants):
+def test_approve_does_not_wipe_selected_variant(client, vault_with_variants, monkeypatch):
     """2026-08-14 browser UAT：勾完變體再 approve，選擇整個不見。"""
+    _write_composition_receipt(vault_with_variants, rank=1)
+    _stub_publish_prep(monkeypatch)
     client.post(
         "/bridge/packaging/20260723-xieboran/variant",
         data={"cut_id": "punch-L1", "selected_variant": "r1-b", "bigtext_request": "大字／[重出]"},
@@ -549,13 +662,13 @@ def test_variant_pick_alone_is_not_a_rejection(client, vault_with_variants):
     board = client.get("/bridge/packaging/20260723-xieboran")
     assert "PENDING" in board.text
     assert "REJECTED" not in board.text
-    # 真的按 Reject 才是 REJECTED
+    # 真的按 Reject 才進 revision 流程（board 顯示 REVISION QUEUED）
     client.post(
         "/bridge/packaging/20260723-xieboran/approve",
         data={"cut_id": "punch-L1", "decision": "reject", "reject_note": "臉不對"},
         follow_redirects=False,
     )
-    assert "REJECTED" in client.get("/bridge/packaging/20260723-xieboran").text
+    assert "REVISION QUEUED" in client.get("/bridge/packaging/20260723-xieboran").text
 
 
 def test_legacy_approval_without_decision_still_shows_rejected(client, vault):
@@ -800,7 +913,9 @@ def test_compose_rejects_empty_big_text(client, vault_with_cutouts):
     assert r.status_code == 400
 
 
-def test_compose_keeps_approval_state(client, vault_with_cutouts):
+def test_compose_keeps_approval_state(client, vault_with_cutouts, monkeypatch):
+    _write_composition_receipt(vault_with_cutouts, rank=3)
+    _stub_publish_prep(monkeypatch)
     client.post(
         "/bridge/packaging/20260723-xieboran/approve",
         data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "3"},

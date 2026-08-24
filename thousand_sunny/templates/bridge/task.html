@@ -209,9 +209,9 @@
              backfill a block done on a PAST day; without it the block is stamped today and
              leaks into the wrong week (修修 bug). JS syncs the picker into each form's
              entry_date; with no JS it stays blank ⇒ the route records today (safe fallback). #}
-          <label class="tk-backfill" title="手動補記的日期（預設今天；要補過去某天做的，改這裡）">
+          <label class="tk-backfill" title="手動補記的日期（預設＝最近一次排程日；當天有排時段時，+1 會記在排程時窗內；要補其他天改這裡）">
             <span class="tk-backfill-cap">補記日期</span>
-            <input type="date" id="tk-backfill-date" value="{{ today_iso }}" max="{{ today_iso }}"
+            <input type="date" id="tk-backfill-date" value="{{ backfill_default_iso | default(today_iso) }}" max="{{ today_iso }}"
                    aria-label="手動補記番茄鐘的日期">
           </label>
           <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-mform">

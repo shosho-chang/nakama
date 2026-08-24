@@ -246,6 +246,23 @@ class TaskAllocation:
         except ValueError:
             return ""
 
+    @property
+    def time_range(self) -> str:
+        """``HH:MM–HH:MM`` (24h) for a timed entry — the daily bullet's 時段 prefix
+        (修修 2026-08-24). "" for all-day / plan-only / unparseable entries."""
+        if not self.start or "T" not in self.start:
+            return ""
+        try:
+            label = datetime.fromisoformat(self.start).strftime("%H:%M")
+        except ValueError:
+            return ""
+        if self.end and "T" in self.end:
+            try:
+                label += f"–{datetime.fromisoformat(self.end).strftime('%H:%M')}"
+            except ValueError:
+                pass
+        return label
+
 
 @dataclass(frozen=True)
 class WeeklyTask:
@@ -311,6 +328,14 @@ class WeeklyTask:
         if self.plan:
             return any(a.date == d for a in self.plan)
         return self.scheduled == d
+
+    def entry_on(self, d: date) -> Optional[TaskAllocation]:
+        """The plan[] entry for day ``d``, or None (at most one — upsert is keyed by
+        date). Scheduled-only tasks have no plan entries and always return None."""
+        for a in self.plan:
+            if a.date == d:
+                return a
+        return None
 
     def schedule_dates(self) -> list[date]:
         """Every concrete date this task is placed on — ``plan[]`` entry dates plus a
@@ -983,6 +1008,17 @@ class WeeklyIndexer:
                     continue
                 seen.add(slug)
                 is_work = slug == WORK_CATEGORY
+
+                # 修修 (2026-08-24): order the day's items by their scheduled time —
+                # timed entries first (ascending start), all-day / untimed after in
+                # their original order (stable sort). The ISO starts share one offset,
+                # so the lexicographic key equals chronological order.
+                def _time_key(t: WeeklyTask) -> tuple[int, str]:
+                    e = t.entry_on(d)
+                    if e is not None and e.start and "T" in e.start:
+                        return (0, e.start)
+                    return (1, "")
+
                 items = [
                     {
                         "name": t.name,
@@ -997,8 +1033,10 @@ class WeeklyIndexer:
                         "priority": t.priority,
                         "priority_label": t.priority_label,
                         "project": t.project,
+                        # 修修 (2026-08-24): 時段 prefix「HH:MM–HH:MM」(24h); "" untimed
+                        "time_range": (t.entry_on(d).time_range if t.entry_on(d) else ""),
                     }
-                    for t in by_cat.get(slug, [])
+                    for t in sorted(by_cat.get(slug, []), key=_time_key)
                 ]
                 categories.append(
                     {
