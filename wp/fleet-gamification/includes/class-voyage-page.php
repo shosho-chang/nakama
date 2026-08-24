@@ -64,10 +64,14 @@ final class VoyagePage {
 			return $profile;
 		}
 
+		$base = class_exists( '\FluentCommunity\App\Services\Helper' )
+			? (string) \FluentCommunity\App\Services\Helper::baseUrl( 'u/' . $username . '/voyage' )
+			: home_url( '/?' . self::QUERY_KEY . '=' . rawurlencode( $username ) );
+
 		$profile['profile_navs'][] = array(
 			'slug'          => 'voyage_log',
 			'title'         => '航海日誌',
-			'url'           => esc_url_raw( home_url( '/?' . self::QUERY_KEY . '=' . rawurlencode( $username ) ) ),
+			'url'           => esc_url_raw( $base ), // 真路徑 /deck/u/{name}/voyage——JS 接手 pushState
 			'wrapper_class' => 'fcom_profile_voyage',
 			// 刻意不帶 route：vendor Vue router 沒這個路由名。
 		);
@@ -87,46 +91,109 @@ final class VoyagePage {
 		?>
 <script id="nakama-gam-voyage-tab">
 (function(){
-	var ACTIVE=false, saved=[], prevActive=null, box=null;
+	/* 航海日誌：真路由 SPA 面板。
+	   URL 形如 {portal}/u/{name}/voyage；內容取代 section.fcom_space_container（灰色 block）。
+	   sync() 是唯一真相：依 location.pathname 決定 activate/deactivate——
+	   點擊、上下頁、SPA 換頁（pushState wrapper）全部收斂到它。 */
+	var RE=/\/u\/([^\/]+)\/voyage\/?$/;
+	var ACTIVE=false, hidden=null, prevActive=null, box=null;
+
 	function tabA(){ var li=document.querySelector('li.fcom_profile_voyage'); return li&&li.querySelector('a'); }
+	function sectionEl(){
+		var h=document.querySelector('div.object_header');
+		var s=h&&h.nextElementSibling;
+		return (s&&s.tagName==='SECTION')?s:null;
+	}
 	function deactivate(){
 		if(!ACTIVE) return; ACTIVE=false;
 		if(box){ box.remove(); box=null; }
-		saved.forEach(function(p){ p.el.style.display=p.d; }); saved=[];
+		if(hidden){ hidden.el.style.display=hidden.d; hidden=null; }
 		var a=tabA(); if(a){ a.classList.remove('router-link-active','router-link-exact-active'); }
 		if(prevActive){ prevActive.classList.add('router-link-active','router-link-exact-active'); prevActive=null; }
 	}
-	function activate(url){
-		var ul=document.querySelector('ul.fcom_profile_nav'); if(!ul){ window.location.href=url; return; }
-		var card=ul.closest('div')||ul.parentElement, parent=card.parentElement;
-		var sib=card.nextElementSibling;
-		while(sib){ saved.push({el:sib,d:sib.style.display}); sib.style.display='none'; sib=sib.nextElementSibling; }
-		box=document.createElement('div');
-		// 複製原內容卡的 class：外觀（灰色卡片、圓角、留白）自動與其他 tab 一致
-		box.className=(saved[0]?saved[0].el.className+' ':'')+'nakama-voyage-pane';
+	function activate(username){
+		var sec=sectionEl(); if(!sec) return false;
+		hidden={el:sec,d:sec.style.display}; sec.style.display='none';
+		box=document.createElement('section');
+		box.className=sec.className+' nakama-voyage-pane'; // 繼承灰色 block 的版型
 		box.innerHTML='<div style="padding:2.5rem;text-align:center;opacity:.55">載入航海日誌…</div>';
-		if(saved[0]&&saved[0].el.parentElement===parent){ parent.insertBefore(box, saved[0].el); }
-		else{ parent.appendChild(box); }
-		var pa=ul.querySelector('a.router-link-exact-active')||ul.querySelector('a.router-link-active');
-		if(pa && pa!==tabA()){ prevActive=pa; pa.classList.remove('router-link-active','router-link-exact-active'); }
+		sec.parentElement.insertBefore(box, sec);
+		var ul=document.querySelector('ul.fcom_profile_nav');
+		if(ul){
+			var pa=ul.querySelector('a.router-link-exact-active')||ul.querySelector('a.router-link-active');
+			if(pa && pa!==tabA()){ prevActive=pa; pa.classList.remove('router-link-active','router-link-exact-active'); }
+		}
 		var a=tabA(); if(a){ a.classList.add('router-link-active','router-link-exact-active'); }
 		ACTIVE=true;
-		fetch(url+(url.indexOf('?')>-1?'&':'?')+'embed=1',{credentials:'same-origin'})
+		fetch('/?fleet_voyage='+encodeURIComponent(username)+'&embed=1',{credentials:'same-origin'})
 			.then(function(r){ if(!r.ok){ throw new Error(r.status); } return r.text(); })
 			.then(function(h){ if(ACTIVE&&box){ box.innerHTML=h; } })
-			.catch(function(){ if(ACTIVE&&box){ box.innerHTML='<div style="padding:2rem;text-align:center">載入失敗，<a href="'+url+'">改用完整頁開啟 →</a></div>'; } });
+			.catch(function(){ if(ACTIVE&&box){ box.innerHTML='<div style="padding:2rem;text-align:center">載入失敗，<a href="/?fleet_voyage='+encodeURIComponent(username)+'">改用完整頁開啟 →</a></div>'; } });
+		return true;
 	}
+	function sync(){
+		var m=location.pathname.match(RE);
+		if(m){ if(!ACTIVE){ activate(decodeURIComponent(m[1])); } }
+		else if(ACTIVE){ deactivate(); }
+	}
+
 	document.addEventListener('click',function(e){
 		if(!e.target||!e.target.closest) return;
 		var mine=e.target.closest('li.fcom_profile_voyage a');
-		if(mine){ e.preventDefault(); e.stopPropagation(); if(!ACTIVE){ activate(mine.getAttribute('href')); } return; }
-		if(ACTIVE && e.target.closest('ul.fcom_profile_nav a')){ deactivate(); }
+		if(mine){
+			e.preventDefault(); e.stopPropagation();
+			if(!ACTIVE){ history.pushState(null,'',mine.getAttribute('href')); sync(); }
+			return;
+		}
+		if(ACTIVE && e.target.closest('ul.fcom_profile_nav a')){ deactivate(); } // 先還原，再讓 Vue 接手路由
 	}, true);
-	window.addEventListener('popstate', deactivate);
-	['pushState','replaceState'].forEach(function(k){
-		var o=history[k];
-		history[k]=function(){ var r=o.apply(this,arguments); try{ deactivate(); }catch(_e){} return r; };
+
+	/* head script 比 vendor bundle 先註冊——同 target 依註冊順序執行：
+	   落在 /voyage 的 popstate 先到我們手上，擋掉 Vue router 的處理
+	   （它不認識這條路由，會把 URL 替換回 base）；其他路徑放行給 Vue。 */
+	window.addEventListener('popstate', function(e){
+		if(RE.test(location.pathname)){ e.stopImmediatePropagation(); }
+		setTimeout(sync,0);
 	});
+
+	/* 深連結／重新整理（要在 history wrapper 安裝前用原生方法做）：
+	   vendor router 不認識 /voyage → 先把 URL 換回 profile 讓它正常渲染，
+	   等 profile DOM 就緒再 push 回 /voyage 並接管。逾時退回獨立頁。 */
+	var m0=location.pathname.match(RE);
+	var _rawReplace=history.replaceState.bind(history), _rawPush=history.pushState.bind(history);
+	if(m0){
+		var user0=decodeURIComponent(m0[1]);
+		var voyagePath=location.pathname;
+		_rawReplace(null,'',location.pathname.replace(/voyage\/?$/,''));
+		var waited=0, t=setInterval(function(){
+			waited+=200;
+			if(sectionEl()&&document.querySelector('ul.fcom_profile_nav')){
+				clearInterval(t);
+				_rawPush(null,'',voyagePath);
+				sync();
+			}else if(waited>=8000){
+				clearInterval(t);
+				window.location.href='/?fleet_voyage='+encodeURIComponent(user0);
+			}
+		},200);
+	}
+
+	/* vue-router push 前會 replaceState 覆寫「當前」entry——在 voyage 上時這會把
+	   我們的 URL 改掉、害 back/forward 跳過本頁。攔下：URL 保持 voyage，
+	   state 物件原樣放行（Vue 之後 back 回這個 entry 時，popstate 已被上面擋住）。 */
+	history.replaceState=function(state,title,url){
+		if(RE.test(location.pathname) && url!=null && !RE.test(String(url))){
+			url=location.pathname+location.search;
+		}
+		var r=_rawReplace(state,title,url);
+		try{ setTimeout(sync,0); }catch(_e){}
+		return r;
+	};
+	history.pushState=function(){
+		var r=_rawPush.apply(null,arguments);
+		try{ setTimeout(sync,0); }catch(_e){}
+		return r;
+	};
 })();
 </script>
 		<?php
