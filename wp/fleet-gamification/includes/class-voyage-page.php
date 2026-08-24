@@ -608,8 +608,10 @@ document.addEventListener('change',function(e){
 		if ( '' !== (string) ( $r['season'] ?? '' ) ) {
 			$bits[] = (string) $r['season'];
 		}
+		// reason 是審計欄，值可能是機器參照（feed:291 / react:2936）——那對成員沒意義。
+		// 判定的「為什麼」本來就在貼文底下 Sanji 的公開留言裡，這裡不重複也不洩內部 id。
 		$reason = trim( (string) ( $r['reason'] ?? '' ) );
-		if ( '' !== $reason ) {
+		if ( '' !== $reason && ! preg_match( '/^[a-z_]+:\d+$/', $reason ) ) {
 			$bits[] = function_exists( 'mb_strimwidth' ) ? mb_strimwidth( $reason, 0, 52, '…' ) : $reason;
 		}
 
@@ -621,6 +623,11 @@ document.addEventListener('change',function(e){
 	private static function ledger_block_html( array $d ): string {
 		if ( ! $d['is_self'] ) {
 			return '<p class="nkv-note">入帳明細只有本人看得到。</p>';
+		}
+
+		// 一筆帳都還沒有：階級區塊的邀請已經說完了，別再補一句幾乎一樣的話。
+		if ( ! $d['has_balance'] ) {
+			return '';
 		}
 
 		$out = '<div class="nkv-lg-head"><h3>最近入帳</h3>' . self::filter_select_html( $d ) . '</div>';
