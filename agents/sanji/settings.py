@@ -23,7 +23,9 @@ class SanjiConfig:
     fail_open_hours: int = 48  # 判定滯留自動放行門檻（漏斗⑦）
     # 分階段上線的計分範圍（修修 2026-08-24：先鼓勵分享，登入分之後再開）。
     # 事件照捕捉、cursor 照走——不在範圍內的來源只是不入帳；日後加開不回溯。
-    scored_sources: frozenset[str] = frozenset({"like_received", "bookmark_received"})
+    scored_sources: frozenset[str] = frozenset(
+        {"like_received", "comment_received", "bookmark_received"}
+    )
 
 
 def load() -> SanjiConfig:

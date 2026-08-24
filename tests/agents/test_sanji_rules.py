@@ -37,6 +37,7 @@ def test_xp_table_locked():
         "streak_7": 30,
         "full_attendance": 200,
         "like_received": 10,
+        "comment_received": 30,
         "bookmark_received": 100,
         "lesson_completed": 50,
         "course_completed": 300,
@@ -155,6 +156,56 @@ def test_like_requires_react_row_dedupe_and_skips_self_like():
         sanji_user_id=SANJI_UID,
     )
     assert no_dedupe is None  # 無法保證冪等就不入帳
+
+
+def test_comment_scores_unique_per_post_and_skips_self_and_sanji():
+    # 正常：貼文 900 被 user 7 留言 → 作者(42) +30，鍵 = 一文一人
+    ok = rules.grant_for_event(
+        _ev("comment_received", oid=900, meta={"actor_id": 7, "comment_id": 501}),
+        sanji_user_id=SANJI_UID,
+    )
+    assert ok is not None
+    assert (ok["xp"], ok["berry"]) == (30, 3)
+    assert ok["idempotency_key"] == "comment:900:7"  # 同人再留 → 同鍵 → DB 冪等擋掉
+
+    # 自己留言不計
+    self_c = rules.grant_for_event(
+        _ev("comment_received", oid=900, meta={"actor_id": 42, "comment_id": 502}),
+        sanji_user_id=SANJI_UID,
+    )
+    assert self_c is None
+
+    # Sanji 的祝賀留言不計（否則每篇得分文自動 +30，經濟就假了）
+    sanji_c = rules.grant_for_event(
+        _ev("comment_received", oid=900, meta={"actor_id": SANJI_UID, "comment_id": 503}),
+        sanji_user_id=SANJI_UID,
+    )
+    assert sanji_c is None
+
+    # 缺 actor 或缺 feed 參照 → 無法保證「一文一人一次」→ 不入帳
+    assert (
+        rules.grant_for_event(
+            _ev("comment_received", oid=900, meta={"comment_id": 504}),
+            sanji_user_id=SANJI_UID,
+        )
+        is None
+    )
+    assert (
+        rules.grant_for_event(
+            _ev("comment_received", oid=0, meta={"actor_id": 7, "comment_id": 505}),
+            sanji_user_id=SANJI_UID,
+        )
+        is None
+    )
+
+    # 舊觀測型別 comment_added（留言者為主體）永不入帳
+    assert (
+        rules.grant_for_event(
+            _ev("comment_added", oid=501, meta={"feed_id": 900}),
+            sanji_user_id=SANJI_UID,
+        )
+        is None
+    )
 
 
 def test_checkin_and_quiz_never_auto_grant():

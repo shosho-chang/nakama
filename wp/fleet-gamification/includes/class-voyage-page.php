@@ -35,6 +35,7 @@ final class VoyagePage {
 		'streak_7'          => '連續 7 天獎',
 		'full_attendance'   => '全勤獎',
 		'like_received'     => '貼文被讚',
+		'comment_received'  => '貼文被留言',
 		'bookmark_received' => '貼文被收藏',
 		'lesson_completed'  => '完成課程單元',
 		'course_completed'  => '完成整門課程',
@@ -58,7 +59,7 @@ final class VoyagePage {
 	);
 
 	private const GROUP_SOURCES = array(
-		'share'     => array( 'like_received', 'bookmark_received' ),
+		'share'     => array( 'like_received', 'comment_received', 'bookmark_received' ),
 		'challenge' => array( 'checkin_day', 'streak_7', 'full_attendance' ),
 		'learn'     => array( 'lesson_completed', 'course_completed', 'quiz_passed' ),
 		'other'     => array( 'presence_day', 'surprise', 'captain_award', 'reversal' ),
