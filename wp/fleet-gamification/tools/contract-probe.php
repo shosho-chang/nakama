@@ -68,6 +68,10 @@ $check( 'hook track_activity in getTicker', str_contains( $feeds_ctrl, "do_actio
 $portal_view = $src( '/app/Views/portal/portal.php' );
 $check( 'hook portal_sidebar in portal view', str_contains( $portal_view, "do_action('fluent_community/portal_sidebar'" ) );
 
+$profile_ctrl = $src( '/app/Http/Controllers/ProfileController.php' );
+$check( 'filter profile_view_data (tab 注入點)', str_contains( $profile_ctrl, "apply_filters('fluent_community/profile_view_data'" ) );
+$check( 'profile_navs 結構仍存在', str_contains( $profile_ctrl, "profile_navs" ) );
+
 $quiz_ctrl = is_readable( $pro_dir . '/app/Modules/Quiz/Http/Controllers/QuizController.php' )
 	? (string) file_get_contents( $pro_dir . '/app/Modules/Quiz/Http/Controllers/QuizController.php' )
 	: '';
