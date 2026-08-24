@@ -127,6 +127,30 @@ final class Rest {
 
 		register_rest_route(
 			self::NS,
+			'/balances',
+			array(
+				'methods'             => 'GET',
+				'permission_callback' => array( self::class, 'can_access' ),
+				'callback'            => array( self::class, 'balances' ),
+				'args'                => array(
+					'after_user_id' => array( 'type' => 'integer', 'default' => 0, 'minimum' => 0 ),
+					'limit'         => array( 'type' => 'integer', 'default' => 200, 'minimum' => 1, 'maximum' => 500 ),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NS,
+			'/balances/restamp',
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => array( self::class, 'can_access' ),
+				'callback'            => array( self::class, 'restamp' ),
+			)
+		);
+
+		register_rest_route(
+			self::NS,
 			'/balances/(?P<id>\d+)',
 			array(
 				'methods'             => 'GET',
@@ -288,6 +312,71 @@ final class Rest {
 		return array( 'results' => $results, 'count' => count( $results ) );
 	}
 
+	/**
+	 * 投影列舉（游標式，user_id 遞增）。曲線重新校準後 Sanji 用來全表回沖等級。
+	 */
+	public static function balances( \WP_REST_Request $req ) {
+		if ( $err = self::gate() ) {
+			return $err;
+		}
+		global $wpdb;
+
+		$after = absint( $req->get_param( 'after_user_id' ) );
+		$limit = absint( $req->get_param( 'limit' ) );
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT user_id, xp_total, berry_balance, level, level_label, level_min_xp, next_level_xp, next_level_label' .
+				' FROM ' . Ledger::balances_table() .
+				' WHERE user_id > %d ORDER BY user_id ASC LIMIT %d',
+				$after,
+				$limit
+			),
+			ARRAY_A
+		);
+		$rows = is_array( $rows ) ? $rows : array();
+		foreach ( $rows as &$r ) {
+			foreach ( $r as $k => $v ) {
+				if ( ! in_array( $k, array( 'level_label', 'next_level_label' ), true ) ) {
+					$r[ $k ] = (int) $v;
+				}
+			}
+		}
+		unset( $r );
+
+		return array( 'items' => $rows, 'count' => count( $rows ) );
+	}
+
+	/**
+	 * 只回沖等級帶、不動帳。等級曲線是 Sanji 的知識，plugin 只負責存。
+	 * body: { items: [ {user_id, level_after, level_label, level_min_xp, next_level_xp, next_level_label}, ... ] }
+	 */
+	public static function restamp( \WP_REST_Request $req ) {
+		if ( $err = self::gate() ) {
+			return $err;
+		}
+		$items = $req->get_param( 'items' );
+		if ( ! is_array( $items ) || ! $items ) {
+			return new \WP_Error( 'invalid_params', 'items array is required', array( 'status' => 400 ) );
+		}
+		if ( count( $items ) > 500 ) {
+			return new \WP_Error( 'too_many', 'max 500 items per batch', array( 'status' => 400 ) );
+		}
+
+		$updated = 0;
+		foreach ( $items as $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+			$uid = absint( $item['user_id'] ?? 0 );
+			if ( $uid && Ledger::restamp_level( $uid, $item ) ) {
+				++$updated;
+			}
+		}
+
+		return array( 'updated' => $updated, 'received' => count( $items ) );
+	}
+
 	public static function balance( \WP_REST_Request $req ) {
 		if ( $err = self::gate() ) {
 			return $err;
@@ -306,7 +395,7 @@ final class Rest {
 		if ( ! $row ) {
 			return array( 'user_id' => $user_id, 'xp_total' => 0, 'berry_balance' => 0, 'level' => 1, 'exists' => false );
 		}
-		foreach ( array( 'user_id', 'xp_total', 'berry_balance', 'level' ) as $k ) {
+		foreach ( array( 'user_id', 'xp_total', 'berry_balance', 'level', 'level_min_xp', 'next_level_xp' ) as $k ) {
 			$row[ $k ] = (int) $row[ $k ];
 		}
 		$row['exists'] = true;

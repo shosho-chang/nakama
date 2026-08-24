@@ -50,17 +50,68 @@ def test_berry_is_xp_over_ten_including_negatives():
     assert rules.berry_of(-100) == -10  # 沖正的貝里同步為負
 
 
-def test_level_thresholds_locked():
-    assert rules.LEVEL_THRESHOLDS[-1] == (15, 200_000)
-    assert dict(rules.LEVEL_THRESHOLDS)[10] == 35_000
+# 曲線 v1（2026-08-24 前）。門檻**只准調低**——調高會讓既有成員掉級，
+# 那是不可逆的信任破壞。這張表是天花板，不是要回去的目標。
+_V1_CEILING = {
+    1: 0,
+    2: 100,
+    3: 300,
+    4: 1_000,
+    5: 2_500,
+    6: 5_000,
+    7: 9_000,
+    8: 15_000,
+    9: 24_000,
+    10: 35_000,
+    11: 50_000,
+    12: 70_000,
+    13: 100_000,
+    14: 140_000,
+    15: 200_000,
+}
+
+
+def test_level_curve_shape():
+    table = dict(rules.LEVEL_THRESHOLDS)
+    assert sorted(table) == list(range(1, 16)), "等級數固定 15 階"
+    assert table[1] == 0
+    values = [table[n] for n in range(1, 16)]
+    assert values == sorted(set(values)), "門檻必須嚴格遞增"
+
+
+def test_thresholds_never_rise():
+    """校準只能往下。往上調 = 有人今天是 Lv.7 明天變 Lv.6。"""
+    table = dict(rules.LEVEL_THRESHOLDS)
+    for n, ceiling in _V1_CEILING.items():
+        assert table[n] <= ceiling, f"Lv.{n} 門檻調高了（{table[n]} > {ceiling}）"
+
+
+def test_every_level_has_a_title():
+    for n, _ in rules.LEVEL_THRESHOLDS:
+        label = rules.level_label(n)
+        assert label and not label.startswith("Lv."), f"Lv.{n} 沒有稱號"
+    assert len(set(rules.LEVEL_LABELS.values())) == 15, "稱號不可重複"
+
+
+def test_first_like_levels_up():
+    """上船期的硬需求：第一個讚就要看到升級。"""
+    assert rules.level_for(rules.XP_TABLE["like_received"]) == 2
 
 
 @pytest.mark.parametrize(
     ("xp", "level"),
-    [(0, 1), (99, 1), (100, 2), (34_999, 9), (35_000, 10), (199_999, 14), (200_000, 15)],
+    [(0, 1), (9, 1), (10, 2), (49, 2), (50, 3), (139_999, 14), (140_000, 15)],
 )
 def test_level_for_boundaries(xp: int, level: int):
     assert rules.level_for(xp) == level
+
+
+@pytest.mark.parametrize(
+    ("xp", "expected"),
+    [(0, (1, 0, 10)), (10, (2, 10, 50)), (49, (2, 10, 50)), (140_000, (15, 140_000, 0))],
+)
+def test_level_band(xp: int, expected: tuple[int, int, int]):
+    assert rules.level_band(xp) == expected
 
 
 def test_season_label():

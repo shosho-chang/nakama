@@ -68,6 +68,15 @@ $check( 'hook track_activity in getTicker', str_contains( $feeds_ctrl, "do_actio
 $portal_view = $src( '/app/Views/portal/portal.php' );
 $check( 'hook portal_sidebar in portal view', str_contains( $portal_view, "do_action('fluent_community/portal_sidebar'" ) );
 
+$profile_ctrl = $src( '/app/Http/Controllers/ProfileController.php' );
+$check( 'filter profile_view_data (tab 注入點)', str_contains( $profile_ctrl, "apply_filters('fluent_community/profile_view_data'" ) );
+$check( 'profile_navs 結構仍存在', str_contains( $profile_ctrl, "profile_navs" ) );
+
+$feed_model = $src( '/app/Models/Feed.php' );
+$check( 'Feed::getHumanExcerpt（航海日誌活動欄標題）', str_contains( $feed_model, 'function getHumanExcerpt' ) );
+$check( 'Feed::getPermalink（航海日誌活動欄連結）', str_contains( $feed_model, 'function getPermalink' ) );
+$check( 'Feed::space 關聯（打卡所屬挑戰名稱）', str_contains( $feed_model, 'function space()' ) );
+
 $quiz_ctrl = is_readable( $pro_dir . '/app/Modules/Quiz/Http/Controllers/QuizController.php' )
 	? (string) file_get_contents( $pro_dir . '/app/Modules/Quiz/Http/Controllers/QuizController.php' )
 	: '';

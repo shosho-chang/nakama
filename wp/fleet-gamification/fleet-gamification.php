@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 define( 'NAKAMA_GAM_VERSION', '0.1.0' );
-define( 'NAKAMA_GAM_DB_VERSION', 1 ); // 對應 includes/migrations/ 最大號
+define( 'NAKAMA_GAM_DB_VERSION', 2 ); // 對應 includes/migrations/ 最大號
 define( 'NAKAMA_GAM_PATH', plugin_dir_path( __FILE__ ) );
 define( 'NAKAMA_GAM_FILE', __FILE__ );
 

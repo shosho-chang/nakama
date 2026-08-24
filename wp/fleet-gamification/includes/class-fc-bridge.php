@@ -88,6 +88,61 @@ final class FcBridge {
 	}
 
 	/**
+	 * 批次解析貼文的標題／連結／所屬空間——航海日誌「活動」欄用。
+	 *
+	 * 全部走 vendor 自己的 accessor（實地讀原始碼確認 2026-08-24）：
+	 *  - ``Feed::getHumanExcerpt()``  app/Models/Feed.php:543 — title 為空時退回 message 並剝 markdown
+	 *  - ``Feed::getPermalink()``     app/Models/Feed.php:553 — space/{slug}/post/{feed_slug}
+	 * 不自己拼網址：vendor 換路由規則時我們自動跟上。
+	 *
+	 * @param int[] $feed_ids
+	 * @return array<int,array{title:string,url:string,space:string}>
+	 */
+	public static function feed_digest( array $feed_ids ): array {
+		$ids = array_values( array_unique( array_filter( array_map( 'absint', $feed_ids ) ) ) );
+		if ( ! $ids || ! self::available() ) {
+			return array();
+		}
+
+		try {
+			$feeds = \FluentCommunity\App\Models\Feed::withoutGlobalScopes()
+				->whereIn( 'id', $ids )
+				->get();
+		} catch ( \Throwable $e ) {
+			return array();
+		}
+
+		$out = array();
+		foreach ( $feeds as $feed ) {
+			$title = '';
+			$url   = '';
+			$space = '';
+			try {
+				$title = trim( (string) $feed->getHumanExcerpt( 40 ) );
+			} catch ( \Throwable $e ) {
+				$title = trim( (string) ( $feed->title ?? '' ) );
+			}
+			try {
+				$url = (string) $feed->getPermalink();
+			} catch ( \Throwable $e ) {
+				$url = '';
+			}
+			try {
+				$space = (string) ( $feed->space->title ?? '' );
+			} catch ( \Throwable $e ) {
+				$space = '';
+			}
+			$out[ (int) $feed->id ] = array(
+				'title' => $title,
+				'url'   => $url,
+				'space' => $space,
+			);
+		}
+
+		return $out;
+	}
+
+	/**
 	 * 讀取單篇貼文（含媒體）供 Sanji 判定。服務端讀取，繞過 per-user global scope。
 	 *
 	 * @return array<string,mixed>|null null = 不存在或 FC 未載入
