@@ -96,9 +96,12 @@ final class VoyagePage {
 		var card=ul.closest('div')||ul.parentElement, parent=card.parentElement;
 		var sib=card.nextElementSibling;
 		while(sib){ saved.push({el:sib,d:sib.style.display}); sib.style.display='none'; sib=sib.nextElementSibling; }
-		box=document.createElement('div'); box.className='nakama-voyage-pane';
+		box=document.createElement('div');
+		// 複製原內容卡的 class：外觀（灰色卡片、圓角、留白）自動與其他 tab 一致
+		box.className=(saved[0]?saved[0].el.className+' ':'')+'nakama-voyage-pane';
 		box.innerHTML='<div style="padding:2.5rem;text-align:center;opacity:.55">載入航海日誌…</div>';
-		parent.appendChild(box);
+		if(saved[0]&&saved[0].el.parentElement===parent){ parent.insertBefore(box, saved[0].el); }
+		else{ parent.appendChild(box); }
 		var pa=ul.querySelector('a.router-link-exact-active')||ul.querySelector('a.router-link-active');
 		if(pa && pa!==tabA()){ prevActive=pa; pa.classList.remove('router-link-active','router-link-exact-active'); }
 		var a=tabA(); if(a){ a.classList.add('router-link-active','router-link-exact-active'); }
