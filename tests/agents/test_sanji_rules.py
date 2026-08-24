@@ -36,8 +36,8 @@ def test_xp_table_locked():
         "checkin_day": 10,
         "streak_7": 30,
         "full_attendance": 200,
-        "like_received": 30,
-        "bookmark_received": 150,
+        "like_received": 10,
+        "bookmark_received": 100,
         "lesson_completed": 50,
         "course_completed": 300,
         "quiz_passed": 50,
@@ -47,7 +47,7 @@ def test_xp_table_locked():
 def test_berry_is_xp_over_ten_including_negatives():
     for xp in rules.XP_TABLE.values():
         assert rules.berry_of(xp) * 10 == xp
-    assert rules.berry_of(-150) == -15  # 沖正的貝里同步為負
+    assert rules.berry_of(-100) == -10  # 沖正的貝里同步為負
 
 
 def test_level_thresholds_locked():
@@ -114,7 +114,7 @@ def test_bookmark_grant_from_scan_row():
         {"id": 88, "user_id": 7}, feed_owner_id=42, sanji_user_id=SANJI_UID
     )
     assert g is not None
-    assert (g["xp"], g["idempotency_key"]) == (150, "bookmark:react:88")
+    assert (g["xp"], g["idempotency_key"]) == (100, "bookmark:react:88")
     # 自藏不計
     assert (
         rules.grant_for_bookmark(
@@ -154,9 +154,9 @@ def test_challenge_sources_locked():
 
 
 def test_reversal_negates_and_links():
-    original = {"user_id": 42, "xp": 150, "berry": 15, "source": "bookmark_received", "season": ""}
+    original = {"user_id": 42, "xp": 100, "berry": 10, "source": "bookmark_received", "season": ""}
     r = rules.reversal(original, reverses_grant_id=777, reason="bookmark removed")
-    assert (r["xp"], r["berry"]) == (-150, -15)
+    assert (r["xp"], r["berry"]) == (-100, -10)
     assert r["reverses_grant_id"] == 777
     assert r["idempotency_key"] == "reversal:777"
     assert r["source"] == "reversal"

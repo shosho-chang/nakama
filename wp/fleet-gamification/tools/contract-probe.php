@@ -12,7 +12,7 @@
  * ⚠️ 唯讀：本腳本不寫任何資料。
  */
 
-declare( strict_types=1 );
+// 註：本檔跑在 wp eval-file 的 eval 語境——不得使用 declare(strict_types)（必須是檔案第一語句）。
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit( "run via wp eval-file\n" );
@@ -64,6 +64,9 @@ $check( "hook comment_added(\$comment, \$feed, ...)", str_contains( $cmt_ctrl, "
 $check( "hook course/lesson_completed(\$lesson, \$userId)", str_contains( $course_hlp, "do_action('fluent_community/course/lesson_completed', \$lesson, \$userId)" ) );
 $check( "hook course/completed(\$course, \$userId)", str_contains( $course_hlp, "do_action('fluent_community/course/completed', \$course, \$userId)" ) );
 $check( 'hook track_activity in getTicker', str_contains( $feeds_ctrl, "do_action('fluent_community/track_activity')" ) );
+
+$portal_view = $src( '/app/Views/portal/portal.php' );
+$check( 'hook portal_sidebar in portal view', str_contains( $portal_view, "do_action('fluent_community/portal_sidebar'" ) );
 
 $quiz_ctrl = is_readable( $pro_dir . '/app/Modules/Quiz/Http/Controllers/QuizController.php' )
 	? (string) file_get_contents( $pro_dir . '/app/Modules/Quiz/Http/Controllers/QuizController.php' )
