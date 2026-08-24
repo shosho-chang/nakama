@@ -41,7 +41,7 @@ final class VoyagePage {
 		'quiz_passed'       => '通過測驗',
 		'presence_day'      => '每日登入',
 		'surprise'          => '驚喜',
-		'captain_award'     => '船長特別獎',
+		'captain_award'     => '艦長特別獎',
 		'reversal'          => '沖正',
 	);
 
@@ -307,6 +307,11 @@ final class VoyagePage {
 	.nkv .nkv-rank--empty{ margin-bottom:.9rem }
 	.nkv .nkv-rank--empty .nkv-note{ margin-top:0 }
 	@media (prefers-reduced-motion: reduce){ .nkv .nkv-bar i{ transition:none } }
+	.nkv .nkv-idt{ font-size:.72rem; line-height:1.5; padding:.1rem .55rem; border-radius:999px;
+		letter-spacing:.05em; white-space:nowrap; align-self:center }
+	.nkv .nkv-idt--full{ border:1px solid #e8913f; color:#e8913f }
+	.nkv .nkv-idt--trainee{ border:1px solid rgba(125,125,125,.4); opacity:.65 }
+	.nkv .nkv-declare{ margin:.7rem 0 0; font-size:.8rem }
 	.nkv .nkv-rank-foot{ display:flex; align-items:baseline; gap:.6rem; margin-top:.55rem }
 	.nkv .nkv-xp{ font-size:1.05rem; font-weight:700; font-variant-numeric:tabular-nums }
 	.nkv .nkv-xp small{ font-size:.7rem; font-weight:400; opacity:.55; margin-left:.15rem }
@@ -382,6 +387,11 @@ final class VoyagePage {
 		transition:width .6s cubic-bezier(.22,1,.36,1) }
 	.nkv-rank--empty .nkv-note{ margin-top:0 }
 	@media (prefers-reduced-motion: reduce){ .nkv-bar i{ transition:none } }
+	.nkv-idt{ font-size:.75rem; line-height:1.5; padding:.12rem .6rem; border-radius:999px;
+		letter-spacing:.05em; white-space:nowrap; align-self:center }
+	.nkv-idt--full{ border:1px solid var(--accent); color:var(--accent) }
+	.nkv-idt--trainee{ border:1px solid var(--line); color:var(--dim) }
+	.nkv-declare{ margin:.75rem 0 0; font-size:.82rem }
 	.nkv-rank-foot{ display:flex; align-items:baseline; gap:.6rem; margin-top:.6rem }
 	.nkv-xp{ font-size:1.15rem; font-weight:700; font-variant-numeric:tabular-nums }
 	.nkv-xp small{ font-size:.75rem; font-weight:400; color:var(--dim); margin-left:.15rem }
@@ -444,6 +454,7 @@ document.addEventListener('change',function(e){
 	 * @return array{name:string,username:string,avatar:string,xp:int,berry:int,
 	 *               has_balance:bool,level:int,level_label:string,level_min_xp:int,
 	 *               next_level_xp:int,next_level_label:string,is_self:bool,
+	 *               identity:string,declare_url:string,
 	 *               group:string,rows:array,feeds:array}
 	 */
 	private static function collect_data( int $target_user_id, int $viewer_user_id, string $group = 'all' ): array {
@@ -461,6 +472,21 @@ document.addEventListener('change',function(e){
 
 		$group   = isset( self::GROUP_LABELS[ $group ] ) ? $group : 'all';
 		$is_self = $viewer_user_id === $target_user_id;
+
+		// 身份三態：艦長（修修）／船長（發過啟航宣言）／見習船長（還沒）。
+		// 身份是公開資訊（互稱文化的基礎），跟明細的本人限定無關。
+		$identity = 'trainee';
+		if ( user_can( $target_user_id, 'manage_options' ) ) {
+			$identity = 'admiral';
+		} elseif ( '' !== (string) get_user_meta( $target_user_id, 'nakama_gam_captain_since', true ) ) {
+			$identity = 'captain';
+		}
+
+		// 見習船長（本人）看得到儀式引導：連去啟航宣言 space。
+		$declare_url = '';
+		if ( 'trainee' === $identity && $is_self && class_exists( FcBridge::class ) ) {
+			$declare_url = FcBridge::space_permalink( Settings::declaration_space() );
+		}
 		$rows    = array();
 		$feeds   = array();
 
@@ -508,6 +534,8 @@ document.addEventListener('change',function(e){
 			'level_min_xp'     => $bal ? (int) $bal['level_min_xp'] : 0,
 			'next_level_xp'    => $bal ? (int) $bal['next_level_xp'] : 0,
 			'next_level_label' => $bal ? (string) $bal['next_level_label'] : '',
+			'identity'    => $identity,
+			'declare_url' => $declare_url,
 			'is_self'  => $is_self,
 			'group'    => $group,
 			'rows'     => $rows,
@@ -525,7 +553,10 @@ document.addEventListener('change',function(e){
 			$msg = $d['is_self']
 				? '航海日誌還是空白的。到船塢分享你的第一則紀錄，被夥伴按讚就會開始累積。'
 				: '這位夥伴還沒有航海紀錄。';
-			return '<div class="nkv-rank nkv-rank--empty"><p class="nkv-note">' . esc_html( $msg ) . '</p></div>';
+			return '<div class="nkv-rank nkv-rank--empty">'
+				. '<div class="nkv-rank-head">' . self::identity_chip_html( $d ) . '</div>'
+				. self::declare_hint_html( $d )
+				. '<p class="nkv-note">' . esc_html( $msg ) . '</p></div>';
 		}
 
 		$xp    = (int) $d['xp'];
@@ -540,18 +571,20 @@ document.addEventListener('change',function(e){
 			$pct  = max( 0, min( 100, $pct ) );
 		}
 
+		// 1 XP = 1 海里：距離用航程講，下一座島的名字自己會拉人。
 		$tail = $maxed
-			? '已達最高階'
+			? '已抵達' . $d['level_label']
 			: sprintf(
-				'再 %s XP → %s',
-				number_format_i18n( max( 0, $next - $xp ) ),
-				$d['next_level_label'] ? $d['next_level_label'] : '下一階'
+				'距離%s還有 %s 海里',
+				$d['next_level_label'] ? $d['next_level_label'] : '下一座島',
+				number_format_i18n( max( 0, $next - $xp ) )
 			);
 
 		ob_start();
 		?>
 <div class="nkv-rank">
 	<div class="nkv-rank-head">
+		<?php echo self::identity_chip_html( $d ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 		<span class="nkv-lv">Lv.<?php echo esc_html( (string) $d['level'] ); ?></span>
 		<span class="nkv-title"><?php echo esc_html( $d['level_label'] ); ?></span>
 	</div>
@@ -563,9 +596,34 @@ document.addEventListener('change',function(e){
 		<span class="nkv-xp"><?php echo esc_html( number_format_i18n( $xp ) ); ?><small>XP</small></span>
 		<span class="nkv-next"><?php echo esc_html( $tail ); ?></span>
 	</div>
+	<?php echo self::declare_hint_html( $d ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 </div>
 		<?php
 		return (string) ob_get_clean();
+	}
+
+	/** 身份 chip：艦長（修修）／船長／見習船長。公開顯示。 */
+	private static function identity_chip_html( array $d ): string {
+		$map = array(
+			'admiral' => array( '艦長', 'nkv-idt--full' ),
+			'captain' => array( '船長', 'nkv-idt--full' ),
+			'trainee' => array( '見習船長', 'nkv-idt--trainee' ),
+		);
+		list( $label, $cls ) = $map[ $d['identity'] ] ?? $map['trainee'];
+		return '<span class="nkv-idt ' . esc_attr( $cls ) . '">' . esc_html( $label ) . '</span>';
+	}
+
+	/** 船長儀式引導：只給「本人＋還是見習」看。發表啟航宣言＝正式成為船長。 */
+	private static function declare_hint_html( array $d ): string {
+		if ( 'trainee' !== $d['identity'] || ! $d['is_self'] ) {
+			return '';
+		}
+		$text = '發表你的啟航宣言，正式成為船長';
+		if ( '' !== $d['declare_url'] ) {
+			return '<p class="nkv-declare"><a class="nkv-lk" href="' . esc_url( $d['declare_url'] ) . '">'
+				. esc_html( $text ) . ' →</a></p>';
+		}
+		return '<p class="nkv-declare">' . esc_html( $text ) . '</p>';
 	}
 
 	/** 類型篩選下拉。value 就是 GROUP_LABELS 的 key；伺服器端過濾才是唯一真相。 */
@@ -647,7 +705,7 @@ document.addEventListener('change',function(e){
 				. esc_html( ( $xp_v > 0 ? '+' : '' ) . number_format_i18n( $xp_v ) ) . ' XP</td>'
 				. '<td class="nkv-dt">' . esc_html( mysql2date( 'n/j H:i', (string) $r['created_at'] ) ) . '</td></tr>';
 		}
-		$out .= '</table><p class="nkv-note">帳目可查、可申訴——有疑問直接私訊 Sanji 或船長。</p>';
+		$out .= '</table><p class="nkv-note">帳目可查、可申訴——有疑問直接私訊 Sanji 或艦長。</p>';
 		return $out;
 	}
 }

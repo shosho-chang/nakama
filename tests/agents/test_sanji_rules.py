@@ -52,6 +52,8 @@ def test_berry_is_xp_over_ten_including_negatives():
 
 # 曲線 v1（2026-08-24 前）。門檻**只准調低**——調高會讓既有成員掉級，
 # 那是不可逆的信任破壞。這張表是天花板，不是要回去的目標。
+# （例外註記：2026-08-24 Lv.15 140k→150k 經修修裁決，當時無人超過 20 XP、
+#   玩法未公告，仍低於本天花板。**公告日後不再有任何上調**。）
 _V1_CEILING = {
     1: 0,
     2: 100,
@@ -100,7 +102,7 @@ def test_first_like_levels_up():
 
 @pytest.mark.parametrize(
     ("xp", "level"),
-    [(0, 1), (9, 1), (10, 2), (49, 2), (50, 3), (139_999, 14), (140_000, 15)],
+    [(0, 1), (9, 1), (10, 2), (49, 2), (50, 3), (149_999, 14), (150_000, 15)],
 )
 def test_level_for_boundaries(xp: int, level: int):
     assert rules.level_for(xp) == level
@@ -108,7 +110,7 @@ def test_level_for_boundaries(xp: int, level: int):
 
 @pytest.mark.parametrize(
     ("xp", "expected"),
-    [(0, (1, 0, 10)), (10, (2, 10, 50)), (49, (2, 10, 50)), (140_000, (15, 140_000, 0))],
+    [(0, (1, 0, 10)), (10, (2, 10, 50)), (49, (2, 10, 50)), (150_000, (15, 150_000, 0))],
 )
 def test_level_band(xp: int, expected: tuple[int, int, int]):
     assert rules.level_band(xp) == expected

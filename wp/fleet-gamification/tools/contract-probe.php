@@ -77,6 +77,9 @@ $check( 'Feed::getHumanExcerpt（航海日誌活動欄標題）', str_contains( 
 $check( 'Feed::getPermalink（航海日誌活動欄連結）', str_contains( $feed_model, 'function getPermalink' ) );
 $check( 'Feed::space 關聯（打卡所屬挑戰名稱）', str_contains( $feed_model, 'function space()' ) );
 
+$base_space = $src( '/app/Models/BaseSpace.php' );
+$check( 'BaseSpace::getPermalink（啟航宣言引導連結）', str_contains( $base_space, 'function getPermalink' ) );
+
 $quiz_ctrl = is_readable( $pro_dir . '/app/Modules/Quiz/Http/Controllers/QuizController.php' )
 	? (string) file_get_contents( $pro_dir . '/app/Modules/Quiz/Http/Controllers/QuizController.php' )
 	: '';

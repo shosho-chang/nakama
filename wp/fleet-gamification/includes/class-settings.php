@@ -45,4 +45,11 @@ final class Settings {
 	public static function space_allowed( int $space_id ): bool {
 		return in_array( $space_id, self::space_allowlist(), true );
 	}
+	/**
+	 * 啟航宣言 space id（0 = 未設定）。在這個 space 發第一篇文＝完成船長儀式。
+	 * 設定：wp option update nakama_gam_declaration_space <id>
+	 */
+	public static function declaration_space(): int {
+		return absint( get_option( 'nakama_gam_declaration_space', 0 ) );
+	}
 }

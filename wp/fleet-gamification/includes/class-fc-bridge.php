@@ -88,6 +88,21 @@ final class FcBridge {
 	}
 
 	/**
+	 * space 首頁連結（啟航宣言的引導用）。走 vendor 自己的 getPermalink（BaseSpace.php:497）。
+	 */
+	public static function space_permalink( int $space_id ): string {
+		if ( ! $space_id || ! self::available() ) {
+			return '';
+		}
+		try {
+			$space = \FluentCommunity\App\Models\BaseSpace::withoutGlobalScopes()->find( $space_id );
+			return $space ? (string) $space->getPermalink() : '';
+		} catch ( \Throwable $e ) {
+			return '';
+		}
+	}
+
+	/**
 	 * 批次解析貼文的標題／連結／所屬空間——航海日誌「活動」欄用。
 	 *
 	 * 全部走 vendor 自己的 accessor（實地讀原始碼確認 2026-08-24）：
