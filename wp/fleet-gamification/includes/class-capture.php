@@ -77,13 +77,26 @@ final class Capture {
 		wp_cache_set( $cache_key, 1, 'nakama_gam', DAY_IN_SECONDS );
 	}
 
-	/** 打卡貼文：只捕捉 allowlist 內 space 的貼文（生產上只有打卡 space 該產生事件）。 */
+	/**
+	 * space 貼文分流：
+	 *  - 啟航宣言 space → 船長儀式（身份，一次性，非經濟）
+	 *  - allowlist space → 打卡事件（進判定漏斗）
+	 */
 	public static function on_space_feed_created( $feed ): void {
 		$space_id = absint( $feed->space_id ?? 0 );
 		$user_id  = absint( $feed->user_id ?? 0 );
 		$feed_id  = absint( $feed->id ?? 0 );
 
-		if ( ! $space_id || ! $user_id || ! $feed_id || ! Settings::space_allowed( $space_id ) ) {
+		if ( ! $space_id || ! $user_id || ! $feed_id ) {
+			return;
+		}
+
+		if ( $space_id === Settings::declaration_space() && $space_id > 0 ) {
+			self::on_declaration( $user_id, $feed_id, $space_id );
+			return;
+		}
+
+		if ( ! Settings::space_allowed( $space_id ) ) {
 			return;
 		}
 
@@ -100,6 +113,30 @@ final class Capture {
 				'dedupe_key'  => "checkin:feed:{$feed_id}",
 			)
 		);
+	}
+
+	/**
+	 * 船長儀式：在啟航宣言 space 發出第一篇宣言 → 晉升「船長」。
+	 *
+	 * 這是**身份不是經濟**：不給 XP（宣言收到的讚照常入帳）、單向不可逆、
+	 * 判定完全確定性（發文即成立），所以不走 Sanji——plugin 直接寫 user meta。
+	 * 未來若加嚴條件（宣言＋導論課），邏輯搬去 Sanji，既有船長不受影響。
+	 */
+	private static function on_declaration( int $user_id, int $feed_id, int $space_id ): void {
+		Ledger::record_event(
+			array(
+				'event_type'  => 'declaration_posted',
+				'user_id'     => $user_id,
+				'object_type' => 'feed',
+				'object_id'   => $feed_id,
+				'meta'        => array( 'space_id' => $space_id ),
+				'dedupe_key'  => "declare:{$user_id}", // 一人一生一次
+			)
+		);
+
+		if ( '' === (string) get_user_meta( $user_id, 'nakama_gam_captain_since', true ) ) {
+			update_user_meta( $user_id, 'nakama_gam_captain_since', current_time( 'mysql' ) );
+		}
 	}
 
 	/**

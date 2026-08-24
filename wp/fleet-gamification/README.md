@@ -61,6 +61,7 @@ tools/contract-probe.php      vendor 依賴驗證（唯讀，一分鐘）
 wp option update nakama_gam_enabled 1          # 開（預設 0；UAT 通過才開）
 wp option update nakama_gam_enabled 0          # 一鍵止血
 wp eval 'update_option("nakama_gam_space_allowlist", [123]);'   # 打卡 space 白名單
+wp option update nakama_gam_declaration_space 2       # 啟航宣言 space（船長儀式；0=停用）
 ```
 
 **部署後煙霧測試**
