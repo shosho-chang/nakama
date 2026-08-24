@@ -170,6 +170,141 @@ class TestNewTask:
         assert "err=pomodoros" in r.headers["location"]
 
 
+class TestNewTaskWithSchedule:
+    """修修 2026-08-23: the 新增任務 form carries an optional 日期/時間 — create +
+    schedule_entry (plan + calendar) in one submit; blank date keeps bare create."""
+
+    def _ev(self, eid="evt_n"):
+        from shared.google_calendar import CalendarEvent
+
+        return CalendarEvent(id=eid, title="夜跑", start="x", end="y", html_link="http://h")
+
+    def _files(self, tmp_path):
+        return {p.name for p in (tmp_path / "TaskNotes" / "Tasks").iterdir()}
+
+    def _fm(self, tmp_path, name):
+        raw = (tmp_path / "TaskNotes" / "Tasks" / name).read_text(encoding="utf-8")
+        return yaml.safe_load(raw.split("---", 2)[1])
+
+    def test_create_with_date_and_time_schedules(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        seen = {}
+        monkeypatch.setattr(gc, "find_conflicts", lambda s, e: [])
+        monkeypatch.setattr(gc, "create_event", lambda **kw: (seen.update(kw), self._ev())[1])
+        r = client.post(
+            "/bridge/weekly/task/new",
+            data={
+                "title": "夜跑",
+                "category": "health",
+                "est_pomodoros": "2",
+                "entry_date": "2026-06-03",  # Wed inside WEEK_KEY
+                "entry_time": "09:00",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        loc = r.headers["location"]
+        # lands on the scheduled date's week (v3-G) with the row anchored, no ?focus
+        assert loc.startswith(f"/bridge/weekly?week={WEEK_KEY}&saved=task_new_scheduled")
+        assert "focus=" not in loc and "#task-" in loc
+        fm = self._fm(tmp_path, "夜跑.md")
+        entry = next(e for e in fm["plan"] if str(e["date"]) == "2026-06-03")
+        assert entry["start"] == "2026-06-03T09:00:00+08:00"
+        assert entry["end"] == "2026-06-03T10:00:00+08:00"  # 2🍅 × 30 min
+        assert entry["calendar_event_id"] == "evt_n"
+        assert seen["idempotency_key"] == "夜跑@2026-06-03"
+        assert seen["title"] == "夜跑"
+
+    def test_create_with_date_only_is_all_day(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        seen = {}
+        monkeypatch.setattr(gc, "create_event", lambda **kw: (seen.update(kw), self._ev())[1])
+        r = client.post(
+            "/bridge/weekly/task/new",
+            data={"title": "夜跑", "entry_date": "2026-06-03", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert "saved=task_new_scheduled" in r.headers["location"]
+        assert seen["start"] == "2026-06-03" and seen["end"] == "2026-06-04"  # all-day
+        plan = self._fm(tmp_path, "夜跑.md")["plan"]
+        entry = next(e for e in plan if str(e["date"]) == "2026-06-03")
+        assert entry["start"] == "2026-06-03"
+
+    def test_blank_date_keeps_bare_create_focus_flow(self, client, tmp_path):
+        r = client.post(
+            "/bridge/weekly/task/new",
+            data={"title": "夜跑", "entry_date": "", "entry_time": "", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        loc = r.headers["location"]
+        assert "saved=task_new" in loc and "focus=" in loc
+        assert "plan" not in (self._fm(tmp_path, "夜跑.md") or {})
+
+    def test_time_without_date_rejected_nothing_created(self, client, tmp_path):
+        r = client.post(
+            "/bridge/weekly/task/new",
+            data={"title": "夜跑", "entry_time": "09:00", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert "err=time_needs_date" in r.headers["location"]
+        assert "夜跑.md" not in self._files(tmp_path)
+
+    def test_bad_date_rejected_nothing_created(self, client, tmp_path):
+        r = client.post(
+            "/bridge/weekly/task/new",
+            data={"title": "夜跑", "entry_date": "not-a-date", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert "err=date" in r.headers["location"]
+        assert "夜跑.md" not in self._files(tmp_path)
+
+    def test_weekend_date_creates_task_but_asks_reason(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        monkeypatch.setattr(gc, "find_conflicts", lambda s, e: [])
+        r = client.post(
+            "/bridge/weekly/task/new",
+            data={
+                "title": "夜跑",
+                "entry_date": "2026-06-06",  # Sat — needs a reason the form doesn't carry
+                "entry_time": "09:00",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        loc = r.headers["location"]
+        assert "err=weekend" in loc and "focus=" in loc  # row focused → 排入 with reason
+        fm = self._fm(tmp_path, "夜跑.md")  # the task itself IS created
+        assert "plan" not in (fm or {})  # …but nothing scheduled
+
+    def test_conflict_creates_task_pops_modal_no_plan(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        monkeypatch.setattr(gc, "find_conflicts", lambda s, e: [self._ev("c9")])
+        monkeypatch.setattr(gc, "find_free_slots", lambda d, dur, **kw: [])
+        r = client.post(
+            "/bridge/weekly/task/new",
+            data={
+                "title": "夜跑",
+                "entry_date": "2026-06-03",
+                "entry_time": "09:00",
+                "est_pomodoros": "2",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        loc = r.headers["location"]
+        assert "err=cal_conflict" in loc
+        assert "cf_slug=%E5%A4%9C%E8%B7%91" in loc  # quote("夜跑") — modal targets the new row
+        assert "cf_date=2026-06-03" in loc and "cf_time=09%3A00" in loc and "cf_pom=2" in loc
+        fm = self._fm(tmp_path, "夜跑.md")  # task created; plan pre-check refused (v3-I.4)
+        assert "plan" not in (fm or {})
+
+
 class TestFromProjectRedirect:
     """v3-H Slice 3: plan actions fired from a Project Brief tab redirect back there."""
 

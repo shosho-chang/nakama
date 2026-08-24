@@ -101,6 +101,8 @@ body.sho .wk-newtask-form {
 }
 body.sho .wk-newtask-form select,
 body.sho .wk-newtask-title input,
+body.sho .wk-newtask-date,
+body.sho .wk-newtask-time,
 body.sho .wk-newtask-pom {
   font-family: var(--sho-font-mono); font-size: 12px; color: var(--sho-text);
   background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);

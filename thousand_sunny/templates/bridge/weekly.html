@@ -360,6 +360,12 @@
                 </select></label>
               <label class="wk-sched-lbl"><span class="wk-sched-cap">🍅 預估</span>
                 <input class="wk-newtask-pom" type="number" name="est_pomodoros" min="1" max="20" value="4"></label>
+              {# 建立時直接排程（留空＝先建立、之後再用排入 chip）— 走與排入相同的
+                 plan+calendar 路徑 (/weekly/task/new 轉呼叫 schedule_entry)。 #}
+              <label class="wk-sched-lbl"><span class="wk-sched-cap">日期（留空＝不排程）</span>
+                <input class="wk-newtask-date" type="date" name="entry_date"></label>
+              <label class="wk-sched-lbl"><span class="wk-sched-cap">時間（留空＝整天）</span>
+                <input class="wk-newtask-time" type="time" name="entry_time" step="300"></label>
               <button class="sho-btn wk-sched-go" type="submit">建立</button>
             </form>
           </details>
