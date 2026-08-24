@@ -46,6 +46,10 @@ final class Rest {
 		if ( str_starts_with( (string) $request->get_route(), '/' . self::NS ) ) {
 			$result->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0' );
 			$result->header( 'X-LiteSpeed-Cache-Control', 'no-cache' );
+			// ⚠️ 只送 header 不夠——LSCache WP plugin 可能在 shutdown 覆寫自己的
+			// cache-control（2026-08-24 實測：header 版修正被 purge 混淆成「已修好」，
+			// 實際仍被快取，Sanji 因此吃到殭屍空 events）。官方 API 才是硬止血。
+			do_action( 'litespeed_control_set_nocache', 'nakama-gam REST' );
 		}
 		return $result;
 	}
