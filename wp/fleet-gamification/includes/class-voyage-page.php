@@ -47,7 +47,10 @@ final class VoyagePage {
 	public static function register(): void {
 		add_filter( 'fluent_community/profile_view_data', array( self::class, 'inject_profile_tab' ), 10, 3 );
 		add_action( 'template_redirect', array( self::class, 'maybe_render_page' ) );
+		// 兩種 portal 模板：portal.php(headless) 只呼叫 portal_header；
+		// portal_page.php 只呼叫 before_portal_dom——兩個都掛，print 端防重複。
 		add_action( 'fluent_community/portal_header', array( self::class, 'print_tab_script' ) );
+		add_action( 'fluent_community/before_portal_dom', array( self::class, 'print_tab_script' ) );
 	}
 
 	/* ─────────────────────────── tab 注入 ─────────────────────────── */
@@ -76,9 +79,11 @@ final class VoyagePage {
 
 	/** 印在 portal <head>（portal.php:3 的 do_action）。結構無關、失敗即退回整頁連結。 */
 	public static function print_tab_script(): void {
-		if ( ! Settings::enabled() ) {
+		static $printed = false;
+		if ( $printed || ! Settings::enabled() ) {
 			return;
 		}
+		$printed = true;
 		?>
 <script id="nakama-gam-voyage-tab">
 (function(){
