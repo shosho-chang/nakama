@@ -117,6 +117,20 @@ final class Rest {
 
 		register_rest_route(
 			self::NS,
+			'/comments',
+			array(
+				'methods'             => 'GET',
+				'permission_callback' => array( self::class, 'can_access' ),
+				'callback'            => array( self::class, 'comments_list' ),
+				'args'                => array(
+					'after_id' => array( 'type' => 'integer', 'default' => 0, 'minimum' => 0 ),
+					'limit'    => array( 'type' => 'integer', 'default' => 200, 'minimum' => 1, 'maximum' => 500 ),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NS,
 			'/grants',
 			array(
 				'methods'             => 'POST',
@@ -281,6 +295,43 @@ final class Rest {
 	 * 批次入帳。單批上限 100；逐筆回報 created / duplicate / invalid——
 	 * duplicate（idempotency 命中）是冪等成功，Sanji 重放不會重複入帳。
 	 */
+	/**
+	 * 留言列舉（游標式）。Sanji 的留言掃描用：第一次跑＝歷史認列，之後＝hook 漏接安全網。
+	 * owner_id 由 posts join 帶出（貼文已刪 → owner_id 0，規則端跳過）。
+	 */
+	public static function comments_list( \WP_REST_Request $req ) {
+		if ( $err = self::gate() ) {
+			return $err;
+		}
+		global $wpdb;
+
+		$after = absint( $req->get_param( 'after_id' ) );
+		$limit = absint( $req->get_param( 'limit' ) );
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT c.id, c.post_id, c.user_id, c.parent_id, c.created_at,' .
+				' COALESCE( p.user_id, 0 ) AS owner_id' .
+				" FROM {$wpdb->prefix}fcom_post_comments c" .
+				" LEFT JOIN {$wpdb->prefix}fcom_posts p ON p.id = c.post_id" .
+				" WHERE c.id > %d AND c.status = 'published'" .
+				' ORDER BY c.id ASC LIMIT %d',
+				$after,
+				$limit
+			),
+			ARRAY_A
+		);
+		$rows = is_array( $rows ) ? $rows : array();
+		foreach ( $rows as &$r ) {
+			foreach ( array( 'id', 'post_id', 'user_id', 'parent_id', 'owner_id' ) as $k ) {
+				$r[ $k ] = (int) $r[ $k ];
+			}
+		}
+		unset( $r );
+
+		return array( 'comments' => $rows, 'count' => count( $rows ) );
+	}
+
 	public static function grants( \WP_REST_Request $req ) {
 		if ( $err = self::gate() ) {
 			return $err;

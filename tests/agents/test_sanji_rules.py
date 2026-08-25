@@ -213,6 +213,53 @@ def test_checkin_and_quiz_never_auto_grant():
     assert rules.grant_for_event(_ev("quiz_submitted"), sanji_user_id=SANJI_UID) is None
 
 
+def test_like_row_same_key_as_hook_path():
+    """掃描路徑與 hook 路徑同鍵——歷史認列與即時捕捉永不重複入帳。"""
+    g = rules.grant_for_like_row(
+        {"id": 555, "user_id": 7, "object_id": 900}, feed_owner_id=42, sanji_user_id=SANJI_UID
+    )
+    assert g is not None
+    assert g["idempotency_key"] == "like:react:555"  # 與 hook 的 like:{dedupe} 完全同格式
+    assert (g["xp"], g["reason"]) == (10, "feed:900")
+    # 自讚不計
+    assert (
+        rules.grant_for_like_row(
+            {"id": 556, "user_id": 42, "object_id": 900}, feed_owner_id=42, sanji_user_id=SANJI_UID
+        )
+        is None
+    )
+
+
+def test_comment_row_grants_owner_and_skips_self_sanji_deleted():
+    g = rules.grant_for_comment_row(
+        {"id": 1065, "post_id": 288, "user_id": 2, "owner_id": 12}, sanji_user_id=SANJI_UID
+    )
+    assert g is not None
+    assert g["user_id"] == 12  # 受益人 = 貼文作者
+    assert g["idempotency_key"] == "comment:288:2"  # 與 hook 同鍵：一文一人跨歷史成立
+    assert (g["xp"], g["reason"]) == (30, "feed:288")
+
+    # 自留 / Sanji 留言 / 貼文已刪（owner 0）都不計
+    assert (
+        rules.grant_for_comment_row(
+            {"id": 1, "post_id": 288, "user_id": 12, "owner_id": 12}, sanji_user_id=SANJI_UID
+        )
+        is None
+    )
+    assert (
+        rules.grant_for_comment_row(
+            {"id": 2, "post_id": 288, "user_id": SANJI_UID, "owner_id": 12}, sanji_user_id=SANJI_UID
+        )
+        is None
+    )
+    assert (
+        rules.grant_for_comment_row(
+            {"id": 3, "post_id": 288, "user_id": 2, "owner_id": 0}, sanji_user_id=SANJI_UID
+        )
+        is None
+    )
+
+
 def test_bookmark_grant_from_scan_row():
     g = rules.grant_for_bookmark(
         {"id": 88, "user_id": 7, "object_id": 900}, feed_owner_id=42, sanji_user_id=SANJI_UID

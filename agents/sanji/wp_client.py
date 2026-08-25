@@ -94,6 +94,10 @@ class WPClient:
     def comment(self, feed_id: int, text: str) -> dict:
         return self._request("POST", "/comments", json={"feed_id": feed_id, "comment": text})
 
+    def comments_list(self, after_id: int, *, limit: int = 200) -> dict:
+        """留言列舉（掃描用；owner_id 已 join 好）。"""
+        return self._request("GET", "/comments", params={"after_id": after_id, "limit": limit})
+
     def grants(self, items: list[dict]) -> dict:
         """批次入帳（≤100/批；plugin 端 idempotency 保證重放安全）。"""
         if len(items) > 100:

@@ -41,6 +41,12 @@ $check( 'class Comment exists', class_exists( '\FluentCommunity\App\Models\Comme
 $check( 'class Reaction exists', class_exists( '\FluentCommunity\App\Models\Reaction' ) );
 
 global $wpdb;
+$ccols = $wpdb->get_col( "DESCRIBE {$wpdb->prefix}fcom_post_comments", 0 );
+$check(
+	'fcom_post_comments columns（留言掃描）',
+	! array_diff( array( 'id', 'user_id', 'post_id', 'status' ), (array) $ccols )
+);
+
 $cols = $wpdb->get_col( "DESCRIBE {$wpdb->prefix}fcom_post_reactions", 0 );
 $need = array( 'id', 'user_id', 'object_id', 'object_type', 'type', 'created_at' );
 $check(

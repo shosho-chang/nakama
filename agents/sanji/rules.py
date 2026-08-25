@@ -255,6 +255,48 @@ def grant_for_bookmark(row: dict, feed_owner_id: int, *, sanji_user_id: int) -> 
     )
 
 
+def grant_for_like_row(row: dict, feed_owner_id: int, *, sanji_user_id: int) -> dict | None:
+    """讚的掃描授予（每日 reactions 掃描；與 hook 路徑**同鍵** ``like:react:{id}``——
+    第一次跑＝歷史認列（2026-08-25 修修裁決），之後＝hook 漏接的安全網。
+    冪等鍵同格式，兩條路永不重複入帳。自讚不計。"""
+    if not feed_owner_id or feed_owner_id == sanji_user_id:
+        return None
+    actor = int(row.get("user_id", 0))
+    if actor and (actor == feed_owner_id or actor == sanji_user_id):
+        return None
+    react_id = int(row.get("id", 0))
+    if not react_id:
+        return None
+    feed_id = int(row.get("object_id", 0))
+    return _grant(
+        feed_owner_id,
+        "like_received",
+        f"like:react:{react_id}",
+        reason=f"feed:{feed_id}" if feed_id else "",
+    )
+
+
+def grant_for_comment_row(row: dict, *, sanji_user_id: int) -> dict | None:
+    """留言的掃描授予（GET /comments 的一列，owner_id 已由 plugin join 好）。
+    與 hook 路徑同鍵 ``comment:{feed_id}:{actor}``——一文一人一次跨歷史與未來
+    都成立。自留、Sanji 的祝賀留言不計；貼文已刪（owner 0）不計。"""
+    owner = int(row.get("owner_id", 0))
+    if not owner or owner == sanji_user_id:
+        return None
+    actor = int(row.get("user_id", 0))
+    if not actor or actor == owner or actor == sanji_user_id:
+        return None
+    feed_id = int(row.get("post_id", 0))
+    if not feed_id:
+        return None
+    return _grant(
+        owner,
+        "comment_received",
+        f"comment:{feed_id}:{actor}",
+        reason=f"feed:{feed_id}",
+    )
+
+
 def grant_for_checkin(
     user_id: int, feed_id: int, day: str, season: str, *, ref_event_id: int = 0
 ) -> dict:
