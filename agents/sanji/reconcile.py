@@ -127,9 +127,15 @@ def _sweep_likes(cfg: SanjiConfig, client: WPClient, store: Store) -> dict:
                 grants.append(g)
 
         if grants:
+            # plugin 批次上限 100/批——切塊（2026-08-25 首跑教訓：讚一頁近 200 筆直接被防呆擋下）
             stamper = LevelStamper(client)
-            results = client.grants([stamper.stamp(g) for g in grants])
-            granted += sum(1 for r in results.get("results", []) if r.get("status") == "created")
+            created = 0
+            for i in range(0, len(grants), 100):
+                results = client.grants([stamper.stamp(g) for g in grants[i : i + 100]])
+                created += sum(
+                    1 for r in results.get("results", []) if r.get("status") == "created"
+                )
+            granted += created
 
         cursor = max(int(r.get("id", 0)) for r in rows)
         store.set_cursor("reactions_like", cursor)
@@ -161,9 +167,15 @@ def _sweep_comments(cfg: SanjiConfig, client: WPClient, store: Store) -> dict:
                 grants.append(g)
 
         if grants:
+            # plugin 批次上限 100/批——切塊（2026-08-25 首跑教訓：讚一頁近 200 筆直接被防呆擋下）
             stamper = LevelStamper(client)
-            results = client.grants([stamper.stamp(g) for g in grants])
-            granted += sum(1 for r in results.get("results", []) if r.get("status") == "created")
+            created = 0
+            for i in range(0, len(grants), 100):
+                results = client.grants([stamper.stamp(g) for g in grants[i : i + 100]])
+                created += sum(
+                    1 for r in results.get("results", []) if r.get("status") == "created"
+                )
+            granted += created
 
         cursor = max(int(r.get("id", 0)) for r in rows)
         store.set_cursor("comments", cursor)
