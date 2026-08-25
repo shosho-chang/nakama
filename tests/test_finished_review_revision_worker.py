@@ -71,7 +71,11 @@ def _write_acquisition_source(root: Path) -> tuple[Path, dict]:
     return manifest, sources
 
 
-def _write_queued_job(root: Path) -> tuple[Path, Path, Path]:
+def _write_queued_job(
+    root: Path,
+    *,
+    manifest_schema: str = "nakama.finished_cut_review_manifest.v2",
+) -> tuple[Path, Path, Path]:
     episode = root / "20260805 林之晨"
     review = episode / "highlights" / "review"
     cut_dir = review / "value-L01"
@@ -95,7 +99,7 @@ def _write_queued_job(root: Path) -> tuple[Path, Path, Path]:
     (assets / "existing.mp4").write_bytes(b"existing-asset")
     manifest = review / "finished_review_manifest_20260822.json"
     manifest_payload = {
-        "schema": "nakama.finished_cut_review_manifest.v2",
+        "schema": manifest_schema,
         "episode_id": episode.name,
         "stage": 5,
         "gate": {"kind": "finished_cut_review", "status": "ready_for_review"},
@@ -316,6 +320,91 @@ def test_worker_picks_up_once_and_leaves_a_result_receipt(tmp_path):
     assert not run_revision_job(
         jobs[0], agent_runner=lambda _: (_ for _ in ()).throw(AssertionError())
     )
+
+
+def test_queued_legacy_v1_source_bootstraps_distinct_v2_output_before_resolve(
+    monkeypatch, tmp_path
+):
+    episode, legacy_manifest, feedback = _write_queued_job(
+        tmp_path, manifest_schema="nakama.finished_cut_review_manifest.v1"
+    )
+    legacy_bytes = legacy_manifest.read_bytes()
+
+    class Master:
+        def identity(self):
+            return {"contract": "podcast-editorial-master-v1", "content_hash": "a" * 64}
+
+    monkeypatch.setattr(
+        "scripts.build_finished_review_manifest._open_master", lambda _episode: Master()
+    )
+    monkeypatch.setattr(
+        "scripts.build_finished_review_manifest._approved_inventory",
+        lambda _episode, _identity: {"value-L01": "long"},
+    )
+    calls: list[str] = []
+
+    def agent(context: dict) -> subprocess.CompletedProcess[str]:
+        calls.append("agent-plan")
+        assert context["source_preflight"]["schema"].endswith(".v1")
+        assert context["source_preflight"]["editorial_master_lineage"] == Master().identity()
+        return _successful_agent(context)
+
+    def trusted_v2_producer(context: dict) -> dict:
+        calls.append("trusted-v2-producer")
+        output_manifest = legacy_manifest.parent / "finished_review_manifest_current.json"
+        payload = json.loads(legacy_manifest.read_text(encoding="utf-8"))
+        payload["schema"] = "nakama.finished_cut_review_manifest.v2"
+        payload["editorial_master_lineage"] = Master().identity()
+        output_manifest.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        output_context = {**context, "manifest_path": str(output_manifest)}
+        return _fixture_trusted_apply(output_context)
+
+    assert run_revision_job(
+        pending_revision_jobs(tmp_path)[0],
+        agent_runner=agent,
+        output_verifier=_fixture_verifier,
+        trusted_apply=trusted_v2_producer,
+    )
+    assert calls == ["agent-plan", "trusted-v2-producer"]
+    assert legacy_manifest.read_bytes() == legacy_bytes
+    output_manifest = legacy_manifest.parent / "finished_review_manifest_current.json"
+    assert json.loads(output_manifest.read_text(encoding="utf-8"))["schema"].endswith(".v2")
+    saved = json.loads(feedback.read_text(encoding="utf-8"))["revisions"][-1][
+        "revision_job"
+    ]
+    assert saved["status"] == "succeeded"
+
+
+def test_legacy_v1_source_never_allows_v1_revision_output(monkeypatch, tmp_path):
+    episode, legacy_manifest, feedback = _write_queued_job(
+        tmp_path, manifest_schema="nakama.finished_cut_review_manifest.v1"
+    )
+    legacy_bytes = legacy_manifest.read_bytes()
+
+    class Master:
+        def identity(self):
+            return {"contract": "podcast-editorial-master-v1", "content_hash": "a" * 64}
+
+    monkeypatch.setattr(
+        "scripts.build_finished_review_manifest._open_master", lambda _episode: Master()
+    )
+    monkeypatch.setattr(
+        "scripts.build_finished_review_manifest._approved_inventory",
+        lambda _episode, _identity: {"value-L01": "long"},
+    )
+
+    assert not run_revision_job(
+        pending_revision_jobs(tmp_path)[0],
+        agent_runner=_successful_agent,
+        output_verifier=_fixture_verifier,
+        trusted_apply=_fixture_trusted_apply,
+    )
+    saved = json.loads(feedback.read_text(encoding="utf-8"))["revisions"][-1][
+        "revision_job"
+    ]
+    assert saved["status"] == "failed"
+    assert "output manifest schema is invalid" in saved["error"]
+    assert legacy_manifest.read_bytes() == legacy_bytes
 
 
 def test_public_revision_job_runs_request_bound_visual_producer_before_trusted_apply(
@@ -695,6 +784,58 @@ def test_failed_cleanly_rolled_back_job_can_be_explicitly_retried(tmp_path):
     assert saved["attempt"] == 2
     assert saved["previous_result_receipts"]
     assert saved["result_receipt"].startswith(f"revisions/{request_id}/attempts/2/")
+
+
+def test_legacy_v1_preflight_attempt_zero_can_retry_without_fabricated_receipt(
+    monkeypatch, tmp_path
+):
+    episode, _manifest, feedback = _write_queued_job(
+        tmp_path, manifest_schema="nakama.finished_cut_review_manifest.v1"
+    )
+
+    class Master:
+        def identity(self):
+            return {"contract": "podcast-editorial-master-v1", "content_hash": "a" * 64}
+
+    monkeypatch.setattr(
+        "scripts.build_finished_review_manifest._open_master", lambda _episode: Master()
+    )
+    monkeypatch.setattr(
+        "scripts.build_finished_review_manifest._approved_inventory",
+        lambda _episode, _identity: {"value-L01": "long"},
+    )
+    audit = json.loads(feedback.read_text(encoding="utf-8"))
+    job = audit["revisions"][-1]["revision_job"]
+    job.update(
+        {
+            "status": "failed",
+            "attempt": 0,
+            "result_receipt": None,
+            "error": "revision output manifest schema is invalid",
+        }
+    )
+    feedback.write_text(json.dumps(audit, ensure_ascii=False), encoding="utf-8")
+
+    dry = retry_failed_revision_job(
+        tmp_path,
+        episode_id=episode.name,
+        request_id=job["request_id"],
+        apply=False,
+    )
+    assert dry["status"] == "would_retry"
+    assert dry["previous_attempt"] == 0
+    assert dry["previous_result_receipt"] is None
+    assert dry["retry_proof"] == "preflight_failed_before_backup_or_agent"
+    assert dry["rollback_verified"] is True
+    assert retry_failed_revision_job(
+        tmp_path,
+        episode_id=episode.name,
+        request_id=job["request_id"],
+        apply=True,
+    )["status"] == "queued"
+    queued = pending_revision_jobs(tmp_path)
+    assert len(queued) == 1
+    assert queued[0]["job"]["attempt"] == 0
 
 
 def test_failed_job_retry_rejects_artifact_drift_without_requeueing(tmp_path):

@@ -456,6 +456,15 @@ def test_real_shape_v1_manifest_is_legacy_read_only_and_cannot_approve(
     )
     assert saved.status_code == 303
     assert json.loads(manifest.read_text(encoding="utf-8"))["schema"].endswith(".v1")
+    audit = json.loads(
+        (episode / "highlights/review/finished_review_feedback.v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    legacy_job = audit["revisions"][-1]["revision_job"]
+    assert legacy_job["status"] == "queued"
+    assert legacy_job["manifest_filename"] == manifest.name
+    assert legacy_job["source_manifest_sha256"] == _sha256(manifest)
 
     approve = {
         **draft,

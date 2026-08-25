@@ -547,28 +547,13 @@ def retry_failed_revision_job(
     if job.get("status") != "failed":
         raise RuntimeError("only a failed finished revision job can be retried")
     attempt = job.get("attempt")
-    if not isinstance(attempt, int) or attempt < 1:
-        raise RuntimeError("failed revision has no completed attempt")
+    if not isinstance(attempt, int) or attempt < 0:
+        raise RuntimeError("failed revision attempt is invalid")
     request_root = _contained(
         review_dir / "revisions" / request_id,
         review_dir / "revisions",
         "retry request root",
     )
-    attempt_dir = request_root if attempt == 1 else request_root / "attempts" / str(attempt)
-    try:
-        request = json.loads((attempt_dir / "request.json").read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError("failed revision request receipt is unreadable") from exc
-    if request.get("request_id") != request_id:
-        raise RuntimeError("failed revision request receipt does not match job")
-    pre_snapshot = request.get("pre_snapshot")
-    allowed = request.get("allowed_changes")
-    if not isinstance(pre_snapshot, dict) or not isinstance(allowed, dict):
-        raise RuntimeError("failed revision lacks a rollback snapshot")
-    current_inventory = _retry_target_inventory(episode_dir, review_dir, allowed)
-    if current_inventory != pre_snapshot:
-        raise RuntimeError("failed revision rollback is not clean; refusing retry")
-
     manifest_name = job.get("manifest_filename")
     if not isinstance(manifest_name, str) or Path(manifest_name).name != manifest_name:
         raise RuntimeError("failed revision manifest filename is invalid")
@@ -578,22 +563,43 @@ def retry_failed_revision_job(
     requested = job.get("requested_cut_ids")
     if not isinstance(requested, list) or not requested:
         raise RuntimeError("failed revision has no requested cuts")
-    source_cuts = _manifest_cuts(manifest_path, review_dir, requested)
+    result_relative = job.get("result_receipt")
+    retry_proof = "completed_attempt_rollback_receipt"
+    if attempt == 0:
+        if request_root.exists() or result_relative is not None:
+            raise RuntimeError("attempt-0 failure has unexpected worker artifacts")
+        retry_proof = "preflight_failed_before_backup_or_agent"
+    else:
+        attempt_dir = request_root if attempt == 1 else request_root / "attempts" / str(attempt)
+        try:
+            request = json.loads((attempt_dir / "request.json").read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError("failed revision request receipt is unreadable") from exc
+        if request.get("request_id") != request_id:
+            raise RuntimeError("failed revision request receipt does not match job")
+        pre_snapshot = request.get("pre_snapshot")
+        allowed = request.get("allowed_changes")
+        if not isinstance(pre_snapshot, dict) or not isinstance(allowed, dict):
+            raise RuntimeError("failed revision lacks a rollback snapshot")
+        current_inventory = _retry_target_inventory(episode_dir, review_dir, allowed)
+        if current_inventory != pre_snapshot:
+            raise RuntimeError("failed revision rollback is not clean; refusing retry")
+        if not isinstance(result_relative, str):
+            raise RuntimeError("failed revision has no failure receipt")
+        result_path = _contained(review_dir / result_relative, review_dir, "retry failure receipt")
+        try:
+            result = json.loads(result_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError("failed revision failure receipt is unreadable") from exc
+        if result.get("request_id") != request_id or result.get("status") != "failed":
+            raise RuntimeError("failed revision failure receipt does not match job")
+    source_cuts, _source_preflight = _source_manifest_cuts(
+        episode_dir, manifest_path, review_dir, requested
+    )
     for cut_id in requested:
         preview = Path(source_cuts[cut_id]["artifacts"]["preview"]["path"])
         if _sha256(preview) != job.get("source_preview_sha256", {}).get(cut_id):
             raise RuntimeError(f"failed revision preview was not restored: {cut_id}")
-
-    result_relative = job.get("result_receipt")
-    if not isinstance(result_relative, str):
-        raise RuntimeError("failed revision has no failure receipt")
-    result_path = _contained(review_dir / result_relative, review_dir, "retry failure receipt")
-    try:
-        result = json.loads(result_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError("failed revision failure receipt is unreadable") from exc
-    if result.get("request_id") != request_id or result.get("status") != "failed":
-        raise RuntimeError("failed revision failure receipt does not match job")
     response = {
         "status": "would_retry",
         "episode_id": episode_id,
@@ -601,6 +607,7 @@ def retry_failed_revision_job(
         "previous_attempt": attempt,
         "previous_result_receipt": result_relative,
         "rollback_verified": True,
+        "retry_proof": retry_proof,
     }
     if not apply:
         return response
@@ -611,7 +618,7 @@ def retry_failed_revision_job(
         isinstance(value, str) for value in previous_receipts
     ):
         raise RuntimeError("failed revision previous receipt history is invalid")
-    if result_relative not in previous_receipts:
+    if isinstance(result_relative, str) and result_relative not in previous_receipts:
         previous_receipts = [*previous_receipts, result_relative]
     work = {
         "episode_dir": episode_dir,
@@ -931,13 +938,15 @@ def _contained(path: Path, root: Path, label: str) -> Path:
     return resolved
 
 
-def _manifest_cuts(manifest_path: Path, review_dir: Path, requested: list[str]) -> dict[str, dict]:
-    try:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError("revision output manifest is unreadable") from exc
-    if payload.get("schema") != "nakama.finished_cut_review_manifest.v2":
-        raise RuntimeError("revision output manifest schema is invalid")
+def _validated_manifest_cuts(
+    payload: dict,
+    review_dir: Path,
+    requested: list[str],
+    *,
+    label: str,
+) -> dict[str, dict]:
+    if payload.get("episode_id") != review_dir.parents[1].name:
+        raise RuntimeError(f"{label} manifest episode is invalid")
     cuts = {
         row.get("cut_id"): row
         for row in payload.get("cuts", [])
@@ -945,23 +954,79 @@ def _manifest_cuts(manifest_path: Path, review_dir: Path, requested: list[str]) 
     }
     missing = sorted(set(requested) - cuts.keys())
     if missing:
-        raise RuntimeError(f"revision output manifest is missing cuts: {', '.join(missing)}")
+        raise RuntimeError(f"{label} manifest is missing cuts: {', '.join(missing)}")
     for cut_id in requested:
         artifacts = cuts[cut_id].get("artifacts")
         if not isinstance(artifacts, dict):
-            raise RuntimeError(f"revision output lacks artifacts for {cut_id}")
+            raise RuntimeError(f"{label} manifest lacks artifacts for {cut_id}")
         for name in ("preview", "subtitles"):
             receipt = artifacts.get(name)
             if not isinstance(receipt, dict) or not isinstance(receipt.get("path"), str):
-                raise RuntimeError(f"revision output lacks {name} for {cut_id}")
+                raise RuntimeError(f"{label} manifest lacks {name} for {cut_id}")
             artifact = _contained(Path(receipt["path"]), review_dir, f"{cut_id} {name}")
             if not artifact.is_file():
-                raise RuntimeError(f"revision output {name} is missing for {cut_id}")
+                raise RuntimeError(f"{label} manifest {name} is missing for {cut_id}")
             if receipt.get("bytes") != artifact.stat().st_size or receipt.get("sha256") != _sha256(
                 artifact
             ):
-                raise RuntimeError(f"revision output {name} receipt mismatch for {cut_id}")
+                raise RuntimeError(f"{label} manifest {name} receipt mismatch for {cut_id}")
     return cuts
+
+
+def _manifest_cuts(manifest_path: Path, review_dir: Path, requested: list[str]) -> dict[str, dict]:
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("revision output manifest is unreadable") from exc
+    if payload.get("schema") != "nakama.finished_cut_review_manifest.v2":
+        raise RuntimeError("revision output manifest schema is invalid")
+    return _validated_manifest_cuts(payload, review_dir, requested, label="revision output")
+
+
+def _source_manifest_cuts(
+    episode_dir: Path,
+    manifest_path: Path,
+    review_dir: Path,
+    requested: list[str],
+) -> tuple[dict[str, dict], dict]:
+    """Validate v2 or narrowly adapt a read-only legacy v1 revision source."""
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("revision source manifest is unreadable") from exc
+    schema = payload.get("schema")
+    if schema == "nakama.finished_cut_review_manifest.v2":
+        cuts = _validated_manifest_cuts(payload, review_dir, requested, label="revision source")
+        return cuts, {"schema": schema, "legacy_read_only": False}
+    if schema != "nakama.finished_cut_review_manifest.v1":
+        raise RuntimeError("revision source manifest schema is invalid")
+    gate = payload.get("gate")
+    if (
+        payload.get("stage") != 5
+        or not isinstance(gate, dict)
+        or gate.get("kind") != "finished_cut_review"
+    ):
+        raise RuntimeError("legacy revision source manifest contract is invalid")
+    cuts = _validated_manifest_cuts(payload, review_dir, requested, label="legacy revision source")
+    try:
+        from scripts.build_finished_review_manifest import _approved_inventory, _open_master
+
+        master_identity = _open_master(episode_dir).identity()
+        approved = _approved_inventory(episode_dir, master_identity)
+    except SystemExit as exc:
+        raise RuntimeError(f"legacy revision source Editorial Master is invalid: {exc}") from exc
+    for cut_id in requested:
+        source_format = str(cuts[cut_id].get("format") or "short")
+        if approved.get(cut_id) != source_format:
+            raise RuntimeError(
+                f"legacy revision source cut is not in current Editorial Master inventory: {cut_id}"
+            )
+    return cuts, {
+        "schema": schema,
+        "legacy_read_only": True,
+        "editorial_master_lineage": master_identity,
+        "output_schema_required": "nakama.finished_cut_review_manifest.v2",
+    }
 
 
 def _codex_command() -> str:
@@ -1952,7 +2017,9 @@ def run_revision_job(
     try:
         if _sha256(manifest_path) != request.get("source_manifest_sha256"):
             raise RuntimeError("finished review manifest drifted after feedback was saved")
-        source_cuts = _manifest_cuts(manifest_path, review_dir, requested)
+        source_cuts, source_preflight = _source_manifest_cuts(
+            episode_dir, manifest_path, review_dir, requested
+        )
         for cut_id in requested:
             preview = Path(source_cuts[cut_id]["artifacts"]["preview"]["path"])
             if _sha256(preview) != request.get("source_preview_sha256", {}).get(cut_id):
@@ -2008,6 +2075,7 @@ def run_revision_job(
                 "request_id": request_id,
                 "feedback_revision": int(work["revision_index"]) + 1,
                 **request,
+                "source_preflight": source_preflight,
                 "allowed_changes": allowed,
                 "pre_snapshot": rollback_state["pre_inventory"],
             },
@@ -2038,6 +2106,7 @@ def run_revision_job(
             "manifest_path": str(manifest_path),
             "allowed_changes": allowed,
             "request": request,
+            "source_preflight": source_preflight,
             "output_verifier": output_verifier,
         }
         handoff_assets = _stage_request_handoff_assets(context)
