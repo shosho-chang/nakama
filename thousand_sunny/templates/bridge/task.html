@@ -200,10 +200,13 @@
               <span class="pj-timer-icon" data-timer-icon>▶</span>
               <span class="pj-timer-display" data-timer-display>25:00</span>
             </button>
-            {# 修修 (2026-08-25): now-playing focus music — populated by focus-music.js #}
+            {# 修修 (2026-08-25): now-playing focus music — populated by focus-music.js.
+               ♪ setup 按鈕只在「瀏覽器支援本地資料夾、但還沒選過」時出現。 #}
             <span class="pj-music-title" data-music-title hidden>
               <span class="pj-music-note" aria-hidden="true">♪</span><span data-music-name></span>
             </span>
+            <button type="button" class="pj-timer-secondary pj-music-setup" data-music-setup hidden
+                    title="選一次本地音樂資料夾（例如 E:\data\focus music）——之後按 ▶ 就會隨機播放，不經過伺服器">♪ 音樂資料夾</button>
           </div>
 
           {# running-only: finish-early (logs ACTUAL elapsed — A2) / abort (no log) #}

@@ -117,6 +117,9 @@ body.sho .pj-timer-btn:focus-visible { outline: none; box-shadow: var(--sho-focu
 }
 .pj-music-title[hidden] { display: none; }
 .pj-music-note { color: var(--sho-accent); flex-shrink: 0; }
+/* ♪ one-time local-folder picker — ghost like the secondary actions, smaller */
+body.sho .pj-music-setup { font-size: 11px; padding: 4px 10px; }
+body.sho .pj-music-setup[hidden] { display: none; }
 
 /* a secondary (ghost) timer action — e.g. the Task page's 完成·記一段 / 取消
    (body.sho scope for the same reset-specificity reason as the timer button) */
