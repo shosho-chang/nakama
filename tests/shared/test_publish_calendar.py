@@ -539,7 +539,10 @@ def test_release_pipeline_phase_mapping_and_one_anchor_one_placement(tmp_path: P
                 expected_anchor_token=current.expected_token,
             )
 
-    projection = build_publish_calendar(tmp_path)
+    # pin `now` BEFORE the 2026-08-25 anchor — unpinned, this flipped scheduled →
+    # in_progress the day the calendar caught up with the fixture (2026-08-25 實際
+    # 發生：main 上所有 PR 的 CI 一起紅)。
+    projection = build_publish_calendar(tmp_path, now=datetime(2026, 8, 20, 1, tzinfo=UTC))
     by_cut = {item.content_id: item for item in projection.items}
 
     assert {cut_id: by_cut[cut_id].phase for cut_id, *_ in cases} == {
