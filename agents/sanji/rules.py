@@ -14,21 +14,30 @@ from __future__ import annotations
 from datetime import date, datetime
 
 # 規則版本——任何分數表 / 曲線 / 鍵格式變動都要 bump（格式：YYYY.MM.DD-vN）
-RULE_VERSION = "2026.08.25-v5"
+RULE_VERSION = "2026.08.26-v6"
 
 # ── 分數表（XP 一律 10 的倍數；貝里 = XP ÷ 10，恆為整數）──────────────
+# v6（2026-08-26 修修裁決 A+B）：十年登頂校準——實踐面加值（打卡 10→20、
+# 全勤 200→500、整門課 300→500）＋新設營運貢獻類（社群經理驗證後提報）。
+# 目標：認真實踐＋參與營運 ≈ 7–10 年抵達拉夫德魯；純實踐約 11–12 年。
 XP_TABLE: dict[str, int] = {
     "presence_day": 10,  # 每日在場（PTT 式一天一次；portal ticker 訊號）
-    "checkin_day": 10,  # 挑戰打卡一天（Sanji 判定通過後）
+    "checkin_day": 20,  # 挑戰打卡一天（Sanji 判定通過後）
     "streak_7": 30,  # 連續 7 天獎（當場入袋，斷了重新數、可再得）
-    "full_attendance": 200,  # 全勤獎（賽季結算時發）
+    "full_attendance": 500,  # 全勤獎（賽季結算時發）
     "like_received": 10,  # 貼文被讚（他人驗證；一個讚＝一天登入的心理錨點）
     "comment_received": 30,  # 貼文被留言（同文同人只計一次；寫留言的承諾≈三個讚）
     "bookmark_received": 100,  # 貼文被收藏（最強品質訊號，讚的 10 倍）
     "lesson_completed": 50,  # 完成單課
-    "course_completed": 300,  # 完成整門課
+    "course_completed": 500,  # 完成整門課
     "quiz_passed": 50,  # 通過測驗
+    "event_hosted": 500,  # 主辦實體聚會（共創船長；社群經理成案提報）
+    "session_hosted": 300,  # 主持線上讀書會／共學
+    "event_cohosted": 200,  # 協辦活動（副手）
 }
+
+# 營運貢獻類——提報制：社群經理成案 → 提報 → Sanji 入帳（憲法：他人驗證 ✓）
+OPS_SOURCES = frozenset({"event_hosted", "session_hosted", "event_cohosted"})
 
 # 挑戰榜只計這些來源（榜單 = SUM(xp) WHERE season=本季 AND source IN 挑戰類）
 CHALLENGE_SOURCES = frozenset({"checkin_day", "streak_7", "full_attendance"})
@@ -85,6 +94,29 @@ LEVEL_LABELS: dict[int, str] = {
     15: "艾爾巴夫",
     16: "拉夫德魯",
 }
+
+# ── 位階（2026-08-26 修修定稿）：江湖怎麼稱呼你 ─────────────────────
+# 島是位置（16 站站站換），位階是稱呼（整條航路只換七次）。
+# 頂點語意：海賊王＝「這片海上最自由的人」——自由艦隊的終點就是自由本身。
+TIER_OF_LEVEL: dict[int, str] = {
+    5: "超新星",
+    8: "最惡世代",
+    11: "王下七武海",
+    13: "霸王色",
+    14: "傳說船長",
+    15: "四皇",
+    16: "海賊王",
+}
+
+
+def tier_for(level: int) -> str:
+    """等級 → 目前持有的位階（低於雙子岬回空字串——身份「船長」就是全部的稱呼）。"""
+    tier = ""
+    for n, name in sorted(TIER_OF_LEVEL.items()):
+        if level >= n:
+            tier = name
+    return tier
+
 
 # 幕名（海域）。plugin 不用這張表，公告文案與 Sanji 訊息用。
 ACT_OF_LEVEL: dict[int, str] = (

@@ -40,6 +40,9 @@ final class VoyagePage {
 		'lesson_completed'  => '完成課程單元',
 		'course_completed'  => '完成整門課程',
 		'quiz_passed'       => '通過測驗',
+		'event_hosted'      => '主辦實體聚會',
+		'session_hosted'    => '主持讀書會',
+		'event_cohosted'    => '協辦活動',
 		'presence_day'      => '每日登入',
 		'surprise'          => '驚喜',
 		'captain_award'     => '艦長特別獎',
@@ -55,6 +58,7 @@ final class VoyagePage {
 		'share'     => '分享',
 		'challenge' => '挑戰',
 		'learn'     => '課程',
+		'ops'       => '營運',
 		'other'     => '其他',
 	);
 
@@ -62,6 +66,7 @@ final class VoyagePage {
 		'share'     => array( 'like_received', 'comment_received', 'bookmark_received' ),
 		'challenge' => array( 'checkin_day', 'streak_7', 'full_attendance' ),
 		'learn'     => array( 'lesson_completed', 'course_completed', 'quiz_passed' ),
+		'ops'       => array( 'event_hosted', 'session_hosted', 'event_cohosted' ),
 		'other'     => array( 'presence_day', 'surprise', 'captain_award', 'reversal' ),
 	);
 

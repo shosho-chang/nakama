@@ -33,15 +33,18 @@ def _ev(etype: str, uid: int = 42, oid: int = 7, meta: dict | None = None, **kw)
 def test_xp_table_locked():
     assert rules.XP_TABLE == {
         "presence_day": 10,
-        "checkin_day": 10,
+        "checkin_day": 20,
         "streak_7": 30,
-        "full_attendance": 200,
+        "full_attendance": 500,
         "like_received": 10,
         "comment_received": 30,
         "bookmark_received": 100,
         "lesson_completed": 50,
-        "course_completed": 300,
+        "course_completed": 500,
         "quiz_passed": 50,
+        "event_hosted": 500,
+        "session_hosted": 300,
+        "event_cohosted": 200,
     }
 
 
@@ -97,6 +100,26 @@ def test_every_level_has_a_title():
         label = rules.level_label(n)
         assert label and not label.startswith("Lv."), f"Lv.{n} 沒有稱號"
     assert len(set(rules.LEVEL_LABELS.values())) == 16, "島名不可重複"
+
+
+def test_tier_ladder():
+    """位階線 v3（2026-08-26 定稿）：整條航路只換七次稱呼，頂點是海賊王。"""
+    assert rules.TIER_OF_LEVEL == {
+        5: "超新星",
+        8: "最惡世代",
+        11: "王下七武海",
+        13: "霸王色",
+        14: "傳說船長",
+        15: "四皇",
+        16: "海賊王",
+    }
+    assert rules.tier_for(1) == ""
+    assert rules.tier_for(4) == ""
+    assert rules.tier_for(5) == "超新星"
+    assert rules.tier_for(10) == "最惡世代"
+    assert rules.tier_for(12) == "王下七武海"
+    assert rules.tier_for(14) == "傳說船長"
+    assert rules.tier_for(16) == "海賊王"
 
 
 def test_first_like_levels_up():
