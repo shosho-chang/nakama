@@ -15,6 +15,7 @@ import pytest
 from scripts.finished_review_watcher import (
     _authoritative_output_verifier,
     _ResolveTimelineTransaction,
+    _run_visual_pipeline_revision,
     _trusted_apply_revision,
     _verify_revision_output_acceptance,
     dispatch_revision_agent,
@@ -76,8 +77,9 @@ def _write_queued_job(
     root: Path,
     *,
     manifest_schema: str = "nakama.finished_cut_review_manifest.v2",
+    episode_dir: Path | None = None,
 ) -> tuple[Path, Path, Path]:
-    episode = root / "20260805 林之晨"
+    episode = episode_dir or root / "20260805 林之晨"
     review = episode / "highlights" / "review"
     cut_dir = review / "value-L01"
     cut_dir.mkdir(parents=True)
@@ -946,6 +948,214 @@ def test_failed_job_without_queue_bound_registry_is_permanently_non_retryable(tm
                 apply=apply,
             )
         assert feedback.read_text(encoding="utf-8") == before
+
+
+def test_retry_resumes_same_immutable_visual_request_but_isolates_attempt_files(tmp_path):
+    episode, _manifest, feedback = _write_queued_job(tmp_path)
+    visual_paths = []
+    agent_paths = []
+
+    def agent(context):
+        agent_paths.append(Path(context["request_path"]))
+        return _successful_agent(context)
+
+    def visual(context):
+        visual_path = Path(context["visual_request_path"])
+        visual_paths.append(visual_path)
+        if len(visual_paths) == 1:
+            pending = episode / "highlights/visual-pipeline/value-L01/PENDING.fixture"
+            pending.parent.mkdir(parents=True, exist_ok=True)
+            pending.write_text(_sha(visual_path), encoding="utf-8")
+            raise RuntimeError("old visual CLI failed after PENDING")
+        pending = episode / "highlights/visual-pipeline/value-L01/PENDING.fixture"
+        assert pending.read_text(encoding="utf-8") == _sha(visual_path)
+        return _fixture_visual_pipeline_runner(context)
+
+    work = pending_revision_jobs(tmp_path)[0]
+    assert not run_revision_job(work, agent_runner=agent, visual_pipeline_runner=visual)
+    failed = json.loads(feedback.read_text(encoding="utf-8"))["revisions"][-1][
+        "revision_job"
+    ]
+    retry_failed_revision_job(
+        tmp_path, episode_id=episode.name, request_id=failed["request_id"], apply=True
+    )
+    assert run_revision_job(
+        pending_revision_jobs(tmp_path)[0],
+        agent_runner=agent,
+        visual_pipeline_runner=visual,
+        output_verifier=_fixture_verifier,
+        trusted_apply=_fixture_trusted_apply,
+    )
+    assert visual_paths == [visual_paths[0], visual_paths[0]]
+    assert visual_paths[0] == feedback.parent / "revisions" / failed["request_id"] / "request.json"
+    assert agent_paths[0] == visual_paths[0]
+    assert agent_paths[1] == visual_paths[0].parent / "attempts/2/request.json"
+    assert agent_paths[0].parent != agent_paths[1].parent
+
+
+def test_explicit_retry_migrates_prepatch_visual_request_only_after_real_pending_lineage(
+    monkeypatch, tmp_path
+):
+    from agents.brook.script_video.highlight_visual_pipeline import (
+        init_visual_work_packet,
+        visual_pipeline_status,
+    )
+    from tests.brook.script_video.test_highlight_visual_pipeline import _episode
+
+    episode, master = _episode(tmp_path)
+    _episode, _manifest, feedback = _write_queued_job(
+        tmp_path, episode_dir=episode
+    )
+    monkeypatch.setattr("scripts.run_short_broll._open_editorial_master", lambda _: master)
+    initialized = []
+
+    def real_pending_then_fail(context):
+        work = init_visual_work_packet(
+            episode,
+            cut_id="value-L01",
+            revision_request=Path(context["visual_request_path"]),
+            editorial_master=master,
+        )
+        initialized.append(work.document["revision_id"])
+        raise RuntimeError("pre-patch visual CLI failed after PENDING")
+
+    assert not run_revision_job(
+        pending_revision_jobs(tmp_path)[0],
+        agent_runner=_successful_agent,
+        visual_pipeline_runner=real_pending_then_fail,
+    )
+    assert visual_pipeline_status(
+        episode, cut_id="value-L01", editorial_master=master
+    )["status"] == "awaiting_director"
+
+    audit = json.loads(feedback.read_text(encoding="utf-8"))
+    job = audit["revisions"][-1]["revision_job"]
+    del job["visual_request_sha256"]
+    feedback.write_text(json.dumps(audit, ensure_ascii=False), encoding="utf-8")
+    before = feedback.read_bytes()
+
+    dry = retry_failed_revision_job(
+        tmp_path,
+        episode_id=episode.name,
+        request_id=job["request_id"],
+        apply=False,
+    )
+    assert dry["status"] == "would_bind_visual_request"
+    assert dry["visual_request_migration"]["pending_revisions"] == {
+        "value-L01": initialized[0]
+    }
+    assert feedback.read_bytes() == before
+
+    pending_path = episode / "highlights/visual-pipeline/value-L01/PENDING.json"
+    pristine_pending = pending_path.read_bytes()
+    tampered_pending = json.loads(pristine_pending.decode("utf-8"))
+    tampered_pending["content_hash"] = "0" * 64
+    pending_path.write_text(json.dumps(tampered_pending), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="PENDING lineage"):
+        retry_failed_revision_job(
+            tmp_path,
+            episode_id=episode.name,
+            request_id=job["request_id"],
+            apply=True,
+        )
+    assert feedback.read_bytes() == before
+    pending_path.write_bytes(pristine_pending)
+
+    applied = retry_failed_revision_job(
+        tmp_path,
+        episode_id=episode.name,
+        request_id=job["request_id"],
+        apply=True,
+    )
+    assert applied["status"] == "queued"
+    saved = json.loads(feedback.read_text(encoding="utf-8"))["revisions"][-1][
+        "revision_job"
+    ]
+    assert saved["visual_request_sha256"] == _sha(
+        feedback.parent / "revisions" / job["request_id"] / "request.json"
+    )
+    assert saved["visual_request_migration"]["contract"] == (
+        "finished-cut-visual-request-retry-migration-v1"
+    )
+
+
+def test_retry_rejects_tampered_root_visual_request_before_agent_or_resolve(tmp_path):
+    episode, _manifest, feedback = _write_queued_job(tmp_path)
+
+    def pending_then_fail(context):
+        assert Path(context["visual_request_path"]) == Path(context["request_path"])
+        raise RuntimeError("visual pending then old CLI failed")
+
+    assert not run_revision_job(
+        pending_revision_jobs(tmp_path)[0],
+        agent_runner=_successful_agent,
+        visual_pipeline_runner=pending_then_fail,
+    )
+    failed = json.loads(feedback.read_text(encoding="utf-8"))["revisions"][-1][
+        "revision_job"
+    ]
+    root_request = feedback.parent / "revisions" / failed["request_id"] / "request.json"
+    retry_failed_revision_job(
+        tmp_path, episode_id=episode.name, request_id=failed["request_id"], apply=True
+    )
+    root_request.write_text('{"tampered":true}', encoding="utf-8")
+    calls = []
+
+    assert not run_revision_job(
+        pending_revision_jobs(tmp_path)[0],
+        agent_runner=lambda _context: calls.append("agent"),
+        visual_pipeline_runner=lambda _context: calls.append("visual"),
+        trusted_apply=lambda _context: calls.append("resolve"),
+    )
+    assert calls == []
+    saved = json.loads(feedback.read_text(encoding="utf-8"))["revisions"][-1][
+        "revision_job"
+    ]
+    assert "immutable visual revision request" in saved["error"]
+
+
+def test_default_visual_runner_uses_root_request_not_attempt_request(monkeypatch, tmp_path):
+    root_request = tmp_path / "request.json"
+    attempt_request = tmp_path / "attempts/2/request.json"
+    root_request.write_text('{"root":true}', encoding="utf-8")
+    attempt_request.parent.mkdir(parents=True)
+    attempt_request.write_text('{"attempt":2}', encoding="utf-8")
+    seen = {}
+    selection = SimpleNamespace(
+        materializations=(),
+        lineage=lambda: {"revision_id": "same-revision", "content_hash": "a" * 64},
+    )
+
+    def run(_episode, **kwargs):
+        seen.update(kwargs)
+        return selection
+
+    monkeypatch.setattr(
+        "scripts.podcast_highlight_visual_orchestrator.run_visual_pipeline", run
+    )
+    monkeypatch.setattr("scripts.run_short_broll._open_editorial_master", lambda _: object())
+    monkeypatch.setattr(
+        "scripts.run_short_broll.emit_audited_recipe",
+        lambda *_args, output_dir, **_kwargs: output_dir / "value-L01_broll.json",
+    )
+    monkeypatch.setattr(
+        "scripts.run_short_titles.emit_audited_recipe",
+        lambda *_args, output_dir, **_kwargs: output_dir / "value-L01_titles.json",
+    )
+
+    result = _run_visual_pipeline_revision(
+        {
+            "episode_dir": str(tmp_path),
+            "output_root": str(tmp_path / "output"),
+            "request_path": str(attempt_request),
+            "visual_request_path": str(root_request),
+            "request": {"requested_cut_ids": ["value-L01"]},
+        }
+    )
+
+    assert seen["revision_request"] == root_request
+    assert seen["resume"] is True
+    assert result["cuts"][0]["revision_id"] == "same-revision"
 
 
 def test_failed_job_retry_rejects_artifact_drift_without_requeueing(tmp_path):

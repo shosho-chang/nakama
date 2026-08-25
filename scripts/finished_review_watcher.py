@@ -32,6 +32,27 @@ _FEEDBACK_FILES = (
 )
 _TRUSTED_HANDOFF_ROOT = Path("highlights") / "revision-inputs"
 _TRUSTED_HANDOFF_POINTER = _TRUSTED_HANDOFF_ROOT / "current.json"
+_VISUAL_REQUEST_RETRY_MIGRATION_CONTRACT = (
+    "finished-cut-visual-request-retry-migration-v1"
+)
+_VISUAL_REQUEST_AUTHORITY_KEYS = (
+    "worker_contract",
+    "episode_id",
+    "review_format",
+    "manifest_filename",
+    "source_manifest_sha256",
+    "source_registry_sha256",
+    "source_preview_sha256",
+    "requested_cut_ids",
+    "cut_statuses",
+    "component_feedback",
+    "overall_feedback",
+    "editorial_master_lineage",
+    "tighten_inputs",
+    "trusted_asset_sources",
+    "trusted_asset_sources_sha256",
+    "trusted_asset_handoff",
+)
 
 for _stream in (sys.stdout, sys.stderr):
     try:
@@ -525,6 +546,158 @@ def _retry_target_inventory(episode_dir: Path, review_dir: Path, allowed: dict) 
     return inventory
 
 
+def _read_json_object(path: Path, label: str) -> dict:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"{label} is unreadable") from exc
+    if not isinstance(value, dict):
+        raise RuntimeError(f"{label} must be an object")
+    return value
+
+
+def _file_proof(path: Path, episode_dir: Path) -> dict:
+    if path.is_symlink():
+        raise RuntimeError("visual migration artifact is missing or unsafe")
+    path = _contained(path, episode_dir, "visual migration artifact")
+    if not path.is_file():
+        raise RuntimeError("visual migration artifact is missing or unsafe")
+    return {
+        "path": path.relative_to(episode_dir.resolve()).as_posix(),
+        "bytes": path.stat().st_size,
+        "sha256": _sha256(path),
+    }
+
+
+def _verify_legacy_visual_request_for_retry(
+    *,
+    episode_dir: Path,
+    review_dir: Path,
+    request_root: Path,
+    request_id: str,
+    requested: list[str],
+    job: dict,
+    revision: dict,
+    revision_index: int,
+    latest_attempt_request: dict,
+    failure_receipt: Path,
+) -> dict:
+    """Audit one pre-cutover PENDING lineage; this is never called by pickup."""
+    from agents.brook.script_video.highlight_visual_pipeline import (
+        load_visual_work_packet,
+        visual_pipeline_status,
+    )
+    from scripts.run_short_broll import _open_editorial_master
+
+    root_request_path = _contained(
+        request_root / "request.json", request_root, "legacy visual root request"
+    )
+    root_request = _read_json_object(root_request_path, "legacy visual root request")
+    if (
+        root_request.get("contract") != job.get("contract")
+        or root_request.get("request_id") != request_id
+        or root_request.get("feedback_revision") != revision_index + 1
+    ):
+        raise RuntimeError("legacy visual root request does not match the review revision")
+    for key in _VISUAL_REQUEST_AUTHORITY_KEYS:
+        if root_request.get(key) != job.get(key) or latest_attempt_request.get(key) != job.get(key):
+            raise RuntimeError(f"legacy visual root request authority drifted: {key}")
+    for key in ("overall_feedback", "cut_statuses"):
+        if (root_request.get(key) or {}) != (revision.get(key) or {}):
+            raise RuntimeError(f"legacy visual root request feedback drifted: {key}")
+    job_feedback = root_request.get("component_feedback")
+    revision_feedback = revision.get("component_feedback") or []
+    if (
+        not isinstance(job_feedback, list)
+        or not isinstance(revision_feedback, list)
+        or len(job_feedback) != len(revision_feedback)
+        or any(
+            not isinstance(row, dict)
+            or sum(
+                isinstance(saved, dict)
+                and all(saved.get(key) == value for key, value in row.items())
+                for saved in revision_feedback
+            )
+            != 1
+            for row in job_feedback
+        )
+    ):
+        raise RuntimeError("legacy visual root request feedback drifted: component_feedback")
+    root_snapshot = root_request.get("pre_snapshot")
+    root_allowed = root_request.get("allowed_changes")
+    if not isinstance(root_snapshot, dict) or not isinstance(root_allowed, dict):
+        raise RuntimeError("legacy visual root request lacks rollback authority")
+    if _retry_target_inventory(episode_dir, review_dir, root_allowed) != root_snapshot:
+        raise RuntimeError("legacy visual root request rollback is not clean")
+
+    root_proof = _file_proof(root_request_path, episode_dir)
+    expected_relative = (
+        Path("highlights") / "review" / "revisions" / request_id / "request.json"
+    ).as_posix()
+    if root_proof["path"] != expected_relative:
+        raise RuntimeError("legacy visual root request is not at its canonical path")
+
+    master = _open_editorial_master(episode_dir)
+    pending_revisions: dict[str, str] = {}
+    pending_lineage: dict[str, dict] = {}
+    expected_request_identity = {"kind": "feedback", **root_proof}
+    allowed_states = {
+        "awaiting_director",
+        "awaiting_dp",
+        "awaiting_semantic_audit",
+        "ready_to_materialize",
+    }
+    for cut_id in requested:
+        status = visual_pipeline_status(
+            episode_dir, cut_id=cut_id, editorial_master=master
+        )
+        if status.get("status") not in allowed_states:
+            raise RuntimeError(
+                f"legacy visual PENDING lineage is not resumable: {cut_id}: {status.get('status')}"
+            )
+        revision_id = status.get("pending_revision_id")
+        if not isinstance(revision_id, str):
+            raise RuntimeError(f"legacy visual PENDING revision is missing: {cut_id}")
+        work = load_visual_work_packet(
+            episode_dir,
+            cut_id=cut_id,
+            revision_id=revision_id,
+            editorial_master=master,
+        )
+        if (
+            work.document.get("episode_id") != episode_dir.name
+            or work.document.get("cut_id") != cut_id
+            or work.document.get("revision_request") != expected_request_identity
+        ):
+            raise RuntimeError(f"legacy visual work packet binds another request: {cut_id}")
+        paths = status.get("paths")
+        if not isinstance(paths, dict) or not isinstance(paths.get("pending_pointer"), str):
+            raise RuntimeError(f"legacy visual PENDING pointer path is invalid: {cut_id}")
+        pointer_proof = _file_proof(episode_dir / paths["pending_pointer"], episode_dir)
+        pending_revisions[cut_id] = revision_id
+        pending_lineage[cut_id] = {
+            "status": status["status"],
+            "revision_id": revision_id,
+            "pending_pointer": pointer_proof,
+            "work_packet": work.identity(),
+        }
+
+    proof = {
+        "contract": _VISUAL_REQUEST_RETRY_MIGRATION_CONTRACT,
+        "request_id": request_id,
+        "root_request": root_proof,
+        "source_manifest_sha256": job["source_manifest_sha256"],
+        "source_registry_sha256": job["source_registry_sha256"],
+        "pre_snapshot_sha256": _json_sha256(root_snapshot),
+        "failure_receipt": _file_proof(failure_receipt, episode_dir),
+        "pending_revisions": pending_revisions,
+        "pending_lineage": pending_lineage,
+        "verified_at": datetime.now(timezone.utc).isoformat(),
+    }
+    proof["content_hash"] = _json_sha256(proof)
+    return proof
+
+
 def retry_failed_revision_job(
     episodes_root: Path,
     *,
@@ -553,7 +726,7 @@ def retry_failed_revision_job(
     ]
     if len(matches) != 1:
         raise RuntimeError("retry request id must identify exactly one revision")
-    index, _revision, job = matches[0]
+    index, revision, job = matches[0]
     if job.get("status") != "failed":
         raise RuntimeError("only a failed finished revision job can be retried")
     attempt = job.get("attempt")
@@ -575,6 +748,8 @@ def retry_failed_revision_job(
         raise RuntimeError("failed revision has no requested cuts")
     result_relative = job.get("result_receipt")
     retry_proof = "completed_attempt_rollback_receipt"
+    latest_attempt_request: dict | None = None
+    failure_receipt: Path | None = None
     if attempt == 0:
         if request_root.exists() or result_relative is not None:
             raise RuntimeError("attempt-0 failure has unexpected worker artifacts")
@@ -603,6 +778,8 @@ def retry_failed_revision_job(
             raise RuntimeError("failed revision failure receipt is unreadable") from exc
         if result.get("request_id") != request_id or result.get("status") != "failed":
             raise RuntimeError("failed revision failure receipt does not match job")
+        latest_attempt_request = request
+        failure_receipt = result_path
     source_cuts, _source_preflight = _source_manifest_cuts(
         episode_dir, manifest_path, review_dir, requested
     )
@@ -619,8 +796,35 @@ def retry_failed_revision_job(
         preview = Path(source_cuts[cut_id]["artifacts"]["preview"]["path"])
         if _sha256(preview) != job.get("source_preview_sha256", {}).get(cut_id):
             raise RuntimeError(f"failed revision preview was not restored: {cut_id}")
+    visual_migration: dict | None = None
+    visual_request_sha256 = job.get("visual_request_sha256")
+    if attempt > 0:
+        root_visual_request = request_root / "request.json"
+        if visual_request_sha256 is None:
+            if latest_attempt_request is None or failure_receipt is None:
+                raise RuntimeError("legacy visual retry lacks a completed failure attempt")
+            visual_migration = _verify_legacy_visual_request_for_retry(
+                episode_dir=episode_dir,
+                review_dir=review_dir,
+                request_root=request_root,
+                request_id=request_id,
+                requested=requested,
+                job=job,
+                revision=revision,
+                revision_index=index,
+                latest_attempt_request=latest_attempt_request,
+                failure_receipt=failure_receipt,
+            )
+            visual_request_sha256 = visual_migration["root_request"]["sha256"]
+        elif (
+            not isinstance(visual_request_sha256, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", visual_request_sha256)
+            or not root_visual_request.is_file()
+            or _sha256(root_visual_request) != visual_request_sha256
+        ):
+            raise RuntimeError("failed revision immutable visual request is missing or drifted")
     response = {
-        "status": "would_retry",
+        "status": "would_bind_visual_request" if visual_migration is not None else "would_retry",
         "episode_id": episode_id,
         "request_id": request_id,
         "previous_attempt": attempt,
@@ -629,6 +833,8 @@ def retry_failed_revision_job(
         "retry_proof": retry_proof,
         "source_registry_sha256": job["source_registry_sha256"],
     }
+    if visual_migration is not None:
+        response["visual_request_migration"] = visual_migration
     if not apply:
         return response
     previous_receipts = job.get("previous_result_receipts")
@@ -648,18 +854,26 @@ def retry_failed_revision_job(
         "request_id": request_id,
         "job": job,
     }
+    updates = {
+        "status": "queued",
+        "started_at": None,
+        "finished_at": None,
+        "result_receipt": None,
+        "error": None,
+        "source_registry_sha256": job["source_registry_sha256"],
+        "retry_requested_at": datetime.now(timezone.utc).isoformat(),
+        "previous_result_receipts": previous_receipts,
+    }
+    if visual_migration is not None:
+        updates.update(
+            {
+                "visual_request_sha256": visual_request_sha256,
+                "visual_request_migration": visual_migration,
+            }
+        )
     _update_job(
         work,
-        {
-            "status": "queued",
-            "started_at": None,
-            "finished_at": None,
-            "result_receipt": None,
-            "error": None,
-            "source_registry_sha256": job["source_registry_sha256"],
-            "retry_requested_at": datetime.now(timezone.utc).isoformat(),
-            "previous_result_receipts": previous_receipts,
-        },
+        updates,
         required_status="failed",
     )
     response["status"] = "queued"
@@ -1952,7 +2166,7 @@ def _run_visual_pipeline_revision(context: dict) -> dict:
 
     episode_dir = Path(context["episode_dir"])
     output_tighten = Path(context["output_root"]) / "tighten"
-    request_path = Path(context["request_path"])
+    request_path = Path(context["visual_request_path"])
     master = _open_editorial_master(episode_dir)
     results: list[dict] = []
     for cut_id in context["request"]["requested_cut_ids"]:
@@ -2089,6 +2303,17 @@ def run_revision_job(
                 if _sha256(cuts_path) != row.get("sha256"):
                     raise RuntimeError(f"tighten cuts drifted after revision was queued: {cut_id}")
 
+        visual_request_path = request_root / "request.json"
+        expected_visual_request_sha256 = request.get("visual_request_sha256")
+        if attempt_number > 1:
+            if (
+                not isinstance(expected_visual_request_sha256, str)
+                or not re.fullmatch(r"[0-9a-f]{64}", expected_visual_request_sha256)
+                or not visual_request_path.is_file()
+                or _sha256(visual_request_path) != expected_visual_request_sha256
+            ):
+                raise RuntimeError("immutable visual revision request is missing or drifted")
+
         if output_root.exists():
             raise RuntimeError("revision job output already exists before first pickup")
         output_root.mkdir(parents=True)
@@ -2126,6 +2351,11 @@ def run_revision_job(
                 "pre_snapshot": rollback_state["pre_inventory"],
             },
         )
+        visual_request_sha256 = (
+            _sha256(visual_request_path)
+            if attempt_number == 1
+            else str(expected_visual_request_sha256)
+        )
         _update_job(
             work,
             {
@@ -2140,12 +2370,14 @@ def run_revision_job(
                 "result_receipt": None,
                 "error": None,
                 "source_registry_sha256": request["source_registry_sha256"],
+                "visual_request_sha256": visual_request_sha256,
             },
             required_status="queued",
         )
         context = {
             "request_id": request_id,
             "request_path": str(request_path),
+            "visual_request_path": str(visual_request_path),
             "job_dir": str(job_dir),
             "output_root": str(output_root),
             "episode_dir": str(episode_dir),

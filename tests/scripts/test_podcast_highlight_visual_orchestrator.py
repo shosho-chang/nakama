@@ -749,6 +749,217 @@ def test_real_core_base_and_second_generation_reach_current_with_exact_sessions(
     assert current.work_packet.identity() == second.work_packet.identity()
 
 
+def test_real_core_retry_same_request_reuses_pending_revision_after_pre_session_failure(
+    tmp_path: Path,
+) -> None:
+    episode_root, master = core_fixtures._episode(tmp_path)
+    request = (
+        episode_root
+        / "highlights"
+        / "review"
+        / "revisions"
+        / "request-1"
+        / "request.json"
+    )
+    request.parent.mkdir(parents=True)
+    request.write_text(
+        json.dumps(
+            {
+                "component_feedback": [],
+                "overall_feedback": {"value-L01": "補足三段具體 Stock 畫面。"},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    request_sha256 = hashlib.sha256(request.read_bytes()).hexdigest()
+
+    class FailBeforeThreadStarted:
+        name = "integration-codex"
+
+        def __init__(self) -> None:
+            self.calls = []
+
+        def dispatch(self, dispatch_request):
+            self.calls.append(dispatch_request)
+            raise orchestrator.VisualPipelineOrchestrationError(
+                "simulated config failure before thread.started"
+            )
+
+    first = FailBeforeThreadStarted()
+    with pytest.raises(orchestrator.VisualPipelineOrchestrationError, match="thread.started"):
+        orchestrator.run_visual_pipeline(
+            episode_root,
+            cut_id="value-L01",
+            revision_request=request,
+            dispatcher=first,
+            editorial_master=master,
+        )
+    pending = orchestrator.visual_pipeline.visual_pipeline_status(
+        episode_root, cut_id="value-L01", editorial_master=master
+    )
+    pending_revision = pending["pending_revision_id"]
+    revision_root = episode_root / "highlights" / "visual-pipeline" / "value-L01" / "revisions"
+    job_root = episode_root / "highlights" / "visual-pipeline" / "value-L01" / "jobs"
+    assert pending["status"] == "awaiting_director"
+    assert [path.name for path in revision_root.iterdir() if path.is_dir()] == [pending_revision]
+    assert [path.name for path in job_root.iterdir() if path.is_dir()] == [pending_revision]
+    assert [(call.phase, call.resume_session_id) for call in first.calls] == [("director", None)]
+
+    resumed_dispatcher = _RealCoreDispatcher(episode_root)
+    resumed = orchestrator.run_visual_pipeline(
+        episode_root,
+        cut_id="value-L01",
+        revision_request=request,
+        dispatcher=resumed_dispatcher,
+        editorial_master=master,
+    )
+
+    assert resumed.work_packet.document["revision_id"] == pending_revision
+    assert [path.name for path in revision_root.iterdir() if path.is_dir()] == [pending_revision]
+    assert [path.name for path in job_root.iterdir() if path.is_dir()] == [pending_revision]
+    assert [(call.phase, call.resume_session_id) for call in resumed_dispatcher.calls] == [
+        ("director", None),
+        ("dp", None),
+        ("semantic_audit", DIRECTOR_SESSION),
+    ]
+    assert resumed_dispatcher.calls[-1].resume_session_id == DIRECTOR_SESSION
+    assert hashlib.sha256(request.read_bytes()).hexdigest() == request_sha256
+    receipt_root = job_root / pending_revision / "receipts"
+    assert [path.name for path in receipt_root.glob("director.json")] == ["director.json"]
+    assert resumed.director_plan.document["worker_execution"]["session_id"] == DIRECTOR_SESSION
+    assert resumed.semantic_audit.document["worker_execution"]["session_id"] == DIRECTOR_SESSION
+    assert (
+        resumed.semantic_audit.document["worker_execution"]["execution_id"]
+        != resumed.director_plan.document["worker_execution"]["execution_id"]
+    )
+
+
+def test_real_core_pending_revision_rejects_a_different_attempt_request(tmp_path: Path) -> None:
+    episode_root, master = core_fixtures._episode(tmp_path)
+    first_request = (
+        episode_root / "highlights" / "review" / "revisions" / "request-1" / "request.json"
+    )
+    first_request.parent.mkdir(parents=True)
+    payload = {
+        "component_feedback": [],
+        "overall_feedback": {"value-L01": "補足三段具體 Stock 畫面。"},
+    }
+    first_request.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    class FailBeforeThreadStarted:
+        name = "integration-codex"
+
+        def dispatch(self, _dispatch_request):
+            raise orchestrator.VisualPipelineOrchestrationError(
+                "simulated config failure before thread.started"
+            )
+
+    with pytest.raises(orchestrator.VisualPipelineOrchestrationError, match="thread.started"):
+        orchestrator.run_visual_pipeline(
+            episode_root,
+            cut_id="value-L01",
+            revision_request=first_request,
+            dispatcher=FailBeforeThreadStarted(),
+            editorial_master=master,
+        )
+    pending_before = orchestrator.visual_pipeline.visual_pipeline_status(
+        episode_root, cut_id="value-L01", editorial_master=master
+    )
+    different_request = (
+        episode_root / "highlights" / "review" / "revisions" / "request-2" / "request.json"
+    )
+    different_request.parent.mkdir(parents=True)
+    different_request.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    second_dispatcher = _RealCoreDispatcher(episode_root)
+
+    with pytest.raises(
+        orchestrator.visual_pipeline.HighlightVisualArtifactConflictError,
+        match="another visual revision is still pending",
+    ):
+        orchestrator.run_visual_pipeline(
+            episode_root,
+            cut_id="value-L01",
+            revision_request=different_request,
+            dispatcher=second_dispatcher,
+            editorial_master=master,
+        )
+
+    pending_after = orchestrator.visual_pipeline.visual_pipeline_status(
+        episode_root, cut_id="value-L01", editorial_master=master
+    )
+    assert pending_after["status"] == "awaiting_director"
+    assert pending_after["pending_revision_id"] == pending_before["pending_revision_id"]
+    assert second_dispatcher.calls == []
+
+
+def test_nonzero_after_thread_started_leaves_no_trusted_receipt_and_fails_closed(
+    tmp_path: Path,
+) -> None:
+    episode_root, master = core_fixtures._episode(tmp_path)
+    request = episode_root / "highlights" / "review" / "revisions" / "request-1" / "request.json"
+    request.parent.mkdir(parents=True)
+    request.write_text(
+        json.dumps(
+            {
+                "component_feedback": [],
+                "overall_feedback": {"value-L01": "補足三段具體 Stock 畫面。"},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    delegate = _RealCoreDispatcher(episode_root)
+
+    class NonzeroAfterThreadStarted:
+        name = "integration-codex"
+
+        def dispatch(self, dispatch_request):
+            result = delegate.dispatch(dispatch_request)
+            return orchestrator.DispatchResult(
+                session_id=result.session_id,
+                returncode=1,
+                stdout=result.stdout,
+                stderr="simulated service error after thread.started",
+            )
+
+    with pytest.raises(orchestrator.VisualPipelineOrchestrationError, match="worker failed"):
+        orchestrator.run_visual_pipeline(
+            episode_root,
+            cut_id="value-L01",
+            revision_request=request,
+            dispatcher=NonzeroAfterThreadStarted(),
+            editorial_master=master,
+        )
+    status = orchestrator.visual_pipeline.visual_pipeline_status(
+        episode_root, cut_id="value-L01", editorial_master=master
+    )
+    revision_id = status["pending_revision_id"]
+    job_root = (
+        episode_root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "jobs"
+        / revision_id
+    )
+    assert not (job_root / "receipts" / "director.json").exists()
+
+    retry_dispatcher = _RealCoreDispatcher(episode_root)
+    with pytest.raises(
+        orchestrator.VisualPipelineOrchestrationError,
+        match="orphan director proposal",
+    ):
+        orchestrator.run_visual_pipeline(
+            episode_root,
+            cut_id="value-L01",
+            revision_request=request,
+            dispatcher=retry_dispatcher,
+            editorial_master=master,
+        )
+    assert retry_dispatcher.calls == []
+
+
 def test_cli_help_does_not_dispatch(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as raised:
         orchestrator.main(["--help"])
