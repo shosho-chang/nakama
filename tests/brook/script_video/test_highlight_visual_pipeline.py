@@ -2636,6 +2636,165 @@ def _hero_feedback_rows() -> list[dict[str, object]]:
     ]
 
 
+def _absolute_stock_feedback_request(root: Path) -> tuple[Path, Path, Path]:
+    fixture = Path(__file__).parent / "fixtures" / "davinci_import" / "black10s.mp4"
+    stock = root / "assets" / "broll" / "legacy-stock.mp4"
+    stock.parent.mkdir(parents=True, exist_ok=True)
+    stock.write_bytes(fixture.read_bytes())
+    request = _finished_visual_request(
+        root,
+        request_id="legacy-absolute-stock",
+        rows=[
+            {
+                "cut_id": "value-L01",
+                "component_id": "value-L01-b-roll-001",
+                "lane": "b_roll",
+                "timeline_seconds": {"t0": 6.0, "t1": 9.0},
+                "action": "remove",
+                "comment": "淘汰舊 Stock，保留 request-bound bytes 作 deny evidence。",
+                "replacement": "",
+                "remember_preference": False,
+            }
+        ],
+    )
+    manifest_path = root / "highlights" / "review" / "finished_review_manifest_source.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["cuts"][0]["components"].append(
+        {
+            "component_id": "value-L01-b-roll-001",
+            "lane": "b_roll",
+            "t0": 6.0,
+            "t1": 9.0,
+            "type": "video",
+            "slug": "legacy-stock",
+            "asset": {
+                "path": str(stock.resolve()),
+                "bytes": stock.stat().st_size,
+                "sha256": hashlib.sha256(stock.read_bytes()).hexdigest(),
+            },
+        }
+    )
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    request_document = json.loads(request.read_text(encoding="utf-8"))
+    request_document["source_manifest_sha256"] = hashlib.sha256(
+        manifest_path.read_bytes()
+    ).hexdigest()
+    request.write_text(json.dumps(request_document, ensure_ascii=False), encoding="utf-8")
+    return request, stock, fixture
+
+
+def test_request_bound_legacy_absolute_stock_path_is_normalized_under_episode(
+    tmp_path: Path,
+) -> None:
+    root, master = _episode(tmp_path)
+    request, stock, fixture = _absolute_stock_feedback_request(root)
+
+    prospective = preflight_visual_work_packet(
+        root,
+        cut_id="value-L01",
+        revision_request=request,
+        editorial_master=master,
+    )
+
+    assert prospective["status"] == "would_initialize"
+    source_component = prospective["requested_visual_feedback"]["directives"][0][
+        "source_component"
+    ]
+    assert source_component["asset"] == _identity(root, stock)
+
+    outside = tmp_path / "outside-episode.mp4"
+    outside.write_bytes(fixture.read_bytes())
+    _assert_contract_error(
+        lambda: visual_contract_module._validate_feedback_source_asset_identity(
+            root,
+            {
+                "path": str(outside.resolve()),
+                "bytes": outside.stat().st_size,
+                "sha256": hashlib.sha256(outside.read_bytes()).hexdigest(),
+            },
+            "legacy outside asset",
+            media=True,
+        ),
+        "escapes episode root",
+    )
+
+
+def test_existing_legacy_pending_revision_resumes_with_fresh_removed_stock_evidence(
+    tmp_path: Path,
+) -> None:
+    root, master = _episode(tmp_path)
+    request, stock, _ = _absolute_stock_feedback_request(root)
+    _, cut_id, modern = visual_contract_module._prospective_work_document(
+        root,
+        cut_id="value-L01",
+        revision_request=request,
+        editorial_master=master,
+    )
+    legacy_feedback = dict(modern["requested_visual_feedback"])
+    legacy_feedback["directives"] = [
+        {key: value for key, value in row.items() if key != "source_component"}
+        for row in legacy_feedback["directives"]
+    ]
+    legacy_feedback["content_hash"] = _intent_hash(
+        {key: value for key, value in legacy_feedback.items() if key != "content_hash"}
+    )
+    legacy = {**modern, "requested_visual_feedback": legacy_feedback}
+    revision_seed = {
+        key: value for key, value in legacy.items() if key not in {"revision_id", "content_hash"}
+    }
+    revision_id = f"r-{_intent_hash(revision_seed)[:24]}"
+    legacy["revision_id"] = revision_id
+    legacy["content_hash"] = _intent_hash(
+        {key: value for key, value in legacy.items() if key != "content_hash"}
+    )
+    work_path = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / cut_id
+        / "revisions"
+        / revision_id
+        / "DIRECTOR-WORK.json"
+    )
+    visual_contract_module._atomic_publish(work_path, legacy)
+    legacy_selection = visual_contract_module.ArtifactSelection(work_path, legacy, root)
+    visual_contract_module._write_pointer(
+        root,
+        cut_id=cut_id,
+        name="PENDING.json",
+        revision_id=revision_id,
+        state="pending",
+        work_packet=legacy_selection.identity(),
+        semantic_audit=None,
+        expected_existing_content_hash=None,
+    )
+    frozen_bytes = work_path.read_bytes()
+
+    resumed = init_visual_work_packet(
+        root,
+        cut_id=cut_id,
+        revision_request=request,
+        editorial_master=master,
+    )
+
+    assert resumed.document["revision_id"] == revision_id
+    assert work_path.read_bytes() == frozen_bytes
+    _assert_contract_error(
+        lambda: visual_contract_module._reject_human_removed_assets(
+            root,
+            resumed.document,
+            [
+                {
+                    "asset_id": "renamed-legacy-stock",
+                    "source_url": "https://www.pexels.com/video/9999999/",
+                    "original_media": _identity(root, stock),
+                }
+            ],
+        ),
+        "human-removed visual source",
+    )
+
+
 def _legacy_migrated_hero_request(root: Path, master: _FakeMaster) -> Path:
     review = root / "highlights" / "review"
     cut_dir = review / "value-L01"

@@ -627,7 +627,7 @@ def _feedback_source_component_projection(
         raise HighlightVisualContractError(f"{label}.slug must be text or null")
     asset: dict[str, object] | None = None
     if component.get("asset") is not None:
-        _, asset = _validate_file_identity(
+        _, asset = _validate_feedback_source_asset_identity(
             root,
             component.get("asset"),
             f"{label}.asset",
@@ -655,6 +655,28 @@ def _feedback_source_component_projection(
     }
     projection["content_hash"] = _content_hash(projection)
     return projection
+
+
+def _validate_feedback_source_asset_identity(
+    root: Path,
+    value: object,
+    label: str,
+    *,
+    media: bool,
+) -> tuple[Path, dict[str, object]]:
+    """Normalize hash-bound legacy review paths without relaxing canonical inputs."""
+
+    identity = _require_exact_keys(value, _MEDIA_KEYS, label)
+    raw_path = identity["path"]
+    if not isinstance(raw_path, str):
+        raise HighlightVisualContractError(f"{label}.path must be text")
+    source_path = Path(raw_path)
+    if source_path.is_absolute():
+        resolved = source_path.resolve()
+        if not resolved.is_relative_to(root):
+            raise HighlightVisualContractError(f"{label} path escapes episode root")
+        identity = {**identity, "path": resolved.relative_to(root).as_posix()}
+    return _validate_file_identity(root, identity, label, media=media)
 
 
 def _feedback_event_lane(event_type: object) -> str | None:
@@ -1898,11 +1920,22 @@ def _visual_feedback_directives(
         raise HighlightVisualContractError("requested visual feedback directives are invalid")
     directives: list[dict[str, object]] = []
     for index, raw in enumerate(raw_directives, 1):
-        directive = _require_exact_keys(
-            raw,
-            _FEEDBACK_DIRECTIVE_KEYS,
-            f"requested visual directive[{index}]",
-        )
+        if not isinstance(raw, dict):
+            raise HighlightVisualContractError(
+                f"requested visual directive[{index}] fields mismatch"
+            )
+        raw_keys = frozenset(raw)
+        if raw_keys not in {
+            frozenset(_FEEDBACK_DIRECTIVE_KEYS),
+            frozenset(_FEEDBACK_DIRECTIVE_KEYS - {"source_component"}),
+        }:
+            raise HighlightVisualContractError(
+                f"requested visual directive[{index}] fields mismatch"
+            )
+        directive = raw
+        if "source_component" not in directive:
+            directives.append(directive)
+            continue
         source_component = _require_exact_keys(
             directive["source_component"],
             _SOURCE_COMPONENT_PROJECTION_KEYS,
@@ -1927,20 +1960,67 @@ def _visual_feedback_directives(
 
 
 def _reject_human_removed_assets(
+    root: Path,
     work: Mapping[str, object],
     assets: Sequence[Mapping[str, object]],
 ) -> None:
     denied_sha256: set[str] = set()
     denied_urls: set[str] = set()
     denied_slugs: set[str] = set()
-    for directive in _visual_feedback_directives(work):
+    directives = _visual_feedback_directives(work)
+    legacy_sources: dict[str, Mapping[str, object]] = {}
+    if any("source_component" not in directive for directive in directives):
+        feedback = work.get("requested_visual_feedback")
+        if not isinstance(feedback, dict) or not isinstance(feedback.get("source_manifest"), dict):
+            raise HighlightVisualContractError(
+                "legacy removed Stock evidence has no bound source manifest"
+            )
+        request_identity = _validate_revision_request_identity(root, work.get("revision_request"))
+        if request_identity["kind"] != "feedback":
+            raise HighlightVisualContractError(
+                "legacy removed Stock evidence has no feedback request"
+            )
+        request_path = (root / str(request_identity["path"])).resolve()
+        request = _load_json_object(request_path, "legacy removed Stock revision request")
+        source_manifest, source_components = _source_feedback_components(
+            root,
+            request=request,
+            cut_id=str(work["cut_id"]),
+        )
+        if source_manifest != feedback["source_manifest"]:
+            raise HighlightVisualContractError(
+                "legacy removed Stock source manifest identity drift"
+            )
+        legacy_sources = source_components
+    for directive in directives:
         if directive["action"] != "remove":
             continue
-        source = _require_exact_keys(
-            directive["source_component"],
-            _SOURCE_COMPONENT_PROJECTION_KEYS,
-            "removed visual source component",
-        )
+        if "source_component" in directive:
+            source = _require_exact_keys(
+                directive["source_component"],
+                _SOURCE_COMPONENT_PROJECTION_KEYS,
+                "removed visual source component",
+            )
+        else:
+            component_id = str(directive["component_id"])
+            component = legacy_sources.get(component_id)
+            if component is None or component.get("lane") != directive["lane"]:
+                raise HighlightVisualContractError(
+                    f"legacy removed Stock component identity drift: {component_id}"
+                )
+            source_span = {
+                "t0": _number(component.get("t0"), f"{component_id}.t0"),
+                "t1": _number(component.get("t1"), f"{component_id}.t1"),
+            }
+            if source_span != directive["timeline_seconds"]:
+                raise HighlightVisualContractError(
+                    f"legacy removed Stock component span drift: {component_id}"
+                )
+            source = _feedback_source_component_projection(
+                root,
+                component,
+                label=f"legacy removed source component {component_id}",
+            )
         asset = source["asset"]
         if isinstance(asset, dict) and isinstance(asset.get("sha256"), str):
             denied_sha256.add(str(asset["sha256"]))
@@ -2314,7 +2394,62 @@ def _prospective_work_document(
         parent_current=parent_current,
         editorial_master=editorial_master,
     )
+    legacy = _legacy_feedback_work_projection(document)
+    pending_path = _cut_root(root, cut_id) / PENDING_POINTER_NAME
+    if legacy is not None and pending_path.is_file():
+        pending = _load_pointer(root, cut_id, PENDING_POINTER_NAME)
+        if pending["revision_id"] == legacy["revision_id"]:
+            legacy_path = (
+                _revision_dir(root, cut_id, str(legacy["revision_id"])) / WORK_PACKET_NAME
+            )
+            legacy_selection = _load_hashed_artifact(
+                root,
+                legacy_path,
+                contract=WORK_PACKET_CONTRACT,
+                exact_keys=_WORK_KEYS,
+            )
+            if legacy_selection.document != legacy:
+                raise HighlightVisualContractError(
+                    "legacy pending Director work packet upstream lineage is stale"
+                )
+            if pending["work_packet"] != legacy_selection.identity():
+                raise HighlightVisualContractError(
+                    "legacy pending Director work packet pointer identity drift"
+                )
+            document = legacy
     return root, cut_id, document
+
+
+def _legacy_feedback_work_projection(
+    document: Mapping[str, object],
+) -> dict[str, object] | None:
+    """Reproduce the exact pre-source-evidence work identity for safe resume only."""
+
+    feedback = document.get("requested_visual_feedback")
+    if not isinstance(feedback, dict) or not isinstance(feedback.get("directives"), list):
+        return None
+    directives = feedback["directives"]
+    if not directives or any(
+        not isinstance(row, dict) or set(row) != _FEEDBACK_DIRECTIVE_KEYS for row in directives
+    ):
+        return None
+    legacy_feedback = dict(feedback)
+    legacy_feedback["directives"] = [
+        {key: value for key, value in row.items() if key != "source_component"}
+        for row in directives
+    ]
+    legacy_feedback["content_hash"] = _content_hash(
+        {key: value for key, value in legacy_feedback.items() if key != "content_hash"}
+    )
+    legacy = {**document, "requested_visual_feedback": legacy_feedback}
+    revision_seed = {
+        key: value for key, value in legacy.items() if key not in {"revision_id", "content_hash"}
+    }
+    legacy["revision_id"] = f"r-{_content_hash(revision_seed)[:24]}"
+    legacy["content_hash"] = _content_hash(
+        {key: value for key, value in legacy.items() if key != "content_hash"}
+    )
+    return legacy
 
 
 def preflight_visual_work_packet(
@@ -2446,7 +2581,8 @@ def load_visual_work_packet(
         ),
         editorial_master=editorial_master,
     )
-    if selection.document != expected:
+    legacy_expected = _legacy_feedback_work_projection(expected)
+    if selection.document != expected and selection.document != legacy_expected:
         raise HighlightVisualContractError("Director work packet upstream lineage is stale")
     pending_path = _cut_root(root, cut_id) / PENDING_POINTER_NAME
     pending = _load_pointer(root, cut_id, PENDING_POINTER_NAME) if pending_path.is_file() else None
@@ -3523,7 +3659,7 @@ def accept_asset_authority(
             raise HighlightVisualContractError(
                 "asset authority differs from trusted acquisition manifest"
             )
-    _reject_human_removed_assets(work.document, assets)
+    _reject_human_removed_assets(root, work.document, assets)
     prior_assets = _effective_authority_assets(
         root,
         cut_id=cut_id,
@@ -3750,7 +3886,7 @@ def publish_asset_authority(
         attempt=attempt,
     )
     planned_rows = [row for _, _, row in planned]
-    _reject_human_removed_assets(work.document, planned_rows)
+    _reject_human_removed_assets(root, work.document, planned_rows)
     prior_assets = _effective_authority_assets(
         root,
         cut_id=cut_id,
