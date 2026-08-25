@@ -8,6 +8,7 @@ accepts strict worker proposals, and verifies the resulting lineage DAG.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import sys
@@ -52,6 +53,11 @@ def _add_acceptance_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--worker-id", required=True)
     parser.add_argument("--execution-id", required=True)
     parser.add_argument("--session-id", required=True)
+    parser.add_argument(
+        "--execution-receipt",
+        required=True,
+        help="canonical episode-local orchestration execution receipt",
+    )
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -84,6 +90,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         accept = commands.add_parser(command, help=help_text)
         _add_episode_cut(accept)
         _add_acceptance_args(accept)
+        if command == "accept-dp":
+            accept.add_argument(
+                "--worker-proposal",
+                required=True,
+                help="immutable raw DP worker proposal bound by the execution receipt",
+            )
 
     verify = commands.add_parser(
         "verify", help="read-only verify CURRENT or an explicit immutable generation"
@@ -99,6 +111,21 @@ def _worker_identity(args: argparse.Namespace, *, role: str) -> dict[str, str]:
         "execution_id": args.execution_id,
         "role": role,
         "session_id": args.session_id,
+    }
+
+
+def _episode_file_identity(episode: str, value: str) -> dict[str, object]:
+    root = Path(episode).resolve()
+    path = Path(value)
+    if not path.is_absolute():
+        path = root / path
+    path = path.resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        raise HighlightVisualContractError("execution receipt must be an episode-local file")
+    return {
+        "path": path.relative_to(root).as_posix(),
+        "bytes": path.stat().st_size,
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
     }
 
 
@@ -144,6 +171,9 @@ def main(argv: list[str] | None = None) -> int:
                 revision_id=args.revision_id,
                 proposal=args.proposal,
                 worker_identity=_worker_identity(args, role="director"),
+                execution_receipt=_episode_file_identity(
+                    args.episode, args.execution_receipt
+                ),
             )
         elif args.command == "accept-dp":
             selected = accept_dp_fulfillment(
@@ -151,7 +181,11 @@ def main(argv: list[str] | None = None) -> int:
                 cut_id=args.cut_id,
                 revision_id=args.revision_id,
                 proposal=args.proposal,
+                worker_proposal=args.worker_proposal,
                 worker_identity=_worker_identity(args, role="dp"),
+                execution_receipt=_episode_file_identity(
+                    args.episode, args.execution_receipt
+                ),
             )
         elif args.command == "accept-audit":
             selected = accept_semantic_audit(
@@ -160,6 +194,9 @@ def main(argv: list[str] | None = None) -> int:
                 revision_id=args.revision_id,
                 proposal=args.proposal,
                 worker_identity=_worker_identity(args, role="director"),
+                execution_receipt=_episode_file_identity(
+                    args.episode, args.execution_receipt
+                ),
             )
         else:
             verified = verify_visual_pipeline(

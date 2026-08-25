@@ -17,13 +17,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1080, height=1920" />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
     <style>
       @font-face {
         font-family: "LINE Seed TW";
         font-weight: 900;
         font-display: block;
-        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Eb.woff2") format("woff2");
+        src: url("assets/fonts/line-seed-tw/LINESeedTW_OTF_Eb.woff2") format("woff2");
       }
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { width: 1080px; height: 1920px; overflow: hidden; background: transparent; }
@@ -39,7 +39,7 @@
         padding: 46px 30px 40px;
         display: flex; flex-direction: column; align-items: center; gap: 30px;
         opacity: 0;
-        font-family: "LINE Seed TW", "Noto Sans TC", sans-serif;
+        font-family: "LINE Seed TW", sans-serif;
       }
       #title {
         background: #e87000; color: #fff;
@@ -122,7 +122,7 @@
         ease: "power2.in",
         delay: Math.max(0.6, showSec - 0.25),
       });
-      window.__timelines.main = tl;
+      window.__timelines["concept_card"] = tl;
     </script>
   </body>
 </html>

@@ -23,6 +23,53 @@ REVISION_ID = "r-a1b2c3d4e5f60718293a4b5c"
 SECOND_REVISION_ID = "r-b1c2d3e4f5061728394a5b6c"
 
 
+@pytest.fixture(autouse=True)
+def _trusted_hydrator_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[dict[str, object]]:
+    calls: list[dict[str, object]] = []
+
+    def hydrate(episode_root: object, **kwargs: object) -> dict[str, object]:
+        calls.append({"episode_root": episode_root, **kwargs})
+        proposal_path = Path(str(kwargs["proposal_path"]))
+        output_path = Path(str(kwargs["output_path"]))
+        document = json.loads(proposal_path.read_text(encoding="utf-8"))
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+        return document
+
+    monkeypatch.setattr(orchestrator, "hydrate_dp_proposal", hydrate, raising=False)
+    monkeypatch.setattr(
+        orchestrator.visual_pipeline,
+        "verify_hyperframes_render_receipt",
+        lambda *args, **kwargs: {"contract": "trusted-render-test-boundary"},
+    )
+    monkeypatch.setattr(
+        orchestrator.visual_pipeline,
+        "_accepted_dp_hydration_lineage",
+        lambda *args, **kwargs: (
+            {
+                "worker_proposal": None,
+                "hydrated_proposal": None,
+                "hydration_receipt": None,
+            },
+            None,
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        orchestrator.visual_pipeline,
+        "_verify_canonical_dp_hydration",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        orchestrator.visual_pipeline,
+        "_verify_canonical_asset_execution",
+        lambda *args, **kwargs: None,
+    )
+    return calls
+
+
 @dataclass
 class _Artifact:
     document: dict[str, object]
@@ -108,6 +155,25 @@ class _FakePipeline:
         self.init_calls.append(Path(revision_request) if revision_request else None)
         return self.work
 
+    def load_asset_authority_projection(
+        self,
+        _root,
+        *,
+        cut_id,
+        revision_id,
+        attempt,
+        editorial_master=None,
+    ):
+        del editorial_master
+        assert cut_id == "value-L01"
+        assert revision_id == self.revision_id
+        return {
+            "identity": {"content_hash": "a" * 64},
+            "authority_chain": [{"content_hash": "a" * 64}],
+            "attempt": attempt,
+            "assets": [],
+        }
+
     def accept_director_plan(
         self,
         _root,
@@ -116,9 +182,10 @@ class _FakePipeline:
         revision_id,
         proposal,
         worker_identity,
+        execution_receipt=None,
         editorial_master=None,
     ):
-        del cut_id, editorial_master
+        del cut_id, editorial_master, execution_receipt
         assert revision_id == self.revision_id
         data = json.loads(Path(proposal).read_text(encoding="utf-8"))
         self.accepted_identities.append(dict(worker_identity))
@@ -147,9 +214,11 @@ class _FakePipeline:
         revision_id,
         proposal,
         worker_identity,
+        execution_receipt=None,
+        worker_proposal=None,
         editorial_master=None,
     ):
-        del cut_id, editorial_master
+        del cut_id, editorial_master, execution_receipt, worker_proposal
         assert revision_id == self.revision_id
         assert Path(proposal).is_file()
         self.accepted_identities.append(dict(worker_identity))
@@ -183,9 +252,10 @@ class _FakePipeline:
         revision_id,
         proposal,
         worker_identity,
+        execution_receipt=None,
         editorial_master=None,
     ):
-        del cut_id, editorial_master
+        del cut_id, editorial_master, execution_receipt
         assert revision_id == self.revision_id
         assert Path(proposal).is_file()
         self.accepted_identities.append(dict(worker_identity))
@@ -403,6 +473,121 @@ class _RealCoreDispatcher:
         )
 
 
+class _RealRefinementDispatcher(_RealCoreDispatcher):
+    """Real-core mismatch -> replan -> DP2 -> audit2 subscription turns."""
+
+    @staticmethod
+    def _audit(phase_input: dict[str, object]) -> dict[str, object]:
+        director = _CapturedArtifact(phase_input["director_plan"])
+        dp = _CapturedArtifact(phase_input["dp_fulfillment"])
+        findings = []
+        for row in phase_input["materializations"]:
+            findings.append(
+                {
+                    "materialization_id": row["materialization_id"],
+                    "event_id": row["event_id"],
+                    "director_intent_sha256": row["director_intent_sha256"],
+                    "cue_ids": row["cue_ids"],
+                    "t0": row["t0"],
+                    "t1": row["t1"],
+                    "quote": row["quote"],
+                    "source_range": row["source_range"],
+                    "evidence_sha256": row["media"]["sha256"],
+                    "visual_observation": (
+                        "逐一實看可信 render 或素材後，畫面與逐字稿的具體敘述一致。"
+                    ),
+                    "verdict": "match",
+                    "rationale": "逐一檢視實際媒體 bytes、畫面內容與負面限制後，確認語意符合。",
+                }
+            )
+        return {
+            "contract": "podcast-highlight-visual-semantic-audit-v1",
+            "episode_id": director.document["episode_id"],
+            "cut_id": director.document["cut_id"],
+            "director_plan": director.identity(),
+            "dp_fulfillment": dp.identity(),
+            "findings": findings,
+        }
+
+    def dispatch(self, request: orchestrator.DispatchRequest) -> orchestrator.DispatchResult:
+        self.calls.append(request)
+        phase_input = json.loads(
+            (request.working_directory / f"{request.phase}-input.json").read_text(encoding="utf-8")
+        )
+        self.phase_inputs.append(phase_input)
+        work = _CapturedArtifact(phase_input["work_packet"])
+        if request.phase == "director":
+            proposal = core_fixtures._director_proposal(work)
+            session_id = DIRECTOR_SESSION
+        elif request.phase == "dp":
+            director = _CapturedArtifact(phase_input["director_plan"])
+            proposal = core_fixtures._dp_proposal(self.episode_root, director)
+            session_id = DP_SESSION
+        elif request.phase == "semantic_audit":
+            proposal = self._audit(phase_input)
+            title = next(row for row in proposal["findings"] if row["event_id"] == "title-002")
+            title["verdict"] = "mismatch"
+            title["rationale"] = (
+                "找不到可核對的自有檔案，概念卡不能冒充實際畫面證據，"
+                "必須回到 Director。"
+            )
+            session_id = DIRECTOR_SESSION
+        elif request.phase == "refinement_decision-001":
+            refinement = _CapturedArtifact(phase_input["semantic_refinement"])
+            proposal = core_fixtures._refinement_decision_proposal(
+                refinement, action="director_replan"
+            )
+            session_id = DIRECTOR_SESSION
+        elif request.phase == "director_replan-002":
+            proposal = core_fixtures._director_proposal(work)
+            proposal["events"][1].update(
+                {
+                    "category": "none",
+                    "form": "aroll",
+                    "description": "可信來源不存在時保留來賓，不用合成卡冒充證據",
+                    "on_screen_text": None,
+                    "negative_constraints": ["不可用概念卡冒充自有檔案"],
+                    "search_angles": [],
+                    "decision": "intentional_aroll",
+                    "rationale": "稽核證明素材不可得，因此保留 A-roll，避免製造錯誤視覺證據。",
+                }
+            )
+            proposal["coverage"].update(
+                {
+                    "add_visual_count": 2,
+                    "planned_visual_count": 4,
+                    "intentional_aroll_count": 2,
+                    "visual_events_per_minute": 10.0,
+                }
+            )
+            session_id = DIRECTOR_SESSION
+        elif request.phase == "dp-002":
+            director = _CapturedArtifact(phase_input["director_plan"])
+            prior_dp = _CapturedArtifact(phase_input["dp_fulfillment"])
+            proposal = {
+                "contract": "podcast-highlight-dp-fulfillment-v1",
+                "episode_id": director.document["episode_id"],
+                "cut_id": director.document["cut_id"],
+                "director_plan": director.identity(),
+                "implementations": [
+                    row
+                    for row in prior_dp.document["implementations"]
+                    if row["event_id"] != "title-002"
+                ],
+            }
+            session_id = WRONG_SESSION
+        else:
+            proposal = self._audit(phase_input)
+            session_id = DIRECTOR_SESSION
+        request.proposal_path.write_text(json.dumps(proposal, ensure_ascii=False), encoding="utf-8")
+        return orchestrator.DispatchResult(
+            session_id=session_id,
+            returncode=0,
+            stdout=json.dumps({"type": "thread.started", "thread_id": session_id}) + "\n",
+            stderr="",
+        )
+
+
 @pytest.fixture
 def episode(tmp_path: Path) -> tuple[Path, Path]:
     root = tmp_path / "episode"
@@ -411,6 +596,25 @@ def episode(tmp_path: Path) -> tuple[Path, Path]:
     request.parent.mkdir(parents=True)
     request.write_text('{"feedback":"replace stock"}\n', encoding="utf-8")
     return root, request
+
+
+def test_dp_prompt_forbids_worker_media_and_requires_trusted_authority(
+    episode: tuple[Path, Path],
+) -> None:
+    request = orchestrator.DispatchRequest(
+        phase="dp-002",
+        role="dp",
+        prompt="",
+        working_directory=episode[0],
+        proposal_path=episode[0] / "dp-proposal.json",
+        proposal_contract="podcast-highlight-dp-fulfillment-v1",
+    )
+    prompt = orchestrator._phase_prompt(request, episode[1])
+
+    assert "generated/downloaded candidate" not in prompt
+    assert "Never download, generate, or write media" in prompt
+    assert "authority_asset_id" in prompt
+    assert "HyperFrames candidates must be exact spec-only" in prompt
 
 
 def _run(
@@ -431,7 +635,9 @@ def _run(
 
 
 def test_two_new_dispatches_then_same_director_session_resume_are_required(
-    monkeypatch: pytest.MonkeyPatch, episode: tuple[Path, Path]
+    monkeypatch: pytest.MonkeyPatch,
+    episode: tuple[Path, Path],
+    _trusted_hydrator_boundary: list[dict[str, object]],
 ) -> None:
     pipeline = _FakePipeline()
     dispatcher = _FakeDispatcher()
@@ -452,6 +658,14 @@ def test_two_new_dispatches_then_same_director_session_resume_are_required(
     assert dp["worker_id"] != director["worker_id"]
     assert all(call.working_directory.is_relative_to(episode[0]) for call in dispatcher.calls)
     assert all(REVISION_ID in call.working_directory.parts for call in dispatcher.calls)
+    dp_call = next(call for call in dispatcher.calls if call.phase == "dp")
+    dp_input = json.loads(
+        (dp_call.working_directory / "dp-input.json").read_text(encoding="utf-8")
+    )
+    assert dp_input["asset_authority"]["identity"]["content_hash"] == "a" * 64
+    assert len(_trusted_hydrator_boundary) == 1
+    assert _trusted_hydrator_boundary[0]["attempt"] == 1
+    assert "asset_authority" not in _trusted_hydrator_boundary[0]
 
 
 def test_ready_current_is_pure_verify_with_zero_dispatch(
@@ -687,6 +901,12 @@ def test_real_core_base_and_second_generation_reach_current_with_exact_sessions(
     tmp_path: Path,
 ) -> None:
     episode_root, master = core_fixtures._episode(tmp_path)
+    first_work = core_fixtures.init_visual_work_packet(
+        episode_root, cut_id="value-L01", editorial_master=master
+    )
+    core_fixtures._publish_fixture_asset_authority(
+        episode_root, first_work.identity()
+    )
     first_dispatcher = _RealCoreDispatcher(episode_root)
 
     first = orchestrator.run_visual_pipeline(
@@ -722,6 +942,15 @@ def test_real_core_base_and_second_generation_reach_current_with_exact_sessions(
         + "\n",
         encoding="utf-8",
     )
+    second_work = core_fixtures.init_visual_work_packet(
+        episode_root,
+        cut_id="value-L01",
+        revision_request=request,
+        editorial_master=master,
+    )
+    core_fixtures._publish_fixture_asset_authority(
+        episode_root, second_work.identity()
+    )
     second_dispatcher = _RealCoreDispatcher(episode_root)
     second = orchestrator.run_visual_pipeline(
         episode_root,
@@ -747,6 +976,59 @@ def test_real_core_base_and_second_generation_reach_current_with_exact_sessions(
         episode_root, cut_id="value-L01", editorial_master=master
     )
     assert current.work_packet.identity() == second.work_packet.identity()
+
+
+def test_real_core_mismatch_replan_dp2_and_reaudit_reach_one_current(
+    tmp_path: Path,
+) -> None:
+    episode_root, master = core_fixtures._episode(tmp_path)
+    seeded_work = orchestrator.visual_pipeline.init_visual_work_packet(
+        episode_root,
+        cut_id="value-L01",
+        editorial_master=master,
+    )
+    seeded_director_document = core_fixtures._director_proposal(seeded_work)
+    seeded_director = SimpleNamespace(
+        document=seeded_director_document,
+        identity=lambda: {"content_hash": "seed-only-not-canonical"},
+    )
+    core_fixtures._dp_proposal(episode_root, seeded_director)
+    dispatcher = _RealRefinementDispatcher(episode_root)
+
+    result = orchestrator.run_visual_pipeline(
+        episode_root,
+        cut_id="value-L01",
+        dispatcher=dispatcher,
+        editorial_master=master,
+    )
+
+    assert [(call.phase, call.resume_session_id) for call in dispatcher.calls] == [
+        ("director", None),
+        ("dp", None),
+        ("semantic_audit", DIRECTOR_SESSION),
+        ("refinement_decision-001", DIRECTOR_SESSION),
+        ("director_replan-002", DIRECTOR_SESSION),
+        ("dp-002", None),
+        ("semantic_audit-002", DIRECTOR_SESSION),
+    ]
+    assert result.director_plan.document["events"][1]["decision"] == "intentional_aroll"
+    assert result.dp_fulfillment.document["worker_execution"]["session_id"] == WRONG_SESSION
+    assert result.semantic_audit.document["worker_execution"]["session_id"] == DIRECTOR_SESSION
+    status = orchestrator.visual_pipeline.visual_pipeline_status(
+        episode_root, cut_id="value-L01", editorial_master=master
+    )
+    assert status["status"] == "ready_to_materialize"
+    revision_id = result.work_packet.document["revision_id"]
+    attempts = (
+        episode_root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "revisions"
+        / revision_id
+        / "attempts"
+    )
+    assert sorted(path.name for path in attempts.iterdir()) == ["attempt-001", "attempt-002"]
 
 
 def test_real_core_retry_same_request_reuses_pending_revision_after_pre_session_failure(
@@ -806,6 +1088,15 @@ def test_real_core_retry_same_request_reuses_pending_revision_after_pre_session_
     assert [path.name for path in job_root.iterdir() if path.is_dir()] == [pending_revision]
     assert [(call.phase, call.resume_session_id) for call in first.calls] == [("director", None)]
 
+    pending_work = core_fixtures.load_visual_work_packet(
+        episode_root,
+        cut_id="value-L01",
+        revision_id=str(pending_revision),
+        editorial_master=master,
+    )
+    core_fixtures._publish_fixture_asset_authority(
+        episode_root, pending_work.identity()
+    )
     resumed_dispatcher = _RealCoreDispatcher(episode_root)
     resumed = orchestrator.run_visual_pipeline(
         episode_root,
@@ -893,7 +1184,7 @@ def test_real_core_pending_revision_rejects_a_different_attempt_request(tmp_path
     assert second_dispatcher.calls == []
 
 
-def test_nonzero_after_thread_started_leaves_no_trusted_receipt_and_fails_closed(
+def test_nonzero_after_thread_started_is_preserved_then_fresh_retry_completes(
     tmp_path: Path,
 ) -> None:
     episode_root, master = core_fixtures._episode(tmp_path)
@@ -945,19 +1236,181 @@ def test_nonzero_after_thread_started_leaves_no_trusted_receipt_and_fails_closed
     )
     assert not (job_root / "receipts" / "director.json").exists()
 
+    pending_work = core_fixtures.load_visual_work_packet(
+        episode_root,
+        cut_id="value-L01",
+        revision_id=str(revision_id),
+        editorial_master=master,
+    )
+    core_fixtures._publish_fixture_asset_authority(episode_root, pending_work.identity())
     retry_dispatcher = _RealCoreDispatcher(episode_root)
-    with pytest.raises(
-        orchestrator.VisualPipelineOrchestrationError,
-        match="orphan director proposal",
-    ):
-        orchestrator.run_visual_pipeline(
-            episode_root,
-            cut_id="value-L01",
-            revision_request=request,
-            dispatcher=retry_dispatcher,
-            editorial_master=master,
-        )
-    assert retry_dispatcher.calls == []
+    result = orchestrator.run_visual_pipeline(
+        episode_root,
+        cut_id="value-L01",
+        revision_request=request,
+        dispatcher=retry_dispatcher,
+        editorial_master=master,
+    )
+
+    attempt_root = job_root / "receipts" / "director.attempts"
+    first_failure = attempt_root / "attempt-001" / "FAILURE.json"
+    first_evidence = attempt_root / "attempt-001" / "evidence" / "proposal.json"
+    assert first_failure.is_file()
+    assert first_evidence.is_file()
+    assert (attempt_root / "attempt-002" / "PREPARE.json").is_file()
+    assert (job_root / "receipts" / "director.json").is_file()
+    assert result.semantic_audit.document["worker_execution"]["session_id"] == DIRECTOR_SESSION
+
+
+def test_host_crash_after_proposal_is_archived_before_fresh_dispatch_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    episode: tuple[Path, Path],
+) -> None:
+    pipeline = _FakePipeline()
+
+    class HostCrashAfterProposal(_FakeDispatcher):
+        def dispatch(self, request: orchestrator.DispatchRequest):
+            self.calls.append(request)
+            request.proposal_path.write_text(
+                json.dumps(
+                    {
+                        "contract": request.proposal_contract,
+                        "episode_id": "episode",
+                        "cut_id": "value-L01",
+                        "revision_id": REVISION_ID,
+                        "events": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            raise KeyboardInterrupt("simulated host crash")
+
+    first = HostCrashAfterProposal()
+    with pytest.raises(KeyboardInterrupt, match="host crash"):
+        _run(monkeypatch, episode, pipeline, first)
+
+    monkeypatch.setattr(orchestrator, "_pid_is_active", lambda _pid: False)
+    retry = _FakeDispatcher()
+    result = _run(monkeypatch, episode, pipeline, retry)
+
+    attempts = (
+        episode[0]
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "jobs"
+        / REVISION_ID
+        / "receipts"
+        / "director.attempts"
+    )
+    assert result.semantic_audit is pipeline.audit
+    assert (attempts / "attempt-001" / "evidence" / "proposal.json").is_file()
+    assert (attempts / "attempt-001" / "FAILURE.json").is_file()
+    assert (attempts / "attempt-002" / "PREPARE.json").is_file()
+    assert [call.phase for call in retry.calls] == ["director", "dp", "semantic_audit"]
+
+
+def test_active_unresolved_dispatch_attempt_blocks_without_touching_orphan(
+    monkeypatch: pytest.MonkeyPatch,
+    episode: tuple[Path, Path],
+) -> None:
+    pipeline = _FakePipeline()
+
+    class HostCrashAfterProposal(_FakeDispatcher):
+        def dispatch(self, request: orchestrator.DispatchRequest):
+            self.calls.append(request)
+            request.proposal_path.write_text(
+                json.dumps(
+                    {
+                        "contract": request.proposal_contract,
+                        "episode_id": "episode",
+                        "cut_id": "value-L01",
+                        "revision_id": REVISION_ID,
+                        "events": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            raise KeyboardInterrupt("simulated host crash")
+
+    with pytest.raises(KeyboardInterrupt):
+        _run(monkeypatch, episode, pipeline, HostCrashAfterProposal())
+    orphan = (
+        episode[0]
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "jobs"
+        / REVISION_ID
+        / "workers"
+        / "director-session"
+        / "director-proposal.json"
+    )
+    before = orphan.read_bytes()
+    monkeypatch.setattr(orchestrator, "_pid_is_active", lambda _pid: True)
+    retry = _FakeDispatcher()
+    with pytest.raises(orchestrator.VisualPipelineOrchestrationError, match="active unresolved"):
+        _run(monkeypatch, episode, pipeline, retry)
+    assert orphan.read_bytes() == before
+    assert retry.calls == []
+
+
+def test_legacy_orphan_without_prepare_is_preserved_then_replaced_by_fresh_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    episode: tuple[Path, Path],
+) -> None:
+    pipeline = _FakePipeline()
+    orphan = (
+        episode[0]
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "jobs"
+        / REVISION_ID
+        / "workers"
+        / "director-session"
+        / "director-proposal.json"
+    )
+    orphan.parent.mkdir(parents=True, exist_ok=True)
+    legacy_bytes = b'{"legacy":"untrusted-orphan"}'
+    orphan.write_bytes(legacy_bytes)
+
+    dispatcher = _FakeDispatcher()
+    result = _run(monkeypatch, episode, pipeline, dispatcher)
+
+    attempts = orphan.parents[2] / "receipts" / "director.attempts"
+    assert result.semantic_audit is pipeline.audit
+    assert (attempts / "attempt-001" / "evidence" / "proposal.json").read_bytes() == legacy_bytes
+    assert (attempts / "attempt-001" / "FAILURE.json").is_file()
+    assert (attempts / "attempt-002" / "PREPARE.json").is_file()
+
+
+def test_failed_worker_output_verification_uses_attempt_scoped_streams_on_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    episode: tuple[Path, Path],
+) -> None:
+    pipeline = _FakePipeline()
+    first = _FakeDispatcher(dp_session=DIRECTOR_SESSION)
+    with pytest.raises(orchestrator.VisualPipelineOrchestrationError, match="DP session"):
+        _run(monkeypatch, episode, pipeline, first)
+
+    retry = _FakeDispatcher()
+    result = _run(monkeypatch, episode, pipeline, retry)
+    attempts = (
+        episode[0]
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "jobs"
+        / REVISION_ID
+        / "receipts"
+        / "dp.attempts"
+    )
+    assert result.semantic_audit is pipeline.audit
+    assert (attempts / "attempt-001" / "evidence" / "stdout.jsonl").is_file()
+    assert (attempts / "attempt-001" / "evidence" / "proposal.json").is_file()
+    assert (attempts / "attempt-002" / "evidence" / "stdout.jsonl").is_file()
+    assert [call.phase for call in retry.calls] == ["dp", "semantic_audit"]
 
 
 def test_cli_help_does_not_dispatch(capsys: pytest.CaptureFixture[str]) -> None:

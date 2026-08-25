@@ -2,25 +2,34 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
+import agents.brook.script_video.highlight_visual_pipeline as visual_contract_module
 from agents.brook.script_video.highlight_visual_pipeline import (
     WORK_PACKET_NAME,
     HighlightVisualContractError,
     accept_director_plan,
+    accept_director_replan,
     accept_dp_fulfillment,
+    accept_dp_refinement,
+    accept_refinement_decision,
     accept_semantic_audit,
     init_visual_work_packet,
+    load_asset_authority,
     load_director_plan,
     load_dp_fulfillment,
     load_semantic_audit,
     load_visual_materializations,
     load_visual_work_packet,
     preflight_visual_work_packet,
+    publish_asset_authority,
     verify_visual_lineage,
     verify_visual_pipeline,
     visual_pipeline_status,
@@ -29,6 +38,18 @@ from shared.highlight_materialization import (
     HighlightSource,
     build_materialization_receipt,
     write_materialization_receipt,
+)
+
+_REAL_REQUIRE_TRUSTED_EXECUTION_RECEIPT = (
+    visual_contract_module._require_trusted_execution_receipt
+)
+_REAL_REQUIRE_PERSISTED_EXECUTION_RECEIPT = (
+    visual_contract_module._require_persisted_execution_receipt
+)
+_REAL_ACCEPTED_DP_HYDRATION_LINEAGE = visual_contract_module._accepted_dp_hydration_lineage
+_REAL_VERIFY_CANONICAL_DP_HYDRATION = visual_contract_module._verify_canonical_dp_hydration
+_REAL_VERIFY_CANONICAL_ASSET_EXECUTION = (
+    visual_contract_module._verify_canonical_asset_execution
 )
 
 DIRECTOR_WORKER = {
@@ -49,6 +70,99 @@ AUDIT_WORKER = {
     "role": "director",
     "session_id": "session-director-001",
 }
+DP2_WORKER = {
+    "worker_id": "dp-worker-v1",
+    "execution_id": "dp-execution-002",
+    "role": "dp",
+    "session_id": "session-dp-002",
+}
+AUDIT2_WORKER = {
+    "worker_id": "director-owner-v1",
+    "execution_id": "director-audit-execution-004",
+    "role": "director",
+    "session_id": "session-director-001",
+}
+REFINEMENT_WORKER = {
+    "worker_id": "director-owner-v1",
+    "execution_id": "director-refinement-execution-003",
+    "role": "director",
+    "session_id": "session-director-001",
+}
+ASSET_WORKER = {
+    "worker_id": "trusted-acquisition-v1",
+    "execution_id": "asset-acquisition-execution-001",
+    "role": "asset_acquisition",
+    "session_id": "session-asset-acquisition-001",
+}
+ASSET2_WORKER = {
+    **ASSET_WORKER,
+    "execution_id": "asset-acquisition-execution-002",
+    "session_id": "session-asset-acquisition-002",
+}
+DIRECTOR_REPLAN_WORKER = {
+    "worker_id": "director-owner-v1",
+    "execution_id": "director-replan-execution-005",
+    "role": "director",
+    "session_id": "session-director-001",
+}
+AUDIT_AFTER_REPLAN_WORKER = {
+    "worker_id": "director-owner-v1",
+    "execution_id": "director-audit-execution-006",
+    "role": "director",
+    "session_id": "session-director-001",
+}
+
+
+@pytest.fixture(autouse=True)
+def _trusted_hyperframes_verifier_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
+    def verify(episode_root: object, **kwargs: object) -> dict[str, object]:
+        assert Path(episode_root).is_dir()
+        assert set(kwargs) == {
+            "receipt_identity",
+            "expected_cut_id",
+            "expected_revision_id",
+            "expected_candidate_id",
+            "expected_component",
+            "expected_render_params",
+            "expected_on_screen_text",
+            "expected_media",
+        }
+        return {"contract": "trusted-render-test-boundary"}
+
+    monkeypatch.setattr(visual_contract_module, "verify_hyperframes_render_receipt", verify)
+    monkeypatch.setattr(
+        visual_contract_module,
+        "_require_trusted_execution_receipt",
+        lambda *args, **kwargs: False,
+    )
+    monkeypatch.setattr(
+        visual_contract_module,
+        "_require_persisted_execution_receipt",
+        lambda root, **kwargs: Path(root) / ".test-execution-proposal",
+    )
+    monkeypatch.setattr(
+        visual_contract_module,
+        "_accepted_dp_hydration_lineage",
+        lambda *args, **kwargs: (
+            {
+                "worker_proposal": None,
+                "hydrated_proposal": None,
+                "hydration_receipt": None,
+            },
+            None,
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        visual_contract_module,
+        "_verify_canonical_dp_hydration",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        visual_contract_module,
+        "_verify_canonical_asset_execution",
+        lambda *args, **kwargs: None,
+    )
 
 
 def _assert_contract_error(call, contains: str) -> None:
@@ -58,6 +172,165 @@ def _assert_contract_error(call, contains: str) -> None:
         assert contains in str(error), str(error)
     else:
         raise AssertionError(f"expected HighlightVisualContractError containing {contains!r}")
+
+
+def test_direct_accept_and_asset_publish_reject_forged_worker_without_execution_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, master = _episode(tmp_path)
+    work = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
+    revision_id = str(work.document["revision_id"])
+    monkeypatch.setattr(
+        visual_contract_module,
+        "_require_trusted_execution_receipt",
+        _REAL_REQUIRE_TRUSTED_EXECUTION_RECEIPT,
+    )
+
+    _assert_contract_error(
+        lambda: accept_director_plan(
+            root,
+            cut_id="value-L01",
+            revision_id=revision_id,
+            proposal=_director_proposal(work),
+            worker_identity=DIRECTOR_WORKER,
+            editorial_master=master,
+        ),
+        "canonical trusted execution receipt",
+    )
+
+    fixture = Path(__file__).parent / "fixtures" / "davinci_import" / "black10s.mp4"
+    local_media = root / "assets" / "forged-local-stock.mp4"
+    local_media.parent.mkdir(parents=True, exist_ok=True)
+    local_media.write_bytes(fixture.read_bytes())
+    _assert_contract_error(
+        lambda: publish_asset_authority(
+            root,
+            cut_id="value-L01",
+            revision_id=revision_id,
+            attempt=1,
+            assets=[
+                _trusted_asset_source(
+                    root,
+                    local_media,
+                    asset_id="forged-local-stock",
+                    provider_item_id="111111",
+                    semantic_summary="偽造的本機 Stock 素材不可自行宣告成可信取得來源",
+                )
+            ],
+            worker_identity=ASSET_WORKER,
+            editorial_master=master,
+        ),
+        "canonical trusted execution receipt",
+    )
+    assert not (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "revisions"
+        / revision_id
+        / "attempts"
+        / "attempt-001"
+        / "trusted-acquisitions"
+    ).exists()
+
+
+def test_director_accept_consumes_execution_verified_snapshot_if_file_swaps_after_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, master = _episode(tmp_path)
+    work = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
+    revision_id = str(work.document["revision_id"])
+    proposal_path = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "jobs"
+        / revision_id
+        / "workers"
+        / "director-session"
+        / "director-proposal.json"
+    )
+    proposal_path.parent.mkdir(parents=True, exist_ok=True)
+    original = _director_proposal(work)
+    proposal_path.write_text(json.dumps(original, ensure_ascii=False), encoding="utf-8")
+    execution_receipt = _write_trusted_execution_receipt(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        phase="director",
+        role="director",
+        worker_identity=DIRECTOR_WORKER,
+        proposal_path=proposal_path,
+    )
+
+    def verify_then_swap(*args: object, **kwargs: object) -> dict[str, object]:
+        verified = _REAL_REQUIRE_TRUSTED_EXECUTION_RECEIPT(*args, **kwargs)
+        swapped = deepcopy(original)
+        swapped["events"][0]["description"] = (
+            "這是收據驗證完成後才換入的另一份描述，不可被 canonical acceptance 重新開檔吃入。"
+        )
+        proposal_path.write_text(json.dumps(swapped, ensure_ascii=False), encoding="utf-8")
+        return verified
+
+    monkeypatch.setattr(
+        visual_contract_module, "_require_trusted_execution_receipt", verify_then_swap
+    )
+    accepted = accept_director_plan(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        proposal=proposal_path,
+        worker_identity=DIRECTOR_WORKER,
+        execution_receipt=execution_receipt,
+        editorial_master=master,
+    )
+
+    assert accepted.document["events"][0]["description"] == original["events"][0]["description"]
+
+
+def test_director_accept_rejects_tampered_dispatch_prepare_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, master = _episode(tmp_path)
+    work = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
+    revision_id = str(work.document["revision_id"])
+    proposal_path = root / "workers" / "director-proposal.json"
+    proposal_path.parent.mkdir(parents=True, exist_ok=True)
+    proposal_path.write_text(
+        json.dumps(_director_proposal(work), ensure_ascii=False), encoding="utf-8"
+    )
+    receipt_identity = _write_trusted_execution_receipt(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        phase="director",
+        role="director",
+        worker_identity=DIRECTOR_WORKER,
+        proposal_path=proposal_path,
+    )
+    receipt = json.loads((root / str(receipt_identity["path"])).read_text(encoding="utf-8"))
+    prepare_path = root / str(receipt["prepare"]["path"])
+    prepare_path.write_text(prepare_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    monkeypatch.setattr(
+        visual_contract_module,
+        "_require_trusted_execution_receipt",
+        _REAL_REQUIRE_TRUSTED_EXECUTION_RECEIPT,
+    )
+
+    _assert_contract_error(
+        lambda: accept_director_plan(
+            root,
+            cut_id="value-L01",
+            revision_id=revision_id,
+            proposal=proposal_path,
+            worker_identity=DIRECTOR_WORKER,
+            execution_receipt=receipt_identity,
+            editorial_master=master,
+        ),
+        "prepare receipt identity drift",
+    )
 
 
 @dataclass(frozen=True)
@@ -388,6 +661,364 @@ def _identity(root: Path, path: Path) -> dict[str, object]:
     }
 
 
+def _content_hash(value: dict[str, object]) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _write_trusted_execution_receipt(
+    root: Path,
+    *,
+    cut_id: str,
+    revision_id: str,
+    phase: str,
+    role: str,
+    worker_identity: dict[str, str],
+    proposal_path: Path,
+) -> dict[str, object]:
+    job_root = root / "highlights" / "visual-pipeline" / cut_id / "jobs" / revision_id
+    receipt_root = job_root / "receipts"
+    receipt_root.mkdir(parents=True, exist_ok=True)
+    phase_input = receipt_root / f"{phase}.input.json"
+    stdout = receipt_root / f"{phase}.stdout.jsonl"
+    stderr = receipt_root / f"{phase}.stderr.txt"
+    phase_input.write_text('{"trusted_test_input":true}\n', encoding="utf-8")
+    stdout.write_text(
+        json.dumps(
+            {"type": "thread.started", "thread_id": worker_identity["session_id"]}
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    stderr.write_text("", encoding="utf-8")
+    prompt_sha256 = hashlib.sha256(b"trusted fixture prompt").hexdigest()
+    attempt_root = receipt_root / f"{phase}.attempts" / "attempt-001"
+    prepare: dict[str, object] = {
+        "contract": "podcast-highlight-visual-worker-prepare-v1",
+        "episode_id": root.name,
+        "cut_id": cut_id,
+        "revision_id": revision_id,
+        "phase": phase,
+        "role": role,
+        "attempt": 1,
+        "orchestrator_pid": os.getpid(),
+        "prompt_sha256": prompt_sha256,
+        "phase_input": _identity(root, phase_input),
+        "proposal_path": proposal_path.relative_to(root).as_posix(),
+    }
+    prepare["content_hash"] = _content_hash(prepare)
+    prepare_path = attempt_root / "PREPARE.json"
+    prepare_path.parent.mkdir(parents=True, exist_ok=True)
+    prepare_path.write_text(json.dumps(prepare, ensure_ascii=False), encoding="utf-8")
+    receipt: dict[str, object] = {
+        "contract": "podcast-highlight-visual-worker-execution-v1",
+        "episode_id": root.name,
+        "cut_id": cut_id,
+        "revision_id": revision_id,
+        "phase": phase,
+        "role": role,
+        "worker_identity": worker_identity,
+        "prepare": _identity(root, prepare_path),
+        "prompt_sha256": prompt_sha256,
+        "phase_input": _identity(root, phase_input),
+        "proposal": _identity(root, proposal_path),
+        "stdout": _identity(root, stdout),
+        "stderr": _identity(root, stderr),
+    }
+    receipt["content_hash"] = _content_hash(receipt)
+    receipt_path = receipt_root / f"{phase}.json"
+    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False), encoding="utf-8")
+    return _identity(root, receipt_path)
+
+
+def _trusted_asset_source(
+    root: Path,
+    path: Path,
+    *,
+    asset_id: str,
+    provider_item_id: str,
+    semantic_summary: str,
+    provider: str = "pexels",
+) -> dict[str, object]:
+    return {
+        "asset_id": asset_id,
+        "source_class": "licensed_stock",
+        "provider": provider,
+        "provider_item_id": provider_item_id,
+        "source_url": f"https://www.pexels.com/video/{provider_item_id}/",
+        "license": "Pexels license: https://www.pexels.com/license/",
+        "acquired_at": "2026-08-26T01:00:00Z",
+        "semantic_summary": semantic_summary,
+        "original_media": _identity(root, path),
+    }
+
+
+def test_asset_authority_freshly_rechecks_execution_bound_acquisition_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, master = _episode(tmp_path)
+    work = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
+    revision_id = str(work.document["revision_id"])
+    fixture = Path(__file__).parent / "fixtures" / "davinci_import" / "black10s.mp4"
+    media = root / "proposal-assets" / "trusted-acquisition.mp4"
+    media.parent.mkdir(parents=True, exist_ok=True)
+    media.write_bytes(fixture.read_bytes())
+    source = _trusted_asset_source(
+        root,
+        media,
+        asset_id="trusted-acquisition",
+        provider_item_id="7106572",
+        semantic_summary="可核對來源與授權的真實校園協作影片，不是生成圖片裁切素材",
+    )
+    manifest_path = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "jobs"
+        / revision_id
+        / "workers"
+        / "asset-session"
+        / "asset-acquisition.json"
+    )
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "contract": "podcast-highlight-asset-acquisition-proposal-v1",
+                "episode_id": root.name,
+                "cut_id": "value-L01",
+                "revision_id": revision_id,
+                "attempt": 1,
+                "assets": [source],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    receipt = _write_trusted_execution_receipt(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        phase="asset_acquisition-001",
+        role="asset_acquisition",
+        worker_identity=ASSET_WORKER,
+        proposal_path=manifest_path,
+    )
+    monkeypatch.setattr(
+        visual_contract_module,
+        "_require_trusted_execution_receipt",
+        _REAL_REQUIRE_TRUSTED_EXECUTION_RECEIPT,
+    )
+    monkeypatch.setattr(
+        visual_contract_module,
+        "_verify_canonical_asset_execution",
+        _REAL_VERIFY_CANONICAL_ASSET_EXECUTION,
+    )
+    monkeypatch.setattr(
+        visual_contract_module,
+        "_require_persisted_execution_receipt",
+        _REAL_REQUIRE_PERSISTED_EXECUTION_RECEIPT,
+    )
+
+    accepted = publish_asset_authority(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        attempt=1,
+        assets=[source],
+        worker_identity=ASSET_WORKER,
+        acquisition_manifest=manifest_path,
+        execution_receipt=receipt,
+        editorial_master=master,
+    )
+    assert accepted.document["assets"][0]["original_media"] == _identity(root, media)
+
+    manifest_path.write_text(manifest_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    _assert_contract_error(
+        lambda: load_asset_authority(
+            root,
+            cut_id="value-L01",
+            revision_id=revision_id,
+            attempt=1,
+            editorial_master=master,
+        ),
+        "trusted worker proposal changed",
+    )
+
+
+def test_asset_authority_preflights_the_whole_batch_before_publishing_receipts(
+    tmp_path: Path,
+) -> None:
+    root, master = _episode(tmp_path)
+    work = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
+    revision_id = str(work.document["revision_id"])
+    fixture_dir = Path(__file__).parent / "fixtures" / "davinci_import"
+    assets_dir = root / "highlights" / "visual-pipeline" / "value-L01" / "proposal-assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    first = assets_dir / "trusted-first.mp4"
+    second = assets_dir / "trusted-second.mp4"
+    first.write_bytes((fixture_dir / "black10s.mp4").read_bytes() + b"trusted-first")
+    second.write_bytes((fixture_dir / "bigstat3s.mp4").read_bytes() + b"trusted-second")
+    first_source = _trusted_asset_source(
+        root,
+        first,
+        asset_id="trusted-first",
+        provider_item_id="101",
+        semantic_summary="戰後校園升旗隊列與教官巡視的可核對歷史實拍",
+    )
+    invalid_second = _trusted_asset_source(
+        root,
+        second,
+        asset_id="trusted-second",
+        provider_item_id="102",
+        semantic_summary="學生一致髮型與制服的可核對歷史教室實拍",
+        provider="ImageGen forged as Envato",
+    )
+    attempt_dir = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "revisions"
+        / revision_id
+        / "attempts"
+        / "attempt-001"
+    )
+
+    forged_profile = {
+        **invalid_second,
+        "provider": "pexels",
+        "source_url": "https://elements.envato.com/fake-item-102",
+    }
+    _assert_contract_error(
+        lambda: publish_asset_authority(
+            root,
+            cut_id="value-L01",
+            revision_id=revision_id,
+            attempt=1,
+            assets=[first_source, forged_profile],
+            worker_identity=ASSET_WORKER,
+            editorial_master=master,
+        ),
+        "Pexels provider/item/URL/license profile mismatch",
+    )
+    assert not (attempt_dir / "trusted-acquisitions").exists()
+    _assert_contract_error(
+        lambda: publish_asset_authority(
+            root,
+            cut_id="value-L01",
+            revision_id=revision_id,
+            attempt=1,
+            assets=[first_source, invalid_second],
+            worker_identity=ASSET_WORKER,
+            editorial_master=master,
+        ),
+        "generated provider",
+    )
+    assert not (attempt_dir / "trusted-acquisitions").exists()
+    assert not (attempt_dir / "ASSET-AUTHORITY.json").exists()
+
+    corrected_second = {
+        **invalid_second,
+        "provider": "pexels",
+    }
+    accepted = publish_asset_authority(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        attempt=1,
+        assets=[first_source, corrected_second],
+        worker_identity=ASSET_WORKER,
+        editorial_master=master,
+    )
+    assert [row["asset_id"] for row in accepted.document["assets"]] == [
+        "trusted-first",
+        "trusted-second",
+    ]
+
+
+def test_envato_source_identity_rejects_case_variants_before_any_publish(
+    tmp_path: Path,
+) -> None:
+    root, master = _episode(tmp_path)
+    work = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
+    revision_id = str(work.document["revision_id"])
+    fixture = Path(__file__).parent / "fixtures" / "davinci_import" / "black10s.mp4"
+    media = root / "assets" / "case-variant-envato.mp4"
+    media.parent.mkdir(parents=True, exist_ok=True)
+    media.write_bytes(fixture.read_bytes() + b"case-variant-envato")
+    source = {
+        **_trusted_asset_source(
+            root,
+            media,
+            asset_id="envato-case-variant",
+            provider_item_id="abc123",
+            semantic_summary="可核對來源的教室隊列實拍，僅用來測試 Envato identity casing",
+        ),
+        "provider": "envato-elements",
+        "provider_item_id": "ABC123",
+        "source_url": "https://elements.envato.com/classroom-cadets-ABC123",
+        "license": "Envato Elements license: https://elements.envato.com/license-terms",
+    }
+
+    _assert_contract_error(
+        lambda: publish_asset_authority(
+            root,
+            cut_id="value-L01",
+            revision_id=revision_id,
+            attempt=1,
+            assets=[source],
+            worker_identity=ASSET_WORKER,
+            editorial_master=master,
+        ),
+        "Envato provider_item_id is invalid",
+    )
+    trusted_root = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "revisions"
+        / revision_id
+        / "attempts"
+        / "attempt-001"
+        / "trusted-acquisitions"
+    )
+    assert not trusted_root.exists()
+
+
+def test_authority_extension_deduplicates_envato_item_and_url_casefolded() -> None:
+    prior = {
+        "asset_id": "prior-envato",
+        "provider": "envato-elements",
+        "provider_item_id": "abc123",
+        "source_url": "https://elements.envato.com/classroom-cadets-abc123",
+        "original_media": {"sha256": "1" * 64},
+    }
+    renamed_case_variant = {
+        "asset_id": "renamed-envato",
+        "provider": "ENVATO-ELEMENTS",
+        "provider_item_id": "ABC123",
+        "source_url": "https://elements.envato.com/CLASSROOM-CADETS-ABC123",
+        "original_media": {"sha256": "2" * 64},
+    }
+
+    _assert_contract_error(
+        lambda: visual_contract_module._validate_authority_extension(
+            [prior], [renamed_case_variant]
+        ),
+        "reuses original source across attempts",
+    )
+
+
 def _intent_hash(event: dict[str, object]) -> str:
     return hashlib.sha256(
         json.dumps(
@@ -400,7 +1031,9 @@ def _intent_hash(event: dict[str, object]) -> str:
     ).hexdigest()
 
 
-def _dp_proposal(root: Path, director: object) -> dict[str, object]:
+def _publish_fixture_asset_authority(
+    root: Path, work_packet: dict[str, object]
+) -> tuple[list[Path], tuple[str, str, str], dict[str, dict[str, object]]]:
     assets = root / "highlights" / "visual-pipeline" / "value-L01" / "proposal-assets"
     assets.mkdir(parents=True, exist_ok=True)
     fixture_dir = Path(__file__).parent / "fixtures" / "davinci_import"
@@ -413,11 +1046,102 @@ def _dp_proposal(root: Path, director: object) -> dict[str, object]:
     stock_paths[0].write_bytes(black + b"candidate-a")
     stock_paths[1].write_bytes((fixture_dir / "bigstat3s.mp4").read_bytes())
     stock_paths[2].write_bytes(black + b"candidate-c")
-    stock_licenses = []
-    for suffix in ("a", "b", "c"):
-        receipt = assets / f"postwar-school-{suffix}-license.json"
-        receipt.write_text('{"license":"Pexels"}', encoding="utf-8")
-        stock_licenses.append(receipt)
+    stock_summaries = (
+        "戰後東亞校園、整齊制服與軍事化隊列的歷史實拍",
+        "歷史教室裡學生一致髮型與制服的實拍",
+        "校園教官巡視與高壓紀律的歷史實拍",
+    )
+    revision_id = Path(str(work_packet["path"])).parent.name
+    work_document = json.loads((root / str(work_packet["path"])).read_text(encoding="utf-8"))
+    fixture_master = _FakeMaster(
+        value=work_document["editorial_master"],
+        media_path=root / "editorial-master" / "v1" / "master.mp4",
+        srt_path=root / "editorial-master" / "v1" / "master.srt",
+    )
+    sources = [
+        {
+            "asset_id": f"stock-{suffix}",
+            "source_class": "licensed_stock",
+            "provider": "pexels",
+            "provider_item_id": f"12{index}",
+            "source_url": f"https://www.pexels.com/video/12{index}/",
+            "license": "Pexels license: https://www.pexels.com/license/",
+            "acquired_at": "2026-08-26T01:00:00Z",
+            "semantic_summary": summary,
+            "original_media": _identity(root, media),
+        }
+        for index, (suffix, summary, media) in enumerate(
+            zip(("a", "b", "c"), stock_summaries, stock_paths, strict=True), 1
+        )
+    ]
+    phase = "asset_acquisition-001"
+    manifest_path = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "jobs"
+        / revision_id
+        / "workers"
+        / "asset-acquisition"
+        / f"{phase}-proposal.json"
+    )
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "contract": "podcast-highlight-asset-acquisition-proposal-v1",
+                "episode_id": root.name,
+                "cut_id": "value-L01",
+                "revision_id": revision_id,
+                "attempt": 1,
+                "assets": sources,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    execution_receipt = _write_trusted_execution_receipt(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        phase=phase,
+        role="asset_acquisition",
+        worker_identity=ASSET_WORKER,
+        proposal_path=manifest_path,
+    )
+    publish_asset_authority(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        attempt=1,
+        assets=sources,
+        worker_identity=ASSET_WORKER,
+        acquisition_manifest=manifest_path,
+        execution_receipt=execution_receipt,
+        editorial_master=fixture_master,
+    )
+    authority = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "revisions"
+        / revision_id
+        / "attempts"
+        / "attempt-001"
+        / "ASSET-AUTHORITY.json"
+    )
+    authority_rows = {
+        row["asset_id"]: row for row in json.loads(authority.read_text(encoding="utf-8"))["assets"]
+    }
+    return stock_paths, stock_summaries, authority_rows
+
+
+def _dp_proposal(root: Path, director: object) -> dict[str, object]:
+    assets = root / "highlights" / "visual-pipeline" / "value-L01" / "proposal-assets"
+    assets.mkdir(parents=True, exist_ok=True)
+    fixture_dir = Path(__file__).parent / "fixtures" / "davinci_import"
     card = assets / "education-change-card.mp4"
     card.write_bytes((fixture_dir / "black10s.mp4").read_bytes() + b"hf-card")
     title_card = assets / "high-pressure-hero-title.mp4"
@@ -429,7 +1153,12 @@ def _dp_proposal(root: Path, director: object) -> dict[str, object]:
         for event in director.document["events"]
         if event["decision"] == "add_visual"
     }
-    render_params = {"title": "教育開始\n改變", "accent": "orange"}
+    render_params = {
+        "kicker": "教育",
+        "title": "教育開始\n改變",
+        "style": "paper",
+        "show_sec": 4.0,
+    }
     render_spec_sha256 = hashlib.sha256(
         json.dumps(
             {"component": "transition_title", "render_params": render_params},
@@ -442,9 +1171,9 @@ def _dp_proposal(root: Path, director: object) -> dict[str, object]:
     title_params = {
         "text": "高壓教育\n留下深遠影響",
         "tier": 1,
-        "style": "hero",
+        "style": "orange",
         "show_sec": 4.0,
-        "pos_y": 40,
+        "pos_y": 0.4,
     }
     title_spec_sha256 = hashlib.sha256(
         json.dumps(
@@ -455,7 +1184,10 @@ def _dp_proposal(root: Path, director: object) -> dict[str, object]:
             separators=(",", ":"),
         ).encode("utf-8")
     ).hexdigest()
-    return {
+    stock_paths, stock_summaries, authority_rows = _publish_fixture_asset_authority(
+        root, director.document["work_packet"]
+    )
+    proposal = {
         "contract": "podcast-highlight-dp-fulfillment-v1",
         "episode_id": root.name,
         "cut_id": "value-L01",
@@ -471,26 +1203,24 @@ def _dp_proposal(root: Path, director: object) -> dict[str, object]:
                 "candidates": [
                     {
                         "candidate_id": f"stock-{suffix}",
+                        "authority_asset_id": f"stock-{suffix}",
                         "visual_summary": summary,
-                        "media": _identity(root, media),
+                        "media": authority_rows[f"stock-{suffix}"]["original_media"],
                         "provenance": {
                             "kind": "stock_source",
                             "provider": "pexels",
                             "source_url": f"https://www.pexels.com/video/12{index}/",
-                            "license": "Pexels license",
-                            "receipt": _identity(root, receipt),
+                            "license": "Pexels license: https://www.pexels.com/license/",
+                            "receipt": authority_rows[f"stock-{suffix}"][
+                                "acquisition_receipt"
+                            ],
                         },
                     }
-                    for index, (suffix, summary, media, receipt) in enumerate(
+                    for index, (suffix, summary, media) in enumerate(
                         zip(
                             ("a", "b", "c"),
-                            (
-                                "戰後東亞校園、整齊制服與軍事化隊列的歷史實拍",
-                                "歷史教室裡學生一致髮型與制服的實拍",
-                                "校園教官巡視與高壓紀律的歷史實拍",
-                            ),
+                            stock_summaries,
                             stock_paths,
-                            stock_licenses,
                             strict=True,
                         ),
                         1,
@@ -543,9 +1273,9 @@ def _dp_proposal(root: Path, director: object) -> dict[str, object]:
                         "preview_media": _identity(root, title_card),
                         "provenance": {
                             "kind": "hyperframes_render",
-                            "provider": "hyperframes",
+                            "provider": "Nakama trusted HyperFrames renderer",
                             "source_url": None,
-                            "license": "Nakama internal composition",
+                            "license": "Nakama original composition render",
                             "receipt": _identity(root, render_receipt),
                         },
                     }
@@ -581,9 +1311,9 @@ def _dp_proposal(root: Path, director: object) -> dict[str, object]:
                         "preview_media": _identity(root, card),
                         "provenance": {
                             "kind": "hyperframes_render",
-                            "provider": "hyperframes",
+                            "provider": "Nakama trusted HyperFrames renderer",
                             "source_url": None,
-                            "license": "Nakama internal composition",
+                            "license": "Nakama original composition render",
                             "receipt": _identity(root, render_receipt),
                         },
                     }
@@ -602,6 +1332,7 @@ def _dp_proposal(root: Path, director: object) -> dict[str, object]:
             },
         ],
     }
+    return proposal
 
 
 def test_dp_fulfillment_binds_stock_and_rendered_hyperframes_media(tmp_path: Path) -> None:
@@ -636,7 +1367,9 @@ def test_dp_fulfillment_binds_stock_and_rendered_hyperframes_media(tmp_path: Pat
     )
 
 
-def test_dp_rejects_lineage_candidate_timing_media_and_target_drift(tmp_path: Path) -> None:
+def test_dp_rejects_lineage_candidate_timing_media_and_target_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     root, master = _episode(tmp_path)
     work = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
     revision_id = work.document["revision_id"]
@@ -693,11 +1426,11 @@ def test_dp_rejects_lineage_candidate_timing_media_and_target_drift(tmp_path: Pa
     proposal["implementations"][0]["candidates"][1]["provenance"]["source_url"] = proposal[
         "implementations"
     ][0]["candidates"][0]["provenance"]["source_url"]
-    reject(proposal, "candidates are not distinct")
+    reject(proposal, "provenance differs from trusted acquisition authority")
 
     proposal = _dp_proposal(root, director)
     proposal["implementations"][0]["candidates"][0]["provenance"].pop("license")
-    reject(proposal, "fields mismatch")
+    reject(proposal, "provenance differs from trusted acquisition authority")
 
     proposal = _dp_proposal(root, director)
     proposal["implementations"][1]["target_lane"] = "content_card_track4"
@@ -749,25 +1482,48 @@ def test_dp_rejects_lineage_candidate_timing_media_and_target_drift(tmp_path: Pa
 
     proposal = _dp_proposal(root, director)
     proposal["implementations"][0]["candidates"][0]["media"]["path"] = "../../escape.mp4"
-    reject(proposal, "path escapes episode root")
+    reject(proposal, "media differs from trusted original acquisition bytes")
 
     proposal = _dp_proposal(root, director)
     fake = root / "highlights" / "visual-pipeline" / "value-L01" / "proposal-assets" / "fake.mp4"
     fake.write_bytes(b"not a playable video")
     proposal["implementations"][0]["candidates"][0]["media"] = _identity(root, fake)
-    reject(proposal, "not inspectable playable video")
+    reject(proposal, "media differs from trusted original acquisition bytes")
 
     proposal = _dp_proposal(root, director)
     stock_candidates = proposal["implementations"][0]["candidates"]
-    copied_to = root / stock_candidates[1]["media"]["path"]
+    copied_to = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "proposal-assets"
+        / "copied-stock-under-another-path.mp4"
+    )
     copied_from = root / stock_candidates[0]["media"]["path"]
     copied_to.write_bytes(copied_from.read_bytes())
     stock_candidates[1]["media"] = _identity(root, copied_to)
-    reject(proposal, "candidates are not distinct")
+    reject(proposal, "media differs from trusted original acquisition bytes")
 
     proposal = _dp_proposal(root, director)
     proposal["implementations"][1]["candidates"][0]["render_spec_sha256"] = "0" * 64
     reject(proposal, "render spec hash mismatch")
+
+    proposal = _dp_proposal(root, director)
+    proposal["implementations"][1]["candidates"][0]["provenance"][
+        "provider"
+    ] = "worker self-authored HyperFrames"
+    reject(proposal, "not a trusted HyperFrames render")
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            visual_contract_module,
+            "verify_hyperframes_render_receipt",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                visual_contract_module.TrustedRenderError("forged trusted receipt")
+            ),
+        )
+        reject(_dp_proposal(root, director), "trusted HyperFrames receipt failed")
 
     proposal = _dp_proposal(root, director)
     proposal["implementations"][1]["candidates"][0]["preview_media"]["sha256"] = "0" * 64
@@ -846,6 +1602,180 @@ def _audit_proposal(director: object, dp: object) -> dict[str, object]:
     }
 
 
+def test_canonical_dp_binds_and_freshly_rechecks_raw_hydration_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, master = _episode(tmp_path)
+    work = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
+    revision_id = str(work.document["revision_id"])
+    job_root = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "jobs"
+        / revision_id
+    )
+    director_path = job_root / "workers" / "director-session" / "director-proposal.json"
+    director_path.parent.mkdir(parents=True, exist_ok=True)
+    director_path.write_text(
+        json.dumps(_director_proposal(work), ensure_ascii=False), encoding="utf-8"
+    )
+    director_receipt = _write_trusted_execution_receipt(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        phase="director",
+        role="director",
+        worker_identity=DIRECTOR_WORKER,
+        proposal_path=director_path,
+    )
+    monkeypatch.setattr(
+        visual_contract_module,
+        "_require_trusted_execution_receipt",
+        _REAL_REQUIRE_TRUSTED_EXECUTION_RECEIPT,
+    )
+    monkeypatch.setattr(
+        visual_contract_module,
+        "_accepted_dp_hydration_lineage",
+        _REAL_ACCEPTED_DP_HYDRATION_LINEAGE,
+    )
+    monkeypatch.setattr(
+        visual_contract_module,
+        "_verify_canonical_dp_hydration",
+        _REAL_VERIFY_CANONICAL_DP_HYDRATION,
+    )
+    director = accept_director_plan(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        proposal=director_path,
+        worker_identity=DIRECTOR_WORKER,
+        execution_receipt=director_receipt,
+        editorial_master=master,
+    )
+    raw_path = job_root / "workers" / "dp-session" / "dp-proposal.json"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_path.write_text(
+        json.dumps(_dp_proposal(root, director), ensure_ascii=False), encoding="utf-8"
+    )
+    hydrated_path = job_root / "trusted" / "dp-proposal.json"
+    hydrated_path.parent.mkdir(parents=True, exist_ok=True)
+    hydrated_path.write_text(raw_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    sidecar = hydrated_path.with_name(f"{hydrated_path.name}.hydration.json")
+    sidecar.write_text('{"trusted":"hydration"}\n', encoding="utf-8")
+    dp_receipt = _write_trusted_execution_receipt(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        phase="dp",
+        role="dp",
+        worker_identity=DP_WORKER,
+        proposal_path=raw_path,
+    )
+    calls: list[dict[str, object]] = []
+
+    def hydration_identity(episode_root: object, _hydrated: object) -> dict[str, object]:
+        assert Path(episode_root) == root
+        return _identity(root, sidecar)
+
+    def verify_hydration(episode_root: object, **kwargs: object) -> dict[str, object]:
+        assert Path(episode_root) == root
+        try:
+            visual_contract_module._validate_file_identity(
+                root, kwargs["receipt_identity"], "test hydration receipt"
+            )
+            visual_contract_module._validate_file_identity(
+                root, kwargs["expected_raw_proposal"], "test raw proposal"
+            )
+            visual_contract_module._validate_file_identity(
+                root, kwargs["expected_hydrated_proposal"], "test hydrated proposal"
+            )
+        except HighlightVisualContractError as error:
+            raise visual_contract_module.TrustedRenderError(str(error)) from error
+        assert kwargs["expected_attempt"] == 1
+        calls.append(dict(kwargs))
+        return {
+            "contract": "trusted-test-hydration",
+            "raw_proposal_document": json.loads(raw_path.read_text(encoding="utf-8")),
+            "hydrated_proposal_document": json.loads(
+                hydrated_path.read_text(encoding="utf-8")
+            ),
+        }
+
+    monkeypatch.setattr(
+        visual_contract_module, "dp_hydration_receipt_identity", hydration_identity
+    )
+    monkeypatch.setattr(visual_contract_module, "verify_dp_hydration_receipt", verify_hydration)
+    raw_bytes = raw_path.read_bytes()
+    swapped_raw = json.loads(raw_bytes)
+    swapped_raw["implementations"][0]["semantic_justification"] = (
+        "worker proposal B was swapped in after execution receipt bound proposal A"
+    )
+    raw_path.write_text(json.dumps(swapped_raw, ensure_ascii=False), encoding="utf-8")
+    _assert_contract_error(
+        lambda: accept_dp_fulfillment(
+            root,
+            cut_id="value-L01",
+            revision_id=revision_id,
+            proposal=hydrated_path,
+            worker_proposal=raw_path,
+            worker_identity=DP_WORKER,
+            execution_receipt=dp_receipt,
+            editorial_master=master,
+        ),
+        "trusted execution proposal identity drift",
+    )
+    raw_path.write_bytes(raw_bytes)
+    accepted = accept_dp_fulfillment(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        proposal=hydrated_path,
+        worker_proposal=raw_path,
+        worker_identity=DP_WORKER,
+        execution_receipt=dp_receipt,
+        editorial_master=master,
+    )
+
+    assert accepted.document["worker_proposal"] == _identity(root, raw_path)
+    assert accepted.document["hydrated_proposal"] == _identity(root, hydrated_path)
+    assert accepted.document["hydration_receipt"] == _identity(root, sidecar)
+    assert len(calls) >= 2  # acceptance and canonical reload both verify fresh bytes
+
+    canonical_path = root / str(accepted.identity()["path"])
+    canonical_bytes = canonical_path.read_bytes()
+    canonical = json.loads(canonical_bytes)
+    canonical["implementations"][0]["semantic_justification"] = (
+        "self-consistently rehashed canonical content that was never hydrated"
+    )
+    canonical["content_hash"] = _content_hash(
+        {key: value for key, value in canonical.items() if key != "content_hash"}
+    )
+    canonical_path.write_text(json.dumps(canonical, ensure_ascii=False), encoding="utf-8")
+    _assert_contract_error(
+        lambda: load_dp_fulfillment(
+            root,
+            cut_id="value-L01",
+            revision_id=revision_id,
+            editorial_master=master,
+        ),
+        "differs from its verified hydrated proposal",
+    )
+    canonical_path.write_bytes(canonical_bytes)
+
+    sidecar.write_text('{"trusted":"tampered"}\n', encoding="utf-8")
+    _assert_contract_error(
+        lambda: load_dp_fulfillment(
+            root,
+            cut_id="value-L01",
+            revision_id=revision_id,
+            editorial_master=master,
+        ),
+        "hydration lineage is stale",
+    )
+
+
 def test_director_semantic_audit_is_required_before_materialization(tmp_path: Path) -> None:
     root, master = _episode(tmp_path)
     work = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
@@ -900,6 +1830,606 @@ def test_director_semantic_audit_is_required_before_materialization(tmp_path: Pa
     )
 
 
+def test_semantic_mismatch_is_an_immutable_refinement_not_a_current_acceptance(
+    tmp_path: Path,
+) -> None:
+    root, master = _episode(tmp_path)
+    work = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
+    revision_id = work.document["revision_id"]
+    director = accept_director_plan(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        proposal=_director_proposal(work),
+        worker_identity=DIRECTOR_WORKER,
+        editorial_master=master,
+    )
+    dp = accept_dp_fulfillment(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        proposal=_dp_proposal(root, director),
+        worker_identity=DP_WORKER,
+        editorial_master=master,
+    )
+    proposal = _audit_proposal(director, dp)
+    proposal["findings"][0]["verdict"] = "mismatch"
+    proposal["findings"][0]["rationale"] = (
+        "畫面是現代幼兒教具，無法表達戰後高壓教育、剃平頭與教官制度。"
+    )
+
+    refinement = accept_semantic_audit(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        proposal=proposal,
+        worker_identity=AUDIT_WORKER,
+        editorial_master=master,
+    )
+
+    assert refinement.document["contract"] == (
+        "podcast-highlight-visual-semantic-refinement-v1"
+    )
+    assert refinement.document["attempt"] == 1
+    assert refinement.document["mismatch_count"] == 1
+    assert refinement.document["uncertain_count"] == 0
+    assert not (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "revisions"
+        / revision_id
+        / "SEMANTIC-AUDIT.json"
+    ).exists()
+    assert not (
+        root / "highlights" / "visual-pipeline" / "value-L01" / "CURRENT.json"
+    ).exists()
+    status = visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)
+    assert status["status"] == "awaiting_refinement_decision"
+    assert status["active_dp_attempt"] == 1
+    assert status["refinement_input"] == refinement.identity()
+
+
+def test_all_match_audit_crash_before_current_pointer_recovers_idempotently(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, master = _episode(tmp_path)
+    work = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
+    revision_id = str(work.document["revision_id"])
+    director = accept_director_plan(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        proposal=_director_proposal(work),
+        worker_identity=DIRECTOR_WORKER,
+        editorial_master=master,
+    )
+    dp = accept_dp_fulfillment(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        proposal=_dp_proposal(root, director),
+        worker_identity=DP_WORKER,
+        editorial_master=master,
+    )
+    proposal = _audit_proposal(director, dp)
+    original_write_pointer = visual_contract_module._write_pointer
+
+    def crash_before_current(*args: object, **kwargs: object) -> None:
+        if kwargs.get("name") == "CURRENT.json":
+            raise RuntimeError("simulated crash before CURRENT pointer")
+        original_write_pointer(*args, **kwargs)
+
+    monkeypatch.setattr(visual_contract_module, "_write_pointer", crash_before_current)
+    with pytest.raises(RuntimeError, match="before CURRENT"):
+        accept_semantic_audit(
+            root,
+            cut_id="value-L01",
+            revision_id=revision_id,
+            proposal=proposal,
+            worker_identity=AUDIT_WORKER,
+            editorial_master=master,
+        )
+    audit_path = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "revisions"
+        / revision_id
+        / "SEMANTIC-AUDIT.json"
+    )
+    assert audit_path.is_file()
+    assert not (
+        root / "highlights" / "visual-pipeline" / "value-L01" / "CURRENT.json"
+    ).exists()
+
+    monkeypatch.setattr(visual_contract_module, "_write_pointer", original_write_pointer)
+    recovery = visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)
+    assert recovery["status"] == "awaiting_semantic_audit"
+    assert recovery["unpublished_semantic_audit"]["path"].endswith("SEMANTIC-AUDIT.json")
+    accept_semantic_audit(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        proposal=proposal,
+        worker_identity=AUDIT_WORKER,
+        editorial_master=master,
+    )
+    assert visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)[
+        "status"
+    ] == "ready_to_materialize"
+
+
+def _refinement_decision_proposal(
+    refinement: object, *, action: str = "retry_dp"
+) -> dict[str, object]:
+    failed = [row for row in refinement.document["findings"] if row["verdict"] != "match"]
+    return {
+        "contract": "podcast-highlight-visual-refinement-decision-v1",
+        "episode_id": refinement.document["episode_id"],
+        "cut_id": refinement.document["cut_id"],
+        "attempt": refinement.document["attempt"],
+        "semantic_refinement": refinement.identity(),
+        "decisions": [
+            {
+                "materialization_id": row["materialization_id"],
+                "event_id": row["event_id"],
+                "action": action,
+                "rationale": (
+                    "素材本身可替換，DP 應重新找一支直接呈現逐字稿場景且避開負面限制的畫面。"
+                    if action == "retry_dp"
+                    else (
+                        "目前沒有可核對的原始素材，不能讓 DP 用合成卡冒充，"
+                        "必須回到 Director 改稿。"
+                    )
+                ),
+            }
+            for row in failed
+        ],
+    }
+
+
+def _dp2_proposal(root: Path, director: object) -> dict[str, object]:
+    proposal = _dp_proposal(root, director)
+    fixture = Path(__file__).parent / "fixtures" / "davinci_import" / "black10s.mp4"
+    replacement = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "proposal-assets"
+        / "postwar-school-a-refined.mp4"
+    )
+    replacement.write_bytes(fixture.read_bytes() + b"semantic-refinement-a")
+    candidate = proposal["implementations"][0]["candidates"][0]
+    candidate["candidate_id"] = "stock-a-v2"
+    candidate["authority_asset_id"] = "stock-a-v2"
+    candidate["media"] = _identity(root, replacement)
+    candidate["visual_summary"] = "戰後校園升旗隊列、平頭學生與教官巡視的可核對歷史實拍"
+    candidate["provenance"]["source_url"] = "https://www.pexels.com/video/99123/"
+    proposal["implementations"][0]["selections"][0]["candidate_id"] = "stock-a-v2"
+    revision_id = Path(str(director.document["work_packet"]["path"])).parent.name
+    work_document = json.loads(
+        (root / str(director.document["work_packet"]["path"])).read_text(encoding="utf-8")
+    )
+    fixture_master = _FakeMaster(
+        value=work_document["editorial_master"],
+        media_path=root / "editorial-master" / "v1" / "master.mp4",
+        srt_path=root / "editorial-master" / "v1" / "master.srt",
+    )
+    stock_candidates = proposal["implementations"][0]["candidates"]
+    publish_asset_authority(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        attempt=2,
+        assets=[
+            {
+                "asset_id": row["candidate_id"],
+                "source_class": "licensed_stock",
+                "provider": row["provenance"]["provider"],
+                "provider_item_id": row["provenance"]["source_url"].rstrip("/").split("/")[-1],
+                "source_url": row["provenance"]["source_url"],
+                "license": row["provenance"]["license"],
+                "acquired_at": "2026-08-26T02:00:00Z",
+                "semantic_summary": row["visual_summary"],
+                "original_media": row["media"],
+            }
+            for row in stock_candidates
+            if row["candidate_id"] == "stock-a-v2"
+        ],
+        worker_identity=ASSET2_WORKER,
+        editorial_master=fixture_master,
+    )
+    authority_dir = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "revisions"
+        / revision_id
+        / "attempts"
+    )
+    authority_rows: dict[str, dict[str, object]] = {}
+    for authority_attempt in (1, 2):
+        authority_path = (
+            authority_dir / f"attempt-{authority_attempt:03d}" / "ASSET-AUTHORITY.json"
+        )
+        authority_rows.update(
+            {
+                row["asset_id"]: row
+                for row in json.loads(authority_path.read_text(encoding="utf-8"))["assets"]
+            }
+        )
+    for row in stock_candidates:
+        authority = authority_rows[row["candidate_id"]]
+        row["authority_asset_id"] = authority["asset_id"]
+        row["media"] = authority["original_media"]
+        row["provenance"] = {
+            "kind": "stock_source",
+            "provider": authority["provider"],
+            "source_url": authority["source_url"],
+            "license": authority["license"],
+            "receipt": authority["acquisition_receipt"],
+        }
+    return proposal
+
+
+def test_mismatch_dp2_and_same_director_reaudit_activate_one_current(tmp_path: Path) -> None:
+    root, master = _episode(tmp_path)
+    work = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
+    revision_id = work.document["revision_id"]
+    director = accept_director_plan(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        proposal=_director_proposal(work),
+        worker_identity=DIRECTOR_WORKER,
+        editorial_master=master,
+    )
+    dp1 = accept_dp_fulfillment(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        proposal=_dp_proposal(root, director),
+        worker_identity=DP_WORKER,
+        editorial_master=master,
+    )
+    audit1 = _audit_proposal(director, dp1)
+    audit1["findings"][0]["verdict"] = "mismatch"
+    audit1["findings"][0]["rationale"] = "幼兒教具與戰後高壓教育的具體敘述相反，必須替換素材。"
+    refinement = accept_semantic_audit(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        proposal=audit1,
+        worker_identity=AUDIT_WORKER,
+        editorial_master=master,
+    )
+    decision = accept_refinement_decision(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        attempt=1,
+        proposal=_refinement_decision_proposal(refinement),
+        worker_identity=REFINEMENT_WORKER,
+        editorial_master=master,
+    )
+    status = visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)
+    assert status["status"] == "awaiting_dp_refinement"
+    assert status["refinement_decision"] == decision.identity()
+    assert status["next_dp_attempt"] == 2
+
+    copied_original = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "proposal-assets"
+        / "postwar-school-a-renamed-copy.mp4"
+    )
+    copied_original.write_bytes(
+        (
+            root
+            / "highlights"
+            / "visual-pipeline"
+            / "value-L01"
+            / "proposal-assets"
+            / "postwar-school-a.mp4"
+        ).read_bytes()
+    )
+    _assert_contract_error(
+        lambda: publish_asset_authority(
+            root,
+            cut_id="value-L01",
+            revision_id=revision_id,
+            attempt=2,
+            assets=[
+                _trusted_asset_source(
+                    root,
+                    copied_original,
+                    asset_id="stock-a-renamed-copy",
+                    provider_item_id="99999",
+                    semantic_summary="改名後仍是同一份原始素材 bytes，不能繞過跨次嘗試去重",
+                )
+            ],
+            worker_identity=ASSET2_WORKER,
+            editorial_master=master,
+        ),
+        "reuses original source across attempts",
+    )
+
+    dp2 = accept_dp_refinement(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        attempt=2,
+        proposal=_dp2_proposal(root, director),
+        worker_identity=DP2_WORKER,
+        editorial_master=master,
+    )
+    status = visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)
+    assert status["status"] == "awaiting_semantic_audit"
+    assert status["active_dp_attempt"] == 2
+
+    audit2 = accept_semantic_audit(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        proposal=_audit_proposal(director, dp2),
+        worker_identity=AUDIT2_WORKER,
+        editorial_master=master,
+    )
+    pipeline = verify_visual_pipeline(root, cut_id="value-L01", editorial_master=master)
+    assert pipeline.dp_fulfillment.identity() == dp2.identity()
+    assert pipeline.semantic_audit.identity() == audit2.identity()
+    assert visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)[
+        "status"
+    ] == "ready_to_materialize"
+    attempts = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "revisions"
+        / revision_id
+        / "attempts"
+    )
+    assert sorted(path.name for path in attempts.iterdir()) == ["attempt-001", "attempt-002"]
+
+
+def test_infeasible_visual_can_be_replanned_to_intentional_aroll_in_same_revision(
+    tmp_path: Path,
+) -> None:
+    root, master = _episode(tmp_path)
+    work = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
+    revision_id = work.document["revision_id"]
+    director1 = accept_director_plan(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        proposal=_director_proposal(work),
+        worker_identity=DIRECTOR_WORKER,
+        editorial_master=master,
+    )
+    dp1 = accept_dp_fulfillment(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        proposal=_dp_proposal(root, director1),
+        worker_identity=DP_WORKER,
+        editorial_master=master,
+    )
+    audit1 = _audit_proposal(director1, dp1)
+    audit1["findings"][3]["verdict"] = "mismatch"
+    audit1["findings"][3]["rationale"] = (
+        "找不到能核對的自有檔案或示範畫面，不能用一般概念卡冒充實證素材。"
+    )
+    refinement = accept_semantic_audit(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        proposal=audit1,
+        worker_identity=AUDIT_WORKER,
+        editorial_master=master,
+    )
+    accept_refinement_decision(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        attempt=1,
+        proposal=_refinement_decision_proposal(refinement, action="director_replan"),
+        worker_identity=REFINEMENT_WORKER,
+        editorial_master=master,
+    )
+    status = visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)
+    assert status["status"] == "requires_director_replan"
+
+    proposal = _director_proposal(work)
+    title = proposal["events"][1]
+    title.update(
+        {
+            "category": "none",
+            "form": "aroll",
+            "description": "沒有可信來源時保留來賓原畫面，不以合成卡冒充證據",
+            "on_screen_text": None,
+            "negative_constraints": ["不可用概念卡冒充自有檔案或畫面證據"],
+            "search_angles": [],
+            "decision": "intentional_aroll",
+            "rationale": "稽核確認素材不可得，因此明確保留 A-roll，避免製造錯誤視覺證據。",
+        }
+    )
+    proposal["coverage"].update(
+        {
+            "add_visual_count": 2,
+            "planned_visual_count": 4,
+            "intentional_aroll_count": 2,
+            "visual_events_per_minute": 10.0,
+        }
+    )
+    director2 = accept_director_replan(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        attempt=2,
+        proposal=proposal,
+        worker_identity=DIRECTOR_REPLAN_WORKER,
+        editorial_master=master,
+    )
+    status = visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)
+    assert status["status"] == "awaiting_dp_refinement"
+    assert status["director_replan"] == director2.identity()
+
+    dp2_proposal = _dp_proposal(root, director1)
+    dp2_proposal["director_plan"] = director2.identity()
+    dp2_proposal["implementations"] = [
+        row for row in dp2_proposal["implementations"] if row["event_id"] != "title-002"
+    ]
+    dp2 = accept_dp_refinement(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        attempt=2,
+        proposal=dp2_proposal,
+        worker_identity=DP2_WORKER,
+        editorial_master=master,
+    )
+    audit2_proposal = _audit_proposal(director1, dp1)
+    audit2_proposal["director_plan"] = director2.identity()
+    audit2_proposal["dp_fulfillment"] = dp2.identity()
+    audit2_proposal["findings"] = [
+        row for row in audit2_proposal["findings"] if row["event_id"] != "title-002"
+    ]
+    accept_semantic_audit(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        proposal=audit2_proposal,
+        worker_identity=AUDIT_AFTER_REPLAN_WORKER,
+        editorial_master=master,
+    )
+    pipeline = verify_visual_pipeline(root, cut_id="value-L01", editorial_master=master)
+    assert pipeline.director_plan.identity() == director2.identity()
+    assert pipeline.dp_fulfillment.identity() == dp2.identity()
+
+
+def test_director_replan_crash_before_marker_recovers_without_mutating_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, master = _episode(tmp_path)
+    work = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
+    revision_id = str(work.document["revision_id"])
+    director1 = accept_director_plan(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        proposal=_director_proposal(work),
+        worker_identity=DIRECTOR_WORKER,
+        editorial_master=master,
+    )
+    dp1 = accept_dp_fulfillment(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        proposal=_dp_proposal(root, director1),
+        worker_identity=DP_WORKER,
+        editorial_master=master,
+    )
+    audit1 = _audit_proposal(director1, dp1)
+    audit1["findings"][3]["verdict"] = "mismatch"
+    audit1["findings"][3]["rationale"] = (
+        "沒有可核對的自有檔案，合成概念卡不能冒充實際畫面。"
+    )
+    refinement = accept_semantic_audit(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        proposal=audit1,
+        worker_identity=AUDIT_WORKER,
+        editorial_master=master,
+    )
+    accept_refinement_decision(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        attempt=1,
+        proposal=_refinement_decision_proposal(refinement, action="director_replan"),
+        worker_identity=REFINEMENT_WORKER,
+        editorial_master=master,
+    )
+    proposal = _director_proposal(work)
+    proposal["events"][1].update(
+        {
+            "category": "none",
+            "form": "aroll",
+            "description": "沒有可信來源時保留來賓，不以合成卡冒充證據",
+            "on_screen_text": None,
+            "negative_constraints": ["不可用概念卡冒充自有檔案"],
+            "search_angles": [],
+            "decision": "intentional_aroll",
+            "rationale": "稽核確認素材不可得，因此保留 A-roll。",
+        }
+    )
+    proposal["coverage"].update(
+        {
+            "add_visual_count": 2,
+            "planned_visual_count": 4,
+            "intentional_aroll_count": 2,
+            "visual_events_per_minute": 10.0,
+        }
+    )
+    original_publish = visual_contract_module._atomic_publish
+
+    def crash_before_marker(path: Path, document: dict[str, object]) -> None:
+        if path.name == "DIRECTOR-REPLAN.json":
+            raise RuntimeError("simulated crash before replan marker")
+        original_publish(path, document)
+
+    monkeypatch.setattr(visual_contract_module, "_atomic_publish", crash_before_marker)
+    with pytest.raises(RuntimeError, match="before replan marker"):
+        accept_director_replan(
+            root,
+            cut_id="value-L01",
+            revision_id=revision_id,
+            attempt=2,
+            proposal=proposal,
+            worker_identity=DIRECTOR_REPLAN_WORKER,
+            editorial_master=master,
+        )
+    plan_path = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "revisions"
+        / revision_id
+        / "attempts"
+        / "attempt-002"
+        / "DIRECTOR-PLAN.json"
+    )
+    before = plan_path.read_bytes()
+    monkeypatch.setattr(visual_contract_module, "_atomic_publish", original_publish)
+    recovery = visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)
+    assert recovery["status"] == "requires_director_replan"
+    assert recovery["unpublished_director_replan"]["path"].endswith("DIRECTOR-PLAN.json")
+    accepted = accept_director_replan(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        attempt=2,
+        proposal=proposal,
+        worker_identity=DIRECTOR_REPLAN_WORKER,
+        editorial_master=master,
+    )
+    assert plan_path.read_bytes() == before
+    assert accepted.path == plan_path
+    assert visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)[
+        "status"
+    ] == "awaiting_dp_refinement"
+
+
 def test_audit_rejects_worker_coverage_evidence_quote_and_nonmatch(tmp_path: Path) -> None:
     root, master = _episode(tmp_path)
     work = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
@@ -950,11 +2480,6 @@ def test_audit_rejects_worker_coverage_evidence_quote_and_nonmatch(tmp_path: Pat
     proposal = _audit_proposal(director, dp)
     proposal["findings"][0]["quote"] = "不對應逐字稿的泛稱"
     reject(proposal, "quote differs")
-
-    for verdict in ("mismatch", "uncertain"):
-        proposal = _audit_proposal(director, dp)
-        proposal["findings"][0]["verdict"] = verdict
-        reject(proposal, f"verdict={verdict}")
 
     accepted = accept_semantic_audit(
         root,
@@ -1314,6 +2839,7 @@ def _dp_for_remove_move_asset_feedback(root: Path, director: object) -> dict[str
 
     class _LegacyShapeAdapter:
         document = {
+            "work_packet": director.document["work_packet"],
             "events": [
                 deepcopy(actual["visual-001"]),
                 {**deepcopy(actual["value-L01-hero-002"]), "event_id": "title-002"},
@@ -1386,6 +2912,7 @@ def _dp_for_change_type_feedback(
 
     class _LegacyShapeAdapter:
         document = {
+            "work_packet": director.document["work_packet"],
             "events": [
                 deepcopy(actual["visual-001"]),
                 deepcopy(actual["title-002"]),
@@ -1434,6 +2961,7 @@ def _dp_for_hero_feedback(root: Path, director: object) -> dict[str, object]:
 
     class _LegacyShapeAdapter:
         document = {
+            "work_packet": director.document["work_packet"],
             "events": [
                 deepcopy(actual_events["visual-001"]),
                 {
@@ -1526,6 +3054,189 @@ def _audit_from_materializations(
             for item in materializations
         ],
     }
+
+
+def _bind_broll_remove_request(
+    root: Path,
+    *,
+    asset: dict[str, object] | None,
+    request_id: str,
+    source_url: str | None = None,
+) -> Path:
+    component_id = "value-L01-b-roll-001"
+    request = _finished_visual_request(
+        root,
+        rows=[
+            {
+                "cut_id": "value-L01",
+                "component_id": component_id,
+                "lane": "b_roll",
+                "timeline_seconds": {"t0": 20.0, "t1": 23.0},
+                "action": "remove",
+                "comment": "這支 Stock 畫面語意錯誤，不得換 ID 後再放回來",
+                "replacement": "",
+                "remember_preference": False,
+            }
+        ],
+        request_id=request_id,
+    )
+    request_payload = json.loads(request.read_text(encoding="utf-8"))
+    manifest_path = root / "highlights" / "review" / request_payload["manifest_filename"]
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    component = {
+        "component_id": component_id,
+        "lane": "b_roll",
+        "type": "video",
+        "slug": "old-wrong-stock",
+        "t0": 20.0,
+        "t1": 23.0,
+        "asset_category": "stock_video",
+    }
+    if asset is not None:
+        component["asset"] = asset
+    if source_url is not None:
+        component["provenance"] = {"source_url": source_url}
+    manifest["cuts"][0]["components"].append(component)
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    request_payload["source_manifest_sha256"] = hashlib.sha256(
+        manifest_path.read_bytes()
+    ).hexdigest()
+    request.write_text(json.dumps(request_payload, ensure_ascii=False), encoding="utf-8")
+    return request
+
+
+def test_removed_human_stock_binds_old_bytes_and_cannot_be_reintroduced_under_new_id(
+    tmp_path: Path,
+) -> None:
+    root, master = _episode(tmp_path)
+    fixture = Path(__file__).parent / "fixtures" / "davinci_import" / "black10s.mp4"
+    old_asset = root / "assets" / "broll" / "old-wrong-stock.mp4"
+    old_asset.parent.mkdir(parents=True, exist_ok=True)
+    old_asset.write_bytes(fixture.read_bytes() + b"human-removed-stock")
+    request = _bind_broll_remove_request(
+        root,
+        asset=_identity(root, old_asset),
+        request_id="remove-old-stock",
+    )
+    work = init_visual_work_packet(
+        root,
+        cut_id="value-L01",
+        revision_request=request,
+        editorial_master=master,
+    )
+    directive = work.document["requested_visual_feedback"]["directives"][0]
+    assert directive["source_component"]["asset"]["sha256"] == _identity(root, old_asset)[
+        "sha256"
+    ]
+
+    renamed = root / "assets" / "broll" / "renamed-new-component-id.mp4"
+    renamed.write_bytes(old_asset.read_bytes())
+    _assert_contract_error(
+        lambda: publish_asset_authority(
+            root,
+            cut_id="value-L01",
+            revision_id=str(work.document["revision_id"]),
+            attempt=1,
+            assets=[
+                _trusted_asset_source(
+                    root,
+                    renamed,
+                    asset_id="brand-new-component-id",
+                    provider_item_id="987654321",
+                    semantic_summary="改名後仍是人工明確移除的同一支錯誤 Stock 素材",
+                )
+            ],
+            worker_identity=ASSET_WORKER,
+            editorial_master=master,
+        ),
+        "human-removed visual source",
+    )
+
+
+def test_removed_stock_without_request_bound_media_identity_requires_operator_rebind(
+    tmp_path: Path,
+) -> None:
+    root, master = _episode(tmp_path)
+    request = _bind_broll_remove_request(
+        root,
+        asset=None,
+        request_id="remove-stock-without-media-proof",
+    )
+    _assert_contract_error(
+        lambda: preflight_visual_work_packet(
+            root,
+            cut_id="value-L01",
+            revision_request=request,
+            editorial_master=master,
+        ),
+        "requires_operator_rebind",
+    )
+
+
+def test_removed_human_stock_url_cannot_be_reintroduced_with_new_bytes_or_url_case(
+    tmp_path: Path,
+) -> None:
+    root, master = _episode(tmp_path)
+    fixture = Path(__file__).parent / "fixtures" / "davinci_import" / "black10s.mp4"
+    old_asset = root / "assets" / "broll" / "old-envato-stock.mp4"
+    old_asset.parent.mkdir(parents=True, exist_ok=True)
+    old_asset.write_bytes(fixture.read_bytes() + b"old-envato-stock")
+    canonical_url = "https://elements.envato.com/classroom-cadets-abc123"
+    request = _bind_broll_remove_request(
+        root,
+        asset=_identity(root, old_asset),
+        request_id="remove-old-envato-url",
+        source_url=canonical_url,
+    )
+    work = init_visual_work_packet(
+        root,
+        cut_id="value-L01",
+        revision_request=request,
+        editorial_master=master,
+    )
+    replacement = root / "assets" / "broll" / "new-bytes-renamed-id.mp4"
+    replacement.write_bytes(fixture.read_bytes() + b"different-envato-stock")
+    source = {
+        **_trusted_asset_source(
+            root,
+            replacement,
+            asset_id="renamed-envato-component",
+            provider_item_id="abc123",
+            semantic_summary="即使換新 bytes 與 component id 也不可重放人工移除的來源",
+        ),
+        "provider": "envato-elements",
+        "source_url": canonical_url,
+        "license": "Envato Elements license: https://elements.envato.com/license-terms",
+    }
+    _assert_contract_error(
+        lambda: publish_asset_authority(
+            root,
+            cut_id="value-L01",
+            revision_id=str(work.document["revision_id"]),
+            attempt=1,
+            assets=[source],
+            worker_identity=ASSET_WORKER,
+            editorial_master=master,
+        ),
+        "human-removed visual source",
+    )
+    case_variant = {
+        **source,
+        "provider_item_id": "ABC123",
+        "source_url": "https://elements.envato.com/CLASSROOM-CADETS-ABC123",
+    }
+    _assert_contract_error(
+        lambda: publish_asset_authority(
+            root,
+            cut_id="value-L01",
+            revision_id=str(work.document["revision_id"]),
+            attempt=1,
+            assets=[case_variant],
+            worker_identity=ASSET_WORKER,
+            editorial_master=master,
+        ),
+        "Envato provider_item_id is invalid",
+    )
 
 
 def test_revision_work_projects_and_enforces_two_exact_multiline_hero_edits(
