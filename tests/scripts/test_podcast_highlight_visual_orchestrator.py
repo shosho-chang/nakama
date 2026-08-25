@@ -1385,6 +1385,125 @@ def test_legacy_orphan_without_prepare_is_preserved_then_replaced_by_fresh_execu
     assert (attempts / "attempt-002" / "PREPARE.json").is_file()
 
 
+def test_request_bound_retry_archives_legacy_missing_prepare_chain_before_redispatch(
+    monkeypatch: pytest.MonkeyPatch,
+    episode: tuple[Path, Path],
+) -> None:
+    root, _request = episode
+
+    class LegacyPendingPipeline(_FakePipeline):
+        def visual_pipeline_status(self, root_path, *, cut_id, editorial_master=None):
+            legacy_plan = (
+                Path(root_path)
+                / "highlights"
+                / "visual-pipeline"
+                / cut_id
+                / "revisions"
+                / self.revision_id
+                / "DIRECTOR-PLAN.json"
+            )
+            if legacy_plan.is_file():
+                return {
+                    "contract": "podcast-highlight-visual-status-v1",
+                    "episode_id": "episode",
+                    "cut_id": cut_id,
+                    "status": "invalid",
+                    "pending_revision_id": self.revision_id,
+                    "current_revision_id": None,
+                    "paths": {},
+                    "error": (
+                        "trusted execution receipt fields mismatch: expected "
+                        "['content_hash', 'contract', 'cut_id', 'episode_id', 'phase', "
+                        "'phase_input', 'prepare', 'prompt_sha256', 'proposal', "
+                        "'revision_id', 'role', 'stderr', 'stdout', 'worker_identity'], "
+                        "got ['content_hash', 'contract', 'cut_id', 'episode_id', "
+                        "'phase', 'phase_input', 'prompt_sha256', 'proposal', "
+                        "'revision_id', 'role', 'stderr', 'stdout', 'worker_identity']"
+                    ),
+                }
+            return super().visual_pipeline_status(
+                root_path, cut_id=cut_id, editorial_master=editorial_master
+            )
+
+    pipeline = LegacyPendingPipeline()
+    base = root / "highlights" / "visual-pipeline" / "value-L01"
+    revision_root = base / "revisions" / REVISION_ID
+    job_root = base / "jobs" / REVISION_ID
+    receipt_root = job_root / "receipts"
+    director_worker = job_root / "workers" / "director-session"
+    dp_worker = job_root / "workers" / "dp-session"
+    revision_root.mkdir(parents=True)
+    receipt_root.mkdir(parents=True)
+    director_worker.mkdir(parents=True)
+    dp_worker.mkdir(parents=True)
+    legacy_plan = revision_root / "DIRECTOR-PLAN.json"
+    legacy_dp = revision_root / "DP-FULFILLMENT.json"
+    legacy_plan.write_bytes(b"legacy-director-plan")
+    legacy_dp.write_bytes(b"legacy-dp-fulfillment")
+    authority = revision_root / "attempts" / "attempt-001" / "ASSET-AUTHORITY.json"
+    authority.parent.mkdir(parents=True)
+    authority.write_bytes(b"request-bound-authority")
+
+    proposal = director_worker / "director-proposal.json"
+    phase_input = director_worker / "director-input.json"
+    stdout = receipt_root / "director.stdout.jsonl"
+    stderr = receipt_root / "director.stderr.txt"
+    proposal.write_text('{"legacy":"proposal"}', encoding="utf-8")
+    phase_input.write_text('{"legacy":"input"}', encoding="utf-8")
+    stdout.write_text('{"type":"thread.started"}\n', encoding="utf-8")
+    stderr.write_text("", encoding="utf-8")
+    legacy_receipt = {
+        "contract": orchestrator.EXECUTION_RECEIPT_CONTRACT,
+        "episode_id": root.name,
+        "cut_id": "value-L01",
+        "revision_id": REVISION_ID,
+        "phase": "director",
+        "role": "director",
+        "worker_identity": {
+            "worker_id": f"legacy:{DIRECTOR_SESSION}",
+            "execution_id": "legacy-execution",
+            "role": "director",
+            "session_id": DIRECTOR_SESSION,
+        },
+        "prompt_sha256": "f" * 64,
+        "phase_input": orchestrator._identity(root, phase_input),
+        "proposal": orchestrator._identity(root, proposal),
+        "stdout": orchestrator._identity(root, stdout),
+        "stderr": orchestrator._identity(root, stderr),
+    }
+    legacy_receipt["content_hash"] = orchestrator._content_hash(legacy_receipt)
+    (receipt_root / "director.json").write_text(
+        json.dumps(legacy_receipt, sort_keys=True), encoding="utf-8"
+    )
+    (dp_worker / "old-preview.bin").write_bytes(b"legacy-dp-evidence")
+
+    monkeypatch.setattr(orchestrator, "visual_pipeline", pipeline)
+    dispatcher = _FakeDispatcher()
+    result = orchestrator.run_visual_pipeline(
+        root,
+        cut_id="value-L01",
+        revision_request=episode[1],
+        dispatcher=dispatcher,
+        resume=True,
+    )
+
+    recovery = job_root / "legacy-recovery" / "missing-prepare-director-v1"
+    assert result.semantic_audit is pipeline.audit
+    assert [call.phase for call in dispatcher.calls] == ["director", "dp", "semantic_audit"]
+    assert (recovery / "COMMIT.json").is_file()
+    assert (
+        recovery
+        / "evidence"
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "revisions"
+        / REVISION_ID
+        / "DIRECTOR-PLAN.json"
+    ).read_bytes() == b"legacy-director-plan"
+    assert authority.read_bytes() == b"request-bound-authority"
+
+
 def test_failed_worker_output_verification_uses_attempt_scoped_streams_on_retry(
     monkeypatch: pytest.MonkeyPatch,
     episode: tuple[Path, Path],

@@ -306,6 +306,40 @@ def _identity(root: Path, path: Path) -> dict[str, object]:
     }
 
 
+def _path_inventory(root: Path, path: Path) -> dict[str, object]:
+    resolved = path.resolve()
+    if not resolved.is_relative_to(root) or path.is_symlink():
+        raise VisualPipelineOrchestrationError("legacy recovery source escaped the episode root")
+    if resolved.is_file():
+        return {
+            "kind": "file",
+            "files": [
+                {
+                    "path": ".",
+                    "bytes": resolved.stat().st_size,
+                    "sha256": _file_sha256(resolved),
+                }
+            ],
+        }
+    if not resolved.is_dir():
+        raise VisualPipelineOrchestrationError("legacy recovery source is missing")
+    files: list[dict[str, object]] = []
+    for candidate in sorted(resolved.rglob("*"), key=lambda item: item.as_posix()):
+        if candidate.is_symlink():
+            raise VisualPipelineOrchestrationError(
+                "legacy recovery evidence contains a symbolic link"
+            )
+        if candidate.is_file():
+            files.append(
+                {
+                    "path": candidate.relative_to(resolved).as_posix(),
+                    "bytes": candidate.stat().st_size,
+                    "sha256": _file_sha256(candidate),
+                }
+            )
+    return {"kind": "directory", "files": files}
+
+
 def _load_json(path: Path, label: str) -> dict[str, object]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -314,6 +348,237 @@ def _load_json(path: Path, label: str) -> dict[str, object]:
     if not isinstance(value, dict):
         raise VisualPipelineOrchestrationError(f"{label} must be a JSON object")
     return value
+
+
+def _legacy_director_receipt_without_prepare(
+    episode_root: Path,
+    receipt_path: Path,
+    *,
+    cut_id: str,
+    revision_id: str,
+) -> bool:
+    if not receipt_path.is_file():
+        return False
+    receipt = _load_json(receipt_path, "legacy Director execution receipt")
+    expected_keys = {
+        "content_hash",
+        "contract",
+        "cut_id",
+        "episode_id",
+        "phase",
+        "phase_input",
+        "prompt_sha256",
+        "proposal",
+        "revision_id",
+        "role",
+        "stderr",
+        "stdout",
+        "worker_identity",
+    }
+    if set(receipt) != expected_keys:
+        return False
+    claimed_hash = receipt.get("content_hash")
+    unsigned = {key: value for key, value in receipt.items() if key != "content_hash"}
+    if (
+        claimed_hash != _content_hash(unsigned)
+        or receipt.get("contract") != EXECUTION_RECEIPT_CONTRACT
+        or receipt.get("episode_id") != episode_root.name
+        or receipt.get("cut_id") != cut_id
+        or receipt.get("revision_id") != revision_id
+        or receipt.get("phase") != "director"
+        or receipt.get("role") != "director"
+    ):
+        return False
+    worker = receipt.get("worker_identity")
+    if not isinstance(worker, dict) or set(worker) != {
+        "worker_id",
+        "execution_id",
+        "role",
+        "session_id",
+    }:
+        return False
+    if worker.get("role") != "director" or any(
+        not isinstance(value, str) or not value for value in worker.values()
+    ):
+        return False
+    for name in ("phase_input", "proposal", "stdout", "stderr"):
+        claimed = receipt.get(name)
+        if not isinstance(claimed, dict) or not isinstance(claimed.get("path"), str):
+            return False
+        evidence_path = (episode_root / str(claimed["path"])).resolve()
+        if not evidence_path.is_relative_to(episode_root) or not evidence_path.is_file():
+            return False
+        if _identity(episode_root, evidence_path) != claimed:
+            return False
+    return True
+
+
+def _recover_legacy_missing_prepare_chain(
+    episode_root: Path,
+    job_root: Path,
+    *,
+    cut_id: str,
+    revision_id: str,
+    state: Mapping[str, object],
+    editorial_master: object | None,
+) -> bool:
+    """Archive one fully identified pre-PREPARE chain, then restart at Director.
+
+    This compatibility path is deliberately narrow: it runs only for a request-
+    bound pending revision with no CURRENT pointer and a hash-valid legacy Director
+    receipt whose sole schema difference is the absent durable PREPARE identity.
+    Request-bound asset authority and acquisition evidence are never moved.
+    """
+
+    error = state.get("error")
+    if (
+        state.get("status") != "invalid"
+        or state.get("pending_revision_id") != revision_id
+        or state.get("current_revision_id") is not None
+        or not isinstance(error, str)
+        or "trusted execution receipt fields mismatch" not in error
+        or "'prepare'" not in error
+    ):
+        return False
+    receipt_root = job_root / "receipts"
+    if not _legacy_director_receipt_without_prepare(
+        episode_root,
+        receipt_root / "director.json",
+        cut_id=cut_id,
+        revision_id=revision_id,
+    ):
+        return False
+
+    revision_root = (
+        episode_root
+        / _JOB_ROOT
+        / cut_id
+        / "revisions"
+        / revision_id
+    ).resolve()
+    director_plan = revision_root / "DIRECTOR-PLAN.json"
+    if not director_plan.is_file():
+        return False
+    recovery_root = job_root / "legacy-recovery" / "missing-prepare-director-v1"
+    prepare_path = recovery_root / "PREPARE.json"
+    commit_path = recovery_root / "COMMIT.json"
+    if commit_path.is_file():
+        raise VisualPipelineOrchestrationError(
+            "legacy missing-PREPARE recovery was already committed but state is still invalid"
+        )
+
+    if prepare_path.is_file():
+        prepare = _load_json(prepare_path, "legacy recovery prepare")
+        prepare_hash = prepare.pop("content_hash", None)
+        if prepare_hash != _content_hash(prepare):
+            raise VisualPipelineOrchestrationError("legacy recovery prepare hash mismatch")
+        prepare["content_hash"] = prepare_hash
+    else:
+        sources = [director_plan]
+        for candidate in (
+            revision_root / "DP-FULFILLMENT.json",
+            revision_root / "SEMANTIC-AUDIT.json",
+            job_root / "workers" / "director-session",
+            job_root / "workers" / "dp-session",
+            job_root / "trusted",
+        ):
+            if candidate.exists():
+                sources.append(candidate)
+        for candidate in sorted(receipt_root.iterdir(), key=lambda item: item.name):
+            if candidate.name.startswith(("director", "dp", "semantic_audit")):
+                sources.append(candidate)
+        rows: list[dict[str, object]] = []
+        seen: set[Path] = set()
+        for source in sources:
+            resolved = source.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            relative = resolved.relative_to(episode_root)
+            destination = recovery_root / "evidence" / relative
+            rows.append(
+                {
+                    "source": relative.as_posix(),
+                    "destination": destination.relative_to(episode_root).as_posix(),
+                    "inventory": _path_inventory(episode_root, resolved),
+                }
+            )
+        prepare = {
+            "contract": "podcast-highlight-legacy-execution-recovery-prepare-v1",
+            "episode_id": episode_root.name,
+            "cut_id": cut_id,
+            "revision_id": revision_id,
+            "reason": "legacy Director receipt omitted durable PREPARE identity",
+            "sources": rows,
+        }
+        prepare["content_hash"] = _content_hash(prepare)
+        _write_json(prepare_path, prepare)
+
+    rows = prepare.get("sources")
+    if not isinstance(rows, list) or not rows:
+        raise VisualPipelineOrchestrationError("legacy recovery source inventory is empty")
+    moved: list[tuple[Path, Path]] = []
+    try:
+        for row in rows:
+            if not isinstance(row, dict):
+                raise VisualPipelineOrchestrationError("legacy recovery source row is invalid")
+            source = (episode_root / str(row.get("source") or "")).resolve()
+            destination = (episode_root / str(row.get("destination") or "")).resolve()
+            expected = row.get("inventory")
+            if (
+                not source.is_relative_to(episode_root)
+                or not destination.is_relative_to(recovery_root)
+                or not isinstance(expected, dict)
+            ):
+                raise VisualPipelineOrchestrationError("legacy recovery path escaped its root")
+            source_exists = source.exists()
+            destination_exists = destination.exists()
+            if source_exists == destination_exists:
+                raise VisualPipelineOrchestrationError(
+                    "legacy recovery source/destination state is ambiguous"
+                )
+            active = source if source_exists else destination
+            if _path_inventory(episode_root, active) != expected:
+                raise VisualPipelineOrchestrationError("legacy recovery evidence hash drift")
+            if source_exists:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(source, destination)
+                moved.append((source, destination))
+
+        recovered = _status(episode_root, cut_id, editorial_master)
+        if (
+            recovered.get("status") != "awaiting_director"
+            or recovered.get("pending_revision_id") != revision_id
+            or recovered.get("current_revision_id") is not None
+        ):
+            raise VisualPipelineOrchestrationError(
+                "legacy recovery did not restore the request to awaiting_director"
+            )
+        commit: dict[str, object] = {
+            "contract": "podcast-highlight-legacy-execution-recovery-commit-v1",
+            "prepare": _identity(episode_root, prepare_path),
+            "status": {
+                "status": recovered["status"],
+                "pending_revision_id": recovered["pending_revision_id"],
+                "current_revision_id": recovered["current_revision_id"],
+            },
+        }
+        commit["content_hash"] = _content_hash(commit)
+        _write_json(commit_path, commit)
+        return True
+    except BaseException:
+        rollback_errors: list[str] = []
+        for source, destination in reversed(moved):
+            try:
+                source.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(destination, source)
+            except OSError as rollback_error:
+                rollback_errors.append(str(rollback_error))
+        if rollback_errors:
+            raise VisualPipelineOrchestrationError(
+                "legacy recovery rollback failed: " + "; ".join(rollback_errors)
+            )
+        raise
 
 
 def _proposal_identity(root: Path, proposal_path: Path) -> dict[str, object]:
@@ -907,6 +1172,15 @@ def run_visual_pipeline(
     if not job_root.is_relative_to(root):
         raise VisualPipelineOrchestrationError("content-addressed job path escapes episode root")
     job_root.mkdir(parents=True, exist_ok=True)
+    if request_path is not None:
+        _recover_legacy_missing_prepare_chain(
+            root,
+            job_root,
+            cut_id=cut_id,
+            revision_id=revision_id,
+            state=initial,
+            editorial_master=editorial_master,
+        )
 
     for _step in range(16):
         state = _status(root, cut_id, editorial_master)
