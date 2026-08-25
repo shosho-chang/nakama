@@ -77,8 +77,13 @@
   box-shadow: var(--sho-focus);
 }
 
-.pj-dock-timer { display: flex; align-items: center; }
-.pj-timer-btn {
+.pj-dock-timer { display: flex; align-items: center; gap: 12px; min-width: 0; }
+/* 修修 (2026-08-25): body.sho scope on the button rules — tokens.css's `.sho button`
+   reset (0,1,1) out-specifies a bare `.pj-timer-btn` (0,1,0), so the idle pill lost
+   its padding/border/accent/mono font entirely; only :hover / [data-running]
+   (0,2,0) survived — which is why the pill only "appeared" on hover, hugging ▶ at
+   the left edge with the display's dead min-width space padding the right. */
+body.sho .pj-timer-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -91,16 +96,31 @@
   cursor: pointer;
   border-radius: var(--sho-r-1, 4px);
 }
-.pj-timer-btn:hover { background: var(--sho-accent); color: var(--sho-bg); }
-.pj-timer-btn[data-running="true"] {
+body.sho .pj-timer-btn:hover { background: var(--sho-accent); color: var(--sho-bg); }
+body.sho .pj-timer-btn[data-running="true"] {
   background: var(--sho-accent-soft, color-mix(in oklch, var(--sho-accent) 10%, transparent));
 }
-.pj-timer-btn:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+body.sho .pj-timer-btn:focus-visible { outline: none; box-shadow: var(--sho-focus); }
 .pj-timer-icon { font-size: 12px; }
-.pj-timer-display { font-variant-numeric: tabular-nums; min-width: 56px; }
+/* 修修 (2026-08-25): the old min-width:56px left ~12px of dead space after the
+   digits (MM:SS at 14px mono ≈ 44px), so the pill read as lopsided — right
+   padding looked twice the left. The clock is ALWAYS zero-padded MM:SS with
+   tabular-nums, so its width is constant without a floor. */
+.pj-timer-display { font-variant-numeric: tabular-nums; }
 
-/* a secondary (ghost) timer action — e.g. the Task page's 完成·記一段 / 取消 */
-.pj-timer-secondary {
+/* 修修 (2026-08-25): now-playing track title beside the timer (focus music). */
+.pj-music-title {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0;
+  font-family: var(--sho-font-mono, ui-monospace, monospace); font-size: 11px;
+  color: var(--sho-text-2, var(--sho-muted, #888));
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pj-music-title[hidden] { display: none; }
+.pj-music-note { color: var(--sho-accent); flex-shrink: 0; }
+
+/* a secondary (ghost) timer action — e.g. the Task page's 完成·記一段 / 取消
+   (body.sho scope for the same reset-specificity reason as the timer button) */
+body.sho .pj-timer-secondary {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -113,8 +133,8 @@
   cursor: pointer;
   border-radius: var(--sho-r-1, 4px);
 }
-.pj-timer-secondary:hover { border-color: var(--sho-accent-line, var(--sho-accent)); color: var(--sho-text); }
-.pj-timer-secondary:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+body.sho .pj-timer-secondary:hover { border-color: var(--sho-accent-line, var(--sho-accent)); color: var(--sho-text); }
+body.sho .pj-timer-secondary:focus-visible { outline: none; box-shadow: var(--sho-focus); }
 
 .pj-dock-rollup {
   font-family: var(--sho-font-mono, ui-monospace, monospace);

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bridge · {{ task.name }}</title>
 <script src="/static/shosho/theme.js?v={{ asset_version | default('') }}"></script>
+<script src="/static/shosho/focus-music.js?v={{ asset_version | default('') }}"></script>
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version | default('') }}">
@@ -199,6 +200,10 @@
               <span class="pj-timer-icon" data-timer-icon>▶</span>
               <span class="pj-timer-display" data-timer-display>25:00</span>
             </button>
+            {# 修修 (2026-08-25): now-playing focus music — populated by focus-music.js #}
+            <span class="pj-music-title" data-music-title hidden>
+              <span class="pj-music-note" aria-hidden="true">♪</span><span data-music-name></span>
+            </span>
           </div>
 
           {# running-only: finish-early (logs ACTUAL elapsed — A2) / abort (no log) #}
@@ -332,6 +337,7 @@
     }
     function submitLog() {
       stopTicker();
+      if (window.ShoFocusMusic) ShoFocusMusic.stop();
       var mode = curMode();
       // cap at the nominal block (a natural finish / background overshoot logs a full
       // block; an early 完成 logs the actual focused time — ADR-040 A2). The route
@@ -351,14 +357,21 @@
     }
 
     btn.addEventListener('click', function () {
-      if (isRunning()) { pause(); render(); return; }  // ⏸ pause, keep banked time
+      if (isRunning()) {  // ⏸ pause, keep banked time; hold the music with it
+        pause();
+        if (window.ShoFocusMusic) ShoFocusMusic.pause();
+        render(); return;
+      }
       started = true; runStartTs = Date.now();
       stopTicker(); ticker = setInterval(tick, 500);
+      // 修修 (2026-08-25): 開始計時 → focus music（resume 續播暫停曲、否則隨機抽一首）
+      if (window.ShoFocusMusic) ShoFocusMusic.resume();
       render();
     });
     if (finishBtn) finishBtn.addEventListener('click', submitLog);
     if (abortBtn) abortBtn.addEventListener('click', function () {
       stopTicker(); started = false; elapsedBefore = 0; runStartTs = 0;
+      if (window.ShoFocusMusic) ShoFocusMusic.stop();
       nominalSec = curMin() * 60; render();
     });
     Array.prototype.forEach.call(modeRadios, function (r) {
