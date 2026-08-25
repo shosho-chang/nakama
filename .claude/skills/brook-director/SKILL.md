@@ -3,8 +3,9 @@ name: brook-director
 description: >
   Director 分鏡導演手冊（ADR-051）。Triggers: /brook-director、「劃分鏡」、
   「幫這集排 B-roll」、「跑 Director」。讀校正後字幕（transcript.srt）→ 分型 →
-  逐 beat 分鏡判斷 → 取得外部素材（Envato/KOL/外供）→ 產 storyboard.yaml →
-  Bridge 審核 → render/emit。創意判斷在本手冊；render/emit/審核契約歸
+  逐 beat 分鏡判斷。Standalone Video Production Line 產 storyboard.yaml；Podcast
+  Highlight 則讀 DIRECTOR-WORK.json、產 DIRECTOR-PLAN.json，再交 brook-dp。
+  創意判斷在本手冊；驗證／素材履約／render/emit契約歸
   agents/brook/script_video/ pipeline 程式，本 skill 只呼叫、不重新發明。
 ---
 
@@ -15,8 +16,79 @@ description: >
 
 你是這條影片產線的**導演**：讀字幕、決定每個 beat 給觀眾看什麼（`visual_intent`
 意圖層，修修裁決 A）、產出機器可讀的分鏡表。你**不是** render 工人也不是 schema
-發明者。素材的具體實現（component/params/asset、詳細搜尋詞、render prompt）屬
-**DP（brook-dp skill）**職掌——brook-dp 落地前由你兼任 Step 3–5，落地後移交。
+發明者。素材的具體實現（component/params/asset、詳細搜尋詞、render prompt）已正式屬
+**DP（brook-dp skill）**職掌；不得再由 Director 兼任。
+
+## Podcast Highlight production adapter（ADR-065；優先於下方 standalone 步驟）
+
+當輸入是 Podcast episode + cut ID，唯一 production truth root 是 revision-aware DAG：
+
+```text
+<episode>/highlights/visual-pipeline/<cut-id>/
+  PENDING.json
+  CURRENT.json
+  revisions/<revision-id>/
+    DIRECTOR-WORK.json       podcast-highlight-visual-work-packet-v1
+    DIRECTOR-PLAN.json       podcast-highlight-director-plan-v1
+    DP-FULFILLMENT.json      podcast-highlight-dp-fulfillment-v1
+    SEMANTIC-AUDIT.json      podcast-highlight-visual-semantic-audit-v1
+```
+
+Production 預設由 trusted orchestrator執行；base generation不得帶 `--revision-request`，finished review重做則
+必須傳該 job的 immutable `request.json`，不得找 mtime latest或讀會繼續 append的 feedback JSON：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_orchestrator.py "<episode>" `
+  --cut-id <cut-id> [--revision-request "<episode-local immutable request.json>"]
+```
+
+這個 command固定完成 `init → Director proposal → accept-director → 不同 DP proposal → accept-dp →
+同一 Director session semantic audit → accept-audit → verify`。Codex runtime的 Director首輪是
+`codex exec --json`，audit必須 `codex exec resume <DIRECTOR_SESSION_ID>`；DP另開不同 session。Agent只可寫
+phase-local proposal，trusted host從實際 process/session產生 worker identity與execution receipt，再呼叫 accept；
+不得採信 proposal自報的 worker/session，也不得讓 agent寫 canonical receipts。
+
+Claude Code沒有呼叫上述 Codex worker orchestrator時，必須以兩個隔離 subagents維持相同順序；保存原 Director
+subagent/session handle並在 audit階段恢復它，DP必須是另一個 handle。Deterministic CLI sequence的 accept參數是：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py init "<episode>" --cut-id <cut-id> [--revision-request "<immutable request.json>"]
+# Director writes a phase-local proposal, then trusted host supplies actual execution identity:
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py accept-director "<episode>" --cut-id <cut-id> --revision-id <revision-id> --proposal "<director-proposal.json>" --worker-id <trusted-director-worker-id> --execution-id <trusted-director-execution-id> --session-id <trusted-director-session-id>
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py status "<episode>" --cut-id <cut-id>
+```
+
+1. 先用 status/validator fresh重驗 PENDING revision內的 `DIRECTOR-WORK.json`。它必須綁 exact episode/cut、
+   Editorial Master、winner/materialization lineage、tight SRT與 exact revision request；不要搜尋另一份字幕。
+2. 完整讀取 work packet指定的 tight SRT，以 exact cue quote/time/hash建立每個 visual event。
+3. 只寫意圖：category、form/description、必要 `on_screen_text`（保留人工換行）、negative constraints與
+   broad source hint。
+   不搜尋具體候選、不選 asset、不填 license、不寫 `_broll.json`。
+4. 產出 phase-local `podcast-highlight-director-plan-v1` proposal；只有 trusted `accept-director`可寫
+   `revisions/<revision-id>/DIRECTOR-PLAN.json`。不可直接覆寫 canonical receipt或即席新增欄位。
+5. Fresh status必須前進到 `awaiting_dp`。交回 orchestrator dispatch一個不同 agent完整執行
+   `brook-dp`；Director不得冒充 DP。DP完成後，orchestrator必須把 fulfillment交回**同一個 Director
+   worker identity**做 semantic audit，再接受 `SEMANTIC-AUDIT.json`。
+
+Semantic audit是 Director對照自己原意圖、exact transcript quote與 DP實現的第二次獨立判斷：worker identity
+必須等於 `DIRECTOR-PLAN.json` 的 Director，且不得等於 DP。逐 event exact coverage；任一 mismatch就
+invalid，不可為了進 materializer改成 pass。只有 trusted `accept-audit`全數通過時才 pointer-last切換
+`CURRENT.json`；pending generation crash/invalid必須保留前一個 CURRENT，重跑同一 immutable request只 resume
+同一 revision，不得另造 generation。
+
+Podcast route沒有 standalone `/brook/video/<ep>` text approval中繼 gate。普通
+`awaiting_director` 是 agent-owned next work；只有 transcript／authority／創意意圖真正歧義才升級 HITL。
+Bridge `/bridge/highlights/<episode>/finished` 只在成片 review時 read-only展示 fresh receipts。
+
+名稱紅線：`scripts/run_short_director.py` 是 **camera/Timeline director**，只做機位、構圖與 Resolve
+derived Timeline；它的成功**不代表本 skill執行過**。既有 `_broll.json`、Stock Video數量或舊
+materialization receipt也不能替代 `DIRECTOR-WORK.json` → `DIRECTOR-PLAN.json`。
+
+Director plan涵蓋所有 content visuals：Stock／Hero／keyword／quote／chapter／card；結構性
+badge／camera correction／guest namecard由各自 deterministic contract處理，不為了湊coverage重複規劃。
+
+下方 `data/script_video/<ep>/storyboard.yaml`、`/brook/video/<ep>`、render/emit 步驟保留給
+ADR-051 standalone script-driven video。Podcast Highlight 不得 silent fallback 到那條 route。
 
 ## 紅線（每次執行都適用）
 
@@ -129,10 +201,10 @@ visual_intent，實現由 DP 降級（overlay→滿版短卡或 none；canvas_pi
 合法，判定粒度 source_url）；anti-literal（「成長」≠上升箭頭——worked_example
 的實算動畫是 anti-literal 的正解）；anti-hype 深入見 STYLE.md。
 
-## Step 3 — 跨語言搜尋詞生成（stock / KOL 前置）
+## Step 3 — 搜尋切面提示（DP-owned；Standalone storyboard only）
 
-稿是中文，素材庫是英文。每個 asset 類 beat 先做查詢擴展：一個中文概念出
-**3–5 組不同切面**的英文詞，寫進 run log 再開搜。
+稿是中文，素材庫是英文。Director只在 `source_hint` 記 broad semantic angles；具體 query、候選與搜尋
+run log由 DP產生。下列 3–5 組不同切面是交給 DP的提示，不是 Director自行開搜的授權。
 
 例：「複利效應」→
 - 字面：`compound interest growth`
@@ -146,7 +218,10 @@ visual_intent，實現由 DP 降級（overlay→滿版短卡或 none；canvas_pi
 
 一組詞搜不到好的就換切面，**不要**同義詞微調後重搜同一切面。
 
-## Step 4 — 外部素材獲取
+## Step 4 — 外部素材獲取（DP-only；Director 不執行）
+
+本節保留素材來源與護欄作跨 skill reference；實際取得、候選比較、授權與驗收一律由
+`brook-dp` 執行。Director到 Step 2/3 意圖完成就停，不得自行下載或選首選。
 
 ### 4a. Stock（Envato Elements）
 
@@ -187,11 +262,12 @@ visual_intent，實現由 DP 降級（overlay→滿版短卡或 none；canvas_pi
 `asset.kind = screen_recording`。缺檔時 beat 照排、`path` 留空，列入
 asset_requests 的「外供待補」節提醒修修。
 
-## Step 5 — 批次交接（asset_requests → asset_manifest）
+## Step 5 — 批次交接（DP-only legacy standalone contract）
 
-Stock 下載一次性批次交接（D5 + panel v2 §2）。兩檔都放 `<ep>/`：
+Stock 下載一次性批次交接（D5 + panel v2 §2）。這是 standalone route的 DP責任；Podcast route改由
+`DP-FULFILLMENT.json` 留存 candidates/selected/provenance，不得寫這兩個 YAML旁路。兩檔都放 `<ep>/`：
 
-**`asset_requests.yaml`**（你寫，意圖）：
+**`asset_requests.yaml`**（DP寫，履約請求）：
 
 ```yaml
 episode: <ep>
@@ -232,7 +308,7 @@ Do not re-encode or rename beyond target_path. Do not download items
 not listed. If an item is unavailable, mark failed with reason and move on.
 ```
 
-**驗收（你做，逐項，不可抽查）**——讀 `asset_manifest.yaml`：
+**驗收（DP做，逐項，不可抽查）**——讀 `asset_manifest.yaml`：
 1. 檔案存在於 `path`
 2. 算 SHA-256 → 寫進 storyboard `broll.asset.sha256`（render/emit 前 dispatcher
    會重驗，防檔案被替換後沿用過期審核）
@@ -241,7 +317,7 @@ not listed. If an item is unavailable, mark failed with reason and move on.
 4. `failed` 項目：換備選 URL 重發一輪 requests，或降級該 beat 為 none
 5. 驗收結果（含 conform 紀錄）寫 run log
 
-## Step 6 — storyboard.yaml 定稿
+## Step 6 — storyboard.yaml 定稿（Standalone only）
 
 寫進 `<ep>/storyboard.yaml`。schema 重點（違反會被 pydantic 擋）：
 
@@ -255,14 +331,14 @@ component（source_url 粒度）、asset 類出處欄位齊全、詞彙全在 gu
 list；KOL 單源 >20s 會出提醒警告（不擋審，總量唸給修修聽過再放行）。另自查節拍器：任何 20s 窗口若 cutaway＋overlay 皆無，
 重看該段是否真的該靜（validator 尚未管 overlay 層，先人工檢查）。
 
-## Step 7 — Bridge 審核（HITL）
+## Step 7 — Bridge 審核（Standalone only）
 
 主通道：Bridge UI `/brook/video/<ep>`，兩層審核——text approved（分鏡文字層）→
 render → visual approved（成品畫面層）。備援：對話審（單 beat 重排走
 `brook-replan-beat` skill）。**兩層都過才算導演工作完成**；修修圈選備選候選
 時回 Step 5 換檔重走驗收。
 
-## Step 8 — render / emit
+## Step 8 — render / emit（Standalone only）
 
 ```bash
 python -m agents.brook.script_video --episode <ep> render   # hyperframes 類才 render；asset 類驗檔案+sha256 即 done

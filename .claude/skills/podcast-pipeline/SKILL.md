@@ -403,8 +403,9 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\run_cut_shortlist.py "<episode>" -
 
 ## S9 — long highlight and finished-cut review
 
-對每個 long winner 依序跑 tightening，再封存 guest identity placement，最後跑 director、titles、b-roll、
-SFX、review。Tightening／director 都只能使用 Editorial Master media/timebase：
+對每個 long winner 依序跑 tightening，再封存 guest identity placement與機位／Timeline 導播，接著強制走
+ADR-065 的 Director → DP → same-Director second-pass semantic audit receipt chain，最後才 materialize visual events、跑
+titles、SFX、review。Tightening與所有視覺工作都只能使用 Editorial Master media/timebase：
 
 ```powershell
 & "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_tighten.py "<episode>" --detect --id <winner-id>
@@ -418,11 +419,80 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_identity_placement.py emit
   --cut-id <winner-id> --name "<guest-name>" --title "<guest-title>"
 E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_identity_placement.py verify "<episode>" --cut-id <winner-id>
 & "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_director.py "<episode>" --id <winner-id> --stills "<stills-dir>"
+```
+
+名稱邊界不可混淆：`run_short_director.py` = camera/Timeline director，**不代表 `brook-director` skill**
+execution；它只處理鏡位、構圖與 derived Timeline。完成後呼叫 trusted producer（base generation不帶
+request；finished-review revision必須傳該 job immutable `request.json`，不可推斷 latest）：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_orchestrator.py "<episode>" `
+  --cut-id <winner-id> [--revision-request "<episode-local immutable request.json>"]
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py status "<episode>" --cut-id <winner-id>
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py verify "<episode>" --cut-id <winner-id>
+```
+
+Truth root是 `highlights/visual-pipeline/<winner-id>/`；`PENDING.json`指向工作中的 generation，
+`CURRENT.json`只在 semantic audit全數接受後 pointer-last切換，四份 canonical artifacts位於
+`revisions/<revision-id>/`。新 generation crash/invalid不得破壞上一 CURRENT；同一 immutable request retry
+必須 resume同一 revision。
+
+接著的 agent-owned receipt 順序固定為：
+
+```text
+revisions/<revision-id>/DIRECTOR-WORK.json
+  → dispatch subscription agent，完整讀取 brook-director skill
+  → DIRECTOR-PLAN.json (podcast-highlight-director-plan-v1)
+  → trusted accept-director（actual worker/execution/session identity）
+  → dispatch另一個 subscription agent，完整讀取 brook-dp skill
+  → DP-FULFILLMENT.json (podcast-highlight-dp-fulfillment-v1)
+  → trusted accept-dp（different worker + session）
+  → resume原 Director session做 second-pass semantic audit
+  → SEMANTIC-AUDIT.json (podcast-highlight-visual-semantic-audit-v1)
+  → trusted accept-audit → CURRENT pointer-last
+  → deterministic verify = ready_to_materialize
+```
+
+Codex orchestrator以 `codex exec --json`保存 Director session、另開 DP session，再用
+`codex exec resume <DIRECTOR_SESSION_ID>`做 audit；proposal自報 identity一律拒絕。Claude Code route則以
+兩個隔離 subagents完成相同順序並恢復原 Director handle；accept CLI exact flags以 `brook-director`／
+`brook-dp` skill為準，不能用一個 generic agent handwrite receipts或 `_broll.json`／`_titles.json`。
+
+Director 必須逐 event 綁 exact tight-SRT quote/time/hash、分類、描述與 negative constraints；DP 必須對每個
+event 保存 mode、`target_lane`、不同搜尋切面、候選、selected reason與 source/license/hash。這條 contract
+涵蓋**所有 content visuals**：Stock／Hero／keyword／quote／chapter／card，不是只管理 Stock Video。
+結構性 badge／camera correction／guest namecard可維持各自既有 deterministic contract，不冒充內容視覺。
+Semantic audit 必須 exact
+覆蓋所有 event，逐一判斷「畫面是否就是這句語意」，不能把檔案存在、來源可信或數量達標冒充語意通過。
+Semantic audit worker identity必須等於原 Director、且不同於 DP；由 Director回頭檢查 DP是否忠實實現
+原意圖，不是 DP自審。Missing coverage 或 mismatch 直接 invalid。
+
+只有 complete chain fresh 驗證成 `ready_to_materialize` 後才可執行：
+
+```powershell
 & "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_broll.py "<episode>" --id <winner-id> --stills "<stills-dir>"
 & "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_titles.py "<episode>" --id <winner-id>
 & "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_sfx.py "<episode>" --id <winner-id>
 & "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_review.py "<episode>" --id <winner-id>
 ```
+
+`run_short_broll.py` = materializer，**不代表 `brook-dp` skill** execution；它不得搜尋、挑選、改寫 intent
+或為缺件補預設素材。缺少／stale／invalid 任一 receipt 就停在對應 agent-owned next work，不得用既有
+`_broll.json`、至少三支 Stock Video或 legacy v1 materialization receipt旁路。普通 pending 不是 human
+gate；agent應繼續完成下一份 receipt，**只有 ambiguity 才是 HITL**。`run_short_titles.py` = materializer，
+同樣只能 consume DP核准的 title implementation，不得自行發明 Hero/keyword文字或落點。
+
+Bridge finished review按「保存草稿」／request changes後的自動行為固定為：router把該 revision feedback與
+fresh preview/master/tighten identities封成 episode-local immutable `request.json` → watcher的 generic agent只
+能產非視覺 tightening input → `run_visual_pipeline(..., revision_request=context['request_path'])` dispatch
+Director/DP/audit → trusted `emit_audited_recipe`同時產 `_broll.json`與`_titles.json` → 兩份 recipe fresh
+preflight通過後才可開始 Resolve transaction → 重建 `nakama.finished_cut_review_manifest.v2`。Manifest cut row
+必須綁 Stock Video v2 receipt與 CURRENT visual DAG（pointer + work/Director/DP/audit identities）。任何 phase
+失敗會把 job標成 failed並保留上一 CURRENT／成片；不會進 Resolve，也不會默默沿用 generic agent手寫視覺。
+新版 preview成功後回到同一 finished review human gate，不新增中途 approval。
+部署時既有 `nakama.finished_cut_review_manifest.v1`只能作 legacy read-only preview：允許保存修改以觸發上述
+revision，但不得 approve／進 Packaging，也不得原地改 schema或重新簽名冒充 v2；新 revision成功重建 v2
+後才恢復核准。
 
 `accept` 之前先 resolve `<winner-id>_tight_r*.srt` 中實際最新版的 exact path，再 dispatch 兩個互相隔離、
 不可讀彼此輸出的 subscription workers。兩者只讀同一 cut-specific SRT 與必要訪綱／前期資料，判斷
@@ -447,7 +517,7 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_identity_placement.py veri
 `IDENTITY-PLACEMENT.json`。同 worker、free-string 自報、不同 cue、stale hash、path escape、first guest cue
 超過 180 秒都 fail closed。衝突／無法判定才回使用者；一致時不得新增普通 human gate。任何
 `emit-event` 會直接以 accepted cue 起點、預設 5.2 秒，原子寫入既有
-`highlights/tighten/<winner-id>_broll.json`，由 `run_short_broll.py` 映射到既有 16:9
+`highlights/tighten/<winner-id>_broll.json`，最後由 materializer 映射到既有 16:9
 `chapter_label` 左對齊名牌 composition；來賓姓名／title 由 agent 從訪綱與前期報告取得，不新增一般
 human gate。`verify` 必須在 renderer 前 fresh 重讀 canonical recipe；開始點不得早於或漂出 accepted cue，
 identity lineage 過期也 fail closed。林之晨 `value-L01` 的已核准 fixture 是 43.0–48.2 秒。

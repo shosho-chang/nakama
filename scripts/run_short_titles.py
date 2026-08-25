@@ -37,11 +37,11 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 import re
 import subprocess
 import sys
 import time
-from collections import Counter
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
@@ -51,7 +51,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from run_highlight_cut import FORMAT_LABEL  # noqa: E402
-from run_short_tighten import TIGHTEN_DIR, _load_winner  # noqa: E402
+from run_short_tighten import TIGHTEN_DIR, _load_winner, _open_editorial_master  # noqa: E402
+
+from agents.brook.script_video.highlight_broll import (  # noqa: E402
+    BrollContractError,
+    verify_visual_recipe_lineage,
+)
 
 logger = logging.getLogger("short_titles")
 
@@ -148,32 +153,126 @@ def _spoken_around(episode_dir: Path, cid: str, t0: float, t1: float) -> str:
     return "".join(out)
 
 
+def _load_titles(episode_dir: Path, cid: str) -> tuple[Path, list[dict]]:
+    path = episode_dir / TIGHTEN_DIR / f"{cid}_titles.json"
+    try:
+        titles = json.loads(path.read_text(encoding="utf-8"))["titles"]
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise SystemExit(f"{path} 不存在或不是合法 title plan") from exc
+    if not isinstance(titles, list):
+        raise SystemExit(f"{path} titles 必須是 array")
+    return path, titles
+
+
+def validate_plan(episode_dir: Path, cid: str) -> dict:
+    """Read-only preflight for the complete audited content-visual recipe pair."""
+
+    master = _open_editorial_master(episode_dir)
+    candidate, _winner = _load_winner(episode_dir, cid, master.identity())
+    _path, titles = _load_titles(episode_dir, cid)
+    try:
+        lineage, _broll = verify_visual_recipe_lineage(
+            episode_dir,
+            cid,
+            str(candidate["format"]),
+            master.identity(),
+            title_items=titles,
+            editorial_master=master,
+        )
+    except BrollContractError as exc:
+        raise SystemExit(f"Title visual production gate 失敗：{exc}") from exc
+    return {
+        "status": "plan-valid",
+        "cut_id": cid,
+        "format": candidate["format"],
+        "title_count": len(titles),
+        "visual_pipeline_content_hash": lineage["content_hash"],
+    }
+
+
+def emit_audited_recipe(
+    cid: str,
+    materializations: list[dict] | tuple[dict, ...],
+    *,
+    output_dir: Path,
+) -> Path:
+    """Deterministically project accepted title materializations into one recipe."""
+
+    from agents.brook.script_video.highlight_visual_pipeline import (
+        HighlightVisualContractError,
+        validate_materialization_projection,
+    )
+
+    titles: list[dict] = []
+    for index, raw in enumerate(materializations):
+        try:
+            projection = validate_materialization_projection(
+                raw, label=f"materializations[{index}]"
+            )
+        except HighlightVisualContractError as exc:
+            raise BrollContractError(f"DP title materialization schema 不合法：{exc}") from exc
+        if projection["target_lane"] != "title_track3":
+            continue
+        implementation = projection["implementation_kind"]
+        if implementation not in {"hero_title", "supporting_title"}:
+            raise BrollContractError(f"DP title implementation 不合法：{implementation}")
+        spec = projection["render_spec"]
+        if not isinstance(spec, dict) or not isinstance(spec.get("render_params"), dict):
+            raise BrollContractError("DP title 缺少 exact render_spec")
+        params = spec["render_params"]
+        titles.append(
+            {
+                "text": projection["on_screen_text"],
+                "t0": projection["t0"],
+                "t1": projection["t1"],
+                "tier": 1 if implementation == "hero_title" else 2,
+                "style": params["style"],
+                "pos_y": params["pos_y"],
+                "source_range": projection["source_range"],
+                "media_path": projection["media"]["path"],
+                "provenance": projection["provenance"],
+                "render_spec": projection["render_spec"],
+                "visual_materialization": projection,
+            }
+        )
+    output_dir.mkdir(parents=True, exist_ok=True)
+    destination = output_dir / f"{cid}_titles.json"
+    temporary = destination.with_suffix(destination.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps({"titles": titles}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, destination)
+    return destination
+
+
 def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     from build_resolve_project import connect_resolve
 
-    c, w = _load_winner(episode_dir, cid)
+    master = _open_editorial_master(episode_dir)
+    c, w = _load_winner(episode_dir, cid, master.identity())
     fmt = c.get("format", "short")
     fcfg = FORMAT_TITLES[fmt]
-    titles_path = episode_dir / TIGHTEN_DIR / f"{cid}_titles.json"
-    if not titles_path.exists():
-        raise SystemExit(f"{titles_path} 不存在——agent 先從 tight SRT 選 punch 時間點")
-    titles = json.loads(titles_path.read_text(encoding="utf-8"))["titles"]
+    _titles_path, titles = _load_titles(episode_dir, cid)
+    try:
+        visual_lineage, _broll = verify_visual_recipe_lineage(
+            episode_dir,
+            cid,
+            str(fmt),
+            master.identity(),
+            title_items=titles,
+            editorial_master=master,
+        )
+    except BrollContractError as exc:
+        raise SystemExit(f"Title visual production gate 失敗：{exc}") from exc
     titles.sort(key=lambda x: x["t0"])
     heroes = [x for x in titles if int(x.get("tier", 2)) == 1]
     if not 1 <= len(heroes) <= 3:
         raise SystemExit(
             f"hero（tier 1）有 {len(heroes)} 張——修修二十七輪：1–3 張（中段一張論點、片尾一張收束）"
         )
-    bad_beat = [x for x in heroes if x.get("beat") not in ("insight", "closing")]
-    if bad_beat:
-        raise SystemExit(
-            "hero 的 beat 只能是 insight（論點）或 closing（收束）："
-            + "、".join(x["text"].replace(chr(10), "／") for x in bad_beat)
-        )
-
-    # 1) 逐卡 render（參數 hash cache）
-    cards_dir = episode_dir / CARDS_DIR
-    cards_dir.mkdir(parents=True, exist_ok=True)
+    # 1) Consume the exact DP-rendered, Director-audited preview bytes.  This
+    # materializer never re-renders or mutates an accepted render spec.
     jobs = []
     for i, t in enumerate(titles):
         show_sec = round(float(t["t1"]) - float(t["t0"]), 2)
@@ -183,59 +282,45 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
                 "composition data-duration 固定 4s，更長的卡拆兩張或改 t1"
             )
         lines = t["text"].split("\n")
-        beat = t.get("beat")
-        if beat not in BEATS:
-            raise SystemExit(
-                f"卡片 {i}「{t['text'].replace(chr(10), '／')}」缺 beat 或不合法"
-                f"（要 {'/'.join(BEATS)}）——寫不出它在論證裡的角色，就不該放這張卡"
-            )
         tier = int(t.get("tier", 2))
         if tier not in (1, 2):
             raise SystemExit(f"卡片 {i} tier={tier} 不合法（1=hero 2=標準）")
-        # 字卡必須是**講者原話的連續節錄**，不是轉譯／總結（二十六輪血案：
-        # 「三分鐘的獎勵／十年的成果」是我自行合成的對比，講者從沒這樣說 →
-        # 字卡與耳朵聽到的對不上，變成干擾）。範本 22 張卡全是原話直接擷取。
-        # 「有意義的 summary」而不是逐字節錄（二十七輪修修裁決：可以改寫、
-        # 要有意義）。但**不可自行合成講者沒說的話**——用子序列比例把關：
-        # 卡片的字必須大多按原順序出現在該時段的原話裡（壓縮/省贅字 OK，
-        # 跨段拼貼會掉到門檻以下）。
-        spoken = _spoken_around(episode_dir, cid, float(t["t0"]), float(t["t1"]))
-        if spoken:
-            # 字元重疊比例（不強制順序——summary 常會調詞序、省贅字；
-            # 但憑空捏造的字會讓比例掉下來）
-            card_n, spoken_n = _norm(t["text"]), _norm(spoken)
-            pool = Counter(spoken_n)
-            hit = sum(1 for ch in card_n if pool[ch] > 0 and not pool.__setitem__(ch, pool[ch] - 1))
-            ratio = hit / max(1, len(card_n))
-            if ratio < 0.7:
-                raise SystemExit(
-                    "卡片 {} 「{}」與該時段原話落差太大（按序命中 {:.0%}）。\n"
-                    "  該時段實際說的是：{}\n"
-                    "  可以壓縮改寫，但不可寫成講者沒說的意思".format(
-                        i, t["text"].replace(chr(10), "／"), ratio, spoken
-                    )
-                )
         limit = fcfg["max_line_hero"] if tier == 1 else fcfg["max_line"]
         too_long = [x for x in lines if len(x) > limit]
         if too_long:
             raise SystemExit(f"卡片 {i}（tier {tier}）行超過 {limit} 字：{too_long}——改寫或拆行")
-        variables = {
-            "line1": lines[0],
-            "line2": lines[1] if len(lines) > 1 else "",
-            "show_sec": show_sec,
-            "pos_y": float(t.get("pos_y", fcfg["pos_y"][tier])),
-            "tier": tier,
-        }
-        style = t.get("style", fcfg.get("style"))
-        if style:  # 短片無 style 概念——不進 variables，hash 不變
-            variables["style"] = style
-        h = _card_hash(variables, fcfg["comp"])
-        mov = cards_dir / f"{cid}_{i}_{h}.mov"
-        if not mov.exists():
-            _render_card(variables, mov, fcfg["comp"])
-        else:
-            logger.info("cache hit: %s", mov.name)
-        jobs.append({"mov": mov, "t0": float(t["t0"]), "show_sec": show_sec, "text": t["text"]})
+        projection = t["visual_materialization"]
+        mov = (episode_dir / projection["media"]["path"]).resolve()
+        params = projection["render_spec"]["render_params"]
+        jobs.append(
+            {
+                "mov": mov,
+                "t0": float(t["t0"]),
+                "show_sec": show_sec,
+                "text": t["text"],
+                "pos_y": float(params["pos_y"]),
+                "source_start": float(projection["source_range"]["start_sec"]),
+                "timeline_name": f"{cid}_title_{projection['materialization_id']}",
+            }
+        )
+
+    # Re-open both roots immediately before any Resolve access. CURRENT may
+    # switch while jobs are prepared; a different generation must never apply.
+    master = _open_editorial_master(episode_dir)
+    c, w = _load_winner(episode_dir, cid, master.identity())
+    try:
+        fresh_lineage, _broll = verify_visual_recipe_lineage(
+            episode_dir,
+            cid,
+            str(c["format"]),
+            master.identity(),
+            title_items=titles,
+            editorial_master=master,
+        )
+    except BrollContractError as exc:
+        raise SystemExit(f"Title visual production gate 失敗：{exc}") from exc
+    if fresh_lineage != visual_lineage:
+        raise SystemExit("Title visual pipeline CURRENT 在準備期間切換，未連線 Resolve")
 
     # 2) Resolve：匯入 + 疊軌
     resolve = connect_resolve()
@@ -336,6 +421,7 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         items = mp.ImportMedia([str(job["mov"])]) or []
         if not items:
             raise SystemExit(f"匯入失敗: {job['mov']}")
+        items[0].SetClipProperty("Clip Name", job["timeline_name"])
         record = tl_start + int(job["t0"] * fps)
         # 卡片退場動畫收在 show_sec 內，截到 show_sec + 2 frames；
         # 並鉗位在主畫面結束前——卡片伸出片尾會變「黑底浮卡」（盲審 S2 抓到）
@@ -347,8 +433,8 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
                     "mediaType": 1,
                     "trackIndex": 3,
                     "recordFrame": record,
-                    "startFrame": 0,
-                    "endFrame": dur,
+                    "startFrame": int(job["source_start"] * fps),
+                    "endFrame": int(job["source_start"] * fps) + dur,
                 }
             ]
         )
@@ -395,8 +481,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("episode", help="episode 資料夾")
     parser.add_argument("--id", required=True, help="winner id（如 punch-S1）")
     parser.add_argument("--stills", help="物化後渲樣張到此資料夾")
+    parser.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="驗 current Director/DP/Audit、exact recipes/media，不連 Resolve",
+    )
     args = parser.parse_args(argv)
-    result = apply(Path(args.episode), args.id, Path(args.stills) if args.stills else None)
+    result = (
+        validate_plan(Path(args.episode), args.id)
+        if args.validate_only
+        else apply(Path(args.episode), args.id, Path(args.stills) if args.stills else None)
+    )
     print(json.dumps(result, ensure_ascii=False, indent=1))
     return 0
 

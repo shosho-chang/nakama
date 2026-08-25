@@ -11,7 +11,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import quote
 
 from fastapi import APIRouter, Cookie, HTTPException, Query
@@ -22,6 +22,11 @@ from starlette.requests import Request
 from agents.brook.script_video.editorial_master import (
     EditorialMasterContractError,
     EditorialMasterRequest,
+)
+from agents.brook.script_video.highlight_visual_pipeline import (
+    HighlightVisualContractError,
+    verify_visual_pipeline,
+    visual_pipeline_status,
 )
 from scripts.build_finished_review_manifest import verify_finished_review_manifest
 from scripts.finished_review_watcher import (
@@ -49,7 +54,8 @@ _MAX_CANDIDATES = 5
 _MAX_FEEDBACK = 2000
 _MAX_REPLACEMENT = 500
 _MAX_OVERALL_FEEDBACK = 5000
-_FINISHED_MANIFEST_SCHEMA = "nakama.finished_cut_review_manifest.v1"
+_FINISHED_MANIFEST_SCHEMA = "nakama.finished_cut_review_manifest.v2"
+_LEGACY_FINISHED_MANIFEST_SCHEMA = "nakama.finished_cut_review_manifest.v1"
 _FINISHED_FEEDBACK_SCHEMA = "nakama.finished_cut_review_feedback.v1"
 _FINISHED_FEEDBACK_FILE = "finished_review_feedback.v1.json"
 _SHORT_FINISHED_FEEDBACK_FILE = "short_finished_review_feedback.v1.json"
@@ -77,6 +83,15 @@ _SHORT_COMPONENT_ACTIONS = {
     "b_roll": ["approve", "remove", "replace_asset", "change_type", "move", "comment"],
     "visual_effect": ["approve", "remove", "replace_asset", "change_type", "move", "comment"],
     "pacing": ["approve", "remove", "move", "comment"],
+}
+_VISUAL_STATUS_LABELS = {
+    "awaiting_init": "尚未建立視覺 work packet",
+    "awaiting_director": "等待 Director 視覺意圖",
+    "awaiting_dp": "等待 DP 製作",
+    "awaiting_semantic_audit": "等待 Director 語意複核",
+    "ready_to_materialize": "CURRENT 已驗證，可 materialize",
+    "invalid": "VISUAL PIPELINE INVALID",
+    "legacy_manifest": "LEGACY MANIFEST V1 — 等待 v2 lineage",
 }
 _PUBLISH_PREP_PROCESSES: dict[tuple[str, str], subprocess.Popen] = {}
 _PUBLISH_PREP_TIMEOUT_SECONDS = 7200
@@ -170,6 +185,177 @@ def _review_format(value: str) -> str:
     if normalized not in {"long", "short"}:
         raise HTTPException(status_code=400, detail="format must be long or short")
     return normalized
+
+
+def _visual_time_range(t0: object, t1: object) -> str:
+    def stamp(value: object) -> str:
+        seconds = float(value)
+        minutes, remainder = divmod(seconds, 60)
+        return f"{int(minutes):02d}:{remainder:06.3f}"
+
+    return f"{stamp(t0)}–{stamp(t1)}"
+
+
+def _safe_http_source_url(value: object) -> str | None:
+    if isinstance(value, str) and value.startswith(("https://", "http://")):
+        return value
+    return None
+
+
+def _verified_visual_events(selection: object) -> list[dict[str, object]]:
+    director_document = selection.director_plan.document
+    dp_document = selection.dp_fulfillment.document
+    audit_document = selection.semantic_audit.document
+    implementations = {
+        item["event_id"]: item
+        for item in dp_document["implementations"]
+        if isinstance(item, Mapping)
+    }
+    materializations: dict[str, list[Mapping[str, object]]] = {}
+    for item in selection.materializations:
+        if isinstance(item, Mapping):
+            materializations.setdefault(str(item["event_id"]), []).append(item)
+    findings = {
+        item["materialization_id"]: item
+        for item in audit_document["findings"]
+        if isinstance(item, Mapping)
+    }
+    views: list[dict[str, object]] = []
+    for event in director_document["events"]:
+        if not isinstance(event, Mapping):
+            continue
+        implementation = implementations.get(event["event_id"])
+        event_view: dict[str, object] = {
+            **dict(event),
+            "time_range": _visual_time_range(event["t0"], event["t1"]),
+            "implementation": None,
+        }
+        if implementation is None:
+            views.append(event_view)
+            continue
+        event_materializations = materializations.get(str(event["event_id"]), [])
+        selection_views: list[dict[str, object]] = []
+        selected_ids: set[str] = set()
+        for index, selected in enumerate(implementation["selections"]):
+            if not isinstance(selected, Mapping):
+                continue
+            materialization = (
+                event_materializations[index] if index < len(event_materializations) else {}
+            )
+            materialization_id = materialization.get("materialization_id")
+            audit_finding = findings.get(materialization_id, {})
+            selected_ids.add(str(selected["candidate_id"]))
+            selection_views.append(
+                {
+                    **dict(selected),
+                    "time_range": _visual_time_range(selected["t0"], selected["t1"]),
+                    "materialization_id": materialization_id,
+                    "audit": dict(audit_finding),
+                }
+            )
+        candidate_views: list[dict[str, object]] = []
+        for index, candidate in enumerate(implementation["candidates"]):
+            if not isinstance(candidate, Mapping):
+                continue
+            provenance = candidate["provenance"]
+            source_url = provenance["source_url"]
+            candidate_views.append(
+                {
+                    **dict(candidate),
+                    "label": chr(ord("A") + index),
+                    "selected": str(candidate["candidate_id"]) in selected_ids,
+                    "provenance": {
+                        **dict(provenance),
+                        "safe_source_url": _safe_http_source_url(source_url),
+                    },
+                }
+            )
+        event_view["implementation"] = {
+            **dict(implementation),
+            "candidates": candidate_views,
+            "selections": selection_views,
+        }
+        views.append(event_view)
+    return views
+
+
+def _visual_pipeline_view(
+    episode_dir: Path,
+    cut_id: str,
+    *,
+    legacy_manifest: bool = False,
+) -> dict[str, object]:
+    """Build a read-only view exclusively from fresh public verifier output."""
+
+    try:
+        status = visual_pipeline_status(episode_dir, cut_id=cut_id)
+    except (HighlightVisualContractError, OSError) as error:
+        status = {
+            "status": "invalid",
+            "pending_revision_id": None,
+            "current_revision_id": None,
+            "error": str(error),
+        }
+    state = str(status.get("status", "invalid"))
+    view: dict[str, object] = {
+        "status": state,
+        "status_label": _VISUAL_STATUS_LABELS.get(state, "VISUAL PIPELINE INVALID"),
+        "pending_revision_id": status.get("pending_revision_id"),
+        "current_revision_id": status.get("current_revision_id"),
+        "error": status.get("error"),
+        "verified_current": False,
+        "events": [],
+    }
+    if legacy_manifest:
+        view.update(
+            {
+                "status": "legacy_manifest",
+                "status_label": _VISUAL_STATUS_LABELS["legacy_manifest"],
+                "verified_current": False,
+                "events": [],
+            }
+        )
+        return view
+    current_revision_id = status.get("current_revision_id")
+    if current_revision_id is None:
+        return view
+    try:
+        selection = verify_visual_pipeline(episode_dir, cut_id=cut_id)
+        selected_revision_id = selection.work_packet.document["revision_id"]
+        if selected_revision_id != current_revision_id:
+            raise HighlightVisualContractError(
+                "verified CURRENT revision differs from visual pipeline status"
+            )
+        view.update(
+            {
+                "verified_current": True,
+                "current_revision_id": selected_revision_id,
+                "events": _verified_visual_events(selection),
+                "coverage": selection.director_plan.document["coverage"],
+                "workers": {
+                    "director": selection.director_plan.document["worker_execution"],
+                    "dp": selection.dp_fulfillment.document["worker_execution"],
+                    "audit": selection.semantic_audit.document["worker_execution"],
+                },
+                "identities": {
+                    "work_packet": selection.work_packet.identity(),
+                    "director_plan": selection.director_plan.identity(),
+                    "dp_fulfillment": selection.dp_fulfillment.identity(),
+                    "semantic_audit": selection.semantic_audit.identity(),
+                },
+            }
+        )
+    except (HighlightVisualContractError, KeyError, TypeError, ValueError, OSError) as error:
+        view.update(
+            {
+                "status": "invalid",
+                "status_label": _VISUAL_STATUS_LABELS["invalid"],
+                "error": str(error),
+                "verified_current": False,
+                "events": [],
+            }
+        )
+    return view
 
 
 def _require_final_qa_clear(episode_dir: Path, cut_id: str) -> None:
@@ -420,15 +606,28 @@ def _load_finished_manifest(episode_slug: str) -> dict[str, Any]:
     path = _latest_finished_manifest_path(review_dir)
     try:
         raw = path.read_bytes()
-        manifest = verify_finished_review_manifest(_episode_dir(episode_slug), path)
+        supplied = json.loads(raw.decode("utf-8-sig"))
+        schema = supplied.get("schema") if isinstance(supplied, dict) else None
+        legacy_read_only = schema == _LEGACY_FINISHED_MANIFEST_SCHEMA
+        if legacy_read_only:
+            manifest = supplied
+        elif schema == _FINISHED_MANIFEST_SCHEMA:
+            manifest = verify_finished_review_manifest(episode_dir, path)
+        else:
+            raise _manifest_error(
+                "schema must be the current v2 contract or legacy read-only v1"
+            )
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise _manifest_error(f"cannot read {path.name}") from exc
     except SystemExit as exc:
         raise _manifest_error(str(exc)) from exc
     if not isinstance(manifest, dict):
         raise _manifest_error("root must be an object")
-    if manifest.get("schema") != _FINISHED_MANIFEST_SCHEMA:
-        raise _manifest_error(f"schema must be {_FINISHED_MANIFEST_SCHEMA}")
+    if manifest.get("schema") not in {
+        _FINISHED_MANIFEST_SCHEMA,
+        _LEGACY_FINISHED_MANIFEST_SCHEMA,
+    }:
+        raise _manifest_error("unsupported finished review manifest schema")
     if manifest.get("episode_id") != episode_slug:
         raise _manifest_error("episode_id does not match URL slug")
     if manifest.get("stage") != 5:
@@ -540,6 +739,7 @@ def _load_finished_manifest(episode_slug: str) -> dict[str, Any]:
     manifest["_path"] = path
     manifest["_review_dir"] = review_dir
     manifest["_sha256"] = hashlib.sha256(raw).hexdigest()
+    manifest["_legacy_read_only"] = legacy_read_only
     manifest["lane_labels"] = {lane: _LANE_LABELS.get(lane, lane.upper()) for lane in lanes}
     return manifest
 
@@ -564,6 +764,10 @@ def _safe_artifact_path(
     if path.stat().st_size != artifact["bytes"]:
         raise HTTPException(
             status_code=409, detail=f"{artifact_name} file size does not match manifest"
+        )
+    if _file_sha256(path) != artifact["sha256"]:
+        raise HTTPException(
+            status_code=409, detail=f"{artifact_name} sha256 does not match manifest"
         )
     return path, artifact
 
@@ -932,8 +1136,15 @@ async def finished_review_board(
         for row in component_feedback
         if isinstance(row, dict) and isinstance(row.get("component_id"), str)
     }
+    episode_dir = _episode_dir(episode_slug)
+    manifest_is_legacy = bool(manifest.get("_legacy_read_only"))
     for cut in manifest["cuts"]:
         cut["saved_status"] = cut_statuses.get(cut["cut_id"], "pending")
+        cut["visual_pipeline"] = _visual_pipeline_view(
+            episode_dir,
+            cut["cut_id"],
+            legacy_manifest=manifest_is_legacy,
+        )
         for component in cut["review_components"]:
             prior = feedback_by_component.get(component["component_id"], {})
             component["saved_action"] = prior.get("action", "")
@@ -959,6 +1170,7 @@ async def finished_review_board(
             "review_query": "?format=short" if review_format == "short" else "",
             "asset_version": _SHOSHO_ASSET_VERSION,
             "latest_revision": latest,
+            "manifest_is_legacy": manifest_is_legacy,
         },
     )
 
@@ -1136,6 +1348,14 @@ async def finished_review_save(
     submit_action = _single_form_value(form, "submit_action")
     if submit_action not in {"save_draft", "approve_cut", "approve_all"}:
         raise HTTPException(status_code=400, detail="invalid finished review submit action")
+    if manifest.get("_legacy_read_only") and submit_action != "save_draft":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "LEGACY MANIFEST V1 僅供讀取與保存修改；先完成 revision 並產生 v2 lineage "
+                "才能核准"
+            ),
+        )
     selected_cut_id = _single_form_value(form, "selected_cut_id").strip()
 
     cuts_by_id = {cut["cut_id"]: cut for cut in manifest["cuts"]}

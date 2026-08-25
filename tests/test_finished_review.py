@@ -8,6 +8,7 @@ import importlib
 import json
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
@@ -20,7 +21,12 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _write_manifest(episode: Path, *, feedback_file: str | None = None) -> Path:
+def _write_manifest(
+    episode: Path,
+    *,
+    feedback_file: str | None = None,
+    schema: str = "nakama.finished_cut_review_manifest.v2",
+) -> Path:
     review = episode / "highlights" / "review"
     review.mkdir(parents=True, exist_ok=True)
     cuts = []
@@ -104,7 +110,7 @@ def _write_manifest(episode: Path, *, feedback_file: str | None = None) -> Path:
             }
         )
     payload = {
-        "schema": "nakama.finished_cut_review_manifest.v1",
+        "schema": schema,
         "episode_id": episode.name,
         "stage": 5,
         "gate": {
@@ -234,6 +240,164 @@ def _valid_review(manifest: Path) -> dict[str, object]:
     }
 
 
+class _VisualArtifactStub:
+    def __init__(self, name: str, document: dict[str, object]) -> None:
+        self.name = name
+        self.document = document
+
+    def identity(self) -> dict[str, object]:
+        return {
+            "contract": self.document["contract"],
+            "path": f"verified/{self.name}.json",
+            "bytes": 100,
+            "sha256": self.name[0] * 64,
+            "content_hash": self.name[-1] * 64,
+        }
+
+
+def _visual_selection(
+    cut_id: str,
+    *,
+    quote: str = "戰後教育強調服從\n學生要剃平頭，學校裡還有教官",
+    source_url: str = "https://www.pexels.com/video/123/",
+) -> SimpleNamespace:
+    director_worker = {
+        "worker_id": "director-worker-01",
+        "execution_id": "director-exec-01",
+        "role": "director",
+        "session_id": "director-session-01",
+    }
+    dp_worker = {
+        "worker_id": "dp-worker-01",
+        "execution_id": "dp-exec-01",
+        "role": "dp",
+        "session_id": "dp-session-01",
+    }
+    audit_worker = {
+        **director_worker,
+        "execution_id": "director-audit-exec-02",
+    }
+    event = {
+        "event_id": "visual-001",
+        "cue_ids": [1, 2],
+        "t0": 0.0,
+        "t1": 6.0,
+        "quote": quote,
+        "category": "stock_scene",
+        "form": "cutaway",
+        "description": "戰後校園的軍事化紀律、平頭學生與教官",
+        "on_screen_text": "高壓教育\n留下深遠影響",
+        "shots_hint": 3,
+        "negative_constraints": ["不可出現現代幼兒教具", "不可用快樂遊戲課堂"],
+        "search_angles": ["postwar Taiwan school military discipline"],
+        "decision": "add_visual",
+        "rationale": "逐字稿提出具體歷史教育場景，需要可核對的歷史畫面。",
+    }
+    work = _VisualArtifactStub(
+        "work",
+        {
+            "contract": "podcast-highlight-visual-work-packet-v1",
+            "revision_id": "r-0123456789abcdef01234567",
+        },
+    )
+    director = _VisualArtifactStub(
+        "director",
+        {
+            "contract": "podcast-highlight-director-plan-v1",
+            "worker_execution": director_worker,
+            "events": [event],
+            "coverage": {
+                "add_visual_count": 1,
+                "planned_stock_video_count": 3,
+                "intentional_aroll_count": 0,
+                "max_uncovered_sec": 0.0,
+            },
+        },
+    )
+    candidates = [
+        {
+            "candidate_id": candidate_id,
+            "visual_summary": summary,
+            "media": {"path": f"assets/{candidate_id}.mp4", "bytes": 100, "sha256": key * 64},
+            "provenance": {
+                "kind": "stock_source",
+                "provider": "pexels",
+                "source_url": source_url if index == 1 else f"https://example.com/{candidate_id}",
+                "license": "Pexels license",
+                "receipt": {
+                    "path": f"assets/{candidate_id}.json",
+                    "bytes": 20,
+                    "sha256": key * 64,
+                },
+            },
+        }
+        for index, (candidate_id, summary, key) in enumerate(
+            (
+                ("stock-a", "戰後校園軍事化隊列", "a"),
+                ("stock-b", "學生統一制服與平頭", "b"),
+                ("stock-c", "校園教官巡視", "c"),
+            ),
+            1,
+        )
+    ]
+    implementation = {
+        "event_id": "visual-001",
+        "mode": "stock",
+        "target_lane": "broll_track2",
+        "implementation_kind": "stock_video",
+        "on_screen_text": event["on_screen_text"],
+        "candidates": candidates,
+        "selections": [
+            {
+                "candidate_id": "stock-a",
+                "cue_ids": [1, 2],
+                "t0": 0.0,
+                "t1": 6.0,
+                "quote": quote,
+                "source_range": {"start_sec": 1.25, "end_sec": 7.25},
+            }
+        ],
+        "semantic_justification": "畫面直接呈現歷史校園紀律，而不是現代兒童學習情境。",
+    }
+    dp = _VisualArtifactStub(
+        "dp",
+        {
+            "contract": "podcast-highlight-dp-fulfillment-v1",
+            "worker_execution": dp_worker,
+            "implementations": [implementation],
+        },
+    )
+    materialization = {
+        "materialization_id": "visual-001-s01",
+        "event_id": "visual-001",
+        "t0": 0.0,
+        "t1": 6.0,
+    }
+    audit = _VisualArtifactStub(
+        "audit",
+        {
+            "contract": "podcast-highlight-visual-semantic-audit-v1",
+            "worker_execution": audit_worker,
+            "findings": [
+                {
+                    "materialization_id": "visual-001-s01",
+                    "event_id": "visual-001",
+                    "visual_observation": "畫面可見制服學生、平頭與校園軍事隊列。",
+                    "verdict": "match",
+                    "rationale": "具體對應逐字稿的戰後高壓教育描述。",
+                }
+            ],
+        },
+    )
+    return SimpleNamespace(
+        work_packet=work,
+        director_plan=director,
+        dp_fulfillment=dp,
+        semantic_audit=audit,
+        materializations=(materialization,),
+    )
+
+
 def test_page_redirects_and_subresources_return_401(client):
     slug = "20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81"
     response = client.get(f"/bridge/highlights/{slug}/finished", follow_redirects=False)
@@ -258,6 +422,52 @@ def test_missing_and_invalid_manifest_fail_loud(client, finished_episode):
     assert "manifest" in response.text
 
 
+def test_real_shape_v1_manifest_is_legacy_read_only_and_cannot_approve(
+    client, finished_episode, monkeypatch
+):
+    _, episode, _ = finished_episode
+    manifest = _write_manifest(
+        episode,
+        schema="nakama.finished_cut_review_manifest.v1",
+    )
+    import thousand_sunny.routers.highlight_review as review_module
+
+    monkeypatch.setattr(
+        review_module,
+        "verify_finished_review_manifest",
+        lambda *_args, **_kwargs: pytest.fail("v1 must not be silently re-signed as v2"),
+    )
+    endpoint = "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished"
+    page = client.get(endpoint, cookies=_auth_cookie())
+
+    assert page.status_code == 200
+    assert "LEGACY MANIFEST V1" in page.text
+    assert "舊 preview 僅供讀取" in page.text
+    assert "核准功能已鎖定" in page.text
+    assert "VISUAL PRODUCTION TRUTH" in page.text
+    assert "戰後校園軍事化隊列" not in page.text
+
+    draft = _valid_review(manifest)
+    saved = client.post(
+        f"{endpoint}/review",
+        data=draft,
+        cookies=_auth_cookie(),
+        follow_redirects=False,
+    )
+    assert saved.status_code == 303
+    assert json.loads(manifest.read_text(encoding="utf-8"))["schema"].endswith(".v1")
+
+    approve = {
+        **draft,
+        "submit_action": "approve_cut",
+        "selected_cut_id": "R11",
+        "cut_status__R11": "approved",
+    }
+    blocked = client.post(f"{endpoint}/review", data=approve, cookies=_auth_cookie())
+    assert blocked.status_code == 409
+    assert "LEGACY MANIFEST V1" in blocked.text
+
+
 def test_chinese_page_only_lists_review_lanes_and_seek_metadata(client):
     response = client.get(
         "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished",
@@ -274,6 +484,224 @@ def test_chinese_page_only_lists_review_lanes_and_seek_metadata(client):
     assert 'kind="captions"' in response.text
     assert "B-ROLL" in response.text
     assert "HERO TITLE" in response.text
+
+
+def test_finished_page_shows_verified_director_dp_and_audit_production_truth(
+    client, monkeypatch
+):
+    import thousand_sunny.routers.highlight_review as review_module
+
+    status_calls: list[str] = []
+    verify_calls: list[str] = []
+
+    def status(_episode, *, cut_id):
+        status_calls.append(cut_id)
+        return {
+            "contract": "podcast-highlight-visual-pipeline-status-v1",
+            "episode_id": "20260721 鄭國威",
+            "cut_id": cut_id,
+            "status": "ready_to_materialize",
+            "pending_revision_id": "r-0123456789abcdef01234567",
+            "current_revision_id": "r-0123456789abcdef01234567",
+            "paths": {},
+        }
+
+    def verify(_episode, *, cut_id):
+        verify_calls.append(cut_id)
+        return _visual_selection(cut_id)
+
+    monkeypatch.setattr(review_module, "visual_pipeline_status", status)
+    monkeypatch.setattr(review_module, "verify_visual_pipeline", verify)
+    response = client.get(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished",
+        cookies=_auth_cookie(),
+    )
+
+    assert response.status_code == 200
+    assert status_calls == ["R11", "R12", "R3"]
+    assert verify_calls == ["R11", "R12", "R3"]
+    assert "VISUAL PRODUCTION TRUTH" in response.text
+    assert "戰後教育強調服從\n學生要剃平頭，學校裡還有教官" in response.text
+    assert "00:00.000–00:06.000" in response.text
+    assert "stock_scene" in response.text
+    assert "不可出現現代幼兒教具" in response.text
+    assert "高壓教育\n留下深遠影響" in response.text
+    assert "broll_track2" in response.text
+    assert "戰後校園軍事化隊列" in response.text
+    assert "學生統一制服與平頭" in response.text
+    assert "校園教官巡視" in response.text
+    assert "SELECTED" in response.text
+    assert "畫面直接呈現歷史校園紀律" in response.text
+    assert "畫面可見制服學生、平頭與校園軍事隊列" in response.text
+    assert "具體對應逐字稿的戰後高壓教育描述" in response.text
+    assert "director-session-01" in response.text
+    assert "dp-session-01" in response.text
+    assert 'aria-labelledby="visual-truth-R11"' in response.text
+    assert 'aria-label="visual-001 的候選素材"' in response.text
+    assert 'href="https://www.pexels.com/video/123/"' in response.text
+    assert 'rel="noreferrer noopener"' in response.text
+    assert "/static/shosho/bridge-highlight-review.css?" in response.text
+
+
+def test_visual_pipeline_pending_invalid_and_missing_are_read_only_fail_closed(
+    client, monkeypatch
+):
+    import thousand_sunny.routers.highlight_review as review_module
+
+    statuses = {
+        "R11": {
+            "status": "awaiting_dp",
+            "pending_revision_id": "r-pending11111111111111111111",
+            "current_revision_id": None,
+        },
+        "R12": {
+            "status": "invalid",
+            "pending_revision_id": "r-invalid22222222222222222222",
+            "current_revision_id": None,
+            "error": "DP receipt stale <script>alert(1)</script>",
+        },
+        "R3": {
+            "status": "awaiting_init",
+            "pending_revision_id": None,
+            "current_revision_id": None,
+        },
+    }
+
+    def status(_episode, *, cut_id):
+        return {
+            "contract": "podcast-highlight-visual-pipeline-status-v1",
+            "episode_id": "20260721 鄭國威",
+            "cut_id": cut_id,
+            "paths": {},
+            **statuses[cut_id],
+        }
+
+    monkeypatch.setattr(review_module, "visual_pipeline_status", status)
+    monkeypatch.setattr(
+        review_module,
+        "verify_visual_pipeline",
+        lambda *_args, **_kwargs: pytest.fail("pending pipeline must not be presented as verified"),
+    )
+    response = client.get(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished",
+        cookies=_auth_cookie(),
+    )
+
+    assert response.status_code == 200
+    assert "等待 DP 製作" in response.text
+    assert "尚未建立視覺 work packet" in response.text
+    assert "VISUAL PIPELINE INVALID" in response.text
+    assert "DP receipt stale &lt;script&gt;alert(1)&lt;/script&gt;" in response.text
+    assert "DP receipt stale <script>" not in response.text
+    assert "戰後校園軍事化隊列" not in response.text
+
+
+def test_pending_visual_generation_keeps_showing_only_fresh_verified_current(
+    client, monkeypatch
+):
+    import thousand_sunny.routers.highlight_review as review_module
+
+    def status(_episode, *, cut_id):
+        return {
+            "contract": "podcast-highlight-visual-pipeline-status-v1",
+            "episode_id": "20260721 鄭國威",
+            "cut_id": cut_id,
+            "status": "awaiting_dp",
+            "pending_revision_id": "r-fedcba9876543210fedcba98",
+            "current_revision_id": "r-0123456789abcdef01234567",
+            "paths": {},
+        }
+
+    monkeypatch.setattr(review_module, "visual_pipeline_status", status)
+    monkeypatch.setattr(
+        review_module,
+        "verify_visual_pipeline",
+        lambda _episode, *, cut_id: _visual_selection(cut_id),
+    )
+    response = client.get(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished",
+        cookies=_auth_cookie(),
+    )
+
+    assert response.status_code == 200
+    assert "等待 DP 製作" in response.text
+    assert "前一個 CURRENT 仍保持可驗證" in response.text
+    assert "r-fedcba9876543210fedcba98" in response.text
+    assert "r-0123456789abcdef01234567" in response.text
+    assert "戰後校園軍事化隊列" in response.text
+
+
+def test_ready_visual_status_with_stale_current_verification_displays_error_only(
+    client, monkeypatch
+):
+    import thousand_sunny.routers.highlight_review as review_module
+
+    ready = {
+        "contract": "podcast-highlight-visual-pipeline-status-v1",
+        "episode_id": "20260721 鄭國威",
+        "status": "ready_to_materialize",
+        "pending_revision_id": "r-0123456789abcdef01234567",
+        "current_revision_id": "r-0123456789abcdef01234567",
+        "paths": {},
+    }
+    monkeypatch.setattr(
+        review_module,
+        "visual_pipeline_status",
+        lambda _episode, *, cut_id: {**ready, "cut_id": cut_id},
+    )
+
+    def reject(*_args, **_kwargs):
+        raise review_module.HighlightVisualContractError("CURRENT pointer lineage stale")
+
+    monkeypatch.setattr(review_module, "verify_visual_pipeline", reject)
+    response = client.get(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished",
+        cookies=_auth_cookie(),
+    )
+
+    assert response.status_code == 200
+    assert "VISUAL PIPELINE INVALID" in response.text
+    assert "CURRENT pointer lineage stale" in response.text
+    assert "戰後校園軍事化隊列" not in response.text
+
+
+def test_visual_production_truth_escapes_agent_text_and_rejects_unsafe_source_link(
+    client, monkeypatch
+):
+    import thousand_sunny.routers.highlight_review as review_module
+
+    status = {
+        "contract": "podcast-highlight-visual-pipeline-status-v1",
+        "episode_id": "20260721 鄭國威",
+        "status": "ready_to_materialize",
+        "pending_revision_id": "r-0123456789abcdef01234567",
+        "current_revision_id": "r-0123456789abcdef01234567",
+        "paths": {},
+    }
+    monkeypatch.setattr(
+        review_module,
+        "visual_pipeline_status",
+        lambda _episode, *, cut_id: {**status, "cut_id": cut_id},
+    )
+    monkeypatch.setattr(
+        review_module,
+        "verify_visual_pipeline",
+        lambda _episode, *, cut_id: _visual_selection(
+            cut_id,
+            quote='<script>alert("quote")</script>',
+            source_url='javascript:alert("candidate")',
+        ),
+    )
+    response = client.get(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished",
+        cookies=_auth_cookie(),
+    )
+
+    assert response.status_code == 200
+    assert '&lt;script&gt;alert(&#34;quote&#34;)&lt;/script&gt;' in response.text
+    assert '<script>alert("quote")</script>' not in response.text
+    assert 'href="javascript:' not in response.text
+    assert 'javascript:alert(&#34;candidate&#34;)' in response.text
 
 
 def test_long_review_context_fails_closed_when_authoritative_verifier_rejects(

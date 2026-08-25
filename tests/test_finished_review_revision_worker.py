@@ -8,6 +8,7 @@ import shutil
 import subprocess
 from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -23,6 +24,24 @@ from scripts.finished_review_watcher import (
     retry_failed_revision_job,
     run_revision_job,
 )
+
+
+@pytest.fixture(autouse=True)
+def _stub_authoritative_visual_producer(monkeypatch):
+    monkeypatch.setattr(
+        "scripts.finished_review_watcher._run_visual_pipeline_revision",
+        _fixture_visual_pipeline_runner,
+    )
+    monkeypatch.setattr(
+        "agents.brook.script_video.highlight_broll.verify_visual_recipe_lineage",
+        lambda *_args, **_kwargs: ({"content_hash": "f" * 64}, []),
+    )
+    master = SimpleNamespace(identity=lambda: {"content_hash": "a" * 64})
+    monkeypatch.setattr("scripts.run_short_broll._open_editorial_master", lambda _root: master)
+    monkeypatch.setattr(
+        "scripts.run_short_broll._load_winner",
+        lambda *_args, **_kwargs: ({"format": "long"}, {"rank": 1}),
+    )
 
 
 def _sha(path: Path) -> str:
@@ -76,7 +95,7 @@ def _write_queued_job(root: Path) -> tuple[Path, Path, Path]:
     (assets / "existing.mp4").write_bytes(b"existing-asset")
     manifest = review / "finished_review_manifest_20260822.json"
     manifest_payload = {
-        "schema": "nakama.finished_cut_review_manifest.v1",
+        "schema": "nakama.finished_cut_review_manifest.v2",
         "episode_id": episode.name,
         "stage": 5,
         "gate": {"kind": "finished_cut_review", "status": "ready_for_review"},
@@ -171,15 +190,30 @@ def _write_queued_job(root: Path) -> tuple[Path, Path, Path]:
 
 def _successful_agent(context: dict) -> subprocess.CompletedProcess[str]:
     output_tighten = Path(context["output_root"]) / "tighten"
-    output_tighten.mkdir(parents=True)
+    output_tighten.mkdir(parents=True, exist_ok=True)
+    return subprocess.CompletedProcess(["fixture-agent"], 0, "done", "")
+
+
+def _fixture_visual_pipeline_runner(context: dict) -> dict:
+    output_tighten = Path(context["output_root"]) / "tighten"
+    output_tighten.mkdir(parents=True, exist_ok=True)
+    (output_tighten / "value-L01_broll.json").write_text(
+        json.dumps({"items": []}), encoding="utf-8"
+    )
     (output_tighten / "value-L01_titles.json").write_text(
         json.dumps(
-            {"cards": [{"type": "hero", "title": "新文字\n分兩行"}]},
+            {
+                "titles": [],
+                "cards": [{"type": "hero", "title": "新文字\n分兩行"}],
+            },
             ensure_ascii=False,
         ),
         encoding="utf-8",
     )
-    return subprocess.CompletedProcess(["fixture-agent"], 0, "done", "")
+    return {
+        "status": "ready_to_materialize",
+        "cuts": [{"cut_id": "value-L01", "content_hash": "f" * 64}],
+    }
 
 
 def _fixture_verifier(context: dict) -> dict:
@@ -284,6 +318,40 @@ def test_worker_picks_up_once_and_leaves_a_result_receipt(tmp_path):
     )
 
 
+def test_public_revision_job_runs_request_bound_visual_producer_before_trusted_apply(
+    tmp_path,
+):
+    _, _manifest, _feedback = _write_queued_job(tmp_path)
+    calls: list[str] = []
+
+    def agent(context: dict) -> subprocess.CompletedProcess[str]:
+        calls.append("generic-agent")
+        return _successful_agent(context)
+
+    def producer(context: dict) -> dict:
+        calls.append("visual-producer")
+        request_path = Path(context["request_path"])
+        assert request_path.is_file()
+        assert json.loads(request_path.read_text(encoding="utf-8"))["request_id"] == (
+            context["request_id"]
+        )
+        return _fixture_visual_pipeline_runner(context)
+
+    def trusted(context: dict) -> dict:
+        calls.append("trusted-apply")
+        assert context["visual_pipeline"]["status"] == "ready_to_materialize"
+        return _fixture_trusted_apply(context)
+
+    assert run_revision_job(
+        pending_revision_jobs(tmp_path)[0],
+        agent_runner=agent,
+        visual_pipeline_runner=producer,
+        output_verifier=_fixture_verifier,
+        trusted_apply=trusted,
+    )
+    assert calls == ["generic-agent", "visual-producer", "trusted-apply"]
+
+
 def test_finished_revision_has_dedicated_python310_supervisor_not_render_watcher():
     repo = Path(__file__).parents[1]
     startup = (repo / "scripts/start_thousand_sunny.ps1").read_text(encoding="utf-8")
@@ -371,23 +439,10 @@ def test_reconcile_acquisition_handoff_queues_and_reuses_assets_on_next_revision
     def agent(context: dict) -> subprocess.CompletedProcess[str]:
         _successful_agent(context)
         output = Path(context["output_root"])
-        items = []
-        for index, (slug, source) in enumerate(sources.items()):
+        for _slug, source in sources.items():
             staged = output / "assets/broll" / source["filename"]
             promoted = episode / "assets/broll" / source["filename"]
             assert staged.is_file() or promoted.is_file()
-            items.append(
-                {
-                    "kind": "video",
-                    "slug": slug,
-                    "t0": float(index * 3),
-                    "t1": float(index * 3 + 2),
-                    "provenance": source["provenance"],
-                }
-            )
-        (output / "tighten/value-L01_broll.json").write_text(
-            json.dumps({"items": items}), encoding="utf-8"
-        )
         return subprocess.CompletedProcess(["fixture-agent"], 0, "done", "")
 
     assert run_revision_job(
@@ -1074,6 +1129,14 @@ def test_default_trusted_apply_calls_existing_pipeline_before_commit(monkeypatch
         lambda *_args: calls.append("director") or {"status": "directed"},
     )
     monkeypatch.setattr(
+        "scripts.run_short_broll.validate_plan",
+        lambda *_args: calls.append("broll-preflight") or {"status": "plan-valid"},
+    )
+    monkeypatch.setattr(
+        "scripts.run_short_titles.validate_plan",
+        lambda *_args: calls.append("titles-preflight") or {"status": "plan-valid"},
+    )
+    monkeypatch.setattr(
         "scripts.run_short_broll.apply",
         lambda *_args: calls.append("broll") or {"status": "brolled"},
     )
@@ -1083,7 +1146,7 @@ def test_default_trusted_apply_calls_existing_pipeline_before_commit(monkeypatch
     )
     monkeypatch.setattr(
         "scripts.run_short_review.build_packet",
-        lambda *_args: calls.append("review") or {"status": "ready"},
+        lambda *_args, **_kwargs: calls.append("review") or {"status": "ready"},
     )
     monkeypatch.setattr(
         "scripts.finished_review_watcher._verify_revision_output_acceptance",
@@ -1112,6 +1175,8 @@ def test_default_trusted_apply_calls_existing_pipeline_before_commit(monkeypatch
     )
 
     assert calls == [
+        "broll-preflight",
+        "titles-preflight",
         "director",
         "broll",
         "titles",
@@ -1121,6 +1186,38 @@ def test_default_trusted_apply_calls_existing_pipeline_before_commit(monkeypatch
         "prepare",
     ]
     assert result["status"] == "trusted_apply_succeeded"
+
+
+def test_visual_preflight_failure_opens_no_resolve_transaction(monkeypatch, tmp_path):
+    episode = tmp_path / "20260805 林之晨"
+    transaction_calls: list[str] = []
+    monkeypatch.setattr(
+        "scripts.run_short_broll.validate_plan",
+        lambda *_args: (_ for _ in ()).throw(SystemExit("Semantic Audit missing")),
+    )
+    monkeypatch.setattr(
+        "scripts.run_short_titles.validate_plan",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("must stop at B-roll gate")),
+    )
+    monkeypatch.setattr(
+        _ResolveTimelineTransaction,
+        "begin",
+        lambda *_args, **_kwargs: transaction_calls.append("begin"),
+    )
+
+    with pytest.raises(RuntimeError, match="Semantic Audit missing"):
+        _trusted_apply_revision(
+            {
+                "episode_dir": str(episode),
+                "request_id": "finished-revision-no-audit",
+                "request": {"requested_cut_ids": ["value-L01"]},
+                "allowed_changes": {
+                    "resolve_timelines": {"value-L01": "長1 - value-L01（緊·導播）"}
+                },
+                "output_verifier": lambda _context: {},
+            }
+        )
+    assert transaction_calls == []
 
 
 def test_unchanged_output_rolls_back_before_timeline_commit(monkeypatch, tmp_path):
@@ -1142,9 +1239,13 @@ def test_unchanged_output_rolls_back_before_timeline_commit(monkeypatch, tmp_pat
         lambda *_args, **_kwargs: Transaction(),
     )
     monkeypatch.setattr("scripts.run_short_director.direct", lambda *_args: {})
+    monkeypatch.setattr("scripts.run_short_broll.validate_plan", lambda *_args: {})
+    monkeypatch.setattr("scripts.run_short_titles.validate_plan", lambda *_args: {})
     monkeypatch.setattr("scripts.run_short_broll.apply", lambda *_args: {})
     monkeypatch.setattr("scripts.run_short_titles.apply", lambda *_args: {})
-    monkeypatch.setattr("scripts.run_short_review.build_packet", lambda *_args: {})
+    monkeypatch.setattr(
+        "scripts.run_short_review.build_packet", lambda *_args, **_kwargs: {}
+    )
     payload = json.loads(manifest.read_text(encoding="utf-8"))
     preview = Path(payload["cuts"][0]["artifacts"]["preview"]["path"])
     context = {
@@ -1315,7 +1416,7 @@ def test_existing_broll_asset_drift_is_rejected_before_trusted_apply(tmp_path):
     assert trusted_calls == []
 
 
-def test_zero_stock_plan_can_bootstrap_from_three_request_bound_assets(
+def test_three_request_bound_assets_do_not_authorize_generic_agent_broll_plan(
     monkeypatch, tmp_path
 ):
     episode, _manifest, feedback = _write_queued_job(tmp_path)
@@ -1374,10 +1475,15 @@ def test_zero_stock_plan_can_bootstrap_from_three_request_bound_assets(
         trusted_calls.append(context["request_id"])
         return _fixture_trusted_apply(context)
 
-    assert run_revision_job(
+    assert not run_revision_job(
         pending_revision_jobs(tmp_path)[0],
         agent_runner=agent,
         output_verifier=_fixture_verifier,
         trusted_apply=trusted,
     )
-    assert trusted_calls == ["finished-revision-abc123"]
+    assert trusted_calls == []
+    failed = json.loads(feedback.read_text(encoding="utf-8"))["revisions"][-1][
+        "revision_job"
+    ]
+    assert failed["status"] == "failed"
+    assert "generic revision agent authored semantic visual recipes" in failed["error"]

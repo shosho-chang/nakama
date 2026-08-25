@@ -3,7 +3,8 @@ name: brook-dp
 description: >
   DP（Director of Photography）攝影指導手冊（ADR-051，修修裁決 A：意圖/實現分離）。
   Triggers: /brook-dp、「把 storyboard 落實成素材」、「跑 DP」、「找 B-roll 素材」。
-  讀 Director 產出的 storyboard.yaml（visual_intent 意圖層）→ 逐 beat 決定具體實現
+  讀 Director 產出的 visual_intent（standalone storyboard.yaml；Podcast Highlight
+  DIRECTOR-PLAN.json）→ 逐 beat 決定具體實現
   （component/params/asset）→ 產詳細 stock 搜尋詞或 hyperframes render 規格 →
   素材獲取與驗收 → 填回 BRollSpec。創意實現在本手冊；schema/render/emit 契約歸
   agents/brook/script_video/ pipeline 程式，本 skill 只呼叫、不重新發明。
@@ -22,6 +23,65 @@ v1.0 2026-07-18 依四支成片拆解＋Ali/Jeff 對照的配方庫建立；
 
 本 skill 落地後接管 brook-director v2.0 的 Step 3–5（素材獲取）；Director 手冊中
 該三步為過渡期兼任條款。
+
+## Podcast Highlight production adapter（ADR-065；優先於下方 standalone 步驟）
+
+Podcast episode + cut ID 不讀 standalone `data/script_video/<ep>/storyboard.yaml`。唯一 truth是
+revision-aware DAG：
+
+```text
+<episode>/highlights/visual-pipeline/<cut-id>/
+  PENDING.json
+  CURRENT.json
+  revisions/<revision-id>/
+    DIRECTOR-WORK.json       podcast-highlight-visual-work-packet-v1
+    DIRECTOR-PLAN.json       podcast-highlight-director-plan-v1
+    DP-FULFILLMENT.json      podcast-highlight-dp-fulfillment-v1
+    SEMANTIC-AUDIT.json      podcast-highlight-visual-semantic-audit-v1
+```
+
+Production預設呼叫一次 trusted orchestrator；finished review revision必須傳 exact immutable request snapshot：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_orchestrator.py "<episode>" `
+  --cut-id <cut-id> [--revision-request "<episode-local immutable request.json>"]
+```
+
+Claude Code手動/subagent route不得省略 accept順序。DP proposal只能寫 phase-local output；trusted host提供實際
+DP execution/session identity，不能從 proposal抄 worker欄位：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py accept-dp "<episode>" --cut-id <cut-id> --revision-id <revision-id> --proposal "<dp-proposal.json>" --worker-id <trusted-dp-worker-id> --execution-id <trusted-dp-execution-id> --session-id <trusted-dp-session-id>
+# Resume original Director worker/session, never DP, for the semantic-audit proposal:
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py accept-audit "<episode>" --cut-id <cut-id> --revision-id <revision-id> --proposal "<semantic-audit-proposal.json>" --worker-id <same-trusted-director-worker-id> --execution-id <new-trusted-director-audit-execution-id> --session-id <same-trusted-director-session-id>
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py verify "<episode>" --cut-id <cut-id> --revision-id <revision-id>
+```
+
+1. Deterministic status/validator必須 fresh驗出 `awaiting_dp`；work packet、Director plan、Editorial
+   Master或 work packet綁定的 exact tight SRT任一 missing/stale/invalid就停，不得自行找 latest或修 receipt。
+2. Exact覆蓋 `DIRECTOR-PLAN.json` 的所有 events。每個 fulfillment保存 mode、`target_lane`、2–5 個不同
+   語意切面的 search queries、候選、selected candidate、選擇理由、negative checks及 source/license/hash；找不到就
+   明示 none/合法降級，不拿同主題 generic footage湊數。
+3. 畫面必須對應 event的 exact transcript quote，不只對應廣泛主題。來源可信、ffprobe/hash通過與至少
+   三支 Stock Video都是機械條件，不能替代語意證明。
+4. 產出 phase-local `podcast-highlight-dp-fulfillment-v1` proposal，只有 trusted `accept-dp`可寫
+   `revisions/<revision-id>/DP-FULFILLMENT.json`；不可直接手寫 canonical receipt或 production `_broll.json`。
+5. Fresh status必須前進到 `awaiting_semantic_audit`。交回 orchestrator，讓**原本同一個 Director
+   worker identity**做 semantic audit；該 identity必須不同於本 DP。DP不得自審或寫
+   `SEMANTIC-AUDIT.json`。
+
+Auditor exact覆蓋每個 selected materialization且全數 semantic match後，`accept-audit`才 pointer-last更新
+`CURRENT.json`，status成 `ready_to_materialize`。失敗的 PENDING不得破壞前一個 CURRENT。
+`scripts/run_short_broll.py`只是一個 **materializer**；它的成功不代表本 skill執行過，也不授權 DP
+在 renderer內臨時選片。普通 pending是 agent-owned next work，只有 authority、license或主觀語意真的
+ambiguity才是 HITL。Bridge只 read-only展示 fresh receipt與 audit，不新增正常人類 gate。
+
+DP履約涵蓋所有 content visuals：Stock／Hero／keyword／quote／chapter／card，並同時產出 **B-roll 與 title implementations**。
+結構性 badge／camera correction／guest namecard維持各自 deterministic contract。
+`scripts/run_short_titles.py`也只是 materializer；不得在 receipt chain外另選 Hero text或落點。
+
+下方 storyboard、asset_requests/manifest與 `/brook/video/<ep>` 路徑仍服務 ADR-051 standalone route；
+Podcast Highlight不得 silent fallback。
 
 ## 紅線
 
@@ -89,7 +149,7 @@ timeline 放 stock 的手剪情境。Christina 集 44 個位就是跳過本手�
    說話者臉上＝打槍。正確：去背成 alpha PNG → 進場動畫（滑入/彈出）→
    擺在不遮臉的負空間。
 
-## 輸入
+## 輸入（Standalone route）
 
 `data/script_video/<ep>/storyboard.yaml`——cutaway beat 應帶 `visual_intent`
 （form/category/description/on_screen_text/shots_hint/source_hint）。缺 intent 的
@@ -161,7 +221,7 @@ composition 類（quote_card/book_cover/transition_title/bigstat/worked_example�
   keyword 字卡（overlay）、橘框瀏覽器窗 inset、canvas_pip 外框、kinetic text
   金句卡、章節 grid 總覽卡、doc_highlight（黃 highlight 逐步移動）。
 
-## Step 4 — 素材獲取與驗收（批次交接）
+## Step 4 — 素材獲取與驗收（Standalone批次交接）
 
 沿用既定契約（ADR-051 D5/D6/D8，模板見 brook-director SKILL Step 4b/5，
 不在此重複維護）：
@@ -173,7 +233,7 @@ composition 類（quote_card/book_cover/transition_title/bigstat/worked_example�
    不加框；收尾彙整 attribution 清單進 run log
 4. 驗收結果（含 conform 紀錄）寫 run log
 
-## Step 5 — 填回 BRollSpec 與送審
+## Step 5 — 填回 BRollSpec 與送審（Standalone only）
 
 - 每個實現落回 `broll`（render_target/component/params/asset），`visual_intent`
   原樣保留（意圖與實現並存，Bridge 審核時修修可對照）。

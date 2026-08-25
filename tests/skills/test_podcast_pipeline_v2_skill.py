@@ -611,6 +611,132 @@ def test_identity_skill_command_paths_match_runtime_contract() -> None:
     assert "highlights/review/<winner-id>/subs.srt" not in production
 
 
+def test_podcast_visual_production_routes_agent_judgment_before_materializer() -> None:
+    podcast = SKILL.read_text(encoding="utf-8")
+    highlight = HIGHLIGHT_SKILL.read_text(encoding="utf-8")
+    director = Path(".claude/skills/brook-director/SKILL.md").read_text(encoding="utf-8")
+    dp = Path(".claude/skills/brook-dp/SKILL.md").read_text(encoding="utf-8")
+
+    route = podcast.split("## S9", maxsplit=1)[1].split("## S10", maxsplit=1)[0]
+    ordered = (
+        "DIRECTOR-WORK.json",
+        "brook-director",
+        "DIRECTOR-PLAN.json",
+        "brook-dp",
+        "DP-FULFILLMENT.json",
+        "SEMANTIC-AUDIT.json",
+        "ready_to_materialize",
+        "run_short_broll.py",
+    )
+    production_chain = route.split(
+        "接著的 agent-owned receipt 順序固定為", maxsplit=1
+    )[1]
+    positions = [production_chain.index(marker) for marker in ordered]
+    assert positions == sorted(positions)
+
+    contracts = (
+        "podcast-highlight-visual-work-packet-v1",
+        "podcast-highlight-director-plan-v1",
+        "podcast-highlight-dp-fulfillment-v1",
+        "podcast-highlight-visual-semantic-audit-v1",
+    )
+    combined = "\n".join((route, highlight, director, dp))
+    for contract in contracts:
+        assert contract in combined
+
+    for text in (podcast, highlight):
+        assert "run_short_director.py` = camera/Timeline director" in text
+        assert "run_short_broll.py` = materializer" in text
+        assert "不代表 `brook-director` skill" in text
+        assert "不代表 `brook-dp` skill" in text
+
+    assert "highlights/visual-pipeline/<winner-id>" in route
+    assert "缺少／stale／invalid" in route
+    assert "只有 ambiguity 才是 HITL" in route
+
+
+def test_visual_skill_contract_covers_every_content_visual_lane() -> None:
+    podcast = SKILL.read_text(encoding="utf-8")
+    highlight = HIGHLIGHT_SKILL.read_text(encoding="utf-8")
+    director = Path(".claude/skills/brook-director/SKILL.md").read_text(encoding="utf-8")
+    dp = Path(".claude/skills/brook-dp/SKILL.md").read_text(encoding="utf-8")
+    combined = "\n".join((podcast, highlight, director, dp))
+
+    assert "所有 content visuals" in combined
+    assert "Stock／Hero／keyword／quote／chapter／card" in combined
+    assert "on_screen_text" in director
+    assert "`target_lane`" in dp
+    assert "B-roll 與 title implementations" in dp
+    for text in (podcast, highlight):
+        assert "run_short_titles.py` = materializer" in text
+        assert "結構性 badge／camera correction／guest namecard" in text
+
+
+def test_visual_skills_name_exact_revision_commands_and_trusted_worker_order() -> None:
+    podcast = SKILL.read_text(encoding="utf-8")
+    highlight = HIGHLIGHT_SKILL.read_text(encoding="utf-8")
+    director = Path(".claude/skills/brook-director/SKILL.md").read_text(encoding="utf-8")
+    dp = Path(".claude/skills/brook-dp/SKILL.md").read_text(encoding="utf-8")
+    combined = "\n".join((podcast, highlight, director, dp))
+
+    for marker in (
+        "PENDING.json",
+        "CURRENT.json",
+        "revisions/<revision-id>/",
+        "podcast_highlight_visual_orchestrator.py",
+        "podcast_highlight_visual_pipeline.py",
+        "--revision-request",
+        "--revision-id",
+        "--proposal",
+        "--worker-id",
+        "--execution-id",
+        "--session-id",
+    ):
+        assert marker in combined
+
+    director_commands = next(
+        block
+        for block in re.findall(r"```powershell\n(.*?)```", director, flags=re.DOTALL)
+        if " accept-director " in block
+    )
+    dp_commands = next(
+        block
+        for block in re.findall(r"```powershell\n(.*?)```", dp, flags=re.DOTALL)
+        if " accept-dp " in block
+    )
+    ordered_commands = director_commands + dp_commands
+    markers = (" init ", " accept-director ", " accept-dp ", " accept-audit ", " verify ")
+    positions = [ordered_commands.index(marker) for marker in markers]
+    assert positions == sorted(positions)
+    assert "codex exec resume <DIRECTOR_SESSION_ID>" in director
+    assert "proposal自報 identity一律拒絕" in podcast
+    assert "DP另開不同 session" in director
+    assert "accept-audit`成功才切 CURRENT" in highlight
+    assert "同一 immutable request retry" in combined
+    assert "generic agent handwrite receipts" in podcast
+
+
+def test_finished_save_draft_skill_routes_producer_before_resolve_and_manifest_v2() -> None:
+    podcast = SKILL.read_text(encoding="utf-8")
+    route = podcast.split("Bridge finished review按", maxsplit=1)[1].split(
+        "`accept` 之前", maxsplit=1
+    )[0]
+    ordered = (
+        "immutable `request.json`",
+        "generic agent",
+        "run_visual_pipeline",
+        "emit_audited_recipe",
+        "preflight",
+        "Resolve transaction",
+        "nakama.finished_cut_review_manifest.v2",
+    )
+    positions = [route.index(marker) for marker in ordered]
+    assert positions == sorted(positions)
+    assert "context['request_path']" in route
+    assert "保留上一 CURRENT" in route
+    assert "不新增中途 approval" in route
+
+
 def test_formal_v2_and_degraded_routes_are_explicit_legacy_only() -> None:
     _text, production, legacy = _sections()
     legacy_only = (

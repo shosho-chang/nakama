@@ -253,7 +253,54 @@ guest cue/card start 43.0 秒、card end 48.2 秒。
 `emit-event` 是 deterministic producer：以 accepted cue 起點與預設 5.2 秒寫入 canonical
 `highlights/tighten/<id>_broll.json`；姓名／title 由 agent 從訪綱與前期報告取得。`verify` fresh 驗 recipe
 與 identity lineage，再由 `run_short_broll.py` 使用既有 16:9 `chapter_label` 左對齊名牌 composition render，
-不需新增視覺模板或一般 human gate。實際順序固定為 director → broll → titles。
+不需新增視覺模板或一般 human gate。實際 production 順序固定為 camera/Timeline director →
+Director skill → DP skill → same-Director second-pass semantic audit → materializer → titles。
+
+## Step 3.2 — Podcast Highlight visual production truth（ADR-065）
+
+這是 Podcast derivative 的 mandatory adapter；不要拿 standalone Video Production Line 的
+`data/script_video/<ep>/storyboard.yaml` 代打。每個 cut 的 truth root 是：
+
+```text
+<episode>/highlights/visual-pipeline/<id>/
+  PENDING.json
+  CURRENT.json
+  revisions/<revision-id>/
+    DIRECTOR-WORK.json       podcast-highlight-visual-work-packet-v1
+    DIRECTOR-PLAN.json       podcast-highlight-director-plan-v1
+    DP-FULFILLMENT.json      podcast-highlight-dp-fulfillment-v1
+    SEMANTIC-AUDIT.json      podcast-highlight-visual-semantic-audit-v1
+```
+
+`run_short_director.py` = camera/Timeline director，**不代表 `brook-director` skill** execution。
+它完成機位與 derived Timeline 後，deterministic runtime 才能以 Editorial Master、winner/materialization
+lineage與 preflight綁定的 exact tight SRT建立 work packet；agent不得自行找 mtime latest。接著由 subscription agent完整讀 `brook-director` skill產
+Director plan；另一個 agent完整讀 `brook-dp` skill履約；再把 fulfillment交回**同一個 Director worker**做
+exact event coverage與語意 audit（Director identity相同、DP identity不同）。普通 `awaiting_director`／`awaiting_dp`／
+`awaiting_semantic_audit` 是 agent-owned next work，只有 ambiguity 才是 HITL。
+
+只有 fresh status `ready_to_materialize` 才能把 validated selection轉成 canonical broll recipe。
+`run_short_broll.py` = materializer，**不代表 `brook-dp` skill** execution；它不得自行找素材、猜 intent、
+或用 legacy receipt補過。缺少／stale／invalid 任一 receipt fail closed；既有 `_broll.json` 或素材數量
+達標都不是旁路授權。`run_short_titles.py` = materializer，也只能 consume DP產的 title implementation。
+Contract涵蓋所有 content visuals：Stock／Hero／keyword／quote／chapter／card；結構性 badge／camera correction／guest namecard
+維持各自 deterministic contract。Bridge finished review只展示 fresh receipt
+lineage，不新增正常人類 gate。
+
+Codex production route的 exact command（base不帶 request；Save Draft/reject必帶 job內 immutable request）是：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_orchestrator.py "<episode>" `
+  --cut-id <id> [--revision-request "<episode-local immutable request.json>"]
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py status "<episode>" --cut-id <id>
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py verify "<episode>" --cut-id <id>
+```
+
+Orchestrator固定執行 `init → Director proposal/accept-director → 不同 DP proposal/accept-dp →
+resume同一 Director session做 audit/accept-audit → verify`。Claude Code route也必須依同序 dispatch兩個隔離
+subagents，audit回到原 Director handle；accept commands需使用 host觀察到的 worker/execution/session identity，
+不可信任 proposal自報。Exact accept flags見 `brook-director`／`brook-dp`。`accept-audit`成功才切 CURRENT；
+新 PENDING crash/invalid保留上一 CURRENT，同 immutable request retry只 resume同 revision。
 
 ## Step 4 — 標題（長短片分流，修修 2026-07-26 二修裁決；ADR-054 D4/D13/D16）
 
@@ -300,10 +347,11 @@ critical 必修才能交付。修法：`line_moves_*.json` 支援三種操作—
 負責（開採出的長片 winners 也在這裡產生）；長片的緊湊化/導播/視覺語彙/
 SFX/QC 全部見 `.claude/skills/longform-cut/SKILL.md`。
 
-交接硬門檻：每支 long Highlight 在 finished review 前必須有至少 **3 個 Stock Video
+交接硬門檻：每支 long Highlight 在 finished review 前必須有完整且 fresh 的 ADR-065 receipt chain，且至少 **3 個 Stock Video
 （Stock Village）** asset-backed events；guest-namecard、Hero Title、transition、badge、紙紋、
-photo 與 generated card 不計數。先跑 `run_short_broll.py <episode> --id <id> --validate-only`，
-不足或素材 receipt 漂移時維持 revision-required，不可提交 finished review。
+photo 與 generated card 不計數。只有 visual pipeline 已到 `ready_to_materialize` 才跑
+`run_short_broll.py <episode> --id <id> --validate-only`；不足、語意 audit mismatch或任何 lineage漂移時
+維持 revision-required，不可提交 finished review。
 
 Script 層仍共用 `run_short_*.py`（`FORMAT_*` 參數表）——改 script 時兩線
 測試都要跑。以下 Step 6–11 為**短片線**。
@@ -391,8 +439,9 @@ Script 層仍共用 `run_short_*.py`（`FORMAT_*` 參數表）——改 script �
   words.json 實際語音（本輪就是靠對賬抓到短4 整段漂移）
 - audio 與 Step 6 相同（同一份 cuts.json 保留段）
 
-**執行順序**：director 重跑會整條重建 timeline——上層軌全被洗掉，
-**必須 director → broll → titles 順序重跑**。
+**執行順序**：camera/Timeline director 重跑會整條重建 timeline——上層軌全被洗掉，
+**必須 camera/Timeline director → Director receipt → DP receipt → semantic audit → materializer →
+titles 順序重跑**。
 
 **換集校準**：機位固定、臉部座標全集通用，但**換集必校**——抓各機位一幀
 量臉部中心 x，寫 `highlights/tighten/director.json` 覆蓋 `face_x`（格式見
@@ -487,8 +536,9 @@ alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺�
 
 ## Step 9 — 素材層：B-roll / 貼紙 / 概念卡（修修 2026-07-27 通宵裁決，對標鐘穎波旬集）
 
-波旬範本解剖出四種素材語彙，全部走 `highlights/tighten/<id>_broll.json` +
-`run_short_broll.py`（schema 見 script docstring）：
+波旬範本解剖出四種素材語彙。下列是 Director/DP 的視覺文法；Podcast production 必須先在
+ADR-065 receipts完成意圖、履約與語意 audit，再由 deterministic adapter產
+`highlights/tighten/<id>_broll.json`，最後交 materializer（schema 見 script docstring）：
 
 1. **stock video 切出**（比喻具象化：講跑車→跑車片、講孤立→窗邊人影）
    → track 2 全幅直式裁滿（fill zoom 自動算）
@@ -514,7 +564,7 @@ alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺�
 - 貼紙/插畫以 **data URI** 進 hyperframes variables——episode 素材不進
   repo composition assets
 
-**規劃紀律**（agent 寫 broll.json 時，十五輪起引 brook-director 文法）：
+**規劃紀律**（Director/DP 寫 receipts 時；agent 不可直接手寫 production broll.json）：
 - **節拍器（密度目標）**：短片每分鐘 **6–9 個視覺事件**（B-roll+貼紙+
   概念卡+字卡合計；十六輪裁決：短片比長片更緊湊——波旬範本 ~9/分、
   長片文法才 4.5–5.5/分）——觀眾每 ~8s 要有新視覺事件，>12s 全靜就是漏。

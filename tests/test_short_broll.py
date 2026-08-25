@@ -91,6 +91,104 @@ def _write_broll_inputs(episode: Path, lineage: dict, *, winner_lineage: dict | 
     )
 
 
+def _projection(
+    *,
+    materialization_id: str = "visual-001-s01",
+    target_lane: str = "broll_track2",
+    implementation_kind: str = "stock_video",
+    on_screen_text=None,
+    render_spec=None,
+):
+    return {
+        "materialization_id": materialization_id,
+        "event_id": "visual-001",
+        "director_intent_sha256": "a" * 64,
+        "target_lane": target_lane,
+        "implementation_kind": implementation_kind,
+        "mode": "stock" if implementation_kind == "stock_video" else "hyperframes",
+        "cue_ids": [1],
+        "t0": 1.0,
+        "t1": 2.0,
+        "source_range": {"start_sec": 0.25, "end_sec": 1.25},
+        "quote": "正式母版",
+        "on_screen_text": on_screen_text,
+        "media": {"path": "assets/broll/stock-0.mp4", "bytes": 7, "sha256": "b" * 64},
+        "provenance": {"authority": "test"},
+        "render_spec": render_spec,
+    }
+
+
+def _audited_broll_item(**overrides):
+    projection = _projection()
+    row = {
+        "kind": "video",
+        "slug": "visual-001-s01",
+        "t0": 1.0,
+        "t1": 2.0,
+        "src_in": 0.25,
+        "source_range": projection["source_range"],
+        "media_path": projection["media"]["path"],
+        "on_screen_text": None,
+        "provenance": projection["provenance"],
+        "render_spec": None,
+        "visual_materialization": projection,
+    }
+    row.update(overrides)
+    return row
+
+
+def _allow_authoritative_visual_gate(monkeypatch, broll):
+    monkeypatch.setattr(
+        broll,
+        "build_authoritative_broll_receipt",
+        lambda *_args, **_kwargs: {
+            "contract": "test-authoritative-visual",
+            "stock_video_count": 3,
+            "stock_videos": [],
+            "content_hash": "a" * 64,
+        },
+    )
+
+
+def _attach_test_visual_rows(episode: Path):
+    path = episode / "highlights" / "tighten" / "value-L01_broll.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    number = 0
+    for item in payload["items"]:
+        if item.get("kind") != "video":
+            continue
+        projection = _projection(materialization_id=f"visual-{number:03d}-s01")
+        projection.update(
+            {
+                "event_id": f"visual-{number:03d}",
+                "t0": item["t0"],
+                "t1": item["t1"],
+                "source_range": {
+                    "start_sec": 0.0,
+                    "end_sec": float(item["t1"]) - float(item["t0"]),
+                },
+                "media": {
+                    "path": f"assets/broll/{item['slug']}.mp4",
+                    "bytes": (episode / "assets" / "broll" / f"{item['slug']}.mp4").stat().st_size,
+                    "sha256": "b" * 64,
+                },
+            }
+        )
+        item.update(
+            {
+                "src_in": 0.0,
+                "source_range": projection["source_range"],
+                "media_path": projection["media"]["path"],
+                "on_screen_text": None,
+                "provenance": projection["provenance"],
+                "render_spec": None,
+                "visual_materialization": projection,
+            }
+        )
+        number += 1
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
 def _timeline(name: str, uid: str, source_path: Path):
     media_pool_item = SimpleNamespace(
         GetClipProperty=lambda key: str(source_path) if key == "File Path" else ""
@@ -169,6 +267,220 @@ def test_apply_rejects_stale_winner_before_connecting_to_resolve(tmp_path, monke
         broll.apply(tmp_path, "value-L01")
 
 
+def test_validate_plan_rejects_three_licensed_videos_without_visual_pipeline_receipts(
+    tmp_path, monkeypatch
+):
+    import run_short_broll as broll
+
+    master, identity = _master_selection(tmp_path)
+    _write_broll_inputs(tmp_path, identity)
+    monkeypatch.setattr(broll, "_open_editorial_master", lambda _episode: master)
+
+    with pytest.raises(SystemExit, match="Director|DP|Semantic Audit|visual pipeline"):
+        broll.validate_plan(tmp_path, "value-L01")
+
+
+def test_broll_recipe_rejects_audited_timeline_range_drift():
+    from agents.brook.script_video.highlight_broll import (
+        BrollContractError,
+        broll_item_projection,
+    )
+
+    with pytest.raises(BrollContractError, match="t1.*audited DP"):
+        broll_item_projection(_audited_broll_item(t1=2.1), 0)
+
+
+def test_broll_recipe_rejects_dp_selected_media_drift():
+    from agents.brook.script_video.highlight_broll import (
+        BrollContractError,
+        broll_item_projection,
+    )
+
+    with pytest.raises(BrollContractError, match="media_path.*selected media"):
+        broll_item_projection(_audited_broll_item(media_path="assets/broll/other.mp4"), 0)
+
+
+def test_broll_recipe_rejects_source_trim_drift():
+    from agents.brook.script_video.highlight_broll import (
+        BrollContractError,
+        broll_item_projection,
+    )
+
+    with pytest.raises(BrollContractError, match="src_in.*audited DP"):
+        broll_item_projection(_audited_broll_item(src_in=0.5), 0)
+
+
+def test_valid_audited_broll_and_title_recipes_pass_read_only_gates(tmp_path, monkeypatch):
+    import run_short_broll as broll
+    import run_short_titles as titles
+
+    master, identity = _master_selection(tmp_path)
+    _write_broll_inputs(tmp_path, identity)
+    plan_path = tmp_path / "highlights/tighten/value-L01_broll.json"
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    projections = []
+    for index, item in enumerate(plan["items"]):
+        span = float(item["t1"]) - float(item["t0"])
+        projection = _projection(materialization_id=f"visual-{index:03d}-s01")
+        projection.update(
+            {
+                "event_id": f"visual-{index:03d}",
+                "t0": item["t0"],
+                "t1": item["t1"],
+                "source_range": {"start_sec": 0.0, "end_sec": span},
+                "media": {
+                    "path": f"assets/broll/{item['slug']}.mp4",
+                    "bytes": (tmp_path / "assets/broll" / f"{item['slug']}.mp4").stat().st_size,
+                    "sha256": hashlib.sha256(
+                        (tmp_path / "assets/broll" / f"{item['slug']}.mp4").read_bytes()
+                    ).hexdigest(),
+                },
+            }
+        )
+        item.update(
+            {
+                "src_in": 0.0,
+                "source_range": projection["source_range"],
+                "media_path": projection["media"]["path"],
+                "on_screen_text": None,
+                "provenance": projection["provenance"],
+                "render_spec": None,
+                "visual_materialization": projection,
+            }
+        )
+        projections.append(projection)
+    plan_path.write_text(json.dumps(plan), encoding="utf-8")
+    title_media = tmp_path / "highlights/visual-pipeline/previews/hero.mov"
+    title_media.parent.mkdir(parents=True)
+    title_media.write_bytes(b"audited-hero")
+    title_spec = {
+        "component": "punch_card_wide",
+        "render_params": {
+            "text": "完整\n句子",
+            "tier": 1,
+            "style": "paper",
+            "show_sec": 1.0,
+            "pos_y": 0.6,
+        },
+        "render_spec_sha256": "c" * 64,
+    }
+    title_projection = _projection(
+        materialization_id="visual-title-s01",
+        target_lane="title_track3",
+        implementation_kind="hero_title",
+        on_screen_text="完整\n句子",
+        render_spec=title_spec,
+    )
+    title_projection.update(
+        {
+            "event_id": "visual-title",
+            "t0": 7.0,
+            "t1": 8.0,
+            "source_range": {"start_sec": 0.0, "end_sec": 1.0},
+            "media": {
+                "path": title_media.relative_to(tmp_path).as_posix(),
+                "bytes": title_media.stat().st_size,
+                "sha256": hashlib.sha256(title_media.read_bytes()).hexdigest(),
+            },
+        }
+    )
+    projections.append(title_projection)
+    (tmp_path / "highlights/tighten/value-L01_titles.json").write_text(
+        json.dumps(
+            {
+                "titles": [
+                    {
+                        "text": "完整\n句子",
+                        "t0": 7.0,
+                        "t1": 8.0,
+                        "tier": 1,
+                        "style": "paper",
+                        "pos_y": 0.6,
+                        "source_range": title_projection["source_range"],
+                        "media_path": title_projection["media"]["path"],
+                        "provenance": title_projection["provenance"],
+                        "render_spec": title_spec,
+                        "visual_materialization": title_projection,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    artifact_identity = {
+        "contract": "fixture",
+        "path": "highlights/visual-pipeline/revisions/r1/artifact.json",
+        "bytes": 1,
+        "sha256": "d" * 64,
+        "content_hash": "e" * 64,
+    }
+    lineage = {
+        "contract": "podcast-highlight-visual-lineage-v1",
+        "episode_id": tmp_path.name,
+        "cut_id": "value-L01",
+        "revision_id": "r1",
+        "format": "long",
+        "editorial_master": identity,
+        "current_pointer": dict(artifact_identity),
+        "work_packet": dict(artifact_identity),
+        "director_plan": dict(artifact_identity),
+        "dp_fulfillment": dict(artifact_identity),
+        "semantic_audit": dict(artifact_identity),
+        "materializations": projections,
+        "content_hash": "f" * 64,
+    }
+
+    def verify(_root, _cut_id, **kwargs):
+        assert {row["materialization_id"] for row in kwargs["items"]} == {
+            row["materialization_id"] for row in projections
+        }
+        return lineage
+
+    monkeypatch.setattr(broll, "_open_editorial_master", lambda _episode: master)
+    monkeypatch.setattr(titles, "_open_editorial_master", lambda _episode: master)
+    monkeypatch.setattr(
+        "agents.brook.script_video.highlight_visual_pipeline.verify_visual_lineage", verify
+    )
+
+    assert broll.validate_plan(tmp_path, "value-L01")["stock_video_count"] == 3
+    assert titles.validate_plan(tmp_path, "value-L01")["title_count"] == 1
+
+
+def test_apply_rejects_legacy_guest_namecard_without_guest_camera_correction(
+    tmp_path, monkeypatch
+):
+    import build_resolve_project
+    import run_short_broll as broll
+
+    master, identity = _master_selection(tmp_path)
+    _write_broll_inputs(tmp_path, identity)
+    plan_path = tmp_path / "highlights" / "tighten" / "value-L01_broll.json"
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    plan["items"].insert(
+        0,
+        {
+            "kind": "concept",
+            "slug": "guest-namecard",
+            "comp": "chapter_label",
+            "t0": 0.5,
+            "t1": 2.5,
+            "vars": {"label": "Guest", "sub": "Title", "style": "paper"},
+        },
+    )
+    plan_path.write_text(json.dumps(plan), encoding="utf-8")
+    _attach_test_visual_rows(tmp_path)
+    monkeypatch.setattr(broll, "_open_editorial_master", lambda _episode: master)
+    _allow_authoritative_visual_gate(monkeypatch, broll)
+    monkeypatch.setattr(
+        build_resolve_project,
+        "connect_resolve",
+        lambda: (_ for _ in ()).throw(AssertionError("Resolve must not be opened")),
+    )
+
+    with pytest.raises(SystemExit, match="唯一 guest camera-correction"):
+        broll.apply(tmp_path, "value-L01")
+
+
 def test_apply_rejects_stale_materialization_range_before_resolve_mutation(
     tmp_path, monkeypatch
 ):
@@ -177,10 +489,12 @@ def test_apply_rejects_stale_materialization_range_before_resolve_mutation(
 
     master, identity = _master_selection(tmp_path)
     _write_broll_inputs(tmp_path, identity)
+    _attach_test_visual_rows(tmp_path)
     timeline = _timeline("長1 - Master cut（緊·導播）", "director-uid", master.media_path)
     _write_materialization(tmp_path, master, timeline, end_sec=19.0)
     mutations: list[str] = []
     monkeypatch.setattr(broll, "_open_editorial_master", lambda _episode: master)
+    _allow_authoritative_visual_gate(monkeypatch, broll)
     monkeypatch.setattr(broll, "_probe_meta", lambda _path: (1.0, 30.0))
     monkeypatch.setattr(
         build_resolve_project,
@@ -199,6 +513,7 @@ def test_apply_rejects_raw_live_aroll_before_resolve_mutation(tmp_path, monkeypa
 
     master, identity = _master_selection(tmp_path)
     _write_broll_inputs(tmp_path, identity)
+    _attach_test_visual_rows(tmp_path)
     name = "長1 - Master cut（緊·導播）"
     receipt_timeline = _timeline(name, "director-uid", master.media_path)
     _write_materialization(tmp_path, master, receipt_timeline)
@@ -207,6 +522,7 @@ def test_apply_rejects_raw_live_aroll_before_resolve_mutation(tmp_path, monkeypa
     live_timeline = _timeline(name, "director-uid", raw)
     mutations: list[str] = []
     monkeypatch.setattr(broll, "_open_editorial_master", lambda _episode: master)
+    _allow_authoritative_visual_gate(monkeypatch, broll)
     monkeypatch.setattr(broll, "_probe_meta", lambda _path: (1.0, 30.0))
     monkeypatch.setattr(
         build_resolve_project,
@@ -227,6 +543,7 @@ def test_apply_reopens_master_after_preparation_before_resolve_mutation(
 
     master, identity = _master_selection(tmp_path)
     _write_broll_inputs(tmp_path, identity)
+    _attach_test_visual_rows(tmp_path)
     changed_identity = {**identity, "content_hash": "b" * 64}
     changed_master = SimpleNamespace(
         media_path=master.media_path,
@@ -243,6 +560,7 @@ def test_apply_reopens_master_after_preparation_before_resolve_mutation(
     timeline = _timeline("長1 - Master cut（緊·導播）", "director-uid", master.media_path)
     mutations: list[str] = []
     monkeypatch.setattr(broll, "_open_editorial_master", open_master)
+    _allow_authoritative_visual_gate(monkeypatch, broll)
     monkeypatch.setattr(broll, "_probe_meta", lambda _path: (1.0, 30.0))
     monkeypatch.setattr(
         build_resolve_project,

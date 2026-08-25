@@ -18,6 +18,13 @@
     t0/t1 = （緊·導播）timeline 秒。素材檔在 episode assets/broll/<slug>.*、
     貼紙在 assets/stickers/*.png（irasutoya s800，透明背景）。
 
+    Editorial Master 若在已知 human-reviewed speaker handoff 留錯機位，可加入
+    video-only camera correction；source 必須是 episode-local 且以 bytes/SHA 綁定：
+      {"t0": 42.467, "t1": 45.132, "kind": "camera-correction",
+       "slug": "guest-answer-camera-2a", "subject_role": "guest",
+       "source_path": "Video/2_CAMERA 2.mp4", "src_in": 1303.167,
+       "source_bytes": 123, "source_sha256": "..."}
+
 機制與教訓：
 - 影像素材 AppendToTimeline 後設 ZoomX/Y 填滿 1080×1920（fit 語意同 director：
   Resolve 先 fit 再 zoom，fill 倍率 = max(canvas/fit_w, canvas/fit_h)）
@@ -40,6 +47,7 @@ import base64
 import hashlib
 import json
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -61,7 +69,7 @@ from run_short_tighten import (  # noqa: E402
 from agents.brook.script_video.editorial_master import EditorialMasterContractError  # noqa: E402
 from agents.brook.script_video.highlight_broll import (  # noqa: E402
     BrollContractError,
-    build_broll_receipt,
+    build_authoritative_broll_receipt,
     receipt_path,
     write_broll_receipt,
 )
@@ -426,12 +434,13 @@ def validate_plan(episode_dir: Path, cid: str) -> dict:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
         raise SystemExit(f"{path} 不是合法 B-roll plan") from exc
     try:
-        receipt = build_broll_receipt(
+        receipt = build_authoritative_broll_receipt(
             episode_dir,
             cid,
             str(candidate["format"]),
             items,
             master.identity(),
+            editorial_master=master,
         )
     except BrollContractError as exc:
         raise SystemExit(f"Stock Video production gate 失敗：{exc}") from exc
@@ -443,6 +452,91 @@ def validate_plan(episode_dir: Path, cid: str) -> dict:
         "stock_videos": receipt["stock_videos"],
         "content_hash": receipt["content_hash"],
     }
+
+
+def emit_audited_recipe(
+    episode_dir: Path,
+    cid: str,
+    materializations: list[dict] | tuple[dict, ...],
+    *,
+    output_dir: Path | None = None,
+) -> Path:
+    """Deterministically project accepted DP rows into the B-roll renderer schema."""
+
+    from agents.brook.script_video.highlight_visual_pipeline import (
+        HighlightVisualContractError,
+        validate_materialization_projection,
+    )
+
+    structural: list[dict] = []
+    current = episode_dir / TIGHTEN_DIR / f"{cid}_broll.json"
+    if current.is_file():
+        try:
+            old_items = json.loads(current.read_text(encoding="utf-8"))["items"]
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
+            raise BrollContractError(
+                f"既有 B-roll recipe 無法保留 structural rows：{current}"
+            ) from exc
+        if not isinstance(old_items, list):
+            raise BrollContractError("既有 B-roll recipe items 必須是 array")
+        structural = [
+            dict(item)
+            for item in old_items
+            if isinstance(item, dict)
+            and (
+                str(item.get("kind") or "").strip().lower()
+                in {"camera-correction", "guest-namecard", "badge"}
+                or (
+                    str(item.get("kind") or "").strip().lower() == "concept"
+                    and str(item.get("slug") or "").strip().lower() == "guest-namecard"
+                )
+            )
+        ]
+    content: list[dict] = []
+    for index, raw in enumerate(materializations):
+        try:
+            projection = validate_materialization_projection(
+                raw, label=f"materializations[{index}]"
+            )
+        except HighlightVisualContractError as exc:
+            raise BrollContractError(f"DP materialization schema 不合法：{exc}") from exc
+        target = projection["target_lane"]
+        implementation = projection["implementation_kind"]
+        if target == "title_track3":
+            continue
+        if target == "broll_track2":
+            kind = "video" if implementation == "stock_video" else "photo"
+        elif target == "content_card_track4":
+            kind = "sticker" if implementation == "sticker_pair" else "concept"
+        else:
+            raise BrollContractError(f"DP materialization target_lane 不合法：{target}")
+        row = {
+            "kind": kind,
+            "slug": projection["materialization_id"],
+            "t0": projection["t0"],
+            "t1": projection["t1"],
+            "src_in": projection["source_range"]["start_sec"],
+            "source_range": projection["source_range"],
+            "media_path": projection["media"]["path"],
+            "on_screen_text": projection["on_screen_text"],
+            "provenance": projection["provenance"],
+            "render_spec": projection["render_spec"],
+            "visual_materialization": projection,
+        }
+        if target == "content_card_track4":
+            row["comp"] = implementation
+            row["vars"] = projection["render_spec"]["render_params"]
+        content.append(row)
+    destination_dir = output_dir or (episode_dir / TIGHTEN_DIR)
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    destination = destination_dir / f"{cid}_broll.json"
+    temporary = destination.with_suffix(destination.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps({"items": [*structural, *content]}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, destination)
+    return destination
 
 
 def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
@@ -459,12 +553,17 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         raise SystemExit(f"{broll_path} 不存在——agent 先從 tight SRT 規劃素材點")
     items = json.loads(broll_path.read_text(encoding="utf-8"))["items"]
     try:
-        broll_receipt = build_broll_receipt(
-            episode_dir, cid, str(fmt), items, master.identity()
+        broll_receipt = build_authoritative_broll_receipt(
+            episode_dir,
+            cid,
+            str(fmt),
+            items,
+            master.identity(),
+            editorial_master=master,
         )
     except BrollContractError as exc:
         raise SystemExit(f"Stock Video production gate 失敗：{exc}") from exc
-    items.sort(key=lambda x: x["t0"])
+    render_items = sorted(items, key=lambda x: x["t0"])
     assets_dir = episode_dir / "assets" / "broll"
     stickers_dir = episode_dir / "assets" / "stickers"
     cards_dir = episode_dir / CARDS_DIR
@@ -472,53 +571,128 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
 
     # 1) 準備 jobs：媒體素材找檔、卡片素材 render（hash cache）
     media_jobs, card_jobs, badge_jobs = [], [], []
-    for i, it in enumerate(items):
+    camera_corrections = [
+        item for item in render_items if str(item.get("kind") or "") == "camera-correction"
+    ]
+    for i, it in enumerate(render_items):
         t0, t1 = float(it["t0"]), float(it["t1"])
         span = round(t1 - t0, 2)
         kind = it["kind"]
         if span < 0.8:
             raise SystemExit(f"item {i}（{it.get('slug')}）只有 {span}s——太短，B-roll 至少 0.8s")
         if kind in ("video", "photo"):
-            hits = sorted(assets_dir.glob(f"{it['slug']}.*"))
-            if not hits:
-                raise SystemExit(f"assets/broll/{it['slug']}.* 不存在——先下載素材")
-            sar, src_fps = _probe_meta(hits[0])
+            projection = it["visual_materialization"]
+            selected = (episode_dir / projection["media"]["path"]).resolve()
+            # Source trim is part of the audited projection; recipe-side drift
+            # was rejected before job preparation.
+            source_start = float(projection["source_range"]["start_sec"])
+            sar, src_fps = _probe_meta(selected)
             media_jobs.append(
                 {
-                    "path": hits[0],
+                    "path": selected,
                     "t0": t0,
                     "span": span,
                     "kind": kind,
                     "i": i,
                     # src_in（秒）：素材源內起點偏移——素材開頭讀不懂/是廢畫面時跳過
                     # （首輪盲審：空錢包前 1s 是黑色皮件側面）
-                    "src_in": float(it.get("src_in", 0.0)),
+                    "src_in": source_start,
                     "sar": sar,
                     # photo 的「fps」無意義（jpg 會回報 25）——歸零走 timeline
                     # fps（搭配 clip Frames 設定）；probe 失敗同樣落回
                     "src_fps": 0.0 if kind == "photo" else src_fps,
+                    "timeline_name": f"{cid}_broll_{projection['materialization_id']}",
+                }
+            )
+        elif kind == "camera-correction":
+            if str(it.get("subject_role") or "") != "guest":
+                raise SystemExit(f"item {i} camera-correction subject_role 必須是 guest")
+            raw_source = it.get("source_path")
+            if not isinstance(raw_source, str) or not raw_source.strip():
+                raise SystemExit(f"item {i} camera-correction source_path 不合法")
+            source = (episode_dir / raw_source).resolve()
+            try:
+                source.relative_to(episode_dir.resolve())
+            except ValueError as exc:
+                raise SystemExit(f"item {i} camera-correction source_path escape") from exc
+            if not source.is_file():
+                raise SystemExit(f"item {i} camera-correction source 不存在：{raw_source}")
+            try:
+                expected_bytes = int(it["source_bytes"])
+                expected_sha = str(it["source_sha256"]).lower()
+                src_in = float(it["src_in"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise SystemExit(f"item {i} camera-correction source identity 不合法") from exc
+            if expected_bytes != source.stat().st_size:
+                raise SystemExit(f"item {i} camera-correction source bytes 已漂移")
+            actual_sha = hashlib.sha256()
+            with source.open("rb") as stream:
+                for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b""):
+                    actual_sha.update(chunk)
+            if len(expected_sha) != 64 or actual_sha.hexdigest() != expected_sha:
+                raise SystemExit(f"item {i} camera-correction source SHA-256 已漂移")
+            if src_in < 0:
+                raise SystemExit(f"item {i} camera-correction src_in 不合法")
+            sar, src_fps = _probe_meta(source)
+            media_jobs.append(
+                {
+                    "path": source,
+                    "t0": t0,
+                    "span": span,
+                    "kind": kind,
+                    "i": i,
+                    "src_in": src_in,
+                    "sar": sar,
+                    "src_fps": src_fps,
                 }
             )
         elif kind == "sticker":
-            comp = "sticker_pair"
-            if span > COMP_MAX_SEC[comp] - 0.3:
-                raise SystemExit(f"item {i} 貼紙 {span}s 超過上限 {COMP_MAX_SEC[comp] - 0.3}s")
-            variables: dict = {"show_sec": span}
-            for st in it["stickers"]:
-                p = stickers_dir / st["file"]
-                if not p.exists():
-                    raise SystemExit(f"assets/stickers/{st['file']} 不存在")
-                variables[f"{st['side']}_src"] = _data_uri(p)
-            for k in ("y_pct", "size_pct"):
-                if k in it:
-                    variables[k] = it[k]
-            card_jobs.append({"comp": comp, "vars": variables, "t0": t0, "span": span, "i": i})
+            projection = it["visual_materialization"]
+            card_jobs.append(
+                {
+                    "comp": "sticker_pair",
+                    "vars": it["vars"],
+                    "mov": (episode_dir / projection["media"]["path"]).resolve(),
+                    "t0": t0,
+                    "span": span,
+                    "i": i,
+                    "timeline_name": f"{cid}_broll_{projection['materialization_id']}",
+                }
+            )
         elif kind == "concept":
+            legacy_namecard = str(it.get("slug") or "").strip().lower() == "guest-namecard"
+            if legacy_namecard:
+                covering = [
+                    correction
+                    for correction in camera_corrections
+                    if str(correction.get("subject_role") or "") == "guest"
+                    and float(correction.get("t0", -1)) <= t0
+                    and float(correction.get("t1", -1)) > t0
+                ]
+                if len(covering) != 1:
+                    raise SystemExit(
+                        f"item {i} legacy guest-namecard 必須由唯一 guest camera-correction "
+                        "覆蓋起始畫面；新節目請改用 kind=guest-namecard quorum receipt"
+                    )
             comp = it.get("comp", "concept_card")
             if comp not in COMPS:
                 raise SystemExit(f"item {i} comp={comp} 不存在")
             if span > COMP_MAX_SEC[comp] - 0.3:
                 raise SystemExit(f"item {i} 概念卡 {span}s 超過上限 {COMP_MAX_SEC[comp] - 0.3}s")
+            if not legacy_namecard:
+                projection = it["visual_materialization"]
+                card_jobs.append(
+                    {
+                        "comp": comp,
+                        "vars": it["vars"],
+                        "mov": (episode_dir / projection["media"]["path"]).resolve(),
+                        "t0": t0,
+                        "span": span,
+                        "i": i,
+                        "timeline_name": f"{cid}_broll_{projection['materialization_id']}",
+                    }
+                )
+                continue
             variables = {"show_sec": span}
             for k, v in it.get("vars", {}).items():
                 if k.endswith("_icon"):
@@ -542,10 +716,15 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         else:
             raise SystemExit(
                 f"item {i} kind={kind} 不合法"
-                "（video/photo/sticker/concept/guest-namecard/badge）"
+                "（video/photo/camera-correction/sticker/concept/guest-namecard/badge）"
             )
 
     for job in card_jobs:
+        # Content-bearing HyperFrames clips were already rendered, selected and
+        # visually audited by DP/Director.  Only structural namecards reach the
+        # legacy renderer below.
+        if "mov" in job:
+            continue
         h = _card_hash(job["comp"], job["vars"], suffix)
         mov = cards_dir / f"{cid}_broll_{job['i']}_{h}.mov"
         if not mov.exists():
@@ -579,6 +758,24 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
             mov = tex_mov
         job["mov"] = mov
 
+    # Re-open both trust roots before any Resolve access. CURRENT may switch
+    # while jobs are prepared; an older audited generation must never apply.
+    master = _open_editorial_master(episode_dir)
+    c, w = _load_winner(episode_dir, cid, master.identity())
+    try:
+        fresh_broll_receipt = build_authoritative_broll_receipt(
+            episode_dir,
+            cid,
+            str(c["format"]),
+            items,
+            master.identity(),
+            editorial_master=master,
+        )
+    except BrollContractError as exc:
+        raise SystemExit(f"Stock Video production gate 失敗：{exc}") from exc
+    if fresh_broll_receipt != broll_receipt:
+        raise SystemExit("Stock Video plan／素材在準備期間發生變更，未修改 Resolve")
+
     # 2) Resolve：匯入 + 疊軌
     resolve = connect_resolve()
     pm = resolve.GetProjectManager()
@@ -590,20 +787,6 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     fps = float(project.GetSetting("timelineFrameRate"))
     mp = project.GetMediaPool()
     root = mp.GetRootFolder()
-
-    # Card rendering above can take minutes. Re-open the trust root and winner
-    # immediately before the first Resolve mutation instead of relying on the
-    # earlier preflight identity remaining fresh.
-    master = _open_editorial_master(episode_dir)
-    c, w = _load_winner(episode_dir, cid, master.identity())
-    try:
-        fresh_broll_receipt = build_broll_receipt(
-            episode_dir, cid, str(c["format"]), items, master.identity()
-        )
-    except BrollContractError as exc:
-        raise SystemExit(f"Stock Video production gate 失敗：{exc}") from exc
-    if fresh_broll_receipt != broll_receipt:
-        raise SystemExit("Stock Video plan／素材在準備期間發生變更，未修改 Resolve")
     director_label = f"{FORMAT_LABEL[c['format']]}{w['rank']} - {c['title']}（緊·導播）"
     director = None
     for i in range(1, project.GetTimelineCount() + 1):
@@ -622,6 +805,11 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     # （十七輪：sports-car 換 slug 後舊 item 沒被 name 比對清到）。
     # 卡片 item 用 <cid>_broll_ 名稱前綴（每 cid 專屬，不跨短片）。
     assets_prefix = str(assets_dir.resolve()).lower()
+    correction_paths = {
+        str(job["path"].resolve()).casefold()
+        for job in media_jobs
+        if job["kind"] == "camera-correction"
+    }
 
     def _ours(it) -> bool:
         if (it.GetName() or "").startswith(f"{cid}_broll_"):
@@ -631,7 +819,7 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
             fp = (mpi.GetClipProperty("File Path") or "") if mpi else ""
         except (AttributeError, TypeError):
             return False
-        return fp.lower().startswith(assets_prefix)
+        return fp.lower().startswith(assets_prefix) or fp.casefold() in correction_paths
 
     for ti in range(1, director.GetTrackCount("video") + 1):
         stale = [it for it in (director.GetItemListInTrack("video", ti) or []) if _ours(it)]
@@ -676,6 +864,8 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         if not clips:
             raise SystemExit(f"匯入失敗: {job['path']}")
         clip = clips[0]
+        if job.get("timeline_name"):
+            clip.SetClipProperty("Clip Name", job["timeline_name"])
         if job["kind"] == "photo":
             # 靜照的 endFrame 會被忽略（走專案預設靜照時長 5s，實測 journal
             # 照 3.2s 變 5.0s）——先把 clip 的 Frames 設成目標長度
@@ -715,6 +905,8 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         clips = mp.ImportMedia([str(job["mov"])]) or []
         if not clips:
             raise SystemExit(f"匯入失敗: {job['mov']}")
+        if job.get("timeline_name"):
+            clips[0].SetClipProperty("Clip Name", job["timeline_name"])
         ok = mp.AppendToTimeline(
             [
                 {
@@ -783,15 +975,25 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     mp.SetCurrentFolder(root)
     pm.SaveProject()
     try:
-        post_apply_broll_receipt = build_broll_receipt(
-            episode_dir, cid, str(c["format"]), items, master.identity()
+        post_apply_broll_receipt = build_authoritative_broll_receipt(
+            episode_dir,
+            cid,
+            str(c["format"]),
+            items,
+            master.identity(),
+            editorial_master=master,
         )
     except BrollContractError as exc:
         raise SystemExit(f"Stock Video materialization receipt 寫入失敗：{exc}") from exc
     if post_apply_broll_receipt != broll_receipt:
         raise SystemExit("Stock Video plan／素材在疊軌期間發生變更；未發布 materialization receipt")
     committed_broll_receipt = write_broll_receipt(
-        episode_dir, cid, str(c["format"]), items, master.identity()
+        episode_dir,
+        cid,
+        str(c["format"]),
+        items,
+        master.identity(),
+        editorial_master=master,
     )
 
     stills = []
@@ -839,7 +1041,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--validate-only",
         action="store_true",
-        help="只驗 Stock Video 數量、路徑與 hash，不連 Resolve／不寫 receipt",
+        help="驗 current Director/DP/Audit、exact recipes/media，不連 Resolve／不寫 receipt",
     )
     args = parser.parse_args(argv)
     result = (

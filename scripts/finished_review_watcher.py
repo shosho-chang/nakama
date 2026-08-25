@@ -408,6 +408,7 @@ def reconcile_missing_revision_job(
     ):
         raise RuntimeError("legacy feedback preview hashes are incomplete")
     request = {
+        "worker_contract": "finished-cut-revision-worker-v2-stock-required",
         "episode_id": episode_id,
         "review_format": "short" if feedback_path.name.startswith("short_") else "long",
         "manifest_filename": manifest_matches[0].name,
@@ -418,6 +419,22 @@ def reconcile_missing_revision_job(
         "component_feedback": component_feedback,
         "overall_feedback": overall_feedback,
     }
+    if (episode_dir / "editorial-master" / "v1" / "EDITORIAL-MASTER.json").is_file():
+        from scripts.run_short_broll import _open_editorial_master
+
+        request["editorial_master_lineage"] = _open_editorial_master(
+            episode_dir
+        ).identity()
+    tighten_inputs = {}
+    for cut_id in requested_cut_ids:
+        cuts_path = episode_dir / "highlights" / "tighten" / f"{cut_id}_cuts.json"
+        if cuts_path.is_file():
+            tighten_inputs[cut_id] = {
+                "path": cuts_path.relative_to(episode_dir).as_posix(),
+                "sha256": _sha256(cuts_path),
+            }
+    if tighten_inputs:
+        request["tighten_inputs"] = tighten_inputs
     if trusted_handoff is not None:
         request["trusted_asset_sources"] = trusted_handoff["sources"]
         request["trusted_asset_sources_sha256"] = trusted_handoff["sources_sha256"]
@@ -919,7 +936,7 @@ def _manifest_cuts(manifest_path: Path, review_dir: Path, requested: list[str]) 
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RuntimeError("revision output manifest is unreadable") from exc
-    if payload.get("schema") != "nakama.finished_cut_review_manifest.v1":
+    if payload.get("schema") != "nakama.finished_cut_review_manifest.v2":
         raise RuntimeError("revision output manifest schema is invalid")
     cuts = {
         row.get("cut_id"): row
@@ -975,8 +992,11 @@ def dispatch_revision_agent(context: dict) -> subprocess.CompletedProcess[str]:
 
 請讀 `{context['request_path']}`，逐項處理 component_feedback 與 overall_feedback。
 唯一可寫位置是 `{output_root}`；episode 與 repo 只能讀，禁止直接寫入。
-依 request.allowed_changes 只產生 staged inputs：tighten 內的 plan/recipe JSON，以及
-request.trusted_asset_sources 已 hash-bound 的新素材。不得自報或更改素材授權與來源。
+依 request.allowed_changes 只可產生非視覺的 staged tighten inputs（目前只有 `_cuts.json`）。
+不得寫 `_broll.json`、`_titles.json`、DIRECTOR/DP/AUDIT proposal 或 receipt；視覺內容會由
+worker 另行 dispatch Director → DP → 同一 Director Semantic Audit，再由 deterministic adapter
+產生 exact recipe。request.trusted_asset_sources 只代表 bytes/license acquisition authority，
+不代表素材符合字幕語意，也不得拿它自行決定 Stock Video。
 不得產生 review preview、events、
 manifest、materialization receipt 或 stills；這些只能由 worker 的可信任程式產生。
 
@@ -984,9 +1004,9 @@ manifest、materialization receipt 或 stills；這些只能由 worker 的可信
 嚴禁修改 Editorial Master、完整節目 Timeline、其他 cut Timeline、其他 cut 檔案、repo code、
 feedback JSON、packaging、字幕 release、上傳或 YouTube 狀態。
 
-使用 repo 既有 schema 作為唯讀參考；你的產出只是計畫與輸入，不是執行成功的證據。
-Hero Title replacement 內的
-    換行是版面指令，必須原樣保留。不可自行核准；若無法確實重建，非零退出。
+使用 repo 既有 schema 作為唯讀參考；你的產出只是非視覺計畫與輸入，不是執行成功的證據。
+Hero Title 與所有 content visual feedback 不得在此 agent 自行實作或核准。
+若無法確實完成允許的非視覺調整，非零退出。
     完成摘要直接作為最後回覆。
 """
     command = [
@@ -1143,7 +1163,9 @@ def _authoritative_output_verifier(context: dict) -> dict:
     request = context["request"]
     try:
         manifest_path = build_manifest(
-            episode_dir, review_format=str(request["review_format"])
+            episode_dir,
+            review_format=str(request["review_format"]),
+            cut_ids=set(request["requested_cut_ids"]),
         )
         results: list[dict] = []
         for cut_id in request["requested_cut_ids"]:
@@ -1410,6 +1432,23 @@ def _restore_revision_targets(state: dict, review_dir: Path) -> None:
             _remove_path(destination)
 
 
+def _reject_agent_authored_visual_recipes(output_root: Path, requested: list[str]) -> None:
+    """The generic revision agent has no authority to impersonate Director/DP/Audit."""
+
+    tighten = output_root / "tighten"
+    forbidden = [
+        tighten / f"{cut_id}_{suffix}.json"
+        for cut_id in requested
+        for suffix in ("broll", "titles")
+    ]
+    authored = [path.name for path in forbidden if path.exists()]
+    if authored:
+        raise RuntimeError(
+            "generic revision agent authored semantic visual recipes; only trusted "
+            f"Director/DP/Audit adapter may create them: {', '.join(sorted(authored))}"
+        )
+
+
 def _promote_agent_inputs(
     *,
     episode_dir: Path,
@@ -1439,59 +1478,55 @@ def _promote_agent_inputs(
         staged = [path for path in output_tighten.iterdir()]
         if any(not path.is_file() or path.name not in recipe_names for path in staged):
             raise RuntimeError("agent output contains a non-whitelisted tighten recipe")
-        authority_sources = allowed.get("trusted_asset_sources", {})
-        for source in staged:
-            if not source.name.endswith("_broll.json"):
-                continue
-            try:
-                items = json.loads(source.read_text(encoding="utf-8"))["items"]
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
-                raise RuntimeError(f"agent B-roll plan is invalid: {source.name}") from exc
-            for item in items:
-                if not isinstance(item, dict) or str(item.get("kind", "")).lower() != "video":
-                    continue
-                slug = str(item.get("slug") or "")
-                authority = authority_sources.get(slug)
-                if (
-                    not isinstance(authority, dict)
-                    or item.get("provenance") != authority.get("provenance")
-                ):
-                    raise RuntimeError(
-                        f"B-roll plan provenance is not request-bound: {slug or '<missing>'}"
-                    )
-                existing_assets = sorted(
-                    path
-                    for path in (episode_dir / "assets" / "broll").glob(f"{slug}.*")
-                    if path.is_file()
-                )
-                staged_assets = sorted(
-                    path
-                    for path in (output_root / "assets" / "broll").glob(f"{slug}.*")
-                    if path.is_file()
-                )
-                candidates = [*existing_assets, *staged_assets]
-                if len(candidates) == 2:
-                    existing, staged = candidates
-                    if (
-                        existing.name == staged.name
-                        and existing.stat().st_size == staged.stat().st_size
-                        and _sha256(existing) == _sha256(staged)
-                    ):
-                        candidates = [existing]
-                if len(candidates) != 1:
-                    raise RuntimeError(
-                        f"B-roll plan slug must bind exactly one current/staged asset: {slug}"
-                    )
-                asset = candidates[0]
-                if (
-                    authority.get("filename") != asset.name
-                    or authority.get("bytes") != asset.stat().st_size
-                    or authority.get("sha256") != _sha256(asset)
-                ):
-                    raise RuntimeError(f"B-roll plan asset hash drifted from request: {slug}")
-                from agents.brook.script_video.highlight_broll import probe_stock_video
+        staged_names = {path.name for path in staged}
+        visual_names = {
+            f"{cut_id}_{suffix}.json"
+            for cut_id in requested
+            for suffix in ("broll", "titles")
+        }
+        if staged_names & visual_names:
+            from agents.brook.script_video.highlight_broll import (
+                BrollContractError,
+                verify_visual_recipe_lineage,
+            )
+            from scripts.run_short_broll import _load_winner, _open_editorial_master
 
-                probe_stock_video(asset)
+            master = _open_editorial_master(episode_dir)
+            for cut_id in requested:
+                broll_path = output_tighten / f"{cut_id}_broll.json"
+                titles_path = output_tighten / f"{cut_id}_titles.json"
+                if not broll_path.is_file() or not titles_path.is_file():
+                    raise RuntimeError(
+                        f"trusted visual adapter must stage both B-roll and title recipes: {cut_id}"
+                    )
+                try:
+                    broll_items = json.loads(broll_path.read_text(encoding="utf-8"))["items"]
+                    title_items = json.loads(titles_path.read_text(encoding="utf-8"))["titles"]
+                    candidate, _winner = _load_winner(
+                        episode_dir, cut_id, master.identity()
+                    )
+                    verify_visual_recipe_lineage(
+                        episode_dir,
+                        cut_id,
+                        str(candidate["format"]),
+                        master.identity(),
+                        broll_items=broll_items,
+                        title_items=title_items,
+                        editorial_master=master,
+                    )
+                except (
+                    OSError,
+                    UnicodeDecodeError,
+                    json.JSONDecodeError,
+                    KeyError,
+                    TypeError,
+                    BrollContractError,
+                    SystemExit,
+                ) as exc:
+                    raise RuntimeError(
+                        "trusted visual recipe differs from current Director/DP/Audit: "
+                        f"{cut_id}: {exc}"
+                    ) from exc
         for source in staged:
             destination = episode_dir / "highlights" / "tighten" / source.name
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -1712,15 +1747,33 @@ class _TrustedApplyError(RuntimeError):
 def _trusted_apply_revision(context: dict) -> dict:
     """Apply staged recipes through deterministic code on disposable Timelines."""
     from scripts.run_short_broll import apply as apply_broll
+    from scripts.run_short_broll import validate_plan as validate_broll
     from scripts.run_short_director import direct
     from scripts.run_short_review import build_packet
     from scripts.run_short_titles import apply as apply_titles
+    from scripts.run_short_titles import validate_plan as validate_titles
 
     episode_dir = Path(context["episode_dir"])
     requested = list(context["request"]["requested_cut_ids"])
     transaction: _ResolveTimelineTransaction | None = None
     operations: list[dict] = []
     try:
+        # Fresh fail-closed preflight before transaction.begin can duplicate or
+        # rename even one Resolve Timeline.  Each materializer verifies again
+        # immediately before its own mutation to close the remaining race.
+        for cut_id in requested:
+            operations.extend(
+                [
+                    {
+                        "operation": "run_short_broll.validate_plan",
+                        "result": validate_broll(episode_dir, cut_id),
+                    },
+                    {
+                        "operation": "run_short_titles.validate_plan",
+                        "result": validate_titles(episode_dir, cut_id),
+                    },
+                ]
+            )
         transaction = _ResolveTimelineTransaction.begin(
             episode_dir,
             dict(context["allowed_changes"]["resolve_timelines"]),
@@ -1749,7 +1802,11 @@ def _trusted_apply_revision(context: dict) -> dict:
             operations.append(
                 {
                     "operation": "run_short_review.build_packet",
-                    "result": build_packet(episode_dir, cut_id),
+                    "result": build_packet(
+                        episode_dir,
+                        cut_id,
+                        finished_manifest_cut_ids=set(requested),
+                    ),
                 }
             )
         verification = context["output_verifier"](context)
@@ -1779,12 +1836,63 @@ def _trusted_apply_revision(context: dict) -> dict:
         ) from exc
 
 
+def _run_visual_pipeline_revision(context: dict) -> dict:
+    """Dispatch/resume Director→DP→Director-audit and stage exact renderer recipes."""
+
+    from scripts.podcast_highlight_visual_orchestrator import run_visual_pipeline
+    from scripts.run_short_broll import (
+        _open_editorial_master,
+    )
+    from scripts.run_short_broll import (
+        emit_audited_recipe as emit_broll,
+    )
+    from scripts.run_short_titles import emit_audited_recipe as emit_titles
+
+    episode_dir = Path(context["episode_dir"])
+    output_tighten = Path(context["output_root"]) / "tighten"
+    request_path = Path(context["request_path"])
+    master = _open_editorial_master(episode_dir)
+    results: list[dict] = []
+    for cut_id in context["request"]["requested_cut_ids"]:
+        selection = run_visual_pipeline(
+            episode_dir,
+            cut_id=cut_id,
+            revision_request=request_path,
+            editorial_master=master,
+            resume=True,
+        )
+        materializations = selection.materializations
+        broll_path = emit_broll(
+            episode_dir,
+            cut_id,
+            materializations,
+            output_dir=output_tighten,
+        )
+        titles_path = emit_titles(
+            cut_id,
+            materializations,
+            output_dir=output_tighten,
+        )
+        lineage = selection.lineage()
+        results.append(
+            {
+                "cut_id": cut_id,
+                "revision_id": lineage["revision_id"],
+                "content_hash": lineage["content_hash"],
+                "broll_recipe": str(broll_path),
+                "title_recipe": str(titles_path),
+            }
+        )
+    return {"status": "ready_to_materialize", "cuts": results}
+
+
 def run_revision_job(
     work: dict,
     *,
     agent_runner: Callable[[dict], subprocess.CompletedProcess[str]] = dispatch_revision_agent,
     output_verifier: Callable[[dict], dict] = _authoritative_output_verifier,
     trusted_apply: Callable[[dict], dict] = _trusted_apply_revision,
+    visual_pipeline_runner: Callable[[dict], dict] | None = None,
 ) -> bool:
     """Run one queued request transactionally; repeated pickup is a no-op."""
     feedback_path = Path(work["feedback_path"])
@@ -1849,6 +1957,24 @@ def run_revision_job(
             preview = Path(source_cuts[cut_id]["artifacts"]["preview"]["path"])
             if _sha256(preview) != request.get("source_preview_sha256", {}).get(cut_id):
                 raise RuntimeError(f"finished preview drifted after feedback was saved: {cut_id}")
+        expected_master = request.get("editorial_master_lineage")
+        if expected_master is not None:
+            from scripts.run_short_broll import _open_editorial_master
+
+            if _open_editorial_master(episode_dir).identity() != expected_master:
+                raise RuntimeError("Editorial Master drifted after revision was queued")
+        expected_tighten = request.get("tighten_inputs")
+        if expected_tighten is not None:
+            if not isinstance(expected_tighten, dict):
+                raise RuntimeError("revision request tighten inputs are invalid")
+            for cut_id, row in expected_tighten.items():
+                if not isinstance(row, dict) or not isinstance(row.get("path"), str):
+                    raise RuntimeError("revision request tighten input is invalid")
+                cuts_path = _contained(
+                    episode_dir / row["path"], episode_dir, "revision tighten input"
+                )
+                if _sha256(cuts_path) != row.get("sha256"):
+                    raise RuntimeError(f"tighten cuts drifted after revision was queued: {cut_id}")
 
         if output_root.exists():
             raise RuntimeError("revision job output already exists before first pickup")
@@ -1922,6 +2048,10 @@ def run_revision_job(
             raise RuntimeError(
                 f"Finished revision agent exit {result.returncode}: {(result.stderr or '')[-500:]}"
             )
+        _reject_agent_authored_visual_recipes(output_root, requested)
+        # Promote only the generic agent's non-visual cuts/assets first.  The
+        # semantic workers then read the canonical request snapshot and current
+        # cut inputs; they never accept self-reported visual recipes.
         promoted_assets = _promote_agent_inputs(
             episode_dir=episode_dir,
             review_dir=review_dir,
@@ -1929,6 +2059,25 @@ def run_revision_job(
             allowed=allowed,
             output_root=output_root,
         )
+        producer = visual_pipeline_runner or _run_visual_pipeline_revision
+        visual_pipeline_result = producer(context)
+        if (
+            not isinstance(visual_pipeline_result, dict)
+            or visual_pipeline_result.get("status") != "ready_to_materialize"
+        ):
+            raise RuntimeError("Director/DP/Semantic Audit producer did not become ready")
+        promoted_assets.extend(
+            asset
+            for asset in _promote_agent_inputs(
+                episode_dir=episode_dir,
+                review_dir=review_dir,
+                requested=requested,
+                allowed=allowed,
+                output_root=output_root,
+            )
+            if asset not in promoted_assets
+        )
+        context["visual_pipeline"] = visual_pipeline_result
         trusted_result = trusted_apply(context)
         if isinstance(trusted_result, dict):
             candidate_handle = trusted_result.pop("_timeline_transaction_handle", None)
@@ -1986,6 +2135,7 @@ def run_revision_job(
                 "requested_cut_ids": requested,
                 "promoted_broll_assets": promoted_assets,
                 "trusted_handoff_assets": handoff_assets,
+                "visual_pipeline": visual_pipeline_result,
                 "staged_input_inventory": _tree_inventory(
                     output_root, relative_to=output_root
                 ),

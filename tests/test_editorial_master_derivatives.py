@@ -72,6 +72,45 @@ def _selection(episode: Path):
     return SimpleNamespace(media_path=media, srt_path=srt, identity=lambda: identity), identity
 
 
+def _authoritative_broll_receipt_fixture(episode: Path, cut_id: str, items: list[dict]) -> dict:
+    rows = []
+    for item in items:
+        asset = episode / "assets" / "broll" / f"{item['slug']}.mp4"
+        rows.append(
+            {
+                "slug": item["slug"],
+                "t0": item["t0"],
+                "t1": item["t1"],
+                "asset": {
+                    "path": asset.relative_to(episode).as_posix(),
+                    "bytes": asset.stat().st_size,
+                    "sha256": hashlib.sha256(asset.read_bytes()).hexdigest(),
+                },
+            }
+        )
+    return {
+        "contract": "podcast-long-highlight-stock-video-v2",
+        "cut_id": cut_id,
+        "content_hash": "f" * 64,
+        "stock_video_count": len(rows),
+        "stock_videos": rows,
+        "visual_pipeline_lineage": {
+            "revision_id": "fixture-r1",
+            "content_hash": "e" * 64,
+            "current_pointer": {
+                "path": "highlights/visual-pipeline/value-L01/CURRENT.json",
+                "bytes": 101,
+                "sha256": "1" * 64,
+                "revision_id": "fixture-r1",
+            },
+            "work_packet": {"path": "WORK.json", "sha256": "2" * 64},
+            "director_plan": {"path": "DIRECTOR.json", "sha256": "3" * 64},
+            "dp_fulfillment": {"path": "DP.json", "sha256": "4" * 64},
+            "semantic_audit": {"path": "AUDIT.json", "sha256": "5" * 64},
+        },
+    }
+
+
 def _live_master_timeline(name: str, uid: str, media_path: Path):
     media_pool_item = SimpleNamespace(
         GetClipProperty=lambda key: str(media_path) if key == "File Path" else ""
@@ -246,14 +285,12 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
     (tighten / "value-L01_broll.json").write_text(
         json.dumps({"items": broll_items}), encoding="utf-8"
     )
-    from agents.brook.script_video.highlight_broll import (
-        receipt_identity,
-        write_broll_receipt,
-    )
+    from agents.brook.script_video.highlight_broll import receipt_identity
 
-    broll_receipt = write_broll_receipt(
-        tmp_path, "value-L01", "long", broll_items, identity
+    broll_receipt = _authoritative_broll_receipt_fixture(
+        tmp_path, "value-L01", broll_items
     )
+    monkeypatch.setattr(producer, "verify_broll_receipt", lambda *_args, **_kwargs: broll_receipt)
     cut_dir = tmp_path / "highlights" / "review" / "value-L01"
     cut_dir.mkdir(parents=True)
     (cut_dir / "preview.mp4").write_bytes(b"preview")
@@ -279,7 +316,7 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
     (cut_dir.parent / "finished_review_manifest_20260822.json").write_text(
         json.dumps(
             {
-                "schema": "nakama.finished_cut_review_manifest.v1",
+                "schema": producer.SCHEMA,
                 "episode_id": tmp_path.name,
                 "cuts": [
                     {
@@ -315,6 +352,10 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
     payload = json.loads(first)
     cut = payload["cuts"][0]
     assert payload["editorial_master_lineage"] == identity
+    assert cut["stock_video_lineage"] == receipt_identity(broll_receipt)
+    assert cut["visual_pipeline_lineage"] == broll_receipt["visual_pipeline_lineage"]
+    assert cut["visual_pipeline_lineage"]["revision_id"] == "fixture-r1"
+    assert cut["visual_pipeline_lineage"]["current_pointer"]["sha256"] == "1" * 64
     assert cut["visual_treatment_counts"]["b_roll"] == 3
     assert cut["stock_video_count"] == 3
     assert cut["visual_treatment_counts"]["identity_card"] == 1
@@ -407,7 +448,7 @@ def test_finished_manifest_rejects_arbitrary_legacy_component_id_remap(tmp_path)
     (review / "finished_review_manifest_20260822.json").write_text(
         json.dumps(
             {
-                "schema": "nakama.finished_cut_review_manifest.v1",
+                "schema": producer.SCHEMA,
                 "episode_id": tmp_path.name,
                 "cuts": [
                     {
@@ -489,7 +530,45 @@ def test_long_review_packet_refreshes_contract_manifest():
     assert "_load_winner(episode_dir, cid, master_identity)" in source
     assert "_verify_materialization_receipt" in source
     assert 'c.get("format") == "long"' in source
-    assert 'build_manifest(episode_dir, review_format="long")' in source
+    assert "finished_manifest_cut_ids" in source
+    assert "cut_ids=finished_manifest_cut_ids" in source
+
+
+def test_partial_manifest_identity_bootstrap_never_verifies_unrequested_stale_cut(
+    tmp_path, monkeypatch
+):
+    import build_finished_review_manifest as producer
+
+    calls = []
+
+    def scoped_payload(_episode, *, review_format="long", identity_registry=None, cut_ids=None):
+        calls.append(cut_ids)
+        if cut_ids is None:
+            raise SystemExit("unrequested punch-L04 events.json Editorial Master lineage stale")
+        return {
+            "schema": producer.SCHEMA,
+            "episode_id": tmp_path.name,
+            "stage": 5,
+            "gate": {},
+            "editorial_master_lineage": {"content_hash": "a" * 64},
+            "cuts": [{"cut_id": "value-L01", "components": []}],
+            "feedback_contract": {},
+            "inventory_scope": {
+                "mode": "partial_editorial_master_migration",
+                "included_cut_ids": ["value-L01"],
+                "pending_cut_ids": ["punch-L04"],
+            },
+        }
+
+    monkeypatch.setattr(producer, "_manifest_payload", scoped_payload)
+    (tmp_path / "highlights" / "review").mkdir(parents=True)
+
+    output = producer.build_manifest(tmp_path, cut_ids={"value-L01"})
+
+    assert output.is_file()
+    assert calls == [{"value-L01"}, {"value-L01"}]
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["inventory_scope"]["pending_cut_ids"] == ["punch-L04"]
 
 
 def test_finished_manifest_refuses_unbacked_broll(tmp_path, monkeypatch):
@@ -582,14 +661,12 @@ def test_finished_manifest_ignores_unknown_review_packet(tmp_path, monkeypatch):
     (tighten / "value-L01_broll.json").write_text(
         json.dumps({"items": broll_items}), encoding="utf-8"
     )
-    from agents.brook.script_video.highlight_broll import (
-        receipt_identity,
-        write_broll_receipt,
-    )
+    from agents.brook.script_video.highlight_broll import receipt_identity
 
-    broll_receipt = write_broll_receipt(
-        tmp_path, "value-L01", "long", broll_items, identity
+    broll_receipt = _authoritative_broll_receipt_fixture(
+        tmp_path, "value-L01", broll_items
     )
+    monkeypatch.setattr(producer, "verify_broll_receipt", lambda *_args, **_kwargs: broll_receipt)
     for cut_id in ("value-L01", "unknown-L99"):
         cut_dir = review / cut_id
         cut_dir.mkdir(parents=True)

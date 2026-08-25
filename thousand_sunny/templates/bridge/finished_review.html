@@ -9,11 +9,13 @@
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-highlight-review.css?v={{ asset_version }}">
 <style>
   .finished-gate { box-sizing: border-box; width: 100%; max-width: 1440px; margin: 0 auto; padding: var(--sho-s-4) var(--sho-gutter) var(--sho-s-8); }
   .finished-status { border-left: 3px solid var(--sho-success); background: color-mix(in oklch, var(--sho-success) 8%, transparent); margin: 0 0 var(--sho-s-4); padding: var(--sho-s-2) var(--sho-s-3); }
   .finished-status--working { border-left-color: var(--sho-info); background: color-mix(in oklch, var(--sho-info) 8%, transparent); }
   .finished-status--error { border-left-color: var(--sho-error); background: color-mix(in oklch, var(--sho-error) 8%, transparent); }
+  .finished-status--legacy { border-left-color: var(--sho-warning); background: color-mix(in oklch, var(--sho-warning) 9%, transparent); }
   .finished-status p { margin: var(--sho-s-1) 0 0; }
   .finished-intro { color: var(--sho-text-2); line-height: 1.7; margin: 0 0 var(--sho-s-4); }
   .format-switch { display: inline-flex; align-items: center; gap: var(--sho-s-1); border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-pill); padding: 3px; margin-bottom: var(--sho-s-4); }
@@ -72,6 +74,12 @@
   <div class="header-meta sho-mono">REV {{ revision_count }} · {{ manifest.cuts|length }} CUTS</div>
 </section>
 <main class="finished-gate">
+  {% if manifest_is_legacy %}
+  <div class="finished-status finished-status--legacy" role="status" aria-live="polite">
+    <strong>LEGACY MANIFEST V1：舊 preview 僅供讀取，核准功能已鎖定。</strong>
+    <p>你仍可保存修改來啟動新的 Director → DP revision；只有綁定 CURRENT visual DAG 的 v2 manifest 才能核准。</p>
+  </div>
+  {% endif %}
   {% set revision_job = latest_revision.revision_job if latest_revision and latest_revision.revision_job else none %}
   {% if revision_job and revision_job.status in ['queued', 'running'] %}
   <div class="finished-status finished-status--working" role="status" aria-live="polite">
@@ -103,7 +111,7 @@
     {% endfor %}
   </div>
 
-  <form method="post" action="/bridge/highlights/{{ episode_slug }}/finished/review{{ review_query }}" id="finished-review-form">
+  <form method="post" action="/bridge/highlights/{{ episode_slug }}/finished/review{{ review_query }}" id="finished-review-form" data-legacy-manifest="{{ 'true' if manifest_is_legacy else 'false' }}">
     <input type="hidden" name="manifest_sha256" value="{{ manifest_sha256 }}">
     <input type="hidden" name="submit_action" id="submit-action" value="save_draft">
     <input type="hidden" name="selected_cut_id" id="selected-cut-id" value="{{ manifest.cuts[0].cut_id }}">
@@ -126,7 +134,7 @@
             <h2>{{ cut.title }}</h2>
             <fieldset class="cut-decision">
               <legend class="sho-mono">CUT DECISION</legend>
-              <label><input type="radio" name="cut_status__{{ cut.cut_id }}" value="approved" {% if cut.saved_status == 'approved' %}checked{% endif %} {% if cut.stock_video_missing is defined and cut.stock_video_missing > 0 %}disabled{% endif %}> 核准這支</label>
+              <label><input type="radio" name="cut_status__{{ cut.cut_id }}" value="approved" {% if cut.saved_status == 'approved' %}checked{% endif %} {% if manifest_is_legacy or (cut.stock_video_missing is defined and cut.stock_video_missing > 0) %}disabled{% endif %}> 核准這支</label>
               <label><input type="radio" name="cut_status__{{ cut.cut_id }}" value="needs_changes" {% if cut.saved_status == 'needs_changes' %}checked{% endif %}> 需要修改</label>
             </fieldset>
           </header>
@@ -137,6 +145,98 @@
             <p>guest-namecard、Hero Title、transition、badge、紙紋、photo 與 generated card 不計入最低 3 個。</p>
           </div>
           {% endif %}
+
+          {% set visual = cut.visual_pipeline %}
+          <section class="visual-truth visual-truth--{{ 'error' if visual.status == 'invalid' else ('ready' if visual.status == 'ready_to_materialize' else 'pending') }}" aria-labelledby="visual-truth-{{ cut.cut_id }}">
+            <header class="visual-truth__head">
+              <div>
+                <p class="visual-truth__eyebrow sho-mono">VISUAL PRODUCTION TRUTH</p>
+                <h3 id="visual-truth-{{ cut.cut_id }}">Director → DP → Director semantic audit</h3>
+              </div>
+              <span class="visual-truth__status sho-mono">{{ visual.status_label }}</span>
+            </header>
+            <dl class="visual-truth__revisions sho-mono">
+              <div><dt>CURRENT</dt><dd>{{ visual.current_revision_id or '—' }}</dd></div>
+              <div><dt>PENDING</dt><dd>{{ visual.pending_revision_id or '—' }}</dd></div>
+            </dl>
+            {% if visual.status == 'legacy_manifest' %}
+            <p class="visual-truth__notice" role="status">這個 preview 沒有 v2 visual lineage，不能把任何現存 recipe 或 CURRENT 冒充成它的 production truth。保存修改後，系統會建立新的 verified generation。</p>
+            {% elif visual.status == 'invalid' %}
+            <p class="visual-truth__notice visual-truth__notice--error" role="alert">{{ visual.error or 'Canonical visual artifacts 無法通過 fresh verification。' }}</p>
+            {% elif visual.status != 'ready_to_materialize' %}
+            <p class="visual-truth__notice" role="status">{{ visual.status_label }}。{% if visual.verified_current %}前一個 CURRENT 仍保持可驗證、未被這次 pending revision 覆蓋。{% else %}尚未完成的 proposal 不會顯示成 production truth，也不會交給 materializer。{% endif %}</p>
+            {% endif %}
+
+            {% if visual.verified_current %}
+            <details class="visual-truth__details">
+              <summary>查看 CURRENT {{ visual.current_revision_id }} 的完整 verified lineage</summary>
+              <dl class="visual-truth__workers" aria-label="可信任的 worker execution identities">
+                <div><dt>Director</dt><dd><span>{{ visual.workers.director.worker_id }}</span><span class="sho-mono">SESSION {{ visual.workers.director.session_id }} · EXEC {{ visual.workers.director.execution_id }}</span></dd></div>
+                <div><dt>DP</dt><dd><span>{{ visual.workers.dp.worker_id }}</span><span class="sho-mono">SESSION {{ visual.workers.dp.session_id }} · EXEC {{ visual.workers.dp.execution_id }}</span></dd></div>
+                <div><dt>Semantic audit</dt><dd><span>{{ visual.workers.audit.worker_id }}</span><span class="sho-mono">SAME DIRECTOR SESSION {{ visual.workers.audit.session_id }} · EXEC {{ visual.workers.audit.execution_id }}</span></dd></div>
+              </dl>
+              <p class="visual-truth__coverage sho-mono">{{ visual.coverage.add_visual_count }} ADD VISUAL · {{ visual.coverage.planned_stock_video_count }} STOCK SHOTS · {{ visual.coverage.intentional_aroll_count }} INTENTIONAL A-ROLL · MAX UNCOVERED {{ visual.coverage.max_uncovered_sec }}s</p>
+
+              <ol class="visual-truth__events">
+                {% for event in visual.events %}
+                <li class="visual-event">
+                  <header class="visual-event__head">
+                    <div><span class="visual-event__index sho-mono">{{ '%02d'|format(loop.index) }}</span><strong>{{ event.event_id }}</strong></div>
+                    <span class="sho-mono">{{ event.time_range }}</span>
+                  </header>
+                  <blockquote class="visual-event__quote">{{ event.quote }}</blockquote>
+                  <dl class="visual-event__intent">
+                    <div><dt>Director intent</dt><dd>{{ event.category }} · {{ event.form }} · {{ event.decision }}</dd></div>
+                    <div><dt>Description</dt><dd>{{ event.description }}</dd></div>
+                    <div><dt>Rationale</dt><dd>{{ event.rationale }}</dd></div>
+                    <div><dt>Negative</dt><dd>{% if event.negative_constraints %}<ul>{% for item in event.negative_constraints %}<li>{{ item }}</li>{% endfor %}</ul>{% else %}—{% endif %}</dd></div>
+                    <div><dt>Exact on-screen text</dt><dd class="visual-truth__pre">{{ event.on_screen_text or '—' }}</dd></div>
+                  </dl>
+
+                  {% if event.implementation %}
+                  {% set implementation = event.implementation %}
+                  <div class="visual-event__dp">
+                    <p class="visual-event__route sho-mono">DP · {{ implementation.mode }} → {{ implementation.target_lane }} · {{ implementation.implementation_kind }}</p>
+                    <p><strong>Selected reason</strong> · {{ implementation.semantic_justification }}</p>
+                    <ol class="visual-candidates" aria-label="{{ event.event_id }} 的候選素材">
+                      {% for candidate in implementation.candidates %}
+                      {% set media = candidate.media if candidate.media is defined else candidate.preview_media %}
+                      <li class="visual-candidate{% if candidate.selected %} visual-candidate--selected{% endif %}">
+                        <header><span class="visual-candidate__label sho-mono">{{ candidate.label }}</span><strong>{{ candidate.candidate_id }}</strong>{% if candidate.selected %}<span class="visual-candidate__selected sho-mono">SELECTED</span>{% endif %}</header>
+                        <p>{{ candidate.visual_summary }}</p>
+                        <dl>
+                          <div><dt>Source</dt><dd>{% if candidate.provenance.safe_source_url %}<a href="{{ candidate.provenance.safe_source_url }}" rel="noreferrer noopener" target="_blank">{{ candidate.provenance.source_url }}</a>{% else %}<span>{{ candidate.provenance.source_url or 'internal render' }}</span>{% endif %}</dd></div>
+                          <div><dt>Provider / license</dt><dd>{{ candidate.provenance.provider }} · {{ candidate.provenance.license }}</dd></div>
+                          <div><dt>Media</dt><dd class="sho-mono">{{ media.path }} · SHA {{ media.sha256 }}</dd></div>
+                          <div><dt>Receipt</dt><dd class="sho-mono">{{ candidate.provenance.receipt.path }} · SHA {{ candidate.provenance.receipt.sha256 }}</dd></div>
+                        </dl>
+                      </li>
+                      {% endfor %}
+                    </ol>
+
+                    <ol class="visual-selections" aria-label="{{ event.event_id }} 的 selected materializations">
+                      {% for selected in implementation.selections %}
+                      <li>
+                        <p><strong>{{ selected.candidate_id }}</strong> <span class="sho-mono">{{ selected.time_range }} · SOURCE {{ selected.source_range.start_sec }}–{{ selected.source_range.end_sec }}s · {{ selected.materialization_id }}</span></p>
+                        <blockquote class="visual-event__quote">{{ selected.quote }}</blockquote>
+                        <dl class="visual-audit">
+                          <div><dt>Audit verdict</dt><dd><span class="visual-audit__verdict sho-mono">{{ selected.audit.verdict }}</span></dd></div>
+                          <div><dt>Visual observation</dt><dd>{{ selected.audit.visual_observation }}</dd></div>
+                          <div><dt>Audit rationale</dt><dd>{{ selected.audit.rationale }}</dd></div>
+                        </dl>
+                      </li>
+                      {% endfor %}
+                    </ol>
+                  </div>
+                  {% else %}
+                  <p class="visual-event__aroll">Director 明確保留 A-roll；沒有 DP materialization。</p>
+                  {% endif %}
+                </li>
+                {% endfor %}
+              </ol>
+            </details>
+            {% endif %}
+          </section>
 
           <section class="cut-feedback" aria-labelledby="cut-feedback-label-{{ cut.cut_id }}">
             <label class="field-label" id="cut-feedback-label-{{ cut.cut_id }}">整支影片的整體 feedback
@@ -211,15 +311,16 @@
   const selectedCutId = document.querySelector('#selected-cut-id');
   const activeCut = document.querySelector('#active-cut-readout');
   const timeReadout = document.querySelector('#time-readout');
+  const legacyManifest = form.dataset.legacyManifest === 'true';
   const pad = value => String(Math.max(0, Math.floor(value))).padStart(2, '0');
   const stamp = seconds => `${pad(seconds / 60)}:${pad(seconds % 60)}`;
 
   const syncApproval = () => {
     const approved = tabs.every(tab => form.querySelector(`input[name="cut_status__${tab.dataset.cutId}"][value="approved"]`)?.checked);
-    approveAll.disabled = !approved;
+    approveAll.disabled = legacyManifest || !approved;
     if (approveCut) {
       const cutId = selectedCutId.value;
-      approveCut.disabled = !form.querySelector(`input[name="cut_status__${cutId}"][value="approved"]`)?.checked;
+      approveCut.disabled = legacyManifest || !form.querySelector(`input[name="cut_status__${cutId}"][value="approved"]`)?.checked;
       approveCut.textContent = `核准 ${cutId} → Packaging`;
     }
   };

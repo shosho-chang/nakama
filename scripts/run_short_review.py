@@ -294,7 +294,12 @@ def _ffmpeg(args: list[str]) -> None:
         raise SystemExit(f"ffmpeg 失敗: {proc.stderr[-300:]}")
 
 
-def build_packet(episode_dir: Path, cid: str) -> dict:
+def build_packet(
+    episode_dir: Path,
+    cid: str,
+    *,
+    finished_manifest_cut_ids: set[str] | None = None,
+) -> dict:
     from build_resolve_project import connect_resolve
 
     master = _open_editorial_master(episode_dir)
@@ -543,7 +548,13 @@ def build_packet(episode_dir: Path, cid: str) -> dict:
         # depends on a hand-authored manifest.
         from build_finished_review_manifest import build_manifest
 
-        finished_manifest = str(build_manifest(episode_dir, review_format="long"))
+        finished_manifest = str(
+            build_manifest(
+                episode_dir,
+                review_format="long",
+                cut_ids=finished_manifest_cut_ids,
+            )
+        )
     return {
         "status": "packet",
         "dir": str(out_dir),

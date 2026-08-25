@@ -30,7 +30,7 @@ from agents.brook.script_video.highlight_broll import (  # noqa: E402
     receipt_identity as broll_receipt_identity,
 )
 
-SCHEMA = "nakama.finished_cut_review_manifest.v1"
+SCHEMA = "nakama.finished_cut_review_manifest.v2"
 OUTPUT_NAME = "finished_review_manifest_current.json"
 IDENTITY_NAME = "finished_review_component_identity.v1.json"
 IDENTITY_CONTRACT = "finished-review-component-identity-v1"
@@ -480,8 +480,12 @@ def _cut_from_packet(
         ) from exc
     except BrollContractError as exc:
         raise SystemExit(f"Stock Video materialization receipt 驗證失敗：{exc}") from exc
-    if packet.get("stock_video_lineage") != broll_receipt_identity(stock_video_receipt):
+    stock_video_lineage = broll_receipt_identity(stock_video_receipt)
+    if packet.get("stock_video_lineage") != stock_video_lineage:
         raise SystemExit(f"{events_path} Stock Video lineage 缺失或已過期")
+    visual_pipeline_lineage = stock_video_lineage.get("visual_pipeline_lineage")
+    if not isinstance(visual_pipeline_lineage, dict):
+        raise SystemExit(f"{events_path} visual pipeline lineage 缺失或已過期")
     receipt_stock = {row["slug"]: row for row in stock_video_receipt["stock_videos"]}
     for component in components:
         if component.get("asset_category") != "stock_video":
@@ -530,6 +534,8 @@ def _cut_from_packet(
             "events": _artifact(events_path),
         },
         "editorial_master_lineage": master_identity,
+        "stock_video_lineage": stock_video_lineage,
+        "visual_pipeline_lineage": visual_pipeline_lineage,
         "visual_treatment_counts": counts,
         "stock_video_count": stock_video_count,
         "components": components,
@@ -541,12 +547,18 @@ def _manifest_payload(
     *,
     review_format: str = "long",
     identity_registry: dict[str, Any] | None = None,
+    cut_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     episode_dir = episode_dir.resolve()
     master = _open_master(episode_dir)
     master_identity = master.identity()
     review_dir = episode_dir / "highlights" / "review"
     formats = _approved_inventory(episode_dir, master_identity)
+    approved_ids = {
+        cut_id for cut_id, cut_format in formats.items() if cut_format == review_format
+    }
+    if cut_ids is not None and (not cut_ids or not cut_ids <= approved_ids):
+        raise SystemExit("finished manifest partial inventory cut ids 無效")
     cut_dirs = sorted(
         path
         for path in review_dir.iterdir()
@@ -554,6 +566,7 @@ def _manifest_payload(
         and (path / "events.json").is_file()
         and path.name in formats
         and formats[path.name] == review_format
+        and (cut_ids is None or path.name in cut_ids)
     )
     if not cut_dirs:
         raise SystemExit(f"{review_dir} 找不到 {review_format} review packet")
@@ -562,7 +575,7 @@ def _manifest_payload(
         for path in cut_dirs
     ]
     lanes = list(LANE_ACTIONS)
-    return {
+    payload = {
         "schema": SCHEMA,
         "episode_id": episode_dir.name,
         "stage": 5,
@@ -579,9 +592,21 @@ def _manifest_payload(
             "gate_actions": ["request_changes", "approve_cut", "approve_all"],
         },
     }
+    if cut_ids is not None:
+        payload["inventory_scope"] = {
+            "mode": "partial_editorial_master_migration",
+            "included_cut_ids": sorted(cut_ids),
+            "pending_cut_ids": sorted(approved_ids - cut_ids),
+        }
+    return payload
 
 
-def build_manifest(episode_dir: Path, *, review_format: str = "long") -> Path:
+def build_manifest(
+    episode_dir: Path,
+    *,
+    review_format: str = "long",
+    cut_ids: set[str] | None = None,
+) -> Path:
     episode_dir = episode_dir.resolve()
     review_dir = episode_dir / "highlights" / "review"
     identity_registry = _read_identity_registry(episode_dir, review_dir)
@@ -608,13 +633,22 @@ def build_manifest(episode_dir: Path, *, review_format: str = "long") -> Path:
                 episode_dir, source_payload, source_path
             )
         else:
-            initial = _manifest_payload(episode_dir, review_format=review_format)
+            # A requested-cut revision is an explicit partial migration.  Do
+            # not fresh-verify unrelated legacy packets merely to seed the
+            # component identity registry; that would let stale punch-L04 block
+            # an otherwise valid value-L01 revision.
+            initial = _manifest_payload(
+                episode_dir,
+                review_format=review_format,
+                cut_ids=cut_ids,
+            )
             identity_registry = _build_identity_registry(episode_dir, initial, None)
         _write_identity_registry(review_dir, identity_registry)
     payload = _manifest_payload(
         episode_dir,
         review_format=review_format,
         identity_registry=identity_registry,
+        cut_ids=cut_ids,
     )
     output = episode_dir / "highlights" / "review" / OUTPUT_NAME
     rendered = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
@@ -642,10 +676,24 @@ def verify_finished_review_manifest(
     )
     if identity_registry is None:
         raise SystemExit("component identity registry 不存在；先由 trusted builder 建立")
+    scope = supplied.get("inventory_scope")
+    cut_ids = None
+    if scope is not None:
+        if (
+            not isinstance(scope, dict)
+            or scope.get("mode") != "partial_editorial_master_migration"
+            or not isinstance(scope.get("included_cut_ids"), list)
+            or not all(isinstance(value, str) and value for value in scope["included_cut_ids"])
+        ):
+            raise SystemExit("finished manifest partial inventory scope 無效")
+        cut_ids = set(scope["included_cut_ids"])
+        if len(cut_ids) != len(scope["included_cut_ids"]):
+            raise SystemExit("finished manifest partial inventory cut ids 重複")
     rebuilt = _manifest_payload(
         episode_dir,
         review_format=review_format,
         identity_registry=identity_registry,
+        cut_ids=cut_ids,
     )
     if supplied != rebuilt:
         raise SystemExit(
