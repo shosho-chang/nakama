@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from scripts.finished_review_watcher import (
+    _authoritative_output_verifier,
     _ResolveTimelineTransaction,
     _trusted_apply_revision,
     _verify_revision_output_acceptance,
@@ -139,6 +140,9 @@ def _write_queued_job(
         ],
     }
     manifest.write_text(json.dumps(manifest_payload, ensure_ascii=False), encoding="utf-8")
+    from scripts.build_finished_review_manifest import identity_registry_source_sha256
+
+    source_registry_sha256 = identity_registry_source_sha256(episode, manifest)
     audit = {
         "schema": "nakama.finished_cut_review_feedback.v1",
         "episode_id": episode.name,
@@ -167,6 +171,7 @@ def _write_queued_job(
                     "review_format": "long",
                     "manifest_filename": manifest.name,
                     "source_manifest_sha256": _sha(manifest),
+                    "source_registry_sha256": source_registry_sha256,
                     "source_preview_sha256": {"value-L01": _sha(preview)},
                     "requested_cut_ids": ["value-L01"],
                     "component_feedback": [
@@ -375,6 +380,59 @@ def test_queued_legacy_v1_source_bootstraps_distinct_v2_output_before_resolve(
     assert saved["status"] == "succeeded"
 
 
+def test_default_output_producer_passes_request_bound_identity_transition(
+    monkeypatch, tmp_path
+):
+    episode, manifest, _feedback = _write_queued_job(tmp_path)
+    request = {
+        "review_format": "long",
+        "requested_cut_ids": ["value-L01"],
+        "source_manifest_sha256": _sha(manifest),
+        "source_registry_sha256": "b" * 64,
+        "source_preview_sha256": {"value-L01": "c" * 64},
+        "component_feedback": [
+            {
+                "cut_id": "value-L01",
+                "component_id": "value-L01-b-roll-001",
+                "action": "remove",
+            }
+        ],
+    }
+    captured = {}
+
+    def build(_episode, **kwargs):
+        captured.update(kwargs)
+        return manifest
+
+    monkeypatch.setattr("scripts.build_finished_review_manifest.build_manifest", build)
+    monkeypatch.setattr(
+        "scripts.build_finished_review_manifest.verify_finished_review_cut",
+        lambda *_args, **kwargs: {
+            "cut_id": "value-L01",
+            "manifest_sha256": _sha(manifest),
+            "preview_sha256": "d" * 64,
+            "identity_transition": kwargs["identity_transition"],
+        },
+    )
+
+    result = _authoritative_output_verifier(
+        {
+            "request_id": "finished-revision-bound-identity",
+            "episode_dir": str(episode),
+            "request": request,
+        }
+    )
+
+    expected = {
+        "request_id": "finished-revision-bound-identity",
+        "source_manifest_sha256": _sha(manifest),
+        "source_registry_sha256": "b" * 64,
+        "feedback_rows": request["component_feedback"],
+    }
+    assert captured["identity_transition"] == expected
+    assert result["cut_results"][0]["identity_transition"] == expected
+
+
 def test_legacy_v1_source_never_allows_v1_revision_output(monkeypatch, tmp_path):
     episode, legacy_manifest, feedback = _write_queued_job(
         tmp_path, manifest_schema="nakama.finished_cut_review_manifest.v1"
@@ -405,6 +463,27 @@ def test_legacy_v1_source_never_allows_v1_revision_output(monkeypatch, tmp_path)
     assert saved["status"] == "failed"
     assert "output manifest schema is invalid" in saved["error"]
     assert legacy_manifest.read_bytes() == legacy_bytes
+
+
+def test_missing_queue_bound_identity_registry_fails_before_agent_or_resolve(tmp_path):
+    _episode, _manifest, feedback = _write_queued_job(tmp_path)
+    audit = json.loads(feedback.read_text(encoding="utf-8"))
+    del audit["revisions"][-1]["revision_job"]["source_registry_sha256"]
+    feedback.write_text(json.dumps(audit, ensure_ascii=False), encoding="utf-8")
+    calls = []
+
+    assert not run_revision_job(
+        pending_revision_jobs(tmp_path)[0],
+        agent_runner=lambda _context: calls.append("agent"),
+        trusted_apply=lambda _context: calls.append("resolve"),
+    )
+    assert calls == []
+    saved = json.loads(feedback.read_text(encoding="utf-8"))["revisions"][-1][
+        "revision_job"
+    ]
+    assert saved["status"] == "failed"
+    assert saved["attempt"] == 0
+    assert "queue-bound identity registry" in saved["error"]
 
 
 def test_public_revision_job_runs_request_bound_visual_producer_before_trusted_apply(
@@ -566,6 +645,11 @@ def test_reconcile_acquisition_handoff_queues_and_reuses_assets_on_next_revision
     )
     second_revision["preview_sha256"] = {"value-L01": _sha(preview_path)}
     second_job = deepcopy(second_revision["revision_job"])
+    from scripts.build_finished_review_manifest import identity_registry_source_sha256
+
+    second_job["source_registry_sha256"] = identity_registry_source_sha256(
+        episode, manifest
+    )
     second_job.update(
         {
             "request_id": "finished-revision-second456",
@@ -698,6 +782,9 @@ def test_verifier_failure_rolls_back_promoted_sidefiles_recipes_visuals_and_asse
         (episode / "highlights/tighten/value-L01_broll_materialization.json").write_text(
             '{"new":true}', encoding="utf-8"
         )
+        (episode / "highlights/review/finished_review_component_identity.v2.json").write_text(
+            '{"new":true}', encoding="utf-8"
+        )
         return _fixture_trusted_apply(context)
 
     assert not run_revision_job(
@@ -715,6 +802,9 @@ def test_verifier_failure_rolls_back_promoted_sidefiles_recipes_visuals_and_asse
     assert (assets / "existing.mp4").read_bytes() == originals["asset"]
     assert not (assets / "job-new.mp4").exists()
     assert not (episode / "highlights/materialization/value-L01.json").exists()
+    assert not (
+        episode / "highlights/review/finished_review_component_identity.v2.json"
+    ).exists()
 
 
 def test_resolve_abi_system_exit_is_contained_and_rolls_back_promoted_inputs(
@@ -836,6 +926,26 @@ def test_legacy_v1_preflight_attempt_zero_can_retry_without_fabricated_receipt(
     queued = pending_revision_jobs(tmp_path)
     assert len(queued) == 1
     assert queued[0]["job"]["attempt"] == 0
+
+
+def test_failed_job_without_queue_bound_registry_is_permanently_non_retryable(tmp_path):
+    episode, _manifest, feedback = _write_queued_job(tmp_path)
+    audit = json.loads(feedback.read_text(encoding="utf-8"))
+    job = audit["revisions"][-1]["revision_job"]
+    job.update({"status": "failed", "attempt": 0, "result_receipt": None})
+    del job["source_registry_sha256"]
+    before = json.dumps(audit, ensure_ascii=False)
+    feedback.write_text(before, encoding="utf-8")
+
+    for apply in (False, True):
+        with pytest.raises(RuntimeError, match="permanently non-retryable"):
+            retry_failed_revision_job(
+                tmp_path,
+                episode_id=episode.name,
+                request_id=job["request_id"],
+                apply=apply,
+            )
+        assert feedback.read_text(encoding="utf-8") == before
 
 
 def test_failed_job_retry_rejects_artifact_drift_without_requeueing(tmp_path):

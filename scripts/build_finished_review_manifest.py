@@ -31,9 +31,12 @@ from agents.brook.script_video.highlight_broll import (  # noqa: E402
 )
 
 SCHEMA = "nakama.finished_cut_review_manifest.v2"
+LEGACY_SOURCE_SCHEMA = "nakama.finished_cut_review_manifest.v1"
 OUTPUT_NAME = "finished_review_manifest_current.json"
-IDENTITY_NAME = "finished_review_component_identity.v1.json"
-IDENTITY_CONTRACT = "finished-review-component-identity-v1"
+IDENTITY_NAME = "finished_review_component_identity.v2.json"
+LEGACY_IDENTITY_NAME = "finished_review_component_identity.v1.json"
+IDENTITY_CONTRACT = "finished-review-component-identity-v2"
+LEGACY_IDENTITY_CONTRACT = "finished-review-component-identity-v1"
 MIN_LONG_STOCK_VIDEOS = 3
 
 _COMPONENT_ID_PREFIXES = {
@@ -109,8 +112,17 @@ def _identity_snapshot(component: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validated_source_components(payload: dict[str, Any], episode_id: str) -> dict[str, list[dict]]:
-    if payload.get("schema") != SCHEMA or payload.get("episode_id") != episode_id:
+    schema = payload.get("schema")
+    if schema not in {SCHEMA, LEGACY_SOURCE_SCHEMA} or payload.get("episode_id") != episode_id:
         raise SystemExit("component identity source manifest schema／episode 不相符")
+    if schema == LEGACY_SOURCE_SCHEMA and (
+        payload.get("stage") != 5
+        or not isinstance(payload.get("gate"), dict)
+        or payload["gate"].get("kind") != "finished_cut_review"
+    ):
+        raise SystemExit("legacy component identity source 必須是 Stage 5 finished-cut review")
+    if not isinstance(payload.get("cuts"), list):
+        raise SystemExit("component identity source cuts 無效")
     result: dict[str, list[dict]] = {}
     seen_ids: set[str] = set()
     for cut in payload.get("cuts", []):
@@ -168,15 +180,35 @@ def _build_identity_registry(
     source_path: Path | None,
 ) -> dict[str, Any]:
     components = _validated_source_components(payload, episode_dir.name)
+    next_ordinals: dict[str, dict[str, int]] = {}
+    prefixes: dict[str, dict[str, str]] = {}
+    for cut_id, rows in components.items():
+        next_ordinals[cut_id] = {}
+        prefixes[cut_id] = {}
+        for row in rows:
+            lane = row["lane"]
+            component_id = row["component_id"]
+            match = re.fullmatch(rf"{re.escape(cut_id)}-(.+)-(\d{{3}})", component_id)
+            if match is None:
+                raise SystemExit(f"component identity source ID 無效：{component_id}")
+            prefixes[cut_id].setdefault(lane, match.group(1))
+            next_ordinals[cut_id][lane] = max(
+                next_ordinals[cut_id].get(lane, 0), int(match.group(2))
+            )
     core: dict[str, Any] = {
         "contract": IDENTITY_CONTRACT,
         "episode_id": episode_dir.name,
+        "revision": 1,
+        "previous_registry_sha256": None,
         "source_manifest": (
             {"filename": source_path.name, "sha256": _sha256(source_path)}
             if source_path is not None
             else None
         ),
         "cuts": components,
+        "tombstones": {},
+        "next_ordinals": next_ordinals,
+        "id_prefixes": prefixes,
     }
     return {**core, "content_hash": _canonical_hash(core)}
 
@@ -191,25 +223,41 @@ def _write_identity_registry(review_dir: Path, registry: dict[str, Any]) -> None
     os.replace(staging, path)
 
 
+def identity_registry_source_sha256(episode_dir: Path, manifest_path: Path) -> str:
+    """Return the trusted pre-transition registry hash without writing migration state."""
+    episode_dir = episode_dir.resolve()
+    review_dir = episode_dir / "highlights" / "review"
+    registry = _read_identity_registry(episode_dir, review_dir)
+    if registry is None:
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise SystemExit("component identity source manifest 無法讀取") from exc
+        registry = _build_identity_registry(episode_dir, payload, manifest_path)
+    return str(registry["content_hash"])
+
+
 def _read_identity_registry(episode_dir: Path, review_dir: Path) -> dict[str, Any] | None:
     path = _identity_path(review_dir)
-    if not path.is_file():
+    legacy = review_dir / LEGACY_IDENTITY_NAME
+    if not path.is_file() and not legacy.is_file():
         return None
+    selected = path if path.is_file() else legacy
     try:
-        registry = json.loads(path.read_text(encoding="utf-8-sig"))
+        registry = json.loads(selected.read_text(encoding="utf-8-sig"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise SystemExit("component identity registry 無法讀取") from exc
     core = {key: value for key, value in registry.items() if key != "content_hash"}
     if (
-        registry.get("contract") != IDENTITY_CONTRACT
+        registry.get("contract") not in {IDENTITY_CONTRACT, LEGACY_IDENTITY_CONTRACT}
         or registry.get("episode_id") != episode_dir.name
         or registry.get("content_hash") != _canonical_hash(core)
         or not isinstance(registry.get("cuts"), dict)
     ):
         raise SystemExit("component identity registry 已漂移或格式無效")
-    # Re-run ID/prefix/ordinal validation without trusting the stored mapping.
-    _validated_source_components(
-        {
+    if registry["contract"] == LEGACY_IDENTITY_CONTRACT:
+        source = registry.get("source_manifest")
+        payload = {
             "schema": SCHEMA,
             "episode_id": episode_dir.name,
             "cuts": [
@@ -226,18 +274,132 @@ def _read_identity_registry(episode_dir: Path, review_dir: Path) -> dict[str, An
                 }
                 for cut_id, rows in registry["cuts"].items()
             ],
-        },
-        episode_dir.name,
-    )
+        }
+        migrated = _build_identity_registry(episode_dir, payload, None)
+        migrated["source_manifest"] = source
+        migrated["previous_registry_sha256"] = registry["content_hash"]
+        core = {key: value for key, value in migrated.items() if key != "content_hash"}
+        migrated["content_hash"] = _canonical_hash(core)
+        registry = migrated
+    if registry.get("contract") == IDENTITY_CONTRACT:
+        if (
+            not isinstance(registry.get("revision"), int)
+            or registry["revision"] < 1
+            or not isinstance(registry.get("tombstones"), dict)
+            or not isinstance(registry.get("next_ordinals"), dict)
+            or not isinstance(registry.get("id_prefixes"), dict)
+        ):
+            raise SystemExit("component identity registry v2 格式無效")
+    seen: set[str] = set()
+    for cut_id, rows in registry["cuts"].items():
+        if not isinstance(rows, list):
+            raise SystemExit("component identity registry active rows 無效")
+        retired = registry["tombstones"].get(cut_id, [])
+        if not isinstance(retired, list):
+            raise SystemExit("component identity registry tombstones 無效")
+        observed_high_water: dict[str, int] = {}
+        for row in [*rows, *retired]:
+            if not isinstance(row, dict):
+                raise SystemExit("component identity registry row 無效")
+            component_id = row.get("component_id")
+            lane = row.get("lane")
+            prefix = registry["id_prefixes"].get(cut_id, {}).get(lane)
+            high_water = registry["next_ordinals"].get(cut_id, {}).get(lane)
+            match = (
+                re.fullmatch(
+                    rf"{re.escape(cut_id)}-{re.escape(str(prefix))}-(\d{{3}})",
+                    str(component_id),
+                )
+                if prefix
+                else None
+            )
+            if (
+                match is None
+                or not isinstance(high_water, int)
+                or int(match.group(1)) < 1
+                or int(match.group(1)) > high_water
+                or component_id in seen
+            ):
+                raise SystemExit("component identity registry ID／high-water 無效")
+            seen.add(component_id)
+            observed_high_water[str(lane)] = max(
+                observed_high_water.get(str(lane), 0), int(match.group(1))
+            )
+        if registry["next_ordinals"].get(cut_id, {}) != observed_high_water:
+            raise SystemExit("component identity registry high-water 非 exact max")
+        for row in retired:
+            if (
+                row.get("reason") != "explicit_remove"
+                or not isinstance(row.get("retired_request_id"), str)
+                or not row["retired_request_id"]
+                or not re.fullmatch(r"[0-9a-f]{64}", str(row.get("source_manifest_sha256") or ""))
+                or not re.fullmatch(r"[0-9a-f]{64}", str(row.get("source_registry_sha256") or ""))
+                or not re.fullmatch(r"[0-9a-f]{64}", str(row.get("transition_sha256") or ""))
+                or not isinstance(row.get("last_snapshot"), dict)
+            ):
+                raise SystemExit("component identity registry tombstone proof 無效")
     return registry
 
 
 def _apply_component_identity(
-    cut_id: str, components: list[dict[str, Any]], registry: dict[str, Any] | None
+    cut_id: str,
+    components: list[dict[str, Any]],
+    registry: dict[str, Any] | None,
+    transition: dict[str, Any] | None = None,
 ) -> None:
     if registry is None:
         return
     source_rows = registry.get("cuts", {}).get(cut_id, [])
+    feedback = [
+        row
+        for row in (transition or {}).get("feedback_rows", [])
+        if isinstance(row, dict) and row.get("cut_id") == cut_id
+    ]
+    source_by_id = {row["component_id"]: row for row in source_rows}
+    removed_ids = {
+        str(row.get("component_id")) for row in feedback if row.get("action") == "remove"
+    }
+    transition_sha256 = _canonical_hash(
+        {
+            "request_id": (transition or {}).get("request_id"),
+            "source_manifest_sha256": (transition or {}).get("source_manifest_sha256"),
+            "source_registry_sha256": (transition or {}).get("source_registry_sha256"),
+            "feedback_rows": (transition or {}).get("feedback_rows", []),
+        }
+    )
+    tombstones = registry.setdefault("tombstones", {}).setdefault(cut_id, [])
+    tombstone_by_id = {row["component_id"]: row for row in tombstones}
+    missing = sorted(removed_ids - source_by_id.keys() - tombstone_by_id.keys())
+    if missing:
+        raise SystemExit(f"identity transition remove ID 不在 source active：{', '.join(missing)}")
+    for component_id in removed_ids & tombstone_by_id.keys():
+        prior = tombstone_by_id[component_id]
+        if (
+            prior.get("retired_request_id") != transition.get("request_id")
+            or prior.get("source_manifest_sha256")
+            != transition.get("source_manifest_sha256")
+            or prior.get("transition_sha256") != transition_sha256
+        ):
+            raise SystemExit(f"identity transition 不可重複使用 tombstone：{component_id}")
+    tombstoned_ids = set(tombstone_by_id)
+    for component_id in sorted(removed_ids):
+        if component_id in tombstone_by_id:
+            continue
+        source = source_by_id[component_id]
+        if component_id not in tombstoned_ids:
+            tombstones.append(
+                {
+                    "component_id": component_id,
+                    "lane": source["lane"],
+                    "retired_request_id": transition["request_id"],
+                    "source_manifest_sha256": transition["source_manifest_sha256"],
+                    "source_registry_sha256": transition["source_registry_sha256"],
+                    "transition_sha256": transition_sha256,
+                    "reason": "explicit_remove",
+                    "last_snapshot": source["snapshot"],
+                }
+            )
+    source_rows = [row for row in source_rows if row["component_id"] not in removed_ids]
     for lane in LANE_ACTIONS:
         old = [row for row in source_rows if row.get("lane") == lane]
         new = [row for row in components if row.get("lane") == lane]
@@ -256,42 +418,87 @@ def _apply_component_identity(
                 new[matches[0]]["component_id"] = source["component_id"]
                 assigned_new.add(matches[0])
                 assigned_old.add(old_index)
-        # A text edit keeps its original range; a move keeps its original text.
-        # These two independent keys cover simultaneous changes elsewhere in
-        # the lane without falling back to a positional remap.
-        for key in ("time", "text"):
-            for old_index, source in enumerate(old):
-                if old_index in assigned_old:
-                    continue
-                source_snapshot = source.get("snapshot") or {}
-                matches = []
-                for new_index, component in enumerate(new):
-                    if new_index in assigned_new:
-                        continue
-                    snapshot = _identity_snapshot(component)
-                    if key == "time":
-                        matched = (snapshot["t0"], snapshot["t1"]) == (
-                            source_snapshot.get("t0"),
-                            source_snapshot.get("t1"),
+        # Never infer identity from cardinality/order. Explicit operations may
+        # preserve one old ID only when their postcondition identifies one row.
+        for row in feedback:
+            if row.get("action") in {"remove", "approve", "comment"}:
+                continue
+            old_id = str(row.get("component_id") or "")
+            source = source_by_id.get(old_id)
+            if source is None:
+                raise SystemExit(f"identity transition operation ID 不在 source active：{old_id}")
+            if source.get("lane") != lane:
+                continue
+            matches = []
+            for new_index, component in enumerate(new):
+                snapshot = _identity_snapshot(component)
+                action = row.get("action")
+                move_target = row.get("move_to_seconds")
+                matched = (
+                    action == "edit_text"
+                    and snapshot["text"] == str(row.get("replacement") or "")
+                ) or (
+                    action == "move"
+                    and isinstance(move_target, (int, float))
+                    and abs(snapshot["t0"] - float(move_target)) <= 0.001
+                    and abs(
+                        (snapshot["t1"] - snapshot["t0"])
+                        - (
+                            float(source["snapshot"]["t1"])
+                            - float(source["snapshot"]["t0"])
                         )
-                    else:
-                        matched = bool(snapshot["text"]) and snapshot[
-                            "text"
-                        ] == source_snapshot.get("text")
-                    if matched:
-                        matches.append(new_index)
-                if len(matches) == 1:
-                    new[matches[0]]["component_id"] = source["component_id"]
-                    assigned_new.add(matches[0])
-                    assigned_old.add(old_index)
-        old_remaining = [index for index in range(len(old)) if index not in assigned_old]
-        new_remaining = [index for index in range(len(new)) if index not in assigned_new]
-        # Same-cardinality changes are edit/move compatible: preserve by lane
-        # order. Cardinality drift is not guessed; unmatched new items retain a
-        # new canonical ID and removed IDs remain absent.
-        if len(old_remaining) == len(new_remaining):
-            for old_index, new_index in zip(old_remaining, new_remaining, strict=True):
-                new[new_index]["component_id"] = old[old_index]["component_id"]
+                    )
+                    <= 0.001
+                ) or (
+                    action == "replace_asset"
+                    and str(component.get("slug") or "") == str(row.get("replacement") or "")
+                )
+                if matched and (
+                    new_index not in assigned_new or component.get("component_id") == old_id
+                ):
+                    matches.append(new_index)
+            if len(matches) != 1:
+                raise SystemExit(f"identity transition operation 無唯一 postcondition：{old_id}")
+            new[matches[0]]["component_id"] = old_id
+            assigned_new.add(matches[0])
+            assigned_old.add(old.index(source))
+
+        unmatched_old = [
+            source["component_id"]
+            for old_index, source in enumerate(old)
+            if old_index not in assigned_old
+        ]
+        if unmatched_old:
+            raise SystemExit(
+                "identity transition 不允許未授權 component 消失／漂移："
+                + ", ".join(unmatched_old)
+            )
+
+        high_water = registry.setdefault("next_ordinals", {}).setdefault(cut_id, {})
+        prefixes = registry.setdefault("id_prefixes", {}).setdefault(cut_id, {})
+        prefix = prefixes.setdefault(lane, lane.replace("_", "-"))
+        reserved = tombstoned_ids | removed_ids | {
+            row["component_id"] for row in source_rows
+        }
+        for new_index, component in enumerate(new):
+            if new_index in assigned_new:
+                continue
+            while True:
+                high_water[lane] = int(high_water.get(lane, 0)) + 1
+                candidate = f"{cut_id}-{prefix}-{high_water[lane]:03d}"
+                if candidate not in reserved:
+                    break
+            component["component_id"] = candidate
+            reserved.add(candidate)
+
+    registry.setdefault("cuts", {})[cut_id] = [
+        {
+            "component_id": row["component_id"],
+            "lane": row["lane"],
+            "snapshot": _identity_snapshot(row),
+        }
+        for row in components
+    ]
 
 
 def _event_lane(event_type: str) -> str | None:
@@ -379,6 +586,7 @@ def _cut_from_packet(
     cut_dir: Path,
     master_identity: dict[str, Any],
     identity_registry: dict[str, Any] | None,
+    identity_transition: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     cut_root = cut_dir.resolve()
 
@@ -520,7 +728,9 @@ def _cut_from_packet(
             "guest-namecard／Hero Title／transition／badge／紙紋／generated card 都不計數。"
         )
 
-    _apply_component_identity(cut_dir.name, components, identity_registry)
+    _apply_component_identity(
+        cut_dir.name, components, identity_registry, identity_transition
+    )
 
     timeline = str(packet.get("timeline") or cut_dir.name)
     title = timeline.split(" - ", 1)[-1].replace("（緊·導播）", "").strip()
@@ -548,6 +758,7 @@ def _manifest_payload(
     review_format: str = "long",
     identity_registry: dict[str, Any] | None = None,
     cut_ids: set[str] | None = None,
+    identity_transition: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     episode_dir = episode_dir.resolve()
     master = _open_master(episode_dir)
@@ -571,7 +782,14 @@ def _manifest_payload(
     if not cut_dirs:
         raise SystemExit(f"{review_dir} 找不到 {review_format} review packet")
     cuts = [
-        _cut_from_packet(episode_dir, review_dir, path, master_identity, identity_registry)
+        _cut_from_packet(
+            episode_dir,
+            review_dir,
+            path,
+            master_identity,
+            identity_registry,
+            identity_transition,
+        )
         for path in cut_dirs
     ]
     lanes = list(LANE_ACTIONS)
@@ -606,6 +824,7 @@ def build_manifest(
     *,
     review_format: str = "long",
     cut_ids: set[str] | None = None,
+    identity_transition: dict[str, Any] | None = None,
 ) -> Path:
     episode_dir = episode_dir.resolve()
     review_dir = episode_dir / "highlights" / "review"
@@ -643,18 +862,64 @@ def build_manifest(
                 cut_ids=cut_ids,
             )
             identity_registry = _build_identity_registry(episode_dir, initial, None)
-        _write_identity_registry(review_dir, identity_registry)
+    source_registry_sha256 = identity_registry["content_hash"]
+    semantic_before = _canonical_hash(
+        {
+            key: identity_registry.get(key)
+            for key in ("cuts", "tombstones", "next_ordinals", "id_prefixes")
+        }
+    )
+    if identity_transition is not None:
+        if (
+            not isinstance(identity_transition, dict)
+            or not isinstance(identity_transition.get("request_id"), str)
+            or not identity_transition["request_id"]
+            or not re.fullmatch(
+                r"[0-9a-f]{64}", str(identity_transition.get("source_manifest_sha256") or "")
+            )
+            or not re.fullmatch(
+                r"[0-9a-f]{64}", str(identity_transition.get("source_registry_sha256") or "")
+            )
+            or not isinstance(identity_transition.get("feedback_rows"), list)
+        ):
+            raise SystemExit("identity transition request contract 無效")
+        if identity_transition["source_registry_sha256"] != source_registry_sha256:
+            repeated = [
+                row
+                for rows in identity_registry.get("tombstones", {}).values()
+                for row in rows
+                if row.get("retired_request_id") == identity_transition["request_id"]
+            ]
+            if not repeated or any(
+                row.get("source_registry_sha256")
+                != identity_transition["source_registry_sha256"]
+                for row in repeated
+            ):
+                raise SystemExit("identity transition source registry 已漂移")
     payload = _manifest_payload(
         episode_dir,
         review_format=review_format,
         identity_registry=identity_registry,
         cut_ids=cut_ids,
+        identity_transition=identity_transition,
     )
     output = episode_dir / "highlights" / "review" / OUTPUT_NAME
     rendered = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
     staging = output.with_suffix(output.suffix + ".tmp")
     staging.write_text(rendered, encoding="utf-8")
     os.replace(staging, output)
+    semantic_after = _canonical_hash(
+        {
+            key: identity_registry.get(key)
+            for key in ("cuts", "tombstones", "next_ordinals", "id_prefixes")
+        }
+    )
+    if semantic_after != semantic_before or not _identity_path(review_dir).is_file():
+        identity_registry["revision"] = int(identity_registry.get("revision", 0)) + 1
+        identity_registry["previous_registry_sha256"] = source_registry_sha256
+        core = {key: value for key, value in identity_registry.items() if key != "content_hash"}
+        identity_registry["content_hash"] = _canonical_hash(core)
+        _write_identity_registry(review_dir, identity_registry)
     return output
 
 
@@ -719,6 +984,7 @@ def verify_finished_review_cut(
     feedback_rows: list[dict[str, Any]] | None = None,
     source_preview_sha256: str | None = None,
     require_preview_change: bool = False,
+    identity_transition: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Authoritative worker/router verification for one revised long Highlight."""
 
@@ -736,6 +1002,41 @@ def verify_finished_review_cut(
         if action == "remove":
             if component is not None:
                 raise SystemExit(f"revision 未移除 component：{component_id}")
+            if identity_transition is None:
+                raise SystemExit(f"revision remove 缺少 identity transition proof：{component_id}")
+            registry = _read_identity_registry(
+                episode_dir.resolve(), episode_dir.resolve() / "highlights" / "review"
+            )
+            transition_sha256 = _canonical_hash(
+                {
+                    "request_id": identity_transition.get("request_id"),
+                    "source_manifest_sha256": identity_transition.get(
+                        "source_manifest_sha256"
+                    ),
+                    "source_registry_sha256": identity_transition.get(
+                        "source_registry_sha256"
+                    ),
+                    "feedback_rows": identity_transition.get("feedback_rows", []),
+                }
+            )
+            proof = next(
+                (
+                    row
+                    for row in (registry or {}).get("tombstones", {}).get(cut_id, [])
+                    if row.get("component_id") == component_id
+                ),
+                None,
+            )
+            if (
+                proof is None
+                or proof.get("retired_request_id") != identity_transition.get("request_id")
+                or proof.get("source_manifest_sha256")
+                != identity_transition.get("source_manifest_sha256")
+                or proof.get("source_registry_sha256")
+                != identity_transition.get("source_registry_sha256")
+                or proof.get("transition_sha256") != transition_sha256
+            ):
+                raise SystemExit(f"revision remove tombstone proof 無效：{component_id}")
             continue
         if action in {"edit_text", "move", "replace_asset", "change_type"} and component is None:
             raise SystemExit(f"revision 找不到 component：{component_id}")

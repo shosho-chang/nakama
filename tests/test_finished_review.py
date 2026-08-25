@@ -186,6 +186,11 @@ def client(monkeypatch, finished_episode):
         "verify_finished_review_manifest",
         lambda _episode, path: json.loads(path.read_text(encoding="utf-8")),
     )
+    monkeypatch.setattr(
+        review_module,
+        "identity_registry_source_sha256",
+        lambda _episode, _path: "b" * 64,
+    )
     app = FastAPI()
     app.include_router(review_module.page_router)
     return TestClient(app)

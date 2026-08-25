@@ -419,6 +419,11 @@ def reconcile_missing_revision_job(
         "component_feedback": component_feedback,
         "overall_feedback": overall_feedback,
     }
+    from scripts.build_finished_review_manifest import identity_registry_source_sha256
+
+    request["source_registry_sha256"] = identity_registry_source_sha256(
+        episode_dir, manifest_matches[0]
+    )
     if (episode_dir / "editorial-master" / "v1" / "EDITORIAL-MASTER.json").is_file():
         from scripts.run_short_broll import _open_editorial_master
 
@@ -510,8 +515,13 @@ def _retry_target_inventory(episode_dir: Path, review_dir: Path, allowed: dict) 
             target = _contained(episode_dir / relative, episode_dir, "retry rollback file")
             if target.is_file():
                 inventory.update(_tree_inventory(target, relative_to=episode_dir))
-    for manifest in sorted(review_dir.glob("finished_review_manifest_*.json")):
-        inventory.update(_tree_inventory(manifest, relative_to=episode_dir))
+    identity_files = [
+        review_dir / "finished_review_component_identity.v1.json",
+        review_dir / "finished_review_component_identity.v2.json",
+    ]
+    for manifest in [*sorted(review_dir.glob("finished_review_manifest_*.json")), *identity_files]:
+        if manifest.is_file():
+            inventory.update(_tree_inventory(manifest, relative_to=episode_dir))
     return inventory
 
 
@@ -596,6 +606,15 @@ def retry_failed_revision_job(
     source_cuts, _source_preflight = _source_manifest_cuts(
         episode_dir, manifest_path, review_dir, requested
     )
+    from scripts.build_finished_review_manifest import identity_registry_source_sha256
+
+    live_registry_sha256 = identity_registry_source_sha256(episode_dir, manifest_path)
+    if job.get("source_registry_sha256") is None:
+        raise RuntimeError(
+            "failed revision lacks queue-bound identity registry and is permanently non-retryable"
+        )
+    if job.get("source_registry_sha256") != live_registry_sha256:
+        raise RuntimeError("failed revision identity registry was not restored")
     for cut_id in requested:
         preview = Path(source_cuts[cut_id]["artifacts"]["preview"]["path"])
         if _sha256(preview) != job.get("source_preview_sha256", {}).get(cut_id):
@@ -608,6 +627,7 @@ def retry_failed_revision_job(
         "previous_result_receipt": result_relative,
         "rollback_verified": True,
         "retry_proof": retry_proof,
+        "source_registry_sha256": job["source_registry_sha256"],
     }
     if not apply:
         return response
@@ -636,6 +656,7 @@ def retry_failed_revision_job(
             "finished_at": None,
             "result_receipt": None,
             "error": None,
+            "source_registry_sha256": job["source_registry_sha256"],
             "retry_requested_at": datetime.now(timezone.utc).isoformat(),
             "previous_result_receipts": previous_receipts,
         },
@@ -1231,6 +1252,12 @@ def _authoritative_output_verifier(context: dict) -> dict:
             episode_dir,
             review_format=str(request["review_format"]),
             cut_ids=set(request["requested_cut_ids"]),
+            identity_transition={
+                "request_id": context["request_id"],
+                "source_manifest_sha256": request["source_manifest_sha256"],
+                "source_registry_sha256": request["source_registry_sha256"],
+                "feedback_rows": request.get("component_feedback", []),
+            },
         )
         results: list[dict] = []
         for cut_id in request["requested_cut_ids"]:
@@ -1246,6 +1273,12 @@ def _authoritative_output_verifier(context: dict) -> dict:
                 feedback_rows=rows,
                 source_preview_sha256=request["source_preview_sha256"][cut_id],
                 require_preview_change=True,
+                identity_transition={
+                    "request_id": context["request_id"],
+                    "source_manifest_sha256": request["source_manifest_sha256"],
+                    "source_registry_sha256": request["source_registry_sha256"],
+                    "feedback_rows": request.get("component_feedback", []),
+                },
             )
             results.append(result)
     except SystemExit as exc:
@@ -1447,7 +1480,11 @@ def _backup_revision_targets(
             *allowed["trusted_output_receipts"],
         ]
     ]
-    manifest_paths = sorted(review_dir.glob("finished_review_manifest_*.json"))
+    manifest_paths = [
+        *sorted(review_dir.glob("finished_review_manifest_*.json")),
+        review_dir / "finished_review_component_identity.v1.json",
+        review_dir / "finished_review_component_identity.v2.json",
+    ]
     for source in [*recipe_paths, *manifest_paths]:
         relative = source.resolve().relative_to(episode_dir.resolve())
         backup = before_dir / "files" / relative
@@ -2020,6 +2057,15 @@ def run_revision_job(
         source_cuts, source_preflight = _source_manifest_cuts(
             episode_dir, manifest_path, review_dir, requested
         )
+        from scripts.build_finished_review_manifest import identity_registry_source_sha256
+
+        live_registry_sha256 = identity_registry_source_sha256(episode_dir, manifest_path)
+        if request.get("source_registry_sha256") is None:
+            raise RuntimeError(
+                "revision request lacks queue-bound identity registry; reconcile or retry first"
+            )
+        if live_registry_sha256 != request.get("source_registry_sha256"):
+            raise RuntimeError("component identity registry drifted after feedback was saved")
         for cut_id in requested:
             preview = Path(source_cuts[cut_id]["artifacts"]["preview"]["path"])
             if _sha256(preview) != request.get("source_preview_sha256", {}).get(cut_id):
@@ -2093,6 +2139,7 @@ def run_revision_job(
                 "finished_at": None,
                 "result_receipt": None,
                 "error": None,
+                "source_registry_sha256": request["source_registry_sha256"],
             },
             required_status="queued",
         )

@@ -313,11 +313,17 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
         ],
     }
     (cut_dir / "events.json").write_text(json.dumps(packet), encoding="utf-8")
-    (cut_dir.parent / "finished_review_manifest_20260822.json").write_text(
+    legacy_source = cut_dir.parent / "finished_review_manifest_20260822.json"
+    legacy_source.write_text(
         json.dumps(
             {
-                "schema": producer.SCHEMA,
+                "schema": "nakama.finished_cut_review_manifest.v1",
                 "episode_id": tmp_path.name,
+                "stage": 5,
+                "gate": {
+                    "kind": "finished_cut_review",
+                    "status": "ready_for_review",
+                },
                 "cuts": [
                     {
                         "cut_id": "value-L01",
@@ -344,12 +350,15 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
         ),
         encoding="utf-8",
     )
+    legacy_source_bytes = legacy_source.read_bytes()
 
     output = producer.build_manifest(tmp_path)
     first = output.read_bytes()
     producer.build_manifest(tmp_path)
     assert output.read_bytes() == first
     payload = json.loads(first)
+    assert payload["schema"] == producer.SCHEMA
+    assert legacy_source.read_bytes() == legacy_source_bytes
     cut = payload["cuts"][0]
     assert payload["editorial_master_lineage"] == identity
     assert cut["stock_video_lineage"] == receipt_identity(broll_receipt)
@@ -372,8 +381,9 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
         row["component_id"] for row in cut["components"] if row["lane"] == "hero_title"
     ]
     assert hero_ids == ["value-L01-hero-001", "value-L01-hero-002"]
+    identity_registry_path = cut_dir.parent / "finished_review_component_identity.v2.json"
     identity_registry = json.loads(
-        (cut_dir.parent / "finished_review_component_identity.v1.json").read_text(
+        identity_registry_path.read_text(
             encoding="utf-8"
         )
     )
@@ -381,7 +391,9 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
         "finished_review_manifest_20260822.json"
     )
     assert [
-        row["component_id"] for row in identity_registry["cuts"]["value-L01"]
+        row["component_id"]
+        for row in identity_registry["cuts"]["value-L01"]
+        if row["lane"] == "hero_title"
     ] == ["value-L01-hero-001", "value-L01-hero-002"]
 
     verified = producer.verify_finished_review_cut(
@@ -406,7 +418,24 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
 
     packet["events"][4]["slug"] = "新的/兩行 Hero"
     (cut_dir / "events.json").write_text(json.dumps(packet), encoding="utf-8")
-    producer.build_manifest(tmp_path)
+    producer.build_manifest(
+        tmp_path,
+        identity_transition={
+            "request_id": "finished-revision-edit-hero",
+            "source_manifest_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+            "source_registry_sha256": json.loads(
+                identity_registry_path.read_text(encoding="utf-8")
+            )["content_hash"],
+            "feedback_rows": [
+                {
+                    "cut_id": "value-L01",
+                    "component_id": "value-L01-hero-001",
+                    "action": "edit_text",
+                    "replacement": "新的\n兩行 Hero",
+                }
+            ],
+        },
+    )
     edited = producer.verify_finished_review_cut(
         tmp_path,
         "value-L01",
@@ -439,6 +468,138 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
     assert rereview["status"] == "verified_for_human_rereview"
     assert rereview["approved"] is False
 
+    old_broll_ids = {
+        row["component_id"]
+        for row in json.loads(output.read_text(encoding="utf-8"))["cuts"][0]["components"]
+        if row["lane"] == "b_roll"
+    }
+    source_manifest_sha256 = hashlib.sha256(output.read_bytes()).hexdigest()
+    source_registry_sha256 = json.loads(
+        identity_registry_path.read_text(encoding="utf-8")
+    )["content_hash"]
+    replacement_items = []
+    for index in range(3):
+        slug = f"replacement-{index}"
+        (asset_dir / f"{slug}.mp4").write_bytes(f"replacement-{index}".encode())
+        replacement_items.append(
+            {
+                "kind": "video",
+                "slug": slug,
+                "t0": 1.0 + index * 10,
+                "t1": 4.0 + index * 10,
+                "provenance": {
+                    "source_url": f"https://stock.example.test/{slug}",
+                    "license_id": f"license-{slug}",
+                    "acquired_at": "2026-08-22T10:00:00+08:00",
+                },
+            }
+        )
+        packet["events"][index]["slug"] = slug
+    (tighten / "value-L01_broll.json").write_text(
+        json.dumps({"items": replacement_items}), encoding="utf-8"
+    )
+    broll_receipt = _authoritative_broll_receipt_fixture(
+        tmp_path, "value-L01", replacement_items
+    )
+    packet["stock_video_lineage"] = receipt_identity(broll_receipt)
+    (cut_dir / "events.json").write_text(json.dumps(packet), encoding="utf-8")
+
+    transition = {
+        "request_id": "finished-revision-remove-old-stock",
+        "source_manifest_sha256": source_manifest_sha256,
+        "source_registry_sha256": source_registry_sha256,
+        "feedback_rows": [
+            {
+                "cut_id": "value-L01",
+                "component_id": component_id,
+                "action": "remove",
+            }
+            for component_id in sorted(old_broll_ids)
+        ],
+    }
+    producer.build_manifest(tmp_path, identity_transition=transition)
+    producer.verify_finished_review_cut(
+        tmp_path,
+        "value-L01",
+        output,
+        feedback_rows=transition["feedback_rows"],
+        identity_transition=transition,
+    )
+    replaced = json.loads(output.read_text(encoding="utf-8"))["cuts"][0]
+    new_broll_ids = {
+        row["component_id"] for row in replaced["components"] if row["lane"] == "b_roll"
+    }
+    assert old_broll_ids.isdisjoint(new_broll_ids)
+    assert new_broll_ids == {
+        "value-L01-b-roll-004",
+        "value-L01-b-roll-005",
+        "value-L01-b-roll-006",
+    }
+    first_replacement = output.read_bytes()
+    producer.build_manifest(tmp_path, identity_transition=transition)
+    assert output.read_bytes() == first_replacement
+    modified_replay = {
+        **transition,
+        "feedback_rows": [
+            *transition["feedback_rows"],
+            {
+                "cut_id": "value-L01",
+                "component_id": "value-L01-hero-002",
+                "action": "comment",
+            },
+        ],
+    }
+    with pytest.raises(SystemExit, match="不可重複使用 tombstone"):
+        producer.build_manifest(tmp_path, identity_transition=modified_replay)
+
+    second_source_manifest_sha256 = hashlib.sha256(output.read_bytes()).hexdigest()
+    second_source_registry_sha256 = json.loads(
+        identity_registry_path.read_text(encoding="utf-8")
+    )["content_hash"]
+    second_items = []
+    for index in range(3):
+        slug = f"second-replacement-{index}"
+        (asset_dir / f"{slug}.mp4").write_bytes(slug.encode())
+        second_items.append(
+            {
+                **replacement_items[index],
+                "slug": slug,
+                "provenance": {
+                    **replacement_items[index]["provenance"],
+                    "source_url": f"https://stock.example.test/{slug}",
+                },
+            }
+        )
+        packet["events"][index]["slug"] = slug
+    (tighten / "value-L01_broll.json").write_text(
+        json.dumps({"items": second_items}), encoding="utf-8"
+    )
+    broll_receipt = _authoritative_broll_receipt_fixture(
+        tmp_path, "value-L01", second_items
+    )
+    packet["stock_video_lineage"] = receipt_identity(broll_receipt)
+    (cut_dir / "events.json").write_text(json.dumps(packet), encoding="utf-8")
+    second_transition = {
+        "request_id": "finished-revision-remove-second-stock",
+        "source_manifest_sha256": second_source_manifest_sha256,
+        "source_registry_sha256": second_source_registry_sha256,
+        "feedback_rows": [
+            {"cut_id": "value-L01", "component_id": value, "action": "remove"}
+            for value in sorted(new_broll_ids)
+        ],
+    }
+    producer.build_manifest(tmp_path, identity_transition=second_transition)
+    third_ids = {
+        row["component_id"]
+        for row in json.loads(output.read_text(encoding="utf-8"))["cuts"][0]["components"]
+        if row["lane"] == "b_roll"
+    }
+    assert third_ids == {
+        "value-L01-b-roll-007",
+        "value-L01-b-roll-008",
+        "value-L01-b-roll-009",
+    }
+
 
 def test_finished_manifest_rejects_arbitrary_legacy_component_id_remap(tmp_path):
     import build_finished_review_manifest as producer
@@ -448,8 +609,10 @@ def test_finished_manifest_rejects_arbitrary_legacy_component_id_remap(tmp_path)
     (review / "finished_review_manifest_20260822.json").write_text(
         json.dumps(
             {
-                "schema": producer.SCHEMA,
+                "schema": "nakama.finished_cut_review_manifest.v1",
                 "episode_id": tmp_path.name,
+                "stage": 5,
+                "gate": {"kind": "finished_cut_review", "status": "ready_for_review"},
                 "cuts": [
                     {
                         "cut_id": "value-L01",
@@ -541,7 +704,14 @@ def test_partial_manifest_identity_bootstrap_never_verifies_unrequested_stale_cu
 
     calls = []
 
-    def scoped_payload(_episode, *, review_format="long", identity_registry=None, cut_ids=None):
+    def scoped_payload(
+        _episode,
+        *,
+        review_format="long",
+        identity_registry=None,
+        cut_ids=None,
+        identity_transition=None,
+    ):
         calls.append(cut_ids)
         if cut_ids is None:
             raise SystemExit("unrequested punch-L04 events.json Editorial Master lineage stale")

@@ -28,7 +28,10 @@ from agents.brook.script_video.highlight_visual_pipeline import (
     verify_visual_pipeline,
     visual_pipeline_status,
 )
-from scripts.build_finished_review_manifest import verify_finished_review_manifest
+from scripts.build_finished_review_manifest import (
+    identity_registry_source_sha256,
+    verify_finished_review_manifest,
+)
 from scripts.finished_review_watcher import (
     load_episode_trusted_asset_handoff,
     revision_requires_stock_assets,
@@ -858,18 +861,21 @@ def _finished_revision_job(
     )
     if not requested_cut_ids:
         return None
+    episode_dir = Path(manifest["_path"]).parents[2]
     request = {
         "episode_id": manifest["episode_id"],
         "review_format": manifest.get("review_format", "long"),
         "manifest_filename": Path(manifest["_path"]).name,
         "source_manifest_sha256": manifest["_sha256"],
+        "source_registry_sha256": identity_registry_source_sha256(
+            episode_dir, Path(manifest["_path"])
+        ),
         "source_preview_sha256": preview_sha256,
         "requested_cut_ids": requested_cut_ids,
         "cut_statuses": cut_statuses,
         "component_feedback": component_feedback,
         "overall_feedback": overall_feedback,
     }
-    episode_dir = Path(manifest["_path"]).parents[2]
     try:
         trusted_handoff = load_episode_trusted_asset_handoff(episode_dir)
         needs_stock_assets = (
