@@ -55,6 +55,8 @@ def test_berry_is_xp_over_ten_including_negatives():
 # 那是不可逆的信任破壞。這張表是天花板，不是要回去的目標。
 # （例外註記：2026-08-24 Lv.15 140k→150k 經修修裁決，當時無人超過 20 XP、
 #   玩法未公告，仍低於本天花板。**公告日後不再有任何上調**。）
+# （2026-08-25 v5：插入空島成 16 階——只新增 3,000 一格、無任何上調；
+#   16 階的天花板承接舊 Lv.15 的 200k。）
 _V1_CEILING = {
     1: 0,
     2: 100,
@@ -71,12 +73,13 @@ _V1_CEILING = {
     13: 100_000,
     14: 140_000,
     15: 200_000,
+    16: 200_000,
 }
 
 
 def test_level_curve_shape():
     table = dict(rules.LEVEL_THRESHOLDS)
-    assert sorted(table) == list(range(1, 16)), "等級數固定 15 階"
+    assert sorted(table) == list(range(1, 17)), "等級數固定 16 階"
     assert table[1] == 0
     values = [table[n] for n in range(1, 16)]
     assert values == sorted(set(values)), "門檻必須嚴格遞增"
@@ -93,7 +96,7 @@ def test_every_level_has_a_title():
     for n, _ in rules.LEVEL_THRESHOLDS:
         label = rules.level_label(n)
         assert label and not label.startswith("Lv."), f"Lv.{n} 沒有稱號"
-    assert len(set(rules.LEVEL_LABELS.values())) == 15, "稱號不可重複"
+    assert len(set(rules.LEVEL_LABELS.values())) == 16, "島名不可重複"
 
 
 def test_first_like_levels_up():
@@ -103,7 +106,17 @@ def test_first_like_levels_up():
 
 @pytest.mark.parametrize(
     ("xp", "level"),
-    [(0, 1), (9, 1), (10, 2), (49, 2), (50, 3), (149_999, 14), (150_000, 15)],
+    [
+        (0, 1),
+        (9, 1),
+        (10, 2),
+        (49, 2),
+        (50, 3),
+        (2_999, 7),
+        (3_000, 8),
+        (149_999, 15),
+        (150_000, 16),
+    ],
 )
 def test_level_for_boundaries(xp: int, level: int):
     assert rules.level_for(xp) == level
@@ -111,7 +124,7 @@ def test_level_for_boundaries(xp: int, level: int):
 
 @pytest.mark.parametrize(
     ("xp", "expected"),
-    [(0, (1, 0, 10)), (10, (2, 10, 50)), (49, (2, 10, 50)), (150_000, (15, 150_000, 0))],
+    [(0, (1, 0, 10)), (10, (2, 10, 50)), (3_000, (8, 3_000, 4_000)), (150_000, (16, 150_000, 0))],
 )
 def test_level_band(xp: int, expected: tuple[int, int, int]):
     assert rules.level_band(xp) == expected
