@@ -151,10 +151,11 @@ final class VoyagePage {
 	}
 	/* 取 fragment 塞進 pane。group 是伺服器端過濾，所以換類型就是重取一次
 	   （不是前端藏 row——20 筆視窗內藏 row 會讓「只看挑戰」看起來是 0 筆）。 */
-	function load(u,group){
+	function load(u,group,more){
 		if(!box) return;
 		var url='/?fleet_voyage='+encodeURIComponent(u)+'&embed=1'
-			+((group&&group!=='all')?('&group='+encodeURIComponent(group)):'');
+			+((group&&group!=='all')?('&group='+encodeURIComponent(group)):'')
+			+((more&&more>20)?('&more='+more):'');
 		fetch(url,{credentials:'same-origin'})
 			.then(function(r){ if(!r.ok){ throw new Error(r.status); } return r.text(); })
 			.then(function(h){ if(ACTIVE&&box){ box.innerHTML='<main class="el-main fcom_main">'+h+'</main>'; } })
@@ -170,6 +171,15 @@ final class VoyagePage {
 		if(!e.target||!e.target.closest) return;
 		var sel=e.target.closest('select[data-nkv-filter]');
 		if(sel&&ACTIVE&&CURU){ load(CURU, sel.value); }
+	});
+
+	document.addEventListener('click',function(e){
+		if(!e.target||!e.target.closest) return;
+		var btn=e.target.closest('button[data-nkv-more]');
+		if(btn&&ACTIVE&&CURU){
+			var sel=box&&box.querySelector('select[data-nkv-filter]');
+			load(CURU, sel?sel.value:'all', parseInt(btn.getAttribute('data-nkv-more'),10)||40);
+		}
 	});
 
 	document.addEventListener('click',function(e){
@@ -276,17 +286,18 @@ final class VoyagePage {
 
 		$embed = isset( $_GET['embed'] ) && '1' === $_GET['embed'];
 		$group = isset( $_GET['group'] ) ? sanitize_key( wp_unslash( (string) $_GET['group'] ) ) : 'all';
+		$show  = isset( $_GET['more'] ) ? min( 200, max( 20, absint( $_GET['more'] ) ) ) : 20;
 
 		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped — 內部逐項 escape
 		echo $embed
-			? self::render_fragment( (int) $target->user_id, get_current_user_id(), $group )
-			: self::render_html( (int) $target->user_id, get_current_user_id(), $group );
+			? self::render_fragment( (int) $target->user_id, get_current_user_id(), $group, $show )
+			: self::render_html( (int) $target->user_id, get_current_user_id(), $group, $show );
 		exit;
 	}
 
 	/** 嵌入 fragment：透明底、繼承 portal 主題色（currentColor＋透明度），選擇器全鎖 .nkv 之下。 */
-	public static function render_fragment( int $target_user_id, int $viewer_user_id, string $group = 'all' ): string {
-		$d = self::collect_data( $target_user_id, $viewer_user_id, $group );
+	public static function render_fragment( int $target_user_id, int $viewer_user_id, string $group = 'all', int $show = 20 ): string {
+		$d = self::collect_data( $target_user_id, $viewer_user_id, $group, $show );
 
 		ob_start();
 		?>
@@ -324,6 +335,10 @@ final class VoyagePage {
 	/* vendor 深色模式＝ <html class="dark">（Helper.php:220）——原生彈窗跟著換色 */
 	html.dark .nkv .nkv-filter{ color-scheme:dark }
 	html.dark .nkv .nkv-filter option{ background:#26282d; color:#e8e7e4 }
+	.nkv .nkv-more{ margin:.7rem 0 0; text-align:center }
+	.nkv .nkv-more button{ font:inherit; font-size:.78rem; padding:.3rem 1.1rem; cursor:pointer;
+		border:1px solid rgba(125,125,125,.32); border-radius:999px; background:transparent; color:inherit }
+	.nkv .nkv-more button:hover{ border-color:#e8913f; color:#e8913f }
 	.nkv .nkv-act{ line-height:1.5 }
 	.nkv .nkv-act-main{ display:block }
 	.nkv .nkv-act-sub{ display:block; font-size:.72rem; opacity:.55; margin-top:.05rem }
@@ -347,8 +362,8 @@ final class VoyagePage {
 	}
 
 	/** 獨立完整頁（fallback／可分享連結）。 */
-	public static function render_html( int $target_user_id, int $viewer_user_id, string $group = 'all' ): string {
-		$d = self::collect_data( $target_user_id, $viewer_user_id, $group );
+	public static function render_html( int $target_user_id, int $viewer_user_id, string $group = 'all', int $show = 20 ): string {
+		$d = self::collect_data( $target_user_id, $viewer_user_id, $group, $show );
 
 		$back_url = '';
 		if ( '' !== $d['username'] && class_exists( '\FluentCommunity\App\Services\Helper' ) ) {
@@ -404,6 +419,10 @@ final class VoyagePage {
 	.nkv-filter{ margin-left:auto; font:inherit; font-size:.8rem; line-height:1.5;
 		padding:.2rem .5rem; border:1px solid var(--line); border-radius:8px;
 		background:var(--card); color:inherit; cursor:pointer }
+	.nkv-more{ margin:.8rem 0 0; text-align:center }
+	.nkv-more button{ font:inherit; font-size:.8rem; padding:.32rem 1.2rem; cursor:pointer;
+		border:1px solid var(--line); border-radius:999px; background:var(--card); color:inherit }
+	.nkv-more button:hover{ border-color:var(--accent); color:var(--accent) }
 	.nkv-act{ line-height:1.55 }
 	.nkv-act-main{ display:block }
 	.nkv-act-sub{ display:block; font-size:.75rem; color:var(--dim); margin-top:.05rem }
@@ -443,6 +462,14 @@ document.addEventListener('change',function(e){
 	if(!s) return;
 	var u=new URL(location.href);
 	if(s.value==='all'){ u.searchParams.delete('group'); } else { u.searchParams.set('group',s.value); }
+	u.searchParams.delete('more');
+	location.href=u.toString();
+});
+document.addEventListener('click',function(e){
+	var b=e.target&&e.target.closest&&e.target.closest('button[data-nkv-more]');
+	if(!b) return;
+	var u=new URL(location.href);
+	u.searchParams.set('more', b.getAttribute('data-nkv-more'));
 	location.href=u.toString();
 });
 </script>
@@ -468,7 +495,7 @@ document.addEventListener('change',function(e){
 	 *
 	 * @return array{0: array<int,array<string,mixed>>, 1: array<int,array>}
 	 */
-	private static function collect_entries( int $user_id, string $group ): array {
+	private static function collect_entries( int $user_id, string $group, int $show = 20 ): array {
 		global $wpdb;
 
 		$react_table = $wpdb->prefix . 'fcom_post_reactions';
@@ -530,7 +557,7 @@ document.addEventListener('change',function(e){
 			$wpdb->prepare(
 				"SELECT xp, source, reason, season, created_at AS latest" .
 				" FROM ( $attr_sql ) t WHERE feed_ref IS NULL OR feed_ref = 0" .
-				' ORDER BY id DESC LIMIT 20',
+				' ORDER BY id DESC LIMIT 200',
 				...$params
 			),
 			ARRAY_A
@@ -570,9 +597,10 @@ document.addEventListener('change',function(e){
 		unset( $en );
 
 		usort( $entries, static fn( $a, $b ) => strcmp( $b['when'], $a['when'] ) );
-		$entries = array_slice( $entries, 0, 20 );
+		$has_more = count( $entries ) > $show;
+		$entries  = array_slice( $entries, 0, $show );
 
-		return array( $entries, $feeds );
+		return array( $entries, $feeds, $has_more );
 	}
 
 	/**
@@ -582,7 +610,7 @@ document.addEventListener('change',function(e){
 	 *               identity:string,declare_url:string,
 	 *               group:string,entries:array,feeds:array}
 	 */
-	private static function collect_data( int $target_user_id, int $viewer_user_id, string $group = 'all' ): array {
+	private static function collect_data( int $target_user_id, int $viewer_user_id, string $group = 'all', int $show = 20 ): array {
 		global $wpdb;
 
 		$profile = \FluentCommunity\App\Models\XProfile::where( 'user_id', $target_user_id )->first();
@@ -615,9 +643,10 @@ document.addEventListener('change',function(e){
 		$rows    = array();
 		$feeds   = array();
 
-		$entries = array();
+		$entries  = array();
+		$has_more = false;
 		if ( $is_self ) {
-			list( $entries, $feeds ) = self::collect_entries( $target_user_id, $group );
+			list( $entries, $feeds, $has_more ) = self::collect_entries( $target_user_id, $group, $show );
 		}
 
 		return array(
@@ -637,6 +666,8 @@ document.addEventListener('change',function(e){
 			'declare_url' => $declare_url,
 			'is_self'  => $is_self,
 			'group'    => $group,
+			'show'     => $show,
+			'has_more' => $has_more,
 			'entries'  => $entries,
 			'feeds'    => $feeds,
 		);
@@ -839,6 +870,10 @@ document.addEventListener('change',function(e){
 				. '<td class="nkv-dt">' . esc_html( mysql2date( 'n/j H:i', (string) $en['when'] ) ) . '</td></tr>';
 		}
 		$out .= '</table>';
+		if ( ! empty( $d['has_more'] ) ) {
+			$out .= '<p class="nkv-more"><button type="button" data-nkv-more="' .
+				esc_attr( (string) ( (int) $d['show'] + 20 ) ) . '">看更多</button></p>';
+		}
 		return $out;
 	}
 }
