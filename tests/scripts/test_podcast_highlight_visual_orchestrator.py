@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -628,6 +629,32 @@ def test_codex_dispatcher_uses_jsonl_workspace_sandbox_and_exact_resume_session(
     assert prompt == "audit"
     assert cwd == work
     assert result.session_id == DIRECTOR_SESSION
+
+
+def test_default_codex_executable_prefers_newest_codex_app_binary_over_npm(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    local_appdata = tmp_path / "LocalAppData"
+    appdata = tmp_path / "AppData"
+    older = local_appdata / "OpenAI" / "Codex" / "bin" / "z-older" / "codex.exe"
+    newest = local_appdata / "OpenAI" / "Codex" / "bin" / "a-newest" / "codex.exe"
+    npm = appdata / "npm" / "codex.cmd"
+    for executable in (older, newest, npm):
+        executable.parent.mkdir(parents=True, exist_ok=True)
+        executable.write_bytes(b"test executable")
+    os.utime(older, (100, 100))
+    os.utime(newest, (200, 200))
+    monkeypatch.setattr(
+        orchestrator,
+        "os",
+        SimpleNamespace(
+            name="nt",
+            environ={"LOCALAPPDATA": str(local_appdata), "APPDATA": str(appdata)},
+        ),
+    )
+
+    assert Path(orchestrator._default_codex_executable()) == newest
 
 
 def test_codex_dispatcher_rejects_ambiguous_jsonl_session_identity(tmp_path: Path) -> None:

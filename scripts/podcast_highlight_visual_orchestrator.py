@@ -82,14 +82,22 @@ def _default_codex_executable() -> str:
     configured = os.environ.get("PODCAST_CODEX_EXECUTABLE")
     if configured:
         return configured
-    candidates: list[Path] = []
     if os.name == "nt":
+        local_appdata = os.environ.get("LOCALAPPDATA")
+        if local_appdata:
+            local_bin = Path(local_appdata) / "OpenAI" / "Codex" / "bin"
+            app_binaries = sorted(
+                (candidate for candidate in local_bin.glob("*/codex.exe") if candidate.is_file()),
+                key=lambda candidate: candidate.stat().st_mtime,
+                reverse=True,
+            )
+            if app_binaries:
+                return str(app_binaries[0])
         appdata = os.environ.get("APPDATA")
         if appdata:
-            candidates.append(Path(appdata) / "npm" / "codex.cmd")
-    for candidate in candidates:
-        if candidate.is_file():
-            return str(candidate)
+            npm = Path(appdata) / "npm" / "codex.cmd"
+            if npm.is_file():
+                return str(npm)
     return shutil.which("codex.exe") or shutil.which("codex") or "codex"
 
 
