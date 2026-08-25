@@ -75,6 +75,7 @@ def _shosho_asset_version() -> str:
         "bridge-weekly.css",
         "theme.js",
         "bridge-weekly.js",  # the page links it with ?v= — a JS-only fix must cache-bust too
+        "focus-music.js",  # task page pomodoro dock (修修 2026-08-25)
     ):
         path = static_dir / css
         if path.exists():
