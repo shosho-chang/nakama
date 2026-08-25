@@ -111,7 +111,7 @@ final class FcBridge {
 	 * 不自己拼網址：vendor 換路由規則時我們自動跟上。
 	 *
 	 * @param int[] $feed_ids
-	 * @return array<int,array{title:string,url:string,space:string}>
+	 * @return array<int,array{title:string,url:string,space:string,created_at:string}>
 	 */
 	public static function feed_digest( array $feed_ids ): array {
 		$ids = array_values( array_unique( array_filter( array_map( 'absint', $feed_ids ) ) ) );
@@ -148,9 +148,10 @@ final class FcBridge {
 				$space = '';
 			}
 			$out[ (int) $feed->id ] = array(
-				'title' => $title,
-				'url'   => $url,
-				'space' => $space,
+				'title'      => $title,
+				'url'        => $url,
+				'space'      => $space,
+				'created_at' => (string) ( $feed->created_at ?? '' ),
 			);
 		}
 

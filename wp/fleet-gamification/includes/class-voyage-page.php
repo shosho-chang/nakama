@@ -320,7 +320,10 @@ final class VoyagePage {
 	.nkv .nkv-lg-head h3{ margin:0 }
 	.nkv .nkv-filter{ margin-left:auto; font:inherit; font-size:.76rem; line-height:1.5;
 		padding:.18rem .45rem; border:1px solid rgba(125,125,125,.32); border-radius:8px;
-		background:transparent; color:inherit; cursor:pointer }
+		background:transparent; color:inherit; cursor:pointer; color-scheme:light }
+	/* vendor 深色模式＝ <html class="dark">（Helper.php:220）——原生彈窗跟著換色 */
+	html.dark .nkv .nkv-filter{ color-scheme:dark }
+	html.dark .nkv .nkv-filter option{ background:#26282d; color:#e8e7e4 }
 	.nkv .nkv-act{ line-height:1.5 }
 	.nkv .nkv-act-main{ display:block }
 	.nkv .nkv-act-sub{ display:block; font-size:.72rem; opacity:.55; margin-top:.05rem }
@@ -362,9 +365,9 @@ final class VoyagePage {
 <meta name="robots" content="noindex">
 <title><?php echo esc_html( $d['name'] ); ?>的航海日誌</title>
 <style>
-	:root{ --bg:#f6f6f4; --card:#ffffff; --ink:#23211e; --dim:#71706c; --line:rgba(60,60,55,.16); --accent:#e8913f }
+	:root{ color-scheme:light; --bg:#f6f6f4; --card:#ffffff; --ink:#23211e; --dim:#71706c; --line:rgba(60,60,55,.16); --accent:#e8913f }
 	@media (prefers-color-scheme: dark){
-		:root{ --bg:#1d1f23; --card:#26282d; --ink:#e8e7e4; --dim:#9b9a96; --line:rgba(230,230,225,.14) }
+		:root{ color-scheme:dark; --bg:#1d1f23; --card:#26282d; --ink:#e8e7e4; --dim:#9b9a96; --line:rgba(230,230,225,.14) }
 	}
 	*{ box-sizing:border-box }
 	body{ margin:0; background:var(--bg); color:var(--ink);
@@ -544,9 +547,9 @@ document.addEventListener('change',function(e){
 				'latest' => (string) $row['latest'],
 			);
 		}
-		usort( $entries, static fn( $a, $b ) => strcmp( $b['latest'], $a['latest'] ) );
-		$entries = array_slice( $entries, 0, 20 );
-
+		// 排序鍵＝發文時間（修修 2026-08-25 裁決：條目是內容，就照內容的時間軸排，
+		// 最新的文在最上面）。單列項沒有貼文，用入帳時間站上同一條時間軸；
+		// 刪文讀不到發文時間的，退回最近入帳時間。
 		$feed_ids = array();
 		foreach ( $entries as $en ) {
 			if ( 'feed' === $en['type'] ) {
@@ -554,6 +557,20 @@ document.addEventListener('change',function(e){
 			}
 		}
 		$feeds = ( $feed_ids && class_exists( FcBridge::class ) ) ? FcBridge::feed_digest( $feed_ids ) : array();
+
+		foreach ( $entries as &$en ) {
+			$en['when'] = (string) $en['latest'];
+			if ( 'feed' === $en['type'] ) {
+				$posted = (string) ( $feeds[ (int) $en['feed_id'] ]['created_at'] ?? '' );
+				if ( '' !== $posted ) {
+					$en['when'] = $posted;
+				}
+			}
+		}
+		unset( $en );
+
+		usort( $entries, static fn( $a, $b ) => strcmp( $b['when'], $a['when'] ) );
+		$entries = array_slice( $entries, 0, 20 );
 
 		return array( $entries, $feeds );
 	}
@@ -819,9 +836,9 @@ document.addEventListener('change',function(e){
 			$out    .= '<tr><td class="nkv-act">' . $cell . '</td>'
 				. '<td class="nkv-amt' . ( $xp_v < 0 ? ' neg' : '' ) . '">'
 				. esc_html( ( $xp_v > 0 ? '+' : '' ) . number_format_i18n( $xp_v ) ) . ' XP</td>'
-				. '<td class="nkv-dt">' . esc_html( mysql2date( 'n/j H:i', (string) $en['latest'] ) ) . '</td></tr>';
+				. '<td class="nkv-dt">' . esc_html( mysql2date( 'n/j H:i', (string) $en['when'] ) ) . '</td></tr>';
 		}
-		$out .= '</table><p class="nkv-note">帳目可查、可申訴——有疑問直接私訊 Sanji 或艦長。</p>';
+		$out .= '</table>';
 		return $out;
 	}
 }
