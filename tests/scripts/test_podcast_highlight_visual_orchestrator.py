@@ -617,6 +617,10 @@ def test_dp_prompt_forbids_worker_media_and_requires_trusted_authority(
     assert "mode=stock is mandatory" in prompt
     assert "Never relabel stock as provided_asset" in prompt
     assert "do not force an unrelated asset" in prompt
+    assert "exactly one implementation for every Director event" in prompt
+    assert "implementations=[] is forbidden" in prompt
+    assert "planned_stock_video_count is an editorial target" in prompt
+    assert "Do not inspect or copy prior worker/trusted proposal outputs" in prompt
     assert "must set non-empty on_screen_text" in prompt
     assert "render_params.title" in prompt
     assert "at most 16 characters" in prompt
@@ -1393,6 +1397,66 @@ def test_failed_dp_hydration_retires_execution_before_fresh_retry(
     dp_receipt = json.loads((job_root / "receipts" / "dp.json").read_text(encoding="utf-8"))
     assert dp_receipt["worker_identity"]["session_id"] == DP_SESSION
     assert dp_receipt["worker_identity"]["session_id"] != DIRECTOR_SESSION
+
+
+def test_failed_dp_accept_retires_execution_before_fresh_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    episode: tuple[Path, Path],
+) -> None:
+    pipeline = _FakePipeline()
+    root, request = episode
+    accept_calls = 0
+    real_accept = pipeline.accept_dp_fulfillment
+
+    def flaky_accept(*args, **kwargs):
+        nonlocal accept_calls
+        accept_calls += 1
+        if accept_calls == 1:
+            raise orchestrator.HighlightVisualContractError(
+                "DP must implement every add_visual Director event exactly once"
+            )
+        return real_accept(*args, **kwargs)
+
+    pipeline.accept_dp_fulfillment = flaky_accept  # type: ignore[method-assign]
+    monkeypatch.setattr(orchestrator, "visual_pipeline", pipeline)
+    first = _FakeDispatcher()
+    with pytest.raises(
+        orchestrator.HighlightVisualContractError,
+        match="implement every add_visual",
+    ):
+        orchestrator.run_visual_pipeline(
+            root,
+            cut_id="value-L01",
+            revision_request=request,
+            dispatcher=first,
+        )
+
+    job_root = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "jobs"
+        / REVISION_ID
+    )
+    first_attempt = job_root / "receipts" / "dp.attempts" / "attempt-001"
+    assert not (job_root / "receipts" / "dp.json").exists()
+    assert (first_attempt / "FAILURE.json").is_file()
+    assert (first_attempt / "evidence" / "proposal.json").is_file()
+    assert (first_attempt / "evidence" / "execution-receipt.json").is_file()
+
+    second = _FakeDispatcher()
+    result = orchestrator.run_visual_pipeline(
+        root,
+        cut_id="value-L01",
+        revision_request=request,
+        dispatcher=second,
+    )
+
+    assert result.semantic_audit is pipeline.audit
+    assert accept_calls == 2
+    assert [call.phase for call in second.calls] == ["dp", "semantic_audit"]
+    assert (job_root / "receipts" / "dp.attempts" / "attempt-002" / "PREPARE.json").is_file()
 
 
 def test_host_crash_after_proposal_is_archived_before_fresh_dispatch_retry(

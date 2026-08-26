@@ -25,6 +25,9 @@ from typing import Callable, Mapping, Protocol, Sequence
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agents.brook.script_video import highlight_visual_pipeline as visual_pipeline  # noqa: E402
+from agents.brook.script_video.highlight_visual_pipeline import (  # noqa: E402
+    HighlightVisualContractError,
+)
 from agents.brook.script_video.highlight_candidate_renderer import (  # noqa: E402
     TrustedRenderError,
     hydrate_dp_proposal,
@@ -978,6 +981,14 @@ def _phase_prompt(request: DispatchRequest, phase_input_path: Path) -> str:
   with provided_. Never relabel stock as provided_asset to satisfy an event.
 - If no authority asset truthfully matches an event, use a truthful HyperFrames
   abstraction or retain A-roll according to the contract; do not force an unrelated asset.
+- Output exactly one implementation for every Director event whose decision is add_visual;
+  preserve each event_id exactly once. implementations=[] is forbidden. Unavailable
+  authority is not permission to omit an event.
+- planned_stock_video_count is an editorial target, not permission to fabricate or force
+  unrelated Stock selections. Use truthful HyperFrames fallback for unmatched stock_scene
+  events while satisfying the work packet's explicit minimum Stock requirement.
+- Do not inspect or copy prior worker/trusted proposal outputs; the immutable phase input is
+  the only runtime truth for this execution.
 - Every HyperFrames implementation must set non-empty on_screen_text exactly equal to
   the component's canonical primary text (for concept_card: render_params.title).
 - Validate every candidate against the registered component limits before exit:
@@ -1422,18 +1433,33 @@ def run_visual_pipeline(
                 if reused_dp_execution:
                     continue
                 raise
-            visual_pipeline.accept_dp_fulfillment(
-                root,
-                cut_id=cut_id,
-                revision_id=revision_id,
-                proposal=trusted_proposal,
-                worker_identity=identity,
-                worker_proposal=proposal,
-                execution_receipt=_identity(
-                    root, _execution_receipt_path(job_root, "dp")
-                ),
-                editorial_master=editorial_master,
-            )
+            try:
+                visual_pipeline.accept_dp_fulfillment(
+                    root,
+                    cut_id=cut_id,
+                    revision_id=revision_id,
+                    proposal=trusted_proposal,
+                    worker_identity=identity,
+                    worker_proposal=proposal,
+                    execution_receipt=_identity(
+                        root, _execution_receipt_path(job_root, "dp")
+                    ),
+                    editorial_master=editorial_master,
+                )
+            except HighlightVisualContractError as error:
+                _reject_completed_execution(
+                    root,
+                    job_root,
+                    cut_id=cut_id,
+                    revision_id=revision_id,
+                    phase="dp",
+                    role="dp",
+                    proposal_path=proposal,
+                    reason=f"trusted DP fulfillment rejected completed proposal: {error}",
+                )
+                if reused_dp_execution:
+                    continue
+                raise
             continue
         dp_phase = "dp" if active_attempt == 1 else f"dp-{active_attempt:03d}"
         dp_receipt = _load_execution_receipt(
@@ -1654,19 +1680,34 @@ def run_visual_pipeline(
                 if reused_dp_execution:
                     continue
                 raise
-            visual_pipeline.accept_dp_refinement(
-                root,
-                cut_id=cut_id,
-                revision_id=revision_id,
-                attempt=next_attempt,
-                proposal=trusted_proposal,
-                worker_identity=identity,
-                worker_proposal=proposal,
-                execution_receipt=_identity(
-                    root, _execution_receipt_path(job_root, phase)
-                ),
-                editorial_master=editorial_master,
-            )
+            try:
+                visual_pipeline.accept_dp_refinement(
+                    root,
+                    cut_id=cut_id,
+                    revision_id=revision_id,
+                    attempt=next_attempt,
+                    proposal=trusted_proposal,
+                    worker_identity=identity,
+                    worker_proposal=proposal,
+                    execution_receipt=_identity(
+                        root, _execution_receipt_path(job_root, phase)
+                    ),
+                    editorial_master=editorial_master,
+                )
+            except HighlightVisualContractError as error:
+                _reject_completed_execution(
+                    root,
+                    job_root,
+                    cut_id=cut_id,
+                    revision_id=revision_id,
+                    phase=phase,
+                    role="dp",
+                    proposal_path=proposal,
+                    reason=f"trusted DP refinement rejected completed proposal: {error}",
+                )
+                if reused_dp_execution:
+                    continue
+                raise
             continue
         if status_name == "awaiting_semantic_audit":
             materializations = visual_pipeline.load_visual_materializations(
