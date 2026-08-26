@@ -978,6 +978,11 @@ def _phase_prompt(request: DispatchRequest, phase_input_path: Path) -> str:
   with provided_. Never relabel stock as provided_asset to satisfy an event.
 - If no authority asset truthfully matches an event, use a truthful HyperFrames
   abstraction or retain A-roll according to the contract; do not force an unrelated asset.
+- Every HyperFrames implementation must set non-empty on_screen_text exactly equal to
+  the component's canonical primary text (for concept_card: render_params.title).
+- Obey quantitative Stock requirements in the work packet: use distinct authority assets
+  at semantically matching concrete events. Never use modern-child footage for a historical,
+  postwar, authoritarian-education, archive, or evidence-document event.
 - HyperFrames candidates must be exact spec-only objects: candidate_id, visual_summary,
   component, render_params, and render_spec_sha256. Trusted orchestration renders them
   after exit."""

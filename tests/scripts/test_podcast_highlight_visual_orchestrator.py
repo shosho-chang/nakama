@@ -617,6 +617,10 @@ def test_dp_prompt_forbids_worker_media_and_requires_trusted_authority(
     assert "mode=stock is mandatory" in prompt
     assert "Never relabel stock as provided_asset" in prompt
     assert "do not force an unrelated asset" in prompt
+    assert "must set non-empty on_screen_text" in prompt
+    assert "render_params.title" in prompt
+    assert "Obey quantitative Stock requirements" in prompt
+    assert "Never use modern-child footage" in prompt
     assert "HyperFrames candidates must be exact spec-only" in prompt
 
 
