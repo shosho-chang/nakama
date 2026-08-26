@@ -1070,6 +1070,37 @@ def test_card_line_limit_still_rejects_more_than_sixteen_full_width_characters(
         candidate_renderer._closed_render_params(component, params, text)
 
 
+def test_expected_hydrated_spec_normalizes_crlf_and_rebinds_hash() -> None:
+    text = "與其教故事\r\n不如動手做"
+    render_params = {
+        "text": text,
+        "tier": 1,
+        "style": "orange",
+        "show_sec": 3.4,
+        "pos_y": 0.7,
+    }
+    raw_spec_hash = candidate_renderer._content_hash(
+        {"component": "punch_card_wide", "render_params": render_params}
+    )
+
+    expected = candidate_renderer._expected_hydrated_hyperframes_spec(
+        {
+            "candidate_id": "hero-001",
+            "visual_summary": "完整 Hero",
+            "component": "punch_card_wide",
+            "render_params": render_params,
+            "render_spec_sha256": raw_spec_hash,
+        },
+        expected_on_screen_text=text,
+    )
+
+    assert expected["render_params"]["text"] == "與其教故事\n不如動手做"
+    assert expected["render_spec_sha256"] == candidate_renderer._content_hash(
+        {"component": "punch_card_wide", "render_params": expected["render_params"]}
+    )
+    assert expected["render_spec_sha256"] != raw_spec_hash
+
+
 @pytest.mark.parametrize("tamper", ["media", "variables", "component", "rerender", "runtime"])
 def test_fresh_verifier_rejects_tamper_and_rerender_drift(tmp_path: Path, tamper: str) -> None:
     root, result, _calls = _render(tmp_path)

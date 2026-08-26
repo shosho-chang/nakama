@@ -474,6 +474,43 @@ def _closed_render_params(
     raise TrustedRenderError(f"component has no closed variable adapter: {component}")
 
 
+def _expected_hydrated_hyperframes_spec(
+    raw_candidate: object,
+    *,
+    expected_on_screen_text: object,
+) -> dict[str, object]:
+    spec_candidate = _exact_dict(
+        raw_candidate,
+        {
+            "candidate_id",
+            "visual_summary",
+            "component",
+            "render_params",
+            "render_spec_sha256",
+        },
+        "raw HyperFrames candidate",
+    )
+    component = _safe_token(spec_candidate["component"], "candidate.component")
+    raw_spec_hash = _content_hash(
+        {"component": component, "render_params": spec_candidate["render_params"]}
+    )
+    if spec_candidate["render_spec_sha256"] != raw_spec_hash:
+        raise TrustedRenderError("DP candidate render spec hash drift")
+    canonical_params, _variables = _closed_render_params(
+        component,
+        spec_candidate["render_params"],
+        expected_on_screen_text,
+    )
+    return {
+        **spec_candidate,
+        "component": component,
+        "render_params": canonical_params,
+        "render_spec_sha256": _content_hash(
+            {"component": component, "render_params": canonical_params}
+        ),
+    }
+
+
 def _component_source(component: str) -> dict[str, object]:
     spec = _COMPONENTS[component]
     root = (_COMPOSITION_ROOT / spec.directory).resolve()
@@ -2079,16 +2116,9 @@ def verify_dp_hydration_receipt(
             for raw_candidate, hydrated_candidate in zip(
                 raw_candidates, hydrated_candidates, strict=True
             ):
-                spec_candidate = _exact_dict(
+                expected_spec_candidate = _expected_hydrated_hyperframes_spec(
                     raw_candidate,
-                    {
-                        "candidate_id",
-                        "visual_summary",
-                        "component",
-                        "render_params",
-                        "render_spec_sha256",
-                    },
-                    "raw HyperFrames candidate",
+                    expected_on_screen_text=on_screen_text,
                 )
                 full_candidate = _exact_dict(
                     hydrated_candidate,
@@ -2103,7 +2133,10 @@ def verify_dp_hydration_receipt(
                     },
                     "hydrated HyperFrames candidate",
                 )
-                if {key: full_candidate[key] for key in spec_candidate} != spec_candidate:
+                if (
+                    {key: full_candidate[key] for key in expected_spec_candidate}
+                    != expected_spec_candidate
+                ):
                     raise TrustedRenderError("hydrated HyperFrames spec drift")
                 provenance = _exact_dict(
                     full_candidate["provenance"],
