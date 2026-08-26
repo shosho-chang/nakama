@@ -620,7 +620,9 @@ def test_dp_prompt_forbids_worker_media_and_requires_trusted_authority(
     assert "must set non-empty on_screen_text" in prompt
     assert "render_params.title" in prompt
     assert "at most 16 characters" in prompt
-    assert "instead of truncating exact required text" in prompt
+    assert "quote_card.quote" in prompt
+    assert "must each be a single non-empty line" in prompt
+    assert "instead of removing line breaks or truncating exact required text" in prompt
     assert "Obey quantitative Stock requirements" in prompt
     assert "Never use modern-child footage" in prompt
     assert "HyperFrames candidates must be exact spec-only" in prompt
