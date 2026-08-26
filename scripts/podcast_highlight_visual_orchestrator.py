@@ -989,8 +989,10 @@ def _phase_prompt(request: DispatchRequest, phase_input_path: Path) -> str:
   events while satisfying the work packet's explicit minimum Stock requirement.
 - Do not inspect or copy prior worker/trusted proposal outputs; the immutable phase input is
   the only runtime truth for this execution.
-- Every HyperFrames implementation must set non-empty on_screen_text exactly equal to
-  the component's canonical primary text (for concept_card: render_params.title).
+- Preserve every non-null Director on_screen_text exactly, including all words and line breaks.
+  If and only if Director on_screen_text is null and a truthful HyperFrames fallback is required,
+  set a non-empty implementation on_screen_text equal to the component's canonical primary text
+  (for concept_card: render_params.title). Stock/provided_asset must preserve null.
 - Validate every candidate against the registered component limits before exit:
   punch_card/punch_card_wide and transition_title allow one or two non-empty lines,
   at most 16 characters per line; quote_card.quote, concept_card.title, and

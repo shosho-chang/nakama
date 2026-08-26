@@ -4286,8 +4286,20 @@ def _dp_implementations(
             raise HighlightVisualContractError("provided_asset kind is not allowed")
         if mode == "hyperframes" and target_lane == "broll_track2":
             raise HighlightVisualContractError("HyperFrames content must use card/title lane")
-        if item["on_screen_text"] != event["on_screen_text"]:
+        director_text = event["on_screen_text"]
+        implementation_text = item["on_screen_text"]
+        if director_text is not None and implementation_text != director_text:
             raise HighlightVisualContractError(f"{event_id} changed exact on_screen_text")
+        if director_text is None:
+            if mode == "hyperframes":
+                _nonempty_text(
+                    implementation_text,
+                    f"{event_id}.on_screen_text HyperFrames fallback",
+                )
+            elif implementation_text is not None:
+                raise HighlightVisualContractError(
+                    f"{event_id} added on_screen_text outside HyperFrames fallback"
+                )
         justification = _nonempty_text(
             item["semantic_justification"],
             f"{event_id}.semantic_justification",
@@ -4386,7 +4398,7 @@ def _dp_implementations(
                         expected_candidate_id=candidate_id,
                         expected_component=str(component),
                         expected_render_params=params,
-                        expected_on_screen_text=event["on_screen_text"],
+                        expected_on_screen_text=implementation_text,
                         expected_media=media_identity,
                     )
                 except TrustedRenderError as error:
@@ -4557,7 +4569,7 @@ def _dp_implementations(
                     "t1": selection["t1"],
                     "quote": selection["quote"],
                     "source_range": source_range,
-                    "on_screen_text": event["on_screen_text"],
+                    "on_screen_text": implementation_text,
                     "media": media_identity,
                     "provenance": candidate["provenance"],
                     "render_spec": render_spec,
@@ -4581,7 +4593,7 @@ def _dp_implementations(
                 "mode": mode,
                 "target_lane": target_lane,
                 "implementation_kind": implementation_kind,
-                "on_screen_text": event["on_screen_text"],
+                "on_screen_text": implementation_text,
                 "candidates": candidates,
                 "selections": selections,
                 "semantic_justification": justification,

@@ -666,6 +666,43 @@ def test_director_rejects_quote_drift_and_zero_or_two_stock_shots(tmp_path: Path
     assert accepted.document["coverage"]["planned_stock_video_count"] == 3
 
 
+def test_dp_allows_truthful_hyperframes_text_only_when_director_text_is_null(
+    tmp_path: Path,
+) -> None:
+    root, master = _episode(tmp_path)
+    work = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
+    director_proposal = _director_proposal(work)
+    fallback_event = next(
+        event for event in director_proposal["events"] if event["event_id"] == "visual-002"
+    )
+    fallback_event["category"] = "screen_demo"
+    fallback_event["form"] = "overlay"
+    fallback_event["on_screen_text"] = None
+    director = accept_director_plan(
+        root,
+        cut_id="value-L01",
+        revision_id=work.document["revision_id"],
+        proposal=director_proposal,
+        worker_identity=DIRECTOR_WORKER,
+        editorial_master=master,
+    )
+    proposal = _dp_proposal(root, director)
+
+    accepted = accept_dp_fulfillment(
+        root,
+        cut_id="value-L01",
+        revision_id=work.document["revision_id"],
+        proposal=proposal,
+        worker_identity=DP_WORKER,
+        editorial_master=master,
+    )
+
+    implementation = next(
+        item for item in accepted.document["implementations"] if item["event_id"] == "visual-002"
+    )
+    assert implementation["on_screen_text"] == "教育開始\n改變"
+
+
 def _identity(root: Path, path: Path) -> dict[str, object]:
     raw = path.read_bytes()
     return {

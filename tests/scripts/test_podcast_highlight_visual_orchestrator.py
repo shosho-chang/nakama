@@ -621,7 +621,9 @@ def test_dp_prompt_forbids_worker_media_and_requires_trusted_authority(
     assert "implementations=[] is forbidden" in prompt
     assert "planned_stock_video_count is an editorial target" in prompt
     assert "Do not inspect or copy prior worker/trusted proposal outputs" in prompt
-    assert "must set non-empty on_screen_text" in prompt
+    assert "Preserve every non-null Director on_screen_text exactly" in prompt
+    assert "Director on_screen_text is null" in prompt
+    assert "Stock/provided_asset must preserve null" in prompt
     assert "render_params.title" in prompt
     assert "at most 16 characters" in prompt
     assert "quote_card.quote" in prompt
