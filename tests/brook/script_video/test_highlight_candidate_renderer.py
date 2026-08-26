@@ -289,10 +289,15 @@ def test_trusted_renderer_writes_a_fresh_verifiable_hyperframes_receipt(
 
 
 @pytest.mark.parametrize(
-    "hero_text",
-    ["與其教故事\r\n不如動手做", "傳統道路\r\n沒有保證了"],
+    ("hero_text", "show_sec"),
+    [
+        ("與其教故事\r\n不如動手做", 3.4),
+        ("傳統道路\r\n沒有保證了", 7.262),
+    ],
 )
-def test_hero_title_preserves_the_exact_two_line_boundary(tmp_path: Path, hero_text: str) -> None:
+def test_hero_title_preserves_the_exact_two_line_boundary(
+    tmp_path: Path, hero_text: str, show_sec: float
+) -> None:
     root = tmp_path / "episode"
     root.mkdir()
     runtime_root = _prepare_fake_runtime(tmp_path)
@@ -302,7 +307,7 @@ def test_hero_title_preserves_the_exact_two_line_boundary(tmp_path: Path, hero_t
         "text": hero_text,
         "tier": 1,
         "style": "paper",
-        "show_sec": 4.0,
+        "show_sec": show_sec,
         "pos_y": 0.6,
     }
 
@@ -324,6 +329,7 @@ def test_hero_title_preserves_the_exact_two_line_boundary(tmp_path: Path, hero_t
     variables_path = root / str(receipt["variables_file"]["path"])
     variables = json.loads(variables_path.read_text(encoding="utf-8"))
     assert receipt["render_spec"]["render_params"]["text"] == hero_text.replace("\r\n", "\n")
+    assert receipt["render_spec"]["render_params"]["show_sec"] == show_sec
     assert [variables["line1"], variables["line2"]] == hero_text.split("\r\n")
 
 

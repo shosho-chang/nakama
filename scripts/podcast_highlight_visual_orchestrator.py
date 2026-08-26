@@ -998,6 +998,7 @@ def _phase_prompt(request: DispatchRequest, phase_input_path: Path) -> str:
   at most 16 characters per line; quote_card.quote, concept_card.title, and
   book_cover.title_zh must each be a single non-empty line. Use another registered
   component instead of removing line breaks or truncating exact required text.
+  punch_card/punch_card_wide show_sec is 0.6-8.0 seconds; transition_title is 1.2-4.0.
 - Obey quantitative Stock requirements in the work packet: use distinct authority assets
   at semantically matching concrete events. Never use modern-child footage for a historical,
   postwar, authoritarian-education, archive, or evidence-document event.

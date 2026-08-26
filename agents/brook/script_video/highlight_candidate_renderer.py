@@ -156,14 +156,14 @@ _COMPONENTS = {
         "punch_card_wide.html",
         "hyperframes@0.7.72",
         frozenset({"text", "tier", "style", "show_sec", "pos_y"}),
-        4.0,
+        8.0,
     ),
     "punch_card_wide": _Component(
         "punch_card",
         "punch_card_wide.html",
         "hyperframes@0.7.72",
         frozenset({"text", "tier", "style", "show_sec", "pos_y"}),
-        4.0,
+        8.0,
     ),
     "quote_card": _Component(
         "quote_card",
@@ -415,7 +415,7 @@ def _closed_render_params(
             "text": text,
             "tier": tier,
             "style": style,
-            "show_sec": _number(params["show_sec"], "render_params.show_sec", 0.6, 4.0),
+            "show_sec": _number(params["show_sec"], "render_params.show_sec", 0.6, 8.0),
             "pos_y": _number(params["pos_y"], "render_params.pos_y", 0.35, 0.82),
         }
         variables = {
