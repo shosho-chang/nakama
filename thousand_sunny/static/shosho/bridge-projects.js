@@ -198,6 +198,8 @@
         postComplete(taskName);
         return;
       }
+      // 修修 (2026-08-25): 音樂跟著倒數走——剩 60s 切 uplifting、最後 5s 漸弱
+      if (window.ShoFocusMusic) ShoFocusMusic.sync(remainingSec);
       render();
     }
 

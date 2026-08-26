@@ -203,6 +203,8 @@ body.sho .wk-day-pom {
   margin-left: auto; font-family: var(--sho-font-mono); font-size: 13px;
   color: var(--sho-text-2); font-variant-numeric: tabular-nums;
 }
+/* 修修 (2026-08-25): 實際/規劃 — the actual (numerator) carries the emphasis */
+body.sho .wk-day-pom-a { color: var(--sho-text); font-weight: 600; }
 body.sho .wk-day-caret { color: var(--sho-muted); font-size: 11px; transition: transform var(--sho-t-fast) var(--sho-ease); }
 body.sho .wk-day[open] .wk-day-caret { transform: rotate(90deg); }
 /* card body — responsive category columns: side-by-side wide, stacked narrow */

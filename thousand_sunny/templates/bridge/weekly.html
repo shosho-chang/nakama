@@ -281,7 +281,8 @@
                   {% if day.is_today %}<span class="wk-day-now">今天</span>{% endif %}
                 </span>
                 <span class="wk-day-pom">
-                  {% if day.work_pomodoros %}<span class="wk-tomato" aria-hidden="true">🍅</span> {{ day.work_pomodoros }}{% elif day.task_count %}<span class="wk-mut">無工作排程</span>{% else %}<span class="wk-mut">休息</span>{% endif %}
+                  {# 修修 (2026-08-25): 實際/規劃 like the task rows — planned alone hid the gap #}
+                  {% if day.work_pomodoros or day.work_actual %}<span class="wk-tomato" aria-hidden="true">🍅</span> <span class="wk-day-pom-a">{{ day.work_actual }}</span>/{{ day.work_pomodoros }}{% elif day.task_count %}<span class="wk-mut">無工作排程</span>{% else %}<span class="wk-mut">休息</span>{% endif %}
                 </span>
                 <span class="wk-day-caret" aria-hidden="true">▸</span>
               </summary>
