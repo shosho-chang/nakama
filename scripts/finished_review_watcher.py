@@ -983,12 +983,19 @@ def _recovery_rollback_state(
             raise RuntimeError(f"running revision has invalid {key}")
         file_relatives.extend(values)
     manifest_prefix = (Path("highlights") / "review").as_posix() + "/"
+    rollback_review_names = {
+        "finished_review_component_identity.v1.json",
+        "finished_review_component_identity.v2.json",
+    }
     file_relatives.extend(
         relative
         for relative in pre_snapshot
         if relative.startswith(manifest_prefix)
-        and Path(relative).name.startswith("finished_review_manifest_")
         and Path(relative).suffix == ".json"
+        and (
+            Path(relative).name.startswith("finished_review_manifest_")
+            or Path(relative).name in rollback_review_names
+        )
     )
     files: list[dict] = []
     for relative in sorted(set(file_relatives)):

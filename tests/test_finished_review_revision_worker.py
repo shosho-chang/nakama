@@ -1190,7 +1190,15 @@ def test_failed_job_retry_rejects_artifact_drift_without_requeueing(tmp_path):
 
 
 def test_orphan_running_recovery_restores_partial_promotion_before_attempt_three(tmp_path):
-    episode, _manifest, feedback = _write_queued_job(tmp_path)
+    episode, manifest, feedback = _write_queued_job(tmp_path)
+    from scripts.build_finished_review_manifest import _build_identity_registry
+
+    registry = _build_identity_registry(
+        episode, json.loads(manifest.read_text(encoding="utf-8")), manifest
+    )
+    (episode / "highlights/review/finished_review_component_identity.v2.json").write_text(
+        json.dumps(registry, ensure_ascii=False), encoding="utf-8"
+    )
     old_recipe = (episode / "highlights/tighten/value-L01_titles.json").read_bytes()
 
     def failed_agent(_context: dict) -> subprocess.CompletedProcess[str]:
