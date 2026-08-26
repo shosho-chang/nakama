@@ -628,6 +628,59 @@ def test_dp_prompt_forbids_worker_media_and_requires_trusted_authority(
     assert "HyperFrames candidates must be exact spec-only" in prompt
 
 
+def test_dp_hydration_destination_is_content_addressed_by_raw_proposal(
+    episode: tuple[Path, Path],
+) -> None:
+    root, _request = episode
+    job_root = root / "highlights" / "visual-pipeline" / "value-L01" / "jobs" / REVISION_ID
+    first = job_root / "workers" / "dp-session" / "first.json"
+    second = job_root / "workers" / "dp-session" / "second.json"
+    first.parent.mkdir(parents=True)
+    first.write_text('{"contract":"proposal","implementations":[]}\n', encoding="utf-8")
+    second.write_text(
+        '{"contract":"proposal","implementations":[{"event_id":"event-1"}]}\n',
+        encoding="utf-8",
+    )
+
+    def hydrate(_root: object, **kwargs: object) -> dict[str, object]:
+        source = Path(str(kwargs["proposal_path"]))
+        destination = Path(str(kwargs["output_path"]))
+        document = json.loads(source.read_text(encoding="utf-8"))
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(json.dumps(document), encoding="utf-8")
+        return document
+
+    first_output = orchestrator._hydrate_dp_phase_proposal(
+        root,
+        job_root,
+        cut_id="value-L01",
+        revision_id=REVISION_ID,
+        phase="dp",
+        attempt=1,
+        raw_proposal_path=first,
+        editorial_master=None,
+        hydrator=hydrate,
+        runtime_root=None,
+    )
+    second_output = orchestrator._hydrate_dp_phase_proposal(
+        root,
+        job_root,
+        cut_id="value-L01",
+        revision_id=REVISION_ID,
+        phase="dp",
+        attempt=1,
+        raw_proposal_path=second,
+        editorial_master=None,
+        hydrator=hydrate,
+        runtime_root=None,
+    )
+
+    assert first_output != second_output
+    assert first_output.name == second_output.name == "proposal.json"
+    assert first_output.parent.name == hashlib.sha256(first.read_bytes()).hexdigest()
+    assert second_output.parent.name == hashlib.sha256(second.read_bytes()).hexdigest()
+
+
 def _run(
     monkeypatch: pytest.MonkeyPatch,
     episode: tuple[Path, Path],

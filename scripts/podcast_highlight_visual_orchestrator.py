@@ -1179,7 +1179,15 @@ def _hydrate_dp_phase_proposal(
     hydrator: Callable[..., Mapping[str, object]],
     runtime_root: str | Path | None,
 ) -> Path:
-    output_path = (job_root / "trusted" / f"{phase}-proposal.json").resolve()
+    raw_identity = _proposal_identity(episode_root, raw_proposal_path)
+    raw_sha256 = str(raw_identity["sha256"])
+    output_path = (
+        job_root
+        / "trusted"
+        / f"{phase}-proposals"
+        / raw_sha256
+        / "proposal.json"
+    ).resolve()
     if not output_path.is_relative_to(episode_root):
         raise VisualPipelineOrchestrationError("trusted DP proposal path escapes episode root")
     try:
