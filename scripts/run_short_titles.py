@@ -63,7 +63,7 @@ logger = logging.getLogger("short_titles")
 REPO_ROOT = Path(__file__).resolve().parent.parent
 COMP_DIR = REPO_ROOT / "video" / "compositions" / "punch_card"
 CARDS_DIR = "highlights/tighten/cards"
-COMP_SEC = 4.0  # punch_card.html data-duration——show_sec 上限（留 0.2s 裕度）
+COMP_SEC = 8.0  # punch_card.html data-duration——show_sec 上限（留 0.2s 裕度）
 # 三層字卡架構（修修 2026-07-26 九輪）：tier1=hero（每支≤1 張，全片最強一句，
 # 超大字）、tier2=標準 punch 卡、tier3=逐字字幕（走 subtitle track，不在本 script）
 # 格式參數（修修 2026-08-03 長片線）。短片欄 = 既有已驗收值，一個字沒動。
@@ -279,7 +279,7 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         if not 0.5 <= show_sec <= COMP_SEC - 0.2:
             raise SystemExit(
                 f"卡片 {i} 顯示 {show_sec}s 超出範圍（0.5–{COMP_SEC - 0.2}s）——"
-                "composition data-duration 固定 4s，更長的卡拆兩張或改 t1"
+                "composition data-duration 固定 8s，更長的卡拆兩張或改 t1"
             )
         lines = t["text"].split("\n")
         tier = int(t.get("tier", 2))

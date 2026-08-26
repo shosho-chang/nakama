@@ -687,6 +687,19 @@ def test_dp_allows_truthful_hyperframes_text_only_when_director_text_is_null(
         editorial_master=master,
     )
     proposal = _dp_proposal(root, director)
+    fallback = next(
+        item for item in proposal["implementations"] if item["event_id"] == "visual-002"
+    )
+    fallback_candidate = fallback["candidates"][0]
+    fallback_candidate["render_params"]["show_sec"] = 2.0
+    fallback_candidate["render_spec_sha256"] = _content_hash(
+        {
+            "component": fallback_candidate["component"],
+            "render_params": fallback_candidate["render_params"],
+        }
+    )
+    fallback["selections"][0]["t1"] = fallback["selections"][0]["t0"] + 2.0
+    fallback["selections"][0]["source_range"]["end_sec"] = 2.0
 
     accepted = accept_dp_fulfillment(
         root,
@@ -701,6 +714,18 @@ def test_dp_allows_truthful_hyperframes_text_only_when_director_text_is_null(
         item for item in accepted.document["implementations"] if item["event_id"] == "visual-002"
     )
     assert implementation["on_screen_text"] == "教育開始\n改變"
+    materialization = next(
+        item
+        for item in load_visual_materializations(
+            root,
+            cut_id="value-L01",
+            revision_id=work.document["revision_id"],
+            editorial_master=master,
+        )
+        if item["event_id"] == "visual-002"
+    )
+    assert materialization["t1"] - materialization["t0"] == 2.0
+    assert materialization["source_range"] == {"start_sec": 0.0, "end_sec": 2.0}
 
 
 def _identity(root: Path, path: Path) -> dict[str, object]:

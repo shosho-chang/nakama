@@ -4286,6 +4286,7 @@ def _dp_implementations(
             raise HighlightVisualContractError("provided_asset kind is not allowed")
         if mode == "hyperframes" and target_lane == "broll_track2":
             raise HighlightVisualContractError("HyperFrames content must use card/title lane")
+        hyperframes_content_phrase = mode == "hyperframes" and target_lane == "content_card_track4"
         director_text = event["on_screen_text"]
         implementation_text = item["on_screen_text"]
         if director_text is not None and implementation_text != director_text:
@@ -4509,6 +4510,7 @@ def _dp_implementations(
                 cues=cues,
                 allow_cue_subrange=(
                     mode == "stock"
+                    or hyperframes_content_phrase
                     or _requested_move_range(work.document, str(event_id)) is not None
                 ),
                 label=f"{event_id}.selections[{selection_index}]",
@@ -4519,7 +4521,13 @@ def _dp_implementations(
                     f"{event_id} selected candidate is absent or reused"
                 )
             selected_ids.add(candidate_id)
-            if float(selection["t0"]) != prior_end:
+            selection_start = float(selection["t0"])
+            if hyperframes_content_phrase:
+                if selection_start < prior_end:
+                    raise HighlightVisualContractError(
+                        f"{event_id} HyperFrames selections must be ordered and non-overlapping"
+                    )
+            elif selection_start != prior_end:
                 raise HighlightVisualContractError(
                     f"{event_id} selections must tile the exact Director event range"
                 )
@@ -4527,6 +4535,14 @@ def _dp_implementations(
             if mode == "stock" and prior_end - float(selection["t0"]) > 3.0:
                 raise HighlightVisualContractError("stock shot exceeds the 3s visual-phrase cap")
             candidate = candidate_by_id[candidate_id]
+            if mode == "hyperframes":
+                render_params = candidate["render_params"]
+                if "show_sec" in render_params and abs(
+                    float(render_params["show_sec"]) - (prior_end - selection_start)
+                ) > 0.001:
+                    raise HighlightVisualContractError(
+                        f"{event_id} HyperFrames show_sec must equal selected display duration"
+                    )
             media_identity = (
                 candidate["preview_media"] if mode == "hyperframes" else candidate["media"]
             )
@@ -4576,7 +4592,7 @@ def _dp_implementations(
                 }
             )
             selections.append(selection)
-        if prior_end != float(event["t1"]):
+        if not hyperframes_content_phrase and prior_end != float(event["t1"]):
             raise HighlightVisualContractError(
                 f"{event_id} selections must tile the exact Director event range"
             )

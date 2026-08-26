@@ -446,6 +446,12 @@ def test_valid_audited_broll_and_title_recipes_pass_read_only_gates(tmp_path, mo
     assert titles.validate_plan(tmp_path, "value-L01")["title_count"] == 1
 
 
+def test_title_materializer_supports_rev10_seven_second_hero():
+    import run_short_titles as titles
+
+    assert titles.COMP_SEC - 0.2 >= 7.262
+
+
 def test_apply_rejects_legacy_guest_namecard_without_guest_camera_correction(
     tmp_path, monkeypatch
 ):

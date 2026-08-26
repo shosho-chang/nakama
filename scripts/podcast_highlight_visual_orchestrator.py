@@ -999,6 +999,11 @@ def _phase_prompt(request: DispatchRequest, phase_input_path: Path) -> str:
   book_cover.title_zh must each be a single non-empty line. Use another registered
   component instead of removing line breaks or truncating exact required text.
   punch_card/punch_card_wide show_sec is 0.6-8.0 seconds; transition_title is 1.2-4.0.
+- Hero title selections must tile the exact Director event range. HyperFrames content-card
+  selections are short visual phrases inside the Director event window: cite every overlapping
+  cue, set source_range to the selected display duration, and set render_params.show_sec to that
+  same duration. Keep each concept_card phrase at most 5.7s and transition_title at most 3.7s;
+  do not stretch one card across a longer event.
 - Obey quantitative Stock requirements in the work packet: use distinct authority assets
   at semantically matching concrete events. Never use modern-child footage for a historical,
   postwar, authoritarian-education, archive, or evidence-document event.
