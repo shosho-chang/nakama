@@ -660,6 +660,92 @@ def _preserve_failed_attempt(
     _write_json(failure_path, failure)
 
 
+def _reject_completed_execution(
+    episode_root: Path,
+    job_root: Path,
+    *,
+    cut_id: str,
+    revision_id: str,
+    phase: str,
+    role: str,
+    proposal_path: Path,
+    reason: str,
+) -> None:
+    """Retire a completed receipt whose proposal failed a downstream trusted gate."""
+
+    receipt_path = _execution_receipt_path(job_root, phase)
+    receipt = _load_execution_receipt(
+        episode_root,
+        job_root,
+        cut_id=cut_id,
+        revision_id=revision_id,
+        phase=phase,
+        role=role,
+        proposal_path=proposal_path,
+    )
+    if receipt is None:
+        raise VisualPipelineOrchestrationError(
+            f"cannot reject {phase}: canonical execution receipt is missing"
+        )
+    prepare = receipt.get("prepare")
+    if not isinstance(prepare, dict) or not isinstance(prepare.get("path"), str):
+        raise VisualPipelineOrchestrationError(
+            f"cannot reject {phase}: prepare identity is invalid"
+        )
+    prepare_path = (episode_root / str(prepare["path"])).resolve()
+    attempt_root = prepare_path.parent
+    attempts_root = (job_root / "receipts" / f"{phase}.attempts").resolve()
+    if (
+        not attempt_root.is_relative_to(attempts_root)
+        or not re.fullmatch(r"attempt-\d{3}", attempt_root.name)
+        or prepare_path.name != "PREPARE.json"
+        or _identity(episode_root, prepare_path) != prepare
+    ):
+        raise VisualPipelineOrchestrationError(
+            f"cannot reject {phase}: prepare lineage escaped its attempt"
+        )
+    failure_path = attempt_root / "FAILURE.json"
+    proposal_evidence = attempt_root / "evidence" / "proposal.json"
+    receipt_evidence = attempt_root / "evidence" / "execution-receipt.json"
+    if failure_path.exists() or proposal_evidence.exists() or receipt_evidence.exists():
+        raise VisualPipelineOrchestrationError(
+            f"cannot reject {phase}: failure evidence already conflicts"
+        )
+    if not proposal_path.is_file() or not receipt_path.is_file():
+        raise VisualPipelineOrchestrationError(
+            f"cannot reject {phase}: completed evidence is incomplete"
+        )
+
+    proposal_evidence.parent.mkdir(parents=True, exist_ok=True)
+    moved: list[tuple[Path, Path]] = []
+    try:
+        os.replace(receipt_path, receipt_evidence)
+        moved.append((receipt_path, receipt_evidence))
+        os.replace(proposal_path, proposal_evidence)
+        moved.append((proposal_path, proposal_evidence))
+        failure: dict[str, object] = {
+            "contract": EXECUTION_FAILURE_CONTRACT,
+            "prepare": prepare,
+            "reason": reason,
+            "returncode": None,
+            "proposal_evidence": _identity(episode_root, proposal_evidence),
+        }
+        failure["content_hash"] = _content_hash(failure)
+        _write_json(failure_path, failure)
+    except BaseException:
+        rollback_errors: list[str] = []
+        for source, destination in reversed(moved):
+            try:
+                os.replace(destination, source)
+            except OSError as rollback_error:
+                rollback_errors.append(str(rollback_error))
+        if rollback_errors:
+            raise VisualPipelineOrchestrationError(
+                f"{phase} rejection rollback failed: " + "; ".join(rollback_errors)
+            )
+        raise
+
+
 def _prepare_execution_attempt(
     episode_root: Path,
     job_root: Path,
@@ -887,6 +973,11 @@ def _phase_prompt(request: DispatchRequest, phase_input_path: Path) -> str:
   provenance, or receipts.
 - Stock/provided candidates may contain only candidate_id, visual_summary, and an
   authority_asset_id exposed by the phase input's immutable asset_authority inventory.
+- mode=stock is mandatory for licensed_stock/official_archive/public_domain authority;
+  mode=provided_asset is allowed only when that authority row's source_class starts
+  with provided_. Never relabel stock as provided_asset to satisfy an event.
+- If no authority asset truthfully matches an event, use a truthful HyperFrames
+  abstraction or retain A-roll according to the contract; do not force an unrelated asset.
 - HyperFrames candidates must be exact spec-only objects: candidate_id, visual_summary,
   component, render_params, and render_spec_sha256. Trusted orchestration renders them
   after exit."""
@@ -1272,6 +1363,7 @@ def run_visual_pipeline(
                 materializations=(),
                 asset_authority=asset_authority,
             )
+            reused_dp_execution = _execution_receipt_path(job_root, "dp").is_file()
             proposal, identity = _execute_phase(
                 root,
                 job_root,
@@ -1285,18 +1377,33 @@ def run_visual_pipeline(
                 forbidden_session_id=director_session,
                 resume=resume,
             )
-            trusted_proposal = _hydrate_dp_phase_proposal(
-                root,
-                job_root,
-                cut_id=cut_id,
-                revision_id=revision_id,
-                phase="dp",
-                attempt=1,
-                raw_proposal_path=proposal,
-                editorial_master=editorial_master,
-                hydrator=trusted_hydrator,
-                runtime_root=hyperframes_runtime_root,
-            )
+            try:
+                trusted_proposal = _hydrate_dp_phase_proposal(
+                    root,
+                    job_root,
+                    cut_id=cut_id,
+                    revision_id=revision_id,
+                    phase="dp",
+                    attempt=1,
+                    raw_proposal_path=proposal,
+                    editorial_master=editorial_master,
+                    hydrator=trusted_hydrator,
+                    runtime_root=hyperframes_runtime_root,
+                )
+            except VisualPipelineOrchestrationError as error:
+                _reject_completed_execution(
+                    root,
+                    job_root,
+                    cut_id=cut_id,
+                    revision_id=revision_id,
+                    phase="dp",
+                    role="dp",
+                    proposal_path=proposal,
+                    reason=f"trusted DP hydration rejected completed proposal: {error}",
+                )
+                if reused_dp_execution:
+                    continue
+                raise
             visual_pipeline.accept_dp_fulfillment(
                 root,
                 cut_id=cut_id,
@@ -1488,6 +1595,7 @@ def run_visual_pipeline(
                 refinement_decision=decision,
                 asset_authority=asset_authority,
             )
+            reused_dp_execution = _execution_receipt_path(job_root, phase).is_file()
             proposal, identity = _execute_phase(
                 root,
                 job_root,
@@ -1501,18 +1609,33 @@ def run_visual_pipeline(
                 forbidden_session_id=director_session,
                 resume=resume,
             )
-            trusted_proposal = _hydrate_dp_phase_proposal(
-                root,
-                job_root,
-                cut_id=cut_id,
-                revision_id=revision_id,
-                phase=phase,
-                attempt=next_attempt,
-                raw_proposal_path=proposal,
-                editorial_master=editorial_master,
-                hydrator=trusted_hydrator,
-                runtime_root=hyperframes_runtime_root,
-            )
+            try:
+                trusted_proposal = _hydrate_dp_phase_proposal(
+                    root,
+                    job_root,
+                    cut_id=cut_id,
+                    revision_id=revision_id,
+                    phase=phase,
+                    attempt=next_attempt,
+                    raw_proposal_path=proposal,
+                    editorial_master=editorial_master,
+                    hydrator=trusted_hydrator,
+                    runtime_root=hyperframes_runtime_root,
+                )
+            except VisualPipelineOrchestrationError as error:
+                _reject_completed_execution(
+                    root,
+                    job_root,
+                    cut_id=cut_id,
+                    revision_id=revision_id,
+                    phase=phase,
+                    role="dp",
+                    proposal_path=proposal,
+                    reason=f"trusted DP hydration rejected completed proposal: {error}",
+                )
+                if reused_dp_execution:
+                    continue
+                raise
             visual_pipeline.accept_dp_refinement(
                 root,
                 cut_id=cut_id,

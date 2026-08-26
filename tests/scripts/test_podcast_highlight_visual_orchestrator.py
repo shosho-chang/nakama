@@ -614,6 +614,9 @@ def test_dp_prompt_forbids_worker_media_and_requires_trusted_authority(
     assert "generated/downloaded candidate" not in prompt
     assert "Never download, generate, or write media" in prompt
     assert "authority_asset_id" in prompt
+    assert "mode=stock is mandatory" in prompt
+    assert "Never relabel stock as provided_asset" in prompt
+    assert "do not force an unrelated asset" in prompt
     assert "HyperFrames candidates must be exact spec-only" in prompt
 
 
@@ -1260,6 +1263,75 @@ def test_nonzero_after_thread_started_is_preserved_then_fresh_retry_completes(
     assert (attempt_root / "attempt-002" / "PREPARE.json").is_file()
     assert (job_root / "receipts" / "director.json").is_file()
     assert result.semantic_audit.document["worker_execution"]["session_id"] == DIRECTOR_SESSION
+
+
+def test_failed_dp_hydration_retires_execution_before_fresh_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    episode: tuple[Path, Path],
+) -> None:
+    pipeline = _FakePipeline()
+    root, request = episode
+    hydration_calls = 0
+
+    def flaky_hydrator(_episode_root, **kwargs):
+        nonlocal hydration_calls
+        hydration_calls += 1
+        if hydration_calls == 1:
+            raise orchestrator.TrustedRenderError(
+                "DP provided candidate does not reference provided authority"
+            )
+        proposal_path = Path(str(kwargs["proposal_path"]))
+        output_path = Path(str(kwargs["output_path"]))
+        document = json.loads(proposal_path.read_text(encoding="utf-8"))
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(document), encoding="utf-8")
+        return document
+
+    monkeypatch.setattr(orchestrator, "visual_pipeline", pipeline)
+    first = _FakeDispatcher()
+    with pytest.raises(
+        orchestrator.VisualPipelineOrchestrationError,
+        match="provided candidate does not reference provided authority",
+    ):
+        orchestrator.run_visual_pipeline(
+            root,
+            cut_id="value-L01",
+            revision_request=request,
+            dispatcher=first,
+            proposal_hydrator=flaky_hydrator,
+        )
+
+    job_root = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "jobs"
+        / REVISION_ID
+    )
+    first_attempt = job_root / "receipts" / "dp.attempts" / "attempt-001"
+    assert [call.phase for call in first.calls] == ["director", "dp"]
+    assert not (job_root / "receipts" / "dp.json").exists()
+    assert (first_attempt / "FAILURE.json").is_file()
+    assert (first_attempt / "evidence" / "proposal.json").is_file()
+    assert (first_attempt / "evidence" / "execution-receipt.json").is_file()
+
+    second = _FakeDispatcher()
+    result = orchestrator.run_visual_pipeline(
+        root,
+        cut_id="value-L01",
+        revision_request=request,
+        dispatcher=second,
+        proposal_hydrator=flaky_hydrator,
+    )
+
+    assert result.semantic_audit is pipeline.audit
+    assert hydration_calls == 2
+    assert [call.phase for call in second.calls] == ["dp", "semantic_audit"]
+    assert (job_root / "receipts" / "dp.attempts" / "attempt-002" / "PREPARE.json").is_file()
+    dp_receipt = json.loads((job_root / "receipts" / "dp.json").read_text(encoding="utf-8"))
+    assert dp_receipt["worker_identity"]["session_id"] == DP_SESSION
+    assert dp_receipt["worker_identity"]["session_id"] != DIRECTOR_SESSION
 
 
 def test_host_crash_after_proposal_is_archived_before_fresh_dispatch_retry(
