@@ -17,6 +17,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import unicodedata
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -320,6 +321,17 @@ def _optional_single_line(value: object, label: str, *, maximum: int = 120) -> s
     return _single_line(value, label, maximum=maximum)
 
 
+def _line_display_units(value: str) -> int:
+    return sum(
+        0
+        if unicodedata.combining(character)
+        else 2
+        if unicodedata.east_asian_width(character) in {"W", "F", "A"}
+        else 1
+        for character in value
+    )
+
+
 def _number(value: object, label: str, minimum: float, maximum: float) -> float:
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         raise TrustedRenderError(f"{label} must be numeric")
@@ -391,7 +403,7 @@ def _closed_render_params(
         lines = text.split("\n")
         if len(lines) not in {1, 2} or any(not line.strip() for line in lines):
             raise TrustedRenderError("punch_card text must preserve exactly one or two lines")
-        if any(len(line) > 16 for line in lines):
+        if any(_line_display_units(line) > 32 for line in lines):
             raise TrustedRenderError("punch_card line is too long")
         tier = params["tier"]
         if not isinstance(tier, int) or isinstance(tier, bool) or tier not in {1, 2}:
@@ -434,7 +446,7 @@ def _closed_render_params(
             raise TrustedRenderError(
                 "transition_title must preserve exactly one or two non-empty lines"
             )
-        if any(len(line) > 16 for line in title_lines):
+        if any(_line_display_units(line) > 32 for line in title_lines):
             raise TrustedRenderError("transition_title line is too long")
         if title != expected_text:
             raise TrustedRenderError("render_params title differs from exact on_screen_text")

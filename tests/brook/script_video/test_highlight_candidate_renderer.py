@@ -1041,6 +1041,35 @@ def test_wrong_component_variables_text_or_newline_fail_before_render(
     assert not called
 
 
+@pytest.mark.parametrize("component", ["punch_card_wide", "transition_title"])
+def test_card_line_limit_uses_display_width_for_narrow_latin(component: str) -> None:
+    text = "晶體智慧\nCrystallized Intelligence"
+    params: dict[str, object]
+    if component == "punch_card_wide":
+        params = {"text": text, "tier": 1, "style": "orange", "show_sec": 2.0, "pos_y": 0.5}
+    else:
+        params = {"kicker": "概念", "title": text, "style": "paper", "show_sec": 2.0}
+
+    canonical, _variables = candidate_renderer._closed_render_params(component, params, text)
+
+    assert canonical["text" if component == "punch_card_wide" else "title"] == text
+
+
+@pytest.mark.parametrize("component", ["punch_card_wide", "transition_title"])
+def test_card_line_limit_still_rejects_more_than_sixteen_full_width_characters(
+    component: str,
+) -> None:
+    text = "一二三四五六七八九十一二三四五六七"
+    params: dict[str, object]
+    if component == "punch_card_wide":
+        params = {"text": text, "tier": 1, "style": "orange", "show_sec": 2.0, "pos_y": 0.5}
+    else:
+        params = {"kicker": "概念", "title": text, "style": "paper", "show_sec": 2.0}
+
+    with pytest.raises(TrustedRenderError, match="too long"):
+        candidate_renderer._closed_render_params(component, params, text)
+
+
 @pytest.mark.parametrize("tamper", ["media", "variables", "component", "rerender", "runtime"])
 def test_fresh_verifier_rejects_tamper_and_rerender_drift(tmp_path: Path, tamper: str) -> None:
     root, result, _calls = _render(tmp_path)
