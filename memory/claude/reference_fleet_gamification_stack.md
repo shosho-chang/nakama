@@ -56,6 +56,13 @@
 - **Cloudflare 擋 VPS 打自家域名**（403）：VPS 上已加 `/etc/hosts` loopback
   `127.0.0.1 fleet.shosho.tw`（origin 憑證為合法 Let's Encrypt，已驗）。
 
+## 輸出資料夾（修修 2026-08-26 指定）
+
+**本專案所有「給人看的交付物」**（方案、表格、航道圖、icon、公告素材）輸出到
+`E:\Projects\自由艦隊\遊戲化專案\`。canonical 仍在 repo（plan md／rules），
+該資料夾放輸出副本與最終成品；線上版＝十年航海圖 artifact（948b80a0…）。
+資料夾內原有他人檔案（PressPlay 課程檔）勿動。
+
 ## 操作備忘
 
 - ⚠️ **merge ≠ deployed**（2026-08-24 踩過）：rules.py 進 main 後 VPS Sanji 服務**不會自己換腦**，
