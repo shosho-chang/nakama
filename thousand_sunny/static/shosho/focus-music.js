@@ -48,6 +48,13 @@ window.ShoFocusMusic = (function () {
     var v = volEl();
     if (v) v.hidden = false;
   }
+  /* a status line (not a track) — no volume slider alongside it */
+  function note(msg) {
+    var w = wrap(), n = nameEl(), v = volEl();
+    if (n) n.textContent = msg;
+    if (w) w.hidden = false;
+    if (v) v.hidden = true;
+  }
   function hide() {
     var w = wrap(), v = volEl();
     if (w) w.hidden = true;
@@ -123,14 +130,36 @@ window.ShoFocusMusic = (function () {
       handleLoaded = true; dirHandle = h || null;
       syncSetupButton();
       return dirHandle;
-    }).catch(function () { handleLoaded = true; return null; });
+    }).catch(function () {
+      handleLoaded = true; dirHandle = null;
+      syncSetupButton();   // IndexedDB unavailable ⇒ still offer the picker
+      return null;
+    });
   }
 
-  /* The ♪ setup button shows only when local mode is supported but unconfigured. */
+  /* The ♪ folder control is ALWAYS available wherever local mode is supported —
+     it is the only way to point the player somewhere else. 修修 2026-08-26 血淚:
+     hiding it once a handle existed left NO way to re-pick after the library moved
+     (E:\data\focus music → E:\data\music), and the stale handle then failed with
+     NotFoundError while the UI stayed silent — 按 ▶ 完全沒反應、也沒得改。 */
   function syncSetupButton() {
     var b = setupBtn();
     if (!b) return;
-    b.hidden = !('showDirectoryPicker' in window) || !!dirHandle;
+    b.hidden = !('showDirectoryPicker' in window);
+    b.textContent = dirHandle ? '♪ ' + dirHandle.name : '♪ 音樂資料夾';
+    b.title = dirHandle
+      ? '目前音樂資料夾：' + dirHandle.name + '（點擊可換一個）'
+      : '選一個本地音樂資料夾（內含 focus / uplifting 分類子資料夾）——之後按 ▶ 就會隨機播放，不經過伺服器';
+  }
+
+  /* A stored handle that no longer resolves (folder moved/renamed/deleted, or read
+     permission revoked) is worse than none: it silently swallows every ▶. Drop it,
+     put the picker back in its unconfigured state, and SAY so in the bar. */
+  function forgetHandle(msg) {
+    dirHandle = null;
+    idbSet('dir', null).catch(function () { /* best-effort */ });
+    syncSetupButton();
+    if (msg) note(msg);
   }
 
   function ensurePermission(handle) {
@@ -188,8 +217,12 @@ window.ShoFocusMusic = (function () {
 
   function nextLocal(handle, kind) {
     return ensurePermission(handle).then(function (ok) {
-      if (!ok) throw new Error('permission');
-      return listLocal(handle, kind);
+      if (!ok) { var pe = new Error('permission'); pe.gone = true; throw pe; }
+      return listLocal(handle, kind).catch(function (e) {
+        // folder moved / renamed / deleted since the handle was stored
+        if (e && e.name === 'NotFoundError') { e.gone = true; }
+        throw e;
+      });
     }).then(function (files) {
       if (!files.length) throw new Error('empty:' + kind);
       var pick = files[Math.floor(Math.random() * files.length)];
@@ -215,17 +248,31 @@ window.ShoFocusMusic = (function () {
 
   function next() {
     var kind = phase === 'finale' ? 'uplifting' : 'focus';
+    /* server fallback, then give up — but never in silence: an unreachable library
+       explains itself in the bar so ▶ is never a dead button. */
+    function viaServer(k) {
+      return nextServer(k).then(function (ok) {
+        if (ok) return true;
+        if (k === 'uplifting') return nextServer('focus');
+        return false;
+      }).then(function (ok) {
+        if (!ok && !dirHandle) note('選一個音樂資料夾就會開始播放 →');
+        else if (!ok) hide();
+        return ok;
+      });
+    }
     loadHandle().then(function (h) {
-      // finale with an empty uplifting pool → keep the focus stream going instead
-      if (h) {
-        return nextLocal(h, kind).catch(function () {
-          if (kind === 'uplifting') return nextLocal(h, 'focus').catch(hide);
-          return nextServer(kind).then(function (ok) { if (!ok) hide(); });
-        });
-      }
-      return nextServer(kind).then(function (ok) {
-        if (!ok && kind === 'uplifting') return nextServer('focus').then(function (ok2) { if (!ok2) hide(); });
-        if (!ok) hide();
+      if (!h) return viaServer(kind);
+      return nextLocal(h, kind).catch(function (err) {
+        if (err && err.gone) {                       // handle dead → drop it, tell 修修
+          forgetHandle('♪ 找不到音樂資料夾 — 請重新選擇 →');
+          return viaServer(kind);
+        }
+        // pool merely empty: finale falls back to the focus pool, else try the server
+        if (kind === 'uplifting') {
+          return nextLocal(h, 'focus').catch(function () { return viaServer('focus'); });
+        }
+        return viaServer(kind);
       });
     });
   }
