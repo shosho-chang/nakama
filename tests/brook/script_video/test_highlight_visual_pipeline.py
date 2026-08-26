@@ -90,7 +90,10 @@ def test_unavailable_provided_categories_allow_hyperframes_fallback(category: st
         "provided_asset",
         "hyperframes",
     }
-    assert visual_contract_module._MODES_BY_DIRECTOR_CATEGORY["stock_scene"] == {"stock"}
+    assert visual_contract_module._MODES_BY_DIRECTOR_CATEGORY["stock_scene"] == {
+        "stock",
+        "hyperframes",
+    }
 
 
 REFINEMENT_WORKER = {

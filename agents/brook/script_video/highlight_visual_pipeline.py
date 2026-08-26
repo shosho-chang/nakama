@@ -2933,7 +2933,7 @@ _IMPLEMENTATION_KINDS = {
     "supporting_title",
 }
 _MODES_BY_DIRECTOR_CATEGORY = {
-    "stock_scene": {"stock"},
+    "stock_scene": {"stock", "hyperframes"},
     "self_archive": {"provided_asset", "hyperframes"},
     "screen_demo": {"provided_asset", "hyperframes"},
     "evidence_doc": {"provided_asset", "hyperframes"},
