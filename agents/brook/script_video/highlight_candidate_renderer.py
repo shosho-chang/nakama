@@ -442,11 +442,13 @@ def _closed_render_params(
     if component == "transition_title":
         title = _normalized_multiline(params["title"], "render_params.title")
         title_lines = title.split("\n")
-        if len(title_lines) not in {1, 2} or any(not line.strip() for line in title_lines):
+        if len(title_lines) not in {1, 2, 3} or any(
+            not line.strip() for line in title_lines
+        ):
             raise TrustedRenderError(
-                "transition_title must preserve exactly one or two non-empty lines"
+                "transition_title must preserve one to three non-empty lines"
             )
-        if any(_line_display_units(line) > 32 for line in title_lines):
+        if any(_line_display_units(line) > 40 for line in title_lines):
             raise TrustedRenderError("transition_title line is too long")
         if title != expected_text:
             raise TrustedRenderError("render_params title differs from exact on_screen_text")
@@ -488,14 +490,9 @@ def _expected_hydrated_hyperframes_spec(
             "render_params",
             "render_spec_sha256",
         },
-        "raw HyperFrames candidate",
+        "raw HyperFrames candidate spec-only schema",
     )
     component = _safe_token(spec_candidate["component"], "candidate.component")
-    raw_spec_hash = _content_hash(
-        {"component": component, "render_params": spec_candidate["render_params"]}
-    )
-    if spec_candidate["render_spec_sha256"] != raw_spec_hash:
-        raise TrustedRenderError("DP candidate render spec hash drift")
     canonical_params, _variables = _closed_render_params(
         component,
         spec_candidate["render_params"],
@@ -1692,13 +1689,6 @@ def hydrate_dp_hyperframes_proposal(
         raise TrustedRenderError("DP proposal implementations must be an array")
     hydrated = dict(proposal)
     hydrated_implementations: list[object] = []
-    spec_only_keys = {
-        "candidate_id",
-        "visual_summary",
-        "component",
-        "render_params",
-        "render_spec_sha256",
-    }
     asset_spec_only_keys = {"candidate_id", "visual_summary", "authority_asset_id"}
     authority_by_id: dict[str, dict[str, object]] | None = None
     authority_projection: dict[str, object] | None = None
@@ -1794,17 +1784,11 @@ def hydrate_dp_hyperframes_proposal(
             )
         hydrated_candidates: list[dict[str, object]] = []
         for candidate_index, raw_candidate in enumerate(candidates, 1):
-            candidate = _exact_dict(
+            candidate = _expected_hydrated_hyperframes_spec(
                 raw_candidate,
-                spec_only_keys,
-                f"DP HyperFrames candidate {item_index}.{candidate_index} spec-only schema",
+                expected_on_screen_text=on_screen_text,
             )
             component = _safe_token(candidate["component"], "candidate.component")
-            raw_spec_hash = _content_hash(
-                {"component": component, "render_params": candidate["render_params"]}
-            )
-            if candidate["render_spec_sha256"] != raw_spec_hash:
-                raise TrustedRenderError("DP candidate render spec hash drift")
             result = render_hyperframes_candidate(
                 root,
                 cut_id=safe_cut,

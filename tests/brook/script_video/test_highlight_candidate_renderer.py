@@ -1061,11 +1061,16 @@ def test_card_line_limit_uses_display_width_for_narrow_latin(component: str) -> 
     assert canonical["text" if component == "punch_card_wide" else "title"] == text
 
 
-@pytest.mark.parametrize("component", ["punch_card_wide", "transition_title"])
-def test_card_line_limit_still_rejects_more_than_sixteen_full_width_characters(
-    component: str,
+@pytest.mark.parametrize(
+    ("component", "text"),
+    [
+        ("punch_card_wide", "一二三四五六七八九十一二三四五六七"),
+        ("transition_title", "一二三四五六七八九十一二三四五六七八九十一"),
+    ],
+)
+def test_card_line_limit_still_rejects_text_beyond_the_supported_width(
+    component: str, text: str
 ) -> None:
-    text = "一二三四五六七八九十一二三四五六七"
     params: dict[str, object]
     if component == "punch_card_wide":
         params = {"text": text, "tier": 1, "style": "orange", "show_sec": 2.0, "pos_y": 0.5}
@@ -1074,6 +1079,24 @@ def test_card_line_limit_still_rejects_more_than_sixteen_full_width_characters(
 
     with pytest.raises(TrustedRenderError, match="too long"):
         candidate_renderer._closed_render_params(component, params, text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "主持人自述\n以前：請夥伴／工程師\n現在：用 AI 完成系統",
+        "來賓轉述\n「教育部要培養數萬、數十萬的 AI 人才」",
+    ],
+)
+def test_transition_title_accepts_replanned_three_line_and_wide_text(text: str) -> None:
+    params = {"kicker": "重點", "title": text, "style": "paper_hand", "show_sec": 3.0}
+
+    canonical, variables = candidate_renderer._closed_render_params(
+        "transition_title", params, text
+    )
+
+    assert canonical["title"] == text
+    assert variables["title"] == text
 
 
 def test_expected_hydrated_spec_normalizes_crlf_and_rebinds_hash() -> None:
@@ -1105,6 +1128,25 @@ def test_expected_hydrated_spec_normalizes_crlf_and_rebinds_hash() -> None:
         {"component": "punch_card_wide", "render_params": expected["render_params"]}
     )
     assert expected["render_spec_sha256"] != raw_spec_hash
+
+
+def test_expected_hydrated_spec_derives_hash_instead_of_trusting_worker_value() -> None:
+    render_params = _concept_params()
+
+    expected = candidate_renderer._expected_hydrated_hyperframes_spec(
+        {
+            "candidate_id": "concept-001",
+            "visual_summary": "原創概念卡",
+            "component": "concept_card",
+            "render_params": render_params,
+            "render_spec_sha256": "0" * 64,
+        },
+        expected_on_screen_text="高壓教育不是兒童遊戲",
+    )
+
+    assert expected["render_spec_sha256"] == candidate_renderer._content_hash(
+        {"component": "concept_card", "render_params": expected["render_params"]}
+    )
 
 
 @pytest.mark.parametrize("tamper", ["media", "variables", "component", "rerender", "runtime"])
