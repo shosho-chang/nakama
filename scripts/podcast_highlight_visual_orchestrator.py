@@ -980,6 +980,9 @@ def _phase_prompt(request: DispatchRequest, phase_input_path: Path) -> str:
   abstraction or retain A-roll according to the contract; do not force an unrelated asset.
 - Every HyperFrames implementation must set non-empty on_screen_text exactly equal to
   the component's canonical primary text (for concept_card: render_params.title).
+- Validate every candidate against the registered component limits before exit:
+  punch_card/punch_card_wide allow one or two non-empty lines, at most 16 characters
+  per line. Use another registered component instead of truncating exact required text.
 - Obey quantitative Stock requirements in the work packet: use distinct authority assets
   at semantically matching concrete events. Never use modern-child footage for a historical,
   postwar, authoritarian-education, archive, or evidence-document event.
