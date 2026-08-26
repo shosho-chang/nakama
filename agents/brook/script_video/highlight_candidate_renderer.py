@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
 from agents.brook.script_video.highlight_broll import BrollContractError, probe_stock_video
+from shared.stable_file_hash import StableFileChangedError, stable_sha256
 
 HYPERFRAMES_RENDER_CONTRACT = "podcast-highlight-hyperframes-render-v1"
 DP_HYDRATION_CONTRACT = "podcast-highlight-dp-hydration-v1"
@@ -203,11 +204,10 @@ def _content_hash(value: object) -> str:
 
 
 def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as source:
-        for chunk in iter(lambda: source.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    try:
+        return stable_sha256(path)
+    except StableFileChangedError as error:
+        raise TrustedRenderError(str(error)) from error
 
 
 def _safe_token(value: object, label: str) -> str:

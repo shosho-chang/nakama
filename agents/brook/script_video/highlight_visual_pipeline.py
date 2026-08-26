@@ -13,7 +13,6 @@ import os
 import re
 import uuid
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 from typing import Mapping, Sequence
 
@@ -39,6 +38,7 @@ from shared.highlight_materialization import (
     materialization_path,
     verify_materialization_receipt,
 )
+from shared.stable_file_hash import StableFileChangedError, stable_sha256
 
 WORK_PACKET_CONTRACT = "podcast-highlight-visual-work-packet-v1"
 DIRECTOR_PLAN_CONTRACT = "podcast-highlight-director-plan-v1"
@@ -294,25 +294,11 @@ def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
-@lru_cache(maxsize=4096)
-def _sha256_file_snapshot(path_text: str, size: int, mtime_ns: int) -> str:
-    path = Path(path_text)
-    before = path.stat()
-    if before.st_size != size or before.st_mtime_ns != mtime_ns:
-        raise HighlightVisualContractError("file changed before identity validation")
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    after = path.stat()
-    if after.st_size != size or after.st_mtime_ns != mtime_ns:
-        raise HighlightVisualContractError("file changed during identity validation")
-    return digest.hexdigest()
-
-
 def _sha256_file(path: Path) -> str:
-    stat = path.stat()
-    return _sha256_file_snapshot(str(path.resolve()), stat.st_size, stat.st_mtime_ns)
+    try:
+        return stable_sha256(path)
+    except StableFileChangedError as error:
+        raise HighlightVisualContractError(str(error)) from error
 
 
 def _content_hash(value: Mapping[str, object]) -> str:
