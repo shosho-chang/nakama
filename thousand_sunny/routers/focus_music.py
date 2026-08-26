@@ -55,6 +55,21 @@ def _music_dir() -> Path | None:
     return p if p.is_dir() else None
 
 
+def _kind_dir(root: Path, kind: str) -> Path | None:
+    """Resolve the category pool (修修 2026-08-25: focus / uplifting 子資料夾).
+
+    A subdirectory whose name starts with ``kind``（如 ``focus music`` /
+    ``uplifting music``）wins; a flat library (no such subdir) keeps serving the
+    root for ``focus``, and has no ``uplifting`` pool (the JS falls back to focus).
+    """
+    if kind not in {"focus", "uplifting"}:
+        return None
+    match = sorted(d for d in root.iterdir() if d.is_dir() and d.name.lower().startswith(kind))
+    if match:
+        return match[0]
+    return root if kind == "focus" else None
+
+
 def _tracks(root: Path) -> list[Path]:
     return sorted(f for f in root.iterdir() if f.is_file() and f.suffix.lower() in _AUDIO_EXTS)
 
@@ -67,33 +82,36 @@ def _display_title(stem: str) -> str:
 
 
 @page_router.get("/random")
-async def focus_music_random(nakama_auth: str | None = Cookie(None)):
-    """Pick one random track. Never errors on a missing/empty library — the
-    timer must start regardless, so absence degrades to ``available: false``."""
+async def focus_music_random(kind: str = "focus", nakama_auth: str | None = Cookie(None)):
+    """Pick one random track from the ``kind`` pool (focus / uplifting). Never
+    errors on a missing/empty library — the timer must start regardless, so
+    absence degrades to ``available: false``."""
     if not check_auth(nakama_auth):
         raise HTTPException(status_code=403, detail="Unauthorized")
     root = _music_dir()
-    tracks = _tracks(root) if root is not None else []
+    pool = _kind_dir(root, kind) if root is not None else None
+    tracks = _tracks(pool) if pool is not None else []
     if not tracks:
         return {"available": False}
     pick = secrets.choice(tracks)
     return {
         "available": True,
         "title": _display_title(pick.stem),
-        "url": f"/bridge/focus-music/file/{quote(pick.name)}",
+        "url": f"/bridge/focus-music/file/{quote(pick.name)}?kind={quote(kind)}",
     }
 
 
 @page_router.get("/file/{name}")
-async def focus_music_file(name: str, nakama_auth: str | None = Cookie(None)):
+async def focus_music_file(name: str, kind: str = "focus", nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
         raise HTTPException(status_code=403, detail="Unauthorized")
     root = _music_dir()
-    if root is None:
+    pool = _kind_dir(root, kind) if root is not None else None
+    if pool is None:
         raise HTTPException(status_code=404, detail="music library not configured")
-    target = (root / name).resolve()
-    # traversal guard: the resolved file must sit DIRECTLY inside the library
-    if target.parent != root.resolve() or not target.is_file():
+    target = (pool / name).resolve()
+    # traversal guard: the resolved file must sit DIRECTLY inside the pool dir
+    if target.parent != pool.resolve() or not target.is_file():
         raise HTTPException(status_code=404, detail="unknown track")
     if target.suffix.lower() not in _AUDIO_EXTS:
         raise HTTPException(status_code=404, detail="unknown track")
