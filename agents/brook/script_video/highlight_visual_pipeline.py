@@ -2934,9 +2934,9 @@ _IMPLEMENTATION_KINDS = {
 }
 _MODES_BY_DIRECTOR_CATEGORY = {
     "stock_scene": {"stock"},
-    "self_archive": {"provided_asset"},
-    "screen_demo": {"provided_asset"},
-    "evidence_doc": {"provided_asset"},
+    "self_archive": {"provided_asset", "hyperframes"},
+    "screen_demo": {"provided_asset", "hyperframes"},
+    "evidence_doc": {"provided_asset", "hyperframes"},
     "person_inset": {"provided_asset"},
     "keyword": {"hyperframes"},
     "quote": {"hyperframes"},

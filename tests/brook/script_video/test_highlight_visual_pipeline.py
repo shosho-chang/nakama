@@ -82,6 +82,17 @@ AUDIT2_WORKER = {
     "role": "director",
     "session_id": "session-director-001",
 }
+
+
+@pytest.mark.parametrize("category", ["self_archive", "screen_demo", "evidence_doc"])
+def test_unavailable_provided_categories_allow_hyperframes_fallback(category: str) -> None:
+    assert visual_contract_module._MODES_BY_DIRECTOR_CATEGORY[category] == {
+        "provided_asset",
+        "hyperframes",
+    }
+    assert visual_contract_module._MODES_BY_DIRECTOR_CATEGORY["stock_scene"] == {"stock"}
+
+
 REFINEMENT_WORKER = {
     "worker_id": "director-owner-v1",
     "execution_id": "director-refinement-execution-003",
