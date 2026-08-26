@@ -4342,7 +4342,9 @@ def _dp_implementations(
                     )
                     expected_tier = 1 if implementation_kind == "hero_title" else 2
                     if (
-                        title_params["text"] != event["on_screen_text"]
+                        not isinstance(title_params["text"], str)
+                        or title_params["text"].replace("\r\n", "\n").replace("\r", "\n")
+                        != event["on_screen_text"].replace("\r\n", "\n").replace("\r", "\n")
                         or title_params["tier"] != expected_tier
                         or abs(
                             _number(title_params["show_sec"], f"{label}.show_sec")
