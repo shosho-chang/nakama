@@ -4344,8 +4344,11 @@ def _dp_implementations(
                     if (
                         title_params["text"] != event["on_screen_text"]
                         or title_params["tier"] != expected_tier
-                        or _number(title_params["show_sec"], f"{label}.show_sec")
-                        != float(event["t1"]) - float(event["t0"])
+                        or abs(
+                            _number(title_params["show_sec"], f"{label}.show_sec")
+                            - (float(event["t1"]) - float(event["t0"]))
+                        )
+                        > 0.001
                     ):
                         raise HighlightVisualContractError(
                             f"{label} title text/tier/duration differs from Director intent"

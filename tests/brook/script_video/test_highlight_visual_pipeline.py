@@ -3568,11 +3568,20 @@ def test_revision_work_projects_and_enforces_two_exact_multiline_hero_edits(
         ),
         "violates requested component lane",
     )
+    rounded_duration_proposal = _dp_for_hero_feedback(root, accepted)
+    rounded_hero = rounded_duration_proposal["implementations"][1]["candidates"][0]
+    rounded_hero["render_params"]["show_sec"] += 1e-12
+    rounded_hero["render_spec_sha256"] = _content_hash(
+        {
+            "component": rounded_hero["component"],
+            "render_params": rounded_hero["render_params"],
+        }
+    )
     dp = accept_dp_fulfillment(
         root,
         cut_id="value-L01",
         revision_id=revision_id,
-        proposal=_dp_for_hero_feedback(root, accepted),
+        proposal=rounded_duration_proposal,
         worker_identity=DP_WORKER,
         editorial_master=master,
     )
