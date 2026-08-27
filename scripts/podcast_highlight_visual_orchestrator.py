@@ -702,31 +702,75 @@ def _reject_completed_execution(
         raise VisualPipelineOrchestrationError(
             f"cannot reject {phase}: prepare lineage escaped its attempt"
         )
+    phase_input_identity = receipt.get("phase_input")
+    if not isinstance(phase_input_identity, dict) or not isinstance(
+        phase_input_identity.get("path"), str
+    ):
+        raise VisualPipelineOrchestrationError(
+            f"cannot reject {phase}: phase input identity is invalid"
+        )
+    phase_input_path = (episode_root / str(phase_input_identity["path"])).resolve()
+    if (
+        not phase_input_path.is_relative_to(episode_root)
+        or len({phase_input_path, proposal_path, receipt_path.resolve()}) != 3
+    ):
+        raise VisualPipelineOrchestrationError(
+            f"cannot reject {phase}: phase input path is unsafe or overlaps root evidence"
+        )
     failure_path = attempt_root / "FAILURE.json"
     proposal_evidence = attempt_root / "evidence" / "proposal.json"
     receipt_evidence = attempt_root / "evidence" / "execution-receipt.json"
-    if failure_path.exists() or proposal_evidence.exists() or receipt_evidence.exists():
+    phase_input_evidence = attempt_root / "evidence" / "phase-input.json"
+    if (
+        failure_path.exists()
+        or proposal_evidence.exists()
+        or receipt_evidence.exists()
+        or phase_input_evidence.exists()
+    ):
         raise VisualPipelineOrchestrationError(
             f"cannot reject {phase}: failure evidence already conflicts"
         )
-    if not proposal_path.is_file() or not receipt_path.is_file():
+    if (
+        not proposal_path.is_file()
+        or not receipt_path.is_file()
+        or not phase_input_path.is_file()
+        or _identity(episode_root, phase_input_path) != phase_input_identity
+    ):
         raise VisualPipelineOrchestrationError(
             f"cannot reject {phase}: completed evidence is incomplete"
         )
 
     proposal_evidence.parent.mkdir(parents=True, exist_ok=True)
+    root_receipt_identity = _identity(episode_root, receipt_path)
     moved: list[tuple[Path, Path]] = []
     try:
         os.replace(receipt_path, receipt_evidence)
         moved.append((receipt_path, receipt_evidence))
         os.replace(proposal_path, proposal_evidence)
         moved.append((proposal_path, proposal_evidence))
+        os.replace(phase_input_path, phase_input_evidence)
+        moved.append((phase_input_path, phase_input_evidence))
+        archived_proposal_identity = _identity(episode_root, proposal_evidence)
+        archived_receipt_identity = _identity(episode_root, receipt_evidence)
+        archived_phase_input_identity = _identity(episode_root, phase_input_evidence)
+        if (
+            {key: archived_proposal_identity[key] for key in ("bytes", "sha256")}
+            != {key: receipt["proposal"][key] for key in ("bytes", "sha256")}
+            or {key: archived_receipt_identity[key] for key in ("bytes", "sha256")}
+            != {key: root_receipt_identity[key] for key in ("bytes", "sha256")}
+            or {key: archived_phase_input_identity[key] for key in ("bytes", "sha256")}
+            != {key: phase_input_identity[key] for key in ("bytes", "sha256")}
+        ):
+            raise VisualPipelineOrchestrationError(
+                f"cannot reject {phase}: completed root evidence changed during archival"
+            )
         failure: dict[str, object] = {
             "contract": EXECUTION_FAILURE_CONTRACT,
             "prepare": prepare,
             "reason": reason,
             "returncode": None,
-            "proposal_evidence": _identity(episode_root, proposal_evidence),
+            "proposal_evidence": archived_proposal_identity,
+            "phase_input_evidence": archived_phase_input_identity,
         }
         failure["content_hash"] = _content_hash(failure)
         _write_json(failure_path, failure)
@@ -1047,14 +1091,40 @@ def recover_failed_execution(
         )
     failure["content_hash"] = claimed_failure_hash
 
+    phase_input_identity = receipt.get("phase_input")
+    if not isinstance(phase_input_identity, dict) or not isinstance(
+        phase_input_identity.get("path"), str
+    ):
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover {phase}: phase input identity is invalid"
+        )
+    phase_input_path = (root / str(phase_input_identity["path"])).resolve()
+    if (
+        not phase_input_path.is_relative_to(root)
+        or len({phase_input_path, proposal_path, receipt_path.resolve()}) != 3
+    ):
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover {phase}: phase input path is unsafe or overlaps root evidence"
+        )
     proposal_evidence = attempt_root / "evidence" / "proposal.json"
     receipt_evidence = attempt_root / "evidence" / "execution-receipt.json"
+    phase_input_evidence = attempt_root / "evidence" / "phase-input.json"
     recovery_path = attempt_root / "RECOVERY.json"
-    if proposal_evidence.exists() or receipt_evidence.exists() or recovery_path.exists():
+    if (
+        proposal_evidence.exists()
+        or receipt_evidence.exists()
+        or phase_input_evidence.exists()
+        or recovery_path.exists()
+    ):
         raise VisualPipelineOrchestrationError(
             f"cannot recover {phase}: recovery evidence already conflicts"
         )
-    if not proposal_path.is_file() or not receipt_path.is_file():
+    if (
+        not proposal_path.is_file()
+        or not receipt_path.is_file()
+        or not phase_input_path.is_file()
+        or _identity(root, phase_input_path) != phase_input_identity
+    ):
         raise VisualPipelineOrchestrationError(
             f"cannot recover {phase}: completed root evidence is incomplete"
         )
@@ -1094,13 +1164,19 @@ def recover_failed_execution(
         moved.append((receipt_path, receipt_evidence))
         os.replace(proposal_path, proposal_evidence)
         moved.append((proposal_path, proposal_evidence))
+        os.replace(phase_input_path, phase_input_evidence)
+        moved.append((phase_input_path, phase_input_evidence))
         archived_proposal_identity = _identity(root, proposal_evidence)
         archived_receipt_identity = _identity(root, receipt_evidence)
-        if {key: archived_proposal_identity[key] for key in ("bytes", "sha256")} != {
-            key: proposal_identity[key] for key in ("bytes", "sha256")
-        } or {key: archived_receipt_identity[key] for key in ("bytes", "sha256")} != {
-            key: root_receipt_identity[key] for key in ("bytes", "sha256")
-        }:
+        archived_phase_input_identity = _identity(root, phase_input_evidence)
+        if (
+            {key: archived_proposal_identity[key] for key in ("bytes", "sha256")}
+            != {key: proposal_identity[key] for key in ("bytes", "sha256")}
+            or {key: archived_receipt_identity[key] for key in ("bytes", "sha256")}
+            != {key: root_receipt_identity[key] for key in ("bytes", "sha256")}
+            or {key: archived_phase_input_identity[key] for key in ("bytes", "sha256")}
+            != {key: phase_input_identity[key] for key in ("bytes", "sha256")}
+        ):
             raise VisualPipelineOrchestrationError(
                 f"cannot recover {phase}: completed root evidence changed during archival"
             )
@@ -1118,6 +1194,7 @@ def recover_failed_execution(
             "canonical_output": canonical_output.relative_to(root).as_posix(),
             "proposal_evidence": archived_proposal_identity,
             "execution_receipt_evidence": archived_receipt_identity,
+            "phase_input_evidence": archived_phase_input_identity,
         }
         recovery["content_hash"] = _content_hash(recovery)
         _write_json(recovery_path, recovery)

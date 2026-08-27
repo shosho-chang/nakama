@@ -1843,6 +1843,23 @@ def test_recover_failed_semantic_audit_preserves_dp_and_opens_next_audit_attempt
     phase_input_identity = receipt_document["phase_input"]
     assert isinstance(phase_input_identity, dict)
     phase_input = root / str(phase_input_identity["path"])
+    archived_input = (
+        job_root
+        / "receipts"
+        / "semantic_audit.attempts"
+        / "attempt-001"
+        / "evidence"
+        / "phase-input.json"
+    )
+    assert orchestrator._identity(root, archived_input)["sha256"] == phase_input_identity["sha256"]
+    orchestrator._write_json(
+        phase_input,
+        {
+            "contract": "podcast-highlight-visual-worker-input-v1",
+            "phase": "semantic_audit",
+            "asset_authority": {"attempt": 2, "content_hash": "e" * 64},
+        },
+    )
     next_attempt = orchestrator._prepare_execution_attempt(
         root,
         job_root,
@@ -1863,6 +1880,64 @@ def test_recover_failed_semantic_audit_preserves_dp_and_opens_next_audit_attempt
     assert (next_attempt / "PREPARE.json").is_file()
 
 
+def test_recover_failed_l04_dp2_archives_stale_input_for_current_authority(
+    tmp_path: Path,
+) -> None:
+    fixture = _failed_completed_execution_fixture(
+        tmp_path,
+        cut_id="punch-L04",
+        phase="dp-002",
+        role="dp",
+    )
+    root = fixture["root"]
+    job_root = fixture["job_root"]
+    proposal = fixture["proposal"]
+    receipt_path = fixture["receipt_path"]
+    attempt_root = fixture["attempt_root"]
+    assert isinstance(root, Path)
+    assert isinstance(job_root, Path)
+    assert isinstance(proposal, Path)
+    assert isinstance(receipt_path, Path)
+    assert isinstance(attempt_root, Path)
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    stale_input = root / str(receipt["phase_input"]["path"])
+    stale_bytes = stale_input.read_bytes()
+
+    recovered = orchestrator.recover_failed_execution(
+        root,
+        cut_id="punch-L04",
+        revision_id=REVISION_ID,
+        phase="dp-002",
+        role="dp",
+        attempt=1,
+        reason="DP2 input bound stale authority attempt-001 before hydration.",
+    )
+
+    archived_input = attempt_root / "evidence" / "phase-input.json"
+    assert archived_input.read_bytes() == stale_bytes
+    assert recovered["phase_input_evidence"] == orchestrator._identity(root, archived_input)
+    assert not stale_input.exists()
+    current_input = {
+        "contract": "podcast-highlight-visual-worker-input-v1",
+        "phase": "dp-002",
+        "asset_authority": {"attempt": 2, "content_hash": "c" * 64},
+    }
+    orchestrator._write_json(stale_input, current_input)
+    next_attempt = orchestrator._prepare_execution_attempt(
+        root,
+        job_root,
+        cut_id="punch-L04",
+        revision_id=REVISION_ID,
+        phase="dp-002",
+        role="dp",
+        prompt="Fulfil DP2 from current authority attempt-002.",
+        phase_input_path=stale_input,
+        proposal_path=proposal,
+    )
+    assert next_attempt.name == "attempt-002"
+    assert json.loads(stale_input.read_text(encoding="utf-8")) == current_input
+
+
 def test_reject_completed_l02_semantic_audit_opens_attempt_two(tmp_path: Path) -> None:
     fixture = _failed_completed_execution_fixture(
         tmp_path,
@@ -1881,6 +1956,9 @@ def test_reject_completed_l02_semantic_audit_opens_attempt_two(tmp_path: Path) -
     assert isinstance(receipt_path, Path)
     assert isinstance(attempt_root, Path)
     assert isinstance(job_root, Path)
+    completed_receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    phase_input = root / str(completed_receipt["phase_input"]["path"])
+    phase_input_bytes = phase_input.read_bytes()
 
     rejected = orchestrator.reject_completed_execution(
         root,
@@ -1897,10 +1975,20 @@ def test_reject_completed_l02_semantic_audit_opens_attempt_two(tmp_path: Path) -
     assert not receipt_path.exists()
     assert (attempt_root / "evidence" / "proposal.json").is_file()
     assert (attempt_root / "evidence" / "execution-receipt.json").is_file()
+    archived_input = attempt_root / "evidence" / "phase-input.json"
+    assert archived_input.read_bytes() == phase_input_bytes
+    assert rejected["phase_input_evidence"] == orchestrator._identity(root, archived_input)
+    assert not phase_input.exists()
     receipt = json.loads(
         (attempt_root / "evidence" / "execution-receipt.json").read_text(encoding="utf-8")
     )
     phase_input = root / str(receipt["phase_input"]["path"])
+    current_input = {
+        "contract": "podcast-highlight-visual-worker-input-v1",
+        "phase": "semantic_audit",
+        "asset_authority": {"attempt": 2, "content_hash": "d" * 64},
+    }
+    orchestrator._write_json(phase_input, current_input)
     next_attempt = orchestrator._prepare_execution_attempt(
         root,
         job_root,
@@ -1913,6 +2001,7 @@ def test_reject_completed_l02_semantic_audit_opens_attempt_two(tmp_path: Path) -
         proposal_path=proposal,
     )
     assert next_attempt.name == "attempt-002"
+    assert json.loads(phase_input.read_text(encoding="utf-8")) == current_input
 
 
 @pytest.mark.parametrize(
@@ -2021,6 +2110,57 @@ def test_reject_completed_execution_refuses_attempt_identity_mismatch(tmp_path: 
 
     assert proposal.read_bytes() == proposal_before
     assert receipt_path.read_bytes() == receipt_before
+
+
+@pytest.mark.parametrize("operation", ["recover", "reject"])
+def test_execution_retirement_refuses_phase_input_identity_mismatch(
+    tmp_path: Path,
+    operation: str,
+) -> None:
+    fixture = _failed_completed_execution_fixture(
+        tmp_path,
+        phase="semantic_audit",
+        role="director",
+        with_failure=operation == "recover",
+    )
+    root = fixture["root"]
+    proposal = fixture["proposal"]
+    receipt_path = fixture["receipt_path"]
+    attempt_root = fixture["attempt_root"]
+    assert isinstance(root, Path)
+    assert isinstance(proposal, Path)
+    assert isinstance(receipt_path, Path)
+    assert isinstance(attempt_root, Path)
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    phase_input = root / str(receipt["phase_input"]["path"])
+    phase_input.write_bytes(phase_input.read_bytes() + b"\nchanged-after-completion")
+    proposal_before = proposal.read_bytes()
+    receipt_before = receipt_path.read_bytes()
+    phase_input_before = phase_input.read_bytes()
+
+    retire = (
+        orchestrator.recover_failed_execution
+        if operation == "recover"
+        else orchestrator.reject_completed_execution
+    )
+    with pytest.raises(
+        orchestrator.VisualPipelineOrchestrationError,
+        match="semantic_audit execution receipt phase_input hash mismatch",
+    ):
+        retire(
+            root,
+            cut_id="value-L01",
+            revision_id=REVISION_ID,
+            phase="semantic_audit",
+            role="director",
+            attempt=1,
+            reason="Input bytes must match the completed receipt before archival.",
+        )
+
+    assert proposal.read_bytes() == proposal_before
+    assert receipt_path.read_bytes() == receipt_before
+    assert phase_input.read_bytes() == phase_input_before
+    assert not (attempt_root / "evidence" / "phase-input.json").exists()
 
 
 def test_recover_failed_execution_refuses_attempt_without_failure(tmp_path: Path) -> None:
