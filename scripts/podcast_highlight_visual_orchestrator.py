@@ -823,6 +823,223 @@ def _canonical_phase_output_path(
     return attempt_root / name
 
 
+def recover_prepared_execution(
+    episode_root: str | Path,
+    *,
+    cut_id: str,
+    revision_id: str,
+    phase: str,
+    role: str,
+    attempt: int,
+    reason: str,
+) -> dict[str, object]:
+    """Retire one orphaned PREPARE whose owner ended before worker completion."""
+
+    root = Path(episode_root).resolve()
+    if not root.is_dir():
+        raise VisualPipelineOrchestrationError(f"episode root does not exist: {root}")
+    cut_id = _safe_cut_id(cut_id)
+    revision_id = _safe_revision_id(revision_id)
+    if not _SAFE_TOKEN.fullmatch(phase):
+        raise VisualPipelineOrchestrationError(f"unsafe execution phase: {phase!r}")
+    if not _SAFE_TOKEN.fullmatch(role):
+        raise VisualPipelineOrchestrationError(f"unsafe execution role: {role!r}")
+    if isinstance(attempt, bool) or not isinstance(attempt, int) or not 1 <= attempt <= 999:
+        raise VisualPipelineOrchestrationError(f"invalid execution attempt: {attempt!r}")
+    reason = str(reason).strip()
+    if not reason:
+        raise VisualPipelineOrchestrationError(
+            "prepared execution recovery reason must not be empty"
+        )
+
+    job_root = (root / _JOB_ROOT / cut_id / "jobs" / revision_id).resolve()
+    attempt_root = _execution_attempt_root(job_root, phase, attempt).resolve()
+    attempts_root = (job_root / "receipts" / f"{phase}.attempts").resolve()
+    prepare_path = attempt_root / "PREPARE.json"
+    if (
+        not job_root.is_relative_to(root)
+        or not attempt_root.is_relative_to(attempts_root)
+        or not re.fullmatch(r"attempt-\d{3}", attempt_root.name)
+        or not prepare_path.is_file()
+    ):
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover prepared {phase}: PREPARE receipt is missing or escaped its attempt"
+        )
+    prepare_identity = _identity(root, prepare_path)
+    prepare = _load_json(prepare_path, f"{phase} prepare receipt")
+    claimed_prepare_hash = prepare.pop("content_hash", None)
+    if (
+        set(prepare)
+        != {
+            "contract",
+            "episode_id",
+            "cut_id",
+            "revision_id",
+            "phase",
+            "role",
+            "attempt",
+            "orchestrator_pid",
+            "prompt_sha256",
+            "phase_input",
+            "proposal_path",
+        }
+        or claimed_prepare_hash != _content_hash(prepare)
+        or prepare.get("contract") != EXECUTION_PREPARE_CONTRACT
+        or prepare.get("episode_id") != root.name
+        or prepare.get("cut_id") != cut_id
+        or prepare.get("revision_id") != revision_id
+        or prepare.get("phase") != phase
+        or prepare.get("role") != role
+        or prepare.get("attempt") != attempt
+    ):
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover prepared {phase}: PREPARE receipt identity mismatch"
+        )
+    owner_pid = prepare.get("orchestrator_pid")
+    if not isinstance(owner_pid, int) or isinstance(owner_pid, bool):
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover prepared {phase}: PREPARE owner identity is invalid"
+        )
+    if _pid_is_active(owner_pid):
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover prepared {phase}: execution owner is still active"
+        )
+
+    phase_input_identity = prepare.get("phase_input")
+    proposal_relative = prepare.get("proposal_path")
+    if not isinstance(phase_input_identity, dict) or not isinstance(
+        phase_input_identity.get("path"), str
+    ):
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover prepared {phase}: phase input identity is invalid"
+        )
+    if not isinstance(proposal_relative, str):
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover prepared {phase}: proposal path is invalid"
+        )
+    phase_input_path = (root / str(phase_input_identity["path"])).resolve()
+    proposal_path = (root / proposal_relative).resolve()
+    receipt_path = _execution_receipt_path(job_root, phase).resolve()
+    if (
+        not phase_input_path.is_relative_to(root)
+        or not proposal_path.is_relative_to(root)
+        or len({phase_input_path, proposal_path, receipt_path, prepare_path.resolve()}) != 4
+    ):
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover prepared {phase}: PREPARE root paths are unsafe or overlap"
+        )
+    if receipt_path.exists():
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover prepared {phase}: completed receipt exists; use completed recovery"
+        )
+    if proposal_path.exists():
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover prepared {phase}: worker proposal exists; "
+            "prepared-only recovery refused"
+        )
+    if not phase_input_path.is_file() or _identity(root, phase_input_path) != phase_input_identity:
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover prepared {phase}: phase input identity mismatch"
+        )
+
+    failure_path = attempt_root / "FAILURE.json"
+    recovery_path = attempt_root / "RECOVERY.json"
+    phase_input_evidence = attempt_root / "evidence" / "phase-input.json"
+    if failure_path.exists() or recovery_path.exists() or phase_input_evidence.exists():
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover prepared {phase}: recovery evidence already conflicts"
+        )
+    current_path = root / _JOB_ROOT / cut_id / visual_pipeline.CURRENT_POINTER_NAME
+    if current_path.is_file():
+        current = _load_json(current_path, "visual CURRENT pointer")
+        if current.get("revision_id") == revision_id:
+            raise VisualPipelineOrchestrationError(
+                f"cannot recover prepared {phase}: revision is already CURRENT"
+            )
+    try:
+        materialized_revision = visual_pipeline._materialized_visual_revision(root, cut_id)
+    except HighlightVisualContractError as error:
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover prepared {phase}: materialization receipt is invalid: {error}"
+        ) from error
+    if materialized_revision == revision_id:
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover prepared {phase}: revision is already materialized"
+        )
+    canonical_output = _canonical_phase_output_path(
+        root,
+        cut_id=cut_id,
+        revision_id=revision_id,
+        phase=phase,
+    )
+    if canonical_output.exists():
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover prepared {phase}: canonical downstream output already exists"
+        )
+
+    phase_input_evidence.parent.mkdir(parents=True, exist_ok=True)
+    moved = False
+    created: list[Path] = []
+    try:
+        os.replace(phase_input_path, phase_input_evidence)
+        moved = True
+        archived_phase_input_identity = _identity(root, phase_input_evidence)
+        if {key: archived_phase_input_identity[key] for key in ("bytes", "sha256")} != {
+            key: phase_input_identity[key] for key in ("bytes", "sha256")
+        }:
+            raise VisualPipelineOrchestrationError(
+                f"cannot recover prepared {phase}: phase input changed during archival"
+            )
+        failure: dict[str, object] = {
+            "contract": EXECUTION_FAILURE_CONTRACT,
+            "prepare": prepare_identity,
+            "reason": reason,
+            "returncode": None,
+            "proposal_evidence": None,
+            "phase_input_evidence": archived_phase_input_identity,
+        }
+        failure["content_hash"] = _content_hash(failure)
+        _write_json(failure_path, failure)
+        created.append(failure_path)
+        recovery: dict[str, object] = {
+            "contract": EXECUTION_RECOVERY_CONTRACT,
+            "episode_id": root.name,
+            "cut_id": cut_id,
+            "revision_id": revision_id,
+            "phase": phase,
+            "role": role,
+            "attempt": attempt,
+            "reason": reason,
+            "prepare": prepare_identity,
+            "failure": _identity(root, failure_path),
+            "canonical_output": canonical_output.relative_to(root).as_posix(),
+            "proposal_evidence": None,
+            "execution_receipt_evidence": None,
+            "phase_input_evidence": archived_phase_input_identity,
+        }
+        recovery["content_hash"] = _content_hash(recovery)
+        _write_json(recovery_path, recovery)
+        created.append(recovery_path)
+        return recovery
+    except BaseException:
+        rollback_errors: list[str] = []
+        for created_path in reversed(created):
+            try:
+                created_path.unlink()
+            except OSError as rollback_error:
+                rollback_errors.append(str(rollback_error))
+        if moved:
+            try:
+                os.replace(phase_input_evidence, phase_input_path)
+            except OSError as rollback_error:
+                rollback_errors.append(str(rollback_error))
+        if rollback_errors:
+            raise VisualPipelineOrchestrationError(
+                f"{phase} prepared recovery rollback failed: " + "; ".join(rollback_errors)
+            )
+        raise
+
+
 def reject_completed_execution(
     episode_root: str | Path,
     *,
@@ -2245,6 +2462,8 @@ def _parser() -> argparse.ArgumentParser:
             "EPISODE_ROOT --cut-id CUT --revision-id REVISION --reason TEXT; or "
             "recover-execution EPISODE_ROOT --cut-id CUT --revision-id REVISION "
             "--phase PHASE --role ROLE --attempt N --reason TEXT; or "
+            "recover-prepared-execution EPISODE_ROOT --cut-id CUT --revision-id REVISION "
+            "--phase PHASE --role ROLE --attempt N --reason TEXT; or "
             "reject-completed-execution EPISODE_ROOT --cut-id CUT --revision-id REVISION "
             "--phase PHASE --role ROLE --attempt N --reason TEXT"
         ),
@@ -2293,6 +2512,23 @@ def _recover_execution_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _recover_prepared_execution_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=f"{Path(sys.argv[0]).name} recover-prepared-execution",
+        description=(
+            "Archive one orphaned PREPARE input after its owner ended before worker completion."
+        ),
+    )
+    parser.add_argument("episode_root", type=Path)
+    parser.add_argument("--cut-id", required=True)
+    parser.add_argument("--revision-id", required=True)
+    parser.add_argument("--phase", required=True)
+    parser.add_argument("--role", required=True)
+    parser.add_argument("--attempt", required=True, type=int)
+    parser.add_argument("--reason", required=True)
+    return parser
+
+
 def _reject_completed_execution_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=f"{Path(sys.argv[0]).name} reject-completed-execution",
@@ -2319,6 +2555,10 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     if raw and raw[0] == "recover-execution":
         args = _recover_execution_parser().parse_args(raw[1:])
         args.command = "recover-execution"
+        return args
+    if raw and raw[0] == "recover-prepared-execution":
+        args = _recover_prepared_execution_parser().parse_args(raw[1:])
+        args.command = "recover-prepared-execution"
         return args
     if raw and raw[0] == "reject-completed-execution":
         args = _reject_completed_execution_parser().parse_args(raw[1:])
@@ -2365,6 +2605,25 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(
                 json.dumps(
                     {"status": "recovered", **recovery},
+                    ensure_ascii=True,
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return 0
+        if args.command == "recover-prepared-execution":
+            recovery = recover_prepared_execution(
+                args.episode_root,
+                cut_id=args.cut_id,
+                revision_id=args.revision_id,
+                phase=args.phase,
+                role=args.role,
+                attempt=args.attempt,
+                reason=args.reason,
+            )
+            print(
+                json.dumps(
+                    {"status": "recovered-prepared", **recovery},
                     ensure_ascii=True,
                     indent=2,
                     sort_keys=True,
@@ -2420,5 +2679,6 @@ __all__ = [
     "main",
     "reject_completed_execution",
     "recover_failed_execution",
+    "recover_prepared_execution",
     "run_visual_pipeline",
 ]

@@ -1759,6 +1759,42 @@ def _failed_completed_execution_fixture(
     }
 
 
+def _prepared_only_execution_fixture(tmp_path: Path) -> dict[str, Path]:
+    root = tmp_path / "episode"
+    root.mkdir()
+    cut_id = "value-L02"
+    phase = "dp-002"
+    job_root = root / "highlights" / "visual-pipeline" / cut_id / "jobs" / REVISION_ID
+    phase_input = job_root / "workers" / "dp-session" / f"{phase}-input.json"
+    proposal = job_root / "workers" / "dp-session" / f"{phase}-proposal.json"
+    orchestrator._write_json(
+        phase_input,
+        {
+            "contract": "podcast-highlight-visual-worker-input-v1",
+            "phase": phase,
+            "asset_authority": {"attempt": 1, "content_hash": "a" * 64},
+        },
+    )
+    attempt_root = orchestrator._prepare_execution_attempt(
+        root,
+        job_root,
+        cut_id=cut_id,
+        revision_id=REVISION_ID,
+        phase=phase,
+        role="dp",
+        prompt="Fulfil DP2 from authority attempt-001.",
+        phase_input_path=phase_input,
+        proposal_path=proposal,
+    )
+    return {
+        "root": root,
+        "job_root": job_root,
+        "phase_input": phase_input,
+        "proposal": proposal,
+        "attempt_root": attempt_root,
+    }
+
+
 def test_recover_failed_execution_archives_completed_root_bytes(
     tmp_path: Path,
 ) -> None:
@@ -1936,6 +1972,144 @@ def test_recover_failed_l04_dp2_archives_stale_input_for_current_authority(
     )
     assert next_attempt.name == "attempt-002"
     assert json.loads(stale_input.read_text(encoding="utf-8")) == current_input
+
+
+def test_recover_prepared_l02_dp2_archives_input_and_opens_attempt_two(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _prepared_only_execution_fixture(tmp_path)
+    root = fixture["root"]
+    job_root = fixture["job_root"]
+    phase_input = fixture["phase_input"]
+    proposal = fixture["proposal"]
+    attempt_root = fixture["attempt_root"]
+    phase_input_bytes = phase_input.read_bytes()
+    monkeypatch.setattr(orchestrator, "_pid_is_active", lambda _pid: False)
+
+    recovered = orchestrator.recover_prepared_execution(
+        root,
+        cut_id="value-L02",
+        revision_id=REVISION_ID,
+        phase="dp-002",
+        role="dp",
+        attempt=1,
+        reason="Prepared DP2 owner ended before worker completion.",
+    )
+
+    archived_input = attempt_root / "evidence" / "phase-input.json"
+    assert archived_input.read_bytes() == phase_input_bytes
+    assert recovered["phase_input_evidence"] == orchestrator._identity(root, archived_input)
+    failure_path = attempt_root / "FAILURE.json"
+    failure = json.loads(failure_path.read_text(encoding="utf-8"))
+    failure_hash = failure.pop("content_hash")
+    assert failure_hash == orchestrator._content_hash(failure)
+    assert failure["phase_input_evidence"] == orchestrator._identity(root, archived_input)
+    assert recovered["failure"] == orchestrator._identity(root, failure_path)
+    assert (attempt_root / "RECOVERY.json").is_file()
+    assert not phase_input.exists()
+    current_input = {
+        "contract": "podcast-highlight-visual-worker-input-v1",
+        "phase": "dp-002",
+        "asset_authority": {"attempt": 2, "content_hash": "f" * 64},
+    }
+    orchestrator._write_json(phase_input, current_input)
+    next_attempt = orchestrator._prepare_execution_attempt(
+        root,
+        job_root,
+        cut_id="value-L02",
+        revision_id=REVISION_ID,
+        phase="dp-002",
+        role="dp",
+        prompt="Fulfil DP2 from current authority attempt-002.",
+        phase_input_path=phase_input,
+        proposal_path=proposal,
+    )
+    assert next_attempt.name == "attempt-002"
+    assert json.loads(phase_input.read_text(encoding="utf-8")) == current_input
+
+
+@pytest.mark.parametrize(
+    ("guard", "message"),
+    [
+        ("live", "execution owner is still active"),
+        ("completed", "completed receipt exists"),
+        ("proposal", "worker proposal exists"),
+        ("canonical", "canonical downstream output already exists"),
+        ("current", "revision is already CURRENT"),
+        ("materialized", "revision is already materialized"),
+        ("input", "phase input identity mismatch"),
+    ],
+)
+def test_recover_prepared_execution_refuses_unsafe_states(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    guard: str,
+    message: str,
+) -> None:
+    fixture = _prepared_only_execution_fixture(tmp_path)
+    root = fixture["root"]
+    job_root = fixture["job_root"]
+    phase_input = fixture["phase_input"]
+    proposal = fixture["proposal"]
+    attempt_root = fixture["attempt_root"]
+    monkeypatch.setattr(orchestrator, "_pid_is_active", lambda _pid: guard == "live")
+    if guard == "completed":
+        receipt_path = job_root / "receipts" / "dp-002.json"
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        receipt_path.write_bytes(b"completed-root-receipt")
+    elif guard == "proposal":
+        proposal.parent.mkdir(parents=True, exist_ok=True)
+        proposal.write_bytes(b"worker-proposal")
+    elif guard == "canonical":
+        path = (
+            root
+            / "highlights"
+            / "visual-pipeline"
+            / "value-L02"
+            / "revisions"
+            / REVISION_ID
+            / "attempts"
+            / "attempt-002"
+            / "DP-FULFILLMENT.json"
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"already-canonical")
+    elif guard == "current":
+        path = root / "highlights" / "visual-pipeline" / "value-L02" / "CURRENT.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"revision_id": REVISION_ID}), encoding="utf-8")
+    elif guard == "materialized":
+        path = root / "highlights" / "tighten" / "value-L02_broll_materialization.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "contract": "podcast-long-highlight-stock-video-v2",
+                    "visual_pipeline_lineage": {"revision_id": REVISION_ID},
+                }
+            ),
+            encoding="utf-8",
+        )
+    elif guard == "input":
+        phase_input.write_bytes(phase_input.read_bytes() + b"\nchanged-after-prepare")
+    input_before = phase_input.read_bytes()
+
+    with pytest.raises(orchestrator.VisualPipelineOrchestrationError, match=message):
+        orchestrator.recover_prepared_execution(
+            root,
+            cut_id="value-L02",
+            revision_id=REVISION_ID,
+            phase="dp-002",
+            role="dp",
+            attempt=1,
+            reason="Unsafe prepared state must remain immutable.",
+        )
+
+    assert phase_input.read_bytes() == input_before
+    assert not (attempt_root / "FAILURE.json").exists()
+    assert not (attempt_root / "RECOVERY.json").exists()
+    assert not (attempt_root / "evidence" / "phase-input.json").exists()
 
 
 def test_reject_completed_l02_semantic_audit_opens_attempt_two(tmp_path: Path) -> None:
@@ -2515,6 +2689,65 @@ def test_cli_recover_execution_calls_public_recovery_api(
     payload = json.loads(output)
     assert payload["status"] == "recovered"
     assert payload["phase"] == "asset_acquisition-001"
+
+
+def test_cli_recover_prepared_execution_calls_public_api(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = tmp_path / "episode"
+    root.mkdir()
+    calls: list[dict[str, object]] = []
+
+    def recover(episode_root, **kwargs):
+        calls.append({"episode_root": Path(episode_root), **kwargs})
+        return {
+            "contract": orchestrator.EXECUTION_RECOVERY_CONTRACT,
+            "revision_id": REVISION_ID,
+            "phase": "dp-002",
+            "attempt": 1,
+            "reason": "孤立的 PREPARE owner 已結束",
+            "content_hash": "c" * 64,
+        }
+
+    monkeypatch.setattr(orchestrator, "recover_prepared_execution", recover)
+
+    assert (
+        orchestrator.main(
+            [
+                "recover-prepared-execution",
+                str(root),
+                "--cut-id",
+                "value-L02",
+                "--revision-id",
+                REVISION_ID,
+                "--phase",
+                "dp-002",
+                "--role",
+                "dp",
+                "--attempt",
+                "1",
+                "--reason",
+                "Prepared owner ended before worker completion.",
+            ]
+        )
+        == 0
+    )
+    assert calls == [
+        {
+            "episode_root": root,
+            "cut_id": "value-L02",
+            "revision_id": REVISION_ID,
+            "phase": "dp-002",
+            "role": "dp",
+            "attempt": 1,
+            "reason": "Prepared owner ended before worker completion.",
+        }
+    ]
+    output = capsys.readouterr().out
+    assert output.isascii()
+    assert json.loads(output)["status"] == "recovered-prepared"
 
 
 def test_cli_reject_completed_execution_calls_public_api(
