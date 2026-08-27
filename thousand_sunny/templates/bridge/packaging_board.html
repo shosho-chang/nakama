@@ -22,13 +22,27 @@
 <section class="page-header page-header--split">
   <div>
     <div class="nk-caps">/bridge/packaging/{{ episode_slug }} · package 裁決</div>
-    <h1 class="page-title">{{ pkg.episode }} <span class="zh">{{ cuts | length }} cuts</span></h1>
+    <h1 class="page-title">{{ pkg.episode }} <span class="zh">{{ (cut_tabs | length) if cut_tabs else (cuts | length) }} cuts</span></h1>
   </div>
   <div class="header-meta sho-mono">generated {{ pkg.generated_at }}</div>
 </section>
 
 <main class="page-main page-main--stack">
-  {% if focused_cut %}
+  {% if cut_tabs %}
+  <nav class="pkg-tabs" role="tablist" aria-label="本集 Packaging 版本">
+    {% for tab in cut_tabs %}
+    <div class="pkg-tab-item pkg-tab-item--{{ tab.status }}">
+      <a class="pkg-tab" role="tab"
+         aria-selected="{{ 'true' if tab.cut_id == focused_cut else 'false' }}"
+         aria-controls="packaging-panel"
+         tabindex="0"
+         title="{{ tab.title }}"
+         href="/bridge/packaging/{{ episode_slug }}?cut={{ tab.cut_id | urlencode }}">{{ tab.label }}</a>
+      <span class="sho-mono-up pkg-tab-status">{{ tab.status | upper }}</span>
+    </div>
+    {% endfor %}
+  </nav>
+  {% elif focused_cut %}
   <p class="sho-mono pkg-focus"><a href="/bridge/packaging/{{ episode_slug }}">← 查看本集全部 cuts</a> · 目前只審 {{ focused_cut }}</p>
   {% endif %}
   {% if release_pending %}
@@ -52,12 +66,25 @@
     </form>
   </div>
   {% endif %}
+  {% if pending_cut %}
+  <section class="pkg-work-pending" id="packaging-panel" role="tabpanel" aria-live="polite">
+    <div>
+      <span class="sho-mono-up">{{ pending_cut.label }} · {{ pending_cut.status | upper }}</span>
+      <h2>Packaging 製作中</h2>
+      <p>{{ pending_cut.title }}</p>
+    </div>
+    <dl class="pkg-work-branches">
+      <div><dt>VIDEO PREVIEW</dt><dd>{{ pending_cut.video_status | default('queued', true) | upper }}</dd></div>
+      <div><dt>PACKAGING</dt><dd>{{ pending_cut.status | upper }}</dd></div>
+    </dl>
+  </section>
+  {% endif %}
   <p class="sho-mono pkg-hint">重抽標題或封面 → 回 Cowork 跑 <code>title-brainstorm --batch</code> / <code>thumbnail-brainstorm</code>（gate 零 LLM，只裁決不生成）。</p>
 
   {% for view in cuts %}
   {% set cut = view.cut %}
   {% set approval = view.approval %}
-  <article class="section pkg-cut" aria-labelledby="cut-{{ cut.cut_id }}">
+  <article class="section pkg-cut"{% if cut_tabs %} id="packaging-panel" role="tabpanel"{% endif %} aria-labelledby="cut-{{ cut.cut_id }}">
     <header class="section-head">
       <div>
         <div class="section-marker">§ {{ loop.index }} · {{ cut.format | upper }}</div>
@@ -514,6 +541,37 @@
 <style>
   .pkg-focus { margin: 0; }
   .pkg-focus a { color: var(--sho-text-2); }
+  .pkg-tabs {
+    display: flex; gap: var(--sho-s-2); overflow-x: auto;
+    border-bottom: 1px solid var(--sho-line); padding-bottom: var(--sho-s-2);
+  }
+  .pkg-tab-item {
+    display: flex; align-items: center; gap: var(--sho-s-2); flex: 0 0 auto;
+    border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-1);
+    padding: var(--sho-s-2) var(--sho-s-3); background: var(--sho-bg-2);
+  }
+  .pkg-tab-item:has(.pkg-tab[aria-selected="true"]) {
+    border-color: var(--sho-accent); background: var(--sho-accent-soft);
+  }
+  .pkg-tab { color: var(--sho-text); font-weight: 600; text-decoration: none; }
+  .pkg-tab:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+  .pkg-tab-status { color: var(--sho-muted); font-size: 11px; }
+  .pkg-tab-item--ready .pkg-tab-status { color: var(--sho-success); }
+  .pkg-tab-item--failed .pkg-tab-status { color: var(--sho-error); }
+  .pkg-work-pending {
+    display: flex; justify-content: space-between; align-items: start; gap: var(--sho-s-5);
+    border-left: 3px solid var(--sho-accent); background: var(--sho-bg-2);
+    padding: var(--sho-s-4); border-radius: var(--sho-r-1);
+  }
+  .pkg-work-pending h2 { margin: var(--sho-s-1) 0; }
+  .pkg-work-pending p { margin: 0; color: var(--sho-text-2); }
+  .pkg-work-branches { display: flex; gap: var(--sho-s-5); margin: 0; }
+  .pkg-work-branches div { display: grid; gap: var(--sho-s-1); }
+  .pkg-work-branches dt { color: var(--sho-muted); font-size: 11px; }
+  .pkg-work-branches dd { margin: 0; font-weight: 600; }
+  @media (max-width: 720px) {
+    .pkg-work-pending { display: grid; }
+  }
   .pkg-release-pending { display: grid; gap: var(--sho-s-1); border-left: 3px solid var(--sho-accent); background: var(--sho-accent-soft); padding: var(--sho-s-3) var(--sho-s-4); }
   .pkg-release-pending span { color: var(--sho-text-2); }
   .pkg-description-interrupted { display: grid; gap: var(--sho-s-2); border-left: 3px solid var(--sho-error); background: var(--sho-bg-2); padding: var(--sho-s-3) var(--sho-s-4); }

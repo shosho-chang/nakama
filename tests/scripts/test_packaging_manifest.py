@@ -84,3 +84,54 @@ def test_corrupted_manifest_fails_loud(tmp_path):
 def test_unknown_stage_rejected(tmp_path):
     with pytest.raises(SystemExit, match="unknown stage"):
         pm.mark(tmp_path, "punch-L5", "render")
+
+
+def test_stage_parallel_jobs_preserves_progress_and_is_idempotent(tmp_path):
+    pm.mark(tmp_path, "full", "titles")
+    pm.mark(tmp_path, "full", "thumbnails")
+    pm.mark(tmp_path, "full", "emitted")
+    jobs = [
+        {
+            "cut_id": f"value-L0{rank}",
+            "rank": rank,
+            "title": f"Long {rank}",
+            "selected_at": "2026-08-27T01:00:00+00:00",
+            "video": {"status": "queued"},
+            "packaging": {"status": "queued"},
+        }
+        for rank in range(1, 4)
+    ]
+
+    first = pm.stage_parallel_jobs(tmp_path, jobs)
+    first["cuts"]["value-L01"]["video"]["status"] = "running"
+    first["cuts"]["value-L01"]["titles"] = "2026-08-27T02:00:00+00:00"
+    pm._save(tmp_path, first)
+    second = pm.stage_parallel_jobs(tmp_path, jobs)
+
+    assert "emitted" in second["cuts"]["full"]
+    assert second["cuts"]["value-L01"]["video"]["status"] == "running"
+    assert second["cuts"]["value-L01"]["packaging"]["status"] == "running"
+    assert [second["cuts"][f"value-L0{rank}"]["rank"] for rank in range(1, 4)] == [
+        1,
+        2,
+        3,
+    ]
+
+
+def test_stage_parallel_jobs_rejects_duplicate_rank_without_mutating_manifest(tmp_path):
+    original = {"cuts": {"full": {"emitted": "2026-08-27T01:00:00+00:00"}}}
+    pm._save(tmp_path, original)
+    jobs = [
+        {
+            "cut_id": cut_id,
+            "rank": 1,
+            "video": {"status": "queued"},
+            "packaging": {"status": "queued"},
+        }
+        for cut_id in ("L1", "L2")
+    ]
+
+    with pytest.raises(ValueError, match="rank must be unique"):
+        pm.stage_parallel_jobs(tmp_path, jobs)
+
+    assert json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8")) == original

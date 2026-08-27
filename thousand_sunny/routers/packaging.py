@@ -34,6 +34,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from starlette.requests import Request
 
+from scripts.packaging_manifest import load_manifest
 from shared.background_job import atomic_job_write, job_expired, load_job, new_job
 from shared.config import get_db_path, get_vault_path
 from shared.log import get_logger
@@ -222,11 +223,7 @@ def _load_cutout_choices(episode_slug: str) -> dict[str, list[dict]]:
         role = record.get("role")
         if role not in {"host", "guest"}:
             role = (
-                "host"
-                if name.startswith("host")
-                else "guest"
-                if name.startswith("guest")
-                else None
+                "host" if name.startswith("host") else "guest" if name.startswith("guest") else None
             )
         if role is None:
             continue
@@ -251,6 +248,119 @@ def _load_approvals(ep_dir: Path, episode: str) -> ApprovalFileV1:
     if not path.is_file():
         return ApprovalFileV1(episode=episode, approvals=[])
     return parse_approval_file(path)
+
+
+def _load_cut_tabs(ep_dir: Path, pkg: PackagesFileV1) -> list[dict]:
+    """Build Full/Long tabs from the resume ledger without inventing ready assets."""
+    manifest_path = ep_dir / "manifest.json"
+    if not manifest_path.is_file():
+        return []
+    try:
+        manifest = load_manifest(ep_dir)
+    except SystemExit as exc:
+        raise HTTPException(status_code=422, detail=f"manifest.json 驗證失敗：{exc}") from exc
+
+    package_by_id = {cut.cut_id: cut for cut in pkg.cuts}
+    ready_by_id = {cut_id: cut for cut_id, cut in package_by_id.items() if cut.format == "long"}
+    rows: list[dict] = []
+    used_ranks: set[int] = set()
+    manifest_cuts = manifest["cuts"]
+    for order, (cut_id, raw) in enumerate(manifest_cuts.items()):
+        if not cut_id.strip():
+            raise HTTPException(status_code=422, detail="manifest.json cut_id 不可為空")
+        packaged_cut = package_by_id.get(cut_id)
+        if packaged_cut is not None and packaged_cut.format == "short":
+            continue
+        is_full = cut_id.casefold() == "full"
+        rank = raw.get("rank")
+        if not is_full and rank is not None:
+            if not isinstance(rank, int) or not 1 <= rank <= 3 or rank in used_ranks:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"manifest.json Long rank 重複或超出 1..3：{rank!r}",
+                )
+            used_ranks.add(rank)
+        packaging_work = raw.get("packaging")
+        if packaging_work is not None and not isinstance(packaging_work, dict):
+            raise HTTPException(
+                status_code=422, detail=f"manifest.json {cut_id}.packaging 必須是物件"
+            )
+        status = (packaging_work or {}).get("status")
+        if cut_id in ready_by_id:
+            status = "ready"
+        elif status == "ready" or "emitted" in raw:
+            raise HTTPException(
+                status_code=422,
+                detail=f"manifest.json {cut_id} 已標完成，但 packages.json 沒有該 cut",
+            )
+        elif status is None:
+            status = (
+                "running" if any(stage in raw for stage in ("titles", "thumbnails")) else "queued"
+            )
+        if status not in {"queued", "running", "ready", "failed"}:
+            raise HTTPException(
+                status_code=422,
+                detail=f"manifest.json {cut_id} Packaging 狀態不合法：{status!r}",
+            )
+        video_work = raw.get("video") if isinstance(raw.get("video"), dict) else {}
+        video_status = video_work.get("status")
+        if video_status is not None and video_status not in {
+            "queued",
+            "running",
+            "ready",
+            "failed",
+        }:
+            raise HTTPException(
+                status_code=422,
+                detail=f"manifest.json {cut_id} video 狀態不合法：{video_status!r}",
+            )
+        rows.append(
+            {
+                "cut_id": cut_id,
+                "rank": rank,
+                "label": "Full" if is_full else None,
+                "title": raw.get("title") or cut_id,
+                "status": status,
+                "video_status": video_status,
+                "is_full": is_full,
+                "order": order,
+            }
+        )
+
+    known_ids = {row["cut_id"] for row in rows}
+    for cut in ready_by_id.values():
+        if cut.cut_id in known_ids:
+            continue
+        rows.append(
+            {
+                "cut_id": cut.cut_id,
+                "rank": None,
+                "label": "Full" if cut.cut_id.casefold() == "full" else None,
+                "title": cut.cut_id,
+                "status": "ready",
+                "video_status": None,
+                "is_full": cut.cut_id.casefold() == "full",
+                "order": len(rows),
+            }
+        )
+
+    next_rank = 1
+    for row in sorted(rows, key=lambda item: item["order"]):
+        if row["is_full"] or row["rank"] is not None:
+            continue
+        while next_rank in used_ranks:
+            next_rank += 1
+        if next_rank > 3:
+            raise HTTPException(status_code=422, detail="manifest.json 超過三支 Long Highlight")
+        row["rank"] = next_rank
+        used_ranks.add(next_rank)
+    for row in rows:
+        if not row["is_full"]:
+            row["label"] = f"Long {row['rank']}"
+    return sorted(
+        rows,
+        key=lambda item: (0, 0) if item["is_full"] else (1, item["rank"]),
+    )
 
 
 def _scan_episodes() -> list[dict]:
@@ -365,6 +475,7 @@ def _board_context(episode_slug: str) -> dict:
         "episode_slug": episode_slug,
         "pkg": pkg,
         "cuts": cuts,
+        "cut_tabs": _load_cut_tabs(ep_dir, pkg),
         "cutouts": _load_cutout_choices(episode_slug),
     }
 
@@ -904,12 +1015,25 @@ async def packaging_board(
     if not check_auth(nakama_auth):
         return RedirectResponse(f"/login?next=/bridge/packaging/{episode_slug}", status_code=302)
     ctx = _board_context(episode_slug)
-    if cut:
+    focused_cut = cut
+    pending_cut = None
+    if ctx["cut_tabs"]:
+        focused_cut = focused_cut or ctx["cut_tabs"][0]["cut_id"]
+        selected_tab = next((tab for tab in ctx["cut_tabs"] if tab["cut_id"] == focused_cut), None)
+        if selected_tab is None:
+            raise HTTPException(status_code=404, detail=f"cut not found: {focused_cut}")
+        focused = [view for view in ctx["cuts"] if view["cut"].cut_id == focused_cut]
+        ctx["cuts"] = focused
+        if not focused:
+            pending_cut = selected_tab
+    elif cut:
         focused = [view for view in ctx["cuts"] if view["cut"].cut_id == cut]
         if not focused:
             raise HTTPException(status_code=404, detail=f"cut not found: {cut}")
         ctx["cuts"] = focused
     if release_pending and cut:
+        if pending_cut is not None:
+            raise HTTPException(status_code=409, detail="Packaging 尚未完成")
         release = _release_from_receipt(ctx["pkg"].episode, cut)
         if release is not None:
             approval = ctx["cuts"][0]["approval"]
@@ -939,7 +1063,8 @@ async def packaging_board(
     # 剛存完配方那支：組封面區保持展開（同 edited 的理由 — <details> 會因重載收起）
     ctx["composed_cut"] = composed
     ctx["editor_package_rank"] = package_rank
-    ctx["focused_cut"] = cut
+    ctx["focused_cut"] = focused_cut
+    ctx["pending_cut"] = pending_cut
     ctx["release_pending"] = bool(release_pending)
     ctx["description_pending"] = bool(description_pending)
     ctx["description_state"] = description_state
@@ -983,8 +1108,10 @@ async def packaging_approve(
         raise HTTPException(status_code=409, detail="長片尚無 package，先跑 thumbnail-brainstorm")
 
     ep_dir = _packaging_root() / episode_slug
-    if approved and cut.format == "long" and not any(
-        row.title_rank == primary_package for row in cut.packages
+    if (
+        approved
+        and cut.format == "long"
+        and not any(row.title_rank == primary_package for row in cut.packages)
     ):
         raise HTTPException(status_code=409, detail="primary package 不存在")
     # Human approval is the final taste decision. Composition receipts and
@@ -1003,9 +1130,9 @@ async def packaging_approve(
                 source_assets[package.thumbnail_png] = hashlib.sha256(
                     asset.read_bytes()
                 ).hexdigest()
-        request_seed = "\0".join(
-            (pkg.episode, cut_id, decided_at.isoformat(), feedback)
-        ).encode("utf-8")
+        request_seed = "\0".join((pkg.episode, cut_id, decided_at.isoformat(), feedback)).encode(
+            "utf-8"
+        )
         revision_job = PackagingRevisionJobV1(
             request_id=f"revision-{hashlib.sha256(request_seed).hexdigest()[:16]}",
             feedback=feedback,

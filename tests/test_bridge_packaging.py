@@ -360,9 +360,7 @@ def test_reject_with_feedback_queues_agent_revision(client, vault):
     )
     assert response.status_code == 303
 
-    approval_path = (
-        vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json"
-    )
+    approval_path = vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json"
     entry = json.loads(approval_path.read_text(encoding="utf-8"))["approvals"][0]
     assert entry["approved"] is False
     assert entry["revision_job"]["status"] == "queued"
@@ -392,9 +390,7 @@ def test_failed_revision_can_be_retried_without_approving(client, vault):
         data={"cut_id": "punch-L1", "decision": "reject", "reject_note": "重做 cutout"},
         follow_redirects=False,
     )
-    approval_path = (
-        vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json"
-    )
+    approval_path = vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json"
     payload = json.loads(approval_path.read_text(encoding="utf-8"))
     job = payload["approvals"][0]["revision_job"]
     job.update(
@@ -806,13 +802,7 @@ def vault_with_cutouts(vault):
 
 @pytest.fixture
 def vault_with_all_cutouts(vault_with_cutouts):
-    root = (
-        vault_with_cutouts
-        / "Attachments"
-        / "cutouts"
-        / "podcast"
-        / "20260723-xieboran"
-    )
+    root = vault_with_cutouts / "Attachments" / "cutouts" / "podcast" / "20260723-xieboran"
     records = []
     for role in ("host", "guest"):
         for n in range(1, 10):
@@ -841,21 +831,11 @@ def vault_with_all_cutouts(vault_with_cutouts):
         ),
         encoding="utf-8",
     )
-    path = (
-        vault_with_cutouts
-        / "Attachments"
-        / "packaging"
-        / "20260723-xieboran"
-        / "packages.json"
-    )
+    path = vault_with_cutouts / "Attachments" / "packaging" / "20260723-xieboran" / "packages.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
     package = payload["cuts"][0]["packages"][2]
-    package["host_cutout"] = (
-        "Attachments/cutouts/podcast/20260723-xieboran/host_v6_laughing.png"
-    )
-    package["guest_cutout"] = (
-        "Attachments/cutouts/podcast/20260723-xieboran/guest_v6_laughing.png"
-    )
+    package["host_cutout"] = "Attachments/cutouts/podcast/20260723-xieboran/host_v6_laughing.png"
+    package["guest_cutout"] = "Attachments/cutouts/podcast/20260723-xieboran/guest_v6_laughing.png"
     package["render_recipe"] = {
         "title_rank": 3,
         "host_cutout": package["host_cutout"],
@@ -1166,13 +1146,7 @@ def test_stage_previews_only_episode_local_recipe_referenced_book_cover(
 
 
 def test_compose_rejects_book_cover_outside_episode(client, vault_with_all_cutouts):
-    other = (
-        vault_with_all_cutouts
-        / "Attachments"
-        / "packaging"
-        / "another-episode"
-        / "book.png"
-    )
+    other = vault_with_all_cutouts / "Attachments" / "packaging" / "another-episode" / "book.png"
     other.parent.mkdir()
     other.write_bytes(bytes.fromhex("89504e470d0a1a0a"))
 
@@ -1188,29 +1162,19 @@ def test_compose_rejects_book_cover_outside_episode(client, vault_with_all_cutou
     assert "episode" in response.text
 
 
-def test_compose_updates_only_the_selected_package_recipe(
-    client, vault_with_all_cutouts
-):
+def test_compose_updates_only_the_selected_package_recipe(client, vault_with_all_cutouts):
     response = _compose(
         client,
         package_rank="3",
         title_rank="3",
-        host_cutout=(
-            "Attachments/cutouts/podcast/20260723-xieboran/host_v6_laughing.png"
-        ),
-        guest_cutout=(
-            "Attachments/cutouts/podcast/20260723-xieboran/guest_v6_laughing.png"
-        ),
+        host_cutout=("Attachments/cutouts/podcast/20260723-xieboran/host_v6_laughing.png"),
+        guest_cutout=("Attachments/cutouts/podcast/20260723-xieboran/guest_v6_laughing.png"),
         geometry_mode="manual",
         **_GEO,
     )
     assert response.status_code == 303
     path = (
-        vault_with_all_cutouts
-        / "Attachments"
-        / "packaging"
-        / "20260723-xieboran"
-        / "packages.json"
+        vault_with_all_cutouts / "Attachments" / "packaging" / "20260723-xieboran" / "packages.json"
     )
     packages = json.loads(path.read_text(encoding="utf-8"))["cuts"][0]["packages"]
 
@@ -1247,6 +1211,80 @@ def test_focused_board_only_shows_selected_cut(router_client):
     assert response.status_code == 200
     assert "punch-L1" in response.text
     assert "punch-S1" not in response.text
+
+
+def _write_parallel_packaging_manifest(vault: Path, raw: str | None = None) -> Path:
+    path = vault / "Attachments" / "packaging" / "20260723-xieboran" / "manifest.json"
+    if raw is None:
+        payload = {
+            "cuts": {
+                "full": {"emitted": "2026-08-27T01:00:00+00:00"},
+                "value-L01": {
+                    "rank": 1,
+                    "title": "第一支 Long Highlight",
+                    "video": {"status": "running"},
+                    "packaging": {"status": "queued"},
+                },
+                "value-L02": {
+                    "rank": 2,
+                    "title": "第二支 Long Highlight",
+                    "video": {"status": "queued"},
+                    "packaging": {"status": "queued"},
+                },
+                "punch-L04": {
+                    "rank": 3,
+                    "title": "第三支 Long Highlight",
+                    "video": {"status": "queued"},
+                    "packaging": {"status": "failed"},
+                },
+            }
+        }
+        raw = json.dumps(payload, ensure_ascii=False)
+    path.write_text(raw, encoding="utf-8")
+    return path
+
+
+def test_manifest_enables_full_and_three_long_tabs_with_pending_panels(router_client, vault):
+    packages_path = vault / "Attachments" / "packaging" / "20260723-xieboran" / "packages.json"
+    packages = json.loads(packages_path.read_text(encoding="utf-8"))
+    packages["cuts"][0]["cut_id"] = "full"
+    packages_path.write_text(json.dumps(packages, ensure_ascii=False), encoding="utf-8")
+    _write_parallel_packaging_manifest(vault)
+
+    board = router_client.get("/bridge/packaging/20260723-xieboran")
+
+    assert board.status_code == 200
+    assert 'role="tablist"' in board.text
+    assert board.text.count('class="pkg-tab" role="tab"') == 4
+    assert ">Full<" in board.text
+    assert ">Long 1<" in board.text
+    assert ">Long 2<" in board.text
+    assert ">Long 3<" in board.text
+    assert 'aria-selected="true"' in board.text
+    assert "punch-S1" not in board.text
+
+    pending = router_client.get("/bridge/packaging/20260723-xieboran?cut=value-L01")
+    assert pending.status_code == 200
+    assert "第一支 Long Highlight" in pending.text
+    assert "Packaging 製作中" in pending.text
+    assert "QUEUED" in pending.text
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "{broken",
+        '{"cuts":{"full":{},"full":{"emitted":"2026-08-27T01:00:00Z"}}}',
+        '{"cuts":{"value-L01":{"rank":1},"value-L02":{"rank":1}}}',
+    ],
+)
+def test_packaging_manifest_malformed_or_duplicate_fails_closed(router_client, vault, raw):
+    _write_parallel_packaging_manifest(vault, raw)
+
+    response = router_client.get("/bridge/packaging/20260723-xieboran")
+
+    assert response.status_code == 422
+    assert "manifest.json" in response.text
 
 
 def test_packaging_approval_hands_selected_title_and_thumbnail_to_publish(
@@ -1533,9 +1571,7 @@ def test_human_can_override_legacy_or_tampered_composition_warning(
     assert response.status_code == 303
 
 
-def test_human_can_override_missing_center_visual_asset_warning(
-    router_client, vault, monkeypatch
-):
+def test_human_can_override_missing_center_visual_asset_warning(router_client, vault, monkeypatch):
     import thousand_sunny.routers.packaging as pkg_module
 
     _write_composition_receipt(vault, create_center_asset=False)

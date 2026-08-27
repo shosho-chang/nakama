@@ -1,4 +1,3 @@
-
 """HTTP contract for the Stage 5 finished-cut review gate."""
 
 from __future__ import annotations
@@ -513,9 +512,7 @@ def test_real_shape_v1_manifest_is_legacy_read_only_and_cannot_approve(
     assert saved.status_code == 303
     assert json.loads(manifest.read_text(encoding="utf-8"))["schema"].endswith(".v1")
     audit = json.loads(
-        (episode / "highlights/review/finished_review_feedback.v1.json").read_text(
-            encoding="utf-8"
-        )
+        (episode / "highlights/review/finished_review_feedback.v1.json").read_text(encoding="utf-8")
     )
     legacy_job = audit["revisions"][-1]["revision_job"]
     assert legacy_job["status"] == "queued"
@@ -551,9 +548,7 @@ def test_chinese_page_only_lists_review_lanes_and_seek_metadata(client):
     assert "HERO TITLE" in response.text
 
 
-def test_finished_page_shows_verified_director_dp_and_audit_production_truth(
-    client, monkeypatch
-):
+def test_finished_page_shows_verified_director_dp_and_audit_production_truth(client, monkeypatch):
     import thousand_sunny.routers.highlight_review as review_module
 
     status_calls: list[str] = []
@@ -608,9 +603,7 @@ def test_finished_page_shows_verified_director_dp_and_audit_production_truth(
     assert "/static/shosho/bridge-highlight-review.css?" in response.text
 
 
-def test_visual_pipeline_pending_invalid_and_missing_are_read_only_fail_closed(
-    client, monkeypatch
-):
+def test_visual_pipeline_pending_invalid_and_missing_are_read_only_fail_closed(client, monkeypatch):
     import thousand_sunny.routers.highlight_review as review_module
 
     statuses = {
@@ -661,9 +654,7 @@ def test_visual_pipeline_pending_invalid_and_missing_are_read_only_fail_closed(
     assert "戰後校園軍事化隊列" not in response.text
 
 
-def test_pending_visual_generation_keeps_showing_only_fresh_verified_current(
-    client, monkeypatch
-):
+def test_pending_visual_generation_keeps_showing_only_fresh_verified_current(client, monkeypatch):
     import thousand_sunny.routers.highlight_review as review_module
 
     def status(_episode, *, cut_id):
@@ -763,15 +754,13 @@ def test_visual_production_truth_escapes_agent_text_and_rejects_unsafe_source_li
     )
 
     assert response.status_code == 200
-    assert '&lt;script&gt;alert(&#34;quote&#34;)&lt;/script&gt;' in response.text
+    assert "&lt;script&gt;alert(&#34;quote&#34;)&lt;/script&gt;" in response.text
     assert '<script>alert("quote")</script>' not in response.text
     assert 'href="javascript:' not in response.text
-    assert 'javascript:alert(&#34;candidate&#34;)' in response.text
+    assert "javascript:alert(&#34;candidate&#34;)" in response.text
 
 
-def test_long_review_context_fails_closed_when_authoritative_verifier_rejects(
-    client, monkeypatch
-):
+def test_long_review_context_fails_closed_when_authoritative_verifier_rejects(client, monkeypatch):
     import thousand_sunny.routers.highlight_review as review_module
 
     def reject(_episode, _manifest):
@@ -786,9 +775,7 @@ def test_long_review_context_fails_closed_when_authoritative_verifier_rejects(
     assert "without receipt" in response.text
 
 
-def test_long_review_shows_true_stock_video_deficit_and_blocks_approval(
-    client, finished_episode
-):
+def test_long_review_shows_true_stock_video_deficit_and_blocks_approval(client, finished_episode):
     _, _, manifest = finished_episode
     payload = json.loads(manifest.read_text(encoding="utf-8"))
     for component in payload["cuts"][0]["components"]:
@@ -844,16 +831,16 @@ def test_finished_review_timeline_uses_normalized_components_for_geometry_and_ed
     assert "林之晨｜《逆分工》共同作者" in page.text
     assert 'data-timeline-lane="visual_effect"' in page.text
     assert 'data-timeline-count="0"' in page.text
-    assert 'width: var(--timeline-span)' in page.text
-    assert 'width: max(var(--timeline-span)' not in page.text
-    assert 'min-height: 40px' in page.text
+    assert "width: var(--timeline-span)" in page.text
+    assert "width: max(var(--timeline-span)" not in page.text
+    assert "min-height: 40px" in page.text
     assert 'data-timeline-lane="b_roll"' in page.text
     assert 'data-timeline-lane="badge"' not in page.text
     assert 'data-timeline-lane="pacing"' not in page.text
-    assert '--timeline-kind-color: var(--sho-success)' in page.text
-    assert '--timeline-kind-color: var(--sho-warning)' in page.text
-    assert 'CAMERA 1 / 2 / 3' not in page.text
-    assert 'Camera 1 · 主持人' not in page.text
+    assert "--timeline-kind-color: var(--sho-success)" in page.text
+    assert "--timeline-kind-color: var(--sho-warning)" in page.text
+    assert "CAMERA 1 / 2 / 3" not in page.text
+    assert "Camera 1 · 主持人" not in page.text
     assert 'data-tooltip="從漫畫學經營 · 00:30–00:33"' in page.text
     assert '<span class="timeline-block__label">從漫畫學經營</span>' in page.text
     assert 'id="timeline-tooltip"' in page.text
@@ -925,9 +912,7 @@ def test_valid_feedback_round_trip_is_append_only_and_uses_fixed_path(
     assert [row["revision"] for row in audit["revisions"]] == [1, 2]
 
 
-def test_save_draft_with_requested_changes_queues_durable_revision_job(
-    client, finished_episode
-):
+def test_save_draft_with_requested_changes_queues_durable_revision_job(client, finished_episode):
     _, episode, manifest = finished_episode
 
     response = client.post(
@@ -939,14 +924,10 @@ def test_save_draft_with_requested_changes_queues_durable_revision_job(
 
     assert response.status_code == 303, response.text
     audit = json.loads(
-        (episode / "highlights/review/finished_review_feedback.v1.json").read_text(
-            encoding="utf-8"
-        )
+        (episode / "highlights/review/finished_review_feedback.v1.json").read_text(encoding="utf-8")
     )
     revision = audit["revisions"][-1]
-    assert revision["overall_feedback"] == {
-        "R11": "整體節奏太慢。\n請保留開頭，但壓短中段。"
-    }
+    assert revision["overall_feedback"] == {"R11": "整體節奏太慢。\n請保留開頭，但壓短中段。"}
     assert revision["revision_job"]["status"] == "queued"
     assert revision["revision_job"]["contract"] == "finished-cut-revision-job-v1"
     assert revision["revision_job"]["request_id"].startswith("finished-revision-")
@@ -988,9 +969,7 @@ def test_future_save_draft_auto_attaches_episode_local_trusted_handoff(
         "agents.brook.script_video.highlight_broll.probe_stock_video",
         lambda _path: {"duration_seconds": 2.0, "video_streams": [{}]},
     )
-    prepared = prepare_trusted_asset_handoff(
-        episode, source_manifest, apply=True
-    )
+    prepared = prepare_trusted_asset_handoff(episode, source_manifest, apply=True)
 
     response = client.post(
         "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished/review",
@@ -1001,9 +980,7 @@ def test_future_save_draft_auto_attaches_episode_local_trusted_handoff(
 
     assert response.status_code == 303, response.text
     audit = json.loads(
-        (episode / "highlights/review/finished_review_feedback.v1.json").read_text(
-            encoding="utf-8"
-        )
+        (episode / "highlights/review/finished_review_feedback.v1.json").read_text(encoding="utf-8")
     )
     job = audit["revisions"][-1]["revision_job"]
     assert job["status"] == "queued"
@@ -1042,9 +1019,7 @@ def test_failed_revision_job_remains_visible_after_reload(client, finished_episo
     assert "Hero title render failed" in page.text
 
 
-def test_awaiting_stock_assets_is_visible_instead_of_generic_failure(
-    client, finished_episode
-):
+def test_awaiting_stock_assets_is_visible_instead_of_generic_failure(client, finished_episode):
     _, episode, manifest = finished_episode
     endpoint = "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished/review"
     assert (
@@ -1121,9 +1096,7 @@ def test_text_components_accept_and_reload_multiline_replacement(client, finishe
 
     assert response.status_code == 303
     audit = json.loads(
-        (episode / "highlights/review/finished_review_feedback.v1.json").read_text(
-            encoding="utf-8"
-        )
+        (episode / "highlights/review/finished_review_feedback.v1.json").read_text(encoding="utf-8")
     )
     hero = next(
         row
@@ -1137,9 +1110,7 @@ def test_text_components_accept_and_reload_multiline_replacement(client, finishe
         cookies=_auth_cookie(),
     )
     assert page.status_code == 200
-    assert (
-        '<textarea name="component_replacement__R11-hero"' in page.text
-    )
+    assert '<textarea name="component_replacement__R11-hero"' in page.text
     assert "分工不是混亂\n人要變通才有價值</textarea>" in page.text
     assert '<input type="text" name="component_replacement__R11-broll"' in page.text
 
@@ -1159,9 +1130,7 @@ def test_cut_overall_feedback_round_trip_stays_with_its_cut(client, finished_epi
 
     assert response.status_code == 303
     audit = json.loads(
-        (episode / "highlights/review/finished_review_feedback.v1.json").read_text(
-            encoding="utf-8"
-        )
+        (episode / "highlights/review/finished_review_feedback.v1.json").read_text(encoding="utf-8")
     )
     assert audit["revisions"][-1]["overall_feedback"] == {
         "R11": "整體節奏太平。\nHero title 請保留手動換行。",
@@ -1211,8 +1180,7 @@ def test_rejects_stale_manifest_unknown_component_and_unknown_action(client, fin
     unknown_cut_feedback = _valid_review(manifest)
     unknown_cut_feedback["cut_feedback__not-in-manifest"] = "不應被接受"
     assert (
-        client.post(endpoint, data=unknown_cut_feedback, cookies=_auth_cookie()).status_code
-        == 400
+        client.post(endpoint, data=unknown_cut_feedback, cookies=_auth_cookie()).status_code == 400
     )
 
     bad_action = _valid_review(manifest)
@@ -1246,9 +1214,7 @@ def test_approve_all_requires_every_cut_approved(client, finished_episode):
     assert "approved=1" in response.headers["location"]
 
 
-def test_approve_cut_is_terminal_and_hands_off_to_packaging(
-    client, finished_episode, monkeypatch
-):
+def test_approve_cut_is_terminal_and_hands_off_to_packaging(client, finished_episode, monkeypatch):
     _, episode, manifest = finished_episode
     _write_final_qa(episode, "R11")
     import thousand_sunny.routers.highlight_review as review_module
@@ -1257,7 +1223,7 @@ def test_approve_cut_is_terminal_and_hands_off_to_packaging(
     monkeypatch.setattr(
         review_module,
         "_find_packaging_episode",
-        lambda episode_id, cut_id: "20260721-zhengguowei",
+        lambda episode_id: "20260721-zhengguowei",
     )
     monkeypatch.setattr(
         review_module,
@@ -1283,17 +1249,29 @@ def test_approve_cut_is_terminal_and_hands_off_to_packaging(
     )
 
     assert response.status_code == 303
-    assert response.headers["location"] == (
-        "/bridge/packaging/20260721-zhengguowei?cut=R11"
-    )
+    assert response.headers["location"] == ("/bridge/packaging/20260721-zhengguowei?cut=R11")
     assert started == [(episode, "R11")]
     audit = json.loads(
-        (episode / "highlights/review/finished_review_feedback.v1.json").read_text(
-            encoding="utf-8"
-        )
+        (episode / "highlights/review/finished_review_feedback.v1.json").read_text(encoding="utf-8")
     )
     assert audit["revisions"][-1]["decision"] == "approved_cut"
     assert audit["revisions"][-1]["selected_cut_id"] == "R11"
+
+
+def test_packaging_episode_resolution_does_not_require_finished_cut_packages(tmp_path, monkeypatch):
+    import thousand_sunny.routers.highlight_review as review_module
+
+    packaging = tmp_path / "Attachments" / "packaging" / "portable-episode"
+    packaging.mkdir(parents=True)
+    (packaging / "packages.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    monkeypatch.setattr(
+        review_module,
+        "parse_packages",
+        lambda _path: SimpleNamespace(episode="20260721 鄭國威", cuts=[]),
+    )
+
+    assert review_module._find_packaging_episode("20260721 鄭國威") == "portable-episode"
 
 
 @pytest.mark.parametrize("qa_state", ["missing", "critical"])
@@ -1307,7 +1285,7 @@ def test_approve_cut_fails_closed_without_clear_final_qa(
     monkeypatch.setattr(
         review_module,
         "_find_packaging_episode",
-        lambda episode_id, cut_id: "20260721-zhengguowei",
+        lambda episode_id: "20260721-zhengguowei",
     )
     monkeypatch.setattr(
         review_module,
@@ -1406,9 +1384,7 @@ def test_short_review_feedback_is_append_only_and_separate_from_long_feedback(
         cookies=_auth_cookie(),
     )
     assert page.status_code == 200, page.text
-    manifest_match = re.search(
-        r'name="manifest_sha256"\s+value="([0-9a-f]{64})"', page.text
-    )
+    manifest_match = re.search(r'name="manifest_sha256"\s+value="([0-9a-f]{64})"', page.text)
     assert manifest_match, page.text
     manifest_sha = manifest_match.group(1)
     response = client.post(

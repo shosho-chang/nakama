@@ -36,6 +36,7 @@ from scripts.finished_review_watcher import (
     load_episode_trusted_asset_handoff,
     revision_requires_stock_assets,
 )
+from scripts.packaging_manifest import load_manifest, stage_parallel_jobs
 from shared.background_job import atomic_job_write, job_expired, load_job, new_job
 from shared.config import get_db_path, get_vault_path
 from shared.highlight_shortlist import (
@@ -62,6 +63,7 @@ _LEGACY_FINISHED_MANIFEST_SCHEMA = "nakama.finished_cut_review_manifest.v1"
 _FINISHED_FEEDBACK_SCHEMA = "nakama.finished_cut_review_feedback.v1"
 _FINISHED_FEEDBACK_FILE = "finished_review_feedback.v1.json"
 _SHORT_FINISHED_FEEDBACK_FILE = "short_finished_review_feedback.v1.json"
+_PARALLEL_WORK_PLAN_SCHEMA = "nakama.highlight_parallel_work_plan.v1"
 _SHA256_LENGTH = 64
 _ACTION_LABELS = {
     "approve": "保留",
@@ -631,9 +633,7 @@ def _load_finished_manifest(episode_slug: str) -> dict[str, Any]:
         elif schema == _FINISHED_MANIFEST_SCHEMA:
             manifest = verify_finished_review_manifest(episode_dir, path)
         else:
-            raise _manifest_error(
-                "schema must be the current v2 contract or legacy read-only v1"
-            )
+            raise _manifest_error("schema must be the current v2 contract or legacy read-only v1")
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise _manifest_error(f"cannot read {path.name}") from exc
     except SystemExit as exc:
@@ -850,6 +850,104 @@ def _atomic_json_write(path: Path, payload: dict[str, Any]) -> None:
     os.replace(temporary.name, path)
 
 
+def _strict_json_object(pairs: list[tuple[str, object]]) -> dict:
+    result: dict = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate key: {key}")
+        result[key] = value
+    return result
+
+
+def _stage_parallel_work_plan(
+    episode_dir: Path,
+    selected_ids: list[str],
+    candidates_by_id: dict[str, dict],
+    *,
+    dry_run: bool = False,
+) -> None:
+    """Persist the two approved work branches and mirror them via the D14 writer."""
+    path = episode_dir / "highlights" / "packaging-plan.json"
+    existing_by_id: dict[str, dict] = {}
+    created_at = datetime.now(timezone.utc).isoformat()
+    if path.is_file():
+        try:
+            existing = json.loads(
+                path.read_text(encoding="utf-8"), object_pairs_hook=_strict_json_object
+            )
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=422, detail=f"packaging-plan.json 驗證失敗：{exc}"
+            ) from exc
+        if (
+            not isinstance(existing, dict)
+            or existing.get("schema") != _PARALLEL_WORK_PLAN_SCHEMA
+            or existing.get("episode_id") != episode_dir.name
+            or not isinstance(existing.get("cuts"), list)
+        ):
+            raise HTTPException(status_code=422, detail="packaging-plan.json schema 不合法")
+        for row in existing["cuts"]:
+            cut_id = row.get("cut_id") if isinstance(row, dict) else None
+            if not isinstance(cut_id, str) or cut_id in existing_by_id:
+                raise HTTPException(
+                    status_code=422, detail="packaging-plan.json cut_id 重複或不合法"
+                )
+            existing_by_id[cut_id] = row
+        created_at = str(existing.get("created_at") or created_at)
+
+    selected_at = datetime.now(timezone.utc).isoformat()
+    jobs: list[dict] = []
+    for rank, cut_id in enumerate(selected_ids, start=1):
+        previous = existing_by_id.get(cut_id, {})
+        video_export_ready = (episode_dir / "highlights" / "exports" / f"{cut_id}.mp4").is_file()
+        branches: dict[str, dict] = {}
+        for branch in ("video", "packaging"):
+            prior_branch = previous.get(branch)
+            prior_status = prior_branch.get("status") if isinstance(prior_branch, dict) else None
+            if prior_status not in {"queued", "running", "ready", "failed"}:
+                prior_status = "ready" if branch == "video" and video_export_ready else "queued"
+            branches[branch] = {"status": prior_status}
+        jobs.append(
+            {
+                "cut_id": cut_id,
+                "rank": rank,
+                "title": candidates_by_id[cut_id].get("title") or cut_id,
+                "selected_at": previous.get("selected_at") or selected_at,
+                **branches,
+            }
+        )
+
+    packaging_dirs = _packaging_episode_directories(episode_dir.name)
+    if len(packaging_dirs) > 1:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{episode_dir.name} 對應到多個 Packaging 目錄：{[p.name for p in packaging_dirs]}"
+            ),
+        )
+    if packaging_dirs:
+        try:
+            load_manifest(packaging_dirs[0])
+            if not dry_run:
+                stage_parallel_jobs(packaging_dirs[0], jobs)
+        except (SystemExit, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=f"manifest.json 驗證失敗：{exc}") from exc
+
+    if dry_run:
+        return
+
+    _atomic_json_write(
+        path,
+        {
+            "schema": _PARALLEL_WORK_PLAN_SCHEMA,
+            "episode_id": episode_dir.name,
+            "created_at": created_at,
+            "updated_at": selected_at,
+            "cuts": jobs,
+        },
+    )
+
+
 def _finished_revision_job(
     *,
     manifest: dict[str, Any],
@@ -921,9 +1019,7 @@ def _finished_revision_job(
         "contract": "finished-cut-revision-job-v1",
         "request_id": request_id,
         "status": (
-            "awaiting_stock_assets"
-            if needs_stock_assets and trusted_handoff is None
-            else "queued"
+            "awaiting_stock_assets" if needs_stock_assets and trusted_handoff is None else "queued"
         ),
         "attempt": 0,
         "requested_at": datetime.now(timezone.utc).isoformat(),
@@ -1096,6 +1192,7 @@ async def highlight_review_decide(
     # candidates document cannot be copied into winners.json through that gap.
     _verified_editorial_master(episode_dir)
     highlights_dir = episode_dir / "highlights"
+    _stage_parallel_work_plan(episode_dir, selected_ids, by_id, dry_run=True)
     try:
         # Validate and prepare every input before either durable write. Each write
         # itself is atomic; the audit entry preserves earlier decisions.
@@ -1111,6 +1208,7 @@ async def highlight_review_decide(
             feedback=feedback,
             overridden_veto_ids=sorted(vetoed),
         )
+        _stage_parallel_work_plan(episode_dir, selected_ids, by_id)
     except HighlightDataError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return RedirectResponse(f"/bridge/highlights/{episode_slug}?saved=1", status_code=303)
@@ -1139,8 +1237,7 @@ async def finished_review_board(
             revision.get("manifest_sha256") == manifest["_sha256"]
             or (
                 isinstance(revision.get("revision_job"), dict)
-                and revision["revision_job"].get("output_manifest_sha256")
-                == manifest["_sha256"]
+                and revision["revision_job"].get("output_manifest_sha256") == manifest["_sha256"]
             )
         )
     ]
@@ -1241,18 +1338,12 @@ def _single_form_value(form: Any, key: str, default: str = "") -> str:
     return str(values[0]) if values else default
 
 
-def _find_packaging_episode(episode_id: str, cut_id: str) -> str:
-    """Resolve a finished cut to its validated vault packaging directory.
-
-    The human-facing episode folder (for example ``20260721 鄭國威``) and the
-    portable vault directory slug are intentionally different.  ``packages.json``
-    is the contract joining them; directory-name guessing would silently route a
-    decision to the wrong episode.
-    """
+def _packaging_episode_directories(episode_id: str) -> list[Path]:
+    """Resolve an episode to validated vault packaging directories."""
     root = get_vault_path() / "Attachments" / "packaging"
     if not root.is_dir():
-        raise HTTPException(status_code=409, detail="Packaging 尚未產生，先完成標題與封面")
-    matches: list[str] = []
+        return []
+    matches: list[Path] = []
     for ep_dir in root.iterdir():
         if not ep_dir.is_dir() or not (ep_dir / "packages.json").is_file():
             continue
@@ -1260,22 +1351,32 @@ def _find_packaging_episode(episode_id: str, cut_id: str) -> str:
             packages = parse_packages(ep_dir / "packages.json")
         except (OSError, ValueError, json.JSONDecodeError):
             continue
-        if packages.episode != episode_id:
-            continue
-        cut = next((row for row in packages.cuts if row.cut_id == cut_id), None)
-        if cut is not None and cut.format == "long" and len(cut.packages) == 3:
-            matches.append(ep_dir.name)
+        if packages.episode == episode_id:
+            matches.append(ep_dir)
+    return sorted(matches, key=lambda path: path.name)
+
+
+def _find_packaging_episode(episode_id: str) -> str:
+    """Resolve a finished episode to its validated vault packaging directory.
+
+    The human-facing episode folder (for example ``20260721 鄭國威``) and the
+    portable vault directory slug are intentionally different.  ``packages.json``
+    is the contract joining them; directory-name guessing would silently route a
+    decision to the wrong episode.  The selected Long cut may still be queued:
+    finished approval starts its final render and lands on that pending tab.
+    """
+    matches = _packaging_episode_directories(episode_id)
     if not matches:
         raise HTTPException(
             status_code=409,
-            detail=f"{cut_id} 的 Packaging 尚未完成，先產生 3 組標題＋封面",
+            detail=f"{episode_id} 的 Packaging 目錄尚未建立",
         )
     if len(matches) > 1:
         raise HTTPException(
             status_code=409,
-            detail=f"{episode_id}/{cut_id} 對應到多個 Packaging 目錄：{matches}",
+            detail=f"{episode_id} 對應到多個 Packaging 目錄：{[p.name for p in matches]}",
         )
-    return matches[0]
+    return matches[0].name
 
 
 def _start_publish_prep(episode_dir: Path, cut_id: str) -> None:
@@ -1372,8 +1473,7 @@ async def finished_review_save(
         raise HTTPException(
             status_code=409,
             detail=(
-                "LEGACY MANIFEST V1 僅供讀取與保存修改；先完成 revision 並產生 v2 lineage "
-                "才能核准"
+                "LEGACY MANIFEST V1 僅供讀取與保存修改；先完成 revision 並產生 v2 lineage 才能核准"
             ),
         )
     selected_cut_id = _single_form_value(form, "selected_cut_id").strip()
@@ -1449,7 +1549,7 @@ async def finished_review_save(
             )
         approved_episode_dir = _episode_dir(episode_slug)
         _require_final_qa_clear(approved_episode_dir, selected_cut_id)
-        packaging_episode = _find_packaging_episode(manifest["episode_id"], selected_cut_id)
+        packaging_episode = _find_packaging_episode(manifest["episode_id"])
 
     component_feedback: list[dict[str, Any]] = []
     preference_candidates: list[dict[str, Any]] = []

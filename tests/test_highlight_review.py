@@ -29,6 +29,49 @@ def _candidate(candidate_id: str, *, veto: bool = False) -> dict:
     }
 
 
+def _full_episode_packages(episode_id: str) -> dict:
+    titles = [
+        {
+            "text": f"完整節目標題 {rank}",
+            "archetype_id": "T-A3",
+            "angle_combo": ["完整節目"],
+            "payoff": "完整訪談",
+            "cite": "full.srt#1",
+            "rank": rank,
+            "panel_note": "備選" if rank >= 4 else None,
+        }
+        for rank in range(1, 6)
+    ]
+    packages = [
+        {
+            "title_rank": rank,
+            "thumbnail_png": f"Attachments/packaging/ep-001/pkg-full-{rank}.png",
+            "thumb_archetype_id": "T-V8",
+            "joint_pairing_id": "JP-1",
+            "host_cutout": "Attachments/cutouts/host.png",
+            "guest_cutout": "Attachments/cutouts/guest.png",
+        }
+        for rank in range(1, 4)
+    ]
+    return {
+        "episode": episode_id,
+        "generated_at": "2026-08-27T01:00:00+00:00",
+        "cuts": [
+            {
+                "cut_id": "full",
+                "format": "long",
+                "information_origin": "full_text",
+                "visual_recipe": "podcast",
+                "aspect": "16:9",
+                "titles": titles,
+                "packages": packages,
+                "citations": [],
+                "brand_flags": [],
+            }
+        ],
+    }
+
+
 @pytest.fixture
 def episode_root(tmp_path):
     highlights = tmp_path / "ep-001" / "highlights"
@@ -45,9 +88,7 @@ def episode_root(tmp_path):
                     "content_hash": "1" * 64,
                     "master_media_sha256": "2" * 64,
                     "master_srt_sha256": "3" * 64,
-                    "editorial_master_receipt": (
-                        "editorial-master/v1/EDITORIAL-MASTER.json"
-                    ),
+                    "editorial_master_receipt": ("editorial-master/v1/EDITORIAL-MASTER.json"),
                 },
                 "candidates": candidates,
             },
@@ -62,9 +103,7 @@ def episode_root(tmp_path):
             json.dumps(
                 {
                     "source_sha256": source_sha256,
-                    "scores": [
-                        {"id": f"L{i}", "total": base - i} for i in range(1, 7)
-                    ],
+                    "scores": [{"id": f"L{i}", "total": base - i} for i in range(1, 7)],
                 },
                 ensure_ascii=False,
             ),
@@ -112,6 +151,9 @@ def episode_root(tmp_path):
 @pytest.fixture
 def client(monkeypatch, episode_root):
     monkeypatch.setenv("PODCAST_EPISODES_ROOT", str(episode_root))
+    vault = episode_root / "vault"
+    vault.mkdir(exist_ok=True)
+    monkeypatch.setenv("VAULT_PATH", str(vault))
     monkeypatch.setenv("WEB_PASSWORD", "gate-password")
     monkeypatch.setenv("WEB_SECRET", "gate-secret")
     import thousand_sunny.auth as auth_module
@@ -159,9 +201,9 @@ def _install_verified_master(monkeypatch, episode_root):
     media = episode / "editorial-master" / "v1" / "master.mp4"
     media.parent.mkdir(parents=True, exist_ok=True)
     media.write_bytes(b"master-video")
-    lineage = json.loads(
-        (episode / "highlights" / "candidates.json").read_text(encoding="utf-8")
-    )["editorial_master_lineage"]
+    lineage = json.loads((episode / "highlights" / "candidates.json").read_text(encoding="utf-8"))[
+        "editorial_master_lineage"
+    ]
     selection = SimpleNamespace(media_path=media, identity=lambda: lineage)
     monkeypatch.setattr(highlight_module.EditorialMasterRequest, "open", lambda self: selection)
     return media, lineage
@@ -226,9 +268,7 @@ def test_authenticated_program_media_endpoint(client):
     assert response.headers["content-type"] == "video/mp4"
 
 
-def test_program_media_serves_verified_editorial_master_not_raw(
-    client, episode_root, monkeypatch
-):
+def test_program_media_serves_verified_editorial_master_not_raw(client, episode_root, monkeypatch):
     media, _ = _install_verified_master(monkeypatch, episode_root)
 
     response = client.get("/bridge/highlights/ep-001/media", cookies=_auth_cookie())
@@ -238,9 +278,7 @@ def test_program_media_serves_verified_editorial_master_not_raw(
     assert response.content != (episode_root / "ep-001" / "Default_program.mp4").read_bytes()
 
 
-def test_program_media_does_not_fallback_to_raw_when_master_verification_fails(
-    client, monkeypatch
-):
+def test_program_media_does_not_fallback_to_raw_when_master_verification_fails(client, monkeypatch):
     import thousand_sunny.routers.highlight_review as highlight_module
 
     def fail_open(_request):
@@ -294,15 +332,11 @@ def test_decide_rejects_stale_master_lineage_before_writing(client, episode_root
     assert not (highlights / "review_feedback.json").exists()
 
 
-def test_decide_rechecks_master_immediately_before_durable_write(
-    client, episode_root, monkeypatch
-):
+def test_decide_rechecks_master_immediately_before_durable_write(client, episode_root, monkeypatch):
     import thousand_sunny.routers.highlight_review as highlight_module
 
     candidates_path = episode_root / "ep-001" / "highlights" / "candidates.json"
-    lineage = json.loads(candidates_path.read_text(encoding="utf-8"))[
-        "editorial_master_lineage"
-    ]
+    lineage = json.loads(candidates_path.read_text(encoding="utf-8"))["editorial_master_lineage"]
     calls = 0
 
     def changing_master(_request):
@@ -370,6 +404,12 @@ def test_writes_compatible_winners_and_append_only_feedback(client, episode_root
     assert [winner["id"] for winner in winners["winners"]] == ["L1", "L2", "L3"]
     assert [winner["rank"] for winner in winners["winners"]] == [1, 2, 3]
     assert winners["picked_by"] == "修修 (Bridge highlight review gate)"
+    work_plan = json.loads((highlights / "packaging-plan.json").read_text(encoding="utf-8"))
+    assert work_plan["schema"] == "nakama.highlight_parallel_work_plan.v1"
+    assert [row["cut_id"] for row in work_plan["cuts"]] == ["L1", "L2", "L3"]
+    assert [row["rank"] for row in work_plan["cuts"]] == [1, 2, 3]
+    assert {row["video"]["status"] for row in work_plan["cuts"]} == {"queued"}
+    assert {row["packaging"]["status"] for row in work_plan["cuts"]} == {"queued"}
     audit = json.loads((highlights / "review_feedback.json").read_text(encoding="utf-8"))
     assert audit["decisions"][0]["feedback"]["L1"] == "成片開頭最有力"
     assert audit["decisions"][0]["override_veto_ids"] == ["L3"]
@@ -382,6 +422,83 @@ def test_writes_compatible_winners_and_append_only_feedback(client, episode_root
     assert response.status_code == 303
     audit = json.loads((highlights / "review_feedback.json").read_text(encoding="utf-8"))
     assert len(audit["decisions"]) == 2
+
+
+def test_shortlist_decision_mirrors_parallel_jobs_to_resolved_packaging_manifest(
+    client, episode_root
+):
+    packaging_dir = episode_root / "vault" / "Attachments" / "packaging" / "ep-001"
+    packaging_dir.mkdir(parents=True)
+    (packaging_dir / "packages.json").write_text(
+        json.dumps(_full_episode_packages("ep-001"), ensure_ascii=False), encoding="utf-8"
+    )
+    (packaging_dir / "manifest.json").write_text(
+        json.dumps({"cuts": {"full": {"emitted": "2026-08-27T01:00:00+00:00"}}}),
+        encoding="utf-8",
+    )
+
+    response = client.post(
+        "/bridge/highlights/ep-001/decide",
+        data={"candidate_id": ["L1", "L2", "L4"]},
+        cookies=_auth_cookie(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    manifest = json.loads((packaging_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert "emitted" in manifest["cuts"]["full"]
+    assert [manifest["cuts"][cut_id]["rank"] for cut_id in ("L1", "L2", "L4")] == [
+        1,
+        2,
+        3,
+    ]
+    assert manifest["cuts"]["L1"]["video"]["status"] == "queued"
+    assert manifest["cuts"]["L1"]["packaging"]["status"] == "queued"
+
+
+def test_parallel_plan_marks_existing_video_export_ready_and_other_cuts_queued(
+    client, episode_root
+):
+    exports = episode_root / "ep-001" / "highlights" / "exports"
+    exports.mkdir()
+    (exports / "L1.mp4").write_bytes(b"finished-long-highlight")
+
+    response = client.post(
+        "/bridge/highlights/ep-001/decide",
+        data={"candidate_id": ["L1", "L2", "L4"]},
+        cookies=_auth_cookie(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    plan = json.loads(
+        (episode_root / "ep-001" / "highlights" / "packaging-plan.json").read_text(encoding="utf-8")
+    )
+    by_cut = {row["cut_id"]: row for row in plan["cuts"]}
+    assert by_cut["L1"]["video"]["status"] == "ready"
+    assert by_cut["L2"]["video"]["status"] == "queued"
+    assert by_cut["L4"]["video"]["status"] == "queued"
+    assert {row["packaging"]["status"] for row in plan["cuts"]} == {"queued"}
+
+
+def test_shortlist_decision_fails_closed_on_broken_packaging_manifest(client, episode_root):
+    packaging_dir = episode_root / "vault" / "Attachments" / "packaging" / "ep-001"
+    packaging_dir.mkdir(parents=True)
+    (packaging_dir / "packages.json").write_text(
+        json.dumps(_full_episode_packages("ep-001"), ensure_ascii=False), encoding="utf-8"
+    )
+    (packaging_dir / "manifest.json").write_text("{broken", encoding="utf-8")
+
+    response = client.post(
+        "/bridge/highlights/ep-001/decide",
+        data={"candidate_id": ["L1", "L2", "L4"]},
+        cookies=_auth_cookie(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 422
+    assert "manifest.json" in response.text
+    assert not (episode_root / "ep-001" / "highlights" / "winners.json").exists()
 
 
 def test_explicit_selection_order_becomes_winner_rank(client, episode_root):
