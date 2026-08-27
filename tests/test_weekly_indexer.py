@@ -523,6 +523,35 @@ def test_daily_items_sorted_by_time_with_range(tmp_path, monkeypatch):
     assert work[2]["time_range"] == ""  # all-day → no 時段 prefix
 
 
+def test_daily_card_header_carries_actual_and_planned(tmp_path, monkeypatch):
+    """修修 (2026-08-25): the day-card header shows 實際/規劃 (like task rows) — the
+    planned count alone hid the gap between 排程 and 完成."""
+    monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
+    _task(
+        tmp_path,
+        "寫稿.md",
+        {
+            "title": "寫稿",
+            "category": "work",
+            "預估🍅": 3,
+            "scheduled": "2026-06-01",
+            "status": "to-do",
+            "tags": ["task"],
+            "timeEntries": [
+                {  # one 25-min block done on 06-01 → actual 1
+                    "startTime": "2026-06-01T09:00:00+08:00",
+                    "endTime": "2026-06-01T09:25:00+08:00",
+                    "mode": "pomodoro",
+                }
+            ],
+        },
+    )
+    v = WeeklyIndexer(tmp_path).view(week_for_date(date(2026, 6, 1)))
+    mon = next(d for d in v.days if d["date"] == "2026-06-01")
+    assert mon["work_pomodoros"] == 3  # planned (scheduled fallback = estimate)
+    assert mon["work_actual"] == 1  # logged
+
+
 def test_est_pomodoros_falls_back_to_plan_sum(tmp_path):
     """A calendar-linked task created without 預估🍅 carries its estimate only on
     plan[] — find_task should sum those so 預估 shows a real number, not 0/"-"

@@ -990,6 +990,9 @@ class WeeklyIndexer:
             d = wk.start + timedelta(days=i)
             on = [t for t in tasks if t.is_on(d)]
             work_pom = sum(t.pomodoros_on(d) for t in on if t.is_work)
+            # 修修 (2026-08-25): the card header shows 實際/規劃 (like the task rows),
+            # not the planned count alone — the two routinely diverge.
+            work_actual = sum(t.actual_pomodoros_on(d) for t in on if t.is_work)
             # weekend never reaches here (Mon-Fri only), so no D9 reason marker needed
             # v3-I follow-up (修修): the daily card has 3 columns — 工作(½) / 身心健康 / 其他.
             # 其他 folds 自我進修(growth) into 雜事(misc): both bucket under "misc" and the
@@ -1056,6 +1059,7 @@ class WeeklyIndexer:
                     "md": f"{d.month}/{d.day}",
                     "is_today": is_today,
                     "work_pomodoros": work_pom,
+                    "work_actual": work_actual,
                     "task_count": len(on),
                     "categories": categories,
                 }

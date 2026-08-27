@@ -120,6 +120,9 @@ body.sho .pj-timer-btn:focus-visible { outline: none; box-shadow: var(--sho-focu
 /* ♪ one-time local-folder picker — ghost like the secondary actions, smaller */
 body.sho .pj-music-setup { font-size: 11px; padding: 4px 10px; }
 body.sho .pj-music-setup[hidden] { display: none; }
+/* 音樂音量 — a slim accent range beside the title, visible while a track plays */
+body.sho .pj-music-vol { width: 72px; accent-color: var(--sho-accent); cursor: pointer; }
+body.sho .pj-music-vol[hidden] { display: none; }
 
 /* a secondary (ghost) timer action — e.g. the Task page's 完成·記一段 / 取消
    (body.sho scope for the same reset-specificity reason as the timer button) */

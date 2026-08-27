@@ -59,6 +59,46 @@ class TestRandom:
         assert client.get("/bridge/focus-music/random").json() == {"available": False}
 
 
+class TestKinds:
+    """修修 2026-08-25: focus / uplifting 分類子資料夾（prefix 比對，如「focus music」）。"""
+
+    def _lib(self, tmp_path, monkeypatch):
+        lib = tmp_path / "lib"
+        (lib / "focus music").mkdir(parents=True)
+        (lib / "uplifting music").mkdir()
+        (lib / "focus music" / "calm-track.mp3").write_bytes(b"calm")
+        (lib / "uplifting music" / "hype-track.mp3").write_bytes(b"hype")
+        monkeypatch.setenv("FOCUS_MUSIC_DIR", str(lib))
+        return lib
+
+    def test_kind_pools_resolve_to_subdirs(self, client, monkeypatch, tmp_path):
+        self._lib(tmp_path, monkeypatch)
+        up = client.get("/bridge/focus-music/random?kind=uplifting").json()
+        assert up["available"] is True
+        assert "hype-track" in up["url"] and "kind=uplifting" in up["url"]
+        r = client.get(up["url"])
+        assert r.status_code == 200 and r.content == b"hype"
+        fo = client.get("/bridge/focus-music/random?kind=focus").json()
+        assert "calm-track" in fo["url"]
+
+    def test_kind_pools_are_isolated(self, client, monkeypatch, tmp_path):
+        self._lib(tmp_path, monkeypatch)
+        # a focus track must not be reachable through the uplifting pool
+        assert (
+            client.get("/bridge/focus-music/file/calm-track.mp3?kind=uplifting").status_code == 404
+        )
+
+    def test_flat_library_has_no_uplifting_pool(self, client):
+        # the base fixture is a flat dir — focus keeps working, uplifting degrades
+        assert client.get("/bridge/focus-music/random?kind=uplifting").json() == {
+            "available": False
+        }
+        assert client.get("/bridge/focus-music/random?kind=focus").json()["available"] is True
+
+    def test_bogus_kind_degrades(self, client):
+        assert client.get("/bridge/focus-music/random?kind=..").json() == {"available": False}
+
+
 class TestFile:
     def test_serves_audio_with_media_type(self, client):
         url = client.get("/bridge/focus-music/random").json()["url"]
