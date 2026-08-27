@@ -68,6 +68,140 @@ def test_render_request_preserves_author_book_layer(tmp_path):
     }
 
 
+def test_render_request_builds_lossless_n2_reaction_spec(tmp_path):
+    vault = tmp_path / "vault"
+    cut_dir = vault / "Attachments" / "cutouts" / "podcast" / "episode"
+    request = {
+        "composition": "thumbnail_reaction",
+        "center_visual_asset": "Attachments/packaging/episode/center-r2.png",
+        "center_geometry": {
+            "width_pct": 56.5,
+            "height_px": 430,
+            "x_pct": 52,
+            "y_pct": 47.5,
+        },
+    }
+    host = {"height_pct": 140, "x_pct": -26.6, "y_pct": -34.5}
+    guest = {"height_pct": 113.8, "x_pct": -25.4, "y_pct": -1.3}
+
+    spec = render_request._build_reaction_spec(
+        request,
+        vault=vault,
+        cut_dir=cut_dir,
+        host_name="host.png",
+        guest_name="guest.png",
+        host=host,
+        guest=guest,
+    )
+
+    assert spec["images"]["prop_image_data_url"] == str(
+        vault / "Attachments/packaging/episode/center-r2.png"
+    )
+    assert spec["variables"]["prop_width_pct"] == 56.5
+    assert spec["variables"]["prop_height_px"] == 430.0
+    assert spec["variables"]["prop_center_x_pct"] == 52.0
+    assert spec["variables"]["prop_center_y_pct"] == 47.5
+    assert spec["variables"]["frame_style"] == "skew"
+    assert spec["variables"]["host_height_pct"] == 140
+
+
+def test_render_request_persists_n2_receipt_and_recipe(monkeypatch, tmp_path):
+    vault = tmp_path / "vault"
+    ep_vault = vault / "Attachments" / "packaging" / "episode"
+    cut_dir = vault / "Attachments" / "cutouts" / "podcast" / "episode"
+    working = tmp_path / "episode" / "packaging"
+    for path in (ep_vault, cut_dir, working):
+        path.mkdir(parents=True)
+    packages = {
+        "episode": "Episode",
+        "cuts": [
+            {
+                "cut_id": "value-L01",
+                "titles": [{"rank": 2, "text": "title"}],
+                "packages": [
+                    {"title_rank": rank, "thumbnail_png": f"old-{rank}.png"}
+                    for rank in (1, 2, 3)
+                ],
+            }
+        ],
+    }
+    for path in (ep_vault / "packages.json", working / "packages.json"):
+        path.write_text(json.dumps(packages), encoding="utf-8")
+    center = ep_vault / "center-value-L01-r2.png"
+    center.write_bytes(b"center")
+    sidecar = tmp_path / "sidecar.json"
+    sidecar.write_text("{}", encoding="utf-8")
+
+    args = SimpleNamespace(
+        packaging_dir=working,
+        cut_id="value-L01",
+        episode_slug="episode",
+        out_suffix="",
+    )
+    request = {
+        "composition": "thumbnail_reaction",
+        "title_rank": 2,
+        "host_cutout": "Attachments/cutouts/podcast/episode/host.png",
+        "guest_cutout": "Attachments/cutouts/podcast/episode/guest.png",
+        "big_text": [],
+        "center_visual_asset": "Attachments/packaging/episode/center-value-L01-r2.png",
+        "center_geometry": {"width_pct": 53, "height_px": 455, "x_pct": 50, "y_pct": 50},
+        "requested_at": "2026-08-27T00:00:00+00:00",
+        "geometry_manual": True,
+    }
+
+    def fake_run(command):
+        if "render_still.py" in " ".join(command):
+            assert "thumbnail_reaction" in command
+            (working / "pkg-value-L01-2.png").write_bytes(b"rendered")
+        return SimpleNamespace(returncode=0, stderr="", stdout="QA PASS\n")
+
+    def fake_plan(**kwargs):
+        spec = json.loads(Path(kwargs["spec"]["render_spec"]).read_text(encoding="utf-8"))
+        assert spec["composition"] == "thumbnail_reaction"
+        return SimpleNamespace(
+            payload={
+                "thumbnail_png": "Attachments/packaging/episode/pkg-value-L01-2.png",
+                "center_visual_asset": (
+                    "Attachments/packaging/episode/center-value-L01-r2.png"
+                ),
+            },
+            center_name=center.name,
+            center_source=center,
+            sidecar_name="pkg-value-L01-2.png.composition.json",
+            sidecar_source=sidecar,
+            receipt_name="value-L01-r2.json",
+        )
+
+    monkeypatch.setattr(render_request, "_run", fake_run)
+    monkeypatch.setattr(render_request, "build_receipt_plan", fake_plan)
+
+    result = render_request._render_reaction_request(
+        args=args,
+        vault=vault,
+        ep_vault=ep_vault,
+        cut_dir=cut_dir,
+        req=request,
+        package_rank=2,
+        host_name="host.png",
+        guest_name="guest.png",
+        host={"height_pct": 140, "x_pct": -20, "y_pct": -10},
+        guest={"height_pct": 120, "x_pct": -15, "y_pct": 0},
+        entry=None,
+        approval={"approvals": []},
+        approval_path=ep_vault / "approval.json",
+    )
+
+    assert result == 0
+    assert (ep_vault / "composition_receipts" / "value-L01-r2.json").is_file()
+    assert (working / "composition_receipts" / "value-L01-r2.json").is_file()
+    for path in (ep_vault / "packages.json", working / "packages.json"):
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        recipe = saved["cuts"][0]["packages"][1]["render_recipe"]
+        assert recipe["composition"] == "thumbnail_reaction"
+        assert recipe["center_geometry"]["height_px"] == 455
+
+
 def test_render_request_updates_only_selected_package_recipe():
     data = {
         "cuts": [

@@ -1075,6 +1075,94 @@ def test_board_renders_layout_stage(client, vault_with_cutouts):
     assert "140.0" in board.text  # 欄位帶著存過的值回來
 
 
+def test_board_hydrates_each_legacy_n2_package_from_its_own_receipt(
+    client, vault_with_cutouts
+):
+    """舊 Long package 沒 recipe 時，編輯器仍要從該 rank receipt 還原中央圖。"""
+    board = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert board.status_code == 200
+    assert 'class="st-center st-adjustable"' in board.text
+    assert 'class="st-center-handle st-adjustable"' in board.text
+    assert 'aria-label="拖曳橘框"' in board.text
+    assert 'data-role="center"' in board.text
+    for rank in (1, 2, 3):
+        assert (
+            f'"center_visual_asset": '
+            f'"Attachments/packaging/20260723-xieboran/center-punch-L1-r{rank}.png"'
+        ) in board.text
+        assert f"/center-visual/punch-L1/{rank}" in board.text
+        assert (
+            client.get(
+                f"/bridge/packaging/20260723-xieboran/center-visual/punch-L1/{rank}"
+            ).content
+            == b"center visual"
+        )
+
+
+def test_compose_saves_n2_center_asset_and_manual_geometry(client, vault_with_cutouts):
+    response = _compose(
+        client,
+        package_rank="2",
+        composition="thumbnail_reaction",
+        big_text_1="",
+        big_text_2="",
+        highlight_text="",
+        center_visual_asset=(
+            "Attachments/packaging/20260723-xieboran/center-punch-L1-r2.png"
+        ),
+        center_width_pct="56.5",
+        center_height_px="430",
+        center_x_pct="52.0",
+        center_y_pct="47.5",
+        geometry_mode="manual",
+        **_GEO,
+    )
+
+    assert response.status_code == 303
+    path = (
+        vault_with_cutouts / "Attachments" / "packaging" / "20260723-xieboran" / "packages.json"
+    )
+    packages = json.loads(path.read_text(encoding="utf-8"))["cuts"][0]["packages"]
+    assert packages[0].get("render_recipe") is None
+    assert packages[2].get("render_recipe") is None
+    recipe = packages[1]["render_recipe"]
+    assert recipe["composition"] == "thumbnail_reaction"
+    assert recipe["big_text"] == []
+    assert recipe["center_visual_asset"].endswith("center-punch-L1-r2.png")
+    assert recipe["center_geometry"] == {
+        "width_pct": 56.5,
+        "height_px": 430.0,
+        "x_pct": 52.0,
+        "y_pct": 47.5,
+    }
+
+
+def test_compose_rejects_center_visual_from_another_package_rank(
+    client, vault_with_cutouts
+):
+    response = _compose(
+        client,
+        package_rank="2",
+        composition="thumbnail_reaction",
+        big_text_1="",
+        big_text_2="",
+        highlight_text="",
+        center_visual_asset=(
+            "Attachments/packaging/20260723-xieboran/center-punch-L1-r1.png"
+        ),
+        center_width_pct="53",
+        center_height_px="455",
+        center_x_pct="50",
+        center_y_pct="50",
+        geometry_mode="manual",
+        **_GEO,
+    )
+
+    assert response.status_code == 409
+    assert "package" in response.text.lower()
+
+
 def test_compose_rejects_highlight_not_in_big_text(client, vault_with_cutouts):
     r = _compose(client, highlight_text="不存在")
     assert r.status_code == 400
@@ -1137,6 +1225,7 @@ def test_cutout_preview_urls_are_content_versioned(client, vault_with_all_cutout
     assert board.status_code == 200
     assert "guest_v6_laughing.png?v=" + expected in board.text
     assert 'data-preview-url="/bridge/packaging/20260723-xieboran/cutout/' in board.text
+    assert "laughing · guest_v6_laughing.png" in board.text
 
 
 def test_package_three_recipe_is_loaded_and_switchable(client, vault_with_all_cutouts):

@@ -37,6 +37,9 @@ for _s in (sys.stdout, sys.stderr):
 _SKILL_DIR = Path(__file__).resolve().parent
 _REPO = _SKILL_DIR.parents[3]
 sys.path.insert(0, str(_REPO))
+sys.path.insert(0, str(_SKILL_DIR))
+
+from composition_receipt import build_receipt_plan  # noqa: E402
 
 from shared.config import get_vault_path  # noqa: E402
 
@@ -113,6 +116,50 @@ def _book_cover_layer(req: dict, vault: Path) -> tuple[dict, dict]:
     )
 
 
+def _build_reaction_spec(
+    req: dict,
+    *,
+    vault: Path,
+    cut_dir: Path,
+    host_name: str,
+    guest_name: str,
+    host: dict,
+    guest: dict,
+) -> dict:
+    """Build the lossless N2 spec carried by one package recipe."""
+    center = req.get("center_geometry") or {}
+    return {
+        "composition": "thumbnail_reaction",
+        "variables": {
+            "prop_position": "center",
+            "prop_width_pct": float(center["width_pct"]),
+            "prop_height_px": float(center["height_px"]),
+            "prop_center_x_pct": float(center["x_pct"]),
+            "prop_center_y_pct": float(center["y_pct"]),
+            "frame_style": "skew",
+            "caption": "",
+            "host_height_pct": host["height_pct"],
+            "host_x_pct": host["x_pct"],
+            "host_y_pct": host["y_pct"],
+            "guest_height_pct": guest["height_pct"],
+            "guest_x_pct": guest["x_pct"],
+            "guest_y_pct": guest["y_pct"],
+            "person_glow_color": "#F37425",
+            "inner_edge_fade_pct": 0,
+            "logo_height_px": 92,
+            "logo_position": "bottom-left",
+            "palette": {"accent": "#F37425"},
+        },
+        "images": {
+            "prop_image_data_url": str(vault / req["center_visual_asset"]),
+            "host_cutout_data_url": str(cut_dir / host_name),
+            "guest_cutout_data_url": str(cut_dir / guest_name),
+            "bg_image_data_url": r"E:/data/podcast thumbnail background.png",
+            "logo_data_url": r"E:/data/podcast thumbnail props/channel_logo_face_white.png",
+        },
+    }
+
+
 def _update_selected_package(data: dict, cut_id: str, package_rank: int, req: dict) -> None:
     """Update exactly one package; fail loud instead of drifting another rank."""
     for cut in data.get("cuts", []):
@@ -180,6 +227,140 @@ def _solve(lm: dict, height_pct: float, eye_target: float, head_x: float, role: 
         "crown": round(screen_top + lm["head_top"] * scale, 1),
         "scale": scale,
     }
+
+
+def _render_reaction_request(
+    *,
+    args: argparse.Namespace,
+    vault: Path,
+    ep_vault: Path,
+    cut_dir: Path,
+    req: dict,
+    package_rank: int,
+    host_name: str,
+    guest_name: str,
+    host: dict,
+    guest: dict,
+    entry: dict | None,
+    approval: dict,
+    approval_path: Path,
+) -> int:
+    """Render and persist one N2 recipe without falling through the N1 text path."""
+    work_dir = args.packaging_dir / "_work"
+    work_dir.mkdir(exist_ok=True)
+    spec = _build_reaction_spec(
+        req,
+        vault=vault,
+        cut_dir=cut_dir,
+        host_name=host_name,
+        guest_name=guest_name,
+        host=host,
+        guest=guest,
+    )
+    spec_path = work_dir / f"spec_req_{args.cut_id}_reaction.json"
+    spec_path.write_text(json.dumps(spec, ensure_ascii=False, indent=2), encoding="utf-8")
+    out = args.packaging_dir / f"pkg-{args.cut_id}-{package_rank}{args.out_suffix}.png"
+    result = _run(
+        [
+            sys.executable,
+            str(_SKILL_DIR / "render_still.py"),
+            "--composition",
+            "thumbnail_reaction",
+            "--spec",
+            str(spec_path),
+            "--out",
+            str(out),
+        ]
+    )
+    if result.returncode != 0:
+        raise SystemExit(f"render 失敗：{result.stderr[-500:]}")
+
+    qa = _run(
+        [
+            sys.executable,
+            str(_SKILL_DIR / "face_measure.py"),
+            "render",
+            "--canvas-h",
+            "720",
+            "--png",
+            str(out),
+        ]
+    )
+    print(qa.stdout.strip().splitlines()[-1] if qa.stdout else "(face_measure 無輸出)")
+    if args.out_suffix:
+        print(f"→ {out}（比較板，未回填）")
+        return 0
+
+    receipt_spec = {
+        "title_rank": package_rank,
+        "thumbnail": str(out),
+        "render_spec": str(spec_path),
+        "host_cutout": req["host_cutout"],
+        "guest_cutout": req["guest_cutout"],
+    }
+    plan = build_receipt_plan(
+        spec=receipt_spec,
+        episode=json.loads((ep_vault / "packages.json").read_text(encoding="utf-8"))[
+            "episode"
+        ],
+        cut_id=args.cut_id,
+        episode_slug=args.episode_slug,
+        vault_root=vault,
+    )
+    ep_vault.mkdir(parents=True, exist_ok=True)
+    (ep_vault / out.name).write_bytes(out.read_bytes())
+    (ep_vault / plan.center_name).write_bytes(plan.center_source.read_bytes())
+    (ep_vault / plan.sidecar_name).write_bytes(plan.sidecar_source.read_bytes())
+    vault_receipts = ep_vault / "composition_receipts"
+    vault_receipts.mkdir(exist_ok=True)
+    (vault_receipts / plan.receipt_name).write_text(
+        json.dumps(plan.payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    working_receipts = args.packaging_dir / "composition_receipts"
+    working_receipts.mkdir(exist_ok=True)
+    (working_receipts / plan.receipt_name).write_text(
+        json.dumps(plan.payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+    req["rendered_png"] = plan.payload["thumbnail_png"]
+    req["geometry"] = {
+        "host_height_pct": round(float(host["height_pct"]), 2),
+        "host_x_pct": round(float(host["x_pct"]), 2),
+        "host_y_pct": round(float(host["y_pct"]), 2),
+        "guest_height_pct": round(float(guest["height_pct"]), 2),
+        "guest_x_pct": round(float(guest["x_pct"]), 2),
+        "guest_y_pct": round(float(guest["y_pct"]), 2),
+    }
+    if _matches_legacy_approval_request(entry, req):
+        entry["render_request"] = req
+        approval_path.write_text(
+            json.dumps(approval, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+    _write_selected_package(
+        [args.packaging_dir / "packages.json", ep_vault / "packages.json"],
+        args.cut_id,
+        package_rank,
+        req,
+    )
+
+    final_dir = args.packaging_dir.parent / "final"
+    final_dir.mkdir(exist_ok=True)
+    (final_dir / f"cover-{args.cut_id}.png").write_bytes(out.read_bytes())
+    packages = json.loads((ep_vault / "packages.json").read_text(encoding="utf-8"))
+    title_text = next(
+        (
+            title["text"]
+            for cut in packages["cuts"]
+            if cut["cut_id"] == args.cut_id
+            for title in cut["titles"]
+            if title["rank"] == req["title_rank"]
+        ),
+        "",
+    )
+    (final_dir / f"title-{args.cut_id}.txt").write_text(title_text + "\n", encoding="utf-8")
+    print(f"→ {ep_vault / out.name}")
+    print(f"→ {final_dir / f'cover-{args.cut_id}.png'}（定稿夾）")
+    return 0
 
 
 def main() -> int:
@@ -300,6 +481,23 @@ def main() -> int:
             f"headroom：host crown {host['crown']:.0f}px（{host['crown'] / CANVAS_H:.1%}）"
             f" guest crown {guest['crown']:.0f}px（{guest['crown'] / CANVAS_H:.1%}）"
             f" · guest_face_boost={args.guest_face_boost}"
+        )
+
+    if req.get("composition", "thumbnail_full") == "thumbnail_reaction":
+        return _render_reaction_request(
+            args=args,
+            vault=vault,
+            ep_vault=ep_vault,
+            cut_dir=cut_dir,
+            req=req,
+            package_rank=package_rank,
+            host_name=host_name,
+            guest_name=guest_name,
+            host=host,
+            guest=guest,
+            entry=entry,
+            approval=approval,
+            approval_path=approval_path,
         )
 
     # credit 來源優先序：CLI → 配方（gate 上可改）→ 舊 spec 撈一次當遷移。

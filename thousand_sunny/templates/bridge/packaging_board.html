@@ -206,18 +206,23 @@
       <details class="pkg-compose" id="compose-{{ cut.cut_id }}"
                {% if composed_cut == cut.cut_id %}open{% endif %}>
         <summary class="sho-mono-up">組封面：選標題 ＋ 打大字 ＋ 挑臉（存完我再 render 一次）</summary>
-        {% set editor = namespace(pkg=none) %}
+        {% set editor = namespace(pkg=none, recipe=none) %}
         {% for item in view.packages %}
-          {% if editor.pkg is none and editor_package_rank and item.pkg.title_rank == editor_package_rank %}{% set editor.pkg = item.pkg %}{% endif %}
+          {% if editor.pkg is none and editor_package_rank and item.pkg.title_rank == editor_package_rank %}{% set editor.pkg = item.pkg %}{% set editor.recipe = item.editor_recipe %}{% endif %}
         {% endfor %}
         {% for item in view.packages %}
-          {% if editor.pkg is none and item.pkg.render_recipe %}{% set editor.pkg = item.pkg %}{% endif %}
+          {% if editor.pkg is none and item.pkg.render_recipe %}{% set editor.pkg = item.pkg %}{% set editor.recipe = item.editor_recipe %}{% endif %}
         {% endfor %}
-        {% if editor.pkg is none and view.packages %}{% set editor.pkg = view.packages[0].pkg %}{% endif %}
-        {% set req = editor.pkg.render_recipe if editor.pkg else none %}
+        {% for item in view.packages %}
+          {% if editor.pkg is none and item.editor_recipe %}{% set editor.pkg = item.pkg %}{% set editor.recipe = item.editor_recipe %}{% endif %}
+        {% endfor %}
+        {% if editor.pkg is none and view.packages %}{% set editor.pkg = view.packages[0].pkg %}{% set editor.recipe = view.packages[0].editor_recipe %}{% endif %}
+        {% set req = editor.recipe %}
         <form method="post" action="/bridge/packaging/{{ episode_slug }}/compose" class="pkg-compose-form">
           <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
           <input type="hidden" name="package_rank" value="{{ editor.pkg.title_rank if editor.pkg else 1 }}">
+          <input type="hidden" name="composition" value="{{ req.composition if req else 'thumbnail_full' }}">
+          <input type="hidden" name="center_visual_asset" value="{{ req.center_visual_asset if req and req.center_visual_asset else '' }}">
 
           <fieldset class="pkg-recipe-picker">
             <legend class="sho-mono-up">編輯哪一個 package</legend>
@@ -331,7 +336,7 @@
                      {% if current == c.vault_path %}checked{% elif not current and loop.first %}checked{% endif %}>
               <img src="/bridge/packaging/{{ episode_slug }}/cutout/{{ c.file }}?v={{ c.version }}"
                    alt="{{ label }} {{ c.emotion }}" loading="lazy">
-              <div class="sho-mono pkg-card-meta">{{ c.emotion or c.file }}</div>
+              <div class="sho-mono pkg-card-meta">{% if c.emotion %}{{ c.emotion }} · {% endif %}{{ c.file }}</div>
             </label>
             {% else %}
             <p class="sho-mono pkg-brief-missing">（這集還沒有 {{ label }} 的 cutout — 桌機端跑 thumbnail-brainstorm 產生）</p>
@@ -356,9 +361,21 @@
                 <img class="st-bg" src="/bridge/thumbnail/still-asset/bg" alt="">
                 <img class="st-book" alt="書封背景"
                      {% if req and req.book_cover %}src="/bridge/packaging/{{ episode_slug }}/recipe-asset/{{ req.book_cover.split('/')[-1] }}"{% endif %}>
-                <img class="st-person st-host" data-role="host" alt="修修" draggable="false"
+                <div class="st-center st-adjustable" data-role="center"
+                     {% if not req or req.composition != 'thumbnail_reaction' %}hidden{% endif %}>
+                  <div class="st-center-frame">
+                    <img class="st-center-image" alt="中央主圖" draggable="false"
+                         {% if req and req.composition == 'thumbnail_reaction' %}src="/bridge/packaging/{{ episode_slug }}/center-visual/{{ cut.cut_id }}/{{ editor.pkg.title_rank }}"{% endif %}>
+                  </div>
+                </div>
+                <button type="button" class="st-center-handle st-adjustable" data-role="center"
+                        aria-label="拖曳橘框"
+                        {% if not req or req.composition != 'thumbnail_reaction' %}hidden{% endif %}>
+                  拖曳橘框
+                </button>
+                <img class="st-person st-host st-adjustable" data-role="host" alt="修修" draggable="false"
                      src="/bridge/packaging/{{ episode_slug }}/cutout/{{ (req.host_cutout if req else cutouts.host[0].vault_path if cutouts.host else '').split('/')[-1] }}">
-                <img class="st-person st-guest" data-role="guest" alt="來賓" draggable="false"
+                <img class="st-person st-guest st-adjustable" data-role="guest" alt="來賓" draggable="false"
                      src="/bridge/packaging/{{ episode_slug }}/cutout/{{ (req.guest_cutout if req else cutouts.guest[0].vault_path if cutouts.guest else '').split('/')[-1] }}">
                 <div class="st-text">
                   <div class="st-title"></div>
@@ -389,8 +406,24 @@
                 {% endfor %}
                 {% endfor %}
               </div>
+              {% set cg = req.center_geometry if req and req.center_geometry else none %}
+              <div class="pkg-stage-nums pkg-stage-center-nums">
+                {% for key, label, value in [
+                  ('width', '圖卡寬度', cg.width_pct if cg else ''),
+                  ('height', '圖卡高度', cg.height_px if cg else ''),
+                  ('x', '圖卡左右', cg.x_pct if cg else ''),
+                  ('y', '圖卡上下', cg.y_pct if cg else '')
+                ] %}
+                <label class="field">
+                  <span class="field-label">{{ label }}</span>
+                  <input class="sho-input" type="number" step="any" data-center-geo="{{ key }}"
+                         name="center_{{ key }}_{{ 'px' if key == 'height' else 'pct' }}"
+                         value="{{ value }}">
+                </label>
+                {% endfor %}
+              </div>
               <p class="sho-mono pkg-stage-hint">
-                預覽用 text_center 50% 畫；實際出圖會再依左右遮蔽微調置中，字塊位置可能差 1–2%。
+                N2 橘框與中央圖會照這四個圖卡數字重畫；N1 大字仍會在出圖時依左右遮蔽微調 1–2%。
               </p>
             </div>
           </fieldset>
@@ -703,6 +736,29 @@
     filter: brightness(var(--book-brightness, 0.52)) saturate(0.78);
   }
   .st-book:not([src]) { display: none; }
+  .st-center {
+    position: absolute; left: var(--center-x, 50%); top: var(--center-y, 50%);
+    width: var(--center-w, 53%); height: var(--center-h, 455px); z-index: 4;
+    transform: translate(-50%, -50%); cursor: grab;
+  }
+  .st-center:active { cursor: grabbing; }
+  .st-center-handle {
+    position: absolute; left: var(--center-x, 50%); top: var(--center-y, 50%);
+    z-index: 6; transform: translate(-50%, -50%); cursor: grab;
+    border: 1px solid var(--sho-accent); border-radius: var(--sho-r-1);
+    padding: var(--sho-s-1) var(--sho-s-2); background: var(--sho-bg);
+    color: var(--sho-text); font: inherit; font-size: 12px;
+  }
+  .st-center-handle:active { cursor: grabbing; }
+  .st-center-handle:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+  .st-center-frame { position: absolute; inset: 0; background: var(--sho-accent, #F37425); }
+  .st-center-frame, .st-center-image {
+    clip-path: polygon(0% 0%, 100% 3.5%, 100% 100%, 0% 98.8%);
+  }
+  .st-center-image {
+    position: absolute; inset: 12px; width: calc(100% - 24px); height: calc(100% - 24px);
+    object-fit: cover; background: #000;
+  }
   .st-person {
     position: absolute; bottom: 0; z-index: 5; object-fit: contain; cursor: grab;
     filter: drop-shadow(0 0 36px var(--glow)) drop-shadow(0 0 90px var(--glow-soft));
@@ -747,6 +803,7 @@
     display: grid; grid-template-columns: repeat(6, 1fr);
     gap: var(--sho-s-2); margin-top: var(--sho-s-2);
   }
+  .pkg-stage-center-nums { grid-template-columns: repeat(4, 1fr); }
   .pkg-stage-hint { margin: var(--sho-s-2) 0 0; color: var(--sho-muted); }
   @media (max-width: 720px) { .pkg-stage-nums { grid-template-columns: repeat(3, 1fr); } }
 </style>
@@ -783,6 +840,8 @@
     setValue("book_cover_opacity", recipe?.book_cover_opacity ?? 0.42);
     setValue("book_cover_brightness", recipe?.book_cover_brightness ?? 0.38);
     setValue("book_cover_height_pct", recipe?.book_cover_height_pct ?? 100);
+    setValue("composition", recipe?.composition ?? "thumbnail_full");
+    setValue("center_visual_asset", recipe?.center_visual_asset ?? "");
     for (const role of ["host", "guest"]) {
       const wanted = recipe?.[`${role}_cutout`] ?? row[`${role}_cutout`];
       const picked = [...form.querySelectorAll(`input[name="${role}_cutout"]`)]
@@ -799,6 +858,12 @@
     }
     const manual = form.querySelector('input[name="geometry_mode"]');
     if (manual) manual.checked = Boolean(recipe?.geometry_manual);
+    const centerGeometry = recipe?.center_geometry ?? null;
+    for (const input of form.querySelectorAll("[data-center-geo]")) {
+      const key = input.dataset.centerGeo;
+      const recipeKey = key === "width" ? "width_pct" : key === "height" ? "height_px" : `${key}_pct`;
+      input.value = centerGeometry?.[recipeKey] ?? "";
+    }
     form.querySelector(".pkg-recipe-missing").hidden = Boolean(recipe);
     for (const tab of form.querySelectorAll(".pkg-recipe-tab")) {
       tab.setAttribute("aria-selected", String(tab === button));
@@ -808,6 +873,7 @@
       syncStageText(stage);
       syncStageFaces(stage);
       syncStageBook(stage);
+      syncStageComposition(stage, row.center_visual_url);
       applyStage(stage);
     }
   }
@@ -822,11 +888,21 @@
   // 那六個數字。數字欄位本身可鍵盤輸入 → 不靠滑鼠也能調（a11y）。
   const STAGE_DEFAULT = { host_height: 108, host_x: -2, host_y: 0,
                           guest_height: 108, guest_x: -2, guest_y: 0 };
+  const CENTER_DEFAULT = { width: 53, height: 455, x: 50, y: 50 };
 
   function stageInputs(stage) {
     const form = stage.closest("form");
     const out = {};
     for (const el of form.querySelectorAll("[data-geo]")) out[el.dataset.geo] = el;
+    return out;
+  }
+
+  function centerInputs(stage) {
+    const form = stage.closest("form");
+    const out = {};
+    for (const el of form.querySelectorAll("[data-center-geo]")) {
+      out[el.dataset.centerGeo] = el;
+    }
     return out;
   }
 
@@ -838,6 +914,12 @@
       if (Number.isNaN(v)) continue;
       const [role, axis] = key.split("_");
       inner.style.setProperty(`--${role}-${axis === "height" ? "h" : axis}`, v + "%");
+    }
+    for (const [key, el] of Object.entries(centerInputs(stage))) {
+      const v = el.value === "" ? CENTER_DEFAULT[key] : parseFloat(el.value);
+      if (Number.isNaN(v)) continue;
+      const cssKey = key === "width" ? "w" : key === "height" ? "h" : key;
+      inner.style.setProperty(`--center-${cssKey}`, v + (key === "height" ? "px" : "%"));
     }
   }
 
@@ -926,12 +1008,26 @@
     inner.style.setProperty("--book-h", val("book_cover_height_pct", 100) + "%");
   }
 
+  function syncStageComposition(stage, centerUrl = null) {
+    const form = stage.closest("form");
+    const composition = form.querySelector('[name="composition"]')?.value || "thumbnail_full";
+    const center = stage.querySelector(".st-center");
+    const centerHandle = stage.querySelector(".st-center-handle");
+    const reaction = composition === "thumbnail_reaction";
+    center.hidden = !reaction;
+    centerHandle.hidden = !reaction;
+    stage.querySelector(".st-text").hidden = reaction;
+    if (reaction) stage.querySelector(".st-book").removeAttribute("src");
+    if (reaction && centerUrl) center.querySelector(".st-center-image").src = centerUrl;
+  }
+
   function syncStages() {
     for (const stage of document.querySelectorAll(".pkg-stage")) {
       stageScale(stage);
       syncStageText(stage);
       syncStageFaces(stage);
       syncStageBook(stage);
+      syncStageComposition(stage);
       applyStage(stage);
     }
   }
@@ -940,22 +1036,42 @@
   // （跟 composition 的 left/right 對稱寫法一致）。
   let drag = null;
   document.addEventListener("pointerdown", (e) => {
-    const person = e.target.closest(".st-person");
-    if (!person) return;
-    const stage = person.closest(".pkg-stage");
-    const role = person.dataset.role;
+    const layer = e.target.closest(".st-adjustable");
+    if (!layer) return;
+    const stage = layer.closest(".pkg-stage");
+    const role = layer.dataset.role;
+    if (role === "center") {
+      const center = centerInputs(stage);
+      const num = (k) => center[k].value === "" ? CENTER_DEFAULT[k] : parseFloat(center[k].value);
+      drag = { stage, role, center, x0: e.clientX, y0: e.clientY,
+               sx: num("x"), sy: num("y"), s: stage.clientWidth / 1280 };
+      layer.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
     const inputs = stageInputs(stage);
     const num = (k) => (inputs[k].value === "" ? STAGE_DEFAULT[k] : parseFloat(inputs[k].value));
     drag = { stage, role, inputs, x0: e.clientX, y0: e.clientY,
              sx: num(role + "_x"), sy: num(role + "_y"),
              s: stage.clientWidth / 1280 };
-    person.setPointerCapture(e.pointerId);
+    layer.setPointerCapture(e.pointerId);
     e.preventDefault();
   });
   document.addEventListener("pointermove", (e) => {
     if (!drag) return;
     const dx = (e.clientX - drag.x0) / drag.s / 1280 * 100;
     const dy = (e.clientY - drag.y0) / drag.s / 720 * 100;
+    if (drag.role === "center") {
+      const width = drag.center.width.value === "" ? CENTER_DEFAULT.width : parseFloat(drag.center.width.value);
+      const height = drag.center.height.value === "" ? CENTER_DEFAULT.height : parseFloat(drag.center.height.value);
+      const halfW = width / 2;
+      const halfH = height / 720 * 50;
+      drag.center.x.value = Math.min(100 - halfW, Math.max(halfW, drag.sx + dx)).toFixed(2);
+      drag.center.y.value = Math.min(100 - halfH, Math.max(halfH, drag.sy + dy)).toFixed(2);
+      applyStage(drag.stage);
+      markManual(drag.stage);
+      return;
+    }
     const signX = drag.role === "guest" ? -1 : 1;   // guest 貼右緣，右移＝數字變小
     drag.inputs[drag.role + "_x"].value = (drag.sx + signX * dx).toFixed(2);
     drag.inputs[drag.role + "_y"].value = (drag.sy - dy).toFixed(2);  // y 從底部算
@@ -966,10 +1082,27 @@
 
   // 滾輪＝縮放（游標停在誰身上就縮誰）
   document.addEventListener("wheel", (e) => {
-    const person = e.target.closest(".st-person");
+    const person = e.target.closest(".st-adjustable");
     if (!person) return;
     e.preventDefault();
     const stage = person.closest(".pkg-stage");
+    if (person.dataset.role === "center") {
+      const center = centerInputs(stage);
+      const width = center.width.value === "" ? CENTER_DEFAULT.width : parseFloat(center.width.value);
+      const height = center.height.value === "" ? CENTER_DEFAULT.height : parseFloat(center.height.value);
+      const x = center.x.value === "" ? CENTER_DEFAULT.x : parseFloat(center.x.value);
+      const y = center.y.value === "" ? CENTER_DEFAULT.y : parseFloat(center.y.value);
+      const factor = e.deltaY < 0 ? 1.02 : 0.98;
+      const maxWidth = 2 * Math.min(x, 100 - x);
+      const maxHeight = 720 * 2 * Math.min(y, 100 - y) / 100;
+      const nextWidth = Math.min(maxWidth, Math.max(50, width * factor));
+      const nextHeight = Math.min(maxHeight, nextWidth * 12.8 - 1, Math.max(120, height * factor));
+      center.width.value = nextWidth.toFixed(2);
+      center.height.value = nextHeight.toFixed(2);
+      applyStage(stage);
+      markManual(stage);
+      return;
+    }
     const inputs = stageInputs(stage);
     const key = person.dataset.role + "_height";
     const cur = inputs[key].value === "" ? STAGE_DEFAULT[key] : parseFloat(inputs[key].value);
@@ -989,7 +1122,7 @@
     if (!form) return;
     const stage = form.querySelector(".pkg-stage");
     if (!stage) return;
-    if (e.target.matches("[data-geo]")) { applyStage(stage); markManual(stage); }
+    if (e.target.matches("[data-geo], [data-center-geo]")) { applyStage(stage); markManual(stage); }
     if (e.target.matches('input[name^="big_text"], input[name="highlight_text"], input[name="guest_credit"]')) {
       syncStageText(stage);
     }

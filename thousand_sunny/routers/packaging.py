@@ -42,6 +42,7 @@ from shared.release_store import ensure_target, get_release, register_release, u
 from shared.schemas.packaging import (
     ApprovalFileV1,
     ApprovalV1,
+    CenterGeometryV1,
     GeometryV1,
     PackagesFileV1,
     PackagingRevisionJobV1,
@@ -424,10 +425,17 @@ def _board_context(episode_slug: str) -> dict:
         titles_by_rank = {t.rank: t for t in cut.titles}
         package_views = []
         for package in cut.packages:
+            editor_recipe = package.render_recipe or _legacy_reaction_recipe(
+                ep_dir,
+                episode=pkg.episode,
+                cut_id=cut.cut_id,
+                package=package,
+            )
             package_views.append(
                 {
                     "pkg": package,
                     "title": titles_by_rank.get(package.title_rank),
+                    "editor_recipe": editor_recipe,
                     "composition": _composition_status(
                         ep_dir,
                         episode=pkg.episode,
@@ -441,15 +449,22 @@ def _board_context(episode_slug: str) -> dict:
             {
                 "package_rank": item["pkg"].title_rank,
                 "title_rank": (
-                    item["pkg"].render_recipe.title_rank
-                    if item["pkg"].render_recipe
+                    item["editor_recipe"].title_rank
+                    if item["editor_recipe"]
                     else item["pkg"].title_rank
                 ),
                 "host_cutout": item["pkg"].host_cutout,
                 "guest_cutout": item["pkg"].guest_cutout,
                 "recipe": (
-                    item["pkg"].render_recipe.model_dump(mode="json")
-                    if item["pkg"].render_recipe
+                    item["editor_recipe"].model_dump(mode="json")
+                    if item["editor_recipe"]
+                    else None
+                ),
+                "center_visual_url": (
+                    f"/bridge/packaging/{episode_slug}/center-visual/"
+                    f"{cut.cut_id}/{item['pkg'].title_rank}"
+                    if item["editor_recipe"]
+                    and item["editor_recipe"].composition == "thumbnail_reaction"
                     else None
                 ),
             }
@@ -585,6 +600,58 @@ def _load_composition_receipt(
     ):
         raise HTTPException(status_code=409, detail="measurement sidecar bbox 與 receipt 不一致")
     return receipt
+
+
+def _legacy_reaction_recipe(
+    ep_dir: Path,
+    *,
+    episode: str,
+    cut_id: str,
+    package,
+) -> RenderRequestV1 | None:
+    """Hydrate one legacy N2 package only from its own measured receipt."""
+    try:
+        receipt = _load_composition_receipt(
+            ep_dir,
+            episode=episode,
+            cut_id=cut_id,
+            package_rank=package.title_rank,
+            thumbnail_png=package.thumbnail_png,
+        )
+    except HTTPException:
+        return None
+    canvas_w = float(receipt.canvas_width)
+    canvas_h = float(receipt.canvas_height)
+    center = receipt.protected_center_bbox
+    host = receipt.host_bbox
+    guest = receipt.guest_bbox
+    return RenderRequestV1(
+        composition="thumbnail_reaction",
+        title_rank=package.title_rank,
+        host_cutout=package.host_cutout,
+        guest_cutout=package.guest_cutout,
+        big_text=[],
+        requested_at=datetime.fromtimestamp(
+            _composition_receipt_path(ep_dir, cut_id, package.title_rank).stat().st_mtime,
+            tz=timezone.utc,
+        ),
+        geometry=GeometryV1(
+            host_height_pct=host.height / canvas_h * 100,
+            host_x_pct=host.x / canvas_w * 100,
+            host_y_pct=(canvas_h - host.y - host.height) / canvas_h * 100,
+            guest_height_pct=guest.height / canvas_h * 100,
+            guest_x_pct=(canvas_w - guest.x - guest.width) / canvas_w * 100,
+            guest_y_pct=(canvas_h - guest.y - guest.height) / canvas_h * 100,
+        ),
+        geometry_manual=True,
+        center_visual_asset=receipt.center_visual_asset,
+        center_geometry=CenterGeometryV1(
+            width_pct=center.width / canvas_w * 100,
+            height_px=center.height,
+            x_pct=(center.x + center.width / 2) / canvas_w * 100,
+            y_pct=(center.y + center.height / 2) / canvas_h * 100,
+        ),
+    )
 
 
 def _composition_status(
@@ -1021,6 +1088,47 @@ async def packaging_recipe_asset(
     return FileResponse(path, media_type="image/png")
 
 
+@page_router.get("/{episode_slug}/center-visual/{cut_id}/{package_rank}")
+async def packaging_center_visual(
+    episode_slug: str,
+    cut_id: str,
+    package_rank: int,
+    nakama_auth: str | None = Cookie(None),
+) -> FileResponse:
+    """Serve the center visual bound to exactly one package rank."""
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    ep_dir = _packaging_root() / episode_slug
+    pkg = parse_packages(ep_dir / "packages.json")
+    cut = next((row for row in pkg.cuts if row.cut_id == cut_id), None)
+    package = next(
+        (row for row in (cut.packages if cut else []) if row.title_rank == package_rank),
+        None,
+    )
+    if package is None:
+        raise HTTPException(status_code=404, detail="package 不存在")
+    recipe = package.render_recipe or _legacy_reaction_recipe(
+        ep_dir,
+        episode=pkg.episode,
+        cut_id=cut_id,
+        package=package,
+    )
+    if (
+        recipe is None
+        or recipe.composition != "thumbnail_reaction"
+        or not recipe.center_visual_asset
+    ):
+        raise HTTPException(status_code=404, detail="package 沒有中央主圖")
+    path = (get_vault_path() / recipe.center_visual_asset).resolve()
+    try:
+        path.relative_to(ep_dir.resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="中央主圖超出 episode 目錄") from exc
+    if path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"} or not path.is_file():
+        raise HTTPException(status_code=404, detail="中央主圖不存在")
+    return FileResponse(path)
+
+
 @page_router.get("/{episode_slug}", response_class=HTMLResponse)
 async def packaging_board(
     request: Request,
@@ -1344,6 +1452,9 @@ async def packaging_compose(
     title_rank: int = Form(..., ge=1, le=5),
     host_cutout: str = Form(..., max_length=_EP_SLUG_MAX * 4),
     guest_cutout: str = Form(..., max_length=_EP_SLUG_MAX * 4),
+    composition: Literal["thumbnail_full", "thumbnail_reaction"] = Form(
+        "thumbnail_full"
+    ),
     big_text_1: str = Form("", max_length=40),
     big_text_2: str = Form("", max_length=40),
     big_text_3: str = Form("", max_length=40),
@@ -1354,6 +1465,11 @@ async def packaging_compose(
     book_cover_opacity: float = Form(0.42, ge=0, le=1),
     book_cover_brightness: float = Form(0.38, ge=0, le=1),
     book_cover_height_pct: float = Form(100, ge=20, le=150),
+    center_visual_asset: str = Form("", max_length=_EP_SLUG_MAX * 4),
+    center_width_pct: float | None = Form(None),
+    center_height_px: float | None = Form(None),
+    center_x_pct: float | None = Form(None),
+    center_y_pct: float | None = Form(None),
     geometry_mode: str = Form("auto", max_length=8),
     host_height_pct: float = Form(0.0),
     host_x_pct: float = Form(0.0),
@@ -1401,8 +1517,10 @@ async def packaging_compose(
             raise HTTPException(status_code=404, detail="本集 book_cover PNG 不存在")
 
     lines = [ln.strip() for ln in (big_text_1, big_text_2, big_text_3) if ln.strip()]
-    if not lines:
+    if composition == "thumbnail_full" and not lines:
         raise HTTPException(status_code=400, detail="封面大字不可為空")
+    if composition == "thumbnail_reaction" and lines:
+        raise HTTPException(status_code=400, detail="N2 中央圖卡不使用封面大字")
     hl = highlight_text.strip()
     if hl and hl not in "".join(lines):
         raise HTTPException(
@@ -1430,8 +1548,43 @@ async def packaging_compose(
 
     existing = _load_approvals(ep_dir, pkg.episode)
     prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
-    if geometry is None and target_package.render_recipe:
-        geometry = target_package.render_recipe.geometry
+    source_recipe = target_package.render_recipe or _legacy_reaction_recipe(
+        ep_dir,
+        episode=pkg.episode,
+        cut_id=cut_id,
+        package=target_package,
+    )
+    center_geometry = None
+    if composition == "thumbnail_reaction":
+        expected_center = (
+            source_recipe.center_visual_asset
+            if source_recipe and source_recipe.composition == "thumbnail_reaction"
+            else None
+        )
+        if not expected_center or center_visual_asset.strip() != expected_center:
+            raise HTTPException(
+                status_code=409,
+                detail="center_visual_asset 必須來自這個 package 自己的 composition receipt",
+            )
+        values = (center_width_pct, center_height_px, center_x_pct, center_y_pct)
+        if any(value is None for value in values):
+            center_geometry = source_recipe.center_geometry if source_recipe else None
+        else:
+            try:
+                center_geometry = CenterGeometryV1(
+                    width_pct=center_width_pct,
+                    height_px=center_height_px,
+                    x_pct=center_x_pct,
+                    y_pct=center_y_pct,
+                )
+            except ValidationError as exc:
+                raise HTTPException(
+                    status_code=400, detail=f"中央圖卡位置/大小超出範圍：{str(exc)[:300]}"
+                ) from exc
+        if center_geometry is None:
+            raise HTTPException(status_code=400, detail="中央圖卡缺少可還原的幾何資料")
+    if geometry is None and source_recipe:
+        geometry = source_recipe.geometry
     elif geometry is None and prev and prev.render_request:
         # Backward compatibility for pre-recipe approval files.  It is only an
         # initial seed; the board never presents it as another package's state.
@@ -1439,6 +1592,7 @@ async def packaging_compose(
 
     try:
         req = RenderRequestV1(
+            composition=composition,
             title_rank=title_rank,
             host_cutout=host_cutout,
             guest_cutout=guest_cutout,
@@ -1450,6 +1604,8 @@ async def packaging_compose(
             book_cover_opacity=book_cover_opacity,
             book_cover_brightness=book_cover_brightness,
             book_cover_height_pct=book_cover_height_pct,
+            center_visual_asset=center_visual_asset.strip() or None,
+            center_geometry=center_geometry,
             requested_at=datetime.now(timezone.utc),
             geometry=geometry,
             geometry_manual=manual,

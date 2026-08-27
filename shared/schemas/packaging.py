@@ -279,6 +279,29 @@ class GeometryV1(BaseModel):
     guest_y_pct: float = Field(ge=-200, le=200)
 
 
+class CenterGeometryV1(BaseModel):
+    """N2 中央實拍卡的位置與大小，直接對應 thumbnail_reaction。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    width_pct: float = Field(ge=50, le=100)
+    height_px: float = Field(ge=120, le=720)
+    x_pct: float = Field(ge=-50, le=150)
+    y_pct: float = Field(ge=-50, le=150)
+
+    @model_validator(mode="after")
+    def _horizontal_card(self) -> "CenterGeometryV1":
+        if self.width_pct / 100 * 1280 <= self.height_px:
+            raise ValueError("N2 center card 必須是橫向長方形")
+        half_w = self.width_pct / 2
+        half_h = self.height_px / 720 * 50
+        if not (half_w <= self.x_pct <= 100 - half_w):
+            raise ValueError("N2 center card 左右不可超出畫布")
+        if not (half_h <= self.y_pct <= 100 - half_h):
+            raise ValueError("N2 center card 上下不可超出畫布")
+        return self
+
+
 class RenderRequestV1(BaseModel):
     """修修在 gate 上組好的封面配方 — 桌機端據此 **render 一次**（2026-08-14 裁決）。
 
@@ -289,10 +312,11 @@ class RenderRequestV1(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    composition: Literal["thumbnail_full", "thumbnail_reaction"] = "thumbnail_full"
     title_rank: int = Field(ge=1, le=5)
     host_cutout: str
     guest_cutout: str
-    big_text: list[str] = Field(min_length=1, max_length=3)
+    big_text: list[str] = Field(default_factory=list, max_length=3)
     highlight_text: str = ""
     # 大字的寬度預算（px @1280 畫布）。composition 是「整塊縮字不換行」：
     # fontSize = 100 * title_max_width / 實際行寬。所以這個值就是字級的旋鈕——
@@ -309,6 +333,10 @@ class RenderRequestV1(BaseModel):
     book_cover_opacity: float = Field(default=0.42, ge=0, le=1)
     book_cover_brightness: float = Field(default=0.38, ge=0, le=1)
     book_cover_height_pct: float = Field(default=100, ge=20, le=150)
+    # N2 only: the image and orange frame are one editable layer behind both people.
+    # The path stays vault-relative so the desktop renderer can reproduce the exact package.
+    center_visual_asset: str | None = None
+    center_geometry: CenterGeometryV1 | None = None
     requested_at: AwareDatetime
     # geometry 兩種來源，靠 geometry_manual 分辨：
     #   False（預設）— solver 解完寫回來的，只當 gate 拖曳介面的起點，下次照樣重解
@@ -327,8 +355,14 @@ class RenderRequestV1(BaseModel):
                 raise ValueError(f"{name} must be vault-relative path, got absolute: {val!r}")
             if not _PNG_SLUG_RE.match(_png_basename(val)):
                 raise ValueError(f"cutout 檔名必須是 ASCII PNG，got {val!r}")
-        if not any(line.strip() for line in self.big_text):
+        if self.composition == "thumbnail_full" and not any(
+            line.strip() for line in self.big_text
+        ):
             raise ValueError("big_text 不可全為空白——封面大字是 N1 卡型的主體")
+        if self.composition == "thumbnail_reaction" and any(
+            line.strip() for line in self.big_text
+        ):
+            raise ValueError("thumbnail_reaction 是零文字 N2 卡型，big_text 必須為空")
         if self.highlight_text and self.highlight_text not in "".join(self.big_text):
             raise ValueError(
                 f"highlight_text {self.highlight_text!r} 不在 big_text 內"
@@ -340,6 +374,17 @@ class RenderRequestV1(BaseModel):
             parts = PurePosixPath(self.book_cover).parts
             if "\\" in self.book_cover or ".." in parts:
                 raise ValueError("book_cover must be a safe vault-relative path")
+        if self.composition == "thumbnail_reaction":
+            if not self.center_visual_asset or self.center_geometry is None:
+                raise ValueError(
+                    "thumbnail_reaction 必須帶 center_visual_asset 與 center_geometry"
+                )
+        if self.center_visual_asset is not None:
+            if _is_abs_path(self.center_visual_asset):
+                raise ValueError("center_visual_asset must be a vault-relative path")
+            parts = PurePosixPath(self.center_visual_asset).parts
+            if "\\" in self.center_visual_asset or ".." in parts:
+                raise ValueError("center_visual_asset must be a safe vault-relative path")
         return self
 
 

@@ -13,9 +13,10 @@ description: >
   revision request，交給獨立 Agent 重做後回到 Packaging re-review。
 ---
 
-# thumbnail-brainstorm — 封面 brainstorm 手冊（v3.1）
+# thumbnail-brainstorm — 封面 brainstorm 手冊（v3.2）
 
-**版本：v3.1（2026-08-27，N2 橫框可延伸到人物後方，人物重疊不是失敗；
+**版本：v3.2（2026-08-27，封面 cutout 排除 boom arm；
+v3.1 = N2 橫框可延伸到人物後方，人物重疊不是失敗；
 v3.0 = 人物 cutout 雙肩完整且前景不可挖洞；
 v2.9 = 人物 cutout 必須保留完整麥克風；
 v2.8 = Reject feedback → desktop revision agent；
@@ -54,10 +55,14 @@ v1.1 = 封面設計系統 v1 接入；v1.0 = ADR-054 D8/D9 首落地。
    零裝飾、100px 自檢。diversity 軸 = **配方（N1/N2/N3）× 表情 × 大字**。
    真人不 AI（memory 鐵律）；N2 prop 卡供給 = Envato → 公版 → 圖表重繪。
 6. **每集寫 run log packaging 節**（配對理由、表情選擇、否決、Remaining）。
-7. **人物輪廓優先，雙肩不可裁斷**：定稿 cutout 必須保留頭部、兩側完整肩線與
-   可見上臂；肩膀不可碰到左右裁切界。麥克風本體是人物前景的一部分，必須完整、
-   不可懸空。長支架可以移除，但移除後必須補回自然衣料與連續肩線；支架中斷、
-   肩膀被直切、胸前／肩上透明挖洞或只剩半支麥克風，全部視為素材損壞。
+7. **人物輪廓優先，雙肩不可裁斷，boom arm 不進封面**：定稿 cutout 必須保留
+   頭部、兩側完整肩線與可見上臂；肩膀不可碰到左右裁切界。優先換用 boom arm
+   沒有侵入人物 silhouette 的 source frame。若合格表情只存在於 boom arm 入鏡的
+   frame，可用 deterministic alpha-mask 或傳統 non-generative clone／heal／inpaint
+   retouch，且只准處理 boom arm 區域；禁止生成式影像、禁止重畫整個人物，boom arm 區域
+   以外的像素與人物 identity／肩膀／衣服／姿勢必須保持不變。麥克風與線材允許保留；
+   若保留，輪廓必須完整、不懸空。肩膀被直切、胸前／肩上透明挖洞或只剩半支
+   麥克風，全部視為素材損壞。
 
 ## 輸入
 
@@ -128,9 +133,10 @@ python .claude/skills/thumbnail-brainstorm/scripts/guest_cutout.py sample \
    （= motion blur 淘汰）。任務 =「依 emotions.yml 為 Step 1 定案的表情各挑
    最佳一格；臉被手/麥擋、閉眼、動態模糊、側轉 >45° 淘汰；**回報視線方向**
    （放左緣的人要看畫面右，反之亦然）」。一個 subagent 看完全部候選。
-   麥克風出現在候選畫面時，vision 回報還要明列：兩側肩線與可見上臂是否完整、
-   麥頭／本體是否都在 crop 內、長支架移除後能否補回自然衣料。無法同時留下完整
-   雙肩與麥克風就換候選，不把「表情好」當成接受破損輪廓的理由。
+   vision 回報還要明列：兩側肩線與可見上臂是否完整、boom arm 是否侵入人物
+   silhouette、麥克風／線材若保留是否完整。先淘汰有 boom arm 的 frame；只有該格
+   符合表情時，才可走紅線 7 的局部 deterministic retouch。不把「表情好」當成
+   接受 boom arm 或破損輪廓的理由。
 4. 去背落檔（BiRefNet + 統一調色內建）：
 
 ```bash
@@ -150,10 +156,11 @@ python .claude/skills/thumbnail-brainstorm/scripts/guest_cutout.py finalize \
   界線放在麥克風等物件外緣（謝伯讓集：0.545 → **0.49**，肩線問題消失）。
   **不要目測猜**（2026-07-29 血淚：目測誤判成「怎麼切都會切到身體」）。
 - **雙肩安全距離**：alpha bbox 的左右肩線外必須各留透明 padding；不能為了移除
-  支架直接水平裁掉一側肩膀。支架和衣服重疊時，要以遮罩／修補重建衣料，不是
-  把整段 x 範圍切走。灰底驗收時兩側肩線都必須連續、沒有直切面或透明缺口。
+  boom arm 直接水平裁掉一側肩膀。boom arm 和衣服重疊時，只能在其覆蓋區域用
+  deterministic alpha-mask／傳統 non-generative retouch 修補，不可生成或重畫人物，
+  也不能把整段 x 範圍切走。灰底驗收時兩側肩線都必須連續、沒有直切面或透明缺口。
 - **去背後逐像素重看麥克風**：在灰底與深色底各開一次透明 PNG，沿麥頭、
-  防噴罩、支架外緣檢查 alpha。來源畫面有完整麥克風而成品缺一段時，先放寬
+  防噴罩、麥克風／線材外緣檢查 alpha。來源畫面有完整麥克風而成品缺一段時，先放寬
   crop；仍被 BiRefNet 漏掉就改用保留麥克風的遮罩／換格重做。禁止用殘缺結果
   繼續 render，因為縮圖下會直接看成「麥克風破掉」。
 - 頭為主裁框：整顆頭佔 cutout 高 ~50%（兩顆頭等大的前提）；下緣可再裁胸
@@ -445,7 +452,8 @@ python .claude/skills/thumbnail-brainstorm/scripts/face_measure.py render \
       PASS 擋不住 63px 眼線漂移（教訓 21）
 - [ ] 親眼看全圖（人物大小/位置/與中央卡的關係）＋ 320×180 小圖可讀
 - [ ] cutout 頭部、雙肩、可見上臂完整；肩線不碰左右界、無直切或透明挖洞
-- [ ] 原始畫面有麥克風時，麥頭／本體完整；長支架可移除但衣料輪廓必須補回
+- [ ] boom arm 未進人物 silhouette；若局部移除，只有 boom arm 區域像素可改，
+      其餘人物像素／identity／肩膀／衣服／姿勢不變；麥克風與線材可保留但不可殘缺
 - [ ] 表情同調自檢（兩人情緒 × 標題語氣，逐包過）
 - [ ] prop 幀乾淨（無動態模糊/殘影；抽幀要挑）
 
