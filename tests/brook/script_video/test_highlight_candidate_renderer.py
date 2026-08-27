@@ -201,6 +201,31 @@ def _render(tmp_path: Path, *, params: dict[str, object] | None = None):
     return root, result, calls
 
 
+def _verify_bound_test_receipt(
+    root: Path,
+    result: dict[str, object],
+    *,
+    runtime_root: Path,
+    memoize_success: bool,
+    candidate_id: str = "hf-candidate-01",
+) -> dict[str, object]:
+    return candidate_renderer._verify_hyperframes_render_receipt_bound(
+        root,
+        receipt_identity=result["provenance"]["receipt"],
+        expected_cut_id=CUT_ID,
+        expected_revision_id=REVISION_ID,
+        expected_candidate_id=candidate_id,
+        expected_component="concept_card",
+        expected_render_params=_concept_params(),
+        expected_on_screen_text="高壓教育不是兒童遊戲",
+        expected_media=result["preview_media"],
+        runtime_root=runtime_root,
+        expected_contract=candidate_renderer._HYPERFRAMES_TEST_RENDER_CONTRACT,
+        render_dir=candidate_renderer._TEST_RENDER_DIR,
+        memoize_success=memoize_success,
+    )
+
+
 def _rehash_receipt(root: Path, receipt_path: Path) -> dict[str, object]:
     payload = json.loads(receipt_path.read_text(encoding="utf-8"))
     payload.pop("content_hash", None)
@@ -910,6 +935,184 @@ def test_receipt_runtime_verification_does_not_cache_failures(
 
     assert calls == 2
     assert status["package"] == "hyperframes@0.7.72"
+
+
+def test_success_cache_runs_media_frame_audit_once_for_same_bound_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, result, _calls = _render(tmp_path)
+    frame_audit_calls = 0
+    original_frame_audit = candidate_renderer._frame_audit
+
+    def count_frame_audit(*args, **kwargs):
+        nonlocal frame_audit_calls
+        frame_audit_calls += 1
+        return original_frame_audit(*args, **kwargs)
+
+    monkeypatch.setattr(candidate_renderer, "_frame_audit", count_frame_audit)
+    monkeypatch.setattr(candidate_renderer, "_RECEIPT_SUCCESS_CACHE", {}, raising=False)
+
+    for _ in range(5):
+        _verify_bound_test_receipt(
+            root,
+            result,
+            runtime_root=tmp_path / "runtimes",
+            memoize_success=True,
+        )
+
+    assert frame_audit_calls == 1
+
+
+@pytest.mark.parametrize("touched_file", ["receipt", "variables", "media"])
+def test_success_cache_misses_when_a_bound_file_stat_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    touched_file: str,
+) -> None:
+    root, result, _calls = _render(tmp_path)
+    receipt_path = root / str(result["provenance"]["receipt"]["path"])
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    paths = {
+        "receipt": receipt_path,
+        "variables": root / str(receipt["variables_file"]["path"]),
+        "media": root / str(receipt["media"]["path"]),
+    }
+    frame_audit_calls = 0
+    original_frame_audit = candidate_renderer._frame_audit
+
+    def count_frame_audit(*args, **kwargs):
+        nonlocal frame_audit_calls
+        frame_audit_calls += 1
+        return original_frame_audit(*args, **kwargs)
+
+    monkeypatch.setattr(candidate_renderer, "_frame_audit", count_frame_audit)
+    monkeypatch.setattr(candidate_renderer, "_RECEIPT_SUCCESS_CACHE", {})
+    _verify_bound_test_receipt(
+        root, result, runtime_root=tmp_path / "runtimes", memoize_success=True
+    )
+    path = paths[touched_file]
+    status = path.stat()
+    os.utime(path, ns=(status.st_atime_ns, status.st_mtime_ns + 1_000_000))
+    _verify_bound_test_receipt(
+        root, result, runtime_root=tmp_path / "runtimes", memoize_success=True
+    )
+
+    assert frame_audit_calls == 2
+
+
+def test_success_cache_separates_runtime_root_and_rejects_other_binding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, result, _calls = _render(tmp_path)
+    alternate_runtime = tmp_path / "alternate-runtimes"
+    shutil.copytree(tmp_path / "runtimes", alternate_runtime)
+    frame_audit_calls = 0
+    original_frame_audit = candidate_renderer._frame_audit
+
+    def count_frame_audit(*args, **kwargs):
+        nonlocal frame_audit_calls
+        frame_audit_calls += 1
+        return original_frame_audit(*args, **kwargs)
+
+    monkeypatch.setattr(candidate_renderer, "_frame_audit", count_frame_audit)
+    monkeypatch.setattr(candidate_renderer, "_RECEIPT_SUCCESS_CACHE", {})
+    _verify_bound_test_receipt(
+        root, result, runtime_root=tmp_path / "runtimes", memoize_success=True
+    )
+    _verify_bound_test_receipt(
+        root, result, runtime_root=alternate_runtime, memoize_success=True
+    )
+    with pytest.raises(TrustedRenderError, match="canonical|lineage"):
+        _verify_bound_test_receipt(
+            root,
+            result,
+            runtime_root=tmp_path / "runtimes",
+            memoize_success=True,
+            candidate_id="other-candidate",
+        )
+    media_path = root / str(result["preview_media"]["path"])
+    media_path.write_bytes(media_path.read_bytes() + b"identity drift")
+    with pytest.raises(TrustedRenderError, match="byte-size|hash drift"):
+        _verify_bound_test_receipt(
+            root, result, runtime_root=tmp_path / "runtimes", memoize_success=True
+        )
+
+    assert frame_audit_calls == 2
+
+
+def test_success_cache_separates_distinct_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, first, _calls = _render(tmp_path)
+    render_calls: list[list[str]] = []
+    second = candidate_renderer._render_hyperframes_candidate_for_test(
+        root,
+        cut_id=CUT_ID,
+        revision_id=REVISION_ID,
+        candidate_id="hf-candidate-02",
+        component="concept_card",
+        render_params=_concept_params(),
+        expected_on_screen_text="高壓教育不是兒童遊戲",
+        runtime_root=tmp_path / "runtimes",
+        runtime_command=("hyperframes-test",),
+        runner=_copy_fixture_runner(_dynamic_fixture(tmp_path), render_calls),
+    )
+    frame_audit_calls = 0
+    original_frame_audit = candidate_renderer._frame_audit
+
+    def count_frame_audit(*args, **kwargs):
+        nonlocal frame_audit_calls
+        frame_audit_calls += 1
+        return original_frame_audit(*args, **kwargs)
+
+    monkeypatch.setattr(candidate_renderer, "_frame_audit", count_frame_audit)
+    monkeypatch.setattr(candidate_renderer, "_RECEIPT_SUCCESS_CACHE", {})
+    _verify_bound_test_receipt(
+        root, first, runtime_root=tmp_path / "runtimes", memoize_success=True
+    )
+    _verify_bound_test_receipt(
+        root,
+        second,
+        runtime_root=tmp_path / "runtimes",
+        memoize_success=True,
+        candidate_id="hf-candidate-02",
+    )
+
+    assert frame_audit_calls == 2
+
+
+def test_success_cache_does_not_cache_failure_and_test_mode_stays_fresh(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, result, _calls = _render(tmp_path)
+    frame_audit_calls = 0
+    original_frame_audit = candidate_renderer._frame_audit
+
+    def fail_once_then_audit(*args, **kwargs):
+        nonlocal frame_audit_calls
+        frame_audit_calls += 1
+        if frame_audit_calls == 1:
+            raise TrustedRenderError("injected frame audit failure")
+        return original_frame_audit(*args, **kwargs)
+
+    monkeypatch.setattr(candidate_renderer, "_frame_audit", fail_once_then_audit)
+    monkeypatch.setattr(candidate_renderer, "_RECEIPT_SUCCESS_CACHE", {})
+    with pytest.raises(TrustedRenderError, match="injected frame audit failure"):
+        _verify_bound_test_receipt(
+            root, result, runtime_root=tmp_path / "runtimes", memoize_success=True
+        )
+    _verify_bound_test_receipt(
+        root, result, runtime_root=tmp_path / "runtimes", memoize_success=True
+    )
+    _verify_bound_test_receipt(
+        root, result, runtime_root=tmp_path / "runtimes", memoize_success=False
+    )
+
+    assert frame_audit_calls == 3
 
 
 def test_renderer_cli_help_exposes_explicit_runtime_gate() -> None:

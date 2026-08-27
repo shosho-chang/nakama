@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import copy
 import hashlib
 import json
 import os
@@ -78,6 +79,8 @@ TRUSTED_RENDER_DIR = "trusted-renders"
 _TEST_RENDER_DIR = "test-renders"
 _PRODUCTION_RUNTIME_STATUS_CACHE: dict[tuple[str, Path], dict[str, object]] = {}
 _PRODUCTION_RUNTIME_STATUS_CACHE_LOCK = Lock()
+_RECEIPT_SUCCESS_CACHE: dict[tuple[object, ...], dict[str, object]] = {}
+_RECEIPT_SUCCESS_CACHE_LOCK = Lock()
 
 _SAFE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _SAFE_REVISION = re.compile(r"^r-[0-9a-f]{24}$")
@@ -687,6 +690,22 @@ def _host_file_identity(path: Path) -> dict[str, object]:
     }
 
 
+def _file_stat_signature(path: Path) -> tuple[int, int, int, int, int]:
+    """Return the cheap process-cache invalidation identity for one verified file."""
+
+    try:
+        status = path.stat()
+    except OSError as error:
+        raise TrustedRenderError("verified render file stat is unavailable") from error
+    return (
+        int(status.st_dev),
+        int(status.st_ino),
+        int(status.st_size),
+        int(status.st_mtime_ns),
+        int(status.st_ctime_ns),
+    )
+
+
 def _process_text_identity(value: object) -> dict[str, object]:
     text = str(value or "")
     encoded = text.encode("utf-8")
@@ -1170,6 +1189,7 @@ def _verify_hyperframes_render_receipt_bound(
     runtime_root: str | Path | None = None,
     expected_contract: str,
     render_dir: str,
+    memoize_success: bool,
 ) -> dict[str, object]:
     """Freshly verify one canonical trusted render and every byte it binds."""
 
@@ -1222,10 +1242,13 @@ def _verify_hyperframes_render_receipt_bound(
         "render_spec_sha256": render_spec_sha256,
     }:
         raise TrustedRenderError("HyperFrames receipt render spec drift")
+    if type(memoize_success) is not bool:
+        raise TrustedRenderError("memoize_success must be an actual bool")
     component_source = _exact_dict(
         receipt["component_source"], {"files", "content_hash"}, "receipt.component_source"
     )
-    if component_source != _component_source(component):
+    fresh_component_source = _component_source(component)
+    if component_source != fresh_component_source:
         raise TrustedRenderError("HyperFrames component source identity drift")
     variables_path, variables_identity = _verify_identity(
         root, receipt["variables_file"], "receipt.variables_file"
@@ -1251,55 +1274,95 @@ def _verify_hyperframes_render_receipt_bound(
     _, expected_media_identity = _verify_identity(root, expected_media, "expected_media")
     if media_identity != expected_media_identity:
         raise TrustedRenderError("HyperFrames media identity differs from selected candidate")
-    try:
-        fresh_probe = probe_stock_video(media_path)
-    except BrollContractError as error:
-        raise TrustedRenderError("HyperFrames media is not playable") from error
-    if media_value["probe"] != fresh_probe:
-        raise TrustedRenderError("HyperFrames media probe drift")
-    fresh_frame_audit = _frame_audit(media_path, spec, canonical_params)
-    if media_value["frame_audit"] != fresh_frame_audit:
-        raise TrustedRenderError("HyperFrames media frame audit drift")
-    if expected_contract == _HYPERFRAMES_TEST_RENDER_CONTRACT:
-        runtime_status = _hyperframes_runtime_status(
-            spec.package, runtime_root=runtime_root, test_mode=True
+
+    def finish_verification() -> dict[str, object]:
+        try:
+            fresh_probe = probe_stock_video(media_path)
+        except BrollContractError as error:
+            raise TrustedRenderError("HyperFrames media is not playable") from error
+        if media_value["probe"] != fresh_probe:
+            raise TrustedRenderError("HyperFrames media probe drift")
+        fresh_frame_audit = _frame_audit(media_path, spec, canonical_params)
+        if media_value["frame_audit"] != fresh_frame_audit:
+            raise TrustedRenderError("HyperFrames media frame audit drift")
+        if expected_contract == _HYPERFRAMES_TEST_RENDER_CONTRACT:
+            runtime_status = _hyperframes_runtime_status(
+                spec.package, runtime_root=runtime_root, test_mode=True
+            )
+        else:
+            runtime_status = _verified_production_runtime_status(
+                spec.package, runtime_root=runtime_root
+            )
+        execution = _verify_execution_receipt(
+            receipt["execution"],
+            runtime_status=runtime_status,
+            spec=spec,
+            test_mode=expected_contract == _HYPERFRAMES_TEST_RENDER_CONTRACT,
         )
-    else:
-        runtime_status = _verified_production_runtime_status(
-            spec.package, runtime_root=runtime_root
+        runtime_binding = {
+            "acquisition_content_hash": runtime_status["acquisition_content_hash"],
+            "package_lock_sha256": runtime_status["package_lock_sha256"],
+            "node_modules_content_hash": runtime_status["node_modules_content_hash"],
+        }
+        engine = _exact_dict(
+            receipt["engine"], {"name", "package", "argv", "runtime"}, "receipt.engine"
         )
-    execution = _verify_execution_receipt(
-        receipt["execution"],
-        runtime_status=runtime_status,
-        spec=spec,
-        test_mode=expected_contract == _HYPERFRAMES_TEST_RENDER_CONTRACT,
+        expected_argv = _normalized_argv(
+            spec,
+            media_path=media_identity["path"],
+            variables_path=variables_identity["path"],
+        )
+        if engine != {
+            "name": "hyperframes",
+            "package": spec.package,
+            "argv": expected_argv,
+            "runtime": runtime_binding,
+        }:
+            raise TrustedRenderError("HyperFrames engine invocation receipt drift")
+        return {
+            **receipt,
+            "content_hash": claimed_content_hash,
+            "execution": execution,
+            "media": media_value,
+        }
+
+    if not memoize_success:
+        return finish_verification()
+    component_stats = tuple(
+        _file_stat_signature(_REPO_ROOT / str(row["path"]))
+        for row in fresh_component_source["files"]
     )
-    runtime_binding = {
-        "acquisition_content_hash": runtime_status["acquisition_content_hash"],
-        "package_lock_sha256": runtime_status["package_lock_sha256"],
-        "node_modules_content_hash": runtime_status["node_modules_content_hash"],
-    }
-    engine = _exact_dict(
-        receipt["engine"], {"name", "package", "argv", "runtime"}, "receipt.engine"
+    binding_hash = _content_hash(
+        {
+            "episode_root": root.as_posix(),
+            "receipt": normalized_receipt_identity,
+            "cut_id": cut_id,
+            "revision_id": revision_id,
+            "candidate_id": candidate_id,
+            "component": component,
+            "render_params": canonical_params,
+            "on_screen_text": expected_on_screen_text,
+            "expected_media": expected_media_identity,
+            "runtime_root": _runtime_root(runtime_root).as_posix(),
+            "contract": expected_contract,
+            "render_dir": render_dir,
+            "component_source": fresh_component_source["content_hash"],
+        }
     )
-    expected_argv = _normalized_argv(
-        spec,
-        media_path=media_identity["path"],
-        variables_path=variables_identity["path"],
+    cache_key: tuple[object, ...] = (
+        binding_hash,
+        _file_stat_signature(receipt_path),
+        _file_stat_signature(variables_path),
+        _file_stat_signature(media_path),
+        component_stats,
     )
-    if engine != {
-        "name": "hyperframes",
-        "package": spec.package,
-        "argv": expected_argv,
-        "runtime": runtime_binding,
-    }:
-        raise TrustedRenderError("HyperFrames engine invocation receipt drift")
-    return {
-        **receipt,
-        "content_hash": claimed_content_hash,
-        "execution": execution,
-        "media": media_value,
-    }
+    with _RECEIPT_SUCCESS_CACHE_LOCK:
+        cached = _RECEIPT_SUCCESS_CACHE.get(cache_key)
+        if cached is not None:
+            return copy.deepcopy(cached)
+        verified = finish_verification()
+        _RECEIPT_SUCCESS_CACHE[cache_key] = copy.deepcopy(verified)
+        return verified
 
 
 def verify_hyperframes_render_receipt(
@@ -1330,6 +1393,7 @@ def verify_hyperframes_render_receipt(
         runtime_root=runtime_root,
         expected_contract=HYPERFRAMES_RENDER_CONTRACT,
         render_dir=TRUSTED_RENDER_DIR,
+        memoize_success=True,
     )
 
 
@@ -1342,6 +1406,7 @@ def _verify_hyperframes_test_receipt(
         **kwargs,
         expected_contract=_HYPERFRAMES_TEST_RENDER_CONTRACT,
         render_dir=_TEST_RENDER_DIR,
+        memoize_success=False,
     )
 
 
