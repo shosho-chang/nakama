@@ -135,3 +135,69 @@ def test_stage_parallel_jobs_rejects_duplicate_rank_without_mutating_manifest(tm
         pm.stage_parallel_jobs(tmp_path, jobs)
 
     assert json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8")) == original
+
+
+def test_packaging_worker_claim_resume_and_ready_are_durable(tmp_path):
+    jobs = [
+        {
+            "cut_id": "value-L01",
+            "rank": 1,
+            "video": {"status": "ready"},
+            "packaging": {"status": "queued"},
+        }
+    ]
+    pm.stage_parallel_jobs(tmp_path, jobs)
+
+    first = pm.claim_packaging_job(tmp_path, "value-L01", worker_id="worker-a")
+    assert first["status"] == "running"
+    assert first["attempt"] == 1
+    assert first["worker_id"] == "worker-a"
+
+    # A process restart may reclaim an interrupted running job.  The durable
+    # attempt counter makes the resume visible instead of silently duplicating it.
+    resumed = pm.claim_packaging_job(
+        tmp_path, "value-L01", worker_id="worker-b", resume_existing=True
+    )
+    assert resumed["status"] == "running"
+    assert resumed["attempt"] == 2
+    assert resumed["worker_id"] == "worker-b"
+
+    ready = pm.finish_packaging_job(tmp_path, "value-L01", succeeded=True)
+    assert ready["status"] == "ready"
+    manifest = pm.load_manifest(tmp_path)
+    cut = manifest["cuts"]["value-L01"]
+    assert all(stage in cut for stage in pm.STAGES)
+    assert cut["packaging"]["error"] is None
+
+
+def test_packaging_worker_stale_queued_claim_cannot_duplicate_running_job(tmp_path):
+    job = {
+        "cut_id": "value-L01",
+        "rank": 1,
+        "video": {"status": "queued"},
+        "packaging": {"status": "queued"},
+    }
+    pm.stage_parallel_jobs(tmp_path, [job])
+    pm.claim_packaging_job(tmp_path, "value-L01", worker_id="worker-a")
+
+    with pytest.raises(ValueError, match="already running"):
+        pm.claim_packaging_job(tmp_path, "value-L01", worker_id="worker-b")
+
+
+def test_packaging_worker_failure_is_visible_and_not_requeued_by_approval(tmp_path):
+    job = {
+        "cut_id": "value-L01",
+        "rank": 1,
+        "video": {"status": "queued"},
+        "packaging": {"status": "queued"},
+    }
+    pm.stage_parallel_jobs(tmp_path, [job])
+    pm.claim_packaging_job(tmp_path, "value-L01", worker_id="worker-a")
+    failed = pm.finish_packaging_job(
+        tmp_path, "value-L01", succeeded=False, error="agent failed"
+    )
+    assert failed["status"] == "failed"
+    assert failed["error"] == "agent failed"
+
+    restaged = pm.stage_parallel_jobs(tmp_path, [job])
+    assert restaged["cuts"]["value-L01"]["packaging"]["status"] == "failed"

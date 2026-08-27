@@ -18,6 +18,8 @@ Chrome／hyperframes／LINE Seed 字型，那些只在桌機（ADR-054 D11：VPS
   （requested_at 沒變就不再跑，避免壞配方把 GPU/CPU 打滿）
 - Reject + feedback 產生的 `revision_job.status=queued` → 備份舊版、啟動一個 bounded
   Codex packaging agent、驗證 working/vault/schema/PNG 後只標 `ready_for_review`；永不自動核准
+- Highlight shortlist 產生的 `packaging.status=queued` → 以 sol 啟動完整 title + thumbnail
+  Packaging agent；驗證三組 package 後標 `ready`。中斷的 running job 由下次 watcher 續跑
 
 手動跑：
     python scripts/render_watcher.py --once      # 掃一輪就結束（測試用）
@@ -31,9 +33,11 @@ import hashlib
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -49,6 +53,11 @@ for _s in (sys.stdout, sys.stderr):
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
+from scripts.packaging_manifest import (  # noqa: E402
+    claim_packaging_job,
+    finish_packaging_job,
+    load_manifest,
+)
 from shared.config import get_vault_path  # noqa: E402
 from shared.schemas.packaging import parse_packages  # noqa: E402
 from thousand_sunny.routers.packaging import _load_composition_receipt  # noqa: E402
@@ -189,6 +198,69 @@ def pending_revision_jobs(vault: Path) -> list[dict]:
                 }
             )
     return out
+
+
+def pending_packaging_jobs(vault: Path) -> list[dict]:
+    """Return queued initial Packaging jobs, including interrupted running work."""
+    out: list[dict] = []
+    root = vault / "Attachments" / "packaging"
+    if not root.is_dir():
+        return out
+    for manifest_path in sorted(root.glob("*/manifest.json")):
+        episode_dir = manifest_path.parent
+        manifest = load_manifest(episode_dir)
+        packages_path = episode_dir / "packages.json"
+        if not packages_path.is_file():
+            continue
+        try:
+            packages = json.loads(packages_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            raise RuntimeError(f"Packaging packages.json 無法讀取：{packages_path}") from exc
+        episode_name = packages.get("episode")
+        if not isinstance(episode_name, str) or not episode_name:
+            raise RuntimeError(f"Packaging packages.json 缺 episode：{packages_path}")
+        rows = sorted(
+            manifest["cuts"].items(),
+            key=lambda pair: (int(pair[1].get("rank") or 999), pair[0]),
+        )
+        for cut_id, row in rows:
+            branch = row.get("packaging")
+            status = branch.get("status") if isinstance(branch, dict) else None
+            if status not in {"queued", "running"}:
+                continue
+            if status == "running":
+                worker_host = branch.get("worker_host")
+                worker_pid = branch.get("worker_pid")
+                if worker_host and worker_host != socket.gethostname():
+                    # A different desktop owns this cut.  Do not steal it merely
+                    # because both machines see the same synced vault.
+                    continue
+                if isinstance(worker_pid, int) and _process_is_running(worker_pid):
+                    continue
+            out.append(
+                {
+                    "slug": episode_dir.name,
+                    "episode": episode_name,
+                    "cut_id": cut_id,
+                    "rank": int(row.get("rank") or 0),
+                    "title": str(row.get("title") or cut_id),
+                    "selected_at": row.get("selected_at"),
+                    "resume": status == "running",
+                    "manifest_path": manifest_path,
+                }
+            )
+    return out
+
+
+def _process_is_running(pid: int) -> bool:
+    """Best-effort local process check used only to avoid duplicate agent launches."""
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except (OSError, ValueError):
+        return False
+    return True
 
 
 def _atomic_json(path: Path, data: dict) -> None:
@@ -345,6 +417,93 @@ def dispatch_revision_agent(context: dict) -> subprocess.CompletedProcess[str]:
     )
 
 
+def dispatch_packaging_agent(context: dict) -> subprocess.CompletedProcess[str]:
+    """Run the full initial title + thumbnail Packaging chain in bounded scope."""
+    job_dir = Path(context["job_dir"])
+    title_skill = _REPO / ".claude" / "skills" / "title-brainstorm" / "SKILL.md"
+    thumbnail_skill = _REPO / ".claude" / "skills" / "thumbnail-brainstorm" / "SKILL.md"
+    prompt = f"""你是獨立的 Podcast Long Highlight Packaging Agent。
+
+先完整讀取 `{title_skill}` 與 `{thumbnail_skill}`，包含兩份 skill 指定的必要 reference，
+然後依序執行完整 title-brainstorm → thumbnail-brainstorm，不得簡化 title panel 或只用
+工作代號充當正式標題。工作請求在 `{context['request_path']}`；只處理
+`{context['cut_id']}`。
+
+允許修改的 production 範圍只有：
+- working episode: `{context['working_episode_dir']}`
+- working packaging: `{context['working_packaging_dir']}`
+- vault packaging mirror: `{context['vault_packaging_dir']}`
+- 本集 cutouts: `{context['vault_cutout_dir']}`
+
+硬規則：
+1. 不改 repo code、skill、approval.json、字幕、Resolve、影片、YouTube 或發布狀態。
+2. 這是 format=long：title-brainstorm 必須完成 7 步、Top 5、獨立 cold-reader panel；
+   thumbnail-brainstorm 必須為前三名產出三組 1280x720 PNG package。
+3. 使用既有 emit/attach/render/schema 工具 merge exact cut，不得覆寫其他 cut。
+4. 長精華必須是 thumbnail_reaction 且中央為真實圖像素材，產生 composition receipts；
+   人物使用真實訪談畫面，雙肩與麥克風輪廓完整。
+5. 中斷重跑時先檢查現有 packages/artifacts，沿用已完成且可驗證的成果，從缺的 stage 續跑；
+   不重生已完整的 titles 或 thumbnails。
+6. working/vault packages.json 與所有定稿 PNG bytes 必須一致；不可自動 Approve。
+7. 完成後把摘要寫到 `{job_dir / 'agent-summary.md'}`。若任何必要輸入、來源或 QA 不成立，
+   必須明確失敗，不得寫 READY 或假裝生成完成。
+"""
+    command = [
+        _codex_command(),
+        "exec",
+        "--ephemeral",
+        "--ignore-rules",
+        "--skip-git-repo-check",
+        "--approve-for-me",
+        "--model",
+        "gpt-5.6-sol",
+        "--cd",
+        str(job_dir),
+        "--add-dir",
+        context["working_episode_dir"],
+        "--add-dir",
+        context["vault_packaging_dir"],
+        "--add-dir",
+        context["vault_cutout_dir"],
+        "--output-last-message",
+        str(job_dir / "agent-last-message.txt"),
+        "-",
+    ]
+    child_env = os.environ.copy()
+    for inherited_name in (
+        "CODEX_PERMISSION_PROFILE",
+        "CODEX_SANDBOX_NETWORK_DISABLED",
+        "CODEX_SESSION_ID",
+        "CODEX_THREAD_ID",
+    ):
+        child_env.pop(inherited_name, None)
+    stdout_path = job_dir / "agent.stdout.log"
+    stderr_path = job_dir / "agent.stderr.log"
+    with (
+        stdout_path.open("w", encoding="utf-8") as stdout_fh,
+        stderr_path.open("w", encoding="utf-8") as stderr_fh,
+    ):
+        result = subprocess.run(
+            command,
+            input=prompt,
+            stdout=stdout_fh,
+            stderr=stderr_fh,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=str(job_dir),
+            env=child_env,
+            shell=(os.name == "nt"),
+            timeout=14400,
+        )
+    return subprocess.CompletedProcess(
+        command,
+        result.returncode,
+        stdout_path.read_text(encoding="utf-8", errors="replace"),
+        stderr_path.read_text(encoding="utf-8", errors="replace"),
+    )
+
+
 def _validate_revision_outputs(
     *,
     packaging_dir: Path,
@@ -389,6 +548,26 @@ def _validate_revision_outputs(
             cut=cut,
         )
     return working_packages.read_bytes(), outputs
+
+
+def _validate_initial_packaging_outputs(
+    *,
+    packaging_dir: Path,
+    vault_packaging_dir: Path,
+    vault_root: Path,
+    cut_id: str,
+) -> dict[str, object]:
+    """Prove that the initial agent emitted a complete reviewable long package."""
+    packages_bytes, assets = _validate_revision_outputs(
+        packaging_dir=packaging_dir,
+        vault_packaging_dir=vault_packaging_dir,
+        vault_root=vault_root,
+        cut_id=cut_id,
+    )
+    return {
+        "packages_sha256": hashlib.sha256(packages_bytes).hexdigest(),
+        "assets": assets,
+    }
 
 
 def _validate_full_episode_layout(*, packaging_dir: Path, vault_root: Path, cut) -> None:
@@ -629,6 +808,121 @@ def run_revision_job(
         return False
 
 
+def run_packaging_job(
+    job: dict,
+    *,
+    packaging_dir: Path | None = None,
+    agent_runner: Callable[[dict], subprocess.CompletedProcess[str]] = dispatch_packaging_agent,
+    log_path: Path | None = None,
+) -> bool:
+    """Claim, dispatch and validate one approved initial Long Packaging job."""
+    manifest_dir = Path(job["manifest_path"]).parent
+    cut_id = job["cut_id"]
+    worker_id = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
+    claimed = False
+    try:
+        claim_packaging_job(
+            manifest_dir,
+            cut_id,
+            worker_id=worker_id,
+            worker_host=socket.gethostname(),
+            worker_pid=os.getpid(),
+            resume_existing=bool(job.get("resume")),
+        )
+        claimed = True
+        packaging_dir = packaging_dir or find_packaging_dir(
+            job["slug"], episode_name=job.get("episode")
+        )
+        if packaging_dir is None:
+            raise RuntimeError("working-set packaging dir not found")
+        working_episode_dir = packaging_dir.parent
+        vault_root = manifest_dir.parents[2]
+        vault_cutout_dir = (
+            vault_root / "Attachments" / "cutouts" / "podcast" / job["slug"]
+        )
+        vault_cutout_dir.mkdir(parents=True, exist_ok=True)
+        job_key = hashlib.sha256(cut_id.encode("utf-8")).hexdigest()[:16]
+        job_dir = packaging_dir / "_jobs" / "initial" / job_key
+        job_dir.mkdir(parents=True, exist_ok=True)
+        request_path = job_dir / "request.json"
+        _atomic_json(
+            request_path,
+            {
+                "contract": "podcast-long-packaging-job-v1",
+                "episode": job["episode"],
+                "episode_slug": job["slug"],
+                "cut_id": cut_id,
+                "rank": job["rank"],
+                "work_name": job["title"],
+                "selected_at": job.get("selected_at"),
+                "resume": bool(job.get("resume")),
+                "source": {
+                    "winners": str(working_episode_dir / "highlights" / "winners.json"),
+                    "episode_dir": str(working_episode_dir),
+                },
+                "outputs": {
+                    "working_packaging": str(packaging_dir),
+                    "vault_packaging": str(manifest_dir),
+                },
+            },
+        )
+        context = {
+            "cut_id": cut_id,
+            "job_dir": str(job_dir),
+            "request_path": str(request_path),
+            "working_packaging_dir": str(packaging_dir),
+            "working_episode_dir": str(working_episode_dir),
+            "vault_packaging_dir": str(manifest_dir),
+            "vault_cutout_dir": str(vault_cutout_dir),
+        }
+        _log(
+            f"PACKAGING {'RESUME' if job.get('resume') else 'START'} "
+            f"{job['slug']}/{cut_id}",
+            log_path,
+        )
+        result = agent_runner(context)
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "")[-500:]
+            raise RuntimeError(f"Packaging agent exit {result.returncode}: {detail}")
+        validation = _validate_initial_packaging_outputs(
+            packaging_dir=packaging_dir,
+            vault_packaging_dir=manifest_dir,
+            vault_root=vault_root,
+            cut_id=cut_id,
+        )
+        finished_at = datetime.now(timezone.utc).isoformat()
+        _atomic_json(
+            job_dir / "result.json",
+            {
+                "contract": "podcast-long-packaging-result-v1",
+                "episode": job["episode"],
+                "cut_id": cut_id,
+                "finished_at": finished_at,
+                **validation,
+            },
+        )
+        finish_packaging_job(manifest_dir, cut_id, succeeded=True)
+        _log(f"PACKAGING READY {job['slug']}/{cut_id}", log_path)
+        return True
+    except KeyboardInterrupt:
+        # Leave ``running`` durable so the next watcher process resumes this cut.
+        _log(f"PACKAGING INTERRUPTED {job['slug']}/{cut_id}", log_path)
+        raise
+    except Exception as exc:
+        if claimed:
+            try:
+                finish_packaging_job(
+                    manifest_dir,
+                    cut_id,
+                    succeeded=False,
+                    error=str(exc),
+                )
+            except Exception as update_exc:
+                _log(f"PACKAGING STATUS WRITE FAILED {cut_id}: {update_exc}", log_path)
+        _log(f"PACKAGING FAIL {job['slug']}/{cut_id}: {exc}", log_path)
+        return False
+
+
 def render_one(job: dict, state: dict, state_path: Path, log_path: Path | None) -> bool:
     slug, cut_id = job["slug"], job["cut_id"]
     packaging_dir = find_packaging_dir(slug, episode_name=job.get("episode"))
@@ -716,6 +1010,8 @@ def main() -> int:
             run_revision_job(revision, log_path=args.log)
         for job in pending_requests(vault, state):
             render_one(job, state, args.state, args.log)
+        for packaging_job in pending_packaging_jobs(vault):
+            run_packaging_job(packaging_job, log_path=args.log)
         if args.once:
             return 0
         time.sleep(args.interval)

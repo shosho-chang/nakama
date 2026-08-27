@@ -146,6 +146,88 @@ def stage_parallel_jobs(packaging_dir: Path, jobs: list[dict]) -> dict:
     return data
 
 
+def claim_packaging_job(
+    packaging_dir: Path,
+    cut_id: str,
+    *,
+    worker_id: str,
+    worker_host: str | None = None,
+    worker_pid: int | None = None,
+    resume_existing: bool = False,
+) -> dict:
+    """Durably claim or resume one initial Packaging job.
+
+    ``running`` is deliberately reclaimable: the desktop watcher is a single
+    supervised process, so a leftover running state means the previous process
+    stopped before writing a terminal state.  The attempt counter exposes that
+    resume and the agent is instructed to continue from actual artifacts.
+    """
+    data = _load(packaging_dir)
+    cut = data["cuts"].get(cut_id)
+    if not isinstance(cut, dict):
+        raise ValueError(f"unknown packaging cut: {cut_id}")
+    branch = cut.get("packaging")
+    if not isinstance(branch, dict):
+        raise ValueError(f"{cut_id} packaging work is missing")
+    current_status = branch.get("status")
+    if current_status not in {"queued", "running"}:
+        raise ValueError(f"{cut_id} packaging work is not claimable: {current_status!r}")
+    if current_status == "running" and not resume_existing:
+        raise ValueError(f"{cut_id} packaging work is already running")
+    now = datetime.now(timezone.utc).isoformat()
+    branch.update(
+        {
+            "status": "running",
+            "attempt": int(branch.get("attempt") or 0) + 1,
+            "worker_id": worker_id,
+            "worker_host": worker_host,
+            "worker_pid": worker_pid,
+            "started_at": branch.get("started_at") or now,
+            "last_started_at": now,
+            "finished_at": None,
+            "error": None,
+        }
+    )
+    cut["packaging"] = branch
+    _save(packaging_dir, data)
+    return dict(branch)
+
+
+def finish_packaging_job(
+    packaging_dir: Path,
+    cut_id: str,
+    *,
+    succeeded: bool,
+    error: str | None = None,
+) -> dict:
+    """Write the terminal state for a claimed initial Packaging job."""
+    data = _load(packaging_dir)
+    cut = data["cuts"].get(cut_id)
+    if not isinstance(cut, dict):
+        raise ValueError(f"unknown packaging cut: {cut_id}")
+    branch = cut.get("packaging")
+    if not isinstance(branch, dict) or branch.get("status") != "running":
+        raise ValueError(f"{cut_id} packaging work is not running")
+    now = datetime.now(timezone.utc).isoformat()
+    if succeeded:
+        # These timestamps mean the final output validator proved the complete
+        # title → thumbnail → emitted chain.  Partial agent output is never marked.
+        for stage in STAGES:
+            cut.setdefault(stage, now)
+        branch.update({"status": "ready", "finished_at": now, "error": None})
+    else:
+        branch.update(
+            {
+                "status": "failed",
+                "finished_at": now,
+                "error": str(error or "Packaging worker failed")[-1000:],
+            }
+        )
+    cut["packaging"] = branch
+    _save(packaging_dir, data)
+    return dict(branch)
+
+
 def status(packaging_dir: Path) -> dict:
     data = _load(packaging_dir)
     out: dict = {"cuts": {}, "next": None}

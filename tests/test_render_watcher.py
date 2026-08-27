@@ -18,11 +18,14 @@ from PIL import Image
 
 from scripts.render_watcher import (
     _validate_full_episode_layout,
+    dispatch_packaging_agent,
     dispatch_revision_agent,
     find_packaging_dir,
     load_state,
+    pending_packaging_jobs,
     pending_requests,
     pending_revision_jobs,
+    run_packaging_job,
     run_revision_job,
     save_state,
 )
@@ -144,6 +147,209 @@ def test_queued_rejection_is_a_pending_agent_revision(vault):
     assert jobs[0]["slug"] == "20260721-zhengguowei"
     assert jobs[0]["cut_id"] == "full"
     assert jobs[0]["request_id"] == "revision-0123456789abcdef"
+
+
+def _queued_packaging_manifest(vault: Path) -> tuple[Path, Path]:
+    vault_ep = vault / "Attachments" / "packaging" / "20260721-zhengguowei"
+    manifest = {
+        "cuts": {
+            "full": {"emitted": "2026-08-26T00:00:00+00:00"},
+            "value-L01": {
+                "rank": 1,
+                "title": "Long 1 work name",
+                "selected_at": "2026-08-27T01:00:00+00:00",
+                "video": {"status": "ready"},
+                "packaging": {"status": "queued"},
+            },
+        }
+    }
+    (vault_ep / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False), encoding="utf-8"
+    )
+    (vault_ep / "packages.json").write_text(
+        json.dumps({"episode": "episode name", "cuts": []}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return vault_ep, vault_ep / "manifest.json"
+
+
+def test_queued_initial_packaging_job_is_discovered_once(vault):
+    _queued_packaging_manifest(vault)
+
+    jobs = pending_packaging_jobs(vault)
+
+    assert [(job["cut_id"], job["rank"]) for job in jobs] == [("value-L01", 1)]
+
+
+def test_running_initial_packaging_job_is_resumed_after_restart(vault):
+    _, manifest_path = _queued_packaging_manifest(vault)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["cuts"]["value-L01"]["packaging"] = {
+        "status": "running",
+        "worker_id": "interrupted-worker",
+        "attempt": 1,
+    }
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    jobs = pending_packaging_jobs(vault)
+
+    assert len(jobs) == 1
+    assert jobs[0]["resume"] is True
+
+
+def test_running_initial_packaging_job_owned_by_live_worker_is_not_duplicated(vault):
+    import os
+    import socket
+
+    _, manifest_path = _queued_packaging_manifest(vault)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["cuts"]["value-L01"]["packaging"] = {
+        "status": "running",
+        "worker_host": socket.gethostname(),
+        "worker_pid": os.getpid(),
+        "attempt": 1,
+    }
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    assert pending_packaging_jobs(vault) == []
+
+
+def test_ready_and_failed_initial_packaging_jobs_are_not_dispatched(vault):
+    _, manifest_path = _queued_packaging_manifest(vault)
+    for status in ("ready", "failed"):
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["cuts"]["value-L01"]["packaging"] = {"status": status}
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        assert pending_packaging_jobs(vault) == []
+
+
+def test_initial_packaging_dispatch_uses_sol_and_bounded_directories(tmp_path, monkeypatch):
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    captured: dict = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(returncode=0, stdout="done", stderr="")
+
+    monkeypatch.setattr("scripts.render_watcher._codex_command", lambda: "codex.exe")
+    monkeypatch.setattr("scripts.render_watcher.subprocess.run", fake_run)
+
+    dispatch_packaging_agent(
+        {
+            "cut_id": "value-L01",
+            "job_dir": str(job_dir),
+            "request_path": str(job_dir / "request.json"),
+            "working_packaging_dir": str(tmp_path / "episode" / "packaging"),
+            "working_episode_dir": str(tmp_path / "episode"),
+            "vault_packaging_dir": str(tmp_path / "vault-packaging"),
+            "vault_cutout_dir": str(tmp_path / "vault-cutouts"),
+        }
+    )
+
+    command = captured["command"]
+    assert command[command.index("--model") + 1] == "gpt-5.6-sol"
+    assert "--approve-for-me" in command
+    prompt = captured["kwargs"]["input"]
+    assert "title-brainstorm" in prompt
+    assert "thumbnail-brainstorm" in prompt
+    assert "value-L01" in prompt
+
+
+def test_initial_packaging_success_becomes_ready_and_failure_becomes_failed(
+    vault, tmp_path
+):
+    vault_ep, manifest_path = _queued_packaging_manifest(vault)
+    episode = tmp_path / "episode"
+    working = episode / "packaging"
+    working.mkdir(parents=True)
+    (episode / "highlights").mkdir()
+    (episode / "highlights" / "winners.json").write_text("{}", encoding="utf-8")
+    initial_packages = {"episode": "episode name", "generated_at": None, "cuts": []}
+    for root in (working, vault_ep):
+        (root / "packages.json").write_text(
+            json.dumps(initial_packages, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+
+    def successful_agent(context: dict) -> SimpleNamespace:
+        packages = {
+            "episode": "episode name",
+            "generated_at": "2026-08-27T03:00:00+00:00",
+            "cuts": [
+                {
+                    "cut_id": "value-L01",
+                    "format": "long",
+                    "information_origin": "full_text",
+                    "visual_recipe": "podcast",
+                    "aspect": "16:9",
+                    "titles": [
+                        {
+                            "text": f"title {rank}",
+                            "archetype_id": "T-A3",
+                            "angle_combo": ["反直覺"],
+                            "payoff": "payoff",
+                            "cite": "highlights/winners.json#value-L01",
+                            "rank": rank,
+                            **({"panel_note": "not selected"} if rank >= 4 else {}),
+                        }
+                        for rank in range(1, 6)
+                    ],
+                    "packages": [
+                        {
+                            "title_rank": rank,
+                            "thumbnail_png": (
+                                "Attachments/packaging/20260721-zhengguowei/"
+                                f"pkg-value-L01-{rank}.png"
+                            ),
+                            "thumb_archetype_id": "T-V3",
+                            "joint_pairing_id": f"JP-{rank}",
+                            "host_cutout": "Attachments/cutouts/podcast/ep/host.png",
+                            "guest_cutout": "Attachments/cutouts/podcast/ep/guest.png",
+                        }
+                        for rank in range(1, 4)
+                    ],
+                    "citations": [],
+                    "brand_flags": [],
+                }
+            ],
+        }
+        payload = json.dumps(packages, ensure_ascii=False, indent=2) + "\n"
+        for root in (working, vault_ep):
+            (root / "packages.json").write_text(payload, encoding="utf-8")
+            for rank in range(1, 4):
+                Image.new("RGB", (1280, 720), "black").save(
+                    root / f"pkg-value-L01-{rank}.png"
+                )
+        return SimpleNamespace(returncode=0, stdout="done", stderr="")
+
+    monkeypatch_target = "scripts.render_watcher._validate_initial_packaging_outputs"
+    # This unit tests worker state transitions; composition geometry is covered by
+    # the production validator's own tests and is replaced with a deterministic seam.
+    from unittest.mock import patch
+
+    with patch(monkeypatch_target, return_value={"packages_sha256": "a" * 64}):
+        job = pending_packaging_jobs(vault)[0]
+        assert run_packaging_job(job, packaging_dir=working, agent_runner=successful_agent)
+    saved = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert saved["cuts"]["value-L01"]["packaging"]["status"] == "ready"
+    assert pending_packaging_jobs(vault) == []
+
+    saved["cuts"]["value-L02"] = {
+        "rank": 2,
+        "video": {"status": "queued"},
+        "packaging": {"status": "queued"},
+    }
+    manifest_path.write_text(json.dumps(saved), encoding="utf-8")
+    failed_job = pending_packaging_jobs(vault)[0]
+    assert not run_packaging_job(
+        failed_job,
+        packaging_dir=working,
+        agent_runner=lambda _context: SimpleNamespace(returncode=7, stdout="", stderr="boom"),
+    )
+    failed = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert failed["cuts"]["value-L02"]["packaging"]["status"] == "failed"
+    assert "exit 7" in failed["cuts"]["value-L02"]["packaging"]["error"]
 
 
 def test_revision_dispatch_uses_writable_reviewed_codex_environment(tmp_path, monkeypatch):

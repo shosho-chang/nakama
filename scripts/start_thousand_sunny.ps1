@@ -37,6 +37,7 @@ Start-Process -FilePath $venvPy `
 # 兩種不依賴 Resolve ABI 的工作共用 render watcher：
 # 1) gate「存配方」→ render_request → render 一次。
 # 2) gate Reject + feedback → revision_job → bounded Codex agent 重做 → 回到 re-review。
+# 3) Highlight shortlist approve → queued Long Packaging → title + thumbnail → READY。
 # Finished-cut revision 由下方 Python 3.10 supervisor 獨佔，避免 fusionscript ABI 錯誤與雙重消費。
 $watcherArgs = @('scripts/render_watcher.py', '--interval', '5')
 Start-Process -FilePath $venvPy `
