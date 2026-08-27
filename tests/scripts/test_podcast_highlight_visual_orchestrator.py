@@ -528,8 +528,7 @@ class _RealRefinementDispatcher(_RealCoreDispatcher):
             title = next(row for row in proposal["findings"] if row["event_id"] == "title-002")
             title["verdict"] = "mismatch"
             title["rationale"] = (
-                "找不到可核對的自有檔案，概念卡不能冒充實際畫面證據，"
-                "必須回到 Director。"
+                "找不到可核對的自有檔案，概念卡不能冒充實際畫面證據，必須回到 Director。"
             )
             session_id = DIRECTOR_SESSION
         elif request.phase == "refinement_decision-001":
@@ -732,9 +731,7 @@ def test_two_new_dispatches_then_same_director_session_resume_are_required(
     assert all(call.working_directory.is_relative_to(episode[0]) for call in dispatcher.calls)
     assert all(REVISION_ID in call.working_directory.parts for call in dispatcher.calls)
     dp_call = next(call for call in dispatcher.calls if call.phase == "dp")
-    dp_input = json.loads(
-        (dp_call.working_directory / "dp-input.json").read_text(encoding="utf-8")
-    )
+    dp_input = json.loads((dp_call.working_directory / "dp-input.json").read_text(encoding="utf-8"))
     assert dp_input["asset_authority"]["identity"]["content_hash"] == "a" * 64
     assert len(_trusted_hydrator_boundary) == 1
     assert _trusted_hydrator_boundary[0]["attempt"] == 1
@@ -977,9 +974,7 @@ def test_real_core_base_and_second_generation_reach_current_with_exact_sessions(
     first_work = core_fixtures.init_visual_work_packet(
         episode_root, cut_id="value-L01", editorial_master=master
     )
-    core_fixtures._publish_fixture_asset_authority(
-        episode_root, first_work.identity()
-    )
+    core_fixtures._publish_fixture_asset_authority(episode_root, first_work.identity())
     first_dispatcher = _RealCoreDispatcher(episode_root)
 
     first = orchestrator.run_visual_pipeline(
@@ -1021,9 +1016,7 @@ def test_real_core_base_and_second_generation_reach_current_with_exact_sessions(
         revision_request=request,
         editorial_master=master,
     )
-    core_fixtures._publish_fixture_asset_authority(
-        episode_root, second_work.identity()
-    )
+    core_fixtures._publish_fixture_asset_authority(episode_root, second_work.identity())
     second_dispatcher = _RealCoreDispatcher(episode_root)
     second = orchestrator.run_visual_pipeline(
         episode_root,
@@ -1108,14 +1101,7 @@ def test_real_core_retry_same_request_reuses_pending_revision_after_pre_session_
     tmp_path: Path,
 ) -> None:
     episode_root, master = core_fixtures._episode(tmp_path)
-    request = (
-        episode_root
-        / "highlights"
-        / "review"
-        / "revisions"
-        / "request-1"
-        / "request.json"
-    )
+    request = episode_root / "highlights" / "review" / "revisions" / "request-1" / "request.json"
     request.parent.mkdir(parents=True)
     request.write_text(
         json.dumps(
@@ -1167,9 +1153,7 @@ def test_real_core_retry_same_request_reuses_pending_revision_after_pre_session_
         revision_id=str(pending_revision),
         editorial_master=master,
     )
-    core_fixtures._publish_fixture_asset_authority(
-        episode_root, pending_work.identity()
-    )
+    core_fixtures._publish_fixture_asset_authority(episode_root, pending_work.identity())
     resumed_dispatcher = _RealCoreDispatcher(episode_root)
     resumed = orchestrator.run_visual_pipeline(
         episode_root,
@@ -1299,14 +1283,7 @@ def test_nonzero_after_thread_started_is_preserved_then_fresh_retry_completes(
         episode_root, cut_id="value-L01", editorial_master=master
     )
     revision_id = status["pending_revision_id"]
-    job_root = (
-        episode_root
-        / "highlights"
-        / "visual-pipeline"
-        / "value-L01"
-        / "jobs"
-        / revision_id
-    )
+    job_root = episode_root / "highlights" / "visual-pipeline" / "value-L01" / "jobs" / revision_id
     assert not (job_root / "receipts" / "director.json").exists()
 
     pending_work = core_fixtures.load_visual_work_packet(
@@ -1371,14 +1348,7 @@ def test_failed_dp_hydration_retires_execution_before_fresh_retry(
             proposal_hydrator=flaky_hydrator,
         )
 
-    job_root = (
-        root
-        / "highlights"
-        / "visual-pipeline"
-        / "value-L01"
-        / "jobs"
-        / REVISION_ID
-    )
+    job_root = root / "highlights" / "visual-pipeline" / "value-L01" / "jobs" / REVISION_ID
     first_attempt = job_root / "receipts" / "dp.attempts" / "attempt-001"
     assert [call.phase for call in first.calls] == ["director", "dp"]
     assert not (job_root / "receipts" / "dp.json").exists()
@@ -1436,14 +1406,7 @@ def test_failed_dp_accept_retires_execution_before_fresh_retry(
             dispatcher=first,
         )
 
-    job_root = (
-        root
-        / "highlights"
-        / "visual-pipeline"
-        / "value-L01"
-        / "jobs"
-        / REVISION_ID
-    )
+    job_root = root / "highlights" / "visual-pipeline" / "value-L01" / "jobs" / REVISION_ID
     first_attempt = job_root / "receipts" / "dp.attempts" / "attempt-001"
     assert not (job_root / "receipts" / "dp.json").exists()
     assert (first_attempt / "FAILURE.json").is_file()
@@ -1734,6 +1697,400 @@ def test_failed_worker_output_verification_uses_attempt_scoped_streams_on_retry(
     assert [call.phase for call in retry.calls] == ["dp", "semantic_audit"]
 
 
+def _failed_completed_execution_fixture(
+    tmp_path: Path,
+    *,
+    phase: str = "asset_acquisition-001",
+    role: str = "asset_acquisition",
+    with_failure: bool = True,
+) -> dict[str, object]:
+    root = tmp_path / "episode"
+    root.mkdir()
+    job_root = root / "highlights" / "visual-pipeline" / "value-L01" / "jobs" / REVISION_ID
+    proposal = job_root / "workers" / "asset-session" / f"{phase}-proposal.json"
+    proposal.parent.mkdir(parents=True)
+    proposal_bytes = b'{"contract":"podcast-highlight-asset-acquisition-proposal-v1"}\n'
+    proposal.write_bytes(proposal_bytes)
+    core_fixtures._write_trusted_execution_receipt(
+        root,
+        cut_id="value-L01",
+        revision_id=REVISION_ID,
+        phase=phase,
+        role=role,
+        worker_identity=(
+            core_fixtures.ASSET_WORKER
+            if role == "asset_acquisition"
+            else {
+                "worker_id": "integration-worker-v1",
+                "execution_id": "completed-before-downstream-failure",
+                "role": role,
+                "session_id": DIRECTOR_SESSION if role == "director" else DP_SESSION,
+            }
+        ),
+        proposal_path=proposal,
+    )
+    receipt_path = job_root / "receipts" / f"{phase}.json"
+    receipt_bytes = receipt_path.read_bytes()
+    execution_receipt = json.loads(receipt_bytes)
+    attempt_root = job_root / "receipts" / f"{phase}.attempts" / "attempt-001"
+    failure = {
+        "contract": orchestrator.EXECUTION_FAILURE_CONTRACT,
+        "prepare": execution_receipt["prepare"],
+        "reason": "downstream publisher runtime was unavailable",
+        "returncode": None,
+        "proposal_evidence": None,
+    }
+    failure["content_hash"] = orchestrator._content_hash(failure)
+    if with_failure:
+        orchestrator._write_json(attempt_root / "FAILURE.json", failure)
+    return {
+        "root": root,
+        "phase": phase,
+        "role": role,
+        "job_root": job_root,
+        "proposal": proposal,
+        "proposal_bytes": proposal_bytes,
+        "receipt_path": receipt_path,
+        "receipt_bytes": receipt_bytes,
+        "attempt_root": attempt_root,
+        "failure_path": attempt_root / "FAILURE.json",
+    }
+
+
+def test_recover_failed_execution_archives_completed_root_bytes(
+    tmp_path: Path,
+) -> None:
+    fixture = _failed_completed_execution_fixture(tmp_path)
+    root = fixture["root"]
+    assert isinstance(root, Path)
+    phase = str(fixture["phase"])
+    role = str(fixture["role"])
+    proposal = fixture["proposal"]
+    receipt_path = fixture["receipt_path"]
+    attempt_root = fixture["attempt_root"]
+    assert isinstance(proposal, Path)
+    assert isinstance(receipt_path, Path)
+    assert isinstance(attempt_root, Path)
+
+    recovered = orchestrator.recover_failed_execution(
+        root,
+        cut_id="value-L01",
+        revision_id=REVISION_ID,
+        phase=phase,
+        role=role,
+        attempt=1,
+        reason="Preserve completed acquisition before retrying its failed publish.",
+    )
+
+    assert recovered["contract"] == orchestrator.EXECUTION_RECOVERY_CONTRACT
+    assert not proposal.exists()
+    assert not receipt_path.exists()
+    assert (attempt_root / "evidence" / "proposal.json").read_bytes() == fixture["proposal_bytes"]
+    assert (attempt_root / "evidence" / "execution-receipt.json").read_bytes() == fixture[
+        "receipt_bytes"
+    ]
+    assert (attempt_root / "RECOVERY.json").is_file()
+
+
+def test_recover_failed_semantic_audit_preserves_dp_and_opens_next_audit_attempt(
+    tmp_path: Path,
+) -> None:
+    fixture = _failed_completed_execution_fixture(
+        tmp_path,
+        phase="semantic_audit",
+        role="director",
+    )
+    root = fixture["root"]
+    proposal = fixture["proposal"]
+    job_root = fixture["job_root"]
+    assert isinstance(root, Path)
+    assert isinstance(proposal, Path)
+    assert isinstance(job_root, Path)
+    dp = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "revisions"
+        / REVISION_ID
+        / "DP-FULFILLMENT.json"
+    )
+    dp.parent.mkdir(parents=True, exist_ok=True)
+    dp_bytes = b"accepted-dp-fulfillment-must-survive-audit-recovery"
+    dp.write_bytes(dp_bytes)
+
+    orchestrator.recover_failed_execution(
+        root,
+        cut_id="value-L01",
+        revision_id=REVISION_ID,
+        phase="semantic_audit",
+        role="director",
+        attempt=1,
+        reason="Audit completed without inspecting media; downstream acceptance failed closed.",
+    )
+    receipt_document = json.loads(
+        (
+            job_root
+            / "receipts"
+            / "semantic_audit.attempts"
+            / "attempt-001"
+            / "evidence"
+            / "execution-receipt.json"
+        ).read_text(encoding="utf-8")
+    )
+    phase_input_identity = receipt_document["phase_input"]
+    assert isinstance(phase_input_identity, dict)
+    phase_input = root / str(phase_input_identity["path"])
+    next_attempt = orchestrator._prepare_execution_attempt(
+        root,
+        job_root,
+        cut_id="value-L01",
+        revision_id=REVISION_ID,
+        phase="semantic_audit",
+        role="director",
+        prompt="Repeat the same-Director audit after inspecting every selected media file.",
+        phase_input_path=phase_input,
+        proposal_path=proposal,
+    )
+
+    assert dp.read_bytes() == dp_bytes
+    assert not (dp.parent / "SEMANTIC-AUDIT.json").exists(), (
+        "recovery must not fabricate canonical acceptance"
+    )
+    assert next_attempt.name == "attempt-002"
+    assert (next_attempt / "PREPARE.json").is_file()
+
+
+def test_recover_failed_execution_refuses_attempt_without_failure(tmp_path: Path) -> None:
+    fixture = _failed_completed_execution_fixture(tmp_path, with_failure=False)
+    root = fixture["root"]
+    proposal = fixture["proposal"]
+    receipt_path = fixture["receipt_path"]
+    assert isinstance(root, Path)
+    assert isinstance(proposal, Path)
+    assert isinstance(receipt_path, Path)
+    proposal_before = proposal.read_bytes()
+    receipt_before = receipt_path.read_bytes()
+
+    with pytest.raises(
+        orchestrator.VisualPipelineOrchestrationError,
+        match="failed-attempt receipt is missing",
+    ):
+        orchestrator.recover_failed_execution(
+            root,
+            cut_id="value-L01",
+            revision_id=REVISION_ID,
+            phase=str(fixture["phase"]),
+            role=str(fixture["role"]),
+            attempt=1,
+            reason="Must not retire a completed execution that was not failed.",
+        )
+
+    assert proposal.read_bytes() == proposal_before
+    assert receipt_path.read_bytes() == receipt_before
+
+
+def test_recover_failed_execution_refuses_attempt_identity_mismatch(tmp_path: Path) -> None:
+    fixture = _failed_completed_execution_fixture(tmp_path)
+    root = fixture["root"]
+    proposal = fixture["proposal"]
+    receipt_path = fixture["receipt_path"]
+    assert isinstance(root, Path)
+    assert isinstance(proposal, Path)
+    assert isinstance(receipt_path, Path)
+    proposal_before = proposal.read_bytes()
+    receipt_before = receipt_path.read_bytes()
+
+    with pytest.raises(
+        orchestrator.VisualPipelineOrchestrationError,
+        match="completed receipt belongs to another attempt",
+    ):
+        orchestrator.recover_failed_execution(
+            root,
+            cut_id="value-L01",
+            revision_id=REVISION_ID,
+            phase=str(fixture["phase"]),
+            role=str(fixture["role"]),
+            attempt=2,
+            reason="Caller selected the wrong failed attempt.",
+        )
+
+    assert proposal.read_bytes() == proposal_before
+    assert receipt_path.read_bytes() == receipt_before
+
+
+def test_recover_failed_execution_refuses_published_canonical_output(tmp_path: Path) -> None:
+    fixture = _failed_completed_execution_fixture(tmp_path)
+    root = fixture["root"]
+    proposal = fixture["proposal"]
+    receipt_path = fixture["receipt_path"]
+    assert isinstance(root, Path)
+    assert isinstance(proposal, Path)
+    assert isinstance(receipt_path, Path)
+    canonical = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "revisions"
+        / REVISION_ID
+        / "attempts"
+        / "attempt-001"
+        / "ASSET-AUTHORITY.json"
+    )
+    canonical.parent.mkdir(parents=True)
+    canonical.write_bytes(b"already-published-authority")
+    proposal_before = proposal.read_bytes()
+    receipt_before = receipt_path.read_bytes()
+
+    with pytest.raises(
+        orchestrator.VisualPipelineOrchestrationError,
+        match="canonical downstream output already exists",
+    ):
+        orchestrator.recover_failed_execution(
+            root,
+            cut_id="value-L01",
+            revision_id=REVISION_ID,
+            phase=str(fixture["phase"]),
+            role=str(fixture["role"]),
+            attempt=1,
+            reason="Must not retire an execution whose authority was published.",
+        )
+
+    assert canonical.read_bytes() == b"already-published-authority"
+    assert proposal.read_bytes() == proposal_before
+    assert receipt_path.read_bytes() == receipt_before
+
+
+def test_recover_failed_execution_refuses_current_revision(tmp_path: Path) -> None:
+    fixture = _failed_completed_execution_fixture(tmp_path)
+    root = fixture["root"]
+    proposal = fixture["proposal"]
+    receipt_path = fixture["receipt_path"]
+    assert isinstance(root, Path)
+    assert isinstance(proposal, Path)
+    assert isinstance(receipt_path, Path)
+    current = root / "highlights" / "visual-pipeline" / "value-L01" / "CURRENT.json"
+    current.parent.mkdir(parents=True, exist_ok=True)
+    current.write_text(json.dumps({"revision_id": REVISION_ID}), encoding="utf-8")
+    proposal_before = proposal.read_bytes()
+    receipt_before = receipt_path.read_bytes()
+
+    with pytest.raises(
+        orchestrator.VisualPipelineOrchestrationError,
+        match="revision is already CURRENT",
+    ):
+        orchestrator.recover_failed_execution(
+            root,
+            cut_id="value-L01",
+            revision_id=REVISION_ID,
+            phase=str(fixture["phase"]),
+            role=str(fixture["role"]),
+            attempt=1,
+            reason="Must not recover an execution from a CURRENT revision.",
+        )
+
+    assert proposal.read_bytes() == proposal_before
+    assert receipt_path.read_bytes() == receipt_before
+
+
+def test_recover_failed_execution_refuses_materialized_revision(tmp_path: Path) -> None:
+    fixture = _failed_completed_execution_fixture(tmp_path)
+    root = fixture["root"]
+    proposal = fixture["proposal"]
+    receipt_path = fixture["receipt_path"]
+    assert isinstance(root, Path)
+    assert isinstance(proposal, Path)
+    assert isinstance(receipt_path, Path)
+    materialized = root / "highlights" / "tighten" / "value-L01_broll_materialization.json"
+    materialized.parent.mkdir(parents=True, exist_ok=True)
+    materialized.write_text(
+        json.dumps(
+            {
+                "contract": "podcast-long-highlight-stock-video-v2",
+                "visual_pipeline_lineage": {"revision_id": REVISION_ID},
+            }
+        ),
+        encoding="utf-8",
+    )
+    proposal_before = proposal.read_bytes()
+    receipt_before = receipt_path.read_bytes()
+
+    with pytest.raises(
+        orchestrator.VisualPipelineOrchestrationError,
+        match="revision is already materialized",
+    ):
+        orchestrator.recover_failed_execution(
+            root,
+            cut_id="value-L01",
+            revision_id=REVISION_ID,
+            phase=str(fixture["phase"]),
+            role=str(fixture["role"]),
+            attempt=1,
+            reason="Must not recover an execution from a materialized revision.",
+        )
+
+    assert proposal.read_bytes() == proposal_before
+    assert receipt_path.read_bytes() == receipt_before
+
+
+def test_recover_failed_execution_allows_next_attempt_to_publish(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _failed_completed_execution_fixture(
+        tmp_path,
+        phase="director",
+        role="director",
+    )
+    root = fixture["root"]
+    assert isinstance(root, Path)
+    request = root / "highlights" / "revision-jobs" / "request.json"
+    request.parent.mkdir(parents=True, exist_ok=True)
+    request.write_text('{"feedback":"retry after runtime recovery"}\n', encoding="utf-8")
+    orchestrator.recover_failed_execution(
+        root,
+        cut_id="value-L01",
+        revision_id=REVISION_ID,
+        phase="director",
+        role="director",
+        attempt=1,
+        reason="Archive the completed proposal before a fresh trusted publish.",
+    )
+
+    pipeline = _FakePipeline()
+    dispatcher = _FakeDispatcher()
+    result = _run(monkeypatch, (root, request), pipeline, dispatcher)
+
+    assert result.director_plan is pipeline.director
+    assert [call.phase for call in dispatcher.calls] == [
+        "director",
+        "dp",
+        "semantic_audit",
+    ]
+    attempts = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "jobs"
+        / REVISION_ID
+        / "receipts"
+        / "director.attempts"
+    )
+    assert (attempts / "attempt-002" / "PREPARE.json").is_file()
+    assert (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "jobs"
+        / REVISION_ID
+        / "receipts"
+        / "director.json"
+    ).is_file()
+
+
 def test_cli_help_does_not_dispatch(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as raised:
         orchestrator.main(["--help"])
@@ -1795,6 +2152,64 @@ def test_cli_abandon_command_calls_domain_without_dispatch(
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "abandoned"
     assert payload["revision_id"] == revision_id
+
+
+def test_cli_recover_execution_calls_public_recovery_api(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = tmp_path / "episode"
+    root.mkdir()
+    calls: list[dict[str, object]] = []
+
+    def recover(episode_root, **kwargs):
+        calls.append({"episode_root": Path(episode_root), **kwargs})
+        return {
+            "contract": orchestrator.EXECUTION_RECOVERY_CONTRACT,
+            "revision_id": REVISION_ID,
+            "phase": "asset_acquisition-001",
+            "attempt": 1,
+            "content_hash": "a" * 64,
+        }
+
+    monkeypatch.setattr(orchestrator, "recover_failed_execution", recover)
+
+    assert (
+        orchestrator.main(
+            [
+                "recover-execution",
+                str(root),
+                "--cut-id",
+                "value-L01",
+                "--revision-id",
+                REVISION_ID,
+                "--phase",
+                "asset_acquisition-001",
+                "--role",
+                "asset_acquisition",
+                "--attempt",
+                "1",
+                "--reason",
+                "Downstream publisher runtime failed after worker completion.",
+            ]
+        )
+        == 0
+    )
+    assert calls == [
+        {
+            "episode_root": root,
+            "cut_id": "value-L01",
+            "revision_id": REVISION_ID,
+            "phase": "asset_acquisition-001",
+            "role": "asset_acquisition",
+            "attempt": 1,
+            "reason": "Downstream publisher runtime failed after worker completion.",
+        }
+    ]
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "recovered"
+    assert payload["phase"] == "asset_acquisition-001"
 
 
 def test_direct_script_help_bootstraps_repo_import_path() -> None:

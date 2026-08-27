@@ -36,6 +36,7 @@ from agents.brook.script_video.highlight_visual_pipeline import (  # noqa: E402
 EXECUTION_RECEIPT_CONTRACT = "podcast-highlight-visual-worker-execution-v1"
 EXECUTION_PREPARE_CONTRACT = "podcast-highlight-visual-worker-prepare-v1"
 EXECUTION_FAILURE_CONTRACT = "podcast-highlight-visual-worker-failure-v1"
+EXECUTION_RECOVERY_CONTRACT = "podcast-highlight-visual-worker-recovery-v1"
 _JOB_ROOT = Path("highlights") / "visual-pipeline"
 _SAFE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _SAFE_REVISION = re.compile(r"^r-[0-9a-f]{24}$")
@@ -452,13 +453,7 @@ def _recover_legacy_missing_prepare_chain(
     ):
         return False
 
-    revision_root = (
-        episode_root
-        / _JOB_ROOT
-        / cut_id
-        / "revisions"
-        / revision_id
-    ).resolve()
+    revision_root = (episode_root / _JOB_ROOT / cut_id / "revisions" / revision_id).resolve()
     director_plan = revision_root / "DIRECTOR-PLAN.json"
     if not director_plan.is_file():
         return False
@@ -745,6 +740,260 @@ def _reject_completed_execution(
         if rollback_errors:
             raise VisualPipelineOrchestrationError(
                 f"{phase} rejection rollback failed: " + "; ".join(rollback_errors)
+            )
+        raise
+
+
+def _canonical_phase_output_path(
+    episode_root: Path,
+    *,
+    cut_id: str,
+    revision_id: str,
+    phase: str,
+) -> Path:
+    revision_root = episode_root / _JOB_ROOT / cut_id / "revisions" / revision_id
+    if phase == "director":
+        return revision_root / visual_pipeline.DIRECTOR_PLAN_NAME
+    if phase == "dp":
+        return revision_root / visual_pipeline.DP_FULFILLMENT_NAME
+    if phase == "semantic_audit" or re.fullmatch(r"semantic_audit-\d{3}", phase):
+        return revision_root / visual_pipeline.SEMANTIC_AUDIT_NAME
+    matched = re.fullmatch(
+        r"(?P<kind>asset_acquisition|director_replan|dp|refinement_decision)-(?P<attempt>\d{3})",
+        phase,
+    )
+    if matched is None:
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover {phase}: phase has no known canonical downstream output"
+        )
+    domain_attempt = int(matched.group("attempt"))
+    if domain_attempt < 1:
+        raise VisualPipelineOrchestrationError(f"cannot recover {phase}: phase attempt is invalid")
+    attempt_root = revision_root / "attempts" / f"attempt-{domain_attempt:03d}"
+    name = {
+        "asset_acquisition": visual_pipeline.ASSET_AUTHORITY_NAME,
+        "director_replan": visual_pipeline.DIRECTOR_PLAN_NAME,
+        "dp": visual_pipeline.DP_FULFILLMENT_NAME,
+        "refinement_decision": visual_pipeline.REFINEMENT_DECISION_NAME,
+    }[matched.group("kind")]
+    return attempt_root / name
+
+
+def recover_failed_execution(
+    episode_root: str | Path,
+    *,
+    cut_id: str,
+    revision_id: str,
+    phase: str,
+    role: str,
+    attempt: int,
+    reason: str,
+) -> dict[str, object]:
+    """Archive orphaned completed output from one already-failed attempt.
+
+    A worker may finish successfully before a trusted downstream publisher fails
+    for an environmental reason.  If that attempt already has ``FAILURE.json``,
+    the ordinary completed-execution rejection seam cannot retire the root
+    proposal and execution receipt.  This explicit recovery preserves those
+    exact bytes under the failed attempt and removes only their active root
+    names, allowing a fresh immutable attempt to start.
+    """
+
+    root = Path(episode_root).resolve()
+    if not root.is_dir():
+        raise VisualPipelineOrchestrationError(f"episode root does not exist: {root}")
+    cut_id = _safe_cut_id(cut_id)
+    revision_id = _safe_revision_id(revision_id)
+    if not _SAFE_TOKEN.fullmatch(phase):
+        raise VisualPipelineOrchestrationError(f"unsafe execution phase: {phase!r}")
+    if not _SAFE_TOKEN.fullmatch(role):
+        raise VisualPipelineOrchestrationError(f"unsafe execution role: {role!r}")
+    if isinstance(attempt, bool) or not isinstance(attempt, int) or not 1 <= attempt <= 999:
+        raise VisualPipelineOrchestrationError(f"invalid execution attempt: {attempt!r}")
+    reason = str(reason).strip()
+    if not reason:
+        raise VisualPipelineOrchestrationError("execution recovery reason must not be empty")
+
+    job_root = (root / _JOB_ROOT / cut_id / "jobs" / revision_id).resolve()
+    if not job_root.is_relative_to(root):
+        raise VisualPipelineOrchestrationError("execution recovery job path escapes episode root")
+    receipt_path = _execution_receipt_path(job_root, phase)
+    raw_receipt = _load_json(receipt_path, f"{phase} execution receipt")
+    proposal_identity = raw_receipt.get("proposal")
+    if not isinstance(proposal_identity, dict) or not isinstance(
+        proposal_identity.get("path"), str
+    ):
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover {phase}: proposal identity is invalid"
+        )
+    proposal_path = (root / str(proposal_identity["path"])).resolve()
+    if not proposal_path.is_relative_to(root):
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover {phase}: proposal escaped the episode"
+        )
+    receipt = _load_execution_receipt(
+        root,
+        job_root,
+        cut_id=cut_id,
+        revision_id=revision_id,
+        phase=phase,
+        role=role,
+        proposal_path=proposal_path,
+    )
+    if receipt is None:
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover {phase}: canonical execution receipt is missing"
+        )
+
+    attempt_root = _execution_attempt_root(job_root, phase, attempt).resolve()
+    attempts_root = (job_root / "receipts" / f"{phase}.attempts").resolve()
+    prepare_path = attempt_root / "PREPARE.json"
+    prepare_identity = receipt.get("prepare")
+    expected_prepare_path = prepare_path.relative_to(root).as_posix()
+    if (
+        not attempt_root.is_relative_to(attempts_root)
+        or not re.fullmatch(r"attempt-\d{3}", attempt_root.name)
+        or not isinstance(prepare_identity, dict)
+        or prepare_identity.get("path") != expected_prepare_path
+        or not prepare_path.is_file()
+        or _identity(root, prepare_path) != prepare_identity
+    ):
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover {phase}: completed receipt belongs to another attempt"
+        )
+    prepare = _load_json(prepare_path, f"{phase} prepare receipt")
+    claimed_prepare_hash = prepare.pop("content_hash", None)
+    if (
+        set(prepare)
+        != {
+            "contract",
+            "episode_id",
+            "cut_id",
+            "revision_id",
+            "phase",
+            "role",
+            "attempt",
+            "orchestrator_pid",
+            "prompt_sha256",
+            "phase_input",
+            "proposal_path",
+        }
+        or claimed_prepare_hash != _content_hash(prepare)
+        or prepare.get("contract") != EXECUTION_PREPARE_CONTRACT
+        or prepare.get("episode_id") != root.name
+        or prepare.get("cut_id") != cut_id
+        or prepare.get("revision_id") != revision_id
+        or prepare.get("phase") != phase
+        or prepare.get("role") != role
+        or prepare.get("attempt") != attempt
+        or prepare.get("phase_input") != receipt.get("phase_input")
+        or prepare.get("prompt_sha256") != receipt.get("prompt_sha256")
+        or prepare.get("proposal_path") != proposal_identity.get("path")
+    ):
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover {phase}: PREPARE receipt identity mismatch"
+        )
+
+    failure_path = attempt_root / "FAILURE.json"
+    failure = _load_json(failure_path, f"{phase} failed-attempt receipt")
+    claimed_failure_hash = failure.pop("content_hash", None)
+    if (
+        set(failure) != {"contract", "prepare", "reason", "returncode", "proposal_evidence"}
+        or claimed_failure_hash != _content_hash(failure)
+        or failure.get("contract") != EXECUTION_FAILURE_CONTRACT
+        or failure.get("prepare") != prepare_identity
+        or failure.get("proposal_evidence") is not None
+    ):
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover {phase}: FAILURE receipt does not match the completed attempt"
+        )
+    failure["content_hash"] = claimed_failure_hash
+
+    proposal_evidence = attempt_root / "evidence" / "proposal.json"
+    receipt_evidence = attempt_root / "evidence" / "execution-receipt.json"
+    recovery_path = attempt_root / "RECOVERY.json"
+    if proposal_evidence.exists() or receipt_evidence.exists() or recovery_path.exists():
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover {phase}: recovery evidence already conflicts"
+        )
+    if not proposal_path.is_file() or not receipt_path.is_file():
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover {phase}: completed root evidence is incomplete"
+        )
+    current_path = root / _JOB_ROOT / cut_id / visual_pipeline.CURRENT_POINTER_NAME
+    if current_path.is_file():
+        current = _load_json(current_path, "visual CURRENT pointer")
+        if current.get("revision_id") == revision_id:
+            raise VisualPipelineOrchestrationError(
+                f"cannot recover {phase}: revision is already CURRENT"
+            )
+    try:
+        materialized_revision = visual_pipeline._materialized_visual_revision(root, cut_id)
+    except HighlightVisualContractError as error:
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover {phase}: materialization receipt is invalid: {error}"
+        ) from error
+    if materialized_revision == revision_id:
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover {phase}: revision is already materialized"
+        )
+    canonical_output = _canonical_phase_output_path(
+        root,
+        cut_id=cut_id,
+        revision_id=revision_id,
+        phase=phase,
+    )
+    if canonical_output.exists():
+        raise VisualPipelineOrchestrationError(
+            f"cannot recover {phase}: canonical downstream output already exists"
+        )
+
+    proposal_evidence.parent.mkdir(parents=True, exist_ok=True)
+    root_receipt_identity = _identity(root, receipt_path)
+    moved: list[tuple[Path, Path]] = []
+    try:
+        os.replace(receipt_path, receipt_evidence)
+        moved.append((receipt_path, receipt_evidence))
+        os.replace(proposal_path, proposal_evidence)
+        moved.append((proposal_path, proposal_evidence))
+        archived_proposal_identity = _identity(root, proposal_evidence)
+        archived_receipt_identity = _identity(root, receipt_evidence)
+        if {key: archived_proposal_identity[key] for key in ("bytes", "sha256")} != {
+            key: proposal_identity[key] for key in ("bytes", "sha256")
+        } or {key: archived_receipt_identity[key] for key in ("bytes", "sha256")} != {
+            key: root_receipt_identity[key] for key in ("bytes", "sha256")
+        }:
+            raise VisualPipelineOrchestrationError(
+                f"cannot recover {phase}: completed root evidence changed during archival"
+            )
+        recovery: dict[str, object] = {
+            "contract": EXECUTION_RECOVERY_CONTRACT,
+            "episode_id": root.name,
+            "cut_id": cut_id,
+            "revision_id": revision_id,
+            "phase": phase,
+            "role": role,
+            "attempt": attempt,
+            "reason": reason,
+            "prepare": prepare_identity,
+            "failure": _identity(root, failure_path),
+            "canonical_output": canonical_output.relative_to(root).as_posix(),
+            "proposal_evidence": archived_proposal_identity,
+            "execution_receipt_evidence": archived_receipt_identity,
+        }
+        recovery["content_hash"] = _content_hash(recovery)
+        _write_json(recovery_path, recovery)
+        return recovery
+    except BaseException:
+        rollback_errors: list[str] = []
+        for source, destination in reversed(moved):
+            try:
+                os.replace(destination, source)
+            except OSError as rollback_error:
+                rollback_errors.append(str(rollback_error))
+        if rollback_errors:
+            raise VisualPipelineOrchestrationError(
+                f"{phase} recovery rollback failed: " + "; ".join(rollback_errors)
             )
         raise
 
@@ -1132,9 +1381,7 @@ def _execute_phase(
         _atomic_write(stdout_path, result.stdout.encode("utf-8"))
         _atomic_write(stderr_path, result.stderr.encode("utf-8"))
         if not _SAFE_SESSION.fullmatch(result.session_id):
-            raise VisualPipelineOrchestrationError(
-                f"{phase} returned an unsafe session identity"
-            )
+            raise VisualPipelineOrchestrationError(f"{phase} returned an unsafe session identity")
         if resume_session_id is not None and result.session_id != resume_session_id:
             raise VisualPipelineOrchestrationError(
                 "semantic audit did not resume the original Director session"
@@ -1162,10 +1409,10 @@ def _execute_phase(
             "cut_id": cut_id,
             "revision_id": revision_id,
             "phase": phase,
-        "role": role,
-        "worker_identity": worker_identity,
-        "prepare": _identity(episode_root, attempt_root / "PREPARE.json"),
-        "prompt_sha256": hashlib.sha256(request.prompt.encode("utf-8")).hexdigest(),
+            "role": role,
+            "worker_identity": worker_identity,
+            "prepare": _identity(episode_root, attempt_root / "PREPARE.json"),
+            "prompt_sha256": hashlib.sha256(request.prompt.encode("utf-8")).hexdigest(),
             "phase_input": phase_input_before,
             "proposal": proposal_identity,
             "stdout": _identity(episode_root, stdout_path),
@@ -1201,11 +1448,7 @@ def _hydrate_dp_phase_proposal(
     raw_identity = _proposal_identity(episode_root, raw_proposal_path)
     raw_sha256 = str(raw_identity["sha256"])
     output_path = (
-        job_root
-        / "trusted"
-        / f"{phase}-proposals"
-        / raw_sha256
-        / "proposal.json"
+        job_root / "trusted" / f"{phase}-proposals" / raw_sha256 / "proposal.json"
     ).resolve()
     if not output_path.is_relative_to(episode_root):
         raise VisualPipelineOrchestrationError("trusted DP proposal path escapes episode root")
@@ -1349,9 +1592,7 @@ def run_visual_pipeline(
                 revision_id=revision_id,
                 proposal=proposal,
                 worker_identity=identity,
-                execution_receipt=_identity(
-                    root, _execution_receipt_path(job_root, "director")
-                ),
+                execution_receipt=_identity(root, _execution_receipt_path(job_root, "director")),
                 editorial_master=editorial_master,
             )
             continue
@@ -1449,9 +1690,7 @@ def run_visual_pipeline(
                     proposal=trusted_proposal,
                     worker_identity=identity,
                     worker_proposal=proposal,
-                    execution_receipt=_identity(
-                        root, _execution_receipt_path(job_root, "dp")
-                    ),
+                    execution_receipt=_identity(root, _execution_receipt_path(job_root, "dp")),
                     editorial_master=editorial_master,
                 )
             except HighlightVisualContractError as error:
@@ -1477,9 +1716,7 @@ def run_visual_pipeline(
             revision_id=revision_id,
             phase=dp_phase,
             role="dp",
-            proposal_path=(
-                job_root / "workers" / "dp-session" / f"{dp_phase}-proposal.json"
-            ),
+            proposal_path=(job_root / "workers" / "dp-session" / f"{dp_phase}-proposal.json"),
         )
         if dp_receipt is None:
             raise VisualPipelineOrchestrationError(
@@ -1540,9 +1777,7 @@ def run_visual_pipeline(
                 attempt=active_attempt,
                 proposal=proposal,
                 worker_identity=identity,
-                execution_receipt=_identity(
-                    root, _execution_receipt_path(job_root, phase)
-                ),
+                execution_receipt=_identity(root, _execution_receipt_path(job_root, phase)),
                 editorial_master=editorial_master,
             )
             continue
@@ -1600,9 +1835,7 @@ def run_visual_pipeline(
                 attempt=next_attempt,
                 proposal=proposal,
                 worker_identity=identity,
-                execution_receipt=_identity(
-                    root, _execution_receipt_path(job_root, phase)
-                ),
+                execution_receipt=_identity(root, _execution_receipt_path(job_root, phase)),
                 editorial_master=editorial_master,
             )
             continue
@@ -1697,9 +1930,7 @@ def run_visual_pipeline(
                     proposal=trusted_proposal,
                     worker_identity=identity,
                     worker_proposal=proposal,
-                    execution_receipt=_identity(
-                        root, _execution_receipt_path(job_root, phase)
-                    ),
+                    execution_receipt=_identity(root, _execution_receipt_path(job_root, phase)),
                     editorial_master=editorial_master,
                 )
             except HighlightVisualContractError as error:
@@ -1725,9 +1956,7 @@ def run_visual_pipeline(
                 editorial_master=editorial_master,
             )
             audit_phase = (
-                "semantic_audit"
-                if active_attempt == 1
-                else f"semantic_audit-{active_attempt:03d}"
+                "semantic_audit" if active_attempt == 1 else f"semantic_audit-{active_attempt:03d}"
             )
             context = _phase_context(
                 audit_phase,
@@ -1778,9 +2007,7 @@ def run_visual_pipeline(
                 revision_id=revision_id,
                 proposal=proposal,
                 worker_identity=identity,
-                execution_receipt=_identity(
-                    root, _execution_receipt_path(job_root, audit_phase)
-                ),
+                execution_receipt=_identity(root, _execution_receipt_path(job_root, audit_phase)),
                 editorial_master=editorial_master,
             )
             continue
@@ -1800,7 +2027,9 @@ def _parser() -> argparse.ArgumentParser:
         description="Run or resume Director -> DP -> same-Director semantic audit.",
         epilog=(
             "Recovery command: podcast_highlight_visual_orchestrator.py abandon "
-            "EPISODE_ROOT --cut-id CUT --revision-id REVISION --reason TEXT"
+            "EPISODE_ROOT --cut-id CUT --revision-id REVISION --reason TEXT; or "
+            "recover-execution EPISODE_ROOT --cut-id CUT --revision-id REVISION "
+            "--phase PHASE --role ROLE --attempt N --reason TEXT"
         ),
     )
     parser.add_argument("episode_root", type=Path)
@@ -1821,13 +2050,28 @@ def _parser() -> argparse.ArgumentParser:
 def _abandon_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=f"{Path(sys.argv[0]).name} abandon",
+        description=("Fail closed and seal one active unmaterialized PENDING visual revision."),
+    )
+    parser.add_argument("episode_root", type=Path)
+    parser.add_argument("--cut-id", required=True)
+    parser.add_argument("--revision-id", required=True)
+    parser.add_argument("--reason", required=True)
+    return parser
+
+
+def _recover_execution_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=f"{Path(sys.argv[0]).name} recover-execution",
         description=(
-            "Fail closed and seal one active unmaterialized PENDING visual revision."
+            "Archive orphaned completed worker bytes from one failed, unpublished attempt."
         ),
     )
     parser.add_argument("episode_root", type=Path)
     parser.add_argument("--cut-id", required=True)
     parser.add_argument("--revision-id", required=True)
+    parser.add_argument("--phase", required=True)
+    parser.add_argument("--role", required=True)
+    parser.add_argument("--attempt", required=True, type=int)
     parser.add_argument("--reason", required=True)
     return parser
 
@@ -1837,6 +2081,10 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     if raw and raw[0] == "abandon":
         args = _abandon_parser().parse_args(raw[1:])
         args.command = "abandon"
+        return args
+    if raw and raw[0] == "recover-execution":
+        args = _recover_execution_parser().parse_args(raw[1:])
+        args.command = "recover-execution"
         return args
     args = _parser().parse_args(raw)
     args.command = "run"
@@ -1860,6 +2108,25 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "revision_id": abandoned.document["revision_id"],
                         "identity": abandoned.identity(),
                     },
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return 0
+        if args.command == "recover-execution":
+            recovery = recover_failed_execution(
+                args.episode_root,
+                cut_id=args.cut_id,
+                revision_id=args.revision_id,
+                phase=args.phase,
+                role=args.role,
+                attempt=args.attempt,
+                reason=args.reason,
+            )
+            print(
+                json.dumps(
+                    {"status": "recovered", **recovery},
                     ensure_ascii=False,
                     indent=2,
                     sort_keys=True,
@@ -1894,5 +2161,6 @@ __all__ = [
     "VisualDispatchAdapter",
     "VisualPipelineOrchestrationError",
     "main",
+    "recover_failed_execution",
     "run_visual_pipeline",
 ]
