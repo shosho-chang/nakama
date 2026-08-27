@@ -501,7 +501,30 @@ def _apply_component_identity(
     ]
 
 
-def _event_lane(event_type: str) -> str | None:
+def _event_lane(event: dict[str, Any] | str) -> str | None:
+    if isinstance(event, dict):
+        explicit = str(event.get("review_lane") or "").strip().lower()
+        if explicit:
+            if explicit not in LANE_ACTIONS:
+                raise SystemExit(f"finished review event review_lane 不合法：{explicit}")
+            return explicit
+        implementation = str(
+            event.get("implementation_kind") or event.get("component") or ""
+        ).strip().lower().replace("-", "_")
+        implementation_lanes = {
+            "stock_video": "b_roll",
+            "hero_title": "hero_title",
+            "punch_card": "hero_title",
+            "punch_card_wide": "hero_title",
+            "transition_title": "fullscreen_transition",
+            "concept_card": "visual_effect",
+            "sticker_pair": "visual_effect",
+        }
+        if implementation in implementation_lanes:
+            return implementation_lanes[implementation]
+        event_type = str(event.get("type") or event.get("kind") or "")
+    else:
+        event_type = event
     normalized = event_type.strip().lower().replace("_", "-")
     if normalized in {"video", "photo"}:
         return "b_roll"
@@ -639,7 +662,7 @@ def _cut_from_packet(
     for event in events:
         if not isinstance(event, dict):
             raise SystemExit(f"{events_path} event 必須是 object")
-        lane = _event_lane(str(event.get("type") or ""))
+        lane = _event_lane(event)
         if lane is None:
             continue
         t0, t1 = event.get("t0"), event.get("t1")

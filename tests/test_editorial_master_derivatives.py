@@ -282,8 +282,71 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
     ]
     tighten = tmp_path / "highlights" / "tighten"
     tighten.mkdir(parents=True)
+    review_items = [
+        *broll_items,
+        {
+            "kind": "concept",
+            "slug": "guest-namecard",
+            "comp": "chapter_label",
+            "name": "林之晨",
+            "title": "《逆分工》共同作者",
+            "t0": 5.0,
+            "t1": 8.0,
+        },
+        *[
+            {
+                "kind": "concept",
+                "slug": slug,
+                "comp": "transition_title",
+                "vars": {"kicker": f"{index:02d}", "title": title},
+                "t0": t0,
+                "t1": t0 + 3.0,
+            }
+            for index, (slug, title, t0) in enumerate(
+                (
+                    ("tr1-intelligence", "兩種智慧", 20.0),
+                    ("tr2-create", "先做作品，再補知識", 24.0),
+                    ("tr3-play", "玩，本來就是學習", 28.0),
+                    ("tr4-adults", "真正落後的是大人", 36.0),
+                ),
+                start=1,
+            )
+        ],
+    ]
     (tighten / "value-L01_broll.json").write_text(
-        json.dumps({"items": broll_items}), encoding="utf-8"
+        json.dumps({"items": review_items}, ensure_ascii=False), encoding="utf-8"
+    )
+    (tighten / "value-L01_titles.json").write_text(
+        json.dumps(
+            {
+                "titles": [
+                    {"text": "重點", "tier": 2, "t0": 9.0, "t1": 12.0},
+                    {"text": "沒有任何\n保證了", "tier": 1, "t0": 31.0, "t1": 34.0},
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (tighten / "value-L01_camera_plan.json").write_text(
+        json.dumps(
+            {
+                "contract": "podcast-highlight-camera-plan-v1",
+                "cut_id": "value-L01",
+                "format": "long",
+                "timebase": "cut-local",
+                "shots": [
+                    {
+                        "t0": 0.0,
+                        "t1": 20.933,
+                        "camera": "host",
+                        "reason": "主持人提出開場問題",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
     )
     from agents.brook.script_video.highlight_broll import receipt_identity
 
@@ -295,6 +358,8 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
     cut_dir.mkdir(parents=True)
     (cut_dir / "preview.mp4").write_bytes(b"preview")
     (cut_dir / "subs.srt").write_text("1\n00:00:00,000 --> 00:00:02,000\n字幕\n", encoding="utf-8")
+    import run_short_review as review_packet
+
     packet = {
         "editorial_master_lineage": identity,
         "stock_video_lineage": receipt_identity(broll_receipt),
@@ -302,14 +367,8 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
         "duration_sec": 60.0,
         "preview": "preview.mp4",
         "events": [
-            {"type": "video", "slug": "factory-0", "t0": 1.0, "t1": 4.0},
-            {"type": "video", "slug": "factory-1", "t0": 11.0, "t1": 14.0},
-            {"type": "video", "slug": "factory-2", "t0": 21.0, "t1": 24.0},
-            {"type": "guest-namecard", "slug": "guest", "t0": 5.0, "t1": 8.0},
-            {"type": "card-tier2", "slug": "重點", "t0": 9.0, "t1": 12.0},
+            *review_packet._load_events(tmp_path, "value-L01"),
             {"type": "badge", "slug": "brand", "t0": 12.0, "t1": 20.0},
-            {"type": "transition", "slug": "chapter", "t0": 20.0, "t1": 23.0},
-            {"type": "card-tier1", "slug": "沒有任何/保證了", "t0": 31.0, "t1": 34.0},
         ],
     }
     (cut_dir / "events.json").write_text(json.dumps(packet), encoding="utf-8")
@@ -370,7 +429,25 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
     assert cut["visual_treatment_counts"]["identity_card"] == 1
     assert cut["visual_treatment_counts"]["hero_title"] == 2
     assert cut["visual_treatment_counts"]["badge"] == 1
-    assert cut["visual_treatment_counts"]["fullscreen_transition"] == 1
+    assert cut["visual_treatment_counts"]["fullscreen_transition"] == 4
+    assert cut["visual_treatment_counts"]["visual_effect"] == 0
+    assert cut["visual_treatment_counts"]["pacing"] == 1
+    transition = next(
+        item
+        for item in cut["components"]
+        if item["lane"] == "fullscreen_transition"
+        and item["display"] == "真正落後的是大人"
+    )
+    assert transition["component"] == "transition_title"
+    assert transition["display"] == "真正落後的是大人"
+    identity = next(item for item in cut["components"] if item["lane"] == "identity_card")
+    assert identity["type"] == "concept"
+    assert identity["component"] == "chapter_label"
+    assert identity["review_lane"] == "identity_card"
+    assert identity["display"] == "林之晨｜《逆分工》共同作者"
+    camera = next(item for item in cut["components"] if item["lane"] == "pacing")
+    assert camera["display"] == "機位：主持人"
+    assert (camera["t0"], camera["t1"]) == (0.0, 20.933)
     broll = next(item for item in cut["components"] if item["lane"] == "b_roll")
     assert broll["asset"]["sha256"] == hashlib.sha256(b"asset-0").hexdigest()
     assert broll["asset_category"] == "stock_video"
@@ -416,7 +493,14 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
             ],
         )
 
-    packet["events"][4]["slug"] = "新的/兩行 Hero"
+    edited_hero = next(
+        event
+        for event in packet["events"]
+        if event.get("review_lane") == "hero_title" and event.get("t0") == 9.0
+    )
+    edited_hero["slug"] = "新的/兩行 Hero"
+    edited_hero["text"] = "新的\n兩行 Hero"
+    edited_hero["display"] = "新的\n兩行 Hero"
     (cut_dir / "events.json").write_text(json.dumps(packet), encoding="utf-8")
     producer.build_manifest(
         tmp_path,
@@ -478,6 +562,9 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
         identity_registry_path.read_text(encoding="utf-8")
     )["content_hash"]
     replacement_items = []
+    stock_events = [
+        event for event in packet["events"] if event.get("review_lane") == "b_roll"
+    ]
     for index in range(3):
         slug = f"replacement-{index}"
         (asset_dir / f"{slug}.mp4").write_bytes(f"replacement-{index}".encode())
@@ -494,7 +581,7 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
                 },
             }
         )
-        packet["events"][index]["slug"] = slug
+        stock_events[index]["slug"] = slug
     (tighten / "value-L01_broll.json").write_text(
         json.dumps({"items": replacement_items}), encoding="utf-8"
     )
@@ -570,7 +657,7 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
                 },
             }
         )
-        packet["events"][index]["slug"] = slug
+        stock_events[index]["slug"] = slug
     (tighten / "value-L01_broll.json").write_text(
         json.dumps({"items": second_items}), encoding="utf-8"
     )

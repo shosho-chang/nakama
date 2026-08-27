@@ -81,6 +81,15 @@ def _write_manifest(
                 "t1": 33.0,
             },
             {
+                "component_id": f"{cut_id}-identity",
+                "lane": "identity_card",
+                "name": "林之晨",
+                "title": "《逆分工》共同作者",
+                "display": "林之晨｜《逆分工》共同作者",
+                "t0": 43.0,
+                "t1": 48.2,
+            },
+            {
                 "component_id": f"{cut_id}-badge",
                 "lane": "badge",
                 "slug": "brand-badge",
@@ -120,11 +129,26 @@ def _write_manifest(
         },
         "cuts": cuts,
         "feedback_contract": {
-            "review_lanes": ["b_roll", "hero_title", "fullscreen_transition"],
+            "review_lanes": [
+                "b_roll",
+                "identity_card",
+                "hero_title",
+                "fullscreen_transition",
+                "visual_effect",
+            ],
             "component_actions": {
                 "b_roll": ["approve", "remove", "replace_asset", "change_type", "move", "comment"],
+                "identity_card": ["approve", "remove", "edit_text", "move", "comment"],
                 "hero_title": ["approve", "remove", "edit_text", "move", "comment"],
                 "fullscreen_transition": ["approve", "remove", "edit_text", "move", "comment"],
+                "visual_effect": [
+                    "approve",
+                    "remove",
+                    "replace_asset",
+                    "change_type",
+                    "move",
+                    "comment",
+                ],
             },
             "gate_actions": ["request_changes", "approve_cut", "approve_all"],
         },
@@ -769,6 +793,30 @@ def test_long_review_shows_true_stock_video_deficit_and_blocks_approval(
     )
     assert response.status_code == 409
     assert "Stock Video" in response.text
+
+
+def test_finished_review_timeline_uses_normalized_components_for_geometry_and_edit_targets(
+    client, finished_episode
+):
+    page = client.get(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished",
+        cookies=_auth_cookie(),
+    )
+
+    assert page.status_code == 200
+    transition = re.search(
+        r'<button[^>]+class="timeline-block"[^>]+data-component-target="R11-transition"[^>]*>',
+        page.text,
+    )
+    assert transition is not None
+    assert 'data-seek="30.0"' in transition.group(0)
+    assert "--timeline-start: 33.333" in transition.group(0)
+    assert "--timeline-span: 3.333" in transition.group(0)
+    assert "真正落後的是大人" not in page.text  # fixture title remains its own production truth
+    assert "從漫畫學經營" in page.text
+    assert "林之晨｜《逆分工》共同作者" in page.text
+    assert 'data-timeline-lane="visual_effect"' in page.text
+    assert 'data-timeline-count="0"' in page.text
 
 
 def test_media_and_vtt_are_served_from_manifest_inventory(client, finished_episode):

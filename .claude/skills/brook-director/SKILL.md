@@ -87,6 +87,22 @@ materialization receipt也不能替代 `DIRECTOR-WORK.json` → `DIRECTOR-PLAN.j
 Director plan涵蓋所有 content visuals：Stock／Hero／keyword／quote／chapter／card；結構性
 badge／camera correction／guest namecard由各自 deterministic contract處理，不為了湊coverage重複規劃。
 
+### Podcast A-roll camera cues（同一 Director，非新 Agent）
+
+主要說話者只提供預設鏡位，不是硬切規則。Director 不逐刀排 CAM1/2/3；只在讀完整
+tight SRT 或 finished preview 時，標少數確實有語意價值的 cue：問題交棒、笑／驚訝／
+猶豫／認同、值得看的 listener reaction、話題轉折，或長回答中適合重建兩人空間關係的
+wide cue。短促 backchannel 不標；句中沒有自然停頓不硬切；同一畫面偏久只提高換鏡
+必要性，不使用固定每 N 秒的模板。Full-screen transition、Hero 或 Stock 已覆蓋畫面時，
+不要要求底下同步快速換鏡。
+
+這些 cue 交給既有 deterministic `camera-correction` contract 履約，不新增第三個 audit
+Agent，也不塞進 `podcast-highlight-director-plan-v1` 發明新欄位。實際 row 位於
+`highlights/tighten/<cut-id>_broll.json`，採 cut-local `t0/t1`、`subject_role`（host /
+guest / wide）、episode-local `Video/...` 與同步 `src_in`。只有 row 覆蓋範圍換成 raw
+camera 的 video track 2；Editorial Master audio/timebase 與 plan 外 program feed 不變。
+不確定 reaction 是否真的可讀時維持 A-roll，不能為了「畫面要動」盲切。
+
 下方 `data/script_video/<ep>/storyboard.yaml`、`/brook/video/<ep>`、render/emit 步驟保留給
 ADR-051 standalone script-driven video。Podcast Highlight 不得 silent fallback 到那條 route。
 

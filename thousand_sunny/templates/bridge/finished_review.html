@@ -28,11 +28,37 @@
   .cut-tab__meta { display: flex; align-items: center; justify-content: space-between; gap: var(--sho-s-2); color: var(--sho-muted); font-size: .72rem; letter-spacing: .06em; }
   .cut-tab__title { display: block; line-height: 1.5; margin-top: var(--sho-s-2); }
   .review-workspace { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(360px, .85fr); gap: var(--sho-s-5); align-items: start; padding-top: var(--sho-s-5); }
-  .player-column { position: sticky; top: var(--sho-s-3); }
+  .player-column { min-width: 0; position: sticky; top: var(--sho-s-3); }
   .player-shell { border: 1px solid var(--sho-line); background: var(--sho-bg-2); padding: var(--sho-s-3); }
   .player-shell video { display: block; width: 100%; max-height: 72vh; background: var(--sho-ink); }
   .player-shell--short video { aspect-ratio: 9 / 16; height: min(72vh, 760px); width: auto; max-width: 100%; margin: 0 auto; object-fit: contain; }
   .player-readout { display: flex; justify-content: space-between; gap: var(--sho-s-3); color: var(--sho-muted); margin-top: var(--sho-s-2); }
+  .timeline-panel { border: 1px solid var(--sho-line); border-top: 0; background: var(--sho-bg); }
+  .timeline-panel[hidden] { display: none; }
+  .timeline-panel__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sho-s-3); border-bottom: 1px solid var(--sho-line); padding: var(--sho-s-2) var(--sho-s-3); }
+  .timeline-panel__head h2 { font-size: .83rem; letter-spacing: .06em; margin: 0; }
+  .timeline-panel__hint { color: var(--sho-muted); font-size: .72rem; margin: 0; }
+  .timeline-scroll { box-sizing: border-box; max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; padding-bottom: var(--sho-s-1); width: 100%; }
+  .timeline-stage { --timeline-label-width: 128px; box-sizing: border-box; min-width: 820px; position: relative; }
+  .timeline-ruler, .timeline-row { display: grid; grid-template-columns: var(--timeline-label-width) minmax(0, 1fr); }
+  .timeline-ruler { border-bottom: 1px solid var(--sho-line-2); min-height: 30px; }
+  .timeline-ruler__label, .timeline-label { box-sizing: border-box; border-right: 1px solid var(--sho-line); color: var(--sho-muted); padding: var(--sho-s-1) var(--sho-s-2); }
+  .timeline-ruler__label { align-content: center; font-size: .66rem; letter-spacing: .06em; }
+  .timeline-ruler__track { position: relative; }
+  .timeline-tick { border-left: 1px solid var(--sho-line); color: var(--sho-muted); font-size: .63rem; height: 100%; left: var(--timeline-start); padding-left: 3px; position: absolute; top: 0; }
+  .timeline-tick:last-child { left: auto; right: 0; border-left: 0; border-right: 1px solid var(--sho-line); padding-left: 0; padding-right: 3px; }
+  .timeline-row { min-height: 76px; }
+  .timeline-row + .timeline-row { border-top: 1px solid var(--sho-line); }
+  .timeline-label { align-content: center; font-size: .66rem; line-height: 1.35; }
+  .timeline-label span { display: block; color: var(--sho-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .timeline-label small { font-size: .62rem; }
+  .timeline-track { background-image: linear-gradient(to right, transparent calc(25% - .5px), var(--sho-line) 25%, transparent calc(25% + .5px), transparent calc(50% - .5px), var(--sho-line) 50%, transparent calc(50% + .5px), transparent calc(75% - .5px), var(--sho-line) 75%, transparent calc(75% + .5px)); min-width: 0; position: relative; }
+  .timeline-block { box-sizing: border-box; position: absolute; top: calc(5px + var(--timeline-slot) * 23px); left: var(--timeline-start); width: max(var(--timeline-span), 78px); max-width: calc(100% - var(--timeline-start)); height: 21px; overflow: hidden; border: 1px solid var(--sho-line-2); border-left-width: 3px; border-radius: var(--sho-r-1); background: var(--sho-bg-2); color: var(--sho-text-2); cursor: pointer; font: inherit; font-size: .66rem; line-height: 1.15; padding: 2px 4px; text-align: left; text-overflow: ellipsis; transition: border-color var(--sho-t-fast) var(--sho-ease), background var(--sho-t-fast) var(--sho-ease); white-space: nowrap; }
+  .timeline-block:hover { border-color: var(--sho-muted); color: var(--sho-text); }
+  .timeline-block[aria-current="true"] { border-color: var(--sho-accent); background: var(--sho-accent-soft); color: var(--sho-text); }
+  .timeline-block:focus-visible { outline: none; box-shadow: var(--sho-focus); z-index: 3; }
+  .timeline-playhead { position: absolute; z-index: 2; top: 30px; bottom: 0; left: calc(var(--timeline-label-width) + (100% - var(--timeline-label-width)) * var(--timeline-progress)); width: 1px; background: var(--sho-accent); pointer-events: none; transition: left var(--sho-t-fast) linear; }
+  .timeline-playhead::before { content: ""; position: absolute; width: 7px; height: 7px; left: -3px; top: -4px; border-radius: var(--sho-r-pill); background: var(--sho-accent); }
   .cut-pane[hidden] { display: none; }
   .cut-pane__head { border-bottom: 1px solid var(--sho-line-2); margin-bottom: var(--sho-s-2); padding-bottom: var(--sho-s-3); }
   .cut-pane__head h2 { font-size: 1.15rem; line-height: 1.45; margin: 0 0 var(--sho-s-2); }
@@ -43,6 +69,7 @@
   .lane { margin-top: var(--sho-s-5); }
   .lane-title { color: var(--sho-muted); font-size: .74rem; letter-spacing: .08em; margin: 0; padding-bottom: var(--sho-s-2); }
   .component { border-top: 1px solid var(--sho-line); padding: var(--sho-s-3) 0 var(--sho-s-4); }
+  .component--selected { border-top-color: var(--sho-accent); background: var(--sho-accent-soft); }
   .component__head { display: flex; align-items: start; justify-content: space-between; gap: var(--sho-s-3); }
   .component__title { line-height: 1.55; margin: 0; white-space: pre-line; }
   .seek-button { flex: 0 0 auto; border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-1); background: transparent; color: var(--sho-text-2); cursor: pointer; font: inherit; padding: var(--sho-s-1) var(--sho-s-2); }
@@ -59,8 +86,8 @@
   .review-button:disabled { cursor: not-allowed; opacity: .45; }
   .format-switch__link:focus-visible, .cut-tab:focus-visible, .seek-button:focus-visible, .field-label select:focus-visible, .field-label input:focus-visible, .field-label textarea:focus-visible, .remember-label input:focus-visible, .cut-decision input:focus-visible, .review-button:focus-visible { outline: none; box-shadow: var(--sho-focus); }
   @media (max-width: 920px) { .review-workspace { grid-template-columns: 1fr; } .player-column { position: static; } .player-shell video { max-height: 58vh; } }
-  @media (max-width: 640px) { .finished-gate { padding-inline: var(--sho-s-3); } .review-actions { margin-inline: calc(var(--sho-s-3) * -1); padding-inline: var(--sho-s-3); } .cut-tabs { grid-template-columns: 1fr; } .cut-tab { min-height: 0; } }
-  @media (prefers-reduced-motion: reduce) { .cut-tab { transition: none; } }
+  @media (max-width: 640px) { .finished-gate { padding-inline: var(--sho-s-3); } .review-actions { margin-inline: calc(var(--sho-s-3) * -1); padding-inline: var(--sho-s-3); } .cut-tabs { grid-template-columns: 1fr; } .cut-tab { min-height: 0; } .timeline-panel__head { align-items: start; flex-direction: column; } }
+  @media (prefers-reduced-motion: reduce) { .cut-tab, .timeline-block, .timeline-playhead { transition: none; } }
 </style>
 </head>
 <body class="sho bridge-page bridge-page--scroll">
@@ -99,7 +126,7 @@
     <a class="format-switch__link" href="/bridge/highlights/{{ episode_slug }}/finished?format=short" {% if review_format == 'short' %}aria-current="page"{% endif %}>短影片</a>
   </nav>
   {% if review_format != 'short' %}
-  <p class="finished-intro">先播放每支初剪；點右側 component 的時間碼可跳到畫面。只列 B-roll、Hero title 與 Fullscreen transition。勾選「以後都這樣」只會建立偏好候選，不會直接改寫 skill。</p>
+  <p class="finished-intro">先播放每支初剪；播放器下方的完整 Timeline 會顯示每個視覺元件與空白區。點選 block 可跳到畫面並打開右側對應修改欄。勾選「以後都這樣」只會建立偏好候選，不會直接改寫 skill。</p>
   {% endif %}
 
   <div class="cut-tabs" role="tablist" aria-label="{{ manifest.cuts|length }} 支{{ '短片' if review_format == 'short' else '長片' }}初剪">
@@ -125,6 +152,37 @@
           </video>
           <div class="player-readout sho-mono"><span id="active-cut-readout">{{ first_cut.cut_id }}</span><span id="time-readout" aria-live="polite">00:00 / {{ '%02d:%02d'|format(first_cut.artifacts.preview.duration_seconds // 60, first_cut.artifacts.preview.duration_seconds % 60) }}</span></div>
         </div>
+        {% for cut in manifest.cuts %}
+        {% set duration = cut.artifacts.preview.duration_seconds %}
+        <section class="timeline-panel" data-timeline-cut="{{ cut.cut_id }}" aria-label="{{ cut.cut_id }} 完整視覺 Timeline" {% if not loop.first %}hidden{% endif %}>
+          <header class="timeline-panel__head">
+            <h2 class="sho-mono">FULL TIMELINE · {{ cut.cut_id }}</h2>
+            <p class="timeline-panel__hint">點 block 跳到時間並選取修改欄；沒有 block 的區域就是 A-roll／空白區。</p>
+          </header>
+          <div class="timeline-scroll" tabindex="0" aria-label="可水平捲動的完整 Timeline">
+            <div class="timeline-stage">
+              <div class="timeline-ruler" aria-hidden="true">
+                <div class="timeline-ruler__label sho-mono">{{ '%02d:%02d'|format(duration // 60, duration % 60) }}</div>
+                <div class="timeline-ruler__track sho-mono">
+                  {% for ratio in [0, 0.25, 0.5, 0.75, 1] %}<span class="timeline-tick" style="--timeline-start: {{ ratio * 100 }}%">{{ '%02d:%02d'|format((duration * ratio) // 60, (duration * ratio) % 60) }}</span>{% endfor %}
+                </div>
+              </div>
+              {% for lane in manifest.feedback_contract.review_lanes %}
+              {% set timeline_components = cut.review_components | selectattr('lane', 'equalto', lane) | list %}
+              <div class="timeline-row" data-timeline-lane="{{ lane }}" data-timeline-count="{{ timeline_components|length }}">
+                <div class="timeline-label sho-mono"><span>{{ manifest.lane_labels[lane] }}</span><small>{{ timeline_components|length }} EVENT{% if timeline_components|length != 1 %}S{% endif %}</small></div>
+                <div class="timeline-track">
+                  {% for component in timeline_components %}
+                  <button type="button" class="timeline-block" data-seek="{{ component.t0 }}" data-component-target="{{ component.component_id }}" style="--timeline-start: {{ (component.t0 / duration * 100) }}%; --timeline-span: {{ ((component.t1 - component.t0) / duration * 100) }}%; --timeline-slot: {{ loop.index0 % 3 }}" title="{{ component.display }} · {{ '%02d:%02d'|format(component.t0 // 60, component.t0 % 60) }}–{{ '%02d:%02d'|format(component.t1 // 60, component.t1 % 60) }}" aria-label="{{ manifest.lane_labels[lane] }}：{{ component.display }}，跳到 {{ '%02d:%02d'|format(component.t0 // 60, component.t0 % 60) }}">{{ component.display }}</button>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endfor %}
+              <span class="timeline-playhead" data-timeline-playhead aria-hidden="true" style="--timeline-progress: 0"></span>
+            </div>
+          </div>
+        </section>
+        {% endfor %}
       </div>
 
       <div class="feedback-column">
@@ -251,7 +309,7 @@
             {% set lane_components = cut.review_components | selectattr('lane', 'equalto', lane) | list %}
             {% if lane_components %}
               {% for component in lane_components %}
-              <article class="component" data-component-id="{{ component.component_id }}" data-seek-seconds="{{ component.t0 }}">
+              <article class="component" data-component-id="{{ component.component_id }}" data-seek-seconds="{{ component.t0 }}" tabindex="-1">
                 <div class="component__head">
                   <p class="component__title">{{ component.display }}</p>
                   <button type="button" class="seek-button sho-mono" data-seek="{{ component.t0 }}" aria-label="跳到 {{ component.t0 }} 秒">{{ '%02d:%02d'|format(component.t0 // 60, component.t0 % 60) }}</button>
@@ -264,7 +322,7 @@
                     </select>
                   </label>
                   <label class="field-label" data-replacement-field>替換素材／新文字／新類型
-                    {% if component.lane in ['hero_title', 'fullscreen_transition', 'title_card'] %}
+                    {% if component.lane in ['identity_card', 'hero_title', 'fullscreen_transition', 'title_card'] %}
                     <textarea name="component_replacement__{{ component.component_id }}" maxlength="500" rows="3" placeholder="可按 Enter 決定畫面上的換行">{{ component.saved_replacement }}</textarea>
                     {% else %}
                     <input type="text" name="component_replacement__{{ component.component_id }}" value="{{ component.saved_replacement }}" maxlength="500">
@@ -304,6 +362,7 @@
   const captions = document.querySelector('#review-captions');
   const tabs = [...document.querySelectorAll('[role="tab"]')];
   const panes = [...document.querySelectorAll('[data-cut-pane]')];
+  const timelines = [...document.querySelectorAll('[data-timeline-cut]')];
   const status = document.querySelector('#review-status');
   const approveAll = document.querySelector('#approve-all');
   const approveCut = document.querySelector('#approve-cut');
@@ -314,6 +373,25 @@
   const legacyManifest = form.dataset.legacyManifest === 'true';
   const pad = value => String(Math.max(0, Math.floor(value))).padStart(2, '0');
   const stamp = seconds => `${pad(seconds / 60)}:${pad(seconds % 60)}`;
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const activeTab = () => tabs.find(tab => tab.getAttribute('aria-selected') === 'true');
+  const syncPlayhead = () => {
+    const tab = activeTab();
+    const duration = Number(tab?.dataset.duration || player.duration || 0);
+    const progress = duration > 0 ? Math.min(1, Math.max(0, player.currentTime / duration)) : 0;
+    timelines.filter(item => !item.hidden).forEach(item => item.querySelectorAll('[data-timeline-playhead]').forEach(playhead => playhead.style.setProperty('--timeline-progress', progress)));
+  };
+  const selectComponent = componentId => {
+    document.querySelectorAll('.timeline-block[aria-current="true"]').forEach(block => block.removeAttribute('aria-current'));
+    const block = document.querySelector(`.timeline-block[data-component-target="${CSS.escape(componentId)}"]`);
+    if (block) block.setAttribute('aria-current', 'true');
+    const component = form.querySelector(`[data-component-id="${CSS.escape(componentId)}"]`);
+    if (!component) return;
+    document.querySelectorAll('.component--selected').forEach(item => item.classList.remove('component--selected'));
+    component.classList.add('component--selected');
+    component.scrollIntoView({ behavior: reducedMotion.matches ? 'auto' : 'smooth', block: 'center' });
+    component.querySelector('[data-action-select]')?.focus({ preventScroll: true });
+  };
 
   const syncApproval = () => {
     const approved = tabs.every(tab => form.querySelector(`input[name="cut_status__${tab.dataset.cutId}"][value="approved"]`)?.checked);
@@ -327,6 +405,7 @@
   const activate = tab => {
     tabs.forEach(item => { const selected = item === tab; item.setAttribute('aria-selected', selected ? 'true' : 'false'); item.tabIndex = selected ? 0 : -1; });
     panes.forEach(pane => { pane.hidden = pane.dataset.cutPane !== tab.dataset.cutId; });
+    timelines.forEach(timeline => { timeline.hidden = timeline.dataset.timelineCut !== tab.dataset.cutId; });
     player.pause();
     player.src = tab.dataset.mediaUrl;
     captions.src = tab.dataset.subtitlesUrl;
@@ -335,6 +414,7 @@
     selectedCutId.value = tab.dataset.cutId;
     timeReadout.textContent = `00:00 / ${stamp(Number(tab.dataset.duration))}`;
     status.textContent = `正在檢查 ${tab.dataset.cutId}`;
+    syncPlayhead();
     syncApproval();
   };
   tabs.forEach((tab, index) => {
@@ -347,10 +427,21 @@
       activate(next); next.focus();
     });
   });
-  document.querySelectorAll('[data-seek]').forEach(button => button.addEventListener('click', () => {
-    player.currentTime = Number(button.dataset.seek);
-    player.play().catch(() => {});
-  }));
+  document.querySelectorAll('[data-seek]').forEach(button => {
+    button.addEventListener('click', () => {
+      player.currentTime = Number(button.dataset.seek);
+      if (button.dataset.componentTarget) selectComponent(button.dataset.componentTarget);
+      syncPlayhead();
+      player.play().catch(() => {});
+    });
+    if (button.classList.contains('timeline-block')) {
+      button.addEventListener('keydown', event => {
+        if (!['Enter', ' '].includes(event.key)) return;
+        event.preventDefault();
+        button.click();
+      });
+    }
+  });
   const syncFields = select => {
     const component = select.closest('.component');
     const replacement = component.querySelector('[data-replacement-field]');
@@ -366,8 +457,8 @@
     move.querySelector('input').required = needsMove;
   };
   document.querySelectorAll('[data-action-select]').forEach(select => { syncFields(select); select.addEventListener('change', () => syncFields(select)); });
-  player.addEventListener('loadedmetadata', () => { timeReadout.textContent = `${stamp(player.currentTime)} / ${stamp(player.duration || 0)}`; });
-  player.addEventListener('timeupdate', () => { timeReadout.textContent = `${stamp(player.currentTime)} / ${stamp(player.duration || 0)}`; });
+  player.addEventListener('loadedmetadata', () => { timeReadout.textContent = `${stamp(player.currentTime)} / ${stamp(player.duration || 0)}`; syncPlayhead(); });
+  player.addEventListener('timeupdate', () => { timeReadout.textContent = `${stamp(player.currentTime)} / ${stamp(player.duration || 0)}`; syncPlayhead(); });
   form.addEventListener('input', () => { status.textContent = '有尚未儲存的變更'; });
   form.addEventListener('change', () => { status.textContent = '有尚未儲存的變更'; syncApproval(); });
   form.querySelectorAll('[data-submit-action]').forEach(button => button.addEventListener('click', () => {

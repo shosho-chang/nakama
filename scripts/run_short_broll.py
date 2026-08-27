@@ -18,12 +18,13 @@
     t0/t1 = （緊·導播）timeline 秒。素材檔在 episode assets/broll/<slug>.*、
     貼紙在 assets/stickers/*.png（irasutoya s800，透明背景）。
 
-    Editorial Master 若在已知 human-reviewed speaker handoff 留錯機位，可加入
-    video-only camera correction；source 必須是 episode-local 且以 bytes/SHA 綁定：
-      {"t0": 42.467, "t1": 45.132, "kind": "camera-correction",
-       "slug": "guest-answer-camera-2a", "subject_role": "guest",
-       "source_path": "Video/2_CAMERA 2.mp4", "src_in": 1303.167,
-       "source_bytes": 123, "source_sha256": "..."}
+    Editorial Master 若在已知局部區間留錯機位，可加入 video-only camera correction；
+    role 可為 host/guest/wide，來源必須是 episode-local Video/ 內對應機位，不重算
+    數十 GB raw camera 的 hash，且不改 Master audio：
+      {"t0": 0.0, "t1": 20.933, "kind": "camera-correction",
+       "slug": "opening-host-camera-1", "subject_role": "host",
+       "source_path": "Video/1_CAMERA 1.mp4", "src_in": 1260.700,
+       "note": "主持人開場提問"}
 
 機制與教訓：
 - 影像素材 AppendToTimeline 後設 ZoomX/Y 填滿 1080×1920（fit 語意同 director：
@@ -539,6 +540,277 @@ def emit_audited_recipe(
     return destination
 
 
+def _camera_correction_job(episode_dir: Path, item: dict, *, index: int) -> dict:
+    """Validate one video-only A-roll correction without hashing a raw camera file."""
+
+    role = str(item.get("subject_role") or "")
+    if role not in {"host", "guest", "wide"}:
+        raise SystemExit(
+            f"item {index} camera-correction subject_role 必須是 host/guest/wide"
+        )
+    raw_source = item.get("source_path")
+    if not isinstance(raw_source, str) or not raw_source.strip():
+        raise SystemExit(f"item {index} camera-correction source_path 不合法")
+    video_root = (episode_dir / "Video").resolve()
+    source = (episode_dir / raw_source).resolve()
+    try:
+        source.relative_to(video_root)
+    except ValueError as exc:
+        raise SystemExit(
+            f"item {index} camera-correction source_path 必須是 episode-local Video 檔案"
+        ) from exc
+    if not source.is_file():
+        raise SystemExit(f"item {index} camera-correction source 不存在：{raw_source}")
+    from run_short_director import _load_cfg
+
+    cfg = _load_cfg(episode_dir, "long")
+    expected_name = (
+        cfg.get("cams", {}).get("0")
+        if role == "host"
+        else cfg.get("cams", {}).get("1")
+        if role == "guest"
+        else cfg.get("wide_cam")
+    )
+    if not isinstance(expected_name, str) or source.name.casefold() != expected_name.casefold():
+        raise SystemExit(
+            f"item {index} camera-correction {role} 必須使用 {expected_name}"
+        )
+    try:
+        t0, t1, src_in = float(item["t0"]), float(item["t1"]), float(item["src_in"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SystemExit(f"item {index} camera-correction timing 不合法") from exc
+    if t0 < 0 or t1 <= t0:
+        raise SystemExit(f"item {index} camera-correction timeline range 不合法")
+    if src_in < 0:
+        raise SystemExit(f"item {index} camera-correction src_in 不合法")
+    return {
+        "path": source,
+        "t0": t0,
+        "span": t1 - t0,
+        "kind": "camera-correction",
+        "i": index,
+        "src_in": src_in,
+        "subject_role": role,
+    }
+
+
+def _validate_camera_correction_ranges(items: list[dict], *, label: str) -> None:
+    """Reject ambiguous camera layers while allowing deliberate adjacent cuts."""
+
+    previous_end = 0.0
+    for index, item in enumerate(sorted(items, key=lambda row: float(row.get("t0", -1)))):
+        try:
+            t0, t1 = float(item["t0"]), float(item["t1"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise SystemExit(f"{label} camera-correction {index} timing 不合法") from exc
+        if t0 < previous_end - 1e-6:
+            raise SystemExit(f"{label} camera-correction {index} 與前一段重疊")
+        previous_end = t1
+
+
+def _media_append_spec(job: dict, clip, *, fps: float, tl_start: int) -> dict:
+    """Build the V2 overlay-track video append spec for footage or camera correction."""
+
+    source_fps = job.get("src_fps") or fps
+    return {
+        "mediaPoolItem": clip,
+        "mediaType": 1,
+        "trackIndex": BROLL_TRACK,
+        "recordFrame": tl_start + int(job["t0"] * fps),
+        "startFrame": int(job["src_in"] * source_fps),
+        "endFrame": int((job["src_in"] + job["span"]) * source_fps),
+    }
+
+
+def _load_camera_correction_jobs(episode_dir: Path, cid: str) -> list[dict]:
+    """Read only structural camera rows; do not require the content-visual DP receipt."""
+
+    plan_path = episode_dir / TIGHTEN_DIR / f"{cid}_broll.json"
+    if not plan_path.is_file():
+        raise SystemExit(f"{plan_path} 不存在")
+    try:
+        document = json.loads(plan_path.read_text(encoding="utf-8"))
+        items = document["items"]
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise SystemExit(f"camera-correction recipe 無法讀取：{plan_path}") from exc
+    if not isinstance(items, list):
+        raise SystemExit(f"camera-correction recipe items 必須是 array：{plan_path}")
+    rows = [
+        item
+        for item in items
+        if isinstance(item, dict) and item.get("kind") == "camera-correction"
+    ]
+    if not rows:
+        raise SystemExit(f"{plan_path} 沒有 camera-correction")
+    _validate_camera_correction_ranges(rows, label=cid)
+    jobs: list[dict] = []
+    for index, item in enumerate(rows):
+        job = _camera_correction_job(episode_dir, item, index=index)
+        job["sar"], job["src_fps"] = _probe_meta(job["path"])
+        jobs.append(job)
+    return jobs
+
+
+def _camera_correction_master_baseline(timeline, master_media: Path) -> tuple[tuple, ...]:
+    """Snapshot track-1 Master video/audio without inspecting upper overlay tracks."""
+
+    expected = os.path.normcase(str(master_media.resolve()))
+    snapshot: list[tuple] = []
+    for track_type in ("video", "audio"):
+        items = list(timeline.GetItemListInTrack(track_type, 1) or [])
+        if not items:
+            raise SystemExit(f"camera-correction: {track_type} track 1 是空的")
+        for index, item in enumerate(items, 1):
+            try:
+                media = item.GetMediaPoolItem()
+                actual = os.path.normcase(
+                    str(Path(media.GetClipProperty("File Path") or "").resolve())
+                )
+                start, end = int(item.GetStart()), int(item.GetEnd())
+            except (AttributeError, OSError, TypeError, ValueError) as exc:
+                raise SystemExit(
+                    f"camera-correction: {track_type} track 1 item {index} 無法驗證"
+                ) from exc
+            if actual != expected:
+                raise SystemExit(
+                    f"camera-correction: {track_type} track 1 item {index} 不是 Editorial Master"
+                )
+            snapshot.append((track_type, index, start, end, actual))
+    return tuple(snapshot)
+
+
+def apply_camera_corrections(episode_dir: Path, cid: str) -> dict:
+    """Apply only video-track camera overrides to the existing canonical timeline.
+
+    This path intentionally bypasses the content-visual Director/DP receipt because
+    camera correction is a structural edit.  It still verifies the winner,
+    Editorial Master and existing director materialization before mutating Resolve.
+    """
+
+    from build_resolve_project import connect_resolve
+
+    master = _open_editorial_master(episode_dir)
+    candidate, winner = _load_winner(episode_dir, cid, master.identity())
+    if candidate.get("format", "short") != "long":
+        raise SystemExit("camera-corrections-only 只允許 Long Highlight")
+    jobs = _load_camera_correction_jobs(episode_dir, cid)
+
+    resolve = connect_resolve()
+    pm = resolve.GetProjectManager()
+    project = pm.GetCurrentProject()
+    if project is None or project.GetName() != episode_dir.name:
+        project = pm.LoadProject(episode_dir.name)
+    if project is None:
+        raise SystemExit(f"project「{episode_dir.name}」不存在")
+    fps = float(project.GetSetting("timelineFrameRate"))
+    mp = project.GetMediaPool()
+    root = mp.GetRootFolder()
+    label = f"{FORMAT_LABEL[candidate['format']]}{winner['rank']} - {candidate['title']}（緊·導播）"
+    timeline = next(
+        (
+            project.GetTimelineByIndex(index)
+            for index in range(1, project.GetTimelineCount() + 1)
+            if project.GetTimelineByIndex(index)
+            and project.GetTimelineByIndex(index).GetName() == label
+        ),
+        None,
+    )
+    if timeline is None:
+        raise SystemExit(f"「{label}」不存在——先跑 run_short_director")
+    project.SetCurrentTimeline(timeline)
+    master_baseline = _camera_correction_master_baseline(timeline, master.media_path)
+
+    tl_start = timeline.GetStartFrame()
+    while timeline.GetTrackCount("video") < BROLL_TRACK:
+        timeline.AddTrack("video")
+
+    # Idempotency is deliberately local: remove only an existing raw-camera
+    # overlay whose timeline range intersects one of the requested corrections.
+    source_paths = {str(job["path"].resolve()).casefold() for job in jobs}
+    requested_ranges = [
+        (
+            tl_start + int(job["t0"] * fps),
+            tl_start + int((job["t0"] + job["span"]) * fps),
+        )
+        for job in jobs
+    ]
+
+    def stale_correction(item) -> bool:
+        try:
+            media = item.GetMediaPoolItem()
+            path = str(media.GetClipProperty("File Path") or "").casefold() if media else ""
+            item_range = (int(item.GetStart()), int(item.GetEnd()))
+        except (AttributeError, TypeError, ValueError):
+            return False
+        return path in source_paths and any(
+            item_range[0] < end and item_range[1] > start for start, end in requested_ranges
+        )
+
+    stale = [
+        item
+        for item in (timeline.GetItemListInTrack("video", BROLL_TRACK) or [])
+        if stale_correction(item)
+    ]
+    if stale:
+        timeline.DeleteClips(stale)
+
+    occupied = [
+        (int(item.GetStart()), int(item.GetEnd()))
+        for item in (timeline.GetItemListInTrack("video", BROLL_TRACK) or [])
+    ]
+    for job, requested in zip(jobs, requested_ranges):
+        if any(requested[0] < end and requested[1] > start for start, end in occupied):
+            raise SystemExit(
+                f"camera-correction {job['t0']:.3f}–{job['t0'] + job['span']:.3f}s "
+                f"與 track {BROLL_TRACK} 既有畫面重疊"
+            )
+
+    camera_bin = next(
+        (folder for folder in root.GetSubFolderList() if folder.GetName() == "Cams"), None
+    ) or mp.AddSubFolder(root, "Cams")
+    mp.SetCurrentFolder(camera_bin)
+    made: list[dict] = []
+    for job in jobs:
+        clips = mp.ImportMedia([str(job["path"])]) or []
+        if not clips:
+            raise SystemExit(f"camera-correction 匯入失敗：{job['path']}")
+        clip = clips[0]
+        result = mp.AppendToTimeline(
+            [_media_append_spec(job, clip, fps=fps, tl_start=tl_start)]
+        )
+        if not result or (isinstance(result, list) and result[0] is None):
+            raise SystemExit(f"camera-correction 疊軌失敗 @{job['t0']:.3f}s")
+        item = (timeline.GetItemListInTrack("video", BROLL_TRACK) or [])[-1]
+        zoom = _fill_zoom(
+            clip.GetClipProperty("Resolution"),
+            job["sar"],
+            tuple(FORMAT_BROLL["long"]["canvas"]),
+        )
+        if zoom > 1.001:
+            item.SetProperty("ZoomX", zoom)
+            item.SetProperty("ZoomY", zoom)
+        made.append(
+            {
+                "role": job["subject_role"],
+                "source": str(job["path"]),
+                "t0": job["t0"],
+                "t1": job["t0"] + job["span"],
+                "src_in": job["src_in"],
+            }
+        )
+    mp.SetCurrentFolder(root)
+    if _camera_correction_master_baseline(timeline, master.media_path) != master_baseline:
+        raise SystemExit("camera-correction 意外改動 Editorial Master track 1 baseline")
+    if not pm.SaveProject():
+        raise SystemExit("Resolve SaveProject 失敗")
+    return {
+        "status": "camera-corrections-applied",
+        "timeline": label,
+        "items": made,
+        "audio_source": "editorial_master_unchanged",
+    }
+
+
 def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     from build_resolve_project import connect_resolve
 
@@ -574,6 +846,7 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     camera_corrections = [
         item for item in render_items if str(item.get("kind") or "") == "camera-correction"
     ]
+    _validate_camera_correction_ranges(camera_corrections, label=cid)
     for i, it in enumerate(render_items):
         t0, t1 = float(it["t0"]), float(it["t1"])
         span = round(t1 - t0, 2)
@@ -605,47 +878,9 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
                 }
             )
         elif kind == "camera-correction":
-            if str(it.get("subject_role") or "") != "guest":
-                raise SystemExit(f"item {i} camera-correction subject_role 必須是 guest")
-            raw_source = it.get("source_path")
-            if not isinstance(raw_source, str) or not raw_source.strip():
-                raise SystemExit(f"item {i} camera-correction source_path 不合法")
-            source = (episode_dir / raw_source).resolve()
-            try:
-                source.relative_to(episode_dir.resolve())
-            except ValueError as exc:
-                raise SystemExit(f"item {i} camera-correction source_path escape") from exc
-            if not source.is_file():
-                raise SystemExit(f"item {i} camera-correction source 不存在：{raw_source}")
-            try:
-                expected_bytes = int(it["source_bytes"])
-                expected_sha = str(it["source_sha256"]).lower()
-                src_in = float(it["src_in"])
-            except (KeyError, TypeError, ValueError) as exc:
-                raise SystemExit(f"item {i} camera-correction source identity 不合法") from exc
-            if expected_bytes != source.stat().st_size:
-                raise SystemExit(f"item {i} camera-correction source bytes 已漂移")
-            actual_sha = hashlib.sha256()
-            with source.open("rb") as stream:
-                for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b""):
-                    actual_sha.update(chunk)
-            if len(expected_sha) != 64 or actual_sha.hexdigest() != expected_sha:
-                raise SystemExit(f"item {i} camera-correction source SHA-256 已漂移")
-            if src_in < 0:
-                raise SystemExit(f"item {i} camera-correction src_in 不合法")
-            sar, src_fps = _probe_meta(source)
-            media_jobs.append(
-                {
-                    "path": source,
-                    "t0": t0,
-                    "span": span,
-                    "kind": kind,
-                    "i": i,
-                    "src_in": src_in,
-                    "sar": sar,
-                    "src_fps": src_fps,
-                }
-            )
+            job = _camera_correction_job(episode_dir, it, index=i)
+            job["sar"], job["src_fps"] = _probe_meta(job["path"])
+            media_jobs.append(job)
         elif kind == "sticker":
             projection = it["visual_materialization"]
             card_jobs.append(
@@ -871,18 +1106,7 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
             # 照 3.2s 變 5.0s）——先把 clip 的 Frames 設成目標長度
             clip.SetClipProperty("Frames", str(int(job["span"] * fps)))
         ok = mp.AppendToTimeline(
-            [
-                {
-                    "mediaPoolItem": clip,
-                    "mediaType": 1,
-                    "trackIndex": BROLL_TRACK,
-                    "recordFrame": tl_start + int(job["t0"] * fps),
-                    # startFrame/endFrame 是「源幀」——用源 fps 換算（photo/probe
-                    # 失敗 src_fps=0 → 落回 timeline fps）
-                    "startFrame": int(job["src_in"] * (job["src_fps"] or fps)),
-                    "endFrame": int((job["src_in"] + job["span"]) * (job["src_fps"] or fps)),
-                }
-            ]
+            [_media_append_spec(job, clip, fps=fps, tl_start=tl_start)]
         )
         if not ok or (isinstance(ok, list) and ok[0] is None):  # [None]=失敗（2026-08-04）
             raise SystemExit(f"疊軌失敗 @{job['t0']}（track {BROLL_TRACK} 可能被佔）")
@@ -1043,12 +1267,20 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="驗 current Director/DP/Audit、exact recipes/media，不連 Resolve／不寫 receipt",
     )
-    args = parser.parse_args(argv)
-    result = (
-        validate_plan(Path(args.episode), args.id)
-        if args.validate_only
-        else apply(Path(args.episode), args.id, Path(args.stills) if args.stills else None)
+    parser.add_argument(
+        "--camera-corrections-only",
+        action="store_true",
+        help="只套 *_broll.json 的局部 host/guest/wide video override；不重跑 DP/B-roll",
     )
+    args = parser.parse_args(argv)
+    if args.validate_only and args.camera_corrections_only:
+        parser.error("--validate-only 與 --camera-corrections-only 不可同時使用")
+    if args.camera_corrections_only:
+        result = apply_camera_corrections(Path(args.episode), args.id)
+    elif args.validate_only:
+        result = validate_plan(Path(args.episode), args.id)
+    else:
+        result = apply(Path(args.episode), args.id, Path(args.stills) if args.stills else None)
     print(json.dumps(result, ensure_ascii=False, indent=1))
     return 0
 

@@ -74,7 +74,9 @@ _ACTION_LABELS = {
 }
 _LANE_LABELS = {
     "b_roll": "STOCK VIDEO（Stock Village） / B-ROLL",
+    "identity_card": "IDENTITY CARD",
     "hero_title": "HERO TITLE",
+    "badge": "BADGE",
     "fullscreen_transition": "FULLSCREEN TRANSITION",
     "title_card": "字卡與斷句",
     "visual_effect": "ICON／動畫",
@@ -593,13 +595,25 @@ def _latest_finished_manifest_path(review_dir: Path) -> Path:
 
 def _component_display(component: dict[str, Any]) -> str:
     lane = component["lane"]
+    if lane == "identity_card":
+        variables = component.get("vars")
+        variables = variables if isinstance(variables, dict) else {}
+        name = str(component.get("name") or variables.get("label") or "").strip()
+        title = str(component.get("title") or variables.get("sub") or "").strip()
+        if name or title:
+            return "｜".join(part for part in (name, title) if part)
     if lane == "hero_title":
         return str(component.get("text") or "未命名 Hero title")
     if lane == "fullscreen_transition":
         variables = component.get("vars")
         if isinstance(variables, dict) and variables.get("title"):
             return str(variables["title"])
-    return str(component.get("note") or component.get("slug") or component["component_id"])
+    return str(
+        component.get("display")
+        or component.get("note")
+        or component.get("slug")
+        or component["component_id"]
+    )
 
 
 def _load_finished_manifest(episode_slug: str) -> dict[str, Any]:

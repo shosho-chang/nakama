@@ -34,8 +34,7 @@ Scripting API，CoWork/Computer Use 做不到逐幀精度）。
 
 ## Step 6–7 — 緊湊化 + 機位導播（修修 2026-08-03 開工）
 
-同一批 script，格式由 `candidates.json` 的 `format` 欄自動判定，**沒有新
-CLI 旗標**：
+同一批 script，格式由 `candidates.json` 的 `format` 欄自動判定：
 
 ```
 python scripts/run_short_tighten.py <episode> --detect --id punch-L5
@@ -45,6 +44,48 @@ python scripts/run_short_director.py <episode> --id punch-L5 --stills <dir>
 ```
 
 參數表：`run_short_tighten.FORMAT_TIGHTEN` / `run_short_director.FORMAT_CFG`。
+
+### A-roll 機位：Master 預設 + 局部 video-only correction
+
+ADR-064 production 預設仍由 Editorial Master 決定保留內容、時間基準、字幕與最終
+聲音；`run_short_director.py` 沒有 camera plan 時必須原樣使用 Master program 畫面。
+只有成片 review 已指出明確區間，或同一位 Director 標出少數高價值 reaction/wide cue
+時，才在 `<episode>/highlights/tighten/<cut-id>_broll.json` 加結構性
+`camera-correction`。它疊在 video track 2，plan 外 Master program 與整條 Master audio
+完全不動；不要為一個局部問題重導整集，也不要新增 camera-audit Agent。
+
+```json
+{
+  "kind": "camera-correction",
+  "slug": "opening-host-camera-1",
+  "subject_role": "host",
+  "source_path": "Video/1_CAMERA 1.mp4",
+  "src_in": 1260.700,
+  "t0": 0.000,
+  "t1": 20.933,
+  "note": "主持人開場提問"
+}
+```
+
+- `t0/t1` 是（緊·導播）cut-local 秒；`src_in` 是同步 raw camera 的源內秒。
+- `subject_role` 只可為 `host` / `guest` / `wide`，並分別對映 episode director config
+  的 CAM1 / CAM2 / CAM3。來源只可在 episode-local `Video/` 且必須存在；不為數十 GB
+  raw camera 重算 SHA-256。
+- camera-correction 彼此不得重疊，可相鄰形成自然切換；沒有 row 就不改畫面。
+- 只套機位修正用
+  `python scripts/run_short_broll.py <episode> --id <cut-id> --camera-corrections-only`；這條
+  路徑不要求重跑已通過或已 drift 的 content-visual DP/B-roll receipt。
+
+機位文法不是「誰說話就硬切誰」。主要說話者只是預設：短促「嗯／對／好」由
+minimum-shot/hysteresis 吸收，不做乒乓切換；長回答可在自然句尾、停頓、語意轉折或
+可讀的情緒反應處短切聽者，亦可在段落中受控加入全景。全景和反應鏡頭從合理候選點
+選擇，避免固定秒數模板；同一狀況太久時才提高換鏡必要性。Full-screen transition、
+Hero 或 Stock 正在遮滿畫面時，不在底下做無意義快速換鏡。
+
+這個局部 raw-camera video override 是 ADR-064「Master program feed 為 sacred A-roll」
+文字的窄例外：仍禁止 raw fallback、禁止替換 Master audio/timebase，且必須是明確
+cut-local plan。正式擴大成全片自動重導播前，需先 amendment ADR-064；本流程不可默認
+把局部例外擴成整集重建。
 
 長片與短片的四個刻意差異（依據 `docs/research/editing-grammar/2026-07-18`）：
 

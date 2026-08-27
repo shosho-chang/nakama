@@ -487,6 +487,330 @@ def test_apply_rejects_legacy_guest_namecard_without_guest_camera_correction(
         broll.apply(tmp_path, "value-L01")
 
 
+def test_camera_correction_accepts_video_only_host_override_without_raw_media_hash(tmp_path):
+    from run_short_broll import _camera_correction_job
+
+    source = tmp_path / "Video" / "1_CAMERA 1.mp4"
+    source.parent.mkdir()
+    source.write_bytes(b"large raw camera fixture")
+    item = {
+        "kind": "camera-correction",
+        "slug": "opening-host-camera-1",
+        "subject_role": "host",
+        "source_path": "Video/1_CAMERA 1.mp4",
+        "src_in": 1260.7,
+        "t0": 0.0,
+        "t1": 20.933,
+        "note": "主持人開場提問",
+    }
+
+    job = _camera_correction_job(tmp_path, item, index=0)
+
+    assert job == {
+        "path": source,
+        "t0": 0.0,
+        "span": 20.933,
+        "kind": "camera-correction",
+        "i": 0,
+        "src_in": 1260.7,
+        "subject_role": "host",
+    }
+
+
+@pytest.mark.parametrize("role,filename", [("guest", "2_CAMERA 2.mp4"), ("wide", "3_CAMERA 3.mp4")])
+def test_camera_correction_supports_guest_and_wide_roles(tmp_path, role, filename):
+    from run_short_broll import _camera_correction_job
+
+    source = tmp_path / "Video" / filename
+    source.parent.mkdir(exist_ok=True)
+    source.write_bytes(b"camera")
+    job = _camera_correction_job(
+        tmp_path,
+        {
+            "subject_role": role,
+            "source_path": f"Video/{filename}",
+            "src_in": 10,
+            "t0": 2,
+            "t1": 4,
+        },
+        index=0,
+    )
+
+    assert job["subject_role"] == role
+
+
+def test_camera_correction_role_must_match_configured_camera_file(tmp_path):
+    from run_short_broll import _camera_correction_job
+
+    source = tmp_path / "Video" / "2_CAMERA 2.mp4"
+    source.parent.mkdir()
+    source.write_bytes(b"guest camera")
+
+    with pytest.raises(SystemExit, match="host.*1_CAMERA 1.mp4"):
+        _camera_correction_job(
+            tmp_path,
+            {
+                "subject_role": "host",
+                "source_path": "Video/2_CAMERA 2.mp4",
+                "src_in": 0,
+                "t0": 0,
+                "t1": 2,
+            },
+            index=0,
+        )
+
+
+def test_camera_correction_ranges_allow_adjacent_cuts_but_reject_overlap():
+    from run_short_broll import _validate_camera_correction_ranges
+
+    _validate_camera_correction_ranges(
+        [{"t0": 0, "t1": 3}, {"t0": 3, "t1": 5}], label="value-L01"
+    )
+    with pytest.raises(SystemExit, match="重疊"):
+        _validate_camera_correction_ranges(
+            [{"t0": 0, "t1": 3}, {"t0": 2.9, "t1": 5}], label="value-L01"
+        )
+
+
+def test_camera_correction_append_is_video_only_on_overlay_track():
+    from run_short_broll import _media_append_spec
+
+    clip = object()
+    spec = _media_append_spec(
+        {
+            "kind": "camera-correction",
+            "t0": 0.0,
+            "span": 20.933,
+            "src_in": 1260.7,
+            "src_fps": 30.0,
+        },
+        clip,
+        fps=30.0,
+        tl_start=86400,
+    )
+
+    assert spec["mediaType"] == 1
+    assert spec["trackIndex"] == 2
+    assert spec["recordFrame"] == 86400
+    assert spec["startFrame"] == 37821
+    assert spec["endFrame"] == 38448
+    assert "audio" not in spec
+
+
+def test_camera_only_loader_ignores_drifted_content_visual_rows(tmp_path, monkeypatch):
+    import run_short_broll as broll
+
+    _write_broll_inputs(tmp_path, {"content_hash": "stale-content-visual-fixture"})
+    source = tmp_path / "Video" / "1_CAMERA 1.mp4"
+    source.parent.mkdir()
+    source.write_bytes(b"host")
+    recipe_path = tmp_path / "highlights/tighten/value-L01_broll.json"
+    recipe = json.loads(recipe_path.read_text(encoding="utf-8"))
+    recipe["items"].append(
+        {
+            "kind": "camera-correction",
+            "slug": "opening-host-camera-1",
+            "subject_role": "host",
+            "source_path": "Video/1_CAMERA 1.mp4",
+            "src_in": 1260.7,
+            "t0": 0.0,
+            "t1": 20.933,
+        }
+    )
+    recipe_path.write_text(json.dumps(recipe), encoding="utf-8")
+    monkeypatch.setattr(broll, "_probe_meta", lambda _path: (1.0, 30.0))
+
+    jobs = broll._load_camera_correction_jobs(tmp_path, "value-L01")
+
+    assert len(jobs) == 1
+    assert jobs[0]["subject_role"] == "host"
+    assert jobs[0]["span"] == pytest.approx(20.933)
+
+
+def test_camera_corrections_only_cli_bypasses_full_broll_apply(tmp_path, monkeypatch):
+    import run_short_broll as broll
+
+    called = []
+    monkeypatch.setattr(
+        broll,
+        "apply_camera_corrections",
+        lambda episode, cid: called.append((episode, cid)) or {"status": "ok"},
+    )
+    monkeypatch.setattr(
+        broll,
+        "apply",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("full B-roll apply must not run")
+        ),
+    )
+
+    assert broll.main([str(tmp_path), "--id", "value-L01", "--camera-corrections-only"]) == 0
+    assert called == [(tmp_path, "value-L01")]
+
+
+def test_camera_only_apply_ignores_live_overlay_receipt_drift_and_preserves_track1(
+    tmp_path, monkeypatch
+):
+    import build_resolve_project
+    import run_short_broll as broll
+
+    master_path = tmp_path / "editorial-master/v1/master.mp4"
+    master_path.parent.mkdir(parents=True)
+    master_path.write_bytes(b"master")
+    raw_path = tmp_path / "Video/1_CAMERA 1.mp4"
+    raw_path.parent.mkdir()
+    raw_path.write_bytes(b"camera")
+
+    class Clip:
+        def __init__(self, path):
+            self.path = Path(path)
+
+        def GetClipProperty(self, key):
+            if key == "File Path":
+                return str(self.path)
+            return "1920x1080" if key == "Resolution" else ""
+
+    class Item:
+        def __init__(self, clip, start, end):
+            self.clip, self.start, self.end = clip, start, end
+
+        def GetMediaPoolItem(self):
+            return self.clip
+
+        def GetStart(self):
+            return self.start
+
+        def GetEnd(self):
+            return self.end
+
+        def SetProperty(self, *_args):
+            return True
+
+    master_clip = Clip(master_path)
+    stock_clip = Clip(tmp_path / "assets/broll/already-approved.mp4")
+    tracks = {
+        ("video", 1): [Item(master_clip, 0, 300)],
+        ("audio", 1): [Item(master_clip, 0, 300)],
+        ("video", 2): [Item(stock_clip, 900, 990)],
+    }
+
+    class Timeline:
+        def GetName(self):
+            return "長1 - Master cut（緊·導播）"
+
+        def GetStartFrame(self):
+            return 0
+
+        def GetTrackCount(self, track_type):
+            return max((index for kind, index in tracks if kind == track_type), default=0)
+
+        def AddTrack(self, track_type):
+            tracks.setdefault((track_type, self.GetTrackCount(track_type) + 1), [])
+            return True
+
+        def GetItemListInTrack(self, track_type, index):
+            return tracks.get((track_type, index), [])
+
+        def DeleteClips(self, items):
+            for key in tracks:
+                tracks[key] = [item for item in tracks[key] if item not in items]
+            return True
+
+    timeline = Timeline()
+    root = SimpleNamespace(GetSubFolderList=lambda: [], GetName=lambda: "Root")
+
+    class MediaPool:
+        def GetRootFolder(self):
+            return root
+
+        def AddSubFolder(self, _root, name):
+            return SimpleNamespace(GetName=lambda: name, GetClipList=lambda: [])
+
+        def SetCurrentFolder(self, _folder):
+            return True
+
+        def ImportMedia(self, paths):
+            return [Clip(paths[0])]
+
+        def AppendToTimeline(self, specs):
+            spec = specs[0]
+            duration = spec["endFrame"] - spec["startFrame"]
+            item = Item(spec["mediaPoolItem"], spec["recordFrame"], spec["recordFrame"] + duration)
+            tracks.setdefault(("video", spec["trackIndex"]), []).append(item)
+            return [item]
+
+    media_pool = MediaPool()
+    project = SimpleNamespace(
+        GetName=lambda: tmp_path.name,
+        GetSetting=lambda key: "30" if key == "timelineFrameRate" else "",
+        GetMediaPool=lambda: media_pool,
+        GetTimelineCount=lambda: 1,
+        GetTimelineByIndex=lambda index: timeline if index == 1 else None,
+        SetCurrentTimeline=lambda _timeline: True,
+    )
+    manager = SimpleNamespace(
+        GetCurrentProject=lambda: project,
+        LoadProject=lambda _name: project,
+        SaveProject=lambda: True,
+    )
+    monkeypatch.setattr(
+        build_resolve_project,
+        "connect_resolve",
+        lambda: SimpleNamespace(GetProjectManager=lambda: manager),
+    )
+    master = SimpleNamespace(
+        media_path=master_path,
+        identity=lambda: {"content_hash": "master"},
+    )
+    monkeypatch.setattr(broll, "_open_editorial_master", lambda _episode: master)
+    monkeypatch.setattr(
+        broll,
+        "_load_winner",
+        lambda *_args: (
+            {"format": "long", "title": "Master cut", "t_start": 0, "t_end": 10},
+            {"rank": 1},
+        ),
+    )
+    monkeypatch.setattr(
+        broll,
+        "_load_camera_correction_jobs",
+        lambda *_args: [
+            {
+                "path": raw_path,
+                "t0": 0.0,
+                "span": 2.0,
+                "kind": "camera-correction",
+                "i": 0,
+                "src_in": 10.0,
+                "subject_role": "host",
+                "sar": 1.0,
+                "src_fps": 30.0,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        broll,
+        "_verify_director_materialization",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("full live timeline receipt must not run")
+        ),
+    )
+
+    before = [
+        (item.GetStart(), item.GetEnd(), item.GetMediaPoolItem().path)
+        for item in tracks[("audio", 1)]
+    ]
+    result = broll.apply_camera_corrections(tmp_path, "value-L01")
+    after = [
+        (item.GetStart(), item.GetEnd(), item.GetMediaPoolItem().path)
+        for item in tracks[("audio", 1)]
+    ]
+
+    assert result["status"] == "camera-corrections-applied"
+    assert before == after
+    assert tracks[("video", 2)][0].GetMediaPoolItem() is stock_clip
+
+
 def test_apply_rejects_stale_materialization_range_before_resolve_mutation(
     tmp_path, monkeypatch
 ):

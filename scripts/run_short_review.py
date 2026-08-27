@@ -134,6 +134,81 @@ def _verify_materialization_receipt(
         raise SystemExit(f"review packet materialization receipt 驗證失敗：{exc}") from exc
 
 
+def _review_event_display(item: dict, lane: str) -> str:
+    """Return the human-facing label carried into finished review."""
+
+    variables = item.get("vars") if isinstance(item.get("vars"), dict) else {}
+    if lane == "identity_card":
+        name = str(item.get("name") or variables.get("label") or "").strip()
+        title = str(item.get("title") or variables.get("sub") or "").strip()
+        return "｜".join(part for part in (name, title) if part) or "來賓字卡"
+    if lane == "fullscreen_transition":
+        return str(
+            variables.get("title")
+            or item.get("on_screen_text")
+            or item.get("note")
+            or "Fullscreen transition"
+        ).strip()
+    if lane == "pacing" and str(item.get("kind") or "").replace("_", "-") in {
+        "camera-correction",
+        "camera-override",
+    }:
+        role = str(item.get("camera") or item.get("subject_role") or "").strip().lower()
+        subject = {"host": "主持人", "guest": "來賓", "wide": "全景"}.get(role, role)
+        return f"機位：{subject or '未指定'}"
+    return str(
+        item.get("note")
+        or item.get("on_screen_text")
+        or variables.get("title")
+        or variables.get("label")
+        or item.get("slug")
+        or item.get("kind")
+        or "未命名元件"
+    ).strip()
+
+
+def _review_event_semantics(item: dict) -> tuple[str, str | None, str | None]:
+    """Project renderer vocabulary into the canonical finished-review lane."""
+
+    kind = str(item.get("kind") or "").strip().lower().replace("_", "-")
+    component = str(item.get("comp") or "").strip().lower().replace("-", "_") or None
+    materialization = item.get("visual_materialization")
+    implementation = (
+        str(materialization.get("implementation_kind") or "").strip().lower()
+        if isinstance(materialization, dict)
+        else ""
+    )
+    implementation = implementation or component
+    slug = str(item.get("slug") or "").strip().lower().replace("_", "-")
+    legacy_guest_namecard = (
+        kind == "concept"
+        and component == "chapter_label"
+        and slug == "guest-namecard"
+    )
+    if kind in {"video", "photo"} or implementation == "stock_video":
+        lane = "b_roll"
+    elif legacy_guest_namecard or kind in {
+        "guest-namecard",
+        "host-namecard",
+        "identity-card",
+        "namecard",
+    }:
+        lane = "identity_card"
+    elif implementation == "transition_title":
+        lane = "fullscreen_transition"
+    elif implementation in {"hero_title", "punch_card", "punch_card_wide"}:
+        lane = "hero_title"
+    elif kind == "badge":
+        lane = "badge"
+    elif kind in {"camera-correction", "camera-override"}:
+        lane = "pacing"
+    elif kind in {"concept", "sticker", "icon-motion"}:
+        lane = "visual_effect"
+    else:
+        lane = None
+    return lane or "", component, implementation
+
+
 def _load_events(episode_dir: Path, cid: str) -> list[dict]:
     td = episode_dir / TIGHTEN_DIR
     events: list[dict] = []
@@ -142,23 +217,69 @@ def _load_events(episode_dir: Path, cid: str) -> list[dict]:
         for it in json.loads(p.read_text(encoding="utf-8"))["items"]:
             if it["kind"] == "badge":
                 continue  # 全片常駐 watermark，不是「視覺事件」——進事件表會污染節拍分析
+            review_lane, component, implementation = _review_event_semantics(it)
             event = {
-                    "type": it["kind"],
-                    "slug": it.get("slug", ""),
-                    "t0": float(it["t0"]),
-                    "t1": float(it["t1"]),
-                    "note": it.get("note", ""),
-                }
+                "type": it["kind"],
+                "kind": it["kind"],
+                "slug": it.get("slug", ""),
+                "t0": float(it["t0"]),
+                "t1": float(it["t1"]),
+                "note": it.get("note", ""),
+            }
+            if review_lane:
+                event["review_lane"] = review_lane
+                event["display"] = _review_event_display(it, review_lane)
+            if component:
+                event["component"] = component
+            if implementation:
+                event["implementation_kind"] = implementation
+            for field in ("vars", "name", "title", "on_screen_text"):
+                if field in it:
+                    event[field] = it[field]
             if it["kind"] == "video":
                 event["asset_category"] = "stock_video"
             events.append(event)
+    camera_plan_paths = [
+        episode_dir / TIGHTEN_DIR / f"{cid}_camera_plan.json",
+        episode_dir / TIGHTEN_DIR / f"{cid}_camera.json",
+    ]
+    camera_plan_path = next((path for path in camera_plan_paths if path.is_file()), None)
+    if camera_plan_path is not None:
+        plan = json.loads(camera_plan_path.read_text(encoding="utf-8"))
+        for shot in plan.get("shots", []):
+            item = {
+                **shot,
+                "kind": "camera-correction",
+                "comp": "camera_plan",
+            }
+            events.append(
+                {
+                    "type": "camera-correction",
+                    "kind": "camera-correction",
+                    "component": "camera_plan",
+                    "implementation_kind": "camera_plan",
+                    "review_lane": "pacing",
+                    "display": _review_event_display(item, "pacing"),
+                    "slug": "",
+                    "t0": float(shot["t0"]),
+                    "t1": float(shot["t1"]),
+                    "note": str(shot.get("reason") or ""),
+                    "camera": shot.get("camera"),
+                }
+            )
     p = td / f"{cid}_titles.json"
     if p.exists():
         for it in json.loads(p.read_text(encoding="utf-8"))["titles"]:
             events.append(
                 {
                     "type": f"card-tier{it.get('tier', 2)}",
+                    "kind": "hero-title",
+                    "component": "hero_title",
+                    "implementation_kind": "hero_title",
+                    "review_lane": "hero_title",
                     "slug": it["text"].replace("\n", "/"),
+                    "text": it["text"],
+                    "display": it["text"],
                     "t0": float(it["t0"]),
                     "t1": float(it["t1"]),
                     "note": "",
@@ -170,6 +291,8 @@ def _load_events(episode_dir: Path, cid: str) -> list[dict]:
             events.append(
                 {
                     "type": f"punch-{it.get('style', 'ramp')}",
+                    "kind": "pacing",
+                    "review_lane": "pacing",
                     "slug": "",
                     "t0": float(it["t0"]),
                     "t1": float(it["t1"]),
