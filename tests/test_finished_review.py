@@ -96,6 +96,33 @@ def _write_manifest(
                 "t0": 0.0,
                 "t1": 8.0,
             },
+            {
+                "component_id": f"{cut_id}-camera-1",
+                "lane": "pacing",
+                "kind": "camera-correction",
+                "camera": "cam1",
+                "display": "Camera 1 · 主持人",
+                "t0": 0.0,
+                "t1": 20.0,
+            },
+            {
+                "component_id": f"{cut_id}-camera-2",
+                "lane": "pacing",
+                "kind": "camera-correction",
+                "camera": "cam2",
+                "display": "Camera 2 · 來賓",
+                "t0": 20.0,
+                "t1": 60.0,
+            },
+            {
+                "component_id": f"{cut_id}-camera-3",
+                "lane": "pacing",
+                "kind": "camera-correction",
+                "camera": "cam3",
+                "display": "Camera 3 · 雙人全景",
+                "t0": 60.0,
+                "t1": 90.0,
+            },
         ]
         cuts.append(
             {
@@ -821,8 +848,13 @@ def test_finished_review_timeline_uses_normalized_components_for_geometry_and_ed
     assert 'width: max(var(--timeline-span)' not in page.text
     assert 'min-height: 40px' in page.text
     assert 'data-timeline-lane="b_roll"' in page.text
+    assert 'data-timeline-lane="badge"' not in page.text
     assert '--timeline-kind-color: var(--sho-success)' in page.text
     assert '--timeline-kind-color: var(--sho-warning)' in page.text
+    assert 'data-camera=""' in page.text
+    assert 'data-camera="cam1"' in page.text
+    assert 'data-camera="cam2"' in page.text
+    assert 'data-camera="cam3"' in page.text
     assert 'data-tooltip="從漫畫學經營 · 00:30–00:33"' in page.text
     assert '<span class="timeline-block__label">從漫畫學經營</span>' in page.text
     assert 'id="timeline-tooltip"' in page.text

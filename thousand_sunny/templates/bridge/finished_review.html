@@ -57,13 +57,15 @@
   .timeline-row[data-timeline-lane="b_roll"] { --timeline-kind-color: var(--sho-success); }
   .timeline-row[data-timeline-lane="identity_card"] { --timeline-kind-color: var(--sho-text-2); }
   .timeline-row[data-timeline-lane="hero_title"] { --timeline-kind-color: var(--sho-info); }
-  .timeline-row[data-timeline-lane="badge"] { --timeline-kind-color: var(--sho-accent); }
   .timeline-row[data-timeline-lane="fullscreen_transition"] { --timeline-kind-color: var(--sho-warning); }
   .timeline-row[data-timeline-lane="visual_effect"] { --timeline-kind-color: var(--sho-error); }
   .timeline-row[data-timeline-lane="pacing"] { --timeline-kind-color: var(--sho-muted); }
   .sho .timeline-block { box-sizing: border-box; position: absolute; top: 8px; left: var(--timeline-start); width: var(--timeline-span); height: 24px; overflow: hidden; border: 1px solid color-mix(in oklch, var(--timeline-kind-color) 72%, var(--sho-line-2)); border-radius: var(--sho-r-2); background: color-mix(in oklch, var(--timeline-kind-color) 18%, var(--sho-bg)); color: var(--sho-text); cursor: pointer; font: inherit; font-size: .64rem; line-height: 1.15; padding: 0; text-align: left; transition: border-color var(--sho-t-fast) var(--sho-ease), background var(--sho-t-fast) var(--sho-ease); }
   .timeline-block__label { display: block; overflow: hidden; padding: 3px 5px; text-overflow: ellipsis; white-space: nowrap; }
   .sho .timeline-block:hover { border-color: var(--timeline-kind-color); background: color-mix(in oklch, var(--timeline-kind-color) 27%, var(--sho-bg)); }
+  .sho .timeline-block[data-camera="cam1"], .sho .timeline-block[data-camera="camera1"], .sho .timeline-block[data-camera="host"] { --timeline-kind-color: var(--sho-warning); }
+  .sho .timeline-block[data-camera="cam2"], .sho .timeline-block[data-camera="camera2"], .sho .timeline-block[data-camera="guest"] { --timeline-kind-color: var(--sho-success); }
+  .sho .timeline-block[data-camera="cam3"], .sho .timeline-block[data-camera="camera3"], .sho .timeline-block[data-camera="wide"] { --timeline-kind-color: var(--sho-info); }
   .sho .timeline-block[aria-current="true"] { border-color: var(--sho-accent); background: var(--sho-accent-soft); color: var(--sho-text); }
   .sho .timeline-block:focus-visible { outline: none; box-shadow: var(--sho-focus); z-index: 3; }
   .timeline-tooltip { box-sizing: border-box; position: fixed; z-index: 100; max-width: min(320px, calc(100vw - 16px)); border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-1); background: var(--sho-ink); color: var(--sho-bg); font-size: .72rem; line-height: 1.45; padding: var(--sho-s-1) var(--sho-s-2); pointer-events: none; }
@@ -179,15 +181,18 @@
                 </div>
               </div>
               {% for lane in manifest.feedback_contract.review_lanes %}
+              {% if lane != 'badge' %}
               {% set timeline_components = cut.review_components | selectattr('lane', 'equalto', lane) | list %}
+              {% set timeline_lane_label = 'CAMERA 1 / 2 / 3' if lane == 'pacing' else manifest.lane_labels[lane] %}
               <div class="timeline-row" data-timeline-lane="{{ lane }}" data-timeline-count="{{ timeline_components|length }}">
-                <div class="timeline-label sho-mono"><span>{{ manifest.lane_labels[lane] }}</span><small>{{ timeline_components|length }} EVENT{% if timeline_components|length != 1 %}S{% endif %}</small></div>
+                <div class="timeline-label sho-mono"><span>{{ timeline_lane_label }}</span><small>{{ timeline_components|length }} EVENT{% if timeline_components|length != 1 %}S{% endif %}</small></div>
                 <div class="timeline-track">
                   {% for component in timeline_components %}
-                  <button type="button" class="timeline-block" data-seek="{{ component.t0 }}" data-component-target="{{ component.component_id }}" data-tooltip="{{ component.display }} · {{ '%02d:%02d'|format(component.t0 // 60, component.t0 % 60) }}–{{ '%02d:%02d'|format(component.t1 // 60, component.t1 % 60) }}" style="--timeline-start: {{ (component.t0 / duration * 100) }}%; --timeline-span: {{ ((component.t1 - component.t0) / duration * 100) }}%" aria-label="{{ manifest.lane_labels[lane] }}：{{ component.display }}，跳到 {{ '%02d:%02d'|format(component.t0 // 60, component.t0 % 60) }}"><span class="timeline-block__label">{{ component.display }}</span></button>
+                  <button type="button" class="timeline-block" data-seek="{{ component.t0 }}" data-component-target="{{ component.component_id }}" data-camera="{{ component.camera or '' }}" data-tooltip="{{ component.display }} · {{ '%02d:%02d'|format(component.t0 // 60, component.t0 % 60) }}–{{ '%02d:%02d'|format(component.t1 // 60, component.t1 % 60) }}" style="--timeline-start: {{ (component.t0 / duration * 100) }}%; --timeline-span: {{ ((component.t1 - component.t0) / duration * 100) }}%" aria-label="{{ timeline_lane_label }}：{{ component.display }}，跳到 {{ '%02d:%02d'|format(component.t0 // 60, component.t0 % 60) }}"><span class="timeline-block__label">{{ component.display }}</span></button>
                   {% endfor %}
                 </div>
               </div>
+              {% endif %}
               {% endfor %}
               <span class="timeline-playhead" data-timeline-playhead aria-hidden="true" style="--timeline-progress: 0"></span>
             </div>

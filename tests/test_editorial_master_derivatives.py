@@ -341,7 +341,19 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
                         "t1": 20.933,
                         "camera": "host",
                         "reason": "主持人提出開場問題",
-                    }
+                    },
+                    {
+                        "t0": 20.933,
+                        "t1": 45.1,
+                        "camera": "wide",
+                        "reason": "雙人全景承接回答",
+                    },
+                    {
+                        "t0": 45.1,
+                        "t1": 60.0,
+                        "camera": "guest",
+                        "reason": "來賓近景",
+                    },
                 ],
             },
             ensure_ascii=False,
@@ -431,7 +443,7 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
     assert cut["visual_treatment_counts"]["badge"] == 1
     assert cut["visual_treatment_counts"]["fullscreen_transition"] == 4
     assert cut["visual_treatment_counts"]["visual_effect"] == 0
-    assert cut["visual_treatment_counts"]["pacing"] == 1
+    assert cut["visual_treatment_counts"]["pacing"] == 3
     transition = next(
         item
         for item in cut["components"]
@@ -445,9 +457,17 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
     assert identity["component"] == "chapter_label"
     assert identity["review_lane"] == "identity_card"
     assert identity["display"] == "林之晨｜《逆分工》共同作者"
-    camera = next(item for item in cut["components"] if item["lane"] == "pacing")
-    assert camera["display"] == "機位：主持人"
-    assert (camera["t0"], camera["t1"]) == (0.0, 20.933)
+    cameras = [item for item in cut["components"] if item["lane"] == "pacing"]
+    assert [item["display"] for item in cameras] == [
+        "Camera 1 · 主持人",
+        "Camera 3 · 雙人全景",
+        "Camera 2 · 來賓",
+    ]
+    assert [(item["t0"], item["t1"]) for item in cameras] == [
+        (0.0, 20.933),
+        (20.933, 45.1),
+        (45.1, 60.0),
+    ]
     broll = next(item for item in cut["components"] if item["lane"] == "b_roll")
     assert broll["asset"]["sha256"] == hashlib.sha256(b"asset-0").hexdigest()
     assert broll["asset_category"] == "stock_video"

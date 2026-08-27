@@ -154,8 +154,18 @@ def _review_event_display(item: dict, lane: str) -> str:
         "camera-override",
     }:
         role = str(item.get("camera") or item.get("subject_role") or "").strip().lower()
-        subject = {"host": "主持人", "guest": "來賓", "wide": "全景"}.get(role, role)
-        return f"機位：{subject or '未指定'}"
+        camera, subject = {
+            "cam1": ("Camera 1", "主持人"),
+            "camera1": ("Camera 1", "主持人"),
+            "host": ("Camera 1", "主持人"),
+            "cam2": ("Camera 2", "來賓"),
+            "camera2": ("Camera 2", "來賓"),
+            "guest": ("Camera 2", "來賓"),
+            "cam3": ("Camera 3", "雙人全景"),
+            "camera3": ("Camera 3", "雙人全景"),
+            "wide": ("Camera 3", "雙人全景"),
+        }.get(role, ("Camera ?", role or "未指定"))
+        return f"{camera} · {subject}"
     return str(
         item.get("note")
         or item.get("on_screen_text")
@@ -212,11 +222,21 @@ def _review_event_semantics(item: dict) -> tuple[str, str | None, str | None]:
 def _load_events(episode_dir: Path, cid: str) -> list[dict]:
     td = episode_dir / TIGHTEN_DIR
     events: list[dict] = []
+    camera_plan_paths = [
+        td / f"{cid}_camera_plan.json",
+        td / f"{cid}_camera.json",
+    ]
+    camera_plan_path = next((path for path in camera_plan_paths if path.is_file()), None)
     p = td / f"{cid}_broll.json"
     if p.exists():
         for it in json.loads(p.read_text(encoding="utf-8"))["items"]:
             if it["kind"] == "badge":
                 continue  # 全片常駐 watermark，不是「視覺事件」——進事件表會污染節拍分析
+            if camera_plan_path is not None and it["kind"] in {
+                "camera-correction",
+                "camera-override",
+            }:
+                continue  # 完整 camera plan 已涵蓋全片，避免開場 correction 重複顯示
             review_lane, component, implementation = _review_event_semantics(it)
             event = {
                 "type": it["kind"],
@@ -239,11 +259,6 @@ def _load_events(episode_dir: Path, cid: str) -> list[dict]:
             if it["kind"] == "video":
                 event["asset_category"] = "stock_video"
             events.append(event)
-    camera_plan_paths = [
-        episode_dir / TIGHTEN_DIR / f"{cid}_camera_plan.json",
-        episode_dir / TIGHTEN_DIR / f"{cid}_camera.json",
-    ]
-    camera_plan_path = next((path for path in camera_plan_paths if path.is_file()), None)
     if camera_plan_path is not None:
         plan = json.loads(camera_plan_path.read_text(encoding="utf-8"))
         for shot in plan.get("shots", []):
