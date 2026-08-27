@@ -108,11 +108,11 @@ def _write_composition_receipt(
         "center_visual_asset": (
             f"Attachments/packaging/20260723-xieboran/center-{cut_id}-r{rank}.png"
         ),
-        "protected_center_bbox": {"x": 420, "y": 100, "width": 440, "height": 520},
+        "protected_center_bbox": {"x": 301, "y": 132.5, "width": 678, "height": 455},
         "host_bbox": host_bbox or {"x": 0, "y": 40, "width": 380, "height": 680},
         "guest_bbox": guest_bbox or {"x": 900, "y": 40, "width": 380, "height": 680},
         "title_bbox": title_bbox,
-        "max_protected_overlap_ratio": 0.05,
+        "max_protected_overlap_ratio": 1.0,
     }
     center_path = ep / f"center-{cut_id}-r{rank}.png"
     thumbnail_path = ep / f"pkg-punch-L1-{rank}.png"
@@ -241,6 +241,39 @@ def test_board_shows_live_composition_verification(client):
 
     assert response.status_code == 200
     assert response.text.count("COMPOSITION VERIFIED") == 3
+
+
+def test_board_accepts_people_bleeding_past_canvas_edges(client, vault):
+    _write_composition_receipt(
+        vault,
+        host_bbox={"x": -654, "y": -120, "width": 1237, "height": 1142},
+        guest_bbox={"x": 400, "y": -145, "width": 1377, "height": 1177},
+    )
+
+    response = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert response.status_code == 200
+    assert response.text.count("COMPOSITION VERIFIED") == 3
+
+
+def test_board_serves_cutouts_from_its_own_mounted_route(client, vault_with_cutouts):
+    response = client.get(
+        "/bridge/packaging/20260723-xieboran/cutout/host_v1_serious.png"
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+
+
+def test_board_uses_packaging_cutout_route(client, vault_with_cutouts):
+    response = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert response.status_code == 200
+    assert (
+        "/bridge/packaging/20260723-xieboran/cutout/host_v1_serious.png"
+        in response.text
+    )
+    assert "/bridge/projects/gate/thumbnail/cutout/" not in response.text
 
 
 def test_board_shows_blocked_composition_reason(client, vault):
@@ -1103,7 +1136,7 @@ def test_cutout_preview_urls_are_content_versioned(client, vault_with_all_cutout
 
     assert board.status_code == 200
     assert "guest_v6_laughing.png?v=" + expected in board.text
-    assert 'data-preview-url="/bridge/projects/gate/thumbnail/cutout/' in board.text
+    assert 'data-preview-url="/bridge/packaging/20260723-xieboran/cutout/' in board.text
 
 
 def test_package_three_recipe_is_loaded_and_switchable(client, vault_with_all_cutouts):

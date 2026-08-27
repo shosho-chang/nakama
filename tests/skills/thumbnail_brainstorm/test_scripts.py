@@ -488,7 +488,7 @@ def _spec(n: int, png: Path, vault: Path) -> dict:
         ).hexdigest(),
         "canvas": {"width": 1280, "height": 720},
         "bboxes": {
-            "protected_center_bbox": {"x": 420, "y": 100, "width": 440, "height": 520},
+            "protected_center_bbox": {"x": 301, "y": 132.5, "width": 678, "height": 455},
             "host_bbox": {"x": 0, "y": 40, "width": 380, "height": 680},
             "guest_bbox": {"x": 900, "y": 40, "width": 380, "height": 680},
             "title_bbox": None,
@@ -560,8 +560,67 @@ def test_attach_fills_validates_and_dual_lands(monkeypatch, tmp_path):
         assert payload["schema"] == "nakama.long_thumbnail_composition.v2"
         assert payload["thumbnail_sha256"]
         assert payload["measurement_sidecar_sha256"]
-        assert payload["protected_center_bbox"]["x"] == 420.0
+        assert payload["protected_center_bbox"]["x"] == 301.0
         assert (vault / payload["center_visual_asset"]).is_file()
+
+
+def test_attach_rejects_portrait_center_frame(monkeypatch, tmp_path):
+    """Long-highlight N2 is a wide card behind the two people, never a portrait slit."""
+    vault = tmp_path / "vault"
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    working = tmp_path / "packaging"
+    working.mkdir()
+    (working / "packages.json").write_text(
+        json.dumps(_midstate_packages_file(), ensure_ascii=False), encoding="utf-8"
+    )
+    specs = []
+    for n in (1, 2, 3):
+        png = working / f"pkg-punch-L1-{n}.png"
+        png.write_bytes(b"png")
+        specs.append(_spec(n, png, vault))
+    sidecar_path = Path(specs[0]["thumbnail"] + ".composition.json")
+    evidence = json.loads(sidecar_path.read_text())
+    evidence["bboxes"]["protected_center_bbox"] = {
+        "x": 480,
+        "y": 72,
+        "width": 320,
+        "height": 576,
+    }
+    sidecar_path.write_text(json.dumps(evidence), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="horizontal"):
+        attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+
+def test_attach_allows_people_in_front_of_horizontal_center_frame(monkeypatch, tmp_path):
+    """The house style intentionally extends the wide orange card behind both cutouts."""
+    vault = tmp_path / "vault"
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    working = tmp_path / "packaging"
+    working.mkdir()
+    (working / "packages.json").write_text(
+        json.dumps(_midstate_packages_file(), ensure_ascii=False), encoding="utf-8"
+    )
+    specs = []
+    for n in (1, 2, 3):
+        png = working / f"pkg-punch-L1-{n}.png"
+        png.write_bytes(b"png")
+        spec = _spec(n, png, vault)
+        evidence_path = Path(spec["thumbnail"] + ".composition.json")
+        evidence = json.loads(evidence_path.read_text())
+        evidence["bboxes"].update(
+            {
+                "protected_center_bbox": {"x": 301, "y": 132.5, "width": 678, "height": 455},
+                "host_bbox": {"x": -654, "y": -120, "width": 1237, "height": 1142},
+                "guest_bbox": {"x": 400, "y": -145, "width": 1377, "height": 1177},
+            }
+        )
+        evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+        specs.append(spec)
+
+    out = attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+    assert out.is_file()
 
 
 def test_attach_full_program_n1_does_not_require_long_highlight_sidecar(
@@ -610,9 +669,7 @@ def test_attach_full_program_n1_does_not_require_long_highlight_sidecar(
     assert not (vault / "Attachments/packaging/episode/composition_receipts").exists()
 
 
-@pytest.mark.parametrize(
-    "failure", ["missing-sidecar", "png-tamper", "asset-path-drift", "overlap"]
-)
+@pytest.mark.parametrize("failure", ["missing-sidecar", "png-tamper", "asset-path-drift"])
 def test_attach_composition_evidence_failures_land_nothing(monkeypatch, tmp_path, failure):
     vault = tmp_path / "vault"
     monkeypatch.setenv("VAULT_PATH", str(vault))
@@ -634,8 +691,6 @@ def test_attach_composition_evidence_failures_land_nothing(monkeypatch, tmp_path
         evidence = json.loads(sidecar_path.read_text())
         if failure == "asset-path-drift":
             evidence["assets"]["prop_image_data_url"]["path"] = str(tmp_path / "wrong.png")
-        else:
-            evidence["bboxes"]["host_bbox"] = {"x": 400, "y": 100, "width": 400, "height": 520}
         sidecar_path.write_text(json.dumps(evidence), encoding="utf-8")
 
     with pytest.raises((FileNotFoundError, ValueError)):

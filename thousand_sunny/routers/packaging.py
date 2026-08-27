@@ -73,8 +73,8 @@ _PUBLISH_PREP_PROCESSES: dict[tuple[str, str], subprocess.Popen] = {}
 class CompositionBBoxV1(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    x: float = Field(ge=0)
-    y: float = Field(ge=0)
+    x: float
+    y: float
     width: float = Field(gt=0)
     height: float = Field(gt=0)
 
@@ -101,7 +101,7 @@ class LongThumbnailCompositionReceiptV2(BaseModel):
     host_bbox: CompositionBBoxV1
     guest_bbox: CompositionBBoxV1
     title_bbox: CompositionBBoxV1 | None = None
-    max_protected_overlap_ratio: float = Field(default=0.05, ge=0, le=0.05)
+    max_protected_overlap_ratio: float = Field(default=1.0, ge=0, le=1.0)
 
     @model_validator(mode="after")
     def _bounds_fit_canvas(self) -> "LongThumbnailCompositionReceiptV2":
@@ -109,33 +109,26 @@ class LongThumbnailCompositionReceiptV2(BaseModel):
             box = getattr(self, name)
             if box is None:
                 continue
-            if box.x + box.width > self.canvas_width or box.y + box.height > self.canvas_height:
+            if name in {"host_bbox", "guest_bbox"}:
+                if (
+                    box.x >= self.canvas_width
+                    or box.y >= self.canvas_height
+                    or box.x + box.width <= 0
+                    or box.y + box.height <= 0
+                ):
+                    raise ValueError(f"{name} does not intersect canvas")
+            elif (
+                box.x < 0
+                or box.y < 0
+                or box.x + box.width > self.canvas_width
+                or box.y + box.height > self.canvas_height
+            ):
                 raise ValueError(f"{name} exceeds canvas bounds")
         protected = self.protected_center_bbox
-        if not (
-            protected.x <= self.canvas_width / 2 <= protected.x + protected.width
-            and protected.width * protected.height >= self.canvas_width * self.canvas_height * 0.15
-        ):
-            raise ValueError("protected_center_bbox 必須覆蓋畫布中央且至少占畫布 15%")
-        protected_area = protected.width * protected.height
-        for name in ("host_bbox", "guest_bbox", "title_bbox"):
-            box = getattr(self, name)
-            if box is None:
-                continue
-            overlap_width = max(
-                0.0,
-                min(box.x + box.width, protected.x + protected.width) - max(box.x, protected.x),
-            )
-            overlap_height = max(
-                0.0,
-                min(box.y + box.height, protected.y + protected.height) - max(box.y, protected.y),
-            )
-            overlap_ratio = overlap_width * overlap_height / protected_area
-            if overlap_ratio > self.max_protected_overlap_ratio:
-                raise ValueError(
-                    f"{name} overlaps protected center by {overlap_ratio:.3f}; "
-                    f"maximum is {self.max_protected_overlap_ratio:.3f}"
-                )
+        if not (protected.x <= self.canvas_width / 2 <= protected.x + protected.width):
+            raise ValueError("protected_center_bbox 必須覆蓋畫布中央")
+        if protected.width <= protected.height or protected.width < self.canvas_width * 0.5:
+            raise ValueError("protected_center_bbox 必須是至少占畫布 50% 寬的橫向卡片")
         return self
 
 
@@ -614,7 +607,7 @@ def _composition_status(
         return {"verified": False, "reason": str(exc.detail)}
     return {
         "verified": True,
-        "reason": "中央主圖與人物／標題保護區已驗證",
+        "reason": "中央橫向主圖與 render 成品已驗證",
         "center_visual_asset": receipt.center_visual_asset,
     }
 
@@ -965,6 +958,34 @@ async def packaging_thumbnail(
         raise HTTPException(status_code=403, detail="Packaging 縮圖超出 episode 目錄") from exc
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Packaging 縮圖檔不存在")
+    return FileResponse(path, media_type="image/png")
+
+
+@page_router.get("/{episode_slug}/cutout/{filename}")
+async def packaging_cutout(
+    episode_slug: str,
+    filename: str,
+    nakama_auth: str | None = Cookie(None),
+) -> FileResponse:
+    """Serve a registered episode cutout through the mounted Packaging router."""
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    if filename != Path(filename).name or not filename.lower().endswith(".png"):
+        raise HTTPException(status_code=403, detail="僅限 Packaging cutout PNG")
+    choices = _load_cutout_choices(episode_slug)
+    allowed = {row["file"] for rows in choices.values() for row in rows}
+    if filename not in allowed:
+        raise HTTPException(status_code=404, detail="Packaging cutout 不存在或未登記")
+    path = (
+        get_vault_path()
+        / "Attachments"
+        / "cutouts"
+        / "podcast"
+        / episode_slug
+        / filename
+    )
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Packaging cutout 檔不存在")
     return FileResponse(path, media_type="image/png")
 
 

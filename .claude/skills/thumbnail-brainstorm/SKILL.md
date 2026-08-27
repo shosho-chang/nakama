@@ -13,9 +13,10 @@ description: >
   revision request，交給獨立 Agent 重做後回到 Packaging re-review。
 ---
 
-# thumbnail-brainstorm — 封面 brainstorm 手冊（v3.0）
+# thumbnail-brainstorm — 封面 brainstorm 手冊（v3.1）
 
-**版本：v3.0（2026-08-21，人物 cutout 雙肩完整且前景不可挖洞；
+**版本：v3.1（2026-08-27，N2 橫框可延伸到人物後方，人物重疊不是失敗；
+v3.0 = 人物 cutout 雙肩完整且前景不可挖洞；
 v2.9 = 人物 cutout 必須保留完整麥克風；
 v2.8 = Reject feedback → desktop revision agent；
 v2.7 = 作者訪談的暗色書封中景；
@@ -200,9 +201,11 @@ spec 的 variables 見各 composition 檔頭註解。**定案參數表在
   若設計是「獨立書本置於背景」，必須把書本外部的白底／掃描留白完整去除並檢查
   alpha 邊緣；不能把帶白色矩形底的原始 JPG 直接調暗後當完成。保留書封本身的白色
   設計，去除的是書本外部背景；交付前在深色底重開 PNG 做視覺 QA。
-- **N2 精華長片**：右來賓 75%→頭56% + 左 Envato prop 卡（`prop_left_pct` 15／
-  `prop_width_pct` 52，躲肩後）、零文字、`frame_style: hybrid`（品牌斜切框＋碎片）、
-  logo `below-card` 96px、accent `#F37425`
+- **N2 精華長片**：雙人夾中央實拍 prop 卡；`prop_position: center`、
+  `prop_width_pct: 53`、`prop_height_px: 455`，卡片必須是橫向長方形並延伸到
+  兩位 cutout 後方；零文字、`frame_style: skew`、logo bottom-left 92px、
+  accent `#F37425`。人物在卡片前方的重疊是景深語彙，不得為了讓 bbox 不重疊
+  而縮窄中央卡或裁掉肩膀。
 - 大字 = **≤6 字/行 × 2 行**、**恰好一個** highlight 詞
 - render 失敗（ThumbnailRenderError）→ 看 variables JSON 與 stderr 修完重跑；
   連續失敗 2 次停下報修修，不降級成無封面。
@@ -283,13 +286,14 @@ PNG hash，通過後自動把中央圖、measurement sidecar 與 receipt 寫到 
   "host_bbox": {"x": 0, "y": 40, "width": 380, "height": 680},
   "guest_bbox": {"x": 900, "y": 40, "width": 380, "height": 680},
   "title_bbox": null,
-  "max_protected_overlap_ratio": 0.05
+  "max_protected_overlap_ratio": 1.0
 }
 ```
 
 所有 bbox 都是 1280×720 成品 DOM 實測值，不准手填或拿 spec/CSS 預估值代替。Bridge 會
 重新 hash PNG、中央圖與 sidecar，並核對 sidecar identity/bbox；舊 v1、任一檔缺失或漂移、
-host／guest／title 與中央保護區重疊超過 5%，都會 `COMPOSITION BLOCKED`。短片不走此 gate。
+中央卡不是至少 50% 畫布寬的橫向卡，都會 `COMPOSITION BLOCKED`。人物元素可出血並壓在
+中央卡前方；這是 N2 版式的一部分。短片不走此 gate。
 
 ### Step 4.9 — Reject feedback → desktop revision agent（v2.8）
 
@@ -468,6 +472,15 @@ E2E 每跑完一集（gate approve 過），可固化的教訓 **append 進本�
 版本號**（經 PR）。
 
 ### 教訓紀錄
+
+**v3.1（2026-08-27，林之晨 Long 1——驗收規則反向逼出直立窄框與裁肩）**
+
+31. **N2 的人物與中央卡本來就要重疊**：舊 composition receipt 把人物元素 bbox
+    與中央卡重疊 >5% 視為失敗；因為 bbox 包含透明畫布，執行者只能把 53% 橫卡縮成
+    25% 直立卡，再把完整肩膀 cutout 裁成窄頭像才能通過。這與 house style 相反。
+    從此 deterministic gate 只確認中央圖存在、卡片覆蓋中心且為至少 50% 畫布寬的
+    橫向卡；人物可在 z-order 上壓住卡緣。肩膀是否完整由交付前實際看成品判斷，
+    不用透明 canvas bbox 代替視覺判斷。
 
 **v3.0（2026-08-21，林之晨集——為了去支架而裁掉來賓肩膀）**
 

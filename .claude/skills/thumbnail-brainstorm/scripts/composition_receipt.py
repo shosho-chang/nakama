@@ -43,14 +43,24 @@ def _canonical_variables(render_spec: dict) -> dict:
     return merged
 
 
-def _assert_box(box: object, name: str, width: float, height: float) -> dict:
+def _assert_box(
+    box: object, name: str, width: float, height: float, *, allow_bleed: bool = False
+) -> dict:
     if not isinstance(box, dict):
         raise ValueError(f"measurement selector missing: {name}")
     if any(not isinstance(box.get(k), (int, float)) for k in ("x", "y", "width", "height")):
         raise ValueError(f"invalid measured bbox: {name}")
     if box["width"] <= 0 or box["height"] <= 0:
         raise ValueError(f"empty measured bbox: {name}")
-    if (
+    if allow_bleed:
+        if (
+            box["x"] >= width
+            or box["y"] >= height
+            or box["x"] + box["width"] <= 0
+            or box["y"] + box["height"] <= 0
+        ):
+            raise ValueError(f"measured bbox does not intersect canvas: {name}")
+    elif (
         box["x"] < 0
         or box["y"] < 0
         or box["x"] + box["width"] > width
@@ -58,20 +68,6 @@ def _assert_box(box: object, name: str, width: float, height: float) -> dict:
     ):
         raise ValueError(f"measured bbox exceeds canvas: {name}")
     return {k: float(box[k]) for k in ("x", "y", "width", "height")}
-
-
-def _overlap_ratio(box: dict, protected: dict) -> float:
-    overlap_w = max(
-        0.0,
-        min(box["x"] + box["width"], protected["x"] + protected["width"])
-        - max(box["x"], protected["x"]),
-    )
-    overlap_h = max(
-        0.0,
-        min(box["y"] + box["height"], protected["y"] + protected["height"])
-        - max(box["y"], protected["y"]),
-    )
-    return overlap_w * overlap_h / (protected["width"] * protected["height"])
 
 
 def build_receipt_plan(
@@ -152,16 +148,12 @@ def build_receipt_plan(
     protected = _assert_box(
         boxes.get("protected_center_bbox"), "protected_center_bbox", width, height
     )
-    host = _assert_box(boxes.get("host_bbox"), "host_bbox", width, height)
-    guest = _assert_box(boxes.get("guest_bbox"), "guest_bbox", width, height)
+    host = _assert_box(boxes.get("host_bbox"), "host_bbox", width, height, allow_bleed=True)
+    guest = _assert_box(boxes.get("guest_bbox"), "guest_bbox", width, height, allow_bleed=True)
     if not (protected["x"] <= width / 2 <= protected["x"] + protected["width"]):
         raise ValueError("protected center does not cover canvas center")
-    if protected["width"] * protected["height"] < width * height * 0.15:
-        raise ValueError("protected center is below 15% of canvas")
-    for name, box in (("host", host), ("guest", guest)):
-        ratio = _overlap_ratio(box, protected)
-        if ratio > 0.05:
-            raise ValueError(f"{name} overlaps protected center by {ratio:.3f}")
+    if protected["width"] <= protected["height"] or protected["width"] < width * 0.5:
+        raise ValueError("long highlight center must be a horizontal card at least 50% wide")
 
     rank = int(spec["title_rank"])
     center = resolved["prop_image_data_url"]
@@ -190,7 +182,7 @@ def build_receipt_plan(
             "host_bbox": host,
             "guest_bbox": guest,
             "title_bbox": None,
-            "max_protected_overlap_ratio": 0.05,
+            "max_protected_overlap_ratio": 1.0,
         },
         center_source=center,
         center_name=center_name,

@@ -327,9 +327,9 @@
             {% set current = (req.host_cutout if role == 'host' else req.guest_cutout) if req else none %}
             <label class="pkg-card pkg-card--cutout{% if current == c.vault_path %} pkg-card--primary{% endif %}">
               <input type="radio" name="{{ role }}_cutout" value="{{ c.vault_path }}"
-                     data-preview-url="/bridge/projects/gate/thumbnail/cutout/{{ episode_slug }}/{{ c.file }}?v={{ c.version }}"
+                     data-preview-url="/bridge/packaging/{{ episode_slug }}/cutout/{{ c.file }}?v={{ c.version }}"
                      {% if current == c.vault_path %}checked{% elif not current and loop.first %}checked{% endif %}>
-              <img src="/bridge/projects/gate/thumbnail/cutout/{{ episode_slug }}/{{ c.file }}?v={{ c.version }}"
+              <img src="/bridge/packaging/{{ episode_slug }}/cutout/{{ c.file }}?v={{ c.version }}"
                    alt="{{ label }} {{ c.emotion }}" loading="lazy">
               <div class="sho-mono pkg-card-meta">{{ c.emotion or c.file }}</div>
             </label>
@@ -357,9 +357,9 @@
                 <img class="st-book" alt="書封背景"
                      {% if req and req.book_cover %}src="/bridge/packaging/{{ episode_slug }}/recipe-asset/{{ req.book_cover.split('/')[-1] }}"{% endif %}>
                 <img class="st-person st-host" data-role="host" alt="修修" draggable="false"
-                     src="/bridge/projects/gate/thumbnail/cutout/{{ episode_slug }}/{{ (req.host_cutout if req else cutouts.host[0].vault_path if cutouts.host else '').split('/')[-1] }}">
+                     src="/bridge/packaging/{{ episode_slug }}/cutout/{{ (req.host_cutout if req else cutouts.host[0].vault_path if cutouts.host else '').split('/')[-1] }}">
                 <img class="st-person st-guest" data-role="guest" alt="來賓" draggable="false"
-                     src="/bridge/projects/gate/thumbnail/cutout/{{ episode_slug }}/{{ (req.guest_cutout if req else cutouts.guest[0].vault_path if cutouts.guest else '').split('/')[-1] }}">
+                     src="/bridge/packaging/{{ episode_slug }}/cutout/{{ (req.guest_cutout if req else cutouts.guest[0].vault_path if cutouts.guest else '').split('/')[-1] }}">
                 <div class="st-text">
                   <div class="st-title"></div>
                   <div class="st-credit"></div>
