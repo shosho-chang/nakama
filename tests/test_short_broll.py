@@ -597,6 +597,67 @@ def test_camera_correction_append_is_video_only_on_overlay_track():
     assert "audio" not in spec
 
 
+def test_provided_photo_recipe_and_resolve_spec_hold_for_exact_timeline_duration(tmp_path):
+    from run_short_broll import _configure_photo_hold, _media_append_spec, emit_audited_recipe
+
+    photo = tmp_path / "assets" / "broll" / "official.jpg"
+    photo.parent.mkdir(parents=True)
+    photo.write_bytes(b"official-jpeg-source-bytes")
+    projection = _projection(implementation_kind="photo")
+    projection.update(
+        {
+            "mode": "provided_asset",
+            "t0": 15.52,
+            "t1": 17.72,
+            "source_range": {"start_sec": 0.0, "end_sec": 0.04},
+            "media": {
+                "path": photo.relative_to(tmp_path).as_posix(),
+                "bytes": photo.stat().st_size,
+                "sha256": hashlib.sha256(photo.read_bytes()).hexdigest(),
+            },
+        }
+    )
+
+    recipe_path = emit_audited_recipe(
+        tmp_path,
+        "value-L01",
+        [projection],
+        output_dir=tmp_path / "recipe",
+    )
+    item = json.loads(recipe_path.read_text(encoding="utf-8"))["items"][0]
+    assert item["kind"] == "photo"
+    assert item["source_range"] == {"start_sec": 0.0, "end_sec": 0.04}
+    assert item["t1"] - item["t0"] == pytest.approx(2.2)
+
+    spec = _media_append_spec(
+        {
+            "kind": "photo",
+            "t0": item["t0"],
+            "span": item["t1"] - item["t0"],
+            "src_in": item["source_range"]["start_sec"],
+            "src_fps": 0.0,
+        },
+        object(),
+        fps=30.0,
+        tl_start=86400,
+    )
+    assert spec["recordFrame"] == 86400 + int(15.52 * 30)
+    assert spec["endFrame"] - spec["startFrame"] == 66
+
+    properties = {}
+
+    class PhotoClip:
+        def SetClipProperty(self, name, value):
+            properties[name] = value
+            return True
+
+        def GetClipProperty(self, name):
+            return properties.get(name, "")
+
+    assert _configure_photo_hold(PhotoClip(), span=2.2, fps=30.0) == 66
+    assert properties == {"Frames": "66"}
+
+
 def test_camera_only_loader_ignores_drifted_content_visual_rows(tmp_path, monkeypatch):
     import run_short_broll as broll
 

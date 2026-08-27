@@ -842,6 +842,7 @@ def test_dp_allows_truthful_hyperframes_text_only_when_director_text_is_null(
         worker_identity=DIRECTOR_WORKER,
         editorial_master=master,
     )
+
     proposal = _dp_proposal(root, director)
     fallback = next(
         item for item in proposal["implementations"] if item["event_id"] == "visual-002"
@@ -1264,7 +1265,10 @@ def _intent_hash(event: dict[str, object]) -> str:
 
 
 def _publish_fixture_asset_authority(
-    root: Path, work_packet: dict[str, object]
+    root: Path,
+    work_packet: dict[str, object],
+    *,
+    extra_sources: list[dict[str, object]] | None = None,
 ) -> tuple[list[Path], tuple[str, str, str], dict[str, dict[str, object]]]:
     assets = root / "highlights" / "visual-pipeline" / "value-L01" / "proposal-assets"
     assets.mkdir(parents=True, exist_ok=True)
@@ -1306,6 +1310,7 @@ def _publish_fixture_asset_authority(
             zip(("a", "b", "c"), stock_summaries, stock_paths, strict=True), 1
         )
     ]
+    sources.extend(extra_sources or [])
     phase = "asset_acquisition-001"
     manifest_path = (
         root
@@ -1370,7 +1375,12 @@ def _publish_fixture_asset_authority(
     return stock_paths, stock_summaries, authority_rows
 
 
-def _dp_proposal(root: Path, director: object) -> dict[str, object]:
+def _dp_proposal(
+    root: Path,
+    director: object,
+    *,
+    extra_authority_sources: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
     assets = root / "highlights" / "visual-pipeline" / "value-L01" / "proposal-assets"
     assets.mkdir(parents=True, exist_ok=True)
     fixture_dir = Path(__file__).parent / "fixtures" / "davinci_import"
@@ -1417,7 +1427,9 @@ def _dp_proposal(root: Path, director: object) -> dict[str, object]:
         ).encode("utf-8")
     ).hexdigest()
     stock_paths, stock_summaries, authority_rows = _publish_fixture_asset_authority(
-        root, director.document["work_packet"]
+        root,
+        director.document["work_packet"],
+        extra_sources=extra_authority_sources,
     )
     proposal = {
         "contract": "podcast-highlight-dp-fulfillment-v1",
@@ -1598,6 +1610,148 @@ def test_dp_fulfillment_binds_stock_and_rendered_hyperframes_media(tmp_path: Pat
         == "awaiting_semantic_audit"
     )
 
+
+def test_provided_photo_can_hold_longer_than_its_source_probe_duration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, master = _episode(tmp_path)
+    work = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
+    director_proposal = _director_proposal(work)
+    photo_event = director_proposal["events"][2]
+    photo_event.update(
+        {
+            "category": "self_archive",
+            "form": "overlay",
+            "description": "官方提供的教育現場照片，以靜止畫面保留來賓說明時間",
+            "on_screen_text": None,
+            "search_angles": [],
+            "rationale": "官方照片直接對應逐字稿中的教育現場，應以 freeze-frame 顯示。",
+        }
+    )
+    director = accept_director_plan(
+        root,
+        cut_id="value-L01",
+        revision_id=work.document["revision_id"],
+        proposal=director_proposal,
+        worker_identity=DIRECTOR_WORKER,
+        editorial_master=master,
+    )
+    photo = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "proposal-assets"
+        / "official.jpg"
+    )
+    photo.parent.mkdir(parents=True, exist_ok=True)
+    photo.write_bytes(b"official-jpeg-source-bytes")
+    summary = "官方提供的教育現場靜照，畫面內容與逐字稿描述一致"
+    source = {
+        "asset_id": "official-photo",
+        "source_class": "provided_self_archive",
+        "provider": "official-guest-source",
+        "provider_item_id": "official-photo-01",
+        "source_url": "https://example.test/official-photo-01",
+        "license": "Official guest-provided editorial asset",
+        "acquired_at": "2026-08-27T01:00:00Z",
+        "semantic_summary": summary,
+        "original_media": _identity(root, photo),
+    }
+    monkeypatch.setattr(
+        visual_contract_module,
+        "probe_stock_video",
+        lambda path: {
+            "duration_seconds": 0.04 if Path(path).suffix.lower() == ".jpg" else 10.0,
+            "video_streams": [
+                {"index": 0, "codec_name": "mjpeg", "width": 1920, "height": 1080}
+            ],
+        },
+    )
+    proposal = _dp_proposal(root, director, extra_authority_sources=[source])
+    authority_path = (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "revisions"
+        / str(work.document["revision_id"])
+        / "attempts"
+        / "attempt-001"
+        / "ASSET-AUTHORITY.json"
+    )
+    authority = {
+        row["asset_id"]: row
+        for row in json.loads(authority_path.read_text(encoding="utf-8"))["assets"]
+    }
+    implementation = proposal["implementations"][2]
+    implementation.update(
+        {
+            "mode": "provided_asset",
+            "target_lane": "broll_track2",
+            "implementation_kind": "photo",
+            "on_screen_text": None,
+            "candidates": [
+                {
+                    "candidate_id": "official-photo",
+                    "authority_asset_id": "official-photo",
+                    "visual_summary": summary,
+                    "media": authority["official-photo"]["original_media"],
+                    "provenance": {
+                        "kind": "provided_source",
+                        "provider": "official-guest-source",
+                        "source_url": "https://example.test/official-photo-01",
+                        "license": "Official guest-provided editorial asset",
+                        "receipt": authority["official-photo"]["acquisition_receipt"],
+                    },
+                }
+            ],
+            "selections": [
+                {
+                    "candidate_id": "official-photo",
+                    "cue_ids": [5],
+                    "t0": 14.0,
+                    "t1": 18.0,
+                    "quote": "直到後來教育才逐漸改變",
+                    "source_range": {"start_sec": 0.0, "end_sec": 0.04},
+                }
+            ],
+            "semantic_justification": "官方提供照片直接對應教育現場，保留四秒讓觀眾辨識細節。",
+        }
+    )
+
+    out_of_bounds = deepcopy(proposal)
+    out_of_bounds["implementations"][2]["selections"][0]["source_range"]["end_sec"] = 0.05
+    _assert_contract_error(
+        lambda: accept_dp_fulfillment(
+            root,
+            cut_id="value-L01",
+            revision_id=work.document["revision_id"],
+            proposal=out_of_bounds,
+            worker_identity=DP_WORKER,
+            editorial_master=master,
+        ),
+        "selected source range exceeds media duration",
+    )
+
+    accepted = accept_dp_fulfillment(
+        root,
+        cut_id="value-L01",
+        revision_id=work.document["revision_id"],
+        proposal=proposal,
+        worker_identity=DP_WORKER,
+        editorial_master=master,
+    )
+
+    photo_materialization = load_visual_materializations(
+        root,
+        cut_id="value-L01",
+        revision_id=work.document["revision_id"],
+        editorial_master=master,
+    )[-1]
+    assert accepted.document["implementations"][2]["implementation_kind"] == "photo"
+    assert photo_materialization["source_range"] == {"start_sec": 0.0, "end_sec": 0.04}
+    assert photo_materialization["t1"] - photo_materialization["t0"] == pytest.approx(4.0)
 
 def test_dp_rejects_lineage_candidate_timing_media_and_target_drift(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

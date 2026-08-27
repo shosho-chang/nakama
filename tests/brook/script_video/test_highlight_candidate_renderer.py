@@ -676,6 +676,93 @@ def test_asset_candidates_are_exact_joined_to_core_authority_projection(tmp_path
     assert verified_hydration["hydrated_proposal_document"] == hydrated
 
 
+def test_provided_photo_hydration_preserves_official_jpeg_bytes_and_hold_range(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "episode"
+    root.mkdir()
+    authority = _asset_authority_projection(root, tmp_path)
+    asset = authority["assets"][0]
+    original_path = root / asset["original_media"]["path"]
+    photo_path = original_path.with_suffix(".jpg")
+    original_path.replace(photo_path)
+    official_bytes = b"official-jpeg-source-bytes"
+    photo_path.write_bytes(official_bytes)
+    asset.update(
+        {
+            "asset_id": "official-photo-01",
+            "source_class": "provided_self_archive",
+            "provider": "official-guest-source",
+            "provider_item_id": "official-photo-01",
+            "source_url": "https://example.test/official-photo-01",
+            "license": "Official guest-provided editorial asset",
+            "semantic_summary": "官方提供的教育現場靜照，畫面內容與逐字稿描述一致",
+            "original_media": _identity(root, photo_path),
+        }
+    )
+    monkeypatch.setattr(
+        candidate_renderer,
+        "probe_stock_video",
+        lambda _path: {
+            "duration_seconds": 0.04,
+            "video_streams": [
+                {"index": 0, "codec_name": "mjpeg", "width": 1920, "height": 1080}
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        candidate_renderer,
+        "_fresh_asset_authority_projection",
+        lambda *args, **kwargs: authority,
+    )
+    proposal_path = root / "workers" / "dp" / "proposal.json"
+    output_path = root / "trusted" / "hydrated.json"
+    proposal_path.parent.mkdir(parents=True)
+    proposal = {
+        "implementations": [
+            {
+                "mode": "provided_asset",
+                "implementation_kind": "photo",
+                "target_lane": "broll_track2",
+                "on_screen_text": None,
+                "candidates": [
+                    {
+                        "candidate_id": "official-photo-01",
+                        "visual_summary": asset["semantic_summary"],
+                        "authority_asset_id": "official-photo-01",
+                    }
+                ],
+                "selections": [
+                    {
+                        "candidate_id": "official-photo-01",
+                        "t0": 15.52,
+                        "t1": 17.72,
+                        "source_range": {"start_sec": 0.0, "end_sec": 0.04},
+                    }
+                ],
+            }
+        ]
+    }
+    proposal_path.write_text(json.dumps(proposal, ensure_ascii=False), encoding="utf-8")
+
+    hydrated = hydrate_dp_hyperframes_proposal(
+        root,
+        cut_id=CUT_ID,
+        revision_id=REVISION_ID,
+        attempt=1,
+        proposal_path=proposal_path,
+        output_path=output_path,
+    )
+
+    implementation = hydrated["implementations"][0]
+    assert implementation["selections"][0]["source_range"] == {
+        "start_sec": 0.0,
+        "end_sec": 0.04,
+    }
+    assert implementation["candidates"][0]["media"] == _identity(root, photo_path)
+    assert photo_path.read_bytes() == official_bytes
+
+
 def test_worker_media_cannot_bypass_asset_authority_hydration(tmp_path: Path) -> None:
     root = tmp_path / "episode"
     root.mkdir()

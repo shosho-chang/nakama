@@ -4322,6 +4322,7 @@ def _selected_cue_claim(
     event: Mapping[str, object],
     cues: Sequence[Mapping[str, object]],
     allow_cue_subrange: bool,
+    allow_source_hold: bool,
     label: str,
 ) -> dict[str, object]:
     selection = _require_exact_keys(raw, _SELECTION_KEYS, label)
@@ -4380,11 +4381,9 @@ def _selected_cue_claim(
     )
     source_start = _number(source_range["start_sec"], f"{label}.source_range.start_sec")
     source_end = _number(source_range["end_sec"], f"{label}.source_range.end_sec")
-    if (
-        source_start < 0
-        or source_end <= source_start
-        or abs((source_end - source_start) - (t1 - t0)) > 0.001
-    ):
+    if source_start < 0 or source_end <= source_start:
+        raise HighlightVisualContractError(f"{label}.source_range is invalid")
+    if not allow_source_hold and abs((source_end - source_start) - (t1 - t0)) > 0.001:
         raise HighlightVisualContractError(
             f"{label}.source_range must match exact timeline display duration"
         )
@@ -4737,6 +4736,7 @@ def _dp_implementations(
                     or hyperframes_content_phrase
                     or _requested_move_range(work.document, str(event_id)) is not None
                 ),
+                allow_source_hold=(mode == "provided_asset" and implementation_kind == "photo"),
                 label=f"{event_id}.selections[{selection_index}]",
             )
             candidate_id = str(selection["candidate_id"])

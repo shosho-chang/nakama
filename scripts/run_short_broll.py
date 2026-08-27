@@ -612,14 +612,40 @@ def _media_append_spec(job: dict, clip, *, fps: float, tl_start: int) -> dict:
     """Build the V2 overlay-track video append spec for footage or camera correction."""
 
     source_fps = job.get("src_fps") or fps
+    start_frame = int(job["src_in"] * source_fps)
+    end_frame = (
+        start_frame + int(round(job["span"] * fps))
+        if job.get("kind") == "photo"
+        else int((job["src_in"] + job["span"]) * source_fps)
+    )
     return {
         "mediaPoolItem": clip,
         "mediaType": 1,
         "trackIndex": BROLL_TRACK,
         "recordFrame": tl_start + int(job["t0"] * fps),
-        "startFrame": int(job["src_in"] * source_fps),
-        "endFrame": int((job["src_in"] + job["span"]) * source_fps),
+        "startFrame": start_frame,
+        "endFrame": end_frame,
     }
+
+
+def _configure_photo_hold(clip, *, span: float, fps: float) -> int:
+    """Set and verify the Resolve still-image duration used by the timeline hold."""
+
+    frames = int(round(span * fps))
+    if frames <= 0:
+        raise SystemExit("photo hold duration 必須至少一格")
+    if clip.SetClipProperty("Frames", str(frames)) is not True:
+        raise SystemExit("Resolve 不支援設定 photo hold Frames")
+    actual = clip.GetClipProperty("Frames")
+    try:
+        actual_frames = int(float(str(actual)))
+    except (TypeError, ValueError) as exc:
+        raise SystemExit("Resolve 無法回讀 photo hold Frames") from exc
+    if actual_frames != frames:
+        raise SystemExit(
+            f"Resolve photo hold Frames 未生效：expected={frames}, actual={actual_frames}"
+        )
+    return frames
 
 
 def _load_camera_correction_jobs(episode_dir: Path, cid: str) -> list[dict]:
@@ -1104,7 +1130,7 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         if job["kind"] == "photo":
             # 靜照的 endFrame 會被忽略（走專案預設靜照時長 5s，實測 journal
             # 照 3.2s 變 5.0s）——先把 clip 的 Frames 設成目標長度
-            clip.SetClipProperty("Frames", str(int(job["span"] * fps)))
+            _configure_photo_hold(clip, span=job["span"], fps=fps)
         ok = mp.AppendToTimeline(
             [_media_append_spec(job, clip, fps=fps, tl_start=tl_start)]
         )
