@@ -120,6 +120,19 @@ def test_happy_path_returns_path(tmp_path):
     assert got.read_bytes() == b"new render"
 
 
+def test_long_render_explicitly_burns_resolve_subtitle_track(tmp_path):
+    out_dir = tmp_path / "exports"
+    out_dir.mkdir()
+    proj = FakeProject(
+        out_dir / "value-L01.mp4", job_status={"JobStatus": "Complete"}, writes_file=True
+    )
+
+    _render_master(proj, FakeTimeline(), out_dir, "value-L01", burn_subtitles=True)
+
+    assert proj.settings["ExportSubtitle"] is True
+    assert proj.settings["SubtitleFormat"] == "BurnIn"
+
+
 def test_first_render_no_previous_file(tmp_path):
     out_dir = tmp_path / "exports"
     out_dir.mkdir()

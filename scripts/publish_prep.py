@@ -8,10 +8,10 @@
 跑完的語意是「**登錄了**」不是「發布了」——系統手上多了檔案 + 草稿
 Release（draft），等文案（packaging 交接檔）、等排程、等修修核准。
 
-Q4b 字幕的兩顆地雷（run_short_review 實測，與計畫文件的假設**相反**）：
+字幕輸出政策：
 
-- **長片**：Resolve render 會把主字幕模板軌**燒進畫面**——但 Q4b 裁決長片
-  不燒、只上 CC → render 前 disable 全部 subtitle 軌，render 完恢復
+- **長片**：沿用主字幕模板內的「Shosho YT」樣式，Resolve render 明確指定
+  Burn In；這是長片的發布預設，不需要逐集手動切換
 - **短片**：Resolve render **燒不進**字幕（只出 sidecar）——但短片必須燒
   → Resolve 出乾淨畫面，ffmpeg 從 tight SRT 燒（同 QC preview 工法，
   字級按全解析放大）
@@ -98,7 +98,9 @@ def _find_timeline(project, label: str):
     raise SystemExit(f"timeline「{label}」不存在——先跑完 longform-cut/highlight-cut 製作線")
 
 
-def _render_master(project, timeline, out_dir: Path, name: str) -> Path:
+def _render_master(
+    project, timeline, out_dir: Path, name: str, *, burn_subtitles: bool = False
+) -> Path:
     """Resolve render queue 出全解析 H.264 mp4（timeline 原生解析度）。
 
     ⚠️ 三道驗證缺一不可（2026-08-11 安吉 SL7 事故）：舊版只檢查「檔案存在嗎」，
@@ -115,16 +117,17 @@ def _render_master(project, timeline, out_dir: Path, name: str) -> Path:
     w = int(timeline.GetSetting("timelineResolutionWidth"))
     h = int(timeline.GetSetting("timelineResolutionHeight"))
     project.SetCurrentRenderFormatAndCodec("mp4", "H264")
-    project.SetRenderSettings(
-        {
-            "MarkIn": timeline.GetStartFrame(),
-            "MarkOut": timeline.GetEndFrame(),
-            "TargetDir": str(out_dir),
-            "CustomName": name,
-            "FormatWidth": w,
-            "FormatHeight": h,
-        }
-    )
+    settings = {
+        "MarkIn": timeline.GetStartFrame(),
+        "MarkOut": timeline.GetEndFrame(),
+        "TargetDir": str(out_dir),
+        "CustomName": name,
+        "FormatWidth": w,
+        "FormatHeight": h,
+    }
+    if burn_subtitles:
+        settings.update({"ExportSubtitle": True, "SubtitleFormat": "BurnIn"})
+    project.SetRenderSettings(settings)
     out = out_dir / f"{name}.mp4"
     before_mtime = out.stat().st_mtime if out.exists() else 0.0
 
@@ -239,13 +242,10 @@ def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
     cid = cut["id"]
 
     if cut["format"] == "long":
-        # Q4b：長片成品不燒字幕（CC 另上）。Resolve 會燒模板字幕軌 → 先關。
-        n = _set_subtitle_tracks(resolve, timeline, False)
-        logger.info("%s: 長片——已暫時關閉 %d 條字幕軌（成品不燒，CC 另上）", cid, n)
-        try:
-            final = _render_master(project, timeline, out_dir, cid)
-        finally:
-            _set_subtitle_tracks(resolve, timeline, True)
+        # 長片發布預設：DRT 攜帶 Shosho YT 樣式，Resolve 明確燒進成品。
+        n = _set_subtitle_tracks(resolve, timeline, True)
+        logger.info("%s: 長片——啟用 %d 條 Shosho YT 字幕軌並 Burn In", cid, n)
+        final = _render_master(project, timeline, out_dir, cid, burn_subtitles=True)
     else:
         srt = _latest_tight_srt(episode_dir, cid)
         if srt is None:
