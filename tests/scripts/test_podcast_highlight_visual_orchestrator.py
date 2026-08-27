@@ -1742,6 +1742,59 @@ def test_cli_help_does_not_dispatch(capsys: pytest.CaptureFixture[str]) -> None:
     assert "--cut-id" in help_text
     assert "--revision-request" in help_text
     assert "--no-resume" in help_text
+    assert "abandon" in help_text
+
+
+def test_cli_abandon_command_calls_domain_without_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = tmp_path / "episode"
+    root.mkdir()
+    revision_id = "r-0123456789abcdef01234567"
+    calls: list[dict[str, object]] = []
+    abandoned = _Artifact(
+        {
+            "contract": "podcast-highlight-visual-abandoned-v1",
+            "revision_id": revision_id,
+            "state": "abandoned",
+        },
+        f"revisions/{revision_id}/ABANDONED.json",
+    )
+
+    def abandon(episode_root, **kwargs):
+        calls.append({"episode_root": Path(episode_root), **kwargs})
+        return abandoned
+
+    monkeypatch.setattr(orchestrator.visual_pipeline, "abandon_visual_revision", abandon)
+
+    assert (
+        orchestrator.main(
+            [
+                "abandon",
+                str(root),
+                "--cut-id",
+                "value-L01",
+                "--revision-id",
+                revision_id,
+                "--reason",
+                "Worker stopped before any Resolve transaction.",
+            ]
+        )
+        == 0
+    )
+    assert calls == [
+        {
+            "episode_root": root,
+            "cut_id": "value-L01",
+            "revision_id": revision_id,
+            "reason": "Worker stopped before any Resolve transaction.",
+        }
+    ]
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "abandoned"
+    assert payload["revision_id"] == revision_id
 
 
 def test_direct_script_help_bootstraps_repo_import_path() -> None:

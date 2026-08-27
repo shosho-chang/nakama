@@ -25,12 +25,12 @@ from typing import Callable, Mapping, Protocol, Sequence
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agents.brook.script_video import highlight_visual_pipeline as visual_pipeline  # noqa: E402
-from agents.brook.script_video.highlight_visual_pipeline import (  # noqa: E402
-    HighlightVisualContractError,
-)
 from agents.brook.script_video.highlight_candidate_renderer import (  # noqa: E402
     TrustedRenderError,
     hydrate_dp_proposal,
+)
+from agents.brook.script_video.highlight_visual_pipeline import (  # noqa: E402
+    HighlightVisualContractError,
 )
 
 EXECUTION_RECEIPT_CONTRACT = "podcast-highlight-visual-worker-execution-v1"
@@ -1797,7 +1797,11 @@ def run_visual_pipeline(
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run or resume Director -> DP -> same-Director semantic audit."
+        description="Run or resume Director -> DP -> same-Director semantic audit.",
+        epilog=(
+            "Recovery command: podcast_highlight_visual_orchestrator.py abandon "
+            "EPISODE_ROOT --cut-id CUT --revision-id REVISION --reason TEXT"
+        ),
     )
     parser.add_argument("episode_root", type=Path)
     parser.add_argument("--cut-id", required=True)
@@ -1814,9 +1818,54 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _abandon_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=f"{Path(sys.argv[0]).name} abandon",
+        description=(
+            "Fail closed and seal one active unmaterialized PENDING visual revision."
+        ),
+    )
+    parser.add_argument("episode_root", type=Path)
+    parser.add_argument("--cut-id", required=True)
+    parser.add_argument("--revision-id", required=True)
+    parser.add_argument("--reason", required=True)
+    return parser
+
+
+def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+    raw = list(sys.argv[1:] if argv is None else argv)
+    if raw and raw[0] == "abandon":
+        args = _abandon_parser().parse_args(raw[1:])
+        args.command = "abandon"
+        return args
+    args = _parser().parse_args(raw)
+    args.command = "run"
+    return args
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    args = _parse_args(argv)
     try:
+        if args.command == "abandon":
+            abandoned = visual_pipeline.abandon_visual_revision(
+                args.episode_root,
+                cut_id=args.cut_id,
+                revision_id=args.revision_id,
+                reason=args.reason,
+            )
+            print(
+                json.dumps(
+                    {
+                        "status": "abandoned",
+                        "revision_id": abandoned.document["revision_id"],
+                        "identity": abandoned.identity(),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return 0
         result = run_visual_pipeline(
             args.episode_root,
             cut_id=args.cut_id,

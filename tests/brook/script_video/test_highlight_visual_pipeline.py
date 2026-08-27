@@ -13,8 +13,10 @@ import pytest
 
 import agents.brook.script_video.highlight_visual_pipeline as visual_contract_module
 from agents.brook.script_video.highlight_visual_pipeline import (
+    ABANDONED_NAME,
     WORK_PACKET_NAME,
     HighlightVisualContractError,
+    abandon_visual_revision,
     accept_director_plan,
     accept_director_replan,
     accept_dp_fulfillment,
@@ -489,6 +491,160 @@ def test_preflight_is_read_only_and_status_explicitly_awaits_init(tmp_path: Path
         ),
         "episode-local existing file",
     )
+
+
+def test_pending_revision_can_be_abandoned_without_changing_old_artifacts_then_retried(
+    tmp_path: Path,
+) -> None:
+    root, master = _episode(tmp_path)
+    pending = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
+    revision_id = str(pending.document["revision_id"])
+    cut_root = root / "highlights" / "visual-pipeline" / "value-L01"
+    old_receipt = cut_root / "jobs" / revision_id / "receipts" / "dp.json"
+    old_dp_input = cut_root / "jobs" / revision_id / "workers" / "dp-session" / "dp-input.json"
+    old_receipt.parent.mkdir(parents=True, exist_ok=True)
+    old_dp_input.parent.mkdir(parents=True, exist_ok=True)
+    old_receipt.write_bytes(b"immutable-old-receipt")
+    old_dp_input.write_bytes(b"immutable-old-dp-input")
+    before = {
+        path.relative_to(cut_root).as_posix(): path.read_bytes()
+        for path in cut_root.rglob("*")
+        if path.is_file() and path.name != "PENDING.json"
+    }
+
+    abandoned = abandon_visual_revision(
+        root,
+        cut_id="value-L01",
+        revision_id=revision_id,
+        reason="The worker stopped before Resolve materialization.",
+        editorial_master=master,
+    )
+
+    assert abandoned.path.name == ABANDONED_NAME
+    assert abandoned.document["state"] == "abandoned"
+    assert abandoned.document["revision_id"] == revision_id
+    assert visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)[
+        "status"
+    ] == "abandoned"
+    abandoned_bytes = abandoned.path.read_bytes()
+    _assert_contract_error(
+        lambda: abandon_visual_revision(
+            root,
+            cut_id="value-L01",
+            revision_id=revision_id,
+            reason="A second abandon is not a pending transition.",
+            editorial_master=master,
+        ),
+        "not the active PENDING generation",
+    )
+    assert abandoned.path.read_bytes() == abandoned_bytes
+    assert {
+        path.relative_to(cut_root).as_posix(): path.read_bytes()
+        for path in cut_root.rglob("*")
+        if path.is_file() and path.name not in {"PENDING.json", ABANDONED_NAME}
+    } == before
+
+    request = root / "highlights" / "review" / "retry-request.json"
+    request.parent.mkdir(parents=True, exist_ok=True)
+    request.write_text('{"reason":"fresh retry"}', encoding="utf-8")
+    retried = init_visual_work_packet(
+        root,
+        cut_id="value-L01",
+        revision_request=request,
+        editorial_master=master,
+    )
+
+    assert retried.document["revision_id"] != revision_id
+    assert visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)[
+        "status"
+    ] == "awaiting_director"
+    assert abandoned.path.read_bytes() == (
+        cut_root / "revisions" / revision_id / ABANDONED_NAME
+    ).read_bytes()
+
+
+def test_abandon_rejects_revision_that_is_not_the_active_pending_generation(
+    tmp_path: Path,
+) -> None:
+    root, master = _episode(tmp_path)
+
+    _assert_contract_error(
+        lambda: abandon_visual_revision(
+            root,
+            cut_id="value-L01",
+            revision_id="r-000000000000000000000000",
+            reason="There is no active pending generation.",
+            editorial_master=master,
+        ),
+        "not PENDING",
+    )
+    assert not (root / "highlights" / "visual-pipeline" / "value-L01").exists()
+
+
+def test_abandon_rejects_current_revision(tmp_path: Path) -> None:
+    root, master = _episode(tmp_path)
+    pending = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
+    completed = _complete_generation(root, master, pending)
+    revision_id = str(completed.work_packet.document["revision_id"])
+    current = root / "highlights" / "visual-pipeline" / "value-L01" / "CURRENT.json"
+    before = current.read_bytes()
+
+    _assert_contract_error(
+        lambda: abandon_visual_revision(
+            root,
+            cut_id="value-L01",
+            revision_id=revision_id,
+            reason="A CURRENT generation must remain immutable.",
+            editorial_master=master,
+        ),
+        "CURRENT visual revision cannot be abandoned",
+    )
+    assert current.read_bytes() == before
+    assert not (
+        root
+        / "highlights"
+        / "visual-pipeline"
+        / "value-L01"
+        / "revisions"
+        / revision_id
+        / ABANDONED_NAME
+    ).exists()
+
+
+def test_abandon_rejects_revision_with_committed_resolve_materialization(
+    tmp_path: Path,
+) -> None:
+    root, master = _episode(tmp_path)
+    pending = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
+    revision_id = str(pending.document["revision_id"])
+    receipt = root / "highlights" / "tighten" / "value-L01_broll_materialization.json"
+    receipt.parent.mkdir(parents=True, exist_ok=True)
+    receipt.write_text(
+        json.dumps(
+            {
+                "contract": "podcast-long-highlight-stock-video-v2",
+                "visual_pipeline_lineage": {"revision_id": revision_id},
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    before = receipt.read_bytes()
+
+    _assert_contract_error(
+        lambda: abandon_visual_revision(
+            root,
+            cut_id="value-L01",
+            revision_id=revision_id,
+            reason="Materialized bytes cannot be detached from their lineage.",
+            editorial_master=master,
+        ),
+        "materialized visual revision cannot be abandoned",
+    )
+    assert receipt.read_bytes() == before
+    assert not (
+        pending.path.parent / ABANDONED_NAME
+    ).exists()
 
 
 def _director_proposal(work: object) -> dict[str, object]:

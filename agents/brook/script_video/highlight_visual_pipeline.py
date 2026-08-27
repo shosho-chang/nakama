@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence
 
+from agents.brook.script_video import highlight_broll
 from agents.brook.script_video.editorial_master import (
     EditorialMasterContractError,
     EditorialMasterRequest,
@@ -59,6 +60,7 @@ LINEAGE_CONTRACT = "podcast-highlight-visual-lineage-v1"
 POINTER_CONTRACT = "podcast-highlight-visual-pointer-v1"
 REQUESTED_VISUAL_FEEDBACK_CONTRACT = "podcast-highlight-requested-visual-feedback-v1"
 FEEDBACK_IDENTITY_MIGRATION_CONTRACT = "finished-review-feedback-component-identity-migration-v1"
+ABANDONED_CONTRACT = "podcast-highlight-visual-abandoned-v1"
 
 VISUAL_PIPELINE_ROOT = Path("highlights") / "visual-pipeline"
 WORK_PACKET_NAME = "DIRECTOR-WORK.json"
@@ -74,6 +76,7 @@ REFINEMENT_DECISION_NAME = "REFINEMENT-DECISION.json"
 DP_ATTEMPT_NAME = "DP-ATTEMPT.json"
 DIRECTOR_REPLAN_NAME = "DIRECTOR-REPLAN.json"
 ASSET_AUTHORITY_NAME = "ASSET-AUTHORITY.json"
+ABANDONED_NAME = "ABANDONED.json"
 
 _EXECUTION_RECEIPT_KEYS = {
     "contract",
@@ -1398,6 +1401,106 @@ _POINTER_KEYS = {
     "content_hash",
 }
 
+_ABANDONED_KEYS = {
+    "contract",
+    "episode_id",
+    "cut_id",
+    "revision_id",
+    "state",
+    "reason",
+    "pending_pointer",
+    "current_pointer",
+    "work_packet",
+    "content_hash",
+}
+
+
+def _validate_pointer_snapshot(
+    root: Path,
+    *,
+    cut_id: str,
+    revision_id: str,
+    value: object,
+    expected_state: str,
+    label: str,
+) -> dict[str, object]:
+    pointer = _require_exact_keys(value, _POINTER_KEYS, label)
+    if (
+        pointer["contract"] != POINTER_CONTRACT
+        or pointer["episode_id"] != root.name
+        or pointer["cut_id"] != cut_id
+        or pointer["revision_id"] != revision_id
+        or pointer["state"] != expected_state
+    ):
+        raise HighlightVisualContractError(f"{label} identity/state mismatch")
+    claimed = pointer["content_hash"]
+    if not isinstance(claimed, str) or not _SHA256_RE.fullmatch(claimed):
+        raise HighlightVisualContractError(f"{label} content_hash is invalid")
+    unsigned = {key: item for key, item in pointer.items() if key != "content_hash"}
+    if _content_hash(unsigned) != claimed:
+        raise HighlightVisualContractError(f"{label} content hash mismatch")
+    if expected_state == "ready" and not isinstance(pointer["semantic_audit"], dict):
+        raise HighlightVisualContractError(f"{label} ready state must bind semantic_audit")
+    if expected_state == "pending" and pointer["semantic_audit"] is not None:
+        raise HighlightVisualContractError(f"{label} pending state cannot bind semantic_audit")
+    return pointer
+
+
+def _load_abandoned_artifact(
+    root: Path,
+    *,
+    cut_id: str,
+    revision_id: str,
+) -> ArtifactSelection:
+    path = _revision_dir(root, cut_id, revision_id) / ABANDONED_NAME
+    selected = _load_hashed_artifact(
+        root,
+        path,
+        contract=ABANDONED_CONTRACT,
+        exact_keys=_ABANDONED_KEYS,
+    )
+    document = selected.document
+    if (
+        document["episode_id"] != root.name
+        or document["cut_id"] != cut_id
+        or document["revision_id"] != revision_id
+        or document["state"] != "abandoned"
+    ):
+        raise HighlightVisualContractError(
+            "ABANDONED receipt belongs to another episode/cut/revision or state"
+        )
+    _nonempty_text(document["reason"], "ABANDONED.reason")
+    pending = _validate_pointer_snapshot(
+        root,
+        cut_id=cut_id,
+        revision_id=revision_id,
+        value=document["pending_pointer"],
+        expected_state="pending",
+        label="ABANDONED.pending_pointer",
+    )
+    if pending["semantic_audit"] is not None:
+        raise HighlightVisualContractError(
+            "ABANDONED pending pointer cannot bind a semantic audit"
+        )
+    if document["work_packet"] != pending["work_packet"]:
+        raise HighlightVisualContractError("ABANDONED work packet identity drift")
+    current = document["current_pointer"]
+    if current is not None:
+        current_revision = str(
+            _require_exact_keys(current, _POINTER_KEYS, "ABANDONED.current_pointer")[
+                "revision_id"
+            ]
+        )
+        _validate_pointer_snapshot(
+            root,
+            cut_id=cut_id,
+            revision_id=_safe_revision_id(current_revision),
+            value=current,
+            expected_state="ready",
+            label="ABANDONED.current_pointer",
+        )
+    return selected
+
 
 def _load_pointer(root: Path, cut_id: str, name: str) -> dict[str, object]:
     path = _cut_root(root, cut_id) / name
@@ -1409,13 +1512,13 @@ def _load_pointer(root: Path, cut_id: str, name: str) -> dict[str, object]:
     ):
         raise HighlightVisualContractError(f"{name} belongs to another contract/episode/cut")
     _safe_revision_id(str(document["revision_id"]))
-    if document["state"] not in {"pending", "ready"}:
+    if document["state"] not in {"pending", "ready", "abandoned"}:
         raise HighlightVisualContractError(f"{name} state is invalid")
     if name == CURRENT_POINTER_NAME and (
         document["state"] != "ready" or not isinstance(document["semantic_audit"], dict)
     ):
         raise HighlightVisualContractError("CURRENT pointer must identify one ready audit")
-    if name == PENDING_POINTER_NAME and document["state"] != "pending":
+    if name == PENDING_POINTER_NAME and document["state"] not in {"pending", "abandoned"}:
         raise HighlightVisualContractError("PENDING pointer state mismatch")
     claimed = document["content_hash"]
     if not isinstance(claimed, str) or not _SHA256_RE.fullmatch(claimed):
@@ -1445,6 +1548,14 @@ def _load_pointer(root: Path, cut_id: str, name: str) -> dict[str, object]:
         )
     elif document["semantic_audit"] is not None:
         raise HighlightVisualContractError("PENDING pointer cannot bind semantic_audit")
+    if document["state"] == "abandoned":
+        abandoned = _load_abandoned_artifact(
+            root,
+            cut_id=cut_id,
+            revision_id=revision_id,
+        )
+        if abandoned.document["work_packet"] != document["work_packet"]:
+            raise HighlightVisualContractError("PENDING abandoned work packet identity drift")
     return document
 
 
@@ -1546,9 +1657,13 @@ def _cut_dir(
 def _require_pending_revision(root: Path, cut_id: str, revision_id: str) -> str:
     revision_id = _safe_revision_id(revision_id)
     pending = _load_pointer(root, cut_id, PENDING_POINTER_NAME)
-    if pending["revision_id"] != revision_id:
+    if pending["state"] != "pending" or pending["revision_id"] != revision_id:
         raise HighlightVisualArtifactConflictError(
             "proposal revision_id is no longer the active PENDING generation"
+        )
+    if (_revision_dir(root, cut_id, revision_id) / ABANDONED_NAME).exists():
+        raise HighlightVisualArtifactConflictError(
+            "proposal revision_id has an immutable ABANDONED receipt"
         )
     return revision_id
 
@@ -2518,7 +2633,13 @@ def init_visual_work_packet(
     expected_pending_hash: str | None = None
     if pending_path.is_file():
         pending = _load_pointer(root, cut_id, PENDING_POINTER_NAME)
-        if pending["revision_id"] != revision_id:
+        if pending["state"] == "abandoned":
+            if pending["revision_id"] == revision_id:
+                raise HighlightVisualArtifactConflictError(
+                    "abandoned visual revision cannot be retried with identical inputs; "
+                    "provide a fresh episode-local revision_request"
+                )
+        elif pending["revision_id"] != revision_id:
             current = (
                 _load_pointer(root, cut_id, CURRENT_POINTER_NAME)
                 if current_path.is_file()
@@ -2604,6 +2725,104 @@ def load_visual_work_packet(
         if pending is None or pending["work_packet"] != selection.identity():
             raise HighlightVisualContractError("PENDING pointer work packet identity drift")
     return selection
+
+
+def _materialized_visual_revision(root: Path, cut_id: str) -> str | None:
+    """Return the exact revision bound by a committed Resolve B-roll receipt."""
+
+    path = highlight_broll.receipt_path(root, cut_id)
+    if not path.is_file():
+        return None
+    document = _load_json_object(path, "Stock Video materialization receipt")
+    if document.get("contract") == highlight_broll.LEGACY_CONTRACT:
+        return None
+    if document.get("contract") != highlight_broll.CONTRACT:
+        raise HighlightVisualContractError(
+            "Stock Video materialization receipt contract is unknown"
+        )
+    lineage = document.get("visual_pipeline_lineage")
+    if not isinstance(lineage, dict):
+        raise HighlightVisualContractError(
+            "Stock Video v2 materialization receipt has no visual pipeline lineage"
+        )
+    revision_id = lineage.get("revision_id")
+    if not isinstance(revision_id, str):
+        raise HighlightVisualContractError(
+            "Stock Video v2 materialization receipt has no revision_id"
+        )
+    return _safe_revision_id(revision_id)
+
+
+def abandon_visual_revision(
+    episode_root: str | Path,
+    *,
+    cut_id: str,
+    revision_id: str,
+    reason: str,
+    editorial_master: EditorialMasterSelection | object | None = None,
+) -> ArtifactSelection:
+    """Seal one unmaterialized PENDING generation and release the retry slot."""
+
+    root = _root(episode_root)
+    cut_id = _safe_cut_id(cut_id)
+    revision_id = _safe_revision_id(revision_id)
+    reason = _nonempty_text(reason, "abandon reason")
+    pending_path = _cut_root(root, cut_id) / PENDING_POINTER_NAME
+    if not pending_path.is_file():
+        raise HighlightVisualArtifactConflictError(
+            "visual revision cannot be abandoned because it is not PENDING"
+        )
+    pending = _load_pointer(root, cut_id, PENDING_POINTER_NAME)
+    if pending["state"] != "pending" or pending["revision_id"] != revision_id:
+        raise HighlightVisualArtifactConflictError(
+            "visual revision cannot be abandoned because it is not the active PENDING generation"
+        )
+    current_path = _cut_root(root, cut_id) / CURRENT_POINTER_NAME
+    current = _load_pointer(root, cut_id, CURRENT_POINTER_NAME) if current_path.is_file() else None
+    if current is not None and current["revision_id"] == revision_id:
+        raise HighlightVisualArtifactConflictError("CURRENT visual revision cannot be abandoned")
+    if _materialized_visual_revision(root, cut_id) == revision_id:
+        raise HighlightVisualArtifactConflictError(
+            "materialized visual revision cannot be abandoned"
+        )
+    work = load_visual_work_packet(
+        root,
+        cut_id=cut_id,
+        revision_id=revision_id,
+        editorial_master=editorial_master,
+    )
+    if pending["work_packet"] != work.identity():
+        raise HighlightVisualContractError("PENDING work packet identity drift before abandon")
+    document: dict[str, object] = {
+        "contract": ABANDONED_CONTRACT,
+        "episode_id": root.name,
+        "cut_id": cut_id,
+        "revision_id": revision_id,
+        "state": "abandoned",
+        "reason": reason,
+        "pending_pointer": dict(pending),
+        "current_pointer": dict(current) if current is not None else None,
+        "work_packet": work.identity(),
+    }
+    document["content_hash"] = _content_hash(document)
+    path = _revision_dir(root, cut_id, revision_id) / ABANDONED_NAME
+    _atomic_publish(path, document)
+    abandoned = _load_abandoned_artifact(
+        root,
+        cut_id=cut_id,
+        revision_id=revision_id,
+    )
+    _write_pointer(
+        root,
+        cut_id=cut_id,
+        name=PENDING_POINTER_NAME,
+        revision_id=revision_id,
+        state="abandoned",
+        work_packet=work.identity(),
+        semantic_audit=None,
+        expected_existing_content_hash=str(pending["content_hash"]),
+    )
+    return abandoned
 
 
 _DIRECTOR_KEYS = {
@@ -6338,6 +6557,7 @@ def _revision_paths(root: Path, cut_id: str, revision_id: str) -> dict[str, str]
         "director_plan": (directory / DIRECTOR_PLAN_NAME).relative_to(root).as_posix(),
         "dp_fulfillment": (directory / DP_FULFILLMENT_NAME).relative_to(root).as_posix(),
         "semantic_audit": (directory / SEMANTIC_AUDIT_NAME).relative_to(root).as_posix(),
+        "abandoned": (directory / ABANDONED_NAME).relative_to(root).as_posix(),
     }
 
 
@@ -6417,6 +6637,19 @@ def visual_pipeline_status(
             revision_id=pending_revision_id,
             editorial_master=editorial_master,
         )
+        if pending["state"] == "abandoned":
+            abandoned = _load_abandoned_artifact(
+                root,
+                cut_id=cut_id,
+                revision_id=pending_revision_id,
+            )
+            if _materialized_visual_revision(root, cut_id) == pending_revision_id:
+                raise HighlightVisualContractError(
+                    "ABANDONED visual revision now has a materialization receipt"
+                )
+            result["status"] = "abandoned"
+            result["abandoned"] = abandoned.identity()
+            return result
         directory = _revision_dir(root, cut_id, pending_revision_id)
         if not (directory / DIRECTOR_PLAN_NAME).is_file():
             result["status"] = "awaiting_director"
@@ -6596,6 +6829,8 @@ def visual_pipeline_status(
 
 
 __all__ = [
+    "ABANDONED_CONTRACT",
+    "ABANDONED_NAME",
     "ACQUISITION_RECEIPT_CONTRACT",
     "ASSET_ACQUISITION_PROPOSAL_CONTRACT",
     "ASSET_AUTHORITY_CONTRACT",
@@ -6632,6 +6867,7 @@ __all__ = [
     "HighlightVisualArtifactConflictError",
     "HighlightVisualContractError",
     "VisualPipelineSelection",
+    "abandon_visual_revision",
     "accept_director_plan",
     "accept_director_replan",
     "accept_dp_fulfillment",
