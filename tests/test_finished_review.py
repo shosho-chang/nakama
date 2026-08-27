@@ -849,12 +849,11 @@ def test_finished_review_timeline_uses_normalized_components_for_geometry_and_ed
     assert 'min-height: 40px' in page.text
     assert 'data-timeline-lane="b_roll"' in page.text
     assert 'data-timeline-lane="badge"' not in page.text
+    assert 'data-timeline-lane="pacing"' not in page.text
     assert '--timeline-kind-color: var(--sho-success)' in page.text
     assert '--timeline-kind-color: var(--sho-warning)' in page.text
-    assert 'data-camera=""' in page.text
-    assert 'data-camera="cam1"' in page.text
-    assert 'data-camera="cam2"' in page.text
-    assert 'data-camera="cam3"' in page.text
+    assert 'CAMERA 1 / 2 / 3' not in page.text
+    assert 'Camera 1 · 主持人' not in page.text
     assert 'data-tooltip="從漫畫學經營 · 00:30–00:33"' in page.text
     assert '<span class="timeline-block__label">從漫畫學經營</span>' in page.text
     assert 'id="timeline-tooltip"' in page.text
