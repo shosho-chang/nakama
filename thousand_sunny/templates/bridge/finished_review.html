@@ -35,29 +35,40 @@
   .player-readout { display: flex; justify-content: space-between; gap: var(--sho-s-3); color: var(--sho-muted); margin-top: var(--sho-s-2); }
   .timeline-panel { border: 1px solid var(--sho-line); border-top: 0; background: var(--sho-bg); }
   .timeline-panel[hidden] { display: none; }
-  .timeline-panel__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sho-s-3); border-bottom: 1px solid var(--sho-line); padding: var(--sho-s-2) var(--sho-s-3); }
+  .timeline-panel__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sho-s-3); border-bottom: 1px solid var(--sho-line); padding: var(--sho-s-1) var(--sho-s-3); }
   .timeline-panel__head h2 { font-size: .83rem; letter-spacing: .06em; margin: 0; }
   .timeline-panel__hint { color: var(--sho-muted); font-size: .72rem; margin: 0; }
   .timeline-scroll { box-sizing: border-box; max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; padding-bottom: var(--sho-s-1); width: 100%; }
-  .timeline-stage { --timeline-label-width: 128px; box-sizing: border-box; min-width: 820px; position: relative; }
+  .timeline-stage { --timeline-label-width: 128px; --timeline-ruler-height: 26px; box-sizing: border-box; min-width: 820px; position: relative; }
   .timeline-ruler, .timeline-row { display: grid; grid-template-columns: var(--timeline-label-width) minmax(0, 1fr); }
-  .timeline-ruler { border-bottom: 1px solid var(--sho-line-2); min-height: 30px; }
+  .timeline-ruler { border-bottom: 1px solid var(--sho-line-2); min-height: var(--timeline-ruler-height); }
   .timeline-ruler__label, .timeline-label { box-sizing: border-box; border-right: 1px solid var(--sho-line); color: var(--sho-muted); padding: var(--sho-s-1) var(--sho-s-2); }
   .timeline-ruler__label { align-content: center; font-size: .66rem; letter-spacing: .06em; }
   .timeline-ruler__track { position: relative; }
   .timeline-tick { border-left: 1px solid var(--sho-line); color: var(--sho-muted); font-size: .63rem; height: 100%; left: var(--timeline-start); padding-left: 3px; position: absolute; top: 0; }
   .timeline-tick:last-child { left: auto; right: 0; border-left: 0; border-right: 1px solid var(--sho-line); padding-left: 0; padding-right: 3px; }
-  .timeline-row { min-height: 76px; }
+  .timeline-row { --timeline-kind-color: var(--sho-muted); min-height: 40px; }
   .timeline-row + .timeline-row { border-top: 1px solid var(--sho-line); }
-  .timeline-label { align-content: center; font-size: .66rem; line-height: 1.35; }
+  .timeline-label { align-content: center; font-size: .64rem; line-height: 1.25; }
   .timeline-label span { display: block; color: var(--sho-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .timeline-label span::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: var(--sho-r-pill); background: var(--timeline-kind-color); margin-right: 5px; vertical-align: .05em; }
   .timeline-label small { font-size: .62rem; }
   .timeline-track { background-image: linear-gradient(to right, transparent calc(25% - .5px), var(--sho-line) 25%, transparent calc(25% + .5px), transparent calc(50% - .5px), var(--sho-line) 50%, transparent calc(50% + .5px), transparent calc(75% - .5px), var(--sho-line) 75%, transparent calc(75% + .5px)); min-width: 0; position: relative; }
-  .timeline-block { box-sizing: border-box; position: absolute; top: calc(5px + var(--timeline-slot) * 23px); left: var(--timeline-start); width: max(var(--timeline-span), 78px); max-width: calc(100% - var(--timeline-start)); height: 21px; overflow: hidden; border: 1px solid var(--sho-line-2); border-left-width: 3px; border-radius: var(--sho-r-1); background: var(--sho-bg-2); color: var(--sho-text-2); cursor: pointer; font: inherit; font-size: .66rem; line-height: 1.15; padding: 2px 4px; text-align: left; text-overflow: ellipsis; transition: border-color var(--sho-t-fast) var(--sho-ease), background var(--sho-t-fast) var(--sho-ease); white-space: nowrap; }
-  .timeline-block:hover { border-color: var(--sho-muted); color: var(--sho-text); }
-  .timeline-block[aria-current="true"] { border-color: var(--sho-accent); background: var(--sho-accent-soft); color: var(--sho-text); }
-  .timeline-block:focus-visible { outline: none; box-shadow: var(--sho-focus); z-index: 3; }
-  .timeline-playhead { position: absolute; z-index: 2; top: 30px; bottom: 0; left: calc(var(--timeline-label-width) + (100% - var(--timeline-label-width)) * var(--timeline-progress)); width: 1px; background: var(--sho-accent); pointer-events: none; transition: left var(--sho-t-fast) linear; }
+  .timeline-row[data-timeline-lane="b_roll"] { --timeline-kind-color: var(--sho-success); }
+  .timeline-row[data-timeline-lane="identity_card"] { --timeline-kind-color: var(--sho-text-2); }
+  .timeline-row[data-timeline-lane="hero_title"] { --timeline-kind-color: var(--sho-info); }
+  .timeline-row[data-timeline-lane="badge"] { --timeline-kind-color: var(--sho-accent); }
+  .timeline-row[data-timeline-lane="fullscreen_transition"] { --timeline-kind-color: var(--sho-warning); }
+  .timeline-row[data-timeline-lane="visual_effect"] { --timeline-kind-color: var(--sho-error); }
+  .timeline-row[data-timeline-lane="pacing"] { --timeline-kind-color: var(--sho-muted); }
+  .sho .timeline-block { box-sizing: border-box; position: absolute; top: 8px; left: var(--timeline-start); width: var(--timeline-span); height: 24px; overflow: hidden; border: 1px solid color-mix(in oklch, var(--timeline-kind-color) 72%, var(--sho-line-2)); border-radius: var(--sho-r-2); background: color-mix(in oklch, var(--timeline-kind-color) 18%, var(--sho-bg)); color: var(--sho-text); cursor: pointer; font: inherit; font-size: .64rem; line-height: 1.15; padding: 0; text-align: left; transition: border-color var(--sho-t-fast) var(--sho-ease), background var(--sho-t-fast) var(--sho-ease); }
+  .timeline-block__label { display: block; overflow: hidden; padding: 3px 5px; text-overflow: ellipsis; white-space: nowrap; }
+  .sho .timeline-block:hover { border-color: var(--timeline-kind-color); background: color-mix(in oklch, var(--timeline-kind-color) 27%, var(--sho-bg)); }
+  .sho .timeline-block[aria-current="true"] { border-color: var(--sho-accent); background: var(--sho-accent-soft); color: var(--sho-text); }
+  .sho .timeline-block:focus-visible { outline: none; box-shadow: var(--sho-focus); z-index: 3; }
+  .timeline-tooltip { box-sizing: border-box; position: fixed; z-index: 100; max-width: min(320px, calc(100vw - 16px)); border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-1); background: var(--sho-ink); color: var(--sho-bg); font-size: .72rem; line-height: 1.45; padding: var(--sho-s-1) var(--sho-s-2); pointer-events: none; }
+  .timeline-tooltip[hidden] { display: none; }
+  .timeline-playhead { position: absolute; z-index: 2; top: var(--timeline-ruler-height); bottom: 0; left: calc(var(--timeline-label-width) + (100% - var(--timeline-label-width)) * var(--timeline-progress)); width: 1px; background: var(--sho-accent); pointer-events: none; transition: left var(--sho-t-fast) linear; }
   .timeline-playhead::before { content: ""; position: absolute; width: 7px; height: 7px; left: -3px; top: -4px; border-radius: var(--sho-r-pill); background: var(--sho-accent); }
   .cut-pane[hidden] { display: none; }
   .cut-pane__head { border-bottom: 1px solid var(--sho-line-2); margin-bottom: var(--sho-s-2); padding-bottom: var(--sho-s-3); }
@@ -173,7 +184,7 @@
                 <div class="timeline-label sho-mono"><span>{{ manifest.lane_labels[lane] }}</span><small>{{ timeline_components|length }} EVENT{% if timeline_components|length != 1 %}S{% endif %}</small></div>
                 <div class="timeline-track">
                   {% for component in timeline_components %}
-                  <button type="button" class="timeline-block" data-seek="{{ component.t0 }}" data-component-target="{{ component.component_id }}" style="--timeline-start: {{ (component.t0 / duration * 100) }}%; --timeline-span: {{ ((component.t1 - component.t0) / duration * 100) }}%; --timeline-slot: {{ loop.index0 % 3 }}" title="{{ component.display }} · {{ '%02d:%02d'|format(component.t0 // 60, component.t0 % 60) }}–{{ '%02d:%02d'|format(component.t1 // 60, component.t1 % 60) }}" aria-label="{{ manifest.lane_labels[lane] }}：{{ component.display }}，跳到 {{ '%02d:%02d'|format(component.t0 // 60, component.t0 % 60) }}">{{ component.display }}</button>
+                  <button type="button" class="timeline-block" data-seek="{{ component.t0 }}" data-component-target="{{ component.component_id }}" data-tooltip="{{ component.display }} · {{ '%02d:%02d'|format(component.t0 // 60, component.t0 % 60) }}–{{ '%02d:%02d'|format(component.t1 // 60, component.t1 % 60) }}" style="--timeline-start: {{ (component.t0 / duration * 100) }}%; --timeline-span: {{ ((component.t1 - component.t0) / duration * 100) }}%" aria-label="{{ manifest.lane_labels[lane] }}：{{ component.display }}，跳到 {{ '%02d:%02d'|format(component.t0 // 60, component.t0 % 60) }}"><span class="timeline-block__label">{{ component.display }}</span></button>
                   {% endfor %}
                 </div>
               </div>
@@ -353,6 +364,7 @@
       {% endif %}
       <button type="submit" class="review-button review-button--approve" id="approve-all" data-submit-action="approve_all" disabled>核准全部 {{ manifest.cuts|length }} 支</button>
     </div>
+    <div class="timeline-tooltip sho-mono" id="timeline-tooltip" role="tooltip" hidden></div>
   </form>
 </main>
 <script>
@@ -370,11 +382,25 @@
   const selectedCutId = document.querySelector('#selected-cut-id');
   const activeCut = document.querySelector('#active-cut-readout');
   const timeReadout = document.querySelector('#time-readout');
+  const timelineTooltip = document.querySelector('#timeline-tooltip');
   const legacyManifest = form.dataset.legacyManifest === 'true';
   const pad = value => String(Math.max(0, Math.floor(value))).padStart(2, '0');
   const stamp = seconds => `${pad(seconds / 60)}:${pad(seconds % 60)}`;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const activeTab = () => tabs.find(tab => tab.getAttribute('aria-selected') === 'true');
+  const hideTimelineTooltip = () => { timelineTooltip.hidden = true; };
+  const showTimelineTooltip = block => {
+    timelineTooltip.textContent = block.dataset.tooltip || '';
+    timelineTooltip.hidden = false;
+    const blockRect = block.getBoundingClientRect();
+    const tipRect = timelineTooltip.getBoundingClientRect();
+    const gutter = 8;
+    const left = Math.min(window.innerWidth - tipRect.width - gutter, Math.max(gutter, blockRect.left + blockRect.width / 2 - tipRect.width / 2));
+    const above = blockRect.top - tipRect.height - 6;
+    const top = above >= gutter ? above : blockRect.bottom + 6;
+    timelineTooltip.style.left = `${left}px`;
+    timelineTooltip.style.top = `${top}px`;
+  };
   const syncPlayhead = () => {
     const tab = activeTab();
     const duration = Number(tab?.dataset.duration || player.duration || 0);
@@ -435,6 +461,10 @@
       player.play().catch(() => {});
     });
     if (button.classList.contains('timeline-block')) {
+      button.addEventListener('pointerenter', () => showTimelineTooltip(button));
+      button.addEventListener('pointerleave', hideTimelineTooltip);
+      button.addEventListener('focus', () => showTimelineTooltip(button));
+      button.addEventListener('blur', hideTimelineTooltip);
       button.addEventListener('keydown', event => {
         if (!['Enter', ' '].includes(event.key)) return;
         event.preventDefault();
@@ -442,6 +472,8 @@
       });
     }
   });
+  window.addEventListener('resize', hideTimelineTooltip);
+  document.querySelectorAll('.timeline-scroll').forEach(scroller => scroller.addEventListener('scroll', hideTimelineTooltip));
   const syncFields = select => {
     const component = select.closest('.component');
     const replacement = component.querySelector('[data-replacement-field]');

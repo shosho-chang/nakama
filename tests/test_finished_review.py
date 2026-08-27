@@ -817,6 +817,15 @@ def test_finished_review_timeline_uses_normalized_components_for_geometry_and_ed
     assert "林之晨｜《逆分工》共同作者" in page.text
     assert 'data-timeline-lane="visual_effect"' in page.text
     assert 'data-timeline-count="0"' in page.text
+    assert 'width: var(--timeline-span)' in page.text
+    assert 'width: max(var(--timeline-span)' not in page.text
+    assert 'min-height: 40px' in page.text
+    assert 'data-timeline-lane="b_roll"' in page.text
+    assert '--timeline-kind-color: var(--sho-success)' in page.text
+    assert '--timeline-kind-color: var(--sho-warning)' in page.text
+    assert 'data-tooltip="從漫畫學經營 · 00:30–00:33"' in page.text
+    assert '<span class="timeline-block__label">從漫畫學經營</span>' in page.text
+    assert 'id="timeline-tooltip"' in page.text
 
 
 def test_media_and_vtt_are_served_from_manifest_inventory(client, finished_episode):
