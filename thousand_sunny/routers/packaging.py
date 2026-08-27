@@ -29,7 +29,7 @@ from typing import Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter, Cookie, Form, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from starlette.requests import Request
@@ -69,6 +69,24 @@ _DESCRIPTION_TIMEOUT_SECONDS = 900
 _DESCRIPTION_PROCESSES: dict[tuple[str, str], subprocess.Popen] = {}
 _PUBLISH_PREP_TIMEOUT_SECONDS = 7200
 _PUBLISH_PREP_PROCESSES: dict[tuple[str, str], subprocess.Popen] = {}
+
+
+def _render_watcher_state_path() -> Path:
+    """Desktop watcher state shared with the authenticated Bridge status surface."""
+    configured = os.environ.get("NAKAMA_RENDER_WATCHER_STATE")
+    if configured:
+        return Path(configured)
+    return Path(__file__).resolve().parents[2] / "logs" / "render-watcher-state.json"
+
+
+def _same_requested_at(left: str, right: str) -> bool:
+    """Compare ISO timestamps while accepting the equivalent Z/+00:00 spelling."""
+    try:
+        a = datetime.fromisoformat(left.replace("Z", "+00:00"))
+        b = datetime.fromisoformat(right.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return a == b
 
 
 class CompositionBBoxV1(BaseModel):
@@ -1127,6 +1145,94 @@ async def packaging_center_visual(
     if path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"} or not path.is_file():
         raise HTTPException(status_code=404, detail="中央主圖不存在")
     return FileResponse(path)
+
+
+@page_router.get("/{episode_slug}/render-status/{cut_id}/{package_rank}")
+async def packaging_render_status(
+    episode_slug: str,
+    cut_id: str,
+    package_rank: int,
+    requested_at: str,
+    nakama_auth: str | None = Cookie(None),
+) -> JSONResponse:
+    """Return the exact desktop-render state for one saved package recipe.
+
+    The client must present the recipe timestamp it just saved.  A stale tab therefore
+    cannot accidentally display another package or a newer revision as its own result.
+    """
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    if package_rank < 1 or package_rank > 3:
+        raise HTTPException(status_code=404, detail="package 不存在")
+
+    ep_dir = _packaging_root() / episode_slug
+    try:
+        packages = parse_packages(ep_dir / "packages.json")
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="packaging episode 不存在") from exc
+    cut = next((row for row in packages.cuts if row.cut_id == cut_id), None)
+    if cut is None:
+        raise HTTPException(status_code=404, detail="cut 不存在")
+    package = next((row for row in cut.packages if row.title_rank == package_rank), None)
+    if package is None:
+        raise HTTPException(status_code=404, detail="package 不存在")
+    recipe = package.render_recipe
+    if recipe is None:
+        raise HTTPException(status_code=409, detail="這個 package 尚未儲存 render 配方")
+    expected = recipe.requested_at.isoformat()
+    if not _same_requested_at(requested_at, expected):
+        raise HTTPException(status_code=409, detail="這份 render 狀態不屬於目前配方")
+
+    key = f"{episode_slug}/{cut_id}/r{package_rank}"
+    state: dict = {}
+    state_path = _render_watcher_state_path()
+    if state_path.is_file():
+        try:
+            loaded = json.loads(state_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                state = loaded
+        except (json.JSONDecodeError, OSError):
+            # A partial/corrupt state file cannot be trusted as success or failure.
+            state = {}
+    row = state.get(key) if isinstance(state.get(key), dict) else None
+    if row is None or not _same_requested_at(str(row.get("requested_at", "")), expected):
+        status = "queued"
+        message = "配方已儲存，等待桌面 render"
+        error = None
+    else:
+        raw_status = row.get("status")
+        if raw_status not in {"running", "done", "failed"}:
+            # Backward-compatible read of watcher state written before explicit statuses.
+            raw_status = "done" if row.get("ok") is True else "failed"
+        status = raw_status
+        message = {
+            "running": "正在 render 新封面",
+            "done": "新封面已完成",
+            "failed": "封面 render 失敗",
+        }[status]
+        error = str(row.get("last_error") or "")[:500] or None
+
+    thumbnail_url = None
+    if status == "done":
+        version_seed = str(row.get("rendered_at") or expected) if row else expected
+        version = hashlib.sha1(version_seed.encode("utf-8")).hexdigest()[:12]
+        filename = quote(Path(package.thumbnail_png).name, safe="")
+        thumbnail_url = (
+            f"/bridge/packaging/{quote(episode_slug, safe='')}/thumbnail/{filename}?v={version}"
+        )
+    return JSONResponse(
+        {
+            "status": status,
+            "message": message,
+            "error": error,
+            "episode_slug": episode_slug,
+            "cut_id": cut_id,
+            "package_rank": package_rank,
+            "requested_at": requested_at,
+            "thumbnail_url": thumbnail_url,
+        },
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @page_router.get("/{episode_slug}", response_class=HTMLResponse)

@@ -280,8 +280,12 @@ Step 6 起重走。修修手改過的 timeline 尾端見 Step 6–7 的 `--refre
 - 刪掉「這一段會從 A 一路談到 B」等自我導覽句；章節已負責導航。
 - 每段只推進一件事；用具體人物、作品、數字與動作取代抽象形容詞。
 - 不得捏造獨特性或動機；沒有逐字稿證據就不寫。
-- description 固定結構：2–3 段內容 hook → `⏱` 章節 → 固定 footer。footer 一律讀
+- description 固定結構：1–2 個短段 hook（約 200–300 個繁中字）→ `⏱` 章節 →
+  可選的公開來源 → 精簡固定 footer。footer 一律讀
   `agents/usopp/templates/video_description_footer.md`，禁止在 prompt 裡複製舊版。
+- `packages.json.citations` 可包含內部 provenance，但 SRT/VTT/JSON 路徑、vault 路徑、
+  transcript timestamp 只留內部，絕對不得顯示在對外 description。只有人類可讀的
+  論文、書籍或公開 URL 才可出現「本集引用」；沒有就整段省略。
 - 交付前逐句掃描「不是／而是」「不只／更」「這一段會」「帶你看」「深入探討」；命中就重寫。
 - Packaging 核准、正式 export 登錄成 Release 後，Bridge 會呼叫
   `scripts/publish_description.py <episode> --cut <cut> --auto`，只走

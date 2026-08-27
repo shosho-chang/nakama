@@ -13,6 +13,8 @@ from agents.usopp.video_description import (  # noqa: E402
     chosen_package,
     fmt_ts,
     load_citations,
+    public_citations,
+    validate_description_hook,
 )
 
 PACKAGES = {
@@ -75,6 +77,40 @@ def test_load_citations_missing_cut_fails_loud():
         load_citations(PACKAGES, "ghost-1")
 
 
+def test_internal_transcript_provenance_never_becomes_public_citation():
+    citations = [
+        "highlights/srt/value-L01_tight_r012.srt#00:00:00-00:02:55",
+        r"G:\\Footages\\episode\\highlights\\srt\\value-L01.srt",
+        "transcript@00:03:33",
+        "research/paper.pdf",
+        "The Lancet 2024 dementia prevention report",
+        "https://doi.org/10.1016/S0140-6736(24)01296-0",
+        "https://example.org/public-paper.pdf",
+    ]
+
+    assert public_citations(citations) == [
+        "The Lancet 2024 dementia prevention report",
+        "https://doi.org/10.1016/S0140-6736(24)01296-0",
+        "https://example.org/public-paper.pdf",
+    ]
+
+
+def test_load_citations_filters_internal_provenance_at_canonical_seam():
+    packages = {
+        "cuts": [
+            {
+                "cut_id": "value-L01",
+                "citations": [
+                    "highlights/srt/value-L01_tight_r012.srt#00:00:00-00:02:55",
+                    "Science 2010 mind wandering study",
+                ],
+            }
+        ]
+    }
+
+    assert load_citations(packages, "value-L01") == ["Science 2010 mind wandering study"]
+
+
 def test_build_description_four_blocks():
     out = build_description(
         "hook 第一句。",
@@ -92,6 +128,36 @@ def test_build_description_short_form_omits_empty_blocks():
     assert "⏱" not in out
     assert "本集引用" not in out
     assert out == "hook。\n\nfooter"
+
+
+def test_build_description_defensively_omits_internal_citation_paths():
+    out = build_description(
+        "hook。",
+        [],
+        [
+            "highlights/srt/value-L01_tight_r012.srt#00:00:00-00:02:55",
+            "The Lancet 2024",
+        ],
+        "footer",
+    )
+
+    assert "value-L01_tight_r012.srt" not in out
+    assert "・The Lancet 2024" in out
+
+
+def test_description_hook_requires_one_or_two_compact_paragraphs():
+    paragraph = (
+        "林之晨從自己在不同教育環境裡的經驗談起，拆解制度如何影響一個人理解學習、"
+        "選擇道路與承擔風險的方式。這些看似個人的決定，其實都帶著家庭期待、社會條件與"
+        "時代留下的痕跡，也會影響他後來面對失敗與成功的尺度。"
+    )
+    valid = f"{paragraph}\n\n{paragraph}"
+
+    assert validate_description_hook(valid) == valid
+    with pytest.raises(ValueError, match="約 200–300 字"):
+        validate_description_hook("太短。")
+    with pytest.raises(ValueError, match="1–2 個短段落"):
+        validate_description_hook("\n\n".join([paragraph, paragraph, paragraph]))
 
 
 def test_load_footer_strips_html_comments():

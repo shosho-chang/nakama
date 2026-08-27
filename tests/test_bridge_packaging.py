@@ -1075,6 +1075,118 @@ def test_board_renders_layout_stage(client, vault_with_cutouts):
     assert "140.0" in board.text  # 欄位帶著存過的值回來
 
 
+def test_layout_stage_exposes_rule_of_thirds_and_explicit_layer_controls(
+    client, vault_with_cutouts
+):
+    """排版不能靠猜透明 PNG 的 hit-area：格線與三層控制都要明確可操作。"""
+    board = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert board.status_code == 200
+    for line in ("v1", "v2", "h1", "h2"):
+        assert f'class="st-grid-line st-grid-line--{line}"' in board.text
+    for role in ("center", "host", "guest"):
+        assert f'data-layer-select="{role}"' in board.text
+    assert 'data-layer-scale="down"' in board.text
+    assert 'data-layer-scale="up"' in board.text
+    assert 'class="pkg-render-progress"' in board.text
+    assert 'aria-live="polite"' in board.text
+    assert 'role="progressbar"' in board.text
+
+
+def test_render_status_tracks_exact_recipe_and_terminal_thumbnail(
+    client, vault_with_cutouts, monkeypatch, tmp_path
+):
+    import thousand_sunny.routers.packaging as pkg_module
+
+    assert _compose(client, package_rank="1").status_code == 303
+    req = _saved_req(vault_with_cutouts)
+    requested_at = req["requested_at"]
+    state_path = tmp_path / "render-watcher-state.json"
+    monkeypatch.setattr(pkg_module, "_render_watcher_state_path", lambda: state_path)
+    endpoint = "/bridge/packaging/20260723-xieboran/render-status/punch-L1/1"
+
+    queued = client.get(endpoint, params={"requested_at": requested_at})
+    assert queued.status_code == 200
+    assert queued.json()["status"] == "queued"
+
+    key = "20260723-xieboran/punch-L1/r1"
+    for status in ("running", "failed"):
+        state_path.write_text(
+            json.dumps(
+                {
+                    key: {
+                        "requested_at": requested_at,
+                        "status": status,
+                        "last_error": "renderer stopped" if status == "failed" else None,
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        response = client.get(endpoint, params={"requested_at": requested_at})
+        assert response.status_code == 200
+        assert response.json()["status"] == status
+        if status == "failed":
+            assert response.json()["error"] == "renderer stopped"
+
+    state_path.write_text(
+        json.dumps(
+            {
+                key: {
+                    "requested_at": requested_at,
+                    "status": "done",
+                    "rendered_at": "2026-08-27T14:00:00+00:00",
+                    "last_error": None,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    done = client.get(endpoint, params={"requested_at": requested_at})
+    assert done.status_code == 200
+    assert done.json()["status"] == "done"
+    assert done.json()["thumbnail_url"].startswith(
+        "/bridge/packaging/20260723-xieboran/thumbnail/pkg-punch-L1-1.png?v="
+    )
+
+
+def test_render_status_fails_closed_for_wrong_request_or_route(
+    client, vault_with_cutouts, monkeypatch, tmp_path
+):
+    import thousand_sunny.routers.packaging as pkg_module
+
+    assert _compose(client, package_rank="1").status_code == 303
+    monkeypatch.setattr(
+        pkg_module, "_render_watcher_state_path", lambda: tmp_path / "missing-state.json"
+    )
+    base = "/bridge/packaging/20260723-xieboran/render-status"
+
+    assert (
+        client.get(
+            f"{base}/punch-L1/1",
+            params={"requested_at": "2026-01-01T00:00:00+00:00"},
+        ).status_code
+        == 409
+    )
+    assert (
+        client.get(f"{base}/wrong-cut/1", params={"requested_at": "x"}).status_code == 404
+    )
+    assert (
+        client.get(f"{base}/punch-L1/3", params={"requested_at": "x"}).status_code == 409
+    )
+
+
+def test_render_status_requires_bridge_auth(client, monkeypatch):
+    import thousand_sunny.routers.packaging as pkg_module
+
+    monkeypatch.setattr(pkg_module, "check_auth", lambda _: False)
+    response = client.get(
+        "/bridge/packaging/20260723-xieboran/render-status/punch-L1/1",
+        params={"requested_at": "2026-08-27T13:17:07+00:00"},
+    )
+    assert response.status_code == 401
+
+
 def test_board_hydrates_each_legacy_n2_package_from_its_own_receipt(
     client, vault_with_cutouts
 ):

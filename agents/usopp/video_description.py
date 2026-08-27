@@ -1,19 +1,20 @@
 """影片描述欄組裝（video-publishing-plan Q5、ADR-055 slice 2）。
 
-描述欄四段結構（修修 2026-07-26 凍結）：
+描述欄四段結構（修修 2026-08-27 收旂）：
 
-    ┌─ 變動（LLM 產、修修在審核頁改）  hook 兩三句
+    ┌─ 變動（LLM 產、修修在審核頁改）  hook 1–2 個短段
     ├─ 變動（長片才有）              ⏱ 分章（從轉場卡自動生成）
-    ├─ 變動（citations 從 packaging 交接檔搬）  本集引用
-    └─ 固定（templates/video_description_footer.md，40 支共用）
+    ├─ 變動（僅人類可讀的公開 source citations） 本集引用
+    └─ 固定（templates/video_description_footer.md，精簡共用版）
 
 設計要點：
 
 - **分章零人工**：長片的章節 = broll.json 的 transition_title items
   （t0 + title）——視覺轉場卡與描述欄分章天生同源（同一份企劃檔），
   不可能漂移。00:00 固定為「開場」。
-- **citations 不 parse 散文**：ADR-054 §7 裁決 packaging skill 從
-  review_brandlens.json 搬進 packages.json，發布層零 parse。
+- **provenance 不對外公開**：`packages.json.citations` 可保留內部查證索引，
+  但 SRT/VTT/JSON 路徑、時間區間與 vault 路徑只是 provenance，不得進入對外
+  description。只有人類可讀的論文、書籍或公開 URL 會顯示。
 - **固定段獨立成檔**：改一次 CTA 套用全部，不重生 40 支文案。
 - hook 由 LLM（Claude session，吃 `data/brook/style-profiles-fable5/`
   voice profile）代筆——Stage 6 平台文案在 LLM 代筆邊界內
@@ -39,6 +40,16 @@ _AI_SLOP_PATTERNS = (
     re.compile(r"這一段會"),
     re.compile(r"帶你看"),
     re.compile(r"深入探討"),
+)
+_HOOK_MIN_CHARS = 180
+_HOOK_MAX_CHARS = 320
+_PUBLIC_URL_PATTERN = re.compile(r"^https?://(?!localhost(?:[:/]|$)|127\.)", re.I)
+_INTERNAL_CITATION_PATTERNS = (
+    re.compile(r"(?:^|[/\\])(?:highlights|attachments|kb|data|cache)(?:[/\\]|$)", re.I),
+    re.compile(r"\.(?:srt|vtt|json|ya?ml|txt|pdf|docx?)(?:#|$)", re.I),
+    re.compile(r"(?:^|\s)transcript@", re.I),
+    re.compile(r"#[0-9]{2}:[0-9]{2}(?::[0-9]{2})?(?:[.,][0-9]{3})?"),
+    re.compile(r"^[a-z]:[/\\]", re.I),
 )
 
 
@@ -66,12 +77,35 @@ def chapters_from_broll(broll_items: list[dict]) -> list[tuple[float, str]]:
     return [(0.0, "開場")] + marks
 
 
+def public_citations(citations: list[object]) -> list[str]:
+    """Keep human-readable public sources; leave internal evidence as provenance.
+
+    Packaging historically used one string list for both concepts.  Filtering here is
+    deliberately conservative: an uncertain path is omitted from public copy, while
+    the original package record remains untouched for internal review.
+    """
+    public: list[str] = []
+    for value in citations:
+        citation = str(value).strip()
+        if not citation:
+            continue
+        if _PUBLIC_URL_PATTERN.match(citation):
+            if citation not in public:
+                public.append(citation)
+            continue
+        if any(pattern.search(citation) for pattern in _INTERNAL_CITATION_PATTERNS):
+            continue
+        if citation not in public:
+            public.append(citation)
+    return public
+
+
 def load_citations(packages: dict, cut_id: str) -> list[str]:
-    """packaging 交接檔的 citations（ADR-054 §7：上游已從 brandlens JSON 搬好）。"""
+    """Return only public citations from the packaging handoff."""
     cut = next((c for c in packages.get("cuts", []) if c.get("cut_id") == cut_id), None)
     if cut is None:
         raise ValueError(f"{cut_id} 不在 packages.json——packaging 段還沒跑這支")
-    return list(cut.get("citations") or [])
+    return public_citations(list(cut.get("citations") or []))
 
 
 def chosen_package(packages: dict, approval: dict, cut_id: str) -> dict:
@@ -117,21 +151,31 @@ def build_description(
     blocks = [hook.strip()]
     if chapters:
         blocks.append("\n".join(f"⏱ {fmt_ts(t)} {title}" for t, title in chapters))
-    if citations:
-        blocks.append("本集引用：\n" + "\n".join(f"・{c}" for c in citations))
+    visible_citations = public_citations(list(citations))
+    if visible_citations:
+        blocks.append("本集引用：\n" + "\n".join(f"・{c}" for c in visible_citations))
     if footer.strip():
         blocks.append(footer.strip())
     return "\n\n".join(b for b in blocks if b)
 
 
 def validate_description_hook(hook: str) -> str:
-    """Reject empty or templated hooks before they enter the editable Release draft."""
+    """Enforce the compact 1–2 paragraph public-copy contract."""
     cleaned = hook.strip()
     if not cleaned:
         raise ValueError("description hook 不可為空")
     matches = [pattern.pattern for pattern in _AI_SLOP_PATTERNS if pattern.search(cleaned)]
     if matches:
         raise ValueError(f"description hook 命中 AI slop：{', '.join(matches)}")
+    paragraphs = [part.strip() for part in re.split(r"\n\s*\n", cleaned) if part.strip()]
+    if not 1 <= len(paragraphs) <= 2:
+        raise ValueError("description hook 必須是 1–2 個短段落")
+    char_count = len(re.sub(r"\s+", "", cleaned))
+    if not _HOOK_MIN_CHARS <= char_count <= _HOOK_MAX_CHARS:
+        raise ValueError(
+            f"description hook 需約 200–300 字（目前 {char_count} 字；"
+            f"允許 {_HOOK_MIN_CHARS}–{_HOOK_MAX_CHARS}）"
+        )
     return cleaned
 
 
@@ -151,10 +195,11 @@ def build_description_prompt(
     transcript = srt_files[-1].read_text(encoding="utf-8")[:12000]
     chapter_text = "、".join(title for _, title in chapters) or "（無章節）"
     citation_text = "；".join(citations) or "（無引用）"
-    return f"""請替 YouTube 長 highlight 寫 description 最前面的 2–3 個短段落。
+    return f"""請替 YouTube 長 highlight 寫 description 最前面的 1–2 個短段落。
 
 規則：
 - 用繁體中文、第一人稱、口語但精確；直接說這支影片談了什麼，以及觀眾為什麼值得看。
+- hook 總長 200–300 個繁體中文字（不含空白），最多兩段；每段只推進一件事。
 - 不要重複標題，不要虛構逐字稿沒有的內容，不要下醫療承諾。
 - 禁用「不是 X，而是 Y」「不只 X，更是 Y」「這一段會」「帶你看」「深入探討」。
 - 只輸出 hook 本文，不要標題、條列、Markdown 或 CTA。固定 CTA 由程式另外接上。

@@ -24,6 +24,9 @@ Chrome／hyperframes／LINE Seed 字型，那些只在桌機（ADR-054 D11：VPS
 手動跑：
     python scripts/render_watcher.py --once      # 掃一輪就結束（測試用）
     python scripts/render_watcher.py             # 常駐
+    python scripts/render_watcher.py --render-requests-only `
+      --episode-slug 20260805-linzhichen --cut-id value-L01 --package-rank 1
+        # 只 render 指定 Long package，不消耗其他 revision / initial packaging job
 """
 
 from __future__ import annotations
@@ -102,7 +105,9 @@ def load_state(path: Path) -> dict:
 
 def save_state(path: Path, state: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    temp.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temp.replace(path)
 
 
 def pending_requests(vault: Path, state: dict) -> list[dict]:
@@ -170,6 +175,23 @@ def pending_requests(vault: Path, state: dict) -> list[dict]:
                 }
             )
     return out
+
+
+def filter_render_requests(
+    jobs: list[dict],
+    *,
+    episode_slug: str | None = None,
+    cut_id: str | None = None,
+    package_rank: int | None = None,
+) -> list[dict]:
+    """Apply exact optional CLI scope to render-request jobs only."""
+    return [
+        job
+        for job in jobs
+        if (episode_slug is None or job.get("slug") == episode_slug)
+        and (cut_id is None or job.get("cut_id") == cut_id)
+        and (package_rank is None or job.get("package_rank") == package_rank)
+    ]
 
 
 def pending_revision_jobs(vault: Path) -> list[dict]:
@@ -933,37 +955,69 @@ def render_one(job: dict, state: dict, state_path: Path, log_path: Path | None) 
         )
         state[job["key"]] = {
             "requested_at": job["req"]["requested_at"],
+            "status": "failed",
+            "rendered_at": datetime.now(timezone.utc).isoformat(),
+            "ok": False,
             "last_error": "packaging dir not found",
         }
         save_state(state_path, state)
         return False
 
+    started_at = datetime.now(timezone.utc).isoformat()
+    state[job["key"]] = {
+        "requested_at": job["req"]["requested_at"],
+        "status": "running",
+        "started_at": started_at,
+        "rendered_at": None,
+        "ok": None,
+        "last_error": None,
+    }
+    save_state(state_path, state)
     _log(f"RENDER {slug}/{cut_id} 大字={job['req'].get('big_text')} → {packaging_dir}", log_path)
-    proc = subprocess.run(
-        [
-            sys.executable,
-            str(RENDER_REQUEST),
-            "--episode-slug",
-            slug,
-            "--packaging-dir",
-            str(packaging_dir),
-            "--cut-id",
-            cut_id,
-        ]
-        + (["--package-rank", str(job["package_rank"])] if job.get("package_rank") else []),
-        cwd=str(_REPO),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=1800,
-    )
+    try:
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(RENDER_REQUEST),
+                "--episode-slug",
+                slug,
+                "--packaging-dir",
+                str(packaging_dir),
+                "--cut-id",
+                cut_id,
+            ]
+            + (
+                ["--package-rank", str(job["package_rank"])]
+                if job.get("package_rank")
+                else []
+            ),
+            cwd=str(_REPO),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=1800,
+        )
+    except Exception as exc:
+        state[job["key"]] = {
+            "requested_at": job["req"]["requested_at"],
+            "status": "failed",
+            "started_at": started_at,
+            "rendered_at": datetime.now(timezone.utc).isoformat(),
+            "ok": False,
+            "last_error": str(exc)[-500:],
+        }
+        save_state(state_path, state)
+        _log(f"FAIL {slug}/{cut_id}: {exc}", log_path)
+        return False
     tail = (proc.stdout or proc.stderr or "").strip().splitlines()
     for line in tail[-6:]:
         _log(f"  {line}", log_path)
     ok = proc.returncode == 0
     state[job["key"]] = {
         "requested_at": job["req"]["requested_at"],
+        "status": "done" if ok else "failed",
+        "started_at": started_at,
         "rendered_at": datetime.now(timezone.utc).isoformat(),
         "ok": ok,
         "last_error": None if ok else (proc.stderr or "")[-500:],
@@ -977,6 +1031,19 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--interval", type=float, default=5.0, help="掃描間隔秒數")
     ap.add_argument("--once", action="store_true", help="掃一輪就結束（測試用）")
+    ap.add_argument(
+        "--render-requests-only",
+        action="store_true",
+        help="只處理存配方 render request；跳過 revision 與 initial packaging jobs",
+    )
+    ap.add_argument("--episode-slug", help="只處理完全相符 episode slug 的 render request")
+    ap.add_argument("--cut-id", help="只處理完全相符 cut id 的 render request")
+    ap.add_argument(
+        "--package-rank",
+        type=int,
+        choices=(1, 2, 3),
+        help="只處理完全相符 package rank 的 render request",
+    )
     ap.add_argument("--log", type=Path, default=_REPO / "logs" / "render-watcher.log")
     ap.add_argument(
         "--state",
@@ -1006,12 +1073,20 @@ def main() -> int:
 
     while True:
         state = load_state(args.state)
-        for revision in pending_revision_jobs(vault):
-            run_revision_job(revision, log_path=args.log)
-        for job in pending_requests(vault, state):
+        if not args.render_requests_only:
+            for revision in pending_revision_jobs(vault):
+                run_revision_job(revision, log_path=args.log)
+        render_jobs = filter_render_requests(
+            pending_requests(vault, state),
+            episode_slug=args.episode_slug,
+            cut_id=args.cut_id,
+            package_rank=args.package_rank,
+        )
+        for job in render_jobs:
             render_one(job, state, args.state, args.log)
-        for packaging_job in pending_packaging_jobs(vault):
-            run_packaging_job(packaging_job, log_path=args.log)
+        if not args.render_requests_only:
+            for packaging_job in pending_packaging_jobs(vault):
+                run_packaging_job(packaging_job, log_path=args.log)
         if args.once:
             return 0
         time.sleep(args.interval)

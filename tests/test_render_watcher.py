@@ -20,11 +20,14 @@ from scripts.render_watcher import (
     _validate_full_episode_layout,
     dispatch_packaging_agent,
     dispatch_revision_agent,
+    filter_render_requests,
     find_packaging_dir,
     load_state,
+    main,
     pending_packaging_jobs,
     pending_requests,
     pending_revision_jobs,
+    render_one,
     run_packaging_job,
     run_revision_job,
     save_state,
@@ -91,6 +94,73 @@ def test_cut_without_request_is_ignored(vault):
     assert pending_requests(vault, {}) == []
 
 
+def test_render_one_persists_running_before_subprocess_and_done_after(
+    monkeypatch, tmp_path
+):
+    state_path = tmp_path / "state.json"
+    working = tmp_path / "working"
+    working.mkdir()
+    state: dict = {}
+    requested_at = "2026-08-27T13:17:07+00:00"
+    job = {
+        "slug": "episode-slug",
+        "episode": "episode name",
+        "cut_id": "value-L01",
+        "package_rank": 1,
+        "key": "episode-slug/value-L01/r1",
+        "req": {"requested_at": requested_at, "big_text": []},
+    }
+
+    monkeypatch.setattr(
+        "scripts.render_watcher.find_packaging_dir", lambda *args, **kwargs: working
+    )
+
+    def fake_run(*args, **kwargs):
+        live = json.loads(state_path.read_text(encoding="utf-8"))[job["key"]]
+        assert live["requested_at"] == requested_at
+        assert live["status"] == "running"
+        assert live["started_at"]
+        assert live["last_error"] is None
+        return SimpleNamespace(returncode=0, stdout="rendered", stderr="")
+
+    monkeypatch.setattr("scripts.render_watcher.subprocess.run", fake_run)
+
+    assert render_one(job, state, state_path, None)
+    terminal = json.loads(state_path.read_text(encoding="utf-8"))[job["key"]]
+    assert terminal["status"] == "done"
+    assert terminal["rendered_at"]
+    assert terminal["last_error"] is None
+
+
+def test_render_one_persists_failed_terminal_state(monkeypatch, tmp_path):
+    state_path = tmp_path / "state.json"
+    working = tmp_path / "working"
+    working.mkdir()
+    state: dict = {}
+    job = {
+        "slug": "episode-slug",
+        "episode": "episode name",
+        "cut_id": "value-L01",
+        "package_rank": 2,
+        "key": "episode-slug/value-L01/r2",
+        "req": {"requested_at": "2026-08-27T13:18:00+00:00", "big_text": []},
+    }
+    monkeypatch.setattr(
+        "scripts.render_watcher.find_packaging_dir", lambda *args, **kwargs: working
+    )
+    monkeypatch.setattr(
+        "scripts.render_watcher.subprocess.run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=7, stdout="", stderr="render failed visibly"
+        ),
+    )
+
+    assert not render_one(job, state, state_path, None)
+    terminal = json.loads(state_path.read_text(encoding="utf-8"))[job["key"]]
+    assert terminal["status"] == "failed"
+    assert "render failed visibly" in terminal["last_error"]
+
+
 def test_per_package_recipes_are_queued_independently(vault):
     root = vault / "Attachments" / "packaging" / "20260721-zhengguowei"
     packages = {
@@ -119,6 +189,158 @@ def test_per_package_recipes_are_queued_independently(vault):
     assert len(jobs) == 1
     assert jobs[0]["package_rank"] == 3
     assert jobs[0]["key"] == "20260721-zhengguowei/full/r3"
+
+
+def test_render_request_filters_are_exact_and_default_to_all():
+    jobs = [
+        {
+            "slug": "20260805-linzhichen",
+            "cut_id": "full",
+            "package_rank": 3,
+            "key": "20260805-linzhichen/full/r3",
+        },
+        {
+            "slug": "20260805-linzhichen",
+            "cut_id": "value-L01",
+            "package_rank": 1,
+            "key": "20260805-linzhichen/value-L01/r1",
+        },
+        {
+            "slug": "another-episode",
+            "cut_id": "value-L01",
+            "package_rank": 1,
+            "key": "another-episode/value-L01/r1",
+        },
+    ]
+
+    assert filter_render_requests(jobs) == jobs
+    assert [
+        job["key"]
+        for job in filter_render_requests(
+            jobs,
+            episode_slug="20260805-linzhichen",
+            cut_id="value-L01",
+            package_rank=1,
+        )
+    ] == ["20260805-linzhichen/value-L01/r1"]
+    assert (
+        filter_render_requests(
+            jobs,
+            episode_slug="20260805-linzhichen",
+            cut_id="value-L01",
+            package_rank=2,
+        )
+        == []
+    )
+
+
+def test_render_requests_only_cli_skips_revision_and_initial_jobs(
+    monkeypatch, tmp_path
+):
+    calls: list[tuple[str, str]] = []
+    render_jobs = [
+        {
+            "slug": "20260805-linzhichen",
+            "cut_id": "full",
+            "package_rank": 3,
+            "key": "20260805-linzhichen/full/r3",
+        },
+        {
+            "slug": "20260805-linzhichen",
+            "cut_id": "value-L01",
+            "package_rank": 1,
+            "key": "20260805-linzhichen/value-L01/r1",
+        },
+    ]
+    revision = {"key": "revision-job"}
+    initial = {"key": "initial-packaging-job"}
+    monkeypatch.setattr("scripts.render_watcher.get_vault_path", lambda: tmp_path)
+    monkeypatch.setattr("scripts.render_watcher.pending_revision_jobs", lambda vault: [revision])
+    monkeypatch.setattr(
+        "scripts.render_watcher.pending_requests", lambda vault, state: render_jobs
+    )
+    monkeypatch.setattr("scripts.render_watcher.pending_packaging_jobs", lambda vault: [initial])
+    monkeypatch.setattr(
+        "scripts.render_watcher.run_revision_job",
+        lambda job, log_path=None: calls.append(("revision", job["key"])),
+    )
+    monkeypatch.setattr(
+        "scripts.render_watcher.render_one",
+        lambda job, state, state_path, log_path: calls.append(("render", job["key"])),
+    )
+    monkeypatch.setattr(
+        "scripts.render_watcher.run_packaging_job",
+        lambda job, log_path=None: calls.append(("initial", job["key"])),
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "render_watcher.py",
+            "--once",
+            "--render-requests-only",
+            "--episode-slug",
+            "20260805-linzhichen",
+            "--cut-id",
+            "value-L01",
+            "--package-rank",
+            "1",
+            "--log",
+            str(tmp_path / "watcher.log"),
+            "--state",
+            str(tmp_path / "state.json"),
+        ],
+    )
+
+    assert main() == 0
+    assert calls == [("render", "20260805-linzhichen/value-L01/r1")]
+
+
+def test_default_cli_still_runs_all_three_job_classes(monkeypatch, tmp_path):
+    calls: list[str] = []
+    monkeypatch.setattr("scripts.render_watcher.get_vault_path", lambda: tmp_path)
+    monkeypatch.setattr(
+        "scripts.render_watcher.pending_revision_jobs", lambda vault: [{"key": "revision"}]
+    )
+    monkeypatch.setattr(
+        "scripts.render_watcher.pending_requests",
+        lambda vault, state: [
+            {
+                "slug": "episode",
+                "cut_id": "value-L01",
+                "package_rank": 1,
+                "key": "render",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        "scripts.render_watcher.pending_packaging_jobs", lambda vault: [{"key": "initial"}]
+    )
+    monkeypatch.setattr(
+        "scripts.render_watcher.run_revision_job",
+        lambda job, log_path=None: calls.append(job["key"]),
+    )
+    monkeypatch.setattr(
+        "scripts.render_watcher.render_one",
+        lambda job, state, state_path, log_path: calls.append(job["key"]),
+    )
+    monkeypatch.setattr(
+        "scripts.render_watcher.run_packaging_job",
+        lambda job, log_path=None: calls.append(job["key"]),
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "render_watcher.py",
+            "--once",
+            "--log",
+            str(tmp_path / "watcher.log"),
+            "--state",
+            str(tmp_path / "state.json"),
+        ],
+    )
+
+    assert main() == 0
+    assert calls == ["revision", "render", "initial"]
 
 
 def test_queued_rejection_is_a_pending_agent_revision(vault):

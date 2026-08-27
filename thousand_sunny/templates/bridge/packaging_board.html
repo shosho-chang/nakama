@@ -357,7 +357,8 @@
           <fieldset class="pkg-stage-set">
             <legend class="sho-mono-up">排版：拖曳移動、滾輪縮放（或直接改數字）</legend>
             <div class="pkg-stage" data-cut="{{ cut.cut_id }}">
-              <div class="pkg-stage-inner">
+              <div class="pkg-stage-inner"
+                   data-selected-role="{{ 'center' if req and req.composition == 'thumbnail_reaction' else 'host' }}">
                 <img class="st-bg" src="/bridge/thumbnail/still-asset/bg" alt="">
                 <img class="st-book" alt="書封背景"
                      {% if req and req.book_cover %}src="/bridge/packaging/{{ episode_slug }}/recipe-asset/{{ req.book_cover.split('/')[-1] }}"{% endif %}>
@@ -382,9 +383,35 @@
                   <div class="st-credit"></div>
                 </div>
                 <img class="st-logo" src="/bridge/thumbnail/still-asset/logo" alt="">
+                <span class="st-grid-line st-grid-line--v1" aria-hidden="true"></span>
+                <span class="st-grid-line st-grid-line--v2" aria-hidden="true"></span>
+                <span class="st-grid-line st-grid-line--h1" aria-hidden="true"></span>
+                <span class="st-grid-line st-grid-line--h2" aria-hidden="true"></span>
               </div>
             </div>
             <div class="pkg-stage-ctl">
+              <div class="pkg-layer-controls" aria-label="選擇排版圖層">
+                <span class="sho-mono-up">調整圖層</span>
+                <button class="sho-btn sho-btn--ghost pkg-layer-button" type="button"
+                        data-layer-select="center"
+                        {% if not req or req.composition != 'thumbnail_reaction' %}disabled{% endif %}
+                        aria-pressed="{{ 'true' if req and req.composition == 'thumbnail_reaction' else 'false' }}">
+                  橘框
+                </button>
+                <button class="sho-btn sho-btn--ghost pkg-layer-button" type="button"
+                        data-layer-select="host"
+                        aria-pressed="{{ 'false' if req and req.composition == 'thumbnail_reaction' else 'true' }}">
+                  修修
+                </button>
+                <button class="sho-btn sho-btn--ghost pkg-layer-button" type="button"
+                        data-layer-select="guest" aria-pressed="false">來賓</button>
+                <span class="pkg-layer-scale" role="group" aria-label="調整選定圖層大小">
+                  <button class="sho-btn sho-btn--ghost" type="button" data-layer-scale="down"
+                          aria-label="縮小選定圖層">− 縮小</button>
+                  <button class="sho-btn sho-btn--ghost" type="button" data-layer-scale="up"
+                          aria-label="放大選定圖層">＋ 放大</button>
+                </span>
+              </div>
               <label class="pkg-stage-mode">
                 <input type="checkbox" name="geometry_mode" value="manual"
                        {% if req and req.geometry_manual %}checked{% endif %}>
@@ -431,6 +458,19 @@
           <div class="pkg-actions">
             <button class="sho-btn" type="submit">存配方（我再 render）</button>
           </div>
+          <section class="pkg-render-progress"
+                   aria-live="polite"
+                   data-render-status-url="{% if req %}/bridge/packaging/{{ episode_slug }}/render-status/{{ cut.cut_id }}/{{ editor.pkg.title_rank }}?requested_at={{ req.requested_at.isoformat() | urlencode }}{% endif %}"
+                   data-package-rank="{{ editor.pkg.title_rank if editor.pkg else 1 }}"
+                   {% if not req %}hidden{% endif %}>
+            <div class="pkg-render-progress-head">
+              <strong class="pkg-render-progress-title">封面製作進度</strong>
+              <span class="sho-mono pkg-render-progress-state">等待查詢</span>
+            </div>
+            <div class="pkg-render-progress-track" role="progressbar"
+                 aria-label="封面 Render 進度"></div>
+            <p class="sho-mono pkg-render-progress-message">配方已保存後，這裡會顯示桌面 Render 狀態。</p>
+          </section>
           {% if req %}
           <p class="sho-mono pkg-title-orig">
             目前配方：#{{ req.title_rank }} · 大字「{{ req.big_text | join('／') }}」·
@@ -492,6 +532,7 @@
                    {% if approval and approval.approved and approval.primary_package == item.pkg.title_rank %}checked{% endif %}
                    {% if not approval or not approval.approved %}{% if loop.first %}checked{% endif %}{% endif %}>
             <img src="/bridge/packaging/{{ episode_slug }}/thumbnail/{{ item.pkg.thumbnail_png.split('/')[-1] }}"
+                 data-package-thumbnail-rank="{{ item.pkg.title_rank }}"
                  alt="package {{ item.pkg.title_rank }} 封面：{{ item.title.text if item.title else '' }}" loading="lazy">
             <div class="pkg-card-title">{{ item.title.text if item.title else '（缺 rank ' ~ item.pkg.title_rank ~ ' 標題）' }}</div>
             <div class="sho-mono pkg-card-meta">#{{ item.pkg.title_rank }} · {{ item.pkg.thumb_archetype_id }} · {{ item.pkg.joint_pairing_id }}</div>
@@ -743,7 +784,7 @@
   }
   .st-center:active { cursor: grabbing; }
   .st-center-handle {
-    position: absolute; left: var(--center-x, 50%); top: var(--center-y, 50%);
+    display: none; position: absolute; left: var(--center-x, 50%); top: var(--center-y, 50%);
     z-index: 6; transform: translate(-50%, -50%); cursor: grab;
     border: 1px solid var(--sho-accent); border-radius: var(--sho-r-1);
     padding: var(--sho-s-1) var(--sho-s-2); background: var(--sho-bg);
@@ -751,7 +792,7 @@
   }
   .st-center-handle:active { cursor: grabbing; }
   .st-center-handle:focus-visible { outline: none; box-shadow: var(--sho-focus); }
-  .st-center-frame { position: absolute; inset: 0; background: var(--sho-accent, #F37425); }
+  .st-center-frame { position: absolute; inset: 0; background: var(--sho-accent); }
   .st-center-frame, .st-center-image {
     clip-path: polygon(0% 0%, 100% 3.5%, 100% 100%, 0% 98.8%);
   }
@@ -764,6 +805,10 @@
     filter: drop-shadow(0 0 36px var(--glow)) drop-shadow(0 0 90px var(--glow-soft));
   }
   .st-person:active { cursor: grabbing; }
+  .st-adjustable { pointer-events: none; }
+  .pkg-stage-inner[data-selected-role="center"] .st-center,
+  .pkg-stage-inner[data-selected-role="host"] .st-host,
+  .pkg-stage-inner[data-selected-role="guest"] .st-guest { pointer-events: auto; }
   .st-host {
     left: var(--host-x, -2%); bottom: var(--host-y, 0%); height: var(--host-h, 108%);
     object-position: bottom left;
@@ -797,7 +842,26 @@
       "Noto Sans TC", "Microsoft JhengHei", sans-serif;
   }
   .st-logo { position: absolute; left: 52px; bottom: 52px; height: 92px; z-index: 6; }
+  .st-grid-line {
+    position: absolute; z-index: 9; pointer-events: none;
+    background: color-mix(in oklch, var(--sho-bg) 55%, transparent);
+  }
+  .st-grid-line--v1, .st-grid-line--v2 { top: 0; bottom: 0; width: 1px; }
+  .st-grid-line--v1 { left: 33.333%; }
+  .st-grid-line--v2 { left: 66.666%; }
+  .st-grid-line--h1, .st-grid-line--h2 { left: 0; right: 0; height: 1px; }
+  .st-grid-line--h1 { top: 33.333%; }
+  .st-grid-line--h2 { top: 66.666%; }
   .pkg-stage-ctl { margin-top: var(--sho-s-3); }
+  .pkg-layer-controls {
+    display: flex; align-items: center; flex-wrap: wrap; gap: var(--sho-s-2);
+    margin-bottom: var(--sho-s-3); padding: var(--sho-s-2);
+    border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  }
+  .pkg-layer-button[aria-pressed="true"] {
+    border-color: var(--sho-accent); background: var(--sho-accent-soft);
+  }
+  .pkg-layer-scale { display: flex; gap: var(--sho-s-2); margin-left: auto; }
   .pkg-stage-mode { display: flex; gap: var(--sho-s-2); align-items: center; }
   .pkg-stage-nums {
     display: grid; grid-template-columns: repeat(6, 1fr);
@@ -805,7 +869,34 @@
   }
   .pkg-stage-center-nums { grid-template-columns: repeat(4, 1fr); }
   .pkg-stage-hint { margin: var(--sho-s-2) 0 0; color: var(--sho-muted); }
+  .pkg-render-progress {
+    display: grid; gap: var(--sho-s-2); margin-top: var(--sho-s-3);
+    padding: var(--sho-s-3); border: 1px solid var(--sho-line);
+    border-radius: var(--sho-r-1); background: var(--sho-bg-2);
+  }
+  .pkg-render-progress[hidden] { display: none; }
+  .pkg-render-progress-head { display: flex; justify-content: space-between; gap: var(--sho-s-3); }
+  .pkg-render-progress-state { color: var(--sho-text-2); }
+  .pkg-render-progress-track {
+    position: relative; height: 4px; overflow: hidden;
+    background: var(--sho-line); border-radius: var(--sho-r-pill);
+  }
+  .pkg-render-progress[data-status="queued"] .pkg-render-progress-track::after,
+  .pkg-render-progress[data-status="running"] .pkg-render-progress-track::after {
+    content: ""; position: absolute; inset-block: 0; width: 38%;
+    background: var(--sho-accent); animation: pkg-render-indeterminate 1.4s linear infinite;
+  }
+  .pkg-render-progress[data-status="done"] { border-color: color-mix(in oklch, var(--sho-success) 45%, var(--sho-line)); }
+  .pkg-render-progress[data-status="done"] .pkg-render-progress-track { background: var(--sho-success); }
+  .pkg-render-progress[data-status="failed"] { border-color: color-mix(in oklch, var(--sho-error) 45%, var(--sho-line)); }
+  .pkg-render-progress[data-status="failed"] .pkg-render-progress-message { color: var(--sho-error); }
+  .pkg-render-progress-message { margin: 0; color: var(--sho-text-2); }
+  @keyframes pkg-render-indeterminate { from { transform: translateX(-100%); } to { transform: translateX(265%); } }
+  @media (prefers-reduced-motion: reduce) {
+    .pkg-render-progress-track::after { animation: none !important; left: 31%; }
+  }
   @media (max-width: 720px) { .pkg-stage-nums { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 720px) { .pkg-layer-scale { margin-left: 0; width: 100%; } }
 </style>
 <script>
   document.addEventListener("click", (e) => {
@@ -1019,6 +1110,46 @@
     stage.querySelector(".st-text").hidden = reaction;
     if (reaction) stage.querySelector(".st-book").removeAttribute("src");
     if (reaction && centerUrl) center.querySelector(".st-center-image").src = centerUrl;
+    const centerButton = form.querySelector('[data-layer-select="center"]');
+    if (centerButton) centerButton.disabled = !reaction;
+    const inner = stage.querySelector(".pkg-stage-inner");
+    if (!reaction && inner.dataset.selectedRole === "center") selectStageLayer(stage, "host");
+  }
+
+  function selectStageLayer(stage, role) {
+    const form = stage.closest("form");
+    const button = form.querySelector(`[data-layer-select="${role}"]`);
+    if (!button || button.disabled) return;
+    stage.querySelector(".pkg-stage-inner").dataset.selectedRole = role;
+    for (const candidate of form.querySelectorAll("[data-layer-select]")) {
+      candidate.setAttribute("aria-pressed", String(candidate === button));
+    }
+  }
+
+  function scaleStageLayer(stage, direction) {
+    const role = stage.querySelector(".pkg-stage-inner").dataset.selectedRole || "host";
+    if (role === "center") {
+      const center = centerInputs(stage);
+      const value = (key) => center[key].value === "" ? CENTER_DEFAULT[key] : parseFloat(center[key].value);
+      const factor = direction === "up" ? 1.04 : 0.96;
+      const x = value("x");
+      const y = value("y");
+      const maxWidth = 2 * Math.min(x, 100 - x);
+      const nextWidth = Math.min(maxWidth, Math.max(50, value("width") * factor));
+      const maxHeight = 720 * 2 * Math.min(y, 100 - y) / 100;
+      const nextHeight = Math.min(maxHeight, nextWidth * 12.8 - 1,
+        Math.max(120, value("height") * factor));
+      center.width.value = nextWidth.toFixed(2);
+      center.height.value = nextHeight.toFixed(2);
+    } else {
+      const inputs = stageInputs(stage);
+      const key = role + "_height";
+      const current = inputs[key].value === "" ? STAGE_DEFAULT[key] : parseFloat(inputs[key].value);
+      inputs[key].value = Math.min(400, Math.max(20,
+        current + (direction === "up" ? 5 : -5))).toFixed(2);
+    }
+    applyStage(stage);
+    markManual(stage);
   }
 
   function syncStages() {
@@ -1040,6 +1171,7 @@
     if (!layer) return;
     const stage = layer.closest(".pkg-stage");
     const role = layer.dataset.role;
+    if (stage.querySelector(".pkg-stage-inner").dataset.selectedRole !== role) return;
     if (role === "center") {
       const center = centerInputs(stage);
       const num = (k) => center[k].value === "" ? CENTER_DEFAULT[k] : parseFloat(center[k].value);
@@ -1133,6 +1265,19 @@
     const stage = e.target.closest("form")?.querySelector(".pkg-stage");
     if (stage) syncStageFaces(stage);
   });
+  document.addEventListener("click", (e) => {
+    const layerButton = e.target.closest("[data-layer-select]");
+    if (layerButton) {
+      const stage = layerButton.closest("form")?.querySelector(".pkg-stage");
+      if (stage) selectStageLayer(stage, layerButton.dataset.layerSelect);
+      return;
+    }
+    const scaleButton = e.target.closest("[data-layer-scale]");
+    if (scaleButton) {
+      const stage = scaleButton.closest("form")?.querySelector(".pkg-stage");
+      if (stage) scaleStageLayer(stage, scaleButton.dataset.layerScale);
+    }
+  });
   // <details> 收合時 clientWidth 是 0，展開才量得到縮放比
   document.addEventListener("toggle", (e) => {
     if (e.target.tagName === "DETAILS" && e.target.open) syncStages();
@@ -1144,6 +1289,65 @@
   for (const tab of document.querySelectorAll('.pkg-recipe-tab[aria-selected="true"]')) {
     loadPackageRecipe(tab);
   }
+
+  function showRenderState(panel, payload) {
+    panel.dataset.status = payload.status;
+    panel.hidden = false;
+    panel.querySelector(".pkg-render-progress-state").textContent = {
+      queued: "QUEUED", running: "RUNNING", done: "DONE", failed: "FAILED",
+    }[payload.status] || "UNKNOWN";
+    const message = panel.querySelector(".pkg-render-progress-message");
+    message.textContent = payload.error ? `${payload.message}：${payload.error}` : payload.message;
+    const bar = panel.querySelector('[role="progressbar"]');
+    bar.setAttribute("aria-valuetext", payload.message);
+    if (payload.status === "done" && payload.thumbnail_url) {
+      const rank = panel.dataset.packageRank;
+      const image = document.querySelector(`[data-package-thumbnail-rank="${rank}"]`);
+      if (image) image.src = payload.thumbnail_url;
+      message.textContent = `${payload.message}；下方 Package #${rank} 已更新。`;
+    }
+  }
+
+  async function pollRenderStatus(panel) {
+    const url = panel.dataset.renderStatusUrl;
+    if (!url) return;
+    try {
+      const response = await fetch(url, { cache: "no-store", credentials: "same-origin" });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        showRenderState(panel, {
+          status: "failed",
+          message: "無法確認這份配方的 render 狀態",
+          error: body.detail || `HTTP ${response.status}`,
+        });
+        return;
+      }
+      const payload = await response.json();
+      showRenderState(panel, payload);
+      if (payload.status === "queued" || payload.status === "running") {
+        window.setTimeout(() => pollRenderStatus(panel), 1500);
+      }
+    } catch (_) {
+      showRenderState(panel, { status: "queued", message: "Bridge 暫時連線中斷，正在重試" });
+      window.setTimeout(() => pollRenderStatus(panel), 2500);
+    }
+  }
+
+  for (const panel of document.querySelectorAll(".pkg-render-progress[data-render-status-url]")) {
+    if (panel.dataset.renderStatusUrl) pollRenderStatus(panel);
+  }
+
+  document.addEventListener("submit", (event) => {
+    const form = event.target.closest(".pkg-compose-form");
+    if (!form) return;
+    const button = form.querySelector('button[type="submit"]');
+    if (button) {
+      button.disabled = true;
+      button.textContent = "正在保存配方…";
+    }
+    const panel = form.querySelector(".pkg-render-progress");
+    if (panel) showRenderState(panel, { status: "queued", message: "正在保存配方…" });
+  });
 
 </script>
 {% if release_pending %}
