@@ -11,11 +11,86 @@ import pytest
 from agents.brook.script_video.highlight_broll import (
     BrollContractError,
     build_broll_receipt,
+    collect_visual_recipe_projections,
     parse_provenance_acquired_at,
     verify_broll_receipt,
 )
 
 MASTER = {"contract": "podcast-editorial-master-v1", "content_hash": "a" * 64}
+
+
+def _audited_title(*, show_sec: float) -> dict:
+    render_spec = {
+        "component": "punch_card",
+        "render_params": {
+            "text": "真正的教育",
+            "tier": 2,
+            "style": "paper",
+            "pos_y": 0.5,
+            "show_sec": show_sec,
+        },
+        "render_spec_sha256": "b" * 64,
+    }
+    projection = {
+        "materialization_id": "title-001-s01",
+        "event_id": "title-001",
+        "director_intent_sha256": "c" * 64,
+        "target_lane": "title_track3",
+        "implementation_kind": "supporting_title",
+        "mode": "hyperframes",
+        "cue_ids": [1],
+        "t0": 26.64,
+        "t1": 29.2,
+        "quote": "真正的教育",
+        "source_range": {"start_sec": 0.0, "end_sec": show_sec},
+        "on_screen_text": "真正的教育",
+        "media": {"path": "highlights/rendered/title-001.mp4"},
+        "provenance": {"source": "dp"},
+        "render_spec": render_spec,
+    }
+    return {
+        "tier": 2,
+        "t0": 26.64,
+        "t1": 29.2,
+        "text": "真正的教育",
+        "style": "paper",
+        "pos_y": 0.5,
+        "source_range": projection["source_range"],
+        "media_path": projection["media"]["path"],
+        "provenance": projection["provenance"],
+        "render_spec": render_spec,
+        "visual_materialization": projection,
+    }
+
+
+def test_audited_title_accepts_decimal_duration_equal_to_timeline_subtraction(
+    tmp_path: Path,
+) -> None:
+    title = _audited_title(show_sec=2.56)
+
+    projections, broll = collect_visual_recipe_projections(
+        tmp_path,
+        "value-L02",
+        broll_items=[],
+        title_items=[title],
+    )
+
+    assert projections == [title["visual_materialization"]]
+    assert broll == []
+
+
+def test_audited_title_rejects_show_duration_more_than_one_frame_from_timeline(
+    tmp_path: Path,
+) -> None:
+    title = _audited_title(show_sec=2.60)
+
+    with pytest.raises(BrollContractError, match=r"Title item 0\.show_sec"):
+        collect_visual_recipe_projections(
+            tmp_path,
+            "value-L02",
+            broll_items=[],
+            title_items=[title],
+        )
 
 
 def test_provenance_timestamp_parser_is_python310_safe_and_timezone_strict() -> None:

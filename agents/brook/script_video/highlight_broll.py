@@ -302,7 +302,7 @@ def _same_number(raw: Any, expected: Any, label: str) -> None:
         or isinstance(expected, bool)
         or not isinstance(expected, (int, float))
         or not math.isfinite(float(raw))
-        or float(raw) != float(expected)
+        or not math.isclose(float(raw), float(expected), rel_tol=0.0, abs_tol=1e-9)
     ):
         raise BrollContractError(f"{label} 與 audited DP materialization 不一致")
 
