@@ -14,37 +14,43 @@ from __future__ import annotations
 from datetime import date, datetime
 
 # 規則版本——任何分數表 / 曲線 / 鍵格式變動都要 bump（格式：YYYY.MM.DD-vN）
-RULE_VERSION = "2026.08.24-v4"
+RULE_VERSION = "2026.08.26-v6"
 
 # ── 分數表（XP 一律 10 的倍數；貝里 = XP ÷ 10，恆為整數）──────────────
+# v6（2026-08-26 修修裁決 A+B）：十年登頂校準——實踐面加值（打卡 10→20、
+# 全勤 200→500、整門課 300→500）＋新設營運貢獻類（社群經理驗證後提報）。
+# 目標：認真實踐＋參與營運 ≈ 7–10 年抵達拉夫德魯；純實踐約 11–12 年。
 XP_TABLE: dict[str, int] = {
     "presence_day": 10,  # 每日在場（PTT 式一天一次；portal ticker 訊號）
-    "checkin_day": 10,  # 挑戰打卡一天（Sanji 判定通過後）
+    "checkin_day": 20,  # 挑戰打卡一天（Sanji 判定通過後）
     "streak_7": 30,  # 連續 7 天獎（當場入袋，斷了重新數、可再得）
-    "full_attendance": 200,  # 全勤獎（賽季結算時發）
+    "full_attendance": 500,  # 全勤獎（賽季結算時發）
     "like_received": 10,  # 貼文被讚（他人驗證；一個讚＝一天登入的心理錨點）
     "comment_received": 30,  # 貼文被留言（同文同人只計一次；寫留言的承諾≈三個讚）
     "bookmark_received": 100,  # 貼文被收藏（最強品質訊號，讚的 10 倍）
     "lesson_completed": 50,  # 完成單課
-    "course_completed": 300,  # 完成整門課
+    "course_completed": 500,  # 完成整門課
     "quiz_passed": 50,  # 通過測驗
+    "event_hosted": 500,  # 主辦實體聚會（共創船長；社群經理成案提報）
+    "session_hosted": 300,  # 主持線上讀書會／共學
+    "event_cohosted": 200,  # 協辦活動（副手）
 }
+
+# 營運貢獻類——提報制：社群經理成案 → 提報 → Sanji 入帳（憲法：他人驗證 ✓）
+OPS_SOURCES = frozenset({"event_hosted", "session_hosted", "event_cohosted"})
 
 # 挑戰榜只計這些來源（榜單 = SUM(xp) WHERE season=本季 AND source IN 挑戰類）
 CHALLENGE_SOURCES = frozenset({"checkin_day", "streak_7", "full_attendance"})
 
-# ── 等級曲線（15 階；門檻 = 生涯里程 XP，只增不減）───────────────────
+# ── 等級曲線（16 階；門檻 = 生涯里程 XP，只增不減）───────────────────
 #
-# 2026-08-24 依實際權重（被讚 10 / 被收藏 100）重新校準，校準器：
-#     python -m agents.sanji.level_curve_sim
+# 2026-08-25 v5：修修裁決插入空島（Lv.8, 3,000）——「空島是關於夢想的故事，
+# 敲響黃金鐘是經典中的經典」。15→16 階、三幕 4/6/6；原門檻一個都沒動、
+# 只新增 3,000 這一格，任何人都不會掉島（等級數字位移向上，島只增不減）。
 #
-# 設計約束（依優先序）：
-#  1. 第一個讚就升 Lv.2——新人當天要拿到第一次回饋（Octalysis 上船期）
-#  2. 分享期（只計被讚／被收藏）一年內每種原型都看得到位移
-#  3. 全經濟開啟後十年，最投入者約 L14–15、潛水型約 L9——曲線仍有空間
+# 校準器：python -m agents.sanji.level_curve_sim
 #
-# ⚠️ 門檻只准調低、永不調高：調高會讓既有成員「掉級」，那是不可逆的信任破壞。
-#    （本次全部低於前一版，故無人掉級。）
+# ⚠️ 門檻只准調低／插入、永不調高：調高會讓既有成員掉島，不可逆的信任破壞。
 LEVEL_THRESHOLDS: list[tuple[int, int]] = [
     (1, 0),
     (2, 10),
@@ -53,46 +59,70 @@ LEVEL_THRESHOLDS: list[tuple[int, int]] = [
     (5, 400),
     (6, 1_000),
     (7, 2_000),
-    (8, 4_000),
-    (9, 7_000),
-    (10, 12_000),
-    (11, 20_000),
-    (12, 32_000),
-    (13, 52_000),
-    (14, 85_000),
-    (15, 150_000),
+    (8, 3_000),
+    (9, 4_000),
+    (10, 7_000),
+    (11, 12_000),
+    (12, 20_000),
+    (13, 32_000),
+    (14, 52_000),
+    (15, 85_000),
+    (16, 150_000),
 ]
 
-# 等級稱號 = 偉大航路上的島（2026-08-24 修修定稿）。
-# 選島規則：海域當幕名（東海／樂園／新世界），每級都是航路上真實地標，照原作
-# 航行順序排；優先選「對草帽夥伴有特殊意義」的島——十位夥伴每人一座：
-#   魯夫=風車村(+拉夫德魯) 香吉士=巴拉蒂(+蛋糕島) 娜美=可可亞西村 布魯克=雙子岬
-#   喬巴=磁鼓島 薇薇=阿拉巴斯坦 佛朗基=水之都 羅賓=司法島 甚平=魚人島
-#   索隆=和之國 烏索普=艾爾巴夫
-# 非角色島只留兩座：顛倒山（入口的坎）、佐烏（千年行走＝持續本身成為地基）。
+# 等級稱號 = 偉大航路上的島（2026-08-24 定稿、08-25 補空島）。
+# 選島規則：海域當幕名、真實地標、原作航行順序；優先「對草帽夥伴有特殊意義」，
+# 空島是唯一的主題例外（夢想——黃金鄉不在天上嗎？然後他敲響了黃金鐘）。
+# 夥伴對映：魯夫=風車村(+拉夫德魯) 香吉士=巴拉蒂(+蛋糕島) 娜美=可可亞西村
+#   布魯克=雙子岬 喬巴=磁鼓島 薇薇=阿拉巴斯坦 佛朗基=水之都 羅賓=司法島
+#   甚平=魚人島 索隆=和之國 烏索普=艾爾巴夫
 LEVEL_LABELS: dict[int, str] = {
     1: "風車村",  # ── 東海（1–4）
     2: "巴拉蒂",
     3: "可可亞西村",
     4: "顛倒山",
-    5: "雙子岬",  # ── 偉大航路・樂園（5–9）
+    5: "雙子岬",  # ── 偉大航路・樂園（5–10）
     6: "磁鼓島",
     7: "阿拉巴斯坦",
-    8: "水之都",
-    9: "司法島",
-    10: "魚人島",  # ── 新世界（10–15）
-    11: "佐烏",
-    12: "蛋糕島",
-    13: "和之國",
-    14: "艾爾巴夫",
-    15: "拉夫德魯",
+    8: "空島",
+    9: "水之都",
+    10: "司法島",
+    11: "魚人島",  # ── 新世界（11–16）
+    12: "佐烏",
+    13: "蛋糕島",
+    14: "和之國",
+    15: "艾爾巴夫",
+    16: "拉夫德魯",
 }
+
+# ── 位階（2026-08-26 修修定稿）：江湖怎麼稱呼你 ─────────────────────
+# 島是位置（16 站站站換），位階是稱呼（整條航路只換七次）。
+# 頂點語意：海賊王＝「這片海上最自由的人」——自由艦隊的終點就是自由本身。
+TIER_OF_LEVEL: dict[int, str] = {
+    5: "超新星",
+    8: "最惡世代",
+    11: "王下七武海",
+    13: "霸王色",
+    14: "傳說船長",
+    15: "四皇",
+    16: "海賊王",
+}
+
+
+def tier_for(level: int) -> str:
+    """等級 → 目前持有的位階（低於雙子岬回空字串——身份「船長」就是全部的稱呼）。"""
+    tier = ""
+    for n, name in sorted(TIER_OF_LEVEL.items()):
+        if level >= n:
+            tier = name
+    return tier
+
 
 # 幕名（海域）。plugin 不用這張表，公告文案與 Sanji 訊息用。
 ACT_OF_LEVEL: dict[int, str] = (
     {n: "東海" for n in range(1, 5)}
-    | {n: "偉大航路・樂園" for n in range(5, 10)}
-    | {n: "新世界" for n in range(10, 16)}
+    | {n: "偉大航路・樂園" for n in range(5, 11)}
+    | {n: "新世界" for n in range(11, 17)}
 )
 
 
@@ -244,7 +274,57 @@ def grant_for_bookmark(row: dict, feed_owner_id: int, *, sanji_user_id: int) -> 
     react_id = int(row.get("id", 0))
     if not react_id:
         return None
-    return _grant(feed_owner_id, "bookmark_received", f"bookmark:react:{react_id}")
+    # reason 帶貼文參照（feed:{id}）——航海日誌按內容彙整靠它歸戶。
+    # 這是 audit 註記不是經濟值，金額與冪等鍵不變，不 bump RULE_VERSION。
+    feed_id = int(row.get("object_id", 0))
+    return _grant(
+        feed_owner_id,
+        "bookmark_received",
+        f"bookmark:react:{react_id}",
+        reason=f"feed:{feed_id}" if feed_id else "",
+    )
+
+
+def grant_for_like_row(row: dict, feed_owner_id: int, *, sanji_user_id: int) -> dict | None:
+    """讚的掃描授予（每日 reactions 掃描；與 hook 路徑**同鍵** ``like:react:{id}``——
+    第一次跑＝歷史認列（2026-08-25 修修裁決），之後＝hook 漏接的安全網。
+    冪等鍵同格式，兩條路永不重複入帳。自讚不計。"""
+    if not feed_owner_id or feed_owner_id == sanji_user_id:
+        return None
+    actor = int(row.get("user_id", 0))
+    if actor and (actor == feed_owner_id or actor == sanji_user_id):
+        return None
+    react_id = int(row.get("id", 0))
+    if not react_id:
+        return None
+    feed_id = int(row.get("object_id", 0))
+    return _grant(
+        feed_owner_id,
+        "like_received",
+        f"like:react:{react_id}",
+        reason=f"feed:{feed_id}" if feed_id else "",
+    )
+
+
+def grant_for_comment_row(row: dict, *, sanji_user_id: int) -> dict | None:
+    """留言的掃描授予（GET /comments 的一列，owner_id 已由 plugin join 好）。
+    與 hook 路徑同鍵 ``comment:{feed_id}:{actor}``——一文一人一次跨歷史與未來
+    都成立。自留、Sanji 的祝賀留言不計；貼文已刪（owner 0）不計。"""
+    owner = int(row.get("owner_id", 0))
+    if not owner or owner == sanji_user_id:
+        return None
+    actor = int(row.get("user_id", 0))
+    if not actor or actor == owner or actor == sanji_user_id:
+        return None
+    feed_id = int(row.get("post_id", 0))
+    if not feed_id:
+        return None
+    return _grant(
+        owner,
+        "comment_received",
+        f"comment:{feed_id}:{actor}",
+        reason=f"feed:{feed_id}",
+    )
 
 
 def grant_for_checkin(

@@ -1,8 +1,10 @@
 """每日對帳（05:00）——architecture 上必要的排程：
 streak 斷檔是「事件的缺席」，只有排程掃描能偵測；它同時是 Sanji 停機的補課 safety net。
 
-五件事：
+七件事：
   1. 收藏掃描：vendor 對 bookmark 不發 hook（原始碼證實）→ 增量掃 reactions 補入帳
+  1b. 讚掃描／留言掃描：與 hook 路徑同冪等鍵——第一次跑＝歷史認列（2026-08-25
+      修修裁決：內容品質訊號完整認列；歷史上也只存在這些訊號），之後＝hook 漏接安全網
   2. fail-open：滯留 >48h 的待判定案自動放行（``auto_approved_by_timeout``，留痕）
   3. 斷流偵測：events cursor 自上次對帳未動 → 告警（靜默失效的主防線）
   4. 投影抽核：昨日活躍者 balances vs 帳本重算，落差告警（idempotency 破洞偵測）
@@ -33,6 +35,8 @@ def run(cfg: SanjiConfig, client: WPClient, store: Store) -> dict:
 
     for name, fn in (
         ("bookmarks", _sweep_bookmarks),
+        ("likes", _sweep_likes),
+        ("comments", _sweep_comments),
         ("fail_open", _sweep_fail_open),
         ("flow", _check_event_flow),
         ("balances", _audit_balances),
@@ -94,6 +98,95 @@ def _sweep_bookmarks(cfg: SanjiConfig, client: WPClient, store: Store) -> dict:
 
 
 # ── 2. fail-open（漏斗⑦） ────────────────────────────────────────
+def _sweep_likes(cfg: SanjiConfig, client: WPClient, store: Store) -> dict:
+    """讚的增量掃描（cursor 獨立於 hook 事件流；鍵同格式故兩路互為冪等）。"""
+    cursor = store.get_cursor("reactions_like")
+    granted = 0
+    scanned = 0
+    owner_cache: dict[int, int] = {}
+
+    while True:
+        page = client.reactions(cursor, types="like", limit=200)
+        rows = page.get("reactions", [])
+        if not rows:
+            break
+
+        grants: list[dict] = []
+        for row in rows:
+            scanned += 1
+            feed_id = int(row.get("object_id", 0))
+            if str(row.get("object_type", "")) != "feed" or not feed_id:
+                continue
+            if feed_id not in owner_cache:
+                try:
+                    owner_cache[feed_id] = int(client.feed(feed_id).get("user_id", 0))
+                except GamAPIError:
+                    owner_cache[feed_id] = 0  # 貼文已刪——不入帳
+            g = rules.grant_for_like_row(row, owner_cache[feed_id], sanji_user_id=cfg.sanji_user_id)
+            if g and g["source"] in cfg.scored_sources:
+                grants.append(g)
+
+        if grants:
+            # plugin 批次上限 100/批——切塊（2026-08-25 首跑教訓：讚一頁近 200 筆直接被防呆擋下）
+            stamper = LevelStamper(client)
+            created = 0
+            for i in range(0, len(grants), 100):
+                results = client.grants([stamper.stamp(g) for g in grants[i : i + 100]])
+                created += sum(
+                    1 for r in results.get("results", []) if r.get("status") == "created"
+                )
+            granted += created
+
+        cursor = max(int(r.get("id", 0)) for r in rows)
+        store.set_cursor("reactions_like", cursor)
+        if len(rows) < 200:
+            break
+
+    if granted:
+        logger.info(f"[reconcile] like sweep granted {granted}/{scanned}")
+    return {"scanned": scanned, "granted": granted}
+
+
+def _sweep_comments(cfg: SanjiConfig, client: WPClient, store: Store) -> dict:
+    """留言的增量掃描（owner 已由 plugin join 好，不需逐文查作者）。"""
+    cursor = store.get_cursor("comments")
+    granted = 0
+    scanned = 0
+
+    while True:
+        page = client.comments_list(cursor, limit=200)
+        rows = page.get("comments", [])
+        if not rows:
+            break
+
+        grants: list[dict] = []
+        for row in rows:
+            scanned += 1
+            g = rules.grant_for_comment_row(row, sanji_user_id=cfg.sanji_user_id)
+            if g and g["source"] in cfg.scored_sources:
+                grants.append(g)
+
+        if grants:
+            # plugin 批次上限 100/批——切塊（2026-08-25 首跑教訓：讚一頁近 200 筆直接被防呆擋下）
+            stamper = LevelStamper(client)
+            created = 0
+            for i in range(0, len(grants), 100):
+                results = client.grants([stamper.stamp(g) for g in grants[i : i + 100]])
+                created += sum(
+                    1 for r in results.get("results", []) if r.get("status") == "created"
+                )
+            granted += created
+
+        cursor = max(int(r.get("id", 0)) for r in rows)
+        store.set_cursor("comments", cursor)
+        if len(rows) < 200:
+            break
+
+    if granted:
+        logger.info(f"[reconcile] comment sweep granted {granted}/{scanned}")
+    return {"scanned": scanned, "granted": granted}
+
+
 def _sweep_fail_open(cfg: SanjiConfig, client: WPClient, store: Store) -> dict:
     stale = store.pending_older_than_hours(cfg.fail_open_hours)
     for row in stale:

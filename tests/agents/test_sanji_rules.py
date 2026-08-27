@@ -33,15 +33,18 @@ def _ev(etype: str, uid: int = 42, oid: int = 7, meta: dict | None = None, **kw)
 def test_xp_table_locked():
     assert rules.XP_TABLE == {
         "presence_day": 10,
-        "checkin_day": 10,
+        "checkin_day": 20,
         "streak_7": 30,
-        "full_attendance": 200,
+        "full_attendance": 500,
         "like_received": 10,
         "comment_received": 30,
         "bookmark_received": 100,
         "lesson_completed": 50,
-        "course_completed": 300,
+        "course_completed": 500,
         "quiz_passed": 50,
+        "event_hosted": 500,
+        "session_hosted": 300,
+        "event_cohosted": 200,
     }
 
 
@@ -55,6 +58,8 @@ def test_berry_is_xp_over_ten_including_negatives():
 # 那是不可逆的信任破壞。這張表是天花板，不是要回去的目標。
 # （例外註記：2026-08-24 Lv.15 140k→150k 經修修裁決，當時無人超過 20 XP、
 #   玩法未公告，仍低於本天花板。**公告日後不再有任何上調**。）
+# （2026-08-25 v5：插入空島成 16 階——只新增 3,000 一格、無任何上調；
+#   16 階的天花板承接舊 Lv.15 的 200k。）
 _V1_CEILING = {
     1: 0,
     2: 100,
@@ -71,12 +76,13 @@ _V1_CEILING = {
     13: 100_000,
     14: 140_000,
     15: 200_000,
+    16: 200_000,
 }
 
 
 def test_level_curve_shape():
     table = dict(rules.LEVEL_THRESHOLDS)
-    assert sorted(table) == list(range(1, 16)), "等級數固定 15 階"
+    assert sorted(table) == list(range(1, 17)), "等級數固定 16 階"
     assert table[1] == 0
     values = [table[n] for n in range(1, 16)]
     assert values == sorted(set(values)), "門檻必須嚴格遞增"
@@ -93,7 +99,27 @@ def test_every_level_has_a_title():
     for n, _ in rules.LEVEL_THRESHOLDS:
         label = rules.level_label(n)
         assert label and not label.startswith("Lv."), f"Lv.{n} 沒有稱號"
-    assert len(set(rules.LEVEL_LABELS.values())) == 15, "稱號不可重複"
+    assert len(set(rules.LEVEL_LABELS.values())) == 16, "島名不可重複"
+
+
+def test_tier_ladder():
+    """位階線 v3（2026-08-26 定稿）：整條航路只換七次稱呼，頂點是海賊王。"""
+    assert rules.TIER_OF_LEVEL == {
+        5: "超新星",
+        8: "最惡世代",
+        11: "王下七武海",
+        13: "霸王色",
+        14: "傳說船長",
+        15: "四皇",
+        16: "海賊王",
+    }
+    assert rules.tier_for(1) == ""
+    assert rules.tier_for(4) == ""
+    assert rules.tier_for(5) == "超新星"
+    assert rules.tier_for(10) == "最惡世代"
+    assert rules.tier_for(12) == "王下七武海"
+    assert rules.tier_for(14) == "傳說船長"
+    assert rules.tier_for(16) == "海賊王"
 
 
 def test_first_like_levels_up():
@@ -103,7 +129,17 @@ def test_first_like_levels_up():
 
 @pytest.mark.parametrize(
     ("xp", "level"),
-    [(0, 1), (9, 1), (10, 2), (49, 2), (50, 3), (149_999, 14), (150_000, 15)],
+    [
+        (0, 1),
+        (9, 1),
+        (10, 2),
+        (49, 2),
+        (50, 3),
+        (2_999, 7),
+        (3_000, 8),
+        (149_999, 15),
+        (150_000, 16),
+    ],
 )
 def test_level_for_boundaries(xp: int, level: int):
     assert rules.level_for(xp) == level
@@ -111,7 +147,7 @@ def test_level_for_boundaries(xp: int, level: int):
 
 @pytest.mark.parametrize(
     ("xp", "expected"),
-    [(0, (1, 0, 10)), (10, (2, 10, 50)), (49, (2, 10, 50)), (150_000, (15, 150_000, 0))],
+    [(0, (1, 0, 10)), (10, (2, 10, 50)), (3_000, (8, 3_000, 4_000)), (150_000, (16, 150_000, 0))],
 )
 def test_level_band(xp: int, expected: tuple[int, int, int]):
     assert rules.level_band(xp) == expected
@@ -213,12 +249,66 @@ def test_checkin_and_quiz_never_auto_grant():
     assert rules.grant_for_event(_ev("quiz_submitted"), sanji_user_id=SANJI_UID) is None
 
 
+def test_like_row_same_key_as_hook_path():
+    """掃描路徑與 hook 路徑同鍵——歷史認列與即時捕捉永不重複入帳。"""
+    g = rules.grant_for_like_row(
+        {"id": 555, "user_id": 7, "object_id": 900}, feed_owner_id=42, sanji_user_id=SANJI_UID
+    )
+    assert g is not None
+    assert g["idempotency_key"] == "like:react:555"  # 與 hook 的 like:{dedupe} 完全同格式
+    assert (g["xp"], g["reason"]) == (10, "feed:900")
+    # 自讚不計
+    assert (
+        rules.grant_for_like_row(
+            {"id": 556, "user_id": 42, "object_id": 900}, feed_owner_id=42, sanji_user_id=SANJI_UID
+        )
+        is None
+    )
+
+
+def test_comment_row_grants_owner_and_skips_self_sanji_deleted():
+    g = rules.grant_for_comment_row(
+        {"id": 1065, "post_id": 288, "user_id": 2, "owner_id": 12}, sanji_user_id=SANJI_UID
+    )
+    assert g is not None
+    assert g["user_id"] == 12  # 受益人 = 貼文作者
+    assert g["idempotency_key"] == "comment:288:2"  # 與 hook 同鍵：一文一人跨歷史成立
+    assert (g["xp"], g["reason"]) == (30, "feed:288")
+
+    # 自留 / Sanji 留言 / 貼文已刪（owner 0）都不計
+    assert (
+        rules.grant_for_comment_row(
+            {"id": 1, "post_id": 288, "user_id": 12, "owner_id": 12}, sanji_user_id=SANJI_UID
+        )
+        is None
+    )
+    assert (
+        rules.grant_for_comment_row(
+            {"id": 2, "post_id": 288, "user_id": SANJI_UID, "owner_id": 12}, sanji_user_id=SANJI_UID
+        )
+        is None
+    )
+    assert (
+        rules.grant_for_comment_row(
+            {"id": 3, "post_id": 288, "user_id": 2, "owner_id": 0}, sanji_user_id=SANJI_UID
+        )
+        is None
+    )
+
+
 def test_bookmark_grant_from_scan_row():
     g = rules.grant_for_bookmark(
-        {"id": 88, "user_id": 7}, feed_owner_id=42, sanji_user_id=SANJI_UID
+        {"id": 88, "user_id": 7, "object_id": 900}, feed_owner_id=42, sanji_user_id=SANJI_UID
     )
     assert g is not None
     assert (g["xp"], g["idempotency_key"]) == (100, "bookmark:react:88")
+    assert g["reason"] == "feed:900"  # 貼文參照——按內容彙整的歸戶依據
+
+    # 缺 feed 參照仍入帳（錢不能因顯示需求而漏），reason 留空
+    g2 = rules.grant_for_bookmark(
+        {"id": 90, "user_id": 7}, feed_owner_id=42, sanji_user_id=SANJI_UID
+    )
+    assert g2 is not None and g2["reason"] == ""
     # 自藏不計
     assert (
         rules.grant_for_bookmark(

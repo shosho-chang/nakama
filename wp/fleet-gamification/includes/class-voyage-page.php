@@ -40,6 +40,9 @@ final class VoyagePage {
 		'lesson_completed'  => '完成課程單元',
 		'course_completed'  => '完成整門課程',
 		'quiz_passed'       => '通過測驗',
+		'event_hosted'      => '主辦實體聚會',
+		'session_hosted'    => '主持讀書會',
+		'event_cohosted'    => '協辦活動',
 		'presence_day'      => '每日登入',
 		'surprise'          => '驚喜',
 		'captain_award'     => '艦長特別獎',
@@ -55,6 +58,7 @@ final class VoyagePage {
 		'share'     => '分享',
 		'challenge' => '挑戰',
 		'learn'     => '課程',
+		'ops'       => '營運',
 		'other'     => '其他',
 	);
 
@@ -62,6 +66,7 @@ final class VoyagePage {
 		'share'     => array( 'like_received', 'comment_received', 'bookmark_received' ),
 		'challenge' => array( 'checkin_day', 'streak_7', 'full_attendance' ),
 		'learn'     => array( 'lesson_completed', 'course_completed', 'quiz_passed' ),
+		'ops'       => array( 'event_hosted', 'session_hosted', 'event_cohosted' ),
 		'other'     => array( 'presence_day', 'surprise', 'captain_award', 'reversal' ),
 	);
 
@@ -151,10 +156,11 @@ final class VoyagePage {
 	}
 	/* 取 fragment 塞進 pane。group 是伺服器端過濾，所以換類型就是重取一次
 	   （不是前端藏 row——20 筆視窗內藏 row 會讓「只看挑戰」看起來是 0 筆）。 */
-	function load(u,group){
+	function load(u,group,more){
 		if(!box) return;
 		var url='/?fleet_voyage='+encodeURIComponent(u)+'&embed=1'
-			+((group&&group!=='all')?('&group='+encodeURIComponent(group)):'');
+			+((group&&group!=='all')?('&group='+encodeURIComponent(group)):'')
+			+((more&&more>20)?('&more='+more):'');
 		fetch(url,{credentials:'same-origin'})
 			.then(function(r){ if(!r.ok){ throw new Error(r.status); } return r.text(); })
 			.then(function(h){ if(ACTIVE&&box){ box.innerHTML='<main class="el-main fcom_main">'+h+'</main>'; } })
@@ -170,6 +176,15 @@ final class VoyagePage {
 		if(!e.target||!e.target.closest) return;
 		var sel=e.target.closest('select[data-nkv-filter]');
 		if(sel&&ACTIVE&&CURU){ load(CURU, sel.value); }
+	});
+
+	document.addEventListener('click',function(e){
+		if(!e.target||!e.target.closest) return;
+		var btn=e.target.closest('button[data-nkv-more]');
+		if(btn&&ACTIVE&&CURU){
+			var sel=box&&box.querySelector('select[data-nkv-filter]');
+			load(CURU, sel?sel.value:'all', parseInt(btn.getAttribute('data-nkv-more'),10)||40);
+		}
 	});
 
 	document.addEventListener('click',function(e){
@@ -276,17 +291,18 @@ final class VoyagePage {
 
 		$embed = isset( $_GET['embed'] ) && '1' === $_GET['embed'];
 		$group = isset( $_GET['group'] ) ? sanitize_key( wp_unslash( (string) $_GET['group'] ) ) : 'all';
+		$show  = isset( $_GET['more'] ) ? min( 200, max( 20, absint( $_GET['more'] ) ) ) : 20;
 
 		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped — 內部逐項 escape
 		echo $embed
-			? self::render_fragment( (int) $target->user_id, get_current_user_id(), $group )
-			: self::render_html( (int) $target->user_id, get_current_user_id(), $group );
+			? self::render_fragment( (int) $target->user_id, get_current_user_id(), $group, $show )
+			: self::render_html( (int) $target->user_id, get_current_user_id(), $group, $show );
 		exit;
 	}
 
 	/** 嵌入 fragment：透明底、繼承 portal 主題色（currentColor＋透明度），選擇器全鎖 .nkv 之下。 */
-	public static function render_fragment( int $target_user_id, int $viewer_user_id, string $group = 'all' ): string {
-		$d = self::collect_data( $target_user_id, $viewer_user_id, $group );
+	public static function render_fragment( int $target_user_id, int $viewer_user_id, string $group = 'all', int $show = 20 ): string {
+		$d = self::collect_data( $target_user_id, $viewer_user_id, $group, $show );
 
 		ob_start();
 		?>
@@ -320,7 +336,14 @@ final class VoyagePage {
 	.nkv .nkv-lg-head h3{ margin:0 }
 	.nkv .nkv-filter{ margin-left:auto; font:inherit; font-size:.76rem; line-height:1.5;
 		padding:.18rem .45rem; border:1px solid rgba(125,125,125,.32); border-radius:8px;
-		background:transparent; color:inherit; cursor:pointer }
+		background:transparent; color:inherit; cursor:pointer; color-scheme:light }
+	/* vendor 深色模式＝ <html class="dark">（Helper.php:220）——原生彈窗跟著換色 */
+	html.dark .nkv .nkv-filter{ color-scheme:dark }
+	html.dark .nkv .nkv-filter option{ background:#26282d; color:#e8e7e4 }
+	.nkv .nkv-more{ margin:.7rem 0 0; text-align:center }
+	.nkv .nkv-more button{ font:inherit; font-size:.78rem; padding:.3rem 1.1rem; cursor:pointer;
+		border:1px solid rgba(125,125,125,.32); border-radius:999px; background:transparent; color:inherit }
+	.nkv .nkv-more button:hover{ border-color:#e8913f; color:#e8913f }
 	.nkv .nkv-act{ line-height:1.5 }
 	.nkv .nkv-act-main{ display:block }
 	.nkv .nkv-act-sub{ display:block; font-size:.72rem; opacity:.55; margin-top:.05rem }
@@ -344,8 +367,8 @@ final class VoyagePage {
 	}
 
 	/** 獨立完整頁（fallback／可分享連結）。 */
-	public static function render_html( int $target_user_id, int $viewer_user_id, string $group = 'all' ): string {
-		$d = self::collect_data( $target_user_id, $viewer_user_id, $group );
+	public static function render_html( int $target_user_id, int $viewer_user_id, string $group = 'all', int $show = 20 ): string {
+		$d = self::collect_data( $target_user_id, $viewer_user_id, $group, $show );
 
 		$back_url = '';
 		if ( '' !== $d['username'] && class_exists( '\FluentCommunity\App\Services\Helper' ) ) {
@@ -362,9 +385,9 @@ final class VoyagePage {
 <meta name="robots" content="noindex">
 <title><?php echo esc_html( $d['name'] ); ?>的航海日誌</title>
 <style>
-	:root{ --bg:#f6f6f4; --card:#ffffff; --ink:#23211e; --dim:#71706c; --line:rgba(60,60,55,.16); --accent:#e8913f }
+	:root{ color-scheme:light; --bg:#f6f6f4; --card:#ffffff; --ink:#23211e; --dim:#71706c; --line:rgba(60,60,55,.16); --accent:#e8913f }
 	@media (prefers-color-scheme: dark){
-		:root{ --bg:#1d1f23; --card:#26282d; --ink:#e8e7e4; --dim:#9b9a96; --line:rgba(230,230,225,.14) }
+		:root{ color-scheme:dark; --bg:#1d1f23; --card:#26282d; --ink:#e8e7e4; --dim:#9b9a96; --line:rgba(230,230,225,.14) }
 	}
 	*{ box-sizing:border-box }
 	body{ margin:0; background:var(--bg); color:var(--ink);
@@ -401,6 +424,10 @@ final class VoyagePage {
 	.nkv-filter{ margin-left:auto; font:inherit; font-size:.8rem; line-height:1.5;
 		padding:.2rem .5rem; border:1px solid var(--line); border-radius:8px;
 		background:var(--card); color:inherit; cursor:pointer }
+	.nkv-more{ margin:.8rem 0 0; text-align:center }
+	.nkv-more button{ font:inherit; font-size:.8rem; padding:.32rem 1.2rem; cursor:pointer;
+		border:1px solid var(--line); border-radius:999px; background:var(--card); color:inherit }
+	.nkv-more button:hover{ border-color:var(--accent); color:var(--accent) }
 	.nkv-act{ line-height:1.55 }
 	.nkv-act-main{ display:block }
 	.nkv-act-sub{ display:block; font-size:.75rem; color:var(--dim); margin-top:.05rem }
@@ -440,6 +467,14 @@ document.addEventListener('change',function(e){
 	if(!s) return;
 	var u=new URL(location.href);
 	if(s.value==='all'){ u.searchParams.delete('group'); } else { u.searchParams.set('group',s.value); }
+	u.searchParams.delete('more');
+	location.href=u.toString();
+});
+document.addEventListener('click',function(e){
+	var b=e.target&&e.target.closest&&e.target.closest('button[data-nkv-more]');
+	if(!b) return;
+	var u=new URL(location.href);
+	u.searchParams.set('more', b.getAttribute('data-nkv-more'));
 	location.href=u.toString();
 });
 </script>
@@ -452,13 +487,135 @@ document.addEventListener('change',function(e){
 	/* ─────────────────────────── 共用底層 ─────────────────────────── */
 
 	/**
+	 * 明細＝「按內容彙整」：同一篇文的所有入帳收斂成一個條目（修修 2026-08-25 裁決——
+	 * 帳本一筆一筆是審計語言，會員要看的是「我的哪篇內容帶來了什麼」；爆文洗版是
+	 * 錯位的症狀）。統計是該文的**累計**，不是視窗內殘影；排序用最近一次入帳。
+	 *
+	 * 歸戶（哪筆帳屬於哪篇文）三層 fallback，全部唯讀：
+	 *  1. 事件參照：e.object_type='feed' → e.object_id（讚／留言／打卡）
+	 *  2. reason 參照：'feed:{id}'（收藏——每日掃描無事件流；打卡 reason 同格式）
+	 *  3. 舊收藏帳（2026-08-25 前 reason 空）：冪等鍵 'bookmark:react:{id}' 反查
+	 *     vendor fcom_post_reactions（鍵格式已凍結，probe 盯表結構）
+	 * 歸不了戶的（登入、驚喜、沖正…）維持單列。
+	 *
+	 * @return array{0: array<int,array<string,mixed>>, 1: array<int,array>}
+	 */
+	private static function collect_entries( int $user_id, string $group, int $show = 20 ): array {
+		global $wpdb;
+
+		$react_table = $wpdb->prefix . 'fcom_post_reactions';
+		$attr_sql    = 'SELECT g.id, g.xp, g.source, g.reason, g.season, g.created_at,' .
+			" CASE WHEN e.object_type = 'feed' AND e.object_id > 0 THEN e.object_id" .
+			" WHEN g.reason REGEXP '^feed:[0-9]+$' THEN CAST( SUBSTRING( g.reason, 6 ) AS UNSIGNED )" .
+			' ELSE br.object_id END AS feed_ref' .
+			' FROM ' . Ledger::grants_table() . ' g' .
+			' LEFT JOIN ' . Ledger::events_table() . ' e ON e.id = g.ref_event_id' .
+			" LEFT JOIN {$react_table} br ON g.source = 'bookmark_received'" .
+			" AND g.idempotency_key LIKE 'bookmark:react:%'" .
+			" AND br.id = CAST( SUBSTRING_INDEX( g.idempotency_key, ':', -1 ) AS UNSIGNED )" .
+			" AND br.object_type = 'feed'" .
+			' WHERE g.user_id = %d';
+		$params      = array( $user_id );
+
+		if ( isset( self::GROUP_SOURCES[ $group ] ) ) {
+			$in       = implode( ', ', array_fill( 0, count( self::GROUP_SOURCES[ $group ] ), '%s' ) );
+			$attr_sql .= " AND g.source IN ( $in )";
+			$params   = array_merge( $params, self::GROUP_SOURCES[ $group ] );
+		}
+
+		// 彙整：一文一組（該文累計），一組內按來源小計
+		$grouped = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT feed_ref, source, COUNT(*) AS n, SUM(xp) AS xp_sum, MAX(created_at) AS latest" .
+				" FROM ( $attr_sql ) t WHERE feed_ref IS NOT NULL AND feed_ref > 0" .
+				' GROUP BY feed_ref, source',
+				...$params
+			),
+			ARRAY_A
+		);
+
+		$by_feed = array();
+		foreach ( (array) $grouped as $row ) {
+			$fid = (int) $row['feed_ref'];
+			if ( ! isset( $by_feed[ $fid ] ) ) {
+				$by_feed[ $fid ] = array(
+					'type'    => 'feed',
+					'feed_id' => $fid,
+					'total'   => 0,
+					'latest'  => '',
+					'parts'   => array(),
+				);
+			}
+			$by_feed[ $fid ]['total']  += (int) $row['xp_sum'];
+			$by_feed[ $fid ]['parts'][] = array(
+				'source' => (string) $row['source'],
+				'n'      => (int) $row['n'],
+				'xp'     => (int) $row['xp_sum'],
+			);
+			if ( strcmp( (string) $row['latest'], $by_feed[ $fid ]['latest'] ) > 0 ) {
+				$by_feed[ $fid ]['latest'] = (string) $row['latest'];
+			}
+		}
+
+		// 單列：歸不了戶的照舊逐筆
+		$singles = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT xp, source, reason, season, created_at AS latest" .
+				" FROM ( $attr_sql ) t WHERE feed_ref IS NULL OR feed_ref = 0" .
+				' ORDER BY id DESC LIMIT 200',
+				...$params
+			),
+			ARRAY_A
+		);
+
+		$entries = array_values( $by_feed );
+		foreach ( (array) $singles as $row ) {
+			$entries[] = array(
+				'type'   => 'single',
+				'xp'     => (int) $row['xp'],
+				'source' => (string) $row['source'],
+				'reason' => (string) $row['reason'],
+				'season' => (string) $row['season'],
+				'latest' => (string) $row['latest'],
+			);
+		}
+		// 排序鍵＝發文時間（修修 2026-08-25 裁決：條目是內容，就照內容的時間軸排，
+		// 最新的文在最上面）。單列項沒有貼文，用入帳時間站上同一條時間軸；
+		// 刪文讀不到發文時間的，退回最近入帳時間。
+		$feed_ids = array();
+		foreach ( $entries as $en ) {
+			if ( 'feed' === $en['type'] ) {
+				$feed_ids[] = (int) $en['feed_id'];
+			}
+		}
+		$feeds = ( $feed_ids && class_exists( FcBridge::class ) ) ? FcBridge::feed_digest( $feed_ids ) : array();
+
+		foreach ( $entries as &$en ) {
+			$en['when'] = (string) $en['latest'];
+			if ( 'feed' === $en['type'] ) {
+				$posted = (string) ( $feeds[ (int) $en['feed_id'] ]['created_at'] ?? '' );
+				if ( '' !== $posted ) {
+					$en['when'] = $posted;
+				}
+			}
+		}
+		unset( $en );
+
+		usort( $entries, static fn( $a, $b ) => strcmp( $b['when'], $a['when'] ) );
+		$has_more = count( $entries ) > $show;
+		$entries  = array_slice( $entries, 0, $show );
+
+		return array( $entries, $feeds, $has_more );
+	}
+
+	/**
 	 * @return array{name:string,username:string,avatar:string,xp:int,berry:int,
 	 *               has_balance:bool,level:int,level_label:string,level_min_xp:int,
 	 *               next_level_xp:int,next_level_label:string,is_self:bool,
 	 *               identity:string,declare_url:string,
-	 *               group:string,rows:array,feeds:array}
+	 *               group:string,entries:array,feeds:array}
 	 */
-	private static function collect_data( int $target_user_id, int $viewer_user_id, string $group = 'all' ): array {
+	private static function collect_data( int $target_user_id, int $viewer_user_id, string $group = 'all', int $show = 20 ): array {
 		global $wpdb;
 
 		$profile = \FluentCommunity\App\Models\XProfile::where( 'user_id', $target_user_id )->first();
@@ -491,35 +648,10 @@ document.addEventListener('change',function(e){
 		$rows    = array();
 		$feeds   = array();
 
+		$entries  = array();
+		$has_more = false;
 		if ( $is_self ) {
-			// LEFT JOIN events：帳目本身不存「為哪件事而發」，那是事件的職責。
-			// 事件被清掉的舊帳仍要看得到，所以是 LEFT 不是 INNER。
-			$sql    = 'SELECT g.xp, g.berry, g.source, g.reason, g.season, g.created_at,' .
-				' e.event_type, e.object_type, e.object_id' .
-				' FROM ' . Ledger::grants_table() . ' g' .
-				' LEFT JOIN ' . Ledger::events_table() . ' e ON e.id = g.ref_event_id' .
-				' WHERE g.user_id = %d';
-			$params = array( $target_user_id );
-
-			if ( isset( self::GROUP_SOURCES[ $group ] ) ) {
-				$in     = implode( ', ', array_fill( 0, count( self::GROUP_SOURCES[ $group ] ), '%s' ) );
-				$sql   .= " AND g.source IN ( $in )";
-				$params = array_merge( $params, self::GROUP_SOURCES[ $group ] );
-			}
-			$sql .= ' ORDER BY g.id DESC LIMIT 30';
-
-			$rows = $wpdb->get_results( $wpdb->prepare( $sql, ...$params ), ARRAY_A );
-			$rows = is_array( $rows ) ? $rows : array();
-
-			$feed_ids = array();
-			foreach ( $rows as $r ) {
-				if ( 'feed' === (string) $r['object_type'] ) {
-					$feed_ids[] = (int) $r['object_id'];
-				}
-			}
-			if ( $feed_ids && class_exists( FcBridge::class ) ) {
-				$feeds = FcBridge::feed_digest( $feed_ids );
-			}
+			list( $entries, $feeds, $has_more ) = self::collect_entries( $target_user_id, $group, $show );
 		}
 
 		return array(
@@ -539,7 +671,9 @@ document.addEventListener('change',function(e){
 			'declare_url' => $declare_url,
 			'is_self'  => $is_self,
 			'group'    => $group,
-			'rows'     => $rows,
+			'show'     => $show,
+			'has_more' => $has_more,
+			'entries'  => $entries,
 			'feeds'    => $feeds,
 		);
 	}
@@ -637,39 +771,71 @@ document.addEventListener('change',function(e){
 		return $out . '</select>';
 	}
 
-	/**
-	 * 「活動」欄：這筆帳到底為哪件事而發。
-	 *
-	 * 主行 = 指得到具體對象就顯示它（貼文標題並連過去），否則退回來源名稱。
-	 * 副行 = 補述：來源 · 空間（哪個挑戰）· 賽季 · 判定理由。
-	 * 判定理由照原樣顯示（含 Sanji 的判定字串）——「帳目可申訴」的前提是看得到依據。
-	 */
-	private static function activity_cell( array $r, array $feeds ): string {
-		$source = (string) $r['source'];
-		$label  = self::SOURCE_LABELS[ $source ] ?? $source;
-		$fid    = ( 'feed' === (string) ( $r['object_type'] ?? '' ) ) ? (int) $r['object_id'] : 0;
-		$feed   = ( $fid && isset( $feeds[ $fid ] ) ) ? $feeds[ $fid ] : null;
-		$title  = $feed ? (string) $feed['title'] : '';
+	/** 來源的彙整用短稱（讚 ×3 +30 這種密度用全名太吵）。 */
+	private const SOURCE_SHORT = array(
+		'bookmark_received' => '收藏',
+		'comment_received'  => '留言',
+		'like_received'     => '讚',
+		'checkin_day'       => '打卡',
+	);
 
-		$bits = array();
-		if ( '' !== $title ) {
-			$main   = ( '' !== (string) $feed['url'] )
-				? '<a class="nkv-lk" href="' . esc_url( (string) $feed['url'] ) . '">' . esc_html( $title ) . '</a>'
-				: esc_html( $title );
-			$bits[] = $label;
+	/** 彙整副行的來源排序：單價高在前（收藏 → 留言 → 讚 → 打卡 → 其餘）。 */
+	private const SOURCE_ORDER = array( 'bookmark_received', 'comment_received', 'like_received', 'checkin_day' );
+
+	/**
+	 * 一篇內容一個條目：標題連結＋各來源統計（收藏 ×7 +700 · 讚 ×3 +30）＋累計。
+	 */
+	private static function feed_entry_cell( array $en, array $feeds ): string {
+		$fid  = (int) $en['feed_id'];
+		$feed = $feeds[ $fid ] ?? null;
+
+		if ( $feed && '' !== (string) $feed['title'] ) {
+			$main = ( '' !== (string) $feed['url'] )
+				? '<a class="nkv-lk" href="' . esc_url( (string) $feed['url'] ) . '">' . esc_html( (string) $feed['title'] ) . '</a>'
+				: esc_html( (string) $feed['title'] );
 		} else {
-			$main = esc_html( $label );
+			// 貼文已刪／讀不到：退回主要來源的全名，統計照常。
+			$first = $en['parts'][0]['source'] ?? '';
+			$main  = esc_html( self::SOURCE_LABELS[ $first ] ?? $first );
 		}
 
+		$order = array_flip( self::SOURCE_ORDER );
+		$parts = $en['parts'];
+		usort(
+			$parts,
+			static fn( $a, $b ) => ( $order[ $a['source'] ] ?? 99 ) <=> ( $order[ $b['source'] ] ?? 99 )
+		);
+
+		$bits = array();
+		foreach ( $parts as $pt ) {
+			$name   = self::SOURCE_SHORT[ $pt['source'] ] ?? ( self::SOURCE_LABELS[ $pt['source'] ] ?? $pt['source'] );
+			$piece  = $name;
+			$piece .= $pt['n'] > 1 ? ' ×' . number_format_i18n( $pt['n'] ) : '';
+			$piece .= ' ' . ( $pt['xp'] > 0 ? '+' : '' ) . number_format_i18n( $pt['xp'] );
+			$bits[] = $piece;
+		}
 		if ( $feed && '' !== (string) $feed['space'] ) {
 			$bits[] = (string) $feed['space'];
 		}
-		if ( '' !== (string) ( $r['season'] ?? '' ) ) {
-			$bits[] = (string) $r['season'];
+
+		return '<span class="nkv-act-main">' . $main . '</span>'
+			. '<span class="nkv-act-sub">' . esc_html( implode( ' · ', $bits ) ) . '</span>';
+	}
+
+	/**
+	 * 歸不了戶的單列（登入、驚喜、沖正…）：來源名＋補述。
+	 * reason 是審計欄，機器參照（feed:291）不顯示；人話（判定理由）照顯——
+	 * 「帳目可申訴」的前提是看得到依據。
+	 */
+	private static function single_entry_cell( array $en ): string {
+		$source = (string) $en['source'];
+		$main   = esc_html( self::SOURCE_LABELS[ $source ] ?? $source );
+
+		$bits = array();
+		if ( '' !== (string) ( $en['season'] ?? '' ) ) {
+			$bits[] = (string) $en['season'];
 		}
-		// reason 是審計欄，值可能是機器參照（feed:291 / react:2936）——那對成員沒意義。
-		// 判定的「為什麼」本來就在貼文底下 Sanji 的公開留言裡，這裡不重複也不洩內部 id。
-		$reason = trim( (string) ( $r['reason'] ?? '' ) );
+		$reason = trim( (string) ( $en['reason'] ?? '' ) );
 		if ( '' !== $reason && ! preg_match( '/^[a-z_]+:\d+$/', $reason ) ) {
 			$bits[] = function_exists( 'mb_strimwidth' ) ? mb_strimwidth( $reason, 0, 52, '…' ) : $reason;
 		}
@@ -691,7 +857,7 @@ document.addEventListener('change',function(e){
 
 		$out = '<div class="nkv-lg-head"><h3>最近入帳</h3>' . self::filter_select_html( $d ) . '</div>';
 
-		if ( ! $d['rows'] ) {
+		if ( ! $d['entries'] ) {
 			$out .= 'all' === $d['group']
 				? '<p class="nkv-note">還沒有入帳紀錄——發一篇有價值的文章，讓夥伴的讚替你開帳。</p>'
 				: '<p class="nkv-note">這個類型還沒有紀錄。換個類型看看。</p>';
@@ -699,14 +865,20 @@ document.addEventListener('change',function(e){
 		}
 
 		$out .= '<table>';
-		foreach ( $d['rows'] as $r ) {
-			$xp_v = (int) $r['xp'];
-			$out .= '<tr><td class="nkv-act">' . self::activity_cell( $r, $d['feeds'] ) . '</td>'
+		foreach ( $d['entries'] as $en ) {
+			$is_feed = ( 'feed' === $en['type'] );
+			$xp_v    = $is_feed ? (int) $en['total'] : (int) $en['xp'];
+			$cell    = $is_feed ? self::feed_entry_cell( $en, $d['feeds'] ) : self::single_entry_cell( $en );
+			$out    .= '<tr><td class="nkv-act">' . $cell . '</td>'
 				. '<td class="nkv-amt' . ( $xp_v < 0 ? ' neg' : '' ) . '">'
 				. esc_html( ( $xp_v > 0 ? '+' : '' ) . number_format_i18n( $xp_v ) ) . ' XP</td>'
-				. '<td class="nkv-dt">' . esc_html( mysql2date( 'n/j H:i', (string) $r['created_at'] ) ) . '</td></tr>';
+				. '<td class="nkv-dt">' . esc_html( mysql2date( 'n/j H:i', (string) $en['when'] ) ) . '</td></tr>';
 		}
-		$out .= '</table><p class="nkv-note">帳目可查、可申訴——有疑問直接私訊 Sanji 或艦長。</p>';
+		$out .= '</table>';
+		if ( ! empty( $d['has_more'] ) ) {
+			$out .= '<p class="nkv-more"><button type="button" data-nkv-more="' .
+				esc_attr( (string) ( (int) $d['show'] + 20 ) ) . '">看更多</button></p>';
+		}
 		return $out;
 	}
 }
