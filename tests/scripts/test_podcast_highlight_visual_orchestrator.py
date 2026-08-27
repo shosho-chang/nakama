@@ -1700,20 +1700,21 @@ def test_failed_worker_output_verification_uses_attempt_scoped_streams_on_retry(
 def _failed_completed_execution_fixture(
     tmp_path: Path,
     *,
+    cut_id: str = "value-L01",
     phase: str = "asset_acquisition-001",
     role: str = "asset_acquisition",
     with_failure: bool = True,
 ) -> dict[str, object]:
     root = tmp_path / "episode"
     root.mkdir()
-    job_root = root / "highlights" / "visual-pipeline" / "value-L01" / "jobs" / REVISION_ID
+    job_root = root / "highlights" / "visual-pipeline" / cut_id / "jobs" / REVISION_ID
     proposal = job_root / "workers" / "asset-session" / f"{phase}-proposal.json"
     proposal.parent.mkdir(parents=True)
     proposal_bytes = b'{"contract":"podcast-highlight-asset-acquisition-proposal-v1"}\n'
     proposal.write_bytes(proposal_bytes)
     core_fixtures._write_trusted_execution_receipt(
         root,
-        cut_id="value-L01",
+        cut_id=cut_id,
         revision_id=REVISION_ID,
         phase=phase,
         role=role,
@@ -1747,6 +1748,7 @@ def _failed_completed_execution_fixture(
         "root": root,
         "phase": phase,
         "role": role,
+        "cut_id": cut_id,
         "job_root": job_root,
         "proposal": proposal,
         "proposal_bytes": proposal_bytes,
@@ -1859,6 +1861,166 @@ def test_recover_failed_semantic_audit_preserves_dp_and_opens_next_audit_attempt
     )
     assert next_attempt.name == "attempt-002"
     assert (next_attempt / "PREPARE.json").is_file()
+
+
+def test_reject_completed_l02_semantic_audit_opens_attempt_two(tmp_path: Path) -> None:
+    fixture = _failed_completed_execution_fixture(
+        tmp_path,
+        cut_id="value-L02",
+        phase="semantic_audit",
+        role="director",
+        with_failure=False,
+    )
+    root = fixture["root"]
+    proposal = fixture["proposal"]
+    receipt_path = fixture["receipt_path"]
+    attempt_root = fixture["attempt_root"]
+    job_root = fixture["job_root"]
+    assert isinstance(root, Path)
+    assert isinstance(proposal, Path)
+    assert isinstance(receipt_path, Path)
+    assert isinstance(attempt_root, Path)
+    assert isinstance(job_root, Path)
+
+    rejected = orchestrator.reject_completed_execution(
+        root,
+        cut_id="value-L02",
+        revision_id=REVISION_ID,
+        phase="semantic_audit",
+        role="director",
+        attempt=1,
+        reason="Audit did not inspect the selected media; reject before canonical acceptance.",
+    )
+
+    assert rejected["contract"] == orchestrator.EXECUTION_FAILURE_CONTRACT
+    assert not proposal.exists()
+    assert not receipt_path.exists()
+    assert (attempt_root / "evidence" / "proposal.json").is_file()
+    assert (attempt_root / "evidence" / "execution-receipt.json").is_file()
+    receipt = json.loads(
+        (attempt_root / "evidence" / "execution-receipt.json").read_text(encoding="utf-8")
+    )
+    phase_input = root / str(receipt["phase_input"]["path"])
+    next_attempt = orchestrator._prepare_execution_attempt(
+        root,
+        job_root,
+        cut_id="value-L02",
+        revision_id=REVISION_ID,
+        phase="semantic_audit",
+        role="director",
+        prompt="Inspect every selected media file before producing the audit.",
+        phase_input_path=phase_input,
+        proposal_path=proposal,
+    )
+    assert next_attempt.name == "attempt-002"
+
+
+@pytest.mark.parametrize(
+    ("guard", "message"),
+    [
+        ("canonical", "canonical downstream output already exists"),
+        ("current", "revision is already CURRENT"),
+        ("materialized", "revision is already materialized"),
+    ],
+)
+def test_reject_completed_execution_refuses_published_revision_states(
+    tmp_path: Path,
+    guard: str,
+    message: str,
+) -> None:
+    fixture = _failed_completed_execution_fixture(
+        tmp_path,
+        phase="semantic_audit",
+        role="director",
+        with_failure=False,
+    )
+    root = fixture["root"]
+    proposal = fixture["proposal"]
+    receipt_path = fixture["receipt_path"]
+    attempt_root = fixture["attempt_root"]
+    assert isinstance(root, Path)
+    assert isinstance(proposal, Path)
+    assert isinstance(receipt_path, Path)
+    assert isinstance(attempt_root, Path)
+    if guard == "canonical":
+        path = (
+            root
+            / "highlights"
+            / "visual-pipeline"
+            / "value-L01"
+            / "revisions"
+            / REVISION_ID
+            / "SEMANTIC-AUDIT.json"
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"already-canonical")
+    elif guard == "current":
+        path = root / "highlights" / "visual-pipeline" / "value-L01" / "CURRENT.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"revision_id": REVISION_ID}), encoding="utf-8")
+    else:
+        path = root / "highlights" / "tighten" / "value-L01_broll_materialization.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "contract": "podcast-long-highlight-stock-video-v2",
+                    "visual_pipeline_lineage": {"revision_id": REVISION_ID},
+                }
+            ),
+            encoding="utf-8",
+        )
+    proposal_before = proposal.read_bytes()
+    receipt_before = receipt_path.read_bytes()
+
+    with pytest.raises(orchestrator.VisualPipelineOrchestrationError, match=message):
+        orchestrator.reject_completed_execution(
+            root,
+            cut_id="value-L01",
+            revision_id=REVISION_ID,
+            phase="semantic_audit",
+            role="director",
+            attempt=1,
+            reason="Published states must remain immutable.",
+        )
+
+    assert proposal.read_bytes() == proposal_before
+    assert receipt_path.read_bytes() == receipt_before
+    assert not (attempt_root / "FAILURE.json").exists()
+
+
+def test_reject_completed_execution_refuses_attempt_identity_mismatch(tmp_path: Path) -> None:
+    fixture = _failed_completed_execution_fixture(
+        tmp_path,
+        phase="semantic_audit",
+        role="director",
+        with_failure=False,
+    )
+    root = fixture["root"]
+    proposal = fixture["proposal"]
+    receipt_path = fixture["receipt_path"]
+    assert isinstance(root, Path)
+    assert isinstance(proposal, Path)
+    assert isinstance(receipt_path, Path)
+    proposal_before = proposal.read_bytes()
+    receipt_before = receipt_path.read_bytes()
+
+    with pytest.raises(
+        orchestrator.VisualPipelineOrchestrationError,
+        match="completed receipt belongs to another attempt",
+    ):
+        orchestrator.reject_completed_execution(
+            root,
+            cut_id="value-L01",
+            revision_id=REVISION_ID,
+            phase="semantic_audit",
+            role="director",
+            attempt=2,
+            reason="Wrong attempt must not be retired.",
+        )
+
+    assert proposal.read_bytes() == proposal_before
+    assert receipt_path.read_bytes() == receipt_before
 
 
 def test_recover_failed_execution_refuses_attempt_without_failure(tmp_path: Path) -> None:
@@ -2170,6 +2332,7 @@ def test_cli_recover_execution_calls_public_recovery_api(
             "revision_id": REVISION_ID,
             "phase": "asset_acquisition-001",
             "attempt": 1,
+            "reason": "下游發布環境失敗",
             "content_hash": "a" * 64,
         }
 
@@ -2207,9 +2370,66 @@ def test_cli_recover_execution_calls_public_recovery_api(
             "reason": "Downstream publisher runtime failed after worker completion.",
         }
     ]
-    payload = json.loads(capsys.readouterr().out)
+    output = capsys.readouterr().out
+    assert output.isascii(), "CLI receipt output must be safe on Windows cp1252 consoles"
+    payload = json.loads(output)
     assert payload["status"] == "recovered"
     assert payload["phase"] == "asset_acquisition-001"
+
+
+def test_cli_reject_completed_execution_calls_public_api(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = tmp_path / "episode"
+    root.mkdir()
+    calls: list[dict[str, object]] = []
+
+    def reject(episode_root, **kwargs):
+        calls.append({"episode_root": Path(episode_root), **kwargs})
+        return {
+            "contract": orchestrator.EXECUTION_FAILURE_CONTRACT,
+            "reason": kwargs["reason"],
+            "content_hash": "b" * 64,
+        }
+
+    monkeypatch.setattr(orchestrator, "reject_completed_execution", reject)
+    reason = "Semantic audit completed without media inspection."
+
+    assert (
+        orchestrator.main(
+            [
+                "reject-completed-execution",
+                str(root),
+                "--cut-id",
+                "value-L02",
+                "--revision-id",
+                REVISION_ID,
+                "--phase",
+                "semantic_audit",
+                "--role",
+                "director",
+                "--attempt",
+                "1",
+                "--reason",
+                reason,
+            ]
+        )
+        == 0
+    )
+    assert calls == [
+        {
+            "episode_root": root,
+            "cut_id": "value-L02",
+            "revision_id": REVISION_ID,
+            "phase": "semantic_audit",
+            "role": "director",
+            "attempt": 1,
+            "reason": reason,
+        }
+    ]
+    assert json.loads(capsys.readouterr().out)["status"] == "rejected"
 
 
 def test_direct_script_help_bootstraps_repo_import_path() -> None:

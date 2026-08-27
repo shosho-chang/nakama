@@ -779,6 +779,144 @@ def _canonical_phase_output_path(
     return attempt_root / name
 
 
+def reject_completed_execution(
+    episode_root: str | Path,
+    *,
+    cut_id: str,
+    revision_id: str,
+    phase: str,
+    role: str,
+    attempt: int,
+    reason: str,
+) -> dict[str, object]:
+    """Reject one completed, unpublished execution before downstream acceptance."""
+
+    root = Path(episode_root).resolve()
+    if not root.is_dir():
+        raise VisualPipelineOrchestrationError(f"episode root does not exist: {root}")
+    cut_id = _safe_cut_id(cut_id)
+    revision_id = _safe_revision_id(revision_id)
+    if not _SAFE_TOKEN.fullmatch(phase):
+        raise VisualPipelineOrchestrationError(f"unsafe execution phase: {phase!r}")
+    if not _SAFE_TOKEN.fullmatch(role):
+        raise VisualPipelineOrchestrationError(f"unsafe execution role: {role!r}")
+    if isinstance(attempt, bool) or not isinstance(attempt, int) or not 1 <= attempt <= 999:
+        raise VisualPipelineOrchestrationError(f"invalid execution attempt: {attempt!r}")
+    reason = str(reason).strip()
+    if not reason:
+        raise VisualPipelineOrchestrationError("execution rejection reason must not be empty")
+
+    job_root = (root / _JOB_ROOT / cut_id / "jobs" / revision_id).resolve()
+    receipt_path = _execution_receipt_path(job_root, phase)
+    raw_receipt = _load_json(receipt_path, f"{phase} execution receipt")
+    proposal_identity = raw_receipt.get("proposal")
+    if not isinstance(proposal_identity, dict) or not isinstance(
+        proposal_identity.get("path"), str
+    ):
+        raise VisualPipelineOrchestrationError(
+            f"cannot reject {phase}: proposal identity is invalid"
+        )
+    proposal_path = (root / str(proposal_identity["path"])).resolve()
+    if not proposal_path.is_relative_to(root):
+        raise VisualPipelineOrchestrationError(
+            f"cannot reject {phase}: proposal escaped the episode"
+        )
+    receipt = _load_execution_receipt(
+        root,
+        job_root,
+        cut_id=cut_id,
+        revision_id=revision_id,
+        phase=phase,
+        role=role,
+        proposal_path=proposal_path,
+    )
+    if receipt is None:
+        raise VisualPipelineOrchestrationError(
+            f"cannot reject {phase}: canonical execution receipt is missing"
+        )
+
+    attempt_root = _execution_attempt_root(job_root, phase, attempt).resolve()
+    attempts_root = (job_root / "receipts" / f"{phase}.attempts").resolve()
+    prepare_path = attempt_root / "PREPARE.json"
+    prepare_identity = receipt.get("prepare")
+    expected_prepare_path = prepare_path.relative_to(root).as_posix()
+    if (
+        not attempt_root.is_relative_to(attempts_root)
+        or not isinstance(prepare_identity, dict)
+        or prepare_identity.get("path") != expected_prepare_path
+        or not prepare_path.is_file()
+        or _identity(root, prepare_path) != prepare_identity
+    ):
+        raise VisualPipelineOrchestrationError(
+            f"cannot reject {phase}: completed receipt belongs to another attempt"
+        )
+    prepare = _load_json(prepare_path, f"{phase} prepare receipt")
+    claimed_prepare_hash = prepare.pop("content_hash", None)
+    if (
+        claimed_prepare_hash != _content_hash(prepare)
+        or prepare.get("contract") != EXECUTION_PREPARE_CONTRACT
+        or prepare.get("episode_id") != root.name
+        or prepare.get("cut_id") != cut_id
+        or prepare.get("revision_id") != revision_id
+        or prepare.get("phase") != phase
+        or prepare.get("role") != role
+        or prepare.get("attempt") != attempt
+        or prepare.get("phase_input") != receipt.get("phase_input")
+        or prepare.get("prompt_sha256") != receipt.get("prompt_sha256")
+        or prepare.get("proposal_path") != proposal_identity.get("path")
+    ):
+        raise VisualPipelineOrchestrationError(
+            f"cannot reject {phase}: PREPARE receipt identity mismatch"
+        )
+
+    current_path = root / _JOB_ROOT / cut_id / visual_pipeline.CURRENT_POINTER_NAME
+    if current_path.is_file():
+        current = _load_json(current_path, "visual CURRENT pointer")
+        if current.get("revision_id") == revision_id:
+            raise VisualPipelineOrchestrationError(
+                f"cannot reject {phase}: revision is already CURRENT"
+            )
+    try:
+        materialized_revision = visual_pipeline._materialized_visual_revision(root, cut_id)
+    except HighlightVisualContractError as error:
+        raise VisualPipelineOrchestrationError(
+            f"cannot reject {phase}: materialization receipt is invalid: {error}"
+        ) from error
+    if materialized_revision == revision_id:
+        raise VisualPipelineOrchestrationError(
+            f"cannot reject {phase}: revision is already materialized"
+        )
+    canonical_output = _canonical_phase_output_path(
+        root,
+        cut_id=cut_id,
+        revision_id=revision_id,
+        phase=phase,
+    )
+    if canonical_output.exists():
+        raise VisualPipelineOrchestrationError(
+            f"cannot reject {phase}: canonical downstream output already exists"
+        )
+
+    _reject_completed_execution(
+        root,
+        job_root,
+        cut_id=cut_id,
+        revision_id=revision_id,
+        phase=phase,
+        role=role,
+        proposal_path=proposal_path,
+        reason=reason,
+    )
+    failure = _load_json(attempt_root / "FAILURE.json", f"{phase} failure receipt")
+    claimed_failure_hash = failure.pop("content_hash", None)
+    if claimed_failure_hash != _content_hash(failure):
+        raise VisualPipelineOrchestrationError(
+            f"cannot reject {phase}: written FAILURE receipt hash mismatch"
+        )
+    failure["content_hash"] = claimed_failure_hash
+    return failure
+
+
 def recover_failed_execution(
     episode_root: str | Path,
     *,
@@ -2029,6 +2167,8 @@ def _parser() -> argparse.ArgumentParser:
             "Recovery command: podcast_highlight_visual_orchestrator.py abandon "
             "EPISODE_ROOT --cut-id CUT --revision-id REVISION --reason TEXT; or "
             "recover-execution EPISODE_ROOT --cut-id CUT --revision-id REVISION "
+            "--phase PHASE --role ROLE --attempt N --reason TEXT; or "
+            "reject-completed-execution EPISODE_ROOT --cut-id CUT --revision-id REVISION "
             "--phase PHASE --role ROLE --attempt N --reason TEXT"
         ),
     )
@@ -2076,6 +2216,23 @@ def _recover_execution_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _reject_completed_execution_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=f"{Path(sys.argv[0]).name} reject-completed-execution",
+        description=(
+            "Reject one completed worker execution whose downstream output was not accepted."
+        ),
+    )
+    parser.add_argument("episode_root", type=Path)
+    parser.add_argument("--cut-id", required=True)
+    parser.add_argument("--revision-id", required=True)
+    parser.add_argument("--phase", required=True)
+    parser.add_argument("--role", required=True)
+    parser.add_argument("--attempt", required=True, type=int)
+    parser.add_argument("--reason", required=True)
+    return parser
+
+
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     raw = list(sys.argv[1:] if argv is None else argv)
     if raw and raw[0] == "abandon":
@@ -2085,6 +2242,10 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     if raw and raw[0] == "recover-execution":
         args = _recover_execution_parser().parse_args(raw[1:])
         args.command = "recover-execution"
+        return args
+    if raw and raw[0] == "reject-completed-execution":
+        args = _reject_completed_execution_parser().parse_args(raw[1:])
+        args.command = "reject-completed-execution"
         return args
     args = _parser().parse_args(raw)
     args.command = "run"
@@ -2127,7 +2288,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(
                 json.dumps(
                     {"status": "recovered", **recovery},
-                    ensure_ascii=False,
+                    ensure_ascii=True,
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return 0
+        if args.command == "reject-completed-execution":
+            failure = reject_completed_execution(
+                args.episode_root,
+                cut_id=args.cut_id,
+                revision_id=args.revision_id,
+                phase=args.phase,
+                role=args.role,
+                attempt=args.attempt,
+                reason=args.reason,
+            )
+            print(
+                json.dumps(
+                    {"status": "rejected", **failure},
+                    ensure_ascii=True,
                     indent=2,
                     sort_keys=True,
                 )
@@ -2161,6 +2341,7 @@ __all__ = [
     "VisualDispatchAdapter",
     "VisualPipelineOrchestrationError",
     "main",
+    "reject_completed_execution",
     "recover_failed_execution",
     "run_visual_pipeline",
 ]
