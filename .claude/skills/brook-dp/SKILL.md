@@ -24,6 +24,18 @@ v1.0 2026-07-18 依四支成片拆解＋Ali/Jeff 對照的配方庫建立；
 本 skill 落地後接管 brook-director v2.0 的 Step 3–5（素材獲取）；Director 手冊中
 該三步為過渡期兼任條款。
 
+## Model routing
+
+DP 不負責重新理解整支影片的論述結構；它只在 Director 已定義的 exact event 內做素材搜尋、選片與
+render 規格，因此使用平衡型 model：
+
+- Codex：`gpt-5.6-terra`，reasoning `medium`。
+- Claude Code：最新 Opus；runtime 有 `claude-opus-5` 時優先使用。
+- 真正的下載、ffprobe、Hyperframes／Resolve render 與 materialization 全走 deterministic 工具，不用 LLM。
+
+若 Director intent 本身含糊，DP 不升級 model 代猜；退回 Director。只有搜尋結果在兩個語意切面間難以
+判斷時，才把該 event 的 reasoning 提高一級，不把整輪 DP 升到 frontier model。
+
 ## Podcast Highlight production adapter（ADR-065；優先於下方 standalone 步驟）
 
 Podcast episode + cut ID 不讀 standalone `data/script_video/<ep>/storyboard.yaml`。唯一 truth是

@@ -73,8 +73,8 @@ BIN_NAME = "Highlights"
 BANDS = {"long": (6 * 60, 18 * 60, None), "short": (40, 180, 180)}
 FORMAT_LABEL = {"long": "長", "short": "短"}
 MINER_ROLES = ("story", "punch", "value")
-MINER_OUTPUT_CONTRACT = "podcast-highlight-miner-output-v1"
-CANDIDATES_CONTRACT = "podcast-highlight-candidates-v1"
+MINER_OUTPUT_CONTRACT = "podcast-highlight-miner-output-v2"
+CANDIDATES_CONTRACT = "podcast-highlight-candidates-v2"
 _MINER_CANDIDATE_FIELDS = {
     "id",
     "format",
@@ -87,6 +87,17 @@ _MINER_CANDIDATE_FIELDS = {
     "head_trim",
     "cue_start",
     "cue_end",
+    "sections",
+}
+_LONG_SECTION_FIELDS = {
+    "section_id",
+    "cue_start",
+    "cue_end",
+    "start_quote",
+    "end_quote",
+    "summary",
+    "transition_before",
+    "transition_title",
 }
 _TS = re.compile(r"(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})")
 
@@ -249,7 +260,7 @@ def _load_miner_output(
         else lineage.get("master_srt_sha256")
     )
     if (
-        payload.get("schema_version") != 1
+        payload.get("schema_version") != 2
         or payload.get("contract") != MINER_OUTPUT_CONTRACT
         or payload.get("miner_role") != role
         or payload.get("source_srt_sha256") != expected_srt_sha256
@@ -351,6 +362,75 @@ def _load_miner_output(
             raise Stage5SubtitleContractError(
                 f"{role} miner candidate {candidate_id} head_trim is invalid"
             )
+        sections = candidate.get("sections")
+        if fmt == "short":
+            if sections != []:
+                raise Stage5SubtitleContractError(
+                    f"{role} miner short candidate {candidate_id} sections must be empty"
+                )
+        else:
+            if not isinstance(sections, list) or not 3 <= len(sections) <= 8:
+                raise Stage5SubtitleContractError(
+                    f"{role} miner long candidate {candidate_id} requires 3-8 sections"
+                )
+            expected_section_start = cue_start
+            for section_index, section in enumerate(sections, 1):
+                if not isinstance(section, dict) or set(section) != _LONG_SECTION_FIELDS:
+                    raise Stage5SubtitleContractError(
+                        f"{role} miner candidate {candidate_id} section schema drift"
+                    )
+                section_start = section.get("cue_start")
+                section_end = section.get("cue_end")
+                if (
+                    type(section_start) is not int
+                    or type(section_end) is not int
+                    or section_start != expected_section_start
+                    or section_end < section_start
+                    or section_end > cue_end
+                    or section.get("section_id") != f"section-{section_index:02d}"
+                ):
+                    raise Stage5SubtitleContractError(
+                        f"{role} miner candidate {candidate_id} sections must cover "
+                        "cues contiguously"
+                    )
+                for field in ("start_quote", "end_quote", "summary"):
+                    if not isinstance(section.get(field), str) or not section[field].strip():
+                        raise Stage5SubtitleContractError(
+                            f"{role} miner candidate {candidate_id} section {field} is invalid"
+                        )
+                if section["start_quote"] != cues[section_start - 1][2] or (
+                    section["end_quote"] != cues[section_end - 1][2]
+                ):
+                    raise Stage5SubtitleContractError(
+                        f"{role} miner candidate {candidate_id} section quote differs "
+                        "from transcript"
+                    )
+                transition_before = section.get("transition_before")
+                transition_title = section.get("transition_title")
+                if (
+                    type(transition_before) is not bool
+                    or (
+                        transition_before
+                        and (
+                            not isinstance(transition_title, str)
+                            or not transition_title.strip()
+                        )
+                    )
+                    or (not transition_before and transition_title is not None)
+                ):
+                    raise Stage5SubtitleContractError(
+                        f"{role} miner candidate {candidate_id} section transition is invalid"
+                    )
+                if section_index == 1 and transition_before:
+                    raise Stage5SubtitleContractError(
+                        f"{role} miner candidate {candidate_id} first section cannot "
+                        "start with a transition"
+                    )
+                expected_section_start = section_end + 1
+            if expected_section_start != cue_end + 1:
+                raise Stage5SubtitleContractError(
+                    f"{role} miner candidate {candidate_id} sections must cover cues contiguously"
+                )
         normalized.append(
             {
                 **candidate,
@@ -422,7 +502,7 @@ def merge_miners(
         else lineage["master_srt_sha256"]
     )
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "contract": CANDIDATES_CONTRACT,
         "source_srt_sha256": source_srt_sha256,
         lineage_key: lineage,

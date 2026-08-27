@@ -137,6 +137,25 @@ def _miner_candidate(
     cue_start: int,
     cue_end: int,
 ) -> dict:
+    sections: list[dict] = []
+    if fmt == "long":
+        boundaries = [cue_start]
+        span = cue_end - cue_start + 1
+        boundaries.extend(cue_start + span * index // 3 for index in (1, 2))
+        boundaries.append(cue_end + 1)
+        sections = [
+            {
+                "section_id": f"section-{index + 1:02d}",
+                "cue_start": start,
+                "cue_end": boundaries[index + 1] - 1,
+                "start_quote": f"official cue {start}",
+                "end_quote": f"official cue {boundaries[index + 1] - 1}",
+                "summary": f"semantic section {index + 1}",
+                "transition_before": index > 0,
+                "transition_title": f"Section {index + 1}" if index > 0 else None,
+            }
+            for index, start in enumerate(boundaries[:-1])
+        ]
     return {
         "id": candidate_id,
         "format": fmt,
@@ -149,6 +168,7 @@ def _miner_candidate(
         "head_trim": None,
         "cue_start": cue_start,
         "cue_end": cue_end,
+        "sections": sections,
     }
 
 
@@ -189,8 +209,8 @@ def _miner_outputs(episode: Path) -> tuple[_FakeMasterRequest, dict[str, Path]]:
         path.write_text(
             json.dumps(
                 {
-                    "schema_version": 1,
-                    "contract": "podcast-highlight-miner-output-v1",
+                    "schema_version": 2,
+                    "contract": "podcast-highlight-miner-output-v2",
                     "miner_role": role,
                     "source_srt_sha256": lineage["master_srt_sha256"],
                     "editorial_master_lineage": lineage,
@@ -249,6 +269,30 @@ def test_merge_miners_rejects_hallucinated_hook(tmp_path: Path) -> None:
     paths["value"].write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(Stage5SubtitleContractError, match="hook is not a raw transcript substring"):
+        merge_miners(episode, editorial_master_request=request)
+
+
+def test_merge_miners_rejects_long_section_gap(tmp_path: Path) -> None:
+    episode = tmp_path / "episode"
+    episode.mkdir()
+    request, paths = _miner_outputs(episode)
+    payload = json.loads(paths["value"].read_text(encoding="utf-8"))
+    payload["candidates"][0]["sections"][1]["cue_start"] += 1
+    paths["value"].write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(Stage5SubtitleContractError, match="cover cues contiguously"):
+        merge_miners(episode, editorial_master_request=request)
+
+
+def test_merge_miners_rejects_hallucinated_section_quote(tmp_path: Path) -> None:
+    episode = tmp_path / "episode"
+    episode.mkdir()
+    request, paths = _miner_outputs(episode)
+    payload = json.loads(paths["story"].read_text(encoding="utf-8"))
+    payload["candidates"][0]["sections"][0]["start_quote"] = "fabricated"
+    paths["story"].write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(Stage5SubtitleContractError, match="section quote differs"):
         merge_miners(episode, editorial_master_request=request)
 
 
@@ -369,7 +413,7 @@ def test_valid_three_miners_write_candidates_then_validate(tmp_path: Path) -> No
     assert merged["candidate_count"] == 18
     assert merged["long_candidate_count"] == 9
     assert validated["kept"] == {"long": 9, "short": 9}
-    assert candidates["contract"] == "podcast-highlight-candidates-v1"
+    assert candidates["contract"] == "podcast-highlight-candidates-v2"
     assert candidates["editorial_master_lineage"] == request.open().identity()
     assert [item["id"] for item in candidates["candidates"]] == [
         "punch-L01",

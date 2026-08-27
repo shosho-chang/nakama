@@ -60,7 +60,9 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.
 
 1. 先用 status/validator fresh重驗 PENDING revision內的 `DIRECTOR-WORK.json`。它必須綁 exact episode/cut、
    Editorial Master、winner/materialization lineage、tight SRT與 exact revision request；不要搜尋另一份字幕。
-2. 完整讀取 work packet指定的 tight SRT，以 exact cue quote/time/hash建立每個 visual event。
+2. 先讀 `DIRECTOR-WORK.candidate.sections` 的完整論述地圖，再完整讀 work packet 指定的 tight SRT，
+   以 exact cue quote/time/hash校正 section 錨點並建立每個 visual event。`transition_before=true` 是
+   highlight-cut 的語意候選：逐項接受、移動或否決，不得忽略後從零平均撒 TR。
 3. 只寫意圖：category、form/description、必要 `on_screen_text`（保留人工換行）、negative constraints與
    broad source hint。
    不搜尋具體候選、不選 asset、不填 license、不寫 `_broll.json`。

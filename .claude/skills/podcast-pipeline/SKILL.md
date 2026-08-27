@@ -385,7 +385,8 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\run_highlight_cut.py "<episode>" -
   -> Highlight shortlist review gate
 ```
 
-三 miners 的隔離 prompt、`podcast-highlight-miner-output-v1` exact schema、official strict merge、五份
+三 miners 的隔離 prompt、`podcast-highlight-miner-output-v2` exact schema（long candidates 必須帶完整
+`sections` 語意段落與 transition candidates）、official strict merge、五份
 review schema 與 QA DoD 以 `highlight-cut` skill 為準。Miner/persona inference 是 agent-owned work；中途
 不可停下詢問使用者。Mechanical miner merge 已由 `--merge-miners` 實作；persona dispatch 仍由
 subscription subagents 執行。若環境無法產生 exact reviews，必須回報

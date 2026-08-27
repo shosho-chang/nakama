@@ -12,7 +12,18 @@ description: >
 # highlight-cut — 訪談集精華選段
 
 設計凍結：`docs/plans/2026-07-25-highlight-cut-plan.md`（grill Q1–Q7）。
-**不走 paid API**：miner 與 persona 使用已設定的 Codex／Claude Code subscription subagents。
+**不走 paid API**：miner 與 persona 使用已設定的 Codex／Claude Code subscription workers。
+
+### Semantic model routing
+
+完整 SRT 的 miner／long structure pass 是本 skill 最需要語意理解的工作，模型由 host runtime 選擇：
+
+- Codex：`gpt-5.6-sol`，reasoning `high`。
+- Claude Code：優先 `claude-fable-5`；訂閱或當次 runtime 不提供時用最新 Opus。
+- 其他平台不得猜 model；沿用 host 的 frontier model，並在交付時明示實際 model。
+
+skill 不呼叫 repo 的 API `llm_router`，也不把單一供應商 model 寫進 Python。這讓同一份 skill 在不同
+platform 依 host 自動選擇，而 schema 驗證、merge、Resolve 等 deterministic 工作不浪費 frontier model。
 
 ## 執行環境（v1 收斂裁決，修修 2026-07-27）
 
@@ -76,8 +87,8 @@ Orchestrator 必須平行 dispatch 三個互相隔離、不能讀彼此輸出的
 
 ```json
 {
-  "schema_version": 1,
-  "contract": "podcast-highlight-miner-output-v1",
+  "schema_version": 2,
+  "contract": "podcast-highlight-miner-output-v2",
   "miner_role": "story|punch|value",
   "source_srt_sha256": "copy mining-input subtitle_srt_sha256",
   "editorial_master_lineage": {},
@@ -93,7 +104,19 @@ Orchestrator 必須平行 dispatch 三個互相隔離、不能讀彼此輸出的
       "miner": "story|punch|value",
       "head_trim": null,
       "cue_start": 1,
-      "cue_end": 2
+      "cue_end": 2,
+      "sections": [
+        {
+          "section_id": "section-01",
+          "cue_start": 1,
+          "cue_end": 1,
+          "start_quote": "第一個 cue 的完整原句",
+          "end_quote": "第一個 cue 的完整原句",
+          "summary": "這一段完成的論點",
+          "transition_before": false,
+          "transition_title": null
+        }
+      ]
     }
   ]
 }
@@ -103,6 +126,12 @@ Orchestrator 必須平行 dispatch 三個互相隔離、不能讀彼此輸出的
 identity object；不得刪欄、自行重建，也不得把 `elapsed_sec` 這類執行耗時混入 identity。
 `source_srt_sha256` raw exact copy 其中的 `master_srt_sha256`。ID 固定以 miner role 開頭，避免
 跨 worker 撞名。`head_trim` 是 cue 內要去除的秒數或 `null`，不是文字。
+
+long candidate 的 `sections` 要完整、連續覆蓋 `cue_start..cue_end`，通常 4–6 段，最多 8 段；short 固定
+為 `[]`。每段以首尾 cue 的完整 raw text 作錨點。`transition_before` 只在新問題、新主張、論證方向轉折
+或行動結論成立時為 true；不是按分鐘平均插。title 是 6–14 個中文字的 YouTube chapter／全螢幕 TR
+候選文案。第一段不得有 transition。這份 section map 是 editorial 建議，Director 可因 tight cut 微調
+精確時間與否決不必要的 TR，但不得重新假裝沒看過整體結構。
 
 每個 candidate 必須滿足：`t_start < t_end`；long 目標 8–12 分鐘、容忍 6–18；short 目標
 60–120 秒、容忍 40–180 且硬上限 180；hook 必須是時間範圍內 raw transcript substring。內容邊界
@@ -124,7 +153,7 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\run_highlight_cut.py "<episode>" -
 
 `--merge-miners` 固定讀上方三個 default paths，嚴格驗 contract、role、Master SRT hash、完整 lineage、exact
 candidate keys、cue range、finite timing、每家至少一個 long、跨 worker ID 唯一；以
-`(format,t_start,t_end,id)` 排序，原子寫 `podcast-highlight-candidates-v1`
+`(format,t_start,t_end,id)` 排序，原子寫 `podcast-highlight-candidates-v2`
 `highlights/candidates.json`，接著在同一次 command 執行 validate。Validator 吸附 cue 邊界、計算
 duration、將同格式重疊 >50% 標為 variant group（不淘汰）。任何 Master receipt／media／SRT drift
 都 fail closed。
@@ -278,6 +307,10 @@ lineage與 preflight綁定的 exact tight SRT建立 work packet；agent不得自
 Director plan；另一個 agent完整讀 `brook-dp` skill履約；再把 fulfillment交回**同一個 Director worker**做
 exact event coverage與語意 audit（Director identity相同、DP identity不同）。普通 `awaiting_director`／`awaiting_dp`／
 `awaiting_semantic_audit` 是 agent-owned next work，只有 ambiguity 才是 HITL。
+
+`DIRECTOR-WORK.candidate.sections` 是上游完整論述地圖。Director 必須先讀它，再讀 tight SRT 校正原句錨點；
+transition event 以 `transition_before=true` 為候選，不是硬性全收。Director 的責任是決定畫面與精確落點，
+不是從零重做整支長 Highlight 的章節分析。
 
 只有 fresh status `ready_to_materialize` 才能把 validated selection轉成 canonical broll recipe。
 `run_short_broll.py` = materializer，**不代表 `brook-dp` skill** execution；它不得自行找素材、猜 intent、
