@@ -21,6 +21,7 @@ import unicodedata
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock
 from typing import Callable, Mapping, Sequence
 
 from agents.brook.script_video.highlight_broll import BrollContractError, probe_stock_video
@@ -75,6 +76,8 @@ HYPERFRAMES_PROVIDER = "Nakama trusted HyperFrames renderer"
 HYPERFRAMES_LICENSE = "Nakama original composition render"
 TRUSTED_RENDER_DIR = "trusted-renders"
 _TEST_RENDER_DIR = "test-renders"
+_PRODUCTION_RUNTIME_STATUS_CACHE: dict[tuple[str, Path], dict[str, object]] = {}
+_PRODUCTION_RUNTIME_STATUS_CACHE_LOCK = Lock()
 
 _SAFE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _SAFE_REVISION = re.compile(r"^r-[0-9a-f]{24}$")
@@ -884,6 +887,22 @@ def hyperframes_runtime_status(
     return _hyperframes_runtime_status(package, runtime_root=runtime_root, test_mode=False)
 
 
+def _verified_production_runtime_status(
+    package: str, *, runtime_root: str | Path | None = None
+) -> dict[str, object]:
+    """Reuse one successful immutable production-runtime inspection per process key."""
+
+    root = _runtime_root(runtime_root)
+    key = (package, root)
+    with _PRODUCTION_RUNTIME_STATUS_CACHE_LOCK:
+        cached = _PRODUCTION_RUNTIME_STATUS_CACHE.get(key)
+        if cached is not None:
+            return cached
+        status = _hyperframes_runtime_status(package, runtime_root=root, test_mode=False)
+        _PRODUCTION_RUNTIME_STATUS_CACHE[key] = status
+        return status
+
+
 def _prepare_hyperframes_runtime(
     package: str,
     *,
@@ -1241,11 +1260,14 @@ def _verify_hyperframes_render_receipt_bound(
     fresh_frame_audit = _frame_audit(media_path, spec, canonical_params)
     if media_value["frame_audit"] != fresh_frame_audit:
         raise TrustedRenderError("HyperFrames media frame audit drift")
-    runtime_status = _hyperframes_runtime_status(
-        spec.package,
-        runtime_root=runtime_root,
-        test_mode=expected_contract == _HYPERFRAMES_TEST_RENDER_CONTRACT,
-    )
+    if expected_contract == _HYPERFRAMES_TEST_RENDER_CONTRACT:
+        runtime_status = _hyperframes_runtime_status(
+            spec.package, runtime_root=runtime_root, test_mode=True
+        )
+    else:
+        runtime_status = _verified_production_runtime_status(
+            spec.package, runtime_root=runtime_root
+        )
     execution = _verify_execution_receipt(
         receipt["execution"],
         runtime_status=runtime_status,

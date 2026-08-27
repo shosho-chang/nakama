@@ -851,6 +851,67 @@ def test_runtime_must_be_explicitly_preinstalled_with_an_acquisition_receipt(
     assert same["acquisition_content_hash"] == status["acquisition_content_hash"]
 
 
+def test_receipt_runtime_verification_reuses_one_success_per_process_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime_root = tmp_path / "runtimes-a"
+    other_root = tmp_path / "runtimes-b"
+    calls: list[tuple[str, Path, bool]] = []
+
+    def inspect_runtime(package: str, *, runtime_root: Path, test_mode: bool):
+        calls.append((package, runtime_root, test_mode))
+        return {"package": package, "runtime_root": runtime_root.as_posix()}
+
+    monkeypatch.setattr(candidate_renderer, "_hyperframes_runtime_status", inspect_runtime)
+    monkeypatch.setattr(candidate_renderer, "_PRODUCTION_RUNTIME_STATUS_CACHE", {})
+
+    for _ in range(5):
+        candidate_renderer._verified_production_runtime_status(
+            "hyperframes@0.7.72", runtime_root=runtime_root
+        )
+    candidate_renderer._verified_production_runtime_status(
+        "hyperframes@0.6.42", runtime_root=runtime_root
+    )
+    candidate_renderer._verified_production_runtime_status(
+        "hyperframes@0.7.72", runtime_root=other_root
+    )
+
+    assert calls == [
+        ("hyperframes@0.7.72", runtime_root.resolve(), False),
+        ("hyperframes@0.6.42", runtime_root.resolve(), False),
+        ("hyperframes@0.7.72", other_root.resolve(), False),
+    ]
+
+
+def test_receipt_runtime_verification_does_not_cache_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+
+    def inspect_runtime(package: str, *, runtime_root: Path, test_mode: bool):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise TrustedRenderError("runtime identity drift")
+        return {"package": package, "runtime_root": runtime_root.as_posix()}
+
+    monkeypatch.setattr(candidate_renderer, "_hyperframes_runtime_status", inspect_runtime)
+    monkeypatch.setattr(candidate_renderer, "_PRODUCTION_RUNTIME_STATUS_CACHE", {})
+
+    with pytest.raises(TrustedRenderError, match="identity drift"):
+        candidate_renderer._verified_production_runtime_status(
+            "hyperframes@0.7.72", runtime_root=tmp_path / "runtimes"
+        )
+    status = candidate_renderer._verified_production_runtime_status(
+        "hyperframes@0.7.72", runtime_root=tmp_path / "runtimes"
+    )
+
+    assert calls == 2
+    assert status["package"] == "hyperframes@0.7.72"
+
+
 def test_renderer_cli_help_exposes_explicit_runtime_gate() -> None:
     script = Path(__file__).parents[3] / "scripts" / "podcast_highlight_candidate_renderer.py"
     completed = subprocess.run(
