@@ -28,6 +28,7 @@ final class Plugin {
 			'includes/class-projections.php' => '\NakamaGam\Projections',
 			'includes/class-portal-ui.php'   => '\NakamaGam\PortalUi',
 			'includes/class-voyage-page.php' => '\NakamaGam\VoyagePage',
+			'includes/class-video-progress.php' => '\NakamaGam\VideoProgress',
 		);
 		foreach ( $optional as $file => $class ) {
 			if ( file_exists( NAKAMA_GAM_PATH . $file ) ) {
@@ -53,6 +54,9 @@ final class Plugin {
 		}
 		if ( class_exists( '\NakamaGam\VoyagePage' ) ) {
 			VoyagePage::register();
+		}
+		if ( class_exists( '\NakamaGam\VideoProgress' ) ) {
+			VideoProgress::register();
 		}
 	}
 

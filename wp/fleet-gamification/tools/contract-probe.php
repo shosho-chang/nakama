@@ -110,6 +110,50 @@ foreach ( array_keys( $routes ) as $r ) {
 $check( 'REST route feeds/{id}/comments', $has_cmt );
 $check( "comment payload key = 'comment'", str_contains( $cmt_ctrl, "Arr::get(\$data, 'comment')" ) );
 
+/* ── 4b. FluentPlayer progression 縫隙（影片觀看橋接的三個依賴） ──
+ *
+ * 我們不修改 vendor，但完全依賴這三樣東西存在：端點、判定廣播、policy filter。
+ * 任何一項 FAIL＝class-video-progress.php 會靜默失效（不會報錯、只是不再記錄）。
+ */
+$flp_dir  = WP_PLUGIN_DIR . '/fluent-player';
+$flp_src  = static function ( string $rel ) use ( $flp_dir ): string {
+	$f = $flp_dir . $rel;
+	return is_readable( $f ) ? (string) file_get_contents( $f ) : '';
+};
+$flp_actions = $flp_src( '/app/Hooks/actions.php' );
+$flp_prog    = $flp_src( '/app/Services/Progression/ProgressionService.php' );
+
+$check(
+	'FluentPlayer 啟用（FLUENT_PLAYER_VERSION）',
+	defined( 'FLUENT_PLAYER_VERSION' )
+);
+$check(
+	'progression 端點無條件註冊（ProgressionHandler）',
+	str_contains( $flp_actions, 'ProgressionHandler())->register()' ),
+	'端點沒註冊＝tracker 送出去無人接收'
+);
+$check(
+	'wp_ajax_fluent_player_progression 掛上',
+	has_action( 'wp_ajax_fluent_player_progression' ) !== false
+);
+$check(
+	"hook fluent_player/watch_recorded(\$mediaId, \$userId, [...])",
+	str_contains( $flp_prog, "do_action('fluent_player/watch_recorded'" ),
+	'判定完不再廣播＝我們永遠收不到觀看事件'
+);
+$check(
+	'filter fluent_player/progression/policy（跨場次累計開關）',
+	str_contains( $flp_prog, "apply_filters(\n            'fluent_player/progression/policy'" )
+		|| str_contains( $flp_prog, "'fluent_player/progression/policy'" ),
+	'沒有這個 filter＝accumulate 無法開，長影片跨場次觀看不會累計'
+);
+$check(
+	'pickDuration 伺服器片長優先（發分判準的地基）',
+	str_contains( $flp_prog, 'function pickDuration' )
+		&& str_contains( $flp_prog, "'source' => 'server'" ),
+	'伺服器不再擁有片長＝durationSource 判準失效'
+);
+
 /* ── 5. 本 plugin 自身 ──────────────────────────────── */
 $check( 'nakama-gam/v1 routes registered', (bool) rest_get_server()->get_routes( 'nakama-gam/v1' ) );
 $check( 'gam tables exist', (bool) $wpdb->get_var( "SHOW TABLES LIKE '{$wpdb->prefix}nakama_gam_grants'" ) );
