@@ -306,6 +306,20 @@ def _fill_zoom(res: str, sar: float = 1.0, canvas: tuple[int, int] | None = None
     return max(cw / (w * fit), ch / (h * fit))
 
 
+def _should_fill_media(*, orchestrated: bool, kind: str) -> bool:
+    """Legacy footage fills the frame; agent-approved Long footage keeps its full composition."""
+
+    return not orchestrated and kind in {"video", "photo"}
+
+
+def _needs_transition_texture(job: dict) -> bool:
+    """Paper transition renders carry alpha and need their opaque paper motion background."""
+
+    return job.get("comp") == "transition_title" and str(
+        job.get("vars", {}).get("style", "")
+    ).startswith("paper")
+
+
 def _guest_namecard_job(
     episode_dir: Path,
     cid: str,
@@ -335,9 +349,7 @@ def _guest_namecard_job(
             guest_namecard_end=t1,
         )
     except IdentityPlacementError as exc:
-        raise SystemExit(
-            f"item {index} guest-namecard placement 驗證失敗：{exc}"
-        ) from exc
+        raise SystemExit(f"item {index} guest-namecard placement 驗證失敗：{exc}") from exc
     if item.get("identity_placement") != placement.identity():
         raise SystemExit(f"item {index} guest-namecard identity lineage 已過期")
     name = item.get("name")
@@ -545,9 +557,7 @@ def _camera_correction_job(episode_dir: Path, item: dict, *, index: int) -> dict
 
     role = str(item.get("subject_role") or "")
     if role not in {"host", "guest", "wide"}:
-        raise SystemExit(
-            f"item {index} camera-correction subject_role 必須是 host/guest/wide"
-        )
+        raise SystemExit(f"item {index} camera-correction subject_role 必須是 host/guest/wide")
     raw_source = item.get("source_path")
     if not isinstance(raw_source, str) or not raw_source.strip():
         raise SystemExit(f"item {index} camera-correction source_path 不合法")
@@ -572,9 +582,7 @@ def _camera_correction_job(episode_dir: Path, item: dict, *, index: int) -> dict
         else cfg.get("wide_cam")
     )
     if not isinstance(expected_name, str) or source.name.casefold() != expected_name.casefold():
-        raise SystemExit(
-            f"item {index} camera-correction {role} 必須使用 {expected_name}"
-        )
+        raise SystemExit(f"item {index} camera-correction {role} 必須使用 {expected_name}")
     try:
         t0, t1, src_in = float(item["t0"]), float(item["t1"]), float(item["src_in"])
     except (KeyError, TypeError, ValueError) as exc:
@@ -662,9 +670,7 @@ def _load_camera_correction_jobs(episode_dir: Path, cid: str) -> list[dict]:
     if not isinstance(items, list):
         raise SystemExit(f"camera-correction recipe items 必須是 array：{plan_path}")
     rows = [
-        item
-        for item in items
-        if isinstance(item, dict) and item.get("kind") == "camera-correction"
+        item for item in items if isinstance(item, dict) and item.get("kind") == "camera-correction"
     ]
     if not rows:
         raise SystemExit(f"{plan_path} 沒有 camera-correction")
@@ -801,9 +807,7 @@ def apply_camera_corrections(episode_dir: Path, cid: str) -> dict:
         if not clips:
             raise SystemExit(f"camera-correction 匯入失敗：{job['path']}")
         clip = clips[0]
-        result = mp.AppendToTimeline(
-            [_media_append_spec(job, clip, fps=fps, tl_start=tl_start)]
-        )
+        result = mp.AppendToTimeline([_media_append_spec(job, clip, fps=fps, tl_start=tl_start)])
         if not result or (isinstance(result, list) and result[0] is None):
             raise SystemExit(f"camera-correction 疊軌失敗 @{job['t0']:.3f}s")
         item = (timeline.GetItemListInTrack("video", BROLL_TRACK) or [])[-1]
@@ -837,31 +841,67 @@ def apply_camera_corrections(episode_dir: Path, cid: str) -> dict:
     }
 
 
-def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
+def apply(
+    episode_dir: Path,
+    cid: str,
+    stills_dir: Path | None = None,
+    *,
+    orchestrator_timeline_name: str | None = None,
+    orchestrator_timeline_uid: str | None = None,
+    recipe_path: Path | None = None,
+) -> dict:
     from build_resolve_project import connect_resolve
 
-    master = _open_editorial_master(episode_dir)
-    c, w = _load_winner(episode_dir, cid, master.identity())
-    fmt = c.get("format", "short")
+    orchestrated = orchestrator_timeline_name is not None or orchestrator_timeline_uid is not None
+    if orchestrated:
+        if not orchestrator_timeline_name or not orchestrator_timeline_uid:
+            raise SystemExit("new orchestrator apply requires exact Timeline name and UID")
+        master = c = w = broll_receipt = None
+        fmt = "long"
+    else:
+        master = _open_editorial_master(episode_dir)
+        c, w = _load_winner(episode_dir, cid, master.identity())
+        fmt = c.get("format", "short")
     fcfg = FORMAT_BROLL[fmt]
     canvas = tuple(fcfg["canvas"])
     suffix = fcfg["comp_suffix"]
-    broll_path = episode_dir / TIGHTEN_DIR / f"{cid}_broll.json"
+    broll_path = (
+        Path(recipe_path)
+        if recipe_path is not None
+        else episode_dir / TIGHTEN_DIR / f"{cid}_broll.json"
+    )
     if not broll_path.exists():
         raise SystemExit(f"{broll_path} 不存在——agent 先從 tight SRT 規劃素材點")
     items = json.loads(broll_path.read_text(encoding="utf-8"))["items"]
-    try:
-        broll_receipt = build_authoritative_broll_receipt(
-            episode_dir,
-            cid,
-            str(fmt),
-            items,
-            master.identity(),
-            editorial_master=master,
-        )
-    except BrollContractError as exc:
-        raise SystemExit(f"Stock Video production gate 失敗：{exc}") from exc
-    render_items = sorted(items, key=lambda x: x["t0"])
+    if not orchestrated:
+        try:
+            broll_receipt = build_authoritative_broll_receipt(
+                episode_dir,
+                cid,
+                str(fmt),
+                items,
+                master.identity(),
+                editorial_master=master,
+            )
+        except BrollContractError as exc:
+            raise SystemExit(f"Stock Video production gate 失敗：{exc}") from exc
+    structural_kinds = {"camera-correction", "guest-namecard", "badge"}
+
+    def _preserved_structural_kind(item: dict) -> str | None:
+        kind = str(item.get("kind") or "")
+        if kind in structural_kinds:
+            return kind
+        if kind == "concept" and str(item.get("slug") or "") == "guest-namecard":
+            return "guest-namecard"
+        return None
+
+    structural_items = [
+        (item, kind) for item in items if (kind := _preserved_structural_kind(item)) is not None
+    ]
+    render_items = sorted(
+        (item for item in items if not orchestrated or _preserved_structural_kind(item) is None),
+        key=lambda x: x["t0"],
+    )
     assets_dir = episode_dir / "assets" / "broll"
     stickers_dir = episode_dir / "assets" / "stickers"
     cards_dir = episode_dir / CARDS_DIR
@@ -985,29 +1025,35 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         # visually audited by DP/Director.  Only structural namecards reach the
         # legacy renderer below.
         if "mov" in job:
-            continue
-        h = _card_hash(job["comp"], job["vars"], suffix)
-        mov = cards_dir / f"{cid}_broll_{job['i']}_{h}.mov"
-        if not mov.exists():
-            # 編號無關的 cache 檢索：hash 相同=內容相同，插入新 item 造成的
-            # 編號位移不重渲（2026-08-04：插 3 支 stock 讓 5 張章節籤全部
-            # cache miss 白渲 10 分鐘）
-            same_hash = sorted(cards_dir.glob(f"{cid}_broll_*_{h}.mov"))
-            if same_hash:
-                logger.info("cache hit（編號位移）: %s → %s", same_hash[0].name, mov.name)
-                mov = same_hash[0]
-            else:
-                _render_card(job["comp"], job["vars"], mov, suffix)
+            mov = Path(job["mov"])
         else:
-            logger.info("cache hit: %s", mov.name)
+            h = _card_hash(job["comp"], job["vars"], suffix)
+            mov = cards_dir / f"{cid}_broll_{job['i']}_{h}.mov"
+            if not mov.exists():
+                # 編號無關的 cache 檢索：hash 相同=內容相同，插入新 item 造成的
+                # 編號位移不重渲（2026-08-04：插 3 支 stock 讓 5 張章節籤全部
+                # cache miss 白渲 10 分鐘）
+                same_hash = sorted(cards_dir.glob(f"{cid}_broll_*_{h}.mov"))
+                if same_hash:
+                    logger.info("cache hit（編號位移）: %s → %s", same_hash[0].name, mov.name)
+                    mov = same_hash[0]
+                else:
+                    _render_card(job["comp"], job["vars"], mov, suffix)
+            else:
+                logger.info("cache hit: %s", mov.name)
         # B2 定版：paper 系滿版轉場卡疊紙紋 motion bg（scrim 自帶底不合成）
-        style_val = str(job["vars"].get("style", ""))
-        if job["comp"] == "transition_title" and style_val.startswith("paper"):
+        if _needs_transition_texture(job):
             tex = assets_dir / PAPER_TEXTURE
             if not tex.exists():
                 raise SystemExit(f"assets/broll/{PAPER_TEXTURE} 不存在——先落紙紋底（見 SKILL.md）")
-            tex_mov = mov.with_name(mov.stem + "_tex.mov")
-            if not tex_mov.exists():
+            stable_name = (
+                str(job.get("timeline_name") or f"{cid}_broll_{job['i']}")
+                .replace("/", "_")
+                .replace("\\", "_")
+            )
+            tex_mov = cards_dir / f"{stable_name}_tex.mov"
+            source_mtime = max(mov.stat().st_mtime_ns, tex.stat().st_mtime_ns)
+            if not tex_mov.exists() or tex_mov.stat().st_mtime_ns < source_mtime:
                 logger.info("紙紋底合成: %s", tex_mov.name)
                 _composite_texture(
                     mov,
@@ -1021,21 +1067,22 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
 
     # Re-open both trust roots before any Resolve access. CURRENT may switch
     # while jobs are prepared; an older audited generation must never apply.
-    master = _open_editorial_master(episode_dir)
-    c, w = _load_winner(episode_dir, cid, master.identity())
-    try:
-        fresh_broll_receipt = build_authoritative_broll_receipt(
-            episode_dir,
-            cid,
-            str(c["format"]),
-            items,
-            master.identity(),
-            editorial_master=master,
-        )
-    except BrollContractError as exc:
-        raise SystemExit(f"Stock Video production gate 失敗：{exc}") from exc
-    if fresh_broll_receipt != broll_receipt:
-        raise SystemExit("Stock Video plan／素材在準備期間發生變更，未修改 Resolve")
+    if not orchestrated:
+        master = _open_editorial_master(episode_dir)
+        c, w = _load_winner(episode_dir, cid, master.identity())
+        try:
+            fresh_broll_receipt = build_authoritative_broll_receipt(
+                episode_dir,
+                cid,
+                str(c["format"]),
+                items,
+                master.identity(),
+                editorial_master=master,
+            )
+        except BrollContractError as exc:
+            raise SystemExit(f"Stock Video production gate 失敗：{exc}") from exc
+        if fresh_broll_receipt != broll_receipt:
+            raise SystemExit("Stock Video plan／素材在準備期間發生變更，未修改 Resolve")
 
     # 2) Resolve：匯入 + 疊軌
     resolve = connect_resolve()
@@ -1048,7 +1095,11 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     fps = float(project.GetSetting("timelineFrameRate"))
     mp = project.GetMediaPool()
     root = mp.GetRootFolder()
-    director_label = f"{FORMAT_LABEL[c['format']]}{w['rank']} - {c['title']}（緊·導播）"
+    director_label = (
+        orchestrator_timeline_name
+        if orchestrated
+        else f"{FORMAT_LABEL[c['format']]}{w['rank']} - {c['title']}（緊·導播）"
+    )
     director = None
     for i in range(1, project.GetTimelineCount() + 1):
         t = project.GetTimelineByIndex(i)
@@ -1057,8 +1108,33 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
             break
     if director is None:
         raise SystemExit(f"「{director_label}」不存在——先跑 run_short_director")
-    _verify_director_materialization(episode_dir, cid, c, director, master, fps)
-    project.SetCurrentTimeline(director)
+    if orchestrated:
+        timeline_uid = None
+        for method_name in ("GetUniqueId", "GetUniqueID"):
+            method = getattr(director, method_name, None)
+            value = method() if callable(method) else None
+            if isinstance(value, str) and value.strip():
+                timeline_uid = value.strip()
+                break
+        if timeline_uid != orchestrator_timeline_uid:
+            raise SystemExit("new orchestrator target Timeline UID changed before B-roll apply")
+    else:
+        _verify_director_materialization(episode_dir, cid, c, director, master, fps)
+    selected = project.SetCurrentTimeline(director)
+    if orchestrated and selected is False:
+        raise SystemExit("Resolve refused to select orchestrator target Timeline")
+    if orchestrated:
+        get_current = getattr(project, "GetCurrentTimeline", None)
+        current = get_current() if callable(get_current) else director
+        current_uid = None
+        for method_name in ("GetUniqueId", "GetUniqueID"):
+            method = getattr(current, method_name, None)
+            value = method() if callable(method) else None
+            if isinstance(value, str) and value.strip():
+                current_uid = value.strip()
+                break
+        if current_uid != orchestrator_timeline_uid:
+            raise SystemExit("Resolve current Timeline differs from orchestrator target UID")
 
     # 冪等清場（timeline items）：**媒體路徑歸屬判定**——本 timeline 上凡是
     # 媒體檔在 episode assets/broll/ 底下的 item 都是本 script 放的（開場分割
@@ -1072,7 +1148,43 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         if job["kind"] == "camera-correction"
     }
 
-    def _ours(it) -> bool:
+    protected_tracks = {
+        "camera-correction": BROLL_TRACK,
+        "guest-namecard": CARD_TRACK,
+        "badge": BADGE_TRACK,
+    }
+    protected_ranges = [
+        (
+            kind,
+            protected_tracks[kind],
+            int(float(item["t0"]) * fps),
+            int(float(item["t1"]) * fps),
+        )
+        for item, kind in structural_items
+    ]
+    protect_tl_start = director.GetStartFrame()
+
+    def _ours(it, track_index: int) -> bool:
+        if orchestrated:
+            item_start = it.GetStart() - protect_tl_start
+            item_end = it.GetEnd() - protect_tl_start
+            if any(
+                track_index == protected_track
+                and (
+                    (
+                        kind == "badge"
+                        and item_start >= protected_start - 2
+                        and item_end <= protected_end + 2
+                    )
+                    or (
+                        kind != "badge"
+                        and abs(item_start - protected_start) <= 2
+                        and abs(item_end - protected_end) <= 2
+                    )
+                )
+                for kind, protected_track, protected_start, protected_end in protected_ranges
+            ):
+                return False
         if (it.GetName() or "").startswith(f"{cid}_broll_"):
             return True
         try:
@@ -1083,18 +1195,22 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         return fp.lower().startswith(assets_prefix) or fp.casefold() in correction_paths
 
     for ti in range(1, director.GetTrackCount("video") + 1):
-        stale = [it for it in (director.GetItemListInTrack("video", ti) or []) if _ours(it)]
+        stale = [it for it in (director.GetItemListInTrack("video", ti) or []) if _ours(it, ti)]
         if stale:
             director.DeleteClips(stale)
     known = {j["path"].stem for j in media_jobs} | {f"{cid}_broll_"}
     broll_bin = next(
         (f for f in root.GetSubFolderList() if f.GetName() == "BRoll"), None
     ) or mp.AddSubFolder(root, "BRoll")
-    stale_clips = [
-        cl
-        for cl in (broll_bin.GetClipList() or [])
-        if any((cl.GetName() or "").startswith(k) for k in known)
-    ]
+    stale_clips = (
+        []
+        if orchestrated
+        else [
+            cl
+            for cl in (broll_bin.GetClipList() or [])
+            if any((cl.GetName() or "").startswith(k) for k in known)
+        ]
+    )
     if stale_clips:
         mp.DeleteClips(stale_clips)
 
@@ -1131,20 +1247,19 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
             # 靜照的 endFrame 會被忽略（走專案預設靜照時長 5s，實測 journal
             # 照 3.2s 變 5.0s）——先把 clip 的 Frames 設成目標長度
             _configure_photo_hold(clip, span=job["span"], fps=fps)
-        ok = mp.AppendToTimeline(
-            [_media_append_spec(job, clip, fps=fps, tl_start=tl_start)]
-        )
+        ok = mp.AppendToTimeline([_media_append_spec(job, clip, fps=fps, tl_start=tl_start)])
         if not ok or (isinstance(ok, list) and ok[0] is None):  # [None]=失敗（2026-08-04）
             raise SystemExit(f"疊軌失敗 @{job['t0']}（track {BROLL_TRACK} 可能被佔）")
         item = (director.GetItemListInTrack("video", BROLL_TRACK) or [])[-1]
         zoom = _fill_zoom(clip.GetClipProperty("Resolution"), job["sar"], canvas)
-        if job["kind"] == "photo":
+        should_fill = _should_fill_media(orchestrated=orchestrated, kind=job["kind"])
+        if should_fill and job["kind"] == "photo":
             # 靜照先放大到 fill，Ken Burns 再往上推
             item.SetProperty("ZoomX", zoom)
             item.SetProperty("ZoomY", zoom)
             if not _ken_burns(item, job["span"], fps, KENBURNS_SCALE):
                 logger.warning("Ken Burns 失敗 @%.1fs——照片維持靜態", job["t0"])
-        elif zoom > 1.001:
+        elif should_fill and zoom > 1.001:
             item.SetProperty("ZoomX", zoom)
             item.SetProperty("ZoomY", zoom)
         made.append(
@@ -1224,8 +1339,24 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
 
     mp.SetCurrentFolder(root)
     pm.SaveProject()
-    try:
-        post_apply_broll_receipt = build_authoritative_broll_receipt(
+    committed_broll_receipt = None
+    if not orchestrated:
+        try:
+            post_apply_broll_receipt = build_authoritative_broll_receipt(
+                episode_dir,
+                cid,
+                str(c["format"]),
+                items,
+                master.identity(),
+                editorial_master=master,
+            )
+        except BrollContractError as exc:
+            raise SystemExit(f"Stock Video materialization receipt 寫入失敗：{exc}") from exc
+        if post_apply_broll_receipt != broll_receipt:
+            raise SystemExit(
+                "Stock Video plan／素材在疊軌期間發生變更；未發布 materialization receipt"
+            )
+        committed_broll_receipt = write_broll_receipt(
             episode_dir,
             cid,
             str(c["format"]),
@@ -1233,18 +1364,6 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
             master.identity(),
             editorial_master=master,
         )
-    except BrollContractError as exc:
-        raise SystemExit(f"Stock Video materialization receipt 寫入失敗：{exc}") from exc
-    if post_apply_broll_receipt != broll_receipt:
-        raise SystemExit("Stock Video plan／素材在疊軌期間發生變更；未發布 materialization receipt")
-    committed_broll_receipt = write_broll_receipt(
-        episode_dir,
-        cid,
-        str(c["format"]),
-        items,
-        master.identity(),
-        editorial_master=master,
-    )
 
     stills = []
     if stills_dir is not None:
@@ -1272,14 +1391,20 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
             project.DeleteRenderJob(jid)
             stills.append(name)
 
-    return {
+    result = {
         "status": "brolled",
         "timeline": director_label,
         "items": made,
         "stills": stills,
-        "stock_video_count": committed_broll_receipt["stock_video_count"],
-        "stock_video_receipt": str(receipt_path(episode_dir, cid)),
+        "stock_video_count": (
+            committed_broll_receipt["stock_video_count"]
+            if committed_broll_receipt is not None
+            else sum(item.get("kind") == "video" for item in items)
+        ),
     }
+    if committed_broll_receipt is not None:
+        result["stock_video_receipt"] = str(receipt_path(episode_dir, cid))
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:

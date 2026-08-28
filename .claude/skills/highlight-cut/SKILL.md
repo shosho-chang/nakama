@@ -25,6 +25,40 @@ description: >
 skill 不呼叫 repo 的 API `llm_router`，也不把單一供應商 model 寫進 Python。這讓同一份 skill 在不同
 platform 依 host 自動選擇，而 schema 驗證、merge、Resolve 等 deterministic 工作不浪費 frontier model。
 
+## Long Highlight 新預設：單一 Stage 5 orchestrator
+
+新的 long Highlight 一律從下列入口開始；後面的 Step 1–5 strict commands 只保留給明確要求重現
+舊 run 的 forensic／migration，不再是新製作預設：
+
+```powershell
+python scripts/run_long_highlight_orchestrator.py start <state.json> `
+  --episode-id <episode-id> --srt <master.srt> --media <master.mp4> --dry-run
+python scripts/run_long_highlight_orchestrator.py resume <state.json>
+python scripts/run_long_highlight_orchestrator.py status <state.json>
+```
+
+`DirectoryStageRunner` 是 host exchange adapter：orchestrator 將每個 stage/event request 寫到
+`<exchange-dir>/requests/`，host workers 將 JSON 回覆放進 `responses/`，再 `resume`。它本身不啟動
+LLM process 或 network call。
+
+orchestrator 只在入口確認來源存在、可讀與 SRT 時間範圍。三個 miner（story／punch／value）平行讀完整
+逐字稿；tolerant merge 接受額外欄位、補齊缺少的 optional 欄位，單一 malformed candidate 只 quarantine
+並警告，不丟棄其他語意成果。之後平行派阿哲、凱文、淑芬與 Renee；reviewer 漏評是 warning，不阻塞
+其他 review。**沒有額外品牌 lens。**
+
+候選完成後 state 進入 `needs_review`，必須由修修選 winner；選擇前可直接修 candidate。批准後同一個
+orchestrator 續跑 tighten → Director → DP → targeted visual review/fix → Resolve/Preview + Packaging readiness。
+單一 visual event 失敗只用 `retry-event --stage visual_fix --event-id <id>` 重跑該 event，不整輪重跑。
+外層 state 是可修正 draft，不要求 worker 回傳內容／媒體指紋或完整 provenance chain；真正會阻止流程的
+只有來源不可讀、選中 winner 越界、asset 不可播放、Resolve 會破壞既有內容、沒有 preview，以及尚未
+通過 human gate。
+
+已有 Director／DP JSON 時，使用 `adopt-existing --director <json> --dp <json>` 匯入可用 event rows；
+failed／missing rows 留作 pending，未知的舊 metadata 不帶進新 state，也不執行 Resolve mutation。當
+Director 已固定 stock authority 時，DP 可只保留該一個可信候選，不必虛構 A/B/C。
+已有人工核准 winner 時用 `adopt-winner --winner <json>`；可在同一 command 加 `--director/--dp`，
+直接進 downstream，miner/reviewer 不會重跑。
+
 ## 執行環境（v1 收斂裁決，修修 2026-07-27）
 
 **這個 skill 只能在 Codex 或 Claude Code 的本機 agent runtime 跑，不走 Computer Use。**
@@ -62,7 +96,7 @@ Episode 已完成 Podcast Pipeline 的 `memo-dual-audit-v1` release、Resolve �
 `C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe`；只有 offline `status` 與不帶
 `--live` 的 `verify` 可使用 `E:\nakama\.venv-v2\Scripts\python.exe`。
 
-## Step 1 — 取得 mining input
+## Legacy Step 1 — 取得 strict mining input（只供舊 run）
 
 ```powershell
 E:\nakama\.venv-v2\Scripts\python.exe scripts\run_highlight_cut.py "<episode>" --mining-input
@@ -158,28 +192,26 @@ candidate keys、cue range、finite timing、每家至少一個 long、跨 worke
 duration、將同格式重疊 >50% 標為 variant group（不淘汰）。任何 Master receipt／media／SRT drift
 都 fail closed。
 
-## Step 2 — agent-owned blind persona and lens review
+## Legacy Step 2 — agent-owned blind persona review
 
 Validate 成功後才 dispatch；每個 reviewer 必須 blind，不能讀其他 reviewer output。三位 scoring
-persona 全部覆蓋每個 candidate；brand 覆蓋全體；Renee 只覆蓋 long：
+persona 全部覆蓋每個 candidate；Renee 只覆蓋 long：
 
 | Reviewer | Output | Required shape |
 |---|---|---|
 | 阿哲 | `highlights/review_azhe.json` | `{"persona":"azhe","source_sha256":"<candidates sha>","scores":[{"id":"story-L01","total":0,"rationale":"..."}]}` |
 | 凱文 | `highlights/review_kevin.json` | `{"persona":"kevin","source_sha256":"<candidates sha>","scores":[...]}` |
 | 淑芬 | `highlights/review_shufen.json` | `{"persona":"shufen","source_sha256":"<candidates sha>","scores":[...]}` |
-| Brand lens | `highlights/lens_brand.json` | `{"lens":"brand","source_sha256":"<candidates sha>","findings":[{"id":"story-L01","severity":"veto|caution|pass","issue":"...","mitigation":"..."}]}` |
 | Renee lens | `highlights/lens_renee.json` | `{"lens":"renee","source_sha256":"<candidates sha>","findings":[{"id":"story-L01","hook_risk":"...","retention_risk":"...","boundary_action":"..."}]}` |
 
-Persona `total` 必須 finite 0–100；這次 long gate 的三份 scoring file 與 brand findings IDs 必須 exact
+Persona `total` 必須 finite 0–100；舊 gate 的三份 scoring file IDs 必須 exact
 等於 long candidate IDs、無重複、無遺漏；每份 `source_sha256` 必須 raw exact 等於 finalized
 `candidates.json` SHA-256，並使用 `hashlib.sha256(...).hexdigest()` 的小寫 hex，不得改成
-PowerShell `Get-FileHash` 的大寫顯示。所有引用原句須為 candidate time range 內 transcript raw substring。Brand veto 只標紅、不能
-自動排除。另派一個 QA pass 驗證 schema、coverage 與 quote citations；任何整份 review citation 錯誤就
+PowerShell `Get-FileHash` 的大寫顯示。所有引用原句須為 candidate time range 內 transcript raw substring。另派一個 QA pass 驗證 schema、coverage 與 quote citations；任何整份 review citation 錯誤就
 作廢並 blind rerun 該 reviewer，不能局部補分。
 
 Shortlist ranking 由既有 code 計算三人中位數；同 variant group 只有最高分佔 rank，其他仍列出；
-Renee／brand 不計分。只有五份 review outputs 都驗證通過才可進下一步。
+Renee 不計分。只有四份 review outputs 都驗證通過才可進下一步。
 
 Persona dispatch 仍是 orchestrator-owned subscription subagent stage；`run_cut_shortlist.py` 是 strict
 review gate，會拒絕缺檔、stale `source_sha256`、partial/extra/duplicate candidate coverage 與 non-finite
@@ -206,12 +238,11 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\run_cut_shortlist.py "<episode>" -
 LLM 用量最大的一塊；把 HITL 移到**排完之後、製作之前**幾乎零成本，因為那張表的
 料在 panel 跑完時就已經齊了。
 
-- 表上有：排名 / id / variant 群組 / 中位數 / 三位分數 / 長度 / 主題 / 品牌 lens 旗標，
+- 表上有：排名 / id / variant 群組 / 中位數 / 三位分數 / 長度 / 主題，
   外加每支的 hook 與 lens 細節。同群組落選的 variant **照常列出**（標「同群組落選」），
   修修可以指名要那個切法
 - 幾支都可以（預設 3 支）。修修欽點超過預設數量是原始需求，`--pick` 給幾個就寫幾個，
   順序＝rank
-- brand-lens 否決段可以被指名，但 script 會在 stderr 警告——**不靜默照做**
 - `winners.json` 只由本 script 寫（schema 由它保證）；既有的 `excluded_group` 保留
 
 ## Explicit legacy forensic inputs（不是 production default）
@@ -352,7 +383,6 @@ subagents，audit回到原 Director handle；accept commands需使用 host觀察
 - 各 3 當選段：標題欄一行指向 packaging gate（`/bridge/packaging/<slug>`；候選
   單一落點 packages.json，不重複存 — ADR-054 D16①）+ hook 原句 + 選段理由 +
   persona 意見摘要 + Renee 留存風險（長片）
-- brand-lens 否決項**標紅**置頂等修修裁決
 - 落選全列：分數 + 一句短評（撈遺珠用；主 timeline 藍色 marker 對應）
 
 ## Step 5 — 終檢（交付前必做）
@@ -380,11 +410,8 @@ critical 必修才能交付。修法：`line_moves_*.json` 支援三種操作—
 負責（開採出的長片 winners 也在這裡產生）；長片的緊湊化/導播/視覺語彙/
 SFX/QC 全部見 `.claude/skills/longform-cut/SKILL.md`。
 
-交接硬門檻：每支 long Highlight 在 finished review 前必須有完整且 fresh 的 ADR-065 receipt chain，且至少 **3 個 Stock Video
-（Stock Village）** asset-backed events；guest-namecard、Hero Title、transition、badge、紙紋、
-photo 與 generated card 不計數。只有 visual pipeline 已到 `ready_to_materialize` 才跑
-`run_short_broll.py <episode> --id <id> --validate-only`；不足、語意 audit mismatch或任何 lineage漂移時
-維持 revision-required，不可提交 finished review。
+新交接由上方 Stage 5 orchestrator 的 mutable state 與 targeted visual review 管理。舊 ADR-065 chain
+只在明確採用 legacy adapter 時由該 adapter 自己處理，不是 orchestrator 的 outer gate。
 
 Script 層仍共用 `run_short_*.py`（`FORMAT_*` 參數表）——改 script 時兩線
 測試都要跑。以下 Step 6–11 為**短片線**。

@@ -10,7 +10,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest  # noqa: E402
-from run_short_broll import _data_uri, _fill_zoom, _guest_namecard_job  # noqa: E402
+from run_short_broll import (  # noqa: E402
+    _data_uri,
+    _fill_zoom,
+    _guest_namecard_job,
+    _needs_transition_texture,
+    _should_fill_media,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -19,9 +25,7 @@ def _stub_stock_video_probe(monkeypatch):
         "agents.brook.script_video.highlight_broll.probe_stock_video",
         lambda _path: {
             "duration_seconds": 5.0,
-            "video_streams": [
-                {"index": 0, "codec_name": "h264", "width": 16, "height": 16}
-            ],
+            "video_streams": [{"index": 0, "codec_name": "h264", "width": 16, "height": 16}],
         },
     )
 
@@ -86,9 +90,7 @@ def _write_broll_inputs(episode: Path, lineage: dict, *, winner_lineage: dict | 
                 },
             }
         )
-    (tighten / "value-L01_broll.json").write_text(
-        json.dumps({"items": items}), encoding="utf-8"
-    )
+    (tighten / "value-L01_broll.json").write_text(json.dumps({"items": items}), encoding="utf-8")
 
 
 def _projection(
@@ -452,9 +454,7 @@ def test_title_materializer_supports_rev10_seven_second_hero():
     assert titles.COMP_SEC - 0.2 >= 7.262
 
 
-def test_apply_rejects_legacy_guest_namecard_without_guest_camera_correction(
-    tmp_path, monkeypatch
-):
+def test_apply_rejects_legacy_guest_namecard_without_guest_camera_correction(tmp_path, monkeypatch):
     import build_resolve_project
     import run_short_broll as broll
 
@@ -563,9 +563,7 @@ def test_camera_correction_role_must_match_configured_camera_file(tmp_path):
 def test_camera_correction_ranges_allow_adjacent_cuts_but_reject_overlap():
     from run_short_broll import _validate_camera_correction_ranges
 
-    _validate_camera_correction_ranges(
-        [{"t0": 0, "t1": 3}, {"t0": 3, "t1": 5}], label="value-L01"
-    )
+    _validate_camera_correction_ranges([{"t0": 0, "t1": 3}, {"t0": 3, "t1": 5}], label="value-L01")
     with pytest.raises(SystemExit, match="重疊"):
         _validate_camera_correction_ranges(
             [{"t0": 0, "t1": 3}, {"t0": 2.9, "t1": 5}], label="value-L01"
@@ -872,9 +870,7 @@ def test_camera_only_apply_ignores_live_overlay_receipt_drift_and_preserves_trac
     assert tracks[("video", 2)][0].GetMediaPoolItem() is stock_clip
 
 
-def test_apply_rejects_stale_materialization_range_before_resolve_mutation(
-    tmp_path, monkeypatch
-):
+def test_apply_rejects_stale_materialization_range_before_resolve_mutation(tmp_path, monkeypatch):
     import build_resolve_project
     import run_short_broll as broll
 
@@ -926,9 +922,7 @@ def test_apply_rejects_raw_live_aroll_before_resolve_mutation(tmp_path, monkeypa
     assert mutations == []
 
 
-def test_apply_reopens_master_after_preparation_before_resolve_mutation(
-    tmp_path, monkeypatch
-):
+def test_apply_reopens_master_after_preparation_before_resolve_mutation(tmp_path, monkeypatch):
     import build_resolve_project
     import run_short_broll as broll
 
@@ -1086,6 +1080,10 @@ class TestLongFormat:
         assert 1 / z == pytest.approx(0.316, abs=0.01)  # 只剩約 32% 的源高度可見
         # 2026-08-04 實測：特寫類（手/手機）裁完仍成立，全身鏡頭會變無頭軀幹
 
+    def test_new_orchestrator_preserves_vertical_stock_fit(self):
+        assert _should_fill_media(orchestrated=True, kind="video") is False
+        assert _should_fill_media(orchestrated=False, kind="video") is True
+
     def test_wide_compositions_declare_16_9_canvas(self):
         """*_wide.html 的 data-width/height 是 hyperframes 的輸出解析度來源，
         JS 改不動——寫錯會渲出直式卡片疊到 16:9 timeline 上。"""
@@ -1117,6 +1115,12 @@ class TestLongFormat:
         assert 'id="scrim"' in html
         # 退場動畫存在（原生 transition_title 註解「硬切」已廢）
         assert "yPercent: -112" in html
+        assert _needs_transition_texture(
+            {"comp": "transition_title", "vars": {"style": "paper_hand"}, "mov": Path("x.mov")}
+        )
+        assert not _needs_transition_texture(
+            {"comp": "transition_title", "vars": {"style": "scrim"}, "mov": Path("x.mov")}
+        )
 
     def test_wide_compositions_avoid_gsap_transform_double_apply(self):
         """CSS transform + GSAP xPercent/yPercent 會疊加（sticker_pair 二十四輪

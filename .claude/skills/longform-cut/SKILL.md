@@ -21,6 +21,38 @@ description: >
 （`FORMAT_*` 參數表：`short` 欄 = 已驗收 identity、`long` 欄 = 長片覆蓋），
 拆的是工作流程知識，不是 code——改 script 時兩線都要跑測試。
 
+## 新製作預設：Stage 5 Long Highlight orchestrator
+
+新 long Highlight 不再要求操作人依序手跑下面所有 scripts。由
+`scripts/run_long_highlight_orchestrator.py` 維護單一可修正 state：
+
+```powershell
+python scripts/run_long_highlight_orchestrator.py start <state.json> `
+  --episode-id <episode-id> --srt <master.srt> --media <master.mp4> --dry-run
+python scripts/run_long_highlight_orchestrator.py resume <state.json>
+python scripts/run_long_highlight_orchestrator.py status <state.json>
+```
+
+`DirectoryStageRunner` 是 host exchange adapter：只把 stage/event request JSON 寫進 exchange directory，
+讀取 host workers 放回的 response JSON；它不自行啟動 LLM process 或 network call。
+
+它協調 source → story/punch/value parallel mining → tolerant merge → 阿哲/凱文/淑芬/Renee
+parallel review → 修修 winner gate → tighten → Director → DP → targeted visual review/fix →
+Resolve/Preview 與 Packaging readiness。沒有額外品牌 lens。LLM JSON 只要求核心欄位；extra 忽略、
+optional missing 正規化、單一 malformed row quarantine。reviewer 漏評只警告，保留其餘有價值判斷。
+
+human approve 前 candidate/state 可直接修正。外層不建立 immutable attempt/revision chain，也不要求
+workers 回報檔案指紋或完整 provenance；只有 source 不可讀、winner 越界、asset 不可播放、Resolve
+mutation 具破壞性、沒有 preview，以及尚未 human approve 會阻止前進。visual event 失敗時只用
+`retry-event --stage visual_fix --event-id <id>` 修該 event，不能整輪重跑。
+
+既有 Director/DP semantic JSON 可用 `adopt-existing` 匯入 mutable draft；usable rows 沿用，failed／
+missing rows 留 pending，未知的舊 metadata 忽略，匯入本身絕不觸發 Resolve。Director 已指定 fixed stock
+authority 時，DP 可以只交該一個可信 candidate，不必補無意義的 A/B/C。下方 scripts 與視覺語彙仍是
+orchestrator adapters 的實作知識，不再構成另一套外層 gates。
+若 winner 已由修修核准，使用 `adopt-winner --winner <json>`（可同時帶 `--director/--dp`）直接接續
+缺少的 downstream stages，不再開採或重跑 persona review。
+
 ## 執行環境
 
 同 highlight-cut：**只能在 Claude Code + 本機跑**（Resolve 官方 Python
@@ -32,7 +64,7 @@ Scripting API，CoWork/Computer Use 做不到逐幀精度）。
   subtitle-template.drt`——`data/` 是 gitignored，只存在主倉庫，缺了字幕會無樣式
 - hyperframes 卡片 render 可外包，疊軌仍要本機
 
-## Step 6–7 — 緊湊化 + 機位導播（修修 2026-08-03 開工）
+## Adapter Step 6–7 — 緊湊化 + 機位導播（修修 2026-08-03 開工）
 
 同一批 script，格式由 `candidates.json` 的 `format` 欄自動判定：
 
@@ -322,9 +354,9 @@ hero 自裁、stock 演算法、視覺語彙套定版系統），但產物仍需
 
 preview 照樣交付（他要看隨時能看），但**不阻塞產線**。
 
-### 事實更正卡（brandlens 數據條件的視覺落地，util-L4 首用）
+### 事實更正卡（人工或 editorial review 發現數據問題時，util-L4 首用）
 
-brandlens 對數據類 caution 的三件套處置：
+數據類 correction 的三件套處置：
 1. **錯誤數據句 → 語意刪段**（passage cut；例：聽力 2–3% 實為 ~7%）
 2. **比例性質誤讀 → 更正卡**：`chapter_label_wide` center + paper，label=
    正確表述（「45–47%＝族群層級可預防比例」）、sub=補充（「非個人風險降幅｜
