@@ -40,18 +40,48 @@ python scripts/run_long_highlight_orchestrator.py status <state.json>
 `DirectoryStageRunner` 是 host exchange adapter：orchestrator 將每個 stage/event request 寫到
 `<exchange-dir>/requests/`，host workers 將 JSON 回覆放進 `responses/`，再 `resume`。它本身不啟動
 LLM process 或 network call。
+新版 payload 以 `long_highlight_contract.route=long_highlight_orchestrator_v2`、
+`long_highlight_contract.validation_profile=semantic_visual_minimal` 標示 mutable route；Director／DP 優先依此契約工作，不得
+因看見舊欄位而落回 immutable receipt/hash legacy route。
 
 orchestrator 只在入口確認來源存在、可讀與 SRT 時間範圍。三個 miner（story／punch／value）平行讀完整
 逐字稿；tolerant merge 接受額外欄位、補齊缺少的 optional 欄位，單一 malformed candidate 只 quarantine
 並警告，不丟棄其他語意成果。之後平行派阿哲、凱文、淑芬與 Renee；reviewer 漏評是 warning，不阻塞
 其他 review。**沒有額外品牌 lens。**
 
+每支 long candidate 的**實際保留內容不得短於 8:00**。若單一連續段落不足 8 分鐘，miner 要像
+`value-L01` 一樣合併兩段以上能形成同一論述弧的片段，而不是把一個 4–7 分鐘候選送進製作。
+用 `source_ranges` 列出保留的原片區間；長度計算是各 range 的總和，不是第一段起點到最後一段終點的
+bounding span。human approve、tighten 完成與 preview 回報三處都重新套同一個 480 秒下限；任一縮短到
+8 分鐘以下就停止在該層，不進下一個創意／製作 stage。
+
+每支 long candidate 同時必帶 non-empty `sections` 論述地圖；理想輸出依 `source_range_index` 排序並覆蓋
+保留片段。`transition_before=true` 只代表**新 YouTube chapter 的起點**；同一完整論述內的「方向一／
+方向二」、列舉、例子或證據不是 chapter，交給 Director 用 Hero／supporting title。下游 payload 直接帶
+同一份 `sections` 與衍生的 `chapter_map`，Fullscreen Transition 與 YouTube description timestamp 必須
+共用這些 chapter boundaries，不能由 Director 或 UI 另算一套。
+code 把第一段投影成 `timestamp_sec=0` 的 YouTube chapter、但標示不產 Fullscreen Transition；後續只把
+explicit `transition_before=true` 投影進 `chapter_map`。每列只有一個 canonical cut-local
+`timestamp_sec`，同時供 Fullscreen Transition 與 YouTube description 使用；來源可以是既有 cut-local
+start，或由 section source time／cue start 經 `source_ranges` 累積換算。後續 chapter 若三者都沒有可靠
+時間，terminal 停在 `chapter_timestamp_unknown`；不得猜成 0:00，也不得送進 Director。
+
+LLM schema 的可修正漂移不打回整個 candidate：缺 `section_id`、單一 source range 缺 index、缺 explicit
+transition bool、duplicate ID 等由 orchestrator 正規化並記 warning。三個 miner 都沒有可用候選時進
+terminal human-attention，不在 `resume` 自動重派。chapter 語意好壞留給既有 LLM review、Director 與
+human winner gate，不用 Python 猜。
+
 候選完成後 state 進入 `needs_review`，必須由修修選 winner；選擇前可直接修 candidate。批准後同一個
 orchestrator 續跑 tighten → Director → DP → targeted visual review/fix → Resolve/Preview + Packaging readiness。
 單一 visual event 失敗只用 `retry-event --stage visual_fix --event-id <id>` 重跑該 event，不整輪重跑。
-外層 state 是可修正 draft，不要求 worker 回傳內容／媒體指紋或完整 provenance chain；真正會阻止流程的
-只有來源不可讀、選中 winner 越界、asset 不可播放、Resolve 會破壞既有內容、沒有 preview，以及尚未
-通過 human gate。
+外層 state 是可修正 draft，不要求 worker 回傳內容／媒體指紋或完整 provenance chain。唯一會停止自動
+下游的條件是：來源不可讀；winner／tighten 實際保留長度 <480 秒；winner `sections` 真正為空；
+`source_ranges` 非法、越界，或 multi-range tighten 改邊界卻沒回新 ranges；asset 不可播放；Resolve
+operation 標成 destructive；preview 缺失；以及 preview 長度既沒有 adapter 回報、也無法由本地檔
+ffprobe 得知；以及後續 chapter 沒有可靠的 cut-local/source/cue 時間。後兩種分別標成 terminal
+`preview_duration_unknown`／`chapter_timestamp_unknown`，不得拿 winner／tighten 長度猜成片長或拿 0:00
+猜章節位置。
+human winner gate 與 all-candidates-quarantined human-attention 是有意停點，不是重新跑 LLM 的理由。
 
 已有 Director／DP JSON 時，使用 `adopt-existing --director <json> --dp <json>` 匯入可用 event rows；
 failed／missing rows 留作 pending，未知的舊 metadata 不帶進新 state，也不執行 Resolve mutation。當
@@ -132,6 +162,9 @@ Orchestrator 必須平行 dispatch 三個互相隔離、不能讀彼此輸出的
       "format": "long|short",
       "t_start": 0.0,
       "t_end": 0.0,
+      "source_ranges": [
+        {"t_start": 0.0, "t_end": 0.0}
+      ],
       "title": "工作代號，不是發布標題",
       "hook": "段內逐字原句",
       "rationale": "為何值得剪",
@@ -142,6 +175,7 @@ Orchestrator 必須平行 dispatch 三個互相隔離、不能讀彼此輸出的
       "sections": [
         {
           "section_id": "section-01",
+          "source_range_index": 0,
           "cue_start": 1,
           "cue_end": 1,
           "start_quote": "第一個 cue 的完整原句",
@@ -161,13 +195,18 @@ identity object；不得刪欄、自行重建，也不得把 `elapsed_sec` 這�
 `source_srt_sha256` raw exact copy 其中的 `master_srt_sha256`。ID 固定以 miner role 開頭，避免
 跨 worker 撞名。`head_trim` 是 cue 內要去除的秒數或 `null`，不是文字。
 
-long candidate 的 `sections` 要完整、連續覆蓋 `cue_start..cue_end`，通常 4–6 段，最多 8 段；short 固定
-為 `[]`。每段以首尾 cue 的完整 raw text 作錨點。`transition_before` 只在新問題、新主張、論證方向轉折
-或行動結論成立時為 true；不是按分鐘平均插。title 是 6–14 個中文字的 YouTube chapter／全螢幕 TR
-候選文案。第一段不得有 transition。這份 section map 是 editorial 建議，Director 可因 tight cut 微調
-精確時間與否決不必要的 TR，但不得重新假裝沒看過整體結構。
+long candidate 的 `source_ranges` 依原片時間排序、不可重疊；`t_start/t_end` 是第一段起點與最後一段終點，
+只供快速定位，實際片長永遠是 ranges 長度總和。單段足以完成 8–12 分鐘論述時可只有一個 range；不足時
+必須組合 2+ 個語意連貫片段，不能用中間被刪掉的空白時間灌長度。
 
-每個 candidate 必須滿足：`t_start < t_end`；long 目標 8–12 分鐘、容忍 6–18；short 目標
+long candidate 的 `sections` 要完整覆蓋論述結構，通常 4–6 段，最多 8 段；worker 應填唯一
+`section_id`、所屬 `source_range_index`、summary 與 explicit `transition_before`，並以首尾 cue 的完整 raw
+text 作錨點。short 固定為 `[]`。`transition_before=true` 僅用於一個觀眾可獨立命名、會寫進 YouTube
+description 的新 chapter；同章內的列舉、方向一／二、例子、證據、方法步驟保持 false。title 是 6–14
+個中文字的 YouTube chapter／全螢幕 TR 候選文案；第一段不得有 transition。這份 section map 是
+editorial 建議，Director 可因 tight cut 微調精確時間與否決不必要的 TR，但不得新增另一套章節結構。
+
+每個 candidate 必須滿足：`t_start < t_end`；long 目標 8–12 分鐘、**硬下限 8 分鐘**、上限 18 分鐘；short 目標
 60–120 秒、容忍 40–180 且硬上限 180；hook 必須是時間範圍內 raw transcript substring。內容邊界
 優先，不在論述中間切；開頭從提問／轉場／完整論點開始，若同 cue 含上一題殘尾就填 `head_trim`；
 結尾必須觀點落地。Worker 不得另尋或添加 `editorial_master_lineage` 以外的 source，也不得讀 root

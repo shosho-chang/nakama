@@ -35,6 +35,10 @@ python scripts/run_long_highlight_orchestrator.py status <state.json>
 
 `DirectoryStageRunner` 是 host exchange adapter：只把 stage/event request JSON 寫進 exchange directory，
 讀取 host workers 放回的 response JSON；它不自行啟動 LLM process 或 network call。
+它送給 Director／DP 的新版 payload 以
+`long_highlight_contract.route="long_highlight_orchestrator_v2"`、
+`long_highlight_contract.validation_profile="semantic_visual_minimal"` 明確分流；兩個 skill 收到 marker 後不得回落 ADR-065
+immutable revision／receipt route。
 
 它協調 source → story/punch/value parallel mining → tolerant merge → 阿哲/凱文/淑芬/Renee
 parallel review → 修修 winner gate → tighten → Director → DP → targeted visual review/fix →
@@ -42,9 +46,13 @@ Resolve/Preview 與 Packaging readiness。沒有額外品牌 lens。LLM JSON 只
 optional missing 正規化、單一 malformed row quarantine。reviewer 漏評只警告，保留其餘有價值判斷。
 
 human approve 前 candidate/state 可直接修正。外層不建立 immutable attempt/revision chain，也不要求
-workers 回報檔案指紋或完整 provenance；只有 source 不可讀、winner 越界、asset 不可播放、Resolve
-mutation 具破壞性、沒有 preview，以及尚未 human approve 會阻止前進。visual event 失敗時只用
-`retry-event --stage visual_fix --event-id <id>` 修該 event，不能整輪重跑。
+workers 回報檔案指紋或完整 provenance。停止條件以 `highlight-cut` 新 orchestrator 的 canonical 清單
+為準：source 不可讀；winner／tighten 實際保留長度 <480 秒；winner sections 真正為空；source ranges
+非法、越界或 multi-range tighten 改邊界卻沒回新 ranges；asset 不可播放；Resolve operation 具破壞性；
+preview 缺失、實際 <480 秒或時長未知；以及後續 chapter 沒有可靠 cut-local／source／cue 時間。
+human winner gate 與 all-candidates-quarantined human-attention 是有意停點。除此之外的 schema 小漂移只
+warning／局部修正；visual event 失敗只用 `retry-event --stage visual_fix --event-id <id>` 修該 event，
+不能整輪重跑。
 
 既有 Director/DP semantic JSON 可用 `adopt-existing` 匯入 mutable draft；usable rows 沿用，failed／
 missing rows 留 pending，未知的舊 metadata 忽略，匯入本身絕不觸發 Resolve。Director 已指定 fixed stock
@@ -52,6 +60,22 @@ authority 時，DP 可以只交該一個可信 candidate，不必補無意義的
 orchestrator adapters 的實作知識，不再構成另一套外層 gates。
 若 winner 已由修修核准，使用 `adopt-winner --winner <json>`（可同時帶 `--director/--dp`）直接接續
 缺少的 downstream stages，不再開採或重跑 persona review。
+
+### Long Highlight 的 section → 畫面契約（2026-08-28）
+
+highlight-cut 交下來的 `candidate.sections` 是整支長精華的**論述地圖**，也是後續章節、
+Full-screen Transition 與 YouTube timestamps 的共同來源。Director 只依 exact transcript 驗證這份
+canonical map；若 section 邊界或標題不正確，回報 targeted upstream／human correction 並停止該
+downstream，不得在 Director events 另改時間、另造 map，也不得只看局部句子重新平均撒轉場：
+
+- `transition_title` 只落在 section map 中真正的新 chapter 起點；公開 description 的
+  timestamp 使用同一組 chapter id、標題與起點。任一邊新增、移動或刪除，另一邊必須同步。
+- 「方向一／方向二」「第一種／第二種」「步驟一／步驟二」若仍在同一論述、共同回答同一
+  問題，屬於章內列舉：依重要性用 compact Hero 或 supporting keyword title，**不是** chapter。
+- 禁止兩個 Full-screen Transition 連續出現。若 section map 造成相鄰轉場，先回上游合併或修正
+  section；不得用兩張滿版卡代替中間不存在的內容。
+- 不以固定數量、平均間距或 `content_gaps` 補 Full-screen Transition；空白區只可觸發 Stock／
+  overlay 候選。章節是否成立看論述任務是否改變，不看時間走了多久。
 
 ## 執行環境
 
@@ -159,12 +183,12 @@ roll back。根因有二：(1) 短片語彙是為了留住滑動的人，長片�
 
 | 事件 | 工作 | 形式 | 數量/集 |
 |---|---|---|---|
-| **滿版轉場卡** | 導航 | `transition_title_wide` + `style:"paper_hand"`（**B2 定版**）＝**紙紋 motion bg 滿版蓋掉畫面（92% 不透明）**＋ink 字置中＋手繪 kicker 短槓＋**等字長手繪底線**（字數×字級算，不量 DOM——字型載入時序在 capture 下不可靠）＋退場動畫（title 上滑出）。落每個主題切換點 **3.0s**（退場要收在 span 內）。`kind:"concept"` + `comp:"transition_title"`。⚠️ 滿版底必須是「元素」：body 背景在 alpha 渲染會被丟掉（v1 黑字裸壓實拍壓臉 bug 的根因）；paper 系是透明字卡，`run_short_broll` 以 ffmpeg 疊 `assets/broll/paper-texture.mp4`（源：Envato beige paper texture，4K 預縮 1080p crf12）預合成 `_tex.mov`；`style:"scrim"`（半透明暖灰+白字）自帶底不合成 | ~3–5 |
+| **滿版轉場卡** | 章節導航 | `transition_title_wide` + `style:"paper_hand"`（**B2 定版**）＝**紙紋 motion bg 滿版蓋掉畫面（92% 不透明）**＋ink 字置中＋手繪 kicker 短槓＋**等字長手繪底線**（字數×字級算，不量 DOM——字型載入時序在 capture 下不可靠）＋退場動畫（title 上滑出）。只落在 canonical section map 的真正 chapter 起點 **3.0s**（退場收在 span 內），並與 YouTube timestamp 共用 chapter id/title/time；禁止連續出現、禁止把章內列舉當 chapter。`kind:"concept"` + `comp:"transition_title"`。⚠️ 滿版底必須是「元素」：body 背景在 alpha 渲染會被丟掉（v1 黑字裸壓實拍壓臉 bug 的根因）；paper 系是透明字卡，`run_short_broll` 以 ffmpeg 疊 `assets/broll/paper-texture.mp4`（源：Envato beige paper texture，4K 預縮 1080p crf12）預合成 `_tex.mov` | **依 section map；不設配額** |
 | **品牌 badge** | 識別 | 左下角 logo，**只出現開場（收在名牌進場前，如 7.4s）+ 每個轉場卡結束後 ~8s**。`kind:"badge"` + slug `brand-badge-7s`/`brand-badge-8s`/`brand-badge-10s`：**定長 fade 預合成**（180px、alpha fade in/out 0.5s——源動畫動作區僅 ~87×48px，150px loop 版感知不到「沒有動」）。ffmpeg `-stream_loop` + scale=180 + pad 66:840 + fade，鋪 track 5。源檔 `E:\Projects\張修修的AI創作者新世紀\output\podcast-logo-animation\` | 開場+轉場後 |
 | **來賓名牌** | 介紹 | `chapter_label_wide` `align:"left"` + `sub` + `style:"paper"`＝半透明紙卡＋手繪橘豎筆觸＋**逐元素進退場**（卡落→tick 畫出→姓名滑入→頭銜淡入；修修：「整個區塊一起跑出來沒經過設計」）。落**來賓第一個實質單獨鏡頭內**（查 timeline v1 軌首個 ≥3s 的 CAM2 段，貼切點進、退場收在段內；碎片鏡頭 <1s 掛不了名牌）。⚠️ 開場 badge 窗必須在名牌進場前收掉——左下角同框=擠 | 1 |
 | **論文第一頁卡** | 信任感 | 真 PDF 第一頁彈入（`sticker_pair_wide` center 模式；禁 stock 代打）。唯一的證物類型（書封/人名/數據卡都不做——grill 裁決） | 提到具體研究時 |
-| **Hero 大字卡** | 錨點 | `punch_card_wide` tier1 150px + `style:"paper"`（FORMAT_TITLES long 預設）＝半透明紙白卡＋ink 字＋**橘色手繪畫線動畫**（SVG 描邊，進場後 0.75s 逐行由左畫到右）。**agent 自裁**（修修 2026-08-04 收斂裁決：剪輯線免 HITL——選轉折點、貼原話、驗語檢查把關；曾經的「提案→裁決」流程退役） | 2–4 |
-| **Stock Video（Stock Village）** | 情境具象化 | 描述情境的時刻滿版實拍。**每支 long Highlight 至少 3 個真正 stock footage events**；guest-namecard、Hero Title、transition、badge、紙紋、photo 與 generated card 都不計數。選點走演算法不逐支請示：①先找「比方說/例如」舉例句與具體可拍的動作／地點；抽象論述本身不硬配隱喻，但必須繼續在片內其他具體段落找滿 3 個，找不到就維持 revision-required，不得讓 finished review 假裝完成 ② `content_gaps`（>75s 無強事件）作分佈輔助，每段 1 支、≥100s 可 2 支且間隔 ≥40s ③橫式 4K 實拍（Envato）、同支素材與相同檔案 hash 全片唯一，長度切齊被強調句、`src_in` 跳廢頭 ④直式素材只有特寫類能裁著用。production gate 逐檔驗 episode-local path、bytes、SHA-256、time range 與 Editorial Master lineage | **至少 3；之後依 content gap 加量** |
+| **Hero 大字卡** | 章內錨點 | 長片唯一配方：`punch_card_wide` tier1 + `style:"paper"`，1080p 每行字級上限 **96px**；紙卡放在說話者負空間，避免壓迫臉部。只留短橘色 accent，不用滿寬大劃線；禁止同一支片混入黑底、橘底或其他 Hero style。方向／步驟等章內列舉可用 compact Hero 或 supporting keyword title，不能升格為滿版轉場。**agent 自裁**（選轉折點、貼原話、驗語檢查把關） | 2–4 |
+| **Stock Video（Stock Village）** | 情境具象化 | 描述情境的時刻滿版實拍。**每支 long Highlight 至少 3 個真正 stock footage events**；guest-namecard、Hero Title、transition、badge、紙紋、photo 與 generated card 都不計數。選點走演算法不逐支請示：①先找「比方說/例如」舉例句與具體可拍的動作／地點；抽象論述本身不硬配隱喻，但必須繼續在片內其他具體段落找滿 3 個，找不到就維持 revision-required，不得讓 finished review 假裝完成 ② `content_gaps`（>75s 無強事件）只輔助找 Stock 分佈，每段 1 支、≥100s 可 2 支且間隔 ≥40s ③來源檔本身必須是 native landscape（寬 > 高；4K 優先、1080p 可用），Long Highlight **禁止直式或方形素材裁成橫式的例外**；同支素材全片唯一，長度切齊被強調句、`src_in` 跳廢頭 ④逐支確認動作、人物關係與情緒極性都符合完整句段；不看字幕也應讀得出語意。例如「工作很忙、上有老下有小」要呈現忙亂／負荷，不能用開心家庭團聚代打 | **至少 3；之後依 content gap 加量** |
 
 **stand-in 鐵則（修修 2026-08-06）**：stock 描述「修修本人做某事」的情境時，
 一律用固定 stand-in 模特兒（Envato `YuriArcursPeopleimages` 帳號、臉部參考與
@@ -175,7 +199,11 @@ stock 上軌（含手剪情境）必守 brook-dp〈選片鐵則〉節——①�
 只准出現一次（「主題不重複」不夠，大忌）②in/out 切齊被強調的那句話，不是
 固定秒數、不是落在鄰句 ③畫面＝語意（不看字幕也讀得出那句話才合格）④抽象
 專有名詞無對應畫面→字卡＋音效，不硬湊隱喻（騎馬≠半人馬）⑤負面意象禁用
-（小孩用平板/3C）⑥書封類靜態圖去背＋動畫＋不遮臉。ad hoc 掃字幕就近配對
+（小孩用平板/3C）⑥情緒極性要對齊完整句段，不以「有同樣人物／物件」取代情境
+⑦書封類靜態圖去背＋動畫＋不遮臉。人物 headshot 一律是縮小、帶進退場動畫的
+`person_inset`，擺在負空間；不得因手上只有一張照片就擴成滿版。只有本身具有環境／
+證物語意，且 Director 明確指定 full-screen 的 image，才做有意圖的滿版 composition。
+ad hoc 掃字幕就近配對
 ＝整版報廢的根因，見 brook-dp 教訓紀錄。
 
 **退場語彙**（長片不用）：橘塊 style（保留當 `style:"orange"` 比較基準）、
@@ -187,7 +215,7 @@ stock 上軌（含手剪情境）必守 brook-dp〈選片鐵則〉節——①�
 ### 執行
 
 ```
-# titles.json 只放 tier1 hero；broll.json 放轉場卡/名牌/論文卡/badge/stock
+# titles.json 只放 tier1 Hero；broll.json 放轉場卡/名牌/論文卡/badge/stock/person inset
 python scripts/run_short_titles.py <episode> --id punch-L5
 python scripts/run_short_broll.py  <episode> --id punch-L5 --validate-only
 python scripts/run_short_broll.py  <episode> --id punch-L5 [--stills <dir>]
@@ -262,8 +290,11 @@ probe 證明沒有 `__revision_backup__`／`__revision_work__` Timeline 時，�
 `--apply-recovery`。Recovery 會 restore partial promotion、寫 recovery receipt 並標 failed；
 之後再走上一段 dry retry → `--apply-retry`，不得手改 feedback。
 
-軌道契約：v1 主鏡（導播）/ v2 滿版 stock / v3 hero / v4 名牌+轉場卡+論文卡 /
-v5 badge；a1 對白 / a2 SFX。
+軌道契約：v1 主鏡（導播）/ v2 滿版 stock / v3 Hero / v4 名牌+轉場卡+論文卡+
+person inset / v5 badge；a1 對白 / a2 SFX。Bridge timeline lane 必須依 semantic
+category／implementation component 分類，不可只看它來自哪個 JSON：`transition_title`
+永遠進 Full-screen Transition lane，`punch_card_wide` tier1 才進 Hero lane；任何
+`transition_title` 出現在 Hero lane 都是分類錯誤，不得靠改顯示名稱掩蓋。
 
 ### 工程陷阱（實測，勿重踩）
 

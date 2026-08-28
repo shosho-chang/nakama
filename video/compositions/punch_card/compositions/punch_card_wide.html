@@ -1,11 +1,11 @@
 <!doctype html>
-<!-- nakama:component punch_card_wide（長片 16:9 橘底大字 punch 卡，透明 overlay 疊 Resolve track 3）
-     與直式 punch_card.html 同一套視覺語彙（橘塊 #E87000 / LINE Seed TW 特黑 /
+<!-- nakama:component punch_card_wide（長片 16:9 compact punch 卡，透明 overlay 疊 Resolve track 3）
+     與直式 punch_card.html 共用 LINE Seed TW 與逐行進退場語彙；長版預設使用 paper，
      逐行 swipe-in + 快收），只重調幾何：
 
      1. 1920×1080——16:9 有寬度沒高度，改走**單行為主的橫幅**：
         tier2 每行 8 字（140px×8+padding ≈ 1176 = 61% 幅寬），
-        tier1 每行 6 字（120px×6+padding ≈ 768 = 40%）。
+        tier1 每行 6 字（96px×6+padding ≈ 624 = 33%）。
      2. 長版 Hero 以人物可讀性優先：字重、紙卡與動畫已能建立層級，
         不再用覆蓋人臉的尺寸表現 Hero。
      3. pos_y 預設下修（0.66/0.60）：16:9 的字幕帶在 ~0.88 起跳，
@@ -18,7 +18,7 @@
     {"id":"show_sec","type":"number","label":"顯示秒數","default":2.0},
     {"id":"pos_y","type":"number","label":"卡片垂直中心 0-1","default":0.66},
     {"id":"tier","type":"number","label":"層級 1=hero 2=標準","default":2},
-    {"id":"style","type":"string","label":"orange|paper|ink","default":"orange"}
+    {"id":"style","type":"string","label":"orange|paper|ink","default":"paper"}
   ]'
 >
   <head>
@@ -68,7 +68,7 @@
       /* tier 1 = hero：用更重紙卡、字重與動畫建立層級；尺寸縮小，
          避免長版訪談常見的中景／近景人臉被兩行 Hero 覆蓋。 */
       .tier1 .line {
-        font-size: 120px;
+        font-size: 96px;
         padding: 8px 24px 15px;
         line-height: 1.1;
       }
@@ -145,7 +145,7 @@
       const card = document.getElementById("card");
       card.style.top = `${posY * 100}%`;
       if (tier === 1) card.classList.add("tier1");
-      const style = ["orange", "paper", "ink"].includes(vars.style) ? vars.style : "orange";
+      const style = ["orange", "paper", "ink"].includes(vars.style) ? vars.style : "paper";
       document.getElementById("root").classList.add(`style-${style}`);
 
       window.__timelines = window.__timelines || {};

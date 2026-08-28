@@ -95,7 +95,7 @@ def test_script_dry_run_prints_chinese_episode_on_windows_console(tmp_path: Path
 def source(tmp_path: Path) -> SourceInput:
     srt = tmp_path / "master.srt"
     srt.write_text(
-        "1\n00:00:00,000 --> 00:00:30,000\nopening\n\n2\n00:00:30,000 --> 00:02:00,000\nending\n",
+        "1\n00:00:00,000 --> 00:10:00,000\nopening\n\n2\n00:10:00,000 --> 00:20:00,000\nending\n",
         encoding="utf-8",
     )
     media = tmp_path / "master.mp4"
@@ -107,22 +107,50 @@ def _candidate(candidate_id: str, start: float, end: float, **extra: Any) -> dic
     return {"id": candidate_id, "t_start": start, "t_end": end, **extra}
 
 
+def _sections(*range_indices: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "section_id": f"section-{index + 1:02d}",
+            "source_range_index": range_index,
+            "summary": "Opening argument" if index == 0 else "Next chapter",
+            "transition_before": index > 0,
+            "transition_title": None if index == 0 else "下一個完整論點",
+            "cut_local_start": float(index * 60),
+        }
+        for index, range_index in enumerate(range_indices)
+    ]
+
+
 def _responses() -> dict[tuple[str, str | None], Any]:
     return {
         ("mine", "story"): {
             "candidates": [
-                _candidate("story-1", 5, 45, title="Story", invented="ignored"),
+                _candidate(
+                    "story-1",
+                    5,
+                    515,
+                    title="Story",
+                    sections=_sections(0, 0),
+                    invented="ignored",
+                ),
                 {"id": "broken", "t_start": "not-a-number", "t_end": 80},
             ],
             "model_notes": "ignored",
         },
-        ("mine", "punch"): {"candidates": [_candidate("punch-1", 45, 85)]},
-        ("mine", "value"): {"candidates": [_candidate("value-1", 80, 115)]},
+        ("mine", "punch"): {
+            "candidates": [_candidate("punch-1", 520, 1020, sections=_sections(0))]
+        },
+        ("mine", "value"): {
+            "candidates": [_candidate("value-1", 650, 1150, sections=_sections(0))]
+        },
         ("review", "azhe"): {"assessments": [{"candidate_id": "story-1", "score": 8}]},
         ("review", "kevin"): {"assessments": [{"candidate_id": "punch-1", "score": 7}]},
         ("review", "shufen"): {"assessments": []},
         ("review", "renee"): {"notes": "No per-candidate rows, but useful global notes."},
-        ("tighten", None): {"winner": _candidate("story-1-tight", 7, 42), "ref": "tight.json"},
+        ("tighten", None): {
+            "winner": _candidate("story-1-tight", 7, 507),
+            "ref": "tight.json",
+        },
         ("director", None): {
             "events": [{"id": "stock-1", "t_start": 10, "t_end": 15}],
             "ref": "director.json",
@@ -145,6 +173,7 @@ def _responses() -> dict[tuple[str, str | None], Any]:
         ("resolve_preview", None): {
             "destructive": False,
             "preview_ref": "preview.mp4",
+            "duration_sec": 500,
         },
         ("packaging", None): {"ready": True, "ref": "package.json"},
     }
@@ -163,7 +192,8 @@ def test_tolerant_semantic_fanout_quarantines_only_bad_candidate(
     story = state["candidates"][0]
     assert story["title"] == "Story"
     assert story["hook"] == ""
-    assert story["sections"] == []
+    assert story["sections"] == _sections(0, 0)
+    assert story["selected_duration_sec"] == 510
     assert "invented" not in story
     assert state["quarantine"][0]["id"] == "broken"
     assert any("broken" in warning for warning in state["warnings"])
@@ -173,6 +203,383 @@ def test_tolerant_semantic_fanout_quarantines_only_bad_candidate(
     assert "brand" not in reviewer_ids
     assert state["stages"]["reviews"]["status"] == "approved"
     assert any("renee" in warning for warning in state["warnings"])
+
+
+def test_mining_quarantines_short_or_sectionless_long_candidates(
+    tmp_path: Path, source: SourceInput
+) -> None:
+    responses = _responses()
+    responses[("mine", "story")]["candidates"] = [
+        _candidate("story-short", 5, 424, sections=_sections(0))
+    ]
+    responses[("mine", "value")]["candidates"] = [
+        _candidate("value-no-map", 650, 1150, sections=[])
+    ]
+    runner = FixtureRunner(responses)
+    orchestrator = LongHighlightOrchestrator.create(tmp_path / "state.json", source, runner)
+
+    state = orchestrator.resume()
+
+    assert [row["id"] for row in state["candidates"]] == ["punch-1"]
+    reasons = {row["id"]: row["reason"] for row in state["quarantine"]}
+    assert "8 minutes" in reasons["story-short"]
+    assert "section map" in reasons["value-no-map"]
+
+
+def test_invalid_source_ranges_quarantine_only_that_candidate(
+    tmp_path: Path, source: SourceInput
+) -> None:
+    responses = _responses()
+    responses[("mine", "story")]["candidates"] = [
+        _candidate(
+            "story-overlap",
+            5,
+            705,
+            source_ranges=[
+                {"t_start": 5, "t_end": 405},
+                {"t_start": 305, "t_end": 705},
+            ],
+            sections=_sections(0, 1),
+        )
+    ]
+    runner = FixtureRunner(responses)
+    orchestrator = LongHighlightOrchestrator.create(tmp_path / "state.json", source, runner)
+
+    state = orchestrator.resume()
+
+    assert [row["id"] for row in state["candidates"]] == ["punch-1", "value-1"]
+    assert state["quarantine"][0]["id"] == "story-overlap"
+    assert "ordered and non-overlapping" in state["quarantine"][0]["reason"]
+    assert runner.calls.count(("mine", "story")) == 1
+    assert runner.calls.count(("mine", "punch")) == 1
+    assert runner.calls.count(("mine", "value")) == 1
+
+
+def test_all_quarantined_candidates_require_human_attention_without_redispatch(
+    tmp_path: Path, source: SourceInput
+) -> None:
+    responses = _responses()
+    for miner in ("story", "punch", "value"):
+        responses[("mine", miner)]["candidates"] = [
+            _candidate(f"{miner}-short", 5, 305, sections=_sections(0))
+        ]
+    runner = FixtureRunner(responses)
+    orchestrator = LongHighlightOrchestrator.create(tmp_path / "state.json", source, runner)
+
+    first = orchestrator.resume()
+    second = orchestrator.resume()
+
+    assert first["status"] == "needs_review"
+    assert first["human"]["attention_required"] is True
+    assert first["human"]["reason"] == "all_candidates_quarantined"
+    assert second == first
+    assert runner.calls.count(("mine", "story")) == 1
+    assert runner.calls.count(("mine", "punch")) == 1
+    assert runner.calls.count(("mine", "value")) == 1
+    assert not any(stage == "review" for stage, _event_id in runner.calls)
+
+
+def test_multi_range_winner_uses_selected_sum_and_passes_chapter_map_downstream(
+    tmp_path: Path, source: SourceInput
+) -> None:
+    responses = _responses()
+    ranges = [
+        {"t_start": 5, "t_end": 255},
+        {"t_start": 455, "t_end": 705},
+    ]
+    sections = _sections(0, 1, 1)
+    sections[0]["source_t_start"] = 5
+    sections[1].pop("cut_local_start")
+    sections[1]["source_t_start"] = 480
+    sections[2]["cut_local_start"] = 420
+    responses[("mine", "story")]["candidates"][0] = _candidate(
+        "story-1",
+        5,
+        705,
+        title="Two connected excerpts",
+        source_ranges=ranges,
+        sections=sections,
+    )
+    responses[("tighten", None)]["winner"] = _candidate(
+        "story-1-tight",
+        5,
+        705,
+        source_ranges=ranges,
+    )
+    runner = FixtureRunner(responses)
+    orchestrator = LongHighlightOrchestrator.create(tmp_path / "state.json", source, runner)
+    orchestrator.resume()
+
+    state = orchestrator.approve_winner("story-1")
+
+    assert state["status"] == "approved"
+    assert state["winner"]["selected_duration_sec"] == 500
+    director_payload = next(
+        payload
+        for stage, event_id, payload in runner.payloads
+        if (stage, event_id) == ("director", None)
+    )
+    chapter_map = director_payload["chapter_map"]
+    assert [row["timestamp_sec"] for row in chapter_map] == [0.0, 275.0, 420.0]
+    assert [row["fullscreen_transition"] for row in chapter_map] == [False, True, True]
+    assert all(row["youtube_chapter"] is True for row in chapter_map)
+    assert chapter_map[1]["transition_title"] == "下一個完整論點"
+    assert director_payload["long_highlight_contract"]["fullscreen_transition"] == (
+        "chapter_starts_only"
+    )
+    assert director_payload["long_highlight_contract"]["route"] == (
+        "long_highlight_orchestrator_v2"
+    )
+    assert director_payload["long_highlight_contract"]["validation_profile"] == (
+        "semantic_visual_minimal"
+    )
+
+
+def test_unknown_nonfirst_chapter_timestamp_stops_before_director_without_fake_zero(
+    tmp_path: Path, source: SourceInput
+) -> None:
+    responses = _responses()
+    sections = _sections(0, 0)
+    sections[1].pop("cut_local_start")
+    responses[("mine", "story")]["candidates"][0]["sections"] = sections
+    runner = FixtureRunner(responses)
+    orchestrator = LongHighlightOrchestrator.create(tmp_path / "state.json", source, runner)
+    orchestrator.resume()
+
+    first = orchestrator.approve_winner("story-1")
+    second = orchestrator.resume()
+
+    assert first["status"] == "needs_review"
+    assert first["human"]["attention_required"] is True
+    assert first["human"]["reason"] == "chapter_timestamp_unknown"
+    assert second == first
+    assert runner.calls.count(("tighten", None)) == 1
+    assert ("director", None) not in runner.calls
+    tighten_payload = next(
+        payload
+        for stage, event_id, payload in runner.payloads
+        if (stage, event_id) == ("tighten", None)
+    )
+    assert len(tighten_payload["chapter_map"]) == 1
+    assert tighten_payload["chapter_map"][0]["timestamp_sec"] == 0.0
+    assert tighten_payload["chapter_map"][0]["youtube_chapter"] is True
+    assert tighten_payload["chapter_map"][0]["fullscreen_transition"] is False
+
+
+def test_adopt_winner_rejects_long_bounding_span_with_short_selected_ranges(
+    tmp_path: Path, source: SourceInput
+) -> None:
+    orchestrator = LongHighlightOrchestrator.create(
+        tmp_path / "state.json", source, FixtureRunner(_responses())
+    )
+
+    state = orchestrator.adopt_winner(
+        {
+            "id": "legacy-L01",
+            "t_start": 5,
+            "t_end": 705,
+            "source_ranges": [
+                {"t_start": 5, "t_end": 205},
+                {"t_start": 505, "t_end": 705},
+            ],
+            "sections": _sections(0, 1),
+        }
+    )
+
+    assert state["status"] == "failed"
+    assert state["hard_blocker"] == "winner_too_short"
+
+
+def test_adopt_winner_rejects_empty_section_map(tmp_path: Path, source: SourceInput) -> None:
+    orchestrator = LongHighlightOrchestrator.create(
+        tmp_path / "state.json", source, FixtureRunner(_responses())
+    )
+
+    state = orchestrator.adopt_winner(
+        {"id": "legacy-L01", "t_start": 5, "t_end": 505, "sections": []}
+    )
+
+    assert state["status"] == "failed"
+    assert state["hard_blocker"] == "winner_sections_invalid"
+
+
+def test_section_shape_drift_is_normalized_with_warnings_instead_of_rerun(
+    tmp_path: Path, source: SourceInput
+) -> None:
+    responses = _responses()
+    responses[("mine", "story")]["candidates"][0] = _candidate(
+        "story-1",
+        5,
+        505,
+        sections=[
+            {"label": "Opening"},
+            {
+                "section_id": "section-01",
+                "summary": "A second point",
+                "transition_before": "not-a-bool",
+            },
+        ],
+    )
+    runner = FixtureRunner(responses)
+    orchestrator = LongHighlightOrchestrator.create(tmp_path / "state.json", source, runner)
+
+    state = orchestrator.resume()
+
+    story = next(row for row in state["candidates"] if row["id"] == "story-1")
+    assert [row["section_id"] for row in story["sections"]] == [
+        "section-01",
+        "section-01-2",
+    ]
+    assert all(row["source_range_index"] == 0 for row in story["sections"])
+    assert all(row["transition_before"] is False for row in story["sections"])
+    assert any("generated section-01" in warning for warning in state["warnings"])
+    assert not any(row["id"] == "story-1" for row in state["quarantine"])
+
+
+def test_tighten_cannot_shrink_approved_winner_below_eight_minutes(
+    tmp_path: Path, source: SourceInput
+) -> None:
+    responses = _responses()
+    responses[("tighten", None)] = {
+        "winner": _candidate("story-1-tight", 7, 477),
+        "ref": "tight-too-short.json",
+    }
+    runner = FixtureRunner(responses)
+    orchestrator = LongHighlightOrchestrator.create(tmp_path / "state.json", source, runner)
+    orchestrator.resume()
+
+    state = orchestrator.approve_winner("story-1")
+
+    assert state["status"] == "failed"
+    assert state["hard_blocker"] == "tightened_winner_too_short"
+    assert ("director", None) not in runner.calls
+
+
+def test_malformed_tighten_winner_requires_attention_without_redispatch(
+    tmp_path: Path, source: SourceInput
+) -> None:
+    responses = _responses()
+    responses[("tighten", None)] = {
+        "winner": _candidate("story-1-tight", "not-a-time", 507),
+        "ref": "malformed-tight.json",
+    }
+    runner = FixtureRunner(responses)
+    orchestrator = LongHighlightOrchestrator.create(tmp_path / "state.json", source, runner)
+    orchestrator.resume()
+
+    first = orchestrator.approve_winner("story-1")
+    second = orchestrator.resume()
+
+    assert first["status"] == "needs_review"
+    assert first["human"]["attention_required"] is True
+    assert first["human"]["reason"] == "tighten_invalid_winner"
+    assert second == first
+    assert runner.calls.count(("tighten", None)) == 1
+    assert ("director", None) not in runner.calls
+
+
+def test_tighten_empty_sections_reuses_approved_section_map_with_warning(
+    tmp_path: Path, source: SourceInput
+) -> None:
+    responses = _responses()
+    responses[("tighten", None)]["winner"]["sections"] = []
+    runner = FixtureRunner(responses)
+    orchestrator = LongHighlightOrchestrator.create(tmp_path / "state.json", source, runner)
+    mined = orchestrator.resume()
+    approved_sections = next(
+        row["sections"] for row in mined["candidates"] if row["id"] == "story-1"
+    )
+
+    state = orchestrator.approve_winner("story-1")
+
+    assert state["status"] == "approved"
+    assert state["winner"]["sections"] == approved_sections
+    assert any("reused the approved section map" in warning for warning in state["warnings"])
+
+
+def test_tighten_reuses_approved_ranges_when_multi_range_bounds_are_unchanged(
+    tmp_path: Path, source: SourceInput
+) -> None:
+    responses = _responses()
+    responses[("mine", "story")]["candidates"][0] = _candidate(
+        "story-1",
+        5,
+        705,
+        source_ranges=[
+            {"t_start": 5, "t_end": 255},
+            {"t_start": 455, "t_end": 705},
+        ],
+        sections=_sections(0, 1),
+    )
+    responses[("tighten", None)]["winner"] = _candidate("story-1-tight", 5, 705)
+    runner = FixtureRunner(responses)
+    orchestrator = LongHighlightOrchestrator.create(tmp_path / "state.json", source, runner)
+    orchestrator.resume()
+
+    state = orchestrator.approve_winner("story-1")
+
+    assert state["status"] == "approved"
+    assert state["winner"]["selected_duration_sec"] == 500
+    assert len(state["winner"]["source_ranges"]) == 2
+    assert any("reused the approved ranges" in warning for warning in state["warnings"])
+
+
+def test_tighten_requires_ranges_when_multi_range_boundaries_change(
+    tmp_path: Path, source: SourceInput
+) -> None:
+    responses = _responses()
+    responses[("mine", "story")]["candidates"][0] = _candidate(
+        "story-1",
+        5,
+        705,
+        source_ranges=[
+            {"t_start": 5, "t_end": 255},
+            {"t_start": 455, "t_end": 705},
+        ],
+        sections=_sections(0, 1),
+    )
+    responses[("tighten", None)]["winner"] = _candidate("story-1-tight", 6, 704)
+    runner = FixtureRunner(responses)
+    orchestrator = LongHighlightOrchestrator.create(tmp_path / "state.json", source, runner)
+    orchestrator.resume()
+
+    state = orchestrator.approve_winner("story-1")
+
+    assert state["status"] == "failed"
+    assert state["hard_blocker"] == "tightened_ranges_missing"
+    assert ("director", None) not in runner.calls
+
+
+def test_preview_cannot_be_shorter_than_eight_minutes(tmp_path: Path, source: SourceInput) -> None:
+    responses = _responses()
+    responses[("resolve_preview", None)]["duration_sec"] = 259.967
+    runner = FixtureRunner(responses)
+    orchestrator = LongHighlightOrchestrator.create(tmp_path / "state.json", source, runner)
+    orchestrator.resume()
+
+    state = orchestrator.approve_winner("story-1")
+
+    assert state["status"] == "failed"
+    assert state["hard_blocker"] == "preview_too_short"
+
+
+def test_preview_without_known_duration_stops_terminal_without_redispatch(
+    tmp_path: Path, source: SourceInput
+) -> None:
+    responses = _responses()
+    responses[("resolve_preview", None)].pop("duration_sec")
+    runner = FixtureRunner(responses)
+    orchestrator = LongHighlightOrchestrator.create(tmp_path / "state.json", source, runner)
+    orchestrator.resume()
+
+    first = orchestrator.approve_winner("story-1")
+    second = orchestrator.resume()
+
+    assert first["status"] == "failed"
+    assert first["hard_blocker"] == "preview_duration_unknown"
+    assert second == first
+    assert runner.calls.count(("resolve_preview", None)) == 1
+    assert any("duration is unknown" in warning for warning in first["warnings"])
 
 
 def test_human_gate_then_happy_path_exposes_all_readiness_refs(
@@ -629,8 +1036,8 @@ def test_adopt_winner_skips_mining_review_and_already_adopted_downstream(
             "hook": "Approved hook",
             "rationale": "Approved rationale",
             "t_start": 5,
-            "t_end": 45,
-            "sections": [{"label": "Opening"}],
+            "t_end": 505,
+            "sections": _sections(0),
             "receipt": {"opaque": "ignored"},
             "unknown": "ignored",
         }
@@ -644,11 +1051,12 @@ def test_adopt_winner_skips_mining_review_and_already_adopted_downstream(
     assert adopted["winner"] == {
         "id": "legacy-L01",
         "t_start": 5.0,
-        "t_end": 45.0,
+        "t_end": 505.0,
         "title": "Approved title",
         "hook": "Approved hook",
         "rationale": "Approved rationale",
-        "sections": [{"label": "Opening"}],
+        "sections": _sections(0),
+        "selected_duration_sec": 500.0,
     }
     assert "opaque" not in json.dumps(adopted)
 
@@ -667,7 +1075,9 @@ def test_adopt_winner_outside_source_range_hard_fails(tmp_path: Path, source: So
     runner = FixtureRunner(_responses())
     orchestrator = LongHighlightOrchestrator.create(tmp_path / "state.json", source, runner)
 
-    state = orchestrator.adopt_winner({"id": "legacy-L01", "t_start": 5, "t_end": 500})
+    state = orchestrator.adopt_winner(
+        {"id": "legacy-L01", "t_start": 5, "t_end": 1500, "sections": _sections(0)}
+    )
 
     assert state["status"] == "failed"
     assert state["hard_blocker"] == "winner_out_of_range"
@@ -678,7 +1088,10 @@ def test_adopt_winner_with_tighten_ref_skips_tighten_and_preserves_winner(
     tmp_path: Path, source: SourceInput
 ) -> None:
     tighten_ref = tmp_path / "existing-tight.srt"
-    tighten_ref.write_text("existing approved tight cut", encoding="utf-8")
+    tighten_ref.write_text(
+        "1\n00:00:00,000 --> 00:08:20,000\nexisting approved tight cut\n",
+        encoding="utf-8",
+    )
     runner = FixtureRunner(_responses())
     orchestrator = LongHighlightOrchestrator.create(tmp_path / "state.json", source, runner)
     winner = {
@@ -687,21 +1100,49 @@ def test_adopt_winner_with_tighten_ref_skips_tighten_and_preserves_winner(
         "hook": "Keep this exact content",
         "rationale": "Human approved",
         "t_start": 12,
-        "t_end": 72,
-        "sections": [{"label": "Existing cut"}],
+        "t_end": 512,
+        "sections": _sections(0),
     }
 
     adopted = orchestrator.adopt_winner(winner, tighten_ref=tighten_ref)
     final = orchestrator.resume()
 
-    assert adopted["stages"]["tighten"] == {"status": "approved"}
+    assert adopted["stages"]["tighten"] == {
+        "status": "approved",
+        "duration_sec": 500.0,
+    }
     assert adopted["refs"]["tighten"] == str(tighten_ref)
     assert final["winner"] == {
         **winner,
         "t_start": 12.0,
-        "t_end": 72.0,
+        "t_end": 512.0,
+        "selected_duration_sec": 500.0,
     }
     assert ("tighten", None) not in runner.calls
+
+
+def test_adopt_winner_rejects_existing_tight_cut_under_eight_minutes(
+    tmp_path: Path, source: SourceInput
+) -> None:
+    tighten_ref = tmp_path / "too-short-tight.srt"
+    tighten_ref.write_text("1\n00:00:00,000 --> 00:04:19,967\ntoo short\n", encoding="utf-8")
+    orchestrator = LongHighlightOrchestrator.create(
+        tmp_path / "state.json", source, FixtureRunner(_responses())
+    )
+
+    state = orchestrator.adopt_winner(
+        {
+            "id": "legacy-L03",
+            "t_start": 12,
+            "t_end": 512,
+            "sections": _sections(0),
+        },
+        tighten_ref=tighten_ref,
+    )
+
+    assert state["status"] == "failed"
+    assert state["hard_blocker"] == "tightened_winner_too_short"
+    assert "tighten" not in state["stages"]
 
 
 def test_adopt_winner_rejects_missing_tighten_ref_without_mutating_state(
@@ -713,7 +1154,12 @@ def test_adopt_winner_rejects_missing_tighten_ref_without_mutating_state(
 
     with pytest.raises(ValueError, match="tighten ref is not readable"):
         orchestrator.adopt_winner(
-            {"id": "legacy-L02", "t_start": 12, "t_end": 72},
+            {
+                "id": "legacy-L02",
+                "t_start": 12,
+                "t_end": 512,
+                "sections": _sections(0),
+            },
             tighten_ref=tmp_path / "missing.srt",
         )
 
@@ -767,12 +1213,11 @@ def test_only_explicit_downstream_safety_conditions_hard_fail(
 
 def test_selected_winner_must_be_inside_source_range(tmp_path: Path, source: SourceInput) -> None:
     responses = _responses()
-    responses[("mine", "story")]["candidates"][0]["t_end"] = 500
     runner = FixtureRunner(responses)
     orchestrator = LongHighlightOrchestrator.create(tmp_path / "state.json", source, runner)
     orchestrator.resume()
 
-    state = orchestrator.approve_winner("story-1")
+    state = orchestrator.approve_winner("story-1", {"t_end": 1500})
 
     assert state["status"] == "failed"
     assert state["hard_blocker"] == "winner_out_of_range"
@@ -844,7 +1289,15 @@ def test_cli_adopt_winner_marks_human_approved_without_running_stages(
     state_path = tmp_path / "state.json"
     winner_path = tmp_path / "winner.json"
     winner_path.write_text(
-        json.dumps({"id": "legacy-L01", "t_start": 5, "t_end": 45, "legacy": True}),
+        json.dumps(
+            {
+                "id": "legacy-L01",
+                "t_start": 5,
+                "t_end": 505,
+                "sections": _sections(0),
+                "legacy": True,
+            }
+        ),
         encoding="utf-8",
     )
     assert (
@@ -881,10 +1334,17 @@ def test_cli_adopt_winner_accepts_existing_tighten_ref(
     winner_path = tmp_path / "winner.json"
     tighten_ref = tmp_path / "tight.srt"
     winner_path.write_text(
-        json.dumps({"id": "legacy-L02", "t_start": 12, "t_end": 72}),
+        json.dumps(
+            {
+                "id": "legacy-L02",
+                "t_start": 12,
+                "t_end": 512,
+                "sections": _sections(0),
+            }
+        ),
         encoding="utf-8",
     )
-    tighten_ref.write_text("existing", encoding="utf-8")
+    tighten_ref.write_text("1\n00:00:00,000 --> 00:08:20,000\nexisting\n", encoding="utf-8")
     cli_main(
         [
             "start",

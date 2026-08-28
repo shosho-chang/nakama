@@ -12,6 +12,8 @@ from __future__ import annotations
 import json
 import math
 import re
+import shutil
+import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +22,7 @@ from typing import Any, Mapping, Protocol, Sequence
 RUN_STATUSES = {"pending", "running", "needs_review", "approved", "failed"}
 MINERS = ("story", "punch", "value")
 REVIEWERS = ("azhe", "kevin", "shufen", "renee")
+MIN_LONG_DURATION_SEC = 8 * 60.0
 
 
 class StageRunner(Protocol):
@@ -156,6 +159,9 @@ class LongHighlightOrchestrator:
             "merge": "tolerant_merge",
             "parallel_reviewers": list(REVIEWERS),
             "human_gate": "winner_approval",
+            "minimum_selected_duration_sec": MIN_LONG_DURATION_SEC,
+            "duration_basis": "sum_source_ranges",
+            "sections_required": True,
             "downstream": [
                 "tighten",
                 "director",
@@ -170,6 +176,8 @@ class LongHighlightOrchestrator:
         state = self._load()
         if state["status"] == "failed":
             return state
+        if state.get("human", {}).get("attention_required") is True:
+            return state
         state["status"] = "running"
         self._save(state)
 
@@ -179,7 +187,8 @@ class LongHighlightOrchestrator:
         if not self._stage_done(state, "miners"):
             self._run_miners(state)
         if not state["candidates"]:
-            state["status"] = "running"
+            if state.get("human", {}).get("attention_required") is not True:
+                state["status"] = "running"
             self._save(state)
             return state
 
@@ -204,12 +213,28 @@ class LongHighlightOrchestrator:
             raise ValueError(f"unknown candidate: {candidate_id}")
         winner = dict(candidate)
         if corrections:
-            for key in ("title", "hook", "rationale", "sections", "t_start", "t_end"):
+            for key in (
+                "title",
+                "hook",
+                "rationale",
+                "sections",
+                "source_ranges",
+                "t_start",
+                "t_end",
+            ):
                 if key in corrections:
                     winner[key] = corrections[key]
-        if not _inside_source(winner, state["source"]["duration_sec"]):
-            return self._hard_fail(state, "winner_out_of_range")
-        state["winner"] = winner
+        normalized, reason, normalization_warnings = _normalize_candidate(
+            winner, _text(winner.get("miner")) or "selected"
+        )
+        if normalized is None:
+            state["warnings"].append(f"winner invalid: {reason}")
+            return self._hard_fail(state, "winner_invalid")
+        state["warnings"].extend(normalization_warnings)
+        blocker = _winner_blocker(normalized, state["source"]["duration_sec"])
+        if blocker:
+            return self._hard_fail(state, blocker)
+        state["winner"] = normalized
         state["human"] = {"approved": True, "candidate_id": candidate_id}
         state["status"] = "running"
         self._save(state)
@@ -287,12 +312,19 @@ class LongHighlightOrchestrator:
                     stream.read(1)
             except OSError as exc:
                 raise ValueError(f"tighten ref is not readable: {tighten_path}") from exc
-        normalized, reason = _normalize_candidate(winner, "adopted")
+        normalized, reason, normalization_warnings = _normalize_candidate(winner, "adopted")
         if normalized is None:
             raise ValueError(reason)
+        state["warnings"].extend(normalization_warnings)
         normalized.pop("miner", None)
-        if not _inside_source(normalized, state["source"]["duration_sec"]):
-            return self._hard_fail(state, "winner_out_of_range")
+        blocker = _winner_blocker(normalized, state["source"]["duration_sec"])
+        if blocker:
+            return self._hard_fail(state, blocker)
+        tighten_duration: float | None = None
+        if tighten_path is not None:
+            tighten_duration = _read_cut_duration(tighten_path)
+            if tighten_duration < MIN_LONG_DURATION_SEC:
+                return self._hard_fail(state, "tightened_winner_too_short")
         state["winner"] = normalized
         state["human"] = {
             "approved": True,
@@ -300,7 +332,10 @@ class LongHighlightOrchestrator:
             "source": "adopted",
         }
         if tighten_path is not None:
-            state["stages"]["tighten"] = {"status": "approved"}
+            state["stages"]["tighten"] = {
+                "status": "approved",
+                "duration_sec": tighten_duration,
+            }
             state["refs"]["tighten"] = str(tighten_path)
         state["status"] = "running"
         self._save(state)
@@ -308,7 +343,11 @@ class LongHighlightOrchestrator:
 
     def _run_miners(self, state: dict[str, Any]) -> None:
         stage = state["stages"].setdefault("miners", {"status": "running", "events": {}})
-        payload = {"source": state["source"], "episode_id": state["episode_id"]}
+        payload = {
+            "source": state["source"],
+            "episode_id": state["episode_id"],
+            "long_highlight_contract": _long_highlight_contract(),
+        }
         outputs = self._parallel_run("mine", MINERS, payload)
         for miner in MINERS:
             result = outputs[miner]
@@ -322,7 +361,7 @@ class LongHighlightOrchestrator:
                 rows = []
                 state["warnings"].append(f"miner {miner} returned no candidate list")
             for raw in rows:
-                candidate, reason = _normalize_candidate(raw, miner)
+                candidate, reason, normalization_warnings = _normalize_candidate(raw, miner)
                 if candidate is None:
                     rejected = {
                         "id": raw.get("id", "unknown") if isinstance(raw, Mapping) else "unknown",
@@ -331,14 +370,60 @@ class LongHighlightOrchestrator:
                     }
                     state["quarantine"].append(rejected)
                     state["warnings"].append(f"candidate {rejected['id']} quarantined: {reason}")
-                elif not any(row["id"] == candidate["id"] for row in state["candidates"]):
-                    state["candidates"].append(candidate)
-        stage["status"] = "approved" if state["candidates"] else "running"
+                elif contract_error := _candidate_contract_error(candidate):
+                    rejected = {
+                        "id": candidate["id"],
+                        "miner": miner,
+                        "reason": contract_error,
+                    }
+                    state["quarantine"].append(rejected)
+                    state["warnings"].append(
+                        f"candidate {candidate['id']} quarantined: {contract_error}"
+                    )
+                elif not _inside_source(candidate, state["source"]["duration_sec"]):
+                    rejected = {
+                        "id": candidate["id"],
+                        "miner": miner,
+                        "reason": "candidate source ranges exceed the source duration",
+                    }
+                    state["quarantine"].append(rejected)
+                    state["warnings"].append(
+                        f"candidate {candidate['id']} quarantined: {rejected['reason']}"
+                    )
+                else:
+                    state["warnings"].extend(
+                        f"candidate {candidate['id']}: {warning}"
+                        for warning in normalization_warnings
+                    )
+                    if not any(row["id"] == candidate["id"] for row in state["candidates"]):
+                        state["candidates"].append(candidate)
+        if state["candidates"]:
+            stage["status"] = "approved"
+        elif stage["events"] and all(
+            row.get("status") == "approved" for row in stage["events"].values()
+        ):
+            stage["status"] = "needs_review"
+            state["status"] = "needs_review"
+            state["human"] = {
+                "approved": False,
+                "attention_required": True,
+                "reason": "all_candidates_quarantined",
+            }
+            state["warnings"].append(
+                "all miner candidates were quarantined; edit a candidate or source ranges "
+                "before resuming"
+            )
+        else:
+            stage["status"] = "running"
         self._save(state)
 
     def _run_reviews(self, state: dict[str, Any]) -> None:
         stage = state["stages"].setdefault("reviews", {"status": "running", "events": {}})
-        payload = {"candidates": state["candidates"], "source": state["source"]}
+        payload = {
+            "candidates": state["candidates"],
+            "source": state["source"],
+            "long_highlight_contract": _long_highlight_contract(),
+        }
         outputs = self._parallel_run("review", REVIEWERS, payload)
         candidate_ids = {row["id"] for row in state["candidates"]}
         for reviewer in REVIEWERS:
@@ -366,6 +451,21 @@ class LongHighlightOrchestrator:
         for stage_name in ("tighten", "director", "dp"):
             if self._stage_done(state, stage_name):
                 continue
+            if stage_name == "director":
+                _chapters, unknown_section_ids = _chapter_projection(
+                    state.get("winner"),
+                    srt_path=Path(state["source"]["srt_path"]),
+                )
+                if unknown_section_ids:
+                    return self._require_human_attention(
+                        state,
+                        stage_name=stage_name,
+                        reason="chapter_timestamp_unknown",
+                        warning=(
+                            "chapter timestamps need a human correction for: "
+                            + ", ".join(unknown_section_ids)
+                        ),
+                    )
             existing_events = state["stages"].get(stage_name, {}).get("events")
             if isinstance(existing_events, Mapping) and existing_events:
                 self._queue_pending_events(state, stage_name, existing_events)
@@ -377,17 +477,52 @@ class LongHighlightOrchestrator:
                 self._save(state)
                 return state
             if stage_name == "tighten":
-                tightened, reason = _normalize_candidate(output.get("winner"), "tighten")
+                tightened, reason, normalization_warnings = _normalize_candidate(
+                    output.get("winner"), "tighten"
+                )
                 if tightened is None:
-                    self._soft_pending(state, stage_name, reason)
-                    return state
+                    return self._require_human_attention(
+                        state,
+                        stage_name=stage_name,
+                        reason="tighten_invalid_winner",
+                        warning=f"tighten winner needs a human correction: {reason}",
+                    )
+                state["warnings"].extend(
+                    f"tighten: {warning}" for warning in normalization_warnings
+                )
                 raw_winner = output.get("winner")
                 if isinstance(raw_winner, Mapping) and isinstance(state["winner"], Mapping):
-                    for key in ("title", "hook", "rationale", "sections"):
+                    if (
+                        isinstance(state["winner"].get("source_ranges"), list)
+                        and "source_ranges" not in raw_winner
+                    ):
+                        same_bounds = math.isclose(
+                            tightened["t_start"], state["winner"]["t_start"], abs_tol=0.001
+                        ) and math.isclose(
+                            tightened["t_end"], state["winner"]["t_end"], abs_tol=0.001
+                        )
+                        if not same_bounds:
+                            return self._hard_fail(state, "tightened_ranges_missing")
+                        tightened["source_ranges"] = list(state["winner"]["source_ranges"])
+                        tightened["selected_duration_sec"] = _effective_duration(state["winner"])
+                        state["warnings"].append(
+                            "tighten omitted source_ranges with unchanged bounds; reused the "
+                            "approved ranges for compatibility"
+                        )
+                    for key in ("title", "hook", "rationale"):
                         if key not in raw_winner:
                             tightened[key] = state["winner"].get(key, tightened[key])
+                    if not tightened.get("sections"):
+                        tightened["sections"] = list(state["winner"].get("sections", []))
+                        state["warnings"].append(
+                            "tighten returned no readable sections; reused the approved section map"
+                        )
                 if not _inside_source(tightened, state["source"]["duration_sec"]):
                     return self._hard_fail(state, "winner_out_of_range")
+                if _effective_duration(tightened) < MIN_LONG_DURATION_SEC:
+                    return self._hard_fail(state, "tightened_winner_too_short")
+                if _candidate_contract_error(tightened, check_duration=False):
+                    return self._hard_fail(state, "winner_sections_invalid")
                 state["winner"] = tightened
             if stage_name in {"director", "dp"}:
                 self._store_stage_events(state, stage_name, output.get("events"))
@@ -566,7 +701,25 @@ class LongHighlightOrchestrator:
                     preview_ref = _text(output.get("preview_ref"))
                     if not preview_ref:
                         return self._hard_fail(state, "no_preview")
+                    preview_duration = _finite_number(output.get("duration_sec"))
+                    duration_source = "adapter"
+                    if preview_duration is None:
+                        preview_duration = _probe_preview_duration(
+                            preview_ref,
+                            relative_to=self.state_path.parent,
+                        )
+                        duration_source = "ffprobe"
+                    if preview_duration is None:
+                        state["warnings"].append(
+                            "resolve_preview duration is unknown: adapter omitted duration_sec "
+                            "and preview_ref could not be probed"
+                        )
+                        return self._hard_fail(state, "preview_duration_unknown")
+                    if preview_duration < MIN_LONG_DURATION_SEC:
+                        return self._hard_fail(state, "preview_too_short")
                     state["refs"]["preview"] = preview_ref
+                    state["stages"].setdefault(stage_name, {})["duration_sec"] = preview_duration
+                    state["stages"][stage_name]["duration_source"] = duration_source
                 else:
                     state["refs"]["packaging"] = _text(output.get("ref")) or None
                 self._approve_stage(state, stage_name, output)
@@ -643,6 +796,11 @@ class LongHighlightOrchestrator:
             "winner": state["winner"],
             "refs": state["refs"],
             "stages": state["stages"],
+            "long_highlight_contract": _long_highlight_contract(),
+            "chapter_map": _chapter_map(
+                state.get("winner"),
+                srt_path=Path(state["source"]["srt_path"]),
+            ),
         }
 
     def _store_stage_events(
@@ -721,12 +879,31 @@ class LongHighlightOrchestrator:
         }.get(stage_name)
         if ref_key:
             state["refs"][ref_key] = _text(output.get("ref")) or None
+        if stage_name == "tighten" and isinstance(state.get("winner"), Mapping):
+            stage["duration_sec"] = _effective_duration(state["winner"])
 
     def _soft_pending(self, state: dict[str, Any], stage_name: str, warning: str) -> None:
         state["stages"].setdefault(stage_name, {})["status"] = "pending"
         state["status"] = "running"
         state["warnings"].append(f"{stage_name} pending: {warning}")
         self._save(state)
+
+    def _require_human_attention(
+        self,
+        state: dict[str, Any],
+        *,
+        stage_name: str,
+        reason: str,
+        warning: str,
+    ) -> dict[str, Any]:
+        state["stages"].setdefault(stage_name, {})["status"] = "needs_review"
+        state["status"] = "needs_review"
+        human = dict(state.get("human") or {})
+        human.update({"attention_required": True, "reason": reason})
+        state["human"] = human
+        state["warnings"].append(warning)
+        self._save(state)
+        return state
 
     def _hard_fail(self, state: dict[str, Any], blocker: str) -> dict[str, Any]:
         state["status"] = "failed"
@@ -751,33 +928,198 @@ class LongHighlightOrchestrator:
         )
 
 
-def _normalize_candidate(raw: Any, miner: str) -> tuple[dict[str, Any] | None, str]:
+def _normalize_candidate(
+    raw: Any,
+    miner: str,
+) -> tuple[dict[str, Any] | None, str, list[str]]:
     if not isinstance(raw, Mapping):
-        return None, "candidate is not an object"
+        return None, "candidate is not an object", []
     candidate_id = _text(raw.get("id"))
     if not candidate_id:
-        return None, "candidate id is missing"
-    try:
-        start = float(raw["t_start"])
-        end = float(raw["t_end"])
-    except (KeyError, TypeError, ValueError):
-        return None, "candidate time range is malformed"
-    if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start:
-        return None, "candidate time range is malformed"
-    sections = raw.get("sections")
-    return (
-        {
-            "id": candidate_id,
-            "miner": miner,
-            "t_start": start,
-            "t_end": end,
-            "title": _text(raw.get("title")),
-            "hook": _text(raw.get("hook")),
-            "rationale": _text(raw.get("rationale")),
-            "sections": list(sections) if isinstance(sections, list) else [],
-        },
-        "",
+        return None, "candidate id is missing", []
+    ranges, reason = _normalize_source_ranges(raw)
+    if ranges is None:
+        return None, reason, []
+    start = ranges[0]["t_start"]
+    end = ranges[-1]["t_end"]
+    sections, normalization_warnings = _normalize_sections(
+        raw.get("sections"),
+        range_count=len(ranges),
     )
+    normalized = {
+        "id": candidate_id,
+        "miner": miner,
+        "t_start": start,
+        "t_end": end,
+        "title": _text(raw.get("title")),
+        "hook": _text(raw.get("hook")),
+        "rationale": _text(raw.get("rationale")),
+        "sections": sections,
+        "selected_duration_sec": sum(row["t_end"] - row["t_start"] for row in ranges),
+    }
+    if "source_ranges" in raw:
+        normalized["source_ranges"] = ranges
+    return normalized, "", normalization_warnings
+
+
+def _normalize_sections(
+    raw_sections: Any,
+    *,
+    range_count: int,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    if not isinstance(raw_sections, list):
+        return [], []
+    normalized: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    used_ids: set[str] = set()
+    for raw_index, raw in enumerate(raw_sections):
+        if not isinstance(raw, Mapping):
+            warnings.append(f"ignored non-object section at index {raw_index}")
+            continue
+        section = dict(raw)
+        semantic_text = next(
+            (
+                _text(raw.get(key))
+                for key in (
+                    "summary",
+                    "label",
+                    "transition_title",
+                    "start_quote",
+                    "end_quote",
+                )
+                if _text(raw.get(key))
+            ),
+            "",
+        )
+        if not semantic_text:
+            warnings.append(f"ignored empty section at index {raw_index}")
+            continue
+        section_id = _text(raw.get("section_id")) or f"section-{len(normalized) + 1:02d}"
+        if not _text(raw.get("section_id")):
+            warnings.append(f"generated {section_id} for a section without section_id")
+        if section_id in used_ids:
+            base = section_id
+            suffix = 2
+            while f"{base}-{suffix}" in used_ids:
+                suffix += 1
+            section_id = f"{base}-{suffix}"
+            warnings.append(f"renamed duplicate section_id to {section_id}")
+        section["section_id"] = section_id
+        used_ids.add(section_id)
+
+        range_index = raw.get("source_range_index")
+        if range_count == 1 and (
+            isinstance(range_index, bool) or not isinstance(range_index, int) or range_index != 0
+        ):
+            section["source_range_index"] = 0
+            warnings.append(f"normalized {section_id} source_range_index to 0")
+        elif range_count > 1 and (
+            isinstance(range_index, bool)
+            or not isinstance(range_index, int)
+            or not 0 <= range_index < range_count
+        ):
+            section.pop("source_range_index", None)
+            warnings.append(f"left {section_id} without a reliable source_range_index")
+
+        transition_before = raw.get("transition_before")
+        if not isinstance(transition_before, bool):
+            section["transition_before"] = False
+            warnings.append(f"normalized {section_id} transition_before to false")
+        if not normalized and section.get("transition_before") is True:
+            section["transition_before"] = False
+            warnings.append(f"normalized first section {section_id} transition_before to false")
+        if section.get("transition_before") is True and not _text(section.get("transition_title")):
+            warnings.append(f"chapter section {section_id} has no transition_title")
+        if not _text(section.get("summary")):
+            section["summary"] = semantic_text
+            warnings.append(f"derived {section_id} summary from existing section text")
+        normalized.append(section)
+    return normalized, warnings
+
+
+def _normalize_source_ranges(
+    raw: Mapping[str, Any],
+) -> tuple[list[dict[str, float]] | None, str]:
+    raw_ranges = raw.get("source_ranges")
+    if raw_ranges is None:
+        try:
+            start = float(raw["t_start"])
+            end = float(raw["t_end"])
+        except (KeyError, TypeError, ValueError):
+            return None, "candidate time range is malformed"
+        if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start:
+            return None, "candidate time range is malformed"
+        return [{"t_start": start, "t_end": end}], ""
+    if not isinstance(raw_ranges, list) or not raw_ranges:
+        return None, "candidate source_ranges must be a non-empty list"
+    ranges: list[dict[str, float]] = []
+    previous_end: float | None = None
+    for row in raw_ranges:
+        if not isinstance(row, Mapping):
+            return None, "candidate source range is malformed"
+        try:
+            start = float(row["t_start"])
+            end = float(row["t_end"])
+        except (KeyError, TypeError, ValueError):
+            return None, "candidate source range is malformed"
+        if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start:
+            return None, "candidate source range is malformed"
+        if previous_end is not None and start < previous_end:
+            return None, "candidate source_ranges must be ordered and non-overlapping"
+        ranges.append({"t_start": start, "t_end": end})
+        previous_end = end
+    for key, expected in (("t_start", ranges[0]["t_start"]), ("t_end", ranges[-1]["t_end"])):
+        if key not in raw:
+            continue
+        actual = _finite_number(raw.get(key))
+        if actual is None or not math.isclose(actual, expected, abs_tol=0.001):
+            return None, f"candidate {key} must match the source_ranges boundary"
+    return ranges, ""
+
+
+def _candidate_contract_error(
+    candidate: Mapping[str, Any],
+    *,
+    check_duration: bool = True,
+) -> str:
+    if check_duration and _effective_duration(candidate) < MIN_LONG_DURATION_SEC:
+        return "selected source ranges must total at least 8 minutes"
+    sections = candidate.get("sections")
+    if not isinstance(sections, list) or not sections:
+        return "long candidate requires a non-empty section map"
+    return ""
+
+
+def _winner_blocker(candidate: Mapping[str, Any], source_duration: float) -> str | None:
+    if not _inside_source(candidate, source_duration):
+        return "winner_out_of_range"
+    error = _candidate_contract_error(candidate)
+    if not error:
+        return None
+    if _effective_duration(candidate) < MIN_LONG_DURATION_SEC:
+        return "winner_too_short"
+    return "winner_sections_invalid"
+
+
+def _effective_duration(candidate: Mapping[str, Any]) -> float:
+    value = _finite_number(candidate.get("selected_duration_sec"))
+    if value is not None:
+        return value
+    ranges = candidate.get("source_ranges")
+    if isinstance(ranges, list) and ranges:
+        total = 0.0
+        for row in ranges:
+            if not isinstance(row, Mapping):
+                return 0.0
+            start = _finite_number(row.get("t_start"))
+            end = _finite_number(row.get("t_end"))
+            if start is None or end is None or end <= start:
+                return 0.0
+            total += end - start
+        return total
+    start = _finite_number(candidate.get("t_start"))
+    end = _finite_number(candidate.get("t_end"))
+    return end - start if start is not None and end is not None and end > start else 0.0
 
 
 def _normalize_assessments(raw: Any, candidate_ids: set[str]) -> list[dict[str, Any]]:
@@ -816,6 +1158,66 @@ def _read_source_duration(source: SourceInput) -> float:
     return max(_timestamp_seconds(value) for value in timestamps)
 
 
+def _read_cut_duration(path: Path) -> float:
+    text = path.read_text(encoding="utf-8")
+    timestamps = re.findall(
+        r"(\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,.]\d{3})",
+        text,
+    )
+    if timestamps:
+        starts = [_timestamp_seconds(start) for start, _end in timestamps]
+        ends = [_timestamp_seconds(end) for _start, end in timestamps]
+        return max(ends) - min(starts)
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"tighten ref has no readable duration: {path}") from exc
+    if not isinstance(value, Mapping):
+        raise ValueError(f"tighten ref has no readable duration: {path}")
+    for key in ("effective_duration_sec", "duration_sec", "selected_duration_sec"):
+        duration = _finite_number(value.get(key))
+        if duration is not None and duration > 0:
+            return duration
+    winner = value.get("winner")
+    if isinstance(winner, Mapping):
+        duration = _effective_duration(winner)
+        if duration > 0:
+            return duration
+    raise ValueError(f"tighten ref has no readable duration: {path}")
+
+
+def _probe_preview_duration(preview_ref: str, *, relative_to: Path) -> float | None:
+    path = Path(preview_ref)
+    candidates = [path] if path.is_absolute() else [relative_to / path, path]
+    resolved = next((candidate for candidate in candidates if candidate.is_file()), None)
+    executable = shutil.which("ffprobe")
+    if resolved is None or executable is None:
+        return None
+    try:
+        result = subprocess.run(
+            [
+                executable,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(resolved),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    duration = _finite_number(result.stdout.strip())
+    return duration if duration is not None and duration > 0 else None
+
+
 def _timestamp_seconds(value: str) -> float:
     hours, minutes, remainder = value.replace(",", ".").split(":")
     return int(hours) * 3600 + int(minutes) * 60 + float(remainder)
@@ -827,7 +1229,18 @@ def _inside_source(candidate: Mapping[str, Any], duration: float) -> bool:
         end = float(candidate["t_end"])
     except (KeyError, TypeError, ValueError):
         return False
-    return math.isfinite(start) and math.isfinite(end) and 0 <= start < end <= float(duration)
+    if not (math.isfinite(start) and math.isfinite(end) and 0 <= start < end <= float(duration)):
+        return False
+    ranges = candidate.get("source_ranges")
+    if not isinstance(ranges, list):
+        return True
+    return all(
+        isinstance(row, Mapping)
+        and _finite_number(row.get("t_start")) is not None
+        and _finite_number(row.get("t_end")) is not None
+        and 0 <= float(row["t_start"]) < float(row["t_end"]) <= float(duration)
+        for row in ranges
+    )
 
 
 def _valid_range(row: Mapping[str, Any]) -> bool:
@@ -917,6 +1330,157 @@ def _event_stage_status(events: Mapping[str, Mapping[str, Any]]) -> str:
     )
 
 
+def _long_highlight_contract() -> dict[str, Any]:
+    return {
+        "route": "long_highlight_orchestrator_v2",
+        "validation_profile": "semantic_visual_minimal",
+        "minimum_selected_duration_sec": MIN_LONG_DURATION_SEC,
+        "duration_basis": "sum_source_ranges",
+        "multi_range_when_needed": True,
+        "sections_required": True,
+        "section_shape_drift": "normalize_with_warning",
+        "fullscreen_transition": "chapter_starts_only",
+        "youtube_chapter_timestamps": "same_section_boundaries",
+    }
+
+
+def _chapter_map(winner: Any, *, srt_path: Path) -> list[dict[str, Any]]:
+    chapters, _unknown_section_ids = _chapter_projection(winner, srt_path=srt_path)
+    return chapters
+
+
+def _chapter_projection(
+    winner: Any,
+    *,
+    srt_path: Path,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    if not isinstance(winner, Mapping):
+        return [], []
+    sections = winner.get("sections")
+    if not isinstance(sections, list):
+        return [], []
+    ranges = _candidate_ranges(winner)
+    cue_starts = _read_srt_cue_starts(srt_path)
+    chapters: list[dict[str, Any]] = []
+    unknown_section_ids: list[str] = []
+    for index, section in enumerate(sections):
+        if not isinstance(section, Mapping):
+            continue
+        is_transition = index > 0 and section.get("transition_before") is True
+        if index > 0 and not is_transition:
+            continue
+        row = dict(section)
+        timestamp, basis = _section_cut_local_timestamp(
+            section,
+            section_index=index,
+            ranges=ranges,
+            cue_starts=cue_starts,
+        )
+        if timestamp is None:
+            unknown_section_ids.append(_text(section.get("section_id")) or f"section-{index + 1}")
+            continue
+        row["timestamp_sec"] = round(timestamp, 3)
+        row["timestamp_basis"] = basis
+        row["youtube_chapter"] = True
+        row["fullscreen_transition"] = is_transition
+        chapters.append(row)
+    return chapters, unknown_section_ids
+
+
+def _candidate_ranges(candidate: Mapping[str, Any]) -> list[dict[str, float]]:
+    raw_ranges = candidate.get("source_ranges")
+    if isinstance(raw_ranges, list) and raw_ranges:
+        ranges: list[dict[str, float]] = []
+        for row in raw_ranges:
+            if not isinstance(row, Mapping):
+                return []
+            start = _finite_number(row.get("t_start"))
+            end = _finite_number(row.get("t_end"))
+            if start is None or end is None or end <= start:
+                return []
+            ranges.append({"t_start": start, "t_end": end})
+        return ranges
+    start = _finite_number(candidate.get("t_start"))
+    end = _finite_number(candidate.get("t_end"))
+    if start is None or end is None or end <= start:
+        return []
+    return [{"t_start": start, "t_end": end}]
+
+
+def _read_srt_cue_starts(path: Path) -> dict[int, float]:
+    try:
+        lines = path.read_text(encoding="utf-8-sig").splitlines()
+    except (OSError, UnicodeError):
+        return {}
+    starts: dict[int, float] = {}
+    for index, line in enumerate(lines[:-1]):
+        try:
+            cue_id = int(line.strip())
+        except ValueError:
+            continue
+        match = re.match(r"(\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->", lines[index + 1])
+        if match:
+            starts[cue_id] = _timestamp_seconds(match.group(1))
+    return starts
+
+
+def _section_cut_local_timestamp(
+    section: Mapping[str, Any],
+    *,
+    section_index: int,
+    ranges: Sequence[Mapping[str, float]],
+    cue_starts: Mapping[int, float],
+) -> tuple[float | None, str]:
+    if section_index == 0:
+        return 0.0, "first_chapter"
+    total_duration = sum(row["t_end"] - row["t_start"] for row in ranges)
+    for key in (
+        "timestamp_sec",
+        "cut_local_timestamp_sec",
+        "cut_local_t_start",
+        "cut_local_start",
+        "cut_local_start_sec",
+        "timeline_t_start",
+        "timeline_start",
+        "timeline_start_sec",
+    ):
+        value = _finite_number(section.get(key))
+        if value is not None and 0 <= value <= total_duration:
+            return value, key
+    source_time: float | None = None
+    source_basis = ""
+    for key in ("source_t_start", "source_start_sec", "t_start"):
+        value = _finite_number(section.get(key))
+        if value is not None:
+            source_time = value
+            source_basis = key
+            break
+    if source_time is None:
+        cue_start = section.get("cue_start")
+        if isinstance(cue_start, int) and not isinstance(cue_start, bool):
+            source_time = cue_starts.get(cue_start)
+            source_basis = "cue_start"
+    if source_time is not None:
+        cut_local = _source_to_cut_local(source_time, ranges)
+        if cut_local is not None:
+            return cut_local, source_basis
+    return None, "unknown"
+
+
+def _source_to_cut_local(
+    source_time: float,
+    ranges: Sequence[Mapping[str, float]],
+) -> float | None:
+    offset = 0.0
+    for row in ranges:
+        start = row["t_start"]
+        end = row["t_end"]
+        if start - 0.001 <= source_time <= end + 0.001:
+            return offset + min(max(source_time - start, 0.0), end - start)
+        offset += end - start
+    return None
+
+
 def _safe_name(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-") or "event"
 
@@ -925,9 +1489,20 @@ def _text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def _finite_number(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
 __all__ = [
     "DirectoryStageRunner",
     "LongHighlightOrchestrator",
+    "MIN_LONG_DURATION_SEC",
     "MINERS",
     "REVIEWERS",
     "SourceInput",

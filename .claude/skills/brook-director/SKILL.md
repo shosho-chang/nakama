@@ -4,14 +4,16 @@ description: >
   Director 分鏡導演手冊（ADR-051）。Triggers: /brook-director、「劃分鏡」、
   「幫這集排 B-roll」、「跑 Director」。讀校正後字幕（transcript.srt）→ 分型 →
   逐 beat 分鏡判斷。Standalone Video Production Line 產 storyboard.yaml；Podcast
-  Highlight 則讀 DIRECTOR-WORK.json、產 DIRECTOR-PLAN.json，再交 brook-dp。
+  Highlight v2 讀 orchestrator payload、回傳 Director events，再交 brook-dp；只有 legacy
+  ADR-065 route 讀 DIRECTOR-WORK.json、產 DIRECTOR-PLAN.json。
   創意判斷在本手冊；驗證／素材履約／render/emit契約歸
   agents/brook/script_video/ pipeline 程式，本 skill 只呼叫、不重新發明。
 ---
 
 # brook-director — 分鏡導演手冊
 
-**版本：v2.0（2026-07-18，四支成片拆解＋Ali/Jeff 對照的剪輯文法入冊；
+**版本：v2.1（2026-08-28，Long Highlight 章節／Hero／人物照片語意收斂；
+v2.0 2026-07-18 四支成片拆解＋Ali/Jeff 對照的剪輯文法入冊；
 文法依據：`docs/research/editing-grammar/2026-07-18-shoshotw-editing-grammar.md`）**
 
 你是這條影片產線的**導演**：讀字幕、決定每個 beat 給觀眾看什麼（`visual_intent`
@@ -19,7 +21,32 @@ description: >
 發明者。素材的具體實現（component/params/asset、詳細搜尋詞、render prompt）已正式屬
 **DP（brook-dp skill）**職掌；不得再由 Director 兼任。
 
-## Podcast Highlight production adapter（ADR-065；優先於下方 standalone 步驟）
+## Long Highlight orchestrator v2（優先分流）
+
+收到 payload 同時標示
+`long_highlight_contract.route="long_highlight_orchestrator_v2"` 與
+`long_highlight_contract.validation_profile="semantic_visual_minimal"` 時，本節優先於下方 ADR-065 legacy route。
+Director 只做 LLM 擅長的完整逐字稿／section 語意理解，產出 chapter、Hero、Stock、人物
+inset 等 visual intents；後續仍保留 DP fulfillment 與 targeted visual agent 實看成品，不能刪除
+或改成機械關鍵字比對。
+
+這條 v2 route 的外層 state 是 mutable draft。不得啟動
+`podcast_highlight_visual_orchestrator.py`／ADR-065 frozen revision DAG，不建立或驗證 immutable
+request、worker/session identity、execution receipt、hash／source lineage，也不要求 same-session
+Director audit 或全量 fresh verify。單一 event 語意或畫面不符時，只退回該 event 給 DP／targeted
+visual fix，不得重跑整支 Director。
+
+Director 不負責判定上游 source、range、片長、sections 或 chapter timestamp gates；chapter 沒有可靠
+cut-local／source／cue 時間時，由 orchestrator 的 upstream gate 處理，Director 不猜 0:00。在 v2 的
+Director → DP → visual／preview 段，selected footage 不可播放、targeted agent 判定 semantic／visual
+mismatch、Resolve mutation 會破壞既有 baseline，以及 preview 不存在、實際 <480 秒或時長未知，都會
+阻止往發布前進。這些條件由各自下游 stage 回報；Director 不新增來源驗證。其他 schema 小漂移、缺
+optional metadata 或 reviewer 差異只記 warning／局部修正。
+
+## Legacy Podcast Highlight production adapter（ADR-065；僅限沒有 v2 marker）
+
+只有 payload 沒有上述 v2 route marker 時，才使用本節 frozen revision／receipt 流程；不得把 legacy
+要求帶進 `long_highlight_orchestrator_v2`。
 
 當輸入是 Podcast episode + cut ID，唯一 production truth root 是 revision-aware DAG：
 
@@ -88,6 +115,31 @@ materialization receipt也不能替代 `DIRECTOR-WORK.json` → `DIRECTOR-PLAN.j
 
 Director plan涵蓋所有 content visuals：Stock／Hero／keyword／quote／chapter／card；結構性
 badge／camera correction／guest namecard由各自 deterministic contract處理，不為了湊coverage重複規劃。
+
+### Podcast Long Highlight 的結構與分類
+
+先用 `DIRECTOR-WORK.candidate.sections` 建立 canonical chapter map，再逐 event 判斷畫面。
+這份 map 同時驅動 Full-screen Transition 與 YouTube description timestamps；Director 只依 exact
+transcript 驗證 canonical map。若 section 邊界或標題不正確，回報 targeted upstream／human
+correction 並停止該 downstream；不得在 Director events 另改時間或另造一套章節：
+
+- `candidate.sections` 缺失或為空時，先把完整 tight SRT 退回 highlight-cut 補論述地圖；
+  在 map 回來前不產 Full-screen Transition。這是必要的上游語意工作，不以局部逐字稿猜章節。
+- `chapter` 只代表觀眾會在 YouTube chapter list 中看到、可獨立導航的新論述起點。
+  `transition_title` 只服務這個 category，且不得連續出現或用固定間距補量。
+- 「方向一／方向二」「第一種／第二種」「步驟一／步驟二」只是詞面信號。若它們共同回答
+  同一題、仍在同一 section，標成章內 Hero 或 supporting `keyword`；不得因序號詞自動升格
+  `chapter`。只有論述任務、問題或結論真的切換，且 section map 也分段時，才是 chapter。
+- Hero 是章內重點，不是導航。Director 只標重要性、exact quote 與手動換行；不得用 Hero
+  category 夾帶 `transition_title` 實現。交付 Bridge 時 `chapter/transition_title` 與
+  `hero/punch_card_wide` 必須保留不同 semantic category。
+- 人名搭配單張 headshot 一律是 `person_inset` + overlay：negative constraints 明列「縮小、
+  有進退場動畫、放說話者負空間、不遮臉、不可滿版」。只有具有環境／證物語意的 image，
+  且這個 section 需要觀眾仔細看該證物時，才可明確要求 deliberate full-screen image。
+  `description` 只描述畫面意圖；不得塞 `provided_asset`、`target_lane`、photo mode 等 DP 實現。
+- `stock_scene` 的 description 必須描述整句的動作、人物關係與**情緒極性**；不能只列名詞。
+  負荷／忙亂語境不得要求開心、從容的家庭或辦公畫面。驗收語句是「不看字幕也讀得出
+  這一整句」，不是「畫面裡有同樣的人或物件」。
 
 ### Podcast A-roll camera cues（同一 Director，非新 Agent）
 
@@ -182,9 +234,10 @@ ADR-051 standalone script-driven video。Podcast Highlight 不得 silent fallbac
 shots_hint/source_hint，schema 見 `schemas/storyboard.py`）；`broll` 的
 component/params/asset 由 DP 落地。對每個 beat 依序問：
 
-**1. 章節邊界？**「第一點」「步驟二」等分點句式**必觸發** `chapter`
-（滿版橘卡＋wipe，與旁白唸出章節名同步；成片 4/4 支驗證，含「步驟」——v1 否決
-步驟卡的判斷與成片相反）。隱性語意章節從嚴。時長 = `max(該句語音時長,
+**1. 章節邊界？** `chapter` 只在可獨立導航的新論述起點觸發（問題、論述任務或
+結論真正切換），滿版卡與旁白唸出章節名同步。「第一點」「步驟二」「方向一」等
+序號詞只算候選；若仍共同回答同一題，就是章內列舉，改用 Hero／keyword，不得升格
+章節。隱性語意章節從嚴。時長 = `max(該句語音時長,
 1.5s + 標題字數 × 0.12s)`。長片（≥5 章）可另排 hook 尾「章節總覽卡」（Ali 式
 roadmap，需 composition 落地，落地前記 Remaining）。
 
@@ -212,8 +265,9 @@ none`。但注意節拍器：長 aroll 段（>20s）至少排一個 overlay 事�
 
 **4. form 的降級規則**：overlay/canvas_pip 的 layout/composition 落地前，
 `layout` 仍只能填 allowed_layouts（full_aroll/full_broll）——意圖照實寫進
-visual_intent，實現由 DP 降級（overlay→滿版短卡或 none；canvas_pip→滿版動畫），
-降級記 run log。透明疊加過 DaVinci alpha 驗證後解鎖。
+visual_intent，實現由 DP 依 category 降級並記 run log。`person_inset` 不可降成滿版
+headshot；inset composition 不可用時保留 A-roll／退回該 event。其他高資訊量 overlay
+可降成短卡，canvas_pip 可降成滿版動畫。透明疊加過 DaVinci alpha 驗證後解鎖。
 
 **5. 節制檢查**：連續兩 beat 不同 component（同 kind 不同 footage 的快切連發
 合法，判定粒度 source_url）；anti-literal（「成長」≠上升箭頭——worked_example
@@ -422,8 +476,9 @@ E2E 每跑完一集（visual approved + DaVinci import smoke 過），把可固�
    DP 出實現；觸發規則表 13 條入冊（Step 2）。
 3. **金句卡=首唸即上卡**從單例升級為定律（致富心態 11/11 毫秒級同步）；配方兩檔位
    （stock 底壓暗／kinetic text——後者待 composition）。
-4. **章節卡**：滿版橘卡＋wipe、與唸出同步、「步驟」也有卡；overlay 層（keyword/
-   inset/banner）是 v1 完全缺席的 vocabulary，現為 Step 2 一級公民。
+4. **章節卡**：滿版卡與唸出的真正章節名同步；2026-08-28 收斂為「步驟／方向只
+   是候選，章內列舉改 Hero／keyword」，不再依序號詞必然上章節卡。overlay 層
+   （keyword/inset/banner）是 v1 完全缺席的 vocabulary，現為 Step 2 一級公民。
 5. **傳記型警訊（2026-07-19 已解）**：KOL 單源 ≤20s 紅線與傳主素材用法（成片單源
    ~130s+）衝突——修修裁決：20s 降為提醒線（warning 不擋審，合理使用自行把關），
    出處三必填不變。傳記型解鎖；分鏡時仍在 run log 列各來源總用量供修修掃一眼。
