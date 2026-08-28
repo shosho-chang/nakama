@@ -1,6 +1,8 @@
 # Memory Index
 
-- [feedback_no_gemini_default_openai.md](feedback_no_gemini_default_openai.md) — **全面停用 Gemini，LLM 預設走 OpenAI**（修修 2026-08-17 裁決，除非 Google 出新 model）。三類依賴處置不同：生產路由直接換、音訊多模態（`ask_with_audio` 只有 Google 一家實作）結構性卡住要新開發、panel review 腳本另換
+- [feedback_model_policy_subscription_era.md](feedback_model_policy_subscription_era.md) — **訂閱時代 model 政策（2026-08-19 裁決）：agent 內容任務一律最新最強 Claude（現 Opus 5），新 model 出來直接採用不過 eval**；換 model 前必跑訂閱 CLI 探針；tool_use/extractor 維持 Haiku（延遲>能力，已揭露）；KNOWN_MODELS 同步下架舊 model；查 model 來源先看 Bridge override store（優先序最高）
+- [feedback_user_pasted_commands_powershell.md](feedback_user_pasted_commands_powershell.md) — **給修修貼的指令跑在 PowerShell：禁 `$()`**（PS 先吃掉，`\$` 跳脫無效）；**`.env` append 前先保證檔尾換行**（sed/printf 黏行事故 2026-08-18：token 黏成 322 字元巨行、Nami 二度停擺）——關鍵檔修改用 Python 讀-改-寫
+- [feedback_no_gemini_default_openai.md](feedback_no_gemini_default_openai.md) — **全面停用 Gemini（仍有效）**；「預設走 OpenAI」只活了兩天，已被訂閱-first 取代（OpenAI 降為 fallback）。音訊多模態（`ask_with_audio` 只有 Google 實作）結構性卡住要新開發
 - [reference_agent_sdk_supports_oauth.md](reference_agent_sdk_supports_oauth.md) — **Agent SDK 可以走訂閱額度，「不支援」的舊記載是錯的**（2026-08-18 實測：拔 API key + 無效 OAuth token → 回 401 OAuth invalid）。做法是 `ClaudeAgentOptions.env` 傳 token 並**同時清空** `ANTHROPIC_API_KEY`
 - [../shared/reference/fleet_community_stack.md](../shared/reference/fleet_community_stack.md) — **自由艦隊社群站是 `fleet.shosho.tw` 不是 `shosho.tw` 主站**（FluentCommunity / FluentCart / FluentCRM 全裝這邊，主站一個都沒有）；SSH `nakama-vps` → `/var/www/fleet.shosho.tw`，DB `db2_fleet_shosho` prefix `zcjf_`，wp-cli 要 `sudo -u u2_fleet_shosho`。LiteSpeed object cache 開著、測試帳號是 user 8/9/10。領域知識在 `agents/sanji/CONTEXT.md`
 - [../shared/decision/fluentcart_single_grant_channel.md](../shared/decision/fluentcart_single_grant_channel.md) — **社群權限只能由 FluentCart product feed 授予；FluentCRM funnel #42 的 `add_to_fluent_community` 是刻意刪掉的，不要加回去**（2026-08-16：雙軌授予導致 18 個退款帳號權限殘留半年）。付費空間 privacy 必須 `private`；部分退款不會自動回收（已知 gap 非 bug）
