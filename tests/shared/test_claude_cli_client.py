@@ -206,6 +206,9 @@ def test_anthropic_client_routes_to_cli_under_max_plan(monkeypatch):
     import shared.anthropic_client as ac
 
     monkeypatch.setattr(ac, "_cli_binary_available", lambda: True)
+    # conftest 的 _no_subscription_dispatch_in_tests 全域釘 False —— CLI 路徑
+    # 自身的測試依護欄契約顯式 patch 回 True（測試層 patch 後蓋前）。
+    monkeypatch.setattr(ac, "_oauth_token_available", lambda: True)
 
     from shared.anthropic_client import ask_claude
 

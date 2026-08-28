@@ -51,7 +51,7 @@ logger = get_logger("nakama.memory_reflection")
 # Reflection is reasoning-heavy (spot contradictions, judge duplicate meaning) so
 # it uses Sonnet, not the Haiku the extractor uses. Env-overridable per the router
 # convention (MODEL_<...>); defaults to the repo-canonical Sonnet 4.6.
-_REFLECT_MODEL = os.getenv("MODEL_MEMORY_REFLECTION") or "claude-sonnet-4-6"
+_REFLECT_MODEL = os.getenv("MODEL_MEMORY_REFLECTION") or "claude-opus-5"
 
 # Don't bother the LLM for a near-empty store; consolidation needs material.
 _MIN_MEMORIES = 3
