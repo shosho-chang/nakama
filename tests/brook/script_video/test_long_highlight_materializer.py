@@ -235,6 +235,37 @@ def test_emit_recipes_drops_guest_namecard_that_overlaps_new_stock(
     assert result["counts"] == {"broll": 2, "titles": 1, "structural": 0}
 
 
+def test_emit_recipes_preserves_person_inset_as_content_overlay(tmp_path: Path) -> None:
+    episode = tmp_path / "episode"
+    state = _state(episode)
+    person = state["stages"]["dp"]["events"]["transition-001"]["data"]
+    person["implementation_kind"] = "person_inset"
+
+    result = emit_recipes(episode, "value-L02", state)
+
+    broll = json.loads(Path(result["broll_path"]).read_text(encoding="utf-8"))["items"]
+    person_row = next(row for row in broll if row["slug"] == "transition-card")
+    assert person_row["kind"] == "sticker"
+    assert person_row["comp"] == "person_inset"
+    assert person_row["visual_materialization"]["target_lane"] == "content_card_track4"
+    assert person_row["visual_materialization"]["implementation_kind"] == "person_inset"
+
+
+def test_emit_recipes_still_rejects_unknown_content_card_implementation(
+    tmp_path: Path,
+) -> None:
+    episode = tmp_path / "episode"
+    state = _state(episode)
+    card = state["stages"]["dp"]["events"]["transition-001"]["data"]
+    card["implementation_kind"] = "unknown_fullscreen_fallback"
+
+    with pytest.raises(
+        LongHighlightMaterializationError,
+        match="content-card implementation is invalid: unknown_fullscreen_fallback",
+    ):
+        emit_recipes(episode, "value-L02", state)
+
+
 def test_projection_rejects_visual_stage_with_failed_event(tmp_path: Path) -> None:
     episode = tmp_path / "episode"
     state = _state(episode)

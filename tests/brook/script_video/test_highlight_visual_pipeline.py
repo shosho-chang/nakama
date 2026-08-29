@@ -3925,72 +3925,11 @@ def test_revision_work_projects_and_enforces_two_exact_multiline_hero_edits(
     )
 
 
-def test_legacy_feedback_requires_bridge_save_draft_rebuild_from_current_manifest(
-    tmp_path: Path, monkeypatch
-) -> None:
-    root, master = _episode(tmp_path)
-    first = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
-    _complete_generation(root, master, first)
-    request = _legacy_migrated_hero_request(root, master)
-    _assert_contract_error(
-        lambda: preflight_visual_work_packet(
-            root,
-            cut_id="value-L01",
-            revision_request=request,
-            editorial_master=master,
-        ),
-        "regenerate the review request",
-    )
-
-    original = json.loads(request.read_text(encoding="utf-8"))
-    current_path = root / "highlights" / "review" / "finished_review_manifest_current.json"
-    current = json.loads(current_path.read_text(encoding="utf-8"))
-    current.update(
-        {
-            "_path": str(current_path.resolve()),
-            "_sha256": hashlib.sha256(current_path.read_bytes()).hexdigest(),
-        }
-    )
+def test_bridge_does_not_rebuild_legacy_visual_requests() -> None:
     import thousand_sunny.routers.highlight_review as review_router
 
-    monkeypatch.setattr(review_router, "load_episode_trusted_asset_handoff", lambda _root: None)
-    monkeypatch.setattr(review_router, "revision_requires_stock_assets", lambda *_args: False)
-    rebuilt = review_router._finished_revision_job(
-        manifest=current,
-        audit={"revisions": []},
-        cut_statuses={"value-L01": "needs_changes"},
-        component_feedback=original["component_feedback"],
-        overall_feedback=original["overall_feedback"],
-        preview_sha256=original["source_preview_sha256"],
-    )
-    assert rebuilt is not None
-    assert rebuilt["component_feedback"] == original["component_feedback"]
-    assert rebuilt["overall_feedback"] == original["overall_feedback"]
-    assert rebuilt["manifest_filename"] == current_path.name
-    assert (
-        rebuilt["source_manifest_sha256"] == hashlib.sha256(current_path.read_bytes()).hexdigest()
-    )
-
-    rebuilt_path = root / "highlights" / "review" / "revisions" / "rebuilt" / "request.json"
-    rebuilt_path.parent.mkdir(parents=True)
-    rebuilt_path.write_text(json.dumps(rebuilt, ensure_ascii=False), encoding="utf-8")
-    prospective = preflight_visual_work_packet(
-        root,
-        cut_id="value-L01",
-        revision_request=rebuilt_path,
-        editorial_master=master,
-    )
-    assert prospective["status"] == "would_initialize"
-    feedback = prospective["requested_visual_feedback"]
-    assert feedback["source_manifest"] == {
-        "path": "highlights/review/finished_review_manifest_current.json",
-        "bytes": current_path.stat().st_size,
-        "sha256": hashlib.sha256(current_path.read_bytes()).hexdigest(),
-    }
-    assert [row["replacement"] for row in feedback["directives"]] == [
-        "與其教故事\n不如動手做",
-        "傳統道路\n沒有保證了",
-    ]
+    assert not hasattr(review_router, "_finished_revision_job")
+    assert hasattr(review_router, "_finished_revision_jobs")
 
 
 def test_feedback_identity_migration_rejects_arbitrary_span_mismatch(tmp_path: Path) -> None:

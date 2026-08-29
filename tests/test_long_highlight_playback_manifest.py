@@ -244,6 +244,92 @@ def test_stage_cut_prefers_materialized_orchestrator_recipes(tmp_path: Path) -> 
     ]
 
 
+def test_route_ref_replaces_logical_cut_with_new_route_artifacts_and_events(
+    tmp_path: Path,
+) -> None:
+    episode = tmp_path / "20260805 林之晨"
+    review = episode / "highlights" / "review"
+    logical_cut_id = "value-L02"
+    route_ref = "value-L02-r2-8min"
+    route_review = review / route_ref
+    preview = route_review / "value-L02-r2-8min-preview.mp4"
+    subtitles = route_review / "value-L02-r2-8min-preview.srt"
+    _write_h264_preview(preview)
+    subtitles.write_text(
+        "1\n00:00:00,000 --> 00:00:01,000\n新版字幕\n",
+        encoding="utf-8",
+    )
+    recipes = (
+        episode / "highlights" / "long-orchestrator-v2" / route_ref / "materialization" / "recipes"
+    )
+    recipes.mkdir(parents=True)
+    (recipes / "value-L02-r2_broll.json").write_text(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "kind": "video",
+                        "slug": "new-route-stock",
+                        "t0": 0.2,
+                        "t1": 0.8,
+                        "visual_materialization": {"implementation_kind": "stock_video"},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    (recipes / "value-L02-r2_titles.json").write_text(
+        json.dumps({"titles": []}),
+        encoding="utf-8",
+    )
+    review.mkdir(parents=True, exist_ok=True)
+    current = review / "finished_review_manifest_current.json"
+    current.write_text(
+        json.dumps(
+            {
+                "schema": "nakama.finished_cut_review_manifest.v1",
+                "episode_id": episode.name,
+                "stage": 5,
+                "gate": {"kind": "finished_cut_review", "status": "ready_for_review"},
+                "cuts": [
+                    {"cut_id": "value-L01", "sentinel": "preserve-l1"},
+                    {
+                        "cut_id": logical_cut_id,
+                        "artifacts": {"preview": {"path": "old-preview_v2.mp4"}},
+                    },
+                ],
+                "feedback_contract": {
+                    "review_lanes": list(playback_manifest.LANE_ACTIONS),
+                    "component_actions": playback_manifest.LANE_ACTIONS,
+                    "gate_actions": ["request_changes", "approve_cut", "approve_all"],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    staged_path = stage_cut(
+        episode,
+        cut_id=logical_cut_id,
+        route_ref=route_ref,
+        title="新版 Long 2",
+        preview_path=preview,
+        subtitles_path=subtitles,
+    )
+    output = build_manifest(episode, cut_ids=[logical_cut_id])
+    manifest = json.loads(output.read_text(encoding="utf-8"))
+
+    assert staged_path == review / logical_cut_id / "playback_manifest_cut.v1.json"
+    assert [cut["cut_id"] for cut in manifest["cuts"]] == ["value-L01", logical_cut_id]
+    assert manifest["cuts"][0] == {"cut_id": "value-L01", "sentinel": "preserve-l1"}
+    replacement = manifest["cuts"][1]
+    assert replacement["route_ref"] == route_ref
+    assert replacement["artifacts"]["preview"]["path"] == str(preview.resolve())
+    assert replacement["components"][0]["display"] == "new-route-stock"
+    assert "preview_v2" not in output.read_text(encoding="utf-8")
+
+
 def test_stage_rejects_non_h264_preview_without_staging(tmp_path: Path) -> None:
     episode = tmp_path / "episode"
     cut_dir = episode / "highlights" / "review" / "value-L02"

@@ -113,18 +113,37 @@ def _read_recipe(path: Path, key: str) -> list[dict[str, Any]]:
     return rows
 
 
-def _recipe_paths(episode_dir: Path, cut_id: str) -> tuple[Path, Path]:
+def _recipe_paths(
+    episode_dir: Path, cut_id: str, *, route_ref: str | None = None
+) -> tuple[Path, Path]:
+    route = route_ref or cut_id
     materialized = (
-        episode_dir / "highlights" / "long-orchestrator-v2" / cut_id / "materialization" / "recipes"
+        episode_dir / "highlights" / "long-orchestrator-v2" / route / "materialization" / "recipes"
     )
     materialized_pair = (
-        materialized / f"{cut_id}_broll.json",
-        materialized / f"{cut_id}_titles.json",
+        materialized / f"{route}_broll.json",
+        materialized / f"{route}_titles.json",
     )
     if all(path.is_file() for path in materialized_pair):
         return materialized_pair
-    if any(path.exists() for path in materialized_pair):
-        raise PlaybackManifestError("materialized recipe pair is incomplete")
+    broll_by_stem = {
+        path.name[: -len("_broll.json")]: path
+        for path in materialized.glob("*_broll.json")
+        if path.is_file()
+    }
+    titles_by_stem = {
+        path.name[: -len("_titles.json")]: path
+        for path in materialized.glob("*_titles.json")
+        if path.is_file()
+    }
+    matching_stems = sorted(set(broll_by_stem) & set(titles_by_stem))
+    if len(matching_stems) == 1:
+        stem = matching_stems[0]
+        return broll_by_stem[stem], titles_by_stem[stem]
+    if broll_by_stem or titles_by_stem:
+        raise PlaybackManifestError("materialized recipe pair is incomplete or ambiguous")
+    if route_ref is not None:
+        raise PlaybackManifestError(f"materialized recipe pair is missing for route_ref: {route}")
     tighten = episode_dir / "highlights" / "tighten"
     return tighten / f"{cut_id}_broll.json", tighten / f"{cut_id}_titles.json"
 
@@ -232,6 +251,7 @@ def stage_cut(
     episode_dir: Path,
     *,
     cut_id: str,
+    route_ref: str | None = None,
     title: str,
     preview_path: Path,
     subtitles_path: Path,
@@ -241,15 +261,21 @@ def stage_cut(
     episode_dir = Path(episode_dir).resolve()
     if not cut_id or Path(cut_id).name != cut_id or cut_id in {".", ".."}:
         raise PlaybackManifestError("cut_id must be a safe basename")
-    cut_dir = episode_dir / "highlights" / "review" / cut_id
-    preview = _contained_file(Path(preview_path), cut_dir, suffix=".mp4", label="preview")
-    subtitles = _contained_file(Path(subtitles_path), cut_dir, suffix=".srt", label="subtitles")
+    route = route_ref or cut_id
+    if not route or Path(route).name != route or route in {".", ".."}:
+        raise PlaybackManifestError("route_ref must be a safe basename")
+    review_dir = episode_dir / "highlights" / "review"
+    artifact_dir = review_dir / route
+    preview = _contained_file(Path(preview_path), artifact_dir, suffix=".mp4", label="preview")
+    subtitles = _contained_file(
+        Path(subtitles_path), artifact_dir, suffix=".srt", label="subtitles"
+    )
     try:
         subtitles.read_text(encoding="utf-8-sig")
     except UnicodeDecodeError as exc:
         raise PlaybackManifestError("subtitles must be UTF-8") from exc
     duration = _probe_preview(preview)
-    broll_path, titles_path = _recipe_paths(episode_dir, cut_id)
+    broll_path, titles_path = _recipe_paths(episode_dir, cut_id, route_ref=route_ref)
     broll = _read_recipe(broll_path, "items")
     titles = _read_recipe(titles_path, "titles")
     components = _project_components(broll, titles, duration)
@@ -257,6 +283,7 @@ def stage_cut(
         component["component_id"] = component["component_id"].format(cut_id=cut_id)
     payload = {
         "cut_id": cut_id,
+        **({"route_ref": route} if route_ref is not None else {}),
         "format": "long",
         "title": str(title).strip() or cut_id,
         "artifacts": {
@@ -274,7 +301,7 @@ def stage_cut(
         },
         "components": components,
     }
-    output = cut_dir / STAGED_CUT_NAME
+    output = review_dir / cut_id / STAGED_CUT_NAME
     _atomic_write_json(output, payload)
     return output
 
@@ -325,11 +352,20 @@ def _read_staged_cut(review_dir: Path, cut_id: str) -> dict[str, Any]:
         raise PlaybackManifestError(f"invalid staged cut: {path}") from exc
     if not isinstance(payload, dict) or payload.get("cut_id") != cut_id:
         raise PlaybackManifestError(f"staged cut identity mismatch: {cut_id}")
-    _validate_staged_cut(payload, review_dir / cut_id)
+    _validate_staged_cut(payload, review_dir, cut_id=cut_id)
     return payload
 
 
-def _validate_staged_cut(payload: dict[str, Any], cut_dir: Path) -> None:
+def _validate_staged_cut(payload: dict[str, Any], review_dir: Path, *, cut_id: str) -> None:
+    route_ref = payload.get("route_ref", cut_id)
+    if (
+        not isinstance(route_ref, str)
+        or not route_ref
+        or Path(route_ref).name != route_ref
+        or route_ref in {".", ".."}
+    ):
+        raise PlaybackManifestError("staged route_ref must be a safe basename")
+    artifact_dir = review_dir / route_ref
     artifacts = payload.get("artifacts")
     if not isinstance(artifacts, dict):
         raise PlaybackManifestError("staged cut artifacts are required")
@@ -339,7 +375,7 @@ def _validate_staged_cut(payload: dict[str, Any], cut_dir: Path) -> None:
         if not isinstance(artifact, dict) or not isinstance(artifact.get("path"), str):
             raise PlaybackManifestError(f"staged {name} artifact is required")
         path = _contained_file(
-            Path(artifact["path"]), cut_dir, suffix=suffix, label=f"staged {name}"
+            Path(artifact["path"]), artifact_dir, suffix=suffix, label=f"staged {name}"
         )
         size = artifact.get("bytes")
         if not isinstance(size, int) or isinstance(size, bool) or size != path.stat().st_size:
@@ -438,6 +474,7 @@ def _parser() -> argparse.ArgumentParser:
     stage = commands.add_parser("stage", help="Validate and stage one cut")
     stage.add_argument("episode_dir", type=Path)
     stage.add_argument("--cut-id", required=True)
+    stage.add_argument("--route-ref")
     stage.add_argument("--title", required=True)
     stage.add_argument("--preview", required=True, type=Path)
     stage.add_argument("--subtitles", required=True, type=Path)
@@ -453,6 +490,7 @@ def main(argv: list[str] | None = None) -> int:
         output = stage_cut(
             args.episode_dir,
             cut_id=args.cut_id,
+            route_ref=args.route_ref,
             title=args.title,
             preview_path=args.preview,
             subtitles_path=args.subtitles,
