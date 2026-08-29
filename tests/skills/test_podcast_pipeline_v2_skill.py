@@ -408,7 +408,6 @@ def test_podcast_route_performs_actual_resolve_build_then_complete_highlight_flo
         "highlights/review_azhe.json",
         "highlights/review_kevin.json",
         "highlights/review_shufen.json",
-        "highlights/lens_brand.json",
         "highlights/lens_renee.json",
         "review schema/coverage/citation QA",
         "--format long",
@@ -451,13 +450,15 @@ def test_highlight_skill_defines_executable_agent_owned_mining_and_review_contra
     legacy, after_legacy = legacy_and_after.split("## Step 2.5", maxsplit=1)
     production = before_legacy + "## Step 2.5" + after_legacy
 
+    # Step 1 與 Step 2 已改名為 Legacy Step 1／2（只供舊 run），production 這一半
+    # 剩下 agent-owned 的三段：miner dispatch → merge → shortlist gate。
     sections = (
-        "## Step 1 — 取得 mining input",
         "## Step 1.1 — agent-owned 3-miner dispatch",
         "## Step 1.2 — deterministic merge to candidates.json",
-        "## Step 2 — agent-owned blind persona and lens review",
         "## Step 2.4 — long Highlight shortlist gate",
     )
+    for retired in ("## Step 1 — 取得 mining input", "## Step 2 — agent-owned blind persona"):
+        assert retired not in production
     section_positions = [production.index(section) for section in sections]
     assert section_positions == sorted(section_positions)
 
@@ -482,13 +483,12 @@ def test_highlight_skill_defines_executable_agent_owned_mining_and_review_contra
         "highlights/review_azhe.json",
         "highlights/review_kevin.json",
         "highlights/review_shufen.json",
-        "highlights/lens_brand.json",
         "highlights/lens_renee.json",
         '"source_sha256"',
         "`hashlib.sha256(...).hexdigest()` 的小寫 hex",
         "PowerShell `Get-FileHash` 的大寫顯示",
         "quote citations",
-        "只有五份 review outputs 都驗證通過",
+        "只有四份 review outputs 都驗證通過",
         'run_cut_shortlist.py "<episode>" --format long',
         "唯一正常停點",
     )

@@ -78,12 +78,28 @@ def _resolve_with_duration(
     )
     cards_bin = SimpleNamespace(GetName=lambda: "Cards", GetClipList=lambda: [])
     root = SimpleNamespace(GetSubFolderList=lambda: [cards_bin])
-    media_item = SimpleNamespace(SetClipProperty=lambda *_args: True)
+
+    # Resolve 的 ImportMedia／AppendToTimeline 回的是物件清單，不是布林；
+    # materializer 會用 ok[0].GetMediaPoolItem() 反查落軌的來源檔，確認放上去的
+    # 就是 DP 出的那一支。假物件也得照這個形狀回，否則測到的是別的東西。
+    def import_media(paths):
+        path = str(paths[0])
+        return [
+            SimpleNamespace(
+                SetClipProperty=lambda *_args: True,
+                GetClipProperty=lambda key: path if key == "File Path" else "",
+            )
+        ]
+
+    def append_to_timeline(items):
+        source = items[0]["mediaPoolItem"]
+        return [SimpleNamespace(GetMediaPoolItem=lambda: source)]
+
     media_pool = SimpleNamespace(
         GetRootFolder=lambda: root,
         SetCurrentFolder=lambda _folder: True,
-        ImportMedia=lambda _paths: [media_item],
-        AppendToTimeline=lambda _items: True,
+        ImportMedia=import_media,
+        AppendToTimeline=append_to_timeline,
         DeleteTimelines=lambda _timelines: True,
         DeleteClips=lambda _clips: True,
     )

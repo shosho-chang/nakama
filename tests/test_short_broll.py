@@ -451,7 +451,8 @@ def test_valid_audited_broll_and_title_recipes_pass_read_only_gates(tmp_path, mo
 def test_title_materializer_supports_rev10_seven_second_hero():
     import run_short_titles as titles
 
-    assert titles.COMP_SEC - 0.2 >= 7.262
+    # 長片卡走 punch_card_wide（data-duration 8s），不是短片的 punch_card（4s）
+    assert titles._comp_sec("long") - 0.2 >= 7.262
 
 
 def test_apply_rejects_legacy_guest_namecard_without_guest_camera_correction(tmp_path, monkeypatch):

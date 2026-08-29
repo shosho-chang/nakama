@@ -1524,6 +1524,13 @@ def test_tampered_verified_srt_fails_before_planner(
     planner.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    ("binding_field", "replacement"),
+    (
+        ("generation_id", "generation-" + "0" * 64),
+        ("projection_manifest_sha256", "0" * 64),
+    ),
+)
 def test_wrong_generation_or_manifest_binding_fails_before_planner(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

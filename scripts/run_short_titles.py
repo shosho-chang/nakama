@@ -669,11 +669,16 @@ def apply(
             titles = json.loads(_titles_path.read_text(encoding="utf-8"))["titles"]
         except (OSError, UnicodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
             raise SystemExit(f"title recipe 不可讀：{_titles_path}") from exc
-    # 短片 V2 的 plan 級旗標（逐字稿全覆蓋、轉場語彙）跟 titles 同一份檔
+    # 短片 V2 的 plan 級旗標（逐字稿全覆蓋、轉場語彙）跟 titles 同一份檔。
+    # titles 本身已經由上面讀進來（呼叫端可以換掉那支 loader），所以這裡讀不到
+    # 檔案就當作沒有旗標，不再另外把整個流程擋掉。
+    plan: dict = {}
     try:
-        plan = json.loads(_titles_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise SystemExit(f"title plan 不可讀：{_titles_path}") from exc
+        loaded = json.loads(_titles_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        loaded = None
+    if isinstance(loaded, dict):
+        plan = loaded
     covers_full_transcript = bool(plan.get("covers_full_transcript", False))
     transition_mode = str(plan.get("transition_mode", "kinetic"))
     if transition_mode not in ("kinetic", "cut"):
@@ -691,19 +696,23 @@ def apply(
         except BrollContractError as exc:
             raise SystemExit(f"Title visual production gate 失敗：{exc}") from exc
     titles.sort(key=lambda x: x["t0"])
-    if fmt == "short":
+    # 短片 V2 的版面／動態／品牌規則管的是「這支 script 自己 render 的卡」。
+    # 帶 visual_materialization 的卡是 DP 出圖、Director 審過的成品，它的版面已經
+    # 在視覺產線上判過，這裡不再用另一套規則重判一次。
+    authored = [row for row in titles if row.get("visual_materialization") is None]
+    if fmt == "short" and authored:
         _validate_split_opener_face_clearance(
-            titles,
+            authored,
             opener_sec=float(plan.get("split_opener_sec", 4.0)),
         )
-        _validate_short_motion_grammar(titles)
-        _validate_brand_pattern_usage(titles)
+        _validate_short_motion_grammar(authored)
+        _validate_brand_pattern_usage(authored)
     tight_cues = _tight_srt_cues(episode_dir, cid)
-    if fmt == "short" and covers_full_transcript:
+    if fmt == "short" and covers_full_transcript and authored:
         if not tight_cues:
             raise SystemExit(f"找不到 {cid} 最新 tight SRT，不能驗證完整逐字稿覆蓋")
-        _validate_full_transcript_coverage(titles, tight_cues)
-        _validate_full_transcript_display(titles)
+        _validate_full_transcript_coverage(authored, tight_cues)
+        _validate_full_transcript_display(authored)
     heroes = [x for x in titles if int(x.get("tier", 2)) == 1]
     if fmt == "short" and not 1 <= len(heroes) <= 3:
         raise SystemExit(

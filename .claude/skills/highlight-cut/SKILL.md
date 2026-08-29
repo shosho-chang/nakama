@@ -25,17 +25,16 @@ description: >
 skill 不呼叫 repo 的 API `llm_router`，也不把單一供應商 model 寫進 Python。這讓同一份 skill 在不同
 platform 依 host 自動選擇，而 schema 驗證、merge、Resolve 等 deterministic 工作不浪費 frontier model。
 
-## Long Highlight 新預設：單一 Stage 5 orchestrator
+## ⛔ 已停用：Stage 5 Long Highlight orchestrator（ADR-065）
 
-新的 long Highlight 一律從下列入口開始；後面的 Step 1–5 strict commands 只保留給明確要求重現
-舊 run 的 forensic／migration，不再是新製作預設：
-
-```powershell
-python scripts/run_long_highlight_orchestrator.py start <state.json> `
-  --episode-id <episode-id> --srt <master.srt> --media <master.mp4> --dry-run
-python scripts/run_long_highlight_orchestrator.py resume <state.json>
-python scripts/run_long_highlight_orchestrator.py status <state.json>
-```
+> **`run_long_highlight_orchestrator.py` 已停用，不要照著跑。**
+> long 的生產唯一路線 = **ADR-066 Finished Cut Production**：
+> `scripts/run_finished_cut_production.py`（`register-approved-cut` / `advance` /
+> `request-revision` / `cutover`）。`AcceptedStage` 是唯一語意權威，
+> `state.json` 已降級為可重建的 view；細節見 `longform-cut` skill。
+>
+> 以下保留為歷史說明，供讀舊 receipt／舊 state 時對照，**不是操作指示**。
+> 後面的 Step 1–5 strict commands 同樣只供 forensic／migration。
 
 `DirectoryStageRunner` 是 host exchange adapter：orchestrator 將每個 stage/event request 寫到
 `<exchange-dir>/requests/`，host workers 將 JSON 回覆放進 `responses/`，再 `resume`。它本身不啟動
