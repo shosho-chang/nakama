@@ -1495,6 +1495,7 @@ async def packaging_approve(
         # （2026-08-14 browser UAT 抓到：勾完變體再 approve，選擇整個不見）。
         selected_variant=prev.selected_variant if prev else None,
         bigtext_request=prev.bigtext_request if prev else None,
+        center_search_request=prev.center_search_request if prev else None,
         render_request=prev.render_request if prev else None,
         revision_job=revision_job,
     )
@@ -1639,6 +1640,7 @@ async def packaging_select_variant(
             variant if variant is not None else (prev.selected_variant if prev else None)
         ),
         bigtext_request=bigtext_request.strip() or None,
+        center_search_request=prev.center_search_request if prev else None,
         render_request=prev.render_request if prev else None,
         revision_job=prev.revision_job if prev else None,
     )
@@ -1654,7 +1656,66 @@ async def packaging_select_variant(
         entry.selected_variant,
         bool(entry.bigtext_request),
     )
-    return RedirectResponse(f"/bridge/packaging/{episode_slug}#cut-{cut_id}", status_code=303)
+    return RedirectResponse(
+        f"/bridge/packaging/{quote(episode_slug, safe='')}?cut={quote(cut_id, safe='')}"
+        f"#cut-{cut_id}",
+        status_code=303,
+    )
+
+
+@page_router.post("/{episode_slug}/center-search")
+async def packaging_center_search(
+    episode_slug: str,
+    cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
+    center_search_request: str = Form("", max_length=_NOTE_MAX),
+    nakama_auth: str | None = Cookie(None),
+):
+    """候選池都不滿意時，把「我要什麼」寫下來（修修 2026-08-29）。
+
+    跟 `bigtext_request` 同一個道理：Bridge 叫不到圖庫——repo 裡沒有 Elements API
+    client，搜尋在 agent 那一端（ADR-054 D11：gate 零 render 零 LLM）。所以按下去
+    是**排一個請求**，不是當場換一批圖；桌機端 thumbnail-brainstorm 讀到之後重搜
+    回填候選池。UI 上要講清楚這個時間差。
+
+    只寫 approval.json，不動 packages.json——跟挑變體一樣不是裁決。
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/packaging", status_code=302)
+    ctx = _board_context(episode_slug)
+    pkg: PackagesFileV1 = ctx["pkg"]
+    if not any(row.cut_id == cut_id for row in pkg.cuts):
+        raise HTTPException(status_code=404, detail=f"cut not found: {cut_id}")
+    wanted = center_search_request.strip()
+    if not wanted:
+        raise HTTPException(status_code=400, detail="要寫下你想要什麼樣的圖，桌機端才知道怎麼搜")
+
+    ep_dir = _packaging_root() / episode_slug
+    existing = _load_approvals(ep_dir, pkg.episode)
+    prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
+    entry = ApprovalV1(
+        cut_id=cut_id,
+        approved=prev.approved if prev else False,
+        primary_package=prev.primary_package if prev else 1,
+        reject_note=prev.reject_note if prev else None,
+        decided_at=datetime.now(timezone.utc),
+        decision=prev.decision if prev else None,
+        selected_variant=prev.selected_variant if prev else None,
+        bigtext_request=prev.bigtext_request if prev else None,
+        center_search_request=wanted,
+        render_request=prev.render_request if prev else None,
+        revision_job=prev.revision_job if prev else None,
+    )
+    others = [a for a in existing.approvals if a.cut_id != cut_id]
+    updated = ApprovalFileV1(episode=pkg.episode, approvals=[*others, entry])
+    (ep_dir / "approval.json").write_text(
+        updated.model_dump_json(indent=2) + "\n", encoding="utf-8"
+    )
+    logger.info("packaging center search: %s/%s %r", episode_slug, cut_id, wanted[:80])
+    return RedirectResponse(
+        f"/bridge/packaging/{quote(episode_slug, safe='')}?cut={quote(cut_id, safe='')}"
+        f"&composed={quote(cut_id, safe='')}#compose-{cut_id}",
+        status_code=303,
+    )
 
 
 @page_router.post("/{episode_slug}/compose")
@@ -1845,6 +1906,7 @@ async def packaging_compose(
         decision=prev.decision if prev else None,
         selected_variant=prev.selected_variant if prev else None,
         bigtext_request=prev.bigtext_request if prev else None,
+        center_search_request=prev.center_search_request if prev else None,
         render_request=req,
         revision_job=prev.revision_job if prev else None,
     )
@@ -1878,9 +1940,13 @@ async def packaging_compose(
         Path(guest_cutout).name,
         lines,
     )
+    # `composed` 只負責把組封面區保持展開；決定顯示哪個 cut 的是 `cut`。少了它，
+    # board 會退回第一個 tab（Full），修修存完配方只看到畫面跳掉、像是什麼都沒發生
+    # ——2026-08-29 他換完中央圖按存配方時就是這樣（配方其實有寫進去）。
     return RedirectResponse(
-        f"/bridge/packaging/{episode_slug}?composed={cut_id}&package_rank={target_rank}"
-        f"#compose-{cut_id}",
+        f"/bridge/packaging/{quote(episode_slug, safe='')}"
+        f"?cut={quote(cut_id, safe='')}&composed={quote(cut_id, safe='')}"
+        f"&package_rank={target_rank}#compose-{cut_id}",
         status_code=303,
     )
 

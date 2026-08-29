@@ -502,6 +502,10 @@ class ApprovalV1(BaseModel):
     # 變體都不滿意時打的字：`第一行／第二[橘框詞]` — VPS 不能 render，桌機端
     # thumbnail-brainstorm 讀到後重出一張新變體，不是即時生效。
     bigtext_request: str | None = None
+    # 候選池裡的圖都不滿意時打的字（例如「我要拉布拉多，不要鸚鵡」）。同 bigtext
+    # 的道理：Bridge 叫不到圖庫（沒有 Elements API client，搜尋在 agent 那一端），
+    # 所以這裡只是**請求**——桌機端 thumbnail-brainstorm 讀到後重搜一批候選回填。
+    center_search_request: str | None = None
     # 「先選好、再 render 一次」的配方（每支最多一份；要換就覆蓋）。
     render_request: RenderRequestV1 | None = None
     # Reject 會建立一筆 revision job；桌機 watcher 認領後交給獨立 Agent 重做，

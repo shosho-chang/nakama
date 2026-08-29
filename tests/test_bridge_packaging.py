@@ -2145,3 +2145,63 @@ def test_a_broken_pool_file_does_not_take_the_gate_down(client, vault_with_cutou
     assert board.status_code == 200
     # 版面標題那串字也出現在 JS 註解裡——用挑圖容器本身當判準才是真的沒渲染。
     assert "data-center-pool" not in board.text
+
+
+def test_center_search_request_is_queued_for_the_desktop(client, vault_with_cutouts):
+    """候選都不滿意時寫下需求——Bridge 叫不到圖庫，只能排請求（同 bigtext_request）。"""
+    response = client.post(
+        "/bridge/packaging/20260723-xieboran/center-search",
+        data={"cut_id": "punch-L1", "center_search_request": "我要拉布拉多，不要鸚鵡"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    saved = json.loads(
+        (
+            vault_with_cutouts / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json"
+        ).read_text(encoding="utf-8")
+    )
+    entry = next(a for a in saved["approvals"] if a["cut_id"] == "punch-L1")
+    assert entry["center_search_request"] == "我要拉布拉多，不要鸚鵡"
+    # 排需求不是裁決——沒按過 Approve/Reject 就不該把 decision 寫成什麼
+    assert entry["decision"] is None
+
+
+def test_center_search_needs_actual_words(client, vault_with_cutouts):
+    response = client.post(
+        "/bridge/packaging/20260723-xieboran/center-search",
+        data={"cut_id": "punch-L1", "center_search_request": "   "},
+        follow_redirects=False,
+    )
+    assert response.status_code == 400
+
+
+def test_center_search_redirect_keeps_the_cut_in_focus(client, vault_with_cutouts):
+    """存完跳回 Full tab 是 2026-08-29 的實際災情——看起來像什麼都沒發生。"""
+    response = client.post(
+        "/bridge/packaging/20260723-xieboran/center-search",
+        data={"cut_id": "punch-L1", "center_search_request": "要看得到柵欄"},
+        follow_redirects=False,
+    )
+    assert "cut=punch-L1" in response.headers["location"]
+
+
+def test_compose_redirect_keeps_the_cut_in_focus(client, vault_with_cutouts):
+    response = _compose(client)
+
+    assert response.status_code == 303
+    location = response.headers["location"]
+    assert "cut=punch-L1" in location and "composed=punch-L1" in location
+
+
+def test_a_queued_search_request_is_shown_with_its_timing_caveat(client, vault_with_cutouts):
+    client.post(
+        "/bridge/packaging/20260723-xieboran/center-search",
+        data={"cut_id": "punch-L1", "center_search_request": "我要拉布拉多"},
+        follow_redirects=False,
+    )
+
+    board = client.get("/bridge/packaging/20260723-xieboran?cut=punch-L1")
+
+    assert "我要拉布拉多" in board.text
+    assert "不是即時的" in board.text

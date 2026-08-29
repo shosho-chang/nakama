@@ -116,6 +116,30 @@ def _book_cover_layer(req: dict, vault: Path) -> tuple[dict, dict]:
     )
 
 
+CENTER_CANDIDATE_MARKER = "/center-candidates/"
+
+
+def _refuse_watermarked_preview(center_visual_asset: str) -> None:
+    """gate 上挑的是**浮水印預覽**，不是授權檔——直接 render 會把浮水印燒進封面。
+
+    修修在 board 上挑候選圖時，存進配方的是 center-candidates/ 底下那份預覽
+    （2026-08-29 新增的候選池）。桌機端要先照該候選的 Elements 品項網址取得正式
+    授權檔、放進這一集的 packaging 目錄、把配方指過去，才可以 render。
+    """
+    if CENTER_CANDIDATE_MARKER in center_visual_asset.replace("\\", "/"):
+        raise SystemExit(
+            "\n".join(
+                (
+                    f"中央圖還指著候選池的浮水印預覽（{center_visual_asset}）——先下正式授權檔。",
+                    "  1. 看 center-candidates/<cut>.json 裡該筆的 source（Elements 品項網址）",
+                    "  2. 依 brook-director SKILL 的下載程序取正式檔，存進這一集 packaging 目錄",
+                    "  3. 把 render_recipe.center_visual_asset 指過去，再跑一次",
+                    "  直接 render 會把浮水印燒進封面。",
+                )
+            )
+        )
+
+
 def _build_reaction_spec(
     req: dict,
     *,
@@ -128,6 +152,7 @@ def _build_reaction_spec(
 ) -> dict:
     """Build the lossless N2 spec carried by one package recipe."""
     center = req.get("center_geometry") or {}
+    _refuse_watermarked_preview(str(req["center_visual_asset"]))
     return {
         "composition": "thumbnail_reaction",
         "variables": {
