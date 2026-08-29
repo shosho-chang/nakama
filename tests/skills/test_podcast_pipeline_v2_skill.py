@@ -5,6 +5,8 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from agents.brook.podcast_subtitles.memo_bundled_runner import (
     MemoBundledRunnerExecutionReceiptV1,
 )
@@ -18,6 +20,15 @@ HIGHLIGHT_LEGACY_HEADING = "## Explicit legacy forensic inputs"
 RUNBOOK = Path(".claude/skills/podcast-pipeline/references/memo-dual-audit-production-runbook.md")
 CANONICAL_TRANSCRIBE_SKILL = Path(r"E:\nakama\.agents\skills\transcribe\SKILL.md")
 VENV_PYTHON = Path(r"E:\nakama\.venv-v2\Scripts\python.exe")
+# 這兩條是本機製作主機的絕對路徑（skill 文件明文釘死的執行環境）。CI 上不存在，
+# 跑起來只是在測 GitHub runner 的檔案系統——缺了就 skip。
+requires_local_venv = pytest.mark.skipif(
+    not VENV_PYTHON.is_file(), reason="repo venv only exists on the local production host"
+)
+requires_canonical_transcribe_skill = pytest.mark.skipif(
+    not CANONICAL_TRANSCRIBE_SKILL.is_file(),
+    reason="canonical transcribe skill only exists on the local production host",
+)
 ADR_063 = Path("docs/decisions/ADR-063-podcast-subtitle-production-simplification.md")
 ADR_064 = Path("docs/decisions/ADR-064-podcast-editorial-master-before-repurpose.md")
 
@@ -269,6 +280,7 @@ def test_runbook_closed_category_enums_match_runtime() -> None:
     assert documented("major") == simple_step7._OFFICIAL_MAJOR_CATEGORIES
 
 
+@requires_local_venv
 def test_production_cli_help_smoke_uses_repo_venv() -> None:
     scripts = (
         "scripts/run_audio_prep.py",
@@ -292,6 +304,7 @@ def test_production_cli_help_smoke_uses_repo_venv() -> None:
         assert result.returncode == 0, f"{script}: {result.stderr}"
 
 
+@requires_local_venv
 def test_s3_runbook_flags_match_evidence_cli_help() -> None:
     script = "scripts/podcast_subtitle_v2_evidence.py"
 
@@ -331,6 +344,7 @@ def test_s3_runbook_flags_match_evidence_cli_help() -> None:
     assert "--memo-execution-receipt" not in accept_help
 
 
+@requires_canonical_transcribe_skill
 def test_transcribe_entry_metadata_routes_to_adr_063() -> None:
     metadata = CANONICAL_TRANSCRIBE_SKILL.read_text(encoding="utf-8")
     production = metadata.split("## Legacy V1 appendix", maxsplit=1)[0]

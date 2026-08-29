@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import pathlib
 import re
+import shutil
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -66,6 +68,21 @@ from agents.brook.script_video.finished_cut_production._store import (
 )
 from agents.brook.script_video.finished_cut_production._visual_assets import (
     LongDerivedAssetBuilder,
+)
+
+# 這幾支測的是 Long media composition 的實際接線，需要本機釘住的 HyperFrames
+# runtime 與 Node（ci.yml 有意不裝 Node）。缺了就 skip，照 repo 既有慣例——
+# 但要記得：CI 因此沒有覆蓋這段接線，只有本機 render host 會跑到。
+_HYPERFRAMES_RUNTIME = (
+    pathlib.Path(__file__).resolve().parents[3]
+    / "video"
+    / "node_modules"
+    / ".nakama-hyperframes"
+    / "0.7.72"
+)
+requires_local_hyperframes = pytest.mark.skipif(
+    not _HYPERFRAMES_RUNTIME.is_dir() or (shutil.which("node.exe") or shutil.which("node")) is None,
+    reason="pinned HyperFrames runtime + Node required (local render host only)",
 )
 
 
@@ -719,6 +736,7 @@ def test_semantic_ready_reports_only_resolve_materialization_as_not_connected(
     assert status.reason_code == "resolve_materialization_not_connected"
 
 
+@requires_local_hyperframes
 def test_production_composition_wires_offline_long_media_builder_across_restart(
     tmp_path: Path,
 ) -> None:
@@ -789,6 +807,7 @@ def test_production_composition_rejects_untrusted_stock_dimensions() -> None:
         _stock_video_metadata_from_catalog(catalog)
 
 
+@requires_local_hyperframes
 def test_failed_director_dispatch_is_needs_review_and_never_redispatches_after_restart(
     tmp_path: Path,
     monkeypatch,
@@ -822,6 +841,7 @@ def test_failed_director_dispatch_is_needs_review_and_never_redispatches_after_r
     assert retry_request_id.startswith("request-")
 
 
+@requires_local_hyperframes
 def test_successful_director_outcome_survives_restart_and_dp_dispatches_once(
     tmp_path: Path,
 ) -> None:
@@ -892,6 +912,7 @@ def test_successful_director_outcome_survives_restart_and_dp_dispatches_once(
     assert stages == ["director", "dp"]
 
 
+@requires_local_hyperframes
 def test_restart_after_claim_without_outcome_is_indeterminate_and_never_redispatches(
     tmp_path: Path,
 ) -> None:
@@ -929,6 +950,7 @@ def test_restart_after_claim_without_outcome_is_indeterminate_and_never_redispat
     assert status.reason_code == "semantic_dispatch_indeterminate"
 
 
+@requires_local_hyperframes
 def test_wrong_request_response_is_durably_rejected_without_redispatch(
     tmp_path: Path,
 ) -> None:

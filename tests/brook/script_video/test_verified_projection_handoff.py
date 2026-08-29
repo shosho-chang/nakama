@@ -360,7 +360,9 @@ def test_official_release_explicit_episode_local_override(tmp_path: Path) -> Non
     assert selected.srt_path == tmp_path / "alternate/release/release.srt"
 
 
-@pytest.mark.parametrize("value", ["../outside.json", Path("C:/outside.json")])
+# 絕對路徑要照這台機器的語意組：POSIX 上 "C:/outside.json" 只是個相對路徑，
+# 會落在 episode 目錄裡，測到的就不是「越界」而是「檔案不存在」。
+@pytest.mark.parametrize("value", ["../outside.json", Path(Path(__file__).anchor) / "outside.json"])
 def test_official_release_override_rejects_path_escape(
     tmp_path: Path,
     value: str | Path,

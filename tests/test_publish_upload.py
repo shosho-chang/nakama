@@ -171,6 +171,8 @@ def test_expired_session_is_cleared_and_requires_explicit_restart(
         "shared.release_store.update_target",
         lambda target_id, **fields: updates.append((target_id, fields)),
     )
+    # 進度檔落在 runtime data dir；那是主機設定，不是這支要驗的東西
+    monkeypatch.setattr(publish_upload, "write_progress", lambda *args, **kwargs: None)
 
     class ForbiddenYouTube:
         def videos(self):

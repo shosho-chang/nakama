@@ -232,6 +232,23 @@ def test_render_request_filters_are_exact_and_default_to_all():
     )
 
 
+def _neutralise_watcher_preflight(monkeypatch, tmp_path) -> None:
+    """讓 CLI 的環境前驗過關——這兩支測的是 job 分派，不是這台機器裝了什麼。
+
+    watcher 啟動前會確認 render QA 用的套件與 composition 檔在，缺了就 return 1。
+    那個前驗本身有它自己的意義（在 QA 那步才炸太晚），只是跟這裡要驗的事無關。
+    """
+    import sys
+    from types import ModuleType
+
+    for name in ("mediapipe",):
+        if name not in sys.modules:
+            monkeypatch.setitem(sys.modules, name, ModuleType(name))
+    request_stub = tmp_path / "render_request.py"
+    request_stub.write_text("", encoding="utf-8")
+    monkeypatch.setattr("scripts.render_watcher.RENDER_REQUEST", request_stub)
+
+
 def test_render_requests_only_cli_skips_revision_and_initial_jobs(monkeypatch, tmp_path):
     calls: list[tuple[str, str]] = []
     render_jobs = [
@@ -250,6 +267,7 @@ def test_render_requests_only_cli_skips_revision_and_initial_jobs(monkeypatch, t
     ]
     revision = {"key": "revision-job"}
     initial = {"key": "initial-packaging-job"}
+    _neutralise_watcher_preflight(monkeypatch, tmp_path)
     monkeypatch.setattr("scripts.render_watcher.get_vault_path", lambda: tmp_path)
     monkeypatch.setattr("scripts.render_watcher.pending_revision_jobs", lambda vault: [revision])
     monkeypatch.setattr("scripts.render_watcher.pending_requests", lambda vault, state: render_jobs)
@@ -291,6 +309,7 @@ def test_render_requests_only_cli_skips_revision_and_initial_jobs(monkeypatch, t
 
 def test_default_cli_still_runs_all_three_job_classes(monkeypatch, tmp_path):
     calls: list[str] = []
+    _neutralise_watcher_preflight(monkeypatch, tmp_path)
     monkeypatch.setattr("scripts.render_watcher.get_vault_path", lambda: tmp_path)
     monkeypatch.setattr(
         "scripts.render_watcher.pending_revision_jobs", lambda vault: [{"key": "revision"}]

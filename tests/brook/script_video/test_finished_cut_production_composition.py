@@ -1,4 +1,6 @@
 import hashlib
+import pathlib
+import shutil
 from pathlib import Path
 
 import pytest
@@ -48,6 +50,21 @@ from agents.brook.script_video.finished_cut_production._resolve_fusion import (
 )
 from agents.brook.script_video.finished_cut_production._store import (
     _FilesystemProductionStore,
+)
+
+# 這幾支測的是 Long media composition 的實際接線，需要本機釘住的 HyperFrames
+# runtime 與 Node（ci.yml 有意不裝 Node）。缺了就 skip，照 repo 既有慣例——
+# 但要記得：CI 因此沒有覆蓋這段接線，只有本機 render host 會跑到。
+_HYPERFRAMES_RUNTIME = (
+    pathlib.Path(__file__).resolve().parents[3]
+    / "video"
+    / "node_modules"
+    / ".nakama-hyperframes"
+    / "0.7.72"
+)
+requires_local_hyperframes = pytest.mark.skipif(
+    not _HYPERFRAMES_RUNTIME.is_dir() or (shutil.which("node.exe") or shutil.which("node")) is None,
+    reason="pinned HyperFrames runtime + Node required (local render host only)",
 )
 
 
@@ -250,6 +267,7 @@ def test_resolve_configuration_accepts_exact_root_folder_identity(tmp_path: Path
     assert configuration.locator.folder == ""
 
 
+@requires_local_hyperframes
 def test_factory_wires_private_materialization_only_from_exact_resolve_configuration(
     tmp_path: Path,
 ) -> None:
@@ -299,6 +317,7 @@ def test_factory_wires_private_materialization_only_from_exact_resolve_configura
     assert facade_calls == 1
 
 
+@requires_local_hyperframes
 def test_factory_wires_global_cutover_only_from_three_exact_cut_bindings(
     tmp_path: Path,
 ) -> None:
@@ -354,6 +373,7 @@ def test_factory_wires_global_cutover_only_from_three_exact_cut_bindings(
     assert application._cutover is not None
 
 
+@requires_local_hyperframes
 @pytest.mark.parametrize(
     ("live_project_uid", "expected_state"),
     [
