@@ -31,6 +31,7 @@ from starlette.requests import Request
 from shared.config import get_runtime_data_dir, get_vault_path
 from shared.log import get_logger
 from shared.release_store import get_release, list_releases, update_target
+from agents.usopp.publish_timeline import release_subtitle
 from shared.tight_srt import latest_tight_srt, srt_to_vtt
 from thousand_sunny.auth import check_auth
 
@@ -251,7 +252,12 @@ def publish_thumb(
     p = get_vault_path() / t["thumbnail_path"]
     if not p.exists():
         raise HTTPException(status_code=404, detail=f"縮圖不存在: {p}")
-    return FileResponse(p, media_type="image/png")
+    # 這個網址是固定的，底下的圖卻會換（換 package、重出封面）。沒有這個 header
+    # 瀏覽器會沿用先前那張：2026-08-29 修修把主選從 #3 改成 #1、封面也重出過，
+    # 頁面卻還顯示舊縮圖，讓他以為選擇沒生效。ETag 仍在，重新驗證很便宜。
+    return FileResponse(
+        p, media_type="image/png", headers={"Cache-Control": "no-cache, must-revalidate"}
+    )
 
 
 @page_router.get("/subs/{episode}/{cut_id}")
@@ -264,9 +270,14 @@ def publish_subs(episode: str, cut_id: str, nakama_auth: str | None = Cookie(Non
     """
     _require_auth(nakama_auth)
     rel, _ = _yt_target(episode, cut_id)
-    srt = latest_tight_srt(_episode_dir(rel), cut_id)
+    episode_dir = _episode_dir(rel)
+    # 必須跟 publish_upload 讀同一份，否則這個頁面就是在騙人：2026-08-29 上傳器
+    # 改讀 Release 字幕、這裡沒跟上，於是修修在審核頁看到的是 260 秒舊剪輯的 125
+    # 句，實際要上架的是 492 秒成品的 226 句。驗證的對象跟交付的對象不同，比顯示
+    # 錯更糟——它讓驗證這件事失去意義。
+    srt = release_subtitle(episode_dir, cut_id) or latest_tight_srt(episode_dir, cut_id)
     if srt is None:
-        raise HTTPException(status_code=404, detail=f"{cut_id} 沒有 tight SRT")
+        raise HTTPException(status_code=404, detail=f"{cut_id} 沒有可用的字幕")
     return Response(
         srt_to_vtt(srt.read_text(encoding="utf-8")),
         media_type="text/vtt; charset=utf-8",

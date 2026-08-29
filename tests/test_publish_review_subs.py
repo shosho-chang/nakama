@@ -211,3 +211,30 @@ def test_retry_cc_route_starts_cc_only_worker_without_reupload(
 def test_json_dumps_guard():
     """SRT 內容不經 json 序列化（避免有人未來把它塞進 JSON 回應）。"""
     assert json.dumps(srt_to_vtt(SRT), ensure_ascii=False).startswith('"WEBVTT')
+
+
+def test_review_shows_the_same_subtitle_the_uploader_will_send(tmp_path, monkeypatch):
+    """審核頁與上傳器必須讀同一份——不然驗證的對象跟交付的對象不是同一個。
+
+    2026-08-29：上傳器改讀 Release 字幕、審核頁沒跟上，修修看到的是 260 秒舊剪輯
+    的 125 句，實際要上架的是 492 秒成品的 226 句。
+    """
+    import inspect
+
+    from thousand_sunny.routers import publish_review
+    import scripts.publish_upload as publish_upload
+
+    review_src = inspect.getsource(publish_review.publish_subs)
+    upload_src = inspect.getsource(publish_upload)
+    assert "release_subtitle" in review_src
+    assert "release_subtitle" in upload_src
+
+
+def test_thumbnail_response_refuses_to_be_cached_blind(tmp_path, monkeypatch):
+    """縮圖網址固定但底下的圖會換——沒有 no-cache 就會顯示上一張。"""
+    import inspect
+
+    from thousand_sunny.routers import publish_review
+
+    src = inspect.getsource(publish_review.publish_thumb)
+    assert "no-cache" in src

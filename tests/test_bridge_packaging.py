@@ -2259,3 +2259,54 @@ def test_keeping_the_existing_centre_carries_its_provenance_forward(client, vaul
     assert response.status_code == 303
     # 這個 fixture 的舊配方沒有來歷（v2 時代的資料），所以維持 None——不編造
     assert _saved_recipe(vault_with_cutouts)["center_provenance"] is None
+
+
+def _board_css() -> str:
+    from pathlib import Path
+
+    return (
+        Path(__file__).resolve().parents[1]
+        / "thousand_sunny"
+        / "templates"
+        / "bridge"
+        / "packaging_board.html"
+    ).read_text(encoding="utf-8")
+
+
+def test_selected_state_outranks_the_ghost_button_rule():
+    """`body.sho .sho-btn--ghost` 是 (0,2,1)——選中規則沒有 body.sho 前綴就會被蓋掉。
+
+    2026-08-29 修修回報「點下去都沒有顯示我目前正在處於哪一個選項」，圖層按鈕與
+    package 分頁兩處都中。
+    """
+    css = _board_css()
+    for selector in (
+        'body.sho .pkg-recipe-tab[aria-selected="true"]',
+        'body.sho .pkg-layer-button[aria-pressed="true"]',
+    ):
+        assert selector in css, selector
+    # 沒有前綴的舊寫法不該復活
+    assert '\n  .pkg-layer-button[aria-pressed="true"] {' not in css
+    assert '\n  .pkg-recipe-tab[aria-selected="true"] {' not in css
+
+
+def test_stage_material_width_limits_outrank_the_global_img_reset():
+    """`.sho img { max-width: 100% }` 是 (0,1,1)，會蓋掉舞台自己宣告的上限。
+
+    後果不是「預覽放不大」而已——composition 沒有寬度上限，所以超過撞牆點之後
+    成品仍在放大，而預覽凍住：所見不等於所得（修修 2026-08-29 回報）。
+    """
+    css = _board_css()
+    assert "body.sho .st-person { max-width: none; }" in css
+    assert "body.sho .st-book { max-width: 50%; }" in css
+
+
+def test_the_preview_does_not_cap_people_where_the_composition_does_not():
+    """兩個 composition 的 #host/#guest 都沒有 max-width——預覽也不可以有。"""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "video" / "compositions"
+    for name in ("thumbnail_reaction", "thumbnail_full"):
+        block = (root / name / "index.html").read_text(encoding="utf-8")
+        start = block.index("#host, #guest {")
+        assert "max-width" not in block[start : start + 200], name

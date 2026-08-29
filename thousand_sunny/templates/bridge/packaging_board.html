@@ -730,7 +730,16 @@
   .pkg-compose { margin: 12px 0; }
   .pkg-recipe-picker { border: 0; padding: 0; margin: 0 0 var(--sho-s-4); }
   .pkg-recipe-tabs { display: flex; gap: var(--sho-s-2); flex-wrap: wrap; margin-top: var(--sho-s-2); }
-  .pkg-recipe-tab[aria-selected="true"] { border-color: var(--sho-accent); background: var(--sho-accent-soft); }
+  /* body.sho .sho-btn--ghost 的權重是 (0,2,1)，蓋過只有 (0,2,0) 的選中規則——
+     於是「點了哪一個」在畫面上完全沒有回饋（修修 2026-08-29 兩處都回報）。
+     加上 body.sho 前綴才贏得過，並且描粗到 2px：1px 換色在深底上幾乎看不出來。 */
+  body.sho .pkg-recipe-tab[aria-selected="true"],
+  body.sho .pkg-layer-button[aria-pressed="true"] {
+    border-color: var(--sho-accent);
+    border-width: 2px;
+    background: var(--sho-accent-soft);
+    color: var(--sho-text);
+  }
   .pkg-recipe-missing { color: var(--sho-error); margin: var(--sho-s-2) 0 0; }
   .pkg-compose-text { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
   .pkg-fontsize { color: var(--sho-muted); font-variant-numeric: tabular-nums; }
@@ -847,10 +856,23 @@
     object-fit: cover; background: #000;
   }
   .st-person {
+    /* max-width 必須關掉才跟得上實際出圖：兩個 composition 的 #host/#guest 都沒有
+       寬度上限，人物寬度隨高度自由成長。舞台的 <img> 卻繼承了全域 img reset 的
+       max-width:100%，寬度一撞到畫布就凍住，object-fit: contain 再把人縮在框內置中
+       ——修修 2026-08-29：「大小數值一直在增加，但是到了一個大小後，圖片並沒有因為
+       數值增加而變大」。撞牆點還隨各自長寬比不同（修修 1.084 → 約 164%、來賓
+       1.170 → 約 152%），所以兩人的「上限」看起來也不一樣。
+       比預覽放不大更糟的是：超過那個點之後成品仍然繼續放大，所見不等於所得。 */
     position: absolute; bottom: 0; z-index: 5; object-fit: contain; cursor: grab;
     filter: drop-shadow(0 0 36px var(--glow)) drop-shadow(0 0 90px var(--glow-soft));
   }
   .st-person:active { cursor: grabbing; }
+  /* tokens.css 的 `.sho img { max-width: 100% }` 是 (0,1,1)，蓋過寫在這裡的
+     (0,1,0)——所以舞台素材的寬度上限一直不是我們宣告的那個值。加 body.sho 前綴
+     才贏得過。人物：兩個 composition 都沒有寬度上限，這裡也不能有。
+     書封：composition 明訂 max-width 50%，被蓋成 100% 等於預覽可以放到成品兩倍寬。 */
+  body.sho .st-person { max-width: none; }
+  body.sho .st-book { max-width: 50%; }
   .st-adjustable { pointer-events: none; }
   .pkg-stage-inner[data-selected-role="center"] .st-center,
   .pkg-stage-inner[data-selected-role="host"] .st-host,
@@ -914,9 +936,7 @@
     margin-bottom: var(--sho-s-3); padding: var(--sho-s-2);
     border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
   }
-  .pkg-layer-button[aria-pressed="true"] {
-    border-color: var(--sho-accent); background: var(--sho-accent-soft);
-  }
+
   .pkg-layer-scale { display: flex; gap: var(--sho-s-2); margin-left: auto; }
   .pkg-stage-mode { display: flex; gap: var(--sho-s-2); align-items: center; }
   .pkg-stage-nums {
