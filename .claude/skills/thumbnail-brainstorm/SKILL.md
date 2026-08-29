@@ -242,6 +242,36 @@ python .claude/skills/thumbnail-brainstorm/scripts/stage_center_candidates.py   
 回填時 spec 帶 `center_candidate`（候選池那筆的 supply/source/query）＋
 `center_why`，`center_provenance` 就會自動組好；來歷可以繼承，**配對理由不行**。
 
+### Step 4.4b — 取得正式授權檔（**agent 做，不叫修修自己下載**）
+
+修修 2026-08-29：「我不要人工下載，所有的素材下載都要你幫我做。」
+
+gate 上挑的是浮水印預覽（600px 級），成品要 6000px 級的授權原檔。Elements
+**沒有給訂閱者下載用的 API**，取授權檔必須在已登入的瀏覽器工作階段按 Download
+——所以這一步**不可能做成無人看管的背景程序**，它是 agent 的工作，不是 watcher 的。
+
+除了那一下點擊，其餘全部腳本化：
+
+```bash
+# 1) 誰在等授權檔？印出要開的品項網址
+python .claude/skills/thumbnail-brainstorm/scripts/fetch_licensed_center.py   --episode-slug <slug> --pending
+
+# 2) agent 用修修的瀏覽器開那個網址、按 Download（claude-in-chrome）
+#    ⚠️ 按一次就好。第一次點擊就會下載並套授權；沒看到檔案時先查下載目錄，
+#       不要重按——那是在他的付費帳號上重複操作（2026-08-29 犯過）。
+
+# 3) 收線
+python .claude/skills/thumbnail-brainstorm/scripts/fetch_licensed_center.py   --episode-slug <slug> --cut-id <cut> --package-rank <n> --install   --working-dir "<ep>/packaging"
+```
+
+`--install` 會驗（橫式、長邊 ≥1280、不是候選池路徑）→ 安裝 → 把 **packages.json
+與 approval.json 兩份都改指**（`approval.json` 才是 watcher 撿的那一份，只改
+packages 等於沒改）→ 從候選池把來歷抄進配方（換掉檔名後池子是唯一還記得出處的
+地方）→ 動 `requested_at` 讓 watcher 重新撿起來。
+
+**下載目錄預設 `E:\` 根目錄**（修修瀏覽器的落點，不是 `~/Downloads`），
+可用 `NAKAMA_DOWNLOAD_DIR` 覆寫。
+
 ## Step 4.5 — 量測驗收（**不做不交付**）
 
 目測會漏；三項都要跑（腳本邏輯見設計系統對應節）：
