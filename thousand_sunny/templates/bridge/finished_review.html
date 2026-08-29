@@ -93,9 +93,14 @@
   .remember-label input { margin-top: .2em; }
   .review-actions { position: sticky; bottom: 0; display: flex; align-items: center; flex-wrap: wrap; gap: var(--sho-s-3); border-top: 1px solid var(--sho-line-2); background: var(--sho-bg); padding: var(--sho-s-3) var(--sho-gutter); margin: var(--sho-s-6) calc(var(--sho-gutter) * -1) 0; }
   .review-actions__status { color: var(--sho-text-2); margin-right: auto; }
-  .review-button { border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-1); background: transparent; color: var(--sho-text); cursor: pointer; font: inherit; font-weight: 700; padding: var(--sho-s-2) var(--sho-s-4); }
-  .review-button--approve { background: var(--sho-ink); border-color: var(--sho-ink); color: var(--sho-bg); }
-  .review-button:disabled { cursor: not-allowed; opacity: .45; }
+  /* tokens.css 的 `.sho button` 重置把 border/padding 歸零，specificity (0,1,1)
+     勝過裸的 `.review-button` (0,1,0)——這頁的按鈕因此一直是純文字。用
+     `.sho .review-button` (0,2,0) 蓋過去。 */
+  .sho .review-button { border: 1px solid var(--sho-text-2); border-radius: var(--sho-r-1); background: transparent; color: var(--sho-text); cursor: pointer; font: inherit; font-weight: 700; padding: var(--sho-s-3) var(--sho-s-5); line-height: 1.2; white-space: nowrap; flex: 0 0 auto; }
+  .sho .review-button:hover:not(:disabled) { border-color: var(--sho-text); }
+  .sho .review-button--approve { background: var(--sho-ink); border-color: var(--sho-ink); color: var(--sho-bg); }
+  .sho .review-button--approve:hover:not(:disabled) { filter: brightness(1.12); }
+  .sho .review-button:disabled { cursor: not-allowed; opacity: .45; }
   .format-switch__link:focus-visible, .cut-tab:focus-visible, .seek-button:focus-visible, .field-label select:focus-visible, .field-label input:focus-visible, .field-label textarea:focus-visible, .remember-label input:focus-visible, .cut-decision input:focus-visible, .review-button:focus-visible { outline: none; box-shadow: var(--sho-focus); }
   @media (max-width: 920px) { .review-workspace { grid-template-columns: 1fr; height: auto; } .player-column, .feedback-column { height: clamp(440px, 55vh, 560px); max-height: none; overflow-y: scroll; scrollbar-gutter: stable; } .player-shell video { max-height: 58vh; } }
   @media (max-width: 640px) { .finished-gate { padding-inline: var(--sho-s-3); } .review-actions { margin-inline: calc(var(--sho-s-3) * -1); padding-inline: var(--sho-s-3); } .cut-tabs { grid-template-columns: 1fr; } .cut-tab { min-height: 0; } .timeline-panel__head { align-items: start; flex-direction: column; } }
@@ -303,9 +308,8 @@
       <output class="review-actions__status" id="review-status" aria-live="polite">{% if revision_job and revision_job.status == 'queued' %}Targeted revision 已排入佇列{% elif revision_job and revision_job.status in ['registered', 'pending'] %}Finished Cut Production 正在推進{% elif revision_job and revision_job.status == 'preview_ready' %}修正版 preview 已就緒{% elif revision_job and revision_job.status in ['needs_review', 'failed'] %}Targeted revision 需要人工處理{% elif saved %}Feedback 已保存{% else %}尚未儲存新的變更{% endif %}</output>
       <button type="submit" class="review-button" data-submit-action="save_draft">保存草稿</button>
       {% if review_format == 'long' %}
-      <button type="submit" class="review-button review-button--approve" id="approve-cut" data-submit-action="approve_cut" disabled>核准 {{ manifest.cuts[0].cut_id }} → Packaging</button>
+      <button type="submit" class="review-button review-button--approve" id="approve-cut" data-submit-action="approve_cut">核准這支 → Packaging</button>
       {% endif %}
-      <button type="submit" class="review-button review-button--approve" id="approve-all" data-submit-action="approve_all" disabled>核准全部 {{ manifest.cuts|length }} 支</button>
     </div>
     <div class="timeline-tooltip sho-mono" id="timeline-tooltip" role="tooltip" hidden></div>
   </form>
@@ -319,7 +323,6 @@
   const panes = [...document.querySelectorAll('[data-cut-pane]')];
   const timelines = [...document.querySelectorAll('[data-timeline-cut]')];
   const status = document.querySelector('#review-status');
-  const approveAll = document.querySelector('#approve-all');
   const approveCut = document.querySelector('#approve-cut');
   const submitAction = document.querySelector('#submit-action');
   const selectedCutId = document.querySelector('#selected-cut-id');
@@ -362,13 +365,11 @@
   };
 
   const syncApproval = () => {
-    const approved = tabs.every(tab => form.querySelector(`input[name="cut_status__${tab.dataset.cutId}"][value="approved"]`)?.checked);
-    approveAll.disabled = !approved;
-    if (approveCut) {
-      const cutId = selectedCutId.value;
-      approveCut.disabled = !form.querySelector(`input[name="cut_status__${cutId}"][value="approved"]`)?.checked;
-      approveCut.textContent = `核准 ${cutId} → Packaging`;
-    }
+    if (!approveCut) return;
+    const cutId = selectedCutId.value;
+    const blocked = form.querySelector(`input[name="cut_status__${cutId}"][value="approved"]`)?.disabled;
+    approveCut.disabled = Boolean(blocked);
+    approveCut.title = blocked ? '這支的 Stock Video 未達 3 個，不能進 Packaging' : '';
   };
   const activate = tab => {
     tabs.forEach(item => { const selected = item === tab; item.setAttribute('aria-selected', selected ? 'true' : 'false'); item.tabIndex = selected ? 0 : -1; });
@@ -437,7 +438,12 @@
   form.addEventListener('change', () => { status.textContent = '有尚未儲存的變更'; syncApproval(); });
   form.querySelectorAll('[data-submit-action]').forEach(button => button.addEventListener('click', () => {
     submitAction.value = button.dataset.submitAction;
-    if (button.dataset.submitAction === 'approve_cut') selectedCutId.value = activeCut.textContent;
+    if (button.dataset.submitAction === 'approve_cut') {
+      const cutId = activeCut.textContent;
+      selectedCutId.value = cutId;
+      const approve = form.querySelector(`input[name="cut_status__${cutId}"][value="approved"]`);
+      if (approve) approve.checked = true;
+    }
   }));
   form.addEventListener('submit', event => {
     if (!form.checkValidity()) { event.preventDefault(); form.reportValidity(); status.textContent = '有欄位尚未填完，請檢查標示的位置'; return; }
