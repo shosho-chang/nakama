@@ -353,13 +353,15 @@ def upload_captions(yt, video_id: str, episode_dir: Path, cid: str) -> dict | No
     """CC 字幕上傳（captions.insert；需 youtube.force-ssl scope）。"""
     from googleapiclient.http import MediaFileUpload as _MFU
 
+    from agents.usopp.publish_timeline import release_subtitle
     from shared.tight_srt import latest_tight_srt
 
-    # 與審核頁 preview 同一個挑選規則（shared.tight_srt）——他在頁面上看到的
-    # 字幕軌就是這裡上傳的檔
-    srt = latest_tight_srt(episode_dir, cid)
+    # CC 必須是**成品那一份**。tight SRT 是 ADR-065 製作線的殘留：punch-L04 的只有
+    # 260 秒舊剪輯，成品卻是 492 秒，貼上去等於整支片的字幕都對不上畫面。
+    # 沒有 Release 對應表的舊集數仍沿用 shared.tight_srt 的挑選規則。
+    srt = release_subtitle(episode_dir, cid) or latest_tight_srt(episode_dir, cid)
     if srt is None:
-        logger.warning("%s: 沒有 tight SRT——跳過 CC", cid)
+        logger.warning("%s: 找不到字幕——跳過 CC", cid)
         return None
     response = yt.captions().insert(
         part="snippet",

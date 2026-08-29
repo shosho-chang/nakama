@@ -239,3 +239,73 @@ def test_description_prompt_prefers_the_release_subtitle(tmp_path, monkeypatch):
     )
     assert "成品那一份" in prompt
     assert "被取代的舊剪輯" not in prompt
+
+
+def _stub_youtube(recorder):
+    class _Insert:
+        def __init__(self, **kwargs):
+            recorder.update(kwargs)
+
+        def execute(self):
+            return {"id": "caption-1"}
+
+    class _Captions:
+        def insert(self, **kwargs):
+            return _Insert(**kwargs)
+
+    class _YT:
+        def captions(self):
+            return _Captions()
+
+    return _YT()
+
+
+def test_uploaded_captions_come_from_the_release_not_the_stale_tight_srt(tmp_path, monkeypatch):
+    """貼錯字幕會讓整支片的 CC 對不上畫面——來源必須跟成品同源。"""
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import publish_upload
+
+    fresh = tmp_path / "release.srt"
+    fresh.write_text("1\n00:00:00,000 --> 00:00:01,000\n成品字幕\n", encoding="utf-8")
+    stale = tmp_path / "punch-L04_tight_r002.srt"
+    stale.write_text("1\n00:00:00,000 --> 00:00:01,000\n舊剪輯字幕\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "agents.usopp.publish_timeline.release_subtitle", lambda episode_dir, cid: fresh
+    )
+    monkeypatch.setattr("shared.tight_srt.latest_tight_srt", lambda episode_dir, cid: stale)
+    monkeypatch.setattr(
+        publish_upload, "logger", type("L", (), {"info": lambda *a: None, "warning": lambda *a: None})()
+    )
+
+    seen: dict = {}
+    monkeypatch.setattr(
+        "googleapiclient.http.MediaFileUpload",
+        lambda path, mimetype=None: seen.setdefault("path", path),
+        raising=False,
+    )
+    publish_upload.upload_captions(_stub_youtube(seen), "vid", tmp_path, "punch-L04")
+    assert seen["path"] == str(fresh)
+
+
+def test_uploaded_captions_fall_back_when_the_episode_has_no_release(tmp_path, monkeypatch):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import publish_upload
+
+    stale = tmp_path / "punch-L5_tight_r001.srt"
+    stale.write_text("1\n00:00:00,000 --> 00:00:01,000\n舊線字幕\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "agents.usopp.publish_timeline.release_subtitle", lambda episode_dir, cid: None
+    )
+    monkeypatch.setattr("shared.tight_srt.latest_tight_srt", lambda episode_dir, cid: stale)
+    monkeypatch.setattr(
+        publish_upload, "logger", type("L", (), {"info": lambda *a: None, "warning": lambda *a: None})()
+    )
+    seen: dict = {}
+    monkeypatch.setattr(
+        "googleapiclient.http.MediaFileUpload",
+        lambda path, mimetype=None: seen.setdefault("path", path),
+        raising=False,
+    )
+    publish_upload.upload_captions(_stub_youtube(seen), "vid", tmp_path, "punch-L5")
+    assert seen["path"] == str(stale)
