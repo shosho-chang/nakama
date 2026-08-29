@@ -42,6 +42,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from run_highlight_cut import FORMAT_LABEL  # noqa: E402
 
+from agents.usopp.publish_timeline import (  # noqa: E402
+    PublishTimelineError,
+    load_timeline_map,
+    resolve_target,
+    verify_duration,
+)
+
 logger = logging.getLogger("publish_prep")
 
 EXPORTS_DIR = "highlights/exports"
@@ -96,6 +103,45 @@ def _find_timeline(project, label: str):
         if t and t.GetName() == label:
             return t
     raise SystemExit(f"timeline「{label}」不存在——先跑完 longform-cut/highlight-cut 製作線")
+
+
+def _timeline_duration_sec(timeline) -> float:
+    fps = float(timeline.GetSetting("timelineFrameRate") or 0)
+    if fps <= 0:
+        raise SystemExit("timeline frame rate 讀不到——無法驗證長度，不冒險 render")
+    frames = timeline.GetEndFrame() - timeline.GetStartFrame() + 1
+    return frames / fps
+
+
+def _pick_timeline(project, episode_dir: Path, cut: dict):
+    """挑 render 用的 timeline：對應表優先，並在 render 前複驗長度。
+
+    沒有對應表的舊集數沿用 `winners.json` 的顯示名慣例；一旦該集建了對應表，
+    缺項就是硬錯誤——回頭用猜的正是會安靜出錯片的那條路（見
+    agents/usopp/publish_timeline.py 的實測表）。
+    """
+    timeline_map = load_timeline_map(episode_dir)
+    if timeline_map is None:
+        label = timeline_label(cut)
+        return _find_timeline(project, label), label
+
+    try:
+        target = resolve_target(timeline_map, cut["id"])
+    except PublishTimelineError as exc:
+        raise SystemExit(str(exc)) from exc
+    timeline = _find_timeline(project, target.timeline)
+    try:
+        verify_duration(target, _timeline_duration_sec(timeline))
+    except PublishTimelineError as exc:
+        raise SystemExit(str(exc)) from exc
+    logger.info(
+        "%s: timeline「%s」對上 Release %s（%.3fs）",
+        cut["id"],
+        target.timeline,
+        target.release_id,
+        target.expected_duration_sec,
+    )
+    return timeline, target.timeline
 
 
 def _render_master(
@@ -234,8 +280,7 @@ def _probe(path: Path) -> tuple[float, int]:
 
 def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
     """單支 cut：render → （短片燒字幕）→ exports/<cut_id>.mp4。"""
-    label = timeline_label(cut)
-    timeline = _find_timeline(project, label)
+    timeline, label = _pick_timeline(project, episode_dir, cut)
     project.SetCurrentTimeline(timeline)
     out_dir = episode_dir / EXPORTS_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
