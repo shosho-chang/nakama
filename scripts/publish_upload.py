@@ -327,9 +327,7 @@ def _load_yt(
         try:
             assert_youtube_publish_credentials(creds)
         except YouTubeCredentialPreflightError as exc:
-            raise SystemExit(
-                f"OAuth preflight 失敗：{exc}——重跑 scripts/youtube_auth.py"
-            ) from exc
+            raise SystemExit(f"OAuth preflight 失敗：{exc}——重跑 scripts/youtube_auth.py") from exc
         service = service_builder("youtube", "v3", credentials=creds)
         return (service, creds) if return_credentials else service
 
@@ -339,9 +337,7 @@ def _load_yt(
         try:
             assert_youtube_publish_credentials(credentials)
         except YouTubeCredentialPreflightError as exc:
-            raise SystemExit(
-                f"OAuth preflight 失敗：{exc}——重跑 scripts/youtube_auth.py"
-            ) from exc
+            raise SystemExit(f"OAuth preflight 失敗：{exc}——重跑 scripts/youtube_auth.py") from exc
     if not return_credentials:
         return service
     if credentials is None:
