@@ -137,15 +137,12 @@ const wideMQ = window.matchMedia('(min-width: 1500px)');
 const mobileMQ = window.matchMedia('(max-width: 768px)');
 function applyColumns() {
   if (!view.renderer) return;
-  // Mobile → continuous vertical scroll (smoother on touch; paginated columns
-  // clip the last lines behind the fixed footer on a phone). Desktop keeps
-  // paginated columns (1, or 2 on very wide screens).
-  if (mobileMQ.matches) {
-    view.renderer.setAttribute('flow', 'scrolled');
-  } else {
-    view.renderer.setAttribute('flow', 'paginated');
-    view.renderer.setAttribute('max-column-count', wideMQ.matches ? '2' : '1');
-  }
+  // 修修 2026-08-29: mobile now PAGINATES too (was continuous scroll) — 手機也要
+  // 能翻頁。One column on a phone; desktop keeps 1, or 2 on very wide screens.
+  // The swipe / edge-tap handlers below drive the turns; in paginated flow they
+  // move page-by-page and cross section boundaries at the ends.
+  view.renderer.setAttribute('flow', 'paginated');
+  view.renderer.setAttribute('max-column-count', !mobileMQ.matches && wideMQ.matches ? '2' : '1');
 }
 wideMQ.addEventListener('change', applyColumns);
 mobileMQ.addEventListener('change', applyColumns);
@@ -795,9 +792,34 @@ function getRendererSectionIndex(doc) {
 }
 
 function attachSelectionListener(doc) {
+  // Is a pointer currently down in this doc? A mouse drag fires selectionchange
+  // continuously while the user is still choosing the range — we let pointerup
+  // handle that case. Touch long-press ends in pointercancel (the OS selection UI
+  // takes the gesture over), which is exactly why pointerup alone missed it.
+  let pointerDown = false;
+  const pointerEnded = () => { pointerDown = false; };
+  doc.addEventListener('pointerdown', () => { pointerDown = true; }, { passive: true });
+  doc.addEventListener('pointercancel', pointerEnded, { passive: true });
+  doc.addEventListener('touchend', pointerEnded, { passive: true });
   doc.addEventListener('pointerup', () => {
+    pointerDown = false;
     // Defer slightly so the selection settles after the pointerup default.
     setTimeout(() => onIframePointerUp(doc), 0);
+  });
+  // 修修 2026-08-29 (手機): a long-press selection never delivers a pointerup to
+  // the document — the gesture is consumed by the OS selection UI — so on a phone
+  // the 螢光/註解 popup simply never appeared (實測: selection 有了、popup 仍 hidden).
+  // selectionchange fires for touch, mouse AND handle-dragging, so it covers every
+  // way a selection can settle. Debounced: dragging a selection handle fires it
+  // continuously, and we only want the popup once the selection stops moving.
+  let selTimer = null;
+  doc.addEventListener('selectionchange', () => {
+    if (selTimer) clearTimeout(selTimer);
+    selTimer = setTimeout(() => {
+      selTimer = null;
+      if (pointerDown) return;   // still dragging — pointerup will finish the job
+      onIframePointerUp(doc);
+    }, 250);
   });
 }
 
