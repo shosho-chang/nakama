@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 import os
 import subprocess
 import sys
@@ -309,6 +310,40 @@ def _release_event(event: Any) -> dict[str, Any]:
         "visual_status": event.visual_status,
         "intentional_aroll": event.intentional_aroll,
     }
+
+
+_MOVE_TIME_RE = re.compile(r"^(?:(\d+):)?(\d{1,2}):(\d{1,2}(?:\.\d+)?)$")
+
+
+def parse_move_seconds(raw: str) -> float:
+    """Accept 1:49 / 01:49.5 / 1:02:03, or a bare number of seconds.
+
+    修修 2026-08-29 在 finished review 上的原話：「像 1 分 49 秒，我就要自己換算成
+    109 秒」。播放器與 timeline 都用 mm:ss 呈現，只有這個欄位要求心算。
+    """
+    text = raw.strip()
+    if not text:
+        raise ValueError("move time is required")
+    match = _MOVE_TIME_RE.match(text)
+    if match is None:
+        return float(text)
+    hours, minutes, seconds = match.groups()
+    second_value = float(seconds)
+    minute_value = int(minutes)
+    if second_value >= 60 or (hours is not None and minute_value >= 60):
+        raise ValueError(f"move time is not a clock reading: {text}")
+    return int(hours or 0) * 3600 + minute_value * 60 + second_value
+
+
+def format_move_seconds(value: object) -> str:
+    """Render a stored move time back as the clock reading the reviewer typed."""
+    if value is None or value == "":
+        return ""
+    seconds = float(value)
+    minutes, remainder = divmod(seconds, 60)
+    hours, minutes = divmod(int(minutes), 60)
+    body = f"{minutes:02d}:{remainder:05.2f}".rstrip("0").rstrip(".")
+    return f"{hours}:{body}" if hours else body
 
 
 def _load_finished_manifest(episode_slug: str) -> dict[str, Any]:
@@ -870,7 +905,7 @@ async def finished_review_board(
             component["saved_action"] = prior.get("action", "")
             component["saved_comment"] = prior.get("comment", "")
             component["saved_replacement"] = prior.get("replacement", "")
-            component["saved_move"] = prior.get("move_to_seconds", "")
+            component["saved_move"] = format_move_seconds(prior.get("move_to_seconds"))
             component["saved_remember"] = bool(prior.get("remember_preference"))
         saved_overall = latest.get("overall_feedback", {}) if isinstance(latest, dict) else {}
         cut["saved_overall_feedback"] = (
@@ -1178,7 +1213,7 @@ async def finished_review_save(
         move_to_seconds: float | None = None
         if action == "move":
             try:
-                move_to_seconds = float(move_raw)
+                move_to_seconds = parse_move_seconds(move_raw)
             except ValueError as exc:
                 raise HTTPException(
                     status_code=400, detail=f"move time is invalid for {component_id}"

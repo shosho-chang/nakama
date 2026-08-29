@@ -281,8 +281,8 @@
                     <input type="text" name="component_replacement__{{ component.component_id }}" value="{{ component.saved_replacement }}" maxlength="500">
                     {% endif %}
                   </label>
-                  <label class="field-label" data-move-field>移到第幾秒
-                    <input type="number" name="component_move__{{ component.component_id }}" value="{{ component.saved_move }}" min="0" max="{{ cut.artifacts.preview.duration_seconds }}" step="0.01" inputmode="decimal">
+                  <label class="field-label" data-move-field>移到（時間碼，如 1:49）
+                    <input type="text" name="component_move__{{ component.component_id }}" value="{{ component.saved_move }}" placeholder="1:49" pattern="^(?:\d+:)?\d{1,2}:[0-5]?\d(?:\.\d+)?$|^\d+(?:\.\d+)?$" title="mm:ss、h:mm:ss，或直接填秒數" maxlength="12" inputmode="text" autocomplete="off">
                   </label>
                   <label class="field-label">具體 feedback
                     <textarea name="component_comment__{{ component.component_id }}" maxlength="2000" placeholder="哪裡不對、希望怎麼改">{{ component.saved_comment }}</textarea>

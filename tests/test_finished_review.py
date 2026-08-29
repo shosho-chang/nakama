@@ -328,3 +328,52 @@ def test_finished_review_callers_contain_no_retired_production_imports() -> None
         "finished_review_manifest_*.json",
     )
     assert all(value not in sources for value in forbidden)
+
+
+# --- 移動時間用時間碼填寫（修修 2026-08-29） ------------------------------
+
+
+def test_move_time_accepts_a_clock_reading() -> None:
+    """修修原話：「像 1 分 49 秒，我就要自己換算成 109 秒」。"""
+    from thousand_sunny.routers.highlight_review import parse_move_seconds
+
+    assert parse_move_seconds("1:49") == 109.0
+    assert parse_move_seconds("01:49") == 109.0
+    assert parse_move_seconds("1:02:03") == 3723.0
+    assert parse_move_seconds("0:05.5") == 5.5
+
+
+def test_move_time_still_accepts_bare_seconds() -> None:
+    """既有的填法不能壞——舊草稿裡存的就是秒數。"""
+    from thousand_sunny.routers.highlight_review import parse_move_seconds
+
+    assert parse_move_seconds("109") == 109.0
+    assert parse_move_seconds("109.0") == 109.0
+
+
+def test_move_time_rejects_a_reading_that_is_not_a_clock() -> None:
+    from thousand_sunny.routers.highlight_review import parse_move_seconds
+
+    for raw in ("1:75", "1:02:99", "", "  ", "abc", "1:2:3:4"):
+        with pytest.raises(ValueError):
+            parse_move_seconds(raw)
+
+
+def test_saved_move_is_shown_back_as_a_clock_reading() -> None:
+    """存進去是秒數，回填要是人看得懂的樣子，不然下次還是要心算。"""
+    from thousand_sunny.routers.highlight_review import format_move_seconds
+
+    assert format_move_seconds(109.0) == "01:49"
+    assert format_move_seconds(3723.0) == "1:02:03"
+    assert format_move_seconds(5.5) == "00:05.5"
+    assert format_move_seconds(None) == ""
+
+
+def test_move_time_round_trips() -> None:
+    from thousand_sunny.routers.highlight_review import (
+        format_move_seconds,
+        parse_move_seconds,
+    )
+
+    for seconds in (0.0, 5.5, 109.0, 492.31, 3723.0):
+        assert parse_move_seconds(format_move_seconds(seconds)) == pytest.approx(seconds)
