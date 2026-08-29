@@ -35,6 +35,15 @@
       <button type="submit" class="icon-btn" id="ingestBtn" aria-label="Ingest 整本書（約 3–5 分鐘）">📥 <span class="btn-label">Ingest 整本書</span></button>
     </form>
     <a href="/robin/literature/{{ book.book_id }}" target="_blank" rel="noopener" class="icon-btn" title="觀看這本書的文獻筆記（由你的劃線整理）">📖 <span class="btn-label">觀看筆記</span></a>
+    {# 修修 2026-08-29: 排版控制 — 字級 ±（套進 foliate iframe 的 setStyles）與字體切換。
+       字體清單見 book_reader.js FONTS；Taipei Sans TC 走本機系統字型解析（CSP
+       default-src 'self' 不允許遠端字型 CDN），沒安裝時 JS 會把選項標為不可用。 #}
+    <div class="reader-type" role="group" aria-label="排版">
+      <button type="button" class="icon-btn type-btn" id="fontSmaller" aria-label="縮小字級" title="縮小字級（−）">A−</button>
+      <span class="type-size" id="fontSizeLabel" aria-live="polite">100%</span>
+      <button type="button" class="icon-btn type-btn" id="fontLarger" aria-label="放大字級" title="放大字級（＋）">A＋</button>
+      <select class="type-font" id="fontFamily" aria-label="選擇字體" title="選擇字體"></select>
+    </div>
     <button type="button" class="icon-btn" id="tocToggle" aria-label="切換目錄" aria-pressed="false">📑 <span class="btn-label">目錄</span></button>
     <button type="button" class="icon-btn" id="commentsToggle" aria-label="切換反思側欄" aria-pressed="false">💬 <span class="btn-label">反思</span></button>
     <button type="button" class="icon-btn" id="kbdHelpBtn" aria-label="鍵盤快捷鍵" title="鍵盤快捷鍵（按 ?）">⌨️</button>
@@ -203,6 +212,6 @@
 
 <div id="ann-toast" role="status" aria-live="polite"></div>
 
-<script type="module" src="/static/book_reader.js"></script>
+<script type="module" src="/static/book_reader.js?v={{ asset_version }}"></script>
 </body>
 </html>

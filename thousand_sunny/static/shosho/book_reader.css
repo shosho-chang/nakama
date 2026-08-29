@@ -828,3 +828,58 @@ body.sho .kbd-help-foot kbd {
   body.sho .icon-btn { padding: 6px 9px; }
   body.sho .reader-shell { padding-bottom: 3.2rem; }       /* clear the fixed footer */
 }
+
+/* ── 排版控制（修修 2026-08-29）— 字級 ± 與字體選擇 ────────────────────
+   一個視覺群組：A− 100% A＋ ｜ 字體。用 line/text accent，不做 block fill
+   （design-system §49），和 .icon-btn / .mode-badge 同一套 token。 */
+body.sho .reader-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+  flex-shrink: 0;
+}
+body.sho .reader-type .type-btn {
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  padding: 2px 6px;
+  min-width: 28px;
+  justify-content: center;
+}
+body.sho .reader-type .type-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+body.sho .reader-type .type-size {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  color: var(--sho-text-2);
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  text-align: center;
+}
+body.sho .reader-type .type-font {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  color: var(--sho-text);
+  background: var(--sho-bg);
+  border: 0;
+  border-left: 1px solid var(--sho-line-2);
+  border-radius: 0;
+  padding: 2px 4px;
+  margin-left: 2px;
+  max-width: 120px;
+  cursor: pointer;
+}
+body.sho .reader-type .type-font:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+
+/* narrow screens: the toolbar already hides .btn-label — keep the type group
+   compact rather than dropping it (font size matters most on a small screen). */
+@media (max-width: 768px) {
+  body.sho .reader-type .type-font { max-width: 92px; }
+}
