@@ -308,6 +308,26 @@ def _production_paths(work: dict[str, object]) -> ProductionPaths:
     )
 
 
+def default_application_factory(paths: ProductionPaths, episode_id: str):
+    """Compose the real application, Resolve authority included.
+
+    The binding load belongs here rather than in ``run_revision_job``: a test (or
+    any other caller) that injects its own factory is deliberately opting out of
+    real Resolve, and forcing the file open on that path broke that seam.
+    """
+    path = paths.runtime_root.parent / _BINDING_FILE
+    if not path.is_file():
+        raise RuntimeError(
+            f"Resolve binding is missing: {path} (schema {RESOLVE_BINDING_SCHEMA})"
+        )
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return build_production_application(
+        paths,
+        episode_id,
+        resolve_configuration=build_resolve_configuration(payload, episode_id),
+    )
+
+
 def _resolve_configuration(work: dict[str, object]) -> ProductionResolveConfiguration:
     """Load this episode's Resolve binding; a revision that cannot finish must not start.
 
@@ -351,7 +371,7 @@ def _durable_failure(
 def run_revision_job(
     work: dict[str, object],
     *,
-    application_factory: ApplicationFactory = build_production_application,
+    application_factory: ApplicationFactory = default_application_factory,
 ) -> bool:
     """Register once, then advance only the durable targeted revision command."""
 
@@ -387,9 +407,7 @@ def run_revision_job(
         )
         try:
             application = application_factory(
-                _production_paths(work),
-                str(work["episode_id"]),
-                resolve_configuration=_resolve_configuration(work),
+                _production_paths(work), str(work["episode_id"])
             )
         except Exception as error:
             _durable_failure(
@@ -439,9 +457,7 @@ def run_revision_job(
     else:
         try:
             application = application_factory(
-                _production_paths(work),
-                str(work["episode_id"]),
-                resolve_configuration=_resolve_configuration(work),
+                _production_paths(work), str(work["episode_id"])
             )
         except Exception as error:
             _durable_failure(
@@ -505,7 +521,7 @@ def run_revision_job(
 def main(
     argv: list[str] | None = None,
     *,
-    application_factory: ApplicationFactory = build_production_application,
+    application_factory: ApplicationFactory = default_application_factory,
 ) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
