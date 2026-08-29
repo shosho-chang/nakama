@@ -8,8 +8,15 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from PIL import Image
+
 MEASUREMENT_SCHEMA = "nakama.thumbnail_composition_measurement.v1"
-RECEIPT_SCHEMA = "nakama.long_thumbnail_composition.v2"
+RECEIPT_SCHEMA = "nakama.long_thumbnail_composition.v3"
+
+# 中央卡的素材供給順序（SKILL.md 紅線 5）。redrawn = 自己重繪的圖表。
+CENTER_SUPPLY = ("envato", "public_domain", "redrawn")
+# object-fit: cover —— 原圖與卡片長寬比不合時，短邊會被裁掉。留給裁切的上限。
+MIN_CENTER_RETENTION = 0.5
 
 
 @dataclass(frozen=True)
@@ -68,6 +75,65 @@ def _assert_box(
     ):
         raise ValueError(f"measured bbox exceeds canvas: {name}")
     return {k: float(box[k]) for k in ("x", "y", "width", "height")}
+
+
+def _center_provenance(spec: dict) -> dict:
+    """中央卡的來歷——沒有它，成品就沒有人說得出「為什麼是這張圖」。
+
+    2026-08-29 修修看到 punch-L04 rank 1 的中央卡是一隻鸚鵡，問為什麼。整條線
+    翻完：receipt 只記幾何與 SHA-256，render spec 只記檔案路徑，run log 沒寫。
+    那張圖想講的是 03:29 的「把你顧得好好的，其實是把你圈養起來」——推得出來，
+    但不是紀錄。推論不能當交代，所以這裡把它變成必填欄位。
+    """
+    raw = spec.get("center_provenance")
+    if not isinstance(raw, dict):
+        raise ValueError(
+            "spec 缺 center_provenance——中央卡必須交代來歷"
+            f"（supply/source/query/why；supply ∈ {list(CENTER_SUPPLY)}）"
+        )
+    supply = str(raw.get("supply") or "")
+    if supply not in CENTER_SUPPLY:
+        raise ValueError(f"center_provenance.supply 必須是 {list(CENTER_SUPPLY)} 之一，收到 {supply!r}")
+    fields = {"supply": supply}
+    for name in ("source", "query", "why"):
+        value = str(raw.get(name) or "").strip()
+        if not value:
+            raise ValueError(f"center_provenance.{name} 不可為空")
+        fields[name] = value
+    # 「配合主題」這種長度的字等於沒寫；配對理由要能指回某個 beat 或 quote。
+    if len(fields["why"]) < 12:
+        raise ValueError("center_provenance.why 太短——要寫出這張圖扣回哪一個 beat／quote")
+    unknown = set(raw) - {"supply", "source", "query", "why"}
+    if unknown:
+        raise ValueError(f"center_provenance 有不認識的欄位：{sorted(unknown)}")
+    return fields
+
+
+def _assert_center_fits_card(center: Path, protected: dict) -> None:
+    """原圖必須撐得起那張橫卡——直式硬塞等於交出一張中段裁切。
+
+    卡片是 `object-fit: cover`：原圖長寬比與卡片不合時，短邊直接被裁掉。
+    punch-L04 rank 1 的素材是 1080×1920 直式，卡片 678×455（1.49:1），
+    等於只有 38% 的原圖進得了畫面——棲架、飼料碗、任何「被圈養」的線索全被
+    切在框外，讀者只看到一隻可愛的鸚鵡。SKILL.md 早就寫「卡片必須是橫向長方形」，
+    但先前只驗了卡片的 bbox，沒有人驗餵進去的素材。
+    """
+    with Image.open(center) as image:
+        source_width, source_height = image.size
+    if source_width <= source_height:
+        raise ValueError(
+            f"中央卡素材必須是橫式：{center.name} 是 {source_width}×{source_height}。"
+            "直式塞進橫卡只會得到中段裁切，換一張橫式素材，不要靠裁切硬過。"
+        )
+    source_ratio = source_width / source_height
+    card_ratio = protected["width"] / protected["height"]
+    retention = min(source_ratio, card_ratio) / max(source_ratio, card_ratio)
+    if retention < MIN_CENTER_RETENTION:
+        raise ValueError(
+            f"中央卡素材 {center.name}（{source_width}×{source_height}，"
+            f"{source_ratio:.2f}:1）進 {card_ratio:.2f}:1 的卡片只留得下 "
+            f"{retention:.0%}——低於 {MIN_CENTER_RETENTION:.0%}，換一張比例接近的素材。"
+        )
 
 
 def build_receipt_plan(
@@ -159,6 +225,8 @@ def build_receipt_plan(
     center = resolved["prop_image_data_url"]
     if center.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
         raise ValueError("center visual asset must be an image")
+    provenance = _center_provenance(spec)
+    _assert_center_fits_card(center, protected)
     center_name = f"center-{cut_id}-r{rank}{center.suffix.lower()}"
     sidecar_name = f"{thumbnail.name}.composition.json"
     prefix = f"Attachments/packaging/{episode_slug}"
@@ -173,6 +241,7 @@ def build_receipt_plan(
             "canvas_width": int(width),
             "canvas_height": int(height),
             "center_visual_asset": f"{prefix}/{center_name}",
+            "center_provenance": provenance,
             "thumbnail_sha256": _sha(thumbnail),
             "center_visual_sha256": _sha(center),
             "measurement_sidecar": f"{prefix}/{sidecar_name}",

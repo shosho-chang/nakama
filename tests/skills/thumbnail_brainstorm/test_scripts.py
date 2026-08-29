@@ -593,9 +593,11 @@ def _spec(n: int, png: Path, vault: Path) -> dict:
         / "guest_v1_thoughtful.png"
     )
     center = png.parent / f"center-source-{n}.png"
-    for path, payload in ((host, b"host"), (guest, b"guest"), (center, b"center")):
+    for path, payload in ((host, b"host"), (guest, b"guest")):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(payload)
+    # 中央卡素材要能被開啟量長寬比——直式硬塞進橫卡是 2026-08-29 抓到的實際缺口。
+    _write_center_png(center, 1600, 900)
     variables = {"caption": ""}
     images = {
         "prop_image_data_url": str(center),
@@ -650,7 +652,61 @@ def _spec(n: int, png: Path, vault: Path) -> dict:
         "host_cutout": str(host),
         "guest_cutout": "Attachments/cutouts/podcast/20260723-xieboran/guest_v1_thoughtful.png",
         "render_spec": str(render_spec),
+        "center_provenance": {
+            "supply": "envato",
+            "source": "https://elements.envato.com/photo-placeholder-ABC123",
+            "query": "empty office desk late night",
+            "why": "扣回 04:21 那個 beat：沒有人在的辦公桌就是「工作被接管」的畫面",
+        },
     }
+
+
+def _write_center_png(path: Path, width: int, height: int) -> None:
+    from PIL import Image
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (width, height), (120, 120, 120)).save(path)
+
+
+def _attach_fixture(monkeypatch, tmp_path):
+    """三個 spec 的正常 attach 現場；壞掉的那一個由呼叫端改第 1 筆。"""
+    vault = tmp_path / "vault"
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    working = tmp_path / "packaging"
+    working.mkdir()
+    (working / "packages.json").write_text(
+        json.dumps(_midstate_packages_file(), ensure_ascii=False), encoding="utf-8"
+    )
+    specs = []
+    for n in (1, 2, 3):
+        png = working / f"pkg-punch-L1-{n}.png"
+        png.write_bytes(b"png")
+        specs.append(_spec(n, png, vault))
+    return vault, working, specs
+
+
+def _rewrite_center(spec: dict, size: tuple[int, int]) -> None:
+    """換掉中央卡素材的尺寸，並把 sidecar 的 hash 重新對齊（只留長寬比這一個變因）。"""
+    render_spec_path = Path(spec["render_spec"])
+    render_spec = json.loads(render_spec_path.read_text(encoding="utf-8"))
+    center = Path(render_spec["images"]["prop_image_data_url"])
+    _write_center_png(center, *size)
+
+    thumbnail = Path(spec["thumbnail"])
+    sidecar_path = thumbnail.with_suffix(thumbnail.suffix + ".composition.json")
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    payload = center.read_bytes()
+    sidecar["assets"]["prop_image_data_url"]["sha256"] = hashlib.sha256(payload).hexdigest()
+    merged = dict(render_spec["variables"])
+    for name, raw in render_spec["images"].items():
+        merged[name] = (
+            "data:image/png;base64,"
+            + base64.b64encode(Path(raw).read_bytes()).decode("ascii")
+        )
+    sidecar["variables_sha256"] = hashlib.sha256(
+        json.dumps(merged, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
 
 
 def test_attach_fills_validates_and_dual_lands(monkeypatch, tmp_path):
@@ -691,7 +747,9 @@ def test_attach_fills_validates_and_dual_lands(monkeypatch, tmp_path):
             / f"punch-L1-r{n}.json"
         )
         payload = json.loads(receipt.read_text(encoding="utf-8"))
-        assert payload["schema"] == "nakama.long_thumbnail_composition.v2"
+        assert payload["schema"] == "nakama.long_thumbnail_composition.v3"
+        assert payload["center_provenance"]["supply"] == "envato"
+        assert payload["center_provenance"]["why"].startswith("扣回 04:21")
         assert payload["thumbnail_sha256"]
         assert payload["measurement_sidecar_sha256"]
         assert payload["protected_center_bbox"]["x"] == 301.0
@@ -939,3 +997,49 @@ def test_attach_still_rejects_incomplete_target_cut(monkeypatch, tmp_path):
     assert not (vault / "Attachments" / "packaging").exists() or not list(
         (vault / "Attachments" / "packaging" / "20260723-xieboran").glob("*.png")
     )
+
+
+def test_attach_refuses_a_center_card_with_no_provenance(monkeypatch, tmp_path):
+    """沒有來歷的中央卡不准落地——不然沒有人說得出「為什麼是這張圖」。"""
+    _, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    del specs[0]["center_provenance"]
+    with pytest.raises(ValueError, match="center_provenance"):
+        attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+
+def test_attach_refuses_a_provenance_reason_too_short_to_mean_anything(monkeypatch, tmp_path):
+    _, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    specs[0]["center_provenance"]["why"] = "配合主題"
+    with pytest.raises(ValueError, match="why"):
+        attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+
+def test_attach_refuses_an_unknown_supply_channel(monkeypatch, tmp_path):
+    """供給順序是封閉集合（SKILL.md 紅線 5）——真人一律不准 AI 生成。"""
+    _, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    specs[0]["center_provenance"]["supply"] = "ai_generated"
+    with pytest.raises(ValueError, match="supply"):
+        attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+
+def test_attach_refuses_a_portrait_center_source(monkeypatch, tmp_path):
+    """punch-L04 rank 1 的實際缺口：1080×1920 直式塞進 678×455 的橫卡。"""
+    _, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    _rewrite_center(specs[0], (1080, 1920))
+    with pytest.raises(ValueError, match="必須是橫式"):
+        attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+
+def test_attach_refuses_a_panorama_that_would_be_mostly_cropped_away(monkeypatch, tmp_path):
+    """橫式但比例差太遠一樣不行——cover 會把兩側大部分裁掉。"""
+    _, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    _rewrite_center(specs[0], (6000, 900))
+    with pytest.raises(ValueError, match="留得下"):
+        attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+
+def test_attach_keeps_a_landscape_center_close_to_the_card_ratio(monkeypatch, tmp_path):
+    """正常橫式素材不該被這道新檢查誤擋。"""
+    _, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    _rewrite_center(specs[0], (3840, 2160))
+    attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)

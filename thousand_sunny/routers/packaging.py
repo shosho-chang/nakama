@@ -99,12 +99,32 @@ class CompositionBBoxV1(BaseModel):
     height: float = Field(gt=0)
 
 
-class LongThumbnailCompositionReceiptV2(BaseModel):
-    """Measured long-highlight composition accepted by the packaging gate."""
+class CenterProvenanceV1(BaseModel):
+    """中央卡的來歷——v3 起必填，見 composition_receipt._center_provenance。"""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_: Literal["nakama.long_thumbnail_composition.v2"] = Field(alias="schema")
+    supply: Literal["envato", "public_domain", "redrawn"]
+    source: str = Field(min_length=1)
+    query: str = Field(min_length=1)
+    why: str = Field(min_length=12)
+
+
+class LongThumbnailCompositionReceiptV2(BaseModel):
+    """Measured long-highlight composition accepted by the packaging gate.
+
+    v3 加了 `center_provenance`（中央卡來歷）。v2 仍然讀得進來——2026-08-29 之前
+    產的 12 份 receipt 都是 v2，其中三份已核准；為了一個新欄位追溯作廢已交付的
+    東西沒有道理。要擋的是「以後還能不交代就產出中央卡」，所以 v3 必填、v2 不准
+    帶（帶了就是有人手改 schema 版號）。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_: Literal[
+        "nakama.long_thumbnail_composition.v2",
+        "nakama.long_thumbnail_composition.v3",
+    ] = Field(alias="schema")
     episode: str
     cut_id: str
     package_rank: int = Field(ge=1, le=3)
@@ -122,6 +142,16 @@ class LongThumbnailCompositionReceiptV2(BaseModel):
     guest_bbox: CompositionBBoxV1
     title_bbox: CompositionBBoxV1 | None = None
     max_protected_overlap_ratio: float = Field(default=1.0, ge=0, le=1.0)
+    center_provenance: CenterProvenanceV1 | None = None
+
+    @model_validator(mode="after")
+    def _provenance_matches_schema(self) -> "LongThumbnailCompositionReceiptV2":
+        is_v3 = self.schema_.endswith(".v3")
+        if is_v3 and self.center_provenance is None:
+            raise ValueError("v3 receipt 必須帶 center_provenance")
+        if not is_v3 and self.center_provenance is not None:
+            raise ValueError("v2 receipt 不該帶 center_provenance——schema 版號被手改過")
+        return self
 
     @model_validator(mode="after")
     def _bounds_fit_canvas(self) -> "LongThumbnailCompositionReceiptV2":

@@ -274,9 +274,24 @@ PNG hash，通過後自動把中央圖、measurement sidecar 與 receipt 寫到 
 中央必須是圖像素材，不能用文字代替。`center_visual_asset` 要先複製到同一集 packaging
 目錄，使用 vault-relative 路徑；receipt 不能指到 episode 外或不存在的檔案。
 
+**每個 spec 必須帶 `center_provenance`（v3 起強制）**——中央卡的來歷寫進 receipt，
+不是寫在誰的記憶裡。2026-08-29 修修看到 20260805 punch-L04 rank 1 的中央卡是一隻
+鸚鵡問「為什麼」，整條線翻完只查得到幾何與 SHA-256，配對理由沒有任何地方記過；
+推得回去不等於交代過。`supply` 是封閉集合 `envato` / `public_domain` / `redrawn`
+（真人一律不准 AI 生成，紅線 5）。
+
+**中央卡素材本身必須是橫式，且長寬比要接近卡片**。卡片是 `object-fit: cover`，
+比例不合就從短邊硬裁：同一張 rank 1 的素材是 1080×1920 直式，卡片 678×455
+（1.49:1），只有 38% 的原圖進得了畫面，棲架與飼料碗全被切在框外。attach 現在會擋
+直式素材，以及裁掉超過一半的極端比例（含過寬的全景）。先前只驗卡片 bbox 是橫的，
+沒有人驗餵進去的素材。
+
+2026-08-29 之前的 v2 receipt 仍然讀得進 gate（不追溯作廢已核准的成品），
+但新產的一律是 v3。
+
 ```json
 {
-  "schema": "nakama.long_thumbnail_composition.v2",
+  "schema": "nakama.long_thumbnail_composition.v3",
   "episode": "<packages.json episode exact value>",
   "cut_id": "<cut-id>",
   "package_rank": 1,
@@ -284,6 +299,12 @@ PNG hash，通過後自動把中央圖、measurement sidecar 與 receipt 寫到 
   "canvas_width": 1280,
   "canvas_height": 720,
   "center_visual_asset": "Attachments/packaging/<slug>/center-<cut-id>-r1.png",
+  "center_provenance": {
+    "supply": "envato",
+    "source": "<Envato 品項 URL／id；公版寫來源；重繪寫依據的資料出處>",
+    "query": "<找到它的搜尋詞；重繪寫重繪依據>",
+    "why": "<這張圖扣回哪一個 beat／quote——至少 12 字，不准寫「配合主題」>"
+  },
   "thumbnail_sha256": "<64 lowercase hex>",
   "center_visual_sha256": "<64 lowercase hex>",
   "measurement_sidecar": "Attachments/packaging/<slug>/<thumbnail>.composition.json",

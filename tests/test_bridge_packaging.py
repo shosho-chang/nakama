@@ -1969,3 +1969,68 @@ def test_description_generation_status_is_visible(client, monkeypatch, tmp_path)
     assert response.status_code == 200
     assert "正在產生 Description 草稿" in response.text
     assert "pollDescription" in response.text
+
+
+_PROVENANCE = {
+    "supply": "envato",
+    "source": "https://elements.envato.com/photo-placeholder-ABC123",
+    "query": "cockatiel on indoor play stand",
+    "why": "扣回 03:29 那個 beat：被照顧得好好的寵物就是「圈養」的畫面",
+}
+
+
+def _receipt_payload(vault, **overrides) -> dict:
+    _write_composition_receipt(vault)
+    receipt = (
+        vault
+        / "Attachments"
+        / "packaging"
+        / "20260723-xieboran"
+        / "composition_receipts"
+        / "punch-L1-r1.json"
+    )
+    payload = json.loads(receipt.read_text(encoding="utf-8"))
+    payload.update(overrides)
+    return payload
+
+
+def test_v3_receipt_carries_the_center_card_provenance(vault):
+    from thousand_sunny.routers.packaging import LongThumbnailCompositionReceiptV2
+
+    payload = _receipt_payload(
+        vault,
+        schema="nakama.long_thumbnail_composition.v3",
+        center_provenance=_PROVENANCE,
+    )
+    parsed = LongThumbnailCompositionReceiptV2.model_validate(payload)
+    assert parsed.center_provenance is not None
+    assert parsed.center_provenance.supply == "envato"
+
+
+def test_v3_receipt_without_provenance_is_rejected(vault):
+    """v3 就是為了這個欄位才存在——少了它就不是 v3。"""
+    from pydantic import ValidationError
+
+    from thousand_sunny.routers.packaging import LongThumbnailCompositionReceiptV2
+
+    payload = _receipt_payload(vault, schema="nakama.long_thumbnail_composition.v3")
+    with pytest.raises(ValidationError, match="center_provenance"):
+        LongThumbnailCompositionReceiptV2.model_validate(payload)
+
+
+def test_legacy_v2_receipt_still_gates_without_provenance(vault):
+    """2026-08-29 之前的 12 份 receipt 都是 v2，其中三份已核准——不追溯作廢。"""
+    from thousand_sunny.routers.packaging import LongThumbnailCompositionReceiptV2
+
+    parsed = LongThumbnailCompositionReceiptV2.model_validate(_receipt_payload(vault))
+    assert parsed.center_provenance is None
+
+
+def test_v2_receipt_carrying_provenance_is_rejected_as_hand_edited(vault):
+    from pydantic import ValidationError
+
+    from thousand_sunny.routers.packaging import LongThumbnailCompositionReceiptV2
+
+    payload = _receipt_payload(vault, center_provenance=_PROVENANCE)
+    with pytest.raises(ValidationError, match="schema 版號"):
+        LongThumbnailCompositionReceiptV2.model_validate(payload)
