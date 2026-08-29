@@ -273,7 +273,10 @@
       <div class="wk-zone">
         <div class="wk-days">
           {% for day in view.days %}
-            <details class="wk-day {{ 'is-today' if day.is_today }}" {{ 'open' if day.default_open }}>
+            {# data-date keys the stay-in-place restore below (修修 2026-08-29: 手動展開
+               的日卡在任何動作後被伺服器預設值蓋掉，畫面跳回週一). #}
+            <details class="wk-day {{ 'is-today' if day.is_today }}" data-date="{{ day.date }}"
+                     {{ 'open' if day.default_open }}>
               <summary class="wk-day-head">
                 <span class="wk-day-when">
                   <span class="wk-day-wd">{{ day.weekday_zh }}</span>
@@ -464,6 +467,14 @@
         .call(document.querySelectorAll('.wk-task-d[open]'), function (d) { return d.getAttribute('data-slug'); })
         .filter(Boolean);
     }
+    // 修修 (2026-08-29): which DAY cards are open. Their open state is server-rendered
+    // (today's card, else Monday), so without this a 排入 / 打勾 fired inside a manually
+    // opened card collapsed it and re-opened Monday — the view jumped away mid-edit.
+    function openDays() {
+      return Array.prototype.map
+        .call(document.querySelectorAll('.wk-day[open]'), function (d) { return d.getAttribute('data-date'); })
+        .filter(Boolean);
+    }
     // save state on any plan-edit OR inline-rename submit (capture so it runs before
     // navigation) — the rename form lives in the row <summary>, outside .wk-plan-edit,
     // so without this a rename would lose the tab/scroll and the view would jump (v3-I.4).
@@ -477,20 +488,30 @@
       try {
         sessionStorage.setItem('wk-tab', activeTab() || '');
         sessionStorage.setItem('wk-open', JSON.stringify(openSlugs()));
+        sessionStorage.setItem('wk-days', JSON.stringify(openDays()));
         sessionStorage.setItem('wk-scroll', String(window.scrollY));
       } catch (_) { /* sessionStorage unavailable — fall back to the #anchor only */ }
     }, true);
 
     // restore on load (one-shot), then honour a #task-<slug> anchor
     (function restore() {
-      var tab, open, scroll;
+      var tab, open, days, scroll;
       try {
         tab = sessionStorage.getItem('wk-tab');
         open = JSON.parse(sessionStorage.getItem('wk-open') || '[]');
+        days = JSON.parse(sessionStorage.getItem('wk-days') || 'null');
         scroll = sessionStorage.getItem('wk-scroll');
-        ['wk-tab', 'wk-open', 'wk-scroll'].forEach(function (k) { sessionStorage.removeItem(k); });
+        ['wk-tab', 'wk-open', 'wk-days', 'wk-scroll'].forEach(function (k) { sessionStorage.removeItem(k); });
       } catch (_) { open = []; }
       if (tab) setTab(tab);
+      // 修修 (2026-08-29): re-apply which day cards were open, overriding the
+      // server default (today, else Monday) — null means "no saved state", i.e. a
+      // plain page load, where the server default is exactly what we want.
+      if (days) {
+        document.querySelectorAll('.wk-day').forEach(function (d) {
+          d.open = days.indexOf(d.getAttribute('data-date')) !== -1;
+        });
+      }
       (open || []).forEach(function (slug) {
         document.querySelectorAll('.wk-task-d[data-slug="' + (window.CSS && CSS.escape ? CSS.escape(slug) : slug) + '"]')
           .forEach(function (d) { d.open = true; });

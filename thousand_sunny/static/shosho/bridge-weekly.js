@@ -81,7 +81,7 @@
     // A ?focus redirect (after 新增任務 / 重新命名) must win over the stay-in-place
     // restore() — clear its saved tab/open/scroll so it can't switch the pane back and
     // hide the row we're about to focus.
-    try { ['wk-tab', 'wk-open', 'wk-scroll'].forEach(function (k) { sessionStorage.removeItem(k); }); } catch (_) { /* no sessionStorage */ }
+    try { ['wk-tab', 'wk-open', 'wk-days', 'wk-scroll'].forEach(function (k) { sessionStorage.removeItem(k); }); } catch (_) { /* no sessionStorage */ }
     var sel = '.wk-task-d[data-slug="' + (window.CSS && CSS.escape ? CSS.escape(focus) : focus) + '"]';
     var rows = document.querySelectorAll(sel);
     if (!rows.length) return;
