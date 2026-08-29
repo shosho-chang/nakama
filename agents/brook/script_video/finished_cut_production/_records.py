@@ -110,7 +110,14 @@ def _mint_projected_component(
     asset_ref: str | None,
 ) -> ProjectedComponent:
     if not _is_active_projection(semantic_kind, implementation_kind, lane):
-        raise ValueError("retired or unsupported component projection")
+        # Name the projection.  A bare "retired or unsupported" over three free
+        # strings leaves the reader with no way to tell which lane was retired
+        # or which component carried it.
+        raise ValueError(
+            "retired or unsupported component projection: "
+            f"{component_id} is semantic_kind={semantic_kind!r} "
+            f"implementation_kind={implementation_kind!r} lane={lane!r}"
+        )
     return ProjectedComponent(
         _authority=_PROJECTED_COMPONENT_AUTHORITY,
         component_id=component_id,

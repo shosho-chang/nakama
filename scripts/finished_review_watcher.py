@@ -197,7 +197,9 @@ def _atomic_json(path: Path, payload: dict[str, object]) -> None:
     os.replace(temporary_path, path)
 
 
-def pending_revision_jobs(episodes_root: Path) -> list[dict[str, object]]:
+def pending_revision_jobs(
+    episodes_root: Path, *, statuses: frozenset[str] = _ACTIVE_STATUSES
+) -> list[dict[str, object]]:
     """Return only active v3 event revisions from each episode's exact feedback file."""
 
     root = Path(episodes_root).resolve()
@@ -219,7 +221,7 @@ def pending_revision_jobs(episodes_root: Path) -> list[dict[str, object]]:
             jobs = revision.get("revision_jobs", [])
             for job_index, raw_job in enumerate(jobs):
                 job = _validate_job(raw_job, episode_id=episode_id)
-                if job["status"] not in _ACTIVE_STATUSES:
+                if job["status"] not in statuses:
                     continue
                 pending.append(
                     {
@@ -366,6 +368,42 @@ def _durable_failure(
         },
         required_status=required_status,
     )
+
+
+def recover_stalled_revisions(episodes_root: Path) -> list[str]:
+    """Let a revision that ran out of retries be registered again.
+
+    A stalled revision stops at ``needs_review`` and nothing can move it:
+    ``request_correction`` refuses revision runs outright, the watcher only picks
+    up queued work, and the once-only registration claim means re-saving the same
+    feedback just re-attaches to the same dead row — which is why the reviewer's
+    second save changed nothing.
+
+    Recovery has to do both halves together, or it does nothing: retire the claim
+    that guarded the dead registration *and* put the job back in the queue.  The
+    claim is renamed rather than removed, so why the retry was allowed stays on
+    disk.
+    """
+    recovered: list[str] = []
+    for work in pending_revision_jobs(episodes_root, statuses=frozenset({"needs_review"})):
+        request_id = str(work["request_id"])
+        digest = request_id.removeprefix("finished-revision:")
+        claim = Path(work["feedback_path"]).parent / "revision-claims-v3" / f"{digest}.json"
+        if claim.is_file():
+            claim.rename(claim.with_suffix(f".superseded-{_now().replace(':', '')}.json"))
+        _update_job(
+            work,
+            {
+                "status": "queued",
+                "command_id": None,
+                "production_state": None,
+                "reason_code": None,
+                "error": None,
+            },
+            required_status="needs_review",
+        )
+        recovered.append(request_id)
+    return recovered
 
 
 def run_revision_job(
@@ -531,7 +569,15 @@ def main(
     )
     parser.add_argument("--interval", type=float, default=10.0)
     parser.add_argument("--once", action="store_true")
+    parser.add_argument(
+        "--recover-stalled",
+        action="store_true",
+        help="讓停在 needs_review 的修訂可以重新註冊（退休舊 claim ＋ 放回佇列）",
+    )
     args = parser.parse_args(argv)
+    if args.recover_stalled:
+        for request_id in recover_stalled_revisions(args.episodes_root):
+            print(f"recovered {request_id}")
     if args.interval <= 0:
         parser.error("--interval must be positive")
 
