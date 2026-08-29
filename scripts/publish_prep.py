@@ -123,7 +123,7 @@ def _pick_timeline(project, episode_dir: Path, cut: dict):
     timeline_map = load_timeline_map(episode_dir)
     if timeline_map is None:
         label = timeline_label(cut)
-        return _find_timeline(project, label), label
+        return _find_timeline(project, label), label, None
 
     try:
         target = resolve_target(timeline_map, cut["id"])
@@ -141,7 +141,7 @@ def _pick_timeline(project, episode_dir: Path, cut: dict):
         target.release_id,
         target.expected_duration_sec,
     )
-    return timeline, target.timeline
+    return timeline, target.timeline, target.release_id
 
 
 def _render_master(
@@ -280,7 +280,7 @@ def _probe(path: Path) -> tuple[float, int]:
 
 def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
     """單支 cut：render → （短片燒字幕）→ exports/<cut_id>.mp4。"""
-    timeline, label = _pick_timeline(project, episode_dir, cut)
+    timeline, label, release_id = _pick_timeline(project, episode_dir, cut)
     project.SetCurrentTimeline(timeline)
     out_dir = episode_dir / EXPORTS_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -314,6 +314,9 @@ def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
         "file_bytes": size,
         "cc_srt": str(srt_path) if srt_path else None,
         "timeline": label,
+        # 這支成品是哪一版 Release 的內容。amendment 重封 Release 時片長不變，
+        # 長度護欄看不出差別；沒有這個欄位，下一次核准會直接沿用舊畫面。
+        "release_id": release_id,
     }
 
 

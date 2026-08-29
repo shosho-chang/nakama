@@ -28,6 +28,7 @@ from agents.brook.script_video.finished_cut_production import (
     FinishedCutInspection,
     build_current_release_reader,
 )
+from agents.usopp.publish_timeline import export_matches_current_release, packaging_cut_id
 from scripts.packaging_manifest import load_manifest, stage_parallel_jobs
 from shared.background_job import atomic_job_write, job_expired, load_job, new_job
 from shared.config import get_db_path, get_vault_path
@@ -1028,7 +1029,11 @@ def _start_publish_prep(episode_dir: Path, cut_id: str) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     receipt = episode_dir / "highlights" / "exports" / f".publish_prep_{cut_id}.json"
     current = _publish_prep_state(episode_dir, cut_id)
-    if current and current.get("status") == "rendered":
+    if (
+        current
+        and current.get("status") == "rendered"
+        and export_matches_current_release(episode_dir, cut_id, current)
+    ):
         return
     if running is not None and running.poll() is None:
         return
@@ -1296,10 +1301,14 @@ async def finished_review_save(
     if submit_action == "approve_cut":
         if approved_episode_dir is None:  # pragma: no cover - guarded by submit_action branch
             raise RuntimeError("approved episode directory was not resolved")
-        _start_publish_prep(approved_episode_dir, selected_cut_id)
+        # 成品審核講 Release 的 cut id，publish_prep 與 packaging 板講 winners
+        # 的 cut id。不翻譯就是 2026-08-29 那兩個安靜的失敗：render 立刻死在
+        # 「不在 winners.json」，而修修只看得到 packaging 板回的 cut not found。
+        publish_cut_id = packaging_cut_id(approved_episode_dir, selected_cut_id)
+        _start_publish_prep(approved_episode_dir, publish_cut_id)
         return RedirectResponse(
             f"/bridge/packaging/{quote(packaging_episode or '', safe='')}?cut="
-            f"{quote(selected_cut_id, safe='')}",
+            f"{quote(publish_cut_id, safe='')}",
             status_code=303,
         )
     suffix = "approved=1" if submit_action == "approve_all" else "saved=1"

@@ -13,7 +13,9 @@ from agents.usopp.publish_timeline import (  # noqa: E402
     SCHEMA,
     PublishTimelineError,
     canonical_timeline_from_transactions,
+    export_matches_current_release,
     load_timeline_map,
+    packaging_cut_id,
     resolve_target,
     verify_duration,
 )
@@ -390,3 +392,47 @@ def test_watcher_refuses_to_start_a_revision_without_a_binding(tmp_path):
                 "episodes_root": str(tmp_path),
             }
         )
+
+
+def test_release_cut_id_translates_back_to_the_publish_line_id(tmp_path):
+    """成品審核講 Release 的 id，publish_prep 與 packaging 板講 winners 的 id。"""
+    _write_map(tmp_path, MAP)
+    assert packaging_cut_id(tmp_path, "long3-fresh-20260828-r4") == "punch-L04"
+
+
+def test_unknown_and_mapless_cut_ids_pass_through_unchanged(tmp_path):
+    """多數 cut 兩邊同名，舊集數根本沒有對應表——都必須維持既有行為。"""
+    assert packaging_cut_id(tmp_path, "value-L01") == "value-L01"
+    _write_map(tmp_path, MAP)
+    assert packaging_cut_id(tmp_path, "value-L01") == "value-L01"
+
+
+def test_export_from_the_current_release_is_reused(tmp_path):
+    _write_map(tmp_path, MAP)
+    receipt = {
+        "status": "rendered",
+        "cuts": [{"cut_id": "punch-L04", "release_id": "release-af65a1d7a2ac611eb78be493"}],
+    }
+    assert export_matches_current_release(tmp_path, "punch-L04", receipt) is True
+
+
+def test_export_from_a_superseded_release_is_not_reused(tmp_path):
+    """amendment 重封 Release 時片長不變，長度護欄看不出差別——只能靠 release_id。"""
+    _write_map(tmp_path, MAP)
+    receipt = {
+        "status": "rendered",
+        "cuts": [{"cut_id": "punch-L04", "release_id": "release-37058c0dbeed4b6cab280975"}],
+    }
+    assert export_matches_current_release(tmp_path, "punch-L04", receipt) is False
+
+
+def test_receipt_without_release_id_is_treated_as_stale(tmp_path):
+    """寧可多 render 一次，也不要把來歷不明的舊成品當成現行 Release。"""
+    _write_map(tmp_path, MAP)
+    receipt = {"status": "rendered", "cuts": [{"cut_id": "punch-L04"}]}
+    assert export_matches_current_release(tmp_path, "punch-L04", receipt) is False
+
+
+def test_episodes_without_a_map_keep_reusing_their_exports(tmp_path):
+    receipt = {"status": "rendered", "cuts": [{"cut_id": "punch-L04"}]}
+    assert export_matches_current_release(tmp_path, "punch-L04", receipt) is True

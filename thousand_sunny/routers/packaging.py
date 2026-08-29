@@ -35,6 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from starlette.requests import Request
 
 from scripts.packaging_manifest import load_manifest
+from agents.usopp.publish_timeline import export_matches_current_release
 from shared.background_job import atomic_job_write, job_expired, load_job, new_job
 from shared.config import get_db_path, get_vault_path
 from shared.log import get_logger
@@ -883,7 +884,11 @@ def _ensure_publish_prep(episode: str, cut_id: str) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     receipt = episode_dir / "highlights" / "exports" / f".publish_prep_{cut_id}.json"
     current = _publish_prep_state(episode_dir, cut_id)
-    if current and current.get("status") == "rendered":
+    if (
+        current
+        and current.get("status") == "rendered"
+        and export_matches_current_release(episode_dir, cut_id, current)
+    ):
         return
     if running is not None and running.poll() is None:
         return
@@ -955,6 +960,13 @@ def _release_from_receipt(episode: str, cut_id: str) -> dict | None:
         return None
     if payload.get("status") != "rendered" or payload.get("episode") != episode:
         return None
+    if not export_matches_current_release(episode_dir, cut_id, payload):
+        # 這份 receipt 出的是別版 Release 的畫面。登錄它等於把舊內容掛上已核准的
+        # 標題與縮圖推進上傳流程——2026-08-29 amendment 重封 long3 時就差這一道。
+        raise HTTPException(
+            status_code=409,
+            detail=f"{cut_id} 的成品不是現行 Release 的內容，請重新 render",
+        )
     rows = [row for row in payload.get("cuts", []) if row.get("cut_id") == cut_id]
     if len(rows) != 1:
         raise HTTPException(status_code=409, detail="publish_prep receipt 缺少唯一 cut")

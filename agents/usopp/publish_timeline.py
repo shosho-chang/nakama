@@ -178,3 +178,49 @@ def release_subtitle(episode_dir: Path, cut_id: str) -> Path | None:
         return None
     path = episode_dir / cut.subtitle.reference
     return path if path.is_file() else None
+
+
+def packaging_cut_id(episode_dir: Path, release_cut_id: str) -> str:
+    """Release 的 cut id → 發布線（winners／packages）的 cut id。
+
+    兩邊是不同的識別空間：成品審核講 Release 的 `long3-fresh-20260828-r4`，
+    packaging 與 `winners.json` 講 `punch-L04`。2026-08-29 修修在成品審核按下
+    「核准這支」時兩邊都撞牆——publish_prep 收到 Release 的 id，log 只留下一行
+    `--cut long3-fresh-20260828-r4 不在 winners.json`；redirect 帶著同一個 id 去
+    packaging 板，回 `cut not found`。核准其實已經寫進 audit，只是後面兩步都在對
+    一個它們不認識的名字說話。
+
+    對應表的 `release_cut_id` 本來就是這個 join，這裡只是把它反過來查。沒有對應表
+    （舊集數）或查不到（多數 cut 兩邊同名）就原樣回傳，維持既有行為。
+    """
+    timeline_map = load_timeline_map(Path(episode_dir))
+    if timeline_map is None:
+        return release_cut_id
+    for cut_id, entry in (timeline_map.get("cuts") or {}).items():
+        if str(entry.get("release_cut_id") or cut_id) == release_cut_id:
+            return str(cut_id)
+    return release_cut_id
+
+
+def export_matches_current_release(episode_dir: Path, cut_id: str, receipt: dict | None) -> bool:
+    """已 render 的成品是不是**現在這個** Release 的內容。
+
+    amendment 會重封 Release 而不改變片長（把一支 b-roll 移位、拿掉另一支，長度
+    分毫不差），所以長度護欄看不出差別，而 publish_prep 的 receipt 只記得「render
+    過了」。2026-08-29 long3 就是這樣：成品 15:19 出的，Release 19:07 才重封，
+    再按核准會直接跳過 render，把舊畫面當成新成品交出去。
+
+    receipt 沒有 `release_id` 代表它是這個欄位之前產的——這種一律當**不是**現在
+    這版，寧可多 render 一次，也不要安靜發錯內容。舊集數（沒有對應表）不受影響。
+    """
+    timeline_map = load_timeline_map(Path(episode_dir))
+    if timeline_map is None:
+        return True
+    try:
+        target = resolve_target(timeline_map, cut_id)
+    except PublishTimelineError:
+        return True
+    rows = [row for row in (receipt or {}).get("cuts") or [] if row.get("cut_id") == cut_id]
+    if len(rows) != 1:
+        return False
+    return str(rows[0].get("release_id") or "") == target.release_id
