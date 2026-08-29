@@ -889,3 +889,38 @@ def test_find_packaging_dir_matches_episode_name_not_vault_slug(tmp_path, monkey
         find_packaging_dir("20260805-linzhichen", episode_name="20260805 林之晨")
         == packaging
     )
+
+
+def test_watcher_records_which_cuts_it_is_covering():
+    """沒有心跳，Bridge 就分不出「排隊中」和「根本沒人在聽」。"""
+    import scripts.render_watcher as watcher
+
+    state = {}
+    watcher.record_heartbeat(
+        state,
+        episode_slug="20260805-linzhichen",
+        cut_id="value-L02",
+        package_rank=None,
+        now="2026-08-29T14:00:00+00:00",
+    )
+
+    row = state["_watchers"]["20260805-linzhichen/value-L02/r*"]
+    assert row["cut_id"] == "value-L02"
+    assert row["seen_at"] == "2026-08-29T14:00:00+00:00"
+    assert row["pid"] > 0
+
+
+def test_a_second_watcher_does_not_erase_the_first():
+    import scripts.render_watcher as watcher
+
+    state = {}
+    for cut in ("value-L02", "punch-L04"):
+        watcher.record_heartbeat(
+            state,
+            episode_slug="20260805-linzhichen",
+            cut_id=cut,
+            package_rank=None,
+            now="2026-08-29T14:00:00+00:00",
+        )
+
+    assert len(state["_watchers"]) == 2

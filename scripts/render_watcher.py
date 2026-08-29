@@ -110,6 +110,27 @@ def save_state(path: Path, state: dict) -> None:
     temp.replace(path)
 
 
+# 心跳：watcher 每一圈寫一次「我在看誰、我還活著」。沒有它，Bridge 分不出
+# 「有人在等著做」和「根本沒人在聽」——2026-08-29 修修連續三次對著永遠不動的
+# Queued 等，三次都是後者（跑著的 watcher 綁死在別的 cut 上）。
+WATCHER_HEARTBEAT_KEY = "_watchers"
+
+
+def record_heartbeat(state: dict, *, episode_slug: str | None, cut_id: str | None,
+                     package_rank: int | None, now: str) -> dict:
+    """把這支 watcher 的守備範圍寫進 state。"""
+    scope = {
+        "episode_slug": episode_slug,
+        "cut_id": cut_id,
+        "package_rank": package_rank,
+    }
+    key = f"{episode_slug or '*'}/{cut_id or '*'}/r{package_rank if package_rank else '*'}"
+    watchers = dict(state.get(WATCHER_HEARTBEAT_KEY) or {})
+    watchers[key] = {**scope, "seen_at": now, "pid": os.getpid()}
+    state[WATCHER_HEARTBEAT_KEY] = watchers
+    return state
+
+
 def pending_requests(vault: Path, state: dict) -> list[dict]:
     """回傳需要 render 的配方（requested_at 比 state 記錄的新）。"""
     out: list[dict] = []
@@ -1073,6 +1094,14 @@ def main() -> int:
 
     while True:
         state = load_state(args.state)
+        record_heartbeat(
+            state,
+            episode_slug=args.episode_slug,
+            cut_id=args.cut_id,
+            package_rank=args.package_rank,
+            now=datetime.now(timezone.utc).isoformat(),
+        )
+        save_state(args.state, state)
         if not args.render_requests_only:
             for revision in pending_revision_jobs(vault):
                 run_revision_job(revision, log_path=args.log)

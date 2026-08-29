@@ -994,6 +994,11 @@
     position: relative; height: 4px; overflow: hidden;
     background: var(--sho-line); border-radius: var(--sho-r-pill);
   }
+  /* 沒人在聽的時候不准動：會動的進度條就是在說「正在處理」。 */
+  .pkg-render-progress[data-attended="false"] .pkg-render-progress-track::after {
+    animation: none; background: var(--sho-warn, var(--sho-muted)); width: 100%;
+  }
+  .pkg-render-progress[data-attended="false"] .pkg-render-progress-state { color: var(--sho-warn, var(--sho-muted)); }
   .pkg-render-progress[data-status="queued"] .pkg-render-progress-track::after,
   .pkg-render-progress[data-status="running"] .pkg-render-progress-track::after {
     content: ""; position: absolute; inset-block: 0; width: 38%;
@@ -1432,10 +1437,16 @@
 
   function showRenderState(panel, payload) {
     panel.dataset.status = payload.status;
+    // attended=false → 配方存好了但沒有 watcher 在看，永遠不會被撿走。標成
+    // NO WATCHER 並停掉動畫，不要讓一條會動的條假裝有人在處理。
+    const attended = payload.attended !== false;
+    panel.dataset.attended = String(attended);
     panel.hidden = false;
-    panel.querySelector(".pkg-render-progress-state").textContent = {
-      queued: "QUEUED", running: "RUNNING", done: "DONE", failed: "FAILED",
-    }[payload.status] || "UNKNOWN";
+    panel.querySelector(".pkg-render-progress-state").textContent = (
+      attended
+        ? { queued: "QUEUED", running: "RUNNING", done: "DONE", failed: "FAILED" }[payload.status]
+        : "NO WATCHER"
+    ) || "UNKNOWN";
     const message = panel.querySelector(".pkg-render-progress-message");
     message.textContent = payload.error ? `${payload.message}：${payload.error}` : payload.message;
     const bar = panel.querySelector('[role="progressbar"]');

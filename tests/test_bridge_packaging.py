@@ -2310,3 +2310,47 @@ def test_the_preview_does_not_cap_people_where_the_composition_does_not():
         block = (root / name / "index.html").read_text(encoding="utf-8")
         start = block.index("#host, #guest {")
         assert "max-width" not in block[start : start + 200], name
+
+
+def _heartbeat_state(**over):
+    from datetime import datetime, timezone
+
+    row = {
+        "episode_slug": "20260723-xieboran",
+        "cut_id": "punch-L1",
+        "package_rank": None,
+        "seen_at": datetime.now(timezone.utc).isoformat(),
+        "pid": 123,
+    }
+    row.update(over)
+    return {"_watchers": {"k": row}}
+
+
+def test_a_live_watcher_covering_the_cut_is_recognised():
+    from thousand_sunny.routers.packaging import _watcher_covering
+
+    assert _watcher_covering(_heartbeat_state(), "20260723-xieboran", "punch-L1", 1) is not None
+
+
+def test_a_watcher_bound_to_another_cut_does_not_count():
+    """2026-08-29 的實際情況：跑著的 watcher 綁在別的 cut，這支永遠不會被撿走。"""
+    from thousand_sunny.routers.packaging import _watcher_covering
+
+    state = _heartbeat_state(cut_id="value-L01")
+    assert _watcher_covering(state, "20260723-xieboran", "punch-L1", 1) is None
+
+
+def test_a_watcher_that_stopped_reporting_does_not_count():
+    from datetime import datetime, timedelta, timezone
+
+    from thousand_sunny.routers.packaging import _watcher_covering
+
+    stale = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+    assert _watcher_covering(_heartbeat_state(seen_at=stale), "20260723-xieboran", "punch-L1", 1) is None
+
+
+def test_an_unscoped_watcher_covers_everything():
+    from thousand_sunny.routers.packaging import _watcher_covering
+
+    state = _heartbeat_state(episode_slug=None, cut_id=None)
+    assert _watcher_covering(state, "20260723-xieboran", "punch-L1", 1) is not None

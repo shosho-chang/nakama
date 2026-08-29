@@ -1196,6 +1196,42 @@ async def packaging_center_visual(
     return FileResponse(path)
 
 
+_WATCHER_STALE_SEC = 120
+
+
+def _watcher_covering(
+    state: dict, episode_slug: str, cut_id: str, package_rank: int
+) -> str | None:
+    """有沒有一支還活著的 watcher 守備這個 package？回它最後回報的時間，或 None。
+
+    watcher 每一圈把守備範圍寫進 state（`_watchers`）；`None` 的欄位代表不設限。
+    超過 _WATCHER_STALE_SEC 沒回報就當它不在了——寧可說「沒人在聽」也不要讓修修
+    對著一條永遠不動的進度條等。
+    """
+    watchers = state.get("_watchers")
+    if not isinstance(watchers, dict):
+        return None
+    now = datetime.now(timezone.utc)
+    for row in watchers.values():
+        if not isinstance(row, dict):
+            continue
+        if row.get("episode_slug") not in (None, episode_slug):
+            continue
+        if row.get("cut_id") not in (None, cut_id):
+            continue
+        if row.get("package_rank") not in (None, package_rank):
+            continue
+        try:
+            seen = datetime.fromisoformat(str(row.get("seen_at")))
+        except (TypeError, ValueError):
+            continue
+        if seen.tzinfo is None:
+            seen = seen.replace(tzinfo=timezone.utc)
+        if (now - seen).total_seconds() <= _WATCHER_STALE_SEC:
+            return seen.astimezone().strftime("%H:%M:%S")
+    return None
+
+
 def _center_candidates(ep_dir: Path, cut_id: str) -> CenterCandidatesFileV1 | None:
     """這支 cut 的中央卡候選池——gate 上那排可以點的圖庫縮圖。
 
@@ -1294,7 +1330,19 @@ async def packaging_render_status(
     row = state.get(key) if isinstance(state.get(key), dict) else None
     if row is None or not _same_requested_at(str(row.get("requested_at", "")), expected):
         status = "queued"
-        message = "配方已儲存，等待桌面 render"
+        # 「排隊中」和「根本沒人在聽」在畫面上長得一模一樣——一條不停跳動的進度條。
+        # 修修 2026-08-29 連續三次對著它等，三次都是後者：跑著的 watcher 綁死在
+        # 別的 cut 上，這支永遠不會被撿走。動畫還讓人以為正在處理。
+        watching = _watcher_covering(state, episode_slug, cut_id, package_rank)
+        attended = watching is not None
+        if watching is None:
+            message = (
+                "沒有 render watcher 在看這支——配方存好了，但不會有人做。"
+                "請起一支：scripts/render_watcher.py --render-requests-only "
+                f"--episode-slug {episode_slug} --cut-id {cut_id}"
+            )
+        else:
+            message = f"配方已儲存，等待桌面 render（watcher 最後回報 {watching}）"
         error = None
     else:
         raw_status = row.get("status")
@@ -1308,6 +1356,7 @@ async def packaging_render_status(
             "failed": "封面 render 失敗",
         }[status]
         error = str(row.get("last_error") or "")[:500] or None
+        attended = True
 
     thumbnail_url = None
     if status == "done":
@@ -1320,6 +1369,9 @@ async def packaging_render_status(
     return JSONResponse(
         {
             "status": status,
+            # 有沒有人在做。false 時前端要停掉進度條動畫——會動的條就是在說
+            # 「正在處理」，而那時候其實沒有任何人在處理。
+            "attended": attended,
             "message": message,
             "error": error,
             "episode_slug": episode_slug,
