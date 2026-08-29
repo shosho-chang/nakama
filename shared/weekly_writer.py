@@ -359,8 +359,15 @@ def set_task_done(vault_root: Path, task_slug: str, done: bool) -> str:
 
     Marking done sets ``status: done``; un-marking sets ``status: to-do`` and
     clears a truthy ``✅`` flag so the indexer (``done = status=='done' or ✅``)
-    agrees. Only ``status`` / ``✅`` are touched — plan[]/timeEntries/scheduled
-    and the body are preserved. Returns the new status. Raises
+    agrees.
+
+    The plan[] day slices are mirrored in the same write (修修 2026-08-29): this is
+    the WHOLE-task checkbox, so finishing a task finishes every day it was scheduled
+    on, and re-opening it re-opens them — otherwise the daily cards and the task list
+    disagree about the same task. (The per-day checkbox is the other direction:
+    ``set_plan_entry_done`` rolls slices up only when they are ALL done.)
+
+    timeEntries / scheduled / the body are preserved. Returns the new status. Raises
     :class:`TaskNotFoundError` if the file is gone."""
     path = _task_path(vault_root, task_slug)
     if not path.exists():
@@ -375,6 +382,16 @@ def set_task_done(vault_root: Path, task_slug: str, done: bool) -> str:
             fm["status"] = "to-do"
         if fm.get("✅") is True:
             fm["✅"] = False
+    plan = fm.get("plan")
+    if isinstance(plan, list):
+        for e in plan:
+            if not isinstance(e, dict):
+                continue
+            if done:
+                e["done"] = True
+            else:
+                e.pop("done", None)
+        fm["plan"] = plan
     _write_task(path, fm, body)
     return str(fm.get("status") or "to-do")
 
@@ -415,26 +432,44 @@ def set_task_meta(
 def set_plan_entry_done(vault_root: Path, task_slug: str, day: date, done: bool) -> str:
     """Toggle the DAY's plan[] entry done flag (v3-I follow-up, 修修).
 
-    The daily-bullet checkbox means 'that day's work on this task is done' — distinct
-    from the task-list checkbox (``set_task_done``), which marks the WHOLE task done.
-    Only the matching plan[] entry's ``done`` is touched; task ``status`` is untouched,
-    so the task stays open while a day's slice is crossed out. Returns the task slug.
-    Raises :class:`TaskNotFoundError` if the file is gone."""
+    The daily-bullet checkbox means 'that day's work on this task is done'. The day
+    slice stays the authoritative per-day record, but the TASK-level status is rolled
+    up in the same write: a task whose every plan[] entry is done IS done, and
+    un-ticking any day re-opens it (修修 2026-08-29: 日卡打勾劃掉了、任務列表卻還開著
+    — 兩邊各記各的 state，看起來就是沒同步).
+
+    A multi-day task therefore stays open until the LAST day is ticked — ticking one
+    slice of three still means two days of work remain. Only ``plan`` / ``status`` /
+    ``✅`` are touched; timeEntries / scheduled / the body are preserved. Returns the
+    task slug. Raises :class:`TaskNotFoundError` if the file is gone."""
     path = _task_path(vault_root, task_slug)
     if not path.exists():
         raise TaskNotFoundError(f"task not found: {path}")
     fm, body = _read_task(path)
     plan = fm.get("plan")
+    entries = [e for e in plan if isinstance(e, dict)] if isinstance(plan, list) else []
     if isinstance(plan, list):
         iso = day.isoformat()
-        for e in plan:
-            if isinstance(e, dict) and str(e.get("date"))[:10] == iso:
+        for e in entries:
+            if str(e.get("date"))[:10] == iso:
                 if done:
                     e["done"] = True
                 else:
                     e.pop("done", None)
                 break
         fm["plan"] = plan
+    # roll the day slices up to the task's own done state (see docstring)
+    if entries:
+        all_done = all(bool(e.get("done")) for e in entries)
+        if all_done:
+            fm["status"] = "done"
+            if fm.get("✅") is not None:
+                fm["✅"] = True
+        else:
+            if str(fm.get("status") or "") == "done":
+                fm["status"] = "to-do"
+            if fm.get("✅") is True:
+                fm["✅"] = False
     _write_task(path, fm, body)
     return task_slug
 

@@ -1884,33 +1884,100 @@ class TestRowChips:
 
 
 class TestDayDone:
-    """v3-I follow-up (修修): the daily-bullet checkbox marks the DAY's plan entry done,
-    NOT the whole task — distinct from the task-list /done checkbox."""
+    """The daily-bullet checkbox marks the DAY's plan entry done; 修修 2026-08-29: the
+    task-level state is rolled up in the same write, so the daily card and the task
+    list never disagree (日卡劃掉了、任務列表卻還開著 就是這個 bug)."""
 
-    def test_day_done_marks_plan_entry_only(self, client, tmp_path):
-        def _fm():
-            raw = _task_path(tmp_path).read_text(encoding="utf-8")
-            return yaml.safe_load(raw.split("---", 2)[1])
+    def _fm(self, tmp_path, name="測試任務.md"):
+        raw = (tmp_path / "TaskNotes" / "Tasks" / name).read_text(encoding="utf-8")
+        return yaml.safe_load(raw.split("---", 2)[1])
 
-        # SAMPLE_TASK has a plan entry on 2026-06-03
+    def _entry(self, fm, iso):
+        return next(e for e in fm["plan"] if str(e["date"])[:10] == iso)
+
+    def test_day_done_on_only_entry_also_finishes_task(self, client, tmp_path):
+        # SAMPLE_TASK has ONE plan entry (2026-06-03) → that day IS the whole task
         r = client.post(
             "/bridge/weekly/task/測試任務/day-done",
             data={"entry_date": "2026-06-03", "done": "1", "week": WEEK_KEY},
             follow_redirects=False,
         )
         assert r.status_code == 303
-        fm = _fm()
-        assert fm["status"] == "to-do"  # task NOT marked done
-        entry = next(e for e in fm["plan"] if str(e["date"])[:10] == "2026-06-03")
-        assert entry.get("done") is True
-        # un-mark clears it
+        fm = self._fm(tmp_path)
+        assert self._entry(fm, "2026-06-03").get("done") is True
+        assert fm["status"] == "done"  # 修修: the task list must agree with the day card
+        # un-ticking the day re-opens the task
         client.post(
             "/bridge/weekly/task/測試任務/day-done",
             data={"entry_date": "2026-06-03", "done": "0", "week": WEEK_KEY},
             follow_redirects=False,
         )
-        entry = next(e for e in _fm()["plan"] if str(e["date"])[:10] == "2026-06-03")
-        assert not entry.get("done")
+        fm = self._fm(tmp_path)
+        assert not self._entry(fm, "2026-06-03").get("done")
+        assert fm["status"] == "to-do"
+
+    def test_multi_day_task_stays_open_until_last_day(self, client, tmp_path):
+        two_days = """---
+title: 測試任務
+status: to-do
+預估🍅: 6
+scheduled: 2026-06-03
+plan:
+  - date: 2026-06-03
+    pomodoros: 2
+  - date: 2026-06-04
+    pomodoros: 2
+timeEntries: []
+tags:
+  - task
+---
+
+任務內文（不可被改動）。
+"""
+        _task_path(tmp_path).write_text(two_days, encoding="utf-8")
+        client.post(
+            "/bridge/weekly/task/測試任務/day-done",
+            data={"entry_date": "2026-06-03", "done": "1", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        fm = self._fm(tmp_path)
+        assert self._entry(fm, "2026-06-03").get("done") is True
+        assert fm["status"] == "to-do"  # 06-04 still to do → task stays open
+        client.post(
+            "/bridge/weekly/task/測試任務/day-done",
+            data={"entry_date": "2026-06-04", "done": "1", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert self._fm(tmp_path)["status"] == "done"  # every day done → task done
+        # re-opening ANY day re-opens the task
+        client.post(
+            "/bridge/weekly/task/測試任務/day-done",
+            data={"entry_date": "2026-06-04", "done": "0", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        fm = self._fm(tmp_path)
+        assert fm["status"] == "to-do"
+        assert self._entry(fm, "2026-06-03").get("done") is True  # 06-03 keeps its tick
+
+    def test_task_done_checkbox_crosses_out_every_day(self, client, tmp_path):
+        """The other direction: ticking the WHOLE task in the list must cross the task
+        out on its daily cards too (otherwise the same desync, mirrored)."""
+        client.post(
+            "/bridge/weekly/task/測試任務/done",
+            data={"done": "1", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        fm = self._fm(tmp_path)
+        assert fm["status"] == "done"
+        assert self._entry(fm, "2026-06-03").get("done") is True
+        client.post(
+            "/bridge/weekly/task/測試任務/done",
+            data={"done": "0", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        fm = self._fm(tmp_path)
+        assert fm["status"] == "to-do"
+        assert not self._entry(fm, "2026-06-03").get("done")
 
 
 class TestTaskMeta:
