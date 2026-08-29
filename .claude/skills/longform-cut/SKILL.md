@@ -21,7 +21,15 @@ description: >
 （`FORMAT_*` 參數表：`short` 欄 = 已驗收 identity、`long` 欄 = 長片覆蓋），
 拆的是工作流程知識，不是 code——改 script 時兩線都要跑測試。
 
-## 新製作預設：Stage 5 Long Highlight orchestrator
+## ⛔ 已停用：Stage 5 Long Highlight orchestrator（ADR-065）
+
+> **本節描述的 ADR-065 orchestrator 已停用，不要照著跑。**
+> long 的生產唯一路線 = **ADR-066 Finished Cut Production**：
+> `scripts/run_finished_cut_production.py`（`register-approved-cut` / `advance` /
+> `request-revision` / `cutover`）。`AcceptedStage` 是唯一語意權威，
+> `state.json` 已降級為可重建的 view。
+>
+> 以下保留為歷史說明，供讀舊 receipt／舊 state 時對照，**不是操作指示**。
 
 新 long Highlight 不再要求操作人依序手跑下面所有 scripts。由
 `scripts/run_long_highlight_orchestrator.py` 維護單一可修正 state：
@@ -54,12 +62,12 @@ human winner gate 與 all-candidates-quarantined human-attention 是有意停點
 warning／局部修正；visual event 失敗只用 `retry-event --stage visual_fix --event-id <id>` 修該 event，
 不能整輪重跑。
 
-既有 Director/DP semantic JSON 可用 `adopt-existing` 匯入 mutable draft；usable rows 沿用，failed／
-missing rows 留 pending，未知的舊 metadata 忽略，匯入本身絕不觸發 Resolve。Director 已指定 fixed stock
-authority 時，DP 可以只交該一個可信 candidate，不必補無意義的 A/B/C。下方 scripts 與視覺語彙仍是
-orchestrator adapters 的實作知識，不再構成另一套外層 gates。
-若 winner 已由修修核准，使用 `adopt-winner --winner <json>`（可同時帶 `--director/--dp`）直接接續
-缺少的 downstream stages，不再開採或重跑 persona review。
+Director 已指定 fixed stock authority 時，DP 可以只交該一個可信 candidate，不必補無意義的
+A/B/C。下方 scripts 與視覺語彙仍是實作知識，不再構成另一套外層 gates。
+
+（原本此處的 `adopt-existing` / `adopt-winner` 匯入用法隨 ADR-065 orchestrator 一起停用。
+ADR-066 沒有「匯入既有 JSON」這個入口——既有成品要進 ADR-066 只能走 migration，
+新製作一律從 `register-approved-cut` 開始。）
 
 ### Long Highlight 的 section → 畫面契約（2026-08-28）
 

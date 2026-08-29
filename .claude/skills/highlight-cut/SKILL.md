@@ -83,11 +83,11 @@ ffprobe 得知；以及後續 chapter 沒有可靠的 cut-local/source/cue 時�
 猜章節位置。
 human winner gate 與 all-candidates-quarantined human-attention 是有意停點，不是重新跑 LLM 的理由。
 
-已有 Director／DP JSON 時，使用 `adopt-existing --director <json> --dp <json>` 匯入可用 event rows；
-failed／missing rows 留作 pending，未知的舊 metadata 不帶進新 state，也不執行 Resolve mutation。當
-Director 已固定 stock authority 時，DP 可只保留該一個可信候選，不必虛構 A/B/C。
-已有人工核准 winner 時用 `adopt-winner --winner <json>`；可在同一 command 加 `--director/--dp`，
-直接進 downstream，miner/reviewer 不會重跑。
+當 Director 已固定 stock authority 時，DP 可只保留該一個可信候選，不必虛構 A/B/C。
+
+> ⛔ **已停用（ADR-066）**：`adopt-existing` / `adopt-winner` 兩個匯入入口隨 ADR-065
+> orchestrator 一起停用。ADR-066 沒有「匯入既有 JSON 續跑」這條路——既有成品進 ADR-066
+> 只能走 migration，新製作一律從 `run_finished_cut_production.py register-approved-cut` 開始。
 
 ## 執行環境（v1 收斂裁決，修修 2026-07-27）
 
@@ -389,6 +389,10 @@ transition event 以 `transition_before=true` 為候選，不是硬性全收。D
 Contract涵蓋所有 content visuals：Stock／Hero／keyword／quote／chapter／card；結構性 badge／camera correction／guest namecard
 維持各自 deterministic contract。Bridge finished review只展示 fresh receipt
 lineage，不新增正常人類 gate。
+
+> ⛔ **已停用（ADR-066）**：`podcast_highlight_visual_orchestrator.py` 屬 ADR-065 revision-scoped
+> visual DAG，已被 Finished Cut Production 取代。long 的唯一生產路線是
+> `scripts/run_finished_cut_production.py`。下面的指令保留供讀舊 receipt 對照，不要執行。
 
 Codex production route的 exact command（base不帶 request；Save Draft/reject必帶 job內 immutable request）是：
 

@@ -78,6 +78,10 @@ revision-aware DAG：
     SEMANTIC-AUDIT.json      podcast-highlight-visual-semantic-audit-v1
 ```
 
+> ⛔ **已停用（ADR-066）**：`podcast_highlight_visual_orchestrator.py` 屬 ADR-065 revision-scoped
+> visual DAG，已被 Finished Cut Production 取代。long 的唯一生產路線是
+> `scripts/run_finished_cut_production.py`。下面的指令保留供讀舊 receipt 對照，不要執行。
+
 Production預設呼叫一次 trusted orchestrator；finished review revision必須傳 exact immutable request snapshot：
 
 ```powershell
