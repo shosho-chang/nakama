@@ -115,3 +115,41 @@ def canonical_timeline_from_transactions(
         name = canonical.get("name")
         return str(name) if name else None
     return None
+
+
+def release_chapters(episode_dir: Path, cut_id: str) -> list[tuple[float, str]]:
+    """YouTube 分章取自 Release 的滿版轉場卡——與成品同一個時間軸。
+
+    章節本來讀 `highlights/tighten/<cut>_broll.json`，那是 ADR-065 製作線的殘留：
+    20260805 的 value-L02 broll 最遠只到 326.7s，但成品是 563.7s，於是描述欄的
+    分章全部落在錯的位置（實際產出過 02:09/02:56/04:09/04:24/04:28，正確答案是
+    00:43/03:39/04:41/07:10）。Release 的 fullscreen_transition component 才是
+    跟成品同源的那份。
+
+    回空 list 代表「這集沒有可信的分章」——沒有分章好過錯的分章。
+    """
+    timeline_map = load_timeline_map(episode_dir)
+    if timeline_map is None:
+        return []
+    target = resolve_target(timeline_map, cut_id)
+
+    from agents.brook.script_video.finished_cut_production import build_current_release_reader
+
+    inspection = build_current_release_reader(episode_dir).inspect_current(Path(episode_dir).name)
+    cut = next(
+        (c for c in inspection.cuts if c.release_id == target.release_id),
+        None,
+    )
+    if cut is None:
+        raise PublishTimelineError(
+            f"{cut_id}: 對應表指的 Release {target.release_id} 不在 exact current——"
+            "分章來源不可信，先確認 pointer"
+        )
+    marks = sorted(
+        (float(c.t0), " ".join(str(c.display).split()))
+        for c in cut.components
+        if c.implementation_kind == "fullscreen_transition" and str(c.display).strip()
+    )
+    if len(marks) < 2:
+        return []
+    return [(0.0, "開場"), *marks]

@@ -125,3 +125,79 @@ def test_uncommitted_transaction_is_not_authority(tmp_path):
 
 def test_migrated_release_has_no_transaction_to_read(tmp_path):
     assert canonical_timeline_from_transactions(tmp_path / "nope", "any") is None
+
+
+def test_release_chapters_without_a_map_is_empty(tmp_path):
+    """沒有對應表就沒有 Release 權威——回空，由呼叫端決定要不要回退。"""
+    from agents.usopp.publish_timeline import release_chapters
+
+    assert release_chapters(tmp_path, "punch-L04") == []
+
+
+def test_resolve_chapters_prefers_release_over_stale_broll(tmp_path, monkeypatch):
+    """有對應表時，絕不回頭撿 broll——那是 ADR-065 的舊時間軸。"""
+    from agents.usopp import video_description as vd
+
+    _write_map(tmp_path, MAP)
+    broll = tmp_path / "highlights" / "tighten" / "punch-L04_broll.json"
+    broll.parent.mkdir(parents=True, exist_ok=True)
+    broll.write_text(
+        json.dumps(
+            {
+                "items": [
+                    {"t0": 129.2, "comp": "transition_title", "vars": {"title": "舊時間軸 A"}},
+                    {"t0": 176.0, "comp": "transition_title", "vars": {"title": "舊時間軸 B"}},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "agents.usopp.publish_timeline.release_chapters",
+        lambda episode_dir, cut_id: [(0.0, "開場"), (47.0, "來自 Release")],
+    )
+    assert vd.resolve_chapters(tmp_path, "punch-L04") == [(0.0, "開場"), (47.0, "來自 Release")]
+
+
+def test_resolve_chapters_with_a_map_never_falls_back(tmp_path, monkeypatch):
+    """Release 說沒有分章，就是沒有分章——沒有分章好過錯的分章。"""
+    from agents.usopp import video_description as vd
+
+    _write_map(tmp_path, MAP)
+    broll = tmp_path / "highlights" / "tighten" / "punch-L04_broll.json"
+    broll.parent.mkdir(parents=True, exist_ok=True)
+    broll.write_text(
+        json.dumps(
+            {
+                "items": [
+                    {"t0": 129.2, "comp": "transition_title", "vars": {"title": "舊時間軸 A"}},
+                    {"t0": 176.0, "comp": "transition_title", "vars": {"title": "舊時間軸 B"}},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "agents.usopp.publish_timeline.release_chapters", lambda episode_dir, cut_id: []
+    )
+    assert vd.resolve_chapters(tmp_path, "punch-L04") == []
+
+
+def test_resolve_chapters_falls_back_when_episode_has_no_map(tmp_path):
+    """沒建對應表的舊集數行為不變。"""
+    from agents.usopp import video_description as vd
+
+    broll = tmp_path / "highlights" / "tighten" / "punch-L5_broll.json"
+    broll.parent.mkdir(parents=True, exist_ok=True)
+    broll.write_text(
+        json.dumps(
+            {
+                "items": [
+                    {"t0": 10.0, "comp": "transition_title", "vars": {"title": "A"}},
+                    {"t0": 20.0, "comp": "transition_title", "vars": {"title": "B"}},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert vd.resolve_chapters(tmp_path, "punch-L5") == [(0.0, "開場"), (10.0, "A"), (20.0, "B")]

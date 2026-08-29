@@ -77,6 +77,25 @@ def chapters_from_broll(broll_items: list[dict]) -> list[tuple[float, str]]:
     return [(0.0, "開場")] + marks
 
 
+def resolve_chapters(episode_dir: Path, cut_id: str) -> list[tuple[float, str]]:
+    """分章來源：有 Release 對應表就以 Release 為準，否則才回退舊的 broll 檔。
+
+    一旦該集建了 publish-timelines 對應表，Release 就是唯一權威——它說沒有分章
+    就是沒有分章，不可以回頭撿 broll，那份是 ADR-065 製作線的舊時間軸
+    （見 agents/usopp/publish_timeline.release_chapters 的實測）。
+    """
+    from agents.usopp.publish_timeline import load_timeline_map, release_chapters
+
+    episode_dir = Path(episode_dir)
+    if load_timeline_map(episode_dir) is not None:
+        return release_chapters(episode_dir, cut_id)
+    broll_path = episode_dir / "highlights" / "tighten" / f"{cut_id}_broll.json"
+    if not broll_path.exists():
+        return []
+    items = json.loads(broll_path.read_text(encoding="utf-8"))["items"]
+    return chapters_from_broll(items)
+
+
 def public_citations(citations: list[object]) -> list[str]:
     """Keep human-readable public sources; leave internal evidence as provenance.
 
@@ -238,11 +257,7 @@ def generate_description_draft(
     """Generate and assemble one editable description draft from approved evidence."""
     package = chosen_package(packages, approval, cut_id)
     citations = load_citations(packages, cut_id)
-    broll_path = episode_dir / "highlights" / "tighten" / f"{cut_id}_broll.json"
-    chapters: list[tuple[float, str]] = []
-    if broll_path.exists():
-        items = json.loads(broll_path.read_text(encoding="utf-8"))["items"]
-        chapters = chapters_from_broll(items)
+    chapters = resolve_chapters(episode_dir, cut_id)
     prompt = build_description_prompt(
         episode_dir,
         cut_id=cut_id,

@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agents.usopp.video_description import (  # noqa: E402
     build_description,
-    chapters_from_broll,
+    resolve_chapters,
     chosen_package,
     find_packaging_dir,
     generate_description_draft,
@@ -141,11 +141,7 @@ def main(argv: list[str] | None = None) -> int:
     pkg = chosen_package(packages, approval, args.cut)
     citations = load_citations(packages, args.cut)
 
-    broll_path = episode_dir / "highlights" / "tighten" / f"{args.cut}_broll.json"
-    chapters = []
-    if broll_path.exists():
-        items = json.loads(broll_path.read_text(encoding="utf-8"))["items"]
-        chapters = chapters_from_broll(items)
+    chapters = resolve_chapters(episode_dir, args.cut)
 
     footer = load_footer()
     todos = sorted(set(re.findall(r"\{\{TODO_[A-Z_]+\}\}", footer)))
