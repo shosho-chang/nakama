@@ -492,7 +492,6 @@ def test_oversized_chapter_placement_fails_before_browser_render(tmp_path: Path)
     ("semantic_kind", "implementation_kind", "lane"),
     [
         ("hero_title", "hero_title", "hero_title"),
-        ("supporting_title", "supporting_title", "supporting_title"),
         ("identity_card", "identity_card", "identity_card"),
     ],
 )
@@ -744,12 +743,13 @@ def test_all_current_generated_browser_components_publish_final_assets(tmp_path:
         ),
         face_placement=_NeverFacePlacement(),
     )
+    # Each role pins its own canonical layout identity; the renderer rejects a
+    # request that does not carry the exact one for that role.
     roles = (
-        ("chapter", "fullscreen_transition", "fullscreen_transition", "第一章"),
-        ("hero", "hero_title", "hero_title", "真正的選擇"),
-        ("support", "supporting_title", "supporting_title", "保留調整空間"),
-        ("identity", "identity_card", "identity_card", "簡立峰博士"),
-        ("effect", "visual_effect", "visual_effect", "焦點強調"),
+        ("chapter", "chapter", "fullscreen_transition", "第一章", "fullscreen_transition:v4"),
+        ("hero", "hero_title", "hero_title", "真正的選擇", "hero_title:v1"),
+        ("identity", "identity_card", "identity_card", "簡立峰博士", "identity_card:v1"),
+        ("effect", "visual_effect", "visual_effect", "焦點強調", "visual_effect:v1"),
     )
     instructions = tuple(
         DerivedAssetInstruction(
@@ -757,15 +757,21 @@ def test_all_current_generated_browser_components_publish_final_assets(tmp_path:
             event_id=f"event-{name}",
             semantic_kind=semantic_kind,
             implementation_kind=implementation_kind,
-            lane=semantic_kind,
+            lane=implementation_kind,
             display=display,
             t0=10.0 + index * 5,
             t1=13.0 + index * 5,
             source_asset_ref=None,
-            geometry=DerivedAssetGeometry(1920, 1080, f"{implementation_kind}:v1"),
+            geometry=DerivedAssetGeometry(1920, 1080, layout_identity),
             recipe_identity=f"recipe:{implementation_kind}:current",
         )
-        for index, (name, semantic_kind, implementation_kind, display) in enumerate(roles)
+        for index, (
+            name,
+            semantic_kind,
+            implementation_kind,
+            display,
+            layout_identity,
+        ) in enumerate(roles)
     )
     request = DerivedAssetBuildRequest(
         build_request_id="build-browser-components-current",
@@ -787,7 +793,6 @@ def test_all_current_generated_browser_components_publish_final_assets(tmp_path:
     assert browser.calls == len(instructions)
     expected_kinds = (
         AssetKind.CHAPTER_RENDER,
-        AssetKind.TITLE_RENDER,
         AssetKind.TITLE_RENDER,
         AssetKind.CONCEPT_RENDER,
         AssetKind.CONCEPT_RENDER,

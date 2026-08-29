@@ -195,7 +195,6 @@ def _plan(
     definitions = (
         ("chapter", "fullscreen_transition", "fullscreen_transition", "新章節"),
         ("hero_title", "hero_title", "hero_title", "核心論點"),
-        ("supporting_title", "supporting_title", "supporting_title", "補充說明"),
         ("b_roll", "stock_video", "b_roll", "工作忙碌"),
         ("identity_card", "identity_card", "identity_card", "簡立峰博士"),
         ("visual_effect", "visual_effect", "visual_effect", "焦點強調"),
@@ -247,7 +246,7 @@ def _plan(
 def test_typed_components_project_to_distinct_derived_lanes_without_a_roll(
     tmp_path: Path,
 ) -> None:
-    refs = tuple(f"asset-{index}" for index in range(1, 7))
+    refs = tuple(f"asset-{index}" for index in range(1, 6))
     assets = []
     for index, reference in enumerate(refs, start=1):
         path = tmp_path / f"asset-{index}.mov"
@@ -261,7 +260,6 @@ def test_typed_components_project_to_distinct_derived_lanes_without_a_roll(
     assert tuple((item.semantic_kind, item.lane) for item in application.placements) == (
         ("chapter", "fullscreen_transition"),
         ("hero_title", "hero_title"),
-        ("supporting_title", "supporting_title"),
         ("b_roll", "b_roll"),
         ("identity_card", "identity_card"),
         ("visual_effect", "visual_effect"),
@@ -272,8 +270,8 @@ def test_typed_components_project_to_distinct_derived_lanes_without_a_roll(
 def test_timeline_projects_component_final_media_when_event_source_ref_differs(
     tmp_path: Path,
 ) -> None:
-    final_refs = tuple(f"asset-final-{index}" for index in range(1, 7))
-    source_refs = tuple(f"asset-source-{index}" for index in range(1, 7))
+    final_refs = tuple(f"asset-final-{index}" for index in range(1, 6))
+    source_refs = tuple(f"asset-source-{index}" for index in range(1, 6))
     assets = []
     for index, reference in enumerate(final_refs, start=1):
         path = tmp_path / f"final-{index}.mov"
@@ -293,7 +291,7 @@ def test_timeline_projects_component_final_media_when_event_source_ref_differs(
 def test_missing_component_final_media_fails_projection_before_application(
     tmp_path: Path,
 ) -> None:
-    final_refs = tuple(f"asset-final-{index}" for index in range(1, 7))
+    final_refs = tuple(f"asset-final-{index}" for index in range(1, 6))
     available = []
     for index, reference in enumerate(final_refs[:-1], start=1):
         path = tmp_path / f"final-{index}.mov"
@@ -310,7 +308,7 @@ def test_missing_component_final_media_fails_projection_before_application(
 def test_missing_final_media_fails_preflight_before_any_resolve_mutation(
     tmp_path: Path,
 ) -> None:
-    final_refs = tuple(f"asset-final-{index}" for index in range(1, 7))
+    final_refs = tuple(f"asset-final-{index}" for index in range(1, 6))
     available = []
     for index, reference in enumerate(final_refs[:-1], start=1):
         path = tmp_path / f"final-{index}.mov"
@@ -342,7 +340,7 @@ def test_missing_final_media_fails_preflight_before_any_resolve_mutation(
 def test_davinci_adapter_applies_every_typed_component_only_to_duplicate_work(
     tmp_path: Path,
 ) -> None:
-    refs = tuple(f"asset-{index}" for index in range(1, 7))
+    refs = tuple(f"asset-{index}" for index in range(1, 6))
     assets = []
     for index, reference in enumerate(refs, start=1):
         path = tmp_path / f"asset-{index}.mov"
@@ -367,7 +365,6 @@ def test_davinci_adapter_applies_every_typed_component_only_to_duplicate_work(
     assert [placement.lane for placement in facade.applied] == [
         "fullscreen_transition",
         "hero_title",
-        "supporting_title",
         "b_roll",
         "identity_card",
         "visual_effect",
@@ -376,7 +373,7 @@ def test_davinci_adapter_applies_every_typed_component_only_to_duplicate_work(
 
 
 def test_davinci_preview_uses_h264_aac_render_and_checked_probe(tmp_path: Path) -> None:
-    refs = tuple(f"asset-{index}" for index in range(1, 7))
+    refs = tuple(f"asset-{index}" for index in range(1, 6))
     assets = []
     for index, reference in enumerate(refs, start=1):
         path = tmp_path / f"asset-{index}.mov"
@@ -428,7 +425,7 @@ def test_davinci_preview_uses_h264_aac_render_and_checked_probe(tmp_path: Path) 
 def test_davinci_committed_transaction_retains_backup_and_can_compensate(
     tmp_path: Path,
 ) -> None:
-    refs = tuple(f"asset-{index}" for index in range(1, 7))
+    refs = tuple(f"asset-{index}" for index in range(1, 6))
     assets = []
     for index, reference in enumerate(refs, start=1):
         path = tmp_path / f"asset-{index}.mov"
@@ -467,7 +464,7 @@ def test_davinci_committed_transaction_retains_backup_and_can_compensate(
 def test_wrong_commit_or_compensation_identity_performs_no_resolve_mutation(
     tmp_path: Path,
 ) -> None:
-    refs = tuple(f"asset-{index}" for index in range(1, 7))
+    refs = tuple(f"asset-{index}" for index in range(1, 6))
     assets = []
     for index, reference in enumerate(refs, start=1):
         path = tmp_path / f"asset-{index}.mov"
@@ -516,7 +513,7 @@ def test_wrong_commit_or_compensation_identity_performs_no_resolve_mutation(
 def test_failed_preview_probe_rolls_back_duplicate_and_restores_canonical(
     tmp_path: Path,
 ) -> None:
-    refs = tuple(f"asset-{index}" for index in range(1, 7))
+    refs = tuple(f"asset-{index}" for index in range(1, 6))
     assets = []
     for index, reference in enumerate(refs, start=1):
         path = tmp_path / f"asset-{index}.mov"
@@ -625,7 +622,7 @@ def test_ffprobe_adapter_returns_stream_and_decode_contract(tmp_path: Path) -> N
 def test_production_adapter_transaction_restarts_commit_and_compensate_from_store(
     tmp_path: Path,
 ) -> None:
-    refs = tuple(f"asset-{index}" for index in range(1, 7))
+    refs = tuple(f"asset-{index}" for index in range(1, 6))
     assets = []
     for index, reference in enumerate(refs, start=1):
         path = tmp_path / f"asset-{index}.mov"
@@ -689,7 +686,7 @@ def test_production_adapter_transaction_restarts_commit_and_compensate_from_stor
 def test_transaction_persistence_failure_rolls_back_open_resolve_workspace(
     tmp_path: Path,
 ) -> None:
-    refs = tuple(f"asset-{index}" for index in range(1, 7))
+    refs = tuple(f"asset-{index}" for index in range(1, 6))
     assets = []
     for index, reference in enumerate(refs, start=1):
         path = tmp_path / f"asset-{index}.mov"

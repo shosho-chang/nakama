@@ -372,7 +372,6 @@ def test_already_built_oversized_chapter_placement_needs_review() -> None:
     (
         ("fullscreen_transition", 4.0),
         ("hero_title", 8.0),
-        ("supporting_title", 8.0),
         ("identity_card", 8.0),
         ("stock_video", 12.0),
         ("photo", 12.0),
@@ -400,7 +399,6 @@ def test_already_built_component_over_duration_ceiling_needs_review(
     (
         ("fullscreen_transition", 4.0),
         ("hero_title", 8.0),
-        ("supporting_title", 8.0),
         ("identity_card", 8.0),
         ("stock_video", 12.0),
         ("photo", 12.0),
@@ -428,12 +426,15 @@ def _title_component(
     *,
     semantic_kind: str = "hero_title",
 ) -> _Component:
+    # A chapter is title-like without consuming the hero limit, which is the role
+    # the retired supporting_title used to fill in these fixtures.
+    implementation_kind = "fullscreen_transition" if semantic_kind == "chapter" else semantic_kind
     return _Component(
         component_id,
         f"event-{component_id}",
         semantic_kind,
-        semantic_kind,
-        semantic_kind,
+        implementation_kind,
+        implementation_kind,
         component_id,
         t0,
         t0 + 3.0,
@@ -454,20 +455,22 @@ def test_five_hero_titles_need_review() -> None:
     assert "hero_title_limit_exceeded" in {diagnostic.code for diagnostic in decision.diagnostics}
 
 
-def test_supporting_titles_do_not_consume_the_hero_title_limit() -> None:
+def test_chapters_do_not_consume_the_hero_title_limit() -> None:
+    context = _chaptered_context(8, 540.0)
+    chapters = _chapters_for(context)
     heroes = tuple(
         _title_component(f"hero-{index}", t0)
-        for index, t0 in enumerate((30.0, 150.0, 330.0, 510.0), start=1)
+        for index, t0 in enumerate((300.0, 350.0, 400.0, 450.0), start=1)
     )
-    supporting = tuple(
-        _title_component(f"support-{index}", t0, semantic_kind="supporting_title")
-        for index, t0 in enumerate((75.0, 120.0, 240.0, 285.0, 405.0, 450.0), start=1)
+    stock_only = tuple(
+        component for component in _long_components() if component.lane != "fullscreen_transition"
     )
 
     decision = LongV2Policy().validate(
         replace(
             _long_input(),
-            components=(*_long_components(), *heroes, *supporting),
+            context=context,
+            components=(*stock_only, *chapters, *heroes),
         )
     )
 
@@ -477,15 +480,62 @@ def test_supporting_titles_do_not_consume_the_hero_title_limit() -> None:
     }
 
 
+def _chaptered_context(transition_count: int, duration_sec: float) -> EditorialCutContext:
+    """A context whose canonical transitions a legal chapter set can map onto.
+
+    Chapters are section-bound, so density can only be built from chapters that
+    actually match canonical transitions plus Hero Titles within their limit.
+    """
+    sections = [CanonicalSection("section-01", "開場", 0.0)]
+    cues = [CueAnchor("cue-001", "開場", 0.0, 2.0, "section-01")]
+    for index in range(1, transition_count + 1):
+        section_id = f"section-{index + 1:02d}"
+        title = f"第{index + 1}章"
+        t0 = 30.0 * index
+        sections.append(
+            CanonicalSection(section_id, title, t0, transition_before=True, transition_title=title)
+        )
+        cues.append(CueAnchor(f"cue-{index + 1:03d}", title, t0, t0 + 2.0, section_id))
+    return replace(
+        _long_context(duration_sec),
+        sections=tuple(sections),
+        cues=tuple(cues),
+    )
+
+
+def _chapters_for(context: EditorialCutContext) -> tuple[_Component, ...]:
+    return tuple(
+        _Component(
+            f"chapter-{section.section_id}",
+            f"event-{section.section_id}",
+            "chapter",
+            "fullscreen_transition",
+            "fullscreen_transition",
+            section.transition_title,
+            section.t0,
+            section.t0 + 3.0,
+        )
+        for section in context.sections[1:]
+        if section.transition_before
+    )
+
+
 def test_l3_title_like_density_near_three_point_six_per_minute_needs_review() -> None:
-    dense_titles = tuple(
-        _title_component(f"dense-{index}", 5.0 + index * 17.0, semantic_kind="supporting_title")
-        for index in range(29)
+    context = _chaptered_context(14, 510.0)
+    chapters = _chapters_for(context)
+    heroes = tuple(
+        _title_component(f"hero-{index}", 400.0 + index * 20.0)
+        for index in range(1, 5)
+    )
+    # 14 chapters + 4 Hero Titles over 8.5 minutes is 2.12 cards per minute,
+    # just past the two-per-minute ceiling, with the Hero limit still respected.
+    stock_only = tuple(
+        component for component in _long_components() if component.lane != "fullscreen_transition"
     )
     candidate = replace(
         _long_input(),
-        context=_long_context(510.0),
-        components=(*_long_components(), *dense_titles),
+        context=context,
+        components=(*stock_only, *chapters, *heroes),
     )
 
     decision = LongV2Policy().validate(candidate)
@@ -496,7 +546,7 @@ def test_l3_title_like_density_near_three_point_six_per_minute_needs_review() ->
 
 def test_three_title_cards_inside_fifteen_seconds_need_review() -> None:
     clustered = tuple(
-        _title_component(f"cluster-{index}", t0, semantic_kind="supporting_title")
+        _title_component(f"cluster-{index}", t0)
         for index, t0 in enumerate((30.0, 38.0, 45.0), start=1)
     )
 
@@ -664,8 +714,8 @@ def test_observed_long3_head_broll_gap_needs_review_at_exact_boundary() -> None:
         for component in _long_components()
     )
     title_fillers = (
-        _title_component("head-support-30", 30.0, semantic_kind="supporting_title"),
-        _title_component("head-support-90", 90.0, semantic_kind="supporting_title"),
+        _title_component("head-support-30", 30.0),
+        _title_component("head-support-90", 90.0),
     )
 
     decision = LongV2Policy().validate(
@@ -694,8 +744,8 @@ def test_observed_long3_internal_broll_gap_needs_review_at_exact_boundary() -> N
         for component in _long_components()
     )
     title_fillers = (
-        _title_component("gap-support-60", 60.0, semantic_kind="supporting_title"),
-        _title_component("gap-support-120", 120.0, semantic_kind="supporting_title"),
+        _title_component("gap-support-60", 60.0),
+        _title_component("gap-support-120", 120.0),
     )
 
     decision = LongV2Policy().validate(
@@ -914,7 +964,7 @@ def test_short_over_sixty_seconds_needs_review_under_short_rules() -> None:
 
 def test_short_uses_a_fixed_two_title_limit_not_long_per_minute_density() -> None:
     titles = tuple(
-        _title_component(f"short-title-{index}", t0, semantic_kind="supporting_title")
+        _title_component(f"short-title-{index}", t0)
         for index, t0 in enumerate((1.0, 12.0, 24.0), start=1)
     )
     candidate = replace(_short_input(), components=(*_short_input().components, *titles))

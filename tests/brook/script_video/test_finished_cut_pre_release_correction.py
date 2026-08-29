@@ -171,7 +171,7 @@ def test_director_checkpoint_is_publicly_inspectable_before_dp_dispatch(tmp_path
                 master_cue_ids=("cue-golden-age",),
                 intent="Name who the next golden age belongs to",
                 display="AI 工作力的下一個黃金年代",
-                semantic_kind="supporting_title",
+                semantic_kind="b_roll",
             ),
         ),
     )
@@ -228,7 +228,7 @@ def test_director_correction_replaces_only_one_event_then_allows_first_dp(tmp_pa
                 ("cue-golden-age",),
                 "Name who the next golden age belongs to",
                 "AI 工作力的下一個黃金年代",
-                "supporting_title",
+                "b_roll",
             ),
         ),
     )

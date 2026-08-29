@@ -747,7 +747,6 @@ def test_append_places_verified_prerendered_hero_on_fixed_lane_without_implicit_
         ("b_roll", "stock_video", 2),
         ("hero_title", "hero_title", 3),
         ("identity_card", "identity_card", 4),
-        ("supporting_title", "supporting_title", 5),
         ("fullscreen_transition", "fullscreen_transition", 6),
         ("visual_effect", "visual_effect", 7),
     ],

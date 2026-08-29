@@ -264,12 +264,13 @@ def _plan(**changes: object) -> MaterializationPlan:
 def _component_plan(
     asset_ref: str | None, *, implementation_kind: str = "hero_title"
 ) -> MaterializationPlan:
+    stock = implementation_kind == "stock_video"
     component = _mint_projected_component(
         component_id="component-1",
         event_id="event-1",
-        semantic_kind="hero_title",
+        semantic_kind="b_roll" if stock else "hero_title",
         implementation_kind=implementation_kind,
-        lane="b_roll" if implementation_kind == "stock_video" else "hero_title",
+        lane="b_roll" if stock else "hero_title",
         display="下一個黃金年代",
         t0=4.0,
         t1=8.0,

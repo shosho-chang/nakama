@@ -281,11 +281,11 @@ def test_cutover_restart_preserves_sealed_release_and_unpublished_index(
     tmp_path: Path,
 ) -> None:
     component = _mint_projected_component(
-        component_id="component-support",
+        component_id="component-hero",
         event_id="event-001",
-        semantic_kind="supporting_title",
-        implementation_kind="supporting_title",
-        lane="supporting_title",
+        semantic_kind="hero_title",
+        implementation_kind="hero_title",
+        lane="hero_title",
         display="自主權",
         t0=12.0,
         t1=15.0,
