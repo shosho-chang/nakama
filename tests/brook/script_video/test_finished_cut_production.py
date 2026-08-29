@@ -192,20 +192,41 @@ def test_current_director_proposal_is_accepted_at_most_once() -> None:
 
 
 def test_public_module_does_not_expose_private_authority_constructors() -> None:
+    # Three surfaces are public: the aggregate, the composition root an inbound
+    # adapter needs to build it, and read-only exact-current access.  Everything
+    # below the "not hasattr" line stays private no matter how this list grows.
     assert set(finished_cut_production.__all__) == {
+        "ApprovedCutRegistration",
         "ArtifactView",
+        "CanonicalSection",
         "CommandRejectedError",
         "ComponentView",
+        "CueAnchor",
+        "CurrentReleaseReader",
+        "CutSourceRange",
         "CutView",
         "EventView",
         "FinishedCutInspection",
         "FinishedCutProduction",
-        "RunView",
+        "FinishedCutProductionApplication",
+        "ProductionCutoverConfiguration",
+        "ProductionPaths",
+        "ProductionResolveConfiguration",
+        "ProductionStatusView",
+        "ResolveCutBinding",
+        "ResolveDatabaseIdentity",
+        "ResolveProjectBinding",
+        "ResolveProjectLocator",
         "RunEventInspection",
         "RunInspection",
         "RunPolicyDiagnostic",
         "RunStageInspection",
+        "RunView",
+        "StageName",
         "Status",
+        "TimelineIdentity",
+        "build_current_release_reader",
+        "build_production_application",
     }
     assert not hasattr(finished_cut_production, "AcceptedStage")
     assert not hasattr(finished_cut_production, "StagedReleaseCandidate")
@@ -220,6 +241,10 @@ def test_public_module_does_not_expose_private_authority_constructors() -> None:
     assert not hasattr(finished_cut_production, "advance")
     assert not hasattr(finished_cut_production, "request_revision")
     assert not hasattr(finished_cut_production, "inspect_current")
+    assert not hasattr(finished_cut_production, "AcceptedStageStore")
+    assert not hasattr(finished_cut_production, "FinishedCutReleaseLifecycle")
+    assert not hasattr(finished_cut_production, "ResolveTransactionManager")
+    assert not hasattr(finished_cut_production, "_cut_view")
     assert hasattr(finished_cut_production, "FinishedCutProduction")
     assert finished_cut_production.FinishedCutProduction is FinishedCutProduction
 

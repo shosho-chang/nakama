@@ -33,7 +33,7 @@ from ._cutover import (
     GlobalCutoverJournal,
 )
 from ._derived_assets import DerivedAssetBuilder
-from ._engine import FinishedCutProduction
+from ._engine import FinishedCutProduction, _current_inspection
 from ._face_placement import (
     DeterministicFacialSafePlacement,
     FilesystemEditorialMasterVideoResolver,
@@ -525,6 +525,34 @@ class _InspectionOnlyTransactions:
 
 def _inspection_only_probe(_path: Path):
     raise ReleaseLifecycleError("preview probing is unavailable during dark install")
+
+
+class CurrentReleaseReader:
+    """Read-only exact-current access for an inbound adapter such as Bridge.
+
+    Bridge must not compose semantic workers, renderers or Resolve just to read a
+    reviewable Release, but it must also not re-derive the projection itself: the
+    inspection here is the same one ``FinishedCutProduction.inspect_current``
+    returns, so the two cannot drift.
+    """
+
+    def __init__(self, episode_root: str | Path) -> None:
+        self._index = _EpisodeCurrentReleaseIndex(
+            FinishedCutReleaseLifecycle(
+                Path(episode_root),
+                transactions=_InspectionOnlyTransactions(),
+                preview_probe=_inspection_only_probe,
+            ),
+            episode_id="",
+        )
+
+    def inspect_current(self, episode_id: str) -> FinishedCutInspection:
+        return _current_inspection(episode_id, self._index)
+
+
+def build_current_release_reader(episode_root: str | Path) -> CurrentReleaseReader:
+    """Public read-only entry point for the finished-cut review surface."""
+    return CurrentReleaseReader(episode_root)
 
 
 class _EpisodeCurrentReleaseIndex:

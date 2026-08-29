@@ -14,32 +14,22 @@ from typing import Any, Literal, cast
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from agents.brook.script_video.finished_cut_production._approved_cut import (  # noqa: E402
+from agents.brook.script_video.finished_cut_production import (  # noqa: E402
     ApprovedCutRegistration,
-)
-from agents.brook.script_video.finished_cut_production._composition import (  # noqa: E402
+    CanonicalSection,
+    CueAnchor,
+    CutSourceRange,
     FinishedCutProductionApplication,
     ProductionCutoverConfiguration,
     ProductionPaths,
     ProductionResolveConfiguration,
-    build_production_application,
-)
-from agents.brook.script_video.finished_cut_production._context import (  # noqa: E402
-    CanonicalSection,
-    CueAnchor,
-    CutSourceRange,
-)
-from agents.brook.script_video.finished_cut_production._records import StageName  # noqa: E402
-from agents.brook.script_video.finished_cut_production._resolve import (  # noqa: E402
-    TimelineIdentity,
-)
-from agents.brook.script_video.finished_cut_production._resolve_davinci import (  # noqa: E402
     ResolveCutBinding,
-    ResolveProjectBinding,
-)
-from agents.brook.script_video.finished_cut_production._resolve_fusion import (  # noqa: E402
     ResolveDatabaseIdentity,
+    ResolveProjectBinding,
     ResolveProjectLocator,
+    StageName,
+    TimelineIdentity,
+    build_production_application,
 )
 
 ApplicationFactory = Callable[..., FinishedCutProductionApplication]

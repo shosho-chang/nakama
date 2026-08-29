@@ -666,31 +666,7 @@ class FinishedCutProduction:
         )
 
     def inspect_current(self, episode_id: str) -> FinishedCutInspection:
-        try:
-            releases = self._current_release_index.inspect_current(episode_id)
-        except ReleaseLifecycleError as error:
-            if error.reason == "missing":
-                return FinishedCutInspection(
-                    episode_id=episode_id,
-                    state="missing",
-                    error_code="current_release_missing",
-                )
-            return FinishedCutInspection(
-                episode_id=episode_id,
-                state="invalid",
-                error_code="current_release_invalid",
-            )
-        if not releases:
-            return FinishedCutInspection(
-                episode_id=episode_id,
-                state="missing",
-                error_code="current_release_missing",
-            )
-        return FinishedCutInspection(
-            episode_id=episode_id,
-            state="ready",
-            cuts=tuple(_cut_view(release) for release in releases),
-        )
+        return _current_inspection(episode_id, self._current_release_index)
 
     def _resolve_context(
         self,
@@ -2211,6 +2187,39 @@ def _public_run_view(run: _ProductionRun) -> RunView:
         current_stage=request.stage if request is not None else None,
         scope=request.scope if request is not None else None,
         event_id=request.event_id if request is not None else None,
+    )
+
+
+def _current_inspection(episode_id: str, index: CurrentReleaseIndex) -> FinishedCutInspection:
+    """Project the exact current index for one episode.
+
+    Shared so an inbound read-only adapter cannot drift from what
+    ``FinishedCutProduction.inspect_current`` returns.
+    """
+    try:
+        releases = index.inspect_current(episode_id)
+    except ReleaseLifecycleError as error:
+        if error.reason == "missing":
+            return FinishedCutInspection(
+                episode_id=episode_id,
+                state="missing",
+                error_code="current_release_missing",
+            )
+        return FinishedCutInspection(
+            episode_id=episode_id,
+            state="invalid",
+            error_code="current_release_invalid",
+        )
+    if not releases:
+        return FinishedCutInspection(
+            episode_id=episode_id,
+            state="missing",
+            error_code="current_release_missing",
+        )
+    return FinishedCutInspection(
+        episode_id=episode_id,
+        state="ready",
+        cuts=tuple(_cut_view(release) for release in releases),
     )
 
 

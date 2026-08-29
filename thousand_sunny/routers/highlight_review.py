@@ -23,11 +23,9 @@ from agents.brook.script_video.editorial_master import (
     EditorialMasterContractError,
     EditorialMasterRequest,
 )
-from agents.brook.script_video.finished_cut_production import FinishedCutInspection
-from agents.brook.script_video.finished_cut_production._engine import _cut_view
-from agents.brook.script_video.finished_cut_production._release import (
-    FinishedCutReleaseLifecycle,
-    ReleaseLifecycleError,
+from agents.brook.script_video.finished_cut_production import (
+    FinishedCutInspection,
+    build_current_release_reader,
 )
 from scripts.packaging_manifest import load_manifest, stage_parallel_jobs
 from shared.background_job import atomic_job_write, job_expired, load_job, new_job
@@ -263,50 +261,7 @@ def _require_final_qa_clear(episode_dir: Path, cut_id: str) -> None:
         )
 
 
-class _InspectionOnlyTransactions:
-    def inspect_transaction(self, transaction_id: str) -> Mapping[str, object]:
-        raise ReleaseLifecycleError(
-            f"transaction inspection is unavailable in Bridge: {transaction_id}"
-        )
-
-
-def _inspection_only_probe(_path: Path) -> Mapping[str, object]:
-    raise ReleaseLifecycleError("preview probing is unavailable in Bridge")
-
-
-class _FilesystemCurrentReleaseInspector:
-    """Read the one canonical v3 pointer without composing production workers."""
-
-    def __init__(self, episode_dir: Path) -> None:
-        self._lifecycle = FinishedCutReleaseLifecycle(
-            episode_dir,
-            transactions=_InspectionOnlyTransactions(),
-            preview_probe=_inspection_only_probe,
-        )
-
-    def inspect_current(self, episode_id: str) -> FinishedCutInspection:
-        try:
-            releases = self._lifecycle.inspect_current(episode_id)
-        except ReleaseLifecycleError as error:
-            if error.reason == "missing":
-                return FinishedCutInspection(
-                    episode_id=episode_id,
-                    state="missing",
-                    error_code="current_release_missing",
-                )
-            return FinishedCutInspection(
-                episode_id=episode_id,
-                state="invalid",
-                error_code="current_release_invalid",
-            )
-        return FinishedCutInspection(
-            episode_id=episode_id,
-            state="ready",
-            cuts=tuple(_cut_view(release) for release in releases),
-        )
-
-
-_CURRENT_RELEASE_INSPECTOR_FACTORY = _FilesystemCurrentReleaseInspector
+_CURRENT_RELEASE_INSPECTOR_FACTORY = build_current_release_reader
 
 
 def _release_artifact(artifact: Any) -> dict[str, Any]:

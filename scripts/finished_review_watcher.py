@@ -15,7 +15,7 @@ from typing import Callable, Literal, Protocol
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agents.brook.script_video.finished_cut_production._composition import (
+from agents.brook.script_video.finished_cut_production import (
     ProductionPaths,
     ProductionStatusView,
     build_production_application,

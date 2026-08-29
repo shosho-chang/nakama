@@ -193,9 +193,9 @@ def test_production_inspector_itself_ignores_historical_manifests(tmp_path: Path
         '{"schema":"nakama.finished_cut_review_manifest.v2"}',
         encoding="utf-8",
     )
-    from thousand_sunny.routers.highlight_review import _FilesystemCurrentReleaseInspector
+    from agents.brook.script_video.finished_cut_production import build_current_release_reader
 
-    inspection = _FilesystemCurrentReleaseInspector(episode).inspect_current(episode.name)
+    inspection = build_current_release_reader(episode).inspect_current(episode.name)
 
     assert inspection.state == "missing"
     assert inspection.error_code == "current_release_missing"
