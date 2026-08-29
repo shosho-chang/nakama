@@ -217,6 +217,31 @@ spec 的 variables 見各 composition 檔頭註解。**定案參數表在
 - render 失敗（ThumbnailRenderError）→ 看 variables JSON 與 stderr 修完重跑；
   連續失敗 2 次停下報修修，不降級成無封面。
 
+### Step 4.4 — 中央卡候選池（修修 2026-08-29：「來源的圖要多一點」）
+
+在此之前 gate 只能挑臉、挑標題、打大字——中央圖是 hidden field，換不掉。現在
+gate 上有一排圖庫縮圖可以點，池子由這一步填。
+
+1. 用 Elements MCP `search_photos` 對這條標題的畫面概念搜，**務必帶
+   `orientation: landscape`、`number_of_people` 依概念設**。一條概念搜 2–3 個
+   不同說法，湊到二三十張才夠挑。
+2. 逐筆抄成 `results.json`：`preview_url` / `item_url` / `title` / `author` /
+   `query`（`query` 就是你當下用的搜尋詞——它會變成 receipt 裡的來歷）。
+3. 下載預覽並落地候選池：
+
+```bash
+python .claude/skills/thumbnail-brainstorm/scripts/stage_center_candidates.py   --packaging-dir "<ep>/packaging" --cut-id <cut> --episode-slug <slug>   --results results.json
+```
+
+下的是**浮水印預覽**，不是授權檔。修修在 gate 上挑定、存配方之後，桌機端才依
+`center_visual_asset` 對應的 `source` 走既有的 Elements 下載流程取正式檔並重出
+（見 `brook-director/SKILL.md` 的下載程序）。挑十張下十張授權檔，九張是白下的。
+
+直式素材會在這一步就被丟掉，不進 gate——它在 Step 4.8 那關本來就會被擋。
+
+回填時 spec 帶 `center_candidate`（候選池那筆的 supply/source/query）＋
+`center_why`，`center_provenance` 就會自動組好；來歷可以繼承，**配對理由不行**。
+
 ## Step 4.5 — 量測驗收（**不做不交付**）
 
 目測會漏；三項都要跑（腳本邏輯見設計系統對應節）：

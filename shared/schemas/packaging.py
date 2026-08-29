@@ -302,6 +302,56 @@ class CenterGeometryV1(BaseModel):
         return self
 
 
+CENTER_CANDIDATES_SCHEMA = "nakama.center_card_candidates.v1"
+
+
+class CenterCandidateV1(BaseModel):
+    """一張可以拿來當中央卡的候選圖，連同它的來歷。
+
+    `preview_png` 是圖庫的**浮水印預覽**——gate 上只是拿來挑，正式授權檔要等
+    修修選定後才由桌機端下載。挑十張下十張的授權檔，九張是白下的。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    candidate_id: str = Field(min_length=1, max_length=64)
+    preview_png: str = Field(min_length=1)
+    width: int = Field(gt=0)
+    height: int = Field(gt=0)
+    title: str = Field(min_length=1, max_length=200)
+    author: str = Field(default="", max_length=120)
+    supply: Literal["envato", "public_domain", "redrawn"] = "envato"
+    source: str = Field(min_length=1)
+    query: str = Field(min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def _landscape_only(self) -> "CenterCandidateV1":
+        # 中央卡是橫的（見 CenterGeometryV1._horizontal_card）。直式素材進 gate
+        # 只會浪費修修的一次點擊——它在 attach 那一關本來就會被擋下來。
+        if self.width <= self.height:
+            raise ValueError(f"中央卡候選必須是橫式：{self.candidate_id} 是 {self.width}×{self.height}")
+        return self
+
+
+class CenterCandidatesFileV1(BaseModel):
+    """一支 cut 的中央卡候選池——gate 的圖庫就是這一份。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_: Literal["nakama.center_card_candidates.v1"] = Field(alias="schema")
+    episode: str = Field(min_length=1)
+    cut_id: str = Field(min_length=1)
+    generated_at: AwareDatetime
+    candidates: list[CenterCandidateV1] = Field(default_factory=list, max_length=120)
+
+    @model_validator(mode="after")
+    def _ids_are_unique(self) -> "CenterCandidatesFileV1":
+        seen = [row.candidate_id for row in self.candidates]
+        if len(set(seen)) != len(seen):
+            raise ValueError("候選 id 重複")
+        return self
+
+
 class RenderRequestV1(BaseModel):
     """修修在 gate 上組好的封面配方 — 桌機端據此 **render 一次**（2026-08-14 裁決）。
 

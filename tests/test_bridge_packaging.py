@@ -2034,3 +2034,114 @@ def test_v2_receipt_carrying_provenance_is_rejected_as_hand_edited(vault):
     payload = _receipt_payload(vault, center_provenance=_PROVENANCE)
     with pytest.raises(ValidationError, match="schema 版號"):
         LongThumbnailCompositionReceiptV2.model_validate(payload)
+
+
+def _stage_candidate_pool(vault, *, candidate_id="22KBKWG", width=1600, height=900):
+    """一支 cut 的中央卡候選池——gate 上那排可以點的圖庫縮圖。"""
+    ep = vault / "Attachments" / "packaging" / "20260723-xieboran"
+    pool_dir = ep / "center-candidates"
+    pool_dir.mkdir(parents=True, exist_ok=True)
+    name = f"punch-L1-{candidate_id}.png"
+    (pool_dir / name).write_bytes(bytes.fromhex("89504e470d0a1a0a"))
+    pool_dir.joinpath("punch-L1.json").write_text(
+        json.dumps(
+            {
+                "schema": "nakama.center_card_candidates.v1",
+                "episode": "20260723 謝伯讓",
+                "cut_id": "punch-L1",
+                "generated_at": "2026-08-29T12:00:00+00:00",
+                "candidates": [
+                    {
+                        "candidate_id": candidate_id,
+                        "preview_png": (
+                            f"Attachments/packaging/20260723-xieboran/center-candidates/{name}"
+                        ),
+                        "width": width,
+                        "height": height,
+                        "title": "golden retriever lying on a yellow sofa",
+                        "author": "LightFieldStudios",
+                        "supply": "envato",
+                        "source": f"https://elements.envato.com/a-pampered-dog-{candidate_id}",
+                        "query": "pampered dog on sofa",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return f"Attachments/packaging/20260723-xieboran/center-candidates/{name}"
+
+
+def _compose_center(client, center_visual_asset):
+    return _compose(
+        client,
+        package_rank="2",
+        composition="thumbnail_reaction",
+        big_text_1="",
+        big_text_2="",
+        highlight_text="",
+        center_visual_asset=center_visual_asset,
+        center_width_pct="53",
+        center_height_px="455",
+        center_x_pct="50",
+        center_y_pct="50",
+        geometry_mode="manual",
+        **_GEO,
+    )
+
+
+def test_compose_accepts_a_center_image_picked_from_the_candidate_pool(
+    client, vault_with_cutouts
+):
+    """修修 2026-08-29 要的就是這個：在 gate 上把中央圖換掉。"""
+    asset = _stage_candidate_pool(vault_with_cutouts)
+
+    assert _compose_center(client, asset).status_code == 303
+
+    path = (
+        vault_with_cutouts / "Attachments" / "packaging" / "20260723-xieboran" / "packages.json"
+    )
+    recipe = json.loads(path.read_text(encoding="utf-8"))["cuts"][0]["packages"][1]["render_recipe"]
+    assert recipe["center_visual_asset"] == asset
+
+
+def test_compose_still_refuses_a_center_path_outside_the_pool(client, vault_with_cutouts):
+    """放寬到候選池，不是放寬成任意 vault 路徑輸入。"""
+    _stage_candidate_pool(vault_with_cutouts)
+
+    response = _compose_center(
+        client, "Attachments/packaging/20260723-xieboran/not-referenced.png"
+    )
+    assert response.status_code == 409
+
+
+def test_candidate_preview_is_served_and_unknown_ids_are_not(client, vault_with_cutouts):
+    _stage_candidate_pool(vault_with_cutouts)
+    base = "/bridge/packaging/20260723-xieboran/center-candidate/punch-L1"
+
+    assert client.get(f"{base}/22KBKWG").status_code == 200
+    assert client.get(f"{base}/NOSUCHID").status_code == 404
+
+
+def test_board_offers_the_pool_as_clickable_thumbnails(client, vault_with_cutouts):
+    _stage_candidate_pool(vault_with_cutouts)
+
+    board = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert "data-center-pool" in board.text
+    assert "center-candidate/punch-L1/22KBKWG" in board.text
+
+
+def test_a_broken_pool_file_does_not_take_the_gate_down(client, vault_with_cutouts):
+    """候選池是錦上添花——壞掉時 gate 仍然要能核准。"""
+    ep = vault_with_cutouts / "Attachments" / "packaging" / "20260723-xieboran"
+    pool = ep / "center-candidates"
+    pool.mkdir(parents=True, exist_ok=True)
+    (pool / "punch-L1.json").write_text("{ not json", encoding="utf-8")
+
+    board = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert board.status_code == 200
+    # 版面標題那串字也出現在 JS 註解裡——用挑圖容器本身當判準才是真的沒渲染。
+    assert "data-center-pool" not in board.text

@@ -1043,3 +1043,44 @@ def test_attach_keeps_a_landscape_center_close_to_the_card_ratio(monkeypatch, tm
     _, working, specs = _attach_fixture(monkeypatch, tmp_path)
     _rewrite_center(specs[0], (3840, 2160))
     attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+
+def test_provenance_can_come_from_the_candidate_the_gate_picked(monkeypatch, tmp_path):
+    """挑完圖不必把出處重打一次——來歷跟著候選池進來，只有配對理由要人寫。"""
+    _, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    del specs[0]["center_provenance"]
+    specs[0]["center_candidate"] = {
+        "supply": "envato",
+        "source": "https://elements.envato.com/a-pampered-dog-22KBKWG",
+        "query": "pampered dog on sofa",
+    }
+    specs[0]["center_why"] = "扣回 03:29 那個 beat：被照顧得好好的寵物就是「圈養」"
+
+    attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+    receipt = (
+        tmp_path
+        / "vault"
+        / "Attachments"
+        / "packaging"
+        / "20260723-xieboran"
+        / "composition_receipts"
+        / "punch-L1-r1.json"
+    )
+    payload = json.loads(receipt.read_text(encoding="utf-8"))
+    assert payload["center_provenance"]["source"].endswith("22KBKWG")
+    assert payload["center_provenance"]["why"].startswith("扣回 03:29")
+
+
+def test_a_picked_candidate_still_needs_a_reason(monkeypatch, tmp_path):
+    """來歷可以繼承，判斷不行——為什麼配這條標題只有人答得出來。"""
+    _, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    del specs[0]["center_provenance"]
+    specs[0]["center_candidate"] = {
+        "supply": "envato",
+        "source": "https://elements.envato.com/a-pampered-dog-22KBKWG",
+        "query": "pampered dog on sofa",
+    }
+
+    with pytest.raises(ValueError, match="center_provenance"):
+        attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)

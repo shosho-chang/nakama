@@ -452,6 +452,24 @@
               <p class="sho-mono pkg-stage-hint">
                 N2 橘框與中央圖會照這四個圖卡數字重畫；N1 大字仍會在出圖時依左右遮蔽微調 1–2%。
               </p>
+              {% if view.center_candidates %}
+              <div class="pkg-center-pool" data-center-pool>
+                <p class="sho-mono-up pkg-center-pool-label">換中央圖</p>
+                <div class="pkg-center-grid">
+                  {% for cand in view.center_candidates %}
+                  <button type="button" class="pkg-center-choice"
+                          data-center-choice="{{ cand.asset }}"
+                          title="{{ cand.title }}{% if cand.author %} — {{ cand.author }}{% endif %}">
+                    <img src="{{ cand.url }}" alt="{{ cand.title }}" loading="lazy" decoding="async">
+                    <span class="pkg-center-choice-cap">{{ cand.title }}</span>
+                  </button>
+                  {% endfor %}
+                </div>
+                <p class="sho-mono pkg-stage-hint">
+                  這些是圖庫的浮水印預覽，只用來挑。選定後存配方，桌機端才下正式授權檔並重出。
+                </p>
+              </div>
+              {% endif %}
             </div>
           </fieldset>
 
@@ -869,6 +887,31 @@
   }
   .pkg-stage-center-nums { grid-template-columns: repeat(4, 1fr); }
   .pkg-stage-hint { margin: var(--sho-s-2) 0 0; color: var(--sho-muted); }
+  .pkg-center-pool { margin-top: var(--sho-s-4); }
+  .pkg-center-pool-label { margin: 0 0 var(--sho-s-2); color: var(--sho-muted); }
+  /* 圖庫一次會進二三十張——固定高度的捲動區，不讓它把整個組封面區推到天邊。 */
+  .pkg-center-grid {
+    display: grid; gap: var(--sho-s-2);
+    grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+    max-height: 236px; overflow-y: auto; padding-right: var(--sho-s-1);
+  }
+  .pkg-center-choice {
+    display: flex; flex-direction: column; gap: 4px; padding: 3px;
+    background: none; border: 2px solid transparent; border-radius: 6px;
+    cursor: pointer; text-align: left; font: inherit; color: inherit;
+  }
+  .pkg-center-choice img {
+    width: 100%; aspect-ratio: 16 / 9; object-fit: cover;
+    border-radius: 4px; display: block;
+  }
+  .pkg-center-choice-cap {
+    font-size: 11px; line-height: 1.3; color: var(--sho-muted);
+    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .pkg-center-choice:hover { border-color: var(--sho-border); }
+  .pkg-center-choice:focus-visible { outline: 2px solid var(--sho-accent); outline-offset: 2px; }
+  .pkg-center-choice[aria-current="true"] { border-color: var(--sho-accent); }
+  .pkg-center-choice[aria-current="true"] .pkg-center-choice-cap { color: var(--sho-fg); }
   .pkg-render-progress {
     display: grid; gap: var(--sho-s-2); margin-top: var(--sho-s-3);
     padding: var(--sho-s-3); border: 1px solid var(--sho-line);
@@ -933,6 +976,7 @@
     setValue("book_cover_height_pct", recipe?.book_cover_height_pct ?? 100);
     setValue("composition", recipe?.composition ?? "thumbnail_full");
     setValue("center_visual_asset", recipe?.center_visual_asset ?? "");
+    syncCenterPool(form);
     for (const role of ["host", "guest"]) {
       const wanted = recipe?.[`${role}_cutout`] ?? row[`${role}_cutout`];
       const picked = [...form.querySelectorAll(`input[name="${role}_cutout"]`)]
@@ -973,6 +1017,32 @@
     const tab = event.target.closest(".pkg-recipe-tab");
     if (tab) loadPackageRecipe(tab);
   });
+
+  // ── 換中央圖（修修 2026-08-29：「來源的圖要多一點」）───────────────────────
+  // 點縮圖只改 center_visual_asset 這個值與舞台預覽；正式授權檔等存完配方由桌機
+  // 端下載。gate 端零 render、零下載（ADR-054 D11 不變）。
+  function syncCenterPool(form) {
+    const chosen = form.querySelector('[name="center_visual_asset"]')?.value || "";
+    for (const choice of form.querySelectorAll("[data-center-choice]")) {
+      choice.setAttribute("aria-current", String(choice.dataset.centerChoice === chosen));
+    }
+  }
+
+  document.addEventListener("click", (event) => {
+    const choice = event.target.closest("[data-center-choice]");
+    if (!choice) return;
+    const form = choice.closest("form");
+    const field = form.querySelector('[name="center_visual_asset"]');
+    if (!field) return;
+    field.value = choice.dataset.centerChoice;
+    syncCenterPool(form);
+    const stage = form.querySelector(".pkg-stage");
+    const image = stage?.querySelector(".st-center-image");
+    const preview = choice.querySelector("img");
+    if (image && preview) image.src = preview.src;
+  });
+
+  for (const form of document.querySelectorAll(".pkg-compose-form")) syncCenterPool(form);
 
   // ── 排版舞台（修修 2026-08-15：「讓我可以縮放跟移動位置」）─────────────────
   // 六個數字是唯一的真相來源：拖曳/滾輪改數字，數字驅動 CSS 變數，送出時就是

@@ -77,6 +77,20 @@ def _assert_box(
     return {k: float(box[k]) for k in ("x", "y", "width", "height")}
 
 
+def _provenance_from_candidate(spec: dict) -> dict | None:
+    """把 gate 挑中的候選轉成 provenance；`why` 仍然要人寫。"""
+    candidate = spec.get("center_candidate")
+    if not isinstance(candidate, dict):
+        return None
+    fields = {name: candidate.get(name) for name in ("supply", "source", "query")}
+    if any(not value for value in fields.values()):
+        return None
+    why = str(spec.get("center_why") or "").strip()
+    if not why:
+        return None
+    return {**fields, "why": why}
+
+
 def _center_provenance(spec: dict) -> dict:
     """中央卡的來歷——沒有它，成品就沒有人說得出「為什麼是這張圖」。
 
@@ -86,6 +100,11 @@ def _center_provenance(spec: dict) -> dict:
     但不是紀錄。推論不能當交代，所以這裡把它變成必填欄位。
     """
     raw = spec.get("center_provenance")
+    if raw is None:
+        # 修修在 gate 上挑的那張，來歷已經跟著候選池一起進來了（supply/source/
+        # query 三項都有），只差「為什麼配這條標題」。要他挑完圖再把出處重打一次
+        # 是白費工，所以這裡優先讀 candidate。
+        raw = _provenance_from_candidate(spec)
     if not isinstance(raw, dict):
         raise ValueError(
             "spec 缺 center_provenance——中央卡必須交代來歷"

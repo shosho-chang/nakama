@@ -43,6 +43,7 @@ from shared.release_store import ensure_target, get_release, register_release, u
 from shared.schemas.packaging import (
     ApprovalFileV1,
     ApprovalV1,
+    CenterCandidatesFileV1,
     CenterGeometryV1,
     GeometryV1,
     PackagesFileV1,
@@ -519,6 +520,7 @@ def _board_context(episode_slug: str) -> dict:
             }
             for item in package_views
         ]
+        candidate_pool = _center_candidates(ep_dir, cut.cut_id)
         view = {
             "cut": cut,
             "approval": approval_by_cut.get(cut.cut_id),
@@ -526,6 +528,21 @@ def _board_context(episode_slug: str) -> dict:
             "runners_up": [t for t in cut.titles if t.rank >= 4],
             "brief": _load_brief(ep_dir, cut.cut_id),
             "recipe_payload": recipe_payload,
+            "center_candidates": [
+                {
+                    "candidate_id": row.candidate_id,
+                    "asset": row.preview_png,
+                    "url": (
+                        f"/bridge/packaging/{episode_slug}/center-candidate/"
+                        f"{cut.cut_id}/{row.candidate_id}"
+                    ),
+                    "title": row.title,
+                    "author": row.author,
+                    "source": row.source,
+                    "query": row.query,
+                }
+                for row in (candidate_pool.candidates if candidate_pool else [])
+            ],
         }
         cuts.append(view)
     return {
@@ -1189,6 +1206,54 @@ async def packaging_center_visual(
     return FileResponse(path)
 
 
+def _center_candidates(ep_dir: Path, cut_id: str) -> CenterCandidatesFileV1 | None:
+    """這支 cut 的中央卡候選池——gate 上那排可以點的圖庫縮圖。
+
+    修修 2026-08-29：「來源的圖要多一點，要不然很難選，這些都需要上圖庫去找。」
+    在此之前 gate 只能挑臉、挑標題、打大字；中央圖是 hidden field，只能原樣帶回。
+    池子由桌機端的 stage_center_candidates.py 從 Envato 搜出來、下浮水印預覽，
+    正式授權檔等修修選定後才下——挑十張下十張授權檔，九張是白下的。
+
+    檔案壞掉時回 None 而不是 500：候選池是錦上添花，沒有它 gate 仍然要能核准。
+    """
+    path = ep_dir / "center-candidates" / f"{cut_id}.json"
+    if not path.is_file():
+        return None
+    try:
+        return CenterCandidatesFileV1.model_validate_json(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValidationError) as exc:
+        logger.warning("center candidates unreadable for %s/%s: %s", ep_dir.name, cut_id, exc)
+        return None
+
+
+@page_router.get("/{episode_slug}/center-candidate/{cut_id}/{candidate_id}")
+async def packaging_center_candidate(
+    episode_slug: str,
+    cut_id: str,
+    candidate_id: str,
+    nakama_auth: str | None = Cookie(None),
+) -> FileResponse:
+    """Serve one staged center-card candidate preview."""
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    ep_dir = _packaging_root() / episode_slug
+    pool = _center_candidates(ep_dir, cut_id)
+    candidate = next(
+        (row for row in (pool.candidates if pool else []) if row.candidate_id == candidate_id),
+        None,
+    )
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="候選圖不存在")
+    path = (get_vault_path() / candidate.preview_png).resolve()
+    try:
+        path.relative_to(ep_dir.resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="候選圖超出 episode 目錄") from exc
+    if path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"} or not path.is_file():
+        raise HTTPException(status_code=404, detail="候選圖檔不存在")
+    return FileResponse(path)
+
+
 @page_router.get("/{episode_slug}/render-status/{cut_id}/{package_rank}")
 async def packaging_render_status(
     episode_slug: str,
@@ -1709,10 +1774,18 @@ async def packaging_compose(
             if source_recipe and source_recipe.composition == "thumbnail_reaction"
             else None
         )
-        if not expected_center or center_visual_asset.strip() != expected_center:
+        chosen_center = center_visual_asset.strip()
+        # 合法值是「自己那一張」或「這支 cut 的候選池裡的一張」。放寬到候選池是
+        # 為了讓修修能在 gate 上換圖（2026-08-29）；池子以外仍然一律拒絕，
+        # 否則這個欄位就變成任意讀取 vault 的路徑輸入。
+        pool = _center_candidates(ep_dir, cut_id)
+        allowed = {row.preview_png for row in (pool.candidates if pool else [])}
+        if expected_center:
+            allowed.add(expected_center)
+        if not chosen_center or chosen_center not in allowed:
             raise HTTPException(
                 status_code=409,
-                detail="center_visual_asset 必須來自這個 package 自己的 composition receipt",
+                detail="center_visual_asset 必須是這個 package 自己的中央圖或候選池裡的一張",
             )
         values = (center_width_pct, center_height_px, center_x_pct, center_y_pct)
         if any(value is None for value in values):
