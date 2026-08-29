@@ -289,29 +289,7 @@ class _FilesystemProductionStore:
     def load_run(self, command_id: str) -> _StoredRun | None:
         payload = self._read_payload()
         row = payload["runs"].get(command_id)
-        if row is None:
-            return None
-        if not isinstance(row, dict) or set(row) != {
-            "command",
-            "command_kind",
-            "view",
-            "worker_catalog",
-            "base_release_id",
-        }:
-            raise ProductionStoreError("persisted ProductionRun row is invalid")
-        command_kind = row["command_kind"]
-        if command_kind == "approved_cut":
-            command = _approved_cut_from_dict(row["command"])
-        elif command_kind == "targeted_revision":
-            command = _targeted_revision_from_dict(row["command"])
-        else:
-            raise ProductionStoreError("persisted ProductionRun command kind is invalid")
-        return _StoredRun(
-            command=command,
-            view=_view_from_dict(row["view"]),
-            worker_catalog=_catalog_from_list(row["worker_catalog"]),
-            base_release_id=cast(str | None, row["base_release_id"]),
-        )
+        return None if row is None else _run_from_row(row)
 
     def create_run(
         self,
@@ -360,13 +338,13 @@ class _FilesystemProductionStore:
         return _targeted_revision_from_dict(row) if row is not None else None
 
     def accepted_stages(self) -> tuple[AcceptedStage, ...]:
-        payload = self._read_payload()
+        # Decode straight from the payload already in hand.  Resolving each run
+        # through ``load_run`` re-read and re-parsed the whole authority store
+        # once per run, so this cost one parse per run plus one, every call.
         accepted: list[AcceptedStage] = []
-        for row in payload["runs"].values():
-            if not isinstance(row, dict):
-                raise ProductionStoreError("persisted ProductionRun row is invalid")
-            run = self.load_run(str(row["command"]["command_id"])).view
-            accepted.extend(run.accepted_stage_history or run.accepted_stages)
+        for row in self._read_payload()["runs"].values():
+            view = _run_from_row(row).view
+            accepted.extend(view.accepted_stage_history or view.accepted_stages)
         return tuple(accepted)
 
     def load_accepted(self, acceptance_id: str) -> AcceptedStage | None:
@@ -573,6 +551,33 @@ def _command_to_dict(
 
 def _command_kind(command: ApprovedCutCommand | TargetedRevisionCommand) -> str:
     return "approved_cut" if isinstance(command, ApprovedCutCommand) else "targeted_revision"
+
+
+def _run_from_row(value: object) -> _StoredRun:
+    """Decode one persisted ProductionRun row without re-reading the store."""
+    if not isinstance(value, dict) or set(value) != {
+        "command",
+        "command_kind",
+        "view",
+        "worker_catalog",
+        "base_release_id",
+    }:
+        raise ProductionStoreError("persisted ProductionRun row is invalid")
+    command_kind = value["command_kind"]
+    if command_kind == "approved_cut":
+        command: ApprovedCutCommand | TargetedRevisionCommand = _approved_cut_from_dict(
+            value["command"]
+        )
+    elif command_kind == "targeted_revision":
+        command = _targeted_revision_from_dict(value["command"])
+    else:
+        raise ProductionStoreError("persisted ProductionRun command kind is invalid")
+    return _StoredRun(
+        command=command,
+        view=_view_from_dict(value["view"]),
+        worker_catalog=_catalog_from_list(value["worker_catalog"]),
+        base_release_id=cast(str | None, value["base_release_id"]),
+    )
 
 
 def _approved_cut_from_dict(value: object) -> ApprovedCutCommand:

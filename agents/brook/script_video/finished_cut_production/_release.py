@@ -349,20 +349,20 @@ class FinishedCutReleaseLifecycle:
                 "release artifact must stay inside the episode root"
             ) from exc
         try:
-            payload = resolved.read_bytes()
+            size, digest = _measure(resolved)
         except OSError as exc:
             raise ReleaseLifecycleError(
                 f"release artifact is not readable: {relative.as_posix()}"
             ) from exc
-        if not payload:
+        if not size:
             raise ReleaseLifecycleError(f"release artifact is empty: {relative.as_posix()}")
         normalized_probe = tuple(
             sorted((str(key), _probe_value(value)) for key, value in (probe or {}).items())
         )
         return ReleaseArtifact(
             path=relative.as_posix(),
-            bytes=len(payload),
-            sha256=hashlib.sha256(payload).hexdigest(),
+            bytes=size,
+            sha256=digest,
             duration_sec=duration_sec,
             probe=normalized_probe,
         )
@@ -371,15 +371,31 @@ class FinishedCutReleaseLifecycle:
         path = (self.episode_root / artifact.path).resolve()
         try:
             path.relative_to(self.episode_root)
-            payload = path.read_bytes()
+            size, digest = _measure(path)
         except (ValueError, OSError) as exc:
             raise ReleaseLifecycleError(
                 f"release artifact changed after Candidate: {artifact.path}"
             ) from exc
-        if len(payload) != artifact.bytes or hashlib.sha256(payload).hexdigest() != artifact.sha256:
+        if size != artifact.bytes or digest != artifact.sha256:
             raise ReleaseLifecycleError(
                 f"release artifact changed after Candidate: {artifact.path}"
             )
+
+
+def _measure(path: Path) -> tuple[int, str]:
+    """Size and digest one artifact without holding it in memory.
+
+    A Release preview is around a gigabyte and is measured twice — once when the
+    Candidate is staged and again when it is sealed — so reading it whole cost
+    two full-file allocations per publish.
+    """
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(block)
+            size += len(block)
+    return size, digest.hexdigest()
 
 
 def _probe_value(value: object) -> ProbeValue:
