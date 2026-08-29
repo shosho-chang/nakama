@@ -13,7 +13,9 @@ def test_wide_hero_defaults_to_compact_paper_style() -> None:
     html = WIDE_COMPOSITION.read_text(encoding="utf-8")
 
     assert ('{"id":"style","type":"string","label":"orange|paper|ink","default":"paper"}') in html
-    assert ".tier1 .line {\n        font-size: 96px;" in html
+    # Hero still defaults to 96px; the variable exists only so a caller can
+    # override it through the font_px composition variable.
+    assert ".tier1 .line {\n        font-size: var(--tier1-font-size, 96px);" in html
     assert '["orange", "paper", "ink"].includes(vars.style)' in html
     assert '? vars.style : "paper";' in html
 
