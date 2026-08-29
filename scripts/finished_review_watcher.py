@@ -1,280 +1,180 @@
 #!/usr/bin/env python3
-"""Durable desktop worker for Stage 5 finished-cut revision requests.
-
-Bridge appends a content-addressed ``revision_job`` to the episode-local finished
-review feedback file.  This worker is deliberately a separate process: no request
-depends on an in-memory FastAPI background task, and a failed revision restores the
-previous preview/manifest before reporting ``failed``.
-"""
+"""Advance event-scoped Finished Cut Production revisions from Bridge feedback v3."""
 
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
-import re
-import shutil
-import subprocess
 import sys
 import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
-from urllib.parse import urlparse
+from typing import Callable, Literal, Protocol
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-_FEEDBACK_FILES = (
-    "finished_review_feedback.v1.json",
-    "short_finished_review_feedback.v1.json",
-)
-_TRUSTED_HANDOFF_ROOT = Path("highlights") / "revision-inputs"
-_TRUSTED_HANDOFF_POINTER = _TRUSTED_HANDOFF_ROOT / "current.json"
-_VISUAL_REQUEST_RETRY_MIGRATION_CONTRACT = (
-    "finished-cut-visual-request-retry-migration-v1"
-)
-_VISUAL_REQUEST_AUTHORITY_KEYS = (
-    "worker_contract",
-    "episode_id",
-    "review_format",
-    "manifest_filename",
-    "source_manifest_sha256",
-    "source_registry_sha256",
-    "source_preview_sha256",
-    "requested_cut_ids",
-    "cut_statuses",
-    "component_feedback",
-    "overall_feedback",
-    "editorial_master_lineage",
-    "tighten_inputs",
-    "trusted_asset_sources",
-    "trusted_asset_sources_sha256",
-    "trusted_asset_handoff",
+from agents.brook.script_video.finished_cut_production._composition import (
+    ProductionPaths,
+    ProductionStatusView,
+    build_production_application,
 )
 
-for _stream in (sys.stdout, sys.stderr):
-    try:
-        _stream.reconfigure(encoding="utf-8")
-    except (AttributeError, OSError):
-        pass
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as source:
-        while chunk := source.read(1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def _json_sha256(payload: object) -> str:
-    encoded = json.dumps(
-        payload,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
-
-
-def _validate_trusted_asset_sources(
-    sources: object,
-    *,
-    asset_path: Callable[[str], Path],
-) -> tuple[dict, dict[str, Path]]:
-    """Freshly validate a canonical acquisition map and every named media file."""
-    from agents.brook.script_video.highlight_broll import (
-        parse_provenance_acquired_at,
-        probe_stock_video,
-    )
-
-    if not isinstance(sources, dict) or not sources:
-        raise RuntimeError("trusted asset sources must be a non-empty object")
-    normalized: dict = {}
-    paths: dict[str, Path] = {}
-    for slug, row in sorted(sources.items()):
-        if not isinstance(slug, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", slug):
-            raise RuntimeError("trusted asset source slug is unsafe")
-        if not isinstance(row, dict):
-            raise RuntimeError(f"trusted asset source is not an object: {slug}")
-        filename = row.get("filename")
-        sha256 = row.get("sha256")
-        size = row.get("bytes")
-        provenance = row.get("provenance")
-        if (
-            not isinstance(filename, str)
-            or Path(filename).name != filename
-            or Path(filename).stem != slug
-            or not isinstance(sha256, str)
-            or not re.fullmatch(r"[0-9a-f]{64}", sha256)
-            or not isinstance(size, int)
-            or size <= 0
-            or not isinstance(provenance, dict)
-        ):
-            raise RuntimeError(f"trusted asset source schema is invalid: {slug}")
-        for key in ("source_url",):
-            parsed = urlparse(str(provenance.get(key) or ""))
-            if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-                raise RuntimeError(f"trusted asset provenance URL is invalid: {slug}.{key}")
-        try:
-            parse_provenance_acquired_at(provenance.get("acquired_at"))
-        except ValueError as exc:
-            raise RuntimeError(f"trusted asset acquired_at is invalid: {slug}") from exc
-        evidence = [
-            provenance.get("license_url"),
-            provenance.get("terms_url"),
-            provenance.get("license_id"),
-        ]
-        if not any(evidence):
-            raise RuntimeError(f"trusted asset license evidence is missing: {slug}")
-        for key in ("license_url", "terms_url"):
-            if provenance.get(key):
-                parsed = urlparse(str(provenance[key]))
-                if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-                    raise RuntimeError(
-                        f"trusted asset provenance URL is invalid: {slug}.{key}"
-                    )
-        raw_media = asset_path(filename)
-        if raw_media.is_symlink():
-            raise RuntimeError(f"trusted asset file is missing or unsafe: {filename}")
-        media = raw_media.resolve()
-        if not media.is_file():
-            raise RuntimeError(f"trusted asset file is missing or unsafe: {filename}")
-        if media.stat().st_size != size or _sha256(media) != sha256:
-            raise RuntimeError(f"trusted asset file hash/size mismatch: {filename}")
-        probe_stock_video(media)
-        normalized[slug] = dict(row)
-        paths[slug] = media
-    return normalized, paths
-
-
-def prepare_trusted_asset_handoff(
-    episode_dir: Path,
-    source_manifest: Path,
-    *,
-    apply: bool,
-) -> dict:
-    """Validate an acquisition result and optionally stage it inside one episode."""
-    source_manifest = source_manifest.resolve()
-    try:
-        raw = json.loads(source_manifest.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"trusted asset sources JSON is unreadable: {source_manifest}") from exc
-    source_root = source_manifest.parent.resolve()
-
-    def external_asset(filename: str) -> Path:
-        candidate = (source_root / filename).resolve()
-        try:
-            candidate.relative_to(source_root)
-        except ValueError as exc:
-            raise RuntimeError("trusted asset source escaped its manifest directory") from exc
-        return candidate
-
-    sources, paths = _validate_trusted_asset_sources(raw, asset_path=external_asset)
-    sources_sha256 = _json_sha256(sources)
-    relative_root = _TRUSTED_HANDOFF_ROOT / sources_sha256
-    target_root = _contained(
-        episode_dir / relative_root,
-        episode_dir,
-        "trusted acquisition handoff",
-    )
-    if apply:
-        assets_root = target_root / "assets"
-        assets_root.mkdir(parents=True, exist_ok=True)
-        for slug, source in paths.items():
-            destination = assets_root / sources[slug]["filename"]
-            if destination.exists() and (
-                destination.stat().st_size != source.stat().st_size
-                or _sha256(destination) != _sha256(source)
-            ):
-                raise RuntimeError(f"trusted handoff destination drifted: {destination.name}")
-            if not destination.exists():
-                shutil.copy2(source, destination)
-        _atomic_json(target_root / "trusted_asset_sources.json", sources)
-        _atomic_json(
-            episode_dir / _TRUSTED_HANDOFF_POINTER,
-            {
-                "contract": "finished-revision-trusted-assets-v1",
-                "sources_sha256": sources_sha256,
-                "root": relative_root.as_posix(),
-            },
-        )
-    return {
-        "sources": sources,
-        "sources_sha256": sources_sha256,
-        "handoff": {
-            "contract": "finished-revision-trusted-assets-v1",
-            "sources_sha256": sources_sha256,
-            "root": relative_root.as_posix(),
-        },
-        "asset_count": len(sources),
+_FEEDBACK_FILE = "finished_review_feedback.v3.json"
+_FEEDBACK_SCHEMA = "nakama.finished_cut_review_feedback.v3"
+_JOB_CONTRACT = "finished-cut-production-revision.v3"
+_ACTIVE_STATUSES = frozenset({"queued", "registered", "pending"})
+_JOB_STATUSES = frozenset(
+    {
+        *_ACTIVE_STATUSES,
+        "registering",
+        "needs_review",
+        "preview_ready",
+        "failed",
     }
-
-
-def load_episode_trusted_asset_handoff(episode_dir: Path) -> dict | None:
-    pointer_path = episode_dir / _TRUSTED_HANDOFF_POINTER
-    if not pointer_path.is_file():
-        return None
-    try:
-        pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError("episode trusted asset handoff pointer is unreadable") from exc
-    if pointer.get("contract") != "finished-revision-trusted-assets-v1":
-        raise RuntimeError("episode trusted asset handoff contract drift")
-    root = _contained(
-        episode_dir / str(pointer.get("root") or ""),
-        episode_dir / _TRUSTED_HANDOFF_ROOT,
-        "episode trusted asset handoff root",
-    )
-    manifest = root / "trusted_asset_sources.json"
-    try:
-        raw = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError("episode trusted asset handoff manifest is unreadable") from exc
-    sources, _paths = _validate_trusted_asset_sources(
-        raw, asset_path=lambda filename: root / "assets" / filename
-    )
-    sources_sha256 = _json_sha256(sources)
-    if sources_sha256 != pointer.get("sources_sha256") or root.name != sources_sha256:
-        raise RuntimeError("episode trusted asset handoff hash mismatch")
-    return {"sources": sources, "sources_sha256": sources_sha256, "handoff": pointer}
-
-
-def revision_requires_stock_assets(
-    episode_dir: Path, manifest_path: Path, requested_cut_ids: list[str]
-) -> bool:
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError("cannot inspect finished manifest for Stock Video bootstrap") from exc
-    cuts = {
-        row.get("cut_id"): row
-        for row in manifest.get("cuts", [])
-        if isinstance(row, dict) and isinstance(row.get("cut_id"), str)
+)
+_JOB_FIELDS = frozenset(
+    {
+        "contract",
+        "request_id",
+        "status",
+        "command_id",
+        "production_state",
+        "reason_code",
+        "requested_at",
+        "updated_at",
+        "error",
+        "episode_id",
+        "source_manifest_sha256",
+        "release_id",
+        "cut_id",
+        "event_id",
+        "feedback",
     }
-    for cut_id in requested_cut_ids:
-        cut = cuts.get(cut_id, {})
-        if str(cut.get("format") or "long") != "long":
-            continue
-        components = cut.get("components") if isinstance(cut, dict) else None
-        stock_count = (
-            int(cut.get("stock_video_count"))
-            if isinstance(cut.get("stock_video_count"), int)
-            else sum(
-                1
-                for component in components or []
-                if isinstance(component, dict)
-                and component.get("asset_category") == "stock_video"
-            )
-        )
-        if stock_count < 3:
-            return True
-    return False
+)
+_MUTABLE_JOB_FIELDS = frozenset(
+    {
+        "status",
+        "command_id",
+        "production_state",
+        "reason_code",
+        "updated_at",
+        "error",
+    }
+)
 
 
-def _atomic_json(path: Path, payload: dict) -> None:
+class ProductionApplication(Protocol):
+    """Only the Finished Cut operations this watcher is allowed to call."""
+
+    def request_revision(
+        self,
+        current_release_ref: str,
+        event_id: str,
+        feedback: str,
+    ) -> str: ...
+
+    def advance(self, command_id: str) -> ProductionStatusView: ...
+
+
+ApplicationFactory = Callable[[ProductionPaths, str], ProductionApplication]
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _opaque(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and value == value.strip()
+        and 0 < len(value) <= 512
+        and not any(character in value for character in "/\\{}[]\r\n\t")
+    )
+
+
+def _command_id(value: object) -> bool:
+    if not isinstance(value, str) or not value.startswith("targeted-revision:"):
+        return False
+    digest = value.removeprefix("targeted-revision:")
+    return len(digest) == 32 and all(character in "0123456789abcdef" for character in digest)
+
+
+def _validate_job(value: object, *, episode_id: str) -> dict[str, object]:
+    if not isinstance(value, dict) or set(value) != _JOB_FIELDS:
+        raise RuntimeError("Finished Cut revision job fields are invalid")
+    if value.get("contract") != _JOB_CONTRACT:
+        raise RuntimeError("Finished Cut revision job contract is invalid")
+    if value.get("episode_id") != episode_id:
+        raise RuntimeError("Finished Cut revision job episode differs")
+    request_id = value.get("request_id")
+    if (
+        not isinstance(request_id, str)
+        or not request_id.startswith("finished-revision:")
+        or not _sha256(request_id.removeprefix("finished-revision:"))
+    ):
+        raise RuntimeError("Finished Cut revision request identity is invalid")
+    status = value.get("status")
+    if status not in _JOB_STATUSES:
+        raise RuntimeError("Finished Cut revision status is invalid")
+    for key in ("release_id", "cut_id", "event_id"):
+        if not _opaque(value.get(key)):
+            raise RuntimeError(f"Finished Cut revision {key} is invalid")
+    if not _sha256(value.get("source_manifest_sha256")):
+        raise RuntimeError("Finished Cut revision current-manifest identity is invalid")
+    feedback = value.get("feedback")
+    if not isinstance(feedback, str) or not feedback.strip() or len(feedback) > 10_000:
+        raise RuntimeError("Finished Cut revision feedback is invalid")
+    command_id = value.get("command_id")
+    if status == "queued":
+        if command_id is not None:
+            raise RuntimeError("queued Finished Cut revision cannot carry a command")
+    elif status in {"registered", "pending", "needs_review", "preview_ready", "failed"}:
+        if command_id is not None and not _command_id(command_id):
+            raise RuntimeError("Finished Cut revision command identity is invalid")
+        if status in {"registered", "pending", "preview_ready"} and command_id is None:
+            raise RuntimeError("advanced Finished Cut revision is missing its command")
+    elif status == "registering" and command_id is not None:
+        raise RuntimeError("registering Finished Cut revision cannot pre-author a command")
+    return dict(value)
+
+
+def _load_feedback(path: Path) -> dict[str, object]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"Finished Cut feedback v3 is unreadable: {path}") from error
+    if not isinstance(payload, dict) or set(payload) != {"schema", "episode_id", "revisions"}:
+        raise RuntimeError("Finished Cut feedback v3 root fields are invalid")
+    episode_id = payload.get("episode_id")
+    revisions = payload.get("revisions")
+    if (
+        payload.get("schema") != _FEEDBACK_SCHEMA
+        or not _opaque(episode_id)
+        or not isinstance(revisions, list)
+    ):
+        raise RuntimeError("Finished Cut feedback v3 schema is invalid")
+    for revision in revisions:
+        if not isinstance(revision, dict):
+            raise RuntimeError("Finished Cut feedback revision must be an object")
+        jobs = revision.get("revision_jobs", [])
+        if not isinstance(jobs, list):
+            raise RuntimeError("Finished Cut feedback revision_jobs must be a list")
+        for job in jobs:
+            _validate_job(job, episode_id=str(episode_id))
+    return payload
+
+
+def _atomic_json(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
         "w",
@@ -288,2432 +188,308 @@ def _atomic_json(path: Path, payload: dict) -> None:
         temporary.write("\n")
         temporary.flush()
         os.fsync(temporary.fileno())
-    os.replace(temporary.name, path)
+        temporary_path = Path(temporary.name)
+    os.replace(temporary_path, path)
 
 
-def _load_feedback(path: Path) -> dict:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if (
-        not isinstance(payload, dict)
-        or payload.get("schema") != "nakama.finished_cut_review_feedback.v1"
-        or not isinstance(payload.get("revisions"), list)
-    ):
-        raise RuntimeError(f"invalid finished review feedback: {path}")
-    return payload
+def pending_revision_jobs(episodes_root: Path) -> list[dict[str, object]]:
+    """Return only active v3 event revisions from each episode's exact feedback file."""
 
-
-def pending_revision_jobs(episodes_root: Path) -> list[dict]:
-    """Return each queued content-addressed request once, newest revision first."""
-    found: list[dict] = []
-    seen: set[str] = set()
-    if not episodes_root.is_dir():
-        return found
-    feedback_paths: list[Path] = []
-    for filename in _FEEDBACK_FILES:
-        feedback_paths.extend(episodes_root.glob(f"*/highlights/review/{filename}"))
-    for feedback_path in sorted(feedback_paths):
-        try:
-            audit = _load_feedback(feedback_path)
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError, RuntimeError):
+    root = Path(episodes_root).resolve()
+    if not root.is_dir():
+        raise RuntimeError(f"episodes root is unavailable: {root}")
+    pending: list[dict[str, object]] = []
+    for episode_dir in sorted(path for path in root.iterdir() if path.is_dir()):
+        feedback_path = episode_dir / "highlights" / "review" / _FEEDBACK_FILE
+        if not feedback_path.is_file():
             continue
-        for index in range(len(audit["revisions"]) - 1, -1, -1):
-            revision = audit["revisions"][index]
-            job = revision.get("revision_job") if isinstance(revision, dict) else None
-            if not isinstance(job, dict) or job.get("status") != "queued":
-                continue
-            request_id = job.get("request_id")
-            if not isinstance(request_id, str) or not request_id or request_id in seen:
-                continue
-            seen.add(request_id)
-            found.append(
-                {
-                    "episode_dir": feedback_path.parents[2],
-                    "review_dir": feedback_path.parent,
-                    "feedback_path": feedback_path,
-                    "revision_index": index,
-                    "request_id": request_id,
-                    "job": job,
-                }
-            )
-    return found
+        payload = _load_feedback(feedback_path)
+        episode_id = str(payload["episode_id"])
+        if episode_id != episode_dir.name:
+            raise RuntimeError("Finished Cut feedback v3 is stored under another episode")
+        revisions = payload["revisions"]
+        if not isinstance(revisions, list):  # pragma: no cover - validated above
+            raise AssertionError("validated revisions changed type")
+        for revision_index, revision in enumerate(revisions):
+            jobs = revision.get("revision_jobs", [])
+            for job_index, raw_job in enumerate(jobs):
+                job = _validate_job(raw_job, episode_id=episode_id)
+                if job["status"] not in _ACTIVE_STATUSES:
+                    continue
+                pending.append(
+                    {
+                        "episodes_root": root,
+                        "episode_dir": episode_dir,
+                        "episode_id": episode_id,
+                        "feedback_path": feedback_path,
+                        "revision_index": revision_index,
+                        "job_index": job_index,
+                        "request_id": job["request_id"],
+                        "job": job,
+                    }
+                )
+    return pending
 
 
-def reconcile_missing_revision_job(
-    episodes_root: Path,
-    *,
-    episode_id: str,
-    apply: bool = False,
-    trusted_asset_sources: Path | None = None,
-) -> dict:
-    """Prepare one latest pre-cutover draft for the durable worker queue.
-
-    This is intentionally episode-explicit and never runs from the normal scan.
-    It exists for feedback saved immediately before deployment: an operator can
-    first inspect the deterministic dry-run, then apply it without asking the user
-    to re-enter or re-save their feedback.
-    """
-    episode_dir = _contained(episodes_root / episode_id, episodes_root, "reconcile episode")
-    if not episode_dir.is_dir() or episode_dir.name != episode_id:
-        raise RuntimeError(f"episode not found for reconcile: {episode_id}")
-    review_dir = episode_dir / "highlights" / "review"
-    available = [review_dir / name for name in _FEEDBACK_FILES if (review_dir / name).is_file()]
-    if len(available) != 1:
-        raise RuntimeError(
-            f"reconcile requires exactly one finished feedback file, found {len(available)}"
-        )
-    feedback_path = available[0]
-    audit = _load_feedback(feedback_path)
-    if audit.get("episode_id") != episode_id or not audit["revisions"]:
-        raise RuntimeError("reconcile feedback episode/revisions are invalid")
-    revision = audit["revisions"][-1]
-    if not isinstance(revision, dict) or revision.get("decision") != "draft":
-        raise RuntimeError("latest finished feedback is not a draft")
-    if trusted_asset_sources is not None:
-        trusted_handoff = prepare_trusted_asset_handoff(
-            episode_dir, trusted_asset_sources, apply=apply
-        )
-    else:
-        trusted_handoff = load_episode_trusted_asset_handoff(episode_dir)
-    existing = revision.get("revision_job")
-    if isinstance(existing, dict) and not (
-        existing.get("status") == "awaiting_stock_assets" and trusted_handoff is not None
-    ):
-        return {
-            "episode_id": episode_id,
-            "status": (
-                "awaiting_stock_assets"
-                if existing.get("status") == "awaiting_stock_assets"
-                else "already_queued"
-            ),
-            "request_id": existing.get("request_id"),
-        }
-    component_feedback = revision.get("component_feedback") or []
-    overall_feedback = revision.get("overall_feedback") or {}
-    cut_statuses = revision.get("cut_statuses") or {}
-    if (
-        not isinstance(component_feedback, list)
-        or not isinstance(overall_feedback, dict)
-        or not isinstance(cut_statuses, dict)
-    ):
-        raise RuntimeError("latest finished feedback fields are invalid")
-    all_cut_ids = set(cut_statuses) | set(overall_feedback) | {
-        row.get("cut_id")
-        for row in component_feedback
-        if isinstance(row, dict) and isinstance(row.get("cut_id"), str)
-    }
-    requested_cut_ids = sorted(
-        cut_id
-        for cut_id in all_cut_ids
-        if cut_statuses.get(cut_id) == "needs_changes"
-        or cut_id in overall_feedback
-        or any(
-            isinstance(row, dict) and row.get("cut_id") == cut_id
-            for row in component_feedback
-        )
-    )
-    if not requested_cut_ids:
-        raise RuntimeError("latest finished feedback contains no requested changes")
-    source_manifest_sha = revision.get("manifest_sha256")
-    manifest_matches = [
-        path
-        for path in sorted(review_dir.glob("finished_review_manifest_*.json"))
-        if path.is_file() and _sha256(path) == source_manifest_sha
-    ]
-    if len(manifest_matches) != 1:
-        raise RuntimeError(
-            "cannot bind legacy feedback to exactly one unchanged finished manifest"
-        )
-    preview_sha256 = revision.get("preview_sha256")
-    if not isinstance(preview_sha256, dict) or any(
-        not isinstance(preview_sha256.get(cut_id), str) for cut_id in requested_cut_ids
-    ):
-        raise RuntimeError("legacy feedback preview hashes are incomplete")
-    request = {
-        "worker_contract": "finished-cut-revision-worker-v2-stock-required",
-        "episode_id": episode_id,
-        "review_format": "short" if feedback_path.name.startswith("short_") else "long",
-        "manifest_filename": manifest_matches[0].name,
-        "source_manifest_sha256": source_manifest_sha,
-        "source_preview_sha256": preview_sha256,
-        "requested_cut_ids": requested_cut_ids,
-        "cut_statuses": cut_statuses,
-        "component_feedback": component_feedback,
-        "overall_feedback": overall_feedback,
-    }
-    from scripts.build_finished_review_manifest import identity_registry_source_sha256
-
-    request["source_registry_sha256"] = identity_registry_source_sha256(
-        episode_dir, manifest_matches[0]
-    )
-    if (episode_dir / "editorial-master" / "v1" / "EDITORIAL-MASTER.json").is_file():
-        from scripts.run_short_broll import _open_editorial_master
-
-        request["editorial_master_lineage"] = _open_editorial_master(
-            episode_dir
-        ).identity()
-    tighten_inputs = {}
-    for cut_id in requested_cut_ids:
-        cuts_path = episode_dir / "highlights" / "tighten" / f"{cut_id}_cuts.json"
-        if cuts_path.is_file():
-            tighten_inputs[cut_id] = {
-                "path": cuts_path.relative_to(episode_dir).as_posix(),
-                "sha256": _sha256(cuts_path),
-            }
-    if tighten_inputs:
-        request["tighten_inputs"] = tighten_inputs
-    if trusted_handoff is not None:
-        request["trusted_asset_sources"] = trusted_handoff["sources"]
-        request["trusted_asset_sources_sha256"] = trusted_handoff["sources_sha256"]
-        request["trusted_asset_handoff"] = trusted_handoff["handoff"]
-    needs_stock_assets = revision_requires_stock_assets(
-        episode_dir, manifest_matches[0], requested_cut_ids
-    )
-    job_status = (
-        "awaiting_stock_assets"
-        if needs_stock_assets and trusted_handoff is None
-        else "queued"
-    )
-    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    request_id = f"finished-revision-{hashlib.sha256(canonical.encode('utf-8')).hexdigest()[:20]}"
-    result = {
-        "episode_id": episode_id,
-        "status": job_status if job_status == "awaiting_stock_assets" else "would_queue",
-        "request_id": request_id,
-        "requested_cut_ids": requested_cut_ids,
-        "feedback_path": str(feedback_path),
-    }
-    if trusted_handoff is not None:
-        result["trusted_asset_sources_sha256"] = trusted_handoff["sources_sha256"]
-        result["trusted_asset_count"] = trusted_handoff.get(
-            "asset_count", len(trusted_handoff["sources"])
-        )
-    if not apply:
-        return result
-    revision["overall_feedback"] = overall_feedback
-    revision["revision_job"] = {
-        "contract": "finished-cut-revision-job-v1",
-        "request_id": request_id,
-        "status": job_status,
-        "attempt": 0,
-        "requested_at": datetime.now(timezone.utc).isoformat(),
-        "started_at": None,
-        "finished_at": None,
-        "result_receipt": None,
-        "error": None,
-        **request,
-    }
-    _atomic_json(feedback_path, audit)
-    result["status"] = job_status
-    return result
-
-
-def _retry_target_inventory(episode_dir: Path, review_dir: Path, allowed: dict) -> dict:
-    """Rebuild the exact filesystem inventory covered by a revision rollback."""
-    inventory: dict[str, dict[str, int | str]] = {}
-    tree_keys = (
-        "trusted_output_review_cut_dirs",
-        "trusted_output_stills_visual_dirs",
-    )
-    tree_relatives: list[str] = []
-    for key in tree_keys:
-        values = allowed.get(key)
-        if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
-            raise RuntimeError(f"failed revision request has invalid {key}")
-        tree_relatives.extend(values)
-    assets_relative = allowed.get("new_broll_assets_dir")
-    if not isinstance(assets_relative, str):
-        raise RuntimeError("failed revision request has invalid B-roll asset directory")
-    tree_relatives.append(assets_relative)
-    for relative in tree_relatives:
-        target = _contained(episode_dir / relative, episode_dir, "retry rollback target")
-        inventory.update(_tree_inventory(target, relative_to=episode_dir))
-
-    for key in ("tighten_files", "trusted_output_receipts"):
-        values = allowed.get(key)
-        if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
-            raise RuntimeError(f"failed revision request has invalid {key}")
-        for relative in values:
-            target = _contained(episode_dir / relative, episode_dir, "retry rollback file")
-            if target.is_file():
-                inventory.update(_tree_inventory(target, relative_to=episode_dir))
-    identity_files = [
-        review_dir / "finished_review_component_identity.v1.json",
-        review_dir / "finished_review_component_identity.v2.json",
-    ]
-    for manifest in [*sorted(review_dir.glob("finished_review_manifest_*.json")), *identity_files]:
-        if manifest.is_file():
-            inventory.update(_tree_inventory(manifest, relative_to=episode_dir))
-    return inventory
-
-
-def _read_json_object(path: Path, label: str) -> dict:
+def _current_job(work: dict[str, object]) -> tuple[dict[str, object], dict[str, object]]:
+    feedback_path = Path(work["feedback_path"])
+    payload = _load_feedback(feedback_path)
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"{label} is unreadable") from exc
-    if not isinstance(value, dict):
-        raise RuntimeError(f"{label} must be an object")
-    return value
-
-
-def _file_proof(path: Path, episode_dir: Path) -> dict:
-    if path.is_symlink():
-        raise RuntimeError("visual migration artifact is missing or unsafe")
-    path = _contained(path, episode_dir, "visual migration artifact")
-    if not path.is_file():
-        raise RuntimeError("visual migration artifact is missing or unsafe")
-    return {
-        "path": path.relative_to(episode_dir.resolve()).as_posix(),
-        "bytes": path.stat().st_size,
-        "sha256": _sha256(path),
-    }
-
-
-def _verify_legacy_visual_request_for_retry(
-    *,
-    episode_dir: Path,
-    review_dir: Path,
-    request_root: Path,
-    request_id: str,
-    requested: list[str],
-    job: dict,
-    revision: dict,
-    revision_index: int,
-    latest_attempt_request: dict,
-    failure_receipt: Path,
-) -> dict:
-    """Audit one pre-cutover PENDING lineage; this is never called by pickup."""
-    from agents.brook.script_video.highlight_visual_pipeline import (
-        load_visual_work_packet,
-        visual_pipeline_status,
-    )
-    from scripts.run_short_broll import _open_editorial_master
-
-    root_request_path = _contained(
-        request_root / "request.json", request_root, "legacy visual root request"
-    )
-    root_request = _read_json_object(root_request_path, "legacy visual root request")
-    if (
-        root_request.get("contract") != job.get("contract")
-        or root_request.get("request_id") != request_id
-        or root_request.get("feedback_revision") != revision_index + 1
-    ):
-        raise RuntimeError("legacy visual root request does not match the review revision")
-    for key in _VISUAL_REQUEST_AUTHORITY_KEYS:
-        if root_request.get(key) != job.get(key) or latest_attempt_request.get(key) != job.get(key):
-            raise RuntimeError(f"legacy visual root request authority drifted: {key}")
-    for key in ("overall_feedback", "cut_statuses"):
-        if (root_request.get(key) or {}) != (revision.get(key) or {}):
-            raise RuntimeError(f"legacy visual root request feedback drifted: {key}")
-    job_feedback = root_request.get("component_feedback")
-    revision_feedback = revision.get("component_feedback") or []
-    if (
-        not isinstance(job_feedback, list)
-        or not isinstance(revision_feedback, list)
-        or len(job_feedback) != len(revision_feedback)
-        or any(
-            not isinstance(row, dict)
-            or sum(
-                isinstance(saved, dict)
-                and all(saved.get(key) == value for key, value in row.items())
-                for saved in revision_feedback
-            )
-            != 1
-            for row in job_feedback
-        )
-    ):
-        raise RuntimeError("legacy visual root request feedback drifted: component_feedback")
-    root_snapshot = root_request.get("pre_snapshot")
-    root_allowed = root_request.get("allowed_changes")
-    if not isinstance(root_snapshot, dict) or not isinstance(root_allowed, dict):
-        raise RuntimeError("legacy visual root request lacks rollback authority")
-    if _retry_target_inventory(episode_dir, review_dir, root_allowed) != root_snapshot:
-        raise RuntimeError("legacy visual root request rollback is not clean")
-
-    root_proof = _file_proof(root_request_path, episode_dir)
-    expected_relative = (
-        Path("highlights") / "review" / "revisions" / request_id / "request.json"
-    ).as_posix()
-    if root_proof["path"] != expected_relative:
-        raise RuntimeError("legacy visual root request is not at its canonical path")
-
-    master = _open_editorial_master(episode_dir)
-    pending_revisions: dict[str, str] = {}
-    pending_lineage: dict[str, dict] = {}
-    expected_request_identity = {"kind": "feedback", **root_proof}
-    allowed_states = {
-        "awaiting_director",
-        "awaiting_dp",
-        "awaiting_semantic_audit",
-        "ready_to_materialize",
-    }
-    for cut_id in requested:
-        status = visual_pipeline_status(
-            episode_dir, cut_id=cut_id, editorial_master=master
-        )
-        if status.get("status") not in allowed_states:
-            raise RuntimeError(
-                f"legacy visual PENDING lineage is not resumable: {cut_id}: {status.get('status')}"
-            )
-        revision_id = status.get("pending_revision_id")
-        if not isinstance(revision_id, str):
-            raise RuntimeError(f"legacy visual PENDING revision is missing: {cut_id}")
-        work = load_visual_work_packet(
-            episode_dir,
-            cut_id=cut_id,
-            revision_id=revision_id,
-            editorial_master=master,
-        )
-        if (
-            work.document.get("episode_id") != episode_dir.name
-            or work.document.get("cut_id") != cut_id
-            or work.document.get("revision_request") != expected_request_identity
-        ):
-            raise RuntimeError(f"legacy visual work packet binds another request: {cut_id}")
-        paths = status.get("paths")
-        if not isinstance(paths, dict) or not isinstance(paths.get("pending_pointer"), str):
-            raise RuntimeError(f"legacy visual PENDING pointer path is invalid: {cut_id}")
-        pointer_proof = _file_proof(episode_dir / paths["pending_pointer"], episode_dir)
-        pending_revisions[cut_id] = revision_id
-        pending_lineage[cut_id] = {
-            "status": status["status"],
-            "revision_id": revision_id,
-            "pending_pointer": pointer_proof,
-            "work_packet": work.identity(),
-        }
-
-    proof = {
-        "contract": _VISUAL_REQUEST_RETRY_MIGRATION_CONTRACT,
-        "request_id": request_id,
-        "root_request": root_proof,
-        "source_manifest_sha256": job["source_manifest_sha256"],
-        "source_registry_sha256": job["source_registry_sha256"],
-        "pre_snapshot_sha256": _json_sha256(root_snapshot),
-        "failure_receipt": _file_proof(failure_receipt, episode_dir),
-        "pending_revisions": pending_revisions,
-        "pending_lineage": pending_lineage,
-        "verified_at": datetime.now(timezone.utc).isoformat(),
-    }
-    proof["content_hash"] = _json_sha256(proof)
-    return proof
-
-
-def retry_failed_revision_job(
-    episodes_root: Path,
-    *,
-    episode_id: str,
-    request_id: str,
-    apply: bool = False,
-) -> dict:
-    """Requeue one failed request only after proving rollback restored its inputs."""
-    if Path(episode_id).name != episode_id or not re.fullmatch(r"[A-Za-z0-9._-]+", request_id):
-        raise RuntimeError("retry episode or request id is unsafe")
-    episodes_root = Path(episodes_root)
-    episode_dir = _contained(episodes_root / episode_id, episodes_root, "retry episode")
-    review_dir = episode_dir / "highlights" / "review"
-    feedback_paths = [review_dir / name for name in _FEEDBACK_FILES]
-    feedback_paths = [path for path in feedback_paths if path.is_file()]
-    if len(feedback_paths) != 1:
-        raise RuntimeError("retry requires exactly one finished review feedback file")
-    feedback_path = feedback_paths[0]
-    audit = _load_feedback(feedback_path)
-    matches = [
-        (index, revision, revision.get("revision_job"))
-        for index, revision in enumerate(audit["revisions"])
-        if isinstance(revision, dict)
-        and isinstance(revision.get("revision_job"), dict)
-        and revision["revision_job"].get("request_id") == request_id
-    ]
-    if len(matches) != 1:
-        raise RuntimeError("retry request id must identify exactly one revision")
-    index, revision, job = matches[0]
-    if job.get("status") != "failed":
-        raise RuntimeError("only a failed finished revision job can be retried")
-    attempt = job.get("attempt")
-    if not isinstance(attempt, int) or attempt < 0:
-        raise RuntimeError("failed revision attempt is invalid")
-    request_root = _contained(
-        review_dir / "revisions" / request_id,
-        review_dir / "revisions",
-        "retry request root",
-    )
-    manifest_name = job.get("manifest_filename")
-    if not isinstance(manifest_name, str) or Path(manifest_name).name != manifest_name:
-        raise RuntimeError("failed revision manifest filename is invalid")
-    manifest_path = _contained(review_dir / manifest_name, review_dir, "retry source manifest")
-    if _sha256(manifest_path) != job.get("source_manifest_sha256"):
-        raise RuntimeError("failed revision source manifest was not restored")
-    requested = job.get("requested_cut_ids")
-    if not isinstance(requested, list) or not requested:
-        raise RuntimeError("failed revision has no requested cuts")
-    result_relative = job.get("result_receipt")
-    retry_proof = "completed_attempt_rollback_receipt"
-    latest_attempt_request: dict | None = None
-    failure_receipt: Path | None = None
-    if attempt == 0:
-        if request_root.exists() or result_relative is not None:
-            raise RuntimeError("attempt-0 failure has unexpected worker artifacts")
-        retry_proof = "preflight_failed_before_backup_or_agent"
-    else:
-        attempt_dir = request_root if attempt == 1 else request_root / "attempts" / str(attempt)
-        try:
-            request = json.loads((attempt_dir / "request.json").read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise RuntimeError("failed revision request receipt is unreadable") from exc
-        if request.get("request_id") != request_id:
-            raise RuntimeError("failed revision request receipt does not match job")
-        pre_snapshot = request.get("pre_snapshot")
-        allowed = request.get("allowed_changes")
-        if not isinstance(pre_snapshot, dict) or not isinstance(allowed, dict):
-            raise RuntimeError("failed revision lacks a rollback snapshot")
-        current_inventory = _retry_target_inventory(episode_dir, review_dir, allowed)
-        if current_inventory != pre_snapshot:
-            raise RuntimeError("failed revision rollback is not clean; refusing retry")
-        if not isinstance(result_relative, str):
-            raise RuntimeError("failed revision has no failure receipt")
-        result_path = _contained(review_dir / result_relative, review_dir, "retry failure receipt")
-        try:
-            result = json.loads(result_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise RuntimeError("failed revision failure receipt is unreadable") from exc
-        if result.get("request_id") != request_id or result.get("status") != "failed":
-            raise RuntimeError("failed revision failure receipt does not match job")
-        latest_attempt_request = request
-        failure_receipt = result_path
-    source_cuts, _source_preflight = _source_manifest_cuts(
-        episode_dir, manifest_path, review_dir, requested
-    )
-    from scripts.build_finished_review_manifest import identity_registry_source_sha256
-
-    live_registry_sha256 = identity_registry_source_sha256(episode_dir, manifest_path)
-    if job.get("source_registry_sha256") is None:
-        raise RuntimeError(
-            "failed revision lacks queue-bound identity registry and is permanently non-retryable"
-        )
-    if job.get("source_registry_sha256") != live_registry_sha256:
-        raise RuntimeError("failed revision identity registry was not restored")
-    for cut_id in requested:
-        preview = Path(source_cuts[cut_id]["artifacts"]["preview"]["path"])
-        if _sha256(preview) != job.get("source_preview_sha256", {}).get(cut_id):
-            raise RuntimeError(f"failed revision preview was not restored: {cut_id}")
-    visual_migration: dict | None = None
-    visual_request_sha256 = job.get("visual_request_sha256")
-    if attempt > 0:
-        root_visual_request = request_root / "request.json"
-        if visual_request_sha256 is None:
-            if latest_attempt_request is None or failure_receipt is None:
-                raise RuntimeError("legacy visual retry lacks a completed failure attempt")
-            visual_migration = _verify_legacy_visual_request_for_retry(
-                episode_dir=episode_dir,
-                review_dir=review_dir,
-                request_root=request_root,
-                request_id=request_id,
-                requested=requested,
-                job=job,
-                revision=revision,
-                revision_index=index,
-                latest_attempt_request=latest_attempt_request,
-                failure_receipt=failure_receipt,
-            )
-            visual_request_sha256 = visual_migration["root_request"]["sha256"]
-        elif (
-            not isinstance(visual_request_sha256, str)
-            or not re.fullmatch(r"[0-9a-f]{64}", visual_request_sha256)
-            or not root_visual_request.is_file()
-            or _sha256(root_visual_request) != visual_request_sha256
-        ):
-            raise RuntimeError("failed revision immutable visual request is missing or drifted")
-    response = {
-        "status": "would_bind_visual_request" if visual_migration is not None else "would_retry",
-        "episode_id": episode_id,
-        "request_id": request_id,
-        "previous_attempt": attempt,
-        "previous_result_receipt": result_relative,
-        "rollback_verified": True,
-        "retry_proof": retry_proof,
-        "source_registry_sha256": job["source_registry_sha256"],
-    }
-    if visual_migration is not None:
-        response["visual_request_migration"] = visual_migration
-    if not apply:
-        return response
-    previous_receipts = job.get("previous_result_receipts")
-    if previous_receipts is None:
-        previous_receipts = []
-    if not isinstance(previous_receipts, list) or not all(
-        isinstance(value, str) for value in previous_receipts
-    ):
-        raise RuntimeError("failed revision previous receipt history is invalid")
-    if isinstance(result_relative, str) and result_relative not in previous_receipts:
-        previous_receipts = [*previous_receipts, result_relative]
-    work = {
-        "episode_dir": episode_dir,
-        "review_dir": review_dir,
-        "feedback_path": feedback_path,
-        "revision_index": index,
-        "request_id": request_id,
-        "job": job,
-    }
-    updates = {
-        "status": "queued",
-        "started_at": None,
-        "finished_at": None,
-        "result_receipt": None,
-        "error": None,
-        "source_registry_sha256": job["source_registry_sha256"],
-        "retry_requested_at": datetime.now(timezone.utc).isoformat(),
-        "previous_result_receipts": previous_receipts,
-    }
-    if visual_migration is not None:
-        updates.update(
-            {
-                "visual_request_sha256": visual_request_sha256,
-                "visual_request_migration": visual_migration,
-            }
-        )
-    _update_job(
-        work,
-        updates,
-        required_status="failed",
-    )
-    response["status"] = "queued"
-    return response
-
-
-def _worker_process_is_running(pid: int | None, _session_id: str | None) -> bool:
-    if not isinstance(pid, int) or pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    return True
-
-
-def _resolve_revision_timeline_probe(
-    episode_dir: Path, allowed: dict, request_id: str
-) -> dict:
-    """Read-only proof that a crashed attempt left no revision Timeline behind."""
-    try:
-        from scripts.build_resolve_project import connect_resolve
-
-        resolve = connect_resolve()
-        project_manager = resolve.GetProjectManager()
-        project = project_manager.GetCurrentProject()
-        if project is None or project.GetName() != episode_dir.name:
-            project = project_manager.LoadProject(episode_dir.name)
-        if project is None:
-            raise RuntimeError(f"Resolve project not found: {episode_dir.name}")
-        names = [timeline.GetName() for timeline in _project_timelines(project)]
-    except KeyboardInterrupt:
-        raise
-    except BaseException as exc:
-        raise RuntimeError(f"Resolve recovery probe failed: {type(exc).__name__}: {exc}") from exc
-    expected = allowed.get("resolve_timelines")
-    if not isinstance(expected, dict):
-        raise RuntimeError("running revision lacks bound Resolve Timelines")
-    revision_names = sorted(
-        name
-        for name in names
-        if any(
-            name.startswith(f"{canonical}__revision_backup__")
-            or name.startswith(f"{canonical}__revision_work__")
-            for canonical in expected.values()
-        )
-    )
-    return {
-        "project": episode_dir.name,
-        "request_id": request_id,
-        "revision_timelines": revision_names,
-    }
-
-
-def _recovery_rollback_state(
-    episode_dir: Path, review_dir: Path, attempt_dir: Path, request: dict
-) -> tuple[dict, dict]:
-    allowed = request.get("allowed_changes")
-    pre_snapshot = request.get("pre_snapshot")
-    if not isinstance(allowed, dict) or not isinstance(pre_snapshot, dict):
-        raise RuntimeError("running revision lacks a rollback snapshot")
-    before_dir = attempt_dir / "before"
-    if not before_dir.is_dir():
-        raise RuntimeError("running revision rollback backup is missing")
-    tree_relatives: list[str] = []
-    for key in (
-        "trusted_output_review_cut_dirs",
-        "trusted_output_stills_visual_dirs",
-    ):
-        values = allowed.get(key)
-        if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
-            raise RuntimeError(f"running revision has invalid {key}")
-        tree_relatives.extend(values)
-    assets_relative = allowed.get("new_broll_assets_dir")
-    if not isinstance(assets_relative, str):
-        raise RuntimeError("running revision has invalid B-roll asset directory")
-    tree_relatives.append(assets_relative)
-
-    trees: list[dict] = []
-    backup_inventory: dict[str, dict[str, int | str]] = {}
-    for relative in tree_relatives:
-        destination = _contained(
-            episode_dir / relative, episode_dir, "recovery rollback target"
-        )
-        destination_relative = destination.resolve().relative_to(episode_dir.resolve())
-        backup = _contained(
-            before_dir / "trees" / destination_relative,
-            before_dir,
-            "recovery tree backup",
-        )
-        existed = backup.is_dir()
-        if existed:
-            for item in sorted(path for path in backup.rglob("*") if path.is_file()):
-                logical = destination_relative / item.relative_to(backup)
-                backup_inventory[logical.as_posix()] = {
-                    "bytes": item.stat().st_size,
-                    "sha256": _sha256(item),
-                }
-        trees.append(
-            {"destination": str(destination), "backup": str(backup), "existed": existed}
-        )
-
-    file_relatives: list[str] = []
-    for key in ("tighten_files", "trusted_output_receipts"):
-        values = allowed.get(key)
-        if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
-            raise RuntimeError(f"running revision has invalid {key}")
-        file_relatives.extend(values)
-    manifest_prefix = (Path("highlights") / "review").as_posix() + "/"
-    rollback_review_names = {
-        "finished_review_component_identity.v1.json",
-        "finished_review_component_identity.v2.json",
-    }
-    file_relatives.extend(
-        relative
-        for relative in pre_snapshot
-        if relative.startswith(manifest_prefix)
-        and Path(relative).suffix == ".json"
-        and (
-            Path(relative).name.startswith("finished_review_manifest_")
-            or Path(relative).name in rollback_review_names
-        )
-    )
-    files: list[dict] = []
-    for relative in sorted(set(file_relatives)):
-        destination = _contained(
-            episode_dir / relative, episode_dir, "recovery rollback file"
-        )
-        destination_relative = destination.resolve().relative_to(episode_dir.resolve())
-        backup = _contained(
-            before_dir / "files" / destination_relative,
-            before_dir,
-            "recovery file backup",
-        )
-        existed = backup.is_file()
-        if existed:
-            backup_inventory[destination_relative.as_posix()] = {
-                "bytes": backup.stat().st_size,
-                "sha256": _sha256(backup),
-            }
-        files.append(
-            {"destination": str(destination), "backup": str(backup), "existed": existed}
-        )
-    if backup_inventory != pre_snapshot:
-        raise RuntimeError("running revision rollback backup does not match pre-snapshot")
-    return {"trees": trees, "files": files, "pre_inventory": pre_snapshot}, allowed
-
-
-def recover_running_revision_job(
-    episodes_root: Path,
-    *,
-    episode_id: str,
-    request_id: str,
-    apply: bool = False,
-    process_probe: Callable[[int | None, str | None], bool] = _worker_process_is_running,
-    resolve_probe: Callable[[Path, dict, str], dict] = _resolve_revision_timeline_probe,
-) -> dict:
-    """Recover one orphan ``running`` attempt after proving its process and Timeline are absent."""
-    if Path(episode_id).name != episode_id or not re.fullmatch(r"[A-Za-z0-9._-]+", request_id):
-        raise RuntimeError("recovery episode or request id is unsafe")
-    episodes_root = Path(episodes_root)
-    episode_dir = _contained(episodes_root / episode_id, episodes_root, "recovery episode")
-    review_dir = episode_dir / "highlights" / "review"
-    feedback_paths = [review_dir / name for name in _FEEDBACK_FILES]
-    feedback_paths = [path for path in feedback_paths if path.is_file()]
-    if len(feedback_paths) != 1:
-        raise RuntimeError("recovery requires exactly one finished review feedback file")
-    feedback_path = feedback_paths[0]
-    audit = _load_feedback(feedback_path)
-    matches = [
-        (index, revision.get("revision_job"))
-        for index, revision in enumerate(audit["revisions"])
-        if isinstance(revision, dict)
-        and isinstance(revision.get("revision_job"), dict)
-        and revision["revision_job"].get("request_id") == request_id
-    ]
-    if len(matches) != 1:
-        raise RuntimeError("recovery request id must identify exactly one revision")
-    index, job = matches[0]
-    if job.get("status") != "running":
-        raise RuntimeError("only a running finished revision job can be recovered")
-    attempt = job.get("attempt")
-    if not isinstance(attempt, int) or attempt < 1:
-        raise RuntimeError("running revision has no active attempt")
-    worker_pid = job.get("worker_pid")
-    worker_session = job.get("worker_session_id")
-    if process_probe(worker_pid, worker_session):
-        raise RuntimeError("finished revision worker process/session is still active")
-    request_root = _contained(
-        review_dir / "revisions" / request_id,
-        review_dir / "revisions",
-        "recovery request root",
-    )
-    attempt_dir = request_root if attempt == 1 else request_root / "attempts" / str(attempt)
-    for log_name in ("agent.stdout.log", "agent.stderr.log"):
-        if not (attempt_dir / log_name).is_file():
-            raise RuntimeError(f"running revision attempt log is incomplete: {log_name}")
-    try:
-        request = json.loads((attempt_dir / "request.json").read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError("running revision request receipt is unreadable") from exc
-    if request.get("request_id") != request_id:
-        raise RuntimeError("running revision request receipt does not match job")
-    rollback_state, allowed = _recovery_rollback_state(
-        episode_dir, review_dir, attempt_dir, request
-    )
-    resolve_state = resolve_probe(episode_dir, allowed, request_id)
-    revision_timelines = (
-        resolve_state.get("revision_timelines") if isinstance(resolve_state, dict) else None
-    )
-    if not isinstance(revision_timelines, list) or revision_timelines:
-        raise RuntimeError("Resolve revision Timelines still exist; refusing filesystem recovery")
-    current_inventory = _retry_target_inventory(episode_dir, review_dir, allowed)
-    response = {
-        "status": "would_recover",
-        "episode_id": episode_id,
-        "request_id": request_id,
-        "attempt": attempt,
-        "worker_process_absent": True,
-        "attempt_logs_complete": True,
-        "resolve_revision_timelines_absent": True,
-        "rollback_backup_verified": True,
-        "current_matches_before": current_inventory == rollback_state["pre_inventory"],
-    }
-    if not apply:
-        return response
-    _restore_revision_targets(rollback_state, review_dir)
-    restored_inventory = _retry_target_inventory(episode_dir, review_dir, allowed)
-    if restored_inventory != rollback_state["pre_inventory"]:
-        raise RuntimeError("orphan recovery could not restore the pre-snapshot")
-    recovered_at = datetime.now(timezone.utc).isoformat()
-    receipt_path = attempt_dir / "recovery.json"
-    _atomic_json(
-        receipt_path,
-        {
-            "contract": "finished-cut-revision-result-v1",
-            "request_id": request_id,
-            "status": "failed",
-            "recovered_at": recovered_at,
-            "attempt": attempt,
-            "reason": "orphan running worker recovered after clean rollback proof",
-            "resolve_probe": resolve_state,
-            "pre_snapshot_sha256": _json_sha256(rollback_state["pre_inventory"]),
-            "approved": False,
-        },
-    )
-    work = {
-        "episode_dir": episode_dir,
-        "review_dir": review_dir,
-        "feedback_path": feedback_path,
-        "revision_index": index,
-        "request_id": request_id,
-        "job": job,
-    }
-    _update_job(
-        work,
-        {
-            "status": "failed",
-            "finished_at": recovered_at,
-            "result_receipt": receipt_path.relative_to(review_dir).as_posix(),
-            "error": "orphan running worker recovered; previous artifacts restored",
-            "recovered_at": recovered_at,
-        },
-        required_status="running",
-    )
-    response["status"] = "failed"
-    response["recovery_receipt"] = receipt_path.relative_to(review_dir).as_posix()
-    response["current_matches_before"] = True
-    return response
+        revision = payload["revisions"][int(work["revision_index"])]
+        raw_job = revision["revision_jobs"][int(work["job_index"])]
+    except (IndexError, KeyError, TypeError) as error:
+        raise RuntimeError("Finished Cut revision queue position changed") from error
+    job = _validate_job(raw_job, episode_id=str(work["episode_id"]))
+    if job["request_id"] != work["request_id"]:
+        raise RuntimeError("Finished Cut revision request identity changed")
+    return payload, job
 
 
 def _update_job(
-    work: dict,
-    updates: dict,
+    work: dict[str, object],
+    updates: dict[str, object],
     *,
-    required_status: str | None = None,
-) -> dict:
-    feedback_path = Path(work["feedback_path"])
-    audit = _load_feedback(feedback_path)
-    index = int(work["revision_index"])
+    required_status: str,
+) -> dict[str, object]:
+    if not set(updates) <= _MUTABLE_JOB_FIELDS:
+        raise RuntimeError("Finished Cut watcher attempted an unauthorized job mutation")
+    payload, current = _current_job(work)
+    if current["status"] != required_status:
+        raise RuntimeError("Finished Cut revision status changed before update")
+    updated = {**current, **updates, "updated_at": _now()}
+    _validate_job(updated, episode_id=str(work["episode_id"]))
+    revision = payload["revisions"][int(work["revision_index"])]
+    revision["revision_jobs"][int(work["job_index"])] = updated
+    _atomic_json(Path(work["feedback_path"]), payload)
+    return updated
+
+
+def _claim_registration(work: dict[str, object]) -> bool:
+    request_id = str(work["request_id"])
+    digest = request_id.removeprefix("finished-revision:")
+    claim_dir = Path(work["feedback_path"]).parent / "revision-claims-v3"
+    claim_dir.mkdir(parents=True, exist_ok=True)
+    claim_path = claim_dir / f"{digest}.json"
     try:
-        revision = audit["revisions"][index]
-        current = revision["revision_job"]
-    except (IndexError, KeyError, TypeError) as exc:
-        raise RuntimeError("finished revision disappeared while worker was running") from exc
-    if current.get("request_id") != work["request_id"]:
-        raise RuntimeError("finished revision request changed while worker was running")
-    if required_status is not None and current.get("status") != required_status:
-        raise RuntimeError(
-            f"finished revision is {current.get('status')!r}, expected {required_status!r}"
+        descriptor = os.open(
+            claim_path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
         )
-    current.update(updates)
-    revision["revision_job"] = current
-    _atomic_json(feedback_path, audit)
-    return current
-
-
-def _contained(path: Path, root: Path, label: str) -> Path:
-    resolved = path.resolve()
-    try:
-        resolved.relative_to(root.resolve())
-    except ValueError as exc:
-        raise RuntimeError(f"{label} escapes finished review directory") from exc
-    return resolved
-
-
-def _validated_manifest_cuts(
-    payload: dict,
-    review_dir: Path,
-    requested: list[str],
-    *,
-    label: str,
-) -> dict[str, dict]:
-    if payload.get("episode_id") != review_dir.parents[1].name:
-        raise RuntimeError(f"{label} manifest episode is invalid")
-    cuts = {
-        row.get("cut_id"): row
-        for row in payload.get("cuts", [])
-        if isinstance(row, dict) and isinstance(row.get("cut_id"), str)
-    }
-    missing = sorted(set(requested) - cuts.keys())
-    if missing:
-        raise RuntimeError(f"{label} manifest is missing cuts: {', '.join(missing)}")
-    for cut_id in requested:
-        artifacts = cuts[cut_id].get("artifacts")
-        if not isinstance(artifacts, dict):
-            raise RuntimeError(f"{label} manifest lacks artifacts for {cut_id}")
-        for name in ("preview", "subtitles"):
-            receipt = artifacts.get(name)
-            if not isinstance(receipt, dict) or not isinstance(receipt.get("path"), str):
-                raise RuntimeError(f"{label} manifest lacks {name} for {cut_id}")
-            artifact = _contained(Path(receipt["path"]), review_dir, f"{cut_id} {name}")
-            if not artifact.is_file():
-                raise RuntimeError(f"{label} manifest {name} is missing for {cut_id}")
-            if receipt.get("bytes") != artifact.stat().st_size or receipt.get("sha256") != _sha256(
-                artifact
-            ):
-                raise RuntimeError(f"{label} manifest {name} receipt mismatch for {cut_id}")
-    return cuts
-
-
-def _manifest_cuts(manifest_path: Path, review_dir: Path, requested: list[str]) -> dict[str, dict]:
-    try:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError("revision output manifest is unreadable") from exc
-    if payload.get("schema") != "nakama.finished_cut_review_manifest.v2":
-        raise RuntimeError("revision output manifest schema is invalid")
-    return _validated_manifest_cuts(payload, review_dir, requested, label="revision output")
-
-
-def _source_manifest_cuts(
-    episode_dir: Path,
-    manifest_path: Path,
-    review_dir: Path,
-    requested: list[str],
-) -> tuple[dict[str, dict], dict]:
-    """Validate v2 or narrowly adapt a read-only legacy v1 revision source."""
-    try:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError("revision source manifest is unreadable") from exc
-    schema = payload.get("schema")
-    if schema == "nakama.finished_cut_review_manifest.v2":
-        cuts = _validated_manifest_cuts(payload, review_dir, requested, label="revision source")
-        return cuts, {"schema": schema, "legacy_read_only": False}
-    if schema != "nakama.finished_cut_review_manifest.v1":
-        raise RuntimeError("revision source manifest schema is invalid")
-    gate = payload.get("gate")
-    if (
-        payload.get("stage") != 5
-        or not isinstance(gate, dict)
-        or gate.get("kind") != "finished_cut_review"
-    ):
-        raise RuntimeError("legacy revision source manifest contract is invalid")
-    cuts = _validated_manifest_cuts(payload, review_dir, requested, label="legacy revision source")
-    try:
-        from scripts.build_finished_review_manifest import _approved_inventory, _open_master
-
-        master_identity = _open_master(episode_dir).identity()
-        approved = _approved_inventory(episode_dir, master_identity)
-    except SystemExit as exc:
-        raise RuntimeError(f"legacy revision source Editorial Master is invalid: {exc}") from exc
-    for cut_id in requested:
-        source_format = str(cuts[cut_id].get("format") or "short")
-        if approved.get(cut_id) != source_format:
-            raise RuntimeError(
-                f"legacy revision source cut is not in current Editorial Master inventory: {cut_id}"
-            )
-    return cuts, {
-        "schema": schema,
-        "legacy_read_only": True,
-        "editorial_master_lineage": master_identity,
-        "output_schema_required": "nakama.finished_cut_review_manifest.v2",
-    }
-
-
-def _codex_command() -> str:
-    if os.name == "nt":
-        local_bin = Path(os.environ.get("LOCALAPPDATA", "")) / "OpenAI" / "Codex" / "bin"
-        candidates = sorted(
-            local_bin.glob("*/codex.exe"),
-            key=lambda path: path.stat().st_mtime,
-            reverse=True,
-        )
-        if candidates:
-            return str(candidates[0])
-        npm = Path(os.environ.get("APPDATA", "")) / "npm" / "codex.cmd"
-        if npm.is_file():
-            return str(npm)
-    found = shutil.which("codex")
-    if not found:
-        raise RuntimeError("找不到 Codex CLI，無法啟動 finished-cut revision agent")
-    return found
-
-
-def dispatch_revision_agent(context: dict) -> subprocess.CompletedProcess[str]:
-    """Dispatch one bounded agent whose only writable root is its job directory."""
-    job_dir = Path(context["job_dir"])
-    output_root = _contained(Path(context["output_root"]), job_dir, "agent output root")
-    output_root.mkdir(parents=True, exist_ok=True)
-    prompt = f"""你是 Podcast Finished-cut Revision Agent。
-
-請讀 `{context['request_path']}`，逐項處理 component_feedback 與 overall_feedback。
-唯一可寫位置是 `{output_root}`；episode 與 repo 只能讀，禁止直接寫入。
-依 request.allowed_changes 只可產生非視覺的 staged tighten inputs（目前只有 `_cuts.json`）。
-不得寫 `_broll.json`、`_titles.json`、DIRECTOR/DP/AUDIT proposal 或 receipt；視覺內容會由
-worker 另行 dispatch Director → DP → 同一 Director Semantic Audit，再由 deterministic adapter
-產生 exact recipe。request.trusted_asset_sources 只代表 bytes/license acquisition authority，
-不代表素材符合字幕語意，也不得拿它自行決定 Stock Video。
-不得產生 review preview、events、
-manifest、materialization receipt 或 stills；這些只能由 worker 的可信任程式產生。
-
-不得連線或操作 Resolve；Timeline 修改只由 worker 之後的 trusted apply 執行。
-嚴禁修改 Editorial Master、完整節目 Timeline、其他 cut Timeline、其他 cut 檔案、repo code、
-feedback JSON、packaging、字幕 release、上傳或 YouTube 狀態。
-
-使用 repo 既有 schema 作為唯讀參考；你的產出只是非視覺計畫與輸入，不是執行成功的證據。
-Hero Title 與所有 content visual feedback 不得在此 agent 自行實作或核准。
-若無法確實完成允許的非視覺調整，非零退出。
-    完成摘要直接作為最後回覆。
-"""
-    command = [
-        _codex_command(),
-        "exec",
-        "--ephemeral",
-        "--ignore-rules",
-        "--skip-git-repo-check",
-        "--sandbox",
-        "workspace-write",
-        "--cd",
-        str(output_root),
-        "--output-last-message",
-        str(job_dir / "agent-last-message.txt"),
-        "-",
-    ]
-    child_env = os.environ.copy()
-    for name in (
-        "CODEX_PERMISSION_PROFILE",
-        "CODEX_SANDBOX_NETWORK_DISABLED",
-        "CODEX_SESSION_ID",
-        "CODEX_THREAD_ID",
-    ):
-        child_env.pop(name, None)
-    result = subprocess.run(
-        command,
-        input=prompt,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        cwd=output_root,
-        env=child_env,
-        shell=(os.name == "nt"),
-        timeout=7200,
-    )
-    return result
-
-
-def _remove_path(path: Path) -> None:
-    if path.is_dir():
-        shutil.rmtree(path)
-    elif path.exists():
-        path.unlink()
-
-
-def _replace_tree(source: Path, destination: Path) -> None:
-    _remove_path(destination)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, destination)
-
-
-def _tree_inventory(path: Path, *, relative_to: Path) -> dict[str, dict[str, int | str]]:
-    if not path.exists():
-        return {}
-    files = [path] if path.is_file() else sorted(item for item in path.rglob("*") if item.is_file())
-    return {
-        item.resolve().relative_to(relative_to.resolve()).as_posix(): {
-            "bytes": item.stat().st_size,
-            "sha256": _sha256(item),
-        }
-        for item in files
-    }
-
-
-def _allowed_changes(
-    episode_dir: Path,
-    review_dir: Path,
-    manifest_path: Path,
-    requested: list[str],
-    output_root: Path,
-    trusted_asset_sources: dict,
-) -> dict:
-    recipes = [
-        f"{cut_id}{suffix}"
-        for cut_id in requested
-        for suffix in (
-            "_broll.json",
-            "_cuts.json",
-            "_titles.json",
-        )
-    ]
-    timelines: dict[str, str] = {}
-    for cut_id in requested:
-        events_path = review_dir / cut_id / "events.json"
-        try:
-            events = json.loads(events_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise RuntimeError(f"cannot bind derived Resolve Timeline for {cut_id}") from exc
-        timeline = events.get("timeline")
-        if not isinstance(timeline, str) or not timeline.strip():
-            raise RuntimeError(f"review events lack derived Resolve Timeline for {cut_id}")
-        timelines[cut_id] = timeline
-    return {
-        "requested_cut_ids": requested,
-        "agent_output_root": str(output_root),
-        "trusted_output_review_cut_dirs": [
-            str((review_dir / cut_id).relative_to(episode_dir)) for cut_id in requested
-        ],
-        "tighten_files": [str(Path("highlights/tighten") / name) for name in recipes],
-        "trusted_output_receipts": [
-            *[
-                str(
-                    Path("highlights/tighten")
-                    / f"{cut_id}_broll_materialization.json"
-                )
-                for cut_id in requested
-            ],
-            *[
-                str(Path("highlights/materialization") / f"{cut_id}.json")
-                for cut_id in requested
-            ],
-        ],
-        "trusted_output_stills_visual_dirs": [
-            str(Path("highlights/stills") / f"{cut_id}-visuals") for cut_id in requested
-        ],
-        "new_broll_assets_dir": "assets/broll",
-        "new_broll_assets_policy": "new-files-only-no-overwrite",
-        "trusted_asset_sources": trusted_asset_sources,
-        "trusted_asset_sources_sha256": _json_sha256(trusted_asset_sources),
-        "trusted_asset_sources_contract": {
-            "key": "stock-video slug",
-            "required": ["filename", "bytes", "sha256", "provenance"],
-            "staged_asset_path": "output/assets/broll/<filename>",
-            "staged_plan_path": "output/tighten/<cut_id>_broll.json",
-            "plan_rule": "video item slug and provenance must exactly match this map",
-        },
-        "finished_manifest": str(manifest_path.relative_to(episode_dir)),
-        "resolve_timelines": timelines,
-        "trusted_operations": [
-            "duplicate_and_swap_derived_timeline",
-            "run_short_director.direct",
-            "run_short_broll.apply",
-            "run_short_titles.apply",
-            "run_short_review.build_packet",
-            "build_finished_review_manifest.verify_finished_review_cut",
-            "commit_timeline_swap_after_verification",
-        ],
-        "forbidden": [
-            "editorial-master",
-            "full episode Timeline/media",
-            "other cuts",
-            "packaging",
-            "upload/YouTube",
-            "repo code",
-        ],
-    }
-
-
-def _authoritative_output_verifier(context: dict) -> dict:
-    from scripts.build_finished_review_manifest import build_manifest, verify_finished_review_cut
-
-    episode_dir = Path(context["episode_dir"])
-    request = context["request"]
-    try:
-        manifest_path = build_manifest(
-            episode_dir,
-            review_format=str(request["review_format"]),
-            cut_ids=set(request["requested_cut_ids"]),
-            identity_transition={
-                "request_id": context["request_id"],
-                "source_manifest_sha256": request["source_manifest_sha256"],
-                "source_registry_sha256": request["source_registry_sha256"],
-                "feedback_rows": request.get("component_feedback", []),
+    except FileExistsError:
+        return False
+    with os.fdopen(descriptor, "w", encoding="utf-8") as claim:
+        json.dump(
+            {
+                "contract": "finished-cut-production-revision-claim.v1",
+                "request_id": request_id,
+                "claimed_at": _now(),
             },
+            claim,
+            ensure_ascii=False,
+            sort_keys=True,
         )
-        results: list[dict] = []
-        for cut_id in request["requested_cut_ids"]:
-            rows = [
-                row
-                for row in request.get("component_feedback", [])
-                if isinstance(row, dict) and row.get("cut_id") == cut_id
-            ]
-            result = verify_finished_review_cut(
-                episode_dir,
-                cut_id,
-                manifest_path,
-                feedback_rows=rows,
-                source_preview_sha256=request["source_preview_sha256"][cut_id],
-                require_preview_change=True,
-                identity_transition={
-                    "request_id": context["request_id"],
-                    "source_manifest_sha256": request["source_manifest_sha256"],
-                    "source_registry_sha256": request["source_registry_sha256"],
-                    "feedback_rows": request.get("component_feedback", []),
-                },
-            )
-            results.append(result)
-    except SystemExit as exc:
-        raise RuntimeError(str(exc)) from exc
-    manifest_hashes = {row["manifest_sha256"] for row in results}
-    if len(manifest_hashes) != 1:
-        raise RuntimeError("authoritative verifier returned inconsistent manifest hashes")
-    return {
-        "manifest_path": str(manifest_path),
-        "manifest_sha256": manifest_hashes.pop(),
-        "preview_sha256": {row["cut_id"]: row["preview_sha256"] for row in results},
-        "cut_results": results,
-        "approved": False,
-    }
+        claim.write("\n")
+        claim.flush()
+        os.fsync(claim.fileno())
+    return True
 
 
-def _verify_revision_output_acceptance(context: dict, verification: dict) -> dict:
-    """Run every output/hash postcondition while the original Timeline still exists."""
-    request = context["request"]
-    review_dir = Path(context["review_dir"])
-    requested = request["requested_cut_ids"]
-    manifest_path = _contained(
-        Path(verification.get("manifest_path", context["manifest_path"])),
-        review_dir,
-        "verified manifest",
+def _production_paths(work: dict[str, object]) -> ProductionPaths:
+    episode_dir = Path(work["episode_dir"]).resolve()
+    return ProductionPaths(
+        runtime_root=episode_dir / "highlights" / "finished-cut-production-v1" / "runtime",
+        episodes_root=Path(work["episodes_root"]),
     )
-    output_cuts = _manifest_cuts(manifest_path, review_dir, requested)
-    manifest_sha256 = _sha256(manifest_path)
-    if manifest_sha256 == request["source_manifest_sha256"]:
-        raise RuntimeError("trusted apply did not rebuild the finished review manifest")
-    if verification.get("manifest_sha256") not in {None, manifest_sha256}:
-        raise RuntimeError("authoritative verifier manifest hash mismatch")
-    preview_sha256: dict[str, str] = {}
-    verified_previews = verification.get("preview_sha256")
-    for cut_id in requested:
-        preview = Path(output_cuts[cut_id]["artifacts"]["preview"]["path"])
-        preview_sha256[cut_id] = _sha256(preview)
-        if preview_sha256[cut_id] == request["source_preview_sha256"].get(cut_id):
-            raise RuntimeError(f"trusted apply did not rebuild preview: {cut_id}")
-        if isinstance(verified_previews, dict) and verified_previews.get(cut_id) not in {
-            None,
-            preview_sha256[cut_id],
-        }:
-            raise RuntimeError(f"authoritative verifier preview hash mismatch: {cut_id}")
-    return {
-        "manifest_path": str(manifest_path),
-        "manifest_sha256": manifest_sha256,
-        "preview_sha256": preview_sha256,
-    }
 
 
-def _verified_current_asset_sources(
-    episode_dir: Path, requested: list[str], supplied: object
-) -> dict:
-    """Bind current verified Stock Video provenance plus upstream supplied assets."""
-    sources = dict(supplied) if isinstance(supplied, dict) else {}
-    from agents.brook.script_video.highlight_broll import verify_broll_receipt
-    from scripts.run_short_broll import _load_winner, _open_editorial_master
-
-    master = None
-    for cut_id in requested:
-        plan_path = episode_dir / "highlights" / "tighten" / f"{cut_id}_broll.json"
-        receipt_path = (
-            episode_dir
-            / "highlights"
-            / "tighten"
-            / f"{cut_id}_broll_materialization.json"
-        )
-        if not plan_path.is_file():
-            continue
-        if not receipt_path.is_file():
-            # A zero/deficit legacy plan is the bootstrap case this revision is
-            # meant to repair.  It grants no authority, but must not deadlock
-            # request-bound new assets before the agent can produce a valid plan.
-            continue
-        if master is None:
-            master = _open_editorial_master(episode_dir)
-        try:
-            items = json.loads(plan_path.read_text(encoding="utf-8"))["items"]
-            candidate, _winner = _load_winner(
-                episode_dir, cut_id, master.identity()
-            )
-            receipt = verify_broll_receipt(
-                episode_dir,
-                cut_id,
-                str(candidate["format"]),
-                items,
-                master.identity(),
-            )
-        except (
-            OSError,
-            UnicodeDecodeError,
-            json.JSONDecodeError,
-            KeyError,
-            TypeError,
-            ValueError,
-            SystemExit,
-        ):
-            # Invalid/legacy receipts confer zero trust.  Reuse is possible only
-            # when upstream supplied the exact asset+provenance in this request.
-            continue
-        for row in receipt["stock_videos"]:
-            sources[row["slug"]] = {
-                "filename": Path(row["asset"]["path"]).name,
-                "bytes": row["asset"]["bytes"],
-                "sha256": row["asset"]["sha256"],
-                "provenance": row["provenance"],
-            }
-    return sources
-
-
-def _stage_request_handoff_assets(context: dict) -> list[str]:
-    handoff = context["request"].get("trusted_asset_handoff")
-    sources = context["request"].get("trusted_asset_sources")
-    if handoff is None:
-        return []
-    if not isinstance(handoff, dict) or not isinstance(sources, dict):
-        raise RuntimeError("trusted asset handoff/request schema is incomplete")
-    episode_dir = Path(context["episode_dir"])
-    root = _contained(
-        episode_dir / str(handoff.get("root") or ""),
-        episode_dir / _TRUSTED_HANDOFF_ROOT,
-        "request trusted asset handoff",
-    )
-    try:
-        staged_sources = json.loads(
-            (root / "trusted_asset_sources.json").read_text(encoding="utf-8")
-        )
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError("request trusted asset handoff manifest is unreadable") from exc
-    validated, paths = _validate_trusted_asset_sources(
-        staged_sources, asset_path=lambda filename: root / "assets" / filename
-    )
-    sources_sha256 = _json_sha256(validated)
-    if (
-        validated != sources
-        or sources_sha256 != handoff.get("sources_sha256")
-        or sources_sha256 != root.name
-    ):
-        raise RuntimeError("request trusted asset handoff drifted")
-    output_assets = Path(context["output_root"]) / "assets" / "broll"
-    output_assets.mkdir(parents=True, exist_ok=True)
-    staged: list[str] = []
-    for slug, source in paths.items():
-        filename = validated[slug]["filename"]
-        episode_asset = episode_dir / "assets" / "broll" / filename
-        if episode_asset.exists():
-            if (
-                not episode_asset.is_file()
-                or episode_asset.is_symlink()
-                or episode_asset.stat().st_size != validated[slug]["bytes"]
-                or _sha256(episode_asset) != validated[slug]["sha256"]
-            ):
-                raise RuntimeError(f"existing episode B-roll asset drifted: {filename}")
-            from agents.brook.script_video.highlight_broll import probe_stock_video
-
-            probe_stock_video(episode_asset)
-            continue
-        destination = output_assets / filename
-        shutil.copy2(source, destination)
-        staged.append(destination.name)
-    return staged
-
-
-def _backup_revision_targets(
+def _durable_failure(
+    work: dict[str, object],
     *,
-    episode_dir: Path,
-    review_dir: Path,
-    requested: list[str],
-    allowed: dict,
-    before_dir: Path,
-) -> dict:
-    trees: list[dict] = []
-    destinations = [review_dir / cut_id for cut_id in requested]
-    destinations.extend(
-        episode_dir / "highlights" / "stills" / f"{cut_id}-visuals"
-        for cut_id in requested
+    required_status: str,
+    command_id: str | None,
+    reason_code: str,
+    error: Exception | str,
+) -> None:
+    _update_job(
+        work,
+        {
+            "status": "needs_review",
+            "command_id": command_id,
+            "production_state": "needs_review",
+            "reason_code": reason_code,
+            "error": str(error)[-1000:],
+        },
+        required_status=required_status,
     )
-    destinations.append(episode_dir / "assets" / "broll")
-    for destination in destinations:
-        relative = destination.resolve().relative_to(episode_dir.resolve())
-        backup = before_dir / "trees" / relative
-        existed = destination.is_dir()
-        if existed:
-            shutil.copytree(destination, backup)
-        trees.append(
-            {
-                "destination": str(destination),
-                "backup": str(backup),
-                "existed": existed,
-            }
-        )
-
-    files: list[dict] = []
-    recipe_paths = [
-        episode_dir / relative
-        for relative in [
-            *allowed["tighten_files"],
-            *allowed["trusted_output_receipts"],
-        ]
-    ]
-    manifest_paths = [
-        *sorted(review_dir.glob("finished_review_manifest_*.json")),
-        review_dir / "finished_review_component_identity.v1.json",
-        review_dir / "finished_review_component_identity.v2.json",
-    ]
-    for source in [*recipe_paths, *manifest_paths]:
-        relative = source.resolve().relative_to(episode_dir.resolve())
-        backup = before_dir / "files" / relative
-        existed = source.is_file()
-        if existed:
-            backup.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, backup)
-        files.append(
-            {
-                "destination": str(source),
-                "backup": str(backup),
-                "existed": existed,
-            }
-        )
-    inventory: dict[str, dict[str, int | str]] = {}
-    for row in trees:
-        inventory.update(
-            _tree_inventory(Path(row["destination"]), relative_to=episode_dir)
-        )
-    for row in files:
-        path = Path(row["destination"])
-        if path.is_file():
-            inventory.update(_tree_inventory(path, relative_to=episode_dir))
-    return {"trees": trees, "files": files, "pre_inventory": inventory}
-
-
-def _restore_revision_targets(state: dict, review_dir: Path) -> None:
-    for row in state.get("trees", []):
-        destination = Path(row["destination"])
-        _remove_path(destination)
-        if row["existed"]:
-            shutil.copytree(Path(row["backup"]), destination)
-    known_manifest_paths = {
-        Path(row["destination"]).resolve()
-        for row in state.get("files", [])
-        if Path(row["destination"]).name.startswith("finished_review_manifest_")
-    }
-    for manifest in review_dir.glob("finished_review_manifest_*.json"):
-        if manifest.resolve() not in known_manifest_paths:
-            manifest.unlink()
-    for row in state.get("files", []):
-        destination = Path(row["destination"])
-        if row["existed"]:
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(Path(row["backup"]), destination)
-        else:
-            _remove_path(destination)
-
-
-def _reject_agent_authored_visual_recipes(output_root: Path, requested: list[str]) -> None:
-    """The generic revision agent has no authority to impersonate Director/DP/Audit."""
-
-    tighten = output_root / "tighten"
-    forbidden = [
-        tighten / f"{cut_id}_{suffix}.json"
-        for cut_id in requested
-        for suffix in ("broll", "titles")
-    ]
-    authored = [path.name for path in forbidden if path.exists()]
-    if authored:
-        raise RuntimeError(
-            "generic revision agent authored semantic visual recipes; only trusted "
-            f"Director/DP/Audit adapter may create them: {', '.join(sorted(authored))}"
-        )
-
-
-def _promote_agent_inputs(
-    *,
-    episode_dir: Path,
-    review_dir: Path,
-    requested: list[str],
-    allowed: dict,
-    output_root: Path,
-) -> list[str]:
-    if _json_sha256(allowed.get("trusted_asset_sources", {})) != allowed.get(
-        "trusted_asset_sources_sha256"
-    ):
-        raise RuntimeError("request-bound trusted asset provenance hash mismatch")
-    output_root = _contained(output_root, output_root.parent, "agent output root")
-    for staged_path in output_root.rglob("*"):
-        if staged_path.is_symlink():
-            raise RuntimeError("agent output may not contain symlinks")
-        _contained(staged_path, output_root, "agent staged path")
-    allowed_top = {"tighten", "assets"}
-    unexpected_top = sorted(
-        path.name for path in output_root.iterdir() if path.name not in allowed_top
-    )
-    if unexpected_top:
-        raise RuntimeError(f"agent output contains forbidden paths: {', '.join(unexpected_top)}")
-    recipe_names = {Path(relative).name for relative in allowed["tighten_files"]}
-    output_tighten = output_root / "tighten"
-    if output_tighten.exists():
-        staged = [path for path in output_tighten.iterdir()]
-        if any(not path.is_file() or path.name not in recipe_names for path in staged):
-            raise RuntimeError("agent output contains a non-whitelisted tighten recipe")
-        staged_names = {path.name for path in staged}
-        visual_names = {
-            f"{cut_id}_{suffix}.json"
-            for cut_id in requested
-            for suffix in ("broll", "titles")
-        }
-        if staged_names & visual_names:
-            from agents.brook.script_video.highlight_broll import (
-                BrollContractError,
-                verify_visual_recipe_lineage,
-            )
-            from scripts.run_short_broll import _load_winner, _open_editorial_master
-
-            master = _open_editorial_master(episode_dir)
-            for cut_id in requested:
-                broll_path = output_tighten / f"{cut_id}_broll.json"
-                titles_path = output_tighten / f"{cut_id}_titles.json"
-                if not broll_path.is_file() or not titles_path.is_file():
-                    raise RuntimeError(
-                        f"trusted visual adapter must stage both B-roll and title recipes: {cut_id}"
-                    )
-                try:
-                    broll_items = json.loads(broll_path.read_text(encoding="utf-8"))["items"]
-                    title_items = json.loads(titles_path.read_text(encoding="utf-8"))["titles"]
-                    candidate, _winner = _load_winner(
-                        episode_dir, cut_id, master.identity()
-                    )
-                    verify_visual_recipe_lineage(
-                        episode_dir,
-                        cut_id,
-                        str(candidate["format"]),
-                        master.identity(),
-                        broll_items=broll_items,
-                        title_items=title_items,
-                        editorial_master=master,
-                    )
-                except (
-                    OSError,
-                    UnicodeDecodeError,
-                    json.JSONDecodeError,
-                    KeyError,
-                    TypeError,
-                    BrollContractError,
-                    SystemExit,
-                ) as exc:
-                    raise RuntimeError(
-                        "trusted visual recipe differs from current Director/DP/Audit: "
-                        f"{cut_id}: {exc}"
-                    ) from exc
-        for source in staged:
-            destination = episode_dir / "highlights" / "tighten" / source.name
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, destination)
-
-    promoted_assets: list[str] = []
-    output_assets = output_root / "assets" / "broll"
-    if output_assets.exists():
-        destination_root = episode_dir / "assets" / "broll"
-        destination_root.mkdir(parents=True, exist_ok=True)
-        for source in output_assets.iterdir():
-            if (
-                not source.is_file()
-                or source.name != Path(source.name).name
-                or source.suffix.lower() not in {".mp4", ".mov", ".mkv", ".webm", ".m4v"}
-            ):
-                raise RuntimeError("agent output B-roll asset is not a canonical video file")
-            destination = destination_root / source.name
-            if destination.exists():
-                if (
-                    destination.is_file()
-                    and not destination.is_symlink()
-                    and destination.stat().st_size == source.stat().st_size
-                    and _sha256(destination) == _sha256(source)
-                ):
-                    continue
-                raise RuntimeError(f"agent may not overwrite B-roll asset: {source.name}")
-            authorities = allowed.get("trusted_asset_sources", {})
-            authority = authorities.get(source.stem) or authorities.get(source.name)
-            if not isinstance(authority, dict):
-                raise RuntimeError(
-                    f"new B-roll asset lacks request-bound trusted provenance: {source.name}"
-                )
-            provenance = authority.get("provenance")
-            required = {"source_url", "acquired_at"}
-            license_fields = {"license_url", "terms_url", "license_id"}
-            if (
-                not isinstance(provenance, dict)
-                or not required.issubset(provenance)
-                or not any(provenance.get(name) for name in license_fields)
-                or authority.get("filename") != source.name
-                or authority.get("bytes") != source.stat().st_size
-                or authority.get("sha256") != _sha256(source)
-            ):
-                raise RuntimeError(
-                    f"new B-roll asset differs from request-bound provenance: {source.name}"
-                )
-            shutil.copy2(source, destination)
-            promoted_assets.append(destination.relative_to(episode_dir).as_posix())
-    return promoted_assets
-
-
-def _timeline_uid(timeline: object) -> str | None:
-    for method_name in ("GetUniqueId", "GetUniqueID"):
-        method = getattr(timeline, method_name, None)
-        value = method() if callable(method) else None
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    return None
-
-
-def _project_timelines(project: object) -> list[object]:
-    return [
-        timeline
-        for index in range(1, project.GetTimelineCount() + 1)
-        if (timeline := project.GetTimelineByIndex(index)) is not None
-    ]
-
-
-class _ResolveTimelineTransaction:
-    """Keep canonical derived timelines untouched until trusted verification passes."""
-
-    def __init__(self, project: object, project_manager: object, rows: list[dict]) -> None:
-        self.project = project
-        self.project_manager = project_manager
-        self.rows = rows
-        self.closed = False
-
-    @classmethod
-    def begin(cls, episode_dir: Path, timelines: dict[str, str], request_id: str):
-        from scripts.build_resolve_project import connect_resolve
-
-        resolve = connect_resolve()
-        project_manager = resolve.GetProjectManager()
-        project = project_manager.GetCurrentProject()
-        if project is None or project.GetName() != episode_dir.name:
-            project = project_manager.LoadProject(episode_dir.name)
-        if project is None:
-            raise RuntimeError(f"Resolve project not found: {episode_dir.name}")
-        transaction = cls(project, project_manager, [])
-        suffix = request_id[-12:]
-        try:
-            for cut_id, canonical_name in timelines.items():
-                matches = [
-                    timeline
-                    for timeline in _project_timelines(project)
-                    if timeline.GetName() == canonical_name
-                ]
-                if len(matches) != 1:
-                    raise RuntimeError(
-                        f"expected one canonical derived Timeline for {cut_id}, got {len(matches)}"
-                    )
-                original = matches[0]
-                backup_name = f"{canonical_name}__revision_backup__{suffix}"
-                work_name = f"{canonical_name}__revision_work__{suffix}"
-                occupied = {timeline.GetName() for timeline in _project_timelines(project)}
-                if backup_name in occupied or work_name in occupied:
-                    raise RuntimeError(f"stale Resolve revision Timeline exists for {cut_id}")
-                duplicate = original.DuplicateTimeline(work_name)
-                if duplicate is None:
-                    raise RuntimeError(f"DuplicateTimeline failed for {cut_id}")
-                if original.SetName(backup_name) is False or original.GetName() != backup_name:
-                    project.GetMediaPool().DeleteTimelines([duplicate])
-                    raise RuntimeError(f"cannot reserve original Timeline for {cut_id}")
-                renamed = duplicate.SetName(canonical_name)
-                if renamed is False or duplicate.GetName() != canonical_name:
-                    original.SetName(canonical_name)
-                    project.GetMediaPool().DeleteTimelines([duplicate])
-                    raise RuntimeError(f"cannot activate revision Timeline for {cut_id}")
-                transaction.rows.append(
-                    {
-                        "cut_id": cut_id,
-                        "canonical_name": canonical_name,
-                        "backup_name": backup_name,
-                        "original": original,
-                        "original_uid": _timeline_uid(original),
-                    }
-                )
-            if not project_manager.SaveProject():
-                raise RuntimeError("Resolve SaveProject failed while opening revision transaction")
-            return transaction
-        except KeyboardInterrupt:
-            transaction.rollback()
-            raise
-        except BaseException:
-            transaction.rollback()
-            raise
-
-    def prepare(self) -> dict:
-        for row in self.rows:
-            canonical = [
-                timeline
-                for timeline in _project_timelines(self.project)
-                if timeline.GetName() == row["canonical_name"]
-                and timeline is not row["original"]
-            ]
-            if len(canonical) != 1:
-                raise RuntimeError(f"verified Timeline promotion drifted for {row['cut_id']}")
-        if not self.project_manager.SaveProject():
-            raise RuntimeError("Resolve SaveProject failed before Timeline promotion")
-        return {
-            "strategy": "duplicate-swap-verify-two-phase",
-            "prepared": True,
-            "canonical_promoted": True,
-            "original_backup_retained": True,
-            "timelines": [row["canonical_name"] for row in self.rows],
-            "backup_timelines": [row["backup_name"] for row in self.rows],
-        }
-
-    def finalize(self) -> dict:
-        backups = [row["original"] for row in self.rows]
-        cleanup_deleted = bool(
-            not backups or self.project.GetMediaPool().DeleteTimelines(backups)
-        )
-        cleanup_saved = bool(cleanup_deleted and self.project_manager.SaveProject())
-        self.closed = True
-        return {
-            "strategy": "duplicate-swap-verify-two-phase",
-            "committed": True,
-            "timelines": [row["canonical_name"] for row in self.rows],
-            "backup_cleanup_deleted": cleanup_deleted,
-            "backup_cleanup_saved": cleanup_saved,
-        }
-
-    def rollback(self) -> dict:
-        if self.closed:
-            return {"strategy": "duplicate-swap-verify-two-phase", "rolled_back": False}
-        pool = self.project.GetMediaPool()
-        restored: list[dict] = []
-        for row in reversed(self.rows):
-            canonical = [
-                timeline
-                for timeline in _project_timelines(self.project)
-                if timeline.GetName() == row["canonical_name"] and timeline is not row["original"]
-            ]
-            if canonical and not pool.DeleteTimelines(canonical):
-                raise RuntimeError(f"cannot delete failed Timeline for {row['cut_id']}")
-            if row["original"].SetName(row["canonical_name"]) is False:
-                raise RuntimeError(f"cannot restore original Timeline for {row['cut_id']}")
-            if row["original"].GetName() != row["canonical_name"]:
-                raise RuntimeError(f"restored Timeline name mismatch for {row['cut_id']}")
-            if _timeline_uid(row["original"]) != row["original_uid"]:
-                raise RuntimeError(f"restored Timeline identity mismatch for {row['cut_id']}")
-            restored.append(
-                {
-                    "cut_id": row["cut_id"],
-                    "timeline": row["canonical_name"],
-                    "uid": row["original_uid"],
-                }
-            )
-        if self.rows and not self.project_manager.SaveProject():
-            raise RuntimeError("Resolve SaveProject failed while rolling back revision")
-        self.closed = True
-        return {
-            "strategy": "duplicate-swap-verify-two-phase",
-            "rolled_back": True,
-            "restored": restored,
-        }
-
-
-class _TrustedApplyError(RuntimeError):
-    def __init__(self, message: str, *, operations: list[dict], rollback: dict) -> None:
-        super().__init__(message)
-        self.operations = operations
-        self.rollback = rollback
-
-
-def _trusted_apply_revision(context: dict) -> dict:
-    """Apply staged recipes through deterministic code on disposable Timelines."""
-    from scripts.run_short_broll import apply as apply_broll
-    from scripts.run_short_broll import validate_plan as validate_broll
-    from scripts.run_short_director import direct
-    from scripts.run_short_review import build_packet
-    from scripts.run_short_titles import apply as apply_titles
-    from scripts.run_short_titles import validate_plan as validate_titles
-
-    episode_dir = Path(context["episode_dir"])
-    requested = list(context["request"]["requested_cut_ids"])
-    transaction: _ResolveTimelineTransaction | None = None
-    operations: list[dict] = []
-    try:
-        # Fresh fail-closed preflight before transaction.begin can duplicate or
-        # rename even one Resolve Timeline.  Each materializer verifies again
-        # immediately before its own mutation to close the remaining race.
-        for cut_id in requested:
-            operations.extend(
-                [
-                    {
-                        "operation": "run_short_broll.validate_plan",
-                        "result": validate_broll(episode_dir, cut_id),
-                    },
-                    {
-                        "operation": "run_short_titles.validate_plan",
-                        "result": validate_titles(episode_dir, cut_id),
-                    },
-                ]
-            )
-        transaction = _ResolveTimelineTransaction.begin(
-            episode_dir,
-            dict(context["allowed_changes"]["resolve_timelines"]),
-            str(context["request_id"]),
-        )
-        for cut_id in requested:
-            stills = episode_dir / "highlights" / "stills" / f"{cut_id}-visuals"
-            operations.append(
-                {
-                    "operation": "run_short_director.direct",
-                    "result": direct(episode_dir, cut_id),
-                }
-            )
-            operations.append(
-                {
-                    "operation": "run_short_broll.apply",
-                    "result": apply_broll(episode_dir, cut_id, stills),
-                }
-            )
-            operations.append(
-                {
-                    "operation": "run_short_titles.apply",
-                    "result": apply_titles(episode_dir, cut_id, stills),
-                }
-            )
-            operations.append(
-                {
-                    "operation": "run_short_review.build_packet",
-                    "result": build_packet(
-                        episode_dir,
-                        cut_id,
-                        finished_manifest_cut_ids=set(requested),
-                    ),
-                }
-            )
-        verification = context["output_verifier"](context)
-        if not isinstance(verification, dict) or verification.get("approved") is not False:
-            raise RuntimeError("fresh verifier did not bind output for human re-review")
-        acceptance = _verify_revision_output_acceptance(context, verification)
-        transaction_receipt = transaction.prepare()
-        return {
-            "status": "trusted_apply_succeeded",
-            "operations": operations,
-            "timeline_transaction": transaction_receipt,
-            "_timeline_transaction_handle": transaction,
-            "authoritative_verification": verification,
-            "output_acceptance": acceptance,
-        }
-    except KeyboardInterrupt:
-        if transaction is not None:
-            transaction.rollback()
-        raise
-    except BaseException as exc:
-        rollback = transaction.rollback() if transaction is not None else {
-            "status": "not_started",
-            "reason": "Resolve connection/transaction did not open",
-        }
-        raise _TrustedApplyError(
-            f"{type(exc).__name__}: {exc}", operations=operations, rollback=rollback
-        ) from exc
-
-
-def _run_visual_pipeline_revision(context: dict) -> dict:
-    """Dispatch/resume Director→DP→Director-audit and stage exact renderer recipes."""
-
-    from scripts.podcast_highlight_visual_orchestrator import run_visual_pipeline
-    from scripts.run_short_broll import (
-        _open_editorial_master,
-    )
-    from scripts.run_short_broll import (
-        emit_audited_recipe as emit_broll,
-    )
-    from scripts.run_short_titles import emit_audited_recipe as emit_titles
-
-    episode_dir = Path(context["episode_dir"])
-    output_tighten = Path(context["output_root"]) / "tighten"
-    request_path = Path(context["visual_request_path"])
-    master = _open_editorial_master(episode_dir)
-    results: list[dict] = []
-    for cut_id in context["request"]["requested_cut_ids"]:
-        selection = run_visual_pipeline(
-            episode_dir,
-            cut_id=cut_id,
-            revision_request=request_path,
-            editorial_master=master,
-            resume=True,
-        )
-        materializations = selection.materializations
-        broll_path = emit_broll(
-            episode_dir,
-            cut_id,
-            materializations,
-            output_dir=output_tighten,
-        )
-        titles_path = emit_titles(
-            cut_id,
-            materializations,
-            output_dir=output_tighten,
-        )
-        lineage = selection.lineage()
-        results.append(
-            {
-                "cut_id": cut_id,
-                "revision_id": lineage["revision_id"],
-                "content_hash": lineage["content_hash"],
-                "broll_recipe": str(broll_path),
-                "title_recipe": str(titles_path),
-            }
-        )
-    return {"status": "ready_to_materialize", "cuts": results}
 
 
 def run_revision_job(
-    work: dict,
+    work: dict[str, object],
     *,
-    agent_runner: Callable[[dict], subprocess.CompletedProcess[str]] = dispatch_revision_agent,
-    output_verifier: Callable[[dict], dict] = _authoritative_output_verifier,
-    trusted_apply: Callable[[dict], dict] = _trusted_apply_revision,
-    visual_pipeline_runner: Callable[[dict], dict] | None = None,
+    application_factory: ApplicationFactory = build_production_application,
 ) -> bool:
-    """Run one queued request transactionally; repeated pickup is a no-op."""
-    feedback_path = Path(work["feedback_path"])
-    review_dir = Path(work["review_dir"])
-    episode_dir = Path(work["episode_dir"])
-    request = work["job"]
-    request_id = work["request_id"]
-    current_audit = _load_feedback(feedback_path)
-    try:
-        current = current_audit["revisions"][int(work["revision_index"])]["revision_job"]
-    except (IndexError, KeyError, TypeError):
-        return False
-    if current.get("request_id") != request_id or current.get("status") != "queued":
+    """Register once, then advance only the durable targeted revision command."""
+
+    _, job = _current_job(work)
+    status = str(job["status"])
+    if status not in _ACTIVE_STATUSES:
         return False
 
-    requested = request.get("requested_cut_ids")
-    if not isinstance(requested, list) or not requested or not all(
-        isinstance(cut_id, str) and cut_id for cut_id in requested
-    ):
-        _update_job(
-            work,
-            {
-                "status": "failed",
-                "finished_at": datetime.now(timezone.utc).isoformat(),
-                "error": "revision request has no valid requested_cut_ids",
-            },
-            required_status="queued",
-        )
-        return False
-    manifest_name = request.get("manifest_filename")
-    if not isinstance(manifest_name, str) or Path(manifest_name).name != manifest_name:
-        _update_job(
-            work,
-            {
-                "status": "failed",
-                "finished_at": datetime.now(timezone.utc).isoformat(),
-                "error": "revision request manifest filename is invalid",
-            },
-            required_status="queued",
-        )
-        return False
-    manifest_path = _contained(review_dir / manifest_name, review_dir, "source manifest")
-    attempt_number = int(request.get("attempt", 0)) + 1
-    request_root = review_dir / "revisions" / request_id
-    job_dir = (
-        request_root
-        if attempt_number == 1
-        else request_root / "attempts" / str(attempt_number)
-    )
-    before_dir = job_dir / "before"
-    output_root = job_dir / "output"
-    started_at = datetime.now(timezone.utc)
-    backup_complete = False
-    rollback_state: dict = {}
-    timeline_handle: _ResolveTimelineTransaction | None = None
-    job_succeeded = False
-    try:
-        if _sha256(manifest_path) != request.get("source_manifest_sha256"):
-            raise RuntimeError("finished review manifest drifted after feedback was saved")
-        source_cuts, source_preflight = _source_manifest_cuts(
-            episode_dir, manifest_path, review_dir, requested
-        )
-        from scripts.build_finished_review_manifest import identity_registry_source_sha256
-
-        live_registry_sha256 = identity_registry_source_sha256(episode_dir, manifest_path)
-        if request.get("source_registry_sha256") is None:
-            raise RuntimeError(
-                "revision request lacks queue-bound identity registry; reconcile or retry first"
-            )
-        if live_registry_sha256 != request.get("source_registry_sha256"):
-            raise RuntimeError("component identity registry drifted after feedback was saved")
-        for cut_id in requested:
-            preview = Path(source_cuts[cut_id]["artifacts"]["preview"]["path"])
-            if _sha256(preview) != request.get("source_preview_sha256", {}).get(cut_id):
-                raise RuntimeError(f"finished preview drifted after feedback was saved: {cut_id}")
-        expected_master = request.get("editorial_master_lineage")
-        if expected_master is not None:
-            from scripts.run_short_broll import _open_editorial_master
-
-            if _open_editorial_master(episode_dir).identity() != expected_master:
-                raise RuntimeError("Editorial Master drifted after revision was queued")
-        expected_tighten = request.get("tighten_inputs")
-        if expected_tighten is not None:
-            if not isinstance(expected_tighten, dict):
-                raise RuntimeError("revision request tighten inputs are invalid")
-            for cut_id, row in expected_tighten.items():
-                if not isinstance(row, dict) or not isinstance(row.get("path"), str):
-                    raise RuntimeError("revision request tighten input is invalid")
-                cuts_path = _contained(
-                    episode_dir / row["path"], episode_dir, "revision tighten input"
+    command_id = job.get("command_id")
+    if status == "queued":
+        if not _claim_registration(work):
+            try:
+                _durable_failure(
+                    work,
+                    required_status="queued",
+                    command_id=None,
+                    reason_code="revision_registration_indeterminate",
+                    error="a durable registration claim already exists",
                 )
-                if _sha256(cuts_path) != row.get("sha256"):
-                    raise RuntimeError(f"tighten cuts drifted after revision was queued: {cut_id}")
-
-        visual_request_path = request_root / "request.json"
-        expected_visual_request_sha256 = request.get("visual_request_sha256")
-        if attempt_number > 1:
-            if (
-                not isinstance(expected_visual_request_sha256, str)
-                or not re.fullmatch(r"[0-9a-f]{64}", expected_visual_request_sha256)
-                or not visual_request_path.is_file()
-                or _sha256(visual_request_path) != expected_visual_request_sha256
-            ):
-                raise RuntimeError("immutable visual revision request is missing or drifted")
-
-        if output_root.exists():
-            raise RuntimeError("revision job output already exists before first pickup")
-        output_root.mkdir(parents=True)
-        trusted_asset_sources = _verified_current_asset_sources(
-            episode_dir,
-            requested,
-            request.get("trusted_asset_sources"),
-        )
-        allowed = _allowed_changes(
-            episode_dir,
-            review_dir,
-            manifest_path,
-            requested,
-            output_root,
-            trusted_asset_sources,
-        )
-        rollback_state = _backup_revision_targets(
-            episode_dir=episode_dir,
-            review_dir=review_dir,
-            requested=requested,
-            allowed=allowed,
-            before_dir=before_dir,
-        )
-        backup_complete = True
-        request_path = job_dir / "request.json"
-        _atomic_json(
-            request_path,
-            {
-                "contract": "finished-cut-revision-request-v1",
-                "request_id": request_id,
-                "feedback_revision": int(work["revision_index"]) + 1,
-                **request,
-                "source_preflight": source_preflight,
-                "allowed_changes": allowed,
-                "pre_snapshot": rollback_state["pre_inventory"],
-            },
-        )
-        visual_request_sha256 = (
-            _sha256(visual_request_path)
-            if attempt_number == 1
-            else str(expected_visual_request_sha256)
-        )
-        _update_job(
+            except RuntimeError:
+                pass
+            return False
+        job = _update_job(
             work,
             {
-                "status": "running",
-                "attempt": int(request.get("attempt", 0)) + 1,
-                "worker_pid": os.getpid(),
-                "worker_session_id": hashlib.sha256(
-                    f"{request_id}:{attempt_number}:{os.getpid()}:{started_at.isoformat()}".encode()
-                ).hexdigest()[:24],
-                "started_at": started_at.isoformat(),
-                "finished_at": None,
-                "result_receipt": None,
-                "error": None,
-                "source_registry_sha256": request["source_registry_sha256"],
-                "visual_request_sha256": visual_request_sha256,
-            },
-            required_status="queued",
-        )
-        context = {
-            "request_id": request_id,
-            "request_path": str(request_path),
-            "visual_request_path": str(visual_request_path),
-            "job_dir": str(job_dir),
-            "output_root": str(output_root),
-            "episode_dir": str(episode_dir),
-            "review_dir": str(review_dir),
-            "manifest_path": str(manifest_path),
-            "allowed_changes": allowed,
-            "request": request,
-            "source_preflight": source_preflight,
-            "output_verifier": output_verifier,
-        }
-        handoff_assets = _stage_request_handoff_assets(context)
-        result = agent_runner(context)
-        (job_dir / "agent.stdout.log").write_text(result.stdout or "", encoding="utf-8")
-        (job_dir / "agent.stderr.log").write_text(result.stderr or "", encoding="utf-8")
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"Finished revision agent exit {result.returncode}: {(result.stderr or '')[-500:]}"
-            )
-        _reject_agent_authored_visual_recipes(output_root, requested)
-        # Promote only the generic agent's non-visual cuts/assets first.  The
-        # semantic workers then read the canonical request snapshot and current
-        # cut inputs; they never accept self-reported visual recipes.
-        promoted_assets = _promote_agent_inputs(
-            episode_dir=episode_dir,
-            review_dir=review_dir,
-            requested=requested,
-            allowed=allowed,
-            output_root=output_root,
-        )
-        producer = visual_pipeline_runner or _run_visual_pipeline_revision
-        visual_pipeline_result = producer(context)
-        if (
-            not isinstance(visual_pipeline_result, dict)
-            or visual_pipeline_result.get("status") != "ready_to_materialize"
-        ):
-            raise RuntimeError("Director/DP/Semantic Audit producer did not become ready")
-        promoted_assets.extend(
-            asset
-            for asset in _promote_agent_inputs(
-                episode_dir=episode_dir,
-                review_dir=review_dir,
-                requested=requested,
-                allowed=allowed,
-                output_root=output_root,
-            )
-            if asset not in promoted_assets
-        )
-        context["visual_pipeline"] = visual_pipeline_result
-        trusted_result = trusted_apply(context)
-        if isinstance(trusted_result, dict):
-            candidate_handle = trusted_result.pop("_timeline_transaction_handle", None)
-            if isinstance(candidate_handle, _ResolveTimelineTransaction):
-                timeline_handle = candidate_handle
-        timeline_state = (
-            trusted_result.get("timeline_transaction", {})
-            if isinstance(trusted_result, dict)
-            else {}
-        )
-        if (
-            not isinstance(trusted_result, dict)
-            or trusted_result.get("status") != "trusted_apply_succeeded"
-            or (
-                timeline_state.get("committed") is not True
-                and timeline_state.get("prepared") is not True
-            )
-        ):
-            raise RuntimeError("trusted apply did not prepare a verified Timeline transaction")
-        if timeline_handle is not None:
-            timeline_state.update(
-                {
-                    "committed": True,
-                    "backup_cleanup_pending": True,
-                }
-            )
-        verification = trusted_result.get("authoritative_verification")
-        acceptance = trusted_result.get("output_acceptance")
-        if not isinstance(verification, dict) or not isinstance(acceptance, dict):
-            raise RuntimeError("trusted apply lacks authoritative verification")
-        output_manifest_sha = acceptance.get("manifest_sha256")
-        output_previews = acceptance.get("preview_sha256")
-        if (
-            not isinstance(output_manifest_sha, str)
-            or output_manifest_sha == request["source_manifest_sha256"]
-            or not isinstance(output_previews, dict)
-            or any(
-                output_previews.get(cut_id) == request["source_preview_sha256"].get(cut_id)
-                for cut_id in requested
-            )
-        ):
-            raise RuntimeError("trusted apply returned invalid pre-commit output acceptance")
-        finished_at = datetime.now(timezone.utc)
-        receipt_path = job_dir / "result.json"
-        _atomic_json(
-            receipt_path,
-            {
-                "contract": "finished-cut-revision-result-v1",
-                "request_id": request_id,
-                "started_at": started_at.isoformat(),
-                "finished_at": finished_at.isoformat(),
-                "source_manifest_sha256": request["source_manifest_sha256"],
-                "output_manifest_sha256": output_manifest_sha,
-                "output_preview_sha256": output_previews,
-                "requested_cut_ids": requested,
-                "promoted_broll_assets": promoted_assets,
-                "trusted_handoff_assets": handoff_assets,
-                "visual_pipeline": visual_pipeline_result,
-                "staged_input_inventory": _tree_inventory(
-                    output_root, relative_to=output_root
-                ),
-                "trusted_apply": trusted_result,
-                "authoritative_verification": verification,
-                "approved": False,
-            },
-        )
-        _update_job(
-            work,
-            {
-                "status": "succeeded",
-                "finished_at": finished_at.isoformat(),
-                "result_receipt": receipt_path.relative_to(review_dir).as_posix(),
-                "output_manifest_sha256": output_manifest_sha,
-                "output_preview_sha256": output_previews,
+                "status": "registering",
+                "command_id": None,
+                "production_state": None,
+                "reason_code": None,
                 "error": None,
             },
-            required_status="running",
+            required_status="queued",
         )
-        job_succeeded = True
-        if timeline_handle is not None:
-            def persist_cleanup_state() -> None:
-                result_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
-                result_payload["trusted_apply"]["timeline_transaction"] = timeline_state
-                _atomic_json(receipt_path, result_payload)
-
-            try:
-                cleanup = timeline_handle.finalize()
-                timeline_state.update(cleanup)
-                timeline_state["backup_cleanup_pending"] = not bool(
-                    cleanup.get("backup_cleanup_saved")
-                )
-                persist_cleanup_state()
-            except KeyboardInterrupt as cleanup_exc:
-                timeline_state["backup_cleanup_pending"] = True
-                timeline_state["backup_cleanup_error"] = (
-                    f"{type(cleanup_exc).__name__}: {cleanup_exc}"
-                )[-500:]
-                persist_cleanup_state()
-                raise
-            except BaseException as cleanup_exc:
-                # Canonical output and succeeded receipt are already durable;
-                # retaining the original backup is safe and recoverable.
-                timeline_state["backup_cleanup_pending"] = True
-                timeline_state["backup_cleanup_error"] = (
-                    f"{type(cleanup_exc).__name__}: {cleanup_exc}"
-                )[-500:]
-                persist_cleanup_state()
-        return True
-    except KeyboardInterrupt:
-        if job_succeeded:
-            # The durable result/job state already names the verified canonical
-            # output.  Never restore filesystem bytes after that commit point.
-            raise
-        if timeline_handle is not None and not job_succeeded:
-            timeline_handle.rollback()
-        if backup_complete:
-            _restore_revision_targets(rollback_state, review_dir)
-        _update_job(
-            work,
-            {
-                "status": "failed",
-                "finished_at": datetime.now(timezone.utc).isoformat(),
-                "error": "Finished revision worker interrupted; previous artifacts restored",
-            },
-        )
-        raise
-    except BaseException as exc:
-        if job_succeeded:
-            # Succeeded job/result and canonical Resolve output are already durable.
-            # Never roll filesystem bytes or job state back after this commit point.
-            raise
-        if timeline_handle is not None and not job_succeeded:
-            try:
-                timeline_handle.rollback()
-            except Exception as rollback_exc:
-                exc = RuntimeError(f"{exc}; Timeline rollback failed: {rollback_exc}")
-        if backup_complete:
-            _restore_revision_targets(rollback_state, review_dir)
-        failure_receipt: Path | None = None
-        if job_dir.is_dir():
-            failure_receipt = job_dir / "result.json"
-            _atomic_json(
-                failure_receipt,
-                {
-                    "contract": "finished-cut-revision-result-v1",
-                    "request_id": request_id,
-                    "status": "failed",
-                    "started_at": started_at.isoformat(),
-                    "finished_at": datetime.now(timezone.utc).isoformat(),
-                    "requested_cut_ids": requested,
-                    "staged_input_inventory": (
-                        _tree_inventory(output_root, relative_to=output_root)
-                        if output_root.is_dir()
-                        else {}
-                    ),
-                    "trusted_operations": getattr(exc, "operations", []),
-                    "timeline_rollback": getattr(exc, "rollback", None),
-                    "error": str(exc)[-1000:],
-                    "approved": False,
-                },
-            )
         try:
-            _update_job(
+            application = application_factory(_production_paths(work), str(work["episode_id"]))
+        except Exception as error:
+            _durable_failure(
                 work,
-                {
-                    "status": "failed",
-                    "finished_at": datetime.now(timezone.utc).isoformat(),
-                    "result_receipt": (
-                        failure_receipt.relative_to(review_dir).as_posix()
-                        if failure_receipt is not None
-                        else None
-                    ),
-                    "error": str(exc)[-1000:],
-                },
+                required_status="registering",
+                command_id=None,
+                reason_code="production_composition_failed",
+                error=error,
             )
-        except Exception:
-            pass
+            return False
+        try:
+            command_id = application.request_revision(
+                str(job["release_id"]),
+                str(job["event_id"]),
+                str(job["feedback"]),
+            )
+        except Exception as error:
+            _durable_failure(
+                work,
+                required_status="registering",
+                command_id=None,
+                reason_code="revision_registration_failed",
+                error=error,
+            )
+            return False
+        if not _command_id(command_id):
+            _durable_failure(
+                work,
+                required_status="registering",
+                command_id=None,
+                reason_code="revision_command_invalid",
+                error="Finished Cut Production returned an invalid command identity",
+            )
+            return False
+        job = _update_job(
+            work,
+            {
+                "status": "registered",
+                "command_id": command_id,
+                "production_state": "registered",
+                "reason_code": None,
+                "error": None,
+            },
+            required_status="registering",
+        )
+        status = "registered"
+    else:
+        try:
+            application = application_factory(_production_paths(work), str(work["episode_id"]))
+        except Exception as error:
+            _durable_failure(
+                work,
+                required_status=status,
+                command_id=str(command_id) if _command_id(command_id) else None,
+                reason_code="production_composition_failed",
+                error=error,
+            )
+            return False
+
+    if not _command_id(command_id):
+        _durable_failure(
+            work,
+            required_status=status,
+            command_id=None,
+            reason_code="revision_command_missing",
+            error="Finished Cut revision has no durable command identity",
+        )
+        return False
+    try:
+        outcome = application.advance(str(command_id))
+    except Exception as error:
+        _durable_failure(
+            work,
+            required_status=status,
+            command_id=str(command_id),
+            reason_code="revision_advance_failed",
+            error=error,
+        )
         return False
 
+    state = getattr(outcome, "state", None)
+    if state not in {"registered", "pending", "needs_review", "preview_ready", "failed"}:
+        _durable_failure(
+            work,
+            required_status=status,
+            command_id=str(command_id),
+            reason_code="revision_status_invalid",
+            error="Finished Cut Production returned an invalid status",
+        )
+        return False
+    reason_code = getattr(outcome, "reason_code", None)
+    persisted_status: Literal[
+        "registered", "pending", "needs_review", "preview_ready", "failed"
+    ] = "needs_review" if state == "pending" and reason_code is not None else state
+    _update_job(
+        work,
+        {
+            "status": persisted_status,
+            "command_id": str(command_id),
+            "production_state": state,
+            "reason_code": reason_code,
+            "error": None,
+        },
+        required_status=status,
+    )
+    return True
 
-def main() -> int:
+
+def main(
+    argv: list[str] | None = None,
+    *,
+    application_factory: ApplicationFactory = build_production_application,
+) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--episodes-root",
         type=Path,
-        default=Path(os.environ.get("PODCAST_EPISODES_ROOT", "G:/Footages")),
+        default=Path(os.environ.get("PODCAST_EPISODES_ROOT", r"G:\\Footages")),
     )
-    parser.add_argument("--interval", type=float, default=5.0)
+    parser.add_argument("--interval", type=float, default=10.0)
     parser.add_argument("--once", action="store_true")
-    parser.add_argument(
-        "--reconcile-episode",
-        help="episode folder whose latest pre-cutover draft should be reconciled",
-    )
-    parser.add_argument(
-        "--apply-reconcile",
-        action="store_true",
-        help="write the reconciled queue job (default reconcile is read-only)",
-    )
-    parser.add_argument(
-        "--trusted-asset-sources",
-        type=Path,
-        help=(
-            "validated acquisition map; sibling video files are staged into the "
-            "episode handoff when --apply-reconcile is set"
-        ),
-    )
-    parser.add_argument(
-        "--retry-episode",
-        help="episode folder containing the failed finished revision request",
-    )
-    parser.add_argument(
-        "--retry-failed",
-        metavar="REQUEST_ID",
-        help="verify clean rollback and prepare one failed request for retry",
-    )
-    parser.add_argument(
-        "--apply-retry",
-        action="store_true",
-        help="requeue the verified failed request (default retry is read-only)",
-    )
-    parser.add_argument(
-        "--recover-episode",
-        help="episode folder containing an orphan running revision request",
-    )
-    parser.add_argument(
-        "--recover-running",
-        metavar="REQUEST_ID",
-        help="verify one orphan running attempt before deterministic rollback",
-    )
-    parser.add_argument(
-        "--apply-recovery",
-        action="store_true",
-        help="restore the verified orphan and mark it failed (default is read-only)",
-    )
-    args = parser.parse_args()
-    if args.apply_reconcile and not args.reconcile_episode:
-        parser.error("--apply-reconcile requires --reconcile-episode")
-    if args.trusted_asset_sources and not args.reconcile_episode:
-        parser.error("--trusted-asset-sources requires --reconcile-episode")
-    if bool(args.retry_episode) != bool(args.retry_failed):
-        parser.error("--retry-episode and --retry-failed must be provided together")
-    if args.apply_retry and not args.retry_failed:
-        parser.error("--apply-retry requires --retry-failed")
-    if args.retry_failed and args.reconcile_episode:
-        parser.error("retry and reconcile are separate operations")
-    if bool(args.recover_episode) != bool(args.recover_running):
-        parser.error("--recover-episode and --recover-running must be provided together")
-    if args.apply_recovery and not args.recover_running:
-        parser.error("--apply-recovery requires --recover-running")
-    if args.recover_running and (args.reconcile_episode or args.retry_failed):
-        parser.error("recovery, retry, and reconcile are separate operations")
-    if args.recover_running:
-        result = recover_running_revision_job(
-            args.episodes_root,
-            episode_id=args.recover_episode,
-            request_id=args.recover_running,
-            apply=args.apply_recovery,
-        )
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-        return 0
-    if args.retry_failed:
-        result = retry_failed_revision_job(
-            args.episodes_root,
-            episode_id=args.retry_episode,
-            request_id=args.retry_failed,
-            apply=args.apply_retry,
-        )
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-        return 0
-    if args.reconcile_episode:
-        result = reconcile_missing_revision_job(
-            args.episodes_root,
-            episode_id=args.reconcile_episode,
-            apply=args.apply_reconcile,
-            trusted_asset_sources=args.trusted_asset_sources,
-        )
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-        return 0
+    args = parser.parse_args(argv)
+    if args.interval <= 0:
+        parser.error("--interval must be positive")
+
     while True:
         for work in pending_revision_jobs(args.episodes_root):
-            run_revision_job(work)
+            run_revision_job(work, application_factory=application_factory)
         if args.once:
             return 0
         time.sleep(args.interval)

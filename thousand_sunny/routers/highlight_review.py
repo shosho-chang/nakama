@@ -23,18 +23,11 @@ from agents.brook.script_video.editorial_master import (
     EditorialMasterContractError,
     EditorialMasterRequest,
 )
-from agents.brook.script_video.highlight_visual_pipeline import (
-    HighlightVisualContractError,
-    verify_visual_pipeline,
-    visual_pipeline_status,
-)
-from scripts.build_finished_review_manifest import (
-    identity_registry_source_sha256,
-    verify_finished_review_manifest,
-)
-from scripts.finished_review_watcher import (
-    load_episode_trusted_asset_handoff,
-    revision_requires_stock_assets,
+from agents.brook.script_video.finished_cut_production import FinishedCutInspection
+from agents.brook.script_video.finished_cut_production._engine import _cut_view
+from agents.brook.script_video.finished_cut_production._release import (
+    FinishedCutReleaseLifecycle,
+    ReleaseLifecycleError,
 )
 from scripts.packaging_manifest import load_manifest, stage_parallel_jobs
 from shared.background_job import atomic_job_write, job_expired, load_job, new_job
@@ -48,6 +41,10 @@ from shared.highlight_shortlist import (
 )
 from shared.schemas.packaging import parse_packages
 from shared.tight_srt import srt_to_vtt
+from thousand_sunny.adapters.finished_cut_review import (
+    FinishedCutReviewAdapter,
+    ReviewState,
+)
 from thousand_sunny.auth import check_auth
 
 page_router = APIRouter(prefix="/bridge/highlights", tags=["bridge-highlights"])
@@ -58,11 +55,9 @@ _MAX_CANDIDATES = 5
 _MAX_FEEDBACK = 2000
 _MAX_REPLACEMENT = 500
 _MAX_OVERALL_FEEDBACK = 5000
-_FINISHED_MANIFEST_SCHEMA = "nakama.finished_cut_review_manifest.v2"
-_LEGACY_FINISHED_MANIFEST_SCHEMA = "nakama.finished_cut_review_manifest.v1"
-_FINISHED_FEEDBACK_SCHEMA = "nakama.finished_cut_review_feedback.v1"
-_FINISHED_FEEDBACK_FILE = "finished_review_feedback.v1.json"
-_SHORT_FINISHED_FEEDBACK_FILE = "short_finished_review_feedback.v1.json"
+_FINISHED_MANIFEST_SCHEMA = "nakama.finished_cut_review_manifest.v3"
+_FINISHED_FEEDBACK_SCHEMA = "nakama.finished_cut_review_feedback.v3"
+_FINISHED_FEEDBACK_FILE = "finished_review_feedback.v3.json"
 _PARALLEL_WORK_PLAN_SCHEMA = "nakama.highlight_parallel_work_plan.v1"
 _SHA256_LENGTH = 64
 _ACTION_LABELS = {
@@ -75,30 +70,30 @@ _ACTION_LABELS = {
     "comment": "留言",
 }
 _LANE_LABELS = {
-    "b_roll": "STOCK VIDEO（Stock Village） / B-ROLL",
-    "identity_card": "IDENTITY CARD",
-    "hero_title": "HERO TITLE",
+    "b_roll": "實拍素材／B-ROLL",
+    "identity_card": "人物識別卡／IDENTITY",
+    "hero_title": "主標題／HERO",
+    "supporting_title": "補充標題／SUPPORTING",
     "badge": "BADGE",
-    "fullscreen_transition": "FULLSCREEN TRANSITION",
+    "fullscreen_transition": "滿版章節卡／CHAPTER",
     "title_card": "字卡與斷句",
     "visual_effect": "ICON／動畫",
     "pacing": "剪輯節奏",
 }
-_SHORT_REVIEW_LANES = ("title_card", "b_roll", "visual_effect", "pacing")
-_SHORT_COMPONENT_ACTIONS = {
-    "title_card": ["approve", "edit_text", "move", "comment"],
+_COMPONENT_ACTIONS = {
     "b_roll": ["approve", "remove", "replace_asset", "change_type", "move", "comment"],
-    "visual_effect": ["approve", "remove", "replace_asset", "change_type", "move", "comment"],
-    "pacing": ["approve", "remove", "move", "comment"],
-}
-_VISUAL_STATUS_LABELS = {
-    "awaiting_init": "尚未建立視覺 work packet",
-    "awaiting_director": "等待 Director 視覺意圖",
-    "awaiting_dp": "等待 DP 製作",
-    "awaiting_semantic_audit": "等待 Director 語意複核",
-    "ready_to_materialize": "CURRENT 已驗證，可 materialize",
-    "invalid": "VISUAL PIPELINE INVALID",
-    "legacy_manifest": "LEGACY MANIFEST V1 — 等待 v2 lineage",
+    "identity_card": ["approve", "remove", "edit_text", "move", "comment"],
+    "hero_title": ["approve", "remove", "edit_text", "move", "comment"],
+    "supporting_title": ["approve", "remove", "edit_text", "move", "comment"],
+    "fullscreen_transition": ["approve", "remove", "edit_text", "move", "comment"],
+    "visual_effect": [
+        "approve",
+        "remove",
+        "replace_asset",
+        "change_type",
+        "move",
+        "comment",
+    ],
 }
 _PUBLISH_PREP_PROCESSES: dict[tuple[str, str], subprocess.Popen] = {}
 _PUBLISH_PREP_TIMEOUT_SECONDS = 7200
@@ -203,166 +198,15 @@ def _visual_time_range(t0: object, t1: object) -> str:
     return f"{stamp(t0)}–{stamp(t1)}"
 
 
-def _safe_http_source_url(value: object) -> str | None:
-    if isinstance(value, str) and value.startswith(("https://", "http://")):
-        return value
-    return None
+def _finished_cut_event_view(cut: dict[str, Any]) -> dict[str, object]:
+    """Project only semantic events carried by the sealed current Release."""
 
-
-def _verified_visual_events(selection: object) -> list[dict[str, object]]:
-    director_document = selection.director_plan.document
-    dp_document = selection.dp_fulfillment.document
-    audit_document = selection.semantic_audit.document
-    implementations = {
-        item["event_id"]: item
-        for item in dp_document["implementations"]
-        if isinstance(item, Mapping)
+    return {
+        "status": "sealed_current",
+        "status_label": "FINISHED CUT RELEASE · SEALED CURRENT",
+        "release_id": cut["release_id"],
+        "events": cut["events"],
     }
-    materializations: dict[str, list[Mapping[str, object]]] = {}
-    for item in selection.materializations:
-        if isinstance(item, Mapping):
-            materializations.setdefault(str(item["event_id"]), []).append(item)
-    findings = {
-        item["materialization_id"]: item
-        for item in audit_document["findings"]
-        if isinstance(item, Mapping)
-    }
-    views: list[dict[str, object]] = []
-    for event in director_document["events"]:
-        if not isinstance(event, Mapping):
-            continue
-        implementation = implementations.get(event["event_id"])
-        event_view: dict[str, object] = {
-            **dict(event),
-            "time_range": _visual_time_range(event["t0"], event["t1"]),
-            "implementation": None,
-        }
-        if implementation is None:
-            views.append(event_view)
-            continue
-        event_materializations = materializations.get(str(event["event_id"]), [])
-        selection_views: list[dict[str, object]] = []
-        selected_ids: set[str] = set()
-        for index, selected in enumerate(implementation["selections"]):
-            if not isinstance(selected, Mapping):
-                continue
-            materialization = (
-                event_materializations[index] if index < len(event_materializations) else {}
-            )
-            materialization_id = materialization.get("materialization_id")
-            audit_finding = findings.get(materialization_id, {})
-            selected_ids.add(str(selected["candidate_id"]))
-            selection_views.append(
-                {
-                    **dict(selected),
-                    "time_range": _visual_time_range(selected["t0"], selected["t1"]),
-                    "materialization_id": materialization_id,
-                    "audit": dict(audit_finding),
-                }
-            )
-        candidate_views: list[dict[str, object]] = []
-        for index, candidate in enumerate(implementation["candidates"]):
-            if not isinstance(candidate, Mapping):
-                continue
-            provenance = candidate["provenance"]
-            source_url = provenance["source_url"]
-            candidate_views.append(
-                {
-                    **dict(candidate),
-                    "label": chr(ord("A") + index),
-                    "selected": str(candidate["candidate_id"]) in selected_ids,
-                    "provenance": {
-                        **dict(provenance),
-                        "safe_source_url": _safe_http_source_url(source_url),
-                    },
-                }
-            )
-        event_view["implementation"] = {
-            **dict(implementation),
-            "candidates": candidate_views,
-            "selections": selection_views,
-        }
-        views.append(event_view)
-    return views
-
-
-def _visual_pipeline_view(
-    episode_dir: Path,
-    cut_id: str,
-    *,
-    legacy_manifest: bool = False,
-) -> dict[str, object]:
-    """Build a read-only view exclusively from fresh public verifier output."""
-
-    try:
-        status = visual_pipeline_status(episode_dir, cut_id=cut_id)
-    except (HighlightVisualContractError, OSError) as error:
-        status = {
-            "status": "invalid",
-            "pending_revision_id": None,
-            "current_revision_id": None,
-            "error": str(error),
-        }
-    state = str(status.get("status", "invalid"))
-    view: dict[str, object] = {
-        "status": state,
-        "status_label": _VISUAL_STATUS_LABELS.get(state, "VISUAL PIPELINE INVALID"),
-        "pending_revision_id": status.get("pending_revision_id"),
-        "current_revision_id": status.get("current_revision_id"),
-        "error": status.get("error"),
-        "verified_current": False,
-        "events": [],
-    }
-    if legacy_manifest:
-        view.update(
-            {
-                "status": "legacy_manifest",
-                "status_label": _VISUAL_STATUS_LABELS["legacy_manifest"],
-                "verified_current": False,
-                "events": [],
-            }
-        )
-        return view
-    current_revision_id = status.get("current_revision_id")
-    if current_revision_id is None:
-        return view
-    try:
-        selection = verify_visual_pipeline(episode_dir, cut_id=cut_id)
-        selected_revision_id = selection.work_packet.document["revision_id"]
-        if selected_revision_id != current_revision_id:
-            raise HighlightVisualContractError(
-                "verified CURRENT revision differs from visual pipeline status"
-            )
-        view.update(
-            {
-                "verified_current": True,
-                "current_revision_id": selected_revision_id,
-                "events": _verified_visual_events(selection),
-                "coverage": selection.director_plan.document["coverage"],
-                "workers": {
-                    "director": selection.director_plan.document["worker_execution"],
-                    "dp": selection.dp_fulfillment.document["worker_execution"],
-                    "audit": selection.semantic_audit.document["worker_execution"],
-                },
-                "identities": {
-                    "work_packet": selection.work_packet.identity(),
-                    "director_plan": selection.director_plan.identity(),
-                    "dp_fulfillment": selection.dp_fulfillment.identity(),
-                    "semantic_audit": selection.semantic_audit.identity(),
-                },
-            }
-        )
-    except (HighlightVisualContractError, KeyError, TypeError, ValueError, OSError) as error:
-        view.update(
-            {
-                "status": "invalid",
-                "status_label": _VISUAL_STATUS_LABELS["invalid"],
-                "error": str(error),
-                "verified_current": False,
-                "events": [],
-            }
-        )
-    return view
 
 
 def _require_final_qa_clear(episode_dir: Path, cut_id: str) -> None:
@@ -419,345 +263,180 @@ def _require_final_qa_clear(episode_dir: Path, cut_id: str) -> None:
         )
 
 
-def _short_cut_sort_key(path: Path) -> tuple[int, str]:
-    digits = "".join(character for character in path.name if character.isdigit())
-    return (int(digits) if digits else 9999, path.name)
-
-
-def _short_event_lane(event_type: str) -> str | None:
-    if event_type.startswith("card-tier"):
-        return "title_card"
-    if event_type in {"video", "photo"}:
-        return "b_roll"
-    if event_type in {"icon_motion", "sticker", "concept"}:
-        return "visual_effect"
-    if event_type in {"punch-cut", "punch-ramp"}:
-        return "pacing"
-    return None
-
-
-def _short_event_display(event: dict[str, Any], lane: str) -> str:
-    slug = str(event.get("slug") or "").replace("/", "\n").strip()
-    note = str(event.get("note") or "").strip()
-    if lane == "title_card":
-        return slug or "未命名字卡"
-    if lane == "pacing":
-        return note or str(event.get("type") or "節奏事件")
-    return note or slug or str(event.get("type") or "未命名元件")
-
-
-def _artifact_receipt(path: Path, *, duration_seconds: float | None = None) -> dict[str, Any]:
-    if not path.is_file():
-        raise _manifest_error(f"artifact is missing: {path}")
-    receipt: dict[str, Any] = {
-        "path": str(path),
-        "bytes": path.stat().st_size,
-        "sha256": _file_sha256(path),
-    }
-    if duration_seconds is not None:
-        receipt["duration_seconds"] = duration_seconds
-    return receipt
-
-
-def _load_short_finished_manifest(episode_slug: str) -> dict[str, Any]:
-    """Build a content-addressed short review inventory from run_short_review receipts."""
-    episode_dir = _episode_dir(episode_slug)
-    review_dir = episode_dir / "highlights" / "review"
-    cut_dirs = sorted(
-        (
-            path
-            for path in review_dir.glob("KS*")
-            if path.is_dir() and (path / "events.json").is_file()
-        ),
-        key=_short_cut_sort_key,
-    )
-    if not cut_dirs:
-        raise HTTPException(status_code=404, detail="short review packets not found")
-
-    cuts: list[dict[str, Any]] = []
-    for cut_dir in cut_dirs:
-        events_path = cut_dir / "events.json"
-        try:
-            packet = json.loads(events_path.read_text(encoding="utf-8-sig"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise _manifest_error(f"cannot read {events_path}") from exc
-        if not isinstance(packet, dict) or not isinstance(packet.get("events"), list):
-            raise _manifest_error(f"{cut_dir.name} events.json has an invalid schema")
-        duration = packet.get("duration_sec")
-        if (
-            not isinstance(duration, (int, float))
-            or isinstance(duration, bool)
-            or not math.isfinite(float(duration))
-            or float(duration) <= 0
-        ):
-            raise _manifest_error(f"{cut_dir.name} duration_sec is invalid")
-        duration = float(duration)
-        preview_name = packet.get("preview")
-        if not isinstance(preview_name, str) or not preview_name:
-            raise _manifest_error(f"{cut_dir.name} preview is required")
-        preview_path = cut_dir / preview_name
-        subtitles_path = cut_dir / "subs.srt"
-        lane_counts = {lane: 0 for lane in _SHORT_REVIEW_LANES}
-        components: list[dict[str, Any]] = []
-        review_components: list[dict[str, Any]] = []
-        for event in packet["events"]:
-            if not isinstance(event, dict):
-                raise _manifest_error(f"{cut_dir.name} event must be an object")
-            lane = _short_event_lane(str(event.get("type") or ""))
-            if lane is None:
-                continue
-            t0, t1 = event.get("t0"), event.get("t1")
-            if (
-                not isinstance(t0, (int, float))
-                or isinstance(t0, bool)
-                or not isinstance(t1, (int, float))
-                or isinstance(t1, bool)
-                or not math.isfinite(float(t0))
-                or not math.isfinite(float(t1))
-                or float(t0) < 0
-                or float(t1) <= float(t0)
-                or float(t1) > duration + 0.01
-            ):
-                raise _manifest_error(f"{cut_dir.name} review event has an invalid timeline range")
-            lane_counts[lane] += 1
-            lane_slug = lane.replace("_", "-")
-            component_id = f"{cut_dir.name}-{lane_slug}-{lane_counts[lane]:03d}"
-            component = {
-                **event,
-                "component_id": component_id,
-                "lane": lane,
-                "t0": float(t0),
-                "t1": float(t1),
-                "display": _short_event_display(event, lane),
-                "actions": [
-                    {"value": action, "label": _ACTION_LABELS[action]}
-                    for action in _SHORT_COMPONENT_ACTIONS[lane]
-                ],
-            }
-            components.append(component)
-            review_components.append(component)
-        timeline = str(packet.get("timeline") or cut_dir.name)
-        title = timeline.split(" - ", 1)[-1].replace("（緊·導播）", "").strip()
-        cuts.append(
-            {
-                "cut_id": cut_dir.name,
-                "title": title,
-                "format": "short",
-                "artifacts": {
-                    "preview": _artifact_receipt(preview_path, duration_seconds=duration),
-                    "subtitles": _artifact_receipt(subtitles_path),
-                    "review_events": _artifact_receipt(events_path),
-                },
-                "components": components,
-                "review_components": review_components,
-                "component_counts": lane_counts,
-            }
+class _InspectionOnlyTransactions:
+    def inspect_transaction(self, transaction_id: str) -> Mapping[str, object]:
+        raise ReleaseLifecycleError(
+            f"transaction inspection is unavailable in Bridge: {transaction_id}"
         )
 
-    contract = {
-        "review_lanes": list(_SHORT_REVIEW_LANES),
-        "component_actions": _SHORT_COMPONENT_ACTIONS,
-        "gate_actions": ["request_changes", "approve_cut", "approve_all"],
+
+def _inspection_only_probe(_path: Path) -> Mapping[str, object]:
+    raise ReleaseLifecycleError("preview probing is unavailable in Bridge")
+
+
+class _FilesystemCurrentReleaseInspector:
+    """Read the one canonical v3 pointer without composing production workers."""
+
+    def __init__(self, episode_dir: Path) -> None:
+        self._lifecycle = FinishedCutReleaseLifecycle(
+            episode_dir,
+            transactions=_InspectionOnlyTransactions(),
+            preview_probe=_inspection_only_probe,
+        )
+
+    def inspect_current(self, episode_id: str) -> FinishedCutInspection:
+        try:
+            releases = self._lifecycle.inspect_current(episode_id)
+        except ReleaseLifecycleError as error:
+            if error.reason == "missing":
+                return FinishedCutInspection(
+                    episode_id=episode_id,
+                    state="missing",
+                    error_code="current_release_missing",
+                )
+            return FinishedCutInspection(
+                episode_id=episode_id,
+                state="invalid",
+                error_code="current_release_invalid",
+            )
+        return FinishedCutInspection(
+            episode_id=episode_id,
+            state="ready",
+            cuts=tuple(_cut_view(release) for release in releases),
+        )
+
+
+_CURRENT_RELEASE_INSPECTOR_FACTORY = _FilesystemCurrentReleaseInspector
+
+
+def _release_artifact(artifact: Any) -> dict[str, Any]:
+    return {
+        "path": artifact.reference,
+        "bytes": artifact.bytes,
+        "sha256": artifact.sha256,
+        "duration_seconds": artifact.duration_sec,
+        "probe": dict(artifact.probe),
     }
-    public_manifest: dict[str, Any] = {
-        "schema": _FINISHED_MANIFEST_SCHEMA,
-        "episode_id": episode_slug,
-        "stage": 5,
-        "review_format": "short",
-        "gate": {"kind": "finished_cut_review", "status": "ready_for_review"},
-        "cuts": cuts,
-        "feedback_contract": contract,
-        "lane_labels": {lane: _LANE_LABELS[lane] for lane in _SHORT_REVIEW_LANES},
-        "skill_promotion": {
-            "target_skill": ".claude/skills/brook-director",
-            "direct_free_text_self_mutation": False,
-        },
+
+
+def _release_component(component: Any) -> dict[str, Any]:
+    actions = _COMPONENT_ACTIONS[component.lane]
+    return {
+        "component_id": component.component_id,
+        "event_id": component.event_id,
+        "semantic_kind": component.semantic_kind,
+        "implementation_kind": component.implementation_kind,
+        "lane": component.lane,
+        "display": component.display,
+        "t0": component.t0,
+        "t1": component.t1,
+        "asset_ref": component.asset_ref,
+        "actions": [{"value": action, "label": _ACTION_LABELS[action]} for action in actions],
     }
-    canonical = json.dumps(public_manifest, ensure_ascii=False, sort_keys=True).encode("utf-8")
-    public_manifest["_path"] = review_dir / "virtual_short_finished_review_manifest.json"
-    public_manifest["_review_dir"] = review_dir
-    public_manifest["_sha256"] = hashlib.sha256(canonical).hexdigest()
-    return public_manifest
 
 
-def _load_review_manifest(episode_slug: str, review_format: str) -> dict[str, Any]:
-    if review_format == "short":
-        return _load_short_finished_manifest(episode_slug)
-    manifest = _load_finished_manifest(episode_slug)
-    manifest["review_format"] = "long"
-    return manifest
-
-
-def _latest_finished_manifest_path(review_dir: Path) -> Path:
-    manifests = sorted(review_dir.glob("finished_review_manifest_*.json"))
-    if not manifests:
-        raise HTTPException(status_code=404, detail="finished review manifest not found")
-    return manifests[-1]
-
-
-def _component_display(component: dict[str, Any]) -> str:
-    lane = component["lane"]
-    if lane == "identity_card":
-        variables = component.get("vars")
-        variables = variables if isinstance(variables, dict) else {}
-        name = str(component.get("name") or variables.get("label") or "").strip()
-        title = str(component.get("title") or variables.get("sub") or "").strip()
-        if name or title:
-            return "｜".join(part for part in (name, title) if part)
-    if lane == "hero_title":
-        return str(component.get("text") or "未命名 Hero title")
-    if lane == "fullscreen_transition":
-        variables = component.get("vars")
-        if isinstance(variables, dict) and variables.get("title"):
-            return str(variables["title"])
-    return str(
-        component.get("display")
-        or component.get("note")
-        or component.get("slug")
-        or component["component_id"]
-    )
+def _release_event(event: Any) -> dict[str, Any]:
+    return {
+        "event_id": event.event_id,
+        "master_cue_ids": list(event.master_cue_ids),
+        "text": event.text,
+        "text_hash": event.text_hash,
+        "t0": event.t0,
+        "t1": event.t1,
+        "time_range": _visual_time_range(event.t0, event.t1),
+        "section_id": event.section_id,
+        "intent": event.intent,
+        "display": event.display,
+        "semantic_kind": event.semantic_kind,
+        "implementation_kind": event.implementation_kind,
+        "lane": event.lane,
+        "asset_ref": event.asset_ref,
+        "visual_status": event.visual_status,
+        "intentional_aroll": event.intentional_aroll,
+    }
 
 
 def _load_finished_manifest(episode_slug: str) -> dict[str, Any]:
-    """Load and validate the latest Stage 5 contract, retaining its byte hash."""
-    episode_dir = _episode_dir(episode_slug)
-    review_dir = episode_dir / "highlights" / "review"
-    path = _latest_finished_manifest_path(review_dir)
-    try:
-        raw = path.read_bytes()
-        supplied = json.loads(raw.decode("utf-8-sig"))
-        schema = supplied.get("schema") if isinstance(supplied, dict) else None
-        legacy_read_only = schema == _LEGACY_FINISHED_MANIFEST_SCHEMA
-        if legacy_read_only:
-            manifest = supplied
-        elif schema == _FINISHED_MANIFEST_SCHEMA:
-            manifest = verify_finished_review_manifest(episode_dir, path)
-        else:
-            raise _manifest_error("schema must be the current v2 contract or legacy read-only v1")
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise _manifest_error(f"cannot read {path.name}") from exc
-    except SystemExit as exc:
-        raise _manifest_error(str(exc)) from exc
-    if not isinstance(manifest, dict):
-        raise _manifest_error("root must be an object")
-    if manifest.get("schema") not in {
-        _FINISHED_MANIFEST_SCHEMA,
-        _LEGACY_FINISHED_MANIFEST_SCHEMA,
-    }:
-        raise _manifest_error("unsupported finished review manifest schema")
-    if manifest.get("episode_id") != episode_slug:
-        raise _manifest_error("episode_id does not match URL slug")
-    if manifest.get("stage") != 5:
-        raise _manifest_error("stage must be 5")
-    gate = manifest.get("gate")
-    if not isinstance(gate, dict) or gate.get("kind") != "finished_cut_review":
-        raise _manifest_error("gate.kind must be finished_cut_review")
-    contract = manifest.get("feedback_contract")
-    if not isinstance(contract, dict):
-        raise _manifest_error("feedback_contract is required")
-    lanes = contract.get("review_lanes")
-    actions = contract.get("component_actions")
-    if not isinstance(lanes, list) or not lanes or not all(isinstance(lane, str) for lane in lanes):
-        raise _manifest_error("feedback_contract.review_lanes must be a non-empty string list")
-    if len(lanes) != len(set(lanes)) or not isinstance(actions, dict):
-        raise _manifest_error("review lanes/actions are malformed")
-    for lane in lanes:
-        lane_actions = actions.get(lane)
-        if (
-            not isinstance(lane_actions, list)
-            or not lane_actions
-            or not all(
-                isinstance(action, str) and action in _ACTION_LABELS for action in lane_actions
-            )
-        ):
-            raise _manifest_error(f"component actions are invalid for lane {lane}")
+    """Project only the exact current v3 Release index into the Bridge view model."""
 
-    cuts = manifest.get("cuts")
-    if not isinstance(cuts, list) or not cuts:
-        raise _manifest_error("cuts must be a non-empty list")
-    cut_ids: set[str] = set()
-    component_ids: set[str] = set()
-    for cut in cuts:
-        if not isinstance(cut, dict):
-            raise _manifest_error("each cut must be an object")
-        cut_id = cut.get("cut_id")
-        if not isinstance(cut_id, str) or not cut_id or cut_id in cut_ids:
-            raise _manifest_error("cut_id must be unique and non-empty")
-        cut_ids.add(cut_id)
-        artifacts = cut.get("artifacts")
-        if not isinstance(artifacts, dict):
-            raise _manifest_error(f"{cut_id} artifacts are required")
-        for artifact_name in ("preview", "subtitles"):
-            artifact = artifacts.get(artifact_name)
-            if not isinstance(artifact, dict):
-                raise _manifest_error(f"{cut_id} {artifact_name} artifact is required")
-            if not isinstance(artifact.get("path"), str) or not artifact["path"]:
-                raise _manifest_error(f"{cut_id} {artifact_name}.path is required")
-            if (
-                not isinstance(artifact.get("bytes"), int)
-                or isinstance(artifact["bytes"], bool)
-                or artifact["bytes"] < 0
-            ):
-                raise _manifest_error(f"{cut_id} {artifact_name}.bytes is invalid")
-            if not _is_sha256(artifact.get("sha256")):
-                raise _manifest_error(f"{cut_id} {artifact_name}.sha256 is invalid")
-        duration = artifacts["preview"].get("duration_seconds")
-        if (
-            not isinstance(duration, (int, float))
-            or isinstance(duration, bool)
-            or not math.isfinite(float(duration))
-            or duration <= 0
-        ):
-            raise _manifest_error(f"{cut_id} preview duration is invalid")
-        components = cut.get("components")
-        if not isinstance(components, list):
-            raise _manifest_error(f"{cut_id} components must be a list")
-        review_components: list[dict[str, Any]] = []
-        stock_video_count = 0
-        for component in components:
-            if not isinstance(component, dict):
-                raise _manifest_error(f"{cut_id} component must be an object")
-            lane = component.get("lane")
-            if lane not in lanes:
-                continue
-            component_id = component.get("component_id")
-            if (
-                not isinstance(component_id, str)
-                or not component_id
-                or component_id in component_ids
-            ):
-                raise _manifest_error("review component_id must be unique and non-empty")
-            component_ids.add(component_id)
-            t0, t1 = component.get("t0"), component.get("t1")
-            if (
-                not isinstance(t0, (int, float))
-                or isinstance(t0, bool)
-                or not isinstance(t1, (int, float))
-                or isinstance(t1, bool)
-                or not math.isfinite(float(t0))
-                or not math.isfinite(float(t1))
-                or t0 < 0
-                or t1 <= t0
-                or t1 > duration + 0.001
-            ):
-                raise _manifest_error(f"{component_id} has an invalid timeline range")
-            normalized = dict(component)
-            normalized["display"] = _component_display(normalized)
-            normalized["actions"] = [
-                {"value": action, "label": _ACTION_LABELS[action]} for action in actions[lane]
-            ]
-            if lane == "b_roll" and normalized.get("asset_category") == "stock_video":
-                stock_video_count += 1
-            review_components.append(normalized)
-        cut["review_components"] = review_components
-        if str(cut.get("format") or "long") == "long":
-            cut["stock_video_count"] = stock_video_count
-            cut["stock_video_missing"] = max(0, 3 - stock_video_count)
-    manifest["_path"] = path
-    manifest["_review_dir"] = review_dir
-    manifest["_sha256"] = hashlib.sha256(raw).hexdigest()
-    manifest["_legacy_read_only"] = legacy_read_only
-    manifest["lane_labels"] = {lane: _LANE_LABELS.get(lane, lane.upper()) for lane in lanes}
+    episode_dir = _episode_dir(episode_slug)
+    review = FinishedCutReviewAdapter(_CURRENT_RELEASE_INSPECTOR_FACTORY(episode_dir)).load(
+        episode_slug
+    )
+    if review.state is ReviewState.MISSING:
+        raise HTTPException(status_code=404, detail="finished cut current Release is missing")
+    if review.state is ReviewState.INVALID:
+        raise _manifest_error(review.error or "current Release is invalid")
+
+    current_path = episode_dir / "highlights" / "review" / "finished_review_manifest_current.json"
+    try:
+        current_bytes = current_path.read_bytes()
+    except OSError as exc:  # The inspector already proved this path; treat races as drift.
+        raise _manifest_error("current Release changed during inspection") from exc
+
+    cuts: list[dict[str, Any]] = []
+    for cut in review.cuts:
+        if cut.preview.duration_sec is None or cut.preview.duration_sec <= 0:
+            raise _manifest_error(f"{cut.cut_id} preview duration is unavailable")
+        components = [_release_component(component) for component in cut.components]
+        events = [_release_event(event) for event in cut.events]
+        stock_video_count = sum(
+            component["lane"] == "b_roll" and component["implementation_kind"] == "stock_video"
+            for component in components
+        )
+        cuts.append(
+            {
+                "release_id": cut.release_id,
+                "cut_id": cut.cut_id,
+                "format": cut.format,
+                "title": cut.cut_id,
+                "artifacts": {
+                    "preview": _release_artifact(cut.preview),
+                    "subtitles": _release_artifact(cut.subtitle),
+                },
+                "events": events,
+                "components": components,
+                "review_components": components,
+                "component_counts": {
+                    lane: sum(component["lane"] == lane for component in components)
+                    for lane in _COMPONENT_ACTIONS
+                },
+                "stock_video_count": stock_video_count,
+                "stock_video_missing": max(0, 3 - stock_video_count),
+            }
+        )
+    if not cuts:
+        raise _manifest_error("current Release has no cuts")
+    lanes = list(_COMPONENT_ACTIONS)
+    return {
+        "schema": _FINISHED_MANIFEST_SCHEMA,
+        "episode_id": episode_slug,
+        "stage": 5,
+        "gate": {"kind": "finished_cut_review", "status": "ready_for_review"},
+        "cuts": cuts,
+        "feedback_contract": {
+            "review_lanes": lanes,
+            "component_actions": _COMPONENT_ACTIONS,
+            "gate_actions": ["request_changes", "approve_cut", "approve_all"],
+        },
+        "lane_labels": {lane: _LANE_LABELS[lane] for lane in lanes},
+        "_path": current_path,
+        "_review_dir": current_path.parent,
+        "_episode_dir": episode_dir,
+        "_sha256": hashlib.sha256(current_bytes).hexdigest(),
+    }
+
+
+def _load_review_manifest(episode_slug: str, review_format: str) -> dict[str, Any]:
+    manifest = _load_finished_manifest(episode_slug)
+    cuts = [cut for cut in manifest["cuts"] if cut["format"] == review_format]
+    if not cuts:
+        raise HTTPException(
+            status_code=404,
+            detail=f"finished cut current Release has no {review_format} cuts",
+        )
+    manifest["cuts"] = cuts
+    manifest["review_format"] = review_format
     return manifest
 
 
@@ -768,13 +447,16 @@ def _safe_artifact_path(
     if cut is None:
         raise HTTPException(status_code=404, detail="cut is not in finished review manifest")
     artifact = cut["artifacts"][artifact_name]
-    review_dir = manifest["_review_dir"].resolve()
-    path = Path(artifact["path"]).resolve()
+    episode_dir = manifest["_episode_dir"].resolve()
+    reference = Path(artifact["path"])
+    if reference.is_absolute():
+        raise HTTPException(status_code=403, detail="artifact reference must be episode-relative")
+    path = (episode_dir / reference).resolve()
     try:
-        path.relative_to(review_dir)
+        path.relative_to(episode_dir)
     except ValueError as exc:
         raise HTTPException(
-            status_code=403, detail="artifact is outside episode review directory"
+            status_code=403, detail="artifact is outside the episode directory"
         ) from exc
     if not path.is_file():
         raise HTTPException(status_code=404, detail=f"{artifact_name} artifact is missing")
@@ -790,13 +472,8 @@ def _safe_artifact_path(
 
 
 def _feedback_path(manifest: dict[str, Any]) -> Path:
-    """Use the server-owned location; never trust gate.feedback_file."""
-    filename = (
-        _SHORT_FINISHED_FEEDBACK_FILE
-        if manifest.get("review_format") == "short"
-        else _FINISHED_FEEDBACK_FILE
-    )
-    return manifest["_review_dir"] / filename
+    """Use the one server-owned v3 location for every current Release format."""
+    return manifest["_review_dir"] / _FINISHED_FEEDBACK_FILE
 
 
 def _file_sha256(path: Path) -> str:
@@ -948,87 +625,71 @@ def _stage_parallel_work_plan(
     )
 
 
-def _finished_revision_job(
+def _finished_revision_jobs(
     *,
     manifest: dict[str, Any],
     audit: dict[str, Any],
-    cut_statuses: dict[str, str],
     component_feedback: list[dict[str, Any]],
     overall_feedback: dict[str, str],
-    preview_sha256: dict[str, str],
-) -> dict[str, Any] | None:
-    """Build one content-addressed desktop revision request.
+) -> list[dict[str, Any]]:
+    """Mint event-scoped v3 queue rows; never authorize a whole-stage rerun."""
 
-    Saving an untouched draft remains a cheap append-only checkpoint.  Any explicit
-    request for changes or written feedback becomes durable work for the desktop
-    worker.  Re-saving byte-identical feedback reuses the existing job instead of
-    dispatching the same agent task twice.
-    """
-    requested_cut_ids = sorted(
-        cut_id
-        for cut_id, status in cut_statuses.items()
-        if status == "needs_changes"
-        or cut_id in overall_feedback
-        or any(row.get("cut_id") == cut_id for row in component_feedback)
-    )
-    if not requested_cut_ids:
-        return None
-    episode_dir = Path(manifest["_path"]).parents[2]
-    request = {
-        "episode_id": manifest["episode_id"],
-        "review_format": manifest.get("review_format", "long"),
-        "manifest_filename": Path(manifest["_path"]).name,
-        "source_manifest_sha256": manifest["_sha256"],
-        "source_registry_sha256": identity_registry_source_sha256(
-            episode_dir, Path(manifest["_path"])
-        ),
-        "source_preview_sha256": preview_sha256,
-        "requested_cut_ids": requested_cut_ids,
-        "cut_statuses": cut_statuses,
-        "component_feedback": component_feedback,
-        "overall_feedback": overall_feedback,
-    }
-    try:
-        trusted_handoff = load_episode_trusted_asset_handoff(episode_dir)
-        needs_stock_assets = (
-            False
-            if manifest.get("review_format") == "short"
-            else revision_requires_stock_assets(
-                episode_dir,
-                Path(manifest["_path"]),
-                requested_cut_ids,
-            )
-        )
-    except RuntimeError as exc:
-        raise HTTPException(
-            status_code=422, detail=f"trusted acquisition handoff invalid: {exc}"
-        ) from exc
-    if trusted_handoff is not None:
-        request["trusted_asset_sources"] = trusted_handoff["sources"]
-        request["trusted_asset_sources_sha256"] = trusted_handoff["sources_sha256"]
-        request["trusted_asset_handoff"] = trusted_handoff["handoff"]
-    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    request_id = f"finished-revision-{hashlib.sha256(canonical.encode('utf-8')).hexdigest()[:20]}"
-    for prior in reversed(audit.get("revisions", [])):
+    prior_by_id: dict[str, dict[str, Any]] = {}
+    for prior in audit.get("revisions", []):
         if not isinstance(prior, dict):
             continue
-        prior_job = prior.get("revision_job")
-        if isinstance(prior_job, dict) and prior_job.get("request_id") == request_id:
-            return dict(prior_job)
-    return {
-        "contract": "finished-cut-revision-job-v1",
-        "request_id": request_id,
-        "status": (
-            "awaiting_stock_assets" if needs_stock_assets and trusted_handoff is None else "queued"
-        ),
-        "attempt": 0,
-        "requested_at": datetime.now(timezone.utc).isoformat(),
-        "started_at": None,
-        "finished_at": None,
-        "result_receipt": None,
-        "error": None,
-        **request,
-    }
+        for prior_job in prior.get("revision_jobs", []):
+            if isinstance(prior_job, dict) and isinstance(prior_job.get("request_id"), str):
+                prior_by_id[prior_job["request_id"]] = prior_job
+
+    jobs: list[dict[str, Any]] = []
+    for row in component_feedback:
+        if row["action"] == "approve":
+            continue
+        feedback_parts = [f"{_ACTION_LABELS[row['action']]}：{row['display']}"]
+        if row["comment"]:
+            feedback_parts.append(f"說明：{row['comment']}")
+        if row["replacement"]:
+            feedback_parts.append(f"替代內容：{row['replacement']}")
+        if row.get("move_to_seconds") is not None:
+            feedback_parts.append(f"移到：{row['move_to_seconds']:.3f} 秒")
+        cut_feedback = overall_feedback.get(row["cut_id"])
+        if cut_feedback:
+            feedback_parts.append(f"本支整體回饋：{cut_feedback}")
+        feedback = "\n".join(feedback_parts)
+        authority = {
+            "episode_id": manifest["episode_id"],
+            "source_manifest_sha256": manifest["_sha256"],
+            "release_id": row["release_id"],
+            "cut_id": row["cut_id"],
+            "event_id": row["event_id"],
+            "feedback": feedback,
+        }
+        canonical = json.dumps(
+            authority,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        request_id = f"finished-revision:{hashlib.sha256(canonical).hexdigest()}"
+        if request_id in prior_by_id:
+            jobs.append(dict(prior_by_id[request_id]))
+            continue
+        jobs.append(
+            {
+                "contract": "finished-cut-production-revision.v3",
+                "request_id": request_id,
+                "status": "queued",
+                "command_id": None,
+                "production_state": None,
+                "reason_code": None,
+                "requested_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": None,
+                "error": None,
+                **authority,
+            }
+        )
+    return jobs
 
 
 def _verified_editorial_master(episode_dir: Path):
@@ -1232,14 +893,7 @@ async def finished_review_board(
     current_revisions = [
         revision
         for revision in revisions
-        if isinstance(revision, dict)
-        and (
-            revision.get("manifest_sha256") == manifest["_sha256"]
-            or (
-                isinstance(revision.get("revision_job"), dict)
-                and revision["revision_job"].get("output_manifest_sha256") == manifest["_sha256"]
-            )
-        )
+        if isinstance(revision, dict) and revision.get("manifest_sha256") == manifest["_sha256"]
     ]
     latest = current_revisions[-1] if current_revisions else {}
     cut_statuses = latest.get("cut_statuses", {}) if isinstance(latest, dict) else {}
@@ -1253,15 +907,9 @@ async def finished_review_board(
         for row in component_feedback
         if isinstance(row, dict) and isinstance(row.get("component_id"), str)
     }
-    episode_dir = _episode_dir(episode_slug)
-    manifest_is_legacy = bool(manifest.get("_legacy_read_only"))
     for cut in manifest["cuts"]:
         cut["saved_status"] = cut_statuses.get(cut["cut_id"], "pending")
-        cut["visual_pipeline"] = _visual_pipeline_view(
-            episode_dir,
-            cut["cut_id"],
-            legacy_manifest=manifest_is_legacy,
-        )
+        cut["release_truth"] = _finished_cut_event_view(cut)
         for component in cut["review_components"]:
             prior = feedback_by_component.get(component["component_id"], {})
             component["saved_action"] = prior.get("action", "")
@@ -1287,7 +935,6 @@ async def finished_review_board(
             "review_query": "?format=short" if review_format == "short" else "",
             "asset_version": _SHOSHO_ASSET_VERSION,
             "latest_revision": latest,
-            "manifest_is_legacy": manifest_is_legacy,
         },
     )
 
@@ -1469,13 +1116,6 @@ async def finished_review_save(
     submit_action = _single_form_value(form, "submit_action")
     if submit_action not in {"save_draft", "approve_cut", "approve_all"}:
         raise HTTPException(status_code=400, detail="invalid finished review submit action")
-    if manifest.get("_legacy_read_only") and submit_action != "save_draft":
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "LEGACY MANIFEST V1 僅供讀取與保存修改；先完成 revision 並產生 v2 lineage 才能核准"
-            ),
-        )
     selected_cut_id = _single_form_value(form, "selected_cut_id").strip()
 
     cuts_by_id = {cut["cut_id"]: cut for cut in manifest["cuts"]}
@@ -1594,9 +1234,12 @@ async def finished_review_save(
                     status_code=400, detail=f"move time is outside {cut['cut_id']} duration"
                 )
         row: dict[str, Any] = {
+            "release_id": cut["release_id"],
             "cut_id": cut["cut_id"],
             "component_id": component_id,
+            "event_id": component["event_id"],
             "lane": component["lane"],
+            "display": component["display"],
             "timeline_seconds": {"t0": component["t0"], "t1": component["t1"]},
             "action": action,
             "comment": comment,
@@ -1650,16 +1293,14 @@ async def finished_review_save(
     if submit_action == "approve_cut":
         revision["selected_cut_id"] = selected_cut_id
     if submit_action == "save_draft":
-        revision_job = _finished_revision_job(
+        revision_jobs = _finished_revision_jobs(
             manifest=manifest,
             audit=audit,
-            cut_statuses=cut_statuses,
             component_feedback=component_feedback,
             overall_feedback=overall_feedback,
-            preview_sha256=preview_sha256,
         )
-        if revision_job is not None:
-            revision["revision_job"] = revision_job
+        if revision_jobs:
+            revision["revision_jobs"] = revision_jobs
     audit["revisions"].append(revision)
     _atomic_json_write(_feedback_path(manifest), audit)
     if submit_action == "approve_cut":
