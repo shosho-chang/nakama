@@ -27,8 +27,10 @@
   .sho .cut-tab[aria-selected="true"] { border-color: var(--sho-accent-line); background: var(--sho-accent-soft); color: var(--sho-text); }
   .cut-tab__meta { display: flex; align-items: center; justify-content: space-between; gap: var(--sho-s-2); color: var(--sho-muted); font-size: .72rem; letter-spacing: .06em; }
   .cut-tab__title { display: block; line-height: 1.5; margin-top: var(--sho-s-2); }
-  .review-workspace { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(360px, .85fr); gap: var(--sho-s-5); align-items: start; padding-top: var(--sho-s-5); }
-  .player-column { min-width: 0; position: sticky; top: var(--sho-s-3); }
+  .review-workspace { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(360px, .85fr); gap: var(--sho-s-5); align-items: stretch; height: clamp(520px, 58vh, 680px); padding-top: var(--sho-s-5); }
+  .player-column, .feedback-column { min-height: 0; max-height: 100%; overflow-y: scroll; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
+  .player-column { min-width: 0; padding-right: var(--sho-s-2); }
+  .feedback-column { padding-right: var(--sho-s-2); }
   .player-shell { border: 1px solid var(--sho-line); background: var(--sho-bg-2); padding: var(--sho-s-3); }
   .player-shell video { display: block; width: 100%; max-height: 72vh; background: var(--sho-ink); }
   .player-shell--short video { aspect-ratio: 9 / 16; height: min(72vh, 760px); width: auto; max-width: 100%; margin: 0 auto; object-fit: contain; }
@@ -38,8 +40,8 @@
   .timeline-panel__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sho-s-3); border-bottom: 1px solid var(--sho-line); padding: var(--sho-s-1) var(--sho-s-3); }
   .timeline-panel__head h2 { font-size: .83rem; letter-spacing: .06em; margin: 0; }
   .timeline-panel__hint { color: var(--sho-muted); font-size: .72rem; margin: 0; }
-  .timeline-scroll { box-sizing: border-box; max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; padding-bottom: var(--sho-s-1); width: 100%; }
-  .timeline-stage { --timeline-label-width: 128px; --timeline-ruler-height: 26px; box-sizing: border-box; min-width: 820px; position: relative; }
+  .timeline-scroll { box-sizing: border-box; max-width: 100%; overflow-x: hidden; width: 100%; }
+  .timeline-stage { --timeline-label-width: 172px; --timeline-ruler-height: 30px; box-sizing: border-box; min-width: 0; position: relative; width: 100%; }
   .timeline-ruler, .timeline-row { display: grid; grid-template-columns: var(--timeline-label-width) minmax(0, 1fr); }
   .timeline-ruler { border-bottom: 1px solid var(--sho-line-2); min-height: var(--timeline-ruler-height); }
   .timeline-ruler__label, .timeline-label { box-sizing: border-box; border-right: 1px solid var(--sho-line); color: var(--sho-muted); padding: var(--sho-s-1) var(--sho-s-2); }
@@ -47,19 +49,20 @@
   .timeline-ruler__track { position: relative; }
   .timeline-tick { border-left: 1px solid var(--sho-line); color: var(--sho-muted); font-size: .63rem; height: 100%; left: var(--timeline-start); padding-left: 3px; position: absolute; top: 0; }
   .timeline-tick:last-child { left: auto; right: 0; border-left: 0; border-right: 1px solid var(--sho-line); padding-left: 0; padding-right: 3px; }
-  .timeline-row { --timeline-kind-color: var(--sho-muted); min-height: 40px; }
+  .timeline-row { --timeline-kind-color: var(--sho-muted); min-height: 52px; }
   .timeline-row + .timeline-row { border-top: 1px solid var(--sho-line); }
-  .timeline-label { align-content: center; font-size: .64rem; line-height: 1.25; }
-  .timeline-label span { display: block; color: var(--sho-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .timeline-label { align-content: center; font-size: .72rem; line-height: 1.35; }
+  .timeline-label span { display: block; color: var(--sho-text-2); overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
   .timeline-label span::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: var(--sho-r-pill); background: var(--timeline-kind-color); margin-right: 5px; vertical-align: .05em; }
   .timeline-label small { font-size: .62rem; }
   .timeline-track { background-image: linear-gradient(to right, transparent calc(25% - .5px), var(--sho-line) 25%, transparent calc(25% + .5px), transparent calc(50% - .5px), var(--sho-line) 50%, transparent calc(50% + .5px), transparent calc(75% - .5px), var(--sho-line) 75%, transparent calc(75% + .5px)); min-width: 0; position: relative; }
   .timeline-row[data-timeline-lane="b_roll"] { --timeline-kind-color: var(--sho-success); }
   .timeline-row[data-timeline-lane="identity_card"] { --timeline-kind-color: var(--sho-text-2); }
   .timeline-row[data-timeline-lane="hero_title"] { --timeline-kind-color: var(--sho-info); }
+  .timeline-row[data-timeline-lane="supporting_title"] { --timeline-kind-color: var(--sho-info); }
   .timeline-row[data-timeline-lane="fullscreen_transition"] { --timeline-kind-color: var(--sho-warning); }
   .timeline-row[data-timeline-lane="visual_effect"] { --timeline-kind-color: var(--sho-error); }
-  .sho .timeline-block { box-sizing: border-box; position: absolute; top: 8px; left: var(--timeline-start); width: var(--timeline-span); height: 24px; overflow: hidden; border: 1px solid color-mix(in oklch, var(--timeline-kind-color) 72%, var(--sho-line-2)); border-radius: var(--sho-r-2); background: color-mix(in oklch, var(--timeline-kind-color) 18%, var(--sho-bg)); color: var(--sho-text); cursor: pointer; font: inherit; font-size: .64rem; line-height: 1.15; padding: 0; text-align: left; transition: border-color var(--sho-t-fast) var(--sho-ease), background var(--sho-t-fast) var(--sho-ease); }
+  .sho .timeline-block { box-sizing: border-box; position: absolute; top: 14px; left: var(--timeline-start); width: var(--timeline-span); height: 24px; overflow: hidden; border: 1px solid color-mix(in oklch, var(--timeline-kind-color) 72%, var(--sho-line-2)); border-radius: var(--sho-r-2); background: color-mix(in oklch, var(--timeline-kind-color) 18%, var(--sho-bg)); color: var(--sho-text); cursor: pointer; font: inherit; font-size: .64rem; line-height: 1.15; padding: 0; text-align: left; transition: border-color var(--sho-t-fast) var(--sho-ease), background var(--sho-t-fast) var(--sho-ease); }
   .timeline-block__label { display: block; overflow: hidden; padding: 3px 5px; text-overflow: ellipsis; white-space: nowrap; }
   .sho .timeline-block:hover { border-color: var(--timeline-kind-color); background: color-mix(in oklch, var(--timeline-kind-color) 27%, var(--sho-bg)); }
   .sho .timeline-block[aria-current="true"] { border-color: var(--sho-accent); background: var(--sho-accent-soft); color: var(--sho-text); }
@@ -94,7 +97,7 @@
   .review-button--approve { background: var(--sho-ink); border-color: var(--sho-ink); color: var(--sho-bg); }
   .review-button:disabled { cursor: not-allowed; opacity: .45; }
   .format-switch__link:focus-visible, .cut-tab:focus-visible, .seek-button:focus-visible, .field-label select:focus-visible, .field-label input:focus-visible, .field-label textarea:focus-visible, .remember-label input:focus-visible, .cut-decision input:focus-visible, .review-button:focus-visible { outline: none; box-shadow: var(--sho-focus); }
-  @media (max-width: 920px) { .review-workspace { grid-template-columns: 1fr; } .player-column { position: static; } .player-shell video { max-height: 58vh; } }
+  @media (max-width: 920px) { .review-workspace { grid-template-columns: 1fr; height: auto; } .player-column, .feedback-column { height: clamp(440px, 55vh, 560px); max-height: none; overflow-y: scroll; scrollbar-gutter: stable; } .player-shell video { max-height: 58vh; } }
   @media (max-width: 640px) { .finished-gate { padding-inline: var(--sho-s-3); } .review-actions { margin-inline: calc(var(--sho-s-3) * -1); padding-inline: var(--sho-s-3); } .cut-tabs { grid-template-columns: 1fr; } .cut-tab { min-height: 0; } .timeline-panel__head { align-items: start; flex-direction: column; } }
   @media (prefers-reduced-motion: reduce) { .cut-tab, .timeline-block, .timeline-playhead { transition: none; } }
 </style>
@@ -110,24 +113,17 @@
   <div class="header-meta sho-mono">REV {{ revision_count }} · {{ manifest.cuts|length }} CUTS</div>
 </section>
 <main class="finished-gate">
-  {% if manifest_is_legacy %}
-  <div class="finished-status finished-status--legacy" role="status" aria-live="polite">
-    <strong>LEGACY MANIFEST V1：舊 preview 僅供讀取，核准功能已鎖定。</strong>
-    <p>你仍可保存修改來啟動新的 Director → DP revision；只有綁定 CURRENT visual DAG 的 v2 manifest 才能核准。</p>
-  </div>
-  {% endif %}
-  {% set revision_job = latest_revision.revision_job if latest_revision and latest_revision.revision_job else none %}
-  {% if revision_job and revision_job.status in ['queued', 'running'] %}
+  {% set revision_jobs = latest_revision.revision_jobs if latest_revision and latest_revision.revision_jobs else [] %}
+  {% set revision_job = revision_jobs[0] if revision_jobs else none %}
+  {% if revision_job and revision_job.status in ['queued', 'registered', 'pending'] %}
   <div class="finished-status finished-status--working" role="status" aria-live="polite">
-    <strong>Feedback 已保存為 REV {{ revision_count }}；Agent revision {{ '正在處理' if revision_job.status == 'running' else '已排入佇列' }}。</strong>
+    <strong>Feedback 已保存為 REV {{ revision_count }}；Finished Cut revision {{ '正在推進' if revision_job.status != 'queued' else '已排入佇列' }}。</strong>
     <p class="sho-mono">REQUEST {{ revision_job.request_id }}</p>
   </div>
-  {% elif revision_job and revision_job.status == 'awaiting_stock_assets' %}
-  <div class="finished-status" role="status" aria-live="polite"><strong>Feedback 已保存；正在等待已核准的 Stock Video 素材。</strong><p>素材的來源、授權與檔案驗證完成後，Agent revision 會再進入佇列。</p><p class="sho-mono">REQUEST {{ revision_job.request_id }}</p></div>
-  {% elif revision_job and revision_job.status in ['succeeded', 'ready_for_review'] %}
-  <div class="finished-status" role="status" aria-live="polite"><strong>Agent revision 已完成，可以開始 review 新版。</strong><p class="sho-mono">REQUEST {{ revision_job.request_id }}</p></div>
-  {% elif revision_job and revision_job.status == 'failed' %}
-  <div class="finished-status finished-status--error" role="alert"><strong>Agent revision 失敗。</strong><p>{{ revision_job.error or '沒有提供錯誤細節。' }}</p><p class="sho-mono">REQUEST {{ revision_job.request_id }}</p></div>
+  {% elif revision_job and revision_job.status == 'preview_ready' %}
+  <div class="finished-status" role="status" aria-live="polite"><strong>Targeted revision preview 已就緒。</strong><p class="sho-mono">REQUEST {{ revision_job.request_id }}</p></div>
+  {% elif revision_job and revision_job.status in ['needs_review', 'failed'] %}
+  <div class="finished-status finished-status--error" role="alert"><strong>Targeted revision 需要人工處理。</strong><p>{{ revision_job.error or revision_job.reason_code or '沒有提供錯誤細節。' }}</p><p class="sho-mono">REQUEST {{ revision_job.request_id }}</p></div>
   {% elif saved %}<p class="finished-status" role="status">Feedback 已保存為 REV {{ revision_count }}；舊 revision 沒有被覆蓋。</p>{% endif %}
   {% if approved %}<p class="finished-status" role="status">{{ manifest.cuts|length }} 支初剪已全部核准，review gate 已落盤。</p>{% endif %}
   <nav class="format-switch" aria-label="選擇成片格式">
@@ -147,7 +143,7 @@
     {% endfor %}
   </div>
 
-  <form method="post" action="/bridge/highlights/{{ episode_slug }}/finished/review{{ review_query }}" id="finished-review-form" data-legacy-manifest="{{ 'true' if manifest_is_legacy else 'false' }}">
+  <form method="post" action="/bridge/highlights/{{ episode_slug }}/finished/review{{ review_query }}" id="finished-review-form">
     <input type="hidden" name="manifest_sha256" value="{{ manifest_sha256 }}">
     <input type="hidden" name="submit_action" id="submit-action" value="save_draft">
     <input type="hidden" name="selected_cut_id" id="selected-cut-id" value="{{ manifest.cuts[0].cut_id }}">
@@ -155,7 +151,7 @@
       <div class="player-column">
         <div class="player-shell{% if review_format == 'short' %} player-shell--short{% endif %}">
           {% set first_cut = manifest.cuts[0] %}
-          <video id="review-player" controls preload="metadata" src="/bridge/highlights/{{ episode_slug }}/finished/media/{{ first_cut.cut_id }}{{ review_query }}">
+          <video id="review-player" controls preload="none" src="/bridge/highlights/{{ episode_slug }}/finished/media/{{ first_cut.cut_id }}{{ review_query }}">
             <track id="review-captions" kind="captions" srclang="zh-Hant" label="繁體中文字幕" src="/bridge/highlights/{{ episode_slug }}/finished/subtitles/{{ first_cut.cut_id }}{{ review_query }}"{% if review_format != 'short' %} default{% endif %}>
             瀏覽器不支援 HTML5 video。
           </video>
@@ -168,7 +164,7 @@
             <h2 class="sho-mono">FULL TIMELINE · {{ cut.cut_id }}</h2>
             <p class="timeline-panel__hint">點 block 跳到時間並選取修改欄；沒有 block 的區域就是 A-roll／空白區。</p>
           </header>
-          <div class="timeline-scroll" tabindex="0" aria-label="可水平捲動的完整 Timeline">
+          <div class="timeline-scroll" aria-label="完整 Timeline">
             <div class="timeline-stage">
               <div class="timeline-ruler" aria-hidden="true">
                 <div class="timeline-ruler__label sho-mono">{{ '%02d:%02d'|format(duration // 60, duration % 60) }}</div>
@@ -177,8 +173,8 @@
                 </div>
               </div>
               {% for lane in manifest.feedback_contract.review_lanes %}
-              {% if lane != 'badge' and not (review_format == 'long' and lane == 'pacing') %}
               {% set timeline_components = cut.review_components | selectattr('lane', 'equalto', lane) | list %}
+              {% if lane != 'badge' and not (review_format == 'long' and lane == 'pacing') and not (lane == 'supporting_title' and not timeline_components) %}
               {% set timeline_lane_label = manifest.lane_labels[lane] %}
               <div class="timeline-row" data-timeline-lane="{{ lane }}" data-timeline-count="{{ timeline_components|length }}">
                 <div class="timeline-label sho-mono"><span>{{ timeline_lane_label }}</span><small>{{ timeline_components|length }} EVENT{% if timeline_components|length != 1 %}S{% endif %}</small></div>
@@ -204,7 +200,7 @@
             <h2>{{ cut.title }}</h2>
             <fieldset class="cut-decision">
               <legend class="sho-mono">CUT DECISION</legend>
-              <label><input type="radio" name="cut_status__{{ cut.cut_id }}" value="approved" {% if cut.saved_status == 'approved' %}checked{% endif %} {% if manifest_is_legacy or (cut.stock_video_missing is defined and cut.stock_video_missing > 0) %}disabled{% endif %}> 核准這支</label>
+              <label><input type="radio" name="cut_status__{{ cut.cut_id }}" value="approved" {% if cut.saved_status == 'approved' %}checked{% endif %} {% if cut.stock_video_missing is defined and cut.stock_video_missing > 0 %}disabled{% endif %}> 核准這支</label>
               <label><input type="radio" name="cut_status__{{ cut.cut_id }}" value="needs_changes" {% if cut.saved_status == 'needs_changes' %}checked{% endif %}> 需要修改</label>
             </fieldset>
           </header>
@@ -216,96 +212,40 @@
           </div>
           {% endif %}
 
-          {% set visual = cut.visual_pipeline %}
-          <section class="visual-truth visual-truth--{{ 'error' if visual.status == 'invalid' else ('ready' if visual.status == 'ready_to_materialize' else 'pending') }}" aria-labelledby="visual-truth-{{ cut.cut_id }}">
+          {% set release = cut.release_truth %}
+          <section class="visual-truth visual-truth--ready" aria-labelledby="visual-truth-{{ cut.cut_id }}">
             <header class="visual-truth__head">
               <div>
-                <p class="visual-truth__eyebrow sho-mono">VISUAL PRODUCTION TRUTH</p>
-                <h3 id="visual-truth-{{ cut.cut_id }}">Director → DP → Director semantic audit</h3>
+                <p class="visual-truth__eyebrow sho-mono">FINISHED CUT RELEASE V3</p>
+                <h3 id="visual-truth-{{ cut.cut_id }}">Current semantic events</h3>
               </div>
-              <span class="visual-truth__status sho-mono">{{ visual.status_label }}</span>
+              <span class="visual-truth__status sho-mono">{{ release.status_label }}</span>
             </header>
             <dl class="visual-truth__revisions sho-mono">
-              <div><dt>CURRENT</dt><dd>{{ visual.current_revision_id or '—' }}</dd></div>
-              <div><dt>PENDING</dt><dd>{{ visual.pending_revision_id or '—' }}</dd></div>
+              <div><dt>RELEASE</dt><dd>{{ release.release_id }}</dd></div>
+              <div><dt>EVENTS</dt><dd>{{ release.events|length }}</dd></div>
             </dl>
-            {% if visual.status == 'legacy_manifest' %}
-            <p class="visual-truth__notice" role="status">這個 preview 沒有 v2 visual lineage，不能把任何現存 recipe 或 CURRENT 冒充成它的 production truth。保存修改後，系統會建立新的 verified generation。</p>
-            {% elif visual.status == 'invalid' %}
-            <p class="visual-truth__notice visual-truth__notice--error" role="alert">{{ visual.error or 'Canonical visual artifacts 無法通過 fresh verification。' }}</p>
-            {% elif visual.status != 'ready_to_materialize' %}
-            <p class="visual-truth__notice" role="status">{{ visual.status_label }}。{% if visual.verified_current %}前一個 CURRENT 仍保持可驗證、未被這次 pending revision 覆蓋。{% else %}尚未完成的 proposal 不會顯示成 production truth，也不會交給 materializer。{% endif %}</p>
-            {% endif %}
-
-            {% if visual.verified_current %}
             <details class="visual-truth__details">
-              <summary>查看 CURRENT {{ visual.current_revision_id }} 的完整 verified lineage</summary>
-              <dl class="visual-truth__workers" aria-label="可信任的 worker execution identities">
-                <div><dt>Director</dt><dd><span>{{ visual.workers.director.worker_id }}</span><span class="sho-mono">SESSION {{ visual.workers.director.session_id }} · EXEC {{ visual.workers.director.execution_id }}</span></dd></div>
-                <div><dt>DP</dt><dd><span>{{ visual.workers.dp.worker_id }}</span><span class="sho-mono">SESSION {{ visual.workers.dp.session_id }} · EXEC {{ visual.workers.dp.execution_id }}</span></dd></div>
-                <div><dt>Semantic audit</dt><dd><span>{{ visual.workers.audit.worker_id }}</span><span class="sho-mono">SAME DIRECTOR SESSION {{ visual.workers.audit.session_id }} · EXEC {{ visual.workers.audit.execution_id }}</span></dd></div>
-              </dl>
-              <p class="visual-truth__coverage sho-mono">{{ visual.coverage.add_visual_count }} ADD VISUAL · {{ visual.coverage.planned_stock_video_count }} STOCK SHOTS · {{ visual.coverage.intentional_aroll_count }} INTENTIONAL A-ROLL · MAX UNCOVERED {{ visual.coverage.max_uncovered_sec }}s</p>
-
+              <summary>查看 sealed Release 的語意事件</summary>
               <ol class="visual-truth__events">
-                {% for event in visual.events %}
+                {% for event in release.events %}
                 <li class="visual-event">
                   <header class="visual-event__head">
                     <div><span class="visual-event__index sho-mono">{{ '%02d'|format(loop.index) }}</span><strong>{{ event.event_id }}</strong></div>
                     <span class="sho-mono">{{ event.time_range }}</span>
                   </header>
-                  <blockquote class="visual-event__quote">{{ event.quote }}</blockquote>
+                  <blockquote class="visual-event__quote">{{ event.text }}</blockquote>
                   <dl class="visual-event__intent">
-                    <div><dt>Director intent</dt><dd>{{ event.category }} · {{ event.form }} · {{ event.decision }}</dd></div>
-                    <div><dt>Description</dt><dd>{{ event.description }}</dd></div>
-                    <div><dt>Rationale</dt><dd>{{ event.rationale }}</dd></div>
-                    <div><dt>Negative</dt><dd>{% if event.negative_constraints %}<ul>{% for item in event.negative_constraints %}<li>{{ item }}</li>{% endfor %}</ul>{% else %}—{% endif %}</dd></div>
-                    <div><dt>Exact on-screen text</dt><dd class="visual-truth__pre">{{ event.on_screen_text or '—' }}</dd></div>
+                    <div><dt>Semantic kind</dt><dd>{{ event.semantic_kind }}</dd></div>
+                    <div><dt>Implementation</dt><dd>{{ event.implementation_kind or 'intentional A-roll' }}</dd></div>
+                    <div><dt>Intent</dt><dd>{{ event.intent }}</dd></div>
+                    <div><dt>Display</dt><dd class="visual-truth__pre">{{ event.display or '—' }}</dd></div>
+                    <div><dt>Section / cues</dt><dd>{{ event.section_id or '—' }} · {{ event.master_cue_ids|join(', ') }}</dd></div>
                   </dl>
-
-                  {% if event.implementation %}
-                  {% set implementation = event.implementation %}
-                  <div class="visual-event__dp">
-                    <p class="visual-event__route sho-mono">DP · {{ implementation.mode }} → {{ implementation.target_lane }} · {{ implementation.implementation_kind }}</p>
-                    <p><strong>Selected reason</strong> · {{ implementation.semantic_justification }}</p>
-                    <ol class="visual-candidates" aria-label="{{ event.event_id }} 的候選素材">
-                      {% for candidate in implementation.candidates %}
-                      {% set media = candidate.media if candidate.media is defined else candidate.preview_media %}
-                      <li class="visual-candidate{% if candidate.selected %} visual-candidate--selected{% endif %}">
-                        <header><span class="visual-candidate__label sho-mono">{{ candidate.label }}</span><strong>{{ candidate.candidate_id }}</strong>{% if candidate.selected %}<span class="visual-candidate__selected sho-mono">SELECTED</span>{% endif %}</header>
-                        <p>{{ candidate.visual_summary }}</p>
-                        <dl>
-                          <div><dt>Source</dt><dd>{% if candidate.provenance.safe_source_url %}<a href="{{ candidate.provenance.safe_source_url }}" rel="noreferrer noopener" target="_blank">{{ candidate.provenance.source_url }}</a>{% else %}<span>{{ candidate.provenance.source_url or 'internal render' }}</span>{% endif %}</dd></div>
-                          <div><dt>Provider / license</dt><dd>{{ candidate.provenance.provider }} · {{ candidate.provenance.license }}</dd></div>
-                          <div><dt>Media</dt><dd class="sho-mono">{{ media.path }} · SHA {{ media.sha256 }}</dd></div>
-                          <div><dt>Receipt</dt><dd class="sho-mono">{{ candidate.provenance.receipt.path }} · SHA {{ candidate.provenance.receipt.sha256 }}</dd></div>
-                        </dl>
-                      </li>
-                      {% endfor %}
-                    </ol>
-
-                    <ol class="visual-selections" aria-label="{{ event.event_id }} 的 selected materializations">
-                      {% for selected in implementation.selections %}
-                      <li>
-                        <p><strong>{{ selected.candidate_id }}</strong> <span class="sho-mono">{{ selected.time_range }} · SOURCE {{ selected.source_range.start_sec }}–{{ selected.source_range.end_sec }}s · {{ selected.materialization_id }}</span></p>
-                        <blockquote class="visual-event__quote">{{ selected.quote }}</blockquote>
-                        <dl class="visual-audit">
-                          <div><dt>Audit verdict</dt><dd><span class="visual-audit__verdict sho-mono">{{ selected.audit.verdict }}</span></dd></div>
-                          <div><dt>Visual observation</dt><dd>{{ selected.audit.visual_observation }}</dd></div>
-                          <div><dt>Audit rationale</dt><dd>{{ selected.audit.rationale }}</dd></div>
-                        </dl>
-                      </li>
-                      {% endfor %}
-                    </ol>
-                  </div>
-                  {% else %}
-                  <p class="visual-event__aroll">Director 明確保留 A-roll；沒有 DP materialization。</p>
-                  {% endif %}
                 </li>
                 {% endfor %}
               </ol>
             </details>
-            {% endif %}
           </section>
 
           <section class="cut-feedback" aria-labelledby="cut-feedback-label-{{ cut.cut_id }}">
@@ -316,10 +256,10 @@
           </section>
 
           {% for lane in manifest.feedback_contract.review_lanes %}
-          {% if lane != 'badge' and not (review_format == 'long' and lane == 'pacing') %}
+          {% set lane_components = cut.review_components | selectattr('lane', 'equalto', lane) | list %}
+          {% if lane != 'badge' and not (review_format == 'long' and lane == 'pacing') and not (lane == 'supporting_title' and not lane_components) %}
           <section class="lane" aria-labelledby="lane-{{ cut.cut_id }}-{{ lane }}">
             <h3 class="lane-title sho-mono" id="lane-{{ cut.cut_id }}-{{ lane }}">{{ manifest.lane_labels[lane] }} · {% if lane == 'b_roll' and cut.stock_video_count is defined %}{{ cut.stock_video_count }}{% else %}{{ cut.review_components | selectattr('lane', 'equalto', lane) | list | length }}{% endif %}</h3>
-            {% set lane_components = cut.review_components | selectattr('lane', 'equalto', lane) | list %}
             {% if lane_components %}
               {% for component in lane_components %}
               <article class="component" data-component-id="{{ component.component_id }}" data-seek-seconds="{{ component.t0 }}" tabindex="-1">
@@ -335,7 +275,7 @@
                     </select>
                   </label>
                   <label class="field-label" data-replacement-field>替換素材／新文字／新類型
-                    {% if component.lane in ['identity_card', 'hero_title', 'fullscreen_transition', 'title_card'] %}
+                    {% if component.lane in ['identity_card', 'hero_title', 'supporting_title', 'fullscreen_transition', 'title_card'] %}
                     <textarea name="component_replacement__{{ component.component_id }}" maxlength="500" rows="3" placeholder="可按 Enter 決定畫面上的換行">{{ component.saved_replacement }}</textarea>
                     {% else %}
                     <input type="text" name="component_replacement__{{ component.component_id }}" value="{{ component.saved_replacement }}" maxlength="500">
@@ -360,7 +300,7 @@
       </div>
     </div>
     <div class="review-actions">
-      <output class="review-actions__status" id="review-status" aria-live="polite">{% if revision_job and revision_job.status == 'queued' %}Agent revision 已排入佇列{% elif revision_job and revision_job.status == 'running' %}Agent revision 正在處理{% elif revision_job and revision_job.status == 'awaiting_stock_assets' %}等待已核准的 Stock Video 素材{% elif revision_job and revision_job.status in ['succeeded', 'ready_for_review'] %}修正版已完成，請重新 review{% elif revision_job and revision_job.status == 'failed' %}Agent revision 失敗，請查看上方原因{% elif saved %}Feedback 已保存{% else %}尚未儲存新的變更{% endif %}</output>
+      <output class="review-actions__status" id="review-status" aria-live="polite">{% if revision_job and revision_job.status == 'queued' %}Targeted revision 已排入佇列{% elif revision_job and revision_job.status in ['registered', 'pending'] %}Finished Cut Production 正在推進{% elif revision_job and revision_job.status == 'preview_ready' %}修正版 preview 已就緒{% elif revision_job and revision_job.status in ['needs_review', 'failed'] %}Targeted revision 需要人工處理{% elif saved %}Feedback 已保存{% else %}尚未儲存新的變更{% endif %}</output>
       <button type="submit" class="review-button" data-submit-action="save_draft">保存草稿</button>
       {% if review_format == 'long' %}
       <button type="submit" class="review-button review-button--approve" id="approve-cut" data-submit-action="approve_cut" disabled>核准 {{ manifest.cuts[0].cut_id }} → Packaging</button>
@@ -386,7 +326,6 @@
   const activeCut = document.querySelector('#active-cut-readout');
   const timeReadout = document.querySelector('#time-readout');
   const timelineTooltip = document.querySelector('#timeline-tooltip');
-  const legacyManifest = form.dataset.legacyManifest === 'true';
   const pad = value => String(Math.max(0, Math.floor(value))).padStart(2, '0');
   const stamp = seconds => `${pad(seconds / 60)}:${pad(seconds % 60)}`;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -424,10 +363,10 @@
 
   const syncApproval = () => {
     const approved = tabs.every(tab => form.querySelector(`input[name="cut_status__${tab.dataset.cutId}"][value="approved"]`)?.checked);
-    approveAll.disabled = legacyManifest || !approved;
+    approveAll.disabled = !approved;
     if (approveCut) {
       const cutId = selectedCutId.value;
-      approveCut.disabled = legacyManifest || !form.querySelector(`input[name="cut_status__${cutId}"][value="approved"]`)?.checked;
+      approveCut.disabled = !form.querySelector(`input[name="cut_status__${cutId}"][value="approved"]`)?.checked;
       approveCut.textContent = `核准 ${cutId} → Packaging`;
     }
   };

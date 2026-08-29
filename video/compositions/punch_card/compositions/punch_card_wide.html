@@ -3,21 +3,22 @@
      與直式 punch_card.html 共用 LINE Seed TW 與逐行進退場語彙；長版預設使用 paper，
      逐行 swipe-in + 快收），只重調幾何：
 
-     1. 1920×1080——16:9 有寬度沒高度，改走**單行為主的橫幅**：
-        tier2 每行 8 字（140px×8+padding ≈ 1176 = 61% 幅寬），
-        tier1 每行 6 字（96px×6+padding ≈ 624 = 33%）。
+     1. 1920×1080——16:9 有寬度沒高度，改走**短句卡**：
+        tier2 是章內說明（64px），tier1 是 Hero（96px）；兩者最多三行。
      2. 長版 Hero 以人物可讀性優先：字重、紙卡與動畫已能建立層級，
         不再用覆蓋人臉的尺寸表現 Hero。
      3. pos_y 預設下修（0.66/0.60）：16:9 的字幕帶在 ~0.88 起跳，
-        兩行卡的下緣必須收在 0.86 以前，否則壓到字幕。 -->
+        卡片下緣必須收在 0.86 以前，否則壓到字幕。 -->
 <html
   lang="zh-Hant"
   data-composition-variables='[
     {"id":"line1","type":"string","label":"第一行","default":"它會改變"},
     {"id":"line2","type":"string","label":"第二行（可空）","default":"你的耐心"},
+    {"id":"line3","type":"string","label":"第三行（可空）","default":""},
     {"id":"show_sec","type":"number","label":"顯示秒數","default":2.0},
     {"id":"pos_y","type":"number","label":"卡片垂直中心 0-1","default":0.66},
     {"id":"tier","type":"number","label":"層級 1=hero 2=標準","default":2},
+    {"id":"font_px","type":"number","label":"選配字級覆寫（px）","default":0},
     {"id":"style","type":"string","label":"orange|paper|ink","default":"paper"}
   ]'
 >
@@ -57,22 +58,24 @@
         color: #fff;
         font-family: "LINE Seed TW", sans-serif;
         font-weight: 900;
-        font-size: 140px;
+        font-size: 64px;
         line-height: 1.16;
         padding: 5px 28px 11px;
         white-space: nowrap;
         opacity: 0;
       }
-      /* 第二行右推——與直式同語法，位移比例照字級縮（60 × 120/150） */
-      .line:nth-child(2) { margin-left: 48px; }
+      /* 支援卡微幅錯位，建立手排節奏但不搶 Hero 層級。 */
+      .line:nth-child(2) { margin-left: 24px; }
+      .line:nth-child(3) { margin-left: -16px; }
       /* tier 1 = hero：用更重紙卡、字重與動畫建立層級；尺寸縮小，
          避免長版訪談常見的中景／近景人臉被兩行 Hero 覆蓋。 */
       .tier1 .line {
-        font-size: 96px;
+        font-size: var(--tier1-font-size, 96px);
         padding: 8px 24px 15px;
         line-height: 1.1;
       }
       .tier1 .line:nth-child(2) { margin-left: 32px; }
+      .tier1 .line:nth-child(3) { margin-left: -24px; }
 
       /* ── v3 style 變體（修修 2026-08-04：「字卡太醜」→ 設計系統直譯）──
          orange = 現況基準（波旬短片語彙殘留：大塊橘 fill，踩 --sho AI-slop
@@ -124,6 +127,7 @@
       <div id="card">
         <span class="line" id="l1"></span>
         <span class="line" id="l2"></span>
+        <span class="line" id="l3"></span>
       </div>
     </div>
     <script>
@@ -131,9 +135,11 @@
         (window.__hyperframes && window.__hyperframes.getVariables()) || {};
       const line1 = vars.line1 ?? "它會改變";
       const line2 = vars.line2 ?? "";
+      const line3 = vars.line3 ?? "";
       const showSec = Number(vars.show_sec ?? 2.0);
       const posY = Number(vars.pos_y ?? 0.66);
       const tier = Number(vars.tier ?? 2);
+      const fontPx = Number(vars.font_px ?? 0);
 
       document.getElementById("l1").textContent = line1;
       const l2 = document.getElementById("l2");
@@ -142,9 +148,18 @@
       } else {
         l2.remove();
       }
+      const l3 = document.getElementById("l3");
+      if (line3) {
+        l3.textContent = line3;
+      } else {
+        l3.remove();
+      }
       const card = document.getElementById("card");
       card.style.top = `${posY * 100}%`;
       if (tier === 1) card.classList.add("tier1");
+      if (tier === 1 && Number.isFinite(fontPx) && fontPx > 0) {
+        card.style.setProperty("--tier1-font-size", `${fontPx}px`);
+      }
       const style = ["orange", "paper", "ink"].includes(vars.style) ? vars.style : "paper";
       document.getElementById("root").classList.add(`style-${style}`);
 
