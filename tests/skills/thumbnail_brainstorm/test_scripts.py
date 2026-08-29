@@ -1084,3 +1084,83 @@ def test_a_picked_candidate_still_needs_a_reason(monkeypatch, tmp_path):
 
     with pytest.raises(ValueError, match="center_provenance"):
         attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+
+def _existing_receipt(vault, *, sha: str, provenance: dict | None) -> None:
+    """先前那一次出圖留下的收據。"""
+    receipts = vault / "Attachments" / "packaging" / "20260723-xieboran" / "composition_receipts"
+    receipts.mkdir(parents=True, exist_ok=True)
+    payload = {"center_visual_sha256": sha}
+    if provenance is not None:
+        payload["center_provenance"] = provenance
+    (receipts / "punch-L1-r1.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _center_sha(spec: dict) -> str:
+    render_spec = json.loads(Path(spec["render_spec"]).read_text(encoding="utf-8"))
+    center = Path(render_spec["images"]["prop_image_data_url"])
+    return hashlib.sha256(center.read_bytes()).hexdigest()
+
+
+def test_rerender_of_an_untouched_legacy_centre_is_not_blocked(monkeypatch, tmp_path):
+    """調人臉大小不是換圖——舊 package（v2 年代、從無來歷）不該因此無法重出。
+
+    2026-08-29 修修調 value-L02 的 cutout 大小，整條產線卡在「缺 center_provenance」。
+    我把必填的範圍訂錯了：要擋的是「換新圖卻不交代出處」，不是每一次 render。
+    """
+    vault, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    del specs[0]["center_provenance"]
+    _existing_receipt(vault, sha=_center_sha(specs[0]), provenance=None)
+
+    attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+    receipt = json.loads(
+        (
+            vault
+            / "Attachments"
+            / "packaging"
+            / "20260723-xieboran"
+            / "composition_receipts"
+            / "punch-L1-r1.json"
+        ).read_text(encoding="utf-8")
+    )
+    # 沒有來歷可繼承 → 照舊發 v2，不為了版號好看而編造欄位
+    assert receipt["schema"] == "nakama.long_thumbnail_composition.v2"
+    assert "center_provenance" not in receipt
+
+
+def test_rerender_carries_the_previous_receipts_provenance_forward(monkeypatch, tmp_path):
+    vault, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    del specs[0]["center_provenance"]
+    known = {
+        "supply": "envato",
+        "source": "https://elements.envato.com/a-dog-22KBKWG",
+        "query": "pampered dog",
+        "why": "扣回 03:29 的圈養那一段",
+    }
+    _existing_receipt(vault, sha=_center_sha(specs[0]), provenance=known)
+
+    attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+    receipt = json.loads(
+        (
+            vault
+            / "Attachments"
+            / "packaging"
+            / "20260723-xieboran"
+            / "composition_receipts"
+            / "punch-L1-r1.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert receipt["schema"] == "nakama.long_thumbnail_composition.v3"
+    assert receipt["center_provenance"] == known
+
+
+def test_a_changed_centre_still_has_to_say_where_it_came_from(monkeypatch, tmp_path):
+    """圖換過就要交代——用 SHA 判定，不比檔名（檔名一樣內容可以換過）。"""
+    vault, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    del specs[0]["center_provenance"]
+    _existing_receipt(vault, sha="0" * 64, provenance=None)
+
+    with pytest.raises(ValueError, match="center_provenance"):
+        attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)

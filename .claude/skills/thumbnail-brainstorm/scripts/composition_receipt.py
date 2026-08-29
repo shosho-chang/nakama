@@ -6,12 +6,14 @@ import base64
 import hashlib
 import json
 from dataclasses import dataclass
+from typing import Literal
 from pathlib import Path
 
 from PIL import Image
 
 MEASUREMENT_SCHEMA = "nakama.thumbnail_composition_measurement.v1"
 RECEIPT_SCHEMA = "nakama.long_thumbnail_composition.v3"
+LEGACY_RECEIPT_SCHEMA = "nakama.long_thumbnail_composition.v2"
 
 # 中央卡的素材供給順序（SKILL.md 紅線 5）。redrawn = 自己重繪的圖表。
 CENTER_SUPPLY = ("envato", "public_domain", "redrawn")
@@ -91,7 +93,36 @@ def _provenance_from_candidate(spec: dict) -> dict | None:
     return {**fields, "why": why}
 
 
-def _center_provenance(spec: dict) -> dict:
+def _inherited_provenance(
+    *, vault_root: Path, episode_slug: str, cut_id: str, rank: int, center: Path
+) -> dict | None | Literal[False]:
+    """上一份收據對**同一張**中央圖記了什麼。
+
+    回 dict = 沿用它記的來歷；回 None = 上一份是 v2（那個年代沒有這個欄位），
+    照舊發 v2；回 False = 沒有上一份，或圖換過了 → 由呼叫端要求交代。
+
+    「同一張」用 SHA-256 判定，不比檔名——檔名可以一樣而內容換過。
+    """
+    path = (
+        Path(vault_root)
+        / "Attachments"
+        / "packaging"
+        / episode_slug
+        / "composition_receipts"
+        / f"{cut_id}-r{rank}.json"
+    )
+    if not path.is_file():
+        return False
+    try:
+        previous = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    if previous.get("center_visual_sha256") != _sha(center):
+        return False
+    return previous.get("center_provenance")
+
+
+def _center_provenance(spec: dict, *, inherited: object = False) -> dict | None:
     """中央卡的來歷——沒有它，成品就沒有人說得出「為什麼是這張圖」。
 
     2026-08-29 修修看到 punch-L04 rank 1 的中央卡是一隻鸚鵡，問為什麼。整條線
@@ -100,6 +131,11 @@ def _center_provenance(spec: dict) -> dict:
     但不是紀錄。推論不能當交代，所以這裡把它變成必填欄位。
     """
     raw = spec.get("center_provenance")
+    if raw is None and inherited is not False:
+        # 中央圖跟上一份收據是同一張——調的是幾何或人臉，不是換圖。這種重出不該
+        # 被擋下來（2026-08-29 修修調 value-L02 的 cutout 大小時整條產線卡死）。
+        # inherited 是 None 代表上一份是 v2 的年代，照舊發 v2；不無中生有。
+        return inherited  # type: ignore[return-value]
     if raw is None:
         # 修修在 gate 上挑的那張，來歷已經跟著候選池一起進來了（supply/source/
         # query 三項都有），只差「為什麼配這條標題」。要他挑完圖再把出處重打一次
@@ -244,7 +280,16 @@ def build_receipt_plan(
     center = resolved["prop_image_data_url"]
     if center.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
         raise ValueError("center visual asset must be an image")
-    provenance = _center_provenance(spec)
+    provenance = _center_provenance(
+        spec,
+        inherited=_inherited_provenance(
+            vault_root=vault_root,
+            episode_slug=episode_slug,
+            cut_id=cut_id,
+            rank=rank,
+            center=center,
+        ),
+    )
     _assert_center_fits_card(center, protected)
     center_name = f"center-{cut_id}-r{rank}{center.suffix.lower()}"
     sidecar_name = f"{thumbnail.name}.composition.json"
@@ -252,7 +297,8 @@ def build_receipt_plan(
     renderer_identity = f"{renderer['name']}@{renderer['version']}"
     return ReceiptPlan(
         payload={
-            "schema": RECEIPT_SCHEMA,
+            # 有來歷才是 v3。舊中央圖沿用 v2，不為了版號好看而編造欄位。
+            "schema": RECEIPT_SCHEMA if provenance is not None else LEGACY_RECEIPT_SCHEMA,
             "episode": episode,
             "cut_id": cut_id,
             "package_rank": rank,
@@ -260,7 +306,7 @@ def build_receipt_plan(
             "canvas_width": int(width),
             "canvas_height": int(height),
             "center_visual_asset": f"{prefix}/{center_name}",
-            "center_provenance": provenance,
+            **({"center_provenance": provenance} if provenance is not None else {}),
             "thumbnail_sha256": _sha(thumbnail),
             "center_visual_sha256": _sha(center),
             "measurement_sidecar": f"{prefix}/{sidecar_name}",
