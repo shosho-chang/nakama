@@ -148,3 +148,58 @@ Resolve Studio 開著、`py -3.10`**（3.14 會 segfault）、worktree 執行需
 | Bridge packaging 審核頁對 highlight cut 的接通程度未驗 | Slice D 有 fallback，用了要明示 |
 | `packaging_brief.py`/`publish_description.py` 的參數契約本 plan 未逐一列出 | 先讀源碼與 `--help`，不猜；發現契約與 plan 假設不符就停下回報 |
 | publish_prep 是長時 Resolve render | 用 receipt 輪詢，不阻塞；一次只跑一支 |
+
+---
+
+## 8. 執行結果（2026-08-29 收工紀錄）
+
+三支長片全部完成：mp4 已 render、標題／縮圖／描述已落進 release target。
+下一集走正規路徑時，以本節為準，**不要**再照 §3 的 slice 順序。
+
+### 8.1 plan 的三個假設是錯的
+
+| plan 寫的 | 實際 |
+|---|---|
+| Slice C 產 `packaging/description-<cut>-draft.md` | 產線**不寫這種檔**。描述的落點是 release target 的 `description` 欄。`description-full-draft.md` 是 8/21 的一次性手工檔 |
+| Slice D 落 `final/cover-*.png`＋`title-*.txt` | **沒有任何程式寫 `final/`**。上傳讀的是 target 的 `thumbnail_path`（vault 相對路徑）。`final/` 是舊的手工暫存區，可忽略 |
+| D／E／C 是三個 slice | 是**一顆按鈕**。Bridge packaging gate 按 Approve 會自動接 `_ensure_publish_prep`（全解析 render）→ 註冊 release → 套標題縮圖 → 自動產描述 |
+| §7 風險：migrated Release 不能 request_revision | 靜態驗過，三支都 ALLOWED，風險不存在 |
+
+### 8.2 真正的病根：發布線四處都不認得 ADR-066 Release
+
+publish 線每一段都各自從 ADR-065 的舊產物推導，沒有一處認得 Finished Cut Release。
+20260805 的 value-L02 與 punch-L04 都被換過剪輯，於是四處全錯，而且**沒有一處會報錯**：
+
+| 環節 | 舊來源 | 錯法 |
+|---|---|---|
+| render 的 timeline | `winners.json` 的 rank+title 湊顯示名 | 挑到 329.5s／260.0s 的舊 timeline（成品應為 563.7s／492.3s），**安靜 render 出錯片** |
+| YouTube 分章 | `highlights/tighten/<cut>_broll.json` | 舊時間軸；實際產出 02:09/02:56/04:09/04:24/04:28（正解 00:43/03:39/04:41/07:10），標題還帶換行打壞 YT 格式 |
+| description 逐字稿 | `highlights/srt/<cut>_tight_r*.srt` | 請 LLM 替一支不存在的影片寫文案 |
+| 上傳的 CC 字幕 | `shared.tight_srt.latest_tight_srt` | 整支片的 CC 對不上畫面 |
+
+四處全部改成以 Release 為權威（commit `8f78b9d4`、`4d74d227`、`d63c228e`、`554ea199`）。
+
+### 8.3 新增的接線點
+
+`<episode>/highlights/publish-timelines.v1.json` — packaging 側 cut id ↔ Release 的唯一綁定處，
+也是 render 目標的權威。ADR-066 的 run 由 Release 的 transaction receipt 機器推導 canonical
+timeline；migrated Release 沒有 transaction，由人記一次並在 `note` 留證據。
+**沒有這個檔的舊集數行為完全不變。**
+
+護欄：render 前拿實際 timeline 長度跟 Release preview 比，差超過 2 秒就停
+（`agents/usopp/publish_timeline.verify_duration`）。這是唯一擋得住「安靜出錯片」的地方。
+
+### 8.4 下一集的正規路徑
+
+1. 內容過 Bridge finished review
+2. 寫 brief（`scripts/packaging_brief.py`，內容判讀在 Cowork，script 只驗形狀）
+3. **建 `publish-timelines.v1.json`**（新製作可全機器推導；這步不能省）
+4. Bridge packaging gate 按 Approve —— 之後 render／註冊／標題縮圖／描述全自動
+5. 人工複核描述，再 `publish_upload.py`
+
+### 8.5 這集剩下的事
+
+- `full`（完整節目）仍是 8/21 的 reject 狀態，封面要重做——不在本 plan
+- L01 的描述是 8/27 產的，hook 沒有用新的 Release 字幕重寫（它的 tight SRT 剛好就是成品那份，內容正確）；
+  8/29 只手術移除了洩漏的 `highlights/srt/...` 內部路徑四行
+- short highlight、social carousel、Forensic Archive／legacy 刪除：另案
