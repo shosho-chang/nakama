@@ -2205,3 +2205,57 @@ def test_a_queued_search_request_is_shown_with_its_timing_caveat(client, vault_w
 
     assert "我要拉布拉多" in board.text
     assert "不是即時的" in board.text
+
+
+def _saved_recipe(vault, rank=2):
+    path = vault / "Attachments" / "packaging" / "20260723-xieboran" / "packages.json"
+    packages = json.loads(path.read_text(encoding="utf-8"))["cuts"][0]["packages"]
+    return next(p for p in packages if p["title_rank"] == rank)["render_recipe"]
+
+
+def test_picking_a_candidate_records_its_provenance_in_the_recipe(client, vault_with_cutouts):
+    """來歷要跟著配方走——桌機端會把預覽換成授權檔，一換檔名就回溯不到候選了。"""
+    asset = _stage_candidate_pool(vault_with_cutouts)
+
+    assert _compose_center(client, asset).status_code == 303
+
+    provenance = _saved_recipe(vault_with_cutouts)["center_provenance"]
+    assert provenance["supply"] == "envato"
+    assert provenance["source"].endswith("22KBKWG")
+    assert provenance["query"] == "pampered dog on sofa"
+
+
+def test_the_reason_recorded_is_the_users_own_search_request(client, vault_with_cutouts):
+    """修修打的找圖需求就是他要這張圖的理由——用他的原話，不要編一個。"""
+    asset = _stage_candidate_pool(vault_with_cutouts)
+    client.post(
+        "/bridge/packaging/20260723-xieboran/center-search",
+        data={"cut_id": "punch-L1", "center_search_request": "我要拉布拉多，要看得到柵欄"},
+        follow_redirects=False,
+    )
+
+    _compose_center(client, asset)
+
+    assert _saved_recipe(vault_with_cutouts)["center_provenance"]["why"] == "我要拉布拉多，要看得到柵欄"
+
+
+def test_picking_without_a_reason_records_that_fact_rather_than_inventing_one(
+    client, vault_with_cutouts
+):
+    asset = _stage_candidate_pool(vault_with_cutouts)
+
+    _compose_center(client, asset)
+
+    why = _saved_recipe(vault_with_cutouts)["center_provenance"]["why"]
+    assert "未附理由" in why
+
+
+def test_keeping_the_existing_centre_carries_its_provenance_forward(client, vault_with_cutouts):
+    """挑的是原本那張就沿用舊來歷，不無中生有。"""
+    response = _compose_center(
+        client, "Attachments/packaging/20260723-xieboran/center-punch-L1-r2.png"
+    )
+
+    assert response.status_code == 303
+    # 這個 fixture 的舊配方沒有來歷（v2 時代的資料），所以維持 None——不編造
+    assert _saved_recipe(vault_with_cutouts)["center_provenance"] is None

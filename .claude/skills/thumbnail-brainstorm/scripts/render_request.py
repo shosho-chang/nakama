@@ -322,6 +322,10 @@ def _render_reaction_request(
         "render_spec": str(spec_path),
         "host_cutout": req["host_cutout"],
         "guest_cutout": req["guest_cutout"],
+        # 來歷跟著配方走（gate 在挑圖時寫進去）。少了它 build_receipt_plan 會擋下來
+        # ——2026-08-29 我把 center_provenance 設成必填卻只接了 attach 那條路，
+        # 於是每一次 gate 觸發的重新 render 都死在收據那一步。
+        "center_provenance": req.get("center_provenance"),
     }
     plan = build_receipt_plan(
         spec=receipt_spec,

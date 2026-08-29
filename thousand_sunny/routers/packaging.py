@@ -44,6 +44,7 @@ from shared.schemas.packaging import (
     ApprovalFileV1,
     ApprovalV1,
     CenterCandidatesFileV1,
+    CenterProvenanceV1,
     CenterGeometryV1,
     GeometryV1,
     PackagesFileV1,
@@ -98,17 +99,6 @@ class CompositionBBoxV1(BaseModel):
     y: float
     width: float = Field(gt=0)
     height: float = Field(gt=0)
-
-
-class CenterProvenanceV1(BaseModel):
-    """中央卡的來歷——v3 起必填，見 composition_receipt._center_provenance。"""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    supply: Literal["envato", "public_domain", "redrawn"]
-    source: str = Field(min_length=1)
-    query: str = Field(min_length=1)
-    why: str = Field(min_length=12)
 
 
 class LongThumbnailCompositionReceiptV2(BaseModel):
@@ -1663,6 +1653,37 @@ async def packaging_select_variant(
     )
 
 
+def _center_provenance_for(
+    *,
+    pool: CenterCandidatesFileV1 | None,
+    chosen_center: str,
+    previous: RenderRequestV1 | None,
+    search_request: str | None,
+) -> CenterProvenanceV1 | None:
+    """挑中的那張圖的來歷——供給管道、出處、搜尋詞、為什麼。
+
+    來歷必須跟著配方走：gate 挑的是浮水印預覽，桌機端換成正式授權檔之後，光看檔名
+    已經回溯不到是哪一筆候選（2026-08-29 實際踩到）。
+
+    `why` 取修修自己打的找圖需求——那就是他要這張圖的理由，用他的原話最誠實。沒打過
+    需求時記「親自挑選、未附理由」：那是事實，不是編一個理由出來。挑的是原本那張圖
+    就沿用舊配方的來歷，不無中生有。
+    """
+    row = next(
+        (item for item in (pool.candidates if pool else []) if item.preview_png == chosen_center),
+        None,
+    )
+    if row is None:
+        return previous.center_provenance if previous else None
+    wanted = (search_request or "").strip()
+    return CenterProvenanceV1(
+        supply=row.supply,
+        source=row.source,
+        query=row.query,
+        why=wanted or f"修修在 gate 上親自挑選（未附理由）：{row.title}",
+    )
+
+
 @page_router.post("/{episode_slug}/center-search")
 async def packaging_center_search(
     episode_slug: str,
@@ -1829,6 +1850,7 @@ async def packaging_compose(
         package=target_package,
     )
     center_geometry = None
+    center_provenance = None
     if composition == "thumbnail_reaction":
         expected_center = (
             source_recipe.center_visual_asset
@@ -1848,6 +1870,12 @@ async def packaging_compose(
                 status_code=409,
                 detail="center_visual_asset 必須是這個 package 自己的中央圖或候選池裡的一張",
             )
+        center_provenance = _center_provenance_for(
+            pool=pool,
+            chosen_center=chosen_center,
+            previous=source_recipe,
+            search_request=prev.center_search_request if prev else None,
+        )
         values = (center_width_pct, center_height_px, center_x_pct, center_y_pct)
         if any(value is None for value in values):
             center_geometry = source_recipe.center_geometry if source_recipe else None
@@ -1887,6 +1915,7 @@ async def packaging_compose(
             book_cover_brightness=book_cover_brightness,
             book_cover_height_pct=book_cover_height_pct,
             center_visual_asset=center_visual_asset.strip() or None,
+            center_provenance=center_provenance,
             center_geometry=center_geometry,
             requested_at=datetime.now(timezone.utc),
             geometry=geometry,

@@ -302,6 +302,24 @@ class CenterGeometryV1(BaseModel):
         return self
 
 
+class CenterProvenanceV1(BaseModel):
+    """中央卡的來歷——這張圖哪來的、為什麼是它。
+
+    2026-08-29：修修問「這封面中間的圖是怎麼挑的？」，整條線翻完只查得到幾何與
+    SHA-256，配對理由沒有任何地方記過。推得回去不等於交代過，所以變成必填。
+
+    它必須跟著**配方**走，不能只留在候選池裡：gate 挑的是浮水印預覽，桌機端會把
+    它換成正式授權檔，一換檔名，回溯那筆候選的線索就斷了。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    supply: Literal["envato", "public_domain", "redrawn"]
+    source: str = Field(min_length=1)
+    query: str = Field(min_length=1)
+    why: str = Field(min_length=12)
+
+
 CENTER_CANDIDATES_SCHEMA = "nakama.center_card_candidates.v1"
 
 
@@ -386,6 +404,9 @@ class RenderRequestV1(BaseModel):
     # N2 only: the image and orange frame are one editable layer behind both people.
     # The path stays vault-relative so the desktop renderer can reproduce the exact package.
     center_visual_asset: str | None = None
+    # 中央圖的來歷。跟著配方走，才能在浮水印預覽被換成正式授權檔之後仍然追得回
+    # 是哪一筆候選、依據什麼搜出來的、為什麼選它。
+    center_provenance: CenterProvenanceV1 | None = None
     center_geometry: CenterGeometryV1 | None = None
     requested_at: AwareDatetime
     # geometry 兩種來源，靠 geometry_manual 分辨：
