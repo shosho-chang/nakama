@@ -334,11 +334,17 @@ class CodexSemanticAdapter:
                     )
                     self._outcomes[request.request_id] = outcome
                     return outcome
-                except (OSError, TypeError, ValueError):
+                except (OSError, TypeError, ValueError) as error:
+                    # The workspace is a TemporaryDirectory, so the moment this
+                    # returns the only copy of what Codex actually said is gone.
+                    # "output is invalid" with nothing else left 20260805's first
+                    # revision undiagnosable; carry the reason and the payload.
                     return self._failure(
                         request,
                         "output_invalid",
-                        "Codex last-message output is invalid",
+                        "Codex last-message output is invalid: "
+                        f"{type(error).__name__}: {error}; "
+                        f"last-message={_bounded_process_output(_read_text(output_path))}",
                     )
         except (OSError, TypeError, ValueError) as error:
             return self._failure(request, "dispatch_error", str(error))
@@ -387,6 +393,14 @@ class CodexSemanticAdapter:
                 detail=detail,
             )
         )
+
+
+def _read_text(path: Path) -> str | None:
+    """Best-effort read of a failed dispatch's output; never masks the first error."""
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
 
 
 def _bounded_process_output(value: str | bytes | None) -> str:
@@ -799,7 +813,28 @@ def _parse_stage_proposal(request: StageRequest, raw: str) -> StageProposal:
         request.parent_acceptance_id,
     )
     if envelope != expected_envelope:
-        raise ValueError("Codex proposal does not match the current request")
+        # Name the fields that differ.  "does not match the current request" over
+        # an eleven-field tuple sends the reader to a truncated payload dump to
+        # guess which one moved (20260805's first DP retry cost exactly that).
+        names = (
+            "schema",
+            "run_id",
+            "request_id",
+            "episode_id",
+            "cut_id",
+            "format",
+            "stage",
+            "attempt",
+            "scope",
+            "event_id",
+            "parent_acceptance_id",
+        )
+        drift = "; ".join(
+            f"{name}: returned {returned!r} but the request is {wanted!r}"
+            for name, returned, wanted in zip(names, envelope, expected_envelope, strict=True)
+            if returned != wanted
+        )
+        raise ValueError(f"Codex proposal does not match the current request — {drift}")
     event_values = value["events"]
     if not isinstance(event_values, list) or not event_values:
         raise ValueError("Codex proposal requires events")
