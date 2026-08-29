@@ -355,6 +355,11 @@ class TestRender:
         assert 'name="entry_time"' in body  # the merged form carries an optional time
         assert 'action="/bridge/weekly/sync-scheduled"' not in body  # retired in v3-B
         assert "wk-ci-time" in body  # 修修 (2026-08-24): daily bullet 時段 cell
+        # 修修 (2026-08-29): day cards carry data-date + the stay-in-place state saves
+        # which ones are open, so an action inside a manually opened card doesn't
+        # collapse it and jump back to the server default (today, else Monday).
+        assert 'data-date="2026-06-01"' in body
+        assert "wk-days" in body and "openDays" in body
         assert "測試任務" in body
 
     def test_no_error_banner_by_default(self, client):
