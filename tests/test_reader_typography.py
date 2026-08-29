@@ -75,3 +75,43 @@ class TestFontAssets:
         resolves — the injected @font-face must carry location.origin."""
         js = (_ROOT / "thousand_sunny" / "static" / "book_reader.js").read_text(encoding="utf-8")
         assert "${location.origin}/static/shosho/fonts/" in js
+
+
+class TestMobileReading:
+    """修修 2026-08-29 手機閱讀：翻頁、精簡工具列（字級／目錄／明暗）、選取即標註。"""
+
+    def test_mobile_only_keeps_three_controls(self):
+        body = _render()
+        # 手機隱藏的：首頁 / Ingest / 觀看筆記 / 反思 / 快捷鍵 / 刪除 / 字體選單
+        hidden = ("back-inbox", "ingest-wrap", "commentsToggle", "kbdHelpBtn", "deleteBookBtn")
+        for marker in hidden:
+            idx = body.find(marker)
+            assert idx != -1, marker
+            # the desktop-only class must sit on the same tag as the marker
+            tag_start = body.rfind("<", 0, idx)
+            tag_end = body.find(">", idx)
+            assert "desktop-only" in body[tag_start:tag_end], f"{marker} not desktop-only"
+        # 保留的三項 + 返回書架
+        assert 'id="fontSmaller"' in body and 'id="fontLarger"' in body
+        assert 'id="tocToggle"' in body
+        assert "desktop-only" not in body.split('id="tocToggle"')[0][-120:]
+        assert "data-theme-toggle-slot" in body  # 明暗切換掛進工具列
+
+    def test_mobile_css_hides_desktop_only_controls(self):
+        css = (_ROOT / "thousand_sunny" / "static" / "shosho" / "book_reader.css").read_text(
+            encoding="utf-8"
+        )
+        assert "@media (max-width: 768px)" in css
+        assert ".desktop-only { display: none" in css
+
+    def test_reader_paginates_on_mobile_too(self):
+        """手機原本是 scrolled（捲動）；改為一律 paginated，單欄。"""
+        js = (_ROOT / "thousand_sunny" / "static" / "book_reader.js").read_text(encoding="utf-8")
+        assert "setAttribute('flow', 'scrolled')" not in js
+        assert "setAttribute('flow', 'paginated')" in js
+
+    def test_selection_popup_listens_to_selectionchange(self):
+        """手機長按選字不會送 pointerup —— 少了 selectionchange 就永遠不跳標註選單。"""
+        js = (_ROOT / "thousand_sunny" / "static" / "book_reader.js").read_text(encoding="utf-8")
+        assert "addEventListener('selectionchange'" in js
+        assert "pointercancel" in js  # 長按被選取 UI 接手時要解除 pointerDown

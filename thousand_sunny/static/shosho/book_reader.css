@@ -883,3 +883,34 @@ body.sho .reader-type .type-font:focus-visible {
 @media (max-width: 768px) {
   body.sho .reader-type .type-font { max-width: 92px; }
 }
+
+/* ── 手機閱讀（修修 2026-08-29）────────────────────────────────────────────
+   手機只留三件事：字級、目錄、明暗。其餘（首頁 / Ingest / 觀看筆記 / 反思 /
+   快捷鍵 / 刪除 / 字體選擇）在 375px 的 bar 上塞不下（實測 scrollWidth 435 >
+   clientWidth 375，控制項被擠出畫面），桌機不受影響。 */
+@media (max-width: 768px) {
+  body.sho .reader-bar .desktop-only { display: none !important; }
+
+  /* 標題壓縮讓三個控制項有位置；書架返回保留（否則手機退不出這本書） */
+  body.sho .reader-bar .title { max-width: 40vw; }
+  body.sho .reader-bar .meta,
+  body.sho .reader-bar .mode-badge { display: none; }
+  body.sho .reader-bar .right { gap: 6px; }
+
+}
+
+/* theme.js 透過 [data-theme-toggle-slot] 把切換鈕注入 bar（取代 body 右下角的
+   fixed pill）——解除 fixed 定位，讓它跟其他工具列按鈕同一排。 */
+body.sho .reader-theme-slot { display: inline-flex; align-items: center; flex-shrink: 0; }
+body.sho .reader-theme-slot .sho-theme-toggle {
+  position: static;
+  inset: auto;
+  margin: 0;
+  transform: none;
+}
+
+/* 標註選單在手機上要好按：加大點擊區、避免貼齊螢幕邊緣 */
+@media (max-width: 768px) {
+  body.sho .ann-popup { gap: 8px; padding: 8px; }
+  body.sho .ann-popup button { min-height: 40px; padding: 8px 14px; font-size: 14px; }
+}
