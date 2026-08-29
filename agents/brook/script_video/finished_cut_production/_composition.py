@@ -61,19 +61,23 @@ from ._records import (
     Status,
 )
 from ._release import FinishedCutReleaseLifecycle, ReleaseLifecycleError
-from ._resolve import ResolveTransactionManager
+from ._resolve import ResolveTransactionManager, TimelineIdentity
 from ._resolve_davinci import (
     DaVinciResolveTimelineAdapter,
     FFprobeMediaProbe,
     MediaProbe,
+    ResolveCutBinding,
     ResolveFacade,
     ResolveProjectBinding,
 )
 from ._resolve_fusion import (
     DaVinciResolveFacade,
     MediaIdentityResolver,
+    ResolveDatabaseIdentity,
     ResolveProjectLocator,
+    _synthetic_project_uid,
     connect_resolve_scripting,
+    current_timeline_identities,
 )
 from ._semantic import DurableSemanticAdapter, SemanticAdapter
 from ._store import (
@@ -730,6 +734,61 @@ def _build_resolve_materialization_composition(
         episode_root=episode_root,
     )
     return coordinator, lifecycle, transactions
+
+
+RESOLVE_BINDING_SCHEMA = "nakama.finished_cut_resolve_binding.v1"
+
+
+def build_resolve_configuration(
+    payload: dict, episode_id: str
+) -> ProductionResolveConfiguration:
+    """Compose an episode's Resolve authority from a name-bound binding document.
+
+    The CLI's ``--resolve-config`` pins Timeline uids on purpose: a one-shot
+    operator wants it to fail if the project moved underneath them.  An
+    unattended watcher needs the opposite, because every committed transaction
+    duplicate-swaps the canonical Timeline and changes its uid.  So this binds by
+    Timeline **name** and resolves the uid here, against the live project.
+    """
+    if payload.get("schema") != RESOLVE_BINDING_SCHEMA:
+        raise ValueError(f"Resolve binding schema must be {RESOLVE_BINDING_SCHEMA}")
+    if payload.get("episode_id") != episode_id:
+        raise ValueError("Resolve binding belongs to another episode")
+    database = payload["database"]
+    locator = ResolveProjectLocator(
+        episode_id=episode_id,
+        database=ResolveDatabaseIdentity(
+            db_type=str(database["db_type"]),
+            db_name=str(database["db_name"]),
+            ip_address=database.get("ip_address"),
+        ),
+        folder=str(payload["folder"]),
+        project_name=str(payload["project_name"]),
+    )
+    identities = {row.name: row.uid for row in current_timeline_identities(locator)}
+    cuts: list[ResolveCutBinding] = []
+    for row in payload["cuts"]:
+        name = str(row["timeline_name"])
+        uid = identities.get(name)
+        if uid is None:
+            raise ValueError(f"Resolve project has no Timeline named {name!r}")
+        cuts.append(
+            ResolveCutBinding(
+                cut_id=str(row["cut_id"]),
+                canonical=TimelineIdentity(name=name, uid=uid),
+            )
+        )
+    return ProductionResolveConfiguration(
+        locator=locator,
+        binding=ResolveProjectBinding(
+            episode_id=episode_id,
+            project_name=locator.project_name,
+            project_uid=_synthetic_project_uid(locator),
+            cuts=tuple(cuts),
+        ),
+        editorial_master_content_hash=str(payload["editorial_master_content_hash"]),
+        staging_root=Path(str(payload["staging_root"])),
+    )
 
 
 def build_production_application(

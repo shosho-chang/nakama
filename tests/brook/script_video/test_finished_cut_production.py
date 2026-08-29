@@ -197,6 +197,7 @@ def test_public_module_does_not_expose_private_authority_constructors() -> None:
     # below the "not hasattr" line stays private no matter how this list grows.
     assert set(finished_cut_production.__all__) == {
         "ApprovedCutRegistration",
+        "RESOLVE_BINDING_SCHEMA",
         "ArtifactView",
         "CanonicalSection",
         "CommandRejectedError",
@@ -212,6 +213,7 @@ def test_public_module_does_not_expose_private_authority_constructors() -> None:
         "ProductionCutoverConfiguration",
         "ProductionPaths",
         "ProductionResolveConfiguration",
+        "build_resolve_configuration",
         "ProductionStatusView",
         "ResolveCutBinding",
         "ResolveDatabaseIdentity",

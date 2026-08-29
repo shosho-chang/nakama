@@ -902,6 +902,34 @@ def test_three_stock_assets_on_one_event_cannot_satisfy_distinct_event_minimum()
     }
 
 
+def test_the_same_stock_asset_twice_in_one_cut_needs_review() -> None:
+    """修修 2026-08-29 在 long3 抓到的：同一支素材出現在 185.7s 與 376.2s。
+
+    重點是這支片的**不同素材數量仍然達標**——long3 有 8 個 b-roll、7 支不同素材，
+    「至少三支不同」那條完全攔不住它。所以這裡刻意保留三支不同的 stock，只把第四
+    個 b-roll 換成重複使用 asset-stock-1。
+    """
+    components = tuple(
+        replace(component, implementation_kind="stock_video", asset_ref="asset-stock-1")
+        if component.component_id == "broll-300"
+        else component
+        for component in _long_components()
+    )
+
+    decision = LongV2Policy().validate(replace(_long_input(), components=components))
+
+    assert decision.status == "needs_review"
+    diagnostic = next(d for d in decision.diagnostics if d.code == "stock_video_asset_reused")
+    assert diagnostic.asset_refs == ("asset-stock-1",)
+    assert set(diagnostic.component_ids) == {"stock-1", "broll-300"}
+
+
+def test_distinct_stock_assets_do_not_trip_the_reuse_rule() -> None:
+    decision = LongV2Policy().validate(_long_input())
+
+    assert "stock_video_asset_reused" not in {d.code for d in decision.diagnostics}
+
+
 def test_vertical_native_stock_video_needs_review() -> None:
     metadata = tuple(
         replace(row, native_width=1080, native_height=1920)

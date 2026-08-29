@@ -309,3 +309,84 @@ def test_uploaded_captions_fall_back_when_the_episode_has_no_release(tmp_path, m
     )
     publish_upload.upload_captions(_stub_youtube(seen), "vid", tmp_path, "punch-L5")
     assert seen["path"] == str(stale)
+
+
+# --- Resolve binding for the revision loop ----------------------------------
+
+BINDING = {
+    "schema": "nakama.finished_cut_resolve_binding.v1",
+    "episode_id": "20260805 林之晨",
+    "database": {"db_type": "Disk", "db_name": "Local Database", "ip_address": None},
+    "folder": "",
+    "project_name": "20260805 林之晨",
+    "editorial_master_content_hash": "8e7c13c2c55bc0df0c05241cfd91a9bf5c6b484b58058dae42d2bfaa7576805b",
+    "staging_root": r"G:\Footages\20260805 林之晨\highlights\staging\finished-cut",
+    "cuts": [
+        {"cut_id": "long3-fresh-20260828-r4", "timeline_name": "long3-fresh-20260828-r4-base"}
+    ],
+}
+
+
+def _identities(monkeypatch, rows):
+    from agents.brook.script_video.finished_cut_production import _composition as comp
+    from agents.brook.script_video.finished_cut_production._resolve import TimelineIdentity
+
+    monkeypatch.setattr(
+        comp,
+        "current_timeline_identities",
+        lambda locator: tuple(TimelineIdentity(name=n, uid=u) for n, u in rows),
+    )
+
+
+def test_binding_resolves_the_timeline_uid_live(monkeypatch):
+    """uid 每次 committed transaction 都會變，所以只能在 job 時查。"""
+    from agents.brook.script_video.finished_cut_production import build_resolve_configuration
+
+    _identities(monkeypatch, [("long3-fresh-20260828-r4-base", "167fe522-c178-47d4-b50c-bad7cec92b9d")])
+    cfg = build_resolve_configuration(BINDING, "20260805 林之晨")
+    assert cfg.binding.cuts[0].canonical.uid == "167fe522-c178-47d4-b50c-bad7cec92b9d"
+    # project uid 是由 locator 推導的，不從檔案讀——檔案裡少一個會過期的欄位。
+    assert cfg.binding.project_uid == (
+        "resolve-project:da7c1f4698b72f57a400f9a5196d0b4a136ea498236f3296b13c4fe272795231"
+    )
+
+
+def test_binding_for_a_renamed_or_missing_timeline_fails_loud(monkeypatch):
+    from agents.brook.script_video.finished_cut_production import build_resolve_configuration
+
+    _identities(monkeypatch, [("some-other-timeline", "0000")])
+    with pytest.raises(ValueError, match="long3-fresh-20260828-r4-base"):
+        build_resolve_configuration(BINDING, "20260805 林之晨")
+
+
+def test_binding_from_another_episode_is_refused(monkeypatch):
+    from agents.brook.script_video.finished_cut_production import build_resolve_configuration
+
+    _identities(monkeypatch, [("long3-fresh-20260828-r4-base", "abcd")])
+    with pytest.raises(ValueError, match="another episode"):
+        build_resolve_configuration(BINDING, "20260723 謝伯讓")
+
+
+def test_binding_with_a_foreign_schema_is_refused(monkeypatch):
+    from agents.brook.script_video.finished_cut_production import build_resolve_configuration
+
+    _identities(monkeypatch, [("long3-fresh-20260828-r4-base", "abcd")])
+    with pytest.raises(ValueError, match="schema"):
+        build_resolve_configuration({**BINDING, "schema": "something.else"}, "20260805 林之晨")
+
+
+def test_watcher_refuses_to_start_a_revision_without_a_binding(tmp_path):
+    """沒有 Resolve 授權就走不完，寧可不要開始——不然會白燒一輪 LLM 再死在 Resolve。"""
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import finished_review_watcher as watcher
+
+    episode_dir = tmp_path / "20260805 林之晨"
+    (episode_dir / "highlights" / "finished-cut-production-v1").mkdir(parents=True)
+    with pytest.raises(RuntimeError, match="Resolve binding is missing"):
+        watcher._resolve_configuration(
+            {
+                "episode_dir": str(episode_dir),
+                "episode_id": "20260805 林之晨",
+                "episodes_root": str(tmp_path),
+            }
+        )

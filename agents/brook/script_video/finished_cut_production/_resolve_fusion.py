@@ -98,6 +98,23 @@ def connect_resolve_scripting(
     return resolve
 
 
+def current_timeline_identities(
+    locator: ResolveProjectLocator, *, resolve: object | None = None
+) -> tuple[TimelineIdentity, ...]:
+    """List the project's Timelines as they exist right now.
+
+    Every committed transaction duplicate-swaps the canonical Timeline, so its
+    uid changes each time.  A uid written into a config file is therefore stale
+    from the first revision onwards; callers bind by Timeline **name** and
+    resolve the uid here, at job time.
+    """
+    facade = DaVinciResolveFacade(
+        resolve=resolve if resolve is not None else connect_resolve_scripting(),
+        locator=locator,
+    )
+    return facade.timeline_identities()
+
+
 class DaVinciResolveFacade:
     """Hide Resolve's dynamic object graph behind the typed Resolve facade Interface."""
 
@@ -106,7 +123,9 @@ class DaVinciResolveFacade:
         *,
         resolve: object,
         locator: ResolveProjectLocator,
-        media_identity_resolver: MediaIdentityResolver,
+        # Only materialization resolves media identity.  Listing Timelines does
+        # not, so a read-only caller may omit it (see current_timeline_identities).
+        media_identity_resolver: MediaIdentityResolver | None = None,
         monotonic: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
         render_timeout_sec: float = 1_200.0,

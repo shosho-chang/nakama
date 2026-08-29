@@ -16,10 +16,15 @@ from typing import Callable, Literal, Protocol
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agents.brook.script_video.finished_cut_production import (
+    RESOLVE_BINDING_SCHEMA,
     ProductionPaths,
+    ProductionResolveConfiguration,
     ProductionStatusView,
     build_production_application,
+    build_resolve_configuration,
 )
+
+_BINDING_FILE = "resolve-binding.v1.json"
 
 _FEEDBACK_FILE = "finished_review_feedback.v3.json"
 _FEEDBACK_SCHEMA = "nakama.finished_cut_review_feedback.v3"
@@ -303,6 +308,25 @@ def _production_paths(work: dict[str, object]) -> ProductionPaths:
     )
 
 
+def _resolve_configuration(work: dict[str, object]) -> ProductionResolveConfiguration:
+    """Load this episode's Resolve binding; a revision that cannot finish must not start.
+
+    Without a configuration ``build_production_application`` composes the
+    dark-install lifecycle, whose transaction and probe seams raise on use.  The
+    revision would then advance through its semantic stages and only die once it
+    reached Resolve — burning an LLM round and leaving a half-run behind.
+    """
+    episode_dir = Path(work["episode_dir"]).resolve()
+    path = episode_dir / "highlights" / "finished-cut-production-v1" / _BINDING_FILE
+    if not path.is_file():
+        raise RuntimeError(
+            f"Resolve binding is missing: {path}"
+            f" (schema {RESOLVE_BINDING_SCHEMA})"
+        )
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return build_resolve_configuration(payload, str(work["episode_id"]))
+
+
 def _durable_failure(
     work: dict[str, object],
     *,
@@ -362,7 +386,11 @@ def run_revision_job(
             required_status="queued",
         )
         try:
-            application = application_factory(_production_paths(work), str(work["episode_id"]))
+            application = application_factory(
+                _production_paths(work),
+                str(work["episode_id"]),
+                resolve_configuration=_resolve_configuration(work),
+            )
         except Exception as error:
             _durable_failure(
                 work,
@@ -410,7 +438,11 @@ def run_revision_job(
         status = "registered"
     else:
         try:
-            application = application_factory(_production_paths(work), str(work["episode_id"]))
+            application = application_factory(
+                _production_paths(work),
+                str(work["episode_id"]),
+                resolve_configuration=_resolve_configuration(work),
+            )
         except Exception as error:
             _durable_failure(
                 work,

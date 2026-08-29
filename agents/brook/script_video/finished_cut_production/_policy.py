@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
@@ -21,6 +22,7 @@ PolicyDiagnosticCode = Literal[
     "title_placement_overlap",
     "title_cluster_exceeded",
     "distinct_stock_video_minimum_not_met",
+    "stock_video_asset_reused",
     "stock_video_metadata_missing",
     "stock_video_not_native_landscape",
     "b_roll_cadence_gap_exceeded",
@@ -309,6 +311,34 @@ class LongV2Policy:
                             component.component_id for component in stock_video_components
                         ),
                         asset_refs=tuple(sorted(distinct_stock_assets)),
+                    ),
+                ),
+            )
+        # 修修 2026-08-29 在 long3 的 finished review 抓到：同一支 stock 素材在一支
+        # 八分鐘的片裡用了兩次（185.7s 與 376.2s 都是 …a81599624c7bd39e）。上面那條
+        # 只管「至少三支不同」，重複用完全不擋。
+        reused_assets = tuple(
+            sorted(
+                asset
+                for asset, count in Counter(
+                    component.asset_ref for component in asset_backed_stock_components
+                ).items()
+                if count > 1
+            )
+        )
+        if reused_assets:
+            return PolicyDecision(
+                "needs_review",
+                (
+                    PolicyDiagnostic(
+                        "stock_video_asset_reused",
+                        "Every Stock Video event must use a different asset",
+                        component_ids=tuple(
+                            component.component_id
+                            for component in asset_backed_stock_components
+                            if component.asset_ref in reused_assets
+                        ),
+                        asset_refs=reused_assets,
                     ),
                 ),
             )

@@ -22,7 +22,9 @@ from ._composition import (
     ProductionResolveConfiguration,
     ProductionStatusView,
     build_current_release_reader,
+    RESOLVE_BINDING_SCHEMA,
     build_production_application,
+    build_resolve_configuration,
 )
 from ._context import CanonicalSection, CueAnchor, CutSourceRange
 from ._correction import (
@@ -77,5 +79,7 @@ __all__ = [
     "Status",
     "TimelineIdentity",
     "build_current_release_reader",
+    "RESOLVE_BINDING_SCHEMA",
     "build_production_application",
+    "build_resolve_configuration",
 ]
