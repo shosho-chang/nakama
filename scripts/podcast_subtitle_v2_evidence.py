@@ -139,9 +139,7 @@ class _MemoRecognitionReviewV1(_StrictModel):
 
 class _MemoRecognitionWorkerAuditV1(_StrictModel):
     schema_version: Literal[1] = 1
-    contract: Literal["memo-recognition-worker-audit-v1"] = (
-        "memo-recognition-worker-audit-v1"
-    )
+    contract: Literal["memo-recognition-worker-audit-v1"] = "memo-recognition-worker-audit-v1"
     episode_id: str
     worker_id: str
     normalized_audio_sha256: str
@@ -269,9 +267,7 @@ def _verified_execution_ref(
         raise ValueError("--episode-root must be an existing episode directory")
     audio = Path(args.normalized_audio)
     source = Path(args.source_export)
-    execution_source = (
-        Path(args.raw_source_export) if args.raw_source_export else source
-    )
+    execution_source = Path(args.raw_source_export) if args.raw_source_export else source
     receipt_path = Path(args.memo_execution_receipt)
     output_srt = Path(args.memo_output_srt)
     stdout = Path(args.memo_stdout)
@@ -409,16 +405,13 @@ def _source_repair_lineage(
             NormalizeRequest(
                 source_audio=inputs.normalized_audio,
                 expected_source_hash=(
-                    expected_normalized_audio_hash
-                    or loaded_receipt.normalized_audio_sha256
+                    expected_normalized_audio_hash or loaded_receipt.normalized_audio_sha256
                 ),
             )
         )
         if (
-            verified.receipt.normalized.sha256
-            != loaded_receipt.normalized_audio_sha256
-            or hash_file(inputs.normalized_handoff)
-            != loaded_receipt.normalized_handoff_sha256
+            verified.receipt.normalized.sha256 != loaded_receipt.normalized_audio_sha256
+            or hash_file(inputs.normalized_handoff) != loaded_receipt.normalized_handoff_sha256
         ):
             raise ValueError("Memo VAD repair belongs to another normalized handoff")
         receipt = load_verified_memo_vad_gap_repair(
@@ -437,9 +430,7 @@ def _source_repair_lineage(
     }
 
 
-def _assert_repair_lineage_matches(
-    loaded: BaseModel, lineage: dict[str, str | int | None]
-) -> None:
+def _assert_repair_lineage_matches(loaded: BaseModel, lineage: dict[str, str | int | None]) -> None:
     for field, actual in lineage.items():
         if getattr(loaded, field) != actual:
             raise ValueError("Memo SRT repair lineage differs from prepared review")
@@ -489,17 +480,13 @@ def _vad_gap_inputs_from_args(
         "target_srt": getattr(args, "vad_gap_target_srt", None),
         "target_stdout": getattr(args, "vad_gap_target_stdout", None),
         "target_stderr": getattr(args, "vad_gap_target_stderr", None),
-        "target_execution_receipt": getattr(
-            args, "vad_gap_execution_receipt", None
-        ),
+        "target_execution_receipt": getattr(args, "vad_gap_execution_receipt", None),
         "runner": getattr(args, "memo_runner", None),
         "model": getattr(args, "memo_model", None),
     }
     missing = tuple(f"--{name.replace('_', '-')}" for name, value in required.items() if not value)
     if missing:
-        raise ValueError(
-            "Memo VAD gap repair verification requires " + ", ".join(missing)
-        )
+        raise ValueError("Memo VAD gap repair verification requires " + ", ".join(missing))
     if receipt is None:
         offset = args.global_offset_ms
         gap_start = args.declared_gap_start_ms
@@ -548,9 +535,7 @@ def _prepare_recognition(args: argparse.Namespace) -> int:
         language=args.language,
         prompt=args.prompt,
     )
-    if args.source_export_kind != "memo_srt" and (
-        args.raw_source_export or args.repair_receipt
-    ):
+    if args.source_export_kind != "memo_srt" and (args.raw_source_export or args.repair_receipt):
         raise ValueError("Memo source repair lineage is only valid for memo_srt")
     repair_lineage = _source_repair_lineage(
         args,
@@ -828,17 +813,14 @@ def _status(args: argparse.Namespace) -> int:
     )
     assert isinstance(recognition_receipt, MemoRecognitionAcceptanceReceiptV1)
     if (
-        hash_file(recognition_receipt_path)
-        != recognition_manifest.accepted_by_receipt_sha256
-        or recognition_receipt.normalized_audio_sha256
-        != normalized.receipt.normalized.sha256
+        hash_file(recognition_receipt_path) != recognition_manifest.accepted_by_receipt_sha256
+        or recognition_receipt.normalized_audio_sha256 != normalized.receipt.normalized.sha256
         or recognition_receipt.normalized_audio_size_bytes
         != normalized.receipt.normalized.size_bytes
         or recognition_receipt.normalized_audio_duration_ms
         != normalized.receipt.normalized_duration_ms
         or recognition_receipt.normalized_handoff_manifest_sha256 != hash_file(handoff)
-        or recognition_receipt.source_export_sha256
-        != recognition_manifest.source_export_sha256
+        or recognition_receipt.source_export_sha256 != recognition_manifest.source_export_sha256
         or recognition_receipt.source_export_size_bytes
         != recognition_manifest.source_export_size_bytes
     ):
@@ -873,19 +855,13 @@ def _status(args: argparse.Namespace) -> int:
     )
     environment = {
         "PODCAST_SUBTITLE_V2_NORMALIZED_HANDOFF_MANIFEST": str(handoff.resolve()),
-        "PODCAST_SUBTITLE_V2_MEMO_RECOGNITION_MANIFEST": str(
-            recognition_manifest_path.resolve()
-        ),
-        "PODCAST_SUBTITLE_V2_MEMO_RECOGNITION_SOURCE_EXPORT": str(
-            recognition_source.resolve()
-        ),
+        "PODCAST_SUBTITLE_V2_MEMO_RECOGNITION_MANIFEST": str(recognition_manifest_path.resolve()),
+        "PODCAST_SUBTITLE_V2_MEMO_RECOGNITION_SOURCE_EXPORT": str(recognition_source.resolve()),
         "PODCAST_SUBTITLE_V2_MEMO_RECOGNITION_ACCEPTANCE_RECEIPT": str(
             recognition_receipt_path.resolve()
         ),
         "PODCAST_SUBTITLE_V2_MEMO_CUE_SOURCE_EXPORT": str(cue_source.resolve()),
-        "PODCAST_SUBTITLE_V2_MEMO_CUE_ACCEPTANCE_RECEIPT": str(
-            cue_receipt_path.resolve()
-        ),
+        "PODCAST_SUBTITLE_V2_MEMO_CUE_ACCEPTANCE_RECEIPT": str(cue_receipt_path.resolve()),
     }
     print(canonical_json_bytes({"environment": environment, "ready": True}).decode("utf-8"))
     return 0
@@ -1021,9 +997,7 @@ def _parser() -> argparse.ArgumentParser:
     accept_cues.add_argument("--audit-b", required=True)
     accept_cues.add_argument("--reviewer", help=argparse.SUPPRESS)
     accept_cues.add_argument("--accepted-at", required=True)
-    accept_cues.add_argument(
-        "--confirm-reviewed", action="store_true", help=argparse.SUPPRESS
-    )
+    accept_cues.add_argument("--confirm-reviewed", action="store_true", help=argparse.SUPPRESS)
     accept_cues.add_argument("--receipt-output", required=True)
     accept_cues.set_defaults(handler=_accept_cues)
     status = commands.add_parser("status")

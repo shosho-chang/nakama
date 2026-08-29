@@ -78,10 +78,8 @@ def test_verified_evidence_prefix_migration_is_append_only_idempotent_and_resuma
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    episode_root, workspace, create_request, old_checkpoint_id = (
-        _seed_pre_cutover_evidence_ready(
-            tmp_path, monkeypatch, code_version="selective-audio-v3"
-        )
+    episode_root, workspace, create_request, old_checkpoint_id = _seed_pre_cutover_evidence_ready(
+        tmp_path, monkeypatch, code_version="selective-audio-v3"
     )
     module, _, normalizer, recognizers = _native_module(
         episode_root,
@@ -133,8 +131,8 @@ def test_migration_rebinds_a_real_current_adapter_identity_drift(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    episode_root, workspace, create_request, old_checkpoint_id = (
-        _seed_pre_cutover_evidence_ready(tmp_path, monkeypatch)
+    episode_root, workspace, create_request, old_checkpoint_id = _seed_pre_cutover_evidence_ready(
+        tmp_path, monkeypatch
     )
     module, _, normalizer, recognizers = _native_module(
         episode_root, workspace=workspace, code_version="selective-audio-v3"
@@ -290,9 +288,7 @@ def test_three_migration_edges_verify_and_resume_from_the_latest_identity(
     assert third.receipt.previous_migration_receipt_id == second.receipt.id
     latest = third_module.store.load_create_checkpoint_id(third.new_checkpoint_id)
     migration_names = {
-        name
-        for name in latest.checkpoint.artifact_hashes
-        if "evidence_prefix_migration" in name
+        name for name in latest.checkpoint.artifact_hashes if "evidence_prefix_migration" in name
     }
     assert len(migration_names) == 3
     assert first.new_checkpoint_id != second.new_checkpoint_id != third.new_checkpoint_id
@@ -313,8 +309,8 @@ def test_migration_noop_identity_fails_closed_before_provider_calls(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    episode_root, workspace, create_request, checkpoint_id = (
-        _seed_pre_cutover_evidence_ready(tmp_path, monkeypatch)
+    episode_root, workspace, create_request, checkpoint_id = _seed_pre_cutover_evidence_ready(
+        tmp_path, monkeypatch
     )
     unchanged, _, normalizer, recognizers = _native_module(
         episode_root,
@@ -340,15 +336,14 @@ def test_migration_noop_identity_fails_closed_before_provider_calls(
     assert tuple(item.calls for item in recognizers) == (0, 0)
 
 
-
 @pytest.mark.parametrize("damage", ["tamper", "missing"])
 def test_migration_rejects_changed_legacy_evidence_bytes_before_provider_calls(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     damage: str,
 ) -> None:
-    episode_root, workspace, create_request, old_checkpoint_id = (
-        _seed_pre_cutover_evidence_ready(tmp_path, monkeypatch)
+    episode_root, workspace, create_request, old_checkpoint_id = _seed_pre_cutover_evidence_ready(
+        tmp_path, monkeypatch
     )
     module, _, normalizer, recognizers = _native_module(
         episode_root, workspace=workspace, code_version="selective-audio-v3"
@@ -379,8 +374,8 @@ def test_migration_rejects_wrong_checkpoint_and_episode_before_provider_calls(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    episode_root, workspace, create_request, old_checkpoint_id = (
-        _seed_pre_cutover_evidence_ready(tmp_path, monkeypatch)
+    episode_root, workspace, create_request, old_checkpoint_id = _seed_pre_cutover_evidence_ready(
+        tmp_path, monkeypatch
     )
     module, _, normalizer, recognizers = _native_module(
         episode_root, workspace=workspace, code_version="selective-audio-v3"
@@ -415,8 +410,8 @@ def test_migration_rejects_changed_source_without_creating_a_staging_copy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    episode_root, workspace, create_request, old_checkpoint_id = (
-        _seed_pre_cutover_evidence_ready(tmp_path, monkeypatch)
+    episode_root, workspace, create_request, old_checkpoint_id = _seed_pre_cutover_evidence_ready(
+        tmp_path, monkeypatch
     )
     create_request.source_audio.write_bytes(b"changed after evidence capture")
     module, _, normalizer, recognizers = _native_module(
@@ -478,8 +473,8 @@ def test_migration_receipt_tamper_fails_closed_before_provider_calls(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    episode_root, workspace, create_request, old_checkpoint_id = (
-        _seed_pre_cutover_evidence_ready(tmp_path, monkeypatch)
+    episode_root, workspace, create_request, old_checkpoint_id = _seed_pre_cutover_evidence_ready(
+        tmp_path, monkeypatch
     )
     module, _, normalizer, recognizers = _native_module(
         episode_root, workspace=workspace, code_version="selective-audio-v3"

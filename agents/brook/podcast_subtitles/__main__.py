@@ -352,11 +352,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         factory_context = build_factory_context(
             episode_root=args.episode_root,
-            episode_id=(
-                args.episode_id
-                if args.command in create_commands
-                else None
-            ),
+            episode_id=(args.episode_id if args.command in create_commands else None),
             reference_manifest=args.reference_manifest,
         )
     except ReferenceManifestError as exc:

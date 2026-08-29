@@ -641,13 +641,8 @@ def _parse_srt_cues(path: Path) -> list[dict[str, object]]:
     return cues
 
 
-def _srt_timing_qc(
-    cues: list[dict[str, object]], timeline_duration_sec: float
-) -> dict[str, int]:
-    intervals = [
-        (int(cue["start_ms"]), int(cue["end_ms"]))
-        for cue in cues
-    ]
+def _srt_timing_qc(cues: list[dict[str, object]], timeline_duration_sec: float) -> dict[str, int]:
+    intervals = [(int(cue["start_ms"]), int(cue["end_ms"])) for cue in cues]
     intervals.sort()
     duration_ms = round(timeline_duration_sec * 1000)
     return {
@@ -656,8 +651,7 @@ def _srt_timing_qc(
             start < 0 or end > duration_ms + 1 for start, end in intervals
         ),
         "overlap_count": sum(
-            current[0] < previous[1]
-            for previous, current in zip(intervals, intervals[1:])
+            current[0] < previous[1] for previous, current in zip(intervals, intervals[1:])
         ),
     }
 
@@ -701,9 +695,7 @@ def _snapshot_subtitle_cues(snapshot: Mapping[str, object]) -> list[dict[str, ob
                 )
             ),
             "end_ms": int(
-                (Decimal(end) * Decimal(1000) / fps).quantize(
-                    Decimal("1"), rounding=ROUND_HALF_UP
-                )
+                (Decimal(end) * Decimal(1000) / fps).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
             ),
             "text": text,
         }

@@ -23,22 +23,34 @@
     {% endif %}
   </div>
   <nav class="right">
-    <a href="/robin/home" class="icon-btn back-inbox">🏠 <span class="btn-label">首頁</span></a>
+    <a href="/robin/home" class="icon-btn back-inbox desktop-only">🏠 <span class="btn-label">首頁</span></a>
     {# Ingest 整本書 → 同步 POST /start-book → /processing（與文章/影片同一條 SSE 自動
        流程，3–5 分鐘 + 進度條，取代舊的 ingest 佇列）。中譯-only 書讀中文 blob 跑同一條，
        不限英文原檔（修修 回饋 item 5）。標籤由 book_reader.js 依 ingest_status 設定
        （ingested → 重新 ingest）。 #}
-    <form method="post" action="/start-book" class="ingest-wrap" id="ingestForm"
+    <form method="post" action="/start-book" class="ingest-wrap desktop-only" id="ingestForm"
           data-ingest-confirm data-est-type="book" data-est-id-field="book_id"
           data-est-name="{{ book.title }}">
       <input type="hidden" name="book_id" value="{{ book.book_id }}">
       <button type="submit" class="icon-btn" id="ingestBtn" aria-label="Ingest 整本書（約 3–5 分鐘）">📥 <span class="btn-label">Ingest 整本書</span></button>
     </form>
-    <a href="/robin/literature/{{ book.book_id }}" target="_blank" rel="noopener" class="icon-btn" title="觀看這本書的文獻筆記（由你的劃線整理）">📖 <span class="btn-label">觀看筆記</span></a>
+    <a href="/robin/literature/{{ book.book_id }}" target="_blank" rel="noopener" class="icon-btn desktop-only" title="觀看這本書的文獻筆記（由你的劃線整理）">📖 <span class="btn-label">觀看筆記</span></a>
+    {# 修修 2026-08-29: 排版控制 — 字級 ±（套進 foliate iframe 的 setStyles）與字體切換。
+       字體清單見 book_reader.js FONTS；Taipei Sans TC 走本機系統字型解析（CSP
+       default-src 'self' 不允許遠端字型 CDN），沒安裝時 JS 會把選項標為不可用。 #}
+    <div class="reader-type" role="group" aria-label="排版">
+      <button type="button" class="icon-btn type-btn" id="fontSmaller" aria-label="縮小字級" title="縮小字級（−）">A−</button>
+      <span class="type-size" id="fontSizeLabel" aria-live="polite">100%</span>
+      <button type="button" class="icon-btn type-btn" id="fontLarger" aria-label="放大字級" title="放大字級（＋）">A＋</button>
+      <select class="type-font desktop-only" id="fontFamily" aria-label="選擇字體" title="選擇字體"></select>
+    </div>
     <button type="button" class="icon-btn" id="tocToggle" aria-label="切換目錄" aria-pressed="false">📑 <span class="btn-label">目錄</span></button>
-    <button type="button" class="icon-btn" id="commentsToggle" aria-label="切換反思側欄" aria-pressed="false">💬 <span class="btn-label">反思</span></button>
-    <button type="button" class="icon-btn" id="kbdHelpBtn" aria-label="鍵盤快捷鍵" title="鍵盤快捷鍵（按 ?）">⌨️</button>
-    <button type="button" class="icon-btn" id="deleteBookBtn" aria-label="刪除整本書" title="刪除整本書">🗑️</button>
+    <button type="button" class="icon-btn desktop-only" id="commentsToggle" aria-label="切換反思側欄" aria-pressed="false">💬 <span class="btn-label">反思</span></button>
+    <button type="button" class="icon-btn desktop-only" id="kbdHelpBtn" aria-label="鍵盤快捷鍵" title="鍵盤快捷鍵（按 ?）">⌨️</button>
+    {# theme.js 的官方掛載點：有這個屬性就把切換鈕注入這裡，不再用 body 右下角的
+       fixed pill（手機上它會落在畫面外，實測 y=894 於 812 高的視窗）。 #}
+    <span class="reader-theme-slot" data-theme-toggle-slot></span>
+    <button type="button" class="icon-btn desktop-only" id="deleteBookBtn" aria-label="刪除整本書" title="刪除整本書">🗑️</button>
   </nav>
 </div>
 <div id="conflictBanner" class="reader-conflict-banner" role="alert" hidden>
@@ -203,6 +215,6 @@
 
 <div id="ann-toast" role="status" aria-live="polite"></div>
 
-<script type="module" src="/static/book_reader.js"></script>
+<script type="module" src="/static/book_reader.js?v={{ asset_version }}"></script>
 </body>
 </html>

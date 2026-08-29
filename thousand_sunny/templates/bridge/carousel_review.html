@@ -1,0 +1,1272 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Podcast IG 輪播卡 · {{ episode_slug }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/carousel-review.css?v={{ asset_version }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='packaging') }}
+
+<header class="carousel-head">
+  <div>
+    <div class="sho-mono sho-mono-up">第 5 階段 · 內容製作檢查</div>
+    <h1>Podcast IG 輪播卡 <span>一眼檢查整組敘事</span></h1>
+  </div>
+  <dl class="carousel-ledger">
+    <div><dt>版本</dt><dd>{{ manifest.revision }}</dd></div>
+    <div><dt>張數</dt><dd>{{ rows|length }}</dd></div>
+    <div><dt>發布方式</dt><dd>{{ '可自動發布' if manifest.publish_compatibility == 'api_compatible' else '需人工發布' }}</dd></div>
+    <div><dt>檢查輪次</dt><dd id="review-count">{{ decision_count }}</dd></div>
+    <div><dt>狀態</dt><dd id="review-gate-status">{{ '已核准' if approved else '待檢查' }}</dd></div>
+  </dl>
+</header>
+
+<main class="carousel-workbench">
+  <form id="carousel-review-form"
+        method="post"
+        action="/bridge/ig-cards/{{ episode_slug }}/decide"
+         data-feedback-url="/bridge/ig-cards/{{ episode_slug }}/feedback"
+         data-apply-url="/bridge/ig-cards/{{ episode_slug }}/apply-edits"
+         data-preview-base="/bridge/ig-cards/{{ episode_slug }}/preview"
+         data-approve-url="/bridge/ig-cards/{{ episode_slug }}/approve"
+         data-manifest-sha="{{ manifest_sha256 }}"
+         data-approved="{{ 'true' if approved else 'false' }}">
+    <input type="hidden" name="manifest_sha256" value="{{ manifest_sha256 }}">
+    {% if not editor_available %}<p class="carousel-editor-unavailable">{{ editor_unavailable_reason }}</p>{% endif %}
+    <section class="carousel-grid" aria-label="Podcast IG 輪播卡全部卡片">
+    {% for row in rows %}
+      {% set page = row.page %}
+      <article class="carousel-card" data-status="{{ row.status }}">
+        <header><span>{{ '%02d'|format(page.page_number) }}</span><strong>{{ row.role_label }}</strong></header>
+        <button class="carousel-image-button" type="button" data-evidence-target="evidence-{{ page.page_id }}" aria-label="查看第 {{ page.page_number }} 頁逐字稿證據">
+          <img src="/bridge/ig-cards/{{ episode_slug }}/media/{{ page.page_id }}" alt="第 {{ page.page_number }} 頁，{{ row.role_label }}">
+        </button>
+        <button class="sho-btn sho-btn--ghost carousel-edit"
+                type="button"
+                data-edit-page="{{ page.page_id }}"
+                {% if approved or not editor_available %}disabled aria-disabled="true"{% endif %}
+                {% if not editor_available %}title="需先產生含安全預覽收據的新版本"{% endif %}>編輯</button>
+        <span class="carousel-dirty-badge" data-dirty-page="{{ page.page_id }}" hidden>有未套用修改</span>
+        {% if page.fit.status == 'needs_review' %}<p class="carousel-fit">字級需人工確認</p>{% endif %}
+        <label class="carousel-feedback">
+          <span data-feedback-label>{% if approved %}修改意見 · 已鎖定{% else %}修改意見 · 有需要修改才填{% endif %}</span>
+          <textarea id="feedback-{{ page.page_id }}"
+                    name="feedback_{{ page.page_id }}"
+                     data-feedback-input
+                     maxlength="1200"
+                     {% if approved %}readonly disabled aria-disabled="true"{% endif %}
+                     placeholder="只寫這張需要改什麼">{{ row.feedback }}</textarea>
+        </label>
+      </article>
+
+    {% endfor %}
+    </section>
+    <footer class="carousel-actions">
+      <p id="review-action-help" data-state="{{ 'approved' if approved else 'open' }}"><strong>{% if approved %}此版本已核准，等待發布流程。{% else %}有修改就填卡片修改意見；全部留空時，才可手動核准。{% endif %}</strong></p>
+      <div id="carousel-editor-recovery" class="carousel-editor-recovery" hidden>
+        <strong id="carousel-editor-recovery-copy">尚有未套用的卡片修改。</strong>
+        <button id="carousel-editor-continue" class="sho-btn sho-btn--ghost" type="button">繼續編輯</button>
+        <button id="carousel-editor-apply-all" class="sho-btn" type="button">套用修改</button>
+      </div>
+      <div class="carousel-actions__controls">
+        <span id="review-save-status" class="carousel-notice" role="status" aria-live="polite" {% if not saved %}hidden{% endif %}>{% if saved %}第 {{ decision_count }} 輪檢查已儲存。{% endif %}</span>
+        <div class="carousel-actions__buttons">
+          <button id="review-feedback-button"
+                  class="sho-btn carousel-submit carousel-submit--feedback"
+                  type="submit"
+                  data-idle-label="送出 0 則修改"
+                   data-loading-label="送出中…"
+                   data-saving-label="儲存中…"
+                   data-approved-label="已核准"
+                   aria-describedby="review-action-help"
+                   disabled>{{ '已核准' if approved else '送出 0 則修改' }}</button>
+          <button id="review-approve-button"
+                  class="sho-btn sho-btn--ghost carousel-submit carousel-submit--approve"
+                   type="button"
+                   data-idle-label="核准"
+                   data-loading-label="核准中…"
+                   data-approved-label="已核准"
+                   aria-describedby="review-action-help"
+                   {% if approved %}disabled aria-disabled="true"{% endif %}>{{ '已核准' if approved else '核准' }}</button>
+        </div>
+      </div>
+    </footer>
+  </form>
+
+  {% if approved %}
+  <section class="carousel-publish-status"
+           data-state="{{ latest_publish_job.status if latest_publish_job else 'not_started' }}"
+           aria-label="Stage 6 發布狀態">
+    <div>
+      <div class="sho-mono sho-mono-up">STAGE 6 · 發布狀態</div>
+      <strong>{{ latest_publish_status_label }}</strong>
+      {% if latest_publish_job %}<span class="sho-mono">{{ latest_publish_job.job_id }}</span>{% endif %}
+    </div>
+    <a class="sho-btn sho-btn--ghost" href="{{ publish_url }}">
+      {{ '查看發布工作' if latest_publish_job else '前往發布設定' }}
+    </a>
+  </section>
+  {% endif %}
+
+  <section id="carousel-job-panel"
+           class="carousel-job"
+           data-state="idle"
+           tabindex="-1"
+           aria-labelledby="carousel-job-title"
+           aria-busy="false"
+           hidden>
+    <div>
+      <div class="sho-mono sho-mono-up">修改工作</div>
+      <h2 id="carousel-job-title">修改進度</h2>
+      <p id="carousel-job-summary" role="status" aria-live="polite"></p>
+      <p class="carousel-job__handoff">建立工作不會自動喚醒 Agent；請回到目前執行此 episode 的 Codex／Claude Code task，要求它認領下方工作編號。</p>
+    </div>
+    <progress id="carousel-job-progress" max="1" value="0">0%</progress>
+    <ol id="carousel-job-steps" class="carousel-job__steps" aria-label="系統修改步驟"></ol>
+  </section>
+
+  <dialog id="carousel-editor" class="carousel-editor" aria-labelledby="carousel-editor-title">
+    <div class="carousel-editor__shell">
+      <header class="carousel-editor__header">
+        <div>
+          <div id="carousel-editor-kicker" class="sho-mono sho-mono-up">卡片編輯</div>
+          <h2 id="carousel-editor-title">編輯這張卡片</h2>
+          <p>套用後只建立待認領修改工作；需由目前執行此 episode 的 Codex／Claude Code Agent 認領。不覆寫目前圖片、不自動核准，也不發布。</p>
+        </div>
+        <button id="carousel-editor-close" class="carousel-editor__close" type="button" aria-label="關閉編輯器">×</button>
+      </header>
+      <div class="carousel-editor__body">
+        <section class="carousel-editor__preview" aria-label="IG 輪播卡即時預覽">
+          <div id="carousel-editor-stage" class="carousel-editor__stage">
+            <iframe id="carousel-editor-frame" title="IG 輪播卡即時預覽" sandbox="allow-scripts"></iframe>
+          </div>
+          <p id="carousel-editor-preview-status" class="sho-mono" role="status" aria-live="polite">載入即時預覽…</p>
+          <div id="carousel-editor-fit" class="carousel-editor-fit" role="status" aria-live="polite" hidden></div>
+        </section>
+        <section class="carousel-editor__controls" aria-label="文字與版面控制">
+          <div id="carousel-editor-fields"></div>
+          <fieldset id="carousel-cover-layout" class="carousel-layout" hidden>
+            <legend>封面版面 · 1080 px 座標</legend>
+            <p>可直接拖動來賓；拖動左上角控制點可調整尺寸。這些數值會固定套用至新版。</p>
+            <label>來賓右側位置（px）<input data-layout-field="guest_right_px" type="number" min="-540" max="240" step="1" required></label>
+            <label>來賓底部位置（px）<input data-layout-field="guest_bottom_px" type="number" min="-400" max="240" step="1" required></label>
+            <label>來賓高度（px）<input data-layout-field="guest_height_px" type="number" min="480" max="1400" step="1" required></label>
+            <label>標題字級（px）<input data-layout-field="title_font_size_px" type="number" min="72" max="160" step="1" required></label>
+          </fieldset>
+          <fieldset id="carousel-text-layout" class="carousel-layout">
+            <legend>文字版面 · 1080 px 座標</legend>
+            <p>選取文字區塊後可直接拖曳；右側控制點只調整寬度，高度會依內容自動延伸。方向鍵移動 4 px，Shift＋方向鍵移動 16 px。</p>
+            <label>文字區塊<select id="carousel-text-region"></select></label>
+            <div class="carousel-layout__grid">
+              <label>X（px）<input data-text-layout-field="x_px" type="number" min="0" max="1080" step="4" required></label>
+              <label>Y（px）<input data-text-layout-field="y_px" type="number" min="0" max="1080" step="4" required></label>
+              <label>寬度（px）<input data-text-layout-field="width_px" type="number" min="80" max="1080" step="4" required></label>
+              <label>字級（px）<input data-text-layout-field="font_start_px" type="number" min="24" max="160" step="2" required></label>
+            </div>
+            <p id="carousel-text-layout-reason" class="sho-mono" role="status" aria-live="polite"></p>
+          </fieldset>
+        </section>
+      </div>
+      <footer class="carousel-editor__footer">
+        <span id="carousel-editor-status" role="status" aria-live="polite"></span>
+        <div>
+          <button id="carousel-editor-reset" class="sho-btn sho-btn--ghost" type="button">重設這張</button>
+          <button id="carousel-editor-cancel" class="sho-btn sho-btn--ghost" type="button">保留草稿並關閉</button>
+          <button id="carousel-editor-apply" class="sho-btn" type="button" disabled>套用所有待修改</button>
+        </div>
+      </footer>
+    </div>
+  </dialog>
+
+  {% for row in rows %}
+    {% set page = row.page %}
+    <dialog class="carousel-evidence" id="evidence-{{ page.page_id }}">
+      <form method="dialog"><button aria-label="關閉證據">×</button></form>
+      <div class="sho-mono sho-mono-up">PAGE {{ '%02d'|format(page.page_number) }} · {{ page.page_id }}</div>
+      <h2>逐字稿證據</h2>
+      {% for evidence in page.copy_page.evidence %}
+      <article>
+        <header><strong>{{ evidence.speaker }}</strong><span>{{ '%.1f'|format(evidence.t0) }}–{{ '%.1f'|format(evidence.t1) }}s</span></header>
+        <p>{{ evidence.text }}</p>
+        <div class="sho-mono">{{ evidence.source_path }} · {{ evidence.evidence_id }}</div>
+      </article>
+      {% endfor %}
+      {% if page.copy_page.role == 'quote' and page.copy_page.host_question_evidence %}
+      <h3>主持人問題證據</h3>
+      {% for evidence in page.copy_page.host_question_evidence %}
+      <article><header><strong>{{ evidence.speaker }}</strong><span>{{ '%.1f'|format(evidence.t0) }}–{{ '%.1f'|format(evidence.t1) }}s</span></header><p>{{ evidence.text }}</p></article>
+      {% endfor %}
+      {% endif %}
+    </dialog>
+  {% endfor %}
+</main>
+<script>
+document.querySelectorAll('[data-evidence-target]').forEach((button) => {
+  button.addEventListener('click', () => document.getElementById(button.dataset.evidenceTarget).showModal());
+});
+
+function closeEvidenceOnBackdrop(event) {
+  const dialog = event.currentTarget;
+  if (event.target !== dialog) return;
+  const bounds = dialog.getBoundingClientRect();
+  const outside = event.clientX < bounds.left
+    || event.clientX > bounds.right
+    || event.clientY < bounds.top
+    || event.clientY > bounds.bottom;
+  if (outside) dialog.close();
+}
+
+document.querySelectorAll('.carousel-evidence').forEach((dialog) => {
+  dialog.addEventListener('click', closeEvidenceOnBackdrop);
+});
+
+const reviewForm = document.getElementById('carousel-review-form');
+const feedbackButton = document.getElementById('review-feedback-button');
+const approveButton = document.getElementById('review-approve-button');
+const feedbackInputs = [...reviewForm.querySelectorAll('[data-feedback-input]')];
+const editButtons = [...document.querySelectorAll('[data-edit-page]')];
+const saveStatus = document.getElementById('review-save-status');
+const reviewCount = document.getElementById('review-count');
+const gateStatus = document.getElementById('review-gate-status');
+const actionHelp = document.getElementById('review-action-help');
+const jobPanel = document.getElementById('carousel-job-panel');
+const jobSummary = document.getElementById('carousel-job-summary');
+const jobProgress = document.getElementById('carousel-job-progress');
+const jobSteps = document.getElementById('carousel-job-steps');
+const editorPages = {{ editor_pages | tojson }};
+const initialCoverLayout = {{ cover_layout | tojson }};
+const initialTextLayouts = {{ text_layout_overrides | tojson }};
+const textLayoutRegistry = {{ text_layout_registry | tojson }};
+const textLayoutSafeRects = {{ text_layout_safe_rects | tojson }};
+const storagePrefix = `nakama.carousel-review:${reviewForm.dataset.manifestSha}`;
+const draftKey = `${storagePrefix}:draft:v2`;
+const jobKey = `${storagePrefix}:job:v1`;
+const editorDraftKey = `${storagePrefix}:editor:v2`;
+let approved = reviewForm.dataset.approved === 'true';
+let busy = false;
+let editorDirty = false;
+let pollTimer = null;
+
+function setSaveStatus(message, state) {
+  saveStatus.hidden = false;
+  saveStatus.textContent = message;
+  saveStatus.dataset.state = state;
+}
+
+function storageGet(key) {
+  try { return sessionStorage.getItem(key); } catch (error) { return null; }
+}
+
+function storageSet(key, value) {
+  try { sessionStorage.setItem(key, value); } catch (error) { /* storage may be unavailable */ }
+}
+
+function storageRemove(key) {
+  try { sessionStorage.removeItem(key); } catch (error) { /* storage may be unavailable */ }
+}
+
+function readFeedbackValues() {
+  const values = {};
+  for (const input of feedbackInputs) {
+    values[input.name] = input.value;
+  }
+  return values;
+}
+
+function feedbackCount() {
+  return feedbackInputs.filter((input) => input.value.trim().length > 0).length;
+}
+
+function updateActions() {
+  const count = feedbackCount();
+  if (approved) {
+    feedbackInputs.forEach((input) => {
+      input.readOnly = true;
+      input.disabled = true;
+      input.setAttribute('aria-disabled', 'true');
+    });
+    feedbackButton.textContent = feedbackButton.dataset.approvedLabel;
+    approveButton.textContent = approveButton.dataset.approvedLabel;
+    feedbackButton.disabled = true;
+    approveButton.disabled = true;
+    editButtons.forEach((button) => {
+      button.disabled = true;
+      button.setAttribute('aria-disabled', 'true');
+    });
+    feedbackButton.setAttribute('aria-disabled', 'true');
+    approveButton.setAttribute('aria-disabled', 'true');
+    return;
+  }
+  feedbackButton.textContent = busy ? feedbackButton.dataset.loadingLabel : `送出 ${count} 則修改`;
+  feedbackButton.disabled = approved || busy || editorDirty || count === 0;
+  approveButton.disabled = approved || busy || editorDirty || count > 0;
+  feedbackButton.setAttribute('aria-disabled', String(feedbackButton.disabled));
+  approveButton.setAttribute('aria-disabled', String(approveButton.disabled));
+}
+
+function setApprovedState() {
+  approved = true;
+  busy = false;
+  reviewForm.dataset.approved = 'true';
+  gateStatus.textContent = '已核准';
+  actionHelp.dataset.state = 'approved';
+  actionHelp.querySelector('strong').textContent = '此版本已核准，等待發布流程。';
+  reviewForm.querySelectorAll('[data-feedback-label]').forEach((label) => {
+    label.textContent = '修改意見 · 已鎖定';
+  });
+  storageRemove(draftKey);
+  storageRemove(jobKey);
+  updateActions();
+}
+
+function persistDraft({announce = true} = {}) {
+  const draft = {manifestSha256: reviewForm.dataset.manifestSha, values: readFeedbackValues(), savedAt: Date.now()};
+  storageSet(draftKey, JSON.stringify(draft));
+  if (!announce) return;
+  const time = new Date(draft.savedAt).toLocaleTimeString('zh-TW', {hour12: false});
+  setSaveStatus(`本機草稿已暫存 ${time}`, 'draft');
+}
+
+function applyFeedbackValues(values) {
+  for (const input of feedbackInputs) {
+    if (Object.hasOwn(values || {}, input.name)) input.value = String(values[input.name]);
+  }
+}
+
+function restoreDraft({announce = true} = {}) {
+  const rawDraft = storageGet(draftKey);
+  if (!rawDraft) return false;
+  try {
+    const draft = JSON.parse(rawDraft);
+    if (draft.manifestSha256 !== reviewForm.dataset.manifestSha) return false;
+    applyFeedbackValues(draft.values);
+    if (announce && feedbackCount() > 0) setSaveStatus('已還原重新整理前未送出的本機草稿。', 'draft');
+    return true;
+  } catch (error) {
+    storageRemove(draftKey);
+    return false;
+  }
+}
+
+function showJobState(state, message, {focus = false} = {}) {
+  jobPanel.hidden = false;
+  jobPanel.dataset.state = state;
+  jobPanel.setAttribute('aria-busy', String(state === 'queued' || state === 'running' || state === 'loading'));
+  jobSummary.textContent = message;
+  if (focus) jobPanel.focus();
+}
+
+function sameOriginUrl(value) {
+  const url = new URL(value, window.location.href);
+  if (url.origin !== window.location.origin) throw new Error('工作進度網址必須與本頁同網域。');
+  return url.href;
+}
+
+function statusUrlForPayload(payload) {
+  if (payload.status_url) return sameOriginUrl(payload.status_url);
+  const feedbackUrl = new URL(reviewForm.dataset.feedbackUrl, window.location.href);
+  if (!feedbackUrl.pathname.endsWith('/feedback')) throw new Error('無法取得工作進度網址。');
+  feedbackUrl.pathname = `${feedbackUrl.pathname.slice(0, -'/feedback'.length)}/jobs/${encodeURIComponent(payload.job_id)}`;
+  return sameOriginUrl(feedbackUrl.href);
+}
+
+async function responseDetail(response) {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    const payload = await response.json();
+    return payload.detail || payload.error || payload.message || JSON.stringify(payload);
+  }
+  return (await response.text()) || `HTTP ${response.status}`;
+}
+
+async function postForm(url, formData) {
+  const originalAction = reviewForm.action;
+  reviewForm.action = sameOriginUrl(url);
+  try {
+    const response = await fetch(reviewForm.action, {
+      method: 'POST',
+      body: formData,
+      credentials: 'same-origin',
+      headers: {'Accept': 'application/json'},
+    });
+    if (!response.ok) throw new Error(await responseDetail(response));
+    return await response.json();
+  } finally {
+    reviewForm.action = originalAction;
+  }
+}
+
+function renderJobSteps(steps) {
+  jobSteps.replaceChildren();
+  const safeSteps = Array.isArray(steps) ? steps : [];
+  let completed = 0;
+  let progressPercent = null;
+  safeSteps.forEach((step, index) => {
+    const item = typeof step === 'string' ? {label: step, status: 'pending'} : (step || {});
+    const percent = Number(item.progress_percent);
+    const hasPercent = Number.isFinite(percent);
+    const state = String(item.status || item.state || (hasPercent && percent >= 100 ? 'completed' : 'active')).toLowerCase();
+    if (['completed', 'complete', 'done', 'success', 'succeeded'].includes(state)) completed += 1;
+    if (hasPercent) progressPercent = Math.max(0, Math.min(100, percent));
+    const row = document.createElement('li');
+    row.dataset.state = state;
+    const label = document.createElement('span');
+    label.textContent = String(item.label || item.name || item.step || `步驟 ${index + 1}`);
+    const status = document.createElement('span');
+    status.className = 'sho-mono sho-mono-up';
+    status.textContent = String(item.message || (hasPercent ? `${progressPercent}%` : state));
+    row.append(label, status);
+    jobSteps.append(row);
+  });
+  if (progressPercent !== null) {
+    jobProgress.max = 100;
+    jobProgress.value = progressPercent;
+    jobProgress.textContent = `${progressPercent}%`;
+  } else {
+    jobProgress.max = Math.max(safeSteps.length, 1);
+    jobProgress.value = completed;
+    jobProgress.textContent = `${completed}/${safeSteps.length}`;
+  }
+}
+
+function normaliseJobStatus(payload) {
+  return String(payload.status || payload.job_status || 'queued').toLowerCase();
+}
+
+function restoreFailedFeedback(job) {
+  applyFeedbackValues(job.feedbackValues || {});
+  persistDraft({announce: false});
+  if (job.editorDraft) {
+    restoreEditorDraft(job.editorDraft);
+    updateEditorAction();
+  }
+  storageRemove(jobKey);
+  busy = false;
+  updateActions();
+}
+
+async function pollJob(job) {
+  window.clearTimeout(pollTimer);
+  try {
+    const response = await fetch(sameOriginUrl(job.statusUrl), {
+      credentials: 'same-origin',
+      headers: {'Accept': 'application/json'},
+    });
+    if (!response.ok) throw new Error(await responseDetail(response));
+    const payload = await response.json();
+    const status = normaliseJobStatus(payload);
+    renderJobSteps(payload.steps || payload.progress);
+    if (status === 'completed' || status === 'complete' || status === 'succeeded') {
+      jobProgress.value = jobProgress.max;
+      storageRemove(jobKey);
+      storageRemove(editorDraftKey);
+      const revision = payload.result_revision ? ` 新版本：${payload.result_revision}。` : '';
+      showJobState('completed', `修改完成。${revision}正在載入最新版本。`);
+      window.setTimeout(() => window.location.reload(), 700);
+      return;
+    }
+    if (status === 'failed' || status === 'error') {
+      restoreFailedFeedback(job);
+      showJobState('failed', `修改失敗：${payload.error || payload.message || '系統修改工作未完成'}。修改意見已恢復，可重新送出。`, {focus: true});
+      return;
+    }
+    busy = true;
+    updateActions();
+    if (status === 'queued' || status === 'pending') {
+      showJobState('queued', `修改工作 ${job.jobId} 等待認領。請回到目前執行此 episode 的 Codex／Claude Code task，要求它認領此工作。`);
+    } else {
+      showJobState('running', payload.message || `Codex／Claude Code Agent 正在處理修改工作 ${job.jobId}。`);
+    }
+    storageSet(jobKey, JSON.stringify(job));
+    pollTimer = window.setTimeout(() => pollJob(job), 1800);
+  } catch (error) {
+    busy = true;
+    updateActions();
+    showJobState('error', `暫時無法讀取進度：${error.message}。5 秒後自動重試。`);
+    pollTimer = window.setTimeout(() => pollJob(job), 5000);
+  }
+}
+
+reviewForm.addEventListener('input', () => {
+  if (approved) return;
+  persistDraft();
+  updateActions();
+});
+if (approved) {
+  storageRemove(draftKey);
+  storageRemove(jobKey);
+  updateActions();
+} else {
+  restoreDraft();
+  updateActions();
+}
+
+reviewForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const count = feedbackCount();
+  if (approved || busy || count === 0) return;
+  busy = true;
+  persistDraft({announce: false});
+  updateActions();
+  feedbackButton.setAttribute('aria-busy', 'true');
+  showJobState('loading', `正在送出 ${count} 則修改…`, {focus: true});
+
+  try {
+    const formData = new FormData();
+    formData.set('manifest_sha256', reviewForm.dataset.manifestSha);
+    feedbackInputs.forEach((input) => formData.set(input.name, input.value.trim()));
+    const feedbackValues = readFeedbackValues();
+    const payload = await postForm(reviewForm.dataset.feedbackUrl, formData);
+    if (!payload.job_id) throw new Error('伺服器未回傳工作編號。');
+    const job = {
+      manifestSha256: reviewForm.dataset.manifestSha,
+      jobId: String(payload.job_id),
+      statusUrl: statusUrlForPayload(payload),
+      feedbackValues,
+    };
+    storageRemove(draftKey);
+    storageSet(jobKey, JSON.stringify(job));
+    showJobState(normaliseJobStatus(payload), normaliseJobStatus(payload) === 'queued'
+      ? `修改工作 ${job.jobId} 已建立，等待目前執行此 episode 的 Codex／Claude Code Agent 認領。`
+      : '修改工作已建立，正在取得進度。');
+    await pollJob(job);
+  } catch (error) {
+    busy = false;
+    persistDraft({announce: false});
+    updateActions();
+    showJobState('failed', `送出失敗：${error.message}。修改意見已保留，可重新送出。`, {focus: true});
+  }
+  feedbackButton.removeAttribute('aria-busy');
+});
+
+approveButton.addEventListener('click', async () => {
+  if (approved || busy || feedbackCount() > 0) return;
+  busy = true;
+  updateActions();
+  approveButton.textContent = approveButton.dataset.loadingLabel;
+  approveButton.setAttribute('aria-busy', 'true');
+  showJobState('loading', '正在送出核准…', {focus: true});
+  try {
+    const formData = new FormData();
+    formData.set('manifest_sha256', reviewForm.dataset.manifestSha);
+    const payload = await postForm(reviewForm.dataset.approveUrl, formData);
+    if (!(payload.approved === true || String(payload.status).toLowerCase() === 'approved')) {
+      throw new Error('伺服器沒有確認核准狀態。');
+    }
+    if (!payload.publish_url) throw new Error('伺服器沒有回傳 Stage 6 publish_url。');
+    setApprovedState();
+    approveButton.removeAttribute('aria-busy');
+    showJobState('completed', '這個 revision 已 Approve。正在前往 Stage 6 發布工作台。');
+    window.setTimeout(() => window.location.assign(sameOriginUrl(payload.publish_url)), 350);
+  } catch (error) {
+    busy = false;
+    approveButton.textContent = approveButton.dataset.idleLabel;
+    approveButton.removeAttribute('aria-busy');
+    updateActions();
+    showJobState('failed', `核准失敗：${error.message}。請重試。`, {focus: true});
+  }
+});
+
+const editorDialog = document.getElementById('carousel-editor');
+const editorFrame = document.getElementById('carousel-editor-frame');
+const editorStage = document.getElementById('carousel-editor-stage');
+const editorFields = document.getElementById('carousel-editor-fields');
+const editorLayout = document.getElementById('carousel-cover-layout');
+const editorTextLayout = document.getElementById('carousel-text-layout');
+const editorTextRegion = document.getElementById('carousel-text-region');
+const textLayoutInputs = [...editorTextLayout.querySelectorAll('[data-text-layout-field]')];
+const editorTextLayoutReason = document.getElementById('carousel-text-layout-reason');
+const editorApply = document.getElementById('carousel-editor-apply');
+const editorStatus = document.getElementById('carousel-editor-status');
+const editorPreviewStatus = document.getElementById('carousel-editor-preview-status');
+const editorFit = document.getElementById('carousel-editor-fit');
+const editorTitle = document.getElementById('carousel-editor-title');
+const editorKicker = document.getElementById('carousel-editor-kicker');
+const editorRecovery = document.getElementById('carousel-editor-recovery');
+const editorRecoveryCopy = document.getElementById('carousel-editor-recovery-copy');
+const editorApplyAll = document.getElementById('carousel-editor-apply-all');
+const layoutInputs = [...editorLayout.querySelectorAll('[data-layout-field]')];
+const previewChannel = 'nakama-carousel-editor-v1';
+const fieldLabels = {
+  headline: '標題', emphasis: '強調文字', guest_name: '來賓姓名',
+  guest_title: '來賓職稱', question: '問題', bridge: '承接文字', body: '內文',
+  text: '來賓金句', host_question: '主持人提問', episode_topic: '節目名稱／CTA 標題',
+};
+const primaryCopyFields = {
+  cover: 'headline', hook: 'question', point: 'headline', quote: 'text', cta: 'episode_topic',
+};
+let currentEditorPage = null;
+const initialTextLayoutMap = Object.fromEntries(initialTextLayouts.map((item) => [
+  `${item.page_id}.${item.region}`, item.values,
+]));
+let textLayoutBaselines = {};
+let editorState = {copyEdits: {}, layout: null, textLayouts: {}};
+let editorValidationError = false;
+let previewDiagnostics = null;
+let previewPatchSequence = 0;
+let diagnosticsByPage = {};
+let layoutValidationErrors = {};
+let manualLineErrors = {};
+let editorPreviewScale = 1;
+
+function pageById(pageId) {
+  return editorPages.find((page) => page.page_id === pageId);
+}
+
+function restoreEditorDraft(draft) {
+  if (!draft || draft.manifestSha256 !== reviewForm.dataset.manifestSha) return false;
+  editorState = {
+    copyEdits: draft.copyEdits && typeof draft.copyEdits === 'object' ? draft.copyEdits : {},
+    layout: draft.layout && typeof draft.layout === 'object' ? draft.layout : null,
+    textLayouts: draft.textLayouts && typeof draft.textLayouts === 'object' ? draft.textLayouts : {},
+  };
+  storageSet(editorDraftKey, JSON.stringify({
+    manifestSha256: reviewForm.dataset.manifestSha,
+    ...editorState,
+  }));
+  return true;
+}
+
+function persistEditorDraft() {
+  storageSet(editorDraftKey, JSON.stringify({
+    manifestSha256: reviewForm.dataset.manifestSha,
+    ...editorState,
+  }));
+}
+
+function editorHasChanges() {
+  return Object.keys(editorState.copyEdits).length > 0 || editorState.layout !== null || Object.keys(editorState.textLayouts).length > 0;
+}
+
+function editorHasEmptyValue() {
+  return Object.values(editorState.copyEdits).some((fields) =>
+    Object.values(fields).some((value) => !String(value).trim()));
+}
+
+function dirtyEditorPageIds() {
+  const ids = new Set(Object.keys(editorState.copyEdits));
+  if (editorState.layout) ids.add('cover');
+  Object.keys(editorState.textLayouts).forEach((key) => ids.add(key.split('.')[0]));
+  return [...ids];
+}
+
+function updateEditorRecovery() {
+  const dirtyIds = dirtyEditorPageIds();
+  const allDiagnosticsFit = dirtyIds.length > 0 && dirtyIds.every(pageHasCurrentFitDiagnostics);
+  const hasValidationErrors = Object.keys(layoutValidationErrors).length > 0
+    || Object.keys(manualLineErrors).length > 0;
+  document.querySelectorAll('[data-dirty-page]').forEach((badge) => {
+    badge.hidden = !dirtyIds.includes(badge.dataset.dirtyPage);
+  });
+  editorRecovery.hidden = approved || dirtyIds.length === 0;
+  const pendingDiagnostics = dirtyIds.filter((pageId) => !pageHasCurrentFitDiagnostics(pageId));
+  editorRecoveryCopy.textContent = pendingDiagnostics.length
+    ? `尚有 ${dirtyIds.length} 張卡片修改未套用；請逐張重新開啟以取得最新版面檢查。`
+    : `尚有 ${dirtyIds.length} 張卡片修改未套用。`;
+  editorApplyAll.textContent = `套用 ${dirtyIds.length} 張修改`;
+  editorApplyAll.disabled = busy || editorValidationError || editorHasEmptyValue()
+    || hasValidationErrors || !allDiagnosticsFit;
+}
+
+function updateEditorAction() {
+  editorDirty = editorHasChanges();
+  editorValidationError = editorStateHasInvalidEmphasis();
+  const dirtyIds = dirtyEditorPageIds();
+  const allDiagnosticsFit = dirtyIds.length > 0 && dirtyIds.every(pageHasCurrentFitDiagnostics);
+  const hasValidationErrors = Object.keys(layoutValidationErrors).length > 0
+    || Object.keys(manualLineErrors).length > 0;
+  editorApply.disabled = approved || busy || !editorDirty || editorHasEmptyValue()
+    || editorValidationError || hasValidationErrors || !allDiagnosticsFit;
+  editorApply.setAttribute('aria-disabled', String(editorApply.disabled));
+  updateEditorRecovery();
+  updateActions();
+}
+
+function currentEditorValues(page) {
+  return {...page.fields, ...(editorState.copyEdits[page.page_id] || {})};
+}
+
+function editorDraftFingerprint(page) {
+  return JSON.stringify({
+    page_id: page.page_id,
+    copy: currentEditorValues(page),
+    cover: page.role === 'cover' ? (editorState.layout || initialCoverLayout) : null,
+    text: textLayoutPayloadForPage(page),
+  });
+}
+
+function pageHasCurrentFitDiagnostics(pageId) {
+  const page = pageById(pageId);
+  const state = diagnosticsByPage[pageId];
+  return Boolean(page && state && !state.previewError
+    && state.fingerprint === editorDraftFingerprint(page)
+    && state.diagnostics?.status === 'fit');
+}
+
+function invalidatePageDiagnostics(pageId) {
+  delete diagnosticsByPage[pageId];
+  if (currentEditorPage?.page_id === pageId) {
+    previewDiagnostics = null;
+    editorFit.hidden = true;
+  }
+}
+
+function textLayoutKey(pageId, region) { return `${pageId}.${region}`; }
+
+function activeTextLayout(page, region) {
+  const key = textLayoutKey(page.page_id, region);
+  return editorState.textLayouts[key] || initialTextLayoutMap[key] || textLayoutBaselines[key] || null;
+}
+
+function textLayoutPayloadForPage(page) {
+  return textLayoutRegistry[page.role].map((region) => {
+    const values = activeTextLayout(page, region);
+    return values ? {page_id: page.page_id, role: page.role, region, values} : null;
+  }).filter(Boolean);
+}
+
+function applyTextLayoutsToPreview(page) {
+  previewPatchSequence += 1;
+  const fingerprint = editorDraftFingerprint(page);
+  sendPreview('apply-text-layouts', {
+    layouts: textLayoutPayloadForPage(page), safeRects: textLayoutSafeRects,
+    requestId: previewPatchSequence,
+    fingerprint,
+    selectedRegion: editorTextRegion.value || null,
+  });
+}
+
+function normaliseTextLayoutValues(page, region, values) {
+  const rect = textLayoutSafeRects[`${page.role}.${region}`];
+  if (!rect) return null;
+  if (['x_px', 'y_px', 'width_px', 'font_start_px'].some(
+    (name) => values[name] === '' || values[name] === null || values[name] === undefined,
+  )) return null;
+  const numbers = Object.fromEntries(
+    ['x_px', 'y_px', 'width_px', 'font_start_px'].map((name) => [name, Number(values[name])]),
+  );
+  if (Object.values(numbers).some((value) => !Number.isFinite(value))) return null;
+  const x = Math.max(rect[0], Math.min(rect[2] - 80, Math.round(numbers.x_px / 4) * 4));
+  const y = Math.max(rect[1], Math.min(rect[3], Math.round(numbers.y_px / 4) * 4));
+  const width = Math.max(80, Math.min(rect[2] - x, Math.round(numbers.width_px / 4) * 4));
+  const font = Math.max(24, Math.min(160, Math.round(numbers.font_start_px / 2) * 2));
+  return {...values, x_px: x, y_px: y, width_px: width, font_start_px: font};
+}
+
+function setTextLayoutDraft(page, region, values, {send = true} = {}) {
+  const key = textLayoutKey(page.page_id, region);
+  const baseline = initialTextLayoutMap[key] || textLayoutBaselines[key];
+  if (!baseline) return;
+  const snapped = normaliseTextLayoutValues(page, region, values);
+  if (!snapped) {
+    layoutValidationErrors[page.page_id] = '座標、寬度與字級必須是有效數字。';
+    editorTextLayoutReason.textContent = layoutValidationErrors[page.page_id];
+    updateEditorAction();
+    return;
+  }
+  delete layoutValidationErrors[page.page_id];
+  const comparable = ['x_px', 'y_px', 'width_px', 'font_start_px', 'lines'];
+  const changed = comparable.some((name) => JSON.stringify(snapped[name] ?? null) !== JSON.stringify(baseline[name] ?? null));
+  if (changed) editorState.textLayouts[key] = snapped;
+  else delete editorState.textLayouts[key];
+  invalidatePageDiagnostics(page.page_id);
+  persistEditorDraft();
+  if (send) applyTextLayoutsToPreview(page);
+  renderTextLayoutControls(page, region);
+  updateEditorAction();
+}
+
+function renderTextLayoutControls(page, region) {
+  const values = activeTextLayout(page, region);
+  const safe = textLayoutSafeRects[`${page.role}.${region}`];
+  const loading = !values || !safe;
+  editorTextLayout.setAttribute('aria-busy', String(loading));
+  editorTextRegion.disabled = loading;
+  textLayoutInputs.forEach((input) => {
+    input.disabled = loading;
+    input.value = values?.[input.dataset.textLayoutField] ?? '';
+    if (safe && input.dataset.textLayoutField === 'x_px') {
+      input.min = safe[0]; input.max = safe[2] - 80;
+    } else if (safe && input.dataset.textLayoutField === 'y_px') {
+      input.min = safe[1]; input.max = safe[3];
+    } else if (safe && input.dataset.textLayoutField === 'width_px') {
+      input.max = safe[2] - Number(values?.x_px || safe[0]);
+    }
+  });
+  editorTextLayoutReason.textContent = loading
+    ? '正在載入版面控制…'
+    : (editorState.textLayouts[textLayoutKey(page.page_id, region)] ? '這個文字區塊有尚未套用的版面修改。' : '目前使用正式版本的版面。');
+}
+
+function selectTextRegion(region, {notifyPreview = true} = {}) {
+  if (!currentEditorPage || !textLayoutRegistry[currentEditorPage.role].includes(region)) return;
+  editorTextRegion.value = region;
+  renderTextLayoutControls(currentEditorPage, region);
+  if (notifyPreview) sendPreview('select-text-region', {region});
+}
+
+function editorStateHasInvalidEmphasis() {
+  return Object.keys(editorState.copyEdits).some((pageId) => {
+    const page = pageById(pageId);
+    const values = currentEditorValues(page);
+    return !values.emphasis || !String(values[primaryCopyFields[page.role]] || '').includes(values.emphasis);
+  });
+}
+
+function sendPreview(type, payload = {}) {
+  if (!editorFrame.contentWindow) return;
+  editorFrame.contentWindow.postMessage({channel: previewChannel, type, ...payload}, '*');
+}
+
+function applyCopyToPreview(page, values) {
+  sendPreview('apply-copy', {role: page.role, values});
+}
+
+function boundedLayoutValues(values) {
+  const result = {};
+  for (const input of layoutInputs) {
+    if (values[input.dataset.layoutField] === '' || values[input.dataset.layoutField] === null
+      || values[input.dataset.layoutField] === undefined) return null;
+    const raw = Number(values[input.dataset.layoutField]);
+    if (!Number.isFinite(raw)) return null;
+    result[input.dataset.layoutField] = Math.round(Math.max(Number(input.min), Math.min(Number(input.max), raw)));
+  }
+  return result;
+}
+
+function applyLayoutToPreview(values) {
+  sendPreview('apply-layout', {values});
+}
+
+function setLayoutDraft(values, {send = true} = {}) {
+  const bounded = boundedLayoutValues(values);
+  if (!bounded) {
+    layoutValidationErrors.cover = '封面版面值必須是有效數字。';
+    editorStatus.textContent = layoutValidationErrors.cover;
+    updateEditorAction();
+    return;
+  }
+  delete layoutValidationErrors.cover;
+  const changed = Object.keys(initialCoverLayout).some((key) => bounded[key] !== initialCoverLayout[key]);
+  editorState.layout = changed ? bounded : null;
+  invalidatePageDiagnostics('cover');
+  layoutInputs.forEach((input) => { input.value = bounded[input.dataset.layoutField]; });
+  persistEditorDraft();
+  if (send) {
+    applyLayoutToPreview(bounded);
+    if (currentEditorPage?.page_id === 'cover') applyTextLayoutsToPreview(currentEditorPage);
+  }
+  updateEditorAction();
+}
+
+function renderFitDiagnostics(diagnostics) {
+  previewDiagnostics = diagnostics;
+  editorFit.hidden = false;
+  const needsReview = diagnostics?.status === 'needs_review';
+  editorFit.dataset.state = needsReview ? 'warning' : 'fit';
+  const regions = diagnostics?.regions || {};
+  const details = [];
+  const fontRegion = Object.entries(regions).find(([name]) =>
+    ['cover.headline', 'hook.question', 'point.headline', 'quote.text', 'cta.episode_topic'].includes(name));
+  if (fontRegion) details.push(`目前字級 ${Math.round(fontRegion[1])} px`);
+  if (Object.hasOwn(regions, 'cover.headline_cutout_overlap_y')) {
+    details.push(`標題與來賓重疊 ${Math.round(regions['cover.headline_cutout_overlap_y'])} px`);
+  }
+  if (Object.hasOwn(regions, 'quote.answer_cutout_overlap')) {
+    details.push(regions['quote.answer_cutout_overlap'] ? '金句與來賓圖片發生碰撞' : '金句與來賓圖片未碰撞');
+  }
+  editorFit.textContent = `${needsReview ? '版面需要調整' : '版面檢查通過'}${details.length ? ` · ${details.join(' · ')}` : ''}`;
+  if (needsReview) editorTextLayoutReason.textContent = `無法套用：${(diagnostics.notes || []).join('；')}`;
+  updateEditorAction();
+}
+
+window.addEventListener('message', (event) => {
+  if (event.source !== editorFrame.contentWindow || event.data?.channel !== previewChannel) return;
+  if (event.data.type === 'ready' && currentEditorPage) {
+    sendPreview('set-visual-scale', {scale: editorPreviewScale});
+    applyCopyToPreview(currentEditorPage, currentEditorValues(currentEditorPage));
+    if (currentEditorPage.role === 'cover') applyLayoutToPreview(editorState.layout || initialCoverLayout);
+    applyTextLayoutsToPreview(currentEditorPage);
+    editorPreviewStatus.textContent = '即時預覽 · 尚未套用';
+  } else if (event.data.type === 'layout-change' && currentEditorPage?.role === 'cover') {
+    setLayoutDraft(event.data.layout, {send: false});
+    applyTextLayoutsToPreview(currentEditorPage);
+  } else if (event.data.type === 'diagnostics') {
+    if (event.data.requestId && event.data.requestId < previewPatchSequence) return;
+    if (!currentEditorPage || event.data.fingerprint !== editorDraftFingerprint(currentEditorPage)) return;
+    diagnosticsByPage[currentEditorPage.page_id] = {
+      fingerprint: event.data.fingerprint,
+      diagnostics: event.data.diagnostics,
+      previewError: null,
+    };
+    renderFitDiagnostics(event.data.diagnostics);
+  } else if (event.data.type === 'text-layout-baseline' && currentEditorPage) {
+    event.data.layouts.forEach((item) => {
+      textLayoutBaselines[textLayoutKey(item.page_id, item.region)] = item.values;
+    });
+    editorFields.querySelectorAll('[data-copy-field]').forEach((field) => {
+      const region = field.dataset.copyField;
+      if (!textLayoutRegistry[currentEditorPage.role].includes(region) || !field.value.includes('\n')) return;
+      const base = activeTextLayout(currentEditorPage, region);
+      if (base) setTextLayoutDraft(currentEditorPage, region, {
+        ...base, lines: field.value.replace(/\r/g, '').split('\n'),
+      }, {send: false});
+    });
+    if (editorTextRegion.value) renderTextLayoutControls(currentEditorPage, editorTextRegion.value);
+    applyTextLayoutsToPreview(currentEditorPage);
+  } else if (event.data.type === 'text-layout-change' && currentEditorPage) {
+    selectTextRegion(event.data.region, {notifyPreview: false});
+    setTextLayoutDraft(currentEditorPage, event.data.region, event.data.values, {send: false});
+    applyTextLayoutsToPreview(currentEditorPage);
+  } else if (event.data.type === 'text-region-select' && currentEditorPage) {
+    selectTextRegion(event.data.region, {notifyPreview: false});
+  } else if (event.data.type === 'editor-escape') {
+    const returnPageId = currentEditorPage?.page_id;
+    preserveAndCloseEditor();
+    document.querySelector(`[data-edit-page="${returnPageId}"]`)?.focus();
+  } else if (event.data.type === 'preview-error') {
+    if (!currentEditorPage || event.data.fingerprint !== editorDraftFingerprint(currentEditorPage)) return;
+    if (currentEditorPage) {
+      diagnosticsByPage[currentEditorPage.page_id] = {
+        fingerprint: event.data.fingerprint,
+        diagnostics: null,
+        previewError: event.data.message,
+      };
+    }
+    updateEditorAction();
+    editorPreviewStatus.textContent = `預覽無法套用：${event.data.message}`;
+  }
+});
+
+function buildEditorFields(page) {
+  editorFields.replaceChildren();
+  const values = currentEditorValues(page);
+  page.field_order.forEach((name) => {
+    const label = document.createElement('label');
+    label.className = 'carousel-editor-field';
+    const caption = document.createElement('span');
+    caption.textContent = fieldLabels[name] || name;
+    const input = document.createElement('textarea');
+    input.rows = ['body', 'bridge', 'text', 'host_question'].includes(name) ? 4 : 2;
+    input.dataset.copyField = name;
+    const layoutValue = activeTextLayout(page, name);
+    input.value = layoutValue?.lines ? layoutValue.lines.join('\n') : values[name];
+    input.required = true;
+    input.maxLength = 1200;
+    input.addEventListener('input', () => {
+      const next = {};
+      editorFields.querySelectorAll('[data-copy-field]').forEach((field) => {
+        const normalised = textLayoutRegistry[page.role].includes(field.dataset.copyField)
+          ? field.value.replace(/\r/g, '').split('\n').join('') : field.value;
+        if (normalised !== page.fields[field.dataset.copyField]) next[field.dataset.copyField] = normalised;
+      });
+      if (Object.keys(next).length) editorState.copyEdits[page.page_id] = next;
+      else delete editorState.copyEdits[page.page_id];
+      invalidatePageDiagnostics(page.page_id);
+      persistEditorDraft();
+      if (validateEditorFields(page)) {
+        applyCopyToPreview(page, currentEditorValues(page));
+        if (textLayoutRegistry[page.role].includes(name)) {
+          const base = activeTextLayout(page, name);
+          if (base) {
+            const lines = input.value.replace(/\r/g, '').split('\n');
+            setTextLayoutDraft(
+              page, name, {...base, lines: lines.length > 1 ? lines : null}, {send: false},
+            );
+          }
+        }
+        applyTextLayoutsToPreview(page);
+      }
+      updateEditorAction();
+    });
+    const error = document.createElement('small');
+    error.className = 'carousel-field-error';
+    error.id = `carousel-editor-error-${page.page_id}-${name}`;
+    error.dataset.fieldError = name;
+    error.hidden = true;
+    input.setAttribute('aria-describedby', error.id);
+    input.setAttribute('aria-errormessage', error.id);
+    label.append(caption, input, error);
+    editorFields.append(label);
+  });
+  validateEditorFields(page);
+}
+
+function manualLinesError(page, name, rawValue, values) {
+  if (!textLayoutRegistry[page.role].includes(name)) return null;
+  if (rawValue.includes('\r')) return '手動換行不可包含 CR 字元。';
+  if (!rawValue.includes('\n')) return null;
+  const lines = rawValue.split('\n');
+  if (lines.some((line) => !line.trim())) return '手動換行不可有首尾或連續空白行。';
+  if (name !== primaryCopyFields[page.role]) return null;
+  const joined = lines.join('');
+  const emphasis = values.emphasis;
+  const emphasisStart = joined.indexOf(emphasis);
+  if (emphasisStart < 0) return '強調文字必須完整出現在主要文字中。';
+  const emphasisEnd = emphasisStart + emphasis.length;
+  let cursor = 0;
+  const preserved = lines.some((line) => {
+    const lineEnd = cursor + line.length;
+    const contains = cursor <= emphasisStart && emphasisEnd <= lineEnd;
+    cursor = lineEnd;
+    return contains;
+  });
+  return preserved ? null : '手動換行不可切開強調文字原本出現的位置。';
+}
+
+function validateManualLines(page, values) {
+  return [...editorFields.querySelectorAll('[data-copy-field]')]
+    .map((field) => manualLinesError(page, field.dataset.copyField, field.value, values))
+    .filter(Boolean);
+}
+
+function validateEditorFields(page) {
+  editorFields.querySelectorAll('[data-copy-field]').forEach((field) => {
+    field.removeAttribute('aria-invalid');
+  });
+  editorFields.querySelectorAll('[data-field-error]').forEach((error) => {
+    error.hidden = true;
+    error.textContent = '';
+  });
+  const values = Object.fromEntries(
+    [...editorFields.querySelectorAll('[data-copy-field]')].map((field) => [field.dataset.copyField, field.value]),
+  );
+  const primaryName = primaryCopyFields[page.role];
+  const primaryLines = String(values[primaryName] || '').replace(/\r/g, '').split('\n');
+  const emphasisValid = Boolean(values.emphasis)
+    && primaryLines.every((line) => line.trim())
+    && primaryLines.join('').includes(values.emphasis);
+  let valid = emphasisValid;
+  delete manualLineErrors[page.page_id];
+  editorFields.querySelectorAll('[data-copy-field]').forEach((field) => {
+    const message = manualLinesError(page, field.dataset.copyField, field.value, values);
+    if (!message) return;
+    valid = false;
+    manualLineErrors[page.page_id] = message;
+    field.setAttribute('aria-invalid', 'true');
+    const error = editorFields.querySelector(
+      `[data-field-error="${field.dataset.copyField}"]`,
+    );
+    if (error) { error.hidden = false; error.textContent = message; }
+  });
+  editorValidationError = !valid;
+  if (!emphasisValid) {
+    const emphasis = editorFields.querySelector('[data-copy-field="emphasis"]');
+    const primary = editorFields.querySelector(`[data-copy-field="${primaryName}"]`);
+    const error = editorFields.querySelector('[data-field-error="emphasis"]');
+    emphasis?.setAttribute('aria-invalid', 'true');
+    primary?.setAttribute('aria-invalid', 'true');
+    if (error) {
+      error.hidden = false;
+      error.textContent = `強調文字必須完整出現在「${fieldLabels[primaryName]}」中。`;
+    }
+    editorStatus.textContent = '請先修正強調文字，再套用修改。';
+  } else if (editorStatus.textContent === '請先修正強調文字，再套用修改。') {
+    editorStatus.textContent = '';
+  }
+  return valid;
+}
+
+function openEditor(pageId) {
+  const page = pageById(pageId);
+  if (!page || approved) return;
+  currentEditorPage = page;
+  editorStatus.textContent = '';
+  editorTitle.textContent = `編輯這張卡片 · ${String(page.page_number).padStart(2, '0')}`;
+  editorKicker.textContent = `${String(page.page_number).padStart(2, '0')} · 卡片編輯`;
+  buildEditorFields(page);
+  editorTextRegion.replaceChildren();
+  textLayoutRegistry[page.role]
+    .filter((region) => page.field_order.includes(region))
+    .forEach((region) => editorTextRegion.append(new Option(fieldLabels[region] || region, region)));
+  renderTextLayoutControls(page, editorTextRegion.value);
+  editorLayout.hidden = page.role !== 'cover';
+  if (page.role === 'cover') {
+    const values = editorState.layout || initialCoverLayout;
+    layoutInputs.forEach((input) => { input.value = values[input.dataset.layoutField]; });
+  }
+  editorPreviewStatus.textContent = '載入即時預覽…';
+  editorFit.hidden = true;
+  previewDiagnostics = null;
+  editorFrame.src = `${reviewForm.dataset.previewBase}/${encodeURIComponent(page.page_id)}?manifest_sha256=${encodeURIComponent(reviewForm.dataset.manifestSha)}`;
+  updateEditorAction();
+  editorDialog.showModal();
+}
+
+editorFrame.addEventListener('load', () => {
+  if (!currentEditorPage) return;
+  try {
+    sizeEditorPreview();
+    applyCopyToPreview(currentEditorPage, currentEditorValues(currentEditorPage));
+    if (currentEditorPage.role === 'cover') {
+      applyLayoutToPreview(editorState.layout || initialCoverLayout);
+    }
+    applyTextLayoutsToPreview(currentEditorPage);
+    editorPreviewStatus.textContent = '即時預覽 · 尚未套用';
+  } catch (error) {
+    editorPreviewStatus.textContent = `預覽無法套用：${error.message}`;
+  }
+});
+
+document.querySelectorAll('[data-edit-page]').forEach((button) => {
+  button.addEventListener('click', () => openEditor(button.dataset.editPage));
+});
+function sizeEditorPreview() {
+  editorPreviewScale = editorStage.clientWidth / 1080;
+  editorFrame.style.transform = `scale(${editorPreviewScale})`;
+  sendPreview('set-visual-scale', {scale: editorPreviewScale});
+}
+new ResizeObserver(sizeEditorPreview).observe(editorStage);
+layoutInputs.forEach((input) => {
+  input.addEventListener('input', () => {
+    const values = Object.fromEntries(layoutInputs.map((field) => [field.dataset.layoutField, field.value]));
+    setLayoutDraft(values);
+  });
+});
+editorTextRegion.addEventListener('change', () => selectTextRegion(editorTextRegion.value));
+textLayoutInputs.forEach((input) => {
+  input.addEventListener('input', () => {
+    if (!currentEditorPage || !editorTextRegion.value) return;
+    const current = activeTextLayout(currentEditorPage, editorTextRegion.value);
+    if (!current) return;
+    const values = {...current};
+    textLayoutInputs.forEach((field) => {
+      values[field.dataset.textLayoutField] = field.value;
+    });
+    setTextLayoutDraft(currentEditorPage, editorTextRegion.value, values);
+  });
+});
+function preserveAndCloseEditor() {
+  persistEditorDraft();
+  editorDialog.close();
+  updateEditorRecovery();
+}
+
+document.getElementById('carousel-editor-close').addEventListener('click', preserveAndCloseEditor);
+document.getElementById('carousel-editor-cancel').addEventListener('click', preserveAndCloseEditor);
+document.getElementById('carousel-editor-reset').addEventListener('click', () => {
+  if (!currentEditorPage) return;
+  if (!window.confirm('重設這張卡片尚未套用的文字與版面修改？')) return;
+  delete editorState.copyEdits[currentEditorPage.page_id];
+  if (currentEditorPage.role === 'cover') editorState.layout = null;
+  Object.keys(editorState.textLayouts).forEach((key) => {
+    if (key.startsWith(`${currentEditorPage.page_id}.`)) delete editorState.textLayouts[key];
+  });
+  previewDiagnostics = null;
+  delete diagnosticsByPage[currentEditorPage.page_id];
+  delete layoutValidationErrors[currentEditorPage.page_id];
+  delete manualLineErrors[currentEditorPage.page_id];
+  editorFit.hidden = true;
+  persistEditorDraft();
+  buildEditorFields(currentEditorPage);
+  renderTextLayoutControls(currentEditorPage, editorTextRegion.value);
+  if (currentEditorPage.role === 'cover') {
+    layoutInputs.forEach((input) => {
+      input.value = initialCoverLayout[input.dataset.layoutField];
+    });
+    applyLayoutToPreview(initialCoverLayout);
+  }
+  applyCopyToPreview(currentEditorPage, currentEditorValues(currentEditorPage));
+  applyTextLayoutsToPreview(currentEditorPage);
+  editorStatus.textContent = '已重設這張卡片。';
+  updateEditorAction();
+});
+document.getElementById('carousel-editor-continue').addEventListener('click', () => {
+  const [pageId] = dirtyEditorPageIds();
+  if (pageId) openEditor(pageId);
+});
+
+const storedEditorDraft = storageGet(editorDraftKey);
+if (storedEditorDraft && !approved) {
+  try {
+    restoreEditorDraft(JSON.parse(storedEditorDraft));
+    updateEditorAction();
+  } catch (error) { storageRemove(editorDraftKey); }
+}
+
+async function submitEditorChanges(scope) {
+  const dirtyIds = dirtyEditorPageIds();
+  const hasValidationErrors = Object.keys(layoutValidationErrors).length > 0
+    || Object.keys(manualLineErrors).length > 0;
+  const allDiagnosticsFit = dirtyIds.length > 0 && dirtyIds.every(pageHasCurrentFitDiagnostics);
+  if (scope !== 'all' || approved || busy || !editorHasChanges() || editorHasEmptyValue()
+    || editorStateHasInvalidEmphasis() || hasValidationErrors || !allDiagnosticsFit) return;
+  busy = true;
+  updateActions();
+  updateEditorAction();
+  editorStatus.textContent = '正在建立待認領修改工作…';
+  const editorDraft = {manifestSha256: reviewForm.dataset.manifestSha, ...editorState};
+  const copyEdits = Object.entries(editorState.copyEdits).map(([pageId, fields]) => {
+    const page = pageById(pageId);
+    return {page_id: pageId, role: page.role, artifact_sha256: page.artifact_sha256, fields};
+  });
+  const cover = pageById('cover');
+  const payloadBody = {
+    manifest_sha256: reviewForm.dataset.manifestSha,
+    copy_edits: copyEdits,
+    layout_overrides: editorState.layout ? {
+      page_id: 'cover', artifact_sha256: cover.artifact_sha256, values: editorState.layout,
+    } : null,
+    text_layout_overrides: Object.entries(editorState.textLayouts).map(([key, values]) => {
+      const [pageId, region] = key.split('.');
+      const page = pageById(pageId);
+      return {page_id: pageId, role: page.role, region, artifact_sha256: page.artifact_sha256, values};
+    }),
+  };
+  try {
+    const response = await fetch(sameOriginUrl(reviewForm.dataset.applyUrl), {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Accept': 'application/json', 'Content-Type': 'application/json'},
+      body: JSON.stringify(payloadBody),
+    });
+    if (!response.ok) throw new Error(await responseDetail(response));
+    const payload = await response.json();
+    if (!payload.job_id) throw new Error('伺服器未回傳工作編號。');
+    const job = {
+      manifestSha256: reviewForm.dataset.manifestSha,
+      jobId: String(payload.job_id), statusUrl: statusUrlForPayload(payload),
+      feedbackValues: readFeedbackValues(), editorDraft,
+    };
+    storageRemove(editorDraftKey);
+    storageSet(jobKey, JSON.stringify(job));
+    editorDialog.close();
+    showJobState(normaliseJobStatus(payload), `修改工作 ${job.jobId} 已建立，等待目前執行此 episode 的 Codex／Claude Code Agent 認領。`, {focus: true});
+    await pollJob(job);
+  } catch (error) {
+    busy = false;
+    persistEditorDraft();
+    updateActions();
+    updateEditorAction();
+    editorStatus.textContent = `套用失敗：${error.message}。草稿已保留。`;
+  }
+}
+
+editorApply.addEventListener('click', () => submitEditorChanges('all'));
+editorApplyAll.addEventListener('click', () => submitEditorChanges('all'));
+
+const resumableJobRaw = storageGet(jobKey);
+if (!approved && resumableJobRaw) {
+  try {
+    const resumableJob = JSON.parse(resumableJobRaw);
+    if (resumableJob.manifestSha256 === reviewForm.dataset.manifestSha && resumableJob.statusUrl) {
+      busy = true;
+      updateActions();
+      showJobState('queued', `已恢復修改工作 ${resumableJob.jobId}，正在讀取狀態；若仍待認領，請回到原 Codex／Claude Code task。`);
+      pollJob(resumableJob);
+    } else {
+      storageRemove(jobKey);
+    }
+  } catch (error) {
+    storageRemove(jobKey);
+  }
+}
+</script>
+</body>
+</html>

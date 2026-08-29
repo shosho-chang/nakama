@@ -40,6 +40,13 @@
   .pub-progress { margin-top: 10px; height: 8px; border-radius: 4px;
                   background: var(--sho-bg-2); border: 1px solid var(--sho-line); overflow: hidden; }
   .pub-progress-bar { height: 100%; background: var(--sho-accent); transition: width .5s ease; }
+  .pub-target { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(0, 2fr) auto;
+                gap: 12px; align-items: center; padding: 12px 0; }
+  .pub-target + .pub-target { border-top: 1px solid var(--sho-line); }
+  .pub-target-state { font-size: 11px; color: var(--sho-muted); }
+  .pub-target-detail { min-width: 0; font-size: 12px; overflow-wrap: anywhere; }
+  @media (max-width: 560px) { .pub-target { grid-template-columns: 1fr auto; }
+    .pub-target-detail { grid-column: 1 / -1; } }
 </style>
 </head>
 <body class="sho bridge-page bridge-page--scroll">
@@ -57,7 +64,7 @@
     <div class="nk-caps">{{ rel.episode }} · {{ rel.format | upper }} · {{ rel.cut_id }}</div>
     <h1 class="page-title">{{ t.title or rel.work_title }}</h1>
   </div>
-  <div class="header-meta sho-mono" id="statusTag" data-status="{{ t.status }}">
+  <div class="header-meta sho-mono" id="statusTag" data-status="{{ t.status }}" data-format="{{ rel.format }}">
     {{ t.status | upper }}{% if t.url %} · <a href="{{ t.url }}" target="_blank">YouTube ↗</a>{% endif %}
   </div>
 </section>
@@ -73,13 +80,15 @@
           {% if file_exists %}
           <video class="pub-video" controls preload="metadata"
                  src="/bridge/publish/media/{{ rel.episode }}/{{ rel.cut_id }}">
-            {# 長片成品不燒字幕（ADR-055 Q4b）；這條 track 就是實際會上架的那份 CC #}
-            {% if subs_name %}
+            {# 只有長片 sidecar policy 才預覽／上傳 CC；Short 字幕已燒入畫面。 #}
+            {% if cc_policy == 'sidecar_required' and subs_name %}
             <track kind="subtitles" srclang="zh-TW" label="CC（{{ subs_name }}）" default
                    src="/bridge/publish/subs/{{ rel.episode }}/{{ rel.cut_id }}">
             {% endif %}
           </video>
-          {% if subs_name %}
+          {% if cc_policy == 'burned_only' %}
+          <div class="pub-cap sho-mono">字幕已燒入畫面；此流程不另上 CC</div>
+          {% elif subs_name %}
           <div class="pub-cap sho-mono">字幕軌 {{ subs_name }}——同一份會上傳成 CC</div>
           {% else %}
           <div class="pub-cap sho-mono">⚠ 沒有 tight SRT——上傳時 CC 也會缺</div>
@@ -140,19 +149,54 @@
             <button class="sho-btn sho-btn--ghost" type="submit">儲存文案與排程</button>
             <button class="sho-btn" type="submit"
                     formaction="/bridge/publish/{{ rel.episode }}/{{ rel.cut_id }}/approve-upload"
+                    {% if not t.title or not t.description %}disabled title="先儲存 Title/Description"{% endif %}
                     onclick="return confirm('確認儲存這版文案並上傳？\n\n上傳為 private{{ '，並排程 ' + t.publish_at + ' 自動公開' if t.publish_at else '（未排程，之後可再設）' }}。')">
-              核准並上傳
+              {% if rel.format == 'short' %}核准並投遞三平台{% else %}核准並上傳{% endif %}
             </button>
           </div>
           {% endif %}
         </div>
       </form>
 
+      {% if rel.format == 'short' %}
+      <article class="section">
+        <header class="section-head">
+          <div class="section-marker">Platform targets</div>
+        </header>
+        <div class="pub-body" id="platformTargets">
+          {% for target in platform_targets %}
+          <div class="pub-target" data-platform="{{ target.platform }}" data-target-status="{{ target.status }}">
+            <div>
+              <div>{{ target.label }}</div>
+              <div class="pub-target-state sho-mono">{{ target.status | upper }}</div>
+            </div>
+            <div class="pub-target-detail">
+              {% if target.url %}<a href="{{ target.url }}" target="_blank">{{ target.url }}</a>{% endif %}
+              {% if target.error %}<span>{{ target.error }}</span>{% endif %}
+              {% if target.ineligibility_reason %}<span>{{ target.ineligibility_reason }}</span>{% endif %}
+              <span class="sho-mono">{{ target.connection_note }}</span>
+            </div>
+            {% if target.retryable %}
+            <form method="post" action="/bridge/publish/{{ rel.episode }}/{{ rel.cut_id }}/retry/{{ target.platform }}">
+              <button class="sho-btn sho-btn--ghost" type="submit">只重試此平台</button>
+            </form>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </article>
+      {% endif %}
+
       <article class="section">
         <header class="section-head">
           <div class="section-marker">上架狀態</div>
         </header>
         <div class="pub-body">
+          {% if rel.format == 'short' %}
+          <p class="pub-upload-note" data-short-dispatch-policy>
+            有未來 Campaign Anchor 時，YouTube 與 Facebook 會先上傳並用平台原生排程武裝；Instagram 會在 Campaign Anchor 到點後由桌面 Due Dispatcher 送出，Meta 處理 container 可能使完成時間稍晚。已排程或 uploaded 只代表平台已接受，不證明內容已公開。
+          </p>
+          {% endif %}
           {% if t.status in ('approved', 'uploading') %}
           <p class="pub-status-line sho-mono" id="upline">
             {{ '上傳中…' if t.status == 'uploading' else '已核准——上傳啟動中…' }}
@@ -186,8 +230,11 @@
           {% else %}
           {% if t.error %}<p class="pub-error sho-mono">⚠ 上次失敗：{{ t.error }}</p>{% endif %}
           <p class="pub-upload-note" style="margin-top:0">
-            按上方「核准並上傳」→ 上傳為 private + 附 CC 字幕；到「公開時間」由
-            YouTube 的鐘自動轉公開（機器不需在線）。
+            {% if rel.format == 'short' %}
+            核准後會獨立投遞 YouTube Shorts、Instagram Reels 與 Facebook Page Reels；單一平台失敗不會重做已成功平台。
+            {% else %}
+            按上方「核准並上傳」→ 上傳為 private + 附 CC 字幕；到「公開時間」由 YouTube 的鐘自動轉公開（機器不需在線）。
+            {% endif %}
           </p>
           {% endif %}
         </div>
@@ -251,13 +298,29 @@ cnt('f-desc', 'desc-count', 5000);
   var tag = document.getElementById('statusTag');
   if (!tag) return;
   var st = tag.dataset.status;
-  if (st !== 'uploading' && st !== 'approved') return;
+  var isShort = tag.dataset.format === 'short';
+  var targetRows = Array.prototype.slice.call(document.querySelectorAll('[data-target-status]'));
+  var targetSignature = targetRows.map(function (row) {
+    return row.dataset.platform + ':' + row.dataset.targetStatus;
+  }).join('|');
+  var shortActive = targetRows.some(function (row) {
+    return row.dataset.targetStatus === 'uploading' || row.dataset.targetStatus === 'approved';
+  });
+  if (!isShort && st !== 'uploading' && st !== 'approved') return;
+  if (isShort && !shortActive) return;
   var bar = document.getElementById('upbar');
   var pct = document.getElementById('uppct');
   var t = setInterval(function () {
     fetch(location.pathname + '/status')
       .then(function (r) { return r.json(); })
       .then(function (s) {
+        if (isShort) {
+          var nextSignature = (s.targets || []).map(function (target) {
+            return target.platform + ':' + target.status;
+          }).join('|');
+          if (nextSignature !== targetSignature) { clearInterval(t); location.reload(); }
+          return;
+        }
         if (s.status !== 'uploading' && s.status !== 'approved') {
           clearInterval(t); location.reload(); return;
         }

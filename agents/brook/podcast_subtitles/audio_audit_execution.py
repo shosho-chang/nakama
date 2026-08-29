@@ -418,9 +418,7 @@ def _validate_execution_lineage(
     ):
         raise AudioAuditExecutionError("audio audit rejects text-only execution")
     exact_cells = tuple(item.id for item in audit_plan.cells)
-    exact_required = {
-        item.id for item in audit_plan.cells if item.applicability == "required"
-    }
+    exact_required = {item.id for item in audit_plan.cells if item.applicability == "required"}
     coverage_matches = (
         set(execution_plan.all_cell_ids) == set(exact_cells)
         and set(execution_plan.required_cell_ids)
@@ -1328,9 +1326,8 @@ class AudioFullAuditExecutor:
                     catastrophic.add(span_id)
             elif assessment.status in ("unresolved_insufficient_evidence", "conflict"):
                 unresolved.add(span_id)
-        span_order = {
-            span_id: index for index, span_id in enumerate(execution_plan.owned_span_ids)
-        }
+        span_order = {span_id: index for index, span_id in enumerate(execution_plan.owned_span_ids)}
+
         def ordered(values: set[str]) -> tuple[str, ...]:
             return tuple(sorted(values, key=span_order.__getitem__))
 
@@ -1352,16 +1349,12 @@ class AudioFullAuditExecutor:
                 "observed_text": assessment.observed_text,
                 "candidate_text": assessment.candidate_text,
                 "cited_span_ids": assessment.cited_span_ids,
-                "cited_recognition_evidence_ids": (
-                    assessment.cited_recognition_evidence_ids
-                ),
+                "cited_recognition_evidence_ids": (assessment.cited_recognition_evidence_ids),
                 "cited_reference_evidence_ids": assessment.cited_reference_evidence_ids,
                 "trigger_signal_ids": assessment.trigger_signal_ids,
                 "trigger_group_ids": assessment.trigger_group_ids,
                 "evidence_basis": assessment.evidence_basis,
-                "authority": (
-                    "audio_audit_discovery_not_correction_decision_or_arbitration"
-                ),
+                "authority": ("audio_audit_discovery_not_correction_decision_or_arbitration"),
                 "requires_audio_arbitration": True,
                 "is_audio_evidence": True,
             }
@@ -1400,8 +1393,7 @@ class AudioFullAuditExecutor:
             "catastrophic_span_ids": ordered(catastrophic),
             "execution_status": "complete_selective_audio_delta",
             "coverage_statement": (
-                "exact_selected_delta_required_cells_assessed_"
-                "unselected_cells_have_no_disposition"
+                "exact_selected_delta_required_cells_assessed_unselected_cells_have_no_disposition"
             ),
             "authority": "not_correction_decisions_or_release_approval",
         }
@@ -1622,9 +1614,7 @@ def _validate_execution_lineage_placeholder(
         else CorrectionAuditExecutionPlanV2
     )
     try:
-        validated = execution_model.model_validate_json(
-            canonical_json_bytes(execution_plan)
-        )
+        validated = execution_model.model_validate_json(canonical_json_bytes(execution_plan))
     except ValidationError as exc:
         raise AudioAuditExecutionError("audio execution plan is internally invalid") from exc
     if validated != execution_plan:

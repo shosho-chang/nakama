@@ -54,8 +54,7 @@ def _add_resolve_args(parser: argparse.ArgumentParser) -> None:
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Podcast Editorial Master：approved Resolve Timeline "
-            "→ immutable fan-out baseline"
+            "Podcast Editorial Master：approved Resolve Timeline → immutable fan-out baseline"
         )
     )
     subparsers = parser.add_subparsers(dest="command", required=True)

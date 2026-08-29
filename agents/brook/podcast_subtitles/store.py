@@ -724,9 +724,7 @@ class GenerationStore:
         child_artifacts = dict(checkpoint.artifact_hashes)
         added = set(child_artifacts) - set(old_artifacts)
         changed_or_missing = {
-            name
-            for name, digest in old_artifacts.items()
-            if child_artifacts.get(name) != digest
+            name for name, digest in old_artifacts.items() if child_artifacts.get(name) != digest
         }
         if (
             len(added) != 1
@@ -763,9 +761,7 @@ class GenerationStore:
                 if evidence_prefix_migration_artifact(receipt.id) != receipt_name:
                     raise ValueError("migration ledger artifact is not content addressed")
         except (TypeError, ValueError) as exc:
-            raise GenerationIsolationError(
-                "evidence-ready migration receipt is invalid"
-            ) from exc
+            raise GenerationIsolationError("evidence-ready migration receipt is invalid") from exc
         if canonical_json_bytes(receipt) != receipt_payload:
             raise GenerationIsolationError(
                 "evidence-ready migration receipt bytes are not canonical"
@@ -909,9 +905,7 @@ class GenerationStore:
         try:
             if payload is None:
                 raise ValueError("missing receipt")
-            receipt = NativeAuditBasisMigrationReceiptV1.model_validate_json(
-                payload, strict=True
-            )
+            receipt = NativeAuditBasisMigrationReceiptV1.model_validate_json(payload, strict=True)
         except (TypeError, ValueError) as exc:
             raise GenerationIsolationError(
                 "native audit basis migration receipt is invalid"

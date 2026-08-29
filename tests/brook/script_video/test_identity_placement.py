@@ -230,13 +230,13 @@ def test_emit_event_writes_renderer_recipe_at_accepted_cue(tmp_path: Path) -> No
     assert event["t0"] == 43.0
     assert event["t1"] == 48.2
     recipe = json.loads(
-        (root / "highlights" / "tighten" / "value-L01_broll.json").read_text(
-            encoding="utf-8"
-        )
+        (root / "highlights" / "tighten" / "value-L01_broll.json").read_text(encoding="utf-8")
     )
     assert recipe["items"] == [event]
     selected = verify_guest_namecard_recipe(
-        root, cut_id="value-L01", editorial_master=master  # type: ignore[arg-type]
+        root,
+        cut_id="value-L01",
+        editorial_master=master,  # type: ignore[arg-type]
     )
     assert event["identity_placement"] == selected.identity()
 
@@ -256,7 +256,9 @@ def test_recipe_timestamp_or_lineage_tamper_fails_closed(tmp_path: Path) -> None
     path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(IdentityPlacementError, match="before accepted guest speech"):
         verify_guest_namecard_recipe(
-            root, cut_id="value-L01", editorial_master=master  # type: ignore[arg-type]
+            root,
+            cut_id="value-L01",
+            editorial_master=master,  # type: ignore[arg-type]
         )
 
     payload["items"][0]["t0"] = 43.0
@@ -264,7 +266,9 @@ def test_recipe_timestamp_or_lineage_tamper_fails_closed(tmp_path: Path) -> None
     path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(IdentityPlacementError, match="recipe lineage is stale"):
         verify_guest_namecard_recipe(
-            root, cut_id="value-L01", editorial_master=master  # type: ignore[arg-type]
+            root,
+            cut_id="value-L01",
+            editorial_master=master,  # type: ignore[arg-type]
         )
 
 
@@ -312,9 +316,7 @@ def test_different_cues_are_rejected(tmp_path: Path) -> None:
     audit_a = cut_dir / "identity-audit-a.json"
     audit_b = cut_dir / "identity-audit-b.json"
     _write_audit(audit_a, root=root, srt=srt, master=master, worker_id="worker-a")
-    _write_audit(
-        audit_b, root=root, srt=srt, master=master, worker_id="worker-b", cue=_cue(3)
-    )
+    _write_audit(audit_b, root=root, srt=srt, master=master, worker_id="worker-b", cue=_cue(3))
     with pytest.raises(IdentityPlacementError, match="quorum conflict"):
         accept_identity_placement(
             root,
@@ -333,9 +335,7 @@ def test_audit_timestamp_drift_is_rejected(tmp_path: Path) -> None:
     drifted["start_sec"] = 43.001
     audit_a = cut_dir / "identity-audit-a.json"
     audit_b = cut_dir / "identity-audit-b.json"
-    _write_audit(
-        audit_a, root=root, srt=srt, master=master, worker_id="worker-a", cue=drifted
-    )
+    _write_audit(audit_a, root=root, srt=srt, master=master, worker_id="worker-a", cue=drifted)
     _write_audit(audit_b, root=root, srt=srt, master=master, worker_id="worker-b")
     with pytest.raises(IdentityPlacementError, match="timestamp/text identity drift"):
         accept_identity_placement(
@@ -501,6 +501,7 @@ def test_tampered_materialization_is_rejected(tmp_path: Path) -> None:
             audit_b=audit_b,
             editorial_master=master,  # type: ignore[arg-type]
         )
+
 
 @pytest.mark.parametrize(
     ("start", "message"),

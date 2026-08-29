@@ -73,12 +73,8 @@ EPISODE_ID = "20260805 林之晨"
 CUT_ID = "long3-fresh-20260828-r4"
 CURRENT_RELEASE_ID = "release-af65a1d7a2ac611eb78be493"
 EXPECTED_PREVIEW_SHA256 = "728520b58acb6d2bba27480d13f6b9c81c982a2e757908de14c8135422abb4aa"
-EDITORIAL_MASTER_CONTENT_HASH = (
-    "8e7c13c2c55bc0df0c05241cfd91a9bf5c6b484b58058dae42d2bfaa7576805b"
-)
-PROJECT_UID = (
-    "resolve-project:da7c1f4698b72f57a400f9a5196d0b4a136ea498236f3296b13c4fe272795231"
-)
+EDITORIAL_MASTER_CONTENT_HASH = "8e7c13c2c55bc0df0c05241cfd91a9bf5c6b484b58058dae42d2bfaa7576805b"
+PROJECT_UID = "resolve-project:da7c1f4698b72f57a400f9a5196d0b4a136ea498236f3296b13c4fe272795231"
 CANONICAL_NAME = "long3-fresh-20260828-r4-base"
 
 RETIME_EVENT_ID = "evt_k_investment_broll"
@@ -396,9 +392,7 @@ def prepare() -> dict[str, object]:
         )
         if transaction.status != "preview_ready":
             raise RuntimeError("amendment transaction is not preview_ready")
-        candidate = _candidate(
-            lifecycle, transaction, plan, release, preview_path, subtitle_path
-        )
+        candidate = _candidate(lifecycle, transaction, plan, release, preview_path, subtitle_path)
         _verify_work_timeline(transactions, transaction, plan)
         if CURRENT_POINTER.read_bytes() != pointer_bytes:
             raise RuntimeError("current pointer changed during preview preparation")
@@ -463,9 +457,7 @@ def publish() -> dict[str, object]:
         if pointer_published:
             lifecycle.publish_current(old_releases)
         if committed:
-            transactions.compensating_rollback(
-                transaction.transaction_id, expected_cut_id=CUT_ID
-            )
+            transactions.compensating_rollback(transaction.transaction_id, expected_cut_id=CUT_ID)
         else:
             _rollback_preview_ready(transactions, transaction)
         raise

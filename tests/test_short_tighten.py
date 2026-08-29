@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from run_short_tighten import _keep_segments, _strip_cut_word
+from run_short_tighten import _keep_segments, _strip_cut_word, _subtitle_source_config
 
 
 def _cut(t0, t1, keep=True):
@@ -53,6 +53,32 @@ def test_strip_cut_word_picks_nearest_occurrence():
 
 def test_strip_cut_word_absent_is_noop():
     assert _strip_cut_word("完全無關的句子", "那", 0.5) == "完全無關的句子"
+
+
+def test_subtitle_source_config_keeps_corrected_text_and_raw_word_clock(tmp_path):
+    """Resolve 校正版文字可換鐘；raw words 仍留在 media clock，不能跟著平移。"""
+    episode = tmp_path / "episode"
+    highlights = episode / "highlights"
+    highlights.mkdir(parents=True)
+    corrected = highlights / "resolve_latest.srt"
+    corrected.write_text("1\n00:00:01,000 --> 00:00:02,000\n快的泛科學新聞\n", encoding="utf-8")
+    (highlights / "candidates.json").write_text(
+        """{
+          "candidates": [{
+            "id": "KS2",
+            "subtitle_source": "highlights/resolve_latest.srt",
+            "subtitle_clock_offset": -289.333333,
+            "words_clock_offset": 0.0
+          }]
+        }""",
+        encoding="utf-8",
+    )
+
+    source, subtitle_offset, words_offset = _subtitle_source_config(episode, "KS2")
+
+    assert source == corrected
+    assert subtitle_offset == -289.333333
+    assert words_offset == 0.0
 
 
 # --- 字幕細切（5–9 字呼吸單元） ---
@@ -224,6 +250,7 @@ def test_long_tighten_keeps_filler_and_backchannel():
 
     short, long_ = FORMAT_TIGHTEN["short"], FORMAT_TIGHTEN["long"]
     assert short["cut_filler"] and short["cut_backchannel"]
+    assert short["fine_subtitles"] and not long_["fine_subtitles"]
     # 長片保留連接詞與附和——那是訪談的自然感，不是贅肉
     assert not long_["cut_filler"] and not long_["cut_backchannel"]
     # 每個門檻都比短片鬆（實測依據見 FORMAT_TIGHTEN 註解）
@@ -276,9 +303,7 @@ def test_long_detect_uses_editorial_master_without_legacy_aliases(tmp_path, monk
     assert result["status"] == "detected"
     payload = json.loads(Path(result["file"]).read_text(encoding="utf-8"))
     assert payload["editorial_master_lineage"] == lineage
-    assert payload["cuts"] == [
-        {"t0": 12.2, "t1": 13.05, "kind": "pause", "dur": 1.2, "keep": True}
-    ]
+    assert payload["cuts"] == [{"t0": 12.2, "t1": 13.05, "kind": "pause", "dur": 1.2, "keep": True}]
     assert not (tmp_path / "transcript.srt").exists()
     assert not (tmp_path / "subs" / "words.json").exists()
 
@@ -366,3 +391,264 @@ def test_titles_long_format_params():
     # 16:9 有寬度沒高度 → 每行字數放寬
     assert FORMAT_TITLES["long"]["max_line"] > FORMAT_TITLES["short"]["max_line"]
     assert FORMAT_TITLES["long"]["max_line_hero"] > FORMAT_TITLES["short"]["max_line_hero"]
+
+
+def test_short_title_motion_grammar_accepts_animation_and_size_variety():
+    from run_short_titles import _validate_short_motion_grammar
+
+    _validate_short_motion_grammar(
+        [
+            {"tier": 2, "animation": "swipe", "line1_scale": 0.88},
+            {"tier": 2, "animation": "wipe", "line2_scale": 1.12},
+            {"tier": 1, "animation": "slam", "card_scale": 0.98},
+            {"tier": 2, "animation": "word", "line1_scale": 1.08},
+        ]
+    )
+
+
+def test_short_title_motion_grammar_rejects_three_identical_entries():
+    import pytest
+    from run_short_titles import _validate_short_motion_grammar
+
+    with pytest.raises(SystemExit, match="連續三張"):
+        _validate_short_motion_grammar(
+            [
+                {"animation": "swipe", "line1_scale": 0.88},
+                {"animation": "swipe", "line1_scale": 1.00},
+                {"animation": "swipe", "line1_scale": 1.12},
+                {"animation": "word", "line2_scale": 1.08},
+            ]
+        )
+
+
+def test_short_title_motion_grammar_rejects_uniform_size_template():
+    import pytest
+    from run_short_titles import _validate_short_motion_grammar
+
+    with pytest.raises(SystemExit, match="至少要有兩組"):
+        _validate_short_motion_grammar(
+            [
+                {"animation": "swipe"},
+                {"animation": "wipe"},
+                {"animation": "word"},
+                {"tier": 1, "animation": "slam"},
+            ]
+        )
+
+
+def test_kinetic_title_text_must_be_an_exact_transcript_span():
+    import pytest
+    from run_short_titles import _validate_exact_transcript_span
+
+    source = "那個消費者入口的就是那一個壽司"
+    _validate_exact_transcript_span(1, "那個消費者\n入口的就是", source)
+    _validate_exact_transcript_span(1, "那一個壽司", source)
+
+    with pytest.raises(SystemExit, match="不是逐字稿的原文連續片段"):
+        _validate_exact_transcript_span(1, "消費者入口就是一個壽司", source)
+
+
+def test_brand_pattern_is_official_single_use_gold_quote_only():
+    import pytest
+    from run_short_titles import _validate_brand_pattern_usage
+
+    pattern = {
+        "t0": 10.0,
+        "t1": 13.0,
+        "brand_pattern": {
+            "asset": "shards-gray-on-orange",
+            "role": "gold_quote",
+            "at": 1.8,
+            "duration": 0.8,
+        },
+    }
+    _validate_brand_pattern_usage([pattern, {}])
+
+    with pytest.raises(SystemExit, match="全片只能出現一次"):
+        _validate_brand_pattern_usage([pattern, pattern])
+
+    with pytest.raises(SystemExit, match="臨時繪製"):
+        _validate_brand_pattern_usage([{"stage": "rails"}])
+
+
+def test_full_transcript_choreography_requires_every_cue_exactly_once():
+    import pytest
+    from run_short_titles import _validate_full_transcript_coverage
+
+    cues = {
+        1: {"t0": 0.0, "t1": 1.0, "text": "第一句"},
+        2: {"t0": 1.0, "t1": 2.0, "text": "第二句"},
+        3: {"t0": 2.0, "t1": 3.0, "text": "第三句"},
+    }
+    titles = [
+        {"source_cues": [1, 2], "states": [{"source_cues": [1]}, {"source_cues": [2]}]},
+        {"source_cues": [3], "states": [{"source_cues": [3]}]},
+    ]
+    _validate_full_transcript_coverage(titles, cues)
+
+    with pytest.raises(SystemExit, match="逐字稿覆蓋不完整"):
+        _validate_full_transcript_coverage(titles[:1], cues)
+
+
+def test_selective_transcript_titles_keep_legacy_state_schema_compatible():
+    from run_short_titles import _validate_transcript_driven_title
+
+    cues = {
+        1: {"t0": 0.0, "t1": 1.0, "text": "一般字幕保留"},
+        2: {"t0": 1.0, "t1": 2.0, "text": "只有這句放大"},
+    }
+    title = {
+        "t0": 0.0,
+        "t1": 2.0,
+        "source_cues": [1, 2],
+        "states": [
+            {
+                "at": 1.0,
+                "trigger_cue": 2,
+                "lines": ["只有這句放大"],
+            }
+        ],
+    }
+
+    _validate_transcript_driven_title(0, title, cues)
+
+
+def test_kinetic_renderer_has_stable_non_elastic_exits():
+    html = (
+        Path(__file__).resolve().parent.parent
+        / "video/compositions/punch_card/compositions/kinetic_sequence.html"
+    ).read_text(encoding="utf-8")
+
+    assert "back.out" not in html
+    assert 'config.exit === "shrink"' not in html
+
+
+def test_full_transcript_display_rejects_punctuation():
+    import pytest
+    from run_short_titles import _validate_full_transcript_display
+
+    titles = [
+        {
+            "states": [
+                {"lines": ["會一直想，當然"]},
+            ]
+        }
+    ]
+
+    with pytest.raises(SystemExit, match="短片顯示文字不可含標點"):
+        _validate_full_transcript_display(titles)
+
+
+def test_kinetic_caption_rejects_three_simultaneous_lines():
+    import pytest
+    from run_short_titles import FORMAT_TITLES, _validate_kinetic_sequence
+
+    title = {
+        "states": [
+            {
+                "at": 0.0,
+                "role": "caption",
+                "lines": ["但是對那一個", "觀眾或那一個", "讀者來說那可能是"],
+            },
+            {"at": 1.5, "role": "caption", "lines": ["下一個節拍"]},
+        ]
+    }
+
+    with pytest.raises(SystemExit, match="caption 最多 2 行"):
+        _validate_kinetic_sequence(0, title, 3.0, FORMAT_TITLES["short"])
+
+
+def test_kinetic_renderer_centres_each_caption_line_and_supports_hard_cuts():
+    html = (
+        Path(__file__).resolve().parent.parent
+        / "video/compositions/punch_card/compositions/kinetic_sequence.html"
+    ).read_text(encoding="utf-8")
+
+    assert "lineOffsets" not in html
+    assert "state.line_roles" in html
+    assert "line-emphasis" in html
+    assert "captionGroupWidth" not in html
+    assert 'transition === "cut"' in html
+    assert "text-align: center" in html
+
+
+def test_split_opener_title_rejects_the_lower_panel_face_zone():
+    import pytest
+    from run_short_titles import _validate_split_opener_face_clearance
+
+    unsafe = [{"t0": 0.0, "t1": 7.5, "pos_y": 0.65}]
+    with pytest.raises(SystemExit, match="上下分割開場.*遮住下半格人臉"):
+        _validate_split_opener_face_clearance(unsafe, opener_sec=2.668)
+
+    safe = [{"t0": 0.0, "t1": 7.5, "pos_y": 0.86}]
+    _validate_split_opener_face_clearance(safe, opener_sec=2.668)
+
+
+def test_ks1_r010_fixture_limits_caption_density_and_passes_full_display_contract():
+    import json
+    import re
+
+    from run_short_titles import (
+        FORMAT_TITLES,
+        _validate_full_transcript_coverage,
+        _validate_full_transcript_display,
+        _validate_kinetic_sequence,
+        _validate_transcript_driven_title,
+    )
+
+    root = Path(__file__).resolve().parent.parent
+    srt = (root / "tests/fixtures/short_reference/KS1_tight_r010.srt").read_text(encoding="utf-8")
+    plan = json.loads(
+        (root / "tests/fixtures/short_reference/KS1_titles_editorial_v4.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    cues = {}
+    timestamp = re.compile(r"(\d+):(\d+):(\d+),(\d+) --> (\d+):(\d+):(\d+),(\d+)")
+    for block in re.split(r"\n\s*\n", srt.strip()):
+        lines = block.splitlines()
+        match = timestamp.fullmatch(lines[1])
+        parts = [int(value) for value in match.groups()]
+        t0 = parts[0] * 3600 + parts[1] * 60 + parts[2] + parts[3] / 1000
+        t1 = parts[4] * 3600 + parts[5] * 60 + parts[6] + parts[7] / 1000
+        cues[int(lines[0])] = {"t0": t0, "t1": t1, "text": "".join(lines[2:])}
+
+    assert cues[8]["text"] == "壽司所以"
+    assert cues[28]["text"] == "對於壽司"
+    assert plan["transition_mode"] == "cut"
+    caption_states = [
+        state
+        for title in plan["titles"]
+        for state in title["states"]
+        if state.get("role") == "caption"
+    ]
+    assert caption_states
+    assert max(len(state["lines"]) for state in caption_states) <= 2
+    sushi_state = next(
+        state
+        for title in plan["titles"]
+        for state in title["states"]
+        if state.get("source_cues") == [8, 9]
+    )
+    assert sushi_state["lines"] == ["壽司", "所以那時候老師傅"]
+    _validate_full_transcript_coverage(plan["titles"], cues)
+    _validate_full_transcript_display(plan["titles"])
+    for index, title in enumerate(plan["titles"]):
+        show_sec = float(title["t1"]) - float(title["t0"])
+        _validate_kinetic_sequence(index, title, show_sec, FORMAT_TITLES["short"])
+        _validate_transcript_driven_title(
+            index,
+            title,
+            cues,
+            require_full_state_coverage=True,
+        )
+
+
+def test_review_skips_bottom_subtitles_for_full_transcript_choreography(tmp_path):
+    from run_short_review import _uses_transcript_choreography
+
+    plan = tmp_path / "highlights/tighten/KS1_titles.json"
+    plan.parent.mkdir(parents=True)
+    plan.write_text('{"covers_full_transcript": true, "titles": []}', encoding="utf-8")
+
+    assert _uses_transcript_choreography(tmp_path, "KS1") is True

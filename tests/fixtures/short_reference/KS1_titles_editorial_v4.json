@@ -1,0 +1,114 @@
+{
+  "_spine": "KS1_tight_r009.srt 的 36 個 cue 依序各出現一次；一般字卡最多兩行、直接切換，並以跨 cue 排版修復語音切點造成的『壽司所以』『對於壽司｜師傅』。",
+  "_hierarchy": "caption 承接逐字稿；emphasis 只標論點；hero 全片唯一『那一個壽司』。",
+  "covers_full_transcript": true,
+  "transition_mode": "cut",
+  "split_opener_sec": 2.668,
+  "titles": [
+    {
+      "t0": 0.0,
+      "t1": 7.509,
+      "source_cues": [1, 2, 3, 4, 5, 6],
+      "beat": "hook",
+      "tier": 2,
+      "pos_y": 0.86,
+      "exit": "hard_cut",
+      "states": [
+        {"at": 0.0, "trigger_cue": 1, "source_cues": [1, 2], "transition": "cut", "role": "caption", "lines": ["老師傅他很在乎的", "一件事情就是"], "scales": [1.0, 1.0]},
+        {"at": 2.668, "trigger_cue": 3, "source_cues": [3], "transition": "cut", "role": "caption", "lines": ["因為不管你一天"], "scales": [1.0]},
+        {"at": 4.418, "trigger_cue": 4, "source_cues": [4], "transition": "cut", "role": "caption", "lines": ["你做一個壽司師傅", "你一天"], "scales": [1.0, 1.0]},
+        {"at": 5.599, "trigger_cue": 5, "source_cues": [5], "transition": "cut", "role": "caption", "lines": ["做了多少"], "scales": [1.0]},
+        {"at": 6.279, "trigger_cue": 6, "source_cues": [6], "transition": "cut", "role": "caption", "lines": ["的壽司", "那個"], "scales": [1.0, 1.0]}
+      ]
+    },
+    {
+      "t0": 7.509,
+      "t1": 13.946,
+      "source_cues": [7, 8, 9, 10, 11],
+      "beat": "insight",
+      "tier": 1,
+      "pos_y": 0.62,
+      "exit": "hard_cut",
+      "states": [
+        {"at": 0.0, "trigger_cue": 7, "source_cues": [7], "transition": "cut", "role": "emphasis", "lines": ["消費者入口的", "就是那一個"], "scales": [1.0, 1.0]},
+        {"at": 1.581, "trigger_cue": 8, "source_cues": [8, 9], "transition": "cut", "role": "caption", "line_roles": ["hero", "caption"], "lines": ["壽司", "所以那時候老師傅"], "scales": [1.0, 0.82]},
+        {"at": 3.886, "trigger_cue": 10, "source_cues": [10], "transition": "cut", "role": "caption", "lines": ["講那句話", "就對我"], "scales": [1.0, 1.0]},
+        {"at": 4.987, "trigger_cue": 11, "source_cues": [11], "transition": "cut", "role": "caption", "lines": ["影響很大", "因為我就會覺得"], "scales": [1.0, 1.0]}
+      ]
+    },
+    {
+      "t0": 13.946,
+      "t1": 18.791,
+      "source_cues": [12, 13, 14, 15, 16],
+      "beat": "evidence",
+      "tier": 2,
+      "pos_y": 0.65,
+      "exit": "hard_cut",
+      "states": [
+        {"at": 0.0, "trigger_cue": 12, "source_cues": [12, 13], "transition": "cut", "role": "caption", "lines": ["說我們做了", "很多很多的內容"], "scales": [1.0, 1.0]},
+        {"at": 1.321, "trigger_cue": 14, "source_cues": [14, 15], "transition": "cut", "role": "caption", "lines": ["然後這內容當然", "數位化可複製性"], "scales": [1.0, 1.0]},
+        {"at": 3.804, "trigger_cue": 16, "source_cues": [16], "transition": "cut", "role": "caption", "lines": ["很多人都會看到"], "scales": [1.0]}
+      ]
+    },
+    {
+      "t0": 18.791,
+      "t1": 28.978,
+      "source_cues": [17, 18, 19, 20, 21, 22],
+      "beat": "insight",
+      "tier": 2,
+      "pos_y": 0.63,
+      "exit": "hard_cut",
+      "states": [
+        {"at": 0.0, "trigger_cue": 17, "source_cues": [17], "transition": "cut", "role": "caption", "lines": ["但是對那一個", "觀眾或那一個"], "scales": [1.0, 1.0]},
+        {"at": 2.203, "trigger_cue": 18, "source_cues": [18, 19], "transition": "cut", "role": "caption", "lines": ["讀者來說那可能", "是他那天"], "scales": [1.0, 1.0]},
+        {"at": 5.41, "trigger_cue": 20, "source_cues": [20], "transition": "cut", "role": "caption", "line_roles": ["caption", "emphasis"], "lines": ["接收到", "最重要的一個訊息"], "scales": [1.0, 1.0]},
+        {"at": 8.211, "trigger_cue": 21, "source_cues": [21, 22], "transition": "cut", "role": "caption", "lines": ["所以這個", "就讓我可能"], "scales": [1.0, 1.0]}
+      ]
+    },
+    {
+      "t0": 28.978,
+      "t1": 37.158,
+      "source_cues": [23, 24, 25, 26, 27],
+      "beat": "mechanism",
+      "tier": 2,
+      "pos_y": 0.64,
+      "exit": "hard_cut",
+      "states": [
+        {"at": 0.0, "trigger_cue": 23, "source_cues": [23], "transition": "cut", "role": "caption", "lines": ["對品質會", "特別要求"], "scales": [1.0, 1.0]},
+        {"at": 1.718, "trigger_cue": 24, "source_cues": [24], "transition": "cut", "role": "emphasis", "lines": ["吹毛求疵"], "scales": [1.0]},
+        {"at": 2.959, "trigger_cue": 25, "source_cues": [25], "transition": "cut", "role": "emphasis", "lines": ["就是有一個", "職人的精神"], "scales": [1.0, 1.0]},
+        {"at": 5.019, "trigger_cue": 26, "source_cues": [26], "transition": "cut", "role": "caption", "lines": ["就很用心的看待", "每一個自己"], "scales": [1.0, 1.0]},
+        {"at": 7.12, "trigger_cue": 27, "source_cues": [27], "transition": "cut", "role": "caption", "lines": ["交出去的產品"], "scales": [1.0]}
+      ]
+    },
+    {
+      "t0": 37.158,
+      "t1": 41.784,
+      "source_cues": [28, 29, 30, 31],
+      "beat": "evidence",
+      "tier": 2,
+      "pos_y": 0.65,
+      "exit": "hard_cut",
+      "states": [
+        {"at": 0.0, "trigger_cue": 28, "source_cues": [28, 29], "transition": "cut", "role": "caption", "lines": ["對於壽司師傅來說", "就是"], "scales": [1.0, 1.0]},
+        {"at": 1.581, "trigger_cue": 30, "source_cues": [30], "transition": "cut", "role": "caption", "line_roles": ["caption", "emphasis"], "lines": ["一直想吃下去的", "那個人"], "scales": [1.0, 1.0]},
+        {"at": 3.533, "trigger_cue": 31, "source_cues": [31], "transition": "cut", "role": "caption", "lines": ["他的感覺"], "scales": [1.0]}
+      ]
+    },
+    {
+      "t0": 41.784,
+      "t1": 48.303,
+      "source_cues": [32, 33, 34, 35, 36],
+      "beat": "closing",
+      "tier": 2,
+      "pos_y": 0.64,
+      "exit": "hard_cut",
+      "states": [
+        {"at": 0.0, "trigger_cue": 32, "source_cues": [32, 33], "transition": "cut", "role": "caption", "lines": ["他的表情是什麼", "所以我會一直有這個"], "scales": [1.0, 1.0]},
+        {"at": 3.143, "trigger_cue": 34, "source_cues": [34], "transition": "cut", "role": "caption", "lines": ["角色就是", "觀眾"], "scales": [1.0, 1.0]},
+        {"at": 4.424, "trigger_cue": 35, "source_cues": [35], "transition": "cut", "role": "caption", "lines": ["他看了我們的內容"], "scales": [1.0]},
+        {"at": 5.544, "trigger_cue": 36, "source_cues": [36], "transition": "cut", "role": "emphasis", "lines": ["他會有什麼感覺"], "scales": [1.0]}
+      ]
+    }
+  ]
+}

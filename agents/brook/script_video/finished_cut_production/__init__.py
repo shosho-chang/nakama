@@ -15,6 +15,7 @@ projection an adapter re-derives itself is the one that silently drifts.
 from ._approved_cut import ApprovedCutRegistration
 from ._commands import CommandRejectedError
 from ._composition import (
+    RESOLVE_BINDING_SCHEMA,
     CurrentReleaseReader,
     FinishedCutProductionApplication,
     ProductionCutoverConfiguration,
@@ -22,7 +23,6 @@ from ._composition import (
     ProductionResolveConfiguration,
     ProductionStatusView,
     build_current_release_reader,
-    RESOLVE_BINDING_SCHEMA,
     build_production_application,
     build_resolve_configuration,
 )

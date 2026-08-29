@@ -146,10 +146,28 @@ _EXPECTED_READ_ONLY = {
 }
 
 
+def _read_only_hint(annotations: object | None) -> bool:
+    """Read the MCP hint across the v1 camelCase and v2 snake_case models."""
+    if annotations is None:
+        return False
+
+    for attribute in ("read_only_hint", "readOnlyHint"):
+        value = getattr(annotations, attribute, None)
+        if value is not None:
+            return bool(value)
+
+    model_dump = getattr(annotations, "model_dump", None)
+    if callable(model_dump):
+        values = model_dump(by_alias=True)
+        return bool(values.get("readOnlyHint", values.get("read_only_hint", False)))
+
+    return False
+
+
 def test_read_only_annotations_exact_set(handler):
     """readOnlyHint marks exactly the side-effect-free tools; write tools carry no annotations."""
     tools = build_nami_sdk_tools(handler)
-    hinted = {t.name for t in tools if t.annotations is not None and t.annotations.readOnlyHint}
+    hinted = {t.name for t in tools if _read_only_hint(t.annotations)}
     assert hinted == _EXPECTED_READ_ONLY
     assert all(t.annotations is None for t in tools if t.name not in _EXPECTED_READ_ONLY)
 

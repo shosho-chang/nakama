@@ -33,7 +33,7 @@ def _candidate_files(
                         "t_start": 10.0,
                         "t_end": 20.0,
                     }
-                ]
+                ],
             }
         ),
         encoding="utf-8",
@@ -48,7 +48,7 @@ def _candidate_files(
                         "rank": 1,
                         "title": "Master cut",
                     }
-                ]
+                ],
             }
         ),
         encoding="utf-8",
@@ -254,9 +254,7 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
         "agents.brook.script_video.highlight_broll.probe_stock_video",
         lambda _path: {
             "duration_seconds": 5.0,
-            "video_streams": [
-                {"index": 0, "codec_name": "h264", "width": 16, "height": 16}
-            ],
+            "video_streams": [{"index": 0, "codec_name": "h264", "width": 16, "height": 16}],
         },
     )
     master, identity = _selection(tmp_path)
@@ -362,9 +360,7 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
     )
     from agents.brook.script_video.highlight_broll import receipt_identity
 
-    broll_receipt = _authoritative_broll_receipt_fixture(
-        tmp_path, "value-L01", broll_items
-    )
+    broll_receipt = _authoritative_broll_receipt_fixture(tmp_path, "value-L01", broll_items)
     monkeypatch.setattr(producer, "verify_broll_receipt", lambda *_args, **_kwargs: broll_receipt)
     cut_dir = tmp_path / "highlights" / "review" / "value-L01"
     cut_dir.mkdir(parents=True)
@@ -447,8 +443,7 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
     transition = next(
         item
         for item in cut["components"]
-        if item["lane"] == "fullscreen_transition"
-        and item["display"] == "真正落後的是大人"
+        if item["lane"] == "fullscreen_transition" and item["display"] == "真正落後的是大人"
     )
     assert transition["component"] == "transition_title"
     assert transition["display"] == "真正落後的是大人"
@@ -471,19 +466,14 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
     broll = next(item for item in cut["components"] if item["lane"] == "b_roll")
     assert broll["asset"]["sha256"] == hashlib.sha256(b"asset-0").hexdigest()
     assert broll["asset_category"] == "stock_video"
-    assert cut["artifacts"]["events"]["sha256"] == hashlib.sha256(
-        (cut_dir / "events.json").read_bytes()
-    ).hexdigest()
-    hero_ids = [
-        row["component_id"] for row in cut["components"] if row["lane"] == "hero_title"
-    ]
+    assert (
+        cut["artifacts"]["events"]["sha256"]
+        == hashlib.sha256((cut_dir / "events.json").read_bytes()).hexdigest()
+    )
+    hero_ids = [row["component_id"] for row in cut["components"] if row["lane"] == "hero_title"]
     assert hero_ids == ["value-L01-hero-001", "value-L01-hero-002"]
     identity_registry_path = cut_dir.parent / "finished_review_component_identity.v2.json"
-    identity_registry = json.loads(
-        identity_registry_path.read_text(
-            encoding="utf-8"
-        )
-    )
+    identity_registry = json.loads(identity_registry_path.read_text(encoding="utf-8"))
     assert identity_registry["source_manifest"]["filename"] == (
         "finished_review_manifest_20260822.json"
     )
@@ -493,9 +483,7 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
         if row["lane"] == "hero_title"
     ] == ["value-L01-hero-001", "value-L01-hero-002"]
 
-    verified = producer.verify_finished_review_cut(
-        tmp_path, "value-L01", output, feedback_rows=[]
-    )
+    verified = producer.verify_finished_review_cut(tmp_path, "value-L01", output, feedback_rows=[])
     assert verified["stock_video_count"] == 3
     assert verified["manifest_sha256"] == hashlib.sha256(output.read_bytes()).hexdigest()
     with pytest.raises(SystemExit, match="replacement 未 exact 套用"):
@@ -578,13 +566,11 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
         if row["lane"] == "b_roll"
     }
     source_manifest_sha256 = hashlib.sha256(output.read_bytes()).hexdigest()
-    source_registry_sha256 = json.loads(
-        identity_registry_path.read_text(encoding="utf-8")
-    )["content_hash"]
-    replacement_items = []
-    stock_events = [
-        event for event in packet["events"] if event.get("review_lane") == "b_roll"
+    source_registry_sha256 = json.loads(identity_registry_path.read_text(encoding="utf-8"))[
+        "content_hash"
     ]
+    replacement_items = []
+    stock_events = [event for event in packet["events"] if event.get("review_lane") == "b_roll"]
     for index in range(3):
         slug = f"replacement-{index}"
         (asset_dir / f"{slug}.mp4").write_bytes(f"replacement-{index}".encode())
@@ -605,9 +591,7 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
     (tighten / "value-L01_broll.json").write_text(
         json.dumps({"items": replacement_items}), encoding="utf-8"
     )
-    broll_receipt = _authoritative_broll_receipt_fixture(
-        tmp_path, "value-L01", replacement_items
-    )
+    broll_receipt = _authoritative_broll_receipt_fixture(tmp_path, "value-L01", replacement_items)
     packet["stock_video_lineage"] = receipt_identity(broll_receipt)
     (cut_dir / "events.json").write_text(json.dumps(packet), encoding="utf-8")
 
@@ -660,9 +644,9 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
         producer.build_manifest(tmp_path, identity_transition=modified_replay)
 
     second_source_manifest_sha256 = hashlib.sha256(output.read_bytes()).hexdigest()
-    second_source_registry_sha256 = json.loads(
-        identity_registry_path.read_text(encoding="utf-8")
-    )["content_hash"]
+    second_source_registry_sha256 = json.loads(identity_registry_path.read_text(encoding="utf-8"))[
+        "content_hash"
+    ]
     second_items = []
     for index in range(3):
         slug = f"second-replacement-{index}"
@@ -681,9 +665,7 @@ def test_finished_manifest_is_deterministic_and_classifies_visual_truth(tmp_path
     (tighten / "value-L01_broll.json").write_text(
         json.dumps({"items": second_items}), encoding="utf-8"
     )
-    broll_receipt = _authoritative_broll_receipt_fixture(
-        tmp_path, "value-L01", second_items
-    )
+    broll_receipt = _authoritative_broll_receipt_fixture(tmp_path, "value-L01", second_items)
     packet["stock_video_lineage"] = receipt_identity(broll_receipt)
     (cut_dir / "events.json").write_text(json.dumps(packet), encoding="utf-8")
     second_transition = {
@@ -744,9 +726,7 @@ def test_finished_manifest_rejects_arbitrary_legacy_component_id_remap(tmp_path)
         producer.build_manifest(tmp_path)
 
 
-def test_authoritative_verifier_rejects_forged_stock_labels_without_receipt(
-    tmp_path, monkeypatch
-):
+def test_authoritative_verifier_rejects_forged_stock_labels_without_receipt(tmp_path, monkeypatch):
     import build_finished_review_manifest as producer
 
     master, identity = _selection(tmp_path)
@@ -906,9 +886,7 @@ def test_finished_manifest_ignores_unknown_review_packet(tmp_path, monkeypatch):
         "agents.brook.script_video.highlight_broll.probe_stock_video",
         lambda _path: {
             "duration_seconds": 5.0,
-            "video_streams": [
-                {"index": 0, "codec_name": "h264", "width": 16, "height": 16}
-            ],
+            "video_streams": [{"index": 0, "codec_name": "h264", "width": 16, "height": 16}],
         },
     )
     master, identity = _selection(tmp_path)
@@ -940,9 +918,7 @@ def test_finished_manifest_ignores_unknown_review_packet(tmp_path, monkeypatch):
     )
     from agents.brook.script_video.highlight_broll import receipt_identity
 
-    broll_receipt = _authoritative_broll_receipt_fixture(
-        tmp_path, "value-L01", broll_items
-    )
+    broll_receipt = _authoritative_broll_receipt_fixture(tmp_path, "value-L01", broll_items)
     monkeypatch.setattr(producer, "verify_broll_receipt", lambda *_args, **_kwargs: broll_receipt)
     for cut_id in ("value-L01", "unknown-L99"):
         cut_dir = review / cut_id
@@ -1178,9 +1154,7 @@ def test_tighten_writer_to_review_verifier_cross_contract(tmp_path, monkeypatch)
     import run_short_tighten
 
     master, identity = _selection(tmp_path)
-    timeline = _live_master_timeline(
-        "長1 - Master（緊·導播）", "director-uid", master.media_path
-    )
+    timeline = _live_master_timeline("長1 - Master（緊·導播）", "director-uid", master.media_path)
     path = run_short_tighten._commit_materialization_receipt(
         tmp_path,
         cid="value-L01",

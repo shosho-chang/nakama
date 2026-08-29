@@ -100,10 +100,11 @@ def test_pool_lands_in_both_the_working_set_and_the_vault(monkeypatch, staged):
 def test_portrait_results_are_dropped_before_they_reach_the_gate(monkeypatch, staged):
     """中央卡是橫的；直式在 attach 那關本來就會被擋，不該浪費修修一次點擊。"""
     _, packaging = staged
-    sizes = {"https://cdn.example/tall.png": (1080, 1920), "https://cdn.example/wide.png": (1600, 900)}
-    monkeypatch.setattr(
-        stage_center_candidates, "_fetch", lambda url: _png_bytes(*sizes[url])
-    )
+    sizes = {
+        "https://cdn.example/tall.png": (1080, 1920),
+        "https://cdn.example/wide.png": (1600, 900),
+    }
+    monkeypatch.setattr(stage_center_candidates, "_fetch", lambda url: _png_bytes(*sizes[url]))
 
     out = stage_center_candidates.stage(
         packaging,

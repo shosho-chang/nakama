@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bridge · {{ task.name }}</title>
 <script src="/static/shosho/theme.js?v={{ asset_version | default('') }}"></script>
+<script src="/static/shosho/focus-music.js?v={{ asset_version | default('') }}"></script>
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version | default('') }}">
@@ -199,6 +200,15 @@
               <span class="pj-timer-icon" data-timer-icon>▶</span>
               <span class="pj-timer-display" data-timer-display>25:00</span>
             </button>
+            {# 修修 (2026-08-25): now-playing focus music — populated by focus-music.js.
+               ♪ setup 按鈕只在「瀏覽器支援本地資料夾、但還沒選過」時出現。 #}
+            <span class="pj-music-title" data-music-title hidden>
+              <span class="pj-music-note" aria-hidden="true">♪</span><span data-music-name></span>
+            </span>
+            <input class="pj-music-vol" data-music-vol hidden type="range" min="0" max="100" step="5"
+                   aria-label="音樂音量" title="音樂音量">
+            <button type="button" class="pj-timer-secondary pj-music-setup" data-music-setup hidden
+                    title="選一次本地音樂資料夾（例如 E:\data\music，內含 focus / uplifting 分類）——之後按 ▶ 就會隨機播放，不經過伺服器">♪ 音樂資料夾</button>
           </div>
 
           {# running-only: finish-early (logs ACTUAL elapsed — A2) / abort (no log) #}
@@ -209,9 +219,9 @@
              backfill a block done on a PAST day; without it the block is stamped today and
              leaks into the wrong week (修修 bug). JS syncs the picker into each form's
              entry_date; with no JS it stays blank ⇒ the route records today (safe fallback). #}
-          <label class="tk-backfill" title="手動補記的日期（預設今天；要補過去某天做的，改這裡）">
+          <label class="tk-backfill" title="手動補記的日期（預設＝最近一次排程日；當天有排時段時，+1 會記在排程時窗內；要補其他天改這裡）">
             <span class="tk-backfill-cap">補記日期</span>
-            <input type="date" id="tk-backfill-date" value="{{ today_iso }}" max="{{ today_iso }}"
+            <input type="date" id="tk-backfill-date" value="{{ backfill_default_iso | default(today_iso) }}" max="{{ today_iso }}"
                    aria-label="手動補記番茄鐘的日期">
           </label>
           <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-mform">
@@ -332,6 +342,7 @@
     }
     function submitLog() {
       stopTicker();
+      if (window.ShoFocusMusic) ShoFocusMusic.stop();
       var mode = curMode();
       // cap at the nominal block (a natural finish / background overshoot logs a full
       // block; an early 完成 logs the actual focused time — ADR-040 A2). The route
@@ -347,18 +358,27 @@
     function tick() {
       // wall-clock derived — correct even after the interval was throttled while hidden
       if (remainingSec() <= 0) { render(); submitLog(); return; }
+      // 修修 (2026-08-25): 音樂跟著倒數走——剩 60s 切 uplifting、最後 5s 漸弱
+      if (window.ShoFocusMusic) ShoFocusMusic.sync(remainingSec());
       render();
     }
 
     btn.addEventListener('click', function () {
-      if (isRunning()) { pause(); render(); return; }  // ⏸ pause, keep banked time
+      if (isRunning()) {  // ⏸ pause, keep banked time; hold the music with it
+        pause();
+        if (window.ShoFocusMusic) ShoFocusMusic.pause();
+        render(); return;
+      }
       started = true; runStartTs = Date.now();
       stopTicker(); ticker = setInterval(tick, 500);
+      // 修修 (2026-08-25): 開始計時 → focus music（resume 續播暫停曲、否則隨機抽一首）
+      if (window.ShoFocusMusic) ShoFocusMusic.resume();
       render();
     });
     if (finishBtn) finishBtn.addEventListener('click', submitLog);
     if (abortBtn) abortBtn.addEventListener('click', function () {
       stopTicker(); started = false; elapsedBefore = 0; runStartTs = 0;
+      if (window.ShoFocusMusic) ShoFocusMusic.stop();
       nominalSec = curMin() * 60; render();
     });
     Array.prototype.forEach.call(modeRadios, function (r) {

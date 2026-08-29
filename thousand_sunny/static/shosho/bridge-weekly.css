@@ -101,6 +101,8 @@ body.sho .wk-newtask-form {
 }
 body.sho .wk-newtask-form select,
 body.sho .wk-newtask-title input,
+body.sho .wk-newtask-date,
+body.sho .wk-newtask-time,
 body.sho .wk-newtask-pom {
   font-family: var(--sho-font-mono); font-size: 12px; color: var(--sho-text);
   background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
@@ -201,6 +203,8 @@ body.sho .wk-day-pom {
   margin-left: auto; font-family: var(--sho-font-mono); font-size: 13px;
   color: var(--sho-text-2); font-variant-numeric: tabular-nums;
 }
+/* 修修 (2026-08-25): 實際/規劃 — the actual (numerator) carries the emphasis */
+body.sho .wk-day-pom-a { color: var(--sho-text); font-weight: 600; }
 body.sho .wk-day-caret { color: var(--sho-muted); font-size: 11px; transition: transform var(--sho-t-fast) var(--sho-ease); }
 body.sho .wk-day[open] .wk-day-caret { transform: rotate(90deg); }
 /* card body — responsive category columns: side-by-side wide, stacked narrow */
@@ -223,7 +227,8 @@ body.sho .wk-cat-empty { color: var(--sho-line-2); font-size: 12px; }
 body.sho .wk-cat-items {
   list-style: none; margin: 0; padding: 0;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) max-content max-content;
+  /* 修修 (2026-08-24): leading 時段 column (HH:MM–HH:MM, 24h) before the checkbox */
+  grid-template-columns: max-content auto minmax(0, 1fr) max-content max-content;
   align-items: center; row-gap: 5px; column-gap: 8px;
   font-size: 13px; color: var(--sho-text);
 }
@@ -247,6 +252,13 @@ body.sho .wk-ci-name {
 body.sho .wk-ci-name:hover { color: var(--sho-accent); }
 body.sho .wk-ci-name:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
 body.sho .wk-ci-box { color: var(--sho-text-2); flex-shrink: 0; }
+/* 修修 (2026-08-24): the day-card 時段 cell — mono + tabular so ranges align; empty
+   for all-day / unscheduled items (the cell still renders to keep the grid columns). */
+body.sho .wk-ci-time {
+  font-family: var(--sho-font-mono); font-size: 10px; color: var(--sho-text-2);
+  font-variant-numeric: tabular-nums; white-space: nowrap; align-self: center;
+}
+body.sho .wk-cat-item.done .wk-ci-time { color: var(--sho-muted); }
 
 /* ── carry-forward + review ── */
 body.sho .wk-cf { display: flex; align-items: center; gap: 12px; padding: 9px 6px; border-bottom: 1px solid var(--sho-line); }
@@ -648,13 +660,17 @@ body.sho .wk-sched-go { padding: 0 18px; font-size: 12px; height: 34px; }
    dark color-scheme renders it near-invisible by default; lift it to a clear
    accent-tinted glyph so 修修 knows the field opens a picker. */
 body.sho .wk-sched-date::-webkit-calendar-picker-indicator,
-body.sho .wk-sched-time::-webkit-calendar-picker-indicator {
+body.sho .wk-sched-time::-webkit-calendar-picker-indicator,
+body.sho .wk-newtask-date::-webkit-calendar-picker-indicator,
+body.sho .wk-newtask-time::-webkit-calendar-picker-indicator {
   opacity: 0.9; cursor: pointer; padding: 2px; border-radius: var(--sho-r-1);
   filter: invert(48%) sepia(89%) saturate(1200%) hue-rotate(346deg);  /* → PANTONE 165 orange */
   transition: opacity var(--sho-t-fast) var(--sho-ease);
 }
 body.sho .wk-sched-date:hover::-webkit-calendar-picker-indicator,
-body.sho .wk-sched-time:hover::-webkit-calendar-picker-indicator { opacity: 1; }
+body.sho .wk-sched-time:hover::-webkit-calendar-picker-indicator,
+body.sho .wk-newtask-date:hover::-webkit-calendar-picker-indicator,
+body.sho .wk-newtask-time:hover::-webkit-calendar-picker-indicator { opacity: 1; }
 
 /* #7 — unified row: divider + label before the inline calendar scheduler */
 body.sho .wk-cal-divider {

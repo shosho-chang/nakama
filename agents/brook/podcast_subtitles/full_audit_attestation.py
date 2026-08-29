@@ -236,9 +236,7 @@ class SelectiveAuditAggregateAttestationV3(BaseModel):
                 raise ValueError(f"selective aggregate repeats {label}")
         if set(self.text_disposition_cell_ids) != set(self.all_cell_ids):
             raise ValueError("selective aggregate lacks universal text dispositions")
-        if set(self.audio_assessed_cell_ids) != set(
-            self.final_selected_required_cell_ids
-        ):
+        if set(self.audio_assessed_cell_ids) != set(self.final_selected_required_cell_ids):
             raise ValueError("selective aggregate audio assessment scope differs")
         if set(self.audio_assessed_cell_ids) & set(self.unselected_cell_ids):
             raise ValueError("selective aggregate assigns audio disposition outside selection")
@@ -694,8 +692,7 @@ def _validate_selective_parents(
         or text_execution_plan.candidate_signal_set_content_hash
         != candidate_signal_set.content_hash
         or text_execution_plan.candidate_group_set_hash != group_hash
-        or text_execution_plan.candidate_group_set_content_hash
-        != candidate_group_set.content_hash
+        or text_execution_plan.candidate_group_set_content_hash != candidate_group_set.content_hash
         or text_execution_plan.canonical_transcript_hash
         != audit_plan.inputs.canonical_transcript_hash
         or text_execution_plan.canonical_content_hash != audit_plan.inputs.canonical_content_hash
@@ -751,8 +748,7 @@ def _validate_selective_parents(
             or selection.normalized_audio_hash != audit_plan.inputs.normalized_audio_hash
             or selection.audit_plan_hash != audit_hash
             or selection.audit_plan_content_hash != audit_plan.content_hash
-            or selection.canonical_transcript_hash
-            != audit_plan.inputs.canonical_transcript_hash
+            or selection.canonical_transcript_hash != audit_plan.inputs.canonical_transcript_hash
             or selection.canonical_content_hash != audit_plan.inputs.canonical_content_hash
             or selection.text_audit_record_hash != text_hash
             or selection.text_audit_record_content_hash != text_record.content_hash
@@ -853,9 +849,7 @@ def build_selective_audit_aggregate_v3(
         "audit_input_hash": audit_plan.inputs.content_hash,
         "normalized_audio_hash": audit_plan.inputs.normalized_audio_hash,
         "recognition_evidence_hashes": audit_plan.inputs.recognition_evidence_hashes,
-        "audit_recognition_evidence_set_hash": (
-            audit_plan.inputs.recognition_evidence_set_hash
-        ),
+        "audit_recognition_evidence_set_hash": (audit_plan.inputs.recognition_evidence_set_hash),
         "candidate_signal_set_hash": sha256_bytes(canonical_json_bytes(candidate_signal_set)),
         "candidate_signal_set_content_hash": candidate_signal_set.content_hash,
         "candidate_group_set_hash": sha256_bytes(canonical_json_bytes(candidate_group_set)),
@@ -918,9 +912,7 @@ def build_selective_audit_aggregate_v3(
         "execution_scope": (
             "all_text_cells_dispositioned_audio_only_exact_selected_required_cells_assessed"
         ),
-        "authority": (
-            "no_text_mutation_no_correction_decision_no_arbitration_no_release_approval"
-        ),
+        "authority": ("no_text_mutation_no_correction_decision_no_arbitration_no_release_approval"),
     }
     digest = hash_object(payload)
     return SelectiveAuditAggregateAttestationV3(**payload, id=digest, content_hash=digest)
@@ -939,9 +931,7 @@ def verify_selective_audit_aggregate_v3(
     if type(exact_bytes) is not bytes:
         raise FullAuditAttestationError("selective aggregate requires exact bytes")
     try:
-        parsed = SelectiveAuditAggregateAttestationV3.model_validate_json(
-            exact_bytes, strict=True
-        )
+        parsed = SelectiveAuditAggregateAttestationV3.model_validate_json(exact_bytes, strict=True)
     except (ValidationError, ValueError) as exc:
         raise FullAuditAttestationError("selective aggregate bytes violate strict schema") from exc
     if canonical_json_bytes(parsed) != exact_bytes:

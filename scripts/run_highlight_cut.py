@@ -33,8 +33,10 @@ import tempfile
 import time
 from pathlib import Path
 
-sys.stdout.reconfigure(encoding="utf-8")
-sys.stderr.reconfigure(encoding="utf-8")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -255,9 +257,7 @@ def _load_miner_output(
         raise Stage5SubtitleContractError(f"{role} miner output schema drift")
     lineage = _source_lineage(source)
     expected_srt_sha256 = (
-        lineage.get("subtitle_srt_sha256")
-        if source.legacy
-        else lineage.get("master_srt_sha256")
+        lineage.get("subtitle_srt_sha256") if source.legacy else lineage.get("master_srt_sha256")
     )
     if (
         payload.get("schema_version") != 2
@@ -276,14 +276,10 @@ def _load_miner_output(
     normalized: list[dict] = []
     for index, candidate in enumerate(candidates):
         if not isinstance(candidate, dict) or set(candidate) != _MINER_CANDIDATE_FIELDS:
-            raise Stage5SubtitleContractError(
-                f"{role} miner candidate {index} schema drift"
-            )
+            raise Stage5SubtitleContractError(f"{role} miner candidate {index} schema drift")
         candidate_id = candidate.get("id")
         if not isinstance(candidate_id, str) or not candidate_id or candidate_id in seen:
-            raise Stage5SubtitleContractError(
-                f"{role} miner candidate id is invalid or duplicated"
-            )
+            raise Stage5SubtitleContractError(f"{role} miner candidate id is invalid or duplicated")
         seen.add(candidate_id)
         fmt = candidate.get("format")
         if fmt not in BANDS:
@@ -345,9 +341,7 @@ def _load_miner_output(
             raise Stage5SubtitleContractError(
                 f"{role} miner candidate {candidate_id} miner field differs from role"
             )
-        cue_range_transcript = "\n".join(
-            cue[2] for cue in cues[cue_start - 1 : cue_end]
-        )
+        cue_range_transcript = "\n".join(cue[2] for cue in cues[cue_start - 1 : cue_end])
         if candidate["hook"] not in cue_range_transcript:
             raise Stage5SubtitleContractError(
                 f"{role} miner candidate {candidate_id} hook is not a raw transcript substring"
@@ -411,10 +405,7 @@ def _load_miner_output(
                     type(transition_before) is not bool
                     or (
                         transition_before
-                        and (
-                            not isinstance(transition_title, str)
-                            or not transition_title.strip()
-                        )
+                        and (not isinstance(transition_title, str) or not transition_title.strip())
                     )
                     or (not transition_before and transition_title is not None)
                 ):
@@ -467,9 +458,7 @@ def merge_miners(
         verifier_factory=verifier_factory,
     )
     hdir = episode_dir / HIGHLIGHTS_DIR
-    paths = miner_paths or {
-        role: hdir / f"miner-{role}.json" for role in MINER_ROLES
-    }
+    paths = miner_paths or {role: hdir / f"miner-{role}.json" for role in MINER_ROLES}
     if set(paths) != set(MINER_ROLES):
         raise Stage5SubtitleContractError(
             "miner merge requires exactly story, punch, and value outputs"
@@ -497,9 +486,7 @@ def merge_miners(
     lineage = _source_lineage(source)
     lineage_key = _lineage_key(source)
     source_srt_sha256 = (
-        lineage["subtitle_srt_sha256"]
-        if source.legacy
-        else lineage["master_srt_sha256"]
+        lineage["subtitle_srt_sha256"] if source.legacy else lineage["master_srt_sha256"]
     )
     payload = {
         "schema_version": 2,
@@ -797,11 +784,15 @@ def materialize(
                 "existing Highlight timeline has no Editorial Master materialization receipt: "
                 + ", ".join(sorted(unbound))
             )
-    stale = [
-        project.GetTimelineByIndex(i)
-        for i in range(1, project.GetTimelineCount() + 1)
-        if (t := project.GetTimelineByIndex(i)) and t.GetName() in existing_names
-    ] if source.legacy else []
+    stale = (
+        [
+            project.GetTimelineByIndex(i)
+            for i in range(1, project.GetTimelineCount() + 1)
+            if (t := project.GetTimelineByIndex(i)) and t.GetName() in existing_names
+        ]
+        if source.legacy
+        else []
+    )
     if stale:
         mp.DeleteTimelines(stale)
 

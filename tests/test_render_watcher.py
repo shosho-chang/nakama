@@ -94,9 +94,7 @@ def test_cut_without_request_is_ignored(vault):
     assert pending_requests(vault, {}) == []
 
 
-def test_render_one_persists_running_before_subprocess_and_done_after(
-    monkeypatch, tmp_path
-):
+def test_render_one_persists_running_before_subprocess_and_done_after(monkeypatch, tmp_path):
     state_path = tmp_path / "state.json"
     working = tmp_path / "working"
     working.mkdir()
@@ -234,9 +232,7 @@ def test_render_request_filters_are_exact_and_default_to_all():
     )
 
 
-def test_render_requests_only_cli_skips_revision_and_initial_jobs(
-    monkeypatch, tmp_path
-):
+def test_render_requests_only_cli_skips_revision_and_initial_jobs(monkeypatch, tmp_path):
     calls: list[tuple[str, str]] = []
     render_jobs = [
         {
@@ -256,9 +252,7 @@ def test_render_requests_only_cli_skips_revision_and_initial_jobs(
     initial = {"key": "initial-packaging-job"}
     monkeypatch.setattr("scripts.render_watcher.get_vault_path", lambda: tmp_path)
     monkeypatch.setattr("scripts.render_watcher.pending_revision_jobs", lambda vault: [revision])
-    monkeypatch.setattr(
-        "scripts.render_watcher.pending_requests", lambda vault, state: render_jobs
-    )
+    monkeypatch.setattr("scripts.render_watcher.pending_requests", lambda vault, state: render_jobs)
     monkeypatch.setattr("scripts.render_watcher.pending_packaging_jobs", lambda vault: [initial])
     monkeypatch.setattr(
         "scripts.render_watcher.run_revision_job",
@@ -479,9 +473,7 @@ def test_initial_packaging_dispatch_uses_sol_and_bounded_directories(tmp_path, m
     assert "value-L01" in prompt
 
 
-def test_initial_packaging_success_becomes_ready_and_failure_becomes_failed(
-    vault, tmp_path
-):
+def test_initial_packaging_success_becomes_ready_and_failure_becomes_failed(vault, tmp_path):
     vault_ep, manifest_path = _queued_packaging_manifest(vault)
     episode = tmp_path / "episode"
     working = episode / "packaging"
@@ -540,9 +532,7 @@ def test_initial_packaging_success_becomes_ready_and_failure_becomes_failed(
         for root in (working, vault_ep):
             (root / "packages.json").write_text(payload, encoding="utf-8")
             for rank in range(1, 4):
-                Image.new("RGB", (1280, 720), "black").save(
-                    root / f"pkg-value-L01-{rank}.png"
-                )
+                Image.new("RGB", (1280, 720), "black").save(root / f"pkg-value-L01-{rank}.png")
         return SimpleNamespace(returncode=0, stdout="done", stderr="")
 
     monkeypatch_target = "scripts.render_watcher._validate_initial_packaging_outputs"
@@ -678,9 +668,9 @@ def test_revision_agent_success_is_backed_up_and_returns_to_review(tmp_path):
     Image.new("RGBA", (900, 900), (255, 255, 255, 255)).save(cutout_dir / "host.png")
     Image.new("RGBA", (900, 900), (255, 255, 255, 255)).save(cutout_dir / "guest.png")
     source_assets = {
-        f"Attachments/packaging/episode-slug/pkg-full-{rank}.png": __import__(
-            "hashlib"
-        ).sha256((vault_ep / f"pkg-full-{rank}.png").read_bytes()).hexdigest()
+        f"Attachments/packaging/episode-slug/pkg-full-{rank}.png": __import__("hashlib")
+        .sha256((vault_ep / f"pkg-full-{rank}.png").read_bytes())
+        .hexdigest()
         for rank in range(1, 4)
     }
     approval = {
@@ -784,9 +774,7 @@ def test_full_episode_rejects_long_highlight_layout_and_tight_cutout(tmp_path):
         encoding="utf-8",
     )
     (packaging / "specs.json").write_text(
-        json.dumps(
-            [{"title_rank": 1, "thumbnail": "pkg.png", "render_spec": str(spec_path)}]
-        ),
+        json.dumps([{"title_rank": 1, "thumbnail": "pkg.png", "render_spec": str(spec_path)}]),
         encoding="utf-8",
     )
     package = SimpleNamespace(
@@ -885,10 +873,7 @@ def test_find_packaging_dir_matches_episode_name_not_vault_slug(tmp_path, monkey
     )
     monkeypatch.setattr("scripts.render_watcher.FOOTAGE_ROOTS", (footage,))
 
-    assert (
-        find_packaging_dir("20260805-linzhichen", episode_name="20260805 林之晨")
-        == packaging
-    )
+    assert find_packaging_dir("20260805-linzhichen", episode_name="20260805 林之晨") == packaging
 
 
 def test_watcher_records_which_cuts_it_is_covering():

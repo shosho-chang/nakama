@@ -21,17 +21,19 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import quote
+from typing import Sequence
+from urllib.parse import quote, unquote, urlsplit
 
 from fastapi import APIRouter, Cookie, Form, HTTPException, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
+from agents.usopp.publish_timeline import release_subtitle
 from shared.config import get_runtime_data_dir, get_vault_path
 from shared.log import get_logger
+from shared.publish_calendar import short_execution_readiness
 from shared.release_store import get_release, list_releases, update_target
-from agents.usopp.publish_timeline import release_subtitle
 from shared.tight_srt import latest_tight_srt, srt_to_vtt
 from thousand_sunny.auth import check_auth
 
@@ -44,6 +46,33 @@ _templates = Jinja2Templates(
 
 _TITLE_MAX = 100  # YT 標題硬上限
 _DESC_MAX = 5000  # YT 描述硬上限
+_SHORT_PLATFORMS = ("youtube", "instagram_reels", "facebook_reels")
+_PLATFORM_LABELS = {
+    "youtube": "YouTube Shorts",
+    "instagram_reels": "Instagram Reels",
+    "facebook_reels": "Facebook Page Reels",
+}
+_META_SETTINGS = (
+    "META_GRAPH_API_VERSION",
+    "META_PAGE_ID",
+    "META_IG_USER_ID",
+    "META_PAGE_ACCESS_TOKEN",
+)
+_META_STAGING_SETTINGS = (
+    "META_MEDIA_R2_ACCOUNT_ID",
+    "META_MEDIA_R2_ACCESS_KEY_ID",
+    "META_MEDIA_R2_SECRET_ACCESS_KEY",
+    "META_MEDIA_R2_BUCKET",
+)
+
+
+def _upload_progress_dir() -> Path:
+    return _upload_data_dir() / "upload_progress"
+
+
+def _upload_progress_file(episode: str, cut_id: str) -> Path:
+    safe = f"{episode}_{cut_id}".replace("/", "_").replace("\\", "_")
+    return _upload_progress_dir() / f"{safe}.json"
 
 
 def _asset_version() -> str:
@@ -75,6 +104,28 @@ def _login_redirect(request: Request) -> RedirectResponse:
     return RedirectResponse(f"/login?next={quote(request.url.path, safe='/')}", status_code=302)
 
 
+def _mutation_return_url(return_to: str, *, episode: str, cut_id: str) -> str:
+    """Allow only an exact relative Calendar path; otherwise return to review."""
+
+    fallback = f"/bridge/publish/{quote(episode, safe='')}/{quote(cut_id, safe='')}"
+    decoded = unquote(return_to)
+    if (
+        not return_to
+        or "\\" in decoded
+        or any(ord(character) < 32 or ord(character) == 127 for character in decoded)
+    ):
+        return fallback
+    parsed = urlsplit(decoded)
+    if (
+        parsed.scheme
+        or parsed.netloc
+        or parsed.fragment
+        or parsed.path != "/bridge/publish/calendar"
+    ):
+        return fallback
+    return return_to
+
+
 def _yt_target(episode: str, cut_id: str) -> tuple[dict, dict]:
     rel = get_release(episode, cut_id)
     if rel is None:
@@ -89,6 +140,100 @@ def _episode_dir(rel: dict) -> Path:
     """成品在 `<episode>/highlights/exports/<cut>.mp4`——往上三層＝episode 目錄
     （與 publish_upload 推導 CC 來源的方式相同，不硬編磁碟位置）。"""
     return Path(rel["file_path"]).parents[2]
+
+
+def _platform_targets(rel: dict) -> list[dict]:
+    """Stable Bridge projection; missing Short targets remain virtual until approval."""
+    by_platform = {target["platform"]: target for target in rel["targets"]}
+    platforms = _SHORT_PLATFORMS if rel["format"] == "short" else ("youtube",)
+    rows: list[dict] = []
+    for platform in platforms:
+        target = dict(by_platform.get(platform) or {})
+        target.setdefault("platform", platform)
+        target.setdefault("status", "draft")
+        target["label"] = _PLATFORM_LABELS.get(platform, platform)
+        target["retryable"] = target["status"] == "failed"
+        required = ()
+        if platform == "instagram_reels":
+            required = (*_META_SETTINGS, *_META_STAGING_SETTINGS)
+        elif platform == "facebook_reels":
+            required = _META_SETTINGS
+        missing = [name for name in required if not os.environ.get(name, "").strip()]
+        target["connection_state"] = "not_executable" if missing else "ready"
+        target["connection_note"] = (
+            "NOT EXECUTABLE · missing " + ", ".join(missing)
+            if missing
+            else (
+                "Desktop OAuth worker validates the YouTube connection at execution time."
+                if platform == "youtube"
+                else "Connection settings present; supervised live probe is still required."
+            )
+        )
+        if platform == "facebook_reels" and rel["duration_sec"] > 60:
+            target["status"] = "ineligible"
+            target["error"] = "Facebook Page Reels 此流程限制最長 60 秒；不自動裁切或重壓。"
+            target["retryable"] = False
+        rows.append(target)
+    return rows
+
+
+def _spawn_publish_worker(
+    episode: str,
+    cut_id: str,
+    *,
+    platform: str | None = None,
+    platforms: Sequence[str] | None = None,
+) -> None:
+    """Start the desktop dispatcher and keep its output in the existing progress log."""
+    if platform and platforms:
+        raise ValueError("choose platform or platforms, not both")
+    selected = tuple(platforms or ((platform,) if platform else ()))
+    root = Path(__file__).resolve().parent.parent.parent
+    script = root / "scripts" / "publish_dispatch.py"
+    log_dir = _upload_progress_dir()
+    log_dir.mkdir(parents=True, exist_ok=True)
+    safe = f"{episode}_{cut_id}".replace("/", "_").replace("\\", "_")
+    suffix = "_" + "_".join(selected) if selected else ""
+    log_f = open(  # noqa: SIM115 — child process owns this handle
+        log_dir / f"{safe}{suffix}.log", "a", encoding="utf-8"
+    )
+    command = [
+        sys.executable,
+        str(script),
+        "--release",
+        "--episode",
+        episode,
+        "--cut",
+        cut_id,
+        "--execute",
+    ]
+    for selected_platform in selected:
+        command.extend(("--platform", selected_platform))
+    subprocess.Popen(
+        command,
+        cwd=str(root),
+        stdout=log_f,
+        stderr=subprocess.STDOUT,
+    )
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _has_future_campaign_anchor(value: object, *, now: datetime | None = None) -> bool:
+    if value in {None, ""}:
+        return False
+    try:
+        anchor = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("Campaign Anchor 必須是有效且含時區的時間") from exc
+    if anchor.tzinfo is None or anchor.utcoffset() is None:
+        raise ValueError("Campaign Anchor 必須包含時區")
+    current = now or _utc_now()
+    if current.tzinfo is None or current.utcoffset() is None:
+        raise ValueError("approval clock 必須包含時區")
+    return anchor.astimezone(timezone.utc) > current.astimezone(timezone.utc)
 
 
 def taipei_to_iso(dt_local: str) -> str:
@@ -121,7 +266,7 @@ def _upload_data_dir() -> Path:
     return get_runtime_data_dir()
 
 
-def _spawn_publish_worker(episode: str, cut_id: str, *worker_args: str) -> Path:
+def _spawn_upload_worker(episode: str, cut_id: str, *worker_args: str) -> Path:
     """Start the desktop publisher with the same runtime data directory as Bridge."""
 
     data_dir = _upload_data_dir()
@@ -207,7 +352,15 @@ def publish_cut(
     publish_local = ""
     if t.get("publish_at"):
         publish_local = t["publish_at"][:16]
-    subs = latest_tight_srt(_episode_dir(rel), cut_id)
+    cc_policy = "sidecar_required" if rel["format"] == "long" else "burned_only"
+    # Short 成品的字幕已燒入畫面；不要掃 tight SRT，否則 UI 會誤導為另上 CC。
+    # 標籤要說出「實際會上傳的那一份」。之前寫死 tight SRT，實際送的是 Release
+    # 那份——頁面上的檔名跟播放器聽到的內容不是同一個東西。
+    subs = (
+        (release_subtitle(_episode_dir(rel), cut_id) or latest_tight_srt(_episode_dir(rel), cut_id))
+        if cc_policy == "sidecar_required"
+        else None
+    )
     return _templates.TemplateResponse(
         request,
         "publish_cut.html",
@@ -215,6 +368,8 @@ def publish_cut(
             "rel": rel,
             "t": t,
             "subs_name": subs.name if subs else None,
+            "cc_policy": cc_policy,
+            "platform_targets": _platform_targets(rel),
             "ab_alternates": _ab_alternates(episode, cut_id, t.get("title"))
             if rel["format"] == "long"
             else [],
@@ -271,6 +426,8 @@ def publish_subs(episode: str, cut_id: str, nakama_auth: str | None = Cookie(Non
     _require_auth(nakama_auth)
     rel, _ = _yt_target(episode, cut_id)
     episode_dir = _episode_dir(rel)
+    if rel["format"] != "long":
+        raise HTTPException(status_code=404, detail="Short 字幕已燒入畫面，不提供 sidecar CC")
     # 必須跟 publish_upload 讀同一份，否則這個頁面就是在騙人：2026-08-29 上傳器
     # 改讀 Release 字幕、這裡沒跟上，於是修修在審核頁看到的是 260 秒舊剪輯的 125
     # 句，實際要上架的是 492 秒成品的 226 句。驗證的對象跟交付的對象不同，比顯示
@@ -322,34 +479,63 @@ def publish_save(
 def publish_approve_upload(
     episode: str,
     cut_id: str,
-    title: str = Form(...),
-    description: str = Form(...),
+    title: str | None = Form(None),
+    description: str | None = Form(None),
     publish_at_local: str = Form(""),
+    return_to: str = Form(""),
     nakama_auth: str | None = Cookie(None),
 ) -> RedirectResponse:
     _require_auth(nakama_auth)
+    return_url = _mutation_return_url(return_to, episode=episode, cut_id=cut_id)
     rel, t = _yt_target(episode, cut_id)
     if t["status"] in ("uploading", "uploaded", "published"):
         raise HTTPException(status_code=409, detail="已上傳/上傳中")
-    fields = _copy_fields(title, description, publish_at_local)
-    update_target(t["id"], **fields)
+    # 長片的「核准並上傳」直接送出文案表單，這一按同時是最後一次存檔；Short 的
+    # 投遞按鈕與短片行事曆只送 approve，文案早就存過了。沒帶欄位就別動 DB——
+    # 帶空字串進 _copy_fields 會把已排好的公開時間清掉。
+    if title is not None and description is not None:
+        update_target(t["id"], **_copy_fields(title, description, publish_at_local))
     if not Path(rel["file_path"]).exists():
         error = "成品檔不存在——重跑 publish_prep"
         update_target(t["id"], status="failed", error=error)
-        return RedirectResponse(f"/bridge/publish/{episode}/{cut_id}", status_code=303)
+        return RedirectResponse(return_url, status_code=303)
+    if rel["format"] == "short":
+        readiness = short_execution_readiness(rel)
+        if not readiness.ready:
+            raise HTTPException(status_code=422, detail=readiness.reason)
+        from agents.usopp.social_publish import approve_short_targets
+
+        try:
+            future_anchor = _has_future_campaign_anchor(t.get("publish_at"))
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        targets = approve_short_targets(rel, t)
+        if future_anchor:
+            native_platforms = tuple(
+                target["platform"]
+                for target in targets
+                if target["platform"] in {"youtube", "facebook_reels"}
+                and target["status"] == "approved"
+            )
+            _spawn_publish_worker(episode, cut_id, platforms=native_platforms)
+        else:
+            _spawn_publish_worker(episode, cut_id)
+        logger.info("publish approve+dispatch: %s/%s（Short multi-target）", episode, cut_id)
+        return RedirectResponse(return_url, status_code=303)
+
     data_dir = _upload_data_dir()
     token_path = data_dir / "youtube_token.json"
     if not token_path.is_file():
         error = f"找不到 {token_path}——先跑 python scripts/youtube_auth.py"
         update_target(t["id"], status="failed", error=error)
-        return RedirectResponse(f"/bridge/publish/{episode}/{cut_id}", status_code=303)
+        return RedirectResponse(return_url, status_code=303)
     update_target(t["id"], status="approved", error=None)
     # 與 CLI 同一條路：subprocess 跑 uploader（狀態轉移由它寫 DB，頁面 poll）。
     # stdout/stderr 落 log 檔——先前 DEVNULL 把 token 缺失的死訊吞掉，修修按了
     # 上傳「後台沒反應」（2026-08-04）
-    log_path = _spawn_publish_worker(episode, cut_id, "--run", "--cut", cut_id)
+    log_path = _spawn_upload_worker(episode, cut_id, "--run", "--cut", cut_id)
     logger.info("publish approve+upload: %s/%s（log: %s）", episode, cut_id, log_path)
-    return RedirectResponse(f"/bridge/publish/{episode}/{cut_id}", status_code=303)
+    return RedirectResponse(return_url, status_code=303)
 
 
 @page_router.post("/{episode}/{cut_id}/retry-cc")
@@ -375,9 +561,35 @@ def publish_retry_cc(
             detail=f"找不到 {token_path}——先跑 python scripts/youtube_auth.py",
         )
     update_target(target["id"], caption_status="processing", reconciliation_error=None)
-    log_path = _spawn_publish_worker(episode, cut_id, "--cc-only", cut_id)
+    log_path = _spawn_upload_worker(episode, cut_id, "--cc-only", cut_id)
     logger.info("publish CC-only retry: %s/%s（log: %s）", episode, cut_id, log_path)
     return RedirectResponse(f"/bridge/publish/{episode}/{cut_id}", status_code=303)
+
+
+@page_router.post("/{episode}/{cut_id}/retry/{platform}")
+def publish_retry_target(
+    episode: str,
+    cut_id: str,
+    platform: str,
+    return_to: str = Form(""),
+    nakama_auth: str | None = Cookie(None),
+) -> RedirectResponse:
+    """Retry exactly one failed target; successful siblings are never reopened."""
+    _require_auth(nakama_auth)
+    rel, _ = _yt_target(episode, cut_id)
+    if rel["format"] != "short" or platform not in _SHORT_PLATFORMS:
+        raise HTTPException(status_code=404, detail="publish target 不存在")
+    target = next((item for item in rel["targets"] if item["platform"] == platform), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail="publish target 尚未建立")
+    if target["status"] != "failed":
+        raise HTTPException(status_code=409, detail="只有 failed target 可以單獨重試")
+    update_target(target["id"], status="approved", error=None)
+    _spawn_publish_worker(episode, cut_id, platform=platform)
+    logger.info("publish target retry: %s/%s/%s", episode, cut_id, platform)
+    return RedirectResponse(
+        _mutation_return_url(return_to, episode=episode, cut_id=cut_id), status_code=303
+    )
 
 
 @page_router.get("/{episode}/{cut_id}/status")
@@ -385,11 +597,10 @@ def publish_status(
     episode: str, cut_id: str, nakama_auth: str | None = Cookie(None)
 ) -> JSONResponse:
     _require_auth(nakama_auth)
-    _, t = _yt_target(episode, cut_id)
+    rel, t = _yt_target(episode, cut_id)
     progress = None
-    if t["status"] == "uploading":
-        safe = f"{episode}_{cut_id}".replace("/", "_").replace("\\", "_")
-        pf = _upload_data_dir() / "upload_progress" / f"{safe}.json"
+    if t["status"] in ("uploading", "uploaded", "published", "failed"):
+        pf = _upload_progress_file(episode, cut_id)
         if pf.exists():
             try:
                 progress = json.loads(pf.read_text(encoding="utf-8"))
@@ -410,11 +621,11 @@ def publish_status(
             "platform_publish_at": t.get("platform_publish_at"),
             "reconciliation_error": t.get("reconciliation_error"),
             "last_reconciled_at": t.get("last_reconciled_at"),
-            "published": t.get("platform_privacy_status") == "public"
-            or t["status"] == "published",
+            "published": t.get("platform_privacy_status") == "public" or t["status"] == "published",
             "can_retry_cc": bool(t.get("video_id"))
             and t.get("caption_status") != "serving"
             and t["status"] not in ("approved", "uploading"),
+            "targets": _platform_targets(rel),
             "checked_at": datetime.now(timezone.utc).isoformat(),
         }
     )

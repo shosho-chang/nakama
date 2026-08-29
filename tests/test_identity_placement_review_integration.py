@@ -29,9 +29,7 @@ def test_review_verifies_every_guest_namecard_before_render(
         guest_namecard_end: float,
         editorial_master: object,
     ) -> _Selection:
-        calls.append(
-            (cut_id, guest_namecard_start, guest_namecard_end, editorial_master)
-        )
+        calls.append((cut_id, guest_namecard_start, guest_namecard_end, editorial_master))
         return _Selection()
 
     monkeypatch.setattr(run_short_review, "verify_identity_placement", fake_verify)

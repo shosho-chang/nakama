@@ -251,9 +251,7 @@ def test_merge_miners_rejects_ten_second_long_candidate(tmp_path: Path) -> None:
     episode.mkdir()
     request, paths = _miner_outputs(episode)
     payload = json.loads(paths["story"].read_text(encoding="utf-8"))
-    payload["candidates"][0].update(
-        {"cue_start": 1, "cue_end": 6, "t_start": 2.0, "t_end": 13.0}
-    )
+    payload["candidates"][0].update({"cue_start": 1, "cue_end": 6, "t_start": 2.0, "t_end": 13.0})
     paths["story"].write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(Stage5SubtitleContractError, match="outside long duration tolerance"):
@@ -709,6 +707,7 @@ def test_materialize_appends_exact_master_as_linked_audio_video(
         def AppendToTimeline(self, specs):
             self.append_specs.append(specs)
             if specs and isinstance(specs[0], dict):
+
                 class TrackItem:
                     def __init__(self, media_pool_item) -> None:
                         self.media_pool_item = media_pool_item
@@ -867,12 +866,15 @@ def test_materialization_receipt_is_idempotent_and_conflicts_fail_closed(
     first = write_materialization_receipt(episode, receipt)
     second = write_materialization_receipt(episode, receipt)
     assert first == second
-    assert verify_materialization_receipt(
-        episode,
-        "value-L01",
-        source=source,
-        timeline=Timeline(),
-    ) == receipt
+    assert (
+        verify_materialization_receipt(
+            episode,
+            "value-L01",
+            source=source,
+            timeline=Timeline(),
+        )
+        == receipt
+    )
 
     class OtherTimeline(Timeline):
         def GetUniqueId(self):
@@ -889,12 +891,15 @@ def test_materialization_receipt_is_idempotent_and_conflicts_fail_closed(
     with pytest.raises(EditorialMasterContractError, match="conflicts"):
         write_materialization_receipt(episode, changed)
     write_materialization_receipt(episode, changed, replace=True)
-    assert verify_materialization_receipt(
-        episode,
-        "value-L01",
-        source=source,
-        timeline=OtherTimeline(),
-    )["timeline"]["uid"] == "timeline-other"
+    assert (
+        verify_materialization_receipt(
+            episode,
+            "value-L01",
+            source=source,
+            timeline=OtherTimeline(),
+        )["timeline"]["uid"]
+        == "timeline-other"
+    )
 
     changed_range = build_materialization_receipt(
         episode,

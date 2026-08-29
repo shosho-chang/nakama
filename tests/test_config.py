@@ -105,9 +105,7 @@ def test_runtime_data_dir_uses_canonical_parent_dotenv_from_worktree(tmp_path, m
     worktree = canonical / "worktrees" / "feature"
     worktree.mkdir(parents=True)
     data_dir = canonical / "data"
-    (canonical / ".env").write_text(
-        f"DB_PATH={data_dir / 'state.db'}\n", encoding="utf-8"
-    )
+    (canonical / ".env").write_text(f"DB_PATH={data_dir / 'state.db'}\n", encoding="utf-8")
     (worktree / "config.yaml").write_text(
         "vault_path: /yaml/vault\ndb_path: worktree-shadow/state.db\n",
         encoding="utf-8",

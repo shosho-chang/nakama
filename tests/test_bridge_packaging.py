@@ -205,6 +205,14 @@ def router_client(monkeypatch, vault):
     return TestClient(app)
 
 
+def _stub_publish_prep(monkeypatch) -> None:
+    """approve 成功後會啟動桌機側 publish_prep 匯出；測試環境以 no-op 取代。"""
+    import thousand_sunny.routers.packaging as pkg_module
+
+    monkeypatch.delenv("PODCAST_EPISODES_ROOT", raising=False)
+    monkeypatch.setattr(pkg_module, "_ensure_publish_prep", lambda episode, cut_id: None)
+
+
 # ---------------------------------------------------------------------------
 # 列表
 # ---------------------------------------------------------------------------
@@ -257,9 +265,7 @@ def test_board_accepts_people_bleeding_past_canvas_edges(client, vault):
 
 
 def test_board_serves_cutouts_from_its_own_mounted_route(client, vault_with_cutouts):
-    response = client.get(
-        "/bridge/packaging/20260723-xieboran/cutout/host_v1_serious.png"
-    )
+    response = client.get("/bridge/packaging/20260723-xieboran/cutout/host_v1_serious.png")
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/png"
@@ -269,10 +275,7 @@ def test_board_uses_packaging_cutout_route(client, vault_with_cutouts):
     response = client.get("/bridge/packaging/20260723-xieboran")
 
     assert response.status_code == 200
-    assert (
-        "/bridge/packaging/20260723-xieboran/cutout/host_v1_serious.png"
-        in response.text
-    )
+    assert "/bridge/packaging/20260723-xieboran/cutout/host_v1_serious.png" in response.text
     assert "/bridge/projects/gate/thumbnail/cutout/" not in response.text
 
 
@@ -331,7 +334,9 @@ def test_board_unknown_episode_404(client):
 # ---------------------------------------------------------------------------
 
 
-def test_approve_writes_approval_file_and_reload_shows_state(client, vault):
+def test_approve_writes_approval_file_and_reload_shows_state(client, vault, monkeypatch):
+    _write_composition_receipt(vault, rank=2)
+    _stub_publish_prep(monkeypatch)
     r = client.post(
         "/bridge/packaging/20260723-xieboran/approve",
         data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "2"},
@@ -356,7 +361,9 @@ def test_approve_writes_approval_file_and_reload_shows_state(client, vault):
     assert ">1<" in lst.text or "1</td>" in lst.text.replace(" ", "")
 
 
-def test_reject_with_note_upserts(client, vault):
+def test_reject_with_note_upserts(client, vault, monkeypatch):
+    _write_composition_receipt(vault, rank=1)
+    _stub_publish_prep(monkeypatch)
     client.post(
         "/bridge/packaging/20260723-xieboran/approve",
         data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
@@ -377,6 +384,7 @@ def test_reject_with_note_upserts(client, vault):
     assert entry.approved is False
     assert entry.reject_note == "三張表情太像，重抽"
 
+    # reject 現在同時排入 revision job（agent 重做），board 顯示 REVISION QUEUED
     board = client.get("/bridge/packaging/20260723-xieboran")
     assert "REVISION QUEUED" in board.text
 
@@ -470,6 +478,46 @@ def test_approve_unknown_cut_404(client):
         follow_redirects=False,
     )
     assert r.status_code == 404
+
+
+def test_approve_long_highlight_is_not_vetoed_by_a_missing_composition_receipt(client):
+    """人的核准是最終判斷；composition receipt 是看板上的診斷，不是否決權。
+
+    （2026-08-29 起：receipt 缺漏只在板上顯示 UNVERIFIED，按下 Approve 仍然成立；
+    真正會擋下來的是結構性缺漏——見 test_approve_requires_primary_package。）
+    """
+    r = client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+
+
+def test_reject_requires_feedback(client):
+    r = client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "reject"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 400
+
+
+def test_reject_creates_revision_job(client, vault):
+    client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "reject", "reject_note": "三張表情太像，重抽"},
+        follow_redirects=False,
+    )
+    saved = json.loads(
+        (vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    job = saved["approvals"][0]["revision_job"]
+    assert job["status"] == "queued"
+    assert job["feedback"] == "三張表情太像，重抽"
+    assert job["request_id"].startswith("revision-")
 
 
 # ---------------------------------------------------------------------------
@@ -689,7 +737,9 @@ def test_variant_select_writes_approval_without_approving(client, vault_with_var
     assert entry["approved"] is False  # 挑臉不等於拍板
 
 
-def test_variant_select_keeps_existing_approval(client, vault_with_variants):
+def test_variant_select_keeps_existing_approval(client, vault_with_variants, monkeypatch):
+    _write_composition_receipt(vault_with_variants, rank=2)
+    _stub_publish_prep(monkeypatch)
     client.post(
         "/bridge/packaging/20260723-xieboran/approve",
         data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "2"},
@@ -738,8 +788,10 @@ def test_board_shows_variant_thumbnails(client, vault_with_variants):
     assert "var-r1-a.png" in board.text and "var-r1-b.png" in board.text
 
 
-def test_approve_does_not_wipe_selected_variant(client, vault_with_variants):
+def test_approve_does_not_wipe_selected_variant(client, vault_with_variants, monkeypatch):
     """2026-08-14 browser UAT：勾完變體再 approve，選擇整個不見。"""
+    _write_composition_receipt(vault_with_variants, rank=1)
+    _stub_publish_prep(monkeypatch)
     client.post(
         "/bridge/packaging/20260723-xieboran/variant",
         data={"cut_id": "punch-L1", "selected_variant": "r1-b", "bigtext_request": "大字／[重出]"},
@@ -1168,12 +1220,8 @@ def test_render_status_fails_closed_for_wrong_request_or_route(
         ).status_code
         == 409
     )
-    assert (
-        client.get(f"{base}/wrong-cut/1", params={"requested_at": "x"}).status_code == 404
-    )
-    assert (
-        client.get(f"{base}/punch-L1/3", params={"requested_at": "x"}).status_code == 409
-    )
+    assert client.get(f"{base}/wrong-cut/1", params={"requested_at": "x"}).status_code == 404
+    assert client.get(f"{base}/punch-L1/3", params={"requested_at": "x"}).status_code == 409
 
 
 def test_render_status_requires_bridge_auth(client, monkeypatch):
@@ -1187,9 +1235,7 @@ def test_render_status_requires_bridge_auth(client, monkeypatch):
     assert response.status_code == 401
 
 
-def test_board_hydrates_each_legacy_n2_package_from_its_own_receipt(
-    client, vault_with_cutouts
-):
+def test_board_hydrates_each_legacy_n2_package_from_its_own_receipt(client, vault_with_cutouts):
     """舊 Long package 沒 recipe 時，編輯器仍要從該 rank receipt 還原中央圖。"""
     board = client.get("/bridge/packaging/20260723-xieboran")
 
@@ -1205,9 +1251,7 @@ def test_board_hydrates_each_legacy_n2_package_from_its_own_receipt(
         ) in board.text
         assert f"/center-visual/punch-L1/{rank}" in board.text
         assert (
-            client.get(
-                f"/bridge/packaging/20260723-xieboran/center-visual/punch-L1/{rank}"
-            ).content
+            client.get(f"/bridge/packaging/20260723-xieboran/center-visual/punch-L1/{rank}").content
             == b"center visual"
         )
 
@@ -1220,9 +1264,7 @@ def test_compose_saves_n2_center_asset_and_manual_geometry(client, vault_with_cu
         big_text_1="",
         big_text_2="",
         highlight_text="",
-        center_visual_asset=(
-            "Attachments/packaging/20260723-xieboran/center-punch-L1-r2.png"
-        ),
+        center_visual_asset=("Attachments/packaging/20260723-xieboran/center-punch-L1-r2.png"),
         center_width_pct="56.5",
         center_height_px="430",
         center_x_pct="52.0",
@@ -1232,9 +1274,7 @@ def test_compose_saves_n2_center_asset_and_manual_geometry(client, vault_with_cu
     )
 
     assert response.status_code == 303
-    path = (
-        vault_with_cutouts / "Attachments" / "packaging" / "20260723-xieboran" / "packages.json"
-    )
+    path = vault_with_cutouts / "Attachments" / "packaging" / "20260723-xieboran" / "packages.json"
     packages = json.loads(path.read_text(encoding="utf-8"))["cuts"][0]["packages"]
     assert packages[0].get("render_recipe") is None
     assert packages[2].get("render_recipe") is None
@@ -1250,9 +1290,7 @@ def test_compose_saves_n2_center_asset_and_manual_geometry(client, vault_with_cu
     }
 
 
-def test_compose_rejects_center_visual_from_another_package_rank(
-    client, vault_with_cutouts
-):
+def test_compose_rejects_center_visual_from_another_package_rank(client, vault_with_cutouts):
     response = _compose(
         client,
         package_rank="2",
@@ -1260,9 +1298,7 @@ def test_compose_rejects_center_visual_from_another_package_rank(
         big_text_1="",
         big_text_2="",
         highlight_text="",
-        center_visual_asset=(
-            "Attachments/packaging/20260723-xieboran/center-punch-L1-r1.png"
-        ),
+        center_visual_asset=("Attachments/packaging/20260723-xieboran/center-punch-L1-r1.png"),
         center_width_pct="53",
         center_height_px="455",
         center_x_pct="50",
@@ -1291,7 +1327,9 @@ def test_compose_rejects_empty_big_text(client, vault_with_cutouts):
     assert r.status_code == 400
 
 
-def test_compose_keeps_approval_state(client, vault_with_cutouts):
+def test_compose_keeps_approval_state(client, vault_with_cutouts, monkeypatch):
+    _write_composition_receipt(vault_with_cutouts, rank=3)
+    _stub_publish_prep(monkeypatch)
     client.post(
         "/bridge/packaging/20260723-xieboran/approve",
         data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "3"},
@@ -2091,17 +2129,13 @@ def _compose_center(client, center_visual_asset):
     )
 
 
-def test_compose_accepts_a_center_image_picked_from_the_candidate_pool(
-    client, vault_with_cutouts
-):
+def test_compose_accepts_a_center_image_picked_from_the_candidate_pool(client, vault_with_cutouts):
     """修修 2026-08-29 要的就是這個：在 gate 上把中央圖換掉。"""
     asset = _stage_candidate_pool(vault_with_cutouts)
 
     assert _compose_center(client, asset).status_code == 303
 
-    path = (
-        vault_with_cutouts / "Attachments" / "packaging" / "20260723-xieboran" / "packages.json"
-    )
+    path = vault_with_cutouts / "Attachments" / "packaging" / "20260723-xieboran" / "packages.json"
     recipe = json.loads(path.read_text(encoding="utf-8"))["cuts"][0]["packages"][1]["render_recipe"]
     assert recipe["center_visual_asset"] == asset
 
@@ -2110,9 +2144,7 @@ def test_compose_still_refuses_a_center_path_outside_the_pool(client, vault_with
     """放寬到候選池，不是放寬成任意 vault 路徑輸入。"""
     _stage_candidate_pool(vault_with_cutouts)
 
-    response = _compose_center(
-        client, "Attachments/packaging/20260723-xieboran/not-referenced.png"
-    )
+    response = _compose_center(client, "Attachments/packaging/20260723-xieboran/not-referenced.png")
     assert response.status_code == 409
 
 
@@ -2236,7 +2268,10 @@ def test_the_reason_recorded_is_the_users_own_search_request(client, vault_with_
 
     _compose_center(client, asset)
 
-    assert _saved_recipe(vault_with_cutouts)["center_provenance"]["why"] == "我要拉布拉多，要看得到柵欄"
+    assert (
+        _saved_recipe(vault_with_cutouts)["center_provenance"]["why"]
+        == "我要拉布拉多，要看得到柵欄"
+    )
 
 
 def test_picking_without_a_reason_records_that_fact_rather_than_inventing_one(
@@ -2346,7 +2381,10 @@ def test_a_watcher_that_stopped_reporting_does_not_count():
     from thousand_sunny.routers.packaging import _watcher_covering
 
     stale = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
-    assert _watcher_covering(_heartbeat_state(seen_at=stale), "20260723-xieboran", "punch-L1", 1) is None
+    assert (
+        _watcher_covering(_heartbeat_state(seen_at=stale), "20260723-xieboran", "punch-L1", 1)
+        is None
+    )
 
 
 def test_an_unscoped_watcher_covers_everything():

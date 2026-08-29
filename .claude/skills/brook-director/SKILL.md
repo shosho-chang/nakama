@@ -12,7 +12,9 @@ description: >
 
 # brook-director — 分鏡導演手冊
 
-**版本：v2.1（2026-08-28，Long Highlight 章節／Hero／人物照片語意收斂；
+**版本：v2.6（2026-08-29，合併兩條線：Long Highlight 章節／Hero／人物照片語意收斂
+（v2.1 2026-08-28）＋短片語意接詞修復、無標點顯示、逐行角色、icon 主體可讀性與
+下載素材 custody gate（v2.5 2026-08-18）；
 v2.0 2026-07-18 四支成片拆解＋Ali/Jeff 對照的剪輯文法入冊；
 文法依據：`docs/research/editing-grammar/2026-07-18-shoshotw-editing-grammar.md`）**
 
@@ -176,6 +178,33 @@ ADR-051 standalone script-driven video。Podcast Highlight 不得 silent fallbac
    把衝突記進 run log。
 4. **寧缺勿猜**：素材配對不到來源、金句查不到原始出處、KOL 片段定位不到 —
    一律降級（留 talking head 或換類型），不硬湊。
+5. **跨集不重複**：選定 stock 前，掃描既有 `asset_manifest.yaml` 的 `source_url`
+   與各集 `assets/broll` 的成品 SHA-256。任一命中就換候選；除非修修明確同意重用，
+   不得把「檔名不同」當成新素材。
+6. **短片逐字稿是唯一文字來源，且只能有一個完整 renderer**：若字卡承接全部語音，
+   設 `covers_full_transcript: true`，讓每個最新 SRT cue 依序且恰好出現一次，並移除
+   Resolve subtitle track 與 review SRT burn-in；若字卡只選擇性強調，保留底部字幕。
+   每個 sequence／state 都指定 `source_cues`，state 以第一個 cue 作 `trigger_cue`；顯示
+   文字只可改斷行、標點、大小、位置與動態，禁止另寫摘要、刪字重組或改寫。
+7. **品牌 pattern 不自行畫**：只使用品牌系統交付的正式 asset。每支短片最多出現一次，
+   且只保留給全片最需要強調的 `gold_quote`；沒有夠強的金句就不用。禁止用 CSS 三角形、
+   漸層或近似圖樣重畫。
+8. **字卡逐幀驗收，不抽查**：render 後、寫入 Resolve 前，對每個 alpha MOV 的每一幀
+   執行 `scripts/check_title_frame_safety.py`。任何可見文字碰到 24px 邊界即 fail closed；
+   進場、slam、whip、退場影格都算，不能以「最後停住時沒超框」代替驗收。
+9. **退場禁止製造假性抖動**：文字 hold 階段尺寸與位置固定；不用 elastic/back easing，
+   不用 shrink exit。以 hard cut 或單純 opacity fade 退場；任何尺寸動畫都只能發生在明確
+   的語意升級 state，不可在一句話收尾時偷偷縮放。
+10. **短片語意邊界先於 cue 邊界**：`所以／但是／當然／然後` 等接詞要歸到它引出的
+    後一句，不可因 ASR cue 先切到上一句尾端。完整文字編舞的畫面文字一律去除標點；
+    多行 caption 以同一組左邊界排齊。需要局部強調時用逐行角色，同一卡可以 caption＋
+    emphasis，但不得另寫逐字稿外文字。
+11. **Icon 場景先保證主體可讀**：先找一句話的動詞／狀態變化，再指定一個 primary object；
+    supporting objects 最多兩個，primary 寬度至少為直式畫面 18%。語音提到複數不等於要畫
+    同樣數量的小圖；540px 手機預覽看不清的物件一律不進 Timeline。
+12. **下載目錄只是假存放區**：Envato 素材下載完成後，先驗 bytes 與 SHA-256，再移入
+    `<episode>/assets/broll/` 作為唯一 authoritative copy；manifest 記錄 episode-relative path。
+    不可讓 Downloads 成為素材庫或留下未受管的第二份 authoritative copy。
 
 ## 前置條件（開工檢查清單）
 
@@ -250,7 +279,7 @@ roadmap，需 composition 落地，落地前記 Remaining）。
 | 稿面信號 | visual_intent.category | form | 備註 |
 |---|---|---|---|
 | 畫面感語句（場景/動作/感受） | `stock_scene` | cutaway | **逐名詞給畫面、單鏡 ≤3s、只蓋 visual phrase**（修修 2026-07-17）；同語意可連發 3–5 鏡（shots_hint） |
-| 抽象概念名詞 | `keyword` | overlay | 2–4s 關鍵字卡疊 aroll；高頻小型武器（成片 8–26 張/支） |
+| 抽象概念名詞 | `keyword` | overlay | 2–4s 關鍵字卡疊 aroll；短片須 exact-copy 最新 SRT 的連續原文，高頻小型武器（成片 8–26 張/支） |
 | 人名（作者/名人） | `person_inset` | overlay | 橘框人物照 inset；對比人物雙卡並列 |
 | 書名/書籍出場 | `book_cover` | cutaway 或 overlay | hook 內 ≥2 次曝光；之後每章可回敲（輪播） |
 | 名言金句 | `quote` | cutaway | **首次唸到即上卡**（成片 11/11 毫秒級同步）；6–10s；原文必查證，查不到寧缺勿猜 |
@@ -362,13 +391,15 @@ supplied_pending:           # 外供待補（螢幕錄影等），非 Codex 範�
     note: "Notion 模板操作錄影，≥1080p"
 ```
 
-**Codex prompt 模板**（貼給修修轉交或直接 dispatch；英文）：
+**Codex prompt 模板**（直接 dispatch；英文）：
 
 ```
 Read E:\nakama\data\script_video\<ep>\asset_requests.yaml.
 For each entry under `requests`, use browser computer-use on
 elements.envato.com (logged-in subscription) to download the item at
 `choice_url` and save it to `target_path` (relative to the episode dir).
+This is an automated step. Do not ask the user to download the asset manually
+unless the Envato session is no longer authenticated.
 Then write asset_manifest.yaml next to it:
 
 episode: <ep>
@@ -380,18 +411,40 @@ items:
     license_note: "Envato Elements subscription, downloaded YYYY-MM-DD"
     fail_reason: <only when failed>
 
-Do not re-encode or rename beyond target_path. Do not download items
-not listed. If an item is unavailable, mark failed with reason and move on.
+Do not download items not listed. Move the verified original download into the
+episode target_path as the receipt; the Director validation step may conform a
+separate working copy to 30fps without leaving Downloads as an asset store.
+If an item is unavailable, mark failed with reason and move on.
 ```
+
+### Envato Computer Use 下載狀態機（無人工下載步驟）
+
+Envato 的第一次 Download 動作有時只完成 subscription license，locator click
+也可能改成 `Automatically licensed` 卻沒有讓檔案落地。每支素材依下列順序執行：
+
+1. 用語意 locator／頁面文字確認素材 ID、格式與 Download 按鈕；截取 fresh screenshot，
+   不使用前一頁留下的座標。
+2. 若尚未授權，先完成 license phase；按鈕顯示 `Automatically licensed` 不等於下載成功。
+3. **先**註冊 browser `download` event（參數為 `timeoutMs`），再執行點擊，避免事件競態。
+4. 真正下載那一下使用 Computer Use／CUA 原生指標點擊 fresh screenshot 上的按鈕；
+   不以 locator click 當成已下載的證據。
+5. 等待 download handle 的實體 `path`，逐支確認檔案存在、bytes > 0，才可標 `done`。
+6. 若沒有 download event，只重抓一次 fresh screenshot 並重走步驟 3–5；若 session
+   已登出才請修修登入，其他錯誤換備選 URL 或標 `failed`，不可把人工下載插回流程。
+
+每一支的 licensing、下載路徑、原始 SHA-256、失敗／重試結果都寫進 run log 與
+`asset_manifest.yaml`。瀏覽器按鈕文字不是 receipt；實體檔案與 download event 才是。
 
 **驗收（DP做，逐項，不可抽查）**——讀 `asset_manifest.yaml`：
 1. 檔案存在於 `path`
-2. 算 SHA-256 → 寫進 storyboard `broll.asset.sha256`（render/emit 前 dispatcher
+2. 以 `source_url` 與 conform 後 SHA-256 掃描既有各集 manifest／`assets/broll`；
+   任一跨集重複即 fail closed，換候選或取得修修明確批准
+3. 算 SHA-256 → 寫進 storyboard `broll.asset.sha256`（render/emit 前 dispatcher
    會重驗，防檔案被替換後沿用過期審核）
-3. `ffprobe` 查幀率，非 30fps 用 ffmpeg conform 到 30fps 再覆蓋（混幀率進
+4. `ffprobe` 查幀率，非 30fps 用 ffmpeg conform 到 30fps 再覆蓋（混幀率進
    DaVinci 會 judder；conform 後**重算 sha256**）
-4. `failed` 項目：換備選 URL 重發一輪 requests，或降級該 beat 為 none
-5. 驗收結果（含 conform 紀錄）寫 run log
+5. `failed` 項目：換備選 URL 重發一輪 requests，或降級該 beat 為 none
+6. 驗收結果（含下載事件、授權、去重與 conform 紀錄）寫 run log
 
 ## Step 6 — storyboard.yaml 定稿（Standalone only）
 
@@ -488,4 +541,74 @@ E2E 每跑完一集（visual approved + DaVinci import smoke 過），把可固�
    出處三必填不變。傳記型解鎖；分鏡時仍在 run log 列各來源總用量供修修掃一眼。
 6. **從 Ali/Jeff 引入**：canvas_pip 版面（意圖層先記錄，等 composition）、
    worked-example 實算動畫取代論證段 stock、章節 grid 總覽卡、錄屏速度標記。
+
+**2026-08-18 · 鐘穎 Ep02《波旬》→ 鄭國威《將太的壽司》短片校準（v2.2）**
+
+1. **短片密度以 semantic state 計，不以 MOV 數量計**。一支 57 秒短片可以只有 9 個
+   alpha sequence，但 sequence 內必須按語意使用 add／replace／type／promote／slam；
+   本次 9 sequence、27 states 才接近參考片約 34 states／67 秒。把一句話做成一張
+   靜態卡並停 2–4 秒，即使卡片數看似足夠，仍是失敗的模板感。
+2. **尺寸變化必須服務論證層級**：鋪陳詞用較小字、關鍵名詞升級、結論用單詞 hero；
+   同 anchor 加行或換詞，避免每次都整張消失重進。片尾必有 closing promotion，不能
+   讓最後一句以普通 tier2 平淡結束。
+3. **Icon 是動詞，不是裝飾**。先把口語句轉成可演出的狀態變化，再抓同一套視覺風格
+   的透明素材；本次「一天做很多個，但觀眾只吃到眼前一個」演成五個壽司進場 →
+   四個淘汰 → 一個聚焦移出。單純 idle bob 不算完成情境表演。
+4. **人物安全區與字幕安全區要用 render 驗證**：icon 不穿過眼、鼻、嘴；中央臉部保留，
+   小圖優先落在左右肩線。不可只看 JSON 座標；alpha 字卡必逐幀 gate，合成 preview
+   另檢查 icon 中點、品牌 pattern、hero 與 closing 的人物／字幕遮擋。
+5. **素材取得保持全自動且可追溯**：Envato download event + 實體檔案才算成功；保存
+   原始 ZIP、asset id、SHA-256，工作 PNG 另落 episode。跨集查重後才可上軌，不為了
+   省一步退回舊素材庫。
+
+**2026-08-18 · KS1 超框與字卡改寫回歸（v2.3）**
+
+1. **禁止字幕與字卡形成兩套文案**。以最新 tight SRT 為 lexical source，讓普通字幕、
+   放大文字、逐字 reveal 與 slam 只是在同一句原文上切換視覺角色。相似度或字元命中率
+   不能證明沒有改寫；必須驗證每個 state 是 source cue 的連續原文片段。
+2. **用 cue 驅動節奏**。每個 sequence 宣告 `source_cues`，每個 state 宣告
+   `trigger_cue`，state 的絕對時間必須落在該 cue 時窗附近。Director 可以挑哪些原文字
+   要升級，但不能先寫 punchline 再回頭找近似逐字稿。
+3. **Pattern 採 0/1 規則**。全片最多一個正式 `shards-gray-on-orange` pattern moment，
+   綁定 `role=gold_quote`；本例從 24 秒移到 11.962 秒「那一個壽司」。pattern 是品牌
+   primitive，不是每段可重複的 transition preset。
+4. **以實際 alpha MOV 每一幀作為可交付證據**。固定字數上限不足以保證安全，因為字型
+   真實寬度、per-line scale、rotation 與 slam/whip 中間值仍可能越界。渲染器先量測並
+   fit 到安全寬度，再由逐幀 checker 驗證；失敗時不得改寫 Resolve Timeline。
+
+**2026-08-18 · KS1 單一字幕 renderer 與層級收斂（v2.4）**
+
+1. **完整文字編舞與底部字幕二選一**。`covers_full_transcript: true` 時，所有 SRT cue
+   必須在 sequence 與 state 兩層都依序、恰好出現一次；驗證通過後清掉 subtitle track，
+   review 也不得再 burn SRT。未達完整覆蓋就保留底部字幕，不能靠人工記得切換。
+2. **state 依語意子句合併，不依 SRT cue 逐格切**。可把相鄰 cues 合成一個 state，但
+   必須完整逐字承接；優先在逗號、句號、轉折與語法成分完成處換 state／換行，禁止標點
+   單獨落到下一行或出現在新字卡開頭。
+3. **先給強調預算再排字卡**。一般敘述預設 `caption`（小型白底）；`emphasis` 只留給
+   論點詞，總量以不超過約四分之一 states 為準；`hero` 原則上全片一個。KS1 以 27 states
+   中 5 個 emphasis＋1 個 hero 收斂，避免每句都是橘色大字、結果沒有真正重點。
+4. **hold 必須完全穩定**。`很多人都會看到` 的抖動來自 shrink exit 與 back easing；
+   改 hard cut／power easing 後，以收尾連續幀確認 bbox 不變。動態驗收要看進場、hold、
+   最後 0.5 秒三段，不能只看中間代表幀。
+5. **Pattern 可以是零，B-roll 以少而準為目標**。使用者否決 pattern moment 時整支移除，
+   不為了品牌規則硬找金句。約 60 秒短片先排 2–3 段直接語意實拍（icon animation 另計），
+    單段約 3 秒，跨 highlight 查重；KS1 保留握壽司，另下載專用紅鉛筆校稿與讀者表情素材，
+    不重用 R11／R12 已上過的檔案。
+
+**2026-08-18 · KS1 語意接詞、排版與 icon 可讀性收斂（v2.5）**
+
+1. **接詞歸後句，不歸前句**。Memo cue 把「訊息所以」「會一直想，當然」切在一起時，
+   Director 不能照 cue 邊界直接成卡；先把「所以／當然」移到它引出的下一個語意子句，再做
+   state grouping。這是 lexical projection 修正，不是畫面層偷偷改寫。
+2. **短片畫面文字無標點且 caption 成組對齊**。標點保留在 SRT lexical evidence 即可，
+   renderer 顯示層全部移除；多行文字以最長行計算群組寬度、共用同一條左邊界，禁止為了
+   「活潑」替每行加入不同的水平 offset。
+3. **局部重點用逐行角色，不把整張卡放大**。例如「一直想吃下去的／那個人」維持同一
+   source span，但第二行可指定 emphasis 橘卡；這同時保留逐字稿 custody 與真正的視覺重點。
+4. **Icon 的算法是 verb → primary object → optional supports → mobile gate**。KS1 舊版把
+   「很多壽司但只入口一個」照字面畫成五個 12% 小壽司，雖有狀態變化卻失去可讀性；新版
+   改成一個 ≥18% 主壽司完成進場、聚焦、移出。複數語意不再自動展開成 N 個物件。
+5. **素材 custody 在 episode folder 收口**。瀏覽器 Downloads 只是 staging；檔案 hash
+   驗證後移入 `<episode>/assets/broll/`，manifest／timeline 只引用專案內路徑，避免下一次
+   換機或清 Downloads 時素材離線。
 

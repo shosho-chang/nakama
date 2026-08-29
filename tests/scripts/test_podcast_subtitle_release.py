@@ -26,8 +26,7 @@ def tmp_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 def _canonical(value: object) -> bytes:
     return (
-        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-        + "\n"
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
     ).encode()
 
 
@@ -38,9 +37,7 @@ def _digest(raw: bytes) -> str:
 def _srt(cue_count: int = 4) -> bytes:
     blocks = []
     for cue in range(1, cue_count + 1):
-        blocks.append(
-            f"{cue}\n00:00:{cue:02d},000 --> 00:00:{cue:02d},900\n原文{cue}"
-        )
+        blocks.append(f"{cue}\n00:00:{cue:02d},000 --> 00:00:{cue:02d},900\n原文{cue}")
     return ("\n\n".join(blocks) + "\n").encode()
 
 
@@ -165,9 +162,7 @@ def _memo_execution_lineage(root: Path, *, audio: bytes, memo: bytes) -> dict[st
         }
     )
     receipt = canonical_json_bytes(
-        MemoBundledRunnerExecutionReceiptV1.model_validate_json(
-            receipt_draft, strict=True
-        )
+        MemoBundledRunnerExecutionReceiptV1.model_validate_json(receipt_draft, strict=True)
     )
     receipt_path = _write(root, "subtitle-v2/memo-execution.v1.json", receipt)
     return {
@@ -191,9 +186,7 @@ def _memo_execution_lineage(root: Path, *, audio: bytes, memo: bytes) -> dict[st
     }
 
 
-def _early_inputs(
-    root: Path, *, cue_count: int = 4, audio: bytes | None = None
-) -> bytes:
+def _early_inputs(root: Path, *, cue_count: int = 4, audio: bytes | None = None) -> bytes:
     audio = audio or _pcm_wav(max(6000, (cue_count + 1) * 1000))
     memo = _srt(cue_count)
     memo_execution = _memo_execution_lineage(root, audio=audio, memo=memo)
@@ -423,9 +416,7 @@ def _audio_inputs(
     segments = _write(
         root,
         relative_root + "/segments.json",
-        _canonical(
-            {"segments": [{"start_ms": 1000, "end_ms": 1900, "text": observed}]}
-        ),
+        _canonical({"segments": [{"start_ms": 1000, "end_ms": 1900, "text": observed}]}),
     )
     evidence_paths: dict[str, Path] = {}
     for family, model, adapter in (
@@ -453,9 +444,7 @@ def _audio_inputs(
                     "completed": True,
                     "exit_code": 0,
                     "transcript": observed,
-                    "segments": [
-                        {"start_ms": 1000, "end_ms": 1900, "text": observed}
-                    ],
+                    "segments": [{"start_ms": 1000, "end_ms": 1900, "text": observed}],
                     "provider_result": {"provider": family, "result": "原文2"},
                 }
             ),
@@ -538,9 +527,7 @@ def _complete_fixture(
 ) -> Path:
     _early_inputs(root, cue_count=cue_count)
     unresolved = "none" if population == "zero" else population
-    text_srt, unresolved_raw = _text_inputs(
-        root, cue_count=cue_count, unresolved=unresolved
-    )
+    text_srt, unresolved_raw = _text_inputs(root, cue_count=cue_count, unresolved=unresolved)
     _audio_inputs(
         root,
         text_srt=text_srt,
@@ -557,9 +544,7 @@ def _refresh_audio_decision_refs(root: Path) -> None:
     audio_path = root / release._DEFAULT_INPUT_PATHS["audio_decisions"]
     audio = json.loads(audio_path.read_bytes())
     evidence_root = root / "subtitle-work/memo-dual-audit-v1/evidence/cue-2"
-    audio["major_components"][0]["evidence"]["clip"] = _ref(
-        root, evidence_root / "clip.wav"
-    )
+    audio["major_components"][0]["evidence"]["clip"] = _ref(root, evidence_root / "clip.wav")
     for family in ("faster", "qwen"):
         audio["major_components"][0]["evidence"][family]["file"] = _ref(
             root, evidence_root / f"{family}-evidence.json"
@@ -568,10 +553,7 @@ def _refresh_audio_decision_refs(root: Path) -> None:
 
 
 def _mutate_evidence(root: Path, family: str, mutation) -> None:
-    path = (
-        root
-        / f"subtitle-work/memo-dual-audit-v1/evidence/cue-2/{family}-evidence.json"
-    )
+    path = root / f"subtitle-work/memo-dual-audit-v1/evidence/cue-2/{family}-evidence.json"
     payload = json.loads(path.read_bytes())
     mutation(payload)
     path.write_bytes(_canonical(payload))
@@ -608,9 +590,7 @@ def test_init_status_progresses_to_finalize_without_future_hashes(tmp_path: Path
     assert code == 3
     assert json.loads(raw)["phase"] == "awaiting_major_dual_asr"
 
-    _audio_inputs(
-        tmp_path, text_srt=text_srt, unresolved_raw=unresolved_raw, population="major"
-    )
+    _audio_inputs(tmp_path, text_srt=text_srt, unresolved_raw=unresolved_raw, population="major")
     assert release.main(["finalize", "--request", str(request_path)]) == 0
     output = tmp_path / "subtitle-release/memo-dual-audit-v1"
     assert {path.name for path in output.iterdir()} == {
@@ -622,9 +602,10 @@ def test_init_status_progresses_to_finalize_without_future_hashes(tmp_path: Path
     assert json.loads((output / "release-ledger.json").read_bytes())["contract"] == (
         release.RELEASE_CONTRACT
     )
-    assert json.loads((output / "STAGE5-HANDOFF.json").read_bytes())[
-        "contract"
-    ] == release.STAGE5_HANDOFF_CONTRACT
+    assert (
+        json.loads((output / "STAGE5-HANDOFF.json").read_bytes())["contract"]
+        == release.STAGE5_HANDOFF_CONTRACT
+    )
 
 
 def test_non_2630_episode_and_conflict_retain_memo(tmp_path: Path) -> None:
@@ -792,8 +773,7 @@ def test_builder_refuses_transcript_not_derived_from_provider_output(
 def test_model_adapter_only_json_is_not_asr_evidence(tmp_path: Path) -> None:
     request_path = _complete_fixture(tmp_path)
     evidence_path = (
-        tmp_path
-        / "subtitle-work/memo-dual-audit-v1/evidence/cue-2/faster-evidence.json"
+        tmp_path / "subtitle-work/memo-dual-audit-v1/evidence/cue-2/faster-evidence.json"
     )
     evidence_path.write_bytes(_canonical({"model": "faster", "adapter": "faster"}))
     _refresh_audio_decision_refs(tmp_path)
@@ -846,10 +826,7 @@ def test_wrong_typed_asr_identity_fails_closed(
 
 def test_tampered_provider_result_fails_closed(tmp_path: Path) -> None:
     request_path = _complete_fixture(tmp_path)
-    provider = (
-        tmp_path
-        / "subtitle-work/memo-dual-audit-v1/evidence/cue-2/faster-provider.json"
-    )
+    provider = tmp_path / "subtitle-work/memo-dual-audit-v1/evidence/cue-2/faster-provider.json"
     provider.write_bytes(b"tampered")
     with pytest.raises(release.SubtitleReleaseError, match="evidence drift"):
         release.build_release(release.load_request(request_path))
@@ -877,9 +854,7 @@ def test_tampered_sealed_input_fails_status(tmp_path: Path) -> None:
 
 def test_release_rejects_missing_or_tampered_quorum_audit(tmp_path: Path) -> None:
     request_path = _complete_fixture(tmp_path)
-    receipt_path = tmp_path / release._DEFAULT_INPUT_PATHS[
-        "memo_recognition_acceptance"
-    ]
+    receipt_path = tmp_path / release._DEFAULT_INPUT_PATHS["memo_recognition_acceptance"]
     receipt = json.loads(receipt_path.read_bytes())
     audit_path = tmp_path / receipt["agent_audits"][0]["path"]
     audit_path.write_bytes(b"tampered")
@@ -934,20 +909,14 @@ def test_release_fresh_replay_rejects_tampered_memo_execution_artifact(
         artifact = tmp_path / artifact
     artifact.write_bytes(artifact.read_bytes() + b"tamper")
 
-    with pytest.raises(
-        release.SubtitleReleaseError, match="Memo execution|sealed input drift"
-    ):
+    with pytest.raises(release.SubtitleReleaseError, match="Memo execution|sealed input drift"):
         release.build_release(release.load_request(request_path))
 
 
 def test_release_rejects_missing_memo_execution_receipt(tmp_path: Path) -> None:
     request_path = _complete_fixture(tmp_path)
-    recognition_path = tmp_path / release._DEFAULT_INPUT_PATHS[
-        "memo_recognition_evidence"
-    ]
-    acceptance_path = tmp_path / release._DEFAULT_INPUT_PATHS[
-        "memo_recognition_acceptance"
-    ]
+    recognition_path = tmp_path / release._DEFAULT_INPUT_PATHS["memo_recognition_evidence"]
+    acceptance_path = tmp_path / release._DEFAULT_INPUT_PATHS["memo_recognition_acceptance"]
     recognition = json.loads(recognition_path.read_bytes())
     acceptance = json.loads(acceptance_path.read_bytes())
     recognition["memo_execution_receipt"]["path"] = "subtitle-v2/missing.json"
@@ -964,12 +933,8 @@ def test_official_release_rejects_legacy_recognition_without_execution_lineage(
     tmp_path: Path,
 ) -> None:
     request_path = _complete_fixture(tmp_path)
-    recognition_path = tmp_path / release._DEFAULT_INPUT_PATHS[
-        "memo_recognition_evidence"
-    ]
-    acceptance_path = tmp_path / release._DEFAULT_INPUT_PATHS[
-        "memo_recognition_acceptance"
-    ]
+    recognition_path = tmp_path / release._DEFAULT_INPUT_PATHS["memo_recognition_evidence"]
+    acceptance_path = tmp_path / release._DEFAULT_INPUT_PATHS["memo_recognition_acceptance"]
     recognition = json.loads(recognition_path.read_bytes())
     acceptance = json.loads(acceptance_path.read_bytes())
     recognition.pop("memo_execution_receipt")
@@ -984,12 +949,8 @@ def test_official_release_rejects_legacy_recognition_without_execution_lineage(
 
 def test_release_rejects_execution_reference_path_escape(tmp_path: Path) -> None:
     request_path = _complete_fixture(tmp_path)
-    recognition_path = tmp_path / release._DEFAULT_INPUT_PATHS[
-        "memo_recognition_evidence"
-    ]
-    acceptance_path = tmp_path / release._DEFAULT_INPUT_PATHS[
-        "memo_recognition_acceptance"
-    ]
+    recognition_path = tmp_path / release._DEFAULT_INPUT_PATHS["memo_recognition_evidence"]
+    acceptance_path = tmp_path / release._DEFAULT_INPUT_PATHS["memo_recognition_acceptance"]
     recognition = json.loads(recognition_path.read_bytes())
     acceptance = json.loads(acceptance_path.read_bytes())
     recognition["memo_execution_receipt"]["path"] = "../another-episode/receipt.json"
@@ -1004,10 +965,7 @@ def test_release_rejects_execution_reference_path_escape(tmp_path: Path) -> None
 
 def test_tampered_dual_asr_evidence_fails_closed(tmp_path: Path) -> None:
     request_path = _complete_fixture(tmp_path)
-    evidence = (
-        tmp_path
-        / "subtitle-work/memo-dual-audit-v1/evidence/cue-2/faster-evidence.json"
-    )
+    evidence = tmp_path / "subtitle-work/memo-dual-audit-v1/evidence/cue-2/faster-evidence.json"
     evidence.write_bytes(b"tampered")
     with pytest.raises(release.SubtitleReleaseError, match="evidence drift"):
         release.build_release(release.load_request(request_path))
@@ -1217,12 +1175,10 @@ def test_prepare_major_audio_and_run_both_official_asr_families(
         release.build_audio_decisions(
             request,
             faster_manifest=(
-                tmp_path
-                / "subtitle-work/memo-dual-audit-v1/major-audio/asr/faster/manifest.json"
+                tmp_path / "subtitle-work/memo-dual-audit-v1/major-audio/asr/faster/manifest.json"
             ),
             qwen_manifest=(
-                tmp_path
-                / "subtitle-work/memo-dual-audit-v1/major-audio/asr/qwen/manifest.json"
+                tmp_path / "subtitle-work/memo-dual-audit-v1/major-audio/asr/qwen/manifest.json"
             ),
         )
     )
@@ -1266,8 +1222,7 @@ def test_audio_decision_accepts_only_exact_audit_candidate_and_replays(
     decisions_raw = release.build_audio_decisions(
         request,
         faster_manifest=(
-            tmp_path
-            / "subtitle-work/memo-dual-audit-v1/major-audio/asr/faster/manifest.json"
+            tmp_path / "subtitle-work/memo-dual-audit-v1/major-audio/asr/faster/manifest.json"
         ),
         qwen_manifest=(
             tmp_path / "subtitle-work/memo-dual-audit-v1/major-audio/asr/qwen/manifest.json"
@@ -1298,9 +1253,7 @@ def test_audio_decision_candidates_ignore_explicit_null_audit_proposals() -> Non
 def test_prepare_major_audio_zero_major_is_complete_empty_plan(tmp_path: Path) -> None:
     _early_inputs(tmp_path)
     _text_inputs(tmp_path, unresolved="none")
-    request = release.load_request(
-        release.init_request(tmp_path, episode_id="fixture-episode")
-    )
+    request = release.load_request(release.init_request(tmp_path, episode_id="fixture-episode"))
     plan = json.loads(release.prepare_major_audio(request))
     assert plan["jobs"] == []
     assert plan["major_component_count"] == 0
@@ -1309,9 +1262,7 @@ def test_prepare_major_audio_zero_major_is_complete_empty_plan(tmp_path: Path) -
 def test_audio_decisions_retain_nonmajor_without_provider_calls(tmp_path: Path) -> None:
     _early_inputs(tmp_path)
     _text_inputs(tmp_path, unresolved="nonmajor")
-    request = release.load_request(
-        release.init_request(tmp_path, episode_id="fixture-episode")
-    )
+    request = release.load_request(release.init_request(tmp_path, episode_id="fixture-episode"))
     release.prepare_major_audio(request)
     plan_path = tmp_path / release.DEFAULT_MAJOR_AUDIO_PLAN
 
@@ -1338,12 +1289,10 @@ def test_audio_decisions_retain_nonmajor_without_provider_calls(tmp_path: Path) 
         release.build_audio_decisions(
             request,
             faster_manifest=(
-                tmp_path
-                / "subtitle-work/memo-dual-audit-v1/major-audio/asr/faster/manifest.json"
+                tmp_path / "subtitle-work/memo-dual-audit-v1/major-audio/asr/faster/manifest.json"
             ),
             qwen_manifest=(
-                tmp_path
-                / "subtitle-work/memo-dual-audit-v1/major-audio/asr/qwen/manifest.json"
+                tmp_path / "subtitle-work/memo-dual-audit-v1/major-audio/asr/qwen/manifest.json"
             ),
         )
     )
@@ -1356,9 +1305,7 @@ def test_run_major_asr_rejects_plan_tamper_and_unpinned_revision(
 ) -> None:
     _early_inputs(tmp_path)
     _text_inputs(tmp_path, unresolved="major")
-    request = release.load_request(
-        release.init_request(tmp_path, episode_id="fixture-episode")
-    )
+    request = release.load_request(release.init_request(tmp_path, episode_id="fixture-episode"))
     release.prepare_major_audio(request)
     plan_path = tmp_path / release.DEFAULT_MAJOR_AUDIO_PLAN
     plan = json.loads(plan_path.read_bytes())
@@ -1381,9 +1328,7 @@ def test_major_asr_loads_once_and_resumes_only_missing_components(
 ) -> None:
     _early_inputs(tmp_path)
     _text_inputs(tmp_path, unresolved="major")
-    request = release.load_request(
-        release.init_request(tmp_path, episode_id="fixture-episode")
-    )
+    request = release.load_request(release.init_request(tmp_path, episode_id="fixture-episode"))
     release.prepare_major_audio(request, padding_ms=1000)
     plan_path = tmp_path / release.DEFAULT_MAJOR_AUDIO_PLAN
     plan = json.loads(plan_path.read_bytes())
@@ -1413,9 +1358,7 @@ def test_major_asr_loads_once_and_resumes_only_missing_components(
                 raise release.SubtitleReleaseError("fixture interruption")
             return {
                 "transcript": "原文2",
-                "segments": [
-                    {"start_ms": 1000, "end_ms": 1900, "text": "原文2"}
-                ],
+                "segments": [{"start_ms": 1000, "end_ms": 1900, "text": "原文2"}],
                 "provider_result": {"completed": True},
                 "runtime": "fixture-runtime",
             }
@@ -1443,9 +1386,7 @@ def test_major_asr_loads_once_and_resumes_only_missing_components(
             resumed_calls.append(kwargs["clip"].stem)
             return {
                 "transcript": "原文3",
-                "segments": [
-                    {"start_ms": 2000, "end_ms": 2900, "text": "原文3"}
-                ],
+                "segments": [{"start_ms": 2000, "end_ms": 2900, "text": "原文3"}],
                 "provider_result": {"completed": True},
                 "runtime": "fixture-runtime",
             }
@@ -1496,9 +1437,7 @@ def test_moboo_legacy_bundle_read_compatibility() -> None:
         pytest.skip("read-only Moboo forensic fixture unavailable")
     raw = release.verify_legacy_bundle(
         root,
-        expected_sha256=(
-            "8cf28558050e9c5d7cf4fbbcfa430fda9ba534acf20297ac7f4a0b49a674681c"
-        ),
+        expected_sha256=("8cf28558050e9c5d7cf4fbbcfa430fda9ba534acf20297ac7f4a0b49a674681c"),
     )
     result = json.loads(raw)
     assert result["compatible"] is True

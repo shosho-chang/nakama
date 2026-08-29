@@ -24,6 +24,7 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -101,6 +102,90 @@ FORMAT_CFG = {
 }
 SRC_W = 1920
 FIT = 1080 / 1920  # 16:9 源在 1080 寬 timeline 的 fit 縮放
+
+
+def _normalized_media_path(path: str | Path) -> str:
+    """Return a case-insensitive absolute key for a Resolve media path."""
+    return os.path.normcase(os.path.abspath(os.path.normpath(str(path))))
+
+
+def _media_item_path(item) -> str:
+    props = item.GetClipProperty() or {}
+    return str(props.get("File Path") or "")
+
+
+def _find_media_item_by_path(items: list, expected_path: Path):
+    """Resolve same-basename collisions by matching the full source path only."""
+    expected = _normalized_media_path(expected_path)
+    for item in items:
+        actual = _media_item_path(item)
+        if actual and _normalized_media_path(actual) == expected:
+            return item
+    return None
+
+
+def _media_pool_items(folder):
+    """Yield clips recursively because camera bins have used both Cams and Cameras."""
+    yield from (folder.GetClipList() or [])
+    for child in folder.GetSubFolderList() or []:
+        yield from _media_pool_items(child)
+
+
+def _validate_media_source_range(clip, f0: int, f1: int, *, project_fps: float) -> None:
+    """Fail before append when requested frames cannot exist in the selected media."""
+    props = clip.GetClipProperty() or {}
+    path = str(props.get("File Path") or clip.GetName() or "<unknown>")
+    try:
+        start = int(float(props.get("Start") or 0))
+        frames = int(float(props["Frames"]))
+        source_fps = float(props.get("FPS") or project_fps)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SystemExit(
+            f"Cannot validate source range for {path}: incomplete clip metadata"
+        ) from exc
+    end_exclusive = start + frames
+    if abs(source_fps - project_fps) > 1e-3:
+        raise SystemExit(
+            f"Camera FPS mismatch for {path}: media={source_fps:g}, timeline={project_fps:g}"
+        )
+    if f0 < start or f1 <= f0 or f1 > end_exclusive:
+        raise SystemExit(
+            f"source range {f0}-{f1} exceeds media bounds {start}-{end_exclusive} for {path}"
+        )
+
+
+def _validate_appended_source_range(item, f0: int, f1: int) -> None:
+    """Catch Resolve silently clamping an out-of-range request to a freeze frame."""
+    actual_start = item.GetSourceStartFrame()
+    actual_end = item.GetSourceEndFrame()
+    expected_span = f1 - f0
+    actual_span = (
+        int(actual_end) - int(actual_start)
+        if actual_start is not None and actual_end is not None
+        else -1
+    )
+    if actual_span != expected_span:
+        raise SystemExit(
+            "Resolve clamped source range: "
+            f"requested {f0}-{f1} ({expected_span} frames), "
+            f"placed {actual_start}-{actual_end} ({actual_span} frames)"
+        )
+
+
+def _configure_timeline(timeline, *, fmt: str, fps: float) -> None:
+    """Lock imported subtitle-template timelines to the project frame rate."""
+    fps_value = str(int(fps)) if float(fps).is_integer() else str(fps)
+    timeline.SetSetting("timelineFrameRate", fps_value)
+    try:
+        actual_fps = float(timeline.GetSetting("timelineFrameRate"))
+    except (TypeError, ValueError) as exc:
+        raise SystemExit("Timeline frame rate unavailable after template import") from exc
+    if abs(actual_fps - fps) > 1e-3:
+        raise SystemExit(f"Timeline frame rate mismatch: expected={fps:g}, actual={actual_fps:g}")
+    if fmt == "short":
+        timeline.SetSetting("useCustomSettings", "1")
+        timeline.SetSetting("timelineResolutionWidth", "1080")
+        timeline.SetSetting("timelineResolutionHeight", "1920")
 
 
 def _load_cfg(episode_dir: Path, fmt: str = "short") -> dict:
@@ -189,10 +274,9 @@ def _speaker_timing_tokens(episode_dir: Path) -> list[dict]:
     ):
         raise SystemExit("memo_recognition_evidence bytes 與 release ledger 不符")
     evidence = json.loads(evidence_raw)
-    if (
-        evidence.get("contract") != "memo-recognition-evidence-v1"
-        or evidence.get("normalized_audio_sha256") != ledger.get("normalized_audio_sha256")
-    ):
+    if evidence.get("contract") != "memo-recognition-evidence-v1" or evidence.get(
+        "normalized_audio_sha256"
+    ) != ledger.get("normalized_audio_sha256"):
         raise SystemExit("memo_recognition_evidence identity 與 release ledger 不符")
     tokens = evidence.get("tokens")
     if not isinstance(tokens, list) or not tokens:
@@ -527,6 +611,7 @@ def direct(
     if tl is None:
         raise SystemExit(f"timeline 建立失敗: {label}")
     project.SetCurrentTimeline(tl)
+    _configure_timeline(tl, fmt=fmt, fps=fps)
     if fmt == "short":  # 長片維持 project 的 16:9 設定，不覆寫
         tl.SetSetting("useCustomSettings", "1")
         tl.SetSetting("timelineResolutionWidth", "1080")
@@ -539,6 +624,7 @@ def direct(
             item.SetProperty(k, v)
 
     def _append_video(clip, f0: int, f1: int, extra: dict | None = None):
+        _validate_media_source_range(clip, f0, f1, project_fps=fps)
         spec = {"mediaPoolItem": clip, "mediaType": 1, "startFrame": f0, "endFrame": f1}
         if extra:
             spec.update(extra)
@@ -549,9 +635,12 @@ def direct(
         if not items or (isinstance(items, list) and items[0] is None):
             raise SystemExit(f"{label}: 上軌失敗（AppendToTimeline 回 {items!r}）{f0}-{f1}")
         if isinstance(items, list):
-            return items[0]
-        track = (extra or {}).get("trackIndex", 1)
-        return (tl.GetItemListInTrack("video", track) or [])[-1]
+            item = items[0]
+        else:
+            track = (extra or {}).get("trackIndex", 1)
+            item = (tl.GetItemListInTrack("video", track) or [])[-1]
+        _validate_appended_source_range(item, f0, f1)
+        return item
 
     tl_start = tl.GetStartFrame()
     # video：逐 shot 上軌 + 逐 item 設 transform（fit 縮放後 ZoomX/Pan）

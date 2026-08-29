@@ -64,9 +64,7 @@ def test_reconcile_reads_processing_privacy_schedule_and_missing_zh_tw_caption()
         "reconciliation_error": "zh-TW caption missing",
         "last_reconciled_at": "2026-08-19T00:00:00+00:00",
     }
-    assert yt.video_resource.calls == [
-        {"part": "status,processingDetails", "id": "video-1"}
-    ]
+    assert yt.video_resource.calls == [{"part": "status,processingDetails", "id": "video-1"}]
     assert yt.caption_resource.calls == [{"part": "snippet", "videoId": "video-1"}]
 
 

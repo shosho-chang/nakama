@@ -44,9 +44,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     accept.add_argument("--cut-srt", required=True)
     accept.add_argument("--audit-a", required=True)
     accept.add_argument("--audit-b", required=True)
-    accept.add_argument(
-        "--max-intro-sec", type=float, default=DEFAULT_MAX_INTRO_SEC
-    )
+    accept.add_argument("--max-intro-sec", type=float, default=DEFAULT_MAX_INTRO_SEC)
 
     verify = commands.add_parser(
         "verify", help="verify receipt lineage and the canonical guest-namecard event"
@@ -110,9 +108,7 @@ def main(argv: list[str] | None = None) -> int:
             _print({"status": "emitted", "event": event})
             return 0
         if args.guest_namecard_start is None and args.guest_namecard_end is None:
-            selected = verify_guest_namecard_recipe(
-                args.episode, cut_id=args.cut_id
-            )
+            selected = verify_guest_namecard_recipe(args.episode, cut_id=args.cut_id)
         else:
             selected = verify_identity_placement(
                 args.episode,

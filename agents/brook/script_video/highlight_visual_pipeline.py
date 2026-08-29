@@ -359,9 +359,7 @@ def _attempt_dir(root: Path, cut_id: str, revision_id: str, attempt: int) -> Pat
     ):
         raise HighlightVisualContractError(f"invalid DP attempt: {attempt!r}")
     path = (
-        _revision_dir(root, cut_id, revision_id)
-        / ATTEMPTS_DIR_NAME
-        / f"attempt-{attempt:03d}"
+        _revision_dir(root, cut_id, revision_id) / ATTEMPTS_DIR_NAME / f"attempt-{attempt:03d}"
     ).resolve()
     if not path.is_relative_to(root):
         raise HighlightVisualContractError("visual attempt path escapes episode root")
@@ -1479,17 +1477,13 @@ def _load_abandoned_artifact(
         label="ABANDONED.pending_pointer",
     )
     if pending["semantic_audit"] is not None:
-        raise HighlightVisualContractError(
-            "ABANDONED pending pointer cannot bind a semantic audit"
-        )
+        raise HighlightVisualContractError("ABANDONED pending pointer cannot bind a semantic audit")
     if document["work_packet"] != pending["work_packet"]:
         raise HighlightVisualContractError("ABANDONED work packet identity drift")
     current = document["current_pointer"]
     if current is not None:
         current_revision = str(
-            _require_exact_keys(current, _POINTER_KEYS, "ABANDONED.current_pointer")[
-                "revision_id"
-            ]
+            _require_exact_keys(current, _POINTER_KEYS, "ABANDONED.current_pointer")["revision_id"]
         )
         _validate_pointer_snapshot(
             root,
@@ -1759,9 +1753,7 @@ def _trusted_worker_execution(value: Mapping[str, str], *, expected_role: str) -
     return normalized
 
 
-def _execution_receipt_path(
-    root: Path, *, cut_id: str, revision_id: str, phase: str
-) -> Path:
+def _execution_receipt_path(root: Path, *, cut_id: str, revision_id: str, phase: str) -> Path:
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,127}", phase):
         raise HighlightVisualContractError("trusted execution phase is unsafe")
     return (
@@ -1773,9 +1765,7 @@ def _execution_receipt_path(
     )
 
 
-def _validate_execution_stream_identity(
-    root: Path, value: object, label: str
-) -> dict[str, object]:
+def _validate_execution_stream_identity(root: Path, value: object, label: str) -> dict[str, object]:
     identity = _require_exact_keys(value, _MEDIA_KEYS, label)
     raw_path = identity["path"]
     if not isinstance(raw_path, str) or Path(raw_path).is_absolute():
@@ -2057,9 +2047,7 @@ def _visual_feedback_directives(
             f"requested visual directive[{index}].source_component",
         )
         source_hash = source_component["content_hash"]
-        source_core = {
-            key: item for key, item in source_component.items() if key != "content_hash"
-        }
+        source_core = {key: item for key, item in source_component.items() if key != "content_hash"}
         if (
             not isinstance(source_hash, str)
             or not _SHA256_RE.fullmatch(source_hash)
@@ -2514,9 +2502,7 @@ def _prospective_work_document(
     if legacy is not None and pending_path.is_file():
         pending = _load_pointer(root, cut_id, PENDING_POINTER_NAME)
         if pending["revision_id"] == legacy["revision_id"]:
-            legacy_path = (
-                _revision_dir(root, cut_id, str(legacy["revision_id"])) / WORK_PACKET_NAME
-            )
+            legacy_path = _revision_dir(root, cut_id, str(legacy["revision_id"])) / WORK_PACKET_NAME
             legacy_selection = _load_hashed_artifact(
                 root,
                 legacy_path,
@@ -3369,9 +3355,7 @@ def _accepted_dp_hydration_lineage(
         )
     try:
         raw_identity = (
-            _require_exact_keys(
-                raw_proposal_identity, _MEDIA_KEYS, "raw DP proposal snapshot"
-            )
+            _require_exact_keys(raw_proposal_identity, _MEDIA_KEYS, "raw DP proposal snapshot")
             if raw_proposal_identity is not None
             else _file_identity(root, raw_path)
         )
@@ -3427,9 +3411,7 @@ def _verify_canonical_dp_hydration(
 ) -> None:
     execution_identity = document["execution_receipt"]
     worker_proposal_identity = document["worker_proposal"]
-    if not isinstance(execution_identity, dict) or not isinstance(
-        worker_proposal_identity, dict
-    ):
+    if not isinstance(execution_identity, dict) or not isinstance(worker_proposal_identity, dict):
         raise HighlightVisualContractError(
             "canonical DP fulfillment lacks trusted execution lineage"
         )
@@ -3453,8 +3435,7 @@ def _verify_canonical_dp_hydration(
     ):
         raise HighlightVisualContractError("canonical DP execution lineage drift")
     values = {
-        key: document[key]
-        for key in ("worker_proposal", "hydrated_proposal", "hydration_receipt")
+        key: document[key] for key in ("worker_proposal", "hydrated_proposal", "hydration_receipt")
     }
     if all(value is None for value in values.values()):
         raise HighlightVisualContractError("canonical DP fulfillment lacks hydration lineage")
@@ -3744,7 +3725,8 @@ def _verify_canonical_asset_execution(
     """Freshly bind canonical authority rows to the trusted acquisition execution."""
 
     worker = _trusted_worker_execution(
-        document["worker_execution"], expected_role="asset_acquisition"  # type: ignore[arg-type]
+        document["worker_execution"],
+        expected_role="asset_acquisition",  # type: ignore[arg-type]
     )
     manifest_path = _require_persisted_execution_receipt(
         root,
@@ -3765,10 +3747,7 @@ def _verify_canonical_asset_execution(
     if not isinstance(authority_assets, list):
         raise HighlightVisualContractError("canonical asset authority assets are invalid")
     projected = [
-        {
-            key: row[key]
-            for key in _AUTHORITY_SOURCE_KEYS
-        }
+        {key: row[key] for key in _AUTHORITY_SOURCE_KEYS}
         for row in authority_assets
         if isinstance(row, dict)
     ]
@@ -3827,9 +3806,7 @@ def accept_asset_authority(
         phase=f"asset_acquisition-{attempt:03d}",
         role="asset_acquisition",
         worker_identity=worker_identity,
-        worker_proposal=(
-            acquisition_manifest if acquisition_manifest is not None else proposal
-        ),
+        worker_proposal=(acquisition_manifest if acquisition_manifest is not None else proposal),
         execution_receipt=execution_receipt,
         expected_worker_proposal_identity=manifest_identity,
     )
@@ -3848,9 +3825,7 @@ def accept_asset_authority(
         or raw["parent_refinement"] != parent_refinement
     ):
         raise HighlightVisualContractError("asset authority lineage is stale")
-    worker_execution = _trusted_worker_execution(
-        worker_identity, expected_role="asset_acquisition"
-    )
+    worker_execution = _trusted_worker_execution(worker_identity, expected_role="asset_acquisition")
     assets = _normalized_authority_assets(
         root,
         raw["assets"],
@@ -3861,9 +3836,7 @@ def accept_asset_authority(
     if strict_execution:
         if manifest_snapshot is None:
             raise HighlightVisualContractError("trusted acquisition manifest snapshot is missing")
-        manifest_document = _accepted_worker_proposal_snapshot(
-            strict_execution, manifest_snapshot
-        )
+        manifest_document = _accepted_worker_proposal_snapshot(strict_execution, manifest_snapshot)
         manifest_assets = _asset_acquisition_manifest_sources_document(
             manifest_document,
             root=root,
@@ -3871,9 +3844,7 @@ def accept_asset_authority(
             revision_id=revision_id,
             attempt=attempt,
         )
-        projected_assets = [
-            {key: row[key] for key in _AUTHORITY_SOURCE_KEYS} for row in assets
-        ]
+        projected_assets = [{key: row[key] for key in _AUTHORITY_SOURCE_KEYS} for row in assets]
         if projected_assets != manifest_assets:
             raise HighlightVisualContractError(
                 "asset authority differs from trusted acquisition manifest"
@@ -4061,9 +4032,7 @@ def publish_asset_authority(
         role="asset_acquisition",
         worker_identity=worker_identity,
         worker_proposal=(
-            acquisition_manifest
-            if acquisition_manifest is not None
-            else {"assets": list(assets)}
+            acquisition_manifest if acquisition_manifest is not None else {"assets": list(assets)}
         ),
         execution_receipt=execution_receipt,
         expected_worker_proposal_identity=manifest_identity,
@@ -4071,9 +4040,7 @@ def publish_asset_authority(
     if strict_execution:
         if manifest_snapshot is None:
             raise HighlightVisualContractError("trusted acquisition manifest snapshot is missing")
-        manifest_document = _accepted_worker_proposal_snapshot(
-            strict_execution, manifest_snapshot
-        )
+        manifest_document = _accepted_worker_proposal_snapshot(strict_execution, manifest_snapshot)
         manifest_assets = _asset_acquisition_manifest_sources_document(
             manifest_document,
             root=root,
@@ -4259,9 +4226,7 @@ def _effective_authority_assets(
             editorial_master=editorial_master,
             _work=work,
         )
-        current_rows = [
-            dict(row) for row in authority.document["assets"] if isinstance(row, dict)
-        ]
+        current_rows = [dict(row) for row in authority.document["assets"] if isinstance(row, dict)]
         _validate_authority_extension(assets, current_rows)
         assets.extend(current_rows)
     if require_any and not assets:
@@ -4425,8 +4390,7 @@ def _dp_implementations(
     seen_events: set[str] = set()
     selected_source_media_sha256: set[str] = set()
     needs_asset_authority = any(
-        isinstance(row, dict) and row.get("mode") in {"stock", "provided_asset"}
-        for row in value
+        isinstance(row, dict) and row.get("mode") in {"stock", "provided_asset"} for row in value
     )
     authority_by_id: dict[str, dict[str, object]] = {}
     if needs_asset_authority:
@@ -4438,10 +4402,7 @@ def _dp_implementations(
             editorial_master=editorial_master,
             work=work,
         )
-        authority_by_id = {
-            str(row["asset_id"]): row
-            for row in authority_assets
-        }
+        authority_by_id = {str(row["asset_id"]): row for row in authority_assets}
     feedback_by_event = {
         str(directive["component_id"]): directive
         for directive in _visual_feedback_directives(work.document)
@@ -4761,9 +4722,11 @@ def _dp_implementations(
             candidate = candidate_by_id[candidate_id]
             if mode == "hyperframes":
                 render_params = candidate["render_params"]
-                if "show_sec" in render_params and abs(
-                    float(render_params["show_sec"]) - (prior_end - selection_start)
-                ) > 0.001:
+                if (
+                    "show_sec" in render_params
+                    and abs(float(render_params["show_sec"]) - (prior_end - selection_start))
+                    > 0.001
+                ):
                     raise HighlightVisualContractError(
                         f"{event_id} HyperFrames show_sec must equal selected display duration"
                     )
@@ -4887,16 +4850,16 @@ def accept_dp_fulfillment(
     )
     hydration_lineage, verified_worker_snapshot, verified_hydrated_snapshot = (
         _accepted_dp_hydration_lineage(
-        root,
-        cut_id=cut_id,
-        revision_id=revision_id,
-        attempt=1,
-        raw_proposal=worker_proposal if worker_proposal is not None else proposal,
-        hydrated_proposal=proposal,
-        strict_execution=strict_execution,
-        editorial_master=editorial_master,
-        raw_proposal_identity=worker_snapshot_identity,
-        hydrated_proposal_identity=hydrated_snapshot_identity,
+            root,
+            cut_id=cut_id,
+            revision_id=revision_id,
+            attempt=1,
+            raw_proposal=worker_proposal if worker_proposal is not None else proposal,
+            hydrated_proposal=proposal,
+            strict_execution=strict_execution,
+            editorial_master=editorial_master,
+            raw_proposal_identity=worker_snapshot_identity,
+            hydrated_proposal_identity=hydrated_snapshot_identity,
         )
     )
     if verified_worker_snapshot is not None and (
@@ -5464,9 +5427,7 @@ def _normalized_refinement_decisions(
         )
     normalized: list[dict[str, object]] = []
     for index, (raw, finding) in enumerate(zip(value, findings, strict=True), 1):
-        decision = _require_exact_keys(
-            raw, _REFINEMENT_ITEM_KEYS, f"refinement decisions[{index}]"
-        )
+        decision = _require_exact_keys(raw, _REFINEMENT_ITEM_KEYS, f"refinement decisions[{index}]")
         if (
             decision["materialization_id"] != finding["materialization_id"]
             or decision["event_id"] != finding["event_id"]
@@ -5592,9 +5553,7 @@ def accept_refinement_decision(
         "worker_execution": worker_execution,
         "semantic_refinement": refinement.identity(),
         "decisions": decisions,
-        "requires_director_replan": any(
-            row["action"] == "director_replan" for row in decisions
-        ),
+        "requires_director_replan": any(row["action"] == "director_replan" for row in decisions),
     }
     document["content_hash"] = _content_hash(document)
     _atomic_publish(path, document)
@@ -6011,16 +5970,16 @@ def accept_dp_refinement(
     )
     hydration_lineage, verified_worker_snapshot, verified_hydrated_snapshot = (
         _accepted_dp_hydration_lineage(
-        root,
-        cut_id=cut_id,
-        revision_id=revision_id,
-        attempt=attempt,
-        raw_proposal=worker_proposal if worker_proposal is not None else proposal,
-        hydrated_proposal=proposal,
-        strict_execution=strict_execution,
-        editorial_master=editorial_master,
-        raw_proposal_identity=worker_snapshot_identity,
-        hydrated_proposal_identity=hydrated_snapshot_identity,
+            root,
+            cut_id=cut_id,
+            revision_id=revision_id,
+            attempt=attempt,
+            raw_proposal=worker_proposal if worker_proposal is not None else proposal,
+            hydrated_proposal=proposal,
+            strict_execution=strict_execution,
+            editorial_master=editorial_master,
+            raw_proposal_identity=worker_snapshot_identity,
+            hydrated_proposal_identity=hydrated_snapshot_identity,
         )
     )
     if verified_worker_snapshot is not None and (
@@ -6110,6 +6069,7 @@ def accept_dp_refinement(
         for row in decision.document["decisions"]
         if row["action"] == "retry_dp"
     }
+
     def stable_materialization(value: Mapping[str, object]) -> dict[str, object]:
         normalized = dict(value)
         provenance = normalized.get("provenance")
@@ -6130,8 +6090,7 @@ def accept_dp_refinement(
                 "DP refinement changed a materialization that passed semantic audit"
             )
         if materialization_id in retry_ids and (
-            next_row == prior_row
-            or next_row["media"]["sha256"] == prior_row["media"]["sha256"]
+            next_row == prior_row or next_row["media"]["sha256"] == prior_row["media"]["sha256"]
         ):
             raise HighlightVisualContractError(
                 "DP refinement did not replace an exact failed materialization"
@@ -6400,18 +6359,12 @@ def load_semantic_audit(
     document = selection.document
     if document["episode_id"] != root.name or document["cut_id"] != cut_id:
         raise HighlightVisualContractError("semantic audit belongs to another episode/cut")
-    audit_worker = _trusted_worker_execution(
-        document["worker_execution"], expected_role="director"
-    )
+    audit_worker = _trusted_worker_execution(document["worker_execution"], expected_role="director")
     _require_persisted_execution_receipt(
         root,
         cut_id=cut_id,
         revision_id=selected_revision,
-        phase=(
-            "semantic_audit"
-            if active_attempt == 1
-            else f"semantic_audit-{active_attempt:03d}"
-        ),
+        phase=("semantic_audit" if active_attempt == 1 else f"semantic_audit-{active_attempt:03d}"),
         role="director",
         worker_identity=audit_worker,  # type: ignore[arg-type]
     )
@@ -6714,9 +6667,7 @@ def visual_pipeline_status(
                                 root, cut_id, pending_revision_id, next_attempt
                             )
                             replan_marker = (
-                                _attempt_dir(
-                                    root, cut_id, pending_revision_id, next_attempt
-                                )
+                                _attempt_dir(root, cut_id, pending_revision_id, next_attempt)
                                 / DIRECTOR_REPLAN_NAME
                             )
                             if next_director_path.is_file() and not replan_marker.is_file():

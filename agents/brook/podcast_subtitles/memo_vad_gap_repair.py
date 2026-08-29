@@ -67,8 +67,7 @@ class MemoVadGapInsertedCueV1(_StrictModel):
             not self.text.strip()
             or self.local_end_ms <= self.local_start_ms
             or self.global_end_ms <= self.global_start_ms
-            or self.global_end_ms - self.global_start_ms
-            != self.local_end_ms - self.local_start_ms
+            or self.global_end_ms - self.global_start_ms != self.local_end_ms - self.local_start_ms
         ):
             raise ValueError("Memo VAD repair inserted cue is invalid")
         return self
@@ -135,8 +134,7 @@ class MemoVadGapRepairReceiptV1(_StrictModel):
         if (
             self.declared_gap_end_ms <= self.declared_gap_start_ms
             or self.global_offset_ms != self.declared_gap_start_ms
-            or self.target_wav_duration_ms
-            != self.declared_gap_end_ms - self.declared_gap_start_ms
+            or self.target_wav_duration_ms != self.declared_gap_end_ms - self.declared_gap_start_ms
         ):
             raise ValueError("Memo VAD repair receipt has inconsistent gap timing")
         return self
@@ -214,14 +212,12 @@ def repair_memo_vad_gap(
         for cue in target_cues
     )
     if any(
-        cue.start_ms < inputs.declared_gap_start_ms
-        or cue.end_ms > inputs.declared_gap_end_ms
+        cue.start_ms < inputs.declared_gap_start_ms or cue.end_ms > inputs.declared_gap_end_ms
         for cue in shifted
     ):
         raise ValueError("Memo VAD repair target cue is outside declared gap")
     if any(
-        cue.start_ms < inputs.declared_gap_end_ms
-        and cue.end_ms > inputs.declared_gap_start_ms
+        cue.start_ms < inputs.declared_gap_end_ms and cue.end_ms > inputs.declared_gap_start_ms
         for cue in parent_cues
     ):
         raise ValueError("Memo VAD repair declared gap overlaps parent cues")

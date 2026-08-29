@@ -294,9 +294,7 @@ def test_reference_validation_batches_exact_membership_once_per_source(
     invocations = {item.invocation_id for item in loaded.references.retrievals}
     assert len(invocations) == 1
     expected_ids = {
-        item.id
-        for receipt in loaded.references.retrievals
-        for item in receipt.evidence
+        item.id for receipt in loaded.references.retrievals for item in receipt.evidence
     }
     assert expected_ids
     verified_batches: list[tuple[str, ...]] = []
@@ -323,8 +321,7 @@ def test_reference_validation_batches_exact_membership_once_per_source(
         references=loaded.references.evidence,
         retrievals=loaded.references.retrievals,
         reference_extraction_snapshots={
-            item.name: item.payload
-            for item in loaded.references.extraction_snapshots.artifacts
+            item.name: item.payload for item in loaded.references.extraction_snapshots.artifacts
         },
         context="unique membership regression",
     )

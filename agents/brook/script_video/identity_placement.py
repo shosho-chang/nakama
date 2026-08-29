@@ -36,9 +36,7 @@ DEFAULT_MAX_INTRO_SEC = 180.0
 
 _CUT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-_TIMESTAMP_RE = re.compile(
-    r"^(?P<h>\d{2,}):(?P<m>[0-5]\d):(?P<s>[0-5]\d),(?P<ms>\d{3})$"
-)
+_TIMESTAMP_RE = re.compile(r"^(?P<h>\d{2,}):(?P<m>[0-5]\d):(?P<s>[0-5]\d),(?P<ms>\d{3})$")
 _TIMING_RE = re.compile(
     r"^(?P<start>\d{2,}:[0-5]\d:[0-5]\d,\d{3})\s+-->\s+"
     r"(?P<end>\d{2,}:[0-5]\d:[0-5]\d,\d{3})$"
@@ -108,9 +106,7 @@ def _canonical_json(value: Mapping[str, object]) -> bytes:
 
 
 def _pretty_json(value: Mapping[str, object]) -> bytes:
-    return (
-        json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
-    ).encode("utf-8")
+    return (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
 def _sha256_bytes(value: bytes) -> str:
@@ -125,9 +121,7 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _require_exact_keys(
-    value: object, expected: set[str], label: str
-) -> dict[str, object]:
+def _require_exact_keys(value: object, expected: set[str], label: str) -> dict[str, object]:
     if not isinstance(value, dict):
         raise IdentityPlacementError(f"{label} must be an object")
     actual = set(value)
@@ -166,12 +160,7 @@ def _seconds(value: str) -> float:
     match = _TIMESTAMP_RE.fullmatch(value)
     if match is None:
         raise IdentityPlacementError(f"invalid SRT timestamp: {value}")
-    return (
-        int(match["h"]) * 3600
-        + int(match["m"]) * 60
-        + int(match["s"])
-        + int(match["ms"]) / 1000
-    )
+    return int(match["h"]) * 3600 + int(match["m"]) * 60 + int(match["s"]) + int(match["ms"]) / 1000
 
 
 def parse_srt(path: Path) -> list[SrtCue]:
@@ -216,9 +205,7 @@ def _file_identity(root: Path, path: Path, **extra: object) -> dict[str, object]
 def _validate_file_identity(
     root: Path, value: object, label: str, *, required_parent: Path | None = None
 ) -> Path:
-    identity = _require_exact_keys(
-        value, {"path", "bytes", "sha256"}, label
-    )
+    identity = _require_exact_keys(value, {"path", "bytes", "sha256"}, label)
     raw_path = identity["path"]
     if not isinstance(raw_path, str) or Path(raw_path).is_absolute():
         raise IdentityPlacementError(f"{label}.path must be episode-relative")
@@ -345,9 +332,7 @@ def _latest_tight_srt(root: Path, cut_id: str) -> Path:
     revisions: list[tuple[int, Path]] = []
     if srt_dir.is_dir():
         for path in srt_dir.iterdir():
-            match = re.fullmatch(
-                rf"{re.escape(cut_id)}_tight_r(\d+)\.srt", path.name
-            )
+            match = re.fullmatch(rf"{re.escape(cut_id)}_tight_r(\d+)\.srt", path.name)
             if match and path.is_file():
                 revisions.append((int(match.group(1)), path.resolve()))
     if not revisions:
@@ -421,9 +406,7 @@ def _verify_cut_context(
             expected_format=str(cut_format),
         )
     except EditorialMasterContractError as error:
-        raise IdentityPlacementError(
-            f"winner materialization is not valid: {error}"
-        ) from error
+        raise IdentityPlacementError(f"winner materialization is not valid: {error}") from error
     source_range = materialization.get("source_range")
     range_valid = isinstance(source_range, dict) and set(source_range) == {
         "start_sec",
@@ -433,17 +416,14 @@ def _verify_cut_context(
     }
     if range_valid:
         range_valid = all(
-            isinstance(source_range[key], (int, float))
-            and not isinstance(source_range[key], bool)
+            isinstance(source_range[key], (int, float)) and not isinstance(source_range[key], bool)
             for key in source_range
         )
     if not range_valid or (
         float(source_range["start_sec"]) != float(start_sec)
         or float(source_range["end_sec"]) != float(end_sec)
     ):
-        raise IdentityPlacementError(
-            "winner materialization source range differs from candidate"
-        )
+        raise IdentityPlacementError("winner materialization source range differs from candidate")
     shortlist_identity: dict[str, object] = {
         "candidates": _file_identity(root, candidates_path),
         "winners": _file_identity(root, winners_path),
@@ -491,8 +471,7 @@ def accept_identity_placement(
         rf"{re.escape(cut_id)}_tight_r\d+\.srt", srt_path.name
     ):
         raise IdentityPlacementError(
-            "cut SRT must be the exact canonical highlights/srt/"
-            f"{cut_id}_tight_rNNN.srt revision"
+            f"cut SRT must be the exact canonical highlights/srt/{cut_id}_tight_rNNN.srt revision"
         )
     cut_dir = (root / IDENTITY_ROOT / cut_id).resolve()
     if not cut_dir.is_relative_to(root):
@@ -560,23 +539,19 @@ def accept_identity_placement(
         "acceptance": "agent-quorum",
     }
     core["content_hash"] = _sha256_bytes(_canonical_json(core))
-    receipt_path = (Path(output) if output is not None else cut_dir / RECEIPT_NAME)
+    receipt_path = Path(output) if output is not None else cut_dir / RECEIPT_NAME
     if not receipt_path.is_absolute():
         receipt_path = root / receipt_path
     receipt_path = receipt_path.resolve()
     if receipt_path.parent != cut_dir or receipt_path.name != RECEIPT_NAME:
-        raise IdentityPlacementError(
-            f"receipt must be the canonical cut-local {RECEIPT_NAME}"
-        )
+        raise IdentityPlacementError(f"receipt must be the canonical cut-local {RECEIPT_NAME}")
     payload = _pretty_json(core)
     if receipt_path.exists():
         if receipt_path.read_bytes() != payload:
             raise IdentityPlacementConflictError(
                 "immutable identity-placement receipt already differs"
             )
-        return verify_identity_placement(
-            root, cut_id=cut_id, editorial_master=master
-        )
+        return verify_identity_placement(root, cut_id=cut_id, editorial_master=master)
     temporary = receipt_path.with_name(f".{RECEIPT_NAME}.{uuid.uuid4().hex}.tmp")
     temporary.write_bytes(payload)
     os.replace(temporary, receipt_path)
@@ -781,9 +756,7 @@ def emit_guest_namecard_recipe(
         or not 0.8 <= float(duration_sec) <= 7.7
     ):
         raise IdentityPlacementError("guest namecard duration must be in [0.8, 7.7]")
-    selected = verify_identity_placement(
-        root, cut_id=cut_id, editorial_master=editorial_master
-    )
+    selected = verify_identity_placement(root, cut_id=cut_id, editorial_master=editorial_master)
     cue = selected.accepted_guest_cue
     start = float(cue["start_sec"])
     end = round(start + float(duration_sec), 3)
@@ -818,8 +791,7 @@ def emit_guest_namecard_recipe(
         item
         for item in items
         if isinstance(item, dict)
-        and str(item.get("kind", "")).lower().replace("_", "-")
-        == "guest-namecard"
+        and str(item.get("kind", "")).lower().replace("_", "-") == "guest-namecard"
     ]
     if existing:
         if len(existing) != 1 or existing[0] != event:
@@ -859,8 +831,7 @@ def verify_guest_namecard_recipe(
         item
         for item in items
         if isinstance(item, dict)
-        and str(item.get("kind", "")).lower().replace("_", "-")
-        == "guest-namecard"
+        and str(item.get("kind", "")).lower().replace("_", "-") == "guest-namecard"
     ]
     if len(cards) != 1:
         raise IdentityPlacementError("broll recipe requires exactly one guest-namecard")
@@ -878,9 +849,7 @@ def verify_guest_namecard_recipe(
         event_start = float(event["t0"])
         event_end = float(event["t1"])
     except (KeyError, TypeError, ValueError) as exc:
-        raise IdentityPlacementError(
-            "guest-namecard recipe timestamps must be numeric"
-        ) from exc
+        raise IdentityPlacementError("guest-namecard recipe timestamps must be numeric") from exc
     selected = verify_identity_placement(
         root,
         cut_id=cut_id,
@@ -893,9 +862,7 @@ def verify_guest_namecard_recipe(
     return selected
 
 
-def identity_placement_status(
-    episode_root: str | Path, *, cut_id: str
-) -> dict[str, object]:
+def identity_placement_status(episode_root: str | Path, *, cut_id: str) -> dict[str, object]:
     root = Path(episode_root).resolve()
     receipt = root / IDENTITY_ROOT / _validate_cut_id(cut_id) / RECEIPT_NAME
     if not receipt.is_file():

@@ -478,12 +478,7 @@ def _verify_prior_artifact(
             "persisted materialization artifact is unavailable",
             reason_code="materialization_journal_conflict",
         ) from error
-    if (
-        artifact.path != relative
-        or not size
-        or artifact.bytes != size
-        or artifact.sha256 != digest
-    ):
+    if artifact.path != relative or not size or artifact.bytes != size or artifact.sha256 != digest:
         raise MaterializationError(
             "persisted materialization artifact bytes differ",
             reason_code="materialization_journal_conflict",
@@ -978,8 +973,7 @@ def _validate_editorial_base(
     base_tracks = tuple(
         items
         for (track_type, track_index), items in items_by_track.items()
-        if (track_type == "video" and track_index == 1)
-        or (track_type == "audio" and items)
+        if (track_type == "video" and track_index == 1) or (track_type == "audio" and items)
     )
     if not base_tracks or any(len(items) != len(context.source_ranges) for items in base_tracks):
         raise MaterializationError(

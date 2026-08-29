@@ -436,9 +436,7 @@ def test_public_renderer_cannot_inject_a_fake_process_runner(tmp_path: Path) -> 
     assert "runner" not in inspect.signature(render_hyperframes_candidate).parameters
     assert "runtime_command" not in inspect.signature(render_hyperframes_candidate).parameters
     assert "runner" not in inspect.signature(hydrate_dp_hyperframes_proposal).parameters
-    assert "runtime_command" not in inspect.signature(
-        hydrate_dp_hyperframes_proposal
-    ).parameters
+    assert "runtime_command" not in inspect.signature(hydrate_dp_hyperframes_proposal).parameters
     assert "runner" not in inspect.signature(prepare_hyperframes_runtime).parameters
     assert "npm_executable" not in inspect.signature(prepare_hyperframes_runtime).parameters
     with pytest.raises(TypeError):
@@ -705,9 +703,7 @@ def test_provided_photo_hydration_preserves_official_jpeg_bytes_and_hold_range(
         "probe_stock_video",
         lambda _path: {
             "duration_seconds": 0.04,
-            "video_streams": [
-                {"index": 0, "codec_name": "mjpeg", "width": 1920, "height": 1080}
-            ],
+            "video_streams": [{"index": 0, "codec_name": "mjpeg", "width": 1920, "height": 1080}],
         },
     )
     monkeypatch.setattr(
@@ -892,9 +888,7 @@ def test_forged_caller_mapping_is_not_a_public_authority_input(tmp_path: Path) -
         encoding="utf-8",
     )
 
-    assert "asset_authority" not in inspect.signature(
-        hydrate_dp_hyperframes_proposal
-    ).parameters
+    assert "asset_authority" not in inspect.signature(hydrate_dp_hyperframes_proposal).parameters
     with pytest.raises(TypeError):
         hydrate_dp_hyperframes_proposal(
             root,
@@ -1108,9 +1102,7 @@ def test_success_cache_separates_runtime_root_and_rejects_other_binding(
     _verify_bound_test_receipt(
         root, result, runtime_root=tmp_path / "runtimes", memoize_success=True
     )
-    _verify_bound_test_receipt(
-        root, result, runtime_root=alternate_runtime, memoize_success=True
-    )
+    _verify_bound_test_receipt(root, result, runtime_root=alternate_runtime, memoize_success=True)
     with pytest.raises(TrustedRenderError, match="canonical|lineage"):
         _verify_bound_test_receipt(
             root,
@@ -1265,9 +1257,10 @@ def test_real_preinstalled_hyperframes_renders_playable_component_media(
     execution = receipt["execution"]
     assert execution["contract"] == "podcast-highlight-hyperframes-execution-v1"
     assert execution["exit_code"] == 0
-    assert execution["executable"]["sha256"] == hashlib.sha256(
-        Path(execution["executable"]["path"]).read_bytes()
-    ).hexdigest()
+    assert (
+        execution["executable"]["sha256"]
+        == hashlib.sha256(Path(execution["executable"]["path"]).read_bytes()).hexdigest()
+    )
     assert execution["argv"][0] == execution["executable"]["path"].replace("/", "\\")
     assert len(execution["stdout"]["sha256"]) == 64
     assert len(execution["stderr"]["sha256"]) == 64

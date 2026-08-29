@@ -397,8 +397,7 @@ def test_batch_reference_replay_is_byte_identical_to_fresh_runtime(tmp_path: Pat
         "# Terms\n\nThe formal term is Traveling Village.\n",
     )
     requests = tuple(
-        _request(observed="traveling village", span_id=f"span-{index}")
-        for index in range(4)
+        _request(observed="traveling village", span_id=f"span-{index}") for index in range(4)
     )
     retriever = LocalReferenceRetriever(tmp_path / "index", (_spec(source),))
     initial = retriever.retrieve_many(requests)

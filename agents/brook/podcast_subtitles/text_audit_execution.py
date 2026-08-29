@@ -336,9 +336,7 @@ def _validate_execution_lineage(
     ):
         raise TextAuditExecutionError("text audit rejects audio-only execution")
     exact_cells = tuple(item.id for item in audit_plan.cells)
-    exact_required = tuple(
-        item.id for item in audit_plan.cells if item.applicability == "required"
-    )
+    exact_required = tuple(item.id for item in audit_plan.cells if item.applicability == "required")
     cell_coverage_matches = (
         set(execution_plan.all_cell_ids) == set(exact_cells)
         and set(execution_plan.required_cell_ids) == set(exact_required)

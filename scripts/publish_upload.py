@@ -10,15 +10,18 @@
     # 單支重試（已有 video_id 永不重傳）
     python scripts/publish_upload.py --run --cut punch-L5 --episode "..."
 
+    # 同步已上傳影片的 processing / privacy 狀態（不建立新影片）
+    python scripts/publish_upload.py --reconcile --cut punch-S1 --episode "..."
+
 狀態機（ADR-055）：draft → approved → uploading → uploaded →（平台到點自動
 公開）published。failed 可重試。防重複上傳：target 已有 video_id 就 skip
 （不提供強制重傳）；resumable session URI 逐 chunk 持久化——crash 後續傳
 不重傳（YT 無天然 idempotency key，這兩道就是防護）。
 
 上傳內容：檔案（releases.file_path）+ 標題/描述（Slice 2 回填）+ 縮圖
-（vault-relative → 絕對路徑，thumbnails.set）+ CC 字幕（tight SRT，
-captions.insert，zh-TW）。publishAt 有值就排程（upload 與 publish 時間
-解耦——Q2 凍結）。
+（vault-relative → 絕對路徑，thumbnails.set）+ 長片 CC 字幕（tight SRT，
+captions.insert，zh-TW）；Short 的字幕已燒入畫面，不另傳 CC。publishAt
+有值就排程（upload 與 publish 時間解耦——Q2 凍結）。
 
 OAuth：`data/youtube_token.json`（scripts/youtube_auth.py 一次性 consent；
 Slice 0 探針 #1124 已實測上傳/排程/無降權）。
@@ -40,6 +43,10 @@ sys.stderr.reconfigure(encoding="utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from agents.usopp.youtube_credentials import (  # noqa: E402
+    YouTubeCredentialError,
+    load_youtube_client,
+)
 from shared.config import get_runtime_data_dir  # noqa: E402
 
 logger = logging.getLogger("publish_upload")
@@ -117,9 +124,7 @@ class GoogleResumableUploadTransport:
             return ResumeProbe.complete(response.json())
         if response.status_code == 308:
             return ResumeProbe.active(next_offset=self._next_offset(response))
-        raise RuntimeError(
-            f"YouTube resumable session probe 失敗: HTTP {response.status_code}"
-        )
+        raise RuntimeError(f"YouTube resumable session probe 失敗: HTTP {response.status_code}")
 
     def upload(
         self,
@@ -155,9 +160,7 @@ class GoogleResumableUploadTransport:
                     on_progress(total_bytes, total_bytes)
                     return response.json()
                 if response.status_code != 308:
-                    raise RuntimeError(
-                        f"YouTube resumable chunk 失敗: HTTP {response.status_code}"
-                    )
+                    raise RuntimeError(f"YouTube resumable chunk 失敗: HTTP {response.status_code}")
                 next_offset = self._next_offset(response)
                 if next_offset <= offset:
                     raise RuntimeError("YouTube resumable session offset 沒有前進")
@@ -180,9 +183,7 @@ def resume_video_upload(
     total_bytes = video_path.stat().st_size
     probe = transport.probe(session_uri, total_bytes)
     if probe.state == "expired":
-        raise UploadSessionNeedsRestart(
-            "YouTube resumable session 已過期；需要人工重新核准上傳"
-        )
+        raise UploadSessionNeedsRestart("YouTube resumable session 已過期；需要人工重新核准上傳")
     if probe.state == "complete":
         response = probe.response or {}
     else:
@@ -227,9 +228,7 @@ def assert_youtube_publish_credentials(credentials) -> None:
     """Fail before API construction unless scopes and offline refresh are complete."""
 
     granted = set(
-        getattr(credentials, "granted_scopes", None)
-        or getattr(credentials, "scopes", None)
-        or ()
+        getattr(credentials, "granted_scopes", None) or getattr(credentials, "scopes", None) or ()
     )
     missing = sorted(YOUTUBE_PUBLISH_SCOPES - granted)
     if missing:
@@ -240,6 +239,25 @@ def assert_youtube_publish_credentials(credentials) -> None:
         raise YouTubeCredentialPreflightError(
             "YouTube OAuth token 沒有 refresh_token，無法安全完成長時間上傳"
         )
+
+
+class YouTubeVideoNotFoundError(RuntimeError):
+    """The stored video_id no longer resolves; never clear it or auto-replace it."""
+
+
+@dataclass(frozen=True, slots=True)
+class YouTubeVideoObservation:
+    """One read-only platform observation, safe to pass to orchestration code."""
+
+    outcome: Literal["published", "failed", "pending"]
+    evidence_category: str
+    certain: bool
+    error: str | None = None
+    permalink: str | None = None
+    privacy_status: str | None = None
+    upload_status: str | None = None
+    processing_status: str | None = None
+    publish_at: str | None = None
 
 
 def _progress_file(episode: str, cut_id: str) -> Path:
@@ -258,6 +276,16 @@ def write_progress(episode: str, cut_id: str, pct: float, note: str = "") -> Non
     )
 
 
+def _credentials_from_token():
+    """讀回 token 檔裡的憑證；讀不動就回 None，讓載入器自己去報它的錯。"""
+    try:
+        from google.oauth2.credentials import Credentials
+
+        return Credentials.from_authorized_user_file(str(TOKEN_PATH))
+    except Exception:
+        return None
+
+
 def _load_yt(
     *,
     credentials_loader=None,
@@ -265,34 +293,73 @@ def _load_yt(
     service_builder=None,
     return_credentials: bool = False,
 ):
-    if credentials_loader is None:
-        from google.oauth2.credentials import Credentials
+    """上傳用的 YouTube client。
 
-        credentials_loader = Credentials.from_authorized_user_file
-    if request_factory is None:
-        from google.auth.transport.requests import Request
+    憑證的 refresh 與原子寫回交給 Stage 6 共用的 `load_youtube_client`（observer
+    走的是同一支），這裡多做一件它不做的事：驗 scope。缺 force-ssl 的 token 影片
+    傳得上去但 CC 會 403——那是白傳一支才發現。
 
-        request_factory = Request
-    if service_builder is None:
-        from googleapiclient.discovery import build
+    給了注入點時走可測試的內嵌路徑，並在建立 client **之前**擋下 scope 問題。
+    """
 
-        service_builder = build
+    if credentials_loader or request_factory or service_builder:
+        if credentials_loader is None:
+            from google.oauth2.credentials import Credentials
 
-    if not TOKEN_PATH.exists():
-        raise SystemExit(f"找不到 {TOKEN_PATH}——先跑 python scripts/youtube_auth.py")
-    creds = credentials_loader(str(TOKEN_PATH))
-    if not creds.valid:
-        if creds.expired and creds.refresh_token:
-            creds.refresh(request_factory())
-            TOKEN_PATH.write_text(creds.to_json())
-        else:
-            raise SystemExit("token 無效且無法 refresh——重跑 scripts/youtube_auth.py")
+            credentials_loader = Credentials.from_authorized_user_file
+        if request_factory is None:
+            from google.auth.transport.requests import Request
+
+            request_factory = Request
+        if service_builder is None:
+            from googleapiclient.discovery import build
+
+            service_builder = build
+        if not TOKEN_PATH.exists():
+            raise SystemExit(f"找不到 {TOKEN_PATH}——先跑 python scripts/youtube_auth.py")
+        creds = credentials_loader(str(TOKEN_PATH))
+        if not creds.valid:
+            if creds.expired and creds.refresh_token:
+                creds.refresh(request_factory())
+                TOKEN_PATH.write_text(creds.to_json())
+            else:
+                raise SystemExit("token 無效且無法 refresh——重跑 scripts/youtube_auth.py")
+        try:
+            assert_youtube_publish_credentials(creds)
+        except YouTubeCredentialPreflightError as exc:
+            raise SystemExit(
+                f"OAuth preflight 失敗：{exc}——重跑 scripts/youtube_auth.py"
+            ) from exc
+        service = service_builder("youtube", "v3", credentials=creds)
+        return (service, creds) if return_credentials else service
+
+    service = _load_stage6_youtube_client()
+    credentials = _credentials_from_token()
+    if credentials is not None:
+        try:
+            assert_youtube_publish_credentials(credentials)
+        except YouTubeCredentialPreflightError as exc:
+            raise SystemExit(
+                f"OAuth preflight 失敗：{exc}——重跑 scripts/youtube_auth.py"
+            ) from exc
+    if not return_credentials:
+        return service
+    if credentials is None:
+        raise SystemExit(f"讀不到 {TOKEN_PATH} 的憑證——重跑 scripts/youtube_auth.py")
+    return service, credentials
+
+
+def _load_stage6_youtube_client():
     try:
-        assert_youtube_publish_credentials(creds)
-    except YouTubeCredentialPreflightError as exc:
-        raise SystemExit(f"OAuth preflight 失敗：{exc}——重跑 scripts/youtube_auth.py") from exc
-    service = service_builder("youtube", "v3", credentials=creds)
-    return (service, creds) if return_credentials else service
+        return load_youtube_client(TOKEN_PATH)
+    except YouTubeCredentialError as exc:
+        raise SystemExit(str(exc)) from None
+
+
+def load_youtube_observer():
+    """Build a read-only observer client with the shared credential lifecycle."""
+
+    return _load_stage6_youtube_client()
 
 
 def to_utc_iso(ts: str) -> str:
@@ -322,6 +389,122 @@ def uploadable_targets(episode: str | None = None, cut: str | None = None) -> li
                 continue
             out.append({"release": full, "target": t})
     return out
+
+
+def observe_youtube_video(yt, video_id: str) -> YouTubeVideoObservation:
+    """Read one YouTube video once; never insert, upload, or mutate local state."""
+
+    video_id = video_id.strip()
+    if not video_id:
+        raise ValueError("YouTube video_id must be non-empty")
+    response = (
+        yt.videos()
+        .list(
+            part="status,processingDetails",
+            id=video_id,
+        )
+        .execute()
+    )
+    items = response.get("items", []) if isinstance(response, dict) else []
+    if not items:
+        raise YouTubeVideoNotFoundError(
+            f"YouTube 找不到 video_id={video_id}；保留既有 ID，不會自動重傳"
+        )
+
+    item = items[0]
+    status = item.get("status") or {}
+    processing = item.get("processingDetails") or {}
+    privacy = status.get("privacyStatus")
+    upload_status = status.get("uploadStatus")
+    processing_status = processing.get("processingStatus")
+    publish_at = status.get("publishAt")
+    failed = upload_status in {"failed", "rejected", "deleted"} or processing_status == "terminated"
+    observation_fields = {
+        "privacy_status": privacy,
+        "upload_status": upload_status,
+        "processing_status": processing_status,
+        "publish_at": publish_at,
+    }
+    if failed and privacy == "public":
+        return YouTubeVideoObservation(
+            "pending",
+            "unknown",
+            False,
+            **observation_fields,
+        )
+    if failed:
+        reasons = [
+            status.get("failureReason"),
+            status.get("rejectionReason"),
+            processing.get("processingFailureReason"),
+        ]
+        reason = "; ".join(str(value) for value in reasons if value) or (
+            f"uploadStatus={upload_status}, processingStatus={processing_status}"
+        )
+        return YouTubeVideoObservation(
+            "failed",
+            "processing_failed",
+            True,
+            f"YouTube processing failed/rejected: {reason}",
+            **observation_fields,
+        )
+    if privacy == "public":
+        return YouTubeVideoObservation("published", "public", True, **observation_fields)
+    if processing_status in {"processing", "queued"}:
+        return YouTubeVideoObservation("pending", "processing", True, **observation_fields)
+    if privacy in {"private", "unlisted"}:
+        return YouTubeVideoObservation("pending", "private", True, **observation_fields)
+    return YouTubeVideoObservation("pending", "unknown", False, **observation_fields)
+
+
+def reconcile_target(yt, release: dict, target: dict) -> dict:
+    """Synchronise one stored YouTube target without creating a replacement."""
+    from shared.release_store import update_target
+
+    video_id = target.get("video_id")
+    if not video_id:
+        raise ValueError(f"{release['cut_id']} 沒有 video_id，不能 reconciliation")
+    observation = observe_youtube_video(yt, str(video_id))
+    local_status = {
+        "published": "published",
+        "failed": "failed",
+        "pending": "uploaded",
+    }[observation.outcome]
+    error = observation.error
+
+    update_target(target["id"], status=local_status, error=error)
+    return {
+        "cut_id": release["cut_id"],
+        "video_id": video_id,
+        "status": local_status,
+        "privacy_status": observation.privacy_status,
+        "upload_status": observation.upload_status,
+        "processing_status": observation.processing_status,
+        "publish_at": observation.publish_at,
+        "evidence_category": observation.evidence_category,
+        "error": error,
+    }
+
+
+def cmd_reconcile(args) -> int:
+    """Reconcile exactly one existing target; no insert/upload API is reachable here."""
+    from shared.release_store import get_release
+
+    rel = get_release(args.episode, args.cut)
+    if rel is None:
+        raise SystemExit(f"{args.cut} 未登錄")
+    target = next((item for item in rel["targets"] if item["platform"] == "youtube"), None)
+    if target is None:
+        raise SystemExit("youtube target 不存在")
+    if not target.get("video_id"):
+        raise SystemExit("target 沒有 video_id——先完成正常上傳")
+    yt = _load_yt()
+    try:
+        output = reconcile_target(yt, rel, target)
+    except YouTubeVideoNotFoundError as exc:
+        raise SystemExit(str(exc)) from exc
+    print(json.dumps({"reconciled": [output]}, ensure_ascii=False, indent=2))
+    return 0
 
 
 def build_insert_body(target: dict, release: dict) -> dict:
@@ -363,17 +546,21 @@ def upload_captions(yt, video_id: str, episode_dir: Path, cid: str) -> dict | No
     if srt is None:
         logger.warning("%s: 找不到字幕——跳過 CC", cid)
         return None
-    response = yt.captions().insert(
-        part="snippet",
-        body={
-            "snippet": {
-                "videoId": video_id,
-                "language": "zh-TW",
-                "name": "中文（台灣）",
-            }
-        },
-        media_body=_MFU(str(srt), mimetype="application/octet-stream"),
-    ).execute()
+    response = (
+        yt.captions()
+        .insert(
+            part="snippet",
+            body={
+                "snippet": {
+                    "videoId": video_id,
+                    "language": "zh-TW",
+                    "name": "中文（台灣）",
+                }
+            },
+            media_body=_MFU(str(srt), mimetype="application/octet-stream"),
+        )
+        .execute()
+    )
     logger.info("%s: CC 字幕 OK（%s）", cid, srt.name)
     return response
 
@@ -403,9 +590,9 @@ def _ensure_zh_tw_caption(yt, release: dict, target: dict) -> None:
     update_target(target_id, caption_status="processing")
     remote = _remote_zh_tw_caption(yt, target["video_id"])
     if remote is not None:
-        remote_status = remote.get("snippet", {}).get("status") or remote.get(
-            "snippet", {}
-        ).get("syncStatus")
+        remote_status = remote.get("snippet", {}).get("status") or remote.get("snippet", {}).get(
+            "syncStatus"
+        )
         caption_status = (
             "serving"
             if remote_status in {"serving", "succeeded"}
@@ -424,9 +611,7 @@ def _ensure_zh_tw_caption(yt, release: dict, target: dict) -> None:
         return
 
     episode_dir = Path(release["file_path"]).parents[2]
-    response = upload_captions(
-        yt, target["video_id"], episode_dir, release["cut_id"]
-    )
+    response = upload_captions(yt, target["video_id"], episode_dir, release["cut_id"])
     if response is None or not response.get("id"):
         raise FileNotFoundError(f"{release['cut_id']} 沒有可上傳的 tight SRT")
     update_target(
@@ -450,13 +635,9 @@ def _finish_ancillary_steps(yt, release: dict, target: dict, vault: Path) -> dic
             thumbnail = vault / target["thumbnail_path"]
             if not thumbnail.exists():
                 update_target(target_id, thumbnail_status="failed")
-                raise FileNotFoundError(
-                    f"{release['cut_id']} 縮圖不存在: {thumbnail}"
-                )
+                raise FileNotFoundError(f"{release['cut_id']} 縮圖不存在: {thumbnail}")
             try:
-                yt.thumbnails().set(
-                    videoId=video_id, media_body=str(thumbnail)
-                ).execute()
+                yt.thumbnails().set(videoId=video_id, media_body=str(thumbnail)).execute()
             except Exception:
                 update_target(target_id, thumbnail_status="failed")
                 raise
@@ -467,16 +648,18 @@ def _finish_ancillary_steps(yt, release: dict, target: dict, vault: Path) -> dic
         update_target(target_id, thumbnail_status="skipped")
         target["thumbnail_status"] = "skipped"
 
+    # ADR-055 Q4b：長片不燒字幕、改上 sidecar CC；Short 已經把字燒進畫面，
+    # 再上一份 CC 只會在手機上疊成兩層字。
     cc_error = None
-    try:
-        _ensure_zh_tw_caption(yt, release, target)
-    except Exception as exc:  # noqa: BLE001 - video exists; expose CC-only recovery
-        cc_error = (
-            "CC 字幕上傳失敗（影片本體 OK，可 --cc-only 補傳）: "
-            f"{str(exc)[:300]}"
-        )
-        update_target(target_id, caption_status="failed")
-        logger.error("%s: %s", release["cut_id"], cc_error)
+    if release.get("format") != "short":
+        try:
+            _ensure_zh_tw_caption(yt, release, target)
+        except Exception as exc:  # noqa: BLE001 - video exists; expose CC-only recovery
+            cc_error = f"CC 字幕上傳失敗（影片本體 OK，可 --cc-only 補傳）: {str(exc)[:300]}"
+            update_target(target_id, caption_status="failed")
+            logger.error("%s: %s", release["cut_id"], cc_error)
+    else:
+        logger.info("%s: Short 字幕已燒入畫面——不另上 CC", release["cut_id"])
 
     update_target(
         target_id,
@@ -515,6 +698,8 @@ def cmd_cc_only(args) -> int:
     rel = get_release(args.episode, args.cc_only)
     if rel is None:
         raise SystemExit(f"{args.cc_only} 未登錄")
+    if rel["format"] == "short":
+        raise SystemExit("Short 字幕已燒入畫面，不可使用 --cc-only 重複上傳字幕")
     t = next((x for x in rel["targets"] if x["platform"] == "youtube"), None)
     if t is None or not t.get("video_id"):
         raise SystemExit("沒有 video_id——影片還沒上傳，走正常 --run")
@@ -630,11 +815,22 @@ def cmd_run(args) -> int:
     from shared.release_store import update_target
 
     if args.force:
-        raise SystemExit(
-            "--force 重傳已停用：已有 video_id 不得重傳；session 過期需重新人工核准"
-        )
+        raise SystemExit("--force 重傳已停用：已有 video_id 不得重傳；session 過期需重新人工核准")
     items = uploadable_targets(args.episode, args.cut)
     if args.cut and not items:
+        # 已上傳 target 不在 uploadable_targets 狀態集合；精確重跑仍要明確回報
+        # duplicate guard，而不是用「沒有可上傳 target」讓操作者誤以為失敗。
+        from shared.release_store import get_release
+
+        rel = get_release(args.episode, args.cut) if args.episode else None
+        target = (
+            next((item for item in rel["targets"] if item["platform"] == "youtube"), None)
+            if rel
+            else None
+        )
+        if target and target.get("video_id") and not args.force:
+            print(f"{args.cut}: 已有 video_id（{target['video_id']}），skip——防重複上傳")
+            return 0
         raise SystemExit(f"{args.cut} 沒有可上傳的 youtube target（要先 --approve）")
     picked = []
     for it in items:
@@ -672,9 +868,7 @@ def cmd_run(args) -> int:
     results = []
     for it in picked:
         try:
-            results.append(
-                _upload_one(yt, it, vault, resume_transport=resume_transport)
-            )
+            results.append(_upload_one(yt, it, vault, resume_transport=resume_transport))
         except (Exception, SystemExit) as exc:  # noqa: BLE001 — 單支失敗不擋整批，記進 DB
             update_target(
                 it["target"]["id"],
@@ -695,6 +889,11 @@ def main(argv: list[str] | None = None) -> int:
         "--schedule", help="publishAt（ISO8601 含時區，如 2026-08-10T20:00:00+08:00）"
     )
     parser.add_argument("--run", action="store_true", help="上傳全部 approved targets")
+    parser.add_argument(
+        "--reconcile",
+        action="store_true",
+        help="以 videos.list 同步一支已有 video_id 的 target（不建立影片）",
+    )
     parser.add_argument("--episode", help="episode 資料夾名（--approve 必填；--run 可選過濾）")
     parser.add_argument("--cut", help="--run 時只處理這支")
     parser.add_argument("--force", action="store_true", help="已停用；保留參數只為明確拒絕舊命令")
@@ -709,6 +908,10 @@ def main(argv: list[str] | None = None) -> int:
         if not args.episode:
             raise SystemExit("--cc-only 需要 --episode")
         return cmd_cc_only(args)
+    if args.reconcile:
+        if not args.episode or not args.cut:
+            raise SystemExit("--reconcile 需要 --episode 與 --cut")
+        return cmd_reconcile(args)
     if args.run:
         return cmd_run(args)
     parser.print_help()

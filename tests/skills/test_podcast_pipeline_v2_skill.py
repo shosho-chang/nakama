@@ -15,10 +15,7 @@ SKILL = Path(".claude/skills/podcast-pipeline/SKILL.md")
 HIGHLIGHT_SKILL = Path(".claude/skills/highlight-cut/SKILL.md")
 LEGACY_HEADING = "## Explicit legacy forensic only"
 HIGHLIGHT_LEGACY_HEADING = "## Explicit legacy forensic inputs"
-RUNBOOK = Path(
-    ".claude/skills/podcast-pipeline/references/"
-    "memo-dual-audit-production-runbook.md"
-)
+RUNBOOK = Path(".claude/skills/podcast-pipeline/references/memo-dual-audit-production-runbook.md")
 CANONICAL_TRANSCRIBE_SKILL = Path(r"E:\nakama\.agents\skills\transcribe\SKILL.md")
 VENV_PYTHON = Path(r"E:\nakama\.venv-v2\Scripts\python.exe")
 ADR_063 = Path("docs/decisions/ADR-063-podcast-subtitle-production-simplification.md")
@@ -105,9 +102,7 @@ def test_editorial_master_gate_precedes_packaging_and_highlights() -> None:
         r"E:\nakama\.venv-v2\Scripts\python.exe "
         r'scripts\podcast_editorial_master.py status "<episode>"'
     ) in exporter_route
-    assert production.index("podcast_editorial_master.py verify") < production.index(
-        "cut_id=full"
-    )
+    assert production.index("podcast_editorial_master.py verify") < production.index("cut_id=full")
     assert production.index("cut_id=full") < production.index("--mining-input")
 
 
@@ -157,9 +152,7 @@ def test_s3_and_s4_runbook_has_exact_ordered_producers_and_contracts() -> None:
     s3_positions = [s3.index(marker) for marker in s3_ordered]
     assert s3_positions == sorted(s3_positions)
     release_source = Path("scripts/podcast_subtitle_release.py").read_text(encoding="utf-8")
-    memo_version = re.search(
-        r'recognition\.get\("memo_version"\) != "([^"]+)"', release_source
-    )
+    memo_version = re.search(r'recognition\.get\("memo_version"\) != "([^"]+)"', release_source)
     assert memo_version is not None
     assert f'--memo-version "{memo_version.group(1)}"' in s3
     assert "ggml-large-v2.bin" in runbook
@@ -202,9 +195,7 @@ def test_s3_and_s4_runbook_has_exact_ordered_producers_and_contracts() -> None:
     assert "_fresh_verify_memo_execution" in release_source
     assert 'recognition.get("memo_execution_receipt")' in release_source
     assert '"memo_execution_receipt_sha256": execution_ref.sha256' in release_source
-    repair_definition = s3.split("$repairLineageArgs = @(", maxsplit=1)[1].split(
-        ")", maxsplit=1
-    )[0]
+    repair_definition = s3.split("$repairLineageArgs = @(", maxsplit=1)[1].split(")", maxsplit=1)[0]
     assert repair_definition.index('"--raw-source-export"') < repair_definition.index(
         '"--repair-receipt"'
     )
@@ -248,17 +239,13 @@ def test_s3_and_s4_runbook_has_exact_ordered_producers_and_contracts() -> None:
 def test_s3_documented_execution_and_worker_schemas_match_runtime() -> None:
     runbook = RUNBOOK.read_text(encoding="utf-8")
 
-    schema = runbook.split(
-        "<!-- runtime-schema:memo-execution-receipt:start -->", maxsplit=1
-    )[1].split(
-        "<!-- runtime-schema:memo-execution-receipt:end -->", maxsplit=1
-    )[0]
+    schema = runbook.split("<!-- runtime-schema:memo-execution-receipt:start -->", maxsplit=1)[
+        1
+    ].split("<!-- runtime-schema:memo-execution-receipt:end -->", maxsplit=1)[0]
     documented_execution_fields = set(
         json.loads(schema.split("```json", maxsplit=1)[1].split("```", maxsplit=1)[0])
     )
-    assert documented_execution_fields == set(
-        MemoBundledRunnerExecutionReceiptV1.model_fields
-    )
+    assert documented_execution_fields == set(MemoBundledRunnerExecutionReceiptV1.model_fields)
 
     s3 = runbook.split("## S3", maxsplit=1)[1].split("## S4", maxsplit=1)[0]
     recognition_marker = '"contract": "memo-recognition-worker-audit-v1"'
@@ -412,20 +399,20 @@ def test_podcast_route_performs_actual_resolve_build_then_complete_highlight_flo
 
     flow = route.split("Exact routing 是：", maxsplit=1)[1].split("```", maxsplit=2)[1]
     ordered = (
-        '--mining-input',
-        'highlights/miner-story.json',
-        'highlights/miner-punch.json',
-        'highlights/miner-value.json',
-        '--merge-miners',
-        'highlights/candidates.json',
-        'highlights/review_azhe.json',
-        'highlights/review_kevin.json',
-        'highlights/review_shufen.json',
-        'highlights/lens_brand.json',
-        'highlights/lens_renee.json',
-        'review schema/coverage/citation QA',
-        '--format long',
-        'Highlight shortlist review gate',
+        "--mining-input",
+        "highlights/miner-story.json",
+        "highlights/miner-punch.json",
+        "highlights/miner-value.json",
+        "--merge-miners",
+        "highlights/candidates.json",
+        "highlights/review_azhe.json",
+        "highlights/review_kevin.json",
+        "highlights/review_shufen.json",
+        "highlights/lens_brand.json",
+        "highlights/lens_renee.json",
+        "review schema/coverage/citation QA",
+        "--format long",
+        "Highlight shortlist review gate",
     )
     positions = [flow.index(marker) for marker in ordered]
     assert positions == sorted(positions)
@@ -438,9 +425,7 @@ def test_major_audio_producers_run_in_order_before_finalize_without_human_gate()
     major = production.split("### Major-risk dual ASR", maxsplit=1)[1].split(
         "### Finalize", maxsplit=1
     )[0]
-    finalize = production.split("### Finalize", maxsplit=1)[1].split(
-        "## S7–S8", maxsplit=1
-    )[0]
+    finalize = production.split("### Finalize", maxsplit=1)[1].split("## S7–S8", maxsplit=1)[0]
 
     ordered = (
         "prepare-major-audio",
@@ -594,20 +579,15 @@ def test_identity_placement_route_is_quorum_bound_and_fail_closed() -> None:
 
 def test_identity_skill_command_paths_match_runtime_contract() -> None:
     _text, production, _legacy = _sections()
-    route = production.split(
-        "scripts\\podcast_identity_placement.py accept", maxsplit=1
-    )[1].split("scripts\\run_short_director.py", maxsplit=1)[0]
+    route = production.split("scripts\\podcast_identity_placement.py accept", maxsplit=1)[1].split(
+        "scripts\\run_short_director.py", maxsplit=1
+    )[0]
+    assert '--cut-srt "<episode>/highlights/srt/<winner-id>_tight_rNNN.srt"' in route
     assert (
-        '--cut-srt "<episode>/highlights/srt/<winner-id>_tight_rNNN.srt"'
-        in route
-    )
-    assert (
-        '--audit-a "<episode>/highlights/identity-placement/'
-        '<winner-id>/identity-audit-a.json"'
+        '--audit-a "<episode>/highlights/identity-placement/<winner-id>/identity-audit-a.json"'
     ) in route
     assert (
-        '--audit-b "<episode>/highlights/identity-placement/'
-        '<winner-id>/identity-audit-b.json"'
+        '--audit-b "<episode>/highlights/identity-placement/<winner-id>/identity-audit-b.json"'
     ) in route
     assert "highlights/review/<winner-id>/subs.srt" not in production
 
@@ -629,9 +609,7 @@ def test_podcast_visual_production_routes_agent_judgment_before_materializer() -
         "ready_to_materialize",
         "run_short_broll.py",
     )
-    production_chain = route.split(
-        "接著的 agent-owned receipt 順序固定為", maxsplit=1
-    )[1]
+    production_chain = route.split("接著的 agent-owned receipt 順序固定為", maxsplit=1)[1]
     positions = [production_chain.index(marker) for marker in ordered]
     assert positions == sorted(positions)
 

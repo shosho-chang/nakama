@@ -23,9 +23,7 @@ from typing import Any, Mapping, Sequence
 
 _POLICY_VERSION = "degraded-simple-step7-consensus-v3"
 _CONTRACT = "podcast-subtitle-v2-degraded-simple-step7-v1"
-_ARBITRATION_CONTRACT = (
-    "podcast-subtitle-v2-degraded-simple-step7-arbitration-c-v1"
-)
+_ARBITRATION_CONTRACT = "podcast-subtitle-v2-degraded-simple-step7-arbitration-c-v1"
 _ARBITRATION_POLICY_VERSION = "degraded-simple-step7-arbitration-import-v2"
 _ARBITRATION_ACCEPTED_DECISIONS = frozenset(
     {"accept_a", "accept_b", "accept_identical", "accept_single"}
@@ -34,9 +32,7 @@ _ARBITRATION_MIGRATED_FROM_SHA256 = (
     "bd2b5902c1b974c0b3d8ef0a5065ad7d48fe4c2407eeab782f3ca382beab4bb4"
 )
 _ARBITRATION_MIGRATION_REASON = "policy_v3_only_tightened_unresolved_categories"
-_ARBITRATION_QUEUE_V2_SHA256 = (
-    "0fb093a980af9df4650e04489f82cc244b8b2217d2494c4b771379bcba61b12f"
-)
+_ARBITRATION_QUEUE_V2_SHA256 = "0fb093a980af9df4650e04489f82cc244b8b2217d2494c4b771379bcba61b12f"
 _FORBIDDEN_ARBITRATION_MARKERS = (
     "number",
     "numeric",
@@ -101,9 +97,7 @@ _OFFICIAL_BASE_CONTRACT = "podcast-subtitle-memo-dual-audit-text-base-v1"
 _OFFICIAL_QUEUE_CONTRACT = "podcast-subtitle-memo-dual-audit-text-queue-v1"
 _OFFICIAL_ARBITRATION_CONTRACT = "podcast-subtitle-memo-dual-audit-arbitration-v1"
 _OFFICIAL_LEDGER_CONTRACT = "podcast-subtitle-memo-dual-audit-text-ledger-v1"
-_OFFICIAL_UNRESOLVED_CONTRACT = (
-    "podcast-subtitle-memo-dual-audit-unresolved-v1"
-)
+_OFFICIAL_UNRESOLVED_CONTRACT = "podcast-subtitle-memo-dual-audit-unresolved-v1"
 _OFFICIAL_MAJOR_CATEGORIES = frozenset(
     {
         "addition",
@@ -292,9 +286,7 @@ def _validate_record(
         raise SimpleStep7Error(f"{agent} {collection}[{index}] cue_numbers are invalid")
     cue_numbers = tuple(cue_numbers_raw)
     if cue_numbers != tuple(range(cue_numbers[0], cue_numbers[-1] + 1)):
-        raise SimpleStep7Error(
-            f"{agent} {collection}[{index}] cross-cue range must be contiguous"
-        )
+        raise SimpleStep7Error(f"{agent} {collection}[{index}] cross-cue range must be contiguous")
     if cue_numbers[0] < 1 or cue_numbers[-1] > len(cues):
         raise SimpleStep7Error(f"{agent} {collection}[{index}] cites an unknown cue")
     selected = tuple(cues[number - 1] for number in cue_numbers)
@@ -355,9 +347,7 @@ def _load_audit(
     seen = set()
     for record in records:
         if record.cue_numbers in seen:
-            raise SimpleStep7Error(
-                f"audit {expected_agent} repeats cue set {record.cue_numbers!r}"
-            )
+            raise SimpleStep7Error(f"audit {expected_agent} repeats cue set {record.cue_numbers!r}")
         seen.add(record.cue_numbers)
     return audit, tuple(records)
 
@@ -469,9 +459,7 @@ def _write_deterministic(path: Path, payload: bytes) -> None:
 def _preflight_output_bundle(
     outputs: Sequence[tuple[Path, bytes]],
 ) -> tuple[tuple[Path, bytes], ...]:
-    prepared = tuple(
-        (Path(os.path.abspath(os.fspath(path))), payload) for path, payload in outputs
-    )
+    prepared = tuple((Path(os.path.abspath(os.fspath(path))), payload) for path, payload in outputs)
     destinations = tuple(path for path, _ in prepared)
     if len(set(destinations)) != len(destinations):
         raise SimpleStep7Error("output destinations must be distinct")
@@ -597,11 +585,7 @@ def _require_items(value: object, *, label: str) -> list[dict[str, Any]]:
 
 def _cue_tuple(item: Mapping[str, Any], *, label: str, cue_count: int) -> tuple[int, ...]:
     raw = item.get("cue_numbers")
-    if (
-        not isinstance(raw, list)
-        or not raw
-        or any(type(number) is not int for number in raw)
-    ):
+    if not isinstance(raw, list) or not raw or any(type(number) is not int for number in raw):
         raise SimpleStep7Error(f"{label} cue_numbers are invalid")
     cue_numbers = tuple(raw)
     if cue_numbers != tuple(range(cue_numbers[0], cue_numbers[-1] + 1)):
@@ -653,9 +637,10 @@ def _validate_base_bundle(
         raise SimpleStep7Error("base needs-audio contract mismatch")
     if ledger.get("schema_version") != 1 or needs.get("schema_version") != 1:
         raise SimpleStep7Error("base schema version mismatch")
-    if ledger.get("policy_version") != _POLICY_VERSION or needs.get(
-        "policy_version"
-    ) != _POLICY_VERSION:
+    if (
+        ledger.get("policy_version") != _POLICY_VERSION
+        or needs.get("policy_version") != _POLICY_VERSION
+    ):
         raise SimpleStep7Error("base policy version mismatch")
     if ledger.get("input_hashes") != hashes or needs.get("input_hashes") != hashes:
         raise SimpleStep7Error("base input hashes mismatch")
@@ -811,9 +796,10 @@ def apply_arbitration(
         raise SimpleStep7Error("arbitration contract mismatch")
     if arbitration.get("schema_version") != 1:
         raise SimpleStep7Error("arbitration schema version mismatch")
-    if arbitration.get("migrated_from_arbitration_sha256") != (
-        _ARBITRATION_MIGRATED_FROM_SHA256
-    ) or arbitration.get("migration_reason") != _ARBITRATION_MIGRATION_REASON:
+    if (
+        arbitration.get("migrated_from_arbitration_sha256") != (_ARBITRATION_MIGRATED_FROM_SHA256)
+        or arbitration.get("migration_reason") != _ARBITRATION_MIGRATION_REASON
+    ):
         raise SimpleStep7Error("arbitration migration fields mismatch")
     input_hashes = _require_object(
         arbitration.get("input_hashes"), label="arbitration input_hashes"
@@ -833,9 +819,7 @@ def apply_arbitration(
     if arbitration.get("queue_semantic_identity_verified_for_accepted") is not True:
         raise SimpleStep7Error("arbitration queue migration was not verified")
     needs_items = _require_items(base_needs.get("items"), label="base needs items")
-    arbitration_items = _require_items(
-        arbitration.get("items"), label="arbitration items"
-    )
+    arbitration_items = _require_items(arbitration.get("items"), label="arbitration items")
     needs_by_component: dict[tuple[int, ...], dict[str, Any]] = {}
     for item in needs_items:
         key = _cue_tuple(item, label="base needs item", cue_count=len(cues))
@@ -943,11 +927,7 @@ def apply_arbitration(
     ]
     arbitration_accepted_ids = sorted(replacements)
     unresolved_cue_ids = sorted(
-        {
-            number
-            for item in unresolved_items
-            for number in item["arbitration"]["cue_numbers"]
-        }
+        {number for item in unresolved_items for number in item["arbitration"]["cue_numbers"]}
     )
     common_inputs = {
         **expected_inputs,
@@ -979,8 +959,7 @@ def apply_arbitration(
         "source_cue_count": len(cues),
         "base_accepted_component_count": base_ledger["accepted_count"],
         "arbitration_accepted_component_count": len(accepted_items),
-        "final_corrected_component_count": base_ledger["accepted_count"]
-        + len(accepted_items),
+        "final_corrected_component_count": base_ledger["accepted_count"] + len(accepted_items),
         "final_changed_cue_count": len(final_changed_ids),
         "base_accepted_cue_ids": base_ledger["accepted_cue_ids"],
         "arbitration_accepted_cue_ids": arbitration_accepted_ids,
@@ -1004,14 +983,10 @@ def _official_major_risk(item: Mapping[str, Any]) -> bool:
         finding = entry["finding"]
         flag = finding.get("major_risk")
         if type(flag) is not bool:
-            raise SimpleStep7Error(
-                f"official audit finding {index} requires boolean major_risk"
-            )
+            raise SimpleStep7Error(f"official audit finding {index} requires boolean major_risk")
         category = finding.get("category")
         if not isinstance(category, str) or not category.strip():
-            raise SimpleStep7Error(
-                f"official audit finding {index} requires a closed category"
-            )
+            raise SimpleStep7Error(f"official audit finding {index} requires a closed category")
         if category not in _SAFE_CATEGORY_ALLOWLIST | _OFFICIAL_MAJOR_CATEGORIES:
             raise SimpleStep7Error(
                 f"official audit finding {index} has unknown category: {category}"
@@ -1122,15 +1097,13 @@ def apply_official_arbitration(
 
     if not episode_id.strip():
         raise SimpleStep7Error("official arbitration episode_id must be non-empty")
-    base_cues, base_ledger, base_queue, records_a, records_b = (
-        _validate_official_base_bundle(
-            srt_bytes=srt_bytes,
-            audit_a_bytes=audit_a_bytes,
-            audit_b_bytes=audit_b_bytes,
-            base_corrected_bytes=base_corrected_bytes,
-            base_ledger_bytes=base_ledger_bytes,
-            base_needs_audio_bytes=base_needs_audio_bytes,
-        )
+    base_cues, base_ledger, base_queue, records_a, records_b = _validate_official_base_bundle(
+        srt_bytes=srt_bytes,
+        audit_a_bytes=audit_a_bytes,
+        audit_b_bytes=audit_b_bytes,
+        base_corrected_bytes=base_corrected_bytes,
+        base_ledger_bytes=base_ledger_bytes,
+        base_needs_audio_bytes=base_needs_audio_bytes,
     )
     arbitration = _load_json(arbitration_bytes, label="official arbitration")
     if arbitration.get("contract") != _OFFICIAL_ARBITRATION_CONTRACT:
@@ -1150,9 +1123,7 @@ def apply_official_arbitration(
     if arbitration.get("input_hashes") != expected_inputs:
         raise SimpleStep7Error("official arbitration input hashes mismatch")
     needs_items = _require_items(base_queue.get("items"), label="official queue items")
-    decisions = _require_items(
-        arbitration.get("items"), label="official arbitration items"
-    )
+    decisions = _require_items(arbitration.get("items"), label="official arbitration items")
     needs_by_component = {
         _cue_tuple(item, label="official queue item", cue_count=len(base_cues)): item
         for item in needs_items
@@ -1161,9 +1132,7 @@ def apply_official_arbitration(
         _cue_tuple(item, label="official arbitration item", cue_count=len(base_cues)): item
         for item in decisions
     }
-    if len(needs_by_component) != len(needs_items) or len(decisions_by_component) != len(
-        decisions
-    ):
+    if len(needs_by_component) != len(needs_items) or len(decisions_by_component) != len(decisions):
         raise SimpleStep7Error("official arbitration repeats a component")
     if set(needs_by_component) != set(decisions_by_component):
         raise SimpleStep7Error("official arbitration coverage differs from base queue")
@@ -1186,12 +1155,11 @@ def apply_official_arbitration(
             raise SimpleStep7Error("official arbitration major_risk is required")
         if decision["major_risk"] is not derived_major:
             raise SimpleStep7Error("official arbitration major_risk differs from audits")
-        expected_original = "\n".join(
-            base_cues[number - 1].text for number in component
-        )
-        if need.get("original") != expected_original or decision.get(
-            "original"
-        ) != expected_original:
+        expected_original = "\n".join(base_cues[number - 1].text for number in component)
+        if (
+            need.get("original") != expected_original
+            or decision.get("original") != expected_original
+        ):
             raise SimpleStep7Error("official arbitration original differs from source")
         derived_a, derived_b, derived_risks = _derive_component_evidence(
             need=need, audit_hashes=audit_hashes, records=record_map
@@ -1222,21 +1190,13 @@ def apply_official_arbitration(
         lines = replacement.splitlines()
         if len(lines) != len(component) or any(not line.strip() for line in lines):
             raise SimpleStep7Error("official replacement line count mismatch")
-        a_candidates = _derived_replacement_candidates(
-            derived_a, cue_count=len(component)
-        )
-        b_candidates = _derived_replacement_candidates(
-            derived_b, cue_count=len(component)
-        )
+        a_candidates = _derived_replacement_candidates(derived_a, cue_count=len(component))
+        b_candidates = _derived_replacement_candidates(derived_b, cue_count=len(component))
         valid = {
             "accept_a": replacement in a_candidates,
             "accept_b": replacement in b_candidates,
-            "accept_identical": (
-                replacement in a_candidates and replacement in b_candidates
-            ),
-            "accept_single": (
-                (replacement in a_candidates) + (replacement in b_candidates) == 1
-            ),
+            "accept_identical": (replacement in a_candidates and replacement in b_candidates),
+            "accept_single": ((replacement in a_candidates) + (replacement in b_candidates) == 1),
         }
         if not valid[name]:
             raise SimpleStep7Error("official replacement is not an exact audit proposal")
@@ -1266,9 +1226,7 @@ def apply_official_arbitration(
         "episode_id": episode_id,
         "input_hashes": common_inputs,
         "item_count": len(unresolved),
-        "cue_ids": sorted(
-            {number for item in unresolved for number in item["cue_numbers"]}
-        ),
+        "cue_ids": sorted({number for item in unresolved for number in item["cue_numbers"]}),
         "items": unresolved,
     }
     unresolved_raw = _canonical_bytes(unresolved_payload)
@@ -1347,15 +1305,11 @@ def _parser() -> argparse.ArgumentParser:
     official_arbitration.add_argument("--audit-b", required=True, type=Path)
     official_arbitration.add_argument("--base-corrected", required=True, type=Path)
     official_arbitration.add_argument("--base-ledger", required=True, type=Path)
-    official_arbitration.add_argument(
-        "--base-needs-audio", required=True, type=Path
-    )
+    official_arbitration.add_argument("--base-needs-audio", required=True, type=Path)
     official_arbitration.add_argument("--arbitration", required=True, type=Path)
     official_arbitration.add_argument("--final-srt", required=True, type=Path)
     official_arbitration.add_argument("--final-ledger", required=True, type=Path)
-    official_arbitration.add_argument(
-        "--final-unresolved", required=True, type=Path
-    )
+    official_arbitration.add_argument("--final-unresolved", required=True, type=Path)
     return parser
 
 
@@ -1363,9 +1317,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command in {"merge", "merge-official"}:
         merge_function = (
-            merge_simple_step7
-            if args.command == "merge"
-            else merge_official_text_audits
+            merge_simple_step7 if args.command == "merge" else merge_official_text_audits
         )
         output_srt, ledger, needs_audio = merge_function(
             srt_bytes=args.srt.read_bytes(),
@@ -1414,9 +1366,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         summary = json.loads(ledger)
         result = {
-            "final_corrected_component_count": summary[
-                "final_corrected_component_count"
-            ],
+            "final_corrected_component_count": summary["final_corrected_component_count"],
             "final_changed_cue_count": summary["final_changed_cue_count"],
             "unresolved_component_count": summary["unresolved_component_count"],
             "output_hashes": summary["output_hashes"],

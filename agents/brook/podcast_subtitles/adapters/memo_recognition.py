@@ -52,9 +52,7 @@ class MemoRecognitionTokenV1(_StrictModel):
 class MemoExecutionReceiptRefV1(_StrictModel):
     """Episode-local reference plus the execution identities needed downstream."""
 
-    contract: Literal["memo-bundled-runner-execution-v1"] = (
-        "memo-bundled-runner-execution-v1"
-    )
+    contract: Literal["memo-bundled-runner-execution-v1"] = "memo-bundled-runner-execution-v1"
     path: str
     runner_path: str
     model_path: str
@@ -95,16 +93,13 @@ class MemoExecutionReceiptRefV1(_StrictModel):
         )
         if (
             any(
-                candidate.is_absolute()
-                or candidate.drive
-                or ".." in candidate.parts
+                candidate.is_absolute() or candidate.drive or ".." in candidate.parts
                 for candidate in episode_paths
             )
             or not Path(self.runner_path).is_absolute()
             or not Path(self.model_path).is_absolute()
             or any(
-                len(value) != 64
-                or any(char not in "0123456789abcdef" for char in value)
+                len(value) != 64 or any(char not in "0123456789abcdef" for char in value)
                 for value in digests
             )
         ):
@@ -275,8 +270,7 @@ class MemoRecognitionAcceptanceReceiptV1(_StrictModel):
             or len(self.agent_audits) != 2
             or len({audit.worker_id for audit in self.agent_audits}) != 2
             or any(
-                audit.contract != "memo-recognition-worker-audit-v1"
-                for audit in self.agent_audits
+                audit.contract != "memo-recognition-worker-audit-v1" for audit in self.agent_audits
             )
         ):
             raise ValueError("Memo recognition agent quorum requires two independent audits")
@@ -343,9 +337,7 @@ class MemoRecognizerAdapter:
                     acceptance_bytes, strict=True
                 )
             except (json.JSONDecodeError, ValidationError, ValueError) as exc:
-                raise AdapterInputError(
-                    f"invalid Memo recognition acceptance: {exc}"
-                ) from exc
+                raise AdapterInputError(f"invalid Memo recognition acceptance: {exc}") from exc
             if canonical_json_bytes(acceptance) != acceptance_bytes:
                 raise AdapterIntegrityError(
                     "Memo recognition acceptance must use canonical JSON bytes"

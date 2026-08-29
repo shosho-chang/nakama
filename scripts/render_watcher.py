@@ -116,8 +116,9 @@ def save_state(path: Path, state: dict) -> None:
 WATCHER_HEARTBEAT_KEY = "_watchers"
 
 
-def record_heartbeat(state: dict, *, episode_slug: str | None, cut_id: str | None,
-                     package_rank: int | None, now: str) -> dict:
+def record_heartbeat(
+    state: dict, *, episode_slug: str | None, cut_id: str | None, package_rank: int | None, now: str
+) -> dict:
     """把這支 watcher 的守備範圍寫進 state。"""
     scope = {
         "episode_slug": episode_slug,
@@ -377,18 +378,18 @@ def dispatch_revision_agent(context: dict) -> subprocess.CompletedProcess[str]:
     job_dir = Path(context["job_dir"])
     prompt = f"""你是獨立的 Podcast Packaging Revision Agent。
 
-先完整讀取 `{_REPO / '.claude' / 'skills' / 'thumbnail-brainstorm' / 'SKILL.md'}`，嚴格遵守。
-工作請求在 `{context['request_path']}`，使用者 feedback 必須逐項處理。
+先完整讀取 `{_REPO / ".claude" / "skills" / "thumbnail-brainstorm" / "SKILL.md"}`，嚴格遵守。
+工作請求在 `{context["request_path"]}`，使用者 feedback 必須逐項處理。
 
 允許修改的 production 範圍只有：
-- working packaging: `{context['working_packaging_dir']}`
-- vault packaging mirror: `{context['vault_packaging_dir']}`
-- 本集 cutouts: `{context['vault_cutout_dir']}`
+- working packaging: `{context["working_packaging_dir"]}`
+- vault packaging mirror: `{context["vault_packaging_dir"]}`
+- 本集 cutouts: `{context["vault_cutout_dir"]}`
 
 硬規則：
 1. 不改任何 repo code、skill、approval.json、字幕、Resolve、YouTube 或發布狀態。
-2. 不覆寫 revisions/{context['request_id']}/before 裡的舊版；舊版必須可回復。
-3. 依 feedback 重做 `{context['cut_id']}` 的 package。若是封面問題，要重新檢查候選
+2. 不覆寫 revisions/{context["request_id"]}/before 裡的舊版；舊版必須可回復。
+3. 依 feedback 重做 `{context["cut_id"]}` 的 package。若是封面問題，要重新檢查候選
    frame、cutout 邊緣與背景透明度，不能只改 JSON 宣稱完成。
    `cut_id=full` 是完整節目 N1：必須使用 `thumbnail_full`，絕對不得使用
    長精華 N2 `thumbnail_reaction`。作者訪談若 brief 含書封，書封必須放大、
@@ -403,7 +404,7 @@ def dispatch_revision_agent(context: dict) -> subprocess.CompletedProcess[str]:
 7. Cutout 去背必須 bounded：若沒有 GPU provider，先裁切人物並把最長邊縮到 1024px
    以下再推論；單一去背程序 5 分鐘沒有產物就停止並改走較快的既有 pipeline，不可讓
    full-resolution CPU BiRefNet 無界執行。
-8. 完成後把簡短摘要寫到 `{job_dir / 'agent-summary.md'}`，然後正常結束；若無法
+8. 完成後把簡短摘要寫到 `{job_dir / "agent-summary.md"}`，然後正常結束；若無法
    符合 feedback，非零退出並說明 blocker。
 """
     command = [
@@ -469,14 +470,14 @@ def dispatch_packaging_agent(context: dict) -> subprocess.CompletedProcess[str]:
 
 先完整讀取 `{title_skill}` 與 `{thumbnail_skill}`，包含兩份 skill 指定的必要 reference，
 然後依序執行完整 title-brainstorm → thumbnail-brainstorm，不得簡化 title panel 或只用
-工作代號充當正式標題。工作請求在 `{context['request_path']}`；只處理
-`{context['cut_id']}`。
+工作代號充當正式標題。工作請求在 `{context["request_path"]}`；只處理
+`{context["cut_id"]}`。
 
 允許修改的 production 範圍只有：
-- working episode: `{context['working_episode_dir']}`
-- working packaging: `{context['working_packaging_dir']}`
-- vault packaging mirror: `{context['vault_packaging_dir']}`
-- 本集 cutouts: `{context['vault_cutout_dir']}`
+- working episode: `{context["working_episode_dir"]}`
+- working packaging: `{context["working_packaging_dir"]}`
+- vault packaging mirror: `{context["vault_packaging_dir"]}`
+- 本集 cutouts: `{context["vault_cutout_dir"]}`
 
 硬規則：
 1. 不改 repo code、skill、approval.json、字幕、Resolve、影片、YouTube 或發布狀態。
@@ -488,7 +489,7 @@ def dispatch_packaging_agent(context: dict) -> subprocess.CompletedProcess[str]:
 5. 中斷重跑時先檢查現有 packages/artifacts，沿用已完成且可驗證的成果，從缺的 stage 續跑；
    不重生已完整的 titles 或 thumbnails。
 6. working/vault packages.json 與所有定稿 PNG bytes 必須一致；不可自動 Approve。
-7. 完成後把摘要寫到 `{job_dir / 'agent-summary.md'}`。若任何必要輸入、來源或 QA 不成立，
+7. 完成後把摘要寫到 `{job_dir / "agent-summary.md"}`。若任何必要輸入、來源或 QA 不成立，
    必須明確失敗，不得寫 READY 或假裝生成完成。
 """
     command = [
@@ -642,9 +643,7 @@ def _validate_full_episode_layout(*, packaging_dir: Path, vault_root: Path, cut)
         try:
             spec = json.loads(spec_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            raise RuntimeError(
-                f"完整節目 rank {package.title_rank} render spec 無法讀取"
-            ) from exc
+            raise RuntimeError(f"完整節目 rank {package.title_rank} render spec 無法讀取") from exc
         if spec.get("composition") != "thumbnail_full":
             raise RuntimeError(
                 f"完整節目 rank {package.title_rank} 套錯版面："
@@ -663,9 +662,7 @@ def _validate_full_episode_layout(*, packaging_dir: Path, vault_root: Path, cut)
                 or float(variables.get("book_cover_brightness", 1)) > 0.65
                 or float(variables.get("book_cover_height_pct", 0)) < 90
             ):
-                raise RuntimeError(
-                    f"作者訪談 rank {package.title_rank} 書封必須放大、變暗作為背景"
-                )
+                raise RuntimeError(f"作者訪談 rank {package.title_rank} 書封必須放大、變暗作為背景")
         for role, rel in (("host", package.host_cutout), ("guest", package.guest_cutout)):
             try:
                 with Image.open(vault_root / rel) as cutout:
@@ -779,9 +776,7 @@ def run_revision_job(
             vault_root=vault_root,
             cut_id=cut_id,
         )
-        before_fingerprint = _revision_fingerprint(
-            source_bytes, request.get("source_assets", {})
-        )
+        before_fingerprint = _revision_fingerprint(source_bytes, request.get("source_assets", {}))
         after_fingerprint = _revision_fingerprint(output_packages, output_assets)
         if after_fingerprint == before_fingerprint:
             raise RuntimeError("Agent 沒有產生任何可驗證的 package 變更")
@@ -880,9 +875,7 @@ def run_packaging_job(
             raise RuntimeError("working-set packaging dir not found")
         working_episode_dir = packaging_dir.parent
         vault_root = manifest_dir.parents[2]
-        vault_cutout_dir = (
-            vault_root / "Attachments" / "cutouts" / "podcast" / job["slug"]
-        )
+        vault_cutout_dir = vault_root / "Attachments" / "cutouts" / "podcast" / job["slug"]
         vault_cutout_dir.mkdir(parents=True, exist_ok=True)
         job_key = hashlib.sha256(cut_id.encode("utf-8")).hexdigest()[:16]
         job_dir = packaging_dir / "_jobs" / "initial" / job_key
@@ -919,8 +912,7 @@ def run_packaging_job(
             "vault_cutout_dir": str(vault_cutout_dir),
         }
         _log(
-            f"PACKAGING {'RESUME' if job.get('resume') else 'START'} "
-            f"{job['slug']}/{cut_id}",
+            f"PACKAGING {'RESUME' if job.get('resume') else 'START'} {job['slug']}/{cut_id}",
             log_path,
         )
         result = agent_runner(context)
@@ -1007,11 +999,7 @@ def render_one(job: dict, state: dict, state_path: Path, log_path: Path | None) 
                 "--cut-id",
                 cut_id,
             ]
-            + (
-                ["--package-rank", str(job["package_rank"])]
-                if job.get("package_rank")
-                else []
-            ),
+            + (["--package-rank", str(job["package_rank"])] if job.get("package_rank") else []),
             cwd=str(_REPO),
             capture_output=True,
             text=True,

@@ -6,8 +6,8 @@ import base64
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Literal
 from pathlib import Path
+from typing import Literal
 
 from PIL import Image
 
@@ -148,7 +148,9 @@ def _center_provenance(spec: dict, *, inherited: object = False) -> dict | None:
         )
     supply = str(raw.get("supply") or "")
     if supply not in CENTER_SUPPLY:
-        raise ValueError(f"center_provenance.supply 必須是 {list(CENTER_SUPPLY)} 之一，收到 {supply!r}")
+        raise ValueError(
+            f"center_provenance.supply 必須是 {list(CENTER_SUPPLY)} 之一，收到 {supply!r}"
+        )
     fields = {"supply": supply}
     for name in ("source", "query", "why"):
         value = str(raw.get(name) or "").strip()

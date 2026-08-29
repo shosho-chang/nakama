@@ -1,0 +1,259 @@
+{% macro calendar_item(item, mobile=false) -%}
+<article class="pc-item" data-phase="{{ item.phase }}">
+  <span class="pc-item__meta">
+    {% if mobile and item.calendar_at %}<time datetime="{{ item.calendar_at.isoformat() }}">{{ item.calendar_at.strftime('%m/%d %H:%M') }}</time>{% else %}{{ item.local_time_label }}{% endif %}
+    · {{ item.content_type | upper }}
+  </span>
+  <a class="pc-item__title" href="{{ item.detail_url }}"><strong>{{ item.title }}</strong></a>
+  <div class="pc-targets" aria-label="發布平台狀態">
+    {% for target in item.targets %}
+    <div class="pc-target" data-status="{{ target.status }}">
+      <span>{{ target.platform_label }} · {{ target.status | replace('_', ' ') }}</span>
+      {% if target.confirmation_overdue %}<span class="pc-target__confirmation" role="status">uploaded · 等待公開確認</span>{% endif %}
+      {% if target.error %}<span class="pc-target__error" role="status">{{ target.error }}</span>{% endif %}
+      {% if target.receipt_id %}<span class="pc-target__receipt">Receipt · {{ target.receipt_id }}</span>{% endif %}
+      {% if target.permalink %}<a href="{{ target.permalink }}" target="_blank" rel="noopener noreferrer">開啟平台紀錄</a>{% endif %}
+      {% if item.content_type == 'short' and target.retryable %}
+      <form class="pc-retry" method="post" action="/bridge/publish/{{ item.episode | urlencode }}/{{ item.content_id | urlencode }}/retry/{{ target.platform | urlencode }}" onsubmit="return confirm('這會立即只重試此平台，並產生真實平台 side effect。確定繼續？')">
+        <input type="hidden" name="return_to" value="{{ calendar_return_url }}">
+        <button class="sho-btn--ghost" type="submit">只重試此平台</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <span class="pc-item__state">{{ phase_labels[item.phase] }} · {{ item.progress_label }} · {{ item.date_basis_label }}</span>
+  <section class="pc-control pc-control--schedule" aria-label="Campaign Anchor 設定；只寫發布意圖，不會核准或投遞">
+  <span class="pc-control__label">01 · CAMPAIGN ANCHOR</span>
+  <p>只設定發布意圖；不會核准、不會投遞。</p>
+  {% if item.schedule_editable %}
+  <form class="pc-schedule" method="post" action="/bridge/publish/calendar/{{ item.schedule_kind }}/{{ item.episode | urlencode }}/{{ item.schedule_id | urlencode }}/schedule">
+    <input type="hidden" name="month" value="{{ month_value }}">
+    <input type="hidden" name="return_episode" value="{{ episode }}">
+    <input type="hidden" name="expected_anchor_token" value="{{ item.expected_anchor_token }}">
+    <label>
+      <span>Campaign Anchor · 台北時間</span>
+      <input type="datetime-local" name="campaign_anchor_local" value="{{ item.campaign_anchor_local_value }}" aria-label="{{ item.title }} Campaign Anchor（台北時間）">
+    </label>
+    <div class="pc-schedule__actions">
+      <button class="sho-btn" type="submit" name="operation" value="set">{% if item.date_basis == 'scheduled' %}調整時間{% else %}設定排程{% endif %}</button>
+      {% if item.date_basis == 'scheduled' %}<button class="sho-btn--ghost" type="submit" name="operation" value="clear">移除日期</button>{% endif %}
+    </div>
+  </form>
+  {% else %}
+  <div class="pc-schedule pc-schedule--disabled" aria-label="排程已鎖定">
+    <label>
+      <span>Campaign Anchor · 台北時間</span>
+      <input type="datetime-local" value="{{ item.campaign_anchor_local_value }}" disabled>
+    </label>
+    <button class="sho-btn" type="button" disabled>無法調整</button>
+    <p>{{ item.schedule_disabled_reason }}</p>
+  </div>
+  {% endif %}
+  </section>
+
+  <section class="pc-control pc-control--execution" aria-label="發布執行控制">
+    <span class="pc-control__label">02 · EXECUTION</span>
+    {% if item.content_type == 'short' %}
+      {% if item.execution_ready %}
+      <p>{{ item.execution_reason }} 此操作會呼叫既有 dispatcher，可能立即在外部平台建立上傳或發布。</p>
+      <form class="pc-execution" method="post" action="/bridge/publish/{{ item.episode | urlencode }}/{{ item.content_id | urlencode }}/approve-upload" onsubmit="return confirm('這會核准 Short 並立即啟動符合資格的平台投遞；未來 Anchor 會先武裝 YouTube／Facebook，Instagram 等待到點。確定繼續？')">
+        <input type="hidden" name="return_to" value="{{ calendar_return_url }}">
+        <button class="sho-btn" type="submit">核准並投遞三平台</button>
+      </form>
+      {% else %}
+      <p class="pc-execution__reason" role="status">{{ item.execution_reason }}</p>
+      <button class="sho-btn" type="button" disabled aria-disabled="true">核准並投遞三平台</button>
+      <a class="sho-lk pc-execution__detail" href="{{ item.detail_url }}">檢查素材與文案</a>
+      {% endif %}
+    {% elif item.content_type == 'carousel' %}
+    <p>前往既有 Publish page 建立或接續三平台工作；此連結不建立 job，也不執行外部操作。YouTube Community 永遠是 browser/manual handoff，不宣稱 Data API insert。</p>
+    <a class="sho-btn--ghost pc-execution__detail" href="{{ item.detail_url }}">開啟三平台發布工作</a>
+    {% else %}
+    <p>長片仍由完整審核頁核准與上傳。</p>
+    <a class="sho-lk pc-execution__detail" href="{{ item.detail_url }}">開啟發布審核</a>
+    {% endif %}
+  </section>
+</article>
+{%- endmacro %}
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Publish Calendar · {{ month_value }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/publish-calendar.css?v={{ asset_version }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='publish') }}
+
+{% from "_breadcrumb.html" import breadcrumb %}
+{{ breadcrumb([
+  {"label": "PUBLISH · 發布審核", "href": "/bridge/publish", "is_current": false},
+  {"label": "CALENDAR · 發布月曆", "href": none, "is_current": true},
+]) }}
+
+<section class="page-header page-header--split">
+  <div>
+    <div class="nk-caps">STAGE 6 · PUBLISHING VISIBILITY</div>
+    <h1 class="page-title">發布月曆 <span class="zh">{{ month_label }}</span></h1>
+  </div>
+  <nav class="pc-view-nav" aria-label="發布檢視">
+    <a class="sho-btn--ghost" href="/bridge/publish">審核清單</a>
+    <a class="sho-btn" href="/bridge/publish/calendar?month={{ month_value }}&amp;episode={{ episode | urlencode }}" aria-current="page">發布月曆</a>
+  </nav>
+</section>
+
+<main class="page-main pc-main" data-calendar-surface aria-busy="false">
+  <div class="pc-loading" role="status" hidden>正在整理本機發布紀錄…</div>
+
+  <section class="pc-toolbar" aria-label="月曆篩選與導覽">
+    <nav class="pc-month-nav" aria-label="月份導覽">
+      {% if previous_url %}<a class="pc-month-nav__arrow" href="{{ previous_url }}" aria-label="上一個月">←</a>{% else %}<span class="pc-month-nav__arrow is-disabled" aria-disabled="true">←</span>{% endif %}
+      <strong>{{ month_label }}</strong>
+      {% if next_url %}<a class="pc-month-nav__arrow" href="{{ next_url }}" aria-label="下一個月">→</a>{% else %}<span class="pc-month-nav__arrow is-disabled" aria-disabled="true">→</span>{% endif %}
+    </nav>
+    <form class="pc-filter" method="get" action="/bridge/publish/calendar">
+      <input type="hidden" name="month" value="{{ month_value }}">
+      <label for="episode-filter">節目集數</label>
+      <select id="episode-filter" name="episode">
+        <option value="all"{% if episode == 'all' %} selected{% endif %}>全部內容</option>
+        {% for option in episode_options %}
+        <option value="{{ option }}"{% if episode == option %} selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+      <button class="sho-btn" type="submit">套用</button>
+    </form>
+  </section>
+
+  <aside class="pc-channel-identity" aria-label="YouTube 頻道識別">
+    <span class="sho-tag sho-tag--accent">Podcast YouTube</span>
+    <span>{{ podcast_youtube.name }}</span>
+    <span class="sho-mono">{{ podcast_youtube.handle }} · {{ podcast_youtube.channel_id }}</span>
+    <span class="sho-mono">Carousel 顯示 Community handoff；不宣稱 API 自動發布</span>
+  </aside>
+
+  <section class="pc-worker" data-worker-health="{{ short_due_worker.state }}" aria-labelledby="short-due-worker-heading">
+    <div>
+      <div class="sho-kicker"><span class="sho-kicker-n">[ LIVE ]</span> SHORT DUE WORKER</div>
+      <h2 id="short-due-worker-heading">Short Due Dispatcher</h2>
+    </div>
+    <span class="sho-tag pc-worker__state" role="status" aria-label="Short Due Dispatcher 狀態：{{ short_due_worker_label }}">{{ short_due_worker_label }}</span>
+    <dl>
+      <div><dt>LAST RUN</dt><dd>{% if short_due_worker.last_run_at %}<time datetime="{{ short_due_worker.last_run_at.isoformat() }}">{{ short_due_worker.last_run_at.astimezone(taipei).strftime('%Y-%m-%d %H:%M:%S') }}</time>{% else %}尚無紀錄{% endif %}</dd></div>
+      <div><dt>LAST SUCCESS</dt><dd>{% if short_due_worker.last_success_at %}<time datetime="{{ short_due_worker.last_success_at.isoformat() }}">{{ short_due_worker.last_success_at.astimezone(taipei).strftime('%Y-%m-%d %H:%M:%S') }}</time>{% else %}尚無成功紀錄{% endif %}</dd></div>
+      <div><dt>FAILURE STREAK</dt><dd>{{ short_due_worker.consecutive_failures }}</dd></div>
+    </dl>
+  </section>
+  {% if short_due_worker_warning %}
+  <aside class="pc-state pc-state--warning" role="alert" aria-label="Short Due Dispatcher 需要處理">
+    <strong>未來 Short 仍等待 Instagram 到點投遞，但 Due Dispatcher 目前不是在線狀態。</strong>
+    <span>請在桌機前景啟動 <span class="sho-mono">publish_due.py --watch --execute</span>，並確認本區狀態轉為「在線」；這項警告不會改動 Campaign Anchor 或 Release Target。</span>
+  </aside>
+  {% endif %}
+
+  <section class="pc-worker" data-worker-kind="outcome-reconciler" data-worker-health="{{ outcome_reconciler.state }}" aria-labelledby="outcome-reconciler-heading">
+    <div>
+      <div class="sho-kicker"><span class="sho-kicker-n">[ READ ]</span> NATIVE OUTCOMES</div>
+      <h2 id="outcome-reconciler-heading">Outcome Reconciler</h2>
+    </div>
+    <span class="sho-tag pc-worker__state" role="status" aria-label="Outcome Reconciler 狀態：{{ outcome_reconciler_label }}">{{ outcome_reconciler_label }}</span>
+    <dl>
+      <div><dt>LAST RUN</dt><dd>{% if outcome_reconciler.last_run_at %}<time datetime="{{ outcome_reconciler.last_run_at.isoformat() }}">{{ outcome_reconciler.last_run_at.astimezone(taipei).strftime('%Y-%m-%d %H:%M:%S') }}</time>{% else %}尚無紀錄{% endif %}</dd></div>
+      <div><dt>LAST SUCCESS</dt><dd>{% if outcome_reconciler.last_success_at %}<time datetime="{{ outcome_reconciler.last_success_at.isoformat() }}">{{ outcome_reconciler.last_success_at.astimezone(taipei).strftime('%Y-%m-%d %H:%M:%S') }}</time>{% else %}尚無成功紀錄{% endif %}</dd></div>
+      <div><dt>FAILURE STREAK</dt><dd>{{ outcome_reconciler.consecutive_failures }}</dd></div>
+    </dl>
+  </section>
+  {% if outcome_reconciler_warning %}
+  <aside class="pc-state pc-state--warning" role="alert" aria-label="Outcome Reconciler 需要處理">
+    <strong>公開結果待確認；Outcome Reconciler 目前不是在線狀態。</strong>
+    <span>請由操作者在桌機前景執行 <span class="sho-mono">publish_reconcile.py --once --execute</span>。這項唯讀平台確認不會重傳、重試或建立內容。</span>
+  </aside>
+  {% endif %}
+
+  <section class="pc-pipeline" aria-labelledby="pipeline-heading">
+    <div class="pc-section-heading">
+      <div>
+        <div class="sho-kicker"><span class="sho-kicker-n">[ 000 ]</span> PUBLISH PIPELINE</div>
+        <h2 id="pipeline-heading">目前篩選範圍 · {{ phase_counts | sum(attribute='count') }} 組內容</h2>
+      </div>
+      <span class="sho-mono">一組內容 · 一個 Campaign Anchor · 各平台狀態獨立</span>
+    </div>
+    <ol class="pc-pipeline__rail">
+      {% for stage in phase_counts %}
+      <li data-phase="{{ stage.phase }}"><span>{{ '%02d' | format(loop.index) }}</span><strong>{{ stage.label }}</strong><b>{{ stage.count }}</b></li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  {% if diagnostics %}
+  <section class="pc-state pc-state--warning" role="status" aria-label="部分資料警告">
+    <strong>部分資料無法讀取</strong>
+    <ul>{% for diagnostic in diagnostics %}<li>{{ diagnostic.message }}{% if diagnostic.source %} <span class="sho-mono">{{ diagnostic.source }}</span>{% endif %}</li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+
+  <section class="pc-calendar" aria-labelledby="calendar-heading">
+    <div class="pc-section-heading">
+      <div>
+        <div class="sho-kicker"><span class="sho-kicker-n">[ 001 ]</span> DATED ITEMS</div>
+        <h2 id="calendar-heading">{{ month_label }} · {{ dated_count }} 組內容</h2>
+      </div>
+      <span class="sho-mono">週日起始 · Asia/Taipei</span>
+    </div>
+
+    <table class="pc-month-grid">
+      <caption class="pc-visually-hidden">{{ month_label }}發布月曆，週日為第一欄</caption>
+      <thead><tr>{% for label in weekday_labels %}<th scope="col">{{ label }}</th>{% endfor %}</tr></thead>
+      <tbody>
+      {% for week in weeks %}
+        <tr>
+        {% for day in week %}
+          {% set day_items = items_by_date.get(day.value.isoformat(), []) %}
+          <td class="pc-day{% if not day.in_month %} is-outside{% endif %}"{% if not day.in_month %} aria-disabled="true"{% endif %}>
+            <time class="pc-day__number" datetime="{{ day.value.isoformat() }}" aria-label="{{ day.value.strftime('%Y-%m-%d') }}">{{ day.value.day }}</time>
+            {% if day.in_month %}<div class="pc-day__items">{% for item in day_items %}{{ calendar_item(item) }}{% endfor %}</div>{% endif %}
+          </td>
+        {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    <ol class="pc-agenda" aria-label="{{ month_label }}發布議程">
+      {% for group in agenda_days %}
+      <li class="pc-agenda__day">
+        <h3><time datetime="{{ group.date.isoformat() }}">{{ group.date.strftime('%m/%d') }}</time></h3>
+        <div>{% for item in group['items'] %}{{ calendar_item(item, true) }}{% endfor %}</div>
+      </li>
+      {% else %}
+      <li class="pc-state pc-state--empty">這個月份沒有可信日期的發布項目。</li>
+      {% endfor %}
+    </ol>
+    {% if not dated_count %}<p class="pc-state pc-state--empty pc-desktop-empty">這個月份沒有可信日期的發布項目。可切換集數或查看下方日期未定項目。</p>{% endif %}
+  </section>
+
+  <section class="pc-backlog" aria-labelledby="backlog-heading">
+    <div class="pc-section-heading">
+      <div>
+        <div class="sho-kicker"><span class="sho-kicker-n">[ 002 ]</span> UNDATED ITEMS</div>
+        <h2 id="backlog-heading">未列入月曆／日期未定 · {{ backlog | length }} 組內容</h2>
+      </div>
+      <span class="sho-mono">不使用 updated_at 或檔案時間推測發布日</span>
+    </div>
+    {% if backlog %}
+    <ol class="pc-backlog__list">
+      {% for item in backlog %}<li>{{ calendar_item(item, true) }}</li>{% endfor %}
+    </ol>
+    {% else %}
+    <p class="pc-state pc-state--empty">目前篩選範圍沒有日期未定項目。</p>
+    {% endif %}
+  </section>
+</main>
+</body>
+</html>

@@ -1369,9 +1369,7 @@ def _verify_reference_membership_batches(
     for source_id in sorted(membership_by_source):
         enrolled = enrolled_by_source[source_id]
         try:
-            extraction_snapshot = extraction_snapshots_by_digest[
-                enrolled.extracted_text.sha256
-            ]
+            extraction_snapshot = extraction_snapshots_by_digest[enrolled.extracted_text.sha256]
         except KeyError as exc:
             raise GenerationIsolationError(
                 f"{context} Reference Evidence extraction snapshot is missing"
@@ -3250,21 +3248,15 @@ class PodcastSubtitleV2:
         if len(added) != 1 or previous_migration_names - migration_names:
             raise GenerationIsolationError("evidence migration receipt ledger shape is invalid")
         receipt_name = next(iter(added))
-        payload = self.store.read_create_checkpoint_artifact(
-            stored, receipt_name
-        )
+        payload = self.store.read_create_checkpoint_artifact(stored, receipt_name)
         try:
             receipt: EvidencePrefixMigrationReceiptV1 | EvidencePrefixMigrationReceiptV2
             if not previous_migration_names:
                 if receipt_name != EVIDENCE_PREFIX_MIGRATION_ARTIFACT:
                     raise ValueError("first migration receipt must use the V1 artifact")
-                receipt = EvidencePrefixMigrationReceiptV1.model_validate_json(
-                    payload, strict=True
-                )
+                receipt = EvidencePrefixMigrationReceiptV1.model_validate_json(payload, strict=True)
             else:
-                receipt = EvidencePrefixMigrationReceiptV2.model_validate_json(
-                    payload, strict=True
-                )
+                receipt = EvidencePrefixMigrationReceiptV2.model_validate_json(payload, strict=True)
                 if evidence_prefix_migration_artifact(receipt.id) != receipt_name:
                     raise ValueError("refresh receipt artifact is not content addressed")
         except (TypeError, ValueError) as exc:
@@ -3289,14 +3281,12 @@ class PodcastSubtitleV2:
             and receipt.new_code_hash == checkpoint.code_hash
             and receipt.old_adapter_identity_set_hash
             == hash_object(previous.checkpoint.adapter_identities)
-            and receipt.new_adapter_identity_set_hash
-            == hash_object(checkpoint.adapter_identities)
+            and receipt.new_adapter_identity_set_hash == hash_object(checkpoint.adapter_identities)
             and current_predecessor_hashes == old_hashes
         )
         if isinstance(receipt, EvidencePrefixMigrationReceiptV1):
             expected = expected and (
-                receipt.evidence_artifact_set_hash
-                == hash_object(tuple(sorted(old_hashes.items())))
+                receipt.evidence_artifact_set_hash == hash_object(tuple(sorted(old_hashes.items())))
             )
         else:
             previous_receipt, _ = self._verify_evidence_prefix_migration_checkpoint(previous)
@@ -3329,8 +3319,7 @@ class PodcastSubtitleV2:
             "expected_active_generation_id",
         )
         if not expected or any(
-            getattr(checkpoint, name) != getattr(previous.checkpoint, name)
-            for name in unchanged
+            getattr(checkpoint, name) != getattr(previous.checkpoint, name) for name in unchanged
         ):
             raise GenerationIsolationError("evidence migration crossed its exact lineage")
         return receipt, previous
@@ -3385,9 +3374,7 @@ class PodcastSubtitleV2:
         receipt_name = next(iter(added))
         payload = self.store.read_create_checkpoint_artifact(stored, receipt_name)
         try:
-            receipt = NativeAuditBasisMigrationReceiptV1.model_validate_json(
-                payload, strict=True
-            )
+            receipt = NativeAuditBasisMigrationReceiptV1.model_validate_json(payload, strict=True)
         except (TypeError, ValueError) as exc:
             raise GenerationIsolationError(
                 "native audit basis migration receipt is invalid"
@@ -3429,12 +3416,10 @@ class PodcastSubtitleV2:
             or receipt.new_code_hash != checkpoint.code_hash
             or receipt.old_adapter_identity_set_hash
             != hash_object(previous.checkpoint.adapter_identities)
-            or receipt.new_adapter_identity_set_hash
-            != hash_object(checkpoint.adapter_identities)
+            or receipt.new_adapter_identity_set_hash != hash_object(checkpoint.adapter_identities)
             or receipt.predecessor_artifact_set_hash
             != hash_object(tuple(sorted(old_hashes.items())))
-            or receipt.basis_artifact_set_hash
-            != hash_object(tuple(sorted(base_hashes.items())))
+            or receipt.basis_artifact_set_hash != hash_object(tuple(sorted(base_hashes.items())))
             or any(
                 getattr(checkpoint, name) != getattr(previous.checkpoint, name)
                 for name in unchanged
@@ -3523,9 +3508,7 @@ class PodcastSubtitleV2:
                 is_evidence_prefix_migration_artifact(name)
                 for name in evidence.checkpoint.artifact_hashes
             ):
-                _, migrated_parent, _ = self._verified_evidence_prefix_migration_lineage(
-                    evidence
-                )
+                _, migrated_parent, _ = self._verified_evidence_prefix_migration_lineage(evidence)
                 if migrated_parent.checkpoint.previous_checkpoint_id is None:
                     raise GenerationIsolationError(
                         "pre-migration evidence checkpoint lacks predecessor"
@@ -5411,9 +5394,7 @@ class PodcastSubtitleV2:
             raise GenerationIsolationError(
                 "legacy native audit basis cannot be reinterpreted as selective V3"
             )
-        audit_plan = self._load_native_model(
-            self.store, stored, _NATIVE_AUDIT_PLAN, AuditPlan
-        )
+        audit_plan = self._load_native_model(self.store, stored, _NATIVE_AUDIT_PLAN, AuditPlan)
         signals = self._load_native_model(
             self.store, stored, _NATIVE_CANDIDATE_SIGNALS, CandidateSignalSet
         )
@@ -5447,8 +5428,7 @@ class PodcastSubtitleV2:
             label=_CHECKPOINT_RISKS,
         )
         if not all(
-            isinstance(item, list)
-            for item in (reference_payload, retrieval_payload, risk_payload)
+            isinstance(item, list) for item in (reference_payload, retrieval_payload, risk_payload)
         ):
             raise GenerationIsolationError("selective audit basis collection schema is invalid")
         references = tuple(ReferenceEvidence.model_validate(item) for item in reference_payload)
@@ -5488,9 +5468,7 @@ class PodcastSubtitleV2:
             boundary_constraints=None,
             seam_evidence=None,
         )
-        expected_groups = derive_candidate_group_set(
-            expected_plan, expected_signals, transcript
-        )
+        expected_groups = derive_candidate_group_set(expected_plan, expected_signals, transcript)
         expected_execution = build_modality_audit_execution_plan_v3(
             expected_plan,
             expected_signals,
@@ -5509,9 +5487,7 @@ class PodcastSubtitleV2:
             expected_execution,
         ):
             raise GenerationIsolationError("selective audit basis parents are not reproducible")
-        text_sources, text_names = self._load_native_source_set(
-            stored, _NATIVE_TEXT_SOURCE_INDEX
-        )
+        text_sources, text_names = self._load_native_source_set(stored, _NATIVE_TEXT_SOURCE_INDEX)
         expected_text = materialize_text_correction_packet_sources_batch(
             execution,
             audit_plan,
@@ -5828,12 +5804,8 @@ class PodcastSubtitleV2:
         text: _SelectiveNativeTextAuditState,
         outcome: SelectiveAudioAuditCompletedV3,
     ) -> _SelectiveNativeAudioAuditState:
-        request_bytes = tuple(
-            payload for run in outcome.runs for payload in run.request_bytes
-        )
-        response_bytes = tuple(
-            payload for run in outcome.runs for payload in run.response_bytes
-        )
+        request_bytes = tuple(payload for run in outcome.runs for payload in run.request_bytes)
+        response_bytes = tuple(payload for run in outcome.runs for payload in run.response_bytes)
         clip_bytes = tuple(payload for run in outcome.runs for payload in run.clip_bytes)
         journal_bytes = tuple(
             canonical_json_bytes(item)
@@ -5850,18 +5822,12 @@ class PodcastSubtitleV2:
             },
         )
         artifacts = {
-            _NATIVE_AUDIO_SELECTION_PLANS_V3: canonical_json_bytes(
-                outcome.selection_plans
-            ),
-            _NATIVE_AUDIO_EXECUTION_PLANS_V3: canonical_json_bytes(
-                outcome.execution_plans
-            ),
+            _NATIVE_AUDIO_SELECTION_PLANS_V3: canonical_json_bytes(outcome.selection_plans),
+            _NATIVE_AUDIO_EXECUTION_PLANS_V3: canonical_json_bytes(outcome.execution_plans),
             _NATIVE_AUDIO_RECORDS_V3: canonical_json_bytes(
                 tuple(run.record for run in outcome.runs)
             ),
-            _NATIVE_AUDIO_ROUND_RECEIPTS_V3: canonical_json_bytes(
-                outcome.round_receipts
-            ),
+            _NATIVE_AUDIO_ROUND_RECEIPTS_V3: canonical_json_bytes(outcome.round_receipts),
             _NATIVE_SELECTIVE_AGGREGATE_V3: canonical_json_bytes(outcome.aggregate),
             _NATIVE_AUDIO_RUN_INDEX: index,
             **run_artifacts,
@@ -5989,15 +5955,9 @@ class PodcastSubtitleV2:
                     f"selective artifact {name} violates its schema"
                 ) from exc
 
-        selections = load_collection(
-            _NATIVE_AUDIO_SELECTION_PLANS_V3, AudioAuditSelectionPlanV1
-        )
-        executions = load_collection(
-            _NATIVE_AUDIO_EXECUTION_PLANS_V3, ModalityAuditExecutionPlanV3
-        )
-        records = load_collection(
-            _NATIVE_AUDIO_RECORDS_V3, SelectiveAudioAuditExecutionRecordV3
-        )
+        selections = load_collection(_NATIVE_AUDIO_SELECTION_PLANS_V3, AudioAuditSelectionPlanV1)
+        executions = load_collection(_NATIVE_AUDIO_EXECUTION_PLANS_V3, ModalityAuditExecutionPlanV3)
+        records = load_collection(_NATIVE_AUDIO_RECORDS_V3, SelectiveAudioAuditExecutionRecordV3)
         receipts = load_collection(
             _NATIVE_AUDIO_ROUND_RECEIPTS_V3, SelectiveAudioAuditRoundReceiptV3
         )
@@ -6057,9 +6017,7 @@ class PodcastSubtitleV2:
                         ),
                         label="selective audio source",
                     )
-                if bundle.audio_executor.replay(
-                    execution, basis.audit_plan, sources, run
-                ) != run:
+                if bundle.audio_executor.replay(execution, basis.audit_plan, sources, run) != run:
                     raise ValueError("selective audio replay changed")
                 runs.append(run)
                 offset += count
@@ -6219,10 +6177,7 @@ class PodcastSubtitleV2:
             )
         else:
             observed_selection_plans = outcome.selection_plans
-        if (
-            not observed_selection_plans
-            or observed_selection_plans[0] != state.selection_plans[0]
-        ):
+        if not observed_selection_plans or observed_selection_plans[0] != state.selection_plans[0]:
             raise GenerationIsolationError("selective audio initial selection drifted")
         if isinstance(outcome, SelectiveAudioAuditPendingV3):
             generation_id = basis.result.transcript.generation_id
@@ -6372,9 +6327,7 @@ class PodcastSubtitleV2:
             "native_execution_policy": bundle.execution_policy,
         }
         if isinstance(state, _SelectiveNativeAudioAuditState):
-            adapter_payload["native_audio_selection_policy"] = (
-                bundle.audio_selection_policy
-            )
+            adapter_payload["native_audio_selection_policy"] = bundle.audio_selection_policy
         artifacts[_ADAPTER_IDENTITIES] = canonical_json_bytes(adapter_payload)
         stage_hashes = {
             "adapter_identities": sha256_bytes(artifacts[_ADAPTER_IDENTITIES]),
@@ -6410,9 +6363,7 @@ class PodcastSubtitleV2:
                     "native_audio_execution_plans_v3": sha256_bytes(
                         artifacts[_NATIVE_AUDIO_EXECUTION_PLANS_V3]
                     ),
-                    "native_audio_records_v3": sha256_bytes(
-                        artifacts[_NATIVE_AUDIO_RECORDS_V3]
-                    ),
+                    "native_audio_records_v3": sha256_bytes(artifacts[_NATIVE_AUDIO_RECORDS_V3]),
                     "native_audio_round_receipts_v3": sha256_bytes(
                         artifacts[_NATIVE_AUDIO_ROUND_RECEIPTS_V3]
                     ),
@@ -6424,15 +6375,9 @@ class PodcastSubtitleV2:
         else:
             stage_hashes.update(
                 {
-                    "native_execution_plan": sha256_bytes(
-                        artifacts[_NATIVE_EXECUTION_PLAN]
-                    ),
-                    "native_audio_audit_record": sha256_bytes(
-                        artifacts[_NATIVE_AUDIO_RECORD]
-                    ),
-                    "native_full_audit_aggregate": sha256_bytes(
-                        artifacts[_NATIVE_AGGREGATE]
-                    ),
+                    "native_execution_plan": sha256_bytes(artifacts[_NATIVE_EXECUTION_PLAN]),
+                    "native_audio_audit_record": sha256_bytes(artifacts[_NATIVE_AUDIO_RECORD]),
+                    "native_full_audit_aggregate": sha256_bytes(artifacts[_NATIVE_AGGREGATE]),
                 }
             )
         manifest = GenerationManifest(
@@ -7005,9 +6950,7 @@ class PodcastSubtitleV2:
                         "text_policy": self._native_full_audit.text_executor.policy,
                         "audio_identity": self._native_full_audit.audio_executor.identity,
                         "audio_policy": self._native_full_audit.audio_executor.policy,
-                        "audio_selection_policy": (
-                            self._native_full_audit.audio_selection_policy
-                        ),
+                        "audio_selection_policy": (self._native_full_audit.audio_selection_policy),
                     }
                     if self._native_full_audit is not None
                     else None
@@ -7090,9 +7033,7 @@ class PodcastSubtitleV2:
                 raise ModuleInvariantError(f"source audio is not a file: {source}")
             speaker_bindings = _bind_speaker_tracks(create_request.speaker_tracks)
             if speaker_bindings and self._speaker_attributor is None:
-                raise ModuleInvariantError(
-                    "speaker tracks require a configured Speaker Attributor"
-                )
+                raise ModuleInvariantError("speaker tracks require a configured Speaker Attributor")
             (
                 enrolled_artifacts,
                 reference_source_snapshots,
@@ -7221,9 +7162,7 @@ class PodcastSubtitleV2:
             common_receipt = {
                 "episode_id": create_request.episode_id,
                 "old_checkpoint_id": latest_checkpoint.id,
-                "old_checkpoint_record_hash": sha256_bytes(
-                    canonical_json_bytes(latest_checkpoint)
-                ),
+                "old_checkpoint_record_hash": sha256_bytes(canonical_json_bytes(latest_checkpoint)),
                 "old_operation_key": latest_checkpoint.operation_key,
                 "new_operation_key": current_operation_key,
                 "old_input_binding_hash": latest_checkpoint.input_binding_hash,
@@ -7232,9 +7171,7 @@ class PodcastSubtitleV2:
                 "new_policy_hash": current_policy_hash,
                 "old_code_hash": latest_checkpoint.code_hash,
                 "new_code_hash": self._code_hash,
-                "old_adapter_identity_set_hash": hash_object(
-                    latest_checkpoint.adapter_identities
-                ),
+                "old_adapter_identity_set_hash": hash_object(latest_checkpoint.adapter_identities),
                 "new_adapter_identity_set_hash": hash_object(current_adapters),
                 "evidence_artifact_set_hash": hash_object(
                     tuple(
@@ -7304,9 +7241,7 @@ class PodcastSubtitleV2:
                 raise ModuleInvariantError(f"source audio is not a file: {source}")
             speaker_bindings = _bind_speaker_tracks(create_request.speaker_tracks)
             if speaker_bindings and self._speaker_attributor is None:
-                raise ModuleInvariantError(
-                    "speaker tracks require a configured Speaker Attributor"
-                )
+                raise ModuleInvariantError("speaker tracks require a configured Speaker Attributor")
             (
                 enrolled_artifacts,
                 reference_source_snapshots,
@@ -7336,16 +7271,14 @@ class PodcastSubtitleV2:
                     "source audio differs from the migrated native audit basis lineage"
                 )
             self.store.audio_path(source_hash, size_bytes=source_size)
-            _, current_adapters, _, current_operation = (
-                self._create_operation_identity(
-                    request=create_request,
-                    source_hash=source_hash,
-                    source_size_bytes=source_size,
-                    speaker_bindings=speaker_bindings,
-                    enrolled_artifacts=enrolled_artifacts,
-                    reference_source_snapshots=reference_source_snapshots,
-                    reference_extraction_snapshots=reference_extraction_snapshots,
-                )
+            _, current_adapters, _, current_operation = self._create_operation_identity(
+                request=create_request,
+                source_hash=source_hash,
+                source_size_bytes=source_size,
+                speaker_bindings=speaker_bindings,
+                enrolled_artifacts=enrolled_artifacts,
+                reference_source_snapshots=reference_source_snapshots,
+                reference_extraction_snapshots=reference_extraction_snapshots,
             )
             migration_names = {
                 name
@@ -7418,9 +7351,7 @@ class PodcastSubtitleV2:
                 is_evidence_prefix_migration_artifact(name)
                 for name in evidence.checkpoint.artifact_hashes
             ):
-                _, original_evidence, _ = self._verified_evidence_prefix_migration_lineage(
-                    evidence
-                )
+                _, original_evidence, _ = self._verified_evidence_prefix_migration_lineage(evidence)
             if original_evidence.checkpoint.previous_checkpoint_id is None:
                 raise GenerationIsolationError("evidence checkpoint lacks started predecessor")
             started = self.store.load_create_checkpoint_id(
@@ -7471,9 +7402,7 @@ class PodcastSubtitleV2:
             receipt = build_native_audit_basis_migration_receipt(
                 episode_id=create_request.episode_id,
                 old_checkpoint_id=latest.checkpoint.id,
-                old_checkpoint_record_hash=sha256_bytes(
-                    canonical_json_bytes(latest.checkpoint)
-                ),
+                old_checkpoint_record_hash=sha256_bytes(canonical_json_bytes(latest.checkpoint)),
                 old_operation_key=latest.checkpoint.operation_key,
                 new_operation_key=current_operation,
                 old_input_binding_hash=latest.checkpoint.input_binding_hash,
@@ -7482,9 +7411,7 @@ class PodcastSubtitleV2:
                 new_policy_hash=latest.checkpoint.policy_hash,
                 old_code_hash=latest.checkpoint.code_hash,
                 new_code_hash=self._code_hash,
-                old_adapter_identity_set_hash=hash_object(
-                    latest.checkpoint.adapter_identities
-                ),
+                old_adapter_identity_set_hash=hash_object(latest.checkpoint.adapter_identities),
                 new_adapter_identity_set_hash=hash_object(current_adapters),
                 predecessor_artifact_set_hash=hash_object(
                     tuple(sorted(latest.checkpoint.artifact_hashes.items()))
@@ -7633,9 +7560,7 @@ class PodcastSubtitleV2:
                         for name in stored_checkpoint.checkpoint.artifact_hashes
                     ):
                         _, migrated_basis_base, _ = (
-                            self._verified_native_audit_basis_migration_lineage(
-                                stored_checkpoint
-                            )
+                            self._verified_native_audit_basis_migration_lineage(stored_checkpoint)
                         )
                         basis_for_evidence = migrated_basis_base
                     evidence_id = basis_for_evidence.checkpoint.previous_checkpoint_id
@@ -8016,7 +7941,7 @@ class PodcastSubtitleV2:
             if verified_coverage != speech_coverage_receipt:
                 raise GenerationIsolationError(
                     "Speech Coverage Receipt changed during portable verification"
-            )
+                )
             try:
                 self.store.audio_path(
                     receipt.normalized.sha256,
@@ -12992,10 +12917,7 @@ class PodcastSubtitleV2:
             or stored_audio_policy != bundle.audio_executor.policy
             or stored_audit_policy != bundle.audit_policy
             or stored_execution_policy != bundle.execution_policy
-            or (
-                selective_v3
-                and stored_selection_policy != bundle.audio_selection_policy
-            )
+            or (selective_v3 and stored_selection_policy != bundle.audio_selection_policy)
         ):
             raise GenerationIsolationError(
                 "runtime Adapter identities or native audit policies differ from the "
@@ -13014,9 +12936,7 @@ class PodcastSubtitleV2:
             "native_execution_policy": stored_execution_policy,
         }
         if selective_v3:
-            expected_adapter_payload["native_audio_selection_policy"] = (
-                stored_selection_policy
-            )
+            expected_adapter_payload["native_audio_selection_policy"] = stored_selection_policy
         if adapter_payload != json.loads(canonical_json_bytes(expected_adapter_payload)):
             raise GenerationIsolationError("native Adapter identity bytes are not exact")
 
@@ -13359,9 +13279,7 @@ class PodcastSubtitleV2:
             assert isinstance(signals, CandidateSignalSet)
             assert isinstance(groups, CandidateGroupSet)
             assert isinstance(execution, ModalityAuditExecutionPlanV3)
-            audit_evidence = tuple(
-                sorted(evidence, key=recognition_evidence_content_hash)
-            )
+            audit_evidence = tuple(sorted(evidence, key=recognition_evidence_content_hash))
             expected_plan = build_audit_plan(
                 audit_transcript,
                 audit_evidence,
@@ -13421,9 +13339,7 @@ class PodcastSubtitleV2:
                 seam_evidence=None,
             )
             if text_sources != expected_text_sources:
-                raise GenerationIsolationError(
-                    "selective native text sources are not reproducible"
-                )
+                raise GenerationIsolationError("selective native text sources are not reproducible")
             text_record = self._load_native_generation_model(
                 generation_id,
                 _NATIVE_TEXT_RECORD,
@@ -13443,23 +13359,20 @@ class PodcastSubtitleV2:
                 response_bytes=text_raw["responses"],
             )
             try:
-                if bundle.text_executor.replay(
-                    execution, audit_plan, text_sources, text_run
-                ) != text_run:
+                if (
+                    bundle.text_executor.replay(execution, audit_plan, text_sources, text_run)
+                    != text_run
+                ):
                     raise ValueError("selective text replay changed")
             except ValueError as exc:
                 raise GenerationIsolationError(
                     "selective native text audit is not replayable"
                 ) from exc
 
-            def load_selective_collection(
-                name: str, model: type[object]
-            ) -> tuple[object, ...]:
+            def load_selective_collection(name: str, model: type[object]) -> tuple[object, ...]:
                 payload = load_value(name)
                 if not isinstance(payload, list) or not payload:
-                    raise GenerationIsolationError(
-                        f"selective Generation artifact {name} is empty"
-                    )
+                    raise GenerationIsolationError(f"selective Generation artifact {name} is empty")
                 try:
                     return tuple(
                         model.model_validate_json(  # type: ignore[attr-defined]
@@ -13511,13 +13424,9 @@ class PodcastSubtitleV2:
             audio_runs: list[AudioAuditRunResult] = []
             offset = 0
             try:
-                for audio_execution, audio_record in zip(
-                    executions, records, strict=True
-                ):
+                for audio_execution, audio_record in zip(executions, records, strict=True):
                     assert isinstance(audio_execution, ModalityAuditExecutionPlanV3)
-                    assert isinstance(
-                        audio_record, SelectiveAudioAuditExecutionRecordV3
-                    )
+                    assert isinstance(audio_record, SelectiveAudioAuditExecutionRecordV3)
                     count = len(audio_record.request_ids)
                     segment = slice(offset, offset + count)
                     audio_run = AudioAuditRunResult(
@@ -13527,8 +13436,7 @@ class PodcastSubtitleV2:
                         clip_bytes=audio_raw["clips"][segment],
                     )
                     if audio_raw["journals"][segment] != tuple(
-                        canonical_json_bytes(item)
-                        for item in audio_record.invocation_journals
+                        canonical_json_bytes(item) for item in audio_record.invocation_journals
                     ):
                         raise ValueError("selective audio journals changed")
                     audio_sources: dict[str, bytes] = {}
@@ -13549,9 +13457,12 @@ class PodcastSubtitleV2:
                             ),
                             label="selective audio source",
                         )
-                    if bundle.audio_executor.replay(
-                        audio_execution, audit_plan, audio_sources, audio_run
-                    ) != audio_run:
+                    if (
+                        bundle.audio_executor.replay(
+                            audio_execution, audit_plan, audio_sources, audio_run
+                        )
+                        != audio_run
+                    ):
                         raise ValueError("selective audio replay changed")
                     audio_runs.append(audio_run)
                     offset += count
@@ -13642,24 +13553,18 @@ class PodcastSubtitleV2:
                 "native_candidate_signal_set": sha256_bytes(
                     read_artifact(_NATIVE_CANDIDATE_SIGNALS)
                 ),
-                "native_candidate_group_set": sha256_bytes(
-                    read_artifact(_NATIVE_CANDIDATE_GROUPS)
-                ),
+                "native_candidate_group_set": sha256_bytes(read_artifact(_NATIVE_CANDIDATE_GROUPS)),
                 "native_text_execution_plan_v3": sha256_bytes(
                     read_artifact(_NATIVE_TEXT_EXECUTION_PLAN_V3)
                 ),
-                "native_text_audit_record": sha256_bytes(
-                    read_artifact(_NATIVE_TEXT_RECORD)
-                ),
+                "native_text_audit_record": sha256_bytes(read_artifact(_NATIVE_TEXT_RECORD)),
                 "native_audio_selection_plans_v3": sha256_bytes(
                     read_artifact(_NATIVE_AUDIO_SELECTION_PLANS_V3)
                 ),
                 "native_audio_execution_plans_v3": sha256_bytes(
                     read_artifact(_NATIVE_AUDIO_EXECUTION_PLANS_V3)
                 ),
-                "native_audio_records_v3": sha256_bytes(
-                    read_artifact(_NATIVE_AUDIO_RECORDS_V3)
-                ),
+                "native_audio_records_v3": sha256_bytes(read_artifact(_NATIVE_AUDIO_RECORDS_V3)),
                 "native_audio_round_receipts_v3": sha256_bytes(
                     read_artifact(_NATIVE_AUDIO_ROUND_RECEIPTS_V3)
                 ),
@@ -13759,9 +13664,7 @@ class PodcastSubtitleV2:
             )
 
             def verified_set_v3(names: set[str]) -> VerifiedArtifactSet:
-                return VerifiedArtifactSet(
-                    tuple(verified_artifact(name) for name in sorted(names))
-                )
+                return VerifiedArtifactSet(tuple(verified_artifact(name) for name in sorted(names)))
 
             loaded_speech_identity = (
                 None
@@ -13799,8 +13702,7 @@ class PodcastSubtitleV2:
                 VerifiedNativeSource(
                     uri=uri,
                     artifact=verified_artifact(
-                        f"native_full_audit/sources/text/{ordinal:04d}-"
-                        f"{sha256_bytes(payload)}.bin"
+                        f"native_full_audit/sources/text/{ordinal:04d}-{sha256_bytes(payload)}.bin"
                     ),
                 )
                 for ordinal, (uri, payload) in enumerate(sorted(text_sources.items()))
@@ -13862,9 +13764,7 @@ class PodcastSubtitleV2:
                     request_bytes=verified_artifact(_RECOGNITION_REQUEST),
                     independence_bytes=verified_artifact(_RECOGNITION_INDEPENDENCE),
                     evidence_bytes=verified_artifact(_EVIDENCE),
-                    speaker_base_evidence_bytes=verified_artifact(
-                        _BASE_PRIMARY_EVIDENCE
-                    ),
+                    speaker_base_evidence_bytes=verified_artifact(_BASE_PRIMARY_EVIDENCE),
                     speaker_provenance_bytes=verified_artifact(_SPEAKER_PROVENANCE),
                     orthographic_projection_bytes=(
                         verified_artifact(_ORTHOGRAPHIC_PROJECTIONS)
@@ -13872,9 +13772,7 @@ class PodcastSubtitleV2:
                         else None
                     ),
                     raw_outputs=verified_set_v3(set(raw_outputs)),
-                    orthographic_raw_outputs=verified_set_v3(
-                        set(orthographic_raw_outputs)
-                    ),
+                    orthographic_raw_outputs=verified_set_v3(set(orthographic_raw_outputs)),
                 ),
                 references=LoadedReferenceState(
                     enrollments=enrolled_artifacts,
@@ -13884,15 +13782,9 @@ class PodcastSubtitleV2:
                     enrollments_bytes=verified_artifact(_REFERENCE_ENROLLMENTS),
                     evidence_bytes=verified_artifact(_REFERENCES),
                     retrievals_bytes=verified_artifact(_RETRIEVALS),
-                    retrieval_policy_bytes=verified_artifact(
-                        _REFERENCE_RETRIEVAL_POLICY
-                    ),
-                    source_snapshots=verified_set_v3(
-                        set(reference_source_snapshots)
-                    ),
-                    extraction_snapshots=verified_set_v3(
-                        set(reference_extraction_snapshots)
-                    ),
+                    retrieval_policy_bytes=verified_artifact(_REFERENCE_RETRIEVAL_POLICY),
+                    source_snapshots=verified_set_v3(set(reference_source_snapshots)),
+                    extraction_snapshots=verified_set_v3(set(reference_extraction_snapshots)),
                 ),
                 speech_coverage=LoadedSpeechCoverageState(
                     receipt=speech_coverage_receipt,
@@ -13912,9 +13804,7 @@ class PodcastSubtitleV2:
                     ),
                     audio_sources=LoadedNativeSourceSet(
                         modality="audio",
-                        index_artifact=verified_artifact(
-                            _NATIVE_AUDIO_EXECUTION_PLANS_V3
-                        ),
+                        index_artifact=verified_artifact(_NATIVE_AUDIO_EXECUTION_PLANS_V3),
                         sources=(),
                     ),
                     text_run=text_run,
@@ -13922,13 +13812,9 @@ class PodcastSubtitleV2:
                     aggregate=aggregate,
                     audit_artifacts=LoadedNativeAuditArtifacts(
                         audit_plan=verified_artifact(_NATIVE_AUDIT_PLAN),
-                        candidate_signals=verified_artifact(
-                            _NATIVE_CANDIDATE_SIGNALS
-                        ),
+                        candidate_signals=verified_artifact(_NATIVE_CANDIDATE_SIGNALS),
                         candidate_groups=verified_artifact(_NATIVE_CANDIDATE_GROUPS),
-                        execution_plan=verified_artifact(
-                            _NATIVE_TEXT_EXECUTION_PLAN_V3
-                        ),
+                        execution_plan=verified_artifact(_NATIVE_TEXT_EXECUTION_PLAN_V3),
                         text_record=verified_artifact(_NATIVE_TEXT_RECORD),
                         audio_record=verified_artifact(_NATIVE_AUDIO_RECORDS_V3),
                         aggregate=verified_artifact(_NATIVE_SELECTIVE_AGGREGATE_V3),

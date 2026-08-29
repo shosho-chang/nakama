@@ -34,9 +34,7 @@ _HYPERFRAMES_TEST_RENDER_CONTRACT = "podcast-highlight-hyperframes-test-render-v
 _HYPERFRAMES_EXECUTION_CONTRACT = "podcast-highlight-hyperframes-execution-v1"
 _HYPERFRAMES_TEST_EXECUTION_CONTRACT = "podcast-highlight-hyperframes-test-execution-v1"
 HYPERFRAMES_RUNTIME_CONTRACT = "podcast-highlight-hyperframes-runtime-acquisition-v1"
-_HYPERFRAMES_TEST_RUNTIME_CONTRACT = (
-    "podcast-highlight-hyperframes-test-runtime-acquisition-v1"
-)
+_HYPERFRAMES_TEST_RUNTIME_CONTRACT = "podcast-highlight-hyperframes-test-runtime-acquisition-v1"
 _PINNED_RUNTIME_IDENTITIES = {
     "hyperframes@0.7.72": {
         "package_manifest_sha256": (
@@ -448,12 +446,8 @@ def _closed_render_params(
     if component == "transition_title":
         title = _normalized_multiline(params["title"], "render_params.title")
         title_lines = title.split("\n")
-        if len(title_lines) not in {1, 2, 3} or any(
-            not line.strip() for line in title_lines
-        ):
-            raise TrustedRenderError(
-                "transition_title must preserve one to three non-empty lines"
-            )
+        if len(title_lines) not in {1, 2, 3} or any(not line.strip() for line in title_lines):
+            raise TrustedRenderError("transition_title must preserve one to three non-empty lines")
         if any(_line_display_units(line) > 40 for line in title_lines):
             raise TrustedRenderError("transition_title line is too long")
         if title != expected_text:
@@ -725,9 +719,7 @@ def _execution_receipt(
         executable = _host_file_identity(Path(command[0]))
     receipt: dict[str, object] = {
         "contract": (
-            _HYPERFRAMES_TEST_EXECUTION_CONTRACT
-            if test_mode
-            else _HYPERFRAMES_EXECUTION_CONTRACT
+            _HYPERFRAMES_TEST_EXECUTION_CONTRACT if test_mode else _HYPERFRAMES_EXECUTION_CONTRACT
         ),
         "executable": executable,
         "argv": list(command),
@@ -941,9 +933,7 @@ def _prepare_hyperframes_runtime(
     root.mkdir(parents=True, exist_ok=True)
     destination = root / version
     if destination.exists():
-        return _hyperframes_runtime_status(
-            package, runtime_root=root, test_mode=test_mode
-        )
+        return _hyperframes_runtime_status(package, runtime_root=root, test_mode=test_mode)
     staging = root / f".{version}-{uuid.uuid4().hex}"
     staging.mkdir()
     _write_json(
@@ -991,9 +981,7 @@ def _prepare_hyperframes_runtime(
         raise TrustedRenderError("npm acquisition did not produce a dependency lock")
     receipt: dict[str, object] = {
         "contract": (
-            _HYPERFRAMES_TEST_RUNTIME_CONTRACT
-            if test_mode
-            else HYPERFRAMES_RUNTIME_CONTRACT
+            _HYPERFRAMES_TEST_RUNTIME_CONTRACT if test_mode else HYPERFRAMES_RUNTIME_CONTRACT
         ),
         "package": package,
         "npm_argv": canonical_argv,
@@ -1113,9 +1101,7 @@ def _verify_execution_receipt(
     if not isinstance(claimed_hash, str) or claimed_hash != _content_hash(execution):
         raise TrustedRenderError("HyperFrames execution receipt hash drift")
     expected_contract = (
-        _HYPERFRAMES_TEST_EXECUTION_CONTRACT
-        if test_mode
-        else _HYPERFRAMES_EXECUTION_CONTRACT
+        _HYPERFRAMES_TEST_EXECUTION_CONTRACT if test_mode else _HYPERFRAMES_EXECUTION_CONTRACT
     )
     if execution["contract"] != expected_contract or execution["exit_code"] != 0:
         raise TrustedRenderError("HyperFrames execution contract/exit drift")
@@ -1123,8 +1109,10 @@ def _verify_execution_receipt(
     if execution["cwd"] != expected_cwd.as_posix():
         raise TrustedRenderError("HyperFrames execution cwd drift")
     argv = execution["argv"]
-    if not isinstance(argv, list) or not argv or any(
-        not isinstance(value, str) or not value for value in argv
+    if (
+        not isinstance(argv, list)
+        or not argv
+        or any(not isinstance(value, str) or not value for value in argv)
     ):
         raise TrustedRenderError("HyperFrames execution argv is invalid")
     for stream_name in ("stdout", "stderr"):
@@ -1806,9 +1794,7 @@ def hydrate_dp_hyperframes_proposal(
         if mode in {"stock", "provided_asset"}:
             candidates = item.get("candidates")
             if not isinstance(candidates, list) or not candidates:
-                raise TrustedRenderError(
-                    f"DP asset implementation {item_index} has no candidates"
-                )
+                raise TrustedRenderError(f"DP asset implementation {item_index} has no candidates")
             hydrated_candidates: list[dict[str, object]] = []
             for candidate_index, raw_candidate in enumerate(candidates, 1):
                 candidate = _exact_dict(
@@ -2000,9 +1986,7 @@ def _publish_dp_hydration_receipt(
         "attempt": attempt,
         "raw_proposal": _identity(root, raw_path),
         "hydrated_proposal": _identity(root, hydrated_path),
-        "asset_authority": _authority_projection_binding(
-            authority_projection, attempt=attempt
-        ),
+        "asset_authority": _authority_projection_binding(authority_projection, attempt=attempt),
         "hyperframes": [dict(row) for row in hyperframes_bindings],
     }
     document["content_hash"] = _content_hash(document)
@@ -2204,10 +2188,9 @@ def verify_dp_hydration_receipt(
                     },
                     "hydrated HyperFrames candidate",
                 )
-                if (
-                    {key: full_candidate[key] for key in expected_spec_candidate}
-                    != expected_spec_candidate
-                ):
+                if {
+                    key: full_candidate[key] for key in expected_spec_candidate
+                } != expected_spec_candidate:
                     raise TrustedRenderError("hydrated HyperFrames spec drift")
                 provenance = _exact_dict(
                     full_candidate["provenance"],

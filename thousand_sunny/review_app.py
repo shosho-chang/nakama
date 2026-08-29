@@ -1,4 +1,3 @@
-
 """Lightweight local entry point for the Stage 5 finished-cut review gate.
 
 The full Thousand Sunny composition root intentionally imports every agent

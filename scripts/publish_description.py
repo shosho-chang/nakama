@@ -26,12 +26,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agents.usopp.video_description import (  # noqa: E402
     build_description,
-    resolve_chapters,
     chosen_package,
     find_packaging_dir,
     generate_description_draft,
     load_citations,
     load_footer,
+    resolve_chapters,
 )
 from shared.background_job import atomic_job_write, load_job  # noqa: E402
 from shared.config import get_vault_path  # noqa: E402

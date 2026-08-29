@@ -188,9 +188,9 @@ def test_cross_cue_consensus_without_per_cue_replacement_is_queued() -> None:
         [_record([9, 10], proposed="合併修正")],
         [_record([9, 10], proposed="合併修正", confidence=0.99)],
     )
-    assert "cross_cue_without_per_cue_replacement" in json.loads(ledger_raw)["rejected"][0][
-        "reasons"
-    ]
+    assert (
+        "cross_cue_without_per_cue_replacement" in json.loads(ledger_raw)["rejected"][0]["reasons"]
+    )
 
 
 def test_non_contiguous_cross_cue_record_fails_closed() -> None:
@@ -260,9 +260,7 @@ def test_ledger_binds_exact_finding_lineage() -> None:
 def test_non_2630_episode_uses_actual_source_cue_count() -> None:
     output, ledger_raw, _ = merge_simple_step7(
         srt_bytes=_srt(3),
-        audit_a_bytes=_audit(
-            "A", [_record([2], proposed="修正")], cues_reviewed=3
-        ),
+        audit_a_bytes=_audit("A", [_record([2], proposed="修正")], cues_reviewed=3),
         audit_b_bytes=_audit(
             "B", [_record([2], proposed="修正", confidence=0.99)], cues_reviewed=3
         ),
@@ -282,13 +280,9 @@ def test_output_bundle_conflict_creates_no_other_missing_destinations(
     needs = tmp_path / "needs.json"
     ledger = tmp_path / "ledger.json"
     source.write_bytes(_srt(3))
-    audit_a.write_bytes(
-        _audit("A", [_record([2], proposed="修正")], cues_reviewed=3)
-    )
+    audit_a.write_bytes(_audit("A", [_record([2], proposed="修正")], cues_reviewed=3))
     audit_b.write_bytes(
-        _audit(
-            "B", [_record([2], proposed="修正", confidence=0.99)], cues_reviewed=3
-        )
+        _audit("B", [_record([2], proposed="修正", confidence=0.99)], cues_reviewed=3)
     )
     conflicting = needs if conflict_destination == "needs" else ledger
     conflicting.write_bytes(b"conflict")
@@ -451,9 +445,7 @@ def test_arbitration_rejects_overlap_with_base_accepted_cue() -> None:
     )
     ledger["accepted_count"] = 2
     ledger["accepted_cue_ids"] = [1, 2]
-    bundle["base_corrected"] = bundle["base_corrected"].replace(
-        "原文2".encode(), "正確詞".encode()
-    )
+    bundle["base_corrected"] = bundle["base_corrected"].replace("原文2".encode(), "正確詞".encode())
     ledger["output_hashes"]["corrected_srt_sha256"] = hashlib.sha256(
         bundle["base_corrected"]
     ).hexdigest()
@@ -505,16 +497,26 @@ def test_proposal_injection_cli_writes_no_outputs(tmp_path: Path) -> None:
         main(
             [
                 "apply-arbitration",
-                "--srt", str(paths["srt"]),
-                "--audit-a", str(paths["audit_a"]),
-                "--audit-b", str(paths["audit_b"]),
-                "--base-corrected", str(paths["base_corrected"]),
-                "--base-ledger", str(paths["base_ledger"]),
-                "--base-needs-audio", str(paths["base_needs"]),
-                "--arbitration", str(paths["arbitration"]),
-                "--final-srt", str(final_paths[0]),
-                "--final-ledger", str(final_paths[1]),
-                "--final-unresolved", str(final_paths[2]),
+                "--srt",
+                str(paths["srt"]),
+                "--audit-a",
+                str(paths["audit_a"]),
+                "--audit-b",
+                str(paths["audit_b"]),
+                "--base-corrected",
+                str(paths["base_corrected"]),
+                "--base-ledger",
+                str(paths["base_ledger"]),
+                "--base-needs-audio",
+                str(paths["base_needs"]),
+                "--arbitration",
+                str(paths["arbitration"]),
+                "--final-srt",
+                str(final_paths[0]),
+                "--final-ledger",
+                str(final_paths[1]),
+                "--final-unresolved",
+                str(final_paths[2]),
             ]
         )
     assert not any(path.exists() for path in final_paths)
@@ -531,9 +533,7 @@ def test_arbitration_rejects_forged_risk_metadata() -> None:
 
 def test_forged_base_bundle_fails_even_when_ledger_hash_is_synchronized() -> None:
     bundle = _arbitration_fixture()
-    bundle["base_corrected"] = bundle["base_corrected"].replace(
-        "原文2".encode(), "FORGED".encode()
-    )
+    bundle["base_corrected"] = bundle["base_corrected"].replace("原文2".encode(), "FORGED".encode())
     ledger = json.loads(bundle["base_ledger"])
     ledger["output_hashes"]["corrected_srt_sha256"] = hashlib.sha256(
         bundle["base_corrected"]
@@ -564,16 +564,26 @@ def test_arbitration_preflight_conflict_creates_no_partial_outputs(
     conflicting.write_bytes(b"conflict")
     argv = [
         "apply-arbitration",
-        "--srt", str(paths["srt"]),
-        "--audit-a", str(paths["audit_a"]),
-        "--audit-b", str(paths["audit_b"]),
-        "--base-corrected", str(paths["base_corrected"]),
-        "--base-ledger", str(paths["base_ledger"]),
-        "--base-needs-audio", str(paths["base_needs"]),
-        "--arbitration", str(paths["arbitration"]),
-        "--final-srt", str(final_srt),
-        "--final-ledger", str(final_ledger),
-        "--final-unresolved", str(final_unresolved),
+        "--srt",
+        str(paths["srt"]),
+        "--audit-a",
+        str(paths["audit_a"]),
+        "--audit-b",
+        str(paths["audit_b"]),
+        "--base-corrected",
+        str(paths["base_corrected"]),
+        "--base-ledger",
+        str(paths["base_ledger"]),
+        "--base-needs-audio",
+        str(paths["base_needs"]),
+        "--arbitration",
+        str(paths["arbitration"]),
+        "--final-srt",
+        str(final_srt),
+        "--final-ledger",
+        str(final_ledger),
+        "--final-unresolved",
+        str(final_unresolved),
     ]
     with pytest.raises(SimpleStep7Error, match="overwrite refused"):
         main(argv)

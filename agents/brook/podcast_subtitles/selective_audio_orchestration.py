@@ -89,9 +89,7 @@ class SelectiveAudioAuditCompletedV3:
             raise ValueError("completed selective audio audit round coverage differs")
 
 
-SelectiveAudioAuditOutcomeV3 = (
-    SelectiveAudioAuditPendingV3 | SelectiveAudioAuditCompletedV3
-)
+SelectiveAudioAuditOutcomeV3 = SelectiveAudioAuditPendingV3 | SelectiveAudioAuditCompletedV3
 
 
 def execute_selective_audio_audit_v3(

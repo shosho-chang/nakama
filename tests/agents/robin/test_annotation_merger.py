@@ -384,6 +384,120 @@ def test_ask_merger_llm_raises_on_no_tool_block(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Agent SDK path (S2 — ROBIN_MERGE_USE_AGENT_SDK, flag-gated)
+# ---------------------------------------------------------------------------
+
+
+def test_flag_off_by_default(monkeypatch):
+    monkeypatch.delenv("ROBIN_MERGE_USE_AGENT_SDK", raising=False)
+    assert mod._use_agent_sdk() is False
+
+
+def test_flag_on(monkeypatch):
+    monkeypatch.setenv("ROBIN_MERGE_USE_AGENT_SDK", "1")
+    assert mod._use_agent_sdk() is True
+
+
+def test_flag_dispatches_v1_to_sdk(monkeypatch):
+    """flag on → _ask_merger_llm 走 SDK 引擎，不碰 ask_with_tools。"""
+    monkeypatch.setenv("ROBIN_MERGE_USE_AGENT_SDK", "1")
+    monkeypatch.setattr(mod, "_ask_merger_llm_sdk", lambda prompt: {"from-sdk": "block"})
+    assert _ask_merger_llm("p") == {"from-sdk": "block"}
+
+
+def test_sdk_first_attempt_success(monkeypatch):
+    """第一次就捕獲 → 不重試，淨化後回傳。"""
+    calls: list[str] = []
+
+    def fake_once(prompt, model):
+        calls.append(prompt)
+        return (
+            {"slug-a": "block", "bad": 123, 42: "dropped"},
+            SimpleNamespace(usage={}, total_cost_usd=0.01),
+        )
+
+    monkeypatch.setattr(mod, "_sdk_merge_once", fake_once)
+    monkeypatch.setattr(mod, "record_call", lambda **kw: None)
+    result = mod._ask_merger_llm_sdk("base prompt")
+    assert result == {"slug-a": "block"}  # 非 str 鍵值被淨化（現行語意）
+    assert len(calls) == 1
+    assert mod._SDK_FORCE_SUFFIX.strip() in calls[0]
+
+
+def test_sdk_empty_mapping_is_valid_no_retry(monkeypatch):
+    """空 dict = 無匹配，合法結果，不觸發重試（v1 語意）。"""
+    calls: list[str] = []
+
+    def fake_once(prompt, model):
+        calls.append(prompt)
+        return {}, None
+
+    monkeypatch.setattr(mod, "_sdk_merge_once", fake_once)
+    assert mod._ask_merger_llm_sdk("p") == {}
+    assert len(calls) == 1
+
+
+def test_sdk_retry_once_then_success(monkeypatch):
+    """第一次沒捕獲（None）→ 帶強化指令重試一次 → 成功。"""
+    calls: list[str] = []
+
+    def fake_once(prompt, model):
+        calls.append(prompt)
+        if len(calls) == 1:
+            return None, None
+        return {"slug-b": "block"}, None
+
+    monkeypatch.setattr(mod, "_sdk_merge_once", fake_once)
+    assert mod._ask_merger_llm_sdk("p") == {"slug-b": "block"}
+    assert len(calls) == 2
+    assert mod._SDK_RETRY_SUFFIX.strip() in calls[1]
+
+
+def test_sdk_both_attempts_fail_raises(monkeypatch):
+    """兩次都沒交出 dict → MergerLLMError（例外語意與 tool_choice 版一致）。"""
+    monkeypatch.setattr(mod, "_sdk_merge_once", lambda prompt, model: (None, None))
+    with pytest.raises(MergerLLMError):
+        mod._ask_merger_llm_sdk("p")
+
+
+def test_sdk_usage_recorded(monkeypatch):
+    """S3：session usage 進 record_call（auth 稽核鏈不斷）。"""
+    recorded: dict = {}
+
+    def fake_record(**kw):
+        recorded.update(kw)
+
+    msg = SimpleNamespace(
+        usage={"input_tokens": 100, "output_tokens": 50, "cache_read_input_tokens": 7},
+        total_cost_usd=0.0123,
+    )
+    monkeypatch.setattr(mod, "_sdk_merge_once", lambda prompt, model: ({"a": "b"}, msg))
+    monkeypatch.setattr(mod, "record_call", fake_record)
+    mod._ask_merger_llm_sdk("p")
+    assert recorded["input_tokens"] == 100
+    assert recorded["output_tokens"] == 50
+    assert recorded["cache_read_tokens"] == 7
+    assert recorded["cost_usd"] == 0.0123
+    assert recorded["auth_requested"] == "subscription_preferred"
+    assert recorded["auth_actual"] == "subscription"
+
+
+def test_sdk_record_failure_does_not_break_merge(monkeypatch):
+    """cost tracking 炸掉不影響 merge 主流程（吞錯語意）。"""
+
+    def boom(**kw):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(
+        mod,
+        "_sdk_merge_once",
+        lambda prompt, model: ({"a": "b"}, SimpleNamespace(usage={}, total_cost_usd=None)),
+    )
+    monkeypatch.setattr(mod, "record_call", boom)
+    assert mod._ask_merger_llm_sdk("p") == {"a": "b"}
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 

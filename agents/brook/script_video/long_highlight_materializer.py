@@ -990,11 +990,7 @@ def _broll_row(
             raise LongHighlightMaterializationError(
                 f"content-card implementation is invalid: {implementation}"
             )
-        kind = (
-            "sticker"
-            if implementation in {"sticker_pair", "person_inset"}
-            else "concept"
-        )
+        kind = "sticker" if implementation in {"sticker_pair", "person_inset"} else "concept"
     row = {
         "kind": kind,
         "slug": materialization["materialization_id"],

@@ -35,8 +35,10 @@ from thousand_sunny.routers import (  # noqa: E402
     bridge_zoro,
     brook,
     brook_video,
+    carousel_review,
     centaur_zettel,
     crew,
+    focus_music,
     franky,
     highlight_review,
     inventory,
@@ -45,6 +47,7 @@ from thousand_sunny.routers import (  # noqa: E402
     progress,
     projects,
     promotion_review,
+    publish_calendar,
     publish_review,
     repurpose,
     writing_assist,
@@ -98,8 +101,11 @@ app.include_router(bridge_projects.page_router)
 app.include_router(bridge_project_thumbnails.page_router)
 app.include_router(packaging.page_router)
 app.include_router(highlight_review.page_router)
+app.include_router(carousel_review.page_router)
+app.include_router(publish_calendar.page_router)
 app.include_router(publish_review.page_router)
 app.include_router(bridge_weekly.page_router)
+app.include_router(focus_music.page_router)
 app.include_router(bridge_zoro.page_router)
 app.include_router(brook_video.page_router)
 app.include_router(brook_video.legacy_router)

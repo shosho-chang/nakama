@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from pydantic import BaseModel, Field, ValidationError
+
 from agents.brook.podcast_subtitles.handoff import (
     ProjectionVerifierFactory,
     open_verified_projection,
@@ -183,13 +185,9 @@ _CURRENT_CONTRACT = "podcast-subtitle-v2-stage5-handoff"
 _MEMO_DUAL_AUDIT_DEFAULT_HANDOFF = (
     Path("subtitle-release") / "memo-dual-audit-v1" / "STAGE5-HANDOFF.json"
 )
-_MEMO_DUAL_AUDIT_HANDOFF_CONTRACT = (
-    "podcast-subtitle-stage5-memo-dual-audit-handoff-v1"
-)
+_MEMO_DUAL_AUDIT_HANDOFF_CONTRACT = "podcast-subtitle-stage5-memo-dual-audit-handoff-v1"
 _MEMO_DUAL_AUDIT_LEDGER_CONTRACT = "podcast-subtitle-memo-dual-audit-release-v1"
-_MEMO_DUAL_AUDIT_EXPORT_CONTRACT = (
-    "podcast-subtitle-memo-dual-audit-release-export-v1"
-)
+_MEMO_DUAL_AUDIT_EXPORT_CONTRACT = "podcast-subtitle-memo-dual-audit-release-export-v1"
 _MEMO_DUAL_AUDIT_INPUT_ROLES = {
     "normalized_audio",
     "normalized_handoff",
@@ -208,9 +206,7 @@ _MEMO_DUAL_AUDIT_INPUT_ROLES = {
     "unresolved_components",
     "audio_decisions",
 }
-_DEGRADED_HANDOFF_CONTRACT = (
-    "podcast-subtitle-v2-stage5-degraded-dual-asr-handoff-v1"
-)
+_DEGRADED_HANDOFF_CONTRACT = "podcast-subtitle-v2-stage5-degraded-dual-asr-handoff-v1"
 _DEGRADED_LEDGER_CONTRACT = "podcast-subtitle-v2-degraded-audio-release-v1"
 _DEGRADED_EXPORT_CONTRACT = "podcast-subtitle-v2-degraded-audio-release-export-v1"
 _DEGRADED_PROVENANCE = "degraded_dual_asr_major_complete_not_full_v2_checkpoint"
@@ -281,9 +277,7 @@ def _bound_relative_path(root: Path, value: object, *, label: str) -> Path:
     return resolved
 
 
-def _read_declared_artifact(
-    root: Path, declaration: object, *, label: str
-) -> tuple[Path, bytes]:
+def _read_declared_artifact(root: Path, declaration: object, *, label: str) -> tuple[Path, bytes]:
     if not isinstance(declaration, dict) or set(declaration) != {
         "path",
         "sha256",
@@ -390,9 +384,7 @@ def _open_memo_dual_audit_release_handoff(
         raise Stage5SubtitleContractError("Memo Dual-Audit handoff contract drift")
     episode_id = payload.get("episode_id")
     if not isinstance(episode_id, str) or not episode_id:
-        raise Stage5SubtitleContractError(
-            "Memo Dual-Audit handoff episode_id is invalid"
-        )
+        raise Stage5SubtitleContractError("Memo Dual-Audit handoff episode_id is invalid")
     if episode_id != root.name:
         raise Stage5SubtitleContractError(
             "Memo Dual-Audit handoff episode_id differs from the episode directory"
@@ -414,13 +406,8 @@ def _open_memo_dual_audit_release_handoff(
     )
     ledger = _strict_json_object(ledger_raw, label="release ledger")
     manifest = _strict_json_object(manifest_raw, label="export manifest")
-    if (
-        _canonical_json_line(ledger) != ledger_raw
-        or _canonical_json_line(manifest) != manifest_raw
-    ):
-        raise Stage5SubtitleContractError(
-            "release ledger/export manifest is not canonical"
-        )
+    if _canonical_json_line(ledger) != ledger_raw or _canonical_json_line(manifest) != manifest_raw:
+        raise Stage5SubtitleContractError("release ledger/export manifest is not canonical")
     gates = _validate_degraded_gates(payload["gates"])
     ledger_fields = {
         "schema_version",
@@ -450,15 +437,11 @@ def _open_memo_dual_audit_release_handoff(
         or ledger.get("status") != "complete"
         or ledger.get("byte_identical_rerun") is not True
     ):
-        raise Stage5SubtitleContractError(
-            "release ledger contract/status/episode gate failed"
-        )
+        raise Stage5SubtitleContractError("release ledger contract/status/episode gate failed")
     for digest_field in ("normalized_audio_sha256", "memo_srt_sha256"):
         digest = ledger.get(digest_field)
         if not isinstance(digest, str) or _SHA256_RE.fullmatch(digest) is None:
-            raise Stage5SubtitleContractError(
-                f"release ledger {digest_field} is invalid"
-            )
+            raise Stage5SubtitleContractError(f"release ledger {digest_field} is invalid")
     inputs = ledger.get("inputs")
     if not isinstance(inputs, dict) or set(inputs) != _MEMO_DUAL_AUDIT_INPUT_ROLES:
         raise Stage5SubtitleContractError("release ledger input schema drift")
@@ -468,9 +451,7 @@ def _open_memo_dual_audit_release_handoff(
             "sha256",
             "size_bytes",
         }:
-            raise Stage5SubtitleContractError(
-                f"release ledger input declaration drift for {role}"
-            )
+            raise Stage5SubtitleContractError(f"release ledger input declaration drift for {role}")
         input_path = _bound_relative_path(
             root,
             declaration.get("path"),
@@ -479,13 +460,9 @@ def _open_memo_dual_audit_release_handoff(
         digest = declaration.get("sha256")
         size = declaration.get("size_bytes")
         if not isinstance(digest, str) or _SHA256_RE.fullmatch(digest) is None:
-            raise Stage5SubtitleContractError(
-                f"release ledger input SHA-256 is invalid for {role}"
-            )
+            raise Stage5SubtitleContractError(f"release ledger input SHA-256 is invalid for {role}")
         if type(size) is not int or size < 0:
-            raise Stage5SubtitleContractError(
-                f"release ledger input size is invalid for {role}"
-            )
+            raise Stage5SubtitleContractError(f"release ledger input size is invalid for {role}")
         try:
             input_raw = input_path.read_bytes()
         except OSError as exc:
@@ -573,29 +550,24 @@ def _open_memo_dual_audit_release_handoff(
         raise Stage5SubtitleContractError("release ledger policy drift")
     ledger_gates = {
         "major_component_count": audio_audit.get("major_component_count"),
-        "major_audio_reviewed_count": audio_audit.get(
-            "major_audio_reviewed_count"
-        ),
-        "nonmajor_retained_original_count": audio_audit.get(
-            "nonmajor_retained_original_count"
-        ),
+        "major_audio_reviewed_count": audio_audit.get("major_audio_reviewed_count"),
+        "nonmajor_retained_original_count": audio_audit.get("nonmajor_retained_original_count"),
         "cue_count": ledger.get("cue_count"),
-        "non_positive_duration_count": ledger.get(
-            "non_positive_duration_count"
-        ),
+        "non_positive_duration_count": ledger.get("non_positive_duration_count"),
         "overlap_count": ledger.get("overlap_count"),
     }
     for key in _DEGRADED_COUNT_GATES:
         if type(ledger_gates[key]) is not int or ledger_gates[key] != gates[key]:
             raise Stage5SubtitleContractError(f"release ledger/gates drift for {key}")
     release_srt_declaration = ledger.get("release_srt")
-    if not isinstance(release_srt_declaration, dict) or set(
-        release_srt_declaration
-    ) != {"path", "sha256", "size_bytes"}:
+    if not isinstance(release_srt_declaration, dict) or set(release_srt_declaration) != {
+        "path",
+        "sha256",
+        "size_bytes",
+    }:
         raise Stage5SubtitleContractError("release ledger SRT declaration schema drift")
     if (
-        release_srt_declaration.get("path")
-        != srt_path.relative_to(ledger_path.parent).as_posix()
+        release_srt_declaration.get("path") != srt_path.relative_to(ledger_path.parent).as_posix()
         or release_srt_declaration.get("sha256") != _sha256(srt_raw)
         or release_srt_declaration.get("size_bytes") != len(srt_raw)
     ):
@@ -607,16 +579,12 @@ def _open_memo_dual_audit_release_handoff(
         gates["overlap_count"],
     )
     if actual_metrics != expected_metrics:
-        raise Stage5SubtitleContractError(
-            "Memo Dual-Audit release actual SRT metrics drift"
-        )
+        raise Stage5SubtitleContractError("Memo Dual-Audit release actual SRT metrics drift")
     try:
         canonical_srt = srt_path.relative_to(manifest_path.parent).as_posix()
         canonical_ledger = ledger_path.relative_to(manifest_path.parent).as_posix()
     except ValueError as exc:
-        raise Stage5SubtitleContractError(
-            "release artifacts escape export bundle"
-        ) from exc
+        raise Stage5SubtitleContractError("release artifacts escape export bundle") from exc
     if set(manifest) != {
         "schema_version",
         "contract",
@@ -637,13 +605,10 @@ def _open_memo_dual_audit_release_handoff(
         or manifest.get("release_ledger_sha256") != _sha256(ledger_raw)
     ):
         raise Stage5SubtitleContractError("export manifest contract/episode drift")
-    if (
-        manifest.get("canonical_release_srt") != canonical_srt
-        or manifest.get("canonical_release_srt_sha256") != _sha256(srt_raw)
-    ):
-        raise Stage5SubtitleContractError(
-            "export manifest canonical release SRT drift"
-        )
+    if manifest.get("canonical_release_srt") != canonical_srt or manifest.get(
+        "canonical_release_srt_sha256"
+    ) != _sha256(srt_raw):
+        raise Stage5SubtitleContractError("export manifest canonical release SRT drift")
     files = manifest.get("files")
     if not isinstance(files, list) or manifest.get("file_count") != len(files):
         raise Stage5SubtitleContractError("export manifest files are invalid")
@@ -654,14 +619,10 @@ def _open_memo_dual_audit_release_handoff(
             "sha256",
             "size_bytes",
         }:
-            raise Stage5SubtitleContractError(
-                "export manifest file entry schema drift"
-            )
+            raise Stage5SubtitleContractError("export manifest file entry schema drift")
         path_value = item.get("path")
         if not isinstance(path_value, str) or path_value in entries:
-            raise Stage5SubtitleContractError(
-                "export manifest file paths are invalid"
-            )
+            raise Stage5SubtitleContractError("export manifest file paths are invalid")
         entries[path_value] = item
     expected_entries = {
         canonical_srt: (_sha256(srt_raw), len(srt_raw)),
@@ -675,9 +636,7 @@ def _open_memo_dual_audit_release_handoff(
             entry.get("sha256"),
             entry.get("size_bytes"),
         ) != (expected_hash, expected_size):
-            raise Stage5SubtitleContractError(
-                "export manifest release entry drift"
-            )
+            raise Stage5SubtitleContractError("export manifest release entry drift")
     return Stage5MemoDualAuditReleaseHandoff(
         srt_path=srt_path,
         handoff_path=handoff_path,
@@ -719,9 +678,7 @@ def _open_degraded_release_handoff(
     episode_id = payload.get("episode_id")
     if not isinstance(episode_id, str) or not episode_id:
         raise Stage5SubtitleContractError("degraded handoff episode_id is invalid")
-    srt_path, srt_raw = _read_declared_artifact(
-        root, payload["release_srt"], label="release_srt"
-    )
+    srt_path, srt_raw = _read_declared_artifact(root, payload["release_srt"], label="release_srt")
     ledger_path, ledger_raw = _read_declared_artifact(
         root, payload["release_ledger"], label="release_ledger"
     )
@@ -730,10 +687,7 @@ def _open_degraded_release_handoff(
     )
     ledger = _strict_json_object(ledger_raw, label="release ledger")
     manifest = _strict_json_object(manifest_raw, label="export manifest")
-    if (
-        _canonical_json_line(ledger) != ledger_raw
-        or _canonical_json_line(manifest) != manifest_raw
-    ):
+    if _canonical_json_line(ledger) != ledger_raw or _canonical_json_line(manifest) != manifest_raw:
         raise Stage5SubtitleContractError("release ledger/export manifest is not canonical")
     gates = _validate_degraded_gates(payload["gates"])
     expected_ledger = {
@@ -769,10 +723,9 @@ def _open_degraded_release_handoff(
         canonical_ledger = ledger_path.relative_to(manifest_path.parent).as_posix()
     except ValueError as exc:
         raise Stage5SubtitleContractError("release artifacts escape export bundle") from exc
-    if (
-        manifest.get("canonical_release_srt") != canonical_srt
-        or manifest.get("canonical_release_srt_sha256") != _sha256(srt_raw)
-    ):
+    if manifest.get("canonical_release_srt") != canonical_srt or manifest.get(
+        "canonical_release_srt_sha256"
+    ) != _sha256(srt_raw):
         raise Stage5SubtitleContractError("export manifest canonical release SRT drift")
     files = manifest.get("files")
     if not isinstance(files, list) or manifest.get("file_count") != len(files):
@@ -791,9 +744,10 @@ def _open_degraded_release_handoff(
     }
     for path_value, (expected_hash, expected_size) in expected_entries.items():
         entry = entries.get(path_value)
-        if entry is None or (
-            entry.get("sha256"), entry.get("size_bytes")
-        ) != (expected_hash, expected_size):
+        if entry is None or (entry.get("sha256"), entry.get("size_bytes")) != (
+            expected_hash,
+            expected_size,
+        ):
             raise Stage5SubtitleContractError("export manifest release entry drift")
     return Stage5DegradedReleaseHandoff(
         srt_path=srt_path,
@@ -1144,15 +1098,160 @@ def select_stage5_subtitle(
     )
 
 
+_SHA256_PATTERN = r"^[0-9a-f]{64}$"
+_GENERATION_PATTERN = r"^(?:generation-)?[0-9a-f]{64}$"
+_PROJECTION_PATTERN = r"^projection-[0-9a-f]{64}$"
+
+
+class VerifiedProjectionHandoffError(ValueError):
+    """The Stage 5 episode is not bound to one fully verified projection."""
+
+
+class SubtitleV2HandoffBinding(BaseModel):
+    """Closed operator binding stored under ``episode.yaml``."""
+
+    model_config = {"extra": "forbid"}
+
+    schema_version: Literal[1] = 1
+    episode_root: Path
+    projection_id: str = Field(pattern=_PROJECTION_PATTERN)
+    generation_id: str = Field(pattern=_GENERATION_PATTERN)
+    projection_manifest_sha256: str = Field(pattern=_SHA256_PATTERN)
+    reference_manifest: Path | None = None
+
+
+class StoryboardProjectionProvenance(BaseModel):
+    """Exact immutable Stage 4 identity consumed to create a storyboard."""
+
+    model_config = {"extra": "forbid"}
+
+    schema_version: Literal[1] = 1
+    episode_id: str
+    projection_id: str = Field(pattern=_PROJECTION_PATTERN)
+    generation_id: str = Field(pattern=_GENERATION_PATTERN)
+    projection_sha256: str = Field(pattern=_SHA256_PATTERN)
+    projection_manifest_sha256: str = Field(pattern=_SHA256_PATTERN)
+    quality_report_sha256: str = Field(pattern=_SHA256_PATTERN)
+    srt_sha256: str = Field(pattern=_SHA256_PATTERN)
+    canonical_hash: str = Field(pattern=_SHA256_PATTERN)
+    profile_hash: str = Field(pattern=_SHA256_PATTERN)
+    token_sequence_hash: str = Field(pattern=_SHA256_PATTERN)
+    output_hash: str = Field(pattern=_SHA256_PATTERN)
+
+    @classmethod
+    def from_verified(
+        cls,
+        verified: VerifiedProjection,
+    ) -> StoryboardProjectionProvenance:
+        return cls(
+            episode_id=verified.episode_id,
+            projection_id=verified.projection_id,
+            generation_id=verified.generation_id,
+            projection_sha256=verified.projection_sha256,
+            projection_manifest_sha256=verified.manifest_sha256,
+            quality_report_sha256=verified.quality_report_sha256,
+            srt_sha256=verified.srt_sha256,
+            canonical_hash=verified.manifest.canonical_hash,
+            profile_hash=verified.manifest.profile_hash,
+            token_sequence_hash=verified.manifest.token_sequence_hash,
+            output_hash=verified.manifest.output_hash,
+        )
+
+
+def _resolve_from(base: Path, value: Path) -> Path:
+    return value.resolve() if value.is_absolute() else (base / value).resolve()
+
+
+def require_verified_projection(
+    *,
+    ep_dir: Path,
+    expected_episode_id: str,
+    episode_meta: dict,
+) -> VerifiedProjection:
+    """Parse the closed episode binding, then invoke the full V2 disk verifier."""
+
+    if episode_meta.get("id") != expected_episode_id or ep_dir.name != expected_episode_id:
+        raise VerifiedProjectionHandoffError(
+            "episode.yaml id, directory name, and requested episode must match"
+        )
+    raw_binding = episode_meta.get("subtitle_v2_handoff")
+    if raw_binding is None:
+        raise SystemExit(
+            "episode.yaml requires subtitle_v2_handoff; a bare transcript.srt is "
+            "legacy/unverified input and cannot enter Stage 5 production"
+        )
+    try:
+        binding = SubtitleV2HandoffBinding.model_validate(raw_binding)
+    except ValidationError as exc:
+        raise VerifiedProjectionHandoffError(
+            f"episode.yaml subtitle_v2_handoff is invalid: {exc}"
+        ) from exc
+    episode_root = _resolve_from(ep_dir, binding.episode_root)
+    if not episode_root.is_dir():
+        raise VerifiedProjectionHandoffError(
+            f"subtitle_v2_handoff episode_root is not a directory: {episode_root}"
+        )
+    reference_manifest = (
+        _resolve_from(episode_root, binding.reference_manifest)
+        if binding.reference_manifest is not None
+        else None
+    )
+    return open_verified_projection(
+        episode_root=episode_root,
+        projection_id=binding.projection_id,
+        expected_episode_id=expected_episode_id,
+        expected_generation_id=binding.generation_id,
+        expected_manifest_sha256=binding.projection_manifest_sha256,
+        reference_manifest=reference_manifest,
+    )
+
+
+def write_storyboard_provenance(ep_dir: Path, verified: VerifiedProjection) -> Path:
+    path = ep_dir / "storyboard.provenance.json"
+    provenance = StoryboardProjectionProvenance.from_verified(verified)
+    path.write_text(
+        json.dumps(
+            provenance.model_dump(mode="json"),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def assert_storyboard_provenance(ep_dir: Path, verified: VerifiedProjection) -> None:
+    path = ep_dir / "storyboard.provenance.json"
+    try:
+        payload = path.read_bytes()
+        stored = StoryboardProjectionProvenance.model_validate_json(payload)
+    except (OSError, ValidationError, ValueError) as exc:
+        raise VerifiedProjectionHandoffError(
+            f"storyboard provenance is missing or invalid: {path}"
+        ) from exc
+    expected = StoryboardProjectionProvenance.from_verified(verified)
+    if stored != expected:
+        raise VerifiedProjectionHandoffError(
+            "storyboard provenance drifted from the freshly verified projection handoff"
+        )
+
+
 __all__ = [
-    "Stage5SubtitleContractError",
     "Stage5DegradedReleaseHandoff",
     "Stage5MemoDualAuditReleaseHandoff",
     "Stage5SubtitleArtifactConflictError",
+    "Stage5SubtitleContractError",
     "Stage5SubtitleHandoff",
     "Stage5SubtitleRequest",
     "Stage5SubtitleSelection",
+    "StoryboardProjectionProvenance",
+    "SubtitleV2HandoffBinding",
+    "VerifiedProjectionHandoffError",
+    "assert_storyboard_provenance",
     "current_stage5_handoff_path",
     "open_stage5_subtitle",
+    "require_verified_projection",
     "select_stage5_subtitle",
+    "write_storyboard_provenance",
 ]

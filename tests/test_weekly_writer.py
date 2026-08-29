@@ -24,6 +24,7 @@ from shared.weekly_writer import (
     remove_plan_entry,
     reschedule_task_block,
     schedule_task_block,
+    set_plan_entry_done,
     set_task_done,
     sync_scheduled_to_next_plan,
     task_file_token,
@@ -1052,12 +1053,86 @@ class TestSetTaskDone:
         )
         set_task_done(vault, "t1", True)
         fm = _read_fm(p)
-        assert fm["plan"] == [{"date": "2026-06-01", "pomodoros": 2}]
+        # 修修 2026-08-29: the whole-task checkbox also ticks its day slices (so the
+        # daily cards agree) — the entry's own data is otherwise untouched.
+        assert fm["plan"] == [{"date": "2026-06-01", "pomodoros": 2, "done": True}]
         assert "draft notes" in _read_body(p)
+
+    def test_unmark_clears_day_slices(self, vault):
+        p = _make_task(
+            vault,
+            "t1",
+            {
+                "title": "T",
+                "status": "done",
+                "plan": [
+                    {"date": "2026-06-01", "pomodoros": 2, "done": True},
+                    {"date": "2026-06-02", "pomodoros": 1, "done": True},
+                ],
+            },
+        )
+        set_task_done(vault, "t1", False)
+        assert [e.get("done") for e in _read_fm(p)["plan"]] == [None, None]
 
     def test_missing_task_raises(self, vault):
         with pytest.raises(TaskNotFoundError):
             set_task_done(vault, "nope", True)
+
+
+class TestSetPlanEntryDoneRollup:
+    """修修 2026-08-29: 日卡打勾要跟任務列表同步 — the day slices roll up to the
+    task's own status (all days done ⇒ task done; any day re-opened ⇒ task open)."""
+
+    def test_only_day_done_marks_task_done(self, vault):
+        p = _make_task(
+            vault,
+            "t1",
+            {"title": "T", "status": "to-do", "plan": [{"date": "2026-06-01", "pomodoros": 2}]},
+        )
+        set_plan_entry_done(vault, "t1", date(2026, 6, 1), True)
+        fm = _read_fm(p)
+        assert fm["plan"][0]["done"] is True
+        assert fm["status"] == "done"
+
+    def test_partial_days_keep_task_open(self, vault):
+        p = _make_task(
+            vault,
+            "t1",
+            {
+                "title": "T",
+                "status": "to-do",
+                "plan": [
+                    {"date": "2026-06-01", "pomodoros": 2},
+                    {"date": "2026-06-02", "pomodoros": 2},
+                ],
+            },
+        )
+        set_plan_entry_done(vault, "t1", date(2026, 6, 1), True)
+        assert _read_fm(p)["status"] == "to-do"
+        set_plan_entry_done(vault, "t1", date(2026, 6, 2), True)
+        assert _read_fm(p)["status"] == "done"
+        set_plan_entry_done(vault, "t1", date(2026, 6, 1), False)
+        assert _read_fm(p)["status"] == "to-do"
+
+    def test_rollup_clears_truthy_checkmark(self, vault):
+        p = _make_task(
+            vault,
+            "t1",
+            {
+                "title": "T",
+                "status": "done",
+                "✅": True,
+                "plan": [{"date": "2026-06-01", "pomodoros": 2, "done": True}],
+            },
+        )
+        set_plan_entry_done(vault, "t1", date(2026, 6, 1), False)
+        fm = _read_fm(p)
+        assert fm["status"] == "to-do" and fm["✅"] is False
+
+    def test_task_without_plan_keeps_status(self, vault):
+        p = _make_task(vault, "t1", {"title": "T", "status": "to-do"})
+        set_plan_entry_done(vault, "t1", date(2026, 6, 1), True)
+        assert _read_fm(p)["status"] == "to-do"  # nothing to roll up
 
 
 class TestWarnIfSyncConflictSibling:

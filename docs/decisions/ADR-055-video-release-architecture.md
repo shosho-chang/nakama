@@ -1,7 +1,10 @@
 # ADR-055: 影片發布線架構 — 桌機 uploader、新表不沿用舊 queue、DB 當 SoT
 
 - **Status**: Accepted（D1/D2 為 2026-07-26 修修裁決的追認；D3 修修 2026-08-04
-  裁決通過——「依照你的建議繼續做下去」）
+  裁決通過——「依照你的建議繼續做下去」；D4 於 2026-08-20 依三平台實測後
+  的 Publish Calendar 規劃補充；D5 於 2026-08-20 完成 Short due-dispatch slice；
+  D6 於 2026-08-20 補上 Native Arm 公開結果確認；D7 於 2026-08-21 收斂
+  YouTube credential lifecycle）
 - **Date**: 2026-08-04
 - **Context**: `docs/plans/2026-07-26-video-publishing-plan.md`（grill 全記錄）、
   ADR-054（packaging 交接契約）。Slice 0 探針已 PASS（#1124：OAuth + 上傳 +
@@ -51,10 +54,102 @@ committed state 的 canonical SoT）——這正是本 ADR 存在的理由，否
 - packaging 交接面維持 ADR-054 §7：vault `Attachments/packaging/` 的
   `packages.json` / `approval.json`（上游 skill 與 Bridge 寫，發布層只讀）
 
+## D4 — Release 只有一個 Campaign Anchor，Target 保持獨立（2026-08-20 amendment）
+
+Publish Calendar 的排程單位是 **Release**，不是個別 Release Target。每個 Release
+只有一個 **Campaign Anchor**；設定或移除時，控制面必須在單一 transaction 中把
+同一個 UTC instant materialize 到所有 Target 的 `publish_at`。若既有 Target 的
+`publish_at` 不一致，projection 必須標成需處理且不任選其中一個時間放進月曆。
+
+Campaign Anchor 不合併 Target 的執行責任：YouTube、Instagram、Facebook 仍各自
+保有 status、receipt、error 與 retry 邊界，因此單一平台失敗不會抹除其他平台的
+成功結果。Carousel 沿用相同語意，但 anchor 存在 episode-local Publish Job；只有
+`queued` job 可調整，claim 或發布開始後即鎖定。
+
+Campaign Anchor 寫入採 compare-and-set：表單必須帶回讀取時的 anchor token，若
+Release Target group 或 Carousel job 已被另一個操作者更新，舊表單必須回 409，
+不可無聲覆寫較新的發布意圖。
+
+**排程不等於核准，也不會觸發發布。** Calendar 只寫發布意圖；Release Target 的
+approval state 與 Carousel Review/Publish Job gate 仍是獨立狀態機。UI 必須同時顯示
+一張 Release／Carousel 卡、共同 anchor，以及各平台的獨立狀態，避免把「有日期」
+誤讀成「已核准」或「已上傳」。
+
+## D5 — Short 每平台執行政策：Native Arm + Due Dispatcher（2026-08-20 amendment）
+
+第一版 Short 仍只有一個 Campaign Anchor，但三平台的 clock owner 不相同。未來
+anchor 核准後，YouTube 用原生 `publishAt`、Facebook Page Reels 用
+`video_state=SCHEDULED` + `scheduled_publish_time` 先行 **Native Arm**；兩者在本機
+只標 `uploaded`，因為平台接受排程不等於已公開。Instagram Reels 保持 `approved`，
+直到桌機 **Due Dispatcher** 在 anchor 到點後走既有 container + `media_publish`。
+
+Release Target dispatch 前必須用單一 conditional SQL mutation 把 `approved` claim 為
+`uploading`。`updated_at` 是 lease heartbeat；adapter checkpoint 寫入會刷新它。只有
+超過明示 stale threshold 的 `uploading` 可保留 checkpoint 回收續跑。`failed` 不在自動
+claim 集合；Bridge 的既有單平台 retry 先把指定 Target 重設為 `approved`，成功 sibling
+永不重開。這個 contract 同時防止人工 dispatcher 與 due worker 對同一 Target 重複呼叫。
+
+Due Dispatcher 是小型、Short-only orchestration layer，不建第二張 scheduling table，
+也不碰 Carousel。預設 one-shot dry-run；live mode 才可 claim/call adapter 並寫
+`usopp-short-due-dispatcher` heartbeat。Calendar 只投影 heartbeat 為
+`never_seen | online | stale | failing`，必要時警告未來 Instagram dependency；警告不改
+Campaign Anchor 或 Target state。永久服務安裝與真實 probe 仍需另一次 supervised 操作。
+
+## D6 — Outcome Reconciler 只確認明確平台結果（2026-08-20 amendment）
+
+YouTube／Facebook Native Arm 成功只證明平台接受排程，因此本地保持 `uploaded`。
+**Outcome Reconciler** 是獨立 observer：只掃描 `status=uploaded`、平台為 `youtube`／
+`facebook_reels`、具 `video_id`、Campaign Anchor 一致且已到點的 Target；預設 dry-run
+完全不載入平台 client、不寫 heartbeat、不改 Target。missing／malformed／divergent anchor、
+重複平台 identity 或缺 identity 一律 diagnostic 並 fail closed。限制到 `anchor <= now` 是
+第一版刻意的 no-early-observation trade-off；排程日前的 processing rejection 不由這個 slice
+提前處理，後續若要 lookahead 必須另行裁決。
+
+Execute 每個 Target 只做一次 GET。YouTube 只有 `privacyStatus=public` 能確認
+`published`；明確 upload rejection／processing termination 才確認 `failed`。Facebook 即使
+`publishing_phase=complete` 且已有 permalink，也仍不足以證明公開；只有 top-level
+`published is true` 加安全 HTTP(S) permalink 才確認 `published`。任一 processing／publishing
+phase 明確 `failed|error|expired` 可確認 `failed`；但 contradictory evidence、private、scheduled、
+processing、not-found、transport、auth 或未知 response 都維持 `uploaded`，不自動 retry、reupload
+或 recreate。
+
+本地確認走單一 conditional SQL mutation：winner 必須仍是同一筆 `uploaded + video_id +
+updated_at` snapshot，而且不得存在同平台同 `video_id` sibling，才能轉 `published|failed`
+並安全寫入 permalink；duplicate guard 與 outcome transition 位於同一 SQL statement。正常 concurrent winner
+產生 `stale_snapshot` 而不覆寫、也不把 heartbeat 打紅；DB error 或平台不確定性則讓
+`usopp-release-outcome-reconciler` heartbeat failing，但 siblings 繼續觀察。輸出與 durable error
+只使用 allowlisted evidence category，不保存 raw token、transport error、checkpoint、signed URL
+或 caption。Calendar 只讀 DB + heartbeat，將到點仍 `uploaded` 的 native Target 顯示為
+「等待公開確認」，絕不把時間經過當成 `published`。
+只有無 exact scope 的全域 execute 可寫這個 global heartbeat；精確 episode/cut 操作不會讓
+Calendar 誤判其他 overdue Targets 已受監控。
+
+## D7 — Stage 6 共用 YouTube credential lifecycle（2026-08-21 amendment）
+
+桌機 Uploader 與 Outcome Reconciler 的 YouTube observer 必須經過同一個 Usopp-owned
+credential loader。短效 access token 到期但仍有 refresh credential 時，loader 只做一次
+refresh，成功後先把完整 authorized-user JSON 寫到同目錄的唯一 temporary file、flush +
+fsync，再用 atomic replace 更新 token；有效 token 不 refresh 也不重寫。多個桌機流程同時
+啟動時可能各自 refresh，但讀者只會看到舊或新的完整 JSON，不會看到部分檔案。
+
+Credential load、refresh 與 persistence error 對 Stage 6 caller 只暴露 secret-free 操作分類，
+不保存 provider raw error。缺 refresh credential、malformed token 或 Google 明確回覆
+`invalid_grant` 才要求重新執行 `scripts/youtube_auth.py`；其他 refresh transport failure 或
+atomic persistence failure 保留最後可解析 token，要求稍後重跑 worker，不把短暫故障誤報成
+授權遭撤銷。這個 auth refresh 不改變 D6：Outcome Reconciler 仍只對每個候選做一次平台
+outcome GET，不 upload、publish、retry Release Target 或改 Campaign Anchor。
+
 ## 後果
 
 - 發布層 code 歸屬（plan §4.2）：`agents/usopp/` 但與 WP 線平行不共用零件；
   `CONTENT-PIPELINE.md:207` 的自我矛盾句要一併修——**下個 slice 處理**
+- Publish Calendar 可在同一張 Release 卡提供 execution control，但必須與 Campaign Anchor
+  intent form 分區，且只能 POST 到既有 approve-upload／單平台 retry route；Calendar projection
+  不載入 adapter、不自行 dispatch。Calendar readiness 是操作提示，mutation route 仍需重驗
+  canonical file、主要文案與 Target state。成功後的 `return_to` 僅接受精確相對
+  `/bridge/publish/calendar` 路徑，任何 absolute／protocol-relative／traversal／control character
+  一律回安全的 Release review fallback。整組 approve 只接受尚未核准的 `draft` Target；一旦
+  已轉為 `approved`，即使 worker 尚未 claim，也必須視為等待認領並拒絕重複 spawn。
 - 重複上傳防護：無平台天然 idempotency key → DB claim + `video_id` 上傳完成
   即寫 + `upload_session_uri` 持久化（crash 續傳不重傳）
 - Q4b 字幕實測與計畫假設相反（長片 Resolve render 會燒模板軌、短片燒不進）

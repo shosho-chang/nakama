@@ -554,6 +554,10 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             caption_status TEXT,
             reconciliation_error TEXT,
             last_reconciled_at TEXT,
+            adapter            TEXT,
+            idempotency_key    TEXT,
+            checkpoint_json    TEXT,
+            ineligibility_reason TEXT,
             updated_at         TEXT NOT NULL,
             UNIQUE (release_id, platform)
         );
@@ -591,6 +595,12 @@ def _init_tables(conn: sqlite3.Connection) -> None:
         "ALTER TABLE release_targets ADD COLUMN caption_status TEXT",
         "ALTER TABLE release_targets ADD COLUMN reconciliation_error TEXT",
         "ALTER TABLE release_targets ADD COLUMN last_reconciled_at TEXT",
+        # Stage 6 multi-platform publishing: adapter-owned durable checkpoints.
+        # Nullable keeps existing YouTube rows backward-compatible.
+        "ALTER TABLE release_targets ADD COLUMN adapter TEXT",
+        "ALTER TABLE release_targets ADD COLUMN idempotency_key TEXT",
+        "ALTER TABLE release_targets ADD COLUMN checkpoint_json TEXT",
+        "ALTER TABLE release_targets ADD COLUMN ineligibility_reason TEXT",
     ):
         try:
             conn.execute(col_ddl)

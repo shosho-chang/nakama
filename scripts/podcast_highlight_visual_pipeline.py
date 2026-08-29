@@ -171,9 +171,7 @@ def main(argv: list[str] | None = None) -> int:
                 revision_id=args.revision_id,
                 proposal=args.proposal,
                 worker_identity=_worker_identity(args, role="director"),
-                execution_receipt=_episode_file_identity(
-                    args.episode, args.execution_receipt
-                ),
+                execution_receipt=_episode_file_identity(args.episode, args.execution_receipt),
             )
         elif args.command == "accept-dp":
             selected = accept_dp_fulfillment(
@@ -183,9 +181,7 @@ def main(argv: list[str] | None = None) -> int:
                 proposal=args.proposal,
                 worker_proposal=args.worker_proposal,
                 worker_identity=_worker_identity(args, role="dp"),
-                execution_receipt=_episode_file_identity(
-                    args.episode, args.execution_receipt
-                ),
+                execution_receipt=_episode_file_identity(args.episode, args.execution_receipt),
             )
         elif args.command == "accept-audit":
             selected = accept_semantic_audit(
@@ -194,9 +190,7 @@ def main(argv: list[str] | None = None) -> int:
                 revision_id=args.revision_id,
                 proposal=args.proposal,
                 worker_identity=_worker_identity(args, role="director"),
-                execution_receipt=_episode_file_identity(
-                    args.episode, args.execution_receipt
-                ),
+                execution_receipt=_episode_file_identity(args.episode, args.execution_receipt),
             )
         else:
             verified = verify_visual_pipeline(

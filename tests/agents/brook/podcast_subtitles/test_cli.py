@@ -323,7 +323,7 @@ def test_cli_global_help_lists_all_operator_commands_without_initializing_provid
     assert stopped.value.code == 0
     help_text = capsys.readouterr().out
     assert (
-            "{run,migrate-evidence-prefix,migrate-native-audit-basis,status,review,decide,decide-native,project}"
+        "{run,migrate-evidence-prefix,migrate-native-audit-basis,status,review,decide,decide-native,project}"
         in help_text
     )
     assert "compare" not in help_text

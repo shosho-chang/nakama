@@ -193,9 +193,7 @@ def _contextual_authority(
         subject=ReferenceAuthorityPrincipal(
             kind=_principal_kind(source.kind),
             stable_id=(
-                episode_id
-                if source.kind == "interview_outline"
-                else f"source:{source.source_id}"
+                episode_id if source.kind == "interview_outline" else f"source:{source.source_id}"
             ),
             display_name=source.title,
         ),

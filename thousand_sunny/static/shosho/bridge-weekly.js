@@ -81,7 +81,7 @@
     // A ?focus redirect (after 新增任務 / 重新命名) must win over the stay-in-place
     // restore() — clear its saved tab/open/scroll so it can't switch the pane back and
     // hide the row we're about to focus.
-    try { ['wk-tab', 'wk-open', 'wk-scroll'].forEach(function (k) { sessionStorage.removeItem(k); }); } catch (_) { /* no sessionStorage */ }
+    try { ['wk-tab', 'wk-open', 'wk-days', 'wk-scroll'].forEach(function (k) { sessionStorage.removeItem(k); }); } catch (_) { /* no sessionStorage */ }
     var sel = '.wk-task-d[data-slug="' + (window.CSS && CSS.escape ? CSS.escape(focus) : focus) + '"]';
     var rows = document.querySelectorAll(sel);
     if (!rows.length) return;
@@ -99,18 +99,31 @@
   })();
 
   /* v3-I: dismiss an open 新增任務 / 新增關聯任務 dropdown (<details.wk-newtask>) when
-     clicking outside it or pressing Esc (修修: the modal didn't close on outside-click). */
+     clicking outside it or pressing Esc (修修: the modal didn't close on outside-click).
+     Dismiss keys on pointerdown, NOT click — a click's target is promoted to the common
+     ancestor (body) when a drag starts inside the panel and ends outside it (e.g.
+     selecting text in 標題), which read as an outside-click and ate the panel. */
   (function () {
     var panels = document.querySelectorAll('details.wk-newtask');
     if (!panels.length) return;
-    document.addEventListener('click', function (e) {
+    document.addEventListener('pointerdown', function (e) {
       panels.forEach(function (d) {
         if (d.open && !d.contains(e.target)) d.open = false;
       });
     });
     document.addEventListener('keydown', function (e) {
-      if (e.key !== 'Escape') return;
+      if (e.key !== 'Escape' || e.isComposing) return;   // IME 組字取消的 Esc 不關面板
       panels.forEach(function (d) { if (d.open) d.open = false; });
+    });
+    /* 修修 (2026-08-23): opening the panel left focus on the <summary>, so typing the
+       title right away sent Space/Enter BACK to the summary — which re-toggled the
+       <details> and the "modal" vanished. Move focus into 標題 the moment it opens. */
+    panels.forEach(function (d) {
+      d.addEventListener('toggle', function () {
+        if (!d.open) return;
+        var title = d.querySelector('.wk-newtask-form input[name="title"]');
+        if (title) title.focus();
+      });
     });
   })();
 

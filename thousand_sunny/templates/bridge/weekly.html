@@ -273,7 +273,10 @@
       <div class="wk-zone">
         <div class="wk-days">
           {% for day in view.days %}
-            <details class="wk-day {{ 'is-today' if day.is_today }}" {{ 'open' if day.default_open }}>
+            {# data-date keys the stay-in-place restore below (修修 2026-08-29: 手動展開
+               的日卡在任何動作後被伺服器預設值蓋掉，畫面跳回週一). #}
+            <details class="wk-day {{ 'is-today' if day.is_today }}" data-date="{{ day.date }}"
+                     {{ 'open' if day.default_open }}>
               <summary class="wk-day-head">
                 <span class="wk-day-when">
                   <span class="wk-day-wd">{{ day.weekday_zh }}</span>
@@ -281,7 +284,8 @@
                   {% if day.is_today %}<span class="wk-day-now">今天</span>{% endif %}
                 </span>
                 <span class="wk-day-pom">
-                  {% if day.work_pomodoros %}<span class="wk-tomato" aria-hidden="true">🍅</span> {{ day.work_pomodoros }}{% elif day.task_count %}<span class="wk-mut">無工作排程</span>{% else %}<span class="wk-mut">休息</span>{% endif %}
+                  {# 修修 (2026-08-25): 實際/規劃 like the task rows — planned alone hid the gap #}
+                  {% if day.work_pomodoros or day.work_actual %}<span class="wk-tomato" aria-hidden="true">🍅</span> <span class="wk-day-pom-a">{{ day.work_actual }}</span>/{{ day.work_pomodoros }}{% elif day.task_count %}<span class="wk-mut">無工作排程</span>{% else %}<span class="wk-mut">休息</span>{% endif %}
                 </span>
                 <span class="wk-day-caret" aria-hidden="true">▸</span>
               </summary>
@@ -293,6 +297,9 @@
                       <ul class="wk-cat-items">
                         {% for it in cat['items'] %}
                           <li class="wk-cat-item {{ 'done' if it.done }}">
+                            {# 修修 (2026-08-24): 時段 cell first — always rendered (may be
+                               empty) so the invisible-table columns stay aligned. #}
+                            <span class="wk-ci-time">{{ it.time_range }}</span>
                             {# v3-I follow-up (修修): the DAILY checkbox marks 'that day's
                                work done' (plan-entry done for this date) — NOT the whole
                                task. Posts /day-done with the day's date; item crosses out
@@ -360,6 +367,12 @@
                 </select></label>
               <label class="wk-sched-lbl"><span class="wk-sched-cap">🍅 預估</span>
                 <input class="wk-newtask-pom" type="number" name="est_pomodoros" min="1" max="20" value="4"></label>
+              {# 建立時直接排程（留空＝先建立、之後再用排入 chip）— 走與排入相同的
+                 plan+calendar 路徑 (/weekly/task/new 轉呼叫 schedule_entry)。 #}
+              <label class="wk-sched-lbl"><span class="wk-sched-cap">日期（留空＝不排程）</span>
+                <input class="wk-newtask-date" type="date" name="entry_date"></label>
+              <label class="wk-sched-lbl"><span class="wk-sched-cap">時間（留空＝整天）</span>
+                <input class="wk-newtask-time" type="time" name="entry_time" step="300"></label>
               <button class="sho-btn wk-sched-go" type="submit">建立</button>
             </form>
           </details>
@@ -454,6 +467,14 @@
         .call(document.querySelectorAll('.wk-task-d[open]'), function (d) { return d.getAttribute('data-slug'); })
         .filter(Boolean);
     }
+    // 修修 (2026-08-29): which DAY cards are open. Their open state is server-rendered
+    // (today's card, else Monday), so without this a 排入 / 打勾 fired inside a manually
+    // opened card collapsed it and re-opened Monday — the view jumped away mid-edit.
+    function openDays() {
+      return Array.prototype.map
+        .call(document.querySelectorAll('.wk-day[open]'), function (d) { return d.getAttribute('data-date'); })
+        .filter(Boolean);
+    }
     // save state on any plan-edit OR inline-rename submit (capture so it runs before
     // navigation) — the rename form lives in the row <summary>, outside .wk-plan-edit,
     // so without this a rename would lose the tab/scroll and the view would jump (v3-I.4).
@@ -467,20 +488,30 @@
       try {
         sessionStorage.setItem('wk-tab', activeTab() || '');
         sessionStorage.setItem('wk-open', JSON.stringify(openSlugs()));
+        sessionStorage.setItem('wk-days', JSON.stringify(openDays()));
         sessionStorage.setItem('wk-scroll', String(window.scrollY));
       } catch (_) { /* sessionStorage unavailable — fall back to the #anchor only */ }
     }, true);
 
     // restore on load (one-shot), then honour a #task-<slug> anchor
     (function restore() {
-      var tab, open, scroll;
+      var tab, open, days, scroll;
       try {
         tab = sessionStorage.getItem('wk-tab');
         open = JSON.parse(sessionStorage.getItem('wk-open') || '[]');
+        days = JSON.parse(sessionStorage.getItem('wk-days') || 'null');
         scroll = sessionStorage.getItem('wk-scroll');
-        ['wk-tab', 'wk-open', 'wk-scroll'].forEach(function (k) { sessionStorage.removeItem(k); });
+        ['wk-tab', 'wk-open', 'wk-days', 'wk-scroll'].forEach(function (k) { sessionStorage.removeItem(k); });
       } catch (_) { open = []; }
       if (tab) setTab(tab);
+      // 修修 (2026-08-29): re-apply which day cards were open, overriding the
+      // server default (today, else Monday) — null means "no saved state", i.e. a
+      // plain page load, where the server default is exactly what we want.
+      if (days) {
+        document.querySelectorAll('.wk-day').forEach(function (d) {
+          d.open = days.indexOf(d.getAttribute('data-date')) !== -1;
+        });
+      }
       (open || []).forEach(function (slug) {
         document.querySelectorAll('.wk-task-d[data-slug="' + (window.CSS && CSS.escape ? CSS.escape(slug) : slug) + '"]')
           .forEach(function (d) { d.open = true; });

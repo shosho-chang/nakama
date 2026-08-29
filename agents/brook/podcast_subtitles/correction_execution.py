@@ -861,19 +861,15 @@ def _binding_indices(
             groups_by_span_id.setdefault(span_id, []).append(group.id)
     return _BindingIndices(
         cell_by_id=MappingProxyType({item.id: item for item in plan.cells}),
-        cell_order=MappingProxyType(
-            {item.id: index for index, item in enumerate(plan.cells)}
-        ),
+        cell_order=MappingProxyType({item.id: index for index, item in enumerate(plan.cells)}),
         span_target_by_id=MappingProxyType({item.id: item for item in plan.span_targets}),
         span_target_order=MappingProxyType(
             {item.id: index for index, item in enumerate(plan.span_targets)}
         ),
-        boundary_target_by_id=MappingProxyType(
-            {item.id: item for item in plan.boundary_targets}
+        boundary_target_by_id=MappingProxyType({item.id: item for item in plan.boundary_targets}),
+        boundary_target_order=MappingProxyType(
+            {item.id: index for index, item in enumerate(plan.boundary_targets)}
         ),
-        boundary_target_order=MappingProxyType({
-            item.id: index for index, item in enumerate(plan.boundary_targets)
-        }),
         span_by_id=MappingProxyType({item.id: item for item in transcript.spans}),
         span_order=MappingProxyType(
             {item.id: index for index, item in enumerate(transcript.spans)}
@@ -899,9 +895,7 @@ def _binding_indices(
         groups_by_span_id=MappingProxyType(
             {key: tuple(value) for key, value in groups_by_span_id.items()}
         ),
-        retrieval_by_span_id=MappingProxyType(
-            {item.audio_span_id: item for item in retrievals}
-        ),
+        retrieval_by_span_id=MappingProxyType({item.audio_span_id: item for item in retrievals}),
         retrieval_order=MappingProxyType(
             {item.audio_span_id: index for index, item in enumerate(retrievals)}
         ),
@@ -1004,9 +998,7 @@ def _build_bindings(
         for group_id in indices.groups_by_signal_id.get(signal_id, ())
     }
     relevant_group_id_set.update(
-        group_id
-        for span_id in span_set
-        for group_id in indices.groups_by_span_id.get(span_id, ())
+        group_id for span_id in span_set for group_id in indices.groups_by_span_id.get(span_id, ())
     )
     relevant_groups = tuple(
         indices.group_by_id[item_id]
@@ -1020,9 +1012,9 @@ def _build_bindings(
             key=indices.retrieval_order.__getitem__,
         )
     )
-    receipt_records = tuple(
-        item.query_id for item in selected_retrievals
-    ) or (plan.inputs.reference_retrieval_receipt_set_hash,)
+    receipt_records = tuple(item.query_id for item in selected_retrievals) or (
+        plan.inputs.reference_retrieval_receipt_set_hash,
+    )
     evidence: dict[str, ReferenceEvidence] = {}
     evidence_membership: dict[str, list[str]] = {}
     for receipt in selected_retrievals:
@@ -1907,9 +1899,7 @@ def build_modality_audit_execution_plan_v3(
                 key=token_order.__getitem__,
             )
         )
-        visible_targets = tuple(
-            target_by_id[item] for item in (*owned_targets, *context_targets)
-        )
+        visible_targets = tuple(target_by_id[item] for item in (*owned_targets, *context_targets))
         window_start_ms = min(
             item.window_start_ms if isinstance(item, BoundaryAuditTarget) else item.start_ms
             for item in visible_targets
@@ -1933,9 +1923,7 @@ def build_modality_audit_execution_plan_v3(
             sorted(
                 {
                     seam_id
-                    for ordinal in range(
-                        visible_span_indices[0], visible_span_indices[-1] + 2
-                    )
+                    for ordinal in range(visible_span_indices[0], visible_span_indices[-1] + 2)
                     for seam_id in seam_by_boundary.get(ordinal, ())
                 }
             )
@@ -1974,9 +1962,7 @@ def build_modality_audit_execution_plan_v3(
             normalized_audio_hash=audio_digest,
             normalized_audio_size_bytes=(audio_snapshot.size_bytes if audio_snapshot else 0),
             indices=binding_indices,
-            cell_ids=tuple(
-                sorted((*owned_cells, *context_cells), key=cell_order.__getitem__)
-            ),
+            cell_ids=tuple(sorted((*owned_cells, *context_cells), key=cell_order.__getitem__)),
             span_ids=(*owned_spans, *context_spans),
             token_ids=(*owned_tokens, *context_tokens),
             include_retrieval_lineage=False,
@@ -2040,19 +2026,13 @@ def build_modality_audit_execution_plan_v3(
             )
         )
 
-    owned_cell_ids = tuple(
-        cell_id for packet in packets for cell_id in packet.owned_cell_ids
-    )
+    owned_cell_ids = tuple(cell_id for packet in packets for cell_id in packet.owned_cell_ids)
     required_cell_ids = tuple(
         cell_id for packet in packets for cell_id in packet.requested_cell_ids
     )
-    owned_span_id_set = {
-        span_id for packet in packets for span_id in packet.owned_span_ids
-    }
+    owned_span_id_set = {span_id for packet in packets for span_id in packet.owned_span_ids}
     owned_span_ids = tuple(
-        item.span_id
-        for item in audit_plan.span_targets
-        if item.span_id in owned_span_id_set
+        item.span_id for item in audit_plan.span_targets if item.span_id in owned_span_id_set
     )
     source_bindings = _build_bindings(
         plan=audit_plan,
@@ -2079,9 +2059,7 @@ def build_modality_audit_execution_plan_v3(
         if seam_evidence is not None
         else (),
     )
-    selection_hash = (
-        sha256_bytes(canonical_json_bytes(selection_plan)) if selection_plan else None
-    )
+    selection_hash = sha256_bytes(canonical_json_bytes(selection_plan)) if selection_plan else None
     plan_payload = {
         "schema_version": 3,
         "episode_id": transcript.episode_id,
@@ -2221,9 +2199,7 @@ def materialize_text_correction_packet_sources_batch(
     try:
         packets = tuple(packet_by_id[item_id] for item_id in selected_packet_ids)
     except KeyError as exc:
-        raise CorrectionExecutionError(
-            "text packet identity is absent or ambiguous"
-        ) from exc
+        raise CorrectionExecutionError("text packet identity is absent or ambiguous") from exc
     if any(packet.modality != "text" for packet in packets):
         raise CorrectionExecutionError("text packet materializer rejects audio packets")
 
@@ -2318,9 +2294,7 @@ def materialize_text_correction_packet_sources_batch(
             )
         expected_uris = tuple(item.artifact_uri for item in packet.source_bindings)
         if tuple(packet_sources) != expected_uris:
-            raise CorrectionExecutionError(
-                "text packet source byte set is incomplete or reordered"
-            )
+            raise CorrectionExecutionError("text packet source byte set is incomplete or reordered")
         for uri, exact_bytes in packet_sources.items():
             previous = batch_sources.setdefault(uri, exact_bytes)
             if previous != exact_bytes:

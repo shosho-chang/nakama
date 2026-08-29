@@ -90,9 +90,10 @@ def test_recognition_interval_lookup_preserves_strict_overlap_edges() -> None:
     assert tuple(item.id for item in index.overlapping(((100, 200),))) == ("edge-1",)
     assert index.overlapping(((200, 250),)) == ()
     assert tuple(item.id for item in index.overlapping(((100, 250),))) == ("edge-1",)
-    assert tuple(
-        item.id for item in index.overlapping(((0, 100), (100, 200)))
-    ) == ("edge-0", "edge-1")
+    assert tuple(item.id for item in index.overlapping(((0, 100), (100, 200)))) == (
+        "edge-0",
+        "edge-1",
+    )
 
 
 def test_execution_defaults_reject_bool_as_integer() -> None:

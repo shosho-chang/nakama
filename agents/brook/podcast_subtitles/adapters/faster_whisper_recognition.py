@@ -135,10 +135,7 @@ class _ProviderObservation(_EnvelopeContract):
                 # decoded segment boundary can therefore differ from the first
                 # or last word by one provider quantum.  Preserve both raw
                 # observations, but reject larger topology disagreements.
-                tolerance = (
-                    _PROVIDER_TIMESTAMP_QUANTUM_SECONDS
-                    + _FLOAT_COMPARISON_EPSILON_SECONDS
-                )
+                tolerance = _PROVIDER_TIMESTAMP_QUANTUM_SECONDS + _FLOAT_COMPARISON_EPSILON_SECONDS
                 starts_too_early = segment.start - word.start > tolerance
                 first_word_crosses_segment_start = (
                     word_index == 0 and word.end + tolerance >= segment.start

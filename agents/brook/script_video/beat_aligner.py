@@ -1,6 +1,6 @@
 """Anchor → timing aligner (ADR-032 §6).
 
-Primary path: deterministic substring search (str.find) on the normalized
+Primary path: deterministic substring search (str.find) on the verified
 flat text. On miss → raise AnchorNotFoundError (hard fail; LLM retry that
 beat up to 3x; else escalate to human).
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class AnchorNotFoundError(Exception):
-    """LLM anchor not found verbatim in normalized transcript.
+    """LLM anchor not found verbatim in Verified Projection text.
 
     Raised by align_beat() when start_quote or end_quote cannot be located.
     Carries the offending beat and the flat_text for debugging.
@@ -73,7 +73,8 @@ def align_beat(
 
     Args:
         beat: beat dict with 'start_quote' and 'end_quote' keys.
-        flat_text: normalized transcript prose (same text the planner saw).
+        flat_text: flattened Verified Projection text (same bytes-derived text
+            the planner saw).
         char_to_time: maps char index → cue start time (seconds).
         srt_line_id_to_char_range: maps cue.index → (start, end) in flat_text.
             If None, srt_line_ids in result will be [].

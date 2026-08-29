@@ -40,16 +40,12 @@ def _recognition_quorum_args(root: Path, review: Path) -> list[str]:
                     "episode_id": root.name,
                     "worker_id": worker_id,
                     "normalized_audio_sha256": payload["normalized_audio_sha256"],
-                    "normalized_audio_size_bytes": payload[
-                        "normalized_audio_size_bytes"
-                    ],
+                    "normalized_audio_size_bytes": payload["normalized_audio_size_bytes"],
                     "source_export_sha256": payload["source_export_sha256"],
                     "source_export_size_bytes": payload["source_export_size_bytes"],
                     "review_manifest_sha256": hash_file(review),
                     "token_export_sha256": payload["token_export_sha256"],
-                    "memo_execution_receipt_sha256": payload[
-                        "memo_execution_receipt"
-                    ]["sha256"],
+                    "memo_execution_receipt_sha256": payload["memo_execution_receipt"]["sha256"],
                     "reviewed_item_count": len(payload["tokens"]),
                     "qc_passed": True,
                     "accepted": True,
@@ -81,18 +77,14 @@ def _cue_quorum_args(root: Path, review: Path, recognition: Path) -> list[str]:
                     "contract": "memo-cue-worker-audit-v1",
                     "episode_id": root.name,
                     "worker_id": worker_id,
-                    "normalized_audio_sha256": recognition_payload[
-                        "normalized_audio_sha256"
-                    ],
+                    "normalized_audio_sha256": recognition_payload["normalized_audio_sha256"],
                     "normalized_audio_size_bytes": recognition_payload[
                         "normalized_audio_size_bytes"
                     ],
                     "source_export_sha256": payload["source_export_sha256"],
                     "source_export_size_bytes": payload["source_export_size_bytes"],
                     "review_manifest_sha256": hash_file(review),
-                    "recognition_manifest_sha256": payload[
-                        "recognition_manifest_sha256"
-                    ],
+                    "recognition_manifest_sha256": payload["recognition_manifest_sha256"],
                     "reviewed_item_count": len(payload["cues"]),
                     "qc_passed": True,
                     "accepted": True,
@@ -234,8 +226,7 @@ def _fixture(tmp_path: Path) -> tuple[MemoVadGapRepairInputs, Path, Path]:
     def invoke(argv: tuple[str, ...]) -> subprocess.CompletedProcess[bytes]:
         invocation_input = Path(argv[argv.index("-f") + 1])
         invocation_input.with_suffix(".srt").write_text(
-            "1\n00:00:00,000 --> 00:00:01,000\nX\n\n"
-            "2\n00:00:01,000 --> 00:00:03,000\n台場\n",
+            "1\n00:00:00,000 --> 00:00:01,000\nX\n\n2\n00:00:01,000 --> 00:00:03,000\n台場\n",
             encoding="utf-8",
         )
         return subprocess.CompletedProcess(argv, 0, b"stdout", b"")
@@ -308,9 +299,12 @@ def test_gap_repair_exactly_inserts_offset_runner_cues_and_replays(tmp_path: Pat
     ]
     assert [item.text for item in receipt.inserted_cues] == ["X", "台場"]
     assert receipt.output_sha256 == hash_file(output)
-    assert load_verified_memo_vad_gap_repair(
-        inputs=inputs, composite_source=output, receipt_path=receipt_path
-    ) == receipt
+    assert (
+        load_verified_memo_vad_gap_repair(
+            inputs=inputs, composite_source=output, receipt_path=receipt_path
+        )
+        == receipt
+    )
 
 
 @pytest.mark.parametrize(
@@ -431,22 +425,25 @@ def test_gap_repair_cli_flows_through_recognition_and_cue_evidence(tmp_path: Pat
         "--memo-model",
         str(inputs.model),
     ]
-    assert evidence_cli.main(
-        [
-            "repair-memo-vad-gap",
-            *repair_args,
-            "--global-offset-ms",
-            "2500",
-            "--declared-gap-start-ms",
-            "2500",
-            "--declared-gap-end-ms",
-            "5500",
-            "--output",
-            str(output),
-            "--receipt-output",
-            str(receipt_path),
-        ]
-    ) == 0
+    assert (
+        evidence_cli.main(
+            [
+                "repair-memo-vad-gap",
+                *repair_args,
+                "--global-offset-ms",
+                "2500",
+                "--declared-gap-start-ms",
+                "2500",
+                "--declared-gap-end-ms",
+                "5500",
+                "--output",
+                str(output),
+                "--receipt-output",
+                str(receipt_path),
+            ]
+        )
+        == 0
+    )
     with pytest.raises(FileExistsError, match="must not already exist"):
         evidence_cli.main(
             [
@@ -472,72 +469,84 @@ def test_gap_repair_cli_flows_through_recognition_and_cue_evidence(tmp_path: Pat
     ]
     original_execution_args = _original_execution_args(inputs, tmp_path)
     review = tmp_path / "recognition-review.json"
-    assert evidence_cli.main(
-        [
-            "prepare-recognition",
-            *lineage_args,
-            *original_execution_args,
-            "--source-export",
-            str(output),
-            "--source-export-kind",
-            "memo_srt",
-            "--memo-version",
-            "bundled-runner",
-            "--language",
-            "zh",
-            "--prompt",
-            "fixture",
-            "--output",
-            str(review),
-        ]
-    ) == 0
+    assert (
+        evidence_cli.main(
+            [
+                "prepare-recognition",
+                *lineage_args,
+                *original_execution_args,
+                "--source-export",
+                str(output),
+                "--source-export-kind",
+                "memo_srt",
+                "--memo-version",
+                "bundled-runner",
+                "--language",
+                "zh",
+                "--prompt",
+                "fixture",
+                "--output",
+                str(review),
+            ]
+        )
+        == 0
+    )
     recognition_receipt = tmp_path / "recognition-acceptance.json"
     recognition_manifest = tmp_path / "recognition.json"
-    assert evidence_cli.main(
-        [
-            "accept-recognition",
-            *lineage_args,
-            "--review",
-            str(review),
-            "--source-export",
-            str(output),
-            *_recognition_quorum_args(tmp_path, review),
-            "--accepted-at",
-            "2026-08-19T10:10:00+08:00",
-            "--receipt-output",
-            str(recognition_receipt),
-            "--manifest-output",
-            str(recognition_manifest),
-        ]
-    ) == 0
+    assert (
+        evidence_cli.main(
+            [
+                "accept-recognition",
+                *lineage_args,
+                "--review",
+                str(review),
+                "--source-export",
+                str(output),
+                *_recognition_quorum_args(tmp_path, review),
+                "--accepted-at",
+                "2026-08-19T10:10:00+08:00",
+                "--receipt-output",
+                str(recognition_receipt),
+                "--manifest-output",
+                str(recognition_manifest),
+            ]
+        )
+        == 0
+    )
     cue_review = tmp_path / "cue-review.json"
-    assert evidence_cli.main(
-        [
-            "prepare-cues",
-            *lineage_args,
-            "--recognition-manifest",
-            str(recognition_manifest),
-            "--source-export",
-            str(output),
-            "--output",
-            str(cue_review),
-        ]
-    ) == 0
+    assert (
+        evidence_cli.main(
+            [
+                "prepare-cues",
+                *lineage_args,
+                "--recognition-manifest",
+                str(recognition_manifest),
+                "--source-export",
+                str(output),
+                "--output",
+                str(cue_review),
+            ]
+        )
+        == 0
+    )
     cue_receipt = tmp_path / "cue-acceptance.json"
-    assert evidence_cli.main(
-        [
-            "accept-cues",
-            *lineage_args,
-            "--review",
-            str(cue_review),
-            "--recognition-manifest",
-            str(recognition_manifest),
-            "--source-export",
-            str(output),
-            *_cue_quorum_args(tmp_path, cue_review, recognition_manifest),
-            "--accepted-at",
-            "2026-08-19T10:20:00+08:00",
-            "--receipt-output",
-            str(cue_receipt),
-        ]
-    ) == 0
+    assert (
+        evidence_cli.main(
+            [
+                "accept-cues",
+                *lineage_args,
+                "--review",
+                str(cue_review),
+                "--recognition-manifest",
+                str(recognition_manifest),
+                "--source-export",
+                str(output),
+                *_cue_quorum_args(tmp_path, cue_review, recognition_manifest),
+                "--accepted-at",
+                "2026-08-19T10:20:00+08:00",
+                "--receipt-output",
+                str(cue_receipt),
+            ]
+        )
+        == 0
+    )

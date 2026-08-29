@@ -3,7 +3,7 @@
 Subcommands:
 - cleanup: raw_recording.mp4 → 拍掌 marker 偵測 → out/cleanup.fcpxml
   ripple-delete timeline（選配前置 stage，ADR-050 D3）
-- plan: SRT → storyboard.yaml (PR-3); ``--use-hints`` consumes
+- plan: Verified Projection → storyboard.yaml (PR-3); ``--use-hints`` consumes
   ``storyboard_hints.yaml`` if present (ADR-038 §D5)
 - hint-beats: raw_recording.mp4 → storyboard_hints.yaml via silencedetect
   (ADR-038 §D5 / PR-C)
@@ -17,6 +17,11 @@ Subcommands:
 
 Episode dirs require an ``episode.yaml``; every completed stage is stamped
 into its ``stages:`` map as provenance (ADR-050 D4).
+
+``plan`` / ``run`` / ``emit`` are production consumers: they require an exact
+Podcast Subtitle V2 ``subtitle_v2_handoff`` and never read a loose
+``transcript.srt``.  ``cleanup`` / ``correct-srt`` remain explicitly legacy
+authoring tools and write ``legacy_transcript.srt`` by default.
 """
 
 from __future__ import annotations
@@ -57,7 +62,7 @@ def _require_episode(ep_dir: Path) -> dict:
             f"每個 episode 目錄必須有 episode.yaml（provenance anchor，ADR-050 D4）。建立方式：\n"
             f"  mkdir -p {ep_dir}/out\n"
             f"  printf 'id: {ep_dir.name}\\ntitle: \"<標題>\"\\n' > {episode_yaml}\n"
-            f"其餘輸入：raw_recording.mp4（talking head）+ transcript.srt（/transcribe 輸出）"
+            f"production 輸入：raw_recording.mp4 + episode.yaml 的 subtitle_v2_handoff"
         )
     return yaml.safe_load(episode_yaml.read_text(encoding="utf-8")) or {}
 
@@ -121,30 +126,34 @@ def _check_srt_mp4_duration(srt_cues: list, mp4_path: Path) -> None:
 
 
 def _cmd_plan(args: argparse.Namespace) -> int:
-    """SRT → storyboard.yaml via LLM planner + beat aligner."""
+    """Verified Projection → storyboard.yaml via LLM planner + exact aligner."""
     from agents.brook.script_video.beat_aligner import AnchorNotFoundError, align_beat
-    from agents.brook.script_video.chinese_normalizer import (
-        normalize_numbers,
-        normalize_punctuation,
-    )
     from agents.brook.script_video.planner import plan_episode
     from agents.brook.script_video.srt_flattener import flatten_cues, parse_srt
+    from agents.brook.script_video.subtitle_handoff import (
+        require_verified_projection,
+        write_storyboard_provenance,
+    )
 
     ep_dir = _episode_dir(args.episode)
     episode_meta = _require_episode(ep_dir)
-    srt_path = ep_dir / "transcript.srt"
     mp4_path = ep_dir / "raw_recording.mp4"
     hints_path = ep_dir / "storyboard_hints.yaml"
     out_path = ep_dir / "storyboard.yaml"
 
-    cues = parse_srt(srt_path.read_text(encoding="utf-8"))
-    raw_flat, char_to_time, srt_line_id_to_char_range = flatten_cues(cues)
+    verified = require_verified_projection(
+        ep_dir=ep_dir,
+        expected_episode_id=args.episode,
+        episode_meta=episode_meta,
+    )
+    try:
+        srt_text = verified.srt_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:  # V2 renderer should make this unreachable
+        raise ValueError("verified projection SRT is not UTF-8") from exc
+    cues = parse_srt(srt_text)
+    verified_flat, char_to_time, srt_line_id_to_char_range = flatten_cues(cues)
 
     _check_srt_mp4_duration(cues, mp4_path)
-
-    # Normalize for LLM consumption (char_to_time positions may shift for numbers,
-    # but timestamp granularity is at cue level so the approximation is acceptable)
-    normalized = normalize_numbers(normalize_punctuation(raw_flat))
 
     # ADR-038 §D5: opt-in silence hints. Default behavior unchanged when the
     # flag is absent or the file does not exist.
@@ -159,14 +168,23 @@ def _cmd_plan(args: argparse.Namespace) -> int:
                 hints_path,
             )
 
-    beats = plan_episode(normalized, episode_meta, hints=hints)
+    # Stage 5 must not normalize or correct Canonical text.  Remove local
+    # handoff paths and mutable stage stamps from LLM metadata, then give the
+    # planner the exact verified display text produced above.
+    planner_meta = {
+        key: value
+        for key, value in episode_meta.items()
+        if key not in {"subtitle_v2_handoff", "stages"}
+    }
+    beats = plan_episode(verified_flat, planner_meta, hints=hints)
 
-    # Align each beat; log failures but continue (operator reviews storyboard)
+    # Exact-copy is a hard boundary.  A missing anchor must stop before any
+    # storyboard/provenance file is published.
     for beat in beats:
         try:
             result = align_beat(
                 beat.model_dump(),
-                normalized,
+                verified_flat,
                 char_to_time,
                 srt_line_id_to_char_range,
             )
@@ -175,13 +193,16 @@ def _cmd_plan(args: argparse.Namespace) -> int:
             beat.timing = Timing(**result["timing"])
             beat.srt_line_ids = result["srt_line_ids"]
         except AnchorNotFoundError as exc:
-            logger.warning("beat %d alignment failed: %s", beat.beat_id, exc)
+            raise ValueError(
+                f"beat {beat.beat_id} is not an exact copy of the Verified Projection"
+            ) from exc
 
     storyboard = [b.model_dump() for b in beats]
     out_path.write_text(
         yaml.dump(storyboard, allow_unicode=True, default_flow_style=False, sort_keys=False),
         encoding="utf-8",
     )
+    write_storyboard_provenance(ep_dir, verified)
     logger.info("storyboard written to %s (%d beats)", out_path, len(beats))
     _record_stage(ep_dir, "plan")
     return 0
@@ -299,11 +320,45 @@ def _cmd_render(args: argparse.Namespace) -> int:
 
 def _cmd_emit(args: argparse.Namespace) -> int:
     """storyboard.yaml + rendered mp4s → out/episode.fcpxml."""
+    from agents.brook.script_video.beat_aligner import align_beat
     from agents.brook.script_video.fcpxml_emitter import emit
+    from agents.brook.script_video.schemas.storyboard import Beat
+    from agents.brook.script_video.srt_flattener import flatten_cues, parse_srt
+    from agents.brook.script_video.subtitle_handoff import (
+        VerifiedProjectionHandoffError,
+        assert_storyboard_provenance,
+        require_verified_projection,
+    )
 
     ep_dir = _episode_dir(args.episode)
-    _require_episode(ep_dir)
+    episode_meta = _require_episode(ep_dir)
+    verified = require_verified_projection(
+        ep_dir=ep_dir,
+        expected_episode_id=args.episode,
+        episode_meta=episode_meta,
+    )
+    assert_storyboard_provenance(ep_dir, verified)
     storyboard = yaml.safe_load((ep_dir / "storyboard.yaml").read_text(encoding="utf-8"))
+    if not isinstance(storyboard, list):
+        raise VerifiedProjectionHandoffError("storyboard.yaml must contain a list of beats")
+    cues = parse_srt(verified.srt_bytes.decode("utf-8"))
+    flat_text, char_to_time, cue_ranges = flatten_cues(cues)
+    for raw_beat in storyboard:
+        beat = Beat.model_validate(raw_beat)
+        aligned = align_beat(
+            beat.model_dump(),
+            flat_text,
+            char_to_time,
+            cue_ranges,
+        )
+        if beat.timing is None or beat.timing.model_dump() != aligned["timing"]:
+            raise VerifiedProjectionHandoffError(
+                f"storyboard beat {beat.beat_id} timing drifted from Verified Projection"
+            )
+        if beat.srt_line_ids != aligned["srt_line_ids"]:
+            raise VerifiedProjectionHandoffError(
+                f"storyboard beat {beat.beat_id} cue binding drifted from Verified Projection"
+            )
     fcpxml_path = emit(storyboard, ep_dir, fcpxml_version=args.fcpxml_version)
     logger.info("FCPXML emitted: %s", fcpxml_path)
     _record_stage(ep_dir, "emit")
@@ -329,7 +384,8 @@ def _cmd_cleanup(args: argparse.Namespace) -> int:
     - **script-anchored（主線）**：episode 目錄有 words.json（WhisperX 字級
       timestamps，`scripts/run_whisperx_words.py` 產出）時啟用。單擊掌 +
       retake 指紋回溯決定刪除範圍；若逐字稿（script.md）也在，另產文字
-      全對、時間軸已重映射到乾淨 timeline 的 transcript.srt。
+      全對、時間軸已重映射到乾淨 timeline 的 legacy_transcript.srt。
+      這是未驗證 authoring artifact，production plan/run 不會讀取。
     - **audio-only（legacy fallback）**：無 words.json 時退回 double-clap
       音訊 VAD 模式。
 
@@ -390,7 +446,7 @@ def _cmd_cleanup(args: argparse.Namespace) -> int:
                 cuts=cuts,
                 total_duration_sec=total_sec,
             )
-            srt_path = ep_dir / "transcript.srt"
+            srt_path = ep_dir / "legacy_transcript.srt"
             srt_path.write_text(srt, encoding="utf-8")
             logger.info(
                 "cleanup: corrected SRT（乾淨 timeline 時間軸）→ %s。"
@@ -435,7 +491,7 @@ def _cmd_correct_srt(args: argparse.Namespace) -> int:
     _require_episode(ep_dir)
     words_path = Path(args.words) if args.words else ep_dir / "words.json"
     script_path = _find_script(ep_dir, args.script)
-    out_path = Path(args.out) if args.out else ep_dir / "transcript.srt"
+    out_path = Path(args.out) if args.out else ep_dir / "legacy_transcript.srt"
 
     if not words_path.exists():
         logger.error("correct-srt: words.json not found at %s", words_path)
@@ -602,7 +658,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "完整逐字稿路徑（預設 <episode>/script.md 或 script.txt；"
-            "有則另產 corrected transcript.srt）"
+            "有則另產未驗證 legacy_transcript.srt）"
         ),
     )
     cleanup_sub.set_defaults(fn=_cmd_cleanup)
@@ -614,7 +670,11 @@ def _build_parser() -> argparse.ArgumentParser:
     correct_srt_sub.add_argument(
         "--script", default=None, help="預設 <episode>/script.md 或 script.txt"
     )
-    correct_srt_sub.add_argument("--out", default=None, help="預設 <episode>/transcript.srt")
+    correct_srt_sub.add_argument(
+        "--out",
+        default=None,
+        help="預設 <episode>/legacy_transcript.srt（不會被 V2 production plan/run 接受）",
+    )
     correct_srt_sub.set_defaults(fn=_cmd_correct_srt)
     hint_sub = sub.add_parser(
         "hint-beats",

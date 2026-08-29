@@ -187,9 +187,10 @@ class AudioAuditSelectionPlanV1(_SelectionContract):
         stratum_population = tuple(
             span_id for item in self.strata for span_id in item.population_span_ids
         )
-        if len(set(stratum_population)) != len(stratum_population) or set(
-            stratum_population
-        ) != ordinary:
+        if (
+            len(set(stratum_population)) != len(stratum_population)
+            or set(stratum_population) != ordinary
+        ):
             raise ValueError("audio strata do not exactly partition ordinary spans")
         if set(span_id for item in self.strata for span_id in item.selected_span_ids) != set(
             self.sample_span_ids
@@ -197,9 +198,7 @@ class AudioAuditSelectionPlanV1(_SelectionContract):
             raise ValueError("audio strata selections differ from sample spans")
         if self.policy_hash != _hash_json(self.policy):
             raise ValueError("audio selection plan policy hash mismatch")
-        if (self.text_audit_record_hash is None) != (
-            self.text_audit_record_content_hash is None
-        ):
+        if (self.text_audit_record_hash is None) != (self.text_audit_record_content_hash is None):
             raise ValueError("text audit bindings are all-or-none")
         if self.tier == "sample_10" and (
             self.prior_plan_id is not None or self.prior_receipt_id is not None

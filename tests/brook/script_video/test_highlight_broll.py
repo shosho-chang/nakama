@@ -121,9 +121,7 @@ def _stub_probe_outside_media_auth_tests(request, monkeypatch):
         "agents.brook.script_video.highlight_broll.probe_stock_video",
         lambda _path: {
             "duration_seconds": 5.0,
-            "video_streams": [
-                {"index": 0, "codec_name": "h264", "width": 16, "height": 16}
-            ],
+            "video_streams": [{"index": 0, "codec_name": "h264", "width": 16, "height": 16}],
         },
     )
 
@@ -163,9 +161,7 @@ def test_long_highlight_rejects_fewer_than_three_stock_video_events(
 
 
 def test_long_highlight_accepts_three_stock_videos_and_records_hashes(tmp_path: Path) -> None:
-    items = _items(3) + [
-        {"kind": "guest-namecard", "slug": "guest-namecard", "t0": 1.0, "t1": 5.0}
-    ]
+    items = _items(3) + [{"kind": "guest-namecard", "slug": "guest-namecard", "t0": 1.0, "t1": 5.0}]
     for index in range(3):
         _asset(tmp_path, f"asset-{index}", f"asset-{index}".encode())
 
@@ -178,9 +174,7 @@ def test_long_highlight_accepts_three_stock_videos_and_records_hashes(tmp_path: 
         "asset-2",
     ]
     assert receipt["stock_videos"][0]["asset"]["path"] == "assets/broll/asset-0.mp4"
-    assert receipt["stock_videos"][0]["asset"]["sha256"] == hashlib.sha256(
-        b"asset-0"
-    ).hexdigest()
+    assert receipt["stock_videos"][0]["asset"]["sha256"] == hashlib.sha256(b"asset-0").hexdigest()
     assert receipt["editorial_master_lineage"] == MASTER
 
 

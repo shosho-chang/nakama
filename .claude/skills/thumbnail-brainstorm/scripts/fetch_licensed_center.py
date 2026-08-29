@@ -170,7 +170,9 @@ def install(
         (row for row in cut.get("packages", []) if row.get("title_rank") == package_rank), None
     )
     if package is None or not package.get("render_recipe"):
-        raise CenterFetchError(f"{cut_id} rank {package_rank} 還沒有 render_recipe——先在 gate 存配方")
+        raise CenterFetchError(
+            f"{cut_id} rank {package_rank} 還沒有 render_recipe——先在 gate 存配方"
+        )
     recipe = package["render_recipe"]
     previous = recipe.get("center_visual_asset")
 

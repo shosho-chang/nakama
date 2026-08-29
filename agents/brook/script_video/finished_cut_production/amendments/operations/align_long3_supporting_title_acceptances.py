@@ -17,7 +17,8 @@
 aroll 不畫任何東西，而 visual checkpoint 會把兩邊的集合做精確比對，只要有一筆
 成品資產活著就整個拒絕投影。
 
-    python agents/brook/script_video/finished_cut_production/amendments/operations/align_long3_supporting_title_acceptances.py --apply
+    python agents/brook/script_video/finished_cut_production/amendments/
+        operations/align_long3_supporting_title_acceptances.py --apply
 """
 
 from __future__ import annotations

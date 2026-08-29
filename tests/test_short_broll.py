@@ -959,6 +959,9 @@ def test_apply_reopens_master_after_preparation_before_resolve_mutation(tmp_path
     assert mutations == []
 
 
+from run_short_broll import _validate_icon_legibility  # noqa: E402
+
+
 class TestFillZoom:
     def test_landscape_4k_fills_vertical(self):
         # 3840x2160 fit 進 1080x1920 是貼寬（1080x607.5）→ 補到 1920 高
@@ -1054,6 +1057,55 @@ class TestGuestNamecardJob:
                 },
                 0,
             )
+
+
+class TestIconLegibility:
+    def test_primary_icon_is_large_and_supporting_objects_are_bounded(self):
+        _validate_icon_legibility(
+            0,
+            {
+                "primary_icon_id": "sake",
+                "icons": [{"id": "sake", "size": 22}],
+            },
+        )
+
+    def test_primary_icon_cannot_be_tiny(self):
+        with pytest.raises(SystemExit, match="至少 18%"):
+            _validate_icon_legibility(
+                0,
+                {
+                    "primary_icon_id": "sake",
+                    "icons": [{"id": "sake", "size": 12}],
+                },
+            )
+
+    def test_primary_choreography_cannot_literalise_plural_as_five_tiny_icons(self):
+        with pytest.raises(SystemExit, match="最多 3 個"):
+            _validate_icon_legibility(
+                0,
+                {
+                    "primary_icon_id": "sake",
+                    "icons": [
+                        {"id": "sake", "size": 22},
+                        {"id": "a", "size": 12},
+                        {"id": "b", "size": 12},
+                        {"id": "c", "size": 12},
+                    ],
+                },
+            )
+
+    def test_ks1_fixture_uses_one_readable_primary_icon(self):
+        import json
+
+        root = Path(__file__).resolve().parent.parent
+        plan = json.loads(
+            (root / "tests/fixtures/short_reference/KS1_broll_semantic_v2.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        icon_item = next(item for item in plan["items"] if item["kind"] == "icon_motion")
+        assert len(icon_item["icons"]) == 1
+        _validate_icon_legibility(1, icon_item)
 
 
 # ── 長片格式（修修 2026-08-03 長片線）─────────────────────────────────────

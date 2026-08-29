@@ -25,9 +25,7 @@ from typing import Literal, Mapping
 JOURNAL_SCHEMA = "nakama.finished_cut_amendment_journal.v1"
 
 AmendmentKind = Literal["suppress_components", "replace_component_assets"]
-_AMENDMENT_KINDS: frozenset[str] = frozenset(
-    ("suppress_components", "replace_component_assets")
-)
+_AMENDMENT_KINDS: frozenset[str] = frozenset(("suppress_components", "replace_component_assets"))
 
 
 class AmendmentJournalError(ValueError):
@@ -78,9 +76,7 @@ class ReferenceOperation:
             for block in iter(lambda: stream.read(1 << 20), b""):
                 digest.update(block)
         if digest.hexdigest() != self.sha256:
-            raise AmendmentJournalError(
-                f"reference operation digest differs: {self.path}"
-            )
+            raise AmendmentJournalError(f"reference operation digest differs: {self.path}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,9 +130,7 @@ def load_journal(path: Path) -> AmendmentJournal:
         if index > 1:
             previous = amendments[index - 2]
             if previous.result != item.base:
-                raise AmendmentJournalError(
-                    "amendment base does not equal the previous result"
-                )
+                raise AmendmentJournalError("amendment base does not equal the previous result")
     if len({item.amendment_id for item in amendments}) != len(amendments):
         raise AmendmentJournalError("amendment identity is ambiguous")
 
@@ -146,9 +140,7 @@ def load_journal(path: Path) -> AmendmentJournal:
     # journal must refuse them rather than record them as provenance.
     for cut_id in {item.cut_id for item in amendments}:
         authorities = {
-            item.semantic_authority_unchanged
-            for item in amendments
-            if item.cut_id == cut_id
+            item.semantic_authority_unchanged for item in amendments if item.cut_id == cut_id
         }
         if len(authorities) != 1:
             raise AmendmentJournalError(
@@ -160,9 +152,7 @@ def load_journal(path: Path) -> AmendmentJournal:
         raise AmendmentJournalError("journal records no current pointer")
     current_release_id = _text(current, "release_id")
     if amendments[-1].result.release_id != current_release_id:
-        raise AmendmentJournalError(
-            "the last amendment result is not the current Release"
-        )
+        raise AmendmentJournalError("the last amendment result is not the current Release")
     return AmendmentJournal(
         episode_id=episode_id,
         amendments=amendments,

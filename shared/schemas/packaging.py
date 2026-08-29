@@ -347,7 +347,9 @@ class CenterCandidateV1(BaseModel):
         # 中央卡是橫的（見 CenterGeometryV1._horizontal_card）。直式素材進 gate
         # 只會浪費修修的一次點擊——它在 attach 那一關本來就會被擋下來。
         if self.width <= self.height:
-            raise ValueError(f"中央卡候選必須是橫式：{self.candidate_id} 是 {self.width}×{self.height}")
+            raise ValueError(
+                f"中央卡候選必須是橫式：{self.candidate_id} 是 {self.width}×{self.height}"
+            )
         return self
 
 
@@ -426,13 +428,9 @@ class RenderRequestV1(BaseModel):
                 raise ValueError(f"{name} must be vault-relative path, got absolute: {val!r}")
             if not _PNG_SLUG_RE.match(_png_basename(val)):
                 raise ValueError(f"cutout 檔名必須是 ASCII PNG，got {val!r}")
-        if self.composition == "thumbnail_full" and not any(
-            line.strip() for line in self.big_text
-        ):
+        if self.composition == "thumbnail_full" and not any(line.strip() for line in self.big_text):
             raise ValueError("big_text 不可全為空白——封面大字是 N1 卡型的主體")
-        if self.composition == "thumbnail_reaction" and any(
-            line.strip() for line in self.big_text
-        ):
+        if self.composition == "thumbnail_reaction" and any(line.strip() for line in self.big_text):
             raise ValueError("thumbnail_reaction 是零文字 N2 卡型，big_text 必須為空")
         if self.highlight_text and self.highlight_text not in "".join(self.big_text):
             raise ValueError(
@@ -447,9 +445,7 @@ class RenderRequestV1(BaseModel):
                 raise ValueError("book_cover must be a safe vault-relative path")
         if self.composition == "thumbnail_reaction":
             if not self.center_visual_asset or self.center_geometry is None:
-                raise ValueError(
-                    "thumbnail_reaction 必須帶 center_visual_asset 與 center_geometry"
-                )
+                raise ValueError("thumbnail_reaction 必須帶 center_visual_asset 與 center_geometry")
         if self.center_visual_asset is not None:
             if _is_abs_path(self.center_visual_asset):
                 raise ValueError("center_visual_asset must be a vault-relative path")

@@ -523,10 +523,7 @@ def _chapters_for(context: EditorialCutContext) -> tuple[_Component, ...]:
 def test_l3_title_like_density_near_three_point_six_per_minute_needs_review() -> None:
     context = _chaptered_context(14, 510.0)
     chapters = _chapters_for(context)
-    heroes = tuple(
-        _title_component(f"hero-{index}", 400.0 + index * 20.0)
-        for index in range(1, 5)
-    )
+    heroes = tuple(_title_component(f"hero-{index}", 400.0 + index * 20.0) for index in range(1, 5))
     # 14 chapters + 4 Hero Titles over 8.5 minutes is 2.12 cards per minute,
     # just past the two-per-minute ceiling, with the Hero limit still respected.
     stock_only = tuple(

@@ -8,16 +8,109 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from run_short_director import (
     DEFAULT_CFG,
     FIT,
     TILT_SCALE,
+    _configure_timeline,
+    _find_media_item_by_path,
     _pan,
     _panel_props,
+    _validate_appended_source_range,
+    _validate_media_source_range,
     build_shots,
 )
+
+
+class _FakeMediaItem:
+    def __init__(self, path: str, *, frames: int = 191_890, fps: float = 30.0):
+        self.path = path
+        self.frames = frames
+        self.fps = fps
+
+    def GetName(self):
+        return Path(self.path).name
+
+    def GetClipProperty(self):
+        return {
+            "File Path": self.path,
+            "Start": "0",
+            "End": str(self.frames - 1),
+            "Frames": str(self.frames),
+            "FPS": self.fps,
+        }
+
+
+class _FakeTimelineItem:
+    def __init__(self, source_start: int, source_end: int):
+        self.source_start = source_start
+        self.source_end = source_end
+
+    def GetSourceStartFrame(self):
+        return self.source_start
+
+    def GetSourceEndFrame(self):
+        return self.source_end
+
+
+class _FakeTimeline:
+    def __init__(self, *, set_ok: bool = True, frame_rate: float = 30.0):
+        self.set_ok = set_ok
+        self.frame_rate = frame_rate
+        self.calls = []
+
+    def SetSetting(self, key, value):
+        self.calls.append((key, value))
+        return self.set_ok
+
+    def GetSetting(self, key):
+        assert key == "timelineFrameRate"
+        return self.frame_rate
+
+
+def test_configure_timeline_sets_project_fps_before_append():
+    timeline = _FakeTimeline()
+
+    _configure_timeline(timeline, fmt="long", fps=30.0)
+
+    assert timeline.calls[0] == ("timelineFrameRate", "30")
+
+
+def test_configure_timeline_rejects_template_fps_mismatch():
+    timeline = _FakeTimeline(set_ok=False, frame_rate=24.0)
+
+    with pytest.raises(SystemExit, match="Timeline frame rate mismatch"):
+        _configure_timeline(timeline, fmt="long", fps=30.0)
+
+
+def test_media_lookup_uses_full_path_when_basename_collides():
+    wrong = _FakeMediaItem(r"G:\Footages\episode\2_CAMERA 2.mp4", frames=2_037)
+    correct = _FakeMediaItem(r"G:\Footages\episode\Video\2_CAMERA 2.mp4")
+
+    selected = _find_media_item_by_path(
+        [wrong, correct],
+        Path(r"G:\Footages\episode\Video\2_CAMERA 2.mp4"),
+    )
+
+    assert selected is correct
+
+
+def test_media_source_range_rejects_same_name_short_clip():
+    wrong = _FakeMediaItem(r"G:\Footages\episode\2_CAMERA 2.mp4", frames=2_037)
+
+    with pytest.raises(SystemExit, match="source range.*exceeds media bounds"):
+        _validate_media_source_range(wrong, 22_032, 22_341, project_fps=30.0)
+
+
+def test_appended_source_range_rejects_resolve_clamp_to_last_frame():
+    clamped = _FakeTimelineItem(2_036, 2_036)
+
+    with pytest.raises(SystemExit, match="Resolve clamped source range"):
+        _validate_appended_source_range(clamped, 22_032, 22_341)
 
 
 def _words(*runs):

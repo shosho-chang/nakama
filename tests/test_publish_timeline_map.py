@@ -277,7 +277,9 @@ def test_uploaded_captions_come_from_the_release_not_the_stale_tight_srt(tmp_pat
     )
     monkeypatch.setattr("shared.tight_srt.latest_tight_srt", lambda episode_dir, cid: stale)
     monkeypatch.setattr(
-        publish_upload, "logger", type("L", (), {"info": lambda *a: None, "warning": lambda *a: None})()
+        publish_upload,
+        "logger",
+        type("L", (), {"info": lambda *a: None, "warning": lambda *a: None})(),
     )
 
     seen: dict = {}
@@ -301,7 +303,9 @@ def test_uploaded_captions_fall_back_when_the_episode_has_no_release(tmp_path, m
     )
     monkeypatch.setattr("shared.tight_srt.latest_tight_srt", lambda episode_dir, cid: stale)
     monkeypatch.setattr(
-        publish_upload, "logger", type("L", (), {"info": lambda *a: None, "warning": lambda *a: None})()
+        publish_upload,
+        "logger",
+        type("L", (), {"info": lambda *a: None, "warning": lambda *a: None})(),
     )
     seen: dict = {}
     monkeypatch.setattr(
@@ -321,7 +325,9 @@ BINDING = {
     "database": {"db_type": "Disk", "db_name": "Local Database", "ip_address": None},
     "folder": "",
     "project_name": "20260805 林之晨",
-    "editorial_master_content_hash": "8e7c13c2c55bc0df0c05241cfd91a9bf5c6b484b58058dae42d2bfaa7576805b",
+    "editorial_master_content_hash": (
+        "8e7c13c2c55bc0df0c05241cfd91a9bf5c6b484b58058dae42d2bfaa7576805b"
+    ),
     "staging_root": r"G:\Footages\20260805 林之晨\highlights\staging\finished-cut",
     "cuts": [
         {"cut_id": "long3-fresh-20260828-r4", "timeline_name": "long3-fresh-20260828-r4-base"}
@@ -344,7 +350,10 @@ def test_binding_resolves_the_timeline_uid_live(monkeypatch):
     """uid 每次 committed transaction 都會變，所以只能在 job 時查。"""
     from agents.brook.script_video.finished_cut_production import build_resolve_configuration
 
-    _identities(monkeypatch, [("long3-fresh-20260828-r4-base", "167fe522-c178-47d4-b50c-bad7cec92b9d")])
+    _identities(
+        monkeypatch,
+        [("long3-fresh-20260828-r4-base", "167fe522-c178-47d4-b50c-bad7cec92b9d")],
+    )
     cfg = build_resolve_configuration(BINDING, "20260805 林之晨")
     assert cfg.binding.cuts[0].canonical.uid == "167fe522-c178-47d4-b50c-bad7cec92b9d"
     # project uid 是由 locator 推導的，不從檔案讀——檔案裡少一個會過期的欄位。

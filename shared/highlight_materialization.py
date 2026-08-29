@@ -43,7 +43,7 @@ def _canonical(payload: Mapping[str, object]) -> bytes:
 
 
 def _atomic_json_write(path: Path, payload: Mapping[str, object]) -> None:
-    encoded = (_canonical(payload) + b"\n")
+    encoded = _canonical(payload) + b"\n"
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.",
@@ -74,9 +74,7 @@ def _verify_live_av_sources(timeline: Any, master_media: Path) -> None:
 
     getter = getattr(timeline, "GetItemListInTrack", None)
     if not callable(getter):
-        raise EditorialMasterContractError(
-            "live materialized timeline cannot expose track items"
-        )
+        raise EditorialMasterContractError("live materialized timeline cannot expose track items")
     expected = os.path.normcase(str(master_media.resolve()))
     for track_type in ("video", "audio"):
         items = list(getter(track_type, 1) or [])
@@ -189,14 +187,10 @@ def write_materialization_receipt(
                 "existing materialization receipt is unreadable"
             ) from exc
         if not isinstance(existing, dict):
-            raise EditorialMasterContractError(
-                "existing materialization receipt is not an object"
-            )
+            raise EditorialMasterContractError("existing materialization receipt is not an object")
         _verify_payload_hash(existing)
         if existing.get("contract") != CONTRACT or existing.get("schema_version") != 1:
-            raise EditorialMasterContractError(
-                "existing materialization receipt contract drift"
-            )
+            raise EditorialMasterContractError("existing materialization receipt contract drift")
         if existing == payload:
             return path
         if not replace:
@@ -257,9 +251,7 @@ def verify_materialization_receipt(
         or payload["cut_id"] != cut_id
         or payload[EDITORIAL_MASTER_LINEAGE_KEY] != _source_lineage(source)
     ):
-        raise EditorialMasterContractError(
-            "materialization identity differs from Editorial Master"
-        )
+        raise EditorialMasterContractError("materialization identity differs from Editorial Master")
     root = episode_dir.resolve()
     expected_media = {
         "path": source.media_path.resolve().relative_to(root).as_posix(),
@@ -281,9 +273,7 @@ def verify_materialization_receipt(
         raise EditorialMasterContractError("materialization timeline name drift")
     if expected_format is not None and payload["format"] != expected_format:
         raise EditorialMasterContractError("materialization format drift")
-    if expected_source_range is not None and payload["source_range"] != dict(
-        expected_source_range
-    ):
+    if expected_source_range is not None and payload["source_range"] != dict(expected_source_range):
         raise EditorialMasterContractError("materialization source range drift")
     if timeline is not None and timeline_identity != {
         "name": timeline.GetName(),

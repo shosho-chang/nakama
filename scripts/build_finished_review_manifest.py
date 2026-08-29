@@ -376,8 +376,7 @@ def _apply_component_identity(
         prior = tombstone_by_id[component_id]
         if (
             prior.get("retired_request_id") != transition.get("request_id")
-            or prior.get("source_manifest_sha256")
-            != transition.get("source_manifest_sha256")
+            or prior.get("source_manifest_sha256") != transition.get("source_manifest_sha256")
             or prior.get("transition_sha256") != transition_sha256
         ):
             raise SystemExit(f"identity transition 不可重複使用 tombstone：{component_id}")
@@ -435,23 +434,24 @@ def _apply_component_identity(
                 action = row.get("action")
                 move_target = row.get("move_to_seconds")
                 matched = (
-                    action == "edit_text"
-                    and snapshot["text"] == str(row.get("replacement") or "")
-                ) or (
-                    action == "move"
-                    and isinstance(move_target, (int, float))
-                    and abs(snapshot["t0"] - float(move_target)) <= 0.001
-                    and abs(
-                        (snapshot["t1"] - snapshot["t0"])
-                        - (
-                            float(source["snapshot"]["t1"])
-                            - float(source["snapshot"]["t0"])
-                        )
+                    (
+                        action == "edit_text"
+                        and snapshot["text"] == str(row.get("replacement") or "")
                     )
-                    <= 0.001
-                ) or (
-                    action == "replace_asset"
-                    and str(component.get("slug") or "") == str(row.get("replacement") or "")
+                    or (
+                        action == "move"
+                        and isinstance(move_target, (int, float))
+                        and abs(snapshot["t0"] - float(move_target)) <= 0.001
+                        and abs(
+                            (snapshot["t1"] - snapshot["t0"])
+                            - (float(source["snapshot"]["t1"]) - float(source["snapshot"]["t0"]))
+                        )
+                        <= 0.001
+                    )
+                    or (
+                        action == "replace_asset"
+                        and str(component.get("slug") or "") == str(row.get("replacement") or "")
+                    )
                 )
                 if matched and (
                     new_index not in assigned_new or component.get("component_id") == old_id
@@ -470,16 +470,13 @@ def _apply_component_identity(
         ]
         if unmatched_old:
             raise SystemExit(
-                "identity transition 不允許未授權 component 消失／漂移："
-                + ", ".join(unmatched_old)
+                "identity transition 不允許未授權 component 消失／漂移：" + ", ".join(unmatched_old)
             )
 
         high_water = registry.setdefault("next_ordinals", {}).setdefault(cut_id, {})
         prefixes = registry.setdefault("id_prefixes", {}).setdefault(cut_id, {})
         prefix = prefixes.setdefault(lane, lane.replace("_", "-"))
-        reserved = tombstoned_ids | removed_ids | {
-            row["component_id"] for row in source_rows
-        }
+        reserved = tombstoned_ids | removed_ids | {row["component_id"] for row in source_rows}
         for new_index, component in enumerate(new):
             if new_index in assigned_new:
                 continue
@@ -508,9 +505,12 @@ def _event_lane(event: dict[str, Any] | str) -> str | None:
             if explicit not in LANE_ACTIONS:
                 raise SystemExit(f"finished review event review_lane 不合法：{explicit}")
             return explicit
-        implementation = str(
-            event.get("implementation_kind") or event.get("component") or ""
-        ).strip().lower().replace("-", "_")
+        implementation = (
+            str(event.get("implementation_kind") or event.get("component") or "")
+            .strip()
+            .lower()
+            .replace("-", "_")
+        )
         implementation_lanes = {
             "stock_video": "b_roll",
             "hero_title": "hero_title",
@@ -547,13 +547,7 @@ def _asset_receipt(episode_dir: Path, event: dict[str, Any], lane: str) -> dict[
     if lane != "b_roll":
         return None
     slug = str(event.get("slug") or "").strip()
-    if (
-        not slug
-        or slug in {".", ".."}
-        or Path(slug).name != slug
-        or "/" in slug
-        or "\\" in slug
-    ):
+    if not slug or slug in {".", ".."} or Path(slug).name != slug or "/" in slug or "\\" in slug:
         raise SystemExit("B-roll slug 不得為空、包含 slash 或 ..")
     if any(character in slug for character in "*?[]"):
         raise SystemExit("B-roll slug 不得包含 glob metacharacters")
@@ -587,8 +581,7 @@ def _approved_inventory(episode_dir: Path, master_identity: dict[str, Any]) -> d
         if isinstance(row, dict) and row.get("id")
     }
     candidates = {
-        str(row["id"]): str(row.get("format") or "short")
-        for row in candidate_rows.values()
+        str(row["id"]): str(row.get("format") or "short") for row in candidate_rows.values()
     }
     winners = json.loads(winners_path.read_text(encoding="utf-8")).get("winners", [])
     winner_rows = {
@@ -751,9 +744,7 @@ def _cut_from_packet(
             "guest-namecard／Hero Title／transition／badge／紙紋／generated card 都不計數。"
         )
 
-    _apply_component_identity(
-        cut_dir.name, components, identity_registry, identity_transition
-    )
+    _apply_component_identity(cut_dir.name, components, identity_registry, identity_transition)
 
     timeline = str(packet.get("timeline") or cut_dir.name)
     title = timeline.split(" - ", 1)[-1].replace("（緊·導播）", "").strip()
@@ -788,9 +779,7 @@ def _manifest_payload(
     master_identity = master.identity()
     review_dir = episode_dir / "highlights" / "review"
     formats = _approved_inventory(episode_dir, master_identity)
-    approved_ids = {
-        cut_id for cut_id, cut_format in formats.items() if cut_format == review_format
-    }
+    approved_ids = {cut_id for cut_id, cut_format in formats.items() if cut_format == review_format}
     if cut_ids is not None and (not cut_ids or not cut_ids <= approved_ids):
         raise SystemExit("finished manifest partial inventory cut ids 無效")
     cut_dirs = sorted(
@@ -871,9 +860,7 @@ def build_manifest(
                 source_payload = json.loads(source_path.read_text(encoding="utf-8-sig"))
             except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise SystemExit("component identity source manifest 無法讀取") from exc
-            identity_registry = _build_identity_registry(
-                episode_dir, source_payload, source_path
-            )
+            identity_registry = _build_identity_registry(episode_dir, source_payload, source_path)
         else:
             # A requested-cut revision is an explicit partial migration.  Do
             # not fresh-verify unrelated legacy packets merely to seed the
@@ -914,8 +901,7 @@ def build_manifest(
                 if row.get("retired_request_id") == identity_transition["request_id"]
             ]
             if not repeated or any(
-                row.get("source_registry_sha256")
-                != identity_transition["source_registry_sha256"]
+                row.get("source_registry_sha256") != identity_transition["source_registry_sha256"]
                 for row in repeated
             ):
                 raise SystemExit("identity transition source registry 已漂移")
@@ -1033,12 +1019,8 @@ def verify_finished_review_cut(
             transition_sha256 = _canonical_hash(
                 {
                     "request_id": identity_transition.get("request_id"),
-                    "source_manifest_sha256": identity_transition.get(
-                        "source_manifest_sha256"
-                    ),
-                    "source_registry_sha256": identity_transition.get(
-                        "source_registry_sha256"
-                    ),
+                    "source_manifest_sha256": identity_transition.get("source_manifest_sha256"),
+                    "source_registry_sha256": identity_transition.get("source_registry_sha256"),
                     "feedback_rows": identity_transition.get("feedback_rows", []),
                 }
             )

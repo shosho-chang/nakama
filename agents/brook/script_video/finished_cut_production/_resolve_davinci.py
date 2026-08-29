@@ -279,11 +279,7 @@ class DaVinciResolveTimelineAdapter:
                         for track in protected_tracks
                     ],
                     "items": [
-                        {
-                            key: value
-                            for key, value in asdict(item).items()
-                            if key != "item_id"
-                        }
+                        {key: value for key, value in asdict(item).items() if key != "item_id"}
                         for item in protected_items
                     ],
                 }

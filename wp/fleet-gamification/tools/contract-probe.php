@@ -1,0 +1,169 @@
+<?php
+/**
+ * Contract probe——驗證本 plugin 對 FluentCommunity 的每一個依賴仍然成立。
+ *
+ * 用法（VPS，一分鐘內跑完）：
+ *   cd /var/www/fleet.shosho.tw && sudo -u u2_fleet_shosho wp eval-file \
+ *     wp-content/plugins/fleet-gamification/tools/contract-probe.php
+ *
+ * 時機：①vendor 新版釋出、更新**之前**對新檔案跑 ②更新之後再跑 ③每次部署後的煙霧測試。
+ * 輸出：逐項 PASS/FAIL＋總結。任何 FAIL = 不要更新 vendor / 檢查對應的捕捉或橋接程式。
+ *
+ * ⚠️ 唯讀：本腳本不寫任何資料。
+ */
+
+// 註：本檔跑在 wp eval-file 的 eval 語境——不得使用 declare(strict_types)（必須是檔案第一語句）。
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit( "run via wp eval-file\n" );
+}
+
+$results = array();
+$check   = static function ( string $name, bool $ok, string $note = '' ) use ( &$results ): void {
+	$results[] = array( $name, $ok, $note );
+	echo ( $ok ? 'PASS' : 'FAIL' ) . "  {$name}" . ( $note && ! $ok ? "  ← {$note}" : '' ) . "\n";
+};
+
+$fc_dir  = WP_PLUGIN_DIR . '/fluent-community';
+$pro_dir = WP_PLUGIN_DIR . '/fluent-community-pro';
+
+$src = static function ( string $rel ) use ( $fc_dir ): string {
+	$f = $fc_dir . $rel;
+	return is_readable( $f ) ? (string) file_get_contents( $f ) : '';
+};
+
+echo "=== fleet-gamification contract probe ===\n";
+
+/* ── 1. Models 與資料表 ─────────────────────────────── */
+$check( 'class Feed exists', class_exists( '\FluentCommunity\App\Models\Feed' ) );
+$check( 'class Media exists', class_exists( '\FluentCommunity\App\Models\Media' ) );
+$check( 'class Comment exists', class_exists( '\FluentCommunity\App\Models\Comment' ) );
+$check( 'class Reaction exists', class_exists( '\FluentCommunity\App\Models\Reaction' ) );
+
+global $wpdb;
+$ccols = $wpdb->get_col( "DESCRIBE {$wpdb->prefix}fcom_post_comments", 0 );
+$check(
+	'fcom_post_comments columns（留言掃描）',
+	! array_diff( array( 'id', 'user_id', 'post_id', 'status' ), (array) $ccols )
+);
+
+$cols = $wpdb->get_col( "DESCRIBE {$wpdb->prefix}fcom_post_reactions", 0 );
+$need = array( 'id', 'user_id', 'object_id', 'object_type', 'type', 'created_at' );
+$check(
+	'fcom_post_reactions columns',
+	is_array( $cols ) && ! array_diff( $need, $cols ),
+	'missing: ' . implode( ',', array_diff( $need, (array) $cols ) )
+);
+
+/* ── 2. 捕捉層 hooks（原始碼字面驗證） ───────────────── */
+$feeds_ctrl = $src( '/app/Http/Controllers/FeedsController.php' );
+$react_ctrl = $src( '/app/Http/Controllers/ReactionController.php' );
+$cmt_ctrl   = $src( '/app/Http/Controllers/CommentsController.php' );
+$course_hlp = $src( '/Modules/Course/Services/CourseHelper.php' );
+$feeds_hlp  = $src( '/app/Services/FeedsHelper.php' );
+
+$check( "hook space_feed/created (FeedsController)", str_contains( $feeds_ctrl, "do_action('fluent_community/space_feed/created'" ) );
+$check( "hook space_feed/created (FeedsHelper)", str_contains( $feeds_hlp, "do_action('fluent_community/space_feed/created'" ) );
+$check( "hook feed/react_added(\$react, \$feed)", str_contains( $react_ctrl, "do_action('fluent_community/feed/react_added', \$react, \$feed)" ) );
+$check( "hook feed/react_removed", str_contains( $react_ctrl, "do_action('fluent_community/feed/react_removed'" ) );
+$check( "hook comment_added(\$comment, \$feed, ...)", str_contains( $cmt_ctrl, "do_action('fluent_community/comment_added', \$comment, \$feed" ) );
+$check( "hook course/lesson_completed(\$lesson, \$userId)", str_contains( $course_hlp, "do_action('fluent_community/course/lesson_completed', \$lesson, \$userId)" ) );
+$check( "hook course/completed(\$course, \$userId)", str_contains( $course_hlp, "do_action('fluent_community/course/completed', \$course, \$userId)" ) );
+$check( 'hook track_activity in getTicker', str_contains( $feeds_ctrl, "do_action('fluent_community/track_activity')" ) );
+
+$portal_view = $src( '/app/Views/portal/portal.php' );
+$check( 'hook portal_sidebar in portal view', str_contains( $portal_view, "do_action('fluent_community/portal_sidebar'" ) );
+
+$profile_ctrl = $src( '/app/Http/Controllers/ProfileController.php' );
+$check( 'filter profile_view_data (tab 注入點)', str_contains( $profile_ctrl, "apply_filters('fluent_community/profile_view_data'" ) );
+$check( 'profile_navs 結構仍存在', str_contains( $profile_ctrl, "profile_navs" ) );
+
+$feed_model = $src( '/app/Models/Feed.php' );
+$check( 'Feed::getHumanExcerpt（航海日誌活動欄標題）', str_contains( $feed_model, 'function getHumanExcerpt' ) );
+$check( 'Feed::getPermalink（航海日誌活動欄連結）', str_contains( $feed_model, 'function getPermalink' ) );
+$check( 'Feed::space 關聯（打卡所屬挑戰名稱）', str_contains( $feed_model, 'function space()' ) );
+
+$base_space = $src( '/app/Models/BaseSpace.php' );
+$check( 'BaseSpace::getPermalink（啟航宣言引導連結）', str_contains( $base_space, 'function getPermalink' ) );
+
+$quiz_ctrl = is_readable( $pro_dir . '/app/Modules/Quiz/Http/Controllers/QuizController.php' )
+	? (string) file_get_contents( $pro_dir . '/app/Modules/Quiz/Http/Controllers/QuizController.php' )
+	: '';
+$check( 'hook quiz/submitted (Pro)', str_contains( $quiz_ctrl, "do_action('fluent_community/quiz/submitted'" ) );
+
+/* ── 3. 已知縫隙假設（變了代表 vendor 修了，捕捉層要跟著改） ── */
+$check(
+	"react hooks like-gated（收藏仍無 hook 的前提）",
+	str_contains( $react_ctrl, "if (\$type == 'like')" ),
+	'vendor 可能開始對 bookmark 發 hook——檢查 Capture::on_react_added 是否會重複入帳'
+);
+
+/* ── 4. FcBridge 留言通道 ───────────────────────────── */
+$routes  = rest_get_server()->get_routes( 'fluent-community/v2' );
+$has_cmt = false;
+foreach ( array_keys( $routes ) as $r ) {
+	if ( str_contains( $r, 'feeds' ) && str_ends_with( $r, '/comments' ) ) {
+		$has_cmt = true;
+		break;
+	}
+}
+$check( 'REST route feeds/{id}/comments', $has_cmt );
+$check( "comment payload key = 'comment'", str_contains( $cmt_ctrl, "Arr::get(\$data, 'comment')" ) );
+
+/* ── 4b. FluentPlayer progression 縫隙（影片觀看橋接的三個依賴） ──
+ *
+ * 我們不修改 vendor，但完全依賴這三樣東西存在：端點、判定廣播、policy filter。
+ * 任何一項 FAIL＝class-video-progress.php 會靜默失效（不會報錯、只是不再記錄）。
+ */
+$flp_dir  = WP_PLUGIN_DIR . '/fluent-player';
+$flp_src  = static function ( string $rel ) use ( $flp_dir ): string {
+	$f = $flp_dir . $rel;
+	return is_readable( $f ) ? (string) file_get_contents( $f ) : '';
+};
+$flp_actions = $flp_src( '/app/Hooks/actions.php' );
+$flp_prog    = $flp_src( '/app/Services/Progression/ProgressionService.php' );
+
+$check(
+	'FluentPlayer 啟用（FLUENT_PLAYER_VERSION）',
+	defined( 'FLUENT_PLAYER_VERSION' )
+);
+$check(
+	'progression 端點無條件註冊（ProgressionHandler）',
+	str_contains( $flp_actions, 'ProgressionHandler())->register()' ),
+	'端點沒註冊＝tracker 送出去無人接收'
+);
+$check(
+	'wp_ajax_fluent_player_progression 掛上',
+	has_action( 'wp_ajax_fluent_player_progression' ) !== false
+);
+$check(
+	"hook fluent_player/watch_recorded(\$mediaId, \$userId, [...])",
+	str_contains( $flp_prog, "do_action('fluent_player/watch_recorded'" ),
+	'判定完不再廣播＝我們永遠收不到觀看事件'
+);
+$check(
+	'filter fluent_player/progression/policy（跨場次累計開關）',
+	str_contains( $flp_prog, "apply_filters(\n            'fluent_player/progression/policy'" )
+		|| str_contains( $flp_prog, "'fluent_player/progression/policy'" ),
+	'沒有這個 filter＝accumulate 無法開，長影片跨場次觀看不會累計'
+);
+$check(
+	'pickDuration 伺服器片長優先（發分判準的地基）',
+	str_contains( $flp_prog, 'function pickDuration' )
+		&& str_contains( $flp_prog, "'source' => 'server'" ),
+	'伺服器不再擁有片長＝durationSource 判準失效'
+);
+
+/* ── 5. 本 plugin 自身 ──────────────────────────────── */
+$check( 'nakama-gam/v1 routes registered', (bool) rest_get_server()->get_routes( 'nakama-gam/v1' ) );
+$check( 'gam tables exist', (bool) $wpdb->get_var( "SHOW TABLES LIKE '{$wpdb->prefix}nakama_gam_grants'" ) );
+
+/* ── 總結 ───────────────────────────────────────────── */
+$fails = array_filter( $results, static fn( $r ) => ! $r[1] );
+echo "=========================================\n";
+echo sprintf( "%d checks, %d FAIL\n", count( $results ), count( $fails ) );
+if ( $fails ) {
+	echo "RESULT: RED — do NOT update vendor / investigate before deploy\n";
+	exit( 1 );
+}
+echo "RESULT: GREEN\n";

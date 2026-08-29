@@ -828,3 +828,89 @@ body.sho .kbd-help-foot kbd {
   body.sho .icon-btn { padding: 6px 9px; }
   body.sho .reader-shell { padding-bottom: 3.2rem; }       /* clear the fixed footer */
 }
+
+/* ── 排版控制（修修 2026-08-29）— 字級 ± 與字體選擇 ────────────────────
+   一個視覺群組：A− 100% A＋ ｜ 字體。用 line/text accent，不做 block fill
+   （design-system §49），和 .icon-btn / .mode-badge 同一套 token。 */
+body.sho .reader-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+  flex-shrink: 0;
+}
+body.sho .reader-type .type-btn {
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  padding: 2px 6px;
+  min-width: 28px;
+  justify-content: center;
+}
+body.sho .reader-type .type-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+body.sho .reader-type .type-size {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  color: var(--sho-text-2);
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  text-align: center;
+}
+body.sho .reader-type .type-font {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  color: var(--sho-text);
+  background: var(--sho-bg);
+  border: 0;
+  border-left: 1px solid var(--sho-line-2);
+  border-radius: 0;
+  padding: 2px 4px;
+  margin-left: 2px;
+  max-width: 120px;
+  cursor: pointer;
+}
+body.sho .reader-type .type-font:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+
+/* narrow screens: the toolbar already hides .btn-label — keep the type group
+   compact rather than dropping it (font size matters most on a small screen). */
+@media (max-width: 768px) {
+  body.sho .reader-type .type-font { max-width: 92px; }
+}
+
+/* ── 手機閱讀（修修 2026-08-29）────────────────────────────────────────────
+   手機只留三件事：字級、目錄、明暗。其餘（首頁 / Ingest / 觀看筆記 / 反思 /
+   快捷鍵 / 刪除 / 字體選擇）在 375px 的 bar 上塞不下（實測 scrollWidth 435 >
+   clientWidth 375，控制項被擠出畫面），桌機不受影響。 */
+@media (max-width: 768px) {
+  body.sho .reader-bar .desktop-only { display: none !important; }
+
+  /* 標題壓縮讓三個控制項有位置；書架返回保留（否則手機退不出這本書） */
+  body.sho .reader-bar .title { max-width: 40vw; }
+  body.sho .reader-bar .meta,
+  body.sho .reader-bar .mode-badge { display: none; }
+  body.sho .reader-bar .right { gap: 6px; }
+
+}
+
+/* theme.js 透過 [data-theme-toggle-slot] 把切換鈕注入 bar（取代 body 右下角的
+   fixed pill）——解除 fixed 定位，讓它跟其他工具列按鈕同一排。 */
+body.sho .reader-theme-slot { display: inline-flex; align-items: center; flex-shrink: 0; }
+body.sho .reader-theme-slot .sho-theme-toggle {
+  position: static;
+  inset: auto;
+  margin: 0;
+  transform: none;
+}
+
+/* 標註選單在手機上要好按：加大點擊區、避免貼齊螢幕邊緣 */
+@media (max-width: 768px) {
+  body.sho .ann-popup { gap: 8px; padding: 8px; }
+  body.sho .ann-popup button { min-height: 40px; padding: 8px 14px; font-size: 14px; }
+}

@@ -61,9 +61,7 @@ def test_execution_receipt_binds_actual_invocation_and_output(tmp_path: Path) ->
     request = _request(tmp_path)
     receipt = execute_memo_bundled_runner(
         request,
-        invoke=_successful_invoker(
-            b"1\n00:00:00,000 --> 00:00:01,000\nA\n"
-        ),
+        invoke=_successful_invoker(b"1\n00:00:00,000 --> 00:00:01,000\nA\n"),
     )
 
     assert receipt.exit_code == 0
@@ -79,15 +77,11 @@ def test_execution_receipt_binds_actual_invocation_and_output(tmp_path: Path) ->
     "artifact",
     ["runner", "model", "input_wav", "output_srt", "stdout_output", "stderr_output"],
 )
-def test_execution_receipt_rejects_any_artifact_drift(
-    tmp_path: Path, artifact: str
-) -> None:
+def test_execution_receipt_rejects_any_artifact_drift(tmp_path: Path, artifact: str) -> None:
     request = _request(tmp_path)
     execute_memo_bundled_runner(
         request,
-        invoke=_successful_invoker(
-            b"1\n00:00:00,000 --> 00:00:01,000\nA\n"
-        ),
+        invoke=_successful_invoker(b"1\n00:00:00,000 --> 00:00:01,000\nA\n"),
     )
     path = Path(getattr(request, artifact))
     path.write_bytes(path.read_bytes() + b"drift")
@@ -99,20 +93,14 @@ def test_execution_receipt_rejects_argv_or_duplicate_key_tamper(tmp_path: Path) 
     request = _request(tmp_path)
     receipt = execute_memo_bundled_runner(
         request,
-        invoke=_successful_invoker(
-            b"1\n00:00:00,000 --> 00:00:01,000\nA\n"
-        ),
+        invoke=_successful_invoker(b"1\n00:00:00,000 --> 00:00:01,000\nA\n"),
     )
-    request.receipt_output.write_bytes(
-        canonical_json_bytes(receipt).replace(b'"zh"', b'"en"', 1)
-    )
+    request.receipt_output.write_bytes(canonical_json_bytes(receipt).replace(b'"zh"', b'"en"', 1))
     with pytest.raises((AdapterInputError, AdapterIntegrityError)):
         load_verified_memo_bundled_runner_execution(request=request)
 
     request.receipt_output.write_bytes(
-        canonical_json_bytes(receipt).replace(
-            b'{"argv":', b'{"argv":[],"argv":', 1
-        )
+        canonical_json_bytes(receipt).replace(b'{"argv":', b'{"argv":[],"argv":', 1)
     )
     with pytest.raises(AdapterInputError, match="duplicate JSON key"):
         load_verified_memo_bundled_runner_execution(request=request)
@@ -138,9 +126,7 @@ def test_execution_does_not_overwrite_any_output(tmp_path: Path) -> None:
     with pytest.raises(FileExistsError):
         execute_memo_bundled_runner(
             request,
-            invoke=_successful_invoker(
-                b"1\n00:00:00,000 --> 00:00:01,000\nA\n"
-            ),
+            invoke=_successful_invoker(b"1\n00:00:00,000 --> 00:00:01,000\nA\n"),
         )
 
 
@@ -155,15 +141,11 @@ def test_nondeterministic_outputs_have_distinct_valid_execution_identities(
     second = _request(second_dir)
     first_receipt = execute_memo_bundled_runner(
         first,
-        invoke=_successful_invoker(
-            b"1\n00:00:00,000 --> 00:00:01,000\nA\n"
-        ),
+        invoke=_successful_invoker(b"1\n00:00:00,000 --> 00:00:01,000\nA\n"),
     )
     second_receipt = execute_memo_bundled_runner(
         second,
-        invoke=_successful_invoker(
-            b"1\n00:00:00,000 --> 00:00:01,000\nA this time\n"
-        ),
+        invoke=_successful_invoker(b"1\n00:00:00,000 --> 00:00:01,000\nA this time\n"),
     )
     assert first_receipt.output_srt_sha256 != second_receipt.output_srt_sha256
     assert load_verified_memo_bundled_runner_execution(request=first) == first_receipt

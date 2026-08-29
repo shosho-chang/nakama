@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -377,3 +378,244 @@ def test_move_time_round_trips() -> None:
 
     for seconds in (0.0, 5.5, 109.0, 492.31, 3723.0):
         assert parse_move_seconds(format_move_seconds(seconds)) == pytest.approx(seconds)
+
+
+# --- Short finished review（main #1175 帶進來的第二個審核面）-------------------
+# 這一段測的是 run_short_review packet 那條路；長片走上面的 v3 current Release。
+
+
+def _write_manifest(episode: Path, *, feedback_file: str | None = None) -> Path:
+    review = episode / "highlights" / "review"
+    review.mkdir(parents=True, exist_ok=True)
+    cuts = []
+    for cut_id, title in (("R11", "將太的壽司"), ("R12", "短影音擴圈"), ("R3", "爸爸做的是對的")):
+        cut_dir = review / cut_id
+        cut_dir.mkdir(exist_ok=True)
+        preview = cut_dir / f"{cut_id}.mp4"
+        preview.write_bytes((cut_id + "-preview").encode() * 20)
+        subtitles = cut_dir / "subs.srt"
+        subtitles.write_text("1\n00:00:01,000 --> 00:00:02,000\n修修的字幕\n", encoding="utf-8")
+        components = [
+            {
+                "component_id": f"{cut_id}-broll",
+                "lane": "b_roll",
+                "kind": "video",
+                "slug": "sushi-closeup",
+                "note": "對齊將太的壽司",
+                "t0": 10.0,
+                "t1": 14.0,
+            },
+            {
+                "component_id": f"{cut_id}-hero",
+                "lane": "hero_title",
+                "text": "職人精神",
+                "t0": 20.0,
+                "t1": 23.5,
+            },
+            {
+                "component_id": f"{cut_id}-transition",
+                "lane": "fullscreen_transition",
+                "vars": {"kicker": "01", "title": "從漫畫學經營"},
+                "t0": 30.0,
+                "t1": 33.0,
+            },
+            {
+                "component_id": f"{cut_id}-badge",
+                "lane": "badge",
+                "slug": "brand-badge",
+                "t0": 0.0,
+                "t1": 8.0,
+            },
+        ]
+        cuts.append(
+            {
+                "cut_id": cut_id,
+                "title": title,
+                "artifacts": {
+                    "preview": {
+                        "path": str(preview),
+                        "bytes": preview.stat().st_size,
+                        "sha256": _sha(preview),
+                        "duration_seconds": 90.0,
+                    },
+                    "subtitles": {
+                        "path": str(subtitles),
+                        "bytes": subtitles.stat().st_size,
+                        "sha256": _sha(subtitles),
+                    },
+                },
+                "components": components,
+            }
+        )
+    payload = {
+        "schema": "nakama.finished_cut_review_manifest.v1",
+        "episode_id": episode.name,
+        "stage": 5,
+        "gate": {
+            "kind": "finished_cut_review",
+            "status": "ready_for_review",
+            "feedback_file": feedback_file or str(review / "finished_review_feedback.v1.json"),
+        },
+        "cuts": cuts,
+        "feedback_contract": {
+            "review_lanes": ["b_roll", "hero_title", "fullscreen_transition"],
+            "component_actions": {
+                "b_roll": ["approve", "remove", "replace_asset", "change_type", "move", "comment"],
+                "hero_title": ["approve", "remove", "edit_text", "move", "comment"],
+                "fullscreen_transition": ["approve", "remove", "edit_text", "move", "comment"],
+            },
+            "gate_actions": ["request_changes", "approve_cut", "approve_all"],
+        },
+    }
+    manifest = review / "finished_review_manifest_20260817.json"
+    manifest.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    return manifest
+
+
+def _write_short_packet(episode: Path, cut_id: str = "KS1") -> Path:
+    review = episode / "highlights" / "review" / cut_id
+    review.mkdir(parents=True, exist_ok=True)
+    preview = review / "短1_preview.mp4"
+    preview.write_bytes(b"short-preview" * 40)
+    subtitles = review / "subs.srt"
+    subtitles.write_text("1\n00:00:00,000 --> 00:00:02,000\n但是後來就發現說\n", encoding="utf-8")
+    events = {
+        "timeline": "短1 - 你做再多內容，觀眾入口的也只有這一個（緊·導播）",
+        "duration_sec": 57.3,
+        "preview": preview.name,
+        "events": [
+            {"type": "card-tier2", "slug": "但是後來就發現說", "t0": 0.0, "t1": 6.87, "note": ""},
+            {"type": "video", "slug": "ks1-sushi-craft", "t0": 6.5, "t1": 9.9, "note": "握壽司"},
+            {
+                "type": "icon_motion",
+                "slug": "ks1-sushi-icon",
+                "t0": 10.0,
+                "t1": 13.2,
+                "note": "單一主壽司",
+            },
+            {"type": "punch-cut", "slug": "", "t0": 25.5, "t1": 30.0, "note": "觀眾收到訊息"},
+            {"type": "cut", "slug": "", "t0": 30.93, "t1": 30.93, "note": "換鏡"},
+        ],
+    }
+    (review / "events.json").write_text(json.dumps(events, ensure_ascii=False), encoding="utf-8")
+    return review
+
+
+@pytest.fixture
+def finished_episode(tmp_path):
+    episode = tmp_path / "20260721 鄭國威"
+    manifest = _write_manifest(episode)
+    return tmp_path, episode, manifest
+
+
+@pytest.fixture
+def client(monkeypatch, finished_episode):
+    root, _, _ = finished_episode
+    monkeypatch.setenv("PODCAST_EPISODES_ROOT", str(root))
+    monkeypatch.setenv("WEB_PASSWORD", "gate-password")
+    monkeypatch.setenv("WEB_SECRET", "gate-secret")
+    import thousand_sunny.auth as auth_module
+    import thousand_sunny.routers.highlight_review as review_module
+
+    importlib.reload(auth_module)
+    importlib.reload(review_module)
+    app = FastAPI()
+    app.include_router(review_module.page_router)
+    return TestClient(app)
+
+
+def test_short_review_view_discovers_packets_and_exposes_short_component_lanes(
+    client, finished_episode
+):
+    _, episode, _ = finished_episode
+    packet = _write_short_packet(episode)
+
+    response = client.get(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished?format=short",
+        cookies=_auth_cookie(),
+    )
+
+    assert response.status_code == 200
+    assert "短影片 Review" in response.text
+    assert "KS1" in response.text
+    assert "字卡與斷句" in response.text
+    assert "B-ROLL" in response.text
+    assert "ICON／動畫" in response.text
+    assert "剪輯節奏" in response.text
+    assert 'class="player-shell player-shell--short"' in response.text
+    assert ".finished-gate { box-sizing: border-box; width: 100%;" in response.text
+    assert 'class="cut-tab__meta sho-mono"' in response.text
+    assert ".sho .cut-tab" in response.text
+    assert 'class="cut-tab__title"' in response.text
+    assert "目前 REVIEW" not in response.text
+    assert '.sho .cut-tab[aria-selected="true"]::before' not in response.text
+    assert "先播放每支直式初剪" not in response.text
+    caption_tag = re.search(r'<track id="review-captions"[^>]*>', response.text)
+    assert caption_tag
+    assert " default" not in caption_tag.group(0)
+    assert "KS1-title-card-001" in response.text
+    assert "KS1-b-roll-001" in response.text
+    assert "KS1-visual-effect-001" in response.text
+    assert "KS1-pacing-001" in response.text
+    media = client.get(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished/media/KS1?format=short",
+        cookies=_auth_cookie(),
+    )
+    assert media.status_code == 200
+    assert media.content == (packet / "短1_preview.mp4").read_bytes()
+
+
+def test_short_review_feedback_is_append_only_and_separate_from_long_feedback(
+    client, finished_episode
+):
+    _, episode, _ = finished_episode
+    _write_short_packet(episode)
+    page = client.get(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished?format=short",
+        cookies=_auth_cookie(),
+    )
+    assert page.status_code == 200, page.text
+    manifest_match = re.search(r'name="manifest_sha256"\s+value="([0-9a-f]{64})"', page.text)
+    assert manifest_match, page.text
+    manifest_sha = manifest_match.group(1)
+    response = client.post(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished/review?format=short",
+        data={
+            "manifest_sha256": manifest_sha,
+            "submit_action": "save_draft",
+            "cut_status__KS1": "needs_changes",
+            "component_action__KS1-title-card-001": "edit_text",
+            "component_replacement__KS1-title-card-001": "把所以移到下一張",
+            "component_comment__KS1-title-card-001": "語意斷點不對",
+            "component_remember__KS1-title-card-001": "on",
+        },
+        cookies=_auth_cookie(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "format=short" in response.headers["location"]
+    short_feedback = episode / "highlights/review/short_finished_review_feedback.v1.json"
+    assert short_feedback.exists()
+    audit = json.loads(short_feedback.read_text(encoding="utf-8"))
+    assert audit["revisions"][0]["component_feedback"][0]["lane"] == "title_card"
+    assert not (episode / "highlights/review/finished_review_feedback.v1.json").exists()
+
+
+def test_finished_review_rejects_unknown_format(client):
+    response = client.get(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished?format=sideways",
+        cookies=_auth_cookie(),
+    )
+    assert response.status_code == 400
+
+
+def test_lightweight_review_app_mounts_gate_without_full_agent_surfaces(monkeypatch):
+    monkeypatch.setenv("NAKAMA_DEV_AUTH_BYPASS", "1")
+    import thousand_sunny.review_app as review_app
+
+    paths = set(review_app.app.openapi()["paths"])
+    assert "/bridge/highlights/{episode_slug}/finished" in paths
+    assert "/bridge/highlights/{episode_slug}/finished/media/{cut_id}" in paths
+    assert "/login" in paths
+    assert TestClient(review_app.app).get("/healthz").json()["surface"] == "finished-review"

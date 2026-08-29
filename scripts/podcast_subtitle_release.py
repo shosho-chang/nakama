@@ -54,19 +54,13 @@ EXPORT_CONTRACT = "podcast-subtitle-memo-dual-audit-release-export-v1"
 REQUEST_CONTRACT = "podcast-subtitle-memo-dual-audit-release-request-v1"
 STATUS_CONTRACT = "podcast-subtitle-memo-dual-audit-release-status-v1"
 STAGE5_HANDOFF_CONTRACT = "podcast-subtitle-stage5-memo-dual-audit-handoff-v1"
-AUDIO_DECISIONS_CONTRACT = (
-    "podcast-subtitle-memo-dual-audit-audio-decisions-v1"
-)
+AUDIO_DECISIONS_CONTRACT = "podcast-subtitle-memo-dual-audit-audio-decisions-v1"
 ASR_EVIDENCE_CONTRACT = "podcast-subtitle-memo-dual-audit-asr-evidence-v1"
 ASR_RAW_RESULT_CONTRACT = "podcast-subtitle-memo-dual-audit-asr-raw-result-v1"
-ASR_PROVIDER_OUTPUT_CONTRACT = (
-    "podcast-subtitle-memo-dual-audit-asr-provider-output-v1"
-)
+ASR_PROVIDER_OUTPUT_CONTRACT = "podcast-subtitle-memo-dual-audit-asr-provider-output-v1"
 MAJOR_AUDIO_PLAN_CONTRACT = "podcast-subtitle-memo-dual-audit-major-audio-plan-v1"
 MAJOR_ASR_RUN_CONTRACT = "podcast-subtitle-memo-dual-audit-major-asr-run-v1"
-DEFAULT_MAJOR_AUDIO_PLAN = (
-    "subtitle-work/memo-dual-audit-v1/major-audio/plan.json"
-)
+DEFAULT_MAJOR_AUDIO_PLAN = "subtitle-work/memo-dual-audit-v1/major-audio/plan.json"
 POLICY_VERSION = "memo-dual-audit-release-v1"
 
 _REQUIRED_INPUT_ROLES = (
@@ -145,18 +139,12 @@ _DEFAULT_INPUT_PATHS = {
     "text_audit_a": "subtitle-work/memo-dual-audit-v1/audit-a.json",
     "text_audit_b": "subtitle-work/memo-dual-audit-v1/audit-b.json",
     "base_corrected_srt": "subtitle-work/memo-dual-audit-v1/base-corrected.srt",
-    "base_consensus_ledger": (
-        "subtitle-work/memo-dual-audit-v1/base-consensus-ledger.json"
-    ),
+    "base_consensus_ledger": ("subtitle-work/memo-dual-audit-v1/base-consensus-ledger.json"),
     "base_needs_audio": "subtitle-work/memo-dual-audit-v1/base-needs-audio.json",
     "arbitration": "subtitle-work/memo-dual-audit-v1/arbitration.json",
     "text_corrected_srt": "subtitle-work/memo-dual-audit-v1/text-corrected.srt",
-    "text_arbitration_ledger": (
-        "subtitle-work/memo-dual-audit-v1/text-arbitration-ledger.json"
-    ),
-    "unresolved_components": (
-        "subtitle-work/memo-dual-audit-v1/unresolved-components.json"
-    ),
+    "text_arbitration_ledger": ("subtitle-work/memo-dual-audit-v1/text-arbitration-ledger.json"),
+    "unresolved_components": ("subtitle-work/memo-dual-audit-v1/unresolved-components.json"),
     "audio_decisions": "subtitle-work/memo-dual-audit-v1/audio-decisions.json",
 }
 
@@ -266,9 +254,7 @@ def _file_ref(value: object, *, label: str) -> FileRef:
         except ValueError as exc:
             raise SubtitleReleaseError(f"{label}.sha256 must be hexadecimal") from exc
         digest = digest.lower()
-    if size is not None and (
-        not isinstance(size, int) or isinstance(size, bool) or size < 0
-    ):
+    if size is not None and (not isinstance(size, int) or isinstance(size, bool) or size < 0):
         raise SubtitleReleaseError(f"{label}.size_bytes must be null or non-negative")
     if (digest is None) != (size is None):
         raise SubtitleReleaseError(f"{label} hash and size must be sealed together")
@@ -297,9 +283,7 @@ def load_request(path: Path) -> ReleaseRequest:
         raise SubtitleReleaseError("episode_id must be non-empty")
     if episode_id != root.name:
         raise SubtitleReleaseError("episode_id must exactly match the episode directory")
-    output_directory = _relative_path(
-        payload["output_directory"], label="output_directory"
-    )
+    output_directory = _relative_path(payload["output_directory"], label="output_directory")
     inputs = payload["inputs"]
     if not isinstance(inputs, dict):
         raise SubtitleReleaseError("release request inputs must be an object")
@@ -309,10 +293,7 @@ def load_request(path: Path) -> ReleaseRequest:
         raise SubtitleReleaseError(f"release request missing inputs: {sorted(missing)}")
     if unknown:
         raise SubtitleReleaseError(f"release request has unknown inputs: {sorted(unknown)}")
-    refs = {
-        role: _file_ref(inputs[role], label=f"inputs.{role}")
-        for role in _REQUIRED_INPUT_ROLES
-    }
+    refs = {role: _file_ref(inputs[role], label=f"inputs.{role}") for role in _REQUIRED_INPUT_ROLES}
     _resolve(root, output_directory, label="output_directory")
     return ReleaseRequest(
         request_path=request_path,
@@ -460,9 +441,7 @@ def _unresolved_population(
             raise SubtitleReleaseError(f"unresolved item {index} must be an object")
         decision = item.get("arbitration", item)
         if not isinstance(decision, dict):
-            raise SubtitleReleaseError(
-                f"unresolved item {index} arbitration must be an object"
-            )
+            raise SubtitleReleaseError(f"unresolved item {index} arbitration must be an object")
         cues = _component_cues(
             decision.get("cue_numbers"),
             label=f"unresolved item {index}",
@@ -475,9 +454,7 @@ def _unresolved_population(
     return major, nonmajor
 
 
-def _evidence_ref(
-    request: ReleaseRequest, value: object, *, label: str
-) -> tuple[FileRef, bytes]:
+def _evidence_ref(request: ReleaseRequest, value: object, *, label: str) -> tuple[FileRef, bytes]:
     ref = _file_ref(value, label=label)
     path = _resolve(request.root, ref.path, label=f"{label}.path")
     try:
@@ -529,9 +506,7 @@ def _validate_model_evidence(
         raise SubtitleReleaseError(f"{label} has unsupported evidence contract")
     if evidence["episode_id"] != request.episode_id:
         raise SubtitleReleaseError(f"{label} belongs to another episode")
-    if evidence["component_id"] != component_id or evidence["cue_numbers"] != list(
-        component
-    ):
+    if evidence["component_id"] != component_id or evidence["cue_numbers"] != list(component):
         raise SubtitleReleaseError(f"{label} belongs to another component")
     normalized = evidence["normalized_audio"]
     if not isinstance(normalized, dict) or normalized != {
@@ -553,9 +528,7 @@ def _validate_model_evidence(
         label=f"{label}.clip",
         required={"file", "start_ms", "end_ms", "pcm"},
     )
-    clip_ref, clip_raw = _evidence_ref(
-        request, clip["file"], label=f"{label}.clip.file"
-    )
+    clip_ref, clip_raw = _evidence_ref(request, clip["file"], label=f"{label}.clip.file")
     clip_start, clip_end = clip["start_ms"], clip["end_ms"]
     if (
         not isinstance(clip_start, int)
@@ -599,8 +572,7 @@ def _validate_model_evidence(
         if not isinstance(engine[field], str) or not engine[field].strip():
             raise SubtitleReleaseError(f"{label}.engine.{field} must be non-empty")
     if len(engine["revision"]) != 40 or any(
-        character not in "0123456789abcdef"
-        for character in engine["revision"].lower()
+        character not in "0123456789abcdef" for character in engine["revision"].lower()
     ):
         raise SubtitleReleaseError(f"{label}.engine.revision is not an immutable commit")
     identity = f"{engine['model']} {engine['adapter']}".casefold()
@@ -710,8 +682,7 @@ def _validate_model_evidence(
     target_observation = "".join(
         segment["text"]
         for segment in segments
-        if segment["end_ms"] > relative_target_start
-        and segment["start_ms"] < relative_target_end
+        if segment["end_ms"] > relative_target_start and segment["start_ms"] < relative_target_end
     )
     if not target_observation.strip():
         raise SubtitleReleaseError(f"{label} has no recognition over the target window")
@@ -733,9 +704,7 @@ def _validate_acceptance_worker_audits(
     expected: Mapping[str, object],
 ) -> None:
     contract = (
-        "memo-recognition-worker-audit-v1"
-        if kind == "recognition"
-        else "memo-cue-worker-audit-v1"
+        "memo-recognition-worker-audit-v1" if kind == "recognition" else "memo-cue-worker-audit-v1"
     )
     if receipt.get("episode_id") != request.episode_id:
         raise SubtitleReleaseError(f"Memo {kind} acceptance belongs to another episode")
@@ -897,15 +866,12 @@ def _validate_episode_bindings(
     audio_digest = _sha256(inputs["normalized_audio"])
     if handoff.get("contract") != "normalized-audio-handoff-v1":
         raise SubtitleReleaseError("unsupported normalized handoff contract")
-    if (
-        handoff.get("normalized_audio_sha256") != audio_digest
-        or handoff.get("normalized_audio_size_bytes") != len(inputs["normalized_audio"])
-    ):
+    if handoff.get("normalized_audio_sha256") != audio_digest or handoff.get(
+        "normalized_audio_size_bytes"
+    ) != len(inputs["normalized_audio"]):
         raise SubtitleReleaseError("normalized audio differs from handoff")
     memo_digest = _sha256(inputs["memo_srt"])
-    recognition = _load_json(
-        inputs["memo_recognition_evidence"], label="Memo recognition evidence"
-    )
+    recognition = _load_json(inputs["memo_recognition_evidence"], label="Memo recognition evidence")
     if recognition.get("contract") != "memo-recognition-evidence-v1":
         raise SubtitleReleaseError("unsupported Memo recognition evidence contract")
     if (
@@ -918,17 +884,13 @@ def _validate_episode_bindings(
         or recognition.get("unresolved_findings") != []
     ):
         raise SubtitleReleaseError("Memo recognition evidence binding failed")
-    execution_ref = _fresh_verify_memo_execution(
-        request, recognition.get("memo_execution_receipt")
-    )
+    execution_ref = _fresh_verify_memo_execution(request, recognition.get("memo_execution_receipt"))
     if execution_ref.input_wav_sha256 != audio_digest:
         raise SubtitleReleaseError("Memo execution used another normalized audio file")
     if recognition.get("raw_source_export_sha256") is None:
         if execution_ref.output_srt_sha256 != memo_digest:
             raise SubtitleReleaseError("Memo SRT is not the sealed execution output")
-    elif execution_ref.output_srt_sha256 != recognition.get(
-        "raw_source_export_sha256"
-    ):
+    elif execution_ref.output_srt_sha256 != recognition.get("raw_source_export_sha256"):
         raise SubtitleReleaseError("Memo repaired source is not based on the execution output")
     if (
         not isinstance(recognition.get("tokens"), list)
@@ -938,9 +900,7 @@ def _validate_episode_bindings(
     recognition_acceptance = _load_json(
         inputs["memo_recognition_acceptance"], label="Memo recognition acceptance"
     )
-    cue_acceptance = _load_json(
-        inputs["memo_cue_acceptance"], label="Memo cue acceptance"
-    )
+    cue_acceptance = _load_json(inputs["memo_cue_acceptance"], label="Memo cue acceptance")
     if (
         recognition_acceptance.get("contract") != "accepted-memo-recognition-v1"
         or recognition_acceptance.get("accepted") is not True
@@ -948,8 +908,7 @@ def _validate_episode_bindings(
         != _sha256(inputs["normalized_handoff"])
         or recognition_acceptance.get("normalized_audio_sha256") != audio_digest
         or recognition_acceptance.get("source_export_sha256") != memo_digest
-        or recognition_acceptance.get("source_export_size_bytes")
-        != len(inputs["memo_srt"])
+        or recognition_acceptance.get("source_export_size_bytes") != len(inputs["memo_srt"])
         or not _is_sha256(recognition_acceptance.get("review_manifest_sha256"))
         or not _is_sha256(recognition_acceptance.get("token_export_sha256"))
         or recognition_acceptance.get("reviewer") != "agent-quorum"
@@ -967,12 +926,8 @@ def _validate_episode_bindings(
             "normalized_audio_size_bytes": len(inputs["normalized_audio"]),
             "source_export_sha256": memo_digest,
             "source_export_size_bytes": len(inputs["memo_srt"]),
-            "review_manifest_sha256": recognition_acceptance.get(
-                "review_manifest_sha256"
-            ),
-            "token_export_sha256": recognition_acceptance.get(
-                "token_export_sha256"
-            ),
+            "review_manifest_sha256": recognition_acceptance.get("review_manifest_sha256"),
+            "token_export_sha256": recognition_acceptance.get("token_export_sha256"),
             "memo_execution_receipt_sha256": execution_ref.sha256,
             "reviewed_item_count": memo_cue_count,
         },
@@ -999,9 +954,7 @@ def _validate_episode_bindings(
             "source_export_sha256": memo_digest,
             "source_export_size_bytes": len(inputs["memo_srt"]),
             "review_manifest_sha256": cue_acceptance.get("review_manifest_sha256"),
-            "recognition_manifest_sha256": _sha256(
-                inputs["memo_recognition_evidence"]
-            ),
+            "recognition_manifest_sha256": _sha256(inputs["memo_recognition_evidence"]),
             "reviewed_item_count": memo_cue_count,
         },
     )
@@ -1071,8 +1024,7 @@ def _normalize_recognition_text(value: str) -> str:
     return "".join(
         character
         for character in normalized
-        if not character.isspace()
-        and unicodedata.category(character)[0] not in {"P", "S"}
+        if not character.isspace() and unicodedata.category(character)[0] not in {"P", "S"}
     )
 
 
@@ -1139,10 +1091,9 @@ def _apply_audio_decisions(
         raise SubtitleReleaseError("unsupported audio decisions contract")
     if ledger["episode_id"] != request.episode_id:
         raise SubtitleReleaseError("audio decisions belong to another episode")
-    if (
-        ledger["source_srt_sha256"] != _sha256(text_srt)
-        or ledger["source_unresolved_sha256"] != _sha256(unresolved_raw)
-    ):
+    if ledger["source_srt_sha256"] != _sha256(text_srt) or ledger[
+        "source_unresolved_sha256"
+    ] != _sha256(unresolved_raw):
         raise SubtitleReleaseError("audio decisions source binding failed")
     major_items = ledger["major_components"]
     nonmajor_items = ledger["nonmajor_retained_original_components"]
@@ -1232,9 +1183,7 @@ def _apply_audio_decisions(
             normalized_audio_sha256=normalized_audio_sha256,
             normalized_audio_size_bytes=normalized_audio_size_bytes,
         )
-        if faster["clip"] != _ref_payload(clip_ref) or qwen["clip"] != _ref_payload(
-            clip_ref
-        ):
+        if faster["clip"] != _ref_payload(clip_ref) or qwen["clip"] != _ref_payload(clip_ref):
             raise SubtitleReleaseError("dual-ASR evidence does not share exact clip")
         supported = (
             _dual_asr_supported_candidate(
@@ -1248,20 +1197,14 @@ def _apply_audio_decisions(
         expected_decision = (
             "accept_replacement" if supported is not None else "retain_memo_original"
         )
-        expected_reason = (
-            "dual_asr_consensus" if supported is not None else "dual_asr_conflict"
-        )
-        expected_replacement = (
-            {component[0]: supported} if supported is not None else {}
-        )
+        expected_reason = "dual_asr_consensus" if supported is not None else "dual_asr_conflict"
+        expected_replacement = {component[0]: supported} if supported is not None else {}
         if (
             decision != expected_decision
             or reason_code != expected_reason
             or replacement != expected_replacement
         ):
-            raise SubtitleReleaseError(
-                "audio decision differs from fresh audit/dual-ASR replay"
-            )
+            raise SubtitleReleaseError("audio decision differs from fresh audit/dual-ASR replay")
         if decision == "accept_replacement":
             if reason_code != "dual_asr_consensus" or not replacement:
                 raise SubtitleReleaseError("accepted audio correction lacks safe quorum")
@@ -1340,9 +1283,7 @@ def _apply_audio_decisions(
 def build_release(request: ReleaseRequest) -> ReleaseBundle:
     inputs = {role: _read_ref(request, role) for role in _REQUIRED_INPUT_ROLES}
     memo_cues = _parse_srt(inputs["memo_srt"])
-    audio_digest, memo_digest = _validate_episode_bindings(
-        request, inputs, len(memo_cues)
-    )
+    audio_digest, memo_digest = _validate_episode_bindings(request, inputs, len(memo_cues))
     text_srt, text_ledger, unresolved, audit_agents = _fresh_text_replay(
         inputs, cue_count=len(memo_cues), episode_id=request.episode_id
     )
@@ -1360,9 +1301,7 @@ def build_release(request: ReleaseRequest) -> ReleaseBundle:
         normalized_audio_size_bytes=len(inputs["normalized_audio"]),
     )
     release_cues = _parse_srt(release_srt)
-    input_files = {
-        role: _ref_payload(request.refs[role]) for role in _REQUIRED_INPUT_ROLES
-    }
+    input_files = {role: _ref_payload(request.refs[role]) for role in _REQUIRED_INPUT_ROLES}
     ledger_payload = {
         "schema_version": 1,
         "contract": RELEASE_CONTRACT,
@@ -1444,12 +1383,8 @@ def build_release(request: ReleaseRequest) -> ReleaseBundle:
         },
         "gates": {
             "major_component_count": audio_summary["major_component_count"],
-            "major_audio_reviewed_count": audio_summary[
-                "major_audio_reviewed_count"
-            ],
-            "nonmajor_retained_original_count": audio_summary[
-                "nonmajor_retained_original_count"
-            ],
+            "major_audio_reviewed_count": audio_summary["major_audio_reviewed_count"],
+            "nonmajor_retained_original_count": audio_summary["nonmajor_retained_original_count"],
             "cue_count": len(release_cues),
             "non_positive_duration_count": 0,
             "overlap_count": 0,
@@ -1547,9 +1482,7 @@ def status(request: ReleaseRequest) -> tuple[int, bytes]:
     paths = _output_paths(request)
     if missing:
         phase = next(
-            phase
-            for phase, roles in _PHASE_ROLES
-            if any(role in missing for role in roles)
+            phase for phase, roles in _PHASE_ROLES if any(role in missing for role in roles)
         )
         payload = {
             "schema_version": 1,
@@ -1559,12 +1492,9 @@ def status(request: ReleaseRequest) -> tuple[int, bytes]:
             "ready": False,
             "complete": False,
             "missing_inputs": missing,
-            "expected_inputs": {
-                role: request.refs[role].path for role in missing
-            },
+            "expected_inputs": {role: request.refs[role].path for role in missing},
             "expected_outputs": {
-                role: path.relative_to(request.root).as_posix()
-                for role, path in paths.items()
+                role: path.relative_to(request.root).as_posix() for role, path in paths.items()
             },
         }
         return 3, _canonical_bytes(payload)
@@ -1588,8 +1518,7 @@ def status(request: ReleaseRequest) -> tuple[int, bytes]:
         "missing_inputs": [],
         "expected_inputs": {},
         "expected_outputs": {
-            role: path.relative_to(request.root).as_posix()
-            for role, path in paths.items()
+            role: path.relative_to(request.root).as_posix() for role, path in paths.items()
         },
         "release_srt_sha256": _sha256(bundle.release_srt),
     }
@@ -1719,9 +1648,7 @@ def prepare_major_audio(
     cue_by_number = {cue.number: cue for cue in cues}
     major, _ = _unresolved_population(unresolved_raw, cue_count=len(cues))
     audio_pcm, _ = _read_pcm_wav(normalized_raw, label="normalized audio")
-    audio_duration_ms = round(
-        audio_pcm["frame_count"] * 1000 / audio_pcm["sample_rate_hz"]
-    )
+    audio_duration_ms = round(audio_pcm["frame_count"] * 1000 / audio_pcm["sample_rate_hz"])
     jobs: list[dict[str, object]] = []
     clip_payloads: list[tuple[Path, bytes]] = []
     for component in sorted(major):
@@ -1735,10 +1662,7 @@ def prepare_major_audio(
         )
         if clip_start > target_start or clip_end < target_end:
             raise SubtitleReleaseError("prepared clip does not cover the major component")
-        relative = (
-            "subtitle-work/memo-dual-audit-v1/major-audio/clips/"
-            f"{component_id}.wav"
-        )
+        relative = f"subtitle-work/memo-dual-audit-v1/major-audio/clips/{component_id}.wav"
         clip_path = _resolve(request.root, relative, label="major clip")
         clip_payloads.append((clip_path, clip_raw))
         jobs.append(
@@ -1804,9 +1728,7 @@ def _local_snapshot(model: str, revision: str) -> Path:
         raise SubtitleReleaseError("huggingface-hub is required for ASR execution") from exc
     try:
         return Path(
-            snapshot_download(
-                repo_id=model, revision=revision, local_files_only=True
-            )
+            snapshot_download(repo_id=model, revision=revision, local_files_only=True)
         ).resolve()
     except Exception as exc:  # pragma: no cover - depends on configured cache
         raise SubtitleReleaseError(
@@ -1838,11 +1760,10 @@ def _create_major_provider_runner(
             compute_type=compute_type,
             local_files_only=True,
         )
+
         def run_faster(**kwargs: object) -> Mapping[str, object]:
             clip = kwargs["clip"]
-            generated, info = recognizer.transcribe(
-                str(clip), language="zh", word_timestamps=True
-            )
+            generated, info = recognizer.transcribe(str(clip), language="zh", word_timestamps=True)
             segments = [
                 {
                     "start_ms": round(segment.start * 1000),
@@ -1893,11 +1814,10 @@ def _create_major_provider_runner(
         max_new_tokens=4096,
         local_files_only=True,
     )
+
     def run_qwen(**kwargs: object) -> Mapping[str, object]:
         clip = kwargs["clip"]
-        result = recognizer.transcribe(
-            audio=str(clip), language=None, return_time_stamps=True
-        )[0]
+        result = recognizer.transcribe(audio=str(clip), language=None, return_time_stamps=True)[0]
         segments = [
             {
                 "start_ms": round(segment.start_time * 1000),
@@ -1911,9 +1831,7 @@ def _create_major_provider_runner(
         return {
             "transcript": transcript,
             "segments": segments,
-            "provider_result": {
-                "detected_language": getattr(result, "language", None)
-            },
+            "provider_result": {"detected_language": getattr(result, "language", None)},
             "runtime": f"qwen-asr/{_package_version('qwen-asr')}",
         }
 
@@ -1945,10 +1863,7 @@ def run_major_asr(
     if family == "qwen" and (
         forced_aligner_revision is None
         or len(forced_aligner_revision) != 40
-        or any(
-            character not in "0123456789abcdef"
-            for character in forced_aligner_revision.lower()
-        )
+        or any(character not in "0123456789abcdef" for character in forced_aligner_revision.lower())
     ):
         raise SubtitleReleaseError(
             "Qwen forced-aligner revision must be an immutable 40-hex commit"
@@ -2277,16 +2192,11 @@ def build_audio_decisions(
     cues = _parse_srt(text_srt)
     cue_text = {cue.number: cue.text for cue in cues}
     major, nonmajor = _unresolved_population(unresolved_raw, cue_count=len(cues))
-    faster_refs, faster_source = _manifest_evidence(
-        request, faster_manifest, family="faster"
-    )
+    faster_refs, faster_source = _manifest_evidence(request, faster_manifest, family="faster")
     qwen_refs, qwen_source = _manifest_evidence(request, qwen_manifest, family="qwen")
     if faster_source["plan"] != qwen_source["plan"]:
         raise SubtitleReleaseError("dual-ASR manifests use different major audio plans")
-    expected_ids = {
-        "cue-" + "-".join(str(number) for number in component)
-        for component in major
-    }
+    expected_ids = {"cue-" + "-".join(str(number) for number in component) for component in major}
     if set(faster_refs) != expected_ids or set(qwen_refs) != expected_ids:
         raise SubtitleReleaseError("dual-ASR manifest population differs from major risks")
     major_decisions: list[dict[str, object]] = []
@@ -2336,12 +2246,8 @@ def build_audio_decisions(
             {
                 "component_id": component_id,
                 "cue_numbers": list(component),
-                "decision": (
-                    "accept_replacement" if accepted else "retain_memo_original"
-                ),
-                "reason_code": (
-                    "dual_asr_consensus" if accepted else "dual_asr_conflict"
-                ),
+                "decision": ("accept_replacement" if accepted else "retain_memo_original"),
+                "reason_code": ("dual_asr_consensus" if accepted else "dual_asr_conflict"),
                 "original": {str(number): cue_text[number] for number in component},
                 "replacements": ({str(component[0]): supported} if accepted else {}),
                 "evidence": {
@@ -2373,9 +2279,7 @@ def build_audio_decisions(
     destination = (
         output.resolve()
         if output is not None
-        else _resolve(
-            request.root, request.refs["audio_decisions"].path, label="audio decisions"
-        )
+        else _resolve(request.root, request.refs["audio_decisions"].path, label="audio decisions")
     )
     try:
         destination.relative_to(request.root)
@@ -2600,9 +2504,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     finalize_parser.add_argument("--request", type=Path, required=True)
     finalize_parser.add_argument("--status-output", type=Path)
-    seal = subparsers.add_parser(
-        "seal", help="seal hashes for every input that currently exists"
-    )
+    seal = subparsers.add_parser("seal", help="seal hashes for every input that currently exists")
     seal.add_argument("--request", type=Path, required=True)
     seal.add_argument("--status-output", type=Path)
     legacy = subparsers.add_parser(
@@ -2746,9 +2648,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         _emit(payload, None)
         return exit_code
     if args.command == "verify-legacy":
-        payload = verify_legacy_bundle(
-            args.legacy_root, expected_sha256=args.expected_srt_sha256
-        )
+        payload = verify_legacy_bundle(args.legacy_root, expected_sha256=args.expected_srt_sha256)
         _emit(payload, args.status_output)
         return 0
     request = load_request(args.request)

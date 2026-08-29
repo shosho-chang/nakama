@@ -446,8 +446,7 @@ class MemoSrtAcceptanceReceiptV1(_StrictModel):
         if any(
             value is not None
             and (
-                len(value) != 64
-                or any(character not in "0123456789abcdef" for character in value)
+                len(value) != 64 or any(character not in "0123456789abcdef" for character in value)
             )
             for value in optional_digests
         ):
@@ -472,10 +471,7 @@ class MemoSrtAcceptanceReceiptV1(_StrictModel):
             self.reviewer != "agent-quorum"
             or len(self.agent_audits) != 2
             or len({audit.worker_id for audit in self.agent_audits}) != 2
-            or any(
-                audit.contract != "memo-cue-worker-audit-v1"
-                for audit in self.agent_audits
-            )
+            or any(audit.contract != "memo-cue-worker-audit-v1" for audit in self.agent_audits)
         ):
             raise ValueError("Memo cue agent quorum requires two independent audits")
         return self

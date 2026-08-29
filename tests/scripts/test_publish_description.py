@@ -65,13 +65,7 @@ def _description_fixture(tmp_path: Path, monkeypatch) -> tuple[Path, dict, list[
         encoding="utf-8",
     )
     (packaging / "approval.json").write_text(
-        json.dumps(
-            {
-                "approvals": [
-                    {"cut_id": "punch-L5", "approved": True, "primary_package": 1}
-                ]
-            }
-        ),
+        json.dumps({"approvals": [{"cut_id": "punch-L5", "approved": True, "primary_package": 1}]}),
         encoding="utf-8",
     )
     target = {

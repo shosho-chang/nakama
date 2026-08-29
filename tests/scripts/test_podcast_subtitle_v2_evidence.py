@@ -167,9 +167,7 @@ def _valid_srt_prepare_argv(root: Path) -> list[str]:
         ]
     )
     source = root / "memo.srt"
-    source.write_text(
-        "1\n00:00:00,100 --> 00:00:00,500\n合法輸出\n", encoding="utf-8"
-    )
+    source.write_text("1\n00:00:00,100 --> 00:00:00,500\n合法輸出\n", encoding="utf-8")
     prompt = "fixture prompt"
     return [
         "prepare-recognition",
@@ -239,16 +237,12 @@ def _recognition_quorum_args(root: Path, review: Path) -> list[str]:
                     "episode_id": root.name,
                     "worker_id": worker,
                     "normalized_audio_sha256": payload["normalized_audio_sha256"],
-                    "normalized_audio_size_bytes": payload[
-                        "normalized_audio_size_bytes"
-                    ],
+                    "normalized_audio_size_bytes": payload["normalized_audio_size_bytes"],
                     "source_export_sha256": payload["source_export_sha256"],
                     "source_export_size_bytes": payload["source_export_size_bytes"],
                     "review_manifest_sha256": hash_file(review),
                     "token_export_sha256": payload["token_export_sha256"],
-                    "memo_execution_receipt_sha256": payload[
-                        "memo_execution_receipt"
-                    ]["sha256"],
+                    "memo_execution_receipt_sha256": payload["memo_execution_receipt"]["sha256"],
                     "reviewed_item_count": len(payload["tokens"]),
                     "qc_passed": True,
                     "accepted": True,
@@ -280,18 +274,14 @@ def _cue_quorum_args(root: Path, review: Path, recognition: Path) -> list[str]:
                     "contract": "memo-cue-worker-audit-v1",
                     "episode_id": root.name,
                     "worker_id": worker,
-                    "normalized_audio_sha256": recognition_payload[
-                        "normalized_audio_sha256"
-                    ],
+                    "normalized_audio_sha256": recognition_payload["normalized_audio_sha256"],
                     "normalized_audio_size_bytes": recognition_payload[
                         "normalized_audio_size_bytes"
                     ],
                     "source_export_sha256": payload["source_export_sha256"],
                     "source_export_size_bytes": payload["source_export_size_bytes"],
                     "review_manifest_sha256": hash_file(review),
-                    "recognition_manifest_sha256": payload[
-                        "recognition_manifest_sha256"
-                    ],
+                    "recognition_manifest_sha256": payload["recognition_manifest_sha256"],
                     "reviewed_item_count": len(payload["cues"]),
                     "qc_passed": True,
                     "accepted": True,
@@ -314,17 +304,20 @@ def test_seal_normalized_creates_a_canonical_verified_handoff(tmp_path: Path) ->
     audio = _wav(tmp_path / "normalized.wav")
     manifest = tmp_path / "normalized-handoff.json"
 
-    assert evidence_cli.main(
-        [
-            "seal-normalized",
-            "--audio",
-            str(audio),
-            "--output",
-            str(manifest),
-            "--accepted-at",
-            "2026-08-19T01:00:00+08:00",
-        ]
-    ) == 0
+    assert (
+        evidence_cli.main(
+            [
+                "seal-normalized",
+                "--audio",
+                str(audio),
+                "--output",
+                str(manifest),
+                "--accepted-at",
+                "2026-08-19T01:00:00+08:00",
+            ]
+        )
+        == 0
+    )
 
     result = VerifiedNormalizedAudioHandoffAdapter(manifest).normalize(
         NormalizeRequest(source_audio=audio, expected_source_hash=hash_file(audio))
@@ -337,17 +330,20 @@ def test_prepare_recognition_binds_review_to_normalized_audio_and_raw_export(
 ) -> None:
     audio = _wav(tmp_path / "normalized.wav")
     handoff = tmp_path / "normalized-handoff.json"
-    assert evidence_cli.main(
-        [
-            "seal-normalized",
-            "--audio",
-            str(audio),
-            "--output",
-            str(handoff),
-            "--accepted-at",
-            "2026-08-19T01:00:00+08:00",
-        ]
-    ) == 0
+    assert (
+        evidence_cli.main(
+            [
+                "seal-normalized",
+                "--audio",
+                str(audio),
+                "--output",
+                str(handoff),
+                "--accepted-at",
+                "2026-08-19T01:00:00+08:00",
+            ]
+        )
+        == 0
+    )
     source_export = tmp_path / "memo.json"
     source_export.write_bytes(b'{"memo":"raw immutable export"}')
     tokens = tmp_path / "memo-tokens.json"
@@ -369,29 +365,32 @@ def test_prepare_recognition_binds_review_to_normalized_audio_and_raw_export(
     )
     review = tmp_path / "memo-recognition-review.json"
 
-    assert evidence_cli.main(
-        [
-            "prepare-recognition",
-            "--normalized-audio",
-            str(audio),
-            "--normalized-manifest",
-            str(handoff),
-            "--source-export",
-            str(source_export),
-            "--source-export-kind",
-            "memo_json",
-            "--tokens-json",
-            str(tokens),
-            "--memo-version",
-            "1.7.5",
-            "--language",
-            "zh",
-            "--prompt",
-            "抹布 陳暐軒 高薪賽道",
-            "--output",
-            str(review),
-        ]
-    ) == 0
+    assert (
+        evidence_cli.main(
+            [
+                "prepare-recognition",
+                "--normalized-audio",
+                str(audio),
+                "--normalized-manifest",
+                str(handoff),
+                "--source-export",
+                str(source_export),
+                "--source-export-kind",
+                "memo_json",
+                "--tokens-json",
+                str(tokens),
+                "--memo-version",
+                "1.7.5",
+                "--language",
+                "zh",
+                "--prompt",
+                "抹布 陳暐軒 高薪賽道",
+                "--output",
+                str(review),
+            ]
+        )
+        == 0
+    )
 
     payload = json.loads(review.read_bytes())
     assert payload["contract"] == "memo-recognition-review-v1"
@@ -609,28 +608,31 @@ def test_accept_recognition_requires_explicit_reviewer_and_builds_importable_evi
     receipt = tmp_path / "memo-recognition-acceptance.json"
     manifest = tmp_path / "memo-recognition.json"
 
-    assert evidence_cli.main(
-        [
-            "accept-recognition",
-            "--review",
-            str(review),
-            "--normalized-audio",
-            str(audio),
-            "--normalized-manifest",
-            str(handoff),
-            "--source-export",
-            str(source_export),
-            "--tokens-json",
-            str(tokens),
-            *_recognition_quorum_args(tmp_path, review),
-            "--accepted-at",
-            "2026-08-19T01:30:00+08:00",
-            "--receipt-output",
-            str(receipt),
-            "--manifest-output",
-            str(manifest),
-        ]
-    ) == 0
+    assert (
+        evidence_cli.main(
+            [
+                "accept-recognition",
+                "--review",
+                str(review),
+                "--normalized-audio",
+                str(audio),
+                "--normalized-manifest",
+                str(handoff),
+                "--source-export",
+                str(source_export),
+                "--tokens-json",
+                str(tokens),
+                *_recognition_quorum_args(tmp_path, review),
+                "--accepted-at",
+                "2026-08-19T01:30:00+08:00",
+                "--receipt-output",
+                str(receipt),
+                "--manifest-output",
+                str(manifest),
+            ]
+        )
+        == 0
+    )
 
     accepted = MemoRecognitionAcceptanceReceiptV1.model_validate_json(
         receipt.read_bytes(), strict=True
@@ -819,22 +821,23 @@ def test_prepare_cues_parses_srt_and_binds_it_to_recognition(tmp_path: Path) -> 
     recognition_path = tmp_path / "memo-recognition.json"
     recognition_path.write_bytes(canonical_json_bytes(recognition))
     srt = tmp_path / "memo-gui.srt"
-    srt.write_text(
-        "1\n00:00:00,100 --> 00:00:00,900\n高薪賽道\n", encoding="utf-8"
-    )
+    srt.write_text("1\n00:00:00,100 --> 00:00:00,900\n高薪賽道\n", encoding="utf-8")
     review_path = tmp_path / "memo-cue-review.json"
 
-    assert evidence_cli.main(
-        [
-            "prepare-cues",
-            "--recognition-manifest",
-            str(recognition_path),
-            "--source-export",
-            str(srt),
-            "--output",
-            str(review_path),
-        ]
-    ) == 0
+    assert (
+        evidence_cli.main(
+            [
+                "prepare-cues",
+                "--recognition-manifest",
+                str(recognition_path),
+                "--source-export",
+                str(srt),
+                "--output",
+                str(review_path),
+            ]
+        )
+        == 0
+    )
 
     review = MemoSrtReviewManifestV1.model_validate_json(review_path.read_bytes(), strict=True)
     assert review.recognition_manifest_sha256 == hash_file(recognition_path)
@@ -847,26 +850,27 @@ def test_accept_cues_requires_explicit_reviewer_and_seals_exact_srt(tmp_path: Pa
     recognition_path, srt, review_path = _prepared_cue_review(tmp_path)
     receipt_path = tmp_path / "memo-cue-acceptance.json"
 
-    assert evidence_cli.main(
-        [
-            "accept-cues",
-            "--review",
-            str(review_path),
-            "--recognition-manifest",
-            str(recognition_path),
-            "--source-export",
-            str(srt),
-            *_cue_quorum_args(tmp_path, review_path, recognition_path),
-            "--accepted-at",
-            "2026-08-19T02:00:00+08:00",
-            "--receipt-output",
-            str(receipt_path),
-        ]
-    ) == 0
-
-    receipt = MemoSrtAcceptanceReceiptV1.model_validate_json(
-        receipt_path.read_bytes(), strict=True
+    assert (
+        evidence_cli.main(
+            [
+                "accept-cues",
+                "--review",
+                str(review_path),
+                "--recognition-manifest",
+                str(recognition_path),
+                "--source-export",
+                str(srt),
+                *_cue_quorum_args(tmp_path, review_path, recognition_path),
+                "--accepted-at",
+                "2026-08-19T02:00:00+08:00",
+                "--receipt-output",
+                str(receipt_path),
+            ]
+        )
+        == 0
     )
+
+    receipt = MemoSrtAcceptanceReceiptV1.model_validate_json(receipt_path.read_bytes(), strict=True)
     assert receipt.reviewer == "agent-quorum"
     assert len(receipt.agent_audits) == 2
     assert receipt.source_export_sha256 == hash_file(srt)
@@ -925,9 +929,7 @@ def _prepared_cue_review(tmp_path: Path) -> tuple[Path, Path, Path]:
     recognition_path = tmp_path / "memo-recognition.json"
     recognition_path.write_bytes(canonical_json_bytes(recognition))
     srt = tmp_path / "memo-gui.srt"
-    srt.write_text(
-        "1\n00:00:00,100 --> 00:00:00,900\n高薪賽道\n", encoding="utf-8"
-    )
+    srt.write_text("1\n00:00:00,100 --> 00:00:00,900\n高薪賽道\n", encoding="utf-8")
     review_path = tmp_path / "memo-cue-review.json"
     evidence_cli.main(
         [
@@ -948,25 +950,28 @@ def test_status_verifies_complete_bundle_and_exports_production_environment(
 ) -> None:
     bundle = _accepted_evidence_bundle(tmp_path)
 
-    assert evidence_cli.main(
-        [
-            "status",
-            "--normalized-audio",
-            str(bundle["audio"]),
-            "--normalized-manifest",
-            str(bundle["handoff"]),
-            "--recognition-manifest",
-            str(bundle["recognition_manifest"]),
-            "--recognition-source-export",
-            str(bundle["recognition_source"]),
-            "--recognition-acceptance-receipt",
-            str(bundle["recognition_receipt"]),
-            "--cue-source-export",
-            str(bundle["cue_source"]),
-            "--cue-acceptance-receipt",
-            str(bundle["cue_receipt"]),
-        ]
-    ) == 0
+    assert (
+        evidence_cli.main(
+            [
+                "status",
+                "--normalized-audio",
+                str(bundle["audio"]),
+                "--normalized-manifest",
+                str(bundle["handoff"]),
+                "--recognition-manifest",
+                str(bundle["recognition_manifest"]),
+                "--recognition-source-export",
+                str(bundle["recognition_source"]),
+                "--recognition-acceptance-receipt",
+                str(bundle["recognition_receipt"]),
+                "--cue-source-export",
+                str(bundle["cue_source"]),
+                "--cue-acceptance-receipt",
+                str(bundle["cue_receipt"]),
+            ]
+        )
+        == 0
+    )
 
     status = json.loads(capsys.readouterr().out)
     assert status["ready"] is True
@@ -989,9 +994,7 @@ def test_status_verifies_complete_bundle_and_exports_production_environment(
             "PODCAST_SUBTITLE_V2_AUDIO_AUDIT_MODEL_VERSION": "2026-07-22",
         }
     )
-    monkeypatch.setattr(
-        "agents.brook.podcast_subtitles.production.os.environ", environment
-    )
+    monkeypatch.setattr("agents.brook.podcast_subtitles.production.os.environ", environment)
     module = build_production(FactoryContextV1(1, tmp_path / "episode", None))
     assert isinstance(module._recognizers[0], MemoRecognizerAdapter)
 
@@ -1078,9 +1081,7 @@ def _accepted_evidence_bundle(tmp_path: Path) -> dict[str, Path]:
         ]
     )
     cue_source = tmp_path / "memo-gui.srt"
-    cue_source.write_text(
-        "1\n00:00:00,100 --> 00:00:00,900\n高薪賽道\n", encoding="utf-8"
-    )
+    cue_source.write_text("1\n00:00:00,100 --> 00:00:00,900\n高薪賽道\n", encoding="utf-8")
     cue_review = tmp_path / "memo-cue-review.json"
     evidence_cli.main(
         [
@@ -1299,9 +1300,7 @@ def test_accept_cues_rejects_unresolved_findings(tmp_path: Path) -> None:
                 str(bundle["recognition_manifest"]),
                 "--source-export",
                 str(bundle["cue_source"]),
-                *_cue_quorum_args(
-                    tmp_path, unresolved_review, bundle["recognition_manifest"]
-                ),
+                *_cue_quorum_args(tmp_path, unresolved_review, bundle["recognition_manifest"]),
                 "--accepted-at",
                 "2026-08-19T02:30:00+08:00",
                 "--receipt-output",
@@ -1382,27 +1381,30 @@ def test_memo_srt_is_a_complete_recognition_import_without_handwritten_tokens(
     )
     review = tmp_path / "memo-recognition-review.json"
 
-    assert evidence_cli.main(
-        [
-            "prepare-recognition",
-            "--normalized-audio",
-            str(audio),
-            "--normalized-manifest",
-            str(handoff),
-            "--source-export",
-            str(memo_srt),
-            "--source-export-kind",
-            "memo_srt",
-            "--memo-version",
-            "1.7.5",
-            "--language",
-            "zh",
-            "--prompt",
-            "抹布 陳暐軒",
-            "--output",
-            str(review),
-        ]
-    ) == 0
+    assert (
+        evidence_cli.main(
+            [
+                "prepare-recognition",
+                "--normalized-audio",
+                str(audio),
+                "--normalized-manifest",
+                str(handoff),
+                "--source-export",
+                str(memo_srt),
+                "--source-export-kind",
+                "memo_srt",
+                "--memo-version",
+                "1.7.5",
+                "--language",
+                "zh",
+                "--prompt",
+                "抹布 陳暐軒",
+                "--output",
+                str(review),
+            ]
+        )
+        == 0
+    )
     review_payload = json.loads(review.read_bytes())
     assert [token["id"] for token in review_payload["tokens"]] == [
         "memo-token-000001",
@@ -1415,26 +1417,29 @@ def test_memo_srt_is_a_complete_recognition_import_without_handwritten_tokens(
 
     receipt = tmp_path / "memo-recognition-acceptance.json"
     manifest = tmp_path / "memo-recognition.json"
-    assert evidence_cli.main(
-        [
-            "accept-recognition",
-            "--review",
-            str(review),
-            "--normalized-audio",
-            str(audio),
-            "--normalized-manifest",
-            str(handoff),
-            "--source-export",
-            str(memo_srt),
-            *_recognition_quorum_args(tmp_path, review),
-            "--accepted-at",
-            "2026-08-19T01:30:00+08:00",
-            "--receipt-output",
-            str(receipt),
-            "--manifest-output",
-            str(manifest),
-        ]
-    ) == 0
+    assert (
+        evidence_cli.main(
+            [
+                "accept-recognition",
+                "--review",
+                str(review),
+                "--normalized-audio",
+                str(audio),
+                "--normalized-manifest",
+                str(handoff),
+                "--source-export",
+                str(memo_srt),
+                *_recognition_quorum_args(tmp_path, review),
+                "--accepted-at",
+                "2026-08-19T01:30:00+08:00",
+                "--receipt-output",
+                str(receipt),
+                "--manifest-output",
+                str(manifest),
+            ]
+        )
+        == 0
+    )
     imported, _ = load_memo_recognition_manifest(manifest)
     assert imported.source_export_sha256 == hash_file(memo_srt)
     assert imported.tokens[1].end_ms == 1_800
@@ -1453,21 +1458,23 @@ def test_repair_memo_srt_merges_zero_duration_cue_forward_with_exact_lineage(
     repaired = tmp_path / "memo-repaired.srt"
     repair_receipt = tmp_path / "memo-repair.json"
 
-    assert evidence_cli.main(
-        [
-            "repair-memo-srt",
-            "--source-export",
-            str(raw),
-            "--output",
-            str(repaired),
-            "--receipt-output",
-            str(repair_receipt),
-        ]
-    ) == 0
+    assert (
+        evidence_cli.main(
+            [
+                "repair-memo-srt",
+                "--source-export",
+                str(raw),
+                "--output",
+                str(repaired),
+                "--receipt-output",
+                str(repair_receipt),
+            ]
+        )
+        == 0
+    )
 
     assert repaired.read_text(encoding="utf-8") == (
-        "1\n00:00:00,100 --> 00:00:00,500\nA\n\n"
-        "2\n00:00:00,500 --> 00:00:00,900\nBC\n"
+        "1\n00:00:00,100 --> 00:00:00,500\nA\n\n2\n00:00:00,500 --> 00:00:00,900\nBC\n"
     )
     receipt = json.loads(repair_receipt.read_bytes())
     assert receipt["raw_source_sha256"] == hash_file(raw)
@@ -1499,31 +1506,34 @@ def test_repair_memo_srt_merges_zero_duration_cue_forward_with_exact_lineage(
         ]
     )
     review = tmp_path / "memo-recognition-review.json"
-    assert evidence_cli.main(
-        [
-            "prepare-recognition",
-            "--normalized-audio",
-            str(audio),
-            "--normalized-manifest",
-            str(handoff),
-            "--source-export",
-            str(repaired),
-            "--source-export-kind",
-            "memo_srt",
-            "--raw-source-export",
-            str(raw),
-            "--repair-receipt",
-            str(repair_receipt),
-            "--memo-version",
-            "1.7.5",
-            "--language",
-            "zh",
-            "--prompt",
-            "test",
-            "--output",
-            str(review),
-        ]
-    ) == 0
+    assert (
+        evidence_cli.main(
+            [
+                "prepare-recognition",
+                "--normalized-audio",
+                str(audio),
+                "--normalized-manifest",
+                str(handoff),
+                "--source-export",
+                str(repaired),
+                "--source-export-kind",
+                "memo_srt",
+                "--raw-source-export",
+                str(raw),
+                "--repair-receipt",
+                str(repair_receipt),
+                "--memo-version",
+                "1.7.5",
+                "--language",
+                "zh",
+                "--prompt",
+                "test",
+                "--output",
+                str(review),
+            ]
+        )
+        == 0
+    )
     review_payload = json.loads(review.read_bytes())
     assert review_payload["raw_source_export_sha256"] == hash_file(raw)
     assert review_payload["source_repair_receipt_sha256"] == hash_file(repair_receipt)
@@ -1531,74 +1541,83 @@ def test_repair_memo_srt_merges_zero_duration_cue_forward_with_exact_lineage(
 
     recognition_receipt = tmp_path / "memo-recognition-acceptance.json"
     recognition_manifest = tmp_path / "memo-recognition.json"
-    assert evidence_cli.main(
-        [
-            "accept-recognition",
-            "--review",
-            str(review),
-            "--normalized-audio",
-            str(audio),
-            "--normalized-manifest",
-            str(handoff),
-            "--source-export",
-            str(repaired),
-            "--raw-source-export",
-            str(raw),
-            "--repair-receipt",
-            str(repair_receipt),
-            *_recognition_quorum_args(tmp_path, review),
-            "--accepted-at",
-            "2026-08-19T01:30:00+08:00",
-            "--receipt-output",
-            str(recognition_receipt),
-            "--manifest-output",
-            str(recognition_manifest),
-        ]
-    ) == 0
+    assert (
+        evidence_cli.main(
+            [
+                "accept-recognition",
+                "--review",
+                str(review),
+                "--normalized-audio",
+                str(audio),
+                "--normalized-manifest",
+                str(handoff),
+                "--source-export",
+                str(repaired),
+                "--raw-source-export",
+                str(raw),
+                "--repair-receipt",
+                str(repair_receipt),
+                *_recognition_quorum_args(tmp_path, review),
+                "--accepted-at",
+                "2026-08-19T01:30:00+08:00",
+                "--receipt-output",
+                str(recognition_receipt),
+                "--manifest-output",
+                str(recognition_manifest),
+            ]
+        )
+        == 0
+    )
     accepted_recognition, _ = load_memo_recognition_manifest(recognition_manifest)
     assert accepted_recognition.raw_source_export_sha256 == hash_file(raw)
     assert accepted_recognition.source_repair_receipt_sha256 == hash_file(repair_receipt)
 
     cue_review = tmp_path / "memo-cue-review.json"
-    assert evidence_cli.main(
-        [
-            "prepare-cues",
-            "--recognition-manifest",
-            str(recognition_manifest),
-            "--source-export",
-            str(repaired),
-            "--raw-source-export",
-            str(raw),
-            "--repair-receipt",
-            str(repair_receipt),
-            "--output",
-            str(cue_review),
-        ]
-    ) == 0
+    assert (
+        evidence_cli.main(
+            [
+                "prepare-cues",
+                "--recognition-manifest",
+                str(recognition_manifest),
+                "--source-export",
+                str(repaired),
+                "--raw-source-export",
+                str(raw),
+                "--repair-receipt",
+                str(repair_receipt),
+                "--output",
+                str(cue_review),
+            ]
+        )
+        == 0
+    )
     cue_payload = json.loads(cue_review.read_bytes())
     assert cue_payload["raw_source_export_sha256"] == hash_file(raw)
     assert cue_payload["source_repair_receipt_sha256"] == hash_file(repair_receipt)
     cue_receipt = tmp_path / "memo-cue-acceptance.json"
-    assert evidence_cli.main(
-        [
-            "accept-cues",
-            "--review",
-            str(cue_review),
-            "--recognition-manifest",
-            str(recognition_manifest),
-            "--source-export",
-            str(repaired),
-            "--raw-source-export",
-            str(raw),
-            "--repair-receipt",
-            str(repair_receipt),
-            *_cue_quorum_args(tmp_path, cue_review, recognition_manifest),
-            "--accepted-at",
-            "2026-08-19T02:00:00+08:00",
-            "--receipt-output",
-            str(cue_receipt),
-        ]
-    ) == 0
+    assert (
+        evidence_cli.main(
+            [
+                "accept-cues",
+                "--review",
+                str(cue_review),
+                "--recognition-manifest",
+                str(recognition_manifest),
+                "--source-export",
+                str(repaired),
+                "--raw-source-export",
+                str(raw),
+                "--repair-receipt",
+                str(repair_receipt),
+                *_cue_quorum_args(tmp_path, cue_review, recognition_manifest),
+                "--accepted-at",
+                "2026-08-19T02:00:00+08:00",
+                "--receipt-output",
+                str(cue_receipt),
+            ]
+        )
+        == 0
+    )
     accepted_cues = MemoSrtAcceptanceReceiptV1.model_validate_json(
         cue_receipt.read_bytes(), strict=True
     )
@@ -1610,8 +1629,7 @@ def test_repair_memo_srt_merges_zero_duration_cue_forward_with_exact_lineage(
     ("raw", "error"),
     [
         (
-            "1\n00:00:00,500 --> 00:00:00,500\nA\n\n"
-            "2\n00:00:00,600 --> 00:00:00,900\nB\n",
+            "1\n00:00:00,500 --> 00:00:00,500\nA\n\n2\n00:00:00,600 --> 00:00:00,900\nB\n",
             "no exact adjacent positive anchor",
         ),
         (
@@ -1619,8 +1637,7 @@ def test_repair_memo_srt_merges_zero_duration_cue_forward_with_exact_lineage(
             "negative duration",
         ),
         (
-            "1\n00:00:00,100 --> 00:00:00,600\nA\n\n"
-            "2\n00:00:00,500 --> 00:00:00,500\nB\n",
+            "1\n00:00:00,100 --> 00:00:00,600\nA\n\n2\n00:00:00,500 --> 00:00:00,500\nB\n",
             "overlaps",
         ),
     ],
@@ -1638,8 +1655,7 @@ def test_verified_memo_srt_repair_rejects_stale_or_tampered_lineage(
 ) -> None:
     raw = tmp_path / "memo-raw.srt"
     raw.write_text(
-        "1\n00:00:00,500 --> 00:00:00,500\nA\n\n"
-        "2\n00:00:00,500 --> 00:00:00,900\nB\n",
+        "1\n00:00:00,500 --> 00:00:00,500\nA\n\n2\n00:00:00,500 --> 00:00:00,900\nB\n",
         encoding="utf-8",
     )
     repaired = tmp_path / "memo-repaired.srt"
@@ -1664,8 +1680,7 @@ def test_verified_memo_srt_repair_rejects_stale_or_tampered_lineage(
     [
         ("1\nmissing timing\ntext\n", "invalid Memo recognition SRT"),
         (
-            "1\n00:00:00,100 --> 00:00:01,000\nA\n\n"
-            "2\n00:00:00,900 --> 00:00:01,500\nB\n",
+            "1\n00:00:00,100 --> 00:00:01,000\nA\n\n2\n00:00:00,900 --> 00:00:01,500\nB\n",
             "overlaps",
         ),
         ("1\n00:00:00,100 --> 00:00:02,500\n太長\n", "exceeds normalized audio"),

@@ -169,6 +169,7 @@
         running = false;
         if (intervalId) { clearInterval(intervalId); intervalId = null; }
         remainingSec = 0;
+        if (window.ShoFocusMusic) ShoFocusMusic.stop();  // block over — silence the music
         render();
 
         var taskName = taskSelect ? taskSelect.value : '';
@@ -197,6 +198,8 @@
         postComplete(taskName);
         return;
       }
+      // 修修 (2026-08-25): 音樂跟著倒數走——剩 60s 切 uplifting、最後 5s 漸弱
+      if (window.ShoFocusMusic) ShoFocusMusic.sync(remainingSec);
       render();
     }
 
@@ -204,6 +207,7 @@
       if (running) {
         running = false;
         if (intervalId) { clearInterval(intervalId); intervalId = null; }
+        if (window.ShoFocusMusic) ShoFocusMusic.pause();  // ⏸ holds the music too
       } else {
         if (taskSelect && !taskSelect.value) {
           showToast('⚠ 請先選擇 active task 才能啟動番茄鐘');
@@ -211,6 +215,8 @@
         }
         running = true;
         intervalId = setInterval(tick, 1000);
+        // 修修 (2026-08-25): 開始計時 → focus music（續播暫停曲、否則隨機抽一首）
+        if (window.ShoFocusMusic) ShoFocusMusic.resume();
       }
       render();
     });

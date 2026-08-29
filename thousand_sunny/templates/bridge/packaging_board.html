@@ -567,7 +567,9 @@
       </details>
       {% endif %}
 
-      <form method="post" action="/bridge/packaging/{{ episode_slug }}/approve" class="pkg-approve-form">
+      {# composition gate 與 server 對齊：long 且非 full 才需要 receipt（packaging_approve 的豁免） #}
+      <form method="post" action="/bridge/packaging/{{ episode_slug }}/approve" class="pkg-approve-form"
+            data-composition-required="{{ 'true' if cut.cut_id != 'full' else 'false' }}">
         <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
         <fieldset class="pkg-cards">
           <legend class="sho-mono-up">選 primary package（你的 Approve 具有最高權限；機械檢查只作提醒）</legend>
@@ -611,7 +613,7 @@
         {% endif %}
 
         <div class="field">
-          <label class="field-label" for="note-{{ cut.cut_id }}">REJECT NOTE ·（否決理由，taste capture — 選填）</label>
+          <label class="field-label" for="note-{{ cut.cut_id }}">REJECT NOTE ·（否決理由，taste capture — Reject 必填，approve 免填）</label>
           <textarea class="sho-input pkg-note" id="note-{{ cut.cut_id }}" name="reject_note"
                     rows="2" maxlength="2000">{{ approval.reject_note or '' if approval else '' }}</textarea>
         </div>
@@ -639,10 +641,11 @@
         <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
         <input type="hidden" name="primary_package" value="1">
         <div class="field">
-          <label class="field-label" for="snote-{{ cut.cut_id }}">REJECT NOTE ·（選填）</label>
+          <label class="field-label" for="snote-{{ cut.cut_id }}">REJECT NOTE ·（Reject 必填，approve 免填）</label>
           <textarea class="sho-input pkg-note" id="snote-{{ cut.cut_id }}" name="reject_note"
                     rows="2" maxlength="2000">{{ approval.reject_note or '' if approval else '' }}</textarea>
         </div>
+        <p class="sho-mono pkg-approve-error" role="alert" aria-live="assertive"></p>
         <div class="pkg-actions">
           <button class="sho-btn" type="submit" name="decision" value="approve">Approve</button>
           <button class="sho-btn sho-btn--ghost" type="submit" name="decision" value="reject">Reject</button>
@@ -1519,6 +1522,20 @@
     window.setTimeout(pollRelease, 5000);
   };
   window.setTimeout(pollRelease, 5000);
+
+  // server 端 reject 必填 feedback（400）；前端先擋住，避免整頁跳 JSON 錯誤丟失表單狀態
+  for (const form of document.querySelectorAll(".pkg-approve-form")) {
+    form.addEventListener("submit", (event) => {
+      if (event.submitter?.value !== "reject") return;
+      const note = form.querySelector('textarea[name="reject_note"]');
+      if (note && note.value.trim()) return;
+      event.preventDefault();
+      const error = form.querySelector(".pkg-approve-error");
+      if (error) error.textContent = "Reject 需要填寫 feedback，Agent 才能重做。";
+      note?.focus();
+    });
+  }
+
 </script>
 {% endif %}
 {% if description_pending and description_state == 'generating' %}

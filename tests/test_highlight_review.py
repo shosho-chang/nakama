@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -534,6 +535,61 @@ def test_selection_order_must_match_checked_candidates(client):
 def test_path_traversal_rejected(client):
     response = client.get("/bridge/highlights/..", cookies=_auth_cookie(), follow_redirects=False)
     assert response.status_code in (404, 405)
+
+
+def test_selection_page_links_to_finished_review_when_a_review_packet_is_ready(
+    client, episode_root
+):
+    """入口只需要認得出「有東西可以審」——短片 packet 與長片 v3 Release 都算。
+
+    舊的 v1 manifest 檔已由 v3 current Release 取代（ADR-066），所以這裡用短片
+    packet 當就緒訊號：純短片的一集也必須看得到入口。
+    """
+    review = episode_root / "ep-001" / "highlights" / "review"
+    cut_dir = review / "KS1"
+    cut_dir.mkdir(parents=True)
+    preview = cut_dir / "KS1_preview.mp4"
+    preview.write_bytes(b"review-preview")
+    (cut_dir / "subs.srt").write_text(
+        "1" + chr(10) + "00:00:00,000 --> 00:00:01,000" + chr(10) + "測試" + chr(10),
+        encoding="utf-8",
+    )
+    (cut_dir / "events.json").write_text(
+        json.dumps(
+            {
+                "timeline": "短1 - 測試（緊·導播）",
+                "duration_sec": 12.0,
+                "preview": preview.name,
+                "events": [
+                    {"type": "card-tier2", "slug": "測試", "t0": 0.0, "t1": 3.0, "note": ""}
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    response = client.get("/bridge/highlights/ep-001", cookies=_auth_cookie())
+
+    assert response.status_code == 200
+    assert 'href="/bridge/highlights/ep-001/finished"' in response.text
+    assert "進入初剪 Review" in response.text
+
+
+def test_review_selection_uses_background_without_accent_left_rail():
+    """選中的 cut tab 用整塊底色表示，不是左側一條 accent 色條。"""
+    template = (
+        Path(__file__).resolve().parent.parent
+        / "thousand_sunny/templates/bridge/finished_review.html"
+    ).read_text(encoding="utf-8")
+
+    selected_rule = next(
+        line for line in template.splitlines() if 'cut-tab[aria-selected="true"]' in line
+    )
+    assert "var(--sho-accent-soft)" in selected_rule
+    cut_tab_rules = [line for line in template.splitlines() if ".cut-tab" in line]
+    assert cut_tab_rules
+    assert not any("border-left" in line for line in cut_tab_rules)
 
 
 def test_accepts_a_chinese_episode_folder_and_keeps_rejection_feedback(client, episode_root):

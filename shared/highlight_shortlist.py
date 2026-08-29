@@ -99,9 +99,7 @@ def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
                 raise HighlightDataError(f"review_{who}.json contains an invalid score row")
             candidate_id = row["id"]
             if candidate_id in seen:
-                raise HighlightDataError(
-                    f"review_{who}.json contains duplicate id: {candidate_id}"
-                )
+                raise HighlightDataError(f"review_{who}.json contains duplicate id: {candidate_id}")
             seen.add(candidate_id)
             total = row.get("total")
             if (
@@ -109,9 +107,7 @@ def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
                 or isinstance(total, bool)
                 or not math.isfinite(float(total))
             ):
-                raise HighlightDataError(
-                    f"review_{who}.json total is invalid for {candidate_id}"
-                )
+                raise HighlightDataError(f"review_{who}.json total is invalid for {candidate_id}")
             scores.setdefault(candidate_id, {})[who] = float(total)
             for field in ("rationale", "reason", "summary", "notes"):
                 note = row.get(field)
@@ -129,9 +125,7 @@ def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
     lens_path = hl_dir / "lens_brand.json"
     lens = _load_object(lens_path, required=True)
     if lens.get("source_sha256") != candidates_sha256:
-        raise HighlightDataError(
-            "lens_brand.json source_sha256 differs from candidates.json"
-        )
+        raise HighlightDataError("lens_brand.json source_sha256 differs from candidates.json")
     findings = lens.get("findings")
     if not isinstance(findings, list):
         raise HighlightDataError("lens_brand.json findings must be an array")
@@ -140,9 +134,7 @@ def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
             raise HighlightDataError("lens_brand.json contains an invalid finding")
         candidate_id = finding["id"]
         if candidate_id in brand:
-            raise HighlightDataError(
-                f"lens_brand.json contains duplicate id: {candidate_id}"
-            )
+            raise HighlightDataError(f"lens_brand.json contains duplicate id: {candidate_id}")
         brand[candidate_id] = finding
     brand_ids = set(brand)
     if brand_ids != expected_ids:
@@ -156,9 +148,7 @@ def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
     if set(renee) != {"lens", "source_sha256", "findings"} or renee.get("lens") != "renee":
         raise HighlightDataError("lens_renee.json schema drift")
     if renee.get("source_sha256") != candidates_sha256:
-        raise HighlightDataError(
-            "lens_renee.json source_sha256 differs from candidates.json"
-        )
+        raise HighlightDataError("lens_renee.json source_sha256 differs from candidates.json")
     renee_findings = renee.get("findings")
     if not isinstance(renee_findings, list):
         raise HighlightDataError("lens_renee.json findings must be an array")
@@ -169,16 +159,12 @@ def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
             raise HighlightDataError("lens_renee.json contains an invalid finding")
         for field in required_fields:
             if not isinstance(finding[field], str):
-                raise HighlightDataError(
-                    f"lens_renee.json {field} must be a string"
-                )
+                raise HighlightDataError(f"lens_renee.json {field} must be a string")
         candidate_id = finding["id"]
         if not candidate_id:
             raise HighlightDataError("lens_renee.json id must be a non-empty string")
         if candidate_id in renee_ids:
-            raise HighlightDataError(
-                f"lens_renee.json contains duplicate id: {candidate_id}"
-            )
+            raise HighlightDataError(f"lens_renee.json contains duplicate id: {candidate_id}")
         renee_ids.add(candidate_id)
     if renee_ids != expected_ids:
         missing = sorted(expected_ids - renee_ids)
@@ -258,12 +244,8 @@ def write_winners(
     if subtitle_lineage is not None and not isinstance(subtitle_lineage, dict):
         raise HighlightDataError("candidates.json subtitle_lineage must be an object")
     editorial_master_lineage = candidates_doc.get("editorial_master_lineage")
-    if editorial_master_lineage is not None and not isinstance(
-        editorial_master_lineage, dict
-    ):
-        raise HighlightDataError(
-            "candidates.json editorial_master_lineage must be an object"
-        )
+    if editorial_master_lineage is not None and not isinstance(editorial_master_lineage, dict):
+        raise HighlightDataError("candidates.json editorial_master_lineage must be an object")
     by_id = {row["id"]: row for row in rows}
     missing = [candidate_id for candidate_id in picks if candidate_id not in by_id]
     if missing:

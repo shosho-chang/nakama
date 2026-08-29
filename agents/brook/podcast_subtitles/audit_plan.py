@@ -165,9 +165,7 @@ def _observed_speakers_by_span(
         if previous_span_end is not None and span.start_ms < previous_span_end:
             raise AuditPlanError("speaker sweep requires ordered non-overlapping spans")
         while token_cursor < len(ordered_tokens):
-            start_ms, end_ms, evidence_index, token_index, speaker = ordered_tokens[
-                token_cursor
-            ]
+            start_ms, end_ms, evidence_index, token_index, speaker = ordered_tokens[token_cursor]
             if start_ms >= span.end_ms:
                 break
             heappush(active, (end_ms, evidence_index, token_index, speaker))
@@ -726,9 +724,7 @@ def build_audit_plan(
             or (right_observed and right_observed != {right_canonical})
         )
 
-    span_speaker_disagreements = {
-        target.id: span_speaker_disagreement(target) for target in spans
-    }
+    span_speaker_disagreements = {target.id: span_speaker_disagreement(target) for target in spans}
     boundary_speaker_conflicts = {
         target.id: boundary_speaker_conflict(
             None if target.ordinal == 0 else spans[target.ordinal - 1],

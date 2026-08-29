@@ -115,9 +115,7 @@ def _ms_to_time(value: int) -> str:
     return f"{hours:02d}:{minutes:02d}:{seconds:02d},{millis:03d}"
 
 
-def parse_srt(
-    payload: str, *, allow_zero_duration: bool = False
-) -> tuple[MemoCue, ...]:
+def parse_srt(payload: str, *, allow_zero_duration: bool = False) -> tuple[MemoCue, ...]:
     blocks = re.split(r"\r?\n\s*\r?\n", payload.lstrip("\ufeff").strip())
     cues: list[MemoCue] = []
     for expected_index, block in enumerate(blocks, start=1):

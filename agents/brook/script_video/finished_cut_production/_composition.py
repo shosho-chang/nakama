@@ -739,9 +739,7 @@ def _build_resolve_materialization_composition(
 RESOLVE_BINDING_SCHEMA = "nakama.finished_cut_resolve_binding.v1"
 
 
-def build_resolve_configuration(
-    payload: dict, episode_id: str
-) -> ProductionResolveConfiguration:
+def build_resolve_configuration(payload: dict, episode_id: str) -> ProductionResolveConfiguration:
     """Compose an episode's Resolve authority from a name-bound binding document.
 
     The CLI's ``--resolve-config`` pins Timeline uids on purpose: a one-shot

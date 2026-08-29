@@ -375,9 +375,7 @@ def build_production(context: FactoryContextV1) -> PodcastSubtitleV2:
             PRODUCTION_RECOGNITION_INDEPENDENCE_POLICY if len(recognizers) > 1 else None
         ),
         memo_boundary_authority_factory=boundary_factory,
-        code_version=(
-            "production-source-inventory-v1:" + production_source_inventory_digest()
-        ),
+        code_version=("production-source-inventory-v1:" + production_source_inventory_digest()),
     )
     if bundle:
         bundle.assert_module_binding(module)

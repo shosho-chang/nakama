@@ -49,9 +49,7 @@ def audio_audit_selection_builder_code_hash() -> str:
     return hash_file(Path(__file__))
 
 
-def default_audio_audit_selection_policy(
-    *, clock_strata: int = 10
-) -> AudioAuditSelectionPolicyV1:
+def default_audio_audit_selection_policy(*, clock_strata: int = 10) -> AudioAuditSelectionPolicyV1:
     payload = {
         "schema_version": 1,
         "policy_id": "nakama-selective-audio-audit",
@@ -209,9 +207,7 @@ def _speaker_by_span(transcript: CanonicalTranscript) -> dict[str, str]:
     for span in transcript.spans:
         speakers = {token_by_id[token_id].speaker for token_id in span.token_ids}
         result[span.id] = (
-            next(iter(speakers))
-            if len(speakers) == 1 and None not in speakers
-            else "__unknown__"
+            next(iter(speakers)) if len(speakers) == 1 and None not in speakers else "__unknown__"
         )
     return result
 
@@ -230,10 +226,7 @@ def _allocate_quotas(
     capacity_total = sum(capacities.values())
     if remaining == 0 or capacity_total == 0:
         return minimum
-    floors = {
-        key: remaining * capacities[key] // capacity_total
-        for key in sizes
-    }
+    floors = {key: remaining * capacities[key] // capacity_total for key in sizes}
     allocations = {key: minimum[key] + floors[key] for key in sizes}
     leftover = quota - sum(allocations.values())
     remainder_order = sorted(
@@ -287,9 +280,7 @@ def _sample_strata(
     ordinary = {span_id for values in strata.values() for span_id in values}
     if not prior <= ordinary:
         raise AudioAuditSelectionError("prior audio sample crosses frozen ordinary population")
-    prior_counts = {
-        key: len(prior & set(candidates)) for key, candidates in strata.items()
-    }
+    prior_counts = {key: len(prior & set(candidates)) for key, candidates in strata.items()}
     for key in allocations:
         allocations[key] = max(allocations[key], prior_counts[key])
     excess = sum(allocations.values()) - quota
@@ -324,20 +315,14 @@ def _sample_strata(
         )
         already = prior & set(candidates)
         needed = allocations[stratum] - len(already)
-        selected.update(
-            span_id for span_id in ranked if span_id not in already
-        )
-        chosen = already | set(
-            span_id for span_id in ranked if span_id not in already
-        )
+        selected.update(span_id for span_id in ranked if span_id not in already)
+        chosen = already | set(span_id for span_id in ranked if span_id not in already)
         # Trim only the newly ranked suffix; prior selections are immutable.
         new_ranked = [span_id for span_id in ranked if span_id not in already][:needed]
         chosen = already | set(new_ranked)
         selected.difference_update(set(candidates) - chosen)
         population_order = tuple(
-            item.span_id
-            for item in audit_plan.span_targets
-            if item.span_id in set(candidates)
+            item.span_id for item in audit_plan.span_targets if item.span_id in set(candidates)
         )
         selected_order = tuple(span_id for span_id in population_order if span_id in chosen)
         stratum_id = hash_object(
@@ -357,9 +342,7 @@ def _sample_strata(
                 selected_span_ids=selected_order,
             )
         )
-    sample = tuple(
-        item.span_id for item in audit_plan.span_targets if item.span_id in selected
-    )
+    sample = tuple(item.span_id for item in audit_plan.span_targets if item.span_id in selected)
     if len(sample) != quota:
         raise AudioAuditSelectionError("audio sample union differs from exact tier quota")
     return sample, tuple(allocation_models)
@@ -387,17 +370,14 @@ def _assert_prior_round(
         )
     except ValueError as exc:
         raise AudioAuditSelectionError("prior audio selection plan is invalid") from exc
-    text_hash = (
-        sha256_bytes(canonical_json_bytes(text_record)) if text_record is not None else None
-    )
+    text_hash = sha256_bytes(canonical_json_bytes(text_record)) if text_record is not None else None
     if parsed_prior != prior_plan or (
         prior_plan.episode_id != transcript.episode_id
         or prior_plan.generation_id != transcript.generation_id
         or prior_plan.normalized_audio_hash != transcript.normalized_audio_hash
         or prior_plan.audit_plan_hash != sha256_bytes(canonical_json_bytes(audit_plan))
         or prior_plan.audit_plan_content_hash != audit_plan.content_hash
-        or prior_plan.canonical_transcript_hash
-        != sha256_bytes(canonical_json_bytes(transcript))
+        or prior_plan.canonical_transcript_hash != sha256_bytes(canonical_json_bytes(transcript))
         or prior_plan.canonical_content_hash != transcript.content_hash
         or prior_plan.policy != policy
         or prior_plan.text_audit_record_hash != text_hash
@@ -467,9 +447,7 @@ def build_audio_audit_selection_plan(
         risk_span_ids=set(risk_span_ids),
         sample_basis_points=basis_points,
         tier=tier,
-        prior_sample_span_ids=(
-            prior_plan.sample_span_ids if prior_plan is not None else ()
-        ),
+        prior_sample_span_ids=(prior_plan.sample_span_ids if prior_plan is not None else ()),
     )
     selected_set = set(risk_span_ids) | set(sample_span_ids)
     selected_span_ids = tuple(
@@ -477,10 +455,7 @@ def build_audio_audit_selection_plan(
     )
     ownership = _span_ownership(audit_plan)
     selected_owned = tuple(
-        cell_id
-        for span_id, owned, _ in ownership
-        if span_id in selected_set
-        for cell_id in owned
+        cell_id for span_id, owned, _ in ownership if span_id in selected_set for cell_id in owned
     )
     selected_required = tuple(
         cell_id
@@ -490,9 +465,7 @@ def build_audio_audit_selection_plan(
     )
     transcript_hash = sha256_bytes(canonical_json_bytes(transcript))
     audit_hash = sha256_bytes(canonical_json_bytes(audit_plan))
-    text_hash = (
-        sha256_bytes(canonical_json_bytes(text_record)) if text_record is not None else None
-    )
+    text_hash = sha256_bytes(canonical_json_bytes(text_record)) if text_record is not None else None
     payload = {
         "schema_version": 1,
         "episode_id": transcript.episode_id,
@@ -604,8 +577,7 @@ def build_audio_audit_selection_receipt(
     catastrophic = tuple(sorted(catastrophic, key=order.__getitem__))
     denominator = len(plan.sample_span_ids)
     above_threshold = denominator > 0 and (
-        len(material) * 10000
-        > plan.policy.material_error_threshold_basis_points * denominator
+        len(material) * 10000 > plan.policy.material_error_threshold_basis_points * denominator
     )
     if catastrophic:
         decision = "escalate_full"
@@ -685,8 +657,7 @@ def build_selective_audio_round_receipt_v3(
         if (
             previous_round is None
             or plan.prior_receipt_id != previous_round.decision_receipt.id
-            or tuple(item.id for item in record_tuple[:-1])
-            != previous_round.execution_record_ids
+            or tuple(item.id for item in record_tuple[:-1]) != previous_round.execution_record_ids
         ):
             raise AudioAuditSelectionError(
                 "selective audio round does not extend exact prior ledger"
@@ -744,9 +715,7 @@ def build_selective_audio_round_receipt_v3(
         ),
         "decision_receipt": decision,
         "decision_receipt_artifact_hash": sha256_bytes(canonical_json_bytes(decision)),
-        "execution_scope": (
-            "cumulative_exact_selected_spans_from_nonoverlapping_delta_records"
-        ),
+        "execution_scope": ("cumulative_exact_selected_spans_from_nonoverlapping_delta_records"),
         "authority": "escalation_only_not_correction_or_release",
     }
     digest = hash_object(payload)

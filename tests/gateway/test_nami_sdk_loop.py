@@ -26,6 +26,7 @@ from gateway.handlers.nami import (
     NamiHandler,
     _format_ask_user_question,
     _make_ask_user_hook,
+    _sdk_auth_env,
     _sdk_budget_usd,
     _sdk_settings,
     _sdk_skills,
@@ -174,6 +175,24 @@ def test_skills_whitelist_env(monkeypatch):
     assert _sdk_skills() == ["project-bootstrap", "keyword-research"]
     monkeypatch.delenv("NAMI_SKILLS", raising=False)
     assert _sdk_skills() == []
+
+
+def test_auth_env_empty_without_token(monkeypatch):
+    """未設 token → 空 dict，SDK 子進程沿用繼承的 ANTHROPIC_API_KEY（零行為改變）。"""
+    monkeypatch.delenv("NAMI_SDK_OAUTH_TOKEN", raising=False)
+    assert _sdk_auth_env() == {}
+
+
+def test_auth_env_forces_subscription_and_blanks_api_key(monkeypatch):
+    """設了 token → 子進程走 OAuth，且 API key 必須被清空。
+
+    留著 API key 會讓「走訂閱」取決於 CLI 未文件化的優先序 —— 這個斷言就是
+    防止日後有人「順手」把清空那行拿掉。
+    """
+    monkeypatch.setenv("NAMI_SDK_OAUTH_TOKEN", "sk-ant-oat01-xxx")
+    env = _sdk_auth_env()
+    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "sk-ant-oat01-xxx"
+    assert env["ANTHROPIC_API_KEY"] == ""
 
 
 # ── 終態分支（SDK 對 error result：先 yield ResultMessage 再 raise）──

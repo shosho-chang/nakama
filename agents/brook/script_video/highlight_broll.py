@@ -320,8 +320,7 @@ def broll_item_projection(item: Any, index: int) -> dict[str, Any] | None:
         raise BrollContractError(f"B-roll item {index} 必須是 object")
     kind = str(item.get("kind") or "").strip().lower()
     legacy_identity_namecard = (
-        kind == "concept"
-        and str(item.get("slug") or "").strip().lower() == "guest-namecard"
+        kind == "concept" and str(item.get("slug") or "").strip().lower() == "guest-namecard"
     )
     if kind in STRUCTURAL_BROLL_KINDS or legacy_identity_namecard:
         if "visual_materialization" in item:
@@ -424,9 +423,7 @@ def title_item_projection(item: Any, index: int) -> dict[str, Any]:
         )
     media = projection["media"]
     if not isinstance(media, dict) or item.get("media_path") != media.get("path"):
-        raise BrollContractError(
-            f"Title item {index}.media_path 與 audited DP preview 不一致"
-        )
+        raise BrollContractError(f"Title item {index}.media_path 與 audited DP preview 不一致")
     for field in ("provenance", "render_spec"):
         if item.get(field) != projection[field]:
             raise BrollContractError(
@@ -441,9 +438,7 @@ def title_item_projection(item: Any, index: int) -> dict[str, Any]:
         or params.get("pos_y") != item.get("pos_y")
         or spec.get("component") not in {"punch_card", "punch_card_wide"}
     ):
-        raise BrollContractError(
-            f"Title item {index} render recipe 與 audited DP preview 不一致"
-        )
+        raise BrollContractError(f"Title item {index} render recipe 與 audited DP preview 不一致")
     _same_number(
         params.get("show_sec"),
         float(projection["t1"]) - float(projection["t0"]),

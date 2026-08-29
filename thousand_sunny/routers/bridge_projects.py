@@ -124,6 +124,8 @@ def _shosho_asset_version() -> str:
         "bridge-projects.css",
         "theme.js",
         "bridge-projects.js",
+        "bridge-weekly.js",  # detail.html links it with ?v= — must cache-bust JS fixes too
+        "focus-music.js",  # 甲板 pomodoro dock (修修 2026-08-25)
     ):
         path = static_dir / css
         if path.exists():

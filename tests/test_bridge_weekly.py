@@ -170,6 +170,141 @@ class TestNewTask:
         assert "err=pomodoros" in r.headers["location"]
 
 
+class TestNewTaskWithSchedule:
+    """修修 2026-08-23: the 新增任務 form carries an optional 日期/時間 — create +
+    schedule_entry (plan + calendar) in one submit; blank date keeps bare create."""
+
+    def _ev(self, eid="evt_n"):
+        from shared.google_calendar import CalendarEvent
+
+        return CalendarEvent(id=eid, title="夜跑", start="x", end="y", html_link="http://h")
+
+    def _files(self, tmp_path):
+        return {p.name for p in (tmp_path / "TaskNotes" / "Tasks").iterdir()}
+
+    def _fm(self, tmp_path, name):
+        raw = (tmp_path / "TaskNotes" / "Tasks" / name).read_text(encoding="utf-8")
+        return yaml.safe_load(raw.split("---", 2)[1])
+
+    def test_create_with_date_and_time_schedules(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        seen = {}
+        monkeypatch.setattr(gc, "find_conflicts", lambda s, e: [])
+        monkeypatch.setattr(gc, "create_event", lambda **kw: (seen.update(kw), self._ev())[1])
+        r = client.post(
+            "/bridge/weekly/task/new",
+            data={
+                "title": "夜跑",
+                "category": "health",
+                "est_pomodoros": "2",
+                "entry_date": "2026-06-03",  # Wed inside WEEK_KEY
+                "entry_time": "09:00",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        loc = r.headers["location"]
+        # lands on the scheduled date's week (v3-G) with the row anchored, no ?focus
+        assert loc.startswith(f"/bridge/weekly?week={WEEK_KEY}&saved=task_new_scheduled")
+        assert "focus=" not in loc and "#task-" in loc
+        fm = self._fm(tmp_path, "夜跑.md")
+        entry = next(e for e in fm["plan"] if str(e["date"]) == "2026-06-03")
+        assert entry["start"] == "2026-06-03T09:00:00+08:00"
+        assert entry["end"] == "2026-06-03T10:00:00+08:00"  # 2🍅 × 30 min
+        assert entry["calendar_event_id"] == "evt_n"
+        assert seen["idempotency_key"] == "夜跑@2026-06-03"
+        assert seen["title"] == "夜跑"
+
+    def test_create_with_date_only_is_all_day(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        seen = {}
+        monkeypatch.setattr(gc, "create_event", lambda **kw: (seen.update(kw), self._ev())[1])
+        r = client.post(
+            "/bridge/weekly/task/new",
+            data={"title": "夜跑", "entry_date": "2026-06-03", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert "saved=task_new_scheduled" in r.headers["location"]
+        assert seen["start"] == "2026-06-03" and seen["end"] == "2026-06-04"  # all-day
+        plan = self._fm(tmp_path, "夜跑.md")["plan"]
+        entry = next(e for e in plan if str(e["date"]) == "2026-06-03")
+        assert entry["start"] == "2026-06-03"
+
+    def test_blank_date_keeps_bare_create_focus_flow(self, client, tmp_path):
+        r = client.post(
+            "/bridge/weekly/task/new",
+            data={"title": "夜跑", "entry_date": "", "entry_time": "", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        loc = r.headers["location"]
+        assert "saved=task_new" in loc and "focus=" in loc
+        assert "plan" not in (self._fm(tmp_path, "夜跑.md") or {})
+
+    def test_time_without_date_rejected_nothing_created(self, client, tmp_path):
+        r = client.post(
+            "/bridge/weekly/task/new",
+            data={"title": "夜跑", "entry_time": "09:00", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert "err=time_needs_date" in r.headers["location"]
+        assert "夜跑.md" not in self._files(tmp_path)
+
+    def test_bad_date_rejected_nothing_created(self, client, tmp_path):
+        r = client.post(
+            "/bridge/weekly/task/new",
+            data={"title": "夜跑", "entry_date": "not-a-date", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert "err=date" in r.headers["location"]
+        assert "夜跑.md" not in self._files(tmp_path)
+
+    def test_weekend_date_creates_task_but_asks_reason(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        monkeypatch.setattr(gc, "find_conflicts", lambda s, e: [])
+        r = client.post(
+            "/bridge/weekly/task/new",
+            data={
+                "title": "夜跑",
+                "entry_date": "2026-06-06",  # Sat — needs a reason the form doesn't carry
+                "entry_time": "09:00",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        loc = r.headers["location"]
+        assert "err=weekend" in loc and "focus=" in loc  # row focused → 排入 with reason
+        fm = self._fm(tmp_path, "夜跑.md")  # the task itself IS created
+        assert "plan" not in (fm or {})  # …but nothing scheduled
+
+    def test_conflict_creates_task_pops_modal_no_plan(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        monkeypatch.setattr(gc, "find_conflicts", lambda s, e: [self._ev("c9")])
+        monkeypatch.setattr(gc, "find_free_slots", lambda d, dur, **kw: [])
+        r = client.post(
+            "/bridge/weekly/task/new",
+            data={
+                "title": "夜跑",
+                "entry_date": "2026-06-03",
+                "entry_time": "09:00",
+                "est_pomodoros": "2",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        loc = r.headers["location"]
+        assert "err=cal_conflict" in loc
+        assert "cf_slug=%E5%A4%9C%E8%B7%91" in loc  # quote("夜跑") — modal targets the new row
+        assert "cf_date=2026-06-03" in loc and "cf_time=09%3A00" in loc and "cf_pom=2" in loc
+        fm = self._fm(tmp_path, "夜跑.md")  # task created; plan pre-check refused (v3-I.4)
+        assert "plan" not in (fm or {})
+
+
 class TestFromProjectRedirect:
     """v3-H Slice 3: plan actions fired from a Project Brief tab redirect back there."""
 
@@ -219,6 +354,12 @@ class TestRender:
         assert 'action="/bridge/weekly/plan/remove"' in body
         assert 'name="entry_time"' in body  # the merged form carries an optional time
         assert 'action="/bridge/weekly/sync-scheduled"' not in body  # retired in v3-B
+        assert "wk-ci-time" in body  # 修修 (2026-08-24): daily bullet 時段 cell
+        # 修修 (2026-08-29): day cards carry data-date + the stay-in-place state saves
+        # which ones are open, so an action inside a manually opened card doesn't
+        # collapse it and jump back to the server default (today, else Monday).
+        assert 'data-date="2026-06-01"' in body
+        assert "wk-days" in body and "openDays" in body
         assert "測試任務" in body
 
     def test_no_error_banner_by_default(self, client):
@@ -515,6 +656,50 @@ class TestTaskDetail:
         assert all(e["endTime"].startswith("2020-01-15") for e in entries)
         assert all(e["startTime"].startswith("2020-01-15") for e in entries)
         assert len({e["startTime"] for e in entries}) == 3  # no overlap-collapse
+
+    def test_log_manual_anchors_at_planned_time(self, client, tmp_path):
+        """修修 (2026-08-24): manual +1 on a day whose plan entry is TIMED anchors at
+        the planned END — backfilled 🍅 land inside the scheduled session (and its
+        week), not at `now`. Repeated clicks stack backwards through the window."""
+        timed = SAMPLE_TASK.replace(
+            "plan:\n  - date: 2026-06-03\n    pomodoros: 2",
+            "plan:\n  - date: 2026-06-03\n    pomodoros: 2\n"
+            "    start: '2026-06-03T09:00:00+08:00'\n    end: '2026-06-03T10:00:00+08:00'",
+        )
+        _task_path(tmp_path).write_text(timed, encoding="utf-8")
+        for _ in range(2):
+            client.post(
+                "/bridge/weekly/task/測試任務/log",
+                data={
+                    "mode": "pomodoro",
+                    "manual": "1",
+                    "entry_date": "2026-06-03",
+                    "week": WEEK_KEY,
+                },
+                follow_redirects=False,
+            )
+        first, second = _time_entries(tmp_path)[-2:]
+        assert first["endTime"].startswith("2026-06-03T10:00")  # planned end, not 23:59/now
+        assert first["startTime"].startswith("2026-06-03T09:35")
+        assert second["endTime"].startswith("2026-06-03T09:35")  # stacks backward in-window
+        assert second["startTime"].startswith("2026-06-03T09:10")
+
+    def test_log_manual_untimed_past_day_keeps_2359_anchor(self, client, tmp_path):
+        """SAMPLE_TASK's 2026-06-03 plan entry is plan-only (no start/end) — the manual
+        backfill keeps the original 23:59 backward-stacking anchor."""
+        client.post(
+            "/bridge/weekly/task/測試任務/log",
+            data={"mode": "pomodoro", "manual": "1", "entry_date": "2026-06-03", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        e = _time_entries(tmp_path)[-1]
+        assert e["endTime"].startswith("2026-06-03T23:59")
+
+    def test_task_page_backfill_defaults_to_last_scheduled_day(self, client):
+        """修修 (2026-08-24): 補記日期 prefills with the task's most recent scheduled
+        day (≤ today) so a review-backfill needs no manual date pick."""
+        body = client.get("/bridge/weekly/task/測試任務").text
+        assert 'id="tk-backfill-date" value="2026-06-03"' in body
 
     def test_log_future_entry_date_falls_back_to_today(self, client, tmp_path):
         """A future (or today's) entry_date is ignored — the block is stamped `now`, never
@@ -1704,33 +1889,100 @@ class TestRowChips:
 
 
 class TestDayDone:
-    """v3-I follow-up (修修): the daily-bullet checkbox marks the DAY's plan entry done,
-    NOT the whole task — distinct from the task-list /done checkbox."""
+    """The daily-bullet checkbox marks the DAY's plan entry done; 修修 2026-08-29: the
+    task-level state is rolled up in the same write, so the daily card and the task
+    list never disagree (日卡劃掉了、任務列表卻還開著 就是這個 bug)."""
 
-    def test_day_done_marks_plan_entry_only(self, client, tmp_path):
-        def _fm():
-            raw = _task_path(tmp_path).read_text(encoding="utf-8")
-            return yaml.safe_load(raw.split("---", 2)[1])
+    def _fm(self, tmp_path, name="測試任務.md"):
+        raw = (tmp_path / "TaskNotes" / "Tasks" / name).read_text(encoding="utf-8")
+        return yaml.safe_load(raw.split("---", 2)[1])
 
-        # SAMPLE_TASK has a plan entry on 2026-06-03
+    def _entry(self, fm, iso):
+        return next(e for e in fm["plan"] if str(e["date"])[:10] == iso)
+
+    def test_day_done_on_only_entry_also_finishes_task(self, client, tmp_path):
+        # SAMPLE_TASK has ONE plan entry (2026-06-03) → that day IS the whole task
         r = client.post(
             "/bridge/weekly/task/測試任務/day-done",
             data={"entry_date": "2026-06-03", "done": "1", "week": WEEK_KEY},
             follow_redirects=False,
         )
         assert r.status_code == 303
-        fm = _fm()
-        assert fm["status"] == "to-do"  # task NOT marked done
-        entry = next(e for e in fm["plan"] if str(e["date"])[:10] == "2026-06-03")
-        assert entry.get("done") is True
-        # un-mark clears it
+        fm = self._fm(tmp_path)
+        assert self._entry(fm, "2026-06-03").get("done") is True
+        assert fm["status"] == "done"  # 修修: the task list must agree with the day card
+        # un-ticking the day re-opens the task
         client.post(
             "/bridge/weekly/task/測試任務/day-done",
             data={"entry_date": "2026-06-03", "done": "0", "week": WEEK_KEY},
             follow_redirects=False,
         )
-        entry = next(e for e in _fm()["plan"] if str(e["date"])[:10] == "2026-06-03")
-        assert not entry.get("done")
+        fm = self._fm(tmp_path)
+        assert not self._entry(fm, "2026-06-03").get("done")
+        assert fm["status"] == "to-do"
+
+    def test_multi_day_task_stays_open_until_last_day(self, client, tmp_path):
+        two_days = """---
+title: 測試任務
+status: to-do
+預估🍅: 6
+scheduled: 2026-06-03
+plan:
+  - date: 2026-06-03
+    pomodoros: 2
+  - date: 2026-06-04
+    pomodoros: 2
+timeEntries: []
+tags:
+  - task
+---
+
+任務內文（不可被改動）。
+"""
+        _task_path(tmp_path).write_text(two_days, encoding="utf-8")
+        client.post(
+            "/bridge/weekly/task/測試任務/day-done",
+            data={"entry_date": "2026-06-03", "done": "1", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        fm = self._fm(tmp_path)
+        assert self._entry(fm, "2026-06-03").get("done") is True
+        assert fm["status"] == "to-do"  # 06-04 still to do → task stays open
+        client.post(
+            "/bridge/weekly/task/測試任務/day-done",
+            data={"entry_date": "2026-06-04", "done": "1", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert self._fm(tmp_path)["status"] == "done"  # every day done → task done
+        # re-opening ANY day re-opens the task
+        client.post(
+            "/bridge/weekly/task/測試任務/day-done",
+            data={"entry_date": "2026-06-04", "done": "0", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        fm = self._fm(tmp_path)
+        assert fm["status"] == "to-do"
+        assert self._entry(fm, "2026-06-03").get("done") is True  # 06-03 keeps its tick
+
+    def test_task_done_checkbox_crosses_out_every_day(self, client, tmp_path):
+        """The other direction: ticking the WHOLE task in the list must cross the task
+        out on its daily cards too (otherwise the same desync, mirrored)."""
+        client.post(
+            "/bridge/weekly/task/測試任務/done",
+            data={"done": "1", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        fm = self._fm(tmp_path)
+        assert fm["status"] == "done"
+        assert self._entry(fm, "2026-06-03").get("done") is True
+        client.post(
+            "/bridge/weekly/task/測試任務/done",
+            data={"done": "0", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        fm = self._fm(tmp_path)
+        assert fm["status"] == "to-do"
+        assert not self._entry(fm, "2026-06-03").get("done")
 
 
 class TestTaskMeta:

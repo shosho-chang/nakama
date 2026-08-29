@@ -8,6 +8,7 @@ Public API（其餘 `_*` 私有；caller 看不到 SQL 與 row 形狀）：
     get_release(episode, cut_id)                     # 一筆 release + 其 targets
     list_releases(episode=None)                      # 清單（審核頁/CLI 用）
     update_target(target_id, **fields)               # 狀態機轉移 + 文案回填
+    confirm_target_outcome(...)                      # uploaded + video_id CAS 確認結果
 
 隱藏的設計約束：
 
@@ -26,8 +27,14 @@ Tests：`tests/shared/test_release_store.py`。
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Optional
+import hashlib
+import json
+import sqlite3
+import threading
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Any, Literal, Optional
+from urllib.parse import urlsplit
 
 from shared.state import _get_conn
 
@@ -50,6 +57,10 @@ _TARGET_FIELDS = frozenset(
         "caption_status",
         "reconciliation_error",
         "last_reconciled_at",
+        "adapter",
+        "idempotency_key",
+        "checkpoint_json",
+        "ineligibility_reason",
     }
 )
 
@@ -61,6 +72,7 @@ VALID_STATUS = (
     "published",
     "failed",
     "needs_restart",
+    "ineligible",
 )
 _TYPED_TARGET_FIELDS = {
     "thumbnail_status": {"missing", "processing", "set", "failed", "skipped", "unknown"},
@@ -68,6 +80,37 @@ _TYPED_TARGET_FIELDS = {
     "caption_status": {"missing", "processing", "serving", "failed", "unknown"},
     "platform_privacy_status": {"private", "unlisted", "public"},
 }
+_CAMPAIGN_ANCHOR_EDITABLE_STATUSES = frozenset({"draft", "approved", "failed"})
+TARGET_CLAIM_STALE_AFTER = timedelta(minutes=15)
+_CLAIM_LOCK = threading.Lock()
+
+
+@dataclass(frozen=True, slots=True)
+class ReleaseCampaignAnchor:
+    """Observable shared-anchor state for one Release."""
+
+    state: Literal["none", "shared", "divergent"]
+    anchor_at: datetime | None
+    target_anchors: tuple[tuple[str, str | None], ...]
+
+    @property
+    def expected_token(self) -> str:
+        """Opaque compare-and-set token for the exact observed target-anchor group."""
+
+        payload = {
+            "state": self.state,
+            "targets": [
+                [platform, _canonical_anchor_token_value(raw_anchor)]
+                for platform, raw_anchor in self.target_anchors
+            ],
+        }
+        encoded = json.dumps(
+            payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        return "release-anchor-v1:" + hashlib.sha256(encoded).hexdigest()
 
 
 def _now() -> str:
@@ -170,6 +213,125 @@ def list_releases(episode: Optional[str] = None) -> list[dict[str, Any]]:
     return out
 
 
+def _parse_aware_utc(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def _canonical_anchor_token_value(value: str | None) -> str | None:
+    if value is None:
+        return None
+    parsed = _parse_aware_utc(value)
+    return "utc:" + parsed.isoformat() if parsed is not None else "raw:" + value
+
+
+def _campaign_anchor_snapshot(targets: list[dict[str, Any]]) -> ReleaseCampaignAnchor:
+    target_anchors = tuple(
+        (str(target["platform"]), target.get("publish_at")) for target in targets
+    )
+    raw_values = [target.get("publish_at") for target in targets]
+    if raw_values and all(value is None for value in raw_values):
+        return ReleaseCampaignAnchor("none", None, target_anchors)
+    parsed = [_parse_aware_utc(value) for value in raw_values]
+    if parsed and all(value is not None and value == parsed[0] for value in parsed):
+        return ReleaseCampaignAnchor("shared", parsed[0], target_anchors)
+    return ReleaseCampaignAnchor("divergent", None, target_anchors)
+
+
+def get_release_campaign_anchor(episode: str, cut_id: str) -> ReleaseCampaignAnchor:
+    """Read one Release's shared Campaign Anchor without selecting divergent values."""
+
+    release = get_release(episode, cut_id)
+    if release is None:
+        raise ValueError(f"release 不存在: {episode}/{cut_id}")
+    targets = release["targets"]
+    if not targets:
+        raise ValueError(f"release 沒有 targets: {episode}/{cut_id}")
+    return _campaign_anchor_snapshot(targets)
+
+
+def set_release_campaign_anchor(
+    episode: str,
+    cut_id: str,
+    campaign_anchor_at: datetime | None,
+    *,
+    expected_anchor_token: str,
+) -> ReleaseCampaignAnchor:
+    """Compare-and-set one shared Campaign Anchor for every Release Target."""
+
+    if campaign_anchor_at is not None and (
+        campaign_anchor_at.tzinfo is None or campaign_anchor_at.utcoffset() is None
+    ):
+        raise ValueError("campaign anchor must be timezone-aware")
+    normalized = (
+        campaign_anchor_at.astimezone(timezone.utc).isoformat()
+        if campaign_anchor_at is not None
+        else None
+    )
+    conn = _get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        release = conn.execute(
+            "SELECT id FROM releases WHERE episode = ? AND cut_id = ?", (episode, cut_id)
+        ).fetchone()
+        if release is None:
+            raise ValueError(f"release 不存在: {episode}/{cut_id}")
+        targets = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM release_targets WHERE release_id = ? ORDER BY platform",
+                (release["id"],),
+            ).fetchall()
+        ]
+        if not targets:
+            raise ValueError(f"release 沒有 targets: {episode}/{cut_id}")
+        current = _campaign_anchor_snapshot(targets)
+        if current.expected_token != expected_anchor_token:
+            raise ValueError("stale Campaign Anchor; reload before scheduling")
+        blocked = [
+            target["platform"]
+            for target in targets
+            if target["status"] not in _CAMPAIGN_ANCHOR_EDITABLE_STATUSES
+        ]
+        if blocked:
+            raise ValueError("campaign anchor 已鎖定: " + ", ".join(blocked))
+        cursor = conn.execute(
+            """
+            UPDATE release_targets
+            SET publish_at = ?, updated_at = ?
+            WHERE release_id = ? AND status IN (?, ?, ?)
+            """,
+            (
+                normalized,
+                _now(),
+                release["id"],
+                *sorted(_CAMPAIGN_ANCHOR_EDITABLE_STATUSES),
+            ),
+        )
+        if cursor.rowcount != len(targets):
+            raise ValueError("campaign anchor 更新期間 Release Targets 已變更")
+        updated_targets = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM release_targets WHERE release_id = ? ORDER BY platform",
+                (release["id"],),
+            ).fetchall()
+        ]
+        result = _campaign_anchor_snapshot(updated_targets)
+        conn.commit()
+        return result
+    except Exception:
+        conn.rollback()
+        raise
+
+
 def update_target(target_id: int, **fields: Any) -> None:
     """更新 target 欄位（白名單）。status 值域檢查；不存在的 target fail loud。"""
     bad = set(fields) - _TARGET_FIELDS
@@ -192,3 +354,117 @@ def update_target(target_id: int, **fields: Any) -> None:
         )
     if cur.rowcount == 0:
         raise ValueError(f"release_target id={target_id} 不存在")
+
+
+def confirm_target_outcome(
+    target_id: int,
+    *,
+    expected_video_id: str,
+    expected_updated_at: str,
+    status: Literal["published", "failed"],
+    url: str | None = None,
+    error: str | None = None,
+) -> bool:
+    """Confirm one native outcome while the scanned target identity still wins."""
+
+    video_id = expected_video_id.strip()
+    if not video_id:
+        raise ValueError("expected_video_id must be non-empty")
+    if status not in {"published", "failed"}:
+        raise ValueError("outcome status must be published or failed")
+    observed_at = expected_updated_at.strip()
+    if not observed_at:
+        raise ValueError("expected_updated_at must be non-empty")
+    if url is not None:
+        if "\\" in url or any(ord(character) < 32 or ord(character) == 127 for character in url):
+            raise ValueError("outcome URL contains unsafe characters")
+        parsed = urlsplit(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("outcome URL must be absolute HTTP(S)")
+    # ``shared.state`` deliberately exposes one process-global connection for
+    # legacy callers.  A connection transaction is not thread-owned, however:
+    # concurrent ``with conn`` blocks can commit each other's transaction.  The
+    # reconciler CAS therefore gets a short-lived connection so SQLite, rather
+    # than a Python context-manager race, serialises competing writers.
+    state_conn = _get_conn()
+    database_row = state_conn.execute("PRAGMA database_list").fetchone()
+    database_path = str(database_row[2]) if database_row is not None else ""
+    if not database_path or database_path == ":memory:":
+        raise RuntimeError("outcome CAS requires a file-backed state database")
+    conn = sqlite3.connect(database_path, timeout=30.0)
+    try:
+        conn.execute("PRAGMA busy_timeout=30000")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        journal_mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+        if str(journal_mode).lower() != "wal":
+            raise RuntimeError("outcome CAS requires the canonical WAL state database")
+        cursor = conn.execute(
+            """
+            UPDATE release_targets
+            SET status = ?, url = COALESCE(?, url), error = ?, updated_at = ?
+            WHERE id = ? AND status = 'uploaded' AND video_id = ? AND updated_at = ?
+              AND NOT EXISTS (
+                SELECT 1
+                FROM release_targets AS sibling
+                WHERE sibling.id != release_targets.id
+                  AND sibling.platform = release_targets.platform
+                  AND sibling.video_id = release_targets.video_id
+              )
+            """,
+            (status, url, error, _now(), target_id, video_id, observed_at),
+        )
+        conn.commit()
+        return cursor.rowcount == 1
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def claim_target(
+    target_id: int,
+    *,
+    now: datetime | None = None,
+    stale_after: timedelta = TARGET_CLAIM_STALE_AFTER,
+    expected_publish_at: str | None = None,
+) -> dict[str, Any] | None:
+    """Atomically claim one approved or stale-uploading Release Target.
+
+    ``updated_at`` is the lease heartbeat.  Checkpoint writes refresh it via
+    :func:`update_target`, so an in-flight adapter is reclaimable only after
+    ``TARGET_CLAIM_STALE_AFTER`` without adding a second lease model.  When
+    supplied, ``expected_publish_at`` adds an exact compare-and-set guard for
+    callers whose eligibility depends on the scheduled instant.
+    """
+
+    claimed_at = now or datetime.now(timezone.utc)
+    if claimed_at.tzinfo is None or claimed_at.utcoffset() is None:
+        raise ValueError("claim now must be timezone-aware")
+    if stale_after <= timedelta(0):
+        raise ValueError("stale_after must be positive")
+    claimed_at = claimed_at.astimezone(timezone.utc)
+    stale_cutoff = claimed_at - stale_after
+    publish_at_guard = " AND publish_at = ?" if expected_publish_at is not None else ""
+    params: list[Any] = [claimed_at.isoformat(), target_id, stale_cutoff.isoformat()]
+    if expected_publish_at is not None:
+        params.append(expected_publish_at)
+    conn = _get_conn()
+    with _CLAIM_LOCK:
+        row = conn.execute(
+            f"""
+            UPDATE release_targets
+            SET status = 'uploading', error = NULL, updated_at = ?
+            WHERE id = ?
+              AND (
+                status = 'approved'
+                OR (status = 'uploading' AND updated_at <= ?)
+              )
+              {publish_at_guard}
+            RETURNING *
+            """,
+            params,
+        ).fetchone()
+        conn.commit()
+    return dict(row) if row is not None else None

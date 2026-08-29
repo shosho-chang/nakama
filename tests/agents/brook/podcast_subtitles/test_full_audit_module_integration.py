@@ -366,9 +366,7 @@ def test_selective_native_create_resumes_10_to_30_to_full_without_prefix_rerun(
     ):
         response_path.parent.mkdir(parents=True, exist_ok=True)
         response_path.write_bytes(
-            _material_audio_response_bytes(
-                request_path.read_bytes(), clip_path.read_bytes()
-            )
+            _material_audio_response_bytes(request_path.read_bytes(), clip_path.read_bytes())
         )
 
     third, _, third_normalizer, third_recognizers = _native_module(

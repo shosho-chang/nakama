@@ -319,9 +319,7 @@ def default_application_factory(paths: ProductionPaths, episode_id: str):
     """
     path = paths.runtime_root.parent / _BINDING_FILE
     if not path.is_file():
-        raise RuntimeError(
-            f"Resolve binding is missing: {path} (schema {RESOLVE_BINDING_SCHEMA})"
-        )
+        raise RuntimeError(f"Resolve binding is missing: {path} (schema {RESOLVE_BINDING_SCHEMA})")
     payload = json.loads(path.read_text(encoding="utf-8"))
     return build_production_application(
         paths,
@@ -341,10 +339,7 @@ def _resolve_configuration(work: dict[str, object]) -> ProductionResolveConfigur
     episode_dir = Path(work["episode_dir"]).resolve()
     path = episode_dir / "highlights" / "finished-cut-production-v1" / _BINDING_FILE
     if not path.is_file():
-        raise RuntimeError(
-            f"Resolve binding is missing: {path}"
-            f" (schema {RESOLVE_BINDING_SCHEMA})"
-        )
+        raise RuntimeError(f"Resolve binding is missing: {path} (schema {RESOLVE_BINDING_SCHEMA})")
     payload = json.loads(path.read_text(encoding="utf-8"))
     return build_resolve_configuration(payload, str(work["episode_id"]))
 
@@ -444,9 +439,7 @@ def run_revision_job(
             required_status="queued",
         )
         try:
-            application = application_factory(
-                _production_paths(work), str(work["episode_id"])
-            )
+            application = application_factory(_production_paths(work), str(work["episode_id"]))
         except Exception as error:
             _durable_failure(
                 work,
@@ -494,9 +487,7 @@ def run_revision_job(
         status = "registered"
     else:
         try:
-            application = application_factory(
-                _production_paths(work), str(work["episode_id"])
-            )
+            application = application_factory(_production_paths(work), str(work["episode_id"]))
         except Exception as error:
             _durable_failure(
                 work,

@@ -46,9 +46,7 @@ class MemoSrtZeroDurationMergeV1(_StrictModel):
         if not zero or len(positive) != 1:
             raise ValueError("Memo SRT repair must merge zero cues with one positive cue")
         anchor = positive[0]
-        if any(
-            cue.start_ms != anchor.start_ms and cue.end_ms != anchor.end_ms for cue in zero
-        ):
+        if any(cue.start_ms != anchor.start_ms and cue.end_ms != anchor.end_ms for cue in zero):
             raise ValueError("Memo SRT zero cue lacks an exact shared boundary")
         if (
             self.output_start_ms != self.source_cues[0].start_ms
@@ -62,9 +60,7 @@ class MemoSrtZeroDurationMergeV1(_StrictModel):
 
 class MemoSrtRepairReceiptV1(_StrictModel):
     schema_version: Literal[1] = 1
-    contract: Literal["memo-srt-zero-duration-repair-v1"] = (
-        "memo-srt-zero-duration-repair-v1"
-    )
+    contract: Literal["memo-srt-zero-duration-repair-v1"] = "memo-srt-zero-duration-repair-v1"
     raw_source_sha256: str
     raw_source_size_bytes: int = Field(gt=0)
     repaired_source_sha256: str

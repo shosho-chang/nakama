@@ -32,9 +32,7 @@ CheckpointStage = Literal[
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _CHECKPOINT_ID_RE = re.compile(r"^create-checkpoint-[0-9a-f]{64}$")
 _GENERATION_ID_RE = re.compile(r"^(?:[0-9a-f]{64}|generation-[0-9a-f]{64})$")
-EVIDENCE_PREFIX_MIGRATION_ARTIFACT = (
-    "checkpoint/evidence_prefix_migration_v1.json"
-)
+EVIDENCE_PREFIX_MIGRATION_ARTIFACT = "checkpoint/evidence_prefix_migration_v1.json"
 EVIDENCE_PREFIX_MIGRATION_LEDGER_PREFIX = "checkpoint/evidence_prefix_migrations/"
 NATIVE_AUDIT_BASIS_MIGRATION_PREFIX = "checkpoint/native_audit_basis_migrations/"
 
@@ -145,8 +143,8 @@ class EvidencePrefixMigrationReceiptV1(_CheckpointContract):
             raise ValueError("migration timestamp must be ISO-8601 UTC") from exc
         if parsed.tzinfo is None or parsed.utcoffset() != timezone.utc.utcoffset(parsed):
             raise ValueError("migration timestamp must be ISO-8601 UTC")
-        canonical = parsed.astimezone(timezone.utc).isoformat(timespec="seconds").replace(
-            "+00:00", "Z"
+        canonical = (
+            parsed.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
         )
         if value != canonical:
             raise ValueError("migration timestamp must use canonical second-precision UTC")
@@ -188,9 +186,7 @@ class EvidencePrefixMigrationReceiptV2(_CheckpointContract):
     new_adapter_identity_set_hash: str
     predecessor_artifact_set_hash: str
     evidence_artifact_set_hash: str
-    reason_code: Literal["evidence_prefix_identity_refresh"] = (
-        "evidence_prefix_identity_refresh"
-    )
+    reason_code: Literal["evidence_prefix_identity_refresh"] = "evidence_prefix_identity_refresh"
     migrated_at_utc: str
     operator: str
     authority: Literal[
@@ -250,8 +246,7 @@ class EvidencePrefixMigrationReceiptV2(_CheckpointContract):
             or (
                 self.old_policy_hash == self.new_policy_hash
                 and self.old_code_hash == self.new_code_hash
-                and self.old_adapter_identity_set_hash
-                == self.new_adapter_identity_set_hash
+                and self.old_adapter_identity_set_hash == self.new_adapter_identity_set_hash
             )
         ):
             raise ValueError("evidence-prefix refresh must bind a real identity change")
@@ -361,9 +356,7 @@ def build_native_audit_basis_migration_receipt(
         "schema_version": 1,
         **values,
         "reason_code": "native_audit_basis_code_identity_refresh",
-        "authority": (
-            "basis_code_rebind_only_no_artifact_mutation_no_audit_or_release_approval"
-        ),
+        "authority": ("basis_code_rebind_only_no_artifact_mutation_no_audit_or_release_approval"),
     }
     digest = hash_object(payload)
     return NativeAuditBasisMigrationReceiptV1(
@@ -384,9 +377,7 @@ def evidence_prefix_migration_artifact(receipt_id: str) -> str:
 def is_evidence_prefix_migration_artifact(name: str) -> bool:
     if name == EVIDENCE_PREFIX_MIGRATION_ARTIFACT:
         return True
-    if not name.startswith(EVIDENCE_PREFIX_MIGRATION_LEDGER_PREFIX) or not name.endswith(
-        ".json"
-    ):
+    if not name.startswith(EVIDENCE_PREFIX_MIGRATION_LEDGER_PREFIX) or not name.endswith(".json"):
         return False
     receipt_id = name[len(EVIDENCE_PREFIX_MIGRATION_LEDGER_PREFIX) : -len(".json")]
     return bool(_SHA256_RE.fullmatch(receipt_id))

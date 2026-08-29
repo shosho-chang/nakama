@@ -42,17 +42,13 @@ from shared.highlight_materialization import (
     write_materialization_receipt,
 )
 
-_REAL_REQUIRE_TRUSTED_EXECUTION_RECEIPT = (
-    visual_contract_module._require_trusted_execution_receipt
-)
+_REAL_REQUIRE_TRUSTED_EXECUTION_RECEIPT = visual_contract_module._require_trusted_execution_receipt
 _REAL_REQUIRE_PERSISTED_EXECUTION_RECEIPT = (
     visual_contract_module._require_persisted_execution_receipt
 )
 _REAL_ACCEPTED_DP_HYDRATION_LINEAGE = visual_contract_module._accepted_dp_hydration_lineage
 _REAL_VERIFY_CANONICAL_DP_HYDRATION = visual_contract_module._verify_canonical_dp_hydration
-_REAL_VERIFY_CANONICAL_ASSET_EXECUTION = (
-    visual_contract_module._verify_canonical_asset_execution
-)
+_REAL_VERIFY_CANONICAL_ASSET_EXECUTION = visual_contract_module._verify_canonical_asset_execution
 
 DIRECTOR_WORKER = {
     "worker_id": "director-owner-v1",
@@ -523,9 +519,10 @@ def test_pending_revision_can_be_abandoned_without_changing_old_artifacts_then_r
     assert abandoned.path.name == ABANDONED_NAME
     assert abandoned.document["state"] == "abandoned"
     assert abandoned.document["revision_id"] == revision_id
-    assert visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)[
-        "status"
-    ] == "abandoned"
+    assert (
+        visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)["status"]
+        == "abandoned"
+    )
     abandoned_bytes = abandoned.path.read_bytes()
     _assert_contract_error(
         lambda: abandon_visual_revision(
@@ -555,12 +552,14 @@ def test_pending_revision_can_be_abandoned_without_changing_old_artifacts_then_r
     )
 
     assert retried.document["revision_id"] != revision_id
-    assert visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)[
-        "status"
-    ] == "awaiting_director"
-    assert abandoned.path.read_bytes() == (
-        cut_root / "revisions" / revision_id / ABANDONED_NAME
-    ).read_bytes()
+    assert (
+        visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)["status"]
+        == "awaiting_director"
+    )
+    assert (
+        abandoned.path.read_bytes()
+        == (cut_root / "revisions" / revision_id / ABANDONED_NAME).read_bytes()
+    )
 
 
 def test_abandon_rejects_revision_that_is_not_the_active_pending_generation(
@@ -642,9 +641,7 @@ def test_abandon_rejects_revision_with_committed_resolve_materialization(
         "materialized visual revision cannot be abandoned",
     )
     assert receipt.read_bytes() == before
-    assert not (
-        pending.path.parent / ABANDONED_NAME
-    ).exists()
+    assert not (pending.path.parent / ABANDONED_NAME).exists()
 
 
 def _director_proposal(work: object) -> dict[str, object]:
@@ -924,10 +921,7 @@ def _write_trusted_execution_receipt(
     stderr = receipt_root / f"{phase}.stderr.txt"
     phase_input.write_text('{"trusted_test_input":true}\n', encoding="utf-8")
     stdout.write_text(
-        json.dumps(
-            {"type": "thread.started", "thread_id": worker_identity["session_id"]}
-        )
-        + "\n",
+        json.dumps({"type": "thread.started", "thread_id": worker_identity["session_id"]}) + "\n",
         encoding="utf-8",
     )
     stderr.write_text("", encoding="utf-8")
@@ -1455,9 +1449,7 @@ def _dp_proposal(
                             "provider": "pexels",
                             "source_url": f"https://www.pexels.com/video/12{index}/",
                             "license": "Pexels license: https://www.pexels.com/license/",
-                            "receipt": authority_rows[f"stock-{suffix}"][
-                                "acquisition_receipt"
-                            ],
+                            "receipt": authority_rows[f"stock-{suffix}"]["acquisition_receipt"],
                         },
                     }
                     for index, (suffix, summary, media) in enumerate(
@@ -1637,12 +1629,7 @@ def test_provided_photo_can_hold_longer_than_its_source_probe_duration(
         editorial_master=master,
     )
     photo = (
-        root
-        / "highlights"
-        / "visual-pipeline"
-        / "value-L01"
-        / "proposal-assets"
-        / "official.jpg"
+        root / "highlights" / "visual-pipeline" / "value-L01" / "proposal-assets" / "official.jpg"
     )
     photo.parent.mkdir(parents=True, exist_ok=True)
     photo.write_bytes(b"official-jpeg-source-bytes")
@@ -1663,9 +1650,7 @@ def test_provided_photo_can_hold_longer_than_its_source_probe_duration(
         "probe_stock_video",
         lambda path: {
             "duration_seconds": 0.04 if Path(path).suffix.lower() == ".jpg" else 10.0,
-            "video_streams": [
-                {"index": 0, "codec_name": "mjpeg", "width": 1920, "height": 1080}
-            ],
+            "video_streams": [{"index": 0, "codec_name": "mjpeg", "width": 1920, "height": 1080}],
         },
     )
     proposal = _dp_proposal(root, director, extra_authority_sources=[source])
@@ -1752,6 +1737,7 @@ def test_provided_photo_can_hold_longer_than_its_source_probe_duration(
     assert accepted.document["implementations"][2]["implementation_kind"] == "photo"
     assert photo_materialization["source_range"] == {"start_sec": 0.0, "end_sec": 0.04}
     assert photo_materialization["t1"] - photo_materialization["t0"] == pytest.approx(4.0)
+
 
 def test_dp_rejects_lineage_candidate_timing_media_and_target_drift(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1896,9 +1882,9 @@ def test_dp_rejects_lineage_candidate_timing_media_and_target_drift(
     reject(proposal, "render spec hash mismatch")
 
     proposal = _dp_proposal(root, director)
-    proposal["implementations"][1]["candidates"][0]["provenance"][
-        "provider"
-    ] = "worker self-authored HyperFrames"
+    proposal["implementations"][1]["candidates"][0]["provenance"]["provider"] = (
+        "worker self-authored HyperFrames"
+    )
     reject(proposal, "not a trusted HyperFrames render")
 
     with monkeypatch.context() as context:
@@ -1994,14 +1980,7 @@ def test_canonical_dp_binds_and_freshly_rechecks_raw_hydration_receipt(
     root, master = _episode(tmp_path)
     work = init_visual_work_packet(root, cut_id="value-L01", editorial_master=master)
     revision_id = str(work.document["revision_id"])
-    job_root = (
-        root
-        / "highlights"
-        / "visual-pipeline"
-        / "value-L01"
-        / "jobs"
-        / revision_id
-    )
+    job_root = root / "highlights" / "visual-pipeline" / "value-L01" / "jobs" / revision_id
     director_path = job_root / "workers" / "director-session" / "director-proposal.json"
     director_path.parent.mkdir(parents=True, exist_ok=True)
     director_path.write_text(
@@ -2084,14 +2063,10 @@ def test_canonical_dp_binds_and_freshly_rechecks_raw_hydration_receipt(
         return {
             "contract": "trusted-test-hydration",
             "raw_proposal_document": json.loads(raw_path.read_text(encoding="utf-8")),
-            "hydrated_proposal_document": json.loads(
-                hydrated_path.read_text(encoding="utf-8")
-            ),
+            "hydrated_proposal_document": json.loads(hydrated_path.read_text(encoding="utf-8")),
         }
 
-    monkeypatch.setattr(
-        visual_contract_module, "dp_hydration_receipt_identity", hydration_identity
-    )
+    monkeypatch.setattr(visual_contract_module, "dp_hydration_receipt_identity", hydration_identity)
     monkeypatch.setattr(visual_contract_module, "verify_dp_hydration_receipt", verify_hydration)
     raw_bytes = raw_path.read_bytes()
     swapped_raw = json.loads(raw_bytes)
@@ -2253,9 +2228,7 @@ def test_semantic_mismatch_is_an_immutable_refinement_not_a_current_acceptance(
         editorial_master=master,
     )
 
-    assert refinement.document["contract"] == (
-        "podcast-highlight-visual-semantic-refinement-v1"
-    )
+    assert refinement.document["contract"] == ("podcast-highlight-visual-semantic-refinement-v1")
     assert refinement.document["attempt"] == 1
     assert refinement.document["mismatch_count"] == 1
     assert refinement.document["uncertain_count"] == 0
@@ -2268,9 +2241,7 @@ def test_semantic_mismatch_is_an_immutable_refinement_not_a_current_acceptance(
         / revision_id
         / "SEMANTIC-AUDIT.json"
     ).exists()
-    assert not (
-        root / "highlights" / "visual-pipeline" / "value-L01" / "CURRENT.json"
-    ).exists()
+    assert not (root / "highlights" / "visual-pipeline" / "value-L01" / "CURRENT.json").exists()
     status = visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)
     assert status["status"] == "awaiting_refinement_decision"
     assert status["active_dp_attempt"] == 1
@@ -2327,9 +2298,7 @@ def test_all_match_audit_crash_before_current_pointer_recovers_idempotently(
         / "SEMANTIC-AUDIT.json"
     )
     assert audit_path.is_file()
-    assert not (
-        root / "highlights" / "visual-pipeline" / "value-L01" / "CURRENT.json"
-    ).exists()
+    assert not (root / "highlights" / "visual-pipeline" / "value-L01" / "CURRENT.json").exists()
 
     monkeypatch.setattr(visual_contract_module, "_write_pointer", original_write_pointer)
     recovery = visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)
@@ -2343,9 +2312,10 @@ def test_all_match_audit_crash_before_current_pointer_recovers_idempotently(
         worker_identity=AUDIT_WORKER,
         editorial_master=master,
     )
-    assert visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)[
-        "status"
-    ] == "ready_to_materialize"
+    assert (
+        visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)["status"]
+        == "ready_to_materialize"
+    )
 
 
 def _refinement_decision_proposal(
@@ -2367,8 +2337,7 @@ def _refinement_decision_proposal(
                     "素材本身可替換，DP 應重新找一支直接呈現逐字稿場景且避開負面限制的畫面。"
                     if action == "retry_dp"
                     else (
-                        "目前沒有可核對的原始素材，不能讓 DP 用合成卡冒充，"
-                        "必須回到 Director 改稿。"
+                        "目前沒有可核對的原始素材，不能讓 DP 用合成卡冒充，必須回到 Director 改稿。"
                     )
                 ),
             }
@@ -2440,9 +2409,7 @@ def _dp2_proposal(root: Path, director: object) -> dict[str, object]:
     )
     authority_rows: dict[str, dict[str, object]] = {}
     for authority_attempt in (1, 2):
-        authority_path = (
-            authority_dir / f"attempt-{authority_attempt:03d}" / "ASSET-AUTHORITY.json"
-        )
+        authority_path = authority_dir / f"attempt-{authority_attempt:03d}" / "ASSET-AUTHORITY.json"
         authority_rows.update(
             {
                 row["asset_id"]: row
@@ -2571,9 +2538,10 @@ def test_mismatch_dp2_and_same_director_reaudit_activate_one_current(tmp_path: P
     pipeline = verify_visual_pipeline(root, cut_id="value-L01", editorial_master=master)
     assert pipeline.dp_fulfillment.identity() == dp2.identity()
     assert pipeline.semantic_audit.identity() == audit2.identity()
-    assert visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)[
-        "status"
-    ] == "ready_to_materialize"
+    assert (
+        visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)["status"]
+        == "ready_to_materialize"
+    )
     attempts = (
         root
         / "highlights"
@@ -2725,9 +2693,7 @@ def test_director_replan_crash_before_marker_recovers_without_mutating_plan(
     )
     audit1 = _audit_proposal(director1, dp1)
     audit1["findings"][3]["verdict"] = "mismatch"
-    audit1["findings"][3]["rationale"] = (
-        "沒有可核對的自有檔案，合成概念卡不能冒充實際畫面。"
-    )
+    audit1["findings"][3]["rationale"] = "沒有可核對的自有檔案，合成概念卡不能冒充實際畫面。"
     refinement = accept_semantic_audit(
         root,
         cut_id="value-L01",
@@ -2811,9 +2777,10 @@ def test_director_replan_crash_before_marker_recovers_without_mutating_plan(
     )
     assert plan_path.read_bytes() == before
     assert accepted.path == plan_path
-    assert visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)[
-        "status"
-    ] == "awaiting_dp_refinement"
+    assert (
+        visual_pipeline_status(root, cut_id="value-L01", editorial_master=master)["status"]
+        == "awaiting_dp_refinement"
+    )
 
 
 def test_audit_rejects_worker_coverage_evidence_quote_and_nonmatch(tmp_path: Path) -> None:
@@ -3083,9 +3050,7 @@ def test_request_bound_legacy_absolute_stock_path_is_normalized_under_episode(
     )
 
     assert prospective["status"] == "would_initialize"
-    source_component = prospective["requested_visual_feedback"]["directives"][0][
-        "source_component"
-    ]
+    source_component = prospective["requested_visual_feedback"]["directives"][0]["source_component"]
     assert source_component["asset"] == _identity(root, stock)
 
     outside = tmp_path / "outside-episode.mp4"
@@ -3392,7 +3357,7 @@ def _dp_for_remove_move_asset_feedback(root: Path, director: object) -> dict[str
                     **deepcopy(actual["value-L01-visual-001"]),
                     "event_id": "visual-002",
                 },
-            ]
+            ],
         }
 
         @staticmethod
@@ -3465,7 +3430,7 @@ def _dp_for_change_type_feedback(
                     **deepcopy(actual["value-L01-visual-001"]),
                     "event_id": "visual-002",
                 },
-            ]
+            ],
         }
 
         @staticmethod
@@ -3518,7 +3483,7 @@ def _dp_for_hero_feedback(root: Path, director: object) -> dict[str, object]:
                     "event_id": "visual-002",
                     "category": "chapter",
                 },
-            ]
+            ],
         }
 
         @staticmethod
@@ -3670,9 +3635,7 @@ def test_removed_human_stock_binds_old_bytes_and_cannot_be_reintroduced_under_ne
         editorial_master=master,
     )
     directive = work.document["requested_visual_feedback"]["directives"][0]
-    assert directive["source_component"]["asset"]["sha256"] == _identity(root, old_asset)[
-        "sha256"
-    ]
+    assert directive["source_component"]["asset"]["sha256"] == _identity(root, old_asset)["sha256"]
 
     renamed = root / "assets" / "broll" / "renamed-new-component-id.mp4"
     renamed.write_bytes(old_asset.read_bytes())

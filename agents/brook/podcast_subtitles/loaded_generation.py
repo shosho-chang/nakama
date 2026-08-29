@@ -675,8 +675,7 @@ class LoadedNativeSourceSet:
             raise TypeError("native source set requires an immutable tuple")
         selective_reconstructible = (
             self.modality == "audio"
-            and self.index_artifact.name
-            == "native_full_audit/audio_execution_plans_v3.json"
+            and self.index_artifact.name == "native_full_audit/audio_execution_plans_v3.json"
         )
         if not self.sources and not selective_reconstructible:
             raise ValueError("native source set requires at least one exact source")

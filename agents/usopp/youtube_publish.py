@@ -76,10 +76,14 @@ def reconcile_youtube_target(
     if not video_id:
         raise ValueError("YouTube reconciliation requires video_id")
     checked_at = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat()
-    video_response = service.videos().list(
-        part="status,processingDetails",
-        id=video_id,
-    ).execute()
+    video_response = (
+        service.videos()
+        .list(
+            part="status,processingDetails",
+            id=video_id,
+        )
+        .execute()
+    )
     items = video_response.get("items") or []
     if not items:
         return YouTubeReconciliation(
@@ -98,8 +102,7 @@ def reconcile_youtube_target(
     privacy = status.get("privacyStatus")
     publish_at = status.get("publishAt")
     processing = _processing_status(
-        (video.get("processingDetails") or {}).get("processingStatus")
-        or status.get("uploadStatus")
+        (video.get("processingDetails") or {}).get("processingStatus") or status.get("uploadStatus")
     )
     caption_response = service.captions().list(part="snippet", videoId=video_id).execute()
     caption = _caption_status(caption_response.get("items") or [])

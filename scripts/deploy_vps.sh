@@ -10,9 +10,12 @@
 #   thousand_sunny/                → thousand-sunny.service
 #   gateway/                       → nakama-gateway.service
 #   agents/usopp/                  → nakama-usopp.service
-#   agents/<other>/, shared/       → thousand-sunny + nakama-gateway
-#                                    (both import these)
-#   requirements.txt               → all three (deps changed)
+#   agents/sanji/                  → nakama-sanji.service（gamification 服務）
+#   agents/<other>/, shared/       → thousand-sunny + nakama-gateway + nakama-sanji
+#                                    (all import these)
+#   wp/fleet-gamification/         → PHP lint gate → rsync 到 fleet 站 plugin 目錄
+#                                    → contract probe（不重啟任何 Python 服務）
+#   requirements.txt               → all services (deps changed)
 #   docs/, memory/, prompts/, tests/, .github/, *.md → no restart
 #
 # Usage (on VPS, as the nakama user with sudo):
@@ -31,6 +34,7 @@
 #   2  pip install failed
 #   3  one or more services failed to restart
 #   4  post-restart healthz check failed
+#   5  plugin PHP lint 或 contract probe 失敗（plugin 未同步或同步後紅燈）
 
 set -euo pipefail
 
@@ -106,7 +110,8 @@ else
 fi
 
 # --- decide which services need restart ---
-declare -A NEED=( [thousand-sunny]=0 [nakama-gateway]=0 [nakama-usopp]=0 )
+declare -A NEED=( [thousand-sunny]=0 [nakama-gateway]=0 [nakama-usopp]=0 [nakama-sanji]=0 )
+PLUGIN_SYNC=0
 # Always run pip install — pip is a fast no-op when everything is already
 # installed (~2s), and this catches the case where a past commit added a
 # dep that the VPS never picked up (2026-05-28 incident: bleach was added
@@ -118,6 +123,8 @@ if [ "$FORCE_ALL" -eq 1 ]; then
   NEED[thousand-sunny]=1
   NEED[nakama-gateway]=1
   NEED[nakama-usopp]=1
+  NEED[nakama-sanji]=1
+  PLUGIN_SYNC=1
   PIP_INSTALL=1
   CHANGED_FILES="(--force-all)"
 else
@@ -134,15 +141,21 @@ else
         NEED[nakama-gateway]=1 ;;
       agents/usopp/*|agents/usopp.py)
         NEED[nakama-usopp]=1 ;;
+      agents/sanji/*)
+        NEED[nakama-sanji]=1 ;;
+      wp/fleet-gamification/*)
+        PLUGIN_SYNC=1 ;;
       agents/*|shared/*)
-        # imported by both web and slack gateway
+        # imported by web, slack gateway, and sanji
         NEED[thousand-sunny]=1
-        NEED[nakama-gateway]=1 ;;
+        NEED[nakama-gateway]=1
+        NEED[nakama-sanji]=1 ;;
       requirements.txt|requirements*.txt|pyproject.toml)
         # PIP_INSTALL is already 1 unconditionally; deps change → restart everything
         NEED[thousand-sunny]=1
         NEED[nakama-gateway]=1
-        NEED[nakama-usopp]=1 ;;
+        NEED[nakama-usopp]=1
+        NEED[nakama-sanji]=1 ;;
       docs/*|memory/*|prompts/*|tests/*|.github/*|*.md|CONTEXT*.md|CLAUDE.md)
         : ;;  # no restart needed
       *)
@@ -153,8 +166,13 @@ else
 fi
 
 plan=()
-for svc in thousand-sunny nakama-gateway nakama-usopp; do
+for svc in thousand-sunny nakama-gateway nakama-usopp nakama-sanji; do
   if [ "${NEED[$svc]}" -eq 1 ]; then
+    # 尚未安裝的 unit（如 nakama-sanji 首次部署前）跳過而不失敗
+    if ! systemctl list-unit-files --no-legend "$svc.service" 2>/dev/null | grep -q .; then
+      echo "    (skip $svc — unit not installed)"
+      continue
+    fi
     plan+=("$svc")
   fi
 done
@@ -162,6 +180,7 @@ done
 echo
 echo "==> Plan:"
 [ "$PIP_INSTALL" -eq 1 ] && echo "    - pip install -r requirements.txt"
+[ "$PLUGIN_SYNC" -eq 1 ] && echo "    - sync wp/fleet-gamification → fleet 站（lint → rsync → probe）"
 if [ ${#plan[@]} -eq 0 ]; then
   echo "    (no service restarts needed)"
 else
@@ -210,6 +229,43 @@ done
 
 if [ "$fail" -ne 0 ]; then
   exit 3
+fi
+
+# --- fleet-gamification plugin sync（lint gate → rsync → contract probe） ---
+FLEET_WP="${FLEET_WP:-/var/www/fleet.shosho.tw}"
+FLEET_WP_USER="${FLEET_WP_USER:-u2_fleet_shosho}"
+PLUGIN_SRC="wp/fleet-gamification"
+PLUGIN_DST="$FLEET_WP/wp-content/plugins/fleet-gamification"
+
+if [ "$PLUGIN_SYNC" -eq 1 ]; then
+  echo
+  echo "==> fleet-gamification: PHP lint gate"
+  lint_fail=0
+  while IFS= read -r -d '' f; do
+    if ! php -l "$f" > /dev/null; then
+      php -l "$f" || true
+      lint_fail=1
+    fi
+  done < <(find "$PLUGIN_SRC" -type f -name '*.php' -print0)
+  if [ "$lint_fail" -ne 0 ]; then
+    echo "ERROR: PHP lint failed — plugin NOT synced（production 保持舊版）" >&2
+    exit 5
+  fi
+  echo "    lint OK"
+
+  echo "==> rsync → $PLUGIN_DST"
+  sudo rsync -a --delete "$PLUGIN_SRC/" "$PLUGIN_DST/"
+  sudo chown -R "$FLEET_WP_USER":"$FLEET_WP_USER" "$PLUGIN_DST"
+
+  if sudo -u "$FLEET_WP_USER" wp --path="$FLEET_WP" plugin is-active fleet-gamification 2>/dev/null; then
+    echo "==> contract probe"
+    if ! sudo -u "$FLEET_WP_USER" wp --path="$FLEET_WP" eval-file "$PLUGIN_DST/tools/contract-probe.php"; then
+      echo "ERROR: contract probe RED — 檢查 vendor 依賴或剛部署的 plugin 程式" >&2
+      exit 5
+    fi
+  else
+    echo "    (plugin 未啟用 — 跳過 probe；首次啟用: wp plugin activate fleet-gamification)"
+  fi
 fi
 
 # --- post-deploy healthz check ---

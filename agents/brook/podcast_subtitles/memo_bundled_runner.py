@@ -56,9 +56,7 @@ class MemoBundledRunnerRequest(_StrictModel):
 
 class MemoBundledRunnerExecutionReceiptV1(_StrictModel):
     schema_version: Literal[1] = 1
-    contract: Literal["memo-bundled-runner-execution-v1"] = (
-        "memo-bundled-runner-execution-v1"
-    )
+    contract: Literal["memo-bundled-runner-execution-v1"] = "memo-bundled-runner-execution-v1"
     argv: tuple[str, ...]
     runner_path: str
     runner_sha256: str
@@ -165,9 +163,7 @@ def _publish_execution_outputs(
         raise
 
 
-def _build_argv(
-    request: MemoBundledRunnerRequest, *, invocation_input: Path
-) -> tuple[str, ...]:
+def _build_argv(request: MemoBundledRunnerRequest, *, invocation_input: Path) -> tuple[str, ...]:
     return (
         str(request.runner.resolve()),
         "-m",
@@ -222,9 +218,7 @@ def execute_memo_bundled_runner(
         completed = invoker(argv)
         completed_at = datetime.now(timezone.utc)
         if completed.returncode != 0:
-            raise RuntimeError(
-                f"Memo bundled runner failed with exit code {completed.returncode}"
-            )
+            raise RuntimeError(f"Memo bundled runner failed with exit code {completed.returncode}")
         invocation_output = invocation_input.with_suffix(".srt")
         try:
             output_bytes = invocation_output.read_bytes()
@@ -298,9 +292,7 @@ def load_verified_memo_bundled_runner_execution(
         stdout = measure_regular_file(request.stdout_output)
         stderr = measure_regular_file(request.stderr_output)
     except (OSError, json.JSONDecodeError, ValidationError, ValueError) as exc:
-        raise AdapterInputError(
-            f"invalid Memo bundled runner execution lineage: {exc}"
-        ) from exc
+        raise AdapterInputError(f"invalid Memo bundled runner execution lineage: {exc}") from exc
     if canonical_json_bytes(receipt) != receipt_bytes:
         raise AdapterIntegrityError("Memo bundled runner receipt must be canonical JSON")
     expected_request = (
@@ -341,9 +333,7 @@ def load_verified_memo_bundled_runner_execution(
         stdout,
         stderr,
     ):
-        raise AdapterIntegrityError(
-            "Memo bundled runner execution lineage is stale or tampered"
-        )
+        raise AdapterIntegrityError("Memo bundled runner execution lineage is stale or tampered")
     return receipt
 
 
@@ -355,13 +345,9 @@ def load_memo_bundled_runner_execution_receipt(
     try:
         payload = Path(path).read_bytes()
         json.loads(payload, object_pairs_hook=_reject_duplicate_keys)
-        receipt = MemoBundledRunnerExecutionReceiptV1.model_validate_json(
-            payload, strict=True
-        )
+        receipt = MemoBundledRunnerExecutionReceiptV1.model_validate_json(payload, strict=True)
     except (OSError, json.JSONDecodeError, ValidationError, ValueError) as exc:
-        raise AdapterInputError(
-            f"invalid Memo bundled runner execution receipt: {exc}"
-        ) from exc
+        raise AdapterInputError(f"invalid Memo bundled runner execution receipt: {exc}") from exc
     if canonical_json_bytes(receipt) != payload:
         raise AdapterIntegrityError("Memo bundled runner receipt must be canonical JSON")
     return receipt

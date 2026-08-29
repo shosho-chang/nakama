@@ -209,7 +209,7 @@ def test_cleanup_script_anchored_emits_fcpxml_and_corrected_srt(tmp_path, monkey
     clips = root.findall("library/event/project/sequence/spine/asset-clip")
     assert len(clips) >= 1
     # corrected SRT：文字全對（含逐字稿的「不是吃多」）、失敗 take 已剔除
-    srt = (ep_dir / "transcript.srt").read_text(encoding="utf-8")
+    srt = (ep_dir / "legacy_transcript.srt").read_text(encoding="utf-8")
     assert "不是吃多" in srt
     assert srt.count("第一個觀念") == 1
     meta = yaml.safe_load((ep_dir / "episode.yaml").read_text(encoding="utf-8"))
@@ -224,7 +224,7 @@ def test_cleanup_script_anchored_without_script_skips_srt(tmp_path, monkeypatch)
 
     assert rc == 0
     assert (ep_dir / "out" / "cleanup.fcpxml").exists()
-    assert not (ep_dir / "transcript.srt").exists()
+    assert not (ep_dir / "legacy_transcript.srt").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +249,7 @@ def test_correct_srt_subcommand_writes_corrected_srt(tmp_path, monkeypatch) -> N
     rc = pipeline.main(["--episode", "ep-srt", "correct-srt"])
 
     assert rc == 0
-    srt = (ep_dir / "transcript.srt").read_text(encoding="utf-8")
+    srt = (ep_dir / "legacy_transcript.srt").read_text(encoding="utf-8")
     assert "蛋白質" in srt
     assert "蛋白值" not in srt
 

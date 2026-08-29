@@ -1,5 +1,9 @@
 # Memory Index
 
+- [feedback_no_gemini_default_openai.md](feedback_no_gemini_default_openai.md) — **全面停用 Gemini，LLM 預設走 OpenAI**（修修 2026-08-17 裁決，除非 Google 出新 model）。三類依賴處置不同：生產路由直接換、音訊多模態（`ask_with_audio` 只有 Google 一家實作）結構性卡住要新開發、panel review 腳本另換
+- [reference_agent_sdk_supports_oauth.md](reference_agent_sdk_supports_oauth.md) — **Agent SDK 可以走訂閱額度，「不支援」的舊記載是錯的**（2026-08-18 實測：拔 API key + 無效 OAuth token → 回 401 OAuth invalid）。做法是 `ClaudeAgentOptions.env` 傳 token 並**同時清空** `ANTHROPIC_API_KEY`
+- [../shared/reference/fleet_community_stack.md](../shared/reference/fleet_community_stack.md) — **自由艦隊社群站是 `fleet.shosho.tw` 不是 `shosho.tw` 主站**（FluentCommunity / FluentCart / FluentCRM 全裝這邊，主站一個都沒有）；SSH `nakama-vps` → `/var/www/fleet.shosho.tw`，DB `db2_fleet_shosho` prefix `zcjf_`，wp-cli 要 `sudo -u u2_fleet_shosho`。LiteSpeed object cache 開著、測試帳號是 user 8/9/10。領域知識在 `agents/sanji/CONTEXT.md`
+- [../shared/decision/fluentcart_single_grant_channel.md](../shared/decision/fluentcart_single_grant_channel.md) — **社群權限只能由 FluentCart product feed 授予；FluentCRM funnel #42 的 `add_to_fluent_community` 是刻意刪掉的，不要加回去**（2026-08-16：雙軌授予導致 18 個退款帳號權限殘留半年）。付費空間 privacy 必須 `private`；部分退款不會自動回收（已知 gap 非 bug）
 - [feedback_hitl_at_cheapest_fork.md](feedback_hitl_at_cheapest_fork.md) — **修修的選擇放在成本最低的分叉點：機器排完就給他挑，不要物化完才問**（2026-08-11 安吉三支長片全做完才嫌主題不吸引人）；排序＝per episode、製作＋packaging＝per cut 線性，這個不對稱就是判斷依據
 - [feedback_subtitle_house_style.md](feedback_subtitle_house_style.md) — **字幕三鐵則（2026-07-25 驗收裁決）：《》「」必標其他標點省略（推翻 PR #23 全刪）；斷句禁字數硬切走 cue_builder；時間軸必須＝原始錄影（靜音裁切 opt-in）**
 - [feedback_qc_self_adjudication.md](feedback_qc_self_adjudication.md) — **QC/uncertain 清單自己裁決完（重開 WhisperX = 聽音檔、分軌 stem、派 agent 查證），只升級真無法判定的 <5 項**（修修 2026-07-25：「要我拍板的地方實在太多」）
@@ -361,3 +365,5 @@
 - [框架要攤開讓修修選](feedback_surface_the_frame_not_just_the_draft.md) — 多角度產出不可擅自定框架只讓他改字；出 4–6 個角度菜單（含「犧牲什麼」）讓他在具體選項上選
 - [project_mistake_removal_v2_2026_07_30](project_mistake_removal_v2_2026_07_30.md) — 修修 paragraph 錄影協議（拍手→段首重唸）+ cleanup v2 現狀（branch 待新素材驗證）+ Resolve scripting 陷阱
 - [短影片線凍結](project_shortform_frozen.md) — 修修 2026-08-04：只推長影片，短片擱置；清盤=長片出完
+- [vendor SPA 前端不可盲寫 selector](feedback_verify_ui_in_real_browser.md) — minified Vue bundle 的 DOM/CSS/router 無法從原碼推導；先用 magic login + Playwright 解剖真實頁面再寫，含站上生成免密登入連結的指令
+- [自由艦隊 gamification 上線事實](reference_fleet_gamification_stack.md) — 分享期 T0 2026-08-24；plugin/服務/開關/白名單/Sanji 帳號、三個 vendor 縫隙、LSCache 與 CF 兩顆地雷、probe 與部署指令

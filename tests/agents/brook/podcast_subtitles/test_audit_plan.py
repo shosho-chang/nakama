@@ -611,9 +611,7 @@ def test_speaker_interval_sweep_uses_strict_overlap_edges(
             "end_ms": end_ms,
         }
     )
-    recognition = RecognitionEvidence.model_validate(
-        {**original.model_dump(), "tokens": (token,)}
-    )
+    recognition = RecognitionEvidence.model_validate({**original.model_dump(), "tokens": (token,)})
 
     observed = _observed_speakers_by_span(transcript.spans, (recognition,))
 

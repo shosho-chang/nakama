@@ -5,14 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import re
 import os
+import re
 import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, Cookie, HTTPException, Query
@@ -25,7 +25,6 @@ from agents.brook.script_video.editorial_master import (
     EditorialMasterRequest,
 )
 from agents.brook.script_video.finished_cut_production import (
-    FinishedCutInspection,
     build_current_release_reader,
 )
 from agents.usopp.publish_timeline import export_matches_current_release, packaging_cut_id
@@ -59,6 +58,7 @@ _FINISHED_MANIFEST_SCHEMA = "nakama.finished_cut_review_manifest.v3"
 _FINISHED_FEEDBACK_SCHEMA = "nakama.finished_cut_review_feedback.v3"
 _FINISHED_FEEDBACK_FILE = "finished_review_feedback.v3.json"
 _PARALLEL_WORK_PLAN_SCHEMA = "nakama.highlight_parallel_work_plan.v1"
+_SHORT_FINISHED_FEEDBACK_FILE = "short_finished_review_feedback.v1.json"
 _SHA256_LENGTH = 64
 _ACTION_LABELS = {
     "approve": "保留",
@@ -116,6 +116,15 @@ def _publish_prep_state(episode_dir: Path, cut_id: str) -> dict | None:
         payload = {**payload, "status": "failed", "exit_code": exit_code, "error": reason}
         atomic_job_write(receipt, payload)
     return payload
+
+
+_SHORT_REVIEW_LANES = ("title_card", "b_roll", "visual_effect", "pacing")
+_SHORT_COMPONENT_ACTIONS = {
+    "title_card": ["approve", "edit_text", "move", "comment"],
+    "b_roll": ["approve", "remove", "replace_asset", "change_type", "move", "comment"],
+    "visual_effect": ["approve", "remove", "replace_asset", "change_type", "move", "comment"],
+    "pacing": ["approve", "remove", "move", "comment"],
+}
 
 
 def _shosho_asset_version() -> str:
@@ -201,11 +210,20 @@ def _visual_time_range(t0: object, t1: object) -> str:
 def _finished_cut_event_view(cut: dict[str, Any]) -> dict[str, object]:
     """Project only semantic events carried by the sealed current Release."""
 
+    release_id = cut.get("release_id")
+    if release_id is None:
+        # Short 走 run_short_review 的 packet，沒有 sealed Release，也沒有語意 event。
+        return {
+            "status": "review_packet",
+            "status_label": "SHORT REVIEW PACKET",
+            "release_id": None,
+            "events": [],
+        }
     return {
         "status": "sealed_current",
         "status_label": "FINISHED CUT RELEASE · SEALED CURRENT",
-        "release_id": cut["release_id"],
-        "events": cut["events"],
+        "release_id": release_id,
+        "events": cut.get("events") or [],
     }
 
 
@@ -419,6 +437,9 @@ def _load_finished_manifest(episode_slug: str) -> dict[str, Any]:
 
 
 def _load_review_manifest(episode_slug: str, review_format: str) -> dict[str, Any]:
+    """Short 走 run_short_review 的 packet；長片走 v3 current Release。"""
+    if review_format == "short":
+        return _load_short_finished_manifest(episode_slug)
     manifest = _load_finished_manifest(episode_slug)
     cuts = [cut for cut in manifest["cuts"] if cut["format"] == review_format]
     if not cuts:
@@ -431,6 +452,167 @@ def _load_review_manifest(episode_slug: str, review_format: str) -> dict[str, An
     return manifest
 
 
+def _short_cut_sort_key(path: Path) -> tuple[int, str]:
+    digits = "".join(character for character in path.name if character.isdigit())
+    return (int(digits) if digits else 9999, path.name)
+
+
+def _short_event_lane(event_type: str) -> str | None:
+    if event_type.startswith("card-tier"):
+        return "title_card"
+    if event_type in {"video", "photo"}:
+        return "b_roll"
+    if event_type in {"icon_motion", "sticker", "concept"}:
+        return "visual_effect"
+    if event_type in {"punch-cut", "punch-ramp"}:
+        return "pacing"
+    return None
+
+
+def _short_event_display(event: dict[str, Any], lane: str) -> str:
+    slug = str(event.get("slug") or "").replace("/", "\n").strip()
+    note = str(event.get("note") or "").strip()
+    if lane == "title_card":
+        return slug or "未命名字卡"
+    if lane == "pacing":
+        return note or str(event.get("type") or "節奏事件")
+    return note or slug or str(event.get("type") or "未命名元件")
+
+
+def _artifact_receipt(path: Path, *, duration_seconds: float | None = None) -> dict[str, Any]:
+    if not path.is_file():
+        raise _manifest_error(f"artifact is missing: {path}")
+    receipt: dict[str, Any] = {
+        "path": str(path),
+        "bytes": path.stat().st_size,
+        "sha256": _file_sha256(path),
+    }
+    if duration_seconds is not None:
+        receipt["duration_seconds"] = duration_seconds
+    return receipt
+
+
+def _load_short_finished_manifest(episode_slug: str) -> dict[str, Any]:
+    """Build a content-addressed short review inventory from run_short_review receipts."""
+    episode_dir = _episode_dir(episode_slug)
+    review_dir = episode_dir / "highlights" / "review"
+    cut_dirs = sorted(
+        (
+            path
+            for path in review_dir.glob("KS*")
+            if path.is_dir() and (path / "events.json").is_file()
+        ),
+        key=_short_cut_sort_key,
+    )
+    if not cut_dirs:
+        raise HTTPException(status_code=404, detail="short review packets not found")
+
+    cuts: list[dict[str, Any]] = []
+    for cut_dir in cut_dirs:
+        events_path = cut_dir / "events.json"
+        try:
+            packet = json.loads(events_path.read_text(encoding="utf-8-sig"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise _manifest_error(f"cannot read {events_path}") from exc
+        if not isinstance(packet, dict) or not isinstance(packet.get("events"), list):
+            raise _manifest_error(f"{cut_dir.name} events.json has an invalid schema")
+        duration = packet.get("duration_sec")
+        if (
+            not isinstance(duration, (int, float))
+            or isinstance(duration, bool)
+            or not math.isfinite(float(duration))
+            or float(duration) <= 0
+        ):
+            raise _manifest_error(f"{cut_dir.name} duration_sec is invalid")
+        duration = float(duration)
+        preview_name = packet.get("preview")
+        if not isinstance(preview_name, str) or not preview_name:
+            raise _manifest_error(f"{cut_dir.name} preview is required")
+        preview_path = cut_dir / preview_name
+        subtitles_path = cut_dir / "subs.srt"
+        lane_counts = {lane: 0 for lane in _SHORT_REVIEW_LANES}
+        components: list[dict[str, Any]] = []
+        review_components: list[dict[str, Any]] = []
+        for event in packet["events"]:
+            if not isinstance(event, dict):
+                raise _manifest_error(f"{cut_dir.name} event must be an object")
+            lane = _short_event_lane(str(event.get("type") or ""))
+            if lane is None:
+                continue
+            t0, t1 = event.get("t0"), event.get("t1")
+            if (
+                not isinstance(t0, (int, float))
+                or isinstance(t0, bool)
+                or not isinstance(t1, (int, float))
+                or isinstance(t1, bool)
+                or not math.isfinite(float(t0))
+                or not math.isfinite(float(t1))
+                or float(t0) < 0
+                or float(t1) <= float(t0)
+                or float(t1) > duration + 0.01
+            ):
+                raise _manifest_error(f"{cut_dir.name} review event has an invalid timeline range")
+            lane_counts[lane] += 1
+            lane_slug = lane.replace("_", "-")
+            component_id = f"{cut_dir.name}-{lane_slug}-{lane_counts[lane]:03d}"
+            component = {
+                **event,
+                "component_id": component_id,
+                "lane": lane,
+                "t0": float(t0),
+                "t1": float(t1),
+                "display": _short_event_display(event, lane),
+                "actions": [
+                    {"value": action, "label": _ACTION_LABELS[action]}
+                    for action in _SHORT_COMPONENT_ACTIONS[lane]
+                ],
+            }
+            components.append(component)
+            review_components.append(component)
+        timeline = str(packet.get("timeline") or cut_dir.name)
+        title = timeline.split(" - ", 1)[-1].replace("（緊·導播）", "").strip()
+        cuts.append(
+            {
+                "cut_id": cut_dir.name,
+                "title": title,
+                "format": "short",
+                "artifacts": {
+                    "preview": _artifact_receipt(preview_path, duration_seconds=duration),
+                    "subtitles": _artifact_receipt(subtitles_path),
+                    "review_events": _artifact_receipt(events_path),
+                },
+                "components": components,
+                "review_components": review_components,
+                "component_counts": lane_counts,
+            }
+        )
+
+    contract = {
+        "review_lanes": list(_SHORT_REVIEW_LANES),
+        "component_actions": _SHORT_COMPONENT_ACTIONS,
+        "gate_actions": ["request_changes", "approve_cut", "approve_all"],
+    }
+    public_manifest: dict[str, Any] = {
+        "schema": _FINISHED_MANIFEST_SCHEMA,
+        "episode_id": episode_slug,
+        "stage": 5,
+        "review_format": "short",
+        "gate": {"kind": "finished_cut_review", "status": "ready_for_review"},
+        "cuts": cuts,
+        "feedback_contract": contract,
+        "lane_labels": {lane: _LANE_LABELS[lane] for lane in _SHORT_REVIEW_LANES},
+        "skill_promotion": {
+            "target_skill": ".claude/skills/brook-director",
+            "direct_free_text_self_mutation": False,
+        },
+    }
+    canonical = json.dumps(public_manifest, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    public_manifest["_path"] = review_dir / "virtual_short_finished_review_manifest.json"
+    public_manifest["_review_dir"] = review_dir
+    public_manifest["_sha256"] = hashlib.sha256(canonical).hexdigest()
+    return public_manifest
+
+
 def _safe_artifact_path(
     manifest: dict[str, Any], cut_id: str, artifact_name: str
 ) -> tuple[Path, dict]:
@@ -438,13 +620,20 @@ def _safe_artifact_path(
     if cut is None:
         raise HTTPException(status_code=404, detail="cut is not in finished review manifest")
     artifact = cut["artifacts"][artifact_name]
-    episode_dir = manifest["_episode_dir"].resolve()
+    review_dir = manifest["_review_dir"].resolve()
     reference = Path(artifact["path"])
     if reference.is_absolute():
-        raise HTTPException(status_code=403, detail="artifact reference must be episode-relative")
-    path = (episode_dir / reference).resolve()
+        # Short review packet 的 receipt 記絕對路徑，界線是 review 目錄。
+        root, path = review_dir, reference.resolve()
+    else:
+        # v3 Release 的 artifact 一律 episode-relative。
+        episode_root = manifest.get("_episode_dir")
+        if episode_root is None:
+            raise HTTPException(status_code=403, detail="artifact reference is not resolvable")
+        root = Path(episode_root).resolve()
+        path = (root / reference).resolve()
     try:
-        path.relative_to(episode_dir)
+        path.relative_to(root)
     except ValueError as exc:
         raise HTTPException(
             status_code=403, detail="artifact is outside the episode directory"
@@ -463,8 +652,13 @@ def _safe_artifact_path(
 
 
 def _feedback_path(manifest: dict[str, Any]) -> Path:
-    """Use the one server-owned v3 location for every current Release format."""
-    return manifest["_review_dir"] / _FINISHED_FEEDBACK_FILE
+    """Use the server-owned location; never trust gate.feedback_file."""
+    filename = (
+        _SHORT_FINISHED_FEEDBACK_FILE
+        if manifest.get("review_format") == "short"
+        else _FINISHED_FEEDBACK_FILE
+    )
+    return manifest["_review_dir"] / filename
 
 
 def _file_sha256(path: Path) -> str:
@@ -739,12 +933,17 @@ def _context(episode_slug: str) -> dict:
         row["feedback"] = str(latest_feedback.get(row["id"], ""))[:_MAX_FEEDBACK]
         row["selected"] = row["id"] in selected_set
         row["selection_rank"] = selected_rank.get(row["id"])
-    try:
-        finished_manifest = _load_finished_manifest(episode_slug)
-    except HTTPException as exc:
-        if exc.status_code != 404:
-            raise
-        finished_manifest = None
+    # 兩個審核面都算「可以進去了」：長片的 v3 current Release，或短片的 review packet。
+    # 只看長片的話，一集純短片會永遠看不到入口。
+    finished_manifest = None
+    for loader in (_load_finished_manifest, _load_short_finished_manifest):
+        try:
+            finished_manifest = loader(episode_slug)
+        except HTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            continue
+        break
     return {
         "episode_slug": episode_slug,
         "rows": shown,
@@ -1229,10 +1428,10 @@ async def finished_review_save(
                     status_code=400, detail=f"move time is outside {cut['cut_id']} duration"
                 )
         row: dict[str, Any] = {
-            "release_id": cut["release_id"],
+            "release_id": cut.get("release_id"),
             "cut_id": cut["cut_id"],
             "component_id": component_id,
-            "event_id": component["event_id"],
+            "event_id": component.get("event_id"),
             "lane": component["lane"],
             "display": component["display"],
             "timeline_seconds": {"t0": component["t0"], "t1": component["t1"]},
@@ -1288,11 +1487,17 @@ async def finished_review_save(
     if submit_action == "approve_cut":
         revision["selected_cut_id"] = selected_cut_id
     if submit_action == "save_draft":
-        revision_jobs = _finished_revision_jobs(
-            manifest=manifest,
-            audit=audit,
-            component_feedback=component_feedback,
-            overall_feedback=overall_feedback,
+        # 修訂佇列是 Finished Cut Production 的東西——short packet 沒有 Release
+        # 可以掛，回饋只留在 feedback 檔裡。
+        revision_jobs = (
+            []
+            if manifest.get("review_format") == "short"
+            else _finished_revision_jobs(
+                manifest=manifest,
+                audit=audit,
+                component_feedback=component_feedback,
+                overall_feedback=overall_feedback,
+            )
         )
         if revision_jobs:
             revision["revision_jobs"] = revision_jobs

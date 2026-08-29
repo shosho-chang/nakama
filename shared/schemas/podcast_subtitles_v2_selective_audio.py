@@ -93,9 +93,7 @@ class ModalityAuditExecutionPlanV3(_Contract):
             raise ValueError("modality execution policy hash mismatch")
         if not self.all_cell_ids or len(set(self.all_cell_ids)) != len(self.all_cell_ids):
             raise ValueError("modality execution requires unique AuditPlan cells")
-        if not self.owned_cell_ids or len(set(self.owned_cell_ids)) != len(
-            self.owned_cell_ids
-        ):
+        if not self.owned_cell_ids or len(set(self.owned_cell_ids)) != len(self.owned_cell_ids):
             raise ValueError("modality execution requires unique owned cells")
         if not set(self.owned_cell_ids) <= set(self.all_cell_ids):
             raise ValueError("modality execution owns an unknown AuditPlan cell")
@@ -103,9 +101,7 @@ class ModalityAuditExecutionPlanV3(_Contract):
             self.required_cell_ids
         ) <= set(self.owned_cell_ids):
             raise ValueError("modality required cells differ from owned cells")
-        if not self.owned_span_ids or len(set(self.owned_span_ids)) != len(
-            self.owned_span_ids
-        ):
+        if not self.owned_span_ids or len(set(self.owned_span_ids)) != len(self.owned_span_ids):
             raise ValueError("modality execution requires unique owned spans")
         selection_values = (
             self.selection_plan_id,
@@ -128,9 +124,7 @@ class ModalityAuditExecutionPlanV3(_Contract):
         requested = tuple(cell for packet in self.packets for cell in packet.requested_cell_ids)
         if len(set(owned)) != len(owned) or set(owned) != set(self.owned_cell_ids):
             raise ValueError("modality packets do not partition exact owned cells")
-        if len(set(requested)) != len(requested) or set(requested) != set(
-            self.required_cell_ids
-        ):
+        if len(set(requested)) != len(requested) or set(requested) != set(self.required_cell_ids):
             raise ValueError("modality packets do not partition exact required cells")
         for packet in self.packets:
             if (
@@ -177,9 +171,7 @@ class SelectiveAudioAuditExecutionRecordV3(_Contract):
     major_span_ids: tuple[str, ...]
     unresolved_span_ids: tuple[str, ...]
     catastrophic_span_ids: tuple[str, ...]
-    execution_status: Literal["complete_selective_audio_delta"] = (
-        "complete_selective_audio_delta"
-    )
+    execution_status: Literal["complete_selective_audio_delta"] = "complete_selective_audio_delta"
     coverage_statement: Literal[
         "exact_selected_delta_required_cells_assessed_unselected_cells_have_no_disposition"
     ] = "exact_selected_delta_required_cells_assessed_unselected_cells_have_no_disposition"
@@ -203,9 +195,10 @@ class SelectiveAudioAuditExecutionRecordV3(_Contract):
         ):
             if len(set(values)) != len(values):
                 raise ValueError(f"selective audio record {label} must be unique")
-        if not self.request_ids or tuple(
-            item.request_id for item in self.response_receipts
-        ) != self.request_ids:
+        if (
+            not self.request_ids
+            or tuple(item.request_id for item in self.response_receipts) != self.request_ids
+        ):
             raise ValueError("selective audio responses differ from requests")
         if len(self.invocation_journals) != len(self.request_ids):
             raise ValueError("selective audio journals lack request coverage")
@@ -230,12 +223,15 @@ class SelectiveAudioAuditExecutionRecordV3(_Contract):
         if any(item.assessment_id not in assessment_ids for item in self.discovered_candidates):
             raise ValueError("selective audio discovery lacks an exact selected assessment")
         spans = set(self.selected_owned_span_ids)
-        if not (
-            set(self.material_span_ids)
-            | set(self.major_span_ids)
-            | set(self.unresolved_span_ids)
-            | set(self.catastrophic_span_ids)
-        ) <= spans:
+        if (
+            not (
+                set(self.material_span_ids)
+                | set(self.major_span_ids)
+                | set(self.unresolved_span_ids)
+                | set(self.catastrophic_span_ids)
+            )
+            <= spans
+        ):
             raise ValueError("selective audio findings target an unselected owned span")
         if not set(self.major_span_ids) <= set(self.material_span_ids):
             raise ValueError("selective audio major findings must be material")

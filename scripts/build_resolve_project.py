@@ -45,8 +45,10 @@ from agents.brook.script_video.subtitle_handoff import (  # noqa: E402
 from shared.resolve_append import append_checked  # noqa: E402
 from shared.subtitle_finalize import finalize_srt_file  # noqa: E402
 
-sys.stdout.reconfigure(encoding="utf-8")
-sys.stderr.reconfigure(encoding="utf-8")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
 logger = logging.getLogger("resolve_project")
 
@@ -165,14 +167,10 @@ def _verify_resolve_lineage_receipt(
     if not isinstance(payload, dict) or set(payload) != required:
         raise Stage5SubtitleContractError("Resolve subtitle lineage receipt schema drift")
     if _canonical_json(payload) != raw:
-        raise Stage5SubtitleContractError(
-            "Resolve subtitle lineage receipt is not canonical"
-        )
+        raise Stage5SubtitleContractError("Resolve subtitle lineage receipt is not canonical")
     unsigned = {key: value for key, value in payload.items() if key != "content_hash"}
     if payload.get("content_hash") != _sha256(_canonical_json(unsigned)):
-        raise Stage5SubtitleContractError(
-            "Resolve subtitle lineage receipt content hash mismatch"
-        )
+        raise Stage5SubtitleContractError("Resolve subtitle lineage receipt content hash mismatch")
     if (
         payload.get("schema_version") != 1
         or payload.get("contract") != RESOLVE_LINEAGE_CONTRACT
@@ -227,6 +225,19 @@ def _versioned_srt(
             logger.warning(f"斷句疑點 cue{f['cue']}: …{f['tail']}｜{f['head']}…（{f['reason']}）")
     logger.info(msg)
     return dst
+
+
+def _versioned_srt_exact(episode_dir: Path, source: Path) -> Path:
+    """Return an audited SRT unchanged for a first-time Resolve import.
+
+    The reviewed V2 file already has a unique path.  Importing it directly
+    avoids both Resolve's same-path cache and an unnecessary write beside the
+    episode media on a different volume.
+    """
+    if not source.exists():
+        raise FileNotFoundError(f"audited subtitle not found: {source}")
+    logger.info("Using audited SRT unchanged: %s", source)
+    return source
 
 
 def _probe(path: Path) -> dict:
@@ -314,6 +325,7 @@ def build_project(
     episode_dir: Path,
     *,
     video: Path | None = None,
+    subtitle: Path | None = None,
     dry_run: bool = False,
     subtitle_request: Stage5SubtitleRequest | None = None,
     verifier_factory: ProjectionVerifierFactory | None = None,

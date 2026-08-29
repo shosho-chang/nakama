@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import hashlib
-import importlib
 import json
 import subprocess
 from pathlib import Path
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 import scripts.build_long_highlight_playback_manifest as playback_manifest
 from scripts.build_long_highlight_playback_manifest import (

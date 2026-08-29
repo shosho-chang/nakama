@@ -193,9 +193,7 @@ def test_packaging_worker_failure_is_visible_and_not_requeued_by_approval(tmp_pa
     }
     pm.stage_parallel_jobs(tmp_path, [job])
     pm.claim_packaging_job(tmp_path, "value-L01", worker_id="worker-a")
-    failed = pm.finish_packaging_job(
-        tmp_path, "value-L01", succeeded=False, error="agent failed"
-    )
+    failed = pm.finish_packaging_job(tmp_path, "value-L01", succeeded=False, error="agent failed")
     assert failed["status"] == "failed"
     assert failed["error"] == "agent failed"
 

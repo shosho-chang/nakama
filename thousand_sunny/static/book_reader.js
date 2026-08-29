@@ -19,6 +19,95 @@ function isDarkTheme() {
   return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
+// ── Typography prefs (修修 2026-08-29) ───────────────────────────────────────
+// 字級 ± 與字體選擇。兩者都經由 renderer.setStyles 注入 foliate 的章節 iframe —
+// 那是本頁唯一能影響書內排版的管道（章節內容活在 blob: iframe 裡，外層 CSS 進不去）。
+//
+// 字體來源受 CSP 限制（middleware/csp.py: default-src 'self' ⇒ 不允許遠端字型）：
+//   · LINE Seed TW  — repo 自帶 webfont（tokens.css @font-face），到處都能用。
+//   · Taipei Sans TC — 未內建；走「本機已安裝字型」解析（修修桌機已裝
+//     TaipeiSansTCBeta）。沒裝的裝置由 document.fonts.check 偵測後標為不可用，
+//     不會給出一個按了沒反應的選項。
+const FONT_SIZE_KEY = 'bookReaderFontSize';
+const FONT_FAMILY_KEY = 'bookReaderFontFamily';
+const FONT_STEPS = [80, 90, 100, 110, 125, 140, 160, 180, 200];
+const FONTS = [
+  { id: 'publisher', label: '書本原樣', stack: '' },
+  {
+    id: 'line-seed',
+    label: 'LINE Seed',
+    stack: "'LINE Seed TW', system-ui, sans-serif",
+    probe: 'LINE Seed TW',
+    // A webfont only exists in the document that declared it. The URL must carry
+    // location.origin: chapters live in blob: documents, where a root-relative
+    // '/static/...' does not resolve back to the site (measured: font never loaded). tokens.css lives in
+    // the OUTER page, so inside foliate's chapter iframes 'LINE Seed TW' silently
+    // fell back to serif (measured: identical advance width to serif). Ship the
+    // @font-face along with the rule — same-origin, allowed by the reader CSP.
+    faces: [
+      { weight: '400 500', file: 'LINESeedTW_Rg' },
+      { weight: '600 900', file: 'LINESeedTW_Bd' },
+    ],
+  },
+  {
+    id: 'taipei-sans',
+    label: 'Taipei Sans TC',
+    // 系統安裝名為 "Taipei Sans TC Beta"；後者是保險寫法，兩種命名都吃得到
+    stack: "'Taipei Sans TC Beta', 'Taipei Sans TC', system-ui, sans-serif",
+    probe: 'Taipei Sans TC Beta',
+  },
+];
+
+function readFontSize() {
+  const n = parseInt(localStorage.getItem(FONT_SIZE_KEY) || '100', 10);
+  return FONT_STEPS.indexOf(n) === -1 ? 100 : n;
+}
+function readFontFamily() {
+  const id = localStorage.getItem(FONT_FAMILY_KEY) || 'publisher';
+  return FONTS.some((f) => f.id === id) ? id : 'publisher';
+}
+function fontIsAvailable(font) {
+  if (!font.probe) return true;                       // publisher default
+  if (!document.fonts || typeof document.fonts.check !== 'function') return true;
+  try { return document.fonts.check(`16px "${font.probe}"`); } catch (_) { return true; }
+}
+
+// The typography half of the injected stylesheet. Font size scales the ROOT and
+// forces em-relative sizing on text elements, so a publisher's px-pinned CSS
+// still responds to the control (that CSS lands in the same cascade, hence
+// !important). font-family is only forced when 修修 picked a font — 書本原樣
+// leaves the publisher's own faces (including any embedded fonts) alone.
+function typographyCSS() {
+  const pct = readFontSize();
+  const font = FONTS.find((f) => f.id === readFontFamily());
+  const stack = font && font.stack && fontIsAvailable(font) ? font.stack : '';
+  const parts = [];
+  if (pct !== 100) {
+    parts.push(`html { font-size: ${pct}% !important; }`);
+    parts.push(
+      `p, li, dt, dd, blockquote, figcaption, td, th, span, div { font-size: 1em !important; }`
+    );
+  }
+  if (stack && font.faces) {
+    font.faces.forEach(function (f) {
+      parts.push(
+        `@font-face { font-family: 'LINE Seed TW';
+         src: url('${location.origin}/static/shosho/fonts/${f.file}.woff2') format('woff2'),
+              url('${location.origin}/static/shosho/fonts/${f.file}.woff') format('woff');
+         font-weight: ${f.weight}; font-style: normal; font-display: swap; }`
+      );
+    });
+  }
+  if (stack) {
+    parts.push(
+      `html, body, p, li, dt, dd, blockquote, figcaption, caption, th, td,
+       h1, h2, h3, h4, h5, h6, span, div, cite, em, strong, b, i, a
+       { font-family: ${stack} !important; }`
+    );
+  }
+  return parts.join(' ');
+}
+
 function pushReaderStyles() {
   if (!view.renderer || typeof view.renderer.setStyles !== 'function') return;
   const dark = isDarkTheme();
@@ -41,22 +130,19 @@ function pushReaderStyles() {
        a, a:visited { color: #9d97ff !important; }`
     : `html, body { background: #ffffff; color: #1a1a1a; }
        a, a:visited { color: #6c63ff; }`;
-  try { view.renderer.setStyles(css); } catch (_) { /* renderer not ready yet */ }
+  try { view.renderer.setStyles(css + ' ' + typographyCSS()); } catch (_) { /* renderer not ready yet */ }
 }
 
 const wideMQ = window.matchMedia('(min-width: 1500px)');
 const mobileMQ = window.matchMedia('(max-width: 768px)');
 function applyColumns() {
   if (!view.renderer) return;
-  // Mobile → continuous vertical scroll (smoother on touch; paginated columns
-  // clip the last lines behind the fixed footer on a phone). Desktop keeps
-  // paginated columns (1, or 2 on very wide screens).
-  if (mobileMQ.matches) {
-    view.renderer.setAttribute('flow', 'scrolled');
-  } else {
-    view.renderer.setAttribute('flow', 'paginated');
-    view.renderer.setAttribute('max-column-count', wideMQ.matches ? '2' : '1');
-  }
+  // 修修 2026-08-29: mobile now PAGINATES too (was continuous scroll) — 手機也要
+  // 能翻頁。One column on a phone; desktop keeps 1, or 2 on very wide screens.
+  // The swipe / edge-tap handlers below drive the turns; in paginated flow they
+  // move page-by-page and cross section boundaries at the ends.
+  view.renderer.setAttribute('flow', 'paginated');
+  view.renderer.setAttribute('max-column-count', !mobileMQ.matches && wideMQ.matches ? '2' : '1');
 }
 wideMQ.addEventListener('change', applyColumns);
 mobileMQ.addEventListener('change', applyColumns);
@@ -214,6 +300,61 @@ function setTocSidebarOpen(open) {
   tocToggle.setAttribute('aria-pressed', open ? 'true' : 'false');
   localStorage.setItem(TOC_SIDEBAR_KEY, open ? '1' : '0');
   if (open) updateTocCurrent(_currentChapterIdx);
+}
+
+// ── Typography controls (修修 2026-08-29) ────────────────────────────────────
+const fontSmallerBtn = document.getElementById('fontSmaller');
+const fontLargerBtn = document.getElementById('fontLarger');
+const fontSizeLabel = document.getElementById('fontSizeLabel');
+const fontFamilySel = document.getElementById('fontFamily');
+
+function renderTypeControls() {
+  const pct = readFontSize();
+  const idx = FONT_STEPS.indexOf(pct);
+  if (fontSizeLabel) fontSizeLabel.textContent = pct + '%';
+  if (fontSmallerBtn) fontSmallerBtn.disabled = idx <= 0;
+  if (fontLargerBtn) fontLargerBtn.disabled = idx >= FONT_STEPS.length - 1;
+}
+
+function stepFontSize(delta) {
+  const idx = FONT_STEPS.indexOf(readFontSize());
+  const next = FONT_STEPS[Math.min(FONT_STEPS.length - 1, Math.max(0, idx + delta))];
+  localStorage.setItem(FONT_SIZE_KEY, String(next));
+  renderTypeControls();
+  pushReaderStyles();
+}
+
+function buildFontPicker() {
+  if (!fontFamilySel) return;
+  const cur = readFontFamily();
+  fontFamilySel.textContent = '';
+  FONTS.forEach((f) => {
+    const opt = document.createElement('option');
+    opt.value = f.id;
+    // 沒安裝的字型不假裝可選 — 標示出來並停用，避免「選了沒反應」
+    const ok = fontIsAvailable(f);
+    opt.textContent = ok ? f.label : f.label + '（未安裝）';
+    opt.disabled = !ok;
+    if (f.id === cur) opt.selected = true;
+    fontFamilySel.appendChild(opt);
+  });
+}
+
+if (fontSmallerBtn) fontSmallerBtn.addEventListener('click', () => stepFontSize(-1));
+if (fontLargerBtn) fontLargerBtn.addEventListener('click', () => stepFontSize(1));
+if (fontFamilySel) {
+  fontFamilySel.addEventListener('change', () => {
+    localStorage.setItem(FONT_FAMILY_KEY, fontFamilySel.value);
+    pushReaderStyles();
+  });
+}
+renderTypeControls();
+// Font availability is only knowable once the font set has settled; ready is
+// already resolved on a warm load, so this covers both paths.
+if (document.fonts && document.fonts.ready && typeof document.fonts.ready.then === 'function') {
+  document.fonts.ready.then(buildFontPicker).catch(buildFontPicker);
+} else {
+  buildFontPicker();
 }
 
 if (tocToggle) {
@@ -651,9 +792,34 @@ function getRendererSectionIndex(doc) {
 }
 
 function attachSelectionListener(doc) {
+  // Is a pointer currently down in this doc? A mouse drag fires selectionchange
+  // continuously while the user is still choosing the range — we let pointerup
+  // handle that case. Touch long-press ends in pointercancel (the OS selection UI
+  // takes the gesture over), which is exactly why pointerup alone missed it.
+  let pointerDown = false;
+  const pointerEnded = () => { pointerDown = false; };
+  doc.addEventListener('pointerdown', () => { pointerDown = true; }, { passive: true });
+  doc.addEventListener('pointercancel', pointerEnded, { passive: true });
+  doc.addEventListener('touchend', pointerEnded, { passive: true });
   doc.addEventListener('pointerup', () => {
+    pointerDown = false;
     // Defer slightly so the selection settles after the pointerup default.
     setTimeout(() => onIframePointerUp(doc), 0);
+  });
+  // 修修 2026-08-29 (手機): a long-press selection never delivers a pointerup to
+  // the document — the gesture is consumed by the OS selection UI — so on a phone
+  // the 螢光/註解 popup simply never appeared (實測: selection 有了、popup 仍 hidden).
+  // selectionchange fires for touch, mouse AND handle-dragging, so it covers every
+  // way a selection can settle. Debounced: dragging a selection handle fires it
+  // continuously, and we only want the popup once the selection stops moving.
+  let selTimer = null;
+  doc.addEventListener('selectionchange', () => {
+    if (selTimer) clearTimeout(selTimer);
+    selTimer = setTimeout(() => {
+      selTimer = null;
+      if (pointerDown) return;   // still dragging — pointerup will finish the job
+      onIframePointerUp(doc);
+    }, 250);
   });
 }
 

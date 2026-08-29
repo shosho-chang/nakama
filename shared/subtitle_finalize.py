@@ -1,10 +1,13 @@
-"""字幕定版（顯示層）後處理——修修 2026-08-05 裁決的兩條規則。
+"""字幕定版（顯示層）後處理。
 
-① 句尾零標點：cue 每行行尾不留任何標點；閉合符（」』》））保留、其前標點剝除。
+① 句首零孤兒標點：切分器若把句號、逗號、問驚嘆號等分隔符留給下一 cue，
+   先把它歸還前一 cue；首 cue 沒有前句可歸還時，移除這個純顯示標點。
+   只搬標點，不改 cue 數量或 timestamp。
+② 句尾零標點：cue 每行行尾不留任何標點；閉合符（」』》））保留、其前標點剝除。
    主 pipeline 的 `shared.transcriber._process_srt_line` 在 ASR 產出時已做
    「句中→空格、句尾→刪除」；本模組給**繞過 pipeline 的 SRT**（翻譯精選、
    外部工具產物）補上同樣保證，對已處理過的 cue 冪等。
-② cue 間零空隙：end 補到次句 start，字幕連續顯示不閃爍。gap > `gap_close_max`
+③ cue 間零空隙：end 補到次句 start，字幕連續顯示不閃爍。gap > `gap_close_max`
    （預設 3.0s，對齊 `run_gap_fill.MIN_GAP_SEC`「<3s = 正常語流」）視為真靜默
    ——沒人講話字幕就該消失，不補、列入回報（呼叫端不可靜默吞掉）。
 
@@ -20,6 +23,8 @@ from pathlib import Path
 
 PUNCT_TAIL = "，。、；：！？…—～·" + ",.;:!?~"
 CLOSERS = "」』》）"
+LEADING_COMMAS = "，,"
+LEADING_DISPLAY_PUNCT = PUNCT_TAIL
 
 _TS = re.compile(r"(\d+):(\d+):(\d+)[,.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,.](\d+)")
 
@@ -46,20 +51,44 @@ def finalize_cues(
     gap_close_max: float = 3.0,
     pause=None,
 ) -> tuple[list[tuple[float, float, str]], dict]:
-    """套用兩條定版規則。輸入 (start, end, text) 已按 start 排序；text 可含
+    """套用三條定版規則。輸入 (start, end, text) 已按 start 排序；text 可含
     換行（多行 cue 逐行剝尾標點）。
 
     回傳 (新 cues, stats)。stats["true_silences"] 是沒補的 >gap_close_max
     區段（(前句序號 1-based, gap 秒)）——呼叫端要回報出來，不可靜默。
     `pause` 傳入停頓圖時，斷句檢查改以音檔靜音為主判準（見 find_bad_boundaries）。
     """
-    out: list[list] = []
+    out = [[s, e, text] for s, e, text in cues]
+    leading_commas_rehomed = 0
+    leading_commas_dropped = 0
+    leading_punct_rehomed = 0
+    leading_punct_dropped = 0
+    for index, cue in enumerate(out):
+        text = cue[2]
+        punct_count = len(text) - len(text.lstrip(LEADING_DISPLAY_PUNCT))
+        if not punct_count:
+            continue
+        punct = text[:punct_count]
+        remainder = text[punct_count:]
+        if not remainder:
+            raise ValueError(f"cue {index + 1} contains only leading display punctuation")
+        cue[2] = remainder
+        comma_count = sum(ch in LEADING_COMMAS for ch in punct)
+        if index:
+            out[index - 1][2] += punct
+            leading_punct_rehomed += punct_count
+            leading_commas_rehomed += comma_count
+        else:
+            leading_punct_dropped += punct_count
+            leading_commas_dropped += comma_count
+
     stripped = 0
-    for s, e, text in cues:
+    for cue in out:
+        text = cue[2]
         new_text = "\n".join(strip_tail_punct(ln) for ln in text.splitlines())
         if new_text != text:
             stripped += 1
-        out.append([s, e, new_text])
+        cue[2] = new_text
     closed = 0
     true_silences: list[tuple[int, float]] = []
     for i in range(len(out) - 1):
@@ -76,6 +105,10 @@ def finalize_cues(
         bad = [{"cue": -1, "tail": "", "head": "", "reason": _msg}]
     return [tuple(c) for c in out], {
         "stripped": stripped,
+        "leading_commas_rehomed": leading_commas_rehomed,
+        "leading_commas_dropped": leading_commas_dropped,
+        "leading_punct_rehomed": leading_punct_rehomed,
+        "leading_punct_dropped": leading_punct_dropped,
         "closed": closed,
         "true_silences": true_silences,
         "bad_boundaries": bad,

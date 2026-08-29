@@ -41,23 +41,26 @@ def test_outline_defaults_to_contextual_without_any_authority_scope(tmp_path: Pa
     review = tmp_path / "reference-review.json"
     manifest_path = tmp_path / "episode-references.v2.json"
 
-    assert references_cli.main(
-        ["prepare", "--source-plan", str(plan), "--output", str(review)]
-    ) == 0
-    assert references_cli.main(
-        [
-            "accept",
-            "--review",
-            str(review),
-            "--reviewer",
-            "shosho",
-            "--accepted-at",
-            "2026-08-19T03:00:00+08:00",
-            "--confirm-reviewed",
-            "--output",
-            str(manifest_path),
-        ]
-    ) == 0
+    assert (
+        references_cli.main(["prepare", "--source-plan", str(plan), "--output", str(review)]) == 0
+    )
+    assert (
+        references_cli.main(
+            [
+                "accept",
+                "--review",
+                str(review),
+                "--reviewer",
+                "shosho",
+                "--accepted-at",
+                "2026-08-19T03:00:00+08:00",
+                "--confirm-reviewed",
+                "--output",
+                str(manifest_path),
+            ]
+        )
+        == 0
+    )
 
     manifest, _ = load_reference_manifest(manifest_path)
     source = manifest.sources[0]
@@ -71,9 +74,7 @@ def test_outline_defaults_to_contextual_without_any_authority_scope(tmp_path: Pa
         episode_root=tmp_path / "episode",
         expected_episode_id="20260814-moboo",
     )
-    assert tuple(spec.source_id for spec in bundle.source_specs) == (
-        "moboo-interview-outline-v1",
-    )
+    assert tuple(spec.source_id for spec in bundle.source_specs) == ("moboo-interview-outline-v1",)
 
 
 def test_authority_requires_an_explicit_source_bound_user_attestation(tmp_path: Path) -> None:
@@ -127,22 +128,25 @@ def test_authority_requires_an_explicit_source_bound_user_attestation(tmp_path: 
     )
     manifest_path = tmp_path / "episode-references.v2.json"
 
-    assert references_cli.main(
-        [
-            "accept",
-            "--review",
-            str(review),
-            "--reviewer",
-            "shosho",
-            "--accepted-at",
-            "2026-08-19T03:05:00+08:00",
-            "--confirm-reviewed",
-            "--authority-attestation",
-            str(attestation),
-            "--output",
-            str(manifest_path),
-        ]
-    ) == 0
+    assert (
+        references_cli.main(
+            [
+                "accept",
+                "--review",
+                str(review),
+                "--reviewer",
+                "shosho",
+                "--accepted-at",
+                "2026-08-19T03:05:00+08:00",
+                "--confirm-reviewed",
+                "--authority-attestation",
+                str(attestation),
+                "--output",
+                str(manifest_path),
+            ]
+        )
+        == 0
+    )
 
     manifest, _ = load_reference_manifest(manifest_path)
     source = manifest.sources[0]

@@ -94,9 +94,9 @@ def _completed_selective_audit(tmp_path):
                 seam_evidence=seam,
             )
         )
-    text_record = text_executor(runner=text_response_bytes).execute(
-        text_plan, audit, text_sources
-    ).record
+    text_record = (
+        text_executor(runner=text_response_bytes).execute(text_plan, audit, text_sources).record
+    )
     selection = build_audio_audit_selection_plan(
         audit,
         transcript,
@@ -131,12 +131,12 @@ def _completed_selective_audit(tmp_path):
                 seam_evidence=seam,
             )
         )
-    audio_record = audio_executor(tmp_path, runner=audio_response_bytes).execute(
-        audio_plan, audit, audio_sources
-    ).record
-    round_receipt = build_selective_audio_round_receipt_v3(
-        selection, (audio_record,)
+    audio_record = (
+        audio_executor(tmp_path, runner=audio_response_bytes)
+        .execute(audio_plan, audit, audio_sources)
+        .record
     )
+    round_receipt = build_selective_audio_round_receipt_v3(selection, (audio_record,))
     return (
         audit,
         signals,
@@ -222,9 +222,7 @@ def _build_text_plan_with_scan_counts(tmp_path, *, max_spans_per_packet: int | N
     counted_transcript = transcript.model_copy(update=transcript_updates)
 
     counted, counter = _counted_tuple(recognitions[0].tokens)
-    counted_recognitions = (
-        recognitions[0].model_copy(update={"tokens": counted}),
-    )
+    counted_recognitions = (recognitions[0].model_copy(update={"tokens": counted}),)
     counters["recognition_tokens"] = counter
 
     result = build_modality_audit_execution_plan_v3(
@@ -361,24 +359,23 @@ def test_terminal_selective_aggregate_preserves_universal_text_and_scoped_audio(
 
     assert aggregate.terminal_decision == "complete"
     assert set(aggregate.text_disposition_cell_ids) == set(aggregate.all_cell_ids)
-    assert set(aggregate.audio_assessed_cell_ids) == set(
-        aggregate.final_selected_required_cell_ids
+    assert set(aggregate.audio_assessed_cell_ids) == set(aggregate.final_selected_required_cell_ids)
+    assert set(aggregate.audio_assessed_cell_ids).isdisjoint(aggregate.unselected_cell_ids)
+    assert (
+        verify_selective_audit_aggregate_v3(
+            selective_audit_aggregate_bytes_v3(aggregate),
+            audit_plan=parents[0],
+            candidate_signal_set=parents[1],
+            candidate_group_set=parents[2],
+            text_execution_plan=parents[3],
+            text_record=parents[4],
+            selection_plans=parents[5],
+            audio_execution_plans=parents[6],
+            audio_records=parents[7],
+            round_receipts=parents[8],
+        )
+        == aggregate
     )
-    assert set(aggregate.audio_assessed_cell_ids).isdisjoint(
-        aggregate.unselected_cell_ids
-    )
-    assert verify_selective_audit_aggregate_v3(
-        selective_audit_aggregate_bytes_v3(aggregate),
-        audit_plan=parents[0],
-        candidate_signal_set=parents[1],
-        candidate_group_set=parents[2],
-        text_execution_plan=parents[3],
-        text_record=parents[4],
-        selection_plans=parents[5],
-        audio_execution_plans=parents[6],
-        audio_records=parents[7],
-        round_receipts=parents[8],
-    ) == aggregate
 
 
 def test_selective_aggregate_rejects_missing_selected_record(tmp_path) -> None:
@@ -479,9 +476,7 @@ def test_isolated_selective_orchestrator_runs_text_ready_to_terminal_aggregate(
                 seam_evidence=seam,
             )
         )
-    text_run = text_executor(runner=text_response_bytes).execute(
-        text_plan, audit, text_sources
-    )
+    text_run = text_executor(runner=text_response_bytes).execute(text_plan, audit, text_sources)
 
     outcome = execute_selective_audio_audit_v3(
         audit_plan=audit,
@@ -500,9 +495,7 @@ def test_isolated_selective_orchestrator_runs_text_ready_to_terminal_aggregate(
     assert isinstance(outcome, SelectiveAudioAuditCompletedV3)
     assert tuple(item.tier for item in outcome.selection_plans) == ("sample_10",)
     assert outcome.aggregate.terminal_decision == "complete"
-    assert outcome.aggregate.audio_record_ids == tuple(
-        item.record.id for item in outcome.runs
-    )
+    assert outcome.aggregate.audio_record_ids == tuple(item.record.id for item in outcome.runs)
 
     different_text_plan = text_plan.model_copy(update={"id": "0" * 64})
     with pytest.raises(SelectiveAudioOrchestrationError, match="text run differs"):
@@ -564,9 +557,7 @@ def test_text_plan_is_universal_without_opening_normalized_audio(tmp_path) -> No
             )
         )
     run = text_executor(runner=text_response_bytes).execute(text, audit, sources)
-    assert run.record.text_disposition_set.all_cell_ids == tuple(
-        item.id for item in audit.cells
-    )
+    assert run.record.text_disposition_set.all_cell_ids == tuple(item.id for item in audit.cells)
 
 
 def test_audio_plan_owns_only_exact_selected_spans_and_context_is_not_owned(tmp_path) -> None:
@@ -604,9 +595,9 @@ def test_audio_plan_owns_only_exact_selected_spans_and_context_is_not_owned(tmp_
     assert audio.owned_span_ids == selection.selected_span_ids
     assert set(audio.owned_cell_ids) == set(selection.selected_owned_cell_ids)
     assert set(audio.required_cell_ids) == set(selection.selected_required_cell_ids)
-    assert {
-        span_id for packet in audio.packets for span_id in packet.context_span_ids
-    }.isdisjoint(audio.owned_span_ids)
+    assert {span_id for packet in audio.packets for span_id in packet.context_span_ids}.isdisjoint(
+        audio.owned_span_ids
+    )
     sources: dict[str, bytes] = {}
     for packet in audio.packets:
         sources.update(
@@ -652,9 +643,7 @@ def test_escalated_audio_plans_emit_only_30_and_full_deltas(tmp_path) -> None:
         execution_policy,
     ) = build_fixture(tmp_path)
     selection_policy = default_audio_audit_selection_policy(clock_strata=1)
-    ten = build_audio_audit_selection_plan(
-        audit, transcript, selection_policy, tier="sample_10"
-    )
+    ten = build_audio_audit_selection_plan(audit, transcript, selection_policy, tier="sample_10")
     ten_execution = build_modality_audit_execution_plan_v3(
         audit,
         signals,

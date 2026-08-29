@@ -201,16 +201,12 @@ def _update_selected_package(data: dict, cut_id: str, package_rank: int, req: di
     raise SystemExit(f"找不到 cut {cut_id}")
 
 
-def _write_selected_package(
-    paths: list[Path], cut_id: str, package_rank: int, req: dict
-) -> None:
+def _write_selected_package(paths: list[Path], cut_id: str, package_rank: int, req: dict) -> None:
     """Apply the same selected-package update to working and vault contracts."""
     for path in paths:
         data = json.loads(path.read_text(encoding="utf-8"))
         _update_selected_package(data, cut_id, package_rank, req)
-        path.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-        )
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def _matches_legacy_approval_request(entry: dict | None, req: dict) -> bool:
@@ -329,9 +325,7 @@ def _render_reaction_request(
     }
     plan = build_receipt_plan(
         spec=receipt_spec,
-        episode=json.loads((ep_vault / "packages.json").read_text(encoding="utf-8"))[
-            "episode"
-        ],
+        episode=json.loads((ep_vault / "packages.json").read_text(encoding="utf-8"))["episode"],
         cut_id=args.cut_id,
         episode_slug=args.episode_slug,
         vault_root=vault,
@@ -480,11 +474,7 @@ def main() -> int:
         hb = _landmarks(manifest, args.host_baseline)
         gb = _landmarks(manifest, args.guest_baseline)
         host_h = (
-            TARGET_HEAD_PX
-            / (hb["chin"] - hb["head_top"])
-            * float(hb["cutout_h"])
-            / CANVAS_H
-            * 100
+            TARGET_HEAD_PX / (hb["chin"] - hb["head_top"]) * float(hb["cutout_h"]) / CANVAS_H * 100
         )
         guest_h = (
             TARGET_HEAD_PX

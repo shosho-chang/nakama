@@ -254,8 +254,7 @@ def test_major_error_escalates_even_at_exactly_two_percent() -> None:
     )
 
     assert receipt.material_error_numerator * 10000 == (
-        receipt.material_error_denominator
-        * policy.material_error_threshold_basis_points
+        receipt.material_error_denominator * policy.material_error_threshold_basis_points
     )
     assert receipt.decision == "escalate_30"
 

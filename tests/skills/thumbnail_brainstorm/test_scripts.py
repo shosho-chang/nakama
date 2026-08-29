@@ -119,8 +119,7 @@ def test_render_request_persists_n2_receipt_and_recipe(monkeypatch, tmp_path):
                 "cut_id": "value-L01",
                 "titles": [{"rank": 2, "text": "title"}],
                 "packages": [
-                    {"title_rank": rank, "thumbnail_png": f"old-{rank}.png"}
-                    for rank in (1, 2, 3)
+                    {"title_rank": rank, "thumbnail_png": f"old-{rank}.png"} for rank in (1, 2, 3)
                 ],
             }
         ],
@@ -162,9 +161,7 @@ def test_render_request_persists_n2_receipt_and_recipe(monkeypatch, tmp_path):
         return SimpleNamespace(
             payload={
                 "thumbnail_png": "Attachments/packaging/episode/pkg-value-L01-2.png",
-                "center_visual_asset": (
-                    "Attachments/packaging/episode/center-value-L01-r2.png"
-                ),
+                "center_visual_asset": ("Attachments/packaging/episode/center-value-L01-r2.png"),
             },
             center_name=center.name,
             center_source=center,
@@ -208,7 +205,11 @@ def test_render_request_updates_only_selected_package_recipe():
             {
                 "cut_id": "full",
                 "packages": [
-                    {"title_rank": rank, "thumbnail_png": f"old-{rank}.png", "render_recipe": {"title_rank": rank}}
+                    {
+                        "title_rank": rank,
+                        "thumbnail_png": f"old-{rank}.png",
+                        "render_recipe": {"title_rank": rank},
+                    }
                     for rank in (1, 2, 3)
                 ],
             }
@@ -236,8 +237,7 @@ def test_render_request_syncs_selected_recipe_to_working_and_vault(tmp_path):
             {
                 "cut_id": "full",
                 "packages": [
-                    {"title_rank": rank, "thumbnail_png": f"old-{rank}.png"}
-                    for rank in (1, 2, 3)
+                    {"title_rank": rank, "thumbnail_png": f"old-{rank}.png"} for rank in (1, 2, 3)
                 ],
             }
         ]
@@ -262,9 +262,7 @@ def test_render_request_syncs_selected_recipe_to_working_and_vault(tmp_path):
 def test_render_request_ignores_null_legacy_approval_request():
     request = {"requested_at": "2026-08-21T08:05:28+00:00"}
 
-    assert not render_request._matches_legacy_approval_request(
-        {"render_request": None}, request
-    )
+    assert not render_request._matches_legacy_approval_request({"render_request": None}, request)
     assert render_request._matches_legacy_approval_request(
         {"render_request": dict(request)}, request
     )
@@ -509,9 +507,7 @@ def test_render_v2_passes_spec_to_worker(monkeypatch, tmp_path):
 
 
 def test_author_interview_book_cover_layer_is_documented_and_supported():
-    skill = (_REPO / ".claude/skills/thumbnail-brainstorm/SKILL.md").read_text(
-        encoding="utf-8"
-    )
+    skill = (_REPO / ".claude/skills/thumbnail-brainstorm/SKILL.md").read_text(encoding="utf-8")
     composition = (_REPO / "video/compositions/thumbnail_full/index.html").read_text(
         encoding="utf-8"
     )
@@ -699,9 +695,8 @@ def _rewrite_center(spec: dict, size: tuple[int, int]) -> None:
     sidecar["assets"]["prop_image_data_url"]["sha256"] = hashlib.sha256(payload).hexdigest()
     merged = dict(render_spec["variables"])
     for name, raw in render_spec["images"].items():
-        merged[name] = (
-            "data:image/png;base64,"
-            + base64.b64encode(Path(raw).read_bytes()).decode("ascii")
+        merged[name] = "data:image/png;base64," + base64.b64encode(Path(raw).read_bytes()).decode(
+            "ascii"
         )
     sidecar["variables_sha256"] = hashlib.sha256(
         json.dumps(merged, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
@@ -815,18 +810,14 @@ def test_attach_allows_people_in_front_of_horizontal_center_frame(monkeypatch, t
     assert out.is_file()
 
 
-def test_attach_full_program_n1_does_not_require_long_highlight_sidecar(
-    monkeypatch, tmp_path
-):
+def test_attach_full_program_n1_does_not_require_long_highlight_sidecar(monkeypatch, tmp_path):
     vault = tmp_path / "vault"
     monkeypatch.setenv("VAULT_PATH", str(vault))
     working = tmp_path / "packaging"
     working.mkdir()
     data = _midstate_packages_file()
     data["cuts"][0]["cut_id"] = "full"
-    (working / "packages.json").write_text(
-        json.dumps(data, ensure_ascii=False), encoding="utf-8"
-    )
+    (working / "packages.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
     specs = []
     host = vault / "Attachments/cutouts/podcast/episode/host.png"

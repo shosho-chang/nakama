@@ -117,9 +117,7 @@ def test_expected_format_and_source_range_fail_closed(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(("track", "message"), [("video", "video"), ("audio", "audio")])
-def test_live_raw_av_item_is_rejected(
-    tmp_path: Path, track: str, message: str
-) -> None:
+def test_live_raw_av_item_is_rejected(tmp_path: Path, track: str, message: str) -> None:
     root, source, source_range = _fixture(tmp_path)
     raw = root / "Default_raw.mp4"
     raw.write_bytes(b"raw")
