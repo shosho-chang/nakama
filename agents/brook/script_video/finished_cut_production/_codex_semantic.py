@@ -276,8 +276,14 @@ class CodexSemanticAdapter:
                         "packet_rejected",
                         "stage packet contains a path or forbidden metadata",
                     )
+                # Escape non-ASCII rather than writing raw UTF-8 bytes.  The
+                # worker reads this file with the host's own decoder, and on a
+                # cp1252 Windows console that turned episode_id "20260805 林之晨"
+                # into "20260805 æž—ä¹‹æ™¨" — which then failed the envelope
+                # check on every single DP attempt for 20260805.  A pure-ASCII
+                # \uXXXX packet decodes identically under any code page.
                 packet_path.write_text(
-                    json.dumps(serialized_packet, ensure_ascii=False, indent=2),
+                    json.dumps(serialized_packet, ensure_ascii=True, indent=2),
                     encoding="utf-8",
                 )
                 schema_path.write_text(

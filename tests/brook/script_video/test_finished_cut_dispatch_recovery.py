@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -390,3 +391,26 @@ def test_a_second_consecutive_dispatch_failure_is_still_recoverable(tmp_path) ->
     assert outstanding is not None
     assert outstanding.request_id == second_retry
     assert outstanding.attempt == 3
+
+
+def test_stage_packet_is_written_as_pure_ascii(tmp_path, monkeypatch) -> None:
+    """封包不能寫原始 UTF-8 位元組。
+
+    worker 用 host 自己的 decoder 讀這個檔；在 cp1252 的 Windows 上，
+    episode_id「20260805 林之晨」會變成「20260805 æž—ä¹‹æ™¨」，然後在
+    envelope 比對時每一次都失敗——20260805 的 DP 就是這樣連錯到重試額度用完。
+    純 ASCII 的 unicode escape 在任何 code page 下解出來都一樣。
+    """
+    import json as _json
+
+    from agents.brook.script_video.finished_cut_production import _codex_semantic as cs
+
+    payload = {"episode_id": "20260805 林之晨"}
+    encoded = _json.dumps(payload, ensure_ascii=True, indent=2)
+
+    assert encoded.isascii()
+    assert _json.loads(encoded)["episode_id"] == "20260805 林之晨"
+    # 回歸鎖：production 的封包寫入必須用 ensure_ascii=True。
+    source = Path(cs.__file__).read_text(encoding="utf-8")
+    marker = source.index("packet_path.write_text(")
+    assert "ensure_ascii=True" in source[marker : marker + 200]
