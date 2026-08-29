@@ -1114,3 +1114,57 @@ def test_targeted_revision_dispatches_its_new_event_request_once_without_full_st
     assert first_status.reason_code == "semantic_process_failed"
     assert reopened_status == first_status
     assert base.status(base_command_id).current_stage == "materialization"
+
+
+def test_accepted_stage_lookup_survives_a_retired_projection_in_history(tmp_path) -> None:
+    """歷史可以留著已退役的 projection，只是不准再拿它來 build。
+
+    20260805 的 authority store 有兩筆 `supporting_title` derived instruction，是那個
+    lane 退役之前寫下的。`accepted_stages()` 原本會把整個 view（含 derived
+    instruction）重建，而 DerivedAssetInstruction 在 __post_init__ 重跑 active
+    projection 契約——於是那兩筆讓每一次 acceptance 查詢都 raise，連帶讓每一次修訂
+    都不可能開始。
+    """
+    root = tmp_path / "runs"
+    root.mkdir()
+    (root / "authority.json").write_text(
+        json.dumps(
+            {
+                "schema": "nakama.finished-cut-production-store.v1",
+                "targeted_revisions": {},
+                "runs": {
+                    "approved-cut:legacy": {
+                        "run_id": "run-legacy",
+                        "command_id": "approved-cut:legacy",
+                        "view": {
+                            "accepted_stages": [],
+                            "derived_asset_request": {
+                                "instructions": [
+                                    {
+                                        "component_id": "c1",
+                                        "event_id": "e1",
+                                        "semantic_kind": "supporting_title",
+                                        "implementation_kind": "supporting_title",
+                                        "lane": "supporting_title",
+                                        "display": "退役的 lane",
+                                        "t0": 1.0,
+                                        "t1": 2.0,
+                                        "source_asset_ref": None,
+                                        "geometry": None,
+                                        "recipe_identity": None,
+                                    }
+                                ]
+                            },
+                        },
+                    }
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    store = _FilesystemProductionStore(root)
+
+    assert store.accepted_stages() == ()
+    assert store.load_accepted("acceptance-does-not-exist") is None

@@ -341,10 +341,23 @@ class _FilesystemProductionStore:
         # Decode straight from the payload already in hand.  Resolving each run
         # through ``load_run`` re-read and re-parsed the whole authority store
         # once per run, so this cost one parse per run plus one, every call.
+        #
+        # Decode *only* the accepted stages, too.  Building the whole view also
+        # rebuilt each run's derived-asset instructions, and those re-run the
+        # active-projection contract — so one historical run holding a since
+        # retired projection (20260805 has two `supporting_title` instructions
+        # from before that lane was retired) made every later lookup raise, and
+        # with it every revision.  History is allowed to contain retired
+        # projections; only building from them is forbidden.
         accepted: list[AcceptedStage] = []
         for row in self._read_payload()["runs"].values():
-            view = _run_from_row(row).view
-            accepted.extend(view.accepted_stage_history or view.accepted_stages)
+            view = row["view"]
+            if not isinstance(view, dict):
+                raise ProductionStoreError("persisted ProductionRun view is invalid")
+            stages = view.get("accepted_stage_history") or view["accepted_stages"]
+            if not isinstance(stages, list):
+                raise ProductionStoreError("persisted AcceptedStage collection is invalid")
+            accepted.extend(_accepted_from_dict(stage) for stage in stages)
         return tuple(accepted)
 
     def load_accepted(self, acceptance_id: str) -> AcceptedStage | None:
