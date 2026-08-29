@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -8,9 +9,14 @@
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-highlight-review.css?v={{ asset_version }}">
 <style>
   .finished-gate { box-sizing: border-box; width: 100%; max-width: 1440px; margin: 0 auto; padding: var(--sho-s-4) var(--sho-gutter) var(--sho-s-8); }
-  .finished-status { border: 1px solid color-mix(in oklch, var(--sho-success) 45%, var(--sho-line)); background: color-mix(in oklch, var(--sho-success) 8%, transparent); margin: 0 0 var(--sho-s-4); padding: var(--sho-s-2) var(--sho-s-3); }
+  .finished-status { border-left: 3px solid var(--sho-success); background: color-mix(in oklch, var(--sho-success) 8%, transparent); margin: 0 0 var(--sho-s-4); padding: var(--sho-s-2) var(--sho-s-3); }
+  .finished-status--working { border-left-color: var(--sho-info); background: color-mix(in oklch, var(--sho-info) 8%, transparent); }
+  .finished-status--error { border-left-color: var(--sho-error); background: color-mix(in oklch, var(--sho-error) 8%, transparent); }
+  .finished-status--legacy { border-left-color: var(--sho-warning); background: color-mix(in oklch, var(--sho-warning) 9%, transparent); }
+  .finished-status p { margin: var(--sho-s-1) 0 0; }
   .finished-intro { color: var(--sho-text-2); line-height: 1.7; margin: 0 0 var(--sho-s-4); }
   .format-switch { display: inline-flex; align-items: center; gap: var(--sho-s-1); border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-pill); padding: 3px; margin-bottom: var(--sho-s-4); }
   .format-switch__link { border-radius: var(--sho-r-pill); color: var(--sho-text-2); font-size: .82rem; font-weight: 700; padding: var(--sho-s-1) var(--sho-s-3); text-decoration: none; }
@@ -18,23 +24,62 @@
   .cut-tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: var(--sho-s-3); }
   .sho .cut-tab { box-sizing: border-box; position: relative; min-width: 0; min-height: 108px; border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-2); background: var(--sho-bg-2); color: var(--sho-text-2); cursor: pointer; font: inherit; padding: var(--sho-s-3) var(--sho-s-4); text-align: left; transition: color var(--sho-t-fast) var(--sho-ease), border-color var(--sho-t-fast) var(--sho-ease), background var(--sho-t-fast) var(--sho-ease); }
   .sho .cut-tab:hover { border-color: var(--sho-muted); color: var(--sho-text); }
-  .sho .cut-tab[aria-selected="true"] { background: var(--sho-accent-soft); color: var(--sho-text); }
+  .sho .cut-tab[aria-selected="true"] { border-color: var(--sho-accent-line); background: var(--sho-accent-soft); color: var(--sho-text); }
   .cut-tab__meta { display: flex; align-items: center; justify-content: space-between; gap: var(--sho-s-2); color: var(--sho-muted); font-size: .72rem; letter-spacing: .06em; }
   .cut-tab__title { display: block; line-height: 1.5; margin-top: var(--sho-s-2); }
-  .review-workspace { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(360px, .85fr); gap: var(--sho-s-5); align-items: start; padding-top: var(--sho-s-5); }
-  .player-column { position: sticky; top: var(--sho-s-3); }
+  .review-workspace { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(360px, .85fr); gap: var(--sho-s-5); align-items: stretch; height: clamp(520px, 58vh, 680px); padding-top: var(--sho-s-5); }
+  .player-column, .feedback-column { min-height: 0; max-height: 100%; overflow-y: scroll; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
+  .player-column { min-width: 0; padding-right: var(--sho-s-2); }
+  .feedback-column { padding-right: var(--sho-s-2); }
   .player-shell { border: 1px solid var(--sho-line); background: var(--sho-bg-2); padding: var(--sho-s-3); }
   .player-shell video { display: block; width: 100%; max-height: 72vh; background: var(--sho-ink); }
   .player-shell--short video { aspect-ratio: 9 / 16; height: min(72vh, 760px); width: auto; max-width: 100%; margin: 0 auto; object-fit: contain; }
   .player-readout { display: flex; justify-content: space-between; gap: var(--sho-s-3); color: var(--sho-muted); margin-top: var(--sho-s-2); }
+  .timeline-panel { border: 1px solid var(--sho-line); border-top: 0; background: var(--sho-bg); }
+  .timeline-panel[hidden] { display: none; }
+  .timeline-panel__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sho-s-3); border-bottom: 1px solid var(--sho-line); padding: var(--sho-s-1) var(--sho-s-3); }
+  .timeline-panel__head h2 { font-size: .83rem; letter-spacing: .06em; margin: 0; }
+  .timeline-panel__hint { color: var(--sho-muted); font-size: .72rem; margin: 0; }
+  .timeline-scroll { box-sizing: border-box; max-width: 100%; overflow-x: hidden; width: 100%; }
+  .timeline-stage { --timeline-label-width: 172px; --timeline-ruler-height: 30px; box-sizing: border-box; min-width: 0; position: relative; width: 100%; }
+  .timeline-ruler, .timeline-row { display: grid; grid-template-columns: var(--timeline-label-width) minmax(0, 1fr); }
+  .timeline-ruler { border-bottom: 1px solid var(--sho-line-2); min-height: var(--timeline-ruler-height); }
+  .timeline-ruler__label, .timeline-label { box-sizing: border-box; border-right: 1px solid var(--sho-line); color: var(--sho-muted); padding: var(--sho-s-1) var(--sho-s-2); }
+  .timeline-ruler__label { align-content: center; font-size: .66rem; letter-spacing: .06em; }
+  .timeline-ruler__track { position: relative; }
+  .timeline-tick { border-left: 1px solid var(--sho-line); color: var(--sho-muted); font-size: .63rem; height: 100%; left: var(--timeline-start); padding-left: 3px; position: absolute; top: 0; }
+  .timeline-tick:last-child { left: auto; right: 0; border-left: 0; border-right: 1px solid var(--sho-line); padding-left: 0; padding-right: 3px; }
+  .timeline-row { --timeline-kind-color: var(--sho-muted); min-height: 52px; }
+  .timeline-row + .timeline-row { border-top: 1px solid var(--sho-line); }
+  .timeline-label { align-content: center; font-size: .72rem; line-height: 1.35; }
+  .timeline-label span { display: block; color: var(--sho-text-2); overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+  .timeline-label span::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: var(--sho-r-pill); background: var(--timeline-kind-color); margin-right: 5px; vertical-align: .05em; }
+  .timeline-label small { font-size: .62rem; }
+  .timeline-track { background-image: linear-gradient(to right, transparent calc(25% - .5px), var(--sho-line) 25%, transparent calc(25% + .5px), transparent calc(50% - .5px), var(--sho-line) 50%, transparent calc(50% + .5px), transparent calc(75% - .5px), var(--sho-line) 75%, transparent calc(75% + .5px)); min-width: 0; position: relative; }
+  .timeline-row[data-timeline-lane="b_roll"] { --timeline-kind-color: var(--sho-success); }
+  .timeline-row[data-timeline-lane="identity_card"] { --timeline-kind-color: var(--sho-text-2); }
+  .timeline-row[data-timeline-lane="hero_title"] { --timeline-kind-color: var(--sho-info); }
+  .timeline-row[data-timeline-lane="supporting_title"] { --timeline-kind-color: var(--sho-info); }
+  .timeline-row[data-timeline-lane="fullscreen_transition"] { --timeline-kind-color: var(--sho-warning); }
+  .timeline-row[data-timeline-lane="visual_effect"] { --timeline-kind-color: var(--sho-error); }
+  .sho .timeline-block { box-sizing: border-box; position: absolute; top: 14px; left: var(--timeline-start); width: var(--timeline-span); height: 24px; overflow: hidden; border: 1px solid color-mix(in oklch, var(--timeline-kind-color) 72%, var(--sho-line-2)); border-radius: var(--sho-r-2); background: color-mix(in oklch, var(--timeline-kind-color) 18%, var(--sho-bg)); color: var(--sho-text); cursor: pointer; font: inherit; font-size: .64rem; line-height: 1.15; padding: 0; text-align: left; transition: border-color var(--sho-t-fast) var(--sho-ease), background var(--sho-t-fast) var(--sho-ease); }
+  .timeline-block__label { display: block; overflow: hidden; padding: 3px 5px; text-overflow: ellipsis; white-space: nowrap; }
+  .sho .timeline-block:hover { border-color: var(--timeline-kind-color); background: color-mix(in oklch, var(--timeline-kind-color) 27%, var(--sho-bg)); }
+  .sho .timeline-block[aria-current="true"] { border-color: var(--sho-accent); background: var(--sho-accent-soft); color: var(--sho-text); }
+  .sho .timeline-block:focus-visible { outline: none; box-shadow: var(--sho-focus); z-index: 3; }
+  .timeline-tooltip { box-sizing: border-box; position: fixed; z-index: 100; max-width: min(320px, calc(100vw - 16px)); border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-1); background: var(--sho-ink); color: var(--sho-bg); font-size: .72rem; line-height: 1.45; padding: var(--sho-s-1) var(--sho-s-2); pointer-events: none; }
+  .timeline-tooltip[hidden] { display: none; }
+  .timeline-playhead { position: absolute; z-index: 2; top: var(--timeline-ruler-height); bottom: 0; left: calc(var(--timeline-label-width) + (100% - var(--timeline-label-width)) * var(--timeline-progress)); width: 1px; background: var(--sho-accent); pointer-events: none; transition: left var(--sho-t-fast) linear; }
+  .timeline-playhead::before { content: ""; position: absolute; width: 7px; height: 7px; left: -3px; top: -4px; border-radius: var(--sho-r-pill); background: var(--sho-accent); }
   .cut-pane[hidden] { display: none; }
   .cut-pane__head { border-bottom: 1px solid var(--sho-line-2); margin-bottom: var(--sho-s-2); padding-bottom: var(--sho-s-3); }
   .cut-pane__head h2 { font-size: 1.15rem; line-height: 1.45; margin: 0 0 var(--sho-s-2); }
-  .cut-decision { display: flex; flex-wrap: wrap; gap: var(--sho-s-3); }
-  .cut-decision label { cursor: pointer; }
+  .cut-feedback { border-bottom: 1px solid var(--sho-line); padding: var(--sho-s-3) 0 var(--sho-s-4); }
+  .cut-feedback__hint { color: var(--sho-muted); font-size: .78rem; line-height: 1.6; margin: 0; }
   .lane { margin-top: var(--sho-s-5); }
   .lane-title { color: var(--sho-muted); font-size: .74rem; letter-spacing: .08em; margin: 0; padding-bottom: var(--sho-s-2); }
   .component { border-top: 1px solid var(--sho-line); padding: var(--sho-s-3) 0 var(--sho-s-4); }
+  .component--selected { border-top-color: var(--sho-accent); background: var(--sho-accent-soft); }
   .component__head { display: flex; align-items: start; justify-content: space-between; gap: var(--sho-s-3); }
   .component__title { line-height: 1.55; margin: 0; white-space: pre-line; }
   .seek-button { flex: 0 0 auto; border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-1); background: transparent; color: var(--sho-text-2); cursor: pointer; font: inherit; padding: var(--sho-s-1) var(--sho-s-2); }
@@ -46,13 +91,18 @@
   .remember-label input { margin-top: .2em; }
   .review-actions { position: sticky; bottom: 0; display: flex; align-items: center; flex-wrap: wrap; gap: var(--sho-s-3); border-top: 1px solid var(--sho-line-2); background: var(--sho-bg); padding: var(--sho-s-3) var(--sho-gutter); margin: var(--sho-s-6) calc(var(--sho-gutter) * -1) 0; }
   .review-actions__status { color: var(--sho-text-2); margin-right: auto; }
-  .review-button { border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-1); background: transparent; color: var(--sho-text); cursor: pointer; font: inherit; font-weight: 700; padding: var(--sho-s-2) var(--sho-s-4); }
-  .review-button--approve { background: var(--sho-ink); border-color: var(--sho-ink); color: var(--sho-bg); }
-  .review-button:disabled { cursor: not-allowed; opacity: .45; }
-  .format-switch__link:focus-visible, .cut-tab:focus-visible, .seek-button:focus-visible, .field-label select:focus-visible, .field-label input:focus-visible, .field-label textarea:focus-visible, .remember-label input:focus-visible, .cut-decision input:focus-visible, .review-button:focus-visible { outline: none; box-shadow: var(--sho-focus); }
-  @media (max-width: 920px) { .review-workspace { grid-template-columns: 1fr; } .player-column { position: static; } .player-shell video { max-height: 58vh; } }
-  @media (max-width: 640px) { .finished-gate { padding-inline: var(--sho-s-3); } .review-actions { margin-inline: calc(var(--sho-s-3) * -1); padding-inline: var(--sho-s-3); } .cut-tabs { grid-template-columns: 1fr; } .cut-tab { min-height: 0; } }
-  @media (prefers-reduced-motion: reduce) { .cut-tab { transition: none; } }
+  /* tokens.css 的 `.sho button` 重置把 border/padding 歸零，specificity (0,1,1)
+     勝過裸的 `.review-button` (0,1,0)——這頁的按鈕因此一直是純文字。用
+     `.sho .review-button` (0,2,0) 蓋過去。 */
+  .sho .review-button { border: 1px solid var(--sho-text-2); border-radius: var(--sho-r-1); background: transparent; color: var(--sho-text); cursor: pointer; font: inherit; font-weight: 700; padding: var(--sho-s-3) var(--sho-s-5); line-height: 1.2; white-space: nowrap; flex: 0 0 auto; }
+  .sho .review-button:hover:not(:disabled) { border-color: var(--sho-text); }
+  .sho .review-button--approve { background: var(--sho-ink); border-color: var(--sho-ink); color: var(--sho-bg); }
+  .sho .review-button--approve:hover:not(:disabled) { filter: brightness(1.12); }
+  .sho .review-button:disabled { cursor: not-allowed; opacity: .45; }
+  .format-switch__link:focus-visible, .cut-tab:focus-visible, .seek-button:focus-visible, .field-label select:focus-visible, .field-label input:focus-visible, .field-label textarea:focus-visible, .remember-label input:focus-visible, .review-button:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+  @media (max-width: 920px) { .review-workspace { grid-template-columns: 1fr; height: auto; } .player-column, .feedback-column { height: clamp(440px, 55vh, 560px); max-height: none; overflow-y: scroll; scrollbar-gutter: stable; } .player-shell video { max-height: 58vh; } }
+  @media (max-width: 640px) { .finished-gate { padding-inline: var(--sho-s-3); } .review-actions { margin-inline: calc(var(--sho-s-3) * -1); padding-inline: var(--sho-s-3); } .cut-tabs { grid-template-columns: 1fr; } .cut-tab { min-height: 0; } .timeline-panel__head { align-items: start; flex-direction: column; } }
+  @media (prefers-reduced-motion: reduce) { .cut-tab, .timeline-block, .timeline-playhead { transition: none; } }
 </style>
 </head>
 <body class="sho bridge-page bridge-page--scroll">
@@ -66,14 +116,25 @@
   <div class="header-meta sho-mono">REV {{ revision_count }} · {{ manifest.cuts|length }} CUTS</div>
 </section>
 <main class="finished-gate">
-  {% if saved %}<p class="finished-status" role="status">這一版 feedback 已保存；舊 revision 沒有被覆蓋。</p>{% endif %}
+  {% set revision_jobs = latest_revision.revision_jobs if latest_revision and latest_revision.revision_jobs else [] %}
+  {% set revision_job = revision_jobs[0] if revision_jobs else none %}
+  {% if revision_job and revision_job.status in ['queued', 'registered', 'pending'] %}
+  <div class="finished-status finished-status--working" role="status" aria-live="polite">
+    <strong>Feedback 已保存為 REV {{ revision_count }}；Finished Cut revision {{ '正在推進' if revision_job.status != 'queued' else '已排入佇列' }}。</strong>
+    <p class="sho-mono">REQUEST {{ revision_job.request_id }}</p>
+  </div>
+  {% elif revision_job and revision_job.status == 'preview_ready' %}
+  <div class="finished-status" role="status" aria-live="polite"><strong>Targeted revision preview 已就緒。</strong><p class="sho-mono">REQUEST {{ revision_job.request_id }}</p></div>
+  {% elif revision_job and revision_job.status in ['needs_review', 'failed'] %}
+  <div class="finished-status finished-status--error" role="alert"><strong>Targeted revision 需要人工處理。</strong><p>{{ revision_job.error or revision_job.reason_code or '沒有提供錯誤細節。' }}</p><p class="sho-mono">REQUEST {{ revision_job.request_id }}</p></div>
+  {% elif saved %}<p class="finished-status" role="status">Feedback 已保存為 REV {{ revision_count }}；舊 revision 沒有被覆蓋。</p>{% endif %}
   {% if approved %}<p class="finished-status" role="status">{{ manifest.cuts|length }} 支初剪已全部核准，review gate 已落盤。</p>{% endif %}
   <nav class="format-switch" aria-label="選擇成片格式">
     <a class="format-switch__link" href="/bridge/highlights/{{ episode_slug }}/finished" {% if review_format == 'long' %}aria-current="page"{% endif %}>長影片</a>
     <a class="format-switch__link" href="/bridge/highlights/{{ episode_slug }}/finished?format=short" {% if review_format == 'short' %}aria-current="page"{% endif %}>短影片</a>
   </nav>
   {% if review_format != 'short' %}
-  <p class="finished-intro">先播放每支初剪；點右側 component 的時間碼可跳到畫面。只列 B-roll、Hero title 與 Fullscreen transition。勾選「以後都這樣」只會建立偏好候選，不會直接改寫 skill。</p>
+  <p class="finished-intro">先播放每支初剪；播放器下方的完整 Timeline 會顯示每個視覺元件與空白區。點選 block 可跳到畫面並打開右側對應修改欄。勾選「以後都這樣」只會建立偏好候選，不會直接改寫 skill。</p>
   {% endif %}
 
   <div class="cut-tabs" role="tablist" aria-label="{{ manifest.cuts|length }} 支{{ '短片' if review_format == 'short' else '長片' }}初剪">
@@ -88,16 +149,51 @@
   <form method="post" action="/bridge/highlights/{{ episode_slug }}/finished/review{{ review_query }}" id="finished-review-form">
     <input type="hidden" name="manifest_sha256" value="{{ manifest_sha256 }}">
     <input type="hidden" name="submit_action" id="submit-action" value="save_draft">
+    <input type="hidden" name="selected_cut_id" id="selected-cut-id" value="{{ manifest.cuts[0].cut_id }}">
     <div class="review-workspace">
       <div class="player-column">
         <div class="player-shell{% if review_format == 'short' %} player-shell--short{% endif %}">
           {% set first_cut = manifest.cuts[0] %}
-          <video id="review-player" controls preload="metadata" src="/bridge/highlights/{{ episode_slug }}/finished/media/{{ first_cut.cut_id }}{{ review_query }}">
+          <video id="review-player" controls preload="none" src="/bridge/highlights/{{ episode_slug }}/finished/media/{{ first_cut.cut_id }}{{ review_query }}">
             <track id="review-captions" kind="captions" srclang="zh-Hant" label="繁體中文字幕" src="/bridge/highlights/{{ episode_slug }}/finished/subtitles/{{ first_cut.cut_id }}{{ review_query }}"{% if review_format != 'short' %} default{% endif %}>
             瀏覽器不支援 HTML5 video。
           </video>
           <div class="player-readout sho-mono"><span id="active-cut-readout">{{ first_cut.cut_id }}</span><span id="time-readout" aria-live="polite">00:00 / {{ '%02d:%02d'|format(first_cut.artifacts.preview.duration_seconds // 60, first_cut.artifacts.preview.duration_seconds % 60) }}</span></div>
         </div>
+        {% for cut in manifest.cuts %}
+        {% set duration = cut.artifacts.preview.duration_seconds %}
+        <section class="timeline-panel" data-timeline-cut="{{ cut.cut_id }}" aria-label="{{ cut.cut_id }} 完整視覺 Timeline" {% if not loop.first %}hidden{% endif %}>
+          <header class="timeline-panel__head">
+            <h2 class="sho-mono">FULL TIMELINE · {{ cut.cut_id }}</h2>
+            <p class="timeline-panel__hint">點 block 跳到時間並選取修改欄；沒有 block 的區域就是 A-roll／空白區。</p>
+          </header>
+          <div class="timeline-scroll" aria-label="完整 Timeline">
+            <div class="timeline-stage">
+              <div class="timeline-ruler" aria-hidden="true">
+                <div class="timeline-ruler__label sho-mono">{{ '%02d:%02d'|format(duration // 60, duration % 60) }}</div>
+                <div class="timeline-ruler__track sho-mono">
+                  {% for ratio in [0, 0.25, 0.5, 0.75, 1] %}<span class="timeline-tick" style="--timeline-start: {{ ratio * 100 }}%">{{ '%02d:%02d'|format((duration * ratio) // 60, (duration * ratio) % 60) }}</span>{% endfor %}
+                </div>
+              </div>
+              {% for lane in manifest.feedback_contract.review_lanes %}
+              {% set timeline_components = cut.review_components | selectattr('lane', 'equalto', lane) | list %}
+              {% if lane != 'badge' and not (review_format == 'long' and lane == 'pacing') and not (lane == 'supporting_title' and not timeline_components) %}
+              {% set timeline_lane_label = manifest.lane_labels[lane] %}
+              <div class="timeline-row" data-timeline-lane="{{ lane }}" data-timeline-count="{{ timeline_components|length }}">
+                <div class="timeline-label sho-mono"><span>{{ timeline_lane_label }}</span><small>{{ timeline_components|length }} EVENT{% if timeline_components|length != 1 %}S{% endif %}</small></div>
+                <div class="timeline-track">
+                  {% for component in timeline_components %}
+                  <button type="button" class="timeline-block" data-seek="{{ component.t0 }}" data-component-target="{{ component.component_id }}" data-tooltip="{{ component.display }} · {{ '%02d:%02d'|format(component.t0 // 60, component.t0 % 60) }}–{{ '%02d:%02d'|format(component.t1 // 60, component.t1 % 60) }}" style="--timeline-start: {{ (component.t0 / duration * 100) }}%; --timeline-span: {{ ((component.t1 - component.t0) / duration * 100) }}%" aria-label="{{ timeline_lane_label }}：{{ component.display }}，跳到 {{ '%02d:%02d'|format(component.t0 // 60, component.t0 % 60) }}"><span class="timeline-block__label">{{ component.display }}</span></button>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endif %}
+              {% endfor %}
+              <span class="timeline-playhead" data-timeline-playhead aria-hidden="true" style="--timeline-progress: 0"></span>
+            </div>
+          </div>
+        </section>
+        {% endfor %}
       </div>
 
       <div class="feedback-column">
@@ -105,20 +201,67 @@
         <section class="cut-pane" id="pane-{{ cut.cut_id }}" role="tabpanel" aria-labelledby="tab-{{ cut.cut_id }}" data-cut-pane="{{ cut.cut_id }}" {% if not loop.first %}hidden{% endif %}>
           <header class="cut-pane__head">
             <h2>{{ cut.title }}</h2>
-            <fieldset class="cut-decision">
-              <legend class="sho-mono">CUT DECISION</legend>
-              <label><input type="radio" name="cut_status__{{ cut.cut_id }}" value="approved" {% if cut.saved_status == 'approved' %}checked{% endif %}> 核准這支</label>
-              <label><input type="radio" name="cut_status__{{ cut.cut_id }}" value="needs_changes" {% if cut.saved_status == 'needs_changes' %}checked{% endif %}> 需要修改</label>
-            </fieldset>
+            <input type="hidden" name="cut_status__{{ cut.cut_id }}" value="{{ cut.saved_status or 'pending' }}" data-cut-status="{{ cut.cut_id }}" data-stock-short="{{ 1 if cut.stock_video_missing is defined and cut.stock_video_missing > 0 else 0 }}">
           </header>
 
+          {% if cut.stock_video_missing is defined and cut.stock_video_missing > 0 %}
+          <div class="finished-status finished-status--error" role="status">
+            <strong>REVISION REQUIRED：Stock Video 目前 {{ cut.stock_video_count }} 個，還缺 {{ cut.stock_video_missing }} 個。</strong>
+            <p>guest-namecard、Hero Title、transition、badge、紙紋、photo 與 generated card 不計入最低 3 個。</p>
+          </div>
+          {% endif %}
+
+          {% set release = cut.release_truth %}
+          <section class="visual-truth visual-truth--ready" aria-labelledby="visual-truth-{{ cut.cut_id }}">
+            <header class="visual-truth__head">
+              <div>
+                <p class="visual-truth__eyebrow sho-mono">FINISHED CUT RELEASE V3</p>
+                <h3 id="visual-truth-{{ cut.cut_id }}">Current semantic events</h3>
+              </div>
+              <span class="visual-truth__status sho-mono">{{ release.status_label }}</span>
+            </header>
+            <dl class="visual-truth__revisions sho-mono">
+              <div><dt>RELEASE</dt><dd>{{ release.release_id }}</dd></div>
+              <div><dt>EVENTS</dt><dd>{{ release.events|length }}</dd></div>
+            </dl>
+            <details class="visual-truth__details">
+              <summary>查看 sealed Release 的語意事件</summary>
+              <ol class="visual-truth__events">
+                {% for event in release.events %}
+                <li class="visual-event">
+                  <header class="visual-event__head">
+                    <div><span class="visual-event__index sho-mono">{{ '%02d'|format(loop.index) }}</span><strong>{{ event.event_id }}</strong></div>
+                    <span class="sho-mono">{{ event.time_range }}</span>
+                  </header>
+                  <blockquote class="visual-event__quote">{{ event.text }}</blockquote>
+                  <dl class="visual-event__intent">
+                    <div><dt>Semantic kind</dt><dd>{{ event.semantic_kind }}</dd></div>
+                    <div><dt>Implementation</dt><dd>{{ event.implementation_kind or 'intentional A-roll' }}</dd></div>
+                    <div><dt>Intent</dt><dd>{{ event.intent }}</dd></div>
+                    <div><dt>Display</dt><dd class="visual-truth__pre">{{ event.display or '—' }}</dd></div>
+                    <div><dt>Section / cues</dt><dd>{{ event.section_id or '—' }} · {{ event.master_cue_ids|join(', ') }}</dd></div>
+                  </dl>
+                </li>
+                {% endfor %}
+              </ol>
+            </details>
+          </section>
+
+          <section class="cut-feedback" aria-labelledby="cut-feedback-label-{{ cut.cut_id }}">
+            <label class="field-label" id="cut-feedback-label-{{ cut.cut_id }}">整支影片的整體 feedback
+              <textarea name="cut_feedback__{{ cut.cut_id }}" maxlength="5000" rows="5" placeholder="例如：整體節奏、故事順序、哪些段落要刪、希望 Agent 重做時優先處理什麼">{{ cut.saved_overall_feedback }}</textarea>
+              <span class="cut-feedback__hint">只屬於 {{ cut.cut_id }}；保存後會和 component feedback 一起交給 revision。</span>
+            </label>
+          </section>
+
           {% for lane in manifest.feedback_contract.review_lanes %}
+          {% set lane_components = cut.review_components | selectattr('lane', 'equalto', lane) | list %}
+          {% if lane != 'badge' and not (review_format == 'long' and lane == 'pacing') and not (lane == 'supporting_title' and not lane_components) %}
           <section class="lane" aria-labelledby="lane-{{ cut.cut_id }}-{{ lane }}">
-            <h3 class="lane-title sho-mono" id="lane-{{ cut.cut_id }}-{{ lane }}">{{ manifest.lane_labels[lane] }}</h3>
-            {% set lane_components = cut.review_components | selectattr('lane', 'equalto', lane) | list %}
+            <h3 class="lane-title sho-mono" id="lane-{{ cut.cut_id }}-{{ lane }}">{{ manifest.lane_labels[lane] }} · {% if lane == 'b_roll' and cut.stock_video_count is defined %}{{ cut.stock_video_count }}{% else %}{{ cut.review_components | selectattr('lane', 'equalto', lane) | list | length }}{% endif %}</h3>
             {% if lane_components %}
               {% for component in lane_components %}
-              <article class="component" data-component-id="{{ component.component_id }}" data-seek-seconds="{{ component.t0 }}">
+              <article class="component" data-component-id="{{ component.component_id }}" data-seek-seconds="{{ component.t0 }}" tabindex="-1">
                 <div class="component__head">
                   <p class="component__title">{{ component.display }}</p>
                   <button type="button" class="seek-button sho-mono" data-seek="{{ component.t0 }}" aria-label="跳到 {{ component.t0 }} 秒">{{ '%02d:%02d'|format(component.t0 // 60, component.t0 % 60) }}</button>
@@ -131,10 +274,14 @@
                     </select>
                   </label>
                   <label class="field-label" data-replacement-field>替換素材／新文字／新類型
+                    {% if component.lane in ['identity_card', 'hero_title', 'supporting_title', 'fullscreen_transition', 'title_card'] %}
+                    <textarea name="component_replacement__{{ component.component_id }}" maxlength="500" rows="3" placeholder="可按 Enter 決定畫面上的換行">{{ component.saved_replacement }}</textarea>
+                    {% else %}
                     <input type="text" name="component_replacement__{{ component.component_id }}" value="{{ component.saved_replacement }}" maxlength="500">
+                    {% endif %}
                   </label>
-                  <label class="field-label" data-move-field>移到第幾秒
-                    <input type="number" name="component_move__{{ component.component_id }}" value="{{ component.saved_move }}" min="0" max="{{ cut.artifacts.preview.duration_seconds }}" step="0.01" inputmode="decimal">
+                  <label class="field-label" data-move-field>移到（時間碼，如 1:49）
+                    <input type="text" name="component_move__{{ component.component_id }}" value="{{ component.saved_move }}" placeholder="分:秒" pattern="^(?:\d+:)?\d{1,2}:[0-5]?\d(?:\.\d+)?$|^\d+(?:\.\d+)?$" title="mm:ss、h:mm:ss，或直接填秒數" maxlength="12" inputmode="text" autocomplete="off">
                   </label>
                   <label class="field-label">具體 feedback
                     <textarea name="component_comment__{{ component.component_id }}" maxlength="2000" placeholder="哪裡不對、希望怎麼改">{{ component.saved_comment }}</textarea>
@@ -145,16 +292,20 @@
               {% endfor %}
             {% else %}<p class="sho-mono">這支沒有 {{ manifest.lane_labels[lane] }}。</p>{% endif %}
           </section>
+          {% endif %}
           {% endfor %}
         </section>
         {% endfor %}
       </div>
     </div>
     <div class="review-actions">
-      <output class="review-actions__status" id="review-status" aria-live="polite">尚未儲存新的變更</output>
-      <button type="submit" class="review-button" data-submit-action="save_draft">保存草稿</button>
-      <button type="submit" class="review-button review-button--approve" id="approve-all" data-submit-action="approve_all" disabled>核准全部 {{ manifest.cuts|length }} 支</button>
+      <output class="review-actions__status" id="review-status" aria-live="polite">{% if revision_job and revision_job.status == 'queued' %}Targeted revision 已排入佇列{% elif revision_job and revision_job.status in ['registered', 'pending'] %}Finished Cut Production 正在推進{% elif revision_job and revision_job.status == 'preview_ready' %}修正版 preview 已就緒{% elif revision_job and revision_job.status in ['needs_review', 'failed'] %}Targeted revision 需要人工處理{% elif saved %}Feedback 已保存{% else %}尚未儲存新的變更{% endif %}</output>
+      <button type="submit" class="review-button" data-submit-action="save_draft">依回饋修改</button>
+      {% if review_format == 'long' %}
+      <button type="submit" class="review-button review-button--approve" id="approve-cut" data-submit-action="approve_cut">核准這支</button>
+      {% endif %}
     </div>
+    <div class="timeline-tooltip sho-mono" id="timeline-tooltip" role="tooltip" hidden></div>
   </form>
 </main>
 <script>
@@ -164,28 +315,70 @@
   const captions = document.querySelector('#review-captions');
   const tabs = [...document.querySelectorAll('[role="tab"]')];
   const panes = [...document.querySelectorAll('[data-cut-pane]')];
+  const timelines = [...document.querySelectorAll('[data-timeline-cut]')];
   const status = document.querySelector('#review-status');
-  const approveAll = document.querySelector('#approve-all');
+  const approveCut = document.querySelector('#approve-cut');
   const submitAction = document.querySelector('#submit-action');
+  const selectedCutId = document.querySelector('#selected-cut-id');
   const activeCut = document.querySelector('#active-cut-readout');
   const timeReadout = document.querySelector('#time-readout');
+  const timelineTooltip = document.querySelector('#timeline-tooltip');
   const pad = value => String(Math.max(0, Math.floor(value))).padStart(2, '0');
   const stamp = seconds => `${pad(seconds / 60)}:${pad(seconds % 60)}`;
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const activeTab = () => tabs.find(tab => tab.getAttribute('aria-selected') === 'true');
+  const hideTimelineTooltip = () => { timelineTooltip.hidden = true; };
+  const showTimelineTooltip = block => {
+    timelineTooltip.textContent = block.dataset.tooltip || '';
+    timelineTooltip.hidden = false;
+    const blockRect = block.getBoundingClientRect();
+    const tipRect = timelineTooltip.getBoundingClientRect();
+    const gutter = 8;
+    const left = Math.min(window.innerWidth - tipRect.width - gutter, Math.max(gutter, blockRect.left + blockRect.width / 2 - tipRect.width / 2));
+    const above = blockRect.top - tipRect.height - 6;
+    const top = above >= gutter ? above : blockRect.bottom + 6;
+    timelineTooltip.style.left = `${left}px`;
+    timelineTooltip.style.top = `${top}px`;
+  };
+  const syncPlayhead = () => {
+    const tab = activeTab();
+    const duration = Number(tab?.dataset.duration || player.duration || 0);
+    const progress = duration > 0 ? Math.min(1, Math.max(0, player.currentTime / duration)) : 0;
+    timelines.filter(item => !item.hidden).forEach(item => item.querySelectorAll('[data-timeline-playhead]').forEach(playhead => playhead.style.setProperty('--timeline-progress', progress)));
+  };
+  const selectComponent = componentId => {
+    document.querySelectorAll('.timeline-block[aria-current="true"]').forEach(block => block.removeAttribute('aria-current'));
+    const block = document.querySelector(`.timeline-block[data-component-target="${CSS.escape(componentId)}"]`);
+    if (block) block.setAttribute('aria-current', 'true');
+    const component = form.querySelector(`[data-component-id="${CSS.escape(componentId)}"]`);
+    if (!component) return;
+    document.querySelectorAll('.component--selected').forEach(item => item.classList.remove('component--selected'));
+    component.classList.add('component--selected');
+    component.scrollIntoView({ behavior: reducedMotion.matches ? 'auto' : 'smooth', block: 'center' });
+    component.querySelector('[data-action-select]')?.focus({ preventScroll: true });
+  };
 
   const syncApproval = () => {
-    const approved = tabs.every(tab => form.querySelector(`input[name="cut_status__${tab.dataset.cutId}"][value="approved"]`)?.checked);
-    approveAll.disabled = !approved;
+    if (!approveCut) return;
+    const active = activeCut.textContent;
+    const blocked = form.querySelector(`input[data-cut-status="${active}"]`)?.dataset.stockShort === '1';
+    approveCut.disabled = blocked;
+    approveCut.title = blocked ? '這支的 Stock Video 未達 3 個，不能進 Packaging' : '';
   };
   const activate = tab => {
     tabs.forEach(item => { const selected = item === tab; item.setAttribute('aria-selected', selected ? 'true' : 'false'); item.tabIndex = selected ? 0 : -1; });
     panes.forEach(pane => { pane.hidden = pane.dataset.cutPane !== tab.dataset.cutId; });
+    timelines.forEach(timeline => { timeline.hidden = timeline.dataset.timelineCut !== tab.dataset.cutId; });
     player.pause();
     player.src = tab.dataset.mediaUrl;
     captions.src = tab.dataset.subtitlesUrl;
     player.load();
     activeCut.textContent = tab.dataset.cutId;
+    selectedCutId.value = tab.dataset.cutId;
     timeReadout.textContent = `00:00 / ${stamp(Number(tab.dataset.duration))}`;
     status.textContent = `正在檢查 ${tab.dataset.cutId}`;
+    syncPlayhead();
+    syncApproval();
   };
   tabs.forEach((tab, index) => {
     tab.addEventListener('click', () => activate(tab));
@@ -197,10 +390,27 @@
       activate(next); next.focus();
     });
   });
-  document.querySelectorAll('[data-seek]').forEach(button => button.addEventListener('click', () => {
-    player.currentTime = Number(button.dataset.seek);
-    player.play().catch(() => {});
-  }));
+  document.querySelectorAll('[data-seek]').forEach(button => {
+    button.addEventListener('click', () => {
+      player.currentTime = Number(button.dataset.seek);
+      if (button.dataset.componentTarget) selectComponent(button.dataset.componentTarget);
+      syncPlayhead();
+      player.play().catch(() => {});
+    });
+    if (button.classList.contains('timeline-block')) {
+      button.addEventListener('pointerenter', () => showTimelineTooltip(button));
+      button.addEventListener('pointerleave', hideTimelineTooltip);
+      button.addEventListener('focus', () => showTimelineTooltip(button));
+      button.addEventListener('blur', hideTimelineTooltip);
+      button.addEventListener('keydown', event => {
+        if (!['Enter', ' '].includes(event.key)) return;
+        event.preventDefault();
+        button.click();
+      });
+    }
+  });
+  window.addEventListener('resize', hideTimelineTooltip);
+  document.querySelectorAll('.timeline-scroll').forEach(scroller => scroller.addEventListener('scroll', hideTimelineTooltip));
   const syncFields = select => {
     const component = select.closest('.component');
     const replacement = component.querySelector('[data-replacement-field]');
@@ -208,20 +418,34 @@
     const needsReplacement = ['replace_asset', 'change_type', 'edit_text'].includes(select.value);
     const needsMove = select.value === 'move';
     replacement.hidden = !needsReplacement;
-    replacement.querySelector('input').disabled = !needsReplacement;
-    replacement.querySelector('input').required = needsReplacement;
+    const replacementControl = replacement.querySelector('input, textarea');
+    replacementControl.disabled = !needsReplacement;
+    replacementControl.required = needsReplacement;
     move.hidden = !needsMove;
     move.querySelector('input').disabled = !needsMove;
     move.querySelector('input').required = needsMove;
   };
   document.querySelectorAll('[data-action-select]').forEach(select => { syncFields(select); select.addEventListener('change', () => syncFields(select)); });
-  player.addEventListener('loadedmetadata', () => { timeReadout.textContent = `${stamp(player.currentTime)} / ${stamp(player.duration || 0)}`; });
-  player.addEventListener('timeupdate', () => { timeReadout.textContent = `${stamp(player.currentTime)} / ${stamp(player.duration || 0)}`; });
+  player.addEventListener('loadedmetadata', () => { timeReadout.textContent = `${stamp(player.currentTime)} / ${stamp(player.duration || 0)}`; syncPlayhead(); });
+  player.addEventListener('timeupdate', () => { timeReadout.textContent = `${stamp(player.currentTime)} / ${stamp(player.duration || 0)}`; syncPlayhead(); });
+  form.addEventListener('input', () => { status.textContent = '有尚未儲存的變更'; });
   form.addEventListener('change', () => { status.textContent = '有尚未儲存的變更'; syncApproval(); });
-  form.querySelectorAll('[data-submit-action]').forEach(button => button.addEventListener('click', () => { submitAction.value = button.dataset.submitAction; }));
+  form.querySelectorAll('[data-submit-action]').forEach(button => button.addEventListener('click', () => {
+    submitAction.value = button.dataset.submitAction;
+    const cutId = activeCut.textContent;
+    const statusField = form.querySelector(`input[data-cut-status="${cutId}"]`);
+    if (button.dataset.submitAction === 'approve_cut') {
+      selectedCutId.value = cutId;
+      if (statusField) statusField.value = 'approved';
+    } else if (button.dataset.submitAction === 'save_draft' && statusField) {
+      statusField.value = 'needs_changes';
+    }
+  }));
   form.addEventListener('submit', event => {
     if (!form.checkValidity()) { event.preventDefault(); form.reportValidity(); status.textContent = '有欄位尚未填完，請檢查標示的位置'; return; }
     status.textContent = '正在保存 review revision…';
+    form.setAttribute('aria-busy', 'true');
+    form.querySelectorAll('[data-submit-action]').forEach(button => { button.disabled = true; });
   });
   syncApproval();
 })();

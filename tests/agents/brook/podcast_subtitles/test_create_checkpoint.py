@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+import agents.brook.podcast_subtitles.store as checkpoint_store_module
 from agents.brook.podcast_subtitles.checkpoint import (
     CheckpointAdapterIdentity,
     build_create_checkpoint,
@@ -150,6 +151,76 @@ def test_create_checkpoint_round_trips_and_reverifies_in_fresh_process(
         fresh.read_create_checkpoint_artifact(loaded, "raw/one.json") == artifacts["raw/one.json"]
     )
     assert stored.directory == loaded.directory
+
+
+def test_verified_store_session_does_not_repeat_full_stage_hashing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifacts = {f"raw/{index}.json": f'{{"index":{index}}}'.encode() for index in range(12)}
+    checkpoint = _checkpoint(artifacts=artifacts)
+    writer = GenerationStore(tmp_path)
+    _commit_started(writer, checkpoint)
+    writer.commit_create_checkpoint(checkpoint, artifacts=artifacts)
+    calls: list[Path] = []
+    real_hash_file = checkpoint_store_module.hash_file
+
+    def counted(path: Path) -> str:
+        calls.append(path)
+        return real_hash_file(path)
+
+    monkeypatch.setattr(checkpoint_store_module, "hash_file", counted)
+    reader = GenerationStore(tmp_path)
+    loaded = reader.load_create_checkpoint(expected_operation_key=checkpoint.operation_key)
+    assert loaded is not None
+    full_open_calls = len(calls)
+    assert full_open_calls == len(artifacts) + 1
+
+    for name, payload in artifacts.items():
+        assert reader.read_create_checkpoint_artifact(loaded, name) == payload
+
+    # Each read re-hashes only the small checkpoint record; the requested bytes
+    # are hashed from the payload after the read and never trigger a stage scan.
+    assert len(calls) == full_open_calls + len(artifacts)
+
+
+def test_verified_store_session_rejects_requested_artifact_and_record_tamper(
+    tmp_path: Path,
+) -> None:
+    artifacts = {"raw/one.json": b'{"one":1}', "raw/two.json": b'{"two":2}'}
+    checkpoint = _checkpoint(artifacts=artifacts)
+    store = GenerationStore(tmp_path)
+    _commit_started(store, checkpoint)
+    loaded = store.commit_create_checkpoint(checkpoint, artifacts=artifacts)
+
+    (loaded.directory / "raw/one.json").write_bytes(b'{"one":"tampered"}')
+    with pytest.raises(ArtifactHashMismatchError, match="changed after verification"):
+        store.read_create_checkpoint_artifact(loaded, "raw/one.json")
+
+    (loaded.directory / "raw/one.json").write_bytes(artifacts["raw/one.json"])
+    (loaded.directory / "raw/two.json").write_bytes(b'{"two":"tampered"}')
+    with pytest.raises(ArtifactHashMismatchError, match="artifact hash mismatch"):
+        store.read_create_checkpoint_artifact(loaded, "raw/one.json")
+
+    (loaded.directory / "raw/two.json").write_bytes(artifacts["raw/two.json"])
+    loaded = store.load_create_checkpoint(expected_operation_key=checkpoint.operation_key)
+    assert loaded is not None
+    (loaded.directory / "checkpoint.json").write_bytes(b"{}")
+    with pytest.raises(ArtifactHashMismatchError, match="record changed"):
+        store.read_create_checkpoint_artifact(loaded, "raw/two.json")
+
+
+def test_fresh_store_rejects_non_requested_artifact_tamper(tmp_path: Path) -> None:
+    artifacts = {"raw/one.json": b'{"one":1}', "raw/two.json": b'{"two":2}'}
+    checkpoint = _checkpoint(artifacts=artifacts)
+    store = GenerationStore(tmp_path)
+    _commit_started(store, checkpoint)
+    loaded = store.commit_create_checkpoint(checkpoint, artifacts=artifacts)
+
+    (loaded.directory / "raw/two.json").write_bytes(b'{"two":"tampered"}')
+    with pytest.raises(ArtifactHashMismatchError, match="artifact hash mismatch"):
+        GenerationStore(tmp_path).load_create_checkpoint(
+            expected_operation_key=checkpoint.operation_key
+        )
 
 
 def test_create_checkpoint_rejects_input_or_adapter_binding_drift(tmp_path: Path) -> None:

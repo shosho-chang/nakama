@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -270,6 +273,86 @@ def test_director_json_per_format_section(tmp_path):
     assert _load_cfg(tmp_path, "short")["min_shot"] == DEFAULT_CFG["min_shot"]
     assert _load_cfg(tmp_path, "long")["min_shot"] == 2.5
     assert _load_cfg(tmp_path, "long")["face_x"] == {"0": 900, "1": 1100}
+
+
+def test_speaker_tokens_use_hash_bound_memo_release_without_legacy(tmp_path, monkeypatch):
+    import run_short_director as director
+
+    evidence = {
+        "contract": "memo-recognition-evidence-v1",
+        "normalized_audio_sha256": "audio-sha",
+        "tokens": [
+            {"text": "第一句", "start_ms": 1000, "end_ms": 2000},
+            {"text": "第二句", "start_ms": 2000, "end_ms": 3500},
+        ],
+    }
+    evidence_raw = json.dumps(evidence, ensure_ascii=False).encode()
+    evidence_path = tmp_path / "subtitle-v2" / "memo-recognition.v1.json"
+    evidence_path.parent.mkdir()
+    evidence_path.write_bytes(evidence_raw)
+    ledger = {
+        "normalized_audio_sha256": "audio-sha",
+        "inputs": {
+            "memo_recognition_evidence": {
+                "path": "subtitle-v2/memo-recognition.v1.json",
+                "sha256": hashlib.sha256(evidence_raw).hexdigest(),
+                "size_bytes": len(evidence_raw),
+            }
+        },
+    }
+    ledger_path = tmp_path / "subtitle-release" / "memo-dual-audit-v1" / "release-ledger.json"
+    ledger_path.parent.mkdir(parents=True)
+    ledger_path.write_text(json.dumps(ledger), encoding="utf-8")
+    selection = SimpleNamespace(
+        mode="memo-dual-audit-v1",
+        handoff=SimpleNamespace(release_ledger_path=ledger_path),
+    )
+    monkeypatch.setattr(
+        director.Stage5SubtitleRequest,
+        "open",
+        lambda self, episode_dir: selection,
+    )
+
+    assert director._speaker_timing_tokens(tmp_path) == [
+        {"word": "第一句", "start": 1.0, "end": 2.0},
+        {"word": "第二句", "start": 2.0, "end": 3.5},
+    ]
+
+
+def test_speaker_tokens_reject_tampered_memo_evidence(tmp_path, monkeypatch):
+    import pytest
+    import run_short_director as director
+
+    evidence_path = tmp_path / "memo.json"
+    evidence_path.write_text("{}", encoding="utf-8")
+    ledger_path = tmp_path / "ledger.json"
+    ledger_path.write_text(
+        json.dumps(
+            {
+                "normalized_audio_sha256": "audio-sha",
+                "inputs": {
+                    "memo_recognition_evidence": {
+                        "path": "memo.json",
+                        "sha256": "0" * 64,
+                        "size_bytes": 2,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    selection = SimpleNamespace(
+        mode="memo-dual-audit-v1",
+        handoff=SimpleNamespace(release_ledger_path=ledger_path),
+    )
+    monkeypatch.setattr(
+        director.Stage5SubtitleRequest,
+        "open",
+        lambda self, episode_dir: selection,
+    )
+
+    with pytest.raises(SystemExit, match="bytes"):
+        director._speaker_timing_tokens(tmp_path)
 
 
 def test_long_reactions_alternate_listener_and_wide(tmp_path):

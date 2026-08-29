@@ -25,6 +25,7 @@ from shared.schemas.packaging import (
     CutV1,
     PackagesFileV1,
     PackageV1,
+    PackagingRevisionJobV1,
     TitleV1,
     parse_approval,
     parse_packages,
@@ -112,6 +113,17 @@ def _approval_data() -> dict:
     }
 
 
+def test_revision_job_rejects_asset_path_escape():
+    with pytest.raises(ValidationError, match="source_assets"):
+        PackagingRevisionJobV1(
+            request_id="revision-0123456789abcdef",
+            feedback="重做",
+            requested_at="2026-08-21T06:00:00+00:00",
+            source_packages_sha256="a" * 64,
+            source_assets={"../../outside.png": "b" * 64},
+        )
+
+
 # ---------------------------------------------------------------------------
 # TitleV1
 # ---------------------------------------------------------------------------
@@ -162,6 +174,42 @@ def test_package_v1_happy():
     p = PackageV1(**_package())
     assert p.title_rank == 1
     assert p.thumbnail_png.endswith(".png")
+
+
+def test_package_render_recipe_round_trips_and_old_packages_remain_valid():
+    legacy = PackageV1(**_package())
+    assert legacy.render_recipe is None
+
+    data = _package(3)
+    data["render_recipe"] = {
+        "title_rank": 3,
+        "host_cutout": "Attachments/cutouts/podcast/episode/host_v6_laughing.png",
+        "guest_cutout": "Attachments/cutouts/podcast/episode/guest_v6_laughing.png",
+        "big_text": ["分工是昆蟲", "人要變通才"],
+        "highlight_text": "變通才",
+        "title_max_width": 580,
+        "guest_credit": "《逆分工》共同作者 林之晨",
+        "requested_at": "2026-08-21T08:05:28+00:00",
+        "geometry": {
+            "host_height_pct": 112,
+            "host_x_pct": -30,
+            "host_y_pct": 0,
+            "guest_height_pct": 112,
+            "guest_x_pct": -18,
+            "guest_y_pct": 0,
+        },
+        "geometry_manual": True,
+        "book_cover": "Attachments/packaging/episode/book-cover.png",
+        "book_cover_opacity": 0.42,
+        "book_cover_brightness": 0.38,
+        "book_cover_height_pct": 100,
+    }
+    package = PackageV1.model_validate(data)
+    reborn = PackageV1.model_validate_json(package.model_dump_json())
+
+    assert reborn == package
+    assert reborn.render_recipe is not None
+    assert reborn.render_recipe.book_cover_opacity == 0.42
 
 
 def test_package_v1_windows_abs_path_thumbnail_rejected():

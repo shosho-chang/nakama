@@ -31,11 +31,13 @@ from typing import Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter, Cookie, Form, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from starlette.requests import Request
 
+from agents.usopp.publish_timeline import export_matches_current_release
+from scripts.packaging_manifest import load_manifest
 from shared.background_job import atomic_job_write, job_expired, load_job, new_job
 from shared.config import get_db_path, get_vault_path
 from shared.log import get_logger
@@ -43,6 +45,9 @@ from shared.release_store import ensure_target, get_release, register_release, u
 from shared.schemas.packaging import (
     ApprovalFileV1,
     ApprovalV1,
+    CenterCandidatesFileV1,
+    CenterGeometryV1,
+    CenterProvenanceV1,
     GeometryV1,
     PackagesFileV1,
     PackagingRevisionJobV1,
@@ -67,23 +72,52 @@ _DESCRIPTION_GENERATING = "DESCRIPTION_DRAFT_GENERATING"
 _DESCRIPTION_INTERRUPTED = "DESCRIPTION_DRAFT_INTERRUPTED:"
 _DESCRIPTION_TIMEOUT_SECONDS = 900
 _DESCRIPTION_PROCESSES: dict[tuple[str, str], subprocess.Popen] = {}
+_PUBLISH_PREP_TIMEOUT_SECONDS = 7200
+_PUBLISH_PREP_PROCESSES: dict[tuple[str, str], subprocess.Popen] = {}
+
+
+def _render_watcher_state_path() -> Path:
+    """Desktop watcher state shared with the authenticated Bridge status surface."""
+    configured = os.environ.get("NAKAMA_RENDER_WATCHER_STATE")
+    if configured:
+        return Path(configured)
+    return Path(__file__).resolve().parents[2] / "logs" / "render-watcher-state.json"
+
+
+def _same_requested_at(left: str, right: str) -> bool:
+    """Compare ISO timestamps while accepting the equivalent Z/+00:00 spelling."""
+    try:
+        a = datetime.fromisoformat(left.replace("Z", "+00:00"))
+        b = datetime.fromisoformat(right.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return a == b
 
 
 class CompositionBBoxV1(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    x: float = Field(ge=0)
-    y: float = Field(ge=0)
+    x: float
+    y: float
     width: float = Field(gt=0)
     height: float = Field(gt=0)
 
 
 class LongThumbnailCompositionReceiptV2(BaseModel):
-    """Measured long-highlight composition accepted by the packaging gate."""
+    """Measured long-highlight composition accepted by the packaging gate.
+
+    v3 加了 `center_provenance`（中央卡來歷）。v2 仍然讀得進來——2026-08-29 之前
+    產的 12 份 receipt 都是 v2，其中三份已核准；為了一個新欄位追溯作廢已交付的
+    東西沒有道理。要擋的是「以後還能不交代就產出中央卡」，所以 v3 必填、v2 不准
+    帶（帶了就是有人手改 schema 版號）。
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_: Literal["nakama.long_thumbnail_composition.v2"] = Field(alias="schema")
+    schema_: Literal[
+        "nakama.long_thumbnail_composition.v2",
+        "nakama.long_thumbnail_composition.v3",
+    ] = Field(alias="schema")
     episode: str
     cut_id: str
     package_rank: int = Field(ge=1, le=3)
@@ -100,7 +134,17 @@ class LongThumbnailCompositionReceiptV2(BaseModel):
     host_bbox: CompositionBBoxV1
     guest_bbox: CompositionBBoxV1
     title_bbox: CompositionBBoxV1 | None = None
-    max_protected_overlap_ratio: float = Field(default=0.05, ge=0, le=0.05)
+    max_protected_overlap_ratio: float = Field(default=1.0, ge=0, le=1.0)
+    center_provenance: CenterProvenanceV1 | None = None
+
+    @model_validator(mode="after")
+    def _provenance_matches_schema(self) -> "LongThumbnailCompositionReceiptV2":
+        is_v3 = self.schema_.endswith(".v3")
+        if is_v3 and self.center_provenance is None:
+            raise ValueError("v3 receipt 必須帶 center_provenance")
+        if not is_v3 and self.center_provenance is not None:
+            raise ValueError("v2 receipt 不該帶 center_provenance——schema 版號被手改過")
+        return self
 
     @model_validator(mode="after")
     def _bounds_fit_canvas(self) -> "LongThumbnailCompositionReceiptV2":
@@ -108,33 +152,26 @@ class LongThumbnailCompositionReceiptV2(BaseModel):
             box = getattr(self, name)
             if box is None:
                 continue
-            if box.x + box.width > self.canvas_width or box.y + box.height > self.canvas_height:
+            if name in {"host_bbox", "guest_bbox"}:
+                if (
+                    box.x >= self.canvas_width
+                    or box.y >= self.canvas_height
+                    or box.x + box.width <= 0
+                    or box.y + box.height <= 0
+                ):
+                    raise ValueError(f"{name} does not intersect canvas")
+            elif (
+                box.x < 0
+                or box.y < 0
+                or box.x + box.width > self.canvas_width
+                or box.y + box.height > self.canvas_height
+            ):
                 raise ValueError(f"{name} exceeds canvas bounds")
         protected = self.protected_center_bbox
-        if not (
-            protected.x <= self.canvas_width / 2 <= protected.x + protected.width
-            and protected.width * protected.height >= self.canvas_width * self.canvas_height * 0.15
-        ):
-            raise ValueError("protected_center_bbox 必須覆蓋畫布中央且至少占畫布 15%")
-        protected_area = protected.width * protected.height
-        for name in ("host_bbox", "guest_bbox", "title_bbox"):
-            box = getattr(self, name)
-            if box is None:
-                continue
-            overlap_width = max(
-                0.0,
-                min(box.x + box.width, protected.x + protected.width) - max(box.x, protected.x),
-            )
-            overlap_height = max(
-                0.0,
-                min(box.y + box.height, protected.y + protected.height) - max(box.y, protected.y),
-            )
-            overlap_ratio = overlap_width * overlap_height / protected_area
-            if overlap_ratio > self.max_protected_overlap_ratio:
-                raise ValueError(
-                    f"{name} overlaps protected center by {overlap_ratio:.3f}; "
-                    f"maximum is {self.max_protected_overlap_ratio:.3f}"
-                )
+        if not (protected.x <= self.canvas_width / 2 <= protected.x + protected.width):
+            raise ValueError("protected_center_bbox 必須覆蓋畫布中央")
+        if protected.width <= protected.height or protected.width < self.canvas_width * 0.5:
+            raise ValueError("protected_center_bbox 必須是至少占畫布 50% 寬的橫向卡片")
         return self
 
 
@@ -249,6 +286,119 @@ def _load_approvals(ep_dir: Path, episode: str) -> ApprovalFileV1:
     return parse_approval_file(path)
 
 
+def _load_cut_tabs(ep_dir: Path, pkg: PackagesFileV1) -> list[dict]:
+    """Build Full/Long tabs from the resume ledger without inventing ready assets."""
+    manifest_path = ep_dir / "manifest.json"
+    if not manifest_path.is_file():
+        return []
+    try:
+        manifest = load_manifest(ep_dir)
+    except SystemExit as exc:
+        raise HTTPException(status_code=422, detail=f"manifest.json 驗證失敗：{exc}") from exc
+
+    package_by_id = {cut.cut_id: cut for cut in pkg.cuts}
+    ready_by_id = {cut_id: cut for cut_id, cut in package_by_id.items() if cut.format == "long"}
+    rows: list[dict] = []
+    used_ranks: set[int] = set()
+    manifest_cuts = manifest["cuts"]
+    for order, (cut_id, raw) in enumerate(manifest_cuts.items()):
+        if not cut_id.strip():
+            raise HTTPException(status_code=422, detail="manifest.json cut_id 不可為空")
+        packaged_cut = package_by_id.get(cut_id)
+        if packaged_cut is not None and packaged_cut.format == "short":
+            continue
+        is_full = cut_id.casefold() == "full"
+        rank = raw.get("rank")
+        if not is_full and rank is not None:
+            if not isinstance(rank, int) or not 1 <= rank <= 3 or rank in used_ranks:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"manifest.json Long rank 重複或超出 1..3：{rank!r}",
+                )
+            used_ranks.add(rank)
+        packaging_work = raw.get("packaging")
+        if packaging_work is not None and not isinstance(packaging_work, dict):
+            raise HTTPException(
+                status_code=422, detail=f"manifest.json {cut_id}.packaging 必須是物件"
+            )
+        status = (packaging_work or {}).get("status")
+        if cut_id in ready_by_id:
+            status = "ready"
+        elif status == "ready" or "emitted" in raw:
+            raise HTTPException(
+                status_code=422,
+                detail=f"manifest.json {cut_id} 已標完成，但 packages.json 沒有該 cut",
+            )
+        elif status is None:
+            status = (
+                "running" if any(stage in raw for stage in ("titles", "thumbnails")) else "queued"
+            )
+        if status not in {"queued", "running", "ready", "failed"}:
+            raise HTTPException(
+                status_code=422,
+                detail=f"manifest.json {cut_id} Packaging 狀態不合法：{status!r}",
+            )
+        video_work = raw.get("video") if isinstance(raw.get("video"), dict) else {}
+        video_status = video_work.get("status")
+        if video_status is not None and video_status not in {
+            "queued",
+            "running",
+            "ready",
+            "failed",
+        }:
+            raise HTTPException(
+                status_code=422,
+                detail=f"manifest.json {cut_id} video 狀態不合法：{video_status!r}",
+            )
+        rows.append(
+            {
+                "cut_id": cut_id,
+                "rank": rank,
+                "label": "Full" if is_full else None,
+                "title": raw.get("title") or cut_id,
+                "status": status,
+                "video_status": video_status,
+                "is_full": is_full,
+                "order": order,
+            }
+        )
+
+    known_ids = {row["cut_id"] for row in rows}
+    for cut in ready_by_id.values():
+        if cut.cut_id in known_ids:
+            continue
+        rows.append(
+            {
+                "cut_id": cut.cut_id,
+                "rank": None,
+                "label": "Full" if cut.cut_id.casefold() == "full" else None,
+                "title": cut.cut_id,
+                "status": "ready",
+                "video_status": None,
+                "is_full": cut.cut_id.casefold() == "full",
+                "order": len(rows),
+            }
+        )
+
+    next_rank = 1
+    for row in sorted(rows, key=lambda item: item["order"]):
+        if row["is_full"] or row["rank"] is not None:
+            continue
+        while next_rank in used_ranks:
+            next_rank += 1
+        if next_rank > 3:
+            raise HTTPException(status_code=422, detail="manifest.json 超過三支 Long Highlight")
+        row["rank"] = next_rank
+        used_ranks.add(next_rank)
+    for row in rows:
+        if not row["is_full"]:
+            row["label"] = f"Long {row['rank']}"
+    return sorted(
+        rows,
+        key=lambda item: (0, 0) if item["is_full"] else (1, item["rank"]),
+    )
+
+
 def _scan_episodes() -> list[dict]:
     """列表頁資料：每個 episode 目錄一列；壞檔/conflict 標 error，不吞。"""
     root = _packaging_root()
@@ -317,10 +467,17 @@ def _board_context(episode_slug: str) -> dict:
         titles_by_rank = {t.rank: t for t in cut.titles}
         package_views = []
         for package in cut.packages:
+            editor_recipe = package.render_recipe or _legacy_reaction_recipe(
+                ep_dir,
+                episode=pkg.episode,
+                cut_id=cut.cut_id,
+                package=package,
+            )
             package_views.append(
                 {
                     "pkg": package,
                     "title": titles_by_rank.get(package.title_rank),
+                    "editor_recipe": editor_recipe,
                     "composition": _composition_status(
                         ep_dir,
                         episode=pkg.episode,
@@ -334,20 +491,26 @@ def _board_context(episode_slug: str) -> dict:
             {
                 "package_rank": item["pkg"].title_rank,
                 "title_rank": (
-                    item["pkg"].render_recipe.title_rank
-                    if item["pkg"].render_recipe
+                    item["editor_recipe"].title_rank
+                    if item["editor_recipe"]
                     else item["pkg"].title_rank
                 ),
                 "host_cutout": item["pkg"].host_cutout,
                 "guest_cutout": item["pkg"].guest_cutout,
                 "recipe": (
-                    item["pkg"].render_recipe.model_dump(mode="json")
-                    if item["pkg"].render_recipe
+                    item["editor_recipe"].model_dump(mode="json") if item["editor_recipe"] else None
+                ),
+                "center_visual_url": (
+                    f"/bridge/packaging/{episode_slug}/center-visual/"
+                    f"{cut.cut_id}/{item['pkg'].title_rank}"
+                    if item["editor_recipe"]
+                    and item["editor_recipe"].composition == "thumbnail_reaction"
                     else None
                 ),
             }
             for item in package_views
         ]
+        candidate_pool = _center_candidates(ep_dir, cut.cut_id)
         view = {
             "cut": cut,
             "approval": approval_by_cut.get(cut.cut_id),
@@ -355,12 +518,28 @@ def _board_context(episode_slug: str) -> dict:
             "runners_up": [t for t in cut.titles if t.rank >= 4],
             "brief": _load_brief(ep_dir, cut.cut_id),
             "recipe_payload": recipe_payload,
+            "center_candidates": [
+                {
+                    "candidate_id": row.candidate_id,
+                    "asset": row.preview_png,
+                    "url": (
+                        f"/bridge/packaging/{episode_slug}/center-candidate/"
+                        f"{cut.cut_id}/{row.candidate_id}"
+                    ),
+                    "title": row.title,
+                    "author": row.author,
+                    "source": row.source,
+                    "query": row.query,
+                }
+                for row in (candidate_pool.candidates if candidate_pool else [])
+            ],
         }
         cuts.append(view)
     return {
         "episode_slug": episode_slug,
         "pkg": pkg,
         "cuts": cuts,
+        "cut_tabs": _load_cut_tabs(ep_dir, pkg),
         "cutouts": _load_cutout_choices(episode_slug),
     }
 
@@ -479,6 +658,58 @@ def _load_composition_receipt(
     return receipt
 
 
+def _legacy_reaction_recipe(
+    ep_dir: Path,
+    *,
+    episode: str,
+    cut_id: str,
+    package,
+) -> RenderRequestV1 | None:
+    """Hydrate one legacy N2 package only from its own measured receipt."""
+    try:
+        receipt = _load_composition_receipt(
+            ep_dir,
+            episode=episode,
+            cut_id=cut_id,
+            package_rank=package.title_rank,
+            thumbnail_png=package.thumbnail_png,
+        )
+    except HTTPException:
+        return None
+    canvas_w = float(receipt.canvas_width)
+    canvas_h = float(receipt.canvas_height)
+    center = receipt.protected_center_bbox
+    host = receipt.host_bbox
+    guest = receipt.guest_bbox
+    return RenderRequestV1(
+        composition="thumbnail_reaction",
+        title_rank=package.title_rank,
+        host_cutout=package.host_cutout,
+        guest_cutout=package.guest_cutout,
+        big_text=[],
+        requested_at=datetime.fromtimestamp(
+            _composition_receipt_path(ep_dir, cut_id, package.title_rank).stat().st_mtime,
+            tz=timezone.utc,
+        ),
+        geometry=GeometryV1(
+            host_height_pct=host.height / canvas_h * 100,
+            host_x_pct=host.x / canvas_w * 100,
+            host_y_pct=(canvas_h - host.y - host.height) / canvas_h * 100,
+            guest_height_pct=guest.height / canvas_h * 100,
+            guest_x_pct=(canvas_w - guest.x - guest.width) / canvas_w * 100,
+            guest_y_pct=(canvas_h - guest.y - guest.height) / canvas_h * 100,
+        ),
+        geometry_manual=True,
+        center_visual_asset=receipt.center_visual_asset,
+        center_geometry=CenterGeometryV1(
+            width_pct=center.width / canvas_w * 100,
+            height_px=center.height,
+            x_pct=(center.x + center.width / 2) / canvas_w * 100,
+            y_pct=(center.y + center.height / 2) / canvas_h * 100,
+        ),
+    )
+
+
 def _composition_status(
     ep_dir: Path,
     *,
@@ -499,7 +730,7 @@ def _composition_status(
         return {"verified": False, "reason": str(exc.detail)}
     return {
         "verified": True,
-        "reason": "中央主圖與人物／標題保護區已驗證",
+        "reason": "中央橫向主圖與 render 成品已驗證",
         "center_visual_asset": receipt.center_visual_asset,
     }
 
@@ -647,6 +878,25 @@ def _ensure_description_handoff(episode: str, cut_id: str, release: dict) -> str
     return "generating"
 
 
+def _publish_prep_state(episode_dir: Path, cut_id: str) -> dict | None:
+    receipt = episode_dir / "highlights" / "exports" / f".publish_prep_{cut_id}.json"
+    payload = load_job(receipt)
+    if not payload or payload.get("status") != "rendering":
+        return payload
+    key = (str(episode_dir.resolve()), cut_id)
+    process = _PUBLISH_PREP_PROCESSES.get(key)
+    exit_code = process.poll() if process is not None else None
+    if (process is not None and exit_code is not None) or job_expired(payload):
+        reason = (
+            f"background child exited ({exit_code})"
+            if process is not None and exit_code is not None
+            else "background attempt exceeded its deadline"
+        )
+        payload = {**payload, "status": "failed", "exit_code": exit_code, "error": reason}
+        atomic_job_write(receipt, payload)
+    return payload
+
+
 def _ensure_publish_prep(episode: str, cut_id: str) -> None:
     """Start or resume the full-resolution export for an approved package."""
     root_value = os.environ.get("PODCAST_EPISODES_ROOT", "").strip()
@@ -662,9 +912,65 @@ def _ensure_publish_prep(episode: str, cut_id: str) -> None:
         ) from exc
     if not episode_dir.is_dir():
         raise HTTPException(status_code=404, detail=f"episode 不存在: {episode}")
-    from thousand_sunny.routers.highlight_review import _start_publish_prep
-
-    _start_publish_prep(episode_dir, cut_id)
+    key = (str(episode_dir.resolve()), cut_id)
+    running = _PUBLISH_PREP_PROCESSES.get(key)
+    root_path = Path(__file__).resolve().parent.parent.parent
+    script = root_path / "scripts" / "publish_prep.py"
+    data_dir = Path(os.environ.get("NAKAMA_DATA_DIR") or get_db_path().parent)
+    log_dir = data_dir / "publish_prep"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    receipt = episode_dir / "highlights" / "exports" / f".publish_prep_{cut_id}.json"
+    current = _publish_prep_state(episode_dir, cut_id)
+    if (
+        current
+        and current.get("status") == "rendered"
+        and export_matches_current_release(episode_dir, cut_id, current)
+    ):
+        return
+    if running is not None and running.poll() is None:
+        return
+    if current and current.get("status") == "rendering" and not job_expired(current):
+        return
+    job = new_job(
+        status="rendering",
+        timeout_seconds=_PUBLISH_PREP_TIMEOUT_SECONDS,
+        episode=episode_dir.name,
+        cut_id=cut_id,
+    )
+    atomic_job_write(receipt, job)
+    safe_episode = episode_dir.name.replace("/", "_").replace("\\", "_")
+    log_file = open(  # noqa: SIM115 -- Popen duplicates the descriptor
+        log_dir / f"{safe_episode}_{cut_id}.log", "a", encoding="utf-8"
+    )
+    configured = os.environ.get("NAKAMA_RESOLVE_PYTHON", "").strip()
+    command = [configured, str(script)] if configured else [sys.executable, str(script)]
+    try:
+        process = subprocess.Popen(
+            [
+                *command,
+                str(episode_dir),
+                "--cut",
+                cut_id,
+                "--render-only",
+                "--receipt",
+                str(receipt),
+                "--attempt-id",
+                str(job["attempt_id"]),
+            ],
+            cwd=str(root_path),
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+        )
+    except OSError as exc:
+        log_file.close()
+        atomic_job_write(
+            receipt,
+            {**job, "status": "failed", "exit_code": None, "error": f"OSError: {exc}"},
+        )
+        raise HTTPException(status_code=503, detail=f"無法啟動最終成品匯出：{exc}") from exc
+    _PUBLISH_PREP_PROCESSES[key] = process
+    atomic_job_write(receipt, {**job, "pid": process.pid})
+    log_file.close()
 
 
 def _release_from_receipt(episode: str, cut_id: str) -> dict | None:
@@ -684,8 +990,6 @@ def _release_from_receipt(episode: str, cut_id: str) -> dict | None:
     receipt = episode_dir / "highlights" / "exports" / f".publish_prep_{cut_id}.json"
     if not receipt.is_file():
         return None
-    from thousand_sunny.routers.highlight_review import _publish_prep_state
-
     _publish_prep_state(episode_dir, cut_id)
     try:
         payload = json.loads(receipt.read_text(encoding="utf-8"))
@@ -693,6 +997,13 @@ def _release_from_receipt(episode: str, cut_id: str) -> dict | None:
         return None
     if payload.get("status") != "rendered" or payload.get("episode") != episode:
         return None
+    if not export_matches_current_release(episode_dir, cut_id, payload):
+        # 這份 receipt 出的是別版 Release 的畫面。登錄它等於把舊內容掛上已核准的
+        # 標題與縮圖推進上傳流程——2026-08-29 amendment 重封 long3 時就差這一道。
+        raise HTTPException(
+            status_code=409,
+            detail=f"{cut_id} 的成品不是現行 Release 的內容，請重新 render",
+        )
     rows = [row for row in payload.get("cuts", []) if row.get("cut_id") == cut_id]
     if len(rows) != 1:
         raise HTTPException(status_code=409, detail="publish_prep receipt 缺少唯一 cut")
@@ -756,7 +1067,7 @@ def packaging_list(request: Request, nakama_auth: str | None = Cookie(None)):
 
 
 @page_router.get("/{episode_slug}/thumbnail/{filename}")
-def packaging_thumbnail(
+async def packaging_thumbnail(
     episode_slug: str,
     filename: str,
     nakama_auth: str | None = Cookie(None),
@@ -784,8 +1095,29 @@ def packaging_thumbnail(
     return FileResponse(path, media_type="image/png")
 
 
+@page_router.get("/{episode_slug}/cutout/{filename}")
+async def packaging_cutout(
+    episode_slug: str,
+    filename: str,
+    nakama_auth: str | None = Cookie(None),
+) -> FileResponse:
+    """Serve a registered episode cutout through the mounted Packaging router."""
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    if filename != Path(filename).name or not filename.lower().endswith(".png"):
+        raise HTTPException(status_code=403, detail="僅限 Packaging cutout PNG")
+    choices = _load_cutout_choices(episode_slug)
+    allowed = {row["file"] for rows in choices.values() for row in rows}
+    if filename not in allowed:
+        raise HTTPException(status_code=404, detail="Packaging cutout 不存在或未登記")
+    path = get_vault_path() / "Attachments" / "cutouts" / "podcast" / episode_slug / filename
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Packaging cutout 檔不存在")
+    return FileResponse(path, media_type="image/png")
+
+
 @page_router.get("/{episode_slug}/recipe-asset/{filename}")
-def packaging_recipe_asset(
+async def packaging_recipe_asset(
     episode_slug: str,
     filename: str,
     nakama_auth: str | None = Cookie(None),
@@ -816,6 +1148,233 @@ def packaging_recipe_asset(
     return FileResponse(path, media_type="image/png")
 
 
+@page_router.get("/{episode_slug}/center-visual/{cut_id}/{package_rank}")
+async def packaging_center_visual(
+    episode_slug: str,
+    cut_id: str,
+    package_rank: int,
+    nakama_auth: str | None = Cookie(None),
+) -> FileResponse:
+    """Serve the center visual bound to exactly one package rank."""
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    ep_dir = _packaging_root() / episode_slug
+    pkg = parse_packages(ep_dir / "packages.json")
+    cut = next((row for row in pkg.cuts if row.cut_id == cut_id), None)
+    package = next(
+        (row for row in (cut.packages if cut else []) if row.title_rank == package_rank),
+        None,
+    )
+    if package is None:
+        raise HTTPException(status_code=404, detail="package 不存在")
+    recipe = package.render_recipe or _legacy_reaction_recipe(
+        ep_dir,
+        episode=pkg.episode,
+        cut_id=cut_id,
+        package=package,
+    )
+    if (
+        recipe is None
+        or recipe.composition != "thumbnail_reaction"
+        or not recipe.center_visual_asset
+    ):
+        raise HTTPException(status_code=404, detail="package 沒有中央主圖")
+    path = (get_vault_path() / recipe.center_visual_asset).resolve()
+    try:
+        path.relative_to(ep_dir.resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="中央主圖超出 episode 目錄") from exc
+    if path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"} or not path.is_file():
+        raise HTTPException(status_code=404, detail="中央主圖不存在")
+    return FileResponse(path)
+
+
+_WATCHER_STALE_SEC = 120
+
+
+def _watcher_covering(state: dict, episode_slug: str, cut_id: str, package_rank: int) -> str | None:
+    """有沒有一支還活著的 watcher 守備這個 package？回它最後回報的時間，或 None。
+
+    watcher 每一圈把守備範圍寫進 state（`_watchers`）；`None` 的欄位代表不設限。
+    超過 _WATCHER_STALE_SEC 沒回報就當它不在了——寧可說「沒人在聽」也不要讓修修
+    對著一條永遠不動的進度條等。
+    """
+    watchers = state.get("_watchers")
+    if not isinstance(watchers, dict):
+        return None
+    now = datetime.now(timezone.utc)
+    for row in watchers.values():
+        if not isinstance(row, dict):
+            continue
+        if row.get("episode_slug") not in (None, episode_slug):
+            continue
+        if row.get("cut_id") not in (None, cut_id):
+            continue
+        if row.get("package_rank") not in (None, package_rank):
+            continue
+        try:
+            seen = datetime.fromisoformat(str(row.get("seen_at")))
+        except (TypeError, ValueError):
+            continue
+        if seen.tzinfo is None:
+            seen = seen.replace(tzinfo=timezone.utc)
+        if (now - seen).total_seconds() <= _WATCHER_STALE_SEC:
+            return seen.astimezone().strftime("%H:%M:%S")
+    return None
+
+
+def _center_candidates(ep_dir: Path, cut_id: str) -> CenterCandidatesFileV1 | None:
+    """這支 cut 的中央卡候選池——gate 上那排可以點的圖庫縮圖。
+
+    修修 2026-08-29：「來源的圖要多一點，要不然很難選，這些都需要上圖庫去找。」
+    在此之前 gate 只能挑臉、挑標題、打大字；中央圖是 hidden field，只能原樣帶回。
+    池子由桌機端的 stage_center_candidates.py 從 Envato 搜出來、下浮水印預覽，
+    正式授權檔等修修選定後才下——挑十張下十張授權檔，九張是白下的。
+
+    檔案壞掉時回 None 而不是 500：候選池是錦上添花，沒有它 gate 仍然要能核准。
+    """
+    path = ep_dir / "center-candidates" / f"{cut_id}.json"
+    if not path.is_file():
+        return None
+    try:
+        return CenterCandidatesFileV1.model_validate_json(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValidationError) as exc:
+        logger.warning("center candidates unreadable for %s/%s: %s", ep_dir.name, cut_id, exc)
+        return None
+
+
+@page_router.get("/{episode_slug}/center-candidate/{cut_id}/{candidate_id}")
+async def packaging_center_candidate(
+    episode_slug: str,
+    cut_id: str,
+    candidate_id: str,
+    nakama_auth: str | None = Cookie(None),
+) -> FileResponse:
+    """Serve one staged center-card candidate preview."""
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    ep_dir = _packaging_root() / episode_slug
+    pool = _center_candidates(ep_dir, cut_id)
+    candidate = next(
+        (row for row in (pool.candidates if pool else []) if row.candidate_id == candidate_id),
+        None,
+    )
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="候選圖不存在")
+    path = (get_vault_path() / candidate.preview_png).resolve()
+    try:
+        path.relative_to(ep_dir.resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="候選圖超出 episode 目錄") from exc
+    if path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"} or not path.is_file():
+        raise HTTPException(status_code=404, detail="候選圖檔不存在")
+    return FileResponse(path)
+
+
+@page_router.get("/{episode_slug}/render-status/{cut_id}/{package_rank}")
+async def packaging_render_status(
+    episode_slug: str,
+    cut_id: str,
+    package_rank: int,
+    requested_at: str,
+    nakama_auth: str | None = Cookie(None),
+) -> JSONResponse:
+    """Return the exact desktop-render state for one saved package recipe.
+
+    The client must present the recipe timestamp it just saved.  A stale tab therefore
+    cannot accidentally display another package or a newer revision as its own result.
+    """
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    if package_rank < 1 or package_rank > 3:
+        raise HTTPException(status_code=404, detail="package 不存在")
+
+    ep_dir = _packaging_root() / episode_slug
+    try:
+        packages = parse_packages(ep_dir / "packages.json")
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="packaging episode 不存在") from exc
+    cut = next((row for row in packages.cuts if row.cut_id == cut_id), None)
+    if cut is None:
+        raise HTTPException(status_code=404, detail="cut 不存在")
+    package = next((row for row in cut.packages if row.title_rank == package_rank), None)
+    if package is None:
+        raise HTTPException(status_code=404, detail="package 不存在")
+    recipe = package.render_recipe
+    if recipe is None:
+        raise HTTPException(status_code=409, detail="這個 package 尚未儲存 render 配方")
+    expected = recipe.requested_at.isoformat()
+    if not _same_requested_at(requested_at, expected):
+        raise HTTPException(status_code=409, detail="這份 render 狀態不屬於目前配方")
+
+    key = f"{episode_slug}/{cut_id}/r{package_rank}"
+    state: dict = {}
+    state_path = _render_watcher_state_path()
+    if state_path.is_file():
+        try:
+            loaded = json.loads(state_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                state = loaded
+        except (json.JSONDecodeError, OSError):
+            # A partial/corrupt state file cannot be trusted as success or failure.
+            state = {}
+    row = state.get(key) if isinstance(state.get(key), dict) else None
+    if row is None or not _same_requested_at(str(row.get("requested_at", "")), expected):
+        status = "queued"
+        # 「排隊中」和「根本沒人在聽」在畫面上長得一模一樣——一條不停跳動的進度條。
+        # 修修 2026-08-29 連續三次對著它等，三次都是後者：跑著的 watcher 綁死在
+        # 別的 cut 上，這支永遠不會被撿走。動畫還讓人以為正在處理。
+        watching = _watcher_covering(state, episode_slug, cut_id, package_rank)
+        attended = watching is not None
+        if watching is None:
+            message = (
+                "沒有 render watcher 在看這支——配方存好了，但不會有人做。"
+                "請起一支：scripts/render_watcher.py --render-requests-only "
+                f"--episode-slug {episode_slug} --cut-id {cut_id}"
+            )
+        else:
+            message = f"配方已儲存，等待桌面 render（watcher 最後回報 {watching}）"
+        error = None
+    else:
+        raw_status = row.get("status")
+        if raw_status not in {"running", "done", "failed"}:
+            # Backward-compatible read of watcher state written before explicit statuses.
+            raw_status = "done" if row.get("ok") is True else "failed"
+        status = raw_status
+        message = {
+            "running": "正在 render 新封面",
+            "done": "新封面已完成",
+            "failed": "封面 render 失敗",
+        }[status]
+        error = str(row.get("last_error") or "")[:500] or None
+        attended = True
+
+    thumbnail_url = None
+    if status == "done":
+        version_seed = str(row.get("rendered_at") or expected) if row else expected
+        version = hashlib.sha1(version_seed.encode("utf-8")).hexdigest()[:12]
+        filename = quote(Path(package.thumbnail_png).name, safe="")
+        thumbnail_url = (
+            f"/bridge/packaging/{quote(episode_slug, safe='')}/thumbnail/{filename}?v={version}"
+        )
+    return JSONResponse(
+        {
+            "status": status,
+            # 有沒有人在做。false 時前端要停掉進度條動畫——會動的條就是在說
+            # 「正在處理」，而那時候其實沒有任何人在處理。
+            "attended": attended,
+            "message": message,
+            "error": error,
+            "episode_slug": episode_slug,
+            "cut_id": cut_id,
+            "package_rank": package_rank,
+            "requested_at": requested_at,
+            "thumbnail_url": thumbnail_url,
+        },
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @page_router.get("/{episode_slug}", response_class=HTMLResponse)
 def packaging_board(
     request: Request,
@@ -831,12 +1390,25 @@ def packaging_board(
     if not check_auth(nakama_auth):
         return RedirectResponse(f"/login?next=/bridge/packaging/{episode_slug}", status_code=302)
     ctx = _board_context(episode_slug)
-    if cut:
+    focused_cut = cut
+    pending_cut = None
+    if ctx["cut_tabs"]:
+        focused_cut = focused_cut or ctx["cut_tabs"][0]["cut_id"]
+        selected_tab = next((tab for tab in ctx["cut_tabs"] if tab["cut_id"] == focused_cut), None)
+        if selected_tab is None:
+            raise HTTPException(status_code=404, detail=f"cut not found: {focused_cut}")
+        focused = [view for view in ctx["cuts"] if view["cut"].cut_id == focused_cut]
+        ctx["cuts"] = focused
+        if not focused:
+            pending_cut = selected_tab
+    elif cut:
         focused = [view for view in ctx["cuts"] if view["cut"].cut_id == cut]
         if not focused:
             raise HTTPException(status_code=404, detail=f"cut not found: {cut}")
         ctx["cuts"] = focused
     if release_pending and cut:
+        if pending_cut is not None:
+            raise HTTPException(status_code=409, detail="Packaging 尚未完成")
         release = _release_from_receipt(ctx["pkg"].episode, cut)
         if release is not None:
             approval = ctx["cuts"][0]["approval"]
@@ -866,7 +1438,8 @@ def packaging_board(
     # 剛存完配方那支：組封面區保持展開（同 edited 的理由 — <details> 會因重載收起）
     ctx["composed_cut"] = composed
     ctx["editor_package_rank"] = package_rank
-    ctx["focused_cut"] = cut
+    ctx["focused_cut"] = focused_cut
+    ctx["pending_cut"] = pending_cut
     ctx["release_pending"] = bool(release_pending)
     ctx["description_pending"] = bool(description_pending)
     ctx["description_state"] = description_state
@@ -910,23 +1483,16 @@ def packaging_approve(
         raise HTTPException(status_code=409, detail="長片尚無 package，先跑 thumbnail-brainstorm")
 
     ep_dir = _packaging_root() / episode_slug
-    # `format=long` includes both the complete episode (N1 thumbnail_full) and
-    # long highlights (N2 thumbnail_reaction).  The center-visual composition
-    # receipt is an N2-only contract; requiring it for `cut_id=full` previously
-    # forced the revision agent to render the wrong orange-center layout.
-    if approved and cut.format == "long" and cut_id != "full":
-        selected_package = next(
-            (row for row in cut.packages if row.title_rank == primary_package), None
-        )
-        if selected_package is None:
-            raise HTTPException(status_code=409, detail="primary package 不存在")
-        _load_composition_receipt(
-            ep_dir,
-            episode=pkg.episode,
-            cut_id=cut_id,
-            package_rank=primary_package or 1,
-            thumbnail_png=selected_package.thumbnail_png,
-        )
+    if (
+        approved
+        and cut.format == "long"
+        and not any(row.title_rank == primary_package for row in cut.packages)
+    ):
+        raise HTTPException(status_code=409, detail="primary package 不存在")
+    # Human approval is the final taste decision. Composition receipts and
+    # protected-center checks remain visible diagnostics on the board, but they
+    # must never veto an explicit Approve. Structural failures above still stop
+    # the request because there would be no concrete package to publish.
     existing = _load_approvals(ep_dir, pkg.episode)
     prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
     decided_at = datetime.now(timezone.utc)
@@ -962,6 +1528,7 @@ def packaging_approve(
         # （2026-08-14 browser UAT 抓到：勾完變體再 approve，選擇整個不見）。
         selected_variant=prev.selected_variant if prev else None,
         bigtext_request=prev.bigtext_request if prev else None,
+        center_search_request=prev.center_search_request if prev else None,
         render_request=prev.render_request if prev else None,
         revision_job=revision_job,
     )
@@ -987,7 +1554,7 @@ def packaging_approve(
 
 
 @page_router.post("/{episode_slug}/description/retry")
-def packaging_retry_description(
+async def packaging_retry_description(
     episode_slug: str,
     cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
     nakama_auth: str | None = Cookie(None),
@@ -1010,7 +1577,7 @@ def packaging_retry_description(
 
 
 @page_router.post("/{episode_slug}/revision/retry")
-def packaging_retry_revision(
+async def packaging_retry_revision(
     episode_slug: str,
     cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
     nakama_auth: str | None = Cookie(None),
@@ -1106,6 +1673,7 @@ def packaging_select_variant(
             variant if variant is not None else (prev.selected_variant if prev else None)
         ),
         bigtext_request=bigtext_request.strip() or None,
+        center_search_request=prev.center_search_request if prev else None,
         render_request=prev.render_request if prev else None,
         revision_job=prev.revision_job if prev else None,
     )
@@ -1121,7 +1689,97 @@ def packaging_select_variant(
         entry.selected_variant,
         bool(entry.bigtext_request),
     )
-    return RedirectResponse(f"/bridge/packaging/{episode_slug}#cut-{cut_id}", status_code=303)
+    return RedirectResponse(
+        f"/bridge/packaging/{quote(episode_slug, safe='')}?cut={quote(cut_id, safe='')}"
+        f"#cut-{cut_id}",
+        status_code=303,
+    )
+
+
+def _center_provenance_for(
+    *,
+    pool: CenterCandidatesFileV1 | None,
+    chosen_center: str,
+    previous: RenderRequestV1 | None,
+    search_request: str | None,
+) -> CenterProvenanceV1 | None:
+    """挑中的那張圖的來歷——供給管道、出處、搜尋詞、為什麼。
+
+    來歷必須跟著配方走：gate 挑的是浮水印預覽，桌機端換成正式授權檔之後，光看檔名
+    已經回溯不到是哪一筆候選（2026-08-29 實際踩到）。
+
+    `why` 取修修自己打的找圖需求——那就是他要這張圖的理由，用他的原話最誠實。沒打過
+    需求時記「親自挑選、未附理由」：那是事實，不是編一個理由出來。挑的是原本那張圖
+    就沿用舊配方的來歷，不無中生有。
+    """
+    row = next(
+        (item for item in (pool.candidates if pool else []) if item.preview_png == chosen_center),
+        None,
+    )
+    if row is None:
+        return previous.center_provenance if previous else None
+    wanted = (search_request or "").strip()
+    return CenterProvenanceV1(
+        supply=row.supply,
+        source=row.source,
+        query=row.query,
+        why=wanted or f"修修在 gate 上親自挑選（未附理由）：{row.title}",
+    )
+
+
+@page_router.post("/{episode_slug}/center-search")
+async def packaging_center_search(
+    episode_slug: str,
+    cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
+    center_search_request: str = Form("", max_length=_NOTE_MAX),
+    nakama_auth: str | None = Cookie(None),
+):
+    """候選池都不滿意時，把「我要什麼」寫下來（修修 2026-08-29）。
+
+    跟 `bigtext_request` 同一個道理：Bridge 叫不到圖庫——repo 裡沒有 Elements API
+    client，搜尋在 agent 那一端（ADR-054 D11：gate 零 render 零 LLM）。所以按下去
+    是**排一個請求**，不是當場換一批圖；桌機端 thumbnail-brainstorm 讀到之後重搜
+    回填候選池。UI 上要講清楚這個時間差。
+
+    只寫 approval.json，不動 packages.json——跟挑變體一樣不是裁決。
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/packaging", status_code=302)
+    ctx = _board_context(episode_slug)
+    pkg: PackagesFileV1 = ctx["pkg"]
+    if not any(row.cut_id == cut_id for row in pkg.cuts):
+        raise HTTPException(status_code=404, detail=f"cut not found: {cut_id}")
+    wanted = center_search_request.strip()
+    if not wanted:
+        raise HTTPException(status_code=400, detail="要寫下你想要什麼樣的圖，桌機端才知道怎麼搜")
+
+    ep_dir = _packaging_root() / episode_slug
+    existing = _load_approvals(ep_dir, pkg.episode)
+    prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
+    entry = ApprovalV1(
+        cut_id=cut_id,
+        approved=prev.approved if prev else False,
+        primary_package=prev.primary_package if prev else 1,
+        reject_note=prev.reject_note if prev else None,
+        decided_at=datetime.now(timezone.utc),
+        decision=prev.decision if prev else None,
+        selected_variant=prev.selected_variant if prev else None,
+        bigtext_request=prev.bigtext_request if prev else None,
+        center_search_request=wanted,
+        render_request=prev.render_request if prev else None,
+        revision_job=prev.revision_job if prev else None,
+    )
+    others = [a for a in existing.approvals if a.cut_id != cut_id]
+    updated = ApprovalFileV1(episode=pkg.episode, approvals=[*others, entry])
+    (ep_dir / "approval.json").write_text(
+        updated.model_dump_json(indent=2) + "\n", encoding="utf-8"
+    )
+    logger.info("packaging center search: %s/%s %r", episode_slug, cut_id, wanted[:80])
+    return RedirectResponse(
+        f"/bridge/packaging/{quote(episode_slug, safe='')}?cut={quote(cut_id, safe='')}"
+        f"&composed={quote(cut_id, safe='')}#compose-{cut_id}",
+        status_code=303,
+    )
 
 
 @page_router.post("/{episode_slug}/compose")
@@ -1132,6 +1790,7 @@ def packaging_compose(
     title_rank: int = Form(..., ge=1, le=5),
     host_cutout: str = Form(..., max_length=_EP_SLUG_MAX * 4),
     guest_cutout: str = Form(..., max_length=_EP_SLUG_MAX * 4),
+    composition: Literal["thumbnail_full", "thumbnail_reaction"] = Form("thumbnail_full"),
     big_text_1: str = Form("", max_length=40),
     big_text_2: str = Form("", max_length=40),
     big_text_3: str = Form("", max_length=40),
@@ -1142,6 +1801,11 @@ def packaging_compose(
     book_cover_opacity: float = Form(0.42, ge=0, le=1),
     book_cover_brightness: float = Form(0.38, ge=0, le=1),
     book_cover_height_pct: float = Form(100, ge=20, le=150),
+    center_visual_asset: str = Form("", max_length=_EP_SLUG_MAX * 4),
+    center_width_pct: float | None = Form(None),
+    center_height_px: float | None = Form(None),
+    center_x_pct: float | None = Form(None),
+    center_y_pct: float | None = Form(None),
     geometry_mode: str = Form("auto", max_length=8),
     host_height_pct: float = Form(0.0),
     host_x_pct: float = Form(0.0),
@@ -1189,8 +1853,10 @@ def packaging_compose(
             raise HTTPException(status_code=404, detail="本集 book_cover PNG 不存在")
 
     lines = [ln.strip() for ln in (big_text_1, big_text_2, big_text_3) if ln.strip()]
-    if not lines:
+    if composition == "thumbnail_full" and not lines:
         raise HTTPException(status_code=400, detail="封面大字不可為空")
+    if composition == "thumbnail_reaction" and lines:
+        raise HTTPException(status_code=400, detail="N2 中央圖卡不使用封面大字")
     hl = highlight_text.strip()
     if hl and hl not in "".join(lines):
         raise HTTPException(
@@ -1218,8 +1884,58 @@ def packaging_compose(
 
     existing = _load_approvals(ep_dir, pkg.episode)
     prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
-    if geometry is None and target_package.render_recipe:
-        geometry = target_package.render_recipe.geometry
+    source_recipe = target_package.render_recipe or _legacy_reaction_recipe(
+        ep_dir,
+        episode=pkg.episode,
+        cut_id=cut_id,
+        package=target_package,
+    )
+    center_geometry = None
+    center_provenance = None
+    if composition == "thumbnail_reaction":
+        expected_center = (
+            source_recipe.center_visual_asset
+            if source_recipe and source_recipe.composition == "thumbnail_reaction"
+            else None
+        )
+        chosen_center = center_visual_asset.strip()
+        # 合法值是「自己那一張」或「這支 cut 的候選池裡的一張」。放寬到候選池是
+        # 為了讓修修能在 gate 上換圖（2026-08-29）；池子以外仍然一律拒絕，
+        # 否則這個欄位就變成任意讀取 vault 的路徑輸入。
+        pool = _center_candidates(ep_dir, cut_id)
+        allowed = {row.preview_png for row in (pool.candidates if pool else [])}
+        if expected_center:
+            allowed.add(expected_center)
+        if not chosen_center or chosen_center not in allowed:
+            raise HTTPException(
+                status_code=409,
+                detail="center_visual_asset 必須是這個 package 自己的中央圖或候選池裡的一張",
+            )
+        center_provenance = _center_provenance_for(
+            pool=pool,
+            chosen_center=chosen_center,
+            previous=source_recipe,
+            search_request=prev.center_search_request if prev else None,
+        )
+        values = (center_width_pct, center_height_px, center_x_pct, center_y_pct)
+        if any(value is None for value in values):
+            center_geometry = source_recipe.center_geometry if source_recipe else None
+        else:
+            try:
+                center_geometry = CenterGeometryV1(
+                    width_pct=center_width_pct,
+                    height_px=center_height_px,
+                    x_pct=center_x_pct,
+                    y_pct=center_y_pct,
+                )
+            except ValidationError as exc:
+                raise HTTPException(
+                    status_code=400, detail=f"中央圖卡位置/大小超出範圍：{str(exc)[:300]}"
+                ) from exc
+        if center_geometry is None:
+            raise HTTPException(status_code=400, detail="中央圖卡缺少可還原的幾何資料")
+    if geometry is None and source_recipe:
+        geometry = source_recipe.geometry
     elif geometry is None and prev and prev.render_request:
         # Backward compatibility for pre-recipe approval files.  It is only an
         # initial seed; the board never presents it as another package's state.
@@ -1227,6 +1943,7 @@ def packaging_compose(
 
     try:
         req = RenderRequestV1(
+            composition=composition,
             title_rank=title_rank,
             host_cutout=host_cutout,
             guest_cutout=guest_cutout,
@@ -1238,6 +1955,9 @@ def packaging_compose(
             book_cover_opacity=book_cover_opacity,
             book_cover_brightness=book_cover_brightness,
             book_cover_height_pct=book_cover_height_pct,
+            center_visual_asset=center_visual_asset.strip() or None,
+            center_provenance=center_provenance,
+            center_geometry=center_geometry,
             requested_at=datetime.now(timezone.utc),
             geometry=geometry,
             geometry_manual=manual,
@@ -1256,6 +1976,7 @@ def packaging_compose(
         decision=prev.decision if prev else None,
         selected_variant=prev.selected_variant if prev else None,
         bigtext_request=prev.bigtext_request if prev else None,
+        center_search_request=prev.center_search_request if prev else None,
         render_request=req,
         revision_job=prev.revision_job if prev else None,
     )
@@ -1289,9 +2010,13 @@ def packaging_compose(
         Path(guest_cutout).name,
         lines,
     )
+    # `composed` 只負責把組封面區保持展開；決定顯示哪個 cut 的是 `cut`。少了它，
+    # board 會退回第一個 tab（Full），修修存完配方只看到畫面跳掉、像是什麼都沒發生
+    # ——2026-08-29 他換完中央圖按存配方時就是這樣（配方其實有寫進去）。
     return RedirectResponse(
-        f"/bridge/packaging/{episode_slug}?composed={cut_id}&package_rank={target_rank}"
-        f"#compose-{cut_id}",
+        f"/bridge/packaging/{quote(episode_slug, safe='')}"
+        f"?cut={quote(cut_id, safe='')}&composed={quote(cut_id, safe='')}"
+        f"&package_rank={target_rank}#compose-{cut_id}",
         status_code=303,
     )
 

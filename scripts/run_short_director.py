@@ -1,19 +1,15 @@
-"""short-director：短片雙機位導播 — 說話者切鏡 + 頭部 zoom punch。
+"""short-director：由 Editorial Master 建立 reframe/punch timeline。
 
-修修 2026-07-26：短片畫面切分要更細緻。source 不再用機器導播混好的檔，
-改用原始機位（CAM1=修修、CAM2=來賓），誰講話切誰、同人連續段落交替
-zoom punch-in，全景機位不用。參考範本：E:\\data 鐘穎 ×3（外包剪輯師版）。
+ADR-064 production path 把使用者核准的完整節目視為 sacred A-roll：影片、
+embedded audio、字幕與所有時間都來自同一份 hash-bound Editorial Master。
+本 script 只可裁切保留段、reframe、zoom punch 與疊加視覺；不得再由 raw
+camera 或 normalized audio 重建對白。舊的 speaker/camera 規劃純函數保留供
+歷史測試與研究，但 production ``direct`` 不呼叫它們。
 
 在 short-tighten 之上疊加：讀同一份 `highlights/tighten/<id>_cuts.json`
-的保留段，配 mic 能量詞級說話者（shared/speaker_assign，同 speaker-split
-那套），產生導播 shot list，建「短N - <標題>（緊·導播）」timeline：
+保留段，建「短N - <標題>（緊·導播）」timeline。Master opener 原樣保留，
+不再合成 raw-camera split opener。
 
-- video：逐 shot 上軌，每 shot 設 ZoomX/Y + Pan 把 16:9 機位裁成 9:16
-  頭部特寫；同說話者連續 shot 交替 base/punch 兩級 zoom（jump cut 節奏）
-- audio/字幕：與 short-tighten 相同（normalized.wav 逐保留段對位、
-  字幕塌縮重對時）
-- opener：頭 4 秒上下分割雙人畫面（參考片開場語法——來賓上、修修下，
-  幾秒內讓觀眾認識這是對談），`--no-opener` 關閉
 - `--stills`：物化後抓樣張輸出 PNG（agent 校驗構圖用——Pan/Zoom/Crop 語意
   以實際 render 為準，不能只信計算）
 
@@ -25,6 +21,7 @@ zoom punch-in，全景機位不用。參考範本：E:\\data 鐘穎 ×3（外包
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -40,11 +37,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from run_highlight_cut import FORMAT_LABEL  # noqa: E402
 from run_short_tighten import (  # noqa: E402
     TIGHTEN_DIR,
+    _assert_cut_master_lineage,
+    _commit_materialization_receipt,
     _keep_segments,
     _load_winner,
+    _open_editorial_master,
     _retime_srt,
+    _verified_master_media_pool_item,
     import_srt_tidy,
 )
+
+from agents.brook.script_video.subtitle_handoff import Stage5SubtitleRequest  # noqa: E402
+from shared.resolve_append import append_checked  # noqa: E402
 
 logger = logging.getLogger("short_director")
 
@@ -238,11 +242,70 @@ def _panel_props(cfg: dict, spk: int, top: bool) -> dict[str, float]:
     }
 
 
+def _speaker_timing_tokens(episode_dir: Path) -> list[dict]:
+    """Load fresh, episode-bound timing tokens for speaker switching."""
+    legacy = episode_dir / "subs" / "words.json"
+    if legacy.is_file():
+        raw = json.loads(legacy.read_text(encoding="utf-8"))
+        words = raw.get("words") if isinstance(raw, dict) else raw
+        if not isinstance(words, list):
+            raise SystemExit(f"{legacy} 的 words 必須是 array")
+        return words
+
+    selection = Stage5SubtitleRequest().open(episode_dir)
+    handoff = selection.handoff
+    ledger_path = getattr(handoff, "release_ledger_path", None)
+    if selection.mode != "memo-dual-audit-v1" or not isinstance(ledger_path, Path):
+        raise SystemExit(
+            "導播缺少正式 speaker timing evidence（無 words.json／Memo release ledger）"
+        )
+    ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+    ref = ledger.get("inputs", {}).get("memo_recognition_evidence")
+    if not isinstance(ref, dict) or set(ref) != {"path", "sha256", "size_bytes"}:
+        raise SystemExit("release ledger 的 memo_recognition_evidence schema 不完整")
+    evidence_path = (episode_dir / ref["path"]).resolve()
+    root = episode_dir.resolve()
+    if evidence_path != root and root not in evidence_path.parents:
+        raise SystemExit("memo_recognition_evidence path escape")
+    evidence_raw = evidence_path.read_bytes()
+    if (
+        len(evidence_raw) != ref["size_bytes"]
+        or hashlib.sha256(evidence_raw).hexdigest() != ref["sha256"]
+    ):
+        raise SystemExit("memo_recognition_evidence bytes 與 release ledger 不符")
+    evidence = json.loads(evidence_raw)
+    if evidence.get("contract") != "memo-recognition-evidence-v1" or evidence.get(
+        "normalized_audio_sha256"
+    ) != ledger.get("normalized_audio_sha256"):
+        raise SystemExit("memo_recognition_evidence identity 與 release ledger 不符")
+    tokens = evidence.get("tokens")
+    if not isinstance(tokens, list) or not tokens:
+        raise SystemExit("memo_recognition_evidence tokens 必須是 non-empty array")
+    words: list[dict] = []
+    previous_end = -1
+    for index, token in enumerate(tokens):
+        if not isinstance(token, dict):
+            raise SystemExit(f"Memo token {index} 必須是 object")
+        text, start_ms, end_ms = token.get("text"), token.get("start_ms"), token.get("end_ms")
+        if (
+            not isinstance(text, str)
+            or not text.strip()
+            or type(start_ms) is not int
+            or type(end_ms) is not int
+            or start_ms < previous_end
+            or end_ms <= start_ms
+        ):
+            raise SystemExit(f"Memo token {index} timing/text 無效")
+        words.append({"word": text, "start": start_ms / 1000, "end": end_ms / 1000})
+        previous_end = end_ms
+    return words
+
+
 def _word_speakers(episode_dir: Path, t0: float, t1: float) -> list[tuple[float, float, int]]:
-    """[t0,t1] 內詞級說話者 → (start, end, speaker) 詞列表。"""
+    """[t0,t1] 內 timing-token 說話者 → (start, end, speaker) 列表。"""
     from shared.speaker_assign import assign_word_speakers, detect_mic_tracks, load_envelopes
 
-    words = json.load(open(episode_dir / "subs" / "words.json", encoding="utf-8"))["words"]
+    words = _speaker_timing_tokens(episode_dir)
     mics = detect_mic_tracks(episode_dir / "Audio")
     envs = load_envelopes(mics, reference=episode_dir / "normalized.wav")
     spk = assign_word_speakers(words, envs)
@@ -445,8 +508,11 @@ def _apply_punch_zooms(appended: list[dict], punches: list[dict], fps: float, cf
             if comp is None:
                 logger.warning(f"AddFusionComp 失敗 @{a['tl_s']:.1f}s——此 shot 跳過 punch")
                 continue
-            cx = float(cfg["face_x"][str(a["spk"])]) / 1920
-            cy = 1.0 - float(cfg["face_y"][str(a["spk"])]) / 1080  # Fusion y 向上
+            if a["spk"] is None:
+                cx, cy = 0.5, 0.5
+            else:
+                cx = float(cfg["face_x"][str(a["spk"])]) / 1920
+                cy = 1.0 - float(cfg["face_y"][str(a["spk"])]) / 1080  # Fusion y 向上
             key_lua = "\n".join(
                 f'  xf:SetInput("Size", {v:.5f}, {round(t * fps, 2)})' for t, v in keys
             )
@@ -477,34 +543,32 @@ def direct(
     from build_resolve_project import _template_path, _template_path_short, connect_resolve
     from run_short_tighten import FORMAT_TIGHTEN
 
-    c, w = _load_winner(episode_dir, cid)
+    master = _open_editorial_master(episode_dir)
+    c, w = _load_winner(episode_dir, cid, master.identity())
     fmt = c.get("format", "short")
     t0, t1 = float(c["t_start"]), float(c["t_end"])
     cfg = _load_cfg(episode_dir, fmt)
     cuts_path = episode_dir / TIGHTEN_DIR / f"{cid}_cuts.json"
     if not cuts_path.exists():
         raise SystemExit(f"{cuts_path} 不存在——先跑 run_short_tighten --detect + 複審")
-    cuts = json.loads(cuts_path.read_text(encoding="utf-8"))["cuts"]
+    cuts_doc = json.loads(cuts_path.read_text(encoding="utf-8"))
+    _assert_cut_master_lineage(cuts_doc, master.identity())
+    cuts = cuts_doc["cuts"]
     if any(x.get("keep") is None for x in cuts):
         raise SystemExit("cuts.json 有未複審項（keep=null）——先複審")
     segs = _keep_segments(t0, t1, cuts, FORMAT_TIGHTEN[fmt]["min_keep_seg"])
-    words = _word_speakers(episode_dir, t0, t1)
-    shots = build_shots(segs, words, cfg)
+    # Editorial Master is sacred A-roll.  Each retained interval is appended
+    # from the approved program feed; the director may reframe or overlay it,
+    # but must never reconstruct speech from raw cameras.
+    shots = [
+        {"s": seg_s, "e": seg_e, "spk": None, "kind": "program", "zoom": cfg["zoom_base"]}
+        for seg_s, seg_e in segs
+    ]
 
     # opener：頭 N 秒改上下分割——從 shot list 裁掉該源片區間，改由雙 panel 補
     opener_span: tuple[float, float] | None = None
-    if opener and segs:
-        o_end = min(segs[0][0] + cfg["opener_sec"], segs[0][1])
-        if o_end - segs[0][0] >= 2.0:
-            opener_span = (segs[0][0], o_end)
-            trimmed = []
-            for sh in shots:
-                if sh["e"] <= o_end:
-                    continue
-                if sh["s"] < o_end:
-                    sh = {**sh, "s": o_end}
-                trimmed.append(sh)
-            shots = trimmed
+    if opener:
+        logger.info("Editorial Master mode：保留 approved program opener，不重建雙機位開場")
 
     resolve = connect_resolve()
     pm = resolve.GetProjectManager()
@@ -518,43 +582,8 @@ def direct(
     mp = project.GetMediaPool()
     root = mp.GetRootFolder()
 
-    # 機位素材進 Cams bin（冪等：已在就重用）
-    # Bind cameras by full source path. A basename-only lookup can select an
-    # unrelated short clip and make Resolve clamp requests to its last frame.
-    clips = list(_media_pool_items(root))
-    cams_bin = next(
-        (f for f in root.GetSubFolderList() if f.GetName() in {"Cams", "Cameras"}), None
-    )
-    cam_items: dict[int | str, object] = {}
-
-    def _cam(fname: str):
-        nonlocal cams_bin
-        expected = episode_dir / "Video" / fname
-        clip = _find_media_item_by_path(clips, expected)
-        if clip is None:
-            if cams_bin is None:
-                cams_bin = mp.AddSubFolder(root, "Cams")
-            mp.SetCurrentFolder(cams_bin)
-            imported = mp.ImportMedia([str(expected)]) or []
-            mp.SetCurrentFolder(root)
-            if not imported:
-                raise SystemExit(f"機位匯入失敗: {fname}")
-            clip = _find_media_item_by_path(imported, expected)
-            if clip is None:
-                actual = [_media_item_path(item) for item in imported]
-                raise SystemExit(
-                    f"Camera import path mismatch: expected={expected}, actual={actual}"
-                )
-            clips.extend(imported)
-        return clip
-
-    for spk, fname in cfg["cams"].items():
-        cam_items[int(spk)] = _cam(fname)
-    # 全景機位只在真的用得到時才匯入（短片不用，別白白拖一支 12GB 進 pool）
-    needs_wide = cfg.get("opener_style") == "wide" or cfg.get("reaction_style") == "alternate"
-    if needs_wide:
-        cam_items["wide"] = _cam(cfg["wide_cam"])
-    aud = _find_media_item_by_path(clips, episode_dir / "normalized.wav")
+    master_item = _verified_master_media_pool_item(mp, root, master.media_path)
+    aud = master_item
 
     label = f"{FORMAT_LABEL[c['format']]}{w['rank']} - {c['title']}（緊·導播）"
     stale = [
@@ -614,16 +643,6 @@ def direct(
         return item
 
     tl_start = tl.GetStartFrame()
-    split_opener = opener_span is not None and cfg.get("opener_style") == "split"
-    # opener：短片走上下分割（下半 = 修修，先落 track1 開頭，上半後補 track2）；
-    # 長片直接用全景機位一顆——16:9 本來就裝得下兩個人，不必合成
-    if opener_span:
-        f0, f1 = int(opener_span[0] * fps), int(opener_span[1] * fps)
-        if split_opener:
-            _set_props(_append_video(cam_items[0], f0, f1), _panel_props(cfg, 0, top=False))
-        else:
-            _append_video(cam_items["wide"], f0, f1)
-
     # video：逐 shot 上軌 + 逐 item 設 transform（fit 縮放後 ZoomX/Pan）
     appended: list[dict] = []
     tl_cursor = (
@@ -633,14 +652,13 @@ def direct(
         f0, f1 = int(sh["s"] * fps), int(sh["e"] * fps)
         if f1 <= f0:
             continue
-        src = cam_items["wide"] if sh.get("cam") == "wide" else cam_items[sh["spk"]]
-        item = _append_video(src, f0, f1)
+        item = _append_video(master_item, f0, f1)
         # reframe=False（長片）：16:9 源進 16:9 timeline，滿幀直上不動 transform。
         # 全景 shot 任何格式都不重構圖——把兩人裁掉就失去用全景的意義。
-        if cfg.get("reframe", True) and sh.get("cam") != "wide":
+        if cfg.get("reframe", True):
             _set_props(
                 item,
-                {"ZoomX": sh["zoom"], "ZoomY": sh["zoom"], "Pan": _pan(cfg, sh["spk"], sh["zoom"])},
+                {"ZoomX": sh["zoom"], "ZoomY": sh["zoom"]},
             )
         appended.append(
             {
@@ -660,22 +678,13 @@ def direct(
         punches = json.loads(zoom_path.read_text(encoding="utf-8"))["punches"]
         n_punch = _apply_punch_zooms(appended, punches, fps, cfg)
 
-    # opener 上半 panel（來賓）：track2、recordFrame 對齊 timeline 開頭
-    if split_opener:
-        if tl.GetTrackCount("video") < 2:
-            tl.AddTrack("video")
-        f0, f1 = int(opener_span[0] * fps), int(opener_span[1] * fps)
-        _set_props(
-            _append_video(cam_items[1], f0, f1, {"trackIndex": 2, "recordFrame": tl_start}),
-            _panel_props(cfg, 1, top=True),
-        )
-
     # audio：與 tighten 相同——逐保留段 recordFrame 對位
     offset_frames = 0
     for seg_s, seg_e in segs:
         f0, f1 = int(seg_s * fps), int(seg_e * fps)
         if aud is not None:
-            mp.AppendToTimeline(
+            append_checked(
+                mp,
                 [
                     {
                         "mediaPoolItem": aud,
@@ -685,12 +694,22 @@ def direct(
                         "endFrame": f1,
                         "recordFrame": tl_start + offset_frames,
                     }
-                ]
+                ],
+                f"{label}: Master audio {seg_s:.1f}-{seg_e:.1f}",
             )
         offset_frames += f1 - f0
 
     mp.SetCurrentFolder(root)
-    seg_srt, n_cues = _retime_srt(episode_dir, cid, segs, cuts, fine=cfg["fine_subs"])
+    seg_srt, n_cues = _retime_srt(
+        episode_dir,
+        cid,
+        segs,
+        cuts,
+        fine=cfg["fine_subs"],
+        transcript=master.srt_path,
+        source_media=master.media_path,
+        allow_legacy_words=False,
+    )
     srt_items = import_srt_tidy(mp, root, seg_srt)
     sub_ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
     # 收尾驗證：實際上軌數 = shot 數（fail loud——報成功但 timeline 空的血案不再）
@@ -702,7 +721,20 @@ def direct(
         raise SystemExit(
             f"{label}: 上軌驗證失敗——timeline 實有 {placed} items < shots {len(shots)}"
         )
-    pm.SaveProject()
+    if not sub_ok:
+        raise SystemExit(f"{label}: Editorial Master 字幕上軌失敗，不寫 materialization receipt")
+    if not pm.SaveProject():
+        raise SystemExit(f"{label}: Resolve SaveProject 失敗，不寫 materialization receipt")
+    materialization_receipt = _commit_materialization_receipt(
+        episode_dir,
+        cid=cid,
+        cut_format=fmt,
+        timeline=tl,
+        t0=t0,
+        t1=t1,
+        fps=fps,
+        master=master,
+    )
 
     stills = []
     if stills_dir is not None:
@@ -720,6 +752,9 @@ def direct(
         "punch_ramps": n_punch,
         "subtitles": sub_ok,
         "cues": n_cues,
+        "source_mode": "editorial_master",
+        "materialization_receipt": str(materialization_receipt),
+        **master.identity(),
         "stills": stills,
     }
 
@@ -738,13 +773,16 @@ def refresh_subs(episode_dir: Path, cid: str) -> dict:
     from build_resolve_project import connect_resolve
     from run_short_tighten import FORMAT_TIGHTEN
 
-    c, w = _load_winner(episode_dir, cid)
+    master = _open_editorial_master(episode_dir)
+    c, w = _load_winner(episode_dir, cid, master.identity())
     fmt = c.get("format", "short")
     cfg = _load_cfg(episode_dir, fmt)
     t0, t1 = float(c["t_start"]), float(c["t_end"])
-    cuts = json.loads((episode_dir / TIGHTEN_DIR / f"{cid}_cuts.json").read_text(encoding="utf-8"))[
-        "cuts"
-    ]
+    cuts_doc = json.loads(
+        (episode_dir / TIGHTEN_DIR / f"{cid}_cuts.json").read_text(encoding="utf-8")
+    )
+    _assert_cut_master_lineage(cuts_doc, master.identity())
+    cuts = cuts_doc["cuts"]
     segs = _keep_segments(t0, t1, cuts, FORMAT_TIGHTEN[fmt]["min_keep_seg"])
 
     resolve = connect_resolve()
@@ -784,7 +822,16 @@ def refresh_subs(episode_dir: Path, cid: str) -> dict:
         items = tl.GetItemListInTrack("subtitle", ti) or []
         if items:
             tl.DeleteClips(items)
-    seg_srt, n_cues = _retime_srt(episode_dir, cid, segs, cuts, fine=cfg["fine_subs"])
+    seg_srt, n_cues = _retime_srt(
+        episode_dir,
+        cid,
+        segs,
+        cuts,
+        fine=cfg["fine_subs"],
+        transcript=master.srt_path,
+        source_media=master.media_path,
+        allow_legacy_words=False,
+    )
     srt_items = import_srt_tidy(mp, root, seg_srt)
     ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
     pm.SaveProject()
@@ -794,6 +841,7 @@ def refresh_subs(episode_dir: Path, cid: str) -> dict:
         "manual_tail_delta_sec": round(delta, 2),
         "srt": str(seg_srt),
         "cues": n_cues,
+        **master.identity(),
     }
 
 
@@ -874,11 +922,15 @@ def _grab_stills(
 
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
-    parser = argparse.ArgumentParser(description="短片雙機位導播：說話者切鏡 + zoom punch")
+    parser = argparse.ArgumentParser(description="Editorial Master reframe + zoom punch")
     parser.add_argument("episode", help="episode 資料夾")
     parser.add_argument("--id", required=True, help="winner id（如 punch-S1）")
     parser.add_argument("--stills", help="物化後抓樣張到此資料夾（agent 校驗構圖）")
-    parser.add_argument("--no-opener", action="store_true", help="不做開場上下分割")
+    parser.add_argument(
+        "--no-opener",
+        action="store_true",
+        help="相容舊命令；Master opener 永遠原樣保留",
+    )
     parser.add_argument(
         "--refresh-subs",
         action="store_true",

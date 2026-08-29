@@ -7,7 +7,8 @@
 # Stop:      Stop-ScheduledTask -TaskName 'Nakama-ThousandSunny'  (or taskkill /F /IM python.exe)
 
 $repo = 'E:\nakama'
-$venvPy = Join-Path $repo '.venv\Scripts\python.exe'
+$venvPy = Join-Path $repo '.venv-v2\Scripts\python.exe'
+$resolvePy = 'C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe'
 $logDir = Join-Path $repo 'logs'
 $logFile = Join-Path $logDir 'thousand-sunny.log'
 
@@ -32,15 +33,30 @@ Start-Process -FilePath $venvPy `
     -WindowStyle Hidden `
     -NoNewWindow:$false
 
-# --- packaging render watcher -------------------------------------------------
-# 修修在 gate 上按「存配方」→ approval.json 多一份 render_request；render 需要
-# Chrome/hyperframes/字型，只能在桌機跑（ADR-054 D11），所以這支跟 Bridge 一起
-# 開機起來盯著。同一份配方只出一次圖（時間戳比對），失敗寫 log 不重試。
+# --- packaging desktop worker ------------------------------------------------
+# 兩種不依賴 Resolve ABI 的工作共用 render watcher：
+# 1) gate「存配方」→ render_request → render 一次。
+# 2) gate Reject + feedback → revision_job → bounded Codex agent 重做 → 回到 re-review。
+# 3) Highlight shortlist approve → queued Long Packaging → title + thumbnail → READY。
+# Finished-cut revision 由下方 Python 3.10 supervisor 獨佔，避免 fusionscript ABI 錯誤與雙重消費。
 $watcherArgs = @('scripts/render_watcher.py', '--interval', '5')
 Start-Process -FilePath $venvPy `
     -ArgumentList $watcherArgs `
     -WorkingDirectory $repo `
     -RedirectStandardOutput (Join-Path $logDir 'render-watcher.out.log') `
     -RedirectStandardError (Join-Path $logDir 'render-watcher.err.log') `
+    -WindowStyle Hidden `
+    -NoNewWindow:$false
+
+# --- finished-cut revision worker (Resolve/Fusion Python 3.10 ABI) -----------
+if (-not (Test-Path -LiteralPath $resolvePy -PathType Leaf)) {
+    throw "Resolve-compatible Python 3.10 not found: $resolvePy"
+}
+$finishedWatcherArgs = @('scripts/finished_review_watcher.py', '--interval', '5')
+Start-Process -FilePath $resolvePy `
+    -ArgumentList $finishedWatcherArgs `
+    -WorkingDirectory $repo `
+    -RedirectStandardOutput (Join-Path $logDir 'finished-review-watcher.out.log') `
+    -RedirectStandardError (Join-Path $logDir 'finished-review-watcher.err.log') `
     -WindowStyle Hidden `
     -NoNewWindow:$false

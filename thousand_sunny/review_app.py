@@ -20,11 +20,13 @@ load_dotenv(_REPO_ROOT / ".env")
 # Auth reads its configuration at import time, so dotenv loading must happen
 # before importing either router.
 from thousand_sunny.routers import auth as auth_routes  # noqa: E402
-from thousand_sunny.routers import highlight_review  # noqa: E402
+from thousand_sunny.routers import highlight_review, packaging, publish_review  # noqa: E402
 
 app = FastAPI(title="Nakama Finished Review", docs_url=None, redoc_url=None)
 app.include_router(auth_routes.router)
 app.include_router(highlight_review.page_router)
+app.include_router(packaging.page_router)
+app.include_router(publish_review.page_router)
 
 _static_dir = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")

@@ -18,6 +18,7 @@ from .fixtures import (
     FixtureSemanticAnalyzerAdapter,
 )
 from .memo_recognition import (
+    MemoRecognitionAcceptanceReceiptV1,
     MemoRecognitionManifestV1,
     MemoRecognitionTokenV1,
     MemoRecognizerAdapter,
@@ -26,6 +27,7 @@ from .memo_recognition import (
 from .normalized_handoff import (
     NormalizedAudioHandoffManifestV1,
     VerifiedNormalizedAudioHandoffAdapter,
+    wav_duration_ms,
 )
 from .recognition import (
     Qwen3ASRRecognizerAdapter,
@@ -58,11 +60,13 @@ __all__ = [
     "FixtureSpeechCoverageAnalyzer",
     "FFmpegSpeechCoverageAnalyzer",
     "FasterWhisperRecognizerAdapter",
+    "MemoRecognitionAcceptanceReceiptV1",
     "MemoRecognitionManifestV1",
     "MemoRecognitionTokenV1",
     "MemoRecognizerAdapter",
     "NormalizedAudioHandoffManifestV1",
     "VerifiedNormalizedAudioHandoffAdapter",
+    "wav_duration_ms",
     "GeminiAudioArbiterAdapter",
     "GeminiAudioAuditAdapter",
     "LLMCorrectorAdapter",

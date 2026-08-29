@@ -19,7 +19,8 @@ storyboard 的最小單位 — Verified Projection 上一段 exact-copy 連續�
 _Avoid_: scene、shot、片段
 
 **Storyboard**:
-`storyboard.yaml` — 一集全部 beats 的機器可讀分鏡表；Bridge UI 審核與 render/emit 的唯一事實來源。
+`storyboard.yaml` — standalone script-driven video 一集全部 beats 的機器可讀分鏡表；是 `/brook/video`
+review／render／emit 的唯一事實來源，不是 Podcast derivative finished-cut 的 authority。
 _Avoid_: 腳本（那是修修寫的逐字稿 script.md）
 
 **Mistake removal / cleanup**:
@@ -43,6 +44,61 @@ _Avoid_: assets_queue（panel v2 §2 前的舊單檔名，已拆雙檔）
 
 **候選（primary / alternates）**:
 stock 類 beat 帶一個首選＋兩個備選預覽連結，修修審核時圈選。
+
+**Finished Cut Production**:
+把 Podcast derivative 的已核准 cut 推進為可 review 成品的唯一 Stage 5 production module；Long/Short 以
+不同 policy 使用同一套 ordering、acceptance authority、Resolve transaction 與 release publication。
+_Avoid_: Long orchestrator（只描述 Long semantic run）、legacy pipeline（語意不精確）
+
+**AcceptedStage**:
+Finished Cut Production 內部唯一的 Director／DP／visual stage authority；由 current request proposal 通過
+aggregate 驗收後產生，不能由 worker、CLI、format policy 或 `state.json` 建立。
+_Avoid_: approved response、approved state（兩者只是 proposal／view，不是 authority）
+
+**Semantic Evidence Range**:
+Director 以 current ADR-064 cue IDs 選出的完整語意證據範圍；core 從 Editorial Cut Context 推導文字、
+hash、section 與語意 t0/t1。它解釋「這個視覺決策根據哪段論述」，不是素材或字卡實際停留時間。
+_Avoid_: display window、clip duration
+
+**Visual Placement**:
+DP 從單一事件的 Semantic Evidence Range 中選出的實際上畫 cue subset；core 驗證 ordered、contiguous、
+same-section、subset 後唯一 mint placement t0/t1。Intentional A-roll 沒有 Visual Placement；Big Title
+Transition 只能用 canonical `transition_before` section 的第一個 current cue 作語意證據，實際上畫固定從
+section t0 開始 3 秒（並受 cut duration 上限約束），worker 不能改時間。
+_Avoid_: Director anchor（是語意證據）、worker timing（worker 不能 mint）
+
+**Pre-release Event Correction**:
+fresh `ProductionRun` 在每個 Director／DP／visual checkpoint 後、`MaterializationPlan` 產生前的單事件
+修正。operator 只能提供 command、stage、event 與 feedback；aggregate 從 exact current
+`AcceptedStage` mint `event_retry`，保留其他事件、使該 stage 之後的 current authority 失效但不刪歷史。
+尚未執行的下游可首次 full-stage，已執行的下游只能同一事件 cascade；不能先發佈壞 Release。
+_Avoid_: full-stage rerun、手改 state、Targeted Revision（後者從 exact current Release 開新 command）
+
+**Finished Cut Release**:
+一個已核准 cut 經 Director、DP、visual review（問題事件才 targeted retry）、Resolve materialization 與 preview probe 後，可進 finished-cut review 的唯一 production snapshot。
+_Avoid_: CURRENT（ADR-065 pointer）、review manifest（多支 Release 的 index）
+
+**Active Asset Store**:
+目前 Finished Cut Releases 可解析與重建的 episode-level content-addressed 衍生視覺素材 store；
+**Authoritative Episode Source** 僅指 ADR-064 Editorial Master media／SRT／contract，由 Release 另行綁定；
+camera correction 另屬明示的 **Video Correction Source**，只能 video-only 且禁止 raw audio；raw camera／
+audio 不是 Authoritative Episode Source，也不是 fallback。
+_Avoid_: assets cache（它是 production truth，不是可任意清除的 cache）
+
+**Compact Asset Receipt**:
+Active Asset Store 每個 object 的精簡 provenance。neutral acquisition 只保留 media digest／bytes、經清理的
+source／license facts 與 opaque Forensic Archive object ref；current recipe render 明示為
+`current_generated`，不偽造 license。舊 receipt 的 path／cut／revision／job／semantic rows 不進 active index。
+_Avoid_: acquisition receipt copy（舊 receipt 原文只屬 Forensic Archive）
+
+**Forensic Archive**:
+位於 runtime root 外、不會被 production discovery 掃描的歷史 evidence store；只能 data-only 還原到隔離
+staging root，不能產 acceptance／Release、寫 current 或呼叫 Bridge／watcher／Resolve。
+_Avoid_: legacy folder（沒有說清楚它是否仍可執行）
+
+**Legacy Creative DAG**:
+ADR-065 的 revision-scoped Director／DP／semantic-audit executable pipeline；ADR-066 cutover 後只保留歷史文件與 Forensic Archive，不是 production fallback。
+_Avoid_: 舊版（可能混指歷史檔、Short CLI 或相容 reader）
 
 ## B-roll 類型（v1 詞彙，schema `component` / `render_target`）
 
@@ -113,12 +169,20 @@ _Avoid_: 範本、template（那是 composition）
 - 一個 **Beat** 至多一個 **B-roll**；`asset` 類 beat 可帶多個**候選**
 - **Director** 產 **Storyboard**；**Bridge UI** 兩層審核（text / visual）後才 render/emit
 - **asset_requests** 由 **Director** 產出、下載方履約回 **asset_manifest**、Director 驗收後 storyboard 才算素材就緒
+- 已核准 cut 經 **Finished Cut Production** 產一個 **Finished Cut Release**；Bridge 只讀 Release index，不讀 route-specific state
+- worker response 必須先成為 current **AcceptedStage** chain，才能產 materialization plan／Release；`state.json` 不是 authority
+- Director 的 **Semantic Evidence Range** 與 DP 的 **Visual Placement** 是兩個 authority：Event／Release 保留前者，component／derived asset／timeline 使用後者；Visual reviewer 同時看到 final asset ref 與 core-minted placement window
+- fresh run 每個 current **AcceptedStage** 都是 operator checkpoint；**Pre-release Event Correction** 只替換一個 event 的 current authority，歷史 AcceptedStage append-only
+- **Finished Cut Release** 的衍生視覺媒體只從 **Active Asset Store** 解析；source media/SRT 只從 ADR-064 Editorial Master contract 解析；preview/subtitle/projection/recipes 從 Release-bound artifacts 解析；camera correction 僅可用明示的 video-only source；**Forensic Archive** 不可被 production discovery
+- **Legacy Creative DAG** 在 ADR-066 cutover 後沒有 production caller，也不能產生 **Finished Cut Release**
 
 ## Example dialogue
 
 > **Dev:** 「這個 beat 的 stock 影片是誰去 render 的？」
 > **修修:** 「`asset` 類不 render — **Director** 搜 Envato 挑好候選寫進 **storyboard**，下載走 **asset_requests** 交接、**asset_manifest** 回報，驗收就緒才進 emit。會 render 的只有 `hyperframes` 類。」
 
+> **Dev:** 「舊 revision 還留在硬碟，可以讓新 cut 沿用嗎？」
+> **修修:** 「不行。它只能在 **Forensic Archive** 明確還原供稽核；新的 **Finished Cut Release** 必須從目前 run、ADR-064 Editorial Master contract 與 **Active Asset Store** 產生。」
 > **Dev:** 「字幕有一個字錯了，可以直接改 storyboard quote 嗎？」
 > **修修:** 「不行。本管線只 exact-copy **Verified Projection handoff**；回 Podcast Subtitle V2 resolve 出新 Generation，再 project 一份新的 verified SRT。」
 
@@ -134,4 +198,5 @@ _Avoid_: 範本、template（那是 composition）
   在本 context，但 `shared/cutout_library.py`＋`shared/thumbnail_funnel.py` 依 ADR-052
   邊界規則（`shared/` 只收 2+ agent 共用）其實該住 Brook package。待本 grill 決定 code 落點後回收。
 - 「planner」曾泛指分鏡決策者 — 已解：Director 是決策者；planner 專指 `plan` CLI 的一次性 LLM 初稿工具。
+- 「舊版」曾混指可執行 ADR-065 流程、歷史 evidence、Short CLI 與相容 reader — 已解：可執行流程＝**Legacy Creative DAG**；歷史 evidence＝**Forensic Archive**；兩者都不是新 production adapter。
 - 「校正字幕」曾指任何看起來已修改過的 SRT — 已解：Stage 5 只承認帶 lineage manifest 的 **Verified Projection handoff**；裸檔不是可接受 input。

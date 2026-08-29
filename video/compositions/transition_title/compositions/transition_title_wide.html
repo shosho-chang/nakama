@@ -1,3 +1,4 @@
+<!doctype html>
 <!-- nakama:component transition_title_wide（長片滿版轉場卡）
 
      v4（修修 2026-08-04 五輪：「黑字被背景吃掉」「壓到臉」「沒有退場動畫」）。
@@ -16,7 +17,6 @@
      paper_hand = paper + 橘手繪底線（同 punch_card_wide hero 的 WOBBLE 定值
      序列——同 variables 同畫面，cache hash 才有效）。
      位移全交 GSAP，元素不寫 CSS transform（concept_card 直式版血案）。 -->
-<!doctype html>
 <html
   lang="zh-Hant"
   data-composition-variables='[
@@ -29,25 +29,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
     <style>
       @font-face {
         font-family: "LINE Seed TW";
         font-weight: 400;
         font-display: block;
-        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Rg.woff2") format("woff2");
+        src: url("assets/fonts/line-seed-tw/LINESeedTW_OTF_Rg.woff2") format("woff2");
       }
       @font-face {
         font-family: "LINE Seed TW";
         font-weight: 700;
         font-display: block;
-        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Bd.woff2") format("woff2");
+        src: url("assets/fonts/line-seed-tw/LINESeedTW_OTF_Bd.woff2") format("woff2");
       }
       @font-face {
         font-family: "LINE Seed TW";
         font-weight: 900;
         font-display: block;
-        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Eb.woff2") format("woff2");
+        src: url("assets/fonts/line-seed-tw/LINESeedTW_OTF_Eb.woff2") format("woff2");
       }
 
       * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -104,6 +104,7 @@
         font-size: 168px;
         font-weight: 900;
         line-height: 1.12;
+        white-space: pre-line;
         letter-spacing: 0.01em;
         max-width: 1600px;
         text-align: center;

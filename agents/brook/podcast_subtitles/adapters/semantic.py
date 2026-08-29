@@ -682,4 +682,37 @@ class SemanticAnalyzerAdapter:
         return self.partition_with_receipts(request).units
 
 
-__all__ = ["SemanticAnalyzerAdapter", "SemanticRunner"]
+def semantic_subscription_worker_instruction() -> str:
+    """Return the exact Semantic worker system instruction."""
+
+    return _SYSTEM
+
+
+def semantic_subscription_response_json_schema() -> dict[str, object]:
+    """Return the strict response schema supplied to subscription workers."""
+
+    return _SemanticResponse.model_json_schema()
+
+
+def validate_semantic_subscription_response(
+    packet: Mapping[str, object],
+    response_bytes: bytes,
+) -> None:
+    """Validate one response against one frozen Semantic work packet."""
+
+    response = _coerce_response(response_bytes)
+    adapter = SemanticAnalyzerAdapter(
+        model=str(packet.get("model", "")),
+        model_version=str(packet.get("model_version", "")),
+        execution_mode="subscription",
+    )
+    adapter._validate_response(packet, response)
+
+
+__all__ = [
+    "SemanticAnalyzerAdapter",
+    "SemanticRunner",
+    "semantic_subscription_response_json_schema",
+    "semantic_subscription_worker_instruction",
+    "validate_semantic_subscription_response",
+]

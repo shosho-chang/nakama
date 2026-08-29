@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from agents.brook.podcast_subtitles.adapters import reference as reference_adapter
 from agents.brook.podcast_subtitles.adapters.reference import (
     ExtractedPassage,
     LocalReferenceRetriever,
@@ -17,8 +18,10 @@ from agents.brook.podcast_subtitles.adapters.reference import (
     RegisteredReferenceParser,
     TrustedReferenceParserRegistry,
     verify_reference_evidence_membership,
+    verify_reference_evidence_membership_batch,
     verify_reference_extraction_derivation,
 )
+from agents.brook.podcast_subtitles.hashing import canonical_json_bytes
 from agents.brook.podcast_subtitles.ports import (
     AdapterInputError,
     AdapterIntegrityError,
@@ -355,6 +358,151 @@ def test_adjacent_context_retrieves_for_every_single_character_anchor(tmp_path: 
         assert "數位遊牧" in receipt.evidence[0].excerpt
 
 
+def test_retrieve_many_reuses_authenticated_extraction_view_across_exact_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _write_markdown(
+        tmp_path / "book.md",
+        "# Terms\n\nThe formal term is Traveling Village.\n",
+    )
+    retriever = LocalReferenceRetriever(tmp_path / "index", (_spec(source),))
+    requests = tuple(_request(observed="traveling village") for _ in range(4))
+    original_verify_snapshot = reference_adapter._verified_reference_extraction_snapshot
+    verified_sources: list[str] = []
+
+    def counted_verify_snapshot(snapshot, *, enrolled_artifact):
+        verified_sources.append(enrolled_artifact.source_id)
+        return original_verify_snapshot(snapshot, enrolled_artifact=enrolled_artifact)
+
+    monkeypatch.setattr(
+        reference_adapter,
+        "_verified_reference_extraction_snapshot",
+        counted_verify_snapshot,
+    )
+
+    receipts = retriever.retrieve_many(requests)
+
+    assert len(receipts) == 4
+    assert len({item.evidence[0].id for item in receipts}) == 1
+    assert verified_sources == ["book-1"]
+
+    assert retriever.retrieve_many(requests) == receipts
+    assert verified_sources == ["book-1"]
+
+
+def test_batch_reference_replay_is_byte_identical_to_fresh_runtime(tmp_path: Path) -> None:
+    source = _write_markdown(
+        tmp_path / "book.md",
+        "# Terms\n\nThe formal term is Traveling Village.\n",
+    )
+    requests = tuple(
+        _request(observed="traveling village", span_id=f"span-{index}") for index in range(4)
+    )
+    retriever = LocalReferenceRetriever(tmp_path / "index", (_spec(source),))
+    initial = retriever.retrieve_many(requests)
+    replayed = retriever.retrieve_many(requests)
+    fresh = LocalReferenceRetriever(tmp_path / "fresh-index", (_spec(source),)).retrieve_many(
+        requests
+    )
+
+    assert canonical_json_bytes(replayed) == canonical_json_bytes(initial)
+    assert canonical_json_bytes(fresh) == canonical_json_bytes(initial)
+
+
+def test_reference_replay_never_returns_stale_receipt_after_postings_mutation(
+    tmp_path: Path,
+) -> None:
+    source = _write_markdown(
+        tmp_path / "book.md",
+        "# Terms\n\nThe formal term is Traveling Village.\n",
+    )
+    retriever = LocalReferenceRetriever(tmp_path / "index", (_spec(source),))
+    request = _request(
+        observed="traveling village",
+        candidates=("Traveling Village",),
+    )
+    stored = retriever.retrieve(request)
+    assert stored.evidence
+
+    retriever._lexical_postings.clear()
+    retriever._phonetic_postings.clear()
+
+    current = retriever.retrieve(request)
+    assert current != stored
+    assert current.evidence == ()
+    with pytest.raises(AdapterIntegrityError, match="does not exactly replay"):
+        retriever.replay(request, stored)
+
+
+def test_batch_membership_authenticates_one_snapshot_once_for_distinct_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _write_markdown(
+        tmp_path / "book.md",
+        "# Terms\n\nThe formal term is Traveling Village.\n\n"
+        "The second formal term is Digital Nomad.\n",
+    )
+    retriever = LocalReferenceRetriever(tmp_path / "index", (_spec(source),))
+    receipts = retriever.retrieve_many(
+        (
+            _request(
+                observed="traveling village",
+                candidates=("Traveling Village",),
+                max_results=1,
+                span_id="span-traveling-village",
+            ),
+            _request(
+                observed="digital nomad",
+                candidates=("Digital Nomad",),
+                max_results=1,
+                span_id="span-digital-nomad",
+            ),
+        )
+    )
+    evidence = tuple(receipt.evidence[0] for receipt in receipts)
+    assert len({item.id for item in evidence}) == 2
+    artifact = retriever.index.artifacts[0]
+    extraction_snapshot = retriever.extraction_snapshot(artifact)
+    original_verify_snapshot = reference_adapter._verified_reference_extraction_snapshot
+    verified_sources: list[str] = []
+
+    def counted_verify_snapshot(snapshot, *, enrolled_artifact):
+        verified_sources.append(enrolled_artifact.source_id)
+        return original_verify_snapshot(snapshot, enrolled_artifact=enrolled_artifact)
+
+    monkeypatch.setattr(
+        reference_adapter,
+        "_verified_reference_extraction_snapshot",
+        counted_verify_snapshot,
+    )
+
+    verify_reference_evidence_membership_batch(
+        evidence,
+        extraction_snapshot,
+        enrolled_artifact=artifact,
+    )
+    assert verified_sources == ["book-1"]
+
+    forged = evidence[0].model_copy(update={"excerpt": "x" * len(evidence[0].excerpt)})
+    with pytest.raises(AdapterIntegrityError, match="not a snapshot member"):
+        verify_reference_evidence_membership_batch(
+            (forged, evidence[1]),
+            extraction_snapshot,
+            enrolled_artifact=artifact,
+        )
+    assert verified_sources == ["book-1", "book-1"]
+
+    with pytest.raises(AdapterIntegrityError, match="digest mismatch"):
+        verify_reference_evidence_membership_batch(
+            evidence,
+            extraction_snapshot + b" ",
+            enrolled_artifact=artifact,
+        )
+    assert verified_sources == ["book-1", "book-1", "book-1"]
+
+
 def test_replay_rejects_context_policy_and_hit_drift(tmp_path: Path) -> None:
     source = _write_markdown(tmp_path / "book.md", "# Terms\n\nTraveling Village")
     retriever = LocalReferenceRetriever(tmp_path / "index", (_spec(source),))
@@ -582,11 +730,15 @@ def test_conflicting_source_passages_are_both_returned_without_retriever_verdict
 def test_corrupt_snapshot_fails_loud_before_retrieval(tmp_path: Path) -> None:
     source = _write_markdown(tmp_path / "book.md", "# 書\n\n數位遊牧")
     retriever = LocalReferenceRetriever(tmp_path / "index", (_spec(source),))
+    cached_request = _request(observed="cache priming query")
+    retriever.retrieve(cached_request)
     digest = retriever.index.artifacts[0].digest.sha256
     snapshot = tmp_path / "index" / "snapshots" / digest / "source.md"
     snapshot.write_bytes(b"tampered")
     with pytest.raises(AdapterIntegrityError, match="snapshot hash mismatch"):
         retriever.retrieve(_request(observed="蘇味遊牧", candidates=("數位遊牧",)))
+    with pytest.raises(AdapterIntegrityError, match="snapshot hash mismatch"):
+        retriever.retrieve(cached_request)
 
 
 def test_forged_excerpt_with_self_consistent_hash_fails_membership_proof(

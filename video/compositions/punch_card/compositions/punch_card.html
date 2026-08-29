@@ -10,6 +10,7 @@
     {"id":"show_sec","type":"number","label":"顯示秒數","default":2.0},
     {"id":"pos_y","type":"number","label":"卡片垂直中心 0-1","default":0.66},
     {"id":"tier","type":"number","label":"層級 1=hero 2=標準","default":2},
+    {"id":"style","type":"string","label":"orange|paper|ink","default":"orange"},
     {"id":"card_scale","type":"number","label":"整卡比例","default":1},
     {"id":"line1_scale","type":"number","label":"第一行比例","default":1},
     {"id":"line2_scale","type":"number","label":"第二行比例","default":1},
@@ -19,13 +20,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1080, height=1920" />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
     <style>
       @font-face {
         font-family: "LINE Seed TW";
         font-weight: 900;
         font-display: block;
-        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Eb.woff2") format("woff2");
+        src: url("assets/fonts/line-seed-tw/LINESeedTW_OTF_Eb.woff2") format("woff2");
       }
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body {
@@ -49,7 +50,7 @@
         display: inline-block;
         background: #e87000;
         color: #fff;
-        font-family: "LINE Seed TW", "Noto Sans TC", sans-serif;
+        font-family: "LINE Seed TW", sans-serif;
         font-weight: 900;
         font-size: 150px;
         line-height: 1.16;

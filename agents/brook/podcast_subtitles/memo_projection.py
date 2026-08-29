@@ -115,7 +115,7 @@ def _ms_to_time(value: int) -> str:
     return f"{hours:02d}:{minutes:02d}:{seconds:02d},{millis:03d}"
 
 
-def parse_srt(payload: str) -> tuple[MemoCue, ...]:
+def parse_srt(payload: str, *, allow_zero_duration: bool = False) -> tuple[MemoCue, ...]:
     blocks = re.split(r"\r?\n\s*\r?\n", payload.lstrip("\ufeff").strip())
     cues: list[MemoCue] = []
     for expected_index, block in enumerate(blocks, start=1):
@@ -133,7 +133,9 @@ def parse_srt(payload: str) -> tuple[MemoCue, ...]:
         start_ms, end_ms = map(_time_to_ms, timing)
         if not text:
             raise ValueError(f"Memo SRT cue {index} is empty")
-        if end_ms <= start_ms:
+        if end_ms < start_ms:
+            raise ValueError(f"Memo SRT cue {index} has negative duration")
+        if end_ms == start_ms and not allow_zero_duration:
             raise ValueError(f"Memo SRT cue {index} has non-positive duration")
         if cues and start_ms < cues[-1].end_ms:
             raise ValueError(f"Memo SRT cue {index} overlaps its predecessor")

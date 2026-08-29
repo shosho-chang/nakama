@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import urllib.request
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -25,8 +26,94 @@ from agents.brook.script_video.render_workers.thumbnail_worker import (
     _build_argv,
     _to_data_url,
     render_podcast_still,
+    render_thumbnail,
     render_youtube_still,
 )
+
+
+def _post_measurement(url: str, *, missing: str | None = None) -> None:
+    boxes = {
+        "protected_center_bbox": {"x": 420, "y": 100, "width": 440, "height": 520},
+        "host_bbox": {"x": 0, "y": 40, "width": 380, "height": 680},
+        "guest_bbox": {"x": 900, "y": 40, "width": 380, "height": 680},
+        "title_bbox": None,
+    }
+    if missing:
+        boxes.pop(missing)
+    body = json.dumps({"canvas": {"width": 1280, "height": 720}, "bboxes": boxes}).encode()
+    urllib.request.urlopen(urllib.request.Request(url, data=body, method="POST"), timeout=2)
+
+
+def test_reaction_render_writes_actual_composition_sidecar_atomically(tmp_path: Path):
+    (tmp_path / "package.json").write_text(json.dumps({"dependencies": {"hyperframes": "0.6.42"}}))
+    composition_dir = tmp_path / "compositions" / "thumbnail_reaction"
+    composition_dir.mkdir(parents=True)
+    (composition_dir / "index.html").write_text("<html></html>")
+    images = {}
+    for name in ("prop_image_data_url", "host_cutout_data_url", "guest_cutout_data_url"):
+        path = tmp_path / f"{name}.png"
+        path.write_bytes(name.encode())
+        images[name] = path
+    out = tmp_path / "reaction.png"
+
+    async def fake_create(*argv, **_kwargs):
+        variables = json.loads(Path(argv[argv.index("--variables-file") + 1]).read_text())
+        _post_measurement(variables["__composition_measurement_url"])
+        frames = Path(argv[argv.index("-o") + 1])
+        (frames / "frame-0001.png").write_bytes(b"rendered")
+        return _mock_subprocess()
+
+    with patch("asyncio.create_subprocess_exec", side_effect=fake_create):
+        asyncio.run(
+            render_thumbnail(
+                "thumbnail_reaction",
+                variables={"caption": ""},
+                images=images,
+                out_png=out,
+                video_dir=tmp_path,
+            )
+        )
+
+    sidecar = json.loads(out.with_suffix(".png.composition.json").read_text())
+    assert sidecar["schema"] == "nakama.thumbnail_composition_measurement.v1"
+    assert sidecar["composition"] == "thumbnail_reaction"
+    assert sidecar["bboxes"]["protected_center_bbox"]["x"] == 420
+    assert sidecar["png_sha256"]
+    assert sidecar["assets"]["prop_image_data_url"]["sha256"]
+
+
+def test_reaction_render_missing_selector_leaves_no_final_artifacts(tmp_path: Path):
+    (tmp_path / "package.json").write_text(json.dumps({"dependencies": {"hyperframes": "0.6.42"}}))
+    composition_dir = tmp_path / "compositions" / "thumbnail_reaction"
+    composition_dir.mkdir(parents=True)
+    (composition_dir / "index.html").write_text("<html></html>")
+    images = {}
+    for name in ("prop_image_data_url", "host_cutout_data_url", "guest_cutout_data_url"):
+        path = tmp_path / f"{name}.png"
+        path.write_bytes(name.encode())
+        images[name] = path
+    out = tmp_path / "reaction.png"
+
+    async def fake_create(*argv, **_kwargs):
+        variables = json.loads(Path(argv[argv.index("--variables-file") + 1]).read_text())
+        _post_measurement(variables["__composition_measurement_url"], missing="guest_bbox")
+        frames = Path(argv[argv.index("-o") + 1])
+        (frames / "frame-0001.png").write_bytes(b"rendered")
+        return _mock_subprocess()
+
+    with patch("asyncio.create_subprocess_exec", side_effect=fake_create):
+        with pytest.raises(ThumbnailRenderError, match="selector missing"):
+            asyncio.run(
+                render_thumbnail(
+                    "thumbnail_reaction",
+                    variables={},
+                    images=images,
+                    out_png=out,
+                    video_dir=tmp_path,
+                )
+            )
+    assert not out.exists()
+    assert not out.with_suffix(".png.composition.json").exists()
 
 
 @pytest.fixture

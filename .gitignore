@@ -88,3 +88,8 @@ cowork-outputs/
 
 # Playwright MCP page snapshots (tool output, regenerates)
 .playwright-mcp/
+
+# Episode-local scratch for Brook production runs (frames, plans, one-off operations).
+# NOTE: anything here that a current Release depends on must be promoted into the repo —
+# see agents/brook/script_video/finished_cut_production/amendments/README.md
+.cache/

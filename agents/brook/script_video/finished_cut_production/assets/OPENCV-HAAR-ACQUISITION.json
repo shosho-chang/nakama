@@ -1,0 +1,11 @@
+{
+  "acquired_at": "2026-08-28T19:15:00+08:00",
+  "bytes": 930127,
+  "content_hash": "083922eb3c2a641b0cd14c9cdfeabf91c8417340ed1958205f9e7d860bf55dbc",
+  "contract": "nakama.finished-cut-face-model-acquisition.v1",
+  "opencv_version": "5.0.0",
+  "purpose": "offline face-safe placement for Long person inset",
+  "sha256": "0f7d4527844eb514d4a4948e822da90fbb16a34a0bbbbc6adc6498747a5aafb0",
+  "source_python": "C:/Users/Shosho/AppData/Local/Programs/Python/Python310/python.exe",
+  "upstream_filename": "haarcascade_frontalface_default.xml"
+}

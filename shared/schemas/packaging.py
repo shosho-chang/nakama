@@ -279,6 +279,99 @@ class GeometryV1(BaseModel):
     guest_y_pct: float = Field(ge=-200, le=200)
 
 
+class CenterGeometryV1(BaseModel):
+    """N2 中央實拍卡的位置與大小，直接對應 thumbnail_reaction。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    width_pct: float = Field(ge=50, le=100)
+    height_px: float = Field(ge=120, le=720)
+    x_pct: float = Field(ge=-50, le=150)
+    y_pct: float = Field(ge=-50, le=150)
+
+    @model_validator(mode="after")
+    def _horizontal_card(self) -> "CenterGeometryV1":
+        if self.width_pct / 100 * 1280 <= self.height_px:
+            raise ValueError("N2 center card 必須是橫向長方形")
+        half_w = self.width_pct / 2
+        half_h = self.height_px / 720 * 50
+        if not (half_w <= self.x_pct <= 100 - half_w):
+            raise ValueError("N2 center card 左右不可超出畫布")
+        if not (half_h <= self.y_pct <= 100 - half_h):
+            raise ValueError("N2 center card 上下不可超出畫布")
+        return self
+
+
+class CenterProvenanceV1(BaseModel):
+    """中央卡的來歷——這張圖哪來的、為什麼是它。
+
+    2026-08-29：修修問「這封面中間的圖是怎麼挑的？」，整條線翻完只查得到幾何與
+    SHA-256，配對理由沒有任何地方記過。推得回去不等於交代過，所以變成必填。
+
+    它必須跟著**配方**走，不能只留在候選池裡：gate 挑的是浮水印預覽，桌機端會把
+    它換成正式授權檔，一換檔名，回溯那筆候選的線索就斷了。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    supply: Literal["envato", "public_domain", "redrawn"]
+    source: str = Field(min_length=1)
+    query: str = Field(min_length=1)
+    why: str = Field(min_length=12)
+
+
+CENTER_CANDIDATES_SCHEMA = "nakama.center_card_candidates.v1"
+
+
+class CenterCandidateV1(BaseModel):
+    """一張可以拿來當中央卡的候選圖，連同它的來歷。
+
+    `preview_png` 是圖庫的**浮水印預覽**——gate 上只是拿來挑，正式授權檔要等
+    修修選定後才由桌機端下載。挑十張下十張的授權檔，九張是白下的。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    candidate_id: str = Field(min_length=1, max_length=64)
+    preview_png: str = Field(min_length=1)
+    width: int = Field(gt=0)
+    height: int = Field(gt=0)
+    title: str = Field(min_length=1, max_length=200)
+    author: str = Field(default="", max_length=120)
+    supply: Literal["envato", "public_domain", "redrawn"] = "envato"
+    source: str = Field(min_length=1)
+    query: str = Field(min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def _landscape_only(self) -> "CenterCandidateV1":
+        # 中央卡是橫的（見 CenterGeometryV1._horizontal_card）。直式素材進 gate
+        # 只會浪費修修的一次點擊——它在 attach 那一關本來就會被擋下來。
+        if self.width <= self.height:
+            raise ValueError(
+                f"中央卡候選必須是橫式：{self.candidate_id} 是 {self.width}×{self.height}"
+            )
+        return self
+
+
+class CenterCandidatesFileV1(BaseModel):
+    """一支 cut 的中央卡候選池——gate 的圖庫就是這一份。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_: Literal["nakama.center_card_candidates.v1"] = Field(alias="schema")
+    episode: str = Field(min_length=1)
+    cut_id: str = Field(min_length=1)
+    generated_at: AwareDatetime
+    candidates: list[CenterCandidateV1] = Field(default_factory=list, max_length=120)
+
+    @model_validator(mode="after")
+    def _ids_are_unique(self) -> "CenterCandidatesFileV1":
+        seen = [row.candidate_id for row in self.candidates]
+        if len(set(seen)) != len(seen):
+            raise ValueError("候選 id 重複")
+        return self
+
+
 class RenderRequestV1(BaseModel):
     """修修在 gate 上組好的封面配方 — 桌機端據此 **render 一次**（2026-08-14 裁決）。
 
@@ -289,10 +382,11 @@ class RenderRequestV1(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    composition: Literal["thumbnail_full", "thumbnail_reaction"] = "thumbnail_full"
     title_rank: int = Field(ge=1, le=5)
     host_cutout: str
     guest_cutout: str
-    big_text: list[str] = Field(min_length=1, max_length=3)
+    big_text: list[str] = Field(default_factory=list, max_length=3)
     highlight_text: str = ""
     # 大字的寬度預算（px @1280 畫布）。composition 是「整塊縮字不換行」：
     # fontSize = 100 * title_max_width / 實際行寬。所以這個值就是字級的旋鈕——
@@ -309,6 +403,13 @@ class RenderRequestV1(BaseModel):
     book_cover_opacity: float = Field(default=0.42, ge=0, le=1)
     book_cover_brightness: float = Field(default=0.38, ge=0, le=1)
     book_cover_height_pct: float = Field(default=100, ge=20, le=150)
+    # N2 only: the image and orange frame are one editable layer behind both people.
+    # The path stays vault-relative so the desktop renderer can reproduce the exact package.
+    center_visual_asset: str | None = None
+    # 中央圖的來歷。跟著配方走，才能在浮水印預覽被換成正式授權檔之後仍然追得回
+    # 是哪一筆候選、依據什麼搜出來的、為什麼選它。
+    center_provenance: CenterProvenanceV1 | None = None
+    center_geometry: CenterGeometryV1 | None = None
     requested_at: AwareDatetime
     # geometry 兩種來源，靠 geometry_manual 分辨：
     #   False（預設）— solver 解完寫回來的，只當 gate 拖曳介面的起點，下次照樣重解
@@ -327,8 +428,10 @@ class RenderRequestV1(BaseModel):
                 raise ValueError(f"{name} must be vault-relative path, got absolute: {val!r}")
             if not _PNG_SLUG_RE.match(_png_basename(val)):
                 raise ValueError(f"cutout 檔名必須是 ASCII PNG，got {val!r}")
-        if not any(line.strip() for line in self.big_text):
+        if self.composition == "thumbnail_full" and not any(line.strip() for line in self.big_text):
             raise ValueError("big_text 不可全為空白——封面大字是 N1 卡型的主體")
+        if self.composition == "thumbnail_reaction" and any(line.strip() for line in self.big_text):
+            raise ValueError("thumbnail_reaction 是零文字 N2 卡型，big_text 必須為空")
         if self.highlight_text and self.highlight_text not in "".join(self.big_text):
             raise ValueError(
                 f"highlight_text {self.highlight_text!r} 不在 big_text 內"
@@ -340,6 +443,15 @@ class RenderRequestV1(BaseModel):
             parts = PurePosixPath(self.book_cover).parts
             if "\\" in self.book_cover or ".." in parts:
                 raise ValueError("book_cover must be a safe vault-relative path")
+        if self.composition == "thumbnail_reaction":
+            if not self.center_visual_asset or self.center_geometry is None:
+                raise ValueError("thumbnail_reaction 必須帶 center_visual_asset 與 center_geometry")
+        if self.center_visual_asset is not None:
+            if _is_abs_path(self.center_visual_asset):
+                raise ValueError("center_visual_asset must be a vault-relative path")
+            parts = PurePosixPath(self.center_visual_asset).parts
+            if "\\" in self.center_visual_asset or ".." in parts:
+                raise ValueError("center_visual_asset must be a safe vault-relative path")
         return self
 
 
@@ -407,6 +519,10 @@ class ApprovalV1(BaseModel):
     # 變體都不滿意時打的字：`第一行／第二[橘框詞]` — VPS 不能 render，桌機端
     # thumbnail-brainstorm 讀到後重出一張新變體，不是即時生效。
     bigtext_request: str | None = None
+    # 候選池裡的圖都不滿意時打的字（例如「我要拉布拉多，不要鸚鵡」）。同 bigtext
+    # 的道理：Bridge 叫不到圖庫（沒有 Elements API client，搜尋在 agent 那一端），
+    # 所以這裡只是**請求**——桌機端 thumbnail-brainstorm 讀到後重搜一批候選回填。
+    center_search_request: str | None = None
     # 「先選好、再 render 一次」的配方（每支最多一份；要換就覆蓋）。
     render_request: RenderRequestV1 | None = None
     # Reject 會建立一筆 revision job；桌機 watcher 認領後交給獨立 Agent 重做，

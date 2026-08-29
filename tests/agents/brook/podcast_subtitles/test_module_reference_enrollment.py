@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import agents.brook.podcast_subtitles.module as subtitle_module
 from agents.brook.podcast_subtitles.adapters.reference import (
     LocalReferenceRetriever,
     ReferenceSourceSpec,
@@ -28,6 +29,7 @@ from shared.schemas.podcast_subtitles_v2 import (
 from tests.agents.brook.podcast_subtitles.test_module import (
     _CountingNormalizer,
     _module,
+    _PendingAudioAuditor,
     _PendingCorrector,
     _RecordingCorrector,
     _single_stream_module,
@@ -196,6 +198,200 @@ def test_reference_enrollment_persists_source_and_extraction_trust_roots(
     assert module.store.read_artifact(created.generation_id, extraction_name) == (
         enrollment.extraction_snapshot
     )
+
+
+def test_reference_validation_uses_batch_exact_replay_when_available(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module, audio = _module(tmp_path / "episode")
+    retriever, enrollment = _reference_setup(tmp_path / "references")
+    original_retrieve_many = retriever.retrieve_many
+    batch_calls = 0
+
+    def retrieve_many(requests):
+        nonlocal batch_calls
+        batch_calls += 1
+        return original_retrieve_many(requests)
+
+    def scalar_replay_forbidden(*_args, **_kwargs):
+        raise AssertionError("batch-capable retriever must not replay receipts one by one")
+
+    monkeypatch.setattr(retriever, "retrieve_many", retrieve_many)
+    monkeypatch.setattr(retriever, "replay", scalar_replay_forbidden)
+    _configure_reference_retriever(module, retriever, retriever.index.index_hash)
+
+    created = module.create(
+        CreateRequest(
+            episode_id="episode-reference-batch-replay",
+            source_audio=audio,
+            reference_enrollments=(enrollment,),
+        )
+    )
+    module._load_generation(created.generation_id, require_active=True)
+
+    assert batch_calls >= 3
+
+
+def test_initial_reference_retrieval_batches_membership_once_per_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module, audio = _module(tmp_path / "episode")
+    retriever, enrollment = _reference_setup(tmp_path / "references")
+    _configure_reference_retriever(module, retriever, retriever.index.index_hash)
+    verified_batches: list[tuple[str, ...]] = []
+    original_verify_batch = subtitle_module.verify_reference_evidence_membership_batch
+
+    def verify_batch(evidence, snapshot, *, enrolled_artifact):
+        verified_batches.append(tuple(item.id for item in evidence))
+        return original_verify_batch(
+            evidence,
+            snapshot,
+            enrolled_artifact=enrolled_artifact,
+        )
+
+    def scalar_verify_forbidden(*_args, **_kwargs):
+        raise AssertionError("Module Reference membership must use the per-source batch helper")
+
+    monkeypatch.setattr(
+        subtitle_module,
+        "verify_reference_evidence_membership_batch",
+        verify_batch,
+    )
+    monkeypatch.setattr(
+        subtitle_module,
+        "verify_reference_evidence_membership",
+        scalar_verify_forbidden,
+        raising=False,
+    )
+
+    module.create(
+        CreateRequest(
+            episode_id="episode-reference-initial-membership-batch",
+            source_audio=audio,
+            reference_enrollments=(enrollment,),
+        )
+    )
+
+    assert len(verified_batches) >= 2
+    assert all(batch and len(batch) == len(set(batch)) for batch in verified_batches)
+    assert all(set(batch) == set(verified_batches[0]) for batch in verified_batches[1:])
+
+
+def test_reference_validation_batches_exact_membership_once_per_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module, audio = _module(tmp_path / "episode")
+    retriever, enrollment = _reference_setup(tmp_path / "references")
+    _configure_reference_retriever(module, retriever, retriever.index.index_hash)
+    created = module.create(
+        CreateRequest(
+            episode_id="episode-reference-unique-membership",
+            source_audio=audio,
+            reference_enrollments=(enrollment,),
+        )
+    )
+    loaded = module._load_generation(created.generation_id, require_active=True)
+    invocations = {item.invocation_id for item in loaded.references.retrievals}
+    assert len(invocations) == 1
+    expected_ids = {
+        item.id for receipt in loaded.references.retrievals for item in receipt.evidence
+    }
+    assert expected_ids
+    verified_batches: list[tuple[str, ...]] = []
+    original_verify_batch = subtitle_module.verify_reference_evidence_membership_batch
+
+    def verify_batch(evidence, snapshot, *, enrolled_artifact):
+        verified_batches.append(tuple(item.id for item in evidence))
+        return original_verify_batch(
+            evidence,
+            snapshot,
+            enrolled_artifact=enrolled_artifact,
+        )
+
+    monkeypatch.setattr(
+        subtitle_module,
+        "verify_reference_evidence_membership_batch",
+        verify_batch,
+    )
+    module._validate_reference_retrieval_state(
+        transcript=loaded.result.transcript,
+        policy=loaded.references.retrieval_policy,
+        invocation_id=next(iter(invocations)),
+        enrolled_artifacts=loaded.references.enrollments,
+        references=loaded.references.evidence,
+        retrievals=loaded.references.retrievals,
+        reference_extraction_snapshots={
+            item.name: item.payload for item in loaded.references.extraction_snapshots.artifacts
+        },
+        context="unique membership regression",
+    )
+
+    assert len(verified_batches) == 1
+    assert set(verified_batches[0]) == expected_ids
+    assert len(verified_batches[0]) == len(expected_ids)
+
+
+def test_persisted_reference_generation_load_does_not_use_scalar_membership(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module, audio = _module(tmp_path / "episode")
+    retriever, enrollment = _reference_setup(tmp_path / "references")
+    _configure_reference_retriever(module, retriever, retriever.index.index_hash)
+    created = module.create(
+        CreateRequest(
+            episode_id="episode-reference-persisted-batch",
+            source_audio=audio,
+            reference_enrollments=(enrollment,),
+        )
+    )
+
+    def scalar_verify_forbidden(*_args, **_kwargs):
+        raise AssertionError("persisted Generation load must batch Reference membership")
+
+    monkeypatch.setattr(
+        subtitle_module,
+        "verify_reference_evidence_membership",
+        scalar_verify_forbidden,
+        raising=False,
+    )
+
+    loaded = module._load_generation(created.generation_id, require_active=True)
+
+    assert loaded.references.evidence
+    assert loaded.result.transcript == created.transcript
+
+
+def test_correction_checkpoint_resume_does_not_use_scalar_membership(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module, audio = _module(tmp_path / "episode")
+    audio_auditor = _PendingAudioAuditor(module._audio_auditor, tmp_path / "work")
+    module._audio_auditor = audio_auditor
+    retriever, enrollment = _reference_setup(tmp_path / "references")
+    _configure_reference_retriever(module, retriever, retriever.index.index_hash)
+    request = CreateRequest(
+        episode_id="episode-reference-correction-checkpoint-batch",
+        source_audio=audio,
+        reference_enrollments=(enrollment,),
+        vocabulary=("\u54e5\u5927\u7562\u696d\u5178\u79ae",),
+    )
+    pending = module.create(request)
+    assert isinstance(pending, Interrupted)
+    audio_auditor.ready = True
+
+    def scalar_verify_forbidden(*_args, **_kwargs):
+        raise AssertionError("correction checkpoint load must batch Reference membership")
+
+    monkeypatch.setattr(
+        subtitle_module,
+        "verify_reference_evidence_membership",
+        scalar_verify_forbidden,
+        raising=False,
+    )
+
+    resumed = module.create(request)
+
+    assert not isinstance(resumed, Interrupted)
 
 
 def test_unflagged_homophone_reference_reaches_first_text_and_audio_audits(

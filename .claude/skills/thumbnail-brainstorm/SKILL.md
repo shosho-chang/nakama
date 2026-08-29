@@ -9,11 +9,19 @@ description: >
   /thumbnail-brainstorm、「配封面」、「出 package」。創意判斷（配對、表情、
   大字）在本手冊；schema／render／去背／檔名慣例歸 shared/ 與 scripts/，
   本 skill 只呼叫、不重新發明。
+  Reject feedback 也會觸發本 skill：desktop packaging worker 會建立 immutable
+  revision request，交給獨立 Agent 重做後回到 Packaging re-review。
 ---
 
-# thumbnail-brainstorm — 封面 brainstorm 手冊（v2.6）
+# thumbnail-brainstorm — 封面 brainstorm 手冊（v3.2）
 
-**版本：v2.6（2026-08-14，鄭國威集——內側 fade 吃臉事故 + gate 變體板；
+**版本：v3.2（2026-08-27，封面 cutout 排除 boom arm；
+v3.1 = N2 橫框可延伸到人物後方，人物重疊不是失敗；
+v3.0 = 人物 cutout 雙肩完整且前景不可挖洞；
+v2.9 = 人物 cutout 必須保留完整麥克風；
+v2.8 = Reject feedback → desktop revision agent；
+v2.7 = 作者訪談的暗色書封中景；
+v2.6 = 鄭國威集——內側 fade 吃臉事故 + gate 變體板；
 v2.5 = 安吉集三輪事故定版——scale 每角色鎖定、
 地標只准 face_measure 程式量、渲染成品 QA 是交付 gate；
 v2.4 = 表情同調規則 + 表情版 scale 繼承；
@@ -47,6 +55,14 @@ v1.1 = 封面設計系統 v1 接入；v1.0 = ADR-054 D8/D9 首落地。
    零裝飾、100px 自檢。diversity 軸 = **配方（N1/N2/N3）× 表情 × 大字**。
    真人不 AI（memory 鐵律）；N2 prop 卡供給 = Envato → 公版 → 圖表重繪。
 6. **每集寫 run log packaging 節**（配對理由、表情選擇、否決、Remaining）。
+7. **人物輪廓優先，雙肩不可裁斷，boom arm 不進封面**：定稿 cutout 必須保留
+   頭部、兩側完整肩線與可見上臂；肩膀不可碰到左右裁切界。優先換用 boom arm
+   沒有侵入人物 silhouette 的 source frame。若合格表情只存在於 boom arm 入鏡的
+   frame，可用 deterministic alpha-mask 或傳統 non-generative clone／heal／inpaint
+   retouch，且只准處理 boom arm 區域；禁止生成式影像、禁止重畫整個人物，boom arm 區域
+   以外的像素與人物 identity／肩膀／衣服／姿勢必須保持不變。麥克風與線材允許保留；
+   若保留，輪廓必須完整、不懸空。肩膀被直切、胸前／肩上透明挖洞或只剩半支
+   麥克風，全部視為素材損壞。
 
 ## 輸入
 
@@ -117,6 +133,10 @@ python .claude/skills/thumbnail-brainstorm/scripts/guest_cutout.py sample \
    （= motion blur 淘汰）。任務 =「依 emotions.yml 為 Step 1 定案的表情各挑
    最佳一格；臉被手/麥擋、閉眼、動態模糊、側轉 >45° 淘汰；**回報視線方向**
    （放左緣的人要看畫面右，反之亦然）」。一個 subagent 看完全部候選。
+   vision 回報還要明列：兩側肩線與可見上臂是否完整、boom arm 是否侵入人物
+   silhouette、麥克風／線材若保留是否完整。先淘汰有 boom arm 的 frame；只有該格
+   符合表情時，才可走紅線 7 的局部 deterministic retouch。不把「表情好」當成
+   接受 boom arm 或破損輪廓的理由。
 4. 去背落檔（BiRefNet + 統一調色內建）：
 
 ```bash
@@ -135,6 +155,14 @@ python .claude/skills/thumbnail-brainstorm/scripts/guest_cutout.py finalize \
   對整張 frame 去背 → 讀 alpha 欄剖面找「身體／麥克風／前景物」的分界 →
   界線放在麥克風等物件外緣（謝伯讓集：0.545 → **0.49**，肩線問題消失）。
   **不要目測猜**（2026-07-29 血淚：目測誤判成「怎麼切都會切到身體」）。
+- **雙肩安全距離**：alpha bbox 的左右肩線外必須各留透明 padding；不能為了移除
+  boom arm 直接水平裁掉一側肩膀。boom arm 和衣服重疊時，只能在其覆蓋區域用
+  deterministic alpha-mask／傳統 non-generative retouch 修補，不可生成或重畫人物，
+  也不能把整段 x 範圍切走。灰底驗收時兩側肩線都必須連續、沒有直切面或透明缺口。
+- **去背後逐像素重看麥克風**：在灰底與深色底各開一次透明 PNG，沿麥頭、
+  防噴罩、麥克風／線材外緣檢查 alpha。來源畫面有完整麥克風而成品缺一段時，先放寬
+  crop；仍被 BiRefNet 漏掉就改用保留麥克風的遮罩／換格重做。禁止用殘缺結果
+  繼續 render，因為縮圖下會直接看成「麥克風破掉」。
 - 頭為主裁框：整顆頭佔 cutout 高 ~50%（兩顆頭等大的前提）；下緣可再裁胸
   以提高頭佔比（N2 用 0.882 倍高）。
 - `--flip`：視線不朝內時翻轉（實拍像素、非 AI；**衣服有字時禁用**，run log 註記
@@ -172,12 +200,77 @@ spec 的 variables 見各 composition 檔頭註解。**定案參數表在
 - **N1 完整訪談**：兩人 glow + 內緣 fade 9% + 字塊 z4（在人之下 → 字尾塞肩後）、
   字 Bold 無陰影、橘框 padding 14/14/5、`guest_credit`（頭銜＋姓名）、
   左下頻道 logo 92px、`text_center_pct` 每包微調
-- **N2 精華長片**：右來賓 75%→頭56% + 左 Envato prop 卡（`prop_left_pct` 15／
-  `prop_width_pct` 52，躲肩後）、零文字、`frame_style: hybrid`（品牌斜切框＋碎片）、
-  logo `below-card` 96px、accent `#F37425`
+- **N1 作者／新書訪談**：有可驗證的實際書封時，以
+  `book_cover_data_url` 置中作低亮度中景，書封必須完整可辨識但不得壓過標題與人臉；
+  預設 `book_cover_opacity: 0.38`、`book_cover_brightness: 0.52`、
+  `book_cover_height_pct: 94`。主持人／來賓依然在左右邊緣，不把書封放成取代中央圖的 N2；
+  只能用出版社、書店或使用者提供的書封，在 run log 記錄來源與 SHA-256。
+  若設計是「獨立書本置於背景」，必須把書本外部的白底／掃描留白完整去除並檢查
+  alpha 邊緣；不能把帶白色矩形底的原始 JPG 直接調暗後當完成。保留書封本身的白色
+  設計，去除的是書本外部背景；交付前在深色底重開 PNG 做視覺 QA。
+- **N2 精華長片**：雙人夾中央實拍 prop 卡；`prop_position: center`、
+  `prop_width_pct: 53`、`prop_height_px: 455`，卡片必須是橫向長方形並延伸到
+  兩位 cutout 後方；零文字、`frame_style: skew`、logo bottom-left 92px、
+  accent `#F37425`。人物在卡片前方的重疊是景深語彙，不得為了讓 bbox 不重疊
+  而縮窄中央卡或裁掉肩膀。
 - 大字 = **≤6 字/行 × 2 行**、**恰好一個** highlight 詞
 - render 失敗（ThumbnailRenderError）→ 看 variables JSON 與 stderr 修完重跑；
   連續失敗 2 次停下報修修，不降級成無封面。
+
+### Step 4.4 — 中央卡候選池（修修 2026-08-29：「來源的圖要多一點」）
+
+在此之前 gate 只能挑臉、挑標題、打大字——中央圖是 hidden field，換不掉。現在
+gate 上有一排圖庫縮圖可以點，池子由這一步填。
+
+1. 用 Elements MCP `search_photos` 對這條標題的畫面概念搜，**務必帶
+   `orientation: landscape`、`number_of_people` 依概念設**。一條概念搜 2–3 個
+   不同說法，湊到二三十張才夠挑。
+2. 逐筆抄成 `results.json`：`preview_url` / `item_url` / `title` / `author` /
+   `query`（`query` 就是你當下用的搜尋詞——它會變成 receipt 裡的來歷）。
+3. 下載預覽並落地候選池：
+
+```bash
+python .claude/skills/thumbnail-brainstorm/scripts/stage_center_candidates.py   --packaging-dir "<ep>/packaging" --cut-id <cut> --episode-slug <slug>   --results results.json
+```
+
+下的是**浮水印預覽**，不是授權檔。修修在 gate 上挑定、存配方之後，桌機端才依
+`center_visual_asset` 對應的 `source` 走既有的 Elements 下載流程取正式檔並重出
+（見 `brook-director/SKILL.md` 的下載程序）。挑十張下十張授權檔，九張是白下的。
+
+直式素材會在這一步就被丟掉，不進 gate——它在 Step 4.8 那關本來就會被擋。
+
+回填時 spec 帶 `center_candidate`（候選池那筆的 supply/source/query）＋
+`center_why`，`center_provenance` 就會自動組好；來歷可以繼承，**配對理由不行**。
+
+### Step 4.4b — 取得正式授權檔（**agent 做，不叫修修自己下載**）
+
+修修 2026-08-29：「我不要人工下載，所有的素材下載都要你幫我做。」
+
+gate 上挑的是浮水印預覽（600px 級），成品要 6000px 級的授權原檔。Elements
+**沒有給訂閱者下載用的 API**，取授權檔必須在已登入的瀏覽器工作階段按 Download
+——所以這一步**不可能做成無人看管的背景程序**，它是 agent 的工作，不是 watcher 的。
+
+除了那一下點擊，其餘全部腳本化：
+
+```bash
+# 1) 誰在等授權檔？印出要開的品項網址
+python .claude/skills/thumbnail-brainstorm/scripts/fetch_licensed_center.py   --episode-slug <slug> --pending
+
+# 2) agent 用修修的瀏覽器開那個網址、按 Download（claude-in-chrome）
+#    ⚠️ 按一次就好。第一次點擊就會下載並套授權；沒看到檔案時先查下載目錄，
+#       不要重按——那是在他的付費帳號上重複操作（2026-08-29 犯過）。
+
+# 3) 收線
+python .claude/skills/thumbnail-brainstorm/scripts/fetch_licensed_center.py   --episode-slug <slug> --cut-id <cut> --package-rank <n> --install   --working-dir "<ep>/packaging"
+```
+
+`--install` 會驗（橫式、長邊 ≥1280、不是候選池路徑）→ 安裝 → 把 **packages.json
+與 approval.json 兩份都改指**（`approval.json` 才是 watcher 撿的那一份，只改
+packages 等於沒改）→ 從候選池把來歷抄進配方（換掉檔名後池子是唯一還記得出處的
+地方）→ 動 `requested_at` 讓 watcher 重新撿起來。
+
+**下載目錄預設 `E:\` 根目錄**（修修瀏覽器的落點，不是 `~/Downloads`），
+可用 `NAKAMA_DOWNLOAD_DIR` 覆寫。
 
 ## Step 4.5 — 量測驗收（**不做不交付**）
 
@@ -225,6 +318,86 @@ render → `occlusion_check` 兩輪內插收斂 → `face_measure render` gate �
 `rendered_png` 與該 rank 的 package 縮圖。**強表情素材要先備好**（見下節），
 否則他在 gate 上只能從弱表情裡挑。
 
+### Step 4.8 — 長 highlight composition receipt（沒有就不能 Approve）
+
+每一張長 highlight 必須用 `thumbnail_reaction` render；composition 會透過 loopback callback
+回傳同一次 render 的 DOM `getBoundingClientRect()`，並與 PNG 原子寫出
+`<thumbnail>.png.composition.json`。`attach_packages.py` 的每筆 spec 必須提供
+`render_spec`（該次 render_still JSON）；attach 會重驗 renderer/composition、variables、素材與
+PNG hash，通過後自動把中央圖、measurement sidecar 與 receipt 寫到 vault：
+`Attachments/packaging/<episode-slug>/composition_receipts/<cut-id>-r<rank>.json`。
+中央必須是圖像素材，不能用文字代替。`center_visual_asset` 要先複製到同一集 packaging
+目錄，使用 vault-relative 路徑；receipt 不能指到 episode 外或不存在的檔案。
+
+**每個 spec 必須帶 `center_provenance`（v3 起強制）**——中央卡的來歷寫進 receipt，
+不是寫在誰的記憶裡。2026-08-29 修修看到 20260805 punch-L04 rank 1 的中央卡是一隻
+鸚鵡問「為什麼」，整條線翻完只查得到幾何與 SHA-256，配對理由沒有任何地方記過；
+推得回去不等於交代過。`supply` 是封閉集合 `envato` / `public_domain` / `redrawn`
+（真人一律不准 AI 生成，紅線 5）。
+
+**中央卡素材本身必須是橫式，且長寬比要接近卡片**。卡片是 `object-fit: cover`，
+比例不合就從短邊硬裁：同一張 rank 1 的素材是 1080×1920 直式，卡片 678×455
+（1.49:1），只有 38% 的原圖進得了畫面，棲架與飼料碗全被切在框外。attach 現在會擋
+直式素材，以及裁掉超過一半的極端比例（含過寬的全景）。先前只驗卡片 bbox 是橫的，
+沒有人驗餵進去的素材。
+
+2026-08-29 之前的 v2 receipt 仍然讀得進 gate（不追溯作廢已核准的成品），
+但新產的一律是 v3。
+
+```json
+{
+  "schema": "nakama.long_thumbnail_composition.v3",
+  "episode": "<packages.json episode exact value>",
+  "cut_id": "<cut-id>",
+  "package_rank": 1,
+  "thumbnail_png": "<packages.json selected thumbnail_png exact value>",
+  "canvas_width": 1280,
+  "canvas_height": 720,
+  "center_visual_asset": "Attachments/packaging/<slug>/center-<cut-id>-r1.png",
+  "center_provenance": {
+    "supply": "envato",
+    "source": "<Envato 品項 URL／id；公版寫來源；重繪寫依據的資料出處>",
+    "query": "<找到它的搜尋詞；重繪寫重繪依據>",
+    "why": "<這張圖扣回哪一個 beat／quote——至少 12 字，不准寫「配合主題」>"
+  },
+  "thumbnail_sha256": "<64 lowercase hex>",
+  "center_visual_sha256": "<64 lowercase hex>",
+  "measurement_sidecar": "Attachments/packaging/<slug>/<thumbnail>.composition.json",
+  "measurement_sidecar_sha256": "<64 lowercase hex>",
+  "renderer_identity": "hyperframes@<version>",
+  "protected_center_bbox": {"x": 420, "y": 100, "width": 440, "height": 520},
+  "host_bbox": {"x": 0, "y": 40, "width": 380, "height": 680},
+  "guest_bbox": {"x": 900, "y": 40, "width": 380, "height": 680},
+  "title_bbox": null,
+  "max_protected_overlap_ratio": 1.0
+}
+```
+
+所有 bbox 都是 1280×720 成品 DOM 實測值，不准手填或拿 spec/CSS 預估值代替。Bridge 會
+重新 hash PNG、中央圖與 sidecar，並核對 sidecar identity/bbox；舊 v1、任一檔缺失或漂移、
+中央卡不是至少 50% 畫布寬的橫向卡，都會 `COMPOSITION BLOCKED`。人物元素可出血並壓在
+中央卡前方；這是 N2 版式的一部分。短片不走此 gate。
+
+### Step 4.9 — Reject feedback → desktop revision agent（v2.8）
+
+Packaging gate 的 Reject 不再只留 note。Bridge 只寫 `approval.json` 的
+`revision_job`（`packaging-revision-job-v1`），封存 feedback、Reject 當下的
+`packages.json` SHA-256 與每張封面 SHA-256，狀態從 `queued` 開始。Bridge 本身仍零 LLM。
+
+桌機 `scripts/render_watcher.py` 認領後必須依序：
+
+1. 驗證 source hashes；任一漂移即 `failed`，不可把 feedback 套到錯版。
+2. 備份至 `<episode>/packaging/revisions/<request_id>/before/`。
+3. 啟動 bounded Codex Agent；只可修改該集 working/vault packaging 與該集 cutouts，
+   禁止碰 code、approval.json、Resolve、YouTube 或發布狀態。
+4. 重新跑本 skill 的素材選擇、去背、render 與 QA；不得只改 JSON 宣稱完成。
+5. worker 重驗 PackagesFileV1、working/vault bytes、1280×720 PNG 與 before/after
+   fingerprint。通過才寫 `packaging-revision-result-v1` 並標 `ready_for_review`。
+
+Agent **永遠不得自動 Approve**。失敗顯示 error 且不自動重試；只有修修在 gate 按
+`Retry revision` 才把同一 request 重新排回 `queued`。新的 Reject 會建立新的 request，
+舊 revision 目錄保持可回復。
+
 ### 強表情素材怎麼找（不要只抽你想得到的那幾段）
 
 鄭國威集教訓：只抽 9 個窗（106 分鐘裡的 9 分鐘）→ vision agent 回報「全部候選
@@ -262,6 +435,7 @@ working set 與 vault 雙寫（ADR-054 D10）。驗證錯誤讀訊息修 specs�
 │                               每次 render 覆蓋同名檔，永遠只有現在這一版
 └── packaging/
     ├── packages.json geometry.json keywords.json title_trace.json
+    ├── composition_receipts/    ← 長 highlight 每個 package 的中央主圖／bbox 驗證
     ├── manifest.json specs.json  pkg-<cut_id>-<rank>.png（packages.json 引用的）
     ├── briefs/ cutouts/ review_sheets/
     └── _work/                ← spec_*、_textonly-*、抽格 frames、比較板變體
@@ -353,6 +527,9 @@ python .claude/skills/thumbnail-brainstorm/scripts/face_measure.py render \
       （跨包 IOD/臉高離散、眼線漂移、包內比例）。**這才是 gate**：verify
       PASS 擋不住 63px 眼線漂移（教訓 21）
 - [ ] 親眼看全圖（人物大小/位置/與中央卡的關係）＋ 320×180 小圖可讀
+- [ ] cutout 頭部、雙肩、可見上臂完整；肩線不碰左右界、無直切或透明挖洞
+- [ ] boom arm 未進人物 silhouette；若局部移除，只有 boom arm 區域像素可改，
+      其餘人物像素／identity／肩膀／衣服／姿勢不變；麥克風與線材可保留但不可殘缺
 - [ ] 表情同調自檢（兩人情緒 × 標題語氣，逐包過）
 - [ ] prop 幀乾淨（無動態模糊/殘影；抽幀要挑）
 
@@ -379,6 +556,30 @@ E2E 每跑完一集（gate approve 過），可固化的教訓 **append 進本�
 版本號**（經 PR）。
 
 ### 教訓紀錄
+
+**v3.1（2026-08-27，林之晨 Long 1——驗收規則反向逼出直立窄框與裁肩）**
+
+31. **N2 的人物與中央卡本來就要重疊**：舊 composition receipt 把人物元素 bbox
+    與中央卡重疊 >5% 視為失敗；因為 bbox 包含透明畫布，執行者只能把 53% 橫卡縮成
+    25% 直立卡，再把完整肩膀 cutout 裁成窄頭像才能通過。這與 house style 相反。
+    從此 deterministic gate 只確認中央圖存在、卡片覆蓋中心且為至少 50% 畫布寬的
+    橫向卡；人物可在 z-order 上壓住卡緣。肩膀是否完整由交付前實際看成品判斷，
+    不用透明 canvas bbox 代替視覺判斷。
+
+**v3.0（2026-08-21，林之晨集——為了去支架而裁掉來賓肩膀）**
+
+30. **去掉支架不等於裁掉支架所在的整段畫面**：第一次修正 `guest_v6_laughing`
+    用水平 crop 拿掉白色懸臂，也把來賓左肩一起切掉；這違反已定義的雙肩完整
+    silhouette。正確處理是保留完整人物與麥克風本體，單獨移除長支架，並重建其
+    後方的條紋襯衫；最後在灰底確認兩側肩線連續且都有透明 padding。
+
+**v2.9（2026-08-21，林之晨集——大笑 cutout 的麥克風被去背遮罩切壞）**
+
+29. **表情好不能抵銷前景物損壞**：`guest_v6_laughing` 的笑臉成立，但麥克風
+    被遮罩切成殘缺形狀；小圖上比表情更先被看成瑕疵。從此來源 frame 只要有
+    麥克風，就把「人物＋手＋麥克風」當成同一前景組合驗收；crop 留足外緣，
+    去背後在灰／深雙底檢查 alpha，任何麥頭懸空、支架中斷或遮罩挖洞都退回
+    finalize／換格，不得進 package。
 
 **v2.6（2026-08-14，鄭國威集——內側 fade 把主持人的臉吃掉）**
 

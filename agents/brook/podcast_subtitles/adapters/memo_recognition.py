@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import platform
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -48,6 +49,64 @@ class MemoRecognitionTokenV1(_StrictModel):
         return self
 
 
+class MemoExecutionReceiptRefV1(_StrictModel):
+    """Episode-local reference plus the execution identities needed downstream."""
+
+    contract: Literal["memo-bundled-runner-execution-v1"] = "memo-bundled-runner-execution-v1"
+    path: str
+    runner_path: str
+    model_path: str
+    input_wav_path: str
+    output_srt_path: str
+    stdout_path: str
+    stderr_path: str
+    sha256: str
+    size_bytes: int = Field(gt=0)
+    runner_sha256: str
+    model_sha256: str
+    input_wav_sha256: str
+    output_srt_sha256: str
+    stdout_sha256: str
+    stderr_sha256: str
+    exit_code: Literal[0] = 0
+
+    @model_validator(mode="after")
+    def _valid(self) -> "MemoExecutionReceiptRefV1":
+        episode_paths = tuple(
+            Path(value)
+            for value in (
+                self.path,
+                self.input_wav_path,
+                self.output_srt_path,
+                self.stdout_path,
+                self.stderr_path,
+            )
+        )
+        digests = (
+            self.sha256,
+            self.runner_sha256,
+            self.model_sha256,
+            self.input_wav_sha256,
+            self.output_srt_sha256,
+            self.stdout_sha256,
+            self.stderr_sha256,
+        )
+        if (
+            any(
+                candidate.is_absolute() or candidate.drive or ".." in candidate.parts
+                for candidate in episode_paths
+            )
+            or not Path(self.runner_path).is_absolute()
+            or not Path(self.model_path).is_absolute()
+            or any(
+                len(value) != 64 or any(char not in "0123456789abcdef" for char in value)
+                for value in digests
+            )
+        ):
+            raise ValueError("Memo execution receipt reference is invalid")
+        return self
+
+
 class MemoRecognitionManifestV1(_StrictModel):
     """Canonical import envelope derived from one accepted Memo raw export."""
 
@@ -63,6 +122,10 @@ class MemoRecognitionManifestV1(_StrictModel):
     source_export_sha256: str
     source_export_size_bytes: int = Field(gt=0)
     source_export_kind: Literal["memo_stdout", "memo_srt", "memo_json"]
+    raw_source_export_sha256: str | None = None
+    raw_source_export_size_bytes: int | None = Field(default=None, gt=0)
+    source_repair_receipt_sha256: str | None = None
+    memo_execution_receipt: MemoExecutionReceiptRefV1 | None = None
     accepted_by_receipt_sha256: str
     unresolved_findings: tuple[str, ...] = ()
     tokens: tuple[MemoRecognitionTokenV1, ...]
@@ -83,6 +146,20 @@ class MemoRecognitionManifestV1(_StrictModel):
         ):
             if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
                 raise ValueError(f"Memo {label} must be lowercase SHA-256")
+        repair_lineage = (
+            self.raw_source_export_sha256,
+            self.raw_source_export_size_bytes,
+            self.source_repair_receipt_sha256,
+        )
+        if any(value is not None for value in repair_lineage) != all(
+            value is not None for value in repair_lineage
+        ):
+            raise ValueError("Memo recognition source repair lineage must be complete")
+        for value in (self.raw_source_export_sha256, self.source_repair_receipt_sha256):
+            if value is not None and (
+                len(value) != 64 or any(char not in "0123456789abcdef" for char in value)
+            ):
+                raise ValueError("Memo recognition source repair digest must be lowercase SHA-256")
         if self.unresolved_findings:
             raise ValueError("accepted Memo recognition cannot contain unresolved findings")
         if not self.tokens:
@@ -97,6 +174,106 @@ class MemoRecognitionManifestV1(_StrictModel):
             if token.end_ms > self.normalized_audio_duration_ms:
                 raise ValueError("Memo recognition token exceeds normalized audio")
             previous_end = token.end_ms
+        return self
+
+
+class MemoAgentAuditRefV1(_StrictModel):
+    """Episode-local immutable reference to one independent worker audit."""
+
+    contract: Literal[
+        "memo-recognition-worker-audit-v1",
+        "memo-cue-worker-audit-v1",
+    ]
+    worker_id: str
+    path: str
+    sha256: str
+    size_bytes: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _valid(self) -> "MemoAgentAuditRefV1":
+        candidate = Path(self.path)
+        if (
+            not self.worker_id.strip()
+            or self.worker_id != self.worker_id.strip()
+            or candidate.is_absolute()
+            or candidate.drive
+            or ".." in candidate.parts
+            or len(self.sha256) != 64
+            or any(char not in "0123456789abcdef" for char in self.sha256)
+        ):
+            raise ValueError("Memo worker audit reference is invalid")
+        return self
+
+
+class MemoRecognitionAcceptanceReceiptV1(_StrictModel):
+    """Acceptance of one prepared Memo recognition review, including agent quorum."""
+
+    schema_version: Literal[1] = 1
+    contract: Literal["accepted-memo-recognition-v1"] = "accepted-memo-recognition-v1"
+    accepted: Literal[True] = True
+    normalized_audio_sha256: str
+    normalized_audio_size_bytes: int = Field(gt=0)
+    normalized_audio_duration_ms: int = Field(gt=0)
+    normalized_handoff_manifest_sha256: str
+    source_export_sha256: str
+    source_export_size_bytes: int = Field(gt=0)
+    raw_source_export_sha256: str | None = None
+    raw_source_export_size_bytes: int | None = Field(default=None, gt=0)
+    source_repair_receipt_sha256: str | None = None
+    memo_execution_receipt: MemoExecutionReceiptRefV1 | None = None
+    review_manifest_sha256: str
+    token_export_sha256: str
+    reviewer: str
+    accepted_at: datetime
+    unresolved_findings: tuple[str, ...] = ()
+    episode_id: str | None = None
+    agent_audits: tuple[MemoAgentAuditRefV1, ...] = ()
+
+    @model_validator(mode="after")
+    def _accepted(self) -> "MemoRecognitionAcceptanceReceiptV1":
+        for label, value in (
+            ("normalized audio", self.normalized_audio_sha256),
+            ("normalized handoff", self.normalized_handoff_manifest_sha256),
+            ("source export", self.source_export_sha256),
+            ("review manifest", self.review_manifest_sha256),
+            ("token export", self.token_export_sha256),
+        ):
+            if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+                raise ValueError(f"Memo recognition {label} digest must be lowercase SHA-256")
+        repair_lineage = (
+            self.raw_source_export_sha256,
+            self.raw_source_export_size_bytes,
+            self.source_repair_receipt_sha256,
+        )
+        if any(value is not None for value in repair_lineage) != all(
+            value is not None for value in repair_lineage
+        ):
+            raise ValueError("Memo recognition source repair lineage must be complete")
+        for value in (self.raw_source_export_sha256, self.source_repair_receipt_sha256):
+            if value is not None and (
+                len(value) != 64 or any(char not in "0123456789abcdef" for char in value)
+            ):
+                raise ValueError("Memo recognition source repair digest must be lowercase SHA-256")
+        if (
+            not self.reviewer.strip()
+            or self.reviewer != self.reviewer.strip()
+            or self.accepted_at.tzinfo is None
+            or self.unresolved_findings
+        ):
+            raise ValueError(
+                "Memo recognition acceptance must be explicit, identified, and resolved"
+            )
+        if bool(self.episode_id) != bool(self.agent_audits):
+            raise ValueError("Memo recognition agent-quorum lineage must be complete")
+        if self.agent_audits and (
+            self.reviewer != "agent-quorum"
+            or len(self.agent_audits) != 2
+            or len({audit.worker_id for audit in self.agent_audits}) != 2
+            or any(
+                audit.contract != "memo-recognition-worker-audit-v1" for audit in self.agent_audits
+            )
+        ):
+            raise ValueError("Memo recognition agent quorum requires two independent audits")
         return self
 
 
@@ -150,8 +327,25 @@ class MemoRecognizerAdapter:
             or self._source_export.stat().st_size != manifest.source_export_size_bytes
         ):
             raise AdapterIntegrityError("Memo source export differs from recognition manifest")
-        if hash_file(self._acceptance_receipt) != manifest.accepted_by_receipt_sha256:
+        acceptance_bytes = self._acceptance_receipt.read_bytes()
+        if sha256_bytes(acceptance_bytes) != manifest.accepted_by_receipt_sha256:
             raise AdapterIntegrityError("Memo acceptance receipt differs from recognition manifest")
+        if manifest.memo_execution_receipt is not None:
+            try:
+                json.loads(acceptance_bytes, object_pairs_hook=_reject_duplicate_keys)
+                acceptance = MemoRecognitionAcceptanceReceiptV1.model_validate_json(
+                    acceptance_bytes, strict=True
+                )
+            except (json.JSONDecodeError, ValidationError, ValueError) as exc:
+                raise AdapterInputError(f"invalid Memo recognition acceptance: {exc}") from exc
+            if canonical_json_bytes(acceptance) != acceptance_bytes:
+                raise AdapterIntegrityError(
+                    "Memo recognition acceptance must use canonical JSON bytes"
+                )
+            if acceptance.memo_execution_receipt != manifest.memo_execution_receipt:
+                raise AdapterIntegrityError(
+                    "Memo execution receipt differs between acceptance and recognition manifest"
+                )
         return manifest, payload
 
     @property
@@ -258,6 +452,9 @@ class MemoRecognizerAdapter:
 
 
 __all__ = [
+    "MemoExecutionReceiptRefV1",
+    "MemoAgentAuditRefV1",
+    "MemoRecognitionAcceptanceReceiptV1",
     "MemoRecognitionManifestV1",
     "MemoRecognitionTokenV1",
     "MemoRecognizerAdapter",

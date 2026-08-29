@@ -21,6 +21,9 @@ from agents.brook.podcast_subtitles.audio_audit_execution import (
     AudioFullAuditExecutor,
     build_audio_audit_adapter_identity,
 )
+from agents.brook.podcast_subtitles.audio_audit_selection import (
+    default_audio_audit_selection_policy,
+)
 from agents.brook.podcast_subtitles.checkpoint import build_create_checkpoint
 from agents.brook.podcast_subtitles.errors import (
     ArtifactHashMismatchError,
@@ -28,12 +31,16 @@ from agents.brook.podcast_subtitles.errors import (
     NativeAcceptanceRequiredError,
 )
 from agents.brook.podcast_subtitles.facade import PodcastSubtitleFacade
+from agents.brook.podcast_subtitles.full_audit_attestation import (
+    FullAuditAggregateAttestationV2,
+)
 from agents.brook.podcast_subtitles.hashing import (
     canonical_json_bytes,
     hash_file,
     hash_object,
     sha256_bytes,
 )
+from agents.brook.podcast_subtitles.loaded_generation import LoadedNativeAuditState
 from agents.brook.podcast_subtitles.module import (
     AdapterIdentity,
     CreateRequest,
@@ -49,8 +56,17 @@ from agents.brook.podcast_subtitles.text_audit_execution import (
     TextFullAuditExecutor,
     build_text_audit_adapter_identity,
 )
+from shared.schemas.podcast_subtitles_v2_audio_audit import (
+    AudioAuditProviderRequestV2,
+)
 from tests.agents.brook.podcast_subtitles.test_audio_audit_execution import (
     _response_bytes as audio_response_bytes,
+)
+from tests.agents.brook.podcast_subtitles.test_audio_audit_execution import (
+    _response_payload as audio_response_payload,
+)
+from tests.agents.brook.podcast_subtitles.test_audio_audit_execution import (
+    _typed_source as typed_audio_source,
 )
 from tests.agents.brook.podcast_subtitles.test_module import (
     _accepted_receipt,
@@ -77,6 +93,28 @@ def _pcm_wav(path: Path, *, duration_seconds: int = 4) -> None:
         sink.writeframes(b"\x00\x00" * 8_000 * duration_seconds)
 
 
+def _material_audio_response_bytes(request_bytes: bytes, _clip_bytes: bytes) -> bytes:
+    request = AudioAuditProviderRequestV2.model_validate_json(request_bytes)
+    canonical = typed_audio_source(request, "canonical_transcript")
+    token_by_id = {item.id: item for item in canonical.tokens}
+    payload = audio_response_payload(request_bytes)
+    assessment = payload["assessments"][0]
+    assert isinstance(assessment, dict)
+    affected_token_ids = assessment["cited_token_ids"]
+    assert isinstance(affected_token_ids, tuple)
+    observed_text = "".join(token_by_id[item].text for item in affected_token_ids)
+    assessment.update(
+        {
+            "status": "finding",
+            "affected_token_ids": affected_token_ids,
+            "observed_text": observed_text,
+            "candidate_text": f"{observed_text}修正",
+            "evidence_basis": "exact_audio_clip",
+        }
+    )
+    return canonical_json_bytes(payload)
+
+
 def _native_module(
     episode_root: Path,
     *,
@@ -85,6 +123,8 @@ def _native_module(
     audio_adapter: str = "fixture-native-audio-auditor",
     reference_retriever=None,
     reference_retriever_identity: AdapterIdentity | None = None,
+    selective_audio: bool = True,
+    code_version: str = "podcast-subtitle-v2",
 ) -> tuple[PodcastSubtitleV2, Path, _CountingNormalizer, tuple[_CountingRecognizer, ...]]:
     episode_root.mkdir(parents=True, exist_ok=True)
     source = episode_root / "source.wav"
@@ -111,6 +151,26 @@ def _native_module(
             _BoundFixtureRecognizer(normalized, raw_two, "secondary", ("哥大", "畢業典禮"))
         ),
     )
+    ordinary_words = (
+        "哥大畢業典禮",
+        "訪談片段乙",
+        "訪談片段丙",
+        "訪談片段丁",
+        "訪談片段戊",
+        "訪談片段己",
+        "訪談片段庚",
+        "訪談片段辛",
+        "訪談片段壬",
+        "訪談片段癸",
+    )
+    recognizers = (
+        _CountingRecognizer(
+            _BoundFixtureRecognizer(normalized, raw_one, "primary", ordinary_words)
+        ),
+        _CountingRecognizer(
+            _BoundFixtureRecognizer(normalized, raw_two, "secondary", ordinary_words)
+        ),
+    )
     semantic = _DynamicSemanticAnalyzer()
     native = NativeFullAuditBundle(
         text_executor=TextFullAuditExecutor(
@@ -133,6 +193,9 @@ def _native_module(
             ),
             workspace_root=workspace,
         ),
+        audio_selection_policy=(
+            default_audio_audit_selection_policy() if selective_audio else None
+        ),
     )
     module = PodcastSubtitleV2(
         episode_root,
@@ -149,6 +212,7 @@ def _native_module(
         native_full_audit=native,
         reference_retriever=reference_retriever,
         reference_retriever_identity=reference_retriever_identity,
+        code_version=code_version,
     )
     module._corrector = _PoisonLegacyAudit()
     module._audio_auditor = _PoisonLegacyAudit()
@@ -194,6 +258,13 @@ def test_native_create_resumes_text_then_audio_and_finishes_needs_review(
     assert tuple(item.calls for item in first_recognizers) == (1, 1)
     checkpoint = first.store.load_latest_create_checkpoint()
     assert checkpoint is not None
+    assert checkpoint.checkpoint.stage == "native_audit_basis_ready"
+    assert "native_full_audit/audio_source_artifact_index.json" not in (
+        checkpoint.checkpoint.artifact_hashes
+    )
+    assert "native_full_audit/text_execution_plan_v3.json" in (
+        checkpoint.checkpoint.artifact_hashes
+    )
     checkpoint_names = {
         item.role: item.adapter_name for item in checkpoint.checkpoint.adapter_identities
     }
@@ -221,6 +292,12 @@ def test_native_create_resumes_text_then_audio_and_finishes_needs_review(
     assert second_normalizer.calls == 0
     assert tuple(item.calls for item in second_recognizers) == (0, 0)
     assert not second.store.generations_dir.exists()
+    text_ready = second.store.load_latest_create_checkpoint()
+    assert text_ready is not None
+    assert text_ready.checkpoint.stage == "native_text_audit_ready"
+    assert "native_full_audit/initial_audio_selection_v3.json" in (
+        text_ready.checkpoint.artifact_hashes
+    )
     for request_path, clip_path, response_path in zip(
         audio_pending.packet_paths,
         audio_pending.clip_paths,
@@ -246,7 +323,7 @@ def test_native_create_resumes_text_then_audio_and_finishes_needs_review(
     assert any(item.code == "native_full_audit_requires_resolution" for item in completed.issues)
     assert third.store.read_artifact(
         completed.generation_id,
-        "native_full_audit/full_audit_aggregate.json",
+        "native_full_audit/selective_audit_aggregate_v3.json",
     )
 
     workspace.rename(tmp_path / "detached-native-workspace")
@@ -260,6 +337,159 @@ def test_native_create_resumes_text_then_audio_and_finishes_needs_review(
     assert reloaded == completed
     assert fourth_normalizer.calls == 0
     assert tuple(item.calls for item in fourth_recognizers) == (0, 0)
+
+
+def test_selective_native_create_resumes_10_to_30_to_full_without_prefix_rerun(
+    tmp_path: Path,
+) -> None:
+    episode_root = tmp_path / "episode"
+    workspace = tmp_path / "workspace"
+    first, source, _, _ = _native_module(episode_root, workspace=workspace)
+    request = CreateRequest(episode_id="episode-selective-escalation", source_audio=source)
+    text_pending = first.create(request)
+    assert isinstance(text_pending, Interrupted)
+    for request_path, response_path in zip(
+        text_pending.packet_paths, text_pending.response_paths, strict=True
+    ):
+        response_path.parent.mkdir(parents=True, exist_ok=True)
+        response_path.write_bytes(text_response_bytes(request_path.read_bytes()))
+
+    second, _, _, _ = _native_module(episode_root, workspace=workspace)
+    ten_pending = second.create(request)
+    assert isinstance(ten_pending, Interrupted)
+    assert len(ten_pending.packet_paths) == 1
+    for request_path, clip_path, response_path in zip(
+        ten_pending.packet_paths,
+        ten_pending.clip_paths,
+        ten_pending.response_paths,
+        strict=True,
+    ):
+        response_path.parent.mkdir(parents=True, exist_ok=True)
+        response_path.write_bytes(
+            _material_audio_response_bytes(request_path.read_bytes(), clip_path.read_bytes())
+        )
+
+    third, _, third_normalizer, third_recognizers = _native_module(
+        episode_root, workspace=workspace
+    )
+    thirty_pending = third.create(request)
+    assert isinstance(thirty_pending, Interrupted)
+    assert len(thirty_pending.packet_paths) == 2
+    assert set(thirty_pending.packet_paths).isdisjoint(ten_pending.packet_paths)
+    assert third_normalizer.calls == 0
+    assert tuple(item.calls for item in third_recognizers) == (0, 0)
+    for request_path, clip_path, response_path in zip(
+        thirty_pending.packet_paths,
+        thirty_pending.clip_paths,
+        thirty_pending.response_paths,
+        strict=True,
+    ):
+        response_path.parent.mkdir(parents=True, exist_ok=True)
+        response_path.write_bytes(
+            audio_response_bytes(request_path.read_bytes(), clip_path.read_bytes())
+        )
+
+    fourth, _, _, _ = _native_module(episode_root, workspace=workspace)
+    full_pending = fourth.create(request)
+    assert isinstance(full_pending, Interrupted)
+    assert len(full_pending.packet_paths) == 7
+    assert set(full_pending.packet_paths).isdisjoint(
+        {*ten_pending.packet_paths, *thirty_pending.packet_paths}
+    )
+    for request_path, clip_path, response_path in zip(
+        full_pending.packet_paths,
+        full_pending.clip_paths,
+        full_pending.response_paths,
+        strict=True,
+    ):
+        response_path.parent.mkdir(parents=True, exist_ok=True)
+        response_path.write_bytes(
+            audio_response_bytes(request_path.read_bytes(), clip_path.read_bytes())
+        )
+
+    final, _, final_normalizer, final_recognizers = _native_module(
+        episode_root, workspace=workspace
+    )
+    completed = final.create(request)
+    assert isinstance(completed, NeedsReview)
+    assert final_normalizer.calls == 0
+    assert tuple(item.calls for item in final_recognizers) == (0, 0)
+    aggregate = json.loads(
+        final.store.read_artifact(
+            completed.generation_id,
+            "native_full_audit/selective_audit_aggregate_v3.json",
+        )
+    )
+    assert aggregate["terminal_tier"] == "full"
+    assert aggregate["terminal_decision"] == "complete"
+
+
+def test_selective_runtime_reopens_completed_legacy_v2_generation(tmp_path: Path) -> None:
+    episode_root = tmp_path / "episode"
+    workspace = tmp_path / "workspace"
+    first, source, _, _ = _native_module(
+        episode_root,
+        workspace=workspace,
+        selective_audio=False,
+    )
+    request = CreateRequest(episode_id="episode-legacy-readable", source_audio=source)
+    text_pending = first.create(request)
+    assert isinstance(text_pending, Interrupted)
+    for request_path, response_path in zip(
+        text_pending.packet_paths, text_pending.response_paths, strict=True
+    ):
+        response_path.parent.mkdir(parents=True, exist_ok=True)
+        response_path.write_bytes(text_response_bytes(request_path.read_bytes()))
+
+    second, _, _, _ = _native_module(
+        episode_root,
+        workspace=workspace,
+        selective_audio=False,
+    )
+    audio_pending = second.create(request)
+    assert isinstance(audio_pending, Interrupted)
+    for request_path, clip_path, response_path in zip(
+        audio_pending.packet_paths,
+        audio_pending.clip_paths,
+        audio_pending.response_paths,
+        strict=True,
+    ):
+        response_path.parent.mkdir(parents=True, exist_ok=True)
+        response_path.write_bytes(
+            audio_response_bytes(request_path.read_bytes(), clip_path.read_bytes())
+        )
+
+    legacy, _, _, _ = _native_module(
+        episode_root,
+        workspace=workspace,
+        selective_audio=False,
+    )
+    completed = legacy.create(request)
+    assert isinstance(completed, NeedsReview)
+    selective, _, _, _ = _native_module(episode_root, workspace=workspace)
+    loaded = selective._load_generation(completed.generation_id, require_active=True)
+    assert isinstance(loaded.audit, LoadedNativeAuditState)
+    assert isinstance(loaded.audit.aggregate, FullAuditAggregateAttestationV2)
+
+
+def test_selective_runtime_rejects_incomplete_legacy_v2_checkpoint(tmp_path: Path) -> None:
+    episode_root = tmp_path / "episode"
+    workspace = tmp_path / "workspace"
+    legacy, source, _, _ = _native_module(
+        episode_root,
+        workspace=workspace,
+        selective_audio=False,
+    )
+    request = CreateRequest(episode_id="episode-legacy-incomplete", source_audio=source)
+    pending = legacy.create(request)
+    assert isinstance(pending, Interrupted)
+    checkpoint = legacy.store.load_latest_create_checkpoint()
+    assert checkpoint is not None
+    assert checkpoint.checkpoint.stage == "native_audit_basis_ready"
+
+    selective, _, _, _ = _native_module(episode_root, workspace=workspace)
+    with pytest.raises(GenerationIsolationError):
+        selective.create(request)
 
 
 def test_native_and_legacy_audit_composition_is_rejected(tmp_path: Path) -> None:
@@ -299,6 +529,30 @@ def test_native_identity_drift_stops_before_prefix_provider_calls(tmp_path: Path
     assert normalizer.calls == 0
     assert tuple(item.calls for item in recognizers) == (0, 0)
     assert not changed.store.generations_dir.exists()
+    assert not tuple(changed.store.audio_staging_dir.iterdir())
+
+
+def test_module_code_only_drift_stops_before_prefix_provider_calls(tmp_path: Path) -> None:
+    episode_root = tmp_path / "episode"
+    workspace = tmp_path / "workspace"
+    first, source, _, _ = _native_module(
+        episode_root,
+        workspace=workspace,
+        code_version="source-inventory-before",
+    )
+    request = CreateRequest(episode_id="episode-module-code-drift", source_audio=source)
+    assert isinstance(first.create(request), Interrupted)
+
+    changed, _, normalizer, recognizers = _native_module(
+        episode_root,
+        workspace=workspace,
+        code_version="source-inventory-after",
+    )
+    with pytest.raises(GenerationIsolationError, match="incomplete create operation"):
+        changed.create(request)
+    assert normalizer.calls == 0
+    assert tuple(item.calls for item in recognizers) == (0, 0)
+    assert not tuple(changed.store.audio_staging_dir.iterdir())
 
 
 def test_native_basis_tamper_stops_before_prefix_provider_calls(tmp_path: Path) -> None:

@@ -22,7 +22,14 @@ from .composition import (
     build_factory_context,
 )
 from .facade import PodcastSubtitleFacade, StatusView
-from .module import CreateRequest, Interrupted, PodcastSubtitleV2, ProjectRequest
+from .module import (
+    CreateRequest,
+    EvidencePrefixMigrationRequest,
+    Interrupted,
+    NativeAuditBasisMigrationRequest,
+    PodcastSubtitleV2,
+    ProjectRequest,
+)
 from .native_resolution import ResolveNativeRequest
 from .ports import SpeakerTrackInput
 from .profiles import profile_by_id
@@ -171,6 +178,47 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
         help="already-normalized PCM WAV input; Subtitle V2 does not normalize it",
     )
+
+    migrate = commands.add_parser(
+        "migrate-evidence-prefix",
+        help="rebind one verified pre-V3 evidence checkpoint to current policy identity",
+    )
+    migrate.add_argument("--episode-id", required=True)
+    migrate.add_argument("--source-audio", type=Path, required=True)
+    migrate.add_argument("--language")
+    migrate.add_argument("--vocabulary", action="append", default=[])
+    migrate.add_argument(
+        "--mic-track",
+        "--speaker-track",
+        dest="speaker_tracks",
+        action="append",
+        default=[],
+        type=_parse_speaker_track,
+        metavar="LABEL=PATH",
+    )
+    migrate.add_argument("--expected-checkpoint-id", required=True)
+    migrate.add_argument("--operator", required=True)
+    migrate.add_argument("--migrated-at-utc", required=True)
+    migrate_basis = commands.add_parser(
+        "migrate-native-audit-basis",
+        help="rebind one verified immutable native audit basis to current code identity",
+    )
+    migrate_basis.add_argument("--episode-id", required=True)
+    migrate_basis.add_argument("--source-audio", type=Path, required=True)
+    migrate_basis.add_argument("--language")
+    migrate_basis.add_argument("--vocabulary", action="append", default=[])
+    migrate_basis.add_argument(
+        "--mic-track",
+        "--speaker-track",
+        dest="speaker_tracks",
+        action="append",
+        default=[],
+        type=_parse_speaker_track,
+        metavar="LABEL=PATH",
+    )
+    migrate_basis.add_argument("--expected-checkpoint-id", required=True)
+    migrate_basis.add_argument("--operator", required=True)
+    migrate_basis.add_argument("--migrated-at-utc", required=True)
     run.add_argument("--language")
     run.add_argument("--vocabulary", action="append", default=[])
     run.add_argument(
@@ -256,7 +304,7 @@ def _parser() -> argparse.ArgumentParser:
 
     # Accept the trust-root option on either side of the verb without letting a
     # subparser default overwrite a global value supplied before the verb.
-    for command_parser in (run, review, decide, decide_native, project):
+    for command_parser in (run, migrate, review, decide, decide_native, project):
         command_parser.add_argument(
             "--reference-manifest",
             dest="reference_manifest",
@@ -278,13 +326,23 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
-    if args.command == "run" and args.reference_manifest is None:
+    create_commands = {
+        "run",
+        "migrate-evidence-prefix",
+        "migrate-native-audit-basis",
+    }
+    if args.command in create_commands and args.reference_manifest is None:
         parser.error(
-            "run requires an episode-specific --reference-manifest with at least "
+            f"{args.command} requires an episode-specific --reference-manifest with at least "
             "one enrolled source"
         )
-    if args.command == "run":
+    if args.command in create_commands:
         _validate_speaker_tracks(parser, tuple(args.speaker_tracks))
+        if not args.source_audio.is_file():
+            parser.error(f"source audio is not a file: {args.source_audio}")
+    if args.command in {"migrate-evidence-prefix", "migrate-native-audit-basis"}:
+        if not args.operator.strip() or args.operator != args.operator.strip():
+            parser.error("migration operator must be non-blank and trimmed")
     native_request = (
         _native_resolve_request(parser, args) if args.command == "decide-native" else None
     )
@@ -294,7 +352,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         factory_context = build_factory_context(
             episode_root=args.episode_root,
-            episode_id=args.episode_id if args.command == "run" else None,
+            episode_id=(args.episode_id if args.command in create_commands else None),
             reference_manifest=args.reference_manifest,
         )
     except ReferenceManifestError as exc:
@@ -314,6 +372,38 @@ def main(argv: list[str] | None = None) -> int:
                 vocabulary=tuple(args.vocabulary),
                 speaker_tracks=tuple(args.speaker_tracks),
                 reference_enrollments=factory_context.reference_enrollments,
+            )
+        )
+    elif args.command == "migrate-evidence-prefix":
+        result = facade.migrate_evidence_prefix(
+            EvidencePrefixMigrationRequest(
+                create_request=CreateRequest(
+                    episode_id=args.episode_id,
+                    source_audio=args.source_audio,
+                    language_hint=args.language,
+                    vocabulary=tuple(args.vocabulary),
+                    speaker_tracks=tuple(args.speaker_tracks),
+                    reference_enrollments=factory_context.reference_enrollments,
+                ),
+                expected_checkpoint_id=args.expected_checkpoint_id,
+                operator=args.operator,
+                migrated_at_utc=args.migrated_at_utc,
+            )
+        )
+    elif args.command == "migrate-native-audit-basis":
+        result = facade.migrate_native_audit_basis(
+            NativeAuditBasisMigrationRequest(
+                create_request=CreateRequest(
+                    episode_id=args.episode_id,
+                    source_audio=args.source_audio,
+                    language_hint=args.language,
+                    vocabulary=tuple(args.vocabulary),
+                    speaker_tracks=tuple(args.speaker_tracks),
+                    reference_enrollments=factory_context.reference_enrollments,
+                ),
+                expected_checkpoint_id=args.expected_checkpoint_id,
+                operator=args.operator,
+                migrated_at_utc=args.migrated_at_utc,
             )
         )
     elif args.command == "status":

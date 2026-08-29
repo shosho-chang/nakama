@@ -29,7 +29,8 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
-from shared.config import get_vault_path
+from agents.usopp.publish_timeline import release_subtitle
+from shared.config import get_runtime_data_dir, get_vault_path
 from shared.log import get_logger
 from shared.publish_calendar import short_execution_readiness
 from shared.release_store import get_release, list_releases, update_target
@@ -66,9 +67,7 @@ _META_STAGING_SETTINGS = (
 
 
 def _upload_progress_dir() -> Path:
-    root = Path(__file__).resolve().parent.parent.parent
-    data_dir = Path(os.environ.get("NAKAMA_DATA_DIR", "") or root / "data")
-    return data_dir / "upload_progress"
+    return _upload_data_dir() / "upload_progress"
 
 
 def _upload_progress_file(episode: str, cut_id: str) -> Path:
@@ -246,6 +245,56 @@ def taipei_to_iso(dt_local: str) -> str:
     return dt.isoformat() + "+08:00"
 
 
+def _copy_fields(title: str, description: str, publish_at_local: str) -> dict:
+    """Validate and normalize the editable YouTube metadata fields."""
+    title = title.strip()
+    if not title or len(title) > _TITLE_MAX:
+        raise HTTPException(status_code=422, detail=f"標題必填且 ≤{_TITLE_MAX} 字")
+    if len(description) > _DESC_MAX:
+        raise HTTPException(status_code=422, detail=f"描述 ≤{_DESC_MAX} 字")
+    if "{{TODO_" in description:
+        raise HTTPException(status_code=422, detail="描述還有 {{TODO_*}} 佔位符——先填掉")
+    return {
+        "title": title,
+        "description": description,
+        "publish_at": taipei_to_iso(publish_at_local) if publish_at_local else None,
+    }
+
+
+def _upload_data_dir() -> Path:
+    """Return the machine-shared runtime data directory, including in a worktree."""
+    return get_runtime_data_dir()
+
+
+def _spawn_upload_worker(episode: str, cut_id: str, *worker_args: str) -> Path:
+    """Start the desktop publisher with the same runtime data directory as Bridge."""
+
+    data_dir = _upload_data_dir()
+    root = Path(__file__).resolve().parent.parent.parent
+    script = root / "scripts" / "publish_upload.py"
+    log_dir = data_dir / "upload_progress"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    safe = f"{episode}_{cut_id}".replace("/", "_").replace("\\", "_")
+    log_path = log_dir / f"{safe}.log"
+    log_f = open(log_path, "a", encoding="utf-8")  # noqa: SIM115
+    child_env = os.environ.copy()
+    child_env["NAKAMA_DATA_DIR"] = str(data_dir)
+    try:
+        subprocess.Popen(
+            [sys.executable, str(script), *worker_args, "--episode", episode],
+            cwd=str(root),
+            env=child_env,
+            stdout=log_f,
+            stderr=subprocess.STDOUT,
+        )
+    finally:
+        # The child inherits/duplicates the handle during Popen.  The Bridge
+        # worker must release its copy so repeated retries do not leak handles
+        # or keep progress logs locked on Windows.
+        log_f.close()
+    return log_path
+
+
 @page_router.get("", response_class=HTMLResponse, response_model=None)
 def publish_list(
     request: Request, nakama_auth: str | None = Cookie(None)
@@ -305,7 +354,13 @@ def publish_cut(
         publish_local = t["publish_at"][:16]
     cc_policy = "sidecar_required" if rel["format"] == "long" else "burned_only"
     # Short 成品的字幕已燒入畫面；不要掃 tight SRT，否則 UI 會誤導為另上 CC。
-    subs = latest_tight_srt(_episode_dir(rel), cut_id) if cc_policy == "sidecar_required" else None
+    # 標籤要說出「實際會上傳的那一份」。之前寫死 tight SRT，實際送的是 Release
+    # 那份——頁面上的檔名跟播放器聽到的內容不是同一個東西。
+    subs = (
+        (release_subtitle(_episode_dir(rel), cut_id) or latest_tight_srt(_episode_dir(rel), cut_id))
+        if cc_policy == "sidecar_required"
+        else None
+    )
     return _templates.TemplateResponse(
         request,
         "publish_cut.html",
@@ -352,7 +407,12 @@ def publish_thumb(
     p = get_vault_path() / t["thumbnail_path"]
     if not p.exists():
         raise HTTPException(status_code=404, detail=f"縮圖不存在: {p}")
-    return FileResponse(p, media_type="image/png")
+    # 這個網址是固定的，底下的圖卻會換（換 package、重出封面）。沒有這個 header
+    # 瀏覽器會沿用先前那張：2026-08-29 修修把主選從 #3 改成 #1、封面也重出過，
+    # 頁面卻還顯示舊縮圖，讓他以為選擇沒生效。ETag 仍在，重新驗證很便宜。
+    return FileResponse(
+        p, media_type="image/png", headers={"Cache-Control": "no-cache, must-revalidate"}
+    )
 
 
 @page_router.get("/subs/{episode}/{cut_id}")
@@ -365,11 +425,16 @@ def publish_subs(episode: str, cut_id: str, nakama_auth: str | None = Cookie(Non
     """
     _require_auth(nakama_auth)
     rel, _ = _yt_target(episode, cut_id)
+    episode_dir = _episode_dir(rel)
     if rel["format"] != "long":
         raise HTTPException(status_code=404, detail="Short 字幕已燒入畫面，不提供 sidecar CC")
-    srt = latest_tight_srt(_episode_dir(rel), cut_id)
+    # 必須跟 publish_upload 讀同一份，否則這個頁面就是在騙人：2026-08-29 上傳器
+    # 改讀 Release 字幕、這裡沒跟上，於是修修在審核頁看到的是 260 秒舊剪輯的 125
+    # 句，實際要上架的是 492 秒成品的 226 句。驗證的對象跟交付的對象不同，比顯示
+    # 錯更糟——它讓驗證這件事失去意義。
+    srt = release_subtitle(episode_dir, cut_id) or latest_tight_srt(episode_dir, cut_id)
     if srt is None:
-        raise HTTPException(status_code=404, detail=f"{cut_id} 沒有 tight SRT")
+        raise HTTPException(status_code=404, detail=f"{cut_id} 沒有可用的字幕")
     return Response(
         srt_to_vtt(srt.read_text(encoding="utf-8")),
         media_type="text/vtt; charset=utf-8",
@@ -404,18 +469,7 @@ def publish_save(
     _, t = _yt_target(episode, cut_id)
     if t["status"] in ("uploading", "uploaded", "published"):
         raise HTTPException(status_code=409, detail="已上傳/上傳中——文案鎖定")
-    title = title.strip()
-    if not title or len(title) > _TITLE_MAX:
-        raise HTTPException(status_code=422, detail=f"標題必填且 ≤{_TITLE_MAX} 字")
-    if len(description) > _DESC_MAX:
-        raise HTTPException(status_code=422, detail=f"描述 ≤{_DESC_MAX} 字")
-    if "{{TODO_" in description:
-        raise HTTPException(status_code=422, detail="描述還有 {{TODO_*}} 佔位符——先填掉")
-    fields: dict = {"title": title, "description": description}
-    if publish_at_local:
-        fields["publish_at"] = taipei_to_iso(publish_at_local)
-    else:
-        fields["publish_at"] = None
+    fields = _copy_fields(title, description, publish_at_local)
     update_target(t["id"], **fields)
     logger.info("publish save: %s/%s", episode, cut_id)
     return RedirectResponse(f"/bridge/publish/{episode}/{cut_id}", status_code=303)
@@ -425,6 +479,9 @@ def publish_save(
 def publish_approve_upload(
     episode: str,
     cut_id: str,
+    title: str | None = Form(None),
+    description: str | None = Form(None),
+    publish_at_local: str = Form(""),
     return_to: str = Form(""),
     nakama_auth: str | None = Cookie(None),
 ) -> RedirectResponse:
@@ -433,10 +490,15 @@ def publish_approve_upload(
     rel, t = _yt_target(episode, cut_id)
     if t["status"] in ("uploading", "uploaded", "published"):
         raise HTTPException(status_code=409, detail="已上傳/上傳中")
-    if not t.get("title") or not t.get("description"):
-        raise HTTPException(status_code=422, detail="先儲存 Title/Description 才能上傳")
+    # 長片的「核准並上傳」直接送出文案表單，這一按同時是最後一次存檔；Short 的
+    # 投遞按鈕與短片行事曆只送 approve，文案早就存過了。沒帶欄位就別動 DB——
+    # 帶空字串進 _copy_fields 會把已排好的公開時間清掉。
+    if title is not None and description is not None:
+        update_target(t["id"], **_copy_fields(title, description, publish_at_local))
     if not Path(rel["file_path"]).exists():
-        raise HTTPException(status_code=422, detail="成品檔不存在——重跑 publish_prep")
+        error = "成品檔不存在——重跑 publish_prep"
+        update_target(t["id"], status="failed", error=error)
+        return RedirectResponse(return_url, status_code=303)
     if rel["format"] == "short":
         readiness = short_execution_readiness(rel)
         if not readiness.ready:
@@ -461,24 +523,47 @@ def publish_approve_upload(
         logger.info("publish approve+dispatch: %s/%s（Short multi-target）", episode, cut_id)
         return RedirectResponse(return_url, status_code=303)
 
-    update_target(t["id"], status="approved")
+    data_dir = _upload_data_dir()
+    token_path = data_dir / "youtube_token.json"
+    if not token_path.is_file():
+        error = f"找不到 {token_path}——先跑 python scripts/youtube_auth.py"
+        update_target(t["id"], status="failed", error=error)
+        return RedirectResponse(return_url, status_code=303)
+    update_target(t["id"], status="approved", error=None)
     # 與 CLI 同一條路：subprocess 跑 uploader（狀態轉移由它寫 DB，頁面 poll）。
     # stdout/stderr 落 log 檔——先前 DEVNULL 把 token 缺失的死訊吞掉，修修按了
     # 上傳「後台沒反應」（2026-08-04）
-    root = Path(__file__).resolve().parent.parent.parent
-    script = root / "scripts" / "publish_upload.py"
-    log_dir = _upload_progress_dir()
-    log_dir.mkdir(parents=True, exist_ok=True)
-    safe = f"{episode}_{cut_id}".replace("/", "_").replace("\\", "_")
-    log_f = open(log_dir / f"{safe}.log", "a", encoding="utf-8")  # noqa: SIM115 — 交給子程序持有
-    subprocess.Popen(
-        [sys.executable, str(script), "--run", "--episode", episode, "--cut", cut_id],
-        cwd=str(root),
-        stdout=log_f,
-        stderr=subprocess.STDOUT,
-    )
-    logger.info("publish approve+upload: %s/%s（log: %s.log）", episode, cut_id, safe)
+    log_path = _spawn_upload_worker(episode, cut_id, "--run", "--cut", cut_id)
+    logger.info("publish approve+upload: %s/%s（log: %s）", episode, cut_id, log_path)
     return RedirectResponse(return_url, status_code=303)
+
+
+@page_router.post("/{episode}/{cut_id}/retry-cc")
+def publish_retry_cc(
+    episode: str,
+    cut_id: str,
+    nakama_auth: str | None = Cookie(None),
+) -> RedirectResponse:
+    """Retry only zh-TW CC for an existing video; never creates a video upload."""
+
+    _require_auth(nakama_auth)
+    _, target = _yt_target(episode, cut_id)
+    if not target.get("video_id"):
+        raise HTTPException(status_code=409, detail="影片尚未上傳，不能只補 CC")
+    if target["status"] in ("approved", "uploading"):
+        raise HTTPException(status_code=409, detail="影片仍在上傳，稍後再補 CC")
+    if target.get("caption_status") == "serving":
+        raise HTTPException(status_code=409, detail="zh-TW CC 已在 serving，不需重傳")
+    token_path = _upload_data_dir() / "youtube_token.json"
+    if not token_path.is_file():
+        raise HTTPException(
+            status_code=409,
+            detail=f"找不到 {token_path}——先跑 python scripts/youtube_auth.py",
+        )
+    update_target(target["id"], caption_status="processing", reconciliation_error=None)
+    log_path = _spawn_upload_worker(episode, cut_id, "--cc-only", cut_id)
+    logger.info("publish CC-only retry: %s/%s（log: %s）", episode, cut_id, log_path)
+    return RedirectResponse(f"/bridge/publish/{episode}/{cut_id}", status_code=303)
 
 
 @page_router.post("/{episode}/{cut_id}/retry/{platform}")
@@ -524,11 +609,22 @@ def publish_status(
     return JSONResponse(
         {
             "status": t["status"],
+            "upload_status": t["status"],
             "progress": progress,
             "video_id": t.get("video_id"),
             "url": t.get("url"),
             "error": t.get("error"),
             "publish_at": t.get("publish_at"),
+            "processing_status": t.get("video_processing_status"),
+            "caption_status": t.get("caption_status"),
+            "privacy_status": t.get("platform_privacy_status"),
+            "platform_publish_at": t.get("platform_publish_at"),
+            "reconciliation_error": t.get("reconciliation_error"),
+            "last_reconciled_at": t.get("last_reconciled_at"),
+            "published": t.get("platform_privacy_status") == "public" or t["status"] == "published",
+            "can_retry_cc": bool(t.get("video_id"))
+            and t.get("caption_status") != "serving"
+            and t["status"] not in ("approved", "uploading"),
             "targets": _platform_targets(rel),
             "checked_at": datetime.now(timezone.utc).isoformat(),
         }

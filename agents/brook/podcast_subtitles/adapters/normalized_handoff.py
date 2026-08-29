@@ -69,7 +69,7 @@ def _load(path: Path) -> tuple[NormalizedAudioHandoffManifestV1, bytes]:
     return manifest, payload
 
 
-def _wav_duration_ms(path: Path) -> int:
+def wav_duration_ms(path: Path) -> int:
     try:
         with wave.open(str(path), "rb") as source:
             frame_rate = source.getframerate()
@@ -104,7 +104,7 @@ class VerifiedNormalizedAudioHandoffAdapter:
             manifest.normalized_audio_size_bytes,
         ):
             raise AdapterIntegrityError("normalized handoff manifest belongs to other audio")
-        normalized_duration_ms = _wav_duration_ms(audio)
+        normalized_duration_ms = wav_duration_ms(audio)
         if normalized_duration_ms != manifest.normalized_audio_duration_ms:
             raise AdapterIntegrityError("normalized audio duration differs from handoff manifest")
         parameters = (
@@ -153,4 +153,5 @@ class VerifiedNormalizedAudioHandoffAdapter:
 __all__ = [
     "NormalizedAudioHandoffManifestV1",
     "VerifiedNormalizedAudioHandoffAdapter",
+    "wav_duration_ms",
 ]

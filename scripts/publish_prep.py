@@ -8,10 +8,10 @@
 跑完的語意是「**登錄了**」不是「發布了」——系統手上多了檔案 + 草稿
 Release（draft），等文案（packaging 交接檔）、等排程、等修修核准。
 
-Q4b 字幕的兩顆地雷（run_short_review 實測，與計畫文件的假設**相反**）：
+字幕輸出政策：
 
-- **長片**：Resolve render 會把主字幕模板軌**燒進畫面**——但 Q4b 裁決長片
-  不燒、只上 CC → render 前 disable 全部 subtitle 軌，render 完恢復
+- **長片**：沿用主字幕模板內的「Shosho YT」樣式，Resolve render 明確指定
+  Burn In；這是長片的發布預設，不需要逐集手動切換
 - **短片**：Resolve render **燒不進**字幕（只出 sidecar）——但短片必須燒
   → Resolve 出乾淨畫面，ffmpeg 從 tight SRT 燒（同 QC preview 工法，
   字級按全解析放大）
@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -40,6 +41,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from run_highlight_cut import FORMAT_LABEL  # noqa: E402
+
+from agents.usopp.publish_timeline import (  # noqa: E402
+    PublishTimelineError,
+    load_timeline_map,
+    resolve_target,
+    verify_duration,
+)
 
 logger = logging.getLogger("publish_prep")
 
@@ -97,7 +105,48 @@ def _find_timeline(project, label: str):
     raise SystemExit(f"timeline「{label}」不存在——先跑完 longform-cut/highlight-cut 製作線")
 
 
-def _render_master(project, timeline, out_dir: Path, name: str) -> Path:
+def _timeline_duration_sec(timeline) -> float:
+    fps = float(timeline.GetSetting("timelineFrameRate") or 0)
+    if fps <= 0:
+        raise SystemExit("timeline frame rate 讀不到——無法驗證長度，不冒險 render")
+    frames = timeline.GetEndFrame() - timeline.GetStartFrame() + 1
+    return frames / fps
+
+
+def _pick_timeline(project, episode_dir: Path, cut: dict):
+    """挑 render 用的 timeline：對應表優先，並在 render 前複驗長度。
+
+    沒有對應表的舊集數沿用 `winners.json` 的顯示名慣例；一旦該集建了對應表，
+    缺項就是硬錯誤——回頭用猜的正是會安靜出錯片的那條路（見
+    agents/usopp/publish_timeline.py 的實測表）。
+    """
+    timeline_map = load_timeline_map(episode_dir)
+    if timeline_map is None:
+        label = timeline_label(cut)
+        return _find_timeline(project, label), label, None
+
+    try:
+        target = resolve_target(timeline_map, cut["id"])
+    except PublishTimelineError as exc:
+        raise SystemExit(str(exc)) from exc
+    timeline = _find_timeline(project, target.timeline)
+    try:
+        verify_duration(target, _timeline_duration_sec(timeline))
+    except PublishTimelineError as exc:
+        raise SystemExit(str(exc)) from exc
+    logger.info(
+        "%s: timeline「%s」對上 Release %s（%.3fs）",
+        cut["id"],
+        target.timeline,
+        target.release_id,
+        target.expected_duration_sec,
+    )
+    return timeline, target.timeline, target.release_id
+
+
+def _render_master(
+    project, timeline, out_dir: Path, name: str, *, burn_subtitles: bool = False
+) -> Path:
     """Resolve render queue 出全解析 H.264 mp4（timeline 原生解析度）。
 
     ⚠️ 三道驗證缺一不可（2026-08-11 安吉 SL7 事故）：舊版只檢查「檔案存在嗎」，
@@ -114,16 +163,17 @@ def _render_master(project, timeline, out_dir: Path, name: str) -> Path:
     w = int(timeline.GetSetting("timelineResolutionWidth"))
     h = int(timeline.GetSetting("timelineResolutionHeight"))
     project.SetCurrentRenderFormatAndCodec("mp4", "H264")
-    project.SetRenderSettings(
-        {
-            "MarkIn": timeline.GetStartFrame(),
-            "MarkOut": timeline.GetEndFrame(),
-            "TargetDir": str(out_dir),
-            "CustomName": name,
-            "FormatWidth": w,
-            "FormatHeight": h,
-        }
-    )
+    settings = {
+        "MarkIn": timeline.GetStartFrame(),
+        "MarkOut": timeline.GetEndFrame(),
+        "TargetDir": str(out_dir),
+        "CustomName": name,
+        "FormatWidth": w,
+        "FormatHeight": h,
+    }
+    if burn_subtitles:
+        settings.update({"ExportSubtitle": True, "SubtitleFormat": "BurnIn"})
+    project.SetRenderSettings(settings)
     out = out_dir / f"{name}.mp4"
     before_mtime = out.stat().st_mtime if out.exists() else 0.0
 
@@ -230,21 +280,17 @@ def _probe(path: Path) -> tuple[float, int]:
 
 def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
     """單支 cut：render → （短片燒字幕）→ exports/<cut_id>.mp4。"""
-    label = timeline_label(cut)
-    timeline = _find_timeline(project, label)
+    timeline, label, release_id = _pick_timeline(project, episode_dir, cut)
     project.SetCurrentTimeline(timeline)
     out_dir = episode_dir / EXPORTS_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     cid = cut["id"]
 
     if cut["format"] == "long":
-        # Q4b：長片成品不燒字幕（CC 另上）。Resolve 會燒模板字幕軌 → 先關。
-        n = _set_subtitle_tracks(resolve, timeline, False)
-        logger.info("%s: 長片——已暫時關閉 %d 條字幕軌（成品不燒，CC 另上）", cid, n)
-        try:
-            final = _render_master(project, timeline, out_dir, cid)
-        finally:
-            _set_subtitle_tracks(resolve, timeline, True)
+        # 長片發布預設：DRT 攜帶 Shosho YT 樣式，Resolve 明確燒進成品。
+        n = _set_subtitle_tracks(resolve, timeline, True)
+        logger.info("%s: 長片——啟用 %d 條 Shosho YT 字幕軌並 Burn In", cid, n)
+        final = _render_master(project, timeline, out_dir, cid, burn_subtitles=True)
     else:
         srt = _latest_tight_srt(episode_dir, cid)
         if srt is None:
@@ -268,6 +314,9 @@ def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
         "file_bytes": size,
         "cc_srt": str(srt_path) if srt_path else None,
         "timeline": label,
+        # 這支成品是哪一版 Release 的內容。amendment 重封 Release 時片長不變，
+        # 長度護欄看不出差別；沒有這個欄位，下一次核准會直接沿用舊畫面。
+        "release_id": release_id,
     }
 
 
@@ -276,7 +325,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="發布線 Slice 1：render 成品 + 登錄草稿 Release")
     parser.add_argument("episode", help="episode 資料夾（G:\\footages\\...）")
     parser.add_argument("--cut", help="只出這一支（winner id，如 punch-L5）")
+    parser.add_argument(
+        "--render-only",
+        action="store_true",
+        help="只由 Resolve 匯出並寫 receipt；DB 登錄交給 Web App 的相容 Python",
+    )
+    parser.add_argument("--receipt", type=Path, help="--render-only 的 JSON receipt 落點")
+    parser.add_argument("--attempt-id", help="Web background attempt identity")
     args = parser.parse_args(argv)
+    if args.render_only != bool(args.receipt):
+        raise SystemExit("--render-only 與 --receipt 必須一起使用")
+    if bool(args.attempt_id) != bool(args.receipt):
+        raise SystemExit("--attempt-id 與 --receipt 必須一起使用")
 
     episode_dir = Path(args.episode)
     if not episode_dir.exists():
@@ -286,7 +346,8 @@ def main(argv: list[str] | None = None) -> int:
 
     from build_resolve_project import connect_resolve  # Resolve 依賴延後 import
 
-    from shared.release_store import ensure_target, register_release
+    if not args.render_only:
+        from shared.release_store import ensure_target, register_release
 
     resolve = connect_resolve()
     pm = resolve.GetProjectManager()
@@ -299,33 +360,43 @@ def main(argv: list[str] | None = None) -> int:
     results = []
     for cut in cuts:
         info = export_cut(resolve, project, episode_dir, cut)
-        release_id = register_release(
-            episode_dir.name,
-            info["cut_id"],
-            info["format"],
-            info["file"],
-            work_title=info["work_title"],
-            file_bytes=info["file_bytes"],
-            duration_sec=info["duration_sec"],
-        )
-        target_id = ensure_target(release_id, "youtube")
-        info["release_id"] = release_id
-        info["youtube_target_id"] = target_id
+        if not args.render_only:
+            release_id = register_release(
+                episode_dir.name,
+                info["cut_id"],
+                info["format"],
+                info["file"],
+                work_title=info["work_title"],
+                file_bytes=info["file_bytes"],
+                duration_sec=info["duration_sec"],
+            )
+            target_id = ensure_target(release_id, "youtube")
+            info["release_id"] = release_id
+            info["youtube_target_id"] = target_id
+            logger.info(
+                "登錄 release #%d（%s）→ youtube target #%d（draft）",
+                release_id,
+                info["cut_id"],
+                target_id,
+            )
         results.append(info)
-        logger.info(
-            "登錄 release #%d（%s）→ youtube target #%d（draft）",
-            release_id,
-            info["cut_id"],
-            target_id,
-        )
 
-    print(
-        json.dumps(
-            {"status": "registered", "count": len(results), "cuts": results},
-            ensure_ascii=False,
-            indent=1,
+    payload = {
+        "status": "rendered" if args.render_only else "registered",
+        "episode": episode_dir.name,
+        "count": len(results),
+        "cuts": results,
+        "attempt_id": args.attempt_id,
+        "exit_code": 0,
+    }
+    if args.receipt:
+        args.receipt.parent.mkdir(parents=True, exist_ok=True)
+        temporary = args.receipt.with_suffix(args.receipt.suffix + f".{os.getpid()}.tmp")
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
-    )
+        os.replace(temporary, args.receipt)
+    print(json.dumps(payload, ensure_ascii=False, indent=1))
     return 0
 
 

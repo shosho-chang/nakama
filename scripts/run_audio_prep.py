@@ -30,6 +30,14 @@ load_dotenv()
 # worktree 內執行時 frame-based find 找不到 .env，退回從 cwd 向上找（主 repo）
 load_dotenv(find_dotenv(usecwd=True))
 
+from agents.brook.podcast_subtitles.adapters.normalized_handoff import (  # noqa: E402
+    NormalizedAudioHandoffManifestV1,
+    wav_duration_ms,
+)
+from agents.brook.podcast_subtitles.hashing import (  # noqa: E402
+    canonical_json_bytes,
+    measure_regular_file,
+)
 from shared.audio_trim import (  # noqa: E402
     DEFAULT_MIN_SILENCE,
     DEFAULT_NOISE_DB,
@@ -48,6 +56,7 @@ logger = logging.getLogger("audio_prep")
 DEFAULT_AUDIO_CANDIDATES = ("live-mix.wav", "livemix.wav", "live mix.wav")
 MANIFEST_NAME = "prep_manifest.json"
 OUTPUT_NAME = "normalized.wav"
+V2_HANDOFF_NAME = "normalized-handoff.v1.json"
 
 
 def find_source_audio(episode_dir: Path) -> Path:
@@ -152,9 +161,10 @@ def run_prep(
                 p.unlink()
                 logger.info(f"清除中間檔: {p.name}")
 
+    completed_at = datetime.now(timezone.utc)
     manifest = {
         "stage": "prep",
-        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "completed_at": completed_at.isoformat(),
         "source": str(source),
         "source_duration_sec": round(source_duration, 3),
         "auphonic": True if pre_processed is not None else use_auphonic,
@@ -174,6 +184,23 @@ def run_prep(
     }
     manifest_path = episode_dir / MANIFEST_NAME
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    if pre_processed is not None or use_auphonic:
+        normalized_hash, normalized_size = measure_regular_file(output_path)
+        handoff = NormalizedAudioHandoffManifestV1(
+            normalized_audio_sha256=normalized_hash,
+            normalized_audio_size_bytes=normalized_size,
+            normalized_audio_duration_ms=wav_duration_ms(output_path),
+            accepted_at=completed_at,
+        )
+        handoff_path = episode_dir / V2_HANDOFF_NAME
+        temporary_handoff = handoff_path.with_suffix(".json.tmp")
+        temporary_handoff.write_bytes(canonical_json_bytes(handoff))
+        temporary_handoff.replace(handoff_path)
+    else:
+        logger.warning(
+            "未產生 Subtitle V2 normalized handoff：--no-auphonic raw copy 不是 production "
+            "normalized audio"
+        )
     logger.info(
         f"完成: {output_path}（{final_duration / 60:.1f} min）manifest → {manifest_path.name}"
     )

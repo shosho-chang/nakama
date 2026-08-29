@@ -14,6 +14,8 @@ Coverage:
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import importlib.util
 import json
 import sys
@@ -37,11 +39,233 @@ def _load(name: str):
 guest_cutout = _load("guest_cutout")
 render_still = _load("render_still")
 attach_packages = _load("attach_packages")
+render_request = _load("render_request")
 
 
 # ---------------------------------------------------------------------------
 # guest_cutout.sample — 機位交叉驗證
 # ---------------------------------------------------------------------------
+
+
+def test_render_request_preserves_author_book_layer(tmp_path):
+    vault = tmp_path / "vault"
+    recipe = {
+        "book_cover": "Attachments/packaging/episode/book-cover.png",
+        "book_cover_opacity": 0.42,
+        "book_cover_brightness": 0.38,
+        "book_cover_height_pct": 100,
+    }
+
+    variables, images = render_request._book_cover_layer(recipe, vault)
+
+    assert images["book_cover_data_url"] == str(
+        vault / "Attachments/packaging/episode/book-cover.png"
+    )
+    assert variables == {
+        "book_cover_opacity": 0.42,
+        "book_cover_brightness": 0.38,
+        "book_cover_height_pct": 100.0,
+    }
+
+
+def test_render_request_builds_lossless_n2_reaction_spec(tmp_path):
+    vault = tmp_path / "vault"
+    cut_dir = vault / "Attachments" / "cutouts" / "podcast" / "episode"
+    request = {
+        "composition": "thumbnail_reaction",
+        "center_visual_asset": "Attachments/packaging/episode/center-r2.png",
+        "center_geometry": {
+            "width_pct": 56.5,
+            "height_px": 430,
+            "x_pct": 52,
+            "y_pct": 47.5,
+        },
+    }
+    host = {"height_pct": 140, "x_pct": -26.6, "y_pct": -34.5}
+    guest = {"height_pct": 113.8, "x_pct": -25.4, "y_pct": -1.3}
+
+    spec = render_request._build_reaction_spec(
+        request,
+        vault=vault,
+        cut_dir=cut_dir,
+        host_name="host.png",
+        guest_name="guest.png",
+        host=host,
+        guest=guest,
+    )
+
+    assert spec["images"]["prop_image_data_url"] == str(
+        vault / "Attachments/packaging/episode/center-r2.png"
+    )
+    assert spec["variables"]["prop_width_pct"] == 56.5
+    assert spec["variables"]["prop_height_px"] == 430.0
+    assert spec["variables"]["prop_center_x_pct"] == 52.0
+    assert spec["variables"]["prop_center_y_pct"] == 47.5
+    assert spec["variables"]["frame_style"] == "skew"
+    assert spec["variables"]["host_height_pct"] == 140
+
+
+def test_render_request_persists_n2_receipt_and_recipe(monkeypatch, tmp_path):
+    vault = tmp_path / "vault"
+    ep_vault = vault / "Attachments" / "packaging" / "episode"
+    cut_dir = vault / "Attachments" / "cutouts" / "podcast" / "episode"
+    working = tmp_path / "episode" / "packaging"
+    for path in (ep_vault, cut_dir, working):
+        path.mkdir(parents=True)
+    packages = {
+        "episode": "Episode",
+        "cuts": [
+            {
+                "cut_id": "value-L01",
+                "titles": [{"rank": 2, "text": "title"}],
+                "packages": [
+                    {"title_rank": rank, "thumbnail_png": f"old-{rank}.png"} for rank in (1, 2, 3)
+                ],
+            }
+        ],
+    }
+    for path in (ep_vault / "packages.json", working / "packages.json"):
+        path.write_text(json.dumps(packages), encoding="utf-8")
+    center = ep_vault / "center-value-L01-r2.png"
+    center.write_bytes(b"center")
+    sidecar = tmp_path / "sidecar.json"
+    sidecar.write_text("{}", encoding="utf-8")
+
+    args = SimpleNamespace(
+        packaging_dir=working,
+        cut_id="value-L01",
+        episode_slug="episode",
+        out_suffix="",
+    )
+    request = {
+        "composition": "thumbnail_reaction",
+        "title_rank": 2,
+        "host_cutout": "Attachments/cutouts/podcast/episode/host.png",
+        "guest_cutout": "Attachments/cutouts/podcast/episode/guest.png",
+        "big_text": [],
+        "center_visual_asset": "Attachments/packaging/episode/center-value-L01-r2.png",
+        "center_geometry": {"width_pct": 53, "height_px": 455, "x_pct": 50, "y_pct": 50},
+        "requested_at": "2026-08-27T00:00:00+00:00",
+        "geometry_manual": True,
+    }
+
+    def fake_run(command):
+        if "render_still.py" in " ".join(command):
+            assert "thumbnail_reaction" in command
+            (working / "pkg-value-L01-2.png").write_bytes(b"rendered")
+        return SimpleNamespace(returncode=0, stderr="", stdout="QA PASS\n")
+
+    def fake_plan(**kwargs):
+        spec = json.loads(Path(kwargs["spec"]["render_spec"]).read_text(encoding="utf-8"))
+        assert spec["composition"] == "thumbnail_reaction"
+        return SimpleNamespace(
+            payload={
+                "thumbnail_png": "Attachments/packaging/episode/pkg-value-L01-2.png",
+                "center_visual_asset": ("Attachments/packaging/episode/center-value-L01-r2.png"),
+            },
+            center_name=center.name,
+            center_source=center,
+            sidecar_name="pkg-value-L01-2.png.composition.json",
+            sidecar_source=sidecar,
+            receipt_name="value-L01-r2.json",
+        )
+
+    monkeypatch.setattr(render_request, "_run", fake_run)
+    monkeypatch.setattr(render_request, "build_receipt_plan", fake_plan)
+
+    result = render_request._render_reaction_request(
+        args=args,
+        vault=vault,
+        ep_vault=ep_vault,
+        cut_dir=cut_dir,
+        req=request,
+        package_rank=2,
+        host_name="host.png",
+        guest_name="guest.png",
+        host={"height_pct": 140, "x_pct": -20, "y_pct": -10},
+        guest={"height_pct": 120, "x_pct": -15, "y_pct": 0},
+        entry=None,
+        approval={"approvals": []},
+        approval_path=ep_vault / "approval.json",
+    )
+
+    assert result == 0
+    assert (ep_vault / "composition_receipts" / "value-L01-r2.json").is_file()
+    assert (working / "composition_receipts" / "value-L01-r2.json").is_file()
+    for path in (ep_vault / "packages.json", working / "packages.json"):
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        recipe = saved["cuts"][0]["packages"][1]["render_recipe"]
+        assert recipe["composition"] == "thumbnail_reaction"
+        assert recipe["center_geometry"]["height_px"] == 455
+
+
+def test_render_request_updates_only_selected_package_recipe():
+    data = {
+        "cuts": [
+            {
+                "cut_id": "full",
+                "packages": [
+                    {
+                        "title_rank": rank,
+                        "thumbnail_png": f"old-{rank}.png",
+                        "render_recipe": {"title_rank": rank},
+                    }
+                    for rank in (1, 2, 3)
+                ],
+            }
+        ]
+    }
+    request = {
+        "title_rank": 3,
+        "rendered_png": "new-3.png",
+        "host_cutout": "host-3.png",
+        "guest_cutout": "guest-3.png",
+    }
+
+    render_request._update_selected_package(data, "full", 3, request)
+
+    assert data["cuts"][0]["packages"][0]["thumbnail_png"] == "old-1.png"
+    assert data["cuts"][0]["packages"][1]["thumbnail_png"] == "old-2.png"
+    assert data["cuts"][0]["packages"][2]["thumbnail_png"] == "new-3.png"
+    assert data["cuts"][0]["packages"][2]["render_recipe"] == request
+
+
+def test_render_request_syncs_selected_recipe_to_working_and_vault(tmp_path):
+    paths = [tmp_path / "working.json", tmp_path / "vault.json"]
+    original = {
+        "cuts": [
+            {
+                "cut_id": "full",
+                "packages": [
+                    {"title_rank": rank, "thumbnail_png": f"old-{rank}.png"} for rank in (1, 2, 3)
+                ],
+            }
+        ]
+    }
+    for path in paths:
+        path.write_text(json.dumps(original), encoding="utf-8")
+    request = {
+        "title_rank": 3,
+        "rendered_png": "new-3.png",
+        "host_cutout": "host-3.png",
+        "guest_cutout": "guest-3.png",
+    }
+
+    render_request._write_selected_package(paths, "full", 3, request)
+
+    results = [json.loads(path.read_text(encoding="utf-8")) for path in paths]
+    assert results[0] == results[1]
+    assert results[0]["cuts"][0]["packages"][0]["thumbnail_png"] == "old-1.png"
+    assert results[0]["cuts"][0]["packages"][2]["render_recipe"] == request
+
+
+def test_render_request_ignores_null_legacy_approval_request():
+    request = {"requested_at": "2026-08-21T08:05:28+00:00"}
+
+    assert not render_request._matches_legacy_approval_request({"render_request": None}, request)
+    assert render_request._matches_legacy_approval_request(
+        {"render_request": dict(request)}, request
+    )
 
 
 def _words_fixture(dominant: int, fraction: float, n: int = 10) -> tuple[list[dict], list[int]]:
@@ -282,6 +506,19 @@ def test_render_v2_passes_spec_to_worker(monkeypatch, tmp_path):
     assert seen["images"]["host_cutout_data_url"] == tmp_path / "h.png"
 
 
+def test_author_interview_book_cover_layer_is_documented_and_supported():
+    skill = (_REPO / ".claude/skills/thumbnail-brainstorm/SKILL.md").read_text(encoding="utf-8")
+    composition = (_REPO / "video/compositions/thumbnail_full/index.html").read_text(
+        encoding="utf-8"
+    )
+    assert "N1 作者／新書訪談" in skill
+    assert "book_cover_data_url" in skill
+    assert 'id="book-layer"' in composition
+    assert '"book_cover_data_url"' in composition
+    assert "book_cover_opacity" in composition
+    assert "book_cover_brightness" in composition
+
+
 def test_render_thumbnail_missing_image_fails_loud(tmp_path):
     from agents.brook.script_video.render_workers.thumbnail_worker import render_thumbnail
 
@@ -342,14 +579,129 @@ def _midstate_packages_file() -> dict:
 
 
 def _spec(n: int, png: Path, vault: Path) -> dict:
+    host = vault / "Attachments" / "cutouts" / "shosho" / "surprised" / "1.png"
+    guest = (
+        vault
+        / "Attachments"
+        / "cutouts"
+        / "podcast"
+        / "20260723-xieboran"
+        / "guest_v1_thoughtful.png"
+    )
+    center = png.parent / f"center-source-{n}.png"
+    for path, payload in ((host, b"host"), (guest, b"guest")):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+    # 中央卡素材要能被開啟量長寬比——直式硬塞進橫卡是 2026-08-29 抓到的實際缺口。
+    _write_center_png(center, 1600, 900)
+    variables = {"caption": ""}
+    images = {
+        "prop_image_data_url": str(center),
+        "host_cutout_data_url": str(host),
+        "guest_cutout_data_url": str(guest),
+    }
+    render_spec = png.with_suffix(".render.json")
+    render_spec.write_text(
+        json.dumps({"composition": "thumbnail_reaction", "variables": variables, "images": images}),
+        encoding="utf-8",
+    )
+    merged = dict(variables)
+    for name, raw in images.items():
+        path = Path(raw)
+        merged[name] = (
+            f"data:image/png;base64,{base64.b64encode(path.read_bytes()).decode('ascii')}"
+        )
+    sidecar = {
+        "schema": "nakama.thumbnail_composition_measurement.v1",
+        "composition": "thumbnail_reaction",
+        "renderer": {"name": "hyperframes", "version": "0.6.42"},
+        "composition_sha256": hashlib.sha256(
+            (_REPO / "video" / "compositions" / "thumbnail_reaction" / "index.html").read_bytes()
+        ).hexdigest(),
+        "canvas": {"width": 1280, "height": 720},
+        "bboxes": {
+            "protected_center_bbox": {"x": 301, "y": 132.5, "width": 678, "height": 455},
+            "host_bbox": {"x": 0, "y": 40, "width": 380, "height": 680},
+            "guest_bbox": {"x": 900, "y": 40, "width": 380, "height": 680},
+            "title_bbox": None,
+        },
+        "assets": {
+            name: {
+                "path": str(Path(raw).resolve()),
+                "sha256": hashlib.sha256(Path(raw).read_bytes()).hexdigest(),
+            }
+            for name, raw in images.items()
+        },
+        "variables_sha256": hashlib.sha256(
+            json.dumps(merged, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest(),
+        "png_sha256": hashlib.sha256(png.read_bytes()).hexdigest(),
+    }
+    png.with_suffix(png.suffix + ".composition.json").write_text(
+        json.dumps(sidecar), encoding="utf-8"
+    )
     return {
         "title_rank": n,
         "thumbnail": str(png),
         "thumb_archetype_id": "T-V8",
         "joint_pairing_id": "JP-1",
-        "host_cutout": str(vault / "Attachments" / "cutouts" / "shosho" / "surprised" / "1.png"),
+        "host_cutout": str(host),
         "guest_cutout": "Attachments/cutouts/podcast/20260723-xieboran/guest_v1_thoughtful.png",
+        "render_spec": str(render_spec),
+        "center_provenance": {
+            "supply": "envato",
+            "source": "https://elements.envato.com/photo-placeholder-ABC123",
+            "query": "empty office desk late night",
+            "why": "扣回 04:21 那個 beat：沒有人在的辦公桌就是「工作被接管」的畫面",
+        },
     }
+
+
+def _write_center_png(path: Path, width: int, height: int) -> None:
+    from PIL import Image
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (width, height), (120, 120, 120)).save(path)
+
+
+def _attach_fixture(monkeypatch, tmp_path):
+    """三個 spec 的正常 attach 現場；壞掉的那一個由呼叫端改第 1 筆。"""
+    vault = tmp_path / "vault"
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    working = tmp_path / "packaging"
+    working.mkdir()
+    (working / "packages.json").write_text(
+        json.dumps(_midstate_packages_file(), ensure_ascii=False), encoding="utf-8"
+    )
+    specs = []
+    for n in (1, 2, 3):
+        png = working / f"pkg-punch-L1-{n}.png"
+        png.write_bytes(b"png")
+        specs.append(_spec(n, png, vault))
+    return vault, working, specs
+
+
+def _rewrite_center(spec: dict, size: tuple[int, int]) -> None:
+    """換掉中央卡素材的尺寸，並把 sidecar 的 hash 重新對齊（只留長寬比這一個變因）。"""
+    render_spec_path = Path(spec["render_spec"])
+    render_spec = json.loads(render_spec_path.read_text(encoding="utf-8"))
+    center = Path(render_spec["images"]["prop_image_data_url"])
+    _write_center_png(center, *size)
+
+    thumbnail = Path(spec["thumbnail"])
+    sidecar_path = thumbnail.with_suffix(thumbnail.suffix + ".composition.json")
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    payload = center.read_bytes()
+    sidecar["assets"]["prop_image_data_url"]["sha256"] = hashlib.sha256(payload).hexdigest()
+    merged = dict(render_spec["variables"])
+    for name, raw in render_spec["images"].items():
+        merged[name] = "data:image/png;base64," + base64.b64encode(Path(raw).read_bytes()).decode(
+            "ascii"
+        )
+    sidecar["variables_sha256"] = hashlib.sha256(
+        json.dumps(merged, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
 
 
 def test_attach_fills_validates_and_dual_lands(monkeypatch, tmp_path):
@@ -381,6 +733,155 @@ def test_attach_fills_validates_and_dual_lands(monkeypatch, tmp_path):
         assert (
             vault / "Attachments" / "packaging" / "20260723-xieboran" / f"pkg-punch-L1-{n}.png"
         ).exists()
+        receipt = (
+            vault
+            / "Attachments"
+            / "packaging"
+            / "20260723-xieboran"
+            / "composition_receipts"
+            / f"punch-L1-r{n}.json"
+        )
+        payload = json.loads(receipt.read_text(encoding="utf-8"))
+        assert payload["schema"] == "nakama.long_thumbnail_composition.v3"
+        assert payload["center_provenance"]["supply"] == "envato"
+        assert payload["center_provenance"]["why"].startswith("扣回 04:21")
+        assert payload["thumbnail_sha256"]
+        assert payload["measurement_sidecar_sha256"]
+        assert payload["protected_center_bbox"]["x"] == 301.0
+        assert (vault / payload["center_visual_asset"]).is_file()
+
+
+def test_attach_rejects_portrait_center_frame(monkeypatch, tmp_path):
+    """Long-highlight N2 is a wide card behind the two people, never a portrait slit."""
+    vault = tmp_path / "vault"
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    working = tmp_path / "packaging"
+    working.mkdir()
+    (working / "packages.json").write_text(
+        json.dumps(_midstate_packages_file(), ensure_ascii=False), encoding="utf-8"
+    )
+    specs = []
+    for n in (1, 2, 3):
+        png = working / f"pkg-punch-L1-{n}.png"
+        png.write_bytes(b"png")
+        specs.append(_spec(n, png, vault))
+    sidecar_path = Path(specs[0]["thumbnail"] + ".composition.json")
+    evidence = json.loads(sidecar_path.read_text())
+    evidence["bboxes"]["protected_center_bbox"] = {
+        "x": 480,
+        "y": 72,
+        "width": 320,
+        "height": 576,
+    }
+    sidecar_path.write_text(json.dumps(evidence), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="horizontal"):
+        attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+
+def test_attach_allows_people_in_front_of_horizontal_center_frame(monkeypatch, tmp_path):
+    """The house style intentionally extends the wide orange card behind both cutouts."""
+    vault = tmp_path / "vault"
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    working = tmp_path / "packaging"
+    working.mkdir()
+    (working / "packages.json").write_text(
+        json.dumps(_midstate_packages_file(), ensure_ascii=False), encoding="utf-8"
+    )
+    specs = []
+    for n in (1, 2, 3):
+        png = working / f"pkg-punch-L1-{n}.png"
+        png.write_bytes(b"png")
+        spec = _spec(n, png, vault)
+        evidence_path = Path(spec["thumbnail"] + ".composition.json")
+        evidence = json.loads(evidence_path.read_text())
+        evidence["bboxes"].update(
+            {
+                "protected_center_bbox": {"x": 301, "y": 132.5, "width": 678, "height": 455},
+                "host_bbox": {"x": -654, "y": -120, "width": 1237, "height": 1142},
+                "guest_bbox": {"x": 400, "y": -145, "width": 1377, "height": 1177},
+            }
+        )
+        evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+        specs.append(spec)
+
+    out = attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+    assert out.is_file()
+
+
+def test_attach_full_program_n1_does_not_require_long_highlight_sidecar(monkeypatch, tmp_path):
+    vault = tmp_path / "vault"
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    working = tmp_path / "packaging"
+    working.mkdir()
+    data = _midstate_packages_file()
+    data["cuts"][0]["cut_id"] = "full"
+    (working / "packages.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    specs = []
+    host = vault / "Attachments/cutouts/podcast/episode/host.png"
+    guest = vault / "Attachments/cutouts/podcast/episode/guest.png"
+    host.parent.mkdir(parents=True)
+    host.write_bytes(b"host")
+    guest.write_bytes(b"guest")
+    for n in (1, 2, 3):
+        png = working / f"pkg-full-{n}.png"
+        png.write_bytes(b"png")
+        specs.append(
+            {
+                "title_rank": n,
+                "thumbnail": str(png),
+                "thumb_archetype_id": "T-V7",
+                "joint_pairing_id": "author-book-n1",
+                "host_cutout": str(host),
+                "guest_cutout": str(guest),
+            }
+        )
+
+    out = attach_packages.attach(working, "full", "episode", specs)
+    assert out.is_file()
+    assert (
+        len(
+            json.loads((working / "packages.json").read_text(encoding="utf-8"))["cuts"][0][
+                "packages"
+            ]
+        )
+        == 3
+    )
+    assert not (vault / "Attachments/packaging/episode/composition_receipts").exists()
+
+
+@pytest.mark.parametrize("failure", ["missing-sidecar", "png-tamper", "asset-path-drift"])
+def test_attach_composition_evidence_failures_land_nothing(monkeypatch, tmp_path, failure):
+    vault = tmp_path / "vault"
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    working = tmp_path / "packaging"
+    working.mkdir()
+    original = json.dumps(_midstate_packages_file(), ensure_ascii=False)
+    (working / "packages.json").write_text(original, encoding="utf-8")
+    specs = []
+    for n in (1, 2, 3):
+        png = working / f"pkg-punch-L1-{n}.png"
+        png.write_bytes(b"png")
+        specs.append(_spec(n, png, vault))
+    sidecar_path = Path(specs[0]["thumbnail"] + ".composition.json")
+    if failure == "missing-sidecar":
+        sidecar_path.unlink()
+    elif failure == "png-tamper":
+        Path(specs[0]["thumbnail"]).write_bytes(b"tampered")
+    else:
+        evidence = json.loads(sidecar_path.read_text())
+        if failure == "asset-path-drift":
+            evidence["assets"]["prop_image_data_url"]["path"] = str(tmp_path / "wrong.png")
+        sidecar_path.write_text(json.dumps(evidence), encoding="utf-8")
+
+    with pytest.raises((FileNotFoundError, ValueError)):
+        attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+    assert (working / "packages.json").read_text(encoding="utf-8") == original
+    vault_dir = vault / "Attachments" / "packaging" / "20260723-xieboran"
+    assert not vault_dir.exists()
 
 
 def test_attach_rejects_cjk_png_and_lands_nothing(monkeypatch, tmp_path):
@@ -487,3 +988,170 @@ def test_attach_still_rejects_incomplete_target_cut(monkeypatch, tmp_path):
     assert not (vault / "Attachments" / "packaging").exists() or not list(
         (vault / "Attachments" / "packaging" / "20260723-xieboran").glob("*.png")
     )
+
+
+def test_attach_refuses_a_center_card_with_no_provenance(monkeypatch, tmp_path):
+    """沒有來歷的中央卡不准落地——不然沒有人說得出「為什麼是這張圖」。"""
+    _, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    del specs[0]["center_provenance"]
+    with pytest.raises(ValueError, match="center_provenance"):
+        attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+
+def test_attach_refuses_a_provenance_reason_too_short_to_mean_anything(monkeypatch, tmp_path):
+    _, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    specs[0]["center_provenance"]["why"] = "配合主題"
+    with pytest.raises(ValueError, match="why"):
+        attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+
+def test_attach_refuses_an_unknown_supply_channel(monkeypatch, tmp_path):
+    """供給順序是封閉集合（SKILL.md 紅線 5）——真人一律不准 AI 生成。"""
+    _, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    specs[0]["center_provenance"]["supply"] = "ai_generated"
+    with pytest.raises(ValueError, match="supply"):
+        attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+
+def test_attach_refuses_a_portrait_center_source(monkeypatch, tmp_path):
+    """punch-L04 rank 1 的實際缺口：1080×1920 直式塞進 678×455 的橫卡。"""
+    _, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    _rewrite_center(specs[0], (1080, 1920))
+    with pytest.raises(ValueError, match="必須是橫式"):
+        attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+
+def test_attach_refuses_a_panorama_that_would_be_mostly_cropped_away(monkeypatch, tmp_path):
+    """橫式但比例差太遠一樣不行——cover 會把兩側大部分裁掉。"""
+    _, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    _rewrite_center(specs[0], (6000, 900))
+    with pytest.raises(ValueError, match="留得下"):
+        attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+
+def test_attach_keeps_a_landscape_center_close_to_the_card_ratio(monkeypatch, tmp_path):
+    """正常橫式素材不該被這道新檢查誤擋。"""
+    _, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    _rewrite_center(specs[0], (3840, 2160))
+    attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+
+def test_provenance_can_come_from_the_candidate_the_gate_picked(monkeypatch, tmp_path):
+    """挑完圖不必把出處重打一次——來歷跟著候選池進來，只有配對理由要人寫。"""
+    _, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    del specs[0]["center_provenance"]
+    specs[0]["center_candidate"] = {
+        "supply": "envato",
+        "source": "https://elements.envato.com/a-pampered-dog-22KBKWG",
+        "query": "pampered dog on sofa",
+    }
+    specs[0]["center_why"] = "扣回 03:29 那個 beat：被照顧得好好的寵物就是「圈養」"
+
+    attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+    receipt = (
+        tmp_path
+        / "vault"
+        / "Attachments"
+        / "packaging"
+        / "20260723-xieboran"
+        / "composition_receipts"
+        / "punch-L1-r1.json"
+    )
+    payload = json.loads(receipt.read_text(encoding="utf-8"))
+    assert payload["center_provenance"]["source"].endswith("22KBKWG")
+    assert payload["center_provenance"]["why"].startswith("扣回 03:29")
+
+
+def test_a_picked_candidate_still_needs_a_reason(monkeypatch, tmp_path):
+    """來歷可以繼承，判斷不行——為什麼配這條標題只有人答得出來。"""
+    _, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    del specs[0]["center_provenance"]
+    specs[0]["center_candidate"] = {
+        "supply": "envato",
+        "source": "https://elements.envato.com/a-pampered-dog-22KBKWG",
+        "query": "pampered dog on sofa",
+    }
+
+    with pytest.raises(ValueError, match="center_provenance"):
+        attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+
+def _existing_receipt(vault, *, sha: str, provenance: dict | None) -> None:
+    """先前那一次出圖留下的收據。"""
+    receipts = vault / "Attachments" / "packaging" / "20260723-xieboran" / "composition_receipts"
+    receipts.mkdir(parents=True, exist_ok=True)
+    payload = {"center_visual_sha256": sha}
+    if provenance is not None:
+        payload["center_provenance"] = provenance
+    (receipts / "punch-L1-r1.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _center_sha(spec: dict) -> str:
+    render_spec = json.loads(Path(spec["render_spec"]).read_text(encoding="utf-8"))
+    center = Path(render_spec["images"]["prop_image_data_url"])
+    return hashlib.sha256(center.read_bytes()).hexdigest()
+
+
+def test_rerender_of_an_untouched_legacy_centre_is_not_blocked(monkeypatch, tmp_path):
+    """調人臉大小不是換圖——舊 package（v2 年代、從無來歷）不該因此無法重出。
+
+    2026-08-29 修修調 value-L02 的 cutout 大小，整條產線卡在「缺 center_provenance」。
+    我把必填的範圍訂錯了：要擋的是「換新圖卻不交代出處」，不是每一次 render。
+    """
+    vault, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    del specs[0]["center_provenance"]
+    _existing_receipt(vault, sha=_center_sha(specs[0]), provenance=None)
+
+    attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+    receipt = json.loads(
+        (
+            vault
+            / "Attachments"
+            / "packaging"
+            / "20260723-xieboran"
+            / "composition_receipts"
+            / "punch-L1-r1.json"
+        ).read_text(encoding="utf-8")
+    )
+    # 沒有來歷可繼承 → 照舊發 v2，不為了版號好看而編造欄位
+    assert receipt["schema"] == "nakama.long_thumbnail_composition.v2"
+    assert "center_provenance" not in receipt
+
+
+def test_rerender_carries_the_previous_receipts_provenance_forward(monkeypatch, tmp_path):
+    vault, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    del specs[0]["center_provenance"]
+    known = {
+        "supply": "envato",
+        "source": "https://elements.envato.com/a-dog-22KBKWG",
+        "query": "pampered dog",
+        "why": "扣回 03:29 的圈養那一段",
+    }
+    _existing_receipt(vault, sha=_center_sha(specs[0]), provenance=known)
+
+    attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+    receipt = json.loads(
+        (
+            vault
+            / "Attachments"
+            / "packaging"
+            / "20260723-xieboran"
+            / "composition_receipts"
+            / "punch-L1-r1.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert receipt["schema"] == "nakama.long_thumbnail_composition.v3"
+    assert receipt["center_provenance"] == known
+
+
+def test_a_changed_centre_still_has_to_say_where_it_came_from(monkeypatch, tmp_path):
+    """圖換過就要交代——用 SHA 判定，不比檔名（檔名一樣內容可以換過）。"""
+    vault, working, specs = _attach_fixture(monkeypatch, tmp_path)
+    del specs[0]["center_provenance"]
+    _existing_receipt(vault, sha="0" * 64, provenance=None)
+
+    with pytest.raises(ValueError, match="center_provenance"):
+        attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)

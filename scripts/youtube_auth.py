@@ -18,7 +18,6 @@ OAuth client），只是多要 YouTube 的兩個 scope，token 另存
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -27,18 +26,21 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from google_auth_oauthlib.flow import InstalledAppFlow  # noqa: E402
 
-# upload = videos.insert；youtube = 讀自己影片狀態 + 刪除（探針收尾要用）
+from shared.config import get_runtime_data_dir  # noqa: E402
+
+# upload = videos.insert；force-ssl = CC + 發布後狀態 reconciliation
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
-    "https://www.googleapis.com/auth/youtube",
     # captions.insert 需要 force-ssl（2026-08-04 實測：CC 上傳 403
     # insufficientPermissions，前兩個 scope 蓋不到 captions endpoint）
     "https://www.googleapis.com/auth/youtube.force-ssl",
 ]
 
-_DATA_DIR = Path(os.environ.get("NAKAMA_DATA_DIR", "data"))
+_DATA_DIR = get_runtime_data_dir()
 _CREDS_PATH = _DATA_DIR / "google_oauth_credentials.json"
 _TOKEN_PATH = _DATA_DIR / "youtube_token.json"
 

@@ -20,7 +20,8 @@ Public API（其餘 `_*` 私有；caller 看不到 SQL 與 row 形狀）：
    等文案欄位都走這裡，但 platform/release_id 不可改（改了就是另一個 target）。
 4. 時間全存 UTC ISO8601（與 state.py 其他表一致）。
 
-Schema canonical copy 在 `shared/state.py::_init_tables` + `migrations/018_releases.sql`。
+Schema canonical copy 在 `shared/state.py::_init_tables` + `migrations/018_releases.sql`
++ `migrations/019_youtube_reconciliation.sql`。
 Tests：`tests/shared/test_release_store.py`。
 """
 
@@ -48,6 +49,14 @@ _TARGET_FIELDS = frozenset(
         "url",
         "error",
         "upload_session_uri",
+        "thumbnail_status",
+        "caption_id",
+        "video_processing_status",
+        "platform_privacy_status",
+        "platform_publish_at",
+        "caption_status",
+        "reconciliation_error",
+        "last_reconciled_at",
         "adapter",
         "idempotency_key",
         "checkpoint_json",
@@ -62,8 +71,15 @@ VALID_STATUS = (
     "uploaded",
     "published",
     "failed",
+    "needs_restart",
     "ineligible",
 )
+_TYPED_TARGET_FIELDS = {
+    "thumbnail_status": {"missing", "processing", "set", "failed", "skipped", "unknown"},
+    "video_processing_status": {"missing", "processing", "processed", "failed", "unknown"},
+    "caption_status": {"missing", "processing", "serving", "failed", "unknown"},
+    "platform_privacy_status": {"private", "unlisted", "public"},
+}
 _CAMPAIGN_ANCHOR_EDITABLE_STATUSES = frozenset({"draft", "approved", "failed"})
 TARGET_CLAIM_STALE_AFTER = timedelta(minutes=15)
 _CLAIM_LOCK = threading.Lock()
@@ -323,6 +339,10 @@ def update_target(target_id: int, **fields: Any) -> None:
         raise ValueError(f"不可更新的欄位: {sorted(bad)}")
     if "status" in fields and fields["status"] not in VALID_STATUS:
         raise ValueError(f"status 必須是 {VALID_STATUS}，收到 {fields['status']!r}")
+    for field, allowed in _TYPED_TARGET_FIELDS.items():
+        value = fields.get(field)
+        if value is not None and value not in allowed:
+            raise ValueError(f"{field} 必須是 {sorted(allowed)} 或 None，收到 {value!r}")
     if not fields:
         return
     conn = _get_conn()

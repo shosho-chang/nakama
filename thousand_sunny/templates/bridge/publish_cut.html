@@ -116,7 +116,7 @@
     </div>
 
     <div>
-      <form class="section" method="post"
+      <form class="section" id="publishForm" method="post"
             action="/bridge/publish/{{ rel.episode }}/{{ rel.cut_id }}/save">
         <header class="section-head">
           <div class="section-marker">文案 · 排程</div>
@@ -147,8 +147,10 @@
           {% if not locked %}
           <div class="pub-form-foot">
             <button class="sho-btn sho-btn--ghost" type="submit">儲存文案與排程</button>
-            <button class="sho-btn" type="submit" form="approveForm"
-                    {% if not t.title or not t.description %}disabled title="先儲存 Title/Description"{% endif %}>
+            <button class="sho-btn" type="submit"
+                    formaction="/bridge/publish/{{ rel.episode }}/{{ rel.cut_id }}/approve-upload"
+                    {% if not t.title or not t.description %}disabled title="先儲存 Title/Description"{% endif %}
+                    onclick="return confirm('確認儲存這版文案並上傳？\n\n上傳為 private{{ '，並排程 ' + t.publish_at + ' 自動公開' if t.publish_at else '（未排程，之後可再設）' }}。')">
               {% if rel.format == 'short' %}核准並投遞三平台{% else %}核准並上傳{% endif %}
             </button>
           </div>
@@ -202,11 +204,29 @@
           <div class="pub-progress"><div class="pub-progress-bar" id="upbar" style="width:0%"></div></div>
           <p class="pub-count sho-mono" id="uppct" style="text-align:left; margin-top:6px"></p>
           {% elif t.status in ('uploaded','published') %}
-          <p class="pub-status-line">✅ 已上傳
-            {% if t.publish_at %}——排程 {{ t.publish_at }} 公開{% else %}（private，未排程）{% endif %}
+          <p class="pub-status-line">✅ 影片檔已上傳
             {% if t.url %}<br><a href="{{ t.url }}" target="_blank">{{ t.url }}</a>{% endif %}
           </p>
+          <p class="pub-status-line sho-mono">
+            PROCESSING · {{ t.video_processing_status or '尚未同步' }}<br>
+            CC zh-TW · {{ t.caption_status or '尚未同步' }}<br>
+            PRIVACY · {{ t.platform_privacy_status or '尚未同步' }}
+            {% if t.platform_publish_at %} · {{ t.platform_publish_at }}{% endif %}<br>
+            {% if t.last_reconciled_at %}RECONCILED · {{ t.last_reconciled_at }}{% endif %}
+          </p>
           {% if t.error %}<p class="pub-error sho-mono" style="margin-top:10px">⚠ {{ t.error }}</p>{% endif %}
+          {% if t.reconciliation_error %}<p class="pub-error sho-mono">⚠ {{ t.reconciliation_error }}</p>{% endif %}
+          {% if t.video_id and t.caption_status != 'serving' %}
+          <form method="post" action="/bridge/publish/{{ rel.episode }}/{{ rel.cut_id }}/retry-cc">
+            <button class="sho-btn sho-btn--ghost" type="submit"
+                    onclick="return confirm('只補傳 zh-TW CC？影片本體不會重傳。')">
+              只補傳 CC
+            </button>
+          </form>
+          {% endif %}
+          {% elif t.status == 'needs_restart' %}
+          <p class="pub-error sho-mono">上傳 session 已過期。系統沒有自動重傳；請重新核准後建立新 session。</p>
+          {% if t.error %}<p class="pub-error sho-mono">{{ t.error }}</p>{% endif %}
           {% else %}
           {% if t.error %}<p class="pub-error sho-mono">⚠ 上次失敗：{{ t.error }}</p>{% endif %}
           <p class="pub-upload-note" style="margin-top:0">
@@ -219,13 +239,6 @@
           {% endif %}
         </div>
       </article>
-
-      {% if not locked %}
-      <form id="approveForm" method="post"
-            action="/bridge/publish/{{ rel.episode }}/{{ rel.cut_id }}/approve-upload"
-            onsubmit="return confirm('確認核准並上傳？\n\n上傳為 private{{ '，並排程 ' + t.publish_at + ' 自動公開' if t.publish_at else '（未排程，之後可再設）' }}。')">
-      </form>
-      {% endif %}
 
       {% if ab_alternates %}
       <article class="section">

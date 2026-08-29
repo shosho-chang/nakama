@@ -1,4 +1,4 @@
-"""highlight-cut：訪談集精華選段 — 候選驗證 + Resolve 物化。
+"""highlight-cut：從人類核准 Editorial Master 選段並物化。
 
 修修 2026-07-25（grill 凍結，見 docs/plans/2026-07-25-highlight-cut-plan.md）：
 整集訪談切長片（8–12min 橫式）與短片（60–120s 直式）候選，persona 盲審選
@@ -6,8 +6,9 @@
 
 - `--validate`：候選邊界吸附 cue、長度帶檢查、同格式重疊去重（>50% 留強者）
 - `--materialize`：當選段建獨立 timeline（長片 16:9 帶字幕樣式模板／短片
-  1080×1920 直式）+ 全部候選在主 timeline 打 marker（當選紅/落選藍）。冪等：
-  同名 timeline 先刪重建、marker 先清再打
+  1080×1920 直式）。核准的 Editorial Master timeline 是不可變 trust root，
+  不再寫入 candidate marker。每支 timeline 必須有 hash-bound materialization
+  receipt；同名舊 raw timeline 或異版 receipt 一律 fail closed。
 
 開採與盲審由 highlight-cut skill 的 Cowork subagent 完成（零 API 錢），
 本 script 不呼叫任何 LLM。
@@ -21,10 +22,14 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
+import math
+import os
 import re
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -36,6 +41,26 @@ if hasattr(sys.stderr, "reconfigure"):
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from agents.brook.podcast_subtitles.handoff import ProjectionVerifierFactory  # noqa: E402
+from agents.brook.script_video.editorial_master import (  # noqa: E402
+    EditorialMasterContractError,
+    EditorialMasterRequest,
+    EditorialMasterSelection,
+)
+from agents.brook.script_video.subtitle_handoff import (  # noqa: E402
+    Stage5SubtitleContractError,
+    Stage5SubtitleRequest,
+)
+from shared.highlight_materialization import (  # noqa: E402
+    EDITORIAL_MASTER_LINEAGE_KEY,
+    HighlightSource,
+    build_materialization_receipt,
+    verify_materialization_receipt,
+    write_materialization_receipt,
+)
+from shared.highlight_materialization import (  # noqa: E402
+    materialization_path as _materialization_path,
+)
 from shared.resolve_append import append_checked  # noqa: E402
 from shared.subtitle_finalize import finalize_cues  # noqa: E402
 
@@ -49,7 +74,70 @@ BIN_NAME = "Highlights"
 # 長度帶（grill Q4b）：目標帶 miner 已把關，script 只擋容忍帶外 + 平台硬上限
 BANDS = {"long": (6 * 60, 18 * 60, None), "short": (40, 180, 180)}
 FORMAT_LABEL = {"long": "長", "short": "短"}
+MINER_ROLES = ("story", "punch", "value")
+MINER_OUTPUT_CONTRACT = "podcast-highlight-miner-output-v2"
+CANDIDATES_CONTRACT = "podcast-highlight-candidates-v2"
+_MINER_CANDIDATE_FIELDS = {
+    "id",
+    "format",
+    "t_start",
+    "t_end",
+    "title",
+    "hook",
+    "rationale",
+    "miner",
+    "head_trim",
+    "cue_start",
+    "cue_end",
+    "sections",
+}
+_LONG_SECTION_FIELDS = {
+    "section_id",
+    "cue_start",
+    "cue_end",
+    "start_quote",
+    "end_quote",
+    "summary",
+    "transition_before",
+    "transition_title",
+}
 _TS = re.compile(r"(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})")
+
+
+def _open_highlight_source(
+    episode_dir: Path,
+    *,
+    editorial_master_request: EditorialMasterRequest | None = None,
+    subtitle_request: Stage5SubtitleRequest | None = None,
+    verifier_factory: ProjectionVerifierFactory | None = None,
+) -> HighlightSource:
+    """Open Editorial Master by default; Stage5-only access is explicit forensic legacy."""
+
+    if subtitle_request is not None:
+        if not subtitle_request.legacy_v1:
+            raise EditorialMasterContractError(
+                "Stage5-only Highlight source is forbidden; seal an Editorial Master "
+                "or explicitly request --legacy-v1 for forensic use"
+            )
+        subtitle = subtitle_request.open(episode_dir, factory=verifier_factory)
+        return HighlightSource(
+            srt_path=subtitle.srt_path,
+            media_path=None,
+            lineage=subtitle.identity(),
+            legacy=True,
+        )
+    selected: EditorialMasterSelection = (
+        editorial_master_request
+        or EditorialMasterRequest(
+            episode_root=episode_dir,
+            expected_episode_id=episode_dir.name,
+        )
+    ).open()
+    return HighlightSource(
+        srt_path=selected.srt_path,
+        media_path=selected.media_path,
+        lineage=selected.identity(),
+    )
 
 
 def _parse_srt(path: Path) -> list[tuple[float, float, str]]:
@@ -84,11 +172,387 @@ def _fmt_min(seconds: float) -> str:
     return f"{int(seconds // 60)}:{int(seconds % 60):02d}"
 
 
-def validate(episode_dir: Path) -> dict:
+def _source_lineage(source: HighlightSource) -> dict[str, object]:
+    return dict(source.lineage)
+
+
+def _lineage_key(source: HighlightSource) -> str:
+    return "subtitle_lineage" if source.legacy else EDITORIAL_MASTER_LINEAGE_KEY
+
+
+def _bind_or_verify_lineage(
+    document: dict,
+    source: HighlightSource,
+    *,
+    allow_bind: bool,
+    label: str,
+) -> None:
+    key = _lineage_key(source)
+    expected = _source_lineage(source)
+    actual = document.get(key)
+    if actual is None and allow_bind:
+        document[key] = expected
+        return
+    if actual != expected:
+        raise EditorialMasterContractError(
+            f"{label} {key} differs from the selected Highlight source identity"
+        )
+
+
+def _sha256(raw: bytes) -> str:
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _atomic_json_write(path: Path, payload: dict) -> None:
+    encoded = (
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=path.parent,
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_name, path)
+    finally:
+        Path(temporary_name).unlink(missing_ok=True)
+
+
+def _load_miner_output(
+    path: Path,
+    *,
+    role: str,
+    source: HighlightSource,
+    cues: list[tuple[float, float, str]],
+) -> tuple[list[dict], dict[str, str]]:
+    try:
+        raw = path.read_bytes()
+        payload = json.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise Stage5SubtitleContractError(
+            f"{role} miner output is missing or invalid: {path}"
+        ) from exc
+    lineage_key = _lineage_key(source)
+    required = {
+        "schema_version",
+        "contract",
+        "miner_role",
+        "source_srt_sha256",
+        lineage_key,
+        "candidates",
+    }
+    if not isinstance(payload, dict) or set(payload) != required:
+        raise Stage5SubtitleContractError(f"{role} miner output schema drift")
+    lineage = _source_lineage(source)
+    expected_srt_sha256 = (
+        lineage.get("subtitle_srt_sha256") if source.legacy else lineage.get("master_srt_sha256")
+    )
+    if (
+        payload.get("schema_version") != 2
+        or payload.get("contract") != MINER_OUTPUT_CONTRACT
+        or payload.get("miner_role") != role
+        or payload.get("source_srt_sha256") != expected_srt_sha256
+        or payload.get(lineage_key) != lineage
+    ):
+        raise Stage5SubtitleContractError(f"{role} miner source/lineage drift")
+    candidates = payload.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        raise Stage5SubtitleContractError(f"{role} miner candidates must be non-empty")
+    cue_count = len(cues)
+    seen: set[str] = set()
+    format_counts = {"long": 0, "short": 0}
+    normalized: list[dict] = []
+    for index, candidate in enumerate(candidates):
+        if not isinstance(candidate, dict) or set(candidate) != _MINER_CANDIDATE_FIELDS:
+            raise Stage5SubtitleContractError(f"{role} miner candidate {index} schema drift")
+        candidate_id = candidate.get("id")
+        if not isinstance(candidate_id, str) or not candidate_id or candidate_id in seen:
+            raise Stage5SubtitleContractError(f"{role} miner candidate id is invalid or duplicated")
+        seen.add(candidate_id)
+        fmt = candidate.get("format")
+        if fmt not in BANDS:
+            raise Stage5SubtitleContractError(
+                f"{role} miner candidate {candidate_id} format is invalid"
+            )
+        format_counts[fmt] += 1
+        expected_id = re.compile(
+            rf"^{re.escape(role)}-{'L' if fmt == 'long' else 'S'}(?:0[1-9]|[1-9][0-9])$"
+        )
+        if expected_id.fullmatch(candidate_id) is None:
+            raise Stage5SubtitleContractError(
+                f"{role} miner candidate id does not match its role and format: {candidate_id}"
+            )
+        start, end = candidate.get("t_start"), candidate.get("t_end")
+        if (
+            not isinstance(start, (int, float))
+            or isinstance(start, bool)
+            or not isinstance(end, (int, float))
+            or isinstance(end, bool)
+            or not math.isfinite(float(start))
+            or not math.isfinite(float(end))
+            or float(start) < 0
+            or float(end) <= float(start)
+        ):
+            raise Stage5SubtitleContractError(
+                f"{role} miner candidate {candidate_id} time range is invalid"
+            )
+        duration = float(end) - float(start)
+        minimum, maximum, _hard_limit = BANDS[fmt]
+        if not minimum <= duration <= maximum:
+            raise Stage5SubtitleContractError(
+                f"{role} miner candidate {candidate_id} is outside {fmt} duration tolerance"
+            )
+        cue_start = candidate.get("cue_start")
+        cue_end = candidate.get("cue_end")
+        if (
+            type(cue_start) is not int
+            or type(cue_end) is not int
+            or cue_start < 1
+            or cue_end < cue_start
+            or cue_end > cue_count
+        ):
+            raise Stage5SubtitleContractError(
+                f"{role} miner candidate {candidate_id} cue range is invalid"
+            )
+        cue_start_time = cues[cue_start - 1][0]
+        cue_end_time = cues[cue_end - 1][1]
+        if float(start) != cue_start_time or float(end) != cue_end_time:
+            raise Stage5SubtitleContractError(
+                f"{role} miner candidate {candidate_id} timing differs from cue boundaries"
+            )
+        for field in ("title", "hook", "rationale", "miner"):
+            if not isinstance(candidate.get(field), str) or not candidate[field].strip():
+                raise Stage5SubtitleContractError(
+                    f"{role} miner candidate {candidate_id} {field} is invalid"
+                )
+        if candidate["miner"] != role:
+            raise Stage5SubtitleContractError(
+                f"{role} miner candidate {candidate_id} miner field differs from role"
+            )
+        cue_range_transcript = "\n".join(cue[2] for cue in cues[cue_start - 1 : cue_end])
+        if candidate["hook"] not in cue_range_transcript:
+            raise Stage5SubtitleContractError(
+                f"{role} miner candidate {candidate_id} hook is not a raw transcript substring"
+            )
+        head_trim = candidate.get("head_trim")
+        if head_trim is not None and (
+            not isinstance(head_trim, (int, float))
+            or isinstance(head_trim, bool)
+            or not math.isfinite(float(head_trim))
+            or float(head_trim) < 0
+        ):
+            raise Stage5SubtitleContractError(
+                f"{role} miner candidate {candidate_id} head_trim is invalid"
+            )
+        sections = candidate.get("sections")
+        if fmt == "short":
+            if sections != []:
+                raise Stage5SubtitleContractError(
+                    f"{role} miner short candidate {candidate_id} sections must be empty"
+                )
+        else:
+            if not isinstance(sections, list) or not 3 <= len(sections) <= 8:
+                raise Stage5SubtitleContractError(
+                    f"{role} miner long candidate {candidate_id} requires 3-8 sections"
+                )
+            expected_section_start = cue_start
+            for section_index, section in enumerate(sections, 1):
+                if not isinstance(section, dict) or set(section) != _LONG_SECTION_FIELDS:
+                    raise Stage5SubtitleContractError(
+                        f"{role} miner candidate {candidate_id} section schema drift"
+                    )
+                section_start = section.get("cue_start")
+                section_end = section.get("cue_end")
+                if (
+                    type(section_start) is not int
+                    or type(section_end) is not int
+                    or section_start != expected_section_start
+                    or section_end < section_start
+                    or section_end > cue_end
+                    or section.get("section_id") != f"section-{section_index:02d}"
+                ):
+                    raise Stage5SubtitleContractError(
+                        f"{role} miner candidate {candidate_id} sections must cover "
+                        "cues contiguously"
+                    )
+                for field in ("start_quote", "end_quote", "summary"):
+                    if not isinstance(section.get(field), str) or not section[field].strip():
+                        raise Stage5SubtitleContractError(
+                            f"{role} miner candidate {candidate_id} section {field} is invalid"
+                        )
+                if section["start_quote"] != cues[section_start - 1][2] or (
+                    section["end_quote"] != cues[section_end - 1][2]
+                ):
+                    raise Stage5SubtitleContractError(
+                        f"{role} miner candidate {candidate_id} section quote differs "
+                        "from transcript"
+                    )
+                transition_before = section.get("transition_before")
+                transition_title = section.get("transition_title")
+                if (
+                    type(transition_before) is not bool
+                    or (
+                        transition_before
+                        and (not isinstance(transition_title, str) or not transition_title.strip())
+                    )
+                    or (not transition_before and transition_title is not None)
+                ):
+                    raise Stage5SubtitleContractError(
+                        f"{role} miner candidate {candidate_id} section transition is invalid"
+                    )
+                if section_index == 1 and transition_before:
+                    raise Stage5SubtitleContractError(
+                        f"{role} miner candidate {candidate_id} first section cannot "
+                        "start with a transition"
+                    )
+                expected_section_start = section_end + 1
+            if expected_section_start != cue_end + 1:
+                raise Stage5SubtitleContractError(
+                    f"{role} miner candidate {candidate_id} sections must cover cues contiguously"
+                )
+        normalized.append(
+            {
+                **candidate,
+                "t_start": float(start),
+                "t_end": float(end),
+                "head_trim": None if head_trim is None else float(head_trim),
+            }
+        )
+    if format_counts["long"] < 3 or format_counts["short"] < 3:
+        raise Stage5SubtitleContractError(
+            f"{role} miner output requires at least 3 long and 3 short candidates"
+        )
+    return normalized, {
+        "role": role,
+        "path": str(path),
+        "sha256": _sha256(raw),
+    }
+
+
+def merge_miners(
+    episode_dir: Path,
+    *,
+    miner_paths: dict[str, Path] | None = None,
+    editorial_master_request: EditorialMasterRequest | None = None,
+    subtitle_request: Stage5SubtitleRequest | None = None,
+    verifier_factory: ProjectionVerifierFactory | None = None,
+) -> dict:
+    """Strictly merge three subscription-worker outputs into candidates.json."""
+
+    source = _open_highlight_source(
+        episode_dir,
+        editorial_master_request=editorial_master_request,
+        subtitle_request=subtitle_request,
+        verifier_factory=verifier_factory,
+    )
+    hdir = episode_dir / HIGHLIGHTS_DIR
+    paths = miner_paths or {role: hdir / f"miner-{role}.json" for role in MINER_ROLES}
+    if set(paths) != set(MINER_ROLES):
+        raise Stage5SubtitleContractError(
+            "miner merge requires exactly story, punch, and value outputs"
+        )
+    cues = _parse_srt(source.srt_path)
+    merged: list[dict] = []
+    inputs: list[dict[str, str]] = []
+    ids: set[str] = set()
+    for role in MINER_ROLES:
+        candidates, receipt = _load_miner_output(
+            Path(paths[role]),
+            role=role,
+            source=source,
+            cues=cues,
+        )
+        for candidate in candidates:
+            if candidate["id"] in ids:
+                raise Stage5SubtitleContractError(
+                    f"duplicate candidate id across miners: {candidate['id']}"
+                )
+            ids.add(candidate["id"])
+            merged.append(candidate)
+        inputs.append(receipt)
+    merged.sort(key=lambda item: (item["format"], item["t_start"], item["t_end"], item["id"]))
+    lineage = _source_lineage(source)
+    lineage_key = _lineage_key(source)
+    source_srt_sha256 = (
+        lineage["subtitle_srt_sha256"] if source.legacy else lineage["master_srt_sha256"]
+    )
+    payload = {
+        "schema_version": 2,
+        "contract": CANDIDATES_CONTRACT,
+        "source_srt_sha256": source_srt_sha256,
+        lineage_key: lineage,
+        "miner_inputs": inputs,
+        "candidates": merged,
+    }
+    candidate_path = hdir / CANDIDATES_NAME
+    _atomic_json_write(candidate_path, payload)
+    return {
+        "status": "miners-merged",
+        "candidate_count": len(merged),
+        "long_candidate_count": sum(1 for item in merged if item["format"] == "long"),
+        "candidates_path": str(candidate_path),
+        **lineage,
+    }
+
+
+def mining_input(
+    episode_dir: Path,
+    *,
+    editorial_master_request: EditorialMasterRequest | None = None,
+    subtitle_request: Stage5SubtitleRequest | None = None,
+    verifier_factory: ProjectionVerifierFactory | None = None,
+) -> dict:
+    """Return the sole verified SRT source that highlight miners may read."""
+
+    source = _open_highlight_source(
+        episode_dir,
+        editorial_master_request=editorial_master_request,
+        subtitle_request=subtitle_request,
+        verifier_factory=verifier_factory,
+    )
+    return {
+        "status": "mining-input",
+        "srt_path": str(source.srt_path),
+        "media_path": str(source.media_path) if source.media_path else None,
+        **_source_lineage(source),
+    }
+
+
+def validate(
+    episode_dir: Path,
+    *,
+    editorial_master_request: EditorialMasterRequest | None = None,
+    subtitle_request: Stage5SubtitleRequest | None = None,
+    verifier_factory: ProjectionVerifierFactory | None = None,
+) -> dict:
     """候選正規化：吸附 cue 邊界、長度帶檢查、同格式重疊去重。原地改寫 candidates.json。"""
+    source = _open_highlight_source(
+        episode_dir,
+        editorial_master_request=editorial_master_request,
+        subtitle_request=subtitle_request,
+        verifier_factory=verifier_factory,
+    )
     cand_path = episode_dir / HIGHLIGHTS_DIR / CANDIDATES_NAME
     data = json.loads(cand_path.read_text(encoding="utf-8"))
-    cues = _parse_srt(episode_dir / "transcript.srt")
+    _bind_or_verify_lineage(
+        data,
+        source,
+        allow_bind=source.legacy,
+        label="candidates.json",
+    )
+    cues = _parse_srt(source.srt_path)
     starts = [c[0] for c in cues]
     ends = [c[1] for c in cues]
 
@@ -100,11 +564,12 @@ def validate(episode_dir: Path) -> dict:
         c["t_end"] = min((e for e in ends if e >= e0 - 0.5), default=e0)
         dur = c["t_end"] - c["t_start"]
         c["duration_sec"] = round(dur, 1)
-        lo, hi, hard = BANDS[c["format"]]
-        if hard and dur > hard:
-            issues.append(f"{c['id']}: {_fmt_min(dur)} 超過平台硬上限 {hard}s — 必須修")
-        elif not (lo <= dur <= hi):
-            issues.append(f"{c['id']}: {_fmt_min(dur)} 落在容忍帶外（{lo}-{hi}s）")
+        lo, hi, _hard = BANDS[c["format"]]
+        if not lo <= dur <= hi:
+            raise Stage5SubtitleContractError(
+                f"candidate {c['id']} is outside {c['format']} duration tolerance "
+                f"({_fmt_min(dur)}; required {lo}-{hi}s)"
+            )
 
     # 同格式重疊 >50% → **不淘汰**，標 variant 群組（修修 2026-07-26 裁決：
     # 去重在評分前用 rationale 長度決生死，害「數位排毒+睡眠運動」整塊從未
@@ -114,7 +579,7 @@ def validate(episode_dir: Path) -> dict:
     for c in data["candidates"]:
         c["variant_group"] = groups[c["id"]]
     data["candidates"].sort(key=lambda x: (x["format"], x["t_start"]))
-    cand_path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    _atomic_json_write(cand_path, data)
     counts = {f: sum(1 for c in data["candidates"] if c["format"] == f) for f in ("long", "short")}
     n_groups = len(set(groups.values()))
     return {
@@ -122,6 +587,7 @@ def validate(episode_dir: Path) -> dict:
         "kept": counts,
         "variant_groups": n_groups,
         "band_issues": issues,
+        **_source_lineage(source),
     }
 
 
@@ -146,13 +612,20 @@ def _variant_groups(candidates: list[dict]) -> dict[str, str]:
     return {cid: find(cid) for cid in parent}
 
 
-def _segment_srt(episode_dir: Path, cid: str, t_start: float, t_end: float) -> Path:
-    """裁出段落字幕（時間平移到 0 起點），版本化路徑繞 Resolve 路徑快取。
+def _segment_srt(
+    episode_dir: Path,
+    cid: str,
+    t_start: float,
+    t_end: float,
+    *,
+    source: HighlightSource,
+) -> Path:
+    """裁出 Master 段落字幕（時間平移到 0 起點），版本化路徑繞 Resolve 路徑快取。
 
     副本套修修 2026-08-05 字幕定版兩規則（句尾零標點 + cue 間 ≤3s 空隙補平）
-    ——transcript.srt 本體不動。
+    ——Master SRT 本體不動。
     """
-    cues = _parse_srt(episode_dir / "transcript.srt")
+    cues = _parse_srt(source.srt_path)
     out_dir = episode_dir / SEG_SRT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     n = 1
@@ -179,19 +652,44 @@ def _segment_srt(episode_dir: Path, cid: str, t_start: float, t_end: float) -> P
     return dst
 
 
-def materialize(episode_dir: Path, *, dry_run: bool = False) -> dict:
+def materialize(
+    episode_dir: Path,
+    *,
+    dry_run: bool = False,
+    editorial_master_request: EditorialMasterRequest | None = None,
+    subtitle_request: Stage5SubtitleRequest | None = None,
+    verifier_factory: ProjectionVerifierFactory | None = None,
+) -> dict:
     from build_resolve_project import _template_path, connect_resolve, find_main_video
 
+    source = _open_highlight_source(
+        episode_dir,
+        editorial_master_request=editorial_master_request,
+        subtitle_request=subtitle_request,
+        verifier_factory=verifier_factory,
+    )
     hdir = episode_dir / HIGHLIGHTS_DIR
-    cands = json.loads((hdir / CANDIDATES_NAME).read_text(encoding="utf-8"))["candidates"]
-    winners = json.loads((hdir / WINNERS_NAME).read_text(encoding="utf-8"))["winners"]
+    candidates_doc = json.loads((hdir / CANDIDATES_NAME).read_text(encoding="utf-8"))
+    winners_doc = json.loads((hdir / WINNERS_NAME).read_text(encoding="utf-8"))
+    _bind_or_verify_lineage(
+        candidates_doc,
+        source,
+        allow_bind=False,
+        label="candidates.json",
+    )
+    _bind_or_verify_lineage(
+        winners_doc,
+        source,
+        allow_bind=False,
+        label="winners.json",
+    )
+    cands = candidates_doc["candidates"]
+    winners = winners_doc["winners"]
     by_id = {c["id"]: c for c in cands}
     missing = [w["id"] for w in winners if w["id"] not in by_id]
     if missing:
         raise SystemExit(f"winners 引用不存在的候選 id: {missing}（candidates.json 去重後失效？）")
     winners = sorted(winners, key=lambda x: (by_id[x["id"]]["format"], x.get("rank", 9)))
-    win_ids = {w["id"] for w in winners}
-
     plan = []
     for w in winners:
         c = by_id[w["id"]]
@@ -204,7 +702,13 @@ def materialize(episode_dir: Path, *, dry_run: bool = False) -> dict:
             }
         )
     if dry_run:
-        return {"status": "dry-run", "timelines": plan, "markers": len(cands)}
+        return {
+            "status": "dry-run",
+            "timelines": plan,
+            "markers": 0,
+            "markers_skipped_to_preserve_master": len(cands),
+            **_source_lineage(source),
+        }
 
     resolve = connect_resolve()
     pm = resolve.GetProjectManager()
@@ -218,43 +722,77 @@ def materialize(episode_dir: Path, *, dry_run: bool = False) -> dict:
     mp = project.GetMediaPool()
     root = mp.GetRootFolder()
 
-    # 素材 item：主影片 + normalized 音檔（都已在 media pool，依名尋回）
-    main_video = find_main_video(episode_dir, None)
+    # Production 只可使用已驗證 Master MP4 的嵌入式畫面＋混音。
+    # Explicit legacy 才允許舊 Default_*.mp4 + normalized.wav 取證路徑。
     clips = {(c.GetName() or ""): c for c in (root.GetClipList() or [])}
-    vid = clips.get(main_video.name)
-    aud = clips.get("normalized.wav")
-    if vid is None:
-        raise SystemExit(f"media pool 找不到主影片 {main_video.name}")
+    aud = None
+    if source.legacy:
+        main_video = find_main_video(episode_dir, None)
+        vid = clips.get(main_video.name)
+        aud = clips.get("normalized.wav")
+        missing_media = main_video.name
+    else:
+        assert source.media_path is not None
+        master_path = source.media_path.resolve()
 
-    # 主 timeline：清舊 marker（紅/藍）→ 全候選重打
-    main_tl = None
-    for i in range(1, project.GetTimelineCount() + 1):
-        tl = project.GetTimelineByIndex(i)
-        if tl and tl.GetName() == project_name:
-            main_tl = tl
-            break
-    if main_tl is None:
-        raise SystemExit(f"主 timeline「{project_name}」不存在")
-    for color in ("Red", "Blue"):
-        main_tl.DeleteMarkersByColor(color)
-    for c in cands:
-        color = "Red" if c["id"] in win_ids else "Blue"
-        frame = int(c["t_start"] * fps)
-        dur = int((c["t_end"] - c["t_start"]) * fps)
-        main_tl.AddMarker(frame, color, f"[{c['id']}] {c['title']}", c.get("hook", ""), dur)
+        def clip_path(clip) -> Path | None:
+            try:
+                raw = clip.GetClipProperty("File Path")
+            except Exception:
+                return None
+            if not isinstance(raw, str) or not raw:
+                return None
+            return Path(raw).resolve()
+
+        vid = next((clip for clip in clips.values() if clip_path(clip) == master_path), None)
+        if vid is None:
+            imported = mp.ImportMedia([str(master_path)]) or []
+            vid = next((clip for clip in imported if clip_path(clip) == master_path), None)
+        missing_media = str(master_path)
+    if vid is None:
+        raise SystemExit(f"media pool 找不到 Highlight source {missing_media}")
+    previous_tl = project.GetCurrentTimeline()
 
     # Highlights bin（timeline 物件落在建立當下的 current folder）
     hbin = next(
         (f for f in root.GetSubFolderList() if f.GetName() == BIN_NAME), None
     ) or mp.AddSubFolder(root, BIN_NAME)
 
-    # 冪等：刪同名舊 timeline
+    # Master route 不可靠名稱無聲接受或覆寫舊 raw timeline。
     existing_names = {p["timeline"] for p in plan}
-    stale = [
-        project.GetTimelineByIndex(i)
-        for i in range(1, project.GetTimelineCount() + 1)
-        if (t := project.GetTimelineByIndex(i)) and t.GetName() in existing_names
-    ]
+    timelines_by_name = {
+        timeline.GetName(): timeline
+        for index in range(1, project.GetTimelineCount() + 1)
+        if (timeline := project.GetTimelineByIndex(index)) is not None
+    }
+    if not source.legacy:
+        candidate_by_timeline = {
+            f"{FORMAT_LABEL[c['format']]}{w['rank']} - {c['title']}": c["id"]
+            for w in winners
+            for c in [by_id[w["id"]]]
+        }
+        unbound = [
+            name
+            for name in existing_names & set(timelines_by_name)
+            if not _materialization_path(
+                episode_dir,
+                candidate_by_timeline[name],
+            ).is_file()
+        ]
+        if unbound:
+            raise EditorialMasterContractError(
+                "existing Highlight timeline has no Editorial Master materialization receipt: "
+                + ", ".join(sorted(unbound))
+            )
+    stale = (
+        [
+            project.GetTimelineByIndex(i)
+            for i in range(1, project.GetTimelineCount() + 1)
+            if (t := project.GetTimelineByIndex(i)) and t.GetName() in existing_names
+        ]
+        if source.legacy
+        else []
+    )
     if stale:
         mp.DeleteTimelines(stale)
 
@@ -264,6 +802,35 @@ def materialize(episode_dir: Path, *, dry_run: bool = False) -> dict:
         c = by_id[w["id"]]
         label = f"{FORMAT_LABEL[c['format']]}{w['rank']} - {c['title']}"
         f0, f1 = int(c["t_start"] * fps), int(c["t_end"] * fps)
+        receipt_path = _materialization_path(episode_dir, c["id"])
+        if not source.legacy and receipt_path.is_file():
+            existing_timeline = timelines_by_name.get(label)
+            if existing_timeline is None:
+                raise EditorialMasterContractError(
+                    f"materialization receipt exists but Resolve timeline is missing: {label}"
+                )
+            verify_materialization_receipt(
+                episode_dir,
+                c["id"],
+                source=source,
+                timeline=existing_timeline,
+                expected_timeline_name=label,
+                expected_format=c["format"],
+                expected_source_range={
+                    "start_sec": c["t_start"],
+                    "end_sec": c["t_end"],
+                    "start_frame": f0,
+                    "end_frame": f1,
+                },
+            )
+            made.append(
+                {
+                    "timeline": label,
+                    "status": "already-materialized",
+                    "materialization_receipt": str(receipt_path),
+                }
+            )
+            continue
         mp.SetCurrentFolder(hbin)
         # 長短片都從樣式模板長 timeline（短片再覆寫成直式解析度）——
         # 模板是本機檔（data/* gitignored），不存在時退回無樣式並大聲警告
@@ -291,12 +858,19 @@ def materialize(episode_dir: Path, *, dry_run: bool = False) -> dict:
         # ⚠️ 走 append_checked：新建的 timeline 上第一次 append 常回 `[None]`
         # （truthy，`if not ok_v` 判不出來）——2026-08-05 安吉集三條 timeline
         # 全部 v1 空、卻回報 materialized。判 [None] + 重試才擋得住。
-        append_checked(
-            mp,
-            [{"mediaPoolItem": vid, "mediaType": 1, "startFrame": f0, "endFrame": f1}],
-            f"{label} 影片",
-        )
-        if aud is not None:
+        if source.legacy:
+            append_checked(
+                mp,
+                [{"mediaPoolItem": vid, "mediaType": 1, "startFrame": f0, "endFrame": f1}],
+                f"{label} 影片",
+            )
+        else:
+            append_checked(
+                mp,
+                [{"mediaPoolItem": vid, "startFrame": f0, "endFrame": f1}],
+                f"{label} Editorial Master A/V",
+            )
+        if source.legacy and aud is not None:
             append_checked(
                 mp,
                 [
@@ -314,10 +888,20 @@ def materialize(episode_dir: Path, *, dry_run: bool = False) -> dict:
         placed = len(tl.GetItemListInTrack("video", 1) or [])
         if placed < 1:
             raise SystemExit(f"{label}: 影片上軌後 v1 仍是空的")
+        if not source.legacy and len(tl.GetItemListInTrack("audio", 1) or []) < 1:
+            raise SystemExit(f"{label}: Editorial Master A/V append 後 a1 仍是空的")
         mp.SetCurrentFolder(root)
-        seg_srt = _segment_srt(episode_dir, c["id"], c["t_start"], c["t_end"])
+        seg_srt = _segment_srt(
+            episode_dir,
+            c["id"],
+            c["t_start"],
+            c["t_end"],
+            source=source,
+        )
         srt_items = mp.ImportMedia([str(seg_srt)])
         sub_ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
+        if not sub_ok:
+            raise SystemExit(f"{label}: Master 段落字幕上軌失敗")
         made.append(
             {
                 "timeline": label,
@@ -325,14 +909,43 @@ def materialize(episode_dir: Path, *, dry_run: bool = False) -> dict:
                 "items": len(tl.GetItemListInTrack("subtitle", 1) or []),
             }
         )
+        if not source.legacy:
+            receipt = build_materialization_receipt(
+                episode_dir,
+                cut_id=c["id"],
+                cut_format=c["format"],
+                timeline=tl,
+                source_range={
+                    "start_sec": c["t_start"],
+                    "end_sec": c["t_end"],
+                    "start_frame": f0,
+                    "end_frame": f1,
+                },
+                source=source,
+            )
+            committed = write_materialization_receipt(episode_dir, receipt)
+            made[-1]["materialization_receipt"] = str(committed)
 
-    project.SetCurrentTimeline(main_tl)
+    if previous_tl is not None:
+        project.SetCurrentTimeline(previous_tl)
     pm.SaveProject()
-    return {"status": "materialized", "timelines": made, "markers": len(cands)}
+    return {
+        "status": "materialized",
+        "timelines": made,
+        "markers": 0,
+        "markers_skipped_to_preserve_master": len(cands),
+        **_source_lineage(source),
+    }
 
 
-def refresh_subs(episode_dir: Path) -> dict:
-    """精華 timeline **只換字幕不動剪輯**（transcript.srt 更新後用）。
+def refresh_subs(
+    episode_dir: Path,
+    *,
+    editorial_master_request: EditorialMasterRequest | None = None,
+    subtitle_request: Stage5SubtitleRequest | None = None,
+    verifier_factory: ProjectionVerifierFactory | None = None,
+) -> dict:
+    """精華 timeline **只換字幕不動剪輯**（重上 receipt 綁定的 Master SRT）。
 
     修修可能已在精華 timeline 上剪輯——materialize 重建會毀掉他的工作，
     本模式只清字幕內容重上（軌與樣式保留，比照 build_resolve_project
@@ -340,9 +953,29 @@ def refresh_subs(episode_dir: Path) -> dict:
     """
     from build_resolve_project import connect_resolve
 
+    source = _open_highlight_source(
+        episode_dir,
+        editorial_master_request=editorial_master_request,
+        subtitle_request=subtitle_request,
+        verifier_factory=verifier_factory,
+    )
     hdir = episode_dir / HIGHLIGHTS_DIR
-    cands = json.loads((hdir / CANDIDATES_NAME).read_text(encoding="utf-8"))["candidates"]
-    winners = json.loads((hdir / WINNERS_NAME).read_text(encoding="utf-8"))["winners"]
+    candidates_doc = json.loads((hdir / CANDIDATES_NAME).read_text(encoding="utf-8"))
+    winners_doc = json.loads((hdir / WINNERS_NAME).read_text(encoding="utf-8"))
+    _bind_or_verify_lineage(
+        candidates_doc,
+        source,
+        allow_bind=False,
+        label="candidates.json",
+    )
+    _bind_or_verify_lineage(
+        winners_doc,
+        source,
+        allow_bind=False,
+        label="winners.json",
+    )
+    cands = candidates_doc["candidates"]
+    winners = winners_doc["winners"]
     by_id = {c["id"]: c for c in cands}
 
     resolve = connect_resolve()
@@ -385,7 +1018,13 @@ def refresh_subs(episode_dir: Path) -> dict:
         if stale:
             mp.DeleteClips(stale)
         mp.SetCurrentFolder(root)
-        seg_srt = _segment_srt(episode_dir, c["id"], c["t_start"], c["t_end"])
+        seg_srt = _segment_srt(
+            episode_dir,
+            c["id"],
+            c["t_start"],
+            c["t_end"],
+            source=source,
+        )
         srt_items = mp.ImportMedia([str(seg_srt)])
         ok = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
         done.append(
@@ -396,7 +1035,7 @@ def refresh_subs(episode_dir: Path) -> dict:
             }
         )
     pm.SaveProject()
-    return {"status": "subs-refreshed", "timelines": done}
+    return {"status": "subs-refreshed", "timelines": done, **_source_lineage(source)}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -407,28 +1046,137 @@ def main(argv: list[str] | None = None) -> int:
         "--validate", action="store_true", help="候選吸附/長度帶/去重（改寫 candidates.json）"
     )
     parser.add_argument(
-        "--materialize", action="store_true", help="當選段建 timeline + 全候選打 marker"
+        "--mining-input",
+        action="store_true",
+        help="輸出 highlight miners 唯一可讀的 hash-bound Editorial Master SRT",
+    )
+    parser.add_argument(
+        "--merge-miners",
+        action="store_true",
+        help="strict merge story/punch/value miner outputs, then validate candidates",
+    )
+    parser.add_argument("--miner-story")
+    parser.add_argument("--miner-punch")
+    parser.add_argument("--miner-value")
+    parser.add_argument(
+        "--materialize", action="store_true", help="從 Editorial Master A/V 建立當選段 timeline"
     )
     parser.add_argument(
         "--refresh-subs",
         action="store_true",
-        help="精華 timeline 只換字幕不動剪輯（transcript.srt 更新後用）",
+        help="精華 timeline 只換 Master 字幕不動剪輯",
     )
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--legacy-v1",
+        action="store_true",
+        help="取證專用：明確使用舊 Stage5/raw source；production 禁止使用",
+    )
+    parser.add_argument("--projection-id")
+    parser.add_argument("--expected-episode-id")
+    parser.add_argument("--expected-generation-id")
+    parser.add_argument("--expected-manifest-sha256")
+    parser.add_argument("--reference-manifest")
+    parser.add_argument(
+        "--subtitle-release-handoff",
+        help=(
+            "episode-local official Memo Dual-Audit Stage 5 handoff JSON; "
+            "omitted means subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json"
+        ),
+    )
+    parser.add_argument(
+        "--degraded-release-handoff",
+        help="episode-local degraded dual-ASR Stage 5 handoff JSON",
+    )
     args = parser.parse_args(argv)
     episode_dir = Path(args.episode)
     if not episode_dir.is_dir():
         logger.error(f"episode 資料夾不存在: {episode_dir}")
         return 1
+    legacy_options = (
+        args.subtitle_release_handoff,
+        args.degraded_release_handoff,
+        args.projection_id,
+        args.expected_generation_id,
+        args.expected_manifest_sha256,
+        args.reference_manifest,
+    )
+    if not args.legacy_v1 and any(value is not None for value in legacy_options):
+        parser.error(
+            "Stage5 handoff/projection options require explicit --legacy-v1; "
+            "production Highlight uses Editorial Master"
+        )
+    subtitle_request = None
+    if args.legacy_v1:
+        subtitle_request = Stage5SubtitleRequest(
+            legacy_v1=True,
+            subtitle_release_handoff=args.subtitle_release_handoff,
+            degraded_release_handoff=args.degraded_release_handoff,
+            projection_id=args.projection_id,
+            expected_episode_id=args.expected_episode_id,
+            expected_generation_id=args.expected_generation_id,
+            expected_manifest_sha256=args.expected_manifest_sha256,
+            reference_manifest=args.reference_manifest,
+        )
+    editorial_master_request = None
+    if not args.legacy_v1:
+        editorial_master_request = EditorialMasterRequest(
+            episode_root=episode_dir,
+            expected_episode_id=args.expected_episode_id or episode_dir.name,
+        )
     started = time.time()
-    if args.validate:
-        result = validate(episode_dir)
+    if args.mining_input:
+        result = mining_input(
+            episode_dir,
+            editorial_master_request=editorial_master_request,
+            subtitle_request=subtitle_request,
+        )
+    elif args.merge_miners:
+        explicit_paths = {
+            "story": args.miner_story,
+            "punch": args.miner_punch,
+            "value": args.miner_value,
+        }
+        supplied = {role: value for role, value in explicit_paths.items() if value}
+        if supplied and set(supplied) != set(MINER_ROLES):
+            raise Stage5SubtitleContractError(
+                "explicit miner paths require --miner-story, --miner-punch, and --miner-value"
+            )
+        merge_result = merge_miners(
+            episode_dir,
+            miner_paths={role: Path(value) for role, value in supplied.items()} or None,
+            editorial_master_request=editorial_master_request,
+            subtitle_request=subtitle_request,
+        )
+        validation = validate(
+            episode_dir,
+            editorial_master_request=editorial_master_request,
+            subtitle_request=subtitle_request,
+        )
+        result = {**merge_result, "validation": validation}
+    elif args.validate:
+        result = validate(
+            episode_dir,
+            editorial_master_request=editorial_master_request,
+            subtitle_request=subtitle_request,
+        )
     elif args.materialize:
-        result = materialize(episode_dir, dry_run=args.dry_run)
+        result = materialize(
+            episode_dir,
+            dry_run=args.dry_run,
+            editorial_master_request=editorial_master_request,
+            subtitle_request=subtitle_request,
+        )
     elif args.refresh_subs:
-        result = refresh_subs(episode_dir)
+        result = refresh_subs(
+            episode_dir,
+            editorial_master_request=editorial_master_request,
+            subtitle_request=subtitle_request,
+        )
     else:
-        logger.error("指定 --validate 或 --materialize")
+        logger.error(
+            "指定 --mining-input、--merge-miners、--validate、--materialize 或 --refresh-subs"
+        )
         return 2
     result["elapsed_sec"] = round(time.time() - started, 1)
     print(json.dumps(result, ensure_ascii=False, indent=2))

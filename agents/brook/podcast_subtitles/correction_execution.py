@@ -11,17 +11,25 @@ from __future__ import annotations
 import io
 import stat
 import wave
+from bisect import bisect_left, bisect_right
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Sequence
 
 from shared.schemas.podcast_subtitles_v2 import (
     AuditCell,
     AuditPlan,
     BoundaryAuditTarget,
+    CandidateGroup,
     CandidateGroupSet,
+    CandidateSignal,
     CandidateSignalSet,
+    CanonicalSpan,
+    CanonicalToken,
     CanonicalTranscript,
+    EvidenceToken,
     RecognitionEvidence,
     RecognitionSeamEvidence,
     ReferenceEvidence,
@@ -30,6 +38,7 @@ from shared.schemas.podcast_subtitles_v2 import (
     recognition_evidence_content_hash,
     recognition_evidence_set_hash,
 )
+from shared.schemas.podcast_subtitles_v2_audio_selection import AudioAuditSelectionPlanV1
 from shared.schemas.podcast_subtitles_v2_correction import (
     CorrectionAuditExecutionLimitsV2,
     CorrectionAuditExecutionPlanV2,
@@ -48,6 +57,9 @@ from shared.schemas.podcast_subtitles_v2_correction import (
     CorrectionSourceBindingV2,
     CorrectionSourceKindV2,
     CorrectionSplitReasonV2,
+)
+from shared.schemas.podcast_subtitles_v2_selective_audio import (
+    ModalityAuditExecutionPlanV3,
 )
 
 from .candidate_generation import (
@@ -88,6 +100,7 @@ _REASON_ORDER: tuple[CorrectionSplitReasonV2, ...] = (
     "episode_end",
     "known_speaker_transition",
     "recognition_seam",
+    "selection_gap",
     "max_cells",
     "max_spans",
     "max_tokens",
@@ -144,6 +157,54 @@ class _PacketGroup:
     span_indices: tuple[int, ...]
     split_before: tuple[CorrectionSplitReasonV2, ...]
     split_after: tuple[CorrectionSplitReasonV2, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _RecognitionIntervalIndex:
+    source_hash: str
+    tokens: tuple[EvidenceToken, ...]
+    starts: tuple[int, ...]
+    ends: tuple[int, ...]
+
+    def overlapping(
+        self,
+        intervals: Sequence[tuple[int, int]],
+    ) -> tuple[EvidenceToken, ...]:
+        ranges: list[tuple[int, int]] = []
+        for interval_start, interval_end in intervals:
+            left = bisect_right(self.ends, interval_start)
+            right = bisect_left(self.starts, interval_end)
+            if left >= right:
+                continue
+            if ranges and left <= ranges[-1][1]:
+                ranges[-1] = (ranges[-1][0], max(ranges[-1][1], right))
+            else:
+                ranges.append((left, right))
+        return tuple(self.tokens[index] for left, right in ranges for index in range(left, right))
+
+
+@dataclass(frozen=True, slots=True)
+class _BindingIndices:
+    cell_by_id: Mapping[str, AuditCell]
+    cell_order: Mapping[str, int]
+    span_target_by_id: Mapping[str, SpanAuditTarget]
+    span_target_order: Mapping[str, int]
+    boundary_target_by_id: Mapping[str, BoundaryAuditTarget]
+    boundary_target_order: Mapping[str, int]
+    span_by_id: Mapping[str, CanonicalSpan]
+    span_order: Mapping[str, int]
+    token_by_id: Mapping[str, CanonicalToken]
+    token_order: Mapping[str, int]
+    signal_by_id: Mapping[str, CandidateSignal]
+    signal_order: Mapping[str, int]
+    signals_by_cell_id: Mapping[str, tuple[str, ...]]
+    group_by_id: Mapping[str, CandidateGroup]
+    group_order: Mapping[str, int]
+    groups_by_signal_id: Mapping[str, tuple[str, ...]]
+    groups_by_span_id: Mapping[str, tuple[str, ...]]
+    retrieval_by_span_id: Mapping[str, ReferenceRetrievalReceipt]
+    retrieval_order: Mapping[str, int]
+    recognitions: tuple[_RecognitionIntervalIndex, ...]
 
 
 def correction_execution_planner_code_hash() -> str:
@@ -569,8 +630,10 @@ def _artifact_identities(
     )
 
 
-def _span_speaker(target: SpanAuditTarget, transcript: CanonicalTranscript) -> str | None:
-    token_by_id = {item.id: item for item in transcript.tokens}
+def _span_speaker(
+    target: SpanAuditTarget,
+    token_by_id: Mapping[str, CanonicalToken],
+) -> str | None:
     speakers = {token_by_id[token_id].speaker for token_id in target.token_ids}
     if None in speakers or len(speakers) != 1:
         return None
@@ -681,10 +744,11 @@ def _mandatory_reasons(
     seam_by_boundary: dict[int, tuple[str, ...]],
 ) -> dict[int, tuple[CorrectionSplitReasonV2, ...]]:
     result: dict[int, tuple[CorrectionSplitReasonV2, ...]] = {}
+    token_by_id = {item.id: item for item in transcript.tokens}
     for boundary_ordinal in range(1, len(plan.span_targets)):
         reasons: list[CorrectionSplitReasonV2] = []
-        left = _span_speaker(plan.span_targets[boundary_ordinal - 1], transcript)
-        right = _span_speaker(plan.span_targets[boundary_ordinal], transcript)
+        left = _span_speaker(plan.span_targets[boundary_ordinal - 1], token_by_id)
+        right = _span_speaker(plan.span_targets[boundary_ordinal], token_by_id)
         if left is not None and right is not None and left != right:
             reasons.append("known_speaker_transition")
         if seam_by_boundary.get(boundary_ordinal):
@@ -776,6 +840,77 @@ def _reference_evidence_by_span(
     return {item.audio_span_id: item.evidence for item in retrievals}
 
 
+def _binding_indices(
+    *,
+    plan: AuditPlan,
+    signal_set: CandidateSignalSet,
+    group_set: CandidateGroupSet,
+    transcript: CanonicalTranscript,
+    recognitions: tuple[RecognitionEvidence, ...],
+    retrievals: tuple[ReferenceRetrievalReceipt, ...],
+) -> _BindingIndices:
+    signals_by_cell_id: dict[str, list[str]] = {}
+    for signal in signal_set.signals:
+        signals_by_cell_id.setdefault(signal.audit_cell_id, []).append(signal.id)
+    groups_by_signal_id: dict[str, list[str]] = {}
+    groups_by_span_id: dict[str, list[str]] = {}
+    for group in group_set.groups:
+        for signal_id in group.signal_ids:
+            groups_by_signal_id.setdefault(signal_id, []).append(group.id)
+        for span_id in group.target_span_ids:
+            groups_by_span_id.setdefault(span_id, []).append(group.id)
+    return _BindingIndices(
+        cell_by_id=MappingProxyType({item.id: item for item in plan.cells}),
+        cell_order=MappingProxyType({item.id: index for index, item in enumerate(plan.cells)}),
+        span_target_by_id=MappingProxyType({item.id: item for item in plan.span_targets}),
+        span_target_order=MappingProxyType(
+            {item.id: index for index, item in enumerate(plan.span_targets)}
+        ),
+        boundary_target_by_id=MappingProxyType({item.id: item for item in plan.boundary_targets}),
+        boundary_target_order=MappingProxyType(
+            {item.id: index for index, item in enumerate(plan.boundary_targets)}
+        ),
+        span_by_id=MappingProxyType({item.id: item for item in transcript.spans}),
+        span_order=MappingProxyType(
+            {item.id: index for index, item in enumerate(transcript.spans)}
+        ),
+        token_by_id=MappingProxyType({item.id: item for item in transcript.tokens}),
+        token_order=MappingProxyType(
+            {item.id: index for index, item in enumerate(transcript.tokens)}
+        ),
+        signal_by_id=MappingProxyType({item.id: item for item in signal_set.signals}),
+        signal_order=MappingProxyType(
+            {item.id: index for index, item in enumerate(signal_set.signals)}
+        ),
+        signals_by_cell_id=MappingProxyType(
+            {key: tuple(value) for key, value in signals_by_cell_id.items()}
+        ),
+        group_by_id=MappingProxyType({item.id: item for item in group_set.groups}),
+        group_order=MappingProxyType(
+            {item.id: index for index, item in enumerate(group_set.groups)}
+        ),
+        groups_by_signal_id=MappingProxyType(
+            {key: tuple(value) for key, value in groups_by_signal_id.items()}
+        ),
+        groups_by_span_id=MappingProxyType(
+            {key: tuple(value) for key, value in groups_by_span_id.items()}
+        ),
+        retrieval_by_span_id=MappingProxyType({item.audio_span_id: item for item in retrievals}),
+        retrieval_order=MappingProxyType(
+            {item.audio_span_id: index for index, item in enumerate(retrievals)}
+        ),
+        recognitions=tuple(
+            _RecognitionIntervalIndex(
+                source_hash=recognition_evidence_content_hash(recognition),
+                tokens=tuple(recognition.tokens),
+                starts=tuple(item.start_ms for item in recognition.tokens),
+                ends=tuple(item.end_ms for item in recognition.tokens),
+            )
+            for recognition in recognitions
+        ),
+    )
+
+
 def _build_bindings(
     *,
     plan: AuditPlan,
@@ -796,17 +931,37 @@ def _build_bindings(
     clip: tuple[bytes, int, int] | None = None,
     clip_bounds_ms: tuple[int, int] | None = None,
     artifact_sink: dict[str, bytes] | None = None,
+    indices: _BindingIndices | None = None,
 ) -> tuple[CorrectionSourceBindingV2, ...]:
+    indices = indices or _binding_indices(
+        plan=plan,
+        signal_set=signal_set,
+        group_set=group_set,
+        transcript=transcript,
+        recognitions=recognitions,
+        retrievals=retrievals,
+    )
     cell_set = set(cell_ids)
     span_set = set(span_ids)
     token_set = set(token_ids)
-    selected_cells = tuple(item for item in plan.cells if item.id in cell_set)
+    selected_cells = tuple(
+        indices.cell_by_id[item_id]
+        for item_id in sorted(cell_set, key=indices.cell_order.__getitem__)
+    )
     selected_target_ids = {item.target_id for item in selected_cells}
     selected_span_targets = tuple(
-        item for item in plan.span_targets if item.id in selected_target_ids
+        indices.span_target_by_id[item_id]
+        for item_id in sorted(
+            selected_target_ids & indices.span_target_by_id.keys(),
+            key=indices.span_target_order.__getitem__,
+        )
     )
     selected_boundary_targets = tuple(
-        item for item in plan.boundary_targets if item.id in selected_target_ids
+        indices.boundary_target_by_id[item_id]
+        for item_id in sorted(
+            selected_target_ids & indices.boundary_target_by_id.keys(),
+            key=indices.boundary_target_order.__getitem__,
+        )
     )
     for target in selected_boundary_targets:
         if target.left_span_id is not None:
@@ -817,26 +972,52 @@ def _build_bindings(
             token_set.add(target.left_token_id)
         if target.right_token_id is not None:
             token_set.add(target.right_token_id)
-    selected_spans = tuple(item for item in transcript.spans if item.id in span_set)
+    selected_spans = tuple(
+        indices.span_by_id[item_id]
+        for item_id in sorted(span_set, key=indices.span_order.__getitem__)
+    )
     token_set.update(token_id for item in selected_spans for token_id in item.token_ids)
-    selected_tokens = tuple(item for item in transcript.tokens if item.id in token_set)
-    relevant_signals = tuple(item for item in signal_set.signals if item.audit_cell_id in cell_set)
+    selected_tokens = tuple(
+        indices.token_by_id[item_id]
+        for item_id in sorted(token_set, key=indices.token_order.__getitem__)
+    )
+    relevant_signal_id_set = {
+        signal_id
+        for cell_id in cell_set
+        for signal_id in indices.signals_by_cell_id.get(cell_id, ())
+    }
+    relevant_signals = tuple(
+        indices.signal_by_id[item_id]
+        for item_id in sorted(relevant_signal_id_set, key=indices.signal_order.__getitem__)
+    )
     relevant_signal_ids = tuple(item.id for item in relevant_signals)
     signal_records = relevant_signal_ids or (signal_set.content_hash,)
+    relevant_group_id_set = {
+        group_id
+        for signal_id in relevant_signal_ids
+        for group_id in indices.groups_by_signal_id.get(signal_id, ())
+    }
+    relevant_group_id_set.update(
+        group_id for span_id in span_set for group_id in indices.groups_by_span_id.get(span_id, ())
+    )
     relevant_groups = tuple(
-        item
-        for item in group_set.groups
-        if set(item.signal_ids) & set(relevant_signal_ids) or set(item.target_span_ids) & span_set
+        indices.group_by_id[item_id]
+        for item_id in sorted(relevant_group_id_set, key=indices.group_order.__getitem__)
     )
     group_records = tuple(item.id for item in relevant_groups) or (group_set.content_hash,)
-    receipt_records = tuple(
-        item.query_id for item in retrievals if item.audio_span_id in span_set
-    ) or (plan.inputs.reference_retrieval_receipt_set_hash,)
+    selected_retrievals = tuple(
+        indices.retrieval_by_span_id[span_id]
+        for span_id in sorted(
+            span_set & indices.retrieval_by_span_id.keys(),
+            key=indices.retrieval_order.__getitem__,
+        )
+    )
+    receipt_records = tuple(item.query_id for item in selected_retrievals) or (
+        plan.inputs.reference_retrieval_receipt_set_hash,
+    )
     evidence: dict[str, ReferenceEvidence] = {}
     evidence_membership: dict[str, list[str]] = {}
-    for receipt in retrievals:
-        if receipt.audio_span_id not in span_set:
-            continue
+    for receipt in selected_retrievals:
         for item in receipt.evidence:
             previous = evidence.setdefault(item.id, item)
             if previous != item:
@@ -988,16 +1169,9 @@ def _build_bindings(
         selected_intervals = tuple((item.start_ms, item.end_ms) for item in selected_spans)
         recognition_sources: list[CorrectionRecognitionEvidenceItemSliceV2] = []
         recognition_records: list[str] = []
-        for recognition in recognitions:
-            source_hash = recognition_evidence_content_hash(recognition)
-            visible_evidence_tokens = tuple(
-                item
-                for item in recognition.tokens
-                if any(
-                    item.start_ms < interval_end and item.end_ms > interval_start
-                    for interval_start, interval_end in selected_intervals
-                )
-            )
+        for recognition, interval_index in zip(recognitions, indices.recognitions, strict=True):
+            source_hash = interval_index.source_hash
+            visible_evidence_tokens = interval_index.overlapping(selected_intervals)
             if not visible_evidence_tokens:
                 continue
             recognition_sources.append(
@@ -1252,6 +1426,14 @@ def build_correction_audit_execution_plan(
         retrievals=retrievals,
         seam_evidence=seam_evidence,
     )
+    binding_indices = _binding_indices(
+        plan=audit_plan,
+        signal_set=candidate_signal_set,
+        group_set=candidate_group_set,
+        transcript=transcript,
+        recognitions=recognitions,
+        retrievals=retrievals,
+    )
     units = _owned_units(audit_plan)
     seam_by_boundary = _seam_topology(audit_plan, seam_evidence)
     mandatory = _mandatory_reasons(audit_plan, transcript, seam_by_boundary)
@@ -1393,6 +1575,7 @@ def build_correction_audit_execution_plan(
                 identities=identities,
                 normalized_audio_hash=audio_digest,
                 normalized_audio_size_bytes=audio_snapshot.size_bytes,
+                indices=binding_indices,
                 cell_ids=all_packet_cells,
                 span_ids=(*owned_spans, *context_spans),
                 token_ids=(*owned_tokens, *context_tokens),
@@ -1473,6 +1656,7 @@ def build_correction_audit_execution_plan(
         identities=identities,
         normalized_audio_hash=audio_digest,
         normalized_audio_size_bytes=audio_snapshot.size_bytes,
+        indices=binding_indices,
         cell_ids=all_cell_ids,
         span_ids=all_span_ids,
         token_ids=all_token_ids,
@@ -1523,8 +1707,428 @@ def build_correction_audit_execution_plan(
     return result
 
 
+def build_modality_audit_execution_plan_v3(
+    audit_plan: AuditPlan,
+    candidate_signal_set: CandidateSignalSet,
+    candidate_group_set: CandidateGroupSet,
+    transcript: CanonicalTranscript,
+    recognition_evidence: Sequence[RecognitionEvidence],
+    policy: CorrectionAuditExecutionPolicyV2,
+    *,
+    modality: str,
+    selection_plan: AudioAuditSelectionPlanV1 | None = None,
+    prior_audio_plans: Sequence[ModalityAuditExecutionPlanV3] = (),
+    reference_retrievals: Sequence[ReferenceRetrievalReceipt] = (),
+    seam_evidence: RecognitionSeamEvidence | None = None,
+    normalized_audio_path: str | Path | None = None,
+) -> ModalityAuditExecutionPlanV3:
+    """Build text-only universal or audio-only selected-delta topology.
+
+    Text planning deliberately never opens normalized audio.  Audio planning is
+    therefore safe to defer until the completed text record has frozen one
+    exact selection manifest.
+    """
+
+    if modality not in ("text", "audio"):
+        raise CorrectionExecutionError("modality execution requires text or audio")
+    if (
+        policy.planner_id != CORRECTION_EXECUTION_PLANNER_ID
+        or policy.planner_version != CORRECTION_EXECUTION_PLANNER_VERSION
+        or policy.planner_code_hash != correction_execution_planner_code_hash()
+    ):
+        raise CorrectionExecutionError("correction execution planner identity drift")
+    recognitions, retrievals = _exact_inputs(
+        plan=audit_plan,
+        signal_set=candidate_signal_set,
+        group_set=candidate_group_set,
+        transcript=transcript,
+        recognition_evidence=recognition_evidence,
+        reference_retrievals=reference_retrievals,
+        seam_evidence=seam_evidence,
+    )
+    identities = _artifact_identities(
+        plan=audit_plan,
+        signal_set=candidate_signal_set,
+        group_set=candidate_group_set,
+        transcript=transcript,
+        recognitions=recognitions,
+        retrievals=retrievals,
+        seam_evidence=seam_evidence,
+    )
+    binding_indices = _binding_indices(
+        plan=audit_plan,
+        signal_set=candidate_signal_set,
+        group_set=candidate_group_set,
+        transcript=transcript,
+        recognitions=recognitions,
+        retrievals=retrievals,
+    )
+    audio_path: Path | None = None
+    audio_topology: PcmWavTopology | None = None
+    audio_snapshot: _AudioFileSnapshot | None = None
+    audio_digest = transcript.normalized_audio_hash
+    if modality == "audio":
+        if selection_plan is None or normalized_audio_path is None:
+            raise CorrectionExecutionError("audio execution requires selection and normalized WAV")
+        if (
+            selection_plan.episode_id != transcript.episode_id
+            or selection_plan.generation_id != transcript.generation_id
+            or selection_plan.normalized_audio_hash != transcript.normalized_audio_hash
+            or selection_plan.audit_plan_hash != identities.audit_plan_hash
+            or selection_plan.audit_plan_content_hash != audit_plan.content_hash
+            or selection_plan.canonical_transcript_hash != identities.canonical_transcript_hash
+            or selection_plan.canonical_content_hash != transcript.content_hash
+        ):
+            raise CorrectionExecutionError("audio selection crosses execution lineage")
+        audio_path, audio_topology, audio_snapshot, audio_digest = _prepare_normalized_audio(
+            normalized_audio_path=normalized_audio_path,
+            transcript=transcript,
+            plan=audit_plan,
+        )
+    elif selection_plan is not None or prior_audio_plans or normalized_audio_path is not None:
+        raise CorrectionExecutionError("text execution cannot claim audio-only inputs")
+
+    units = _owned_units(audit_plan)
+    prior_span_ids: set[str] = set()
+    for prior in prior_audio_plans:
+        if (
+            prior.modality != "audio"
+            or prior.episode_id != transcript.episode_id
+            or prior.generation_id != transcript.generation_id
+            or prior.audit_plan_hash != identities.audit_plan_hash
+            or prior.normalized_audio_hash != transcript.normalized_audio_hash
+            or set(prior_span_ids) & set(prior.owned_span_ids)
+        ):
+            raise CorrectionExecutionError("prior audio execution lineage or delta overlaps")
+        prior_span_ids.update(prior.owned_span_ids)
+    if modality == "text":
+        selected_indices = tuple(range(len(units)))
+    else:
+        assert selection_plan is not None
+        selected_set = set(selection_plan.selected_span_ids)
+        if not prior_span_ids <= selected_set:
+            raise CorrectionExecutionError("prior audio delta is outside cumulative selection")
+        selected_indices = tuple(
+            index
+            for index, unit in enumerate(units)
+            if unit.span_id in selected_set - prior_span_ids
+        )
+        if not selected_indices:
+            raise CorrectionExecutionError("audio selection round has no new owned spans")
+
+    seam_by_boundary = _seam_topology(audit_plan, seam_evidence)
+    mandatory = _mandatory_reasons(audit_plan, transcript, seam_by_boundary)
+    limits = policy.text if modality == "text" else policy.audio
+    if modality == "text":
+        packet_groups = _packet_groups(units=units, limits=limits, mandatory=mandatory)
+    else:
+        packet_groups = tuple(
+            _PacketGroup(
+                span_indices=(span_index,),
+                split_before=("episode_start",) if ordinal == 0 else ("selection_gap",),
+                split_after=("episode_end",)
+                if ordinal == len(selected_indices) - 1
+                else ("selection_gap",),
+            )
+            for ordinal, span_index in enumerate(selected_indices)
+        )
+
+    cell_order = {item.id: index for index, item in enumerate(audit_plan.cells)}
+    target_order = {
+        item.id: index
+        for index, item in enumerate((*audit_plan.span_targets, *audit_plan.boundary_targets))
+    }
+    span_order = {item.span_id: index for index, item in enumerate(audit_plan.span_targets)}
+    token_order = {item.id: index for index, item in enumerate(transcript.tokens)}
+    cell_by_id = {item.id: item for item in audit_plan.cells}
+    target_by_id = {
+        item.id: item for item in (*audit_plan.span_targets, *audit_plan.boundary_targets)
+    }
+    packets: list[CorrectionAuditPacketV2] = []
+    for packet_index, group in enumerate(packet_groups):
+        context_indices = _context_indices(
+            group=group,
+            units=units,
+            limits=limits,
+            mandatory=mandatory,
+        )
+        owned_units = tuple(units[index] for index in group.span_indices)
+        context_units = tuple(units[index] for index in context_indices)
+        owned_cells = tuple(
+            sorted(
+                {value for item in owned_units for value in item.cell_ids},
+                key=cell_order.__getitem__,
+            )
+        )
+        context_cells = tuple(
+            sorted(
+                {value for item in context_units for value in item.cell_ids},
+                key=cell_order.__getitem__,
+            )
+        )
+        requested_cells = tuple(
+            item for item in owned_cells if cell_by_id[item].applicability == "required"
+        )
+        owned_targets = tuple(
+            sorted(
+                {cell_by_id[item].target_id for item in owned_cells},
+                key=target_order.__getitem__,
+            )
+        )
+        context_targets = tuple(
+            sorted(
+                {cell_by_id[item].target_id for item in context_cells},
+                key=target_order.__getitem__,
+            )
+        )
+        owned_spans = tuple(
+            sorted((item.span_id for item in owned_units), key=span_order.__getitem__)
+        )
+        context_spans = tuple(
+            sorted((item.span_id for item in context_units), key=span_order.__getitem__)
+        )
+        owned_tokens = tuple(
+            sorted(
+                {value for item in owned_units for value in item.token_ids},
+                key=token_order.__getitem__,
+            )
+        )
+        context_tokens = tuple(
+            sorted(
+                {value for item in context_units for value in item.token_ids},
+                key=token_order.__getitem__,
+            )
+        )
+        visible_targets = tuple(target_by_id[item] for item in (*owned_targets, *context_targets))
+        window_start_ms = min(
+            item.window_start_ms if isinstance(item, BoundaryAuditTarget) else item.start_ms
+            for item in visible_targets
+        )
+        window_end_ms = max(
+            item.window_end_ms if isinstance(item, BoundaryAuditTarget) else item.end_ms
+            for item in visible_targets
+        )
+        visible_span_indices = tuple(sorted((*group.span_indices, *context_indices)))
+        speakers = tuple(
+            sorted(
+                {
+                    transcript.tokens[token_order[token_id]].speaker
+                    for index in visible_span_indices
+                    for token_id in audit_plan.span_targets[index].token_ids
+                    if transcript.tokens[token_order[token_id]].speaker is not None
+                }
+            )
+        )
+        seam_ids = tuple(
+            sorted(
+                {
+                    seam_id
+                    for ordinal in range(visible_span_indices[0], visible_span_indices[-1] + 2)
+                    for seam_id in seam_by_boundary.get(ordinal, ())
+                }
+            )
+        )
+        clip_start_ms = clip_end_ms = clip_start_frame = clip_end_frame = None
+        clip: tuple[bytes, int, int] | None = None
+        if modality == "audio":
+            assert audio_path is not None
+            assert audio_topology is not None
+            clip_start_ms = max(0, window_start_ms - limits.clip_padding_ms)
+            clip_end_ms = min(
+                audio_topology.duration_ms,
+                window_end_ms + limits.clip_padding_ms,
+            )
+            if (
+                limits.max_clip_duration_ms is None
+                or clip_end_ms - clip_start_ms > limits.max_clip_duration_ms
+            ):
+                raise CorrectionExecutionError("audio selection clip exceeds duration cap")
+            clip = derive_pcm_wav_clip_bytes(
+                audio_path,
+                clip_start_ms=clip_start_ms,
+                clip_end_ms=clip_end_ms,
+                topology=audio_topology,
+            )
+            clip_start_frame, clip_end_frame = clip[1], clip[2]
+        bindings = _build_bindings(
+            plan=audit_plan,
+            signal_set=candidate_signal_set,
+            group_set=candidate_group_set,
+            transcript=transcript,
+            recognitions=recognitions,
+            retrievals=retrievals,
+            seam_evidence=seam_evidence,
+            identities=identities,
+            normalized_audio_hash=audio_digest,
+            normalized_audio_size_bytes=(audio_snapshot.size_bytes if audio_snapshot else 0),
+            indices=binding_indices,
+            cell_ids=tuple(sorted((*owned_cells, *context_cells), key=cell_order.__getitem__)),
+            span_ids=(*owned_spans, *context_spans),
+            token_ids=(*owned_tokens, *context_tokens),
+            include_retrieval_lineage=False,
+            seam_ids=seam_ids,
+            clip=clip,
+            clip_bounds_ms=(clip_start_ms, clip_end_ms)
+            if clip_start_ms is not None and clip_end_ms is not None
+            else None,
+        )
+        packet_payload = {
+            "schema_version": 2,
+            "packet_index": packet_index,
+            "episode_id": transcript.episode_id,
+            "generation_id": transcript.generation_id,
+            "modality": modality,
+            "audit_plan_hash": identities.audit_plan_hash,
+            "audit_plan_content_hash": audit_plan.content_hash,
+            "audit_input_hash": audit_plan.inputs.content_hash,
+            "candidate_signal_set_hash": identities.candidate_signal_set_hash,
+            "candidate_signal_set_content_hash": candidate_signal_set.content_hash,
+            "candidate_group_set_hash": identities.candidate_group_set_hash,
+            "candidate_group_set_content_hash": candidate_group_set.content_hash,
+            "canonical_transcript_hash": identities.canonical_transcript_hash,
+            "canonical_content_hash": transcript.content_hash,
+            "normalized_audio_hash": transcript.normalized_audio_hash,
+            "policy_hash": policy.content_hash,
+            "owned_cell_ids": owned_cells,
+            "requested_cell_ids": requested_cells,
+            "context_cell_ids": context_cells,
+            "owned_target_ids": owned_targets,
+            "context_target_ids": context_targets,
+            "owned_span_ids": owned_spans,
+            "context_span_ids": context_spans,
+            "owned_token_ids": owned_tokens,
+            "context_token_ids": context_tokens,
+            "window_start_ms": window_start_ms,
+            "window_end_ms": window_end_ms,
+            "clip_start_ms": clip_start_ms,
+            "clip_end_ms": clip_end_ms,
+            "clip_start_frame": clip_start_frame,
+            "clip_end_frame": clip_end_frame,
+            "speaker_labels": speakers,
+            "recognition_seam_ids": seam_ids,
+            "reference_evidence_ids": tuple(
+                item.id for item in bindings if item.kind == "reference_excerpt"
+            ),
+            "split_before_reasons": group.split_before,
+            "split_after_reasons": group.split_after,
+            "source_bindings": bindings,
+            "planner_id": policy.planner_id,
+            "planner_version": policy.planner_version,
+            "planner_code_hash": policy.planner_code_hash,
+            "execution_status": "planned_not_executed",
+        }
+        packet_hash = hash_object(packet_payload)
+        packets.append(
+            CorrectionAuditPacketV2(
+                **packet_payload,
+                id=packet_hash,
+                content_hash=packet_hash,
+            )
+        )
+
+    owned_cell_ids = tuple(cell_id for packet in packets for cell_id in packet.owned_cell_ids)
+    required_cell_ids = tuple(
+        cell_id for packet in packets for cell_id in packet.requested_cell_ids
+    )
+    owned_span_id_set = {span_id for packet in packets for span_id in packet.owned_span_ids}
+    owned_span_ids = tuple(
+        item.span_id for item in audit_plan.span_targets if item.span_id in owned_span_id_set
+    )
+    source_bindings = _build_bindings(
+        plan=audit_plan,
+        signal_set=candidate_signal_set,
+        group_set=candidate_group_set,
+        transcript=transcript,
+        recognitions=recognitions,
+        retrievals=retrievals,
+        seam_evidence=seam_evidence,
+        identities=identities,
+        normalized_audio_hash=audio_digest,
+        normalized_audio_size_bytes=(audio_snapshot.size_bytes if audio_snapshot else 0),
+        indices=binding_indices,
+        cell_ids=owned_cell_ids,
+        span_ids=owned_span_ids,
+        token_ids=tuple(
+            token_id
+            for item in audit_plan.span_targets
+            if item.span_id in owned_span_id_set
+            for token_id in item.token_ids
+        ),
+        include_retrieval_lineage=True,
+        seam_ids=tuple(item.id for item in seam_evidence.observations)
+        if seam_evidence is not None
+        else (),
+    )
+    selection_hash = sha256_bytes(canonical_json_bytes(selection_plan)) if selection_plan else None
+    plan_payload = {
+        "schema_version": 3,
+        "episode_id": transcript.episode_id,
+        "generation_id": transcript.generation_id,
+        "modality": modality,
+        "policy": policy,
+        "policy_hash": policy.content_hash,
+        "audit_plan_hash": identities.audit_plan_hash,
+        "audit_plan_content_hash": audit_plan.content_hash,
+        "audit_input_hash": audit_plan.inputs.content_hash,
+        "candidate_signal_set_hash": identities.candidate_signal_set_hash,
+        "candidate_signal_set_content_hash": candidate_signal_set.content_hash,
+        "candidate_group_set_hash": identities.candidate_group_set_hash,
+        "candidate_group_set_content_hash": candidate_group_set.content_hash,
+        "canonical_transcript_hash": identities.canonical_transcript_hash,
+        "canonical_content_hash": transcript.content_hash,
+        "recognition_evidence_set_hash": identities.recognition_evidence_set_hash,
+        "reference_retrieval_receipt_set_hash": identities.reference_retrieval_receipt_set_hash,
+        "normalized_audio_hash": transcript.normalized_audio_hash,
+        "all_cell_ids": tuple(item.id for item in audit_plan.cells),
+        "owned_cell_ids": owned_cell_ids,
+        "required_cell_ids": required_cell_ids,
+        "owned_span_ids": owned_span_ids,
+        "selection_plan_id": selection_plan.id if selection_plan else None,
+        "selection_plan_content_hash": selection_plan.content_hash if selection_plan else None,
+        "selection_plan_artifact_hash": selection_hash,
+        "tier": selection_plan.tier if selection_plan else None,
+        "prior_execution_plan_id": prior_audio_plans[-1].id if prior_audio_plans else None,
+        "source_bindings": source_bindings,
+        "packets": tuple(packets),
+        "planner_id": policy.planner_id,
+        "planner_version": policy.planner_version,
+        "planner_code_hash": policy.planner_code_hash,
+        "execution_status": "planned_not_executed",
+        "completeness_statement": (
+            "text_universal_or_audio_exact_selected_delta_not_semantic_recall_proof"
+        ),
+    }
+    digest = hash_object(plan_payload)
+    result = ModalityAuditExecutionPlanV3(**plan_payload, id=digest, content_hash=digest)
+    if audio_path is not None and audio_snapshot is not None:
+        _assert_normalized_audio_unchanged(
+            path=audio_path,
+            initial=audio_snapshot,
+            digest=audio_digest,
+        )
+    return result
+
+
+def _validate_execution_plan_artifact(
+    execution_plan: CorrectionAuditExecutionPlanV2 | ModalityAuditExecutionPlanV3,
+    *,
+    label: str,
+) -> None:
+    model = (
+        ModalityAuditExecutionPlanV3
+        if isinstance(execution_plan, ModalityAuditExecutionPlanV3)
+        else CorrectionAuditExecutionPlanV2
+    )
+    try:
+        validated = model.model_validate_json(canonical_json_bytes(execution_plan))
+    except ValueError as exc:
+        raise CorrectionExecutionError(f"{label} execution plan is internally invalid") from exc
+    if validated != execution_plan:
+        raise CorrectionExecutionError(f"{label} execution plan is not an exact artifact")
+
+
 def materialize_text_correction_packet_sources(
-    execution_plan: CorrectionAuditExecutionPlanV2,
+    execution_plan: CorrectionAuditExecutionPlanV2 | ModalityAuditExecutionPlanV3,
     packet_id: str,
     audit_plan: AuditPlan,
     candidate_signal_set: CandidateSignalSet,
@@ -1543,20 +2147,60 @@ def materialize_text_correction_packet_sources(
     bindings decorative instead of executable evidence.
     """
 
-    try:
-        validated_execution = CorrectionAuditExecutionPlanV2.model_validate_json(
-            canonical_json_bytes(execution_plan)
-        )
-    except ValueError as exc:
-        raise CorrectionExecutionError("text packet execution plan is internally invalid") from exc
-    if validated_execution != execution_plan:
-        raise CorrectionExecutionError("text packet execution plan is not an exact artifact")
+    return materialize_text_correction_packet_sources_batch(
+        execution_plan,
+        audit_plan,
+        candidate_signal_set,
+        candidate_group_set,
+        transcript,
+        recognition_evidence,
+        packet_ids=(packet_id,),
+        reference_retrievals=reference_retrievals,
+        seam_evidence=seam_evidence,
+    )
 
-    matches = tuple(item for item in execution_plan.packets if item.id == packet_id)
-    if len(matches) != 1:
+
+def materialize_text_correction_packet_sources_batch(
+    execution_plan: CorrectionAuditExecutionPlanV2 | ModalityAuditExecutionPlanV3,
+    audit_plan: AuditPlan,
+    candidate_signal_set: CandidateSignalSet,
+    candidate_group_set: CandidateGroupSet,
+    transcript: CanonicalTranscript,
+    recognition_evidence: Sequence[RecognitionEvidence],
+    *,
+    packet_ids: Sequence[str] | None = None,
+    reference_retrievals: Sequence[ReferenceRetrievalReceipt] = (),
+    seam_evidence: RecognitionSeamEvidence | None = None,
+) -> dict[str, bytes]:
+    """Rebuild an exact text-packet batch with one frozen-parent validation.
+
+    Full parent validation, artifact hashing, and global binding indexes are
+    episode-scale work.  They are intentionally prepared once for the batch;
+    each packet then materializes only its bounded slices.  The single-packet
+    API delegates here so both paths retain identical fail-closed semantics.
+    """
+
+    _validate_execution_plan_artifact(execution_plan, label="text packet")
+    if isinstance(execution_plan, ModalityAuditExecutionPlanV3) and (
+        execution_plan.modality != "text"
+    ):
+        raise CorrectionExecutionError("text materializer rejects audio-only execution")
+
+    packet_by_id = {item.id: item for item in execution_plan.packets}
+    if len(packet_by_id) != len(execution_plan.packets):
         raise CorrectionExecutionError("text packet identity is absent or ambiguous")
-    packet = matches[0]
-    if packet.modality != "text":
+    selected_packet_ids = (
+        tuple(item.id for item in execution_plan.packets)
+        if packet_ids is None
+        else tuple(packet_ids)
+    )
+    if not selected_packet_ids or len(set(selected_packet_ids)) != len(selected_packet_ids):
+        raise CorrectionExecutionError("text packet batch is empty or contains duplicates")
+    try:
+        packets = tuple(packet_by_id[item_id] for item_id in selected_packet_ids)
+    except KeyError as exc:
+        raise CorrectionExecutionError("text packet identity is absent or ambiguous") from exc
+    if any(packet.modality != "text" for packet in packets):
         raise CorrectionExecutionError("text packet materializer rejects audio packets")
 
     recognitions, retrievals = _exact_inputs(
@@ -1599,55 +2243,69 @@ def materialize_text_correction_packet_sources(
             "text packet source parents differ from the execution plan lineage"
         )
 
-    cell_order = {item.id: index for index, item in enumerate(audit_plan.cells)}
-    span_order = {item.span_id: index for index, item in enumerate(audit_plan.span_targets)}
-    token_order = {item.id: index for index, item in enumerate(transcript.tokens)}
-    sources: dict[str, bytes] = {}
-    rebuilt = _build_bindings(
+    indices = _binding_indices(
         plan=audit_plan,
         signal_set=candidate_signal_set,
         group_set=candidate_group_set,
         transcript=transcript,
         recognitions=recognitions,
         retrievals=retrievals,
-        seam_evidence=seam_evidence,
-        identities=identities,
-        normalized_audio_hash=transcript.normalized_audio_hash,
-        normalized_audio_size_bytes=0,
-        cell_ids=tuple(
-            sorted(
-                (*packet.owned_cell_ids, *packet.context_cell_ids),
-                key=cell_order.__getitem__,
-            )
-        ),
-        span_ids=tuple(
-            sorted(
-                (*packet.owned_span_ids, *packet.context_span_ids),
-                key=span_order.__getitem__,
-            )
-        ),
-        token_ids=tuple(
-            sorted(
-                (*packet.owned_token_ids, *packet.context_token_ids),
-                key=token_order.__getitem__,
-            )
-        ),
-        include_retrieval_lineage=False,
-        seam_ids=packet.recognition_seam_ids,
-        artifact_sink=sources,
     )
-    if rebuilt != packet.source_bindings:
-        raise CorrectionExecutionError(
-            "text packet source bindings are not reproducible from frozen parents"
+    batch_sources: dict[str, bytes] = {}
+    for packet in packets:
+        packet_sources: dict[str, bytes] = {}
+        rebuilt = _build_bindings(
+            plan=audit_plan,
+            signal_set=candidate_signal_set,
+            group_set=candidate_group_set,
+            transcript=transcript,
+            recognitions=recognitions,
+            retrievals=retrievals,
+            seam_evidence=seam_evidence,
+            identities=identities,
+            normalized_audio_hash=transcript.normalized_audio_hash,
+            normalized_audio_size_bytes=0,
+            cell_ids=tuple(
+                sorted(
+                    (*packet.owned_cell_ids, *packet.context_cell_ids),
+                    key=indices.cell_order.__getitem__,
+                )
+            ),
+            span_ids=tuple(
+                sorted(
+                    (*packet.owned_span_ids, *packet.context_span_ids),
+                    key=indices.span_order.__getitem__,
+                )
+            ),
+            token_ids=tuple(
+                sorted(
+                    (*packet.owned_token_ids, *packet.context_token_ids),
+                    key=indices.token_order.__getitem__,
+                )
+            ),
+            include_retrieval_lineage=False,
+            seam_ids=packet.recognition_seam_ids,
+            artifact_sink=packet_sources,
+            indices=indices,
         )
-    expected_uris = tuple(item.artifact_uri for item in packet.source_bindings)
-    if tuple(sources) != expected_uris:
-        raise CorrectionExecutionError("text packet source byte set is incomplete or reordered")
-    return sources
+        if rebuilt != packet.source_bindings:
+            raise CorrectionExecutionError(
+                "text packet source bindings are not reproducible from frozen parents"
+            )
+        expected_uris = tuple(item.artifact_uri for item in packet.source_bindings)
+        if tuple(packet_sources) != expected_uris:
+            raise CorrectionExecutionError("text packet source byte set is incomplete or reordered")
+        for uri, exact_bytes in packet_sources.items():
+            previous = batch_sources.setdefault(uri, exact_bytes)
+            if previous != exact_bytes:
+                raise CorrectionExecutionError(
+                    "text artifact URI resolves to conflicting exact bytes"
+                )
+    return batch_sources
 
 
 def materialize_audio_correction_packet_sources(
-    execution_plan: CorrectionAuditExecutionPlanV2,
+    execution_plan: CorrectionAuditExecutionPlanV2 | ModalityAuditExecutionPlanV3,
     packet_id: str,
     audit_plan: AuditPlan,
     candidate_signal_set: CandidateSignalSet,
@@ -1666,14 +2324,11 @@ def materialize_audio_correction_packet_sources(
     before derivation and revalidated after every byte has been materialized.
     """
 
-    try:
-        validated_execution = CorrectionAuditExecutionPlanV2.model_validate_json(
-            canonical_json_bytes(execution_plan)
-        )
-    except ValueError as exc:
-        raise CorrectionExecutionError("audio packet execution plan is internally invalid") from exc
-    if validated_execution != execution_plan:
-        raise CorrectionExecutionError("audio packet execution plan is not an exact artifact")
+    _validate_execution_plan_artifact(execution_plan, label="audio packet")
+    if isinstance(execution_plan, ModalityAuditExecutionPlanV3) and (
+        execution_plan.modality != "audio"
+    ):
+        raise CorrectionExecutionError("audio materializer rejects text-only execution")
     matches = tuple(item for item in execution_plan.packets if item.id == packet_id)
     if len(matches) != 1:
         raise CorrectionExecutionError("audio packet identity is absent or ambiguous")
@@ -1830,4 +2485,5 @@ __all__ = [
     "derive_pcm_wav_clip_bytes",
     "materialize_audio_correction_packet_sources",
     "materialize_text_correction_packet_sources",
+    "materialize_text_correction_packet_sources_batch",
 ]

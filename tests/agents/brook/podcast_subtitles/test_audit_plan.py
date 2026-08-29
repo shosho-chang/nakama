@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Sequence
 
 import pytest
 from pydantic import ValidationError
 
+import agents.brook.podcast_subtitles.audit_plan as audit_plan_module
 from agents.brook.podcast_subtitles.audit_plan import (
     AuditPlanError,
+    _observed_speakers_by_span,
     assert_audit_plan,
+    audit_plan_bytes,
     build_audit_plan,
     default_correction_audit_policy,
 )
@@ -529,5 +533,117 @@ def test_assert_plan_is_an_exact_rebuild_not_a_hash_only_check() -> None:
             transcript,
             recognitions,
             default_correction_audit_policy(low_confidence_threshold=0.8),
+            references_enrolled=False,
+        )
+
+
+def test_audit_plan_speaker_overlap_checks_are_not_category_amplified(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    texts = tuple("甲" if index % 2 == 0 else "乙" for index in range(12))
+    transcript, recognitions = make_case(texts)
+    original = EvidenceToken.__getattribute__
+    speaker_reads = 0
+
+    def counted(token: EvidenceToken, name: str) -> object:
+        nonlocal speaker_reads
+        if name == "speaker":
+            speaker_reads += 1
+        return original(token, name)
+
+    monkeypatch.setattr(EvidenceToken, "__getattribute__", counted)
+
+    plan = build_audit_plan(
+        transcript,
+        recognitions,
+        default_correction_audit_policy(),
+        references_enrolled=False,
+    )
+
+    recognition_token_count = sum(len(item.tokens) for item in recognitions)
+    assert plan.cells
+    assert speaker_reads <= recognition_token_count
+
+
+def test_speaker_interval_sweep_preserves_golden_audit_plan_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        audit_plan_module,
+        "audit_plan_builder_code_hash",
+        lambda: "e" * 64,
+    )
+    transcript, recognitions = make_case(("AI3",), confidences=(None,))
+
+    plan = build_audit_plan(
+        transcript,
+        recognitions,
+        default_correction_audit_policy(),
+        references_enrolled=False,
+    )
+
+    assert hashlib.sha256(audit_plan_bytes(plan)).hexdigest() == (
+        "4bcec206c6b74347ede5a612674357b7e23ba7d9d6772cdd49aedb9543f0e0e8"
+    )
+
+
+@pytest.mark.parametrize(
+    ("start_ms", "end_ms", "expected"),
+    [
+        (0, 100, (frozenset(), frozenset())),
+        (300, 500, (frozenset(), frozenset())),
+        (299, 501, (frozenset({"host"}), frozenset({"host"}))),
+        (100, 300, (frozenset({"host"}), frozenset())),
+    ],
+)
+def test_speaker_interval_sweep_uses_strict_overlap_edges(
+    start_ms: int,
+    end_ms: int,
+    expected: tuple[frozenset[str], frozenset[str]],
+) -> None:
+    transcript, recognitions = make_case()
+    original = recognitions[0]
+    token = EvidenceToken.model_validate(
+        {
+            **original.tokens[0].model_dump(),
+            "speaker": "host",
+            "start_ms": start_ms,
+            "end_ms": end_ms,
+        }
+    )
+    recognition = RecognitionEvidence.model_validate({**original.model_dump(), "tokens": (token,)})
+
+    observed = _observed_speakers_by_span(transcript.spans, (recognition,))
+
+    assert tuple(observed[span.id] for span in transcript.spans) == expected
+    with pytest.raises(TypeError):
+        observed[transcript.spans[0].id] = frozenset({"forged"})  # type: ignore[index]
+
+
+def test_fresh_audit_plan_replay_rejects_speaker_evidence_drift() -> None:
+    transcript, recognitions = make_case()
+    plan = build_audit_plan(
+        transcript,
+        recognitions,
+        default_correction_audit_policy(),
+        references_enrolled=False,
+    )
+    original = recognitions[0]
+    changed_token = EvidenceToken.model_validate(
+        {**original.tokens[0].model_dump(), "speaker": "host"}
+    )
+    changed_recognition = RecognitionEvidence.model_validate(
+        {
+            **original.model_dump(),
+            "tokens": (changed_token, *original.tokens[1:]),
+        }
+    )
+
+    with pytest.raises(AuditPlanError, match="lineage differs"):
+        assert_audit_plan(
+            plan,
+            transcript,
+            (changed_recognition,),
+            default_correction_audit_policy(),
             references_enrolled=False,
         )

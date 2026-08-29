@@ -67,6 +67,35 @@ H8 = "8" * 64
 H9 = "9" * 64
 
 
+def test_recognition_interval_lookup_preserves_strict_overlap_edges() -> None:
+    tokens = tuple(
+        EvidenceToken(
+            id=f"edge-{index}",
+            text=text,
+            start_ms=start,
+            end_ms=end,
+            evidence_refs=(f"segment-{index}",),
+        )
+        for index, (text, start, end) in enumerate(
+            (("a", 0, 100), ("b", 100, 200), ("c", 250, 300))
+        )
+    )
+    index = correction_execution_module._RecognitionIntervalIndex(
+        source_hash=H2,
+        tokens=tokens,
+        starts=tuple(item.start_ms for item in tokens),
+        ends=tuple(item.end_ms for item in tokens),
+    )
+
+    assert tuple(item.id for item in index.overlapping(((100, 200),))) == ("edge-1",)
+    assert index.overlapping(((200, 250),)) == ()
+    assert tuple(item.id for item in index.overlapping(((100, 250),))) == ("edge-1",)
+    assert tuple(item.id for item in index.overlapping(((0, 100), (100, 200)))) == (
+        "edge-0",
+        "edge-1",
+    )
+
+
 def test_execution_defaults_reject_bool_as_integer() -> None:
     with pytest.raises(ValueError, match="must be positive"):
         CorrectionAuditExecutionDefaults(text_max_cells_per_packet=True)

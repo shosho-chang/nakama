@@ -38,6 +38,7 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 import re
 import subprocess
 import sys
@@ -53,16 +54,35 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from run_highlight_cut import FORMAT_LABEL  # noqa: E402
-from run_short_tighten import TIGHTEN_DIR, _load_winner  # noqa: E402
+from run_short_tighten import TIGHTEN_DIR, _load_winner, _open_editorial_master  # noqa: E402
+
+from agents.brook.script_video.highlight_broll import (  # noqa: E402
+    BrollContractError,
+    verify_visual_recipe_lineage,
+)
 
 logger = logging.getLogger("short_titles")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 COMP_DIR = REPO_ROOT / "video" / "compositions" / "punch_card"
 CARDS_DIR = "highlights/tighten/cards"
-COMP_SEC = 4.0  # punch_card.html data-duration——show_sec 上限（留 0.2s 裕度）
+COMP_SEC = 4.0  # punch_card.html data-duration——短片 show_sec 上限（留 0.2s 裕度）
+COMP_WIDE_SEC = 8.0  # punch_card_wide.html data-duration——長片卡比短片長一倍
 KINETIC_COMP = "kinetic_sequence.html"
 KINETIC_COMP_SEC = 12.0
+
+
+def _comp_sec(fmt: str, *, kinetic: bool = False) -> float:
+    """這張卡能顯示多久——上限由 composition 自己的 data-duration 決定。
+
+    三個 composition 的長度不一樣（短 4s / 長 8s / kinetic 12s）。共用單一常數
+    的話，長片卡會被短片的上限誤殺，或短片被放行到它 render 不出來的長度。
+    """
+    if kinetic:
+        return KINETIC_COMP_SEC
+    return COMP_WIDE_SEC if fmt == "long" else COMP_SEC
+
+
 # 三層字卡架構（修修 2026-07-26 九輪）：tier1=hero（每支 1–3 張，只能是
 # insight/closing）、tier2=標準 punch 卡、tier3=逐字字幕（走 subtitle track）
 # 格式參數（修修 2026-08-03 長片線）。短片欄 = 既有已驗收值，一個字沒動。
@@ -525,56 +545,238 @@ def _validate_full_transcript_coverage(titles: list[dict], cues: dict[int, dict]
         )
 
 
-def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
+def _load_titles(episode_dir: Path, cid: str) -> tuple[Path, list[dict]]:
+    path = episode_dir / TIGHTEN_DIR / f"{cid}_titles.json"
+    try:
+        titles = json.loads(path.read_text(encoding="utf-8"))["titles"]
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise SystemExit(f"{path} 不存在或不是合法 title plan") from exc
+    if not isinstance(titles, list):
+        raise SystemExit(f"{path} titles 必須是 array")
+    return path, titles
+
+
+def validate_plan(episode_dir: Path, cid: str) -> dict:
+    """Read-only preflight for the complete audited content-visual recipe pair."""
+
+    master = _open_editorial_master(episode_dir)
+    candidate, _winner = _load_winner(episode_dir, cid, master.identity())
+    _path, titles = _load_titles(episode_dir, cid)
+    try:
+        lineage, _broll = verify_visual_recipe_lineage(
+            episode_dir,
+            cid,
+            str(candidate["format"]),
+            master.identity(),
+            title_items=titles,
+            editorial_master=master,
+        )
+    except BrollContractError as exc:
+        raise SystemExit(f"Title visual production gate 失敗：{exc}") from exc
+    return {
+        "status": "plan-valid",
+        "cut_id": cid,
+        "format": candidate["format"],
+        "title_count": len(titles),
+        "visual_pipeline_content_hash": lineage["content_hash"],
+    }
+
+
+def emit_audited_recipe(
+    cid: str,
+    materializations: list[dict] | tuple[dict, ...],
+    *,
+    output_dir: Path,
+) -> Path:
+    """Deterministically project accepted title materializations into one recipe."""
+
+    from agents.brook.script_video.highlight_visual_pipeline import (
+        HighlightVisualContractError,
+        validate_materialization_projection,
+    )
+
+    titles: list[dict] = []
+    for index, raw in enumerate(materializations):
+        try:
+            projection = validate_materialization_projection(
+                raw, label=f"materializations[{index}]"
+            )
+        except HighlightVisualContractError as exc:
+            raise BrollContractError(f"DP title materialization schema 不合法：{exc}") from exc
+        if projection["target_lane"] != "title_track3":
+            continue
+        implementation = projection["implementation_kind"]
+        if implementation not in {"hero_title", "supporting_title"}:
+            raise BrollContractError(f"DP title implementation 不合法：{implementation}")
+        spec = projection["render_spec"]
+        if not isinstance(spec, dict) or not isinstance(spec.get("render_params"), dict):
+            raise BrollContractError("DP title 缺少 exact render_spec")
+        params = spec["render_params"]
+        titles.append(
+            {
+                "text": projection["on_screen_text"],
+                "t0": projection["t0"],
+                "t1": projection["t1"],
+                "tier": 1 if implementation == "hero_title" else 2,
+                "style": params["style"],
+                "pos_y": params["pos_y"],
+                "source_range": projection["source_range"],
+                "media_path": projection["media"]["path"],
+                "provenance": projection["provenance"],
+                "render_spec": projection["render_spec"],
+                "visual_materialization": projection,
+            }
+        )
+    output_dir.mkdir(parents=True, exist_ok=True)
+    destination = output_dir / f"{cid}_titles.json"
+    temporary = destination.with_suffix(destination.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps({"titles": titles}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, destination)
+    return destination
+
+
+def apply(
+    episode_dir: Path,
+    cid: str,
+    stills_dir: Path | None = None,
+    *,
+    orchestrator_timeline_name: str | None = None,
+    orchestrator_timeline_uid: str | None = None,
+    recipe_path: Path | None = None,
+    broll_recipe_path: Path | None = None,
+) -> dict:
     from build_resolve_project import connect_resolve
 
-    c, w = _load_winner(episode_dir, cid)
-    fmt = c.get("format", "short")
+    orchestrated = orchestrator_timeline_name is not None or orchestrator_timeline_uid is not None
+    if orchestrated:
+        if not orchestrator_timeline_name or not orchestrator_timeline_uid:
+            raise SystemExit("new orchestrator apply requires exact Timeline name and UID")
+        master = c = w = visual_lineage = None
+        fmt = "long"
+    else:
+        master = _open_editorial_master(episode_dir)
+        c, w = _load_winner(episode_dir, cid, master.identity())
+        fmt = c.get("format", "short")
     fcfg = FORMAT_TITLES[fmt]
-    titles_path = episode_dir / TIGHTEN_DIR / f"{cid}_titles.json"
-    if not titles_path.exists():
-        raise SystemExit(f"{titles_path} 不存在——agent 先從 tight SRT 選 punch 時間點")
-    plan = json.loads(titles_path.read_text(encoding="utf-8"))
-    titles = plan["titles"]
+    if recipe_path is None:
+        _titles_path, titles = _load_titles(episode_dir, cid)
+    else:
+        _titles_path = Path(recipe_path)
+        try:
+            titles = json.loads(_titles_path.read_text(encoding="utf-8"))["titles"]
+        except (OSError, UnicodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
+            raise SystemExit(f"title recipe 不可讀：{_titles_path}") from exc
+    # 短片 V2 的 plan 級旗標（逐字稿全覆蓋、轉場語彙）跟 titles 同一份檔。
+    # titles 本身已經由上面讀進來（呼叫端可以換掉那支 loader），所以這裡讀不到
+    # 檔案就當作沒有旗標，不再另外把整個流程擋掉。
+    plan: dict = {}
+    try:
+        loaded = json.loads(_titles_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        loaded = None
+    if isinstance(loaded, dict):
+        plan = loaded
     covers_full_transcript = bool(plan.get("covers_full_transcript", False))
     transition_mode = str(plan.get("transition_mode", "kinetic"))
     if transition_mode not in ("kinetic", "cut"):
         raise SystemExit("transition_mode 只允許 kinetic/cut")
+    if not orchestrated:
+        try:
+            visual_lineage, _broll = verify_visual_recipe_lineage(
+                episode_dir,
+                cid,
+                str(fmt),
+                master.identity(),
+                title_items=titles,
+                editorial_master=master,
+            )
+        except BrollContractError as exc:
+            raise SystemExit(f"Title visual production gate 失敗：{exc}") from exc
     titles.sort(key=lambda x: x["t0"])
-    if fmt == "short":
+    # 短片 V2 的版面／動態／品牌規則管的是「這支 script 自己 render 的卡」。
+    # 帶 visual_materialization 的卡是 DP 出圖、Director 審過的成品，它的版面已經
+    # 在視覺產線上判過，這裡不再用另一套規則重判一次。
+    authored = [row for row in titles if row.get("visual_materialization") is None]
+    if fmt == "short" and authored:
         _validate_split_opener_face_clearance(
-            titles,
+            authored,
             opener_sec=float(plan.get("split_opener_sec", 4.0)),
         )
-        _validate_short_motion_grammar(titles)
-        _validate_brand_pattern_usage(titles)
+        _validate_short_motion_grammar(authored)
+        _validate_brand_pattern_usage(authored)
     tight_cues = _tight_srt_cues(episode_dir, cid)
-    if fmt == "short" and covers_full_transcript:
+    if fmt == "short" and covers_full_transcript and authored:
         if not tight_cues:
             raise SystemExit(f"找不到 {cid} 最新 tight SRT，不能驗證完整逐字稿覆蓋")
-        _validate_full_transcript_coverage(titles, tight_cues)
-        _validate_full_transcript_display(titles)
+        _validate_full_transcript_coverage(authored, tight_cues)
+        _validate_full_transcript_display(authored)
     heroes = [x for x in titles if int(x.get("tier", 2)) == 1]
-    if not 1 <= len(heroes) <= 3:
+    if fmt == "short" and not 1 <= len(heroes) <= 3:
         raise SystemExit(
             f"hero（tier 1）有 {len(heroes)} 張——修修二十七輪：1–3 張（中段一張論點、片尾一張收束）"
         )
-    bad_beat = [x for x in heroes if x.get("beat") not in ("insight", "closing")]
+    # beat 只約束「這支 script 自己 render」的卡；DP 已出圖的卡由 visual
+    # pipeline 審過，這裡不再要求它帶 beat。
+    bad_beat = [
+        x
+        for x in heroes
+        if x.get("visual_materialization") is None and x.get("beat") not in ("insight", "closing")
+    ]
     if bad_beat:
         raise SystemExit(
             "hero 的 beat 只能是 insight（論點）或 closing（收束）："
             + "、".join(_title_text(x).replace(chr(10), "／") for x in bad_beat)
         )
 
-    # 1) 逐卡 render（參數 hash cache）
+    # 1) 逐卡取得素材：帶 visual_materialization 的直接沿用 DP 出的成品位元組
+    #    （ADR-066，materializer 不重出也不改 render spec）；其餘走本 script 的
+    #    render（參數 hash cache）。
     cards_dir = episode_dir / CARDS_DIR
     cards_dir.mkdir(parents=True, exist_ok=True)
     jobs = []
     for i, t in enumerate(titles):
         show_sec = round(float(t["t1"]) - float(t["t0"]), 2)
+        projection = t.get("visual_materialization")
+        if projection is not None:
+            max_show_sec = _comp_sec(fmt) if orchestrated else _comp_sec(fmt) - 0.2
+            if not 0.5 <= show_sec <= max_show_sec:
+                raise SystemExit(
+                    f"卡片 {i} 顯示 {show_sec}s 超出範圍（0.5–{max_show_sec}s）——"
+                    f"composition data-duration 固定 {_comp_sec(fmt):.0f}s，"
+                    "更長的卡拆兩張或改 t1"
+                )
+            lines = t["text"].split(chr(10))
+            tier = int(t.get("tier", 2))
+            if tier not in (1, 2):
+                raise SystemExit(f"卡片 {i} tier={tier} 不合法（1=hero 2=標準）")
+            limit = fcfg["max_line_hero"] if tier == 1 else fcfg["max_line"]
+            too_long = [x for x in lines if len(x) > limit]
+            if not orchestrated and too_long:
+                raise SystemExit(
+                    f"卡片 {i}（tier {tier}）行超過 {limit} 字：{too_long}——改寫或拆行"
+                )
+            mov = (episode_dir / projection["media"]["path"]).resolve()
+            params = projection["render_spec"]["render_params"]
+            jobs.append(
+                {
+                    "mov": mov,
+                    "t0": float(t["t0"]),
+                    "show_sec": show_sec,
+                    "text": t["text"],
+                    "pos_y": float(params["pos_y"]),
+                    "source_start": float(projection["source_range"]["start_sec"]),
+                    "source_end": float(projection["source_range"]["end_sec"]),
+                    "timeline_name": f"{cid}_title_{projection['materialization_id']}",
+                }
+            )
+            continue
+
         states = t.get("states") or []
         comp = KINETIC_COMP if states else fcfg["comp"]
-        comp_sec = KINETIC_COMP_SEC if states else COMP_SEC
+        comp_sec = _comp_sec(fmt, kinetic=bool(states))
         if states and fmt != "short":
             raise SystemExit("kinetic sequence 目前只支援直式短片")
         if not 0.5 <= show_sec <= comp_sec - 0.2:
@@ -681,6 +883,25 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     if fmt == "short":
         _validate_rendered_frame_safety([job["mov"] for job in jobs])
 
+    # Re-open both roots immediately before any Resolve access. CURRENT may
+    # switch while jobs are prepared; a different generation must never apply.
+    if not orchestrated:
+        master = _open_editorial_master(episode_dir)
+        c, w = _load_winner(episode_dir, cid, master.identity())
+        try:
+            fresh_lineage, _broll = verify_visual_recipe_lineage(
+                episode_dir,
+                cid,
+                str(c["format"]),
+                master.identity(),
+                title_items=titles,
+                editorial_master=master,
+            )
+        except BrollContractError as exc:
+            raise SystemExit(f"Title visual production gate 失敗：{exc}") from exc
+        if fresh_lineage != visual_lineage:
+            raise SystemExit("Title visual pipeline CURRENT 在準備期間切換，未連線 Resolve")
+
     # 2) Resolve：匯入 + 疊軌
     resolve = connect_resolve()
     pm = resolve.GetProjectManager()
@@ -693,7 +914,11 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     mp = project.GetMediaPool()
     root = mp.GetRootFolder()
 
-    director_label = f"{FORMAT_LABEL[c['format']]}{w['rank']} - {c['title']}（緊·導播）"
+    director_label = (
+        orchestrator_timeline_name
+        if orchestrated
+        else f"{FORMAT_LABEL[c['format']]}{w['rank']} - {c['title']}（緊·導播）"
+    )
     timelines = {}
     for i in range(1, project.GetTimelineCount() + 1):
         t = project.GetTimelineByIndex(i)
@@ -702,7 +927,31 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     director = timelines.get(director_label)
     if director is None:
         raise SystemExit(f"「{director_label}」不存在——先跑 run_short_director")
-    project.SetCurrentTimeline(director)
+    if orchestrated:
+        timeline_uid = None
+        for method_name in ("GetUniqueId", "GetUniqueID"):
+            method = getattr(director, method_name, None)
+            value = method() if callable(method) else None
+            if isinstance(value, str) and value.strip():
+                timeline_uid = value.strip()
+                break
+        if timeline_uid != orchestrator_timeline_uid:
+            raise SystemExit("new orchestrator target Timeline UID changed before title apply")
+    selected = project.SetCurrentTimeline(director)
+    if orchestrated and selected is False:
+        raise SystemExit("Resolve refused to select orchestrator target Timeline")
+    if orchestrated:
+        get_current = getattr(project, "GetCurrentTimeline", None)
+        current = get_current() if callable(get_current) else director
+        current_uid = None
+        for method_name in ("GetUniqueId", "GetUniqueID"):
+            method = getattr(current, method_name, None)
+            value = method() if callable(method) else None
+            if isinstance(value, str) and value.strip():
+                current_uid = value.strip()
+                break
+        if current_uid != orchestrator_timeline_uid:
+            raise SystemExit("Resolve current Timeline differs from orchestrator target UID")
 
     removed_subtitles = 0
     if fmt == "short" and covers_full_transcript:
@@ -717,7 +966,7 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
 
     dur = (director.GetEndFrame() - director.GetStartFrame()) / fps
     cap = max(3, int(dur / SEC_PER_CARD))
-    if len(titles) > cap:
+    if not orchestrated and len(titles) > cap:
         raise SystemExit(
             f"字卡 {len(titles)} 張超過密度上限 {cap} 張（片長 {dur:.0f}s ÷ "
             f"{SEC_PER_CARD:.0f}s）——每句都想 highlight 反而稀釋畫龍點睛，"
@@ -752,8 +1001,15 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
     # 元素互相遮擋防呆（二十五輪血案：字卡「被社群媒體綁架」壓在貼紙上）
     # 字卡（track 3）與貼紙/概念卡（track 4）都在畫面中下段——時間重疊
     # 就一定互相打架。broll.json 是唯一真相，這裡直接擋。
-    broll_path = episode_dir / TIGHTEN_DIR / f"{cid}_broll.json"
-    if broll_path.exists():
+    broll_path = (
+        Path(broll_recipe_path)
+        if broll_recipe_path is not None
+        else episode_dir / TIGHTEN_DIR / f"{cid}_broll.json"
+    )
+    # The new long orchestrator has already had these exact rendered frames
+    # reviewed by a visual agent.  Keep this approximate layout heuristic for
+    # the legacy authoring route only; it must not overrule an approved image.
+    if not orchestrated and broll_path.exists():
         overlays = [
             it
             for it in json.loads(broll_path.read_text(encoding="utf-8"))["items"]
@@ -791,10 +1047,16 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
         items = mp.ImportMedia([str(job["mov"])]) or []
         if not items:
             raise SystemExit(f"匯入失敗: {job['mov']}")
+        items[0].SetClipProperty("Clip Name", job["timeline_name"])
         record = tl_start + int(job["t0"] * fps)
         # 卡片退場動畫收在 show_sec 內，截到 show_sec + 2 frames；
         # 並鉗位在主畫面結束前——卡片伸出片尾會變「黑底浮卡」（盲審 S2 抓到）
-        dur = min(int(job["show_sec"] * fps) + 2, max(1, tl_end - record))
+        requested_frames = (
+            int(round((job["source_end"] - job["source_start"]) * fps))
+            if orchestrated
+            else int(job["show_sec"] * fps) + 2
+        )
+        dur = min(requested_frames, max(1, tl_end - record))
         ok = mp.AppendToTimeline(
             [
                 {
@@ -802,8 +1064,8 @@ def apply(episode_dir: Path, cid: str, stills_dir: Path | None = None) -> dict:
                     "mediaType": 1,
                     "trackIndex": 3,
                     "recordFrame": record,
-                    "startFrame": 0,
-                    "endFrame": dur,
+                    "startFrame": int(job["source_start"] * fps),
+                    "endFrame": int(job["source_start"] * fps) + dur,
                 }
             ]
         )
@@ -866,8 +1128,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("episode", help="episode 資料夾")
     parser.add_argument("--id", required=True, help="winner id（如 punch-S1）")
     parser.add_argument("--stills", help="物化後渲樣張到此資料夾")
+    parser.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="驗 current Director/DP/Audit、exact recipes/media，不連 Resolve",
+    )
     args = parser.parse_args(argv)
-    result = apply(Path(args.episode), args.id, Path(args.stills) if args.stills else None)
+    result = (
+        validate_plan(Path(args.episode), args.id)
+        if args.validate_only
+        else apply(Path(args.episode), args.id, Path(args.stills) if args.stills else None)
+    )
     print(json.dumps(result, ensure_ascii=False, indent=1))
     return 0
 

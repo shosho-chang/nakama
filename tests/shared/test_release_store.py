@@ -289,6 +289,45 @@ def test_list_releases_with_target_summary(store):
     assert rows[0]["target_status"] == {"youtube": "draft"}
 
 
+def test_update_target_persists_typed_youtube_reconciliation_state(store):
+    rid = store.register_release("ep", "c1", "long", "f.mp4")
+    tid = store.ensure_target(rid, "youtube")
+
+    store.update_target(
+        tid,
+        status="published",
+        video_processing_status="processed",
+        platform_privacy_status="public",
+        platform_publish_at=None,
+        caption_status="serving",
+        reconciliation_error=None,
+        last_reconciled_at="2026-08-19T00:00:00+00:00",
+    )
+
+    target = store.get_release("ep", "c1")["targets"][0]
+    assert target["video_processing_status"] == "processed"
+    assert target["platform_privacy_status"] == "public"
+    assert target["caption_status"] == "serving"
+    assert target["last_reconciled_at"] == "2026-08-19T00:00:00+00:00"
+
+
+def test_update_target_persists_typed_youtube_ancillary_recovery_state(store):
+    rid = store.register_release("ep", "c1", "long", "f.mp4")
+    tid = store.ensure_target(rid, "youtube")
+
+    store.update_target(
+        tid,
+        thumbnail_status="set",
+        caption_id="caption-123",
+    )
+
+    target = store.get_release("ep", "c1")["targets"][0]
+    assert target["thumbnail_status"] == "set"
+    assert target["caption_id"] == "caption-123"
+    with pytest.raises(ValueError, match="thumbnail_status"):
+        store.update_target(tid, thumbnail_status="complete")
+
+
 def test_release_campaign_anchor_schedules_all_targets_at_one_utc_instant(store):
     release_id = store.register_release("ep", "S01", "short", "f.mp4")
     target_ids = [

@@ -3,7 +3,8 @@ name: brook-dp
 description: >
   DP（Director of Photography）攝影指導手冊（ADR-051，修修裁決 A：意圖/實現分離）。
   Triggers: /brook-dp、「把 storyboard 落實成素材」、「跑 DP」、「找 B-roll 素材」。
-  讀 Director 產出的 storyboard.yaml（visual_intent 意圖層）→ 逐 beat 決定具體實現
+  讀 Director 產出的 visual_intent（standalone storyboard.yaml；Podcast Highlight v2
+  orchestrator payload；legacy ADR-065 才讀 DIRECTOR-PLAN.json）→ 逐 beat 決定具體實現
   （component/params/asset）→ 產詳細 stock 搜尋詞或 hyperframes render 規格 →
   素材獲取與驗收 → 填回 BRollSpec。創意實現在本手冊；schema/render/emit 契約歸
   agents/brook/script_video/ pipeline 程式，本 skill 只呼叫、不重新發明。
@@ -11,7 +12,8 @@ description: >
 
 # brook-dp — 攝影指導手冊
 
-**版本：v1.1（2026-08-06，Christina 集 44 位 stock 整版打槍後固化〈選片鐵則〉；
+**版本：v1.2（2026-08-28，Long Highlight landscape／情緒極性／人物 inset 與 lane 收斂；
+v1.1 2026-08-06 Christina 集 44 位 stock 整版打槍後固化〈選片鐵則〉；
 v1.0 2026-07-18 依四支成片拆解＋Ali/Jeff 對照的配方庫建立；
 文法依據：`docs/research/editing-grammar/2026-07-18-shoshotw-editing-grammar.md` §七）**
 
@@ -22,6 +24,136 @@ v1.0 2026-07-18 依四支成片拆解＋Ali/Jeff 對照的配方庫建立；
 
 本 skill 落地後接管 brook-director v2.0 的 Step 3–5（素材獲取）；Director 手冊中
 該三步為過渡期兼任條款。
+
+## Model routing
+
+DP 不負責重新理解整支影片的論述結構；它只在 Director 已定義的 exact event 內做素材搜尋、選片與
+render 規格，因此使用平衡型 model：
+
+- Codex：`gpt-5.6-terra`，reasoning `medium`。
+- Claude Code：最新 Opus；runtime 有 `claude-opus-5` 時優先使用。
+- 真正的下載、ffprobe、Hyperframes／Resolve render 與 materialization 全走 deterministic 工具，不用 LLM。
+
+若 Director intent 本身含糊，DP 不升級 model 代猜；退回 Director。只有搜尋結果在兩個語意切面間難以
+判斷時，才把該 event 的 reasoning 提高一級，不把整輪 DP 升到 frontier model。
+
+## Long Highlight orchestrator v2（優先分流）
+
+收到 payload 同時標示
+`long_highlight_contract.route="long_highlight_orchestrator_v2"` 與
+`long_highlight_contract.validation_profile="semantic_visual_minimal"` 時，本節優先於下方 ADR-065 legacy route。
+DP 只履行 Director 已定義的 visual intents：用 LLM 搜尋／挑選語意相符的 Stock 或規劃
+Hyperframes／composition，保留具體選擇理由；之後仍由 targeted visual agent 實看 selected 畫面，
+不能刪除 Director、DP 或 visual review 的語意工作。
+
+這條 v2 route 的外層 state 是 mutable draft。不得啟動
+`podcast_highlight_visual_orchestrator.py`／ADR-065 frozen revision DAG，不建立或驗證 immutable
+request、worker/session identity、execution receipt、hash／source lineage，也不要求 same-session
+Director audit 或全量 fresh verify。單一 event 搜尋失敗、語意不符或畫面不符時，只將該 event
+留 pending／交 targeted visual fix；不得重跑整輪 DP 或 Director。
+
+DP 不負責判定上游 source、range、片長、sections 或 chapter timestamp gates；chapter 沒有可靠
+cut-local／source／cue 時間時，由 orchestrator 的 upstream gate 處理，DP 不猜 0:00。在 v2 的
+Director → DP → visual／preview 段，selected footage 不可播放、targeted agent 判定 semantic／visual
+mismatch、Resolve mutation 會破壞既有 baseline，以及 preview 不存在、實際 <480 秒或時長未知，都會
+阻止往發布前進。DP 不新增來源、fingerprint 或 receipt 驗證；其他 schema 小漂移、缺 optional
+metadata、候選數不足或 reviewer 差異只記 warning／局部修正。
+
+## Legacy Podcast Highlight production adapter（ADR-065；僅限沒有 v2 marker）
+
+只有 payload 沒有上述 v2 route marker 時，才使用本節 frozen revision／receipt 流程；不得把 legacy
+要求帶進 `long_highlight_orchestrator_v2`。
+
+Podcast episode + cut ID 不讀 standalone `data/script_video/<ep>/storyboard.yaml`。唯一 truth是
+revision-aware DAG：
+
+```text
+<episode>/highlights/visual-pipeline/<cut-id>/
+  PENDING.json
+  CURRENT.json
+  revisions/<revision-id>/
+    DIRECTOR-WORK.json       podcast-highlight-visual-work-packet-v1
+    DIRECTOR-PLAN.json       podcast-highlight-director-plan-v1
+    DP-FULFILLMENT.json      podcast-highlight-dp-fulfillment-v1
+    SEMANTIC-AUDIT.json      podcast-highlight-visual-semantic-audit-v1
+```
+
+> ⛔ **已停用（ADR-066）**：`podcast_highlight_visual_orchestrator.py` 屬 ADR-065 revision-scoped
+> visual DAG，已被 Finished Cut Production 取代。long 的唯一生產路線是
+> `scripts/run_finished_cut_production.py`。下面的指令保留供讀舊 receipt 對照，不要執行。
+
+Production預設呼叫一次 trusted orchestrator；finished review revision必須傳 exact immutable request snapshot：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_orchestrator.py "<episode>" `
+  --cut-id <cut-id> [--revision-request "<episode-local immutable request.json>"]
+```
+
+Claude Code手動/subagent route不得省略 accept順序。DP proposal只能寫 phase-local output；trusted host提供實際
+DP execution/session identity，不能從 proposal抄 worker欄位：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py accept-dp "<episode>" --cut-id <cut-id> --revision-id <revision-id> --proposal "<dp-proposal.json>" --worker-id <trusted-dp-worker-id> --execution-id <trusted-dp-execution-id> --session-id <trusted-dp-session-id>
+# Resume original Director worker/session, never DP, for the semantic-audit proposal:
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py accept-audit "<episode>" --cut-id <cut-id> --revision-id <revision-id> --proposal "<semantic-audit-proposal.json>" --worker-id <same-trusted-director-worker-id> --execution-id <new-trusted-director-audit-execution-id> --session-id <same-trusted-director-session-id>
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py verify "<episode>" --cut-id <cut-id> --revision-id <revision-id>
+```
+
+1. Deterministic status/validator必須 fresh驗出 `awaiting_dp`；work packet、Director plan、Editorial
+   Master或 work packet綁定的 exact tight SRT任一 missing/stale/invalid就停，不得自行找 latest或修 receipt。
+2. Exact覆蓋 `DIRECTOR-PLAN.json` 的所有 events。每個 fulfillment保存 mode、`target_lane`、2–5 個不同
+   語意切面的 search queries、候選、selected candidate、選擇理由、negative checks及 source/license/hash；找不到就
+   明示 none/合法降級，不拿同主題 generic footage湊數。
+3. 畫面必須對應 event的 exact transcript quote，不只對應廣泛主題。來源可信、ffprobe/hash通過與至少
+   三支 Stock Video都是機械條件，不能替代語意證明。
+4. 產出 phase-local `podcast-highlight-dp-fulfillment-v1` proposal，只有 trusted `accept-dp`可寫
+   `revisions/<revision-id>/DP-FULFILLMENT.json`；不可直接手寫 canonical receipt或 production `_broll.json`。
+5. Fresh status必須前進到 `awaiting_semantic_audit`。交回 orchestrator，讓**原本同一個 Director
+   worker identity**做 semantic audit；該 identity必須不同於本 DP。DP不得自審或寫
+   `SEMANTIC-AUDIT.json`。
+
+Auditor exact覆蓋每個 selected materialization且全數 semantic match後，`accept-audit`才 pointer-last更新
+`CURRENT.json`，status成 `ready_to_materialize`。失敗的 PENDING不得破壞前一個 CURRENT。
+`scripts/run_short_broll.py`只是一個 **materializer**；它的成功不代表本 skill執行過，也不授權 DP
+在 renderer內臨時選片。普通 pending是 agent-owned next work，只有 authority、license或主觀語意真的
+ambiguity才是 HITL。Bridge只 read-only展示 fresh receipt與 audit，不新增正常人類 gate。
+
+DP履約涵蓋所有 content visuals：Stock／Hero／keyword／quote／chapter／card，並同時產出 **B-roll 與 title implementations**。
+結構性 badge／camera correction／guest namecard維持各自 deterministic contract。
+`scripts/run_short_titles.py`也只是 materializer；不得在 receipt chain外另選 Hero text或落點。
+
+### Podcast Long Highlight fulfillment 規則（2026-08-28）
+
+Director 的 semantic category 不能在實現層被改寫。DP 先讀 canonical section map，再套以下
+唯一映射；Director description 若夾帶 `provided_asset`、`target_lane` 或其他實現指令，忽略該
+實現指令並按 category 履約，不能因「照做」把錯誤分類帶進成片：
+
+| Director intent | Long Highlight 唯一實現 | 禁止事項 |
+|---|---|---|
+| `chapter` | `transition_title_wide` + `style:"paper_hand"`；chapter id/title/time 與 YouTube timestamp 相同 | 非 section 起點、章內方向／步驟、連續兩張 transition |
+| Hero | `punch_card_wide` tier1 + `style:"paper"`；1080p 每行 ≤96px，短橘 accent，放在說話者負空間 | 黑底／橘底／ink 等逐張換 style、滿寬大劃線、壓迫或遮住臉 |
+| supporting `keyword` | compact overlay title；保留 A-roll | 冒充 `transition_title` 或為了 composition 方便改成滿版章節卡 |
+| `person_inset` | 小型橘框 headshot，帶明確進／退場動畫，放說話者負空間 | `broll_track2` full-frame photo、靜態貼圖、遮臉、缺 inset 時降級滿版 |
+
+Full-screen static image 不是 `person_inset` 的 fallback。只有 image 本身具有環境／證物語意，
+且 Director 明確把它標成需仔細觀看的 full-screen evidence，DP 才能做佔滿畫面的 deliberate
+composition；單純「提到某人」永遠不足以成立。
+
+Bridge timeline 分類依 semantic category + implementation component，不依 proposal 放在哪個
+JSON list：`transition_title_wide` 永遠顯示在 Full-screen Transition lane；只有
+`punch_card_wide` tier1 顯示在 Hero lane。若 Director category、component、target lane 三者
+對不上，退回該 event，不可 materialize 後再靠 UI 改名。
+
+Long Highlight Stock 的候選在選片階段另守兩條硬規則：
+
+1. 來源檔必須 native landscape（寬 > 高；4K 優先，1080p 可用）。直式或方形素材即使能
+   中央裁切也淘汰，不存在「特寫可裁」例外。
+2. 選擇理由與 negative checks 必須同時比較動作、人物關係、情緒極性和完整句段的因果。
+   用靜音預覽做一次「不看字幕」判斷；只對到名詞、但情緒相反，一律不選。例如忙亂、
+   上有老下有小的負荷不能用三代開心用餐代打。
+
+下方 storyboard、asset_requests/manifest與 `/brook/video/<ep>` 路徑仍服務 ADR-051 standalone route；
+Podcast Highlight不得 silent fallback。
 
 ## 紅線
 
@@ -72,7 +204,8 @@ timeline 放 stock 的手剪情境。Christina 集 44 個位就是跳過本手�
    鄰句上。實測打槍：跑步鏡頭落在「判斷力不是原地踏步」句上，要強調的
    其實是下一句「判斷力是做出來的」——放錯句＝邏輯斷裂。
 3. **畫面＝語意，不是主題相近**：驗收標準＝「不看字幕也能從畫面讀出這句
-   話的意思」。實測打槍案例（同一輪 review）：
+   話的意思」。這裡包含情緒極性與人物關係，不只物件／動作；整句是忙亂、壓力、
+   困境時，微笑、從容、歡樂團聚即使人物吻合也算語意相反。實測打槍案例（同一輪 review）：
    - 「從失敗中學習」放小孩拿放大鏡（那是好奇心）→ 應為跌倒後爬起來
    - 「那些你永遠不會採用的瘋狂點子」放男人望窗外（讀不出）→ 應為
      靈光乍現、忽然想到什麼的樣子
@@ -85,11 +218,12 @@ timeline 放 stock 的手剪情境。Christina 集 44 個位就是跳過本手�
 5. **負面意象禁用清單**（隨集數累積）：
    - 小孩用平板/3C——修修視為相當負面的現象，禁止當「工具隨手可得」類
      正面例證
-6. **書封/靜態圖必須去背＋動畫＋位置設計**：不透明原圖整張放上去、還壓在
-   說話者臉上＝打槍。正確：去背成 alpha PNG → 進場動畫（滑入/彈出）→
-   擺在不遮臉的負空間。
+6. **書封/靜態圖必須有 composition 意圖**：人物 headshot 一律縮成
+   `person_inset`，加進／退場動畫並擺在不遮臉的負空間；不得用整張照片滿版代打。
+   書封等適合去背的靜態圖才做 alpha PNG／滑入或彈出。只有具環境／證物語意且
+   Director 明確要求仔細觀看的 image，才可 deliberate full-screen。
 
-## 輸入
+## 輸入（Standalone route）
 
 `data/script_video/<ep>/storyboard.yaml`——cutaway beat 應帶 `visual_intent`
 （form/category/description/on_screen_text/shots_hint/source_hint）。缺 intent 的
@@ -101,7 +235,7 @@ cutaway beat 退回 Director，不代判。
 |---|---|---|
 | `stock_scene` | `asset`/stock | 搜尋工法見 Step 2；單鏡 ≤3s 只蓋 visual phrase；shots_hint>1 時同語意出 N 支不同 footage（一句一換） |
 | `keyword` | 降級規則表（overlay composition 未落地） | 目標形態：2–4s 小型字卡疊 aroll |
-| `person_inset` | 降級規則表 | 目標形態：橘框瀏覽器窗人物照；對比人物雙卡並列 |
+| `person_inset` | 橘框 animated inset | 小型人物照放負空間，明確進／退場；對比人物雙卡並列。composition 不可用就退回 event／保留 A-roll，禁止滿版 fallback |
 | `book_cover` | `book_cover`（params: cover_src/title_zh/title_en/author） | 滿版；hook 內 ≥2 次、每章可回敲；overlay 滑入形態待 composition |
 | `quote` | `quote_card`（params: quote/attribution/source） | **首唸即上卡**（timing 對 Director 給的 cue）；6–10s；主配方=stock 底壓暗＋白色大字（另發底圖 stock 請求，mood 對齊語意）；kinetic text 第二檔位待 composition |
 | `worked_example` | 菜單有對應 composition 就用；沒有→記 Remaining 當 composition backlog，本集降級 `bigstat`（單一數字）或 stock 證據感 | 規格書寫法：實數字/實年份/單位/資料來源全給，禁佔位假數 |
@@ -118,7 +252,8 @@ cutaway beat 退回 Director，不代判。
 
 | 意圖 | 現況缺口 | 降級 |
 |---|---|---|
-| form=overlay（keyword/inset/self_promo/meme） | alpha 輸出未過 DaVinci 驗證、allowed_layouts 無 overlay | 高資訊量→滿版短卡（2–4s）；低資訊量→none（意圖保留在 visual_intent，後續集數 composition 落地再回填） |
+| form=overlay（keyword/self_promo/meme） | alpha 輸出未過 DaVinci 驗證、allowed_layouts 無 overlay | 高資訊量→滿版短卡（2–4s）；低資訊量→none（意圖保留在 visual_intent，後續集數 composition 落地再回填） |
+| `person_inset` | inset composition 不可用 | 保留 A-roll並退回該 event；不得用 full-frame headshot、`broll_track2` photo 或一般滿版短卡代替 |
 | form=canvas_pip | composition 未落地 | 滿版動畫（若菜單有）或 bigstat/stock 代打 |
 | kinetic text 金句 | composition 未落地 | quote_card 主配方 |
 
@@ -141,6 +276,10 @@ cutaway beat 退回 Director，不代判。
   （validator 以 source_url 判重複；2026-08-06 起同支 footage **全片唯一**
   ——見〈選片鐵則〉1，validator 僅查相鄰為待升級 gap）
 
+Podcast Long Highlight 的 query／候選頁一律鎖 Horizontal；預覽或 metadata 顯示寬不大於高
+就直接淘汰。選片理由必須寫出情緒極性（例如 overwhelmed / tense / relieved / joyful）與
+它如何對應完整句段；「有人、有小孩、有辦公室」不算完整理由。
+
 Envato MCP（`search_items`）只搜；下載可由 **Claude in Chrome 全自動**
 （2026-07-27 實測，見 brook-director Step 4a）；每 beat 首選＋兩備選寫進
 `broll.asset.candidates`（首選同時填 `source_url`），修修 Bridge 圈選。
@@ -161,7 +300,7 @@ composition 類（quote_card/book_cover/transition_title/bigstat/worked_example�
   keyword 字卡（overlay）、橘框瀏覽器窗 inset、canvas_pip 外框、kinetic text
   金句卡、章節 grid 總覽卡、doc_highlight（黃 highlight 逐步移動）。
 
-## Step 4 — 素材獲取與驗收（批次交接）
+## Step 4 — 素材獲取與驗收（Standalone批次交接）
 
 沿用既定契約（ADR-051 D5/D6/D8，模板見 brook-director SKILL Step 4b/5，
 不在此重複維護）：
@@ -173,7 +312,7 @@ composition 類（quote_card/book_cover/transition_title/bigstat/worked_example�
    不加框；收尾彙整 attribution 清單進 run log
 4. 驗收結果（含 conform 紀錄）寫 run log
 
-## Step 5 — 填回 BRollSpec 與送審
+## Step 5 — 填回 BRollSpec 與送審（Standalone only）
 
 - 每個實現落回 `broll`（render_target/component/params/asset），`visual_intent`
   原樣保留（意圖與實現並存，Bridge 審核時修修可對照）。

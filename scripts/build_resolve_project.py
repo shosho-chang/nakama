@@ -24,16 +24,24 @@ project 名稱 = episode 資料夾名（如「20260723 謝伯讓」），timelin
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from agents.brook.podcast_subtitles.handoff import ProjectionVerifierFactory  # noqa: E402
+from agents.brook.script_video.subtitle_handoff import (  # noqa: E402
+    Stage5SubtitleContractError,
+    Stage5SubtitleRequest,
+    Stage5SubtitleSelection,
+)
 from shared.resolve_append import append_checked  # noqa: E402
 from shared.subtitle_finalize import finalize_srt_file  # noqa: E402
 
@@ -49,6 +57,8 @@ DEFAULT_SCRIPT_LIB = r"C:\Program Files\Blackmagic Design\DaVinci Resolve\fusion
 SUBTITLE_NAME = "transcript.srt"
 # 版本化 SRT 複本目錄（Resolve 依路徑快取，同路徑重匯拿到舊內容）
 RESOLVE_SUBS_DIR = "subs/resolve_subs"
+RESOLVE_LINEAGE_RECEIPT = Path(".stage5") / "resolve-project-lineage.v1.json"
+RESOLVE_LINEAGE_CONTRACT = "podcast-resolve-project-subtitle-lineage-v1"
 # 字幕樣式模板（DRT）：帶著已套用 preset（如「Shosho YT」）的空字幕軌。
 # API 不開放 subtitle style preset，樣式只能靠 DRT 模板攜帶——
 # 用 --make-template 從「已手動套好樣式」的 timeline 產生一次，之後全自動
@@ -75,7 +85,110 @@ def _template_path_short() -> Path:
     return _template_path()  # 短模板尚未產生 → 退回主模板（樣式舊但不裸奔）
 
 
-def _versioned_srt(episode_dir: Path) -> Path:
+def _subtitle_lineage(subtitle: Stage5SubtitleSelection) -> dict:
+    return subtitle.identity()
+
+
+def _canonical_json(payload: dict) -> bytes:
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _sha256(raw: bytes) -> str:
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _resolve_lineage_receipt_path(episode_dir: Path) -> Path:
+    return episode_dir.resolve() / RESOLVE_LINEAGE_RECEIPT
+
+
+def _write_resolve_lineage_receipt(
+    episode_dir: Path,
+    *,
+    project_name: str,
+    timeline_name: str,
+    subtitle: Stage5SubtitleSelection,
+) -> Path:
+    unsigned = {
+        "schema_version": 1,
+        "contract": RESOLVE_LINEAGE_CONTRACT,
+        "project_name": project_name,
+        "timeline_name": timeline_name,
+        "subtitle_lineage": _subtitle_lineage(subtitle),
+    }
+    payload = {**unsigned, "content_hash": _sha256(_canonical_json(unsigned))}
+    encoded = _canonical_json(payload)
+    path = _resolve_lineage_receipt_path(episode_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=path.parent,
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_name, path)
+    finally:
+        Path(temporary_name).unlink(missing_ok=True)
+    return path
+
+
+def _verify_resolve_lineage_receipt(
+    episode_dir: Path,
+    *,
+    project_name: str,
+    timeline_name: str,
+    subtitle: Stage5SubtitleSelection,
+) -> Path:
+    path = _resolve_lineage_receipt_path(episode_dir)
+    try:
+        raw = path.read_bytes()
+        payload = json.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise Stage5SubtitleContractError(
+            "existing Resolve timeline lacks a valid subtitle lineage receipt"
+        ) from exc
+    required = {
+        "schema_version",
+        "contract",
+        "project_name",
+        "timeline_name",
+        "subtitle_lineage",
+        "content_hash",
+    }
+    if not isinstance(payload, dict) or set(payload) != required:
+        raise Stage5SubtitleContractError("Resolve subtitle lineage receipt schema drift")
+    if _canonical_json(payload) != raw:
+        raise Stage5SubtitleContractError("Resolve subtitle lineage receipt is not canonical")
+    unsigned = {key: value for key, value in payload.items() if key != "content_hash"}
+    if payload.get("content_hash") != _sha256(_canonical_json(unsigned)):
+        raise Stage5SubtitleContractError("Resolve subtitle lineage receipt content hash mismatch")
+    if (
+        payload.get("schema_version") != 1
+        or payload.get("contract") != RESOLVE_LINEAGE_CONTRACT
+        or payload.get("project_name") != project_name
+        or payload.get("timeline_name") != timeline_name
+        or payload.get("subtitle_lineage") != _subtitle_lineage(subtitle)
+    ):
+        raise Stage5SubtitleContractError(
+            "existing Resolve timeline subtitle lineage differs from this release"
+        )
+    return path
+
+
+def _versioned_srt(
+    episode_dir: Path,
+    *,
+    subtitle: Stage5SubtitleSelection,
+) -> Path:
     """把最新 transcript.srt 定版成遞增版本檔（顯示層副本），回傳新路徑。
 
     Resolve 的 media pool 依「檔案路徑」快取——transcript.srt 內容更新後
@@ -85,13 +198,21 @@ def _versioned_srt(episode_dir: Path) -> Path:
     複本同時套修修 2026-08-05 字幕定版兩規則（句尾零標點 + cue 間 ≤3s
     空隙補平連續顯示）——transcript.srt 本體不動，工作真值必須貼語音。
     """
-    src = episode_dir / SUBTITLE_NAME
+    src = subtitle.srt_path
     out_dir = episode_dir / RESOLVE_SUBS_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     n = 1
     while (out_dir / f"transcript_r{n:03d}.srt").exists():
         n += 1
     dst = out_dir / f"transcript_r{n:03d}.srt"
+    if subtitle.mode in {
+        "memo-dual-audit-v1",
+        "verified-v2",
+        "degraded-dual-asr-v1",
+    }:
+        dst.write_bytes(src.read_bytes())
+        logger.info("Hash-bound 字幕定版：保留 exact SRT bytes")
+        return dst
     stats = finalize_srt_file(src, dst)
     msg = f"字幕定版: 尾標點剝 {stats['stripped']} 句、空隙補平 {stats['closed']} 處"
     if stats.get("reboundary_moved"):
@@ -206,11 +327,15 @@ def build_project(
     video: Path | None = None,
     subtitle: Path | None = None,
     dry_run: bool = False,
+    subtitle_request: Stage5SubtitleRequest | None = None,
+    verifier_factory: ProjectionVerifierFactory | None = None,
 ) -> dict:
+    subtitle = (subtitle_request or Stage5SubtitleRequest()).open(
+        episode_dir,
+        factory=verifier_factory,
+    )
     project_name = episode_dir.name
-    srt_path = subtitle or (episode_dir / SUBTITLE_NAME)
-    if not srt_path.exists():
-        raise FileNotFoundError(f"找不到 {srt_path}（先跑 subtitle-correct）")
+    srt_path = subtitle.srt_path
 
     main_video = find_main_video(episode_dir, video)
     info = _probe(main_video)
@@ -230,6 +355,7 @@ def build_project(
         "fps": info["fps"],
         "resolution": f"{info['width']}x{info['height']}",
         "subtitle": str(srt_path),
+        **_subtitle_lineage(subtitle),
         "timeline_audio": str(normalized) if normalized else "（影片內嵌音軌）",
         "cameras": [str(p) for p in cameras],
         "audio_files": [str(p) for p in audio_files],
@@ -246,6 +372,22 @@ def build_project(
         raise SystemExit(f"無法建立/載入 project「{project_name}」")
     logger.info(f"project 就緒: {project.GetName()}")
 
+    # Fail closed before mutating project settings or media-pool state.  A same-name
+    # timeline is idempotent only when its persisted receipt proves that it was
+    # built from the exact subtitle selection opened above.
+    for i in range(1, project.GetTimelineCount() + 1):
+        tl = project.GetTimelineByIndex(i)
+        if tl and tl.GetName() == project_name:
+            _verify_resolve_lineage_receipt(
+                episode_dir,
+                project_name=project_name,
+                timeline_name=project_name,
+                subtitle=subtitle,
+            )
+            logger.info(f"timeline「{project_name}」已存在，跳過重建")
+            pm.SaveProject()
+            return {**plan, "status": "already-exists"}
+
     fps_str = f"{info['fps']:.3f}".rstrip("0").rstrip(".")
     project.SetSetting("timelineFrameRate", fps_str)
     if info["width"] and info["height"]:
@@ -254,14 +396,6 @@ def build_project(
 
     mp = project.GetMediaPool()
     root = mp.GetRootFolder()
-
-    # 冪等：timeline 已存在（同名）就不重建
-    for i in range(1, project.GetTimelineCount() + 1):
-        tl = project.GetTimelineByIndex(i)
-        if tl and tl.GetName() == project_name:
-            logger.info(f"timeline「{project_name}」已存在，跳過重建")
-            pm.SaveProject()
-            return {**plan, "status": "already-exists"}
 
     mp.SetCurrentFolder(root)
     main_items = mp.ImportMedia([str(main_video)])
@@ -343,12 +477,7 @@ def build_project(
     # （模板軌已帶樣式，不可刪軌重建）
     if timeline.GetTrackCount("subtitle") == 0:
         timeline.AddTrack("subtitle")
-    versioned_srt = (
-        _versioned_srt_exact(episode_dir, srt_path)
-        if subtitle is not None
-        else _versioned_srt(episode_dir)
-    )
-    srt_items = mp.ImportMedia([str(versioned_srt)])
+    srt_items = mp.ImportMedia([str(_versioned_srt(episode_dir, subtitle=subtitle))])
     subtitle_ok = False
     if srt_items:
         appended = mp.AppendToTimeline(srt_items)
@@ -360,6 +489,13 @@ def build_project(
         )
 
     pm.SaveProject()
+    if subtitle_ok:
+        _write_resolve_lineage_receipt(
+            episode_dir,
+            project_name=project_name,
+            timeline_name=project_name,
+            subtitle=subtitle,
+        )
     logger.info(
         f"完成: project「{project_name}」/ timeline 就緒"
         f"（字幕 {'已上軌' if subtitle_ok else '需手動插入'}）"
@@ -367,12 +503,19 @@ def build_project(
     return {**plan, "status": "created", "subtitle_on_timeline": subtitle_ok}
 
 
-def refresh_subtitles(episode_dir: Path) -> dict:
+def refresh_subtitles(
+    episode_dir: Path,
+    *,
+    subtitle_request: Stage5SubtitleRequest | None = None,
+    verifier_factory: ProjectionVerifierFactory | None = None,
+) -> dict:
     """把 timeline 的字幕軌整個換成最新的 transcript.srt（QC 裁決迭代用）。"""
+    subtitle = (subtitle_request or Stage5SubtitleRequest()).open(
+        episode_dir,
+        factory=verifier_factory,
+    )
     project_name = episode_dir.name
-    srt_path = episode_dir / SUBTITLE_NAME
-    if not srt_path.exists():
-        raise FileNotFoundError(f"找不到 {srt_path}")
+    srt_path = subtitle.srt_path
 
     resolve = connect_resolve()
     pm = resolve.GetProjectManager()
@@ -390,6 +533,12 @@ def refresh_subtitles(episode_dir: Path) -> dict:
             break
     if timeline is None:
         raise SystemExit(f"timeline「{project_name}」不存在")
+    _verify_resolve_lineage_receipt(
+        episode_dir,
+        project_name=project_name,
+        timeline_name=project_name,
+        subtitle=subtitle,
+    )
     project.SetCurrentTimeline(timeline)
 
     # 清字幕「內容」但**保留軌**——subtitle 軌樣式（如 Shosho YT preset）
@@ -412,9 +561,16 @@ def refresh_subtitles(episode_dir: Path) -> dict:
     if stale:
         mp.DeleteClips(stale)
     mp.SetCurrentFolder(root)
-    srt_items = mp.ImportMedia([str(_versioned_srt(episode_dir))])
+    srt_items = mp.ImportMedia([str(_versioned_srt(episode_dir, subtitle=subtitle))])
     appended = bool(mp.AppendToTimeline(srt_items)) if srt_items else False
     pm.SaveProject()
+    if appended:
+        _write_resolve_lineage_receipt(
+            episode_dir,
+            project_name=project_name,
+            timeline_name=project_name,
+            subtitle=subtitle,
+        )
     count = len(timeline.GetItemListInTrack("subtitle", 1) or [])
     logger.info(f"字幕軌已刷新: {count} 句（{'成功' if appended else '失敗'}）")
     return {"project": project_name, "status": "subtitles-refreshed", "subtitle_items": count}
@@ -549,6 +705,27 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--video", help="主影片路徑（覆寫自動偵測）")
     parser.add_argument("--dry-run", action="store_true", help="只印計畫，不動 Resolve")
     parser.add_argument(
+        "--legacy-v1",
+        action="store_true",
+        help="明確使用 episode/transcript.srt；正式 V2 流程禁止使用",
+    )
+    parser.add_argument("--projection-id")
+    parser.add_argument("--expected-episode-id")
+    parser.add_argument("--expected-generation-id")
+    parser.add_argument("--expected-manifest-sha256")
+    parser.add_argument("--reference-manifest")
+    parser.add_argument(
+        "--subtitle-release-handoff",
+        help=(
+            "episode-local official Memo Dual-Audit Stage 5 handoff JSON; "
+            "omitted means subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json"
+        ),
+    )
+    parser.add_argument(
+        "--degraded-release-handoff",
+        help="episode-local degraded dual-ASR Stage 5 handoff JSON",
+    )
+    parser.add_argument(
         "--refresh-subtitles",
         action="store_true",
         help="只刷新既有 timeline 的字幕內容（transcript.srt 更新後用；軌與樣式保留）",
@@ -568,7 +745,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         metavar="TIMELINE_NAME",
         help="從指定 timeline 產生**短片**字幕樣式模板（修修「short」preset）",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    args.subtitle_request = Stage5SubtitleRequest(
+        legacy_v1=args.legacy_v1,
+        subtitle_release_handoff=args.subtitle_release_handoff,
+        degraded_release_handoff=args.degraded_release_handoff,
+        projection_id=args.projection_id,
+        expected_episode_id=args.expected_episode_id,
+        expected_generation_id=args.expected_generation_id,
+        expected_manifest_sha256=args.expected_manifest_sha256,
+        reference_manifest=args.reference_manifest,
+    )
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -590,12 +778,13 @@ def main(argv: list[str] | None = None) -> int:
     elif args.swap_audio:
         result = swap_audio(episode_dir)
     elif args.refresh_subtitles:
-        result = refresh_subtitles(episode_dir)
+        result = refresh_subtitles(episode_dir, subtitle_request=args.subtitle_request)
     else:
         result = build_project(
             episode_dir,
             video=Path(args.video) if args.video else None,
             dry_run=args.dry_run,
+            subtitle_request=args.subtitle_request,
         )
     result["elapsed_sec"] = round(time.time() - started, 1)
     print(json.dumps(result, ensure_ascii=False, indent=2))

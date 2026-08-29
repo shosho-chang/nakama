@@ -1,42 +1,44 @@
-<!-- nakama:component punch_card_wide（長片 16:9 橘底大字 punch 卡，透明 overlay 疊 Resolve track 3）
-     與直式 punch_card.html 同一套視覺語彙（橘塊 #E87000 / LINE Seed TW 特黑 /
+<!doctype html>
+<!-- nakama:component punch_card_wide（長片 16:9 compact punch 卡，透明 overlay 疊 Resolve track 3）
+     與直式 punch_card.html 共用 LINE Seed TW 與逐行進退場語彙；長版預設使用 paper，
      逐行 swipe-in + 快收），只重調幾何：
 
-     1. 1920×1080——16:9 有寬度沒高度，改走**單行為主的橫幅**：
-        tier2 每行 8 字（140px×8+padding ≈ 1176 = 61% 幅寬），
-        tier1 每行 6 字（200px×6+padding ≈ 1248 = 65%）。
-     2. 字級略小於直式（140/200 vs 150/190 但幅寬多 78%）——首版試 120/160，
-        實渲後 hero 只佔 28% 幅寬、在寬幅裡份量太輕（直式版佔 58%），上調定案。
+     1. 1920×1080——16:9 有寬度沒高度，改走**短句卡**：
+        tier2 是章內說明（64px），tier1 是 Hero（96px）；兩者最多三行。
+     2. 長版 Hero 以人物可讀性優先：字重、紙卡與動畫已能建立層級，
+        不再用覆蓋人臉的尺寸表現 Hero。
      3. pos_y 預設下修（0.66/0.60）：16:9 的字幕帶在 ~0.88 起跳，
-        兩行卡的下緣必須收在 0.86 以前，否則壓到字幕。 -->
-<!doctype html>
+        卡片下緣必須收在 0.86 以前，否則壓到字幕。 -->
 <html
   lang="zh-Hant"
   data-composition-variables='[
     {"id":"line1","type":"string","label":"第一行","default":"它會改變"},
     {"id":"line2","type":"string","label":"第二行（可空）","default":"你的耐心"},
+    {"id":"line3","type":"string","label":"第三行（可空）","default":""},
     {"id":"show_sec","type":"number","label":"顯示秒數","default":2.0},
     {"id":"pos_y","type":"number","label":"卡片垂直中心 0-1","default":0.66},
     {"id":"tier","type":"number","label":"層級 1=hero 2=標準","default":2},
+    {"id":"font_px","type":"number","label":"選配字級覆寫（px）","default":0},
+    {"id":"style","type":"string","label":"orange|paper|ink","default":"paper"},
     {"id":"card_scale","type":"number","label":"整張卡片縮放","default":1.0}
   ]'
 >
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
     <style>
       @font-face {
         font-family: "LINE Seed TW";
         font-weight: 700;
         font-display: block;
-        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Bd.woff2") format("woff2");
+        src: url("assets/fonts/line-seed-tw/LINESeedTW_OTF_Bd.woff2") format("woff2");
       }
       @font-face {
         font-family: "LINE Seed TW";
         font-weight: 900;
         font-display: block;
-        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Eb.woff2") format("woff2");
+        src: url("assets/fonts/line-seed-tw/LINESeedTW_OTF_Eb.woff2") format("woff2");
       }
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body {
@@ -55,26 +57,26 @@
         display: inline-block;
         background: #e87000;
         color: #fff;
-        font-family: "LINE Seed TW", "Noto Sans TC", sans-serif;
+        font-family: "LINE Seed TW", sans-serif;
         font-weight: 900;
-        font-size: 140px;
+        font-size: 64px;
         line-height: 1.16;
         padding: 5px 28px 11px;
         white-space: nowrap;
         opacity: 0;
       }
-      /* 第二行右推——與直式同語法，位移比例照字級縮（60 × 120/150） */
-      .line:nth-child(2) { margin-left: 48px; }
-      /* tier 1 = hero：全片最強一句，必須一眼比 tier2 大一級 */
-      /* v2 修修 2026-08-04：「情緒是建構起來的」200px 實渲後太大（5 字行寬
-         1048px = 55% 幅寬、兩行高 ~500px 直接蓋臉）→ 收到 150px。
-         仍比 tier2（140px）大一級＋更重 padding，hero 辨識度保留。 */
+      /* 支援卡微幅錯位，建立手排節奏但不搶 Hero 層級。 */
+      .line:nth-child(2) { margin-left: 24px; }
+      .line:nth-child(3) { margin-left: -16px; }
+      /* tier 1 = hero：用更重紙卡、字重與動畫建立層級；尺寸縮小，
+         避免長版訪談常見的中景／近景人臉被兩行 Hero 覆蓋。 */
       .tier1 .line {
-        font-size: 150px;
+        font-size: var(--tier1-font-size, 96px);
         padding: 8px 24px 15px;
         line-height: 1.1;
       }
       .tier1 .line:nth-child(2) { margin-left: 32px; }
+      .tier1 .line:nth-child(3) { margin-left: -24px; }
 
       /* ── v3 style 變體（修修 2026-08-04：「字卡太醜」→ 設計系統直譯）──
          orange = 現況基準（波旬短片語彙殘留：大塊橘 fill，踩 --sho AI-slop
@@ -121,11 +123,12 @@
       data-width="1920"
       data-height="1080"
       data-start="0"
-      data-duration="4"
+      data-duration="8"
     >
       <div id="card">
         <span class="line" id="l1"></span>
         <span class="line" id="l2"></span>
+        <span class="line" id="l3"></span>
       </div>
     </div>
     <script>
@@ -133,9 +136,11 @@
         (window.__hyperframes && window.__hyperframes.getVariables()) || {};
       const line1 = vars.line1 ?? "它會改變";
       const line2 = vars.line2 ?? "";
+      const line3 = vars.line3 ?? "";
       const showSec = Number(vars.show_sec ?? 2.0);
       const posY = Number(vars.pos_y ?? 0.66);
       const tier = Number(vars.tier ?? 2);
+      const fontPx = Number(vars.font_px ?? 0);
       const cardScale = Math.min(1.15, Math.max(0.75, Number(vars.card_scale ?? 1.0)));
 
       document.getElementById("l1").textContent = line1;
@@ -145,11 +150,20 @@
       } else {
         l2.remove();
       }
+      const l3 = document.getElementById("l3");
+      if (line3) {
+        l3.textContent = line3;
+      } else {
+        l3.remove();
+      }
       const card = document.getElementById("card");
       card.style.top = `${posY * 100}%`;
       card.style.setProperty("--card-scale", String(cardScale));
       if (tier === 1) card.classList.add("tier1");
-      const style = ["orange", "paper", "ink"].includes(vars.style) ? vars.style : "orange";
+      if (tier === 1 && Number.isFinite(fontPx) && fontPx > 0) {
+        card.style.setProperty("--tier1-font-size", `${fontPx}px`);
+      }
+      const style = ["orange", "paper", "ink"].includes(vars.style) ? vars.style : "paper";
       document.getElementById("root").classList.add(`style-${style}`);
 
       window.__timelines = window.__timelines || {};

@@ -14,7 +14,7 @@ import re
 import shutil
 import sys
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Literal, Mapping, Sequence
 from urllib.parse import unquote, urlparse
@@ -60,9 +60,18 @@ from shared.schemas.podcast_subtitles_v2_audio_audit import (
     AudioAuditExecutionRecordV2,
     AudioDiscoveredCandidateV2,
 )
+from shared.schemas.podcast_subtitles_v2_audio_selection import (
+    AudioAuditSelectionPlanV1,
+    AudioAuditSelectionPolicyV1,
+)
 from shared.schemas.podcast_subtitles_v2_correction import (
     CorrectionAuditExecutionPlanV2,
     CorrectionAuditExecutionPolicyV2,
+)
+from shared.schemas.podcast_subtitles_v2_selective_audio import (
+    ModalityAuditExecutionPlanV3,
+    SelectiveAudioAuditExecutionRecordV3,
+    SelectiveAudioAuditRoundReceiptV3,
 )
 from shared.schemas.podcast_subtitles_v2_text_audit import (
     TextAuditExecutionRecordV2,
@@ -71,7 +80,7 @@ from shared.schemas.podcast_subtitles_v2_text_audit import (
 
 from .adapters.reference import (
     TrustedReferenceParserRegistry,
-    verify_reference_evidence_membership,
+    verify_reference_evidence_membership_batch,
     verify_reference_extraction_derivation,
 )
 from .audio_audit_execution import (
@@ -80,6 +89,7 @@ from .audio_audit_execution import (
     AudioAuditWorkPending,
     AudioFullAuditExecutor,
 )
+from .audio_audit_selection import build_audio_audit_selection_plan
 from .audit_plan import build_audit_plan, default_correction_audit_policy
 from .boundary_constraints import (
     BoundaryConstraintError,
@@ -107,9 +117,20 @@ from .canonical import (
     without_native_resolution_risk,
 )
 from .checkpoint import (
+    EVIDENCE_PREFIX_MIGRATION_ARTIFACT,
     CheckpointAdapterIdentity,
     CreateCheckpoint,
+    EvidencePrefixMigrationReceiptV1,
+    EvidencePrefixMigrationReceiptV2,
+    NativeAuditBasisMigrationReceiptV1,
     build_create_checkpoint,
+    build_evidence_prefix_migration_receipt,
+    build_evidence_prefix_migration_refresh_receipt,
+    build_native_audit_basis_migration_receipt,
+    evidence_prefix_migration_artifact,
+    is_evidence_prefix_migration_artifact,
+    is_native_audit_basis_migration_artifact,
+    native_audit_basis_migration_artifact,
 )
 from .correction_acceptance import (
     CorrectionAcceptanceVerdictV2,
@@ -120,9 +141,10 @@ from .correction_acceptance import (
 )
 from .correction_execution import (
     build_correction_audit_execution_plan,
+    build_modality_audit_execution_plan_v3,
     default_correction_audit_execution_policy,
     materialize_audio_correction_packet_sources,
-    materialize_text_correction_packet_sources,
+    materialize_text_correction_packet_sources_batch,
 )
 from .editorial import editorial_detector_identity
 from .errors import (
@@ -135,8 +157,10 @@ from .errors import (
 )
 from .full_audit_attestation import (
     FullAuditAggregateAttestationV2,
+    SelectiveAuditAggregateAttestationV3,
     build_full_audit_aggregate,
     verify_full_audit_aggregate,
+    verify_selective_audit_aggregate_v3,
 )
 from .hashing import canonical_json_bytes, hash_file, hash_object, sha256_bytes
 from .ledger import GENESIS_HASH, CorrectionLedger, LedgerEntry
@@ -246,6 +270,11 @@ from .reference_context import (
     verify_reference_query_contexts,
 )
 from .risk import RiskRecord
+from .selective_audio_orchestration import (
+    SelectiveAudioAuditCompletedV3,
+    SelectiveAudioAuditPendingV3,
+    execute_selective_audio_audit_v3,
+)
 from .semantic_projection import (
     project_semantic_units,
     render_sidecar_json,
@@ -400,6 +429,7 @@ class NativeFullAuditBundle:
     execution_policy: CorrectionAuditExecutionPolicyV2 = field(
         default_factory=default_correction_audit_execution_policy
     )
+    audio_selection_policy: AudioAuditSelectionPolicyV1 | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.text_executor, TextFullAuditExecutor):
@@ -410,6 +440,10 @@ class NativeFullAuditBundle:
             raise TypeError("native full audit requires a typed audit policy")
         if not isinstance(self.execution_policy, CorrectionAuditExecutionPolicyV2):
             raise TypeError("native full audit requires a typed execution policy")
+        if self.audio_selection_policy is not None and not isinstance(
+            self.audio_selection_policy, AudioAuditSelectionPolicyV1
+        ):
+            raise TypeError("native selective audio audit requires a typed selection policy")
 
 
 @dataclass(frozen=True, slots=True)
@@ -534,6 +568,49 @@ class CreateRequest:
             if existing is not None and existing != enrollment.extraction_snapshot:
                 raise ValueError("Reference Enrollments contain conflicting bytes for one digest")
             snapshots_by_digest[digest] = enrollment.extraction_snapshot
+
+
+@dataclass(frozen=True, slots=True)
+class EvidencePrefixMigrationRequest:
+    create_request: CreateRequest
+    expected_checkpoint_id: str
+    operator: str
+    migrated_at_utc: str
+
+    def __post_init__(self) -> None:
+        if not self.expected_checkpoint_id.strip():
+            raise ValueError("migration requires an expected checkpoint ID")
+        if not self.operator.strip() or self.operator != self.operator.strip():
+            raise ValueError("migration operator must be non-blank and trimmed")
+
+
+@dataclass(frozen=True, slots=True)
+class EvidencePrefixMigrationOutcome:
+    old_checkpoint_id: str
+    new_checkpoint_id: str
+    receipt: EvidencePrefixMigrationReceiptV1 | EvidencePrefixMigrationReceiptV2
+
+
+@dataclass(frozen=True, slots=True)
+class NativeAuditBasisMigrationRequest:
+    create_request: CreateRequest
+    expected_checkpoint_id: str
+    operator: str
+    migrated_at_utc: str
+
+    def __post_init__(self) -> None:
+        if not self.expected_checkpoint_id.strip():
+            raise ValueError("migration requires an expected checkpoint ID")
+        if not self.operator.strip() or self.operator != self.operator.strip():
+            raise ValueError("migration operator must be non-blank and trimmed")
+
+
+@dataclass(frozen=True, slots=True)
+class NativeAuditBasisMigrationOutcome:
+    old_checkpoint_id: str
+    new_checkpoint_id: str
+    receipt_artifact_name: str
+    receipt: NativeAuditBasisMigrationReceiptV1
 
 
 @dataclass(frozen=True, slots=True)
@@ -675,7 +752,65 @@ class _NativeAudioAuditState:
     checkpoint: CreateCheckpoint
 
 
+@dataclass(frozen=True, slots=True)
+class _SelectiveNativeAuditBasisState:
+    evidence_state: _CreateEvidenceState
+    result: CanonicalBuildResult
+    references: tuple[ReferenceEvidence, ...]
+    retrievals: tuple[ReferenceRetrievalReceipt, ...]
+    audit_plan: AuditPlan
+    candidate_signal_set: CandidateSignalSet
+    candidate_group_set: CandidateGroupSet
+    execution_plan: ModalityAuditExecutionPlanV3
+    text_source_artifacts: dict[str, bytes]
+    audio_source_artifacts: dict[str, bytes]
+    checkpoint: CreateCheckpoint
+
+
+@dataclass(frozen=True, slots=True)
+class _SelectiveNativeTextAuditState:
+    basis: _SelectiveNativeAuditBasisState
+    run: TextAuditRunResult
+    selection_plans: tuple[AudioAuditSelectionPlanV1, ...]
+    checkpoint: CreateCheckpoint
+
+
+@dataclass(frozen=True, slots=True)
+class _SelectiveNativeAudioAuditState:
+    text: _SelectiveNativeTextAuditState
+    run: AudioAuditRunResult
+    aggregate: SelectiveAuditAggregateAttestationV3
+    outcome: SelectiveAudioAuditCompletedV3
+    checkpoint: CreateCheckpoint
+
+
 NativeDiscoveredCandidateV2 = TextDiscoveredCandidateV2 | AudioDiscoveredCandidateV2
+
+
+def _native_audio_record_candidates(
+    record: AudioAuditExecutionRecordV2 | SelectiveAudioAuditExecutionRecordV3,
+) -> tuple[AudioDiscoveredCandidateV2, ...]:
+    if isinstance(record, SelectiveAudioAuditExecutionRecordV3):
+        return record.discovered_candidates
+    return record.candidate_discovery_set.candidates
+
+
+def _loaded_native_candidates(
+    audit: LoadedNativeAuditState,
+) -> tuple[NativeDiscoveredCandidateV2, ...]:
+    audio_runs = (
+        audit.audio_runs
+        if isinstance(audit.aggregate, SelectiveAuditAggregateAttestationV3)
+        else (audit.audio_run,)
+    )
+    return (
+        *audit.text_run.record.candidate_discovery_set.candidates,
+        *(
+            candidate
+            for run in audio_runs
+            for candidate in _native_audio_record_candidates(run.record)
+        ),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -773,6 +908,13 @@ _NATIVE_TEXT_SOURCE_INDEX = "native_full_audit/text_source_artifact_index.json"
 _NATIVE_AUDIO_SOURCE_INDEX = "native_full_audit/audio_source_artifact_index.json"
 _NATIVE_TEXT_RUN_INDEX = "native_full_audit/text_run_index.json"
 _NATIVE_AUDIO_RUN_INDEX = "native_full_audit/audio_run_index.json"
+_NATIVE_TEXT_EXECUTION_PLAN_V3 = "native_full_audit/text_execution_plan_v3.json"
+_NATIVE_INITIAL_AUDIO_SELECTION_V3 = "native_full_audit/initial_audio_selection_v3.json"
+_NATIVE_AUDIO_SELECTION_PLANS_V3 = "native_full_audit/audio_selection_plans_v3.json"
+_NATIVE_AUDIO_EXECUTION_PLANS_V3 = "native_full_audit/audio_execution_plans_v3.json"
+_NATIVE_AUDIO_RECORDS_V3 = "native_full_audit/audio_execution_records_v3.json"
+_NATIVE_AUDIO_ROUND_RECEIPTS_V3 = "native_full_audit/audio_round_receipts_v3.json"
+_NATIVE_SELECTIVE_AGGREGATE_V3 = "native_full_audit/selective_audit_aggregate_v3.json"
 _NATIVE_RESOLUTION_DECISION = "native_resolution/decision.json"
 _NATIVE_RESOLUTION_CANDIDATE = "native_resolution/candidate_discovery.json"
 _NATIVE_RESOLUTION_AUTHORIZATION = "native_resolution/authorization.json"
@@ -1198,6 +1340,48 @@ def _reference_evidence_by_span(
             sorted(by_id.values(), key=lambda evidence: evidence.id)
         )
     return projected
+
+
+def _verify_reference_membership_batches(
+    references: Sequence[ReferenceEvidence],
+    *,
+    enrolled_by_source: Mapping[str, ReferenceArtifact],
+    extraction_snapshots_by_digest: Mapping[str, bytes],
+    context: str,
+) -> None:
+    """Verify unique Evidence per source while authenticating each extraction once."""
+
+    membership_by_source: dict[str, dict[str, ReferenceEvidence]] = {}
+    for item in references:
+        enrolled = enrolled_by_source.get(item.artifact.source_id)
+        if enrolled is None or item.artifact != enrolled:
+            raise GenerationIsolationError(
+                f"{context} Reference Evidence crossed Enrollment lineage"
+            )
+        source_membership = membership_by_source.setdefault(item.artifact.source_id, {})
+        existing = source_membership.get(item.id)
+        if existing is not None and existing != item:
+            raise GenerationIsolationError(
+                f"{context} Reference Evidence ID {item.id!r} has conflicting content"
+            )
+        source_membership[item.id] = item
+
+    for source_id in sorted(membership_by_source):
+        enrolled = enrolled_by_source[source_id]
+        try:
+            extraction_snapshot = extraction_snapshots_by_digest[enrolled.extracted_text.sha256]
+        except KeyError as exc:
+            raise GenerationIsolationError(
+                f"{context} Reference Evidence extraction snapshot is missing"
+            ) from exc
+        verify_reference_evidence_membership_batch(
+            tuple(
+                membership_by_source[source_id][evidence_id]
+                for evidence_id in sorted(membership_by_source[source_id])
+            ),
+            extraction_snapshot,
+            enrolled_artifact=enrolled,
+        )
 
 
 def _casefold_occurrences(value: str, needle: str) -> tuple[tuple[int, int], ...]:
@@ -2967,8 +3151,10 @@ class PodcastSubtitleV2:
         adapter_identities: tuple[CheckpointAdapterIdentity, ...],
         speaker_bindings: tuple[SpeakerTrackBinding, ...],
         enrolled_artifacts: tuple[ReferenceArtifact, ...],
+        expected_code_hash: str | None = None,
     ) -> CreateCheckpoint:
         checkpoint = stored.checkpoint
+        code_hash = expected_code_hash or self._code_hash
         if checkpoint.stage != "started":
             raise GenerationIsolationError("Create Checkpoint start lineage is invalid")
         expected = {
@@ -2978,7 +3164,7 @@ class PodcastSubtitleV2:
             "source": source.model_dump(mode="json"),
             "input_binding_hash": input_binding_hash,
             "policy_hash": effective_policy_hash,
-            "code_hash": self._code_hash,
+            "code_hash": code_hash,
             "reference_enrollment_hash": hash_object(enrolled_artifacts),
             "speaker_track_binding_hash": hash_object(
                 tuple(binding.portable_identity for binding in speaker_bindings)
@@ -2992,7 +3178,7 @@ class PodcastSubtitleV2:
             or checkpoint.source != source
             or checkpoint.input_binding_hash != input_binding_hash
             or checkpoint.policy_hash != effective_policy_hash
-            or checkpoint.code_hash != self._code_hash
+            or checkpoint.code_hash != code_hash
             or checkpoint.reference_enrollment_hash != hash_object(enrolled_artifacts)
             or checkpoint.speaker_track_binding_hash
             != hash_object(tuple(item.portable_identity for item in speaker_bindings))
@@ -3032,6 +3218,266 @@ class PodcastSubtitleV2:
         if any(getattr(child, name) != getattr(parent, name) for name in inherited):
             raise GenerationIsolationError("Create Checkpoint inherited identity changed")
 
+    def _verify_evidence_prefix_migration_checkpoint(
+        self, stored: StoredCreateCheckpoint
+    ) -> tuple[
+        EvidencePrefixMigrationReceiptV1 | EvidencePrefixMigrationReceiptV2,
+        StoredCreateCheckpoint,
+    ]:
+        checkpoint = stored.checkpoint
+        migration_names = {
+            name
+            for name in checkpoint.artifact_hashes
+            if is_evidence_prefix_migration_artifact(name)
+        }
+        if (
+            checkpoint.stage != "evidence_ready"
+            or not migration_names
+            or checkpoint.previous_checkpoint_id is None
+        ):
+            raise GenerationIsolationError("evidence migration checkpoint shape is invalid")
+        previous = self.store.load_create_checkpoint_id(checkpoint.previous_checkpoint_id)
+        if previous.checkpoint.stage != "evidence_ready":
+            raise GenerationIsolationError("evidence migration predecessor is not evidence_ready")
+        previous_migration_names = {
+            name
+            for name in previous.checkpoint.artifact_hashes
+            if is_evidence_prefix_migration_artifact(name)
+        }
+        added = migration_names - previous_migration_names
+        if len(added) != 1 or previous_migration_names - migration_names:
+            raise GenerationIsolationError("evidence migration receipt ledger shape is invalid")
+        receipt_name = next(iter(added))
+        payload = self.store.read_create_checkpoint_artifact(stored, receipt_name)
+        try:
+            receipt: EvidencePrefixMigrationReceiptV1 | EvidencePrefixMigrationReceiptV2
+            if not previous_migration_names:
+                if receipt_name != EVIDENCE_PREFIX_MIGRATION_ARTIFACT:
+                    raise ValueError("first migration receipt must use the V1 artifact")
+                receipt = EvidencePrefixMigrationReceiptV1.model_validate_json(payload, strict=True)
+            else:
+                receipt = EvidencePrefixMigrationReceiptV2.model_validate_json(payload, strict=True)
+                if evidence_prefix_migration_artifact(receipt.id) != receipt_name:
+                    raise ValueError("refresh receipt artifact is not content addressed")
+        except (TypeError, ValueError) as exc:
+            raise GenerationIsolationError("evidence migration receipt is invalid") from exc
+        if canonical_json_bytes(receipt) != payload:
+            raise GenerationIsolationError("evidence migration receipt is not canonical")
+        old_hashes = previous.checkpoint.artifact_hashes
+        current_predecessor_hashes = dict(checkpoint.artifact_hashes)
+        current_predecessor_hashes.pop(receipt_name)
+        expected = (
+            receipt.episode_id == checkpoint.episode_id
+            and receipt.old_checkpoint_id == previous.checkpoint.id
+            and receipt.old_checkpoint_record_hash
+            == sha256_bytes(canonical_json_bytes(previous.checkpoint))
+            and receipt.old_operation_key == previous.checkpoint.operation_key
+            and receipt.new_operation_key == checkpoint.operation_key
+            and receipt.old_input_binding_hash == previous.checkpoint.input_binding_hash
+            and receipt.new_input_binding_hash == checkpoint.input_binding_hash
+            and receipt.old_policy_hash == previous.checkpoint.policy_hash
+            and receipt.new_policy_hash == checkpoint.policy_hash
+            and receipt.old_code_hash == previous.checkpoint.code_hash
+            and receipt.new_code_hash == checkpoint.code_hash
+            and receipt.old_adapter_identity_set_hash
+            == hash_object(previous.checkpoint.adapter_identities)
+            and receipt.new_adapter_identity_set_hash == hash_object(checkpoint.adapter_identities)
+            and current_predecessor_hashes == old_hashes
+        )
+        if isinstance(receipt, EvidencePrefixMigrationReceiptV1):
+            expected = expected and (
+                receipt.evidence_artifact_set_hash == hash_object(tuple(sorted(old_hashes.items())))
+            )
+        else:
+            previous_receipt, _ = self._verify_evidence_prefix_migration_checkpoint(previous)
+            expected_sequence = (
+                previous_receipt.sequence + 1
+                if isinstance(previous_receipt, EvidencePrefixMigrationReceiptV2)
+                else 2
+            )
+            base_evidence_hashes = {
+                name: digest
+                for name, digest in old_hashes.items()
+                if not is_evidence_prefix_migration_artifact(name)
+            }
+            expected = expected and (
+                receipt.sequence == expected_sequence
+                and receipt.previous_migration_receipt_id == previous_receipt.id
+                and receipt.predecessor_artifact_set_hash
+                == hash_object(tuple(sorted(old_hashes.items())))
+                and receipt.evidence_artifact_set_hash
+                == hash_object(tuple(sorted(base_evidence_hashes.items())))
+            )
+        unchanged = (
+            "episode_id",
+            "source",
+            "invocation_id",
+            "normalized",
+            "normalization_receipt_hash",
+            "reference_enrollment_hash",
+            "speaker_track_binding_hash",
+            "expected_active_generation_id",
+        )
+        if not expected or any(
+            getattr(checkpoint, name) != getattr(previous.checkpoint, name) for name in unchanged
+        ):
+            raise GenerationIsolationError("evidence migration crossed its exact lineage")
+        return receipt, previous
+
+    def _verified_evidence_prefix_migration_lineage(
+        self, stored: StoredCreateCheckpoint
+    ) -> tuple[
+        tuple[EvidencePrefixMigrationReceiptV1 | EvidencePrefixMigrationReceiptV2, ...],
+        StoredCreateCheckpoint,
+        tuple[str, ...],
+    ]:
+        """Verify every migration edge and return receipts, original evidence and IDs."""
+
+        receipts: list[EvidencePrefixMigrationReceiptV1 | EvidencePrefixMigrationReceiptV2] = []
+        checkpoint_ids = [stored.checkpoint.id]
+        cursor = stored
+        while any(
+            is_evidence_prefix_migration_artifact(name)
+            for name in cursor.checkpoint.artifact_hashes
+        ):
+            receipt, cursor = self._verify_evidence_prefix_migration_checkpoint(cursor)
+            receipts.append(receipt)
+            checkpoint_ids.append(cursor.checkpoint.id)
+        receipts.reverse()
+        return tuple(receipts), cursor, tuple(checkpoint_ids)
+
+    def _verify_native_audit_basis_migration_checkpoint(
+        self, stored: StoredCreateCheckpoint
+    ) -> tuple[NativeAuditBasisMigrationReceiptV1, StoredCreateCheckpoint]:
+        checkpoint = stored.checkpoint
+        if (
+            checkpoint.stage != "native_audit_basis_ready"
+            or checkpoint.previous_checkpoint_id is None
+        ):
+            raise GenerationIsolationError("native audit basis migration shape is invalid")
+        previous = self.store.load_create_checkpoint_id(checkpoint.previous_checkpoint_id)
+        if previous.checkpoint.stage != "native_audit_basis_ready":
+            raise GenerationIsolationError("native audit basis migration predecessor is invalid")
+        old_names = {
+            name
+            for name in previous.checkpoint.artifact_hashes
+            if is_native_audit_basis_migration_artifact(name)
+        }
+        current_names = {
+            name
+            for name in checkpoint.artifact_hashes
+            if is_native_audit_basis_migration_artifact(name)
+        }
+        added = current_names - old_names
+        if len(added) != 1 or old_names - current_names:
+            raise GenerationIsolationError("native audit basis migration ledger shape is invalid")
+        receipt_name = next(iter(added))
+        payload = self.store.read_create_checkpoint_artifact(stored, receipt_name)
+        try:
+            receipt = NativeAuditBasisMigrationReceiptV1.model_validate_json(payload, strict=True)
+        except (TypeError, ValueError) as exc:
+            raise GenerationIsolationError(
+                "native audit basis migration receipt is invalid"
+            ) from exc
+        old_hashes = previous.checkpoint.artifact_hashes
+        inherited_hashes = dict(checkpoint.artifact_hashes)
+        inherited_hashes.pop(receipt_name)
+        base_hashes = {
+            name: digest
+            for name, digest in old_hashes.items()
+            if not is_native_audit_basis_migration_artifact(name)
+        }
+        unchanged = (
+            "episode_id",
+            "source",
+            "invocation_id",
+            "normalized",
+            "normalization_receipt_hash",
+            "reference_enrollment_hash",
+            "speaker_track_binding_hash",
+            "expected_active_generation_id",
+            "adapter_identities",
+        )
+        if (
+            canonical_json_bytes(receipt) != payload
+            or native_audit_basis_migration_artifact(receipt.id) != receipt_name
+            or inherited_hashes != old_hashes
+            or receipt.episode_id != checkpoint.episode_id
+            or receipt.old_checkpoint_id != previous.checkpoint.id
+            or receipt.old_checkpoint_record_hash
+            != sha256_bytes(canonical_json_bytes(previous.checkpoint))
+            or receipt.old_operation_key != previous.checkpoint.operation_key
+            or receipt.new_operation_key != checkpoint.operation_key
+            or receipt.old_input_binding_hash != previous.checkpoint.input_binding_hash
+            or receipt.new_input_binding_hash != checkpoint.input_binding_hash
+            or receipt.old_policy_hash != previous.checkpoint.policy_hash
+            or receipt.new_policy_hash != checkpoint.policy_hash
+            or receipt.old_code_hash != previous.checkpoint.code_hash
+            or receipt.new_code_hash != checkpoint.code_hash
+            or receipt.old_adapter_identity_set_hash
+            != hash_object(previous.checkpoint.adapter_identities)
+            or receipt.new_adapter_identity_set_hash != hash_object(checkpoint.adapter_identities)
+            or receipt.predecessor_artifact_set_hash
+            != hash_object(tuple(sorted(old_hashes.items())))
+            or receipt.basis_artifact_set_hash != hash_object(tuple(sorted(base_hashes.items())))
+            or any(
+                getattr(checkpoint, name) != getattr(previous.checkpoint, name)
+                for name in unchanged
+            )
+        ):
+            raise GenerationIsolationError(
+                "native audit basis migration crossed its exact code-only lineage"
+            )
+        return receipt, previous
+
+    def _verified_native_audit_basis_migration_lineage(
+        self, stored: StoredCreateCheckpoint
+    ) -> tuple[
+        tuple[NativeAuditBasisMigrationReceiptV1, ...],
+        StoredCreateCheckpoint,
+        tuple[str, ...],
+    ]:
+        receipts: list[NativeAuditBasisMigrationReceiptV1] = []
+        checkpoint_ids = [stored.checkpoint.id]
+        cursor = stored
+        while any(
+            is_native_audit_basis_migration_artifact(name)
+            for name in cursor.checkpoint.artifact_hashes
+        ):
+            receipt, cursor = self._verify_native_audit_basis_migration_checkpoint(cursor)
+            receipts.append(receipt)
+            checkpoint_ids.append(cursor.checkpoint.id)
+        receipts.reverse()
+        return tuple(receipts), cursor, tuple(checkpoint_ids)
+
+    def _native_audit_basis_base_checkpoint(
+        self, stored: StoredCreateCheckpoint
+    ) -> StoredCreateCheckpoint:
+        if any(
+            is_native_audit_basis_migration_artifact(name)
+            for name in stored.checkpoint.artifact_hashes
+        ):
+            _, base, _ = self._verified_native_audit_basis_migration_lineage(stored)
+            return base
+        return stored
+
+    def _load_effective_native_audit_basis_checkpoint(
+        self,
+        stored: StoredCreateCheckpoint,
+        *,
+        evidence_state: _CreateEvidenceState,
+        request: CreateRequest,
+    ) -> _NativeAuditBasisState | _SelectiveNativeAuditBasisState:
+        base = self._native_audit_basis_base_checkpoint(stored)
+        loaded = self._load_native_audit_basis_checkpoint(
+            base,
+            evidence_state=evidence_state,
+            request=request,
+        )
+        if base.checkpoint.id != stored.checkpoint.id:
+            loaded = replace(loaded, checkpoint=stored.checkpoint)
+        return loaded
+
     def _terminal_checkpoint_lineage(
         self, stored: StoredCreateCheckpoint
     ) -> tuple[StoredCreateCheckpoint, ...]:
@@ -3046,17 +3492,51 @@ class PodcastSubtitleV2:
             if text.checkpoint.previous_checkpoint_id is None:
                 raise GenerationIsolationError("Native Text Checkpoint lacks predecessor")
             basis = self.store.load_create_checkpoint_id(text.checkpoint.previous_checkpoint_id)
-            if basis.checkpoint.previous_checkpoint_id is None:
+            base_basis = self._native_audit_basis_base_checkpoint(basis)
+            if base_basis.checkpoint.previous_checkpoint_id is None:
                 raise GenerationIsolationError("Native Audit Basis lacks predecessor")
-            evidence = self.store.load_create_checkpoint_id(basis.checkpoint.previous_checkpoint_id)
+            evidence = self.store.load_create_checkpoint_id(
+                base_basis.checkpoint.previous_checkpoint_id
+            )
             if evidence.checkpoint.previous_checkpoint_id is None:
                 raise GenerationIsolationError("Evidence Create Checkpoint lacks predecessor")
-            started = self.store.load_create_checkpoint_id(
+            predecessor = self.store.load_create_checkpoint_id(
                 evidence.checkpoint.previous_checkpoint_id
             )
+            migrated_parent: StoredCreateCheckpoint | None = None
+            if any(
+                is_evidence_prefix_migration_artifact(name)
+                for name in evidence.checkpoint.artifact_hashes
+            ):
+                _, migrated_parent, _ = self._verified_evidence_prefix_migration_lineage(evidence)
+                if migrated_parent.checkpoint.previous_checkpoint_id is None:
+                    raise GenerationIsolationError(
+                        "pre-migration evidence checkpoint lacks predecessor"
+                    )
+                started = self.store.load_create_checkpoint_id(
+                    migrated_parent.checkpoint.previous_checkpoint_id
+                )
+                self._assert_checkpoint_inherits(
+                    migrated_parent.checkpoint,
+                    started.checkpoint,
+                    expected_child_stage="evidence_ready",
+                    expected_parent_stage="started",
+                )
+            else:
+                started = predecessor
+                self._assert_checkpoint_inherits(
+                    evidence.checkpoint,
+                    started.checkpoint,
+                    expected_child_stage="evidence_ready",
+                    expected_parent_stage="started",
+                )
+            self._assert_checkpoint_inherits(
+                base_basis.checkpoint,
+                evidence.checkpoint,
+                expected_child_stage="native_audit_basis_ready",
+                expected_parent_stage="evidence_ready",
+            )
             for child, parent, child_stage, parent_stage in (
-                (evidence, started, "evidence_ready", "started"),
-                (basis, evidence, "native_audit_basis_ready", "evidence_ready"),
                 (text, basis, "native_text_audit_ready", "native_audit_basis_ready"),
                 (audio, text, "native_audio_audit_ready", "native_text_audit_ready"),
                 (stored, audio, "complete", "native_audio_audit_ready"),
@@ -3067,6 +3547,8 @@ class PodcastSubtitleV2:
                     expected_child_stage=child_stage,
                     expected_parent_stage=parent_stage,
                 )
+            if migrated_parent is not None:
+                return audio, text, basis, evidence, migrated_parent, started
             return audio, text, basis, evidence, started
         if audio.checkpoint.previous_checkpoint_id is None:
             raise GenerationIsolationError("Audio Create Checkpoint lacks predecessor")
@@ -3155,16 +3637,22 @@ class PodcastSubtitleV2:
         commit helpers and require exact same-name bytes in the immutable Generation.
         """
 
-        if len(lineage) != 5 or lineage[0].checkpoint.stage != "native_audio_audit_ready":
+        if len(lineage) not in {5, 6} or lineage[0].checkpoint.stage != "native_audio_audit_ready":
             raise GenerationIsolationError("native terminal checkpoint lineage is invalid")
-        audio, text, basis, evidence, started = lineage
+        audio, text, basis, evidence = lineage[:4]
+        started = lineage[-1]
         generation = self.store.load(generation_id)
 
         text_sources = self._load_native_generation_source_index_names(
             generation_id, _NATIVE_TEXT_SOURCE_INDEX
         )
-        audio_sources = self._load_native_generation_source_index_names(
-            generation_id, _NATIVE_AUDIO_SOURCE_INDEX
+        selective_v3 = _NATIVE_SELECTIVE_AGGREGATE_V3 in generation.artifact_hashes
+        audio_sources = (
+            set()
+            if selective_v3
+            else self._load_native_generation_source_index_names(
+                generation_id, _NATIVE_AUDIO_SOURCE_INDEX
+            )
         )
         text_runs = self._load_native_generation_run_index_names(
             generation_id,
@@ -3223,6 +3711,48 @@ class PodcastSubtitleV2:
                 *audio_runs,
             },
         }
+        migration_names = {
+            name
+            for name in evidence.checkpoint.artifact_hashes
+            if is_evidence_prefix_migration_artifact(name)
+        }
+        if migration_names:
+            self._verified_evidence_prefix_migration_lineage(evidence)
+            expected_by_stage["evidence_ready"].update(migration_names)
+        basis_migration_names = {
+            name
+            for name in basis.checkpoint.artifact_hashes
+            if is_native_audit_basis_migration_artifact(name)
+        }
+        if basis_migration_names:
+            self._verified_native_audit_basis_migration_lineage(basis)
+            expected_by_stage["native_audit_basis_ready"].update(basis_migration_names)
+        if selective_v3:
+            expected_by_stage["native_audit_basis_ready"] = {
+                _NATIVE_AUDIT_PLAN,
+                _NATIVE_CANDIDATE_SIGNALS,
+                _NATIVE_CANDIDATE_GROUPS,
+                _NATIVE_TEXT_EXECUTION_PLAN_V3,
+                _CHECKPOINT_CANONICAL,
+                _CHECKPOINT_RISKS,
+                _REFERENCES,
+                _RETRIEVALS,
+                *text_sources,
+            }
+            expected_by_stage["native_text_audit_ready"] = {
+                _NATIVE_TEXT_RECORD,
+                _NATIVE_INITIAL_AUDIO_SELECTION_V3,
+                *text_runs,
+            }
+            expected_by_stage["native_audio_audit_ready"] = {
+                _NATIVE_AUDIO_SELECTION_PLANS_V3,
+                _NATIVE_AUDIO_EXECUTION_PLANS_V3,
+                _NATIVE_AUDIO_RECORDS_V3,
+                _NATIVE_AUDIO_ROUND_RECEIPTS_V3,
+                _NATIVE_SELECTIVE_AGGREGATE_V3,
+                *audio_runs,
+            }
+            expected_by_stage["native_audit_basis_ready"].update(basis_migration_names)
         for stored in (started, evidence, basis, text, audio):
             expected = expected_by_stage[stored.checkpoint.stage]
             if set(stored.checkpoint.artifact_hashes) != expected:
@@ -3250,6 +3780,10 @@ class PodcastSubtitleV2:
                         raise GenerationIsolationError(
                             "native terminal started intent is not reproducible"
                         )
+                    continue
+                if is_evidence_prefix_migration_artifact(name):
+                    continue
+                if is_native_audit_basis_migration_artifact(name):
                     continue
                 if name not in generation.artifact_hashes or (
                     self.store.read_artifact(generation_id, name) != checkpoint_bytes
@@ -3379,8 +3913,17 @@ class PodcastSubtitleV2:
             raise GenerationIsolationError(
                 "terminal Generation Adapter identity artifact is invalid JSON"
             ) from exc
-        native_stage = "native_full_audit_aggregate" in manifest.stage_artifact_hashes
-        native_artifact = _NATIVE_AGGREGATE in record.artifact_hashes
+        native_stage = any(
+            name in manifest.stage_artifact_hashes
+            for name in (
+                "native_full_audit_aggregate",
+                "native_selective_audit_aggregate_v3",
+            )
+        )
+        native_artifact = any(
+            name in record.artifact_hashes
+            for name in (_NATIVE_AGGREGATE, _NATIVE_SELECTIVE_AGGREGATE_V3)
+        )
         native_identity = (
             isinstance(identity_discriminant, dict)
             and "native_text_full_audit" in identity_discriminant
@@ -3485,17 +4028,46 @@ class PodcastSubtitleV2:
         enrolled_artifacts: tuple[ReferenceArtifact, ...],
     ) -> GenerationOutcome:
         checkpoint = stored.checkpoint
-        started = self._terminal_checkpoint_lineage(stored)[-1]
-        self._load_started_checkpoint(
-            started,
-            request=request,
-            source=source,
-            effective_policy_hash=effective_policy_hash,
-            input_binding_hash=input_binding_hash,
-            adapter_identities=adapter_identities,
-            speaker_bindings=speaker_bindings,
-            enrolled_artifacts=enrolled_artifacts,
-        )
+        lineage = self._terminal_checkpoint_lineage(stored)
+        started = lineage[-1]
+        if len(lineage) == 6:
+            old_evidence = lineage[-2].checkpoint
+            if (
+                checkpoint.episode_id != request.episode_id
+                or checkpoint.source != source
+                or checkpoint.input_binding_hash != input_binding_hash
+                or checkpoint.policy_hash != effective_policy_hash
+                or checkpoint.code_hash != self._code_hash
+                or checkpoint.adapter_identities != adapter_identities
+                or checkpoint.reference_enrollment_hash != hash_object(enrolled_artifacts)
+                or checkpoint.speaker_track_binding_hash
+                != hash_object(tuple(item.portable_identity for item in speaker_bindings))
+            ):
+                raise GenerationIsolationError(
+                    "migrated terminal Create Checkpoint differs from current exact request"
+                )
+            self._load_started_checkpoint(
+                started,
+                request=request,
+                source=source,
+                effective_policy_hash=old_evidence.policy_hash,
+                input_binding_hash=old_evidence.input_binding_hash,
+                adapter_identities=old_evidence.adapter_identities,
+                speaker_bindings=speaker_bindings,
+                enrolled_artifacts=enrolled_artifacts,
+                expected_code_hash=old_evidence.code_hash,
+            )
+        else:
+            self._load_started_checkpoint(
+                started,
+                request=request,
+                source=source,
+                effective_policy_hash=effective_policy_hash,
+                input_binding_hash=input_binding_hash,
+                adapter_identities=adapter_identities,
+                speaker_bindings=speaker_bindings,
+                enrolled_artifacts=enrolled_artifacts,
+            )
         self._validate_complete_checkpoint_binding(stored)
         outcome = self._terminal_generation_outcome(checkpoint)
         assert checkpoint.generation_id is not None
@@ -3910,6 +4482,27 @@ class PodcastSubtitleV2:
         }
         return {name: _checkpoint_artifact_bytes(value) for name, value in values.items()}
 
+    def _verified_receipt_audio_paths(
+        self,
+        receipt: NormalizationReceipt,
+    ) -> tuple[Path, Path]:
+        """Resolve receipt audio through CAS, reusing one proof for one exact artifact."""
+
+        source_audio = self.store.audio_path(
+            receipt.source.sha256,
+            size_bytes=receipt.source.size_bytes,
+        )
+        if (
+            receipt.normalized.sha256 == receipt.source.sha256
+            and receipt.normalized.size_bytes == receipt.source.size_bytes
+        ):
+            return source_audio, source_audio
+        normalized_audio = self.store.audio_path(
+            receipt.normalized.sha256,
+            size_bytes=receipt.normalized.size_bytes,
+        )
+        return source_audio, normalized_audio
+
     def _load_evidence_checkpoint(
         self,
         stored: StoredCreateCheckpoint,
@@ -3924,15 +4517,17 @@ class PodcastSubtitleV2:
         enrolled_artifacts: tuple[ReferenceArtifact, ...],
         reference_source_snapshots: dict[str, bytes],
         reference_extraction_snapshots: dict[str, bytes],
+        expected_code_hash: str | None = None,
     ) -> _CreateEvidenceState:
         checkpoint = stored.checkpoint
+        code_hash = expected_code_hash or self._code_hash
         if (
             checkpoint.episode_id != request.episode_id
             or checkpoint.source.sha256 != source_hash
             or checkpoint.source.size_bytes != source_size_bytes
             or checkpoint.input_binding_hash != input_binding_hash
             or checkpoint.policy_hash != effective_policy_hash
-            or checkpoint.code_hash != self._code_hash
+            or checkpoint.code_hash != code_hash
             or checkpoint.reference_enrollment_hash != hash_object(enrolled_artifacts)
             or checkpoint.speaker_track_binding_hash
             != hash_object(tuple(item.portable_identity for item in speaker_bindings))
@@ -3960,11 +4555,7 @@ class PodcastSubtitleV2:
             raise GenerationIsolationError(
                 "Create Checkpoint audio identities differ from its receipt"
             )
-        self.store.audio_path(receipt.source.sha256, size_bytes=receipt.source.size_bytes)
-        normalized_audio = self.store.audio_path(
-            receipt.normalized.sha256,
-            size_bytes=receipt.normalized.size_bytes,
-        )
+        _, normalized_audio = self._verified_receipt_audio_paths(receipt)
         evidence = tuple(
             RecognitionEvidence.model_validate(item) for item in json.loads(artifact(_EVIDENCE))
         )
@@ -4234,6 +4825,14 @@ class PodcastSubtitleV2:
             *reference_source_snapshots,
             *reference_extraction_snapshots,
         }
+        migration_names = {
+            name
+            for name in checkpoint.artifact_hashes
+            if is_evidence_prefix_migration_artifact(name)
+        }
+        if migration_names:
+            self._verified_evidence_prefix_migration_lineage(stored)
+            expected_names.update(migration_names)
         if set(checkpoint.artifact_hashes) != expected_names:
             raise GenerationIsolationError(
                 "Create Checkpoint evidence-stage artifact profile drifted"
@@ -4345,21 +4944,23 @@ class PodcastSubtitleV2:
     ) -> tuple[dict[str, bytes], dict[str, bytes]]:
         text_sources: dict[str, bytes] = {}
         audio_sources: dict[str, bytes] = {}
+        text_packet_ids = tuple(
+            packet.id for packet in execution_plan.packets if packet.modality == "text"
+        )
+        if text_packet_ids:
+            text_sources = materialize_text_correction_packet_sources_batch(
+                execution_plan,
+                audit_plan,
+                candidate_signal_set,
+                candidate_group_set,
+                transcript,
+                recognition_evidence,
+                packet_ids=text_packet_ids,
+                reference_retrievals=reference_retrievals,
+                seam_evidence=None,
+            )
         for packet in execution_plan.packets:
-            if packet.modality == "text":
-                materialized = materialize_text_correction_packet_sources(
-                    execution_plan,
-                    packet.id,
-                    audit_plan,
-                    candidate_signal_set,
-                    candidate_group_set,
-                    transcript,
-                    recognition_evidence,
-                    reference_retrievals=reference_retrievals,
-                    seam_evidence=None,
-                )
-                _merge_exact_artifacts(text_sources, materialized, label="text source")
-            else:
+            if packet.modality == "audio":
                 materialized = materialize_audio_correction_packet_sources(
                     execution_plan,
                     packet.id,
@@ -4383,10 +4984,18 @@ class PodcastSubtitleV2:
         references: tuple[ReferenceEvidence, ...],
         retrievals: tuple[ReferenceRetrievalReceipt, ...],
         references_enrolled: bool,
-    ) -> _NativeAuditBasisState:
+    ) -> _NativeAuditBasisState | _SelectiveNativeAuditBasisState:
         bundle = self._native_full_audit
         if bundle is None:
             raise GenerationIsolationError("native audit basis requires native composition")
+        if bundle.audio_selection_policy is not None:
+            return self._commit_selective_native_audit_basis_checkpoint(
+                evidence_state=evidence_state,
+                result=result,
+                references=references,
+                retrievals=retrievals,
+                references_enrolled=references_enrolled,
+            )
         audit_evidence = tuple(
             sorted(
                 evidence_state.evidence,
@@ -4476,6 +5085,97 @@ class PodcastSubtitleV2:
             checkpoint=checkpoint,
         )
 
+    def _commit_selective_native_audit_basis_checkpoint(
+        self,
+        *,
+        evidence_state: _CreateEvidenceState,
+        result: CanonicalBuildResult,
+        references: tuple[ReferenceEvidence, ...],
+        retrievals: tuple[ReferenceRetrievalReceipt, ...],
+        references_enrolled: bool,
+    ) -> _SelectiveNativeAuditBasisState:
+        bundle = self._native_full_audit
+        if bundle is None or bundle.audio_selection_policy is None:
+            raise GenerationIsolationError("selective audit basis requires selective composition")
+        audit_evidence = tuple(
+            sorted(evidence_state.evidence, key=recognition_evidence_content_hash)
+        )
+        audit_plan = build_audit_plan(
+            result.transcript,
+            audit_evidence,
+            bundle.audit_policy,
+            reference_retrievals=retrievals,
+            references_enrolled=references_enrolled,
+            speech_coverage=evidence_state.speech_coverage_receipt,
+            boundary_constraints=None,
+            seam_evidence=None,
+        )
+        signals = derive_candidate_signal_set(
+            audit_plan,
+            result.transcript,
+            audit_evidence,
+            reference_retrievals=retrievals,
+            references_enrolled=references_enrolled,
+            speech_coverage=evidence_state.speech_coverage_receipt,
+            boundary_constraints=None,
+            seam_evidence=None,
+        )
+        groups = derive_candidate_group_set(audit_plan, signals, result.transcript)
+        execution = build_modality_audit_execution_plan_v3(
+            audit_plan,
+            signals,
+            groups,
+            result.transcript,
+            audit_evidence,
+            bundle.execution_policy,
+            modality="text",
+            reference_retrievals=retrievals,
+            seam_evidence=None,
+        )
+        text_sources = materialize_text_correction_packet_sources_batch(
+            execution,
+            audit_plan,
+            signals,
+            groups,
+            result.transcript,
+            audit_evidence,
+            reference_retrievals=retrievals,
+            seam_evidence=None,
+        )
+        text_index, text_artifacts = _address_native_sources(text_sources, namespace="text")
+        artifacts: dict[str, bytes] = {
+            _NATIVE_AUDIT_PLAN: canonical_json_bytes(audit_plan),
+            _NATIVE_CANDIDATE_SIGNALS: canonical_json_bytes(signals),
+            _NATIVE_CANDIDATE_GROUPS: canonical_json_bytes(groups),
+            _NATIVE_TEXT_EXECUTION_PLAN_V3: canonical_json_bytes(execution),
+            _CHECKPOINT_CANONICAL: canonical_json_bytes(result.transcript),
+            _CHECKPOINT_RISKS: canonical_json_bytes(
+                tuple(_risk_payload(item) for item in result.risks)
+            ),
+            _REFERENCES: canonical_json_bytes(references),
+            _RETRIEVALS: canonical_json_bytes(retrievals),
+            _NATIVE_TEXT_SOURCE_INDEX: text_index,
+            **text_artifacts,
+        }
+        checkpoint = self._commit_native_child_checkpoint(
+            parent=evidence_state.checkpoint,
+            stage="native_audit_basis_ready",
+            artifacts=artifacts,
+        )
+        return _SelectiveNativeAuditBasisState(
+            evidence_state=evidence_state,
+            result=result,
+            references=references,
+            retrievals=retrievals,
+            audit_plan=audit_plan,
+            candidate_signal_set=signals,
+            candidate_group_set=groups,
+            execution_plan=execution,
+            text_source_artifacts=text_sources,
+            audio_source_artifacts={},
+            checkpoint=checkpoint,
+        )
+
     def _load_native_source_set(
         self,
         stored: StoredCreateCheckpoint,
@@ -4516,10 +5216,16 @@ class PodcastSubtitleV2:
         *,
         evidence_state: _CreateEvidenceState,
         request: CreateRequest,
-    ) -> _NativeAuditBasisState:
+    ) -> _NativeAuditBasisState | _SelectiveNativeAuditBasisState:
         bundle = self._native_full_audit
         if bundle is None:
             raise GenerationIsolationError("native audit basis requires native composition")
+        if bundle.audio_selection_policy is not None:
+            return self._load_selective_native_audit_basis_checkpoint(
+                stored,
+                evidence_state=evidence_state,
+                request=request,
+            )
         checkpoint = stored.checkpoint
         self._assert_checkpoint_inherits(
             checkpoint,
@@ -4667,6 +5373,160 @@ class PodcastSubtitleV2:
             checkpoint=checkpoint,
         )
 
+    def _load_selective_native_audit_basis_checkpoint(
+        self,
+        stored: StoredCreateCheckpoint,
+        *,
+        evidence_state: _CreateEvidenceState,
+        request: CreateRequest,
+    ) -> _SelectiveNativeAuditBasisState:
+        bundle = self._native_full_audit
+        if bundle is None or bundle.audio_selection_policy is None:
+            raise GenerationIsolationError("selective audit basis requires selective composition")
+        checkpoint = stored.checkpoint
+        self._assert_checkpoint_inherits(
+            checkpoint,
+            evidence_state.checkpoint,
+            expected_child_stage="native_audit_basis_ready",
+            expected_parent_stage="evidence_ready",
+        )
+        if _NATIVE_EXECUTION_PLAN in checkpoint.artifact_hashes:
+            raise GenerationIsolationError(
+                "legacy native audit basis cannot be reinterpreted as selective V3"
+            )
+        audit_plan = self._load_native_model(self.store, stored, _NATIVE_AUDIT_PLAN, AuditPlan)
+        signals = self._load_native_model(
+            self.store, stored, _NATIVE_CANDIDATE_SIGNALS, CandidateSignalSet
+        )
+        groups = self._load_native_model(
+            self.store, stored, _NATIVE_CANDIDATE_GROUPS, CandidateGroupSet
+        )
+        execution = self._load_native_model(
+            self.store,
+            stored,
+            _NATIVE_TEXT_EXECUTION_PLAN_V3,
+            ModalityAuditExecutionPlanV3,
+        )
+        transcript = self._load_native_model(
+            self.store, stored, _CHECKPOINT_CANONICAL, CanonicalTranscript
+        )
+        assert isinstance(audit_plan, AuditPlan)
+        assert isinstance(signals, CandidateSignalSet)
+        assert isinstance(groups, CandidateGroupSet)
+        assert isinstance(execution, ModalityAuditExecutionPlanV3)
+        assert isinstance(transcript, CanonicalTranscript)
+        reference_payload = _canonical_json_value(
+            self.store.read_create_checkpoint_artifact(stored, _REFERENCES),
+            label=_REFERENCES,
+        )
+        retrieval_payload = _canonical_json_value(
+            self.store.read_create_checkpoint_artifact(stored, _RETRIEVALS),
+            label=_RETRIEVALS,
+        )
+        risk_payload = _canonical_json_value(
+            self.store.read_create_checkpoint_artifact(stored, _CHECKPOINT_RISKS),
+            label=_CHECKPOINT_RISKS,
+        )
+        if not all(
+            isinstance(item, list) for item in (reference_payload, retrieval_payload, risk_payload)
+        ):
+            raise GenerationIsolationError("selective audit basis collection schema is invalid")
+        references = tuple(ReferenceEvidence.model_validate(item) for item in reference_payload)
+        retrievals = tuple(
+            ReferenceRetrievalReceipt.model_validate(item) for item in retrieval_payload
+        )
+        risks = tuple(_risk_from_payload(item) for item in risk_payload)
+        expected_result = self._native_basis_result(
+            request=request,
+            evidence_state=evidence_state,
+            references=references,
+            retrievals=retrievals,
+        )
+        if transcript != expected_result.transcript or risks != expected_result.risks:
+            raise GenerationIsolationError("selective audit Canonical basis is not reproducible")
+        references_enrolled = checkpoint.reference_enrollment_hash != hash_object(())
+        audit_evidence = tuple(
+            sorted(evidence_state.evidence, key=recognition_evidence_content_hash)
+        )
+        expected_plan = build_audit_plan(
+            transcript,
+            audit_evidence,
+            bundle.audit_policy,
+            reference_retrievals=retrievals,
+            references_enrolled=references_enrolled,
+            speech_coverage=evidence_state.speech_coverage_receipt,
+            boundary_constraints=None,
+            seam_evidence=None,
+        )
+        expected_signals = derive_candidate_signal_set(
+            expected_plan,
+            transcript,
+            audit_evidence,
+            reference_retrievals=retrievals,
+            references_enrolled=references_enrolled,
+            speech_coverage=evidence_state.speech_coverage_receipt,
+            boundary_constraints=None,
+            seam_evidence=None,
+        )
+        expected_groups = derive_candidate_group_set(expected_plan, expected_signals, transcript)
+        expected_execution = build_modality_audit_execution_plan_v3(
+            expected_plan,
+            expected_signals,
+            expected_groups,
+            transcript,
+            audit_evidence,
+            bundle.execution_policy,
+            modality="text",
+            reference_retrievals=retrievals,
+            seam_evidence=None,
+        )
+        if (audit_plan, signals, groups, execution) != (
+            expected_plan,
+            expected_signals,
+            expected_groups,
+            expected_execution,
+        ):
+            raise GenerationIsolationError("selective audit basis parents are not reproducible")
+        text_sources, text_names = self._load_native_source_set(stored, _NATIVE_TEXT_SOURCE_INDEX)
+        expected_text = materialize_text_correction_packet_sources_batch(
+            execution,
+            audit_plan,
+            signals,
+            groups,
+            transcript,
+            audit_evidence,
+            reference_retrievals=retrievals,
+            seam_evidence=None,
+        )
+        fixed_names = {
+            _NATIVE_AUDIT_PLAN,
+            _NATIVE_CANDIDATE_SIGNALS,
+            _NATIVE_CANDIDATE_GROUPS,
+            _NATIVE_TEXT_EXECUTION_PLAN_V3,
+            _CHECKPOINT_CANONICAL,
+            _CHECKPOINT_RISKS,
+            _REFERENCES,
+            _RETRIEVALS,
+        }
+        if (
+            text_sources != expected_text
+            or set(checkpoint.artifact_hashes) != fixed_names | text_names
+        ):
+            raise GenerationIsolationError("selective text source artifacts are not reproducible")
+        return _SelectiveNativeAuditBasisState(
+            evidence_state=evidence_state,
+            result=expected_result,
+            references=references,
+            retrievals=retrievals,
+            audit_plan=audit_plan,
+            candidate_signal_set=signals,
+            candidate_group_set=groups,
+            execution_plan=execution,
+            text_source_artifacts=text_sources,
+            audio_source_artifacts={},
+            checkpoint=checkpoint,
+        )
+
     def _load_native_run_bytes(
         self,
         stored: StoredCreateCheckpoint,
@@ -4700,9 +5560,43 @@ class PodcastSubtitleV2:
     def _commit_native_text_audit_checkpoint(
         self,
         *,
-        basis: _NativeAuditBasisState,
+        basis: _NativeAuditBasisState | _SelectiveNativeAuditBasisState,
         run: TextAuditRunResult,
-    ) -> _NativeTextAuditState:
+    ) -> _NativeTextAuditState | _SelectiveNativeTextAuditState:
+        if isinstance(basis, _SelectiveNativeAuditBasisState):
+            bundle = self._native_full_audit
+            if bundle is None or bundle.audio_selection_policy is None:
+                raise GenerationIsolationError(
+                    "selective text checkpoint requires selective composition"
+                )
+            selection = build_audio_audit_selection_plan(
+                basis.audit_plan,
+                basis.result.transcript,
+                bundle.audio_selection_policy,
+                tier="sample_10",
+                text_record=run.record,
+            )
+            index, run_artifacts = _address_native_run_bytes(
+                prefix="text",
+                categories={"requests": run.request_bytes, "responses": run.response_bytes},
+            )
+            artifacts = {
+                _NATIVE_TEXT_RECORD: canonical_json_bytes(run.record),
+                _NATIVE_TEXT_RUN_INDEX: index,
+                _NATIVE_INITIAL_AUDIO_SELECTION_V3: canonical_json_bytes(selection),
+                **run_artifacts,
+            }
+            checkpoint = self._commit_native_child_checkpoint(
+                parent=basis.checkpoint,
+                stage="native_text_audit_ready",
+                artifacts=artifacts,
+            )
+            return _SelectiveNativeTextAuditState(
+                basis=basis,
+                run=run,
+                selection_plans=(selection,),
+                checkpoint=checkpoint,
+            )
         index, run_artifacts = _address_native_run_bytes(
             prefix="text",
             categories={
@@ -4726,11 +5620,76 @@ class PodcastSubtitleV2:
         self,
         stored: StoredCreateCheckpoint,
         *,
-        basis: _NativeAuditBasisState,
-    ) -> _NativeTextAuditState:
+        basis: _NativeAuditBasisState | _SelectiveNativeAuditBasisState,
+    ) -> _NativeTextAuditState | _SelectiveNativeTextAuditState:
         bundle = self._native_full_audit
         if bundle is None:
             raise GenerationIsolationError("native text audit requires native composition")
+        if isinstance(basis, _SelectiveNativeAuditBasisState):
+            if bundle.audio_selection_policy is None:
+                raise GenerationIsolationError(
+                    "selective text checkpoint requires selective composition"
+                )
+            self._assert_checkpoint_inherits(
+                stored.checkpoint,
+                basis.checkpoint,
+                expected_child_stage="native_text_audit_ready",
+                expected_parent_stage="native_audit_basis_ready",
+            )
+            record = self._load_native_model(
+                self.store, stored, _NATIVE_TEXT_RECORD, TextAuditExecutionRecordV2
+            )
+            assert isinstance(record, TextAuditExecutionRecordV2)
+            raw, names = self._load_native_run_bytes(
+                stored,
+                index_name=_NATIVE_TEXT_RUN_INDEX,
+                categories=("requests", "responses"),
+            )
+            run = TextAuditRunResult(
+                record=record,
+                request_bytes=raw["requests"],
+                response_bytes=raw["responses"],
+            )
+            try:
+                replayed = bundle.text_executor.replay(
+                    basis.execution_plan,
+                    basis.audit_plan,
+                    basis.text_source_artifacts,
+                    run,
+                )
+                selection_payload = _canonical_json_value(
+                    self.store.read_create_checkpoint_artifact(
+                        stored, _NATIVE_INITIAL_AUDIO_SELECTION_V3
+                    ),
+                    label=_NATIVE_INITIAL_AUDIO_SELECTION_V3,
+                )
+                selection = AudioAuditSelectionPlanV1.model_validate_json(
+                    canonical_json_bytes(selection_payload), strict=True
+                )
+                expected_selection = build_audio_audit_selection_plan(
+                    basis.audit_plan,
+                    basis.result.transcript,
+                    bundle.audio_selection_policy,
+                    tier="sample_10",
+                    text_record=record,
+                )
+            except ValueError as exc:
+                raise GenerationIsolationError(
+                    "selective native text audit is not replayable"
+                ) from exc
+            if (
+                replayed != run
+                or selection != expected_selection
+                or set(stored.checkpoint.artifact_hashes)
+                != {_NATIVE_TEXT_RECORD, _NATIVE_INITIAL_AUDIO_SELECTION_V3, *names}
+            ):
+                raise GenerationIsolationError("selective native text artifacts drifted")
+            return _SelectiveNativeTextAuditState(
+                basis=basis,
+                run=run,
+                selection_plans=(selection,),
+                checkpoint=stored.checkpoint,
+            )
         self._assert_checkpoint_inherits(
             stored.checkpoint,
             basis.checkpoint,
@@ -4770,7 +5729,7 @@ class PodcastSubtitleV2:
     def _continue_native_text_audit(
         self,
         *,
-        state: _NativeAuditBasisState,
+        state: _NativeAuditBasisState | _SelectiveNativeAuditBasisState,
         active_speaker_identity: AdapterIdentity | None,
         enrolled_artifacts: tuple[ReferenceArtifact, ...],
         reference_source_snapshots: dict[str, bytes],
@@ -4839,15 +5798,64 @@ class PodcastSubtitleV2:
             checkpoint=checkpoint,
         )
 
+    def _commit_selective_native_audio_audit_checkpoint(
+        self,
+        *,
+        text: _SelectiveNativeTextAuditState,
+        outcome: SelectiveAudioAuditCompletedV3,
+    ) -> _SelectiveNativeAudioAuditState:
+        request_bytes = tuple(payload for run in outcome.runs for payload in run.request_bytes)
+        response_bytes = tuple(payload for run in outcome.runs for payload in run.response_bytes)
+        clip_bytes = tuple(payload for run in outcome.runs for payload in run.clip_bytes)
+        journal_bytes = tuple(
+            canonical_json_bytes(item)
+            for run in outcome.runs
+            for item in run.record.invocation_journals
+        )
+        index, run_artifacts = _address_native_run_bytes(
+            prefix="audio",
+            categories={
+                "requests": request_bytes,
+                "responses": response_bytes,
+                "clips": clip_bytes,
+                "journals": journal_bytes,
+            },
+        )
+        artifacts = {
+            _NATIVE_AUDIO_SELECTION_PLANS_V3: canonical_json_bytes(outcome.selection_plans),
+            _NATIVE_AUDIO_EXECUTION_PLANS_V3: canonical_json_bytes(outcome.execution_plans),
+            _NATIVE_AUDIO_RECORDS_V3: canonical_json_bytes(
+                tuple(run.record for run in outcome.runs)
+            ),
+            _NATIVE_AUDIO_ROUND_RECEIPTS_V3: canonical_json_bytes(outcome.round_receipts),
+            _NATIVE_SELECTIVE_AGGREGATE_V3: canonical_json_bytes(outcome.aggregate),
+            _NATIVE_AUDIO_RUN_INDEX: index,
+            **run_artifacts,
+        }
+        checkpoint = self._commit_native_child_checkpoint(
+            parent=text.checkpoint,
+            stage="native_audio_audit_ready",
+            artifacts=artifacts,
+        )
+        return _SelectiveNativeAudioAuditState(
+            text=text,
+            run=outcome.runs[-1],
+            aggregate=outcome.aggregate,
+            outcome=outcome,
+            checkpoint=checkpoint,
+        )
+
     def _load_native_audio_audit_checkpoint(
         self,
         stored: StoredCreateCheckpoint,
         *,
-        text: _NativeTextAuditState,
-    ) -> _NativeAudioAuditState:
+        text: _NativeTextAuditState | _SelectiveNativeTextAuditState,
+    ) -> _NativeAudioAuditState | _SelectiveNativeAudioAuditState:
         bundle = self._native_full_audit
         if bundle is None:
             raise GenerationIsolationError("native audio audit requires native composition")
+        if isinstance(text, _SelectiveNativeTextAuditState):
+            return self._load_selective_native_audio_audit_checkpoint(stored, text=text)
         self._assert_checkpoint_inherits(
             stored.checkpoint,
             text.checkpoint,
@@ -4915,10 +5923,148 @@ class PodcastSubtitleV2:
             checkpoint=stored.checkpoint,
         )
 
+    def _load_selective_native_audio_audit_checkpoint(
+        self,
+        stored: StoredCreateCheckpoint,
+        *,
+        text: _SelectiveNativeTextAuditState,
+    ) -> _SelectiveNativeAudioAuditState:
+        bundle = self._native_full_audit
+        if bundle is None or bundle.audio_selection_policy is None:
+            raise GenerationIsolationError("selective audio audit requires selective composition")
+        self._assert_checkpoint_inherits(
+            stored.checkpoint,
+            text.checkpoint,
+            expected_child_stage="native_audio_audit_ready",
+            expected_parent_stage="native_text_audit_ready",
+        )
+
+        def load_collection(name: str, model: type[object]) -> tuple[object, ...]:
+            payload = _canonical_json_value(
+                self.store.read_create_checkpoint_artifact(stored, name), label=name
+            )
+            if not isinstance(payload, list) or not payload:
+                raise GenerationIsolationError(f"selective artifact {name} is empty")
+            try:
+                return tuple(
+                    model.model_validate_json(canonical_json_bytes(item), strict=True)  # type: ignore[attr-defined]
+                    for item in payload
+                )
+            except ValueError as exc:
+                raise GenerationIsolationError(
+                    f"selective artifact {name} violates its schema"
+                ) from exc
+
+        selections = load_collection(_NATIVE_AUDIO_SELECTION_PLANS_V3, AudioAuditSelectionPlanV1)
+        executions = load_collection(_NATIVE_AUDIO_EXECUTION_PLANS_V3, ModalityAuditExecutionPlanV3)
+        records = load_collection(_NATIVE_AUDIO_RECORDS_V3, SelectiveAudioAuditExecutionRecordV3)
+        receipts = load_collection(
+            _NATIVE_AUDIO_ROUND_RECEIPTS_V3, SelectiveAudioAuditRoundReceiptV3
+        )
+        aggregate = self._load_native_model(
+            self.store,
+            stored,
+            _NATIVE_SELECTIVE_AGGREGATE_V3,
+            SelectiveAuditAggregateAttestationV3,
+        )
+        assert isinstance(aggregate, SelectiveAuditAggregateAttestationV3)
+        raw, names = self._load_native_run_bytes(
+            stored,
+            index_name=_NATIVE_AUDIO_RUN_INDEX,
+            categories=("requests", "responses", "clips", "journals"),
+        )
+        runs: list[AudioAuditRunResult] = []
+        offset = 0
+        basis = text.basis
+        normalized_audio = self.store.audio_path(
+            basis.evidence_state.receipt.normalized.sha256,
+            size_bytes=basis.evidence_state.receipt.normalized.size_bytes,
+        )
+        audit_evidence = tuple(
+            sorted(basis.evidence_state.evidence, key=recognition_evidence_content_hash)
+        )
+        try:
+            for execution, record in zip(executions, records, strict=True):
+                assert isinstance(execution, ModalityAuditExecutionPlanV3)
+                assert isinstance(record, SelectiveAudioAuditExecutionRecordV3)
+                count = len(record.request_ids)
+                segment = slice(offset, offset + count)
+                run = AudioAuditRunResult(
+                    record=record,
+                    request_bytes=raw["requests"][segment],
+                    response_bytes=raw["responses"][segment],
+                    clip_bytes=raw["clips"][segment],
+                )
+                if raw["journals"][segment] != tuple(
+                    canonical_json_bytes(item) for item in record.invocation_journals
+                ):
+                    raise ValueError("selective audio invocation journals changed")
+                sources: dict[str, bytes] = {}
+                for packet in execution.packets:
+                    _merge_exact_artifacts(
+                        sources,
+                        materialize_audio_correction_packet_sources(
+                            execution,
+                            packet.id,
+                            basis.audit_plan,
+                            basis.candidate_signal_set,
+                            basis.candidate_group_set,
+                            basis.result.transcript,
+                            audit_evidence,
+                            normalized_audio_path=normalized_audio,
+                            reference_retrievals=basis.retrievals,
+                            seam_evidence=None,
+                        ),
+                        label="selective audio source",
+                    )
+                if bundle.audio_executor.replay(execution, basis.audit_plan, sources, run) != run:
+                    raise ValueError("selective audio replay changed")
+                runs.append(run)
+                offset += count
+            if any(offset != len(raw[key]) for key in raw):
+                raise ValueError("selective audio run bytes have trailing artifacts")
+            verified = verify_selective_audit_aggregate_v3(
+                canonical_json_bytes(aggregate),
+                audit_plan=basis.audit_plan,
+                candidate_signal_set=basis.candidate_signal_set,
+                candidate_group_set=basis.candidate_group_set,
+                text_execution_plan=basis.execution_plan,
+                text_record=text.run.record,
+                selection_plans=selections,
+                audio_execution_plans=executions,
+                audio_records=records,
+                round_receipts=receipts,
+            )
+        except (AssertionError, ValueError) as exc:
+            raise GenerationIsolationError("selective audio audit is not replayable") from exc
+        fixed = {
+            _NATIVE_AUDIO_SELECTION_PLANS_V3,
+            _NATIVE_AUDIO_EXECUTION_PLANS_V3,
+            _NATIVE_AUDIO_RECORDS_V3,
+            _NATIVE_AUDIO_ROUND_RECEIPTS_V3,
+            _NATIVE_SELECTIVE_AGGREGATE_V3,
+        }
+        if verified != aggregate or set(stored.checkpoint.artifact_hashes) != fixed | names:
+            raise GenerationIsolationError("selective audio checkpoint artifacts drifted")
+        outcome = SelectiveAudioAuditCompletedV3(
+            selection_plans=selections,  # type: ignore[arg-type]
+            execution_plans=executions,  # type: ignore[arg-type]
+            runs=tuple(runs),
+            round_receipts=receipts,  # type: ignore[arg-type]
+            aggregate=aggregate,
+        )
+        return _SelectiveNativeAudioAuditState(
+            text=text,
+            run=outcome.runs[-1],
+            aggregate=aggregate,
+            outcome=outcome,
+            checkpoint=stored.checkpoint,
+        )
+
     def _continue_native_audio_audit(
         self,
         *,
-        state: _NativeTextAuditState,
+        state: _NativeTextAuditState | _SelectiveNativeTextAuditState,
         active_speaker_identity: AdapterIdentity | None,
         enrolled_artifacts: tuple[ReferenceArtifact, ...],
         reference_source_snapshots: dict[str, bytes],
@@ -4927,6 +6073,14 @@ class PodcastSubtitleV2:
         bundle = self._native_full_audit
         if bundle is None:
             raise GenerationIsolationError("native audio audit requires native composition")
+        if isinstance(state, _SelectiveNativeTextAuditState):
+            return self._continue_selective_native_audio_audit(
+                state=state,
+                active_speaker_identity=active_speaker_identity,
+                enrolled_artifacts=enrolled_artifacts,
+                reference_source_snapshots=reference_source_snapshots,
+                reference_extraction_snapshots=reference_extraction_snapshots,
+            )
         basis = state.basis
         try:
             run = bundle.audio_executor.execute(
@@ -4979,10 +6133,79 @@ class PodcastSubtitleV2:
             reference_extraction_snapshots=reference_extraction_snapshots,
         )
 
+    def _continue_selective_native_audio_audit(
+        self,
+        *,
+        state: _SelectiveNativeTextAuditState,
+        active_speaker_identity: AdapterIdentity | None,
+        enrolled_artifacts: tuple[ReferenceArtifact, ...],
+        reference_source_snapshots: dict[str, bytes],
+        reference_extraction_snapshots: dict[str, bytes],
+    ) -> GenerationOutcome:
+        bundle = self._native_full_audit
+        if bundle is None or bundle.audio_selection_policy is None:
+            raise GenerationIsolationError("selective audio audit requires selective composition")
+        basis = state.basis
+        normalized_audio = self.store.audio_path(
+            basis.evidence_state.receipt.normalized.sha256,
+            size_bytes=basis.evidence_state.receipt.normalized.size_bytes,
+        )
+        outcome = execute_selective_audio_audit_v3(
+            audit_plan=basis.audit_plan,
+            candidate_signal_set=basis.candidate_signal_set,
+            candidate_group_set=basis.candidate_group_set,
+            transcript=basis.result.transcript,
+            recognition_evidence=tuple(
+                sorted(
+                    basis.evidence_state.evidence,
+                    key=recognition_evidence_content_hash,
+                )
+            ),
+            execution_policy=bundle.execution_policy,
+            text_execution_plan=basis.execution_plan,
+            text_run=state.run,
+            audio_executor=bundle.audio_executor,
+            normalized_audio_path=normalized_audio,
+            selection_policy=bundle.audio_selection_policy,
+            reference_retrievals=basis.retrievals,
+            seam_evidence=None,
+        )
+        if isinstance(outcome, SelectiveAudioAuditPendingV3):
+            observed_selection_plans = (
+                *outcome.completed_selection_plans,
+                outcome.selection_plan,
+            )
+        else:
+            observed_selection_plans = outcome.selection_plans
+        if not observed_selection_plans or observed_selection_plans[0] != state.selection_plans[0]:
+            raise GenerationIsolationError("selective audio initial selection drifted")
+        if isinstance(outcome, SelectiveAudioAuditPendingV3):
+            generation_id = basis.result.transcript.generation_id
+            return Interrupted(
+                operation="create",
+                reason="selective audio audit subscription work is pending",
+                generation_id=generation_id,
+                audit_basis_generation_id=generation_id,
+                packet_paths=outcome.request_paths,
+                clip_paths=outcome.clip_paths,
+                response_paths=outcome.response_paths,
+            )
+        audio_state = self._commit_selective_native_audio_audit_checkpoint(
+            text=state,
+            outcome=outcome,
+        )
+        return self._finish_native_full_audit(
+            state=audio_state,
+            active_speaker_identity=active_speaker_identity,
+            enrolled_artifacts=enrolled_artifacts,
+            reference_source_snapshots=reference_source_snapshots,
+            reference_extraction_snapshots=reference_extraction_snapshots,
+        )
+
     def _finish_native_full_audit(
         self,
         *,
-        state: _NativeAudioAuditState,
+        state: _NativeAudioAuditState | _SelectiveNativeAudioAuditState,
         active_speaker_identity: AdapterIdentity | None,
         enrolled_artifacts: tuple[ReferenceArtifact, ...],
         reference_source_snapshots: dict[str, bytes],
@@ -5003,7 +6226,7 @@ class PodcastSubtitleV2:
     def _commit_native_generation(
         self,
         *,
-        state: _NativeAudioAuditState,
+        state: _NativeAudioAuditState | _SelectiveNativeAudioAuditState,
         active_speaker_identity: AdapterIdentity | None,
         enrolled_artifacts: tuple[ReferenceArtifact, ...],
         reference_source_snapshots: dict[str, bytes],
@@ -5025,20 +6248,34 @@ class PodcastSubtitleV2:
             raise GenerationIsolationError(
                 "native Full Audit aggregate cannot impersonate legacy release approval"
             )
-        verify_full_audit_aggregate(
-            canonical_json_bytes(state.aggregate),
-            audit_plan=basis.audit_plan,
-            candidate_signal_set=basis.candidate_signal_set,
-            candidate_group_set=basis.candidate_group_set,
-            execution_plan=basis.execution_plan,
-            text_record=state.text.run.record,
-            audio_record=state.run.record,
-            text_request_bytes=state.text.run.request_bytes,
-            text_response_bytes=state.text.run.response_bytes,
-            audio_request_bytes=state.run.request_bytes,
-            audio_response_bytes=state.run.response_bytes,
-            audio_clip_bytes=state.run.clip_bytes,
-        )
+        if isinstance(state, _SelectiveNativeAudioAuditState):
+            verify_selective_audit_aggregate_v3(
+                canonical_json_bytes(state.aggregate),
+                audit_plan=basis.audit_plan,
+                candidate_signal_set=basis.candidate_signal_set,
+                candidate_group_set=basis.candidate_group_set,
+                text_execution_plan=basis.execution_plan,
+                text_record=state.text.run.record,
+                selection_plans=state.outcome.selection_plans,
+                audio_execution_plans=state.outcome.execution_plans,
+                audio_records=tuple(run.record for run in state.outcome.runs),
+                round_receipts=state.outcome.round_receipts,
+            )
+        else:
+            verify_full_audit_aggregate(
+                canonical_json_bytes(state.aggregate),
+                audit_plan=basis.audit_plan,
+                candidate_signal_set=basis.candidate_signal_set,
+                candidate_group_set=basis.candidate_group_set,
+                execution_plan=basis.execution_plan,
+                text_record=state.text.run.record,
+                audio_record=state.run.record,
+                text_request_bytes=state.text.run.request_bytes,
+                text_response_bytes=state.text.run.response_bytes,
+                audio_request_bytes=state.run.request_bytes,
+                audio_response_bytes=state.run.response_bytes,
+                audio_clip_bytes=state.run.clip_bytes,
+            )
         _validate_canonical_timing_provenance(
             transcript,
             evidence_state.evidence,
@@ -5064,6 +6301,8 @@ class PodcastSubtitleV2:
             self.store.load_create_checkpoint_id(state.checkpoint.id),
         ):
             for name in stored_checkpoint.checkpoint.artifact_hashes:
+                if is_native_audit_basis_migration_artifact(name):
+                    continue
                 payload = self.store.read_create_checkpoint_artifact(stored_checkpoint, name)
                 existing = artifacts.get(name)
                 if existing is not None and existing != payload:
@@ -5087,6 +6326,8 @@ class PodcastSubtitleV2:
             "native_audit_policy": bundle.audit_policy,
             "native_execution_policy": bundle.execution_policy,
         }
+        if isinstance(state, _SelectiveNativeAudioAuditState):
+            adapter_payload["native_audio_selection_policy"] = bundle.audio_selection_policy
         artifacts[_ADAPTER_IDENTITIES] = canonical_json_bytes(adapter_payload)
         stage_hashes = {
             "adapter_identities": sha256_bytes(artifacts[_ADAPTER_IDENTITIES]),
@@ -5108,11 +6349,37 @@ class PodcastSubtitleV2:
             "native_audit_plan": sha256_bytes(artifacts[_NATIVE_AUDIT_PLAN]),
             "native_candidate_signal_set": sha256_bytes(artifacts[_NATIVE_CANDIDATE_SIGNALS]),
             "native_candidate_group_set": sha256_bytes(artifacts[_NATIVE_CANDIDATE_GROUPS]),
-            "native_execution_plan": sha256_bytes(artifacts[_NATIVE_EXECUTION_PLAN]),
             "native_text_audit_record": sha256_bytes(artifacts[_NATIVE_TEXT_RECORD]),
-            "native_audio_audit_record": sha256_bytes(artifacts[_NATIVE_AUDIO_RECORD]),
-            "native_full_audit_aggregate": sha256_bytes(artifacts[_NATIVE_AGGREGATE]),
         }
+        if isinstance(state, _SelectiveNativeAudioAuditState):
+            stage_hashes.update(
+                {
+                    "native_text_execution_plan_v3": sha256_bytes(
+                        artifacts[_NATIVE_TEXT_EXECUTION_PLAN_V3]
+                    ),
+                    "native_audio_selection_plans_v3": sha256_bytes(
+                        artifacts[_NATIVE_AUDIO_SELECTION_PLANS_V3]
+                    ),
+                    "native_audio_execution_plans_v3": sha256_bytes(
+                        artifacts[_NATIVE_AUDIO_EXECUTION_PLANS_V3]
+                    ),
+                    "native_audio_records_v3": sha256_bytes(artifacts[_NATIVE_AUDIO_RECORDS_V3]),
+                    "native_audio_round_receipts_v3": sha256_bytes(
+                        artifacts[_NATIVE_AUDIO_ROUND_RECEIPTS_V3]
+                    ),
+                    "native_selective_audit_aggregate_v3": sha256_bytes(
+                        artifacts[_NATIVE_SELECTIVE_AGGREGATE_V3]
+                    ),
+                }
+            )
+        else:
+            stage_hashes.update(
+                {
+                    "native_execution_plan": sha256_bytes(artifacts[_NATIVE_EXECUTION_PLAN]),
+                    "native_audio_audit_record": sha256_bytes(artifacts[_NATIVE_AUDIO_RECORD]),
+                    "native_full_audit_aggregate": sha256_bytes(artifacts[_NATIVE_AGGREGATE]),
+                }
+            )
         manifest = GenerationManifest(
             id=f"manifest-{transcript.generation_id.removeprefix('generation-')}",
             episode_id=transcript.episode_id,
@@ -5286,20 +6553,19 @@ class PodcastSubtitleV2:
         enrollment_by_source = {
             item.artifact.source_id: item for item in request.reference_enrollments
         }
-        for item in references:
-            enrollment = enrollment_by_source.get(item.artifact.source_id)
-            if (
-                enrollment is None
-                or _portable_reference_artifact(enrollment.artifact) != item.artifact
-            ):
-                raise GenerationIsolationError(
-                    "Create Checkpoint Reference Evidence crossed enrollment lineage"
-                )
-            verify_reference_evidence_membership(
-                item,
-                enrollment.extraction_snapshot,
-                enrolled_artifact=enrollment.artifact,
-            )
+        portable_enrolled_by_source = {
+            source_id: _portable_reference_artifact(enrollment.artifact)
+            for source_id, enrollment in enrollment_by_source.items()
+        }
+        _verify_reference_membership_batches(
+            references,
+            enrolled_by_source=portable_enrolled_by_source,
+            extraction_snapshots_by_digest={
+                enrollment.artifact.extracted_text.sha256: enrollment.extraction_snapshot
+                for enrollment in enrollment_by_source.values()
+            },
+            context="Create Checkpoint",
+        )
         reference_ids = {item.id for item in references}
         for retrieval in retrievals:
             if (
@@ -5627,48 +6893,32 @@ class PodcastSubtitleV2:
             checkpoint=checkpoint,
         )
 
-    def create(self, request: CreateRequest) -> GenerationOutcome:
-        """Create or resume one generation under the episode execution lease.
-
-        The lease prevents two live processes from entering paid create work for
-        the same episode.  It deliberately does not claim provider exactly-once:
-        crash recovery inside a paid Adapter still depends on that Adapter's
-        durable intent/reconciliation protocol.
-        """
-
-        with self.store.create_execution_lease():
-            return self._create_under_execution_lease(request)
-
-    def _create_under_execution_lease(self, request: CreateRequest) -> GenerationOutcome:
-        source = request.source_audio.resolve()
-        if not source.is_file():
-            raise ModuleInvariantError(f"source audio is not a file: {source}")
-        # Bind every optional mic byte before normalization can start external
-        # work.  The Attributor rechecks these digests before and after DSP.
-        speaker_bindings = _bind_speaker_tracks(request.speaker_tracks)
-        if speaker_bindings and self._speaker_attributor is None:
-            raise ModuleInvariantError("speaker tracks require a configured Speaker Attributor")
-        # Reference parsing and lineage validation can fail.  It must do so
-        # before normalization initializes any external provider or uploads
-        # audio, even for non-CLI callers.
-        (
-            enrolled_artifacts,
-            reference_source_snapshots,
-            reference_extraction_snapshots,
-        ) = _snapshot_reference_enrollments(
-            request.reference_enrollments,
-            parser_registry=self._reference_parser_registry,
-        )
+    def _create_operation_identity(
+        self,
+        *,
+        request: CreateRequest,
+        source_hash: str,
+        source_size_bytes: int,
+        speaker_bindings: tuple[SpeakerTrackBinding, ...],
+        enrolled_artifacts: tuple[ReferenceArtifact, ...],
+        reference_source_snapshots: dict[str, bytes],
+        reference_extraction_snapshots: dict[str, bytes],
+        module_code_hash: str | None = None,
+    ) -> tuple[
+        str,
+        tuple[CheckpointAdapterIdentity, ...],
+        str,
+        str,
+    ]:
+        active_speaker_identity = self._speaker_attributor_identity if speaker_bindings else None
+        effective_module_code_hash = module_code_hash or self._code_hash
         reference_retrieval_policy = request.policy.reference_retrieval_snapshot(
             tuple(request.vocabulary)
         )
-        source_snapshot = self.store.snapshot_audio(source)
-        source_hash = source_snapshot.sha256
-        active_speaker_identity = self._speaker_attributor_identity if speaker_bindings else None
         effective_policy_hash = hash_object(
             {
                 "subtitle_policy": request.policy.content_hash,
-                "module_code": self._code_hash,
+                "module_code": effective_module_code_hash,
                 "editorial_detector": editorial_detector_identity(),
                 "orthographic_projection": measure_opencc_s2tw_identity(),
                 "audit_mode": (
@@ -5700,6 +6950,7 @@ class PodcastSubtitleV2:
                         "text_policy": self._native_full_audit.text_executor.policy,
                         "audio_identity": self._native_full_audit.audio_executor.identity,
                         "audio_policy": self._native_full_audit.audio_executor.policy,
+                        "audio_selection_policy": (self._native_full_audit.audio_selection_policy),
                     }
                     if self._native_full_audit is not None
                     else None
@@ -5731,12 +6982,11 @@ class PodcastSubtitleV2:
         adapter_identities = self._create_checkpoint_adapter_identities(
             active_speaker_identity=active_speaker_identity
         )
-        recognition_independence = self._recognition_independence_receipt()
         input_binding_hash = hash_object(
             {
                 "episode_id": request.episode_id,
                 "source_sha256": source_hash,
-                "source_size_bytes": source_snapshot.size_bytes,
+                "source_size_bytes": source_size_bytes,
                 "language": request.language_hint or request.policy.language,
                 "vocabulary": request.vocabulary,
                 "reference_retrieval_policy": reference_retrieval_policy,
@@ -5757,10 +7007,497 @@ class PodcastSubtitleV2:
         operation_key = hash_object(
             {"operation": "PodcastSubtitleV2.create", "input": input_binding_hash}
         )
+        return effective_policy_hash, adapter_identities, input_binding_hash, operation_key
+
+    def create(self, request: CreateRequest) -> GenerationOutcome:
+        """Create or resume one generation under the episode execution lease.
+
+        The lease prevents two live processes from entering paid create work for
+        the same episode.  It deliberately does not claim provider exactly-once:
+        crash recovery inside a paid Adapter still depends on that Adapter's
+        durable intent/reconciliation protocol.
+        """
+
+        with self.store.create_execution_lease():
+            return self._create_under_execution_lease(request)
+
+    def migrate_evidence_prefix(
+        self, request: EvidencePrefixMigrationRequest
+    ) -> EvidencePrefixMigrationOutcome:
+        """Rebind one fully verified pre-V3 evidence prefix to current identity."""
+
+        create_request = request.create_request
+        with self.store.create_execution_lease():
+            source = create_request.source_audio.resolve()
+            if not source.is_file():
+                raise ModuleInvariantError(f"source audio is not a file: {source}")
+            speaker_bindings = _bind_speaker_tracks(create_request.speaker_tracks)
+            if speaker_bindings and self._speaker_attributor is None:
+                raise ModuleInvariantError("speaker tracks require a configured Speaker Attributor")
+            (
+                enrolled_artifacts,
+                reference_source_snapshots,
+                reference_extraction_snapshots,
+            ) = _snapshot_reference_enrollments(
+                create_request.reference_enrollments,
+                parser_registry=self._reference_parser_registry,
+            )
+            latest = self.store.load_latest_create_checkpoint()
+            if latest is None:
+                raise GenerationIsolationError("no evidence-ready checkpoint exists to migrate")
+            latest_checkpoint = latest.checkpoint
+            if latest_checkpoint.stage != "evidence_ready":
+                raise GenerationIsolationError(
+                    "evidence migration requires an evidence_ready checkpoint"
+                )
+            if latest_checkpoint.episode_id != create_request.episode_id:
+                raise GenerationIsolationError("evidence migration crossed episode lineage")
+            source_size_before = source.stat().st_size
+            source_hash = hash_file(source)
+            source_size_after = source.stat().st_size
+            if (
+                source_size_before != source_size_after
+                or source_hash != latest_checkpoint.source.sha256
+                or source_size_after != latest_checkpoint.source.size_bytes
+            ):
+                raise GenerationIsolationError(
+                    "source audio differs from the migrated evidence lineage"
+                )
+            self.store.audio_path(
+                latest_checkpoint.source.sha256,
+                size_bytes=latest_checkpoint.source.size_bytes,
+            )
+            (
+                current_policy_hash,
+                current_adapters,
+                current_input_hash,
+                current_operation_key,
+            ) = self._create_operation_identity(
+                request=create_request,
+                source_hash=source_hash,
+                source_size_bytes=source_size_after,
+                speaker_bindings=speaker_bindings,
+                enrolled_artifacts=enrolled_artifacts,
+                reference_source_snapshots=reference_source_snapshots,
+                reference_extraction_snapshots=reference_extraction_snapshots,
+            )
+            migration_names = {
+                name
+                for name in latest_checkpoint.artifact_hashes
+                if is_evidence_prefix_migration_artifact(name)
+            }
+            receipts: tuple[
+                EvidencePrefixMigrationReceiptV1 | EvidencePrefixMigrationReceiptV2, ...
+            ] = ()
+            if migration_names:
+                receipts, original_evidence, lineage_checkpoint_ids = (
+                    self._verified_evidence_prefix_migration_lineage(latest)
+                )
+                if request.expected_checkpoint_id not in lineage_checkpoint_ids:
+                    raise GenerationIsolationError(
+                        "evidence migration expected checkpoint is not in the active lineage"
+                    )
+                if (
+                    latest_checkpoint.operation_key != current_operation_key
+                    or latest_checkpoint.input_binding_hash != current_input_hash
+                    or latest_checkpoint.policy_hash != current_policy_hash
+                    or latest_checkpoint.code_hash != self._code_hash
+                    or latest_checkpoint.adapter_identities != current_adapters
+                ):
+                    pass
+                else:
+                    receipt = receipts[-1]
+                    return EvidencePrefixMigrationOutcome(
+                        old_checkpoint_id=receipt.old_checkpoint_id,
+                        new_checkpoint_id=latest_checkpoint.id,
+                        receipt=receipt,
+                    )
+            else:
+                if latest_checkpoint.id != request.expected_checkpoint_id:
+                    raise GenerationIsolationError(
+                        "evidence migration expected checkpoint is not the active pointer"
+                    )
+                original_evidence = latest
+            if original_evidence.checkpoint.previous_checkpoint_id is None:
+                raise GenerationIsolationError("evidence checkpoint lacks its start predecessor")
+            started = self.store.load_create_checkpoint_id(
+                original_evidence.checkpoint.previous_checkpoint_id
+            )
+            self._assert_checkpoint_inherits(
+                original_evidence.checkpoint,
+                started.checkpoint,
+                expected_child_stage="evidence_ready",
+                expected_parent_stage="started",
+            )
+            source_digest = latest_checkpoint.source
+            self._load_started_checkpoint(
+                started,
+                request=create_request,
+                source=source_digest,
+                effective_policy_hash=original_evidence.checkpoint.policy_hash,
+                input_binding_hash=original_evidence.checkpoint.input_binding_hash,
+                adapter_identities=original_evidence.checkpoint.adapter_identities,
+                speaker_bindings=speaker_bindings,
+                enrolled_artifacts=enrolled_artifacts,
+                expected_code_hash=original_evidence.checkpoint.code_hash,
+            )
+            self._load_evidence_checkpoint(
+                latest,
+                request=create_request,
+                source_hash=source_hash,
+                source_size_bytes=source_size_after,
+                effective_policy_hash=latest_checkpoint.policy_hash,
+                input_binding_hash=latest_checkpoint.input_binding_hash,
+                adapter_identities=latest_checkpoint.adapter_identities,
+                speaker_bindings=speaker_bindings,
+                enrolled_artifacts=enrolled_artifacts,
+                reference_source_snapshots=reference_source_snapshots,
+                reference_extraction_snapshots=reference_extraction_snapshots,
+                expected_code_hash=latest_checkpoint.code_hash,
+            )
+            old_artifacts = {
+                name: self.store.read_create_checkpoint_artifact(latest, name)
+                for name in latest_checkpoint.artifact_hashes
+            }
+            common_receipt = {
+                "episode_id": create_request.episode_id,
+                "old_checkpoint_id": latest_checkpoint.id,
+                "old_checkpoint_record_hash": sha256_bytes(canonical_json_bytes(latest_checkpoint)),
+                "old_operation_key": latest_checkpoint.operation_key,
+                "new_operation_key": current_operation_key,
+                "old_input_binding_hash": latest_checkpoint.input_binding_hash,
+                "new_input_binding_hash": current_input_hash,
+                "old_policy_hash": latest_checkpoint.policy_hash,
+                "new_policy_hash": current_policy_hash,
+                "old_code_hash": latest_checkpoint.code_hash,
+                "new_code_hash": self._code_hash,
+                "old_adapter_identity_set_hash": hash_object(latest_checkpoint.adapter_identities),
+                "new_adapter_identity_set_hash": hash_object(current_adapters),
+                "evidence_artifact_set_hash": hash_object(
+                    tuple(
+                        sorted(
+                            (name, digest)
+                            for name, digest in latest_checkpoint.artifact_hashes.items()
+                            if not is_evidence_prefix_migration_artifact(name)
+                        )
+                    )
+                ),
+                "migrated_at_utc": request.migrated_at_utc,
+                "operator": request.operator,
+            }
+            if receipts:
+                receipt = build_evidence_prefix_migration_refresh_receipt(
+                    sequence=len(receipts) + 1,
+                    previous_migration_receipt_id=receipts[-1].id,
+                    predecessor_artifact_set_hash=hash_object(
+                        tuple(sorted(latest_checkpoint.artifact_hashes.items()))
+                    ),
+                    **common_receipt,
+                )
+                receipt_name = evidence_prefix_migration_artifact(receipt.id)
+            else:
+                receipt = build_evidence_prefix_migration_receipt(**common_receipt)
+                receipt_name = EVIDENCE_PREFIX_MIGRATION_ARTIFACT
+            artifacts = {
+                **old_artifacts,
+                receipt_name: canonical_json_bytes(receipt),
+            }
+            checkpoint = build_create_checkpoint(
+                operation_key=current_operation_key,
+                episode_id=latest_checkpoint.episode_id,
+                stage="evidence_ready",
+                invocation_id=latest_checkpoint.invocation_id,
+                source=latest_checkpoint.source,
+                normalized=latest_checkpoint.normalized,
+                normalization_receipt_hash=latest_checkpoint.normalization_receipt_hash,
+                input_binding_hash=current_input_hash,
+                policy_hash=current_policy_hash,
+                code_hash=self._code_hash,
+                reference_enrollment_hash=latest_checkpoint.reference_enrollment_hash,
+                speaker_track_binding_hash=latest_checkpoint.speaker_track_binding_hash,
+                adapter_identities=current_adapters,
+                artifact_hashes={
+                    name: sha256_bytes(payload) for name, payload in sorted(artifacts.items())
+                },
+                expected_active_generation_id=latest_checkpoint.expected_active_generation_id,
+                previous_checkpoint_id=latest_checkpoint.id,
+            )
+            stored = self.store.commit_create_checkpoint(checkpoint, artifacts=artifacts)
+            return EvidencePrefixMigrationOutcome(
+                old_checkpoint_id=latest_checkpoint.id,
+                new_checkpoint_id=stored.checkpoint.id,
+                receipt=receipt,
+            )
+
+    def migrate_native_audit_basis(
+        self, request: NativeAuditBasisMigrationRequest
+    ) -> NativeAuditBasisMigrationOutcome:
+        """Rebind one fully verified immutable audit basis to current code identity."""
+
+        create_request = request.create_request
+        with self.store.create_execution_lease():
+            source = create_request.source_audio.resolve()
+            if not source.is_file():
+                raise ModuleInvariantError(f"source audio is not a file: {source}")
+            speaker_bindings = _bind_speaker_tracks(create_request.speaker_tracks)
+            if speaker_bindings and self._speaker_attributor is None:
+                raise ModuleInvariantError("speaker tracks require a configured Speaker Attributor")
+            (
+                enrolled_artifacts,
+                reference_source_snapshots,
+                reference_extraction_snapshots,
+            ) = _snapshot_reference_enrollments(
+                create_request.reference_enrollments,
+                parser_registry=self._reference_parser_registry,
+            )
+            latest = self.store.load_latest_create_checkpoint()
+            if latest is None or latest.checkpoint.stage != "native_audit_basis_ready":
+                raise GenerationIsolationError(
+                    "native audit basis migration requires a native_audit_basis_ready checkpoint"
+                )
+            if latest.checkpoint.episode_id != create_request.episode_id:
+                raise GenerationIsolationError(
+                    "native audit basis migration crossed episode lineage"
+                )
+            source_size_before = source.stat().st_size
+            source_hash = hash_file(source)
+            source_size = source.stat().st_size
+            if (
+                source_size_before != source_size
+                or source_hash != latest.checkpoint.source.sha256
+                or source_size != latest.checkpoint.source.size_bytes
+            ):
+                raise GenerationIsolationError(
+                    "source audio differs from the migrated native audit basis lineage"
+                )
+            self.store.audio_path(source_hash, size_bytes=source_size)
+            _, current_adapters, _, current_operation = self._create_operation_identity(
+                request=create_request,
+                source_hash=source_hash,
+                source_size_bytes=source_size,
+                speaker_bindings=speaker_bindings,
+                enrolled_artifacts=enrolled_artifacts,
+                reference_source_snapshots=reference_source_snapshots,
+                reference_extraction_snapshots=reference_extraction_snapshots,
+            )
+            migration_names = {
+                name
+                for name in latest.checkpoint.artifact_hashes
+                if is_native_audit_basis_migration_artifact(name)
+            }
+            receipts: tuple[NativeAuditBasisMigrationReceiptV1, ...] = ()
+            base_basis = latest
+            lineage_ids = (latest.checkpoint.id,)
+            if migration_names:
+                receipts, base_basis, lineage_ids = (
+                    self._verified_native_audit_basis_migration_lineage(latest)
+                )
+            if request.expected_checkpoint_id not in lineage_ids:
+                raise GenerationIsolationError(
+                    "native audit basis migration expected checkpoint is not in the active lineage"
+                )
+            if (
+                latest.checkpoint.operation_key == current_operation
+                and latest.checkpoint.code_hash == self._code_hash
+                and latest.checkpoint.adapter_identities == current_adapters
+            ):
+                if not receipts:
+                    raise GenerationIsolationError(
+                        "native audit basis migration requires a real code identity change"
+                    )
+                receipt = receipts[-1]
+                return NativeAuditBasisMigrationOutcome(
+                    old_checkpoint_id=receipt.old_checkpoint_id,
+                    new_checkpoint_id=latest.checkpoint.id,
+                    receipt_artifact_name=native_audit_basis_migration_artifact(receipt.id),
+                    receipt=receipt,
+                )
+            replayed_old_policy, replayed_old_adapters, replayed_old_input, _ = (
+                self._create_operation_identity(
+                    request=create_request,
+                    source_hash=source_hash,
+                    source_size_bytes=source_size,
+                    speaker_bindings=speaker_bindings,
+                    enrolled_artifacts=enrolled_artifacts,
+                    reference_source_snapshots=reference_source_snapshots,
+                    reference_extraction_snapshots=reference_extraction_snapshots,
+                    module_code_hash=base_basis.checkpoint.code_hash,
+                )
+            )
+            if latest.checkpoint.adapter_identities != current_adapters:
+                raise GenerationIsolationError(
+                    "native audit basis migration is code-only and rejects Adapter identity drift"
+                )
+            if (
+                replayed_old_adapters != latest.checkpoint.adapter_identities
+                or replayed_old_policy != latest.checkpoint.policy_hash
+                or replayed_old_input != latest.checkpoint.input_binding_hash
+            ):
+                raise GenerationIsolationError(
+                    "native audit basis migration request/policy inputs drifted "
+                    "beyond code identity"
+                )
+            if latest.checkpoint.code_hash == self._code_hash:
+                raise GenerationIsolationError(
+                    "native audit basis migration requires a real code-only identity change"
+                )
+            if base_basis.checkpoint.previous_checkpoint_id is None:
+                raise GenerationIsolationError("native audit basis lacks evidence predecessor")
+            evidence = self.store.load_create_checkpoint_id(
+                base_basis.checkpoint.previous_checkpoint_id
+            )
+            original_evidence = evidence
+            if any(
+                is_evidence_prefix_migration_artifact(name)
+                for name in evidence.checkpoint.artifact_hashes
+            ):
+                _, original_evidence, _ = self._verified_evidence_prefix_migration_lineage(evidence)
+            if original_evidence.checkpoint.previous_checkpoint_id is None:
+                raise GenerationIsolationError("evidence checkpoint lacks started predecessor")
+            started = self.store.load_create_checkpoint_id(
+                original_evidence.checkpoint.previous_checkpoint_id
+            )
+            source_digest = latest.checkpoint.source
+            self._load_started_checkpoint(
+                started,
+                request=create_request,
+                source=source_digest,
+                effective_policy_hash=original_evidence.checkpoint.policy_hash,
+                input_binding_hash=original_evidence.checkpoint.input_binding_hash,
+                adapter_identities=original_evidence.checkpoint.adapter_identities,
+                speaker_bindings=speaker_bindings,
+                enrolled_artifacts=enrolled_artifacts,
+                expected_code_hash=original_evidence.checkpoint.code_hash,
+            )
+            evidence_state = self._load_evidence_checkpoint(
+                evidence,
+                request=create_request,
+                source_hash=source_hash,
+                source_size_bytes=source_size,
+                effective_policy_hash=evidence.checkpoint.policy_hash,
+                input_binding_hash=evidence.checkpoint.input_binding_hash,
+                adapter_identities=evidence.checkpoint.adapter_identities,
+                speaker_bindings=speaker_bindings,
+                enrolled_artifacts=enrolled_artifacts,
+                reference_source_snapshots=reference_source_snapshots,
+                reference_extraction_snapshots=reference_extraction_snapshots,
+                expected_code_hash=evidence.checkpoint.code_hash,
+            )
+            # This replay validates the complete typed basis and every source
+            # binding without invoking a provider.
+            self._load_native_audit_basis_checkpoint(
+                base_basis,
+                evidence_state=evidence_state,
+                request=create_request,
+            )
+            old_artifacts = {
+                name: self.store.read_create_checkpoint_artifact(latest, name)
+                for name in latest.checkpoint.artifact_hashes
+            }
+            base_hashes = {
+                name: digest
+                for name, digest in latest.checkpoint.artifact_hashes.items()
+                if not is_native_audit_basis_migration_artifact(name)
+            }
+            receipt = build_native_audit_basis_migration_receipt(
+                episode_id=create_request.episode_id,
+                old_checkpoint_id=latest.checkpoint.id,
+                old_checkpoint_record_hash=sha256_bytes(canonical_json_bytes(latest.checkpoint)),
+                old_operation_key=latest.checkpoint.operation_key,
+                new_operation_key=current_operation,
+                old_input_binding_hash=latest.checkpoint.input_binding_hash,
+                new_input_binding_hash=latest.checkpoint.input_binding_hash,
+                old_policy_hash=latest.checkpoint.policy_hash,
+                new_policy_hash=latest.checkpoint.policy_hash,
+                old_code_hash=latest.checkpoint.code_hash,
+                new_code_hash=self._code_hash,
+                old_adapter_identity_set_hash=hash_object(latest.checkpoint.adapter_identities),
+                new_adapter_identity_set_hash=hash_object(current_adapters),
+                predecessor_artifact_set_hash=hash_object(
+                    tuple(sorted(latest.checkpoint.artifact_hashes.items()))
+                ),
+                basis_artifact_set_hash=hash_object(tuple(sorted(base_hashes.items()))),
+                migrated_at_utc=request.migrated_at_utc,
+                operator=request.operator,
+            )
+            receipt_name = native_audit_basis_migration_artifact(receipt.id)
+            artifacts = {**old_artifacts, receipt_name: canonical_json_bytes(receipt)}
+            checkpoint = build_create_checkpoint(
+                operation_key=current_operation,
+                episode_id=latest.checkpoint.episode_id,
+                stage="native_audit_basis_ready",
+                invocation_id=latest.checkpoint.invocation_id,
+                source=latest.checkpoint.source,
+                normalized=latest.checkpoint.normalized,
+                normalization_receipt_hash=latest.checkpoint.normalization_receipt_hash,
+                input_binding_hash=latest.checkpoint.input_binding_hash,
+                policy_hash=latest.checkpoint.policy_hash,
+                code_hash=self._code_hash,
+                reference_enrollment_hash=latest.checkpoint.reference_enrollment_hash,
+                speaker_track_binding_hash=latest.checkpoint.speaker_track_binding_hash,
+                adapter_identities=current_adapters,
+                artifact_hashes={
+                    name: sha256_bytes(payload) for name, payload in sorted(artifacts.items())
+                },
+                expected_active_generation_id=latest.checkpoint.expected_active_generation_id,
+                previous_checkpoint_id=latest.checkpoint.id,
+            )
+            stored = self.store.commit_create_checkpoint(checkpoint, artifacts=artifacts)
+            return NativeAuditBasisMigrationOutcome(
+                old_checkpoint_id=latest.checkpoint.id,
+                new_checkpoint_id=stored.checkpoint.id,
+                receipt_artifact_name=receipt_name,
+                receipt=receipt,
+            )
+
+    def _create_under_execution_lease(self, request: CreateRequest) -> GenerationOutcome:
+        source = request.source_audio.resolve()
+        if not source.is_file():
+            raise ModuleInvariantError(f"source audio is not a file: {source}")
+        # Bind every optional mic byte before normalization can start external
+        # work.  The Attributor rechecks these digests before and after DSP.
+        speaker_bindings = _bind_speaker_tracks(request.speaker_tracks)
+        if speaker_bindings and self._speaker_attributor is None:
+            raise ModuleInvariantError("speaker tracks require a configured Speaker Attributor")
+        # Reference parsing and lineage validation can fail.  It must do so
+        # before normalization initializes any external provider or uploads
+        # audio, even for non-CLI callers.
+        (
+            enrolled_artifacts,
+            reference_source_snapshots,
+            reference_extraction_snapshots,
+        ) = _snapshot_reference_enrollments(
+            request.reference_enrollments,
+            parser_registry=self._reference_parser_registry,
+        )
+        reference_retrieval_policy = request.policy.reference_retrieval_snapshot(
+            tuple(request.vocabulary)
+        )
+        source_size_before = source.stat().st_size
+        source_hash = hash_file(source)
+        source_size_bytes = source.stat().st_size
+        if source_size_before != source_size_bytes:
+            raise GenerationIsolationError("source audio changed while binding create identity")
+        active_speaker_identity = self._speaker_attributor_identity if speaker_bindings else None
+        (
+            effective_policy_hash,
+            adapter_identities,
+            input_binding_hash,
+            operation_key,
+        ) = self._create_operation_identity(
+            request=request,
+            source_hash=source_hash,
+            source_size_bytes=source_size_bytes,
+            speaker_bindings=speaker_bindings,
+            enrolled_artifacts=enrolled_artifacts,
+            reference_source_snapshots=reference_source_snapshots,
+            reference_extraction_snapshots=reference_extraction_snapshots,
+        )
+        recognition_independence = self._recognition_independence_receipt()
         source_digest = ArtifactDigest(
             uri=f"sha256://{source_hash}",
             sha256=source_hash,
-            size_bytes=source_snapshot.size_bytes,
+            size_bytes=source_size_bytes,
         )
         latest_checkpoint = self.store.load_latest_create_checkpoint()
         if latest_checkpoint is None:
@@ -5781,7 +7518,6 @@ class PodcastSubtitleV2:
         started_checkpoint: CreateCheckpoint
         if stored_checkpoint is not None:
             if stored_checkpoint.checkpoint.stage == "complete":
-                source_snapshot.discard()
                 return self._replay_complete_create(
                     stored_checkpoint,
                     request=request,
@@ -5804,8 +7540,8 @@ class PodcastSubtitleV2:
                     enrolled_artifacts=enrolled_artifacts,
                 )
             else:
-                source_snapshot.discard()
                 evidence_checkpoint = stored_checkpoint
+                migrated_basis_base: StoredCreateCheckpoint | None = None
                 if stored_checkpoint.checkpoint.stage == "correction_ready":
                     previous_id = stored_checkpoint.checkpoint.previous_checkpoint_id
                     assert previous_id is not None
@@ -5818,14 +7554,26 @@ class PodcastSubtitleV2:
                     assert evidence_id is not None
                     evidence_checkpoint = self.store.load_create_checkpoint_id(evidence_id)
                 elif stored_checkpoint.checkpoint.stage == "native_audit_basis_ready":
-                    evidence_id = stored_checkpoint.checkpoint.previous_checkpoint_id
+                    basis_for_evidence = stored_checkpoint
+                    if any(
+                        is_native_audit_basis_migration_artifact(name)
+                        for name in stored_checkpoint.checkpoint.artifact_hashes
+                    ):
+                        _, migrated_basis_base, _ = (
+                            self._verified_native_audit_basis_migration_lineage(stored_checkpoint)
+                        )
+                        basis_for_evidence = migrated_basis_base
+                    evidence_id = basis_for_evidence.checkpoint.previous_checkpoint_id
                     assert evidence_id is not None
                     evidence_checkpoint = self.store.load_create_checkpoint_id(evidence_id)
                 elif stored_checkpoint.checkpoint.stage == "native_text_audit_ready":
                     basis_id = stored_checkpoint.checkpoint.previous_checkpoint_id
                     assert basis_id is not None
                     basis_checkpoint = self.store.load_create_checkpoint_id(basis_id)
-                    evidence_id = basis_checkpoint.checkpoint.previous_checkpoint_id
+                    base_basis = self._native_audit_basis_base_checkpoint(basis_checkpoint)
+                    if base_basis.checkpoint.id != basis_checkpoint.checkpoint.id:
+                        migrated_basis_base = base_basis
+                    evidence_id = base_basis.checkpoint.previous_checkpoint_id
                     assert evidence_id is not None
                     evidence_checkpoint = self.store.load_create_checkpoint_id(evidence_id)
                 elif stored_checkpoint.checkpoint.stage == "native_audio_audit_ready":
@@ -5835,7 +7583,10 @@ class PodcastSubtitleV2:
                     basis_id = text_checkpoint.checkpoint.previous_checkpoint_id
                     assert basis_id is not None
                     basis_checkpoint = self.store.load_create_checkpoint_id(basis_id)
-                    evidence_id = basis_checkpoint.checkpoint.previous_checkpoint_id
+                    base_basis = self._native_audit_basis_base_checkpoint(basis_checkpoint)
+                    if base_basis.checkpoint.id != basis_checkpoint.checkpoint.id:
+                        migrated_basis_base = base_basis
+                    evidence_id = base_basis.checkpoint.previous_checkpoint_id
                     assert evidence_id is not None
                     evidence_checkpoint = self.store.load_create_checkpoint_id(evidence_id)
                 started_id = evidence_checkpoint.checkpoint.previous_checkpoint_id
@@ -5844,28 +7595,96 @@ class PodcastSubtitleV2:
                         "Create Checkpoint evidence stage lacks its started intent"
                     )
                 started_stored = self.store.load_create_checkpoint_id(started_id)
-                self._load_started_checkpoint(
-                    started_stored,
-                    request=request,
-                    source=source_digest,
-                    effective_policy_hash=effective_policy_hash,
-                    input_binding_hash=input_binding_hash,
-                    adapter_identities=adapter_identities,
-                    speaker_bindings=speaker_bindings,
-                    enrolled_artifacts=enrolled_artifacts,
+                if any(
+                    is_evidence_prefix_migration_artifact(name)
+                    for name in evidence_checkpoint.checkpoint.artifact_hashes
+                ):
+                    _, old_evidence, _ = self._verified_evidence_prefix_migration_lineage(
+                        evidence_checkpoint
+                    )
+                    old_started_id = old_evidence.checkpoint.previous_checkpoint_id
+                    if old_started_id is None:
+                        raise GenerationIsolationError(
+                            "pre-migration evidence checkpoint lacks its started intent"
+                        )
+                    old_started = self.store.load_create_checkpoint_id(old_started_id)
+                    self._assert_checkpoint_inherits(
+                        old_evidence.checkpoint,
+                        old_started.checkpoint,
+                        expected_child_stage="evidence_ready",
+                        expected_parent_stage="started",
+                    )
+                    self._load_started_checkpoint(
+                        old_started,
+                        request=request,
+                        source=source_digest,
+                        effective_policy_hash=old_evidence.checkpoint.policy_hash,
+                        input_binding_hash=old_evidence.checkpoint.input_binding_hash,
+                        adapter_identities=old_evidence.checkpoint.adapter_identities,
+                        speaker_bindings=speaker_bindings,
+                        enrolled_artifacts=enrolled_artifacts,
+                        expected_code_hash=old_evidence.checkpoint.code_hash,
+                    )
+                else:
+                    self._load_started_checkpoint(
+                        started_stored,
+                        request=request,
+                        source=source_digest,
+                        effective_policy_hash=(
+                            evidence_checkpoint.checkpoint.policy_hash
+                            if migrated_basis_base is not None
+                            else effective_policy_hash
+                        ),
+                        input_binding_hash=(
+                            evidence_checkpoint.checkpoint.input_binding_hash
+                            if migrated_basis_base is not None
+                            else input_binding_hash
+                        ),
+                        adapter_identities=(
+                            evidence_checkpoint.checkpoint.adapter_identities
+                            if migrated_basis_base is not None
+                            else adapter_identities
+                        ),
+                        speaker_bindings=speaker_bindings,
+                        enrolled_artifacts=enrolled_artifacts,
+                        expected_code_hash=(
+                            evidence_checkpoint.checkpoint.code_hash
+                            if migrated_basis_base is not None
+                            else None
+                        ),
+                    )
+                resume_policy_hash = (
+                    evidence_checkpoint.checkpoint.policy_hash
+                    if migrated_basis_base is not None
+                    else effective_policy_hash
+                )
+                resume_input_hash = (
+                    evidence_checkpoint.checkpoint.input_binding_hash
+                    if migrated_basis_base is not None
+                    else input_binding_hash
+                )
+                resume_adapters = (
+                    evidence_checkpoint.checkpoint.adapter_identities
+                    if migrated_basis_base is not None
+                    else adapter_identities
                 )
                 state = self._load_evidence_checkpoint(
                     evidence_checkpoint,
                     request=request,
                     source_hash=source_hash,
                     source_size_bytes=source_digest.size_bytes,
-                    effective_policy_hash=effective_policy_hash,
-                    input_binding_hash=input_binding_hash,
-                    adapter_identities=adapter_identities,
+                    effective_policy_hash=resume_policy_hash,
+                    input_binding_hash=resume_input_hash,
+                    adapter_identities=resume_adapters,
                     speaker_bindings=speaker_bindings,
                     enrolled_artifacts=enrolled_artifacts,
                     reference_source_snapshots=reference_source_snapshots,
                     reference_extraction_snapshots=reference_extraction_snapshots,
+                    expected_code_hash=(
+                        evidence_checkpoint.checkpoint.code_hash
+                        if migrated_basis_base is not None
+                        else None
+                    ),
                 )
                 return self._continue_create_from_evidence(
                     request=request,
@@ -5886,6 +7705,11 @@ class PodcastSubtitleV2:
                 speaker_bindings=speaker_bindings,
                 enrolled_artifacts=enrolled_artifacts,
             )
+        source_snapshot = self.store.snapshot_audio(
+            source,
+            expected_sha256=source_hash,
+            expected_size_bytes=source_size_bytes,
+        )
         normalized_snapshot = None
         try:
             normalized = self._normalizer.normalize(
@@ -5917,6 +7741,7 @@ class PodcastSubtitleV2:
                 expected_size_bytes=receipt.normalized.size_bytes,
             )
             source_snapshot.commit()
+            stored_normalized = normalized_snapshot.commit()
         except Exception:
             source_snapshot.discard()
             if normalized_snapshot is not None:
@@ -5936,7 +7761,7 @@ class PodcastSubtitleV2:
         recognition_request = RecognitionRequest(
             episode_id=request.episode_id,
             invocation_id=invocation_id,
-            normalized_audio=normalized_snapshot.path,
+            normalized_audio=stored_normalized.path,
             expected_normalized_audio_hash=receipt.normalized.sha256,
             raw_output_dir=raw_output_dir,
             language_hint=request.language_hint or request.policy.language,
@@ -5946,7 +7771,10 @@ class PodcastSubtitleV2:
             recognizer.recognize(recognition_request) for recognizer in self._recognizers
         )
         try:
-            normalized_snapshot.verify()
+            self.store.audio_path(
+                receipt.normalized.sha256,
+                size_bytes=receipt.normalized.size_bytes,
+            )
         except ArtifactHashMismatchError as exc:
             raise GenerationIsolationError("normalized audio changed during recognition") from exc
         if not normalized_transport_is_source_snapshot and (
@@ -6002,7 +7830,10 @@ class PodcastSubtitleV2:
                 if not (attributed_token.speaker or "").strip():
                     raise GenerationIsolationError("Speaker Attribution left an unknown speaker")
             try:
-                normalized_snapshot.verify()
+                self.store.audio_path(
+                    receipt.normalized.sha256,
+                    size_bytes=receipt.normalized.size_bytes,
+                )
             except ArtifactHashMismatchError as exc:
                 raise GenerationIsolationError(
                     "normalized audio changed during speaker attribution"
@@ -6090,7 +7921,7 @@ class PodcastSubtitleV2:
         speech_coverage_request = SpeechCoverageRequest(
             episode_id=request.episode_id,
             invocation_id=invocation_id,
-            normalized_audio=normalized_snapshot.path,
+            normalized_audio=stored_normalized.path,
             expected_normalized_audio_hash=receipt.normalized.sha256,
             expected_normalized_audio_size_bytes=receipt.normalized.size_bytes,
             normalized_audio_duration_ms=receipt.normalized_duration_ms,
@@ -6112,12 +7943,14 @@ class PodcastSubtitleV2:
                     "Speech Coverage Receipt changed during portable verification"
                 )
             try:
-                normalized_snapshot.verify()
+                self.store.audio_path(
+                    receipt.normalized.sha256,
+                    size_bytes=receipt.normalized.size_bytes,
+                )
             except ArtifactHashMismatchError as exc:
                 raise GenerationIsolationError(
                     "normalized audio changed during speech coverage analysis"
                 ) from exc
-        normalized_snapshot.commit()
         receipt = _portable_receipt(receipt)
         checkpoint = self._commit_evidence_checkpoint(
             started_checkpoint=started_checkpoint,
@@ -6183,9 +8016,7 @@ class PodcastSubtitleV2:
         reference_extraction_snapshots: dict[str, bytes],
     ) -> GenerationOutcome:
         evidence = state.evidence
-        latest = self.store.load_create_checkpoint(
-            expected_operation_key=state.checkpoint.operation_key
-        )
+        latest = self.store.load_latest_create_checkpoint()
         if latest is None:
             raise GenerationIsolationError("Create Checkpoint pointer disappeared")
         if latest.checkpoint.stage in {"correction_ready", "audio_audit_ready"}:
@@ -6241,7 +8072,7 @@ class PodcastSubtitleV2:
                 basis_id = text_stored.checkpoint.previous_checkpoint_id
                 assert basis_id is not None
                 basis_stored = self.store.load_create_checkpoint_id(basis_id)
-            basis = self._load_native_audit_basis_checkpoint(
+            basis = self._load_effective_native_audit_basis_checkpoint(
                 basis_stored,
                 evidence_state=state,
                 request=request,
@@ -6622,8 +8453,6 @@ class PodcastSubtitleV2:
                 "native authorization targets a non-native audit Generation"
             )
         aggregate = parent.audit.aggregate
-        text_record = parent.audit.text_run.record
-        audio_record = parent.audit.audio_run.record
         authorization_bytes = (
             request.correction_acceptance_verdict
             if request.correction_acceptance_verdict is not None
@@ -6644,10 +8473,7 @@ class PodcastSubtitleV2:
             raise GenerationIsolationError("native authorization bytes are invalid") from exc
         if canonical_json_bytes(declared) != authorization_bytes:
             raise GenerationIsolationError("native authorization bytes are not canonical")
-        candidates: tuple[NativeDiscoveredCandidateV2, ...] = (
-            *text_record.candidate_discovery_set.candidates,
-            *audio_record.candidate_discovery_set.candidates,
-        )
+        candidates = _loaded_native_candidates(parent.audit)
         matching = tuple(item for item in candidates if item.id == declared.candidate_discovery_id)
         if len(matching) != 1:
             raise GenerationIsolationError(
@@ -7577,9 +9403,18 @@ class PodcastSubtitleV2:
                 parent.recognition.orthographic_projection_bytes.payload
             )
             artifacts.update(parent_orthographic_raw_outputs)
-        adapter_bytes = parent.audit.runtime.identities_artifact.payload
+        adapter_payload = _canonical_json_value(
+            parent.audit.runtime.identities_artifact.payload,
+            label=_ADAPTER_IDENTITIES,
+        )
+        if not isinstance(adapter_payload, dict):
+            raise GenerationIsolationError("native child Adapter identities are invalid")
+        # Native resolution children still run the closed universal V2 re-audit
+        # contract.  Do not inherit the selective parent policy identity into a
+        # child whose persisted audit artifacts did not use that policy.
+        adapter_payload.pop("native_audio_selection_policy", None)
+        adapter_bytes = canonical_json_bytes(adapter_payload)
         artifacts[_ADAPTER_IDENTITIES] = adapter_bytes
-        adapter_payload = _canonical_json_value(adapter_bytes, label=_ADAPTER_IDENTITIES)
         stage_hashes = {
             "adapter_identities": sha256_bytes(adapter_bytes),
             "normalization_receipt": hash_object(parent.normalization.receipt),
@@ -9840,6 +11675,30 @@ class PodcastSubtitleV2:
         receipt_evidence: dict[str, ReferenceEvidence] = {}
         runtime_index = getattr(self._reference_retriever, "index", None)
         identity = self._reference_retriever_identity
+        retrieve_many = getattr(self._reference_retriever, "retrieve_many", None)
+        batch_replay_verified = False
+        if callable(retrieve_many):
+            try:
+                replayed_many = tuple(retrieve_many(expected_requests))
+                portable_replayed = tuple(
+                    receipt.model_copy(
+                        update={
+                            "evidence": tuple(
+                                _portable_reference(item) for item in receipt.evidence
+                            )
+                        }
+                    )
+                    for receipt in replayed_many
+                )
+            except (AdapterIntegrityError, AttributeError, TypeError, ValueError) as exc:
+                raise GenerationIsolationError(
+                    f"{context} Reference receipt batch does not replay offline"
+                ) from exc
+            if len(portable_replayed) != len(expected_requests) or portable_replayed != retrievals:
+                raise GenerationIsolationError(
+                    f"{context} Reference receipt batch changed its typed receipts"
+                )
+            batch_replay_verified = True
         for request, receipt in zip(expected_requests, retrievals, strict=True):
             if (
                 receipt.episode_id != request.episode_id
@@ -9869,16 +11728,17 @@ class PodcastSubtitleV2:
                 raise GenerationIsolationError(
                     f"{context} Reference receipt differs from the exact runtime index"
                 )
-            try:
-                replayed = self._reference_retriever.replay(request, receipt)
-            except (AdapterIntegrityError, AttributeError, TypeError, ValueError) as exc:
-                raise GenerationIsolationError(
-                    f"{context} Reference receipt does not replay offline"
-                ) from exc
-            if replayed != receipt:
-                raise GenerationIsolationError(
-                    f"{context} Reference replay changed its typed receipt"
-                )
+            if not batch_replay_verified:
+                try:
+                    replayed = self._reference_retriever.replay(request, receipt)
+                except (AdapterIntegrityError, AttributeError, TypeError, ValueError) as exc:
+                    raise GenerationIsolationError(
+                        f"{context} Reference receipt does not replay offline"
+                    ) from exc
+                if replayed != receipt:
+                    raise GenerationIsolationError(
+                        f"{context} Reference replay changed its typed receipt"
+                    )
             for item in receipt.evidence:
                 stored = reference_by_id.get(item.id)
                 if stored is None or stored != item:
@@ -9890,24 +11750,31 @@ class PodcastSubtitleV2:
                     raise GenerationIsolationError(
                         f"{context} Reference Evidence crossed Enrollment identity"
                     )
-                snapshot_name = f"reference_extractions/{enrollment.extracted_text.sha256}.json"
-                try:
-                    snapshot = reference_extraction_snapshots[snapshot_name]
-                except KeyError as exc:
-                    raise GenerationIsolationError(
-                        f"{context} lacks a Reference extraction snapshot"
-                    ) from exc
-                verify_reference_evidence_membership(
-                    item,
-                    snapshot,
-                    enrolled_artifact=item.artifact,
-                )
                 prior = receipt_evidence.get(item.id)
-                if prior is not None and prior != item:
-                    raise GenerationIsolationError(
-                        f"{context} Reference receipts conflict on one Evidence ID"
-                    )
+                if prior is not None:
+                    if prior != item:
+                        raise GenerationIsolationError(
+                            f"{context} Reference receipts conflict on one Evidence ID"
+                        )
+                    continue
                 receipt_evidence[item.id] = item
+        membership_by_source: dict[str, list[ReferenceEvidence]] = {}
+        for item in receipt_evidence.values():
+            membership_by_source.setdefault(item.artifact.source_id, []).append(item)
+        for source_id in sorted(membership_by_source):
+            enrollment = enrolled_by_source[source_id]
+            snapshot_name = f"reference_extractions/{enrollment.extracted_text.sha256}.json"
+            try:
+                snapshot = reference_extraction_snapshots[snapshot_name]
+            except KeyError as exc:
+                raise GenerationIsolationError(
+                    f"{context} lacks a Reference extraction snapshot"
+                ) from exc
+            verify_reference_evidence_membership_batch(
+                tuple(sorted(membership_by_source[source_id], key=lambda item: item.id)),
+                snapshot,
+                enrolled_artifact=enrollment,
+            )
         if receipt_evidence != reference_by_id:
             raise GenerationIsolationError(
                 f"{context} Reference receipts do not bind the exact Evidence union"
@@ -9978,20 +11845,6 @@ class PodcastSubtitleV2:
                     raise GenerationIsolationError(
                         "fresh child Reference Evidence crossed its Enrollment"
                     )
-                snapshot_name = (
-                    f"reference_extractions/{stored_artifact.extracted_text.sha256}.json"
-                )
-                try:
-                    snapshot = reference_extraction_snapshots[snapshot_name]
-                except KeyError as exc:
-                    raise GenerationIsolationError(
-                        "fresh child Reference Evidence lacks its extraction snapshot"
-                    ) from exc
-                verify_reference_evidence_membership(
-                    item,
-                    snapshot,
-                    enrolled_artifact=item.artifact,
-                )
                 portable = _portable_reference(item)
                 existing = evidence_by_id.get(portable.id)
                 if existing is not None and existing != portable:
@@ -10002,6 +11855,19 @@ class PodcastSubtitleV2:
                 portable_evidence.append(portable)
             receipts.append(receipt.model_copy(update={"evidence": tuple(portable_evidence)}))
         references = tuple(sorted(evidence_by_id.values(), key=lambda item: item.id))
+        _verify_reference_membership_batches(
+            references,
+            enrolled_by_source=enrolled_by_source,
+            extraction_snapshots_by_digest={
+                artifact.extracted_text.sha256: reference_extraction_snapshots[
+                    f"reference_extractions/{artifact.extracted_text.sha256}.json"
+                ]
+                for artifact in enrolled_artifacts
+                if f"reference_extractions/{artifact.extracted_text.sha256}.json"
+                in reference_extraction_snapshots
+            },
+            context="fresh child",
+        )
         receipt_tuple = tuple(receipts)
         self._validate_reference_retrieval_state(
             transcript=transcript,
@@ -10035,6 +11901,7 @@ class PodcastSubtitleV2:
             )
         receipts: list[ReferenceRetrievalReceipt] = []
         evidence_by_id: dict[str, ReferenceEvidence] = {}
+        membership_by_source: dict[str, dict[str, ReferenceEvidence]] = {}
         declared_artifacts = {
             artifact.source_id: artifact for artifact in request.reference_artifacts
         }
@@ -10124,11 +11991,16 @@ class PodcastSubtitleV2:
                     raise GenerationIsolationError(
                         "Reference Evidence lacks a caller-owned Enrollment trust root"
                     )
-                verify_reference_evidence_membership(
-                    item,
-                    enrollment.extraction_snapshot,
-                    enrolled_artifact=enrollment.artifact,
+                source_membership = membership_by_source.setdefault(
+                    item.artifact.source_id,
+                    {},
                 )
+                existing_membership = source_membership.get(item.id)
+                if existing_membership is not None and existing_membership != item:
+                    raise GenerationIsolationError(
+                        f"Reference Evidence ID {item.id!r} has conflicting membership content"
+                    )
+                source_membership[item.id] = item
                 portable = _portable_reference(item)
                 if portable.artifact != portable_artifacts[item.artifact.source_id]:
                     raise GenerationIsolationError(
@@ -10142,6 +12014,16 @@ class PodcastSubtitleV2:
                 evidence_by_id[portable.id] = portable
                 portable_evidence.append(portable)
             receipts.append(receipt.model_copy(update={"evidence": tuple(portable_evidence)}))
+        for source_id in sorted(membership_by_source):
+            enrollment = enrollments[source_id]
+            verify_reference_evidence_membership_batch(
+                tuple(
+                    membership_by_source[source_id][evidence_id]
+                    for evidence_id in sorted(membership_by_source[source_id])
+                ),
+                enrollment.extraction_snapshot,
+                enrolled_artifact=enrollment.artifact,
+            )
         references = tuple(sorted(evidence_by_id.values(), key=lambda item: item.id))
         receipt_tuple = tuple(receipts)
         portable_enrollments = tuple(
@@ -10734,12 +12616,7 @@ class PodcastSubtitleV2:
                 "native resolution Decision does not target a native audit Generation"
             )
         parent_aggregate = parent.audit.aggregate
-        parent_text = parent.audit.text_run.record
-        parent_audio = parent.audit.audio_run.record
-        parent_candidates = (
-            *parent_text.candidate_discovery_set.candidates,
-            *parent_audio.candidate_discovery_set.candidates,
-        )
+        parent_candidates = _loaded_native_candidates(parent.audit)
         matching = tuple(item for item in parent_candidates if item.id == candidate.id)
         if len(matching) != 1 or matching[0] != candidate:
             raise GenerationIsolationError(
@@ -10973,6 +12850,7 @@ class PodcastSubtitleV2:
             raise GenerationIsolationError("native Generation Manifest identity mismatch")
 
         adapter_payload = load_value(_ADAPTER_IDENTITIES)
+        selective_v3 = _NATIVE_SELECTIVE_AGGREGATE_V3 in record.artifact_hashes
         expected_identity_keys = {
             "recognizers",
             "speech_coverage_analyzer",
@@ -10985,6 +12863,8 @@ class PodcastSubtitleV2:
             "native_audit_policy",
             "native_execution_policy",
         }
+        if selective_v3:
+            expected_identity_keys.add("native_audio_selection_policy")
         if not isinstance(adapter_payload, dict) or set(adapter_payload) != expected_identity_keys:
             raise GenerationIsolationError("native Generation Adapter identity set is incomplete")
         recognizer_payload = adapter_payload["recognizers"]
@@ -11017,6 +12897,13 @@ class PodcastSubtitleV2:
             stored_execution_policy = CorrectionAuditExecutionPolicyV2.model_validate_json(
                 canonical_json_bytes(adapter_payload["native_execution_policy"])
             )
+            stored_selection_policy = (
+                AudioAuditSelectionPolicyV1.model_validate_json(
+                    canonical_json_bytes(adapter_payload["native_audio_selection_policy"])
+                )
+                if selective_v3
+                else None
+            )
         except (TypeError, ValueError) as exc:
             raise GenerationIsolationError("native audit runtime identity is invalid") from exc
         if (
@@ -11030,6 +12917,7 @@ class PodcastSubtitleV2:
             or stored_audio_policy != bundle.audio_executor.policy
             or stored_audit_policy != bundle.audit_policy
             or stored_execution_policy != bundle.execution_policy
+            or (selective_v3 and stored_selection_policy != bundle.audio_selection_policy)
         ):
             raise GenerationIsolationError(
                 "runtime Adapter identities or native audit policies differ from the "
@@ -11047,6 +12935,8 @@ class PodcastSubtitleV2:
             "native_audit_policy": stored_audit_policy,
             "native_execution_policy": stored_execution_policy,
         }
+        if selective_v3:
+            expected_adapter_payload["native_audio_selection_policy"] = stored_selection_policy
         if adapter_payload != json.loads(canonical_json_bytes(expected_adapter_payload)):
             raise GenerationIsolationError("native Adapter identity bytes are not exact")
 
@@ -11323,15 +13213,12 @@ class PodcastSubtitleV2:
             extraction_by_digest[artifact.extracted_text.sha256] = extraction_bytes
         if transcript.reference_evidence_hash != reference_evidence_set_hash(references):
             raise GenerationIsolationError("native Reference Evidence hash mismatch")
-        for item in references:
-            enrolled = enrolled_by_source.get(item.artifact.source_id)
-            if enrolled is None:
-                raise GenerationIsolationError("native Reference Evidence lacks Enrollment")
-            verify_reference_evidence_membership(
-                item,
-                extraction_by_digest[enrolled.extracted_text.sha256],
-                enrolled_artifact=enrolled,
-            )
+        _verify_reference_membership_batches(
+            references,
+            enrolled_by_source=enrolled_by_source,
+            extraction_snapshots_by_digest=extraction_by_digest,
+            context="native stored Generation",
+        )
         retrieval_invocations = {item.invocation_id for item in retrievals}
         if len(retrieval_invocations) > 1:
             raise GenerationIsolationError("native Reference receipts cross invocations")
@@ -11362,6 +13249,607 @@ class PodcastSubtitleV2:
             expected_native_risk = _native_full_audit_resolution_risk(transcript)
             if expected_native_risk not in risks:
                 raise GenerationIsolationError("native acceptance-required risk is absent")
+
+        if selective_v3:
+            audit_plan = self._load_native_generation_model(
+                generation_id,
+                _NATIVE_AUDIT_PLAN,
+                AuditPlan,
+                read_artifact=read_artifact,
+            )
+            signals = self._load_native_generation_model(
+                generation_id,
+                _NATIVE_CANDIDATE_SIGNALS,
+                CandidateSignalSet,
+                read_artifact=read_artifact,
+            )
+            groups = self._load_native_generation_model(
+                generation_id,
+                _NATIVE_CANDIDATE_GROUPS,
+                CandidateGroupSet,
+                read_artifact=read_artifact,
+            )
+            execution = self._load_native_generation_model(
+                generation_id,
+                _NATIVE_TEXT_EXECUTION_PLAN_V3,
+                ModalityAuditExecutionPlanV3,
+                read_artifact=read_artifact,
+            )
+            assert isinstance(audit_plan, AuditPlan)
+            assert isinstance(signals, CandidateSignalSet)
+            assert isinstance(groups, CandidateGroupSet)
+            assert isinstance(execution, ModalityAuditExecutionPlanV3)
+            audit_evidence = tuple(sorted(evidence, key=recognition_evidence_content_hash))
+            expected_plan = build_audit_plan(
+                audit_transcript,
+                audit_evidence,
+                stored_audit_policy,
+                reference_retrievals=retrievals,
+                references_enrolled=bool(enrolled_artifacts),
+                speech_coverage=speech_coverage_receipt,
+                boundary_constraints=None,
+                seam_evidence=None,
+            )
+            expected_signals = derive_candidate_signal_set(
+                expected_plan,
+                audit_transcript,
+                audit_evidence,
+                reference_retrievals=retrievals,
+                references_enrolled=bool(enrolled_artifacts),
+                speech_coverage=speech_coverage_receipt,
+                boundary_constraints=None,
+                seam_evidence=None,
+            )
+            expected_groups = derive_candidate_group_set(
+                expected_plan, expected_signals, audit_transcript
+            )
+            expected_execution = build_modality_audit_execution_plan_v3(
+                expected_plan,
+                expected_signals,
+                expected_groups,
+                audit_transcript,
+                audit_evidence,
+                stored_execution_policy,
+                modality="text",
+                reference_retrievals=retrievals,
+                seam_evidence=None,
+            )
+            if (audit_plan, signals, groups, execution) != (
+                expected_plan,
+                expected_signals,
+                expected_groups,
+                expected_execution,
+            ):
+                raise GenerationIsolationError(
+                    "selective native audit parents are not reproducible"
+                )
+            text_sources, text_source_names = self._load_native_generation_source_set(
+                generation_id,
+                _NATIVE_TEXT_SOURCE_INDEX,
+                read_artifact=read_artifact,
+            )
+            expected_text_sources = materialize_text_correction_packet_sources_batch(
+                execution,
+                audit_plan,
+                signals,
+                groups,
+                audit_transcript,
+                audit_evidence,
+                reference_retrievals=retrievals,
+                seam_evidence=None,
+            )
+            if text_sources != expected_text_sources:
+                raise GenerationIsolationError("selective native text sources are not reproducible")
+            text_record = self._load_native_generation_model(
+                generation_id,
+                _NATIVE_TEXT_RECORD,
+                TextAuditExecutionRecordV2,
+                read_artifact=read_artifact,
+            )
+            assert isinstance(text_record, TextAuditExecutionRecordV2)
+            text_raw, text_run_names = self._load_native_generation_run_bytes(
+                generation_id,
+                index_name=_NATIVE_TEXT_RUN_INDEX,
+                categories=("requests", "responses"),
+                read_artifact=read_artifact,
+            )
+            text_run = TextAuditRunResult(
+                record=text_record,
+                request_bytes=text_raw["requests"],
+                response_bytes=text_raw["responses"],
+            )
+            try:
+                if (
+                    bundle.text_executor.replay(execution, audit_plan, text_sources, text_run)
+                    != text_run
+                ):
+                    raise ValueError("selective text replay changed")
+            except ValueError as exc:
+                raise GenerationIsolationError(
+                    "selective native text audit is not replayable"
+                ) from exc
+
+            def load_selective_collection(name: str, model: type[object]) -> tuple[object, ...]:
+                payload = load_value(name)
+                if not isinstance(payload, list) or not payload:
+                    raise GenerationIsolationError(f"selective Generation artifact {name} is empty")
+                try:
+                    return tuple(
+                        model.model_validate_json(  # type: ignore[attr-defined]
+                            canonical_json_bytes(item), strict=True
+                        )
+                        for item in payload
+                    )
+                except ValueError as exc:
+                    raise GenerationIsolationError(
+                        f"selective Generation artifact {name} is invalid"
+                    ) from exc
+
+            selections = load_selective_collection(
+                _NATIVE_AUDIO_SELECTION_PLANS_V3, AudioAuditSelectionPlanV1
+            )
+            initial_selection = self._load_native_generation_model(
+                generation_id,
+                _NATIVE_INITIAL_AUDIO_SELECTION_V3,
+                AudioAuditSelectionPlanV1,
+                read_artifact=read_artifact,
+            )
+            if initial_selection != selections[0]:
+                raise GenerationIsolationError(
+                    "selective initial selection differs from round ledger"
+                )
+            executions = load_selective_collection(
+                _NATIVE_AUDIO_EXECUTION_PLANS_V3, ModalityAuditExecutionPlanV3
+            )
+            records = load_selective_collection(
+                _NATIVE_AUDIO_RECORDS_V3, SelectiveAudioAuditExecutionRecordV3
+            )
+            receipts = load_selective_collection(
+                _NATIVE_AUDIO_ROUND_RECEIPTS_V3,
+                SelectiveAudioAuditRoundReceiptV3,
+            )
+            aggregate = self._load_native_generation_model(
+                generation_id,
+                _NATIVE_SELECTIVE_AGGREGATE_V3,
+                SelectiveAuditAggregateAttestationV3,
+                read_artifact=read_artifact,
+            )
+            assert isinstance(aggregate, SelectiveAuditAggregateAttestationV3)
+            audio_raw, audio_run_names = self._load_native_generation_run_bytes(
+                generation_id,
+                index_name=_NATIVE_AUDIO_RUN_INDEX,
+                categories=("requests", "responses", "clips", "journals"),
+                read_artifact=read_artifact,
+            )
+            audio_runs: list[AudioAuditRunResult] = []
+            offset = 0
+            try:
+                for audio_execution, audio_record in zip(executions, records, strict=True):
+                    assert isinstance(audio_execution, ModalityAuditExecutionPlanV3)
+                    assert isinstance(audio_record, SelectiveAudioAuditExecutionRecordV3)
+                    count = len(audio_record.request_ids)
+                    segment = slice(offset, offset + count)
+                    audio_run = AudioAuditRunResult(
+                        record=audio_record,
+                        request_bytes=audio_raw["requests"][segment],
+                        response_bytes=audio_raw["responses"][segment],
+                        clip_bytes=audio_raw["clips"][segment],
+                    )
+                    if audio_raw["journals"][segment] != tuple(
+                        canonical_json_bytes(item) for item in audio_record.invocation_journals
+                    ):
+                        raise ValueError("selective audio journals changed")
+                    audio_sources: dict[str, bytes] = {}
+                    for packet in audio_execution.packets:
+                        _merge_exact_artifacts(
+                            audio_sources,
+                            materialize_audio_correction_packet_sources(
+                                audio_execution,
+                                packet.id,
+                                audit_plan,
+                                signals,
+                                groups,
+                                audit_transcript,
+                                audit_evidence,
+                                normalized_audio_path=normalized_audio,
+                                reference_retrievals=retrievals,
+                                seam_evidence=None,
+                            ),
+                            label="selective audio source",
+                        )
+                    if (
+                        bundle.audio_executor.replay(
+                            audio_execution, audit_plan, audio_sources, audio_run
+                        )
+                        != audio_run
+                    ):
+                        raise ValueError("selective audio replay changed")
+                    audio_runs.append(audio_run)
+                    offset += count
+                if any(offset != len(audio_raw[key]) for key in audio_raw):
+                    raise ValueError("selective audio bytes have trailing artifacts")
+                replayed_aggregate = verify_selective_audit_aggregate_v3(
+                    read_artifact(_NATIVE_SELECTIVE_AGGREGATE_V3),
+                    audit_plan=audit_plan,
+                    candidate_signal_set=signals,
+                    candidate_group_set=groups,
+                    text_execution_plan=execution,
+                    text_record=text_record,
+                    selection_plans=selections,
+                    audio_execution_plans=executions,
+                    audio_records=records,
+                    round_receipts=receipts,
+                )
+            except (AssertionError, ValueError) as exc:
+                raise GenerationIsolationError(
+                    "selective native audio audit is not replayable"
+                ) from exc
+            if replayed_aggregate != aggregate or not audio_runs:
+                raise GenerationIsolationError("selective native aggregate changed")
+            audio_run = audio_runs[-1]
+            audio_record = audio_run.record
+            assert isinstance(audio_record, SelectiveAudioAuditExecutionRecordV3)
+
+            resolution_names: set[str] = set()
+            resolution: LoadedNativeResolutionState | None = None
+            if is_resolution_child:
+                resolution_names, resolution = self._verify_native_resolution_child(
+                    generation_id=generation_id,
+                    manifest=manifest,
+                    transcript=transcript,
+                    risks=risks,
+                    references=references,
+                    retrievals=retrievals,
+                    text_record=text_record,
+                    audio_record=audio_record,
+                    aggregate=aggregate,
+                    read_artifact=read_artifact,
+                    verified_artifact=verified_artifact,
+                )
+            expected_inputs = {
+                "source_audio": transcript.source_audio_hash,
+                "normalized_audio": transcript.normalized_audio_hash,
+                "normalization_receipt": transcript.normalization_receipt_hash,
+                "recognition_request": recognition_request_artifact.content_hash,
+                "recognition_independence": (
+                    recognition_independence.content_hash
+                    if recognition_independence is not None
+                    else hash_object(None)
+                ),
+                "recognition_evidence": transcript.evidence_hash,
+                "reference_enrollments": hash_object(enrolled_artifacts),
+                "references": transcript.reference_evidence_hash,
+                "ledger_head": transcript.ledger_hash,
+            }
+            if transcript.orthographic_projection_evidence_hash is not None:
+                expected_inputs["orthographic_projection_evidence"] = (
+                    transcript.orthographic_projection_evidence_hash
+                )
+            if is_resolution_child:
+                decision = NativeCorrectionDecisionV2.model_validate_json(
+                    read_artifact(_NATIVE_RESOLUTION_DECISION), strict=True
+                )
+                expected_inputs.update(
+                    {
+                        "parent_manifest": manifest.parent_manifest_hash,
+                        "native_resolution_decision": decision.content_hash,
+                    }
+                )
+            expected_stage_hashes = {
+                "adapter_identities": sha256_bytes(read_artifact(_ADAPTER_IDENTITIES)),
+                "normalization_receipt": hash_object(receipt),
+                "recognition_request": recognition_request_artifact.content_hash,
+                "recognition_independence": (
+                    recognition_independence.content_hash
+                    if recognition_independence is not None
+                    else hash_object(None)
+                ),
+                "recognition_evidence": hash_object(evidence),
+                "reference_evidence": reference_evidence_set_hash(references),
+                "reference_retrieval_receipts": hash_object(retrievals),
+                "canonical_transcript": hash_object(transcript),
+                "risks": hash_object(tuple(_risk_payload(item) for item in risks)),
+                "native_audit_plan": sha256_bytes(read_artifact(_NATIVE_AUDIT_PLAN)),
+                "native_candidate_signal_set": sha256_bytes(
+                    read_artifact(_NATIVE_CANDIDATE_SIGNALS)
+                ),
+                "native_candidate_group_set": sha256_bytes(read_artifact(_NATIVE_CANDIDATE_GROUPS)),
+                "native_text_execution_plan_v3": sha256_bytes(
+                    read_artifact(_NATIVE_TEXT_EXECUTION_PLAN_V3)
+                ),
+                "native_text_audit_record": sha256_bytes(read_artifact(_NATIVE_TEXT_RECORD)),
+                "native_audio_selection_plans_v3": sha256_bytes(
+                    read_artifact(_NATIVE_AUDIO_SELECTION_PLANS_V3)
+                ),
+                "native_audio_execution_plans_v3": sha256_bytes(
+                    read_artifact(_NATIVE_AUDIO_EXECUTION_PLANS_V3)
+                ),
+                "native_audio_records_v3": sha256_bytes(read_artifact(_NATIVE_AUDIO_RECORDS_V3)),
+                "native_audio_round_receipts_v3": sha256_bytes(
+                    read_artifact(_NATIVE_AUDIO_ROUND_RECEIPTS_V3)
+                ),
+                "native_selective_audit_aggregate_v3": sha256_bytes(
+                    read_artifact(_NATIVE_SELECTIVE_AGGREGATE_V3)
+                ),
+            }
+            if transcript.orthographic_projection_evidence_hash is not None:
+                expected_stage_hashes["orthographic_projection_evidence"] = hash_object(
+                    orthographic_projections
+                )
+            if is_resolution_child:
+                expected_stage_hashes.update(
+                    {
+                        "native_resolution_decision": sha256_bytes(
+                            read_artifact(_NATIVE_RESOLUTION_DECISION)
+                        ),
+                        "native_resolution_authorization": sha256_bytes(
+                            read_artifact(_NATIVE_RESOLUTION_AUTHORIZATION)
+                        ),
+                        "native_resolution_evidence": hash_object(
+                            tuple(
+                                (name, sha256_bytes(read_artifact(name)))
+                                for name in sorted(resolution_names)
+                            )
+                        ),
+                    }
+                )
+            if (
+                manifest.status != "complete"
+                or manifest.episode_id != transcript.episode_id
+                or manifest.code_hash != self._code_hash
+                or manifest.policy_hash != transcript.policy_hash
+                or manifest.input_artifact_hashes != expected_inputs
+                or manifest.adapter_hash != hash_object(expected_adapter_payload)
+                or manifest.stage_artifact_hashes != expected_stage_hashes
+            ):
+                raise GenerationIsolationError(
+                    "selective native Generation Manifest lineage mismatch"
+                )
+            fixed_names = {
+                _RECEIPT,
+                _AUDIO_ARTIFACTS,
+                _EVIDENCE,
+                _RECOGNITION_REQUEST,
+                _RECOGNITION_INDEPENDENCE,
+                _BASE_PRIMARY_EVIDENCE,
+                _SPEAKER_PROVENANCE,
+                _REFERENCE_ENROLLMENTS,
+                _REFERENCE_RETRIEVAL_POLICY,
+                _SPEECH_COVERAGE,
+                _REFERENCES,
+                _RETRIEVALS,
+                _CHECKPOINT_CANONICAL,
+                _CHECKPOINT_RISKS,
+                _NATIVE_AUDIT_PLAN,
+                _NATIVE_CANDIDATE_SIGNALS,
+                _NATIVE_CANDIDATE_GROUPS,
+                _NATIVE_TEXT_EXECUTION_PLAN_V3,
+                _NATIVE_TEXT_RECORD,
+                _NATIVE_INITIAL_AUDIO_SELECTION_V3,
+                _NATIVE_AUDIO_SELECTION_PLANS_V3,
+                _NATIVE_AUDIO_EXECUTION_PLANS_V3,
+                _NATIVE_AUDIO_RECORDS_V3,
+                _NATIVE_AUDIO_ROUND_RECEIPTS_V3,
+                _NATIVE_SELECTIVE_AGGREGATE_V3,
+                _CANONICAL,
+                _RISKS,
+                _ADAPTER_IDENTITIES,
+                _MANIFEST,
+                *resolution_names,
+            }
+            if transcript.orthographic_projection_evidence_hash is not None:
+                fixed_names.add(_ORTHOGRAPHIC_PROJECTIONS)
+            expected_artifact_names = (
+                fixed_names
+                | set(raw_outputs)
+                | set(orthographic_raw_outputs)
+                | set(speech_coverage_raw_artifacts)
+                | set(reference_source_snapshots)
+                | set(reference_extraction_snapshots)
+                | text_source_names
+                | text_run_names
+                | audio_run_names
+            )
+            if set(record.artifact_hashes) != expected_artifact_names:
+                raise GenerationIsolationError(
+                    "selective native Generation artifact profile is incomplete or extra"
+                )
+            result = CanonicalBuildResult(
+                outcome="needs_review",
+                transcript=transcript,
+                candidates=(),
+                risks=risks,
+                reference_evidence_hash=transcript.reference_evidence_hash,
+                generation_warnings=transcript.generation_warnings,
+            )
+
+            def verified_set_v3(names: set[str]) -> VerifiedArtifactSet:
+                return VerifiedArtifactSet(tuple(verified_artifact(name) for name in sorted(names)))
+
+            loaded_speech_identity = (
+                None
+                if stored_speech is None
+                else LoadedSpeechCoverageAdapterIdentity(
+                    adapter_name=stored_speech["adapter_name"],
+                    adapter_version=stored_speech["adapter_version"],
+                    config_hash=stored_speech["config_hash"],
+                    code_hash=stored_speech["code_hash"],
+                    runtime_hash=stored_speech["runtime_hash"],
+                )
+            )
+
+            def loaded_adapter_v3(
+                identity: AdapterIdentity | None,
+            ) -> LoadedAdapterIdentity | None:
+                return (
+                    None
+                    if identity is None
+                    else LoadedAdapterIdentity(
+                        name=identity.name,
+                        version=identity.version,
+                        config_hash=identity.config_hash,
+                        execution_mode=identity.execution_mode,
+                    )
+                )
+
+            common_runtime = LoadedCommonRuntimeState(
+                recognizers=stored_recognizers,
+                speech_coverage_analyzer=loaded_speech_identity,
+                speaker_attributor=loaded_adapter_v3(stored_speaker),
+                reference_retriever=loaded_adapter_v3(stored_reference),
+            )
+            text_bindings = tuple(
+                VerifiedNativeSource(
+                    uri=uri,
+                    artifact=verified_artifact(
+                        f"native_full_audit/sources/text/{ordinal:04d}-{sha256_bytes(payload)}.bin"
+                    ),
+                )
+                for ordinal, (uri, payload) in enumerate(sorted(text_sources.items()))
+            )
+            text_request_names = {
+                name
+                for name in text_run_names
+                if name.startswith("native_full_audit/text/requests/")
+            }
+            text_response_names = {
+                name
+                for name in text_run_names
+                if name.startswith("native_full_audit/text/responses/")
+            }
+            audio_request_names = {
+                name
+                for name in audio_run_names
+                if name.startswith("native_full_audit/audio/requests/")
+            }
+            audio_response_names = {
+                name
+                for name in audio_run_names
+                if name.startswith("native_full_audit/audio/responses/")
+            }
+            audio_clip_names = {
+                name
+                for name in audio_run_names
+                if name.startswith("native_full_audit/audio/clips/")
+            }
+            audio_journal_names = {
+                name
+                for name in audio_run_names
+                if name.startswith("native_full_audit/audio/journals/")
+            }
+            loaded = LoadedGenerationState(
+                result=result,
+                storage=LoadedStorageSnapshot.capture(
+                    generation_id=record.generation_id,
+                    artifact_set_hash=record.artifact_set_hash,
+                    manifest=manifest,
+                    artifact_hashes=record.artifact_hashes,
+                    directory=record.directory,
+                ),
+                normalization=LoadedNormalizationState(
+                    receipt=receipt,
+                    source_audio_path=source_audio,
+                    normalized_audio_path=normalized_audio,
+                    receipt_artifact=verified_artifact(_RECEIPT),
+                    audio_bindings_artifact=verified_artifact(_AUDIO_ARTIFACTS),
+                ),
+                recognition=LoadedRecognitionState(
+                    request_artifact=recognition_request_artifact,
+                    request=recognition_request,
+                    independence=recognition_independence,
+                    evidence=evidence,
+                    speaker_base_evidence=speaker_base_evidence,
+                    speaker_provenance=speaker_provenance,
+                    orthographic_projections=orthographic_projections,
+                    request_bytes=verified_artifact(_RECOGNITION_REQUEST),
+                    independence_bytes=verified_artifact(_RECOGNITION_INDEPENDENCE),
+                    evidence_bytes=verified_artifact(_EVIDENCE),
+                    speaker_base_evidence_bytes=verified_artifact(_BASE_PRIMARY_EVIDENCE),
+                    speaker_provenance_bytes=verified_artifact(_SPEAKER_PROVENANCE),
+                    orthographic_projection_bytes=(
+                        verified_artifact(_ORTHOGRAPHIC_PROJECTIONS)
+                        if orthographic_projections
+                        else None
+                    ),
+                    raw_outputs=verified_set_v3(set(raw_outputs)),
+                    orthographic_raw_outputs=verified_set_v3(set(orthographic_raw_outputs)),
+                ),
+                references=LoadedReferenceState(
+                    enrollments=enrolled_artifacts,
+                    evidence=references,
+                    retrievals=retrievals,
+                    retrieval_policy=reference_retrieval_policy,
+                    enrollments_bytes=verified_artifact(_REFERENCE_ENROLLMENTS),
+                    evidence_bytes=verified_artifact(_REFERENCES),
+                    retrievals_bytes=verified_artifact(_RETRIEVALS),
+                    retrieval_policy_bytes=verified_artifact(_REFERENCE_RETRIEVAL_POLICY),
+                    source_snapshots=verified_set_v3(set(reference_source_snapshots)),
+                    extraction_snapshots=verified_set_v3(set(reference_extraction_snapshots)),
+                ),
+                speech_coverage=LoadedSpeechCoverageState(
+                    receipt=speech_coverage_receipt,
+                    receipt_bytes=verified_artifact(_SPEECH_COVERAGE),
+                    raw_outputs=verified_set_v3(set(speech_coverage_raw_artifacts)),
+                ),
+                audit=LoadedNativeAuditState(
+                    audit_basis=audit_basis,
+                    audit_plan=audit_plan,
+                    candidate_signals=signals,
+                    candidate_groups=groups,
+                    execution_plan=execution,
+                    text_sources=LoadedNativeSourceSet(
+                        modality="text",
+                        index_artifact=verified_artifact(_NATIVE_TEXT_SOURCE_INDEX),
+                        sources=text_bindings,
+                    ),
+                    audio_sources=LoadedNativeSourceSet(
+                        modality="audio",
+                        index_artifact=verified_artifact(_NATIVE_AUDIO_EXECUTION_PLANS_V3),
+                        sources=(),
+                    ),
+                    text_run=text_run,
+                    audio_run=audio_run,
+                    aggregate=aggregate,
+                    audit_artifacts=LoadedNativeAuditArtifacts(
+                        audit_plan=verified_artifact(_NATIVE_AUDIT_PLAN),
+                        candidate_signals=verified_artifact(_NATIVE_CANDIDATE_SIGNALS),
+                        candidate_groups=verified_artifact(_NATIVE_CANDIDATE_GROUPS),
+                        execution_plan=verified_artifact(_NATIVE_TEXT_EXECUTION_PLAN_V3),
+                        text_record=verified_artifact(_NATIVE_TEXT_RECORD),
+                        audio_record=verified_artifact(_NATIVE_AUDIO_RECORDS_V3),
+                        aggregate=verified_artifact(_NATIVE_SELECTIVE_AGGREGATE_V3),
+                    ),
+                    text_run_artifacts=LoadedNativeTextRunArtifacts(
+                        index_artifact=verified_artifact(_NATIVE_TEXT_RUN_INDEX),
+                        requests=verified_set_v3(text_request_names),
+                        responses=verified_set_v3(text_response_names),
+                    ),
+                    audio_run_artifacts=LoadedNativeAudioRunArtifacts(
+                        index_artifact=verified_artifact(_NATIVE_AUDIO_RUN_INDEX),
+                        requests=verified_set_v3(audio_request_names),
+                        responses=verified_set_v3(audio_response_names),
+                        clips=verified_set_v3(audio_clip_names),
+                        journals=verified_set_v3(audio_journal_names),
+                    ),
+                    runtime=LoadedNativeRuntimeState(
+                        common=common_runtime,
+                        text_identity=stored_text_identity,
+                        text_policy=stored_text_policy,
+                        audio_identity=stored_audio_identity,
+                        audio_policy=stored_audio_policy,
+                        audit_policy=stored_audit_policy,
+                        execution_policy=stored_execution_policy,
+                        identities_artifact=verified_artifact(_ADAPTER_IDENTITIES),
+                    ),
+                    resolution=resolution,
+                    audio_runs=tuple(audio_runs),
+                    audio_execution_plans=executions,  # type: ignore[arg-type]
+                    audio_round_receipts=receipts,  # type: ignore[arg-type]
+                ),
+            )
+            if require_active:
+                self._validate_active_ledger_lineage(loaded)
+            return loaded
 
         audit_plan = self._load_native_generation_model(
             generation_id,
@@ -11922,8 +14410,17 @@ class PodcastSubtitleV2:
             raise GenerationIsolationError(
                 "Generation Adapter identity artifact is invalid JSON"
             ) from exc
-        native_stage = "native_full_audit_aggregate" in manifest.stage_artifact_hashes
-        native_artifact = _NATIVE_AGGREGATE in record.artifact_hashes
+        native_stage = any(
+            name in manifest.stage_artifact_hashes
+            for name in (
+                "native_full_audit_aggregate",
+                "native_selective_audit_aggregate_v3",
+            )
+        )
+        native_artifact = any(
+            name in record.artifact_hashes
+            for name in (_NATIVE_AGGREGATE, _NATIVE_SELECTIVE_AGGREGATE_V3)
+        )
         native_identity = (
             isinstance(identity_discriminant, dict)
             and "native_text_full_audit" in identity_discriminant
@@ -12354,23 +14851,12 @@ class PodcastSubtitleV2:
                 )
         if transcript.reference_evidence_hash != reference_evidence_set_hash(references):
             raise GenerationIsolationError("Reference Evidence snapshot hash mismatch")
-        for item in references:
-            enrolled = enrolled_by_source.get(item.artifact.source_id)
-            if enrolled is None:
-                raise GenerationIsolationError(
-                    "stored Reference Evidence lacks a persisted Enrollment"
-                )
-            try:
-                snapshot = extraction_snapshots_by_digest[enrolled.extracted_text.sha256]
-            except KeyError as exc:
-                raise GenerationIsolationError(
-                    "stored Reference Evidence extraction snapshot is missing"
-                ) from exc
-            verify_reference_evidence_membership(
-                item,
-                snapshot,
-                enrolled_artifact=enrolled,
-            )
+        _verify_reference_membership_batches(
+            references,
+            enrolled_by_source=enrolled_by_source,
+            extraction_snapshots_by_digest=extraction_snapshots_by_digest,
+            context="stored Generation",
+        )
         reference_invocations = {item.invocation_id for item in retrievals}
         if len(reference_invocations) > 1:
             raise GenerationIsolationError("stored Reference Retrieval Receipts cross invocations")
@@ -13354,6 +15840,10 @@ class PodcastSubtitleV2:
 __all__ = [
     "AcceptedGeneration",
     "CreateRequest",
+    "EvidencePrefixMigrationOutcome",
+    "EvidencePrefixMigrationRequest",
+    "NativeAuditBasisMigrationOutcome",
+    "NativeAuditBasisMigrationRequest",
     "GenerationOutcome",
     "Interrupted",
     "ModuleInvariantError",

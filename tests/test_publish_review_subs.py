@@ -151,6 +151,65 @@ def test_cut_page_warns_when_srt_missing(env):
     assert "CC 也會缺" in r.text
 
 
+def test_status_distinguishes_upload_processing_caption_and_platform_publish(env):
+    client, _ = env
+    from shared.release_store import get_release, update_target
+
+    target = get_release("20260415 ep", "SL3")["targets"][0]
+    update_target(
+        target["id"],
+        status="uploaded",
+        video_id="video-1",
+        video_processing_status="processed",
+        platform_privacy_status="public",
+        caption_status="missing",
+        reconciliation_error="zh-TW caption missing",
+        last_reconciled_at="2026-08-19T00:00:00+00:00",
+    )
+
+    payload = client.get("/bridge/publish/20260415%20ep/SL3/status").json()
+
+    assert payload["upload_status"] == "uploaded"
+    assert payload["processing_status"] == "processed"
+    assert payload["caption_status"] == "missing"
+    assert payload["privacy_status"] == "public"
+    assert payload["published"] is True
+    assert payload["can_retry_cc"] is True
+    assert payload["last_reconciled_at"] == "2026-08-19T00:00:00+00:00"
+
+
+def test_retry_cc_route_starts_cc_only_worker_without_reupload(
+    env,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    client, episode_dir = env
+    import thousand_sunny.routers.publish_review as publish_review
+    from shared.release_store import get_release, update_target
+
+    target = get_release("20260415 ep", "SL3")["targets"][0]
+    update_target(
+        target["id"],
+        status="uploaded",
+        video_id="video-1",
+        caption_status="missing",
+    )
+    (episode_dir.parent / "youtube_token.json").write_text("{}", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(
+        publish_review.subprocess,
+        "Popen",
+        lambda command, **kwargs: calls.append((command, kwargs)),
+    )
+
+    response = client.post("/bridge/publish/20260415%20ep/SL3/retry-cc")
+
+    assert response.status_code == 303
+    command, kwargs = calls[0]
+    assert "--cc-only" in command
+    assert "--run" not in command
+    assert kwargs["env"]["NAKAMA_DATA_DIR"] == str(episode_dir.parent)
+
+
 def test_short_page_uses_burned_only_policy_even_if_tight_srt_exists(env):
     client, ep = env
     from shared import release_store
@@ -565,3 +624,30 @@ def test_publish_worker_log_honors_runtime_data_dir(env, monkeypatch, tmp_path):
 def test_json_dumps_guard():
     """SRT 內容不經 json 序列化（避免有人未來把它塞進 JSON 回應）。"""
     assert json.dumps(srt_to_vtt(SRT), ensure_ascii=False).startswith('"WEBVTT')
+
+
+def test_review_shows_the_same_subtitle_the_uploader_will_send(tmp_path, monkeypatch):
+    """審核頁與上傳器必須讀同一份——不然驗證的對象跟交付的對象不是同一個。
+
+    2026-08-29：上傳器改讀 Release 字幕、審核頁沒跟上，修修看到的是 260 秒舊剪輯
+    的 125 句，實際要上架的是 492 秒成品的 226 句。
+    """
+    import inspect
+
+    import scripts.publish_upload as publish_upload
+    from thousand_sunny.routers import publish_review
+
+    review_src = inspect.getsource(publish_review.publish_subs)
+    upload_src = inspect.getsource(publish_upload)
+    assert "release_subtitle" in review_src
+    assert "release_subtitle" in upload_src
+
+
+def test_thumbnail_response_refuses_to_be_cached_blind(tmp_path, monkeypatch):
+    """縮圖網址固定但底下的圖會換——沒有 no-cache 就會顯示上一張。"""
+    import inspect
+
+    from thousand_sunny.routers import publish_review
+
+    src = inspect.getsource(publish_review.publish_thumb)
+    assert "no-cache" in src

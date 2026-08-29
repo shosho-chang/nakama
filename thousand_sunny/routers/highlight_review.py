@@ -6,6 +6,9 @@ import hashlib
 import json
 import math
 import os
+import re
+import subprocess
+import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,6 +20,17 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
+from agents.brook.script_video.editorial_master import (
+    EditorialMasterContractError,
+    EditorialMasterRequest,
+)
+from agents.brook.script_video.finished_cut_production import (
+    build_current_release_reader,
+)
+from agents.usopp.publish_timeline import export_matches_current_release, packaging_cut_id
+from scripts.packaging_manifest import load_manifest, stage_parallel_jobs
+from shared.background_job import atomic_job_write, job_expired, load_job, new_job
+from shared.config import get_db_path, get_vault_path
 from shared.highlight_shortlist import (
     HighlightDataError,
     append_review_feedback,
@@ -24,7 +38,12 @@ from shared.highlight_shortlist import (
     load_review_feedback,
     write_winners,
 )
+from shared.schemas.packaging import parse_packages
 from shared.tight_srt import srt_to_vtt
+from thousand_sunny.adapters.finished_cut_review import (
+    FinishedCutReviewAdapter,
+    ReviewState,
+)
 from thousand_sunny.auth import check_auth
 
 page_router = APIRouter(prefix="/bridge/highlights", tags=["bridge-highlights"])
@@ -34,9 +53,11 @@ _templates = Jinja2Templates(
 _MAX_CANDIDATES = 5
 _MAX_FEEDBACK = 2000
 _MAX_REPLACEMENT = 500
-_FINISHED_MANIFEST_SCHEMA = "nakama.finished_cut_review_manifest.v1"
-_FINISHED_FEEDBACK_SCHEMA = "nakama.finished_cut_review_feedback.v1"
-_FINISHED_FEEDBACK_FILE = "finished_review_feedback.v1.json"
+_MAX_OVERALL_FEEDBACK = 5000
+_FINISHED_MANIFEST_SCHEMA = "nakama.finished_cut_review_manifest.v3"
+_FINISHED_FEEDBACK_SCHEMA = "nakama.finished_cut_review_feedback.v3"
+_FINISHED_FEEDBACK_FILE = "finished_review_feedback.v3.json"
+_PARALLEL_WORK_PLAN_SCHEMA = "nakama.highlight_parallel_work_plan.v1"
 _SHORT_FINISHED_FEEDBACK_FILE = "short_finished_review_feedback.v1.json"
 _SHA256_LENGTH = 64
 _ACTION_LABELS = {
@@ -49,13 +70,54 @@ _ACTION_LABELS = {
     "comment": "留言",
 }
 _LANE_LABELS = {
-    "b_roll": "B-ROLL",
-    "hero_title": "HERO TITLE",
-    "fullscreen_transition": "FULLSCREEN TRANSITION",
+    "b_roll": "實拍素材／B-ROLL",
+    "identity_card": "人物識別卡／IDENTITY",
+    "hero_title": "主標題／HERO",
+    "supporting_title": "補充標題／SUPPORTING",
+    "badge": "BADGE",
+    "fullscreen_transition": "滿版章節卡／CHAPTER",
     "title_card": "字卡與斷句",
     "visual_effect": "ICON／動畫",
     "pacing": "剪輯節奏",
 }
+_COMPONENT_ACTIONS = {
+    "b_roll": ["approve", "remove", "replace_asset", "change_type", "move", "comment"],
+    "identity_card": ["approve", "remove", "edit_text", "move", "comment"],
+    "hero_title": ["approve", "remove", "edit_text", "move", "comment"],
+    "supporting_title": ["approve", "remove", "edit_text", "move", "comment"],
+    "fullscreen_transition": ["approve", "remove", "edit_text", "move", "comment"],
+    "visual_effect": [
+        "approve",
+        "remove",
+        "replace_asset",
+        "change_type",
+        "move",
+        "comment",
+    ],
+}
+_PUBLISH_PREP_PROCESSES: dict[tuple[str, str], subprocess.Popen] = {}
+_PUBLISH_PREP_TIMEOUT_SECONDS = 7200
+
+
+def _publish_prep_state(episode_dir: Path, cut_id: str) -> dict | None:
+    receipt = episode_dir / "highlights" / "exports" / f".publish_prep_{cut_id}.json"
+    payload = load_job(receipt)
+    if not payload or payload.get("status") != "rendering":
+        return payload
+    key = (str(episode_dir.resolve()), cut_id)
+    process = _PUBLISH_PREP_PROCESSES.get(key)
+    exit_code = process.poll() if process is not None else None
+    if (process is not None and exit_code is not None) or job_expired(payload):
+        reason = (
+            f"background child exited ({exit_code})"
+            if process is not None and exit_code is not None
+            else "background attempt exceeded its deadline"
+        )
+        payload = {**payload, "status": "failed", "exit_code": exit_code, "error": reason}
+        atomic_job_write(receipt, payload)
+    return payload
+
+
 _SHORT_REVIEW_LANES = ("title_card", "b_roll", "visual_effect", "pacing")
 _SHORT_COMPONENT_ACTIONS = {
     "title_card": ["approve", "edit_text", "move", "comment"],
@@ -134,6 +196,260 @@ def _review_format(value: str) -> str:
     if normalized not in {"long", "short"}:
         raise HTTPException(status_code=400, detail="format must be long or short")
     return normalized
+
+
+def _visual_time_range(t0: object, t1: object) -> str:
+    def stamp(value: object) -> str:
+        seconds = float(value)
+        minutes, remainder = divmod(seconds, 60)
+        return f"{int(minutes):02d}:{remainder:06.3f}"
+
+    return f"{stamp(t0)}–{stamp(t1)}"
+
+
+def _finished_cut_event_view(cut: dict[str, Any]) -> dict[str, object]:
+    """Project only semantic events carried by the sealed current Release."""
+
+    release_id = cut.get("release_id")
+    if release_id is None:
+        # Short 走 run_short_review 的 packet，沒有 sealed Release，也沒有語意 event。
+        return {
+            "status": "review_packet",
+            "status_label": "SHORT REVIEW PACKET",
+            "release_id": None,
+            "events": [],
+        }
+    return {
+        "status": "sealed_current",
+        "status_label": "FINISHED CUT RELEASE · SEALED CURRENT",
+        "release_id": release_id,
+        "events": cut.get("events") or [],
+    }
+
+
+def _require_final_qa_clear(episode_dir: Path, cut_id: str) -> None:
+    """Fail closed unless final QA explicitly covers the selected cut."""
+    qa_path = episode_dir / "highlights" / "qa_final.json"
+    if not qa_path.is_file():
+        raise HTTPException(status_code=409, detail="qa_final.json 不存在；先完成成片 Final QA")
+    try:
+        payload = json.loads(qa_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(
+            status_code=409, detail="qa_final.json 無法讀取或不是有效 JSON"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=409, detail="qa_final.json 根節點必須是 object")
+    findings = payload.get("findings")
+    clean = payload.get("clean")
+    if not isinstance(findings, list) or not isinstance(clean, list):
+        raise HTTPException(status_code=409, detail="qa_final.json 缺少 findings/clean 清單")
+
+    covered = False
+    critical_ids: list[str] = []
+    for finding in findings:
+        if not isinstance(finding, dict):
+            raise HTTPException(status_code=409, detail="qa_final.json findings 格式錯誤")
+        finding_id = finding.get("id")
+        severity = finding.get("severity")
+        if not isinstance(finding_id, str) or not finding_id.strip():
+            raise HTTPException(status_code=409, detail="qa_final.json finding 缺少 id")
+        if not isinstance(severity, str) or not severity.strip():
+            raise HTTPException(status_code=409, detail="qa_final.json finding 缺少 severity")
+        if finding_id == cut_id:
+            covered = True
+            if severity.strip().lower() == "critical":
+                critical_ids.append(str(finding.get("check") or finding_id))
+
+    for entry in clean:
+        clean_id = (
+            entry
+            if isinstance(entry, str)
+            else entry.get("id")
+            if isinstance(entry, dict)
+            else None
+        )
+        if clean_id == cut_id:
+            covered = True
+
+    if not covered:
+        raise HTTPException(status_code=409, detail=f"qa_final.json 尚未覆蓋選定成片 {cut_id}")
+    if critical_ids:
+        raise HTTPException(
+            status_code=409,
+            detail=f"qa_final.json 的 {cut_id} 尚有 critical：{', '.join(critical_ids)}",
+        )
+
+
+_CURRENT_RELEASE_INSPECTOR_FACTORY = build_current_release_reader
+
+
+def _release_artifact(artifact: Any) -> dict[str, Any]:
+    return {
+        "path": artifact.reference,
+        "bytes": artifact.bytes,
+        "sha256": artifact.sha256,
+        "duration_seconds": artifact.duration_sec,
+        "probe": dict(artifact.probe),
+    }
+
+
+def _release_component(component: Any) -> dict[str, Any]:
+    actions = _COMPONENT_ACTIONS[component.lane]
+    return {
+        "component_id": component.component_id,
+        "event_id": component.event_id,
+        "semantic_kind": component.semantic_kind,
+        "implementation_kind": component.implementation_kind,
+        "lane": component.lane,
+        "display": component.display,
+        "t0": component.t0,
+        "t1": component.t1,
+        "asset_ref": component.asset_ref,
+        "actions": [{"value": action, "label": _ACTION_LABELS[action]} for action in actions],
+    }
+
+
+def _release_event(event: Any) -> dict[str, Any]:
+    return {
+        "event_id": event.event_id,
+        "master_cue_ids": list(event.master_cue_ids),
+        "text": event.text,
+        "text_hash": event.text_hash,
+        "t0": event.t0,
+        "t1": event.t1,
+        "time_range": _visual_time_range(event.t0, event.t1),
+        "section_id": event.section_id,
+        "intent": event.intent,
+        "display": event.display,
+        "semantic_kind": event.semantic_kind,
+        "implementation_kind": event.implementation_kind,
+        "lane": event.lane,
+        "asset_ref": event.asset_ref,
+        "visual_status": event.visual_status,
+        "intentional_aroll": event.intentional_aroll,
+    }
+
+
+_MOVE_TIME_RE = re.compile(r"^(?:(\d+):)?(\d{1,2}):(\d{1,2}(?:\.\d+)?)$")
+
+
+def parse_move_seconds(raw: str) -> float:
+    """Accept 1:49 / 01:49.5 / 1:02:03, or a bare number of seconds.
+
+    修修 2026-08-29 在 finished review 上的原話：「像 1 分 49 秒，我就要自己換算成
+    109 秒」。播放器與 timeline 都用 mm:ss 呈現，只有這個欄位要求心算。
+    """
+    text = raw.strip()
+    if not text:
+        raise ValueError("move time is required")
+    match = _MOVE_TIME_RE.match(text)
+    if match is None:
+        return float(text)
+    hours, minutes, seconds = match.groups()
+    second_value = float(seconds)
+    minute_value = int(minutes)
+    if second_value >= 60 or (hours is not None and minute_value >= 60):
+        raise ValueError(f"move time is not a clock reading: {text}")
+    return int(hours or 0) * 3600 + minute_value * 60 + second_value
+
+
+def format_move_seconds(value: object) -> str:
+    """Render a stored move time back as the clock reading the reviewer typed."""
+    if value is None or value == "":
+        return ""
+    seconds = float(value)
+    minutes, remainder = divmod(seconds, 60)
+    hours, minutes = divmod(int(minutes), 60)
+    body = f"{minutes:02d}:{remainder:05.2f}".rstrip("0").rstrip(".")
+    return f"{hours}:{body}" if hours else body
+
+
+def _load_finished_manifest(episode_slug: str) -> dict[str, Any]:
+    """Project only the exact current v3 Release index into the Bridge view model."""
+
+    episode_dir = _episode_dir(episode_slug)
+    review = FinishedCutReviewAdapter(_CURRENT_RELEASE_INSPECTOR_FACTORY(episode_dir)).load(
+        episode_slug
+    )
+    if review.state is ReviewState.MISSING:
+        raise HTTPException(status_code=404, detail="finished cut current Release is missing")
+    if review.state is ReviewState.INVALID:
+        raise _manifest_error(review.error or "current Release is invalid")
+
+    current_path = episode_dir / "highlights" / "review" / "finished_review_manifest_current.json"
+    try:
+        current_bytes = current_path.read_bytes()
+    except OSError as exc:  # The inspector already proved this path; treat races as drift.
+        raise _manifest_error("current Release changed during inspection") from exc
+
+    cuts: list[dict[str, Any]] = []
+    for cut in review.cuts:
+        if cut.preview.duration_sec is None or cut.preview.duration_sec <= 0:
+            raise _manifest_error(f"{cut.cut_id} preview duration is unavailable")
+        components = [_release_component(component) for component in cut.components]
+        events = [_release_event(event) for event in cut.events]
+        stock_video_count = sum(
+            component["lane"] == "b_roll" and component["implementation_kind"] == "stock_video"
+            for component in components
+        )
+        cuts.append(
+            {
+                "release_id": cut.release_id,
+                "cut_id": cut.cut_id,
+                "format": cut.format,
+                "title": cut.cut_id,
+                "artifacts": {
+                    "preview": _release_artifact(cut.preview),
+                    "subtitles": _release_artifact(cut.subtitle),
+                },
+                "events": events,
+                "components": components,
+                "review_components": components,
+                "component_counts": {
+                    lane: sum(component["lane"] == lane for component in components)
+                    for lane in _COMPONENT_ACTIONS
+                },
+                "stock_video_count": stock_video_count,
+                "stock_video_missing": max(0, 3 - stock_video_count),
+            }
+        )
+    if not cuts:
+        raise _manifest_error("current Release has no cuts")
+    lanes = list(_COMPONENT_ACTIONS)
+    return {
+        "schema": _FINISHED_MANIFEST_SCHEMA,
+        "episode_id": episode_slug,
+        "stage": 5,
+        "gate": {"kind": "finished_cut_review", "status": "ready_for_review"},
+        "cuts": cuts,
+        "feedback_contract": {
+            "review_lanes": lanes,
+            "component_actions": _COMPONENT_ACTIONS,
+            "gate_actions": ["request_changes", "approve_cut", "approve_all"],
+        },
+        "lane_labels": {lane: _LANE_LABELS[lane] for lane in lanes},
+        "_path": current_path,
+        "_review_dir": current_path.parent,
+        "_episode_dir": episode_dir,
+        "_sha256": hashlib.sha256(current_bytes).hexdigest(),
+    }
+
+
+def _load_review_manifest(episode_slug: str, review_format: str) -> dict[str, Any]:
+    """Short 走 run_short_review 的 packet；長片走 v3 current Release。"""
+    if review_format == "short":
+        return _load_short_finished_manifest(episode_slug)
+    manifest = _load_finished_manifest(episode_slug)
+    cuts = [cut for cut in manifest["cuts"] if cut["format"] == review_format]
+    if not cuts:
+        raise HTTPException(
+            status_code=404,
+            detail=f"finished cut current Release has no {review_format} cuts",
+        )
+    manifest["cuts"] = cuts
+    manifest["review_format"] = review_format
+    return manifest
 
 
 def _short_cut_sort_key(path: Path) -> tuple[int, str]:
@@ -297,155 +613,6 @@ def _load_short_finished_manifest(episode_slug: str) -> dict[str, Any]:
     return public_manifest
 
 
-def _load_review_manifest(episode_slug: str, review_format: str) -> dict[str, Any]:
-    if review_format == "short":
-        return _load_short_finished_manifest(episode_slug)
-    manifest = _load_finished_manifest(episode_slug)
-    manifest["review_format"] = "long"
-    return manifest
-
-
-def _latest_finished_manifest_path(review_dir: Path) -> Path:
-    manifests = sorted(review_dir.glob("finished_review_manifest_*.json"))
-    if not manifests:
-        raise HTTPException(status_code=404, detail="finished review manifest not found")
-    return manifests[-1]
-
-
-def _component_display(component: dict[str, Any]) -> str:
-    lane = component["lane"]
-    if lane == "hero_title":
-        return str(component.get("text") or "未命名 Hero title")
-    if lane == "fullscreen_transition":
-        variables = component.get("vars")
-        if isinstance(variables, dict) and variables.get("title"):
-            return str(variables["title"])
-    return str(component.get("note") or component.get("slug") or component["component_id"])
-
-
-def _load_finished_manifest(episode_slug: str) -> dict[str, Any]:
-    """Load and validate the latest Stage 5 contract, retaining its byte hash."""
-    episode_dir = _episode_dir(episode_slug)
-    review_dir = episode_dir / "highlights" / "review"
-    path = _latest_finished_manifest_path(review_dir)
-    try:
-        raw = path.read_bytes()
-        manifest = json.loads(raw.decode("utf-8-sig"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise _manifest_error(f"cannot read {path.name}") from exc
-    if not isinstance(manifest, dict):
-        raise _manifest_error("root must be an object")
-    if manifest.get("schema") != _FINISHED_MANIFEST_SCHEMA:
-        raise _manifest_error(f"schema must be {_FINISHED_MANIFEST_SCHEMA}")
-    if manifest.get("episode_id") != episode_slug:
-        raise _manifest_error("episode_id does not match URL slug")
-    if manifest.get("stage") != 5:
-        raise _manifest_error("stage must be 5")
-    gate = manifest.get("gate")
-    if not isinstance(gate, dict) or gate.get("kind") != "finished_cut_review":
-        raise _manifest_error("gate.kind must be finished_cut_review")
-    contract = manifest.get("feedback_contract")
-    if not isinstance(contract, dict):
-        raise _manifest_error("feedback_contract is required")
-    lanes = contract.get("review_lanes")
-    actions = contract.get("component_actions")
-    if not isinstance(lanes, list) or not lanes or not all(isinstance(lane, str) for lane in lanes):
-        raise _manifest_error("feedback_contract.review_lanes must be a non-empty string list")
-    if len(lanes) != len(set(lanes)) or not isinstance(actions, dict):
-        raise _manifest_error("review lanes/actions are malformed")
-    for lane in lanes:
-        lane_actions = actions.get(lane)
-        if (
-            not isinstance(lane_actions, list)
-            or not lane_actions
-            or not all(
-                isinstance(action, str) and action in _ACTION_LABELS for action in lane_actions
-            )
-        ):
-            raise _manifest_error(f"component actions are invalid for lane {lane}")
-
-    cuts = manifest.get("cuts")
-    if not isinstance(cuts, list) or not cuts:
-        raise _manifest_error("cuts must be a non-empty list")
-    cut_ids: set[str] = set()
-    component_ids: set[str] = set()
-    for cut in cuts:
-        if not isinstance(cut, dict):
-            raise _manifest_error("each cut must be an object")
-        cut_id = cut.get("cut_id")
-        if not isinstance(cut_id, str) or not cut_id or cut_id in cut_ids:
-            raise _manifest_error("cut_id must be unique and non-empty")
-        cut_ids.add(cut_id)
-        artifacts = cut.get("artifacts")
-        if not isinstance(artifacts, dict):
-            raise _manifest_error(f"{cut_id} artifacts are required")
-        for artifact_name in ("preview", "subtitles"):
-            artifact = artifacts.get(artifact_name)
-            if not isinstance(artifact, dict):
-                raise _manifest_error(f"{cut_id} {artifact_name} artifact is required")
-            if not isinstance(artifact.get("path"), str) or not artifact["path"]:
-                raise _manifest_error(f"{cut_id} {artifact_name}.path is required")
-            if (
-                not isinstance(artifact.get("bytes"), int)
-                or isinstance(artifact["bytes"], bool)
-                or artifact["bytes"] < 0
-            ):
-                raise _manifest_error(f"{cut_id} {artifact_name}.bytes is invalid")
-            if not _is_sha256(artifact.get("sha256")):
-                raise _manifest_error(f"{cut_id} {artifact_name}.sha256 is invalid")
-        duration = artifacts["preview"].get("duration_seconds")
-        if (
-            not isinstance(duration, (int, float))
-            or isinstance(duration, bool)
-            or not math.isfinite(float(duration))
-            or duration <= 0
-        ):
-            raise _manifest_error(f"{cut_id} preview duration is invalid")
-        components = cut.get("components")
-        if not isinstance(components, list):
-            raise _manifest_error(f"{cut_id} components must be a list")
-        review_components: list[dict[str, Any]] = []
-        for component in components:
-            if not isinstance(component, dict):
-                raise _manifest_error(f"{cut_id} component must be an object")
-            lane = component.get("lane")
-            if lane not in lanes:
-                continue
-            component_id = component.get("component_id")
-            if (
-                not isinstance(component_id, str)
-                or not component_id
-                or component_id in component_ids
-            ):
-                raise _manifest_error("review component_id must be unique and non-empty")
-            component_ids.add(component_id)
-            t0, t1 = component.get("t0"), component.get("t1")
-            if (
-                not isinstance(t0, (int, float))
-                or isinstance(t0, bool)
-                or not isinstance(t1, (int, float))
-                or isinstance(t1, bool)
-                or not math.isfinite(float(t0))
-                or not math.isfinite(float(t1))
-                or t0 < 0
-                or t1 <= t0
-                or t1 > duration + 0.001
-            ):
-                raise _manifest_error(f"{component_id} has an invalid timeline range")
-            normalized = dict(component)
-            normalized["display"] = _component_display(normalized)
-            normalized["actions"] = [
-                {"value": action, "label": _ACTION_LABELS[action]} for action in actions[lane]
-            ]
-            review_components.append(normalized)
-        cut["review_components"] = review_components
-    manifest["_path"] = path
-    manifest["_review_dir"] = review_dir
-    manifest["_sha256"] = hashlib.sha256(raw).hexdigest()
-    manifest["lane_labels"] = {lane: _LANE_LABELS.get(lane, lane.upper()) for lane in lanes}
-    return manifest
-
-
 def _safe_artifact_path(
     manifest: dict[str, Any], cut_id: str, artifact_name: str
 ) -> tuple[Path, dict]:
@@ -454,18 +621,32 @@ def _safe_artifact_path(
         raise HTTPException(status_code=404, detail="cut is not in finished review manifest")
     artifact = cut["artifacts"][artifact_name]
     review_dir = manifest["_review_dir"].resolve()
-    path = Path(artifact["path"]).resolve()
+    reference = Path(artifact["path"])
+    if reference.is_absolute():
+        # Short review packet 的 receipt 記絕對路徑，界線是 review 目錄。
+        root, path = review_dir, reference.resolve()
+    else:
+        # v3 Release 的 artifact 一律 episode-relative。
+        episode_root = manifest.get("_episode_dir")
+        if episode_root is None:
+            raise HTTPException(status_code=403, detail="artifact reference is not resolvable")
+        root = Path(episode_root).resolve()
+        path = (root / reference).resolve()
     try:
-        path.relative_to(review_dir)
+        path.relative_to(root)
     except ValueError as exc:
         raise HTTPException(
-            status_code=403, detail="artifact is outside episode review directory"
+            status_code=403, detail="artifact is outside the episode directory"
         ) from exc
     if not path.is_file():
         raise HTTPException(status_code=404, detail=f"{artifact_name} artifact is missing")
     if path.stat().st_size != artifact["bytes"]:
         raise HTTPException(
             status_code=409, detail=f"{artifact_name} file size does not match manifest"
+        )
+    if _file_sha256(path) != artifact["sha256"]:
+        raise HTTPException(
+            status_code=409, detail=f"{artifact_name} sha256 does not match manifest"
         )
     return path, artifact
 
@@ -531,8 +712,204 @@ def _atomic_json_write(path: Path, payload: dict[str, Any]) -> None:
     os.replace(temporary.name, path)
 
 
+def _strict_json_object(pairs: list[tuple[str, object]]) -> dict:
+    result: dict = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate key: {key}")
+        result[key] = value
+    return result
+
+
+def _stage_parallel_work_plan(
+    episode_dir: Path,
+    selected_ids: list[str],
+    candidates_by_id: dict[str, dict],
+    *,
+    dry_run: bool = False,
+) -> None:
+    """Persist the two approved work branches and mirror them via the D14 writer."""
+    path = episode_dir / "highlights" / "packaging-plan.json"
+    existing_by_id: dict[str, dict] = {}
+    created_at = datetime.now(timezone.utc).isoformat()
+    if path.is_file():
+        try:
+            existing = json.loads(
+                path.read_text(encoding="utf-8"), object_pairs_hook=_strict_json_object
+            )
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=422, detail=f"packaging-plan.json 驗證失敗：{exc}"
+            ) from exc
+        if (
+            not isinstance(existing, dict)
+            or existing.get("schema") != _PARALLEL_WORK_PLAN_SCHEMA
+            or existing.get("episode_id") != episode_dir.name
+            or not isinstance(existing.get("cuts"), list)
+        ):
+            raise HTTPException(status_code=422, detail="packaging-plan.json schema 不合法")
+        for row in existing["cuts"]:
+            cut_id = row.get("cut_id") if isinstance(row, dict) else None
+            if not isinstance(cut_id, str) or cut_id in existing_by_id:
+                raise HTTPException(
+                    status_code=422, detail="packaging-plan.json cut_id 重複或不合法"
+                )
+            existing_by_id[cut_id] = row
+        created_at = str(existing.get("created_at") or created_at)
+
+    selected_at = datetime.now(timezone.utc).isoformat()
+    jobs: list[dict] = []
+    for rank, cut_id in enumerate(selected_ids, start=1):
+        previous = existing_by_id.get(cut_id, {})
+        video_export_ready = (episode_dir / "highlights" / "exports" / f"{cut_id}.mp4").is_file()
+        branches: dict[str, dict] = {}
+        for branch in ("video", "packaging"):
+            prior_branch = previous.get(branch)
+            prior_status = prior_branch.get("status") if isinstance(prior_branch, dict) else None
+            if prior_status not in {"queued", "running", "ready", "failed"}:
+                prior_status = "ready" if branch == "video" and video_export_ready else "queued"
+            branches[branch] = {"status": prior_status}
+        jobs.append(
+            {
+                "cut_id": cut_id,
+                "rank": rank,
+                "title": candidates_by_id[cut_id].get("title") or cut_id,
+                "selected_at": previous.get("selected_at") or selected_at,
+                **branches,
+            }
+        )
+
+    packaging_dirs = _packaging_episode_directories(episode_dir.name)
+    if len(packaging_dirs) > 1:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{episode_dir.name} 對應到多個 Packaging 目錄：{[p.name for p in packaging_dirs]}"
+            ),
+        )
+    if packaging_dirs:
+        try:
+            load_manifest(packaging_dirs[0])
+            if not dry_run:
+                stage_parallel_jobs(packaging_dirs[0], jobs)
+        except (SystemExit, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=f"manifest.json 驗證失敗：{exc}") from exc
+
+    if dry_run:
+        return
+
+    _atomic_json_write(
+        path,
+        {
+            "schema": _PARALLEL_WORK_PLAN_SCHEMA,
+            "episode_id": episode_dir.name,
+            "created_at": created_at,
+            "updated_at": selected_at,
+            "cuts": jobs,
+        },
+    )
+
+
+def _finished_revision_jobs(
+    *,
+    manifest: dict[str, Any],
+    audit: dict[str, Any],
+    component_feedback: list[dict[str, Any]],
+    overall_feedback: dict[str, str],
+) -> list[dict[str, Any]]:
+    """Mint event-scoped v3 queue rows; never authorize a whole-stage rerun."""
+
+    prior_by_id: dict[str, dict[str, Any]] = {}
+    for prior in audit.get("revisions", []):
+        if not isinstance(prior, dict):
+            continue
+        for prior_job in prior.get("revision_jobs", []):
+            if isinstance(prior_job, dict) and isinstance(prior_job.get("request_id"), str):
+                prior_by_id[prior_job["request_id"]] = prior_job
+
+    jobs: list[dict[str, Any]] = []
+    for row in component_feedback:
+        if row["action"] == "approve":
+            continue
+        feedback_parts = [f"{_ACTION_LABELS[row['action']]}：{row['display']}"]
+        if row["comment"]:
+            feedback_parts.append(f"說明：{row['comment']}")
+        if row["replacement"]:
+            feedback_parts.append(f"替代內容：{row['replacement']}")
+        if row.get("move_to_seconds") is not None:
+            feedback_parts.append(f"移到：{row['move_to_seconds']:.3f} 秒")
+        cut_feedback = overall_feedback.get(row["cut_id"])
+        if cut_feedback:
+            feedback_parts.append(f"本支整體回饋：{cut_feedback}")
+        feedback = "\n".join(feedback_parts)
+        authority = {
+            "episode_id": manifest["episode_id"],
+            "source_manifest_sha256": manifest["_sha256"],
+            "release_id": row["release_id"],
+            "cut_id": row["cut_id"],
+            "event_id": row["event_id"],
+            "feedback": feedback,
+        }
+        canonical = json.dumps(
+            authority,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        request_id = f"finished-revision:{hashlib.sha256(canonical).hexdigest()}"
+        if request_id in prior_by_id:
+            jobs.append(dict(prior_by_id[request_id]))
+            continue
+        jobs.append(
+            {
+                "contract": "finished-cut-production-revision.v3",
+                "request_id": request_id,
+                "status": "queued",
+                "command_id": None,
+                "production_state": None,
+                "reason_code": None,
+                "requested_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": None,
+                "error": None,
+                **authority,
+            }
+        )
+    return jobs
+
+
+def _verified_editorial_master(episode_dir: Path):
+    try:
+        master = EditorialMasterRequest(
+            episode_dir,
+            expected_episode_id=episode_dir.name,
+        ).open()
+    except EditorialMasterContractError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Editorial Master verification failed: {exc}",
+        ) from exc
+
+    candidates_path = episode_dir / "highlights" / "candidates.json"
+    try:
+        candidates_doc = json.loads(candidates_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"candidates.json is missing or unreadable: {exc}",
+        ) from exc
+    if not isinstance(candidates_doc, dict):
+        raise HTTPException(status_code=422, detail="candidates.json must be an object")
+    if candidates_doc.get("editorial_master_lineage") != master.identity():
+        raise HTTPException(
+            status_code=422,
+            detail="candidates.json Editorial Master lineage is stale or mismatched",
+        )
+    return master
+
+
 def _context(episode_slug: str) -> dict:
     episode_dir = _episode_dir(episode_slug)
+    _verified_editorial_master(episode_dir)
     highlights_dir = episode_dir / "highlights"
     try:
         rows = collect(highlights_dir, "long")
@@ -556,12 +933,17 @@ def _context(episode_slug: str) -> dict:
         row["feedback"] = str(latest_feedback.get(row["id"], ""))[:_MAX_FEEDBACK]
         row["selected"] = row["id"] in selected_set
         row["selection_rank"] = selected_rank.get(row["id"])
-    try:
-        finished_manifest = _load_finished_manifest(episode_slug)
-    except HTTPException as exc:
-        if exc.status_code != 404:
-            raise
-        finished_manifest = None
+    # 兩個審核面都算「可以進去了」：長片的 v3 current Release，或短片的 review packet。
+    # 只看長片的話，一集純短片會永遠看不到入口。
+    finished_manifest = None
+    for loader in (_load_finished_manifest, _load_short_finished_manifest):
+        try:
+            finished_manifest = loader(episode_slug)
+        except HTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            continue
+        break
     return {
         "episode_slug": episode_slug,
         "rows": shown,
@@ -574,10 +956,7 @@ def _context(episode_slug: str) -> dict:
 
 def _program_video(episode_slug: str) -> Path:
     episode_dir = _episode_dir(episode_slug)
-    candidates = sorted(episode_dir.glob("Default_*.mp4"))
-    if not candidates:
-        raise HTTPException(status_code=404, detail="program video not found")
-    return candidates[0]
+    return Path(_verified_editorial_master(episode_dir).media_path)
 
 
 @page_router.get("/{episode_slug}", response_class=HTMLResponse)
@@ -658,7 +1037,13 @@ async def highlight_review_decide(
         if value:
             feedback[candidate_id] = value
 
-    highlights_dir = _episode_dir(episode_slug) / "highlights"
+    episode_dir = _episode_dir(episode_slug)
+    # ``await request.form()`` yields control after the page-context check.  Re-open
+    # the trust root immediately before durable writes so a replaced Master or
+    # candidates document cannot be copied into winners.json through that gap.
+    _verified_editorial_master(episode_dir)
+    highlights_dir = episode_dir / "highlights"
+    _stage_parallel_work_plan(episode_dir, selected_ids, by_id, dry_run=True)
     try:
         # Validate and prepare every input before either durable write. Each write
         # itself is atomic; the audit entry preserves earlier decisions.
@@ -674,6 +1059,7 @@ async def highlight_review_decide(
             feedback=feedback,
             overridden_veto_ids=sorted(vetoed),
         )
+        _stage_parallel_work_plan(episode_dir, selected_ids, by_id)
     except HighlightDataError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return RedirectResponse(f"/bridge/highlights/{episode_slug}?saved=1", status_code=303)
@@ -713,13 +1099,18 @@ async def finished_review_board(
     }
     for cut in manifest["cuts"]:
         cut["saved_status"] = cut_statuses.get(cut["cut_id"], "pending")
+        cut["release_truth"] = _finished_cut_event_view(cut)
         for component in cut["review_components"]:
             prior = feedback_by_component.get(component["component_id"], {})
             component["saved_action"] = prior.get("action", "")
             component["saved_comment"] = prior.get("comment", "")
             component["saved_replacement"] = prior.get("replacement", "")
-            component["saved_move"] = prior.get("move_to_seconds", "")
+            component["saved_move"] = format_move_seconds(prior.get("move_to_seconds"))
             component["saved_remember"] = bool(prior.get("remember_preference"))
+        saved_overall = latest.get("overall_feedback", {}) if isinstance(latest, dict) else {}
+        cut["saved_overall_feedback"] = (
+            saved_overall.get(cut["cut_id"], "") if isinstance(saved_overall, dict) else ""
+        )
     return _templates.TemplateResponse(
         request,
         "finished_review.html",
@@ -733,6 +1124,7 @@ async def finished_review_board(
             "review_format": review_format,
             "review_query": "?format=short" if review_format == "short" else "",
             "asset_version": _SHOSHO_ASSET_VERSION,
+            "latest_revision": latest,
         },
     )
 
@@ -783,6 +1175,124 @@ def _single_form_value(form: Any, key: str, default: str = "") -> str:
     return str(values[0]) if values else default
 
 
+def _packaging_episode_directories(episode_id: str) -> list[Path]:
+    """Resolve an episode to validated vault packaging directories."""
+    root = get_vault_path() / "Attachments" / "packaging"
+    if not root.is_dir():
+        return []
+    matches: list[Path] = []
+    for ep_dir in root.iterdir():
+        if not ep_dir.is_dir() or not (ep_dir / "packages.json").is_file():
+            continue
+        try:
+            packages = parse_packages(ep_dir / "packages.json")
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        if packages.episode == episode_id:
+            matches.append(ep_dir)
+    return sorted(matches, key=lambda path: path.name)
+
+
+def _find_packaging_episode(episode_id: str) -> str:
+    """Resolve a finished episode to its validated vault packaging directory.
+
+    The human-facing episode folder (for example ``20260721 鄭國威``) and the
+    portable vault directory slug are intentionally different.  ``packages.json``
+    is the contract joining them; directory-name guessing would silently route a
+    decision to the wrong episode.  The selected Long cut may still be queued:
+    finished approval starts its final render and lands on that pending tab.
+    """
+    matches = _packaging_episode_directories(episode_id)
+    if not matches:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{episode_id} 的 Packaging 目錄尚未建立",
+        )
+    if len(matches) > 1:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{episode_id} 對應到多個 Packaging 目錄：{[p.name for p in matches]}",
+        )
+    return matches[0].name
+
+
+def _start_publish_prep(episode_dir: Path, cut_id: str) -> None:
+    """Start one full-resolution Resolve export without blocking the review UI."""
+    key = (str(episode_dir.resolve()), cut_id)
+    running = _PUBLISH_PREP_PROCESSES.get(key)
+    root = Path(__file__).resolve().parent.parent.parent
+    script = root / "scripts" / "publish_prep.py"
+    configured_data = os.environ.get("NAKAMA_DATA_DIR", "").strip()
+    data_dir = Path(configured_data) if configured_data else get_db_path().parent
+    log_dir = data_dir / "publish_prep"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    receipt = episode_dir / "highlights" / "exports" / f".publish_prep_{cut_id}.json"
+    current = _publish_prep_state(episode_dir, cut_id)
+    if (
+        current
+        and current.get("status") == "rendered"
+        and export_matches_current_release(episode_dir, cut_id, current)
+    ):
+        return
+    if running is not None and running.poll() is None:
+        return
+    if current and current.get("status") == "rendering" and not job_expired(current):
+        if running is None:
+            return
+        atomic_job_write(
+            receipt,
+            {
+                **current,
+                "status": "failed",
+                "exit_code": running.poll(),
+                "error": "background child exited",
+            },
+        )
+    job = new_job(
+        status="rendering",
+        timeout_seconds=_PUBLISH_PREP_TIMEOUT_SECONDS,
+        episode=episode_dir.name,
+        cut_id=cut_id,
+    )
+    atomic_job_write(receipt, job)
+    safe_episode = episode_dir.name.replace("/", "_").replace("\\", "_")
+    log_file = open(  # noqa: SIM115 — Popen duplicates the descriptor
+        log_dir / f"{safe_episode}_{cut_id}.log", "a", encoding="utf-8"
+    )
+    configured = os.environ.get("NAKAMA_RESOLVE_PYTHON", "").strip()
+    command = [configured, str(script)] if configured else [sys.executable, str(script)]
+    try:
+        process = subprocess.Popen(
+            [
+                *command,
+                str(episode_dir),
+                "--cut",
+                cut_id,
+                "--render-only",
+                "--receipt",
+                str(receipt),
+                "--attempt-id",
+                str(job["attempt_id"]),
+            ],
+            cwd=str(root),
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+        )
+    except OSError as exc:
+        log_file.close()
+        atomic_job_write(
+            receipt,
+            {**job, "status": "failed", "exit_code": None, "error": f"OSError: {exc}"},
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=f"無法啟動最終成品匯出：{exc}",
+        ) from exc
+    _PUBLISH_PREP_PROCESSES[key] = process
+    atomic_job_write(receipt, {**job, "pid": process.pid})
+    log_file.close()
+
+
 @page_router.post("/{episode_slug}/finished/review")
 async def finished_review_save(
     request: Request,
@@ -798,8 +1308,9 @@ async def finished_review_save(
     if submitted_manifest_sha != manifest["_sha256"]:
         raise HTTPException(status_code=409, detail="manifest changed; reload before saving review")
     submit_action = _single_form_value(form, "submit_action")
-    if submit_action not in {"save_draft", "approve_all"}:
+    if submit_action not in {"save_draft", "approve_cut", "approve_all"}:
         raise HTTPException(status_code=400, detail="invalid finished review submit action")
+    selected_cut_id = _single_form_value(form, "selected_cut_id").strip()
 
     cuts_by_id = {cut["cut_id"]: cut for cut in manifest["cuts"]}
     components_by_id = {
@@ -809,6 +1320,7 @@ async def finished_review_save(
     }
     dynamic_prefixes = (
         "cut_status__",
+        "cut_feedback__",
         "component_action__",
         "component_comment__",
         "component_replacement__",
@@ -818,20 +1330,60 @@ async def finished_review_save(
     for key, _ in form.multi_items():
         if key.startswith("cut_status__") and key.removeprefix("cut_status__") not in cuts_by_id:
             raise HTTPException(status_code=400, detail="unknown cut in review form")
-        for prefix in dynamic_prefixes[1:]:
+        if (
+            key.startswith("cut_feedback__")
+            and key.removeprefix("cut_feedback__") not in cuts_by_id
+        ):
+            raise HTTPException(status_code=400, detail="unknown cut feedback in review form")
+        for prefix in dynamic_prefixes[2:]:
             if key.startswith(prefix) and key.removeprefix(prefix) not in components_by_id:
                 raise HTTPException(status_code=400, detail="unknown component in review form")
 
     cut_statuses: dict[str, str] = {}
+    overall_feedback: dict[str, str] = {}
     for cut_id in cuts_by_id:
         status = _single_form_value(form, f"cut_status__{cut_id}", "pending")
         if status not in {"pending", "approved", "needs_changes"}:
             raise HTTPException(status_code=400, detail=f"invalid review status for {cut_id}")
         cut_statuses[cut_id] = status
+        raw_feedback = _single_form_value(form, f"cut_feedback__{cut_id}")
+        if len(raw_feedback) > _MAX_OVERALL_FEEDBACK:
+            raise HTTPException(
+                status_code=400,
+                detail=f"overall feedback for {cut_id} exceeds {_MAX_OVERALL_FEEDBACK} characters",
+            )
+        if raw_feedback.strip():
+            overall_feedback[cut_id] = raw_feedback
     if submit_action == "approve_all" and any(
         status != "approved" for status in cut_statuses.values()
     ):
         raise HTTPException(status_code=400, detail="approve_all requires every cut to be approved")
+    if submit_action == "approve_all":
+        blocked = [
+            cut_id
+            for cut_id, cut in cuts_by_id.items()
+            if int(cut.get("stock_video_missing") or 0) > 0
+        ]
+        if blocked:
+            raise HTTPException(
+                status_code=409,
+                detail=f"long Highlight Stock Video 尚未達 3 個：{', '.join(blocked)}",
+            )
+    packaging_episode: str | None = None
+    approved_episode_dir: Path | None = None
+    if submit_action == "approve_cut":
+        if selected_cut_id not in cuts_by_id:
+            raise HTTPException(status_code=400, detail="unknown selected cut")
+        if cut_statuses[selected_cut_id] != "approved":
+            raise HTTPException(status_code=400, detail="selected cut must be approved")
+        if int(cuts_by_id[selected_cut_id].get("stock_video_missing") or 0) > 0:
+            raise HTTPException(
+                status_code=409,
+                detail=f"{selected_cut_id} Stock Video 尚未達 3 個，不能進 Packaging",
+            )
+        approved_episode_dir = _episode_dir(episode_slug)
+        _require_final_qa_clear(approved_episode_dir, selected_cut_id)
+        packaging_episode = _find_packaging_episode(manifest["episode_id"])
 
     component_feedback: list[dict[str, Any]] = []
     preference_candidates: list[dict[str, Any]] = []
@@ -865,7 +1417,7 @@ async def finished_review_save(
         move_to_seconds: float | None = None
         if action == "move":
             try:
-                move_to_seconds = float(move_raw)
+                move_to_seconds = parse_move_seconds(move_raw)
             except ValueError as exc:
                 raise HTTPException(
                     status_code=400, detail=f"move time is invalid for {component_id}"
@@ -876,9 +1428,12 @@ async def finished_review_save(
                     status_code=400, detail=f"move time is outside {cut['cut_id']} duration"
                 )
         row: dict[str, Any] = {
+            "release_id": cut.get("release_id"),
             "cut_id": cut["cut_id"],
             "component_id": component_id,
+            "event_id": component.get("event_id"),
             "lane": component["lane"],
+            "display": component["display"],
             "timeline_seconds": {"t0": component["t0"], "t1": component["t1"]},
             "action": action,
             "comment": comment,
@@ -917,13 +1472,50 @@ async def finished_review_save(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "manifest_sha256": manifest["_sha256"],
         "preview_sha256": preview_sha256,
-        "decision": "approved" if submit_action == "approve_all" else "draft",
+        "decision": (
+            "approved_cut"
+            if submit_action == "approve_cut"
+            else "approved"
+            if submit_action == "approve_all"
+            else "draft"
+        ),
         "cut_statuses": cut_statuses,
         "component_feedback": component_feedback,
+        "overall_feedback": overall_feedback,
         "preference_candidates": preference_candidates,
     }
+    if submit_action == "approve_cut":
+        revision["selected_cut_id"] = selected_cut_id
+    if submit_action == "save_draft":
+        # 修訂佇列是 Finished Cut Production 的東西——short packet 沒有 Release
+        # 可以掛，回饋只留在 feedback 檔裡。
+        revision_jobs = (
+            []
+            if manifest.get("review_format") == "short"
+            else _finished_revision_jobs(
+                manifest=manifest,
+                audit=audit,
+                component_feedback=component_feedback,
+                overall_feedback=overall_feedback,
+            )
+        )
+        if revision_jobs:
+            revision["revision_jobs"] = revision_jobs
     audit["revisions"].append(revision)
     _atomic_json_write(_feedback_path(manifest), audit)
+    if submit_action == "approve_cut":
+        if approved_episode_dir is None:  # pragma: no cover - guarded by submit_action branch
+            raise RuntimeError("approved episode directory was not resolved")
+        # 成品審核講 Release 的 cut id，publish_prep 與 packaging 板講 winners
+        # 的 cut id。不翻譯就是 2026-08-29 那兩個安靜的失敗：render 立刻死在
+        # 「不在 winners.json」，而修修只看得到 packaging 板回的 cut not found。
+        publish_cut_id = packaging_cut_id(approved_episode_dir, selected_cut_id)
+        _start_publish_prep(approved_episode_dir, publish_cut_id)
+        return RedirectResponse(
+            f"/bridge/packaging/{quote(packaging_episode or '', safe='')}?cut="
+            f"{quote(publish_cut_id, safe='')}",
+            status_code=303,
+        )
     suffix = "approved=1" if submit_action == "approve_all" else "saved=1"
     query = f"format=short&{suffix}" if review_format == "short" else suffix
     return RedirectResponse(f"/bridge/highlights/{episode_slug}/finished?{query}", status_code=303)
