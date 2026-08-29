@@ -24,6 +24,7 @@ from ._release import (
     FinishedCutReleaseLifecycle,
     ReleaseLifecycleError,
     _artifact_from_receipt,
+    _measure,
 )
 from ._resolve import (
     ResolveTransaction,
@@ -470,7 +471,8 @@ def _verify_prior_artifact(
     expected = Path(expected_path).resolve()
     try:
         relative = expected.relative_to(root).as_posix()
-        payload = expected.read_bytes()
+        # Streamed: this runs on resume against the same ~1 GB preview.
+        size, digest = _measure(expected)
     except (OSError, ValueError) as error:
         raise MaterializationError(
             "persisted materialization artifact is unavailable",
@@ -478,9 +480,9 @@ def _verify_prior_artifact(
         ) from error
     if (
         artifact.path != relative
-        or not payload
-        or artifact.bytes != len(payload)
-        or artifact.sha256 != hashlib.sha256(payload).hexdigest()
+        or not size
+        or artifact.bytes != size
+        or artifact.sha256 != digest
     ):
         raise MaterializationError(
             "persisted materialization artifact bytes differ",
