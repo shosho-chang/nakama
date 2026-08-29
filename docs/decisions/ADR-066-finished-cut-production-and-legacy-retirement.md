@@ -527,6 +527,44 @@ would enlarge an already broad interface. Format adapters behind Finished Cut Pr
 - Old v1/v2 review pages cease being production surfaces after cutover; forensic restore is explicit.
 - Physical blob deletion is delayed for rollback safety, but production retirement is immediate at Phase 6.
 
+## Open follow-up — Release Amendment authority
+
+This decision defines two ways to change a cut: `request_correction` before a `MaterializationPlan` exists, and
+`request_revision` against an exact current Release. Neither fits a **mechanical, non-semantic** change to an
+already sealed Release — retiring a component to intentional A-roll, or re-rendering an existing event's asset at a
+new recipe identity. Both keep the base Release's entire `AcceptedStage` chain and replace only the
+`MaterializationPlan`; routing them through `request_revision` would mint a new run and re-dispatch semantic
+workers for a change that has no semantic content.
+
+The L04 cutover needed exactly that twice, so it was done with episode-local operations under `.cache/`:
+
+```text
+release-8ca1a6eb  plan-1410680187...              20 components   run authority output
+      -> amendment 1  suppress_components          5 supporting_title -> intentional A-roll
+release-22a0424   plan-suppression-e8080c9b...    15 components
+      -> amendment 2  replace_component_assets     5 fullscreen_transition assets -> v4
+release-af65a1d7  plan-transition-v4-833e4ac1...  15 components   current
+```
+
+All three Releases share one `run_id`, `command_id` and all three acceptance IDs, which confirms the amendments
+were mechanical. But `runs/authority.json` still describes only `plan-1410680187...`, and the operations that
+derived the other two plans lived in an ignored directory — so the current Release was not re-derivable from
+anything under version control.
+
+**Interim measure (landed):** `agents/brook/script_video/finished_cut_production/amendments/` holds a typed
+`nakama.finished_cut_amendment_journal.v1` record of the chain plus the two operations it pins by SHA-256. The
+journal's transform parameters are derived by diffing the sealed Releases, not copied from the scripts, and its
+loader fails closed on a broken chain, a chain that does not end at current, a missing plan replacement, an event
+count change or a forged acceptance chain. This closes the provenance gap; it does not make the amendments
+re-executable through the module.
+
+**Still owed:** promote the transform vocabulary into a public `request_amendment(current_release_ref, operation)`
+command whose `advance` reuses the base acceptance chain, mints the plan inside the aggregate and publishes through
+the normal Candidate/commit/seal/pointer-last path, with `amendments` persisted beside `runs` and
+`targeted_revisions` in the authority store. Acceptance for that work should be **plan equality** with the recorded
+journal, not preview byte equality — a 1 GiB preview render is not a reproducibility contract. Once it lands,
+`amendments/operations/` is deleted and the journal becomes an aggregate-written artifact.
+
 ## P9 implementation prompt
 
 1. **Goal** — replace every ADR-065 production caller with Finished Cut Production, migrate all current cuts to

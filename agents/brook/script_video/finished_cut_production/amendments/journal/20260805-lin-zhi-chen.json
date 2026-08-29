@@ -1,0 +1,152 @@
+{
+  "amendments": [
+    {
+      "amendment_id": "amendment-8227f37e143897a821efa256",
+      "base": {
+        "component_count": 20,
+        "event_count": 20,
+        "materialization_plan_id": "plan-1410680187a940c1b3a1503fc44d3184",
+        "preview_bytes": 1036364932,
+        "preview_sha256": "78f653eb3f7db92572da1a5e8c99f947ab412c5fba31f66fdf62e5d70fed74a2",
+        "release_id": "release-8ca1a6eb97ad9facf7702155",
+        "release_record_sha256": "87b9652126033f52094372236d4cb131d41d2c002202df9d0fda87ccb5276017"
+      },
+      "cut_id": "long3-fresh-20260828-r4",
+      "format": "long",
+      "operation": {
+        "kind": "suppress_components",
+        "result_event_projection": "intentional_aroll",
+        "retired_from_semantic_kind": [
+          "supporting_title"
+        ],
+        "suppressed_component_ids": [
+          "component:evt_agency_autonomy_title",
+          "component:evt_future_values_deliberation",
+          "component:evt_generalist_closing_title",
+          "component:evt_human_agency_definition",
+          "component:evt_k_shape_prices_inflation"
+        ],
+        "target_event_ids": [
+          "evt_agency_autonomy_title",
+          "evt_future_values_deliberation",
+          "evt_generalist_closing_title",
+          "evt_human_agency_definition",
+          "evt_k_shape_prices_inflation"
+        ]
+      },
+      "reference_operation": {
+        "path": "agents/brook/script_video/finished_cut_production/amendments/operations/suppress_l04_supporting_titles.py",
+        "sha256": "dd1f152578bedbec8a5d7660ebb5f11b7f6a883d165e45a3ddfa0066d78796a4"
+      },
+      "resolve": {
+        "rollback_ref": "resolve-backup:resolve-project:da7c1f4698b72f57a400f9a5196d0b4a136ea498236f3296b13c4fe272795231:2fd75843-8289-491d-9bcd-f823ee6cea3c:resolve-652a26992d1ba2e8d4001bef",
+        "transaction_receipt_id": "resolve-receipt-59f6f9f1c00eb4773a10f6e3"
+      },
+      "result": {
+        "component_count": 15,
+        "event_count": 20,
+        "materialization_plan_id": "plan-suppression-e8080c9bbb1bcbbd4624792e",
+        "preview_bytes": 1035405935,
+        "preview_sha256": "6071742d4233fb6c6824853e5c97582e64bfd1cfb4f9fd7e3ca0ab3a20075e89",
+        "release_id": "release-22a0424136727bb41527ff15",
+        "release_record_sha256": "a18dbcb2da83d1d0071c880b6b59c29b387b90270021c65cab499f326e71bc70"
+      },
+      "semantic_authority_unchanged": {
+        "command_id": "approved-cut:eece07836239a532e995e657cd25b8ca",
+        "director_acceptance_id": "acceptance-8e7b7e29890648fab8e90a8abd2b42c4",
+        "dp_acceptance_id": "acceptance-630125cf56fb4ca9a53196bfff6f57b4",
+        "editorial_master_id": "8e7c13c2c55bc0df0c05241cfd91a9bf5c6b484b58058dae42d2bfaa7576805b",
+        "run_id": "run-53b53c6bc22843f58607d85252d0fc96",
+        "tight_cut_id": "tight-srt-long3-20260828",
+        "visual_acceptance_id": "acceptance-321ecb4f61fd4aba81a029e74a189b67",
+        "winner_id": "human-approved-boundary-long3-20260828"
+      },
+      "sequence": 1
+    },
+    {
+      "amendment_id": "amendment-e13ea3593d1ded9c7347606e",
+      "base": {
+        "component_count": 15,
+        "event_count": 20,
+        "materialization_plan_id": "plan-suppression-e8080c9bbb1bcbbd4624792e",
+        "preview_bytes": 1035405935,
+        "preview_sha256": "6071742d4233fb6c6824853e5c97582e64bfd1cfb4f9fd7e3ca0ab3a20075e89",
+        "release_id": "release-22a0424136727bb41527ff15",
+        "release_record_sha256": "a18dbcb2da83d1d0071c880b6b59c29b387b90270021c65cab499f326e71bc70"
+      },
+      "cut_id": "long3-fresh-20260828-r4",
+      "format": "long",
+      "operation": {
+        "asset_ref_after": {
+          "component:evt_chapter_abundance": "asset-sha256:431521afd16c9aada45e40c719b5cb7d0e8037052a0f5fdba34c1bbbe5ada952",
+          "component:evt_chapter_captivity": "asset-sha256:c0a0f5661f00b0a35a34de465e384004d64d5b8567176d3f02a29a88e8458274",
+          "component:evt_chapter_deliberation": "asset-sha256:a68cb48de7759b8d4c810ee18a1784635e7596d1593d197ba9646aee28949618",
+          "component:evt_chapter_k_shaped_future": "asset-sha256:a534a14ee09d7c8446e7f440c004c015197fe5d8f6aca9c4930f0026d46f294d",
+          "component:evt_chapter_self_actualization": "asset-sha256:2aa5eaac317776cb9abd933257ef65799beb622d2ee200271ec491b46d18680d"
+        },
+        "asset_ref_before": {
+          "component:evt_chapter_abundance": "asset-sha256:bf16a7dc5a7c125b3fcfb06e3e90e8e3d7b6cff8e44bfce510cad4786a7f4845",
+          "component:evt_chapter_captivity": "asset-sha256:a579c6ce58abcddf57297a52218e554b8b65ab2471f936fd83be3b1f00e53576",
+          "component:evt_chapter_deliberation": "asset-sha256:227cc8994f2b2f1f89b529fab79dca7d8cc3484f6c362797b15fa7e6af9a3f84",
+          "component:evt_chapter_k_shaped_future": "asset-sha256:6220c0e838ded368eedbef338e637d36dab278d44776c58cdf08a626699ab4c3",
+          "component:evt_chapter_self_actualization": "asset-sha256:78d84824ffd0bdec5064b98ac8f143102e38dcc2d1df2d3c2d45324cfa96e3d5"
+        },
+        "kind": "replace_component_assets",
+        "lanes": [
+          "fullscreen_transition"
+        ],
+        "target_component_ids": [
+          "component:evt_chapter_abundance",
+          "component:evt_chapter_captivity",
+          "component:evt_chapter_deliberation",
+          "component:evt_chapter_k_shaped_future",
+          "component:evt_chapter_self_actualization"
+        ],
+        "target_event_ids": [
+          "evt_chapter_abundance",
+          "evt_chapter_captivity",
+          "evt_chapter_deliberation",
+          "evt_chapter_k_shaped_future",
+          "evt_chapter_self_actualization"
+        ]
+      },
+      "reference_operation": {
+        "path": "agents/brook/script_video/finished_cut_production/amendments/operations/restore_l04_fullscreen_transitions.py",
+        "sha256": "4f53bc52fbf8a1ed3a5d6bd175d995d148c617554e829e1944465e7ba9ce89aa"
+      },
+      "resolve": {
+        "rollback_ref": "resolve-backup:resolve-project:da7c1f4698b72f57a400f9a5196d0b4a136ea498236f3296b13c4fe272795231:fae04af1-00f2-4615-a4a3-9cbf458419a6:resolve-368cb9c920c9c09473ce74e3",
+        "transaction_receipt_id": "resolve-receipt-278cda152a55027950d9ff8c"
+      },
+      "result": {
+        "component_count": 15,
+        "event_count": 20,
+        "materialization_plan_id": "plan-transition-v4-833e4ac1dd54c65c9ffa8165",
+        "preview_bytes": 1037965660,
+        "preview_sha256": "728520b58acb6d2bba27480d13f6b9c81c982a2e757908de14c8135422abb4aa",
+        "release_id": "release-af65a1d7a2ac611eb78be493",
+        "release_record_sha256": "7906be7a39f348d2be4cc146b6c02883145868cbf0680599181bd71ff951b135"
+      },
+      "semantic_authority_unchanged": {
+        "command_id": "approved-cut:eece07836239a532e995e657cd25b8ca",
+        "director_acceptance_id": "acceptance-8e7b7e29890648fab8e90a8abd2b42c4",
+        "dp_acceptance_id": "acceptance-630125cf56fb4ca9a53196bfff6f57b4",
+        "editorial_master_id": "8e7c13c2c55bc0df0c05241cfd91a9bf5c6b484b58058dae42d2bfaa7576805b",
+        "run_id": "run-53b53c6bc22843f58607d85252d0fc96",
+        "tight_cut_id": "tight-srt-long3-20260828",
+        "visual_acceptance_id": "acceptance-321ecb4f61fd4aba81a029e74a189b67",
+        "winner_id": "human-approved-boundary-long3-20260828"
+      },
+      "sequence": 2
+    }
+  ],
+  "current": {
+    "cut_id": "long3-fresh-20260828-r4",
+    "manifest_id": "manifest-135e2060e0d612e2499658a1",
+    "manifest_schema": "nakama.finished_cut_review_manifest.v3",
+    "release_id": "release-af65a1d7a2ac611eb78be493"
+  },
+  "episode_id": "20260805 林之晨",
+  "note": "Mechanical, non-semantic amendments applied to a sealed Finished Cut Release. Every amendment reuses the base Release's AcceptedStage chain and only replaces the MaterializationPlan. Superseded by the request_amendment public command once ADR-066 follow-up lands.",
+  "schema": "nakama.finished_cut_amendment_journal.v1"
+}
