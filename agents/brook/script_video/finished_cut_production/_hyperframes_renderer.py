@@ -36,7 +36,6 @@ _ACQUISITION_ARGV = (
     "--ignore-scripts=false",
 )
 _PROBE_ENTRIES = "stream=codec_name,pix_fmt,width,height:format=duration"
-_BROWSER_ANIMATION_DURATION_SEC = 0.75
 
 
 class HyperFramesRenderError(ValueError):
@@ -300,8 +299,7 @@ class HyperFramesBrowserRenderer:
 
     def render(self, recipe: LongVisualRecipe) -> BrowserRenderResult:
         self._workspace_root.mkdir(parents=True, exist_ok=True)
-        browser_duration = min(recipe.duration_sec, _BROWSER_ANIMATION_DURATION_SEC)
-        browser_html = self._browser_html(recipe, browser_duration)
+        browser_html = self._browser_html(recipe)
         with tempfile.TemporaryDirectory(
             prefix="long-visual-",
             dir=self._workspace_root,
@@ -313,7 +311,11 @@ class HyperFramesBrowserRenderer:
                 browser_html,
                 encoding="utf-8",
             )
-            browser_output = workspace / "hyperframes.mov"
+            # Only an alpha-bearing overlay needs the ProRes 4444 intermediate.  A
+            # full-frame card rendered to MOV costs ~118 MB for three seconds and is
+            # transcoded straight to H.264 anyway.
+            browser_format = "mov" if recipe.has_alpha else "mp4"
+            browser_output = workspace / f"hyperframes.{browser_format}"
             encoded_output = workspace / f"encoded{recipe.extension}"
             self._run_checked(
                 (
@@ -326,14 +328,14 @@ class HyperFramesBrowserRenderer:
                     "-o",
                     str(browser_output),
                     "--format",
-                    "mov",
+                    browser_format,
                     "-q",
                     "standard",
                     "--quiet",
                     "--no-browser-gpu",
                 ),
                 cwd=workspace,
-                timeout_sec=max(90.0, browser_duration * 30.0),
+                timeout_sec=max(90.0, recipe.duration_sec * 30.0),
                 expected_output=browser_output,
                 label="HyperFrames",
             )
@@ -363,6 +365,9 @@ class HyperFramesBrowserRenderer:
         source: Path,
         output: Path,
     ) -> tuple[str, ...]:
+        # The browser now renders the recipe's full duration, so nothing is padded
+        # or composited here: an alpha overlay is transcoded as-is, and an opaque
+        # card already carries its own background from the composition.
         if recipe.has_alpha:
             codec_arguments = (
                 "-c:v",
@@ -372,23 +377,9 @@ class HyperFramesBrowserRenderer:
                 "-pix_fmt",
                 "yuva444p12le",
             )
-            filter_arguments = (
-                "-vf",
-                f"tpad=stop_mode=clone:stop_duration={recipe.duration_sec:.6f}",
-            )
         else:
             codec_arguments = ("-c:v", "libx264", "-pix_fmt", "yuv420p")
-            filter_arguments = (
-                "-filter_complex",
-                (
-                    "[0:v]format=rgba[fg];"
-                    f"color=c=0xf4efe7:s={recipe.canvas_width}x{recipe.canvas_height}:r=30[bg];"
-                    "[bg][fg]overlay=shortest=1:format=auto,"
-                    f"tpad=stop_mode=clone:stop_duration={recipe.duration_sec:.6f}[out]"
-                ),
-                "-map",
-                "[out]",
-            )
+        filter_arguments: tuple[str, ...] = ()
         return (
             self._ffmpeg_executable,
             "-y",
@@ -405,15 +396,11 @@ class HyperFramesBrowserRenderer:
         )
 
     @staticmethod
-    def _browser_html(recipe: LongVisualRecipe, browser_duration: float) -> str:
+    def _browser_html(recipe: LongVisualRecipe) -> str:
         marker = f'data-duration="{recipe.duration_sec:.6f}"'
         if recipe.html_document.count(marker) != 1:
             raise HyperFramesRenderError("visual HTML duration marker is invalid")
-        return recipe.html_document.replace(
-            marker,
-            f'data-duration="{browser_duration:.6f}"',
-            1,
-        )
+        return recipe.html_document
 
     def _run_checked(
         self,

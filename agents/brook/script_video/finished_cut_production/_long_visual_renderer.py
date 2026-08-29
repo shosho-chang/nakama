@@ -268,7 +268,7 @@ html, body {{ margin: 0; width: {canvas_width}px; height: {canvas_height}px;
 </style>
 </head>
 <body data-role="{role}" data-style="{style_name}">
-<main id="stage" data-root="true" data-composition-id="long_visual"
+<main id="stage" data-root="true" data-composition-id="long_visual" data-no-timeline
   data-width="{canvas_width}" data-height="{canvas_height}" data-start="0"
   data-duration="{duration_sec:.6f}">
   <div id="copy">{escape(display)}<div id="mark"></div></div>
@@ -341,7 +341,7 @@ html, body {{ margin: 0; width: {canvas_width}px; height: {canvas_height}px;
 </style>
 </head>
 <body data-role="chapter" data-style="paper_hand">
-<main id="root" data-root="true" data-composition-id="transition_title_wide"
+<main id="root" data-root="true" data-composition-id="transition_title_wide" data-no-timeline
   data-width="{canvas_width}" data-height="{canvas_height}" data-start="0"
   data-duration="{duration_sec:.6f}">
   <div id="paper"></div>

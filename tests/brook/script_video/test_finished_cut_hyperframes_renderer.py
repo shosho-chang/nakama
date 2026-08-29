@@ -275,14 +275,14 @@ def test_alpha_hero_renders_as_prores_4444_mov_with_exact_process_contract(
         "--quiet",
         "--no-browser-gpu",
     )
+    # The browser now renders the recipe's full duration, so ffmpeg only
+    # transcodes: nothing is padded out of a truncated animation any more.
     assert ffmpeg[0] == (
         "ffmpeg",
         "-y",
         "-i",
         str(hyperframes[1] / "hyperframes.mov"),
         "-an",
-        "-vf",
-        "tpad=stop_mode=clone:stop_duration=3.000000",
         "-t",
         "3.000000",
         "-c:v",
@@ -311,8 +311,11 @@ def test_alpha_hero_renders_as_prores_4444_mov_with_exact_process_contract(
     assert 'data-composition-id="long_visual"' in runner.html_documents[0]
     assert 'data-width="1920"' in runner.html_documents[0]
     assert 'data-height="1080"' in runner.html_documents[0]
-    assert 'data-duration="0.750000"' in runner.html_documents[0]
-    assert 'data-duration="3.000000"' not in runner.html_documents[0]
+    assert 'data-duration="3.000000"' in runner.html_documents[0]
+    # These cards are driven by CSS animations and register no GSAP timeline.
+    # Without this marker HyperFrames waits out its full 45s sub-composition
+    # readiness timeout per worker, which cost ~90s of dead wait per card.
+    assert "data-no-timeline" in runner.html_documents[0]
     assert list(workspaces.iterdir()) == []
 
 
@@ -412,17 +415,20 @@ def test_full_frame_chapter_uses_h264_mp4_without_alpha(tmp_path: Path) -> None:
     assert output.media.codec_name == "h264"
     assert output.media.pixel_format == "yuv420p"
     assert output.media.has_alpha is False
-    ffmpeg = runner.calls[1][0]
+    hyperframes, ffmpeg = runner.calls[0][0], runner.calls[1][0]
+    # An opaque full-frame card needs no alpha, so the browser writes H.264
+    # directly.  The ProRes 4444 intermediate this replaces cost ~118 MB for
+    # three seconds and was transcoded straight to H.264 anyway.
+    assert hyperframes[hyperframes.index("--format") + 1] == "mp4"
+    assert hyperframes[hyperframes.index("-o") + 1].endswith("hyperframes.mp4")
     assert ffmpeg[ffmpeg.index("-c:v") + 1] == "libx264"
     assert ffmpeg[ffmpeg.index("-pix_fmt") + 1] == "yuv420p"
-    assert ffmpeg[ffmpeg.index("-filter_complex") + 1] == (
-        "[0:v]format=rgba[fg];"
-        "color=c=0xf4efe7:s=1920x1080:r=30[bg];"
-        "[bg][fg]overlay=shortest=1:format=auto,"
-        "tpad=stop_mode=clone:stop_duration=3.000000[out]"
-    )
-    assert ffmpeg[ffmpeg.index("-map") + 1] == "[out]"
+    # The card paints its own background and is rendered at full duration, so
+    # there is nothing left to composite or pad.
+    assert "-filter_complex" not in ffmpeg
+    assert "-vf" not in ffmpeg
     assert "-profile:v" not in ffmpeg
+    assert "data-no-timeline" in runner.html_documents[0]
 
 
 @pytest.mark.parametrize("failure", ["timeout", "nonzero", "missing_output", "probe_mismatch"])
