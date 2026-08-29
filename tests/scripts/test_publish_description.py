@@ -169,7 +169,8 @@ def test_description_draft_without_tight_srt_is_interrupted(tmp_path, monkeypatc
 
     assert result["state"] == "interrupted"
     assert target["description"] == ""
-    assert "tight SRT" in target["error"]
+    # 逐字稿來源可能是 Release 字幕或舊線的 tight SRT，訊息只保證指出「字幕缺了」。
+    assert "字幕" in target["error"]
 
 
 @pytest.mark.parametrize(
