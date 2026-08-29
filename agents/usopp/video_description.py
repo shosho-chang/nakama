@@ -207,11 +207,18 @@ def build_description_prompt(
     chapters: list[tuple[float, str]],
 ) -> str:
     """Build the bounded, evidence-fed request used by the subscription LLM seam."""
-    srt_dir = episode_dir / "highlights" / "srt"
-    srt_files = sorted(srt_dir.glob(f"{cut_id}_tight_r*.srt")) if srt_dir.exists() else []
-    if not srt_files:
-        raise FileNotFoundError(f"找不到 {cut_id} tight SRT；不可只看標題腦補 description")
-    transcript = srt_files[-1].read_text(encoding="utf-8")[:12000]
+    from agents.usopp.publish_timeline import release_subtitle
+
+    # 逐字稿必須是**成品那一份**。tight SRT 是 ADR-065 製作線的殘留，punch-L04 的
+    # 只有 260 秒舊剪輯而成品是 492 秒——照它寫等於替一支不存在的影片寫文案。
+    source = release_subtitle(episode_dir, cut_id)
+    if source is None:
+        srt_dir = episode_dir / "highlights" / "srt"
+        srt_files = sorted(srt_dir.glob(f"{cut_id}_tight_r*.srt")) if srt_dir.exists() else []
+        if not srt_files:
+            raise FileNotFoundError(f"找不到 {cut_id} 的字幕；不可只看標題腦補 description")
+        source = srt_files[-1]
+    transcript = source.read_text(encoding="utf-8")[:12000]
     chapter_text = "、".join(title for _, title in chapters) or "（無章節）"
     citation_text = "；".join(citations) or "（無引用）"
     return f"""請替 YouTube 長 highlight 寫 description 最前面的 1–2 個短段落。

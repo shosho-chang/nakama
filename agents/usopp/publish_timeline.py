@@ -153,3 +153,28 @@ def release_chapters(episode_dir: Path, cut_id: str) -> list[tuple[float, str]]:
     if len(marks) < 2:
         return []
     return [(0.0, "開場"), *marks]
+
+
+def release_subtitle(episode_dir: Path, cut_id: str) -> Path | None:
+    """Release 的字幕檔——描述欄逐字稿的來源，與成品同一份內容。
+
+    描述欄的 hook 本來讀 `highlights/srt/<cut>_tight_r*.srt`，同樣是 ADR-065 的
+    殘留：punch-L04 的 tight SRT 只有 260 秒的舊剪輯，成品卻是 492 秒，於是 LLM
+    是照著一份不存在的影片在寫文案。Release 的 subtitle 才是成品那份。
+
+    回 None 代表沒有對應表或檔案不在，由呼叫端回退。
+    """
+    timeline_map = load_timeline_map(episode_dir)
+    if timeline_map is None:
+        return None
+    target = resolve_target(timeline_map, cut_id)
+
+    from agents.brook.script_video.finished_cut_production import build_current_release_reader
+
+    episode_dir = Path(episode_dir)
+    inspection = build_current_release_reader(episode_dir).inspect_current(episode_dir.name)
+    cut = next((c for c in inspection.cuts if c.release_id == target.release_id), None)
+    if cut is None or not cut.subtitle:
+        return None
+    path = episode_dir / cut.subtitle.reference
+    return path if path.is_file() else None

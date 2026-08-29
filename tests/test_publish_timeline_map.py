@@ -201,3 +201,41 @@ def test_resolve_chapters_falls_back_when_episode_has_no_map(tmp_path):
         encoding="utf-8",
     )
     assert vd.resolve_chapters(tmp_path, "punch-L5") == [(0.0, "開場"), (10.0, "A"), (20.0, "B")]
+
+
+def test_release_subtitle_without_a_map_is_none(tmp_path):
+    from agents.usopp.publish_timeline import release_subtitle
+
+    assert release_subtitle(tmp_path, "punch-L04") is None
+
+
+def test_description_prompt_falls_back_to_tight_srt_without_a_map(tmp_path):
+    """沒建對應表的舊集數仍讀 tight SRT。"""
+    from agents.usopp.video_description import build_description_prompt
+
+    srt = tmp_path / "highlights" / "srt" / "punch-L5_tight_r001.srt"
+    srt.parent.mkdir(parents=True, exist_ok=True)
+    srt.write_text("1\n00:00:00,000 --> 00:00:02,000\n舊線逐字稿\n", encoding="utf-8")
+    prompt = build_description_prompt(
+        tmp_path, cut_id="punch-L5", title="t", citations=[], chapters=[]
+    )
+    assert "舊線逐字稿" in prompt
+
+
+def test_description_prompt_prefers_the_release_subtitle(tmp_path, monkeypatch):
+    """有 Release 時要照成品那份寫，不能照被取代的 tight SRT。"""
+    from agents.usopp.video_description import build_description_prompt
+
+    stale = tmp_path / "highlights" / "srt" / "punch-L04_tight_r002.srt"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text("1\n00:00:00,000 --> 00:00:02,000\n被取代的舊剪輯\n", encoding="utf-8")
+    fresh = tmp_path / "release.srt"
+    fresh.write_text("1\n00:00:00,000 --> 00:00:02,000\n成品那一份\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "agents.usopp.publish_timeline.release_subtitle", lambda episode_dir, cut_id: fresh
+    )
+    prompt = build_description_prompt(
+        tmp_path, cut_id="punch-L04", title="t", citations=[], chapters=[]
+    )
+    assert "成品那一份" in prompt
+    assert "被取代的舊剪輯" not in prompt
