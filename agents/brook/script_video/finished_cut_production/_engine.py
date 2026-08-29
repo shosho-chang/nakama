@@ -441,9 +441,16 @@ class FinishedCutProduction:
                 raise CommandRejectedError(
                     "failed semantic request does not match durable dispatch"
                 ) from error
-            failed_first_dispatch = (
-                request.attempt == 1
-                and view.correction is None
+            # Any terminal dispatch failure is recoverable, not just the first.
+            # This command is only ever reached by a human asking for another try
+            # (the CLI; the watcher never calls it), so capping it at attempt 1
+            # did not bound runaway retries — it bounded how many times a person
+            # is allowed to ask.  A targeted revision whose stage failed twice
+            # then had no recovery at all: request_correction refuses revision
+            # runs outright, and the watcher only picks up queued work.  That is
+            # what stranded 20260805's six needs_review runs.
+            failed_dispatch = (
+                view.correction is None
                 and outcome is not None
                 and outcome.state == "failed"
                 and outcome.proposal is None
@@ -463,7 +470,7 @@ class FinishedCutProduction:
                 and outcome.state == "indeterminate"
                 and outcome.proposal is None
             )
-            if not dispatch_is_recoverable or not (failed_first_dispatch or recoverable_correction):
+            if not dispatch_is_recoverable or not (failed_dispatch or recoverable_correction):
                 raise CommandRejectedError(
                     "current request has no terminal dispatch failure or rejected correction"
                 )

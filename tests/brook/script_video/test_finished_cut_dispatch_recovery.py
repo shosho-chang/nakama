@@ -361,3 +361,32 @@ def test_explicit_recovery_can_redispatch_one_rejected_pre_release_correction(
 
     assert retry_request_id.startswith("request-")
     assert accepted.current_stage == "dp"
+
+
+def test_a_second_consecutive_dispatch_failure_is_still_recoverable(tmp_path) -> None:
+    """人可以要求重試不只一次。
+
+    這支指令只有人會發動（CLI；watcher 從不呼叫它），所以把它卡在 attempt 1
+    擋的不是暴衝重試，而是「一個人只准問一次」。targeted revision 的 stage 連錯
+    兩次之後就完全沒有復原路徑——request_correction 明文拒絕 revision run，
+    watcher 又只撿 queued 的工作。20260805 那六個卡住的 needs_review 就是這樣來的。
+    """
+    failing = _FailingWorker()
+    production = _production(tmp_path, failing)
+
+    assert production.advance(COMMAND_ID).status == "needs_review"
+    first_retry = production.retry_failed_dispatch(COMMAND_ID)
+
+    # 第二次 dispatch 同樣失敗——舊的閘門會在這裡把人擋死。
+    assert production.advance(COMMAND_ID).status == "needs_review"
+    second_retry = production.retry_failed_dispatch(COMMAND_ID)
+
+    assert second_retry.startswith("request-")
+    assert second_retry != first_retry
+    store = _FilesystemProductionStore(tmp_path / "runtime")
+    stored = store.load_run(COMMAND_ID)
+    assert stored is not None
+    outstanding = stored.view.outstanding_request
+    assert outstanding is not None
+    assert outstanding.request_id == second_retry
+    assert outstanding.attempt == 3
