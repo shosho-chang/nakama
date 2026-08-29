@@ -94,7 +94,8 @@ def _shosho_asset_version() -> str:
     """
     import hashlib
 
-    static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
+    static_root = Path(__file__).resolve().parent.parent / "static"
+    static_dir = static_root / "shosho"
     h = hashlib.sha1()
     for css in (
         "tokens.css",
@@ -107,10 +108,18 @@ def _shosho_asset_version() -> str:
         "ingest-confirm.css",
         "ingest-confirm.js",
         "theme.js",
+        # 修修 2026-08-29: the Reader's own stylesheet was missing here, so a
+        # book_reader.css change shipped behind a stale edge cache.
+        "book_reader.css",
     ):
         path = static_dir / css
         if path.exists():
             h.update(path.read_bytes())
+    # The reader module lives outside shosho/ but is linked with the same ?v=
+    # (template patched alongside) — hash it too or the JS goes stale as well.
+    reader_js = static_root / "book_reader.js"
+    if reader_js.exists():
+        h.update(reader_js.read_bytes())
     return h.hexdigest()[:8]
 
 
