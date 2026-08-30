@@ -145,19 +145,47 @@ def test_build_description_defensively_omits_internal_citation_paths():
     assert "・The Lancet 2024" in out
 
 
-def test_description_hook_requires_one_or_two_compact_paragraphs():
-    paragraph = (
-        "林之晨從自己在不同教育環境裡的經驗談起，拆解制度如何影響一個人理解學習、"
-        "選擇道路與承擔風險的方式。這些看似個人的決定，其實都帶著家庭期待、社會條件與"
-        "時代留下的痕跡，也會影響他後來面對失敗與成功的尺度。"
-    )
-    valid = f"{paragraph}\n\n{paragraph}"
+def test_description_hook_requires_many_short_paragraphs():
+    """2026-08-30 修修裁決：段數不設上限，改卡單段長度與自我指涉開場。
 
-    assert validate_description_hook(valid) == valid
-    with pytest.raises(ValueError, match="約 200–300 字"):
-        validate_description_hook("太短。")
-    with pytest.raises(ValueError, match="1–2 個短段落"):
-        validate_description_hook("\n\n".join([paragraph, paragraph, paragraph]))
+    正例就是他實際上架的 punch-L04 hook（4 段 / 57-78-76-45 字）；
+    反例的長段落取自同批被他點名「每一段都太長」的 value-L01。
+    """
+    shipped = "\n\n".join(
+        [
+            "當 AI 讓許多服務跟產品的價格一路往下，世界會面臨同時通膨和通縮的怪現象，"
+            "稀缺的東西將會貴到大多數人負擔不起。",
+            "而每個人手上的資產也會呈現截然不同的 K 型發展。錢放在銀行只會被通膨慢慢吃掉，"
+            "懂得把錢部署到好的投資工具、讓自己站到資本家那一側的人，才可能跟著往上走。",
+            "Jamie 在書中提到，更讓人要提高警覺的是：當 AI 把所有需求都顧好，"
+            "人可能就像 Elon Musk 形容的拉布拉多，住在天堂卻失去做決定的能力。",
+            "能否找到自己為什麼活著，將自主權從 AI 手上拿回來，"
+            "是個所有人現在就可以開始思考的事情。",
+        ]
+    )
+    assert validate_description_hook(shipped) == shipped
+
+    two_paragraphs = "\n\n".join(shipped.split("\n\n")[:2])
+    with pytest.raises(ValueError, match="至少 3 段"):
+        validate_description_hook(two_paragraphs)
+
+    with pytest.raises(ValueError, match="總長需"):
+        validate_description_hook("太短。\n\n也短。\n\n還是短。")
+
+    dense = (
+        "林之晨自己學 AI 就是這個路徑：先拿 AI agent 做東西、做到發現自己不夠用，"
+        "才回頭去搞清楚 Context Window 到底是什麼。他說那種學法一點都不痛苦，"
+        "因為知道搞懂之後能做出什麼。他認為真正落後的是大人——業界招聘已經在考"
+        "「你能不能現場用 AI 解題」，美國常春藤畢業生的失業率正在創歷史新高，"
+        "但很多父母還在要求孩子走那條舊路。"
+    )
+    with pytest.raises(ValueError, match="段太長"):
+        validate_description_hook("\n\n".join([dense, dense, dense]))
+
+    with pytest.raises(ValueError, match="自我指涉開場"):
+        validate_description_hook(
+            "這次和林之晨聊到一件我覺得很根本的事。\n\n" + "\n\n".join(shipped.split("\n\n")[1:])
+        )
 
 
 def test_load_footer_strips_html_comments():
