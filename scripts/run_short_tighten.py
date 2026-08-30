@@ -101,6 +101,8 @@ NOISE_MERGE_GAP = 0.2  # 兩段響之間只隔這麼短 → 是同一個聲響�
 # 截頂之後，緊接在字尾後面的那一段聲音其實是那個字被拖長的尾巴，不是外來聲響。
 # 真正的判準是**聲音在一段靜之後重新響起**——咳嗽前面一定有一段靜。
 NOISE_LEAD_SILENCE = 0.15
+# 峰值比語音低這麼多就當換氣：剪掉換氣接點反而突兀，留著沒人聽得出來。
+NOISE_BREATH_PEAK_DB = -10.0
 
 # 贅字：ASR 逐字稿有、**校正稿沒有**的字。判「這是不是贅字」不需要字表也不需要猜
 # ——subtitle-correct 那一關已經有人／模型逐句看過，把口吃、遲疑、贅詞從文字裡
@@ -491,8 +493,8 @@ def _detect_word_gap_noise(media: Path, t0: float, t1: float, words: list[dict])
     平均掉：修修 2026-08-30 聽到的那一下只響 0.4s，卻落在 2.09s 的空檔裡，
     佔比 0.8 直接被略過。
 
-    keep=null，語意複審決定生死——換氣、笑聲、有意義的環境音都可能落在這裡。
-    `peak_db` 帶出來給複審用：接近語音峰值的是咳嗽，低 10dB 以上多半是換氣。
+    這裡只負責「哪裡有聲音」，生死交給 `_judge_noise`——換氣、笑聲、有意義的
+    環境音都可能落在這裡，光看時長分不出來。`peak_db` 是判準之一。
     """
     if not words:
         return []
@@ -539,6 +541,102 @@ def _detect_word_gap_noise(media: Path, t0: float, t1: float, words: list[dict])
         }
         for a, b in runs
     ]
+
+
+def _enclosing_word(words: list[dict], a: float, b: float) -> dict | None:
+    """把 [a, b] 整個包住的那個詞。
+
+    WhisperX 常把一個字對成一兩秒（本集最長 2.30s）。候選落在那種詞的中間時，
+    「結束於候選之前／開始於候選之後」的前後文會**把那個字整個藏起來**，看起來
+    像 ASR 漏字、候選是語音——2026-08-30 我就是這樣把修修親耳聽到的「呃，這個」
+    判成語音。包住候選的詞一定要顯示出來，這欄是那次的防呆。
+    """
+    for w in words:
+        if float(w["start"]) <= a and float(w["end"]) >= b:
+            return w
+    return None
+
+
+def _cues_missing_chars(master, words: list[dict]) -> list[tuple[float, float]] | None:
+    """校正稿有字、ASR 沒有的那些 cue 區間。沒有 opencc 就回 None（整條停用）。"""
+    out: list[tuple[float, float]] = []
+    for s_, e_, text in _parse_srt(master.srt_path):
+        cor = _to_simplified(text)
+        if cor is None:
+            return None
+        asr = "".join(
+            _to_simplified(str(w["word"])) or ""
+            for w in words
+            if s_ <= float(w["start"]) < e_
+        )
+        if not asr:
+            continue
+        if any(
+            tag == "insert"
+            for tag, *_ in difflib.SequenceMatcher(
+                None, asr, cor, autojunk=False
+            ).get_opcodes()
+        ):
+            out.append((s_, e_))
+    return out
+
+
+def _judge_noise(master, cuts: list[dict], words: list[dict]) -> None:
+    """noise 候選就地判生死，並寫下判準（`review` 欄）與前後文。
+
+    主判準：**ASR 沒有字、校正稿也沒有字**的一段聲音就是贅音。校正稿是
+    subtitle-correct 那一關逐句看過的判決書，ASR 是機器聽到的每一個音；兩邊
+    都沒有對到，那段聲音就不屬於任何一個字——「呃」「這個」這種正是如此。
+
+    三個否決（實測都出現過）：
+    1. 已被別的刀蓋住 → 重複下刀
+    2. 該 cue 的校正稿有 ASR 沒有的字 → 那個字可能就落在這一段裡，剪了會斷字
+    3. 峰值比語音低太多 → 換氣
+
+    判不動就留 keep=None 給人審，不要猜（沒有 opencc 時就是這種狀況）。
+    """
+    noise = [x for x in cuts if x.get("kind") == "noise"]
+    if not noise:
+        return
+    covered = [
+        (x["t0"], x["t1"])
+        for x in cuts
+        if x.get("keep") is True and x.get("kind") != "noise"
+    ]
+    missing = _cues_missing_chars(master, words)
+    for x in noise:
+        a, b, peak = x["t0"], x["t1"], x.get("peak_db")
+        enc = _enclosing_word(words, a, b)
+        if enc is not None:
+            x["enclosed_by"] = {
+                "word": str(enc["word"]),
+                "t0": round(float(enc["start"]), 3),
+                "t1": round(float(enc["end"]), 3),
+            }
+        x["context"] = (
+            "".join(str(w["word"]) for w in words if float(w["end"]) <= a + 0.02)[-8:]
+            + "◤◢"
+            + "".join(str(w["word"]) for w in words if float(w["start"]) >= b - 0.02)[:8]
+        )
+        if any(lo <= a and b <= hi for lo, hi in covered):
+            x["keep"], x["review"] = False, "已被其他刀蓋住，重複下刀"
+        elif missing is None:
+            x["review"] = "沒有 opencc，比不了校正稿——留給人審"
+        elif any(s_ <= a < e_ for s_, e_ in missing):
+            x["keep"] = False
+            x["review"] = "該 cue 的校正稿有 ASR 沒有的字，可能就落在這段裡，不剪"
+        elif peak is not None and peak < NOISE_BREATH_PEAK_DB:
+            x["keep"] = False
+            x["review"] = f"峰值 {peak}dB 比語音低太多，像換氣"
+        else:
+            x["keep"] = True
+            x["review"] = "ASR 沒有字、校正稿也沒有字的一段聲音（贅音）"
+            if enc is not None:
+                x["review"] += (
+                    f"；被拉長的「{enc['word']}」"
+                    f"（{float(enc['end']) - float(enc['start']):.2f}s）包住，"
+                    "但隔了一段靜才響，不是那個字的尾巴"
+                )
 
 
 def _to_simplified(text: str) -> str | None:
@@ -615,6 +713,29 @@ def _detect_redundant_words(master, t0: float, t1: float, words: list[dict]) -> 
                 }
             )
     return out
+
+
+def _carry_reviewed(cuts: list[dict], prev: list[dict]) -> int:
+    """把上一版的複審結論套回同一段音檔的新候選，回傳套了幾筆。
+
+    `manual` 由呼叫端整筆帶回。`noise` 不沿用——它有 `_judge_noise` 這條可查的
+    規則，規則是權威，舊結論（包含 2026-08-30 我判錯的那批）不該存活。
+    """
+    reviewed = {
+        (x["kind"], x["t0"], x["t1"]): x
+        for x in prev
+        if x.get("keep") is not None and x.get("kind") not in ("manual", "noise")
+    }
+    carried = 0
+    for cut in cuts:
+        was = reviewed.get((cut["kind"], cut["t0"], cut["t1"]))
+        if was is None or cut.get("keep") is not None:
+            continue
+        cut["keep"] = was["keep"]
+        if was.get("review"):
+            cut["review"] = was["review"]
+        carried += 1
+    return carried
 
 
 def detect(episode_dir: Path, cid: str) -> dict:
@@ -712,19 +833,27 @@ def detect(episode_dir: Path, cid: str) -> dict:
 
     # 既有的 manual 刀是人審出來的（假起手、自我更正、咳嗽…），機械偵測產不出來，
     # 覆寫掉就等於白審一次。只重生機械類，manual 原樣帶回來。
+    #
+    # 機械類的**複審結論**同樣要帶回來：--detect 是為了換偵測邏輯而重跑，不是
+    # 為了把人審過的判斷清成 null。同一個 (kind, t0, t1) 指的是同一段音檔，
+    # 判斷仍然成立。noise 例外——它現在有 `_judge_noise` 這條可查的規則，規則
+    # 是權威，舊結論（包含我判錯的那些）不該存活。
     out_path = episode_dir / TIGHTEN_DIR / f"{cid}_cuts.json"
     if out_path.is_file():
         try:
-            kept = [
-                x
-                for x in json.loads(out_path.read_text(encoding="utf-8"))["cuts"]
-                if x.get("kind") == "manual"
-            ]
+            prev = json.loads(out_path.read_text(encoding="utf-8"))["cuts"]
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError):
-            kept = []
+            prev = []
+        kept = [x for x in prev if x.get("kind") == "manual"]
         if kept:
             logger.info("保留既有 manual 刀 %d 筆（機械偵測產不出來，不覆寫）", len(kept))
             cuts += kept
+        carried = _carry_reviewed(cuts, prev)
+        if carried:
+            logger.info("沿用既有複審結論 %d 筆（同一段音檔，判斷仍成立）", carried)
+
+    # noise 的生死判在 manual 併回來之後——判準之一是「已被別的刀蓋住」。
+    _judge_noise(master, cuts, seg_words)
 
     cuts.sort(key=lambda x: x["t0"])
     out_dir = episode_dir / TIGHTEN_DIR

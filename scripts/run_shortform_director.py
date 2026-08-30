@@ -580,6 +580,13 @@ def direct(
         if f1 <= f0:
             return None
         track = (extra or {}).get("trackIndex", 1)
+        # 軌不存在時 AppendToTimeline 回 [None]，長得跟「Resolve 未就緒」一模一樣，
+        # 但它是確定性的、重試幾次都一樣：字幕樣式模板（data/ 在 .gitignore，
+        # worktree 裡沒有）匯不進來時走 CreateEmptyTimeline，只給 1 條視訊軌，
+        # 開場上半格要的 track 2 根本不存在。2026-08-30 在 story-S04／punch-S02
+        # 上重現。下游的 broll／sfx／bgm 都有這個 while，導播漏了。
+        while tl.GetTrackCount("video") < track:
+            tl.AddTrack("video")
         want_span = f1 - f0
         req0, req1 = f0, f1
         for _attempt in range(IN_POINT_MAX_NUDGE + 1):
