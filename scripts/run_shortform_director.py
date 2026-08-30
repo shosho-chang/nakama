@@ -95,6 +95,9 @@ SPEAKER_SOURCE = {0: "cam1", 1: "cam2"}
 CARD_LINE_CHARS = 10
 CARD_MAX_LINES = 2
 
+#: in-point 被 Resolve 退格時，整段最多往後平移幾格再重試（見 `_append_cam`）。
+IN_POINT_MAX_NUDGE = 3
+
 #: punch 提前量：zoom **要在那句話講出來之前**就推進去（修修 2026-08-30：
 #: 「要在他講那一句話前，可能 0.5 秒就要 zoom in，這會讓觀眾產生『等一下要講的
 #: 那句話非常重要』的感覺」）。ramp 0.25s 在這 0.5s 內走完，句子出口時畫面已經
@@ -554,29 +557,73 @@ def direct(
             item.SetProperty(key, value)
 
     def _append_cam(clip, src_s: float, src_e: float, extra: dict | None = None):
+        """把一段機位素材接上軌，並保證**放上去的長度等於要求的長度**。
+
+        三個實測到的 Resolve 行為，每個都會安靜地毀掉整支片：
+
+        1. **不給 trackIndex 就跟著 auto track selector 走**——2026-08-30 實測它把
+           主鏡落到 v2，接著 `GetItemListInTrack("video", 1)` 是空的，導播直接
+           IndexError。那個狀態看不見也不可控（前一支 script 或使用者點過畫面就變），
+           所以每次都明示。
+
+        2. **某些 in-point 被往前退一格**（H.264 長 GOP 的解碼邊界）。實測
+           `2_CAMERA 2.mp4` 請求 64687 落在 64686、64686 落在 64685，但 64688 與
+           64464 正常。
+
+        3. **某些 out-point 少一格**：請求 65021-65075（54 格）放上去是 53 格。
+
+        後兩者都是**長度不對**，而長度錯一格＝後面所有畫面相對 Master 聲音位移一格，
+        還會累積。所以這裡收斂的目標是長度：對不上就退掉、調整請求區間重接，
+        起點漂一兩格是可以接受的（內容晚一格，肉眼看不出來），長度不行。
+        """
         f0, f1 = int(round(src_s * fps)), int(round(src_e * fps))
         if f1 <= f0:
             return None
-        _validate_media_source_range(clip, f0, f1, project_fps=fps)
-        # trackIndex 一律明示。不給的話 AppendToTimeline 會跟著 Resolve 當下的
-        # auto track selector 走——2026-08-30 實測它把主鏡落到 v2，接著
-        # GetItemListInTrack("video", 1) 是空的，整支導播 IndexError 掛掉。
-        # 這條相依看不見也不可控（前一支 script 或使用者點過畫面就會變），
-        # 唯一的解是每次都講清楚要哪一軌。
-        spec = {
-            "mediaPoolItem": clip,
-            "mediaType": 1,
-            "startFrame": f0,
-            "endFrame": f1,
-            "trackIndex": 1,
-        }
-        if extra:
-            spec.update(extra)
-        append_checked(mp, [spec], f"{label}: cam {src_s:.1f}-{src_e:.1f}")
-        track = spec["trackIndex"]
-        item = (tl.GetItemListInTrack("video", track) or [])[-1]
-        _validate_appended_source_range(item, f0, f1)
-        return item
+        track = (extra or {}).get("trackIndex", 1)
+        want_span = f1 - f0
+        req0, req1 = f0, f1
+        for _attempt in range(IN_POINT_MAX_NUDGE + 1):
+            _validate_media_source_range(clip, req0, req1, project_fps=fps)
+            spec = {
+                "mediaPoolItem": clip,
+                "mediaType": 1,
+                "startFrame": req0,
+                "endFrame": req1,
+                "trackIndex": 1,
+            }
+            if extra:
+                spec.update(extra)
+            append_checked(mp, [spec], f"{label}: cam {src_s:.1f}-{src_e:.1f}")
+            item = (tl.GetItemListInTrack("video", track) or [])[-1]
+            a0, a1 = item.GetSourceStartFrame(), item.GetSourceEndFrame()
+            if a0 is None or a1 is None:
+                _validate_appended_source_range(item, req0, req1)
+                return item
+            a0, a1 = int(a0), int(a1)
+            if a1 - a0 == want_span:
+                return item
+            if not tl.DeleteClips([item]):
+                _validate_appended_source_range(item, req0, req1)  # 交給既有的硬失敗
+                return item
+            logger.info(
+                "%s: 請求 %d-%d（%d 格）放成 %d-%d（%d 格），調整重接",
+                label,
+                req0,
+                req1,
+                want_span,
+                a0,
+                a1,
+                a1 - a0,
+            )
+            if a0 != req0:  # in-point 被退格：整段往後平移，長度不變
+                req0 += req0 - a0
+                req1 = req0 + want_span
+            else:  # 起點對、長度不對：補足差額
+                req1 += want_span - (a1 - a0)
+        raise SystemExit(
+            f"{label}: 來源區間 {f0}-{f1} 連續 {IN_POINT_MAX_NUDGE} 次都放不出正確長度"
+            "——素材的解碼邊界異常，先轉檔成 all-I 或換來源"
+        )
 
     # 開場上下分割：下半＝修修（track 1 先落），上半＝來賓（track 2 後補）
     if opener_span:
@@ -629,8 +676,11 @@ def direct(
     # 短片的字是**獨立製作的動態字卡**（run_shortform_titles），不是 Resolve 的
     # burn-in 字幕軌。字卡企劃宣告 covers_full_transcript 時，底部字幕必須清掉，
     # 否則畫面會同時出現兩層字（修修 2026-08-30 指正）。
+    # 短片一律 mode B（ADR-067：字卡逐子句承接全文、不上字幕軌），所以**還沒有字卡
+    # 企劃時預設就是 True**——否則第一次跑導播會產出呼吸單元 SRT，字卡沒得對齊，
+    # 要先寫一份假企劃才跑得動（雞生蛋）。企劃寫明 false 時才回到 mode A。
     titles_plan_path = episode_dir / TIGHTEN_DIR / f"{cid}_titles.json"
-    covers_full_transcript = False
+    covers_full_transcript = True
     if titles_plan_path.is_file():
         try:
             covers_full_transcript = bool(
@@ -639,7 +689,7 @@ def direct(
                 )
             )
         except (OSError, UnicodeError, json.JSONDecodeError):
-            covers_full_transcript = False
+            covers_full_transcript = True
 
     # mode B（covers_full_transcript）裡這份 SRT 的角色是**逐字證據**，不是顯示層，
     # 所以不做呼吸單元細切——保留 Master 的 cue 邊界，那就是語意子句邊界。
