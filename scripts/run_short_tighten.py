@@ -86,6 +86,20 @@ KEEP_TAIL = 0.07
 # 贅詞候選：單字拖 ≥0.4s 視為 hesitation（正常語速單字 ~0.15-0.25s）
 FILLER_WORDS = {"那", "呃", "啊", "嗯", "欸", "喔"}
 FILLER_MIN_DUR = 0.40
+# 非語音聲響（咳嗽、清喉嚨、拍桌、椅子聲）：既不是靜音也不是詞，`pause` 與
+# `filler/stutter` 兩條都抓不到（修修 2026-08-30 驗收 story-S04 1:10 的咳嗽）。
+# 有詞級時間戳之後判得出來：**詞與詞之間的空檔裡有聲音**就是它。
+NOISE_MIN_GAP = 0.25  # 空檔至少這麼長才看（更短的是正常字間停頓）
+NOISE_FINE_SILENCE = 0.05  # 量空檔內靜音時用的細粒度
+NOISE_MIN_CUT = 0.15  # 響的那一段短於此不值得下刀
+# WhisperX 會把詞 end 拉長到下一個詞的 start（speaker_assign 早就記過這件事）。
+# 實測有個「是」被對成 2.3 秒，咳嗽整個包在那個「詞」裡面，於是根本算不出空檔。
+# 算空檔前先把每個詞的有效長度截頂——中文單音節超過這個長度的部分不是那個字。
+NOISE_WORD_SPAN_CAP = 0.5
+NOISE_MERGE_GAP = 0.2  # 兩段響之間只隔這麼短 → 是同一個聲響（咳嗽會斷成好幾下）
+# 截頂之後，緊接在字尾後面的那一段聲音其實是那個字被拖長的尾巴，不是外來聲響。
+# 真正的判準是**聲音在一段靜之後重新響起**——咳嗽前面一定有一段靜。
+NOISE_LEAD_SILENCE = 0.15
 # 保留段最短長度——短於此併入切除（0.3s 的孤島段落會閃屏）
 MIN_KEEP_SEG = 0.30
 # 整句只有附和詞的 cue（主持人 backchannel）——短片候選剪除，agent 複審
@@ -433,6 +447,94 @@ def _master_words(episode_dir: Path, master) -> list[dict]:
     return out
 
 
+def _peak_db(media: Path, t0: float, t1: float) -> float | None:
+    """區間峰值（dB）——複審時分辨咳嗽（接近語音）與換氣（低 10dB 以上）。"""
+    proc = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-nostats",
+            "-ss",
+            f"{t0:.3f}",
+            "-t",
+            f"{t1 - t0:.3f}",
+            "-i",
+            str(media),
+            "-af",
+            "volumedetect",
+            "-f",
+            "null",
+            "-",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    m = re.search(r"max_volume:\s*(-?[\d.]+) dB", proc.stderr or "")
+    return float(m.group(1)) if m else None
+
+
+def _detect_word_gap_noise(media: Path, t0: float, t1: float, words: list[dict]) -> list[dict]:
+    """詞與詞之間**有聲音**的段落 → 非語音聲響候選（咳嗽、清喉嚨、拍桌…）。
+
+    `pause` 靠靜音、`filler/stutter` 靠詞，咳嗽兩者都不是——它是**有聲音但沒有詞**。
+    這個判準只有在詞級時間戳存在時成立，所以它跟 filler/stutter 同一批回來。
+
+    ⚠️ 找的是空檔裡的**連續有聲段**，不是「空檔的靜音佔比」。用佔比會把短咳嗽
+    平均掉：修修 2026-08-30 聽到的那一下只響 0.4s，卻落在 2.09s 的空檔裡，
+    佔比 0.8 直接被略過。
+
+    keep=null，語意複審決定生死——換氣、笑聲、有意義的環境音都可能落在這裡。
+    `peak_db` 帶出來給複審用：接近語音峰值的是咳嗽，低 10dB 以上多半是換氣。
+    """
+    if not words:
+        return []
+    silences = _detect_silences(media, t0, t1, NOISE_FINE_SILENCE)
+    spoken = sorted(
+        (float(w["start"]), min(float(w["end"]), float(w["start"]) + NOISE_WORD_SPAN_CAP))
+        for w in words
+        if t0 <= w["start"] < t1
+    )
+    out: list[tuple[float, float]] = []
+    for (_s0, prev_end), (next_start, _e1) in zip(spoken, spoken[1:]):
+        if next_start - prev_end < NOISE_MIN_GAP:
+            continue
+        # 空檔扣掉靜音 → 剩下的就是在響的段落
+        cursor, lead = prev_end, 0.0  # lead = 這一段響之前的靜音長度
+        for sil_s, sil_e in silences:
+            if sil_e <= cursor or sil_s >= next_start:
+                continue
+            if sil_s > cursor:
+                out.append((cursor, min(sil_s, next_start), lead))
+            lead = sil_e - sil_s  # 用這段靜音的真實長度，不要被截頂夾過的
+            cursor = max(cursor, sil_e)
+        if next_start > cursor:
+            out.append((cursor, next_start, lead))
+    # 先合併再篩前導靜音：咳嗽會斷成三四下，只有第一下前面有夠長的靜，
+    # 反過來做會把整串咳嗽只留下第一小段。合併後取**第一段**的前導靜音。
+    merged: list[list[float]] = []
+    for a, b, lead in sorted(out):
+        if merged and a - merged[-1][1] <= NOISE_MERGE_GAP:
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b, lead])
+    runs = [
+        (a, b) for a, b, lead in merged if b - a >= NOISE_MIN_CUT and lead >= NOISE_LEAD_SILENCE
+    ]
+    return [
+        {
+            "t0": round(a, 3),
+            "t1": round(b, 3),
+            "kind": "noise",
+            "dur": round(b - a, 2),
+            "peak_db": _peak_db(media, a, b),
+            "keep": None,
+        }
+        for a, b in runs
+    ]
+
+
 def detect(episode_dir: Path, cid: str) -> dict:
     master = _open_editorial_master(episode_dir)
     c, _w = _load_winner(episode_dir, cid, master.identity())
@@ -520,10 +622,28 @@ def detect(episode_dir: Path, cid: str) -> dict:
                 }
             )
 
+    # 4) 非語音聲響（詞與詞之間有聲音的空檔）
+    cuts += _detect_word_gap_noise(master.media_path, t0, t1, seg_words)
+
+    # 既有的 manual 刀是人審出來的（假起手、自我更正、咳嗽…），機械偵測產不出來，
+    # 覆寫掉就等於白審一次。只重生機械類，manual 原樣帶回來。
+    out_path = episode_dir / TIGHTEN_DIR / f"{cid}_cuts.json"
+    if out_path.is_file():
+        try:
+            kept = [
+                x
+                for x in json.loads(out_path.read_text(encoding="utf-8"))["cuts"]
+                if x.get("kind") == "manual"
+            ]
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError):
+            kept = []
+        if kept:
+            logger.info("保留既有 manual 刀 %d 筆（機械偵測產不出來，不覆寫）", len(kept))
+            cuts += kept
+
     cuts.sort(key=lambda x: x["t0"])
     out_dir = episode_dir / TIGHTEN_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"{cid}_cuts.json"
     payload = {
         "id": cid,
         "t_start": t0,
