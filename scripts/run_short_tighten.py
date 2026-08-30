@@ -1103,9 +1103,14 @@ def _retime_srt(
     for s, e, text in cues:
         for wc in word_cuts:
             if s <= wc["t0"] < e:
-                if wc.get("strip_text"):  # manual：指定整串刪除（空格不敏感比對）
-                    pat = r"\s*".join(re.escape(ch) for ch in wc["strip_text"])
-                    text = re.sub(r"  +", " ", re.sub(pat, "", text, count=1)).strip()
+                if "strip_text" in wc:
+                    # manual：指定整串刪除（空格不敏感比對）。**明確給 null／空字串
+                    # ＝只剪聲音、不動文字**——校正過的逐字稿裡重複早就被拿掉了
+                    # （音檔說「高階的、高階的」，cue 只有一個「高階的」），
+                    # 再刪一次會刪到僅存的那個。
+                    if wc["strip_text"]:
+                        pat = r"\s*".join(re.escape(ch) for ch in wc["strip_text"])
+                        text = re.sub(r"  +", " ", re.sub(pat, "", text, count=1)).strip()
                 else:
                     text = _strip_cut_word(text, wc["word"], (wc["t0"] - s) / max(0.1, e - s))
         if text:
