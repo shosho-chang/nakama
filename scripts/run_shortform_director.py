@@ -375,21 +375,23 @@ def direct(
         except (OSError, UnicodeError, json.JSONDecodeError):
             covers_full_transcript = False
 
-    n_cues = 0
+    # mode B（covers_full_transcript）裡這份 SRT 的角色是**逐字證據**，不是顯示層，
+    # 所以不做呼吸單元細切——保留 Master 的 cue 邊界，那就是語意子句邊界。
+    # 細切過的 cue 會跨子句合併（「早就被淘汰了可是」），字卡沒辦法對齊到它。
+    mp.SetCurrentFolder(root)
+    seg_srt, n_cues = _retime_srt(
+        episode_dir,
+        cid,
+        segs,
+        cuts,
+        transcript=master.srt_path,
+        source_media=master.media_path,
+        allow_legacy_words=False,
+        fine=not covers_full_transcript,
+    )
     if covers_full_transcript:
-        logger.info("%s: 字卡覆蓋全文——不上 Resolve 字幕軌，字全部走動態字卡", cid)
+        logger.info("%s: 字卡覆蓋全文——SRT 只當逐字證據，不上字幕軌", cid)
     else:
-        mp.SetCurrentFolder(root)
-        seg_srt, n_cues = _retime_srt(
-            episode_dir,
-            cid,
-            segs,
-            cuts,
-            transcript=master.srt_path,
-            source_media=master.media_path,
-            allow_legacy_words=False,
-            fine=True,
-        )
         srt_items = import_srt_tidy(mp, root, seg_srt)
         if not (bool(mp.AppendToTimeline(srt_items)) if srt_items else False):
             raise SystemExit(f"{label}: 字幕上軌失敗")
