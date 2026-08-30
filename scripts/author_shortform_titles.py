@@ -180,7 +180,8 @@ def main(argv: list[str] | None = None) -> int:
     for t in doc["titles"]:
         print(f"\n  {t['t0']:6.2f}-{t['t1']:6.2f}  tier{t['tier']} {t['beat']}")
         for s in t["states"]:
-            print(f"      +{s['at']:5.2f} {s['transition']:8s} [{s['role']:8s}] {' / '.join(s['lines'])}")
+            lines = " / ".join(s["lines"])
+            print(f"      +{s['at']:5.2f} {s['transition']:8s} [{s['role']:8s}] {lines}")
     print(f"\n→ {out}")
     return 0
 
