@@ -424,6 +424,20 @@ end)
     return True
 
 
+def _conform_video_sources(episode_dir: Path) -> list[Path] | None:
+    """短片影片軌的合法來源＝conform map 列出的素材（ADR-067）。
+
+    沒有 conform map 就回 None，維持長片的「影片軌必須是 Master」原判。
+    """
+    path = episode_dir / "editorial-master" / "v1" / "conform-map.v1.json"
+    if not path.is_file():
+        return None
+    from shared.editorial_conform import load_conform_map
+
+    cmap = load_conform_map(path)
+    return [episode_dir / str(entry["path"]) for entry in cmap["sources"].values()]
+
+
 def _verify_director_materialization(
     episode_dir: Path,
     cid: str,
@@ -431,6 +445,8 @@ def _verify_director_materialization(
     timeline,
     master,
     fps: float,
+    *,
+    shortform: bool = False,
 ) -> dict:
     """Bind the live director Timeline to the current candidate and Master."""
 
@@ -452,6 +468,7 @@ def _verify_director_materialization(
                 "start_frame": int(float(candidate["t_start"]) * fps),
                 "end_frame": int(float(candidate["t_end"]) * fps),
             },
+            live_video_sources=_conform_video_sources(episode_dir) if shortform else None,
         )
     except EditorialMasterContractError as exc:
         raise SystemExit(f"B-roll materialization receipt 驗證失敗：{exc}") from exc
@@ -1230,7 +1247,9 @@ def apply(
         if timeline_uid != orchestrator_timeline_uid:
             raise SystemExit("new orchestrator target Timeline UID changed before B-roll apply")
     else:
-        _verify_director_materialization(episode_dir, cid, c, director, master, fps)
+        _verify_director_materialization(
+            episode_dir, cid, c, director, master, fps, shortform=shortform is not None
+        )
     selected = project.SetCurrentTimeline(director)
     if orchestrated and selected is False:
         raise SystemExit("Resolve refused to select orchestrator target Timeline")

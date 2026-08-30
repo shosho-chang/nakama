@@ -64,6 +64,7 @@ from run_short_director import (  # noqa: E402
 from run_short_tighten import (  # noqa: E402
     FORMAT_TIGHTEN,
     _assert_cut_master_lineage,
+    _commit_materialization_receipt,
     _keep_segments,
     _open_editorial_master,
     _retime_srt,
@@ -697,6 +698,21 @@ def direct(
     if not pm.SaveProject():
         raise SystemExit(f"{label}: Resolve SaveProject 失敗")
 
+    # 導播把 timeline 砍掉重建，UID 會換掉。不重新蓋 materialization receipt 的話，
+    # 下游（素材層、自檢包）綁 live timeline 時一律 fail closed，錯誤訊息還是
+    # 「live Resolve timeline differs from materialization receipt」，看不出根因。
+    # 長片線在 run_short_director 的同一個位置做同一件事。
+    materialization_receipt = _commit_materialization_receipt(
+        episode_dir,
+        cid=cid,
+        cut_format="short",
+        timeline=tl,
+        t0=t0,
+        t1=t1,
+        fps=fps,
+        master=master,
+    )
+
     result = {
         "status": "directed",
         "format": "short",
@@ -715,6 +731,7 @@ def direct(
             for x in resolved_punches
         ],
         "duration_sec": round(tl_cursor, 2),
+        "materialization": materialization_receipt.name,
     }
     if stills_dir is not None:
         from run_short_director import _grab_stills
