@@ -1048,7 +1048,20 @@ def _retime_srt(
         n_hot = _load_episode_hotwords(episode_dir)
         if n_hot:
             logger.info(f"episode 熱詞 {n_hot} 個進 jieba")
-        words = json.load(open(episode_dir / "subs" / "words.json", encoding="utf-8"))["words"]
+        # Memo Dual-Audit 字幕線不產字級時間戳（只有 subs/pause_map_*.npy）。
+        # 沒有 words.json 不是災難：下面 _fine_units 對「詞級對齊失敗」本來就
+        # 有字數比例分配的退路，空 words 走的是同一條。切點誤差 ~0.1-0.3s
+        # （cue 平均 2.5s、細切成兩半），比整支短片做不出來好。
+        words_path = episode_dir / "subs" / "words.json"
+        if words_path.is_file():
+            words = json.load(open(words_path, encoding="utf-8"))["words"]
+        else:
+            words = []
+            logger.warning(
+                "%s 不存在——字幕細切退回字數比例分配（詞級時間戳只有 subtitle-gen "
+                "那條線會產）。要字級精度就先跑 scripts/run_subtitle_gen.py",
+                words_path,
+            )
         if words_clock_offset:
             words = [
                 {
