@@ -35,7 +35,7 @@ description: >
 
 | 層 | 決定者 | 內容 | 檔案 |
 |---|---|---|---|
-| **UI 事件層** | 機械規則 | hero 卡=ding、ramp=riser、cut=impact、貼紙=pop、tier2/B-roll=swish | `run_short_sfx.py` 內建（highlight-cut SKILL Step 10） |
+| **UI 事件層** | 機械規則 | hero 卡=ding、ramp=riser、cut=impact、貼紙=pop、tier2/B-roll=swish | `run_short_sfx.py` 內建（短片見 shortform-cut Step 6、長片見 longform-cut） |
 | **語意層** | 本手冊 | 失敗/勝利/亮相/強調/注意/震驚/憐愛 | `<id>_sound.json` |
 | **環境層** | 本手冊 | 跟著 B-roll 素材走的 diegetic 音（跑車→引擎、錢包→翻找） | `<id>_sound.json` 的 `ambient` |
 
@@ -107,7 +107,7 @@ UI 事件層與本檔的語意/環境層）。
 
 ## Step 5 — 驗收
 
-- 自檢 loop（highlight-cut SKILL Step 11）出的 preview **一定要修修聽**
+- 自檢 loop（短片見 shortform-cut Step 8）出的 preview **一定要修修聽**
   ——我只能量到「有沒有削峰」，判斷不了「吵不吵、對不對味」
 - 對白本身峰值已近 0 dBFS（本集實測 −1.5 dB），SFX 疊加區量到 −0.0 是
   對白造成的，不要據此調音效大小

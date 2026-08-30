@@ -647,6 +647,8 @@ def apply(
     orchestrator_timeline_uid: str | None = None,
     recipe_path: Path | None = None,
     broll_recipe_path: Path | None = None,
+    transcript_guarantee: bool = False,
+    validate_only: bool = False,
 ) -> dict:
     from build_resolve_project import connect_resolve
 
@@ -683,7 +685,12 @@ def apply(
     transition_mode = str(plan.get("transition_mode", "kinetic"))
     if transition_mode not in ("kinetic", "cut"):
         raise SystemExit("transition_mode 只允許 kinetic/cut")
-    if not orchestrated:
+    if transcript_guarantee and not covers_full_transcript:
+        raise SystemExit(
+            "transcript_guarantee 只在 covers_full_transcript 的字卡企劃成立"
+            "——畫面上的字必須逐 cue 承接逐字稿，才能用它取代 DP 稽核"
+        )
+    if not orchestrated and not transcript_guarantee:
         try:
             visual_lineage, _broll = verify_visual_recipe_lineage(
                 episode_dir,
@@ -866,7 +873,9 @@ def apply(
                 variables["style"] = style
         h = _card_hash(variables, comp)
         mov = cards_dir / f"{cid}_{i}_{h}.mov"
-        if not mov.exists():
+        if validate_only and not mov.exists():
+            logger.info("validate-only：企劃過關，跳過 render %s", mov.name)
+        elif not mov.exists():
             _render_card(variables, mov, comp)
         else:
             logger.info("cache hit: %s", mov.name)
@@ -880,12 +889,24 @@ def apply(
             }
         )
 
-    if fmt == "short":
+    if fmt == "short" and not validate_only:
         _validate_rendered_frame_safety([job["mov"] for job in jobs])
+    if validate_only:
+        # 企劃層的驗證到此為止：逐幀安全區要有 render 出來的卡才驗得了，
+        # 上 timeline 更是需要 Resolve。`--validate-only` 的用途是「先確認
+        # 企劃寫對了」，不是「確認成品沒問題」。
+        return {
+            "status": "plan-valid",
+            "cut_id": cid,
+            "format": fmt,
+            "cards": len(jobs),
+            "covers_full_transcript": covers_full_transcript,
+            "transcript_guarantee": transcript_guarantee,
+        }
 
     # Re-open both roots immediately before any Resolve access. CURRENT may
     # switch while jobs are prepared; a different generation must never apply.
-    if not orchestrated:
+    if not orchestrated and not transcript_guarantee:
         master = _open_editorial_master(episode_dir)
         c, w = _load_winner(episode_dir, cid, master.identity())
         try:
@@ -1047,7 +1068,9 @@ def apply(
         items = mp.ImportMedia([str(job["mov"])]) or []
         if not items:
             raise SystemExit(f"匯入失敗: {job['mov']}")
-        items[0].SetClipProperty("Clip Name", job["timeline_name"])
+        # DP 出圖的卡帶 materialization_id 當名字；本 script 自渲的卡沒有那個 id，
+        # 用檔名當識別（Resolve 的 Clip Name 只是給人看的標籤）。
+        items[0].SetClipProperty("Clip Name", job.get("timeline_name") or Path(job["mov"]).stem)
         record = tl_start + int(job["t0"] * fps)
         # 卡片退場動畫收在 show_sec 內，截到 show_sec + 2 frames；
         # 並鉗位在主畫面結束前——卡片伸出片尾會變「黑底浮卡」（盲審 S2 抓到）
@@ -1064,8 +1087,10 @@ def apply(
                     "mediaType": 1,
                     "trackIndex": 3,
                     "recordFrame": record,
-                    "startFrame": int(job["source_start"] * fps),
-                    "endFrame": int(job["source_start"] * fps) + dur,
+                    # DP 出圖的卡有自己的 source_range；本 script 自渲的 mov
+                    # 從頭放（整支就是那張卡），起點固定 0。
+                    "startFrame": int(job.get("source_start", 0.0) * fps),
+                    "endFrame": int(job.get("source_start", 0.0) * fps) + dur,
                 }
             ]
         )

@@ -36,6 +36,13 @@ EVIDENCE_CLAMP_DB = 12.0  # 單詞 dB 差證據上限（防爆音主導）
 SILENCE_FLOOR_DB = 15.0  # 兩軌都低於噪音底 + 此值 → 無證據（e=0）
 SWITCH_PENALTY = 6.0  # 說話者切換基本成本
 MAX_WORD_SEC = 0.4  # 單詞能量窗上限（end 被 align 拉長時的截斷）
+# 上面那個 0.4s 是為 **WhisperX 詞級** token 調的。沒有 words.json 時，上游給的是
+# memo 的**句級 segment**（本集中位長度 1.90s），0.4s 窗等於只看句子的前 21%——
+# 句首常還壓著上一位的尾音，整句就被判給他（修修 2026-08-30：來賓講「所以玩其實
+# 就是一種學習」時畫面切到主持人 1.68s。前 0.4s 算出 e=+4.98 判主持人，
+# 完整 1.64s 窗算出 e=-8.81 判來賓）。
+WORD_MEDIAN_MAX_SEC = 0.8  # token 中位長度超過此值 → 輸入是句級 segment，不是詞
+SEGMENT_MAX_SEC = 3.0  # 句級 token 的能量窗上限（仍夾在 token 自己的 end 內）
 GAP_DISCOUNT = 12.0  # 每秒停頓折抵的切換成本（0.5s 停頓 → 免費切換）
 MIN_SWITCH_PENALTY = 0.8  # 折抵後的最低切換成本（連音搶話仍需此證據量）
 
@@ -182,6 +189,18 @@ def load_envelopes(mic_paths: list[Path], reference: Path | None = None) -> np.n
     return np.stack([e[:n] for e in envs])
 
 
+def _evidence_span(durations: list[float]) -> float:
+    """依 token 粒度選能量窗上限：詞級 0.4s、句級 3.0s。
+
+    粒度用**中位長度**判（不是平均——長獨白會把平均拉高，中位穩定）。
+    WhisperX 詞約 0.2–0.4s；memo 的句級 segment 通常 1.5–2.5s。
+    """
+    if not durations:
+        return MAX_WORD_SEC
+    median = float(np.median(durations))
+    return SEGMENT_MAX_SEC if median > WORD_MEDIAN_MAX_SEC else MAX_WORD_SEC
+
+
 def assign_word_speakers(words: list[dict], envelopes: np.ndarray) -> list[int | None]:
     """每個詞 → speaker index（envelopes 軌序 0/1），Viterbi 全域最佳化。
 
@@ -201,15 +220,20 @@ def assign_word_speakers(words: list[dict], envelopes: np.ndarray) -> list[int |
         return [None] * len(words)
 
     # WhisperX 的詞 end 常被拉長到下一詞 start（詞間 gap 恆 0），兩個對策：
-    # (1) 能量窗上限 MAX_WORD_SEC——超過的部分是靜音或下一位的聲音，不能採
+    # (1) 能量窗上限——超過的部分是靜音或下一位的聲音，不能採
     # (2) 停頓不能信時間戳，改實測「兩軌皆趴在噪音底」的靜音長度
+    #
+    # 上限依**實測的 token 粒度**選：詞級用 MAX_WORD_SEC，句級用 SEGMENT_MAX_SEC。
+    # 粒度是量出來的（中位長度），不是猜的——同一份程式要同時吃 WhisperX 詞與
+    # memo 句級 segment，用詞級的窗去看句子會把整句判給句首壓到的那個人。
+    max_span = _evidence_span([end - start for _k, start, end in timed])
     both_silent = (db[0] < floors[0] + SILENCE_FLOOR_DB) & (db[1] < floors[1] + SILENCE_FLOOR_DB)
 
     evidence: list[float] = []
     gaps: list[float] = []  # 與前一詞之間的實測靜音（秒）
     prev_cap: float | None = None  # 前一詞的截斷後結束時間
     for _k, start, end in timed:
-        cap_end = min(end, start + MAX_WORD_SEC)
+        cap_end = min(end, start + max_span)
         f0 = max(0, int((start - _PAD_SEC) / FRAME_SEC))
         f1 = min(n_frames, int((cap_end + _PAD_SEC) / FRAME_SEC) + 1)
         if f1 <= f0:

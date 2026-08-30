@@ -9,7 +9,12 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from run_short_tighten import _keep_segments, _strip_cut_word, _subtitle_source_config
+from run_short_tighten import (
+    _keep_segments,
+    _master_words,
+    _strip_cut_word,
+    _subtitle_source_config,
+)
 
 
 def _cut(t0, t1, keep=True):
@@ -652,3 +657,162 @@ def test_review_skips_bottom_subtitles_for_full_transcript_choreography(tmp_path
     plan.write_text('{"covers_full_transcript": true, "titles": []}', encoding="utf-8")
 
     assert _uses_transcript_choreography(tmp_path, "KS1") is True
+
+
+# --- 詞級時間戳投影到 Master 時鐘（修修 2026-08-30） ------------------------
+
+
+def _write_conform(tmp_path: Path, master_hash: str) -> None:
+    """最小 conform map：來源 0–4s → 成片 0–4s，來源 7–10s → 成片 4–7s（中間被剪掉）。"""
+    path = tmp_path / "editorial-master" / "v1" / "conform-map.v1.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "contract": "podcast-editorial-conform-map-v1",
+                "schema_version": 1,
+                "fps": 30.0,
+                "editorial_master_lineage": {"content_hash": master_hash},
+                "sources": {"audio": {"path": "normalized.wav", "offset_sec": 0.0}},
+                "segments": [
+                    {"master_start_sec": 0.0, "master_end_sec": 4.0, "source_start_sec": 0.0},
+                    {"master_start_sec": 4.0, "master_end_sec": 7.0, "source_start_sec": 7.0},
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_words(tmp_path: Path, words: list[dict]) -> None:
+    path = tmp_path / "subs" / "words.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"words": words}, ensure_ascii=False), encoding="utf-8")
+
+
+def _master(hash_: str = "abc"):
+    return SimpleNamespace(identity=lambda: {"content_hash": hash_})
+
+
+def test_master_words_projects_and_drops_removed_spans(tmp_path):
+    """被剪掉的話在成片裡不存在——那些詞必須丟掉，不能拿去下刀。"""
+    _write_conform(tmp_path, "abc")
+    _write_words(
+        tmp_path,
+        [
+            {"word": "那", "start": 1.0, "end": 1.4},
+            {"word": "剪", "start": 5.0, "end": 5.4},  # 落在被剪掉的 4–7s
+            {"word": "後", "start": 8.0, "end": 8.4},
+        ],
+    )
+    out = _master_words(tmp_path, _master())
+    assert [w["word"] for w in out] == ["那", "後"]
+    assert out[0]["start"] == 1.0  # 第一段 1:1
+    assert out[1]["start"] == 5.0  # 8.0 - 3.0（被剪掉的長度）
+
+
+def test_master_words_needs_the_edit_map(tmp_path):
+    """沒有 conform map 就回空——那正是 2026-08-30 凌晨停用它的理由。"""
+    _write_words(tmp_path, [{"word": "那", "start": 1.0, "end": 1.4}])
+    assert _master_words(tmp_path, _master()) == []
+
+
+def test_master_words_refuses_a_stale_edit_map(tmp_path):
+    _write_conform(tmp_path, "old-hash")
+    _write_words(tmp_path, [{"word": "那", "start": 1.0, "end": 1.4}])
+    assert _master_words(tmp_path, _master("abc")) == []
+
+
+def test_master_words_without_word_timings(tmp_path):
+    """本集走 memo dual-audit，只有句級時間戳——安全退回只產 pause 刀。"""
+    _write_conform(tmp_path, "abc")
+    assert _master_words(tmp_path, _master()) == []
+
+
+# --- noise 候選的生死判 ---------------------------------------------------
+# 2026-08-30：修修聽到「那美甲不只是，呃，這個，這後面…」的贅音沒被剪掉。
+# 偵測器其實抓到了，是複審判錯——WhisperX 把「是」對成 1.74s，整個把候選包住，
+# 而複審視圖只顯示「結束於候選前／開始於候選後」的詞，那個「是」在畫面上消失，
+# 看起來像 ASR 漏字、候選是語音。以下四條把當時的判斷過程釘死。
+
+from run_short_tighten import _enclosing_word, _judge_noise  # noqa: E402
+
+
+def _noise_fixture(tmp_path, corrected: str):
+    (tmp_path / "m.srt").write_text(
+        f"1\n00:00:00,000 --> 00:00:03,000\n{corrected}\n",
+        encoding="utf-8",
+    )
+    chars = "美甲不只是要把它弄好"
+    words = []
+    for i, ch in enumerate(chars):
+        start = round(i * 0.2, 3)
+        # 「是」被 WhisperX 拉長到 1.2s，把候選整個包住
+        end = 2.0 if ch == "是" else round(start + 0.2, 3)
+        words.append({"word": ch, "start": start, "end": end})
+    return SimpleNamespace(srt_path=tmp_path / "m.srt"), words
+
+
+def _noise_cut(peak: float = -4.0):
+    return {"t0": 1.2, "t1": 1.6, "kind": "noise", "dur": 0.4, "peak_db": peak, "keep": None}
+
+
+def test_judge_noise_cuts_sound_no_transcript_accounts_for(tmp_path):
+    master, words = _noise_fixture(tmp_path, "美甲不只是要把它弄好")
+    cuts = [_noise_cut()]
+    _judge_noise(master, cuts, words)
+    assert cuts[0]["keep"] is True
+    # 包住候選的那個詞一定要出現在複審資料裡，否則又會重蹈覆轍
+    assert cuts[0]["enclosed_by"]["word"] == "是"
+
+
+def test_enclosing_word_finds_stretched_token():
+    words = [{"word": "是", "start": 0.8, "end": 2.0}]
+    assert _enclosing_word(words, 1.2, 1.6)["word"] == "是"
+    assert _enclosing_word(words, 2.1, 2.3) is None
+
+
+def test_judge_noise_keeps_breath(tmp_path):
+    master, words = _noise_fixture(tmp_path, "美甲不只是要把它弄好")
+    cuts = [_noise_cut(peak=-12.0)]
+    _judge_noise(master, cuts, words)
+    assert cuts[0]["keep"] is False
+    assert "換氣" in cuts[0]["review"]
+
+
+def test_judge_noise_skips_span_already_cut(tmp_path):
+    master, words = _noise_fixture(tmp_path, "美甲不只是要把它弄好")
+    cuts = [_noise_cut(), {"t0": 1.0, "t1": 2.0, "kind": "manual", "keep": True}]
+    _judge_noise(master, cuts, words)
+    assert cuts[0]["keep"] is False
+
+
+def test_judge_noise_spares_span_where_corrected_has_extra_char(tmp_path):
+    # 校正稿有「得」、ASR 沒有 → 那個字可能就落在候選裡，剪了會斷字
+    master, words = _noise_fixture(tmp_path, "美甲不只是要把它弄得好")
+    cuts = [_noise_cut()]
+    _judge_noise(master, cuts, words)
+    assert cuts[0]["keep"] is False
+    assert "校正稿" in cuts[0]["review"]
+
+
+def test_carry_reviewed_keeps_human_calls_but_rejudges_noise():
+    """--detect 換的是偵測邏輯，不該把人審過的機械類判斷清成 null；
+    noise 反過來，規則是權威，舊結論（包含判錯的）不沿用。"""
+    from run_short_tighten import _carry_reviewed
+
+    prev = [
+        {"t0": 1.0, "t1": 1.3, "kind": "redundant", "keep": True, "review": "審過"},
+        {"t0": 2.0, "t1": 2.3, "kind": "noise", "keep": False},
+        {"t0": 3.0, "t1": 3.3, "kind": "filler", "keep": False},
+    ]
+    fresh = [
+        {"t0": 1.0, "t1": 1.3, "kind": "redundant", "keep": None},
+        {"t0": 2.0, "t1": 2.3, "kind": "noise", "keep": None},
+        {"t0": 3.0, "t1": 3.9, "kind": "filler", "keep": None},  # 區間變了 = 不同段音檔
+    ]
+    assert _carry_reviewed(fresh, prev) == 1
+    assert fresh[0]["keep"] is True and fresh[0]["review"] == "審過"
+    assert fresh[1]["keep"] is None
+    assert fresh[2]["keep"] is None

@@ -9,7 +9,7 @@ import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 from agents.brook.script_video.editorial_master import EditorialMasterContractError
 
@@ -69,13 +69,35 @@ def _timeline_uid(timeline: Any) -> str:
     raise EditorialMasterContractError("materialized timeline has no stable unique ID")
 
 
-def _verify_live_av_sources(timeline: Any, master_media: Path) -> None:
-    """Require sacred A-roll and program audio on track 1 to come from Master."""
+def _verify_live_av_sources(
+    timeline: Any,
+    master_media: Path,
+    *,
+    video_sources: Iterable[Path] | None = None,
+) -> None:
+    """Require sacred A-roll and program audio on track 1 to come from Master.
+
+    短片（ADR-067）的影片軌不是 Master，而是 conform map 投影出來的機位——同一組
+    修剪套到三機之後，被剪掉的內容在任何素材上都拿不到，ADR-064 要保的性質沒有變，
+    但「影片軌每個 item 都是 Master 檔案」這條就不再成立。呼叫端傳入
+    ``video_sources``（該集 conform map 的來源清單）時，影片軌改驗「每個 item 都
+    出自其中之一」。
+
+    **聲音軌永遠只認 Master**，不受這個參數影響——那是已核准的混音，一格都不動。
+    """
 
     getter = getattr(timeline, "GetItemListInTrack", None)
     if not callable(getter):
         raise EditorialMasterContractError("live materialized timeline cannot expose track items")
-    expected = os.path.normcase(str(master_media.resolve()))
+    master = os.path.normcase(str(master_media.resolve()))
+    allowed = {
+        "video": (
+            {os.path.normcase(str(Path(p).resolve())) for p in video_sources}
+            if video_sources is not None
+            else {master}
+        ),
+        "audio": {master},
+    }
     for track_type in ("video", "audio"):
         items = list(getter(track_type, 1) or [])
         if not items:
@@ -90,9 +112,14 @@ def _verify_live_av_sources(timeline: Any, master_media: Path) -> None:
                 )
             raw_path = media_pool_item.GetClipProperty("File Path")
             actual = os.path.normcase(str(Path(raw_path or "").resolve()))
-            if actual != expected:
+            if actual not in allowed[track_type]:
+                expected = (
+                    "exact master media"
+                    if allowed[track_type] == {master}
+                    else "a conform map source"
+                )
                 raise EditorialMasterContractError(
-                    f"live {track_type} track 1 item {index} is not exact master media"
+                    f"live {track_type} track 1 item {index} is not {expected}"
                 )
 
 
@@ -216,6 +243,7 @@ def verify_materialization_receipt(
     expected_timeline_name: str | None = None,
     expected_format: str | None = None,
     expected_source_range: Mapping[str, int | float] | None = None,
+    live_video_sources: Iterable[Path] | None = None,
 ) -> dict[str, object]:
     """Freshly verify marker bytes, Master identity and optional live Resolve UID."""
 
@@ -283,7 +311,7 @@ def verify_materialization_receipt(
             "live Resolve timeline differs from materialization receipt"
         )
     if timeline is not None:
-        _verify_live_av_sources(timeline, source.media_path)
+        _verify_live_av_sources(timeline, source.media_path, video_sources=live_video_sources)
     return payload
 
 

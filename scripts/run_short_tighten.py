@@ -31,6 +31,7 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import logging
 import os
@@ -59,6 +60,13 @@ from agents.brook.script_video.editorial_master import (  # noqa: E402
     EditorialMasterContractError,
     EditorialMasterRequest,
 )
+from shared.editorial_conform import (  # noqa: E402
+    RELATIVE_PATH as CONFORM_RELATIVE_PATH,
+)
+from shared.editorial_conform import (  # noqa: E402
+    load_conform_map,
+    source_to_master_sec,
+)
 from shared.highlight_materialization import (  # noqa: E402
     HighlightSource,
     build_materialization_receipt,
@@ -79,6 +87,27 @@ KEEP_TAIL = 0.07
 # 贅詞候選：單字拖 ≥0.4s 視為 hesitation（正常語速單字 ~0.15-0.25s）
 FILLER_WORDS = {"那", "呃", "啊", "嗯", "欸", "喔"}
 FILLER_MIN_DUR = 0.40
+# 非語音聲響（咳嗽、清喉嚨、拍桌、椅子聲）：既不是靜音也不是詞，`pause` 與
+# `filler/stutter` 兩條都抓不到（修修 2026-08-30 驗收 story-S04 1:10 的咳嗽）。
+# 有詞級時間戳之後判得出來：**詞與詞之間的空檔裡有聲音**就是它。
+NOISE_MIN_GAP = 0.25  # 空檔至少這麼長才看（更短的是正常字間停頓）
+NOISE_FINE_SILENCE = 0.05  # 量空檔內靜音時用的細粒度
+NOISE_MIN_CUT = 0.15  # 響的那一段短於此不值得下刀
+# WhisperX 會把詞 end 拉長到下一個詞的 start（speaker_assign 早就記過這件事）。
+# 實測有個「是」被對成 2.3 秒，咳嗽整個包在那個「詞」裡面，於是根本算不出空檔。
+# 算空檔前先把每個詞的有效長度截頂——中文單音節超過這個長度的部分不是那個字。
+NOISE_WORD_SPAN_CAP = 0.5
+NOISE_MERGE_GAP = 0.2  # 兩段響之間只隔這麼短 → 是同一個聲響（咳嗽會斷成好幾下）
+# 截頂之後，緊接在字尾後面的那一段聲音其實是那個字被拖長的尾巴，不是外來聲響。
+# 真正的判準是**聲音在一段靜之後重新響起**——咳嗽前面一定有一段靜。
+NOISE_LEAD_SILENCE = 0.15
+# 峰值比語音低這麼多就當換氣：剪掉換氣接點反而突兀，留著沒人聽得出來。
+NOISE_BREATH_PEAK_DB = -10.0
+
+# 贅字：ASR 逐字稿有、**校正稿沒有**的字。判「這是不是贅字」不需要字表也不需要猜
+# ——subtitle-correct 那一關已經有人／模型逐句看過，把口吃、遲疑、贅詞從文字裡
+# 拿掉了，音檔還留著。那份判決直接拿來用。
+REDUNDANT_MIN_DUR = 0.15  # 更短的一刀在畫面上是彈一下，不值得
 # 保留段最短長度——短於此併入切除（0.3s 的孤島段落會閃屏）
 MIN_KEEP_SEG = 0.30
 # 整句只有附和詞的 cue（主持人 backchannel）——短片候選剪除，agent 複審
@@ -234,17 +263,26 @@ def _load_winner(
 ) -> tuple[dict, dict]:
     hdir = episode_dir / HIGHLIGHTS_DIR
     candidates_doc = json.loads((hdir / "candidates.json").read_text(encoding="utf-8"))
-    winners_doc = json.loads((hdir / "winners.json").read_text(encoding="utf-8"))
     cands = candidates_doc["candidates"]
-    winners = winners_doc["winners"]
     c = next((x for x in cands if x["id"] == cid), None)
+    if c is None:
+        raise SystemExit(f"{cid} 不在 candidates 中")
+    # 當選名單依 format 分檔（winners.short.json / winners.long.json）。
+    # 共用一份 winners.json 時，寫短片會洗掉長片那筆——
+    # 2026-08-30 實際發生過，長片的 packaging-plan 與 winners 一度互相矛盾。
+    # 舊檔名仍然可用（長片目前就走它），不做強制遷移。
+    fmt = str(c.get("format") or "")
+    per_format = hdir / f"winners.{fmt}.json" if fmt else None
+    winners_path = per_format if per_format and per_format.is_file() else hdir / "winners.json"
+    winners_doc = json.loads(winners_path.read_text(encoding="utf-8"))
+    winners = winners_doc["winners"]
     w = next((x for x in winners if x["id"] == cid), None)
-    if c is None or w is None:
-        raise SystemExit(f"{cid} 不在 winners/candidates 中")
+    if w is None:
+        raise SystemExit(f"{cid} 不在 {winners_path.name} 中")
     if editorial_master_lineage is not None:
         for source_name, document in (
             ("candidates.json", candidates_doc),
-            ("winners.json", winners_doc),
+            (winners_path.name, winners_doc),
         ):
             if document.get("editorial_master_lineage") != editorial_master_lineage:
                 raise SystemExit(
@@ -366,15 +404,342 @@ def _detect_silences(
     return list(zip(starts, ends))
 
 
+def _master_words(episode_dir: Path, master) -> list[dict]:
+    """詞級時間戳 → **投影到 Master 時鐘**；沒有 edit map 就回空（維持停用）。
+
+    2026-08-30 凌晨的 `9e4306c2` 把 `words` 寫死成空 list，理由是「詞的時間戳在
+    raw/normalized 時鐘上，V1 沒有 edit map，套到 Master 時鐘會剪錯字」。那個理由
+    在 conform map（ADR-067）之後不成立了——它就是那份 edit map：
+    `source_to_master_sec` 把 normalized.wav 的時間精確換算成成片時間，落在被剪掉
+    區間的詞回 None 直接丟棄（那些話在成片裡根本不存在）。
+
+    這是重新啟用 filler／stutter 偵測的前提。沒有它，`--detect` 只產得出 pause
+    刀，開頭的「那、那」口吃不會被提出來（修修 2026-08-30 驗收 story-S04 抓到）。
+
+    三個條件缺一就回空，不猜：
+    - `subs/words.json` 不存在（本集走 memo dual-audit，只釋出句級時間戳）
+    - conform map 不存在
+    - conform map 綁的不是目前這份 Editorial Master
+    """
+    words = _optional_words(episode_dir)
+    if not words:
+        logger.info("沒有 subs/words.json——只產 pause 刀，filler／stutter 不偵測")
+        return []
+    cmap_path = episode_dir / CONFORM_RELATIVE_PATH
+    if not cmap_path.is_file():
+        logger.warning(
+            "找不到 conform map（%s）——詞級時間戳在來源時鐘上，換算不了，filler／stutter 不偵測",
+            cmap_path,
+        )
+        return []
+    cmap = load_conform_map(cmap_path)
+    if cmap.get("editorial_master_lineage", {}).get("content_hash") != master.identity().get(
+        "content_hash"
+    ):
+        logger.warning("conform map 綁的不是目前這份 Editorial Master——filler／stutter 不偵測")
+        return []
+    out: list[dict] = []
+    dropped = 0
+    for w in words:
+        try:
+            src_s, src_e = float(w["start"]), float(w["end"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        start = source_to_master_sec(cmap, src_s, source_key="audio")
+        end = source_to_master_sec(cmap, src_e, source_key="audio")
+        if start is None or end is None or end <= start:
+            dropped += 1  # 落在被剪掉的區間
+            continue
+        out.append({**w, "start": start, "end": end})
+    logger.info("詞級時間戳投影到 Master 時鐘：%d 個可用，%d 個落在被剪掉的區間", len(out), dropped)
+    return out
+
+
+def _peak_db(media: Path, t0: float, t1: float) -> float | None:
+    """區間峰值（dB）——複審時分辨咳嗽（接近語音）與換氣（低 10dB 以上）。"""
+    proc = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-nostats",
+            "-ss",
+            f"{t0:.3f}",
+            "-t",
+            f"{t1 - t0:.3f}",
+            "-i",
+            str(media),
+            "-af",
+            "volumedetect",
+            "-f",
+            "null",
+            "-",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    m = re.search(r"max_volume:\s*(-?[\d.]+) dB", proc.stderr or "")
+    return float(m.group(1)) if m else None
+
+
+def _detect_word_gap_noise(media: Path, t0: float, t1: float, words: list[dict]) -> list[dict]:
+    """詞與詞之間**有聲音**的段落 → 非語音聲響候選（咳嗽、清喉嚨、拍桌…）。
+
+    `pause` 靠靜音、`filler/stutter` 靠詞，咳嗽兩者都不是——它是**有聲音但沒有詞**。
+    這個判準只有在詞級時間戳存在時成立，所以它跟 filler/stutter 同一批回來。
+
+    ⚠️ 找的是空檔裡的**連續有聲段**，不是「空檔的靜音佔比」。用佔比會把短咳嗽
+    平均掉：修修 2026-08-30 聽到的那一下只響 0.4s，卻落在 2.09s 的空檔裡，
+    佔比 0.8 直接被略過。
+
+    這裡只負責「哪裡有聲音」，生死交給 `_judge_noise`——換氣、笑聲、有意義的
+    環境音都可能落在這裡，光看時長分不出來。`peak_db` 是判準之一。
+    """
+    if not words:
+        return []
+    silences = _detect_silences(media, t0, t1, NOISE_FINE_SILENCE)
+    spoken = sorted(
+        (float(w["start"]), min(float(w["end"]), float(w["start"]) + NOISE_WORD_SPAN_CAP))
+        for w in words
+        if t0 <= w["start"] < t1
+    )
+    out: list[tuple[float, float]] = []
+    for (_s0, prev_end), (next_start, _e1) in zip(spoken, spoken[1:]):
+        if next_start - prev_end < NOISE_MIN_GAP:
+            continue
+        # 空檔扣掉靜音 → 剩下的就是在響的段落
+        cursor, lead = prev_end, 0.0  # lead = 這一段響之前的靜音長度
+        for sil_s, sil_e in silences:
+            if sil_e <= cursor or sil_s >= next_start:
+                continue
+            if sil_s > cursor:
+                out.append((cursor, min(sil_s, next_start), lead))
+            lead = sil_e - sil_s  # 用這段靜音的真實長度，不要被截頂夾過的
+            cursor = max(cursor, sil_e)
+        if next_start > cursor:
+            out.append((cursor, next_start, lead))
+    # 先合併再篩前導靜音：咳嗽會斷成三四下，只有第一下前面有夠長的靜，
+    # 反過來做會把整串咳嗽只留下第一小段。合併後取**第一段**的前導靜音。
+    merged: list[list[float]] = []
+    for a, b, lead in sorted(out):
+        if merged and a - merged[-1][1] <= NOISE_MERGE_GAP:
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b, lead])
+    runs = [
+        (a, b) for a, b, lead in merged if b - a >= NOISE_MIN_CUT and lead >= NOISE_LEAD_SILENCE
+    ]
+    return [
+        {
+            "t0": round(a, 3),
+            "t1": round(b, 3),
+            "kind": "noise",
+            "dur": round(b - a, 2),
+            "peak_db": _peak_db(media, a, b),
+            "keep": None,
+        }
+        for a, b in runs
+    ]
+
+
+def _enclosing_word(words: list[dict], a: float, b: float) -> dict | None:
+    """把 [a, b] 整個包住的那個詞。
+
+    WhisperX 常把一個字對成一兩秒（本集最長 2.30s）。候選落在那種詞的中間時，
+    「結束於候選之前／開始於候選之後」的前後文會**把那個字整個藏起來**，看起來
+    像 ASR 漏字、候選是語音——2026-08-30 我就是這樣把修修親耳聽到的「呃，這個」
+    判成語音。包住候選的詞一定要顯示出來，這欄是那次的防呆。
+    """
+    for w in words:
+        if float(w["start"]) <= a and float(w["end"]) >= b:
+            return w
+    return None
+
+
+def _cues_missing_chars(master, words: list[dict]) -> list[tuple[float, float]] | None:
+    """校正稿有字、ASR 沒有的那些 cue 區間。沒有 opencc 就回 None（整條停用）。"""
+    out: list[tuple[float, float]] = []
+    for s_, e_, text in _parse_srt(master.srt_path):
+        cor = _to_simplified(text)
+        if cor is None:
+            return None
+        asr = "".join(
+            _to_simplified(str(w["word"])) or "" for w in words if s_ <= float(w["start"]) < e_
+        )
+        if not asr:
+            continue
+        if any(
+            tag == "insert"
+            for tag, *_ in difflib.SequenceMatcher(None, asr, cor, autojunk=False).get_opcodes()
+        ):
+            out.append((s_, e_))
+    return out
+
+
+def _judge_noise(master, cuts: list[dict], words: list[dict]) -> None:
+    """noise 候選就地判生死，並寫下判準（`review` 欄）與前後文。
+
+    主判準：**ASR 沒有字、校正稿也沒有字**的一段聲音就是贅音。校正稿是
+    subtitle-correct 那一關逐句看過的判決書，ASR 是機器聽到的每一個音；兩邊
+    都沒有對到，那段聲音就不屬於任何一個字——「呃」「這個」這種正是如此。
+
+    三個否決（實測都出現過）：
+    1. 已被別的刀蓋住 → 重複下刀
+    2. 該 cue 的校正稿有 ASR 沒有的字 → 那個字可能就落在這一段裡，剪了會斷字
+    3. 峰值比語音低太多 → 換氣
+
+    判不動就留 keep=None 給人審，不要猜（沒有 opencc 時就是這種狀況）。
+    """
+    noise = [x for x in cuts if x.get("kind") == "noise"]
+    if not noise:
+        return
+    covered = [
+        (x["t0"], x["t1"]) for x in cuts if x.get("keep") is True and x.get("kind") != "noise"
+    ]
+    missing = _cues_missing_chars(master, words)
+    for x in noise:
+        a, b, peak = x["t0"], x["t1"], x.get("peak_db")
+        enc = _enclosing_word(words, a, b)
+        if enc is not None:
+            x["enclosed_by"] = {
+                "word": str(enc["word"]),
+                "t0": round(float(enc["start"]), 3),
+                "t1": round(float(enc["end"]), 3),
+            }
+        x["context"] = (
+            "".join(str(w["word"]) for w in words if float(w["end"]) <= a + 0.02)[-8:]
+            + "◤◢"
+            + "".join(str(w["word"]) for w in words if float(w["start"]) >= b - 0.02)[:8]
+        )
+        if any(lo <= a and b <= hi for lo, hi in covered):
+            x["keep"], x["review"] = False, "已被其他刀蓋住，重複下刀"
+        elif missing is None:
+            x["review"] = "沒有 opencc，比不了校正稿——留給人審"
+        elif any(s_ <= a < e_ for s_, e_ in missing):
+            x["keep"] = False
+            x["review"] = "該 cue 的校正稿有 ASR 沒有的字，可能就落在這段裡，不剪"
+        elif peak is not None and peak < NOISE_BREATH_PEAK_DB:
+            x["keep"] = False
+            x["review"] = f"峰值 {peak}dB 比語音低太多，像換氣"
+        else:
+            x["keep"] = True
+            x["review"] = "ASR 沒有字、校正稿也沒有字的一段聲音（贅音）"
+            if enc is not None:
+                x["review"] += (
+                    f"；被拉長的「{enc['word']}」"
+                    f"（{float(enc['end']) - float(enc['start']):.2f}s）包住，"
+                    "但隔了一段靜才響，不是那個字的尾巴"
+                )
+
+
+def _to_simplified(text: str) -> str | None:
+    """繁→簡，用來跟 ASR（簡體）比對。沒有 opencc 就回 None，呼叫端整條停用。"""
+    try:
+        from opencc import OpenCC
+    except ImportError:  # pragma: no cover - 環境沒裝就安靜降級
+        return None
+    global _T2S
+    try:
+        _T2S
+    except NameError:
+        _T2S = OpenCC("t2s")
+    return _T2S.convert(text).replace(" ", "")
+
+
+def _detect_redundant_words(master, t0: float, t1: float, words: list[dict]) -> list[dict]:
+    """ASR 有、校正稿沒有的字 → 贅字候選（keep=null）。
+
+    這條是**唯一不靠字表**的贅詞判準。`FILLER_WORDS` 只認得六個單字、還要拖滿
+    0.4 秒；實測 story-S04 的「以現在**這個**AI發展的速度」只有 0.18 秒、
+    「也是一個很流行的**一個**服務」是兩個字，兩個都漏掉。校正稿全都標出來了。
+
+    兩種必須排除的假陽性（實測都出現過）：
+
+    1. **cue 邊界溢出**：ASR 的詞尾巴壓到下一句的第一個字（「…會被AI取代**所**」，
+       下一句校正稿是「**所**以你要做的工作應該是」）。判準：掉的字是下一句
+       校正稿的開頭（或上一句的結尾）就不算。
+    2. **ASR 聽錯／正規化**：「十萬人」→「10萬人」、「小比例」→「小死皮」、
+       「做**得**很好」→「做**的**很好」。這些是 difflib 的 `replace`，音檔那裡
+       有正常語音，剪了會斷字——所以只收 `delete`。
+    """
+    cor_cues = [(s_, e_, t) for s_, e_, t in _parse_srt(master.srt_path) if t0 <= s_ < t1]
+    if not cor_cues or _to_simplified("測試") is None:
+        return []
+    out: list[dict] = []
+    for idx, (cs, ce, text) in enumerate(cor_cues):
+        seg = [w for w in words if cs <= w["start"] < ce]
+        if not seg:
+            continue
+        chars: list[tuple[str, dict]] = []
+        for w in seg:
+            for ch in _to_simplified(str(w["word"])) or "":
+                chars.append((ch, w))
+        asr = "".join(c for c, _ in chars)
+        cor = _to_simplified(text) or ""
+        if not asr or asr == cor:
+            continue
+        prev_cor = _to_simplified(cor_cues[idx - 1][2]) if idx else ""
+        next_cor = _to_simplified(cor_cues[idx + 1][2]) if idx + 1 < len(cor_cues) else ""
+        for tag, i1, i2, _j1, _j2 in difflib.SequenceMatcher(
+            None, asr, cor, autojunk=False
+        ).get_opcodes():
+            if tag != "delete" or i2 <= i1:
+                continue
+            dropped = asr[i1:i2]
+            if i2 >= len(asr) and next_cor and next_cor.startswith(dropped):
+                continue  # 下一句的開頭被 ASR 算進這一句
+            if i1 == 0 and prev_cor and prev_cor.endswith(dropped):
+                continue  # 這一句的開頭其實是上一句的結尾
+            a, b = chars[i1][1]["start"], chars[i2 - 1][1]["end"]
+            if b - a < REDUNDANT_MIN_DUR:
+                continue
+            out.append(
+                {
+                    "t0": round(a, 3),
+                    "t1": round(b, 3),
+                    "kind": "redundant",
+                    "word": dropped,
+                    "dur": round(b - a, 2),
+                    "context": f"{asr[max(0, i1 - 8) : i1]}◤{dropped}◢{asr[i2 : i2 + 8]}",
+                    "corrected": text,
+                    "keep": None,
+                }
+            )
+    return out
+
+
+def _carry_reviewed(cuts: list[dict], prev: list[dict]) -> int:
+    """把上一版的複審結論套回同一段音檔的新候選，回傳套了幾筆。
+
+    `manual` 由呼叫端整筆帶回。`noise` 不沿用——它有 `_judge_noise` 這條可查的
+    規則，規則是權威，舊結論（包含 2026-08-30 我判錯的那批）不該存活。
+    """
+    reviewed = {
+        (x["kind"], x["t0"], x["t1"]): x
+        for x in prev
+        if x.get("keep") is not None and x.get("kind") not in ("manual", "noise")
+    }
+    carried = 0
+    for cut in cuts:
+        was = reviewed.get((cut["kind"], cut["t0"], cut["t1"]))
+        if was is None or cut.get("keep") is not None:
+            continue
+        cut["keep"] = was["keep"]
+        if was.get("review"):
+            cut["review"] = was["review"]
+        carried += 1
+    return carried
+
+
 def detect(episode_dir: Path, cid: str) -> dict:
     master = _open_editorial_master(episode_dir)
     c, _w = _load_winner(episode_dir, cid, master.identity())
     fmt = c.get("format", "short")
     cfg = FORMAT_TIGHTEN[fmt]
     t0, t1 = float(c["t_start"]), float(c["t_end"])
-    # Legacy words are on the raw/normalized clock.  V1 intentionally has no
-    # edit map, so using them against the Master clock could cut the wrong word.
-    words: list[dict] = []
+    # 詞級時間戳先過 conform map 投影到 Master 時鐘再用（見 `_master_words`）。
+    words = _master_words(episode_dir, master)
     seg_words = [x for x in words if t0 <= x.get("start", 0) < t1]
 
     cuts: list[dict] = []
@@ -454,10 +819,39 @@ def detect(episode_dir: Path, cid: str) -> dict:
                 }
             )
 
+    # 4) 非語音聲響（詞與詞之間有聲音的空檔）
+    cuts += _detect_word_gap_noise(master.media_path, t0, t1, seg_words)
+
+    # 5) 贅字（ASR 有、校正稿沒有）
+    cuts += _detect_redundant_words(master, t0, t1, seg_words)
+
+    # 既有的 manual 刀是人審出來的（假起手、自我更正、咳嗽…），機械偵測產不出來，
+    # 覆寫掉就等於白審一次。只重生機械類，manual 原樣帶回來。
+    #
+    # 機械類的**複審結論**同樣要帶回來：--detect 是為了換偵測邏輯而重跑，不是
+    # 為了把人審過的判斷清成 null。同一個 (kind, t0, t1) 指的是同一段音檔，
+    # 判斷仍然成立。noise 例外——它現在有 `_judge_noise` 這條可查的規則，規則
+    # 是權威，舊結論（包含我判錯的那些）不該存活。
+    out_path = episode_dir / TIGHTEN_DIR / f"{cid}_cuts.json"
+    if out_path.is_file():
+        try:
+            prev = json.loads(out_path.read_text(encoding="utf-8"))["cuts"]
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError):
+            prev = []
+        kept = [x for x in prev if x.get("kind") == "manual"]
+        if kept:
+            logger.info("保留既有 manual 刀 %d 筆（機械偵測產不出來，不覆寫）", len(kept))
+            cuts += kept
+        carried = _carry_reviewed(cuts, prev)
+        if carried:
+            logger.info("沿用既有複審結論 %d 筆（同一段音檔，判斷仍成立）", carried)
+
+    # noise 的生死判在 manual 併回來之後——判準之一是「已被別的刀蓋住」。
+    _judge_noise(master, cuts, seg_words)
+
     cuts.sort(key=lambda x: x["t0"])
     out_dir = episode_dir / TIGHTEN_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"{cid}_cuts.json"
     payload = {
         "id": cid,
         "t_start": t0,
@@ -1037,9 +1431,14 @@ def _retime_srt(
     for s, e, text in cues:
         for wc in word_cuts:
             if s <= wc["t0"] < e:
-                if wc.get("strip_text"):  # manual：指定整串刪除（空格不敏感比對）
-                    pat = r"\s*".join(re.escape(ch) for ch in wc["strip_text"])
-                    text = re.sub(r"  +", " ", re.sub(pat, "", text, count=1)).strip()
+                if "strip_text" in wc:
+                    # manual：指定整串刪除（空格不敏感比對）。**明確給 null／空字串
+                    # ＝只剪聲音、不動文字**——校正過的逐字稿裡重複早就被拿掉了
+                    # （音檔說「高階的、高階的」，cue 只有一個「高階的」），
+                    # 再刪一次會刪到僅存的那個。
+                    if wc["strip_text"]:
+                        pat = r"\s*".join(re.escape(ch) for ch in wc["strip_text"])
+                        text = re.sub(r"  +", " ", re.sub(pat, "", text, count=1)).strip()
                 else:
                     text = _strip_cut_word(text, wc["word"], (wc["t0"] - s) / max(0.1, e - s))
         if text:
@@ -1048,7 +1447,20 @@ def _retime_srt(
         n_hot = _load_episode_hotwords(episode_dir)
         if n_hot:
             logger.info(f"episode 熱詞 {n_hot} 個進 jieba")
-        words = json.load(open(episode_dir / "subs" / "words.json", encoding="utf-8"))["words"]
+        # Memo Dual-Audit 字幕線不產字級時間戳（只有 subs/pause_map_*.npy）。
+        # 沒有 words.json 不是災難：下面 _fine_units 對「詞級對齊失敗」本來就
+        # 有字數比例分配的退路，空 words 走的是同一條。切點誤差 ~0.1-0.3s
+        # （cue 平均 2.5s、細切成兩半），比整支短片做不出來好。
+        words_path = episode_dir / "subs" / "words.json"
+        if words_path.is_file():
+            words = json.load(open(words_path, encoding="utf-8"))["words"]
+        else:
+            words = []
+            logger.warning(
+                "%s 不存在——字幕細切退回字數比例分配（詞級時間戳只有 subtitle-gen "
+                "那條線會產）。要字級精度就先跑 scripts/run_subtitle_gen.py",
+                words_path,
+            )
         if words_clock_offset:
             words = [
                 {

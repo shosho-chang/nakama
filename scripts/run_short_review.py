@@ -59,6 +59,7 @@ from agents.brook.script_video.identity_placement import (  # noqa: E402
     IdentityPlacementError,
     verify_identity_placement,
 )
+from shared.editorial_conform import conform_source_paths  # noqa: E402
 from shared.highlight_materialization import (  # noqa: E402
     HighlightSource,
     verify_materialization_receipt,
@@ -131,6 +132,11 @@ def _verify_materialization_receipt(
                 "start_frame": int(float(t_start) * fps),
                 "end_frame": int(float(t_end) * fps),
             },
+            # 短片的畫面是 conform map 投影出來的機位，不是 Master（ADR-067）。
+            # 聲音軌不受影響，仍然只認 Master。
+            live_video_sources=(
+                conform_source_paths(episode_dir) if cut_format == "short" else None
+            ),
         )
     except EditorialMasterContractError as exc:
         raise SystemExit(f"review packet materialization receipt 驗證失敗：{exc}") from exc
@@ -316,9 +322,18 @@ def _load_events(episode_dir: Path, cid: str) -> list[dict]:
                     "note": "",
                 }
             )
-    p = td / f"{cid}_zoom.json"
+    # 短片線的 zoom 企劃寫的是逐字稿座標（cue／phrase），絕對秒數在導播解出來的
+    # `_zoom.resolved.json` 裡（ADR-067）；有解析檔就用它，沒有才讀舊格式。
+    resolved = td / f"{cid}_zoom.resolved.json"
+    p = resolved if resolved.is_file() else td / f"{cid}_zoom.json"
     if p.exists():
-        for it in json.loads(p.read_text(encoding="utf-8"))["punches"]:
+        punches = json.loads(p.read_text(encoding="utf-8"))["punches"]
+        for it in punches:
+            if "t0" not in it:
+                raise SystemExit(
+                    f"{p.name} 的 punch 缺絕對秒數——短片線請先跑 run_shortform_director "
+                    "產生 _zoom.resolved.json"
+                )
             events.append(
                 {
                     "type": f"punch-{it.get('style', 'ramp')}",
@@ -327,9 +342,22 @@ def _load_events(episode_dir: Path, cid: str) -> list[dict]:
                     "slug": "",
                     "t0": float(it["t0"]),
                     "t1": float(it["t1"]),
-                    "note": it.get("note", ""),
+                    "note": it.get("why") or it.get("note", ""),
                 }
             )
+            # 同一個 punch 中途再進一階也是一次視覺重音，逐階列成事件
+            for step in it.get("steps") or []:
+                events.append(
+                    {
+                        "type": f"punch-{step.get('style', 'cut')}",
+                        "kind": "pacing",
+                        "review_lane": "pacing",
+                        "slug": "",
+                        "t0": float(step["t"]),
+                        "t1": float(it["t1"]),
+                        "note": f"階梯 ×{step.get('scale')}",
+                    }
+                )
     events.sort(key=lambda x: x["t0"])
     return events
 

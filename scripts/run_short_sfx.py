@@ -71,9 +71,19 @@ def build_cues(episode_dir: Path, cid: str) -> list[dict]:
             else:
                 cues.append({"t": float(t["t0"]), "sfx": "swish", "prio": 2, "ev": f"title{i}"})
 
-    p = td / f"{cid}_zoom.json"
+    # 短片線的 zoom 企劃寫的是逐字稿座標（cue／phrase），絕對秒數在導播解出來的
+    # `_zoom.resolved.json` 裡；有解析檔就用它，沒有才讀舊格式的手寫秒數。
+    resolved = td / f"{cid}_zoom.resolved.json"
+    p = resolved if resolved.is_file() else td / f"{cid}_zoom.json"
     if p.exists():
-        for i, z in enumerate(json.loads(p.read_text(encoding="utf-8"))["punches"]):
+        punches = json.loads(p.read_text(encoding="utf-8"))["punches"]
+        # 一個 punch 中途再進一階（steps）也是一次視覺重音，各自配音效
+        hits = [{"t0": z["t0"], "style": z.get("style", "ramp")} for z in punches if "t0" in z] + [
+            {"t0": st["t"], "style": st.get("style", "cut")}
+            for z in punches
+            for st in z.get("steps") or []
+        ]
+        for i, z in enumerate(sorted(hits, key=lambda x: x["t0"])):
             if z.get("style", "ramp") == "cut":
                 # 二十五輪修修裁決：impact（cinematic hit）配在論述型訪談太戲劇
                 # ——「有一個很奇怪的音效」。硬切放大本身就是視覺重音，不配聲音
