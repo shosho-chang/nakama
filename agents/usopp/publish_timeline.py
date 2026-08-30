@@ -17,6 +17,13 @@ Finished Cut Release。20260805 林之晨的實測：
 並且**每次 render 前都拿實際 timeline 長度跟 Release preview 對一次**。ADR-066
 的 run 可由 resolve transaction 機器推導；migrated Release 沒有 transaction，
 只能由人記一次——記下來的東西可以被稽核，猜出來的不行。
+
+**還沒有 Release 的 cut（`release_id: null`）**：短片線（ADR-067）產出的成品在
+`publish_prep` 那一步才第一次登錄 Release，所以它進對應表時手上沒有 release_id。
+這種 entry 仍然要填 `expected_duration_sec`，來源是**修修看過的那份 review
+preview** 的長度——護欄擋的是「preview 之後有人動過 timeline」，跟長片擋錯片
+是同一件事，只是對照物換成 preview 而不是 Release。缺 release_id 不是放行，
+是把對照物講清楚。
 """
 
 from __future__ import annotations
@@ -44,7 +51,8 @@ class PublishTimelineTarget:
 
     cut_id: str
     timeline: str
-    release_id: str
+    #: 還沒登錄 Release 的 cut（新短片）為 None——見模組 docstring。
+    release_id: str | None
     release_cut_id: str
     expected_duration_sec: float
 
@@ -70,25 +78,41 @@ def resolve_target(timeline_map: dict, cut_id: str) -> PublishTimelineTarget:
             f"  已登記的有：{known}\n"
             f"  補上它，不要讓 publish_prep 回頭用 winners.json 的名字猜（會出錯片）。"
         )
-    missing = [k for k in ("timeline", "release_id", "expected_duration_sec") if not entry.get(k)]
+    missing = [k for k in ("timeline", "expected_duration_sec") if not entry.get(k)]
     if missing:
         raise PublishTimelineError(f"{cut_id} 的對應表少了欄位 {missing}")
+    if "release_id" not in entry:
+        raise PublishTimelineError(
+            f"{cut_id} 的對應表沒有 release_id 欄位。還沒登錄 Release 的成品要明寫 "
+            '"release_id": null——欄位不見與「刻意沒有」必須分得出來'
+        )
+    release_id = entry["release_id"]
     return PublishTimelineTarget(
         cut_id=cut_id,
         timeline=str(entry["timeline"]),
-        release_id=str(entry["release_id"]),
+        release_id=str(release_id) if release_id else None,
         release_cut_id=str(entry.get("release_cut_id") or cut_id),
         expected_duration_sec=float(entry["expected_duration_sec"]),
     )
 
 
 def verify_duration(target: PublishTimelineTarget, actual_duration_sec: float) -> None:
-    """render 前最後一道：實際 timeline 長度必須等於 Release 的 preview 長度。"""
+    """render 前最後一道：實際 timeline 長度必須等於對照物的長度。
+
+    對照物是 Release 的 preview；還沒登錄 Release 的成品（新短片）則是修修看過的
+    那份 review preview。訊息要講清楚是拿什麼在對，不然看到「Release None」的人
+    會以為是程式壞了而不是 timeline 被動過。
+    """
     delta = abs(actual_duration_sec - target.expected_duration_sec)
     if delta > DURATION_TOLERANCE_SEC:
+        against = (
+            f"Release {target.release_id} 的成品長度"
+            if target.release_id
+            else "修修看過的 review preview 長度"
+        )
         raise PublishTimelineError(
             f"{target.cut_id}: timeline「{target.timeline}」長度 {actual_duration_sec:.3f}s，"
-            f"但 Release {target.release_id} 的成品長度是 "
+            f"但{against}是 "
             f"{target.expected_duration_sec:.3f}s（差 {delta:.3f}s）。\n"
             f"  → 這條 timeline 不是這個 Release 的內容。專案裡通常還留著同名的舊剪輯；\n"
             f"     先確認 {MAP_RELPATH} 指到正確的那條，不要就這樣 render 出去。"
@@ -132,6 +156,8 @@ def release_chapters(episode_dir: Path, cut_id: str) -> list[tuple[float, str]]:
     if timeline_map is None:
         return []
     target = resolve_target(timeline_map, cut_id)
+    if target.release_id is None:
+        return []  # 還沒登錄 Release ⇒ 沒有分章來源（短片本來也不分章）
 
     from agents.brook.script_video.finished_cut_production import build_current_release_reader
 
@@ -168,6 +194,8 @@ def release_subtitle(episode_dir: Path, cut_id: str) -> Path | None:
     if timeline_map is None:
         return None
     target = resolve_target(timeline_map, cut_id)
+    if target.release_id is None:
+        return None  # 還沒登錄 Release ⇒ 字幕來源改由呼叫端的 tight SRT 決定
 
     from agents.brook.script_video.finished_cut_production import build_current_release_reader
 
@@ -223,4 +251,8 @@ def export_matches_current_release(episode_dir: Path, cut_id: str, receipt: dict
     rows = [row for row in (receipt or {}).get("cuts") or [] if row.get("cut_id") == cut_id]
     if len(rows) != 1:
         return False
+    if target.release_id is None:
+        # 對應表沒有指定 Release ⇒ 這一輪 render 才第一次登錄，沒有舊 id 可比對。
+        # 長度護欄（verify_duration）仍然在 render 前跑過了。
+        return True
     return str(rows[0].get("release_id") or "") == target.release_id
