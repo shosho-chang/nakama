@@ -367,3 +367,4 @@
 - [短影片線凍結](project_shortform_frozen.md) — 修修 2026-08-04：只推長影片，短片擱置；清盤=長片出完
 - [vendor SPA 前端不可盲寫 selector](feedback_verify_ui_in_real_browser.md) — minified Vue bundle 的 DOM/CSS/router 無法從原碼推導；先用 magic login + Playwright 解剖真實頁面再寫，含站上生成免密登入連結的指令
 - [自由艦隊 gamification 上線事實](reference_fleet_gamification_stack.md) — 分享期 T0 2026-08-24；plugin/服務/開關/白名單/Sanji 帳號、三個 vendor 縫隙、LSCache 與 CF 兩顆地雷、probe 與部署指令
+- [先讀程序，不要照抄範例檔](feedback_read_the_procedure_not_the_artifact.md) — 有文件的產線先讀該步 skill 章節、逐條列硬限制當驗收；範例檔只對照格式不推規格
