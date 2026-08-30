@@ -319,14 +319,14 @@ final class VoyagePage {
 	.nkv .nkv-next{ margin-left:auto; font-size:.78rem; opacity:.6; font-variant-numeric:tabular-nums }
 	/* 橘只當線不當塊：4px 細規尺，不做大面積填色 */
 	.nkv .nkv-bar{ height:4px; border-radius:4px; background:rgba(125,125,125,.2); overflow:hidden }
-	.nkv .nkv-bar i{ display:block; height:100%; border-radius:4px; background:#e8913f;
+	.nkv .nkv-bar i{ display:block; height:100%; border-radius:4px; background:#e98965;
 		transition:width .6s cubic-bezier(.22,1,.36,1) }
 	.nkv .nkv-rank--empty{ margin-bottom:.9rem }
 	.nkv .nkv-rank--empty .nkv-note{ margin-top:0 }
 	@media (prefers-reduced-motion: reduce){ .nkv .nkv-bar i{ transition:none } }
 	.nkv .nkv-idt{ font-size:.72rem; line-height:1.5; padding:.1rem .55rem; border-radius:999px;
 		letter-spacing:.05em; white-space:nowrap; align-self:center }
-	.nkv .nkv-idt--full{ border:1px solid #e8913f; color:#e8913f }
+	.nkv .nkv-idt--full{ border:1px solid #e98965; color:#e98965 }
 	.nkv .nkv-idt--trainee{ border:1px solid rgba(125,125,125,.4); opacity:.65 }
 	.nkv .nkv-declare{ margin:.7rem 0 0; font-size:.8rem }
 	.nkv .nkv-rank-foot{ display:flex; align-items:baseline; gap:.6rem; margin-top:.55rem }
@@ -343,12 +343,12 @@ final class VoyagePage {
 	.nkv .nkv-more{ margin:.7rem 0 0; text-align:center }
 	.nkv .nkv-more button{ font:inherit; font-size:.78rem; padding:.3rem 1.1rem; cursor:pointer;
 		border:1px solid rgba(125,125,125,.32); border-radius:999px; background:transparent; color:inherit }
-	.nkv .nkv-more button:hover{ border-color:#e8913f; color:#e8913f }
+	.nkv .nkv-more button:hover{ border-color:#e98965; color:#e98965 }
 	.nkv .nkv-act{ line-height:1.5 }
 	.nkv .nkv-act-main{ display:block }
 	.nkv .nkv-act-sub{ display:block; font-size:.72rem; opacity:.55; margin-top:.05rem }
 	.nkv .nkv-lk{ color:inherit; text-decoration:none; border-bottom:1px solid rgba(125,125,125,.42) }
-	.nkv .nkv-lk:hover{ color:#e8913f; border-bottom-color:#e8913f }
+	.nkv .nkv-lk:hover{ color:#e98965; border-bottom-color:#e98965 }
 	.nkv h3{ font-size:.9rem; margin:0 0 .5rem }
 	.nkv table{ width:100%; border-collapse:collapse; font-size:.83rem;
 		border:1px solid rgba(125,125,125,.22); border-radius:12px; overflow:hidden }
@@ -385,7 +385,7 @@ final class VoyagePage {
 <meta name="robots" content="noindex">
 <title><?php echo esc_html( $d['name'] ); ?>的航海日誌</title>
 <style>
-	:root{ color-scheme:light; --bg:#f6f6f4; --card:#ffffff; --ink:#23211e; --dim:#71706c; --line:rgba(60,60,55,.16); --accent:#e8913f }
+	:root{ color-scheme:light; --bg:#f6f6f4; --card:#ffffff; --ink:#23211e; --dim:#71706c; --line:rgba(60,60,55,.16); --accent:#e98965 }
 	@media (prefers-color-scheme: dark){
 		:root{ color-scheme:dark; --bg:#1d1f23; --card:#26282d; --ink:#e8e7e4; --dim:#9b9a96; --line:rgba(230,230,225,.14) }
 	}
