@@ -367,5 +367,6 @@
 - [短影片線凍結](project_shortform_frozen.md) — 【已作廢】2026-08-04 的凍結決定，見下一條
 - [短影片線重啟](project_shortform_restarted.md) — 2026-08-30 重啟並收斂；唯一流程手冊 = shortform-cut skill
 - [量音檔前先確認時鐘](feedback_verify_clock_before_measuring.md) — source／master／tight 差幾十秒，用錯座標會量出假 bug
+- [素材自己去抓](feedback_agent_downloads_stock_itself.md) — 修修不會自己下載 Envato；驗收點在 preview 不在候選頁
 - [vendor SPA 前端不可盲寫 selector](feedback_verify_ui_in_real_browser.md) — minified Vue bundle 的 DOM/CSS/router 無法從原碼推導；先用 magic login + Playwright 解剖真實頁面再寫，含站上生成免密登入連結的指令
 - [自由艦隊 gamification 操作事實](../shared/reference/fleet_gamification_stack.md) — **已遷往 shared（Codex 也讀得到）**；架構鐵則、部署與開關、三個 vendor 縫隙、LSCache 與 CF 兩顆地雷、影片橋接的發分判準、Bunny 遷移三層寫入形狀、品牌色紀律。交接總表見 `docs/plans/2026-08-30-gamification-handoff.md`
