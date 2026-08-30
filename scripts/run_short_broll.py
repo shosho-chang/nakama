@@ -457,7 +457,51 @@ def _verify_director_materialization(
         raise SystemExit(f"B-roll materialization receipt 驗證失敗：{exc}") from exc
 
 
-def validate_plan(episode_dir: Path, cid: str) -> dict:
+def _broll_gate(
+    episode_dir: Path,
+    cid: str,
+    fmt: str,
+    items: list[dict],
+    lineage: dict,
+    *,
+    editorial_master: object | None,
+    shortform: dict | None,
+) -> dict:
+    """素材授權：長片走 ADR-065 收據鏈，短片走 ADR-067 的短片線 gate。
+
+    短片不能走長片那條——`build_authoritative_broll_receipt` 沒有 title_items
+    就會去讀 `<cid>_titles.json` 並要求每張字卡都帶 DP materialization，
+    而短片的字卡是逐字稿保證（`run_shortform_titles`），一接上就全毀。
+    """
+    if shortform is not None:
+        from shared.shortform_broll import ShortformBrollError, verify_shortform_broll
+
+        try:
+            return verify_shortform_broll(
+                episode_dir,
+                cid,
+                items,
+                editorial_master_lineage=lineage,
+                cues=shortform["cues"],
+                punches=shortform.get("punches"),
+                opener_sec=float(shortform.get("opener_sec", 0.0)),
+            )
+        except ShortformBrollError as exc:
+            raise SystemExit(f"短片素材 gate 失敗：{exc}") from exc
+    try:
+        return build_authoritative_broll_receipt(
+            episode_dir,
+            cid,
+            fmt,
+            items,
+            lineage,
+            editorial_master=editorial_master,
+        )
+    except BrollContractError as exc:
+        raise SystemExit(f"Stock Video production gate 失敗：{exc}") from exc
+
+
+def validate_plan(episode_dir: Path, cid: str, *, shortform: dict | None = None) -> dict:
     """Read-only Stock Video preflight for agent-authored B-roll plans."""
 
     master = _open_editorial_master(episode_dir)
@@ -470,17 +514,15 @@ def validate_plan(episode_dir: Path, cid: str) -> dict:
         items = payload["items"]
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
         raise SystemExit(f"{path} 不是合法 B-roll plan") from exc
-    try:
-        receipt = build_authoritative_broll_receipt(
-            episode_dir,
-            cid,
-            str(candidate["format"]),
-            items,
-            master.identity(),
-            editorial_master=master,
-        )
-    except BrollContractError as exc:
-        raise SystemExit(f"Stock Video production gate 失敗：{exc}") from exc
+    receipt = _broll_gate(
+        episode_dir,
+        cid,
+        str(candidate["format"]),
+        items,
+        master.identity(),
+        editorial_master=master,
+        shortform=shortform,
+    )
     return {
         "status": "plan-valid",
         "cut_id": cid,
@@ -873,6 +915,7 @@ def apply(
     orchestrator_timeline_name: str | None = None,
     orchestrator_timeline_uid: str | None = None,
     recipe_path: Path | None = None,
+    shortform: dict | None = None,
 ) -> dict:
     from build_resolve_project import connect_resolve
 
@@ -898,17 +941,15 @@ def apply(
         raise SystemExit(f"{broll_path} 不存在——agent 先從 tight SRT 規劃素材點")
     items = json.loads(broll_path.read_text(encoding="utf-8"))["items"]
     if not orchestrated:
-        try:
-            broll_receipt = build_authoritative_broll_receipt(
-                episode_dir,
-                cid,
-                str(fmt),
-                items,
-                master.identity(),
-                editorial_master=master,
-            )
-        except BrollContractError as exc:
-            raise SystemExit(f"Stock Video production gate 失敗：{exc}") from exc
+        broll_receipt = _broll_gate(
+            episode_dir,
+            cid,
+            str(fmt),
+            items,
+            master.identity(),
+            editorial_master=master,
+            shortform=shortform,
+        )
     structural_kinds = {"camera-correction", "guest-namecard", "badge"}
 
     def _preserved_structural_kind(item: dict) -> str | None:
@@ -1142,17 +1183,15 @@ def apply(
     if not orchestrated:
         master = _open_editorial_master(episode_dir)
         c, w = _load_winner(episode_dir, cid, master.identity())
-        try:
-            fresh_broll_receipt = build_authoritative_broll_receipt(
-                episode_dir,
-                cid,
-                str(c["format"]),
-                items,
-                master.identity(),
-                editorial_master=master,
-            )
-        except BrollContractError as exc:
-            raise SystemExit(f"Stock Video production gate 失敗：{exc}") from exc
+        fresh_broll_receipt = _broll_gate(
+            episode_dir,
+            cid,
+            str(c["format"]),
+            items,
+            master.identity(),
+            editorial_master=master,
+            shortform=shortform,
+        )
         if fresh_broll_receipt != broll_receipt:
             raise SystemExit("Stock Video plan／素材在準備期間發生變更，未修改 Resolve")
 
@@ -1413,8 +1452,26 @@ def apply(
     pm.SaveProject()
     committed_broll_receipt = None
     if not orchestrated:
-        try:
-            post_apply_broll_receipt = build_authoritative_broll_receipt(
+        post_apply_broll_receipt = _broll_gate(
+            episode_dir,
+            cid,
+            str(c["format"]),
+            items,
+            master.identity(),
+            editorial_master=master,
+            shortform=shortform,
+        )
+        if post_apply_broll_receipt != broll_receipt:
+            raise SystemExit(
+                "Stock Video plan／素材在疊軌期間發生變更；未發布 materialization receipt"
+            )
+        if shortform is not None:
+            from shared.shortform_broll import write_shortform_broll_receipt
+
+            write_shortform_broll_receipt(episode_dir, cid, post_apply_broll_receipt)
+            committed_broll_receipt = post_apply_broll_receipt
+        else:
+            committed_broll_receipt = write_broll_receipt(
                 episode_dir,
                 cid,
                 str(c["format"]),
@@ -1422,20 +1479,6 @@ def apply(
                 master.identity(),
                 editorial_master=master,
             )
-        except BrollContractError as exc:
-            raise SystemExit(f"Stock Video materialization receipt 寫入失敗：{exc}") from exc
-        if post_apply_broll_receipt != broll_receipt:
-            raise SystemExit(
-                "Stock Video plan／素材在疊軌期間發生變更；未發布 materialization receipt"
-            )
-        committed_broll_receipt = write_broll_receipt(
-            episode_dir,
-            cid,
-            str(c["format"]),
-            items,
-            master.identity(),
-            editorial_master=master,
-        )
 
     stills = []
     if stills_dir is not None:

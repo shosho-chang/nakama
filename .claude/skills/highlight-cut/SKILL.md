@@ -490,6 +490,12 @@ Script 層仍共用 `run_short_*.py`（`FORMAT_*` 參數表）——改 script �
 
 ## Step 7 — 機位導播（修修 2026-07-26：畫面切分要更細緻）
 
+> **⚠️ 長短片入口已分家（ADR-067，修修 2026-08-30 裁決）。**
+> 短片走 `scripts/run_shortform_director.py` → `run_shortform_titles.py` →
+> `run_shortform_broll.py`；長片維持 `run_short_director.py` / `run_short_titles.py` /
+> `run_short_broll.py`。下面 Step 7–9 的**規格**兩線共用，**指令**依這張表走，
+> 短片專屬差異寫在各節的「短片線」段落。
+
 以下規格為**短片**（雙機位、9:16 裁切）；長片差異見上方「長片線」節。
 
 短片不用機器導播混好的單一 source，改用原始機位（`Video/1_CAMERA 1.mp4`
@@ -507,8 +513,15 @@ Script 層仍共用 `run_short_*.py`（`FORMAT_*` 參數表）——改 script �
   <1s 的附和不切鏡（切過去再切回來會閃屏）
 - **反應鏡頭**：同人 run 每 ~9s 插 1.8s 聽者點頭畫面再切回（audio 不斷）——
   修修 2026-07-26 二輪回饋「畫面變化太少」的解法，範本語法
-- **內容驅動 punch（五～七輪裁決）**：agent 從 tight SRT 標「講重點」的
-  區間寫 `<id>_zoom.json`（timeline 秒），每項可帶 `style` 與 `scale`：
+- **內容驅動 punch（五～七輪裁決；ADR-067 改成逐字稿座標）**：agent 從 tight SRT
+  標「講重點」的句子寫 `<id>_zoom.json`。**短片線不再寫 timeline 秒數**——改寫
+  `cue`（哪一句）／`phrase`（該 cue 的**句首**，用來確認指對句子）／`until_cue`
+  （放掉的那一句，落在句尾）。手寫秒數會落在句子中間：修修 2026-08-30 驗收抓到
+  `t1=12.53` 停在下一句開頭 0.67s 處（「為什麼要拉遠又拉近」）、`t0=32.78` 打在
+  前一句第 14 個字（「又在很奇怪的地方 zoom in」）。ramp 自動提前 0.5s 起跳
+  （`PUNCH_LEAD_SEC`，修修：「要在他講那一句話前 0.5 秒就要 zoom in」），硬切不提前。
+  絕對秒數由導播解出來寫進 `<id>_zoom.resolved.json`，下游吃那一份。
+  每項可帶 `style`、`scale`、`lead_sec`、`steps`（同一段論述中途再進一階而不放掉）：
   - `"style":"ramp"`（預設）＝speed-ramp：smootherstep 慢→快→慢、
     0.25s、+25%（十四輪定版：0.5 太慢、0.2 略衝）。**不過衝回彈**
     （十二輪：放大直接放大就好；easeOutBack 試過被否決）
@@ -649,6 +662,15 @@ alpha 已過 DaVinci 驗證（2026-07-26），Brook DP 降級表的 overlay 缺�
 可據此解鎖。
 
 ## Step 9 — 素材層：B-roll / 貼紙 / 概念卡（修修 2026-07-27 通宵裁決，對標鐘穎波旬集）
+
+> **短片線（ADR-067）**：`py -3.10 scripts/run_shortform_broll.py <episode> --id <id>
+> [--validate-only]`。門檻與長片不同——授權照驗（acquisition receipt ＋ 檔案 SHA-256），
+> 語意改成機械錨定：每個 item 宣告 `source_cues`，落點必須包在那幾句的時間裡；
+> **素材必須直式**（修修 2026-08-30，橫的裁進 9:16 只剩中間一條）；不可壓到開場上下分割，
+> 不可蓋掉 punch zoom。第一版只收 `video`/`photo`，貼紙／概念卡／icon 還在長片線的收據鏈上。
+> 素材放 `assets/broll/<slug>.<ext>`，收據放 `assets/broll/<slug>.acquisition.json`。
+> **短片不要走下面 ADR-065 那條 Director/DP 收據鏈**——它會連字卡一起拉回 DP 稽核，
+> 短片字卡走的是逐字稿保證。
 
 波旬範本解剖出五種素材語彙，全部走 `highlights/tighten/<id>_broll.json` +
 `run_short_broll.py`（schema 見 script docstring）。Podcast production 走的是同一份
