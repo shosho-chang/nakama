@@ -471,6 +471,19 @@ Script 層仍共用 `run_short_*.py`（`FORMAT_*` 參數表）——改 script �
 & "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_tighten.py <episode> --apply --id <winner-id>
 ```
 
+> **⚠️ filler／stutter 需要兩份前置**（修修 2026-08-30 驗收 story-S04「重複或卡頓的詞
+> 沒有修掉」抓到）：
+> 1. `<episode>/subs/words.json`——**詞級**時間戳。走 memo dual-audit（Subtitle V2）的
+>    集數只有句級時間戳（實測中位 1.90s），抓不出口吃。缺的話 `--detect` 只產得出
+>    pause 刀，而且**不會報錯**，只在 log 說一句。補跑（GPU，修修本機）：
+>    `python scripts/run_whisperx_words.py "<episode>/normalized.wav" --output "<episode>/subs/words.json"`
+> 2. `<episode>/editorial-master/v1/conform-map.v1.json`——詞的時間戳在來源時鐘上，
+>    要靠 conform map 投影到 Master 時鐘才敢下刀（`_master_words`）。沒有它就等於
+>    2026-08-30 凌晨到當天下午那段期間的狀態：詞級刀整個停用。
+>
+> **不能從字幕反推**：Master 的 SRT 是校正過的逐字稿，口吃在文字層早就被拿掉了，
+> 只有 ASR 的原始詞級時間戳還留著。
+
 複審準則（機械偵測會誤報，語意層把關）：
 
 - **filler「那/啊/喔」拖 ≥0.4s**：連接詞用法照剪（口語遲疑），但要確認剪掉
