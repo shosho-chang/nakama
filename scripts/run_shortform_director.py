@@ -46,8 +46,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 # 幾何、shot 規劃與 Fusion punch 都是與畫面來源無關的機械件，沿用既有實作；
 # ADR-067 分家時會把它們搬到中性命名的模組，不再掛在 run_short_* 底下。
+from run_highlight_cut import _parse_srt, _ts  # noqa: E402
 from run_short_director import (  # noqa: E402
-    _apply_punch_zooms,
     _configure_timeline,
     _find_media_item_by_path,
     _load_cfg,
@@ -55,6 +55,7 @@ from run_short_director import (  # noqa: E402
     _media_pool_items,
     _pan,
     _panel_props,
+    _scurve_expand,
     _speaker_timing_tokens,
     _validate_appended_source_range,
     _validate_media_source_range,
@@ -76,6 +77,7 @@ from shared.editorial_conform import (  # noqa: E402
     source_to_master_sec,
 )
 from shared.resolve_append import append_checked  # noqa: E402
+from shared.zh_linebreak import split_clause, wrap_lines  # noqa: E402
 
 logger = logging.getLogger("shortform_director")
 
@@ -84,6 +86,13 @@ CONFORM_PATH = Path("editorial-master") / "v1" / "conform-map.v1.json"
 
 #: speaker index → conform map 的來源鍵。0=修修、1=來賓（固定機位配置）。
 SPEAKER_SOURCE = {0: "cam1", 1: "cam2"}
+
+#: 字卡 caption 的版面預算（＝`run_short_titles.FORMAT_TITLES["short"]`；
+#: tests/scripts/test_shortform_director.py 盯著兩邊不准漂）。mode B 裡一個
+#: cue 就是一張卡，排不進這個預算的 cue 必須在**這裡**拆開——字卡層不能拆，
+#: 拆了那個 cue 會出現兩次，逐字覆蓋驗證直接不過。
+CARD_LINE_CHARS = 10
+CARD_MAX_LINES = 2
 
 
 def _master_word_speakers(
@@ -155,6 +164,236 @@ def _camera_pieces(cmap: dict, spk: int, master_s: float, master_e: float) -> li
     if key is None:
         raise SystemExit(f"speaker {spk} 沒有對應機位（短片只用 cam1/cam2）")
     return project_master_range(cmap, master_s, master_e, source_key=key)
+
+
+def _split_long_cues(srt_path: Path) -> tuple[int, list[str]]:
+    """mode B：把排不進字卡版面的 cue，在語法接縫處拆開後原地重寫 SRT。
+
+    mode B 的一個 cue = 一張卡（`_validate_full_transcript_coverage` 要求每個
+    cue 恰好被一個 state 承接一次），所以「這句話太長，卡排不下」只能在這裡解。
+    字卡層拆會讓同一個 cue 出現兩次，逐字覆蓋驗證直接不過；降級成別的字級樣式
+    則是把版面問題推給樣式——2026-08-30 那張三行 hybrid 卡就是這樣長出來的。
+
+    拆點時間用**字元比例**內插。mode B 的這份 SRT 不上字幕軌，它唯一的下游是
+    字卡時間，而字卡本來就是逐字內插的——兩邊同一套算法，不會因此對不上。
+    """
+    rows: list[tuple[float, float, str]] = []
+    notes: list[str] = []
+    for t0, t1, text in _parse_srt(srt_path):
+        body = text.replace("\n", "")
+        pieces = split_clause(body, CARD_LINE_CHARS, CARD_MAX_LINES)
+        if len(pieces) == 1:
+            rows.append((t0, t1, body))
+            continue
+        notes.append(f"{body}（{len(body)} 字）→ " + " ／ ".join(pieces))
+        acc = 0
+        for piece in pieces:
+            p0 = t0 + (t1 - t0) * acc / len(body)
+            acc += len(piece)
+            p1 = t0 + (t1 - t0) * acc / len(body)
+            rows.append((round(p0, 3), round(p1, 3), piece))
+    srt_path.write_text(
+        "\n".join(f"{i}\n{_ts(a)} --> {_ts(b)}\n{t}\n" for i, (a, b, t) in enumerate(rows, 1)),
+        encoding="utf-8",
+    )
+    for note in notes:
+        logger.info("過長子句拆開：%s", note)
+    stuck = [t for _a, _b, t in rows if wrap_lines(t, CARD_LINE_CHARS, CARD_MAX_LINES) is None]
+    if stuck:
+        raise SystemExit(
+            f"以下子句拆過還是排不進字卡版面（{CARD_LINE_CHARS} 字 × {CARD_MAX_LINES} 行）：{stuck}"
+        )
+    return len(rows), notes
+
+
+def _cue_index(srt_path: Path) -> list[dict]:
+    return [
+        {"n": i, "t0": t0, "t1": t1, "text": text.replace("\n", "")}
+        for i, (t0, t1, text) in enumerate(_parse_srt(srt_path), 1)
+    ]
+
+
+def _phrase_onset(cue: dict, phrase: str, *, where: str) -> float:
+    """cue 內某段話的起點（字元比例內插）。對不上原文就爆，不猜。"""
+    at = cue["text"].find(phrase)
+    if at < 0:
+        raise SystemExit(
+            f"{where}：phrase「{phrase}」不在 cue {cue['n']}「{cue['text']}」裡——"
+            "zoom 企劃與最新 SRT 對不上，重寫企劃、不要調數字"
+        )
+    return cue["t0"] + (cue["t1"] - cue["t0"]) * at / len(cue["text"])
+
+
+def _resolve_punches(punches: list[dict], cues: list[dict], cfg: dict) -> list[dict]:
+    """cue／phrase 錨定的 punch 企劃 → 絕對時間區間。
+
+    2026-08-30 修修驗收抓到的兩個病，根因是同一件事：punch 區間是手寫的
+    timeline 秒數，沒有任何東西檢查它落在句子的哪裡。
+
+    - `t1=12.53` 落在下一句開頭 0.67s 處 → 「那在演化中喜歡玩的物種早就被
+      淘汰了」講到一半鏡頭先拉遠，1.7s 後又拉近（「為什麼要拉遠又拉近」）
+    - `t0=32.78` 落在前一句的第 14 個字 → 本來要打在「所以玩是一種模擬」的
+      zoom，打在「…會使用到的肌肉」上（「又在很奇怪的地方 zoom in」）
+
+    所以 punch 不再寫秒數，改寫**逐字稿座標**：`cue` 指哪一句、`phrase` 指這句
+    話的哪個詞起跳（必須是該 cue 的原文子字串）、`until_cue` 指放掉的那一句
+    （放在該句**句尾**）。`steps` 讓同一段論述中途再進一階而**不放掉**——鋪陳
+    與爆點是同一個修辭單位，中間鬆手就是那個「拉遠又拉近」。
+    """
+    by_n = {c["n"]: c for c in cues}
+    out: list[dict] = []
+    prev_until = 0
+    for i, p in enumerate(punches):
+        where = f"punch {i}"
+        if "t0" in p or "t1" in p:
+            raise SystemExit(
+                f"{where}：zoom 企劃還是舊的絕對秒數格式（t0/t1）。短片線改用 cue 錨定"
+                "（cue / phrase / until_cue），請對著最新 tight SRT 重寫這份企劃"
+            )
+        cue_n, until_n = int(p["cue"]), int(p.get("until_cue", p["cue"]))
+        for n in (cue_n, until_n):
+            if n not in by_n:
+                raise SystemExit(f"{where}：cue {n} 不在最新 SRT（共 {len(cues)} 句）")
+        if until_n < cue_n:
+            raise SystemExit(f"{where}：until_cue={until_n} 在 cue={cue_n} 之前")
+        if cue_n <= prev_until:
+            raise SystemExit(
+                f"{where}：cue {cue_n} 落在上一個 punch（到 cue {prev_until}）的區間內——"
+                "在同一句話裡放掉再拉回就是那個「拉遠又拉近」。要嘛合併成一個 punch"
+                "（用 steps 再進一階），要嘛把上一個 punch 收在更前面的句尾"
+            )
+        prev_until = until_n
+        attack = _phrase_onset(by_n[cue_n], str(p["phrase"]), where=where)
+        release = by_n[until_n]["t1"]
+        base = float(p.get("scale", cfg["punch_scale"]))
+        steps: list[dict] = []
+        last_t, last_scale = attack, base
+        for k, st in enumerate(p.get("steps") or []):
+            s_n = int(st["cue"])
+            if not cue_n <= s_n <= until_n:
+                raise SystemExit(f"{where} step {k}：cue {s_n} 不在 punch 的 {cue_n}–{until_n} 內")
+            s_t = _phrase_onset(by_n[s_n], str(st["phrase"]), where=f"{where} step {k}")
+            s_scale = float(st["scale"])
+            if s_t <= last_t + cfg["punch_ramp_sec"] or s_scale <= last_scale:
+                raise SystemExit(
+                    f"{where} step {k}：時間或倍率沒有往前推"
+                    f"（{last_t:.2f}s×{last_scale} → {s_t:.2f}s×{s_scale}）"
+                )
+            steps.append(
+                {"t": round(s_t, 3), "style": str(st.get("style", "cut")), "scale": s_scale}
+            )
+            last_t, last_scale = s_t, s_scale
+        if release <= last_t + cfg["punch_ramp_sec"]:
+            raise SystemExit(f"{where}：放掉的點 {release:.2f}s 太貼近最後一次進階 {last_t:.2f}s")
+        out.append(
+            {
+                "t0": round(attack, 3),
+                "t1": round(release, 3),
+                "style": str(p.get("style", "ramp")),
+                "scale": base,
+                "steps": steps,
+                "cue": cue_n,
+                "until_cue": until_n,
+                "phrase": str(p["phrase"]),
+                "why": p.get("why") or p.get("note"),
+            }
+        )
+    return out
+
+
+def _punch_curve(punch: dict, ramp: float, fps: float) -> list[tuple[float, float]]:
+    """單一 punch → 時間軸上的 Size 曲線（進場 → 逐階升 → 句尾才放掉）。"""
+    cut = 1.0 / fps
+    lead = ramp if punch["style"] == "ramp" else cut
+    pts = [(punch["t0"], 1.0), (punch["t0"] + lead, punch["scale"])]
+    level = punch["scale"]
+    for st in punch["steps"]:
+        pts.append((st["t"], level))
+        pts.append((st["t"] + (ramp if st["style"] == "ramp" else cut), st["scale"]))
+        level = st["scale"]
+    pts.append((punch["t1"] - ramp, level))
+    pts.append((punch["t1"], 1.0))
+    return _scurve_expand(pts)
+
+
+def _slice_curve(pts: list[tuple[float, float]], lo: float, hi: float):
+    """曲線與單一 shot item 的交集 → item 內的區域關鍵影格（跨刀時連續）。"""
+    if hi <= pts[0][0] + 1e-6 or lo >= pts[-1][0] - 1e-6:
+        return None
+
+    def value(t: float) -> float:
+        if t <= pts[0][0] or t >= pts[-1][0]:
+            return 1.0
+        for (a, va), (b, vb) in zip(pts, pts[1:]):
+            if a <= t <= b:
+                return va if b <= a else va + (vb - va) * (t - a) / (b - a)
+        return 1.0
+
+    keys = [(0.0, value(lo))]
+    keys += [(t - lo, v) for t, v in pts if lo < t < hi]
+    keys.append((hi - lo, value(hi)))
+    out: list[tuple[float, float]] = []
+    for t, v in keys:
+        if out and t <= out[-1][0] + 1e-6:
+            continue
+        out.append((t, v))
+    return out if len(out) >= 2 else None
+
+
+def _apply_shortform_punches(
+    appended: list[dict], resolved: list[dict], fps: float, cfg: dict
+) -> int:
+    """短片 punch：把 cue 錨定曲線寫進覆蓋到的 talk shot（Fusion Transform）。
+
+    與長片的 `_apply_punch_zooms` 分家（修修 2026-08-30：長短片流程與呼叫的
+    東西完全獨立）。機制沿用：MediaIn→Transform→MediaOut、Size 關鍵影格取樣、
+    **Pivot 鎖臉**（Center 是位置不是支點，勿踩）、與 item 靜態 ZoomX 疊乘。
+    """
+    n = 0
+    for punch in resolved:
+        curve = _punch_curve(punch, cfg["punch_ramp_sec"], fps)
+        for a in appended:
+            if a["kind"] == "reaction":
+                continue
+            keys = _slice_curve(curve, a["tl_s"], a["tl_e"])
+            if not keys:
+                continue
+            item = a["item"]
+            comp = (
+                item.GetFusionCompByIndex(1)
+                if item.GetFusionCompCount() > 0
+                else item.AddFusionComp()
+            )
+            if comp is None:
+                logger.warning("AddFusionComp 失敗 @%.1fs——此 shot 跳過 punch", a["tl_s"])
+                continue
+            if a["spk"] is None:
+                cx, cy = 0.5, 0.5
+            else:
+                cx = float(cfg["face_x"][str(a["spk"])]) / 1920
+                cy = 1.0 - float(cfg["face_y"][str(a["spk"])]) / 1080  # Fusion y 向上
+            key_lua = "\n".join(
+                f'  xf:SetInput("Size", {v:.5f}, {round(t * fps, 2)})' for t, v in keys
+            )
+            lua = f"""
+local ok, err = pcall(function()
+  local mi = comp:FindToolByID("MediaIn")
+  local mo = comp:FindToolByID("MediaOut")
+  local xf = comp:FindTool("PunchZoom")
+  if xf == nil then
+    xf = comp:AddTool("Transform", -32768, -32768)
+    xf:SetAttrs({{TOOLS_Name = "PunchZoom"}})
+    xf.Input = mi.Output
+    mo.Input = xf.Output
+    xf.Pivot = {{{cx:.4f}, {cy:.4f}}}
+    xf.Size = comp:BezierSpline()
+  end
+{key_lua}
+end)
+"""
+            comp.Execute(lua)
+            n += 1
+    return n
 
 
 def direct(
@@ -334,32 +573,7 @@ def direct(
             )
             tl_cursor += span
 
-    zoom_path = episode_dir / TIGHTEN_DIR / f"{cid}_zoom.json"
-    n_punch = 0
-    if zoom_path.exists():
-        punches = json.loads(zoom_path.read_text(encoding="utf-8"))["punches"]
-        n_punch = _apply_punch_zooms(appended, punches, fps, cfg)
-
-    # 聲音取已核准的 Master 混音——只有畫面換機位，聲音一格都不動
-    offset_frames = 0
-    for seg_s, seg_e in segs:
-        f0, f1 = int(round(seg_s * fps)), int(round(seg_e * fps))
-        append_checked(
-            mp,
-            [
-                {
-                    "mediaPoolItem": master_item,
-                    "mediaType": 2,
-                    "trackIndex": 1,
-                    "startFrame": f0,
-                    "endFrame": f1,
-                    "recordFrame": tl_start + offset_frames,
-                }
-            ],
-            f"{label}: Master audio {seg_s:.1f}-{seg_e:.1f}",
-        )
-        offset_frames += f1 - f0
-
+    # ── 逐字稿定版 ──────────────────────────────────────────────────
     # 短片的字是**獨立製作的動態字卡**（run_shortform_titles），不是 Resolve 的
     # burn-in 字幕軌。字卡企劃宣告 covers_full_transcript 時，底部字幕必須清掉，
     # 否則畫面會同時出現兩層字（修修 2026-08-30 指正）。
@@ -389,6 +603,51 @@ def direct(
         allow_legacy_words=False,
         fine=not covers_full_transcript,
     )
+    split_notes: list[str] = []
+    if covers_full_transcript:
+        n_cues, split_notes = _split_long_cues(seg_srt)
+
+    # ── punch zoom：逐字稿座標，不是手寫秒數 ────────────────────────
+    # 這份 SRT 的 cue 就是 punch 企劃的座標系；先定版才有得錨定。
+    zoom_path = episode_dir / TIGHTEN_DIR / f"{cid}_zoom.json"
+    n_punch = 0
+    resolved_punches: list[dict] = []
+    if zoom_path.exists():
+        resolved_punches = _resolve_punches(
+            json.loads(zoom_path.read_text(encoding="utf-8"))["punches"],
+            _cue_index(seg_srt),
+            cfg,
+        )
+        n_punch = _apply_shortform_punches(appended, resolved_punches, fps, cfg)
+        # 下游（音效）吃的是絕對秒數；解析結果落檔，順便留下這一輪的可稽核紀錄
+        (episode_dir / TIGHTEN_DIR / f"{cid}_zoom.resolved.json").write_text(
+            json.dumps(
+                {"srt": seg_srt.name, "punches": resolved_punches}, ensure_ascii=False, indent=2
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    # 聲音取已核准的 Master 混音——只有畫面換機位，聲音一格都不動
+    offset_frames = 0
+    for seg_s, seg_e in segs:
+        f0, f1 = int(round(seg_s * fps)), int(round(seg_e * fps))
+        append_checked(
+            mp,
+            [
+                {
+                    "mediaPoolItem": master_item,
+                    "mediaType": 2,
+                    "trackIndex": 1,
+                    "startFrame": f0,
+                    "endFrame": f1,
+                    "recordFrame": tl_start + offset_frames,
+                }
+            ],
+            f"{label}: Master audio {seg_s:.1f}-{seg_e:.1f}",
+        )
+        offset_frames += f1 - f0
+
     if covers_full_transcript:
         logger.info("%s: 字卡覆蓋全文——SRT 只當逐字證據，不上字幕軌", cid)
     else:
@@ -410,6 +669,11 @@ def direct(
         "punch_ramps": n_punch,
         "burned_subtitles": not covers_full_transcript,
         "cues": n_cues,
+        "split_clauses": split_notes,
+        "punches": [
+            {"t0": x["t0"], "t1": x["t1"], "cue": x["cue"], "phrase": x["phrase"]}
+            for x in resolved_punches
+        ],
         "duration_sec": round(tl_cursor, 2),
     }
     if stills_dir is not None:

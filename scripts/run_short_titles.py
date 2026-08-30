@@ -648,6 +648,7 @@ def apply(
     recipe_path: Path | None = None,
     broll_recipe_path: Path | None = None,
     transcript_guarantee: bool = False,
+    validate_only: bool = False,
 ) -> dict:
     from build_resolve_project import connect_resolve
 
@@ -872,7 +873,9 @@ def apply(
                 variables["style"] = style
         h = _card_hash(variables, comp)
         mov = cards_dir / f"{cid}_{i}_{h}.mov"
-        if not mov.exists():
+        if validate_only and not mov.exists():
+            logger.info("validate-only：企劃過關，跳過 render %s", mov.name)
+        elif not mov.exists():
             _render_card(variables, mov, comp)
         else:
             logger.info("cache hit: %s", mov.name)
@@ -886,8 +889,20 @@ def apply(
             }
         )
 
-    if fmt == "short":
+    if fmt == "short" and not validate_only:
         _validate_rendered_frame_safety([job["mov"] for job in jobs])
+    if validate_only:
+        # 企劃層的驗證到此為止：逐幀安全區要有 render 出來的卡才驗得了，
+        # 上 timeline 更是需要 Resolve。`--validate-only` 的用途是「先確認
+        # 企劃寫對了」，不是「確認成品沒問題」。
+        return {
+            "status": "plan-valid",
+            "cut_id": cid,
+            "format": fmt,
+            "cards": len(jobs),
+            "covers_full_transcript": covers_full_transcript,
+            "transcript_guarantee": transcript_guarantee,
+        }
 
     # Re-open both roots immediately before any Resolve access. CURRENT may
     # switch while jobs are prepared; a different generation must never apply.

@@ -148,7 +148,9 @@ _PRONOUN_TAILS = (
 # 尾巴那個代名詞其實是**下一句的主語**，被硬切在上一句尾（「這麼多我｜覺得」）。
 # 反之次句以名詞/代名詞開頭時，代名詞多半是上一句的受詞（「他告訴我｜小明說」），
 # 屬合法斷點——這個區分是本規則不誤報的關鍵。
-_SUBJ_HEAD_FLAGS = frozenset({"d", "p", "c", "t", "zg", "a", "ad", "an"})
+PREDICATE_HEAD_FLAGS = frozenset({"d", "p", "c", "t", "zg", "a", "ad", "an"})
+#: 舊名保留給本模組內的規則敘述；字卡斷行（shared.zh_linebreak）用公開名。
+_SUBJ_HEAD_FLAGS = PREDICATE_HEAD_FLAGS
 
 
 def _tw_jieba():
@@ -195,7 +197,7 @@ _COMPLEMENT_VERBS = (
 # 助動詞／連接副詞：獨立成詞出現在句尾＝後面的主要動詞被切走。
 # ⚠️ 「開始/繼續」不收（2026-08-07 安吉 45s 血淚）：它們常是本動詞、後接受詞
 # （開始｜「數位遊牧」），跨 cue 是正常斷法——誤旗標會驅動破壞性修復。
-_MODAL_TAIL = frozenset(
+MODAL_TAIL_WORDS = frozenset(
     {
         "要",
         "會",
@@ -226,6 +228,8 @@ _MODAL_TAIL = frozenset(
         "越來越",
     }
 )
+#: 舊名保留給本模組內的規則敘述；字卡斷行（shared.zh_linebreak）用公開名。
+_MODAL_TAIL = MODAL_TAIL_WORDS
 
 OPEN_BRACKETS = "「『《（"
 CLOSE_BRACKETS = "」』》）"

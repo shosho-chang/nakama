@@ -45,7 +45,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from run_short_titles import apply as _apply  # noqa: E402
-from run_short_titles import validate_plan as _validate_plan  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -57,15 +56,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--validate-only", action="store_true", help="只驗企劃，不 render")
     args = parser.parse_args(argv)
 
-    episode_dir = Path(args.episode)
-    if args.validate_only:
-        print(json.dumps(_validate_plan(episode_dir, args.id), ensure_ascii=False, indent=1))
-        return 0
+    # `run_short_titles.validate_plan` 是**長片**的 preflight——它驗的是
+    # Director／DP／語意稽核的收據鏈。短片線用逐字稿保證換掉那條鏈，所以
+    # 這裡走同一支 apply 的 validate_only 模式，驗的是同一批短片驗證器。
     out = _apply(
-        episode_dir,
+        Path(args.episode),
         args.id,
         Path(args.stills) if args.stills else None,
         transcript_guarantee=True,
+        validate_only=args.validate_only,
     )
     print(json.dumps(out, ensure_ascii=False, indent=1))
     return 0
