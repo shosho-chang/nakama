@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from run_shortform_director import (  # noqa: E402
     CARD_LINE_CHARS,
     CARD_MAX_LINES,
+    PUNCH_LEAD_SEC,
     _cue_index,
     _punch_curve,
     _resolve_punches,
@@ -56,16 +57,33 @@ def test_card_budget_matches_the_titles_renderer():
     assert CARD_MAX_LINES == 2
 
 
-def test_phrase_anchors_the_attack_inside_the_cue():
-    (punch,) = _resolve_punches([{"cue": 5, "phrase": "早就被淘汰了"}], CUES, CFG)
-    # 「早就被淘汰了」是 17 字裡的第 11 字 → 11.864 + 3.798 × 11/17
-    assert punch["t0"] == pytest.approx(14.322, abs=0.01)
+def test_ramp_starts_before_the_sentence():
+    """修修：「要在他講那一句話前，可能 0.5 秒就要 zoom in。」"""
+    (punch,) = _resolve_punches([{"cue": 5, "phrase": "那在演化中"}], CUES, CFG)
+    assert punch["t0"] == pytest.approx(11.864 - PUNCH_LEAD_SEC)
     assert punch["t1"] == pytest.approx(15.662)  # 放掉的點＝該句句尾，不落在句中
+
+
+def test_cut_lands_on_the_word_without_lead():
+    """硬切是重音，要正好落在那個字上；提前 0.5s 就變成打錯地方。"""
+    (punch,) = _resolve_punches([{"cue": 5, "phrase": "那在演化中", "style": "cut"}], CUES, CFG)
+    assert punch["t0"] == pytest.approx(11.864)
+
+
+def test_lead_is_overridable_per_punch():
+    (punch,) = _resolve_punches([{"cue": 5, "phrase": "那在演化中", "lead_sec": 1.0}], CUES, CFG)
+    assert punch["t0"] == pytest.approx(10.864)
 
 
 def test_release_always_lands_on_a_cue_end():
     (punch,) = _resolve_punches([{"cue": 4, "phrase": "其實如果", "until_cue": 5}], CUES, CFG)
     assert punch["t1"] == pytest.approx(15.662)
+
+
+def test_mid_sentence_anchor_is_refused():
+    """字元比例內插實測會打錯句子——「早就被淘汰了」算出來落在「喜歡玩的物種」上。"""
+    with pytest.raises(SystemExit, match="不是句首"):
+        _resolve_punches([{"cue": 5, "phrase": "早就被淘汰了"}], CUES, CFG)
 
 
 def test_phrase_must_be_verbatim():
@@ -99,7 +117,7 @@ def test_steps_escalate_without_releasing():
                 "phrase": "其實如果",
                 "until_cue": 5,
                 "style": "ramp",
-                "steps": [{"cue": 5, "phrase": "早就被淘汰了", "style": "cut", "scale": 1.45}],
+                "steps": [{"cue": 5, "phrase": "那在演化中", "style": "cut", "scale": 1.45}],
             }
         ],
         CUES,
@@ -110,7 +128,7 @@ def test_steps_escalate_without_releasing():
     assert min(sizes) == pytest.approx(1.0)
     assert max(sizes) == pytest.approx(1.45)
     # 進場到放掉之間一路不回到 1.0——那個回落就是修修看到的「拉遠」
-    inner = [v for t, v in curve if punch["t0"] + 0.3 < t < punch["t1"] - 0.3]
+    inner = [v for t, v in curve if punch["t0"] + 0.8 < t < punch["t1"] - 0.3]
     assert inner and min(inner) >= 1.24
 
 
@@ -122,7 +140,8 @@ def test_steps_must_move_forward():
                     "cue": 4,
                     "phrase": "其實如果",
                     "until_cue": 5,
-                    "steps": [{"cue": 4, "phrase": "其實如果", "scale": 1.45}],
+                    # 同一句、同樣提前 0.5s → 起跳點跟 punch 自己重疊
+                    "steps": [{"cue": 4, "phrase": "其實如果", "style": "ramp", "scale": 1.45}],
                 }
             ],
             CUES,

@@ -94,6 +94,12 @@ SPEAKER_SOURCE = {0: "cam1", 1: "cam2"}
 CARD_LINE_CHARS = 10
 CARD_MAX_LINES = 2
 
+#: punch 提前量：zoom **要在那句話講出來之前**就推進去（修修 2026-08-30：
+#: 「要在他講那一句話前，可能 0.5 秒就要 zoom in，這會讓觀眾產生『等一下要講的
+#: 那句話非常重要』的感覺」）。ramp 0.25s 在這 0.5s 內走完，句子出口時畫面已經
+#: 定在特寫上。硬切（style=cut）不提前——它要正好落在那個字上才叫重音。
+PUNCH_LEAD_SEC = 0.5
+
 
 def _master_word_speakers(
     episode_dir: Path, cmap: dict, t0: float, t1: float
@@ -213,15 +219,39 @@ def _cue_index(srt_path: Path) -> list[dict]:
     ]
 
 
-def _phrase_onset(cue: dict, phrase: str, *, where: str) -> float:
-    """cue 內某段話的起點（字元比例內插）。對不上原文就爆，不猜。"""
-    at = cue["text"].find(phrase)
-    if at < 0:
+def _lead(spec: dict, style: str) -> float:
+    """起跳提前量（秒）。ramp 預設提前，cut 預設不提前——見 PUNCH_LEAD_SEC。"""
+    lead = float(spec.get("lead_sec", PUNCH_LEAD_SEC if style == "ramp" else 0.0))
+    if not 0.0 <= lead <= 1.5:
+        raise SystemExit(f"lead_sec={lead} 不合法（0–1.5 秒）")
+    return lead
+
+
+def _anchor_time(cue: dict, phrase: str, *, where: str) -> float:
+    """punch 的起跳時間＝該 cue 的起點；`phrase` 是用來確認指對句子的。
+
+    `phrase` 必須是這個 cue 的**開頭**。中途起跳曾經用字元比例內插，實測不準到
+    會打錯句子：cue 5「那在演化中喜歡玩的物種早就被淘汰了」內插算出「早就被
+    淘汰了」在 14.32s，實際放大落在「喜歡玩的物種」上（修修 2026-08-30 二輪
+    「"喜歡玩的物種"那邊為什麼又有一個放大的效果？」）。
+
+    句中要精確起跳需要**詞級**時間戳。本集的 speaker timing evidence 是
+    memo 的句級 segment（整句一個 token），給不出來——所以這裡直接擋掉，
+    不用內插假裝算得出。真要句中起跳，先產出 `subs/words.json`。
+    """
+    if not cue["text"].startswith(phrase):
+        at = cue["text"].find(phrase)
+        if at < 0:
+            raise SystemExit(
+                f"{where}：phrase「{phrase}」不在 cue {cue['n']}「{cue['text']}」裡——"
+                "zoom 企劃與最新 SRT 對不上，重寫企劃、不要調數字"
+            )
         raise SystemExit(
-            f"{where}：phrase「{phrase}」不在 cue {cue['n']}「{cue['text']}」裡——"
-            "zoom 企劃與最新 SRT 對不上，重寫企劃、不要調數字"
+            f"{where}：phrase「{phrase}」在 cue {cue['n']}「{cue['text']}」的第 {at} 個字，"
+            "不是句首。句中起跳要詞級時間戳（subs/words.json），本集只有句級 segment"
+            "——改錨在句首，或先產出詞級時間戳"
         )
-    return cue["t0"] + (cue["t1"] - cue["t0"]) * at / len(cue["text"])
+    return cue["t0"]
 
 
 def _resolve_punches(punches: list[dict], cues: list[dict], cfg: dict) -> list[dict]:
@@ -263,7 +293,10 @@ def _resolve_punches(punches: list[dict], cues: list[dict], cfg: dict) -> list[d
                 "（用 steps 再進一階），要嘛把上一個 punch 收在更前面的句尾"
             )
         prev_until = until_n
-        attack = _phrase_onset(by_n[cue_n], str(p["phrase"]), where=where)
+        style = str(p.get("style", "ramp"))
+        attack = _anchor_time(by_n[cue_n], str(p["phrase"]), where=where) - _lead(p, style)
+        if attack < 0.0:
+            raise SystemExit(f"{where}：提前量把起跳推到 {attack:.2f}s，片頭之前")
         release = by_n[until_n]["t1"]
         base = float(p.get("scale", cfg["punch_scale"]))
         steps: list[dict] = []
@@ -272,24 +305,31 @@ def _resolve_punches(punches: list[dict], cues: list[dict], cfg: dict) -> list[d
             s_n = int(st["cue"])
             if not cue_n <= s_n <= until_n:
                 raise SystemExit(f"{where} step {k}：cue {s_n} 不在 punch 的 {cue_n}–{until_n} 內")
-            s_t = _phrase_onset(by_n[s_n], str(st["phrase"]), where=f"{where} step {k}")
+            s_style = str(st.get("style", "cut"))
+            s_t = _anchor_time(by_n[s_n], str(st["phrase"]), where=f"{where} step {k}") - _lead(
+                st, s_style
+            )
             s_scale = float(st["scale"])
             if s_t <= last_t + cfg["punch_ramp_sec"] or s_scale <= last_scale:
                 raise SystemExit(
                     f"{where} step {k}：時間或倍率沒有往前推"
                     f"（{last_t:.2f}s×{last_scale} → {s_t:.2f}s×{s_scale}）"
                 )
-            steps.append(
-                {"t": round(s_t, 3), "style": str(st.get("style", "cut")), "scale": s_scale}
-            )
+            steps.append({"t": round(s_t, 3), "style": s_style, "scale": s_scale})
             last_t, last_scale = s_t, s_scale
         if release <= last_t + cfg["punch_ramp_sec"]:
             raise SystemExit(f"{where}：放掉的點 {release:.2f}s 太貼近最後一次進階 {last_t:.2f}s")
+        if out and attack <= out[-1]["t1"]:
+            raise SystemExit(
+                f"{where}：提前 {_lead(p, style):.2f}s 之後起跳點 {attack:.2f}s "
+                f"落在上一個 punch 的釋放點 {out[-1]['t1']:.2f}s 之前——兩段離太近，"
+                "要嘛合併，要嘛把提前量調小"
+            )
         out.append(
             {
                 "t0": round(attack, 3),
                 "t1": round(release, 3),
-                "style": str(p.get("style", "ramp")),
+                "style": style,
                 "scale": base,
                 "steps": steps,
                 "cue": cue_n,
