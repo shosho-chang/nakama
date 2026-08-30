@@ -558,11 +558,22 @@ def direct(
         if f1 <= f0:
             return None
         _validate_media_source_range(clip, f0, f1, project_fps=fps)
-        spec = {"mediaPoolItem": clip, "mediaType": 1, "startFrame": f0, "endFrame": f1}
+        # trackIndex 一律明示。不給的話 AppendToTimeline 會跟著 Resolve 當下的
+        # auto track selector 走——2026-08-30 實測它把主鏡落到 v2，接著
+        # GetItemListInTrack("video", 1) 是空的，整支導播 IndexError 掛掉。
+        # 這條相依看不見也不可控（前一支 script 或使用者點過畫面就會變），
+        # 唯一的解是每次都講清楚要哪一軌。
+        spec = {
+            "mediaPoolItem": clip,
+            "mediaType": 1,
+            "startFrame": f0,
+            "endFrame": f1,
+            "trackIndex": 1,
+        }
         if extra:
             spec.update(extra)
         append_checked(mp, [spec], f"{label}: cam {src_s:.1f}-{src_e:.1f}")
-        track = (extra or {}).get("trackIndex", 1)
+        track = spec["trackIndex"]
         item = (tl.GetItemListInTrack("video", track) or [])[-1]
         _validate_appended_source_range(item, f0, f1)
         return item
