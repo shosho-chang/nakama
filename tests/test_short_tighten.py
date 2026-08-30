@@ -9,7 +9,12 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from run_short_tighten import _keep_segments, _strip_cut_word, _subtitle_source_config
+from run_short_tighten import (
+    _keep_segments,
+    _master_words,
+    _strip_cut_word,
+    _subtitle_source_config,
+)
 
 
 def _cut(t0, t1, keep=True):
@@ -652,3 +657,74 @@ def test_review_skips_bottom_subtitles_for_full_transcript_choreography(tmp_path
     plan.write_text('{"covers_full_transcript": true, "titles": []}', encoding="utf-8")
 
     assert _uses_transcript_choreography(tmp_path, "KS1") is True
+
+
+# --- 詞級時間戳投影到 Master 時鐘（修修 2026-08-30） ------------------------
+
+
+def _write_conform(tmp_path: Path, master_hash: str) -> None:
+    """最小 conform map：來源 0–4s → 成片 0–4s，來源 7–10s → 成片 4–7s（中間被剪掉）。"""
+    path = tmp_path / "editorial-master" / "v1" / "conform-map.v1.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "contract": "podcast-editorial-conform-map-v1",
+                "schema_version": 1,
+                "fps": 30.0,
+                "editorial_master_lineage": {"content_hash": master_hash},
+                "sources": {"audio": {"path": "normalized.wav", "offset_sec": 0.0}},
+                "segments": [
+                    {"master_start_sec": 0.0, "master_end_sec": 4.0, "source_start_sec": 0.0},
+                    {"master_start_sec": 4.0, "master_end_sec": 7.0, "source_start_sec": 7.0},
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_words(tmp_path: Path, words: list[dict]) -> None:
+    path = tmp_path / "subs" / "words.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"words": words}, ensure_ascii=False), encoding="utf-8")
+
+
+def _master(hash_: str = "abc"):
+    return SimpleNamespace(identity=lambda: {"content_hash": hash_})
+
+
+def test_master_words_projects_and_drops_removed_spans(tmp_path):
+    """被剪掉的話在成片裡不存在——那些詞必須丟掉，不能拿去下刀。"""
+    _write_conform(tmp_path, "abc")
+    _write_words(
+        tmp_path,
+        [
+            {"word": "那", "start": 1.0, "end": 1.4},
+            {"word": "剪", "start": 5.0, "end": 5.4},  # 落在被剪掉的 4–7s
+            {"word": "後", "start": 8.0, "end": 8.4},
+        ],
+    )
+    out = _master_words(tmp_path, _master())
+    assert [w["word"] for w in out] == ["那", "後"]
+    assert out[0]["start"] == 1.0  # 第一段 1:1
+    assert out[1]["start"] == 5.0  # 8.0 - 3.0（被剪掉的長度）
+
+
+def test_master_words_needs_the_edit_map(tmp_path):
+    """沒有 conform map 就回空——那正是 2026-08-30 凌晨停用它的理由。"""
+    _write_words(tmp_path, [{"word": "那", "start": 1.0, "end": 1.4}])
+    assert _master_words(tmp_path, _master()) == []
+
+
+def test_master_words_refuses_a_stale_edit_map(tmp_path):
+    _write_conform(tmp_path, "old-hash")
+    _write_words(tmp_path, [{"word": "那", "start": 1.0, "end": 1.4}])
+    assert _master_words(tmp_path, _master("abc")) == []
+
+
+def test_master_words_without_word_timings(tmp_path):
+    """本集走 memo dual-audit，只有句級時間戳——安全退回只產 pause 刀。"""
+    _write_conform(tmp_path, "abc")
+    assert _master_words(tmp_path, _master()) == []

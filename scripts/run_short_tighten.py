@@ -59,6 +59,13 @@ from agents.brook.script_video.editorial_master import (  # noqa: E402
     EditorialMasterContractError,
     EditorialMasterRequest,
 )
+from shared.editorial_conform import (  # noqa: E402
+    RELATIVE_PATH as CONFORM_RELATIVE_PATH,
+)
+from shared.editorial_conform import (  # noqa: E402
+    load_conform_map,
+    source_to_master_sec,
+)
 from shared.highlight_materialization import (  # noqa: E402
     HighlightSource,
     build_materialization_receipt,
@@ -375,15 +382,65 @@ def _detect_silences(
     return list(zip(starts, ends))
 
 
+def _master_words(episode_dir: Path, master) -> list[dict]:
+    """詞級時間戳 → **投影到 Master 時鐘**；沒有 edit map 就回空（維持停用）。
+
+    2026-08-30 凌晨的 `9e4306c2` 把 `words` 寫死成空 list，理由是「詞的時間戳在
+    raw/normalized 時鐘上，V1 沒有 edit map，套到 Master 時鐘會剪錯字」。那個理由
+    在 conform map（ADR-067）之後不成立了——它就是那份 edit map：
+    `source_to_master_sec` 把 normalized.wav 的時間精確換算成成片時間，落在被剪掉
+    區間的詞回 None 直接丟棄（那些話在成片裡根本不存在）。
+
+    這是重新啟用 filler／stutter 偵測的前提。沒有它，`--detect` 只產得出 pause
+    刀，開頭的「那、那」口吃不會被提出來（修修 2026-08-30 驗收 story-S04 抓到）。
+
+    三個條件缺一就回空，不猜：
+    - `subs/words.json` 不存在（本集走 memo dual-audit，只釋出句級時間戳）
+    - conform map 不存在
+    - conform map 綁的不是目前這份 Editorial Master
+    """
+    words = _optional_words(episode_dir)
+    if not words:
+        logger.info("沒有 subs/words.json——只產 pause 刀，filler／stutter 不偵測")
+        return []
+    cmap_path = episode_dir / CONFORM_RELATIVE_PATH
+    if not cmap_path.is_file():
+        logger.warning(
+            "找不到 conform map（%s）——詞級時間戳在來源時鐘上，換算不了，filler／stutter 不偵測",
+            cmap_path,
+        )
+        return []
+    cmap = load_conform_map(cmap_path)
+    if cmap.get("editorial_master_lineage", {}).get("content_hash") != master.identity().get(
+        "content_hash"
+    ):
+        logger.warning("conform map 綁的不是目前這份 Editorial Master——filler／stutter 不偵測")
+        return []
+    out: list[dict] = []
+    dropped = 0
+    for w in words:
+        try:
+            src_s, src_e = float(w["start"]), float(w["end"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        start = source_to_master_sec(cmap, src_s, source_key="audio")
+        end = source_to_master_sec(cmap, src_e, source_key="audio")
+        if start is None or end is None or end <= start:
+            dropped += 1  # 落在被剪掉的區間
+            continue
+        out.append({**w, "start": start, "end": end})
+    logger.info("詞級時間戳投影到 Master 時鐘：%d 個可用，%d 個落在被剪掉的區間", len(out), dropped)
+    return out
+
+
 def detect(episode_dir: Path, cid: str) -> dict:
     master = _open_editorial_master(episode_dir)
     c, _w = _load_winner(episode_dir, cid, master.identity())
     fmt = c.get("format", "short")
     cfg = FORMAT_TIGHTEN[fmt]
     t0, t1 = float(c["t_start"]), float(c["t_end"])
-    # Legacy words are on the raw/normalized clock.  V1 intentionally has no
-    # edit map, so using them against the Master clock could cut the wrong word.
-    words: list[dict] = []
+    # 詞級時間戳先過 conform map 投影到 Master 時鐘再用（見 `_master_words`）。
+    words = _master_words(episode_dir, master)
     seg_words = [x for x in words if t0 <= x.get("start", 0) < t1]
 
     cuts: list[dict] = []
