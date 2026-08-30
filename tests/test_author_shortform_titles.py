@@ -25,9 +25,7 @@ def _episode(tmp_path: Path, beats: list[dict], texts: list[str] = CUES) -> Path
     srt.mkdir(parents=True)
     blocks = []
     for i, text in enumerate(texts, 1):
-        blocks.append(
-            f"{i}\n00:00:{i - 1:02d},000 --> 00:00:{i:02d},000\n{text}\n"
-        )
+        blocks.append(f"{i}\n00:00:{i - 1:02d},000 --> 00:00:{i:02d},000\n{text}\n")
     (srt / "punch-S99_tight_r001.srt").write_text("\n".join(blocks), encoding="utf-8")
     tighten = tmp_path / "highlights/tighten"
     tighten.mkdir(parents=True)

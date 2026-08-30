@@ -565,17 +565,13 @@ def _cues_missing_chars(master, words: list[dict]) -> list[tuple[float, float]] 
         if cor is None:
             return None
         asr = "".join(
-            _to_simplified(str(w["word"])) or ""
-            for w in words
-            if s_ <= float(w["start"]) < e_
+            _to_simplified(str(w["word"])) or "" for w in words if s_ <= float(w["start"]) < e_
         )
         if not asr:
             continue
         if any(
             tag == "insert"
-            for tag, *_ in difflib.SequenceMatcher(
-                None, asr, cor, autojunk=False
-            ).get_opcodes()
+            for tag, *_ in difflib.SequenceMatcher(None, asr, cor, autojunk=False).get_opcodes()
         ):
             out.append((s_, e_))
     return out
@@ -599,9 +595,7 @@ def _judge_noise(master, cuts: list[dict], words: list[dict]) -> None:
     if not noise:
         return
     covered = [
-        (x["t0"], x["t1"])
-        for x in cuts
-        if x.get("keep") is True and x.get("kind") != "noise"
+        (x["t0"], x["t1"]) for x in cuts if x.get("keep") is True and x.get("kind") != "noise"
     ]
     missing = _cues_missing_chars(master, words)
     for x in noise:
