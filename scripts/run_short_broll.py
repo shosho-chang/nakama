@@ -84,6 +84,7 @@ from agents.brook.script_video.identity_placement import (  # noqa: E402
     IdentityPlacementError,
     verify_identity_placement,
 )
+from shared.editorial_conform import conform_source_paths  # noqa: E402
 from shared.highlight_materialization import (  # noqa: E402
     HighlightSource,
     verify_materialization_receipt,
@@ -424,20 +425,6 @@ end)
     return True
 
 
-def _conform_video_sources(episode_dir: Path) -> list[Path] | None:
-    """短片影片軌的合法來源＝conform map 列出的素材（ADR-067）。
-
-    沒有 conform map 就回 None，維持長片的「影片軌必須是 Master」原判。
-    """
-    path = episode_dir / "editorial-master" / "v1" / "conform-map.v1.json"
-    if not path.is_file():
-        return None
-    from shared.editorial_conform import load_conform_map
-
-    cmap = load_conform_map(path)
-    return [episode_dir / str(entry["path"]) for entry in cmap["sources"].values()]
-
-
 def _verify_director_materialization(
     episode_dir: Path,
     cid: str,
@@ -468,7 +455,7 @@ def _verify_director_materialization(
                 "start_frame": int(float(candidate["t_start"]) * fps),
                 "end_frame": int(float(candidate["t_end"]) * fps),
             },
-            live_video_sources=_conform_video_sources(episode_dir) if shortform else None,
+            live_video_sources=conform_source_paths(episode_dir) if shortform else None,
         )
     except EditorialMasterContractError as exc:
         raise SystemExit(f"B-roll materialization receipt 驗證失敗：{exc}") from exc

@@ -125,6 +125,24 @@ def build_conform_map(
     }
 
 
+#: conform map 在 episode 內的相對路徑（`build_conform_map.py` 寫在這裡）。
+RELATIVE_PATH = Path("editorial-master") / "v1" / "conform-map.v1.json"
+
+
+def conform_source_paths(episode_dir: Path) -> list[Path] | None:
+    """這一集的合法畫面來源＝conform map 列出的素材（ADR-067）。
+
+    短片的影片軌是機位，不是 Master——`highlight_materialization` 的 live 檢查
+    要用這份清單來取代「每個 item 都必須是 Master 檔案」。沒有 conform map 就
+    回 None，讓呼叫端維持長片的原判。
+    """
+    path = episode_dir / RELATIVE_PATH
+    if not path.is_file():
+        return None
+    cmap = load_conform_map(path)
+    return [episode_dir / str(entry["path"]) for entry in cmap["sources"].values()]
+
+
 def load_conform_map(path: Path) -> dict[str, Any]:
     """讀取並驗證 conform map；契約不符一律拒絕。"""
     try:
