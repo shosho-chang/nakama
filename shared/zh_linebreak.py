@@ -43,6 +43,9 @@ BreakMode = Literal["card", "line"]
 #: 代名詞（r）與數量詞（m/q）刻意不收——「這件」「一個」收尾就是拆到一半。
 _COMPLETE_TAIL_FLAGS = frozenset({"n", "nr", "ns", "nt", "nz", "ng", "v", "vn", "l", "i", "j"})
 
+#: 一行少於這麼多字就是孤字行——讀起來像話斷掉，不像換行。
+_MIN_LINE = 3
+
 #: 動補結構的補語：接在動詞後面，單獨當右段開頭＝把動詞攔腰砍
 #: （「使用｜到的肌肉」）。
 _COMPLEMENT_HEADS = frozenset("到著了過得掉住完成起出來去上下開")
@@ -105,6 +108,11 @@ def break_score(text: str, i: int) -> float:
             score -= 1.5
         elif tail.flag == "r" and len(tail.word) == 1:
             score -= 1.0  # 主語孤懸在行尾（「所以我｜覺得…」）
+    if min(len(left), len(right)) < _MIN_LINE:
+        # 孤字行：切在語法接縫上也沒用，畫面上就是一行長、一行兩個字。
+        # 罰得比「右段以謂語起手」的 +2 重，否則
+        # 「這就好像是那個佛教｜講的」會贏過「這就好像是｜那個佛教講的」。
+        score -= 4.0
     return score - abs(len(left) - len(right)) / len(text)
 
 
@@ -112,6 +120,27 @@ def _best_break(text: str, candidates: list[int]) -> int | None:
     if not candidates:
         return None
     return max(candidates, key=lambda i: (break_score(text, i), -abs(2 * i - len(text))))
+
+
+def _relaxed_breaks(text: str, limit: int) -> list[int]:
+    """乾淨切點排不下時的退路——**只鬆開行尾黏著字，行首不鬆**。
+
+    行首掛「的」讀起來是話斷掉（「好好的定義人類｜的Agency是什麼」），行尾掛
+    「的」只是弱一點（「好好的定義人類的｜Agency是什麼」）。原本這裡直接用未過濾
+    的 jieba 邊界，等於兩條都鬆——2026-08-30 punch-S07 就排出了前者。
+
+    這條退路本身是妥協：真正排不下的句子應該回導播那一步拆開，不是在這裡硬排。
+    """
+    out = []
+    for i in sorted(jieba_boundaries(text)):
+        if not 0 < i <= limit or i >= len(text):
+            continue
+        if text[i] in _HEAD_STICKY or text[i] in CLOSE_BRACKETS:
+            continue
+        if text[i - 1] in OPEN_BRACKETS:
+            continue
+        out.append(i)
+    return out
 
 
 def wrap_lines(text: str, limit: int, max_lines: int = 2) -> list[str] | None:
@@ -125,7 +154,7 @@ def wrap_lines(text: str, limit: int, max_lines: int = 2) -> list[str] | None:
     if max_lines < 2:
         return None
     fits = [i for i in clean_breaks(text, "line") if i <= limit]
-    for cut in (fits, [i for i in sorted(jieba_boundaries(text)) if 0 < i <= limit]):
+    for cut in (fits, _relaxed_breaks(text, limit)):
         for i in sorted(cut, key=lambda i: -break_score(text, i)):
             rest = wrap_lines(text[i:], limit, max_lines - 1)
             if rest is not None:

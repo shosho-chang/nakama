@@ -69,3 +69,15 @@ def test_card_mode_is_stricter_than_line_mode():
     text = "所以我覺得接下來的時代"
     assert 5 in clean_breaks(text, "line")  # 所以我覺得｜接下來的時代 → 同框可以
     assert 5 not in clean_breaks(text, "card")  # 分成兩張卡就是話沒講完
+
+
+def test_never_orphans_a_two_char_line():
+    """孤字行：切在語法接縫上也沒用，畫面上就是一行長、一行兩個字。"""
+    assert wrap_lines("這就好像是那個佛教講的", 10, 2) == ["這就好像", "是那個佛教講的"]
+
+
+def test_relaxed_fallback_never_starts_a_line_with_a_sticky_char():
+    """排不下時可以鬆行尾，不可以鬆行首——行首掛「的」讀起來是話斷掉。"""
+    lines = wrap_lines("好好的定義人類的Agency是什麼", 10, 2)
+    assert lines == ["好好的定義人類的", "Agency是什麼"]
+    assert not lines[1].startswith("的")

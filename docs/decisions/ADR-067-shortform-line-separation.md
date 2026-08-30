@@ -118,6 +118,28 @@ short 分支。也就是說：**短片今天沒有任何一條能把 stock 放�
 
 絕對秒數由導播解出來寫進 `<id>_zoom.resolved.json`，下游（音效、素材 gate）吃那一份。
 
+
+### 流程收斂成單一手冊：`shortform-cut`（2026-08-30 補記）
+
+分家之後短片的操作知識散在四個地方：`highlight-cut` 的 Step 6–11、
+`shortform-director`、`shortform-dp`，加上 scratchpad 的一次性企劃腳本。
+實測代價是真的：punch-S02 的 20 句字卡企劃被舊的 scratchpad 腳本蓋成 31 句版本，
+重跑一次就毀掉一支已驗收的短片。
+
+所以再收一次：
+
+- **`.claude/skills/shortform-cut/SKILL.md` 是短片線 Step 6–8 的唯一流程手冊**
+  （前置 → 緊湊化 → 導播 → 字卡企劃 → 字卡 → 素材 → 音效 → 音樂 → 自檢），
+  含軌道契約與已知地雷。
+- `highlight-cut` 的短片 Step 6–11 整段搬走，原地只留指標——與長片線 2026-08-04
+  的處理方式一致，兩線在該 skill 裡現在對稱。
+- `shortform-director` / `shortform-dp` 保持不動：它們是**創意判斷**（哪幾句要畫面、
+  哪一句升級成 emphasis），`shortform-cut` 是**流程與門檻**。
+- 字卡企劃的機械部分升格成 repo 工具 `scripts/author_shortform_titles.py`，
+  規格（論證骨架）落在 episode 的 `<id>_titles.plan.json`。scratchpad 腳本不再是流程的一部分。
+
+判準：**只要是「重跑同一條指令要拿到同一個結果」的東西，就不能住在 scratchpad。**
+
 ## Consequences
 
 - 短片線今天可以完整跑完 Step 6–9，不必等 ADR-066 的 Short 半邊實作完成。
@@ -126,3 +148,4 @@ short 分支。也就是說：**短片今天沒有任何一條能把 stock 放�
 - ADR-066 的 Short 半邊完成後，本 ADR 的素材 gate 應被 `ShortPolicy` 吸收，`shortform-broll-receipt-v1`
   屆時退場。在那之前它是短片素材的唯一授權來源。
 - 長片線一行未改：`run_short_broll` 的預設路徑仍然是 `build_authoritative_broll_receipt`。
+- 短片線的操作知識只有一個入口（`shortform-cut`）。新增規則寫在那裡，不要回填 `highlight-cut`。
