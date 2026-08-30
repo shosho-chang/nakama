@@ -285,6 +285,7 @@ def _restamp_levels(cfg: SanjiConfig, client: WPClient, store: Store) -> dict:
             same = (
                 int(row.get("level", 0)) == want["level_after"]
                 and str(row.get("level_label", "")) == want["level_label"]
+                and str(row.get("tier_label", "")) == want["tier_label"]
                 and int(row.get("level_min_xp", -1)) == want["level_min_xp"]
                 and int(row.get("next_level_xp", -1)) == want["next_level_xp"]
                 and str(row.get("next_level_label", "")) == want["next_level_label"]

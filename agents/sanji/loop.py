@@ -29,11 +29,12 @@ _ERROR_SLEEP = 60
 
 
 def level_fields(xp_total: int) -> dict:
-    """等級帶四欄——投影要畫進度條，但 plugin 仍拿不到整張曲線。"""
+    """等級投影欄位——plugin 只拿到當前結果，仍拿不到整張規則表。"""
     level, floor, nxt = rules.level_band(xp_total)
     return {
         "level_after": level,
         "level_label": rules.level_label(level),
+        "tier_label": rules.tier_for(level),
         "level_min_xp": floor,
         "next_level_xp": nxt,
         # 滿級 → 空字串（UI 據此切「已達最高階」）

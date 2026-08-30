@@ -99,6 +99,7 @@ final class Ledger {
 	 *   reason?: string,
 	 *   level_after?: int,
 	 *   level_label?: string,
+	 *   tier_label?: string,
 	 *   level_min_xp?: int,
 	 *   next_level_xp?: int,
 	 *   next_level_label?: string
@@ -161,12 +162,13 @@ final class Ledger {
 	 * 從 grant payload 抽等級帶。缺欄位就回 null（該欄不寫，維持原值）。
 	 *
 	 * @param array<string,mixed> $args
-	 * @return array{level:?int,label:?string,min:?int,next:?int,next_label:?string}
+	 * @return array{level:?int,label:?string,tier_label:?string,min:?int,next:?int,next_label:?string}
 	 */
 	private static function level_band_from( array $args ): array {
 		return array(
 			'level'      => isset( $args['level_after'] ) ? absint( $args['level_after'] ) : null,
 			'label'      => isset( $args['level_label'] ) ? substr( (string) $args['level_label'], 0, 50 ) : null,
+			'tier_label' => isset( $args['tier_label'] ) ? substr( (string) $args['tier_label'], 0, 50 ) : null,
 			'min'        => isset( $args['level_min_xp'] ) ? absint( $args['level_min_xp'] ) : null,
 			'next'       => isset( $args['next_level_xp'] ) ? absint( $args['next_level_xp'] ) : null,
 			'next_label' => isset( $args['next_level_label'] ) ? substr( (string) $args['next_level_label'], 0, 50 ) : null,
@@ -176,7 +178,7 @@ final class Ledger {
 	/**
 	 * 等級欄位的 SET 片段。null = 不動該欄（等級只由 Sanji 決定，plugin 不猜）。
 	 *
-	 * @param array{level:?int,label:?string,min:?int,next:?int,next_label:?string} $band
+	 * @param array{level:?int,label:?string,tier_label:?string,min:?int,next:?int,next_label:?string} $band
 	 */
 	private static function level_set_sql( array $band ): string {
 		global $wpdb;
@@ -187,6 +189,10 @@ final class Ledger {
 		}
 		if ( null !== $band['label'] && '' !== $band['label'] ) {
 			$sql .= $wpdb->prepare( ', level_label = %s', $band['label'] );
+		}
+		// 低等級合法為空字串；回沖時仍要能清掉舊位階。
+		if ( null !== $band['tier_label'] ) {
+			$sql .= $wpdb->prepare( ', tier_label = %s', $band['tier_label'] );
 		}
 		// min/next 可以合法為 0（Lv.1 的下限、滿級的上限），所以只看 null。
 		if ( null !== $band['min'] ) {
@@ -232,7 +238,7 @@ final class Ledger {
 	 * 遞增投影。level 由 Sanji（規則引擎）算好帶進來——plugin 不知道等級曲線。
 	 * 投影壞了可整表重建（rebuild_balance），帳本永遠是真相。
 	 *
-	 * @param array{level:?int,label:?string,min:?int,next:?int,next_label:?string} $band
+	 * @param array{level:?int,label:?string,tier_label:?string,min:?int,next:?int,next_label:?string} $band
 	 */
 	private static function bump_balance( int $user_id, string $email, int $xp, int $berry, array $band ): void {
 		global $wpdb;
@@ -244,8 +250,8 @@ final class Ledger {
 		$wpdb->query(
 			$wpdb->prepare(
 				'INSERT INTO ' . self::balances_table() .
-				' (user_id, user_email, xp_total, berry_balance, level, level_label, level_min_xp, next_level_xp, next_level_label, updated_at)' .
-				' VALUES (%d, %s, %d, %d, %d, %s, %d, %d, %s, %s)' .
+				' (user_id, user_email, xp_total, berry_balance, level, level_label, tier_label, level_min_xp, next_level_xp, next_level_label, updated_at)' .
+				' VALUES (%d, %s, %d, %d, %d, %s, %s, %d, %d, %s, %s)' .
 				' ON DUPLICATE KEY UPDATE' .
 				' xp_total = xp_total + VALUES(xp_total),' .
 				' berry_balance = berry_balance + VALUES(berry_balance),' .
@@ -256,6 +262,7 @@ final class Ledger {
 				$berry,
 				max( 1, (int) $band['level'] ),
 				(string) ( $band['label'] ?? '' ),
+				(string) ( $band['tier_label'] ?? '' ),
 				(int) ( $band['min'] ?? 0 ),
 				(int) ( $band['next'] ?? 0 ),
 				(string) ( $band['next_label'] ?? '' ),

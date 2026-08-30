@@ -316,6 +316,7 @@ final class VoyagePage {
 	.nkv .nkv-rank-head{ display:flex; align-items:baseline; gap:.55rem; flex-wrap:wrap; margin-bottom:.5rem }
 	.nkv .nkv-lv{ font-size:.74rem; letter-spacing:.06em; opacity:.5; font-variant-numeric:tabular-nums }
 	.nkv .nkv-title{ font-size:1.3rem; font-weight:700; line-height:1.35 }
+	.nkv .nkv-tier{ font-size:.74rem; letter-spacing:.04em; opacity:.65; white-space:nowrap }
 	.nkv .nkv-next{ margin-left:auto; font-size:.78rem; opacity:.6; font-variant-numeric:tabular-nums }
 	/* 橘只當線不當塊：4px 細規尺，不做大面積填色 */
 	.nkv .nkv-bar{ height:4px; border-radius:4px; background:rgba(125,125,125,.2); overflow:hidden }
@@ -405,6 +406,7 @@ final class VoyagePage {
 	.nkv-rank-head{ display:flex; align-items:baseline; gap:.55rem; flex-wrap:wrap; margin-bottom:.55rem }
 	.nkv-lv{ font-size:.76rem; letter-spacing:.06em; color:var(--dim); font-variant-numeric:tabular-nums }
 	.nkv-title{ font-size:1.4rem; font-weight:700; line-height:1.35 }
+	.nkv-tier{ font-size:.76rem; letter-spacing:.04em; color:var(--dim); white-space:nowrap }
 	.nkv-next{ margin-left:auto; font-size:.8rem; color:var(--dim); font-variant-numeric:tabular-nums }
 	.nkv-bar{ height:4px; border-radius:4px; background:var(--line); overflow:hidden }
 	.nkv-bar i{ display:block; height:100%; border-radius:4px; background:var(--accent);
@@ -610,7 +612,7 @@ document.addEventListener('click',function(e){
 
 	/**
 	 * @return array{name:string,username:string,avatar:string,xp:int,berry:int,
-	 *               has_balance:bool,level:int,level_label:string,level_min_xp:int,
+	 *               has_balance:bool,level:int,level_label:string,tier_label:string,level_min_xp:int,
 	 *               next_level_xp:int,next_level_label:string,is_self:bool,
 	 *               identity:string,declare_url:string,
 	 *               group:string,entries:array,feeds:array}
@@ -621,7 +623,7 @@ document.addEventListener('click',function(e){
 		$profile = \FluentCommunity\App\Models\XProfile::where( 'user_id', $target_user_id )->first();
 		$bal     = $wpdb->get_row(
 			$wpdb->prepare(
-				'SELECT xp_total, berry_balance, level, level_label, level_min_xp, next_level_xp, next_level_label' .
+				'SELECT xp_total, berry_balance, level, level_label, tier_label, level_min_xp, next_level_xp, next_level_label' .
 				' FROM ' . Ledger::balances_table() . ' WHERE user_id = %d',
 				$target_user_id
 			),
@@ -664,6 +666,7 @@ document.addEventListener('click',function(e){
 			'has_balance'      => (bool) $bal,
 			'level'            => $bal ? (int) $bal['level'] : 0,
 			'level_label'      => $bal ? (string) $bal['level_label'] : '',
+			'tier_label'       => $bal ? (string) $bal['tier_label'] : '',
 			'level_min_xp'     => $bal ? (int) $bal['level_min_xp'] : 0,
 			'next_level_xp'    => $bal ? (int) $bal['next_level_xp'] : 0,
 			'next_level_label' => $bal ? (string) $bal['next_level_label'] : '',
@@ -722,6 +725,9 @@ document.addEventListener('click',function(e){
 		<?php echo self::identity_chip_html( $d ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 		<span class="nkv-lv">Lv.<?php echo esc_html( (string) $d['level'] ); ?></span>
 		<span class="nkv-title"><?php echo esc_html( $d['level_label'] ); ?></span>
+		<?php if ( '' !== $d['tier_label'] ) : ?>
+			<span class="nkv-tier">位階・<?php echo esc_html( $d['tier_label'] ); ?></span>
+		<?php endif; ?>
 	</div>
 	<div class="nkv-bar" role="progressbar" aria-valuenow="<?php echo esc_attr( (string) $pct ); ?>"
 		aria-valuemin="0" aria-valuemax="100" aria-label="到下一階的進度">

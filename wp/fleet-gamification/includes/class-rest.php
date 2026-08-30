@@ -377,7 +377,7 @@ final class Rest {
 
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				'SELECT user_id, xp_total, berry_balance, level, level_label, level_min_xp, next_level_xp, next_level_label' .
+				'SELECT user_id, xp_total, berry_balance, level, level_label, tier_label, level_min_xp, next_level_xp, next_level_label' .
 				' FROM ' . Ledger::balances_table() .
 				' WHERE user_id > %d ORDER BY user_id ASC LIMIT %d',
 				$after,
@@ -388,7 +388,7 @@ final class Rest {
 		$rows = is_array( $rows ) ? $rows : array();
 		foreach ( $rows as &$r ) {
 			foreach ( $r as $k => $v ) {
-				if ( ! in_array( $k, array( 'level_label', 'next_level_label' ), true ) ) {
+				if ( ! in_array( $k, array( 'level_label', 'tier_label', 'next_level_label' ), true ) ) {
 					$r[ $k ] = (int) $v;
 				}
 			}
@@ -400,7 +400,7 @@ final class Rest {
 
 	/**
 	 * 只回沖等級帶、不動帳。等級曲線是 Sanji 的知識，plugin 只負責存。
-	 * body: { items: [ {user_id, level_after, level_label, level_min_xp, next_level_xp, next_level_label}, ... ] }
+	 * body: { items: [ {user_id, level_after, level_label, tier_label, level_min_xp, next_level_xp, next_level_label}, ... ] }
 	 */
 	public static function restamp( \WP_REST_Request $req ) {
 		if ( $err = self::gate() ) {
