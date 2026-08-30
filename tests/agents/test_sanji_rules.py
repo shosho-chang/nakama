@@ -39,12 +39,25 @@ def test_xp_table_locked():
         "like_received": 10,
         "comment_received": 30,
         "bookmark_received": 100,
-        "lesson_completed": 50,
-        "course_completed": 500,
+        "lesson_completed": 0,
+        "course_completed": 100,
         "quiz_passed": 50,
         "event_hosted": 500,
         "session_hosted": 300,
         "event_cohosted": 200,
+    }
+
+
+def test_learning_scores_and_rule_version_locked():
+    """v7：自行標記單課零分；整課 100；系統驗證測驗 50。"""
+    assert rules.RULE_VERSION == "2026.08.30-v7"
+    assert {
+        source: rules.XP_TABLE[source]
+        for source in ("lesson_completed", "course_completed", "quiz_passed")
+    } == {
+        "lesson_completed": 0,
+        "course_completed": 100,
+        "quiz_passed": 50,
     }
 
 
@@ -174,6 +187,30 @@ def test_sanji_itself_never_earns():
     assert g is None
 
 
+@pytest.mark.parametrize(
+    ("event_type", "object_id", "xp", "berry", "idempotency_key"),
+    [
+        ("lesson_completed", 701, 0, 0, "lesson:42:701"),
+        ("course_completed", 801, 100, 10, "course:42:801"),
+    ],
+)
+def test_learning_grants_keep_frozen_keys_and_current_rule_version(
+    event_type: str,
+    object_id: int,
+    xp: int,
+    berry: int,
+    idempotency_key: str,
+):
+    grant = rules.grant_for_event(
+        _ev(event_type, oid=object_id),
+        sanji_user_id=SANJI_UID,
+    )
+    assert grant is not None
+    assert (grant["xp"], grant["berry"]) == (xp, berry)
+    assert grant["idempotency_key"] == idempotency_key
+    assert grant["rule_version"] == "2026.08.30-v7"
+
+
 def test_like_requires_react_row_dedupe_and_skips_self_like():
     ok = rules.grant_for_event(
         _ev("reaction_added", meta={"type": "like", "actor_id": 7}, dedupe_key="react:555"),
@@ -244,8 +281,12 @@ def test_comment_scores_unique_per_post_and_skips_self_and_sanji():
     )
 
 
-def test_checkin_and_quiz_never_auto_grant():
+def test_checkin_never_auto_grants():
     assert rules.grant_for_event(_ev("checkin_submitted"), sanji_user_id=SANJI_UID) is None
+
+
+def test_quiz_score_stays_50_but_unverified_vendor_event_never_auto_grants():
+    assert rules.XP_TABLE["quiz_passed"] == 50
     assert rules.grant_for_event(_ev("quiz_submitted"), sanji_user_id=SANJI_UID) is None
 
 

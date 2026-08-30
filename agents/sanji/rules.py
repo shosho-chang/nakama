@@ -14,12 +14,11 @@ from __future__ import annotations
 from datetime import date, datetime
 
 # 規則版本——任何分數表 / 曲線 / 鍵格式變動都要 bump（格式：YYYY.MM.DD-vN）
-RULE_VERSION = "2026.08.26-v6"
+RULE_VERSION = "2026.08.30-v7"
 
 # ── 分數表（XP 一律 10 的倍數；貝里 = XP ÷ 10，恆為整數）──────────────
-# v6（2026-08-26 修修裁決 A+B）：十年登頂校準——實踐面加值（打卡 10→20、
-# 全勤 200→500、整門課 300→500）＋新設營運貢獻類（社群經理驗證後提報）。
-# 目標：認真實踐＋參與營運 ≈ 7–10 年抵達拉夫德魯；純實踐約 11–12 年。
+# v7（2026-08-30 修修裁決）：他人／系統驗證才給分——單課完成是會員自行標記，
+# vendor 預設沒有驗證，故為 0；整門課 100；測驗通過維持 50。
 XP_TABLE: dict[str, int] = {
     "presence_day": 10,  # 每日在場（PTT 式一天一次；portal ticker 訊號）
     "checkin_day": 20,  # 挑戰打卡一天（Sanji 判定通過後）
@@ -28,9 +27,9 @@ XP_TABLE: dict[str, int] = {
     "like_received": 10,  # 貼文被讚（他人驗證；一個讚＝一天登入的心理錨點）
     "comment_received": 30,  # 貼文被留言（同文同人只計一次；寫留言的承諾≈三個讚）
     "bookmark_received": 100,  # 貼文被收藏（最強品質訊號，讚的 10 倍）
-    "lesson_completed": 50,  # 完成單課
-    "course_completed": 500,  # 完成整門課
-    "quiz_passed": 50,  # 通過測驗
+    "lesson_completed": 0,  # 完成單課（自我宣告、無驗證，不計分）
+    "course_completed": 100,  # 完成整門課
+    "quiz_passed": 50,  # 通過測驗（系統驗證）
     "event_hosted": 500,  # 主辦實體聚會（共創船長；社群經理成案提報）
     "session_hosted": 300,  # 主持線上讀書會／共學
     "event_cohosted": 200,  # 協辦活動（副手）
