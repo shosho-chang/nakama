@@ -54,7 +54,7 @@ description: >
 
 ## 密度在 mode B 之後怎麼算
 
-highlight-cut SKILL Step 9 寫的是「短片每分鐘 6–9 個視覺事件（B-roll＋貼紙＋
+舊的 highlight-cut Step 9（已搬到 shortform-cut）寫的是「短片每分鐘 6–9 個視覺事件（B-roll＋貼紙＋
 概念卡＋**字卡**合計）」。那是**字卡稀缺時代**的算法——mode B 之後字卡逐子句出現，
 46 秒就有 20 個 state，換算 26 事件/分，這條指標永遠自動達標，於是失去意義。
 
