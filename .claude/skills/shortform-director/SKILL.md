@@ -100,6 +100,28 @@ tight SRT 檔名，否則 `run_shortform_broll.py` 會擋——舊的 punch 區�
    （brook-dp〈選片鐵則〉3 的判準跨格式共通）
 4. **為什麼是這句而不是隔壁句**：B-roll 強調的是「正在陳述的那句話」
 
+## Step 1.5 — 開場品牌 LOGO（修修 2026-08-30）
+
+上下分割那 4 秒放頻道 LOGO 動畫。素材是品牌資源裡的
+`Logo/animation/podcast_rounded_card_*.mp4`——**1080×1080 淺灰底、沒有 alpha**，
+直接疊會出現灰方塊。先跑：
+
+```
+python scripts/build_brand_logo_badge.py <episode> [--width 620]
+```
+
+它把白卡切出來、依圓角半徑重建 alpha、pad 進 1080×1920 透明畫布，位置烘焙在檔案裡
+（同 `brand-badge-8s.mov` 慣例）。預設落在**上下分割的接縫**上——避開兩個人的臉，
+也不撞底部字卡（opener 期間字卡被強制在 pos_y ≥ 0.84）。
+
+然後在 `<id>_broll.json` 加一筆 structural item，**不需要授權收據**（自家品牌資產）：
+
+```json
+{"kind": "badge", "slug": "brand-logo-opener", "t0": 0.0, "t1": 3.933}
+```
+
+`t1` 取 LOGO 動畫的實際長度；它走 video track 5（最上層），一次播完不循環。
+
 ## Step 2 — 排落點與時間
 
 - 每點 **1.5–4s**。短片沒有 6.5s 的貼紙那種長度
