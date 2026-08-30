@@ -234,17 +234,26 @@ def _load_winner(
 ) -> tuple[dict, dict]:
     hdir = episode_dir / HIGHLIGHTS_DIR
     candidates_doc = json.loads((hdir / "candidates.json").read_text(encoding="utf-8"))
-    winners_doc = json.loads((hdir / "winners.json").read_text(encoding="utf-8"))
     cands = candidates_doc["candidates"]
-    winners = winners_doc["winners"]
     c = next((x for x in cands if x["id"] == cid), None)
+    if c is None:
+        raise SystemExit(f"{cid} 不在 candidates 中")
+    # 當選名單依 format 分檔（winners.short.json / winners.long.json）。
+    # 共用一份 winners.json 時，寫短片會洗掉長片那筆——
+    # 2026-08-30 實際發生過，長片的 packaging-plan 與 winners 一度互相矛盾。
+    # 舊檔名仍然可用（長片目前就走它），不做強制遷移。
+    fmt = str(c.get("format") or "")
+    per_format = hdir / f"winners.{fmt}.json" if fmt else None
+    winners_path = per_format if per_format and per_format.is_file() else hdir / "winners.json"
+    winners_doc = json.loads(winners_path.read_text(encoding="utf-8"))
+    winners = winners_doc["winners"]
     w = next((x for x in winners if x["id"] == cid), None)
-    if c is None or w is None:
-        raise SystemExit(f"{cid} 不在 winners/candidates 中")
+    if w is None:
+        raise SystemExit(f"{cid} 不在 {winners_path.name} 中")
     if editorial_master_lineage is not None:
         for source_name, document in (
             ("candidates.json", candidates_doc),
-            ("winners.json", winners_doc),
+            (winners_path.name, winners_doc),
         ):
             if document.get("editorial_master_lineage") != editorial_master_lineage:
                 raise SystemExit(

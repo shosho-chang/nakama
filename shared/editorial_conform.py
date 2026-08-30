@@ -229,6 +229,25 @@ def master_to_source_sec(cmap: dict[str, Any], master_sec: float, *, source_key:
     raise ConformMapError(f"成片時間 {master_sec:.3f}s 不在任何主體區段內")
 
 
+def source_to_master_sec(
+    cmap: dict[str, Any], source_sec: float, *, source_key: str
+) -> float | None:
+    """逆向換算：素材時間 → 成片時間。
+
+    落在被剪掉的區間回傳 ``None``——那正是安全性：被修修剪掉的
+    內容（咳嗽、道歉、重複）在成片時間軸上沒有位置，呼叫端應該丟掉它。
+    """
+    entry = source_entry(cmap, source_key)
+    offset = float(entry.get("offset_sec") or 0.0)
+    body_sec = source_sec + offset  # 先回到 program feed 的時鐘
+    for seg in cmap["segments"]:
+        src_start = float(seg["source_start_sec"])
+        span = float(seg["master_end_sec"]) - float(seg["master_start_sec"])
+        if src_start - _EPS <= body_sec < src_start + span - _EPS:
+            return _round(float(seg["master_start_sec"]) + (body_sec - src_start))
+    return None
+
+
 def removed_spans(cmap: dict[str, Any]) -> list[dict[str, float]]:
     """被修剪掉的原始區間——安全性的證據：這些內容在 conform 後拿不到。"""
     out: list[dict[str, float]] = []
