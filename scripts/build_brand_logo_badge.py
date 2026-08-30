@@ -36,6 +36,9 @@ CANVAS_W, CANVAS_H = 1080, 1920
 SEAM_Y = CANVAS_H // 2
 DEFAULT_WIDTH = 440
 SEAM_GAP = 8  # 底邊與接縫之間留的縫，避免壓到下半格
+#: 下半格主持人的耳機頭帶頂端離接縫只有約 13px（1080×1920 實測），
+#: 所以 `--seam-offset` 往下移的空間很小；超過 ~40px 就會壓到頭。
+SEAM_HEADROOM = 40
 
 
 def _probe_pix_fmt(path: Path) -> str:
@@ -79,14 +82,14 @@ def _rounded_alpha(w: int, h: int, r: int) -> str:
     )
 
 
-def build(source: Path, out: Path, width: int, anchor: str) -> Path:
+def build(source: Path, out: Path, width: int, anchor: str, seam_offset: int = 0) -> Path:
     (x0, y0, x1, y1), src_radius = _card_geometry(source)
     crop_w, crop_h = x1 - x0, y1 - y0
     card_w = width
     card_h = round(card_w * crop_h / crop_w / 2) * 2
     pad_x = (CANVAS_W - card_w) // 2
     if anchor == "seam-above":
-        pad_y = SEAM_Y - SEAM_GAP - card_h
+        pad_y = SEAM_Y - SEAM_GAP - card_h + seam_offset
     elif anchor == "seam-center":
         pad_y = SEAM_Y - card_h // 2
     else:  # pragma: no cover - argparse 已限制
@@ -144,6 +147,12 @@ def main(argv: list[str] | None = None) -> int:
         help=f"卡片寬度（畫布 {CANVAS_W}px；預設 {DEFAULT_WIDTH}）",
     )
     parser.add_argument(
+        "--seam-offset",
+        type=int,
+        default=0,
+        help=f"往下移幾 px（seam-above 用）；下半格的頭只留約 {SEAM_HEADROOM}px 餘裕",
+    )
+    parser.add_argument(
         "--anchor",
         choices=("seam-above", "seam-center"),
         default="seam-above",
@@ -154,11 +163,17 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(f"找不到 LOGO 動畫：{args.source}")
     if not 200 <= args.width <= CANVAS_W:
         raise SystemExit(f"--width {args.width} 不合理（200–{CANVAS_W}）")
+    if abs(args.seam_offset) > SEAM_HEADROOM:
+        raise SystemExit(
+            f"--seam-offset {args.seam_offset} 超過 ±{SEAM_HEADROOM}px——"
+            "再往下就壓到下半格主持人的頭了"
+        )
     build(
         args.source,
         Path(args.episode) / "assets" / "broll" / f"{args.slug}.mov",
         args.width,
         args.anchor,
+        args.seam_offset,
     )
     return 0
 

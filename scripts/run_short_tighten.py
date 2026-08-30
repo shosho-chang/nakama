@@ -31,6 +31,7 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import logging
 import os
@@ -100,6 +101,11 @@ NOISE_MERGE_GAP = 0.2  # 兩段響之間只隔這麼短 → 是同一個聲響�
 # 截頂之後，緊接在字尾後面的那一段聲音其實是那個字被拖長的尾巴，不是外來聲響。
 # 真正的判準是**聲音在一段靜之後重新響起**——咳嗽前面一定有一段靜。
 NOISE_LEAD_SILENCE = 0.15
+
+# 贅字：ASR 逐字稿有、**校正稿沒有**的字。判「這是不是贅字」不需要字表也不需要猜
+# ——subtitle-correct 那一關已經有人／模型逐句看過，把口吃、遲疑、贅詞從文字裡
+# 拿掉了，音檔還留著。那份判決直接拿來用。
+REDUNDANT_MIN_DUR = 0.15  # 更短的一刀在畫面上是彈一下，不值得
 # 保留段最短長度——短於此併入切除（0.3s 的孤島段落會閃屏）
 MIN_KEEP_SEG = 0.30
 # 整句只有附和詞的 cue（主持人 backchannel）——短片候選剪除，agent 複審
@@ -535,6 +541,82 @@ def _detect_word_gap_noise(media: Path, t0: float, t1: float, words: list[dict])
     ]
 
 
+def _to_simplified(text: str) -> str | None:
+    """繁→簡，用來跟 ASR（簡體）比對。沒有 opencc 就回 None，呼叫端整條停用。"""
+    try:
+        from opencc import OpenCC
+    except ImportError:  # pragma: no cover - 環境沒裝就安靜降級
+        return None
+    global _T2S
+    try:
+        _T2S
+    except NameError:
+        _T2S = OpenCC("t2s")
+    return _T2S.convert(text).replace(" ", "")
+
+
+def _detect_redundant_words(master, t0: float, t1: float, words: list[dict]) -> list[dict]:
+    """ASR 有、校正稿沒有的字 → 贅字候選（keep=null）。
+
+    這條是**唯一不靠字表**的贅詞判準。`FILLER_WORDS` 只認得六個單字、還要拖滿
+    0.4 秒；實測 story-S04 的「以現在**這個**AI發展的速度」只有 0.18 秒、
+    「也是一個很流行的**一個**服務」是兩個字，兩個都漏掉。校正稿全都標出來了。
+
+    兩種必須排除的假陽性（實測都出現過）：
+
+    1. **cue 邊界溢出**：ASR 的詞尾巴壓到下一句的第一個字（「…會被AI取代**所**」，
+       下一句校正稿是「**所**以你要做的工作應該是」）。判準：掉的字是下一句
+       校正稿的開頭（或上一句的結尾）就不算。
+    2. **ASR 聽錯／正規化**：「十萬人」→「10萬人」、「小比例」→「小死皮」、
+       「做**得**很好」→「做**的**很好」。這些是 difflib 的 `replace`，音檔那裡
+       有正常語音，剪了會斷字——所以只收 `delete`。
+    """
+    cor_cues = [(s_, e_, t) for s_, e_, t in _parse_srt(master.srt_path) if t0 <= s_ < t1]
+    if not cor_cues or _to_simplified("測試") is None:
+        return []
+    out: list[dict] = []
+    for idx, (cs, ce, text) in enumerate(cor_cues):
+        seg = [w for w in words if cs <= w["start"] < ce]
+        if not seg:
+            continue
+        chars: list[tuple[str, dict]] = []
+        for w in seg:
+            for ch in _to_simplified(str(w["word"])) or "":
+                chars.append((ch, w))
+        asr = "".join(c for c, _ in chars)
+        cor = _to_simplified(text) or ""
+        if not asr or asr == cor:
+            continue
+        prev_cor = _to_simplified(cor_cues[idx - 1][2]) if idx else ""
+        next_cor = _to_simplified(cor_cues[idx + 1][2]) if idx + 1 < len(cor_cues) else ""
+        for tag, i1, i2, _j1, _j2 in difflib.SequenceMatcher(
+            None, asr, cor, autojunk=False
+        ).get_opcodes():
+            if tag != "delete" or i2 <= i1:
+                continue
+            dropped = asr[i1:i2]
+            if i2 >= len(asr) and next_cor and next_cor.startswith(dropped):
+                continue  # 下一句的開頭被 ASR 算進這一句
+            if i1 == 0 and prev_cor and prev_cor.endswith(dropped):
+                continue  # 這一句的開頭其實是上一句的結尾
+            a, b = chars[i1][1]["start"], chars[i2 - 1][1]["end"]
+            if b - a < REDUNDANT_MIN_DUR:
+                continue
+            out.append(
+                {
+                    "t0": round(a, 3),
+                    "t1": round(b, 3),
+                    "kind": "redundant",
+                    "word": dropped,
+                    "dur": round(b - a, 2),
+                    "context": f"{asr[max(0, i1 - 8) : i1]}◤{dropped}◢{asr[i2 : i2 + 8]}",
+                    "corrected": text,
+                    "keep": None,
+                }
+            )
+    return out
+
+
 def detect(episode_dir: Path, cid: str) -> dict:
     master = _open_editorial_master(episode_dir)
     c, _w = _load_winner(episode_dir, cid, master.identity())
@@ -624,6 +706,9 @@ def detect(episode_dir: Path, cid: str) -> dict:
 
     # 4) 非語音聲響（詞與詞之間有聲音的空檔）
     cuts += _detect_word_gap_noise(master.media_path, t0, t1, seg_words)
+
+    # 5) 贅字（ASR 有、校正稿沒有）
+    cuts += _detect_redundant_words(master, t0, t1, seg_words)
 
     # 既有的 manual 刀是人審出來的（假起手、自我更正、咳嗽…），機械偵測產不出來，
     # 覆寫掉就等於白審一次。只重生機械類，manual 原樣帶回來。
