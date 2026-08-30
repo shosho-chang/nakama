@@ -364,6 +364,8 @@
 - [subagent 的量測結論要自己驗過再採信](feedback_verify_agent_claims_against_data.md) — 現象通常真、歸因常錯；「我驗證通過」的自我宣告不能當數
 - [框架要攤開讓修修選](feedback_surface_the_frame_not_just_the_draft.md) — 多角度產出不可擅自定框架只讓他改字；出 4–6 個角度菜單（含「犧牲什麼」）讓他在具體選項上選
 - [project_mistake_removal_v2_2026_07_30](project_mistake_removal_v2_2026_07_30.md) — 修修 paragraph 錄影協議（拍手→段首重唸）+ cleanup v2 現狀（branch 待新素材驗證）+ Resolve scripting 陷阱
-- [短影片線凍結](project_shortform_frozen.md) — 修修 2026-08-04：只推長影片，短片擱置；清盤=長片出完
+- [短影片線凍結](project_shortform_frozen.md) — 【已作廢】2026-08-04 的凍結決定，見下一條
+- [短影片線重啟](project_shortform_restarted.md) — 2026-08-30 重啟並收斂；唯一流程手冊 = shortform-cut skill
+- [量音檔前先確認時鐘](feedback_verify_clock_before_measuring.md) — source／master／tight 差幾十秒，用錯座標會量出假 bug
 - [vendor SPA 前端不可盲寫 selector](feedback_verify_ui_in_real_browser.md) — minified Vue bundle 的 DOM/CSS/router 無法從原碼推導；先用 magic login + Playwright 解剖真實頁面再寫，含站上生成免密登入連結的指令
 - [自由艦隊 gamification 操作事實](../shared/reference/fleet_gamification_stack.md) — **已遷往 shared（Codex 也讀得到）**；架構鐵則、部署與開關、三個 vendor 縫隙、LSCache 與 CF 兩顆地雷、影片橋接的發分判準、Bunny 遷移三層寫入形狀、品牌色紀律。交接總表見 `docs/plans/2026-08-30-gamification-handoff.md`

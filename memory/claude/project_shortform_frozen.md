@@ -1,9 +1,12 @@
 ---
 name: project-shortform-frozen
-description: 短影片線凍結（修修 2026-08-04）——只推長影片線；短片之後有時間再說
+description: 【已作廢 2026-08-30】短影片線凍結（修修 2026-08-04）——見 project_shortform_restarted
 metadata:
   type: project
 ---
+
+> ⛔ **已作廢**：修修 2026-08-30 重啟短片線並要求收斂成單一流程，見
+> [[project-shortform-restarted]]。以下保留為當時的決定紀錄，**不是現行指示**。
 
 修修 2026-08-04（util-L4 收斂後原話）：「目前我短影片並沒有想要繼續再開發
 下去，我覺得跟人剪出來的還是有比較大的差異。我先把長影片弄好就好，短影片
