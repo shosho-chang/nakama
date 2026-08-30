@@ -213,7 +213,7 @@ ADR-051 standalone script-driven video。Podcast Highlight 不得 silent fallbac
 | 檔案 | 來源 | 缺了怎麼辦 |
 |---|---|---|
 | `script.md` | 修修的完整逐字稿 | 跟修修要，沒有就停 |
-| `words.json` | `scripts/run_whisperx_words.py`（GPU，修修本機跑） | 請修修跑，GPU 工作不可自行啟動 |
+| `words.json` | `scripts/run_whisperx_words.py`（GPU） | **agent 自己跑**——用 Python310（torch cu128，不是 3.14）；跑之前 `nvidia-smi --query-gpu=pcie.link.gen.max` 要是 4。**只有**沒鎖 Gen 4 才停下來問修修（Blackwell + Gen 5 有全機黑屏前科） |
 | `transcript.srt` | `python -m agents.brook.script_video --episode <ep> cleanup`（有擊掌剪點時，含 ripple 重映射）或 `correct-srt`（乾淨錄影） | 自己跑上述命令 |
 | `out/cleanup.fcpxml` | 同上 cleanup（有剪點時才有） | 沒剪點就沒有，正常 |
 
