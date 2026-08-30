@@ -102,17 +102,26 @@ tight SRT 檔名，否則 `run_shortform_broll.py` 會擋——舊的 punch 區�
 
 ## Step 1.5 — 開場品牌 LOGO（修修 2026-08-30）
 
-上下分割那 4 秒放頻道 LOGO 動畫。素材是品牌資源裡的
-`Logo/animation/podcast_rounded_card_*.mp4`——**1080×1080 淺灰底、沒有 alpha**，
-直接疊會出現灰方塊。先跑：
+上下分割那 4 秒放頻道 LOGO 動畫。
+
+**用 deliverables 資料夾裡的 `*_alpha_prores4444.mov`**（透明主檔），不要用
+`*_preview_*.mp4`——MP4 不支援透明，那是展示底預覽。旁邊的 `*_manifest.json`
+記了卡片外框與圓角，script 會自己讀。
 
 ```
-python scripts/build_brand_logo_badge.py <episode> [--width 620]
+python scripts/build_brand_logo_badge.py <episode>   --source "<品牌資源>/deliverables-.../<...>_alpha_prores4444.mov" [--width 440]
 ```
 
-它把白卡切出來、依圓角半徑重建 alpha、pad 進 1080×1920 透明畫布，位置烘焙在檔案裡
-（同 `brand-badge-8s.mov` 慣例）。預設落在**上下分割的接縫**上——避開兩個人的臉，
-也不撞底部字卡（opener 期間字卡被強制在 pos_y ≥ 0.84）。
+它縮到 badge 尺寸、pad 進 1080×1920 透明畫布，位置烘焙在檔案裡（同
+`brand-badge-8s.mov` 慣例）。
+
+**位置：底邊貼在接縫上方 8px，不要跨在接縫上**（`--anchor seam-above`，預設）。
+修修二輪回饋「現在遮到我的頭太多了」——下半格主持人的臉幾乎從接縫就開始
+（耳機頂端約 y=980），跨接縫的卡一定會蓋到頭頂。往上放進上半格，蓋到的是麥克風
+與來賓的衣服，臉是乾淨的。
+
+**寬度 440**（實測 400 太小、480 開始擠到來賓下巴）。卡片 440×360 落在
+(320,592)–(760,952)。
 
 然後在 `<id>_broll.json` 加一筆 structural item，**不需要授權收據**（自家品牌資產）：
 
