@@ -445,3 +445,54 @@ def test_receipt_without_release_id_is_treated_as_stale(tmp_path):
 def test_episodes_without_a_map_keep_reusing_their_exports(tmp_path):
     receipt = {"status": "rendered", "cuts": [{"cut_id": "punch-L04"}]}
     assert export_matches_current_release(tmp_path, "punch-L04", receipt) is True
+
+
+# --- 還沒登錄 Release 的成品（短片線 ADR-067） ---------------------------------
+# 短片在 publish_prep 那一步才第一次登錄 Release，進對應表時手上沒有 release_id。
+# 對照物換成「修修看過的 review preview 長度」，護欄本身不放寬。
+
+FRESH_MAP = {
+    "schema": SCHEMA,
+    "episode": "20260805 林之晨",
+    "cuts": {
+        "punch-S07": {
+            "timeline": "短3 - 也許天堂裡的人，正想來人間受苦（緊·導播）",
+            "release_id": None,
+            "expected_duration_sec": 39.70,
+        }
+    },
+}
+
+
+def test_target_allows_explicit_null_release_id():
+    target = resolve_target(FRESH_MAP, "punch-S07")
+    assert target.release_id is None
+    assert target.expected_duration_sec == 39.70
+    verify_duration(target, 39.72)  # frame rounding 仍在容差內
+
+
+def test_missing_release_id_key_is_still_an_error():
+    """欄位不見與「刻意沒有」必須分得出來——漏填不能當成 null 放行。"""
+    bad = json.loads(json.dumps(FRESH_MAP))
+    del bad["cuts"]["punch-S07"]["release_id"]
+    with pytest.raises(PublishTimelineError, match="release_id"):
+        resolve_target(bad, "punch-S07")
+
+
+def test_duration_guard_names_the_preview_when_there_is_no_release():
+    target = resolve_target(FRESH_MAP, "punch-S07")
+    with pytest.raises(PublishTimelineError, match="preview"):
+        verify_duration(target, 26.0)
+
+
+def test_export_check_passes_when_map_pins_no_release(tmp_path, monkeypatch):
+    """對應表沒指定 Release ⇒ 這一輪才第一次登錄，沒有舊 id 可比對。"""
+    import agents.usopp.publish_timeline as pt
+
+    monkeypatch.setattr(pt, "load_timeline_map", lambda _d: FRESH_MAP)
+    assert (
+        pt.export_matches_current_release(
+            tmp_path, "punch-S07", {"cuts": [{"cut_id": "punch-S07", "release_id": 91}]}
+        )
+        is True
+    )

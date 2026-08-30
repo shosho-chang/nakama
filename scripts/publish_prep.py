@@ -59,10 +59,29 @@ RENDER_TIMEOUT_SEC = 3600  # 長片全解析 render 上限（12 分鐘片 + 排�
 
 
 def _load_plan(episode_dir: Path) -> tuple[list[dict], list[dict]]:
+    """candidates ＋ 當選名單。**當選名單依 format 分檔，要全部讀進來。**
+
+    2026-08-04 短片線凍結時 `winners.json` 變成只剩長片，短片移到
+    `winners.short.json`（分檔的理由見 `run_short_tighten._load_winner`：共用一份
+    時寫短片會洗掉長片那筆）。發布線一直只讀 `winners.json`，所以短片跑到這一步
+    會得到「不在 winners.json」——製作端做完了，發布端看不到它。
+
+    這裡把 `winners.json` 與 `winners.{long,short}.json` 併起來，同一個 id 以
+    per-format 檔為準（那是該 format 自己的權威）。`*.parked.json` 等其他變體
+    刻意不收——那些是被擱置的名單，不是當選名單。
+    """
     hdir = episode_dir / "highlights"
     cands = json.loads((hdir / "candidates.json").read_text(encoding="utf-8"))["candidates"]
-    winners = json.loads((hdir / "winners.json").read_text(encoding="utf-8"))["winners"]
-    return cands, winners
+    merged: dict[str, dict] = {}
+    for name in ("winners.json", "winners.long.json", "winners.short.json"):
+        path = hdir / name
+        if not path.is_file():
+            continue
+        for w in json.loads(path.read_text(encoding="utf-8"))["winners"]:
+            merged[str(w["id"])] = w
+    if not merged:
+        raise SystemExit(f"{hdir} 找不到任何當選名單（winners*.json）")
+    return cands, list(merged.values())
 
 
 def cuts_to_prep(cands: list[dict], winners: list[dict], only: str | None = None) -> list[dict]:
@@ -80,7 +99,7 @@ def cuts_to_prep(cands: list[dict], winners: list[dict], only: str | None = None
             raise SystemExit(f"winner {w['id']} 不在 candidates.json——資料不一致，先修")
         picked.append({**c, "rank": w["rank"]})
     if only and not picked:
-        raise SystemExit(f"--cut {only} 不在 winners.json")
+        raise SystemExit(f"--cut {only} 不在任何 winners*.json 當選名單裡")
     return picked
 
 
@@ -255,6 +274,21 @@ def _burn_short_subs(clean: Path, srt: Path, out: Path) -> None:
         raise SystemExit(f"短片字幕燒錄失敗: {(proc.stderr or '')[-300:]}")
 
 
+def _covers_full_transcript(episode_dir: Path, cut_id: str) -> bool:
+    """這支短片的字卡是不是已經承接了全部逐字稿（mode B，ADR-067）。
+
+    是的話**不可以再燒字幕**——字卡逐子句把整份逐字稿放上畫面了，燒字幕會讓
+    同一句話同時出現在字卡與字幕上。這個判準只認字卡企劃自己宣告的欄位，不猜。
+    """
+    plan = episode_dir / "highlights/tighten" / f"{cut_id}_titles.json"
+    if not plan.is_file():
+        return False
+    try:
+        return bool(json.loads(plan.read_text(encoding="utf-8")).get("covers_full_transcript"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+
+
 def _probe(path: Path) -> tuple[float, int]:
     out = subprocess.run(
         [
@@ -291,10 +325,16 @@ def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
         n = _set_subtitle_tracks(resolve, timeline, True)
         logger.info("%s: 長片——啟用 %d 條 Shosho YT 字幕軌並 Burn In", cid, n)
         final = _render_master(project, timeline, out_dir, cid, burn_subtitles=True)
+    elif _covers_full_transcript(episode_dir, cid):
+        # mode B（ADR-067）：字卡逐子句承接**全部**逐字稿，字卡就是文字層。
+        # 再燒一層字幕＝同一句話在畫面上出現兩次。sidecar SRT 仍然出，
+        # 那是 YouTube CC（無障礙與 SEO），跟燒進畫面是兩回事。
+        final = _render_master(project, timeline, out_dir, cid)
+        logger.info("%s: 短片 mode B——字卡即文字層，不燒字幕", cid)
     else:
         srt = _latest_tight_srt(episode_dir, cid)
         if srt is None:
-            raise SystemExit(f"{cid} 沒有 tight SRT——短片必須燒字幕（Q4b）")
+            raise SystemExit(f"{cid} 沒有 tight SRT——沒有字卡承接就必須燒字幕（Q4b）")
         clean = _render_master(project, timeline, out_dir, f"{cid}_clean")
         final = out_dir / f"{cid}.mp4"
         import shutil
