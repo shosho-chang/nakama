@@ -924,3 +924,21 @@ body.sho .wk-review-b { display: flex; flex-direction: column; gap: 3px; flex: 1
 body.sho .wk-review-t { color: var(--sho-text); font-size: 15px; font-weight: 600; }
 body.sho .wk-review-m { color: var(--sho-text-2); font-size: 12px; }
 body.sho .wk-review-go { color: var(--sho-accent); font-size: 18px; flex: none; }
+
+/* 改派專案（修修 2026-08-29 稽核）— 任務頁 header 的可編輯歸屬，視覺與其他
+   meta 編輯器（分類／優先／預估🍅）同一套，不是額外的一塊面板。 */
+body.sho .tk-proj-form { display: inline-flex; }
+body.sho .tk-proj-lbl { display: inline-flex; align-items: center; gap: 5px; }
+body.sho .tk-proj-cap {
+  font-family: var(--sho-font-mono); font-size: 10px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--sho-muted);
+}
+body.sho .tk-proj-form select {
+  font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-text-2);
+  background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  padding: 3px 6px; max-width: 200px;
+}
+body.sho .tk-proj-form select:hover { border-color: var(--sho-accent); color: var(--sho-text); }
+body.sho .tk-proj-form select:focus-visible {
+  outline: none; border-color: var(--sho-accent); box-shadow: var(--sho-focus);
+}

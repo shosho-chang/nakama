@@ -17,6 +17,7 @@ from shared.project_writer import (
     now_iso_taipei,
     pop_last_timeentry,
     read_task_status,
+    reassign_task_project,
     update_body_section,
     update_frontmatter,
     update_marked_section,
@@ -690,3 +691,71 @@ class TestUpdateMarkedSection:
 def test_now_iso_taipei_has_offset():
     iso = now_iso_taipei()
     assert "+08:00" in iso
+
+
+class TestReassignTaskProject:
+    """修修 2026-08-29 稽核 B：專案歸屬過去只能在建立當下決定，事後無處可改。
+
+    歸屬是雙寫的（檔名前綴 + projects:），所以改派＝搬檔＝換 slug，並要同步
+    已連動的行事曆事件標題。"""
+
+    def _fm(self, path: Path) -> dict:
+        return yaml.safe_load(path.read_text(encoding="utf-8").split("---")[1])
+
+    def test_attach_standalone_task_to_project(self, vault: Path):
+        create_task(vault_root=vault, project_slug=None, task_name="孤兒任務")
+        new_path, cal_errors = reassign_task_project(
+            vault_root=vault, task_slug="孤兒任務", project_slug="t"
+        )
+        assert cal_errors == 0
+        assert new_path.name == "t - 孤兒任務.md"
+        assert not (vault / "TaskNotes" / "Tasks" / "孤兒任務.md").exists()
+        fm = self._fm(new_path)
+        assert fm["projects"] == ["[[t]]"]
+        assert fm["title"] == "t - 孤兒任務"
+
+    def test_detach_task_from_project(self, vault: Path):
+        create_task(vault_root=vault, project_slug="t", task_name="要獨立")
+        new_path, _ = reassign_task_project(
+            vault_root=vault, task_slug="t - 要獨立", project_slug=None
+        )
+        assert new_path.name == "要獨立.md"
+        fm = self._fm(new_path)
+        assert "projects" not in fm
+        assert fm["title"] == "要獨立"
+
+    def test_move_between_projects_without_stacking_prefix(self, vault: Path):
+        (vault / "Projects" / "u.md").write_text(SEED, encoding="utf-8")
+        create_task(vault_root=vault, project_slug="t", task_name="腳本")
+        new_path, _ = reassign_task_project(
+            vault_root=vault, task_slug="t - 腳本", project_slug="u"
+        )
+        # 前綴是換掉、不是疊上去（不可以變成 "u - t - 腳本"）
+        assert new_path.name == "u - 腳本.md"
+        fm = self._fm(new_path)
+        assert fm["title"] == "u - 腳本"
+        assert fm["projects"] == ["[[u]]"]
+
+    def test_noop_when_already_in_target(self, vault: Path):
+        path = create_task(vault_root=vault, project_slug="t", task_name="不動")
+        before = path.read_text(encoding="utf-8")
+        same, cal_errors = reassign_task_project(
+            vault_root=vault, task_slug="t - 不動", project_slug="t"
+        )
+        assert same == path and cal_errors == 0
+        assert path.read_text(encoding="utf-8") == before  # 不重寫、不動行事曆
+
+    def test_collision_raises(self, vault: Path):
+        create_task(vault_root=vault, project_slug="t", task_name="撞名")
+        create_task(vault_root=vault, project_slug=None, task_name="撞名")
+        with pytest.raises(ProjectWriteError):
+            reassign_task_project(vault_root=vault, task_slug="撞名", project_slug="t")
+
+    def test_path_separator_rejected(self, vault: Path):
+        create_task(vault_root=vault, project_slug=None, task_name="安全")
+        with pytest.raises(ProjectWriteError):
+            reassign_task_project(vault_root=vault, task_slug="安全", project_slug="a/b")
+
+    def test_missing_task_raises(self, vault: Path):
+        with pytest.raises(ProjectWriteError):
+            reassign_task_project(vault_root=vault, task_slug="不存在", project_slug="t")

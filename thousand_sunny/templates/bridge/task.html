@@ -72,7 +72,27 @@
             <span class="wk-meta-est-unit" aria-hidden="true">🍅 預估</span>
           </label>
         </form>
-        {% if task.project %}<span class="tk-proj">{{ task.project }}</span>{% endif %}
+        {# 修修 2026-08-29 稽核：專案歸屬過去只能在建立當下決定，事後無處可改（這裡
+           以前只是一個唯讀的 tk-proj 文字）。改成可改派的下拉——換專案會連檔名與
+           行事曆事件標題一起搬（歸屬是檔名前綴 + projects: 的雙寫慣例）。 #}
+        <form class="wk-meta-form tk-proj-form" method="post"
+              action="/bridge/weekly/task/{{ task.slug | urlencode }}/project">
+          <input type="hidden" name="week" value="{{ week_key }}">
+          <input type="hidden" name="from_task" value="1">
+          <label class="tk-proj-lbl" title="改變這個任務所屬的專案（會一併改檔名與行事曆事件標題）">
+            <span class="tk-proj-cap">專案</span>
+            <select name="project" aria-label="所屬專案">
+              <option value="">（無專案 · 獨立任務）</option>
+              {% for p in all_projects %}
+                <option value="{{ p }}"{{ ' selected' if p == task.project }}>{{ p }}</option>
+              {% endfor %}
+              {# 歸屬指向一個已不存在的專案檔時，仍要看得到目前值 #}
+              {% if task.project and task.project not in all_projects %}
+                <option value="{{ task.project }}" selected>{{ task.project }}（找不到專案檔）</option>
+              {% endif %}
+            </select>
+          </label>
+        </form>
         <span class="sho-chip sho-chip--{{ 'online' if task.status == 'done' else 'offline' }}">{{ task.status }}</span>
         {% if obsidian_uri %}<a class="tk-obsidian" href="{{ obsidian_uri }}" title="在 Obsidian 開啟">↗ Obsidian</a>{% endif %}
       </div>
