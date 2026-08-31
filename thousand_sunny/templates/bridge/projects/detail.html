@@ -1,59 +1,76 @@
 <!DOCTYPE html>
+{# ── 戰線詳情 (ADR-068) ────────────────────────────────────────────────────────
+   一條戰線的跨週全貌：成員任務（未完在前，最近活動新→舊）、live 🍅 統計、
+   封存/復原。任務列點進 Weekly 的任務頁操作 — 這頁是唯讀視角 + 生命週期開關。 #}
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ entry.title }} · Bridge</title>
+<title>Bridge · {{ p.name }}</title>
 <script src="/static/shosho/theme.js?v={{ asset_version | default('') }}"></script>
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version | default('') }}">
-<link rel="stylesheet" href="/static/shosho/pomodoro-dock.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge-projects.css?v={{ asset_version | default('') }}">
-<!-- v3-H: the Brief tab reuses the dashboard task_row (wk-* markup), so it needs the weekly stylesheet. -->
-<link rel="stylesheet" href="/static/shosho/bridge-weekly.css?v={{ asset_version | default('') }}">
 </head>
-<body class="sho bridge-page bridge-page--scroll bridge-page--with-dock"
-      data-project-slug="{{ entry.slug }}"
-      data-pomodoro-minutes="{{ pomodoro_minutes }}">
+<body class="sho bridge-page bridge-page--scroll">
   {% from "_chassis_nav.html" import chassis_nav %}
   {{ chassis_nav(nav_active='projects') }}
 
-  <section class="pg-subheader">
-    <a class="pj-back" href="/bridge/projects">← all projects</a>
-    <h1 class="pg-title">{{ entry.title }}</h1>
-    <span class="pg-stamp">{{ entry.content_type | upper }} · {{ entry.status }}</span>
+  <main class="pj-main">
+  <section class="pj-screen">
+
+    <p class="pj-crumb sho-mono"><a class="sho-lk" href="/bridge/projects">← 戰線</a></p>
+
+    <header class="pj-head pj-head--detail">
+      <div>
+        <h1 class="pj-title">{{ p.name }}
+          {% if p.status == 'archived' %}<span class="sho-tag pj-tag-archived">已封存</span>{% endif %}
+        </h1>
+        <p class="pj-sub sho-mono">
+          {% if p.created %}開線 {{ p.created }} · {% endif %}
+          ✓ {{ p.done_count }}/{{ p.done_count + p.open_count }} 任務 ·
+          🍅 {{ p.actual_total }}/{{ p.est_total }}
+          {% if p.last %} · 最近活動 {{ p.last }}{% endif %}
+        </p>
+      </div>
+      <form method="post" action="/bridge/projects/{{ p.name | urlencode }}/status">
+        {% if p.status == 'archived' %}
+          <input type="hidden" name="status" value="active">
+          <button class="sho-btn sho-btn--ghost" type="submit">復原戰線</button>
+        {% else %}
+          <input type="hidden" name="status" value="archived">
+          <button class="sho-btn sho-btn--ghost" type="submit"
+                  onclick="return confirm('封存「{{ p.name }}」？任務與紀錄不會消失，只是從進行中清單收起。')">封存戰線</button>
+        {% endif %}
+      </form>
+    </header>
+
+    {% if notes_html %}
+      <section class="sho-panel pj-notes">
+        <p class="sho-kicker"><span class="sho-kicker-n">[ 001 ]</span> 戰線筆記 <span class="pj-hint sho-mono">（Obsidian 端編輯 Projects/{{ p.name }}.md）</span></p>
+        <div class="pj-notes-body">{{ notes_html | safe }}</div>
+      </section>
+    {% endif %}
+
+    <section class="sho-panel pj-tasks" aria-label="成員任務">
+      <p class="sho-kicker"><span class="sho-kicker-n">[ {{ '002' if notes_html else '001' }} ]</span> 任務 · 跨週全貌</p>
+      {% for t in p.tasks %}
+        <a class="pj-task{% if t.done %} pj-task--done{% endif %}"
+           href="/bridge/weekly/task/{{ t.slug | urlencode }}">
+          <span class="pj-task-mark">{{ '✓' if t.done else ('◐' if t.status == 'doing' else '○') }}</span>
+          <span class="pj-task-name">{{ t.name }}</span>
+          <span class="pj-row-meta sho-mono">
+            <span class="pj-stat" title="實際🍅／預估🍅">🍅 {{ t.actual }}<span class="pj-frac">/{{ t.est }}</span></span>
+            {% if t.last %}<span class="pj-stat pj-last">{{ t.last }}</span>{% endif %}
+          </span>
+        </a>
+      {% else %}
+        <p class="pj-empty sho-mono">這條戰線還沒有任務 — 到 <a class="sho-lk" href="/bridge/weekly">Weekly</a> 的任務頁用「所屬戰線」下拉掛入。</p>
+      {% endfor %}
+    </section>
+
   </section>
-
-  {# Tab bar — soft gate visualization #}
-  <nav class="pj-tabbar" aria-label="Project stage gate">
-    {% for slug, label_en, label_zh in tabs %}
-      <a class="pj-tab {% if slug == tab %}is-active{% endif %} pj-tab--{{ tab_status[slug] }}"
-         href="#{{ slug }}"
-         data-tab-slug="{{ slug }}"
-         aria-current="{{ 'page' if slug == tab else 'false' }}">
-        <span class="pj-tab-icon">{{ tab_status[slug] }}</span>
-        <span class="pj-tab-label-en">{{ label_en }}</span>
-        <span class="pj-tab-label-zh">{{ label_zh }}</span>
-      </a>
-    {% endfor %}
-  </nav>
-
-  <section class="pj-tab-panels">
-    {% include "projects/_tab_brief.html" %}
-    {% include "projects/_tab_research.html" %}
-    {% include "projects/_tab_title_thumbnail.html" %}
-    {% include "projects/_tab_hook.html" %}
-    {% include "projects/_tab_script.html" %}
-    {% include "projects/_tab_review.html" %}
-    {% include "projects/_tab_publish.html" %}
-  </section>
-
-  {% include "projects/_pomodoro_dock.html" %}
-
-  <script src="/static/shosho/focus-music.js?v={{ asset_version | default('') }}"></script>
-  <script src="/static/shosho/bridge-projects.js?v={{ asset_version | default('') }}"></script>
-  <!-- v3-H: confirm-gate + <details> restore for the reused task_row chips on the Brief tab. -->
-  <script src="/static/shosho/bridge-weekly.js?v={{ asset_version | default('') }}"></script>
+  </main>
 </body>
 </html>

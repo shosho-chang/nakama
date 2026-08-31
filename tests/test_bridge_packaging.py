@@ -1120,7 +1120,7 @@ def test_board_renders_layout_stage(client, vault_with_cutouts):
     """排版舞台要真的畫得出來：素材路徑、六個數字欄、手動勾選框。"""
     _compose(client, geometry_mode="manual", **_GEO)
     board = client.get("/bridge/packaging/20260723-xieboran")
-    assert "/bridge/thumbnail/still-asset/bg" in board.text
+    assert "/bridge/packaging/still-asset/bg" in board.text
     assert 'data-geo="host_height"' in board.text
     assert 'data-geo="guest_y"' in board.text
     assert 'name="geometry_mode"' in board.text

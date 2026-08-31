@@ -33,12 +33,6 @@ from shared import agent_memory, google_calendar, google_gmail
 from shared.events import emit
 from shared.google_calendar import CalendarEvent, GoogleCalendarAuthError
 from shared.google_gmail import GoogleGmailAuthError
-from shared.lifeos_writer import (
-    CONTENT_TYPES,
-    ProjectExistsError,
-    create_project_with_tasks,
-    default_task_names,
-)
 from shared.llm import ask_with_tools
 from shared.llm_context import set_current_agent
 from shared.llm_router import get_model
@@ -208,38 +202,19 @@ NAMI_TOOLS: list[dict] = [
     {
         "name": "create_project",
         "description": (
-            "建立新的 LifeOS Project（含三個預設 task）。"
-            "只有當你確定 topic 與 content_type 時才呼叫。"
-            "若缺這兩項，先用 ask_user 問。"
+            "開一條新戰線（LifeOS Project — 長期推進的工作容器，ADR-068）。"
+            "只建極簡 stub 檔，不建預設 task；任務之後用 create_task 掛入"
+            "（帶 project 參數）。"
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "topic": {
+                "name": {
                     "type": "string",
-                    "description": "專案主題（繁體中文，去掉「建立」「幫我」等指令詞）",
-                },
-                "content_type": {
-                    "type": "string",
-                    "enum": list(CONTENT_TYPES),
-                    "description": "專案類型",
-                },
-                "area": {
-                    "type": "string",
-                    "enum": ["work", "health", "family", "self-growth", "play", "visibility"],
-                    "description": "領域，沒提就填 work",
-                },
-                "priority": {
-                    "type": "string",
-                    "enum": ["first", "high", "medium", "low"],
-                    "description": "優先級，沒提就填 medium",
-                },
-                "search_topic": {
-                    "type": "string",
-                    "description": "SEO 關鍵字（只有 youtube/blog 才適用）",
+                    "description": "戰線名稱（繁體中文，去掉「建立」「幫我」等指令詞）",
                 },
             },
-            "required": ["topic", "content_type"],
+            "required": ["name"],
         },
     },
     {
@@ -1487,51 +1462,26 @@ class NamiHandler(BaseHandler):
             return _ToolOutcome(content=f"Tool {name} error: {e}", is_error=True)
 
     def _tool_create_project(self, input_: dict) -> _ToolOutcome:
-        topic = str(input_.get("topic", "")).strip()
-        content_type = input_.get("content_type")
-        if not topic or content_type not in CONTENT_TYPES:
-            return _ToolOutcome(
-                content="Missing required fields: topic and/or content_type",
-                is_error=True,
-            )
+        from shared.config import get_vault_path  # noqa: PLC0415
+        from shared.project_index import ProjectError, create_project  # noqa: PLC0415
 
-        area = input_.get("area") or "work"
-        priority = input_.get("priority") or "medium"
-        search_topic = input_.get("search_topic")
-        tasks = default_task_names(content_type)
+        name = str(input_.get("name", "")).strip()
+        if not name:
+            return _ToolOutcome(content="Missing required field: name", is_error=True)
 
         try:
-            result = create_project_with_tasks(
-                title=topic,
-                content_type=content_type,
-                task_names=tasks,
-                area=area,
-                priority=priority,
-                search_topic=search_topic,
-            )
-        except ProjectExistsError as e:
-            return _ToolOutcome(
-                content=f"Project 或 Task 已存在：{e}。請改用不同標題。",
-                is_error=True,
-            )
+            entry = create_project(get_vault_path(), name)
+        except ProjectError as e:
+            return _ToolOutcome(content=str(e), is_error=True)
 
-        project_rel = _to_vault_relative(result.project_path)
-        task_rels = [_to_vault_relative(p) for p in result.task_paths]
-
-        payload = {
-            "title": topic,
-            "content_type": content_type,
-            "project_path": project_rel,
-            "task_paths": task_rels,
-        }
+        project_rel = f"Projects/{entry.name}.md"
+        payload = {"title": entry.name, "project_path": project_rel}
         summary = (
-            f"✅ Project 建立成功\n"
-            f"  📄 {project_rel}\n"
-            f"  ✅ {len(task_rels)} 個 Task：{', '.join(tasks)}"
+            f"✅ 戰線建立成功\n  📄 {project_rel}\n  之後用 create_task 帶 project 參數掛任務。"
         )
         return _ToolOutcome(
             content=summary,
-            event={"name": "project_created", "payload": payload, "log": topic},
+            event={"name": "project_created", "payload": payload, "log": entry.name},
         )
 
     def _tool_create_task(self, input_: dict) -> _ToolOutcome:

@@ -1,7 +1,7 @@
 """Weekly indexer — assemble the LifeOS Weekly Dashboard view (ADR-039 Tier B).
 
 FS-direct read (ADR-030 D2); vault is SoT; no DB mirror. Models the
-``digest_indexer`` / ``project_indexer`` pattern.
+``digest_indexer`` / ``project_index`` pattern.
 
 Reads (all read-only for Slice 0):
   - ``TaskNotes/Tasks/*.md``       — tasks: 預估🍅, scheduled, plan[], timeEntries[], status
@@ -745,10 +745,9 @@ class WeeklyIndexer:
             if not t.done
         ]
         projects: set[str] = {t.project for t in all_tasks if t.project}
-        pdir = self._root / PROJECTS_DIR
-        if pdir.exists():
-            for p in pdir.glob("*.md"):
-                projects.add(unicodedata.normalize("NFC", p.stem))
+        from shared.project_index import list_projects  # noqa: PLC0415 — avoid module cycle
+
+        projects.update(e.name for e in list_projects(self._root) if not e.archived)
         opts += [{"group": "專案", "value": name, "label": name} for name in sorted(projects)]
         return opts
 

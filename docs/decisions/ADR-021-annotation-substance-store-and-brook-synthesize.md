@@ -1,6 +1,6 @@
 # ADR-021: Annotation Substance Store + Brook Synthesize Workflow
 
-**Status:** Proposed (v2, panel-revised)
+**Status:** Proposed (v2, panel-revised)；§4 synthesize review surface 已由 [ADR-068](ADR-068-project-as-long-running-thread.md) 退役（annotation store 本體不受影響）
 **Date:** 2026-05-07
 **Deciders:** shosho-chang
 **Related:**

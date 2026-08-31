@@ -1116,6 +1116,54 @@ async def packaging_cutout(
     return FileResponse(path, media_type="image/png")
 
 
+@page_router.get("/{episode_slug}/candidate/{filename}")
+async def packaging_candidate(
+    episode_slug: str,
+    filename: str,
+    nakama_auth: str | None = Cookie(None),
+) -> FileResponse:
+    """Serve a pre-manifest thumbnail candidate PNG from ``Attachments/packaging/{ep}/``.
+
+    S7 gate 的變體候選圖（thumbnail-brainstorm variant 流）還沒進 manifest，
+    走這條；已登記的正式縮圖走上面的 manifest-gated ``/thumbnail/``。
+    （原 ``/bridge/projects/gate/thumbnail/packaging/…`` — ADR-068 隨 project
+    workspace 退役搬入本 router，去掉假 slug hack。）
+    """
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    if filename != Path(filename).name or not filename.lower().endswith(".png"):
+        raise HTTPException(status_code=403, detail="僅限 Packaging PNG")
+    path = _packaging_root() / episode_slug / filename
+    try:
+        path.resolve().relative_to(_packaging_root().resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="候選圖超出 packaging 目錄") from exc
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail=f"packaging candidate missing: {filename}")
+    return FileResponse(path, media_type="image/png")
+
+
+# N1 卡型的固定素材（背景圖、頻道 logo）。packaging gate 的排版預覽要它們才畫得
+# 出跟成品一樣的東西。**白名單，不吃任意路徑**——這兩支是 composition 寫死的。
+_STILL_ASSETS = {
+    "bg": Path(r"E:/data/podcast thumbnail background.png"),
+    "logo": Path(r"E:/data/podcast thumbnail props/channel_logo_face_white.png"),
+}
+
+
+@page_router.get("/still-asset/{name}")
+async def packaging_still_asset(name: str, nakama_auth: str | None = Cookie(None)) -> FileResponse:
+    """Serve a fixed N1 composition asset by whitelist key (``bg`` / ``logo``)."""
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    path = _STILL_ASSETS.get(name)
+    if path is None:
+        raise HTTPException(status_code=404, detail=f"unknown asset: {name}")
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail=f"asset missing on disk: {path.name}")
+    return FileResponse(path, media_type="image/png")
+
+
 @page_router.get("/{episode_slug}/recipe-asset/{filename}")
 async def packaging_recipe_asset(
     episode_slug: str,

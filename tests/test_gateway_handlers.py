@@ -3,7 +3,7 @@
 import re
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from gateway.formatters import format_agent_response, format_event_message
 from gateway.handlers import get_handler, list_agents
@@ -171,100 +171,55 @@ def test_ask_user_tool_triggers_continuation():
 # ── Agent loop: create_project tool ─────────────────────────────────
 
 
-def test_create_project_tool_executes_and_writes():
-    """LLM 呼叫 create_project（2 輪：tool_use → end_turn），writer 被呼叫。"""
+def test_create_project_tool_executes_and_writes(tmp_path):
+    """LLM 呼叫 create_project（2 輪：tool_use → end_turn），ADR-068 極簡 stub 落盤。"""
     iter_responses = [
         _fake_response(
             "tool_use",
-            [
-                _tool_use_block(
-                    "create_project",
-                    {
-                        "topic": "超加工食品",
-                        "content_type": "research",
-                        "area": "health",
-                        "priority": "medium",
-                    },
-                    id_="toolu_cp1",
-                )
-            ],
+            [_tool_use_block("create_project", {"name": "超加工食品"}, id_="toolu_cp1")],
         ),
-        _fake_response("end_turn", [_text_block("✅ 已建立「超加工食品」project")]),
+        _fake_response("end_turn", [_text_block("✅ 已開戰線「超加工食品」")]),
     ]
 
-    fake_writer_result = SimpleNamespace(
-        project_path=MagicMock(parts=("vault", "Projects", "超加工食品.md"), name="超加工食品.md"),
-        task_paths=[
-            MagicMock(
-                parts=(
-                    "vault",
-                    "TaskNotes",
-                    "Tasks",
-                    "超加工食品 - Literature Review.md",
-                ),
-                name="超加工食品 - Literature Review.md",
-            )
-        ],
-    )
-
     with (
-        patch(
-            "gateway.handlers.nami.ask_with_tools",
-            side_effect=iter_responses,
-        ),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
-        patch(
-            "gateway.handlers.nami.create_project_with_tasks",
-            return_value=fake_writer_result,
-        ) as mock_writer,
+        patch("shared.config.get_vault_path", return_value=tmp_path),
         patch("gateway.handlers.nami.emit") as mock_emit,
         patch("gateway.handlers.nami.kb_log"),
     ):
-        result = NamiHandler().handle("create_project", "關於超加工食品的研究 project", "U1")
+        result = NamiHandler().handle("create_project", "開一條超加工食品的戰線", "U1")
 
     assert "超加工食品" in result.text
     assert result.continuation is not None  # thread 保持存活
     assert result.continuation.state["pending_tool_use_id"] is None
-    mock_writer.assert_called_once()
-    call_kwargs = mock_writer.call_args.kwargs
-    assert call_kwargs["title"] == "超加工食品"
-    assert call_kwargs["content_type"] == "research"
-    assert call_kwargs["area"] == "health"
+    stub = tmp_path / "Projects" / "超加工食品.md"
+    assert stub.is_file()
+    raw = stub.read_text(encoding="utf-8")
+    assert "type: project" in raw
+    assert "status: active" in raw
     mock_emit.assert_called_once()
     assert mock_emit.call_args[0][1] == "project_created"
 
 
-def test_create_project_conflict_returns_error_to_loop():
-    """若 writer raise ProjectExistsError，tool_result 帶 is_error，loop 由 LLM 決定怎麼做。"""
-    from shared.lifeos_writer import ProjectExistsError
-
+def test_create_project_conflict_returns_error_to_loop(tmp_path):
+    """同名戰線已存在 → tool_result 帶 is_error，loop 由 LLM 決定怎麼做。"""
+    (tmp_path / "Projects").mkdir()
+    (tmp_path / "Projects" / "X.md").write_text(
+        "---\ntype: project\nstatus: active\n---\n", encoding="utf-8"
+    )
     iter_responses = [
         _fake_response(
             "tool_use",
-            [
-                _tool_use_block(
-                    "create_project",
-                    {"topic": "X", "content_type": "research"},
-                    id_="toolu_cp2",
-                )
-            ],
+            [_tool_use_block("create_project", {"name": "X"}, id_="toolu_cp2")],
         ),
-        _fake_response(
-            "end_turn",
-            [_text_block("這個 project 已經存在了，要改標題嗎？")],
-        ),
+        _fake_response("end_turn", [_text_block("這條戰線已經存在了，要改名嗎？")]),
     ]
 
     with (
-        patch(
-            "gateway.handlers.nami.ask_with_tools",
-            side_effect=iter_responses,
-        ),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
-        patch(
-            "gateway.handlers.nami.create_project_with_tasks",
-            side_effect=ProjectExistsError("already"),
-        ),
+        patch("shared.config.get_vault_path", return_value=tmp_path),
         patch("gateway.handlers.nami.emit"),
         patch("gateway.handlers.nami.kb_log"),
     ):

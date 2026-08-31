@@ -359,7 +359,7 @@
             <div class="pkg-stage" data-cut="{{ cut.cut_id }}">
               <div class="pkg-stage-inner"
                    data-selected-role="{{ 'center' if req and req.composition == 'thumbnail_reaction' else 'host' }}">
-                <img class="st-bg" src="/bridge/thumbnail/still-asset/bg" alt="">
+                <img class="st-bg" src="/bridge/packaging/still-asset/bg" alt="">
                 <img class="st-book" alt="書封背景"
                      {% if req and req.book_cover %}src="/bridge/packaging/{{ episode_slug }}/recipe-asset/{{ req.book_cover.split('/')[-1] }}"{% endif %}>
                 <div class="st-center st-adjustable" data-role="center"
@@ -382,7 +382,7 @@
                   <div class="st-title"></div>
                   <div class="st-credit"></div>
                 </div>
-                <img class="st-logo" src="/bridge/thumbnail/still-asset/logo" alt="">
+                <img class="st-logo" src="/bridge/packaging/still-asset/logo" alt="">
                 <span class="st-grid-line st-grid-line--v1" aria-hidden="true"></span>
                 <span class="st-grid-line st-grid-line--v2" aria-hidden="true"></span>
                 <span class="st-grid-line st-grid-line--h1" aria-hidden="true"></span>
@@ -543,7 +543,7 @@
             <label class="pkg-card pkg-card--variant{% if approval and approval.selected_variant == v.variant_id %} pkg-card--primary{% endif %}">
               <input type="radio" name="selected_variant" value="{{ v.variant_id }}"
                      {% if approval and approval.selected_variant == v.variant_id %}checked{% endif %}>
-              <img src="/bridge/projects/gate/thumbnail/packaging/{{ episode_slug }}/{{ v.thumbnail_png.split('/')[-1] }}"
+              <img src="/bridge/packaging/{{ episode_slug }}/candidate/{{ v.thumbnail_png.split('/')[-1] }}"
                    alt="變體 {{ v.variant_id }}" loading="lazy">
               <div class="sho-mono pkg-card-meta">{{ v.variant_id }} · 大字「{{ v.big_text | join('／') }}」</div>
             </label>

@@ -27,7 +27,7 @@ from shared import calendar_scheduler
 from shared.config import get_vault_path
 from shared.log import get_logger
 from shared.pomodoro_aggregator import TAIPEI, task_actual
-from shared.project_indexer import ProjectIndexer
+from shared.project_index import list_projects
 from shared.project_writer import (
     TASKS_DIR,
     ProjectWriteError,
@@ -210,7 +210,7 @@ async def weekly_landing(
             "error_msg": error_msg,
             "saved_msg": _SAVED_MSGS.get(saved) if saved else None,
             # 新增任務 form (v3-H Slice 2): project picker + category picker sources
-            "all_projects": [e.slug for e in ProjectIndexer(vault).list_all()],
+            "all_projects": [e.name for e in list_projects(vault) if not e.archived],
             "categories": [(c, CATEGORY_LABELS[c]) for c in CATEGORY_ORDER],
         },
     )
@@ -246,23 +246,29 @@ def _project_back(
     focus: str | None = None,
     extra: str | None = None,
 ) -> RedirectResponse:
-    """Redirect back to a Project detail page's Brief tab (v3-H Slice 3). ``focus``
-    (v3-I) appends ``&focus=<task-slug>`` + a ``#task-<slug>`` fragment so the shared
-    JS opens the just-created related task's row and focuses its 排入 date field.
-    ``extra`` carries the cal-conflict modal params (v3-I.2)."""
+    """Redirect back to a Project detail page (v3-H Slice 3; ADR-068 dropped the
+    Brief tab — the target is now the read-only 戰線 detail, which ignores the
+    query params). Dead in practice since the workspace retirement (nothing posts
+    a non-empty ``from_project`` any more); kept until the from_project plumbing
+    is ripped out with the Weekly grouping PR."""
     from urllib.parse import quote
 
-    url = f"/bridge/projects/{quote(slug)}?tab=brief"
+    url = f"/bridge/projects/{quote(slug)}"
+    params: list[str] = []
     if err:
-        url += f"&err={err}"
+        params.append(f"err={err}")
         if n:
-            url += f"&n={n}"
+            params.append(f"n={n}")
     elif saved:
-        url += f"&saved={saved}"
+        params.append(f"saved={saved}")
     if extra:
-        url += f"&{extra}"
+        params.append(extra)
     if focus:
-        url += f"&focus={quote(focus)}#task-{quote(focus)}"
+        params.append(f"focus={quote(focus)}")
+    if params:
+        url += "?" + "&".join(params)
+    if focus:
+        url += f"#task-{quote(focus)}"
     return RedirectResponse(url, status_code=303)
 
 
@@ -1310,7 +1316,7 @@ async def weekly_task_detail(
             # 補記日期 default: latest scheduled day ≤ today (修修 2026-08-24)
             "backfill_default_iso": backfill_default.isoformat(),
             # 改派專案的下拉選單來源（修修 2026-08-29 稽核）
-            "all_projects": [e.slug for e in ProjectIndexer(vault).list_all()],
+            "all_projects": [e.name for e in list_projects(vault) if not e.archived],
             "asset_version": _SHOSHO_ASSET_VERSION,
             "error_msg": _TASK_ERRORS.get(err) if err else None,
             "saved_msg": _TASK_SAVED.get(saved) if saved else None,

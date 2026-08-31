@@ -322,7 +322,6 @@ class TestFromProjectRedirect:
         assert r.status_code == 303
         loc = r.headers["location"]
         assert loc.startswith("/bridge/projects/")
-        assert "tab=brief" in loc
         assert "/bridge/weekly" not in loc
 
     def test_plan_add_without_from_project_still_dashboard(self, client):
