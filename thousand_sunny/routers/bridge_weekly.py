@@ -151,6 +151,21 @@ _SAVED_MSGS = {
 }
 
 
+def _group_by_project(tasks) -> list[tuple[str, list]]:
+    """Cluster tasks by their 戰線 (ADR-068 auto-grouping — no toggle).
+
+    Groups keep first-appearance order (so the tab's existing sort still decides
+    which thread leads); rows keep their original order within a group; standalone
+    tasks (``project == ""``) always come last. Returns ``[(project_name, rows)]``
+    with ``""`` as the standalone bucket's key."""
+    groups: dict[str, list] = {}
+    for t in tasks:
+        groups.setdefault(t.project, []).append(t)
+    named = [(name, rows) for name, rows in groups.items() if name]
+    standalone = [("", groups[""])] if "" in groups else []
+    return named + standalone
+
+
 @page_router.get("/weekly", response_class=HTMLResponse)
 async def weekly_landing(
     request: Request,
@@ -203,6 +218,10 @@ async def weekly_landing(
         "weekly.html",
         {
             "view": view,
+            # ADR-068 (修修 2026-08-31): 今日/整週 tab 自動按戰線聚攏 — 同戰線
+            # 任務相鄰、戰線名視覺區隔、獨立任務殿後；組內保留原排序。
+            "today_groups": _group_by_project(view.today_tasks),
+            "week_groups": _group_by_project(view.tasks),
             "daily_review": review_summary,
             # If-Match token for the weekly-file forms (ADR-040 Slice 2)
             "weekly_token": weekly_file_token(vault, wk.file_key),

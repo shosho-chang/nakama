@@ -378,13 +378,34 @@
           </details>
         </div>
 
+        {# ── ADR-068 (修修 2026-08-31): 今日/整週自動按戰線聚攏 — 同戰線相鄰、
+             戰線名（可點去詳情頁）視覺區隔、獨立任務殿後。全是獨立任務時維持平鋪。 #}
+        {% macro project_grouped(groups, empty_msg) %}
+          {% if not groups %}
+            <p class="wk-empty">{{ empty_msg }}</p>
+          {% elif groups | length == 1 and not groups[0][0] %}
+            {% for t in groups[0][1] %}{{ task_row(t, view) }}{% endfor %}
+          {% else %}
+            {% for name, rows in groups %}
+              <section class="wk-pgroup">
+                <div class="wk-pgroup-head">
+                  {% if name %}
+                    <a class="wk-pgroup-name" href="/bridge/projects/{{ name | urlencode }}">{{ name }}</a>
+                  {% else %}
+                    <span class="wk-pgroup-name wk-pgroup-name--solo">獨立任務</span>
+                  {% endif %}
+                  <span class="wk-pgroup-n">{{ rows | length }}</span>
+                </div>
+                {% for t in rows %}{{ task_row(t, view) }}{% endfor %}
+              </section>
+            {% endfor %}
+          {% endif %}
+        {% endmacro %}
         <div class="wk-tabpane" data-pane="today">
-          {% for t in view.today_tasks %}{{ task_row(t, view) }}{% else %}
-            <p class="wk-empty">今天沒有排定的任務。</p>{% endfor %}
+          {{ project_grouped(today_groups, '今天沒有排定的任務。') }}
         </div>
         <div class="wk-tabpane is-hidden" data-pane="week">
-          {% for t in view.tasks %}{{ task_row(t, view) }}{% else %}
-            <p class="wk-empty">本週尚無排程 — 在卡片排入，或在 Obsidian 指定 scheduled。</p>{% endfor %}
+          {{ project_grouped(week_groups, '本週尚無排程 — 在卡片排入，或在 Obsidian 指定 scheduled。') }}
         </div>
         <div class="wk-tabpane is-hidden" data-pane="all">
           <p class="wk-mut wk-all-hint">所有未完成任務（{{ view.backlog_count }} 項）· 點開可排計畫或排到行事曆。</p>

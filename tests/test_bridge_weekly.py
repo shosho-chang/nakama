@@ -2103,3 +2103,69 @@ class TestReassignProjectRoute:
         assert 'action="/bridge/weekly/task/%E6%B8%AC%E8%A9%A6%E4%BB%BB%E5%8B%99/project"' in body
         assert 'name="project"' in body
         assert "（無專案 · 獨立任務）" in body
+
+
+class TestProjectGrouping:
+    """ADR-068: 今日/整週 tab 自動按戰線聚攏（無切換）— 同戰線相鄰、戰線名
+    區隔、獨立任務殿後；全獨立時維持平鋪（不出現任何 group header）。
+
+    NOTE: 必須用「本週」— 過去週渲染 review mode，沒有三分頁任務區。"""
+
+    def _current_week(self):
+        from shared.weekly_indexer import today_taipei, week_for_date
+
+        return week_for_date(today_taipei())
+
+    def _extra_task(self, tmp_path, basename, project=None):
+        from shared.weekly_indexer import today_taipei
+
+        fm = [f"title: {basename}", "status: to-do", "預估🍅: 2"]
+        if project:
+            fm.append(f'projects: ["[[{project}]]"]')
+        fm += ["plan:", f"  - date: {today_taipei().isoformat()}", "    pomodoros: 1"]
+        fm += ["timeEntries: []"]
+        (tmp_path / "TaskNotes" / "Tasks" / f"{basename}.md").write_text(
+            "---\n" + "\n".join(fm) + "\n---\n", encoding="utf-8"
+        )
+
+    def _week_pane(self, body: str) -> str:
+        return body.split('data-pane="week"', 1)[1].split('data-pane="all"', 1)[0]
+
+    def test_week_pane_groups_by_project_standalone_last(self, client, tmp_path):
+        self._extra_task(tmp_path, "自由艦隊 - 社群文章", project="自由艦隊")
+        self._extra_task(tmp_path, "自由艦隊 - 直播企劃", project="自由艦隊")
+        self._extra_task(tmp_path, "電子報 - 26W36", project="電子報")
+        self._extra_task(tmp_path, "散裝待辦")  # standalone, scheduled this week
+        wk = self._current_week()
+        body = client.get(f"/bridge/weekly?week={wk.file_key}").text
+        pane = self._week_pane(body)
+        assert 'class="wk-pgroup-name"' in pane
+        assert 'href="/bridge/projects/%E8%87%AA%E7%94%B1%E8%89%A6%E9%9A%8A"' in pane
+        assert "獨立任務" in pane
+        # standalone bucket comes after every named thread
+        assert pane.index("自由艦隊") < pane.index("獨立任務")
+        assert pane.index("電子報") < pane.index("獨立任務")
+        # both 自由艦隊 rows sit inside one group (adjacent, single header)
+        assert pane.count('href="/bridge/projects/%E8%87%AA%E7%94%B1%E8%89%A6%E9%9A%8A"') == 1
+
+    def test_all_standalone_stays_flat(self, client, tmp_path):
+        self._extra_task(tmp_path, "散裝待辦")
+        wk = self._current_week()
+        body = client.get(f"/bridge/weekly?week={wk.file_key}").text
+        pane = self._week_pane(body)
+        assert "wk-pgroup" not in pane  # only standalone tasks → no headers
+
+
+def test_group_by_project_unit():
+    from types import SimpleNamespace
+
+    from thousand_sunny.routers.bridge_weekly import _group_by_project
+
+    a1 = SimpleNamespace(project="A", slug="A - 1")
+    b1 = SimpleNamespace(project="B", slug="B - 1")
+    a2 = SimpleNamespace(project="A", slug="A - 2")
+    s = SimpleNamespace(project="", slug="獨立")
+    groups = _group_by_project([b1, s, a1, a2])
+    # first-appearance order for named threads; standalone last; in-group order kept
+    assert [name for name, _ in groups] == ["B", "A", ""]
+    assert [t.slug for t in dict(groups)["A"]] == ["A - 1", "A - 2"]
