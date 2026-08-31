@@ -17,6 +17,7 @@ import asyncio
 import json
 import os
 import re
+import unicodedata
 from contextlib import aclosing
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -412,6 +413,13 @@ NAMI_TOOLS: list[dict] = [
                     "description": (
                         "是否同時建立對應 Task（預設 true，一律保持預設）。"
                         "false 僅限使用者明確說不要 task、或純紀念性事件（婚禮、生日）。"
+                    ),
+                },
+                "project": {
+                    "type": "string",
+                    "description": (
+                        "這個事件的工作掛在哪個 project（若有）——與 create_task 的 project "
+                        "同名同義，帶了才會寫入任務的專案歸屬（檔名前綴 + projects 連結）。"
                     ),
                 },
                 "category": {
@@ -1967,12 +1975,15 @@ class NamiHandler(BaseHandler):
         force = bool(input_.get("force", False))
         also_create_task = bool(input_.get("also_create_task", True))
         category = input_.get("category") or "work"
+        # 修修 2026-08-29 稽核：這條路原本完全沒有專案概念 —— 行事曆建出來的任務
+        # 既沒有 projects: frontmatter、檔名也沒有「{專案} - 」前綴，因此永遠歸不到
+        # 任何專案（實測 vault 26/26 皆如此）。補上與 create_task 同名的 project 參數。
+        project = (input_.get("project") or "").strip() or None
 
         # Pre-check task 檔案不存在，避免 calendar 建完後 task 撞名產生孤兒 event
         task_rel_path: str | None = None
         if also_create_task:
-            slug = _slugify(title)
-            task_rel_path = f"{TASK_DIR}/{slug}.md"
+            task_rel_path = f"{TASK_DIR}/{_task_basename(title, project)}.md"
             existing = self._find_task_by_title(title)
             archived = (
                 None if existing is not None else self._find_task_by_title(title, ARCHIVE_DIR)
@@ -2041,7 +2052,7 @@ class NamiHandler(BaseHandler):
         task_path_display = ""
         if also_create_task and task_rel_path is not None:
             try:
-                self._write_calendar_linked_task(task_rel_path, event, category)
+                self._write_calendar_linked_task(task_rel_path, event, category, project)
             except Exception as e:
                 # Task 寫入失敗 → rollback calendar 避免孤兒事件
                 logger.exception(
@@ -2101,26 +2112,31 @@ class NamiHandler(BaseHandler):
         )
 
     def _write_calendar_linked_task(
-        self, rel_path: str, event: CalendarEvent, category: str = "work"
+        self,
+        rel_path: str,
+        event: CalendarEvent,
+        category: str = "work",
+        project: str | None = None,
     ) -> None:
         """建立 calendar-linked task。v3-D：排程寫進 per-entry ``plan[]``（date /
         pomodoros / start / end / calendar_event_id），不再寫 task 層級的
         scheduled 鏡像——與 Bridge 的多事件模型同一個來源（ADR-041 v3）。``category``
         由 LLM 依事件內容判斷（只有 work 計入 🍅 統計），與 ``create_task`` 同源。"""
-        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         plan_entry = _event_to_plan_entry(event)
-        frontmatter = {
-            "title": event.title,
-            "status": "to-do",
-            "priority": "normal",
-            "category": category,
-            "tags": ["task"],
-            "dateCreated": now_iso,
-            "dateModified": now_iso,
-            # 預估🍅：以事件時長換算的番茄數，與 create_task 同欄位 — 否則任務頁 預估 欄顯示 "-"。
-            "預估🍅": int(plan_entry.get("pomodoros") or 0),
-            "plan": [plan_entry],
-        }
+        # 修修 2026-08-29 稽核：frontmatter 改由 render_task 產生（＝ Bridge 新增任務 /
+        # Nami create_task 用的同一個 renderer），這樣「{專案} - {任務}」的標題前綴與
+        # projects: [[…]] 的雙寫慣例才會跟其他路徑一致；原本手寫的 dict 沒有 projects
+        # 欄位，行事曆建的任務因此永遠歸不到專案。
+        from shared.lifeos_writer import render_task
+
+        frontmatter, _ = render_task(
+            project,
+            event.title,
+            estimated_pomodoros=int(plan_entry.get("pomodoros") or 0),
+            priority="normal",
+            category=category,
+        )
+        frontmatter["plan"] = [plan_entry]
         write_page(rel_path, frontmatter, "")
 
     def _tool_list_calendar_events(self, input_: dict) -> _ToolOutcome:
@@ -2290,8 +2306,17 @@ class NamiHandler(BaseHandler):
             fm.pop(k, None)
 
         if title_changed:
-            fm["title"] = event.title
-            new_rel = f"{TASK_DIR}/{_slugify(event.title)}.md"
+            # 修修 2026-08-29 稽核：改名要保住專案歸屬。標題與檔名的慣例是
+            # 「{專案} - {任務}」，行事曆事件的 summary 已經是那個前綴過的字串
+            # （rename_task 會同步事件標題），所以先剝掉既有前綴再重貼一次，
+            # 避免「肌酸的妙用 - 肌酸的妙用 - 腳本」這種疊加。
+            proj = _task_project(fm)
+            bare = event.title
+            if proj and bare.startswith(f"{proj} - "):
+                bare = bare[len(proj) + 3 :]
+            basename = _task_basename(bare, proj)
+            fm["title"] = basename
+            new_rel = f"{TASK_DIR}/{basename}.md"
         else:
             new_rel = rel_path
 
@@ -3158,9 +3183,40 @@ def _refresh_context_preamble(messages: list[dict], user_id: str) -> list[dict]:
 
 
 def _slugify(title: str) -> str:
-    slug = re.sub(r"[^\w\u4e00-\u9fff\-]", " ", title)
+    slug = re.sub(r"[^\w一-鿿\-]", " ", title)
     slug = re.sub(r"\s+", "-", slug.strip())
     return slug[:60] or "untitled"
+
+
+# 修修 2026-08-29 稽核：行事曆建任務原本走 _slugify（空格→連字號），寫出
+# 「寫訪綱---程世嘉.md」這種檔名。專案歸屬是雙寫慣例（檔名前綴「{專案} - 」+
+# frontmatter projects:），slug 化把前綴的空格吃掉 ⇒ 連備援的檔名比對也失效。
+# 實測 vault 26 個任務 0 個歸得到專案，主因就是這條路。改用與
+# shared.project_writer.create_task 完全相同的檔名規則。
+_FILENAME_UNSAFE = re.compile(r'[\\/:*?"<>|\r\n\t]')
+
+
+def _task_project(fm: dict) -> str | None:
+    """從 frontmatter 的 ``projects:`` 取出專案名（去 wikilink / 別名 / 路徑前綴）。"""
+    raw = fm.get("projects")
+    if isinstance(raw, list) and raw:
+        raw = raw[0]
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    name = raw.strip().lstrip("[").rstrip("]").split("|")[0].strip()
+    if "/" in name:  # [[Projects/肌酸的妙用]] 這種路徑式連結
+        name = name.rsplit("/", 1)[-1]
+    return unicodedata.normalize("NFC", name) or None
+
+
+def _task_basename(title: str, project: str | None = None) -> str:
+    """Task 檔名 — 與 ``shared.project_writer.create_task`` 同一條規則。"""
+    title = unicodedata.normalize("NFC", title).strip()
+    project = unicodedata.normalize("NFC", project).strip() if project else None
+    base = f"{project} - {title}" if project else title
+    base = _FILENAME_UNSAFE.sub(" ", base)
+    base = re.sub(r"\s+", " ", base).strip()
+    return base[:120] or _slugify(title)
 
 
 # 撞名分流引導（is_done 分支）預設用 YYYY-MM-DD 帶日期新標題，但每週固定

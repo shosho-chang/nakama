@@ -2039,3 +2039,68 @@ class TestTaskMeta:
             follow_redirects=False,
         )
         assert self._fm(tmp_path)["預估🍅"] == 0
+
+
+class TestReassignProjectRoute:
+    """修修 2026-08-29 稽核 B：任務頁的改派專案下拉（POST /weekly/task/{slug}/project）。"""
+
+    def _files(self, tmp_path):
+        return {p.name for p in (tmp_path / "TaskNotes" / "Tasks").iterdir()}
+
+    def test_attach_moves_file_and_writes_link(self, client, tmp_path):
+        r = client.post(
+            "/bridge/weekly/task/測試任務/project",
+            data={"project": "肌酸的妙用", "week": WEEK_KEY, "from_task": "1"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert "saved=project" in r.headers["location"]
+        assert "肌酸的妙用 - 測試任務.md" in self._files(tmp_path)
+        assert "測試任務.md" not in self._files(tmp_path)
+        raw = (tmp_path / "TaskNotes" / "Tasks" / "肌酸的妙用 - 測試任務.md").read_text(
+            encoding="utf-8"
+        )
+        fm = yaml.safe_load(raw.split("---", 2)[1])
+        assert fm["projects"] == ["[[肌酸的妙用]]"]
+        # 既有的 plan / timeEntries 不能在搬檔時掉了
+        assert fm["plan"] and fm["plan"][0]["pomodoros"] == 2
+
+    def test_detach_clears_link(self, client, tmp_path):
+        client.post(
+            "/bridge/weekly/task/測試任務/project",
+            data={"project": "P", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        r = client.post(
+            "/bridge/weekly/task/P - 測試任務/project",
+            data={"project": "", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert "saved=project" in r.headers["location"]
+        assert "測試任務.md" in self._files(tmp_path)
+        fm = yaml.safe_load(
+            (tmp_path / "TaskNotes" / "Tasks" / "測試任務.md")
+            .read_text(encoding="utf-8")
+            .split("---", 2)[1]
+        )
+        assert "projects" not in fm
+
+    def test_collision_surfaces_banner_and_keeps_file(self, client, tmp_path):
+        client.post(
+            "/bridge/weekly/task/new",
+            data={"title": "測試任務", "project": "P", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        r = client.post(
+            "/bridge/weekly/task/測試任務/project",
+            data={"project": "P", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert "err=project_exists" in r.headers["location"]
+        assert "測試任務.md" in self._files(tmp_path)  # 原檔沒被動
+
+    def test_task_page_renders_project_picker(self, client):
+        body = client.get("/bridge/weekly/task/測試任務").text
+        assert 'action="/bridge/weekly/task/%E6%B8%AC%E8%A9%A6%E4%BB%BB%E5%8B%99/project"' in body
+        assert 'name="project"' in body
+        assert "（無專案 · 獨立任務）" in body

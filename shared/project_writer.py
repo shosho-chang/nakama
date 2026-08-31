@@ -583,7 +583,82 @@ def create_task(
     return task_path
 
 
-def rename_task(*, vault_root: Path, old_slug: str, new_title: str) -> tuple[Path, int]:
+def task_project(fm: dict[str, Any]) -> str | None:
+    """The project a task belongs to, from its ``projects:`` frontmatter.
+
+    Handles the three shapes seen in the vault: a list of wikilinks, a bare string,
+    and path-style / aliased links (``[[Projects/肌酸的妙用|肌酸]]``). Returns None
+    for a standalone task."""
+    raw = fm.get("projects")
+    if isinstance(raw, list) and raw:
+        raw = raw[0]
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    name = raw.strip().lstrip("[").rstrip("]").split("|")[0].strip()
+    if "/" in name:
+        name = name.rsplit("/", 1)[-1]
+    return unicodedata.normalize("NFC", name) or None
+
+
+def reassign_task_project(
+    *, vault_root: Path, task_slug: str, project_slug: str | None
+) -> tuple[Path, int]:
+    """Move a task to another project — or detach it (``project_slug=None``).
+
+    修修 2026-08-29 稽核：專案歸屬過去只能在「建立任務」當下決定，之後無論在
+    任務頁或任務列都沒有任何改派入口（``set_task_meta`` 只碰 category/priority/
+    預估🍅），選錯就只能進 Obsidian 手改檔名 + frontmatter。
+
+    歸屬是雙寫的（檔名前綴 ``{專案} - `` + ``projects: [[…]]``），所以改派必須同時
+    搬檔；檔名就是 slug，plan 鍵與行事曆 idempotency key 都由它衍生。這裡先改寫
+    ``projects``，再交給 :func:`rename_task` 重算前綴、搬檔並同步每個已連動的
+    Google 事件標題 —— 一條路徑、一套規則，不另造第二套改名邏輯。
+
+    Returns ``(new_path, calendar_errors)``. Raises :class:`ProjectWriteError` if the
+    task is missing or the destination name is taken.
+    """
+    task_slug = unicodedata.normalize("NFC", task_slug)
+    path = vault_root / TASKS_DIR / f"{task_slug}.md"
+    fm, body = _read_split(path)  # ProjectWriteError if missing
+
+    current = task_project(fm)
+    target = unicodedata.normalize("NFC", project_slug).strip() if project_slug else None
+    if target and ("/" in target or "\\" in target):
+        raise ProjectWriteError(f"project must not contain path separators: {target!r}")
+    if (current or None) == (target or None):
+        return path, 0  # already there — no write, no calendar churn
+
+    # The bare task name: strip the CURRENT project prefix off the title so the
+    # new prefix isn't stacked on top of the old one.
+    title = str(fm.get("title") or task_slug)
+    bare = title
+    if current and title.startswith(f"{current} - "):
+        bare = title[len(current) + 3 :]
+    elif current and title.startswith(current):
+        bare = title[len(current) :].lstrip(" -—–") or title
+
+    if target:
+        fm["projects"] = [f"[[{target}]]"]
+    else:
+        fm.pop("projects", None)
+    _write_split(path, fm, body)
+
+    # rename_task applies the prefix to both the title and the filename, then re-titles
+    # the linked calendar events. The target is passed EXPLICITLY (an empty one means
+    # detach) so its legacy filename-prefix fallback can't resurrect the old project.
+    return rename_task(vault_root=vault_root, old_slug=task_slug, new_title=bare, project=target)
+
+
+_KEEP_PROJECT = object()  # sentinel: "infer the project", vs an explicit None = detach
+
+
+def rename_task(
+    *,
+    vault_root: Path,
+    old_slug: str,
+    new_title: str,
+    project: str | None | object = _KEEP_PROJECT,
+) -> tuple[Path, int]:
     """Rename a task — update the frontmatter ``title`` AND the filename (the slug),
     preserving any ``{project} - `` prefix, then re-push each linked Google event's
     summary and re-stamp its ``{slug}@{date}`` idempotency key.
@@ -611,14 +686,16 @@ def rename_task(*, vault_root: Path, old_slug: str, new_title: str) -> tuple[Pat
     # Preserve the project prefix: prefer the frontmatter `projects:` link (the
     # dual-write convention create_task writes), else fall back to a legacy filename
     # prefix ("{project} - {title}.md" with an empty projects: — pre-v3-H tasks).
-    project = None
-    projects = fm.get("projects")
-    if isinstance(projects, list) and projects:
-        project = str(projects[0]).strip().lstrip("[").rstrip("]").split("|")[0].strip()
-    elif isinstance(projects, str) and projects.strip():
-        project = projects.strip().lstrip("[").rstrip("]").split("|")[0].strip()
-    if not project and " - " in old_slug:
-        project = old_slug.split(" - ", 1)[0]
+    # An explicit ``project=`` (including None) overrides the inference — that is how
+    # ``reassign_task_project`` detaches a task: without it the legacy filename-prefix
+    # fallback below would re-derive "t" from "t - 要獨立.md" and put the prefix straight
+    # back on (修修 2026-08-29 稽核時實測到).
+    if project is _KEEP_PROJECT:
+        project = task_project(fm)
+        if not project and " - " in old_slug:
+            project = old_slug.split(" - ", 1)[0]
+    elif project:
+        project = unicodedata.normalize("NFC", str(project)).strip() or None
 
     new_basename = f"{project} - {new_title}" if project else new_title
     new_path = vault_root / TASKS_DIR / f"{new_basename}.md"

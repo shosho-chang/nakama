@@ -2951,3 +2951,88 @@ def test_calendar_only_event_result_discloses_missing_task():
     assert not out.is_error
     assert "沒有建 vault task" in out.content
     assert "必須註明" in out.content
+
+
+def test_create_calendar_event_links_project():
+    """修修 2026-08-29 稽核 A：行事曆建任務要能歸屬專案（雙寫：檔名前綴 + projects）。
+
+    這條路以前完全沒有專案概念，且檔名走 _slugify（空格→連字號），連備援的
+    「{專案} - 」檔名比對都對不上 —— 實測 vault 26 個任務 0 個歸得到專案。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "create_calendar_event",
+                    {
+                        "title": "寫訪綱 - 程世嘉",
+                        "start": "2026-04-25T15:00:00",
+                        "end": "2026-04-25T16:00:00",
+                        "category": "work",
+                        "project": "肌酸的妙用",
+                    },
+                    id_="toolu_ccp1",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("已建立")]),
+    ]
+    fake_created = _fake_cal_event(id_="evt77", title="寫訪綱 - 程世嘉")
+    with (
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("gateway.handlers.nami.google_calendar.create_event", return_value=fake_created),
+        patch("gateway.handlers.nami.list_files", return_value=[]),
+        patch("gateway.handlers.nami.write_page") as mock_write,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "排訪綱時間", "U1")
+
+    rel_path = mock_write.call_args.args[0]
+    task_fm = mock_write.call_args.args[1]
+    # 檔名：「{專案} - {任務}.md」，空格保留（不再 slug 化成 寫訪綱---程世嘉.md）
+    assert rel_path == "TaskNotes/Tasks/肌酸的妙用 - 寫訪綱 - 程世嘉.md"
+    assert "---" not in rel_path.split("/")[-1].replace(" - ", "")
+    # frontmatter：projects wikilink + 前綴過的 title（與 create_task 同一個 renderer）
+    assert task_fm["projects"] == ["[[肌酸的妙用]]"]
+    assert task_fm["title"] == "肌酸的妙用 - 寫訪綱 - 程世嘉"
+    assert task_fm["category"] == "work"
+    assert task_fm["plan"][0]["calendar_event_id"] == "evt77"
+
+
+def test_create_calendar_event_without_project_stays_standalone():
+    """沒帶 project → 維持獨立任務：不寫 projects 鍵、檔名不加前綴（且空格保留）。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "create_calendar_event",
+                    {
+                        "title": "跟 Angie 開會",
+                        "start": "2026-04-25T15:00:00",
+                        "end": "2026-04-25T16:00:00",
+                    },
+                    id_="toolu_ccp2",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("已建立")]),
+    ]
+    with (
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.create_event",
+            return_value=_fake_cal_event(id_="evt78", title="跟 Angie 開會"),
+        ),
+        patch("gateway.handlers.nami.list_files", return_value=[]),
+        patch("gateway.handlers.nami.write_page") as mock_write,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "排會議", "U1")
+
+    assert mock_write.call_args.args[0] == "TaskNotes/Tasks/跟 Angie 開會.md"
+    assert "projects" not in mock_write.call_args.args[1]

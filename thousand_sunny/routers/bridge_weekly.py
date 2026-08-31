@@ -28,7 +28,13 @@ from shared.config import get_vault_path
 from shared.log import get_logger
 from shared.pomodoro_aggregator import TAIPEI, task_actual
 from shared.project_indexer import ProjectIndexer
-from shared.project_writer import TASKS_DIR, ProjectWriteError, create_task, rename_task
+from shared.project_writer import (
+    TASKS_DIR,
+    ProjectWriteError,
+    create_task,
+    reassign_task_project,
+    rename_task,
+)
 from shared.weekly_indexer import (
     CATEGORY_LABELS,
     CATEGORY_ORDER,
@@ -135,6 +141,10 @@ _SAVED_MSGS = {
     "scheduled": "✓ 已排入計畫並建立行事曆事件。",
     "unscheduled": "✓ 已取消這天的安排（含行事曆事件）。",
     "renamed": "✓ 已重新命名任務（已同步行事曆事件標題）。",
+    "project": "✓ 已更新任務的專案歸屬（檔名與行事曆事件標題已同步）。",
+    "project_partial": (
+        "✓ 已更新專案歸屬，但部分行事曆事件標題未能同步——稍後可在 Google 行事曆手動調整。"
+    ),
     "renamed_partial": (
         "✓ 已重新命名任務，但部分行事曆事件標題未能同步——稍後可在 Google 行事曆手動調整。"
     ),
@@ -699,6 +709,41 @@ async def weekly_task_day_done(
     return _back(wk_key)
 
 
+@page_router.post("/weekly/task/{slug}/project")
+async def weekly_task_project(
+    slug: str = PathParam(..., min_length=1),
+    project: str = Form(""),  # blank = 獨立任務（解除歸屬）
+    week: str = Form(""),
+    from_task: int = Form(0),
+    from_project: str = Form(""),
+    nakama_auth: str | None = Cookie(None),
+):
+    """改派任務所屬專案（修修 2026-08-29 稽核：過去只能在建立當下決定）。
+
+    歸屬是雙寫的（檔名前綴 + ``projects:``），所以這會搬檔＝換 slug，並同步每個
+    已連動的 Google 事件標題 —— 全部交給 ``reassign_task_project``（內部複用
+    ``rename_task``）。成功後落在新 slug 的列上（舊的已經不存在了）。"""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    _FROM_PROJECT.set(from_project.strip())
+    wk_key = _safe_week_key(week)
+    ft = bool(from_task)
+    try:
+        new_path, cal_errors = reassign_task_project(
+            vault_root=get_vault_path(),
+            task_slug=slug,
+            project_slug=project.strip() or None,
+        )
+    except ProjectWriteError as exc:
+        err = "project_exists" if "already exists" in str(exc) else "project_invalid"
+        return _plan_back(ft, slug, wk_key, err=err)
+    new_slug = unicodedata.normalize("NFC", new_path.stem)
+    saved = "project_partial" if cal_errors else "project"
+    if ft:  # 任務頁：slug 變了，跳到新的任務頁
+        return _task_back(new_slug, wk_key, saved=saved)
+    return _back(wk_key, saved=saved, slug=new_slug)
+
+
 @page_router.post("/weekly/task/{slug}/rename")
 async def weekly_task_rename(
     slug: str = PathParam(..., min_length=1),
@@ -1105,6 +1150,9 @@ _TASK_ERRORS = {
     "write": "寫入任務筆記失敗，可能被其他程式鎖定，或已在 Obsidian 改名／移除。",
     "rename_invalid": "新名稱無效（空白或含路徑分隔符號）。",
     "rename_exists": "已有同名任務，請換一個名稱。",
+    # 改派專案 (修修 2026-08-29 稽核)
+    "project_exists": "目標專案下已有同名任務——請先改名再改派。",
+    "project_invalid": "專案名稱無效（含路徑分隔符號）。",
     # calendar reschedule / cancel (ADR-041 41d) — vault authoritative, calendar best-effort
     "sched_date": "排程日期格式無效。",
     "sched_time": "排程時間格式無效。",
@@ -1261,6 +1309,8 @@ async def weekly_task_detail(
             "today_iso": today.isoformat(),  # default date for the merged 排入 picker
             # 補記日期 default: latest scheduled day ≤ today (修修 2026-08-24)
             "backfill_default_iso": backfill_default.isoformat(),
+            # 改派專案的下拉選單來源（修修 2026-08-29 稽核）
+            "all_projects": [e.slug for e in ProjectIndexer(vault).list_all()],
             "asset_version": _SHOSHO_ASSET_VERSION,
             "error_msg": _TASK_ERRORS.get(err) if err else None,
             "saved_msg": _TASK_SAVED.get(saved) if saved else None,
