@@ -1,4 +1,4 @@
-# Start Thousand Sunny FastAPI server (covers Reader, KB UI, Bridge UI)
+﻿# Start Thousand Sunny FastAPI server (covers Reader, KB UI, Bridge UI)
 # 以及 packaging 封面 render watcher（修修 2026-08-14：gate 存配方後自動出圖）。
 # Used by Windows Task Scheduler "Nakama-ThousandSunny" on logon.
 # 建立排程（一次就好）：scripts\install_thousand_sunny_task.ps1

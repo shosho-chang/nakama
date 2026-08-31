@@ -1,4 +1,4 @@
-# 建立／更新 Windows 工作排程「Nakama-ThousandSunny」——登入時自動起本機 Bridge。
+﻿# 建立／更新 Windows 工作排程「Nakama-ThousandSunny」——登入時自動起本機 Bridge。
 #
 #   powershell -ExecutionPolicy Bypass -File E:\nakama\scripts\install_thousand_sunny_task.ps1
 #
