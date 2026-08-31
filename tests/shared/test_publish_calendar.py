@@ -169,7 +169,11 @@ def test_taipei_release_projection_crosses_utc_day_and_month(tmp_path: Path) -> 
         publish_at="2026-08-31T16:30:00+00:00",
     )
 
-    projection = build_publish_calendar(tmp_path)
+    # 這條測的是「UTC 的 8/31 傍晚在台北是 9/1 凌晨」這個投影，跟現在幾點無關。
+    # 原本用 wall-clock：排程時刻一旦變成過去，phase 就從 scheduled 掉成
+    # in_progress——2026-09-01 一跨月，main 自己的 CI 就紅了，而且擋住所有 PR。
+    # 釘住 now，讓它永遠是「還沒到的排程」。
+    projection = build_publish_calendar(tmp_path, now=datetime(2026, 8, 31, 12, tzinfo=UTC))
     item = projection.items[0]
 
     assert item.calendar_at.isoformat() == "2026-09-01T00:30:00+08:00"
