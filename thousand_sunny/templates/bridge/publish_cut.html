@@ -17,6 +17,9 @@
   .pub-grid .section { margin: 0; }
   .pub-body { padding: 18px 20px; }
   .pub-video { width: 100%; display: block; border-radius: var(--sho-r-1); background: #000; }
+  /* 直式成品（9:16）套滿欄寬會長到 1400px 以上，整頁一眼看不完（修修 2026-08-31）。
+     改成用高度定尺寸、寬度跟著長寬比縮——審核要的是「一眼看到全貌」，不是最大的畫面。 */
+  .pub-video--portrait { width: auto; height: min(70vh, 720px); max-width: 100%; margin-inline: auto; }
   .pub-thumb { width: 100%; display: block; border-radius: var(--sho-r-1); border: 1px solid var(--sho-line); }
   .pub-cap { margin-top: 8px; font-size: 11px; color: var(--sho-muted); word-break: break-all; }
   .pub-field { display: flex; flex-direction: column; gap: 6px; }
@@ -78,7 +81,8 @@
         </header>
         <div class="pub-body">
           {% if file_exists %}
-          <video class="pub-video" controls preload="metadata"
+          <video class="pub-video{% if rel['format'] != 'long' %} pub-video--portrait{% endif %}"
+                 controls preload="metadata"
                  src="/bridge/publish/media/{{ rel.episode }}/{{ rel.cut_id }}">
             {# 只有長片 sidecar policy 才預覽／上傳 CC；Short 字幕已燒入畫面。 #}
             {% if cc_policy == 'sidecar_required' and subs_name %}
