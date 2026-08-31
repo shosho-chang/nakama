@@ -177,6 +177,27 @@ body.sho .wk-tsection-n {
   border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-1); padding: 0 5px;
 }
 
+/* ── 戰線 auto-grouping in 今日/整週 tabs (ADR-068) — echoes wk-tsection's
+   header vocabulary; the name deep-links to the thread's detail page. ── */
+body.sho .wk-pgroup { margin-top: 16px; }
+body.sho .wk-pgroup:first-of-type { margin-top: 4px; }
+body.sho .wk-pgroup-head {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 6px 6px 5px; border-bottom: 1px solid var(--sho-line-2);
+}
+body.sho .wk-pgroup-name {
+  font-family: var(--sho-font-mono); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.06em; color: var(--sho-ink); text-decoration: none;
+}
+body.sho a.wk-pgroup-name:hover { color: var(--sho-accent); }
+body.sho a.wk-pgroup-name:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+body.sho .wk-pgroup-name--solo { color: var(--sho-muted); font-weight: 500; }
+body.sho .wk-pgroup-n {
+  font-family: var(--sho-font-mono); font-size: 10.5px; color: var(--sho-muted);
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-1); padding: 0 5px;
+}
+
 /* ── daily cards (Mon–Fri): today open, others collapse to a thin agenda row ── */
 body.sho .wk-days { display: flex; flex-direction: column; gap: 8px; }
 body.sho .wk-day {
