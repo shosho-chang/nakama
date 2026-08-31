@@ -1,7 +1,7 @@
 # ADR-031: Project Workspace Migration to Bridge — Tier C of Vault-as-Substrate
 
 **Date:** 2026-05-24 (v1) · 2026-05-24 (v2 post-panel)
-**Status:** Accepted
+**Status:** Superseded by [ADR-068](ADR-068-project-as-long-running-thread.md)（2026-08-31 — Project 重定義為長期戰線，workspace 全面退役）
 **Deciders:** shosho-chang, Claude Opus 4.7
 **Related:** [ADR-017](ADR-017-annotation-kb-integration.md) (Annotation store), [ADR-021](ADR-021-annotation-substance-store-and-brook-synthesize.md) (Brook synthesize HITL), [ADR-027](ADR-027-brook-scope-reduction-to-scaffold-and-repurpose.md) (Brook scope; referenced nested schema but never delivered), [ADR-028](ADR-028-vault-layout-consolidation.md) (vault layout), [ADR-029](ADR-029-bridge-ia-restructure.md) (Bridge IA dual-axis), [ADR-030](ADR-030-vault-as-substrate-read-strategy.md) (D2/D3/D4 substrate routing), [`VAULT-LAYOUT.md`](../VAULT-LAYOUT.md), [`CONTENT-PIPELINE.md`](../../CONTENT-PIPELINE.md)
 

@@ -35,7 +35,7 @@ from pydantic import BaseModel, Field
 from shared.config import get_vault_path
 from shared.log import get_logger
 from shared.permanent_layer import PERMANENT_DIR
-from shared.project_indexer import ProjectIndexer
+from shared.project_index import list_projects
 from shared.schemas.daily_review import DailyReviewBundle
 from shared.utils import extract_frontmatter, slugify
 from thousand_sunny.auth import check_auth
@@ -825,9 +825,9 @@ def _overview_context(vault: Path) -> dict:
                 }
             )
 
-    # 用 ProjectIndexer（與 /bridge/projects 同源）數，計數一致：濾掉
-    # sync-conflict / Untitled / dotfile / archived（ADR-030 Syncthing vault）。
-    proj_total = len(ProjectIndexer(vault).list_all())
+    # 用 project_index（與 /bridge/projects 同源）數，計數一致：只數
+    # 進行中的 type: project 檔（ADR-068；sync-conflict / 非 project 檔已濾）。
+    proj_total = len([e for e in list_projects(vault) if not e.archived])
 
     return {
         "permanent": {"total": perm_total, "by_status": perm_by},

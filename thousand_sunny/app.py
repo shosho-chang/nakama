@@ -29,7 +29,6 @@ from thousand_sunny.routers import (  # noqa: E402
     bridge,
     bridge_digests,
     bridge_models,
-    bridge_project_thumbnails,
     bridge_projects,
     bridge_weekly,
     bridge_zoro,
@@ -45,7 +44,6 @@ from thousand_sunny.routers import (  # noqa: E402
     kb_review,
     packaging,
     progress,
-    projects,
     promotion_review,
     publish_calendar,
     publish_review,
@@ -98,7 +96,6 @@ app.include_router(bridge.page_router)
 app.include_router(bridge_digests.page_router)
 app.include_router(bridge_models.router)
 app.include_router(bridge_projects.page_router)
-app.include_router(bridge_project_thumbnails.page_router)
 app.include_router(packaging.page_router)
 app.include_router(highlight_review.page_router)
 app.include_router(carousel_review.page_router)
@@ -186,8 +183,6 @@ else:
 
 app.include_router(zoro.router)
 app.include_router(brook.router)
-app.include_router(projects.router)
-app.include_router(projects.page_router)
 
 # Promotion Review UI (ADR-024 Slice 8 / issue #516). Production service
 # wiring lives in the ``_lifespan`` context manager above (N518a / #540).

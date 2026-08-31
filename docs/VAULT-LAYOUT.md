@@ -95,7 +95,7 @@ E:\Shosho LifeOS\
 │
 ├── OKRs/                 🔒 Human only       — 年度 / 季度 OKR
 │
-├── Projects/             🟡 Collab          — Project pages; bootstrap + agent assist sections + 修修 正文
+├── Projects/             🟡 Collab          — 戰線 stub（ADR-068: type/status/created frontmatter + 修修自由書寫 body；無統計快照）
 │
 ├── TaskNotes/            🟡 Half-collab     — TaskNotes plugin owns
 │   ├── Tasks/              lifeos_writer + plugin write
@@ -203,7 +203,7 @@ data/agent_reports/franky/
 | `Journals/{Quarterly,Yearly}/` | 🔒 | 修修 via Templater | 修修 | 人寫 |
 | `Journals/Weekly/{YYYY-MM-DD}.md` | 🟡 | 修修 via Bridge Weekly Dashboard `thousand_sunny/routers/bridge_weekly.py` + `shared/weekly_writer.py:write_weekly` — persists 修修's **intent** (frontmatter allowlist `start_date`/`end_date`/`status`/`top3`/`next3`/`targets`) + his **verbatim prose** (named `##` review sections + 隨手筆記); **no pomodoro/UFO cache — computed on read** (ADR-039 D5). Machine never authors content (ADR-040 A1). Or Obsidian `tpl-weekly-journal` | Bridge `/bridge/weekly`, Obsidian render | **ADR-039 + ADR-040** — field-level contract; Sunday-keyed; first 🔒→🟡 carve-out (**non-generalizing** — each future carve-out needs its own ADR) |
 | `OKRs/` | 🔒 | 修修 via tpl-okr-{annual,quarterly} | 修修 | tpl-okr-* |
-| `Projects/{title}.md` | 🟡 | Bootstrap `scripts/run_project_bootstrap.py` + `shared/lifeos_writer.py:render_project` (Tier C strip, ADR-031); Bridge Web mutations `thousand_sunny/routers/bridge_projects.py` | Brook synthesize, Bridge Web `/bridge/projects/{slug}`, Obsidian render (prose-only post-Tier C) | `shared/lifeos_writer.py` + `docs/schemas/project-frontmatter-nested.md` (ADR-031 γ schema) |
+| `Projects/{name}.md` | 🟡 | `shared/project_index.py:create_project` / `set_project_status`（Bridge `/bridge/projects` + Nami `create_project` tool）— 只寫 `type: project` / `status: active\|archived` / `created` 三個 key；body 為修修自由書寫（agent 不碰）。**不存統計快照** — 🍅/任務數一律 read 時從成員任務即時算（ADR-068） | Bridge Web `/bridge/projects` 清單/詳情、Weekly top3 專案選項、Obsidian render | **ADR-068**：Project = 長期戰線（任務分組鍵）。任務歸屬走**雙寫慣例**：task 檔名前綴 `{project} - {task}` + frontmatter `projects: ["[[project]]"]`（`shared/project_writer.py:create_task/rename_task/reassign_task_project` 維護）；讀取以 frontmatter 為準、前綴為 legacy fallback（`shared/project_index.py:tasks_for`）。非 `type: project` 檔（如 `type: agent-workspace`）不入清單 |
 | `TaskNotes/Tasks/` | 🟡 | Bootstrap + `gateway/handlers/nami.py:1002` + TaskNotes plugin + **Bridge** `shared/project_writer.py` (`timeEntries[]` ADR-031 D6) + `shared/weekly_writer.py` (`plan[]` + **explicit** `scheduled` sync, ADR-039 D4; `timeEntries[]` evidence schema, ADR-040 A2) | TaskNotes plugin queries; Bridge weekly aggregation (`plan[]` planned + `timeEntries[]`∪daily `pomodoros[]` actual) | `shared/lifeos_writer.py:render_task` + **ADR-039 D4** `plan: [{date,pomodoros,reason?,done?}]` |
 | `TaskNotes/{Archive,Views}/` | 🤖 | TaskNotes plugin + **`shared/task_archiver.py`**（franky `task-archive` cron 每日 04:55：done 滿 14 天 → Archive/，修修 2026-07-29 裁決） | TaskNotes plugin + `gateway/handlers/nami.py` 撞名檢查（唯讀） | Plugin config（`moveArchivedTasks=true`、`archiveFolder=TaskNotes/Archive`，sweep 對齊此慣例） |
 | `Dashboards/` | 🔒 | 修修 (dataviewjs queries) | Obsidian render | — |
@@ -295,7 +295,7 @@ drift, **this section wins** and the vault copy is re-synced.
 
 ## 4. Marker convention for collab pages
 
-In-scope: `Projects/{title}.md`. Future collab page types must be added here.
+In-scope: none currently. `Projects/{title}.md` 的 Pattern A/B 註冊已隨 ADR-068 退役（見下方 scope note）——project 檔 body 現為修修 human-only 自由書寫，agent 只碰 frontmatter 的 `status`。Future collab page types must be added here.
 
 ### Pattern A — Agent-written sections (default)
 
@@ -314,7 +314,7 @@ Agent writes into .md body wrapped in canonical positional markers:
 
 **Currently registered Pattern A sections in `Projects/{title}.md`:**
 
-> **Tier C scope note (ADR-031 PR1):** youtube / podcast templates strip these markers per D3; blog template retains them (D3 D9.c v2 only mandates youtube + podcast strip). Bridge Web `/bridge/projects/{slug}#title-thumbnail` is the canonical interactive surface; legacy md-body marker path retained only for blog projects that would still benefit from in-md persistence.
+> **ADR-068 scope note (2026-08-31):** 下表為歷史紀錄。ADR-031 workspace（含 content-type 模板、agent marker sections、Brook synthesize store）已全面退役；現行 project 檔無任何 agent-written body section。`scripts/vault_layout_audit.py` 對 `Projects/` 的 marker audit 應回報任何殘留 marker 為 stale。
 
 | Section heading | Marker pair | Producer | Lives in template |
 |---|---|---|---|

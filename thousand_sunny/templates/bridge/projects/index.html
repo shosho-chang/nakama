@@ -1,9 +1,12 @@
 <!DOCTYPE html>
+{# ── 戰線清單 (ADR-068) ────────────────────────────────────────────────────────
+   Project = 長期戰線：任務的分組鍵。這頁只做三件事：看每條戰線的 live 進度、
+   開新戰線、進詳情。所有數字 read 時從任務即時算，沒有快照。 #}
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bridge · Projects</title>
+<title>Bridge · Projects 戰線</title>
 <script src="/static/shosho/theme.js?v={{ asset_version | default('') }}"></script>
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version | default('') }}">
@@ -14,49 +17,60 @@
   {% from "_chassis_nav.html" import chassis_nav %}
   {{ chassis_nav(nav_active='projects') }}
 
-  <section class="pg-subheader">
-    <h1 class="pg-title">Projects</h1>
-    <span class="pg-stamp">{{ entries | length }} active</span>
-    <a class="pj-new-cta" href="/bridge/projects/new">+ NEW</a>
-  </section>
+  <main class="pj-main">
+  <section class="pj-screen">
 
-  {% if entries %}
-    <section class="pj-grid">
-      {% for e in entries %}
-        <a class="pj-card pj-card--{{ e.status }} pj-card--{{ e.priority }}"
-           href="{{ e.detail_url }}">
-          <div class="pj-card-meta">
-            <span class="pj-tag pj-tag--{{ e.content_type }}">{{ e.content_type | upper }}</span>
-            <span class="pj-tag pj-tag--status pj-tag--status-{{ e.status }}">{{ e.status }}</span>
-            <span class="pj-tag pj-tag--priority pj-tag--priority-{{ e.priority }}">{{ e.priority }}</span>
-          </div>
-          <h2 class="pj-card-title">{{ e.title }}</h2>
-          {% if e.one_sentence %}
-            <p class="pj-card-sentence">{{ e.one_sentence | truncate(120) }}</p>
+    {% if error_msg %}
+      <div class="pj-toast" role="alert">⚠ {{ error_msg }}</div>
+    {% endif %}
+
+    <header class="pj-head">
+      <div>
+        <p class="sho-kicker"><span class="sho-kicker-n">[ 001 ]</span> PROJECTS</p>
+        <h1 class="pj-title">戰線</h1>
+        <p class="pj-sub sho-mono">長期推進的工作容器 — 任務在 Weekly 掛入戰線，這裡看跨週全貌</p>
+      </div>
+      <form class="pj-new" method="post" action="/bridge/projects/new">
+        <input class="pj-new-input" type="text" name="name" maxlength="80" required
+               placeholder="新戰線名稱…" aria-label="新戰線名稱">
+        <button class="sho-btn" type="submit">+ 開戰線</button>
+      </form>
+    </header>
+
+    {% macro project_row(v) %}
+      <a class="pj-row{% if v.status == 'archived' %} pj-row--archived{% endif %}"
+         href="/bridge/projects/{{ v.name | urlencode }}">
+        <span class="pj-row-name">{{ v.name }}</span>
+        <span class="pj-row-meta sho-mono">
+          {% if v.open_count or v.done_count %}
+            <span class="pj-stat" title="完成任務／全部任務">✓ {{ v.done_count }}<span class="pj-frac">/{{ v.done_count + v.open_count }}</span></span>
+            <span class="pj-stat" title="實際🍅／預估🍅">🍅 {{ v.actual_total }}<span class="pj-frac">/{{ v.est_total }}</span></span>
           {% else %}
-            <p class="pj-card-sentence pj-card-sentence--empty">尚未填入 one sentence</p>
+            <span class="pj-stat pj-stat--empty">尚無任務</span>
           {% endif %}
-          <div class="pj-card-rollup">
-            <span class="pj-rollup-tomato">🍅 <span class="val">{{ e.pomodoro_actual_total }}</span> / <span class="muted">{{ e.pomodoro_est_total }}</span></span>
-            {% if e.created %}
-              <span class="pj-rollup-date">{{ e.created }}</span>
-            {% endif %}
-          </div>
-        </a>
+          {% if v.last %}<span class="pj-stat pj-last" title="最近活動">{{ v.last }}</span>{% endif %}
+        </span>
+      </a>
+    {% endmacro %}
+
+    <section class="sho-panel pj-list" aria-label="進行中戰線">
+      {% for v in active %}
+        {{ project_row(v) }}
+      {% else %}
+        <p class="pj-empty sho-mono">還沒有戰線 — 開一條，然後在 Weekly 的任務頁把任務掛進來。</p>
       {% endfor %}
     </section>
-  {% else %}
-    <section class="pj-empty">
-      <p>尚無 projects。</p>
-      <a class="pj-new-cta" href="/bridge/projects/new">建立第一個 →</a>
-      <p class="pj-empty-hint">或在 Slack 對 Nami 說：「新專案：[標題] / [youtube|podcast] / 主題：[關鍵字]」</p>
-    </section>
-  {% endif %}
 
-  {% if not include_archived %}
-    <p class="pj-archive-toggle"><a href="?include_archived=1">+ 顯示已歸檔</a></p>
-  {% else %}
-    <p class="pj-archive-toggle"><a href="?">隱藏已歸檔</a></p>
-  {% endif %}
+    {% if archived %}
+      <details class="pj-archived">
+        <summary class="sho-mono-up">已封存 · {{ archived | length }}</summary>
+        <section class="sho-panel pj-list">
+          {% for v in archived %}{{ project_row(v) }}{% endfor %}
+        </section>
+      </details>
+    {% endif %}
+
+  </section>
+  </main>
 </body>
 </html>
