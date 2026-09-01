@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agents.brook.podcast_carousel_copy import TranscriptIndex, build_transcript_index
 from agents.brook.podcast_carousel_panel import PanelResult, assert_panel_renderable
 from agents.brook.podcast_carousel_render import render_carousel
+from shared.episode_transcript import resolve_transcript_srt
 from shared.schemas.podcast_carousel import PodcastCarouselCopySpecV1, TranscriptEvidence
 
 DEFAULT_TEMPLATE = Path(
@@ -70,7 +71,10 @@ def _validate_spec_evidence(
 def run(args: argparse.Namespace) -> dict:
     episode_dir = args.episode_dir.resolve()
     prose_path = episode_dir / "transcript_prose.md"
-    srt_path = episode_dir / "transcript.srt"
+    # 逐字稿來源由 shared.episode_transcript 決定：有 Editorial Master 就用它。
+    # 寫死 episode/transcript.srt 會讓 ADR-064 之後的集數引用到**已經剪掉**的內容
+    # ——輪播的每一句都要能對回實際播出的節目。
+    srt_path = resolve_transcript_srt(episode_dir).srt_path
     cutouts_dir = episode_dir / "packaging" / "cutouts"
     for path in (episode_dir, prose_path, srt_path, cutouts_dir, args.template_dir):
         if not path.exists():

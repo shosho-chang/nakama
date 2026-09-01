@@ -71,9 +71,11 @@ sys.stderr.reconfigure(encoding="utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from shared.episode_transcript import resolve_transcript_srt  # noqa: E402
+
 logger = logging.getLogger("transcript_prose")
 
-SRT_NAME = "transcript.srt"
+SRT_NAME = "transcript.srt"  # legacy 位置；實際來源見 shared.episode_transcript
 WORDS_NAME = "subs/words.json"
 OUT_NAME = "transcript_prose.md"
 MIXED_NAME = "transcript_prose_suspect.json"
@@ -403,6 +405,55 @@ def render_markdown(paragraphs: list[tuple[int, str]], names: dict[int, str]) ->
     return "\n\n".join(f"**{names.get(spk, f'講者{spk}')}**：{text}" for spk, text in paragraphs)
 
 
+def _project_words_to_master(
+    episode_dir: Path, words: list[dict], speakers: list[int | None]
+) -> tuple[list[dict], list[int | None]]:
+    """來源時鐘的詞 → 成品時鐘，落在被剪掉區間的詞直接丟。
+
+    講者判定要在來源時鐘做（mic 分軌在那個時鐘），但 cue 在成品時鐘。conform map
+    是兩者之間唯一的正式對應（ADR-064）。沒有 conform map 就不能用 Editorial Master
+    當逐字稿——硬對會生出「讀起來很通順但講錯人」的稿子。
+    """
+    from shared.editorial_conform import (
+        RELATIVE_PATH,
+        ConformMapError,
+        load_conform_map,
+        source_to_master_sec,
+    )
+
+    try:
+        # load_conform_map 收的是**檔案路徑**，不是 episode 目錄。
+        cmap = load_conform_map(episode_dir / RELATIVE_PATH)
+    except ConformMapError as exc:
+        raise SystemExit(
+            f"要用 Editorial Master 當逐字稿就必須有 conform map（先跑 build_conform_map）：{exc}"
+        ) from exc
+
+    out_words: list[dict] = []
+    out_speakers: list[int | None] = []
+    dropped = 0
+    for word, spk in zip(words, speakers):
+        start = word.get("start")
+        end = word.get("end")
+        if start is None or end is None:
+            out_words.append(word)
+            out_speakers.append(spk)
+            continue
+        m0 = source_to_master_sec(cmap, float(start), source_key="audio")
+        m1 = source_to_master_sec(cmap, float(end), source_key="audio")
+        if m0 is None or m1 is None or m1 <= m0:
+            dropped += 1
+            continue
+        out_words.append({**word, "start": m0, "end": m1})
+        out_speakers.append(spk)
+    logger.info(
+        "詞級時間戳投影到成品時鐘：%d 個可用，%d 個落在被剪掉的區間",
+        len(out_words),
+        dropped,
+    )
+    return out_words, out_speakers
+
+
 def _load_speakers(episode_dir: Path, words: list[dict]):
     """回傳 (詞級講者判定, envelopes)——envelopes 後面要拿來量 cue 可疑度。"""
     from shared.speaker_assign import assign_word_speakers, detect_mic_tracks, load_envelopes
@@ -447,7 +498,10 @@ def run(
     outtakes_from: float | None = None,
     dry_run: bool = False,
 ) -> dict:
-    srt_path = episode_dir / SRT_NAME
+    # 用哪一份逐字稿由 shared.episode_transcript 決定：有 Editorial Master 就用它
+    # （ADR-064：被剪掉的內容不該出現在衍生產物裡），沒有才退回 transcript.srt。
+    source = resolve_transcript_srt(episode_dir)
+    srt_path = source.srt_path
     words_path = episode_dir / WORDS_NAME
     if not srt_path.exists():
         raise FileNotFoundError(f"找不到 {srt_path}（先跑 subtitle-correct）")
@@ -456,7 +510,13 @@ def run(
 
     words = json.loads(words_path.read_text(encoding="utf-8"))["words"]
     cues = _parse_srt(srt_path.read_text(encoding="utf-8"))
+    # 講者判定必須在**來源時鐘**上做——mic 分軌就是那個時鐘。
     speakers, envelopes = _load_speakers(episode_dir, words)
+    # 但 cue 可能在 Editorial Master 的時鐘上（成品剪過，跟來源差幾十秒）。
+    # 兩邊不投影就對起來，講者會整片錯散——不是全域交換，是零星錯位，
+    # 讀起來還很通順，所以特別難發現。
+    if source.origin == "editorial_master":
+        words, speakers = _project_words_to_master(episode_dir, words, speakers)
 
     ranges = _cue_word_ranges(cues, words)
     cue_speakers = _forward_fill(([_cue_speaker(idx, speakers, words) for idx in ranges]))
