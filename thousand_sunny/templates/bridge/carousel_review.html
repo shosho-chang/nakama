@@ -74,6 +74,9 @@
       <div id="carousel-editor-recovery" class="carousel-editor-recovery" hidden>
         <strong id="carousel-editor-recovery-copy">尚有未送出的卡片修改。</strong>
         <button id="carousel-editor-continue" class="sho-btn sho-btn--ghost" type="button">繼續編輯</button>
+        <button id="carousel-editor-submit" class="sho-btn" type="button"
+                aria-describedby="carousel-recovery-blocked">送出給 agent</button>
+        <strong id="carousel-recovery-blocked" class="carousel-editor-blocked" role="status" aria-live="polite" hidden></strong>
       </div>
       <div class="carousel-actions__controls">
         <span id="review-save-status" class="carousel-notice" role="status" aria-live="polite" {% if not saved %}hidden{% endif %}>{% if saved %}第 {{ decision_count }} 輪檢查已儲存。{% endif %}</span>
@@ -205,8 +208,7 @@
         <div>
           <button id="carousel-editor-reset" class="sho-btn sho-btn--ghost" type="button">重設這張</button>
           <button id="carousel-editor-cancel" class="sho-btn sho-btn--ghost" type="button">取消</button>
-          <button id="carousel-editor-apply" class="sho-btn" type="button"
-                  aria-describedby="carousel-editor-blocked" disabled>送出給 agent 修改</button>
+          <button id="carousel-editor-done" class="sho-btn" type="button">完成這張</button>
         </div>
       </footer>
     </div>
@@ -488,8 +490,13 @@ async function pollJob(job) {
       credentials: 'same-origin',
       headers: {'Accept': 'application/json'},
     });
-    if (!response.ok) throw new Error(await responseDetail(response));
+    if (!response.ok) {
+      const failure = new Error(await responseDetail(response));
+      failure.status = response.status;
+      throw failure;
+    }
     const payload = await response.json();
+    pollErrors = 0;
     const status = normaliseJobStatus(payload);
     renderJobSteps(payload.steps || payload.progress);
     if (status === 'completed' || status === 'complete' || status === 'succeeded') {
@@ -516,6 +523,28 @@ async function pollJob(job) {
     storageSet(jobKey, JSON.stringify(job));
     pollTimer = window.setTimeout(() => pollJob(job), 1800);
   } catch (error) {
+    // 工作不見了不是暫時性的——原本一律 5 秒重試，會對著 404 永遠打下去
+    // （實測留下約 700 筆 console 錯誤，UI 也卡在 busy 解不開）。
+    if (error.status === 404 || error.status === 410) {
+      storageRemove(jobKey);
+      busy = false;
+      updateActions();
+      updateEditorAction();
+      showJobState('failed',
+        `找不到修改工作 ${job.jobId}（可能已被清除）。已停止追蹤；草稿仍在，可以重新送出。`,
+        {focus: true});
+      return;
+    }
+    pollErrors += 1;
+    if (pollErrors > MAX_POLL_ERRORS) {
+      busy = false;
+      updateActions();
+      updateEditorAction();
+      showJobState('error',
+        `連續 ${MAX_POLL_ERRORS} 次讀不到進度，已停止自動重試。重整頁面可再試一次。`,
+        {focus: true});
+      return;
+    }
     busy = true;
     updateActions();
     showJobState('error', `暫時無法讀取進度：${error.message}。5 秒後自動重試。`);
@@ -612,11 +641,13 @@ const editorTextLayout = document.getElementById('carousel-text-layout');
 const editorTextRegion = document.getElementById('carousel-text-region');
 const textLayoutInputs = [...editorTextLayout.querySelectorAll('[data-text-layout-field]')];
 const editorTextLayoutReason = document.getElementById('carousel-text-layout-reason');
-const editorApply = document.getElementById('carousel-editor-apply');
 const editorStatus = document.getElementById('carousel-editor-status');
 const editorPreviewStatus = document.getElementById('carousel-editor-preview-status');
 const editorFit = document.getElementById('carousel-editor-fit');
 const editorBlocked = document.getElementById('carousel-editor-blocked');
+const editorDone = document.getElementById('carousel-editor-done');
+const editorSubmit = document.getElementById('carousel-editor-submit');
+const recoveryBlocked = document.getElementById('carousel-recovery-blocked');
 const editorTitle = document.getElementById('carousel-editor-title');
 const editorKicker = document.getElementById('carousel-editor-kicker');
 const editorRecovery = document.getElementById('carousel-editor-recovery');
@@ -645,6 +676,8 @@ let editorValidationError = false;
 let previewDiagnostics = null;
 let guestEditorState = null;
 let submitFailure = '';
+let pollErrors = 0;
+const MAX_POLL_ERRORS = 12;
 let previewBaseStatus = '載入即時預覽…';
 
 function updatePreviewStatus() {
@@ -771,17 +804,31 @@ function updateEditorAction() {
   const dirtyIds = dirtyEditorPageIds();
   const hasValidationErrors = Object.keys(layoutValidationErrors).length > 0
     || Object.keys(manualLineErrors).length > 0;
-  editorApply.disabled = approved || busy || !editorDirty || editorHasEmptyValue()
+  // 修修 2026-09-02：「每一張點進去，修改之後按確定，然後出來之後沒問題的話，
+  // 我按下一個按鈕，就會有 Agent 把整個接走。」
+  //
+  // 送出鍵原本長在單張卡的編輯器裡，寫著「送出給 agent 修改」——但它其實一次
+  // 送出**所有**累積的修改。所以改完第一張很自然就按了，單子成立，第二張再按
+  // 就被自己那張擋住（同一版本一次只能有一張進行中的修正單）。現在編輯器裡只
+  // 有「完成這張」（關閉、保留草稿、不連網），送出移到主畫面唯一的入口。
+  const blocked = approved || busy || !editorDirty || editorHasEmptyValue()
     || editorValidationError || hasValidationErrors;
-  editorApply.setAttribute('aria-disabled', String(editorApply.disabled));
-  const reason = editorApply.disabled ? applyBlockedReason({hasValidationErrors}) : '';
-  const advisory = reason || (editorDirty ? layoutAdvisory(dirtyIds) : '');
+  const reason = blocked ? applyBlockedReason({hasValidationErrors}) : '';
+  editorSubmit.disabled = blocked;
+  editorSubmit.setAttribute('aria-disabled', String(blocked));
+  editorSubmit.textContent = dirtyIds.length
+    ? `送出 ${dirtyIds.length} 張卡片給 agent` : '送出給 agent';
+  editorSubmit.title = reason;
   // 送出失敗最優先——那是使用者剛剛按下去的結果，不能被提示蓋掉。
-  const message = submitFailure || reason || advisory;
-  editorBlocked.textContent = message;
-  editorBlocked.hidden = !message;
-  editorBlocked.dataset.kind = submitFailure ? 'error' : (reason ? 'blocked' : 'advisory');
-  editorApply.title = reason;
+  const boardMessage = submitFailure || reason;
+  recoveryBlocked.textContent = boardMessage;
+  recoveryBlocked.hidden = !boardMessage;
+  recoveryBlocked.dataset.kind = submitFailure ? 'error' : 'blocked';
+  // 編輯器裡只留「還在改這張」時看得懂的提示，不再有送出鍵。
+  const advisory = reason || (editorDirty ? layoutAdvisory(dirtyIds) : '');
+  editorBlocked.textContent = advisory;
+  editorBlocked.hidden = !advisory;
+  editorBlocked.dataset.kind = reason ? 'blocked' : 'advisory';
   updateEditorRecovery();
   updateActions();
 }
@@ -1595,7 +1642,13 @@ async function submitEditorChanges(scope) {
   }
 }
 
-editorApply.addEventListener('click', () => submitEditorChanges('all'));
+// 「完成這張」只關閉並保留草稿——不連網、不建立修正單。
+editorDone.addEventListener('click', () => {
+  persistEditorDraft();
+  editorDialog.close();
+  updateEditorRecovery();
+});
+editorSubmit.addEventListener('click', () => submitEditorChanges('all'));
 
 const resumableJobRaw = storageGet(jobKey);
 if (!approved && resumableJobRaw) {

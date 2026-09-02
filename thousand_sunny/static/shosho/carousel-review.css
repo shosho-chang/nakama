@@ -34,7 +34,10 @@
 .carousel-publish-status[data-state="failed"],.carousel-publish-status[data-state="superseded"] { border-left-color:var(--sho-error); }
 .carousel-actions__controls { display:flex; align-items:center; justify-content:flex-end; gap:var(--sho-s-4); }
 .carousel-actions__buttons { display:flex; align-items:center; gap:var(--sho-s-2); }
-.carousel-editor-recovery { display:flex; align-items:center; gap:var(--sho-s-2); color:var(--sho-warning); }
+/* 送出的唯一入口就在這條——它必須看起來像「接下來要按的東西」，
+   不是一句提示。原本送出鍵長在單張卡的編輯器裡，見 updateEditorAction。 */
+.carousel-editor-recovery { display:flex; flex-wrap:wrap; align-items:center; gap:var(--sho-s-2); color:var(--sho-warning); }
+.carousel-editor-recovery .carousel-editor-blocked { flex:1 1 100%; order:1; margin:0; }
 .carousel-editor-recovery[hidden] { display:none; }
 .carousel-submit { min-width:148px; }
 .carousel-submit:disabled { cursor:not-allowed; opacity:.42; }

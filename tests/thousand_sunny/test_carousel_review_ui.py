@@ -555,7 +555,7 @@ def test_layout_diagnostics_advise_but_never_block_submission() -> None:
     在此之前這是硬性 gate：他把去背照放大到重疊 267px（上限 240）之後，
     送出鈕變成 disabled，按下去毫無反應也沒有交代。
     """
-    gate = TEMPLATE[TEMPLATE.index("editorApply.disabled = approved") :][:400]
+    gate = TEMPLATE[TEMPLATE.index("const blocked = approved || busy") :][:400]
     assert "allDiagnosticsFit" not in gate
     submit = TEMPLATE[TEMPLATE.index("async function submitEditorChanges(scope)") :][:700]
     assert "allDiagnosticsFit" not in submit
@@ -591,7 +591,46 @@ def test_submit_failure_is_shown_where_the_user_is_looking() -> None:
     """
     assert "submitFailure = `送出失敗：" in TEMPLATE
     # 失敗要壓過版面提示，那是使用者剛按下去的結果
-    assert "const message = submitFailure || reason || advisory;" in TEMPLATE
+    assert "const boardMessage = submitFailure || reason;" in TEMPLATE
     assert "submitFailure ? 'error'" in TEMPLATE
     assert '.carousel-editor-blocked[data-kind="error"]' in CSS
     assert "var(--sho-error)" in CSS
+
+
+def test_submit_lives_on_the_board_and_the_card_editor_only_confirms() -> None:
+    """修修 2026-09-02：「每一張點進去，修改之後按確定，然後出來之後沒問題的話，
+
+    我按下一個按鈕，就會有 Agent 把整個接走，一張一張 render。」
+
+    送出鍵原本長在單張卡的編輯器裡、寫著「送出給 agent 修改」——但它其實一次
+    送出**所有**累積的修改。所以改完第一張很自然就按了，單子成立，第二張再按
+    就被自己那張擋住（同一版本一次只能有一張進行中的修正單）。
+    """
+    assert 'id="carousel-editor-done"' in TEMPLATE
+    assert "完成這張" in TEMPLATE
+    assert 'id="carousel-editor-apply"' not in TEMPLATE
+    # 註解裡還留著這個舊名字當紀錄，所以比對的是按鈕標籤本身。
+    assert ">送出給 agent 修改<" not in TEMPLATE
+    # 送出只在主畫面那條，且會數出幾張卡
+    assert 'id="carousel-editor-submit"' in TEMPLATE
+    assert "`送出 ${dirtyIds.length} 張卡片給 agent`" in TEMPLATE
+    submit_at = TEMPLATE.index('id="carousel-editor-submit"')
+    dialog_at = TEMPLATE.index('<dialog id="carousel-editor"')
+    assert submit_at < dialog_at, "送出鍵必須在主畫面，不能又跑回編輯器裡"
+    # 「完成這張」不連網，只保留草稿並關閉
+    done = TEMPLATE[TEMPLATE.index("editorDone.addEventListener") :][:300]
+    assert "persistEditorDraft();" in done and "editorDialog.close();" in done
+    assert "fetch(" not in done
+
+
+def test_job_poller_gives_up_when_the_job_is_gone() -> None:
+    """原本一律 5 秒重試，對著 404 會永遠打下去——實測留下約 700 筆 console
+
+    錯誤，而且 UI 卡在 busy 解不開。
+    """
+    poll = TEMPLATE[TEMPLATE.index("async function pollJob(job)") :]
+    body = poll[: poll.index("\n}\n")]
+    assert "failure.status = response.status;" in body
+    assert "error.status === 404" in body
+    assert "MAX_POLL_ERRORS" in body
+    assert body.count("busy = false;") >= 2
