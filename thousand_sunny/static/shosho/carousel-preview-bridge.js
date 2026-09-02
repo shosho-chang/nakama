@@ -313,9 +313,14 @@
       });
       return;
     }
-    guest.style.right = `${layout.guest_right_px}px`;
-    guest.style.bottom = `${layout.guest_bottom_px}px`;
-    guest.style.height = `${layout.guest_height_px}px`;
+    // `!important` 而非普通 inline：算圖端注入的 layout override 是
+    // `.cover .guest{right:…!important}`，而沒有標記的 inline style 打不贏
+    // 樣式表的 !important。少了這個，拖曳會「數字有變、畫面不動」——
+    // 而且只在**已經存過 override 的卡**上發生（r002 的封面有、金句沒有，
+    // 這就是兩張卡表現不同的全部原因）。
+    guest.style.setProperty('right', `${layout.guest_right_px}px`, 'important');
+    guest.style.setProperty('bottom', `${layout.guest_bottom_px}px`, 'important');
+    guest.style.setProperty('height', `${layout.guest_height_px}px`, 'important');
     // 標題字級只有封面有；金句的幾何不碰任何字級。
     if (Object.hasOwn(layout, 'title_font_size_px')) {
       const title = document.querySelector('.cover-title');

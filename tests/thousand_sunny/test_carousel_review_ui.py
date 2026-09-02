@@ -514,3 +514,32 @@ def test_tainted_canvas_falls_back_instead_of_losing_the_handle() -> None:
     fn = BRIDGE[BRIDGE.index("function opaqueInset(img)") :][:1600]
     assert "catch (error)" in fn
     assert fn.count("{left: 0, right: 1, top: 0}") >= 1
+
+
+def test_live_geometry_beats_the_injected_important_override() -> None:
+    """封面「數字有變、畫面不動」的真因（2026-09-02，修修從畫面看出來的）。
+
+    算圖端注入的 layout override 是 `.cover .guest{height:…!important}`，
+    而沒有標記的 inline style **打不贏樣式表的 !important**。實測同一元素：
+    普通 inline height:1300px → 畫面仍是 956；帶 !important → 畫面才變 1300。
+
+    所以這個 bug 只發生在**已經存過 override 的卡**上。r002 的封面有
+    `layout_overrides.cover`、金句沒有——這就是兩張卡表現不同的全部原因，
+    也是為什麼盯著 `style.right` 有沒有被設定會一路測「通過」：屬性確實有設，
+    只是不生效。驗收要看算出來的幾何。
+    """
+    fn = BRIDGE[BRIDGE.index("function applyLayout(values,") :][:2000]
+    for name in ("right", "bottom", "height"):
+        assert f"guest.style.setProperty('{name}'" in fn
+    assert fn.count("'important'") >= 3
+    assert "guest.style.right =" not in BRIDGE
+    assert "guest.style.height =" not in BRIDGE
+
+
+def test_renderer_still_pins_saved_geometry_with_important() -> None:
+    """算圖端維持 !important——它要蓋掉樣板自己的 `.cover .guest` 預設。
+
+    編輯器改用 important inline 取勝，兩邊不必再彼此遷就。
+    """
+    render = (ROOT / "agents/brook/podcast_carousel_render.py").read_text(encoding="utf-8")
+    assert "px!important" in render
