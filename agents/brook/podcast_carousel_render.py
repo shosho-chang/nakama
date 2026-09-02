@@ -262,16 +262,23 @@ def _write_render_input(
         raise ValueError("render template must contain one asset injection marker")
     if source.count("<!--__BASE_HREF__-->") != 1:
         raise ValueError("render template must contain one base-href marker")
-    cutout_names = {
-        value
-        for page in spec.pages
-        for value in (
-            getattr(page, "cutout", None),
-            getattr(page, "guest_cutout", None),
-            getattr(page, "host_cutout", None),
-        )
-        if value
-    }
+    # **排序過**的去背照清單。原本是 set，而 set 對字串的迭代順序在不同行程之間
+    # 會變（PYTHONHASHSEED 隨機化）——同一份 Copy Spec 因此會產出 byte 不同的
+    # render input，讓修正單完成時的「決定性重建」比對隨機失敗。
+    # 2026-09-02 實測：r003 的重建在第 983,592 個 byte 起分歧，只因為內嵌素材
+    # map 的鍵順序不同（`guest_thumb_v10_serious` vs `guest_v5_explaining`）。
+    cutout_names = sorted(
+        {
+            value
+            for page in spec.pages
+            for value in (
+                getattr(page, "cutout", None),
+                getattr(page, "guest_cutout", None),
+                getattr(page, "host_cutout", None),
+            )
+            if value
+        }
+    )
     assets: dict[str, str] = {
         relative: _data_uri(template_root / relative) for relative in _BUNDLE_ASSETS
     }

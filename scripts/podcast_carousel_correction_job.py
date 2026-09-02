@@ -480,8 +480,18 @@ def _assert_affected_pages_rerendered(
         result = result_pages.get(page_id)
         if source is None or result is None:
             raise CorrectionJobTransitionError(f"affected carousel page is missing: {page_id}")
-        if result.fit.status != "fit":
-            raise CorrectionJobTransitionError(f"affected carousel page does not fit: {page_id}")
+        # `fit` 是算圖端對版面的判定（重疊量、字級、保護區碰撞），不是「agent 有沒有
+        # 照做」。修修 2026-09-02：「跟文字一樣，我送出去的就是 override 全部的規則。
+        # 機器看不到我看到的東西。」他在編輯器裡看到的預覽就是同一份算圖 DOM，
+        # 重疊多少他自己看得見；那是編輯決定。
+        #
+        # 前門（Review Gate 的送出）已經改成只提示不擋，這裡不能還留一道後門否決——
+        # 否則他送得出去、卻永遠完成不了（實測 r003 就卡在 cover 的
+        # 「重疊 267px 超過 240px」）。
+        #
+        # 下面那幾項照驗：內容雜湊要等於用結果 spec 重算的值、圖片與內容雜湊都必須
+        # 真的變了、render input 不可重用。那些才是「agent 有沒有照做」的證據。
+        # `fit.status` 仍然存在 manifest 裡，Review Gate 會照常標示「版面需要調整」。
         if result.content_sha256 == source.content_sha256:
             raise CorrectionJobTransitionError(
                 f"affected carousel content hash was reused: {page_id}"
@@ -666,6 +676,7 @@ def _verify_inherited_panel_completion(
     evidence = CarouselCorrectionCompletionEvidence(
         result_manifest=manifest_receipt,
         panel_result=panel_receipt,
+        inherited_from=source_revision,
         reviewers=reviewers,
     )
     return manifest.revision, evidence

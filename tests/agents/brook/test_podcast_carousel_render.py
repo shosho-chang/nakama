@@ -520,3 +520,22 @@ def test_no_quote_override_leaves_each_variant_on_its_own_render_default():
     markup = _layout_override_markup(_Spec())
     assert ".quote-a" not in markup
     assert ".cover .guest" not in markup
+
+
+def test_inlined_cutout_order_is_stable_across_processes(tmp_path, monkeypatch):
+    """render input 必須是決定性的，否則修正單完成時的「重建比對」會隨機失敗。
+
+    原本內嵌素材的鍵順序來自 `set` 的迭代順序，而 `set` 對字串的順序在不同行程
+    之間會變（PYTHONHASHSEED 隨機化）。2026-09-02 實測：r003 的重建在第
+    983,592 個 byte 起分歧，只因為 `guest_thumb_v10_serious` 與
+    `guest_v5_explaining` 的先後對調。
+    """
+    import inspect
+
+    from agents.brook import podcast_carousel_render as module
+
+    source = inspect.getsource(module._write_render_input)
+    assert "cutout_names = sorted(" in source, "內嵌素材清單必須排序，不能靠 set 順序"
+    # 迭代它的迴圈也不可以再退回 set
+    body = source[source.index("cutout_names = sorted(") :]
+    assert "for name in cutout_names:" in body

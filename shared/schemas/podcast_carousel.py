@@ -724,6 +724,14 @@ class CarouselCorrectionCompletionEvidence(CarouselModel):
 
     result_manifest: ArtifactReceipt
     panel_result: ArtifactReceipt
+    #: 純人類欄位修改沿用來源版本的收斂 panel 時，記在這裡（`rNNN`）。
+    #:
+    #: 「三份審查收據必須是不同檔案」是為了擋執行者拿同一份檔案冒充三次獨立審查。
+    #: 繼承的情況本來就**只有一份**成品——來源那份 panel 已經證明過三個 lens 各自
+    #: 審過了，這裡再假造三個路徑才是說謊。所以宣告繼承時放行同一份收據，
+    #: 但 lens 齊備與身分唯一照驗，而且 `_verify_inherited_panel_completion` 仍會
+    #: 重新驗證來源 panel 是 converged、三個 lens 齊全、且能治理這一版。
+    inherited_from: str | None = Field(default=None, pattern=r"^r[0-9]{3,}$")
     reviewers: tuple[CarouselReviewerReceipt, ...] = Field(min_length=3, max_length=3)
 
     @model_validator(mode="after")
@@ -734,9 +742,12 @@ class CarouselCorrectionCompletionEvidence(CarouselModel):
         reviewer_ids = [item.reviewer_id for item in self.reviewers]
         if len(reviewer_ids) != len(set(reviewer_ids)):
             raise ValueError("completion reviewer identities must be unique")
-        review_paths = [item.review.path for item in self.reviewers]
-        if len(review_paths) != len(set(review_paths)):
-            raise ValueError("completion reviewer artifacts must be distinct")
+        if self.inherited_from is None:
+            review_paths = [item.review.path for item in self.reviewers]
+            if len(review_paths) != len(set(review_paths)):
+                raise ValueError("completion reviewer artifacts must be distinct")
+        elif {item.review.path for item in self.reviewers} != {self.panel_result.path}:
+            raise ValueError("inherited completion reviewers must cite the inherited panel")
         return self
 
 
