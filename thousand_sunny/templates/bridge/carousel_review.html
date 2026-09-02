@@ -287,6 +287,11 @@ const jobKey = `${storagePrefix}:job:v1`;
 const editorDraftKey = `${storagePrefix}:editor:v2`;
 let approved = reviewForm.dataset.approved === 'true';
 let busy = false;
+// 誰在忙：'feedback' | 'approve' | 'editor' | null。
+// `busy` 在**工作進行中**會一直是 true，所以不能拿它決定哪顆按鈕顯示「送出中…」
+// ——修修 2026-09-03 送出 8 張卡片之後，「送出中…」跑到「修改意見」那顆上，
+// 而他按的是主畫面的「送出 N 張卡片給 agent」。
+let busySource = null;
 let editorDirty = false;
 let pollTimer = null;
 
@@ -340,8 +345,13 @@ function updateActions() {
     approveButton.setAttribute('aria-disabled', 'true');
     return;
   }
-  feedbackButton.textContent = busy ? feedbackButton.dataset.loadingLabel : `送出 ${count} 則修改`;
+  // 「送出中…」原本落在「修改意見」那顆上，而使用者按的是主畫面的
+  // 「送出 N 張卡片給 agent」——看起來像按錯了地方、或是根本沒反應。
+  feedbackButton.textContent = busySource === 'feedback'
+    ? feedbackButton.dataset.loadingLabel : `送出 ${count} 則修改`;
   feedbackButton.disabled = approved || busy || editorDirty || count === 0;
+  approveButton.textContent = busySource === 'approve'
+    ? approveButton.dataset.loadingLabel : approveButton.dataset.idleLabel;
   approveButton.disabled = approved || busy || editorDirty || count > 0;
   feedbackButton.setAttribute('aria-disabled', String(feedbackButton.disabled));
   approveButton.setAttribute('aria-disabled', String(approveButton.disabled));
@@ -350,6 +360,7 @@ function updateActions() {
 function setApprovedState() {
   approved = true;
   busy = false;
+  busySource = null;
   reviewForm.dataset.approved = 'true';
   gateStatus.textContent = '已核准';
   actionHelp.dataset.state = 'approved';
@@ -485,6 +496,7 @@ function restoreFailedFeedback(job) {
   }
   storageRemove(jobKey);
   busy = false;
+  busySource = null;
   updateActions();
 }
 
@@ -533,6 +545,7 @@ async function pollJob(job) {
     if (error.status === 404 || error.status === 410) {
       storageRemove(jobKey);
       busy = false;
+      busySource = null;
       updateActions();
       updateEditorAction();
       showJobState('failed',
@@ -543,6 +556,7 @@ async function pollJob(job) {
     pollErrors += 1;
     if (pollErrors > MAX_POLL_ERRORS) {
       busy = false;
+      busySource = null;
       updateActions();
       updateEditorAction();
       showJobState('error',
@@ -576,6 +590,7 @@ reviewForm.addEventListener('submit', async (event) => {
   const count = feedbackCount();
   if (approved || busy || count === 0) return;
   busy = true;
+  busySource = 'feedback';
   persistDraft({announce: false});
   updateActions();
   feedbackButton.setAttribute('aria-busy', 'true');
@@ -602,6 +617,7 @@ reviewForm.addEventListener('submit', async (event) => {
     await pollJob(job);
   } catch (error) {
     busy = false;
+    busySource = null;
     persistDraft({announce: false});
     updateActions();
     showJobState('failed', `送出失敗：${error.message}。修改意見已保留，可重新送出。`, {focus: true});
@@ -612,6 +628,7 @@ reviewForm.addEventListener('submit', async (event) => {
 approveButton.addEventListener('click', async () => {
   if (approved || busy || feedbackCount() > 0) return;
   busy = true;
+  busySource = 'approve';
   updateActions();
   approveButton.textContent = approveButton.dataset.loadingLabel;
   approveButton.setAttribute('aria-busy', 'true');
@@ -630,6 +647,7 @@ approveButton.addEventListener('click', async () => {
     window.setTimeout(() => window.location.assign(sameOriginUrl(payload.publish_url)), 350);
   } catch (error) {
     busy = false;
+    busySource = null;
     approveButton.textContent = approveButton.dataset.idleLabel;
     approveButton.removeAttribute('aria-busy');
     updateActions();
@@ -891,8 +909,9 @@ function updateEditorAction() {
   const reason = blocked ? applyBlockedReason({hasValidationErrors}) : '';
   editorSubmit.disabled = blocked;
   editorSubmit.setAttribute('aria-disabled', String(blocked));
-  editorSubmit.textContent = dirtyIds.length
-    ? `送出 ${dirtyIds.length} 張卡片給 agent` : '送出給 agent';
+  editorSubmit.textContent = busySource === 'editor'
+    ? '送出中…'
+    : (dirtyIds.length ? `送出 ${dirtyIds.length} 張卡片給 agent` : '送出給 agent');
   editorSubmit.title = reason;
   // 送出失敗最優先——那是使用者剛剛按下去的結果，不能被提示蓋掉。
   const boardMessage = submitFailure || reason;
@@ -1716,6 +1735,7 @@ async function submitEditorChanges(scope) {
   updateActions();
   updateEditorAction();
   submitFailure = '';
+  busySource = 'editor';
   editorStatus.textContent = '正在建立待認領修改工作…';
   const editorDraft = {manifestSha256: reviewForm.dataset.manifestSha, ...editorState};
   const copyEdits = Object.entries(editorState.copyEdits).map(([pageId, fields]) => {
@@ -1754,12 +1774,25 @@ async function submitEditorChanges(scope) {
       feedbackValues: readFeedbackValues(), editorDraft,
     };
     storageRemove(editorDraftKey);
+    // 只清 storage 不夠：`editorState` 還留在記憶體裡，主畫面會繼續說「尚有 N 張
+    // 卡片修改未送出」、送出鍵也還在（再按一次只會拿到 409）。修修 2026-09-03
+    // 送出 8 張之後就是卡在這個畫面。草稿已經隨 job 一起保存在 jobKey 裡，
+    // 工作失敗時會由 restoreFailedFeedback 還原。
+    editorState = {copyEdits: {}, layout: null, quoteLayout: null, textLayouts: {}};
+    submitFailure = '';
+    layoutValidationErrors = {};
+    manualLineErrors = {};
     storageSet(jobKey, JSON.stringify(job));
     editorDialog.close();
+    // 送出這個動作已經結束了（工作進度另外由工作面板顯示），按鈕不該一直停在
+    // 「送出中…」。
+    busySource = null;
+    updateEditorAction();
     showJobState(normaliseJobStatus(payload), `修改工作 ${job.jobId} 已建立，等待目前執行此 episode 的 Codex／Claude Code Agent 認領。`, {focus: true});
     await pollJob(job);
   } catch (error) {
     busy = false;
+    busySource = null;
     persistEditorDraft();
     updateActions();
     updateEditorAction();

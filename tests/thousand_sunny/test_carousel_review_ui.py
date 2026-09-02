@@ -693,3 +693,40 @@ def test_card_thumbnails_hide_editor_affordances() -> None:
     assert BRIDGE.index("style.dataset.presentationMode") < BRIDGE.index(
         "function configureGuestInteraction()"
     )
+
+
+def test_submitting_clears_the_pending_state() -> None:
+    """修修 2026-09-03：送出 8 張之後，主畫面仍寫著「尚有 8 張卡片修改未送出」，
+
+    送出鍵也還在（再按只會拿到 409）。工作其實已經建立成功了。
+    原因是成功路徑只清了 storage，`editorState` 還留在記憶體裡。
+    """
+    # `storageRemove(editorDraftKey)` 在 pollJob 也有一處，錨在送出成功那段的註解上。
+    success = TEMPLATE[TEMPLATE.index("只清 storage 不夠") :][:900]
+    assert (
+        "editorState = {copyEdits: {}, layout: null, quoteLayout: null, textLayouts: {}};"
+        in success
+    )
+    assert "submitFailure = '';" in success
+    # 草稿隨 job 一起存進 jobKey，工作失敗時由 restoreFailedFeedback 還原
+    assert "storageSet(jobKey" in success
+    assert "restoreFailedFeedback" in TEMPLATE
+
+
+def test_busy_label_lands_on_the_button_that_was_pressed() -> None:
+    """「送出中…」原本跑到「修改意見」那顆上——使用者按的是主畫面的送出鍵。
+
+    `busy` 在**工作進行中**會一直是 true，所以它不能用來決定哪顆顯示 loading。
+    """
+    assert "let busySource = null;" in TEMPLATE
+    assert "busySource === 'feedback'" in TEMPLATE
+    assert "busySource === 'approve'" in TEMPLATE
+    assert "busySource === 'editor'" in TEMPLATE
+    assert "busy && !editorSubmitBusy" not in TEMPLATE
+    # 每一處放開 busy 都要一併放開 busySource，否則標籤會卡住
+    import re as _re
+
+    lines = TEMPLATE.split("\n")
+    for index, line in enumerate(lines):
+        if _re.fullmatch(r"\s*busy = false;", line):
+            assert "busySource = null;" in lines[index + 1], f"line {index + 1} 沒有清掉 busySource"
