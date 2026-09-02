@@ -13,12 +13,13 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import APIRouter, Cookie, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, Cookie, HTTPException, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 from starlette.requests import Request
 
+from agents.brook.podcast_carousel_autorun import is_autorunnable
 from agents.brook.podcast_carousel_render import _digest_files
 from scripts.podcast_carousel_correction_job import (
     CorrectionJobTransitionError,
@@ -39,6 +40,7 @@ from scripts.podcast_carousel_publish_job import (
     supersede_queued_publish_job,
     unfinished_publish_platforms,
 )
+from shared.log import get_logger
 from shared.schemas.carousel_publish import (
     CarouselPublishAsset,
     CarouselPublishJobV1,
@@ -68,6 +70,20 @@ page_router = APIRouter(prefix="/bridge/ig-cards", tags=["bridge-ig-cards"])
 _templates = Jinja2Templates(
     directory=str(Path(__file__).resolve().parent.parent / "templates" / "bridge")
 )
+logger = get_logger("nakama.web.carousel_review")
+
+
+# 純結構化修改在本機直接跑完（見 `podcast_carousel_autorun`）。VPS 那台是 control
+# plane，沒有 Chrome、也沒有 footage 磁碟，必須關掉——所以這是真的部署開關，
+# 不是測試用的旁門。測試也靠它把出圖擋在外面。
+def _autorun_enabled() -> bool:
+    return os.environ.get("NAKAMA_CAROUSEL_AUTORUN", "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+
+
 _ROLE_LABELS = {
     "cover": "封面",
     "hook": "開場提問",
@@ -1015,6 +1031,37 @@ def _active_job_conflict(package_root: Path, manifest, manifest_sha256: str) -> 
     )
 
 
+def _autorun_structured_job(episode_slug: str, job_id: str) -> None:
+    """背景執行一張純結構化修正單。失敗會落在工作上，不會靜默。
+
+    Review Gate 看到 `failed` 會顯示原因並把草稿還給使用者，所以這裡的責任只是
+    「跑，並且不要吞掉錯誤」。
+    """
+    from agents.brook.podcast_carousel_autorun import (
+        StructuredAutorunError,
+        execute_structured_job,
+    )
+
+    episode_dir = _episode_dir(episode_slug)
+    job_path = episode_dir / "ig-carousel" / "correction_jobs" / f"{job_id}.json"
+    try:
+        result = execute_structured_job(
+            episode_dir=episode_dir,
+            job_path=job_path,
+            executor_id="thousand-sunny-autorun",
+        )
+        logger.info(
+            "carousel autorun completed job=%s revision=%s fields=%s",
+            job_id,
+            result.result_revision,
+            result.changed_fields,
+        )
+    except StructuredAutorunError as error:
+        logger.warning("carousel autorun failed job=%s: %s", job_id, error)
+    except Exception:  # noqa: BLE001 — 背景任務不能把例外丟進虛空
+        logger.exception("carousel autorun crashed job=%s", job_id)
+
+
 def _assert_current_manifest(form, manifest_sha256: str) -> None:
     if str(form.get("manifest_sha256", "")) != manifest_sha256:
         raise HTTPException(
@@ -1061,6 +1108,7 @@ def _append_feedback_revision(
 async def carousel_review_apply_edits(
     request: Request,
     episode_slug: str,
+    background: BackgroundTasks,
     nakama_auth: str | None = Cookie(None),
 ):
     """Validate structured edits and queue them without mutating rendered artifacts."""
@@ -1202,7 +1250,7 @@ async def carousel_review_apply_edits(
             status_code=422, detail="invalid prospective structured carousel edits"
         ) from error
     try:
-        return create_queued_job(
+        job = create_queued_job(
             package_root=package_root,
             episode_id=manifest.episode_id,
             source_revision=manifest.revision,
@@ -1212,6 +1260,12 @@ async def carousel_review_apply_edits(
             quote_layout_overrides=effective_quote_layout,
             text_layout_overrides=effective_text_layouts,
         )
+        # 修修 2026-09-03：「以後不能改成送出就自動驅動 Agent 去 render 嗎？
+        # 多一個動作覺得不好。」純結構化修改的套用是決定性的，一步都用不到
+        # LLM——那就不該再要一個人來按同樣那幾個指令。自由文字意見不在此列。
+        if _autorun_enabled() and is_autorunnable(job):
+            background.add_task(_autorun_structured_job, episode_slug, job.job_id)
+        return job
     except CorrectionJobTransitionError as error:
         raise HTTPException(
             status_code=409,

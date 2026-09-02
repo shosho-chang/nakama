@@ -334,6 +334,10 @@ def client(tmp_path: Path, monkeypatch) -> tuple[TestClient, Path]:
     _seed(tmp_path)
     monkeypatch.setenv("PODCAST_EPISODES_ROOT", str(tmp_path))
     monkeypatch.setenv("DISABLE_ROBIN", "1")
+    # 這些測試驗的是「工作有沒有被正確建立」，不是出圖。開著會讓每個建立工作的
+    # 測試都在背景真的去跑一次 Chrome（fixture 沒有逐字稿，於是把工作翻成
+    # failed），後面對狀態的斷言就會踩到彼此。
+    monkeypatch.setenv("NAKAMA_CAROUSEL_AUTORUN", "0")
     monkeypatch.delenv("WEB_PASSWORD", raising=False)
     monkeypatch.delenv("WEB_SECRET", raising=False)
     for name in (
