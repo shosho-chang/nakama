@@ -1001,6 +1001,9 @@ window.addEventListener('message', (event) => {
     quoteLayoutBaseline = event.data.values;
     if (currentEditorPage?.role === 'quote' && !editorState.quoteLayout && !initialQuoteLayout) {
       syncQuoteLayoutInputs(quoteLayoutBaseline);
+      // 基準值進了 fingerprint，之前那輪診斷就對不上了。不重新要一次，
+      // 「送出」會卡在 disabled 直到使用者剛好改了別的東西。
+      applyTextLayoutsToPreview(currentEditorPage);
     }
   } else if (event.data.type === 'diagnostics') {
     if (event.data.requestId && event.data.requestId < previewPatchSequence) return;

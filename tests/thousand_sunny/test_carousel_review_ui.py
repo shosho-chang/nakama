@@ -410,3 +410,14 @@ def test_quote_layout_controls_exist_and_are_separate_from_cover() -> None:
     assert "quote_layout_overrides:" in TEMPLATE
     # 金句幾何要進 fingerprint，否則調完診斷對不上、送出鈕解不開。
     assert "quote: page.role === 'quote' ? activeQuoteLayout() : null," in TEMPLATE
+
+
+def test_quote_baseline_arrival_refreshes_diagnostics() -> None:
+    """基準值進了 fingerprint，之前那輪診斷就對不上。
+
+    不重新要一次，金句的「送出」會卡在 disabled，直到使用者剛好改了別的東西。
+    """
+    handler = TEMPLATE[TEMPLATE.index("type === 'guest-layout-baseline'") :]
+    block = handler[: handler.index("} else if")]
+    assert "quoteLayoutBaseline = event.data.values;" in block
+    assert "applyTextLayoutsToPreview(currentEditorPage);" in block
