@@ -655,3 +655,41 @@ def test_drafts_orphaned_by_a_new_revision_are_offered_back() -> None:
     assert "draft.copyEdits[pageId]" in apply_handler
     assert "draft.layout" not in apply_handler
     assert "storageRemove(key);" in apply_handler
+
+
+def test_board_thumbnails_show_pending_edits() -> None:
+    """修修 2026-09-02：「我需要等我退出來之後，在整個畫面預覽那邊，顯示的都是
+
+    已經修改過的內容。」主畫面的縮圖是**已出圖**的 PNG，草稿沒出圖，所以改完
+    退出來看到的還是舊的，只多一個「有未套用修改」標記。
+    """
+    assert "function refreshCardPreviews(" in TEMPLATE
+    assert "carousel-card-preview" in TEMPLATE
+    assert ".carousel-card-preview" in CSS
+    # 疊在 PNG 上但不可互動——點擊要落到底下的「查看逐字稿證據」按鈕
+    strip = CSS[CSS.index(".carousel-card-preview") :][:400]
+    assert "pointer-events:none" in strip
+    # 縮放後的 iframe 靠它定位；只能有一條 `.carousel-image-button` 規則。
+    assert CSS.count(".carousel-image-button {") == 1
+    assert "position:relative" in CSS[CSS.index(".carousel-image-button {") :][:220]
+    # 沒有草稿的卡片要維持 PNG——那才是真正出圖過的東西
+    fn = TEMPLATE[TEMPLATE.index("function refreshCardPreviews(") :][:1200]
+    assert "frame.remove();" in fn
+    assert "cardPreviewFrames.delete(pageId);" in fn
+
+
+def test_card_thumbnails_hide_editor_affordances() -> None:
+    """縮圖上不該出現拖曳圓點與文字選取外框——那是編輯器的控制項，不是卡片內容。
+
+    這段樣式原本寫在 `configureGuestInteraction()` 裡，而那個函式只有封面／金句
+    會走到，於是 hook 那類卡片的縮圖仍然帶著控制點（2026-09-02 實測到）。
+    """
+    assert "type === 'set-presentation'" in BRIDGE
+    assert "style.dataset.presentationMode" in BRIDGE
+    inject = BRIDGE[BRIDGE.index("style.dataset.presentationMode") :][:600]
+    assert ".carousel-preview-resize" in inject
+    assert ".carousel-preview-text-resize{display:none!important}" in inject
+    # 必須在 IIFE 頂層一律注入，不能藏在只有部分卡片會走到的函式裡
+    assert BRIDGE.index("style.dataset.presentationMode") < BRIDGE.index(
+        "function configureGuestInteraction()"
+    )

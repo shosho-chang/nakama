@@ -750,6 +750,72 @@ function dirtyEditorPageIds() {
   return [...ids];
 }
 
+// 主畫面的縮圖是「已出圖」的 PNG，草稿還沒出圖，所以改完退出來看到的還是舊的。
+// 修修 2026-09-02：「我需要等我退出來之後，在整個畫面預覽那邊，顯示的都是已經
+// 修改過的內容。」把有草稿的那幾張換成同一份即時預覽（縮放後、不可互動、
+// 關掉編輯控制點），沒有草稿的維持 PNG——那才是真正出圖過的東西。
+const cardPreviewFrames = new Map();
+
+function postToFrame(frame, type, payload = {}) {
+  if (!frame || !frame.contentWindow) return;
+  frame.contentWindow.postMessage({channel: previewChannel, type, ...payload}, '*');
+}
+
+async function pushCardPreview(pageId) {
+  const frame = cardPreviewFrames.get(pageId);
+  const page = pageById(pageId);
+  if (!frame || !page) return;
+  postToFrame(frame, 'set-presentation', {on: true});
+  postToFrame(frame, 'set-visual-scale', {scale: Number(frame.dataset.scale) || 1});
+  postToFrame(frame, 'apply-copy', {role: page.role, values: currentEditorValues(page)});
+  const field = assetFieldFor(page);
+  const pendingCutout = field ? (editorState.copyEdits[pageId] || {})[field] : null;
+  if (pendingCutout) {
+    try {
+      postToFrame(frame, 'apply-cutout',
+        {role: page.role, field, src: await cutoutDataUrl(pendingCutout)});
+    } catch (error) { /* 縮圖換不到圖就維持原圖，不打斷主畫面 */ }
+  }
+  if (page.role === 'cover') {
+    postToFrame(frame, 'apply-layout', {values: editorState.layout || initialCoverLayout});
+  } else if (page.role === 'quote') {
+    const values = activeQuoteLayout();
+    if (values) postToFrame(frame, 'apply-layout', {values});
+  }
+  postToFrame(frame, 'apply-text-layouts', {
+    layouts: textLayoutPayloadForPage(page), safeRects: textLayoutSafeRects,
+    requestId: 0, fingerprint: `card-preview:${pageId}`,
+  });
+}
+
+function refreshCardPreviews(dirtyIds) {
+  if (!editorAvailable) return;
+  const wanted = new Set(approved ? [] : dirtyIds);
+  for (const [pageId, frame] of [...cardPreviewFrames]) {
+    if (wanted.has(pageId)) continue;
+    frame.remove();
+    cardPreviewFrames.delete(pageId);
+  }
+  for (const pageId of wanted) {
+    if (cardPreviewFrames.has(pageId)) { pushCardPreview(pageId); continue; }
+    const button = document.querySelector(`[data-edit-page="${pageId}"]`);
+    const holder = button?.closest('.carousel-card')?.querySelector('.carousel-image-button');
+    if (!holder) continue;
+    const width = holder.clientWidth || 1080;
+    const frame = document.createElement('iframe');
+    frame.className = 'carousel-card-preview';
+    frame.setAttribute('sandbox', 'allow-scripts');
+    frame.setAttribute('title', `第 ${pageById(pageId).page_number} 頁 · 尚未送出的修改`);
+    frame.dataset.scale = String(width / 1080);
+    frame.style.transform = `scale(${width / 1080})`;
+    frame.addEventListener('load', () => pushCardPreview(pageId));
+    frame.src = `${reviewForm.dataset.previewBase}/${encodeURIComponent(pageId)}`
+      + `?manifest_sha256=${encodeURIComponent(reviewForm.dataset.manifestSha)}`;
+    holder.append(frame);
+    cardPreviewFrames.set(pageId, frame);
+  }
+}
+
 function updateEditorRecovery() {
   const dirtyIds = dirtyEditorPageIds();
   const allDiagnosticsFit = dirtyIds.length > 0 && dirtyIds.every(pageHasCurrentFitDiagnostics);
@@ -760,6 +826,7 @@ function updateEditorRecovery() {
   });
   editorRecovery.hidden = approved || dirtyIds.length === 0;
   editorRecoveryCopy.textContent = `尚有 ${dirtyIds.length} 張卡片修改未送出。`;
+  refreshCardPreviews(dirtyIds);
   // 送出的入口只有一個：卡片編輯器裡的「送出給 agent 修改」。這裡只提示與帶路。
   void allDiagnosticsFit;
   void hasValidationErrors;

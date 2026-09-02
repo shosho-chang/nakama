@@ -16,7 +16,7 @@
 .carousel-edit { width:100%; margin-top:var(--sho-s-2); }
 .carousel-dirty-badge { display:block; margin-top:var(--sho-s-2); color:var(--sho-warning); font-size:12px; font-weight:800; }
 .carousel-dirty-badge[hidden] { display:none; }
-.carousel-image-button { display:block; width:100%; padding:0; border:1px solid var(--sho-line); border-radius:var(--sho-r-1); background:var(--sho-bg-2); cursor:zoom-in; overflow:hidden; }
+.carousel-image-button { position:relative; display:block; width:100%; padding:0; border:1px solid var(--sho-line); border-radius:var(--sho-r-1); background:var(--sho-bg-2); cursor:zoom-in; overflow:hidden; }
 .carousel-image-button img { display:block; width:100%; height:auto; aspect-ratio:1/1; object-fit:cover; }
 .carousel-image-button:focus-visible,.carousel-card textarea:focus-visible,.carousel-submit:focus-visible,.carousel-job:focus-visible { outline:none; box-shadow:var(--sho-focus); }
 .carousel-feedback { display:block; margin-top:8px; }
@@ -36,6 +36,10 @@
 .carousel-actions__buttons { display:flex; align-items:center; gap:var(--sho-s-2); }
 /* 送出的唯一入口就在這條——它必須看起來像「接下來要按的東西」，
    不是一句提示。原本送出鍵長在單張卡的編輯器裡，見 updateEditorAction。 */
+/* 有未送出草稿的卡片，縮圖換成同一份即時預覽疊在 PNG 上。不可互動——
+   點擊仍然要落到底下的「查看逐字稿證據」按鈕上。 */
+.carousel-card-preview { position:absolute; inset:0; width:1080px; height:1080px; border:0; transform-origin:top left; pointer-events:none; background:var(--sho-bg); }
+
 .carousel-editor-recovery { display:flex; flex-wrap:wrap; align-items:center; gap:var(--sho-s-2); color:var(--sho-warning); }
 .carousel-editor-recovery .carousel-editor-blocked { flex:1 1 100%; order:1; margin:0; }
 .carousel-editor-recovery[hidden] { display:none; }

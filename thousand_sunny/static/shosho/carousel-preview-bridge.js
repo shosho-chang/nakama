@@ -40,6 +40,19 @@
   let selectedTextRegion = null;
   let visualScale = 1;
 
+  // 展示模式的樣式一律注入。它跟這張卡有沒有去背照無關——原本寫在
+  // `configureGuestInteraction()` 裡，而那個函式只有封面／金句會走到，
+  // 於是 hook 那類卡片在主畫面縮圖上仍然帶著文字控制點與選取外框。
+  (() => {
+    const style = document.createElement('style');
+    style.dataset.presentationMode = 'true';
+    style.textContent = '[data-presentation="true"] .carousel-preview-resize,'
+      + '[data-presentation="true"] .carousel-preview-text-resize{display:none!important}'
+      + '[data-presentation="true"] [data-fit-region]{outline:0!important;cursor:default!important}'
+      + '[data-presentation="true"] .guest{cursor:default!important;outline:0!important}';
+    document.head.append(style);
+  })();
+
   function emit(type, payload = {}) {
     window.parent.postMessage({channel, type, ...payload}, '*');
   }
@@ -622,6 +635,10 @@
           '--editor-handle-size', `${Math.ceil(44 / visualScale)}px`,
         );
         positionTextHandles();
+      } else if (event.data.type === 'set-presentation') {
+        // 主畫面的卡片縮圖也用這份預覽來顯示草稿的樣子，但那裡不該出現拖曳圓點
+        // 與文字選取外框——那是編輯器的控制項，不是卡片內容。
+        document.documentElement.dataset.presentation = event.data.on ? 'true' : 'false';
       } else if (event.data.type === 'refit') {
         refit();
       }
