@@ -385,11 +385,11 @@ def test_guest_drag_binds_on_measure_not_on_a_parent_message() -> None:
 
 
 def test_resize_handle_is_clamped_into_the_canvas() -> None:
-    """控制點貼在圖片外框左上角，而去背照靠右定位且常比畫布寬：
+    """去背照靠右定位且常比畫布寬，錨點算出來可能落在畫布外：
 
-    推到最右時左緣算出負數，控制點會被 overflow:hidden 裁掉、再也點不到。
+    那時控制點會被 overflow:hidden 裁掉、再也點不到，縮放就整個失效。
     """
-    fn = BRIDGE[BRIDGE.index("function positionResizeHandle(guest)") :][:900]
+    fn = BRIDGE[BRIDGE.index("function positionResizeHandle(guest)") :][:1600]
     assert "clamp" in fn
     assert "bounds.width - size" in fn and "bounds.height - size" in fn
 
@@ -480,3 +480,37 @@ def test_binding_does_not_hang_on_a_single_trigger() -> None:
     """fonts.ready 被延後或不觸發時，綁定不該就此消失。"""
     tail = BRIDGE[BRIDGE.index("document.fonts.ready.then") :]
     assert tail.count("discoverGuestLayout()") >= 2
+
+
+def test_resize_handle_anchors_to_the_visible_subject_not_the_bounding_box() -> None:
+    """封面「縮放不了」的真因（2026-09-02，修修在真實瀏覽器回報）。
+
+    去背照的外框遠大於看得見的人——封面這張寬 1119（比 1080 畫布還寬），
+    左上角落在標題文字上。控制點錨在外框角落，就變成一個橘色圓點壓在
+    「AI 要讓人」上面，橘底配橘點，完全看不出是那張照片的控制項。
+    金句用的是 `_trim` 版，外框貼著人，所以一直沒問題。
+    """
+    assert "function opaqueInset(" in BRIDGE
+    assert "getImageData" in BRIDGE
+    # 羽化邊緣不能算進去，否則邊界會比實際大一圈
+    assert "> 128" in BRIDGE
+    pos = BRIDGE[BRIDGE.index("function positionResizeHandle(guest)") :][:1200]
+    assert "opaqueInset(guest)" in pos
+    # 高度往上長，抓上緣才對得上手感；水平取人物中央以避開標題
+    assert "(inset.left + inset.right) / 2" in pos
+    assert "rect.height * inset.top" in pos
+
+
+def test_resize_handle_is_legible_on_an_orange_card() -> None:
+    """原本是橘底橘點，在橘色封面上等於隱形。"""
+    style = BRIDGE[BRIDGE.index(".carousel-preview-resize{") :][:500]
+    assert "background:#fff" in style
+    assert "border-radius:50%" in style
+    assert "box-shadow" in style
+
+
+def test_tainted_canvas_falls_back_instead_of_losing_the_handle() -> None:
+    """非 data: 來源會污染畫布讓 getImageData 丟例外——控制點不可以因此消失。"""
+    fn = BRIDGE[BRIDGE.index("function opaqueInset(img)") :][:1600]
+    assert "catch (error)" in fn
+    assert fn.count("{left: 0, right: 1, top: 0}") >= 1

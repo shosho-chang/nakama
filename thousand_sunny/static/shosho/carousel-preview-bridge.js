@@ -216,6 +216,51 @@
     });
   }
 
+  // 去背照的外框常常遠大於看得見的人——封面這張左邊與上面都是透明像素，
+  // 外框左上角落在標題文字那一帶。控制點錨在外框角上，就變成「一個橘點浮在
+  // 標題上」，看不出是那張照片的控制項（金句用的是 _trim 版，外框貼著人，
+  // 所以一直沒問題）。這裡掃出不透明像素的邊界，把控制點錨到人身上。
+  const opaqueInsetCache = new Map();
+
+  function opaqueInset(img) {
+    const key = img.currentSrc || img.src;
+    if (!key) return {left: 0, right: 1, top: 0};
+    if (opaqueInsetCache.has(key)) return opaqueInsetCache.get(key);
+    let inset = {left: 0, right: 1, top: 0};
+    try {
+      if (img.naturalWidth && img.naturalHeight) {
+        const size = 48;
+        const probe = document.createElement('canvas');
+        probe.width = size;
+        probe.height = size;
+        const ctx = probe.getContext('2d', {willReadFrequently: true});
+        ctx.drawImage(img, 0, 0, size, size);
+        const {data} = ctx.getImageData(0, 0, size, size);
+        // 門檻拉到半透明以上：去背邊緣的羽化像素會讓邊界看起來比實際大一圈。
+        let minX = size;
+        let maxX = -1;
+        let minY = size;
+        for (let y = 0; y < size; y += 1) {
+          for (let x = 0; x < size; x += 1) {
+            if (data[(y * size + x) * 4 + 3] > 128) {
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+            }
+          }
+        }
+        if (maxX >= minX && minY < size) {
+          inset = {left: minX / size, right: (maxX + 1) / size, top: minY / size};
+        }
+      }
+    } catch (error) {
+      // 畫布被污染（非 data: 來源）就退回外框角落，不要讓控制點消失。
+      inset = {left: 0, right: 1, top: 0};
+    }
+    opaqueInsetCache.set(key, inset);
+    return inset;
+  }
+
   function handleSize() {
     const raw = getComputedStyle(document.documentElement)
       .getPropertyValue('--editor-handle-size');
@@ -233,8 +278,13 @@
     // 於是「縮放」整個點不到。夾回畫布內，讓它永遠抓得到。
     const size = handleSize();
     const clamp = (value, max) => Math.max(0, Math.min(max, value));
-    handle.style.left = `${clamp(rect.left - bounds.left - size / 2, bounds.width - size)}px`;
-    handle.style.top = `${clamp(rect.top - bounds.top - size / 2, bounds.height - size)}px`;
+    // 高度是往上長的（元素靠 `bottom` 定位），所以控制點抓上緣才對得上手感。
+    // 水平放在人物中央——放外框左上角會落在標題文字上，看起來像個裝飾圓點。
+    const inset = opaqueInset(guest);
+    const anchorX = rect.left + rect.width * ((inset.left + inset.right) / 2);
+    const anchorY = rect.top + rect.height * inset.top;
+    handle.style.left = `${clamp(anchorX - bounds.left - size / 2, bounds.width - size)}px`;
+    handle.style.top = `${clamp(anchorY - bounds.top - size / 2, bounds.height - size)}px`;
   }
 
   function applyLayout(values, {notify = false, refitNow = true} = {}) {
@@ -303,7 +353,7 @@
     // 做成圓形，跟文字的方形控制點一眼分得開。
     // `.guest-label` 是 z-index:5，蓋在去背照上面，會把左下角的指標事件整塊吃掉——
     // 編輯時讓它不接事件，整張去背照才都抓得到（姓名與職稱本來就走文字欄位編輯）。
-    style.textContent = '.guest[data-editor-ready="true"]{cursor:move;touch-action:none}.guest[data-editor-ready="true"]:hover,.guest[data-editor-ready="true"][data-dragging="true"]{outline:4px dashed var(--orange);outline-offset:6px}.cover .guest-label{pointer-events:none}.carousel-preview-resize{position:absolute;z-index:30;width:var(--editor-handle-size,44px);height:var(--editor-handle-size,44px);border:4px solid var(--ink);background:var(--orange);border-radius:50%;cursor:nwse-resize;touch-action:none}';
+    style.textContent = '.guest[data-editor-ready="true"]{cursor:move;touch-action:none}.guest[data-editor-ready="true"]:hover,.guest[data-editor-ready="true"][data-dragging="true"]{outline:4px dashed var(--orange);outline-offset:6px}.cover .guest-label{pointer-events:none}.carousel-preview-resize{position:absolute;z-index:30;width:var(--editor-handle-size,44px);height:var(--editor-handle-size,44px);border:5px solid var(--ink);background:#fff;border-radius:50%;box-shadow:0 0 0 3px rgba(255,255,255,.9),0 4px 10px rgba(0,0,0,.35);cursor:nwse-resize;touch-action:none}.carousel-preview-resize::after{content:\"\";position:absolute;inset:22%;border-radius:50%;background:var(--orange)}';
     document.head.append(style);
     const handle = document.createElement('button');
     handle.type = 'button';
