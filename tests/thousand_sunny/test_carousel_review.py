@@ -1732,9 +1732,7 @@ def test_quote_geometry_must_be_bound_to_the_rendered_quote_page(client):
     """綁在別張卡或過期的收據上一律擋掉，避免把幾何套到不是它的那張。"""
     app, root = client
     manifest_sha = _manifest_sha(app)
-    cover_image = receipt_for(
-        root / EPISODE / "ig-carousel/revisions/r001/pages/01.png"
-    )
+    cover_image = receipt_for(root / EPISODE / "ig-carousel/revisions/r001/pages/01.png")
     body = {
         "manifest_sha256": manifest_sha,
         "quote_layout_overrides": {

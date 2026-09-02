@@ -569,9 +569,6 @@ def _context(episode_slug: str) -> dict:
         if cutouts_dir.is_dir()
         else []
     )
-    cover_row = next((row for row in rows if row["page"].role == "cover"), None)
-    quote_row = next((row for row in rows if row["page"].role == "quote"), None)
-
     return {
         "episode_slug": episode_slug,
         "manifest": manifest,

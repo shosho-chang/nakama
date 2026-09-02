@@ -499,9 +499,7 @@ def test_quote_geometry_override_reaches_both_quote_variants():
 
     class _Spec:
         layout_overrides = CarouselLayoutOverridesV1(
-            quote=GuestLayoutOverride(
-                guest_right_px=-80, guest_bottom_px=-30, guest_height_px=400
-            )
+            quote=GuestLayoutOverride(guest_right_px=-80, guest_bottom_px=-30, guest_height_px=400)
         )
 
     markup = _layout_override_markup(_Spec())

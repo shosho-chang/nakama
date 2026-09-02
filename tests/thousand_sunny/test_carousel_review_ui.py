@@ -343,9 +343,9 @@ def test_cutout_reaches_the_preview_as_a_data_url() -> None:
     """
     assert "readAsDataURL" in TEMPLATE
     assert 'data-cutout-base="/bridge/ig-cards/{{ episode_slug }}/cutout"' in TEMPLATE
-    assert "img-src 'self' data:" in (
-        ROOT / "thousand_sunny/routers/carousel_review.py"
-    ).read_text(encoding="utf-8")
+    assert "img-src 'self' data:" in (ROOT / "thousand_sunny/routers/carousel_review.py").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_cutout_strip_cannot_blow_out_the_editor_column() -> None:
