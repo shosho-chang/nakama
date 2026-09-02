@@ -16,7 +16,7 @@ from datetime import date, datetime
 # 規則版本——任何分數表 / 曲線 / 鍵格式變動都要 bump（格式：YYYY.MM.DD-vN）
 RULE_VERSION = "2026.08.26-v6"
 
-# ── 分數表（XP 一律 10 的倍數；貝里 = XP ÷ 10，恆為整數）──────────────
+# ── 分數表（XP 一律 10 的倍數）────────────────────────────────────
 # v6（2026-08-26 修修裁決 A+B）：十年登頂校準——實踐面加值（打卡 10→20、
 # 全勤 200→500、整門課 300→500）＋新設營運貢獻類（社群經理驗證後提報）。
 # 目標：認真實踐＋參與營運 ≈ 7–10 年抵達拉夫德魯；純實踐約 11–12 年。
@@ -74,7 +74,7 @@ LEVEL_THRESHOLDS: list[tuple[int, int]] = [
 # 選島規則：海域當幕名、真實地標、原作航行順序；優先「對草帽夥伴有特殊意義」，
 # 空島是唯一的主題例外（夢想——黃金鄉不在天上嗎？然後他敲響了黃金鐘）。
 # 夥伴對映：魯夫=風車村(+拉夫德魯) 香吉士=巴拉蒂(+蛋糕島) 娜美=可可亞西村
-#   布魯克=雙子岬 喬巴=磁鼓島 薇薇=阿拉巴斯坦 佛朗基=水之都 羅賓=司法島
+#   布魯克=雙子岬 喬巴=磁鼓島 薇薇=阿拉巴斯坦 佛朗基=水之七島 羅賓=司法島
 #   甚平=魚人島 索隆=和之國 烏索普=艾爾巴夫
 LEVEL_LABELS: dict[int, str] = {
     1: "風車村",  # ── 東海（1–4）
@@ -85,25 +85,29 @@ LEVEL_LABELS: dict[int, str] = {
     6: "磁鼓島",
     7: "阿拉巴斯坦",
     8: "空島",
-    9: "水之都",
+    9: "水之七島",
     10: "司法島",
-    11: "魚人島",  # ── 新世界（11–16）
-    12: "佐烏",
+    11: "香波地群島",  # ── 樂園終點（佐烏 2026-09-02 退場，香波地取而代之）
+    12: "魚人島",  # ── 新世界（12–16）
     13: "蛋糕島",
     14: "和之國",
     15: "艾爾巴夫",
     16: "拉夫德魯",
 }
 
-# ── 位階（2026-08-26 修修定稿）：江湖怎麼稱呼你 ─────────────────────
-# 島是位置（16 站站站換），位階是稱呼（整條航路只換七次）。
+# ── 位階（2026-09-02 修修裁決）：江湖怎麼稱呼你 ─────────────────────
+# 島是位置（16 站站站換），位階是稱呼（整條航路只換五次）。
 # 頂點語意：海賊王＝「這片海上最自由的人」——自由艦隊的終點就是自由本身。
+#
+# 退場且不得復活：霸王色（那是能力不是位階）、傳說船長（非原作，且與身份軌
+# 的「船長」互稱撞名）。
+#
+# ⚠️ 下列 level 對映沿用舊表、**尚未經修修重新確認**（2026-09-02 交接 §4）。
+# 目前無人越過 Lv.10，因此線上只會顯示到「超新星」，重排不影響既有會員。
 TIER_OF_LEVEL: dict[int, str] = {
     5: "超新星",
     8: "最惡世代",
     11: "王下七武海",
-    13: "霸王色",
-    14: "傳說船長",
     15: "四皇",
     16: "海賊王",
 }
@@ -124,11 +128,6 @@ ACT_OF_LEVEL: dict[int, str] = (
     | {n: "偉大航路・樂園" for n in range(5, 11)}
     | {n: "新世界" for n in range(11, 17)}
 )
-
-
-def berry_of(xp: int) -> int:
-    """貝里 = XP ÷ 10（分數表保證整除；沖正的負值同樣適用）。"""
-    return xp // 10 if xp >= 0 else -((-xp) // 10)
 
 
 def level_for(xp_total: int) -> int:
@@ -188,7 +187,6 @@ def _grant(
     return {
         "user_id": user_id,
         "xp": xp,
-        "berry": berry_of(xp),
         "source": source,
         "season": season,
         "ref_event_id": ref_event_id,
@@ -364,7 +362,7 @@ def full_attendance_grant(user_id: int, season: str) -> dict:
 def reversal(original: dict, *, reverses_grant_id: int, reason: str, idem_suffix: str = "") -> dict:
     """沖正：對既有 grant 開負值事件（永不 UPDATE/DELETE 歷史）。
 
-    ``original`` 需含 user_id / xp / berry / source / season。
+    ``original`` 需含 user_id / xp / source / season。
     """
     xp = -int(original["xp"])
     idem = f"reversal:{reverses_grant_id}"
@@ -373,7 +371,6 @@ def reversal(original: dict, *, reverses_grant_id: int, reason: str, idem_suffix
     return {
         "user_id": int(original["user_id"]),
         "xp": xp,
-        "berry": berry_of(xp),
         "source": "reversal",
         "season": str(original.get("season", "")),
         "ref_event_id": 0,

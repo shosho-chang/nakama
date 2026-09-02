@@ -243,16 +243,13 @@ def _audit_balances(cfg: SanjiConfig, client: WPClient, store: Store) -> dict:
     for uid in users:
         before = client.balance(uid)
         after = client.balance(uid, rebuild=True)  # rebuild = 由帳本重算並覆寫投影
-        if int(before.get("xp_total", 0)) != int(after.get("xp_total", 0)) or int(
-            before.get("berry_balance", 0)
-        ) != int(after.get("berry_balance", 0)):
+        if int(before.get("xp_total", 0)) != int(after.get("xp_total", 0)):
             mismatches += 1
             alert(
                 "error",
                 "gam",
                 f"Sanji 投影落差 user={uid}: "
-                f"xp {before.get('xp_total')}→{after.get('xp_total')} "
-                f"berry {before.get('berry_balance')}→{after.get('berry_balance')}"
+                f"xp {before.get('xp_total')}→{after.get('xp_total')}"
                 "（已重算修復，查 idempotency）",
                 dedupe_key=f"gam-balance-{uid}",
             )
