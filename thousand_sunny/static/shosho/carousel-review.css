@@ -78,7 +78,7 @@
 .carousel-layout legend { padding:0 var(--sho-s-2); font-weight:700; }
 .carousel-layout p { grid-column:1/-1; margin:0; color:var(--sho-text-2); font-size:13px; }
 .carousel-layout__grid { grid-column:1/-1; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:var(--sho-s-2); }
-.carousel-editor__footer { align-items:center; border-top:1px solid var(--sho-line); border-bottom:0; }
+.carousel-editor__footer { align-items:center; flex-wrap:wrap; border-top:1px solid var(--sho-line); border-bottom:0; }
 .carousel-editor__footer > div { display:flex; gap:var(--sho-s-2); }
 .carousel-editor :focus-visible { outline:none; box-shadow:var(--sho-focus); }
 .carousel-evidence { box-sizing:border-box; width:min(520px,92vw); height:100vh; max-height:none; margin:0 0 0 auto; padding:var(--sho-s-6); border:0; border-left:1px solid var(--sho-line); background:var(--sho-bg); color:var(--sho-text); }
@@ -100,6 +100,12 @@
    是空的（2026-09-02 實測 16 張裡有 9 張變空白）。選照片要看得到整個人。 */
 /* fieldset 預設 min-inline-size:min-content——不歸零的話，底下那條膠捲會把
    整個控制欄撐到 1592px（實測），變成整頁橫向溢位而不是膠捲自己捲。 */
+/* 「送出」被鎖住的原因。原本只寫在預覽下方的橫幅，按鈕旁邊完全沒有交代——
+   按下去沒反應，卻看不出為什麼。 */
+.carousel-editor-blocked { flex:1 1 100%; order:-1; margin-bottom:var(--sho-s-2); padding:8px 12px; border:1px solid var(--sho-line); border-radius:var(--sho-r-1); color:var(--sho-muted); background:var(--sho-bg); font-size:13px; font-weight:700; line-height:1.5; }
+/* 真的擋住送出的才用警示色；版面提醒只是「我量到這個」，不該長得像錯誤。 */
+.carousel-editor-blocked[data-kind="blocked"] { border-color:var(--sho-warning); color:var(--sho-warning); }
+
 .carousel-cutouts { min-inline-size:0; margin:0 0 var(--sho-s-4); padding:0 0 var(--sho-s-3); border:0; border-bottom:1px solid var(--sho-line); }
 .carousel-cutouts legend { padding:0; font-size:13px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }
 .carousel-cutouts p { margin:4px 0 var(--sho-s-3); color:var(--sho-muted); font-size:12px; }

@@ -759,7 +759,13 @@ def test_historical_approval_does_not_bypass_active_correction(client):
 
     assert correction.status_code == 201
     assert repeated.status_code == 409
-    assert repeated.json()["detail"] == "correction job is still active"
+    # 2026-09-02：訊息從一句英文改成講清楚是哪一張、什麼狀態、內容是什麼。
+    # 修修送出後只看到 `correction job is still active`，畫面上看不到那張單存在，
+    # 也不知道要怎麼往下走。
+    detail = repeated.json()["detail"]
+    assert "已經有一張待處理的修改工作" in detail
+    assert "cj-" in detail
+    assert "等待 agent 認領" in detail
 
 
 def test_latest_matching_draft_requires_a_new_approval_after_correction_fails(client):

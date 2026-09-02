@@ -86,6 +86,13 @@ _PUBLISH_STATUS_LABELS = {
     "failed": "發布未完成，可重試",
     "superseded": "發布核准已撤回",
 }
+_JOB_STATUS_LABELS = {
+    "queued": "等待 agent 認領",
+    "claimed": "agent 已認領",
+    "in_progress": "處理中",
+    "completed": "已完成",
+    "failed": "未完成",
+}
 _BASE_HREF_RE = re.compile(r'<base href="[^"]*">')
 _EDITOR_PATCH_RE = re.compile(r"\bwindow\.applyEditorPatch\s*=")
 _EDITOR_REFIT_RE = re.compile(r"\bwindow\.__carouselRefit\s*=")
@@ -975,6 +982,39 @@ async def carousel_editor_preview_asset(
     return Response(content=payload, media_type=media_type)
 
 
+def _active_job_conflict(package_root: Path, manifest, manifest_sha256: str) -> str:
+    """一次只允許一張進行中的修正單——但要講清楚是哪一張、內容是什麼。
+
+    原本只回一句英文 `correction job is still active`，使用者在畫面上看不到那張
+    單存在，也不知道要怎麼往下走（修修 2026-09-02 就卡在這裡：送出後只看到
+    一句看不懂的錯誤，而擋住他的是他自己幾小時前送出、還沒有 agent 認領的
+    那張換去背照的單）。
+    """
+    active = [
+        job
+        for job in list_jobs(package_root)
+        if job.source_revision == manifest.revision
+        and job.source_manifest_sha256 == manifest_sha256
+        and job.status in {"queued", "claimed", "in_progress"}
+    ]
+    if not active:
+        return "correction job is still active"
+    job = active[-1]
+    changed = sorted(
+        {name for edit in job.copy_edits for name in edit.fields}
+        | ({"cover_layout"} if job.layout_overrides else set())
+        | ({"quote_layout"} if job.quote_layout_overrides else set())
+        | {f"{item.region}" for item in job.text_layout_overrides}
+    )
+    summary = "、".join(changed) if changed else "回饋意見"
+    status = _JOB_STATUS_LABELS.get(job.status, job.status)
+    return (
+        f"已經有一張待處理的修改工作 {job.job_id}"
+        f"（{status}，內容：{summary}）。同一個版本一次只能有一張；"
+        "請先讓 agent 認領處理完，或把那張標記為失敗，再送出新的修改。"
+    )
+
+
 def _assert_current_manifest(form, manifest_sha256: str) -> None:
     if str(form.get("manifest_sha256", "")) != manifest_sha256:
         raise HTTPException(
@@ -1173,7 +1213,10 @@ async def carousel_review_apply_edits(
             text_layout_overrides=effective_text_layouts,
         )
     except CorrectionJobTransitionError as error:
-        raise HTTPException(status_code=409, detail="correction job is still active") from error
+        raise HTTPException(
+            status_code=409,
+            detail=_active_job_conflict(package_root, manifest, manifest_sha256),
+        ) from error
 
 
 @page_router.post(
@@ -1231,7 +1274,10 @@ async def carousel_review_feedback(
             and correction_job.status in {"queued", "claimed", "in_progress"}
         ]
         if active:
-            raise HTTPException(status_code=409, detail="correction job is still active")
+            raise HTTPException(
+                status_code=409,
+                detail=_active_job_conflict(package_root, manifest, manifest_sha256),
+            )
 
         matching_publish = [
             publish_job
@@ -1263,7 +1309,10 @@ async def carousel_review_feedback(
                 feedback_items=items,
             )
         except CorrectionJobTransitionError as error:
-            raise HTTPException(status_code=409, detail="correction job is still active") from error
+            raise HTTPException(
+                status_code=409,
+                detail=_active_job_conflict(package_root, manifest, manifest_sha256),
+            ) from error
         _append_feedback_revision(
             package_root=package_root,
             manifest=manifest,
@@ -1318,7 +1367,10 @@ async def carousel_review_approve(
             and job.status in {"queued", "claimed", "in_progress"}
         ]
         if active:
-            raise HTTPException(status_code=409, detail="correction job is still active")
+            raise HTTPException(
+                status_code=409,
+                detail=_active_job_conflict(package_root, manifest, manifest_sha256),
+            )
         matching_revisions = [
             revision
             for revision in feedback_store.revisions

@@ -288,7 +288,9 @@ def test_editor_accessibility_loading_recovery_and_empty_numbers_fail_closed() -
     assert "input.setAttribute('aria-describedby', error.id)" in TEMPLATE
     assert "input.setAttribute('aria-errormessage', error.id)" in TEMPLATE
     assert "正在載入版面控制…" in TEMPLATE
-    assert "請逐張重新開啟以取得最新版面檢查" in TEMPLATE
+    # 2026-09-02 拿掉：版面檢查不再 gate 送出，就沒有「請逐張重新開啟以取得
+    # 最新版面檢查」這個要求了。
+    assert "請逐張重新開啟以取得最新版面檢查" not in TEMPLATE
     # 封面 4 + 金句 3 + 文字區塊 4。金句那三個是 2026-09-02 補的——在那之前
     # 金句的去背照沒有任何幾何欄位，位置寫死在算圖 CSS 裡，所以拖不動。
     assert TEMPLATE.count('type="number"') == 11
@@ -543,3 +545,38 @@ def test_renderer_still_pins_saved_geometry_with_important() -> None:
     """
     render = (ROOT / "agents/brook/podcast_carousel_render.py").read_text(encoding="utf-8")
     assert "px!important" in render
+
+
+def test_layout_diagnostics_advise_but_never_block_submission() -> None:
+    """修修 2026-09-02：「跟文字一樣，我送出去的就是 override 全部的規則。
+
+    機器看不到我看到的東西。」重疊量、字級、碰撞都是機器對著 DOM 量出來的
+    啟發式規則，看不到他在畫面上看到的整體感覺——那是編輯決定，不是機器的。
+    在此之前這是硬性 gate：他把去背照放大到重疊 267px（上限 240）之後，
+    送出鈕變成 disabled，按下去毫無反應也沒有交代。
+    """
+    gate = TEMPLATE[TEMPLATE.index("editorApply.disabled = approved") :][:400]
+    assert "allDiagnosticsFit" not in gate
+    submit = TEMPLATE[TEMPLATE.index("async function submitEditorChanges(scope)") :][:700]
+    assert "allDiagnosticsFit" not in submit
+    # 改成提示，而且跟「真的擋住」在視覺上分得開
+    assert "function layoutAdvisory(" in TEMPLATE
+    assert "確定要這樣就直接送出" in TEMPLATE
+    assert "editorBlocked.dataset.kind" in TEMPLATE
+    assert '.carousel-editor-blocked[data-kind="blocked"]' in CSS
+
+
+def test_render_fatal_input_still_blocks() -> None:
+    """會讓算圖直接失敗的才擋——空欄位、強調文字不在主要文字裡、數值不是數字。"""
+    fn = TEMPLATE[TEMPLATE.index("function applyBlockedReason(") :][:900]
+    assert "算圖會失敗" in fn
+    assert "editorHasEmptyValue()" in fn
+    assert "editorValidationError" in fn
+
+
+def test_active_job_conflict_names_the_blocking_job() -> None:
+    """原本只回一句英文 `correction job is still active`，畫面上看不到那張單。"""
+    router = (ROOT / "thousand_sunny/routers/carousel_review.py").read_text(encoding="utf-8")
+    assert "def _active_job_conflict(" in router
+    assert "已經有一張待處理的修改工作" in router
+    assert router.count("_active_job_conflict(package_root, manifest, manifest_sha256)") >= 2

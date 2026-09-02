@@ -201,10 +201,12 @@
       </div>
       <footer class="carousel-editor__footer">
         <span id="carousel-editor-status" role="status" aria-live="polite"></span>
+        <strong id="carousel-editor-blocked" class="carousel-editor-blocked" role="status" aria-live="polite" hidden></strong>
         <div>
           <button id="carousel-editor-reset" class="sho-btn sho-btn--ghost" type="button">重設這張</button>
           <button id="carousel-editor-cancel" class="sho-btn sho-btn--ghost" type="button">取消</button>
-          <button id="carousel-editor-apply" class="sho-btn" type="button" disabled>送出給 agent 修改</button>
+          <button id="carousel-editor-apply" class="sho-btn" type="button"
+                  aria-describedby="carousel-editor-blocked" disabled>送出給 agent 修改</button>
         </div>
       </footer>
     </div>
@@ -614,6 +616,7 @@ const editorApply = document.getElementById('carousel-editor-apply');
 const editorStatus = document.getElementById('carousel-editor-status');
 const editorPreviewStatus = document.getElementById('carousel-editor-preview-status');
 const editorFit = document.getElementById('carousel-editor-fit');
+const editorBlocked = document.getElementById('carousel-editor-blocked');
 const editorTitle = document.getElementById('carousel-editor-title');
 const editorKicker = document.getElementById('carousel-editor-kicker');
 const editorRecovery = document.getElementById('carousel-editor-recovery');
@@ -714,25 +717,68 @@ function updateEditorRecovery() {
     badge.hidden = !dirtyIds.includes(badge.dataset.dirtyPage);
   });
   editorRecovery.hidden = approved || dirtyIds.length === 0;
-  const pendingDiagnostics = dirtyIds.filter((pageId) => !pageHasCurrentFitDiagnostics(pageId));
-  editorRecoveryCopy.textContent = pendingDiagnostics.length
-    ? `尚有 ${dirtyIds.length} 張卡片修改未送出；請逐張重新開啟以取得最新版面檢查。`
-    : `尚有 ${dirtyIds.length} 張卡片修改未送出。`;
+  editorRecoveryCopy.textContent = `尚有 ${dirtyIds.length} 張卡片修改未送出。`;
   // 送出的入口只有一個：卡片編輯器裡的「送出給 agent 修改」。這裡只提示與帶路。
   void allDiagnosticsFit;
   void hasValidationErrors;
+}
+
+// 修修 2026-09-02：「跟文字一樣，我送出去的就是 override 全部的規則。
+// 機器看不到我看到的東西。」
+//
+// 所以版面檢查（重疊量、字級、碰撞）一律**只提示、不擋**。它是機器對著 DOM
+// 量出來的啟發式規則，看不到修修在畫面上看到的整體感覺；他調的是自己頻道的
+// 版面，那是編輯決定。在此之前這個檢查是硬性的 gate——他把去背照放大到重疊
+// 267px（上限 240）之後，送出鈕就變成 disabled，按下去毫無反應也沒有交代。
+//
+// 真正還會擋的，只有「送出去算圖會直接失敗」的那幾種：空欄位、強調文字不在
+// 主要文字裡（算圖端會 throw）、版面數值不是有效數字（會算出 NaN）。
+// 那不是意見，是壞掉。
+function applyBlockedReason({hasValidationErrors}) {
+  if (approved) return '此版本已核准，不能再修改。';
+  if (busy) return '';
+  if (!editorDirty) return '';
+  if (editorHasEmptyValue()) return '有欄位是空的，算圖會失敗。';
+  if (editorValidationError) return '強調文字必須完整出現在主要文字中，否則算圖會失敗。';
+  if (hasValidationErrors) {
+    return Object.values(layoutValidationErrors)[0]
+      || Object.values(manualLineErrors)[0] || '版面數值不是有效數字。';
+  }
+  return '';
+}
+
+// 版面檢查的提示文字——說出量到什麼，不阻止任何事。
+function layoutAdvisory(dirtyIds) {
+  const notes = dirtyIds.flatMap((pageId) => {
+    const state = diagnosticsByPage[pageId];
+    if (!state || state.diagnostics?.status !== 'needs_review') return [];
+    const regions = state.diagnostics?.regions || {};
+    const details = [];
+    const overlap = regions['cover.headline_cutout_overlap_y'];
+    if (typeof overlap === 'number' && overlap > 240) {
+      details.push(`標題與來賓重疊 ${Math.round(overlap)} px（機器建議上限 240）`);
+    }
+    if (regions['quote.answer_cutout_overlap']) details.push('金句文字與來賓圖片重疊');
+    return details.length ? details : (state.diagnostics?.notes || []);
+  });
+  return notes.length ? `版面提醒：${notes.join('；')}——確定要這樣就直接送出。` : '';
 }
 
 function updateEditorAction() {
   editorDirty = editorHasChanges();
   editorValidationError = editorStateHasInvalidEmphasis();
   const dirtyIds = dirtyEditorPageIds();
-  const allDiagnosticsFit = dirtyIds.length > 0 && dirtyIds.every(pageHasCurrentFitDiagnostics);
   const hasValidationErrors = Object.keys(layoutValidationErrors).length > 0
     || Object.keys(manualLineErrors).length > 0;
   editorApply.disabled = approved || busy || !editorDirty || editorHasEmptyValue()
-    || editorValidationError || hasValidationErrors || !allDiagnosticsFit;
+    || editorValidationError || hasValidationErrors;
   editorApply.setAttribute('aria-disabled', String(editorApply.disabled));
+  const reason = editorApply.disabled ? applyBlockedReason({hasValidationErrors}) : '';
+  const advisory = reason || (editorDirty ? layoutAdvisory(dirtyIds) : '');
+  editorBlocked.textContent = reason || advisory;
+  editorBlocked.hidden = !(reason || advisory);
+  editorBlocked.dataset.kind = reason ? 'blocked' : 'advisory';
+  editorApply.title = reason;
   updateEditorRecovery();
   updateActions();
 }
@@ -1481,9 +1527,9 @@ async function submitEditorChanges(scope) {
   const dirtyIds = dirtyEditorPageIds();
   const hasValidationErrors = Object.keys(layoutValidationErrors).length > 0
     || Object.keys(manualLineErrors).length > 0;
-  const allDiagnosticsFit = dirtyIds.length > 0 && dirtyIds.every(pageHasCurrentFitDiagnostics);
+  // 版面檢查不在這裡擋——見 applyBlockedReason 的說明。
   if (scope !== 'all' || approved || busy || !editorHasChanges() || editorHasEmptyValue()
-    || editorStateHasInvalidEmphasis() || hasValidationErrors || !allDiagnosticsFit) return;
+    || editorStateHasInvalidEmphasis() || hasValidationErrors) return;
   busy = true;
   updateActions();
   updateEditorAction();
@@ -1534,7 +1580,9 @@ async function submitEditorChanges(scope) {
     persistEditorDraft();
     updateActions();
     updateEditorAction();
-    editorStatus.textContent = `套用失敗：${error.message}。草稿已保留。`;
+    // 後端的訊息現在是完整句子，不要再補一個句號變成「。。」。
+    const detail = String(error.message || '').replace(/[。．.]\s*$/, '');
+    editorStatus.textContent = `套用失敗：${detail}。草稿已保留。`;
   }
 }
 
