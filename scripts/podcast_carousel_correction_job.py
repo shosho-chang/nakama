@@ -39,6 +39,7 @@ from shared.schemas.podcast_carousel import (  # noqa: E402
     CarouselCorrectionJobV1,
     CarouselCorrectionProgress,
     CarouselCoverLayoutEdit,
+    CarouselQuoteLayoutEdit,
     CarouselReviewerReceipt,
     CarouselReviewManifestV1,
     CarouselTextLayoutEdit,
@@ -185,6 +186,8 @@ def _assert_source_integrity(job: CarouselCorrectionJobV1, package_root: Path) -
     requested = [*job.feedback_items, *job.copy_edits, *job.text_layout_overrides]
     if job.layout_overrides is not None:
         requested.append(job.layout_overrides)
+    if job.quote_layout_overrides is not None:
+        requested.append(job.quote_layout_overrides)
     for item in requested:
         if page_receipts.get(item.page_id) != item.artifact_sha256:
             raise CorrectionJobTransitionError(
@@ -247,6 +250,7 @@ def create_queued_job(
     feedback_items: list[CarouselCorrectionItem] | None = None,
     copy_edits: list[CarouselCopyEdit] | None = None,
     layout_overrides: CarouselCoverLayoutEdit | None = None,
+    quote_layout_overrides: CarouselQuoteLayoutEdit | None = None,
     text_layout_overrides: list[CarouselTextLayoutEdit] | None = None,
     now: datetime | None = None,
     job_id: str | None = None,
@@ -261,6 +265,7 @@ def create_queued_job(
         feedback_items=feedback_items or [],
         copy_edits=copy_edits or [],
         layout_overrides=layout_overrides,
+        quote_layout_overrides=quote_layout_overrides,
         text_layout_overrides=text_layout_overrides or [],
         created_at=timestamp,
         updated_at=timestamp,
@@ -449,6 +454,8 @@ def _assert_affected_pages_rerendered(
     affected.update(item.page_id for item in job.text_layout_overrides)
     if job.layout_overrides is not None:
         affected.add("cover")
+    if job.quote_layout_overrides is not None:
+        affected.add(job.quote_layout_overrides.page_id)
     if not affected:
         return
     if source_manifest.render_input is None or result_manifest.render_input is None:
@@ -591,6 +598,10 @@ def _assert_structured_edits_applied(
         page.update(edit.fields)
     if job.layout_overrides is not None:
         expected["layout_overrides"]["cover"] = job.layout_overrides.values.model_dump(mode="json")
+    if job.quote_layout_overrides is not None:
+        expected["layout_overrides"]["quote"] = job.quote_layout_overrides.values.model_dump(
+            mode="json"
+        )
     text_layouts = {
         (item["page_id"], item["region"]): item
         for item in expected["layout_overrides"].get("text_regions", [])

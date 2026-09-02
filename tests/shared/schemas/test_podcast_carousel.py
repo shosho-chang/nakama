@@ -544,3 +544,48 @@ def test_receipt_for_hashes_file(tmp_path):
     assert receipt.bytes == len("carousel")
     assert receipt.path == str(path.resolve())
     assert len(receipt.sha256) == 64
+
+
+def test_quote_guest_geometry_has_no_default_and_is_bounded():
+    """A 版與 B 版的算圖預設不同（A: -50/-10/440、B: -18/-20/430）。
+
+    寫一組 default 必然對其中一版說謊，所以三個值都必須明講。
+    """
+    from shared.schemas.podcast_carousel import GuestLayoutOverride
+
+    with pytest.raises(ValidationError):
+        GuestLayoutOverride()
+    with pytest.raises(ValidationError):
+        GuestLayoutOverride(guest_right_px=-50, guest_bottom_px=-10)
+
+    ok = GuestLayoutOverride(guest_right_px=-50, guest_bottom_px=-10, guest_height_px=440)
+    assert ok.guest_height_px == 440
+    for bad in (
+        {"guest_right_px": 999, "guest_bottom_px": -10, "guest_height_px": 440},
+        {"guest_right_px": -50, "guest_bottom_px": -10, "guest_height_px": 1},
+        {"guest_right_px": -50, "guest_bottom_px": -10, "guest_height_px": 5000},
+    ):
+        with pytest.raises(ValidationError):
+            GuestLayoutOverride(**bad)
+
+
+def test_layout_overrides_carry_quote_geometry_alongside_cover():
+    from shared.schemas.podcast_carousel import (
+        CarouselLayoutOverridesV1,
+        CoverLayoutOverride,
+        GuestLayoutOverride,
+    )
+
+    overrides = CarouselLayoutOverridesV1(
+        cover=CoverLayoutOverride(),
+        quote=GuestLayoutOverride(guest_right_px=-80, guest_bottom_px=-30, guest_height_px=400),
+    )
+    assert overrides.quote.guest_height_px == 400
+    assert CarouselLayoutOverridesV1().quote is None
+
+
+def test_apply_request_rejects_an_empty_edit_even_with_quote_slot_present():
+    from shared.schemas.podcast_carousel import CarouselEditorApplyRequest
+
+    with pytest.raises(ValidationError):
+        CarouselEditorApplyRequest(manifest_sha256="a" * 64)

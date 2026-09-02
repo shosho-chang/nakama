@@ -2,11 +2,26 @@
   'use strict';
 
   const channel = 'nakama-carousel-editor-v1';
-  const layoutBounds = {
-    guest_right_px: [-540, 240],
-    guest_bottom_px: [-400, 240],
-    guest_height_px: [480, 1400],
-    title_font_size_px: [72, 160],
+  // 哪些卡片有「來賓去背照幾何」可以調——封面與金句。金句原本沒有，位置寫死在
+  // 算圖 CSS 裡，所以怎麼拖都沒反應。兩者欄位相同、界線不同（金句的去背照小得多）。
+  const guestLayoutSpecs = {
+    cover: {
+      selector: '#canvas.cover .guest',
+      bounds: {
+        guest_right_px: [-540, 240],
+        guest_bottom_px: [-400, 240],
+        guest_height_px: [480, 1400],
+        title_font_size_px: [72, 160],
+      },
+    },
+    quote: {
+      selector: '#canvas.quote-a .guest, #canvas.quote-b .guest-panel img',
+      bounds: {
+        guest_right_px: [-540, 240],
+        guest_bottom_px: [-400, 240],
+        guest_height_px: [200, 1000],
+      },
+    },
   };
   let layout = null;
   let textLayouts = [];
@@ -20,11 +35,41 @@
     window.parent.postMessage({channel, type, ...payload}, '*');
   }
 
-  function boundedLayout(values) {
-    return Object.fromEntries(Object.entries(layoutBounds).map(([name, [minimum, maximum]]) => {
+  function guestSpec() {
+    const page = currentPage();
+    return page ? guestLayoutSpecs[page.role] || null : null;
+  }
+
+  function boundedLayout(values, bounds) {
+    return Object.fromEntries(Object.entries(bounds).map(([name, [minimum, maximum]]) => {
       const value = Number(values[name]);
       return [name, Math.round(Math.max(minimum, Math.min(maximum, value)))];
     }));
+  }
+
+  // 金句沒有 default 幾何可以寫進 schema（A 版與 B 版的算圖預設不同），所以
+  // 由預覽量出目前的實際值當基準，母頁面拿它當「還沒調整過」的起點。
+  function discoverGuestLayout() {
+    const spec = guestSpec();
+    const page = currentPage();
+    if (!spec || !page) return;
+    const guest = document.querySelector(spec.selector);
+    if (!guest) return;
+    const computed = getComputedStyle(guest);
+    const values = {
+      guest_right_px: Math.round(parseFloat(computed.right)),
+      guest_bottom_px: Math.round(parseFloat(computed.bottom)),
+      guest_height_px: Math.round(parseFloat(computed.height)),
+    };
+    if (Object.values(values).some((value) => !Number.isFinite(value))) return;
+    emit('guest-layout-baseline', {role: page.role, values});
+    // 拖曳的綁定不可以押在「母頁面有沒有送 apply-layout」上。金句沒有 schema
+    // default，母頁面要等這個基準值回去才知道要送什麼——先有雞先有蛋，結果就是
+    // 金句永遠綁不上。這裡一量到就自己綁。
+    if (layout === null && Object.keys(spec.bounds).every((name) => name in values)) {
+      layout = boundedLayout(values, spec.bounds);
+    }
+    configureGuestInteraction();
   }
 
   function renderRich(node, text, emphasis, {kind = 'box', cover = false, preferredBreak = false} = {}) {
@@ -141,39 +186,63 @@
     });
   }
 
+  function handleSize() {
+    const raw = getComputedStyle(document.documentElement)
+      .getPropertyValue('--editor-handle-size');
+    return Math.max(24, parseFloat(raw) || 44);
+  }
+
   function positionResizeHandle(guest) {
     const handle = document.querySelector('[data-carousel-resize-handle]');
     if (!handle) return;
     const rect = guest.getBoundingClientRect();
-    handle.style.left = `${rect.left - 14}px`;
-    handle.style.top = `${rect.top - 14}px`;
+    const canvas = document.getElementById('canvas');
+    const bounds = canvas ? canvas.getBoundingClientRect() : {left: 0, top: 0, width: 1080, height: 1080};
+    // 控制點貼在**圖片外框**左上角，而去背照是靠右定位、寬度常常超過畫布：
+    // 往右推到底時左緣會算出負數，控制點就跑到畫布外被 overflow:hidden 裁掉，
+    // 於是「縮放」整個點不到。夾回畫布內，讓它永遠抓得到。
+    const size = handleSize();
+    const clamp = (value, max) => Math.max(0, Math.min(max, value));
+    handle.style.left = `${clamp(rect.left - bounds.left - size / 2, bounds.width - size)}px`;
+    handle.style.top = `${clamp(rect.top - bounds.top - size / 2, bounds.height - size)}px`;
   }
 
   function applyLayout(values, {notify = false, refitNow = true} = {}) {
-    layout = boundedLayout(values);
-    const canvas = document.getElementById('canvas');
-    const guest = canvas && canvas.querySelector('.guest');
-    const title = canvas && canvas.querySelector('.cover-title');
-    if (!guest || !title) return;
+    const spec = guestSpec();
+    if (!spec) return;
+    layout = boundedLayout(values, spec.bounds);
+    const guest = document.querySelector(spec.selector);
+    if (!guest) return;
     guest.style.right = `${layout.guest_right_px}px`;
     guest.style.bottom = `${layout.guest_bottom_px}px`;
     guest.style.height = `${layout.guest_height_px}px`;
-    document.documentElement.style.setProperty(
-      '--type-cover-title', `${layout.title_font_size_px}px`,
-    );
-    title.dataset.fitStart = String(layout.title_font_size_px);
+    // 標題字級只有封面有；金句的幾何不碰任何字級。
+    if (Object.hasOwn(layout, 'title_font_size_px')) {
+      const title = document.querySelector('.cover-title');
+      if (!title) return;
+      document.documentElement.style.setProperty(
+        '--type-cover-title', `${layout.title_font_size_px}px`,
+      );
+      title.dataset.fitStart = String(layout.title_font_size_px);
+    }
     positionResizeHandle(guest);
     if (notify) emit('layout-change', {layout});
     if (refitNow) refit();
   }
 
-  function configureCoverInteraction() {
+  function configureGuestInteraction() {
     const canvas = document.getElementById('canvas');
-    const guest = canvas && document.querySelector('#canvas.cover .guest');
+    const spec = guestSpec();
+    const guest = canvas && spec && document.querySelector(spec.selector);
     if (!guest || guest.dataset.editorReady === 'true') return;
     guest.dataset.editorReady = 'true';
     const style = document.createElement('style');
-    style.textContent = '.guest[data-editor-ready="true"]{cursor:move;touch-action:none}.carousel-preview-resize{position:absolute;z-index:30;width:var(--editor-handle-size,44px);height:var(--editor-handle-size,44px);border:4px solid var(--ink);background:var(--orange);cursor:nwse-resize;touch-action:none}';
+    // 去背照原本沒有任何「可以拖」的提示，而畫面上又有兩個長得一樣的橘色方塊
+    // （去背照的 z30、文字的 z40）。這裡給 hover/拖曳虛線框，並把去背照的控制點
+    // 做成圓形，跟文字的方形控制點一眼分得開。
+    // `.guest-label` 是 z-index:5，蓋在去背照上面，會把左下角的指標事件整塊吃掉——
+    // 編輯時讓它不接事件，整張去背照才都抓得到（姓名與職稱本來就走文字欄位編輯）。
+    style.textContent = '.guest[data-editor-ready="true"]{cursor:move;touch-action:none}.guest[data-editor-ready="true"]:hover,.guest[data-editor-ready="true"][data-dragging="true"]{outline:4px dashed var(--orange);outline-offset:6px}.cover .guest-label{pointer-events:none}.carousel-preview-resize{position:absolute;z-index:30;width:var(--editor-handle-size,44px);height:var(--editor-handle-size,44px);border:4px solid var(--ink);background:var(--orange);border-radius:50%;cursor:nwse-resize;touch-action:none}';
     document.head.append(style);
     const handle = document.createElement('button');
     handle.type = 'button';
@@ -186,6 +255,7 @@
       event.preventDefault();
       const target = event.currentTarget;
       target.setPointerCapture(event.pointerId);
+      guest.dataset.dragging = 'true';
       const start = {x: event.clientX, y: event.clientY, values: {...layout}};
       const move = (next) => {
         const dx = next.clientX - start.x;
@@ -204,6 +274,7 @@
         }
       };
       const cleanup = () => {
+        delete guest.dataset.dragging;
         target.removeEventListener('pointermove', move);
         target.removeEventListener('pointerup', end);
         target.removeEventListener('pointercancel', cancel);
@@ -417,7 +488,7 @@
         });
       } else if (event.data.type === 'apply-layout') {
         applyLayout(event.data.values);
-        configureCoverInteraction();
+        configureGuestInteraction();
       } else if (event.data.type === 'apply-text-layouts') {
         textSafeRects = event.data.safeRects || {};
         diagnosticsRequestId = event.data.requestId || null;
@@ -442,6 +513,6 @@
     }
   });
 
-  document.fonts.ready.then(() => discoverTextLayouts());
+  document.fonts.ready.then(() => { discoverTextLayouts(); discoverGuestLayout(); });
   emit('ready');
 })();

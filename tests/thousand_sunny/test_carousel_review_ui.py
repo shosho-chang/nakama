@@ -289,8 +289,10 @@ def test_editor_accessibility_loading_recovery_and_empty_numbers_fail_closed() -
     assert "input.setAttribute('aria-errormessage', error.id)" in TEMPLATE
     assert "正在載入版面控制…" in TEMPLATE
     assert "請逐張重新開啟以取得最新版面檢查" in TEMPLATE
-    assert TEMPLATE.count('type="number"') == 8
-    assert TEMPLATE.count('step="1" required') == 4
+    # 封面 4 + 金句 3 + 文字區塊 4。金句那三個是 2026-09-02 補的——在那之前
+    # 金句的去背照沒有任何幾何欄位，位置寫死在算圖 CSS 裡，所以拖不動。
+    assert TEMPLATE.count('type="number"') == 11
+    assert TEMPLATE.count('step="1" required') == 7
     assert TEMPLATE.count('step="4" required') == 3
     assert TEMPLATE.count('step="2" required') == 1
     assert "values[name] === ''" in TEMPLATE
@@ -354,3 +356,57 @@ def test_cutout_strip_cannot_blow_out_the_editor_column() -> None:
     # contain 而非 cover：去背照上方有透明留白，切到頂端整格會看起來是空的。
     thumb = CSS[CSS.index(".carousel-cutout img {") :][:200]
     assert "object-fit:contain" in thumb
+
+
+def test_guest_geometry_is_not_hardcoded_to_the_cover() -> None:
+    """金句的去背照原本沒有拖曳綁定——選擇器寫死 `#canvas.cover .guest`。
+
+    修修 2026-09-02：「金句那邊也按照你現在建議的修法去修。」
+    """
+    assert "configureCoverInteraction" not in BRIDGE
+    assert "function configureGuestInteraction()" in BRIDGE
+    assert "const guestLayoutSpecs = {" in BRIDGE
+    specs = BRIDGE[BRIDGE.index("const guestLayoutSpecs = {") :][:900]
+    assert "cover:" in specs and "quote:" in specs
+    assert "#canvas.quote-a .guest" in specs
+    # 標題字級只有封面有；金句套用幾何時不可以去碰任何字級。
+    assert "Object.hasOwn(layout, 'title_font_size_px')" in BRIDGE
+
+
+def test_guest_drag_binds_on_measure_not_on_a_parent_message() -> None:
+    """金句沒有 schema default，母頁面要等基準值才知道送什麼——押在 apply-layout
+
+    上綁定會變成先有雞先有蛋，金句永遠綁不上。
+    """
+    discover = BRIDGE[BRIDGE.index("function discoverGuestLayout()") :]
+    body = discover[: discover.index("\n  function ", 10)]
+    assert "emit('guest-layout-baseline'" in body
+    assert "configureGuestInteraction();" in body
+
+
+def test_resize_handle_is_clamped_into_the_canvas() -> None:
+    """控制點貼在圖片外框左上角，而去背照靠右定位且常比畫布寬：
+
+    推到最右時左緣算出負數，控制點會被 overflow:hidden 裁掉、再也點不到。
+    """
+    fn = BRIDGE[BRIDGE.index("function positionResizeHandle(guest)") :][:900]
+    assert "clamp" in fn
+    assert "bounds.width - size" in fn and "bounds.height - size" in fn
+
+
+def test_name_card_does_not_eat_the_cutout_pointer_events() -> None:
+    """`.guest-label` 是 z-index:5，蓋在去背照上面，左下角整塊拖不動。"""
+    assert ".cover .guest-label{pointer-events:none}" in BRIDGE
+    # 兩個控制點原本長得一樣（去背照 z30、文字 z40），要分得開。
+    assert "border-radius:50%" in BRIDGE
+    assert "outline:4px dashed var(--orange)" in BRIDGE
+
+
+def test_quote_layout_controls_exist_and_are_separate_from_cover() -> None:
+    assert 'id="carousel-quote-layout"' in TEMPLATE
+    assert 'data-quote-layout-field="guest_right_px"' in TEMPLATE
+    assert 'data-quote-layout-field="guest_height_px"' in TEMPLATE
+    assert "editorQuoteLayout.hidden = page.role !== 'quote'" in TEMPLATE
+    assert "quote_layout_overrides:" in TEMPLATE
+    # 金句幾何要進 fingerprint，否則調完診斷對不上、送出鈕解不開。
+    assert "quote: page.role === 'quote' ? activeQuoteLayout() : null," in TEMPLATE

@@ -108,6 +108,18 @@ def _layout_override_markup(spec: PodcastCarouselCopySpecV1) -> str:
             f"height:{cover.guest_height_px}px!important"
             "}\n"
         )
+    quote = spec.layout_overrides.quote
+    if quote is not None:
+        # A 版的去背照直接掛在畫布上，B 版掛在 `.guest-panel` 裡；兩者都是絕對
+        # 定位、同一組欄位，所以一條規則同時蓋掉。沒有 override 時完全不出手，
+        # 各版型維持自己的算圖預設。
+        legacy += (
+            ".quote-a .guest,.quote-b .guest-panel img{"
+            f"right:{quote.guest_right_px}px!important;"
+            f"bottom:{quote.guest_bottom_px}px!important;"
+            f"height:{quote.guest_height_px}px!important"
+            "}" + chr(10)
+        )
     return (
         "<style data-carousel-layout-overrides>\n"
         "[data-fit-region]{white-space:pre-wrap;height:auto}\n"
@@ -429,6 +441,11 @@ def _content_sha(
         "layout_override": (
             spec.layout_overrides.cover.model_dump(mode="json")
             if page.role == "cover" and spec.layout_overrides.cover is not None
+            else None
+        ),
+        "quote_layout_override": (
+            spec.layout_overrides.quote.model_dump(mode="json")
+            if page.role == "quote" and spec.layout_overrides.quote is not None
             else None
         ),
         "text_layout_overrides": [

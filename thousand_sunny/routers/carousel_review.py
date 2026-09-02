@@ -607,6 +607,13 @@ def _context(episode_slug: str) -> dict:
             else "尚未建立發布工作"
         ),
         "publish_url": f"/bridge/ig-cards/{episode_slug}/publish",
+        # 金句刻意沒有 schema default（A/B 兩版算圖預設不同，寫死一組必然對其中
+        # 一版說謊）。沒有 override 時送 null，由預覽量出來的基準值當起點。
+        "quote_layout": (
+            spec.layout_overrides.quote.model_dump(mode="json")
+            if spec.layout_overrides.quote is not None
+            else None
+        ),
         "cover_layout": (spec.layout_overrides.cover or CoverLayoutOverride()).model_dump(
             mode="json"
         ),
@@ -1110,7 +1117,24 @@ async def carousel_review_apply_edits(
         if current is None or current.values != edit.values:
             effective_text_layouts.append(edit)
 
-    if not effective_copy_edits and effective_layout is None and not effective_text_layouts:
+    effective_quote_layout = payload.quote_layout_overrides
+    if effective_quote_layout is not None:
+        quote_page = manifest_by_id.get(effective_quote_layout.page_id)
+        if quote_page is None or quote_page.role != "quote":
+            raise HTTPException(status_code=422, detail="quote page is missing")
+        if effective_quote_layout.artifact_sha256 != quote_page.image.sha256:
+            raise HTTPException(
+                status_code=409, detail=f"carousel page changed: {quote_page.page_id}"
+            )
+        if effective_quote_layout.values == spec.layout_overrides.quote:
+            effective_quote_layout = None
+
+    if (
+        not effective_copy_edits
+        and effective_layout is None
+        and effective_quote_layout is None
+        and not effective_text_layouts
+    ):
         raise HTTPException(status_code=400, detail="at least one changed edit is required")
     prospective = spec.model_dump(mode="json")
     prospective_pages = {page["page_id"]: page for page in prospective["pages"]}
@@ -1118,6 +1142,10 @@ async def carousel_review_apply_edits(
         prospective_pages[edit.page_id].update(edit.fields)
     if effective_layout is not None:
         prospective["layout_overrides"]["cover"] = effective_layout.values.model_dump(mode="json")
+    if effective_quote_layout is not None:
+        prospective["layout_overrides"]["quote"] = effective_quote_layout.values.model_dump(
+            mode="json"
+        )
     prospective_text_layouts = {
         (item["page_id"], item["region"]): item
         for item in prospective["layout_overrides"].get("text_regions", [])
@@ -1144,6 +1172,7 @@ async def carousel_review_apply_edits(
             source_manifest_sha256=manifest_sha256,
             copy_edits=effective_copy_edits,
             layout_overrides=effective_layout,
+            quote_layout_overrides=effective_quote_layout,
             text_layout_overrides=effective_text_layouts,
         )
     except CorrectionJobTransitionError as error:

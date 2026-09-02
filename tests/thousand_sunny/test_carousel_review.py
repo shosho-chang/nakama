@@ -1694,3 +1694,61 @@ def test_auth_redirect_uses_same_bridge_login_boundary(tmp_path: Path, monkeypat
         params={"manifest_sha256": SHA},
     )
     assert preview.status_code == 401
+
+
+def test_structured_editor_queues_quote_guest_geometry(client):
+    """金句的去背照幾何要能送出——在此之前 schema 根本沒有這個欄位。"""
+    app, root = client
+    package = root / EPISODE / "ig-carousel"
+    manifest_sha = _manifest_sha(app)
+    quote_image = receipt_for(package / "revisions" / "r001" / "pages" / "04.png")
+    copy_before = (package / "revisions" / "r001" / "copy_spec.v1.json").read_bytes()
+
+    response = app.post(
+        f"/bridge/ig-cards/{EPISODE}/apply-edits",
+        json={
+            "manifest_sha256": manifest_sha,
+            "quote_layout_overrides": {
+                "page_id": "quote",
+                "artifact_sha256": quote_image.sha256,
+                "values": {
+                    "guest_right_px": -80,
+                    "guest_bottom_px": -30,
+                    "guest_height_px": 400,
+                },
+            },
+        },
+    )
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    assert payload["status"] == "queued"
+    assert payload["quote_layout_overrides"]["values"]["guest_height_px"] == 400
+    # 出圖產物一個 byte 都不能動——修正單只是排隊。
+    assert (package / "revisions" / "r001" / "copy_spec.v1.json").read_bytes() == copy_before
+    assert receipt_for(package / "revisions" / "r001" / "pages" / "04.png") == quote_image
+
+
+def test_quote_geometry_must_be_bound_to_the_rendered_quote_page(client):
+    """綁在別張卡或過期的收據上一律擋掉，避免把幾何套到不是它的那張。"""
+    app, root = client
+    manifest_sha = _manifest_sha(app)
+    cover_image = receipt_for(
+        root / EPISODE / "ig-carousel/revisions/r001/pages/01.png"
+    )
+    body = {
+        "manifest_sha256": manifest_sha,
+        "quote_layout_overrides": {
+            "page_id": "cover",
+            "artifact_sha256": cover_image.sha256,
+            "values": {
+                "guest_right_px": -80,
+                "guest_bottom_px": -30,
+                "guest_height_px": 400,
+            },
+        },
+    }
+    assert app.post(f"/bridge/ig-cards/{EPISODE}/apply-edits", json=body).status_code == 422
+
+    body["quote_layout_overrides"]["page_id"] = "quote"
+    body["quote_layout_overrides"]["artifact_sha256"] = "0" * 64
+    assert app.post(f"/bridge/ig-cards/{EPISODE}/apply-edits", json=body).status_code == 409

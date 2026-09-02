@@ -178,6 +178,13 @@
             <label>來賓高度（px）<input data-layout-field="guest_height_px" type="number" min="480" max="1400" step="1" required></label>
             <label>標題字級（px）<input data-layout-field="title_font_size_px" type="number" min="72" max="160" step="1" required></label>
           </fieldset>
+          <fieldset id="carousel-quote-layout" class="carousel-layout" hidden>
+            <legend>金句版面 · 1080 px 座標</legend>
+            <p>可直接拖動來賓；拖動左上角控制點可調整尺寸。這些數值會固定套用至新版。</p>
+            <label>來賓右側位置（px）<input data-quote-layout-field="guest_right_px" type="number" min="-540" max="240" step="1" required></label>
+            <label>來賓底部位置（px）<input data-quote-layout-field="guest_bottom_px" type="number" min="-400" max="240" step="1" required></label>
+            <label>來賓高度（px）<input data-quote-layout-field="guest_height_px" type="number" min="200" max="1000" step="1" required></label>
+          </fieldset>
           <fieldset id="carousel-text-layout" class="carousel-layout">
             <legend>文字版面 · 1080 px 座標</legend>
             <p>選取文字區塊後可直接拖曳；右側控制點只調整寬度，高度會依內容自動延伸。方向鍵移動 4 px，Shift＋方向鍵移動 16 px。</p>
@@ -261,6 +268,7 @@ const jobSteps = document.getElementById('carousel-job-steps');
 const editorPages = {{ editor_pages | tojson }};
 const editorAvailable = {{ 'true' if editor_available else 'false' }};
 const initialCoverLayout = {{ cover_layout | tojson }};
+const initialQuoteLayout = {{ quote_layout | tojson }};
 const initialTextLayouts = {{ text_layout_overrides | tojson }};
 const textLayoutRegistry = {{ text_layout_registry | tojson }};
 const textLayoutSafeRects = {{ text_layout_safe_rects | tojson }};
@@ -611,6 +619,10 @@ const editorKicker = document.getElementById('carousel-editor-kicker');
 const editorRecovery = document.getElementById('carousel-editor-recovery');
 const editorRecoveryCopy = document.getElementById('carousel-editor-recovery-copy');
 const layoutInputs = [...editorLayout.querySelectorAll('[data-layout-field]')];
+const editorQuoteLayout = document.getElementById('carousel-quote-layout');
+const quoteLayoutInputs = [...editorQuoteLayout.querySelectorAll('[data-quote-layout-field]')];
+// 金句沒有 schema default，未調整過時起點來自預覽量到的基準值。
+let quoteLayoutBaseline = null;
 const previewChannel = 'nakama-carousel-editor-v1';
 const fieldLabels = {
   headline: '標題', emphasis: '強調文字', guest_name: '來賓姓名',
@@ -625,7 +637,7 @@ const initialTextLayoutMap = Object.fromEntries(initialTextLayouts.map((item) =>
   `${item.page_id}.${item.region}`, item.values,
 ]));
 let textLayoutBaselines = {};
-let editorState = {copyEdits: {}, layout: null, textLayouts: {}};
+let editorState = {copyEdits: {}, layout: null, quoteLayout: null, textLayouts: {}};
 let editorValidationError = false;
 let previewDiagnostics = null;
 let previewPatchSequence = 0;
@@ -643,6 +655,7 @@ function restoreEditorDraft(draft) {
   editorState = {
     copyEdits: draft.copyEdits && typeof draft.copyEdits === 'object' ? draft.copyEdits : {},
     layout: draft.layout && typeof draft.layout === 'object' ? draft.layout : null,
+    quoteLayout: draft.quoteLayout && typeof draft.quoteLayout === 'object' ? draft.quoteLayout : null,
     textLayouts: draft.textLayouts && typeof draft.textLayouts === 'object' ? draft.textLayouts : {},
   };
   storageSet(editorDraftKey, JSON.stringify({
@@ -660,7 +673,8 @@ function persistEditorDraft() {
 }
 
 function editorHasChanges() {
-  return Object.keys(editorState.copyEdits).length > 0 || editorState.layout !== null || Object.keys(editorState.textLayouts).length > 0;
+  return Object.keys(editorState.copyEdits).length > 0 || editorState.layout !== null
+    || editorState.quoteLayout !== null || Object.keys(editorState.textLayouts).length > 0;
 }
 
 function editorHasEmptyValue() {
@@ -671,6 +685,10 @@ function editorHasEmptyValue() {
 function dirtyEditorPageIds() {
   const ids = new Set(Object.keys(editorState.copyEdits));
   if (editorState.layout) ids.add('cover');
+  if (editorState.quoteLayout) {
+    const quote = editorPages.find((page) => page.role === 'quote');
+    if (quote) ids.add(quote.page_id);
+  }
   Object.keys(editorState.textLayouts).forEach((key) => ids.add(key.split('.')[0]));
   return [...ids];
 }
@@ -716,6 +734,7 @@ function editorDraftFingerprint(page) {
     page_id: page.page_id,
     copy: currentEditorValues(page),
     cover: page.role === 'cover' ? (editorState.layout || initialCoverLayout) : null,
+    quote: page.role === 'quote' ? activeQuoteLayout() : null,
     text: textLayoutPayloadForPage(page),
   });
 }
@@ -847,6 +866,64 @@ function applyCopyToPreview(page, values) {
   sendPreview('apply-copy', {role: page.role, values});
 }
 
+// 金句去背照幾何。優先序：本次未送出的調整 → 已存在的 override → 預覽量到的基準。
+// 三者都沒有時回 null，代表「還沒量到」，這時候不送 apply-layout，避免用 0 蓋掉版型。
+function activeQuoteLayout() {
+  return editorState.quoteLayout || initialQuoteLayout || quoteLayoutBaseline || null;
+}
+
+function applyQuoteLayoutToPreview(values) {
+  if (!values) return;
+  sendPreview('apply-layout', {values});
+}
+
+function syncQuoteLayoutInputs(values) {
+  if (!values) return;
+  quoteLayoutInputs.forEach((input) => {
+    input.value = values[input.dataset.quoteLayoutField];
+  });
+}
+
+function boundedQuoteLayoutValues(values) {
+  const result = {};
+  for (const input of quoteLayoutInputs) {
+    const name = input.dataset.quoteLayoutField;
+    const raw = Number(values[name]);
+    if (values[name] === '' || values[name] === null || values[name] === undefined
+      || !Number.isFinite(raw)) return null;
+    result[name] = Math.round(Math.max(Number(input.min), Math.min(Number(input.max), raw)));
+  }
+  return result;
+}
+
+function setQuoteLayoutDraft(values) {
+  const page = currentEditorPage;
+  if (!page || page.role !== 'quote') return;
+  const bounded = boundedQuoteLayoutValues(values);
+  if (!bounded) {
+    layoutValidationErrors[page.page_id] = '座標與高度必須是有效數字。';
+    updateEditorAction();
+    return;
+  }
+  delete layoutValidationErrors[page.page_id];
+  const baseline = initialQuoteLayout || quoteLayoutBaseline;
+  const changed = !baseline || Object.keys(bounded).some((key) => bounded[key] !== baseline[key]);
+  editorState.quoteLayout = changed ? bounded : null;
+  invalidatePageDiagnostics(page.page_id);
+  persistEditorDraft();
+  applyQuoteLayoutToPreview(bounded);
+  applyTextLayoutsToPreview(page);
+  updateEditorAction();
+}
+
+quoteLayoutInputs.forEach((input) => {
+  input.addEventListener('input', () => {
+    setQuoteLayoutDraft(Object.fromEntries(
+      quoteLayoutInputs.map((field) => [field.dataset.quoteLayoutField, field.value]),
+    ));
+  });
+});
+
 function boundedLayoutValues(values) {
   const result = {};
   for (const input of layoutInputs) {
@@ -916,6 +993,15 @@ window.addEventListener('message', (event) => {
   } else if (event.data.type === 'layout-change' && currentEditorPage?.role === 'cover') {
     setLayoutDraft(event.data.layout, {send: false});
     applyTextLayoutsToPreview(currentEditorPage);
+  } else if (event.data.type === 'layout-change' && currentEditorPage?.role === 'quote') {
+    syncQuoteLayoutInputs(event.data.layout);
+    setQuoteLayoutDraft(event.data.layout);
+  } else if (event.data.type === 'guest-layout-baseline' && event.data.role === 'quote') {
+    // 金句沒有 schema default——預覽量到多少，就是「還沒調整過」的基準。
+    quoteLayoutBaseline = event.data.values;
+    if (currentEditorPage?.role === 'quote' && !editorState.quoteLayout && !initialQuoteLayout) {
+      syncQuoteLayoutInputs(quoteLayoutBaseline);
+    }
   } else if (event.data.type === 'diagnostics') {
     if (event.data.requestId && event.data.requestId < previewPatchSequence) return;
     if (!currentEditorPage || event.data.fingerprint !== editorDraftFingerprint(currentEditorPage)) return;
@@ -1224,6 +1310,8 @@ function openEditor(pageId) {
     const values = editorState.layout || initialCoverLayout;
     layoutInputs.forEach((input) => { input.value = values[input.dataset.layoutField]; });
   }
+  editorQuoteLayout.hidden = page.role !== 'quote';
+  if (page.role === 'quote') syncQuoteLayoutInputs(activeQuoteLayout());
   editorPreviewStatus.textContent = '載入即時預覽…';
   editorFit.hidden = true;
   previewDiagnostics = null;
@@ -1246,6 +1334,15 @@ editorFrame.addEventListener('load', () => {
     });
     if (currentEditorPage.role === 'cover') {
       applyLayoutToPreview(editorState.layout || initialCoverLayout);
+    }
+    if (currentEditorPage.role === 'quote') {
+      // 基準值要等預覽量完才會到，所以這裡只送「已經有值」的情況；
+      // 沒有的話由 guest-layout-baseline 回來時補上輸入框。
+      const quoteValues = activeQuoteLayout();
+      if (quoteValues) {
+        applyQuoteLayoutToPreview(quoteValues);
+        syncQuoteLayoutInputs(quoteValues);
+      }
     }
     applyTextLayoutsToPreview(currentEditorPage);
     editorPreviewStatus.textContent = '即時預覽 · 尚未套用';
@@ -1314,6 +1411,11 @@ document.getElementById('carousel-editor-reset').addEventListener('click', () =>
   if (!window.confirm('重設這張卡片尚未套用的文字與版面修改？')) return;
   delete editorState.copyEdits[currentEditorPage.page_id];
   if (currentEditorPage.role === 'cover') editorState.layout = null;
+  if (currentEditorPage.role === 'quote') {
+    editorState.quoteLayout = null;
+    const restored = initialQuoteLayout || quoteLayoutBaseline;
+    if (restored) { syncQuoteLayoutInputs(restored); applyQuoteLayoutToPreview(restored); }
+  }
   Object.keys(editorState.textLayouts).forEach((key) => {
     if (key.startsWith(`${currentEditorPage.page_id}.`)) delete editorState.textLayouts[key];
   });
@@ -1369,11 +1471,15 @@ async function submitEditorChanges(scope) {
     return {page_id: pageId, role: page.role, artifact_sha256: page.artifact_sha256, fields};
   });
   const cover = pageById('cover');
+  const quote = editorPages.find((page) => page.role === 'quote');
   const payloadBody = {
     manifest_sha256: reviewForm.dataset.manifestSha,
     copy_edits: copyEdits,
     layout_overrides: editorState.layout ? {
       page_id: 'cover', artifact_sha256: cover.artifact_sha256, values: editorState.layout,
+    } : null,
+    quote_layout_overrides: (editorState.quoteLayout && quote) ? {
+      page_id: quote.page_id, artifact_sha256: quote.artifact_sha256, values: editorState.quoteLayout,
     } : null,
     text_layout_overrides: Object.entries(editorState.textLayouts).map(([key, values]) => {
       const [pageId, region] = key.split('.');

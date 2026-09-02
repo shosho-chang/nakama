@@ -111,6 +111,25 @@ class CoverLayoutOverride(CarouselModel):
     title_font_size_px: int = Field(default=106, ge=72, le=160)
 
 
+class GuestLayoutOverride(CarouselModel):
+    """金句卡的來賓去背照幾何，與封面同一組欄位、同一個 1080px 座標系。
+
+    修修 2026-09-02：「金句那邊也按照你現在建議的修法去修。」在此之前金句的
+    去背照位置寫死在算圖 CSS 裡（`.quote-a .guest{right:-50px;bottom:-10px;
+    height:440px}`），schema 沒有欄位、bridge 沒有綁拖曳、編輯器沒有控制項——
+    所以在金句那張怎麼拖都沒反應，不是壞掉，是根本沒做。
+
+    刻意**不給 default**：A 版與 B 版的算圖預設值不同（B 版在 `.guest-panel`
+    內、right -18 / bottom -20 / height 430），寫一組 default 一定會對其中一個
+    版型說謊。要嘛沒有 override、完全照算圖 CSS，要嘛三個值都由編輯器從預覽
+    量到的基準值帶進來，講清楚是誰決定的。
+    """
+
+    guest_right_px: int = Field(ge=-540, le=240)
+    guest_bottom_px: int = Field(ge=-400, le=240)
+    guest_height_px: int = Field(ge=200, le=1000)
+
+
 class TextLayoutOverrideV1(CarouselModel):
     """One text region in canonical 1080px coordinates; height remains content-driven."""
 
@@ -174,6 +193,7 @@ class PageTextLayoutOverrideV1(CarouselModel):
 
 class CarouselLayoutOverridesV1(CarouselModel):
     cover: CoverLayoutOverride | None = None
+    quote: GuestLayoutOverride | None = None
     text_regions: list[PageTextLayoutOverrideV1] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -612,10 +632,34 @@ class CarouselTextLayoutEdit(PageTextLayoutOverrideV1):
         return value
 
 
+class CarouselQuoteLayoutEdit(CarouselModel):
+    """Revision-bound quote guest-cutout geometry; cutout identity stays in copy edits."""
+
+    page_id: str
+    artifact_sha256: str
+    values: GuestLayoutOverride
+
+    @field_validator("page_id")
+    @classmethod
+    def _valid_page_id(cls, value: str) -> str:
+        if not _PAGE_ID_RE.fullmatch(value):
+            raise ValueError("page_id must be stable lowercase kebab-case")
+        return value
+
+    @field_validator("artifact_sha256")
+    @classmethod
+    def _valid_artifact_sha256(cls, value: str) -> str:
+        value = value.lower()
+        if not _SHA256_RE.fullmatch(value):
+            raise ValueError("artifact_sha256 must be a lowercase SHA-256 hex digest")
+        return value
+
+
 class CarouselEditorApplyRequest(CarouselModel):
     manifest_sha256: str
     copy_edits: list[CarouselCopyEdit] = Field(default_factory=list)
     layout_overrides: CarouselCoverLayoutEdit | None = None
+    quote_layout_overrides: CarouselQuoteLayoutEdit | None = None
     text_layout_overrides: list[CarouselTextLayoutEdit] = Field(default_factory=list)
 
     @field_validator("manifest_sha256")
@@ -628,7 +672,12 @@ class CarouselEditorApplyRequest(CarouselModel):
 
     @model_validator(mode="after")
     def _non_empty_edit(self) -> CarouselEditorApplyRequest:
-        if not self.copy_edits and self.layout_overrides is None and not self.text_layout_overrides:
+        if (
+            not self.copy_edits
+            and self.layout_overrides is None
+            and self.quote_layout_overrides is None
+            and not self.text_layout_overrides
+        ):
             raise ValueError("at least one structured carousel edit is required")
         page_ids = [item.page_id for item in self.copy_edits]
         if len(page_ids) != len(set(page_ids)):
@@ -705,6 +754,7 @@ class CarouselCorrectionJobV1(CarouselModel):
     feedback_items: list[CarouselCorrectionItem] = Field(default_factory=list)
     copy_edits: list[CarouselCopyEdit] = Field(default_factory=list)
     layout_overrides: CarouselCoverLayoutEdit | None = None
+    quote_layout_overrides: CarouselQuoteLayoutEdit | None = None
     text_layout_overrides: list[CarouselTextLayoutEdit] = Field(default_factory=list)
     required_reviews: tuple[
         Literal["ig_audience"],
@@ -748,6 +798,7 @@ class CarouselCorrectionJobV1(CarouselModel):
             not self.feedback_items
             and not self.copy_edits
             and self.layout_overrides is None
+            and self.quote_layout_overrides is None
             and not self.text_layout_overrides
         ):
             raise ValueError("correction job requires feedback or a structured edit")
