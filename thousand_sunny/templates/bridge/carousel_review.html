@@ -71,6 +71,11 @@
     </section>
     <footer class="carousel-actions">
       <p id="review-action-help" data-state="{{ 'approved' if approved else 'open' }}"><strong>{% if approved %}此版本已核准，等待發布流程。{% else %}有修改就填卡片修改意見；全部留空時，才可手動核准。{% endif %}</strong></p>
+      <div id="carousel-orphan-notice" class="carousel-editor-recovery" hidden>
+        <strong id="carousel-orphan-copy"></strong>
+        <button id="carousel-orphan-apply" class="sho-btn sho-btn--ghost" type="button">套用到目前版本</button>
+        <button id="carousel-orphan-discard" class="sho-btn sho-btn--ghost" type="button">捨棄</button>
+      </div>
       <div id="carousel-editor-recovery" class="carousel-editor-recovery" hidden>
         <strong id="carousel-editor-recovery-copy">尚有未送出的卡片修改。</strong>
         <button id="carousel-editor-continue" class="sho-btn sho-btn--ghost" type="button">繼續編輯</button>
@@ -645,6 +650,9 @@ const editorStatus = document.getElementById('carousel-editor-status');
 const editorPreviewStatus = document.getElementById('carousel-editor-preview-status');
 const editorFit = document.getElementById('carousel-editor-fit');
 const editorBlocked = document.getElementById('carousel-editor-blocked');
+const orphanNotice = document.getElementById('carousel-orphan-notice');
+const orphanCopy = document.getElementById('carousel-orphan-copy');
+const orphanApply = document.getElementById('carousel-orphan-apply');
 const editorDone = document.getElementById('carousel-editor-done');
 const editorSubmit = document.getElementById('carousel-editor-submit');
 const recoveryBlocked = document.getElementById('carousel-recovery-blocked');
@@ -1572,6 +1580,63 @@ if (storedEditorDraft && !approved) {
     updateEditorAction();
   } catch (error) { storageRemove(editorDraftKey); }
 }
+
+// 草稿的 key 含 manifest sha，版本一換就整個讀不到——修修 2026-09-02 就是這樣
+// 掉了第 2 張的文字修改：那筆送出被 409 擋下（草稿保留），接著 r003 出來，
+// 草稿還在 sessionStorage 裡卻再也不會被看到，畫面看起來像「改的東西被移掉了」。
+// 這裡把上一版留下的草稿找回來，明講內容，讓使用者自己決定要不要帶過來。
+function orphanEditorDrafts() {
+  const found = [];
+  let keys = [];
+  try { keys = Object.keys(sessionStorage); } catch (error) { return found; }
+  for (const key of keys) {
+    if (!key.startsWith('nakama.carousel-review:') || !key.endsWith(':editor:v2')) continue;
+    if (key === editorDraftKey) continue;
+    let draft = null;
+    try { draft = JSON.parse(sessionStorage.getItem(key) || 'null'); } catch (error) { continue; }
+    if (!draft) continue;
+    const copyPages = Object.keys(draft.copyEdits || {}).filter((id) => pageById(id));
+    const hasLayout = Boolean(draft.layout || draft.quoteLayout
+      || Object.keys(draft.textLayouts || {}).length);
+    if (!copyPages.length && !hasLayout) { storageRemove(key); continue; }
+    found.push({key, draft, copyPages, hasLayout});
+  }
+  return found;
+}
+
+function renderOrphanDraftNotice() {
+  const orphans = orphanEditorDrafts();
+  if (!orphans.length || approved) { orphanNotice.hidden = true; return; }
+  const copyPages = [...new Set(orphans.flatMap((item) => item.copyPages))];
+  const hasLayout = orphans.some((item) => item.hasLayout);
+  orphanNotice.hidden = false;
+  orphanCopy.textContent = copyPages.length
+    ? `上一版還留著 ${copyPages.length} 張卡片的文字修改沒有送出：${copyPages.join('、')}。`
+      + (hasLayout ? '（版面拖放的數值是對著舊版量的，不會帶過來，需要重調。）' : '')
+    : '上一版還留著沒有送出的版面調整；那些數值是對著舊版量的，不會帶過來，需要重調。';
+  orphanApply.hidden = !copyPages.length;
+}
+
+document.getElementById('carousel-orphan-apply').addEventListener('click', () => {
+  for (const {key, draft, copyPages} of orphanEditorDrafts()) {
+    for (const pageId of copyPages) {
+      editorState.copyEdits[pageId] = {
+        ...(editorState.copyEdits[pageId] || {}), ...draft.copyEdits[pageId],
+      };
+    }
+    storageRemove(key);
+  }
+  persistEditorDraft();
+  renderOrphanDraftNotice();
+  updateEditorAction();
+});
+
+document.getElementById('carousel-orphan-discard').addEventListener('click', () => {
+  orphanEditorDrafts().forEach(({key}) => storageRemove(key));
+  renderOrphanDraftNotice();
+});
+
+if (!approved) renderOrphanDraftNotice();
 
 async function submitEditorChanges(scope) {
   const dirtyIds = dirtyEditorPageIds();

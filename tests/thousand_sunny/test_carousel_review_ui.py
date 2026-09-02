@@ -634,3 +634,24 @@ def test_job_poller_gives_up_when_the_job_is_gone() -> None:
     assert "error.status === 404" in body
     assert "MAX_POLL_ERRORS" in body
     assert body.count("busy = false;") >= 2
+
+
+def test_drafts_orphaned_by_a_new_revision_are_offered_back() -> None:
+    """修修 2026-09-02：「我第 2 張卡片之前改的已經被移除掉了嗎？」
+
+    草稿的 key 含 manifest sha（`nakama.carousel-review:<sha>:editor:v2`），
+    版本一換就整個讀不到。他那筆文字修改先被 409 擋下（草稿保留），接著 r003
+    出來，草稿還在 sessionStorage 裡卻再也不會被看到——畫面看起來像「改的東西
+    被移掉了」，而且完全沒有交代。
+    """
+    assert "function orphanEditorDrafts()" in TEMPLATE
+    assert "key.endsWith(':editor:v2')" in TEMPLATE
+    assert "key === editorDraftKey" in TEMPLATE
+    assert 'id="carousel-orphan-notice"' in TEMPLATE
+    assert "上一版還留著" in TEMPLATE
+    # 版面數值是對著舊版量的，不可以默默套到新版上
+    assert "不會帶過來，需要重調" in TEMPLATE
+    apply_handler = TEMPLATE[TEMPLATE.index("carousel-orphan-apply').addEventListener") :][:600]
+    assert "draft.copyEdits[pageId]" in apply_handler
+    assert "draft.layout" not in apply_handler
+    assert "storageRemove(key);" in apply_handler
