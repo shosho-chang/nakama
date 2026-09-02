@@ -44,9 +44,29 @@
     window.parent.postMessage({channel, type, ...payload}, '*');
   }
 
+  // 角色以**畫布本身**判斷。原本是走 `currentPage()`——那要 `__CAROUSEL_SPEC__`
+  // 加上 `?page=` 查詢字串都對，是我在改寫時引進的相依；只要其中一個不如預期，
+  // `applyLayout` 與 `configureGuestInteraction` 都會安靜地 return，
+  // 症狀就是「什麼都沒發生、也沒有錯誤」。畫布的 class 是算圖時就寫死的，
+  // 它在，去背照就在。
+  const canvasRoles = [
+    ['cover', '.cover'],
+    ['quote', '.quote-a'],
+    ['quote', '.quote-b'],
+  ];
+
+  function guestRole() {
+    const canvas = document.getElementById('canvas');
+    if (canvas) {
+      const hit = canvasRoles.find(([, klass]) => canvas.matches(klass));
+      if (hit) return hit[0];
+    }
+    return currentPage()?.role || null;
+  }
+
   function guestSpec() {
-    const page = currentPage();
-    return page ? guestLayoutSpecs[page.role] || null : null;
+    const role = guestRole();
+    return role ? guestLayoutSpecs[role] || null : null;
   }
 
   function boundedLayout(values, bounds) {
@@ -219,7 +239,13 @@
 
   function applyLayout(values, {notify = false, refitNow = true} = {}) {
     const spec = guestSpec();
-    if (!spec) return;
+    if (!spec) {
+      emit('preview-error', {
+        message: '認不出這張卡的版型，無法套用去背照幾何',
+        fingerprint: diagnosticsFingerprint,
+      });
+      return;
+    }
     const bounded = boundedLayout(values, spec.bounds);
     // NaN 寫進 style 會被瀏覽器丟掉、什麼都不發生——那正是最難查的失敗樣態。
     // 寧可回報錯誤，也不要安靜地不動。
@@ -231,7 +257,12 @@
     }
     layout = bounded;
     const guest = document.querySelector(spec.selector);
-    if (!guest) return;
+    if (!guest) {
+      emit('preview-error', {
+        message: '預覽找不到來賓去背照', fingerprint: diagnosticsFingerprint,
+      });
+      return;
+    }
     guest.style.right = `${layout.guest_right_px}px`;
     guest.style.bottom = `${layout.guest_bottom_px}px`;
     guest.style.height = `${layout.guest_height_px}px`;
@@ -252,8 +283,19 @@
   function configureGuestInteraction() {
     const canvas = document.getElementById('canvas');
     const spec = guestSpec();
-    const guest = canvas && spec && document.querySelector(spec.selector);
-    if (!guest || guest.dataset.editorReady === 'true') return;
+    if (!canvas || !spec) {
+      emit('guest-editor-state', {bound: false, reason: '這張卡沒有可調整的去背照幾何'});
+      return;
+    }
+    const guest = document.querySelector(spec.selector);
+    if (!guest) {
+      emit('guest-editor-state', {bound: false, reason: '預覽找不到來賓去背照'});
+      return;
+    }
+    if (guest.dataset.editorReady === 'true') {
+      emit('guest-editor-state', {bound: true, role: guestRole()});
+      return;
+    }
     guest.dataset.editorReady = 'true';
     const style = document.createElement('style');
     // 去背照原本沒有任何「可以拖」的提示，而畫面上又有兩個長得一樣的橘色方塊
@@ -309,6 +351,7 @@
     guest.addEventListener('pointerdown', (event) => begin(event, 'drag'));
     handle.addEventListener('pointerdown', (event) => begin(event, 'resize'));
     positionResizeHandle(guest);
+    emit('guest-editor-state', {bound: true, role: guestRole()});
   }
 
   function snap(value, step) { return Math.round(Number(value) / step) * step; }
@@ -533,5 +576,8 @@
   });
 
   document.fonts.ready.then(() => { discoverTextLayouts(); discoverGuestLayout(); });
+  // fonts.ready 若被延後或不觸發，上面那條就不會跑。綁定是這個編輯器的基本能力，
+  // 不該押在單一時機上——立刻再試一次（重複呼叫是冪等的）。
+  discoverGuestLayout();
   emit('ready');
 })();

@@ -449,3 +449,34 @@ def test_incomplete_layout_fails_loudly_instead_of_writing_nan() -> None:
     assert "emit('preview-error'" in apply_fn
     # 驗證在賦值給 layout 之前
     assert apply_fn.index("!Number.isFinite(value)") < apply_fn.index("layout = bounded;")
+
+
+def test_guest_role_comes_from_the_canvas_not_the_spec_query() -> None:
+    """`currentPage()` 需要 `__CAROUSEL_SPEC__` 與 `?page=` 都對，是改寫時引進的
+
+    相依。任一不如預期，`applyLayout` 與 `configureGuestInteraction` 都會安靜
+    return——症狀就是「拖了沒反應、也沒有錯誤」。畫布 class 是算圖時就寫死的。
+    """
+    assert "function guestRole()" in BRIDGE
+    assert "canvas.matches(klass)" in BRIDGE
+    spec_fn = BRIDGE[BRIDGE.index("function guestSpec()") :][:300]
+    assert "guestRole()" in spec_fn
+    assert "currentPage()" not in spec_fn
+
+
+def test_failure_to_bind_the_cutout_is_never_silent() -> None:
+    """綁不上原本完全靜默，只有「拖了沒反應」，沒有任何線索可查。"""
+    cfg = BRIDGE[BRIDGE.index("function configureGuestInteraction()") :]
+    body = cfg[: cfg.index("\n  function ", 10)]
+    assert body.count("emit('guest-editor-state'") >= 3
+    assert "bound: false" in body and "bound: true" in body
+    # 母頁面要把它顯示出來
+    assert "guest-editor-state" in TEMPLATE
+    assert "去背照可拖曳縮放" in TEMPLATE
+    assert "去背照無法拖曳：" in TEMPLATE
+
+
+def test_binding_does_not_hang_on_a_single_trigger() -> None:
+    """fonts.ready 被延後或不觸發時，綁定不該就此消失。"""
+    tail = BRIDGE[BRIDGE.index("document.fonts.ready.then") :]
+    assert tail.count("discoverGuestLayout()") >= 2

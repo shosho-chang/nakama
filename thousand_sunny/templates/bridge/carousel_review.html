@@ -640,6 +640,18 @@ let textLayoutBaselines = {};
 let editorState = {copyEdits: {}, layout: null, quoteLayout: null, textLayouts: {}};
 let editorValidationError = false;
 let previewDiagnostics = null;
+let guestEditorState = null;
+let previewBaseStatus = '載入即時預覽…';
+
+function updatePreviewStatus() {
+  const parts = [previewBaseStatus];
+  if (guestEditorState) {
+    parts.push(guestEditorState.bound
+      ? '去背照可拖曳縮放'
+      : `去背照無法拖曳：${guestEditorState.reason || '原因不明'}`);
+  }
+  editorPreviewStatus.textContent = parts.join(' · ');
+}
 let previewPatchSequence = 0;
 let diagnosticsByPage = {};
 let layoutValidationErrors = {};
@@ -989,7 +1001,13 @@ window.addEventListener('message', (event) => {
     applyCopyToPreview(currentEditorPage, currentEditorValues(currentEditorPage));
     if (currentEditorPage.role === 'cover') applyLayoutToPreview(editorState.layout || initialCoverLayout);
     applyTextLayoutsToPreview(currentEditorPage);
-    editorPreviewStatus.textContent = '即時預覽 · 尚未套用';
+    previewBaseStatus = '即時預覽 · 尚未套用';
+    updatePreviewStatus();
+  } else if (event.data.type === 'guest-editor-state') {
+    // 去背照到底綁上了沒——原本綁不上是完全靜默的，症狀只有「拖了沒反應」，
+    // 沒有任何線索可查。把它寫在預覽狀態列上，看得到才查得動。
+    guestEditorState = event.data;
+    updatePreviewStatus();
   } else if (event.data.type === 'layout-change' && currentEditorPage?.role === 'cover') {
     setLayoutDraft(event.data.layout, {send: false});
     applyTextLayoutsToPreview(currentEditorPage);
@@ -1315,7 +1333,9 @@ function openEditor(pageId) {
   }
   editorQuoteLayout.hidden = page.role !== 'quote';
   if (page.role === 'quote') syncQuoteLayoutInputs(activeQuoteLayout());
-  editorPreviewStatus.textContent = '載入即時預覽…';
+  previewBaseStatus = '載入即時預覽…';
+  guestEditorState = null;
+  updatePreviewStatus();
   editorFit.hidden = true;
   previewDiagnostics = null;
   editorFrame.src = `${reviewForm.dataset.previewBase}/${encodeURIComponent(page.page_id)}?manifest_sha256=${encodeURIComponent(reviewForm.dataset.manifestSha)}`;
