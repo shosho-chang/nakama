@@ -13,6 +13,15 @@
         guest_height_px: [480, 1400],
         title_font_size_px: [72, 160],
       },
+      // 封面比金句多一個標題字級。它不在去背照身上，量不到的話整組 layout
+      // 會湊不齊、停在 null，拖曳就算出 NaN——而 `style.right = 'NaNpx'` 是
+      // 被瀏覽器靜默忽略的，症狀正好是「綁得到、游標會變、就是不動」。
+      extraMeasure: () => {
+        const raw = getComputedStyle(document.documentElement)
+          .getPropertyValue('--type-cover-title');
+        const value = Math.round(parseFloat(raw));
+        return Number.isFinite(value) ? {title_font_size_px: value} : {};
+      },
     },
     quote: {
       selector: '#canvas.quote-a .guest, #canvas.quote-b .guest-panel img',
@@ -63,11 +72,12 @@
     };
     if (Object.values(values).some((value) => !Number.isFinite(value))) return;
     emit('guest-layout-baseline', {role: page.role, values});
+    const seed = {...values, ...(spec.extraMeasure ? spec.extraMeasure() : {})};
     // 拖曳的綁定不可以押在「母頁面有沒有送 apply-layout」上。金句沒有 schema
     // default，母頁面要等這個基準值回去才知道要送什麼——先有雞先有蛋，結果就是
     // 金句永遠綁不上。這裡一量到就自己綁。
-    if (layout === null && Object.keys(spec.bounds).every((name) => name in values)) {
-      layout = boundedLayout(values, spec.bounds);
+    if (layout === null && Object.keys(spec.bounds).every((name) => name in seed)) {
+      layout = boundedLayout(seed, spec.bounds);
     }
     configureGuestInteraction();
   }
@@ -210,7 +220,16 @@
   function applyLayout(values, {notify = false, refitNow = true} = {}) {
     const spec = guestSpec();
     if (!spec) return;
-    layout = boundedLayout(values, spec.bounds);
+    const bounded = boundedLayout(values, spec.bounds);
+    // NaN 寫進 style 會被瀏覽器丟掉、什麼都不發生——那正是最難查的失敗樣態。
+    // 寧可回報錯誤，也不要安靜地不動。
+    if (Object.values(bounded).some((value) => !Number.isFinite(value))) {
+      emit('preview-error', {
+        message: '版面數值不完整，無法套用', fingerprint: diagnosticsFingerprint,
+      });
+      return;
+    }
+    layout = bounded;
     const guest = document.querySelector(spec.selector);
     if (!guest) return;
     guest.style.right = `${layout.guest_right_px}px`;

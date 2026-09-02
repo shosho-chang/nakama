@@ -421,3 +421,31 @@ def test_quote_baseline_arrival_refreshes_diagnostics() -> None:
     block = handler[: handler.index("} else if")]
     assert "quoteLayoutBaseline = event.data.values;" in block
     assert "applyTextLayoutsToPreview(currentEditorPage);" in block
+
+
+def test_every_guest_role_can_seed_a_complete_layout_before_binding() -> None:
+    """封面拖不動的真因（2026-09-02）。
+
+    綁定改成「一量到就自己綁」之後，seeding 條件是 bounds 的每個 key 都量得到。
+    封面的 bounds 多一個 `title_font_size_px`，那個不在去背照身上、量不到，
+    於是 `layout` 停在 null；拖曳時 `{...null}` 展開成 `{}`，算出 NaN，
+    而 `style.right = 'NaNpx'` 會被瀏覽器**靜默忽略**——症狀正好是
+    「綁得到、游標會變、就是不動」。金句三個值都量得到所以正常，只有封面中槍。
+    """
+    assert "extraMeasure:" in BRIDGE
+    assert "--type-cover-title" in BRIDGE
+    seed = BRIDGE[BRIDGE.index("const seed = {") :][:400]
+    assert "spec.extraMeasure ? spec.extraMeasure() : {}" in seed
+    # seeding 必須看合併後的 seed，不是只有量到的三個幾何值
+    assert "Object.keys(spec.bounds).every((name) => name in seed)" in BRIDGE
+    assert "Object.keys(spec.bounds).every((name) => name in values)" not in BRIDGE
+
+
+def test_incomplete_layout_fails_loudly_instead_of_writing_nan() -> None:
+    """NaN 寫進 style 會被丟掉、什麼都不發生——那是最難查的失敗樣態。"""
+    apply_fn = BRIDGE[BRIDGE.index("function applyLayout(values,") :][:1200]
+    assert "const bounded = boundedLayout(values, spec.bounds);" in apply_fn
+    assert "!Number.isFinite(value)" in apply_fn
+    assert "emit('preview-error'" in apply_fn
+    # 驗證在賦值給 layout 之前
+    assert apply_fn.index("!Number.isFinite(value)") < apply_fn.index("layout = bounded;")
