@@ -154,6 +154,13 @@ def assert_panel_renderable(
     allowed = {spec.revision}
     if spec.panel_inherited_from:
         allowed.add(spec.panel_inherited_from)
+    # 繼承會成鏈：r004 沿用 r003，而 r003 那份 panel 本身是從 r002 沿用來的
+    # （沿用時原樣複製，內容仍自報 r002）。宣告指向**來源版本**（完成驗收也是
+    # 這樣比對的），而 panel 自己可以是那條鏈上更早的一版。往後不行——
+    # 拿比來源還新的 panel 來治理舊版本沒有意義。
+    if spec.panel_inherited_from and panel.revision not in allowed:
+        if int(panel.revision[1:]) <= int(spec.panel_inherited_from[1:]):
+            allowed.add(panel.revision)
     if panel.revision not in allowed:
         raise ValueError(
             "panel revision does not match Copy Spec"

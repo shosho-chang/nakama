@@ -391,3 +391,32 @@ def test_panel_may_be_inherited_when_the_spec_declares_it(tmp_path):
     wrong_source = spec.model_copy(update={"revision": "r003", "panel_inherited_from": "r001"})
     with pytest.raises(ValueError, match="panel revision"):
         assert_panel_renderable(panel, spec=wrong_source)
+
+
+def test_inherited_panel_may_come_from_earlier_in_the_chain(tmp_path):
+    """繼承會成鏈：r004 沿用 r003，而 r003 那份 panel 本身是從 r002 沿用來的。
+
+    沿用時 panel 是原樣複製的，內容仍自報 r002。宣告指向**來源版本**（完成驗收
+    也是這樣比對），所以出圖端必須接受鏈上更早的那一版，否則第二次沿用就卡死
+    （2026-09-03 實際卡住 r004）。
+    """
+    from agents.brook.podcast_carousel_panel import assert_panel_renderable
+
+    _index, spec = _index_and_spec(tmp_path)
+    reviews = {
+        lens: {"lens": lens, "verdict": "pass", "findings": []}
+        for lens in ("ig_audience", "episode_editorial", "brand_evidence")
+    }
+
+    def _panel(revision: str) -> PanelResult:
+        payload = _panel_payload_with_reviews(reviews)
+        payload["episode_id"] = spec.episode_id
+        payload["revision"] = revision
+        return PanelResult.model_validate(payload)
+
+    chained = spec.model_copy(update={"revision": "r004", "panel_inherited_from": "r003"})
+    assert_panel_renderable(_panel("r002"), spec=chained)
+
+    # 往後不行——拿比來源還新的 panel 來治理這一版沒有意義
+    with pytest.raises(ValueError, match="panel revision"):
+        assert_panel_renderable(_panel("r005"), spec=chained)
