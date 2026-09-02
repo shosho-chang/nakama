@@ -644,6 +644,7 @@ let editorState = {copyEdits: {}, layout: null, quoteLayout: null, textLayouts: 
 let editorValidationError = false;
 let previewDiagnostics = null;
 let guestEditorState = null;
+let submitFailure = '';
 let previewBaseStatus = '載入即時預覽…';
 
 function updatePreviewStatus() {
@@ -775,9 +776,11 @@ function updateEditorAction() {
   editorApply.setAttribute('aria-disabled', String(editorApply.disabled));
   const reason = editorApply.disabled ? applyBlockedReason({hasValidationErrors}) : '';
   const advisory = reason || (editorDirty ? layoutAdvisory(dirtyIds) : '');
-  editorBlocked.textContent = reason || advisory;
-  editorBlocked.hidden = !(reason || advisory);
-  editorBlocked.dataset.kind = reason ? 'blocked' : 'advisory';
+  // 送出失敗最優先——那是使用者剛剛按下去的結果，不能被提示蓋掉。
+  const message = submitFailure || reason || advisory;
+  editorBlocked.textContent = message;
+  editorBlocked.hidden = !message;
+  editorBlocked.dataset.kind = submitFailure ? 'error' : (reason ? 'blocked' : 'advisory');
   editorApply.title = reason;
   updateEditorRecovery();
   updateActions();
@@ -1533,6 +1536,7 @@ async function submitEditorChanges(scope) {
   busy = true;
   updateActions();
   updateEditorAction();
+  submitFailure = '';
   editorStatus.textContent = '正在建立待認領修改工作…';
   const editorDraft = {manifestSha256: reviewForm.dataset.manifestSha, ...editorState};
   const copyEdits = Object.entries(editorState.copyEdits).map(([pageId, fields]) => {
@@ -1582,7 +1586,12 @@ async function submitEditorChanges(scope) {
     updateEditorAction();
     // 後端的訊息現在是完整句子，不要再補一個句號變成「。。」。
     const detail = String(error.message || '').replace(/[。．.]\s*$/, '');
-    editorStatus.textContent = `套用失敗：${detail}。草稿已保留。`;
+    // 失敗訊息原本只寫在頁尾一個小 span 裡，使用者按了送出根本不會注意到，
+    // 看起來就是「沒有任何反應」（修修 2026-09-02 連續兩次卡在這裡）。
+    // 放到按鈕正上方那塊、用錯誤色，並停在畫面上直到下一次動作。
+    editorStatus.textContent = '';
+    submitFailure = `送出失敗：${detail}。草稿已保留。`;
+    updateEditorAction();
   }
 }
 

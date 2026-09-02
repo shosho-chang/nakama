@@ -580,3 +580,18 @@ def test_active_job_conflict_names_the_blocking_job() -> None:
     assert "def _active_job_conflict(" in router
     assert "已經有一張待處理的修改工作" in router
     assert router.count("_active_job_conflict(package_root, manifest, manifest_sha256)") >= 2
+
+
+def test_submit_failure_is_shown_where_the_user_is_looking() -> None:
+    """修修 2026-09-02 連續兩次回報「按下送出沒有任何反應」。
+
+    第二次其實送出去了、伺服器回了 409（被他自己前一張還沒被 agent 認領的
+    修正單擋住），但失敗訊息只寫在頁尾一個小 span 裡——按了之後畫面上看不出
+    任何變化，就是「沒反應」。
+    """
+    assert "submitFailure = `送出失敗：" in TEMPLATE
+    # 失敗要壓過版面提示，那是使用者剛按下去的結果
+    assert "const message = submitFailure || reason || advisory;" in TEMPLATE
+    assert "submitFailure ? 'error'" in TEMPLATE
+    assert '.carousel-editor-blocked[data-kind="error"]' in CSS
+    assert "var(--sho-error)" in CSS

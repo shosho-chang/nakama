@@ -105,6 +105,7 @@
 .carousel-editor-blocked { flex:1 1 100%; order:-1; margin-bottom:var(--sho-s-2); padding:8px 12px; border:1px solid var(--sho-line); border-radius:var(--sho-r-1); color:var(--sho-muted); background:var(--sho-bg); font-size:13px; font-weight:700; line-height:1.5; }
 /* 真的擋住送出的才用警示色；版面提醒只是「我量到這個」，不該長得像錯誤。 */
 .carousel-editor-blocked[data-kind="blocked"] { border-color:var(--sho-warning); color:var(--sho-warning); }
+.carousel-editor-blocked[data-kind="error"] { border-color:var(--sho-error); color:var(--sho-error); background:var(--sho-bg-2); }
 
 .carousel-cutouts { min-inline-size:0; margin:0 0 var(--sho-s-4); padding:0 0 var(--sho-s-3); border:0; border-bottom:1px solid var(--sho-line); }
 .carousel-cutouts legend { padding:0; font-size:13px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }
