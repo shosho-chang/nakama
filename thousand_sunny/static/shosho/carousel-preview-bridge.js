@@ -116,6 +116,31 @@
     refit();
   }
 
+  // 換去背照。母頁面遞進來的是 data URL——預覽的 CSP 是
+  // `img-src 'self' data:`，而 preview-assets 只服務 receipt 驗過的樣板快照，
+  // 新選的那張還沒進快照，所以只能走 data:。
+  const cutoutSelectors = {
+    cutout: '#canvas.cover .guest',
+    guest_cutout: '#canvas.quote-a .guest, #canvas.quote-b .guest-panel img',
+  };
+
+  function applyCutout(field, src) {
+    const selector = cutoutSelectors[field];
+    if (!selector) throw new Error(`不認得的素材欄位：${field}`);
+    const node = document.querySelector(selector);
+    if (!node) throw new Error('預覽找不到來賓去背照');
+    return new Promise((resolve, reject) => {
+      node.addEventListener('load', () => resolve(), {once: true});
+      node.addEventListener('error', () => reject(new Error('去背照無法在預覽載入')), {once: true});
+      node.src = src;
+    }).then(() => {
+      // 換圖會改變佈局：cover 的重疊診斷與拖曳控制點都吃 getBoundingClientRect。
+      refit();
+      const guest = document.querySelector('#canvas.cover .guest');
+      if (guest) positionResizeHandle(guest);
+    });
+  }
+
   function positionResizeHandle(guest) {
     const handle = document.querySelector('[data-carousel-resize-handle]');
     if (!handle) return;
@@ -381,6 +406,15 @@
     try {
       if (event.data.type === 'apply-copy') {
         applyCopy(event.data.role, event.data.values);
+      } else if (event.data.type === 'apply-cutout') {
+        // 換圖會改變 cover 的重疊量測，母頁面的「送出」按鈕又押在 fingerprint
+        // 相符的診斷上。先換上新 fingerprint 再載圖，載完那次 refit 送出的
+        // 診斷才會被母頁面採信——否則按鈕永遠停在 disabled。
+        diagnosticsRequestId = event.data.requestId || null;
+        diagnosticsFingerprint = event.data.fingerprint || null;
+        applyCutout(event.data.field, event.data.src).catch((error) => {
+          emit('preview-error', {message: error.message, fingerprint: diagnosticsFingerprint});
+        });
       } else if (event.data.type === 'apply-layout') {
         applyLayout(event.data.values);
         configureCoverInteraction();

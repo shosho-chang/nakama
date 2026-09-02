@@ -12,6 +12,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _REVISION_RE = re.compile(r"^r[0-9]{3,}$")
 _PAGE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
+#: 素材檔名。渲染時會做 `cutouts_dir / name`，所以這個值一旦能由外部指定，
+#: 就必須是**單純的檔名**——不得含路徑分隔符或 `..`，否則是路徑穿越。
+_CUTOUT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.(?:png|PNG)$")
 
 CAROUSEL_DISPLAY_COPY_FIELDS: dict[str, tuple[str, ...]] = {
     "cover": ("headline", "emphasis", "guest_name", "guest_title"),
@@ -19,6 +22,19 @@ CAROUSEL_DISPLAY_COPY_FIELDS: dict[str, tuple[str, ...]] = {
     "point": ("headline", "emphasis", "body"),
     "quote": ("host_question", "text", "emphasis", "guest_name"),
     "cta": ("episode_topic", "emphasis"),
+}
+#: 素材欄位——**可以編輯，但不是打字的**。與上面的顯示文案分開兩張表，因為
+#: `CAROUSEL_DISPLAY_COPY_FIELDS` 同時決定編輯器要渲染哪些文字輸入框；把選圖
+#: 混進去會變成要人手打檔名。
+#:
+#: 修修 2026-09-02：「我希望在這個 review 的頁面上方，就有一個把 cutout 列出來的
+#: 地方，讓我可以重新做選擇。因為我可能會重複選擇不同的卡，看看整個畫面的感覺。」
+#: 原本選圖被刻意排除在編輯之外，換一張得繞回 agent 重寫 Copy Spec——那正是他
+#: 反映的摩擦。素材本身早已在 `packaging/cutouts/` 且經過授權，換的只是用哪一張，
+#: 不觸及任何逐字稿宣稱，所以走人類欄位、不進 panel。
+CAROUSEL_ASSET_FIELDS: dict[str, tuple[str, ...]] = {
+    "cover": ("cutout",),
+    "quote": ("guest_cutout",),
 }
 CAROUSEL_REQUIRED_REVIEWS = ("ig_audience", "episode_editorial", "brand_evidence")
 CAROUSEL_TEXT_LAYOUT_REGIONS: dict[str, tuple[str, ...]] = {
@@ -291,6 +307,16 @@ class PodcastCarouselCopySpecV1(CarouselModel):
     revision: str
     episode: EpisodeMetadata
     editorial_direction_path: str | None = None
+    #: 「這一版的 AI 生成內容與 rNNN 逐位元組相同，由那一版的 panel 治理。」
+    #:
+    #: 修修 2026-09-02 裁決：「Agent review 審的是 AI 的生成內容，人類 review 之後的
+    #: 成果根本不應該再觸發這個 review。」他在 Review Gate 改一個職稱，不該觸發三個
+    #: agent、六輪審查——而在契約互鎖下那張單根本完成不了（見
+    #: `podcast_carousel_correction_job._assert_structured_edits_applied`）。
+    #:
+    #: 這個宣告**不是信任聲明**：修正單的 exact-diff 會證明結果等於來源加上人類明確
+    #: 要求的欄位，其餘一字未動。既然 AI 那半邊沒變，重跑 panel 只會得到同一個答案。
+    panel_inherited_from: str | None = Field(default=None, pattern=r"^r[0-9]{3,}$")
     pages: list[CarouselPage] = Field(min_length=5, max_length=20)
     publish_compatibility: Literal["api_compatible", "manual_only"]
     layout_overrides: CarouselLayoutOverridesV1 = Field(default_factory=CarouselLayoutOverridesV1)
@@ -520,7 +546,7 @@ class CarouselCopyEdit(CarouselModel):
     page_id: str
     role: Literal["cover", "hook", "point", "quote", "cta"]
     artifact_sha256: str
-    fields: dict[str, str] = Field(min_length=1, max_length=4)
+    fields: dict[str, str] = Field(min_length=1, max_length=5)
 
     @field_validator("page_id")
     @classmethod
@@ -539,11 +565,16 @@ class CarouselCopyEdit(CarouselModel):
 
     @model_validator(mode="after")
     def _allowlisted_display_fields(self) -> CarouselCopyEdit:
-        invalid = set(self.fields) - set(CAROUSEL_DISPLAY_COPY_FIELDS[self.role])
+        asset_fields = set(CAROUSEL_ASSET_FIELDS.get(self.role, ()))
+        editable = set(CAROUSEL_DISPLAY_COPY_FIELDS[self.role]) | asset_fields
+        invalid = set(self.fields) - editable
         if invalid:
             raise ValueError(
                 f"display-copy fields are not editable for {self.role}: {sorted(invalid)}"
             )
+        for name in asset_fields & set(self.fields):
+            if not _CUTOUT_RE.fullmatch(self.fields[name]):
+                raise ValueError(f"{name} must be a bare cutout filename inside packaging/cutouts")
         if any(not value.strip() for value in self.fields.values()):
             raise ValueError("edited display-copy fields cannot be empty")
         if any("\r" in value or "\n" in value for value in self.fields.values()):

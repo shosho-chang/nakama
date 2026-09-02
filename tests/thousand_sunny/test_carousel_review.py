@@ -422,6 +422,27 @@ def test_editor_pages_preserve_visual_field_order(client):
     ]
 
 
+def test_editor_pages_carry_the_asset_field_each_card_can_swap(client):
+    """封面／金句可以換去背照；其餘卡片沒有素材欄位，不該長出選擇器。
+
+    素材欄位跟 `field_order` 分開送——`field_order` 決定要長出哪些文字輸入框，
+    選圖不是打字，混進去會變成要人手打檔名。
+    """
+    app, _ = client
+    response = app.get(f"/bridge/ig-cards/{EPISODE}")
+    marker = "const editorPages = "
+    editor_pages = json.loads(response.text.split(marker, 1)[1].split(";", 1)[0])
+    by_role = {page["role"]: page["asset_fields"] for page in editor_pages}
+
+    assert set(by_role["cover"]) == {"cutout"}
+    assert set(by_role["quote"]) == {"guest_cutout"}
+    assert by_role["hook"] == {}
+    assert by_role["point"] == {}
+    assert by_role["cta"] == {}
+    for page in editor_pages:
+        assert not set(page["asset_fields"]) & set(page["field_order"])
+
+
 def test_media_returns_verified_png(client):
     app, _ = client
     response = app.get(f"/bridge/ig-cards/{EPISODE}/media/cover")
@@ -1456,7 +1477,10 @@ def test_structured_editor_fails_closed_on_noop_illegal_fields_bounds_and_manife
     }
     assert app.post(f"/bridge/ig-cards/{EPISODE}/apply-edits", json=base).status_code == 400
     illegal = json.loads(json.dumps(base))
-    illegal["copy_edits"][0]["fields"] = {"cutout": "other.png"}
+    # cutout 現在可編輯（編輯決定），但路徑穿越必須擋在端點外面。
+    illegal["copy_edits"][0]["fields"] = {"cutout": "../../secret.png"}
+    assert app.post(f"/bridge/ig-cards/{EPISODE}/apply-edits", json=illegal).status_code == 422
+    illegal["copy_edits"][0]["fields"] = {"evidence": "changed"}
     assert app.post(f"/bridge/ig-cards/{EPISODE}/apply-edits", json=illegal).status_code == 422
     bounds = {
         "manifest_sha256": manifest_sha,

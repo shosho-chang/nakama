@@ -45,6 +45,7 @@ from shared.schemas.carousel_publish import (
     CarouselPublishTarget,
 )
 from shared.schemas.podcast_carousel import (
+    CAROUSEL_ASSET_FIELDS,
     CAROUSEL_DISPLAY_COPY_FIELDS,
     CAROUSEL_TEXT_LAYOUT_REGIONS,
     CAROUSEL_TEXT_SAFE_RECTS,
@@ -118,6 +119,10 @@ def _preview_asset_token(
     key = (WEB_SECRET or "nakama-local-preview").encode()
     scope = f"{episode_slug}:{template_sha256}:{manifest_sha256}".encode()
     return hmac.new(key, scope, hashlib.sha256).hexdigest()
+
+
+#: 選圖器送進來的檔名——與 `shared.schemas.podcast_carousel._CUTOUT_RE` 同一條規則。
+_CUTOUT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.(?:png|PNG)$")
 
 
 def _episode_dir(episode_slug: str) -> Path:
@@ -548,11 +553,31 @@ def _context(episode_slug: str) -> dict:
                 ],
             }
         )
+    # 這一集能選的去背照。修修 2026-09-02：「我可能會重複選擇不同的卡，看看整個
+    # 畫面的感覺」——所以選圖要跟即時預覽在同一個地方：封面與金句的卡片編輯器內。
+    # 第一版把清單放在頁面最上方、點一下直接開修正單，等於沒看到結果就先送出，
+    # 修修當場反映邏輯不對。清單本身跟卡片無關（同一批去背照兩張卡共用），
+    # 但「選哪一張」屬於某一張卡，所以資料一份、控制項在編輯器裡。
+    cutouts_dir = _episode_dir(episode_slug) / "packaging" / "cutouts"
+    guest_cutouts = (
+        sorted(
+            path.name
+            for path in cutouts_dir.glob("*.png")
+            # `.pre-YYYYMMDD-…` 是被取代的備份版本，不該出現在可選清單裡。
+            if path.name.startswith("guest_") and ".pre-" not in path.name
+        )
+        if cutouts_dir.is_dir()
+        else []
+    )
+    cover_row = next((row for row in rows if row["page"].role == "cover"), None)
+    quote_row = next((row for row in rows if row["page"].role == "quote"), None)
+
     return {
         "episode_slug": episode_slug,
         "manifest": manifest,
         "manifest_sha256": manifest_sha256,
         "rows": rows,
+        "guest_cutouts": guest_cutouts,
         "editor_available": editor_state == "available",
         "editor_unavailable_reason": _editor_unavailable_message(editor_state),
         "editor_pages": [
@@ -563,6 +588,13 @@ def _context(episode_slug: str) -> dict:
                 "artifact_sha256": row["page"].image.sha256,
                 "field_order": [item["name"] for item in row["editor_fields"]],
                 "fields": {item["name"]: item["value"] for item in row["editor_fields"]},
+                # 素材欄位跟文字欄位分開送：`field_order` 決定要長出哪些輸入框，
+                # 選圖不是打字，混進去會變成要人手打檔名。
+                "asset_fields": {
+                    name: getattr(row["page"].copy_page, name)
+                    for name in CAROUSEL_ASSET_FIELDS.get(row["page"].role, ())
+                    if getattr(row["page"].copy_page, name, None)
+                },
             }
             for row in rows
         ],
@@ -790,6 +822,33 @@ async def carousel_review_media(
         changed_detail=f"carousel page changed: {page.page_id}",
     )
     return Response(content=payload, media_type="image/png")
+
+
+@page_router.get("/{episode_slug}/cutout/{name}")
+async def carousel_review_cutout(
+    episode_slug: str,
+    name: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """回傳一張候選去背照，供頁面上方的選圖器顯示縮圖。
+
+    `name` 由使用者提供，會被拿去組路徑，所以先用 schema 的檔名規則過濾再
+    `_contained_file` 二次確認——只認 `packaging/cutouts` 底下的單純檔名。
+    """
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="authentication required")
+    if not _CUTOUT_NAME_RE.fullmatch(name):
+        raise HTTPException(status_code=404, detail="cutout not found")
+    cutouts_dir = (_episode_dir(episode_slug) / "packaging" / "cutouts").resolve()
+    try:
+        path = _contained_file(cutouts_dir / name, cutouts_dir)
+    except HTTPException:
+        raise
+    except (OSError, ValueError) as error:
+        raise HTTPException(status_code=404, detail="cutout not found") from error
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="cutout not found")
+    return Response(content=path.read_bytes(), media_type="image/png")
 
 
 @page_router.get("/{episode_slug}/preview/{page_id}", response_class=HTMLResponse)

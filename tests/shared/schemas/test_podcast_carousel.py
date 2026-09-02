@@ -452,8 +452,13 @@ def test_structured_editor_rejects_identity_evidence_and_empty_copy_changes():
         "role": "cover",
         "artifact_sha256": SHA,
     }
-    with pytest.raises(ValidationError, match="not editable"):
-        CarouselCopyEdit(**base, fields={"cutout": "other.png"})
+    # 選哪一張去背照是編輯決定（修修 2026-09-02），現在可編輯——
+    # 但值必須是 packaging/cutouts 裡的單純檔名，否則 `cutouts_dir / name`
+    # 會被路徑穿越。
+    assert CarouselCopyEdit(**base, fields={"cutout": "guest_v5_explaining.png"})
+    for traversal in ("../../secret.png", "sub/dir.png", "x.svg"):
+        with pytest.raises(ValidationError, match="bare cutout filename"):
+            CarouselCopyEdit(**base, fields={"cutout": traversal})
     with pytest.raises(ValidationError, match="not editable"):
         CarouselCopyEdit(**base, fields={"evidence": "changed"})
     with pytest.raises(ValidationError, match="cannot be empty"):

@@ -81,7 +81,25 @@ def run(args: argparse.Namespace) -> dict:
             raise FileNotFoundError(f"required Podcast Carousel input missing: {path}")
 
     spec = _load_model(args.copy_spec.resolve(), PodcastCarouselCopySpecV1)
-    panel = _load_model(args.panel_result.resolve(), PanelResult)
+    if args.panel_result is not None:
+        panel_path = args.panel_result.resolve()
+    elif spec.panel_inherited_from:
+        panel_path = (
+            episode_dir
+            / "ig-carousel"
+            / "editorial"
+            / spec.panel_inherited_from
+            / "panel_result.v1.json"
+        )
+        if not panel_path.is_file():
+            raise FileNotFoundError(
+                f"inherited panel not found for {spec.panel_inherited_from}: {panel_path}"
+            )
+    else:
+        raise SystemExit(
+            "--panel-result is required unless the Copy Spec declares panel_inherited_from"
+        )
+    panel = _load_model(panel_path, PanelResult)
     transcript = build_transcript_index(prose_path, srt_path)
     _validate_spec_evidence(spec, transcript)
     assert_panel_renderable(panel, spec=spec)
@@ -124,7 +142,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("episode_dir", type=Path)
     parser.add_argument("--copy-spec", type=Path, required=True)
-    parser.add_argument("--panel-result", type=Path, required=True)
+    # 宣告 `panel_inherited_from` 的版本（只有人類指定欄位變動）沿用來源版本
+    # 已收斂的 panel，不必為了改一個職稱再跑一次三個 lens。
+    parser.add_argument("--panel-result", type=Path)
     parser.add_argument("--template-dir", type=Path, default=DEFAULT_TEMPLATE)
     parser.add_argument("--force", action="store_true")
     return parser.parse_args()

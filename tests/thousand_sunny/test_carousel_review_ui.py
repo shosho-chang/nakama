@@ -180,7 +180,9 @@ def test_editor_recovers_dirty_cards_and_validates_emphasis_inline() -> None:
     assert "data-dirty-page" in TEMPLATE
     assert 'id="carousel-editor-recovery"' in TEMPLATE
     assert "dirtyEditorPageIds()" in TEMPLATE
-    assert "套用 ${dirtyIds.length} 張修改" in TEMPLATE
+    # 修修 2026-09-02：頁面上那顆重複的送出鈕已拿掉，提示列只帶路不送出。
+    assert "尚有 ${dirtyIds.length} 張卡片修改未送出" in TEMPLATE
+    assert "carousel-editor-apply-all" not in TEMPLATE
     assert "editorStateHasInvalidEmphasis()" in TEMPLATE
     assert "強調文字必須完整出現在" in TEMPLATE
     assert "data-field-error" in TEMPLATE
@@ -201,8 +203,14 @@ def test_editor_uses_receipt_verified_sandbox_bridge_and_canonical_refit() -> No
 def test_editor_mobile_scroll_reset_and_preserve_actions_are_explicit() -> None:
     assert 'id="carousel-editor-reset"' in TEMPLATE
     assert "重設這張" in TEMPLATE
-    assert "保留草稿並關閉" in TEMPLATE
-    assert "preserveAndCloseEditor" in TEMPLATE
+    # 對話框只剩「取消／送出」。修修：「這麼簡單的任務，不會有那種改到一半
+    # 想要儲存草稿的事情。」取消＝丟棄，且有改動時會先確認。
+    assert "保留草稿並關閉" not in TEMPLATE
+    assert "捨棄這張卡片尚未送出的修改？" in TEMPLATE
+    # ×／Esc 保留修改（修修的用法是反覆換素材、關掉看整體再回來）；
+    # 只有「取消」丟棄。兩條路徑分開，不共用同一個 handler。
+    assert "discardAndCloseEditor" in TEMPLATE
+    assert "preserveAndCloseEditor" not in TEMPLATE
     assert "overscroll-behavior:contain" in CSS
     assert ".carousel-editor__body { display:block; overflow-x:hidden; overflow-y:auto" in CSS
 
@@ -254,8 +262,11 @@ def test_manual_line_validation_apply_scope_and_loading_controls_are_explicit() 
     assert "manualLinesError" in TEMPLATE
     assert "editorTextLayout.setAttribute('aria-busy'" in TEMPLATE
     assert "input.disabled = loading" in TEMPLATE
-    assert TEMPLATE.count("submitEditorChanges('all')") == 2
-    assert "套用所有待修改" in TEMPLATE
+    # 送出入口只有一個——這條原本斷言「必須有兩顆」，正是修修反映的重複。
+    assert TEMPLATE.count("submitEditorChanges('all')") == 1
+    assert "送出給 agent 修改" in TEMPLATE
+    # 舊標籤「套用」讓人以為當下就生效，實際上只是建立一張待認領的修正單。
+    assert "套用所有待修改" not in TEMPLATE
 
 
 def test_preview_interactions_are_selected_scaled_keyboard_and_pointer_safe() -> None:
@@ -284,3 +295,62 @@ def test_editor_accessibility_loading_recovery_and_empty_numbers_fail_closed() -
     assert TEMPLATE.count('step="2" required') == 1
     assert "values[name] === ''" in TEMPLATE
     assert "values[input.dataset.layoutField] === ''" in TEMPLATE
+
+
+def test_cutout_picker_lives_in_the_card_editor_not_the_page_header() -> None:
+    """修修 2026-09-02：選圖要跟即時預覽在一起，點了馬上看到新的一層。
+
+    第一版把清單放在頁面最上方、點一下直接開修正單——沒看到結果就先送出。
+    """
+    assert 'id="carousel-cutout-picker"' in TEMPLATE
+    editor_start = TEMPLATE.index('<section class="carousel-editor__controls"')
+    editor_end = TEMPLATE.index('<footer class="carousel-editor__footer">')
+    picker_at = TEMPLATE.index('id="carousel-cutout-picker"')
+    assert editor_start < picker_at < editor_end
+    # 選圖是要反覆試的，排在文字欄位前面才不用每次先捲過四個 textarea。
+    assert picker_at < TEMPLATE.index('<div id="carousel-editor-fields"></div>')
+    # 舊的頁首選擇器與它的「套用到」下拉不可以再存在。
+    assert 'id="carousel-cutouts"' not in TEMPLATE
+    assert "carousel-cutout-target" not in TEMPLATE
+    assert "cutout_targets" not in TEMPLATE
+
+
+def test_cutout_pick_goes_through_the_normal_submit_not_its_own_job() -> None:
+    """換照片跟改文字一起走「送出給 agent 修改」，不再自己建一張修正單。"""
+    assert "editorState.copyEdits[page.page_id] = next" in TEMPLATE
+    picker_js = TEMPLATE[TEMPLATE.index("if (cutoutPicker) {") :]
+    assert "fetch(" not in picker_js[: picker_js.index("updateEditorAction();")]
+    # 打字時只掃得到文字輸入框，不先接住已選的照片就會把它洗掉。
+    assert "const next = {...assetEditsFor(page)};" in TEMPLATE
+
+
+def test_cutout_preview_swap_carries_the_post_pick_fingerprint() -> None:
+    """換圖改變重疊量測；診斷的 fingerprint 沒跟著換，送出鈕會永遠 disabled。"""
+    assert "previewPatchSequence += 1;" in TEMPLATE
+    assert "fingerprint: editorDraftFingerprint(page)," in TEMPLATE
+    assert "type === 'apply-cutout'" in BRIDGE
+    handler = BRIDGE[BRIDGE.index("type === 'apply-cutout'") :]
+    adopt = handler.index("diagnosticsFingerprint = event.data.fingerprint")
+    assert adopt < handler.index("applyCutout(event.data.field")
+
+
+def test_cutout_reaches_the_preview_as_a_data_url() -> None:
+    """預覽的 CSP 是 `img-src 'self' data:`，且 preview-assets 只服務 receipt
+
+    驗過的樣板快照——新選的去背照不在快照裡，只能由母頁面轉成 data URL 遞進去。
+    """
+    assert "readAsDataURL" in TEMPLATE
+    assert 'data-cutout-base="/bridge/ig-cards/{{ episode_slug }}/cutout"' in TEMPLATE
+    assert "img-src 'self' data:" in (
+        ROOT / "thousand_sunny/routers/carousel_review.py"
+    ).read_text(encoding="utf-8")
+
+
+def test_cutout_strip_cannot_blow_out_the_editor_column() -> None:
+    """fieldset 預設 min-inline-size:min-content，實測會把控制欄撐到 1592px。"""
+    strip = CSS[CSS.index(".carousel-cutouts {") : CSS.index(".carousel-cutout {")]
+    assert "min-inline-size:0" in strip
+    assert "overflow-x:auto" in CSS[CSS.index(".carousel-cutouts__list {") :][:400]
+    # contain 而非 cover：去背照上方有透明留白，切到頂端整格會看起來是空的。
+    thumb = CSS[CSS.index(".carousel-cutout img {") :][:200]
+    assert "object-fit:contain" in thumb

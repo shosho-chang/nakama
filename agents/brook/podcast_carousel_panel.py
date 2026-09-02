@@ -51,6 +51,14 @@ class PanelReview(_PanelModel):
 class RejectedFinding(_PanelModel):
     finding_id: str
     reason: str
+    #: 這條 finding 針對的是**修修在 Review Gate 指定的值**（職稱、封面用哪張照片、
+    #: 他改寫的文案…）。修修 2026-09-02 裁決：「只要是我修改的就是最終的決定，
+    #: 不用再問。」panel 存在的目的是抓 agent 看不到的錯（歸屬、因果、evidence
+    #: 漂移），不是審查頻道主的編輯決定——lens 只有逐字稿，沒有他對受眾與品牌的判斷。
+    #:
+    #: 標了這個旗標的 finding **仍然完整保留在 reviews 與 verification_rejections
+    #: 裡**，只是不再阻擋收斂。這是記錄，不是消音。
+    editor_decision: bool = False
 
 
 class PanelSynthesis(_PanelModel):
@@ -102,13 +110,22 @@ class PanelResult(_PanelModel):
         if accepted | rejected != known:
             raise ValueError("synthesis must account for every verified finding exactly once")
 
+        editor_decisions = {
+            finding.finding_id for finding in self.synthesis.rejected if finding.editor_decision
+        }
         brand_high = {
             finding.finding_id
             for finding in self.reviews["brand_evidence"].findings
             if finding.severity == "high" and finding.finding_id in known
         }
-        if not brand_high.issubset(accepted):
-            raise ValueError("high brand/evidence findings cannot be rejected")
+        # 高嚴重度的 brand finding 預設不可駁回——那道護欄擋掉的是「agent 覺得
+        # 沒關係」。唯一的例外是修修自己指定的值：他的決定是最高權限，駁回理由
+        # 連同 finding 全文一起留在 panel 裡可稽核。
+        if not brand_high.issubset(accepted | editor_decisions):
+            raise ValueError(
+                "high brand/evidence findings cannot be rejected unless the rejection is "
+                "marked editor_decision (the editor's own instruction)"
+            )
 
         expected_status = "converged"
         if self.synthesis.blockers:
@@ -131,8 +148,19 @@ def assert_panel_renderable(
 
     if panel.episode_id != spec.episode_id:
         raise ValueError("panel episode_id does not match Copy Spec")
-    if panel.revision != spec.revision:
-        raise ValueError("panel revision does not match Copy Spec")
+    # 一般情況：panel 必須是**這一版**的。例外只有一種——這一版明白宣告它的 AI
+    # 生成內容與某一版逐位元組相同（`panel_inherited_from`），差異全部是人類在
+    # Review Gate 指定的欄位。那個宣告由修正單的 exact-diff 背書，不是自我聲明。
+    allowed = {spec.revision}
+    if spec.panel_inherited_from:
+        allowed.add(spec.panel_inherited_from)
+    if panel.revision not in allowed:
+        raise ValueError(
+            "panel revision does not match Copy Spec"
+            if not spec.panel_inherited_from
+            else f"panel revision must be {spec.revision} or the inherited "
+            f"{spec.panel_inherited_from}"
+        )
     if panel.status == "blocked" or panel.synthesis.blockers:
         raise RuntimeError(f"editorial panel blockers: {panel.synthesis.blockers}")
     if panel.status != "converged":
