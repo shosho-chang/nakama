@@ -42,43 +42,45 @@ def test_judge_degrades_to_provisional_on_llm_failure(monkeypatch: pytest.Monkey
 
 
 def test_reply_is_deterministic_for_same_user_day():
-    kw = dict(user_id=42, day="2026-10-07", xp=10, berry=1, streak=3)
+    kw = dict(user_id=42, day="2026-10-07", xp=10, streak=3)
     assert templates.render_checkin_reply(**kw) == templates.render_checkin_reply(**kw)
 
 
 def test_reply_contains_ledger_line_and_streak():
-    text = templates.render_checkin_reply(user_id=42, day="2026-10-07", xp=10, berry=1, streak=3)
-    assert "+10 XP" in text and "1 貝里" in text and "3" in text
+    text = templates.render_checkin_reply(user_id=42, day="2026-10-07", xp=10, streak=3)
+    assert "+10 XP" in text and "3" in text
+    assert "貝里" not in text  # 貝里已退役（2026-09-02）——不得回到會員看得到的文案
 
 
 def test_streak_bonus_line_appended_on_seventh_day():
     text = templates.render_checkin_reply(
-        user_id=42, day="2026-10-07", xp=10, berry=1, streak=7, bonus_xp=30, bonus_berry=3
+        user_id=42, day="2026-10-07", xp=10, streak=7, bonus_xp=30
     )
-    assert "+30 XP" in text and "+3 貝里" in text
+    assert "+30 XP" in text
+    assert "貝里" not in text
 
 
 def test_welcome_back_only_for_returnees_with_history():
     returned = templates.render_checkin_reply(
-        user_id=42, day="2026-10-07", xp=10, berry=1, streak=1, returned_after_gap=True
+        user_id=42, day="2026-10-07", xp=10, streak=1, returned_after_gap=True
     )
     fresh = templates.render_checkin_reply(
-        user_id=42, day="2026-10-07", xp=10, berry=1, streak=1, returned_after_gap=False
+        user_id=42, day="2026-10-07", xp=10, streak=1, returned_after_gap=False
     )
     assert returned != fresh  # 回歸池與一般池是不同文案
 
     # streak > 1 時即使標了 returned 也不用回歸語氣（已連續中，說「歡迎回來」很怪）
     ongoing = templates.render_checkin_reply(
-        user_id=42, day="2026-10-07", xp=10, berry=1, streak=5, returned_after_gap=True
+        user_id=42, day="2026-10-07", xp=10, streak=5, returned_after_gap=True
     )
     assert "歡迎回來" not in ongoing and "回來就好" not in ongoing
 
 
 def test_all_template_pools_parse_and_render():
     for name, slots in (
-        ("checkin_approved.txt", {"xp": 10, "berry": 1, "streak": 2}),
-        ("welcome_back.txt", {"xp": 10, "berry": 1, "streak": 1}),
-        ("streak_bonus.txt", {"bonus_xp": 30, "bonus_berry": 3, "streak": 7}),
+        ("checkin_approved.txt", {"xp": 10, "streak": 2}),
+        ("welcome_back.txt", {"xp": 10, "streak": 1}),
+        ("streak_bonus.txt", {"bonus_xp": 30, "streak": 7}),
     ):
         pool = templates._pool(name)
         assert pool, f"{name} empty"

@@ -377,7 +377,7 @@ final class Rest {
 
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				'SELECT user_id, xp_total, berry_balance, level, level_label, level_min_xp, next_level_xp, next_level_label' .
+				'SELECT user_id, xp_total, level, level_label, level_min_xp, next_level_xp, next_level_label' .
 				' FROM ' . Ledger::balances_table() .
 				' WHERE user_id > %d ORDER BY user_id ASC LIMIT %d',
 				$after,
@@ -444,9 +444,9 @@ final class Rest {
 			ARRAY_A
 		);
 		if ( ! $row ) {
-			return array( 'user_id' => $user_id, 'xp_total' => 0, 'berry_balance' => 0, 'level' => 1, 'exists' => false );
+			return array( 'user_id' => $user_id, 'xp_total' => 0, 'level' => 1, 'exists' => false );
 		}
-		foreach ( array( 'user_id', 'xp_total', 'berry_balance', 'level', 'level_min_xp', 'next_level_xp' ) as $k ) {
+		foreach ( array( 'user_id', 'xp_total', 'level', 'level_min_xp', 'next_level_xp' ) as $k ) {
 			$row[ $k ] = (int) $row[ $k ];
 		}
 		$row['exists'] = true;

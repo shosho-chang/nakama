@@ -1,19 +1,19 @@
 # 打卡通過的公開回覆變體池（訊息治理：Sanji 不自創文案，只從這裡選）。
 # 格式：變體之間用單獨一行 `---` 分隔；`#` 開頭的行是註解，不會被送出。
-# 可用 slot：{xp} {berry} {streak}
+# 可用 slot：{xp} {streak}
 # 修修可直接編輯本檔（git 版控＝審核紀錄）。新增/刪除變體不需改程式。
-+{xp} XP｜{berry} 貝里，連續第 {streak} 天 ⚓
++{xp} XP，連續第 {streak} 天 ⚓
 ---
-+{xp} XP｜{berry} 貝里。今天也記上了，連續 {streak} 天！
++{xp} XP。今天也記上了，連續 {streak} 天！
 ---
-+{xp} XP｜{berry} 貝里入帳。第 {streak} 天，穩穩的。
++{xp} XP 入帳。第 {streak} 天，穩穩的。
 ---
-+{xp} XP｜{berry} 貝里。看見你了，這是連續第 {streak} 天。
++{xp} XP。看見你了，這是連續第 {streak} 天。
 ---
-+{xp} XP｜{berry} 貝里，連續 {streak} 天。今天的你比昨天多走了一步。
++{xp} XP，連續 {streak} 天。今天的你比昨天多走了一步。
 ---
-+{xp} XP｜{berry} 貝里。連續第 {streak} 天——習慣就是這樣長出來的。
++{xp} XP。連續第 {streak} 天——習慣就是這樣長出來的。
 ---
-+{xp} XP｜{berry} 貝里，第 {streak} 天完成 ⚓ 明天見。
++{xp} XP，第 {streak} 天完成 ⚓ 明天見。
 ---
-+{xp} XP｜{berry} 貝里。連續 {streak} 天了，節奏很好。
++{xp} XP。連續 {streak} 天了，節奏很好。

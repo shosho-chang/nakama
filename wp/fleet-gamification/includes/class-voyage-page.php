@@ -13,7 +13,6 @@
  *     也可直接分享連結。
  *
  * 資料規則：任何登入成員可看任何人摘要（等級／XP）；入帳明細只有本人可見。
- * 貝里照記但**不顯示**——沒有商店的幣只會教會成員數字是裝飾（見 class-portal-ui.php 檔頭）。
  * gam_enabled 關閉時三層全 inert。
  */
 
@@ -609,7 +608,7 @@ document.addEventListener('click',function(e){
 	}
 
 	/**
-	 * @return array{name:string,username:string,avatar:string,xp:int,berry:int,
+	 * @return array{name:string,username:string,avatar:string,xp:int,
 	 *               has_balance:bool,level:int,level_label:string,level_min_xp:int,
 	 *               next_level_xp:int,next_level_label:string,is_self:bool,
 	 *               identity:string,declare_url:string,
@@ -621,7 +620,7 @@ document.addEventListener('click',function(e){
 		$profile = \FluentCommunity\App\Models\XProfile::where( 'user_id', $target_user_id )->first();
 		$bal     = $wpdb->get_row(
 			$wpdb->prepare(
-				'SELECT xp_total, berry_balance, level, level_label, level_min_xp, next_level_xp, next_level_label' .
+				'SELECT xp_total, level, level_label, level_min_xp, next_level_xp, next_level_label' .
 				' FROM ' . Ledger::balances_table() . ' WHERE user_id = %d',
 				$target_user_id
 			),
@@ -659,7 +658,6 @@ document.addEventListener('click',function(e){
 			'username' => $profile ? (string) $profile->username : '',
 			'avatar'   => $profile ? (string) $profile->avatar : '',
 			'xp'       => $bal ? (int) $bal['xp_total'] : 0,
-			'berry'    => $bal ? (int) $bal['berry_balance'] : 0,
 			// 等級帶全部由 Sanji 寫入——plugin 不知道曲線，只負責畫出來。
 			'has_balance'      => (bool) $bal,
 			'level'            => $bal ? (int) $bal['level'] : 0,

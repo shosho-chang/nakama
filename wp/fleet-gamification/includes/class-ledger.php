@@ -89,7 +89,6 @@ final class Ledger {
 	 * @param array{
 	 *   user_id: int,
 	 *   xp: int,
-	 *   berry: int,
 	 *   source: string,
 	 *   idempotency_key: string,
 	 *   rule_version: string,
@@ -116,20 +115,18 @@ final class Ledger {
 			return 0;
 		}
 
-		$xp    = (int) ( $args['xp'] ?? 0 );
-		$berry = (int) ( $args['berry'] ?? 0 );
+		$xp = (int) ( $args['xp'] ?? 0 );
 
 		$user  = get_userdata( $user_id );
 		$email = $user ? (string) $user->user_email : '';
 
 		$sql = $wpdb->prepare(
 			'INSERT IGNORE INTO ' . self::grants_table() .
-			' (user_id, user_email, xp, berry, source, season, ref_event_id, reverses_grant_id, reason, idempotency_key, rule_version, created_at)' .
-			' VALUES (%d, %s, %d, %d, %s, %s, %d, %d, %s, %s, %s, %s)',
+			' (user_id, user_email, xp, source, season, ref_event_id, reverses_grant_id, reason, idempotency_key, rule_version, created_at)' .
+			' VALUES (%d, %s, %d, %s, %s, %d, %d, %s, %s, %s, %s)',
 			$user_id,
 			$email,
 			$xp,
-			$berry,
 			$source,
 			substr( (string) ( $args['season'] ?? '' ), 0, 10 ),
 			absint( $args['ref_event_id'] ?? 0 ),
@@ -150,7 +147,6 @@ final class Ledger {
 			$user_id,
 			$email,
 			$xp,
-			$berry,
 			self::level_band_from( $args )
 		);
 
@@ -234,7 +230,7 @@ final class Ledger {
 	 *
 	 * @param array{level:?int,label:?string,min:?int,next:?int,next_label:?string} $band
 	 */
-	private static function bump_balance( int $user_id, string $email, int $xp, int $berry, array $band ): void {
+	private static function bump_balance( int $user_id, string $email, int $xp, array $band ): void {
 		global $wpdb;
 
 		$level_sql = self::level_set_sql( $band );
@@ -244,16 +240,14 @@ final class Ledger {
 		$wpdb->query(
 			$wpdb->prepare(
 				'INSERT INTO ' . self::balances_table() .
-				' (user_id, user_email, xp_total, berry_balance, level, level_label, level_min_xp, next_level_xp, next_level_label, updated_at)' .
-				' VALUES (%d, %s, %d, %d, %d, %s, %d, %d, %s, %s)' .
+				' (user_id, user_email, xp_total, level, level_label, level_min_xp, next_level_xp, next_level_label, updated_at)' .
+				' VALUES (%d, %s, %d, %d, %s, %d, %d, %s, %s)' .
 				' ON DUPLICATE KEY UPDATE' .
 				' xp_total = xp_total + VALUES(xp_total),' .
-				' berry_balance = berry_balance + VALUES(berry_balance),' .
 				" user_email = VALUES(user_email), updated_at = VALUES(updated_at)$level_sql",
 				$user_id,
 				$email,
 				$xp,
-				$berry,
 				max( 1, (int) $band['level'] ),
 				(string) ( $band['label'] ?? '' ),
 				(int) ( $band['min'] ?? 0 ),
@@ -266,37 +260,35 @@ final class Ledger {
 
 	/**
 	 * 從帳本重算單一使用者的投影（每日對帳 & 投影損毀時用）。
-	 * 回傳重算後的 [xp_total, berry_balance]。
+	 * 回傳重算後的 xp_total。
 	 */
-	public static function rebuild_balance( int $user_id ): array {
+	public static function rebuild_balance( int $user_id ): int {
 		global $wpdb;
 
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
-				'SELECT COALESCE(SUM(xp),0) AS xp_total, COALESCE(SUM(berry),0) AS berry_total, MAX(user_email) AS email FROM ' .
+				'SELECT COALESCE(SUM(xp),0) AS xp_total, MAX(user_email) AS email FROM ' .
 				self::grants_table() . ' WHERE user_id = %d',
 				$user_id
 			),
 			ARRAY_A
 		);
 
-		$xp    = (int) ( $row['xp_total'] ?? 0 );
-		$berry = (int) ( $row['berry_total'] ?? 0 );
+		$xp = (int) ( $row['xp_total'] ?? 0 );
 
 		$wpdb->query(
 			$wpdb->prepare(
 				'INSERT INTO ' . self::balances_table() .
-				' (user_id, user_email, xp_total, berry_balance, updated_at)' .
-				' VALUES (%d, %s, %d, %d, %s)' .
-				' ON DUPLICATE KEY UPDATE xp_total = VALUES(xp_total), berry_balance = VALUES(berry_balance), updated_at = VALUES(updated_at)',
+				' (user_id, user_email, xp_total, updated_at)' .
+				' VALUES (%d, %s, %d, %s)' .
+				' ON DUPLICATE KEY UPDATE xp_total = VALUES(xp_total), updated_at = VALUES(updated_at)',
 				$user_id,
 				(string) ( $row['email'] ?? '' ),
 				$xp,
-				$berry,
 				current_time( 'mysql' )
 			)
 		);
 
-		return array( $xp, $berry );
+		return $xp;
 	}
 }
