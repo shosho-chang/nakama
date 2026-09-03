@@ -46,15 +46,21 @@ class _FakeMediaItem:
 
 
 class _FakeTimelineItem:
-    def __init__(self, source_start: int, source_end: int):
+    def __init__(self, source_start: int, source_end: int, duration: int | None = None):
         self.source_start = source_start
         self.source_end = source_end
+        # Resolve 對 end frame 含不含端點並不一致，duration 才是準的——預設沿用
+        # 「不含端點」那種回報方式，需要另一種的測試自己傳 duration。
+        self.duration = source_end - source_start if duration is None else duration
 
     def GetSourceStartFrame(self):
         return self.source_start
 
     def GetSourceEndFrame(self):
         return self.source_end
+
+    def GetDuration(self):
+        return self.duration
 
 
 class _FakeTimeline:
@@ -111,6 +117,26 @@ def test_appended_source_range_rejects_resolve_clamp_to_last_frame():
 
     with pytest.raises(SystemExit, match="Resolve clamped source range"):
         _validate_appended_source_range(clamped, 22_032, 22_341)
+
+
+def test_appended_source_range_accepts_inclusive_end_frame_reporting():
+    """Resolve 有時把 end frame 報成含端點——那不是被夾住，不能擋。
+
+    抹布 L02 實測（2026-09-03）：請求 25410-31413（6003 格），Resolve 放了
+    6003 格但把 end 報成 31412，`end - start` 只有 6002。同一次執行裡 L09 的
+    片段卻是 `end - start == GetDuration()`。以 duration 為準才不會誤判。
+    """
+    inclusive = _FakeTimelineItem(25_410, 31_412, duration=6_003)
+
+    _validate_appended_source_range(inclusive, 25_410, 31_413)
+
+
+def test_appended_source_range_still_rejects_short_placement():
+    """真的被截短時，duration 會露餡——這道守衛沒有被放寬。"""
+    truncated = _FakeTimelineItem(25_410, 31_412, duration=1)
+
+    with pytest.raises(SystemExit, match="Resolve clamped source range"):
+        _validate_appended_source_range(truncated, 25_410, 31_413)
 
 
 def _words(*runs):
