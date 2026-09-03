@@ -340,20 +340,21 @@ Stage 5 consumers 預設發現並驗證
 `<episode>/subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json`；fresh episode 不傳字幕 flag。
 先 dry-run 核對，再 probe 同一個 3.12 runtime，最後一定要執行 actual build：
 
-> ⚠️ **`data\resolve\subtitle-template.drt` 目前是壞的（2026-09-03 實測，尚未修復）。**
-> 從這個 DRT 長出來的 timeline，**V1 拒收視訊**：`AppendToTimeline` 回 `[None]`，音訊進得去、
-> 視訊進不去，重試無用（`append_checked` 的三次重試會全部用盡然後 `SystemExit`）。
-> 同一支主影片在**不套模板**的 `CreateEmptyTimeline` 上一次就成功——已交叉驗證，是模板的問題，
-> 不是 clip、不是幀率（雙方都是 1920x1080 / 30fps）、也不是軌道鎖定（enabled=True, locked=False）。
+> ⚠️ **主影片上軌回 `[None]` 是 timing，不是素材或模板壞掉（2026-09-03 血淚）。**
+> 37.8 GB 的 program feed 剛 `ImportMedia` 進來時 Resolve 還在建索引，第一次 append 必定失敗。
+> 當時 `append_checked` 只有 3×2s ≈ 4s 預算，連兩次 build 都在這裡用盡重試、整支沒上軌；
+> 已放寬到 6×5s（見 `shared/resolve_append.py` 的註解）。
 >
-> 在模板重做之前，把環境變數指向不存在的路徑，讓 `build_resolve_project.py` 走它自己的
-> 無模板 fallback（`CreateEmptyTimeline` + `AddTrack("subtitle")`）。代價：字幕**樣式 preset
-> 不會套上**，交付時要明確告訴使用者自行套一次「Shosho YT」。
-> 修復方式是用 `--make-template` 從一個手動套好樣式、**且 V1 可正常上片**的 timeline 重新產生。
+> **當時我做的 A/B 判斷是錯的**：「不套模板成功、套模板失敗」看起來像 DRT 模板的鍋，
+> 於是一度把 `subtitle-template.drt` 標成壞的。事後用同一支檔案、同一個模板、同一種 append
+> 寫法重測 **3/3 全過**——兩邊的差別只是中間隔了時間。**單次觀察不能當結論，要重現。**
+>
+> 真的又卡住：先確認 Resolve 沒有 modal dialog、媒體池的 clip 有正確 duration/resolution，
+> 再加大 `append_checked` 的 retries/delay。不要急著把模板或素材判死。
 
 ```powershell
-# 模板修好前的暫行做法——故意指向不存在的路徑以觸發無模板 fallback
-$env:RESOLVE_SUBTITLE_TEMPLATE = "E:\nakama\data\resolve\__DISABLED_broken_v1_track__.drt"
+$env:RESOLVE_SUBTITLE_TEMPLATE = "E:\nakama\data\resolve\subtitle-template.drt"
+if (-not (Test-Path -LiteralPath $env:RESOLVE_SUBTITLE_TEMPLATE)) { throw "Resolve subtitle template missing" }
 
 E:\nakama\.venv-v2\Scripts\python.exe `
   scripts\build_resolve_project.py "<episode>" --dry-run
@@ -362,6 +363,25 @@ E:\nakama\.venv-v2\Scripts\python.exe -c `
 E:\nakama\.venv-v2\Scripts\python.exe `
   scripts\build_resolve_project.py "<episode>"
 ```
+
+### 字幕語助詞清理（修修 2026-09-03）
+
+上 timeline 的字幕副本會自動移除遲疑語助詞。**`release.srt` 本體永遠不動**——它是 ADR-063 的
+證據，語助詞清理純屬顯示層，實作在 `shared/subtitle_finalize.py`，hash-bound release 走窄入口
+`strip_fillers_srt_file`（只做這件事，不碰標點與空隙）。
+
+規則是**區分遲疑詞與語氣詞**，不是無差別刪除：
+
+- **「呃」無條件刪除**（延續修修 2026-07-26 的既有規則，與 `cue_builder.FILLERS`、
+  `transcriber` prompt 同一條）
+- **「嗯／哦／齁」看位置**：獨立成句或句首 → 刪；**句尾或句中保留**
+- 未點名的語氣詞（喔／欸／啊／耶）**一律不碰**，尤其句尾的「啊」2026-07-26 明文保留
+
+為什麼分：句尾的「齁／哦」是語氣不是雜訊——`心理上的挨打齁`、`可是很有意思哦`、
+`我講幾個例子齁`，刪掉話會變硬。20260901 蘇予昕實測 4824 → 4513 句（整條刪 311、
+刪字保句 38、保留句尾語氣詞 35）。
+
+清理數量必須印進 log，不得靜默。要調整詞表改 `HESITATION_FILLERS` / `POSITIONAL_FILLERS`。
 
 Actual build exit 0 只代表 base timeline 建立成功；agent 必須把 base full-program timeline 交給使用者。
 此時 normalization／subtitle

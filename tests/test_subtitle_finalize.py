@@ -1,9 +1,13 @@
-"""字幕定版兩規則（修修 2026-08-05）：句尾零標點 + cue 間零空隙。"""
+"""字幕定版規則：句尾零標點 + cue 間零空隙 + 語助詞清理。"""
+
+import pytest
 
 from shared.subtitle_finalize import (
     finalize_cues,
     format_srt,
     parse_srt_text,
+    filler_only,
+    strip_fillers,
     strip_tail_punct,
 )
 
@@ -264,3 +268,66 @@ class TestSrtRoundtrip:
         cues = parse_srt_text(srt)
         assert cues == [(0.031, 1.5, "第一句"), (1.5, 3.0, "第二句")]
         assert parse_srt_text(format_srt(cues)) == cues
+
+
+# --- ④ 語助詞清理（修修 2026-09-03）--------------------------------------
+# 核心分野：遲疑詞是雜訊要刪，語氣詞是語氣要留。實地資料來自
+# 20260901 蘇予昕：句尾的「齁」有 21/24、「哦」有 14/40，刪掉會把話講硬。
+
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["嗯", "嗯~", "呃", "呃~", "哦", "哦~", "齁~", "嗯嗯嗯", "嗯~ 嗯~", "嗯，"],
+)
+def test_filler_only_cues_are_detected(text):
+    assert filler_only(text)
+
+
+@pytest.mark.parametrize("text", ["心理上的挨打齁", "可是很有意思哦", "對啊", "嗯 我覺得"])
+def test_real_content_is_not_filler_only(text):
+    assert not filler_only(text)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        # 「呃」無條件刪——句首、句中都刪
+        ("呃 最愛講話的蘇予昕", "最愛講話的蘇予昕"),
+        ("就是 呃 我們這門課程", "就是 我們這門課程"),
+        ("呃~來諮商的夥伴", "來諮商的夥伴"),
+        # 「嗯／哦／齁」句首刪
+        ("嗯 我好像從很小就會講話", "我好像從很小就會講話"),
+        ("嗯~ 就是跟夥伴工作的過程中", "就是跟夥伴工作的過程中"),
+        # 句尾是語氣詞——保留
+        ("心理上的挨打齁", "心理上的挨打齁"),
+        ("然後否則你講得越差齁", "然後否則你講得越差齁"),
+        ("可是很有意思哦", "可是很有意思哦"),
+        # 句中非遲疑的感嘆——保留（「哇哦」是感嘆不是遲疑）
+        ("哇哦~原來可以那麼自在哦", "哇哦~原來可以那麼自在哦"),
+        # 未點名的語氣詞一律不碰（尤其句尾的「啊」，2026-07-26 明文保留）
+        ("怎麼可能啊", "怎麼可能啊"),
+        ("好啊", "好啊"),
+        ("欸 我跟你說", "欸 我跟你說"),
+    ],
+)
+def test_strip_fillers_distinguishes_hesitation_from_tone(raw, expected):
+    assert strip_fillers(raw) == expected
+
+
+def test_strip_fillers_is_idempotent():
+    once = strip_fillers("嗯~ 呃 我覺得這樣很好哦")
+    assert strip_fillers(once) == once
+
+
+def test_finalize_cues_drops_filler_only_and_counts_both():
+    cues = [
+        (0.0, 1.0, "嗯"),
+        (1.0, 2.0, "呃 我覺得"),
+        (2.0, 3.0, "心理上的挨打齁"),
+        (3.0, 4.0, "嗯~"),
+    ]
+    out, stats = finalize_cues(cues, gap_close_max=3.0)
+    assert [c[2] for c in out] == ["我覺得", "心理上的挨打齁"]
+    assert stats["filler_cues_dropped"] == 2
+    assert stats["filler_stripped"] == 1

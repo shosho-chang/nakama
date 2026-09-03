@@ -43,7 +43,10 @@ from agents.brook.script_video.subtitle_handoff import (  # noqa: E402
     Stage5SubtitleSelection,
 )
 from shared.resolve_append import append_checked  # noqa: E402
-from shared.subtitle_finalize import finalize_srt_file  # noqa: E402
+from shared.subtitle_finalize import (  # noqa: E402
+    finalize_srt_file,
+    strip_fillers_srt_file,
+)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -210,8 +213,17 @@ def _versioned_srt(
         "verified-v2",
         "degraded-dual-asr-v1",
     }:
-        dst.write_bytes(src.read_bytes())
-        logger.info("Hash-bound 字幕定版：保留 exact SRT bytes")
+        # Hash-bound release 不跑完整定版（標點／空隙屬顯示層處理，會默默改動
+        # 已審核文字）。但語助詞清理是修修 2026-09-03 的明示編輯決策，套用並
+        # 報數；release.srt 本體不動，lineage 仍綁來源 release identity。
+        stats = strip_fillers_srt_file(src, dst)
+        logger.info(
+            "Hash-bound 字幕：語助詞清理 %d → %d 句（整條刪 %d、刪字保句 %d）",
+            stats["cues_in"],
+            stats["cues"],
+            stats["filler_cues_dropped"],
+            stats["filler_stripped"],
+        )
         return dst
     stats = finalize_srt_file(src, dst)
     msg = f"字幕定版: 尾標點剝 {stats['stripped']} 句、空隙補平 {stats['closed']} 處"

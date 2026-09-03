@@ -532,7 +532,7 @@ def test_official_release_is_mutually_exclusive_with_forensic_modes(
         request_case.open(tmp_path)
 
 
-def test_resolve_preserves_exact_official_release_srt_bytes(
+def test_resolve_display_copy_strips_fillers_and_leaves_official_release_intact(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -543,9 +543,22 @@ def test_resolve_preserves_exact_official_release_srt_bytes(
     sys.modules.pop("build_resolve_project", None)
     import build_resolve_project
 
+    release_before = selected.srt_path.read_bytes()
     versioned = build_resolve_project._versioned_srt(tmp_path, subtitle=selected)
 
-    assert versioned.read_bytes() == selected.srt_path.read_bytes()
+    # Hash-bound 顯示副本 = release 文字套語助詞清理（修修 2026-09-03）。
+    # 不再是 byte-exact 複製：標點／空隙仍然不碰，但遲疑語助詞要刪。
+    # release.srt 本體永遠不動——證據鏈靠它。
+    from shared.subtitle_finalize import filler_only, parse_srt_text, strip_fillers
+
+    assert selected.srt_path.read_bytes() == release_before
+    source_cues = parse_srt_text(selected.srt_path.read_text(encoding="utf-8-sig"))
+    expected = [
+        (start, end, strip_fillers(text))
+        for start, end, text in source_cues
+        if not filler_only(text) and strip_fillers(text)
+    ]
+    assert parse_srt_text(versioned.read_text(encoding="utf-8-sig")) == expected
 
 
 def test_resolve_accepts_stage5_handoff_but_highlight_requires_editorial_master(
@@ -846,7 +859,7 @@ def test_degraded_release_handoff_accepts_episode_specific_counts(
     assert selected.mode == "degraded-dual-asr-v1"
 
 
-def test_resolve_preserves_exact_degraded_release_srt_bytes(
+def test_resolve_display_copy_strips_fillers_and_leaves_degraded_release_intact(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -857,9 +870,22 @@ def test_resolve_preserves_exact_degraded_release_srt_bytes(
     sys.modules.pop("build_resolve_project", None)
     import build_resolve_project
 
+    release_before = selected.srt_path.read_bytes()
     versioned = build_resolve_project._versioned_srt(tmp_path, subtitle=selected)
 
-    assert versioned.read_bytes() == selected.srt_path.read_bytes()
+    # Hash-bound 顯示副本 = release 文字套語助詞清理（修修 2026-09-03）。
+    # 不再是 byte-exact 複製：標點／空隙仍然不碰，但遲疑語助詞要刪。
+    # release.srt 本體永遠不動——證據鏈靠它。
+    from shared.subtitle_finalize import filler_only, parse_srt_text, strip_fillers
+
+    assert selected.srt_path.read_bytes() == release_before
+    source_cues = parse_srt_text(selected.srt_path.read_text(encoding="utf-8-sig"))
+    expected = [
+        (start, end, strip_fillers(text))
+        for start, end, text in source_cues
+        if not filler_only(text) and strip_fillers(text)
+    ]
+    assert parse_srt_text(versioned.read_text(encoding="utf-8-sig")) == expected
 
 
 @pytest.mark.parametrize("artifact", ["release_srt", "release_ledger", "export_manifest"])
