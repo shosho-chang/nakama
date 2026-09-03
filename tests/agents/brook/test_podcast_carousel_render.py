@@ -490,3 +490,52 @@ def test_quote_a_text_cannot_collide_with_protected_guest_or_escape_bubble(tmp_p
         "editor text/protected collision" in note or "editor text containment failure" in note
         for note in quote.notes
     ), quote.notes
+
+
+def test_quote_geometry_override_reaches_both_quote_variants():
+    """金句的去背照位置原本只活在算圖 CSS 裡，override 進不去，改了也不會出圖。"""
+    from agents.brook.podcast_carousel_render import _layout_override_markup
+    from shared.schemas.podcast_carousel import CarouselLayoutOverridesV1, GuestLayoutOverride
+
+    class _Spec:
+        layout_overrides = CarouselLayoutOverridesV1(
+            quote=GuestLayoutOverride(guest_right_px=-80, guest_bottom_px=-30, guest_height_px=400)
+        )
+
+    markup = _layout_override_markup(_Spec())
+    assert ".quote-a .guest,.quote-b .guest-panel img{" in markup
+    assert "right:-80px!important" in markup
+    assert "bottom:-30px!important" in markup
+    assert "height:400px!important" in markup
+
+
+def test_no_quote_override_leaves_each_variant_on_its_own_render_default():
+    """沒有 override 就完全不出手——A 版與 B 版的預設值本來就不同。"""
+    from agents.brook.podcast_carousel_render import _layout_override_markup
+    from shared.schemas.podcast_carousel import CarouselLayoutOverridesV1
+
+    class _Spec:
+        layout_overrides = CarouselLayoutOverridesV1()
+
+    markup = _layout_override_markup(_Spec())
+    assert ".quote-a" not in markup
+    assert ".cover .guest" not in markup
+
+
+def test_inlined_cutout_order_is_stable_across_processes(tmp_path, monkeypatch):
+    """render input 必須是決定性的，否則修正單完成時的「重建比對」會隨機失敗。
+
+    原本內嵌素材的鍵順序來自 `set` 的迭代順序，而 `set` 對字串的順序在不同行程
+    之間會變（PYTHONHASHSEED 隨機化）。2026-09-02 實測：r003 的重建在第
+    983,592 個 byte 起分歧，只因為 `guest_thumb_v10_serious` 與
+    `guest_v5_explaining` 的先後對調。
+    """
+    import inspect
+
+    from agents.brook import podcast_carousel_render as module
+
+    source = inspect.getsource(module._write_render_input)
+    assert "cutout_names = sorted(" in source, "內嵌素材清單必須排序，不能靠 set 順序"
+    # 迭代它的迴圈也不可以再退回 set
+    body = source[source.index("cutout_names = sorted(") :]
+    assert "for name in cutout_names:" in body

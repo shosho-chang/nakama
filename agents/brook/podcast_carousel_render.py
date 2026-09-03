@@ -108,6 +108,18 @@ def _layout_override_markup(spec: PodcastCarouselCopySpecV1) -> str:
             f"height:{cover.guest_height_px}px!important"
             "}\n"
         )
+    quote = spec.layout_overrides.quote
+    if quote is not None:
+        # A 版的去背照直接掛在畫布上，B 版掛在 `.guest-panel` 裡；兩者都是絕對
+        # 定位、同一組欄位，所以一條規則同時蓋掉。沒有 override 時完全不出手，
+        # 各版型維持自己的算圖預設。
+        legacy += (
+            ".quote-a .guest,.quote-b .guest-panel img{"
+            f"right:{quote.guest_right_px}px!important;"
+            f"bottom:{quote.guest_bottom_px}px!important;"
+            f"height:{quote.guest_height_px}px!important"
+            "}" + chr(10)
+        )
     return (
         "<style data-carousel-layout-overrides>\n"
         "[data-fit-region]{white-space:pre-wrap;height:auto}\n"
@@ -250,16 +262,23 @@ def _write_render_input(
         raise ValueError("render template must contain one asset injection marker")
     if source.count("<!--__BASE_HREF__-->") != 1:
         raise ValueError("render template must contain one base-href marker")
-    cutout_names = {
-        value
-        for page in spec.pages
-        for value in (
-            getattr(page, "cutout", None),
-            getattr(page, "guest_cutout", None),
-            getattr(page, "host_cutout", None),
-        )
-        if value
-    }
+    # **排序過**的去背照清單。原本是 set，而 set 對字串的迭代順序在不同行程之間
+    # 會變（PYTHONHASHSEED 隨機化）——同一份 Copy Spec 因此會產出 byte 不同的
+    # render input，讓修正單完成時的「決定性重建」比對隨機失敗。
+    # 2026-09-02 實測：r003 的重建在第 983,592 個 byte 起分歧，只因為內嵌素材
+    # map 的鍵順序不同（`guest_thumb_v10_serious` vs `guest_v5_explaining`）。
+    cutout_names = sorted(
+        {
+            value
+            for page in spec.pages
+            for value in (
+                getattr(page, "cutout", None),
+                getattr(page, "guest_cutout", None),
+                getattr(page, "host_cutout", None),
+            )
+            if value
+        }
+    )
     assets: dict[str, str] = {
         relative: _data_uri(template_root / relative) for relative in _BUNDLE_ASSETS
     }
@@ -429,6 +448,11 @@ def _content_sha(
         "layout_override": (
             spec.layout_overrides.cover.model_dump(mode="json")
             if page.role == "cover" and spec.layout_overrides.cover is not None
+            else None
+        ),
+        "quote_layout_override": (
+            spec.layout_overrides.quote.model_dump(mode="json")
+            if page.role == "quote" and spec.layout_overrides.quote is not None
             else None
         ),
         "text_layout_overrides": [

@@ -12,6 +12,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _REVISION_RE = re.compile(r"^r[0-9]{3,}$")
 _PAGE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
+#: 素材檔名。渲染時會做 `cutouts_dir / name`，所以這個值一旦能由外部指定，
+#: 就必須是**單純的檔名**——不得含路徑分隔符或 `..`，否則是路徑穿越。
+_CUTOUT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.(?:png|PNG)$")
 
 CAROUSEL_DISPLAY_COPY_FIELDS: dict[str, tuple[str, ...]] = {
     "cover": ("headline", "emphasis", "guest_name", "guest_title"),
@@ -19,6 +22,19 @@ CAROUSEL_DISPLAY_COPY_FIELDS: dict[str, tuple[str, ...]] = {
     "point": ("headline", "emphasis", "body"),
     "quote": ("host_question", "text", "emphasis", "guest_name"),
     "cta": ("episode_topic", "emphasis"),
+}
+#: 素材欄位——**可以編輯，但不是打字的**。與上面的顯示文案分開兩張表，因為
+#: `CAROUSEL_DISPLAY_COPY_FIELDS` 同時決定編輯器要渲染哪些文字輸入框；把選圖
+#: 混進去會變成要人手打檔名。
+#:
+#: 修修 2026-09-02：「我希望在這個 review 的頁面上方，就有一個把 cutout 列出來的
+#: 地方，讓我可以重新做選擇。因為我可能會重複選擇不同的卡，看看整個畫面的感覺。」
+#: 原本選圖被刻意排除在編輯之外，換一張得繞回 agent 重寫 Copy Spec——那正是他
+#: 反映的摩擦。素材本身早已在 `packaging/cutouts/` 且經過授權，換的只是用哪一張，
+#: 不觸及任何逐字稿宣稱，所以走人類欄位、不進 panel。
+CAROUSEL_ASSET_FIELDS: dict[str, tuple[str, ...]] = {
+    "cover": ("cutout",),
+    "quote": ("guest_cutout",),
 }
 CAROUSEL_REQUIRED_REVIEWS = ("ig_audience", "episode_editorial", "brand_evidence")
 CAROUSEL_TEXT_LAYOUT_REGIONS: dict[str, tuple[str, ...]] = {
@@ -95,6 +111,25 @@ class CoverLayoutOverride(CarouselModel):
     title_font_size_px: int = Field(default=106, ge=72, le=160)
 
 
+class GuestLayoutOverride(CarouselModel):
+    """金句卡的來賓去背照幾何，與封面同一組欄位、同一個 1080px 座標系。
+
+    修修 2026-09-02：「金句那邊也按照你現在建議的修法去修。」在此之前金句的
+    去背照位置寫死在算圖 CSS 裡（`.quote-a .guest{right:-50px;bottom:-10px;
+    height:440px}`），schema 沒有欄位、bridge 沒有綁拖曳、編輯器沒有控制項——
+    所以在金句那張怎麼拖都沒反應，不是壞掉，是根本沒做。
+
+    刻意**不給 default**：A 版與 B 版的算圖預設值不同（B 版在 `.guest-panel`
+    內、right -18 / bottom -20 / height 430），寫一組 default 一定會對其中一個
+    版型說謊。要嘛沒有 override、完全照算圖 CSS，要嘛三個值都由編輯器從預覽
+    量到的基準值帶進來，講清楚是誰決定的。
+    """
+
+    guest_right_px: int = Field(ge=-540, le=240)
+    guest_bottom_px: int = Field(ge=-400, le=240)
+    guest_height_px: int = Field(ge=200, le=1000)
+
+
 class TextLayoutOverrideV1(CarouselModel):
     """One text region in canonical 1080px coordinates; height remains content-driven."""
 
@@ -158,6 +193,7 @@ class PageTextLayoutOverrideV1(CarouselModel):
 
 class CarouselLayoutOverridesV1(CarouselModel):
     cover: CoverLayoutOverride | None = None
+    quote: GuestLayoutOverride | None = None
     text_regions: list[PageTextLayoutOverrideV1] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -291,6 +327,16 @@ class PodcastCarouselCopySpecV1(CarouselModel):
     revision: str
     episode: EpisodeMetadata
     editorial_direction_path: str | None = None
+    #: 「這一版的 AI 生成內容與 rNNN 逐位元組相同，由那一版的 panel 治理。」
+    #:
+    #: 修修 2026-09-02 裁決：「Agent review 審的是 AI 的生成內容，人類 review 之後的
+    #: 成果根本不應該再觸發這個 review。」他在 Review Gate 改一個職稱，不該觸發三個
+    #: agent、六輪審查——而在契約互鎖下那張單根本完成不了（見
+    #: `podcast_carousel_correction_job._assert_structured_edits_applied`）。
+    #:
+    #: 這個宣告**不是信任聲明**：修正單的 exact-diff 會證明結果等於來源加上人類明確
+    #: 要求的欄位，其餘一字未動。既然 AI 那半邊沒變，重跑 panel 只會得到同一個答案。
+    panel_inherited_from: str | None = Field(default=None, pattern=r"^r[0-9]{3,}$")
     pages: list[CarouselPage] = Field(min_length=5, max_length=20)
     publish_compatibility: Literal["api_compatible", "manual_only"]
     layout_overrides: CarouselLayoutOverridesV1 = Field(default_factory=CarouselLayoutOverridesV1)
@@ -520,7 +566,7 @@ class CarouselCopyEdit(CarouselModel):
     page_id: str
     role: Literal["cover", "hook", "point", "quote", "cta"]
     artifact_sha256: str
-    fields: dict[str, str] = Field(min_length=1, max_length=4)
+    fields: dict[str, str] = Field(min_length=1, max_length=5)
 
     @field_validator("page_id")
     @classmethod
@@ -539,11 +585,16 @@ class CarouselCopyEdit(CarouselModel):
 
     @model_validator(mode="after")
     def _allowlisted_display_fields(self) -> CarouselCopyEdit:
-        invalid = set(self.fields) - set(CAROUSEL_DISPLAY_COPY_FIELDS[self.role])
+        asset_fields = set(CAROUSEL_ASSET_FIELDS.get(self.role, ()))
+        editable = set(CAROUSEL_DISPLAY_COPY_FIELDS[self.role]) | asset_fields
+        invalid = set(self.fields) - editable
         if invalid:
             raise ValueError(
                 f"display-copy fields are not editable for {self.role}: {sorted(invalid)}"
             )
+        for name in asset_fields & set(self.fields):
+            if not _CUTOUT_RE.fullmatch(self.fields[name]):
+                raise ValueError(f"{name} must be a bare cutout filename inside packaging/cutouts")
         if any(not value.strip() for value in self.fields.values()):
             raise ValueError("edited display-copy fields cannot be empty")
         if any("\r" in value or "\n" in value for value in self.fields.values()):
@@ -581,10 +632,34 @@ class CarouselTextLayoutEdit(PageTextLayoutOverrideV1):
         return value
 
 
+class CarouselQuoteLayoutEdit(CarouselModel):
+    """Revision-bound quote guest-cutout geometry; cutout identity stays in copy edits."""
+
+    page_id: str
+    artifact_sha256: str
+    values: GuestLayoutOverride
+
+    @field_validator("page_id")
+    @classmethod
+    def _valid_page_id(cls, value: str) -> str:
+        if not _PAGE_ID_RE.fullmatch(value):
+            raise ValueError("page_id must be stable lowercase kebab-case")
+        return value
+
+    @field_validator("artifact_sha256")
+    @classmethod
+    def _valid_artifact_sha256(cls, value: str) -> str:
+        value = value.lower()
+        if not _SHA256_RE.fullmatch(value):
+            raise ValueError("artifact_sha256 must be a lowercase SHA-256 hex digest")
+        return value
+
+
 class CarouselEditorApplyRequest(CarouselModel):
     manifest_sha256: str
     copy_edits: list[CarouselCopyEdit] = Field(default_factory=list)
     layout_overrides: CarouselCoverLayoutEdit | None = None
+    quote_layout_overrides: CarouselQuoteLayoutEdit | None = None
     text_layout_overrides: list[CarouselTextLayoutEdit] = Field(default_factory=list)
 
     @field_validator("manifest_sha256")
@@ -597,7 +672,12 @@ class CarouselEditorApplyRequest(CarouselModel):
 
     @model_validator(mode="after")
     def _non_empty_edit(self) -> CarouselEditorApplyRequest:
-        if not self.copy_edits and self.layout_overrides is None and not self.text_layout_overrides:
+        if (
+            not self.copy_edits
+            and self.layout_overrides is None
+            and self.quote_layout_overrides is None
+            and not self.text_layout_overrides
+        ):
             raise ValueError("at least one structured carousel edit is required")
         page_ids = [item.page_id for item in self.copy_edits]
         if len(page_ids) != len(set(page_ids)):
@@ -644,6 +724,14 @@ class CarouselCorrectionCompletionEvidence(CarouselModel):
 
     result_manifest: ArtifactReceipt
     panel_result: ArtifactReceipt
+    #: 純人類欄位修改沿用來源版本的收斂 panel 時，記在這裡（`rNNN`）。
+    #:
+    #: 「三份審查收據必須是不同檔案」是為了擋執行者拿同一份檔案冒充三次獨立審查。
+    #: 繼承的情況本來就**只有一份**成品——來源那份 panel 已經證明過三個 lens 各自
+    #: 審過了，這裡再假造三個路徑才是說謊。所以宣告繼承時放行同一份收據，
+    #: 但 lens 齊備與身分唯一照驗，而且 `_verify_inherited_panel_completion` 仍會
+    #: 重新驗證來源 panel 是 converged、三個 lens 齊全、且能治理這一版。
+    inherited_from: str | None = Field(default=None, pattern=r"^r[0-9]{3,}$")
     reviewers: tuple[CarouselReviewerReceipt, ...] = Field(min_length=3, max_length=3)
 
     @model_validator(mode="after")
@@ -654,9 +742,12 @@ class CarouselCorrectionCompletionEvidence(CarouselModel):
         reviewer_ids = [item.reviewer_id for item in self.reviewers]
         if len(reviewer_ids) != len(set(reviewer_ids)):
             raise ValueError("completion reviewer identities must be unique")
-        review_paths = [item.review.path for item in self.reviewers]
-        if len(review_paths) != len(set(review_paths)):
-            raise ValueError("completion reviewer artifacts must be distinct")
+        if self.inherited_from is None:
+            review_paths = [item.review.path for item in self.reviewers]
+            if len(review_paths) != len(set(review_paths)):
+                raise ValueError("completion reviewer artifacts must be distinct")
+        elif {item.review.path for item in self.reviewers} != {self.panel_result.path}:
+            raise ValueError("inherited completion reviewers must cite the inherited panel")
         return self
 
 
@@ -674,6 +765,7 @@ class CarouselCorrectionJobV1(CarouselModel):
     feedback_items: list[CarouselCorrectionItem] = Field(default_factory=list)
     copy_edits: list[CarouselCopyEdit] = Field(default_factory=list)
     layout_overrides: CarouselCoverLayoutEdit | None = None
+    quote_layout_overrides: CarouselQuoteLayoutEdit | None = None
     text_layout_overrides: list[CarouselTextLayoutEdit] = Field(default_factory=list)
     required_reviews: tuple[
         Literal["ig_audience"],
@@ -717,6 +809,7 @@ class CarouselCorrectionJobV1(CarouselModel):
             not self.feedback_items
             and not self.copy_edits
             and self.layout_overrides is None
+            and self.quote_layout_overrides is None
             and not self.text_layout_overrides
         ):
             raise ValueError("correction job requires feedback or a structured edit")

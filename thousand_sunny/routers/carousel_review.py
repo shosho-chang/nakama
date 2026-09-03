@@ -13,12 +13,13 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import APIRouter, Cookie, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, Cookie, HTTPException, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 from starlette.requests import Request
 
+from agents.brook.podcast_carousel_autorun import is_autorunnable
 from agents.brook.podcast_carousel_render import _digest_files
 from scripts.podcast_carousel_correction_job import (
     CorrectionJobTransitionError,
@@ -39,12 +40,14 @@ from scripts.podcast_carousel_publish_job import (
     supersede_queued_publish_job,
     unfinished_publish_platforms,
 )
+from shared.log import get_logger
 from shared.schemas.carousel_publish import (
     CarouselPublishAsset,
     CarouselPublishJobV1,
     CarouselPublishTarget,
 )
 from shared.schemas.podcast_carousel import (
+    CAROUSEL_ASSET_FIELDS,
     CAROUSEL_DISPLAY_COPY_FIELDS,
     CAROUSEL_TEXT_LAYOUT_REGIONS,
     CAROUSEL_TEXT_SAFE_RECTS,
@@ -67,6 +70,27 @@ page_router = APIRouter(prefix="/bridge/ig-cards", tags=["bridge-ig-cards"])
 _templates = Jinja2Templates(
     directory=str(Path(__file__).resolve().parent.parent / "templates" / "bridge")
 )
+logger = get_logger("nakama.web.carousel_review")
+
+
+# 純結構化修改在本機直接跑完（見 `podcast_carousel_autorun`）。VPS 那台是 control
+# plane，沒有 Chrome、也沒有 footage 磁碟，必須關掉——所以這是真的部署開關，
+# 不是測試用的旁門。測試也靠它把出圖擋在外面。
+def _autorun_enabled() -> bool:
+    """預設**關閉**。要出圖的那台自己開。
+
+    原本預設開啟，而 repo 裡沒有任何地方替 VPS 關掉（2026-09-03 review 抓到）。
+    VPS 是 control plane，沒有 Chrome 也沒有 footage 磁碟：背景任務會先把工作
+    **認領**走、再因為找不到 Chrome 而標成 `failed`——比原本的行為更糟，因為
+    那張單本來還可以留在 `queued` 等真的執行者來接。fail closed。
+    """
+    return os.environ.get("NAKAMA_CAROUSEL_AUTORUN", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
 _ROLE_LABELS = {
     "cover": "封面",
     "hook": "開場提問",
@@ -84,6 +108,13 @@ _PUBLISH_STATUS_LABELS = {
     "completed": "發布已完成",
     "failed": "發布未完成，可重試",
     "superseded": "發布核准已撤回",
+}
+_JOB_STATUS_LABELS = {
+    "queued": "等待 agent 認領",
+    "claimed": "agent 已認領",
+    "in_progress": "處理中",
+    "completed": "已完成",
+    "failed": "未完成",
 }
 _BASE_HREF_RE = re.compile(r'<base href="[^"]*">')
 _EDITOR_PATCH_RE = re.compile(r"\bwindow\.applyEditorPatch\s*=")
@@ -118,6 +149,10 @@ def _preview_asset_token(
     key = (WEB_SECRET or "nakama-local-preview").encode()
     scope = f"{episode_slug}:{template_sha256}:{manifest_sha256}".encode()
     return hmac.new(key, scope, hashlib.sha256).hexdigest()
+
+
+#: 選圖器送進來的檔名——與 `shared.schemas.podcast_carousel._CUTOUT_RE` 同一條規則。
+_CUTOUT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.(?:png|PNG)$")
 
 
 def _episode_dir(episode_slug: str) -> Path:
@@ -548,11 +583,30 @@ def _context(episode_slug: str) -> dict:
                 ],
             }
         )
+    # 這一集能選的去背照。修修 2026-09-02：「我可能會重複選擇不同的卡，看看整個
+    # 畫面的感覺」——所以選圖要跟即時預覽在同一個地方：封面與金句的卡片編輯器內。
+    # 第一版把清單放在頁面最上方、點一下直接開修正單，等於沒看到結果就先送出，
+    # 修修當場反映邏輯不對。清單本身跟卡片無關（同一批去背照兩張卡共用），
+    # 但「選哪一張」屬於某一張卡，所以資料一份、控制項在編輯器裡。
+    cutouts_dir = _episode_dir(episode_slug) / "packaging" / "cutouts"
+    guest_cutouts = (
+        sorted(
+            path.name
+            for path in cutouts_dir.glob("*.png")
+            # `.pre-YYYYMMDD-…` 是被取代的備份版本，不該出現在可選清單裡。
+            if path.name.startswith("guest_") and ".pre-" not in path.name
+        )
+        if cutouts_dir.is_dir()
+        else []
+    )
     return {
         "episode_slug": episode_slug,
         "manifest": manifest,
         "manifest_sha256": manifest_sha256,
         "rows": rows,
+        "guest_cutouts": guest_cutouts,
+        # 介面文案要跟實際行為一致：autorun 開著時不該再叫使用者去找 agent 認領。
+        "autorun_enabled": _autorun_enabled(),
         "editor_available": editor_state == "available",
         "editor_unavailable_reason": _editor_unavailable_message(editor_state),
         "editor_pages": [
@@ -563,6 +617,13 @@ def _context(episode_slug: str) -> dict:
                 "artifact_sha256": row["page"].image.sha256,
                 "field_order": [item["name"] for item in row["editor_fields"]],
                 "fields": {item["name"]: item["value"] for item in row["editor_fields"]},
+                # 素材欄位跟文字欄位分開送：`field_order` 決定要長出哪些輸入框，
+                # 選圖不是打字，混進去會變成要人手打檔名。
+                "asset_fields": {
+                    name: getattr(row["page"].copy_page, name)
+                    for name in CAROUSEL_ASSET_FIELDS.get(row["page"].role, ())
+                    if getattr(row["page"].copy_page, name, None)
+                },
             }
             for row in rows
         ],
@@ -575,6 +636,13 @@ def _context(episode_slug: str) -> dict:
             else "尚未建立發布工作"
         ),
         "publish_url": f"/bridge/ig-cards/{episode_slug}/publish",
+        # 金句刻意沒有 schema default（A/B 兩版算圖預設不同，寫死一組必然對其中
+        # 一版說謊）。沒有 override 時送 null，由預覽量出來的基準值當起點。
+        "quote_layout": (
+            spec.layout_overrides.quote.model_dump(mode="json")
+            if spec.layout_overrides.quote is not None
+            else None
+        ),
         "cover_layout": (spec.layout_overrides.cover or CoverLayoutOverride()).model_dump(
             mode="json"
         ),
@@ -792,6 +860,33 @@ async def carousel_review_media(
     return Response(content=payload, media_type="image/png")
 
 
+@page_router.get("/{episode_slug}/cutout/{name}")
+async def carousel_review_cutout(
+    episode_slug: str,
+    name: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """回傳一張候選去背照，供頁面上方的選圖器顯示縮圖。
+
+    `name` 由使用者提供，會被拿去組路徑，所以先用 schema 的檔名規則過濾再
+    `_contained_file` 二次確認——只認 `packaging/cutouts` 底下的單純檔名。
+    """
+    if not check_auth(nakama_auth):
+        raise HTTPException(status_code=401, detail="authentication required")
+    if not _CUTOUT_NAME_RE.fullmatch(name):
+        raise HTTPException(status_code=404, detail="cutout not found")
+    cutouts_dir = (_episode_dir(episode_slug) / "packaging" / "cutouts").resolve()
+    try:
+        path = _contained_file(cutouts_dir / name, cutouts_dir)
+    except HTTPException:
+        raise
+    except (OSError, ValueError) as error:
+        raise HTTPException(status_code=404, detail="cutout not found") from error
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="cutout not found")
+    return Response(content=path.read_bytes(), media_type="image/png")
+
+
 @page_router.get("/{episode_slug}/preview/{page_id}", response_class=HTMLResponse)
 async def carousel_editor_preview(
     episode_slug: str,
@@ -912,6 +1007,70 @@ async def carousel_editor_preview_asset(
     return Response(content=payload, media_type=media_type)
 
 
+def _active_job_conflict(package_root: Path, manifest, manifest_sha256: str) -> str:
+    """一次只允許一張進行中的修正單——但要講清楚是哪一張、內容是什麼。
+
+    原本只回一句英文 `correction job is still active`，使用者在畫面上看不到那張
+    單存在，也不知道要怎麼往下走（修修 2026-09-02 就卡在這裡：送出後只看到
+    一句看不懂的錯誤，而擋住他的是他自己幾小時前送出、還沒有 agent 認領的
+    那張換去背照的單）。
+    """
+    active = [
+        job
+        for job in list_jobs(package_root)
+        if job.source_revision == manifest.revision
+        and job.source_manifest_sha256 == manifest_sha256
+        and job.status in {"queued", "claimed", "in_progress"}
+    ]
+    if not active:
+        return "correction job is still active"
+    job = active[-1]
+    changed = sorted(
+        {name for edit in job.copy_edits for name in edit.fields}
+        | ({"cover_layout"} if job.layout_overrides else set())
+        | ({"quote_layout"} if job.quote_layout_overrides else set())
+        | {f"{item.region}" for item in job.text_layout_overrides}
+    )
+    summary = "、".join(changed) if changed else "回饋意見"
+    status = _JOB_STATUS_LABELS.get(job.status, job.status)
+    return (
+        f"已經有一張待處理的修改工作 {job.job_id}"
+        f"（{status}，內容：{summary}）。同一個版本一次只能有一張；"
+        "請先讓 agent 認領處理完，或把那張標記為失敗，再送出新的修改。"
+    )
+
+
+def _autorun_structured_job(episode_slug: str, job_id: str) -> None:
+    """背景執行一張純結構化修正單。失敗會落在工作上，不會靜默。
+
+    Review Gate 看到 `failed` 會顯示原因並把草稿還給使用者，所以這裡的責任只是
+    「跑，並且不要吞掉錯誤」。
+    """
+    from agents.brook.podcast_carousel_autorun import (
+        StructuredAutorunError,
+        execute_structured_job,
+    )
+
+    episode_dir = _episode_dir(episode_slug)
+    job_path = episode_dir / "ig-carousel" / "correction_jobs" / f"{job_id}.json"
+    try:
+        result = execute_structured_job(
+            episode_dir=episode_dir,
+            job_path=job_path,
+            executor_id="thousand-sunny-autorun",
+        )
+        logger.info(
+            "carousel autorun completed job=%s revision=%s fields=%s",
+            job_id,
+            result.result_revision,
+            result.changed_fields,
+        )
+    except StructuredAutorunError as error:
+        logger.warning("carousel autorun failed job=%s: %s", job_id, error)
+    except Exception:  # noqa: BLE001 — 背景任務不能把例外丟進虛空
+        logger.exception("carousel autorun crashed job=%s", job_id)
+
+
 def _assert_current_manifest(form, manifest_sha256: str) -> None:
     if str(form.get("manifest_sha256", "")) != manifest_sha256:
         raise HTTPException(
@@ -958,6 +1117,7 @@ def _append_feedback_revision(
 async def carousel_review_apply_edits(
     request: Request,
     episode_slug: str,
+    background: BackgroundTasks,
     nakama_auth: str | None = Cookie(None),
 ):
     """Validate structured edits and queue them without mutating rendered artifacts."""
@@ -1051,7 +1211,24 @@ async def carousel_review_apply_edits(
         if current is None or current.values != edit.values:
             effective_text_layouts.append(edit)
 
-    if not effective_copy_edits and effective_layout is None and not effective_text_layouts:
+    effective_quote_layout = payload.quote_layout_overrides
+    if effective_quote_layout is not None:
+        quote_page = manifest_by_id.get(effective_quote_layout.page_id)
+        if quote_page is None or quote_page.role != "quote":
+            raise HTTPException(status_code=422, detail="quote page is missing")
+        if effective_quote_layout.artifact_sha256 != quote_page.image.sha256:
+            raise HTTPException(
+                status_code=409, detail=f"carousel page changed: {quote_page.page_id}"
+            )
+        if effective_quote_layout.values == spec.layout_overrides.quote:
+            effective_quote_layout = None
+
+    if (
+        not effective_copy_edits
+        and effective_layout is None
+        and effective_quote_layout is None
+        and not effective_text_layouts
+    ):
         raise HTTPException(status_code=400, detail="at least one changed edit is required")
     prospective = spec.model_dump(mode="json")
     prospective_pages = {page["page_id"]: page for page in prospective["pages"]}
@@ -1059,6 +1236,10 @@ async def carousel_review_apply_edits(
         prospective_pages[edit.page_id].update(edit.fields)
     if effective_layout is not None:
         prospective["layout_overrides"]["cover"] = effective_layout.values.model_dump(mode="json")
+    if effective_quote_layout is not None:
+        prospective["layout_overrides"]["quote"] = effective_quote_layout.values.model_dump(
+            mode="json"
+        )
     prospective_text_layouts = {
         (item["page_id"], item["region"]): item
         for item in prospective["layout_overrides"].get("text_regions", [])
@@ -1078,17 +1259,27 @@ async def carousel_review_apply_edits(
             status_code=422, detail="invalid prospective structured carousel edits"
         ) from error
     try:
-        return create_queued_job(
+        job = create_queued_job(
             package_root=package_root,
             episode_id=manifest.episode_id,
             source_revision=manifest.revision,
             source_manifest_sha256=manifest_sha256,
             copy_edits=effective_copy_edits,
             layout_overrides=effective_layout,
+            quote_layout_overrides=effective_quote_layout,
             text_layout_overrides=effective_text_layouts,
         )
+        # 修修 2026-09-03：「以後不能改成送出就自動驅動 Agent 去 render 嗎？
+        # 多一個動作覺得不好。」純結構化修改的套用是決定性的，一步都用不到
+        # LLM——那就不該再要一個人來按同樣那幾個指令。自由文字意見不在此列。
+        if _autorun_enabled() and is_autorunnable(job):
+            background.add_task(_autorun_structured_job, episode_slug, job.job_id)
+        return job
     except CorrectionJobTransitionError as error:
-        raise HTTPException(status_code=409, detail="correction job is still active") from error
+        raise HTTPException(
+            status_code=409,
+            detail=_active_job_conflict(package_root, manifest, manifest_sha256),
+        ) from error
 
 
 @page_router.post(
@@ -1146,7 +1337,10 @@ async def carousel_review_feedback(
             and correction_job.status in {"queued", "claimed", "in_progress"}
         ]
         if active:
-            raise HTTPException(status_code=409, detail="correction job is still active")
+            raise HTTPException(
+                status_code=409,
+                detail=_active_job_conflict(package_root, manifest, manifest_sha256),
+            )
 
         matching_publish = [
             publish_job
@@ -1178,7 +1372,10 @@ async def carousel_review_feedback(
                 feedback_items=items,
             )
         except CorrectionJobTransitionError as error:
-            raise HTTPException(status_code=409, detail="correction job is still active") from error
+            raise HTTPException(
+                status_code=409,
+                detail=_active_job_conflict(package_root, manifest, manifest_sha256),
+            ) from error
         _append_feedback_revision(
             package_root=package_root,
             manifest=manifest,
@@ -1233,7 +1430,10 @@ async def carousel_review_approve(
             and job.status in {"queued", "claimed", "in_progress"}
         ]
         if active:
-            raise HTTPException(status_code=409, detail="correction job is still active")
+            raise HTTPException(
+                status_code=409,
+                detail=_active_job_conflict(package_root, manifest, manifest_sha256),
+            )
         matching_revisions = [
             revision
             for revision in feedback_store.revisions

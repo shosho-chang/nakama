@@ -452,8 +452,13 @@ def test_structured_editor_rejects_identity_evidence_and_empty_copy_changes():
         "role": "cover",
         "artifact_sha256": SHA,
     }
-    with pytest.raises(ValidationError, match="not editable"):
-        CarouselCopyEdit(**base, fields={"cutout": "other.png"})
+    # 選哪一張去背照是編輯決定（修修 2026-09-02），現在可編輯——
+    # 但值必須是 packaging/cutouts 裡的單純檔名，否則 `cutouts_dir / name`
+    # 會被路徑穿越。
+    assert CarouselCopyEdit(**base, fields={"cutout": "guest_v5_explaining.png"})
+    for traversal in ("../../secret.png", "sub/dir.png", "x.svg"):
+        with pytest.raises(ValidationError, match="bare cutout filename"):
+            CarouselCopyEdit(**base, fields={"cutout": traversal})
     with pytest.raises(ValidationError, match="not editable"):
         CarouselCopyEdit(**base, fields={"evidence": "changed"})
     with pytest.raises(ValidationError, match="cannot be empty"):
@@ -539,3 +544,48 @@ def test_receipt_for_hashes_file(tmp_path):
     assert receipt.bytes == len("carousel")
     assert receipt.path == str(path.resolve())
     assert len(receipt.sha256) == 64
+
+
+def test_quote_guest_geometry_has_no_default_and_is_bounded():
+    """A 版與 B 版的算圖預設不同（A: -50/-10/440、B: -18/-20/430）。
+
+    寫一組 default 必然對其中一版說謊，所以三個值都必須明講。
+    """
+    from shared.schemas.podcast_carousel import GuestLayoutOverride
+
+    with pytest.raises(ValidationError):
+        GuestLayoutOverride()
+    with pytest.raises(ValidationError):
+        GuestLayoutOverride(guest_right_px=-50, guest_bottom_px=-10)
+
+    ok = GuestLayoutOverride(guest_right_px=-50, guest_bottom_px=-10, guest_height_px=440)
+    assert ok.guest_height_px == 440
+    for bad in (
+        {"guest_right_px": 999, "guest_bottom_px": -10, "guest_height_px": 440},
+        {"guest_right_px": -50, "guest_bottom_px": -10, "guest_height_px": 1},
+        {"guest_right_px": -50, "guest_bottom_px": -10, "guest_height_px": 5000},
+    ):
+        with pytest.raises(ValidationError):
+            GuestLayoutOverride(**bad)
+
+
+def test_layout_overrides_carry_quote_geometry_alongside_cover():
+    from shared.schemas.podcast_carousel import (
+        CarouselLayoutOverridesV1,
+        CoverLayoutOverride,
+        GuestLayoutOverride,
+    )
+
+    overrides = CarouselLayoutOverridesV1(
+        cover=CoverLayoutOverride(),
+        quote=GuestLayoutOverride(guest_right_px=-80, guest_bottom_px=-30, guest_height_px=400),
+    )
+    assert overrides.quote.guest_height_px == 400
+    assert CarouselLayoutOverridesV1().quote is None
+
+
+def test_apply_request_rejects_an_empty_edit_even_with_quote_slot_present():
+    from shared.schemas.podcast_carousel import CarouselEditorApplyRequest
+
+    with pytest.raises(ValidationError):
+        CarouselEditorApplyRequest(manifest_sha256="a" * 64)
