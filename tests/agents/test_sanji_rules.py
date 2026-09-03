@@ -48,10 +48,17 @@ def test_xp_table_locked():
     }
 
 
-def test_berry_is_xp_over_ten_including_negatives():
-    for xp in rules.XP_TABLE.values():
-        assert rules.berry_of(xp) * 10 == xp
-    assert rules.berry_of(-100) == -10  # 沖正的貝里同步為負
+def test_no_berry_anywhere_in_grants():
+    """貝里 2026-09-02 退役——授予 payload 不得再帶這個欄位（會寫進帳本）。"""
+    assert not hasattr(rules, "berry_of")
+    g = rules.grant_for_event(_ev("presence_day"), sanji_user_id=SANJI_UID)
+    assert g is not None and "berry" not in g
+    r = rules.reversal(
+        {"user_id": 42, "xp": 100, "source": "bookmark_received", "season": ""},
+        reverses_grant_id=1,
+        reason="x",
+    )
+    assert "berry" not in r
 
 
 # 曲線 v1（2026-08-24 前）。門檻**只准調低**——調高會讓既有成員掉級，
@@ -103,23 +110,40 @@ def test_every_level_has_a_title():
 
 
 def test_tier_ladder():
-    """位階線 v3（2026-08-26 定稿）：整條航路只換七次稱呼，頂點是海賊王。"""
+    """位階線 v4（2026-09-02 裁決）：整條航路只換五次稱呼，頂點是海賊王。
+
+    霸王色（那是能力不是位階）與傳說船長（非原作、且與身份軌的「船長」互稱撞名）
+    已退場，不得復活。level 對映本身待修修重新確認。
+    """
     assert rules.TIER_OF_LEVEL == {
         5: "超新星",
         8: "最惡世代",
         11: "王下七武海",
-        13: "霸王色",
-        14: "傳說船長",
         15: "四皇",
         16: "海賊王",
     }
+    assert "霸王色" not in rules.TIER_OF_LEVEL.values()
+    assert "傳說船長" not in rules.TIER_OF_LEVEL.values()
     assert rules.tier_for(1) == ""
     assert rules.tier_for(4) == ""
     assert rules.tier_for(5) == "超新星"
     assert rules.tier_for(10) == "最惡世代"
     assert rules.tier_for(12) == "王下七武海"
-    assert rules.tier_for(14) == "傳說船長"
+    assert rules.tier_for(14) == "王下七武海"
     assert rules.tier_for(16) == "海賊王"
+
+
+def test_zou_retired_sabaody_took_its_place():
+    """2026-09-02：佐烏退場（成長意義牽強），香波地群島接 Lv.11、魚人島順延 Lv.12。
+
+    仍是 16 站、門檻一個都沒動；當時最高的會員在 Lv.10，改名對所有人隱形。
+    """
+    assert rules.LEVEL_LABELS[10] == "司法島"
+    assert rules.LEVEL_LABELS[11] == "香波地群島"
+    assert rules.LEVEL_LABELS[12] == "魚人島"
+    assert rules.LEVEL_LABELS[13] == "蛋糕島"
+    assert "佐烏" not in rules.LEVEL_LABELS.values()
+    assert rules.LEVEL_LABELS[9] == "水之七島"  # 舊名「水之都」已更正
 
 
 def test_first_like_levels_up():
@@ -164,7 +188,7 @@ def test_season_label():
 def test_presence_day_grant_and_idempotency_key():
     g = rules.grant_for_event(_ev("presence_day"), sanji_user_id=SANJI_UID)
     assert g is not None
-    assert (g["xp"], g["berry"]) == (10, 1)
+    assert g["xp"] == 10
     assert g["idempotency_key"] == "presence:42:2026-08-23"
     assert g["rule_version"] == rules.RULE_VERSION
 
@@ -201,7 +225,7 @@ def test_comment_scores_unique_per_post_and_skips_self_and_sanji():
         sanji_user_id=SANJI_UID,
     )
     assert ok is not None
-    assert (ok["xp"], ok["berry"]) == (30, 3)
+    assert ok["xp"] == 30
     assert ok["idempotency_key"] == "comment:900:7"  # 同人再留 → 同鍵 → DB 冪等擋掉
 
     # 自己留言不計
@@ -348,9 +372,9 @@ def test_challenge_sources_locked():
 
 
 def test_reversal_negates_and_links():
-    original = {"user_id": 42, "xp": 100, "berry": 10, "source": "bookmark_received", "season": ""}
+    original = {"user_id": 42, "xp": 100, "source": "bookmark_received", "season": ""}
     r = rules.reversal(original, reverses_grant_id=777, reason="bookmark removed")
-    assert (r["xp"], r["berry"]) == (-100, -10)
+    assert r["xp"] == -100
     assert r["reverses_grant_id"] == 777
     assert r["idempotency_key"] == "reversal:777"
     assert r["source"] == "reversal"

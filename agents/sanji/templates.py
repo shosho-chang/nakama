@@ -52,20 +52,16 @@ def render_checkin_reply(
     user_id: int,
     day: str,
     xp: int,
-    berry: int,
     streak: int,
     bonus_xp: int = 0,
-    bonus_berry: int = 0,
     returned_after_gap: bool = False,
 ) -> str:
     """組打卡回覆：基礎行（或回歸行）＋（滿七時）連續獎行。"""
     pool_name = "welcome_back.txt" if returned_after_gap and streak == 1 else "checkin_approved.txt"
-    text = _pick(pool_name, user_id, day).format(xp=xp, berry=berry, streak=streak)
+    text = _pick(pool_name, user_id, day).format(xp=xp, streak=streak)
 
     if bonus_xp > 0:
-        bonus_line = _pool("streak_bonus.txt")[0].format(
-            bonus_xp=bonus_xp, bonus_berry=bonus_berry, streak=streak
-        )
+        bonus_line = _pool("streak_bonus.txt")[0].format(bonus_xp=bonus_xp, streak=streak)
         text = f"{text}\n{bonus_line}"
 
     return text

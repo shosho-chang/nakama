@@ -1,2 +1,2 @@
-# 連續 7 天獎的加註行（接在打卡回覆後面）。slot：{bonus_xp} {bonus_berry} {streak}
-🎉 連續 {streak} 天達成——連續獎 +{bonus_xp} XP｜+{bonus_berry} 貝里，當場入袋。
+# 連續 7 天獎的加註行（接在打卡回覆後面）。slot：{bonus_xp} {streak}
+🎉 連續 {streak} 天達成——連續獎 +{bonus_xp} XP，當場入袋。

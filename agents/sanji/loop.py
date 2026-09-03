@@ -82,8 +82,17 @@ def award_checkin(
         not store.has_checkin(user_id, prev_day)
     ) and store.has_any_checkin_before(user_id, day)
 
+    # 打卡狀態照記（streak 連續性不能有洞），入帳與公開回覆才受計分名單管制。
     store.record_checkin_day(user_id, day, season, feed_id)
     streak = store.current_streak(user_id, day)
+
+    # ⚠️ 這道閘門與 grant_for_event 的那道是同一個名單。2026-09-02 之前打卡
+    # 走的是 SanjiLoop.cycle 的 if/else 前半段，繞過了名單——挑戰一上線就會
+    # 無視 scored_sources 直接入帳。閘門收在這裡，因為 loop 與 reconcile 都
+    # 經過本函式，補在呼叫端會漏掉其中一條。
+    if "checkin_day" not in cfg.scored_sources:
+        logger.info(f"[loop] checkin 不在計分名單，只記狀態不入帳 user={user_id} day={day}")
+        return
 
     grants = [rules.grant_for_checkin(user_id, feed_id, day, season, ref_event_id=ref_event_id)]
     bonus = rules.streak_bonus_if_due(user_id, day, season, streak)
@@ -107,10 +116,8 @@ def award_checkin(
         user_id=user_id,
         day=day,
         xp=grants[0]["xp"],
-        berry=grants[0]["berry"],
         streak=streak,
         bonus_xp=bonus["xp"] if bonus else 0,
-        bonus_berry=bonus["berry"] if bonus else 0,
         returned_after_gap=returned_after_gap,
     )
     try:

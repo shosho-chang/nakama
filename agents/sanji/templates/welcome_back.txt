@@ -1,7 +1,7 @@
-# 中斷後回歸（前一天沒打卡、今天回來）的回覆變體。slot：{xp} {berry} {streak}
+# 中斷後回歸（前一天沒打卡、今天回來）的回覆變體。slot：{xp} {streak}
 # 規則層沒有「落隊」；這只是回饋層的溫度（CONTEXT.md 裁決：歡迎回來住在回饋層）。
-+{xp} XP｜{berry} 貝里。歡迎回來 🌊 從今天重新數，第 {streak} 天。
++{xp} XP。歡迎回來 🌊 從今天重新數，第 {streak} 天。
 ---
-+{xp} XP｜{berry} 貝里。回來就好，紀錄都還在。連續第 {streak} 天。
++{xp} XP。回來就好，紀錄都還在。連續第 {streak} 天。
 ---
-+{xp} XP｜{berry} 貝里。休息過後的第 {streak} 天——繼續。
++{xp} XP。休息過後的第 {streak} 天——繼續。
