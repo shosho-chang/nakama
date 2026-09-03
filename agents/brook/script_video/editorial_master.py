@@ -840,7 +840,13 @@ def verify_editorial_master(
         )
     stage5 = _require_mapping(receipt.get("stage5_subtitle_identity"), "stage5_subtitle_identity")
     if stage5.get("episode_id") != episode_id:
-        raise EditorialMasterContractError("Stage 5 lineage belongs to another episode")
+        # 讀回端沒有操作者可以宣告別名——但**收據自己帶著**封存當下做的那個宣告，
+        # 而收據是不可變且雜湊綁定的。所以這裡認收據裡的 `legacy_episode_alias`，
+        # 且它必須正好等於 handoff 宣告的 id：這樣「當初允許了什麼」與「現在放行
+        # 什麼」是同一份證據，不是兩套判準。
+        alias = stage5.get("legacy_episode_alias")
+        if not alias or alias != stage5.get("episode_id"):
+            raise EditorialMasterContractError("Stage 5 lineage belongs to another episode")
     subtitle_record = _require_mapping(artifacts.get("subtitles"), "artifacts.subtitles")
     timing_qc = _require_mapping(subtitle_record.get("timing_qc"), "subtitle timing_qc")
     expected_qc = {

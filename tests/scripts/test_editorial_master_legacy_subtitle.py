@@ -85,3 +85,20 @@ def test_matching_episode_never_gets_an_alias_recorded() -> None:
         legacy_episode_alias="20260814-moboo",
     )
     assert "legacy_episode_alias" not in stage5
+
+
+def test_read_back_honours_the_recorded_alias_only() -> None:
+    """讀回端沒有操作者可以宣告——只能認收據自己帶的那份宣告。
+
+    封存寫入通過、讀回被擋，會讓整個封存回滾（2026-09-03 抹布實際發生，
+    白跑 8 分鐘算圖）。兩端必須用同一份證據。
+    """
+    import inspect
+
+    from agents.brook.script_video import editorial_master as mod
+
+    source = inspect.getsource(mod)
+    gate = source[source.index("Stage 5 lineage belongs to another episode") - 700 :]
+    assert 'stage5.get("legacy_episode_alias")' in gate
+    # 別名必須正好等於 handoff 宣告的 id，不能是任意字串
+    assert 'alias != stage5.get("episode_id")' in gate
