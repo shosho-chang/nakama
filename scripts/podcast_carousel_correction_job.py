@@ -274,12 +274,23 @@ def create_queued_job(
     directory.mkdir(parents=True, exist_ok=True)
     path = correction_job_path(package_root, identifier)
     with _job_lock(directory / ".create"):
+        # 「進行中」要看**租約還在不在**，不能只看 status。認領之後行程死掉、
+        # 租約過期、或 `.lock` 卡住時，工作會永遠停在 claimed／in_progress，
+        # 而 fail_job 自己也要驗租約——於是那個 revision 從此送不出任何新修改，
+        # 使用者在 Review Gate 上沒有任何控制項能解開（2026-09-03 review 抓到）。
+        # 租約過期的認領本來就允許被別人接手，這裡採同一個判準。
+        now = timestamp
         active = [
             existing
             for existing in list_jobs(package_root)
             if existing.source_revision == source_revision
             and existing.source_manifest_sha256 == source_manifest_sha256
             and existing.status in {"queued", "claimed", "in_progress"}
+            and (
+                existing.status == "queued"
+                or existing.claim is None
+                or now < existing.claim.lease_expires_at
+            )
         ]
         if active:
             raise CorrectionJobTransitionError(

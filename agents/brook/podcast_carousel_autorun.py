@@ -156,6 +156,10 @@ def execute_structured_job(
             executor="claude_code",
             executor_id=executor_id,
             claim_token=claim_token,
+            # 出圖 + 完成驗收（每張受影響的卡都要重新啟動一次 Chrome 做決定性
+            # 重建）可能遠超過預設的 30 分鐘租約。租約一過期，連 `fail_job`
+            # 都會被自己的 `_assert_claim` 擋下——失敗就再也落不到工作上。
+            lease_seconds=4 * 60 * 60,
         )
     except CorrectionJobTransitionError as error:
         raise StructuredAutorunError(f"無法認領：{error}") from error
@@ -204,8 +208,13 @@ def execute_structured_job(
     except Exception as error:  # noqa: BLE001 — 任何失敗都要落到工作上，不能靜默
         try:
             fail_job(job_path, claim_token=claim_token, error=str(error)[:900])
-        except CorrectionJobTransitionError:
-            pass
+        except CorrectionJobTransitionError as fail_error:
+            # 標記失敗**也**可能失敗（租約過期／狀態已變）。吞掉它會讓工作停在
+            # claimed，而那個 revision 就再也送不出新修改。至少要留下痕跡。
+            raise StructuredAutorunError(
+                f"{error}（另外：標記失敗時也失敗了——{fail_error}；"
+                "該工作的租約過期後會自動不再擋住新的送出）"
+            ) from error
         raise StructuredAutorunError(str(error)) from error
 
     return AutorunResult(job=job, result_revision=job.result_revision or "", changed_fields=changed)

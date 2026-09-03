@@ -92,19 +92,33 @@
   // 金句沒有 default 幾何可以寫進 schema（A 版與 B 版的算圖預設不同），所以
   // 由預覽量出目前的實際值當基準，母頁面拿它當「還沒調整過」的起點。
   function discoverGuestLayout() {
+    // 這三個提早 return 原本什麼都不說。封面看不出來（母頁面一定會送
+    // apply-layout，綁定另有其路），但**金句在還沒存過 override 時**，母頁面
+    // 刻意不送 apply-layout——綁定完全押在這裡。失敗就又回到「拖了沒反應、
+    // 沒有任何線索」（2026-09-03 review 抓到）。
     const spec = guestSpec();
     const page = currentPage();
-    if (!spec || !page) return;
+    if (!spec) {
+      emit('guest-editor-state', {bound: false, reason: '這張卡沒有可調整的去背照幾何'});
+      return;
+    }
     const guest = document.querySelector(spec.selector);
-    if (!guest) return;
+    if (!guest) {
+      emit('guest-editor-state', {bound: false, reason: '預覽找不到來賓去背照'});
+      return;
+    }
     const computed = getComputedStyle(guest);
     const values = {
       guest_right_px: Math.round(parseFloat(computed.right)),
       guest_bottom_px: Math.round(parseFloat(computed.bottom)),
       guest_height_px: Math.round(parseFloat(computed.height)),
     };
-    if (Object.values(values).some((value) => !Number.isFinite(value))) return;
-    emit('guest-layout-baseline', {role: page.role, values});
+    if (Object.values(values).some((value) => !Number.isFinite(value))) {
+      emit('guest-editor-state', {bound: false, reason: '量不到去背照的位置與尺寸'});
+      return;
+    }
+    // `page` 只用來標記 baseline 的角色；量測與綁定都不依賴它。
+    emit('guest-layout-baseline', {role: page ? page.role : guestRole(), values});
     const seed = {...values, ...(spec.extraMeasure ? spec.extraMeasure() : {})};
     // 拖曳的綁定不可以押在「母頁面有沒有送 apply-layout」上。金句沒有 schema
     // default，母頁面要等這個基準值回去才知道要送什麼——先有雞先有蛋，結果就是

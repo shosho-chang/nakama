@@ -135,7 +135,7 @@
       <div class="sho-mono sho-mono-up">修改工作</div>
       <h2 id="carousel-job-title">修改進度</h2>
       <p id="carousel-job-summary" role="status" aria-live="polite"></p>
-      <p class="carousel-job__handoff">建立工作不會自動喚醒 Agent；請回到目前執行此 episode 的 Codex／Claude Code task，要求它認領下方工作編號。</p>
+      <p class="carousel-job__handoff">{% if autorun_enabled %}純結構化的修改由本機直接執行完；含自由文字意見的工作仍需 Codex／Claude Code agent 認領下方編號。{% else %}建立工作不會自動喚醒 Agent；請回到目前執行此 episode 的 Codex／Claude Code task，要求它認領下方工作編號。{% endif %}</p>
     </div>
     <progress id="carousel-job-progress" max="1" value="0">0%</progress>
     <ol id="carousel-job-steps" class="carousel-job__steps" aria-label="系統修改步驟"></ol>
@@ -147,7 +147,7 @@
         <div>
           <div id="carousel-editor-kicker" class="sho-mono sho-mono-up">卡片編輯</div>
           <h2 id="carousel-editor-title">編輯這張卡片</h2>
-          <p>套用後只建立待認領修改工作；需由目前執行此 episode 的 Codex／Claude Code Agent 認領。不覆寫目前圖片、不自動核准，也不發布。</p>
+          <p>{% if autorun_enabled %}送出後由本機直接重新出圖成新版本；不覆寫目前圖片、不自動核准，也不發布。{% else %}送出後只建立待認領修改工作；需由目前執行此 episode 的 Codex／Claude Code Agent 認領。不覆寫目前圖片、不自動核准，也不發布。{% endif %}</p>
         </div>
         <button id="carousel-editor-close" class="carousel-editor__close" type="button" aria-label="關閉編輯器">×</button>
       </header>
@@ -277,6 +277,7 @@ const jobProgress = document.getElementById('carousel-job-progress');
 const jobSteps = document.getElementById('carousel-job-steps');
 const editorPages = {{ editor_pages | tojson }};
 const editorAvailable = {{ 'true' if editor_available else 'false' }};
+const autorunEnabled = {{ 'true' if autorun_enabled else 'false' }};
 const initialCoverLayout = {{ cover_layout | tojson }};
 const initialQuoteLayout = {{ quote_layout | tojson }};
 const initialTextLayouts = {{ text_layout_overrides | tojson }};
@@ -539,7 +540,9 @@ async function pollJob(job) {
     busy = true;
     updateActions();
     if (status === 'queued' || status === 'pending') {
-      showJobState('queued', `修改工作 ${job.jobId} 等待認領。請回到目前執行此 episode 的 Codex／Claude Code task，要求它認領此工作。`);
+      showJobState('queued', autorunEnabled
+        ? `修改工作 ${job.jobId} 已建立，本機正在接手出圖。`
+        : `修改工作 ${job.jobId} 等待認領。請回到目前執行此 episode 的 Codex／Claude Code task，要求它認領此工作。`);
     } else {
       showJobState('running', payload.message || `Codex／Claude Code Agent 正在處理修改工作 ${job.jobId}。`);
     }

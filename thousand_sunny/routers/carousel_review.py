@@ -605,6 +605,8 @@ def _context(episode_slug: str) -> dict:
         "manifest_sha256": manifest_sha256,
         "rows": rows,
         "guest_cutouts": guest_cutouts,
+        # 介面文案要跟實際行為一致：autorun 開著時不該再叫使用者去找 agent 認領。
+        "autorun_enabled": _autorun_enabled(),
         "editor_available": editor_state == "available",
         "editor_unavailable_reason": _editor_unavailable_message(editor_state),
         "editor_pages": [

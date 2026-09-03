@@ -1090,3 +1090,20 @@ def test_feedback_driven_job_cannot_inherit_the_panel():
     assert "cannot inherit the source panel" in branch
     # 檢查必須在「沿用」真的成立之前
     assert branch.index("job.feedback_items") < branch.index("_verify_inherited_panel_completion")
+
+
+def test_expired_lease_no_longer_blocks_new_submissions(tmp_path, monkeypatch):
+    """認領後行程死掉／租約過期時，工作會永遠停在 claimed。
+
+    `fail_job` 自己也要驗租約，所以連標記失敗都做不到——那個 revision 從此
+    送不出任何新修改，而 Review Gate 上沒有任何控制項能解開
+    （2026-09-03 review 抓到）。租約過期的認領本來就允許被接手，這裡同判準。
+    """
+    import inspect as _inspect
+
+    from scripts import podcast_carousel_correction_job as mod
+
+    source = _inspect.getsource(mod.create_queued_job)
+    active = source[source.index("active = [") :][:600]
+    assert "lease_expires_at" in active, "進行中要看租約還在不在，不能只看 status"
+    assert 'existing.status == "queued"' in active
