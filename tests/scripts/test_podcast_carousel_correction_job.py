@@ -1049,3 +1049,44 @@ def test_trusted_rerender_rejects_self_reported_template_digest(tmp_path: Path):
             package_root=package,
             page_ids={"cover"},
         )
+
+
+def test_quote_geometry_only_job_still_runs_the_exact_diff(tmp_path):
+    """守衛漏掉 `quote_layout_overrides` 時，只調金句幾何的單會整個跳過比對。
+
+    後果不是「少驗一項」：exact diff 是「沿用 panel、不重跑三個 lens」的唯一
+    授權依據。跳過它，結果 spec 就能夾帶任何一張卡的文案改動而完成
+    （2026-09-03 review 抓到）。
+    """
+    import inspect as _inspect
+
+    from scripts import podcast_carousel_correction_job as mod
+
+    source = _inspect.getsource(mod._assert_structured_edits_applied)
+    guard = source[: source.index("expected = ")]
+    assert "quote_layout_overrides" in guard, "早退守衛必須涵蓋金句幾何"
+    # 四種結構化編輯任一存在就要往下走
+    for field in (
+        "copy_edits",
+        "layout_overrides",
+        "quote_layout_overrides",
+        "text_layout_overrides",
+    ):
+        assert field in guard
+
+
+def test_feedback_driven_job_cannot_inherit_the_panel():
+    """自由文字的修改意見是 agent 照意圖重寫文案——那正是三個 lens 存在的理由。
+
+    讓它也能宣告沿用，等於自己簽自己的審查。
+    """
+    import inspect as _inspect
+
+    from scripts import podcast_carousel_correction_job as mod
+
+    source = _inspect.getsource(mod._verify_completion_evidence)
+    branch = source[source.index("inherits_panel = ") :]
+    assert "job.feedback_items" in branch
+    assert "cannot inherit the source panel" in branch
+    # 檢查必須在「沿用」真的成立之前
+    assert branch.index("job.feedback_items") < branch.index("_verify_inherited_panel_completion")

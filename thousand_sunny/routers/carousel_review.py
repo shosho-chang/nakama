@@ -77,10 +77,17 @@ logger = get_logger("nakama.web.carousel_review")
 # plane，沒有 Chrome、也沒有 footage 磁碟，必須關掉——所以這是真的部署開關，
 # 不是測試用的旁門。測試也靠它把出圖擋在外面。
 def _autorun_enabled() -> bool:
-    return os.environ.get("NAKAMA_CAROUSEL_AUTORUN", "1").strip().lower() not in {
-        "0",
-        "false",
-        "no",
+    """預設**關閉**。要出圖的那台自己開。
+
+    原本預設開啟，而 repo 裡沒有任何地方替 VPS 關掉（2026-09-03 review 抓到）。
+    VPS 是 control plane，沒有 Chrome 也沒有 footage 磁碟：背景任務會先把工作
+    **認領**走、再因為找不到 Chrome 而標成 `failed`——比原本的行為更糟，因為
+    那張單本來還可以留在 `queued` 等真的執行者來接。fail closed。
+    """
+    return os.environ.get("NAKAMA_CAROUSEL_AUTORUN", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
     }
 
 

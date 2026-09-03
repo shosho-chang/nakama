@@ -584,7 +584,16 @@ def _assert_structured_edits_applied(
     source_spec: PodcastCarouselCopySpecV1,
     result_spec: PodcastCarouselCopySpecV1,
 ) -> None:
-    if not job.copy_edits and job.layout_overrides is None and not job.text_layout_overrides:
+    # 這個守衛漏掉 `quote_layout_overrides` 兩個月都沒被發現：只調金句幾何的單
+    # 會整個跳過 exact diff，於是結果 spec 可以夾帶任何一張卡的文案改動而完成
+    # （2026-09-03 review 抓到）。exact diff 是「沿用 panel、不重跑三個 lens」的
+    # 唯一授權依據——只要有任何結構化編輯，它就必須跑。
+    if not (
+        job.copy_edits
+        or job.layout_overrides is not None
+        or job.quote_layout_overrides is not None
+        or job.text_layout_overrides
+    ):
         return
     expected = source_spec.model_dump(mode="json")
     expected["revision"] = result_spec.revision
@@ -722,6 +731,14 @@ def _verify_completion_evidence(
     # 答案。這種單子沿用來源版本的 panel，不需要新的審查產物。
     inherits_panel = spec.panel_inherited_from is not None
     if inherits_panel:
+        # 沿用 panel 的授權來自上面那道 exact diff——它證明 AI 生成的那半邊
+        # 一個位元組都沒動。**自由文字的修改意見沒有這個保證**：agent 是照著
+        # 意圖重寫文案，那正是三個 lens 存在的理由。含 feedback 的單如果也能
+        # 宣告沿用，就等於自己簽自己的審查（2026-09-03 review 抓到）。
+        if job.feedback_items:
+            raise CorrectionJobTransitionError(
+                "a feedback-driven correction cannot inherit the source panel"
+            )
         if spec.panel_inherited_from != job.source_revision:
             raise CorrectionJobTransitionError(
                 "inherited panel must come from this correction job's source revision"

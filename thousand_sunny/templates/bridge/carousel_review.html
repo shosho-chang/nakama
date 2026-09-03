@@ -36,6 +36,7 @@
          data-apply-url="/bridge/ig-cards/{{ episode_slug }}/apply-edits"
          data-preview-base="/bridge/ig-cards/{{ episode_slug }}/preview"
          data-cutout-base="/bridge/ig-cards/{{ episode_slug }}/cutout"
+         data-episode="{{ episode_slug }}"
          data-approve-url="/bridge/ig-cards/{{ episode_slug }}/approve"
          data-manifest-sha="{{ manifest_sha256 }}"
          data-approved="{{ 'true' if approved else 'false' }}">
@@ -281,7 +282,12 @@ const initialQuoteLayout = {{ quote_layout | tojson }};
 const initialTextLayouts = {{ text_layout_overrides | tojson }};
 const textLayoutRegistry = {{ text_layout_registry | tojson }};
 const textLayoutSafeRects = {{ text_layout_safe_rects | tojson }};
-const storagePrefix = `nakama.carousel-review:${reviewForm.dataset.manifestSha}`;
+// key 要含 episode：`cover`／`hook`／`quote` 這些 page_id 每一集都一樣，
+// 只用 manifest sha 當前綴時，A 集沒送出的草稿會在 B 集被遺留掃描撿起來
+// 並套用——換句話說會把 A 的文案寫進 B（2026-09-03 review 抓到）。
+const episodeKey = reviewForm.dataset.episode;
+const storagePrefix = `nakama.carousel-review:${episodeKey}:${reviewForm.dataset.manifestSha}`;
+const orphanPrefix = `nakama.carousel-review:${episodeKey}:`;
 const draftKey = `${storagePrefix}:draft:v2`;
 const jobKey = `${storagePrefix}:job:v1`;
 const editorDraftKey = `${storagePrefix}:editor:v2`;
@@ -1601,6 +1607,9 @@ function discardAndCloseEditor() {
   if (currentEditorPage) {
     delete editorState.copyEdits[currentEditorPage.page_id];
     if (currentEditorPage.role === 'cover') editorState.layout = null;
+    // 金句幾何也要丟——漏掉的話按了「捨棄」之後 dirty 標記還在，
+    // 下一次送出會把使用者剛剛丟掉的位置一起送出去（2026-09-03 review 抓到）。
+    if (currentEditorPage.role === 'quote') editorState.quoteLayout = null;
     Object.keys(editorState.textLayouts).forEach((key) => {
       if (key.startsWith(`${currentEditorPage.page_id}.`)) delete editorState.textLayouts[key];
     });
@@ -1676,7 +1685,7 @@ function orphanEditorDrafts() {
   let keys = [];
   try { keys = Object.keys(sessionStorage); } catch (error) { return found; }
   for (const key of keys) {
-    if (!key.startsWith('nakama.carousel-review:') || !key.endsWith(':editor:v2')) continue;
+    if (!key.startsWith(orphanPrefix) || !key.endsWith(':editor:v2')) continue;
     if (key === editorDraftKey) continue;
     let draft = null;
     try { draft = JSON.parse(sessionStorage.getItem(key) || 'null'); } catch (error) { continue; }

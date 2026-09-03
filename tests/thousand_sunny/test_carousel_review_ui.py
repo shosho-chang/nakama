@@ -730,3 +730,27 @@ def test_busy_label_lands_on_the_button_that_was_pressed() -> None:
     for index, line in enumerate(lines):
         if _re.fullmatch(r"\s*busy = false;", line):
             assert "busySource = null;" in lines[index + 1], f"line {index + 1} 沒有清掉 busySource"
+
+
+def test_draft_keys_are_namespaced_by_episode() -> None:
+    """page_id（cover／hook／quote）每一集都一樣。
+
+    只用 manifest sha 當前綴時，A 集沒送出的草稿會在 B 集被遺留掃描撿起來並
+    套用——把 A 的文案寫進 B（2026-09-03 review 抓到）。
+    """
+    assert 'data-episode="{{ episode_slug }}"' in TEMPLATE
+    assert "const episodeKey = reviewForm.dataset.episode;" in TEMPLATE
+    assert "`nakama.carousel-review:${episodeKey}:${reviewForm.dataset.manifestSha}`" in TEMPLATE
+    # 遺留掃描也要限定同一集
+    assert "const orphanPrefix = `nakama.carousel-review:${episodeKey}:`;" in TEMPLATE
+    assert "key.startsWith(orphanPrefix)" in TEMPLATE
+    assert "key.startsWith('nakama.carousel-review:')" not in TEMPLATE
+
+
+def test_cancel_discards_quote_geometry_too() -> None:
+    """漏掉的話，按「捨棄」之後 dirty 標記還在，下一次送出會把剛剛丟掉的位置送出去。"""
+    fn = TEMPLATE[TEMPLATE.index("function discardAndCloseEditor()") :]
+    body = fn[: fn.index("\n}")]
+    assert "editorState.layout = null" in body
+    assert "editorState.quoteLayout = null" in body
+    assert "delete editorState.copyEdits[currentEditorPage.page_id];" in body
