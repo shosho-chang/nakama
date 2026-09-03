@@ -2,7 +2,7 @@
 
 描述欄四段結構（修修 2026-08-27 收旂）：
 
-    ┌─ 變動（LLM 產、修修在審核頁改）  hook 1–2 個短段
+    ┌─ 變動（LLM 產、修修在審核頁改）  hook（多個短段）
     ├─ 變動（長片才有）              ⏱ 分章（從轉場卡自動生成）
     ├─ 變動（僅人類可讀的公開 source citations） 本集引用
     └─ 固定（templates/video_description_footer.md，精簡共用版）
@@ -19,6 +19,8 @@
 - hook 由 LLM（Claude session，吃 `data/brook/style-profiles-fable5/`
   voice profile）代筆——Stage 6 平台文案在 LLM 代筆邊界內
   （ADR-027 只管 Stage 4 原子文章正文；先例：FB/IG renderer）。
+  寫法規格（段落密度、開場、來賓稱呼、歸屬）見
+  `templates/video_description_hook_guide.md`。
 
 與 WP 那條線（publisher.py）平行、不共用零件（ADR-055 D2）。
 Tests：tests/test_video_description.py。
@@ -41,8 +43,16 @@ _AI_SLOP_PATTERNS = (
     re.compile(r"帶你看"),
     re.compile(r"深入探討"),
 )
-_HOOK_MIN_CHARS = 180
-_HOOK_MAX_CHARS = 320
+# 「這集我請到…」「這次和 X 聊到…」這種自我指涉開場，修修上架前每次都刪。
+_SELF_REFERENTIAL_OPENING = re.compile(r"^(?:這集|這一集|本集|這次|今天|這支影片)")
+# 2026-08-30 修修看完首批三支 long 上架成品後重訂（規格與實測見
+# templates/video_description_hook_guide.md）：問題不是段數而是段落密度——
+# 「三四段沒有問題，甚至再多也沒有問題，目前每一段都太長」。
+# 所以段數不設上限、改卡單段長度；上架成品的段長是 45–80 字。
+_HOOK_MIN_PARAGRAPHS = 3
+_HOOK_MAX_PARAGRAPH_CHARS = 100
+_HOOK_MIN_CHARS = 150
+_HOOK_MAX_CHARS = 500
 _PUBLIC_URL_PATTERN = re.compile(r"^https?://(?!localhost(?:[:/]|$)|127\.)", re.I)
 _INTERNAL_CITATION_PATTERNS = (
     re.compile(r"(?:^|[/\\])(?:highlights|attachments|kb|data|cache)(?:[/\\]|$)", re.I),
@@ -179,7 +189,7 @@ def build_description(
 
 
 def validate_description_hook(hook: str) -> str:
-    """Enforce the compact 1–2 paragraph public-copy contract."""
+    """Enforce the many-short-paragraphs public-copy contract."""
     cleaned = hook.strip()
     if not cleaned:
         raise ValueError("description hook 不可為空")
@@ -187,13 +197,30 @@ def validate_description_hook(hook: str) -> str:
     if matches:
         raise ValueError(f"description hook 命中 AI slop：{', '.join(matches)}")
     paragraphs = [part.strip() for part in re.split(r"\n\s*\n", cleaned) if part.strip()]
-    if not 1 <= len(paragraphs) <= 2:
-        raise ValueError("description hook 必須是 1–2 個短段落")
+    if len(paragraphs) < _HOOK_MIN_PARAGRAPHS:
+        raise ValueError(
+            f"description hook 至少 {_HOOK_MIN_PARAGRAPHS} 段（目前 {len(paragraphs)} 段）"
+            "——段數不設上限，但一個念頭一段"
+        )
+    if _SELF_REFERENTIAL_OPENING.match(paragraphs[0]):
+        raise ValueError(
+            "description hook 不要用「這集／這次／今天…」自我指涉開場，第一句直接進內容"
+        )
+    long_paragraphs = [
+        i + 1
+        for i, part in enumerate(paragraphs)
+        if len(re.sub(r"\s+", "", part)) > _HOOK_MAX_PARAGRAPH_CHARS
+    ]
+    if long_paragraphs:
+        raise ValueError(
+            f"description hook 第 {', '.join(map(str, long_paragraphs))} 段太長"
+            f"（上限 {_HOOK_MAX_PARAGRAPH_CHARS} 字）——拆成更多短段，不要擠成大段"
+        )
     char_count = len(re.sub(r"\s+", "", cleaned))
     if not _HOOK_MIN_CHARS <= char_count <= _HOOK_MAX_CHARS:
         raise ValueError(
-            f"description hook 需約 200–300 字（目前 {char_count} 字；"
-            f"允許 {_HOOK_MIN_CHARS}–{_HOOK_MAX_CHARS}）"
+            f"description hook 總長需 {_HOOK_MIN_CHARS}–{_HOOK_MAX_CHARS} 字"
+            f"（目前 {char_count} 字）"
         )
     return cleaned
 
@@ -221,11 +248,20 @@ def build_description_prompt(
     transcript = source.read_text(encoding="utf-8")[:12000]
     chapter_text = "、".join(title for _, title in chapters) or "（無章節）"
     citation_text = "；".join(citations) or "（無引用）"
-    return f"""請替 YouTube 長 highlight 寫 description 最前面的 1–2 個短段落。
+    return f"""請替 YouTube 長 highlight 寫 description 最前面的數個短段落。
 
 規則：
 - 用繁體中文、第一人稱、口語但精確；直接說這支影片談了什麼，以及觀眾為什麼值得看。
-- hook 總長 200–300 個繁體中文字（不含空白），最多兩段；每段只推進一件事。
+- **至少 {_HOOK_MIN_PARAGRAPHS} 段，段數不設上限；一個念頭一段，單段不超過
+  {_HOOK_MAX_PARAGRAPH_CHARS} 字**（實測甜蜜點 45–80 字）。寧可切成六段短的，
+  不要三段長的。段間空一行。
+- 總長 {_HOOK_MIN_CHARS}–{_HOOK_MAX_CHARS} 個繁體中文字（不含空白）。
+- **第一句直接進內容**，不要「這集我請到…」「這次和 X 聊到…」「今天要分享…」
+  這種自我指涉開場。
+- **轉述第三方的說法要標出處**（「Elon Musk 形容的…」「他在書中提到…」），
+  不要把別人的比喻掛在來賓名下；書裡寫的和訪談當場講的要分清楚。
+- **來賓稱呼沿用逐字稿裡修修當面怎麼叫他**（可能是英文名、可能是全名，每集不同）；
+  逐字稿裡看不出來就用全名，不要自己改成暱稱。
 - 不要重複標題，不要虛構逐字稿沒有的內容，不要下醫療承諾。
 - 禁用「不是 X，而是 Y」「不只 X，更是 Y」「這一段會」「帶你看」「深入探討」。
 - 只輸出 hook 本文，不要標題、條列、Markdown 或 CTA。固定 CTA 由程式另外接上。

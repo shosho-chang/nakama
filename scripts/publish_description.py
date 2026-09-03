@@ -94,7 +94,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="發布線 Slice 2：描述欄組裝 + 文案回填")
     parser.add_argument("episode", help="episode 資料夾")
     parser.add_argument("--cut", required=True, help="winner id（如 punch-L5）")
-    parser.add_argument("--hook", help="hook 文字（兩三句）")
+    parser.add_argument(
+        "--hook", help="hook 文字（規格：templates/video_description_hook_guide.md）"
+    )
     parser.add_argument("--hook-file", help="hook 檔案（UTF-8；與 --hook 二選一）")
     parser.add_argument("--auto", action="store_true", help="用 subscription LLM 產生可編輯草稿")
     parser.add_argument("--dry-run", action="store_true", help="只印全文，不寫 DB")
