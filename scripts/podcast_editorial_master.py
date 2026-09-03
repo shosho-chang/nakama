@@ -98,6 +98,26 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "omitted opens the canonical default"
         ),
     )
+    # ADR-063（字幕線）換軌之前完成的集數，字幕停在舊契約的 handoff 上。ADR 明文
+    # 要求「不要改名或重寫抹布的產物」，升級只能靠一份綁定同一批 bytes 的新 handoff
+    # ——但那等於把整條 memo dual-audit 線重跑一次（抹布現在停在
+    # `awaiting_text_audits`，10 個輸入全缺）。
+    #
+    # 那條線不是為了修正內容，是為了換契約名稱：抹布舊契約那份的實際審查量
+    # 反而更大（32 個 major 元件全部聽審 vs 林之晨的 6 個，2,630 cue vs 1,646，
+    # 重跑逐 byte 一致）。修修 2026-09-03 裁決走這條。
+    #
+    # ADR-063 遷移條款寫的是 production 指令「不得**要求**」這個旗標，不是禁止
+    # 它存在；selector 本來就還支援 `degraded-dual-asr-v1`。這裡把它接出來，
+    # 讓 legacy 集數也能封存，而且**來源模式會誠實寫進 Editorial Master 的
+    # `stage5_subtitle_identity`**——衍生產物永遠查得到自己的字幕出處。
+    seal_parser.add_argument(
+        "--degraded-release-handoff",
+        help=(
+            "ADR-063 換軌前的 legacy 集數專用：舊契約的 STAGE5-HANDOFF.json。"
+            "與 --subtitle-release-handoff 互斥"
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -153,6 +173,7 @@ def main(argv: list[str] | None = None) -> int:
         # official immutable Stage 5 handoff immediately before rendering.
         stage5 = Stage5SubtitleRequest(
             subtitle_release_handoff=args.subtitle_release_handoff,
+            degraded_release_handoff=args.degraded_release_handoff,
         ).open(args.episode)
         selected = seal_editorial_master(
             request,
