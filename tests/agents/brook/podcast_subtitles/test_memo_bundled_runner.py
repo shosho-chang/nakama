@@ -150,3 +150,64 @@ def test_nondeterministic_outputs_have_distinct_valid_execution_identities(
     assert first_receipt.output_srt_sha256 != second_receipt.output_srt_sha256
     assert load_verified_memo_bundled_runner_execution(request=first) == first_receipt
     assert load_verified_memo_bundled_runner_execution(request=second) == second_receipt
+
+
+# --- publish gate vs. the documented zero-duration repair branch ---------------
+# The runbook sequence is `run-memo-bundled -> [zero-duration only: repair-memo-srt]`,
+# and `repair-memo-srt` parses the raw export with allow_zero_duration=True. If the
+# runner refused to publish that export, the repair branch could never receive its own
+# input. These tests pin the seam between the two modules.
+
+_ZERO_DURATION_SRT = (
+    b"1\n00:00:00,100 --> 00:00:00,500\nA\n\n"
+    b"2\n00:00:00,500 --> 00:00:00,500\nB\n\n"
+    b"3\n00:00:00,500 --> 00:00:00,900\nC\n"
+)
+
+
+def test_zero_duration_cue_is_published_for_the_repair_branch(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+
+    receipt = execute_memo_bundled_runner(
+        request, invoke=_successful_invoker(_ZERO_DURATION_SRT)
+    )
+
+    assert request.output_srt.read_bytes() == _ZERO_DURATION_SRT
+    assert receipt.output_srt_sha256 == hash_file(request.output_srt)
+    assert request.receipt_output.exists()
+    assert request.stdout_output.exists()
+    assert request.stderr_output.exists()
+    assert load_verified_memo_bundled_runner_execution(request=request) == receipt
+
+
+@pytest.mark.parametrize(
+    ("label", "srt"),
+    [
+        (
+            "negative duration",
+            b"1\n00:00:00,100 --> 00:00:00,500\nA\n\n"
+            b"2\n00:00:00,900 --> 00:00:00,500\nB\n",
+        ),
+        (
+            "overlap",
+            b"1\n00:00:00,100 --> 00:00:00,900\nA\n\n"
+            b"2\n00:00:00,500 --> 00:00:01,200\nB\n",
+        ),
+        (
+            "empty cue text",
+            b"1\n00:00:00,100 --> 00:00:00,500\n\n\n"
+            b"2\n00:00:00,500 --> 00:00:00,900\nB\n",
+        ),
+    ],
+)
+def test_malformed_timebase_still_fails_closed(
+    tmp_path: Path, label: str, srt: bytes
+) -> None:
+    request = _request(tmp_path)
+
+    with pytest.raises(ValueError, match="produced invalid SRT"):
+        execute_memo_bundled_runner(request, invoke=_successful_invoker(srt))
+    assert not request.output_srt.exists()
+    assert not request.receipt_output.exists()
+    assert not request.stdout_output.exists()
+    assert not request.stderr_output.exists()

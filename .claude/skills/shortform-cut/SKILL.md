@@ -62,7 +62,10 @@ python scripts/run_whisperx_words.py "<episode>/normalized.wav" --output "<episo
 **導播重跑 = 從 Step 2 全部重來**。它整條重建 timeline，字卡／素材／音效／BGM
 的軌全部消失。改了 cuts.json 就是回 Step 1。
 
-指令一律 `py -3.10`（Resolve API 綁 Python310）。
+碰 Resolve 的指令一律 `E:\nakama\.venv-v2\Scripts\python.exe`（3.12.10）——Resolve 21.0.3 的
+`fusionscript.dll` 是 cp312，**3.10 與 3.14 都會在 import 當下 ACCESS_VIOLATION 崩潰**
+（2026-09-03 實測；下文殘留的 `py -3.10` 一律以此為準）。本線碰 Resolve 的是
+`run_short_tighten` / `run_shortform_director` / `run_short_sfx` / `run_short_bgm` / `run_short_review`。
 
 ---
 

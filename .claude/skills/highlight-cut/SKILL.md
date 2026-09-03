@@ -102,7 +102,7 @@ human winner gate 與 all-candidates-quarantined human-attention 是有意停點
   狀態機執行，素材落地後再回到 deterministic script
 - 前提：**Resolve Studio 執行中** + Preferences → System → General →
   External scripting using = **Local**；跑 Resolve／Fusion 的 script 用
-  `C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe`；repo non-Resolve commands 用
+  `E:\nakama\.venv-v2\Scripts\python.exe`；repo non-Resolve commands 用
   `E:\nakama\.venv-v2\Scripts\python.exe`
 - Sandcastle / 雲端 runner 同樣不適用（沒有 Resolve、沒有素材碟）；
   唯一可外包的是純 render 類工作（hyperframes 卡片），疊軌仍要本機
@@ -123,7 +123,7 @@ Episode 已完成 Podcast Pipeline 的 `memo-dual-audit-v1` release、Resolve �
 不是 Highlight timebase。若 receipt 缺少、stale、cross-episode 或 tampered，回到 `podcast-pipeline`
 的 Editorial Master `inspect/status/seal/verify` route；不得 fallback。
 其中會連 Resolve 的 `inspect`、`seal`、`verify --live` 必須使用
-`C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe`；只有 offline `status` 與不帶
+`E:\nakama\.venv-v2\Scripts\python.exe`；只有 offline `status` 與不帶
 `--live` 的 `verify` 可使用 `E:\nakama\.venv-v2\Scripts\python.exe`。
 
 ## Legacy Step 1 — 取得 strict mining input（只供舊 run）
@@ -311,7 +311,7 @@ ADR-056 Formal Subtitle V2 的 projection handoff、`--degraded-release-handoff`
 ## Step 3 — 物化 Resolve
 
 ```
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" `
+E:\nakama\.venv-v2\Scripts\python.exe `
   scripts\run_highlight_cut.py <episode> --materialize
 ```
 

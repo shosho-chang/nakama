@@ -28,7 +28,7 @@ description: >
 ```powershell
 $env:RESOLVE_SUBTITLE_TEMPLATE = "E:\nakama\data\resolve\subtitle-template.drt"
 if (-not (Test-Path -LiteralPath $env:RESOLVE_SUBTITLE_TEMPLATE)) { throw "Resolve subtitle template missing" }
-py -3.10 scripts/build_resolve_project.py "<episode>" `
+E:\nakama\.venv-v2\Scripts\python.exe scripts/build_resolve_project.py "<episode>" `
   --projection-id "<projection-id>" `
   --expected-episode-id "<episode-id>" `
   --expected-generation-id "<generation-id>" `
@@ -78,7 +78,7 @@ Scripting API **不開放** subtitle style preset，樣式靠 **DRT 模板**攜�
 Verified Projection。刷新時仍需帶新的 projection lineage，不能使用舊 `transcript.srt`：
 
 ```powershell
-py -3.10 scripts/build_resolve_project.py "<episode>" --refresh-subtitles `
+E:\nakama\.venv-v2\Scripts\python.exe scripts/build_resolve_project.py "<episode>" --refresh-subtitles `
   --projection-id "<new-projection-id>" `
   --expected-episode-id "<episode-id>" `
   --expected-generation-id "<new-generation-id>" `

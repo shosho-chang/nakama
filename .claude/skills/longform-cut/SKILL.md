@@ -91,7 +91,9 @@ downstream，不得在 Director events 另改時間、另造 map，也不得只�
 Scripting API，CoWork/Computer Use 做不到逐幀精度）。
 
 - **Resolve Studio 執行中** + External scripting = Local
-- Resolve script 一律 `py -3.10`（3.14 會 segfault）；pytest/ruff 用 `python`
+- Resolve script 一律 `E:\nakama\.venv-v2\Scripts\python.exe`（3.12.10）。Resolve 21.0.3 的
+  `fusionscript.dll` 是 cp312：**3.10 與 3.14 都會在 `import DaVinciResolveScript` 當下
+  ACCESS_VIOLATION 崩潰**（2026-09-03 實測；舊文件寫的 `py -3.10` 已失效）。pytest/ruff 同一個直譯器
 - 從 worktree 跑要帶 `RESOLVE_SUBTITLE_TEMPLATE=E:\nakama\data\resolve\
   subtitle-template.drt`——`data/` 是 gitignored，只存在主倉庫，缺了字幕會無樣式
 - hyperframes 卡片 render 可外包，疊軌仍要本機
@@ -247,7 +249,7 @@ Agent 只生 plan，不得自報來源或授權。Acquisition 交付 `trusted_as
 FusionScript 相容的 Python 3.10，不可由 `.venv-v2` 的 render watcher 消費：
 
 ```powershell
-$resolvePy = 'C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe'
+$resolvePy = 'E:\nakama\.venv-v2\Scripts\python.exe'
 ```
 
 先 dry-run：

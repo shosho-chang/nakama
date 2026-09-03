@@ -84,6 +84,25 @@ consumer 已切換；缺少／stale／tampered receipt 一律 fail closed，不�
 
 ## S0–S2 — preflight、references、Auphonic
 
+### S0.0 — 工具鏈健檢（先做，不然會在半路才炸）
+
+整條線只有**一個**直譯器：`E:\nakama\.venv-v2\Scripts\python.exe`（Python **3.12.10**，base 在
+`C:\Users\Shosho\AppData\Local\Programs\Python\Python312`）。它同時滿足兩個硬性 ABI：repo 依賴
+（torch 2.11.0+cu128，sm_120／Blackwell）與 DaVinci Resolve 21.0.3 的 `fusionscript.dll`（cp312）。
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe -c "import sys,torch; print(sys.version.split()[0], torch.__version__, torch.cuda.is_available())"
+```
+
+必須印出 `3.12.10 ... True`。任一條不成立就**停下來修工具鏈，不要開始跑素材**：
+
+- `No pyvenv.cfg file` → venv 的指標檔不見了。重建 `E:\nakama\.venv-v2\pyvenv.cfg`，`home` 指向上面
+  那個 3.12 安裝目錄；site-packages 不要動、不要重建 venv（2026-08-30 事故：3.12 從未經
+  installer 正式安裝過，資料夾一被移走整條線就死，直到 09-03 才發現）。
+- 3.12 不存在 → `winget install --id Python.Python.3.12 -e --scope user`。
+- **不要**改用 3.10 或 3.14 去跑任何碰 Resolve 的腳本：兩者都會在 `import DaVinciResolveScript`
+  當下 ACCESS_VIOLATION（`0xC0000005`）崩潰，而且崩得沒有 traceback。
+
 先以 `ffprobe` 驗證 `Live-Mix.wav`、Combo 1、Combo 2 的 codec、duration、channels 與 clock，再 hash。
 不要因收尾聊天詢問裁切。正式 episode workspace、命令與 receipts 固定在同一 worktree／commit。
 
@@ -319,17 +338,28 @@ byte-identical，以及 partial/destination collision fail closed。`release.srt
 
 Stage 5 consumers 預設發現並驗證
 `<episode>/subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json`；fresh episode 不傳字幕 flag。
-先 dry-run 核對，再 probe 同一個 Python 3.10 runtime，最後一定要執行 actual build：
+先 dry-run 核對，再 probe 同一個 3.12 runtime，最後一定要執行 actual build：
+
+> ⚠️ **`data\resolve\subtitle-template.drt` 目前是壞的（2026-09-03 實測，尚未修復）。**
+> 從這個 DRT 長出來的 timeline，**V1 拒收視訊**：`AppendToTimeline` 回 `[None]`，音訊進得去、
+> 視訊進不去，重試無用（`append_checked` 的三次重試會全部用盡然後 `SystemExit`）。
+> 同一支主影片在**不套模板**的 `CreateEmptyTimeline` 上一次就成功——已交叉驗證，是模板的問題，
+> 不是 clip、不是幀率（雙方都是 1920x1080 / 30fps）、也不是軌道鎖定（enabled=True, locked=False）。
+>
+> 在模板重做之前，把環境變數指向不存在的路徑，讓 `build_resolve_project.py` 走它自己的
+> 無模板 fallback（`CreateEmptyTimeline` + `AddTrack("subtitle")`）。代價：字幕**樣式 preset
+> 不會套上**，交付時要明確告訴使用者自行套一次「Shosho YT」。
+> 修復方式是用 `--make-template` 從一個手動套好樣式、**且 V1 可正常上片**的 timeline 重新產生。
 
 ```powershell
-$env:RESOLVE_SUBTITLE_TEMPLATE = "E:\nakama\data\resolve\subtitle-template.drt"
-if (-not (Test-Path -LiteralPath $env:RESOLVE_SUBTITLE_TEMPLATE)) { throw "Resolve subtitle template missing" }
+# 模板修好前的暫行做法——故意指向不存在的路徑以觸發無模板 fallback
+$env:RESOLVE_SUBTITLE_TEMPLATE = "E:\nakama\data\resolve\__DISABLED_broken_v1_track__.drt"
 
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" `
+E:\nakama\.venv-v2\Scripts\python.exe `
   scripts\build_resolve_project.py "<episode>" --dry-run
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" -c `
+E:\nakama\.venv-v2\Scripts\python.exe -c `
   "from scripts.build_resolve_project import connect_resolve; r=connect_resolve(); assert r is not None; print(r.GetVersionString())"
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" `
+E:\nakama\.venv-v2\Scripts\python.exe `
   scripts\build_resolve_project.py "<episode>"
 ```
 
@@ -341,13 +371,13 @@ Actual build exit 0 只代表 base timeline 建立成功；agent 必須把 base 
 Human approval 之前只能 `inspect`，不得自行傳 `--human-approved`。核准後 exact exporter route 是：
 
 ```powershell
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" `
+E:\nakama\.venv-v2\Scripts\python.exe `
   scripts\podcast_editorial_master.py inspect "<episode>" --project "<project>" --timeline "<timeline>"
 E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_editorial_master.py status "<episode>"
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" `
+E:\nakama\.venv-v2\Scripts\python.exe `
   scripts\podcast_editorial_master.py seal "<episode>" --project "<project>" --timeline "<timeline>" `
   --human-approved --approved-by "<human-id>"
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" `
+E:\nakama\.venv-v2\Scripts\python.exe `
   scripts\podcast_editorial_master.py verify "<episode>" --project "<project>" --timeline "<timeline>" --live
 ```
 
@@ -398,7 +428,7 @@ subscription subagents 執行。若環境無法產生 exact reviews，必須回�
 
 ```powershell
 E:\nakama\.venv-v2\Scripts\python.exe scripts\run_cut_shortlist.py "<episode>" --pick <ID1,ID2,...>
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" `
+E:\nakama\.venv-v2\Scripts\python.exe `
   scripts\run_highlight_cut.py "<episode>" --materialize
 ```
 
@@ -409,8 +439,8 @@ ADR-065 的 Director → DP → same-Director second-pass semantic audit receipt
 titles、SFX、review。Tightening與所有視覺工作都只能使用 Editorial Master media/timebase：
 
 ```powershell
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_tighten.py "<episode>" --detect --id <winner-id>
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_tighten.py "<episode>" --apply --id <winner-id>
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_tighten.py "<episode>" --detect --id <winner-id>
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_tighten.py "<episode>" --apply --id <winner-id>
 E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_identity_placement.py accept "<episode>" `
   --cut-id <winner-id> --cut-srt "<episode>/highlights/srt/<winner-id>_tight_rNNN.srt" `
   --audit-a "<episode>/highlights/identity-placement/<winner-id>/identity-audit-a.json" `
@@ -419,7 +449,7 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_identity_placement.py stat
 E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_identity_placement.py emit-event "<episode>" `
   --cut-id <winner-id> --name "<guest-name>" --title "<guest-title>"
 E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_identity_placement.py verify "<episode>" --cut-id <winner-id>
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_director.py "<episode>" --id <winner-id> --stills "<stills-dir>"
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_director.py "<episode>" --id <winner-id> --stills "<stills-dir>"
 ```
 
 名稱邊界不可混淆：`run_short_director.py` = camera/Timeline director，**不代表 `brook-director` skill**
@@ -471,10 +501,10 @@ Semantic audit worker identity必須等於原 Director、且不同於 DP；由 D
 只有 complete chain fresh 驗證成 `ready_to_materialize` 後才可執行：
 
 ```powershell
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_broll.py "<episode>" --id <winner-id> --stills "<stills-dir>"
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_titles.py "<episode>" --id <winner-id>
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_sfx.py "<episode>" --id <winner-id>
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_review.py "<episode>" --id <winner-id>
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_broll.py "<episode>" --id <winner-id> --stills "<stills-dir>"
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_titles.py "<episode>" --id <winner-id>
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_sfx.py "<episode>" --id <winner-id>
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_review.py "<episode>" --id <winner-id>
 ```
 
 `run_short_broll.py` = materializer，**不代表 `brook-dp` skill** execution；它不得搜尋、挑選、改寫 intent

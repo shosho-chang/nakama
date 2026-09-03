@@ -222,7 +222,12 @@ def execute_memo_bundled_runner(
         invocation_output = invocation_input.with_suffix(".srt")
         try:
             output_bytes = invocation_output.read_bytes()
-            parse_srt(output_bytes.decode("utf-8-sig"))
+            # Zero-duration cues are a documented, repairable Memo output condition whose
+            # only sanctioned handling is the `repair-memo-srt` branch, and that branch
+            # consumes this raw export. Rejecting it here destroys its own input, so the
+            # publish gate admits `end == start` and leaves the decision downstream.
+            # Negative duration, overlap, empty text and malformed timing still fail closed.
+            parse_srt(output_bytes.decode("utf-8-sig"), allow_zero_duration=True)
         except (OSError, UnicodeDecodeError, ValueError) as exc:
             raise ValueError(f"Memo bundled runner produced invalid SRT: {exc}") from exc
 

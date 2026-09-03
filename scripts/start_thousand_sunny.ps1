@@ -15,8 +15,11 @@ $repo = 'E:\nakama'
 # 兩個都起不來；舊版腳本的 Start-Process 失敗又不會讓工作變成失敗狀態，
 # 於是「開機自動啟動」看起來有做、實際上 8000 一直是空的。
 $appPy = if ($env:NAKAMA_APP_PYTHON) { $env:NAKAMA_APP_PYTHON } else { 'C:\Python314\python.exe' }
-# finished-review watcher 必須留在 Resolve 的 Python 3.10（fusionscript ABI），不可換。
-$resolvePy = 'C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe'
+# finished-review watcher 綁 Resolve 的 fusionscript ABI，直譯器不能隨便換。
+# DaVinci Resolve 21.0.3 的 fusionscript.dll 是 cp312：Python 3.10 與 3.14 都會在
+# `import DaVinciResolveScript` 當下 ACCESS_VIOLATION（0xC0000005）崩潰，實測 2026-09-03。
+# .venv-v2 是 3.12.10 且帶齊 repo 依賴，13 支碰 Resolve 的腳本都在它底下驗過。
+$resolvePy = if ($env:NAKAMA_RESOLVE_PYTHON) { $env:NAKAMA_RESOLVE_PYTHON } else { 'E:\nakama\.venv-v2\Scripts\python.exe' }
 $logDir = Join-Path $repo 'logs'
 $logFile = Join-Path $logDir 'thousand-sunny.log'
 
