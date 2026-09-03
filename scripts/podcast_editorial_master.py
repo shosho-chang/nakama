@@ -112,6 +112,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     # 讓 legacy 集數也能封存，而且**來源模式會誠實寫進 Editorial Master 的
     # `stage5_subtitle_identity`**——衍生產物永遠查得到自己的字幕出處。
     seal_parser.add_argument(
+        "--legacy-stage5-episode-id",
+        help=(
+            "ADR-063 換軌前的 handoff 若使用不同的 episode id 慣例，"
+            "在此逐字宣告；會寫進收據永久留存"
+        ),
+    )
+    seal_parser.add_argument(
         "--degraded-release-handoff",
         help=(
             "ADR-063 換軌前的 legacy 集數專用：舊契約的 STAGE5-HANDOFF.json。"
@@ -182,6 +189,7 @@ def main(argv: list[str] | None = None) -> int:
             human_approved=args.human_approved,
             approved_by=args.approved_by,
             approved_at=args.approved_at,
+            legacy_episode_alias=args.legacy_stage5_episode_id,
         )
         _print({"status": "sealed", "identity": selected.identity()})
         return 0

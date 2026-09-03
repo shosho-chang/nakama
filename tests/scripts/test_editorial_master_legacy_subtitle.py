@@ -41,3 +41,47 @@ def test_degraded_mode_is_recorded_in_the_identity() -> None:
     handoff = (ROOT / "agents/brook/script_video/subtitle_handoff.py").read_text(encoding="utf-8")
     identity = handoff[handoff.index("def identity(") :][:1200]
     assert "subtitle_mode" in identity
+
+
+def test_legacy_episode_alias_must_be_declared_verbatim() -> None:
+    """這道檢查是擋「把 A 集的字幕封進 B 集」，不可以為了 legacy 就放寬。
+
+    抹布的 handoff 寫 `20260814-moboo`、資料夾是 `20260814 抹布`，而 ADR-063
+    禁止改寫那些產物。放行的方式是**要求操作者明講**：別名逐字給對才過，
+    而且會寫進不可變收據，這個例外永遠留在證據鏈上。
+    """
+    import pytest
+
+    from agents.brook.script_video.editorial_master import (
+        EditorialMasterContractError,
+        _validate_stage5_identity,
+    )
+
+    identity = {"episode_id": "20260814-moboo", "subtitle_mode": "degraded-dual-asr-v1"}
+
+    # 沒宣告 → 擋
+    with pytest.raises(EditorialMasterContractError, match="another episode"):
+        _validate_stage5_identity(identity, "20260814 抹布")
+
+    # 宣告錯 → 擋
+    with pytest.raises(EditorialMasterContractError, match="another episode"):
+        _validate_stage5_identity(identity, "20260814 抹布", legacy_episode_alias="20260814-wrong")
+
+    # 逐字對上 → 放行，而且記下來
+    stage5 = _validate_stage5_identity(
+        identity, "20260814 抹布", legacy_episode_alias="20260814-moboo"
+    )
+    assert stage5["legacy_episode_alias"] == "20260814-moboo"
+    assert stage5["episode_id"] == "20260814-moboo", "原始 id 不可被覆寫"
+
+
+def test_matching_episode_never_gets_an_alias_recorded() -> None:
+    """正常路徑不該多出這個欄位——它出現就代表這一集用了 legacy 例外。"""
+    from agents.brook.script_video.editorial_master import _validate_stage5_identity
+
+    stage5 = _validate_stage5_identity(
+        {"episode_id": "20260805 林之晨"},
+        "20260805 林之晨",
+        legacy_episode_alias="20260814-moboo",
+    )
+    assert "legacy_episode_alias" not in stage5
