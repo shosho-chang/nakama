@@ -3,10 +3,10 @@
 import pytest
 
 from shared.subtitle_finalize import (
+    filler_only,
     finalize_cues,
     format_srt,
     parse_srt_text,
-    filler_only,
     strip_fillers,
     strip_tail_punct,
 )

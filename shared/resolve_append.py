@@ -67,3 +67,21 @@ def append_checked(
             )
             time.sleep(delay)
     raise SystemExit(f"{label}: 上軌失敗，重試 {retries} 次仍回 {items!r}")
+
+
+def delete_checked(project, timeline, items, label: str) -> None:
+    """`Timeline.DeleteClips` 的安全包裝：先確保是 current timeline，失敗就 raise。
+
+    ⛔ 第三個坑（2026-09-04，20260901 蘇予昕）：`DeleteClips` 在**非 current**
+    timeline 上會靜默回 `False`——不是報錯，就只是不做事、也不告訴你為什麼。
+    `project.SetCurrentTimeline(timeline)` 是免費的（已經是 current 時也能重覆呼叫），
+    所以每次刪除前都先設定，不要假設呼叫端已經設過。
+
+    這個函式只包 `Timeline.DeleteClips`（刪 timeline 上的 item）。`MediaPool.DeleteClips`
+    （刪 media pool 裡的素材，跟目前開哪條 timeline 無關）是不同方法、不同物件，
+    沒有已知證據顯示它有一樣的坑，不在這個包裝範圍內。
+    """
+    if not project.SetCurrentTimeline(timeline):
+        raise SystemExit(f"{label}: SetCurrentTimeline 失敗，無法確保刪除目標是 current timeline")
+    if not timeline.DeleteClips(items):
+        raise SystemExit(f"{label}: DeleteClips 失敗（已確認是 current timeline，仍回 False）")

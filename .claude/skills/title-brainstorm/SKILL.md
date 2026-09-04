@@ -59,7 +59,18 @@ brainstorm skill：**輸出該發散、流程要固定**。
 
 **7. 輸出.**
 
-**默認互動模式**：完整呈現推導鏈，缺一不可：① 關鍵字評分表 → ② TA 畫像 → ③ **Tier 1（6 角度發散）** → ④ **Tier 2/3（疊加候選，標角度組合、可回溯 Tier 1）** → ⑤ **panel 評分表（R1 與 R2 全標題 ＋ 總分／20，門檻 pass/fail，收斂可見）** → ⑥ 淘汰賽排序 → ⑦ 🎯 Top 5（互不同角度、每條帶 payoff＋cite）。只有明確要求存檔才寫 `AgentOutputs/title-brainstorm/<來源>-<日期>.md`；不寫 session／暫存目錄。
+**默認互動模式**：完整呈現推導鏈，缺一不可：① 關鍵字評分表 → ② TA 畫像 → ③ **Tier 1（6 角度發散）** → ④ **Tier 2/3（疊加候選，標角度組合、可回溯 Tier 1）** → ⑤ **panel 評分表（R1 與 R2 全標題 ＋ 總分／20，門檻 pass/fail，收斂可見）** → ⑥ 淘汰賽排序 → ⑦ 🎯 Top 5（互不同角度、每條帶 payoff＋cite）。
+
+**podcast 全集（`--cut-id full`）跑完必寫報告，不是 opt-in（修修 2026-09-04 裁決）。** 存到來源集數的
+Obsidian Interview 資料夾 `<VAULT_PATH>/AgentOutputs/interviews/<集數資料夾>/0N-title-brainstorm.md`
+（`0N` 接續資料夾內既有 `01-`…`05-` 編號之後；沒有該資料夾就照 `AgentOutputs/interviews/` 既有慣例
+新建，不要另闢路徑）。內容不是只留 Top 5——**連淘汰的候選都要連分數與 persona 真實反應一起留著**：
+關鍵字評分表、TA 畫像、Tier 1、每一輪的完整候選表（含被砍掉的）、panel 逐條分數與理由、最終 Top 5
+與 panel_note。範例見 `2026-08-31-蘇予昕/06-title-brainstorm.md`。這份報告是給下一集參考「什麼樣的
+標題會被打槍」用的，砍掉的候選比留下的更有教育意義，不能省略。
+
+非 podcast（單純文章／逐字稿臨時發想）維持原規則：只有明確要求存檔才寫
+`AgentOutputs/title-brainstorm/<來源>-<日期>.md`；不寫 session／暫存目錄。
 
 **批次模式（`--batch`）**：組成以下 JSON 送入 `python scripts/emit_packages.py <packaging_dir>`：
 ```json

@@ -38,7 +38,7 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_subtitle_v2_evidence.py ru
   --gpu 0 `
   --language zh `
   --prompt "<episode-specific proper nouns; reference only, never instructions>" `
-  --max-context -1 `
+  --max-context 0 `
   --max-len 0 `
   --output $memoRaw `
   --stdout-output $memoStdout `
@@ -49,6 +49,14 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_subtitle_v2_evidence.py ru
 Do not open Memo GUI. Preserve native raw SRT, stdout, stderr, and execution receipt. Contract
 `memo-bundled-runner-execution-v1` binds the exact runner/model/audio/output bytes, invocation, language,
 prompt, timestamps, and successful exit. All five execution artifacts above are immutable.
+
+`--max-context 0` is deliberate, not the whisper.cpp default. `-1` (unbounded context carry-over) caused
+decoding degradation on long (>90 min) interviews in production (20260901 蘇予昕): repeated phrases,
+`failed to generate timestamp token` in stderr, and 1000ms overlaps between adjacent cues — all clustered
+in the back half of the episode where accumulated context was largest. Same audio, same runner, `0` instead
+of `-1` produced a clean run (0 overlaps, negative durations, or repetition) on the same episode. If a future
+episode still shows this pattern with `--max-context 0`, that is new evidence — diagnose fresh, do not
+silently revert to `-1`.
 
 The runner writes canonical JSON. Its closed top-level field set is:
 

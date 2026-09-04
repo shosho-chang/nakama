@@ -58,7 +58,9 @@ consumer 已切換；缺少／stale／tampered receipt 一律 fail closed，不�
 - 上述授權不包含新的 paid API／provider／data destination，也不包含 YouTube upload。
 - 普通 E2E 的第一個人類 editorial gate 是 **Editorial Master approval**。在此之前只有
   wrong episode/audio、hash／coverage／timebase catastrophic failure，或未獲授權的 provider/destination 變更
-  可以停止。
+  可以停止。**這條規則本身沒有模糊空間，但 2026-09-04（20260901 蘇予昕）agent 還是在 S0 前多問了一句
+  「可以直接這麼做嗎」**——授權明明已經在使用者最初那句「跑這集」裡給了。看到這句仍然想確認，代表在
+  自我懷疑，不是規則不夠清楚：**不要問，直接做，出事再停**。
 - 雙 text audit 或雙 ASR 的一般衝突不是 human gate：保留 Memo 原文、寫入 ledger、繼續。
 - 之後的人類 gate 依序是 Highlight shortlist、finished-cut review、packaging review、explicit YouTube
   upload approval。
@@ -86,22 +88,23 @@ consumer 已切換；缺少／stale／tampered receipt 一律 fail closed，不�
 
 ### S0.0 — 工具鏈健檢（先做，不然會在半路才炸）
 
-整條線只有**一個**直譯器：`E:\nakama\.venv-v2\Scripts\python.exe`（Python **3.12.10**，base 在
-`C:\Users\Shosho\AppData\Local\Programs\Python\Python312`）。它同時滿足兩個硬性 ABI：repo 依賴
-（torch 2.11.0+cu128，sm_120／Blackwell）與 DaVinci Resolve 21.0.3 的 `fusionscript.dll`（cp312）。
+整條線只有**一個**直譯器：`E:\nakama\.venv-v2\Scripts\python.exe`。精確版本釘在 repo 根目錄的
+`.python-version`；為什麼是這個版本、跟其他兩個桌機 Python 的分工，見
+[`docs/runbooks/desktop-python-interpreters.md`](../../../docs/runbooks/desktop-python-interpreters.md)——
+不要重新診斷一次，先讀那份文件。
+
+先自動自癒，**這一步不用問**（不裝任何新軟體，只在版本已經在 registry 裡時修指標）：
 
 ```powershell
-E:\nakama\.venv-v2\Scripts\python.exe -c "import sys,torch; print(sys.version.split()[0], torch.__version__, torch.cuda.is_available())"
+powershell -ExecutionPolicy Bypass -File E:\nakama\scripts\repair_venv_v2.ps1
 ```
 
-必須印出 `3.12.10 ... True`。任一條不成立就**停下來修工具鏈，不要開始跑素材**：
+跑完會印 `.venv-v2 健康。` 才算過。只有印出 `winget install` 指令那條分支——代表釘住的版本
+**真的沒裝過**——才需要停下來問；其他情況（`pyvenv.cfg` 不見、指標過期）腳本會自己修好，
+不用回頭找使用者核准。
 
-- `No pyvenv.cfg file` → venv 的指標檔不見了。重建 `E:\nakama\.venv-v2\pyvenv.cfg`，`home` 指向上面
-  那個 3.12 安裝目錄；site-packages 不要動、不要重建 venv（2026-08-30 事故：3.12 從未經
-  installer 正式安裝過，資料夾一被移走整條線就死，直到 09-03 才發現）。
-- 3.12 不存在 → `winget install --id Python.Python.3.12 -e --scope user`。
-- **不要**改用 3.10 或 3.14 去跑任何碰 Resolve 的腳本：兩者都會在 `import DaVinciResolveScript`
-  當下 ACCESS_VIOLATION（`0xC0000005`）崩潰，而且崩得沒有 traceback。
+**不要**改用 3.10 或 3.14 去跑任何碰 Resolve 的腳本：兩者都會在 `import DaVinciResolveScript`
+當下 ACCESS_VIOLATION（`0xC0000005`）崩潰，而且崩得沒有 traceback。
 
 先以 `ffprobe` 驗證 `Live-Mix.wav`、Combo 1、Combo 2 的 codec、duration、channels 與 clock，再 hash。
 不要因收尾聊天詢問裁切。正式 episode workspace、命令與 receipts 固定在同一 worktree／commit。
@@ -406,9 +409,10 @@ E:\nakama\.venv-v2\Scripts\python.exe `
 完成時固定驗證 `master.mp4`、`master.srt`、`timeline-snapshot.json`、`EDITORIAL-MASTER.json` 四件，receipt
 最後寫入。既有不同 bytes、wrong episode、Timeline UID drift 或 hash drift 必須停止，不能 rerender 覆蓋。
 
-Editorial Master receipt 驗證成功後，在開始 miners 前，先對 `cut_id=full` 啟動 `title-brainstorm` 與
-`thumbnail-brainstorm`，產生完整節目的三組 title／thumbnail／description 草稿。這一步不依賴
-Highlight winner；評審可與 S8 並行，未核准不得進完整節目發布，但不得阻塞 Highlight mining。
+Editorial Master receipt 驗證成功後，**立刻**對 `cut_id=full` 啟動 `title-brainstorm` 與
+`thumbnail-brainstorm`——這是 seal 核准後的自動下一步，不是要另外徵詢的新工作，**不要問「要不要現在
+開始」**（2026-09-04 20260901 蘇予昕 agent 在這裡多問了一次；使用者回饋是每一步都問會累，這裡本就不
+該是決策點）。在開始 miners 前完成。產生完整節目的三組 title／thumbnail／description 草稿，這一步不依賴 Highlight winner；評審可與 S8 並行，未核准不得進完整節目發布，但不得阻塞 Highlight mining。
 作者／新書訪談的完整節目封面，若有可驗證書封，必須使用 N1 的暗色書封中景；詳細參數以
 `thumbnail-brainstorm` 為準。
 
