@@ -246,7 +246,8 @@ path escape、glob slug 或 hash drift 都 fail closed。只有通過後才能�
 Stock Video 下載與授權證據收集是上游 acquisition worker 的工作；Finished Revision
 Agent 只生 plan，不得自報來源或授權。Acquisition 交付 `trusted_asset_sources.json`，
 並將各 `filename` 的影片放在 JSON 同目錄。Finished Revision／Resolve 必須使用
-FusionScript 相容的 Python 3.10，不可由 `.venv-v2` 的 render watcher 消費：
+FusionScript 相容的 Python（cp312、`.venv-v2`，見上方「舊文件寫的 `py -3.10` 已失效」），
+不可由跑其他 app 邏輯的直譯器消費：
 
 ```powershell
 $resolvePy = 'E:\nakama\.venv-v2\Scripts\python.exe'
@@ -288,7 +289,7 @@ provenance 的素材，但不得覆寫；任何漂移都必須在 Agent 或 Reso
 content-addressed request ID 與舊 failure receipt，下一 attempt 寫入獨立子目錄；來源 manifest、
 preview 或 rollback inventory 有任何漂移就拒絕 requeue。
 
-若舊 worker 因 ABI `SystemExit` 留在 `running`，先用 Python 3.10 做只讀 recovery：
+若舊 worker 因 ABI `SystemExit` 留在 `running`，先用同一支 cp312 直譯器（`.venv-v2`）做只讀 recovery：
 
 ```powershell
 & $resolvePy scripts/finished_review_watcher.py --episodes-root "G:\Footages" `

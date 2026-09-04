@@ -1,5 +1,7 @@
 """字幕定版規則：句尾零標點 + cue 間零空隙 + 語助詞清理。"""
 
+from pathlib import Path
+
 import pytest
 
 from shared.subtitle_finalize import (
@@ -8,6 +10,7 @@ from shared.subtitle_finalize import (
     format_srt,
     parse_srt_text,
     strip_fillers,
+    strip_fillers_srt_file,
     strip_tail_punct,
 )
 
@@ -275,7 +278,6 @@ class TestSrtRoundtrip:
 # 20260901 蘇予昕：句尾的「齁」有 21/24、「哦」有 14/40，刪掉會把話講硬。
 
 
-
 @pytest.mark.parametrize(
     "text",
     ["嗯", "嗯~", "呃", "呃~", "哦", "哦~", "齁~", "嗯嗯嗯", "嗯~ 嗯~", "嗯，"],
@@ -318,6 +320,21 @@ def test_strip_fillers_distinguishes_hesitation_from_tone(raw, expected):
 def test_strip_fillers_is_idempotent():
     once = strip_fillers("嗯~ 呃 我覺得這樣很好哦")
     assert strip_fillers(once) == once
+
+
+def test_strip_fillers_srt_file_does_not_leave_orphan_leading_comma(tmp_path: Path):
+    src = tmp_path / "src.srt"
+    dst = tmp_path / "dst.srt"
+    src.write_text(
+        "1\n00:00:00,000 --> 00:00:01,000\n嗯，可是很有意思哦\n",
+        encoding="utf-8",
+    )
+
+    stats = strip_fillers_srt_file(src, dst)
+
+    cues = parse_srt_text(dst.read_text(encoding="utf-8"))
+    assert cues == [(0.0, 1.0, "可是很有意思哦")]
+    assert stats["filler_stripped"] == 1
 
 
 def test_finalize_cues_drops_filler_only_and_counts_both():

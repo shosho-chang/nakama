@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from shared.subtitle_finalize import (  # noqa: E402
     finalize_cues,
+    find_bad_boundaries,
     format_srt,
     parse_srt_text,
 )
@@ -72,9 +73,12 @@ def main() -> int:
     stats = {}
     if not args.no_finalize:
         cues, stats = finalize_cues(cues, pause=pause)
-    after = stats.get("bad_boundaries")
-    if after is None:
-        after = finalize_cues(cues, pause=pause)[1]["bad_boundaries"]
+        after = stats["bad_boundaries"]
+    else:
+        # --no-finalize＝工作真值：定版規則（含 ④ 語助詞清理）沒套用在輸出上，
+        # 診斷數字也不能借 finalize_cues 算，否則「殘留壞切點」會混進語助詞
+        # 被清掉後才消失的假改善，跟實際寫出的 SRT 對不上。
+        after = find_bad_boundaries(cues, pause=pause)
     Path(args.out).write_text(format_srt(cues), encoding="utf-8")
     print(f"壞切點 {before} → {len(after)}")
     if stats:

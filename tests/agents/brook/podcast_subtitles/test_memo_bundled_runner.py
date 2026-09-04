@@ -168,9 +168,7 @@ _ZERO_DURATION_SRT = (
 def test_zero_duration_cue_is_published_for_the_repair_branch(tmp_path: Path) -> None:
     request = _request(tmp_path)
 
-    receipt = execute_memo_bundled_runner(
-        request, invoke=_successful_invoker(_ZERO_DURATION_SRT)
-    )
+    receipt = execute_memo_bundled_runner(request, invoke=_successful_invoker(_ZERO_DURATION_SRT))
 
     assert request.output_srt.read_bytes() == _ZERO_DURATION_SRT
     assert receipt.output_srt_sha256 == hash_file(request.output_srt)
@@ -185,24 +183,19 @@ def test_zero_duration_cue_is_published_for_the_repair_branch(tmp_path: Path) ->
     [
         (
             "negative duration",
-            b"1\n00:00:00,100 --> 00:00:00,500\nA\n\n"
-            b"2\n00:00:00,900 --> 00:00:00,500\nB\n",
+            b"1\n00:00:00,100 --> 00:00:00,500\nA\n\n2\n00:00:00,900 --> 00:00:00,500\nB\n",
         ),
         (
             "overlap",
-            b"1\n00:00:00,100 --> 00:00:00,900\nA\n\n"
-            b"2\n00:00:00,500 --> 00:00:01,200\nB\n",
+            b"1\n00:00:00,100 --> 00:00:00,900\nA\n\n2\n00:00:00,500 --> 00:00:01,200\nB\n",
         ),
         (
             "empty cue text",
-            b"1\n00:00:00,100 --> 00:00:00,500\n\n\n"
-            b"2\n00:00:00,500 --> 00:00:00,900\nB\n",
+            b"1\n00:00:00,100 --> 00:00:00,500\n\n\n2\n00:00:00,500 --> 00:00:00,900\nB\n",
         ),
     ],
 )
-def test_malformed_timebase_still_fails_closed(
-    tmp_path: Path, label: str, srt: bytes
-) -> None:
+def test_malformed_timebase_still_fails_closed(tmp_path: Path, label: str, srt: bytes) -> None:
     request = _request(tmp_path)
 
     with pytest.raises(ValueError, match="produced invalid SRT"):

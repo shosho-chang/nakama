@@ -28,6 +28,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from shared import cue_builder
+
 PUNCT_TAIL = "，。、；：！？…—～·" + ",.;:!?~"
 CLOSERS = "」』》）"
 LEADING_COMMAS = "，,"
@@ -36,8 +38,9 @@ LEADING_DISPLAY_PUNCT = PUNCT_TAIL
 _TS = re.compile(r"(\d+):(\d+):(\d+)[,.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,.](\d+)")
 
 
-#: 純遲疑語助詞——無條件刪除（修修 2026-07-26；同 `cue_builder.FILLERS`）
-HESITATION_FILLERS = "呃"
+#: 純遲疑語助詞——無條件刪除（修修 2026-07-26）。
+#: 同一份定義，避免跟 `cue_builder.FILLERS` 各改各的漂移
+HESITATION_FILLERS = "".join(cue_builder.FILLERS)
 #: 位置相依語助詞——獨立成句／句首刪除，句尾或句中是語氣詞，保留（修修 2026-09-03）
 POSITIONAL_FILLERS = "嗯哦齁"
 #: 判斷「這條 cue 只有語助詞」時要忽略的裝飾字元
@@ -436,6 +439,11 @@ def strip_fillers_srt_file(src: Path, dst: Path) -> dict:
     模式刻意不跑完整定版，避免顯示層默默改動已審核文字。語助詞清理是修修
     明示的編輯決策，不是默默改動，所以獨立成這個窄入口並回報刪除數量，
     呼叫端必須把數字印出來。`release.srt` 本體永遠不動。
+
+    唯一例外：句首語助詞被砍掉後，原本黏在它後面的標點（「嗯，可是…」→
+    「，可是…」）會變成孤兒句首標點。`finalize_cues` 裡這個標點由規則①
+    歸還／丟棄，但這裡沒有跑規則①，所以直接剝掉——它是語助詞的附屬標點，
+    不是原句自己的句首標點，不屬於「不碰標點」要保護的範圍。
     """
     cues = parse_srt_text(Path(src).read_text(encoding="utf-8-sig"))
     kept: list[tuple[float, float, str]] = []
@@ -449,6 +457,13 @@ def strip_fillers_srt_file(src: Path, dst: Path) -> dict:
         if not cleaned:
             dropped += 1
             continue
+        head = text.lstrip(" \t")[:1]
+        if cleaned != text and head in (HESITATION_FILLERS + POSITIONAL_FILLERS):
+            while cleaned[:1] in LEADING_DISPLAY_PUNCT:
+                cleaned = cleaned[1:].lstrip(" \t")
+            if not cleaned:
+                dropped += 1
+                continue
         if cleaned != text:
             edited += 1
         kept.append((start, end, cleaned))

@@ -38,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agents.brook.podcast_subtitles.handoff import ProjectionVerifierFactory  # noqa: E402
 from agents.brook.script_video.subtitle_handoff import (  # noqa: E402
+    HASH_BOUND_RELEASE_MODES,
     Stage5SubtitleContractError,
     Stage5SubtitleRequest,
     Stage5SubtitleSelection,
@@ -208,11 +209,7 @@ def _versioned_srt(
     while (out_dir / f"transcript_r{n:03d}.srt").exists():
         n += 1
     dst = out_dir / f"transcript_r{n:03d}.srt"
-    if subtitle.mode in {
-        "memo-dual-audit-v1",
-        "verified-v2",
-        "degraded-dual-asr-v1",
-    }:
+    if subtitle.mode in HASH_BOUND_RELEASE_MODES:
         # Hash-bound release 不跑完整定版（標點／空隙屬顯示層處理，會默默改動
         # 已審核文字）。但語助詞清理是修修 2026-09-03 的明示編輯決策，套用並
         # 報數；release.srt 本體不動，lineage 仍綁來源 release identity。

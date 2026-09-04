@@ -48,7 +48,7 @@ from run_short_tighten import (  # noqa: E402
 )
 
 from agents.brook.script_video.subtitle_handoff import Stage5SubtitleRequest  # noqa: E402
-from shared.resolve_append import append_checked  # noqa: E402
+from shared.resolve_append import append_checked, delete_checked  # noqa: E402
 
 logger = logging.getLogger("short_director")
 
@@ -418,7 +418,7 @@ def build_shots(
 #: 的一部分。「哇這個非常常見」「然後他就覺得 哇」不算——那是說話者自己講
 #: 話的一部分，不是聽者的反應。
 REACTION_TRIGGER_CHARS = "哈哇"
-REACTION_TRIGGER_NOISE = "~～,，. \t"
+REACTION_TRIGGER_NOISE = "~～,，。. \t"
 
 
 def _pure_reaction_words(word_tokens: list[dict], cfg: dict) -> list[dict]:
@@ -440,9 +440,7 @@ def _pure_reaction_words(word_tokens: list[dict], cfg: dict) -> list[dict]:
     return merged
 
 
-def inject_reaction_cuts(
-    shots: list[dict], word_tokens: list[dict], cfg: dict
-) -> list[dict]:
+def inject_reaction_cuts(shots: list[dict], word_tokens: list[dict], cfg: dict) -> list[dict]:
     """talk shot 內夾雜的純反應詞（哈/哇）切一個短反應鏡頭到反應者臉上。
 
     修修 2026-09-03：「聽來賓講話途中有比較大的情緒反應（哈/哇），適時切到
@@ -492,21 +490,15 @@ def inject_reaction_cuts(
                 if pre_len < min_residual:
                     r0 = cursor  # 前段太短——併進反應鏡頭，不留碎片
                 else:
-                    pieces.append(
-                        {"s": cursor, "e": r0, "spk": sh["spk"], "kind": "talk"}
-                    )
-            pieces.append(
-                {"s": r0, "e": r1, "spk": t["spk"], "kind": "reaction", "trigger": True}
-            )
+                    pieces.append({"s": cursor, "e": r0, "spk": sh["spk"], "kind": "talk"})
+            pieces.append({"s": r0, "e": r1, "spk": t["spk"], "kind": "reaction", "trigger": True})
             cursor = r1
         tail_len = sh["e"] - cursor
         if tail_len > 0:
             if tail_len < min_residual and pieces:
                 pieces[-1]["e"] = sh["e"]  # 尾段太短——併進最後一個反應鏡頭
             else:
-                pieces.append(
-                    {"s": cursor, "e": sh["e"], "spk": sh["spk"], "kind": "talk"}
-                )
+                pieces.append({"s": cursor, "e": sh["e"], "spk": sh["spk"], "kind": "talk"})
         zoom = sh.get("zoom", cfg.get("zoom_base", 1.0))
         for piece in pieces:
             piece["zoom"] = zoom
@@ -917,11 +909,10 @@ def refresh_subs(episode_dir: Path, cid: str) -> dict:
     elif delta < -1.0 / fps:
         logger.warning(f"timeline 比模型短 {-delta:.2f}s——尾端字幕會被截，請確認手改內容")
 
-    project.SetCurrentTimeline(tl)
     for ti in range(1, tl.GetTrackCount("subtitle") + 1):
         items = tl.GetItemListInTrack("subtitle", ti) or []
         if items:
-            tl.DeleteClips(items)
+            delete_checked(project, tl, items, f"refresh_subs subtitle track {ti}")
     seg_srt, n_cues = _retime_srt(
         episode_dir,
         cid,

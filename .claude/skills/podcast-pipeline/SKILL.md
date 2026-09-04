@@ -409,6 +409,32 @@ E:\nakama\.venv-v2\Scripts\python.exe `
 完成時固定驗證 `master.mp4`、`master.srt`、`timeline-snapshot.json`、`EDITORIAL-MASTER.json` 四件，receipt
 最後寫入。既有不同 bytes、wrong episode、Timeline UID drift 或 hash drift 必須停止，不能 rerender 覆蓋。
 
+**seal 前人工掃一次 `master.srt` 有沒有殘留標點**（2026-09-04 20260901 蘇予昕漏網：`inspect` 的
+`timing_qc` 只查時間軸——非正時長、超出 timeline、重疊——不查文字內容，house style「不留標點」
+沒有自動化把關）。4480 條 cue 裡 5 條連續 cue（01:23:42–01:24:04）用了半形逗號＋全形句號，明顯繞過
+了 Memo 文字風險掃描員（`agents/brook/podcast_subtitles/adapters/correction.py` 的 house style）該有
+的清理，原因待查——這一集發生在使用者事後於 Resolve 手動補救／調整過的區段附近，懷疑跟繞過正常
+correction pass 的手動編輯有關。此集已 seal（ADR-064 不可變），這次先不補救；**換集時**：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe -c "
+path = r'<episode>\editorial-master\v1\master.srt'
+text = open(path, encoding='utf-8-sig').read()
+full, half = '，。、；：？！', ',.;?!'
+for b in text.strip().split('\n\n'):
+    lines = b.splitlines()
+    if len(lines) < 3: continue
+    body = '\n'.join(lines[2:])
+    if any(ch in body for ch in full + half):
+        print(lines[1], '|', body)
+"
+```
+
+**不要用 bash `grep` 查多位元組 CJK 字元類**（`[，。、；：？！]` 這種 pattern 在非 UTF-8 locale
+下會逐 byte 誤判，2026-09-04 就因此誤報過 3491 筆假陽性——一定要用上面這種 Python UTF-8 解碼的版本，
+且只掃 SRT 的文字行、不要連 timestamp 行的逗號（`00:00:00,000`）一起算進去）。列舉用的「、」
+（「國中、高中、大學」）不算違規；其餘任何標點都是清理沒跑到，seal 前先處理，不要留到封存後才發現。
+
 Editorial Master receipt 驗證成功後，**立刻**對 `cut_id=full` 啟動 `title-brainstorm` 與
 `thumbnail-brainstorm`——這是 seal 核准後的自動下一步，不是要另外徵詢的新工作，**不要問「要不要現在
 開始」**（2026-09-04 20260901 蘇予昕 agent 在這裡多問了一次；使用者回饋是每一步都問會累，這裡本就不
