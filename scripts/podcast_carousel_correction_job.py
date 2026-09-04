@@ -39,6 +39,7 @@ from shared.schemas.podcast_carousel import (  # noqa: E402
     CarouselCorrectionJobV1,
     CarouselCorrectionProgress,
     CarouselCoverLayoutEdit,
+    CarouselQuoteLayoutEdit,
     CarouselReviewerReceipt,
     CarouselReviewManifestV1,
     CarouselTextLayoutEdit,
@@ -185,6 +186,8 @@ def _assert_source_integrity(job: CarouselCorrectionJobV1, package_root: Path) -
     requested = [*job.feedback_items, *job.copy_edits, *job.text_layout_overrides]
     if job.layout_overrides is not None:
         requested.append(job.layout_overrides)
+    if job.quote_layout_overrides is not None:
+        requested.append(job.quote_layout_overrides)
     for item in requested:
         if page_receipts.get(item.page_id) != item.artifact_sha256:
             raise CorrectionJobTransitionError(
@@ -247,6 +250,7 @@ def create_queued_job(
     feedback_items: list[CarouselCorrectionItem] | None = None,
     copy_edits: list[CarouselCopyEdit] | None = None,
     layout_overrides: CarouselCoverLayoutEdit | None = None,
+    quote_layout_overrides: CarouselQuoteLayoutEdit | None = None,
     text_layout_overrides: list[CarouselTextLayoutEdit] | None = None,
     now: datetime | None = None,
     job_id: str | None = None,
@@ -261,6 +265,7 @@ def create_queued_job(
         feedback_items=feedback_items or [],
         copy_edits=copy_edits or [],
         layout_overrides=layout_overrides,
+        quote_layout_overrides=quote_layout_overrides,
         text_layout_overrides=text_layout_overrides or [],
         created_at=timestamp,
         updated_at=timestamp,
@@ -269,12 +274,23 @@ def create_queued_job(
     directory.mkdir(parents=True, exist_ok=True)
     path = correction_job_path(package_root, identifier)
     with _job_lock(directory / ".create"):
+        # 「進行中」要看**租約還在不在**，不能只看 status。認領之後行程死掉、
+        # 租約過期、或 `.lock` 卡住時，工作會永遠停在 claimed／in_progress，
+        # 而 fail_job 自己也要驗租約——於是那個 revision 從此送不出任何新修改，
+        # 使用者在 Review Gate 上沒有任何控制項能解開（2026-09-03 review 抓到）。
+        # 租約過期的認領本來就允許被別人接手，這裡採同一個判準。
+        now = timestamp
         active = [
             existing
             for existing in list_jobs(package_root)
             if existing.source_revision == source_revision
             and existing.source_manifest_sha256 == source_manifest_sha256
             and existing.status in {"queued", "claimed", "in_progress"}
+            and (
+                existing.status == "queued"
+                or existing.claim is None
+                or now < existing.claim.lease_expires_at
+            )
         ]
         if active:
             raise CorrectionJobTransitionError(
@@ -449,6 +465,8 @@ def _assert_affected_pages_rerendered(
     affected.update(item.page_id for item in job.text_layout_overrides)
     if job.layout_overrides is not None:
         affected.add("cover")
+    if job.quote_layout_overrides is not None:
+        affected.add(job.quote_layout_overrides.page_id)
     if not affected:
         return
     if source_manifest.render_input is None or result_manifest.render_input is None:
@@ -473,8 +491,18 @@ def _assert_affected_pages_rerendered(
         result = result_pages.get(page_id)
         if source is None or result is None:
             raise CorrectionJobTransitionError(f"affected carousel page is missing: {page_id}")
-        if result.fit.status != "fit":
-            raise CorrectionJobTransitionError(f"affected carousel page does not fit: {page_id}")
+        # `fit` 是算圖端對版面的判定（重疊量、字級、保護區碰撞），不是「agent 有沒有
+        # 照做」。修修 2026-09-02：「跟文字一樣，我送出去的就是 override 全部的規則。
+        # 機器看不到我看到的東西。」他在編輯器裡看到的預覽就是同一份算圖 DOM，
+        # 重疊多少他自己看得見；那是編輯決定。
+        #
+        # 前門（Review Gate 的送出）已經改成只提示不擋，這裡不能還留一道後門否決——
+        # 否則他送得出去、卻永遠完成不了（實測 r003 就卡在 cover 的
+        # 「重疊 267px 超過 240px」）。
+        #
+        # 下面那幾項照驗：內容雜湊要等於用結果 spec 重算的值、圖片與內容雜湊都必須
+        # 真的變了、render input 不可重用。那些才是「agent 有沒有照做」的證據。
+        # `fit.status` 仍然存在 manifest 裡，Review Gate 會照常標示「版面需要調整」。
         if result.content_sha256 == source.content_sha256:
             raise CorrectionJobTransitionError(
                 f"affected carousel content hash was reused: {page_id}"
@@ -567,10 +595,29 @@ def _assert_structured_edits_applied(
     source_spec: PodcastCarouselCopySpecV1,
     result_spec: PodcastCarouselCopySpecV1,
 ) -> None:
-    if not job.copy_edits and job.layout_overrides is None and not job.text_layout_overrides:
+    # 這個守衛漏掉 `quote_layout_overrides` 兩個月都沒被發現：只調金句幾何的單
+    # 會整個跳過 exact diff，於是結果 spec 可以夾帶任何一張卡的文案改動而完成
+    # （2026-09-03 review 抓到）。exact diff 是「沿用 panel、不重跑三個 lens」的
+    # 唯一授權依據——只要有任何結構化編輯，它就必須跑。
+    if not (
+        job.copy_edits
+        or job.layout_overrides is not None
+        or job.quote_layout_overrides is not None
+        or job.text_layout_overrides
+    ):
         return
     expected = source_spec.model_dump(mode="json")
     expected["revision"] = result_spec.revision
+    # 出處紀錄不是內容。修修在 Review Gate 指定的外部事實（職稱、公司…）逐字稿裡
+    # 沒有背書，panel 會（正確地）要求記錄來源——但把來源寫進 spec 本身就是一個
+    # 「沒有被請求的欄位變動」，於是 exact-diff 擋下整張單。兩條規則互相卡死，
+    # 結果是**只要修修指定了一個逐字稿沒有的事實，那張單就永遠完成不了**
+    # （2026-09-02 實際卡住 cj-03dc7ba2）。這個欄位只指向出處註記，不影響任何
+    # 一張卡片的可見內容，所以允許它變動。
+    expected["editorial_direction_path"] = result_spec.editorial_direction_path
+    # 同理：panel 繼承宣告是稽核欄位，不是卡片內容。它宣稱「AI 那半邊沒變」，
+    # 而下面這個 exact-diff 就是那句宣稱的證明本身。
+    expected["panel_inherited_from"] = result_spec.panel_inherited_from
     pages = {page["page_id"]: page for page in expected["pages"]}
     for edit in job.copy_edits:
         page = pages.get(edit.page_id)
@@ -581,6 +628,10 @@ def _assert_structured_edits_applied(
         page.update(edit.fields)
     if job.layout_overrides is not None:
         expected["layout_overrides"]["cover"] = job.layout_overrides.values.model_dump(mode="json")
+    if job.quote_layout_overrides is not None:
+        expected["layout_overrides"]["quote"] = job.quote_layout_overrides.values.model_dump(
+            mode="json"
+        )
     text_layouts = {
         (item["page_id"], item["region"]): item
         for item in expected["layout_overrides"].get("text_regions", [])
@@ -606,12 +657,57 @@ def _assert_structured_edits_applied(
         )
 
 
+def _verify_inherited_panel_completion(
+    *,
+    package_root: Path,
+    source_revision: str,
+    spec: PodcastCarouselCopySpecV1,
+    manifest: CarouselReviewManifestV1,
+    manifest_receipt: ArtifactReceipt,
+) -> tuple[str, CarouselCorrectionCompletionEvidence]:
+    """人類專屬修改的收尾：沿用來源版本已收斂的 panel 與它的三份審查收據。
+
+    這裡**不放寬任何檢查**——來源那份 panel 仍然必須是 converged、仍然必須三個 lens
+    齊備，而且必須真的能治理這一版（`assert_panel_renderable` 會比對繼承宣告）。
+    省下來的只有「再跑一次會得到同樣結果的那三個 agent」。
+    """
+    panel_path = package_root / "editorial" / source_revision / "panel_result.v1.json"
+    if not panel_path.is_file():
+        raise CorrectionJobTransitionError(
+            f"inherited panel not found for {source_revision}: {panel_path.name}"
+        )
+    resolved_panel_path, panel_receipt = _verified_receipt(panel_path, package_root)
+    try:
+        panel = PanelResult.model_validate_json(resolved_panel_path.read_text(encoding="utf-8"))
+        assert_panel_renderable(panel, spec=spec)
+    except (OSError, UnicodeDecodeError, ValidationError, ValueError, RuntimeError) as error:
+        raise CorrectionJobTransitionError(
+            "inherited carousel panel has not validly converged"
+        ) from error
+
+    reviewers = tuple(
+        CarouselReviewerReceipt(
+            lens=lens,
+            reviewer_id=f"inherited:{source_revision}:{lens}",
+            review=panel_receipt,
+        )
+        for lens in CAROUSEL_REQUIRED_REVIEWS
+    )
+    evidence = CarouselCorrectionCompletionEvidence(
+        result_manifest=manifest_receipt,
+        panel_result=panel_receipt,
+        inherited_from=source_revision,
+        reviewers=reviewers,
+    )
+    return manifest.revision, evidence
+
+
 def _verify_completion_evidence(
     *,
     job: CarouselCorrectionJobV1,
     package_root: Path,
     result_manifest_path: Path,
-    panel_result_path: Path,
+    panel_result_path: Path | None,
     reviewer_artifacts: list[tuple[str, str, Path]],
 ) -> tuple[str, CarouselCorrectionCompletionEvidence]:
     source_manifest = _load_claimed_source_manifest(job, package_root)
@@ -639,6 +735,36 @@ def _verify_completion_evidence(
         result_spec=spec,
         package_root=package_root,
     )
+
+    # 修修 2026-09-02：「Agent review 審的是 AI 的生成內容，人類 review 之後的成果
+    # 根本不應該再觸發這個 review。」上面的 exact-diff 已經證明結果 = 來源 + 他明確
+    # 要求的欄位，AI 那半邊一個位元組都沒動；既然如此，重跑三個 lens 只會得到同一個
+    # 答案。這種單子沿用來源版本的 panel，不需要新的審查產物。
+    inherits_panel = spec.panel_inherited_from is not None
+    if inherits_panel:
+        # 沿用 panel 的授權來自上面那道 exact diff——它證明 AI 生成的那半邊
+        # 一個位元組都沒動。**自由文字的修改意見沒有這個保證**：agent 是照著
+        # 意圖重寫文案，那正是三個 lens 存在的理由。含 feedback 的單如果也能
+        # 宣告沿用，就等於自己簽自己的審查（2026-09-03 review 抓到）。
+        if job.feedback_items:
+            raise CorrectionJobTransitionError(
+                "a feedback-driven correction cannot inherit the source panel"
+            )
+        if spec.panel_inherited_from != job.source_revision:
+            raise CorrectionJobTransitionError(
+                "inherited panel must come from this correction job's source revision"
+            )
+        if reviewer_artifacts:
+            raise CorrectionJobTransitionError(
+                "an inherited-panel completion does not take reviewer artifacts"
+            )
+        return _verify_inherited_panel_completion(
+            package_root=package_root,
+            source_revision=job.source_revision,
+            spec=spec,
+            manifest=manifest,
+            manifest_receipt=manifest_receipt,
+        )
 
     supplied_lenses = [lens for lens, _, _ in reviewer_artifacts]
     if set(supplied_lenses) != set(CAROUSEL_REQUIRED_REVIEWS) or len(supplied_lenses) != len(
@@ -672,6 +798,10 @@ def _verify_completion_evidence(
             review=review_receipt,
         )
 
+    if panel_result_path is None:
+        raise CorrectionJobTransitionError(
+            "completion requires --panel-result unless the result declares panel_inherited_from"
+        )
     panel_path, panel_receipt = _verified_receipt(panel_result_path, package_root)
     if panel_path in review_paths:
         raise CorrectionJobTransitionError("panel result must be distinct from reviewer artifacts")
@@ -697,7 +827,7 @@ def complete_job(
     *,
     claim_token: str,
     result_manifest_path: Path,
-    panel_result_path: Path,
+    panel_result_path: Path | None,
     reviewer_artifacts: list[tuple[str, str, Path]],
     now: datetime | None = None,
 ) -> CarouselCorrectionJobV1:
@@ -781,12 +911,14 @@ def _parser() -> argparse.ArgumentParser:
     complete.add_argument("job", type=Path)
     complete.add_argument("--claim-token", required=True)
     complete.add_argument("--result-manifest", type=Path, required=True)
-    complete.add_argument("--panel-result", type=Path, required=True)
+    # 結果版本若宣告 `panel_inherited_from`（純人類指定欄位的修改），來源版本的
+    # panel 就是治理它的那一份，不需要另外提供審查產物。其餘情況一律必填。
+    complete.add_argument("--panel-result", type=Path)
     complete.add_argument(
         "--reviewer-receipt",
         action="append",
         type=_reviewer_artifact_arg,
-        required=True,
+        default=[],
         metavar="LENS=REVIEWER_ID=PATH",
     )
 

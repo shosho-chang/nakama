@@ -16,7 +16,7 @@
 .carousel-edit { width:100%; margin-top:var(--sho-s-2); }
 .carousel-dirty-badge { display:block; margin-top:var(--sho-s-2); color:var(--sho-warning); font-size:12px; font-weight:800; }
 .carousel-dirty-badge[hidden] { display:none; }
-.carousel-image-button { display:block; width:100%; padding:0; border:1px solid var(--sho-line); border-radius:var(--sho-r-1); background:var(--sho-bg-2); cursor:zoom-in; overflow:hidden; }
+.carousel-image-button { position:relative; display:block; width:100%; padding:0; border:1px solid var(--sho-line); border-radius:var(--sho-r-1); background:var(--sho-bg-2); cursor:zoom-in; overflow:hidden; }
 .carousel-image-button img { display:block; width:100%; height:auto; aspect-ratio:1/1; object-fit:cover; }
 .carousel-image-button:focus-visible,.carousel-card textarea:focus-visible,.carousel-submit:focus-visible,.carousel-job:focus-visible { outline:none; box-shadow:var(--sho-focus); }
 .carousel-feedback { display:block; margin-top:8px; }
@@ -34,7 +34,14 @@
 .carousel-publish-status[data-state="failed"],.carousel-publish-status[data-state="superseded"] { border-left-color:var(--sho-error); }
 .carousel-actions__controls { display:flex; align-items:center; justify-content:flex-end; gap:var(--sho-s-4); }
 .carousel-actions__buttons { display:flex; align-items:center; gap:var(--sho-s-2); }
-.carousel-editor-recovery { display:flex; align-items:center; gap:var(--sho-s-2); color:var(--sho-warning); }
+/* 送出的唯一入口就在這條——它必須看起來像「接下來要按的東西」，
+   不是一句提示。原本送出鍵長在單張卡的編輯器裡，見 updateEditorAction。 */
+/* 有未送出草稿的卡片，縮圖換成同一份即時預覽疊在 PNG 上。不可互動——
+   點擊仍然要落到底下的「查看逐字稿證據」按鈕上。 */
+.carousel-card-preview { position:absolute; inset:0; width:1080px; height:1080px; border:0; transform-origin:top left; pointer-events:none; background:var(--sho-bg); }
+
+.carousel-editor-recovery { display:flex; flex-wrap:wrap; align-items:center; gap:var(--sho-s-2); color:var(--sho-warning); }
+.carousel-editor-recovery .carousel-editor-blocked { flex:1 1 100%; order:1; margin:0; }
 .carousel-editor-recovery[hidden] { display:none; }
 .carousel-submit { min-width:148px; }
 .carousel-submit:disabled { cursor:not-allowed; opacity:.42; }
@@ -78,7 +85,7 @@
 .carousel-layout legend { padding:0 var(--sho-s-2); font-weight:700; }
 .carousel-layout p { grid-column:1/-1; margin:0; color:var(--sho-text-2); font-size:13px; }
 .carousel-layout__grid { grid-column:1/-1; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:var(--sho-s-2); }
-.carousel-editor__footer { align-items:center; border-top:1px solid var(--sho-line); border-bottom:0; }
+.carousel-editor__footer { align-items:center; flex-wrap:wrap; border-top:1px solid var(--sho-line); border-bottom:0; }
 .carousel-editor__footer > div { display:flex; gap:var(--sho-s-2); }
 .carousel-editor :focus-visible { outline:none; box-shadow:var(--sho-focus); }
 .carousel-evidence { box-sizing:border-box; width:min(520px,92vw); height:100vh; max-height:none; margin:0 0 0 auto; padding:var(--sho-s-6); border:0; border-left:1px solid var(--sho-line); background:var(--sho-bg); color:var(--sho-text); }
@@ -93,3 +100,31 @@
 @media (max-width:720px) { .carousel-head { display:block; } .carousel-ledger { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); width:100%; margin-top:16px; overflow:visible; } .carousel-ledger div { min-width:0; padding:8px; } .carousel-ledger dd { overflow-wrap:anywhere; } .carousel-workbench { padding:var(--sho-s-4); } .carousel-grid { grid-template-columns:1fr; } .carousel-actions { position:static; display:block; } .carousel-editor-recovery { flex-wrap:wrap; margin-top:var(--sho-s-2); } .carousel-actions__controls { display:block; margin-top:var(--sho-s-3); } .carousel-actions__buttons { margin-top:var(--sho-s-2); } .carousel-submit { flex:1; min-width:0; } .carousel-publish-status { align-items:stretch; display:grid; } .carousel-publish-status a { text-align:center; } .carousel-job { grid-template-columns:1fr; } .carousel-editor { width:100vw; height:100dvh; max-width:100vw; overflow:hidden; } .carousel-editor__shell { overflow:hidden; } .carousel-editor__body { display:block; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; padding-bottom:var(--sho-s-5); } .carousel-editor__preview,.carousel-editor__controls { overflow:visible; padding:var(--sho-s-3); } .carousel-editor__preview { position:sticky; top:0; z-index:2; border-right:0; border-bottom:1px solid var(--sho-line); } .carousel-editor__footer { flex-wrap:wrap; } .carousel-editor__footer > div { flex-wrap:wrap; } .carousel-layout { grid-template-columns:1fr; } .carousel-layout p { grid-column:auto; } .carousel-layout__grid { grid-template-columns:1fr 1fr; } }
 @media (max-width:480px) { .carousel-ledger { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media (prefers-reduced-motion:reduce) { .carousel-evidence { scroll-behavior:auto; } .carousel-job progress::-webkit-progress-value,.carousel-job progress::-moz-progress-bar { transition:none; } }
+
+/* 去背照選擇器——住在卡片編輯器的控制欄裡，右側只有 320px 起跳，
+   所以是一條可橫向捲動的膠捲，不是會把版面撐高好幾排的網格。
+   縮圖用 contain 不用 cover：去背照上方有透明留白，切到頂端整格會看起來
+   是空的（2026-09-02 實測 16 張裡有 9 張變空白）。選照片要看得到整個人。 */
+/* fieldset 預設 min-inline-size:min-content——不歸零的話，底下那條膠捲會把
+   整個控制欄撐到 1592px（實測），變成整頁橫向溢位而不是膠捲自己捲。 */
+/* 「送出」被鎖住的原因。原本只寫在預覽下方的橫幅，按鈕旁邊完全沒有交代——
+   按下去沒反應，卻看不出為什麼。 */
+.carousel-editor-blocked { flex:1 1 100%; order:-1; margin-bottom:var(--sho-s-2); padding:8px 12px; border:1px solid var(--sho-line); border-radius:var(--sho-r-1); color:var(--sho-muted); background:var(--sho-bg); font-size:13px; font-weight:700; line-height:1.5; }
+/* 真的擋住送出的才用警示色；版面提醒只是「我量到這個」，不該長得像錯誤。 */
+.carousel-editor-blocked[data-kind="blocked"] { border-color:var(--sho-warning); color:var(--sho-warning); }
+.carousel-editor-blocked[data-kind="error"] { border-color:var(--sho-error); color:var(--sho-error); background:var(--sho-bg-2); }
+
+.carousel-cutouts { min-inline-size:0; margin:0 0 var(--sho-s-4); padding:0 0 var(--sho-s-3); border:0; border-bottom:1px solid var(--sho-line); }
+.carousel-cutouts legend { padding:0; font-size:13px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }
+.carousel-cutouts p { margin:4px 0 var(--sho-s-3); color:var(--sho-muted); font-size:12px; }
+/* `.sho ul` 在 tokens.css 把 padding 歸零、specificity 比單一 class 高，
+   所以捲軸的下留白要用兩個 class 才壓得過去。 */
+.carousel-cutouts .carousel-cutouts__list { display:flex; gap:var(--sho-s-2); margin:0; padding:2px 0 var(--sho-s-2); list-style:none; overflow-x:auto; overscroll-behavior-x:contain; scroll-snap-type:x proximity; }
+.carousel-cutouts__list li { flex:0 0 auto; scroll-snap-align:start; }
+.carousel-cutout { display:block; width:92px; padding:0; border:1px solid var(--sho-line); border-radius:var(--sho-r-1); background:var(--sho-bg-2); cursor:pointer; overflow:hidden; }
+.carousel-cutout img { display:block; width:100%; height:78px; object-fit:contain; background:var(--sho-bg); }
+.carousel-cutout .sho-mono { display:block; padding:3px 5px; border-top:1px solid var(--sho-line); color:var(--sho-muted); font-size:10px; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.carousel-cutout:hover:not(:disabled) { border-color:var(--sho-accent-line); }
+.carousel-cutout[aria-pressed="true"] { border-color:var(--sho-accent); box-shadow:inset 0 0 0 2px var(--sho-accent); }
+.carousel-cutout[aria-pressed="true"] .sho-mono { color:var(--sho-accent-2); font-weight:800; }
+.carousel-cutouts:disabled .carousel-cutout { opacity:.5; cursor:not-allowed; }

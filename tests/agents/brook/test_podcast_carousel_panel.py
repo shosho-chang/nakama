@@ -293,3 +293,130 @@ def test_panel_result_rejects_verification_outcomes_not_present_in_reviews():
 
     with pytest.raises(ValueError, match="reconcile every reviewer finding"):
         PanelResult.model_validate(payload)
+
+
+# --- 修修 2026-09-02 裁決 ---------------------------------------------------
+# 「Agent review 審的是 AI 的生成內容，人類 review 之後的成果根本不應該再觸發
+# 這個 review。」以下兩條把那句話釘在契約上。
+
+
+def _high_brand_finding() -> dict[str, object]:
+    return {
+        "finding_id": "brand-01",
+        "severity": "high",
+        "page_id": "cover",
+        "claim": "「總經理」在逐字稿出現 0 次，封面把它掛在來賓名下。",
+        "page_copy_quote": "台灣大哥大 總經理",
+        "evidence_ids": ["B0002"],
+        "suggested_change": "改用逐字稿撐得起的說法。",
+    }
+
+
+def test_high_brand_finding_can_be_rejected_when_it_targets_an_editor_decision():
+    """修修指定的值，lens 不能否決——但 finding 全文照樣留在紀錄裡。"""
+    reviews = {
+        lens: {"lens": lens, "verdict": "pass", "findings": []}
+        for lens in ("ig_audience", "episode_editorial")
+    }
+    reviews["brand_evidence"] = {
+        "lens": "brand_evidence",
+        "verdict": "revise",
+        "findings": [_high_brand_finding()],
+    }
+    payload = _panel_payload_with_reviews(reviews)
+    payload["verified_findings"] = [_high_brand_finding()]
+    payload["synthesis"] = {
+        "accepted_finding_ids": [],
+        "rejected": [
+            {
+                "finding_id": "brand-01",
+                "reason": "修修在 Review Gate 指定的職稱；出處記在 editorial_direction.md",
+                "editor_decision": True,
+            }
+        ],
+        "revision_instructions": [],
+        "blockers": [],
+    }
+    panel = PanelResult.model_validate(payload)
+    assert panel.status == "converged"
+    # 記錄而非消音：finding 與駁回理由都還在
+    assert panel.reviews["brand_evidence"].findings[0].finding_id == "brand-01"
+    assert panel.synthesis.rejected[0].editor_decision is True
+
+
+def test_high_brand_finding_still_cannot_be_rejected_as_agent_judgement():
+    """沒有標成編輯裁決時，那道護欄要照擋——它擋掉的是「我覺得沒關係」。"""
+    reviews = {
+        lens: {"lens": lens, "verdict": "pass", "findings": []}
+        for lens in ("ig_audience", "episode_editorial")
+    }
+    reviews["brand_evidence"] = {
+        "lens": "brand_evidence",
+        "verdict": "revise",
+        "findings": [_high_brand_finding()],
+    }
+    payload = _panel_payload_with_reviews(reviews)
+    payload["verified_findings"] = [_high_brand_finding()]
+    payload["synthesis"] = {
+        "accepted_finding_ids": [],
+        "rejected": [{"finding_id": "brand-01", "reason": "我判斷影響不大"}],
+        "revision_instructions": [],
+        "blockers": [],
+    }
+    with pytest.raises(ValueError, match="editor_decision"):
+        PanelResult.model_validate(payload)
+
+
+def test_panel_may_be_inherited_when_the_spec_declares_it(tmp_path):
+    """人類只改了自己指定的欄位時，沿用上一版的 panel，不重跑三個 agent。"""
+    from agents.brook.podcast_carousel_panel import assert_panel_renderable
+
+    _index, spec = _index_and_spec(tmp_path)
+    reviews = {
+        lens: {"lens": lens, "verdict": "pass", "findings": []}
+        for lens in ("ig_audience", "episode_editorial", "brand_evidence")
+    }
+    payload = _panel_payload_with_reviews(reviews)
+    payload["episode_id"] = spec.episode_id
+    payload["revision"] = "r002"
+    panel = PanelResult.model_validate(payload)
+
+    inherited = spec.model_copy(update={"revision": "r003", "panel_inherited_from": "r002"})
+    assert_panel_renderable(panel, spec=inherited)  # 宣告了就放行
+
+    not_declared = spec.model_copy(update={"revision": "r003"})
+    with pytest.raises(ValueError, match="panel revision"):
+        assert_panel_renderable(panel, spec=not_declared)
+
+    wrong_source = spec.model_copy(update={"revision": "r003", "panel_inherited_from": "r001"})
+    with pytest.raises(ValueError, match="panel revision"):
+        assert_panel_renderable(panel, spec=wrong_source)
+
+
+def test_inherited_panel_may_come_from_earlier_in_the_chain(tmp_path):
+    """繼承會成鏈：r004 沿用 r003，而 r003 那份 panel 本身是從 r002 沿用來的。
+
+    沿用時 panel 是原樣複製的，內容仍自報 r002。宣告指向**來源版本**（完成驗收
+    也是這樣比對），所以出圖端必須接受鏈上更早的那一版，否則第二次沿用就卡死
+    （2026-09-03 實際卡住 r004）。
+    """
+    from agents.brook.podcast_carousel_panel import assert_panel_renderable
+
+    _index, spec = _index_and_spec(tmp_path)
+    reviews = {
+        lens: {"lens": lens, "verdict": "pass", "findings": []}
+        for lens in ("ig_audience", "episode_editorial", "brand_evidence")
+    }
+
+    def _panel(revision: str) -> PanelResult:
+        payload = _panel_payload_with_reviews(reviews)
+        payload["episode_id"] = spec.episode_id
+        payload["revision"] = revision
+        return PanelResult.model_validate(payload)
+
+    chained = spec.model_copy(update={"revision": "r004", "panel_inherited_from": "r003"})
+    assert_panel_renderable(_panel("r002"), spec=chained)
+
+    # 往後不行——拿比來源還新的 panel 來治理這一版沒有意義
+    with pytest.raises(ValueError, match="panel revision"):
+        assert_panel_renderable(_panel("r005"), spec=chained)

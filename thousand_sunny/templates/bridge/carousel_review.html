@@ -35,6 +35,8 @@
          data-feedback-url="/bridge/ig-cards/{{ episode_slug }}/feedback"
          data-apply-url="/bridge/ig-cards/{{ episode_slug }}/apply-edits"
          data-preview-base="/bridge/ig-cards/{{ episode_slug }}/preview"
+         data-cutout-base="/bridge/ig-cards/{{ episode_slug }}/cutout"
+         data-episode="{{ episode_slug }}"
          data-approve-url="/bridge/ig-cards/{{ episode_slug }}/approve"
          data-manifest-sha="{{ manifest_sha256 }}"
          data-approved="{{ 'true' if approved else 'false' }}">
@@ -70,10 +72,17 @@
     </section>
     <footer class="carousel-actions">
       <p id="review-action-help" data-state="{{ 'approved' if approved else 'open' }}"><strong>{% if approved %}此版本已核准，等待發布流程。{% else %}有修改就填卡片修改意見；全部留空時，才可手動核准。{% endif %}</strong></p>
+      <div id="carousel-orphan-notice" class="carousel-editor-recovery" hidden>
+        <strong id="carousel-orphan-copy"></strong>
+        <button id="carousel-orphan-apply" class="sho-btn sho-btn--ghost" type="button">套用到目前版本</button>
+        <button id="carousel-orphan-discard" class="sho-btn sho-btn--ghost" type="button">捨棄</button>
+      </div>
       <div id="carousel-editor-recovery" class="carousel-editor-recovery" hidden>
-        <strong id="carousel-editor-recovery-copy">尚有未套用的卡片修改。</strong>
+        <strong id="carousel-editor-recovery-copy">尚有未送出的卡片修改。</strong>
         <button id="carousel-editor-continue" class="sho-btn sho-btn--ghost" type="button">繼續編輯</button>
-        <button id="carousel-editor-apply-all" class="sho-btn" type="button">套用修改</button>
+        <button id="carousel-editor-submit" class="sho-btn" type="button"
+                aria-describedby="carousel-recovery-blocked">送出給 agent</button>
+        <strong id="carousel-recovery-blocked" class="carousel-editor-blocked" role="status" aria-live="polite" hidden></strong>
       </div>
       <div class="carousel-actions__controls">
         <span id="review-save-status" class="carousel-notice" role="status" aria-live="polite" {% if not saved %}hidden{% endif %}>{% if saved %}第 {{ decision_count }} 輪檢查已儲存。{% endif %}</span>
@@ -126,7 +135,7 @@
       <div class="sho-mono sho-mono-up">修改工作</div>
       <h2 id="carousel-job-title">修改進度</h2>
       <p id="carousel-job-summary" role="status" aria-live="polite"></p>
-      <p class="carousel-job__handoff">建立工作不會自動喚醒 Agent；請回到目前執行此 episode 的 Codex／Claude Code task，要求它認領下方工作編號。</p>
+      <p class="carousel-job__handoff">{% if autorun_enabled %}純結構化的修改由本機直接執行完；含自由文字意見的工作仍需 Codex／Claude Code agent 認領下方編號。{% else %}建立工作不會自動喚醒 Agent；請回到目前執行此 episode 的 Codex／Claude Code task，要求它認領下方工作編號。{% endif %}</p>
     </div>
     <progress id="carousel-job-progress" max="1" value="0">0%</progress>
     <ol id="carousel-job-steps" class="carousel-job__steps" aria-label="系統修改步驟"></ol>
@@ -138,7 +147,7 @@
         <div>
           <div id="carousel-editor-kicker" class="sho-mono sho-mono-up">卡片編輯</div>
           <h2 id="carousel-editor-title">編輯這張卡片</h2>
-          <p>套用後只建立待認領修改工作；需由目前執行此 episode 的 Codex／Claude Code Agent 認領。不覆寫目前圖片、不自動核准，也不發布。</p>
+          <p>{% if autorun_enabled %}送出後由本機直接重新出圖成新版本；不覆寫目前圖片、不自動核准，也不發布。{% else %}送出後只建立待認領修改工作；需由目前執行此 episode 的 Codex／Claude Code Agent 認領。不覆寫目前圖片、不自動核准，也不發布。{% endif %}</p>
         </div>
         <button id="carousel-editor-close" class="carousel-editor__close" type="button" aria-label="關閉編輯器">×</button>
       </header>
@@ -151,6 +160,24 @@
           <div id="carousel-editor-fit" class="carousel-editor-fit" role="status" aria-live="polite" hidden></div>
         </section>
         <section class="carousel-editor__controls" aria-label="文字與版面控制">
+          {% if guest_cutouts %}
+          <fieldset id="carousel-cutout-picker" class="carousel-cutouts" hidden>
+            <legend>來賓去背照</legend>
+            <p>點一張立刻換上左邊的預覽；跟文字修改一起走「送出給 agent 修改」。</p>
+            <ul class="carousel-cutouts__list">
+              {% for name in guest_cutouts %}
+              <li>
+                <button type="button" class="carousel-cutout" data-cutout-name="{{ name }}"
+                        aria-pressed="false" title="{{ name }}">
+                  <img src="/bridge/ig-cards/{{ episode_slug }}/cutout/{{ name }}"
+                       alt="{{ name }}" loading="lazy" decoding="async">
+                  <span class="sho-mono">{{ name.replace('guest_', '').replace('.png', '') }}</span>
+                </button>
+              </li>
+              {% endfor %}
+            </ul>
+          </fieldset>
+          {% endif %}
           <div id="carousel-editor-fields"></div>
           <fieldset id="carousel-cover-layout" class="carousel-layout" hidden>
             <legend>封面版面 · 1080 px 座標</legend>
@@ -159,6 +186,13 @@
             <label>來賓底部位置（px）<input data-layout-field="guest_bottom_px" type="number" min="-400" max="240" step="1" required></label>
             <label>來賓高度（px）<input data-layout-field="guest_height_px" type="number" min="480" max="1400" step="1" required></label>
             <label>標題字級（px）<input data-layout-field="title_font_size_px" type="number" min="72" max="160" step="1" required></label>
+          </fieldset>
+          <fieldset id="carousel-quote-layout" class="carousel-layout" hidden>
+            <legend>金句版面 · 1080 px 座標</legend>
+            <p>可直接拖動來賓；拖動左上角控制點可調整尺寸。這些數值會固定套用至新版。</p>
+            <label>來賓右側位置（px）<input data-quote-layout-field="guest_right_px" type="number" min="-540" max="240" step="1" required></label>
+            <label>來賓底部位置（px）<input data-quote-layout-field="guest_bottom_px" type="number" min="-400" max="240" step="1" required></label>
+            <label>來賓高度（px）<input data-quote-layout-field="guest_height_px" type="number" min="200" max="1000" step="1" required></label>
           </fieldset>
           <fieldset id="carousel-text-layout" class="carousel-layout">
             <legend>文字版面 · 1080 px 座標</legend>
@@ -176,10 +210,11 @@
       </div>
       <footer class="carousel-editor__footer">
         <span id="carousel-editor-status" role="status" aria-live="polite"></span>
+        <strong id="carousel-editor-blocked" class="carousel-editor-blocked" role="status" aria-live="polite" hidden></strong>
         <div>
           <button id="carousel-editor-reset" class="sho-btn sho-btn--ghost" type="button">重設這張</button>
-          <button id="carousel-editor-cancel" class="sho-btn sho-btn--ghost" type="button">保留草稿並關閉</button>
-          <button id="carousel-editor-apply" class="sho-btn" type="button" disabled>套用所有待修改</button>
+          <button id="carousel-editor-cancel" class="sho-btn sho-btn--ghost" type="button">取消</button>
+          <button id="carousel-editor-done" class="sho-btn" type="button">完成這張</button>
         </div>
       </footer>
     </div>
@@ -241,16 +276,29 @@ const jobSummary = document.getElementById('carousel-job-summary');
 const jobProgress = document.getElementById('carousel-job-progress');
 const jobSteps = document.getElementById('carousel-job-steps');
 const editorPages = {{ editor_pages | tojson }};
+const editorAvailable = {{ 'true' if editor_available else 'false' }};
+const autorunEnabled = {{ 'true' if autorun_enabled else 'false' }};
 const initialCoverLayout = {{ cover_layout | tojson }};
+const initialQuoteLayout = {{ quote_layout | tojson }};
 const initialTextLayouts = {{ text_layout_overrides | tojson }};
 const textLayoutRegistry = {{ text_layout_registry | tojson }};
 const textLayoutSafeRects = {{ text_layout_safe_rects | tojson }};
-const storagePrefix = `nakama.carousel-review:${reviewForm.dataset.manifestSha}`;
+// key 要含 episode：`cover`／`hook`／`quote` 這些 page_id 每一集都一樣，
+// 只用 manifest sha 當前綴時，A 集沒送出的草稿會在 B 集被遺留掃描撿起來
+// 並套用——換句話說會把 A 的文案寫進 B（2026-09-03 review 抓到）。
+const episodeKey = reviewForm.dataset.episode;
+const storagePrefix = `nakama.carousel-review:${episodeKey}:${reviewForm.dataset.manifestSha}`;
+const orphanPrefix = `nakama.carousel-review:${episodeKey}:`;
 const draftKey = `${storagePrefix}:draft:v2`;
 const jobKey = `${storagePrefix}:job:v1`;
 const editorDraftKey = `${storagePrefix}:editor:v2`;
 let approved = reviewForm.dataset.approved === 'true';
 let busy = false;
+// 誰在忙：'feedback' | 'approve' | 'editor' | null。
+// `busy` 在**工作進行中**會一直是 true，所以不能拿它決定哪顆按鈕顯示「送出中…」
+// ——修修 2026-09-03 送出 8 張卡片之後，「送出中…」跑到「修改意見」那顆上，
+// 而他按的是主畫面的「送出 N 張卡片給 agent」。
+let busySource = null;
 let editorDirty = false;
 let pollTimer = null;
 
@@ -304,8 +352,13 @@ function updateActions() {
     approveButton.setAttribute('aria-disabled', 'true');
     return;
   }
-  feedbackButton.textContent = busy ? feedbackButton.dataset.loadingLabel : `送出 ${count} 則修改`;
+  // 「送出中…」原本落在「修改意見」那顆上，而使用者按的是主畫面的
+  // 「送出 N 張卡片給 agent」——看起來像按錯了地方、或是根本沒反應。
+  feedbackButton.textContent = busySource === 'feedback'
+    ? feedbackButton.dataset.loadingLabel : `送出 ${count} 則修改`;
   feedbackButton.disabled = approved || busy || editorDirty || count === 0;
+  approveButton.textContent = busySource === 'approve'
+    ? approveButton.dataset.loadingLabel : approveButton.dataset.idleLabel;
   approveButton.disabled = approved || busy || editorDirty || count > 0;
   feedbackButton.setAttribute('aria-disabled', String(feedbackButton.disabled));
   approveButton.setAttribute('aria-disabled', String(approveButton.disabled));
@@ -314,6 +367,7 @@ function updateActions() {
 function setApprovedState() {
   approved = true;
   busy = false;
+  busySource = null;
   reviewForm.dataset.approved = 'true';
   gateStatus.textContent = '已核准';
   actionHelp.dataset.state = 'approved';
@@ -449,6 +503,7 @@ function restoreFailedFeedback(job) {
   }
   storageRemove(jobKey);
   busy = false;
+  busySource = null;
   updateActions();
 }
 
@@ -459,8 +514,13 @@ async function pollJob(job) {
       credentials: 'same-origin',
       headers: {'Accept': 'application/json'},
     });
-    if (!response.ok) throw new Error(await responseDetail(response));
+    if (!response.ok) {
+      const failure = new Error(await responseDetail(response));
+      failure.status = response.status;
+      throw failure;
+    }
     const payload = await response.json();
+    pollErrors = 0;
     const status = normaliseJobStatus(payload);
     renderJobSteps(payload.steps || payload.progress);
     if (status === 'completed' || status === 'complete' || status === 'succeeded') {
@@ -480,13 +540,39 @@ async function pollJob(job) {
     busy = true;
     updateActions();
     if (status === 'queued' || status === 'pending') {
-      showJobState('queued', `修改工作 ${job.jobId} 等待認領。請回到目前執行此 episode 的 Codex／Claude Code task，要求它認領此工作。`);
+      showJobState('queued', autorunEnabled
+        ? `修改工作 ${job.jobId} 已建立，本機正在接手出圖。`
+        : `修改工作 ${job.jobId} 等待認領。請回到目前執行此 episode 的 Codex／Claude Code task，要求它認領此工作。`);
     } else {
       showJobState('running', payload.message || `Codex／Claude Code Agent 正在處理修改工作 ${job.jobId}。`);
     }
     storageSet(jobKey, JSON.stringify(job));
     pollTimer = window.setTimeout(() => pollJob(job), 1800);
   } catch (error) {
+    // 工作不見了不是暫時性的——原本一律 5 秒重試，會對著 404 永遠打下去
+    // （實測留下約 700 筆 console 錯誤，UI 也卡在 busy 解不開）。
+    if (error.status === 404 || error.status === 410) {
+      storageRemove(jobKey);
+      busy = false;
+      busySource = null;
+      updateActions();
+      updateEditorAction();
+      showJobState('failed',
+        `找不到修改工作 ${job.jobId}（可能已被清除）。已停止追蹤；草稿仍在，可以重新送出。`,
+        {focus: true});
+      return;
+    }
+    pollErrors += 1;
+    if (pollErrors > MAX_POLL_ERRORS) {
+      busy = false;
+      busySource = null;
+      updateActions();
+      updateEditorAction();
+      showJobState('error',
+        `連續 ${MAX_POLL_ERRORS} 次讀不到進度，已停止自動重試。重整頁面可再試一次。`,
+        {focus: true});
+      return;
+    }
     busy = true;
     updateActions();
     showJobState('error', `暫時無法讀取進度：${error.message}。5 秒後自動重試。`);
@@ -513,6 +599,7 @@ reviewForm.addEventListener('submit', async (event) => {
   const count = feedbackCount();
   if (approved || busy || count === 0) return;
   busy = true;
+  busySource = 'feedback';
   persistDraft({announce: false});
   updateActions();
   feedbackButton.setAttribute('aria-busy', 'true');
@@ -539,6 +626,7 @@ reviewForm.addEventListener('submit', async (event) => {
     await pollJob(job);
   } catch (error) {
     busy = false;
+    busySource = null;
     persistDraft({announce: false});
     updateActions();
     showJobState('failed', `送出失敗：${error.message}。修改意見已保留，可重新送出。`, {focus: true});
@@ -549,6 +637,7 @@ reviewForm.addEventListener('submit', async (event) => {
 approveButton.addEventListener('click', async () => {
   if (approved || busy || feedbackCount() > 0) return;
   busy = true;
+  busySource = 'approve';
   updateActions();
   approveButton.textContent = approveButton.dataset.loadingLabel;
   approveButton.setAttribute('aria-busy', 'true');
@@ -567,6 +656,7 @@ approveButton.addEventListener('click', async () => {
     window.setTimeout(() => window.location.assign(sameOriginUrl(payload.publish_url)), 350);
   } catch (error) {
     busy = false;
+    busySource = null;
     approveButton.textContent = approveButton.dataset.idleLabel;
     approveButton.removeAttribute('aria-busy');
     updateActions();
@@ -583,16 +673,25 @@ const editorTextLayout = document.getElementById('carousel-text-layout');
 const editorTextRegion = document.getElementById('carousel-text-region');
 const textLayoutInputs = [...editorTextLayout.querySelectorAll('[data-text-layout-field]')];
 const editorTextLayoutReason = document.getElementById('carousel-text-layout-reason');
-const editorApply = document.getElementById('carousel-editor-apply');
 const editorStatus = document.getElementById('carousel-editor-status');
 const editorPreviewStatus = document.getElementById('carousel-editor-preview-status');
 const editorFit = document.getElementById('carousel-editor-fit');
+const editorBlocked = document.getElementById('carousel-editor-blocked');
+const orphanNotice = document.getElementById('carousel-orphan-notice');
+const orphanCopy = document.getElementById('carousel-orphan-copy');
+const orphanApply = document.getElementById('carousel-orphan-apply');
+const editorDone = document.getElementById('carousel-editor-done');
+const editorSubmit = document.getElementById('carousel-editor-submit');
+const recoveryBlocked = document.getElementById('carousel-recovery-blocked');
 const editorTitle = document.getElementById('carousel-editor-title');
 const editorKicker = document.getElementById('carousel-editor-kicker');
 const editorRecovery = document.getElementById('carousel-editor-recovery');
 const editorRecoveryCopy = document.getElementById('carousel-editor-recovery-copy');
-const editorApplyAll = document.getElementById('carousel-editor-apply-all');
 const layoutInputs = [...editorLayout.querySelectorAll('[data-layout-field]')];
+const editorQuoteLayout = document.getElementById('carousel-quote-layout');
+const quoteLayoutInputs = [...editorQuoteLayout.querySelectorAll('[data-quote-layout-field]')];
+// 金句沒有 schema default，未調整過時起點來自預覽量到的基準值。
+let quoteLayoutBaseline = null;
 const previewChannel = 'nakama-carousel-editor-v1';
 const fieldLabels = {
   headline: '標題', emphasis: '強調文字', guest_name: '來賓姓名',
@@ -607,9 +706,24 @@ const initialTextLayoutMap = Object.fromEntries(initialTextLayouts.map((item) =>
   `${item.page_id}.${item.region}`, item.values,
 ]));
 let textLayoutBaselines = {};
-let editorState = {copyEdits: {}, layout: null, textLayouts: {}};
+let editorState = {copyEdits: {}, layout: null, quoteLayout: null, textLayouts: {}};
 let editorValidationError = false;
 let previewDiagnostics = null;
+let guestEditorState = null;
+let submitFailure = '';
+let pollErrors = 0;
+const MAX_POLL_ERRORS = 12;
+let previewBaseStatus = '載入即時預覽…';
+
+function updatePreviewStatus() {
+  const parts = [previewBaseStatus];
+  if (guestEditorState) {
+    parts.push(guestEditorState.bound
+      ? '去背照可拖曳縮放'
+      : `去背照無法拖曳：${guestEditorState.reason || '原因不明'}`);
+  }
+  editorPreviewStatus.textContent = parts.join(' · ');
+}
 let previewPatchSequence = 0;
 let diagnosticsByPage = {};
 let layoutValidationErrors = {};
@@ -625,6 +739,7 @@ function restoreEditorDraft(draft) {
   editorState = {
     copyEdits: draft.copyEdits && typeof draft.copyEdits === 'object' ? draft.copyEdits : {},
     layout: draft.layout && typeof draft.layout === 'object' ? draft.layout : null,
+    quoteLayout: draft.quoteLayout && typeof draft.quoteLayout === 'object' ? draft.quoteLayout : null,
     textLayouts: draft.textLayouts && typeof draft.textLayouts === 'object' ? draft.textLayouts : {},
   };
   storageSet(editorDraftKey, JSON.stringify({
@@ -642,7 +757,8 @@ function persistEditorDraft() {
 }
 
 function editorHasChanges() {
-  return Object.keys(editorState.copyEdits).length > 0 || editorState.layout !== null || Object.keys(editorState.textLayouts).length > 0;
+  return Object.keys(editorState.copyEdits).length > 0 || editorState.layout !== null
+    || editorState.quoteLayout !== null || Object.keys(editorState.textLayouts).length > 0;
 }
 
 function editorHasEmptyValue() {
@@ -653,8 +769,78 @@ function editorHasEmptyValue() {
 function dirtyEditorPageIds() {
   const ids = new Set(Object.keys(editorState.copyEdits));
   if (editorState.layout) ids.add('cover');
+  if (editorState.quoteLayout) {
+    const quote = editorPages.find((page) => page.role === 'quote');
+    if (quote) ids.add(quote.page_id);
+  }
   Object.keys(editorState.textLayouts).forEach((key) => ids.add(key.split('.')[0]));
   return [...ids];
+}
+
+// 主畫面的縮圖是「已出圖」的 PNG，草稿還沒出圖，所以改完退出來看到的還是舊的。
+// 修修 2026-09-02：「我需要等我退出來之後，在整個畫面預覽那邊，顯示的都是已經
+// 修改過的內容。」把有草稿的那幾張換成同一份即時預覽（縮放後、不可互動、
+// 關掉編輯控制點），沒有草稿的維持 PNG——那才是真正出圖過的東西。
+const cardPreviewFrames = new Map();
+
+function postToFrame(frame, type, payload = {}) {
+  if (!frame || !frame.contentWindow) return;
+  frame.contentWindow.postMessage({channel: previewChannel, type, ...payload}, '*');
+}
+
+async function pushCardPreview(pageId) {
+  const frame = cardPreviewFrames.get(pageId);
+  const page = pageById(pageId);
+  if (!frame || !page) return;
+  postToFrame(frame, 'set-presentation', {on: true});
+  postToFrame(frame, 'set-visual-scale', {scale: Number(frame.dataset.scale) || 1});
+  postToFrame(frame, 'apply-copy', {role: page.role, values: currentEditorValues(page)});
+  const field = assetFieldFor(page);
+  const pendingCutout = field ? (editorState.copyEdits[pageId] || {})[field] : null;
+  if (pendingCutout) {
+    try {
+      postToFrame(frame, 'apply-cutout',
+        {role: page.role, field, src: await cutoutDataUrl(pendingCutout)});
+    } catch (error) { /* 縮圖換不到圖就維持原圖，不打斷主畫面 */ }
+  }
+  if (page.role === 'cover') {
+    postToFrame(frame, 'apply-layout', {values: editorState.layout || initialCoverLayout});
+  } else if (page.role === 'quote') {
+    const values = activeQuoteLayout();
+    if (values) postToFrame(frame, 'apply-layout', {values});
+  }
+  postToFrame(frame, 'apply-text-layouts', {
+    layouts: textLayoutPayloadForPage(page), safeRects: textLayoutSafeRects,
+    requestId: 0, fingerprint: `card-preview:${pageId}`,
+  });
+}
+
+function refreshCardPreviews(dirtyIds) {
+  if (!editorAvailable) return;
+  const wanted = new Set(approved ? [] : dirtyIds);
+  for (const [pageId, frame] of [...cardPreviewFrames]) {
+    if (wanted.has(pageId)) continue;
+    frame.remove();
+    cardPreviewFrames.delete(pageId);
+  }
+  for (const pageId of wanted) {
+    if (cardPreviewFrames.has(pageId)) { pushCardPreview(pageId); continue; }
+    const button = document.querySelector(`[data-edit-page="${pageId}"]`);
+    const holder = button?.closest('.carousel-card')?.querySelector('.carousel-image-button');
+    if (!holder) continue;
+    const width = holder.clientWidth || 1080;
+    const frame = document.createElement('iframe');
+    frame.className = 'carousel-card-preview';
+    frame.setAttribute('sandbox', 'allow-scripts');
+    frame.setAttribute('title', `第 ${pageById(pageId).page_number} 頁 · 尚未送出的修改`);
+    frame.dataset.scale = String(width / 1080);
+    frame.style.transform = `scale(${width / 1080})`;
+    frame.addEventListener('load', () => pushCardPreview(pageId));
+    frame.src = `${reviewForm.dataset.previewBase}/${encodeURIComponent(pageId)}`
+      + `?manifest_sha256=${encodeURIComponent(reviewForm.dataset.manifestSha)}`;
+    holder.append(frame);
+    cardPreviewFrames.set(pageId, frame);
+  }
 }
 
 function updateEditorRecovery() {
@@ -666,25 +852,86 @@ function updateEditorRecovery() {
     badge.hidden = !dirtyIds.includes(badge.dataset.dirtyPage);
   });
   editorRecovery.hidden = approved || dirtyIds.length === 0;
-  const pendingDiagnostics = dirtyIds.filter((pageId) => !pageHasCurrentFitDiagnostics(pageId));
-  editorRecoveryCopy.textContent = pendingDiagnostics.length
-    ? `尚有 ${dirtyIds.length} 張卡片修改未套用；請逐張重新開啟以取得最新版面檢查。`
-    : `尚有 ${dirtyIds.length} 張卡片修改未套用。`;
-  editorApplyAll.textContent = `套用 ${dirtyIds.length} 張修改`;
-  editorApplyAll.disabled = busy || editorValidationError || editorHasEmptyValue()
-    || hasValidationErrors || !allDiagnosticsFit;
+  editorRecoveryCopy.textContent = `尚有 ${dirtyIds.length} 張卡片修改未送出。`;
+  refreshCardPreviews(dirtyIds);
+  // 送出的入口只有一個：卡片編輯器裡的「送出給 agent 修改」。這裡只提示與帶路。
+  void allDiagnosticsFit;
+  void hasValidationErrors;
+}
+
+// 修修 2026-09-02：「跟文字一樣，我送出去的就是 override 全部的規則。
+// 機器看不到我看到的東西。」
+//
+// 所以版面檢查（重疊量、字級、碰撞）一律**只提示、不擋**。它是機器對著 DOM
+// 量出來的啟發式規則，看不到修修在畫面上看到的整體感覺；他調的是自己頻道的
+// 版面，那是編輯決定。在此之前這個檢查是硬性的 gate——他把去背照放大到重疊
+// 267px（上限 240）之後，送出鈕就變成 disabled，按下去毫無反應也沒有交代。
+//
+// 真正還會擋的，只有「送出去算圖會直接失敗」的那幾種：空欄位、強調文字不在
+// 主要文字裡（算圖端會 throw）、版面數值不是有效數字（會算出 NaN）。
+// 那不是意見，是壞掉。
+function applyBlockedReason({hasValidationErrors}) {
+  if (approved) return '此版本已核准，不能再修改。';
+  if (busy) return '';
+  if (!editorDirty) return '';
+  if (editorHasEmptyValue()) return '有欄位是空的，算圖會失敗。';
+  if (editorValidationError) return '強調文字必須完整出現在主要文字中，否則算圖會失敗。';
+  if (hasValidationErrors) {
+    return Object.values(layoutValidationErrors)[0]
+      || Object.values(manualLineErrors)[0] || '版面數值不是有效數字。';
+  }
+  return '';
+}
+
+// 版面檢查的提示文字——說出量到什麼，不阻止任何事。
+function layoutAdvisory(dirtyIds) {
+  const notes = dirtyIds.flatMap((pageId) => {
+    const state = diagnosticsByPage[pageId];
+    if (!state || state.diagnostics?.status !== 'needs_review') return [];
+    const regions = state.diagnostics?.regions || {};
+    const details = [];
+    const overlap = regions['cover.headline_cutout_overlap_y'];
+    if (typeof overlap === 'number' && overlap > 240) {
+      details.push(`標題與來賓重疊 ${Math.round(overlap)} px（機器建議上限 240）`);
+    }
+    if (regions['quote.answer_cutout_overlap']) details.push('金句文字與來賓圖片重疊');
+    return details.length ? details : (state.diagnostics?.notes || []);
+  });
+  return notes.length ? `版面提醒：${notes.join('；')}——確定要這樣就直接送出。` : '';
 }
 
 function updateEditorAction() {
   editorDirty = editorHasChanges();
   editorValidationError = editorStateHasInvalidEmphasis();
   const dirtyIds = dirtyEditorPageIds();
-  const allDiagnosticsFit = dirtyIds.length > 0 && dirtyIds.every(pageHasCurrentFitDiagnostics);
   const hasValidationErrors = Object.keys(layoutValidationErrors).length > 0
     || Object.keys(manualLineErrors).length > 0;
-  editorApply.disabled = approved || busy || !editorDirty || editorHasEmptyValue()
-    || editorValidationError || hasValidationErrors || !allDiagnosticsFit;
-  editorApply.setAttribute('aria-disabled', String(editorApply.disabled));
+  // 修修 2026-09-02：「每一張點進去，修改之後按確定，然後出來之後沒問題的話，
+  // 我按下一個按鈕，就會有 Agent 把整個接走。」
+  //
+  // 送出鍵原本長在單張卡的編輯器裡，寫著「送出給 agent 修改」——但它其實一次
+  // 送出**所有**累積的修改。所以改完第一張很自然就按了，單子成立，第二張再按
+  // 就被自己那張擋住（同一版本一次只能有一張進行中的修正單）。現在編輯器裡只
+  // 有「完成這張」（關閉、保留草稿、不連網），送出移到主畫面唯一的入口。
+  const blocked = approved || busy || !editorDirty || editorHasEmptyValue()
+    || editorValidationError || hasValidationErrors;
+  const reason = blocked ? applyBlockedReason({hasValidationErrors}) : '';
+  editorSubmit.disabled = blocked;
+  editorSubmit.setAttribute('aria-disabled', String(blocked));
+  editorSubmit.textContent = busySource === 'editor'
+    ? '送出中…'
+    : (dirtyIds.length ? `送出 ${dirtyIds.length} 張卡片給 agent` : '送出給 agent');
+  editorSubmit.title = reason;
+  // 送出失敗最優先——那是使用者剛剛按下去的結果，不能被提示蓋掉。
+  const boardMessage = submitFailure || reason;
+  recoveryBlocked.textContent = boardMessage;
+  recoveryBlocked.hidden = !boardMessage;
+  recoveryBlocked.dataset.kind = submitFailure ? 'error' : 'blocked';
+  // 編輯器裡只留「還在改這張」時看得懂的提示，不再有送出鍵。
+  const advisory = reason || (editorDirty ? layoutAdvisory(dirtyIds) : '');
+  editorBlocked.textContent = advisory;
+  editorBlocked.hidden = !advisory;
+  editorBlocked.dataset.kind = reason ? 'blocked' : 'advisory';
   updateEditorRecovery();
   updateActions();
 }
@@ -698,6 +945,7 @@ function editorDraftFingerprint(page) {
     page_id: page.page_id,
     copy: currentEditorValues(page),
     cover: page.role === 'cover' ? (editorState.layout || initialCoverLayout) : null,
+    quote: page.role === 'quote' ? activeQuoteLayout() : null,
     text: textLayoutPayloadForPage(page),
   });
 }
@@ -829,6 +1077,64 @@ function applyCopyToPreview(page, values) {
   sendPreview('apply-copy', {role: page.role, values});
 }
 
+// 金句去背照幾何。優先序：本次未送出的調整 → 已存在的 override → 預覽量到的基準。
+// 三者都沒有時回 null，代表「還沒量到」，這時候不送 apply-layout，避免用 0 蓋掉版型。
+function activeQuoteLayout() {
+  return editorState.quoteLayout || initialQuoteLayout || quoteLayoutBaseline || null;
+}
+
+function applyQuoteLayoutToPreview(values) {
+  if (!values) return;
+  sendPreview('apply-layout', {values});
+}
+
+function syncQuoteLayoutInputs(values) {
+  if (!values) return;
+  quoteLayoutInputs.forEach((input) => {
+    input.value = values[input.dataset.quoteLayoutField];
+  });
+}
+
+function boundedQuoteLayoutValues(values) {
+  const result = {};
+  for (const input of quoteLayoutInputs) {
+    const name = input.dataset.quoteLayoutField;
+    const raw = Number(values[name]);
+    if (values[name] === '' || values[name] === null || values[name] === undefined
+      || !Number.isFinite(raw)) return null;
+    result[name] = Math.round(Math.max(Number(input.min), Math.min(Number(input.max), raw)));
+  }
+  return result;
+}
+
+function setQuoteLayoutDraft(values) {
+  const page = currentEditorPage;
+  if (!page || page.role !== 'quote') return;
+  const bounded = boundedQuoteLayoutValues(values);
+  if (!bounded) {
+    layoutValidationErrors[page.page_id] = '座標與高度必須是有效數字。';
+    updateEditorAction();
+    return;
+  }
+  delete layoutValidationErrors[page.page_id];
+  const baseline = initialQuoteLayout || quoteLayoutBaseline;
+  const changed = !baseline || Object.keys(bounded).some((key) => bounded[key] !== baseline[key]);
+  editorState.quoteLayout = changed ? bounded : null;
+  invalidatePageDiagnostics(page.page_id);
+  persistEditorDraft();
+  applyQuoteLayoutToPreview(bounded);
+  applyTextLayoutsToPreview(page);
+  updateEditorAction();
+}
+
+quoteLayoutInputs.forEach((input) => {
+  input.addEventListener('input', () => {
+    setQuoteLayoutDraft(Object.fromEntries(
+      quoteLayoutInputs.map((field) => [field.dataset.quoteLayoutField, field.value]),
+    ));
+  });
+});
+
 function boundedLayoutValues(values) {
   const result = {};
   for (const input of layoutInputs) {
@@ -894,10 +1200,28 @@ window.addEventListener('message', (event) => {
     applyCopyToPreview(currentEditorPage, currentEditorValues(currentEditorPage));
     if (currentEditorPage.role === 'cover') applyLayoutToPreview(editorState.layout || initialCoverLayout);
     applyTextLayoutsToPreview(currentEditorPage);
-    editorPreviewStatus.textContent = '即時預覽 · 尚未套用';
+    previewBaseStatus = '即時預覽 · 尚未套用';
+    updatePreviewStatus();
+  } else if (event.data.type === 'guest-editor-state') {
+    // 去背照到底綁上了沒——原本綁不上是完全靜默的，症狀只有「拖了沒反應」，
+    // 沒有任何線索可查。把它寫在預覽狀態列上，看得到才查得動。
+    guestEditorState = event.data;
+    updatePreviewStatus();
   } else if (event.data.type === 'layout-change' && currentEditorPage?.role === 'cover') {
     setLayoutDraft(event.data.layout, {send: false});
     applyTextLayoutsToPreview(currentEditorPage);
+  } else if (event.data.type === 'layout-change' && currentEditorPage?.role === 'quote') {
+    syncQuoteLayoutInputs(event.data.layout);
+    setQuoteLayoutDraft(event.data.layout);
+  } else if (event.data.type === 'guest-layout-baseline' && event.data.role === 'quote') {
+    // 金句沒有 schema default——預覽量到多少，就是「還沒調整過」的基準。
+    quoteLayoutBaseline = event.data.values;
+    if (currentEditorPage?.role === 'quote' && !editorState.quoteLayout && !initialQuoteLayout) {
+      syncQuoteLayoutInputs(quoteLayoutBaseline);
+      // 基準值進了 fingerprint，之前那輪診斷就對不上了。不重新要一次，
+      // 「送出」會卡在 disabled 直到使用者剛好改了別的東西。
+      applyTextLayoutsToPreview(currentEditorPage);
+    }
   } else if (event.data.type === 'diagnostics') {
     if (event.data.requestId && event.data.requestId < previewPatchSequence) return;
     if (!currentEditorPage || event.data.fingerprint !== editorDraftFingerprint(currentEditorPage)) return;
@@ -929,7 +1253,10 @@ window.addEventListener('message', (event) => {
     selectTextRegion(event.data.region, {notifyPreview: false});
   } else if (event.data.type === 'editor-escape') {
     const returnPageId = currentEditorPage?.page_id;
-    preserveAndCloseEditor();
+    // Esc 等同關閉：保留修改，不丟棄。
+    persistEditorDraft();
+    editorDialog.close();
+    updateEditorRecovery();
     document.querySelector(`[data-edit-page="${returnPageId}"]`)?.focus();
   } else if (event.data.type === 'preview-error') {
     if (!currentEditorPage || event.data.fingerprint !== editorDraftFingerprint(currentEditorPage)) return;
@@ -944,6 +1271,114 @@ window.addEventListener('message', (event) => {
     editorPreviewStatus.textContent = `預覽無法套用：${event.data.message}`;
   }
 });
+
+const cutoutPicker = document.getElementById('carousel-cutout-picker');
+
+// 選圖是編輯決定，不是文案宣稱：素材早就在 packaging/cutouts/ 且驗過授權，
+// 換的只是用哪一張，不動任何逐字稿 evidence。所以它跟文字欄位一樣走 copyEdits，
+// 由「送出給 agent 修改」一次帶走，不再自己開一張修正單。
+function assetFieldFor(page) {
+  const fields = page?.asset_fields || {};
+  return Object.keys(fields)[0] || null;
+}
+
+function assetEditsFor(page) {
+  const field = assetFieldFor(page);
+  const edits = editorState.copyEdits[page.page_id] || {};
+  return field && edits[field] ? {[field]: edits[field]} : {};
+}
+
+function currentCutout(page) {
+  const field = assetFieldFor(page);
+  if (!field) return null;
+  return (editorState.copyEdits[page.page_id] || {})[field] || page.asset_fields[field];
+}
+
+// 預覽是 sandbox 的 opaque origin，CSP 只准 `img-src 'self' data:`，而
+// preview-assets 那條路只服務 receipt 驗過的樣板快照——新選的去背照不在快照裡。
+// 所以由已驗證的母頁面抓圖、轉成 data URL 再交給預覽：預覽拿到的每一個 byte
+// 仍然是母頁面明確遞過去的，不必為了選圖放寬 CSP。
+const cutoutDataUrls = new Map();
+async function cutoutDataUrl(name) {
+  if (cutoutDataUrls.has(name)) return cutoutDataUrls.get(name);
+  const pending = (async () => {
+    const response = await fetch(
+      sameOriginUrl(`${reviewForm.dataset.cutoutBase}/${encodeURIComponent(name)}`),
+      {credentials: 'same-origin'},
+    );
+    if (!response.ok) throw new Error(await responseDetail(response));
+    const blob = await response.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('去背照讀取失敗'));
+      reader.readAsDataURL(blob);
+    });
+  })();
+  cutoutDataUrls.set(name, pending);
+  return pending;
+}
+
+async function applyCutoutToPreview(page, name) {
+  const field = assetFieldFor(page);
+  if (!field) return;
+  try {
+    const src = await cutoutDataUrl(name);
+    previewPatchSequence += 1;
+    sendPreview('apply-cutout', {
+      role: page.role, field, src,
+      requestId: previewPatchSequence,
+      fingerprint: editorDraftFingerprint(page),
+    });
+  } catch (error) {
+    editorPreviewStatus.textContent = `預覽換圖失敗：${error.message}`;
+  }
+}
+
+function markCutoutSelection(page, {reveal = false} = {}) {
+  if (!cutoutPicker) return;
+  const selected = currentCutout(page);
+  let current = null;
+  cutoutPicker.querySelectorAll('.carousel-cutout').forEach((button) => {
+    const isCurrent = button.dataset.cutoutName === selected;
+    button.setAttribute('aria-pressed', String(isCurrent));
+    if (isCurrent) current = button;
+  });
+  // 16 張、一次只看得到 5 張——開編輯器時目前這張可能捲在畫面外，
+  // 那就等於看不出來現在用的是哪一張。`nearest` 只捲膠捲、不動整頁。
+  if (reveal && current) current.scrollIntoView({block: 'nearest', inline: 'nearest'});
+}
+
+function buildCutoutPicker(page) {
+  if (!cutoutPicker) return;
+  const field = assetFieldFor(page);
+  cutoutPicker.hidden = !field;
+  if (!field) return;
+  cutoutPicker.disabled = approved || !editorAvailable;
+  markCutoutSelection(page);
+}
+
+if (cutoutPicker) {
+  cutoutPicker.querySelectorAll('.carousel-cutout').forEach((button) => {
+    button.addEventListener('click', () => {
+      const page = currentEditorPage;
+      const field = page && assetFieldFor(page);
+      if (!field || approved || !editorAvailable) return;
+      const name = button.dataset.cutoutName;
+      const next = {...(editorState.copyEdits[page.page_id] || {})};
+      if (name === page.asset_fields[field]) delete next[field];
+      else next[field] = name;
+      if (Object.keys(next).length) editorState.copyEdits[page.page_id] = next;
+      else delete editorState.copyEdits[page.page_id];
+      invalidatePageDiagnostics(page.page_id);
+      persistEditorDraft();
+      markCutoutSelection(page);
+      applyCutoutToPreview(page, currentCutout(page));
+      updateEditorAction();
+      editorStatus.textContent = `已選 ${name}——按「送出給 agent 修改」才會重新出圖。`;
+    });
+  });
+}
 
 function buildEditorFields(page) {
   editorFields.replaceChildren();
@@ -961,7 +1396,9 @@ function buildEditorFields(page) {
     input.required = true;
     input.maxLength = 1200;
     input.addEventListener('input', () => {
-      const next = {};
+      // 選圖跟文字放在同一個 copyEdits 桶（後端就是同一個 fields 物件），
+      // 但這裡只掃得到文字輸入框——不先接住已選的去背照，打字會把它洗掉。
+      const next = {...assetEditsFor(page)};
       editorFields.querySelectorAll('[data-copy-field]').forEach((field) => {
         const normalised = textLayoutRegistry[page.role].includes(field.dataset.copyField)
           ? field.value.replace(/\r/g, '').split('\n').join('') : field.value;
@@ -996,6 +1433,7 @@ function buildEditorFields(page) {
     label.append(caption, input, error);
     editorFields.append(label);
   });
+  buildCutoutPicker(page);
   validateEditorFields(page);
 }
 
@@ -1092,12 +1530,18 @@ function openEditor(pageId) {
     const values = editorState.layout || initialCoverLayout;
     layoutInputs.forEach((input) => { input.value = values[input.dataset.layoutField]; });
   }
-  editorPreviewStatus.textContent = '載入即時預覽…';
+  editorQuoteLayout.hidden = page.role !== 'quote';
+  if (page.role === 'quote') syncQuoteLayoutInputs(activeQuoteLayout());
+  previewBaseStatus = '載入即時預覽…';
+  guestEditorState = null;
+  updatePreviewStatus();
   editorFit.hidden = true;
   previewDiagnostics = null;
   editorFrame.src = `${reviewForm.dataset.previewBase}/${encodeURIComponent(page.page_id)}?manifest_sha256=${encodeURIComponent(reviewForm.dataset.manifestSha)}`;
   updateEditorAction();
   editorDialog.showModal();
+  // showModal() 之前 dialog 沒有版面，scrollIntoView 是 no-op。
+  markCutoutSelection(page, {reveal: true});
 }
 
 editorFrame.addEventListener('load', () => {
@@ -1105,8 +1549,22 @@ editorFrame.addEventListener('load', () => {
   try {
     sizeEditorPreview();
     applyCopyToPreview(currentEditorPage, currentEditorValues(currentEditorPage));
+    // 預覽載入的是「已出圖版本」的去背照；還沒送出的選擇要重新套一次。
+    const pendingCutout = assetEditsFor(currentEditorPage);
+    Object.values(pendingCutout).forEach((name) => {
+      applyCutoutToPreview(currentEditorPage, name);
+    });
     if (currentEditorPage.role === 'cover') {
       applyLayoutToPreview(editorState.layout || initialCoverLayout);
+    }
+    if (currentEditorPage.role === 'quote') {
+      // 基準值要等預覽量完才會到，所以這裡只送「已經有值」的情況；
+      // 沒有的話由 guest-layout-baseline 回來時補上輸入框。
+      const quoteValues = activeQuoteLayout();
+      if (quoteValues) {
+        applyQuoteLayoutToPreview(quoteValues);
+        syncQuoteLayoutInputs(quoteValues);
+      }
     }
     applyTextLayoutsToPreview(currentEditorPage);
     editorPreviewStatus.textContent = '即時預覽 · 尚未套用';
@@ -1143,19 +1601,46 @@ textLayoutInputs.forEach((input) => {
     setTextLayoutDraft(currentEditorPage, editorTextRegion.value, values);
   });
 });
-function preserveAndCloseEditor() {
+function discardAndCloseEditor() {
+  // 修修 2026-09-02：「這麼簡單的任務，不會有那種改到一半想要儲存草稿的事情，
+  // 就是取消跟送出。」關閉即丟棄這張卡尚未送出的修改，不再留草稿。
+  const dirtyHere = currentEditorPage
+    && dirtyEditorPageIds().includes(currentEditorPage.page_id);
+  if (dirtyHere && !window.confirm('捨棄這張卡片尚未送出的修改？')) return;
+  if (currentEditorPage) {
+    delete editorState.copyEdits[currentEditorPage.page_id];
+    if (currentEditorPage.role === 'cover') editorState.layout = null;
+    // 金句幾何也要丟——漏掉的話按了「捨棄」之後 dirty 標記還在，
+    // 下一次送出會把使用者剛剛丟掉的位置一起送出去（2026-09-03 review 抓到）。
+    if (currentEditorPage.role === 'quote') editorState.quoteLayout = null;
+    Object.keys(editorState.textLayouts).forEach((key) => {
+      if (key.startsWith(`${currentEditorPage.page_id}.`)) delete editorState.textLayouts[key];
+    });
+  }
   persistEditorDraft();
   editorDialog.close();
   updateEditorRecovery();
 }
 
-document.getElementById('carousel-editor-close').addEventListener('click', preserveAndCloseEditor);
-document.getElementById('carousel-editor-cancel').addEventListener('click', preserveAndCloseEditor);
+// 右上角的 ×：關掉視窗但**保留**這張卡的修改。修修的用法是反覆換素材、
+// 關掉看整體感覺再回來——如果關閉就丟掉，等於不能試。
+document.getElementById('carousel-editor-close').addEventListener('click', () => {
+  persistEditorDraft();
+  editorDialog.close();
+  updateEditorRecovery();
+});
+// 「取消」才是丟棄，且有改動時先確認。
+document.getElementById('carousel-editor-cancel').addEventListener('click', discardAndCloseEditor);
 document.getElementById('carousel-editor-reset').addEventListener('click', () => {
   if (!currentEditorPage) return;
   if (!window.confirm('重設這張卡片尚未套用的文字與版面修改？')) return;
   delete editorState.copyEdits[currentEditorPage.page_id];
   if (currentEditorPage.role === 'cover') editorState.layout = null;
+  if (currentEditorPage.role === 'quote') {
+    editorState.quoteLayout = null;
+    const restored = initialQuoteLayout || quoteLayoutBaseline;
+    if (restored) { syncQuoteLayoutInputs(restored); applyQuoteLayoutToPreview(restored); }
+  }
   Object.keys(editorState.textLayouts).forEach((key) => {
     if (key.startsWith(`${currentEditorPage.page_id}.`)) delete editorState.textLayouts[key];
   });
@@ -1174,6 +1659,9 @@ document.getElementById('carousel-editor-reset').addEventListener('click', () =>
     applyLayoutToPreview(initialCoverLayout);
   }
   applyCopyToPreview(currentEditorPage, currentEditorValues(currentEditorPage));
+  buildCutoutPicker(currentEditorPage);
+  const restored = currentCutout(currentEditorPage);
+  if (restored) applyCutoutToPreview(currentEditorPage, restored);
   applyTextLayoutsToPreview(currentEditorPage);
   editorStatus.textContent = '已重設這張卡片。';
   updateEditorAction();
@@ -1191,16 +1679,75 @@ if (storedEditorDraft && !approved) {
   } catch (error) { storageRemove(editorDraftKey); }
 }
 
+// 草稿的 key 含 manifest sha，版本一換就整個讀不到——修修 2026-09-02 就是這樣
+// 掉了第 2 張的文字修改：那筆送出被 409 擋下（草稿保留），接著 r003 出來，
+// 草稿還在 sessionStorage 裡卻再也不會被看到，畫面看起來像「改的東西被移掉了」。
+// 這裡把上一版留下的草稿找回來，明講內容，讓使用者自己決定要不要帶過來。
+function orphanEditorDrafts() {
+  const found = [];
+  let keys = [];
+  try { keys = Object.keys(sessionStorage); } catch (error) { return found; }
+  for (const key of keys) {
+    if (!key.startsWith(orphanPrefix) || !key.endsWith(':editor:v2')) continue;
+    if (key === editorDraftKey) continue;
+    let draft = null;
+    try { draft = JSON.parse(sessionStorage.getItem(key) || 'null'); } catch (error) { continue; }
+    if (!draft) continue;
+    const copyPages = Object.keys(draft.copyEdits || {}).filter((id) => pageById(id));
+    const hasLayout = Boolean(draft.layout || draft.quoteLayout
+      || Object.keys(draft.textLayouts || {}).length);
+    if (!copyPages.length && !hasLayout) { storageRemove(key); continue; }
+    found.push({key, draft, copyPages, hasLayout});
+  }
+  return found;
+}
+
+function renderOrphanDraftNotice() {
+  const orphans = orphanEditorDrafts();
+  if (!orphans.length || approved) { orphanNotice.hidden = true; return; }
+  const copyPages = [...new Set(orphans.flatMap((item) => item.copyPages))];
+  const hasLayout = orphans.some((item) => item.hasLayout);
+  orphanNotice.hidden = false;
+  orphanCopy.textContent = copyPages.length
+    ? `上一版還留著 ${copyPages.length} 張卡片的文字修改沒有送出：${copyPages.join('、')}。`
+      + (hasLayout ? '（版面拖放的數值是對著舊版量的，不會帶過來，需要重調。）' : '')
+    : '上一版還留著沒有送出的版面調整；那些數值是對著舊版量的，不會帶過來，需要重調。';
+  orphanApply.hidden = !copyPages.length;
+}
+
+document.getElementById('carousel-orphan-apply').addEventListener('click', () => {
+  for (const {key, draft, copyPages} of orphanEditorDrafts()) {
+    for (const pageId of copyPages) {
+      editorState.copyEdits[pageId] = {
+        ...(editorState.copyEdits[pageId] || {}), ...draft.copyEdits[pageId],
+      };
+    }
+    storageRemove(key);
+  }
+  persistEditorDraft();
+  renderOrphanDraftNotice();
+  updateEditorAction();
+});
+
+document.getElementById('carousel-orphan-discard').addEventListener('click', () => {
+  orphanEditorDrafts().forEach(({key}) => storageRemove(key));
+  renderOrphanDraftNotice();
+});
+
+if (!approved) renderOrphanDraftNotice();
+
 async function submitEditorChanges(scope) {
   const dirtyIds = dirtyEditorPageIds();
   const hasValidationErrors = Object.keys(layoutValidationErrors).length > 0
     || Object.keys(manualLineErrors).length > 0;
-  const allDiagnosticsFit = dirtyIds.length > 0 && dirtyIds.every(pageHasCurrentFitDiagnostics);
+  // 版面檢查不在這裡擋——見 applyBlockedReason 的說明。
   if (scope !== 'all' || approved || busy || !editorHasChanges() || editorHasEmptyValue()
-    || editorStateHasInvalidEmphasis() || hasValidationErrors || !allDiagnosticsFit) return;
+    || editorStateHasInvalidEmphasis() || hasValidationErrors) return;
   busy = true;
   updateActions();
   updateEditorAction();
+  submitFailure = '';
+  busySource = 'editor';
   editorStatus.textContent = '正在建立待認領修改工作…';
   const editorDraft = {manifestSha256: reviewForm.dataset.manifestSha, ...editorState};
   const copyEdits = Object.entries(editorState.copyEdits).map(([pageId, fields]) => {
@@ -1208,11 +1755,15 @@ async function submitEditorChanges(scope) {
     return {page_id: pageId, role: page.role, artifact_sha256: page.artifact_sha256, fields};
   });
   const cover = pageById('cover');
+  const quote = editorPages.find((page) => page.role === 'quote');
   const payloadBody = {
     manifest_sha256: reviewForm.dataset.manifestSha,
     copy_edits: copyEdits,
     layout_overrides: editorState.layout ? {
       page_id: 'cover', artifact_sha256: cover.artifact_sha256, values: editorState.layout,
+    } : null,
+    quote_layout_overrides: (editorState.quoteLayout && quote) ? {
+      page_id: quote.page_id, artifact_sha256: quote.artifact_sha256, values: editorState.quoteLayout,
     } : null,
     text_layout_overrides: Object.entries(editorState.textLayouts).map(([key, values]) => {
       const [pageId, region] = key.split('.');
@@ -1235,21 +1786,46 @@ async function submitEditorChanges(scope) {
       feedbackValues: readFeedbackValues(), editorDraft,
     };
     storageRemove(editorDraftKey);
+    // 只清 storage 不夠：`editorState` 還留在記憶體裡，主畫面會繼續說「尚有 N 張
+    // 卡片修改未送出」、送出鍵也還在（再按一次只會拿到 409）。修修 2026-09-03
+    // 送出 8 張之後就是卡在這個畫面。草稿已經隨 job 一起保存在 jobKey 裡，
+    // 工作失敗時會由 restoreFailedFeedback 還原。
+    editorState = {copyEdits: {}, layout: null, quoteLayout: null, textLayouts: {}};
+    submitFailure = '';
+    layoutValidationErrors = {};
+    manualLineErrors = {};
     storageSet(jobKey, JSON.stringify(job));
     editorDialog.close();
+    // 送出這個動作已經結束了（工作進度另外由工作面板顯示），按鈕不該一直停在
+    // 「送出中…」。
+    busySource = null;
+    updateEditorAction();
     showJobState(normaliseJobStatus(payload), `修改工作 ${job.jobId} 已建立，等待目前執行此 episode 的 Codex／Claude Code Agent 認領。`, {focus: true});
     await pollJob(job);
   } catch (error) {
     busy = false;
+    busySource = null;
     persistEditorDraft();
     updateActions();
     updateEditorAction();
-    editorStatus.textContent = `套用失敗：${error.message}。草稿已保留。`;
+    // 後端的訊息現在是完整句子，不要再補一個句號變成「。。」。
+    const detail = String(error.message || '').replace(/[。．.]\s*$/, '');
+    // 失敗訊息原本只寫在頁尾一個小 span 裡，使用者按了送出根本不會注意到，
+    // 看起來就是「沒有任何反應」（修修 2026-09-02 連續兩次卡在這裡）。
+    // 放到按鈕正上方那塊、用錯誤色，並停在畫面上直到下一次動作。
+    editorStatus.textContent = '';
+    submitFailure = `送出失敗：${detail}。草稿已保留。`;
+    updateEditorAction();
   }
 }
 
-editorApply.addEventListener('click', () => submitEditorChanges('all'));
-editorApplyAll.addEventListener('click', () => submitEditorChanges('all'));
+// 「完成這張」只關閉並保留草稿——不連網、不建立修正單。
+editorDone.addEventListener('click', () => {
+  persistEditorDraft();
+  editorDialog.close();
+  updateEditorRecovery();
+});
+editorSubmit.addEventListener('click', () => submitEditorChanges('all'));
 
 const resumableJobRaw = storageGet(jobKey);
 if (!approved && resumableJobRaw) {
