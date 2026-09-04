@@ -60,6 +60,14 @@ class Stage5MemoDualAuditReleaseHandoff:
     export_manifest_sha256: str
 
 
+#: Modes whose release.srt is hash-bound (immutable, lineage-verified) and therefore
+#: must not get the full display-layer finalize pass — only the narrow filler-cleanup
+#: scope (`strip_fillers_srt_file`). Single source of truth for that subset so callers
+#: outside this module (e.g. `scripts/build_resolve_project.py`) don't hand-copy the
+#: list and risk drifting from it when a new mode is added here.
+HASH_BOUND_RELEASE_MODES = frozenset({"memo-dual-audit-v1", "verified-v2", "degraded-dual-asr-v1"})
+
+
 class Stage5SubtitleContractError(ValueError):
     """The Stage 5 caller omitted or mixed formal/legacy subtitle identity."""
 

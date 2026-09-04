@@ -375,3 +375,77 @@ def test_short_reactions_never_use_wide(tmp_path):
     words = _words((0, 60, 1, 120))
     shots = build_shots([(0.0, 60.0)], words, _load_cfg(tmp_path, "short"))
     assert [s for s in shots if s.get("cam") == "wide"] == []
+
+
+# --- inject_reaction_cuts（修修 2026-09-03：哈/哇 內容驅動反應鏡頭）---------
+
+from run_short_director import inject_reaction_cuts  # noqa: E402
+
+
+def _cfg(**over):
+    return {**DEFAULT_CFG, "zoom_base": 1.0, **over}
+
+
+class TestInjectReactionCuts:
+    def test_pure_reaction_from_other_speaker_splits_into_three_pieces(self):
+        shots = [{"s": 0.0, "e": 10.0, "spk": 1, "kind": "talk", "zoom": 1.0}]
+        words = [{"start": 5.0, "end": 5.5, "spk": 0, "word": "哇~"}]
+        out = inject_reaction_cuts(shots, words, _cfg())
+        assert [sh["kind"] for sh in out] == ["talk", "reaction", "talk"]
+        assert out[1]["spk"] == 0  # 反應者是聽者（0），不是原說話者（1）
+        assert out[0]["spk"] == 1 and out[2]["spk"] == 1
+        assert out[0]["e"] == out[1]["s"] and out[1]["e"] == out[2]["s"]
+        assert out[0]["s"] == 0.0 and out[2]["e"] == 10.0
+        assert all(sh["zoom"] == 1.0 for sh in out)  # zoom 從原 shot 帶過來
+
+    def test_same_speaker_own_reaction_does_not_split(self):
+        """說話者自己講到一半笑出來——鏡頭本來就在他臉上，不算聽者反應。"""
+        shots = [{"s": 0.0, "e": 10.0, "spk": 1, "kind": "talk", "zoom": 1.0}]
+        words = [{"start": 5.0, "end": 5.5, "spk": 1, "word": "哈哈哈哈"}]
+        out = inject_reaction_cuts(shots, words, _cfg())
+        assert out == shots
+
+    def test_content_word_containing_trigger_char_does_not_split(self):
+        """「哇這個非常常見」是語意內容，不是純反應——不觸發。"""
+        shots = [{"s": 0.0, "e": 10.0, "spk": 1, "kind": "talk", "zoom": 1.0}]
+        words = [{"start": 5.0, "end": 6.0, "spk": 0, "word": "哇這個非常常見"}]
+        out = inject_reaction_cuts(shots, words, _cfg())
+        assert out == shots
+
+    def test_reaction_near_shot_edge_absorbs_short_residual(self):
+        """反應詞緊貼 shot 開頭——前段太短就不留碎片，直接併進反應鏡頭。"""
+        shots = [{"s": 0.0, "e": 10.0, "spk": 1, "kind": "talk", "zoom": 1.0}]
+        words = [{"start": 0.1, "end": 0.3, "spk": 0, "word": "哇"}]
+        out = inject_reaction_cuts(shots, words, _cfg())
+        assert [sh["kind"] for sh in out] == ["reaction", "talk"]
+        assert out[0]["s"] == 0.0
+
+    def test_non_talk_shots_and_opener_override_are_untouched(self):
+        shots = [
+            {"s": 0.0, "e": 5.0, "spk": 1, "kind": "talk", "cam": "wide", "zoom": 1.0},
+            {"s": 5.0, "e": 8.0, "spk": 0, "kind": "reaction", "zoom": 1.0},
+        ]
+        words = [
+            {"start": 1.0, "end": 1.5, "spk": 0, "word": "哇~"},
+            {"start": 6.0, "end": 6.3, "spk": 1, "word": "哈哈"},
+        ]
+        out = inject_reaction_cuts(shots, words, _cfg())
+        assert out == shots
+
+    def test_no_trigger_words_returns_shots_unchanged(self):
+        shots = [{"s": 0.0, "e": 10.0, "spk": 1, "kind": "talk", "zoom": 1.0}]
+        words = [{"start": 5.0, "end": 5.3, "spk": 0, "word": "嗯"}]
+        assert inject_reaction_cuts(shots, words, _cfg()) == shots
+
+    def test_multiple_triggers_in_one_shot_each_get_a_cut(self):
+        shots = [{"s": 0.0, "e": 10.0, "spk": 1, "kind": "talk", "zoom": 1.0}]
+        words = [
+            {"start": 2.0, "end": 2.3, "spk": 0, "word": "哈哈"},
+            {"start": 7.0, "end": 7.3, "spk": 0, "word": "哇"},
+        ]
+        out = inject_reaction_cuts(shots, words, _cfg())
+        kinds = [sh["kind"] for sh in out]
+        assert kinds.count("reaction") == 2
+        assert kinds == ["talk", "reaction", "talk", "reaction", "talk"]
+        total = sum(sh["e"] - sh["s"] for sh in out)
+        assert total == pytest.approx(10.0)

@@ -91,7 +91,9 @@ downstream，不得在 Director events 另改時間、另造 map，也不得只�
 Scripting API，CoWork/Computer Use 做不到逐幀精度）。
 
 - **Resolve Studio 執行中** + External scripting = Local
-- Resolve script 一律 `py -3.10`（3.14 會 segfault）；pytest/ruff 用 `python`
+- Resolve script 一律 `E:\nakama\.venv-v2\Scripts\python.exe`（3.12.10）。Resolve 21.0.3 的
+  `fusionscript.dll` 是 cp312：**3.10 與 3.14 都會在 `import DaVinciResolveScript` 當下
+  ACCESS_VIOLATION 崩潰**（2026-09-03 實測；舊文件寫的 `py -3.10` 已失效）。pytest/ruff 同一個直譯器
 - 從 worktree 跑要帶 `RESOLVE_SUBTITLE_TEMPLATE=E:\nakama\data\resolve\
   subtitle-template.drt`——`data/` 是 gitignored，只存在主倉庫，缺了字幕會無樣式
 - hyperframes 卡片 render 可外包，疊軌仍要本機
@@ -244,10 +246,11 @@ path escape、glob slug 或 hash drift 都 fail closed。只有通過後才能�
 Stock Video 下載與授權證據收集是上游 acquisition worker 的工作；Finished Revision
 Agent 只生 plan，不得自報來源或授權。Acquisition 交付 `trusted_asset_sources.json`，
 並將各 `filename` 的影片放在 JSON 同目錄。Finished Revision／Resolve 必須使用
-FusionScript 相容的 Python 3.10，不可由 `.venv-v2` 的 render watcher 消費：
+FusionScript 相容的 Python（cp312、`.venv-v2`，見上方「舊文件寫的 `py -3.10` 已失效」），
+不可由跑其他 app 邏輯的直譯器消費：
 
 ```powershell
-$resolvePy = 'C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe'
+$resolvePy = 'E:\nakama\.venv-v2\Scripts\python.exe'
 ```
 
 先 dry-run：
@@ -286,7 +289,7 @@ provenance 的素材，但不得覆寫；任何漂移都必須在 Agent 或 Reso
 content-addressed request ID 與舊 failure receipt，下一 attempt 寫入獨立子目錄；來源 manifest、
 preview 或 rollback inventory 有任何漂移就拒絕 requeue。
 
-若舊 worker 因 ABI `SystemExit` 留在 `running`，先用 Python 3.10 做只讀 recovery：
+若舊 worker 因 ABI `SystemExit` 留在 `running`，先用同一支 cp312 直譯器（`.venv-v2`）做只讀 recovery：
 
 ```powershell
 & $resolvePy scripts/finished_review_watcher.py --episodes-root "G:\Footages" `

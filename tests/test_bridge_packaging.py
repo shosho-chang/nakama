@@ -1111,9 +1111,24 @@ def test_geometry_inputs_use_step_any(client, vault_with_cutouts):
 
 
 def test_compose_rejects_out_of_range_geometry(client, vault_with_cutouts):
-    r = _compose(client, geometry_mode="manual", **{**_GEO, "host_height_pct": "0"})
+    """真的超出範圍（>400）才報「超出範圍」。"""
+    r = _compose(client, geometry_mode="manual", **{**_GEO, "host_height_pct": "500"})
     assert r.status_code == 400
     assert "超出範圍" in r.text
+
+
+def test_compose_reports_missing_geometry_distinctly_from_out_of_range(client, vault_with_cutouts):
+    """高度 0＝前端沒送這個角色的欄位，訊息不可跟「超出範圍」混為一談。
+
+    修修 2026-09-04 卡在這裡很久：預覽用 STAGE_DEFAULT 畫得好好的，送出的卻是
+    空字串（落到 Form 預設 0.0），而錯誤訊息一律說「位置/大小超出範圍」，把
+    client 沒填值誤導成他自己調錯，於是他反覆檢查根本沒問題的拖曳結果。
+    """
+    r = _compose(client, geometry_mode="manual", **{**_GEO, "guest_height_pct": "0"})
+    assert r.status_code == 400
+    assert "沒有送出" in r.text
+    assert "guest" in r.text
+    assert "超出範圍" not in r.text
 
 
 def test_board_renders_layout_stage(client, vault_with_cutouts):

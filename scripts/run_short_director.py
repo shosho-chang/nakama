@@ -48,7 +48,7 @@ from run_short_tighten import (  # noqa: E402
 )
 
 from agents.brook.script_video.subtitle_handoff import Stage5SubtitleRequest  # noqa: E402
-from shared.resolve_append import append_checked  # noqa: E402
+from shared.resolve_append import append_checked, delete_checked  # noqa: E402
 
 logger = logging.getLogger("short_director")
 
@@ -412,6 +412,98 @@ def build_shots(
                     sh["cam"] = "wide"
                 n += 1
     return shots
+
+
+#: 純反應詞——內容只有這些字（去裝飾字元後）才算「情緒反應」，不是語意內容
+#: 的一部分。「哇這個非常常見」「然後他就覺得 哇」不算——那是說話者自己講
+#: 話的一部分，不是聽者的反應。
+REACTION_TRIGGER_CHARS = "哈哇"
+REACTION_TRIGGER_NOISE = "~～,，。. \t"
+
+
+def _pure_reaction_words(word_tokens: list[dict], cfg: dict) -> list[dict]:
+    """從帶文字的詞級 token 抓出純反應詞，相鄰同說話者（≤0.3s 間隔）合併。"""
+    noise = set(cfg.get("reaction_trigger_noise", REACTION_TRIGGER_NOISE))
+    core_ok = set(cfg.get("reaction_trigger_chars", REACTION_TRIGGER_CHARS))
+    hits = []
+    for w in word_tokens:
+        core = "".join(ch for ch in w["word"] if ch not in noise)
+        if core and set(core) <= core_ok:
+            hits.append(dict(w))
+    hits.sort(key=lambda w: w["start"])
+    merged: list[dict] = []
+    for w in hits:
+        if merged and merged[-1]["spk"] == w["spk"] and w["start"] - merged[-1]["end"] <= 0.3:
+            merged[-1]["end"] = max(merged[-1]["end"], w["end"])
+        else:
+            merged.append(w)
+    return merged
+
+
+def inject_reaction_cuts(shots: list[dict], word_tokens: list[dict], cfg: dict) -> list[dict]:
+    """talk shot 內夾雜的純反應詞（哈/哇）切一個短反應鏡頭到反應者臉上。
+
+    修修 2026-09-03：「聽來賓講話途中有比較大的情緒反應（哈/哇），適時切到
+    我的畫面」——內容驅動，跟 `_expand_run` 的節奏驅動反應鏡頭是兩回事，
+    互不取代。只處理反應詞說話者跟該 shot 說話者**不同**的情況：同一人自己
+    講到一半笑出來，鏡頭本來就在他臉上，不算「聽的人反應」。
+
+    在 `build_shots` 之後呼叫（shot 已有 `zoom`，一併帶到切出來的新 shot）；
+    只動 `kind == "talk"` 且未被覆寫鏡位（無 `cam` key，例如開場全景不動）的
+    shot。切出來的反應鏡頭一律是反應者臉部特寫（不設 `cam`，由 spk 決定），
+    不會跑去全景——使用者要的是「切到我的畫面」，不是全景。
+    """
+    triggers = _pure_reaction_words(word_tokens, cfg)
+    if not triggers:
+        return shots
+    lead = cfg.get("reaction_trigger_pad_lead", 0.15)
+    lag = cfg.get("reaction_trigger_pad_lag", 0.45)
+    min_dur = cfg.get("reaction_trigger_min_sec", 1.0)
+    min_residual = cfg.get("reaction_trigger_min_residual", 0.35)
+    out: list[dict] = []
+    for sh in shots:
+        if sh.get("kind") != "talk" or sh.get("cam"):
+            out.append(sh)
+            continue
+        cand = [
+            t
+            for t in triggers
+            if t["spk"] != sh["spk"] and t["end"] > sh["s"] and t["start"] < sh["e"]
+        ]
+        if not cand:
+            out.append(sh)
+            continue
+        cand.sort(key=lambda t: t["start"])
+        cursor = sh["s"]
+        pieces: list[dict] = []
+        for t in cand:
+            r0 = max(t["start"] - lead, cursor, sh["s"])
+            r1 = min(t["end"] + lag, sh["e"])
+            if r1 - r0 < min_dur:
+                deficit = min_dur - (r1 - r0)
+                r0 = max(r0 - deficit / 2, cursor, sh["s"])
+                r1 = min(r1 + deficit / 2, sh["e"])
+            if r1 <= r0:
+                continue
+            pre_len = r0 - cursor
+            if pre_len > 0:
+                if pre_len < min_residual:
+                    r0 = cursor  # 前段太短——併進反應鏡頭，不留碎片
+                else:
+                    pieces.append({"s": cursor, "e": r0, "spk": sh["spk"], "kind": "talk"})
+            pieces.append({"s": r0, "e": r1, "spk": t["spk"], "kind": "reaction", "trigger": True})
+            cursor = r1
+        tail_len = sh["e"] - cursor
+        if tail_len > 0:
+            if tail_len < min_residual and pieces:
+                pieces[-1]["e"] = sh["e"]  # 尾段太短——併進最後一個反應鏡頭
+            else:
+                pieces.append({"s": cursor, "e": sh["e"], "spk": sh["spk"], "kind": "talk"})
+        zoom = sh.get("zoom", cfg.get("zoom_base", 1.0))
+        for piece in pieces:
+            piece["zoom"] = zoom
+        out.extend(pieces if pieces else [sh])
+    return out
 
 
 def _punch_keys(
@@ -817,11 +909,10 @@ def refresh_subs(episode_dir: Path, cid: str) -> dict:
     elif delta < -1.0 / fps:
         logger.warning(f"timeline 比模型短 {-delta:.2f}s——尾端字幕會被截，請確認手改內容")
 
-    project.SetCurrentTimeline(tl)
     for ti in range(1, tl.GetTrackCount("subtitle") + 1):
         items = tl.GetItemListInTrack("subtitle", ti) or []
         if items:
-            tl.DeleteClips(items)
+            delete_checked(project, tl, items, f"refresh_subs subtitle track {ti}")
     seg_srt, n_cues = _retime_srt(
         episode_dir,
         cid,

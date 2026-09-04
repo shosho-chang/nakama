@@ -610,6 +610,14 @@ def main() -> int:
         print(f"  center={center}: 左遮 {left} 右遮 {right} 差 {abs(left - right)}")
         if c.returncode == 0:
             break
+        if given_geo:
+            # 修修在 gate 上排好版了 → 不准再自動挪字（他 2026-09-04 的規則：
+            # 「經過我人眼驗證的都不用修」）。舊行為是不論 manual 與否都跑三輪
+            # ±1.5% 的遮蔽平衡，於是他排好、按存檔，出來的字被挪走，預覽跟成品
+            # 對不上——他說的「儲存之後的 random 動作」就是這個。遮蔽數字照印，
+            # 當資訊給他，不當成改圖的授權。
+            print("  [manual] 位置由修修指定，跳過遮蔽平衡自動位移（數字僅供參考）")
+            break
         history.append((center, left - right))
         if len(history) == 1:
             center = round(center + (1.5 if left > right else -1.5), 2)
@@ -621,7 +629,8 @@ def main() -> int:
 
     # 橘框四邊等距收斂（修修 2026-08-15：「間隔沒有平均」）。
     # 每個中文字的 ink 在 em 框裡偏移都不同，固定 padding 必然歪；量成品回推兩輪。
-    if req.get("highlight_text"):
+    # 同上：manual 模式下橘框 padding 也不自動收斂（它會連帶重出圖、動到字身）。
+    if req.get("highlight_text") and not given_geo:
         # 量→補→出圖，最後一輪只量（確認收斂才不印警告）。要多輪是因為 text-indent
         # 拉字身時 shrink-to-fit 會跟著縮，單輪只吃掉約六成誤差 → 幾何收斂。
         for _ in range(5):

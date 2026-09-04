@@ -1395,6 +1395,14 @@
   function markManual(stage) {
     const box = stage.closest("form").querySelector('input[name="geometry_mode"]');
     if (box && !box.checked) box.checked = true;
+    // 勾 manual 的當下，把還空著的欄位補成「預覽正在用的那個值」。
+    // applyStage 遇到空字串會退回 STAGE_DEFAULT 去畫預覽，但空字串送到後端
+    // 會落在 Form 的預設 0.0 上、撞 GeometryV1 的 gt=0 → 400。結果是
+    // 「看到的畫面」跟「送出去的數字」不是同一組：只拖了主持人的話，來賓三個
+    // 欄位仍是空的，預覽正常但存檔失敗（2026-09-04 修修存封面實際踩到）。
+    for (const [key, el] of Object.entries(stageInputs(stage))) {
+      if (el.value === "") el.value = STAGE_DEFAULT[key];
+    }
   }
 
   document.addEventListener("input", (e) => {

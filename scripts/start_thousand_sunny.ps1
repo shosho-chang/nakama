@@ -15,8 +15,11 @@ $repo = 'E:\nakama'
 # 兩個都起不來；舊版腳本的 Start-Process 失敗又不會讓工作變成失敗狀態，
 # 於是「開機自動啟動」看起來有做、實際上 8000 一直是空的。
 $appPy = if ($env:NAKAMA_APP_PYTHON) { $env:NAKAMA_APP_PYTHON } else { 'C:\Python314\python.exe' }
-# finished-review watcher 必須留在 Resolve 的 Python 3.10（fusionscript ABI），不可換。
-$resolvePy = 'C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe'
+# finished-review watcher 綁 Resolve 的 fusionscript ABI，直譯器不能隨便換。
+# DaVinci Resolve 21.0.3 的 fusionscript.dll 是 cp312：Python 3.10 與 3.14 都會在
+# `import DaVinciResolveScript` 當下 ACCESS_VIOLATION（0xC0000005）崩潰，實測 2026-09-03。
+# .venv-v2 是 3.12.10 且帶齊 repo 依賴，13 支碰 Resolve 的腳本都在它底下驗過。
+$resolvePy = if ($env:NAKAMA_RESOLVE_PYTHON) { $env:NAKAMA_RESOLVE_PYTHON } else { 'E:\nakama\.venv-v2\Scripts\python.exe' }
 $logDir = Join-Path $repo 'logs'
 $logFile = Join-Path $logDir 'thousand-sunny.log'
 
@@ -60,7 +63,8 @@ Start-Process -FilePath $appPy `
 # 1) gate「存配方」→ render_request → render 一次。
 # 2) gate Reject + feedback → revision_job → bounded Codex agent 重做 → 回到 re-review。
 # 3) Highlight shortlist approve → queued Long Packaging → title + thumbnail → READY。
-# Finished-cut revision 由下方 Python 3.10 supervisor 獨佔，避免 fusionscript ABI 錯誤與雙重消費。
+# Finished-cut revision 由下方 Python 3.12（.venv-v2，見上方 $resolvePy 註解）supervisor
+# 獨佔，避免 fusionscript ABI 錯誤與雙重消費。
 $watcherArgs = @('scripts/render_watcher.py', '--interval', '5')
 Start-Process -FilePath $appPy `
     -ArgumentList $watcherArgs `
@@ -70,9 +74,16 @@ Start-Process -FilePath $appPy `
     -WindowStyle Hidden `
     -NoNewWindow:$false
 
-# --- finished-cut revision worker (Resolve/Fusion Python 3.10 ABI) -----------
+# --- finished-cut revision worker (Resolve/Fusion cp312 ABI) -----------------
+# 只查檔案存在不夠——2026-08-31 就出過 .venv-v2 檔案都在、但 pyvenv.cfg 壞掉
+# 的案例，Test-Path 照樣過，直到 watcher 真的跑起來才炸。跟 $appPy 同規格，
+# 先証明這個直譯器真的跑得動再 Start-Process。
 if (-not (Test-Path -LiteralPath $resolvePy -PathType Leaf)) {
-    throw "Resolve-compatible Python 3.10 not found: $resolvePy"
+    throw "Resolve-compatible Python (cp312, .venv-v2) not found: $resolvePy（設 NAKAMA_RESOLVE_PYTHON 可覆寫）"
+}
+& $resolvePy -c "import sys" 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    throw "Resolve 直譯器起不來（venv 可能壞了，跑 scripts\repair_venv_v2.ps1）: $resolvePy"
 }
 $finishedWatcherArgs = @('scripts/finished_review_watcher.py', '--interval', '5')
 Start-Process -FilePath $resolvePy `

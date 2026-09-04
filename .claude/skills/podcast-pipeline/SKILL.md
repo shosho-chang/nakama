@@ -58,7 +58,9 @@ consumer 已切換；缺少／stale／tampered receipt 一律 fail closed，不�
 - 上述授權不包含新的 paid API／provider／data destination，也不包含 YouTube upload。
 - 普通 E2E 的第一個人類 editorial gate 是 **Editorial Master approval**。在此之前只有
   wrong episode/audio、hash／coverage／timebase catastrophic failure，或未獲授權的 provider/destination 變更
-  可以停止。
+  可以停止。**這條規則本身沒有模糊空間，但 2026-09-04（20260901 蘇予昕）agent 還是在 S0 前多問了一句
+  「可以直接這麼做嗎」**——授權明明已經在使用者最初那句「跑這集」裡給了。看到這句仍然想確認，代表在
+  自我懷疑，不是規則不夠清楚：**不要問，直接做，出事再停**。
 - 雙 text audit 或雙 ASR 的一般衝突不是 human gate：保留 Memo 原文、寫入 ledger、繼續。
 - 之後的人類 gate 依序是 Highlight shortlist、finished-cut review、packaging review、explicit YouTube
   upload approval。
@@ -83,6 +85,26 @@ consumer 已切換；缺少／stale／tampered receipt 一律 fail closed，不�
 | S11 PUBLISH | video／thumbnail／zh-TW CC／reconciliation 完整 | explicit upload approval |
 
 ## S0–S2 — preflight、references、Auphonic
+
+### S0.0 — 工具鏈健檢（先做，不然會在半路才炸）
+
+整條線只有**一個**直譯器：`E:\nakama\.venv-v2\Scripts\python.exe`。精確版本釘在 repo 根目錄的
+`.python-version`；為什麼是這個版本、跟其他兩個桌機 Python 的分工，見
+[`docs/runbooks/desktop-python-interpreters.md`](../../../docs/runbooks/desktop-python-interpreters.md)——
+不要重新診斷一次，先讀那份文件。
+
+先自動自癒，**這一步不用問**（不裝任何新軟體，只在版本已經在 registry 裡時修指標）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File E:\nakama\scripts\repair_venv_v2.ps1
+```
+
+跑完會印 `.venv-v2 健康。` 才算過。只有印出 `winget install` 指令那條分支——代表釘住的版本
+**真的沒裝過**——才需要停下來問；其他情況（`pyvenv.cfg` 不見、指標過期）腳本會自己修好，
+不用回頭找使用者核准。
+
+**不要**改用 3.10 或 3.14 去跑任何碰 Resolve 的腳本：兩者都會在 `import DaVinciResolveScript`
+當下 ACCESS_VIOLATION（`0xC0000005`）崩潰，而且崩得沒有 traceback。
 
 先以 `ffprobe` 驗證 `Live-Mix.wav`、Combo 1、Combo 2 的 codec、duration、channels 與 clock，再 hash。
 不要因收尾聊天詢問裁切。正式 episode workspace、命令與 receipts 固定在同一 worktree／commit。
@@ -319,19 +341,50 @@ byte-identical，以及 partial/destination collision fail closed。`release.srt
 
 Stage 5 consumers 預設發現並驗證
 `<episode>/subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json`；fresh episode 不傳字幕 flag。
-先 dry-run 核對，再 probe 同一個 Python 3.10 runtime，最後一定要執行 actual build：
+先 dry-run 核對，再 probe 同一個 3.12 runtime，最後一定要執行 actual build：
+
+> ⚠️ **主影片上軌回 `[None]` 是 timing，不是素材或模板壞掉（2026-09-03 血淚）。**
+> 37.8 GB 的 program feed 剛 `ImportMedia` 進來時 Resolve 還在建索引，第一次 append 必定失敗。
+> 當時 `append_checked` 只有 3×2s ≈ 4s 預算，連兩次 build 都在這裡用盡重試、整支沒上軌；
+> 已放寬到 6×5s（見 `shared/resolve_append.py` 的註解）。
+>
+> **當時我做的 A/B 判斷是錯的**：「不套模板成功、套模板失敗」看起來像 DRT 模板的鍋，
+> 於是一度把 `subtitle-template.drt` 標成壞的。事後用同一支檔案、同一個模板、同一種 append
+> 寫法重測 **3/3 全過**——兩邊的差別只是中間隔了時間。**單次觀察不能當結論，要重現。**
+>
+> 真的又卡住：先確認 Resolve 沒有 modal dialog、媒體池的 clip 有正確 duration/resolution，
+> 再加大 `append_checked` 的 retries/delay。不要急著把模板或素材判死。
 
 ```powershell
 $env:RESOLVE_SUBTITLE_TEMPLATE = "E:\nakama\data\resolve\subtitle-template.drt"
 if (-not (Test-Path -LiteralPath $env:RESOLVE_SUBTITLE_TEMPLATE)) { throw "Resolve subtitle template missing" }
 
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" `
+E:\nakama\.venv-v2\Scripts\python.exe `
   scripts\build_resolve_project.py "<episode>" --dry-run
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" -c `
+E:\nakama\.venv-v2\Scripts\python.exe -c `
   "from scripts.build_resolve_project import connect_resolve; r=connect_resolve(); assert r is not None; print(r.GetVersionString())"
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" `
+E:\nakama\.venv-v2\Scripts\python.exe `
   scripts\build_resolve_project.py "<episode>"
 ```
+
+### 字幕語助詞清理（修修 2026-09-03）
+
+上 timeline 的字幕副本會自動移除遲疑語助詞。**`release.srt` 本體永遠不動**——它是 ADR-063 的
+證據，語助詞清理純屬顯示層，實作在 `shared/subtitle_finalize.py`，hash-bound release 走窄入口
+`strip_fillers_srt_file`（只做這件事，不碰標點與空隙）。
+
+規則是**區分遲疑詞與語氣詞**，不是無差別刪除：
+
+- **「呃」無條件刪除**（延續修修 2026-07-26 的既有規則，與 `cue_builder.FILLERS`、
+  `transcriber` prompt 同一條）
+- **「嗯／哦／齁」看位置**：獨立成句或句首 → 刪；**句尾或句中保留**
+- 未點名的語氣詞（喔／欸／啊／耶）**一律不碰**，尤其句尾的「啊」2026-07-26 明文保留
+
+為什麼分：句尾的「齁／哦」是語氣不是雜訊——`心理上的挨打齁`、`可是很有意思哦`、
+`我講幾個例子齁`，刪掉話會變硬。20260901 蘇予昕實測 4824 → 4513 句（整條刪 311、
+刪字保句 38、保留句尾語氣詞 35）。
+
+清理數量必須印進 log，不得靜默。要調整詞表改 `HESITATION_FILLERS` / `POSITIONAL_FILLERS`。
 
 Actual build exit 0 只代表 base timeline 建立成功；agent 必須把 base full-program timeline 交給使用者。
 此時 normalization／subtitle
@@ -341,13 +394,13 @@ Actual build exit 0 只代表 base timeline 建立成功；agent 必須把 base 
 Human approval 之前只能 `inspect`，不得自行傳 `--human-approved`。核准後 exact exporter route 是：
 
 ```powershell
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" `
+E:\nakama\.venv-v2\Scripts\python.exe `
   scripts\podcast_editorial_master.py inspect "<episode>" --project "<project>" --timeline "<timeline>"
 E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_editorial_master.py status "<episode>"
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" `
+E:\nakama\.venv-v2\Scripts\python.exe `
   scripts\podcast_editorial_master.py seal "<episode>" --project "<project>" --timeline "<timeline>" `
   --human-approved --approved-by "<human-id>"
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" `
+E:\nakama\.venv-v2\Scripts\python.exe `
   scripts\podcast_editorial_master.py verify "<episode>" --project "<project>" --timeline "<timeline>" --live
 ```
 
@@ -356,9 +409,36 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_editorial_master.py status
 完成時固定驗證 `master.mp4`、`master.srt`、`timeline-snapshot.json`、`EDITORIAL-MASTER.json` 四件，receipt
 最後寫入。既有不同 bytes、wrong episode、Timeline UID drift 或 hash drift 必須停止，不能 rerender 覆蓋。
 
-Editorial Master receipt 驗證成功後，在開始 miners 前，先對 `cut_id=full` 啟動 `title-brainstorm` 與
-`thumbnail-brainstorm`，產生完整節目的三組 title／thumbnail／description 草稿。這一步不依賴
-Highlight winner；評審可與 S8 並行，未核准不得進完整節目發布，但不得阻塞 Highlight mining。
+**seal 前人工掃一次 `master.srt` 有沒有殘留標點**（2026-09-04 20260901 蘇予昕漏網：`inspect` 的
+`timing_qc` 只查時間軸——非正時長、超出 timeline、重疊——不查文字內容，house style「不留標點」
+沒有自動化把關）。4480 條 cue 裡 5 條連續 cue（01:23:42–01:24:04）用了半形逗號＋全形句號，明顯繞過
+了 Memo 文字風險掃描員（`agents/brook/podcast_subtitles/adapters/correction.py` 的 house style）該有
+的清理，原因待查——這一集發生在使用者事後於 Resolve 手動補救／調整過的區段附近，懷疑跟繞過正常
+correction pass 的手動編輯有關。此集已 seal（ADR-064 不可變），這次先不補救；**換集時**：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe -c "
+path = r'<episode>\editorial-master\v1\master.srt'
+text = open(path, encoding='utf-8-sig').read()
+full, half = '，。、；：？！', ',.;?!'
+for b in text.strip().split('\n\n'):
+    lines = b.splitlines()
+    if len(lines) < 3: continue
+    body = '\n'.join(lines[2:])
+    if any(ch in body for ch in full + half):
+        print(lines[1], '|', body)
+"
+```
+
+**不要用 bash `grep` 查多位元組 CJK 字元類**（`[，。、；：？！]` 這種 pattern 在非 UTF-8 locale
+下會逐 byte 誤判，2026-09-04 就因此誤報過 3491 筆假陽性——一定要用上面這種 Python UTF-8 解碼的版本，
+且只掃 SRT 的文字行、不要連 timestamp 行的逗號（`00:00:00,000`）一起算進去）。列舉用的「、」
+（「國中、高中、大學」）不算違規；其餘任何標點都是清理沒跑到，seal 前先處理，不要留到封存後才發現。
+
+Editorial Master receipt 驗證成功後，**立刻**對 `cut_id=full` 啟動 `title-brainstorm` 與
+`thumbnail-brainstorm`——這是 seal 核准後的自動下一步，不是要另外徵詢的新工作，**不要問「要不要現在
+開始」**（2026-09-04 20260901 蘇予昕 agent 在這裡多問了一次；使用者回饋是每一步都問會累，這裡本就不
+該是決策點）。在開始 miners 前完成。產生完整節目的三組 title／thumbnail／description 草稿，這一步不依賴 Highlight winner；評審可與 S8 並行，未核准不得進完整節目發布，但不得阻塞 Highlight mining。
 作者／新書訪談的完整節目封面，若有可驗證書封，必須使用 N1 的暗色書封中景；詳細參數以
 `thumbnail-brainstorm` 為準。
 
@@ -398,7 +478,7 @@ subscription subagents 執行。若環境無法產生 exact reviews，必須回�
 
 ```powershell
 E:\nakama\.venv-v2\Scripts\python.exe scripts\run_cut_shortlist.py "<episode>" --pick <ID1,ID2,...>
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" `
+E:\nakama\.venv-v2\Scripts\python.exe `
   scripts\run_highlight_cut.py "<episode>" --materialize
 ```
 
@@ -409,8 +489,8 @@ ADR-065 的 Director → DP → same-Director second-pass semantic audit receipt
 titles、SFX、review。Tightening與所有視覺工作都只能使用 Editorial Master media/timebase：
 
 ```powershell
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_tighten.py "<episode>" --detect --id <winner-id>
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_tighten.py "<episode>" --apply --id <winner-id>
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_tighten.py "<episode>" --detect --id <winner-id>
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_tighten.py "<episode>" --apply --id <winner-id>
 E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_identity_placement.py accept "<episode>" `
   --cut-id <winner-id> --cut-srt "<episode>/highlights/srt/<winner-id>_tight_rNNN.srt" `
   --audit-a "<episode>/highlights/identity-placement/<winner-id>/identity-audit-a.json" `
@@ -419,7 +499,7 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_identity_placement.py stat
 E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_identity_placement.py emit-event "<episode>" `
   --cut-id <winner-id> --name "<guest-name>" --title "<guest-title>"
 E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_identity_placement.py verify "<episode>" --cut-id <winner-id>
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_director.py "<episode>" --id <winner-id> --stills "<stills-dir>"
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_director.py "<episode>" --id <winner-id> --stills "<stills-dir>"
 ```
 
 名稱邊界不可混淆：`run_short_director.py` = camera/Timeline director，**不代表 `brook-director` skill**
@@ -471,10 +551,10 @@ Semantic audit worker identity必須等於原 Director、且不同於 DP；由 D
 只有 complete chain fresh 驗證成 `ready_to_materialize` 後才可執行：
 
 ```powershell
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_broll.py "<episode>" --id <winner-id> --stills "<stills-dir>"
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_titles.py "<episode>" --id <winner-id>
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_sfx.py "<episode>" --id <winner-id>
-& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_review.py "<episode>" --id <winner-id>
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_broll.py "<episode>" --id <winner-id> --stills "<stills-dir>"
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_titles.py "<episode>" --id <winner-id>
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_sfx.py "<episode>" --id <winner-id>
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_review.py "<episode>" --id <winner-id>
 ```
 
 `run_short_broll.py` = materializer，**不代表 `brook-dp` skill** execution；它不得搜尋、挑選、改寫 intent

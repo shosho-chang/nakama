@@ -85,10 +85,23 @@ def get_trends(topic: str) -> dict:
 
     Returns dict with keys: related_top, related_rising, trend_direction.
     Returns empty dict on failure.
+
+    ⚠️ 缺套件不可跟 API 故障混為一談（2026-09-04，20260901 蘇予昕 title-brainstorm）：
+    `trendspy` 是 requirements.txt 宣告的正式依賴，但 .venv-v2 沒裝；舊版把
+    ImportError 一起吞進下面那個 `except Exception`，上游只看到「Google Trends
+    數據不可用」，於是關鍵字評分表被標成「訊號缺失」交出去，沒有人知道其實
+    只要 `pip install trendspy` 就有資料。環境問題要能一眼看出是環境問題。
     """
     try:
         from trendspy import Trends
+    except ImportError:
+        logger.error(
+            "trendspy 未安裝——這是環境問題不是 API 故障。"
+            "修法：pip install 'trendspy>=0.1.6'（已列在 requirements.txt）"
+        )
+        return {}
 
+    try:
         tr = Trends(language="zh-TW", tzs=480)
 
         def _fetch():

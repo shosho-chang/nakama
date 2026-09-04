@@ -10,6 +10,13 @@
 ③ cue 間零空隙：end 補到次句 start，字幕連續顯示不閃爍。gap > `gap_close_max`
    （預設 3.0s，對齊 `run_gap_fill.MIN_GAP_SEC`「<3s = 正常語流」）視為真靜默
    ——沒人講話字幕就該消失，不補、列入回報（呼叫端不可靜默吞掉）。
+④ 語助詞清理（修修 2026-09-03；延伸自 2026-07-26 的「呃」規則）：
+   **區分遲疑詞與語氣詞**——遲疑詞是雜訊，語氣詞是語氣，刪掉後者會把話講硬。
+   - 「呃」= 純遲疑，**無條件刪除**（與 `cue_builder.FILLERS`、`transcriber` prompt 同一條規則）
+   - 「嗯／哦／齁」= 位置決定性質：獨立成句或**句首**時是附和／遲疑 → 刪；
+     **句尾或句中保留**（「心理上的挨打齁」「可是很有意思哦」是語氣，不是雜訊）
+   整條變空的 cue 直接移除（cue 數會變少，計入 `filler_cues_dropped`）。
+   20260901 蘇予昕實測：4131 → 3868 條，整條刪 263、刪字保句 32、保留句尾語氣詞 35。
 
 ⚠️ 只作用於「要上 timeline 顯示」的 SRT 副本。`transcript.srt` 是工作真值，
 cue 時間必須貼語音（highlight-cut 等下游靠 cue 時間切片，拉長 end 會帶入
@@ -21,12 +28,52 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from shared import cue_builder
+
 PUNCT_TAIL = "，。、；：！？…—～·" + ",.;:!?~"
 CLOSERS = "」』》）"
 LEADING_COMMAS = "，,"
 LEADING_DISPLAY_PUNCT = PUNCT_TAIL
 
 _TS = re.compile(r"(\d+):(\d+):(\d+)[,.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,.](\d+)")
+
+
+#: 純遲疑語助詞——無條件刪除（修修 2026-07-26）。
+#: 同一份定義，避免跟 `cue_builder.FILLERS` 各改各的漂移
+HESITATION_FILLERS = "".join(cue_builder.FILLERS)
+#: 位置相依語助詞——獨立成句／句首刪除，句尾或句中是語氣詞，保留（修修 2026-09-03）
+POSITIONAL_FILLERS = "嗯哦齁"
+#: 判斷「這條 cue 只有語助詞」時要忽略的裝飾字元
+_FILLER_NOISE = "~～!！?？,，。 \t"
+_HESITATION_RE = re.compile(f"[{HESITATION_FILLERS}][~～]*")
+_LEADING_RE = re.compile(f"^[ \t]*[{POSITIONAL_FILLERS}][~～]*")
+
+
+def filler_only(text: str) -> bool:
+    """整條 cue 只有語助詞（與裝飾標點）→ 顯示層不需要它。"""
+    core = "".join(ch for ch in text if ch not in _FILLER_NOISE and not ch.isspace())
+    return bool(core) and set(core) <= set(HESITATION_FILLERS + POSITIONAL_FILLERS)
+
+
+def strip_fillers(text: str) -> str:
+    """移除遲疑語助詞，保留句尾／句中的語氣詞。冪等。
+
+    「呃」任何位置都刪；「嗯／哦／齁」只在句首（可連續、可夾裝飾標點）刪。
+    回傳空字串代表整條都是語助詞，呼叫端應丟棄該 cue。
+    """
+    out_lines = []
+    for line in text.splitlines() or [""]:
+        # 「呃」連同黏在它後面的拉長號一起移除
+        s = _HESITATION_RE.sub("", line)
+        # 句首「嗯／哦／齁」（含拉長號、可連續）移除。**只吃空白，不吃標點**——
+        # 句首標點歸屬由規則①決定，這裡先剝掉會把標點錯搬給前一句。
+        while True:
+            new = _LEADING_RE.sub("", s, count=1)
+            if new == s:
+                break
+            s = new
+        out_lines.append(re.sub(r"[ \t]{2,}", " ", s).strip(" \t"))
+    return "\n".join(ln for ln in out_lines if ln)
 
 
 def strip_tail_punct(line: str) -> str:
@@ -58,7 +105,22 @@ def finalize_cues(
     區段（(前句序號 1-based, gap 秒)）——呼叫端要回報出來，不可靜默。
     `pause` 傳入停頓圖時，斷句檢查改以音檔靜音為主判準（見 find_bad_boundaries）。
     """
-    out = [[s, e, text] for s, e, text in cues]
+    # ④ 語助詞清理最先跑：整條刪掉的 cue 不該再參與標點歸還與補空隙，
+    #    否則會把語助詞的標點搬給前一句、也會把已消失的 cue 算進 gap。
+    out: list[list] = []
+    filler_cues_dropped = 0
+    filler_stripped = 0
+    for s, e, text in cues:
+        if filler_only(text):
+            filler_cues_dropped += 1
+            continue
+        cleaned = strip_fillers(text)
+        if not cleaned:
+            filler_cues_dropped += 1
+            continue
+        if cleaned != text:
+            filler_stripped += 1
+        out.append([s, e, cleaned])
     leading_commas_rehomed = 0
     leading_commas_dropped = 0
     leading_punct_rehomed = 0
@@ -104,6 +166,8 @@ def finalize_cues(
         _msg = "jieba 未安裝——斷句檢查沒跑，不可視為通過"
         bad = [{"cue": -1, "tail": "", "head": "", "reason": _msg}]
     return [tuple(c) for c in out], {
+        "filler_cues_dropped": filler_cues_dropped,
+        "filler_stripped": filler_stripped,
         "stripped": stripped,
         "leading_commas_rehomed": leading_commas_rehomed,
         "leading_commas_dropped": leading_commas_dropped,
@@ -366,6 +430,50 @@ def format_srt(cues: list[tuple[float, float, str]]) -> str:
     return "\n".join(
         f"{i}\n{_fmt_ts(s)} --> {_fmt_ts(e)}\n{text}\n" for i, (s, e, text) in enumerate(cues, 1)
     )
+
+
+def strip_fillers_srt_file(src: Path, dst: Path) -> dict:
+    """只套規則④（語助詞清理）寫 dst，**不碰標點與空隙**。回傳 stats。
+
+    給 hash-bound release（ADR-063 memo-dual-audit-v1 等）的顯示副本用：那些
+    模式刻意不跑完整定版，避免顯示層默默改動已審核文字。語助詞清理是修修
+    明示的編輯決策，不是默默改動，所以獨立成這個窄入口並回報刪除數量，
+    呼叫端必須把數字印出來。`release.srt` 本體永遠不動。
+
+    唯一例外：句首語助詞被砍掉後，原本黏在它後面的標點（「嗯，可是…」→
+    「，可是…」）會變成孤兒句首標點。`finalize_cues` 裡這個標點由規則①
+    歸還／丟棄，但這裡沒有跑規則①，所以直接剝掉——它是語助詞的附屬標點，
+    不是原句自己的句首標點，不屬於「不碰標點」要保護的範圍。
+    """
+    cues = parse_srt_text(Path(src).read_text(encoding="utf-8-sig"))
+    kept: list[tuple[float, float, str]] = []
+    dropped = 0
+    edited = 0
+    for start, end, text in cues:
+        if filler_only(text):
+            dropped += 1
+            continue
+        cleaned = strip_fillers(text)
+        if not cleaned:
+            dropped += 1
+            continue
+        head = text.lstrip(" \t")[:1]
+        if cleaned != text and head in (HESITATION_FILLERS + POSITIONAL_FILLERS):
+            while cleaned[:1] in LEADING_DISPLAY_PUNCT:
+                cleaned = cleaned[1:].lstrip(" \t")
+            if not cleaned:
+                dropped += 1
+                continue
+        if cleaned != text:
+            edited += 1
+        kept.append((start, end, cleaned))
+    Path(dst).write_text(format_srt(kept), encoding="utf-8")
+    return {
+        "cues": len(kept),
+        "cues_in": len(cues),
+        "filler_cues_dropped": dropped,
+        "filler_stripped": edited,
+    }
 
 
 def finalize_srt_file(

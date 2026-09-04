@@ -1926,6 +1926,24 @@ def packaging_compose(
                 guest_y_pct=guest_y_pct,
             )
         except ValidationError as exc:
+            # 高度是 0＝前端根本沒送這個角色的欄位（Form 預設 0.0），不是他拖到超界。
+            # 舊訊息一律報「位置/大小超出範圍」，把 client 沒填值誤導成使用者調錯，
+            # 2026-09-04 修修存封面卡在這裡查很久：預覽用 STAGE_DEFAULT 畫得好好的，
+            # 送出的卻是空字串。訊息要能分辨「沒送」跟「超界」。
+            missing = [
+                role
+                for role, value in (("host", host_height_pct), ("guest", guest_height_pct))
+                if value <= 0
+            ]
+            if missing:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{'／'.join(missing)} 的位置尺寸沒有送出（高度 0）——"
+                        "請在預覽上拖動或縮放該人物一次再存檔；"
+                        "若這是重整後第一次編輯，重新整理頁面即可帶出預設值。"
+                    ),
+                ) from exc
             raise HTTPException(
                 status_code=400, detail=f"位置/大小超出範圍：{str(exc)[:300]}"
             ) from exc

@@ -90,7 +90,7 @@ def test_editorial_master_gate_precedes_packaging_and_highlights() -> None:
     assert "--human-approved --approved-by" in production
     assert "S7P FULL PACKAGING" in production
     assert "cut_id=full" in production
-    assert "不依賴\nHighlight winner" in production
+    assert "不依賴 Highlight winner" in production
     assert "不得阻塞 Highlight mining" in production
     assert "暗色書封中景" in production
     assert production.index("Actual build exit 0") < production.index(
@@ -107,8 +107,11 @@ def test_editorial_master_gate_precedes_packaging_and_highlights() -> None:
     exporter_route = production.split("Human approval 之前", maxsplit=1)[1].split(
         "第一次 `status`", maxsplit=1
     )[0]
-    python310 = r"C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe"
-    assert exporter_route.count(python310) == 3
+    # 全線單一直譯器：三個碰 Resolve GUI 的 exporter 指令 ＋ 一個 offline status，
+    # 現在都是 .venv-v2 (3.12.10)。Resolve 21.0.3 的 fusionscript.dll 是 cp312，
+    # 3.10／3.14 都會在 import 當下 ACCESS_VIOLATION。
+    resolve_py = r"E:\nakama\.venv-v2\Scripts\python.exe"
+    assert exporter_route.count(resolve_py) == 4
     assert (
         r"E:\nakama\.venv-v2\Scripts\python.exe "
         r'scripts\podcast_editorial_master.py status "<episode>"'
@@ -398,7 +401,7 @@ def test_podcast_route_performs_actual_resolve_build_then_complete_highlight_flo
     _text, production, _legacy = _sections()
     route = production.split("## S7–S8", maxsplit=1)[1].split("## S9", maxsplit=1)[0]
 
-    python310 = r"C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe"
+    resolve_py = r"E:\nakama\.venv-v2\Scripts\python.exe"
     dry_run = 'scripts\\build_resolve_project.py "<episode>" --dry-run'
     probe = "from scripts.build_resolve_project import connect_resolve"
     actual_build = 'scripts\\build_resolve_project.py "<episode>"'
@@ -408,8 +411,9 @@ def test_podcast_route_performs_actual_resolve_build_then_complete_highlight_flo
     assert actual_build in lines
     probe_line = next(line.strip() for line in route.splitlines() if probe in line)
     assert lines.index(dry_run) < lines.index(probe_line) < lines.index(actual_build)
-    assert route.count(python310) >= 3
+    assert route.count(resolve_py) >= 3
     assert "py -3.10" not in route
+    assert "Python310" not in route
 
     flow = route.split("Exact routing 是：", maxsplit=1)[1].split("```", maxsplit=2)[1]
     ordered = (
@@ -566,7 +570,7 @@ def test_identity_placement_route_is_quorum_bound_and_fail_closed() -> None:
         "只有兩 audit 衝突或皆無法可靠\n判斷才是 HITL",
         "43.0 秒",
         "48.2 秒",
-        r"C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe",
+        r"E:\nakama\.venv-v2\Scripts\python.exe",
         "inspect`、`seal`、`verify --live`",
     )
     for marker in highlight_required:
