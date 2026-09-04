@@ -155,16 +155,25 @@ def _validate_media_source_range(clip, f0: int, f1: int, *, project_fps: float) 
 
 
 def _validate_appended_source_range(item, f0: int, f1: int) -> None:
-    """Catch Resolve silently clamping an out-of-range request to a freeze frame."""
-    actual_start = item.GetSourceStartFrame()
-    actual_end = item.GetSourceEndFrame()
+    """Catch Resolve silently clamping an out-of-range request to a freeze frame.
+
+    以 `GetDuration()` 為準，不用 `GetSourceEndFrame() - GetSourceStartFrame()`。
+    Resolve 對 end frame 是含端點還是不含端點**並不一致**——2026-09-03 抹布實測，
+    同一次執行裡：
+
+        L09 片段  src 60986-67212  end-start = 6226  GetDuration = 6226  ← 一致
+        L02 片段  src 25410-31412  end-start = 6002  GetDuration = 6003  ← 差一
+
+    L02 那段實際就是 6003 幀（等於請求值，放置正確），卻被判成「被夾住」而
+    整支失敗。duration 沒有這個歧義，而且真的被夾成凍結格時它會崩掉，
+    所以用它既不會誤判、也沒有放寬這道守衛要抓的東西。
+    """
     expected_span = f1 - f0
-    actual_span = (
-        int(actual_end) - int(actual_start)
-        if actual_start is not None and actual_end is not None
-        else -1
-    )
+    duration = item.GetDuration()
+    actual_span = int(duration) if duration is not None else -1
     if actual_span != expected_span:
+        actual_start = item.GetSourceStartFrame()
+        actual_end = item.GetSourceEndFrame()
         raise SystemExit(
             "Resolve clamped source range: "
             f"requested {f0}-{f1} ({expected_span} frames), "
