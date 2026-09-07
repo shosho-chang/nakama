@@ -511,3 +511,45 @@ def test_inspect_and_revision_use_only_exact_current_release() -> None:
             "This stale release must not authorize a revision",
             system=system,
         )
+
+
+def test_rejected_dp_proposal_reports_which_event_and_which_rule() -> None:
+    """拒絕必須說出原因。
+
+    引擎原本把 30 種違規全部收斂成一個沒有理由的 needs_review，操作者只能去讀
+    原始碼逐條比對才知道錯在哪（2026-09-07 實測要繞三輪）。
+    """
+    allowed = _asset("allowed")
+    forged = _asset("not-in-this-catalog")
+    system = InMemoryProductionSystem(
+        approved_cuts=(_approved_cut(),),
+        asset_resolver=InMemoryAssetResolver((allowed,)),
+    )
+    director_wait = advance(_approved_cut().command_id, system=system)
+    assert director_wait.outstanding_request is not None
+    event = EventRecord("stock-1", ("cue-25",), "text-25", "Use one neutral stock clip")
+    system.respond(director_wait.outstanding_request, events=(event,))
+    dp_wait = advance(_approved_cut().command_id, system=system)
+    assert dp_wait.outstanding_request is not None
+    system.respond(
+        dp_wait.outstanding_request,
+        events=(
+            EventRecord(
+                event.event_id,
+                event.master_cue_ids,
+                event.text_hash,
+                event.intent,
+                asset_ref=forged.reference,
+            ),
+        ),
+    )
+
+    rejected = advance(_approved_cut().command_id, system=system)
+
+    assert rejected.status == "needs_review"
+    assert len(rejected.policy_diagnostics) == 1
+    diagnostic = rejected.policy_diagnostics[0]
+    assert diagnostic.code == "stage_proposal_rejected"
+    assert "dp" in diagnostic.message
+    assert event.event_id in diagnostic.message
+    assert event.event_id in diagnostic.component_ids
