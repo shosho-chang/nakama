@@ -650,6 +650,63 @@ def _write_media(workspace: Path, media: tuple[NamedMedia, ...]) -> None:
         (media_root / item.logical_name).write_bytes(item.bytes)
 
 
+# 每個 stage 除了契約，還要載入這個頻道的創意手冊。ADR-066 把語意工作從 skill
+# 收進引擎時只搬了「怎樣算合法」，沒搬「怎樣算好」——手冊留在 .claude/skills/
+# 底下沒有任何程式碼會讀，於是 Director 只拿到 149 個字的契約檢查，
+# 六種視覺事件的職責、七輪定版的設計系統、歷次退件的教訓全部遺失。
+# 2026-09-08 實測後果：章節卡壓在語助詞上、Hero 只是把字幕放大、
+# visual_effect 被想像成不存在的轉場特效、11 分半只有 3 段 B-roll。
+_STAGE_SKILL_MANUALS: dict[str, tuple[str, ...]] = {
+    "director": ("brook-director", "longform-cut"),
+    # DP 只讀自己那本：engine prompt 刻意不讓 DP 看到 Renee 與 Brand lens，
+    # 那是 Director 的職責（見 test_dp_uses_current_director_events_...）。
+    "dp": ("brook-dp",),
+    "visual_review": ("longform-cut",),
+}
+_SKILL_MANUAL_PREAMBLE = (
+    "\n\n---\n\n"
+    "# 本頻道的創意手冊（判準來源）\n\n"
+    "以下是這個頻道累積下來的創意判準。**手冊裡提到的檔案路徑、指令、JSON 產物"
+    "屬於其他執行路線，這一輪一律不適用**——你不要去讀那些檔案、也不要執行任何指令。\n\n"
+    "你要從手冊吸收的是**判斷**：每種視覺事件的職責與密度、設計系統、"
+    "什麼算好什麼算爛、以及歷次被退件的教訓。吸收完之後，仍然只照上面的契約與 "
+    "response-schema.json 交件。\n"
+)
+
+
+def _skills_root() -> Path:
+    override = os.environ.get("NAKAMA_SKILLS_ROOT")
+    if override:
+        return Path(override).resolve()
+    return (Path(__file__).resolve().parents[4] / ".claude" / "skills").resolve()
+
+
+def _skill_manuals(stage: StageName) -> str:
+    """把 stage 對應的 skill 手冊原文接進 prompt；缺檔就 fail closed。
+
+    刻意不做 fallback：手冊讀不到就沒有創意判準，這時候「靜靜降級成只有契約」
+    正是我們要根除的失效模式，寧可整個 stage 起不來。
+    """
+    names = _STAGE_SKILL_MANUALS.get(stage, ())
+    if not names:
+        return ""
+    root = _skills_root()
+    sections = []
+    for name in names:
+        path = root / name / "SKILL.md"
+        try:
+            body = path.read_text(encoding="utf-8")
+        except OSError as error:
+            raise ValueError(
+                f"stage {stage} 的創意手冊讀不到：{path}"
+                "（設 NAKAMA_SKILLS_ROOT 指向 .claude/skills）"
+            ) from error
+        if not body.strip():
+            raise ValueError(f"stage {stage} 的創意手冊是空的：{path}")
+        sections.append(f"## 手冊：{name}\n\n{body.strip()}")
+    return _SKILL_MANUAL_PREAMBLE + "\n\n".join(sections)
+
+
 def _stage_prompt(stage: StageName) -> str:
     if stage == "director":
         return (
@@ -670,7 +727,7 @@ def _stage_prompt(stage: StageName) -> str:
             "lens, infer prior "
             "titles, or inspect any path outside this workspace. Return only the JSON object "
             "required "
-            "by response-schema.json."
+            "by response-schema.json." + _skill_manuals(stage)
         )
     if stage == "dp":
         return (
@@ -687,7 +744,8 @@ def _stage_prompt(stage: StageName) -> str:
             "intentional_aroll must use an empty placement_cue_ids array; chapter "
             "must echo all its Director master_cue_ids because core owns canonical chapter timing. "
             "Do not infer or recreate prior titles, "
-            "recipes, or paths. Return only the JSON object required by response-schema.json."
+            "recipes, or paths. Return only the JSON object required by "
+            "response-schema.json." + _skill_manuals(stage)
         )
     if stage == "visual_review":
         return (
@@ -704,7 +762,7 @@ def _stage_prompt(stage: StageName) -> str:
             "and the other core/static constraints to those final bytes. Do not inspect any path "
             "outside this workspace. "
             "Return only "
-            "the JSON object required by response-schema.json."
+            "the JSON object required by response-schema.json." + _skill_manuals(stage)
         )
     raise ValueError("unsupported Finished Cut stage")
 
