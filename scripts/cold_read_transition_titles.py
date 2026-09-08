@@ -36,13 +36,24 @@ from agents.brook.script_video.transition_cold_read import (  # noqa: E402
 from shared.llm_router import get_model  # noqa: E402
 
 
-def _sections_from_payload(payload: object) -> list[ColdReadSection]:
-    """接受 miner candidate、`{"sections": [...]}`、或裸 section 陣列。"""
+def _sections_from_payload(payload: object, cut_id: str | None = None) -> list[ColdReadSection]:
+    """接受 miner candidate、`{"sections": [...]}`、或裸 section 陣列。
+
+    一份 candidates.json 通常裝著好幾支 cut，section_id 又在各支之間重複，全部混在
+    一次盲讀裡送出去既慢又讀不出東西。給 `cut_id` 就只跑那一支。
+    """
     if isinstance(payload, dict):
         rows = payload.get("sections")
         if rows is None:
             candidates = payload.get("candidates")
             if isinstance(candidates, list):
+                if cut_id is not None:
+                    candidates = [c for c in candidates if c.get("id") == cut_id]
+                    if not candidates:
+                        raise SystemExit(f"這份檔案裡沒有 cut {cut_id!r}")
+                elif len(candidates) > 1:
+                    ids = [str(c.get("id")) for c in candidates]
+                    raise SystemExit(f"這份檔案有多支 cut，請用 --cut-id 指定其中一支：{ids}")
                 rows = [
                     section
                     for candidate in candidates
@@ -89,7 +100,9 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.sections is not None:
-        sections = _sections_from_payload(json.loads(args.sections.read_text(encoding="utf-8")))
+        sections = _sections_from_payload(
+            json.loads(args.sections.read_text(encoding="utf-8")), args.cut_id
+        )
     elif args.runtime_root is not None and args.episode_id:
         sections = _sections_from_run_store(args.runtime_root, args.episode_id, args.cut_id)
     else:
