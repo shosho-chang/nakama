@@ -1610,6 +1610,10 @@ def _visual_retry_context(
 _LAYOUT_VERSIONS = {
     "fullscreen_transition": "v4",
     "hero_title": "v2",
+    # identity_card v2：2026-09-08 從 ADR-066 自創的 identity_plaque 36px 置中藥丸，
+    #   改回定版 chapter_label_wide align:left + style:paper（左下紙卡＋手繪橘豎筆觸
+    #   ＋姓名 50px／頭銜 29px）。
+    "identity_card": "v2",
 }
 
 

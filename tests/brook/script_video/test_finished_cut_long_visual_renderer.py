@@ -321,3 +321,38 @@ def test_short_title_placement_is_extended_not_rejected() -> None:
 
     assert placement.placement_cue_ids == ("cue-1",)  # 證據不變
     assert placement.t1 - placement.t0 == pytest.approx(floor)
+
+
+def test_namecard_uses_the_house_chapter_label_recipe() -> None:
+    """來賓名牌要照手冊定版，不是 ADR-066 自創的置中藥丸。
+
+    手冊「來賓名牌」：`chapter_label_wide` `align:"left"` + `sub` + `style:"paper"`
+    ＝半透明紙卡＋手繪橘豎筆觸＋逐元素進退場，落左下。ADR-066 原本自己造了
+    `identity_plaque` 36px 置中，跟手冊寫的不是同一個東西。
+    """
+    from agents.brook.script_video.finished_cut_production._long_visual_renderer import (
+        _paper_namecard_document,
+    )
+
+    document = _paper_namecard_document(
+        display="蘇予昕／諮商心理師", canvas_width=1920, canvas_height=1080, duration_sec=5.0
+    )
+    assert 'data-composition-id="chapter_label_wide"' in document
+    assert "left: 4%" in document and "top: 76%" in document  # 左下，不是置中
+    assert "font-size: 50px" in document  # 姓名
+    assert "font-size: 29px" in document  # 頭銜
+    assert "#e98965" in document  # 手繪橘豎筆觸
+    assert ">蘇予昕<" in document
+    assert ">諮商心理師<" in document
+
+
+def test_namecard_without_a_separator_renders_name_only() -> None:
+    from agents.brook.script_video.finished_cut_production._long_visual_renderer import (
+        _paper_namecard_document,
+    )
+
+    document = _paper_namecard_document(
+        display="蘇予昕", canvas_width=1920, canvas_height=1080, duration_sec=5.0
+    )
+    assert ">蘇予昕<" in document
+    assert 'id="sub"' not in document

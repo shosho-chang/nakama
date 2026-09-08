@@ -748,7 +748,7 @@ def test_all_current_generated_browser_components_publish_final_assets(tmp_path:
     roles = (
         ("chapter", "chapter", "fullscreen_transition", "第一章", "fullscreen_transition:v4"),
         ("hero", "hero_title", "hero_title", "真正的選擇", "hero_title:v2"),
-        ("identity", "identity_card", "identity_card", "簡立峰博士", "identity_card:v1"),
+        ("identity", "identity_card", "identity_card", "簡立峰博士", "identity_card:v2"),
     )
     instructions = tuple(
         DerivedAssetInstruction(

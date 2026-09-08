@@ -484,7 +484,7 @@ def test_every_generated_long_visual_role_uses_the_resolve_media_contract(
     roles = (
         ("chapter", "fullscreen_transition:v4"),
         ("hero_title", "hero_title:v2"),
-        ("identity_card", "identity_card:v1"),
+        ("identity_card", "identity_card:v2"),
         ("visual_effect", "visual_effect:v1"),
     )
 

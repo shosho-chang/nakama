@@ -103,10 +103,10 @@ _RECIPES: dict[LongVisualRole, dict[str, object]] = {
         "pixel_format": "yuva444p12le",
     },
     "identity_card": {
-        "layout_identity": "identity_card:v1",
-        "style_name": "identity_plaque",
+        "layout_identity": "identity_card:v2",
+        "style_name": "paper",
         "content_width_ratio": 0.34,
-        "font_size_px": 36,
+        "font_size_px": 50,
         "safe_region": "lower",
         "full_frame": False,
         "has_alpha": True,
@@ -225,6 +225,88 @@ def _hero_lines(display: str) -> tuple[str, ...]:
     return (text,)
 
 
+_NAMECARD_SEPARATORS = "／｜/|"
+
+
+def _paper_namecard_document(
+    *,
+    display: str,
+    canvas_width: int,
+    canvas_height: int,
+    duration_sec: float,
+) -> str:
+    """來賓名牌——半透明紙卡＋手繪橘豎筆觸，落在左下。
+
+    這份 HTML 是 `video/compositions/chapter_label/compositions/chapter_label_wide.html`
+    （`align:"left"` + `style:"paper"`）的第二份實作——跟轉場卡、Hero 卡同一個
+    結構問題，改一份就要同步另一份。ADR-066 原本自己造了一個 `identity_plaque`
+    36px 置中藥丸，跟手冊寫的不是同一個東西。
+
+    設計 token 取自定版：左 4% / 上 76%、紙白 rgba(251,250,247,.85)、
+    橘筆觸 #e98965、姓名 50px/700、頭銜 29px/400 #6f6a62。
+
+    `display` 形如「蘇予昕／諮商心理師」，以分隔號拆成姓名與頭銜。
+    """
+    text = display.strip()
+    label, sub = text, ""
+    for separator in _NAMECARD_SEPARATORS:
+        if separator in text:
+            head, _, tail = text.partition(separator)
+            label, sub = head.strip(), tail.strip()
+            break
+    sub_html = f'      <div id="sub">{escape(sub)}</div>' + chr(10) if sub else ""
+    return f"""<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width={canvas_width},height={canvas_height}">
+<style>
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
+html, body {{ width: {canvas_width}px; height: {canvas_height}px;
+  overflow: hidden; background: transparent; }}
+#root {{ position: relative; width: {canvas_width}px; height: {canvas_height}px;
+  overflow: hidden; font-family: "LINE Seed TW", "Noto Sans TC", sans-serif; }}
+#tag {{ position: absolute; left: 4%; top: 76%; transform: translateY(-50%);
+  display: inline-flex; align-items: center; gap: 14px;
+  background: rgba(251, 250, 247, 0.85);
+  border: 1px solid rgba(217, 213, 207, 0.55); border-radius: 10px;
+  padding: 14px 32px 17px 24px;
+  box-shadow: 0 2px 10px rgba(20, 18, 15, 0.14);
+  animation: tag-enter 420ms cubic-bezier(.2,.8,.2,1) both; }}
+.tick-svg {{ flex: none; width: 19px; align-self: stretch; overflow: visible; }}
+.tick-svg path {{ fill: none; stroke: #e98965; stroke-width: 8;
+  stroke-linecap: round; opacity: .92; }}
+#col {{ display: flex; flex-direction: column; }}
+#text {{ white-space: nowrap; font-weight: 700; font-size: 50px;
+  line-height: 1.2; color: #1c1915;
+  animation: text-enter 380ms 120ms ease-out both; }}
+#sub {{ white-space: nowrap; font-weight: 400; font-size: 29px;
+  line-height: 1.35; color: #6f6a62; margin-top: 5px;
+  animation: sub-enter 380ms 220ms ease-out both; }}
+@keyframes tag-enter {{ from {{ opacity: 0; transform: translateY(-38%); }}
+  to {{ opacity: 1; transform: translateY(-50%); }} }}
+@keyframes text-enter {{ from {{ opacity: 0; transform: translateX(-14px); }}
+  to {{ opacity: 1; transform: translateX(0); }} }}
+@keyframes sub-enter {{ from {{ opacity: 0; }} to {{ opacity: 1; }} }}
+</style>
+</head>
+<body data-role="identity_card" data-style="paper">
+<main id="root" data-root="true" data-composition-id="chapter_label_wide" data-no-timeline
+  data-width="{canvas_width}" data-height="{canvas_height}" data-start="0"
+  data-duration="{duration_sec:.6f}">
+  <div id="tag" class="style-paper">
+    <svg class="tick-svg" viewBox="0 0 19 100" preserveAspectRatio="none">
+      <path d="M9,4 C12,26 6,52 10,74 S8,92 9,96"/>
+    </svg>
+    <div id="col">
+      <div id="text">{escape(label)}</div>
+{sub_html}    </div>
+  </div>
+</main>
+</body>
+</html>"""
+
+
 def _paper_hero_document(
     *,
     display: str,
@@ -304,6 +386,13 @@ def _html_document(
 ) -> str:
     if role == "chapter":
         return _paper_hand_chapter_document(
+            display=display,
+            canvas_width=canvas_width,
+            canvas_height=canvas_height,
+            duration_sec=duration_sec,
+        )
+    if role == "identity_card":
+        return _paper_namecard_document(
             display=display,
             canvas_width=canvas_width,
             canvas_height=canvas_height,
