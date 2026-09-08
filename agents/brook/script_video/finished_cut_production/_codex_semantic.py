@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
 
+from shared.quiet_subprocess import quiet_kwargs
+
 from ._projection import _ACTIVE_COMPONENT_LANES, _ACTIVE_SEMANTIC_KINDS
 from ._records import (
     DirectorEventProposal,
@@ -107,6 +109,7 @@ class SubprocessCodexProcessRunner:
                 timeout=timeout_sec,
                 check=False,
                 env=child_env,
+                **quiet_kwargs(),
             )
         except subprocess.TimeoutExpired as error:
             return CodexProcessResult(

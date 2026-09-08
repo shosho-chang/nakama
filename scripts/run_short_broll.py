@@ -89,6 +89,7 @@ from shared.highlight_materialization import (  # noqa: E402
     HighlightSource,
     verify_materialization_receipt,
 )
+from shared.quiet_subprocess import quiet_kwargs
 
 logger = logging.getLogger("short_broll")
 
@@ -187,7 +188,13 @@ def _render_card(comp: str, variables: dict, out_path: Path, suffix: str = "") -
     logger.info("render %s: %s", comp, out_path.name)
     for attempt in (1, 2):
         proc = subprocess.run(
-            cmd, shell=True, cwd=str(COMPS[comp]), capture_output=True, text=True, encoding="utf-8"
+            cmd,
+            shell=True,
+            cwd=str(COMPS[comp]),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            **quiet_kwargs(),
         )
         if proc.returncode == 0 and out_path.exists():
             return
@@ -238,6 +245,7 @@ def _composite_texture(
         ],
         capture_output=True,
         text=True,
+        **quiet_kwargs(),
     )
     if proc.returncode != 0 or not out_path.exists():
         raise SystemExit(f"紙紋底合成失敗: {(proc.stderr or '')[-300:]}")
@@ -270,6 +278,7 @@ def _probe_meta(path: Path) -> tuple[float, float]:
             capture_output=True,
             text=True,
             timeout=30,
+            **quiet_kwargs(),
         ).stdout.strip()
         parts = out.split(",")
         # 逐欄位獨立 parse——SAR 常見 "N/A"（方形像素），一起 parse 會把
@@ -308,6 +317,7 @@ def _probe_dur(path: Path) -> float:
             capture_output=True,
             text=True,
             timeout=30,
+            **quiet_kwargs(),
         ).stdout.strip()
         return float(out)
     except (OSError, subprocess.TimeoutExpired, ValueError):

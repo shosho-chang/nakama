@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from shared.quiet_subprocess import quiet_kwargs
+
 from ._long_visual_renderer import (
     BrowserRenderResult,
     LongVisualRecipe,
@@ -188,6 +190,7 @@ class SubprocessRenderProcessRunner:
                 timeout=timeout_sec,
                 check=False,
                 shell=False,
+                **quiet_kwargs(),
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise HyperFramesRenderError("render process could not complete") from exc

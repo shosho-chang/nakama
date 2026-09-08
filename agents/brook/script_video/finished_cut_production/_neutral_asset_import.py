@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Protocol
 
+from shared.quiet_subprocess import quiet_kwargs
+
 from ._active_store import ActiveAssetPublication, ActiveAssetStore, ActiveAssetStoreError
 from ._assets import AssetContractError, AssetKind, CompactAssetReceipt
 
@@ -98,6 +100,7 @@ class SubprocessNeutralProbeProcessRunner:
                 errors="replace",
                 timeout=timeout_sec,
                 shell=False,
+                **quiet_kwargs(),
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise NeutralAssetImportError("ffprobe could not inspect neutral media") from exc

@@ -10,6 +10,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, Protocol, TypeAlias
 
+from shared.quiet_subprocess import quiet_kwargs
+
 from ._assets import AssetContractError, AssetKind, AssetResolver, ResolvedAsset
 from ._policy import (
     LONG_MAX_HERO_TITLES,
@@ -135,6 +137,7 @@ class SubprocessMediaPreviewProcessRunner:
                 stderr=subprocess.DEVNULL,
                 timeout=timeout_sec,
                 shell=False,
+                **quiet_kwargs(),
             )
         except (OSError, subprocess.TimeoutExpired) as error:
             raise WorkerPacketError("inspection preview process failed") from error
