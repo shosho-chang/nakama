@@ -23,6 +23,53 @@ v2.0 2026-07-18 四支成片拆解＋Ali/Jeff 對照的剪輯文法入冊；
 發明者。素材的具體實現（component/params/asset、詳細搜尋詞、render prompt）已正式屬
 **DP（brook-dp skill）**職掌；不得再由 Director 兼任。
 
+## ADR-066 硬性契約（Director 必讀，違反一律整輪被擋）
+
+這些門檻裝在 pipeline 尾端的 `_policy.LongV2Policy` 與引擎的 stage 驗收裡。以前它們
+從來沒寫進 Director 的指令，於是 Director 一路交出滿足不了的提案，而拒絕又不留理由
+——2026-09-08 蘇予昕 punch-L04 因為這幾條反覆重跑數十輪。門檻要寫給要滿足它的人看。
+
+### 章節卡的字逐字照抄 canonical
+
+`candidate.sections[].transition_title` 是上游定稿並通過冷讀測試的文案，
+**一個字都不准改**：不壓縮、不換句話說、不縮短。引擎會逐字比對
+（`chapter_transition_projection_mismatch`）。
+
+不准改寫是因為改寫從來沒帶來價值，只帶來損失：37 個 run 有 34 個改寫過，「情緒像
+粽子，主管底下是一整串」被寫成「情緒像**繩子**」「情緒像**筷子**」（原文是粽子，
+那是竄改事實），「拖延症不是懶，是想法太勤勞」被砍成「不是懶，是勤勞」——主詞與
+結論一起不見。
+
+字太長會斷行是**排版問題，修排版**（`transition_title_wide` 依字數分階字級），
+不是回頭砍文案。章節標題的規格範圍是 6–14 字，卡片載得動。
+
+### `intentional_aroll` 與 `semantic_kind` 必須互相同意
+
+標 `intentional_aroll: true` 的事件，`semantic_kind` 也必須是 `"intentional_aroll"`。
+寫 `hero_title` / `visual_effect` 再加 `intentional_aroll: true` 是自相矛盾——DP 那一
+關硬性要求兩者一致，於是 DP 無論回什麼都會被拒，錯在 Director 卻由 DP 反覆撞牆。
+
+### B-roll 節奏：不能靠字卡撐場
+
+- **任何連續 75 秒內至少要有一段「有素材的 B-roll」**（`b_roll` 語意，實作是
+  `stock_video` / `photo` / `non_editorial_clip` / `person_inset`）。門檻常數是
+  `_policy.LONG_MAX_ASSET_BACKED_BROLL_GAP_SEC`；11 分半的片子因此至少需要 9 段，
+  而且要平均分佈，不能全擠在前三分鐘。
+- `hero_title` 全片上限 4 個（`LONG_MAX_HERO_TITLES`）。
+- 字卡類（`hero_title` ＋ `fullscreen_transition`）每分鐘最多 2 張
+  （`LONG_MAX_TITLE_LIKE_PER_MINUTE`）。
+- **`visual_effect` 不是拿來填空窗的。** 空窗要用真素材填；用字卡填只會讓整支片變成
+  投影片。punch-L04 曾經交出 3 段 B-roll 配 13 張字卡。
+- 想不到畫面就標 `intentional_aroll`，不要硬塞一張字卡。但刻意留白也算空窗，一樣受
+  上面的節奏限制。
+
+### `display` 是會印在螢幕上的字
+
+寫觀眾會看到的那幾個字本身。不要寫「視覺效果：…」「b-roll：…」這種前綴，不要寫
+「呼應…」「用來表達…」這類說明。曾經有事件的 display 寫成「視覺效果：連結／閃回
+效果，呼應『喔我爸就是這樣』的頓悟瞬間」，整句原封不動被渲染到畫面上。說明放
+`intent`，那個不會上畫面。非章節卡的 display 上限 10 個中文字；章節卡不適用，見上。
+
 ## Long Highlight orchestrator v2（優先分流）
 
 收到 payload 同時標示
