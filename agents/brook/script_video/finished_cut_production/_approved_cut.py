@@ -183,6 +183,7 @@ class ApprovedCutAuthority:
         editorial_master_id: str,
         tight_cut_id: str,
     ) -> EditorialCutContext | None:
+        matches: list[tuple[str, str, dict]] = []
         for command_id, row in self._read_payload()["approved_cuts"].items():
             command = _command_from_row(command_id, row)
             if (
@@ -191,8 +192,20 @@ class ApprovedCutAuthority:
                 command.editorial_master_id,
                 command.tight_cut_id,
             ) == (episode_id, cut_id, editorial_master_id, tight_cut_id):
-                return _context_from_row(row)
-        return None
+                approval = row.get("human_approval") if isinstance(row, dict) else None
+                approved_at = ""
+                if isinstance(approval, dict):
+                    approved_at = str(approval.get("approved_at") or "")
+                matches.append((approved_at, command_id, row))
+        if not matches:
+            return None
+        # 同一支 cut 重跑幾十次就有幾十筆 identity 相同的註冊。取「第一筆」等於永遠鎖在
+        # 最初那一版：2026-09-08 蘇予昕 punch-L04 累積了 38 筆，改了 canonical 章節標題
+        # 重新註冊之後，run 拿到的仍是 2026-09-07 那份舊標題——改動看似生效（註冊確實
+        # 寫進去了），實際上一次都沒有到達產線，而且完全無聲。取最後核准的那一筆；
+        # approved_at 是 ISO-8601 UTC，字典序即時間序，同時間再以 command_id 定序。
+        matches.sort(key=lambda row: (row[0], row[1]))
+        return _context_from_row(matches[-1][2])
 
     def _read_payload(self) -> dict[str, object]:
         if not self._path.exists():

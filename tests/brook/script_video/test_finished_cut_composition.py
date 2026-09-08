@@ -1255,3 +1255,41 @@ def test_accepted_stage_lookup_survives_a_retired_projection_in_history(tmp_path
 
     assert store.accepted_stages() == ()
     assert store.load_accepted("acceptance-does-not-exist") is None
+
+
+def test_context_resolution_prefers_the_most_recent_registration(tmp_path: Path) -> None:
+    """同一支 cut 重跑幾十次就有幾十筆 identity 相同的註冊，要拿最後核准那筆。
+
+    取「第一筆」等於永遠鎖在最初那一版。2026-09-08 蘇予昕 punch-L04 累積 38 筆，
+    改完 canonical 章節標題重新註冊之後，run 拿到的仍是前一天那份舊標題——註冊確實
+    寫進去了，但一次都沒有到達產線，而且完全無聲。
+    """
+    authority = ApprovedCutAuthority(
+        tmp_path / "authority",
+        master_verifier=_MasterVerifier(VerifiedEditorialMaster("episode-1", "a" * 64, 1_200.0)),
+    )
+    base = _registration()
+    authority.register(
+        replace(
+            base,
+            approved_at="2026-09-07T13:11:15+00:00",
+            sections=(CanonicalSection("section-1", "舊標題", 0.0),),
+        )
+    )
+    authority.register(
+        replace(
+            base,
+            approved_at="2026-09-08T09:58:41+00:00",
+            sections=(CanonicalSection("section-1", "新標題", 0.0),),
+        )
+    )
+
+    context = authority.resolve_context(
+        episode_id=base.episode_id,
+        cut_id=base.cut_id,
+        editorial_master_id=base.editorial_master_id,
+        tight_cut_id=base.tight_cut_id,
+    )
+
+    assert context is not None
+    assert context.sections[0].chapter_title == "新標題"
