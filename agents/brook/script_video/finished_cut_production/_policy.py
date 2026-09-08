@@ -97,6 +97,80 @@ class _CoverageGap:
     next: PolicyComponent | None
 
 
+def _chapter_projection_mismatch(
+    sections: "tuple[object, ...]",
+    expected: "tuple[object, ...]",
+    projected: "tuple[PolicyComponent, ...]",
+) -> PolicyDiagnostic | None:
+    """說出章節轉場到底是哪裡對不上，而不是只說「對不上」。
+
+    這個 gate 以前把四種完全不同的違規擠進同一句 "must map one-to-one"：第一段自帶
+    轉場、數量對不上、Director 把 canonical 標題改寫掉、落點漂掉。2026-09-08 蘇予昕
+    那一集，Director 把「情緒像粽子，主管底下是一整串」改寫成「情緒像繩子」，gate 確實
+    擋下來了，但訊息看起來像數量或落點問題，沒有人看得出是文字被改，於是繞過 gate 直接
+    鋪 timeline——錯字就這樣上了片。訊息要能直接指出「期待 X、拿到 Y」。
+    """
+    if sections[0].transition_before is not False:
+        return PolicyDiagnostic(
+            "chapter_transition_projection_mismatch",
+            "The first canonical section must not carry a chapter transition",
+            section_ids=(sections[0].section_id,),
+        )
+    if len(expected) != len(projected):
+        return PolicyDiagnostic(
+            "chapter_transition_projection_mismatch",
+            (
+                f"The canonical section map declares {len(expected)} chapter transitions "
+                f"but the cut projects {len(projected)}"
+            ),
+            component_ids=tuple(component.component_id for component in projected),
+            section_ids=tuple(section.section_id for section in expected),
+        )
+    for section, component in zip(expected, projected, strict=True):
+        if (
+            component.semantic_kind != "chapter"
+            or component.implementation_kind != "fullscreen_transition"
+        ):
+            return PolicyDiagnostic(
+                "chapter_transition_projection_mismatch",
+                (
+                    f"{section.section_id} must project as chapter/fullscreen_transition; "
+                    f"got {component.semantic_kind}/{component.implementation_kind}"
+                ),
+                component_ids=(component.component_id,),
+                section_ids=(section.section_id,),
+            )
+        if section.transition_title is None:
+            return PolicyDiagnostic(
+                "chapter_transition_projection_mismatch",
+                f"{section.section_id} projects a chapter transition without a canonical title",
+                component_ids=(component.component_id,),
+                section_ids=(section.section_id,),
+            )
+        if component.display != section.transition_title:
+            return PolicyDiagnostic(
+                "chapter_transition_projection_mismatch",
+                (
+                    "Chapter transition text must repeat the canonical title verbatim; "
+                    f"{section.section_id} expects {section.transition_title!r} "
+                    f"but the cut carries {component.display!r}"
+                ),
+                component_ids=(component.component_id,),
+                section_ids=(section.section_id,),
+            )
+        if abs(component.t0 - section.t0) > SECTION_TIMESTAMP_TOLERANCE_SEC:
+            return PolicyDiagnostic(
+                "chapter_transition_projection_mismatch",
+                (
+                    f"{section.section_id} starts at {section.t0:.3f}s but its chapter "
+                    f"transition lands at {component.t0:.3f}s"
+                ),
+                component_ids=(component.component_id,),
+                section_ids=(section.section_id,),
+            )
+    return None
+
+
 class FormatPolicy(Protocol):
     def validate(self, candidate: CutPolicyInput) -> PolicyDecision: ...
 
@@ -162,34 +236,11 @@ class LongV2Policy:
             for component in candidate.components
             if component.lane == "fullscreen_transition"
         )
-        chapter_projection_matches = (
-            candidate.context.sections[0].transition_before is False
-            and len(expected_transitions) == len(projected_transitions)
-            and all(
-                component.semantic_kind == "chapter"
-                and component.implementation_kind == "fullscreen_transition"
-                and section.transition_title is not None
-                and component.display == section.transition_title
-                and abs(component.t0 - section.t0) <= SECTION_TIMESTAMP_TOLERANCE_SEC
-                for section, component in zip(
-                    expected_transitions, projected_transitions, strict=True
-                )
-            )
+        chapter_mismatch = _chapter_projection_mismatch(
+            candidate.context.sections, expected_transitions, projected_transitions
         )
-        if not chapter_projection_matches:
-            return PolicyDecision(
-                "needs_review",
-                (
-                    PolicyDiagnostic(
-                        "chapter_transition_projection_mismatch",
-                        "Canonical transition sections must map one-to-one to chapter transitions",
-                        component_ids=tuple(
-                            component.component_id for component in projected_transitions
-                        ),
-                        section_ids=tuple(section.section_id for section in expected_transitions),
-                    ),
-                ),
-            )
+        if chapter_mismatch is not None:
+            return PolicyDecision("needs_review", (chapter_mismatch,))
         for component in sorted(
             candidate.components,
             key=lambda row: (row.t0, row.t1, row.component_id),

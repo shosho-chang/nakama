@@ -343,9 +343,54 @@ def test_chapter_transition_projection_drift_needs_review() -> None:
     decision = LongV2Policy().validate(replace(_long_input(), components=components))
 
     assert decision.status == "needs_review"
-    assert "chapter_transition_projection_mismatch" in {
-        diagnostic.code for diagnostic in decision.diagnostics
-    }
+    diagnostic = next(
+        row
+        for row in decision.diagnostics
+        if row.code == "chapter_transition_projection_mismatch"
+    )
+    assert "181.000" in diagnostic.message
+    assert diagnostic.section_ids == ("section-02",)
+
+
+def test_rewritten_chapter_transition_text_names_expected_and_actual() -> None:
+    """Director 改寫 canonical 標題時，診斷必須直接指出改成了什麼。
+
+    以前四種違規共用一句 "must map one-to-one"，於是 2026-09-01 蘇予昕那一集
+    Director 把「情緒像粽子，主管底下是一整串」改寫成「情緒像繩子」時，沒有人
+    看得出 gate 擋的是文字被改。
+    """
+    components = tuple(
+        replace(component, display="第2章") if component.component_id == "chapter-2" else component
+        for component in _long_components()
+    )
+
+    decision = LongV2Policy().validate(replace(_long_input(), components=components))
+
+    assert decision.status == "needs_review"
+    diagnostic = next(
+        row
+        for row in decision.diagnostics
+        if row.code == "chapter_transition_projection_mismatch"
+    )
+    assert "verbatim" in diagnostic.message
+    assert "'第二章'" in diagnostic.message
+    assert "'第2章'" in diagnostic.message
+
+
+def test_chapter_transition_count_mismatch_names_the_counts() -> None:
+    components = tuple(
+        component for component in _long_components() if component.component_id != "chapter-2"
+    )
+
+    decision = LongV2Policy().validate(replace(_long_input(), components=components))
+
+    assert decision.status == "needs_review"
+    diagnostic = next(
+        row
+        for row in decision.diagnostics
+        if row.code == "chapter_transition_projection_mismatch"
+    )
+    assert "declares 2 chapter transitions but the cut projects 1" in diagnostic.message
 
 
 def test_already_built_oversized_chapter_placement_needs_review() -> None:

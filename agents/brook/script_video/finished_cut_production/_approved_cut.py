@@ -458,6 +458,30 @@ def _validate_editorial_feedback(feedback: tuple[str, ...]) -> None:
             raise ApprovedCutRegistrationError("editorial feedback must be sanitized text only")
 
 
+_SPEAKER_ATTRIBUTION_PREFIX = re.compile(r"^[^，。！？、]{1,4}[：:]")
+_THIRD_PERSON_OPENER = re.compile(r"^[他她它牠祂]")
+
+
+def _validate_transition_title(section_id: str, title: str) -> None:
+    """滿版轉場卡的字要能單獨看懂——它是那一節的總結，不是節裡撈出來的半句話。
+
+    2026-09-08 蘇予昕那一集交出「修修：她不是你爸」「修修：設備花了一百萬」，兩個問題：
+    「修修：」是分鏡註記漏到畫面上，而「她」在卡片上沒有先行詞，觀眾不知道是誰。這兩種
+    都是機器判得出來的；「主詞整個不見」（例如「不是牽拖，是線索」少了「原生家庭」）
+    正則判不出來，只能靠 `highlight-cut` skill 的標準與反例表擋在寫作端。
+    """
+    if _SPEAKER_ATTRIBUTION_PREFIX.match(title):
+        raise ApprovedCutRegistrationError(
+            f"{section_id} transition title carries a speaker attribution prefix "
+            f"({title!r}); the card must summarise the section, not label who said it"
+        )
+    if _THIRD_PERSON_OPENER.match(title):
+        raise ApprovedCutRegistrationError(
+            f"{section_id} transition title opens with a third-person pronoun "
+            f"({title!r}); the card has no antecedent on screen"
+        )
+
+
 def _validate_sections(
     sections: tuple[CanonicalSection, ...],
     duration_sec: float,
@@ -477,6 +501,8 @@ def _validate_sections(
             or (section.transition_title is not None and not section.transition_title.strip())
         ):
             raise ApprovedCutRegistrationError("canonical sections are invalid")
+        if section.transition_title is not None:
+            _validate_transition_title(section.section_id, section.transition_title.strip())
         prior_t0 = section.t0
         seen.add(section.section_id)
 

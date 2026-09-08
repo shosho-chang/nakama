@@ -329,6 +329,71 @@ def test_long_registration_requires_canonical_sections(tmp_path: Path) -> None:
         authority.register(replace(_registration(), sections=()))
 
 
+def test_transition_title_may_not_carry_a_speaker_attribution_prefix(tmp_path: Path) -> None:
+    """滿版轉場卡是那一節的總結，不是「誰說的」。
+
+    2026-09-01 蘇予昕那一集交出「修修：她不是你爸」「修修：設備花了一百萬」——
+    `修修：` 是分鏡註記漏到觀眾畫面上，整條 pipeline 沒有任何一關擋。
+    """
+    authority = ApprovedCutAuthority(
+        tmp_path / "authority",
+        master_verifier=_MasterVerifier(VerifiedEditorialMaster("episode-1", "a" * 64, 1_200.0)),
+    )
+    sections = (
+        CanonicalSection("section-1", "第一章", 0.0),
+        CanonicalSection(
+            "section-2",
+            "第二章",
+            60.0,
+            transition_before=True,
+            transition_title="修修：設備花了一百萬",
+        ),
+    )
+
+    with pytest.raises(ApprovedCutRegistrationError, match="speaker attribution prefix"):
+        authority.register(replace(_registration(), sections=sections))
+
+
+def test_transition_title_may_not_open_with_a_third_person_pronoun(tmp_path: Path) -> None:
+    """卡片上的「她」在畫面上沒有先行詞，觀眾不知道是誰。"""
+    authority = ApprovedCutAuthority(
+        tmp_path / "authority",
+        master_verifier=_MasterVerifier(VerifiedEditorialMaster("episode-1", "a" * 64, 1_200.0)),
+    )
+    sections = (
+        CanonicalSection("section-1", "第一章", 0.0),
+        CanonicalSection(
+            "section-2",
+            "第二章",
+            60.0,
+            transition_before=True,
+            transition_title="她不是你爸",
+        ),
+    )
+
+    with pytest.raises(ApprovedCutRegistrationError, match="third-person pronoun"):
+        authority.register(replace(_registration(), sections=sections))
+
+
+def test_transition_title_that_summarises_the_section_registers(tmp_path: Path) -> None:
+    authority = ApprovedCutAuthority(
+        tmp_path / "authority",
+        master_verifier=_MasterVerifier(VerifiedEditorialMaster("episode-1", "a" * 64, 1_200.0)),
+    )
+    sections = (
+        CanonicalSection("section-1", "第一章", 0.0),
+        CanonicalSection(
+            "section-2",
+            "第二章",
+            60.0,
+            transition_before=True,
+            transition_title="準備到完美，就永遠不用開始",
+        ),
+    )
+
+    assert authority.register(replace(_registration(), sections=sections))
+
+
 def test_registration_requires_valid_tight_subtitle_cues(tmp_path: Path) -> None:
     authority = ApprovedCutAuthority(
         tmp_path / "authority",
