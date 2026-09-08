@@ -140,6 +140,7 @@ class EditorialCutContext:
         semantic_cue_ids: tuple[str, ...],
         placement_cue_ids: tuple[str, ...],
         semantic_kind: str,
+        min_show_sec: float | None = None,
     ) -> VisualPlacement:
         """Mint DP temporal authority from exact current cue and section facts."""
 
@@ -176,10 +177,22 @@ class EditorialCutContext:
             raise ValueError("visual placement must be a subset of Director semantic evidence")
         if placement.section_id != semantic.section_id:
             raise ValueError("visual placement must remain in the Director canonical section")
+        t1 = placement.t1
+        if min_show_sec is not None and t1 - placement.t0 < min_show_sec:
+            # 字卡要停留到讀得完。cue 證據完全不動——延長的只是卡片在畫面上多待
+            # 一會兒，跨過下一句的開頭，這在剪輯上是正常的。
+            #
+            # 2026-09-08 蘇予昕 punch-L04：「花了快一百萬」六個字只給 1.07 秒，含
+            # 進退場動畫根本讀不完。秒數從來不是設計出來的，是 DP 挑的
+            # placement_cue_ids 決定的，而整條 pipeline 只有上限沒有下限。
+            #
+            # 這裡選擇「自動延長」而不是「擋下來重來」：DP 未必有更多 cue 可挑，
+            # 擋下來會製造無解狀態——跟素材庫不夠時逼 DP 重試是同一種錯。
+            t1 = min(placement.t0 + min_show_sec, self.duration_sec)
         return _mint_visual_placement(
             placement_cue_ids=placement.master_cue_ids,
             t0=placement.t0,
-            t1=placement.t1,
+            t1=t1,
             section_id=placement.section_id,
         )
 

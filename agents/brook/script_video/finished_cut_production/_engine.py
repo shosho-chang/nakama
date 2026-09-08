@@ -46,6 +46,7 @@ from ._derived_assets import (
     DerivedAssetBuildResult,
     DerivedAssetGeometry,
     DerivedAssetInstruction,
+    readable_floor_sec,
 )
 from ._policy import (
     CutPolicyInput,
@@ -1369,7 +1370,7 @@ def _derived_asset_request(
         if event.visual_placement is None:
             raise RuntimeError("accepted DP event has no Visual Placement authority")
         placement = event.visual_placement
-        layout_version = "v4" if event.implementation_kind == "fullscreen_transition" else "v1"
+        layout_version = _LAYOUT_VERSIONS.get(event.implementation_kind, "v1")
         geometry = DerivedAssetGeometry(
             target_width=width,
             target_height=height,
@@ -1598,6 +1599,18 @@ def _visual_retry_context(
     if scope == "event_retry":
         return None
     return None, 1, None, correction
+
+
+# 每個字卡實作的版面版本。改設計就要 bump，否則新舊兩版會共用同一個 recipe
+# 快取鍵，畫面改了卻拿到舊的渲染檔。
+# - fullscreen_transition v4：滿版紙紋轉場（B2 定版）
+# - hero_title v2：2026-09-08 從 ADR-066 自創的 compact_paper 單行藥丸，改回頻道
+#   定版的 punch_card_wide tier1 + style:paper（錯位雙行紙卡、96px、手繪橘底線、
+#   落在說話者負空間）。手冊：.claude/skills/longform-cut/SKILL.md「Hero 大字卡」
+_LAYOUT_VERSIONS = {
+    "fullscreen_transition": "v4",
+    "hero_title": "v2",
+}
 
 
 def _leave_in_review_from_build(run: _RunState) -> _ProductionRun:
@@ -1885,6 +1898,9 @@ def _events_for_acceptance(
                         semantic_cue_ids=base.master_cue_ids,
                         placement_cue_ids=event.placement_cue_ids,
                         semantic_kind=base.semantic_kind,
+                        min_show_sec=readable_floor_sec(
+                            event.implementation_kind, base.display
+                        ),
                     )
                 except ValueError:
                     return None

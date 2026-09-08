@@ -48,7 +48,7 @@ def test_instruction_show_sec_uses_core_visual_placement_not_semantic_span() -> 
         t0=placement.t0,
         t1=placement.t1,
         source_asset_ref=None,
-        geometry=DerivedAssetGeometry(1920, 1080, "hero_title:v1"),
+        geometry=DerivedAssetGeometry(1920, 1080, "hero_title:v2"),
         recipe_identity="recipe-sha256:" + "b" * 64,
     )
 

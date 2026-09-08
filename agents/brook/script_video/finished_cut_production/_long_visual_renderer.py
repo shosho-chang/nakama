@@ -91,10 +91,10 @@ _RECIPES: dict[LongVisualRole, dict[str, object]] = {
         "pixel_format": "yuv420p",
     },
     "hero_title": {
-        "layout_identity": "hero_title:v1",
-        "style_name": "compact_paper",
-        "content_width_ratio": 0.60,
-        "font_size_px": 64,
+        "layout_identity": "hero_title:v2",
+        "style_name": "paper",
+        "content_width_ratio": 0.72,
+        "font_size_px": 96,
         "safe_region": "lower",
         "full_frame": False,
         "has_alpha": True,
@@ -205,6 +205,91 @@ class LongVisualRenderer:
         return RenderedLongVisual(recipe=recipe, media=media)
 
 
+_HERO_LINE_BREAKS = "，、。：；！？"
+
+
+def _hero_lines(display: str) -> tuple[str, ...]:
+    """把一行 Hero 文案拆成定版的錯位雙行。
+
+    頂多三行（定版 punch_card_wide 的上限），優先在標點斷；沒標點又太長就從中間斷。
+    短句（≤ 6 字）保持單行——強拆會把詞組切開。
+    """
+    text = display.strip()
+    for index, char in enumerate(text):
+        if char in _HERO_LINE_BREAKS and 1 < index < len(text) - 2:
+            return (text[:index].strip(), text[index + 1 :].strip())
+    # 沒有標點就保持單行。**絕不從中間硬拆**——按字數對半切會把詞組切開
+    # （「喔我爸就／是這樣」「一天六七／千個念頭」）。斷行是導演的決定，定版
+    # composition 因此給的是 line1/line2/line3 三個獨立欄位；這裡只有一個
+    # `display`，所以唯一可靠的斷點是它自己帶的標點。
+    return (text,)
+
+
+def _paper_hero_document(
+    *,
+    display: str,
+    canvas_width: int,
+    canvas_height: int,
+    duration_sec: float,
+) -> str:
+    """Hero 大字卡——錯位紙卡、手繪橘底線、落在說話者負空間。
+
+    這份 HTML 是 `video/compositions/punch_card/compositions/punch_card_wide.html`
+    （tier1 + style:paper）的第二份實作——與轉場卡同一個結構問題，不是理想狀態；
+    改其中一份就要同步另一份。ADR-066 一開始沒沿用定版配方，自己造了一個
+    64px 的單行藥丸放在畫面正中（compact_paper），不但小、還正好壓在臉上——
+    而手冊寫的是「長片**唯一配方**：punch_card_wide tier1 + style:paper，
+    每行字級上限 96px；紙卡放在說話者負空間，避免壓迫臉部」。
+    設計 token 一律取自定版檔：紙白 rgba(251,250,247,.86)、ink #1c1915、
+    橘線 #e98965、錯位 32px / -24px、pos-y 66%。
+    """
+    lines = _hero_lines(display)
+    offsets = ("0px", "32px", "-24px")
+    blocks = "".join(
+        f'    <div class="line" style="margin-left: {offsets[index]}; '
+        f'animation-delay: {index * 90}ms">{escape(line)}'
+        '<svg class="uline" viewBox="0 0 100 22" preserveAspectRatio="none">'
+        '<path d="M2,9 C18,12 30,8 46,13 S62,8 74,14 S90,9 98,12"/></svg></div>' + chr(10)
+        for index, line in enumerate(lines)
+    )
+    return f"""<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width={canvas_width},height={canvas_height}">
+<style>
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
+html, body {{ width: {canvas_width}px; height: {canvas_height}px;
+  overflow: hidden; background: transparent; }}
+#root {{ position: relative; width: {canvas_width}px; height: {canvas_height}px;
+  overflow: hidden; font-family: "LINE Seed TW", sans-serif; }}
+#card {{ position: absolute; left: 50%; top: 66%; transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: 8px; }}
+.line {{ position: relative; display: inline-block; white-space: nowrap;
+  background: rgba(251, 250, 247, 0.86); color: #1c1915;
+  border: 1px solid rgba(217, 213, 207, 0.55); border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(20, 18, 15, 0.14);
+  font-weight: 900; font-size: 96px; line-height: 1.1; padding: 8px 24px 15px;
+  animation: hero-enter 420ms cubic-bezier(.2,.8,.2,1) both; }}
+.line svg.uline {{ position: absolute; left: 22px; right: 22px; bottom: 10px;
+  width: calc(100% - 44px); height: 22px; overflow: visible; pointer-events: none; }}
+.line svg.uline path {{ fill: none; stroke: #e98965; stroke-width: 9;
+  stroke-linecap: round; opacity: .92; }}
+@keyframes hero-enter {{ from {{ opacity: 0; transform: translateY(18px); }}
+  to {{ opacity: 1; transform: translateY(0); }} }}
+</style>
+</head>
+<body data-role="hero_title" data-style="paper">
+<main id="root" data-root="true" data-composition-id="punch_card_wide" data-no-timeline
+  data-width="{canvas_width}" data-height="{canvas_height}" data-start="0"
+  data-duration="{duration_sec:.6f}">
+  <div id="card" class="tier1 style-paper">
+{blocks}  </div>
+</main>
+</body>
+</html>"""
+
+
 def _html_document(
     *,
     display: str,
@@ -219,6 +304,13 @@ def _html_document(
 ) -> str:
     if role == "chapter":
         return _paper_hand_chapter_document(
+            display=display,
+            canvas_width=canvas_width,
+            canvas_height=canvas_height,
+            duration_sec=duration_sec,
+        )
+    if role == "hero_title":
+        return _paper_hero_document(
             display=display,
             canvas_width=canvas_width,
             canvas_height=canvas_height,

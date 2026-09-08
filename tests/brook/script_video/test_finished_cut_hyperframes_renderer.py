@@ -240,7 +240,7 @@ def test_alpha_hero_renders_as_prores_4444_mov_with_exact_process_contract(
             duration_sec=3.0,
             target_width=1920,
             target_height=1080,
-            layout_identity="hero_title:v1",
+            layout_identity="hero_title:v2",
         )
     )
 
@@ -308,7 +308,8 @@ def test_alpha_hero_renders_as_prores_4444_mov_with_exact_process_contract(
         str(hyperframes[1] / "encoded.mov"),
     )
     assert (hyperframes[2], ffmpeg[2], ffprobe[2]) == (90.0, 60.0, 30.0)
-    assert 'data-composition-id="long_visual"' in runner.html_documents[0]
+    # Hero 走定版 punch_card_wide 配方，不再是 ADR-066 自創的 long_visual 藥丸。
+    assert 'data-composition-id="punch_card_wide"' in runner.html_documents[0]
     assert 'data-width="1920"' in runner.html_documents[0]
     assert 'data-height="1080"' in runner.html_documents[0]
     assert 'data-duration="3.000000"' in runner.html_documents[0]
@@ -459,7 +460,7 @@ def test_renderer_failures_publish_nothing_and_cleanup_unique_workspace(
                 duration_sec=3.0,
                 target_width=1920,
                 target_height=1080,
-                layout_identity="hero_title:v1",
+                layout_identity="hero_title:v2",
             )
         )
 
@@ -482,7 +483,7 @@ def test_every_generated_long_visual_role_uses_the_resolve_media_contract(
     )
     roles = (
         ("chapter", "fullscreen_transition:v4"),
-        ("hero_title", "hero_title:v1"),
+        ("hero_title", "hero_title:v2"),
         ("identity_card", "identity_card:v1"),
         ("visual_effect", "visual_effect:v1"),
     )
@@ -542,7 +543,7 @@ def test_private_factory_wires_title_and_person_inset_to_one_probed_process_seam
             duration_sec=3.0,
             target_width=1920,
             target_height=1080,
-            layout_identity="hero_title:v1",
+            layout_identity="hero_title:v2",
         )
     )
     portrait = tmp_path / "portrait.png"
@@ -648,7 +649,7 @@ def test_real_pinned_hyperframes_renders_prores_4444_alpha_hero(
             duration_sec=0.5,
             target_width=1920,
             target_height=1080,
-            layout_identity="hero_title:v1",
+            layout_identity="hero_title:v2",
         )
     )
 
