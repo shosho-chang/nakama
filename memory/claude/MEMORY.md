@@ -371,6 +371,7 @@
 - [vendor SPA 前端不可盲寫 selector](feedback_verify_ui_in_real_browser.md) — minified Vue bundle 的 DOM/CSS/router 無法從原碼推導；先用 magic login + Playwright 解剖真實頁面再寫，含站上生成免密登入連結的指令
 - [自由艦隊 gamification 操作事實](../shared/reference/fleet_gamification_stack.md) — **已遷往 shared（Codex 也讀得到）**；架構鐵則、部署與開關、三個 vendor 縫隙、LSCache 與 CF 兩顆地雷、影片橋接的發分判準、Bunny 遷移三層寫入形狀、品牌色紀律。交接總表見 `docs/plans/2026-08-30-gamification-handoff.md`
 - [標題 cite 不必逐字](feedback_title_cite_is_not_literal.md) — 標題求點擊率優先，意義相近即可；不可因「不在逐字稿裡」就砍標題
+- [遷移要帶手藝過去](feedback_migration_must_carry_the_craft.md) — 權威與資料模型會被搬走，設計語彙／定版配方／內容標準不會；沒清點就會被重新發明，而且更差
 - [生成器不能當評審](feedback_generator_is_not_the_judge.md) — 自動化「好不好」要靠隔離冷讀者＋可回收的事實當對照組；新 gate 必須拿使用者判過的兩組資料校準才能上線
 - [先定位作者再評文案](feedback_locate_the_author_before_judging_copy.md) — 罵產出前先查這行字是哪一關寫的、**是不是我自己的 brief 叫它那樣做的**；排版問題修排版不要砍文案
 - [語意工作跑在當下的 agent 上](feedback_semantic_work_runs_on_host_agent.md) — 不因 code 寫死 Codex 就去派 Codex；skill 明訂 host 決定，ADR-066 `_composition.py` 寫死是違規待修
