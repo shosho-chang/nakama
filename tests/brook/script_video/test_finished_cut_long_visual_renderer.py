@@ -86,7 +86,10 @@ def test_chapter_restores_approved_paper_hand_recipe(tmp_path: Path) -> None:
     assert '<div class="kicker">章節</div>' in chapter.html_document
     assert 'class="kbar"' in chapter.html_document
     assert 'class="uline"' in chapter.html_document
-    assert "font-size: 128px" in chapter.html_document
+    # 14 個字用 128px 會撞破 1600px 的可用寬度而斷成孤字，所以降到 104px。
+    # 字級是依字數分階的，不是定值——見
+    # test_chapter_card_font_shrinks_so_long_titles_do_not_orphan_a_character。
+    assert "font-size: 104px" in chapter.html_document
     assert "translateY(108%)" in chapter.html_document
     assert hero.full_frame is False
     assert hero.style_name == "compact_paper"
@@ -188,3 +191,36 @@ def test_browser_process_failure_is_normalized_at_the_adapter_seam() -> None:
                 layout_identity="hero_title:v1",
             )
         )
+
+
+def test_chapter_card_font_shrinks_so_long_titles_do_not_orphan_a_character() -> None:
+    """13 字以上要降字級——不然第二行只剩一兩個孤字。
+
+    `.stage` 扣掉左右 160px 只剩 1600px，CJK 字寬約 1em：13 字 ×128px = 1664px 就
+    換行。2026-09-08 蘇予昕 punch-L04 的 visual_review 就是看到「拖延症不是懶，是
+    想法太勤勞」斷成「…太勤／勞」而退件。
+
+    這份 HTML 是 `video/compositions/.../transition_title_wide.html` 的第二份實作，
+    兩邊的字級規則必須一致；只修一邊的話 pipeline 渲出來還是斷的。
+    """
+    import re
+
+    from agents.brook.script_video.finished_cut_production._long_visual_renderer import (
+        _paper_hand_chapter_document,
+    )
+
+    def font_px(title: str) -> int:
+        document = _paper_hand_chapter_document(
+            display=title, canvas_width=1920, canvas_height=1080, duration_sec=3.0
+        )
+        match = re.search(r"\.title \{[^}]*font-size: (\d+)px", document)
+        assert match is not None
+        return int(match.group(1))
+
+    for title in (
+        "不想做，就先不要做",
+        "光是看懂，情緒就開始鬆綁",
+        "拖延症不是懶，是想法太勤勞",
+        "原生家庭不是牽拖，是第一個線索",
+    ):
+        assert len(title) * font_px(title) <= 1600, title

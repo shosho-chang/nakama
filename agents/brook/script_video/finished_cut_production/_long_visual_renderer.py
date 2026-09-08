@@ -287,6 +287,15 @@ def _paper_hand_chapter_document(
     """Render the approved B2 Big Title Transition visual language."""
 
     title = escape(display)
+    # ⚠️ 這份 HTML 是 `video/compositions/transition_title/compositions/
+    # transition_title_wide.html` 的第二份實作。兩邊的字級規則必須一致——2026-09-08
+    # 修好了那一份，這一份沒動，於是 pipeline 渲出來的卡照樣斷成孤字，visual_review
+    # 退了三張，人卻看不出兩份的差別在哪。
+    #
+    # CJK 字寬約 1em，.stage 扣掉左右 160px 之後只有 1600px 可用：13 字 ×128px =
+    # 1664px 就會換行，第二行只剩一兩個孤字（「拖延症不是懶，是想法太勤勞」變成
+    # 「…太勤／勞」）。章節標題的規格範圍是 6–14 字，卡片要載得動，不是回頭砍文案。
+    title_font_px = 104 if len(display) > 12 else 128 if len(display) > 9 else 168
     paper_texture = (
         "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'"
         " width='360' height='360' viewBox='0 0 360 360'%3E"
@@ -321,7 +330,7 @@ html, body {{ margin: 0; width: {canvas_width}px; height: {canvas_height}px;
 .kbar path {{ stroke-width: 8; }}
 .kicker {{ color: #6f6a62; font-size: 52px; font-weight: 700;
   letter-spacing: .18em; }}
-.title {{ max-width: 1600px; color: #1c1915; font-size: 128px;
+.title {{ max-width: 1600px; color: #1c1915; font-size: {title_font_px}px;
   font-weight: 900; line-height: 1.12; letter-spacing: .01em; text-align: center;
   animation: title-enter .55s .10s cubic-bezier(.22,.75,.2,1) both; }}
 .uline {{ width: min(92%, 1460px); height: 28px; overflow: visible;
