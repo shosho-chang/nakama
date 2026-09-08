@@ -111,6 +111,10 @@
         will-change: transform;
       }
       .title.long { font-size: 128px; }
+      /* 13 字以上：CJK 字寬約 1em，13×128px = 1664px 會撞破 max-width 1600px，
+         斷成孤字掉第二行（「拖延症不是懶，是想法太勤勞」變成「…太勤／勞」）。
+         skill 訂的章節標題範圍是 6–14 字，卡片就要載得動，不是回頭砍文案。 */
+      .title.longer { font-size: 104px; }
       .style-paper .title, .style-paper_hand .title { color: #1c1915; }
       .style-scrim .title { color: #f6f4f1; }
 
@@ -185,7 +189,10 @@
       document.getElementById("kicker").textContent = vars.kicker ?? "01";
       const titleEl = document.getElementById("title");
       titleEl.textContent = titleText;
-      if (titleText.length > 9) titleEl.classList.add("long");
+      // 字級三階，跟下面手繪底線的長度共用同一個值——兩邊各算一次就會漂掉。
+      const titleFontPx = titleText.length > 12 ? 104 : titleText.length > 9 ? 128 : 168;
+      if (titleFontPx === 128) titleEl.classList.add("long");
+      else if (titleFontPx === 104) titleEl.classList.add("longer");
 
       const tl = gsap.timeline({
         paused: true,
@@ -229,8 +236,7 @@
         // 手繪底線：WOBBLE 定值序列（同 punch_card_wide hero），描邊由左畫到右。
         // 長度＝字寬（修修六輪：「跟字等長才像畫線」）——用字數×字級算，
         // 不量 DOM（字型載入時序在 hyperframes capture 下不可靠）
-        const fontPx = titleText.length > 9 ? 128 : 168;
-        const lineW = Math.round(titleText.length * fontPx * 1.01);
+        const lineW = Math.round(titleText.length * titleFontPx * 1.01);
         const WOBBLE = [3, -2, 4, -3, 1, -4, 3, -1, 2, -3, 4, -2];
         const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
         svg.setAttribute("class", "uline");
