@@ -232,6 +232,17 @@ transition。`transition_title` 的寫法見下節。這份 section map 是 edit
 | 拖延症不是懶，是想法太勤勞 | 本身合格；但 Director 改寫成「不是懶，是勤勞」砍掉下文 | 維持原文，下游逐字沿用 |
 | 不想做，就先不要做 | 合格 | 維持 |
 
+交出 candidate 之前**必須跑冷讀 gate**，這是「只看卡就知道在講什麼」的可執行版本：
+
+```bash
+python scripts/cold_read_transition_titles.py --sections <candidates.json>
+```
+
+它派兩個互不知情的隔離 worker：第一個只拿到卡片文字（不給逐字稿、不給時間、不給
+`summary`），回答每張卡「這一節在講什麼」；第二個只拿到（那個答案, canonical `summary`）
+配對、看不到卡片，判斷兩者是不是同一件事。任何一張回收失敗或指涉找不到就 exit 1，
+改卡片重跑——這時候修最便宜，一個 worker round 都不用。
+
 每個 candidate 必須滿足：`t_start < t_end`；long 目標 8–12 分鐘、**硬下限 8 分鐘**、上限 18 分鐘；short 目標
 60–120 秒、容忍 40–180 且硬上限 180；hook 必須是時間範圍內 raw transcript substring。內容邊界
 優先，不在論述中間切；開頭從提問／轉場／完整論點開始，若同 cue 含上一題殘尾就填 `head_trim`；

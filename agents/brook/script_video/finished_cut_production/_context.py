@@ -34,6 +34,10 @@ class CanonicalSection:
     t0: float
     transition_before: bool = False
     transition_title: str | None = None
+    # 上游 miner 每一節都會寫「這一段完成的論點」，但 ADR-066 之前一路被丟在註冊
+    # 門口。轉場卡的驗收標準是「只看卡就知道這節在講什麼」——沒有這個欄位，就沒有
+    # 東西可以拿來對照卡片。見 `agents/brook/script_video/transition_cold_read.py`。
+    summary: str = ""
 
 
 @dataclass(frozen=True, slots=True)

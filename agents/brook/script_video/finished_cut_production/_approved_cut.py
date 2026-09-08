@@ -286,6 +286,7 @@ def _registration_row(
                     "t0": section.t0,
                     "transition_before": section.transition_before,
                     "transition_title": section.transition_title,
+                    "summary": section.summary,
                 }
                 for section in context.sections
             ],
@@ -340,6 +341,7 @@ def _context_from_row(value: object) -> EditorialCutContext:
                 _number(section, "t0"),
                 bool(section.get("transition_before")),
                 _optional_text(section, "transition_title"),
+                _optional_text(section, "summary") or "",
             )
             for section in sections
         ),
