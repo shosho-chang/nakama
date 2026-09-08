@@ -83,7 +83,9 @@ def test_chapter_restores_approved_paper_hand_recipe(tmp_path: Path) -> None:
     assert 'data-composition-id="transition_title_wide"' in chapter.html_document
     assert 'data-style="paper_hand"' in chapter.html_document
     assert "paper-grain" in chapter.html_document
-    assert '<div class="kicker">章節</div>' in chapter.html_document
+    # 修修 2026-09-08：「transition 不用加「章節」這兩個字，一點意義都沒有」——
+    # 卡片本身就是章節，再標一次是廢話。只留手繪短槓。
+    assert "章節" not in chapter.html_document
     assert 'class="kbar"' in chapter.html_document
     assert 'class="uline"' in chapter.html_document
     # 14 個字用 128px 會撞破 1600px 的可用寬度而斷成孤字，所以降到 104px。

@@ -359,7 +359,6 @@ html, body {{ margin: 0; width: {canvas_width}px; height: {canvas_height}px;
       <svg class="kbar" viewBox="0 0 100 22" preserveAspectRatio="none">
         <path d="M3,12 C30,9.5 62,14 97,11"/>
       </svg>
-      <div class="kicker">章節</div>
     </div>
     <div class="title">{title}</div>
     <svg class="uline" viewBox="0 0 100 22" preserveAspectRatio="none">
