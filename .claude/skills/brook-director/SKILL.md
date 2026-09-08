@@ -49,6 +49,26 @@ v2.0 2026-07-18 四支成片拆解＋Ali/Jeff 對照的剪輯文法入冊；
 寫 `hero_title` / `visual_effect` 再加 `intentional_aroll: true` 是自相矛盾——DP 那一
 關硬性要求兩者一致，於是 DP 無論回什麼都會被拒，錯在 Director 卻由 DP 反覆撞牆。
 
+### 素材缺口是迴圈外的工作，不是 DP 的錯
+
+`b_roll` 事件必須綁得到素材。DP 是隔離子行程、沒有網路，**無法自行採購**——庫裡沒有
+就是沒有，它只能回 `asset_ref: null`，然後整輪被拒。
+
+Director 的 packet 刻意不帶素材庫清單（`stage_input` 是空的）：這是設計，Director
+該說「這支片需要什麼畫面」，採購去填，而不是照著庫存點菜。代價是 Director 開出的
+數量可能超過庫存，而**採購這一步目前不存在於迴圈內**——必須有人在迴圈外把素材補進
+`ActiveAssetStore`。
+
+因此：
+
+- 缺素材時**不要重試**。重試不會有幫助，只會燒 worker 呼叫，還會把「你必須綁素材」
+  餵回去逼 DP 亂綁。恢復迴圈要認出這一類並停下來報缺口（`CATALOG_SHORTAGE`）。
+- Director 每個 `b_roll` 的 `intent` 要寫清楚**需要什麼畫面**，那份文字就是採購清單。
+- 當下庫存滿足不了節奏時，超出的位置標 `intentional_aroll`（`semantic_kind` 也要是
+  `intentional_aroll`），把需求寫在 `intent` 裡，下一輪補了素材再升級成 `b_roll`。
+- 圖片素材超過 16MB 的不算數——預覽是整檔讀進 packet 的，超限會在 visual_review
+  組裝時炸掉。
+
 ### Hero 大字卡的文字：完整主張，不是對話殘句
 
 **驗收標準：這行字單獨拿出來，讀得懂、而且是一個完整的主張。** Hero 是章內錨點，
