@@ -1293,3 +1293,45 @@ def test_context_resolution_prefers_the_most_recent_registration(tmp_path: Path)
 
     assert context is not None
     assert context.sections[0].chapter_title == "新標題"
+
+
+def test_intentional_aroll_must_agree_with_its_semantic_kind(tmp_path: Path) -> None:
+    """`intentional_aroll` 與 `semantic_kind` 互相矛盾時，要在 Director 這關就擋。
+
+    DP 那關硬性要求「intentional_aroll 的事件其 semantic_kind 也是
+    intentional_aroll」。所以 Director 交出 hero_title + intentional_aroll=true
+    時，DP 無論回什麼都會被拒——錯在 Director，卻由 DP 反覆撞牆。2026-09-08 蘇予昕
+    punch-L04 就是這樣連退 11 次，而且沒有任何訊息說得出原因。
+    """
+    semantic = InMemorySemanticAdapter()
+    application = FinishedCutProductionApplication.open(
+        ProductionPaths(tmp_path / "runtime", tmp_path / "episodes"),
+        episode_id="episode-1",
+        master_verifier=_MasterVerifier(VerifiedEditorialMaster("episode-1", "a" * 64, 1_200.0)),
+        dependencies=ProductionDependencies(
+            asset_resolver=InMemoryAssetResolver(()),
+            semantic_adapter=semantic,
+        ),
+    )
+    command_id = application.register_approved_cut(_registration())
+    application.advance(command_id)
+    director = semantic.current_request(command_id)
+
+    semantic.respond(
+        director,
+        events=(
+            DirectorEventProposal(
+                event_id="event-1",
+                master_cue_ids=("cue-1",),
+                intent="保留完整論述",
+                display="完整主詞與命題",
+                semantic_kind="hero_title",
+                intentional_aroll=True,
+            ),
+        ),
+    )
+    application.advance(command_id)
+
+    checkpoint = application.inspect_run(command_id)
+    assert checkpoint.outstanding_stage == "director"
+    assert not checkpoint.current_stages

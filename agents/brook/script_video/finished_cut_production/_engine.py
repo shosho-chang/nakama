@@ -1781,6 +1781,13 @@ def _events_for_acceptance(
                     or not event.intent.strip()
                     or not event.display.strip()
                     or not _is_active_semantic_kind(event.semantic_kind)
+                    # `intentional_aroll` 與 semantic_kind 必須互相同意。DP 那一關
+                    # 硬性要求「intentional_aroll 的事件其 semantic_kind 也是
+                    # intentional_aroll」，所以 Director 交出 hero_title +
+                    # intentional_aroll=true 這種組合時，DP 無論回什麼都會被拒——
+                    # 錯在 Director，卻由 DP 反覆撞牆，而且沒有任何訊息說得出原因。
+                    # 2026-09-08 蘇予昕 punch-L04 就是這樣連退 11 次。
+                    or event.intentional_aroll != (event.semantic_kind == "intentional_aroll")
                 ):
                     return None
                 try:
