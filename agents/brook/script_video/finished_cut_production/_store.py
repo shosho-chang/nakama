@@ -1165,6 +1165,7 @@ def _context_to_dict(context: EditorialCutContext) -> dict[str, object]:
                 "t0": section.t0,
                 "transition_before": section.transition_before,
                 "transition_title": section.transition_title,
+                "summary": section.summary,
             }
             for section in context.sections
         ],
@@ -1204,6 +1205,8 @@ def _context_from_dict(value: object) -> EditorialCutContext:
                     t0=float(item["t0"]),
                     transition_before=bool(item["transition_before"]),
                     transition_title=cast(str | None, item["transition_title"]),
+                    # 舊的 run store 沒有這個欄位，讀回來時不能因此整份炸掉。
+                    summary=str(item.get("summary") or ""),
                 )
                 for item in value["sections"]
             ),
