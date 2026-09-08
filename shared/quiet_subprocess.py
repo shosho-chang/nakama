@@ -37,4 +37,15 @@ def quiet_kwargs() -> dict[str, Any]:
     flag = getattr(subprocess, "CREATE_NO_WINDOW", None)
     if flag is None:  # pragma: no cover - 只在極舊的 Python 上發生
         return {}
-    return {"creationflags": flag}
+    kwargs: dict[str, Any] = {"creationflags": flag}
+    # CREATE_NO_WINDOW 只保證「不要幫它開主控台」；子行程若自己呼叫 AllocConsole
+    # 或走 .cmd shim（npx / npm）仍可能閃出視窗。STARTF_USESHOWWINDOW + SW_HIDE 是
+    # 第二道，兩者一起才擋得乾淨——修修 2026-09-08 第二次回報「render 的畫面又一直
+    # 跑出來了」，當時所有呼叫點都已經帶了 CREATE_NO_WINDOW。
+    startupinfo = getattr(subprocess, "STARTUPINFO", None)
+    if startupinfo is not None:  # pragma: no branch - Windows 一定有
+        info = startupinfo()
+        info.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        info.wShowWindow = subprocess.SW_HIDE
+        kwargs["startupinfo"] = info
+    return kwargs
