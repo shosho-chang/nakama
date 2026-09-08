@@ -402,6 +402,11 @@ def build_project(
     if info["width"] and info["height"]:
         project.SetSetting("timelineResolutionWidth", str(info["width"]))
         project.SetSetting("timelineResolutionHeight", str(info["height"]))
+    # 素材比例跟 timeline 不合時，用「填滿並裁切」而不是預設的「縮到能放進去」。
+    # Envato 的 stock 常是 DCI 4K（4096×2160，1.896:1），放進 16:9 timeline 用
+    # scaleToFit 就會上下留黑邊——修修 2026-09-08：「第一個的 resolution 不對，
+    # 上下都有沒蓋滿畫面的部分」。DCI→16:9 只要左右各裁約 3%，不會傷到構圖。
+    project.SetSetting("timelineInputResMismatchBehavior", "centerCrop")
 
     mp = project.GetMediaPool()
     root = mp.GetRootFolder()
