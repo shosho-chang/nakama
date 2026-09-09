@@ -126,6 +126,22 @@ class ActiveAssetStore:
         )
         prior = self._by_digest.get(digest)
         if prior is not None:
+            # 同一份 bytes 只能有一筆 record（content-addressed）。若新舊只差在
+            # `recipe_identity`，那不是衝突：兩個配方算出同一個畫面，本來就該共用
+            # 這份媒體。recipe identity 是快取鍵，不是內容的一部分。
+            #
+            # 舊 store 裡有一批 record 是用「含 run_id/event_id」的舊式 identity 發布的
+            # （見 `_engine._derived_asset_request` 的註解），重跑時算出的新 identity
+            # 對不上、重 render 又撞上同一個 digest。這裡不放行的話，那些集數永遠
+            # 建置不過去，而且錯誤訊息完全看不出原因。
+            if (
+                record.recipe_identity is not None
+                and prior.recipe_identity is not None
+                and record.recipe_identity != prior.recipe_identity
+                and replace(record, recipe_identity=prior.recipe_identity)
+                == replace(prior, release_ids=record.release_ids)
+            ):
+                return self._resolve_record(prior)
             if replace(prior, release_ids=record.release_ids) != record:
                 raise ActiveAssetStoreError("content digest already has conflicting asset metadata")
             merged_release_ids = prior.release_ids | record.release_ids

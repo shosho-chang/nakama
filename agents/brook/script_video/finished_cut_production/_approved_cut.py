@@ -13,7 +13,13 @@ from typing import Literal, Protocol, cast
 
 from ..editorial_master import EditorialMasterContractError, verify_editorial_master
 from ._commands import ApprovedCutCommand
-from ._context import CanonicalSection, CueAnchor, CutSourceRange, EditorialCutContext
+from ._context import (
+    CUE_END_EPSILON_SEC,
+    CanonicalSection,
+    CueAnchor,
+    CutSourceRange,
+    EditorialCutContext,
+)
 
 _STORE_SCHEMA = "nakama.finished-cut-approved-cuts.v1"
 
@@ -183,6 +189,7 @@ class ApprovedCutAuthority:
         editorial_master_id: str,
         tight_cut_id: str,
     ) -> EditorialCutContext | None:
+        matches: list[tuple[str, str, dict]] = []
         for command_id, row in self._read_payload()["approved_cuts"].items():
             command = _command_from_row(command_id, row)
             if (
@@ -191,8 +198,20 @@ class ApprovedCutAuthority:
                 command.editorial_master_id,
                 command.tight_cut_id,
             ) == (episode_id, cut_id, editorial_master_id, tight_cut_id):
-                return _context_from_row(row)
-        return None
+                approval = row.get("human_approval") if isinstance(row, dict) else None
+                approved_at = ""
+                if isinstance(approval, dict):
+                    approved_at = str(approval.get("approved_at") or "")
+                matches.append((approved_at, command_id, row))
+        if not matches:
+            return None
+        # 同一支 cut 重跑幾十次就有幾十筆 identity 相同的註冊。取「第一筆」等於永遠鎖在
+        # 最初那一版：2026-09-08 蘇予昕 punch-L04 累積了 38 筆，改了 canonical 章節標題
+        # 重新註冊之後，run 拿到的仍是 2026-09-07 那份舊標題——改動看似生效（註冊確實
+        # 寫進去了），實際上一次都沒有到達產線，而且完全無聲。取最後核准的那一筆；
+        # approved_at 是 ISO-8601 UTC，字典序即時間序，同時間再以 command_id 定序。
+        matches.sort(key=lambda row: (row[0], row[1]))
+        return _context_from_row(matches[-1][2])
 
     def _read_payload(self) -> dict[str, object]:
         if not self._path.exists():
@@ -286,6 +305,7 @@ def _registration_row(
                     "t0": section.t0,
                     "transition_before": section.transition_before,
                     "transition_title": section.transition_title,
+                    "summary": section.summary,
                 }
                 for section in context.sections
             ],
@@ -340,6 +360,7 @@ def _context_from_row(value: object) -> EditorialCutContext:
                 _number(section, "t0"),
                 bool(section.get("transition_before")),
                 _optional_text(section, "transition_title"),
+                _optional_text(section, "summary") or "",
             )
             for section in sections
         ),
@@ -458,6 +479,30 @@ def _validate_editorial_feedback(feedback: tuple[str, ...]) -> None:
             raise ApprovedCutRegistrationError("editorial feedback must be sanitized text only")
 
 
+_SPEAKER_ATTRIBUTION_PREFIX = re.compile(r"^[^，。！？、]{1,4}[：:]")
+_THIRD_PERSON_OPENER = re.compile(r"^[他她它牠祂]")
+
+
+def _validate_transition_title(section_id: str, title: str) -> None:
+    """滿版轉場卡的字要能單獨看懂——它是那一節的總結，不是節裡撈出來的半句話。
+
+    2026-09-08 蘇予昕那一集交出「修修：她不是你爸」「修修：設備花了一百萬」，兩個問題：
+    「修修：」是分鏡註記漏到畫面上，而「她」在卡片上沒有先行詞，觀眾不知道是誰。這兩種
+    都是機器判得出來的；「主詞整個不見」（例如「不是牽拖，是線索」少了「原生家庭」）
+    正則判不出來，只能靠 `highlight-cut` skill 的標準與反例表擋在寫作端。
+    """
+    if _SPEAKER_ATTRIBUTION_PREFIX.match(title):
+        raise ApprovedCutRegistrationError(
+            f"{section_id} transition title carries a speaker attribution prefix "
+            f"({title!r}); the card must summarise the section, not label who said it"
+        )
+    if _THIRD_PERSON_OPENER.match(title):
+        raise ApprovedCutRegistrationError(
+            f"{section_id} transition title opens with a third-person pronoun "
+            f"({title!r}); the card has no antecedent on screen"
+        )
+
+
 def _validate_sections(
     sections: tuple[CanonicalSection, ...],
     duration_sec: float,
@@ -477,6 +522,8 @@ def _validate_sections(
             or (section.transition_title is not None and not section.transition_title.strip())
         ):
             raise ApprovedCutRegistrationError("canonical sections are invalid")
+        if section.transition_title is not None:
+            _validate_transition_title(section.section_id, section.transition_title.strip())
         prior_t0 = section.t0
         seen.add(section.section_id)
 
@@ -499,7 +546,7 @@ def _validate_cues(
             or not math.isfinite(cue.t1)
             or cue.t0 < 0
             or cue.t0 >= cue.t1
-            or cue.t1 > duration_sec
+            or cue.t1 > duration_sec + CUE_END_EPSILON_SEC
             or cue.t0 < prior_end
             or (section_ids and cue.section_id not in section_ids)
         ):

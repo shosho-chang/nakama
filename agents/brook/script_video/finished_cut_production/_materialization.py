@@ -13,7 +13,7 @@ from typing import Literal, Protocol, cast
 
 from ._assets import AssetContractError, AssetKind, AssetResolver, ResolvedAsset
 from ._commands import ApprovedCutCommand, _is_authoritative_approved_cut
-from ._context import EditorialCutContext
+from ._context import CUE_END_EPSILON_SEC, EditorialCutContext
 from ._records import (
     MaterializationPlan,
     ReleaseArtifact,
@@ -231,8 +231,11 @@ class MaterializationCoordinator:
                 expected_baseline=inspection.baseline,
             )
         except ResolveTransactionError as error:
+            # 把底層訊息帶出來。只回 `resolve_prepare_failed` 的話，操作的人手上
+            # 沒有任何線索——Resolve 那一層的失敗理由（軌數不足、媒體對不上、
+            # 算圖佇列拒絕…）全被吞掉，只能逐一猜。
             raise MaterializationError(
-                "Resolve transaction could not prepare the exact plan",
+                f"Resolve transaction could not prepare the exact plan: {error}",
                 reason_code="resolve_prepare_failed",
             ) from error
         _validate_prepared_transaction(
@@ -856,7 +859,7 @@ def _validate_context_contract(context: EditorialCutContext) -> None:
             or cue.t0 < previous_cue_end
             or cue.t0 < 0
             or cue.t0 >= cue.t1
-            or cue.t1 > context.duration_sec
+            or cue.t1 > context.duration_sec + CUE_END_EPSILON_SEC
         ):
             raise MaterializationError(
                 "Editorial Cut Context cue contract is invalid",
@@ -983,10 +986,19 @@ def _validate_editorial_base(
     for items in base_tracks:
         record_cursor = state.start_frame
         for item, source in zip(items, context.source_ranges, strict=True):
-            duration = source.t1 - source.t0
-            expected_record_end = record_cursor + round(duration * timeline_fps)
-            expected_source_in = round(source.t0 * master_fps)
-            expected_source_out = round(source.t1 * master_fps)
+            # 秒→影格要用**截斷**，跟 timeline 實際被切開的方式一致。
+            #
+            # 這裡本來用 `round`，於是每個落在半格以上的邊界都會多算一格：
+            # punch-L03 六段裡有三段對不上（1593.364s → floor 47800、round 47801），
+            # 一路報 `source_range_drift`，可是 timeline 跟 ApprovedCut 其實描述的是
+            # 同一個剪點。字幕軌 377 條逐格對得上、只有 source_ranges 對不上，就是
+            # 這個量化方式不一致造成的，不是資料真的漂了。
+            #
+            # 記錄端的長度直接取來源長度：上面已經驗過 timeline 與 Master 同幀率，
+            # 沒有變速，兩者必然相等；再獨立算一次只會再引入一次量化誤差。
+            expected_source_in = int(source.t0 * master_fps)
+            expected_source_out = int(source.t1 * master_fps)
+            expected_record_end = record_cursor + (expected_source_out - expected_source_in)
             if item.media_digest != inspection.editorial_master_media_sha256:
                 raise MaterializationError(
                     "protected V1 or audio media is not the ADR-064 Master",

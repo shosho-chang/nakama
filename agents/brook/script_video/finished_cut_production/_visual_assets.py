@@ -6,6 +6,7 @@ import hashlib
 import math
 import os
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -31,6 +32,7 @@ from ._long_visual_renderer import (
     LongVisualRenderer,
     LongVisualRenderError,
     LongVisualRenderRequest,
+    RenderedLongVisual,
 )
 
 _NEUTRAL_PASSTHROUGH = frozenset({"stock_video", "photo", "non_editorial_clip"})
@@ -394,6 +396,38 @@ class LongDerivedAssetBuilder:
             recipe_identity=None,
         )
 
+    # 無頭瀏覽器的第一次啟動會偶發失敗（空 stderr、非零 exit）。渲染器本身沒有
+    # 重試，而 build() 是一支卡失敗就整批中止，所以整輪製作會因為一次冷啟動失敗
+    # 而作廢——2026-09-08 實測連續 11 次 advance 全部倒在同一張卡的第一次渲染，
+    # 但緊接著手動呼叫同一個 render 就成功。舊路線 run_short_broll._render_card
+    # 早就有冷卻重試，ADR-066 這條漏掉了。
+    _RENDER_ATTEMPTS = 3
+    _RENDER_COOLDOWN_SEC = 5.0
+
+    def _render_with_retry(
+        self,
+        instruction: DerivedAssetInstruction,
+        recipe_identity: str,
+    ) -> RenderedLongVisual:
+        request = LongVisualRenderRequest(
+            recipe_identity=recipe_identity,
+            event_id=instruction.event_id,
+            role=_BROWSER_ROLES[instruction.implementation_kind],  # type: ignore[arg-type]
+            display=instruction.display,
+            duration_sec=instruction.show_sec,
+            target_width=instruction.geometry.target_width,
+            target_height=instruction.geometry.target_height,
+            layout_identity=instruction.geometry.layout_identity,
+        )
+        for attempt in range(1, self._RENDER_ATTEMPTS + 1):
+            try:
+                return self._title_renderer.render(request)
+            except LongVisualRenderError:
+                if attempt == self._RENDER_ATTEMPTS:
+                    raise
+                time.sleep(self._RENDER_COOLDOWN_SEC)
+        raise AssertionError("unreachable render retry exit")
+
     def _render_browser_visual(
         self,
         instruction: DerivedAssetInstruction,
@@ -413,18 +447,7 @@ class LongDerivedAssetBuilder:
         try:
             resolution = self._store.find_exact_recipe(recipe_identity)
             if resolution is None:
-                rendered = self._title_renderer.render(
-                    LongVisualRenderRequest(
-                        recipe_identity=recipe_identity,
-                        event_id=instruction.event_id,
-                        role=_BROWSER_ROLES[instruction.implementation_kind],  # type: ignore[arg-type]
-                        display=instruction.display,
-                        duration_sec=instruction.show_sec,
-                        target_width=instruction.geometry.target_width,
-                        target_height=instruction.geometry.target_height,
-                        layout_identity=instruction.geometry.layout_identity,
-                    )
-                )
+                rendered = self._render_with_retry(instruction, recipe_identity)
                 resolution = self._store.publish(
                     ActiveAssetPublication(
                         source_path=rendered.media.path,
@@ -436,7 +459,10 @@ class LongDerivedAssetBuilder:
             return None
         if (
             resolution.record.kind is not expected_kind
-            or resolution.record.recipe_identity != recipe_identity
+            # `recipe_identity` 只要求「這份媒體是某個配方算出來的」，不要求就是這一個：
+            # 兩個配方算出同樣的 bytes 時，store 會回既有那筆（見 `ActiveAssetStore.publish`）。
+            # 要求逐字相等會把那條合法路徑打成 `derived_asset_mismatch`。
+            or resolution.record.recipe_identity is None
             or resolution.path is None
             or resolution.path.suffix.lower() != expected_suffix
         ):

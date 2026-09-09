@@ -1414,16 +1414,28 @@ def _derived_asset_request(
         )
         recipe_identity = None
         if event.implementation_kind not in _NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS:
+            # Recipe identity 必須是**畫面的函數**，只放真的會改變輸出像素的欄位。
+            #
+            # 原本這裡還放了 run_id、dp_acceptance_id 與 event_id——三個都不影響渲染。
+            # 後果是每次重跑（重新登錄、事件改名、修正後重建）都會為**完全一樣的
+            # bytes** 鑄出一個新 identity：`find_exact_recipe` 永遠 miss，於是重新
+            # render，然後 content-addressed store 因為 digest 早就在了而拒絕
+            # 「content digest already has conflicting asset metadata」，被
+            # `_render_browser_visual` 吞成 None，再被回報成 `derived_asset_mismatch`
+            # ——沒有 diagnostic，看不出是哪一條指令、更看不出原因。
+            #
+            # 2026-09-09 punch-L03：把 `visual_effect` 事件改名成 hero 之後重跑，
+            # 「其實就是重播」那張卡就是這樣卡死的。20260805 那 50 次重新登錄之所以
+            # 那麼痛，同一個病根。
+            #
+            # 絕對時間也拿掉：渲染器只吃時長，兩張同字同版位同長度的卡本來就會產出
+            # 一樣的 bytes，讓它們共用同一份媒體才是對的。
             recipe_payload = {
-                "run_id": run.view.run_id,
-                "dp_acceptance_id": accepted.acceptance_id,
-                "event_id": event.event_id,
                 "semantic_kind": event.semantic_kind,
                 "implementation_kind": event.implementation_kind,
                 "lane": event.lane,
                 "display": event.display,
-                "t0": placement.t0,
-                "t1": placement.t1,
+                "show_sec": round(placement.t1 - placement.t0, 6),
                 "source_asset_ref": event.asset_ref,
                 "geometry": {
                     "target_width": geometry.target_width,
@@ -1761,7 +1773,16 @@ def _derived_result_matches(
             instruction.implementation_kind
         ):
             return False
-        if final.record.recipe_identity != instruction.recipe_identity:
+        # 生成素材只要求「它是某個配方算出來的」，不要求 store record 上的 identity
+        # 就是這一個：兩個配方算出同樣的 bytes 時 store 會回既有那筆
+        # （`ActiveAssetStore.publish` 的去重路徑），逐字相等在那條路上永遠不成立。
+        # 建置器交出來的 `asset.recipe_identity` 已經在上面比對過，那才是「這一份
+        # 媒體是為這條指令建的」的宣告。
+        # 直通素材（stock/photo）沒有配方，record 也必須沒有——那是兩種不同的東西。
+        if instruction.recipe_identity is None:
+            if final.record.recipe_identity is not None:
+                return False
+        elif final.record.recipe_identity is None:
             return False
     return True
 
