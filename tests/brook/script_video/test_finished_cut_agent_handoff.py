@@ -128,3 +128,26 @@ def test_packet_travels_with_the_prompt_and_names_the_directory(tmp_path):
         json.loads((handoff / "packet.json").read_text(encoding="utf-8"))["request"]["request_id"]
         == "request-abc123"
     )
+
+
+def test_preview_media_directory_travels_to_the_agent(tmp_path):
+    """visual_review 的畫格在 workspace 的 media/ 子目錄——不帶過去，審查員就只能照文字猜。"""
+    workspace = tmp_path / "ws"
+    (workspace / "media").mkdir(parents=True)
+    (workspace / "media" / "component-0001.png").write_bytes(b"PNG-frame-bytes")
+    root = tmp_path / "handoff"
+
+    def announce(paths: HandoffPaths) -> None:
+        paths.response.write_text(json.dumps({"events": []}), encoding="utf-8")
+
+    runner = AgentHandoffProcessRunner(root, announce=announce, sleep=lambda _: None)
+    runner.run(
+        _argv(workspace, request_id="request-media"),
+        cwd=workspace,
+        prompt="p",
+        timeout_sec=30,
+    )
+
+    assert (
+        root / "request-media" / "media" / "component-0001.png"
+    ).read_bytes() == b"PNG-frame-bytes"

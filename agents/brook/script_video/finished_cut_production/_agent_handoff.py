@@ -20,6 +20,7 @@ adapter 指定的 `--output-last-message` 路徑，回傳 exit 0——對 adapte
 from __future__ import annotations
 
 import json
+import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -97,11 +98,17 @@ class AgentHandoffProcessRunner:
                     schema_path.read_text(encoding="utf-8"), encoding="utf-8"
                 )
             # prompt 第一句就是「Read packet.json」，而 workspace 是 TemporaryDirectory：
-            # 不整份帶過來，接手的 agent 讀到一半就沒東西可讀了。
-            for source in sorted(p for p in cwd.iterdir() if p.is_file()):
+            # 不整份帶過來，接手的 agent 讀到一半就沒東西可讀了。**目錄也要帶**——
+            # visual_review 的預覽畫格放在 workspace 的 media/ 子目錄，只複製檔案的話
+            # 審查員手上只剩一份 asset_ref，看不到畫面就只能照文字猜，正是 2026-09-09
+            # 一整天在追的那個病根（4:18 側躺素材、看不懂的中央圖都是這樣過關的）。
+            for source in sorted(cwd.iterdir()):
                 if source.name in {_PROMPT_NAME, _SCHEMA_NAME, _RESPONSE_NAME}:
                     continue
-                (directory / source.name).write_bytes(source.read_bytes())
+                if source.is_dir():
+                    shutil.copytree(source, directory / source.name, dirs_exist_ok=True)
+                elif source.is_file():
+                    (directory / source.name).write_bytes(source.read_bytes())
         except OSError as error:
             raise SemanticHandoffError(f"無法建立交接目錄 {directory}：{error}") from error
 
