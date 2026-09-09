@@ -1044,6 +1044,7 @@ def _plan_to_dict(plan: MaterializationPlan) -> dict[str, object]:
         "visual_acceptance_id": plan.visual_acceptance_id,
         "events": [_event_to_dict(event) for event in plan.events],
         "components": [_projected_to_dict(component) for component in plan.components],
+        "duration_sec": plan.duration_sec,
     }
 
 
@@ -1066,6 +1067,10 @@ def _plan_from_dict(value: object) -> MaterializationPlan:
             visual_acceptance_id=str(value["visual_acceptance_id"]),
             events=tuple(_event_from_dict(event) for event in events_value),
             components=tuple(_projected_from_dict(item) for item in value["components"]),
+            # 2026-09-09 之前存的 plan 沒有這個欄位。用 .get 讀回來，舊 plan 的
+            # duration 是 0，derive_brand_badge_overlays 就回空 tuple——歷史 plan
+            # 照樣 rehydrate，只是沒有 badge。
+            duration_sec=float(value.get("duration_sec") or 0.0),
         )
     except (KeyError, TypeError, ValueError) as error:
         raise ProductionStoreError("persisted MaterializationPlan fields are invalid") from error
