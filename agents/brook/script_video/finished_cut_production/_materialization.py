@@ -1015,7 +1015,10 @@ def _validate_editorial_base(
                     reason_code="source_range_drift",
                 )
             record_cursor = expected_record_end
-        if record_cursor != state.end_frame:
+        # 允許差一格：timeline 的結束影格是**所有軌道**的最大值，字幕軌常常比
+        # 影音多壓一格（punch-L02 的字幕收在 16541、V1 與音軌都收在 16540）。
+        # 那一格不是覆蓋缺口，是字幕尾巴。少一格以上、或影音反而超出，仍然擋下。
+        if not 0 <= state.end_frame - record_cursor <= 1:
             raise MaterializationError(
                 "protected V1 or audio record spans do not cover the exact cut",
                 reason_code="source_range_drift",
@@ -1033,9 +1036,16 @@ def _validate_editorial_base(
             reason_code="subtitle_contract_drift",
         )
     for item, cue in zip(subtitle_items, context.cues, strict=True):
+        # 時間允許差一格，文字必須逐字相同。
+        #
+        # cue 的秒數乘上幀率常常正好落在 .5（punch-L02 有五處：207.75s × 30 = 6232.5），
+        # 這時「進位到哪一邊」在 Python 與 Resolve 之間沒有共識——Python 的 round 是
+        # 銀行家捨入、Resolve 又要讓相鄰字幕首尾相接，兩邊各自合理但答案差一格。
+        # 一格是 33 毫秒，字幕看不出來；真正對錯位的字幕差距遠大於一格。
+        # 文字不放寬：字幕內容錯了就是錯了。
         if (
-            item.start_frame != state.start_frame + round(cue.t0 * timeline_fps)
-            or item.end_frame != state.start_frame + round(cue.t1 * timeline_fps)
+            abs(item.start_frame - (state.start_frame + round(cue.t0 * timeline_fps))) > 1
+            or abs(item.end_frame - (state.start_frame + round(cue.t1 * timeline_fps))) > 1
             or _subtitle_text(item.properties) != cue.text
         ):
             raise MaterializationError(
