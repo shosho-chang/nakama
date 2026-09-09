@@ -46,6 +46,7 @@ from ._derived_assets import (
     DerivedAssetBuildResult,
     DerivedAssetGeometry,
     DerivedAssetInstruction,
+    readable_floor_sec,
 )
 from ._policy import (
     CutPolicyInput,
@@ -58,6 +59,7 @@ from ._projection import (
     _WORKER_PROJECTION_COMBINATIONS,
     _event_has_active_projection,
     _is_active_semantic_kind,
+    layout_identity,
 )
 from ._records import (
     STAGE_RESPONSE_SCHEMA,
@@ -577,6 +579,7 @@ class FinishedCutProduction:
         target = next(event for event in selection.base.events if event.event_id == event_id)
         upstream = selection.current_prefix[-1] if selection.current_prefix else None
         request_id = f"request-{uuid4().hex}"
+        dp_catalog = self._asset_resolver.worker_selection_catalog() if stage == "dp" else None
         request = StageRequest(
             run_id=view.run_id,
             request_id=request_id,
@@ -597,12 +600,14 @@ class FinishedCutProduction:
                 else ()
             ),
             feedback=selection.correction.feedback,
+            # 修正之所以被發出，常常正是因為素材不對。用登錄那一刻的快照等於
+            # 「重挑永遠只能在同一批錯的素材裡重挑」——見 `_live_dp_catalog`。
             worker_asset_refs=(
-                tuple(item.reference for item in stored.worker_catalog.items())
-                if stage == "dp"
+                tuple(item.reference for item in dp_catalog.items())
+                if dp_catalog is not None
                 else ()
             ),
-            worker_catalog_items=(stored.worker_catalog.items() if stage == "dp" else ()),
+            worker_catalog_items=(dp_catalog.items() if dp_catalog is not None else ()),
             components=tuple(
                 component
                 for component in selection.base.components
@@ -748,6 +753,27 @@ class _RunState:
     stock_video_metadata: tuple[StockVideoMetadata, ...] = ()
     derived_asset_builder: DerivedAssetBuilder | None = None
     asset_resolver: AssetResolver | None = None
+
+
+def _live_dp_catalog(run: _RunState) -> WorkerSelectionCatalog:
+    """DP 的素材目錄要在**發出請求的當下**重讀，不能用登錄那一刻的快照。
+
+    2026-09-09 punch-L03 的實測：目錄在 `register_approved_cut` 拍一次快照就再也不更新，
+    而 DP 的契約是 `implement_current_events_using_only_catalog_references`——只能選、
+    不能買——三個 stage 裡也沒有任何一站負責獲取。三件事疊起來就是：**登錄之後才買的
+    素材，這支 cut 永遠看不到**。可是要買什麼，是 Director 跑完才知道的。
+
+    實際後果：L2 的「邊際效應遞減」被迫配了 L1 的相機素材（不同的 beat）然後建置失敗；
+    我補買了四支對的素材，發修正、retry、再發修正，DP 目錄始終是同一批 5 支 L1 剩菜。
+    L1 之所以出得來，是因為 `authority.json` 裡有約 50 個 run——每買一批就重登錄一次，
+    硬換一張新快照。那是蠻力，不是流程。
+
+    重讀不會弄髒稽核：每個 StageRequest 都各自存下自己那份 `worker_catalog_items`，
+    所以「這一次 DP 是在哪些素材裡挑的」照樣查得到，只是不再被第一次登錄綁死。
+    """
+    if run.asset_resolver is None:
+        return run.worker_catalog
+    return run.asset_resolver.worker_selection_catalog()
 
 
 class _AggregateContext(Protocol):
@@ -1202,6 +1228,7 @@ def _advance_existing(run: _RunState, aggregate: _AggregateContext) -> _Producti
         next_components = tuple(
             component for component in accepted.components if component.event_id == request.event_id
         )
+    dp_catalog = _live_dp_catalog(run) if next_stage == "dp" else None
     next_request = StageRequest(
         run_id=request.run_id,
         request_id=aggregate.mint_id("request"),
@@ -1223,11 +1250,9 @@ def _advance_existing(run: _RunState, aggregate: _AggregateContext) -> _Producti
         ),
         feedback=next_feedback,
         worker_asset_refs=(
-            tuple(item.reference for item in run.worker_catalog.items())
-            if next_stage == "dp"
-            else ()
+            tuple(item.reference for item in dp_catalog.items()) if dp_catalog is not None else ()
         ),
-        worker_catalog_items=(run.worker_catalog.items() if next_stage == "dp" else ()),
+        worker_catalog_items=(dp_catalog.items() if dp_catalog is not None else ()),
         components=next_components,
         editorial_context=None,
     )
@@ -1369,11 +1394,10 @@ def _derived_asset_request(
         if event.visual_placement is None:
             raise RuntimeError("accepted DP event has no Visual Placement authority")
         placement = event.visual_placement
-        layout_version = "v4" if event.implementation_kind == "fullscreen_transition" else "v1"
         geometry = DerivedAssetGeometry(
             target_width=width,
             target_height=height,
-            layout_identity=f"{event.implementation_kind}:{layout_version}",
+            layout_identity=layout_identity(event.implementation_kind),
         )
         recipe_identity = None
         if event.implementation_kind not in _NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS:
@@ -1600,6 +1624,15 @@ def _visual_retry_context(
     return None, 1, None, correction
 
 
+# 每個字卡實作的版面版本。改設計就要 bump，否則新舊兩版會共用同一個 recipe
+# 快取鍵，畫面改了卻拿到舊的渲染檔。
+# - fullscreen_transition v4：滿版紙紋轉場（B2 定版）
+# - hero_title v2：2026-09-08 從 ADR-066 自創的 compact_paper 單行藥丸，改回頻道
+#   定版的 punch_card_wide tier1 + style:paper（錯位雙行紙卡、96px、手繪橘底線、
+#   落在說話者負空間）。手冊：.claude/skills/longform-cut/SKILL.md「Hero 大字卡」
+# 版位版本住在 _projection.LAYOUT_VERSIONS（唯一真相來源），這裡不再自己維護一份。
+
+
 def _leave_in_review_from_build(run: _RunState) -> _ProductionRun:
     run.view = replace(
         run.view,
@@ -1659,6 +1692,9 @@ def _advance_visual_checkpoint(
         visual_acceptance_id=visual.acceptance_id,
         events=visual.events,
         components=projected_components,
+        duration_sec=(
+            run.editorial_context.duration_sec if run.editorial_context is not None else 0.0
+        ),
     )
     run.view = replace(
         run.view,
@@ -1781,6 +1817,13 @@ def _events_for_acceptance(
                     or not event.intent.strip()
                     or not event.display.strip()
                     or not _is_active_semantic_kind(event.semantic_kind)
+                    # `intentional_aroll` 與 semantic_kind 必須互相同意。DP 那一關
+                    # 硬性要求「intentional_aroll 的事件其 semantic_kind 也是
+                    # intentional_aroll」，所以 Director 交出 hero_title +
+                    # intentional_aroll=true 這種組合時，DP 無論回什麼都會被拒——
+                    # 錯在 Director，卻由 DP 反覆撞牆，而且沒有任何訊息說得出原因。
+                    # 2026-09-08 蘇予昕 punch-L04 就是這樣連退 11 次。
+                    or event.intentional_aroll != (event.semantic_kind == "intentional_aroll")
                 ):
                     return None
                 try:
@@ -1878,6 +1921,7 @@ def _events_for_acceptance(
                         semantic_cue_ids=base.master_cue_ids,
                         placement_cue_ids=event.placement_cue_ids,
                         semantic_kind=base.semantic_kind,
+                        min_show_sec=readable_floor_sec(event.implementation_kind, base.display),
                     )
                 except ValueError:
                     return None
