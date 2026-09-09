@@ -11,7 +11,9 @@
 | `CREATE_NEW_CONSOLE` + `SW_HIDE` | python 層 / node 層 | 新增 9 |
 | 只有 `SW_HIDE`（繼承父 console） | python 層 / node 層 | 新增 9 |
 | 完全不加 | python 層 / node 層 | 新增 9 |
-| `CreateProcessW` + `lpDesktop` 丟到隱藏 desktop | node 層 | 新增 9（desktop 有建起來，視窗仍在使用者 desktop） |
+| `CreateProcessW` + `lpDesktop` 丟到隱藏 desktop | node 層 | 新增 9（見下） |
+
+隱藏 desktop 那一列：desktop 確實有建起來，視窗仍然落在使用者的 desktop 上。
 
 creationflags 只作用在「我們直接建立的那一個行程」，管不到孫行程；而 console 視窗
 是 `conhost.exe` 由 csrss 在**互動 desktop** 上開的，不跟建立者的 desktop 走——所以

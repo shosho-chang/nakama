@@ -13,12 +13,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from shared.quiet_subprocess import quiet_kwargs
+from shared.render_windows import hide_render_windows
+
 from ._long_visual_renderer import (
     BrowserRenderResult,
     LongVisualRecipe,
 )
-from shared.render_windows import hide_render_windows
-from shared.quiet_subprocess import quiet_kwargs
 
 _HYPERFRAMES_VERSION = "0.7.72"
 _HYPERFRAMES_PACKAGE = "hyperframes" + "@" + _HYPERFRAMES_VERSION
