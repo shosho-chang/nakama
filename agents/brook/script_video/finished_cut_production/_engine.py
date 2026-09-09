@@ -217,7 +217,7 @@ class FinishedCutProduction:
             run = _RunState(
                 command=existing.command,
                 view=existing.view,
-                worker_catalog=existing.worker_catalog,
+                worker_catalog=_live_catalog(self._asset_resolver, existing.worker_catalog),
                 base_release=base_release,
                 editorial_context=self._validate_stored_context(
                     existing.view.editorial_context,
@@ -486,7 +486,7 @@ class FinishedCutProduction:
             run = _RunState(
                 command=stored.command,
                 view=view,
-                worker_catalog=stored.worker_catalog,
+                worker_catalog=_live_catalog(self._asset_resolver, stored.worker_catalog),
                 base_release=base_release,
                 editorial_context=self._validate_stored_context(
                     view.editorial_context,
@@ -579,7 +579,9 @@ class FinishedCutProduction:
         target = next(event for event in selection.base.events if event.event_id == event_id)
         upstream = selection.current_prefix[-1] if selection.current_prefix else None
         request_id = f"request-{uuid4().hex}"
-        dp_catalog = self._asset_resolver.worker_selection_catalog() if stage == "dp" else None
+        dp_catalog = (
+            _live_catalog(self._asset_resolver, stored.worker_catalog) if stage == "dp" else None
+        )
         request = StageRequest(
             run_id=view.run_id,
             request_id=request_id,
@@ -601,7 +603,7 @@ class FinishedCutProduction:
             ),
             feedback=selection.correction.feedback,
             # 修正之所以被發出，常常正是因為素材不對。用登錄那一刻的快照等於
-            # 「重挑永遠只能在同一批錯的素材裡重挑」——見 `_live_dp_catalog`。
+            # 「重挑永遠只能在同一批錯的素材裡重挑」——見 `_live_catalog`。
             worker_asset_refs=(
                 tuple(item.reference for item in dp_catalog.items())
                 if dp_catalog is not None
@@ -755,8 +757,11 @@ class _RunState:
     asset_resolver: AssetResolver | None = None
 
 
-def _live_dp_catalog(run: _RunState) -> WorkerSelectionCatalog:
-    """DP 的素材目錄要在**發出請求的當下**重讀，不能用登錄那一刻的快照。
+def _live_catalog(
+    resolver: AssetResolver | None,
+    snapshot: WorkerSelectionCatalog,
+) -> WorkerSelectionCatalog:
+    """素材目錄一律**在用到的當下重讀**，不用登錄那一刻的快照。
 
     2026-09-09 punch-L03 的實測：目錄在 `register_approved_cut` 拍一次快照就再也不更新，
     而 DP 的契約是 `implement_current_events_using_only_catalog_references`——只能選、
@@ -768,12 +773,20 @@ def _live_dp_catalog(run: _RunState) -> WorkerSelectionCatalog:
     L1 之所以出得來，是因為 `authority.json` 裡有約 50 個 run——每買一批就重登錄一次，
     硬換一張新快照。那是蠻力，不是流程。
 
+    **只把送出去的 packet 換成活的還不夠**：第一版修正只動了請求端，DP 於是看得到 25 支、
+    也選了新買的那一支，但 `_events_for_acceptance` 收件時仍拿 `run.worker_catalog`
+    去 `resolve_dp_reference`，快照裡沒有這支 → `AssetContractError` → `_leave_in_review`。
+    沒有 diagnostic、沒有 policy_diagnostics，`advance` 立刻回 needs_review 什麼也不說，
+    看起來就像「答案被吃掉了」。`_derived_asset_request` 帶給建置器的
+    `worker_catalog_items` 也是同一份快照，會在下一站再爆一次。所以活目錄要放在
+    **`_RunState` 建構的那一刻**，讓所有讀取點自然都是活的，而不是逐個站點加特例。
+
     重讀不會弄髒稽核：每個 StageRequest 都各自存下自己那份 `worker_catalog_items`，
     所以「這一次 DP 是在哪些素材裡挑的」照樣查得到，只是不再被第一次登錄綁死。
     """
-    if run.asset_resolver is None:
-        return run.worker_catalog
-    return run.asset_resolver.worker_selection_catalog()
+    if resolver is None:
+        return snapshot
+    return resolver.worker_selection_catalog()
 
 
 class _AggregateContext(Protocol):
@@ -1228,7 +1241,7 @@ def _advance_existing(run: _RunState, aggregate: _AggregateContext) -> _Producti
         next_components = tuple(
             component for component in accepted.components if component.event_id == request.event_id
         )
-    dp_catalog = _live_dp_catalog(run) if next_stage == "dp" else None
+    dp_catalog = run.worker_catalog if next_stage == "dp" else None
     next_request = StageRequest(
         run_id=request.run_id,
         request_id=aggregate.mint_id("request"),

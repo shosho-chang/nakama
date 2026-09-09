@@ -97,18 +97,34 @@ def _asset(name: str) -> AssetRecord:
     )
 
 
+class _AcquiringAssetResolver:
+    """素材庫會長大——Director 跑完才知道要買什麼，買完就得馬上選得到。"""
+
+    def __init__(self, records: tuple[AssetRecord, ...]) -> None:
+        self._inner = InMemoryAssetResolver(records)
+        self._records = records
+
+    def acquire(self, record: AssetRecord) -> None:
+        self._records = (*self._records, record)
+        self._inner = InMemoryAssetResolver(self._records)
+
+    def __getattr__(self, name: str):
+        return getattr(self._inner, name)
+
+
 def _production(
     tmp_path,
     *,
     assets: tuple[AssetRecord, ...] = (),
     long_policy=None,
     context: EditorialCutContext | None = None,
+    asset_resolver=None,
 ):
     semantic = InMemorySemanticAdapter()
     production = FinishedCutProduction(
         store_root=tmp_path / "runtime",
         approved_cut_store=InMemoryApprovedCutStore((_approved_cut(),)),
-        asset_resolver=InMemoryAssetResolver(assets),
+        asset_resolver=asset_resolver or InMemoryAssetResolver(assets),
         semantic_adapter=semantic,
         context_resolver=InMemoryEditorialCutContextResolver(
             (context if context is not None else _editorial_context(),)
@@ -410,6 +426,90 @@ def test_dp_correction_keeps_other_selection_and_first_build_visual_are_full(tmp
         replacement.reference,
         unaffected.reference,
     )
+
+
+def test_dp_correction_can_select_an_asset_acquired_after_registration(tmp_path) -> None:
+    """登錄之後才買的素材，DP 選了就必須被收下——看得到卻收不下是最難查的那種壞。
+
+    2026-09-09 punch-L03：目錄快照讓 DP 只能在同一批錯的素材裡重挑。第一版修正只把
+    **送出去的 packet** 換成活目錄，於是 DP 看得到新買的素材、也選了它，但收件端的
+    `_events_for_acceptance` 仍拿快照去 `resolve_dp_reference`，AssetContractError 被
+    吞成 `_leave_in_review`：沒有 diagnostic、沒有 policy_diagnostics，`advance` 立刻
+    回 needs_review 什麼都不說，看起來就像答案被吃掉了。
+    """
+    original = _asset("purpose-original")
+    unaffected = _asset("golden-age")
+    acquired_later = _asset("purpose-acquired-after-registration")
+    resolver = _AcquiringAssetResolver((original, unaffected))
+    production, semantic = _production(tmp_path, asset_resolver=resolver)
+    production.advance(COMMAND_ID)
+    semantic.respond(
+        semantic.current_request(COMMAND_ID),
+        events=(
+            DirectorEventProposal(
+                "event-purpose",
+                ("cue-purpose",),
+                "Show work with a concrete sense of purpose",
+                "工作的意義與召喚",
+                "b_roll",
+            ),
+            DirectorEventProposal(
+                "event-golden-age",
+                ("cue-golden-age",),
+                "Show workers using AI together",
+                "AI 工作力的下一個黃金年代",
+                "b_roll",
+            ),
+        ),
+    )
+    production.advance(COMMAND_ID)
+    production.advance(COMMAND_ID)
+    semantic.respond(
+        semantic.current_request(COMMAND_ID),
+        events=(
+            DPEventProposal(
+                "event-purpose", "stock_video", "b_roll", original.reference, ("cue-purpose",)
+            ),
+            DPEventProposal(
+                "event-golden-age",
+                "stock_video",
+                "b_roll",
+                unaffected.reference,
+                ("cue-golden-age",),
+            ),
+        ),
+    )
+    production.advance(COMMAND_ID)
+
+    # 這一句就是現場：Director 跑完、視覺被打回，我才知道要買哪一支。
+    resolver.acquire(acquired_later)
+    production.request_correction(
+        COMMAND_ID,
+        "dp",
+        "event-purpose",
+        "原素材是別的 beat，改用剛買進來的那支橫式素材。",
+    )
+    production.advance(COMMAND_ID)
+    retry = semantic.current_request(COMMAND_ID)
+
+    assert acquired_later.reference in {item.reference for item in retry.worker_catalog_items}
+    semantic.respond(
+        retry,
+        events=(
+            DPEventProposal(
+                "event-purpose",
+                "stock_video",
+                "b_roll",
+                acquired_later.reference,
+                ("cue-purpose",),
+            ),
+        ),
+    )
+    corrected = production.advance(COMMAND_ID)
+
+    assert corrected.status == "pending"
+    inspected = production.inspect_run(COMMAND_ID)
+    assert inspected.current_stages[1].events[0].asset_ref == acquired_later.reference
 
 
 def test_dp_correction_changes_only_target_visual_placement_authority(tmp_path) -> None:
