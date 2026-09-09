@@ -697,7 +697,9 @@ def test_source_ranges_must_fit_inside_the_verified_master_duration(tmp_path: Pa
             ),
             "protected_track_drift",
         ),
-        (_replace_item(_canonical(), "subtitle-1", end_frame=86_461), "subtitle_contract_drift"),
+        # 差三格才算漂移：一格是 Python 與 Resolve 對 .5 邊界各自捨入的必然結果，
+        # 由 `_validate_context_contract` 的容忍度吸收（見 _materialization 的註解）。
+        (_replace_item(_canonical(), "subtitle-1", end_frame=86_463), "subtitle_contract_drift"),
         (
             _replace_item(_canonical(), "subtitle-1", properties=(("Text", "錯字"),)),
             "subtitle_contract_drift",
@@ -736,6 +738,38 @@ def test_editorial_master_base_drift_fails_before_asset_or_timeline_mutation(
 
     assert raised.value.reason_code == reason_code
     assert list(tmp_path.rglob("*")) == []
+
+
+@pytest.mark.parametrize(
+    "inspection",
+    [
+        # 字幕早一格／晚一格：Python 的銀行家捨入與 Resolve 讓相鄰字幕首尾相接，
+        # 在 .5 邊界上各自合理但差一格（punch-L02 有五處）。這一格必須放行。
+        _replace_item(_canonical(), "subtitle-1", end_frame=86_461),
+        _replace_item(_canonical(), "subtitle-1", end_frame=86_459),
+        _replace_item(_canonical(), "subtitle-1", start_frame=86_401),
+        # （影音差一格沒收到 timeline 結束影格的那條容忍度，這裡蓋不到：把 end_frame
+        #   往後推一格會先被「時長差超過一格」擋下，那是另一道檢查。它由 punch-L02
+        #   的實跑覆蓋——字幕收在 16541、影音收在 16540。）
+    ],
+)
+def test_one_frame_quantisation_gaps_are_not_drift(
+    tmp_path: Path,
+    inspection: CanonicalTimelineInspection,
+) -> None:
+    """差一格不算漂移——秒與影格之間的換算本來就沒有唯一答案。"""
+    coordinator = MaterializationCoordinator(
+        run_store=_RunStore(_stored()),
+        canonical_authority=_CanonicalAuthority((inspection,)),
+        assets=_AssetResolver({}),
+        transactions=_UnexpectedDependency(),
+        releases=_UnexpectedDependency(),
+        episode_root=tmp_path,
+    )
+
+    # 一路走到 Resolve 交易那一步（被 preflight stub 擋下），代表三道量化檢查都放行了。
+    with pytest.raises(AssertionError, match="must not be touched: prepare"):
+        coordinator.prepare("approved-cut:" + "a" * 32)
 
 
 def test_every_component_requires_an_exact_active_store_final_asset(tmp_path: Path) -> None:
