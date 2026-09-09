@@ -42,6 +42,21 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--episode-id", required=True)
     parser.add_argument("--resolve-config", type=Path)
     parser.add_argument("--cutover-config", type=Path)
+    parser.add_argument(
+        "--semantic-worker",
+        choices=("codex", "handoff"),
+        default="codex",
+        help=(
+            "誰回答 Director/DP/visual_review 的 packet。"
+            "codex＝開 Codex 子行程（無人看管的 watcher 用）；"
+            "handoff＝停下來交給**當下正在跑的 agent**，packet 攤在 --handoff-root"
+        ),
+    )
+    parser.add_argument(
+        "--handoff-root",
+        type=Path,
+        help="--semantic-worker handoff 的交接目錄；預設 <runtime-root>/semantic-handoff",
+    )
     commands = parser.add_subparsers(dest="operation", required=True)
     register = commands.add_parser("register-approved-cut")
     register.add_argument("--input", required=True, type=Path)
@@ -77,6 +92,15 @@ def main(
     paths = ProductionPaths(args.runtime_root, args.episodes_root)
     factory = application_factory or build_production_application
     factory_options: dict[str, object] = {}
+    if args.semantic_worker == "handoff":
+        # 這個接縫 library 一直都有（build_production_application 的 process_runner），
+        # 只是 CLI 沒把旋鈕拉出來，於是不管誰在跑都會去開 Codex。
+        from agents.brook.script_video.finished_cut_production._agent_handoff import (
+            AgentHandoffProcessRunner,
+        )
+
+        handoff_root = args.handoff_root or (args.runtime_root / "semantic-handoff")
+        factory_options["process_runner"] = AgentHandoffProcessRunner(handoff_root)
     if args.resolve_config is not None:
         payload = json.loads(args.resolve_config.read_text(encoding="utf-8"))
         configuration = _resolve_configuration(payload)
@@ -188,6 +212,8 @@ def _registration(value: object) -> ApprovedCutRegistration:
                 _number(item, "t0"),
                 _boolean(item, "transition_before"),
                 _optional_string(item, "transition_title"),
+                # 「這一段完成的論點」——轉場卡的冷讀回收測試拿它當對照組。
+                _optional_string(item, "summary") or "",
             )
             for item in sections
             if _exact_fields(
@@ -200,6 +226,7 @@ def _registration(value: object) -> ApprovedCutRegistration:
                     "transition_title",
                 },
                 "canonical section",
+                optional={"summary"},
             )
         ),
         human_approved=_boolean(row, "human_approved"),
@@ -300,8 +327,20 @@ def _object_rows(value: object, label: str) -> tuple[dict[str, Any], ...]:
     return tuple(cast(dict[str, Any], item) for item in value)
 
 
-def _exact_fields(row: Mapping[str, object], expected: set[str], label: str) -> bool:
-    if set(row) != expected:
+def _exact_fields(
+    row: Mapping[str, object],
+    expected: set[str],
+    label: str,
+    optional: set[str] | None = None,
+) -> bool:
+    """欄位精確比對；`optional` 裡的欄位可有可無。
+
+    新增欄位不能讓既有的註冊輸入一律失效——它們都是人手工維護的 JSON。
+    """
+    present = set(row)
+    if optional:
+        present -= optional
+    if present != expected:
         raise ValueError(f"{label} fields are invalid")
     return True
 
