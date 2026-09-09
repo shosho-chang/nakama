@@ -8,12 +8,13 @@ import pytest
 import scripts.publish_description as publish_description
 from agents.usopp.video_description import validate_description_hook
 
+# 段數不設上限、單段不超過 _HOOK_MAX_PARAGRAPH_CHARS、不可自我指涉開場
+# （2026-08-30 修修裁決，見 agents/usopp/video_description.py）。
 _VALID_HOOK = (
-    "我和謝伯讓從睡眠如何影響記憶談起，整理人在忙碌生活裡最容易忽略的幾個訊號。"
-    "睡得少不只是隔天精神差，學習後的大腦還需要時間把新資訊重新整理、穩定保存；當作息反覆被打斷，"
-    "注意力、判斷與情緒也會一起受到影響。\n\n"
-    "這次對談也回到很實際的選擇：面對工作壓力、夜間使用手機與不規律的生活，我們可以先觀察哪些改變，"
-    "又該如何逐步調整。理解自己的限制後，才能找出真正能長期維持、不需靠意志力硬撐的做法。"
+    "睡得少不只是隔天精神差。學習之後的大腦還需要時間，把當天的新資訊重新整理、穩定保存。\n\n"
+    "謝伯讓從記憶的固化過程談起，說明作息反覆被打斷時，注意力、判斷與情緒為什麼會一起塌下來。\n\n"
+    "面對工作壓力、夜間滑手機與不規律的生活，可以先觀察哪幾個訊號，再決定要調整什麼。\n\n"
+    "理解自己的限制之後，才找得到真正能長期維持、不必靠意志力硬撐的做法。"
 )
 
 
@@ -105,7 +106,7 @@ def test_description_draft_happy_path_is_written_to_release(tmp_path, monkeypatc
     )
 
     assert result["state"] == "ready"
-    assert target["description"].startswith("我和謝伯讓從睡眠如何影響記憶談起")
+    assert target["description"].startswith("睡得少不只是隔天精神差")
     assert "⏱ 00:00 開場" in target["description"]
     assert target["error"] is None
     assert "睡眠如何改變記憶" in prompts[0]
