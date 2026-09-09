@@ -335,3 +335,70 @@ def test_reopen_rejects_a_path_field_even_with_a_recomputed_index_checksum(
 
     with pytest.raises(ActiveAssetStoreError, match="record fields"):
         ActiveAssetStore.open(store_root, episode_id="episode-001")
+
+
+def _envato_receipt(*, provider_item_id: str, source_url: str) -> CompactAssetReceipt:
+    return CompactAssetReceipt(
+        origin="neutral_acquisition",
+        media_sha256="a" * 64,
+        media_bytes=1024,
+        source_class="licensed_stock",
+        provider="envato-elements",
+        provider_item_id=provider_item_id,
+        source_url=source_url,
+        license="Envato Elements license: https://elements.envato.com/license-terms",
+        acquired_at="2026-09-07T05:11:00Z",
+        forensic_receipt_ref="forensic-sha256:" + "b" * 64,
+    )
+
+
+def test_envato_receipt_accepts_current_app_item_url() -> None:
+    """Envato 已把 Elements 併進 app.envato.com；現行 item 頁用 UUID。"""
+    receipt = _envato_receipt(
+        provider_item_id="311f2911-d21d-4ebc-adf0-c5de1fd9716c",
+        source_url=(
+            "https://app.envato.com/search/stock-video/311f2911-d21d-4ebc-adf0-c5de1fd9716c"
+        ),
+    )
+    assert receipt.provider_item_id == "311f2911-d21d-4ebc-adf0-c5de1fd9716c"
+
+
+def test_envato_receipt_still_accepts_legacy_elements_url() -> None:
+    """舊站格式的既有 receipt 不可因為新增現行格式而失效。"""
+    receipt = _envato_receipt(
+        provider_item_id="abc123",
+        source_url="https://elements.envato.com/classroom-cadets-abc123",
+    )
+    assert receipt.provider_item_id == "abc123"
+
+
+@pytest.mark.parametrize(
+    ("provider_item_id", "source_url"),
+    [
+        # UUID 大寫變體：維持既有的大小寫嚴格性
+        (
+            "311F2911-D21D-4EBC-ADF0-C5DE1FD9716C",
+            "https://app.envato.com/search/stock-video/311F2911-D21D-4EBC-ADF0-C5DE1FD9716C",
+        ),
+        # item id 與網址不一致
+        (
+            "311f2911-d21d-4ebc-adf0-c5de1fd9716c",
+            "https://app.envato.com/search/stock-video/0f343263-e896-429e-9861-2c01e10a3e84",
+        ),
+        # 不是 item 頁的路徑形狀
+        (
+            "311f2911-d21d-4ebc-adf0-c5de1fd9716c",
+            "https://app.envato.com/311f2911-d21d-4ebc-adf0-c5de1fd9716c",
+        ),
+        # 非 Envato 網域
+        (
+            "311f2911-d21d-4ebc-adf0-c5de1fd9716c",
+            "https://example.com/search/stock-video/311f2911-d21d-4ebc-adf0-c5de1fd9716c",
+        ),
+    ],
+)
+def test_envato_receipt_rejects_unfaithful_app_source(
+    provider_item_id: str, source_url: str
+) -> None:
+    with pytest.raises(AssetContractError):
+        _envato_receipt(provider_item_id=provider_item_id, source_url=source_url)
