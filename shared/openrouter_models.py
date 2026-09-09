@@ -18,6 +18,11 @@ from __future__ import annotations
 # （例：claude-haiku-4-5 與 claude-haiku-4-5-20251001 都是 anthropic/claude-haiku-4.5）。
 _SLUG_MAP: dict[str, str] = {
     # ── Anthropic ──────────────────────────────────────────────────────────
+    # Claude 5 家族（2026-08-19 對 OpenRouter /models API 逐一驗證過）
+    "claude-opus-5": "anthropic/claude-opus-5",
+    "claude-sonnet-5": "anthropic/claude-sonnet-5",
+    "claude-fable-5": "anthropic/claude-fable-5",
+    # 舊 ID 保留映射（KNOWN_MODELS 已下架，但既有 env/override 指著仍可解析）
     "claude-opus-4-8": "anthropic/claude-opus-4.8",
     "claude-opus-4-7": "anthropic/claude-opus-4.7",
     "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",

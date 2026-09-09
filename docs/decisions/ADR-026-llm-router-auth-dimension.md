@@ -1,7 +1,7 @@
 # ADR-026: LLM Router 加 Auth 維度（api / subscription_preferred / subscription_required）
 
-**Status:** Accepted (v3 post-implementation, one deviation documented in §Implementation deviation)
-**Date:** 2026-05-16 (drafted) / 2026-05-17 (accepted)
+**Status:** Accepted (v4 — 2026-08-19 Amendment flips `DEFAULT_AUTH["default"]` to `subscription_preferred`, see §Amendment 2026-08-19; v3 deviation documented in §Implementation deviation)
+**Date:** 2026-05-16 (drafted) / 2026-05-17 (accepted) / 2026-08-19 (amended)
 **Implementation:** #580 (Slice 1 — pure-additive infra) + #581 (Slice 2 — per-call dispatch + translator de-hardcoding)
 **Deciders:** shosho-chang, Claude Opus 4.7, Codex GPT-5, Gemini 2.5 Pro
 **Related:** ADR-001, `memory/claude/project_multi_model_architecture.md`, `memory/claude/project_llm_facade_phase1.md`, `memory/claude/feedback_llm_model_choice.md`, `memory/claude/feedback_cost_management.md`, `memory/claude/feedback_oauth_env_pinning_long_batch.md`, `docs/plans/2026-05-16-llm-router-auth-dimension-grill-prep.md`
@@ -145,6 +145,31 @@ def _translate_in_background(*, source_path, bilingual_path):
 - **Subscription quota starvation 預防**（task class quota bucket，例如 Robin translate 一桶、Brook compose 另一桶）— Codex Section 5、Gemini Section 1 都提到。Phase 1 透過 `subscription_required` 給高價值任務優先權，Phase 2 加 budget bucket
 - **Multimodal**：CLI 對 binary data (圖片) break（Gemini Section 3）。Phase 1 系統純文字，Phase 2 加圖片時要重設 dispatch 路徑
 - **YAML policy file**：Codex Section 4 提到 `MODEL_*` + `AUTH_*` env 在 35+ files / 56+ call lines 後不 scale。Phase 1 env 三元語意還在可控範圍，Phase 2 視 env 暴增切 YAML
+
+## Amendment 2026-08-19 — `DEFAULT_AUTH["default"]` 翻為 `subscription_preferred`
+
+v3 deviation 採保守 default `"api"`，理由是「default 不該默默花錢／默默吃 Max quota」
+且當時測試層有 mock pollution 顧慮。**2026-08-17 Anthropic API 額度耗盡事故反轉了
+這個風險判斷**：全系統（Nami / Franky / Robin / memory-reflection）因走 api 預設而
+同時停擺，而修修長期維持 Max 訂閱、額度閒置。修修 2026-08-18 裁決：「都改成預設
+使用訂閱額度」。
+
+**改動**：`DEFAULT_AUTH["default"]` → `"subscription_preferred"`。`tool_use` 維持
+`"api"`（CLI 限制不變；tool-use 要吃訂閱走 Agent SDK 路徑，見
+`docs/plans/2026-08-18-annotation-merger-agent-sdk-plan.md`）。
+
+**為什麼現在安全**（v3 當時的兩個顧慮都已解除）：
+1. 軟降語意 + `auth_requested/auth_actual/fallback_reason` 三欄稽核已在 production
+   驗證一年 —— 缺 token / 缺 CLI 的環境（本機 dev、CI）軟降 api 並留紀錄，非 silent
+2. 測試層已有慣例：需要固定路徑的測試顯式 monkeypatch `AUTH_*` env（2026-08-18
+   訂閱-first rollout 時已全面梳理過 dispatch 測試）
+
+**Opt-out**：要強制 API 計費的 caller 設 `AUTH_<AGENT>=api`（語意不變，方向反轉——
+原本訂閱要 opt-in，現在 API 計費要 opt-out）。
+
+**部署註**：VPS 各 agent 已有顯式 `AUTH_*=subscription_preferred`（2026-08-18
+env rollout），本 amendment 對已部署行為零改變；效果是未列名的 agent / 新增
+agent / 忘設 env 的 context 自動吃訂閱，不會再重演額度事故的 fallback-to-dead-api。
 
 ## Implementation deviation
 

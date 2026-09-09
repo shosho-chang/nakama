@@ -105,8 +105,9 @@ def test_get_provider_unknown_raises() -> None:
 
 
 def test_auth_default_when_no_env() -> None:
+    """2026-08-19 flip（ADR-026 Amendment）：預設訂閱優先，缺 token/CLI 時軟降。"""
     assert get_auth_policy() == DEFAULT_AUTH["default"]
-    assert get_auth_policy() == "api"
+    assert get_auth_policy() == "subscription_preferred"
 
 
 def test_auth_tool_use_default_is_api() -> None:
@@ -115,9 +116,9 @@ def test_auth_tool_use_default_is_api() -> None:
 
 
 def test_auth_default_when_agent_set_but_no_env() -> None:
-    """Agent context without explicit AUTH_<AGENT> falls through to api too."""
-    assert get_auth_policy(agent="brook") == "api"
-    assert get_auth_policy(agent="robin", task="translate") == "api"
+    """Agent context without explicit AUTH_<AGENT> falls through to the default too."""
+    assert get_auth_policy(agent="brook") == "subscription_preferred"
+    assert get_auth_policy(agent="robin", task="translate") == "subscription_preferred"
 
 
 def test_auth_agent_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -146,9 +147,9 @@ def test_auth_hard_lock_overrides_everything(monkeypatch: pytest.MonkeyPatch) ->
 def test_auth_hard_lock_only_when_exactly_one(monkeypatch: pytest.MonkeyPatch) -> None:
     """避免 NAKAMA_REQUIRE_MAX_PLAN=0 / 空字串被誤判成 truthy。"""
     monkeypatch.setenv("NAKAMA_REQUIRE_MAX_PLAN", "0")
-    assert get_auth_policy() == "api"
+    assert get_auth_policy() == "subscription_preferred"
     monkeypatch.setenv("NAKAMA_REQUIRE_MAX_PLAN", "")
-    assert get_auth_policy() == "api"
+    assert get_auth_policy() == "subscription_preferred"
 
 
 def test_auth_invalid_value_raises(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -158,8 +159,9 @@ def test_auth_invalid_value_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_auth_other_agent_env_does_not_leak(monkeypatch: pytest.MonkeyPatch) -> None:
+    """robin 的 _required 不外漏到 brook —— brook 落回預設 _preferred。"""
     monkeypatch.setenv("AUTH_ROBIN", "subscription_required")
-    assert get_auth_policy(agent="brook") == "api"
+    assert get_auth_policy(agent="brook") == "subscription_preferred"
 
 
 def test_auth_unknown_task_falls_back_to_default(monkeypatch: pytest.MonkeyPatch) -> None:
