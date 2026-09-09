@@ -6,6 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from agents.brook.script_video.finished_cut_production._projection import (
+    layout_identity,
+)
 from agents.brook.script_video.finished_cut_production._active_store import (
     ActiveAssetPublication,
     ActiveAssetStore,
@@ -176,9 +179,13 @@ class _MismatchedPersonInsetProbe(_PersonInsetProbe):
         return replace(result, pixel_format="yuv420p", has_alpha=False)
 
 
-def test_sixty_second_semantic_evidence_renders_only_four_second_hero_placement(
+def test_sixty_second_semantic_evidence_renders_only_four_second_card_placement(
     tmp_path: Path,
 ) -> None:
+    """渲出來的是 placement 的 4 秒，不是語意證據的 60 秒。
+
+    2026-09-09 起 hero_title 的落點必須逐字回應語意證據（見 `_context`），所以「證據長、落點短」對 Hero 已不可能；改用 identity_card 驗同一條不變量。
+    """
     context = EditorialCutContext(
         episode_id="episode-001",
         cut_id="value-L03",
@@ -198,19 +205,19 @@ def test_sixty_second_semantic_evidence_renders_only_four_second_hero_placement(
     placement = context.derive_visual_placement(
         semantic_cue_ids=semantic_cue_ids,
         placement_cue_ids=("cue-placement",),
-        semantic_kind="hero_title",
+        semantic_kind="identity_card",
     )
     instruction = DerivedAssetInstruction(
         component_id="component-hero-placement",
         event_id="event-hero-placement",
-        semantic_kind="hero_title",
-        implementation_kind="hero_title",
-        lane="hero_title",
+        semantic_kind="identity_card",
+        implementation_kind="identity_card",
+        lane="identity_card",
         display="完整命題",
         t0=placement.t0,
         t1=placement.t1,
         source_asset_ref=None,
-        geometry=DerivedAssetGeometry(1920, 1080, "hero_title:v2"),
+        geometry=DerivedAssetGeometry(1920, 1080, layout_identity("identity_card")),
         recipe_identity="recipe:hero:placement-current",
     )
     request = DerivedAssetBuildRequest(
@@ -403,7 +410,7 @@ def test_exact_current_hero_recipe_reuses_active_asset_without_rendering_again(
         geometry=DerivedAssetGeometry(
             target_width=1920,
             target_height=1080,
-            layout_identity="hero_title:v2",
+            layout_identity=layout_identity("hero_title"),
         ),
         recipe_identity="recipe:hero:current",
     )
@@ -474,7 +481,7 @@ def test_oversized_chapter_placement_fails_before_browser_render(tmp_path: Path)
                 t0=100.0,
                 t1=104.001,
                 source_asset_ref=None,
-                geometry=DerivedAssetGeometry(1920, 1080, "fullscreen_transition:v1"),
+                geometry=DerivedAssetGeometry(1920, 1080, layout_identity("fullscreen_transition")),
                 recipe_identity="recipe:chapter:oversized",
             ),
         ),
@@ -717,7 +724,7 @@ def test_legacy_webm_title_cannot_be_reused_as_current_resolve_media(tmp_path: P
                 t0=22.0,
                 t1=25.0,
                 source_asset_ref=None,
-                geometry=DerivedAssetGeometry(1920, 1080, "hero_title:v2"),
+                geometry=DerivedAssetGeometry(1920, 1080, layout_identity("hero_title")),
                 recipe_identity="recipe:hero:current",
             ),
         ),
@@ -746,9 +753,9 @@ def test_all_current_generated_browser_components_publish_final_assets(tmp_path:
     # Each role pins its own canonical layout identity; the renderer rejects a
     # request that does not carry the exact one for that role.
     roles = (
-        ("chapter", "chapter", "fullscreen_transition", "第一章", "fullscreen_transition:v4"),
-        ("hero", "hero_title", "hero_title", "真正的選擇", "hero_title:v2"),
-        ("identity", "identity_card", "identity_card", "簡立峰博士", "identity_card:v2"),
+        ("chapter", "chapter", "fullscreen_transition", "第一章", layout_identity("fullscreen_transition")),
+        ("hero", "hero_title", "hero_title", "真正的選擇", layout_identity("hero_title")),
+        ("identity", "identity_card", "identity_card", "簡立峰博士", layout_identity("identity_card")),
     )
     instructions = tuple(
         DerivedAssetInstruction(
@@ -790,6 +797,7 @@ def test_all_current_generated_browser_components_publish_final_assets(tmp_path:
 
     assert result.status == "ready"
     assert browser.calls == len(instructions)
+    # 三個現役的生成字卡：轉場卡、Hero、來賓名牌。visual_effect 2026-09-08 退役。
     expected_kinds = (
         AssetKind.CHAPTER_RENDER,
         AssetKind.TITLE_RENDER,
@@ -1004,37 +1012,3 @@ def test_legacy_webm_person_inset_cannot_be_reused_as_resolve_composite(
 
     assert result.status == "failed"
     assert result.error_code == "derived_asset_mismatch"
-
-
-def test_retired_visual_effect_projection_cannot_be_built(tmp_path: Path) -> None:
-    """visual_effect 2026-09-08 退役，任何新的建置指令都要被擋。
-
-    它是 ADR-066 憑空造的第六個語意類別，頻道的創意手冊裡一次都沒出現過，也因此
-    沒有秒數上限、沒有配方——渲出來是 44px 的無底字卡，比 hero_title 更小、在另一
-    條軌上，看起來像跑掉的字幕。退役方式比照 supporting_title：從現役投影詞彙移除，
-    歷史 Release receipt 仍讀得回來。
-    """
-    from agents.brook.script_video.finished_cut_production._derived_assets import (
-        DerivedAssetContractError,
-        DerivedAssetGeometry,
-        DerivedAssetInstruction,
-    )
-
-    with pytest.raises(DerivedAssetContractError, match="retired or unsupported"):
-        DerivedAssetInstruction(
-            component_id="component-effect",
-            event_id="event-effect",
-            semantic_kind="visual_effect",
-            implementation_kind="visual_effect",
-            lane="visual_effect",
-            display="焦點強調",
-            t0=10.0,
-            t1=13.0,
-            source_asset_ref=None,
-            geometry=DerivedAssetGeometry(
-                target_width=1920,
-                target_height=1080,
-                layout_identity="visual_effect:v1",
-            ),
-            recipe_identity=None,
-        )

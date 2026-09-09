@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from html import escape
 from pathlib import Path
 from typing import Literal, Protocol
+from ._projection import layout_identity
 
 LongVisualRole = Literal[
     "chapter",
@@ -77,9 +78,10 @@ class RenderedLongVisual:
     media: BrowserRenderResult
 
 
+#: 版位版本是契約，不是渲染器的私有常數——兩邊各寫一份就會漂移（見 _projection）。
 _RECIPES: dict[LongVisualRole, dict[str, object]] = {
     "chapter": {
-        "layout_identity": "fullscreen_transition:v4",
+        "layout_identity": layout_identity("fullscreen_transition"),
         "style_name": "paper_hand",
         "content_width_ratio": 0.84,
         "font_size_px": 128,
@@ -91,7 +93,7 @@ _RECIPES: dict[LongVisualRole, dict[str, object]] = {
         "pixel_format": "yuv420p",
     },
     "hero_title": {
-        "layout_identity": "hero_title:v2",
+        "layout_identity": layout_identity("hero_title"),
         "style_name": "paper",
         "content_width_ratio": 0.72,
         "font_size_px": 96,
@@ -103,7 +105,7 @@ _RECIPES: dict[LongVisualRole, dict[str, object]] = {
         "pixel_format": "yuva444p12le",
     },
     "identity_card": {
-        "layout_identity": "identity_card:v2",
+        "layout_identity": layout_identity("identity_card"),
         "style_name": "paper",
         "content_width_ratio": 0.34,
         "font_size_px": 50,
@@ -115,7 +117,7 @@ _RECIPES: dict[LongVisualRole, dict[str, object]] = {
         "pixel_format": "yuva444p12le",
     },
     "visual_effect": {
-        "layout_identity": "visual_effect:v1",
+        "layout_identity": layout_identity("visual_effect"),
         "style_name": "concept_accent",
         "content_width_ratio": 0.48,
         "font_size_px": 44,
@@ -310,6 +312,8 @@ html, body {{ width: {canvas_width}px; height: {canvas_height}px;
 def _paper_hero_document(
     *,
     display: str,
+    font_size_px: int,
+    content_width_ratio: float,
     canvas_width: int,
     canvas_height: int,
     duration_sec: float,
@@ -325,6 +329,8 @@ def _paper_hero_document(
     設計 token 一律取自定版檔：紙白 rgba(251,250,247,.86)、ink #1c1915、
     橘線 #e98965、錯位 32px / -24px、pos-y 66%。
     """
+    # 字級與寬度取自配方，不在 HTML 裡另寫一份數字——兩份數字遲早會漂移
+    # （2026-09-09：版位版本就是這樣裂成兩個真相來源，害 27 個測試一起紅）。
     lines = _hero_lines(display)
     offsets = ("0px", "32px", "-24px")
     blocks = "".join(
@@ -346,12 +352,13 @@ html, body {{ width: {canvas_width}px; height: {canvas_height}px;
 #root {{ position: relative; width: {canvas_width}px; height: {canvas_height}px;
   overflow: hidden; font-family: "LINE Seed TW", sans-serif; }}
 #card {{ position: absolute; left: 50%; top: 66%; transform: translate(-50%, -50%);
-  display: flex; flex-direction: column; align-items: center; gap: 8px; }}
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  max-width: {content_width_ratio * 100:.0f}%; }}
 .line {{ position: relative; display: inline-block; white-space: nowrap;
   background: rgba(251, 250, 247, 0.86); color: #1c1915;
   border: 1px solid rgba(217, 213, 207, 0.55); border-radius: 10px;
   box-shadow: 0 2px 10px rgba(20, 18, 15, 0.14);
-  font-weight: 900; font-size: 96px; line-height: 1.1; padding: 8px 24px 15px;
+  font-weight: 900; font-size: {font_size_px}px; line-height: 1.1; padding: 8px 24px 15px;
   animation: hero-enter 420ms cubic-bezier(.2,.8,.2,1) both; }}
 .line svg.uline {{ position: absolute; left: 22px; right: 22px; bottom: 10px;
   width: calc(100% - 44px); height: 22px; overflow: visible; pointer-events: none; }}
@@ -401,6 +408,8 @@ def _html_document(
     if role == "hero_title":
         return _paper_hero_document(
             display=display,
+            font_size_px=font_size_px,
+            content_width_ratio=content_width_ratio,
             canvas_width=canvas_width,
             canvas_height=canvas_height,
             duration_sec=duration_sec,

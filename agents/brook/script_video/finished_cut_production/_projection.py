@@ -56,6 +56,32 @@ _ACTIVE_COMPONENT_LANES = (
 )
 
 
+#: 每個渲染實作目前的版位版本。**這是唯一的真相來源。**
+#:
+#: 2026-09-09：版本號本來散在兩個地方——`_engine._LAYOUT_VERSIONS` 決定指令的
+#: geometry，`_long_visual_renderer._RECIPES` 決定渲染器接受什麼，而渲染器對不上就
+#: 直接丟 `long visual geometry does not match its canonical layout`。9-08 把 hero
+#: bump 到 v2 時只改了其中一邊的下游，測試 fixture 又各自寫死 `hero_title:v1`，於是
+#: 27 個測試一起紅。版本住在契約層，兩邊都 import，就不會再有這種漂移。
+LAYOUT_VERSIONS: dict[str, str] = {
+    "fullscreen_transition": "v4",
+    # hero_title v2：2026-09-08 從 44px 無底字卡改回定版 punch_card_wide tier1
+    #   ＋ paper 配方（紙卡、96px、只在標點斷行）。
+    "hero_title": "v2",
+    # identity_card v2：2026-09-08 從 ADR-066 自創的 identity_plaque 36px 置中藥丸，
+    #   改回定版 chapter_label_wide align:left + style:paper（左下紙卡＋手繪橘豎筆觸
+    #   ＋姓名 50px／頭銜 29px）。
+    "identity_card": "v2",
+    # 已退役，僅為歷史 Release receipt 保留。
+    "visual_effect": "v1",
+}
+
+
+def layout_identity(implementation_kind: str) -> str:
+    """回傳這個實作的 canonical layout identity（例如 `hero_title:v2`）。"""
+    return f"{implementation_kind}:{LAYOUT_VERSIONS.get(implementation_kind, 'v1')}"
+
+
 def _is_active_semantic_kind(value: str) -> bool:
     return value in _ACTIVE_SEMANTIC_KINDS
 

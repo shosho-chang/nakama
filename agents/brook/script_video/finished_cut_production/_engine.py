@@ -59,6 +59,7 @@ from ._projection import (
     _WORKER_PROJECTION_COMBINATIONS,
     _event_has_active_projection,
     _is_active_semantic_kind,
+    layout_identity,
 )
 from ._records import (
     STAGE_RESPONSE_SCHEMA,
@@ -1370,11 +1371,10 @@ def _derived_asset_request(
         if event.visual_placement is None:
             raise RuntimeError("accepted DP event has no Visual Placement authority")
         placement = event.visual_placement
-        layout_version = _LAYOUT_VERSIONS.get(event.implementation_kind, "v1")
         geometry = DerivedAssetGeometry(
             target_width=width,
             target_height=height,
-            layout_identity=f"{event.implementation_kind}:{layout_version}",
+            layout_identity=layout_identity(event.implementation_kind),
         )
         recipe_identity = None
         if event.implementation_kind not in _NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS:
@@ -1607,15 +1607,7 @@ def _visual_retry_context(
 # - hero_title v2：2026-09-08 從 ADR-066 自創的 compact_paper 單行藥丸，改回頻道
 #   定版的 punch_card_wide tier1 + style:paper（錯位雙行紙卡、96px、手繪橘底線、
 #   落在說話者負空間）。手冊：.claude/skills/longform-cut/SKILL.md「Hero 大字卡」
-_LAYOUT_VERSIONS = {
-    "fullscreen_transition": "v4",
-    "hero_title": "v2",
-    # identity_card v2：2026-09-08 從 ADR-066 自創的 identity_plaque 36px 置中藥丸，
-    #   改回定版 chapter_label_wide align:left + style:paper（左下紙卡＋手繪橘豎筆觸
-    #   ＋姓名 50px／頭銜 29px）。
-    "identity_card": "v2",
-}
-
+# 版位版本住在 _projection.LAYOUT_VERSIONS（唯一真相來源），這裡不再自己維護一份。
 
 def _leave_in_review_from_build(run: _RunState) -> _ProductionRun:
     run.view = replace(
@@ -1676,6 +1668,9 @@ def _advance_visual_checkpoint(
         visual_acceptance_id=visual.acceptance_id,
         events=visual.events,
         components=projected_components,
+        duration_sec=(
+            run.editorial_context.duration_sec if run.editorial_context is not None else 0.0
+        ),
     )
     run.view = replace(
         run.view,
