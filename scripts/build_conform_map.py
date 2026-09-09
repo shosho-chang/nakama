@@ -98,10 +98,34 @@ def _pick_body_source(items: list[dict], fps: float) -> str:
     return ranked[0][0]
 
 
+def _resolve_body_media(episode_dir: Path, body_path: Path) -> Path:
+    """主體來源的實際檔案位置。
+
+    `_pick_body_source` 回的是 Resolve 記的**完整路徑**，而機位檔放在
+    `<episode>/Video/`。原本這裡直接用 `episode_dir / body_path.name`，等於把
+    `Video/` 這一層丟掉——參考檔根本不存在，於是 `_measure_offset` 對每一個來源
+    都回 None，四個來源全部被「量不到可靠偏移」略過，conform map 只剩 `program`。
+    下游 `run_transcript_prose` 需要 `audio` 來源，就報「conform map 沒有來源
+    「audio」」——錯誤訊息離真正的原因隔了兩層（2026-09-10 蘇予昕實況）。
+    """
+    candidates = [body_path] if body_path.is_absolute() else []
+    candidates += [
+        episode_dir / body_path,
+        episode_dir / "Video" / body_path.name,
+        episode_dir / body_path.name,
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    tried = "\n  ".join(str(candidate) for candidate in candidates)
+    raise SystemExit(f"找不到主體來源檔，量不了偏移。試過：\n  {tried}")
+
+
 def _measure_sources(episode_dir: Path, body_path: Path, *, skip_sync: bool) -> dict[str, dict]:
     """量各素材對 program feed 的偏移；找不到檔案就略過該來源。"""
     from shared.speaker_assign import _measure_offset
 
+    body_media = _resolve_body_media(episode_dir, body_path)
     sources: dict[str, dict] = {
         "program": {"path": body_path.name, "offset_sec": 0.0},
     }
@@ -109,13 +133,18 @@ def _measure_sources(episode_dir: Path, body_path: Path, *, skip_sync: bool) -> 
     for key, rel in candidates.items():
         path = episode_dir / rel
         if not path.is_file():
-            print(f"  {key}: 找不到 {rel}——略過")
-            continue
+            # 機位檔可能放在 episode 根目錄而不是 Video/（早期集數）。
+            alternative = episode_dir / rel.name
+            if alternative.is_file():
+                path, rel = alternative, Path(rel.name)
+            else:
+                print(f"  {key}: 找不到 {rel}——略過")
+                continue
         if skip_sync:
             offset = 0.0
             print(f"  {key}: --skip-sync，偏移當 0")
         else:
-            measured = _measure_offset(episode_dir / body_path.name, path)
+            measured = _measure_offset(body_media, path)
             if measured is None:
                 print(f"  {key}: 量不到可靠偏移——**不寫進 conform map**，避免用錯的值")
                 continue
