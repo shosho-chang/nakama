@@ -36,7 +36,8 @@ description: >
 PY=E:/nakama/.venv-v2/Scripts/python.exe
 export PYTHONPATH="C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\Developer\Scripting\Modules"
 export RESOLVE_SUBTITLE_TEMPLATE="E:
-akama\dataesolve\subtitle-template.drt"
+akama\data
+esolve\subtitle-template.drt"
 ```
 
 `PYTHONPATH` 沒設 → `Resolve scripting module is unavailable`。
@@ -96,6 +97,20 @@ events 的時候就算好，不是事後補——補不了。
 `cb530d56…`（L1 買的）容器寫 1920x1080、沒有 rotation metadata，但畫面裡的人
 整個橫躺。**每一支素材在挑進 events 之前都要真的抽一格出來看**，不要只看
 `visual_summary` 和寬高。2026-09-10 這支差點跟著 L2 上架。
+
+### 5b. 建置失敗要怎麼查
+
+`inspect-run` 只會說 `build_state: failed`，不說是哪一條指令、也不說為什麼——
+`LongDerivedAssetBuilder` 只回一個 `error_code`，而 `_advance_derived_build`
+連那個都沒存進 view。要看原因用：
+
+```bash
+python scripts/diagnose_derived_build.py --episode-id "<ep>" --command-id <cmd>     --contact-sheet <out.png>
+```
+
+逐條跑同一個 builder，印出哪一條 FAIL、以及那支素材的實際寬高與是不是 16:9。
+`--contact-sheet` 把這條 run 用到的每支素材抽一格拼成一張——**側躺、黑邊、認錯人
+只有肉眼看得出來**，`cb530d56…` 在對照表上一眼就看得出整個人是橫的。
 
 ### 6. 修正窗口什麼時候關掉
 
