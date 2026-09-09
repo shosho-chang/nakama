@@ -172,6 +172,19 @@ class EditorialCutContext:
                 section_id=semantic.section_id,
             )
 
+        if semantic_kind == "hero_title" and placement_cue_ids != semantic_cue_ids:
+            # Hero 的「說什麼」是 Director 決定、「什麼時候說」原本是 DP 決定，而 DP 只
+            # 被要求落在 Director 證據的**子集**內。Director 的證據跨度可以橫跨一分多鐘，
+            # DP 挑最前面那幾句就合法——於是卡片可以在講者說出那個主張之前就先講完。
+            #
+            # 2026-09-09 蘇予昕 punch-L04：Hero「原來這一切的源頭是我爸」落在 3:50.29
+            # （「他就會突然幫我連結到／喔我爸就是這樣」），但講者說出「因此他看到原來
+            # 源頭」是 5:13.96——早了 84 秒把結論講完。修修 review 時直接刪掉。
+            #
+            # 章節卡本來就是這樣鎖的（見上面 chapter 分支）：落點必須逐字回應它的語意
+            # 證據。Hero 比照辦理——主張與落點是同一個事實，錯了只會錯在一個地方。
+            raise ValueError("hero placement cue IDs must echo its semantic proof")
+
         placement = self.derive_anchor(placement_cue_ids)
         if not set(placement.master_cue_ids).issubset(semantic.master_cue_ids):
             raise ValueError("visual placement must be a subset of Director semantic evidence")
