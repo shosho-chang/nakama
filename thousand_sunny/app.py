@@ -17,6 +17,17 @@ from shared.log import force_utf8_console, get_logger
 
 force_utf8_console()
 
+# `.env` must be in os.environ BEFORE any router import: auth reads its config at
+# import time, and `_episode_dir` reads PODCAST_EPISODES_ROOT straight from the
+# environment. Relying on the launcher to inject it (`uvicorn --env-file`) meant a
+# Bridge started without that flag answered「PODCAST_EPISODES_ROOT 未設定」to every
+# packaging approval — the same app served two ports with different behaviour.
+# `load_config` walks up to the repo-level `.env`, so this also works from a
+# worktree, which a bare `Path(__file__).parent.parent / ".env"` would not.
+from shared.config import load_config  # noqa: E402
+
+load_config()
+
 from thousand_sunny.middleware.csp import add_csp_middleware  # noqa: E402
 from thousand_sunny.preflight import run_preflight  # noqa: E402
 from thousand_sunny.promotion_wiring import (  # noqa: E402
