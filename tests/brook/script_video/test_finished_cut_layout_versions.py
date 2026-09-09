@@ -14,8 +14,8 @@ from agents.brook.script_video.finished_cut_production._long_visual_renderer imp
     _RECIPES,
 )
 from agents.brook.script_video.finished_cut_production._projection import (
-    LAYOUT_VERSIONS,
     _ACTIVE_PROJECTION_COMBINATIONS,
+    LAYOUT_VERSIONS,
     layout_identity,
 )
 

@@ -6,9 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from agents.brook.script_video.finished_cut_production._projection import (
-    layout_identity,
-)
 from agents.brook.script_video.finished_cut_production._active_store import (
     ActiveAssetPublication,
     ActiveAssetStore,
@@ -35,6 +32,9 @@ from agents.brook.script_video.finished_cut_production._hyperframes_renderer imp
 )
 from agents.brook.script_video.finished_cut_production._long_visual_renderer import (
     LongVisualRenderer,
+)
+from agents.brook.script_video.finished_cut_production._projection import (
+    layout_identity,
 )
 from agents.brook.script_video.finished_cut_production._visual_assets import (
     FaceSafePlacement,
@@ -184,7 +184,8 @@ def test_sixty_second_semantic_evidence_renders_only_four_second_card_placement(
 ) -> None:
     """渲出來的是 placement 的 4 秒，不是語意證據的 60 秒。
 
-    2026-09-09 起 hero_title 的落點必須逐字回應語意證據（見 `_context`），所以「證據長、落點短」對 Hero 已不可能；改用 identity_card 驗同一條不變量。
+    2026-09-09 起 hero_title 的落點必須逐字回應語意證據（見 `_context`），
+    所以「證據長、落點短」對 Hero 已不可能；改用 identity_card 驗同一條不變量。
     """
     context = EditorialCutContext(
         episode_id="episode-001",
@@ -753,9 +754,21 @@ def test_all_current_generated_browser_components_publish_final_assets(tmp_path:
     # Each role pins its own canonical layout identity; the renderer rejects a
     # request that does not carry the exact one for that role.
     roles = (
-        ("chapter", "chapter", "fullscreen_transition", "第一章", layout_identity("fullscreen_transition")),
+        (
+            "chapter",
+            "chapter",
+            "fullscreen_transition",
+            "第一章",
+            layout_identity("fullscreen_transition"),
+        ),
         ("hero", "hero_title", "hero_title", "真正的選擇", layout_identity("hero_title")),
-        ("identity", "identity_card", "identity_card", "簡立峰博士", layout_identity("identity_card")),
+        (
+            "identity",
+            "identity_card",
+            "identity_card",
+            "簡立峰博士",
+            layout_identity("identity_card"),
+        ),
     )
     instructions = tuple(
         DerivedAssetInstruction(

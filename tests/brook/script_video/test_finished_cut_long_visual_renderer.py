@@ -5,9 +5,6 @@ from pathlib import Path
 
 import pytest
 
-from agents.brook.script_video.finished_cut_production._projection import (
-    layout_identity,
-)
 from agents.brook.script_video.finished_cut_production import _active_store as active_store_module
 from agents.brook.script_video.finished_cut_production import (
     _hyperframes_renderer as hyperframes_renderer_module,
@@ -23,6 +20,9 @@ from agents.brook.script_video.finished_cut_production._long_visual_renderer imp
     LongVisualRenderer,
     LongVisualRenderError,
     LongVisualRenderRequest,
+)
+from agents.brook.script_video.finished_cut_production._projection import (
+    layout_identity,
 )
 
 

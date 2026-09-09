@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from html import escape
 from pathlib import Path
 from typing import Literal, Protocol
+
 from ._projection import layout_identity
 
 LongVisualRole = Literal[

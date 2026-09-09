@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from agents.brook.script_video.finished_cut_production._projection import (
-    layout_identity,
-)
 from agents.brook.script_video.finished_cut_production._assets import (
     AssetKind,
     WorkerCatalogItem,
@@ -16,6 +13,9 @@ from agents.brook.script_video.finished_cut_production._derived_assets import (
     DerivedAssetBuildRequest,
     DerivedAssetGeometry,
     DerivedAssetInstruction,
+)
+from agents.brook.script_video.finished_cut_production._projection import (
+    layout_identity,
 )
 
 

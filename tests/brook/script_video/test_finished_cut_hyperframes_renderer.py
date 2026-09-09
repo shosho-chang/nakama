@@ -8,9 +8,6 @@ from pathlib import Path
 
 import pytest
 
-from agents.brook.script_video.finished_cut_production._projection import (
-    layout_identity,
-)
 from agents.brook.script_video.finished_cut_production._hyperframes_renderer import (
     FfprobeGeneratedMediaProbe,
     HyperFramesBrowserRenderer,
@@ -23,6 +20,9 @@ from agents.brook.script_video.finished_cut_production._long_visual_renderer imp
     LongVisualRenderer,
     LongVisualRenderError,
     LongVisualRenderRequest,
+)
+from agents.brook.script_video.finished_cut_production._projection import (
+    layout_identity,
 )
 from agents.brook.script_video.finished_cut_production._visual_assets import (
     FaceSafePlacement,

@@ -164,7 +164,11 @@ def derive_brand_badge_overlays(
             # 名牌也在左下角，同框就是擠——手冊：「開場 badge 窗必須在名牌進場前收掉」。
             # 這條對每一段 badge 都成立，不是只有開場那一段：2026-09-09 第一版只擋了
             # 開場，結果 0:52 轉場卡之後那段 badge 正好壓在 0:55 進場的名牌上。
-            *(t0 for t0, t1 in namecards if t0 >= start and t0 < start + AFTER_TRANSITION_WINDOW_SEC),
+            *(
+                t0
+                for t0, _t1 in namecards
+                if start <= t0 < start + AFTER_TRANSITION_WINDOW_SEC
+            ),
         )
         # badge 起點若落在名牌播放中，整段跳過——往後挪就不是「轉場卡之後」了。
         if any(t0 <= start < t1 for t0, t1 in namecards):
