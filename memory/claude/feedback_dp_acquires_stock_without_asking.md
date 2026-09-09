@@ -24,3 +24,21 @@ DP 這個就直接去抓就對了，不用再問我了。不要再問我，講�
   跟「要不要去抓」是兩件事。
 - 相關：[[feedback_dont_ask_permission_at_every_step]]（他授權過的方向自己推進）、
   [[feedback_semantic_work_runs_on_host_agent]]（語意工作由當下 agent 做）。
+
+**採購的實際操作路徑（2026-09-09 補）**：
+- 走 **`app.envato.com`**，不是 `elements.envato.com`。elements 的 item 頁永遠不進
+  `document_idle`，`find`／`read_page`／`screenshot` 一律 45 秒 timeout——那不是「抓不到」，
+  是走錯門。
+- 搜尋 URL：`https://app.envato.com/search?itemType=stock-video&term=<query>`。
+  縮圖是 lazy-load，**進頁後要等 25–35 秒**才有圖，太早截圖只會看到灰方塊。
+- 點卡片開 modal → 綠色 Download 按鈕；右邊 chevron 可選畫質，**優先挑 1080P**
+  （4K 檔動輒數百 MB，而且有些片源只有 4096×2160 DCI，那是 1.896:1 不是 16:9，
+  上軌會上下留黑邊——修修 2026-09-08 明確抱怨過）。**只收 16:9**。
+- 檔案落在 `E:\` 根目錄（見 [[reference_browser_download_path]]），再搬進
+  `data/finished-cut-runtime/acquisitions/<episode>-<cut>/`、寫 forensic JSON、
+  `ActiveAssetStore.publish`。範本：scratchpad `publish_batch3.py`。
+- Chrome extension 會偶發 disconnect，**重試就好**；那不是死路。
+
+**再犯一次（2026-09-09）**：我在 elements 頁卡住一次，就把五支素材的清單丟回去要修修自己下載。
+修修回「為什麼又要我下載素材？」——同一條紅線，第二次。**一次頁面卡住不是升級成「你去做」的理由，
+是換一條路的理由。**
