@@ -515,3 +515,87 @@ def test_a_supplied_short_renee_lens_is_still_validated(episode):
     )
     with pytest.raises(SystemExit, match="source_sha256"):
         shortlist.collect(hl, "short")
+
+
+# --- 選段報告寫進 Vault -------------------------------------------------------
+# `highlights/` 是 footage 磁碟上的工作目錄，下一季開工時沒有人會去翻它。報告合
+# 併長短片，因為挑選時本來就要一起看。
+
+
+def test_report_merges_both_formats_and_records_the_picks(episode):
+    hl = episode / "highlights"
+    _short_panel(hl, ("S1",))
+    shortlist.write_winners(hl, shortlist.collect(hl, "long"), ["A1", "B1"], "long")
+
+    report = shortlist.render_vault_report(
+        "20260901 蘇予昕",
+        hl,
+        {"long": shortlist.collect(hl, "long"), "short": shortlist.collect(hl, "short")},
+    )
+    assert "## 長精華（format=long）" in report
+    assert "## 短影片（format=short）" in report
+    assert "已挑定：A1、B1" in report
+    assert "（尚未挑）" in report  # 短片還沒挑
+    # 落選的候選也要在，那才是下一季的參考值。
+    assert "群組一 低分" in report
+    assert "短片不該出現" in report
+    # 細節掛在該格式底下，不跟它平輩。
+    assert "### 各支 hook 與品牌 lens 細節" in report
+    assert "\n## 各支 hook" not in report
+
+
+def test_report_prints_a_stale_panel_instead_of_refusing(episode):
+    """gate 拒收過期綁定是對的；報告是唯讀歷史，拒印才是過嚴。"""
+    hl = episode / "highlights"
+    payload = json.loads((hl / "review_azhe.json").read_text(encoding="utf-8"))
+    payload["source_sha256"] = "0" * 64
+    (hl / "review_azhe.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="source_sha256"):
+        shortlist.collect(hl, "long")
+
+    rows, note = shortlist.collect_for_report(hl, "long")
+    assert [r["id"] for r in rows] == ["A1", "A2", "B1", "C1"]
+    assert "panel 綁定已過期" in note
+    report = shortlist.render_vault_report("ep", hl, {"long": rows}, {"long": note})
+    assert "⚠️ panel 綁定已過期" in report
+
+
+def test_report_names_the_missing_format_instead_of_leaving_a_blank(episode):
+    hl = episode / "highlights"
+    rows, note = shortlist.collect_for_report(hl, "short")
+    assert rows == []
+    assert "讀不到" in note
+    report = shortlist.render_vault_report("ep", hl, {"short": rows}, {"short": note})
+    assert "這一節沒有內容" in report
+
+
+def test_report_lands_in_the_guest_interview_folder(episode, monkeypatch, tmp_path):
+    vault = tmp_path / "vault"
+    (vault / "AgentOutputs" / "interviews" / "2026-08-31-蘇予昕").mkdir(parents=True)
+    (vault / "AgentOutputs" / "interviews" / "2026-08-31-蘇予昕" / "06-x.md").write_text(
+        "x", encoding="utf-8"
+    )
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    _short_panel(hl := episode / "highlights", ("S1",))
+    assert hl.is_dir()
+
+    target = episode / "20260901 蘇予昕"
+    target.mkdir()
+    (episode / "highlights").rename(target / "highlights")
+
+    written = shortlist.write_vault_report(target)
+    assert written is not None
+    assert written.name == "07-選段報告.md"
+    assert "選段報告" in written.read_text(encoding="utf-8")
+
+
+def test_an_unreachable_vault_warns_but_does_not_kill_the_run(episode, monkeypatch, capsys):
+    vault = episode / "no-such-vault"
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    target = episode / "20260901 蘇予昕"
+    target.mkdir()
+    (episode / "highlights").rename(target / "highlights")
+
+    assert shortlist.write_vault_report(target) is None
+    assert "選段報告沒寫進 Vault" in capsys.readouterr().err

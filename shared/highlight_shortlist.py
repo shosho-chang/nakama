@@ -156,8 +156,15 @@ def _rank(
     return result
 
 
-def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
-    """Join candidates, persona scores and brand lens, ordered by median score."""
+def collect(hl_dir: Path, fmt: str, *, verify_binding: bool = True) -> list[dict[str, Any]]:
+    """Join candidates, persona scores and brand lens, ordered by median score.
+
+    `verify_binding=False` reads the same files without checking that the panel
+    scored *these* candidates. **The gate must never pass it** — that check is the
+    only thing standing between「動過邊界的段落」and「照舊分數送進製作」.
+    It exists for the read-only 選段報告, where refusing to print a historical
+    table because a hash moved is the over-strictness, not the safety.
+    """
     candidates_path = hl_dir / "candidates.json"
     candidates_doc = _load_object(candidates_path, required=True)
     candidates_sha256 = hashlib.sha256(candidates_path.read_bytes()).hexdigest()
@@ -183,6 +190,8 @@ def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
 
     def _check_binding(doc: dict[str, Any], path: Path, scoped: bool) -> None:
         """A per-format file binds to the format digest; a shared file to the file."""
+        if not verify_binding:
+            return
         expected = format_sha256 if scoped else candidates_sha256
         if doc.get("source_sha256") != expected:
             scope = f"format={fmt} candidates" if scoped else "candidates.json"

@@ -513,10 +513,34 @@ category／implementation component 分類，不可只看它來自哪個 JSON：
   `content_gap_sec` 75s（強事件素材真空，附 transcript 供 stock 提案）
 - 每輪改動交付：preview mp4 傳修修 + 關鍵事件幀自檢（`ev_*.png`）
 
-## 修修換段時
+## 改動代價表（修修在 timeline 上說「這裡改一下」時查這張）
 
-同 highlight-cut：改 `candidates.json` 邊界 → 重跑 Step 3 物化該段 →
-Step 6 起重走。修修手改過的 timeline 尾端見 Step 6–7 的 `--refresh-subs` 註記。
+他不會用 ADR-066 的語言講話，他會說「這張字卡改一下」「這支 B-roll 換掉」
+「這一段整個不要」。這張表把那句話翻成**要重跑到哪裡**，先查表再動手。
+
+長片的分界線跟短片不同：**貴不貴看的是「有沒有跨過 `materialization_plan`」**，
+不是跨過哪一個 Step。
+
+| 他說的 | 要重跑 | 前提 | 量級 |
+|---|---|---|---|
+| 「換一段別的」 | 改 `candidates.json` 邊界 → 重新登錄 → 整條走一次 | — | **最貴**，等於重做一支 |
+| 「這一段整個不要上視覺」 | `request-correction`（`suppress_components`） | 只有在 plan **還沒生出來**之前 | 分鐘級 |
+| 「這支 B-roll 換掉」 | `request-correction`（`replace_component_assets`） | 同上 | 分鐘級 |
+| 「這張字卡文字改一下」 | 同上，改 Director 的 component 文字 | 同上 | 分鐘級 |
+| plan 已生出來之後的任何一項 | 重新登錄（`registrations/<cut>.json` 換 `approved_at`） | — | 半條線 |
+| 「配樂／SFX」 | Step 10–11 | 不動 Release | 分鐘級 |
+| 「標題／封面／描述」 | packaging，不碰 timeline | — | 秒級 |
+
+**那條線落在哪裡**：視覺審查全數通過的當下 `materialization_plan` 就生出來，
+`request-correction` 隨即關閉（見上面第 6 節）。所以**想換素材要在視覺審查那一關
+擋下來**——過了那一關，同樣一句「這支 B-roll 換掉」的成本從分鐘級跳到半條線。
+
+在視覺審查停下來多看兩眼，比事後重登錄便宜一個量級。這是這條線上唯一值得
+「慢一點」的地方。
+
+> `request_amendment`（plan 之後的正式修改命令）是 ADR-066 自己列的 open
+> follow-up，還沒實作。現況只有 `amendments/` 底下的一次性腳本，那個目錄的
+> README 第一行就寫「這個目錄是過渡的」。
 
 ## 下游
 

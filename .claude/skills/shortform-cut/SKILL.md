@@ -268,6 +268,16 @@ py -3.10 scripts/run_short_review.py <episode> --id <cid>
 
 ---
 
+## 短片不做封面（修修 2026-09-10 裁定）
+
+短片沒有封面這一步，不要去跑 `thumbnail-brainstorm`，也不要因為 packaging 少了
+`packages[].thumbnail` 就以為缺東西——schema 對短片就是 `thumbnail: null`、
+`packages: []`（見 `title-brainstorm` 的長短片分流表）。Bridge 的選段 gate 在
+短片格式下也不排 `packaging-plan.json`，同一個理由。
+
+直式短片在 IG／Reels／Shorts 上是**直接播第一幀**，沒有一個 16:9 的縮圖位。
+替它做封面是替一個不存在的版位做圖。
+
 ## 軌道契約
 
 | 軌 | 內容 |
@@ -295,10 +305,29 @@ py -3.10 scripts/run_short_review.py <episode> --id <cid>
 - **企劃腳本不要留在 scratchpad**：2026-08-30 實測把 punch-S02 的 20 句企劃
   用舊的一次性腳本蓋成 31 句。規格進 episode、工具進 repo。
 
-## 換段／改稿
+## 改動代價表（修修在 timeline 上說「這裡改一下」時查這張）
 
-改 `winners.short.json` → 重跑物化。改 cuts.json → 回 Step 1 `--apply`，然後
-**Step 2 之後全部重跑**（導播重建 timeline 會洗掉上層軌）。
+他不會用 pipeline 的語言講話，他會說「這句字卡改成 X」「這支 B-roll 換掉」
+「這裡多切一刀」。這張表把那句話翻成**要重跑到哪裡**——先查表再動手，不要憑印象
+從頭重跑，那是最貴的一種「小改」。
+
+| 他說的 | 動到的檔 | 要重跑 | 會洗掉什麼 | 量級 |
+|---|---|---|---|---|
+| 「換一支別的段落」 | `winners.short.json` | Step 2 → 8 全部 | 這支的一切 | 一支的全部成本 |
+| 「這裡多切一刀／這刀還原」 | `cuts.json` | Step 1 `--apply` → Step 2 → 8 | 字卡／素材／音效／BGM 全部 | 同上，**最貴** |
+| 「這句字卡文字改一下」 | 企劃 JSON 的該句 | Step 4（`run_shortform_titles.py`） | 只有 video 3 | 分鐘級 |
+| 「字卡整段重想」 | — | Step 3 → 4 | 只有 video 3 | 分鐘級 |
+| 「這支 B-roll 換掉／不要」 | broll spec 的該筆 | Step 5（`run_shortform_broll.py`） | 只有 video 2 該段 | 分鐘級 |
+| 「這個音效不對」 | sfx spec | Step 6 | 只有 audio 2 | 分鐘級 |
+| 「配樂換一首／太大聲」 | — | Step 7 `--track <name>` | 只有 audio 4 | 秒級 |
+| 「開場 LOGO 不要」 | — | Step 5 的 badge 段 | 只有 video 5 | 秒級 |
+| 「標題／描述改一下」 | packaging | 不碰 timeline | 無 | 秒級 |
+
+**唯一一條真正昂貴的分界線是 Step 2（導播）**：它整條重建 timeline，上層軌全部
+消失。所以「改刀」與「換段」是重做等級，其他每一項都只動它自己那一軌。
+
+判斷順序：先問「這是 Step 2 以上還是以下？」——以下的一律當成便宜的局部重跑，
+不要順手把整支重來。
 
 ## Step 8 之後：交給發布線（不要停在這裡）
 
