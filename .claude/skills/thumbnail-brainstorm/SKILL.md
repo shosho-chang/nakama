@@ -302,7 +302,15 @@ Step 4.4 的候選池是用 Elements MCP 搜的，`source` 記的是 `elements.e
 1. 用候選池／Elements MCP 決定**這張卡要演什麼**（扣哪一句原話）
 2. 到 `app.envato.com` 用那個概念重搜，挑一張、按 Download（見 [[Envato 網址型式]]）
 3. 裁到卡片比例再安裝——卡片 678×455（1.4901），素材**先裁到這個比例**再縮到 1356×910，
-   不然 `object-fit: cover` 會從短邊硬裁掉你挑的那一塊
+   不然 `object-fit: cover` 會從短邊硬裁掉你挑的那一塊：
+
+```bash
+python .claude/skills/thumbnail-brainstorm/scripts/install_center_asset.py "<E:/下載的授權原檔.jpg>"   --episode-slug <slug> --episode-dir "<episode>" --cut-id <cut> --rank <n> [--anchor left|right|top]
+```
+
+它驗橫式、驗長邊 ≥1280（低於就是還沒換到授權檔），裁到卡片比例，雙落點寫進 vault 與
+該集 `packaging/`。主體不在正中間時用 `--anchor` 挪裁切窗。
+（gate 路徑請用 `fetch_licensed_center.py`——那支要 `approval.json` 裡已有 `render_recipe`。）
 
 順帶的好處：重選時可以把**當初妥協的條件一起補回來**。2026-09-10 punch-L03 rank 3
 在候選池裡只找得到約 55 歲的男性（唯一「醒著、停下來」的姿勢，其餘全是趴倒），
