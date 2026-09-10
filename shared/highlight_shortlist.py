@@ -90,6 +90,72 @@ def _scoped_path(hl_dir: Path, stem: str, fmt: str) -> tuple[Path, bool]:
     return hl_dir / f"{stem}.json", False
 
 
+def _rank(
+    candidates: list[Any],
+    fmt: str,
+    scores: dict[str, dict[str, float]],
+    review_notes: dict[str, dict[str, str]],
+    brand: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Join one format's candidates with its panel, ordered by median score."""
+    result: list[dict[str, Any]] = []
+    for candidate in candidates:
+        if not isinstance(candidate, dict) or candidate.get("format") != fmt:
+            continue
+        candidate_id = candidate.get("id")
+        assert isinstance(candidate_id, str)
+        candidate_scores = scores.get(candidate_id, {})
+        values = list(candidate_scores.values())
+        finding = brand.get(candidate_id, {})
+        duration = candidate.get("duration_sec") or 0
+        try:
+            duration = round(float(duration), 1)
+        except (TypeError, ValueError) as exc:
+            raise HighlightDataError(
+                f"candidate {candidate_id} has an invalid duration_sec"
+            ) from exc
+        try:
+            t_start = float(candidate.get("t_start") or 0)
+            t_end = float(candidate.get("t_end") or (t_start + duration))
+        except (TypeError, ValueError) as exc:
+            raise HighlightDataError(f"candidate {candidate_id} has invalid timecodes") from exc
+        if not all(math.isfinite(value) for value in (duration, t_start, t_end)):
+            raise HighlightDataError(f"candidate {candidate_id} has non-finite timing values")
+        if duration < 0 or t_start < 0 or t_end <= t_start:
+            raise HighlightDataError(f"candidate {candidate_id} has an invalid time range")
+        result.append(
+            {
+                "id": candidate_id,
+                "group": candidate.get("variant_group") or candidate_id,
+                "title": str(candidate.get("title") or ""),
+                "hook": str(candidate.get("hook") or ""),
+                "rationale": str(candidate.get("rationale") or "")[:2000],
+                "transcript": str(candidate.get("transcript") or "")[:12000],
+                "t_start": t_start,
+                "t_end": t_end,
+                "duration_sec": duration,
+                "median": statistics.median(values) if values else 0.0,
+                "scores": {scorer: candidate_scores.get(scorer) for scorer in SCORERS},
+                "review_notes": review_notes.get(candidate_id, {}),
+                "brand_severity": str(finding.get("severity") or ""),
+                "brand_issue": str(finding.get("issue") or "")[:160],
+                "brand_mitigation": str(finding.get("mitigation") or "")[:160],
+            }
+        )
+    result.sort(key=lambda row: -row["median"])
+    seen_groups: set[str] = set()
+    rank = 0
+    for row in result:
+        row["group_top"] = row["group"] not in seen_groups
+        seen_groups.add(row["group"])
+        if row["group_top"]:
+            rank += 1
+            row["rank"] = rank
+        else:
+            row["rank"] = None
+    return result
+
+
 def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
     """Join candidates, persona scores and brand lens, ordered by median score."""
     candidates_path = hl_dir / "candidates.json"
@@ -181,7 +247,18 @@ def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
             f"{lens_path.name} candidate coverage drift; missing={missing}, extra={extra}"
         )
 
+    # Renee 是**長片**留存曲線 lens。她自己的 persona 檔第一行就寫「只審長片段落
+    # （Shorts 不需要她）」，highlight-cut SKILL 的 reviewer 表也標「Renee 只覆蓋
+    # long」——但這裡本來不分格式一律 required，等於要求一份設計上不存在的檔。
+    # 短片的 gate 從來沒有人跑過，所以這個矛盾一直沒被踩到。她的判準（留存斷崖、
+    # 能量曲線、前情獨立性）是為 8–12 分鐘寫的，套到 60 秒也量不出東西。
+    # 有給就照驗，不放寬；沒給才是短片的正常狀態。
     renee_path, renee_scoped = _scoped_path(hl_dir, "lens_renee", fmt)
+    if fmt != "long" and not renee_scoped:
+        # 沒有 lens_renee.<fmt>.json 就是「這個格式沒有 Renee」。**不可以**退回共用的
+        # lens_renee.json——那份是長片的，拿來當短片的覆蓋只會報「38 支全缺」，把一個
+        # 設計上的缺席講成資料漏了。
+        return _rank(candidates, fmt, scores, review_notes, brand)
     renee = _load_object(renee_path, required=True)
     if set(renee) != {"lens", "source_sha256", "findings"} or renee.get("lens") != "renee":
         raise HighlightDataError(f"{renee_path.name} schema drift")
@@ -210,62 +287,8 @@ def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
             f"{renee_path.name} candidate coverage drift; missing={missing}, extra={extra}"
         )
 
-    result: list[dict[str, Any]] = []
-    for candidate in candidates:
-        if not isinstance(candidate, dict) or candidate.get("format") != fmt:
-            continue
-        candidate_id = candidate.get("id")
-        assert isinstance(candidate_id, str)
-        candidate_scores = scores.get(candidate_id, {})
-        values = list(candidate_scores.values())
-        finding = brand.get(candidate_id, {})
-        duration = candidate.get("duration_sec") or 0
-        try:
-            duration = round(float(duration), 1)
-        except (TypeError, ValueError) as exc:
-            raise HighlightDataError(
-                f"candidate {candidate_id} has an invalid duration_sec"
-            ) from exc
-        try:
-            t_start = float(candidate.get("t_start") or 0)
-            t_end = float(candidate.get("t_end") or (t_start + duration))
-        except (TypeError, ValueError) as exc:
-            raise HighlightDataError(f"candidate {candidate_id} has invalid timecodes") from exc
-        if not all(math.isfinite(value) for value in (duration, t_start, t_end)):
-            raise HighlightDataError(f"candidate {candidate_id} has non-finite timing values")
-        if duration < 0 or t_start < 0 or t_end <= t_start:
-            raise HighlightDataError(f"candidate {candidate_id} has an invalid time range")
-        result.append(
-            {
-                "id": candidate_id,
-                "group": candidate.get("variant_group") or candidate_id,
-                "title": str(candidate.get("title") or ""),
-                "hook": str(candidate.get("hook") or ""),
-                "rationale": str(candidate.get("rationale") or "")[:2000],
-                "transcript": str(candidate.get("transcript") or "")[:12000],
-                "t_start": t_start,
-                "t_end": t_end,
-                "duration_sec": duration,
-                "median": statistics.median(values) if values else 0.0,
-                "scores": {scorer: candidate_scores.get(scorer) for scorer in SCORERS},
-                "review_notes": review_notes.get(candidate_id, {}),
-                "brand_severity": str(finding.get("severity") or ""),
-                "brand_issue": str(finding.get("issue") or "")[:160],
-                "brand_mitigation": str(finding.get("mitigation") or "")[:160],
-            }
-        )
-    result.sort(key=lambda row: -row["median"])
-    seen_groups: set[str] = set()
-    rank = 0
-    for row in result:
-        row["group_top"] = row["group"] not in seen_groups
-        seen_groups.add(row["group"])
-        if row["group_top"]:
-            rank += 1
-            row["rank"] = rank
-        else:
-            row["rank"] = None
-    return result
+    return _rank(candidates, fmt, scores, review_notes, brand)
+
 
 
 def winners_path(hl_dir: Path, fmt: str) -> Path:

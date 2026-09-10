@@ -481,3 +481,37 @@ def test_short_panel_still_has_to_cover_every_short_candidate(episode):
 
     with pytest.raises(SystemExit, match=r"review_azhe.short.json.*S2"):
         shortlist.collect(hl, "short")
+
+
+def test_shorts_do_not_need_the_renee_lens(episode):
+    """Renee 只審長片——她的 persona 檔與 SKILL 的 reviewer 表都這樣寫。
+
+    gate 本來不分格式一律 required，等於要一份設計上不存在的檔；而且沒有 scoped
+    檔時會退回長片那份，把「這個格式沒有 Renee」報成「短片全缺」。
+    """
+    hl = episode / "highlights"
+    _short_panel(hl, ("S1",))
+    (hl / "lens_renee.short.json").unlink()
+
+    assert [r["id"] for r in shortlist.collect(hl, "short")] == ["S1"]
+    # 長片那份還在，而且照樣是必要的。
+    assert (hl / "lens_renee.json").is_file()
+
+
+def test_long_still_requires_the_renee_lens(episode):
+    hl = episode / "highlights"
+    (hl / "lens_renee.json").unlink()
+    with pytest.raises(SystemExit, match="lens_renee"):
+        shortlist.collect(hl, "long")
+
+
+def test_a_supplied_short_renee_lens_is_still_validated(episode):
+    """可以不給；給了就不能是壞的。"""
+    hl = episode / "highlights"
+    _short_panel(hl, ("S1",))
+    (hl / "lens_renee.short.json").write_text(
+        json.dumps({"lens": "renee", "source_sha256": "deadbeef", "findings": []}),
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit, match="source_sha256"):
+        shortlist.collect(hl, "short")
