@@ -1,0 +1,39 @@
+# 專案樣板 — 建立專案時一次把該類型的任務全部開好（ADR-068 §範本）。
+#
+# 修修可以直接改這份，不需要重新部署程式：服務會在下次讀取時載入新內容。
+# 每個 stage 會變成一個任務，檔名走既有雙寫慣例「{專案} - {stage}」，
+# 並在 frontmatter 記 `stage:`，專案 dashboard 的進度軌就是靠它分組。
+#
+# 進度軌的狀態**完全由任務的完成度推導**，沒有任何可以手動勾的階段——
+# 這是 ADR-031 七道工序失敗的根因，不重蹈。
+#
+# 欄位：
+#   label      顯示名稱（建立表單的下拉選項 + 專案頁的類型 chip）
+#   stages[]   依序排列的階段；name = 任務名，pomodoros = 預設預估🍅
+#
+# 刪掉某個 kind 不會弄壞既有專案：找不到樣板的專案只是不顯示進度軌，
+# 任務照常列在「其他任務」。
+
+templates:
+  podcast:
+    label: Podcast · 訪談集
+    stages:
+      - { name: 訪綱撰寫, pomodoros: 3 }
+      - { name: 節目錄製, pomodoros: 4 }
+      - { name: 後製與上架, pomodoros: 8 }
+
+  youtube-book:
+    label: YouTube · 書籍介紹
+    stages:
+      - { name: 前期研究, pomodoros: 6 }
+      - { name: 拍攝, pomodoros: 3 }
+      - { name: 後製, pomodoros: 8 }
+      - { name: 上架, pomodoros: 2 }
+
+  youtube-health:
+    label: YouTube · 身心健康研究
+    stages:
+      - { name: 前期研究, pomodoros: 8 }
+      - { name: 拍攝, pomodoros: 3 }
+      - { name: 後製, pomodoros: 8 }
+      - { name: 上架, pomodoros: 2 }

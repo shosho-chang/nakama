@@ -67,6 +67,7 @@ class ProjectEntry:
     status: str  # "active" | "archived"
     created: str  # ISO string as stored ("" when absent)
     body: str  # free-form markdown notes (may be "")
+    kind: str = ""  # project-templates.yaml key; "" = 空專案（無進度軌）
 
     @property
     def archived(self) -> bool:
@@ -118,6 +119,7 @@ def _entry_from_path(path: Path) -> Optional[ProjectEntry]:
         status=status,
         created=str(created or ""),
         body=m.group(2).strip(),
+        kind=str(fm.get("kind") or "").strip(),
     )
 
 
@@ -158,8 +160,12 @@ def _render(fm: dict, body: str) -> str:
     return f"---\n{fm_yaml}---\n\n{body}\n" if body else f"---\n{fm_yaml}---\n"
 
 
-def create_project(vault_root: Path, raw_name: str) -> ProjectEntry:
-    """Create the minimal project stub; :class:`ProjectError` on invalid/duplicate."""
+def create_project(vault_root: Path, raw_name: str, kind: str = "") -> ProjectEntry:
+    """Create the minimal project stub; :class:`ProjectError` on invalid/duplicate.
+
+    ``kind`` names a ``config/project-templates.yaml`` entry; it is stored as a
+    plain label here — creating the template's tasks is
+    :func:`shared.project_templates.create_project_with_template`'s job."""
     name = normalize_name(raw_name)
     d = Path(vault_root) / PROJECTS_DIR
     d.mkdir(parents=True, exist_ok=True)
@@ -167,9 +173,12 @@ def create_project(vault_root: Path, raw_name: str) -> ProjectEntry:
     if path.exists():
         raise ProjectError(f"戰線「{name}」已存在。", code="exists")
     created = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    fm = {"type": "project", "status": "active", "created": created}
+    kind = (kind or "").strip()
+    fm: dict = {"type": "project", "status": "active", "created": created}
+    if kind:
+        fm["kind"] = kind
     _atomic_write(path, _render(fm, ""))
-    return ProjectEntry(name=name, status="active", created=created, body="")
+    return ProjectEntry(name=name, status="active", created=created, body="", kind=kind)
 
 
 def set_project_status(vault_root: Path, name: str, status: str) -> None:

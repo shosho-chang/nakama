@@ -1,0 +1,223 @@
+"""Tests for shared.project_templates — 建立時套樣板 + 由任務推導的進度軌。
+
+修修 2026-09-10：「建立 project 的時候可以有地方讓我選擇是哪一種 project…
+在成立這個 project 的同時，也能把它相對應的任務先全部建起來。」
+"""
+
+from __future__ import annotations
+
+import io
+from pathlib import Path
+
+import pytest
+import yaml
+
+from shared.project_index import ProjectError, find_project
+from shared.project_templates import (
+    TemplateError,
+    create_project_with_template,
+    find_template,
+    kind_label,
+    load_templates,
+    stage_states,
+    unstaged,
+)
+from shared.weekly_indexer import WeeklyIndexer
+
+TEMPLATES = """
+templates:
+  podcast:
+    label: Podcast · 訪談集
+    stages:
+      - { name: 訪綱撰寫, pomodoros: 3 }
+      - { name: 節目錄製, pomodoros: 4 }
+      - { name: 後製與上架, pomodoros: 8 }
+  bare:
+    label: 只有名字的樣板
+    stages: [第一關, 第二關]
+"""
+
+
+@pytest.fixture
+def vault(tmp_path: Path, monkeypatch) -> Path:
+    cfg = tmp_path / "project-templates.yaml"
+    io.open(cfg, "w", encoding="utf-8", newline="\n").write(TEMPLATES)
+    monkeypatch.setenv("NAKAMA_PROJECT_TEMPLATES", str(cfg))
+    (tmp_path / "Projects").mkdir()
+    (tmp_path / "TaskNotes" / "Tasks").mkdir(parents=True)
+    return tmp_path
+
+
+def _fm(path: Path) -> dict:
+    return yaml.safe_load(path.read_text(encoding="utf-8").split("---")[1])
+
+
+class TestLoadTemplates:
+    def test_parses_both_stage_shapes(self, vault: Path):
+        tpl = find_template("podcast")
+        assert tpl.label == "Podcast · 訪談集"
+        assert [s.name for s in tpl.stages] == ["訪綱撰寫", "節目錄製", "後製與上架"]
+        assert [s.pomodoros for s in tpl.stages] == [3, 4, 8]
+        # a bare string stage is legal and defaults its estimate
+        bare = find_template("bare")
+        assert [s.name for s in bare.stages] == ["第一關", "第二關"]
+        assert bare.stages[0].pomodoros == 4
+
+    def test_unknown_kind_is_none(self, vault: Path):
+        assert find_template("nope") is None
+        assert find_template("") is None
+
+    def test_missing_file_degrades_to_empty(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setenv("NAKAMA_PROJECT_TEMPLATES", str(tmp_path / "gone.yaml"))
+        assert load_templates() == {}
+
+    def test_kind_label_falls_back_to_the_raw_key(self, vault: Path):
+        """A project keeps working after its template is deleted from the YAML."""
+        assert kind_label("podcast") == "Podcast · 訪談集"
+        assert kind_label("retired-kind") == "retired-kind"
+
+
+class TestCreateFromTemplate:
+    def test_creates_stub_plus_every_stage_task(self, vault: Path):
+        entry, paths = create_project_with_template(vault, "【Pod】蘇予昕", "podcast")
+        assert entry.kind == "podcast"
+        assert _fm(vault / "Projects" / "【Pod】蘇予昕.md")["kind"] == "podcast"
+        assert [p.name for p in paths] == [
+            "【Pod】蘇予昕 - 訪綱撰寫.md",
+            "【Pod】蘇予昕 - 節目錄製.md",
+            "【Pod】蘇予昕 - 後製與上架.md",
+        ]
+        fm = _fm(paths[0])
+        assert fm["stage"] == "訪綱撰寫"
+        assert fm["預估🍅"] == 3
+        assert fm["projects"] == ["[[【Pod】蘇予昕]]"]
+
+    def test_no_kind_creates_a_bare_project(self, vault: Path):
+        entry, paths = create_project_with_template(vault, "自由專案", "")
+        assert entry.kind == ""
+        assert paths == []
+        assert "kind" not in _fm(vault / "Projects" / "自由專案.md")
+
+    def test_unknown_kind_raises(self, vault: Path):
+        with pytest.raises(TemplateError):
+            create_project_with_template(vault, "X", "nope")
+        assert find_project(vault, "X") is None
+
+    def test_task_collision_writes_nothing_at_all(self, vault: Path):
+        """A clash on stage 3 must not leave a half-built project behind."""
+        (vault / "TaskNotes" / "Tasks" / "【Pod】A - 後製與上架.md").write_text(
+            "---\ntitle: 佔位\n---\n", encoding="utf-8"
+        )
+        with pytest.raises(TemplateError, match="已存在"):
+            create_project_with_template(vault, "【Pod】A", "podcast")
+        assert find_project(vault, "【Pod】A") is None
+        assert not (vault / "TaskNotes" / "Tasks" / "【Pod】A - 訪綱撰寫.md").exists()
+
+    def test_invalid_name_still_raises_project_error(self, vault: Path):
+        with pytest.raises(ProjectError):
+            create_project_with_template(vault, "[Pod] 壞名字", "podcast")
+
+
+class TestStageStates:
+    """The rail is DERIVED — there is no tickable stage. These pin that."""
+
+    def _project(self, vault: Path):
+        create_project_with_template(vault, "P", "podcast")
+        return find_project(vault, "P")
+
+    def _mark_done(self, vault: Path, basename: str):
+        p = vault / "TaskNotes" / "Tasks" / f"{basename}.md"
+        raw = p.read_text(encoding="utf-8")
+        fm, body = raw.split("---")[1], "---".join(raw.split("---")[2:])
+        d = yaml.safe_load(fm)
+        d["status"] = "done"
+        p.write_text(
+            "---\n" + yaml.dump(d, allow_unicode=True, sort_keys=False, width=10**9) + "---" + body,
+            encoding="utf-8",
+        )
+
+    def test_first_stage_is_now_when_nothing_done(self, vault: Path):
+        entry = self._project(vault)
+        tasks = WeeklyIndexer(vault).read_tasks()
+        states = stage_states(entry, tasks, {})
+        assert [s.name for s in states] == ["訪綱撰寫", "節目錄製", "後製與上架"]
+        assert [s.is_now for s in states] == [True, False, False]
+        assert not any(s.is_done for s in states)
+
+    def test_now_advances_as_tasks_complete(self, vault: Path):
+        entry = self._project(vault)
+        self._mark_done(vault, "P - 訪綱撰寫")
+        states = stage_states(entry, WeeklyIndexer(vault).read_tasks(), {})
+        assert states[0].is_done and not states[0].is_now
+        assert states[1].is_now
+
+    def test_all_done_marks_no_current_stage(self, vault: Path):
+        entry = self._project(vault)
+        for n in ("訪綱撰寫", "節目錄製", "後製與上架"):
+            self._mark_done(vault, f"P - {n}")
+        states = stage_states(entry, WeeklyIndexer(vault).read_tasks(), {})
+        assert all(s.is_done for s in states)
+        assert not any(s.is_now for s in states)
+
+    def test_empty_stage_is_not_done(self, vault: Path):
+        """0/0 means 'nothing here yet', never 'finished' — otherwise a stage
+        whose tasks were deleted would silently read as complete."""
+        entry = self._project(vault)
+        (vault / "TaskNotes" / "Tasks" / "P - 節目錄製.md").unlink()
+        states = stage_states(entry, WeeklyIndexer(vault).read_tasks(), {})
+        assert states[1].total == 0
+        assert states[1].is_done is False
+
+    def test_actual_pomodoros_roll_up_per_stage(self, vault: Path):
+        entry = self._project(vault)
+        tasks = WeeklyIndexer(vault).read_tasks()
+        states = stage_states(entry, tasks, {"P - 訪綱撰寫": 4})
+        assert states[0].actual == 4
+        assert states[0].est == 3
+
+    def test_no_kind_means_no_rail(self, vault: Path):
+        create_project_with_template(vault, "自由專案", "")
+        entry = find_project(vault, "自由專案")
+        assert stage_states(entry, WeeklyIndexer(vault).read_tasks(), {}) == []
+
+
+class TestUnstaged:
+    def test_tasks_outside_the_template_are_returned(self, vault: Path):
+        create_project_with_template(vault, "P", "podcast")
+        (vault / "TaskNotes" / "Tasks" / "P - 社群貼文.md").write_text(
+            '---\ntitle: P - 社群貼文\nstatus: to-do\nprojects: ["[[P]]"]\n---\n', encoding="utf-8"
+        )
+        entry = find_project(vault, "P")
+        tasks = [t for t in WeeklyIndexer(vault).read_tasks() if t.project == "P"]
+        assert [t.slug for t in unstaged(entry, tasks)] == ["P - 社群貼文"]
+
+    def test_stage_removed_from_yaml_falls_back_to_unstaged(
+        self, vault: Path, monkeypatch, tmp_path
+    ):
+        create_project_with_template(vault, "P", "podcast")
+        trimmed = tmp_path / "trimmed.yaml"
+        io.open(trimmed, "w", encoding="utf-8", newline="\n").write(
+            "templates:\n  podcast:\n    label: P\n    stages: [訪綱撰寫]\n"
+        )
+        monkeypatch.setenv("NAKAMA_PROJECT_TEMPLATES", str(trimmed))
+        entry = find_project(vault, "P")
+        tasks = [t for t in WeeklyIndexer(vault).read_tasks() if t.project == "P"]
+        assert sorted(t.stage for t in unstaged(entry, tasks)) == ["後製與上架", "節目錄製"]
+
+    def test_no_template_returns_everything(self, vault: Path):
+        create_project_with_template(vault, "自由專案", "")
+        (vault / "TaskNotes" / "Tasks" / "自由專案 - 隨手事.md").write_text(
+            '---\ntitle: 自由專案 - 隨手事\nstatus: to-do\nprojects: ["[[自由專案]]"]\n---\n',
+            encoding="utf-8",
+        )
+        entry = find_project(vault, "自由專案")
+        tasks = [t for t in WeeklyIndexer(vault).read_tasks() if t.project == "自由專案"]
+        assert len(unstaged(entry, tasks)) == 1
+
+
+def test_shipped_yaml_is_valid():
+    """The file we actually ship must parse and define the kinds 修修 asked for."""
+    tpls = load_templates()
+    assert set(tpls) >= {"podcast", "youtube-book", "youtube-health"}
+    assert [s.name for s in tpls["podcast"].stages] == ["訪綱撰寫", "節目錄製", "後製與上架"]
+    assert [s.name for s in tpls["youtube-health"].stages] == ["前期研究", "拍攝", "後製", "上架"]

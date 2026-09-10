@@ -280,6 +280,7 @@ class WeeklyTask:
     weekly_priority: str = ""  # week file_key this task is a top-3 priority for ("" = none)
     calendar_event_id: str = ""  # set once projected to Google Calendar (41b); "" = not linked
     priority: str = "normal"  # task priority frontmatter: low | normal | high (TaskNotes)
+    stage: str = ""  # project-template stage this task belongs to ("" = 非樣板任務)
 
     def planned_in(self, wk: WeekRef) -> int:
         if self.plan:
@@ -600,6 +601,8 @@ class WeeklyIndexer:
         wp_raw = fm.get("weekly_priority")
         weekly_priority = _as_date(wp_raw).isoformat() if _as_date(wp_raw) else ""
 
+        stage = str(fm.get("stage") or "").strip()
+
         cal_event_id = str(fm.get("calendar_event_id") or "").strip()
 
         # ADR-041 v3 dual-read (V4): a legacy task-level projection (scheduled +
@@ -660,6 +663,7 @@ class WeeklyIndexer:
             weekly_priority=weekly_priority,
             calendar_event_id=cal_event_id,
             priority=str(fm.get("priority") or "normal").strip().lower() or "normal",
+            stage=stage,
         )
 
     # -- habits --

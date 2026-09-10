@@ -144,6 +144,7 @@ def create_task(
     category: str = "work",
     scheduled: str | None = None,
     notes: str = "",
+    stage: str | None = None,
 ) -> Path:
     """Create a new TaskNotes-plugin-compatible task .md.
 
@@ -185,6 +186,11 @@ def create_task(
     )
     if scheduled:
         fm["scheduled"] = scheduled
+    if stage:
+        # project-templates.yaml stage this task fills; the dashboard rail groups
+        # by it. Plain label — the ORDER always comes from the template, so
+        # reordering stages in YAML re-sorts existing projects for free.
+        fm["stage"] = unicodedata.normalize("NFC", stage).strip()
     if notes:
         body = notes
 

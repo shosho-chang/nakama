@@ -58,3 +58,27 @@ PR #1234 接通 reassign）是 Weekly Dashboard 實際在用的活功能。
 - `/projects` namespace 清空；`/bridge/projects` 語意全換
 - ADR-033 縮圖 pipeline 的 project-tab 入口消失；縮圖產製走 packaging skill（現況如此）
 - 未來要重做「單件產出工作區」時，從 packaging line 長出來，不要復活本次退役的程式碼
+
+## Amendment 2026-09-10 — Project = 任務的集合；建立時可套樣板
+
+修修：「我不知道你為什麼要把 project 跟長期戰線弄得那麼複雜，project 就是長期戰線…
+你不要管一個 project 會執行多久，有可能執行一年，裡面也是有很多任務；它就算只執行一天，
+裡面一樣會有很多任務，所以 project 就是任務的一個集合。」
+
+原文 Decision §1 寫「**不是**單件產出（一支影片／一篇文）」——那句話是多餘的，而且會誤導：
+一集 podcast 同樣是「一組跨週任務」，完全符合本 ADR 的容器語意。**跨度與粒度都不進模型**，
+定義收斂成一句：Project 是一組任務的集合。CONTEXT-MAP glossary 已同步修正。
+
+隨之落地的三件事（不改上面任何一條退役決定）：
+
+1. **樣板** — `config/project-templates.yaml`（podcast / youtube-book / youtube-health），
+   建立專案時選 `kind` 就一次把該類型的任務全部開好；任務帶 `stage:`，**順序永遠由 YAML
+   決定**，不存進任務，所以改樣板順序既有專案會自己跟上。刪掉樣板不會弄壞既有專案。
+2. **Dashboard** — 詳情頁改成 dashboard：完成進度 / 剩餘工作（🍅→小時）/ 預計完成
+   （已排程任務的最後一天）/ 未排時間，外加三個 view（列表・看板・時程）。
+3. **進度軌** — 樣板專案顯示階段軌，**狀態完全由任務完成度推導，沒有任何可手動勾的階段**。
+   這是刻意不重蹈 ADR-031 的覆轍：那七道工序死在「手動勾、跟現實脫節」，推導出來的軌道
+   在結構上就不可能漂移。
+
+還有 `POST /bridge/projects/{name}/attach`：複選既有未完成任務批次歸入，逐筆走既有的
+`reassign_task_project`（檔名前綴 + `projects:` + 行事曆標題一起改），不另造 bulk-only 路徑。

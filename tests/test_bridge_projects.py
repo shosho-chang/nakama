@@ -125,9 +125,11 @@ class TestDetail:
         _write_task(tmp_path, "自由艦隊 - 舊任務")  # legacy: prefix only
         _write_task(tmp_path, "別的事")
         html = client.get("/bridge/projects/自由艦隊").text
-        assert "社群文章" in html
-        assert "舊任務" in html
-        assert "別的事" not in html
+        listing = html.split('data-pane="list"', 1)[1].split("pjd-attach", 1)[0]
+        assert "社群文章" in listing
+        assert "舊任務" in listing
+        # non-members stay out of the task list (they DO appear in the attach picker)
+        assert "別的事" not in listing
         assert "百人社群" in html  # body notes rendered
         # task rows deep-link into the weekly task page
         assert "/bridge/weekly/task/" in html
@@ -171,6 +173,175 @@ class TestStatusToggle:
         r = client.post(
             "/bridge/projects/不存在/status",
             data={"status": "archived"},
+            follow_redirects=False,
+        )
+        assert r.headers["location"] == "/bridge/projects?err=missing"
+
+
+TEMPLATE_YAML = """
+templates:
+  podcast:
+    label: Podcast · 訪談集
+    stages:
+      - { name: 訪綱撰寫, pomodoros: 3 }
+      - { name: 節目錄製, pomodoros: 4 }
+"""
+
+
+@pytest.fixture
+def tclient(monkeypatch, tmp_path):
+    """Same harness as ``client`` plus a controlled project-templates.yaml."""
+    cfg = tmp_path / "project-templates.yaml"
+    cfg.write_text(TEMPLATE_YAML, encoding="utf-8")
+    monkeypatch.setenv("NAKAMA_PROJECT_TEMPLATES", str(cfg))
+    monkeypatch.delenv("WEB_PASSWORD", raising=False)
+    monkeypatch.delenv("WEB_SECRET", raising=False)
+    monkeypatch.setenv("DISABLE_ROBIN", "1")
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    monkeypatch.setenv("NAKAMA_DOC_INDEX_DB_PATH", str(tmp_path / "doc_index.db"))
+
+    import thousand_sunny.app as app_module
+    import thousand_sunny.auth as auth_module
+    import thousand_sunny.routers.bridge_projects as bp_module
+
+    importlib.reload(auth_module)
+    importlib.reload(bp_module)
+    importlib.reload(app_module)
+    return TestClient(app_module.app)
+
+
+class TestCreateWithTemplate:
+    """修修 2026-09-10: 建立時選類型 → 樣板任務一次開好。"""
+
+    def test_picker_lists_the_kinds(self, tclient):
+        html = tclient.get("/bridge/projects").text
+        assert 'name="kind"' in html
+        assert 'value="podcast"' in html
+        assert "Podcast · 訪談集" in html
+        assert "空專案" in html  # the no-template option
+
+    def test_creates_every_stage_task(self, tclient, tmp_path):
+        r = tclient.post(
+            "/bridge/projects/new",
+            data={"name": "【Pod】蘇予昕", "kind": "podcast"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        tasks = tmp_path / "TaskNotes" / "Tasks"
+        assert (tasks / "【Pod】蘇予昕 - 訪綱撰寫.md").is_file()
+        assert (tasks / "【Pod】蘇予昕 - 節目錄製.md").is_file()
+        fm = yaml.safe_load(
+            (tmp_path / "Projects" / "【Pod】蘇予昕.md").read_text(encoding="utf-8").split("---")[1]
+        )
+        assert fm["kind"] == "podcast"
+
+    def test_blank_kind_creates_no_tasks(self, tclient, tmp_path):
+        tclient.post("/bridge/projects/new", data={"name": "自由專案", "kind": ""})
+        assert not list((tmp_path / "TaskNotes" / "Tasks").glob("自由專案*"))
+
+    def test_unknown_kind_errs_without_writing(self, tclient, tmp_path):
+        r = tclient.post(
+            "/bridge/projects/new", data={"name": "X", "kind": "nope"}, follow_redirects=False
+        )
+        assert r.headers["location"] == "/bridge/projects?err=template"
+        assert not (tmp_path / "Projects" / "X.md").exists()
+
+    def test_rail_renders_derived_state(self, tclient, tmp_path):
+        tclient.post("/bridge/projects/new", data={"name": "P", "kind": "podcast"})
+        # finish stage 1 only
+        p = tmp_path / "TaskNotes" / "Tasks" / "P - 訪綱撰寫.md"
+        p.write_text(
+            p.read_text(encoding="utf-8").replace("status: to-do", "status: done"), "utf-8"
+        )
+        html = tclient.get("/bridge/projects/P").text
+        rail = html.split('class="pjd-rail"', 1)[1].split("</ol>", 1)[0]
+        assert "is-done" in rail and "is-now" in rail
+        assert "訪綱撰寫" in rail and "節目錄製" in rail
+
+
+class TestDashboardReadouts:
+    """還剩多少 / 還差多久 — every figure computed on read."""
+
+    def test_remaining_eta_and_unscheduled(self, tclient, tmp_path):
+        _write_project(tmp_path, "P")
+        _write_task(tmp_path, "P - 已排的", project="P", est=6)
+        _write_task(tmp_path, "P - 沒排的", project="P", est=4)
+        sched = tmp_path / "TaskNotes" / "Tasks" / "P - 已排的.md"
+        sched.write_text(
+            sched.read_text(encoding="utf-8").replace(
+                "timeEntries: []", "plan:\n- {date: 2099-01-05, pomodoros: 6}\ntimeEntries: []"
+            ),
+            encoding="utf-8",
+        )
+        html = tclient.get("/bridge/projects/P").text
+        stats = html.split('class="pjd-stats"', 1)[1].split("</div>\n    </div>", 1)[0]
+        assert "10" in stats  # 6 + 4 remaining 🍅
+        assert "01-05" in stats  # ETA = last planned day
+        assert "未排時間" in stats
+
+    def test_three_views_all_render(self, tclient, tmp_path):
+        _write_project(tmp_path, "P")
+        _write_task(tmp_path, "P - 任務", project="P")
+        html = tclient.get("/bridge/projects/P").text
+        for pane in ("list", "kanban", "sched"):
+            assert f'data-pane="{pane}"' in html
+        assert "待辦" in html and "進行中" in html and "完成" in html
+
+
+class TestAttachTasks:
+    """複選加入既有任務 — 走既有 reassign 路徑，不另造 bulk-only 邏輯。"""
+
+    def test_attaches_multiple_including_one_owned_elsewhere(self, tclient, tmp_path):
+        _write_project(tmp_path, "目標")
+        _write_project(tmp_path, "別條線")
+        _write_task(tmp_path, "散裝任務")
+        _write_task(tmp_path, "別條線 - 借調任務", project="別條線")
+        r = tclient.post(
+            "/bridge/projects/目標/attach",
+            data={"task": ["散裝任務", "別條線 - 借調任務"]},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert "saved=attached&n=2" in r.headers["location"]
+        tasks = tmp_path / "TaskNotes" / "Tasks"
+        assert (tasks / "目標 - 散裝任務.md").is_file()
+        assert (tasks / "目標 - 借調任務.md").is_file()
+        fm = yaml.safe_load(
+            (tasks / "目標 - 借調任務.md").read_text(encoding="utf-8").split("---")[1]
+        )
+        assert fm["projects"] == ["[[目標]]"]
+
+    def test_no_selection_errs(self, tclient, tmp_path):
+        _write_project(tmp_path, "目標")
+        r = tclient.post("/bridge/projects/目標/attach", data={}, follow_redirects=False)
+        assert r.headers["location"].endswith("?err=attach_none")
+
+    def test_partial_failure_is_reported_not_fatal(self, tclient, tmp_path):
+        _write_project(tmp_path, "目標")
+        _write_task(tmp_path, "真的有")
+        r = tclient.post(
+            "/bridge/projects/目標/attach",
+            data={"task": ["真的有", "根本不存在"]},
+            follow_redirects=False,
+        )
+        assert "saved=attached_partial&n=1" in r.headers["location"]
+        assert (tmp_path / "TaskNotes" / "Tasks" / "目標 - 真的有.md").is_file()
+
+    def test_picker_excludes_members_and_done_tasks(self, tclient, tmp_path):
+        _write_project(tmp_path, "目標")
+        _write_task(tmp_path, "目標 - 已是成員", project="目標")
+        _write_task(tmp_path, "已完成的", done=True)
+        _write_task(tmp_path, "可以加的")
+        html = tclient.get("/bridge/projects/目標").text
+        picker = html.split('class="pjd-attach-list"', 1)[1].split("</div>", 1)[0]
+        assert "可以加的" in picker
+        assert "已完成的" not in picker
+        assert "已是成員" not in picker
+
+    def test_missing_project_redirects(self, tclient, tmp_path):
+        r = tclient.post(
+            "/bridge/projects/不存在/attach",
+            data={"task": ["x"]},
             follow_redirects=False,
         )
         assert r.headers["location"] == "/bridge/projects?err=missing"
