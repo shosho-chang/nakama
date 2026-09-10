@@ -44,8 +44,13 @@ from agents.brook.script_video.subtitle_handoff import (  # noqa: E402
     Stage5SubtitleSelection,
 )
 from shared.resolve_append import append_checked  # noqa: E402
+from shared.subtitle_corrections import (  # noqa: E402
+    apply_corrections_text,
+    open_for_release,
+)
 from shared.subtitle_finalize import (  # noqa: E402
     finalize_srt_file,
+    parse_srt_text,
     strip_fillers_srt_file,
 )
 
@@ -213,6 +218,23 @@ def _versioned_srt(
         # Hash-bound release 不跑完整定版（標點／空隙屬顯示層處理，會默默改動
         # 已審核文字）。但語助詞清理是修修 2026-09-03 的明示編輯決策，套用並
         # 報數；release.srt 本體不動，lineage 仍綁來源 release identity。
+        #
+        # 人工勘誤（修修 2026-09-11 定的流程）走同一條顯示層，且**先於**語助詞
+        # 清理：勘誤單上的 cue 編號與原文都是對著 release.srt 抄的，清理會刪 cue
+        # 也會改字，跑完就對不上了。沒有勘誤檔是常態，不是錯誤。
+        corrections = open_for_release(episode_dir, release_srt=src)
+        if corrections is not None:
+            corrected, applied = apply_corrections_text(
+                src.read_text(encoding="utf-8-sig"), corrections
+            )
+            dst.write_text(corrected, encoding="utf-8")
+            src = dst
+            logger.info(
+                "人工勘誤：套用 %d 筆（具名 %s，release %s）",
+                applied["corrections_applied"],
+                corrections.attested_by,
+                corrections.release_srt_sha256[:12],
+            )
         stats = strip_fillers_srt_file(src, dst)
         logger.info(
             "Hash-bound 字幕：語助詞清理 %d → %d 句（整條刪 %d、刪字保句 %d）",
@@ -402,6 +424,11 @@ def build_project(
     if info["width"] and info["height"]:
         project.SetSetting("timelineResolutionWidth", str(info["width"]))
         project.SetSetting("timelineResolutionHeight", str(info["height"]))
+    # 素材比例跟 timeline 不合時，用「填滿並裁切」而不是預設的「縮到能放進去」。
+    # Envato 的 stock 常是 DCI 4K（4096×2160，1.896:1），放進 16:9 timeline 用
+    # scaleToFit 就會上下留黑邊——修修 2026-09-08：「第一個的 resolution 不對，
+    # 上下都有沒蓋滿畫面的部分」。DCI→16:9 只要左右各裁約 3%，不會傷到構圖。
+    project.SetSetting("timelineInputResMismatchBehavior", "centerCrop")
 
     mp = project.GetMediaPool()
     root = mp.GetRootFolder()
@@ -512,6 +539,37 @@ def build_project(
     return {**plan, "status": "created", "subtitle_on_timeline": subtitle_ok}
 
 
+def _refuse_if_hand_edited(episode_dir: Path, timeline) -> None:
+    """timeline 上的字幕被人改過就不准刷新——刷新是整軌清空重寫。
+
+    修修 2026-09-11 定的流程：勘誤套完之後，他在 Resolve 上從頭到尾校對，
+    抓到錯**直接在 timeline 上改並儲存**，那份才是 Editorial Master 的來源。
+    在那之後再跑一次 refresh，他的校對會被無聲洗掉——而且洗掉之後看起來
+    一切正常，因為字幕軌還是滿的。所以這裡寧可擋死。
+
+    判準是拿 timeline 現況比對**我們最後寫進去的那份顯示副本**：兩邊都只看
+    文字序列（Resolve 的 subtitle item 名稱就是該句文字）。相符＝還沒人動過。
+    """
+    copies = sorted((episode_dir / RESOLVE_SUBS_DIR).glob("transcript_r*.srt"))
+    if not copies:
+        return
+    latest = copies[-1]
+    expected = [text for _, _, text in parse_srt_text(latest.read_text(encoding="utf-8-sig"))]
+    live = [
+        (item.GetName() or "").strip()
+        for item in (timeline.GetItemListInTrack("subtitle", 1) or [])
+    ]
+    if not live or live == [text.strip() for text in expected]:
+        return
+    raise SystemExit(
+        "timeline 的字幕已經被人工修改過，refresh 會整軌清空重寫、把那些修改洗掉。\n"
+        f"  最後寫入的顯示副本：{latest.name}（{len(expected)} 句）\n"
+        f"  timeline 現況      ：{len(live)} 句\n"
+        "如果那些修改就是要保留的（Editorial Master 校對），不要刷新——直接 seal。\n"
+        "如果確定要丟掉重來，先手動刪掉字幕軌內容再跑。"
+    )
+
+
 def refresh_subtitles(
     episode_dir: Path,
     *,
@@ -549,6 +607,7 @@ def refresh_subtitles(
         subtitle=subtitle,
     )
     project.SetCurrentTimeline(timeline)
+    _refuse_if_hand_edited(episode_dir, timeline)
 
     # 清字幕「內容」但**保留軌**——subtitle 軌樣式（如 Shosho YT preset）
     # 掛在軌上，刪軌 = 洗掉樣式
