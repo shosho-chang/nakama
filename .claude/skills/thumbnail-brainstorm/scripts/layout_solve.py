@@ -43,6 +43,14 @@ EYE_SOFT_PX = 12.0
 HEAD_TOL_PX = 12  # 舊判準，僅供參考輸出
 FACE_BOOST_TARGET = 1.05  # TF-duo 定案：guest 臉（眼-下巴）= host × 1.05
 FACE_RATIO_TOL = 0.03
+#: 表情版與基準對的裁切框允許差幾 px。同一組比例裁切框在不同批次會有捨入差：
+#: 20260901 蘇予昕 的 laughing/excited/explaining（2026-09-09 補抽）是 653x714，
+#: serious/surprised/thoughtful（2026-08-05）是 653x715——manifest 自己記著兩批
+#: 「沿用完全相同的裁切框」，1px 是捨入不是換框（0.14%，改不動 scale）。
+#: 嚴格相等會讓表情版繼承不到 scale，退回 per-photo 重解，正是教訓 19 要防的事
+#: （實測害 punch-L02 r2 比已核准的 punch-L04 大 11 個百分點、兩顆頭被切頂）。
+#: 真的換過框（幾十 px 以上）仍然 fail loud。
+CROP_BOX_TOL_PX = 2
 
 
 def _landmarks(manifest: dict, cutout: str) -> tuple[dict, float]:
@@ -209,7 +217,9 @@ def solve_duo(
         if actual[role] != ref_name:
             lm_a, ch_a = _landmarks(manifest, actual[role])
             ref_lm, ref_ch = lms[role]
-            if (ch_a, lm_a.get("cutout_w")) != (ref_ch, ref_lm.get("cutout_w")):
+            dw = abs(int(lm_a.get("cutout_w", 0)) - int(ref_lm.get("cutout_w", 0)))
+            dh = abs(float(ch_a) - float(ref_ch))
+            if dw > CROP_BOX_TOL_PX or dh > CROP_BOX_TOL_PX:
                 raise SystemExit(
                     f"{actual[role]} 尺寸 {lm_a.get('cutout_w')}x{ch_a} ≠ 基準 "
                     f"{ref_lm.get('cutout_w')}x{ref_ch}——裁切框不同，scale 不可鎖定"

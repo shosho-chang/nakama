@@ -102,6 +102,8 @@ python -c "from shared.thumbnail_playbook import format_playbook_index_for_promp
    相符的 JP-*（index 已附 `why_they_pair` 佐證）。有 → 用它的 thumb archetype。
 2. 沒有相符 JP → 依 thumb archetype 的 when_to_use/brand-fit 自配一個
    （S/A 優先，D/F 禁用），run log 記「無 JP 佐證，自配理由」。
+   `joint_pairing_id` 寫 `self-pair-<標題 archetype>-<封面 archetype>`，**不是 `null`**
+   （schema 要求 `str`）。
 3. 三個封面在**表情／大字／裝飾**軸上拉開（例：驚訝大特寫 vs 解釋+圖示 vs
    認真+數字大字）。同 archetype 出現兩次即違反 diversity — 換掉一個。
 4. 每個 idea 定案三件事：`thumb_archetype_id`、**大字**（3–7 字 hook 短語，
@@ -426,7 +428,13 @@ Agent **永遠不得自動 Approve**。失敗顯示 error 且不自動重試；�
 ## Step 5 — 回填 + 驗證 + 雙落點
 
 寫 `specs.json`（3 筆：title_rank／thumbnail 本地路徑／thumb_archetype_id／
-joint_pairing_id／host_cutout／guest_cutout），然後：
+joint_pairing_id／host_cutout／guest_cutout／render_spec／center_provenance），然後：
+
+⚠️ **`joint_pairing_id` 是 `str`，不可以填 `null`**（`PackagesFileV1` 會 422）。
+沒有現成 JP 佐證時照既有慣例寫成描述字串——看 `packages.json` 實例：
+長片自配是 `self-pair-<標題 archetype>-<封面 archetype>`（例 `self-pair-T-A10-T-V7`），
+全集 N1 版式是 `N1-fixed-layout-no-jp-match`。Step 1 那句「沒有就填 `null`」
+是錯的（2026-09-10 訂正，實際 attach 時撞到）。
 
 ```bash
 python .claude/skills/thumbnail-brainstorm/scripts/attach_packages.py \
