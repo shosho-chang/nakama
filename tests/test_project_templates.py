@@ -113,6 +113,22 @@ class TestCreateFromTemplate:
         assert find_project(vault, "【Pod】A") is None
         assert not (vault / "TaskNotes" / "Tasks" / "【Pod】A - 訪綱撰寫.md").exists()
 
+    def test_duplicate_stage_names_are_refused_before_any_write(
+        self, vault: Path, tmp_path: Path, monkeypatch
+    ):
+        """Two stages sharing a name map to ONE filename — the second write would
+        fail with the stub already on disk (review 2026-09-10)."""
+        dup = tmp_path / "dup.yaml"
+        dup.write_text(
+            "templates:\n  dup:\n    label: D\n    stages: [同名, 別的, 同名]\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("NAKAMA_PROJECT_TEMPLATES", str(dup))
+        with pytest.raises(TemplateError, match="重複"):
+            create_project_with_template(vault, "X", "dup")
+        assert find_project(vault, "X") is None
+        assert not list((vault / "TaskNotes" / "Tasks").glob("X*"))
+
     def test_invalid_name_still_raises_project_error(self, vault: Path):
         with pytest.raises(ProjectError):
             create_project_with_template(vault, "[Pod] 壞名字", "podcast")
@@ -174,6 +190,21 @@ class TestStageStates:
         states = stage_states(entry, tasks, {"P - 訪綱撰寫": 4})
         assert states[0].actual == 4
         assert states[0].est == 3
+
+    def test_stage_est_never_substitutes_the_template_default(self, vault: Path):
+        """A task with no 預估🍅 really is 0. Falling back to the template's
+        default made the rail disagree with the page's own est_total, which is
+        worse than an honest 0 (review 2026-09-10)."""
+        entry = self._project(vault)
+        p = vault / "TaskNotes" / "Tasks" / "P - 訪綱撰寫.md"
+        p.write_text(
+            '---\ntitle: P - 訪綱撰寫\nstatus: to-do\nstage: 訪綱撰寫\nprojects: ["[[P]]"]\n---\n',
+            encoding="utf-8",
+        )
+        tasks = WeeklyIndexer(vault).read_tasks()
+        states = stage_states(entry, tasks, {})
+        assert states[0].est == 0  # NOT the template's 3
+        assert states[0].est == sum(t.est_pomodoros for t in tasks if t.stage == "訪綱撰寫")
 
     def test_no_kind_means_no_rail(self, vault: Path):
         create_project_with_template(vault, "自由專案", "")

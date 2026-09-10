@@ -141,6 +141,16 @@ def create_project_with_template(vault_root: Path, raw_name: str, kind: str = ""
 
     name = normalize_name(raw_name)  # ProjectError propagates with its own code
     if template is not None:
+        seen: set[str] = set()
+        dupes = sorted({s.name for s in template.stages if s.name in seen or seen.add(s.name)})
+        if dupes:
+            # Two stages sharing a name map to ONE filename, so the second write
+            # would fail after the stub and earlier tasks are already on disk —
+            # exactly the half-built state this pre-flight exists to prevent.
+            raise TemplateError(
+                f"樣板「{kind}」有重複的階段名稱：{'、'.join(dupes)}。"
+                f"請在 config/project-templates.yaml 改成不同名稱。"
+            )
         clashes = [
             s.name
             for s in template.stages
@@ -197,7 +207,10 @@ def stage_states(entry: "ProjectEntry", tasks: list["WeeklyTask"], actual: dict[
                 order=i,
                 total=len(members),
                 done=done,
-                est=sum(t.est_pomodoros for t in members) or stage.pomodoros * len(members),
+                # Raw sum, never the template default: the header readout sums the
+                # same raw values, and two different estimates on one dashboard is
+                # worse than an honest 0 (review 2026-09-10).
+                est=sum(t.est_pomodoros for t in members),
                 actual=sum(actual.get(t.slug, 0) for t in members),
                 is_now=is_now,
             )

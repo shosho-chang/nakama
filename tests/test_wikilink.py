@@ -35,13 +35,28 @@ class TestStripWikilink:
         [
             ("[[[Pod] 蘇予昕]]", "[Pod] 蘇予昕"),  # THE regression
             ("[[前綴[中]後綴]]", "前綴[中]後綴"),
-            ("[[結尾有括號]]]]", "結尾有括號]]"),  # exactly two off each end
-            ("[[[[雙層]]]]", "[[雙層]]"),
+            # A trailing "]]" makes this ambiguous; prefer the well-formed link
+            # inside it — a name ending in "]]" cannot be created any more.
+            ("[[結尾有括號]]]]", "結尾有括號"),
         ],
     )
     def test_names_containing_brackets(self, raw: str, want: str):
         """Unwrapping takes exactly two characters off each end — never a
         character class, which is what ate the leading ``[`` before."""
+        assert strip_wikilink(raw) == want
+
+    @pytest.mark.parametrize(
+        ("raw", "want"),
+        [
+            # Two links in one value: the outer brackets are NOT one link's
+            # boundaries, so fall back to the first embedded link (review
+            # 2026-09-10 — the naive unwrap returned "任務A]] 跟 [[任務B").
+            ("[[任務A]] 跟 [[任務B]]", "任務A"),
+            ("[[任務A]]、[[任務B]]、[[任務C]]", "任務A"),
+            ("[[[[雙層]]]]", "雙層"),
+        ],
+    )
+    def test_value_holding_more_than_one_link(self, raw: str, want: str):
         assert strip_wikilink(raw) == want
 
     @pytest.mark.parametrize("raw", ["", "   ", None, 123, [], {}, "[[]]", "[[  ]]"])

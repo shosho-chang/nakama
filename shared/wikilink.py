@@ -43,9 +43,16 @@ def strip_wikilink(value: object) -> str:
     if not text:
         return ""
 
+    inner: str | None = None
     if len(text) >= 4 and text.startswith("[[") and text.endswith("]]"):
-        inner = text[2:-2]
-    else:
+        candidate = text[2:-2]
+        # A second ``]]`` inside means the value holds MORE than one link
+        # ("[[任務A]] 跟 [[任務B]]" — hand-written 三大要事 do this), so the
+        # outermost brackets are not one link's boundaries. Fall through to the
+        # embedded search and take the first link, as the old parser did.
+        if "]]" not in candidate:
+            inner = candidate
+    if inner is None:
         m = _EMBEDDED_RE.search(text)
         inner = m.group(1) if m else text
 

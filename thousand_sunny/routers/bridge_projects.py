@@ -199,7 +199,9 @@ def _task_view(t: WeeklyTask, actual: dict[str, int], project: str) -> dict:
     }
 
 
-def _schedule_rows(members: list[WeeklyTask], views: dict[str, dict]) -> list[dict]:
+def _schedule_rows(
+    members: list[WeeklyTask], views: dict[str, dict]
+) -> tuple[list[dict], list[dict]]:
     """Day-keyed rows for the 時程 view: one row per (task, plan entry), grouped
     by date and ordered by time. Unscheduled open tasks come back as a final
     pseudo-day so they cannot quietly fall off the plan."""
@@ -252,6 +254,9 @@ def _project_view(p: ProjectEntry, members: list[WeeklyTask], actual: dict[str, 
 
     sched_rows, sched_loose = _schedule_rows(members, by_slug)
     stages = stage_states(p, members, actual)
+    # Hoisted: inside the comprehension's `if` this re-ran (and re-read the
+    # templates YAML) once per member task (review 2026-09-10).
+    loose_slugs = {t.slug for t in unstaged(p, members)}
 
     return {
         "name": p.name,
@@ -274,7 +279,7 @@ def _project_view(p: ProjectEntry, members: list[WeeklyTask], actual: dict[str, 
             }
             for s in stages
         ],
-        "loose_tasks": [v for v in ordered if v["slug"] in {t.slug for t in unstaged(p, members)}],
+        "loose_tasks": [v for v in ordered if v["slug"] in loose_slugs],
         "kanban": {
             "todo": [v for v in ordered if not v["done"] and v["status"] != "doing"],
             "doing": [v for v in ordered if not v["done"] and v["status"] == "doing"],
@@ -363,6 +368,7 @@ async def project_detail(
     err: str | None = None,
     saved: str | None = None,
     n: int = 0,
+    failed: int = 0,
     nakama_auth: str | None = Cookie(None),
 ):
     if not check_auth(nakama_auth):
@@ -390,11 +396,21 @@ async def project_detail(
     ]
     candidates.sort(key=lambda c: (bool(c["owner"]), c["name"]))
 
-    saved_msg = None
-    if saved == "attached" and n:
-        saved_msg = f"已把 {n} 個任務加入這個專案。"
-    elif saved == "attached_partial" and n:
-        saved_msg = f"部分成功：{n} 個任務加入失敗（檔名衝突或已在 Obsidian 移動），其餘已完成。"
+    # `n` = succeeded, `failed` = did not. Reported separately so an all-failed
+    # batch can never render as "部分成功" (review 2026-09-10).
+    saved_msg = error_msg_extra = None
+    if saved == "attached":
+        if n and failed:
+            saved_msg = (
+                f"已加入 {n} 個任務；{failed} 個失敗（檔名衝突或已在 Obsidian 改名／移動）。"
+            )
+        elif n:
+            saved_msg = f"已把 {n} 個任務加入這個專案。"
+        elif failed:
+            error_msg_extra = (
+                f"{failed} 個任務都沒有加入成功"
+                f"（檔名衝突或已在 Obsidian 改名／移動）——這個專案沒有變動。"
+            )
 
     return _templates.TemplateResponse(
         request,
@@ -403,7 +419,7 @@ async def project_detail(
             "p": view,
             "candidates": candidates,
             "notes_html": render_markdown(entry.body) if entry.body else "",
-            "error_msg": _ERRORS.get(err) if err else None,
+            "error_msg": (_ERRORS.get(err) if err else None) or error_msg_extra,
             "saved_msg": saved_msg,
             "asset_version": _SHOSHO_ASSET_VERSION,
         },
@@ -444,9 +460,7 @@ async def project_attach_tasks(
         except (ProjectWriteError, OSError):
             logger.exception("attach failed: %s → %s", slug, name)
             failed += 1
-    if failed:
-        return RedirectResponse(f"{back}?saved=attached_partial&n={failed}", status_code=303)
-    return RedirectResponse(f"{back}?saved=attached&n={ok}", status_code=303)
+    return RedirectResponse(f"{back}?saved=attached&n={ok}&failed={failed}", status_code=303)
 
 
 @page_router.post("/projects/{name}/status")

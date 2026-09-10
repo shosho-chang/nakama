@@ -302,7 +302,7 @@ class TestAttachTasks:
             follow_redirects=False,
         )
         assert r.status_code == 303
-        assert "saved=attached&n=2" in r.headers["location"]
+        assert "saved=attached&n=2&failed=0" in r.headers["location"]
         tasks = tmp_path / "TaskNotes" / "Tasks"
         assert (tasks / "目標 - 散裝任務.md").is_file()
         assert (tasks / "目標 - 借調任務.md").is_file()
@@ -316,7 +316,7 @@ class TestAttachTasks:
         r = tclient.post("/bridge/projects/目標/attach", data={}, follow_redirects=False)
         assert r.headers["location"].endswith("?err=attach_none")
 
-    def test_partial_failure_is_reported_not_fatal(self, tclient, tmp_path):
+    def test_partial_failure_reports_both_counts(self, tclient, tmp_path):
         _write_project(tmp_path, "目標")
         _write_task(tmp_path, "真的有")
         r = tclient.post(
@@ -324,8 +324,24 @@ class TestAttachTasks:
             data={"task": ["真的有", "根本不存在"]},
             follow_redirects=False,
         )
-        assert "saved=attached_partial&n=1" in r.headers["location"]
+        assert "saved=attached&n=1&failed=1" in r.headers["location"]
         assert (tmp_path / "TaskNotes" / "Tasks" / "目標 - 真的有.md").is_file()
+        html = tclient.get("/bridge/projects/目標?saved=attached&n=1&failed=1").text
+        assert "已加入 1 個任務" in html and "1 個失敗" in html
+
+    def test_all_failed_is_never_reported_as_partial_success(self, tclient, tmp_path):
+        """review 2026-09-10: ok=0 used to render 「部分成功…其餘已完成」."""
+        _write_project(tmp_path, "目標")
+        r = tclient.post(
+            "/bridge/projects/目標/attach",
+            data={"task": ["不存在A", "不存在B"]},
+            follow_redirects=False,
+        )
+        assert "saved=attached&n=0&failed=2" in r.headers["location"]
+        html = tclient.get("/bridge/projects/目標?saved=attached&n=0&failed=2").text
+        assert "都沒有加入成功" in html
+        assert "已加入" not in html
+        assert "其餘已完成" not in html
 
     def test_picker_excludes_members_and_done_tasks(self, tclient, tmp_path):
         _write_project(tmp_path, "目標")
