@@ -361,3 +361,83 @@ class TestAttachTasks:
             follow_redirects=False,
         )
         assert r.headers["location"] == "/bridge/projects?err=missing"
+
+
+class TestTaskCheckbox:
+    """修修 2026-09-10：「我希望也跟在 Weekly Dashboard 那邊一樣，有一個可以 check
+    掉的格子」。走的是 Weekly 同一個 set_task_done writer，不是專案頁專用的變體。"""
+
+    def _fm(self, tmp_path, basename):
+        raw = (tmp_path / "TaskNotes" / "Tasks" / f"{basename}.md").read_text(encoding="utf-8")
+        return yaml.safe_load(raw.split("---", 2)[1])
+
+    def test_tick_marks_done_and_mirrors_plan_slices(self, client, tmp_path):
+        _write_project(tmp_path, "P")
+        p = tmp_path / "TaskNotes" / "Tasks"
+        p.mkdir(parents=True, exist_ok=True)
+        (p / "P - 任務.md").write_text(
+            '---\ntitle: P - 任務\nstatus: to-do\nprojects: ["[[P]]"]\n預估🍅: 2\n'
+            "plan:\n- {date: 2026-09-12, pomodoros: 2}\ntimeEntries: []\n---\n",
+            encoding="utf-8",
+        )
+        r = client.post(
+            "/bridge/projects/P/task/P - 任務/done", data={"done": "1"}, follow_redirects=False
+        )
+        assert r.status_code == 303
+        assert r.headers["location"].startswith("/bridge/projects/P")
+        fm = self._fm(tmp_path, "P - 任務")
+        assert fm["status"] == "done"
+        # the whole-task checkbox finishes every day it was scheduled on
+        assert fm["plan"][0]["done"] is True
+
+    def test_untick_reopens_task_and_slices(self, client, tmp_path):
+        _write_project(tmp_path, "P")
+        p = tmp_path / "TaskNotes" / "Tasks"
+        p.mkdir(parents=True, exist_ok=True)
+        (p / "P - 任務.md").write_text(
+            '---\ntitle: P - 任務\nstatus: done\n✅: true\nprojects: ["[[P]]"]\n預估🍅: 2\n'
+            "plan:\n- {date: 2026-09-12, pomodoros: 2, done: true}\ntimeEntries: []\n---\n",
+            encoding="utf-8",
+        )
+        client.post("/bridge/projects/P/task/P - 任務/done", data={"done": "0"})
+        fm = self._fm(tmp_path, "P - 任務")
+        assert fm["status"] == "to-do"
+        assert not fm.get("✅")
+        assert not fm["plan"][0].get("done")
+
+    def test_missing_task_redirects_with_err(self, client, tmp_path):
+        _write_project(tmp_path, "P")
+        r = client.post(
+            "/bridge/projects/P/task/不存在/done", data={"done": "1"}, follow_redirects=False
+        )
+        assert r.headers["location"] == "/bridge/projects/P?err=task"
+
+    def test_box_is_a_sibling_form_never_nested_in_the_row_link(self, client, tmp_path):
+        """A <button> inside an <a> is invalid HTML and the click would navigate
+        instead of submitting."""
+        _write_project(tmp_path, "P")
+        _write_task(tmp_path, "P - 任務", project="P")
+        html = client.get("/bridge/projects/P").text
+        assert 'class="pjd-box' in html
+        assert "/task/P%20-%20%E4%BB%BB%E5%8B%99/done" in html
+        # no anchor may contain a tick-box form
+        for chunk in html.split("<a ")[1:]:
+            assert "pjd-box" not in chunk.split("</a>")[0]
+
+    def test_pomodoro_readout_shows_actual_over_estimate(self, client, tmp_path):
+        """修修: 剩餘工作要用預估🍅與實際🍅表示。"""
+        _write_project(tmp_path, "P")
+        _write_task(
+            tmp_path,
+            "P - 任務",
+            project="P",
+            est=4,
+            entries=(
+                '{startTime: "2026-08-25T09:00:00+08:00", endTime: "2026-08-25T09:50:00+08:00"}'
+            ),
+        )
+        html = client.get("/bridge/projects/P").text
+        stats = html.split('class="pjd-stats"', 1)[1].split('class="pjd-secbar"', 1)[0]
+        assert "番茄 實際 / 預估" in stats
+        assert "2" in stats and "/ 4" in stats  # actual 2 (50min//25) over est 4
+        assert "剩 2" in stats  # remaining still shown, demoted to the sub-line

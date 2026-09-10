@@ -8,6 +8,7 @@ This router replaces the retired ADR-031 7-stage workspace with two thin pages:
 - ``GET  /bridge/projects/{name}``          — one thread: all member tasks across weeks
 - ``POST /bridge/projects/{name}/status``   — archive / restore toggle
 - ``POST /bridge/projects/{name}/attach``   — bulk-assign existing tasks into it
+- ``POST /bridge/projects/{name}/task/{slug}/done`` — tick a task off in place
 
 Every number is computed on read (ADR-068: no stats snapshots). Task membership
 and 🍅 semantics are shared with the Weekly dashboard: tasks come from
@@ -53,6 +54,7 @@ from shared.project_templates import (
 )
 from shared.project_writer import ProjectWriteError, reassign_task_project
 from shared.weekly_indexer import WeeklyIndexer, WeeklyTask, today_taipei
+from shared.weekly_writer import TaskNotFoundError, WeeklyWriteError, set_task_done
 from thousand_sunny.auth import check_auth
 
 logger = get_logger("nakama.web.bridge_projects")
@@ -89,6 +91,7 @@ _ERRORS = {
     "missing": "找不到該戰線檔，可能已在 Obsidian 改名或移除。",
     "template": "找不到該專案類型，或樣板任務檔名已被佔用——請看 config/project-templates.yaml。",
     "attach_none": "沒有勾選任何任務。",
+    "task": "找不到該任務檔，可能已在 Obsidian 改名或移除。",
     "bracket": (
         "戰線名稱不可含 [ ] # ^ —— Obsidian 的 [[連結]] 沒有辦法跳脫它，"
         "任務歸屬與反向連結都會壞掉。改用全形版本即可，例如「【Pod】蘇予昕」。"
@@ -247,6 +250,8 @@ def _project_view(p: ProjectEntry, members: list[WeeklyTask], actual: dict[str, 
 
     # ── 「還差多久 / 還剩多少」(修修 2026-09-10) — every figure read-time ──
     remaining_pom = sum(v["remaining"] for v in open_views)
+    est_sum = sum(v["est"] for v in views)
+    actual_sum = sum(v["actual"] for v in views)
     unscheduled = [v for v in open_views if not v["scheduled"]]
     eta_dates = [a.date for t in members if not t.done for a in t.plan]
     eta = max(eta_dates) if eta_dates else None
@@ -290,14 +295,17 @@ def _project_view(p: ProjectEntry, members: list[WeeklyTask], actual: dict[str, 
         "open_count": len(open_views),
         "done_count": len(done_views),
         "total_count": len(ordered),
-        "est_total": sum(v["est"] for v in ordered),
-        "actual_total": sum(v["actual"] for v in ordered),
+        "est_total": est_sum,
+        "actual_total": actual_sum,
         "remaining_pom": remaining_pom,
         "remaining_hours": round(remaining_pom * POMODORO_MINUTES / 60, 1),
         "eta": eta.strftime("%m-%d") if eta else "",
         "eta_days": eta_days,
         "unscheduled_count": len(unscheduled),
         "pct": round(len(done_views) * 100 / len(ordered)) if ordered else 0,
+        # 實際/預估 fill, capped at 100 so an over-run doesn't overflow the track
+        # (the number beside it still shows the real over-run).
+        "pom_pct": min(100, round(actual_sum * 100 / est_sum)) if est_sum else 0,
         "last": last,
     }
 
@@ -461,6 +469,33 @@ async def project_attach_tasks(
             logger.exception("attach failed: %s → %s", slug, name)
             failed += 1
     return RedirectResponse(f"{back}?saved=attached&n={ok}&failed={failed}", status_code=303)
+
+
+@page_router.post("/projects/{name}/task/{slug}/done")
+async def project_task_done(
+    name: str,
+    slug: str,
+    done: int = Form(0),  # 1 = mark done, 0 = re-open
+    nakama_auth: str | None = Cookie(None),
+):
+    """Tick a task off without leaving the project page (修修 2026-09-10).
+
+    Delegates to the SAME ``weekly_writer.set_task_done`` the Weekly dashboard's
+    checkbox uses, so a task ticked here mirrors down to its ``plan[]`` day slices
+    exactly as it would there — one rule, not a project-page-only variant.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/projects", status_code=302)
+    name = unicodedata.normalize("NFC", name)
+    back = f"/bridge/projects/{quote(name)}"
+    try:
+        set_task_done(get_vault_path(), unicodedata.normalize("NFC", slug), bool(done))
+    except TaskNotFoundError:
+        return RedirectResponse(f"{back}?err=task", status_code=303)
+    except WeeklyWriteError:
+        logger.exception("project_task_done failed: %s", slug)
+        return RedirectResponse(f"{back}?err=task", status_code=303)
+    return RedirectResponse(f"{back}#task-{quote(slug)}", status_code=303)
 
 
 @page_router.post("/projects/{name}/status")
