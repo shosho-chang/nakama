@@ -534,9 +534,18 @@ python .claude/skills/thumbnail-brainstorm/scripts/face_measure.py render \
 **一次到位交付檢查（v2.5）**——給修修看之前，五項全過，缺一不交付：
 
 - [ ] `verify` PASS（spec 參數 vs solver 重算自洽——render 前的 sanity）
-- [ ] **`face_measure.py render` QA PASS**——render 出的 PNG 上直接量兩張臉
-      （跨包 IOD/臉高離散、眼線漂移、包內比例）。**這才是 gate**：verify
-      PASS 擋不住 63px 眼線漂移（教訓 21）
+- [ ] **跑 `face_measure.py render`**——render 出的 PNG 上直接量兩張臉。
+      擋下來的只有**包內比例**（`guest/host` 目標 1.0±0.12）：那一項出界代表
+      兩張臉一大一小，縮圖上一眼看得出來。verify PASS 擋不住 63px 眼線漂移，
+      所以這一步不能省（教訓 21）。
+      **跨張 IOD／臉高離散是資訊，不是 gate**（2026-09-10 訂正）：那是在量
+      「三個表情之間的姿勢差異」，而版式**本來就要求三包表情拉開**——同時要求
+      表情多樣又要求姿勢一致，是互相矛盾的。實測 20260901 蘇予昕 已經上架的
+      punch-L04 三張封面：guest IOD 離散 8.6%（門檻 8%）判 FAIL，但那三張是修修
+      看過並發布的成品。`attach_packages.py` 從來沒有呼叫這支腳本，也就是說這道
+      「gate」在程式上一直都是建議性的——文件寫成硬擋只會讓人卡在一個沒有人
+      擋得住的地方。離散偏高時去看那一格是不是明顯前傾/後仰，決定要不要換格，
+      不要因為它重做整套。
 - [ ] 親眼看全圖（人物大小/位置/與中央卡的關係）＋ 320×180 小圖可讀
 - [ ] cutout 頭部、雙肩、可見上臂完整；肩線不碰左右界、無直切或透明挖洞
 - [ ] boom arm 未進人物 silhouette；若局部移除，只有 boom arm 區域像素可改，
