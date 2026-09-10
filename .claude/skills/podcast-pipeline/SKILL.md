@@ -4,7 +4,11 @@ description: >
   訪談集正式 E2E 編排：素材 preflight、Auphonic normalization、Memo large-v2、
   Memo Dual-Audit Release V1、Resolve、highlight、packaging 與發布。
   Use when the user points to an episode folder and asks to run, resume, review,
-  or diagnose the podcast pipeline. The default subtitle contract follows ADR-063.
+  or diagnose the podcast pipeline.
+  **也用在他說「定稿了」「完整版定稿」「這集可以了」「這集 OK 了」的時候**——
+  那句話是派工令（見 S8F），不是閒聊：完整版剪定之後他不按按鈕，直接講一句，
+  就要開始平行派工（三長三短＋carousel），不要回問「要開始了嗎」。
+  The default subtitle contract follows ADR-063.
 ---
 
 # Podcast Pipeline — supervised production E2E
