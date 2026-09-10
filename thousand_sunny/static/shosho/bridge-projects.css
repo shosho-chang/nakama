@@ -195,6 +195,10 @@ body.sho .pjd-stat-v {
 }
 body.sho .pjd-stat-v small { font-size: 12.5px; font-weight: 400; color: var(--sho-muted); }
 body.sho .pjd-stat-v.warn { color: var(--sho-warning); }
+body.sho .pjd-stat-sub {
+  display: block; margin-top: 6px; font-family: var(--sho-font-mono);
+  font-size: 10.5px; color: var(--sho-muted); font-variant-numeric: tabular-nums;
+}
 body.sho .pjd-bar {
   display: block; height: 3px; margin-top: 9px; border-radius: 2px;
   background: var(--sho-bg-3); overflow: hidden;
@@ -264,13 +268,32 @@ body.sho .pjd-group-t {
   color: var(--sho-muted); padding: 14px 2px 5px; display: block;
 }
 body.sho .pjd-task {
-  display: flex; align-items: baseline; gap: 11px; padding: 9px 10px;
-  border-bottom: 1px solid var(--sho-line); color: var(--sho-text);
-  text-decoration: none; transition: background var(--sho-t-fast) var(--sho-ease);
+  display: flex; align-items: center; gap: 11px; padding: 9px 10px;
+  border-bottom: 1px solid var(--sho-line);
+  transition: background var(--sho-t-fast) var(--sho-ease);
 }
 body.sho .pjd-task:hover { background: var(--sho-bg-2); }
-body.sho .pjd-task-mark { width: 15px; text-align: center; color: var(--sho-muted); flex: 0 0 auto; }
+/* the row's link fills what's left of the row so the whole strip stays clickable
+   — the tick box is a sibling form, never nested inside the anchor */
+body.sho .pjd-task-link {
+  flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 11px;
+  color: var(--sho-text); text-decoration: none;
+}
+body.sho .pjd-task-link:focus-visible { outline: none; box-shadow: var(--sho-focus); }
 body.sho .pjd-task-n { flex: 1; min-width: 0; font-size: 14px; }
+
+/* ── tick box: same 14px square as the Weekly dashboard's .wk-box ── */
+body.sho .pjd-box-form { display: flex; flex: 0 0 auto; }
+body.sho .pjd-box {
+  width: 14px; height: 14px; padding: 0; cursor: pointer;
+  border: 1.5px solid var(--sho-line-2); border-radius: 3px;
+  background: none; flex-shrink: 0;
+  transition: background var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .pjd-box:hover { border-color: var(--sho-accent); }
+body.sho .pjd-box:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+body.sho .pjd-box.done { background: var(--sho-text); border-color: var(--sho-text); }
 body.sho .pjd-task-meta {
   display: inline-flex; gap: 14px; font-size: 11.5px; white-space: nowrap;
   font-variant-numeric: tabular-nums; color: var(--sho-muted);
@@ -280,8 +303,11 @@ body.sho .pjd-task-meta .none { color: var(--sho-warning); }
 body.sho .pjd-task.is-done .pjd-task-n {
   color: var(--sho-muted); text-decoration: line-through; text-decoration-color: var(--sho-line-2);
 }
-body.sho .pjd-task.is-done .pjd-task-mark { color: var(--sho-success); }
-body.sho .pjd-task.is-now .pjd-task-mark { color: var(--sho-accent); }
+/* 進行中 keeps its accent cue now that the ✓/◐/○ glyph column is gone */
+body.sho .pjd-task.is-now .pjd-task-n::after {
+  content: "進行中"; margin-left: 8px; font-family: var(--sho-font-mono);
+  font-size: 10px; letter-spacing: 0.06em; color: var(--sho-accent);
+}
 
 /* ── kanban view ── */
 body.sho .pjd-kan { display: flex; gap: 12px; margin-top: 14px; align-items: flex-start; }
@@ -301,10 +327,15 @@ body.sho .pjd-col-n {
   border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-1); padding: 0 5px;
 }
 body.sho .pjd-card {
-  display: block; padding: 9px 12px; border-bottom: 1px solid var(--sho-line);
-  text-decoration: none; color: var(--sho-text);
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 9px 12px; border-bottom: 1px solid var(--sho-line);
   transition: background var(--sho-t-fast) var(--sho-ease);
 }
+body.sho .pjd-card .pjd-box-form { padding-top: 2px; }
+body.sho .pjd-card-link {
+  flex: 1; min-width: 0; text-decoration: none; color: var(--sho-text);
+}
+body.sho .pjd-card-link:focus-visible { outline: none; box-shadow: var(--sho-focus); }
 body.sho .pjd-card:last-child { border-bottom: 0; }
 body.sho .pjd-card:hover { background: var(--sho-bg-2); }
 body.sho .pjd-card-n { font-size: 13px; display: block; margin-bottom: 4px; }

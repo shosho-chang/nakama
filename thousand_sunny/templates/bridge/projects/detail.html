@@ -18,27 +18,45 @@
   {% from "_chassis_nav.html" import chassis_nav %}
   {{ chassis_nav(nav_active='projects') }}
 
+  {# The tick box is its own form and must sit OUTSIDE the row's <a> — a button
+     nested in a link is invalid HTML and the click would follow the link.
+     Same 14px .wk-box visual as the Weekly dashboard, same set_task_done writer. #}
+  {% macro tick(t) %}
+    <form class="pjd-box-form" method="post"
+          action="/bridge/projects/{{ p.name | urlencode }}/task/{{ t.slug | urlencode }}/done">
+      <input type="hidden" name="done" value="{{ '0' if t.done else '1' }}">
+      <button type="submit" class="pjd-box{{ ' done' if t.done }}"
+              aria-pressed="{{ 'true' if t.done else 'false' }}"
+              aria-label="{{ ('標記未完成：' if t.done else '標記完成：') ~ t.name }}"></button>
+    </form>
+  {% endmacro %}
+
   {# one task row, shared by the 列表 view's stage groups and its 其他任務 group #}
   {% macro task_row(t) %}
-    <a class="pjd-task{{ ' is-done' if t.done }}{{ ' is-now' if t.status == 'doing' and not t.done }}"
-       href="/bridge/weekly/task/{{ t.slug | urlencode }}">
-      <span class="pjd-task-mark">{{ '✓' if t.done else ('◐' if t.status == 'doing' else '○') }}</span>
-      <span class="pjd-task-n">{{ t.name }}</span>
-      <span class="pjd-task-meta">
-        <span>🍅 {{ t.actual }}/{{ t.est }}</span>
-        <span class="when{{ ' none' if not t.when }}">{{ t.when or '未排時間' }}</span>
-      </span>
-    </a>
+    <div class="pjd-task{{ ' is-done' if t.done }}{{ ' is-now' if t.status == 'doing' and not t.done }}"
+         id="task-{{ t.slug | urlencode }}">
+      {{ tick(t) }}
+      <a class="pjd-task-link" href="/bridge/weekly/task/{{ t.slug | urlencode }}">
+        <span class="pjd-task-n">{{ t.name }}</span>
+        <span class="pjd-task-meta">
+          <span>🍅 {{ t.actual }}/{{ t.est }}</span>
+          <span class="when{{ ' none' if not t.when }}">{{ t.when or '未排時間' }}</span>
+        </span>
+      </a>
+    </div>
   {% endmacro %}
 
   {% macro card(t) %}
-    <a class="pjd-card{{ ' is-done' if t.done }}" href="/bridge/weekly/task/{{ t.slug | urlencode }}">
-      <span class="pjd-card-n">{{ t.name }}</span>
-      <span class="pjd-card-m">
-        <span>🍅 {{ t.actual }}/{{ t.est }}</span>
-        <span class="{{ 'none' if not t.when }}">{{ t.when or '未排時間' }}</span>
-      </span>
-    </a>
+    <div class="pjd-card{{ ' is-done' if t.done }}">
+      {{ tick(t) }}
+      <a class="pjd-card-link" href="/bridge/weekly/task/{{ t.slug | urlencode }}">
+        <span class="pjd-card-n">{{ t.name }}</span>
+        <span class="pjd-card-m">
+          <span>🍅 {{ t.actual }}/{{ t.est }}</span>
+          <span class="{{ 'none' if not t.when }}">{{ t.when or '未排時間' }}</span>
+        </span>
+      </a>
+    </div>
   {% endmacro %}
 
   <main class="pjd-main">
@@ -79,10 +97,13 @@
         <span class="pjd-stat-v">{{ p.done_count }}<small> / {{ p.total_count }} 任務</small></span>
         <span class="pjd-bar"><i style="width:{{ p.pct }}%"></i></span>
       </div>
+      {# 修修 2026-09-10: 用實際／預估🍅 表示，跟任務列與清單頁同一種寫法；
+         剩餘量退成副標，因為它是從這兩個數推導出來的。 #}
       <div class="pjd-stat">
-        <span class="pjd-stat-k">剩餘工作</span>
-        <span class="pjd-stat-v">{{ p.remaining_pom }}<small> 🍅 ≈ {{ p.remaining_hours }} 小時</small></span>
-        <span class="pjd-bar"><i style="width:{{ 100 - p.pct }}%"></i></span>
+        <span class="pjd-stat-k">番茄 實際 / 預估</span>
+        <span class="pjd-stat-v">{{ p.actual_total }}<small> / {{ p.est_total }} 🍅</small></span>
+        <span class="pjd-bar"><i style="width:{{ p.pom_pct }}%"></i></span>
+        <span class="pjd-stat-sub">剩 {{ p.remaining_pom }} 🍅 ≈ {{ p.remaining_hours }} 小時</span>
       </div>
       <div class="pjd-stat">
         <span class="pjd-stat-k">預計完成</span>
