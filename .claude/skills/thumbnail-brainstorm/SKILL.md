@@ -264,6 +264,12 @@ python .claude/skills/thumbnail-brainstorm/scripts/fetch_licensed_center.py   --
 # 2) agent 用修修的瀏覽器開那個網址、按 Download（claude-in-chrome）
 #    ⚠️ 按一次就好。第一次點擊就會下載並套授權；沒看到檔案時先查下載目錄，
 #       不要重按——那是在他的付費帳號上重複操作（2026-08-29 犯過）。
+#    ⚠️ **一定要用 app.envato.com，不要用 elements.envato.com**（2026-09-10）：
+#       elements 的品項頁永遠不進 document_idle（預覽影片一直播），
+#       claude-in-chrome 的 find／read_page／screenshot 全是注入型工具，一律 45 秒
+#       逾時。那次我因此誤判「Envato 自動化壞了」、還建議改人工下載。app 網域秒回。
+#       Elements MCP 回的是 elements 短碼網址（如 PH5T6NL），只能拿來挑概念，
+#       要到 app 網域重搜。
 
 # 3) 收線
 python .claude/skills/thumbnail-brainstorm/scripts/fetch_licensed_center.py   --episode-slug <slug> --cut-id <cut> --package-rank <n> --install   --working-dir "<ep>/packaging"

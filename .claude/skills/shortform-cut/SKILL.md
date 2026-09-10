@@ -174,6 +174,19 @@ py -3.10 scripts/run_shortform_titles.py <episode> --id <cid> --validate-only
 
 ## Step 5 — 素材（B-roll ＋ 開場 LOGO）
 
+**抓授權檔一定要走 `app.envato.com`，不是 `elements.envato.com`**（2026-09-10 血淚）。
+elements 的品項頁永遠不進 `document_idle`（預覽影片一直播），claude-in-chrome 的
+`find`／`read_page`／`screenshot` 全是注入型工具，一律 45 秒逾時；我因此誤判成
+「Envato 自動化壞了」並建議人工下載，修修回「我是永遠不會接受人工下載素材」——
+他是對的，app 網域秒回。實測可用型式：
+
+- 搜尋＋方向篩選：`https://app.envato.com/search?itemType=stock-video&term=<詞>&filter.orientation=Vertical`
+- 品項頁：`https://app.envato.com/search/stock-video/<uuid>`（右欄直接列 Vertical／1080x1920，下載前就驗得掉方向）
+- Download 按**一次** → 跳「Automatically licensed」→ 檔案落到 `E:\` 根目錄
+
+陷阱：搜尋結果縮圖有 hover 控制項，點 link ref 常常點到它；可靠做法是 `read_page`
+取 href 的 uuid 再直接 navigate。Elements MCP 回的短碼網址只能拿來挑概念。
+
 ```bash
 py -3.10 scripts/run_shortform_broll.py <episode> --id <cid> --validate-only
 ```
