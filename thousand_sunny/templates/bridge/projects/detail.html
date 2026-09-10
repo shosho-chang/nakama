@@ -1,7 +1,8 @@
 <!DOCTYPE html>
-{# ── 戰線詳情 (ADR-068) ────────────────────────────────────────────────────────
-   一條戰線的跨週全貌：成員任務（未完在前，最近活動新→舊）、live 🍅 統計、
-   封存/復原。任務列點進 Weekly 的任務頁操作 — 這頁是唯讀視角 + 生命週期開關。 #}
+{# ── 專案 Dashboard (ADR-068 + 修修 2026-09-10) ────────────────────────────────
+   一個 project 就是一組任務。這頁回答四件事：完成多少、還剩多少工作、預計何時
+   做完、有沒有還沒排時間的漏網之魚。三個 view（列表／看板／時程）看同一批任務。
+   進度軌只在專案有 kind（樣板）時出現，狀態全由任務完成度推導，沒有手動勾。 #}
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
@@ -17,60 +18,260 @@
   {% from "_chassis_nav.html" import chassis_nav %}
   {{ chassis_nav(nav_active='projects') }}
 
-  <main class="pj-main">
-  <section class="pj-screen">
+  {# one task row, shared by the 列表 view's stage groups and its 其他任務 group #}
+  {% macro task_row(t) %}
+    <a class="pjd-task{{ ' is-done' if t.done }}{{ ' is-now' if t.status == 'doing' and not t.done }}"
+       href="/bridge/weekly/task/{{ t.slug | urlencode }}">
+      <span class="pjd-task-mark">{{ '✓' if t.done else ('◐' if t.status == 'doing' else '○') }}</span>
+      <span class="pjd-task-n">{{ t.name }}</span>
+      <span class="pjd-task-meta">
+        <span>🍅 {{ t.actual }}/{{ t.est }}</span>
+        <span class="when{{ ' none' if not t.when }}">{{ t.when or '未排時間' }}</span>
+      </span>
+    </a>
+  {% endmacro %}
 
-    <p class="pj-crumb sho-mono"><a class="sho-lk" href="/bridge/projects">← 戰線</a></p>
+  {% macro card(t) %}
+    <a class="pjd-card{{ ' is-done' if t.done }}" href="/bridge/weekly/task/{{ t.slug | urlencode }}">
+      <span class="pjd-card-n">{{ t.name }}</span>
+      <span class="pjd-card-m">
+        <span>🍅 {{ t.actual }}/{{ t.est }}</span>
+        <span class="{{ 'none' if not t.when }}">{{ t.when or '未排時間' }}</span>
+      </span>
+    </a>
+  {% endmacro %}
 
-    <header class="pj-head pj-head--detail">
+  <main class="pjd-main">
+  <section class="pjd-screen">
+
+    <p class="pjd-crumb sho-mono"><a class="sho-lk" href="/bridge/projects">← 專案</a></p>
+
+    {% if error_msg %}<div class="pjd-toast" role="alert">⚠ {{ error_msg }}</div>{% endif %}
+    {% if saved_msg %}<div class="pjd-toast pjd-toast--ok" role="status">✓ {{ saved_msg }}</div>{% endif %}
+
+    <header class="pjd-head">
       <div>
-        <h1 class="pj-title">{{ p.name }}
+        {% if p.kind_label %}<span class="pjd-kind">{{ p.kind_label }}</span>{% endif %}
+        <h1 class="pjd-title">{{ p.name }}
           {% if p.status == 'archived' %}<span class="sho-tag pj-tag-archived">已封存</span>{% endif %}
         </h1>
-        <p class="pj-sub sho-mono">
-          {% if p.created %}開線 {{ p.created }} · {% endif %}
-          ✓ {{ p.done_count }}/{{ p.done_count + p.open_count }} 任務 ·
-          🍅 {{ p.actual_total }}/{{ p.est_total }}
-          {% if p.last %} · 最近活動 {{ p.last }}{% endif %}
+        <p class="pjd-sub sho-mono">
+          {% if p.created %}建立 {{ p.created }}{% endif %}
+          {%- if p.last %} · 最近活動 {{ p.last }}{% endif %}
         </p>
       </div>
       <form method="post" action="/bridge/projects/{{ p.name | urlencode }}/status">
         {% if p.status == 'archived' %}
           <input type="hidden" name="status" value="active">
-          <button class="sho-btn sho-btn--ghost" type="submit">復原戰線</button>
+          <button class="sho-btn sho-btn--ghost" type="submit">復原專案</button>
         {% else %}
           <input type="hidden" name="status" value="archived">
           <button class="sho-btn sho-btn--ghost" type="submit"
-                  onclick="return confirm('封存「{{ p.name }}」？任務與紀錄不會消失，只是從進行中清單收起。')">封存戰線</button>
+                  onclick="return confirm('封存「{{ p.name }}」？任務與紀錄不會消失，只是從進行中清單收起。')">封存專案</button>
         {% endif %}
       </form>
     </header>
 
+    {# ── 還剩多少 / 還差多久 ── #}
+    <div class="pjd-stats">
+      <div class="pjd-stat">
+        <span class="pjd-stat-k">完成進度</span>
+        <span class="pjd-stat-v">{{ p.done_count }}<small> / {{ p.total_count }} 任務</small></span>
+        <span class="pjd-bar"><i style="width:{{ p.pct }}%"></i></span>
+      </div>
+      <div class="pjd-stat">
+        <span class="pjd-stat-k">剩餘工作</span>
+        <span class="pjd-stat-v">{{ p.remaining_pom }}<small> 🍅 ≈ {{ p.remaining_hours }} 小時</small></span>
+        <span class="pjd-bar"><i style="width:{{ 100 - p.pct }}%"></i></span>
+      </div>
+      <div class="pjd-stat">
+        <span class="pjd-stat-k">預計完成</span>
+        {% if p.eta %}
+          <span class="pjd-stat-v">{{ p.eta }}<small>
+            {%- if p.eta_days is not none %} · {{ '還有 ' ~ p.eta_days ~ ' 天' if p.eta_days >= 0 else '已逾期 ' ~ (-p.eta_days) ~ ' 天' }}{% endif %}</small></span>
+        {% else %}
+          <span class="pjd-stat-v"><small>{{ '全部完成' if p.total_count and not p.open_count else '尚未排程' }}</small></span>
+        {% endif %}
+      </div>
+      <div class="pjd-stat">
+        <span class="pjd-stat-k">未排時間</span>
+        <span class="pjd-stat-v{{ ' warn' if p.unscheduled_count }}">{{ p.unscheduled_count }}<small> 項</small></span>
+      </div>
+    </div>
+
+    {# ── 進度軌：只有樣板專案才有；狀態由任務完成度推導 ── #}
+    {% if p.stages %}
+      <ol class="pjd-rail">
+        {% for s in p.stages %}
+          <li class="pjd-stage{{ ' is-done' if s.is_done }}{{ ' is-now' if s.is_now }}">
+            <span class="pjd-stage-top">
+              <span class="pjd-dot">{{ '✓' if s.is_done else ('●' if s.is_now else '○') }}</span>{{ s.name }}
+            </span>
+            <span class="pjd-stage-meta">
+              {%- if s.total %}{{ s.done }}/{{ s.total }} 任務 · 🍅 {{ s.actual }}/{{ s.est }}
+              {%- else %}尚無任務{% endif -%}
+            </span>
+          </li>
+        {% endfor %}
+      </ol>
+    {% endif %}
+
+    <div class="pjd-secbar">
+      <span class="pjd-sec-t">任務 · {{ p.total_count }} 項</span>
+      <div class="pjd-views">
+        <button class="pjd-view is-on" data-v="list" type="button">列表</button>
+        <button class="pjd-view" data-v="kanban" type="button">看板</button>
+        <button class="pjd-view" data-v="sched" type="button">時程</button>
+      </div>
+    </div>
+
+    {# ══ 列表 ══ #}
+    <div class="pjd-pane is-on" data-pane="list">
+      {% for s in p.stages %}
+        {% if s.tasks %}
+          <span class="pjd-group-t">{{ '①②③④⑤⑥⑦⑧⑨'[s.order - 1] if s.order <= 9 else s.order }} {{ s.name }}</span>
+          {% for t in s.tasks %}{{ task_row(t) }}{% endfor %}
+        {% endif %}
+      {% endfor %}
+
+      {% if p.loose_tasks %}
+        {% if p.stages %}<span class="pjd-group-t">其他任務（非樣板）</span>{% endif %}
+        {% for t in p.loose_tasks %}{{ task_row(t) }}{% endfor %}
+      {% endif %}
+
+      {% if not p.total_count %}
+        <p class="pj-empty sho-mono">這個專案還沒有任務 — 用下面的「加入既有任務」，或到
+          <a class="sho-lk" href="/bridge/weekly">Weekly</a> 新增任務時指定專案。</p>
+      {% endif %}
+
+      <details class="pjd-attach">
+        <summary>＋ 加入既有任務</summary>
+        <form method="post" action="/bridge/projects/{{ p.name | urlencode }}/attach">
+          <div class="pjd-attach-box">
+            <p class="pjd-attach-hint">目前所有未完成的任務。勾選後會改寫檔名前綴與 <code>projects:</code>，已連動的行事曆事件標題也會一起更新。</p>
+            <div class="pjd-attach-list">
+              {% for c in candidates %}
+                <label class="pjd-pick">
+                  <input type="checkbox" name="task" value="{{ c.slug }}">
+                  <span class="pjd-pick-n">{{ c.name }}</span>
+                  {% if c.owner %}<span class="pjd-pick-tag warn">已屬 {{ c.owner }}</span>{% endif %}
+                </label>
+              {% else %}
+                <p class="pj-empty sho-mono">沒有未完成的任務可以加入。</p>
+              {% endfor %}
+            </div>
+            {% if candidates %}
+              <div class="pjd-attach-foot">
+                <span class="sho-mono" data-attach-count>未勾選任何任務</span>
+                <button class="sho-btn" type="submit">確認加入</button>
+              </div>
+            {% endif %}
+          </div>
+        </form>
+      </details>
+    </div>
+
+    {# ══ 看板 ══ #}
+    <div class="pjd-pane" data-pane="kanban">
+      <div class="pjd-kan">
+        <div class="pjd-col">
+          <div class="pjd-col-h"><span>待辦</span><span class="pjd-col-n">{{ p.kanban.todo | length }}</span></div>
+          {% for t in p.kanban.todo %}{{ card(t) }}{% else %}
+            <p class="pjd-col-empty">沒有待辦。</p>{% endfor %}
+        </div>
+        <div class="pjd-col pjd-col--now">
+          <div class="pjd-col-h"><span>進行中</span><span class="pjd-col-n">{{ p.kanban.doing | length }}</span></div>
+          {% for t in p.kanban.doing %}{{ card(t) }}{% else %}
+            <p class="pjd-col-empty">目前沒有進行中的任務——在任務頁把狀態改成 doing。</p>{% endfor %}
+        </div>
+        <div class="pjd-col">
+          <div class="pjd-col-h"><span>完成</span><span class="pjd-col-n">{{ p.kanban.done | length }}</span></div>
+          {% for t in p.kanban.done %}{{ card(t) }}{% else %}
+            <p class="pjd-col-empty">還沒有完成的任務。</p>{% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {# ══ 時程 ══ #}
+    <div class="pjd-pane" data-pane="sched">
+      <div style="margin-top:14px">
+        {% for d in p.sched_rows %}
+          <div class="pjd-day">
+            <span class="pjd-day-k">{{ d.weekday }}<b>{{ d.label }}</b></span>
+            <div class="pjd-day-items">
+              {% for i in d.slots %}
+                <div class="pjd-slot">
+                  <span class="pjd-slot-t">{{ i.time }}</span>
+                  <a class="pjd-slot-n{{ ' is-done' if i.done }}" href="/bridge/weekly/task/{{ i.slug | urlencode }}">{{ i.name }}</a>
+                  <span class="pjd-slot-p">{{ i.pomodoros }}🍅</span>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+        {% if p.sched_loose %}
+          <div class="pjd-day pjd-unsched">
+            <span class="pjd-day-k"><b>未排時間</b>{{ p.sched_loose | length }} 項</span>
+            <div class="pjd-day-items">
+              {% for i in p.sched_loose %}
+                <div class="pjd-slot">
+                  <span class="pjd-slot-t">—</span>
+                  <a class="pjd-slot-n" href="/bridge/weekly/task/{{ i.slug | urlencode }}">{{ i.name }}</a>
+                  <span class="pjd-slot-p">{{ i.pomodoros }}🍅</span>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+        {% if not p.sched_rows and not p.sched_loose %}
+          <p class="pj-empty sho-mono">這個專案還沒有任何排程。</p>
+        {% endif %}
+      </div>
+    </div>
+
     {% if notes_html %}
-      <section class="sho-panel pj-notes">
-        <p class="sho-kicker"><span class="sho-kicker-n">[ 001 ]</span> 戰線筆記 <span class="pj-hint sho-mono">（Obsidian 端編輯 Projects/{{ p.name }}.md）</span></p>
-        <div class="pj-notes-body">{{ notes_html | safe }}</div>
+      <section class="pjd-notes">
+        <p class="sho-kicker"><span class="sho-kicker-n">[ 001 ]</span> 專案筆記
+          <span class="pjd-hint">（Obsidian 端編輯 Projects/{{ p.name }}.md）</span></p>
+        <div class="pjd-notes-b">{{ notes_html | safe }}</div>
       </section>
     {% endif %}
 
-    <section class="sho-panel pj-tasks" aria-label="成員任務">
-      <p class="sho-kicker"><span class="sho-kicker-n">[ {{ '002' if notes_html else '001' }} ]</span> 任務 · 跨週全貌</p>
-      {% for t in p.tasks %}
-        <a class="pj-task{% if t.done %} pj-task--done{% endif %}"
-           href="/bridge/weekly/task/{{ t.slug | urlencode }}">
-          <span class="pj-task-mark">{{ '✓' if t.done else ('◐' if t.status == 'doing' else '○') }}</span>
-          <span class="pj-task-name">{{ t.name }}</span>
-          <span class="pj-row-meta sho-mono">
-            <span class="pj-stat" title="實際🍅／預估🍅">🍅 {{ t.actual }}<span class="pj-frac">/{{ t.est }}</span></span>
-            {% if t.last %}<span class="pj-stat pj-last">{{ t.last }}</span>{% endif %}
-          </span>
-        </a>
-      {% else %}
-        <p class="pj-empty sho-mono">這條戰線還沒有任務 — 到 <a class="sho-lk" href="/bridge/weekly">Weekly</a> 的任務頁用「所屬戰線」下拉掛入。</p>
-      {% endfor %}
-    </section>
-
   </section>
   </main>
+
+<script>
+(function () {
+  // view switch — same idiom as the Weekly dashboard's 今日/整週/全部 tabs
+  document.querySelectorAll('.pjd-view').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var v = b.dataset.v;
+      document.querySelectorAll('.pjd-view').forEach(function (x) { x.classList.toggle('is-on', x === b); });
+      document.querySelectorAll('.pjd-pane').forEach(function (p) {
+        p.classList.toggle('is-on', p.dataset.pane === v);
+      });
+      try { sessionStorage.setItem('pjd-view', v); } catch (e) { /* private mode */ }
+    });
+  });
+  // stay on the view you were using across a reload / form post
+  try {
+    var want = sessionStorage.getItem('pjd-view');
+    if (want) {
+      var btn = document.querySelector('.pjd-view[data-v="' + want + '"]');
+      if (btn) btn.click();
+    }
+  } catch (e) { /* private mode */ }
+
+  // live count in the attach panel's footer
+  var box = document.querySelector('.pjd-attach');
+  if (box) {
+    var out = box.querySelector('[data-attach-count]');
+    box.addEventListener('change', function () {
+      var n = box.querySelectorAll('input[name="task"]:checked').length;
+      if (out) out.textContent = n ? ('已勾選 ' + n + ' 項') : '未勾選任何任務';
+    });
+  }
+})();
+</script>
 </body>
 </html>

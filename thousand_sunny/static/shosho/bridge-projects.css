@@ -144,3 +144,276 @@ body.sho .pj-empty { padding: 18px 16px; font-size: 12.5px; }
   body.sho .pj-task { flex-wrap: wrap; }
   body.sho .pj-row-meta { width: 100%; justify-content: flex-end; }
 }
+
+
+/* ══ Project dashboard (修修 2026-09-10) ══════════════════════════════════════
+   Detail page is a dashboard: 還剩多少 / 還差多久 readouts, a template stage rail,
+   and three views over the same tasks (列表 / 看板 / 時程).
+
+   The rail's state is derived ENTIRELY from task completion — there is no stage
+   anyone can tick by hand. ADR-031's seven manually-ticked stages drifted from
+   reality until nobody trusted them; a derived rail cannot drift.
+
+   Accent discipline: orange marks exactly one thing per page — the stage you are
+   on. Finished stages take the green success tick and recede to muted, so the eye
+   lands on what is left. amber is reserved for 未排時間, the one condition that
+   makes the ETA a lie. */
+body.sho .pjd-main { padding: 0 28px 56px; }
+.pjd-screen { max-width: 940px; margin: 0 auto; }
+
+/* header ------------------------------------------------------------------ */
+body.sho .pjd-crumb { margin: 20px 0 0; font-size: 12px; }
+body.sho .pjd-head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 24px; flex-wrap: wrap; margin: 22px 0 6px;
+}
+body.sho .pjd-kind {
+  display: inline-block; margin-bottom: 8px;
+  font-family: var(--sho-font-mono); font-size: 10.5px; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--sho-muted);
+  border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-1); padding: 2px 7px;
+}
+body.sho .pjd-title {
+  font-size: 26px; font-weight: 700; color: var(--sho-ink); margin: 0 0 3px;
+}
+body.sho .pjd-sub { font-size: 12px; margin: 0; }
+
+/* ── the four "how much is left" readouts ── */
+body.sho .pjd-stats {
+  display: flex; margin: 18px 0 0;
+  border: 1px solid var(--sho-line); border-radius: var(--sho-r-2);
+}
+body.sho .pjd-stat { flex: 1; padding: 12px 16px; border-left: 1px solid var(--sho-line); }
+body.sho .pjd-stat:first-child { border-left: 0; }
+body.sho .pjd-stat-k {
+  font-family: var(--sho-font-mono); font-size: 10.5px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--sho-muted); display: block; margin-bottom: 5px;
+}
+body.sho .pjd-stat-v {
+  font-size: 20px; font-weight: 700; color: var(--sho-ink);
+  font-variant-numeric: tabular-nums; line-height: 1.15;
+}
+body.sho .pjd-stat-v small { font-size: 12.5px; font-weight: 400; color: var(--sho-muted); }
+body.sho .pjd-stat-v.warn { color: var(--sho-warning); }
+body.sho .pjd-bar {
+  display: block; height: 3px; margin-top: 9px; border-radius: 2px;
+  background: var(--sho-bg-3); overflow: hidden;
+}
+body.sho .pjd-bar i { display: block; height: 100%; background: var(--sho-text-2); }
+
+/* ── stage rail (only for templated projects) ── */
+body.sho .pjd-rail {
+  display: flex; list-style: none; margin: 10px 0 0; padding: 0;
+  border: 1px solid var(--sho-line); border-radius: var(--sho-r-2); overflow: hidden;
+}
+body.sho .pjd-stage {
+  flex: 1; min-width: 0; padding: 11px 15px;
+  display: flex; flex-direction: column; gap: 2px;
+  border-left: 1px solid var(--sho-line);
+}
+body.sho .pjd-stage:first-child { border-left: 0; }
+body.sho .pjd-stage-top {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 13px; font-weight: 600; color: var(--sho-text-2);
+}
+body.sho .pjd-dot {
+  flex: 0 0 auto; width: 15px; height: 15px; border-radius: 50%;
+  border: 1px solid var(--sho-line-2); display: inline-flex;
+  align-items: center; justify-content: center; font-size: 9px;
+  line-height: 1; color: var(--sho-muted);
+}
+body.sho .pjd-stage-meta {
+  font-size: 10.5px; padding-left: 22px; color: var(--sho-muted);
+  font-variant-numeric: tabular-nums;
+}
+body.sho .pjd-stage.is-done .pjd-dot {
+  border-color: color-mix(in oklch, var(--sho-success) 55%, transparent);
+  color: var(--sho-success);
+}
+body.sho .pjd-stage.is-done .pjd-stage-top { color: var(--sho-muted); }
+body.sho .pjd-stage.is-now { background: var(--sho-accent-soft); box-shadow: inset 0 2px 0 var(--sho-accent); }
+body.sho .pjd-stage.is-now .pjd-dot { border-color: var(--sho-accent); color: var(--sho-accent); }
+body.sho .pjd-stage.is-now .pjd-stage-top { color: var(--sho-ink); }
+
+/* ── view switcher (same idiom as Weekly's 今日/整週/全部) ── */
+body.sho .pjd-secbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 26px 0 0; padding: 0 2px 8px; border-bottom: 1px solid var(--sho-line-2);
+}
+body.sho .pjd-sec-t {
+  font-family: var(--sho-font-mono); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.07em; text-transform: uppercase; color: var(--sho-ink);
+}
+body.sho .pjd-views { display: flex; gap: 4px; }
+body.sho .pjd-view {
+  font-family: var(--sho-font-mono); font-size: 10.5px; letter-spacing: 0.09em;
+  text-transform: uppercase; cursor: pointer; padding: 5px 10px;
+  border: 1px solid transparent; border-radius: var(--sho-r-1);
+  background: none; color: var(--sho-muted);
+}
+body.sho .pjd-view:hover { color: var(--sho-text); }
+body.sho .pjd-view.is-on {
+  color: var(--sho-ink); border-color: var(--sho-line-2); background: var(--sho-bg-2);
+}
+.pjd-pane { display: none; }
+.pjd-pane.is-on { display: block; }
+
+/* ── list view ── */
+body.sho .pjd-group-t {
+  font-family: var(--sho-font-mono); font-size: 10.5px; letter-spacing: 0.06em;
+  color: var(--sho-muted); padding: 14px 2px 5px; display: block;
+}
+body.sho .pjd-task {
+  display: flex; align-items: baseline; gap: 11px; padding: 9px 10px;
+  border-bottom: 1px solid var(--sho-line); color: var(--sho-text);
+  text-decoration: none; transition: background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .pjd-task:hover { background: var(--sho-bg-2); }
+body.sho .pjd-task-mark { width: 15px; text-align: center; color: var(--sho-muted); flex: 0 0 auto; }
+body.sho .pjd-task-n { flex: 1; min-width: 0; font-size: 14px; }
+body.sho .pjd-task-meta {
+  display: inline-flex; gap: 14px; font-size: 11.5px; white-space: nowrap;
+  font-variant-numeric: tabular-nums; color: var(--sho-muted);
+}
+body.sho .pjd-task-meta .when { min-width: 92px; text-align: right; }
+body.sho .pjd-task-meta .none { color: var(--sho-warning); }
+body.sho .pjd-task.is-done .pjd-task-n {
+  color: var(--sho-muted); text-decoration: line-through; text-decoration-color: var(--sho-line-2);
+}
+body.sho .pjd-task.is-done .pjd-task-mark { color: var(--sho-success); }
+body.sho .pjd-task.is-now .pjd-task-mark { color: var(--sho-accent); }
+
+/* ── kanban view ── */
+body.sho .pjd-kan { display: flex; gap: 12px; margin-top: 14px; align-items: flex-start; }
+body.sho .pjd-col {
+  flex: 1; min-width: 0; border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2); background: var(--sho-bg);
+}
+body.sho .pjd-col-h {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  padding: 9px 12px; border-bottom: 1px solid var(--sho-line);
+  font-family: var(--sho-font-mono); font-size: 10.5px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--sho-text-2);
+}
+body.sho .pjd-col--now .pjd-col-h { color: var(--sho-ink); box-shadow: inset 0 2px 0 var(--sho-accent); }
+body.sho .pjd-col-n {
+  font-variant-numeric: tabular-nums; color: var(--sho-muted);
+  border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-1); padding: 0 5px;
+}
+body.sho .pjd-card {
+  display: block; padding: 9px 12px; border-bottom: 1px solid var(--sho-line);
+  text-decoration: none; color: var(--sho-text);
+  transition: background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .pjd-card:last-child { border-bottom: 0; }
+body.sho .pjd-card:hover { background: var(--sho-bg-2); }
+body.sho .pjd-card-n { font-size: 13px; display: block; margin-bottom: 4px; }
+body.sho .pjd-card-m {
+  font-family: var(--sho-font-mono); font-size: 10.5px; color: var(--sho-muted);
+  display: flex; gap: 10px; font-variant-numeric: tabular-nums;
+}
+body.sho .pjd-card-m .none { color: var(--sho-warning); }
+body.sho .pjd-card.is-done .pjd-card-n {
+  color: var(--sho-muted); text-decoration: line-through; text-decoration-color: var(--sho-line-2);
+}
+body.sho .pjd-col-empty { padding: 14px 12px; font-size: 11.5px; color: var(--sho-muted); }
+
+/* ── schedule view ── */
+body.sho .pjd-day { display: flex; gap: 14px; padding: 10px 2px; border-bottom: 1px solid var(--sho-line); }
+body.sho .pjd-day-k {
+  flex: 0 0 96px; font-family: var(--sho-font-mono); font-size: 11px;
+  color: var(--sho-muted); font-variant-numeric: tabular-nums; padding-top: 2px;
+}
+body.sho .pjd-day-k b { display: block; color: var(--sho-ink); font-size: 13px; font-weight: 700; }
+body.sho .pjd-day-k.today b { color: var(--sho-accent); }
+body.sho .pjd-day-items { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+body.sho .pjd-slot { display: flex; align-items: baseline; gap: 10px; font-size: 13.5px; }
+body.sho .pjd-slot-t {
+  font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-muted);
+  flex: 0 0 88px; font-variant-numeric: tabular-nums;
+}
+body.sho .pjd-slot-n { flex: 1; min-width: 0; color: var(--sho-text); text-decoration: none; }
+body.sho .pjd-slot-n:hover { color: var(--sho-accent); }
+body.sho .pjd-slot-p { font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-muted); }
+body.sho .pjd-unsched { margin-top: 4px; }
+body.sho .pjd-unsched .pjd-day-k b { color: var(--sho-warning); }
+
+/* ── attach-existing panel ── */
+body.sho .pjd-attach { margin: 14px 0 0; }
+body.sho .pjd-attach > summary {
+  list-style: none; cursor: pointer; display: inline-block;
+  font-family: var(--sho-font-mono); font-size: 11px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--sho-text);
+  border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-1); padding: 6px 11px;
+}
+body.sho .pjd-attach > summary::-webkit-details-marker { display: none; }
+body.sho .pjd-attach > summary:hover { border-color: var(--sho-accent); color: var(--sho-accent); }
+body.sho .pjd-attach-box {
+  margin-top: 10px; border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2); background: var(--sho-bg);
+}
+body.sho .pjd-attach-hint {
+  padding: 11px 14px 9px; border-bottom: 1px solid var(--sho-line);
+  font-size: 11.5px; color: var(--sho-muted);
+}
+body.sho .pjd-attach-list { max-height: 210px; overflow-y: auto; }
+body.sho .pjd-pick {
+  display: flex; align-items: center; gap: 11px; cursor: pointer;
+  padding: 8px 14px; border-bottom: 1px solid var(--sho-line); font-size: 13.5px;
+}
+body.sho .pjd-pick:last-child { border-bottom: 0; }
+body.sho .pjd-pick:hover { background: var(--sho-bg-2); }
+body.sho .pjd-pick input { accent-color: var(--sho-accent); margin: 0; }
+body.sho .pjd-pick-n { flex: 1; min-width: 0; }
+body.sho .pjd-pick-tag {
+  font-family: var(--sho-font-mono); font-size: 10.5px; color: var(--sho-muted);
+  border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-1); padding: 1px 6px;
+}
+body.sho .pjd-pick-tag.warn {
+  color: var(--sho-warning); border-color: color-mix(in oklch, var(--sho-warning) 45%, transparent);
+}
+body.sho .pjd-attach-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 11px 14px; border-top: 1px solid var(--sho-line);
+}
+body.sho .pjd-attach-foot .sho-mono { font-size: 11.5px; }
+
+/* ── notes ── */
+body.sho .pjd-notes { margin: 26px 0 0; padding: 14px 16px; border: 1px solid var(--sho-line); border-radius: var(--sho-r-2); }
+body.sho .pjd-notes-b { font-size: 14px; line-height: 1.75; }
+body.sho .pjd-notes-b > :first-child { margin-top: 7px; }
+body.sho .pjd-notes-b > :last-child { margin-bottom: 2px; }
+body.sho .pjd-hint { font-size: 11px; color: var(--sho-muted); text-transform: none; letter-spacing: 0; }
+
+/* ── toast (detail page shares the index's wording/colour) ── */
+body.sho .pjd-toast {
+  border: 1px solid color-mix(in oklch, var(--sho-warning) 40%, transparent);
+  background: color-mix(in oklch, var(--sho-warning) 8%, transparent);
+  border-radius: var(--sho-r-1); padding: 10px 14px; margin: 16px 0 0; font-size: 13.5px;
+}
+body.sho .pjd-toast--ok {
+  border-color: color-mix(in oklch, var(--sho-success) 40%, transparent);
+  background: color-mix(in oklch, var(--sho-success) 8%, transparent);
+}
+
+/* ── kind picker on the create form ── */
+body.sho .pj-new-kind {
+  background: var(--sho-bg); border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1); color: var(--sho-text);
+  font: inherit; font-size: 13.5px; padding: 8px 10px;
+}
+body.sho .pj-new-kind:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+body.sho .pj-row-kind {
+  font-family: var(--sho-font-mono); font-size: 10.5px; color: var(--sho-muted);
+  border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-1);
+  padding: 1px 6px; white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  body.sho .pjd-main { padding: 0 14px 40px; }
+  body.sho .pjd-stats, body.sho .pjd-rail, body.sho .pjd-kan { flex-direction: column; }
+  body.sho .pjd-stat, body.sho .pjd-stage { border-left: 0; border-top: 1px solid var(--sho-line); }
+  body.sho .pjd-stat:first-child, body.sho .pjd-stage:first-child { border-top: 0; }
+  body.sho .pjd-stage.is-now { box-shadow: inset 2px 0 0 var(--sho-accent); }
+  body.sho .pjd-day { flex-direction: column; gap: 6px; }
+}

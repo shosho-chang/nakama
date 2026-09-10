@@ -85,8 +85,28 @@ class TestCreateProject:
 
     def test_duplicate_raises(self, vault: Path):
         create_project(vault, "電子報")
-        with pytest.raises(ProjectError):
+        with pytest.raises(ProjectError) as exc:
             create_project(vault, "電子報")
+        assert exc.value.code == "exists"
+
+    @pytest.mark.parametrize("bad", ["[Pod] 蘇予昕", "電子報]", "a#b", "a^b"])
+    def test_wikilink_hostile_characters_rejected(self, vault: Path, bad: str):
+        """Obsidian has no escape syntax for these inside ``[[...]]``, so such a
+        name yields a link with ambiguous boundaries (修修 2026-09-10). Rejected
+        at creation rather than half-supported."""
+        with pytest.raises(ProjectError) as exc:
+            normalize_name(bad)
+        assert exc.value.code == "bracket"
+
+    def test_bracket_error_suggests_the_fullwidth_name(self, vault: Path):
+        with pytest.raises(ProjectError) as exc:
+            normalize_name("[Pod] 蘇予昕")
+        assert "【Pod] 蘇予昕" in str(exc.value)  # first offending char swapped
+
+    def test_fullwidth_brackets_are_accepted(self, vault: Path):
+        entry = create_project(vault, "【Pod】蘇予昕")
+        assert entry.name == "【Pod】蘇予昕"
+        assert (vault / "Projects" / "【Pod】蘇予昕.md").is_file()
 
     @pytest.mark.parametrize("bad", ["", "   ", "a/b", "a\\b", "a:b", ".hidden", "x" * 81])
     def test_invalid_names_raise(self, vault: Path, bad: str):
