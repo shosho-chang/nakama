@@ -15,7 +15,10 @@ from __future__ import annotations
 
 import sys
 
-for _s in (sys.stdout, sys.stderr):
+# stdin 也要一起。Windows 的 stdin 預設走 locale（cp950），中文管進來會解成
+# surrogate，然後在下面 print 標題那一行 UnicodeEncodeError——看起來像「這條標題
+# 有問題」，其實是讀進來就壞了。2026-09-10 實際誤報過一次 FAIL。
+for _s in (sys.stdin, sys.stdout, sys.stderr):
     try:
         _s.reconfigure(encoding="utf-8")
     except Exception:
