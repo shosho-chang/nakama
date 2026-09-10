@@ -67,15 +67,22 @@ class ReferenceOperation:
     sha256: str
 
     def verify(self, repo_root: Path) -> None:
-        """Fail closed when the pinned operation is missing or has drifted."""
+        """Fail closed when the pinned operation is missing or has drifted.
+
+        釘的是**內容**，不是 checkout 的換行慣例。git 會依平台改寫換行
+        （`core.autocrlf`／`.gitattributes`），所以直接雜湊磁碟位元組在 Windows 上
+        永遠對不上——2026-09-10 實測：journal 記的兩個 digest 都等於**換成 LF 之後**
+        的雜湊，而工作區的檔案有 480／448 行 CRLF。
+
+        後果不是「測試偶爾紅」，是**這道防線在唯一會跑它的機器上永遠是紅的**——
+        真的有人改了那兩支腳本，跟這個長期假警報長得一模一樣，分不出來。
+        先正規化再雜湊，這道檢查才真的在檢查漂移。
+        """
         operation = repo_root / self.path
         if not operation.is_file():
             raise AmendmentJournalError(f"reference operation is missing: {self.path}")
-        digest = hashlib.sha256()
-        with operation.open("rb") as stream:
-            for block in iter(lambda: stream.read(1 << 20), b""):
-                digest.update(block)
-        if digest.hexdigest() != self.sha256:
+        content = operation.read_bytes().replace(b"\r\n", b"\n")
+        if hashlib.sha256(content).hexdigest() != self.sha256:
             raise AmendmentJournalError(f"reference operation digest differs: {self.path}")
 
 

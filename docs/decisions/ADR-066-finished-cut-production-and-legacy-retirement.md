@@ -8,6 +8,38 @@
 - **Preserves**: ADR-051 Director creative ownership; ADR-064 Editorial Master truth root
 - **Does not supersede**: ADR-051 standalone `storyboard.yaml` workflow
 
+## Revision 2026-09-10 — 修正窗口關在「封存成 Release」，不是「鑄出 plan」
+
+**這一條改變了本 ADR 原本的行為，優先於下文所有寫著 "before materialization" 的段落
+（§Public commands、§Pre-release event inspection and correction、§Open follow-up 的第一段）。**
+
+原本 `request_correction` 在 `MaterializationPlan` 一鑄出來就拒絕。實跑之後發現那條規則
+在長片線上是**反的**：
+
+- Resolve 的 timeline 與 preview 只在 plan 生出來**之後**才存在
+- 也就是說**等使用者看得到成品，修改窗口已經關了**
+- 唯一的出路是重新登錄整支，把已經付掉的語意工作再付一次
+
+修修 2026-09-10 的原話：「我希望長片也能快速改。」
+
+**改成**：`request_correction` 只在這份 plan 已經**封存成 current Release** 時拒絕
+（訊息會指名是哪一個 Release，並指向 `request_revision`）。其餘一切不變——correction
+本來就會把 `materialization_plan` 清成 `None`、run 退回 `pending`，只對指名的那一個
+event 重派（`scope=event_retry`），其餘 acceptance 原封不動。
+
+**為什麼安全**：plan 是 run 內部的紀錄。新的 plan 依 `_materialization_paths` 會拿到
+自己的 staging 工作區與 Resolve transaction（兩者身分都由 plan 決定），不會覆蓋上一版；
+已封存的 Release 一個位元都不會動。真正需要保護的路徑仍然由 `request_revision` 走。
+
+**現況佐證**：這條線目前根本不封存 Release——20260901 蘇予昕 全碟 0 個 sealed Release、
+0 個 current pointer（5 個 run 到 `review_ready`，從 Resolve timeline 直接匯出）。
+所以新的擋法在實務上不會擋到任何東西，而舊的擋法擋掉的正是使用者唯一的修改機會。
+
+**§Open follow-up 仍然成立**：`request_amendment` 是給**已封存 Release** 的機械式修改用的，
+與本次修正無關。它的變換層已經一般化並證明與 `amendments/operations/` 那兩支釘死的腳本
+鑄出相同的 plan（`_amendment.py` ＋ `tests/brook/script_video/test_finished_cut_amendment.py`，
+即本 ADR 要求的 plan equality 驗收）；驅動交易鏈的部分尚未實作。
+
 ## Review record
 
 - Architecture/deletion review (`l3_render_path`): **APPROVE** — deep-module boundary, Long/Short authority,

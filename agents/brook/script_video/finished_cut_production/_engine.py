@@ -553,8 +553,34 @@ class FinishedCutProduction:
                 "pre-release correction is only available to fresh ApprovedCut runs"
             )
         view = stored.view
-        if view.materialization_plan is not None:
-            raise CommandRejectedError("pre-release correction is closed after materialization")
+        # 舊行為：`MaterializationPlan` 一鑄出來就把修正窗口關掉。
+        #
+        # 那條規則在長片線上是**反的**：Resolve 的 timeline 與 preview 只在 plan 生出來
+        # 之後才存在，也就是說**等修修看得到成品，窗口已經關了**。他 2026-09-10 的原話
+        # 是「我希望長片也能快速改」——而唯一的出路是重新登錄整支，把已經付掉的語意
+        # 工作再付一次。
+        #
+        # plan 是 run 內部的紀錄，重鑄一份不會動到任何已封存的東西：correction 本來就會
+        # 把 `materialization_plan` 清成 None、run 退回 `pending`（見本函式結尾的
+        # `save_run`），而新的 plan 依 `_materialization_paths` 會拿到**自己的** staging
+        # 工作區與 Resolve transaction（兩者的身分都由 plan 決定），不會覆蓋舊的。
+        #
+        # 真正不能動的是**已經封存成 Release** 的 plan——那要走 `request_revision`，
+        # 它會鑄新 run 並保留整條收據鏈。所以只擋這一種。
+        plan = view.materialization_plan
+        if plan is not None:
+            sealed = [
+                release
+                for release in self._current_release_index.inspect_current(
+                    stored.command.episode_id
+                )
+                if release.materialization_plan_id == plan.plan_id
+            ]
+            if sealed:
+                raise CommandRejectedError(
+                    "this MaterializationPlan is already sealed into current Release "
+                    f"{sealed[0].release_id}; use request_revision to change a released cut"
+                )
         if view.correction is not None:
             raise CommandRejectedError("another pre-release correction is still current")
         try:

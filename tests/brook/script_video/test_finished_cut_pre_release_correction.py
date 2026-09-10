@@ -29,8 +29,10 @@ from agents.brook.script_video.finished_cut_production._policy import PolicyDeci
 from agents.brook.script_video.finished_cut_production._records import (
     DirectorEventProposal,
     DPEventProposal,
+    ReleaseArtifact,
     VisualEventProposal,
     _mint_accepted_stage,
+    _rehydrate_finished_cut_release,
 )
 from agents.brook.script_video.finished_cut_production._semantic import (
     InMemorySemanticAdapter,
@@ -1275,3 +1277,178 @@ def test_tampered_derived_request_fails_before_builder_dispatch(tmp_path) -> Non
 
     assert forged_scope.status == "needs_review"
     assert forged_scope_builder.calls == 0
+
+
+# ── 修正窗口關在「封存成 Release」而不是「鑄出 plan」（修修 2026-09-10）────────
+#
+# 舊規則在長片線上是反的：Resolve 的 timeline 與 preview 只在 plan 生出來之後才存在，
+# 也就是說**等他看得到成品，窗口已經關了**。唯一的出路是重新登錄整支，
+# 把已經付掉的語意工作再付一次。
+
+
+def _run_to_minted_plan(tmp_path, *, asset_name: str = "window-stock"):
+    """把一支 run 推到 review_ready——plan 已鑄，Resolve 也已經可以物化了。"""
+    stock = _asset(asset_name)
+    spare = _asset(f"{asset_name}-spare")
+    production, semantic = _production(
+        tmp_path,
+        assets=(stock, spare),
+        long_policy=_AcceptingPolicy(),
+    )
+    production.advance(COMMAND_ID)
+    semantic.respond(
+        semantic.current_request(COMMAND_ID),
+        events=(
+            DirectorEventProposal(
+                "event-purpose",
+                ("cue-purpose",),
+                "Show a purposeful workplace",
+                "工作的意義與召喚",
+                "b_roll",
+            ),
+        ),
+    )
+    production.advance(COMMAND_ID)
+    production.advance(COMMAND_ID)
+    semantic.respond(
+        semantic.current_request(COMMAND_ID),
+        events=(
+            DPEventProposal(
+                "event-purpose", "stock_video", "b_roll", stock.reference, ("cue-purpose",)
+            ),
+        ),
+    )
+    production.advance(COMMAND_ID)
+    production.advance(COMMAND_ID)
+    production.advance(COMMAND_ID)
+    semantic.respond(
+        semantic.current_request(COMMAND_ID),
+        events=(VisualEventProposal("event-purpose", "approved"),),
+    )
+    return production, semantic, _advance_to_plan(production), spare
+
+
+def _advance_to_plan(production):
+    """推到 plan 真的鑄出來為止。次數寫死很脆——這條線的階段數改過好幾次。"""
+    for _ in range(6):
+        stored = production._store.load_run(COMMAND_ID)
+        if stored is not None and stored.view.materialization_plan is not None:
+            return stored.view.materialization_plan
+        production.advance(COMMAND_ID)
+    stored = production._store.load_run(COMMAND_ID)
+    status = stored.view.status if stored is not None else "run 不見了"
+    raise AssertionError(f"推不到鑄出 plan 的狀態：status={status}")
+
+
+def test_correction_is_open_after_the_plan_is_minted(tmp_path) -> None:
+    """他在 timeline 上說「這支 B-roll 換掉」——那一刻 plan 已經鑄出來了。"""
+    production, semantic, plan, spare = _run_to_minted_plan(tmp_path)
+
+    request_id = production.request_correction(
+        COMMAND_ID,
+        "dp",
+        "event-purpose",
+        "timeline 上看起來不對，換一支素材。",
+    )
+
+    assert request_id
+    after = production._store.load_run(COMMAND_ID)
+    assert after is not None
+    # plan 被清掉、run 退回 pending——重鑄一份不會動到任何已封存的東西。
+    assert after.view.materialization_plan is None
+    assert after.view.status == "pending"
+
+
+def _drive_until_plan(production, semantic, replacement):
+    """回應任何還掛著的 stage 請求，直到 plan 重新鑄出來。
+
+    不要寫死 advance 次數：correction 之後是 DP retry → visual retry 兩輪，
+    中間各有一次 dispatch／accept，階段數改過就會漂。
+    """
+    for _ in range(10):
+        stored = production._store.load_run(COMMAND_ID)
+        assert stored is not None
+        if stored.view.materialization_plan is not None:
+            return stored.view.materialization_plan
+        if stored.view.outstanding_request is not None:
+            request = semantic.current_request(COMMAND_ID)
+            if request.stage == "dp":
+                semantic.respond(
+                    request,
+                    events=(
+                        DPEventProposal(
+                            "event-purpose",
+                            "stock_video",
+                            "b_roll",
+                            replacement.reference,
+                            ("cue-purpose",),
+                        ),
+                    ),
+                )
+            elif request.stage == "visual_review":
+                semantic.respond(
+                    request,
+                    events=(VisualEventProposal("event-purpose", "approved"),),
+                )
+        production.advance(COMMAND_ID)
+    raise AssertionError("correction 之後推不回鑄出 plan 的狀態")
+
+
+def test_correction_after_the_plan_re_mints_a_different_plan(tmp_path) -> None:
+    """換完素材再走回來，會拿到一份**不同的** plan，而且素材真的換掉了。
+
+    plan 決定 staging 工作區與 Resolve transaction 的身分，所以「不同的 plan」
+    也就是「不會覆蓋掉上一版的產物」。
+    """
+    production, semantic, first_plan, spare = _run_to_minted_plan(tmp_path)
+    production.request_correction(COMMAND_ID, "dp", "event-purpose", "換一支素材。")
+
+    second_plan = _drive_until_plan(production, semantic, spare)
+
+    assert second_plan.plan_id != first_plan.plan_id
+    assert [component.asset_ref for component in second_plan.components] == [spare.reference]
+
+
+def test_correction_is_refused_once_the_plan_is_sealed_into_a_release(tmp_path) -> None:
+    """已經封存成 Release 的 plan 不能就地重鑄——那要走 request_revision。"""
+    production, semantic, plan, _spare = _run_to_minted_plan(tmp_path)
+    index = production._current_release_index
+    index.publish((_sealed_release_for(plan),))
+
+    with pytest.raises(CommandRejectedError) as excinfo:
+        production.request_correction(
+            COMMAND_ID, "dp", "event-purpose", "已經發布了還想改。"
+        )
+
+    message = str(excinfo.value)
+    assert "already sealed into current Release" in message
+    assert "request_revision" in message
+    # 被擋下來時 plan 必須原封不動。
+    still = production._store.load_run(COMMAND_ID)
+    assert still is not None and still.view.materialization_plan is not None
+
+
+def _sealed_release_for(plan):
+    """把這份 plan 封成一個 current Release——只給上面那個「已發布就擋下來」用。"""
+    artifact = ReleaseArtifact(path="preview.mp4", bytes=1024, sha256="b" * 64, duration_sec=9.0)
+    return _rehydrate_finished_cut_release(
+        release_id="release-sealed-from-this-plan",
+        episode_id=plan.episode_id,
+        cut_id=plan.cut_id,
+        format=plan.format,
+        command_id=plan.command_id,
+        run_id=plan.run_id,
+        editorial_master_id="e" * 64,
+        winner_id="winner-sealed",
+        tight_cut_id="tight-sealed",
+        director_acceptance_id=plan.director_acceptance_id,
+        dp_acceptance_id=plan.dp_acceptance_id,
+        visual_acceptance_id=plan.visual_acceptance_id,
+        materialization_plan_id=plan.plan_id,
+        events=plan.events,
+        preview=artifact,
+        subtitle=replace(artifact, path="review.srt"),
+        transaction_receipt_id="txn-sealed",
+        rollback_ref="rollback-sealed",
+        components=plan.components,
+    )

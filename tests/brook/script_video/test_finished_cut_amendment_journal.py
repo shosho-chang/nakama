@@ -108,6 +108,36 @@ def test_reference_operation_digest_change_fails_closed(tmp_path: Path) -> None:
         drifted.verify(REPO_ROOT)
 
 
+def test_real_content_drift_is_still_caught(tmp_path: Path) -> None:
+    """換行正規化只吸收換行；**內容**改了一定要抓到。
+
+    2026-09-10 把 `verify` 改成先把 CRLF 正規化成 LF（否則這道防線在 Windows checkout
+    上永遠是紅的，真漂移跟假警報分不出來）。這一條釘住那次放寬**只**放寬了換行。
+    """
+    journal = load_journal(JOURNAL)
+    pinned = journal.amendments[0].reference_operation
+    source = (REPO_ROOT / pinned.path).read_bytes()
+
+    copy_root = tmp_path / "repo"
+    target = copy_root / pinned.path
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    crlf, lf = b"\r\n", b"\n"
+    unix = source.replace(crlf, lf)
+    windows = unix.replace(lf, crlf)
+
+    # 換行換一輪：兩種寫法都必須通過。
+    target.write_bytes(unix)
+    pinned.verify(copy_root)
+    target.write_bytes(windows)
+    pinned.verify(copy_root)
+
+    # 內容動一個字元就要 fail closed。
+    target.write_bytes(unix + b"# tampered" + lf)
+    with pytest.raises(AmendmentJournalError, match="digest differs"):
+        pinned.verify(copy_root)
+
+
 def test_unknown_schema_is_rejected(tmp_path: Path) -> None:
     document = _document()
     document["schema"] = "nakama.finished_cut_amendment_journal.v2"

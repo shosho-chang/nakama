@@ -112,13 +112,36 @@ python scripts/diagnose_derived_build.py --episode-id "<ep>" --command-id <cmd> 
 `--contact-sheet` 把這條 run 用到的每支素材抽一格拼成一張——**側躺、黑邊、認錯人
 只有肉眼看得出來**，`cb530d56…` 在對照表上一眼就看得出整個人是橫的。
 
-### 6. 修正窗口什麼時候關掉
+### 6. 修正窗口什麼時候關掉（2026-09-10 改了）
 
-`request-correction` 在 `materialization_plan` 生出來之後就拒絕（「pre-release
-correction is closed after materialization」）。視覺審查全部通過就會生 plan——
-**所以想換素材要在視覺審查那一關擋下來**，過了就只能重新登錄。
-重新登錄只要把 `registrations/<cut>.json` 的 `approved_at` 換一個新時間即可
-（command_id 是整份 payload 的雜湊）。
+**現在關在「封存成 Release」，不是「鑄出 plan」。**
+
+舊行為是 plan 一生出來就拒絕 `request-correction`。那條規則在這條線上是**反的**：
+Resolve 的 timeline 與 preview 只在 plan 生出來之後才存在，也就是說
+**等修修看得到成品，窗口已經關了**——他唯一的出路是重新登錄整支，把已經付掉的
+語意工作再付一次。修修 2026-09-10：「我希望長片也能快速改。」
+
+所以他在 timeline 上說「這支 B-roll 換掉」時，直接下 targeted correction：
+
+```bash
+python scripts/run_finished_cut_production.py --runtime-root <rt> --episodes-root G:/Footages --episode-id "<ep>" request-correction <command_id> dp <event_id> "timeline 上看起來不對，換一支素材。"
+```
+
+⚠️ 四個參數都是**位置參數**，不是 flag（`command_id` / `stage` / `event_id` / `feedback`）。
+`stage` 只吃 `director` / `dp` / `visual_review`。
+
+correction 會把 `materialization_plan` 清成 `None`、run 退回 `pending`，然後只對
+**那一個 event** 重派 DP（`scope=event_retry`），其餘 acceptance 原封不動。
+回答完再 `advance` 幾次就會鑄出**新的** plan——而 plan 決定 staging 工作區與 Resolve
+transaction 的身分，所以不會覆蓋上一版的產物。
+
+**唯一還擋著的**：這份 plan 已經封存成 current Release。那要走 `request_revision`
+（會鑄新 run 並保留整條收據鏈），錯誤訊息會直接告訴你是哪一個 Release。
+實務上目前不會遇到——Release 封存是 ADR-066 的另一個階段，這條線還沒接上
+（20260901 蘇予昕 全碟 0 個 sealed Release、0 個 current pointer）。
+
+真的要整支重來才用重新登錄：把 `registrations/<cut>.json` 的 `approved_at` 換一個
+新時間即可（command_id 是整份 payload 的雜湊）。
 
 ## ⛔ 已停用：Stage 5 Long Highlight orchestrator（ADR-065）
 
@@ -524,23 +547,21 @@ category／implementation component 分類，不可只看它來自哪個 JSON：
 | 他說的 | 要重跑 | 前提 | 量級 |
 |---|---|---|---|
 | 「換一段別的」 | 改 `candidates.json` 邊界 → 重新登錄 → 整條走一次 | — | **最貴**，等於重做一支 |
-| 「這一段整個不要上視覺」 | `request-correction`（`suppress_components`） | 只有在 plan **還沒生出來**之前 | 分鐘級 |
-| 「這支 B-roll 換掉」 | `request-correction`（`replace_component_assets`） | 同上 | 分鐘級 |
-| 「這張字卡文字改一下」 | 同上，改 Director 的 component 文字 | 同上 | 分鐘級 |
-| plan 已生出來之後的任何一項 | 重新登錄（`registrations/<cut>.json` 換 `approved_at`） | — | 半條線 |
+| 「這一段整個不要上視覺」 | `request-correction <cmd> director <event> "<話>"`（改成 intentional A-roll） | 沒有封存成 Release | 分鐘級 |
+| 「這支 B-roll 換掉」 | `request-correction <cmd> dp <event> "<話>"` | 同上 | 分鐘級 |
+| 「這張字卡文字改一下」 | `request-correction <cmd> director <event> "<話>"` | 同上 | 分鐘級 |
+| 已封存成 Release 之後 | `request_revision`（鑄新 run，保留收據鏈） | — | 半條線 |
 | 「配樂／SFX」 | Step 10–11 | 不動 Release | 分鐘級 |
 | 「標題／封面／描述」 | packaging，不碰 timeline | — | 秒級 |
 
-**那條線落在哪裡**：視覺審查全數通過的當下 `materialization_plan` 就生出來，
-`request-correction` 隨即關閉（見上面第 6 節）。所以**想換素材要在視覺審查那一關
-擋下來**——過了那一關，同樣一句「這支 B-roll 換掉」的成本從分鐘級跳到半條線。
+**那條線落在哪裡**：2026-09-10 之前是「視覺審查全數通過」——plan 一生出來窗口就關。
+現在移到**封存成 Release**，而這條線目前根本不封存 Release，所以實務上
+**timeline review 之後想改什麼都是分鐘級**（見上面第 6 節）。
 
-在視覺審查停下來多看兩眼，比事後重登錄便宜一個量級。這是這條線上唯一值得
-「慢一點」的地方。
-
-> `request_amendment`（plan 之後的正式修改命令）是 ADR-066 自己列的 open
-> follow-up，還沒實作。現況只有 `amendments/` 底下的一次性腳本，那個目錄的
-> README 第一行就寫「這個目錄是過渡的」。
+> `request_amendment`（對**已封存 Release** 做機械式修改）仍是 ADR-066 的 open
+> follow-up。變換層已經一般化並證明與 `amendments/operations/` 那兩支釘死的腳本
+> 等價（`_amendment.py`＋`tests/.../test_finished_cut_amendment.py`），驅動那條
+> 交易鏈的部分還沒接——但那是給「已經發布出去的成品」用的，不是 timeline review。
 
 ## 下游
 
