@@ -1,6 +1,8 @@
 """Thousand Sunny — Nakama web server entry point."""
 
 import os
+import sys
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -74,24 +76,38 @@ _logger = get_logger("nakama.web.app")
 # and the FastAPI lifespan that triggers the wiring.
 
 
+def _serving_for_real() -> bool:
+    """這個 process 是真的在服務，還是只是有人把 app 拉起來看看？
+
+    測試會用 TestClient 驅動 lifespan，而 `.env` 裡 `NAKAMA_CAROUSEL_AUTORUN=1`、
+    `PODCAST_EPISODES_ROOT=G:/Footages` 都是**真的**。沒有這道閘，跑一次測試就會
+    去掃 footage 磁碟，甚至真的認領一張 queued 修正單開 Chrome 出圖——那是拿
+    production 的工作單餵測試。開機掃孤兒是伺服器的職責，不是「有人 import 了
+    這個模組」的職責。
+    """
+    return "pytest" not in sys.modules and "PYTEST_CURRENT_TEST" not in os.environ
+
+
+def _carousel_sweep_body() -> None:
+    from thousand_sunny.routers.carousel_review import run_queued_autorun_sweep
+
+    try:
+        run_queued_autorun_sweep()
+    except Exception:  # noqa: BLE001 — 背景執行緒不能把例外丟進虛空
+        _logger.exception("carousel autorun sweep crashed")
+
+
 def _start_carousel_autorun_sweep() -> None:
     """開機撿一次 carousel 孤兒修正單（見 `carousel_review.sweep_queued_autorunnable_jobs`）。
 
     丟到 daemon thread：掃描本身很輕，但撿到的單會一路跑到出圖，那是分鐘級的，
-    不能擋住 uvicorn 起來。整段包在 try 裡——撿孤兒是加分項，不該讓 Bridge
-    開不起來。autorun 關著時 sweep 自己會回空清單。
+    不能擋住 uvicorn 起來。autorun 關著時 sweep 自己會回空清單。
     """
-    import threading
-
-    from thousand_sunny.routers.carousel_review import run_queued_autorun_sweep
-
-    def _run() -> None:
-        try:
-            run_queued_autorun_sweep()
-        except Exception:  # noqa: BLE001 — 背景執行緒不能把例外丟進虛空
-            _logger.exception("carousel autorun sweep crashed")
-
-    threading.Thread(target=_run, name="carousel-autorun-sweep", daemon=True).start()
+    if not _serving_for_real():
+        return
+    threading.Thread(
+        target=_carousel_sweep_body, name="carousel-autorun-sweep", daemon=True
+    ).start()
 
 
 @asynccontextmanager

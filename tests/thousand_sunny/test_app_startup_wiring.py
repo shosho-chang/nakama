@@ -31,6 +31,7 @@ from __future__ import annotations
 import importlib
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -531,25 +532,39 @@ def test_preflight_skips_when_neither_credential_set(monkeypatch):
 # ── Carousel autorun sweep (2026-09-10) ──────────────────────────────────────
 
 
-def test_startup_sweep_runs_in_the_background_and_swallows_nothing_silently(monkeypatch, caplog):
-    """開機撿孤兒單：不能擋住 uvicorn 起來，也不能把例外丟進虛空。"""
+def test_a_test_process_never_sweeps_production_correction_jobs(monkeypatch):
+    """`.env` 的 `NAKAMA_CAROUSEL_AUTORUN=1` 與 `PODCAST_EPISODES_ROOT=G:/Footages`
+    都是真的。沒有這道閘，跑一次測試就會去掃 footage 磁碟，甚至真的認領一張
+    queued 修正單開 Chrome 出圖——拿 production 的工作單餵測試。
+    """
     import thousand_sunny.app as app_module
 
-    done = []
+    assert app_module._serving_for_real() is False
+
+    called = []
+    monkeypatch.setattr(
+        "thousand_sunny.routers.carousel_review.run_queued_autorun_sweep",
+        lambda: called.append(True),
+    )
+    app_module._start_carousel_autorun_sweep()
+    for thread in threading.enumerate():
+        if thread.name == "carousel-autorun-sweep":
+            thread.join(timeout=10)
+    assert called == []
+
+
+def test_the_sweep_body_swallows_nothing_silently(monkeypatch, caplog):
+    """真的跑起來時，背景執行緒不能把例外丟進虛空。"""
+    import thousand_sunny.app as app_module
 
     def _boom() -> None:
-        done.append("ran")
         raise RuntimeError("sweep exploded")
 
     monkeypatch.setattr(
         "thousand_sunny.routers.carousel_review.run_queued_autorun_sweep", _boom
     )
     with caplog.at_level("ERROR"):
-        app_module._start_carousel_autorun_sweep()
-        for thread in __import__("threading").enumerate():
-            if thread.name == "carousel-autorun-sweep":
-                thread.join(timeout=10)
-    assert done == ["ran"]
+        app_module._carousel_sweep_body()
     assert "carousel autorun sweep crashed" in caplog.text
 
 
