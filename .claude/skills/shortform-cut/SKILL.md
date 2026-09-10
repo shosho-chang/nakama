@@ -33,7 +33,7 @@ timeline」接手。長片線見 `longform-cut`——兩線 script 入口已分�
 | `editorial-master/v1/EDITORIAL-MASTER.json` | 沒有正式 master，整條線不成立 |
 | `editorial-master/v1/conform-map.v1.json` | 詞級刀全部停用（詞的時間戳在來源時鐘上，要投影到 Master 時鐘才敢下刀） |
 | `subs/words.json` | **詞級**時間戳。走 memo dual-audit 的集數只有句級（實測中位 1.90s），抓不出口吃／贅音。缺的話 `--detect` 只產得出 pause 刀，而且**不會報錯** |
-| `assets/bgm/<track>.wav` | Step 7 沒有音樂可放。庫在 `E:\data\music\short-{punch,story,value}`（對應三個 miner），**是 mp3，工具只讀 wav**，要先轉檔複製進該集 |
+| ~~`assets/bgm/<track>.wav`~~ | **不再是前置**：Step 7 自己會從共用庫 `E:\data\music` 取（mp3 自動轉檔進該集）。集內已經有同名檔就用集內那份 |
 
 補 words.json（GPU，**agent 自己跑**，不要叫修修跑）：
 
