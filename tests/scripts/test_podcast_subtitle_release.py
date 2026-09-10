@@ -1442,3 +1442,117 @@ def test_moboo_legacy_bundle_read_compatibility() -> None:
     result = json.loads(raw)
     assert result["compatible"] is True
     assert result["cue_count"] == 2630
+
+
+def _asr_families() -> tuple[tuple[str, str], ...]:
+    return (
+        ("faster", "Systran/faster-whisper-large-v3"),
+        ("qwen", "Qwen/Qwen3-ASR-1.7B"),
+    )
+
+
+def _run_both_families(tmp_path: Path, plan_path: Path, runner) -> None:
+    for family, model in _asr_families():
+        release.run_major_asr(
+            episode_root=tmp_path,
+            plan_path=plan_path,
+            family=family,
+            model=model,
+            revision="a" * 40,
+            device="cpu",
+            compute_type="int8",
+            forced_aligner="Qwen/Qwen3-ForcedAligner-0.6B" if family == "qwen" else None,
+            forced_aligner_revision="b" * 40 if family == "qwen" else None,
+            provider_runner=runner,
+        )
+
+
+def _major_audio_fixture(tmp_path: Path):
+    _early_inputs(tmp_path, audio=_pcm_wav(6000, sample_width_bytes=3, channels=2))
+    _text_inputs(tmp_path, unresolved="major")
+    request = release.seal_request(release.init_request(tmp_path, episode_id="fixture-episode"))
+    release.prepare_major_audio(request, padding_ms=1000)
+    return request, tmp_path / release.DEFAULT_MAJOR_AUDIO_PLAN
+
+
+def test_silent_major_component_is_a_valid_negative_observation(tmp_path: Path) -> None:
+    """跑完卻沒聽到語音 != provider 壞掉，整條線不該卡在這裡。
+
+    2026-09-10 20260721 呂冠緯：Memo 在收工後的室內底噪上幻覺出四條 cue，兩份 text
+    audit 正確判成 major risk，於是 dual-ASR 被要求去聽一段「本來就沒有語音」的音檔。
+    當時三個 guard 都假設 major-risk 窗口一定有語音，release 因此整個卡死。
+    靜默是合法的否定觀測：它永遠不可能支持替換，只能導向 retain_memo_original。
+    """
+    request, plan_path = _major_audio_fixture(tmp_path)
+
+    def silent_provider(**kwargs):
+        return {
+            "transcript": "",
+            "segments": [],
+            "provider_result": {
+                "family": kwargs["family"],
+                "completed": True,
+                "clip_sha256": _digest(kwargs["clip"].read_bytes()),
+            },
+            "runtime": f"{kwargs['family']}-fixture-runtime",
+        }
+
+    _run_both_families(tmp_path, plan_path, silent_provider)
+    asr = "subtitle-work/memo-dual-audit-v1/major-audio/asr"
+    decisions = json.loads(
+        release.build_audio_decisions(
+            request,
+            faster_manifest=tmp_path / f"{asr}/faster/manifest.json",
+            qwen_manifest=tmp_path / f"{asr}/qwen/manifest.json",
+        )
+    )
+    component = decisions["major_components"][0]
+    assert component["decision"] == "retain_memo_original"
+    assert component["reason_code"] == "dual_asr_conflict"
+    assert component["replacements"] == {}
+    evidence = json.loads(
+        (tmp_path / f"{asr}/faster/cue-2/evidence.json").read_bytes()
+    )
+    assert evidence["recognition"] == {
+        "text": "",
+        "segments": [],
+        "raw_result_sha256": evidence["raw_result"]["sha256"],
+    }
+
+
+def test_silence_never_supports_a_candidate() -> None:
+    """放寬的是「聽不到」，不是「比對」——任一邊空白就退回保留原文。"""
+    item = {"a_proposals": ["甲"], "b_proposals": ["甲"]}
+    assert (
+        release._dual_asr_supported_candidate(
+            item, faster_observation="甲", qwen_observation="甲"
+        )
+        == "甲"
+    )
+    for faster, qwen in (("", "甲"), ("甲", ""), ("", ""), ("   ", "甲"), ("甲", " ")):
+        assert (
+            release._dual_asr_supported_candidate(
+                item, faster_observation=faster, qwen_observation=qwen
+            )
+            is None
+        )
+
+
+def test_provider_transcript_and_segments_must_agree(tmp_path: Path) -> None:
+    """只放寬「一致的空」；文字有、segments 沒有仍然 fail closed。"""
+    _request, plan_path = _major_audio_fixture(tmp_path)
+
+    def inconsistent_provider(**kwargs):
+        return {
+            "transcript": "原文2",
+            "segments": [],
+            "provider_result": {
+                "family": kwargs["family"],
+                "completed": True,
+                "clip_sha256": _digest(kwargs["clip"].read_bytes()),
+            },
+            "runtime": f"{kwargs['family']}-fixture-runtime",
+        }
+
+    with pytest.raises(release.SubtitleReleaseError, match="transcript and segments disagree"):
+        _run_both_families(tmp_path, plan_path, inconsistent_provider)
