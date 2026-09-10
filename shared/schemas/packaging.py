@@ -232,9 +232,15 @@ class CutV1(BaseModel):
                 raise ValueError(
                     f"long format cut requires exactly 5 titles, got {len(self.titles)}"
                 )
-            if len(self.packages) != 3:
+            # 「剛好 3 個」是**完工**的樣子，不是這個檔每一刻都要成立的樣子。
+            # 標題階段（`emit_packages`）先寫 titles-only 草稿，封面由
+            # thumbnail-brainstorm 一個一個補上——中間必然經過 0/1/2 個。舊規則讓
+            # 那段中間態把**整個 packaging 頁** 422 掉（連同已經配好的別支）。
+            # 「approve 之前要湊滿」由 gate 守（`packaging_approve` 擋沒有 package
+            # 的長片，也擋選一個不存在的 rank），那才是該擋的地方。
+            if len(self.packages) > 3:
                 raise ValueError(
-                    f"long format cut requires exactly 3 packages, got {len(self.packages)}"
+                    f"long format cut allows at most 3 packages, got {len(self.packages)}"
                 )
         else:
             if len(self.titles) != 1:

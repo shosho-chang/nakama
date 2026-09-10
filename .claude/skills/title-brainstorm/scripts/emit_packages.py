@@ -210,12 +210,10 @@ def emit(
         "cuts": cuts,
     }
 
-    # 寫檔前驗證：長片在本階段本來就還沒有 packages（S5 才補），這些草稿跳過；
-    # 其餘（短片、已配好封面的長片）必須通過 S1 schema，才不會把壞資料寫進別支。
-    drafts = {c["cut_id"] for c in cuts if c.get("format") == "long" and not c.get("packages")}
-    PackagesFileV1.model_validate(
-        {**merged, "cuts": [c for c in cuts if c["cut_id"] not in drafts]}
-    )
+    # 寫檔前**整檔**驗證，一支都不跳過。長片的 titles-only 草稿現在是合法狀態
+    # （`CutV1` 改成「至多 3 個 package」，湊滿由 approve gate 守），所以不再需要
+    # 把草稿挑出去才驗得過——那個例外本身就是漏洞：被跳過的那幾支等於沒驗。
+    PackagesFileV1.model_validate(merged)
 
     packages_path.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
 

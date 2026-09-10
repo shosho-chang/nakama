@@ -2407,3 +2407,60 @@ def test_an_unscoped_watcher_covers_everything():
 
     state = _heartbeat_state(episode_slug=None, cut_id=None)
     assert _watcher_covering(state, "20260723-xieboran", "punch-L1", 1) is not None
+
+
+# --- titles-only 草稿是合法狀態，湊滿由 gate 守 -------------------------------
+# `CutV1` 原本要求長片「剛好 3 個 package」。封面是一個一個補上的，中間必然經過
+# 0/1/2 個，而那段中間態會讓**整個 packaging 頁** 422——連同已經配好封面的別支。
+# 規則從檔案 schema 移到 approve gate（2026-09-10）。
+
+
+def _draft_vault(vault: Path, *, packages: list[dict]) -> None:
+    data = _packages_data()
+    data["cuts"][0]["packages"] = packages
+    (vault / "Attachments" / "packaging" / "20260723-xieboran" / "packages.json").write_text(
+        json.dumps(data, ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def test_board_renders_a_titles_only_long_draft(client, vault):
+    """封面還沒配的長片不該把看板打掛——標題本來就先出來。"""
+    _draft_vault(vault, packages=[])
+    r = client.get("/bridge/packaging/20260723-xieboran")
+    assert r.status_code == 200
+    assert "punch-L1" in r.text
+
+
+def test_board_renders_a_partially_packaged_long_cut(client, vault):
+    _draft_vault(vault, packages=[_package(1)])
+    r = client.get("/bridge/packaging/20260723-xieboran")
+    assert r.status_code == 200
+
+
+def test_approve_still_refuses_a_long_cut_with_no_package(client, vault):
+    """schema 放寬了，這一關就是唯一守門的地方——它必須真的擋得住。"""
+    _draft_vault(vault, packages=[])
+    r = client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 409
+    assert "thumbnail-brainstorm" in r.json()["detail"]
+
+
+def test_approve_refuses_a_rank_that_has_no_package_yet(client, vault):
+    _draft_vault(vault, packages=[_package(1)])
+    r = client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "2"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 409
+    # 已經配好的那一個仍然核准得了。
+    ok = client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
+        follow_redirects=False,
+    )
+    assert ok.status_code == 303
