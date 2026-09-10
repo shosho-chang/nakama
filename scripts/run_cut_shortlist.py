@@ -47,6 +47,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared.highlight_shortlist import (
     SCORERS,
     HighlightDataError,
+    _format_digest,
     winners_path,
 )
 from shared.highlight_shortlist import (
@@ -225,6 +226,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--format", default="long", choices=("long", "short"))
     ap.add_argument("--pick", help="修修挑定的 id（逗號分隔，順序＝rank）")
     ap.add_argument(
+        "--print-digest",
+        action="store_true",
+        help="印出該格式候選的 source_sha256（盲審檔要綁這個），不做其他事",
+    )
+    ap.add_argument(
         "--no-vault-report",
         action="store_true",
         help="不要寫 Vault 的選段報告（CI，或手上沒有掛載 Vault 時）",
@@ -232,6 +238,16 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     hl_dir = Path(args.episode) / HIGHLIGHTS
+    if args.print_digest:
+        # 盲審檔（`review_<persona>.<fmt>.json` / `lens_*.<fmt>.json`）的
+        # `source_sha256` 綁的是**該格式候選的切片**，不是整個 candidates.json。
+        # 手算過三次錯兩次——Step 2.5 打磨長片邊界之後尤其容易拿到舊值。
+        import json as _json
+
+        candidates = _json.loads((hl_dir / "candidates.json").read_text(encoding="utf-8"))
+        print(_format_digest(candidates["candidates"], args.format))
+        return 0
+
     rows = collect(hl_dir, args.format)
     if not rows:
         raise SystemExit(f"candidates.json 裡沒有 format={args.format} 的候選")

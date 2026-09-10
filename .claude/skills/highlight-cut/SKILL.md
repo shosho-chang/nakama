@@ -233,20 +233,33 @@ duration、將同格式重疊 >50% 標為 variant group（不淘汰）。任何 
 
 ## Legacy Step 2 — agent-owned blind persona review
 
-Validate 成功後才 dispatch；每個 reviewer 必須 blind，不能讀其他 reviewer output。三位 scoring
-persona 全部覆蓋每個 candidate；Renee 只覆蓋 long：
+Validate 成功後才 dispatch；每個 reviewer 必須 blind，不能讀其他 reviewer output。
+**長片與短片各跑一輪**：三位 scoring persona 要覆蓋該格式的每一個 candidate，Renee 只覆蓋 long。
 
-| Reviewer | Output | Required shape |
+**盲審檔一律寫 per-format**（`<stem>.<fmt>.json`），長短各一組：
+
+| Reviewer | Output（長片 / 短片） | Required shape |
 |---|---|---|
-| 阿哲 | `highlights/review_azhe.json` | `{"persona":"azhe","source_sha256":"<candidates sha>","scores":[{"id":"story-L01","total":0,"rationale":"..."}]}` |
-| 凱文 | `highlights/review_kevin.json` | `{"persona":"kevin","source_sha256":"<candidates sha>","scores":[...]}` |
-| 淑芬 | `highlights/review_shufen.json` | `{"persona":"shufen","source_sha256":"<candidates sha>","scores":[...]}` |
-| Renee lens | `highlights/lens_renee.json` | `{"lens":"renee","source_sha256":"<candidates sha>","findings":[{"id":"story-L01","hook_risk":"...","retention_risk":"...","boundary_action":"..."}]}` |
+| 阿哲 | `review_azhe.long.json` / `review_azhe.short.json` | `{"persona":"azhe","source_sha256":"<該格式 digest>","scores":[{"id":"story-L01","total":0,"rationale":"..."}]}` |
+| 凱文 | `review_kevin.long.json` / `review_kevin.short.json` | 同上，`persona` 換 `kevin` |
+| 淑芬 | `review_shufen.long.json` / `review_shufen.short.json` | 同上，`persona` 換 `shufen` |
+| brand lens | `lens_brand.long.json` / `lens_brand.short.json` | `{"lens":"brand","source_sha256":"...","findings":[{"id":"...","severity":"veto|caution|","issue":"...","mitigation":"..."}]}` |
+| Renee lens | `lens_renee.long.json`（**短片不需要**） | `{"lens":"renee","source_sha256":"...","findings":[{"id":"story-L01","hook_risk":"...","retention_risk":"...","boundary_action":"..."}]}` |
+
+⚠️ **`source_sha256` 綁的是「該格式候選的切片」，不是整個 `candidates.json`。** 用指令拿，不要手算：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_cut_shortlist.py "<episode>" --format short --print-digest
+```
+
+**為什麼一定要分格式**（2026-09-10 血淚，20260901 蘇予昕）：一份 persona 檔服務不了兩種格式——
+gate 要求 review 的 id 集合與該格式的候選**完全相等**，覆蓋長片的那份對短片來說就是「38 支全缺」。
+更痛的是綁定範圍：綁整個檔案的話，**Step 2.5 動一支長片的邊界，38 支沒被碰過的短片候選連同
+panel 一起作廢**。綁該格式的切片，兩條線才動得了各自的。
 
 Persona `total` 必須 finite 0–100；舊 gate 的三份 scoring file IDs 必須 exact
-等於 long candidate IDs、無重複、無遺漏；每份 `source_sha256` 必須 raw exact 等於 finalized
-`candidates.json` SHA-256，並使用 `hashlib.sha256(...).hexdigest()` 的小寫 hex，不得改成
-PowerShell `Get-FileHash` 的大寫顯示。所有引用原句須為 candidate time range 內 transcript raw substring。另派一個 QA pass 驗證 schema、coverage 與 quote citations；任何整份 review citation 錯誤就
+等於**該格式**的 candidate IDs、無重複、無遺漏；每份 `source_sha256` 必須 raw exact 等於
+`--print-digest` 給的值（小寫 hex，不得改成 PowerShell `Get-FileHash` 的大寫顯示）。所有引用原句須為 candidate time range 內 transcript raw substring。另派一個 QA pass 驗證 schema、coverage 與 quote citations；任何整份 review citation 錯誤就
 作廢並 blind rerun 該 reviewer，不能局部補分。
 
 Shortlist ranking 由既有 code 計算三人中位數；同 variant group 只有最高分佔 rank，其他仍列出；

@@ -599,3 +599,21 @@ def test_an_unreachable_vault_warns_but_does_not_kill_the_run(episode, monkeypat
 
     assert shortlist.write_vault_report(target) is None
     assert "選段報告沒寫進 Vault" in capsys.readouterr().err
+
+
+def test_print_digest_matches_what_the_panel_files_must_bind_to(episode, capsys):
+    """盲審檔手算 digest 錯過兩次——尤其是 Step 2.5 打磨長片邊界之後拿到舊值。"""
+    from shared.highlight_shortlist import _format_digest
+
+    hl = episode / "highlights"
+    candidates = json.loads((hl / "candidates.json").read_text(encoding="utf-8"))["candidates"]
+    for fmt in ("long", "short"):
+        assert shortlist.main([str(episode), "--format", fmt, "--print-digest"]) == 0
+        assert capsys.readouterr().out.strip() == _format_digest(candidates, fmt)
+
+
+def test_print_digest_does_not_write_anything(episode):
+    hl = episode / "highlights"
+    before = {p.name for p in hl.iterdir()}
+    shortlist.main([str(episode), "--format", "long", "--print-digest"])
+    assert {p.name for p in hl.iterdir()} == before
