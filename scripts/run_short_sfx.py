@@ -47,6 +47,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from run_highlight_cut import FORMAT_LABEL  # noqa: E402
 from run_short_tighten import TIGHTEN_DIR, _load_winner  # noqa: E402
 
+from shared.asset_library import AssetLibraryError, ensure_asset  # noqa: E402
+
 logger = logging.getLogger("short_sfx")
 
 SFX_TRACK = 2
@@ -288,9 +290,13 @@ def apply(episode_dir: Path, cid: str) -> dict:
     cues = build_cues(episode_dir, cid)
     layered = build_layered(episode_dir, cid)  # 語意層 + 環境層（<id>_sound.json）
     need = sorted({q["sfx"] for q in cues})
+    # 集內優先、素材庫次之。這五個音效以前只存在於 20260723 謝伯讓 那一集，
+    # 每集都要從那裡手抄過來（修修 2026-09-10 盤點）。
     for name in need:
-        if not (sfx_dir / f"{name}.wav").exists():
-            raise SystemExit(f"assets/sfx/{name}.wav 不存在——先準備音效素材（見 docstring 響度表）")
+        try:
+            ensure_asset(episode_dir, name, kind="sfx")
+        except AssetLibraryError as exc:
+            raise SystemExit(f"{exc}（響度表見本檔 docstring）") from exc
 
     resolve = connect_resolve()
     pm = resolve.GetProjectManager()

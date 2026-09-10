@@ -234,6 +234,8 @@ py -3.10 scripts/run_short_sfx.py <episode> --id <cid>
 - **語意音效層停用**（情緒音效容易用錯場合）；環境音（跟素材走的 diegetic 音）仍可用
 - 間距 <1.2s 只留優先級高的
 - 響度烘焙在素材端（`assets/sfx/*.wav`），不靠 Resolve clip gain——重跑才可重現
+- **不用再手抄素材**：那五個音效在共用庫 `E:\data\sfx`，集內缺了會自動取用
+  （`shared/asset_library.py`）。集內已經有同名檔就用集內那份，per-episode 覆寫永遠贏。
 
 ## Step 7 — 音樂
 
@@ -245,8 +247,15 @@ audio **track 4**（1 對白／2 SFX／3 環境／4 BGM）。烘焙到 **−43 L
 28 dB）——「感覺得到、聽不出來」，這個差距不需要 ducking。頭尾 fade、裁到片長、
 短於片長自動循環，全部烘在檔案端。
 
+`--track` 給**曲名**就好：集內 `assets/bgm/<name>.wav` 優先，沒有就從共用庫
+`E:\data\music` 取，mp3 會自動轉檔進集內（庫是 mp3，工具讀 wav）。庫的檔名帶
+Envato 流水號尾巴（`slow-edges-mum-child-main-version-48501-01-45.mp3`），
+給前綴就對得到。庫的分區：`short-punch` / `short-story` / `short-value` 對三個
+miner，長片用 `focus music`；**指名的家族優先，但其他家族也會找**——直接講曲名
+就行。
+
 選曲跟著**這支的內容**走，不是看 id 前綴——`punch-S07`（天堂裡的人想來人間
-受苦）是沉思不是明快，配的是 night-sky 不是 all-good-folks。新曲用
+受苦）是沉思不是明快，配的是 night-sky 不是 all-good-folks。庫裡沒有的新曲用
 `scripts/stage_bgm_track.py` 進 `assets/bgm/`，會一併寫 acquisition receipt——
 **`source_url` 不知道就寫 `null`，不要從檔名編一個出來**。
 

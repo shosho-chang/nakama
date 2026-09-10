@@ -41,6 +41,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from run_highlight_cut import FORMAT_LABEL  # noqa: E402
 from run_short_tighten import _load_winner  # noqa: E402
 
+from shared.asset_library import AssetLibraryError, ensure_asset  # noqa: E402
+
 logger = logging.getLogger("short_bgm")
 
 BGM_TRACK = 4
@@ -94,9 +96,12 @@ def apply(episode_dir: Path, cid: str, track_name: str = DEFAULT_TRACK) -> dict:
     from build_resolve_project import connect_resolve
 
     c, w = _load_winner(episode_dir, cid)
-    src = episode_dir / "assets" / "bgm" / f"{track_name}.wav"
-    if not src.exists():
-        raise SystemExit(f"{src} 不存在——先把 BGM 放進 episode assets/bgm/")
+    # 集內優先、素材庫次之。庫是 mp3，第一次用會轉檔進集內 assets/bgm/——
+    # 以前這一步是手工做的（修修 2026-09-10 盤點）。
+    try:
+        src = ensure_asset(episode_dir, track_name, kind="bgm", family=cid.split("-")[0])
+    except AssetLibraryError as exc:
+        raise SystemExit(str(exc)) from exc
 
     resolve = connect_resolve()
     pm = resolve.GetProjectManager()
@@ -177,7 +182,11 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="短片 BGM 墊底（方案 B：極輕 ambient）")
     ap.add_argument("episode", help="episode 資料夾")
     ap.add_argument("--id", required=True, help="winner id（如 punch-S1）")
-    ap.add_argument("--track", default=DEFAULT_TRACK, help="assets/bgm/<name>.wav")
+    ap.add_argument(
+        "--track",
+        default=DEFAULT_TRACK,
+        help="曲名：集內 assets/bgm/<name>.wav 優先，否則從素材庫 E:/data/music 取",
+    )
     args = ap.parse_args(argv)
     print(json.dumps(apply(Path(args.episode), args.id, args.track), ensure_ascii=False, indent=1))
     return 0
