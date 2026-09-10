@@ -40,9 +40,25 @@ PROJECTS_DIR = "Projects"
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?(.*)$", re.DOTALL)
 _FILENAME_UNSAFE = re.compile(r'[\\/:*?"<>|\r\n\t]')
 
+# Characters Obsidian cannot carry inside a wikilink target. The name is written
+# back as ``projects: ["[[{name}]]"]``, and there is no escape syntax for these —
+# a name like ``[Pod] 蘇予昕`` yields ``[[[Pod] 蘇予昕]]``, whose boundaries are
+# genuinely ambiguous, so Obsidian's own backlinks break even once our parser
+# handles it (修修 2026-09-10). Rejected at creation instead of half-supported.
+_WIKILINK_UNSAFE = re.compile(r"[\[\]#^]")
+_FULLWIDTH_HINT = {"[": "【", "]": "】", "#": "＃", "^": "＾"}
+
 
 class ProjectError(RuntimeError):
-    """Raised on invalid create/status operations (message is user-facing)."""
+    """Raised on invalid create/status operations (message is user-facing).
+
+    ``code`` lets a caller pick its own wording without string-matching the
+    message — the router used to sniff for "已存在", which any reworded message
+    would have silently broken."""
+
+    def __init__(self, message: str, *, code: str = "invalid") -> None:
+        super().__init__(message)
+        self.code = code
 
 
 @dataclass(frozen=True)
@@ -63,6 +79,15 @@ def normalize_name(raw: str) -> str:
     name = re.sub(r"\s+", " ", name)
     if not name or _FILENAME_UNSAFE.search(name) or name.startswith("."):
         raise ProjectError('戰線名稱不可為空，且不可含 \\ / : * ? " < > | 等字元。')
+    bad = _WIKILINK_UNSAFE.search(name)
+    if bad:
+        ch = bad.group(0)
+        suggestion = name.replace(ch, _FULLWIDTH_HINT[ch])
+        raise ProjectError(
+            f"戰線名稱不可含 {ch} —— Obsidian 的 [[連結]] 沒有辦法跳脫它，"
+            f"反向連結會壞掉。改用全形版本即可，例如「{suggestion}」。",
+            code="bracket",
+        )
     if len(name) > 80:
         raise ProjectError("戰線名稱請在 80 字內。")
     return name
@@ -140,7 +165,7 @@ def create_project(vault_root: Path, raw_name: str) -> ProjectEntry:
     d.mkdir(parents=True, exist_ok=True)
     path = d / f"{name}.md"
     if path.exists():
-        raise ProjectError(f"戰線「{name}」已存在。")
+        raise ProjectError(f"戰線「{name}」已存在。", code="exists")
     created = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     fm = {"type": "project", "status": "active", "created": created}
     _atomic_write(path, _render(fm, ""))
@@ -154,14 +179,14 @@ def set_project_status(vault_root: Path, name: str, status: str) -> None:
     name = unicodedata.normalize("NFC", str(name or "")).strip()
     path = Path(vault_root) / PROJECTS_DIR / f"{name}.md"
     if _FILENAME_UNSAFE.search(name) or not path.is_file():
-        raise ProjectError(f"找不到戰線「{name}」。")
+        raise ProjectError(f"找不到戰線「{name}」。", code="missing")
     raw = path.read_text(encoding="utf-8")
     m = _FRONTMATTER_RE.match(raw)
     if not m:
-        raise ProjectError(f"「{name}」缺 frontmatter，請在 Obsidian 檢查。")
+        raise ProjectError(f"「{name}」缺 frontmatter，請在 Obsidian 檢查。", code="missing")
     fm = yaml.safe_load(m.group(1)) or {}
     if not isinstance(fm, dict) or fm.get("type") != "project":
-        raise ProjectError(f"「{name}」不是 project 檔（type != project）。")
+        raise ProjectError(f"「{name}」不是 project 檔（type != project）。", code="missing")
     fm["status"] = status
     _atomic_write(path, _render(fm, m.group(2)))
 

@@ -33,6 +33,7 @@ from shared.pomodoro_aggregator import (
     parse_dt,
     weekly_actual,
 )
+from shared.wikilink import strip_wikilink
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 
@@ -69,7 +70,6 @@ _SYNC_CONFLICT_RE = re.compile(
     r"(?P<ts>\d{8}-\d{6})-(?P<device>[^.]+)\.md$"
 )
 _SKIP_FILENAME_RE = re.compile(r"^(?:\..*|.*\.sync-conflict-.*|.*\.tmp|Untitled.*)$")
-_WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
 
 
 # ── Week math ────────────────────────────────────────────────────────────────
@@ -164,10 +164,9 @@ def _as_date(v: object) -> Optional[date]:
 
 
 def _strip_wikilink(v: object) -> str:
-    if not isinstance(v, str):
-        return ""
-    m = _WIKILINK_RE.search(v)
-    return m.group(1).strip() if m else v.strip()
+    """Thin alias kept for this module's call sites — see
+    :func:`shared.wikilink.strip_wikilink` for why there is only one parser."""
+    return strip_wikilink(v)
 
 
 def _link_key(v: str) -> str:

@@ -94,6 +94,24 @@ class TestCreate:
         assert r.status_code == 303
         assert r.headers["location"] == "/bridge/projects?err=invalid"
 
+    def test_bracketed_name_rejected_with_guidance(self, client, tmp_path):
+        """修修 2026-09-10: [Pod] 前綴曾寫出 [[[Pod] …]] 這種壞連結。"""
+        r = client.post(
+            "/bridge/projects/new", data={"name": "[Pod] 蘇予昕"}, follow_redirects=False
+        )
+        assert r.status_code == 303
+        assert r.headers["location"] == "/bridge/projects?err=bracket"
+        assert not (tmp_path / "Projects").exists() or not list((tmp_path / "Projects").iterdir())
+        html = client.get("/bridge/projects?err=bracket").text
+        assert "全形" in html and "【Pod】" in html
+
+    def test_fullwidth_brackets_accepted(self, client, tmp_path):
+        r = client.post(
+            "/bridge/projects/new", data={"name": "【Pod】蘇予昕"}, follow_redirects=False
+        )
+        assert r.status_code == 303
+        assert (tmp_path / "Projects" / "【Pod】蘇予昕.md").is_file()
+
     def test_duplicate_errs(self, client, tmp_path):
         _write_project(tmp_path, "電子報")
         r = client.post("/bridge/projects/new", data={"name": "電子報"}, follow_redirects=False)

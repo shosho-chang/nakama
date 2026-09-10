@@ -78,6 +78,10 @@ _ERRORS = {
     "invalid": '戰線名稱不可為空，且不可含 \\ / : * ? " < > | 等字元（80 字內）。',
     "exists": "同名戰線已存在。",
     "missing": "找不到該戰線檔，可能已在 Obsidian 改名或移除。",
+    "bracket": (
+        "戰線名稱不可含 [ ] # ^ —— Obsidian 的 [[連結]] 沒有辦法跳脫它，"
+        "任務歸屬與反向連結都會壞掉。改用全形版本即可，例如「【Pod】蘇予昕」。"
+    ),
 }
 
 
@@ -231,8 +235,7 @@ async def projects_create(
     try:
         entry = create_project(get_vault_path(), name)
     except ProjectError as e:
-        code = "exists" if "已存在" in str(e) else "invalid"
-        return RedirectResponse(f"/bridge/projects?err={code}", status_code=303)
+        return RedirectResponse(f"/bridge/projects?err={e.code}", status_code=303)
     logger.info("project created: %s", entry.name)
     return RedirectResponse(f"/bridge/projects/{quote(entry.name)}", status_code=303)
 

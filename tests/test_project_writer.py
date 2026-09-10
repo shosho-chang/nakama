@@ -12,6 +12,7 @@ from shared.project_writer import (
     create_task,
     now_iso_taipei,
     reassign_task_project,
+    task_project,
 )
 
 SEED = """---
@@ -304,3 +305,53 @@ class TestReassignTaskProject:
     def test_missing_task_raises(self, vault: Path):
         with pytest.raises(ProjectWriteError):
             reassign_task_project(vault_root=vault, task_slug="不存在", project_slug="t")
+
+
+class TestReassignPrefixStacking:
+    """修修 2026-09-10：改派時前綴疊加成「X - X - 任務」的兩條路徑。
+
+    起因是 ``[Pod] 蘇予昕`` 這種含中括號的戰線名把 wikilink 解析弄壞，
+    ``current`` 讀回來是殘缺的名字，剝不掉標題上的真實前綴，於是又疊一層。
+    第二條路徑與 wikilink 無關：舊任務只有檔名前綴、沒有 ``projects:``
+    frontmatter，``current`` 是 None，同樣會疊。"""
+
+    def _write(self, vault: Path, basename: str, fm_extra: str = "") -> Path:
+        p = vault / "TaskNotes" / "Tasks" / f"{basename}.md"
+        p.write_text(
+            f"---\ntitle: {basename}\nstatus: to-do\n預估🍅: 2\n{fm_extra}---\n",
+            encoding="utf-8",
+        )
+        return p
+
+    def test_bracketed_project_name_round_trips(self, vault: Path):
+        self._write(vault, "撰寫社群貼文")
+        new_path, _ = reassign_task_project(
+            vault_root=vault, task_slug="撰寫社群貼文", project_slug="[Pod] 蘇予昕"
+        )
+        assert new_path.name == "[Pod] 蘇予昕 - 撰寫社群貼文.md"
+        fm = yaml.safe_load(new_path.read_text(encoding="utf-8").split("---")[1])
+        assert fm["projects"] == ["[[[Pod] 蘇予昕]]"]
+        # …and reading it back gives the name we wrote, so a second reassign
+        # to the same project is a no-op instead of stacking the prefix.
+        assert task_project(fm) == "[Pod] 蘇予昕"
+
+    def test_reassign_to_same_bracketed_project_is_noop(self, vault: Path):
+        self._write(vault, "撰寫社群貼文")
+        p1, _ = reassign_task_project(
+            vault_root=vault, task_slug="撰寫社群貼文", project_slug="[Pod] 蘇予昕"
+        )
+        p2, _ = reassign_task_project(
+            vault_root=vault, task_slug=p1.stem, project_slug="[Pod] 蘇予昕"
+        )
+        assert p2.name == "[Pod] 蘇予昕 - 撰寫社群貼文.md"  # NOT doubled
+        assert p2 == p1
+
+    def test_legacy_prefix_without_frontmatter_does_not_stack(self, vault: Path):
+        # Pre-dual-write file: filename carries the prefix, no ``projects:`` key.
+        self._write(vault, "電子報 - 26W36")
+        new_path, _ = reassign_task_project(
+            vault_root=vault, task_slug="電子報 - 26W36", project_slug="電子報"
+        )
+        assert new_path.name == "電子報 - 26W36.md"
+        fm = yaml.safe_load(new_path.read_text(encoding="utf-8").split("---")[1])
+        assert fm["projects"] == ["[[電子報]]"]

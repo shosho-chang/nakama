@@ -26,6 +26,7 @@ from zoneinfo import ZoneInfo
 import yaml
 
 from shared.log import get_logger
+from shared.wikilink import strip_wikilink
 
 logger = get_logger(__name__)
 
@@ -223,9 +224,7 @@ def task_project(fm: dict[str, Any]) -> str | None:
     raw = fm.get("projects")
     if isinstance(raw, list) and raw:
         raw = raw[0]
-    if not isinstance(raw, str) or not raw.strip():
-        return None
-    name = raw.strip().lstrip("[").rstrip("]").split("|")[0].strip()
+    name = strip_wikilink(raw)
     if "/" in name:
         name = name.rsplit("/", 1)[-1]
     return unicodedata.normalize("NFC", name) or None
@@ -259,14 +258,24 @@ def reassign_task_project(
     if (current or None) == (target or None):
         return path, 0  # already there — no write, no calendar churn
 
-    # The bare task name: strip the CURRENT project prefix off the title so the
-    # new prefix isn't stacked on top of the old one.
+    # The bare task name: strip the project prefix off the title so the new one
+    # isn't stacked on top. Both the CURRENT project and the TARGET are tried —
+    # a legacy task can carry a filename prefix while having no ``projects:``
+    # frontmatter at all (``current`` is None), and re-applying the target's
+    # prefix over an identical one yields "X - X - 任務" (修修 2026-09-10).
     title = str(fm.get("title") or task_slug)
     bare = title
-    if current and title.startswith(f"{current} - "):
-        bare = title[len(current) + 3 :]
-    elif current and title.startswith(current):
-        bare = title[len(current) :].lstrip(" -—–") or title
+    for owner in (current, target):
+        if not owner:
+            continue
+        if bare.startswith(f"{owner} - "):
+            bare = bare[len(owner) + 3 :]
+            break
+        if bare.startswith(owner):
+            stripped = bare[len(owner) :].lstrip(" -—–")
+            if stripped:
+                bare = stripped
+                break
 
     if target:
         fm["projects"] = [f"[[{target}]]"]

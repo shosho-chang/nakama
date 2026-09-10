@@ -41,6 +41,7 @@ from shared.memory_extractor import extract_in_background
 from shared.obsidian_writer import delete_page, list_files, read_page, write_page
 from shared.prompt_loader import load_prompt
 from shared.vault_rules import VaultRuleViolation, assert_nami_can_read, assert_nami_can_write
+from shared.wikilink import strip_wikilink
 
 logger = get_logger("nakama.gateway.nami")
 
@@ -3151,9 +3152,7 @@ def _task_project(fm: dict) -> str | None:
     raw = fm.get("projects")
     if isinstance(raw, list) and raw:
         raw = raw[0]
-    if not isinstance(raw, str) or not raw.strip():
-        return None
-    name = raw.strip().lstrip("[").rstrip("]").split("|")[0].strip()
+    name = strip_wikilink(raw)
     if "/" in name:  # [[Projects/肌酸的妙用]] 這種路徑式連結
         name = name.rsplit("/", 1)[-1]
     return unicodedata.normalize("NFC", name) or None
