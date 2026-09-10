@@ -523,7 +523,7 @@ Editorial Master 開得起來＝定稿是真的。開不起來就**立刻**回�
  │
  ├─【平行準備】6 支 cut 的語意工作 ＋ carousel
  │     長片：Director 企劃　短片：緊湊化複審／字卡企劃／素材選型
- │     carousel：文案（走 ig-cards skill 的 copy-voice）
+ │     carousel：見 `skills/ig-cards/SKILL.md`（不是 `.claude/skills/ig-cards/`，那只是入口）
  │  【序列上軌】每一支輪流進 Resolve
  ▼
 ■ 停點 2：他在 Resolve timeline 上看六支，用自然語言講要改什麼
@@ -558,6 +558,24 @@ Editorial Master 開得起來＝定稿是真的。開不起來就**立刻**回�
 選段（停點 1）、timeline review（停點 2）、packaging review（停點 3），
 加上最後 YouTube 上傳要他明確核准。**其餘每一次「要不要繼續」都是在把決策成本丟回給他。**
 中途失敗就修，修不動才停下來報——見 §Stop and recovery policy。
+
+### carousel 這一條的入口（免得每次重新摸索）
+
+canonical workflow 在 **`skills/ig-cards/SKILL.md`**（`.claude/skills/ig-cards/` 只是一頁入口）。
+
+前置只有兩樣：`transcript_prose.md`（唯一證據來源，每一筆 `evidence[]` 含 `t0`/`t1` 都以
+SHA-256 綁它）與 `packaging/cutouts/*.png`。`social_brief.md` 可有可無。
+
+```powershell
+python scripts/run_podcast_carousel.py "<episode>" --copy-spec "<episode>/ig-carousel/editorial/rNNN/copy_spec.v1.json" --panel-result "<episode>/ig-carousel/editorial/rNNN/panel_result.v1.json" --template-dir <template-dir>
+```
+
+文案是語意工作：三個盲審 lens（IG Audience／Episode Editorial／Brand and Evidence）跑到收斂。
+**文字聲音走 `skills/ig-cards/references/copy-voice.md`**，不要用預設模型語氣（那份是 r001→r002
+的真實對照，七條）。
+
+之後 `/bridge/ig-cards/<episode>` 是唯一人工核准面。他在上面改的**純結構化**修正單會自動執行
+（`NAKAMA_CAROUSEL_AUTORUN=1`），Bridge 開機也會掃一次還孤在 `queued` 的單。
 
 ### 短片不做封面
 

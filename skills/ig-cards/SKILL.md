@@ -16,7 +16,7 @@ Anchor production and correction at Content Pipeline Stage 5 (製作). Enter Sta
 
 ## Produce a revision
 
-1. Resolve one episode directory. Require `transcript_prose.md`, `transcript.srt`, and `packaging/cutouts/*.png`; accept `social_brief.md` as optional editorial direction.
+1. Resolve one episode directory. Require `transcript_prose.md` and `packaging/cutouts/*.png`; accept `social_brief.md` as optional editorial direction. `transcript_prose.md` is the sole evidence source — every `evidence[]` entry, including `t0`/`t1`, binds to it by SHA-256. (Corrected 2026-09-10: this step used to also require `transcript.srt`, which no carousel code path reads and which current episodes do not produce — the timing authority is the Editorial Master's `editorial-master/v1/master.srt`, and `transcript_prose.md` is derived from it.)
 2. Read the complete transcript and create one evidence-materialised `PodcastCarouselCopySpecV1`. Preserve evidence IDs, timestamps, speakers, and contiguous source spans for every visible claim. Write the prose against [`references/copy-voice.md`](references/copy-voice.md), not from default model style.
 3. Build one Episode Highlight Arc with this exact sequence:
 
