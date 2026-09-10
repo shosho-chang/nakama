@@ -89,6 +89,7 @@ from shared.highlight_materialization import (  # noqa: E402
     HighlightSource,
     verify_materialization_receipt,
 )
+from shared.quiet_subprocess import quiet_kwargs
 
 logger = logging.getLogger("short_broll")
 
@@ -187,7 +188,13 @@ def _render_card(comp: str, variables: dict, out_path: Path, suffix: str = "") -
     logger.info("render %s: %s", comp, out_path.name)
     for attempt in (1, 2):
         proc = subprocess.run(
-            cmd, shell=True, cwd=str(COMPS[comp]), capture_output=True, text=True, encoding="utf-8"
+            cmd,
+            shell=True,
+            cwd=str(COMPS[comp]),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            **quiet_kwargs(),
         )
         if proc.returncode == 0 and out_path.exists():
             return
@@ -238,6 +245,7 @@ def _composite_texture(
         ],
         capture_output=True,
         text=True,
+        **quiet_kwargs(),
     )
     if proc.returncode != 0 or not out_path.exists():
         raise SystemExit(f"紙紋底合成失敗: {(proc.stderr or '')[-300:]}")
@@ -270,6 +278,7 @@ def _probe_meta(path: Path) -> tuple[float, float]:
             capture_output=True,
             text=True,
             timeout=30,
+            **quiet_kwargs(),
         ).stdout.strip()
         parts = out.split(",")
         # 逐欄位獨立 parse——SAR 常見 "N/A"（方形像素），一起 parse 會把
@@ -308,6 +317,7 @@ def _probe_dur(path: Path) -> float:
             capture_output=True,
             text=True,
             timeout=30,
+            **quiet_kwargs(),
         ).stdout.strip()
         return float(out)
     except (OSError, subprocess.TimeoutExpired, ValueError):
@@ -920,7 +930,19 @@ def apply(
     orchestrator_timeline_uid: str | None = None,
     recipe_path: Path | None = None,
     shortform: dict | None = None,
+    structural_only: bool = False,
 ) -> dict:
+    """`structural_only=True`＝只上 badge／namecard／機位修正，不碰 B-roll。
+
+    修修 2026-09-10：「這支 B-roll 換掉」是分鐘級，「補一個開場 LOGO」該是秒級。
+    但整支 Step 5 是全有全無的——補一個 badge 也要重過 Stock Video production gate，
+    而那道 gate 要 recipe 內嵌 `visual_materialization`（Director/DP/Audit 的投影）。
+    手寫的 recipe 沒有那個欄位，於是「補一個自家品牌動畫」被一道跟它完全無關的
+    素材稽核擋住（20260901 蘇予昕 三支短片實際卡在這裡）。
+
+    structural row 本來就不吃那道 gate——它們沒有 stock 素材、沒有授權問題、
+    也不佔 B-roll 軌。這個模式把它們獨立出來：跳過 gate、只碰它們自己那幾軌。
+    """
     from build_resolve_project import connect_resolve
 
     orchestrated = orchestrator_timeline_name is not None or orchestrator_timeline_uid is not None
@@ -944,7 +966,7 @@ def apply(
     if not broll_path.exists():
         raise SystemExit(f"{broll_path} 不存在——agent 先從 tight SRT 規劃素材點")
     items = json.loads(broll_path.read_text(encoding="utf-8"))["items"]
-    if not orchestrated:
+    if not orchestrated and not structural_only:
         broll_receipt = _broll_gate(
             episode_dir,
             cid,
@@ -967,10 +989,24 @@ def apply(
     structural_items = [
         (item, kind) for item in items if (kind := _preserved_structural_kind(item)) is not None
     ]
-    render_items = sorted(
-        (item for item in items if not orchestrated or _preserved_structural_kind(item) is None),
-        key=lambda x: x["t0"],
-    )
+    if structural_only:
+        render_items = sorted(
+            (item for item, _ in structural_items), key=lambda x: float(x["t0"])
+        )
+        if not render_items:
+            raise SystemExit(
+                f"{broll_path} 裡沒有 structural row（badge／guest-namecard／"
+                "camera-correction）——structural-only 沒有東西可以做"
+            )
+    else:
+        render_items = sorted(
+            (
+                item
+                for item in items
+                if not orchestrated or _preserved_structural_kind(item) is None
+            ),
+            key=lambda x: x["t0"],
+        )
     assets_dir = episode_dir / "assets" / "broll"
     stickers_dir = episode_dir / "assets" / "stickers"
     cards_dir = episode_dir / CARDS_DIR
@@ -1184,7 +1220,7 @@ def apply(
 
     # Re-open both trust roots before any Resolve access. CURRENT may switch
     # while jobs are prepared; an older audited generation must never apply.
-    if not orchestrated:
+    if not orchestrated and not structural_only:
         master = _open_editorial_master(episode_dir)
         c, w = _load_winner(episode_dir, cid, master.identity())
         fresh_broll_receipt = _broll_gate(
@@ -1311,7 +1347,13 @@ def apply(
             return False
         return fp.lower().startswith(assets_prefix) or fp.casefold() in correction_paths
 
-    for ti in range(1, director.GetTrackCount("video") + 1):
+    # structural-only 只准清自己那幾軌。整條掃過去會把 track 2 的 B-roll 一起
+    # 掃掉——而這個模式的前提正是「不碰 B-roll」。
+    if structural_only:
+        clear_tracks = sorted({protected_tracks[kind] for _, kind in structural_items})
+    else:
+        clear_tracks = list(range(1, director.GetTrackCount("video") + 1))
+    for ti in clear_tracks:
         stale = [it for it in (director.GetItemListInTrack("video", ti) or []) if _ours(it, ti)]
         if stale:
             director.DeleteClips(stale)
@@ -1457,7 +1499,9 @@ def apply(
     mp.SetCurrentFolder(root)
     pm.SaveProject()
     committed_broll_receipt = None
-    if not orchestrated:
+    # structural-only 沒有動 stock 素材，也就沒有新的 materialization receipt 要發。
+    # 舊那份仍然是對的——這個模式的定義就是不碰它描述的東西。
+    if not orchestrated and not structural_only:
         post_apply_broll_receipt = _broll_gate(
             episode_dir,
             cid,
@@ -1544,15 +1588,34 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="只套 *_broll.json 的局部 host/guest/wide video override；不重跑 DP/B-roll",
     )
+    parser.add_argument(
+        "--structural-only",
+        action="store_true",
+        help="只上 badge／guest-namecard／機位修正（不吃 Stock Video gate，不碰 B-roll 軌）",
+    )
     args = parser.parse_args(argv)
-    if args.validate_only and args.camera_corrections_only:
-        parser.error("--validate-only 與 --camera-corrections-only 不可同時使用")
+    exclusive = [
+        name
+        for name, on in (
+            ("--validate-only", args.validate_only),
+            ("--camera-corrections-only", args.camera_corrections_only),
+            ("--structural-only", args.structural_only),
+        )
+        if on
+    ]
+    if len(exclusive) > 1:
+        parser.error(f"{'、'.join(exclusive)} 不可同時使用")
     if args.camera_corrections_only:
         result = apply_camera_corrections(Path(args.episode), args.id)
     elif args.validate_only:
         result = validate_plan(Path(args.episode), args.id)
     else:
-        result = apply(Path(args.episode), args.id, Path(args.stills) if args.stills else None)
+        result = apply(
+            Path(args.episode),
+            args.id,
+            Path(args.stills) if args.stills else None,
+            structural_only=args.structural_only,
+        )
     print(json.dumps(result, ensure_ascii=False, indent=1))
     return 0
 

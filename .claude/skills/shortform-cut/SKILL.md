@@ -213,13 +213,42 @@ gate 會擋。回頭改 `<cid>_broll.json` 的 t0/t1，不要調 gate。
 開場 LOGO 是 structural item（`{"kind":"badge","slug":"brand-logo-opener"}`），
 **不需要授權收據**（自家品牌資產）。先產 badge：
 
+**透明主檔在 `E:\data\animation`**（修修 2026-09-10 指路）。以前 skill 只寫
+「deliverables 的」而沒寫在哪，2026-09-10 我因此整組找不到，三支短片沒有開場動畫。
+目前是 v13：
+
 ```bash
-py -3.10 scripts/build_brand_logo_badge.py <episode> --source "<...>_alpha_prores4444.mov" --width 440 --seam-offset 30
+python scripts/build_brand_logo_badge.py "<episode>" --source "E:/data/animation/podcast_rounded_card_white_fast_full_fade_in_out_v13_alpha_prores4444.mov" --width 440 --seam-offset 30
 ```
 
-用 deliverables 的 `*_alpha_prores4444.mov`（透明主檔），不要 `*_preview_*.mp4`
-（MP4 不支援透明）。底邊貼在接縫上方，不要跨接縫——下半格主持人的臉幾乎從接縫
-就開始（耳機頂端約 y=980）。
+用 `*_alpha_prores4444.mov`（透明主檔），不要 `*_preview_*.mp4`（MP4 不支援透明），
+也不要 `*_alpha.webm`。這支是純 ffmpeg、**不碰 Resolve**，用一般 python 就行。
+
+出來是 1080×1920 ProRes 4444（yuva444p12le）、2.93 秒，卡片 440×360 落在
+(320,622)–(760,982)。底邊貼在接縫上方，不要跨接縫——下半格主持人的臉幾乎從接縫
+就開始（耳機頂端約 y=980）。`--seam-offset 30` 是修修調定的值，實測疊上開場幀
+剛好擦過他的髮際線上方。
+
+badge 進 recipe 是一筆 **structural row**（`emit_audited_recipe` 重生 recipe 時會保留）：
+
+```json
+{"kind": "badge", "slug": "brand-logo-opener", "t0": 0.0, "t1": 2.933}
+```
+
+**已經做完的短片要補 badge，用 `--structural-only`**：
+
+```bash
+py312 scripts/run_shortform_broll.py "<episode>" --id <cid> --structural-only
+```
+
+它跳過 Stock Video production gate、只碰 badge／namecard／機位修正自己那幾軌，
+B-roll 與字卡原封不動。沒有這個模式的話，補一個自家品牌動畫要重過一道**跟它完全
+無關**的素材稽核——而那道 gate 要 recipe 內嵌 `visual_materialization`（Director／DP／
+Audit 的投影），手寫的 recipe 沒有那個欄位，於是整件事卡死（2026-09-10 實際踩到）。
+
+⚠️ **入口是 `run_shortform_broll.py` 不是 `run_short_broll.py`**（ADR-067 命名：
+`run_short_*` 是長片線）。跑錯的話 `live_video_sources` 不會帶進去，三機導播的
+track 1 會被判成「不是 master 素材」。
 
 ## Step 6 — 音效
 

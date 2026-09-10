@@ -1270,3 +1270,67 @@ def test_sfx_chapter_label_maps_to_swish(tmp_path):
     assert by_t[10.0] == "ding"  # hero
     assert by_t[20.0] == "swish"  # 章節籤：導航記號，輕掃
     assert by_t[30.0] == "pop"  # 概念卡維持原映射
+
+
+# --- structural-only：補一個 badge 不該重過 Stock Video gate --------------------
+# 20260901 蘇予昕 實際卡住：三支短片要補開場品牌 LOGO，但整支 Step 5 是全有全無的，
+# 補一個 badge 也要重過 Stock Video production gate——而那道 gate 要 recipe 內嵌
+# `visual_materialization`（Director/DP/Audit 的投影），手寫的 recipe 沒有那個欄位。
+# 一道跟自家品牌動畫完全無關的素材稽核，擋住了一個秒級的改動。
+
+
+def test_structural_only_skips_the_stock_video_gate(tmp_path, monkeypatch):
+    import run_short_broll as broll
+
+    def _gate_must_not_run(*_args, **_kwargs):
+        raise AssertionError("structural-only 不該碰 Stock Video gate")
+
+    monkeypatch.setattr(broll, "_broll_gate", _gate_must_not_run)
+    monkeypatch.setattr(
+        broll,
+        "_open_editorial_master",
+        lambda _episode: (_ for _ in ()).throw(SystemExit("reached-master-open")),
+        raising=False,
+    )
+    # gate 沒跑到就會走到開 master 那一步——用它當「有跨過 gate」的標記。
+    with pytest.raises(SystemExit, match="reached-master-open"):
+        broll.apply(tmp_path, "punch-S09", structural_only=True)
+
+
+def test_structural_only_refuses_a_recipe_with_nothing_structural(tmp_path, monkeypatch):
+    import run_short_broll as broll
+
+    master, identity = _master_selection(tmp_path)
+    _write_broll_inputs(tmp_path, identity)
+    monkeypatch.setattr(broll, "_open_editorial_master", lambda _episode: master, raising=False)
+    monkeypatch.setattr(broll, "_broll_gate", lambda *_a, **_k: {})
+    with pytest.raises(SystemExit, match="沒有 structural row"):
+        broll.apply(tmp_path, "value-L01", structural_only=True)
+
+
+def test_structural_only_is_exclusive_with_the_other_narrow_modes(tmp_path, capsys):
+    import run_short_broll as broll
+
+    for other in ("--validate-only", "--camera-corrections-only"):
+        with pytest.raises(SystemExit):
+            broll.main([str(tmp_path), "--id", "punch-S09", "--structural-only", other])
+        assert "不可同時使用" in capsys.readouterr().err
+
+
+def test_structural_only_reaches_apply_through_the_shortform_entry_point(tmp_path, monkeypatch):
+    """短片線的入口是 `run_shortform_broll`（ADR-067 命名）——旗標要接得過去。"""
+    import run_shortform_broll as shortform
+
+    seen = {}
+    monkeypatch.setattr(
+        shortform,
+        "shortform_context",
+        lambda *_a, **_k: {"srt": "x", "cues": [], "punches": [], "opener_sec": 0.0},
+    )
+    monkeypatch.setattr(
+        shortform,
+        "_apply",
+        lambda *args, **kwargs: seen.update(kwargs) or {"status": "brolled"},
+    )
+    assert shortform.main([str(tmp_path), "--id", "punch-S09", "--structural-only"]) == 0
+    assert seen["structural_only"] is True
