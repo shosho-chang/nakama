@@ -416,10 +416,18 @@ def _master_words(episode_dir: Path, master) -> list[dict]:
     這是重新啟用 filler／stutter 偵測的前提。沒有它，`--detect` 只產得出 pause
     刀，開頭的「那、那」口吃不會被提出來（修修 2026-08-30 驗收 story-S04 抓到）。
 
-    三個條件缺一就回空，不猜：
+    四個條件缺一就回空，不猜：
     - `subs/words.json` 不存在（本集走 memo dual-audit，只釋出句級時間戳）
     - conform map 不存在
     - conform map 綁的不是目前這份 Editorial Master
+    - **投影後對不上 master.srt**（見 `_projection_lands_on_the_master`）
+
+    最後一條是 2026-09-10 補的。20260901 蘇予昕 的 `words.json` 是從**剪過的**
+    音檔轉出來的（止於 6507s，而 normalized.wav 與 cam2 都是 6674s），投影後位移
+    −24～−26s 而且不固定。前三個條件全部通過，於是偵測器照樣出刀：實測 42 刀
+    `noise` 全部壓在 master 字幕的有字區間，而 `noise` 是 `keep=true` 自動採用的
+    ——直接 `--apply` 會把「例如說」「大家有多少這樣的念頭」「就只能每天挨打」
+    剪掉。錯得很安靜，是這條線上最危險的一種失敗。
     """
     words = _optional_words(episode_dir)
     if not words:
@@ -452,7 +460,57 @@ def _master_words(episode_dir: Path, master) -> list[dict]:
             continue
         out.append({**w, "start": start, "end": end})
     logger.info("詞級時間戳投影到 Master 時鐘：%d 個可用，%d 個落在被剪掉的區間", len(out), dropped)
+    hit_rate = _projection_lands_on_the_master(out, master.srt_path)
+    if hit_rate is not None and hit_rate < WORD_PROJECTION_MIN_HIT_RATE:
+        logger.warning(
+            "詞級投影對不上 master.srt（抽樣命中率 %.0f%% < %.0f%%）"
+            "——words.json 可能是從剪過的音檔轉的。filler／stutter／redundant／noise 全部停用，"
+            "只出 pause 刀（pause 直接對 master 量靜音，與投影無關）",
+            hit_rate * 100,
+            WORD_PROJECTION_MIN_HIT_RATE * 100,
+        )
+        return []
     return out
+
+
+#: 抽樣命中率低於這個值就不信任詞級投影。對得上的集數實測 >0.9；
+#: 20260901 蘇予昕 那份錯位的 words.json 是 0.0。
+WORD_PROJECTION_MIN_HIT_RATE = 0.6
+#: 抽樣幾個詞。夠分辨「整份錯位」與「零星對不上」，又不用掃全片。
+_WORD_PROJECTION_SAMPLE = 40
+
+
+def _projection_lands_on_the_master(
+    words: list[dict], srt_path: Path
+) -> float | None:
+    """抽樣驗投影：詞投到哪一秒，master.srt 那一秒就該有這個字。
+
+    回傳命中率；樣本不足以判斷時回 None（呼叫端當作通過）。
+
+    只比對**單字**是否出現在該時間點附近的 cue 文字裡——不做對齊、不做編輯距離。
+    整份位移時命中率會直接掉到接近 0（實測 20260901 蘇予昕 是 0.0），
+    正常集數則遠高於門檻，中間沒有模糊地帶，所以這個粗糙的檢查就夠用。
+    """
+    cues = _parse_srt(srt_path)
+    if not cues or len(words) < 10:
+        return None
+    step = max(1, len(words) // _WORD_PROJECTION_SAMPLE)
+    sampled = words[::step][:_WORD_PROJECTION_SAMPLE]
+    checked = hits = 0
+    for w in sampled:
+        text = str(w.get("word") or "").strip()
+        if not text:
+            continue
+        mid = (float(w["start"]) + float(w["end"])) / 2
+        window = "".join(
+            t for s_, e_, t in cues if e_ > mid - 1.5 and s_ < mid + 1.5
+        ).replace(" ", "")
+        if not window:
+            continue
+        checked += 1
+        if any(ch in window for ch in text):
+            hits += 1
+    return (hits / checked) if checked >= 10 else None
 
 
 def _peak_db(media: Path, t0: float, t1: float) -> float | None:
@@ -623,8 +681,21 @@ def _judge_noise(master, cuts: list[dict], words: list[dict]) -> None:
             x["keep"] = False
             x["review"] = f"峰值 {peak}dB 比語音低太多，像換氣"
         else:
-            x["keep"] = True
-            x["review"] = "ASR 沒有字、校正稿也沒有字的一段聲音（贅音）"
+            # **不自動剪。** 「ASR 沒有字」推不出「這裡沒有人在說話」——ASR 會漏字
+            # （音壓低、兩人疊話、口音），漏掉的地方就長得跟贅音一模一樣。
+            #
+            # 20260901 蘇予昕 實測：conform map 修好、詞級投影命中率 0.80 之後，
+            # `noise` 仍然標出 9 刀，量下去平均 −16～−19dB——跟同一支片的語音對照
+            # （−15.0dB）同一個量級，比 pause 對照（−54.9dB）高 36dB。那是**語音**，
+            # 不是贅音。當時它們是 keep=True，直接 `--apply` 就會把「例如說」
+            # 「大家有多少這樣的念頭」「就只能每天挨打」從成片裡剪掉。
+            #
+            # 剪掉正片語音是不可逆的，而人審一刀只要三秒。留 None 給人。
+            x["keep"] = None
+            x["review"] = (
+                "ASR 沒有字、校正稿也沒有字的一段聲音——但 ASR 漏字看起來一樣，"
+                "請先聽一下再決定（不自動剪）"
+            )
             if enc is not None:
                 x["review"] += (
                     f"；被拉長的「{enc['word']}」"
