@@ -285,6 +285,29 @@ packages 等於沒改）→ 從候選池把來歷抄進配方（換掉檔名後�
 **下載目錄預設 `E:\` 根目錄**（修修瀏覽器的落點，不是 `~/Downloads`），
 可用 `NAKAMA_DOWNLOAD_DIR` 覆寫。
 
+### Step 4.4c — 候選池的短碼跨不到 app 網域（2026-09-10 實測）
+
+Step 4.4 的候選池是用 Elements MCP 搜的，`source` 記的是 `elements.envato.com/...-<短碼>`。
+**那個短碼在 app 網域上打不開**：
+
+- `app.envato.com/search/photos/HKF76GC` → **400 Invalid item link**
+- app 網域的標題是**改寫過的**（Elements 的「Teenage boy head down on desk」在 app 上叫
+  「Tired Student Sleeping at Desk in Classroom」）→ 用標題跨網域比對也對不上
+- 結果縮圖的 `img.src` / `a.href` 被瀏覽器擴充功能的隱私過濾擋掉 → 拿不到 CDN 路徑比對
+- 而 `elements.envato.com` 的品項頁**照片也一樣**永不進 `document_idle`（不只影片頁）
+
+**所以不要試著把某一個特定候選找到 app 網域上。** 候選池的價值是**概念與理由**
+（這張圖要扣回哪一個 beat），不是那個檔案本身。做法：
+
+1. 用候選池／Elements MCP 決定**這張卡要演什麼**（扣哪一句原話）
+2. 到 `app.envato.com` 用那個概念重搜，挑一張、按 Download（見 [[Envato 網址型式]]）
+3. 裁到卡片比例再安裝——卡片 678×455（1.4901），素材**先裁到這個比例**再縮到 1356×910，
+   不然 `object-fit: cover` 會從短邊硬裁掉你挑的那一塊
+
+順帶的好處：重選時可以把**當初妥協的條件一起補回來**。2026-09-10 punch-L03 rank 3
+在候選池裡只找得到約 55 歲的男性（唯一「醒著、停下來」的姿勢，其餘全是趴倒），
+到 app 網域重選就同時拿到「年輕（對得上 TA）＋醒著」。
+
 ## Step 4.5 — 量測驗收（**不做不交付**）
 
 目測會漏；三項都要跑（腳本邏輯見設計系統對應節）：
