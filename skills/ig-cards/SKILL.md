@@ -17,7 +17,7 @@ Anchor production and correction at Content Pipeline Stage 5 (製作). Enter Sta
 ## Produce a revision
 
 1. Resolve one episode directory. Require `transcript_prose.md`, `transcript.srt`, and `packaging/cutouts/*.png`; accept `social_brief.md` as optional editorial direction.
-2. Read the complete transcript and create one evidence-materialised `PodcastCarouselCopySpecV1`. Preserve evidence IDs, timestamps, speakers, and contiguous source spans for every visible claim.
+2. Read the complete transcript and create one evidence-materialised `PodcastCarouselCopySpecV1`. Preserve evidence IDs, timestamps, speakers, and contiguous source spans for every visible claim. Write the prose against [`references/copy-voice.md`](references/copy-voice.md), not from default model style.
 3. Build one Episode Highlight Arc with this exact sequence:
 
    `cover → one hook → ordered points → quote → CTA`
@@ -44,8 +44,13 @@ Anchor production and correction at Content Pipeline Stage 5 (製作). Enter Sta
 
 ## Copy contract
 
-- Use social editorial voice for cover, Hook, points, and CTA. Do not turn editorial synthesis into unattributed guest speech.
-- Use one emphasis substring per page. Point emphasis must be an exact substring of the headline; keep point body plain.
+The rules below govern structure, evidence, and prohibitions. They do not describe how a
+Chinese sentence should sound, and structure rules alone leave the prose to generic model
+instincts. Before drafting or correcting any prose, read [`references/copy-voice.md`](references/copy-voice.md) and apply its seven tells; it is
+derived from the fields 修修 rewrote at the Review Gate, not from invented style theory.
+
+- Use social editorial voice for cover, Hook, points, and CTA. Do not turn editorial synthesis into unattributed guest speech. Never introduce a person the transcript does not name — no `他`, no `有人`, no composite reader-character.
+- Use one emphasis substring per page. Point emphasis must be an exact substring of the headline; keep point body plain. Emphasis must be affirmative: the schema rejects a phrase opening with a negation, because the single orange highlight is not where you tell the reader they are wrong.
 - Use quote A on odd episodes and quote B on even episodes. Variant B pairs a host question with the directly connected guest answer. Fall back to A only with a recorded evidence reason.
 - Lightly shorten questions and quotes only when meaning is unchanged. Never stitch non-contiguous guest answers into one quote.
 - Make every point a comprehensible answer to the Hook. Distinguish similar-looking claims with different subjects—for example, `內容交給流量` and `收入交給流量` are not interchangeable.
@@ -101,7 +106,7 @@ python scripts/podcast_carousel_correction_job.py complete `
   --reviewer-receipt brand_evidence=<subagent-id>=<review.json>
 ```
 
-Claim only jobs whose source revision is still current and whose manifest, Copy Spec, requested page artifacts, and every PNG still match their receipts. Respect the active lease; reclaim only an expired claim. Report progress often enough to renew the lease while performing evidence review, copy correction, panel convergence, render, and page-by-page visual QA. Progress step names are informational and never count as review evidence. Persist each independent subagent's `PanelReview` JSON with a distinct reviewer identity, then persist one `PanelResult` containing those exact three reviews. Completion derives the newer revision from the current result manifest and verifies its Copy Spec and every PNG receipt, the three reviewer receipts, and `assert_panel_renderable` against the matching converged panel. Structured copy/layout jobs additionally require an exact source-to-result diff: every requested value must be present and evidence, cutouts, identity, page order, and all unrequested fields must remain unchanged. Every affected page must have canonical `fit` diagnostics and new content-hash/PNG receipts, and structured work must use a new receipt-bound render input; reusing the source render or image fails completion. Feedback-only jobs rely on the converged panel because free-form intent cannot be mechanically diffed.
+Claim only jobs whose source revision is still current and whose manifest, Copy Spec, requested page artifacts, and every PNG still match their receipts. Respect the active lease; reclaim only an expired claim. Report progress often enough to renew the lease while performing evidence review, copy correction, panel convergence, render, and page-by-page visual QA. Any rewritten prose in a correction must satisfy [`references/copy-voice.md`](references/copy-voice.md) as well as the Copy contract. Progress step names are informational and never count as review evidence. Persist each independent subagent's `PanelReview` JSON with a distinct reviewer identity, then persist one `PanelResult` containing those exact three reviews. Completion derives the newer revision from the current result manifest and verifies its Copy Spec and every PNG receipt, the three reviewer receipts, and `assert_panel_renderable` against the matching converged panel. Structured copy/layout jobs additionally require an exact source-to-result diff: every requested value must be present and evidence, cutouts, identity, page order, and all unrequested fields must remain unchanged. Every affected page must have canonical `fit` diagnostics and new content-hash/PNG receipts, and structured work must use a new receipt-bound render input; reusing the source render or image fails completion. Feedback-only jobs rely on the converged panel because free-form intent cannot be mechanically diffed.
 
 ## Stage 6 Publish contract
 

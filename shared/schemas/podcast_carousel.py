@@ -224,9 +224,43 @@ class _BasePage(CarouselModel):
         return self
 
 
+#: 否定開頭詞。emphasis 是整張卡唯一的橘色重點——落在否定片語上，等於全卡最亮的
+#: 地方在對讀者說「你錯了／不是你想的那樣」。20260901 蘇予昕 r001 出過兩次：金句的
+#: emphasis 是「不是我的表現優劣」、覺察卡是「還不太算覺察」，修修兩張都翻成肯定
+#: （「存在就是有價值」「情緒鬆綁」）。同樣的內容，重點放哪一半決定讀者被稱讚還是被糾正。
+#:
+#: 只擋**開頭**是否定詞的情況，而且是封閉清單。像「不夠好」這種形容詞否定不在此列
+#: ——它描述的是讀者已經承認的感受，不是在反駁讀者。
+_EMPHASIS_NEGATION_OPENERS = (
+    "不是",
+    "不能",
+    "不會",
+    "不要",
+    "不可",
+    "不該",
+    "沒有",
+    "並不",
+    "絕不",
+    "還不",
+    "並非",
+    "而非",
+)
+
+
 def _assert_emphasis(emphasis: str, *fields: str) -> None:
     if not any(emphasis in value for value in fields):
         raise ValueError("emphasis must be an exact substring of display copy on the same page")
+    _assert_emphasis_is_affirmative(emphasis)
+
+
+def _assert_emphasis_is_affirmative(emphasis: str) -> None:
+    """emphasis 不可以是否定片語——見 `_EMPHASIS_NEGATION_OPENERS` 的說明。"""
+    opener = next((word for word in _EMPHASIS_NEGATION_OPENERS if emphasis.startswith(word)), None)
+    if opener is not None:
+        raise ValueError(
+            f"emphasis cannot be a negation phrase (starts with {opener!r}): {emphasis!r}"
+            " — 改強調同一句裡肯定的那一半"
+        )
 
 
 class CoverPage(_BasePage):
@@ -265,6 +299,7 @@ class PointPage(_BasePage):
     def _emphasis_in_copy(self) -> PointPage:
         if self.emphasis not in self.headline:
             raise ValueError("point emphasis must be in headline")
+        _assert_emphasis_is_affirmative(self.emphasis)
         return self
 
 
