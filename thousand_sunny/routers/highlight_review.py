@@ -907,18 +907,9 @@ def _verified_editorial_master(episode_dir: Path):
     return master
 
 
-_REVIEW_FORMATS = {"long": "長精華", "short": "短影片"}
-
-
-def _review_format(value: str | None) -> str:
-    """`?format=` → 這個 gate 要審哪一種格式。預設長片（既有網址不變）。"""
-    fmt = (value or "long").strip().lower()
-    if fmt not in _REVIEW_FORMATS:
-        raise HTTPException(
-            status_code=404,
-            detail=f"unknown review format: {value!r}（只有 {sorted(_REVIEW_FORMATS)}）",
-        )
-    return fmt
+#: 選段 gate 的頁面標題。格式的合法性由既有的 `_review_format` 判（同一模組上方，
+#: 初剪 review 也在用）——重複定義一份會把它整個蓋掉（2026-09-10 我實際踩過）。
+_REVIEW_FORMAT_LABELS = {"long": "長精華", "short": "短影片"}
 
 
 def _context(episode_slug: str, review_format: str = "long") -> dict:
@@ -968,7 +959,7 @@ def _context(episode_slug: str, review_format: str = "long") -> dict:
         "finished_review_ready": finished_manifest is not None,
         "asset_version": _SHOSHO_ASSET_VERSION,
         "review_format": review_format,
-        "review_format_label": _REVIEW_FORMATS[review_format],
+        "review_format_label": _REVIEW_FORMAT_LABELS[review_format],
     }
 
 

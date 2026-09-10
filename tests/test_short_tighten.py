@@ -691,8 +691,14 @@ def _write_words(tmp_path: Path, words: list[dict]) -> None:
     path.write_text(json.dumps({"words": words}, ensure_ascii=False), encoding="utf-8")
 
 
-def _master(hash_: str = "abc"):
-    return SimpleNamespace(identity=lambda: {"content_hash": hash_})
+def _master(hash_: str = "abc", srt_path: Path | None = None):
+    # `srt_path` 是 Editorial Master 真的有的欄位（`_master_words` 投影完會拿它
+    # 抽樣自檢）。stub 少一個欄位就會在那一行 AttributeError——那不是被測行為壞掉，
+    # 是 stub 沒跟上。
+    return SimpleNamespace(
+        identity=lambda: {"content_hash": hash_},
+        srt_path=srt_path or Path("master.srt"),
+    )
 
 
 def test_master_words_projects_and_drops_removed_spans(tmp_path):
@@ -758,11 +764,20 @@ def _noise_cut(peak: float = -4.0):
     return {"t0": 1.2, "t1": 1.6, "kind": "noise", "dur": 0.4, "peak_db": peak, "keep": None}
 
 
-def test_judge_noise_cuts_sound_no_transcript_accounts_for(tmp_path):
+def test_judge_noise_never_auto_accepts_a_cut(tmp_path):
+    """「ASR 沒有字」推不出「沒有人在說話」——所以 noise 一律留給人審。
+
+    2026-09-10 改判。舊行為是「兩份逐字稿都沒有字 → `keep=True` 自動採用」，但那個
+    推論不成立：ASR 會漏字（音壓低、兩人疊話、口音），漏掉的地方跟贅音長得一模一樣。
+    20260901 蘇予昕 實測 9 刀量下去 −16～−19dB，跟同片語音對照（−15.0dB）同一量級、
+    比 pause 對照（−54.9dB）高 36dB——那是語音，直接 `--apply` 會把「例如說」
+    「就只能每天挨打」剪掉。剪掉正片語音不可逆，聽一刀三秒。
+    """
     master, words = _noise_fixture(tmp_path, "美甲不只是要把它弄好")
     cuts = [_noise_cut()]
     _judge_noise(master, cuts, words)
-    assert cuts[0]["keep"] is True
+    assert cuts[0]["keep"] is None
+    assert "請先聽" in cuts[0]["review"]
     # 包住候選的那個詞一定要出現在複審資料裡，否則又會重蹈覆轍
     assert cuts[0]["enclosed_by"]["word"] == "是"
 

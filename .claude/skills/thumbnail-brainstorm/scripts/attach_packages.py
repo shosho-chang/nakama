@@ -165,6 +165,14 @@ def attach(packaging_dir: Path, cut_id: str, episode_slug: str, specs: list[dict
         **data,
         "cuts": [c for c in data.get("cuts", []) if c.get("cut_id") not in pending],
     }
+    # 本支必須完整——這一步的**職責**就是把三個 package 配齊（`cut["packages"]`
+    # 是整組換掉，不是逐個追加）。以前這條靠 `CutV1` 的「剛好 3 個」順便擋住；
+    # 2026-09-10 那條放寬成「至多 3 個」之後（titles-only 草稿是合法中間態），
+    # 這裡就必須自己講明白，否則配了一個就落地，而且沒有人會發現。
+    if cut.get("format") == "long" and len(packages) != 3:
+        raise ValueError(
+            f"{cut_id} 是長片，attach 要一次配齊 3 個 package，這次收到 {len(packages)} 個"
+        )
     PackagesFileV1.model_validate(to_validate)  # 失敗即不落任何一份（含 PNG）
     if pending:
         print(f"[note] 尚未配封面的長片（本次不驗證）：{', '.join(pending)}", file=sys.stderr)

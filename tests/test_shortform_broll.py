@@ -120,10 +120,22 @@ def test_landscape_stock_is_refused(tmp_path):
         _verify(tmp_path, [_item()])
 
 
-def test_missing_acquisition_receipt_is_refused(tmp_path):
+def test_missing_acquisition_receipt_is_accepted(tmp_path):
+    """修修 2026-09-10：「素材沒有授權收據也拿掉，我一點都不在意。」
+
+    訂閱制下載的當下就註冊授權了，而且全部用在同一個 project（他的 YouTube 頻道），
+    不需要再取得。收據缺席時 provenance 退成 `subscription_library`、`receipt: None`，
+    media 的 sha256 直接算——來歷仍然記得住，只是不再拿它擋人。
+    """
     _stage(tmp_path, "birds", width=360, height=640, receipt=False)
-    with pytest.raises(ShortformBrollError, match="授權收據"):
-        _verify(tmp_path, [_item()])
+    items = [_item()]
+    _verify(tmp_path, items)
+    provenance = items[0]["visual_materialization"]["provenance"]
+    assert provenance["provider"] == "subscription_library"
+    assert provenance["receipt"] is None
+    assert provenance["source_url"] is None
+    # 來歷仍然記得住：檔案本身的 sha256 直接算，不是從收據抄的。
+    assert len(items[0]["visual_materialization"]["media"]["sha256"]) == 64
 
 
 def test_tampered_media_is_refused(tmp_path):

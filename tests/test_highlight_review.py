@@ -689,8 +689,10 @@ def test_long_gate_still_shows_only_long_candidates(client, episode_root):
 
 
 def test_unknown_review_format_is_rejected(client):
+    """跟初剪 review 走同一個 `_review_format`——重複定義一份會把它整個蓋掉。"""
     response = client.get("/bridge/highlights/ep-001?format=vertical", cookies=_auth_cookie())
-    assert response.status_code == 404
+    assert response.status_code == 400
+    assert response.json()["detail"] == "format must be long or short"
 
 
 def test_short_decision_writes_the_short_files_and_leaves_long_alone(client, episode_root):

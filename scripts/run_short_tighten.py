@@ -491,8 +491,11 @@ def _projection_lands_on_the_master(
     整份位移時命中率會直接掉到接近 0（實測 20260901 蘇予昕 是 0.0），
     正常集數則遠高於門檻，中間沒有模糊地帶，所以這個粗糙的檢查就夠用。
     """
+    # 樣本不足的判斷先做：不夠判就不要去讀檔。
+    if len(words) < 10:
+        return None
     cues = _parse_srt(srt_path)
-    if not cues or len(words) < 10:
+    if not cues:
         return None
     step = max(1, len(words) // _WORD_PROJECTION_SAMPLE)
     sampled = words[::step][:_WORD_PROJECTION_SAMPLE]
