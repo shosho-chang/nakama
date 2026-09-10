@@ -610,3 +610,130 @@ def test_accepts_a_chinese_episode_folder_and_keeps_rejection_feedback(client, e
         (episode / "highlights" / "review_feedback.json").read_text(encoding="utf-8")
     )
     assert audit["decisions"][0]["feedback"]["L5"] == "論點與 L2 重疊，這次不選"
+
+
+def _stage_short_candidates(episode_root: Path) -> None:
+    """把短片候選與它們自己的 panel 放進同一集。
+
+    短片線一直有候選（20260901 蘇予昕 那集有 38 支），但 Bridge 上沒有入口——
+    gate 寫死了 `collect(highlights_dir, "long")`。這個 helper 建的是短片線真正
+    的檔案佈局：per-format 的 `review_*.short.json`／`lens_brand.short.json`，
+    綁的是「該格式候選」的 digest，而不是整個 candidates.json。
+    """
+    from shared.highlight_shortlist import _format_digest
+
+    highlights = episode_root / "ep-001" / "highlights"
+    candidates_path = highlights / "candidates.json"
+    payload = json.loads(candidates_path.read_text(encoding="utf-8"))
+    for index in range(1, 5):
+        payload["candidates"].append(
+            {
+                "id": f"S{index}",
+                "format": "short",
+                "variant_group": f"short-group-{index}",
+                "title": f"短候選 S{index}",
+                "hook": f"S{index} 的 hook",
+                "rationale": f"reason S{index}",
+                "transcript": f"transcript evidence S{index}",
+                "t_start": 1000 + index * 60,
+                "t_end": 1000 + index * 60 + 45,
+                "duration_sec": 45.0,
+                "veto": False,
+            }
+        )
+    candidates_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    _rebind_review_inputs(candidates_path)
+    short_sha256 = _format_digest(payload["candidates"], "short")
+    for scorer, base in (("azhe", 90), ("kevin", 80), ("shufen", 70)):
+        (highlights / f"review_{scorer}.short.json").write_text(
+            json.dumps(
+                {
+                    "source_sha256": short_sha256,
+                    "scores": [{"id": f"S{i}", "total": base - i} for i in range(1, 5)],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+    (highlights / "lens_brand.short.json").write_text(
+        json.dumps(
+            {
+                "source_sha256": short_sha256,
+                "findings": [
+                    {"id": f"S{i}", "severity": None, "issue": ""} for i in range(1, 5)
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_short_format_gate_shows_short_candidates(client, episode_root):
+    _stage_short_candidates(episode_root)
+    response = client.get("/bridge/highlights/ep-001?format=short", cookies=_auth_cookie())
+    assert response.status_code == 200
+    assert "短候選 S1" in response.text
+    assert "候選 L1" not in response.text
+    # The form must post back to the same format, or a short decision lands on the
+    # long winners file — the exact overwrite ADR-067 split the two lines to avoid.
+    assert "/decide?format=short" in response.text
+
+
+def test_long_gate_still_shows_only_long_candidates(client, episode_root):
+    _stage_short_candidates(episode_root)
+    response = client.get("/bridge/highlights/ep-001", cookies=_auth_cookie())
+    assert response.status_code == 200
+    assert "候選 L1" in response.text
+    assert "短候選 S1" not in response.text
+
+
+def test_unknown_review_format_is_rejected(client):
+    response = client.get("/bridge/highlights/ep-001?format=vertical", cookies=_auth_cookie())
+    assert response.status_code == 404
+
+
+def test_short_decision_writes_the_short_files_and_leaves_long_alone(client, episode_root):
+    _stage_short_candidates(episode_root)
+    highlights = episode_root / "ep-001" / "highlights"
+    client.post(
+        "/bridge/highlights/ep-001/decide",
+        data={"candidate_id": ["L1", "L2", "L4"]},
+        cookies=_auth_cookie(),
+        follow_redirects=False,
+    )
+    long_winners = (highlights / "winners.json").read_text(encoding="utf-8")
+
+    response = client.post(
+        "/bridge/highlights/ep-001/decide?format=short",
+        data={"candidate_id": ["S1", "S2", "S3"], "feedback_S4": "跟 S2 重疊"},
+        cookies=_auth_cookie(),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/bridge/highlights/ep-001?saved=1&format=short"
+
+    short_winners = json.loads((highlights / "winners.short.json").read_text(encoding="utf-8"))
+    assert [row["id"] for row in short_winners["winners"]] == ["S1", "S2", "S3"]
+    # The long decision must survive a short decision byte for byte.
+    assert (highlights / "winners.json").read_text(encoding="utf-8") == long_winners
+
+    short_audit = json.loads(
+        (highlights / "review_feedback.short.json").read_text(encoding="utf-8")
+    )
+    assert short_audit["decisions"][0]["feedback"]["S4"] == "跟 S2 重疊"
+    long_audit = json.loads((highlights / "review_feedback.json").read_text(encoding="utf-8"))
+    assert long_audit["decisions"][0]["selected_ids"] == ["L1", "L2", "L4"]
+
+
+def test_short_decision_does_not_stage_a_packaging_plan(client, episode_root):
+    """短片不做封面（修修 2026-09-10 裁定），所以沒有 packaging branch 要排。"""
+    _stage_short_candidates(episode_root)
+    response = client.post(
+        "/bridge/highlights/ep-001/decide?format=short",
+        data={"candidate_id": ["S1", "S2", "S3"]},
+        cookies=_auth_cookie(),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert not (episode_root / "ep-001" / "highlights" / "packaging-plan.json").exists()

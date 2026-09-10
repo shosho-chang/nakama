@@ -16,8 +16,14 @@
 
 <section class="page-header page-header--split">
   <div>
-    <div class="nk-caps">/bridge/highlights/{{ episode_slug }} · human gate</div>
-    <h1 class="page-title">長精華選段 <span class="zh">五個候選，排出三支再進製作</span></h1>
+    <div class="nk-caps">/bridge/highlights/{{ episode_slug }} · human gate · {{ review_format }}</div>
+    <h1 class="page-title">{{ review_format_label }}選段 <span class="zh">五個候選，排出三支再進製作</span></h1>
+    <div class="highlight-format-switch">
+      <a class="sho-btn {% if review_format == 'long' %}sho-btn--ghost{% endif %}"
+         href="/bridge/highlights/{{ episode_slug }}?format=long">長精華</a>
+      <a class="sho-btn {% if review_format == 'short' %}sho-btn--ghost{% endif %}"
+         href="/bridge/highlights/{{ episode_slug }}?format=short">短影片</a>
+    </div>
   </div>
   <div class="header-meta sho-mono">AUDIT {{ decision_count }} DECISIONS</div>
 </section>
@@ -51,7 +57,7 @@
     <div class="sho-mono">PANEL SCORE = 素材強度，不代表成片裁決</div>
   </div>
 
-  <form method="post" action="/bridge/highlights/{{ episode_slug }}/decide" id="highlight-form">
+  <form method="post" action="/bridge/highlights/{{ episode_slug }}/decide?format={{ review_format }}" id="highlight-form">
     <input type="hidden" name="selection_order" id="selection-order" value="">
     <div class="highlight-grid">
     {% for row in rows %}

@@ -23,6 +23,14 @@
 .highlight-theatre p { color: var(--sho-text-2); line-height: 1.65; }
 .highlight-theatre video { width: 100%; max-height: 52vh; background: var(--sho-ink); border-radius: var(--sho-r-1); }
 
+/* 長／短兩個 gate 是同一張表單、同一個版面，只有讀寫的檔案不同。分頁列放在標題
+   下方，讓「這一頁在審哪一種」永遠看得到——短片以前根本沒有入口。 */
+.highlight-format-switch {
+  display: flex;
+  gap: var(--sho-s-2);
+  margin-top: var(--sho-s-3);
+}
+
 .highlight-instruction {
   display: flex;
   justify-content: space-between;

@@ -74,6 +74,26 @@ _logger = get_logger("nakama.web.app")
 # and the FastAPI lifespan that triggers the wiring.
 
 
+def _start_carousel_autorun_sweep() -> None:
+    """開機撿一次 carousel 孤兒修正單（見 `carousel_review.sweep_queued_autorunnable_jobs`）。
+
+    丟到 daemon thread：掃描本身很輕，但撿到的單會一路跑到出圖，那是分鐘級的，
+    不能擋住 uvicorn 起來。整段包在 try 裡——撿孤兒是加分項，不該讓 Bridge
+    開不起來。autorun 關著時 sweep 自己會回空清單。
+    """
+    import threading
+
+    from thousand_sunny.routers.carousel_review import run_queued_autorun_sweep
+
+    def _run() -> None:
+        try:
+            run_queued_autorun_sweep()
+        except Exception:  # noqa: BLE001 — 背景執行緒不能把例外丟進虛空
+            _logger.exception("carousel autorun sweep crashed")
+
+    threading.Thread(target=_run, name="carousel-autorun-sweep", daemon=True).start()
+
+
 @asynccontextmanager
 async def _lifespan(app_: FastAPI):
     """FastAPI lifespan that wires ADR-024 promotion surfaces at startup.
@@ -92,6 +112,7 @@ async def _lifespan(app_: FastAPI):
     if not os.getenv("DISABLE_ROBIN"):
         config = load_promotion_wiring_config()
         wire_promotion_surfaces(config)
+    _start_carousel_autorun_sweep()
     yield
     # No teardown wired in N518 — services hold no per-request state.
 

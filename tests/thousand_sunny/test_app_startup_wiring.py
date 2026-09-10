@@ -526,3 +526,48 @@ def test_preflight_skips_when_neither_credential_set(monkeypatch):
     with TestClient(app_module.app) as client:
         r = client.get("/healthz")
         assert r.status_code != 500
+
+
+# ── Carousel autorun sweep (2026-09-10) ──────────────────────────────────────
+
+
+def test_startup_sweep_runs_in_the_background_and_swallows_nothing_silently(monkeypatch, caplog):
+    """開機撿孤兒單：不能擋住 uvicorn 起來，也不能把例外丟進虛空。"""
+    import thousand_sunny.app as app_module
+
+    done = []
+
+    def _boom() -> None:
+        done.append("ran")
+        raise RuntimeError("sweep exploded")
+
+    monkeypatch.setattr(
+        "thousand_sunny.routers.carousel_review.run_queued_autorun_sweep", _boom
+    )
+    with caplog.at_level("ERROR"):
+        app_module._start_carousel_autorun_sweep()
+        for thread in __import__("threading").enumerate():
+            if thread.name == "carousel-autorun-sweep":
+                thread.join(timeout=10)
+    assert done == ["ran"]
+    assert "carousel autorun sweep crashed" in caplog.text
+
+
+def test_lifespan_starts_the_carousel_sweep(monkeypatch):
+    import thousand_sunny.app as app_module
+
+    started = []
+    monkeypatch.setattr(
+        app_module, "_start_carousel_autorun_sweep", lambda: started.append(True)
+    )
+    monkeypatch.setattr(app_module, "run_preflight", lambda: None)
+    monkeypatch.setenv("DISABLE_ROBIN", "1")
+
+    import asyncio
+
+    async def _drive() -> None:
+        async with app_module._lifespan(app_module.app):
+            pass
+
+    asyncio.run(_drive())
+    assert started == [True]

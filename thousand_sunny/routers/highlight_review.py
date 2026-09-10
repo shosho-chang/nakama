@@ -907,18 +907,34 @@ def _verified_editorial_master(episode_dir: Path):
     return master
 
 
-def _context(episode_slug: str) -> dict:
+_REVIEW_FORMATS = {"long": "長精華", "short": "短影片"}
+
+
+def _review_format(value: str | None) -> str:
+    """`?format=` → 這個 gate 要審哪一種格式。預設長片（既有網址不變）。"""
+    fmt = (value or "long").strip().lower()
+    if fmt not in _REVIEW_FORMATS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"unknown review format: {value!r}（只有 {sorted(_REVIEW_FORMATS)}）",
+        )
+    return fmt
+
+
+def _context(episode_slug: str, review_format: str = "long") -> dict:
     episode_dir = _episode_dir(episode_slug)
     _verified_editorial_master(episode_dir)
     highlights_dir = episode_dir / "highlights"
     try:
-        rows = collect(highlights_dir, "long")
-        feedback_audit = load_review_feedback(highlights_dir)
+        rows = collect(highlights_dir, review_format)
+        feedback_audit = load_review_feedback(highlights_dir, review_format)
     except HighlightDataError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     shown = rows[:_MAX_CANDIDATES]
     if not shown:
-        raise HTTPException(status_code=422, detail="no long-form candidates available")
+        raise HTTPException(
+            status_code=422, detail=f"no {review_format}-form candidates available"
+        )
     latest = feedback_audit["decisions"][-1] if feedback_audit["decisions"] else {}
     latest_feedback = latest.get("feedback", {}) if isinstance(latest, dict) else {}
     if not isinstance(latest_feedback, dict):
@@ -951,6 +967,8 @@ def _context(episode_slug: str) -> dict:
         "decision_count": len(feedback_audit["decisions"]),
         "finished_review_ready": finished_manifest is not None,
         "asset_version": _SHOSHO_ASSET_VERSION,
+        "review_format": review_format,
+        "review_format_label": _REVIEW_FORMATS[review_format],
     }
 
 
@@ -964,11 +982,12 @@ async def highlight_review_board(
     request: Request,
     episode_slug: str,
     saved: bool = False,
+    format: str = "long",
     nakama_auth: str | None = Cookie(None),
 ):
     if not check_auth(nakama_auth):
         return RedirectResponse(f"/login?next=/bridge/highlights/{episode_slug}", status_code=302)
-    context = _context(episode_slug)
+    context = _context(episode_slug, _review_format(format))
     context["saved"] = saved
     return _templates.TemplateResponse(request, "highlight_review.html", context)
 
@@ -987,11 +1006,13 @@ async def highlight_review_media(
 async def highlight_review_decide(
     request: Request,
     episode_slug: str,
+    format: str = "long",
     nakama_auth: str | None = Cookie(None),
 ):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/highlights", status_code=302)
-    context = _context(episode_slug)
+    review_format = _review_format(format)
+    context = _context(episode_slug, review_format)
     form = await request.form()
     selected_ids = [str(value) for value in form.getlist("candidate_id")]
     selection_order = [value for value in str(form.get("selection_order", "")).split(",") if value]
@@ -1005,7 +1026,8 @@ async def highlight_review_decide(
         selected_ids = selection_order
     if len(selected_ids) != 3 or len(set(selected_ids)) != 3:
         raise HTTPException(
-            status_code=400, detail="select exactly three distinct long-form candidates"
+            status_code=400,
+            detail=f"select exactly three distinct {review_format}-form candidates",
         )
     by_id = {row["id"]: row for row in context["rows"]}
     unknown = [candidate_id for candidate_id in selected_ids if candidate_id not in by_id]
@@ -1043,7 +1065,10 @@ async def highlight_review_decide(
     # candidates document cannot be copied into winners.json through that gap.
     _verified_editorial_master(episode_dir)
     highlights_dir = episode_dir / "highlights"
-    _stage_parallel_work_plan(episode_dir, selected_ids, by_id, dry_run=True)
+    # packaging-plan 是長片的東西：它排的兩個 branch 之一就是封面／標題。短片不做
+    # 封面（修修 2026-09-10 裁定），所以短片線在這裡沒有東西要排。
+    if review_format == "long":
+        _stage_parallel_work_plan(episode_dir, selected_ids, by_id, dry_run=True)
     try:
         # Validate and prepare every input before either durable write. Each write
         # itself is atomic; the audit entry preserves earlier decisions.
@@ -1052,17 +1077,25 @@ async def highlight_review_decide(
             context["rows"],
             selected_ids,
             picked_by="修修 (Bridge highlight review gate)",
+            fmt=review_format,
         )
         append_review_feedback(
             highlights_dir,
             selected_ids=selected_ids,
             feedback=feedback,
             overridden_veto_ids=sorted(vetoed),
+            fmt=review_format,
         )
-        _stage_parallel_work_plan(episode_dir, selected_ids, by_id)
+        if review_format == "long":
+            _stage_parallel_work_plan(episode_dir, selected_ids, by_id)
     except HighlightDataError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return RedirectResponse(f"/bridge/highlights/{episode_slug}?saved=1", status_code=303)
+    # 長片的網址一個字都不變（`format` 的預設就是 long），短片才帶參數回來——
+    # 存完之後要回到剛剛那一頁，不是永遠彈回長片。
+    suffix = "" if review_format == "long" else f"&format={review_format}"
+    return RedirectResponse(
+        f"/bridge/highlights/{episode_slug}?saved=1{suffix}", status_code=303
+    )
 
 
 @page_router.get("/{episode_slug}/finished", response_class=HTMLResponse)

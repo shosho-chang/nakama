@@ -354,12 +354,23 @@ def write_winners(
     return _atomic_json_write(target, payload)
 
 
-def load_review_feedback(hl_dir: Path) -> dict[str, Any]:
+def review_feedback_path(hl_dir: Path, fmt: str) -> Path:
+    """Where this format's decision history lives — same split as `winners_path`.
+
+    The audit is what the gate reads back to restore「上次選了哪三支」. Sharing one
+    file across formats means a short-form decision becomes the long gate's
+    remembered selection (and vice versa), because both read `decisions[-1]`.
+    """
+    return hl_dir / ("review_feedback.json" if fmt == "long" else f"review_feedback.{fmt}.json")
+
+
+def load_review_feedback(hl_dir: Path, fmt: str = "long") -> dict[str, Any]:
     """Load feedback audit data; malformed existing history must stop the gate."""
-    payload = _load_object(hl_dir / "review_feedback.json")
+    target = review_feedback_path(hl_dir, fmt)
+    payload = _load_object(target)
     decisions = payload.get("decisions", [])
     if not isinstance(decisions, list):
-        raise HighlightDataError("review_feedback.json decisions must be an array")
+        raise HighlightDataError(f"{target.name} decisions must be an array")
     return {"decisions": decisions}
 
 
@@ -369,9 +380,10 @@ def append_review_feedback(
     selected_ids: list[str],
     feedback: dict[str, str],
     overridden_veto_ids: list[str],
+    fmt: str = "long",
 ) -> Path:
     """Append a timestamped decision; prior feedback is never discarded."""
-    payload = load_review_feedback(hl_dir)
+    payload = load_review_feedback(hl_dir, fmt)
     payload["decisions"].append(
         {
             "decided_at": datetime.now(timezone.utc).isoformat(),
@@ -380,4 +392,4 @@ def append_review_feedback(
             "override_veto_ids": overridden_veto_ids,
         }
     )
-    return _atomic_json_write(hl_dir / "review_feedback.json", payload)
+    return _atomic_json_write(review_feedback_path(hl_dir, fmt), payload)
