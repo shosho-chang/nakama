@@ -18,11 +18,14 @@
   <div>
     <div class="nk-caps">/bridge/highlights/{{ episode_slug }} · human gate · {{ review_format }}</div>
     <h1 class="page-title">{{ review_format_label }}選段 <span class="zh">五個候選，排出三支再進製作</span></h1>
-    <div class="highlight-format-switch">
-      <a class="sho-btn {% if review_format == 'long' %}sho-btn--ghost{% endif %}"
-         href="/bridge/highlights/{{ episode_slug }}?format=long">長精華</a>
-      <a class="sho-btn {% if review_format == 'short' %}sho-btn--ghost{% endif %}"
-         href="/bridge/highlights/{{ episode_slug }}?format=short">短影片</a>
+    <div class="highlight-format-switch" role="tablist" aria-label="選段格式">
+      {% for value, label in [('long', '長精華'), ('short', '短影片')] %}
+      <a class="sho-btn {% if value != review_format %}sho-btn--ghost{% endif %}"
+         href="/bridge/highlights/{{ episode_slug }}?format={{ value }}"
+         role="tab"
+         aria-selected="{{ 'true' if value == review_format else 'false' }}"
+         {% if value == review_format %}aria-current="page"{% endif %}>{{ label }}</a>
+      {% endfor %}
     </div>
   </div>
   <div class="header-meta sho-mono">AUDIT {{ decision_count }} DECISIONS</div>
