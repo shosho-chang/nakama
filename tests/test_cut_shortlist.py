@@ -371,3 +371,113 @@ def test_renee_non_string_finding_field_fails_closed(episode):
 
     with pytest.raises(SystemExit, match="retention_risk must be a string"):
         shortlist.collect(episode / "highlights", "long")
+
+
+# --- 長短片分流（ADR-067）---------------------------------------------------
+# gate 一直只寫 winners.json，不分格式；而短片線 (`run_shortform_director.py`)
+# 讀的是 winners.short.json。挑短片會蓋掉長片的當選名單，而且短片線照樣沒有輸入。
+
+
+def _short_panel(hl: Path, ids: tuple[str, ...]) -> None:
+    """替這些短片候選補上分格式的盲審檔，綁 format digest。"""
+    from shared.highlight_shortlist import _format_digest
+
+    candidates = json.loads((hl / "candidates.json").read_text(encoding="utf-8"))["candidates"]
+    digest = _format_digest(candidates, "short")
+    for who in ("azhe", "kevin", "shufen"):
+        (hl / f"review_{who}.short.json").write_text(
+            json.dumps(
+                {
+                    "persona": who,
+                    "source_sha256": digest,
+                    "scores": [{"id": i, "total": 80} for i in ids],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+    (hl / "lens_brand.short.json").write_text(
+        json.dumps(
+            {
+                "lens": "brand",
+                "source_sha256": digest,
+                "findings": [
+                    {"id": i, "severity": "", "issue": "", "mitigation": ""} for i in ids
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (hl / "lens_renee.short.json").write_text(
+        json.dumps(
+            {
+                "lens": "renee",
+                "source_sha256": digest,
+                "findings": [
+                    {
+                        "id": i,
+                        "hook_risk": "",
+                        "retention_risk": "",
+                        "boundary_action": "keep",
+                    }
+                    for i in ids
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_short_pick_writes_its_own_file_and_leaves_long_winners_alone(episode):
+    hl = episode / "highlights"
+    _short_panel(hl, ("S1",))
+
+    long_rows = shortlist.collect(hl, "long")
+    shortlist.write_winners(hl, long_rows, ["A1", "B1"], fmt="long")
+    long_before = (hl / "winners.json").read_bytes()
+
+    short_rows = shortlist.collect(hl, "short")
+    out = shortlist.write_winners(hl, short_rows, ["S1"], fmt="short")
+
+    assert out.name == "winners.short.json"
+    assert [w["id"] for w in json.loads(out.read_text(encoding="utf-8"))["winners"]] == ["S1"]
+    # 長片那份一個 byte 都不能動——L2/L3 的成品線靠它。
+    assert (hl / "winners.json").read_bytes() == long_before
+
+
+def test_long_boundary_polish_does_not_invalidate_the_short_panel(episode):
+    """Step 2.5 動長片邊界，短片盤子不該跟著翻。
+
+    這正是 20260901 蘇予昕 卡住的原因：整檔 hash 把兩條線綁在一起，改一支長片
+    的 t_start，38 支沒被碰過的短片連同 panel 一起作廢。
+    """
+    hl = episode / "highlights"
+    _short_panel(hl, ("S1",))
+    assert [r["id"] for r in shortlist.collect(hl, "short")] == ["S1"]
+
+    doc = json.loads((hl / "candidates.json").read_text(encoding="utf-8"))
+    for candidate in doc["candidates"]:
+        if candidate["id"] == "A1":
+            candidate["t_start"] = 12.5
+            candidate["duration_sec"] = 487.5
+    (hl / "candidates.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+    assert [r["id"] for r in shortlist.collect(hl, "short")] == ["S1"]
+    # 長片自己那份仍然綁整檔，所以照樣會擋下來——不是把驗證放掉。
+    with pytest.raises(SystemExit, match="source_sha256"):
+        shortlist.collect(hl, "long")
+
+
+def test_short_panel_still_has_to_cover_every_short_candidate(episode):
+    hl = episode / "highlights"
+    doc = json.loads((hl / "candidates.json").read_text(encoding="utf-8"))
+    doc["candidates"].append(
+        {**_cand("S2", "G5", "第二支短片"), "format": "short", "duration_sec": 80.0}
+    )
+    (hl / "candidates.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    _short_panel(hl, ("S1",))
+
+    with pytest.raises(SystemExit, match=r"review_azhe.short.json.*S2"):
+        shortlist.collect(hl, "short")

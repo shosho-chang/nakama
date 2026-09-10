@@ -57,6 +57,39 @@ def _atomic_json_write(path: Path, payload: dict[str, Any]) -> Path:
     return path
 
 
+def _format_digest(candidates: list[Any], fmt: str) -> str:
+    """SHA-256 over just this format's candidates, in file order.
+
+    The whole-file hash is the wrong scope: `expected_ids` is already filtered by
+    format, so binding the panel to every byte of `candidates.json` means polishing
+    **one long candidate's boundary** invalidates the **short** panel that never
+    looked at it. 20260901 蘇予昕 hit exactly that — Step 2.5 moved `punch-L02` and
+    `punch-L03`, and all five review/lens files went stale even though not one of
+    the 38 short candidates changed a single field.
+
+    Hashing the format's own slice keeps the guarantee that matters (the panel
+    scored *these* candidates as they stand) while letting the two lines move
+    independently, which is what ADR-067 separated them for.
+    """
+    payload = [c for c in candidates if isinstance(c, dict) and c.get("format") == fmt]
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _scoped_path(hl_dir: Path, stem: str, fmt: str) -> tuple[Path, bool]:
+    """Prefer the per-format file, fall back to the shared one.
+
+    Returns `(path, is_scoped)`. Same idiom as `run_short_tighten.py` already uses
+    for `winners.<fmt>.json`: one persona file cannot serve both formats, because
+    `collect` demands the review's ids equal the format's ids *exactly* — a file
+    covering the longs is "missing" all 38 shorts and vice versa.
+    """
+    scoped = hl_dir / f"{stem}.{fmt}.json"
+    if scoped.is_file():
+        return scoped, True
+    return hl_dir / f"{stem}.json", False
+
+
 def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
     """Join candidates, persona scores and brand lens, ordered by median score."""
     candidates_path = hl_dir / "candidates.json"
@@ -80,26 +113,31 @@ def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
     if not candidate_ids:
         return []
     expected_ids = set(candidate_ids)
+    format_sha256 = _format_digest(candidates, fmt)
+
+    def _check_binding(doc: dict[str, Any], path: Path, scoped: bool) -> None:
+        """A per-format file binds to the format digest; a shared file to the file."""
+        expected = format_sha256 if scoped else candidates_sha256
+        if doc.get("source_sha256") != expected:
+            scope = f"format={fmt} candidates" if scoped else "candidates.json"
+            raise HighlightDataError(f"{path.name} source_sha256 differs from {scope}")
 
     scores: dict[str, dict[str, float]] = {}
     review_notes: dict[str, dict[str, str]] = {}
     for who in SCORERS:
-        review_path = hl_dir / f"review_{who}.json"
+        review_path, review_scoped = _scoped_path(hl_dir, f"review_{who}", fmt)
         review = _load_object(review_path, required=True)
-        if review.get("source_sha256") != candidates_sha256:
-            raise HighlightDataError(
-                f"review_{who}.json source_sha256 differs from candidates.json"
-            )
+        _check_binding(review, review_path, review_scoped)
         rows = review.get("scores")
         if not isinstance(rows, list):
-            raise HighlightDataError(f"review_{who}.json scores must be an array")
+            raise HighlightDataError(f"{review_path.name} scores must be an array")
         seen: set[str] = set()
         for row in rows:
             if not isinstance(row, dict) or not isinstance(row.get("id"), str):
-                raise HighlightDataError(f"review_{who}.json contains an invalid score row")
+                raise HighlightDataError(f"{review_path.name} contains an invalid score row")
             candidate_id = row["id"]
             if candidate_id in seen:
-                raise HighlightDataError(f"review_{who}.json contains duplicate id: {candidate_id}")
+                raise HighlightDataError(f"{review_path.name} contains duplicate id: {candidate_id}")
             seen.add(candidate_id)
             total = row.get("total")
             if (
@@ -107,7 +145,7 @@ def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
                 or isinstance(total, bool)
                 or not math.isfinite(float(total))
             ):
-                raise HighlightDataError(f"review_{who}.json total is invalid for {candidate_id}")
+                raise HighlightDataError(f"{review_path.name} total is invalid for {candidate_id}")
             scores.setdefault(candidate_id, {})[who] = float(total)
             for field in ("rationale", "reason", "summary", "notes"):
                 note = row.get(field)
@@ -118,59 +156,58 @@ def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
             missing = sorted(expected_ids - seen)
             extra = sorted(seen - expected_ids)
             raise HighlightDataError(
-                f"review_{who}.json candidate coverage drift; missing={missing}, extra={extra}"
+                f"{review_path.name} candidate coverage drift; missing={missing}, extra={extra}"
             )
 
     brand: dict[str, dict[str, Any]] = {}
-    lens_path = hl_dir / "lens_brand.json"
+    lens_path, lens_scoped = _scoped_path(hl_dir, "lens_brand", fmt)
     lens = _load_object(lens_path, required=True)
-    if lens.get("source_sha256") != candidates_sha256:
-        raise HighlightDataError("lens_brand.json source_sha256 differs from candidates.json")
+    _check_binding(lens, lens_path, lens_scoped)
     findings = lens.get("findings")
     if not isinstance(findings, list):
-        raise HighlightDataError("lens_brand.json findings must be an array")
+        raise HighlightDataError(f"{lens_path.name} findings must be an array")
     for finding in findings:
         if not isinstance(finding, dict) or not isinstance(finding.get("id"), str):
-            raise HighlightDataError("lens_brand.json contains an invalid finding")
+            raise HighlightDataError(f"{lens_path.name} contains an invalid finding")
         candidate_id = finding["id"]
         if candidate_id in brand:
-            raise HighlightDataError(f"lens_brand.json contains duplicate id: {candidate_id}")
+            raise HighlightDataError(f"{lens_path.name} contains duplicate id: {candidate_id}")
         brand[candidate_id] = finding
     brand_ids = set(brand)
     if brand_ids != expected_ids:
         missing = sorted(expected_ids - brand_ids)
         extra = sorted(brand_ids - expected_ids)
         raise HighlightDataError(
-            f"lens_brand.json candidate coverage drift; missing={missing}, extra={extra}"
+            f"{lens_path.name} candidate coverage drift; missing={missing}, extra={extra}"
         )
 
-    renee = _load_object(hl_dir / "lens_renee.json", required=True)
+    renee_path, renee_scoped = _scoped_path(hl_dir, "lens_renee", fmt)
+    renee = _load_object(renee_path, required=True)
     if set(renee) != {"lens", "source_sha256", "findings"} or renee.get("lens") != "renee":
-        raise HighlightDataError("lens_renee.json schema drift")
-    if renee.get("source_sha256") != candidates_sha256:
-        raise HighlightDataError("lens_renee.json source_sha256 differs from candidates.json")
+        raise HighlightDataError(f"{renee_path.name} schema drift")
+    _check_binding(renee, renee_path, renee_scoped)
     renee_findings = renee.get("findings")
     if not isinstance(renee_findings, list):
-        raise HighlightDataError("lens_renee.json findings must be an array")
+        raise HighlightDataError(f"{renee_path.name} findings must be an array")
     renee_ids: set[str] = set()
     for finding in renee_findings:
         required_fields = {"id", "hook_risk", "retention_risk", "boundary_action"}
         if not isinstance(finding, dict) or set(finding) != required_fields:
-            raise HighlightDataError("lens_renee.json contains an invalid finding")
+            raise HighlightDataError(f"{renee_path.name} contains an invalid finding")
         for field in required_fields:
             if not isinstance(finding[field], str):
-                raise HighlightDataError(f"lens_renee.json {field} must be a string")
+                raise HighlightDataError(f"{renee_path.name} {field} must be a string")
         candidate_id = finding["id"]
         if not candidate_id:
-            raise HighlightDataError("lens_renee.json id must be a non-empty string")
+            raise HighlightDataError(f"{renee_path.name} id must be a non-empty string")
         if candidate_id in renee_ids:
-            raise HighlightDataError(f"lens_renee.json contains duplicate id: {candidate_id}")
+            raise HighlightDataError(f"{renee_path.name} contains duplicate id: {candidate_id}")
         renee_ids.add(candidate_id)
     if renee_ids != expected_ids:
         missing = sorted(expected_ids - renee_ids)
         extra = sorted(renee_ids - expected_ids)
         raise HighlightDataError(
-            f"lens_renee.json candidate coverage drift; missing={missing}, extra={extra}"
+            f"{renee_path.name} candidate coverage drift; missing={missing}, extra={extra}"
         )
 
     result: list[dict[str, Any]] = []
@@ -231,14 +268,30 @@ def collect(hl_dir: Path, fmt: str) -> list[dict[str, Any]]:
     return result
 
 
+def winners_path(hl_dir: Path, fmt: str) -> Path:
+    """Where this format's decision lives.
+
+    `long` keeps `winners.json` — it is what every long consumer already reads.
+    `short` gets `winners.short.json`, which is what `run_shortform_director.py`
+    has been reading all along (`"短片讀 winners.short.json——長片的 winners.json
+    一個字都不碰"`). Until now nothing wrote it: the gate wrote `winners.json`
+    for **both** formats, so picking shorts would have silently overwritten the
+    long winners the finished-cut line depends on, and the shorts line would
+    still have found no input.
+    """
+    return hl_dir / ("winners.json" if fmt == "long" else f"winners.{fmt}.json")
+
+
 def write_winners(
     hl_dir: Path,
     rows: list[dict[str, Any]],
     picks: list[str],
     *,
     picked_by: str = "修修 (gate)",
+    fmt: str = "long",
 ) -> Path:
     """Write the established winners schema without dropping excluded groups."""
+    target = winners_path(hl_dir, fmt)
     candidates_doc = _load_object(hl_dir / "candidates.json", required=True)
     subtitle_lineage = candidates_doc.get("subtitle_lineage")
     if subtitle_lineage is not None and not isinstance(subtitle_lineage, dict):
@@ -268,14 +321,14 @@ def write_winners(
         "vetoed": vetoed,
         "picked_by": picked_by,
     }
-    existing = _load_object(hl_dir / "winners.json")
+    existing = _load_object(target)
     if existing.get("excluded_group") is not None:
         payload["excluded_group"] = existing["excluded_group"]
     if subtitle_lineage is not None:
         payload["subtitle_lineage"] = subtitle_lineage
     if editorial_master_lineage is not None:
         payload["editorial_master_lineage"] = editorial_master_lineage
-    return _atomic_json_write(hl_dir / "winners.json", payload)
+    return _atomic_json_write(target, payload)
 
 
 def load_review_feedback(hl_dir: Path) -> dict[str, Any]:

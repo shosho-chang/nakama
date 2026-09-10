@@ -16,9 +16,15 @@ packaging 的成本已經付掉了。他自己的比較：「做 5 支挑 3 支�
     highlights/lens_brand.json       — 品牌 lens（severity: veto/caution）
     highlights/lens_renee.json       — 留存／邊界 lens（長片必須完整覆蓋）
 
-輸出：
-    highlights/選段候選表.md         — 貼給修修的表（群組、中位數、hook、警示）
-    highlights/winners.json          — 只有 --pick 才寫（schema 由本 script 保證）
+**盲審檔可以分格式**：`review_<persona>.<fmt>.json` / `lens_*.<fmt>.json` 存在時優先
+使用，並改綁「該格式候選」的 digest。一份 persona 檔服務不了兩種格式——gate 要求
+review 的 id 集合與該格式的候選**完全相等**，覆蓋長片的那份對短片來說就是「38 支
+全缺」。分格式之後，長片邊界打磨也不會再把短片的盤子打翻（ADR-067 的分家精神）。
+
+輸出（依 --format 分流，不互相覆蓋）：
+    highlights/選段候選表[.short].md — 貼給修修的表（群組、中位數、hook、警示）
+    highlights/winners.json          — long；短片寫 winners.short.json
+                                       只有 --pick 才寫（schema 由本 script 保證）
 """
 
 from __future__ import annotations
@@ -87,7 +93,7 @@ def render_table(rows: list[dict], fmt: str) -> str:
     return "\n".join(out) + "\n"
 
 
-def write_winners(hl_dir: Path, rows: list[dict], picks: list[str]) -> Path:
+def write_winners(hl_dir: Path, rows: list[dict], picks: list[str], fmt: str = "long") -> Path:
     """Compatibility wrapper preserving the CLI's SystemExit error contract."""
     try:
         picked_veto = [
@@ -95,7 +101,7 @@ def write_winners(hl_dir: Path, rows: list[dict], picks: list[str]) -> Path:
         ]
         if picked_veto:
             print(f"⚠️ 注意：{picked_veto} 是 brand-lens 否決段，仍照你的指定寫入", file=sys.stderr)
-        return _write_winners(hl_dir, rows, picks)
+        return _write_winners(hl_dir, rows, picks, fmt=fmt)
     except HighlightDataError as exc:
         raise SystemExit(str(exc)) from exc
 
@@ -114,12 +120,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.pick:
         picks = [x.strip() for x in args.pick.split(",") if x.strip()]
-        out = write_winners(hl_dir, rows, picks)
-        print(f"winners.json 已寫入（{len(picks)} 支）→ {out}")
+        out = write_winners(hl_dir, rows, picks, args.format)
+        print(f"{out.name} 已寫入（{len(picks)} 支）→ {out}")
         return 0
 
     table = render_table(rows, args.format)
-    out = hl_dir / "選段候選表.md"
+    # 一個檔名餵兩種格式，跑短片的表就會蓋掉長片那張。
+    out = hl_dir / ("選段候選表.md" if args.format == "long" else f"選段候選表.{args.format}.md")
     out.write_text(table, encoding="utf-8")
     print(table)
     print(f"→ {out}")
