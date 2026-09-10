@@ -69,11 +69,12 @@ def _read_timeline_items(episode_dir: Path, timeline_name: str) -> tuple[float, 
 
     fps = float(project.GetSetting("timelineFrameRate"))
     start = timeline.GetStartFrame()
-    items: list[dict] = []
+    layered: list[list[dict]] = []
     for track in range(1, timeline.GetTrackCount("video") + 1):
+        rows: list[dict] = []
         for item in timeline.GetItemListInTrack("video", track) or []:
             media = item.GetMediaPoolItem()
-            items.append(
+            rows.append(
                 {
                     "tl_start": item.GetStart() - start,
                     "tl_end": item.GetEnd() - start,
@@ -81,7 +82,54 @@ def _read_timeline_items(episode_dir: Path, timeline_name: str) -> tuple[float, 
                     "source_path": media.GetClipProperty("File Path") if media else None,
                 }
             )
-    return fps, items
+        layered.append(rows)
+    return fps, _flatten_tracks(layered)
+
+
+def _flatten_tracks(layered: list[list[dict]]) -> list[dict]:
+    """多軌壓成一條「實際看到的畫面」，高軌蓋低軌。
+
+    以前這裡把每一軌的 item 全部倒進同一個清單。只認一支主體時看不出問題——
+    上層軌的 item 來源不是主體，會被歸進 unconformable 丟掉。一旦三機都算主體
+    （切鏡不是片頭片尾），V2／V3 的插入畫面就和 V1 底下那一段在成片時間上重疊，
+    `build_conform_map` 直接報「主體區段重疊」（20260901 蘇予昕：V1 634 個 item、
+    V2 12 個、V3 2 個）。
+
+    Resolve 的合成語意是不透明素材由**最上層**決定畫面，所以這裡照樣做：高軌優先，
+    低軌被蓋掉的部分切開，只留露出來的區間（`src_left_offset` 跟著位移）。
+    """
+    covered: list[tuple[int, int]] = []
+    out: list[dict] = []
+    for rows in reversed(layered):  # 由最高軌往下
+        for item in sorted(rows, key=lambda x: int(x["tl_start"])):
+            spans = [(int(item["tl_start"]), int(item["tl_end"]))]
+            for lo, hi in covered:
+                nxt: list[tuple[int, int]] = []
+                for a, b in spans:
+                    if hi <= a or lo >= b:
+                        nxt.append((a, b))
+                        continue
+                    if a < lo:
+                        nxt.append((a, lo))
+                    if hi < b:
+                        nxt.append((hi, b))
+                spans = nxt
+            for a, b in spans:
+                if b <= a:
+                    continue
+                left = item["src_left_offset"]
+                out.append(
+                    {
+                        "tl_start": a,
+                        "tl_end": b,
+                        # 切開之後來源起點要跟著往後推同樣的格數。
+                        "src_left_offset": None if left is None else int(left) + (a - int(item["tl_start"])),
+                        "source_path": item["source_path"],
+                    }
+                )
+            covered.append((int(item["tl_start"]), int(item["tl_end"])))
+    out.sort(key=lambda x: x["tl_start"])
+    return out
 
 
 def _pick_body_source(items: list[dict], fps: float) -> str:
@@ -189,6 +237,25 @@ def main(argv: list[str] | None = None) -> int:
     lineage["master_media_sha256"] = receipt["artifacts"]["media"]["sha256"]
     lineage["master_srt_sha256"] = receipt["artifacts"]["subtitles"]["sha256"]
 
+    # 剪接台直接吃三機原檔、在 timeline 上切鏡時，每一次切鏡都是一個「來源不是
+    # 主體」的 item。只認一支主體會把它們全部歸成片頭片尾——20260901 蘇予昕 有
+    # 371 段（全片 47%）這樣被埋掉，短片導播走到切鏡點就報「三機沒有對應畫面」。
+    # 機位同步過（`sources` 的實測偏移），共用一個 source 時鐘，可以一起當主體。
+    camera_names = {rel.name.lower() for rel in CAMERA_SOURCES.values()}
+    extra_bodies = sorted(
+        {
+            item["source_path"]
+            for item in items
+            if item.get("source_path")
+            and Path(item["source_path"]).name.lower() in camera_names
+            and Path(item["source_path"]).name.lower() != body_path.name.lower()
+        }
+    )
+    if extra_bodies:
+        print("同步機位一併當主體（切鏡不是片頭片尾）：")
+        for path in extra_bodies:
+            print(f"  {Path(path).name}")
+
     cmap = build_conform_map(
         episode_id=episode_dir.name,
         fps=fps,
@@ -196,6 +263,7 @@ def main(argv: list[str] | None = None) -> int:
         timeline_items=items,
         sources=sources,
         body_source_path=str(body_path),
+        extra_body_source_paths=extra_bodies,
     )
 
     from shared.editorial_conform import removed_spans

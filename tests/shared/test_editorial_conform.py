@@ -140,3 +140,86 @@ def test_load_roundtrip(tmp_path, cmap):
     path = tmp_path / "conform-map.v1.json"
     path.write_text(json.dumps(cmap, ensure_ascii=False), encoding="utf-8")
     assert load_conform_map(path)["segments"] == cmap["segments"]
+
+
+# --- 多機位共用主體（剪接台直接切鏡的集數）-----------------------------------
+
+
+def _multicam_items():
+    """timeline 在兩台同步機位之間切鏡：cam2 → cam1 → cam2。"""
+    return [
+        {"tl_start": 0, "tl_end": 30, "src_left_offset": 300, "source_path": "1_CAMERA 1.mp4"},
+        {"tl_start": 30, "tl_end": 60, "src_left_offset": 330, "source_path": "2_CAMERA 2.mp4"},
+        {"tl_start": 60, "tl_end": 90, "src_left_offset": 360, "source_path": "1_CAMERA 1.mp4"},
+    ]
+
+
+def _synced_sources():
+    return {
+        "cam1": {"path": "Video/1_CAMERA 1.mp4", "offset_sec": 0.0},
+        "cam2": {"path": "Video/2_CAMERA 2.mp4", "offset_sec": 0.0},
+    }
+
+
+def test_synced_camera_switches_are_body_not_intro_outro():
+    """切鏡不是被剪掉的內容——那裡有畫面，只是換了角度。
+
+    舊行為只認一支主體，20260901 蘇予昕 因此有 371 段、全片 47% 被標成片頭片尾，
+    短片導播一走到切鏡點就報「三機沒有對應畫面」。
+    """
+    cmap = build_conform_map(
+        episode_id="ep",
+        fps=30.0,
+        lineage={},
+        timeline_items=_multicam_items(),
+        sources=_synced_sources(),
+        body_source_path="2_CAMERA 2.mp4",
+        extra_body_source_paths=["1_CAMERA 1.mp4"],
+    )
+    assert len(cmap["segments"]) == 3
+    assert cmap["unconformable"] == []
+    # 切鏡點照樣投影得出來，而且落在同一個 source 時鐘上。
+    assert project_master_range(cmap, 0.5, 2.5, source_key="cam2")
+
+
+def test_single_body_still_treats_other_sources_as_intro_outro():
+    """沒有宣告額外主體時，行為完全不變。"""
+    cmap = build_conform_map(
+        episode_id="ep",
+        fps=30.0,
+        lineage={},
+        timeline_items=_multicam_items(),
+        sources=_synced_sources(),
+        body_source_path="2_CAMERA 2.mp4",
+    )
+    assert len(cmap["segments"]) == 1
+    assert len(cmap["unconformable"]) == 2
+
+
+def test_unsynced_cameras_cannot_share_a_body_clock():
+    """偏移對不上就不是同一個時鐘——寧可停下來，不要每個切鏡累積誤差。"""
+    sources = _synced_sources()
+    sources["cam1"]["offset_sec"] = 0.5  # 半秒，遠超過一格
+    with pytest.raises(ConformMapError, match="沒有同步"):
+        build_conform_map(
+            episode_id="ep",
+            fps=30.0,
+            lineage={},
+            timeline_items=_multicam_items(),
+            sources=sources,
+            body_source_path="2_CAMERA 2.mp4",
+            extra_body_source_paths=["1_CAMERA 1.mp4"],
+        )
+
+
+def test_extra_body_without_a_measured_offset_is_refused():
+    with pytest.raises(ConformMapError, match="沒有它們的實測偏移"):
+        build_conform_map(
+            episode_id="ep",
+            fps=30.0,
+            lineage={},
+            timeline_items=_multicam_items(),
+            sources={"cam2": {"path": "Video/2_CAMERA 2.mp4", "offset_sec": 0.0}},
+            body_source_path="2_CAMERA 2.mp4",
+            extra_body_source_paths=["1_CAMERA 1.mp4"],
+        )

@@ -34,6 +34,7 @@ Tests：tests/shared/test_editorial_conform.py。
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +56,35 @@ def _round(value: float) -> float:
     return round(float(value), 3)
 
 
+def _assert_shared_clock(
+    sources: dict[str, Any], body_keys: set[str], fps: float
+) -> None:
+    """多機位當主體的前提：它們的實測偏移彼此在一格內。
+
+    共用主體代表共用一個 ``source_start_sec`` 座標系。偏移對不上就不是同一個
+    時鐘，硬湊出來的 map 會在每一次切鏡累積誤差——而且是**安靜地**錯，正是最難
+    查的那種。寧可在這裡停下來，叫人重量偏移或退回單一主體。
+    """
+    tolerance = 1.0 / fps
+    measured: dict[str, float] = {}
+    for entry in sources.values():
+        name = Path(str(entry.get("path") or "")).name.lower()
+        if name in body_keys:
+            measured[name] = float(entry.get("offset_sec") or 0.0)
+    missing = sorted(body_keys - set(measured))
+    if missing:
+        raise ConformMapError(
+            f"這些機位要一起當主體，但 sources 裡沒有它們的實測偏移：{missing}"
+        )
+    spread = max(measured.values()) - min(measured.values())
+    if spread > tolerance:
+        detail = "、".join(f"{k}={v:+.4f}s" for k, v in sorted(measured.items()))
+        raise ConformMapError(
+            f"機位沒有同步，偏移差 {spread:.4f}s 超過一格（{tolerance:.4f}s）：{detail}"
+            "——不能共用一個 source 時鐘"
+        )
+
+
 def build_conform_map(
     *,
     episode_id: str,
@@ -63,6 +93,7 @@ def build_conform_map(
     timeline_items: list[dict[str, Any]],
     sources: dict[str, dict[str, Any]],
     body_source_path: str,
+    extra_body_source_paths: Sequence[str] = (),
 ) -> dict[str, Any]:
     """從 Editorial Master timeline 的 item 清單建出 conform map。
 
@@ -71,12 +102,25 @@ def build_conform_map(
     轉場之類沒有來源的 item（``source_path`` 為 None）直接略過——它們不改變
     時間軸長度。
 
-    ``body_source_path`` 指出哪一支是主體（program feed）；其餘來源路徑視為
-    Intro/Outro，歸進 ``unconformable``。
+    ``body_source_path`` 指出哪一支是主體；其餘來源路徑視為 Intro/Outro，歸進
+    ``unconformable``。
+
+    ``extra_body_source_paths`` 是**同一個時鐘上的其他機位**。剪接台直接吃三機
+    原檔、在 timeline 上切鏡的集數（不是先出一條 program feed 再剪），每一次切鏡
+    都會產生一個「來源不是主體」的 item——舊行為把它們全部歸成 Intro/Outro。
+    20260901 蘇予昕 因此有 371 段、共 2935.8s（**全片 47%**）被標成片頭片尾，
+    短片導播一走到切鏡點就報「三機沒有對應畫面」，而那裡明明有畫面，只是換了角度。
+
+    這些機位必須**同步**（實測偏移彼此在一格內）才能一起當主體：它們共用一個
+    時鐘，``source_start_sec`` 因此在同一個座標系上，``master_to_source_sec``
+    不需要知道那一段當初用的是哪一台。不同步就 fail loud，不要猜。
     """
     if fps <= 0:
         raise ConformMapError("fps 必須為正數")
     body_key = Path(body_source_path).name.lower()
+    body_keys = {body_key} | {Path(p).name.lower() for p in extra_body_source_paths}
+    if len(body_keys) > 1:
+        _assert_shared_clock(sources, body_keys, fps)
 
     segments: list[dict[str, Any]] = []
     unconformable: list[dict[str, Any]] = []
@@ -93,7 +137,7 @@ def build_conform_map(
             "master_end_sec": master_end,
             "source_path": str(source_path),
         }
-        if Path(source_path).name.lower() == body_key:
+        if Path(source_path).name.lower() in body_keys:
             left = item.get("src_left_offset")
             if left is None:
                 raise ConformMapError(f"主體 item 缺 src_left_offset：{master_start}")
