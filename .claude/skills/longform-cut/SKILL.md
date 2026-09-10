@@ -593,3 +593,17 @@ preview 照樣交付（他要看隨時能看），但**不阻塞產線**。
   剪掉的「2、3%」文字殘留 0.8s）——先把 source cue 在切點**拆成兩個 cue**
   再 refresh，讓 retime 自然丟掉被剪的那半
 - stock 銜接：滿版不裁的前提下 1080p 源可用（畫質無損；4K 仍為預設優先）
+
+## 物化之後：交給發布線
+
+`preview_ready` 那支 `preview.mp4` 已經是全解析成品（1920×1080 / 30fps / H.264+AAC）。
+但**不要手動複製到 exports 就當結束**——正規路徑是發布線的
+`scripts/publish_prep.py`（ADR-055 Slice 1），它會同時登錄一筆 draft Release，
+下游的文案、排程、核准、上傳全靠那筆記錄。
+
+```bash
+python scripts/publish_prep.py "<episode>" [--cut <cut-id>]
+```
+
+之後：packaging → `publish_description.py` → `/bridge/publish/<ep>/<cut>` 核准並上傳
+→ Campaign Anchor 排程 → `publish_reconcile.py` 確認公開。全圖見 ADR-055。

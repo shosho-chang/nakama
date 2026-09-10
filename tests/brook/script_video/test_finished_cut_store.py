@@ -1209,7 +1209,7 @@ def test_intentional_aroll_needs_no_asset_and_projects_no_component(tmp_path) ->
     assert builder.requests == []
 
 
-def test_four_minute_nineteen_second_long_stops_before_plan_without_rerun(
+def test_four_minute_nineteen_second_long_warns_but_is_not_blocked(
     tmp_path,
 ) -> None:
     context = EditorialCutContext(
@@ -1265,13 +1265,17 @@ def test_four_minute_nineteen_second_long_stops_before_plan_without_rerun(
     unchanged = production.advance(_approved_cut().command_id)
     authority = _run_authority(production, rejected.command_id)
 
-    assert rejected.status == "needs_review"
-    assert authority.materialization_plan is None
+    # 8 分鐘下限是**品味**，不是結構——4:19 的長片剪出來沒有壞，只是短。
+    # 修修 2026-09-10 裁決降級成警告：照樣往下走，診斷掛在 view 上，
+    # 他在 timeline 上自己判斷要不要用。
+    assert rejected.status != "needs_review"
     assert authority.outstanding_request is None
     assert len(authority.accepted_stages) == 3
-    assert tuple(item.code for item in authority.policy_diagnostics) == (
-        "long_duration_below_minimum",
-    )
+    # 分級之後不再「撞到第一條就早退」，所以這支 4:19 的 fixture 會一次收齊
+    # 全部警告（它也真的素材太少、節奏有缺口）。斷言改成包含，不是相等。
+    assert "long_duration_below_minimum" in {
+        item.code for item in authority.policy_diagnostics
+    }
     assert unchanged == rejected
 
 
@@ -1837,7 +1841,9 @@ def test_core_projection_keeps_chapter_hero_and_support_distinct_after_restart(
 
     class ProjectionPolicy:
         def validate(self, candidate):
-            return type("Decision", (), {"status": "accepted"})()
+            # `diagnostics` 不能省：真的 PolicyDecision 一定有（預設空 tuple），
+            # 引擎在 accepted 路徑也會讀它來把警告掛上 view。
+            return type("Decision", (), {"status": "accepted", "diagnostics": ()})()
 
     def reopen() -> FinishedCutProduction:
         return FinishedCutProduction(

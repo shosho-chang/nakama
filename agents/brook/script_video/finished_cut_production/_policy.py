@@ -1,4 +1,23 @@
-"""Format-specific, deterministic gates before Finished Cut materialization."""
+"""Format-specific, deterministic gates before Finished Cut materialization.
+
+## 分級（修修 2026-09-10 裁決）
+
+**剪輯不是寫程式。** 這一層本來 18 條診斷全部是硬擋，實跑 20260901 蘇予昕 時，
+13 個關卡裡只有 2 個真的在保護「不要把來賓沒說的話放上畫面」，其餘都是把品味
+規則當編譯錯誤執行——`b_roll_cadence_gap_exceeded`（75 秒節奏）害一支 490 秒的
+長片整個重新登錄、重做 20 個視覺事件；`stock_video_not_native_landscape` 擋掉一支
+4096×2160 的 DCI 4K，而它放進 16:9 timeline 只是縮放。
+
+現在分兩級：
+
+- ``BLOCKING_DIAGNOSTICS`` —— **會做出壞成品**的結構性問題（算術對不上、缺章節
+  資料、兩張卡疊在一起）。踩到就停。
+- 其餘 —— 品味與政策。印出來、記進收據、**繼續跑**。修修會在 Resolve timeline 上
+  親眼看每一支，那比任何自動稽核都強，而且成本是零（他本來就要看）。
+
+要再收緊時，先問：這條規則擋下來的東西，人眼在 timeline 上看不看得出來？
+看得出來就不該是硬擋。
+"""
 
 from __future__ import annotations
 
@@ -9,7 +28,7 @@ from typing import Literal, Protocol
 from ._context import EditorialCutContext
 from ._derived_assets import _PLACEMENT_DURATION_CEILINGS_SEC
 
-PolicyStatus = Literal["accepted", "needs_review"]
+PolicyStatus = Literal["accepted", "accepted_with_warnings", "needs_review"]
 PolicyDiagnosticCode = Literal[
     "long_duration_below_minimum",
     "source_range_sum_mismatch",
@@ -30,6 +49,34 @@ PolicyDiagnosticCode = Literal[
     "short_duration_exceeded",
     "short_title_limit_exceeded",
 ]
+
+#: 只有這四條會擋下物化——它們都是「不修就會做出壞成品」的結構性問題，
+#: 而且**人眼在 timeline 上看不出來**（算術差幾格、缺章節資料）。
+#: 其餘全部是品味／政策，降級成警告。分級理由見模組 docstring。
+BLOCKING_DIAGNOSTICS: frozenset[PolicyDiagnosticCode] = frozenset(
+    {
+        "source_range_sum_mismatch",  # 時間軸算術對不上，剪出來會錯位
+        "canonical_sections_missing",  # 缺章節資料，下游直接爆
+        "first_section_not_zero",  # 同上
+        "title_placement_overlap",  # 兩張卡疊在一起＝畫面壞掉
+    }
+)
+
+
+def decide(diagnostics: tuple[PolicyDiagnostic, ...]) -> PolicyDecision:
+    """把診斷分成「擋下來」與「講一聲就好」。
+
+    沒有診斷 → accepted；只有警告 → accepted_with_warnings（照樣物化）；
+    有任何 blocking → needs_review。
+    """
+    if not diagnostics:
+        return PolicyDecision(status="accepted")
+    blocking = tuple(d for d in diagnostics if d.code in BLOCKING_DIAGNOSTICS)
+    if blocking:
+        return PolicyDecision(status="needs_review", diagnostics=diagnostics)
+    return PolicyDecision(status="accepted_with_warnings", diagnostics=diagnostics)
+
+
 LONG_MIN_DURATION_SEC = 8 * 60.0
 CUT_DURATION_TOLERANCE_SEC = 0.05
 SECTION_TIMESTAMP_TOLERANCE_SEC = 0.05
@@ -97,6 +144,80 @@ class _CoverageGap:
     next: PolicyComponent | None
 
 
+def _chapter_projection_mismatch(
+    sections: "tuple[object, ...]",
+    expected: "tuple[object, ...]",
+    projected: "tuple[PolicyComponent, ...]",
+) -> PolicyDiagnostic | None:
+    """說出章節轉場到底是哪裡對不上，而不是只說「對不上」。
+
+    這個 gate 以前把四種完全不同的違規擠進同一句 "must map one-to-one"：第一段自帶
+    轉場、數量對不上、Director 把 canonical 標題改寫掉、落點漂掉。2026-09-08 蘇予昕
+    那一集，Director 把「情緒像粽子，主管底下是一整串」改寫成「情緒像繩子」，gate 確實
+    擋下來了，但訊息看起來像數量或落點問題，沒有人看得出是文字被改，於是繞過 gate 直接
+    鋪 timeline——錯字就這樣上了片。訊息要能直接指出「期待 X、拿到 Y」。
+    """
+    if sections[0].transition_before is not False:
+        return PolicyDiagnostic(
+            "chapter_transition_projection_mismatch",
+            "The first canonical section must not carry a chapter transition",
+            section_ids=(sections[0].section_id,),
+        )
+    if len(expected) != len(projected):
+        return PolicyDiagnostic(
+            "chapter_transition_projection_mismatch",
+            (
+                f"The canonical section map declares {len(expected)} chapter transitions "
+                f"but the cut projects {len(projected)}"
+            ),
+            component_ids=tuple(component.component_id for component in projected),
+            section_ids=tuple(section.section_id for section in expected),
+        )
+    for section, component in zip(expected, projected, strict=True):
+        if (
+            component.semantic_kind != "chapter"
+            or component.implementation_kind != "fullscreen_transition"
+        ):
+            return PolicyDiagnostic(
+                "chapter_transition_projection_mismatch",
+                (
+                    f"{section.section_id} must project as chapter/fullscreen_transition; "
+                    f"got {component.semantic_kind}/{component.implementation_kind}"
+                ),
+                component_ids=(component.component_id,),
+                section_ids=(section.section_id,),
+            )
+        if section.transition_title is None:
+            return PolicyDiagnostic(
+                "chapter_transition_projection_mismatch",
+                f"{section.section_id} projects a chapter transition without a canonical title",
+                component_ids=(component.component_id,),
+                section_ids=(section.section_id,),
+            )
+        if component.display != section.transition_title:
+            return PolicyDiagnostic(
+                "chapter_transition_projection_mismatch",
+                (
+                    "Chapter transition text must repeat the canonical title verbatim; "
+                    f"{section.section_id} expects {section.transition_title!r} "
+                    f"but the cut carries {component.display!r}"
+                ),
+                component_ids=(component.component_id,),
+                section_ids=(section.section_id,),
+            )
+        if abs(component.t0 - section.t0) > SECTION_TIMESTAMP_TOLERANCE_SEC:
+            return PolicyDiagnostic(
+                "chapter_transition_projection_mismatch",
+                (
+                    f"{section.section_id} starts at {section.t0:.3f}s but its chapter "
+                    f"transition lands at {component.t0:.3f}s"
+                ),
+                component_ids=(component.component_id,),
+                section_ids=(section.section_id,),
+            )
+    return None
+
+
 class FormatPolicy(Protocol):
     def validate(self, candidate: CutPolicyInput) -> PolicyDecision: ...
 
@@ -105,6 +226,7 @@ class LongV2Policy:
     """Long-only production policy; it never delegates to Short policy."""
 
     def validate(self, candidate: CutPolicyInput) -> PolicyDecision:
+        notices: list[PolicyDiagnostic] = []
         selected_duration = sum(
             source_range.t1 - source_range.t0 for source_range in candidate.context.source_ranges
         )
@@ -112,9 +234,7 @@ class LongV2Policy:
             candidate.context.duration_sec < LONG_MIN_DURATION_SEC
             or selected_duration < LONG_MIN_DURATION_SEC
         ):
-            return PolicyDecision(
-                "needs_review",
-                (
+            notices.extend((
                     PolicyDiagnostic(
                         "long_duration_below_minimum",
                         "Long selected ranges and cut duration must both be at least 480 seconds",
@@ -162,34 +282,11 @@ class LongV2Policy:
             for component in candidate.components
             if component.lane == "fullscreen_transition"
         )
-        chapter_projection_matches = (
-            candidate.context.sections[0].transition_before is False
-            and len(expected_transitions) == len(projected_transitions)
-            and all(
-                component.semantic_kind == "chapter"
-                and component.implementation_kind == "fullscreen_transition"
-                and section.transition_title is not None
-                and component.display == section.transition_title
-                and abs(component.t0 - section.t0) <= SECTION_TIMESTAMP_TOLERANCE_SEC
-                for section, component in zip(
-                    expected_transitions, projected_transitions, strict=True
-                )
-            )
+        chapter_mismatch = _chapter_projection_mismatch(
+            candidate.context.sections, expected_transitions, projected_transitions
         )
-        if not chapter_projection_matches:
-            return PolicyDecision(
-                "needs_review",
-                (
-                    PolicyDiagnostic(
-                        "chapter_transition_projection_mismatch",
-                        "Canonical transition sections must map one-to-one to chapter transitions",
-                        component_ids=tuple(
-                            component.component_id for component in projected_transitions
-                        ),
-                        section_ids=tuple(section.section_id for section in expected_transitions),
-                    ),
-                ),
-            )
+        if chapter_mismatch is not None:
+            notices.append(chapter_mismatch)
         for component in sorted(
             candidate.components,
             key=lambda row: (row.t0, row.t1, row.component_id),
@@ -197,9 +294,7 @@ class LongV2Policy:
             ceiling_sec = _PLACEMENT_DURATION_CEILINGS_SEC.get(component.implementation_kind)
             show_sec = component.t1 - component.t0
             if ceiling_sec is not None and show_sec > ceiling_sec:
-                return PolicyDecision(
-                    "needs_review",
-                    (
+                notices.extend((
                         PolicyDiagnostic(
                             "visual_placement_duration_exceeded",
                             (
@@ -216,9 +311,7 @@ class LongV2Policy:
             if component.semantic_kind == "hero_title"
         )
         if len(hero_titles) > LONG_MAX_HERO_TITLES:
-            return PolicyDecision(
-                "needs_review",
-                (
+            notices.extend((
                     PolicyDiagnostic(
                         "hero_title_limit_exceeded",
                         "Long permits at most four Hero Titles",
@@ -231,9 +324,7 @@ class LongV2Policy:
         )
         title_density = len(title_like) / (candidate.context.duration_sec / 60.0)
         if title_density > LONG_MAX_TITLE_LIKE_PER_MINUTE:
-            return PolicyDecision(
-                "needs_review",
-                (
+            notices.extend((
                     PolicyDiagnostic(
                         "title_like_density_exceeded",
                         "Long title-like density must not exceed two cards per minute",
@@ -271,9 +362,7 @@ class LongV2Policy:
         for index in range(len(ordered_titles) - LONG_TITLE_CLUSTER_MAX_CARDS):
             cluster = ordered_titles[index : index + LONG_TITLE_CLUSTER_MAX_CARDS + 1]
             if cluster[-1].t0 - cluster[0].t0 <= LONG_TITLE_CLUSTER_WINDOW_SEC:
-                return PolicyDecision(
-                    "needs_review",
-                    (
+                notices.extend((
                         PolicyDiagnostic(
                             "title_cluster_exceeded",
                             "Long permits at most two title-like cards in any 15 seconds",
@@ -301,9 +390,7 @@ class LongV2Policy:
             len(distinct_stock_event_ids) < LONG_MIN_DISTINCT_STOCK_VIDEO_EVENTS
             or len(distinct_stock_assets) < LONG_MIN_DISTINCT_STOCK_VIDEO_EVENTS
         ):
-            return PolicyDecision(
-                "needs_review",
-                (
+            notices.extend((
                     PolicyDiagnostic(
                         "distinct_stock_video_minimum_not_met",
                         "Long requires three distinct asset-backed Stock Video events",
@@ -327,9 +414,7 @@ class LongV2Policy:
             )
         )
         if reused_assets:
-            return PolicyDecision(
-                "needs_review",
-                (
+            notices.extend((
                     PolicyDiagnostic(
                         "stock_video_asset_reused",
                         "Every Stock Video event must use a different asset",
@@ -345,9 +430,7 @@ class LongV2Policy:
         metadata_by_asset = {row.asset_ref: row for row in candidate.stock_video_metadata}
         missing_stock_metadata = tuple(sorted(distinct_stock_assets.difference(metadata_by_asset)))
         if missing_stock_metadata:
-            return PolicyDecision(
-                "needs_review",
-                (
+            notices.extend((
                     PolicyDiagnostic(
                         "stock_video_metadata_missing",
                         "Every Stock Video event requires native source dimensions",
@@ -365,9 +448,7 @@ class LongV2Policy:
             )
         )
         if non_landscape_stock:
-            return PolicyDecision(
-                "needs_review",
-                (
+            notices.extend((
                     PolicyDiagnostic(
                         "stock_video_not_native_landscape",
                         "Long Stock Video must be natively landscape",
@@ -397,9 +478,7 @@ class LongV2Policy:
             max_gap_sec=LONG_MAX_NONSTRUCTURAL_VISUAL_GAP_SEC,
         )
         if visual_gap is not None:
-            return PolicyDecision(
-                "needs_review",
-                (
+            notices.extend((
                     _coverage_gap_diagnostic(
                         "visual_gap_exceeded",
                         "Long non-structural visual gap",
@@ -421,9 +500,7 @@ class LongV2Policy:
             max_gap_sec=LONG_MAX_ASSET_BACKED_BROLL_GAP_SEC,
         )
         if broll_gap is not None:
-            return PolicyDecision(
-                "needs_review",
-                (
+            notices.extend((
                     _coverage_gap_diagnostic(
                         "b_roll_cadence_gap_exceeded",
                         "Long asset-backed B-roll cadence gap",
@@ -432,7 +509,7 @@ class LongV2Policy:
                     ),
                 ),
             )
-        return PolicyDecision("accepted")
+        return decide(tuple(notices))
 
 
 def _first_coverage_gap(
@@ -487,10 +564,9 @@ class ShortPolicy:
     """Short-only production policy; it never delegates to Long policy."""
 
     def validate(self, candidate: CutPolicyInput) -> PolicyDecision:
+        notices: list[PolicyDiagnostic] = []
         if candidate.context.duration_sec > SHORT_MAX_DURATION_SEC:
-            return PolicyDecision(
-                "needs_review",
-                (
+            notices.extend((
                     PolicyDiagnostic(
                         "short_duration_exceeded",
                         "Short duration must not exceed 60 seconds",
@@ -501,9 +577,7 @@ class ShortPolicy:
             component for component in candidate.components if component.lane in TITLE_LIKE_LANES
         )
         if len(title_like) > SHORT_MAX_TITLE_LIKE_CARDS:
-            return PolicyDecision(
-                "needs_review",
-                (
+            notices.extend((
                     PolicyDiagnostic(
                         "short_title_limit_exceeded",
                         "Short permits at most two title-like cards",
@@ -511,4 +585,4 @@ class ShortPolicy:
                     ),
                 ),
             )
-        return PolicyDecision("accepted")
+        return decide(tuple(notices))

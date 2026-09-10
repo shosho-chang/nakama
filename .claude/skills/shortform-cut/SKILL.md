@@ -33,7 +33,7 @@ timeline」接手。長片線見 `longform-cut`——兩線 script 入口已分�
 | `editorial-master/v1/EDITORIAL-MASTER.json` | 沒有正式 master，整條線不成立 |
 | `editorial-master/v1/conform-map.v1.json` | 詞級刀全部停用（詞的時間戳在來源時鐘上，要投影到 Master 時鐘才敢下刀） |
 | `subs/words.json` | **詞級**時間戳。走 memo dual-audit 的集數只有句級（實測中位 1.90s），抓不出口吃／贅音。缺的話 `--detect` 只產得出 pause 刀，而且**不會報錯** |
-| `assets/bgm/*.wav` ＋ `.acquisition.json` | Step 7 沒有音樂可放 |
+| `assets/bgm/<track>.wav` | Step 7 沒有音樂可放。庫在 `E:\data\music\short-{punch,story,value}`（對應三個 miner），**是 mp3，工具只讀 wav**，要先轉檔複製進該集 |
 
 補 words.json（GPU，**agent 自己跑**，不要叫修修跑）：
 
@@ -196,7 +196,9 @@ py -3.10 scripts/run_shortform_broll.py <episode> --id <cid> --validate-only
 意圖層 `<cid>_broll.json` 由 **shortform-director** 決定落點、**shortform-dp**
 找片回填 slug。gate（`shared/shortform_broll.py`）驗四件事：
 
-1. **授權**：`assets/broll/<slug>.acquisition.json` ＋ 檔案 SHA-256 對得上
+1. ~~授權~~：**已取消**（修修 2026-09-10：「我一點都不在意」）。Envato Elements
+   下載當下就把 Item License 註冊到帳號，同一個頻道使用不需要再取得。有收據就
+   當來歷驗到底，沒有也放行
 2. **直式**：`height > width`
 3. **落點對齊那句話**：`source_cues` 宣告對哪幾句，t0/t1 必須包在那幾句的時間裡（容差 0.35s）
 4. **不衝突**：不蓋 punch 區間、不壓開場上下分割
@@ -297,3 +299,26 @@ py -3.10 scripts/run_short_review.py <episode> --id <cid>
 
 改 `winners.short.json` → 重跑物化。改 cuts.json → 回 Step 1 `--apply`，然後
 **Step 2 之後全部重跑**（導播重建 timeline 會洗掉上層軌）。
+
+## Step 8 之後：交給發布線（不要停在這裡）
+
+**Step 8 產的 540×960 preview 是審片檔，不是成品。** 成品 render 在**發布線**，
+不在本冊——`scripts/publish_prep.py`（ADR-055 Slice 1）。它長短片都涵蓋，
+而且特別處理了短片：
+
+> Resolve render **燒不進**字幕（只出 sidecar）——但短片必須燒 → Resolve 出乾淨畫面，
+> ffmpeg 從 tight SRT 燒（字級按全解析放大）。落點 `highlights/exports/<cut>.mp4`，
+> 另存 `<cut>_clean.mp4` 供重燒。
+
+```bash
+python scripts/publish_prep.py "<episode>" [--cut <cut-id>]
+```
+
+跑完的語意是「**登錄了**」不是「發布了」：系統多了成品檔 ＋ 一筆 draft Release，
+等文案、等排程、等修修核准。之後依序是 packaging → `publish_description.py`
+→ `/bridge/publish/<ep>/<cut>` 核准並上傳。全圖見 ADR-055。
+
+> ⚠️ 2026-09-10 我自己在這裡誤判過：照本冊走到 Step 8 就以為做完了，還下結論說
+> 「短片線沒有匯出步驟、從來沒匯出過」。兩件都錯——20260805 林之晨 的三支短片就在
+> `releases` 表裡，路徑正是 `highlights/exports/*.mp4`。**檔案不在不代表步驟不存在**，
+> DB 才是 release 的 SoT（ADR-055 D3）。

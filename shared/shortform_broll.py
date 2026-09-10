@@ -13,8 +13,13 @@
 
 ## 這條 gate 換掉什麼、沒換掉什麼
 
-**沒換掉的是授權。** 每一支素材都必須有 acquisition receipt，而且檔案 bytes 的
-SHA-256 要對得上收據——這條跟長片一樣嚴，一步都不能省。
+**授權改成選配（修修 2026-09-10 裁決）。** 原本沒有 acquisition receipt 就直接擋。
+他的理由：Envato Elements 在下載當下就把 Item License 註冊到帳號，而所有素材都用在
+同一個 YouTube 頻道，不需要再取得一次授權——「我一點都不在意」。這條 gate 保護的是
+一個他沒有的風險。
+
+有收據時仍然逐項驗（contract、必要欄位、SHA-256 要對得上），因為那時它是**證據**；
+沒有收據時只記檔案本身的雜湊，不假造來歷。
 
 **換掉的是「獨立 DP agent 覆核語意」**，改成兩件機械可驗的事：
 
@@ -63,7 +68,7 @@ def _canonical_hash(payload: Any) -> str:
     ).hexdigest()
 
 
-def _asset_paths(episode_dir: Path, slug: str) -> tuple[Path, Path]:
+def _asset_paths(episode_dir: Path, slug: str) -> tuple[Path, Path | None]:
     assets = episode_dir / "assets" / "broll"
     media = sorted(p for p in assets.glob(f"{slug}.*") if p.suffix != ".json")
     if len(media) != 1:
@@ -71,14 +76,21 @@ def _asset_paths(episode_dir: Path, slug: str) -> tuple[Path, Path]:
             f"assets/broll/{slug}.* 必須恰好一個素材檔（找到 {len(media)} 個）"
         )
     receipt = assets / f"{slug}.acquisition.json"
-    if not receipt.is_file():
-        raise ShortformBrollError(
-            f"assets/broll/{slug}.acquisition.json 不存在——素材沒有授權收據就不能上片"
-        )
-    return media[0], receipt
+    return media[0], (receipt if receipt.is_file() else None)
 
 
-def _load_acquisition(path: Path, media: Path) -> dict[str, Any]:
+def _load_acquisition(path: Path | None, media: Path) -> dict[str, Any]:
+    """有收據就用它當來歷，沒有也放行（修修 2026-09-10 裁決）。
+
+    原本沒有 `.acquisition.json` 就直接擋。修修的理由：Envato Elements 在下載當下
+    就把 Item License 註冊到帳號，而所有素材都用在同一個 YouTube 頻道上，不需要
+    再取得一次授權——「我一點都不在意」。這條 gate 保護的是一個他沒有的風險。
+
+    有收據時仍然逐項驗（contract、必要欄位、SHA-256），因為那時它是**證據**；
+    沒有收據時就只記檔案本身的雜湊，不假造來歷。
+    """
+    if path is None:
+        return {}
     try:
         receipt = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -194,21 +206,33 @@ def verify_shortform_broll(
             )
 
         relative = media.resolve().relative_to(episode_dir.resolve()).as_posix()
-        provenance = {
-            "kind": "stock_source",
-            "provider": acquisition["provider"],
-            "source_url": acquisition["source_url"],
-            "license": acquisition["license"],
-            "receipt": {
-                "bytes": receipt_path.stat().st_size,
-                "path": receipt_path.resolve().relative_to(episode_dir.resolve()).as_posix(),
-                "sha256": hashlib.sha256(receipt_path.read_bytes()).hexdigest(),
-            },
-        }
+        if acquisition:
+            provenance = {
+                "kind": "stock_source",
+                "provider": acquisition["provider"],
+                "source_url": acquisition["source_url"],
+                "license": acquisition["license"],
+                "receipt": {
+                    "bytes": receipt_path.stat().st_size,
+                    "path": receipt_path.resolve().relative_to(episode_dir.resolve()).as_posix(),
+                    "sha256": hashlib.sha256(receipt_path.read_bytes()).hexdigest(),
+                },
+            }
+            media_sha = str(acquisition["original_media"]["sha256"])
+        else:
+            # 沒有收據：記檔案本身，不假造來歷。訂閱制授權在下載當下就套用了。
+            provenance = {
+                "kind": "stock_source",
+                "provider": "subscription_library",
+                "source_url": None,
+                "license": "Envato Elements subscription — licensed at download",
+                "receipt": None,
+            }
+            media_sha = hashlib.sha256(media.read_bytes()).hexdigest()
         media_evidence = {
             "bytes": media.stat().st_size,
             "path": relative,
-            "sha256": str(acquisition["original_media"]["sha256"]),
+            "sha256": media_sha,
         }
         item["visual_materialization"] = {
             "materialization_id": f"{cid}-{slug}",

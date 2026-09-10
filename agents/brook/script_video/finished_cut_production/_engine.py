@@ -1695,15 +1695,20 @@ def _advance_visual_checkpoint(
                 stock_video_metadata=run.stock_video_metadata,
             )
         )
-        if policy_decision.status != "accepted":
+        # `accepted_with_warnings` 照樣往下走：那些是品味與政策，不是壞成品。
+        # 分級理由見 `_policy` 的模組 docstring（修修 2026-09-10 裁決）。
+        if policy_decision.status == "needs_review":
             run.view = replace(
                 run.view,
                 status="needs_review",
                 policy_diagnostics=policy_decision.diagnostics,
             )
             return run.view
+        # 警告要跟著 plan 一起留在 view 上——收據裡看得到，修修在 timeline 上自己判斷。
+        policy_notices = policy_decision.diagnostics
     else:
         projected_components = _project_components(visual)
+        policy_notices = ()
     current_by_stage = {stage.stage: stage for stage in run.view.accepted_stages}
     plan = _mint_materialization_plan(
         plan_id=aggregate.mint_id("plan"),
@@ -1725,7 +1730,7 @@ def _advance_visual_checkpoint(
         run.view,
         status="review_ready",
         materialization_plan=plan,
-        policy_diagnostics=(),
+        policy_diagnostics=policy_notices,
     )
     return run.view
 
