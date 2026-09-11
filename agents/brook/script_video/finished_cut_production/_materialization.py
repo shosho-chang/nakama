@@ -517,7 +517,9 @@ def _validate_prepared_transaction(
         or preview.audio_codec is None
         or preview.audio_codec.lower() != "aac"
         or not math.isfinite(preview.duration_sec)
-        or abs(preview.duration_sec - context.duration_sec) > 1.0 / inspection.timeline_frame_rate
+        or not _within_one_frame(
+            preview.duration_sec, context.duration_sec, inspection.timeline_frame_rate
+        )
         or not preview.path.is_file()
     ):
         raise MaterializationError(
@@ -600,6 +602,24 @@ def _write_materialization_journal(path: Path, payload: dict[str, object]) -> No
         ) from error
     finally:
         staging.unlink(missing_ok=True)
+
+
+def _within_one_frame(measured_sec: float, expected_sec: float, fps: float) -> bool:
+    """「差不超過一格」——兩邊都先取格數再比，不混用單位。
+
+    ApprovedCut 的 `source_ranges` 是秒，剪輯卻活在格線上：每個邊界最多帶半格的
+    表示誤差，段數一多就累積。拿 frame-exact 的量測（timeline 長度、輸出檔長度）
+    去比這個浮點和、卻用「一格」當容忍度，等於讓表示誤差把容忍度吃掉。
+
+    20260721 punch-L03：59 段，timeline 16347 格、`source_ranges` 量化後 16346 格
+    ——內容就只差一格，本來該過；可是浮點和額外帶了 0.0017 秒，舊式子算成 1.05 格
+    而擋下，而且 timeline 與 preview 兩處各擋一次。
+
+    規則一字不改（仍然是「差超過一格就擋」），只是改用格來表述。
+    """
+    if not math.isfinite(measured_sec) or not math.isfinite(fps) or fps <= 0:
+        return False
+    return abs(round(measured_sec * fps) - round(expected_sec * fps)) <= 1
 
 
 def _canonical_json(value: object) -> bytes:
@@ -927,9 +947,9 @@ def _validate_editorial_base(
             reason_code="frame_rate_drift",
         )
     state = inspection.state
-    if state.end_frame <= state.start_frame or (
-        abs((state.end_frame - state.start_frame) / timeline_fps - context.duration_sec)
-        > 1.0 / timeline_fps
+    actual_frames = state.end_frame - state.start_frame
+    if actual_frames <= 0 or not _within_one_frame(
+        actual_frames / timeline_fps, context.duration_sec, timeline_fps
     ):
         raise MaterializationError(
             "canonical Timeline duration differs by more than one frame",
