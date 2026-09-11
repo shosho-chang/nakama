@@ -51,6 +51,7 @@ from shared.subtitle_corrections import (  # noqa: E402
 from shared.subtitle_finalize import (  # noqa: E402
     finalize_srt_file,
     parse_srt_text,
+    space_han_latin_srt_file,
     strip_fillers_srt_file,
 )
 
@@ -236,6 +237,11 @@ def _versioned_srt(
                 corrections.release_srt_sha256[:12],
             )
         stats = strip_fillers_srt_file(src, dst)
+        # 半形↔漢字之間補空白（修修 2026-09-11：「AI5分鐘 全部連在一起，觀眾看不懂」）。
+        # 純顯示層、冪等，放在最後一關，對 release 與人工勘誤都不回頭影響。
+        spacing = space_han_latin_srt_file(dst, dst)
+        if spacing["spaced"]:
+            logger.info("半形空白：補了 %d 句", spacing["spaced"])
         logger.info(
             "Hash-bound 字幕：語助詞清理 %d → %d 句（整條刪 %d、刪字保句 %d）",
             stats["cues_in"],

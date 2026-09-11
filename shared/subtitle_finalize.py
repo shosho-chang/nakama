@@ -503,3 +503,33 @@ def finalize_srt_file(
     stats["cues"] = len(fin)
     stats["reboundary_moved"] = moved
     return stats
+
+#: 半形（拉丁字母／阿拉伯數字）與全形中文之間插半形空白。
+#: 只認**漢字**，不認全形標點——「AI」的引號緊貼字母是對的，不該變成「 AI 」。
+_HAN = chr(92) + "u3400-" + chr(92) + "u4dbf" + chr(92) + "u4e00-" + chr(92) + "u9fff"
+_LATIN = "A-Za-z0-9"
+_HAN_THEN_LATIN = re.compile("([" + _HAN + "])([" + _LATIN + "])")
+_LATIN_THEN_HAN = re.compile("([" + _LATIN + "])([" + _HAN + "])")
+
+
+def space_han_latin(text: str) -> str:
+    """「用AI到極致」→「用 AI 到極致」。
+
+    修修 2026-09-11：「所有半形的文字，像是英文字以及數字，都要跟全形的中文字
+    有一個空白。如果沒有的話，像 AI5分鐘 全部連在一起，就會讓觀眾看不懂。」
+
+    **只處理半形↔漢字的交界，不碰半形之間。** 20260721 呂冠緯 實測：字幕裡英數
+    相鄰的只有「3C」與「Switch2」，而「3C」正是絕對不能拆開的——把規則寫成
+    「英數之間也插空白」會把它改壞。已經有空白的不會變成兩個空白（樣式要求相鄰）。
+    """
+    spaced = _HAN_THEN_LATIN.sub(lambda m: m.group(1) + " " + m.group(2), text)
+    return _LATIN_THEN_HAN.sub(lambda m: m.group(1) + " " + m.group(2), spaced)
+
+
+def space_han_latin_srt_file(src: Path, dst: Path) -> dict:
+    """對整份 SRT 套 `space_han_latin`，回傳改了幾句。"""
+    cues = parse_srt_text(Path(src).read_text(encoding="utf-8-sig"))
+    spaced = [(s, e, space_han_latin(t)) for s, e, t in cues]
+    edited = sum(1 for (_, _, a), (_, _, b) in zip(cues, spaced) if a != b)
+    Path(dst).write_text(format_srt(spaced), encoding="utf-8")
+    return {"cues": len(spaced), "spaced": edited}
