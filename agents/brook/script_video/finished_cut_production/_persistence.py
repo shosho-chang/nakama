@@ -81,6 +81,37 @@ class AtomicResolveTransactionStore:
             payload=_transaction_payload(transaction),
         )
 
+    def find_for_plan(
+        self,
+        *,
+        episode_id: str,
+        cut_id: str,
+        plan_id: str,
+        plan_fingerprint: str,
+    ) -> ResolveTransaction | None:
+        """掃這一集的交易紀錄，找出屬於這個 plan 的那一筆。
+
+        交易 id 把 canonical 的身分也算進去，成功之後 canonical 就換人了——所以
+        用 id 找不回自己。這裡改用 plan 的身分找。找到兩筆以上就不猜：回 None，
+        讓上層照原本的路走並自己撞上該撞的錯。
+        """
+        if not self._root.is_dir():
+            return None
+        matches: list[ResolveTransaction] = []
+        for path in sorted(self._root.glob("resolve-*.json")):
+            document = _read_envelope(path, schema=_TRANSACTION_SCHEMA)
+            if document is None:
+                continue
+            transaction = _transaction_from_payload(document)
+            if (
+                transaction.episode_id == episode_id
+                and transaction.cut_id == cut_id
+                and transaction.plan_id == plan_id
+                and transaction.plan_fingerprint == plan_fingerprint
+            ):
+                matches.append(transaction)
+        return matches[0] if len(matches) == 1 else None
+
     def _record_path(self, transaction_id: str) -> Path:
         _require_identity(transaction_id, field="transaction_id")
         return self._root / f"{transaction_id}.json"

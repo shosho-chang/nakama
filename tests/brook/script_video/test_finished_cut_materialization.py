@@ -120,6 +120,10 @@ class _FailingTransactions:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
 
+    def find_prepared(self, plan: object) -> object | None:
+        """沒有任何交易可以續跑——這個 fake 就是要讓 `prepare` 走全新那條路。"""
+        return None
+
     def prepare(self, plan: object, **arguments: object) -> object:
         self.calls.append({"plan": plan, **arguments})
         raise ResolveTransactionError("injected stop after subtitle staging")
@@ -768,7 +772,9 @@ def test_one_frame_quantisation_gaps_are_not_drift(
     )
 
     # 一路走到 Resolve 交易那一步（被 preflight stub 擋下），代表三道量化檢查都放行了。
-    with pytest.raises(AssertionError, match="must not be touched: prepare"):
+    # 交易層第一個被碰到的是 `find_prepared`（先問「這個 plan 已經有做完的交易嗎」），
+    # 它跟舊的 `prepare` 一樣只會在通過全部 preflight 之後才發生。
+    with pytest.raises(AssertionError, match="must not be touched: find_prepared"):
         coordinator.prepare("approved-cut:" + "a" * 32)
 
 

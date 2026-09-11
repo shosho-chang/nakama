@@ -122,6 +122,31 @@ class ResolveTransactionStore(Protocol):
 
     def save(self, transaction: ResolveTransaction) -> None: ...
 
+    def find_for_plan(
+        self,
+        *,
+        episode_id: str,
+        cut_id: str,
+        plan_id: str,
+        plan_fingerprint: str,
+    ) -> ResolveTransaction | None: ...
+
+
+def _matches_plan(
+    transaction: ResolveTransaction,
+    *,
+    episode_id: str,
+    cut_id: str,
+    plan_id: str,
+    plan_fingerprint: str,
+) -> bool:
+    return (
+        transaction.episode_id == episode_id
+        and transaction.cut_id == cut_id
+        and transaction.plan_id == plan_id
+        and transaction.plan_fingerprint == plan_fingerprint
+    )
+
 
 class _InMemoryResolveTransactionStore:
     def __init__(self) -> None:
@@ -132,6 +157,27 @@ class _InMemoryResolveTransactionStore:
 
     def save(self, transaction: ResolveTransaction) -> None:
         self._transactions[transaction.transaction_id] = transaction
+
+    def find_for_plan(
+        self,
+        *,
+        episode_id: str,
+        cut_id: str,
+        plan_id: str,
+        plan_fingerprint: str,
+    ) -> ResolveTransaction | None:
+        matches = [
+            transaction
+            for transaction in self._transactions.values()
+            if _matches_plan(
+                transaction,
+                episode_id=episode_id,
+                cut_id=cut_id,
+                plan_id=plan_id,
+                plan_fingerprint=plan_fingerprint,
+            )
+        ]
+        return matches[0] if len(matches) == 1 else None
 
 
 class ResolveTransactionManager:
@@ -281,6 +327,28 @@ class ResolveTransactionManager:
         )
         self._store.save(committed)
         return receipt
+
+    def find_prepared(self, plan: MaterializationPlan) -> ResolveTransaction | None:
+        """這個 plan 已經有一筆做完的交易嗎——不看現在的 canonical 是誰。
+
+        `_transaction_id` 把 canonical 的名字與 UID 也算進去，而交易成功之後
+        canonical 就換人了（work 頂上原名、原本那條改名成 `__fcp_backup__…`）。
+        於是同一個 plan 重跑 `prepare` 一定算出**另一個** id，`load` 必然落空，
+        然後從已經套用過的 timeline 再 duplicate 一次、把衍生軌疊第二層。
+
+        只要交易之後任何一步失敗（20260721 punch-L03 卡在 preview 探測），那個 run
+        就永遠結不了帳。這支用 plan 的身分找回那筆交易，讓 `prepare` 在交易邊界上
+        真正冪等。plan_id 與 plan_fingerprint 都要相符——計畫一改就不該續用舊交易。
+        """
+        transaction = self._store.find_for_plan(
+            episode_id=plan.episode_id,
+            cut_id=plan.cut_id,
+            plan_id=plan.plan_id,
+            plan_fingerprint=_plan_fingerprint(plan),
+        )
+        if transaction is None or transaction.status not in {"preview_ready", "committed"}:
+            return None
+        return transaction
 
     def inspect_transaction(self, transaction_id: str) -> dict[str, object]:
         transaction = self._store.load(transaction_id)

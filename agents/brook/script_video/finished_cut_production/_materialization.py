@@ -221,6 +221,24 @@ class MaterializationCoordinator:
             )
         inspection = inspections[0]
         _validate_editorial_base(inspection, context)
+        # 這一步要等 canonical 綁定驗過才做：交易層是 Timeline 的門，read-only
+        # preflight 沒過之前不碰它（`test_exact_uid_binding_rejects_unknown_or_
+        # ambiguous_canonical_before_assets` 釘的就是這個順序）。
+        resumable = self._transactions.find_prepared(plan)
+        if resumable is not None:
+            # 這個 plan 的交易已經做完了，只是後面某一步失敗、`materialization.json`
+            # 沒寫成。不要再開一次交易——canonical 現在就是上一次的 work，再
+            # duplicate 一次會把衍生軌疊第二層。
+            return self._resume_prepared_transaction(
+                resumable,
+                command=command,
+                plan=plan,
+                context=context,
+                inspection=inspection,
+                subtitle_path=subtitle_path,
+                preview_path=preview_path,
+                journal_path=journal_path,
+            )
         subtitle_sha256 = _stage_review_subtitle(subtitle_path, context)
         try:
             transaction = self._transactions.prepare(
@@ -272,6 +290,97 @@ class MaterializationCoordinator:
         )
         payload = _preparation_payload(preparation)
         _write_materialization_journal(journal_path, payload)
+        return preparation
+
+    def _resume_prepared_transaction(
+        self,
+        transaction: ResolveTransaction,
+        *,
+        command: ApprovedCutCommand,
+        plan: MaterializationPlan,
+        context: EditorialCutContext,
+        inspection: CanonicalTimelineInspection,
+        subtitle_path: Path,
+        preview_path: Path,
+        journal_path: Path,
+    ) -> MaterializationPreparation:
+        """把一筆已經做完、但帳沒結成的交易接回來。
+
+        `_transaction_id` 把 canonical 的名字與 UID 算進去，而交易成功那一刻
+        canonical 就換人了（work 頂上原名）。所以同一個 plan 重跑 `prepare`
+        必然算出另一個 id、必然 `load` 落空、必然從已經套用過的 timeline 再
+        duplicate 一次——衍生軌疊第二層。只要交易之後任何一步失敗，那個 run
+        以前就永遠結不了帳（20260721 punch-L03 卡在 preview 探測）。
+
+        這條路只做交易之後**還沒做完**的事：確認輸出物還在、蓋掉 Candidate、
+        把 `materialization.json` 補上。不碰 Resolve。
+
+        `transaction.canonical` 與 `inspection.canonical` 刻意不比對——那兩者
+        本來就該不一樣，正是「交易已經生效」的證據。plan_id 與 plan_fingerprint
+        的相符由 `find_prepared` 保證，計畫一改就不會走到這裡。
+        """
+        if transaction.status != "preview_ready":
+            raise MaterializationError(
+                "resumable materialization transaction is not preview_ready",
+                reason_code="materialization_journal_conflict",
+            )
+        if (
+            transaction.episode_id != plan.episode_id
+            or transaction.cut_id != plan.cut_id
+            or transaction.plan_id != plan.plan_id
+            or transaction.subtitle_path != subtitle_path
+            or transaction.preview.path != preview_path
+        ):
+            raise MaterializationError(
+                "resumable transaction does not bind the exact plan and artifacts",
+                reason_code="preview_transaction_mismatch",
+            )
+        preview = transaction.preview
+        if (
+            preview.video_codec.lower() not in {"h264", "avc1"}
+            or preview.audio_codec is None
+            or preview.audio_codec.lower() != "aac"
+            or not _preview_matches_timeline(preview.duration_sec, inspection)
+            or not preview.path.is_file()
+        ):
+            raise MaterializationError(
+                "Resolve preview codec, duration, or object contract differs",
+                reason_code="preview_probe_failed",
+            )
+        try:
+            subtitle_payload = subtitle_path.read_bytes()
+        except OSError as error:
+            raise MaterializationError(
+                "persisted materialization subtitle is unavailable",
+                reason_code="materialization_journal_conflict",
+            ) from error
+        subtitle_sha256 = hashlib.sha256(subtitle_payload).hexdigest()
+        _verify_srt_bytes(subtitle_payload, context, expected_digest=subtitle_sha256)
+        try:
+            candidate = self._releases.stage_candidate(
+                plan,
+                editorial_master_id=context.editorial_master_id,
+                winner_id=command.winner_id,
+                tight_cut_id=context.tight_cut_id,
+                transaction_id=transaction.transaction_id,
+                preview_path=preview_path,
+                subtitle_path=subtitle_path,
+            )
+        except ReleaseLifecycleError as error:
+            raise MaterializationError(
+                "preview_ready transaction cannot stage its exact Candidate",
+                reason_code="candidate_staging_failed",
+            ) from error
+        preparation = MaterializationPreparation(
+            command_id=command.command_id,
+            run_id=plan.run_id,
+            plan_id=plan.plan_id,
+            status="preview_ready",
+            transaction_id=transaction.transaction_id,
+            subtitle_sha256=subtitle_sha256,
+            candidate=candidate,
+        )
+        _write_materialization_journal(journal_path, _preparation_payload(preparation))
         return preparation
 
     def _reopen_prior_preparation(
@@ -517,9 +626,7 @@ def _validate_prepared_transaction(
         or preview.audio_codec is None
         or preview.audio_codec.lower() != "aac"
         or not math.isfinite(preview.duration_sec)
-        or not _within_one_frame(
-            preview.duration_sec, context.duration_sec, inspection.timeline_frame_rate
-        )
+        or not _preview_matches_timeline(preview.duration_sec, inspection)
         or not preview.path.is_file()
     ):
         raise MaterializationError(
@@ -602,6 +709,34 @@ def _write_materialization_journal(path: Path, payload: dict[str, object]) -> No
         ) from error
     finally:
         staging.unlink(missing_ok=True)
+
+
+def _preview_matches_timeline(
+    preview_duration_sec: float, inspection: CanonicalTimelineInspection
+) -> bool:
+    """輸出檔的長度要對著**它渲染自的那條 timeline** 比，不是對著 context 的浮點秒數和。
+
+    preview 是從 timeline 渲出來的，timeline 才是它的參照。context.duration_sec 是
+    ApprovedCut `source_ranges` 的浮點和，跟 timeline 之間本來就容許一格
+    （`_validate_editorial_base` 已經單獨把關過）；再讓 preview 隔著它去比，等於要
+    preview 同時吸收兩層量化誤差，而第二層根本不是它造成的。
+
+    20260721 punch-L03：timeline 16347 格、context 544.865s、preview 544.917333s。
+    preview 比 timeline 多出的 0.017s 是 AAC 尾巴（一個 1024-sample frame ≈ 21ms，
+    mp4 的容器長度取影像與聲音的較大者）——對 timeline 差 1 格，對 context 差 2 格。
+    整條物化就卡在一個它管不到的誤差上。
+    """
+    fps = inspection.timeline_frame_rate
+    state = inspection.state
+    timeline_frames = state.end_frame - state.start_frame
+    if (
+        not math.isfinite(preview_duration_sec)
+        or not math.isfinite(fps)
+        or fps <= 0
+        or timeline_frames <= 0
+    ):
+        return False
+    return abs(round(preview_duration_sec * fps) - timeline_frames) <= 1
 
 
 def _within_one_frame(measured_sec: float, expected_sec: float, fps: float) -> bool:
