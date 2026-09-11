@@ -22,6 +22,7 @@ from agents.brook.script_video.finished_cut_production._codex_semantic import (
     NamedMedia,
     StagePacket,
     SubprocessCodexProcessRunner,
+    _stage_prompt,
 )
 from agents.brook.script_video.finished_cut_production._context import (
     CanonicalSection,
@@ -1252,3 +1253,37 @@ def test_production_adapter_has_no_file_discovery_or_static_response_dropbox() -
     assert {"glob", "rglob", "walk", "listdir", "scandir"}.isdisjoint(called_names)
     assert "responses/" not in source
     assert "static_response" not in source
+
+
+def test_stage_prompt_carries_the_channel_craft_manual() -> None:
+    """契約決定「合法」，手冊決定「好」——兩者都必須進到 worker 的 prompt。
+
+    ADR-066 把語意工作從 skill 收進引擎時只搬了契約，手冊留在 .claude/skills/
+    沒有任何程式碼會讀。2026-09-08 的後果：章節卡壓在語助詞上、Hero 只是把
+    字幕放大、visual_effect 被想像成不存在的轉場特效。
+    """
+    director = _stage_prompt("director")
+
+    assert "response-schema.json" in director
+    assert "滿版轉場卡" in director
+    assert "太 repetitive" in director
+
+    dp = _stage_prompt("dp")
+    assert "response-schema.json" in dp
+    # DP 只讀自己那本；Renee 與 Brand lens 是 Director 的職責。
+    assert "Renee" not in dp
+    assert "Brand" not in dp
+
+
+def test_stage_prompt_fails_closed_when_the_craft_manual_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """讀不到手冊就整個 stage 起不來，不准靜靜降級成「只有契約」。
+
+    「手冊可以不被讀而系統照跑」正是要根除的失效模式。
+    """
+    monkeypatch.setenv("NAKAMA_SKILLS_ROOT", str(tmp_path))
+
+    with pytest.raises(ValueError, match="創意手冊讀不到"):
+        _stage_prompt("director")
