@@ -60,6 +60,7 @@ from agents.brook.script_video.highlight_broll import (  # noqa: E402
     BrollContractError,
     verify_visual_recipe_lineage,
 )
+from shared.quiet_subprocess import quiet_kwargs
 
 logger = logging.getLogger("short_titles")
 
@@ -373,7 +374,13 @@ def _render_card(variables: dict, out_path: Path, comp: str = "punch_card.html")
     )
     logger.info("render card: %s", variables.get("line1"))
     proc = subprocess.run(
-        cmd, shell=True, cwd=str(COMP_DIR), capture_output=True, text=True, encoding="utf-8"
+        cmd,
+        shell=True,
+        cwd=str(COMP_DIR),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        **quiet_kwargs(),
     )
     if proc.returncode != 0 or not out_path.exists():
         raise SystemExit(f"hyperframes render 失敗: {(proc.stderr or '')[-400:]}")
@@ -395,6 +402,7 @@ def _validate_rendered_frame_safety(paths: list[Path]) -> None:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        **quiet_kwargs(),
     )
     if proc.returncode != 0:
         raise SystemExit("字卡逐幀安全區驗收失敗，未寫入 Resolve：\n" + proc.stdout[-5000:])
