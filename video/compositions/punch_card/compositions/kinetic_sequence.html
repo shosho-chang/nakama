@@ -69,7 +69,11 @@
       .hybrid .line-shell:not(:first-child) .line {
         color: #171717; background: #fff; font-size: 112px; padding: 6px 26px 12px;
       }
-      .glyph { display: inline-block; }
+      /* white-space: pre —— 每個字元各自包一個 span，而單獨一個空白在 normal 下
+         寬度會被摺成零。20260721 value-S03 的 `Screen time` 因此渲成 `Screentime`。
+         `estimatedLineWidth` 本來就把 ASCII 字元（含空白）算成 0.64 單位寬，
+         留住空白反而跟量測一致。 */
+      .glyph { display: inline-block; white-space: pre; }
     </style>
   </head>
   <body>
