@@ -11,6 +11,7 @@ from ._derived_assets import _PLACEMENT_DURATION_CEILINGS_SEC
 
 PolicyStatus = Literal["accepted", "needs_review"]
 PolicyDiagnosticCode = Literal[
+    "stage_proposal_rejected",
     "long_duration_below_minimum",
     "source_range_sum_mismatch",
     "canonical_sections_missing",

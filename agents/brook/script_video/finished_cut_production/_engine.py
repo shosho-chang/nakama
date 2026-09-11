@@ -51,6 +51,7 @@ from ._policy import (
     CutPolicyInput,
     FormatPolicy,
     LongV2Policy,
+    PolicyDiagnostic,
     ShortPolicy,
     StockVideoMetadata,
 )
@@ -1042,9 +1043,20 @@ def _advance_existing(run: _RunState, aggregate: _AggregateContext) -> _Producti
         or proposal.parent_acceptance_id != request.parent_acceptance_id
     ):
         return _leave_in_review(run, request)
-    proposal_events = _events_for_acceptance(run, request, proposal)
-    if proposal_events is None:
-        return _leave_in_review(run, request)
+    try:
+        proposal_events = _events_for_acceptance(run, request, proposal)
+    except _ProposalRejected as rejection:
+        # 靜靜回 needs_review 會讓操作者完全看不到違反了哪一條，只能去讀原始碼
+        # 逐條比對（2026-09-07 實測要繞三輪才定位）。把原因帶進 policy_diagnostics。
+        return _leave_in_review(
+            run,
+            request,
+            diagnostic=PolicyDiagnostic(
+                code="stage_proposal_rejected",
+                message=f"{request.stage} 提案被拒：{rejection.reason}",
+                component_ids=rejection.event_ids,
+            ),
+        )
 
     accepted_events = _merge_retry_events(
         run,
@@ -1340,11 +1352,17 @@ def _current_chain_is_exact(run: _RunState) -> bool:
     return True
 
 
-def _leave_in_review(run: _RunState, request: StageRequest) -> _ProductionRun:
+def _leave_in_review(
+    run: _RunState,
+    request: StageRequest,
+    *,
+    diagnostic: PolicyDiagnostic | None = None,
+) -> _ProductionRun:
     run.view = replace(
         run.view,
         status="needs_review",
         outstanding_request=request,
+        policy_diagnostics=() if diagnostic is None else (diagnostic,),
     )
     return run.view
 
@@ -1754,39 +1772,73 @@ def _visual_request(
     )
 
 
+class _ProposalRejected(Exception):
+    """一個 stage 提案違反接受契約；`reason` 是要交給操作者看的具體原因。"""
+
+    def __init__(self, reason: str, *, event_ids: tuple[str, ...] = ()) -> None:
+        super().__init__(reason)
+        self.reason = reason
+        self.event_ids = event_ids
+
+
 def _events_for_acceptance(
     run: _RunState,
     request: StageRequest,
     proposal: StageProposal,
-) -> tuple[EventRecord, ...] | None:
+) -> tuple[EventRecord, ...]:
+    """把提案轉成可接受的事件；違反契約時 raise `_ProposalRejected` 說明原因。"""
     if not proposal.events:
-        return None
+        raise _ProposalRejected("提案沒有任何事件")
     ids = [event.event_id for event in proposal.events]
-    if len(ids) != len(set(ids)):
-        return None
+    duplicates = sorted({value for value in ids if ids.count(value) > 1})
+    if duplicates:
+        raise _ProposalRejected(f"事件 id 重複：{duplicates}", event_ids=tuple(duplicates))
     if request.scope == "event_retry":
         if ids != [request.event_id] or len(request.events) != 1:
-            return None
+            raise _ProposalRejected(
+                f"單一事件重試只能回傳 {request.event_id!r} 一個事件，實得 {ids}"
+            )
     if not _proposal_components_are_valid(request, proposal):
-        return None
+        raise _ProposalRejected(
+            "提案的 components 不合法：id 重複、對不到事件、"
+            "(semantic_kind, implementation_kind, lane) 組合不在允許表內、"
+            "或時間非有限值／t0 >= t1；非 director 階段的 components 還必須與 request 完全相同"
+        )
     if request.stage == "director":
         if all(isinstance(event, DirectorEventProposal) for event in proposal.events):
-            if run.editorial_context is None or proposal.components:
-                return None
+            if run.editorial_context is None:
+                raise _ProposalRejected("Director 階段缺少 editorial context")
+            if proposal.components:
+                raise _ProposalRejected("Director 提案不得自帶 components")
             derived_events: list[EventRecord] = []
             for event in proposal.events:
-                if (
-                    not event.event_id
-                    or not event.master_cue_ids
-                    or not event.intent.strip()
-                    or not event.display.strip()
-                    or not _is_active_semantic_kind(event.semantic_kind)
-                ):
-                    return None
+                if not event.event_id:
+                    raise _ProposalRejected("事件缺少 event_id")
+                if not event.master_cue_ids:
+                    raise _ProposalRejected(
+                        f"{event.event_id}：缺少 master_cue_ids", event_ids=(event.event_id,)
+                    )
+                if not event.intent.strip():
+                    raise _ProposalRejected(
+                        f"{event.event_id}：intent 是空的", event_ids=(event.event_id,)
+                    )
+                if not event.display.strip():
+                    raise _ProposalRejected(
+                        f"{event.event_id}：display 是空的", event_ids=(event.event_id,)
+                    )
+                if not _is_active_semantic_kind(event.semantic_kind):
+                    raise _ProposalRejected(
+                        f"{event.event_id}：semantic_kind={event.semantic_kind!r} 不是有效類型",
+                        event_ids=(event.event_id,),
+                    )
                 try:
                     anchor = run.editorial_context.derive_anchor(event.master_cue_ids)
-                except ValueError:
-                    return None
+                except ValueError as error:
+                    raise _ProposalRejected(
+                        f"{event.event_id}：master_cue_ids 推導不出錨點（{error}）；"
+                        "cue 必須連續、同屬一個 section、且存在於這一刀的字幕裡",
+                        event_ids=(event.event_id,),
+                    ) from error
                 derived_events.append(
                     EventRecord(
                         event_id=event.event_id,
@@ -1807,37 +1859,52 @@ def _events_for_acceptance(
                 base = request.events[0]
                 event = accepted[0]
                 if event.master_cue_ids != base.master_cue_ids or event.text_hash != base.text_hash:
-                    return None
+                    raise _ProposalRejected(
+                        f"{event.event_id}：重試不得更動 master_cue_ids 或 text_hash",
+                        event_ids=(event.event_id,),
+                    )
             return accepted
         if run.editorial_context is not None:
-            return None
+            raise _ProposalRejected(
+                "有 editorial context 時，Director 必須回傳 DirectorEventProposal，"
+                "不是既有的 EventRecord"
+            )
         if not all(isinstance(event, EventRecord) for event in proposal.events):
-            return None
-        if not all(
-            event.event_id
-            and event.master_cue_ids
-            and event.text_hash
-            and event.intent
-            and event.asset_ref is None
-            and event.visual_status is None
-            for event in proposal.events
-        ):
-            return None
+            raise _ProposalRejected("Director 提案的事件型別不正確")
+        for event in proposal.events:
+            if not (event.event_id and event.master_cue_ids and event.text_hash and event.intent):
+                raise _ProposalRejected(
+                    f"{event.event_id}：event_id／master_cue_ids／text_hash／intent 不得為空",
+                    event_ids=(event.event_id,),
+                )
+            if event.asset_ref is not None or event.visual_status is not None:
+                raise _ProposalRejected(
+                    f"{event.event_id}：Director 階段不得指定 asset_ref 或 visual_status",
+                    event_ids=(event.event_id,),
+                )
         if request.scope == "event_retry":
             base = request.events[0]
             event = proposal.events[0]
             if event.master_cue_ids != base.master_cue_ids or event.text_hash != base.text_hash:
-                return None
+                raise _ProposalRejected(
+                    f"{event.event_id}：重試不得更動 master_cue_ids 或 text_hash",
+                    event_ids=(event.event_id,),
+                )
         return tuple(proposal.events)
 
     if request.stage == "dp" and all(
         isinstance(event, DPEventProposal) for event in proposal.events
     ):
         if proposal.components:
-            return None
+            raise _ProposalRejected("DP 提案不得自帶 components")
         expected = {event.event_id: event for event in request.events}
         if ids != list(expected):
-            return None
+            missing = [value for value in expected if value not in ids]
+            extra = [value for value in ids if value not in expected]
+            raise _ProposalRejected(
+                f"DP 必須逐一回覆 Director 的每個事件、順序相同；缺少={missing} 多出={extra}",
+                event_ids=tuple(missing + extra),
+            )
         selected: list[EventRecord] = []
         for event in proposal.events:
             base = expected[event.event_id]
@@ -1849,38 +1916,81 @@ def _events_for_acceptance(
                     or event.asset_ref is not None
                     or event.placement_cue_ids
                 ):
-                    return None
+                    raise _ProposalRejected(
+                        f"{event.event_id}：Director 標為 intentional_aroll（這一拍刻意不放視覺），"
+                        "DP 必須原樣回 implementation_kind=intentional_aroll、lane=null、"
+                        "asset_ref=null、placement_cue_ids=[]；"
+                        f"實得 implementation_kind={event.implementation_kind!r}、"
+                        f"lane={event.lane!r}、"
+                        f"asset_ref={'有' if event.asset_ref else 'null'}、"
+                        f"placement_cue_ids={len(event.placement_cue_ids)} 筆",
+                        event_ids=(event.event_id,),
+                    )
                 placement = None
             else:
+                if event.lane is None:
+                    raise _ProposalRejected(
+                        f"{event.event_id}：非 intentional_aroll 的事件必須指定 lane",
+                        event_ids=(event.event_id,),
+                    )
                 if (
-                    event.lane is None
-                    or (base.semantic_kind, event.implementation_kind, event.lane)
-                    not in _ALLOWED_PROJECTION
-                ):
-                    return None
+                    base.semantic_kind,
+                    event.implementation_kind,
+                    event.lane,
+                ) not in _ALLOWED_PROJECTION:
+                    allowed = sorted(
+                        f"{kind}/{lane}"
+                        for semantic, kind, lane in _ALLOWED_PROJECTION
+                        if semantic == base.semantic_kind
+                    )
+                    raise _ProposalRejected(
+                        f"{event.event_id}：semantic_kind={base.semantic_kind!r} 只允許 "
+                        f"{allowed}，實得 implementation_kind={event.implementation_kind!r}／"
+                        f"lane={event.lane!r}",
+                        event_ids=(event.event_id,),
+                    )
                 expected_asset_kind = _ASSET_KIND_BY_IMPLEMENTATION.get(event.implementation_kind)
                 if expected_asset_kind is None:
                     if event.asset_ref is not None:
-                        return None
+                        raise _ProposalRejected(
+                            f"{event.event_id}：{event.implementation_kind} 是渲染出來的字卡，"
+                            "不該綁素材，asset_ref 必須是 null",
+                            event_ids=(event.event_id,),
+                        )
                 else:
                     if event.asset_ref is None:
-                        return None
+                        raise _ProposalRejected(
+                            f"{event.event_id}：{event.implementation_kind} 必須綁一個 "
+                            f"{expected_asset_kind.value} 素材，asset_ref 卻是 null",
+                            event_ids=(event.event_id,),
+                        )
                     try:
                         item = run.worker_catalog.resolve_dp_reference(event.asset_ref)
-                    except AssetContractError:
-                        return None
+                    except AssetContractError as error:
+                        raise _ProposalRejected(
+                            f"{event.event_id}：asset_ref 不在這次可選的素材目錄裡（{error}）",
+                            event_ids=(event.event_id,),
+                        ) from error
                     if item.kind is not expected_asset_kind:
-                        return None
+                        raise _ProposalRejected(
+                            f"{event.event_id}：{event.implementation_kind} 需要 "
+                            f"{expected_asset_kind.value} 素材，選到的卻是 {item.kind.value}",
+                            event_ids=(event.event_id,),
+                        )
                 if run.editorial_context is None:
-                    return None
+                    raise _ProposalRejected("DP 階段缺少 editorial context")
                 try:
                     placement = run.editorial_context.derive_visual_placement(
                         semantic_cue_ids=base.master_cue_ids,
                         placement_cue_ids=event.placement_cue_ids,
                         semantic_kind=base.semantic_kind,
                     )
-                except ValueError:
-                    return None
+                except ValueError as error:
+                    raise _ProposalRejected(
+                        f"{event.event_id}：placement_cue_ids 推導不出合法落點（{error}）；"
+                        "落點 cue 必須連續、且落在該事件自己的 section 內",
+                        event_ids=(event.event_id,),
+                    ) from error
             selected.append(
                 replace(
                     base,
@@ -1897,24 +2007,42 @@ def _events_for_acceptance(
         isinstance(event, VisualEventProposal) for event in proposal.events
     ):
         if proposal.components:
-            return None
+            raise _ProposalRejected("視覺檢查提案不得自帶 components")
         expected = {event.event_id: event for event in request.events}
-        if ids != list(expected) or any(
-            event.status not in {"approved", "failed"} for event in proposal.events
-        ):
-            return None
+        if ids != list(expected):
+            missing = [value for value in expected if value not in ids]
+            extra = [value for value in ids if value not in expected]
+            raise _ProposalRejected(
+                f"視覺檢查必須逐一覆蓋每個事件、順序相同；缺少={missing} 多出={extra}",
+                event_ids=tuple(missing + extra),
+            )
+        invalid = [
+            event.event_id
+            for event in proposal.events
+            if event.status not in {"approved", "failed"}
+        ]
+        if invalid:
+            raise _ProposalRejected(
+                f"視覺檢查的 status 只能是 approved 或 failed，違反的事件：{invalid}",
+                event_ids=tuple(invalid),
+            )
         return tuple(
             replace(expected[event.event_id], visual_status=event.status)
             for event in proposal.events
         )
 
-    if run.editorial_context is not None or not all(
-        isinstance(event, EventRecord) for event in proposal.events
-    ):
-        return None
+    if run.editorial_context is not None:
+        raise _ProposalRejected(f"{request.stage} 階段的提案型別不正確，無法對應到任何一種接受路徑")
+    if not all(isinstance(event, EventRecord) for event in proposal.events):
+        raise _ProposalRejected(f"{request.stage} 階段的事件型別不正確")
     expected = {event.event_id: event for event in request.events}
     if set(ids) != set(expected):
-        return None
+        missing = sorted(set(expected) - set(ids))
+        extra = sorted(set(ids) - set(expected))
+        raise _ProposalRejected(
+            f"事件覆蓋率不符；缺少={missing} 多出={extra}",
+            event_ids=tuple(missing + extra),
+        )
     for event in proposal.events:
         base = expected[event.event_id]
         if (
@@ -1922,16 +2050,33 @@ def _events_for_acceptance(
             or event.text_hash != base.text_hash
             or event.intent != base.intent
         ):
-            return None
+            raise _ProposalRejected(
+                f"{event.event_id}：不得更動上游的 master_cue_ids／text_hash／intent",
+                event_ids=(event.event_id,),
+            )
         if request.stage == "dp":
-            if not event.asset_ref or event.visual_status is not None:
-                return None
+            if not event.asset_ref:
+                raise _ProposalRejected(
+                    f"{event.event_id}：DP 階段必須指定 asset_ref",
+                    event_ids=(event.event_id,),
+                )
+            if event.visual_status is not None:
+                raise _ProposalRejected(
+                    f"{event.event_id}：DP 階段不得指定 visual_status",
+                    event_ids=(event.event_id,),
+                )
             try:
                 run.worker_catalog.resolve_dp_reference(event.asset_ref)
-            except AssetContractError:
-                return None
+            except AssetContractError as error:
+                raise _ProposalRejected(
+                    f"{event.event_id}：asset_ref 不在可選的素材目錄裡（{error}）",
+                    event_ids=(event.event_id,),
+                ) from error
         elif event.asset_ref != base.asset_ref or event.visual_status != "approved":
-            return None
+            raise _ProposalRejected(
+                f"{event.event_id}：不得更動 asset_ref，且 visual_status 必須是 approved",
+                event_ids=(event.event_id,),
+            )
     return tuple(proposal.events)
 
 
