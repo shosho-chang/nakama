@@ -547,7 +547,9 @@ Editorial Master 封存
  [序列] 邊界打磨 → --materialize（Resolve，單執行緒）
  │
  ├─【平行準備】6 支 cut 的語意工作 ＋ carousel
- │     長片：Director 企劃　短片：緊湊化複審／字卡企劃／素材選型
+ │     長片：**ADR-066**（`run_finished_cut_production.py --semantic-worker handoff`）
+ │           手冊＝`longform-cut/SKILL.md`。⛔ 不是 `podcast_highlight_visual_orchestrator.py`
+ │     短片：緊湊化複審／字卡企劃／素材選型（`shortform-director` / `shortform-dp`）
  │     carousel：見 `skills/ig-cards/SKILL.md`（不是 `.claude/skills/ig-cards/`，那只是入口）
  │  【序列上軌】每一支輪流進 Resolve
  ▼
@@ -619,9 +621,35 @@ python scripts/run_podcast_carousel.py "<episode>" --copy-spec "<episode>/ig-car
 
 ## S9 — long highlight and finished-cut review
 
-對每個 long winner 依序跑 tightening，再封存 guest identity placement與機位／Timeline 導播，接著強制走
-ADR-065 的 Director → DP → same-Director second-pass semantic audit receipt chain，最後才 materialize visual events、跑
-titles、SFX、review。Tightening與所有視覺工作都只能使用 Editorial Master media/timebase：
+> ## ⛔ 長片的視覺線走 ADR-066，不是本節底下那條 ADR-065 chain
+>
+> **`scripts/podcast_highlight_visual_orchestrator.py` 已停用，不要照著跑。**
+> long 的生產唯一路線 = **ADR-066 Finished Cut Production**：
+> `scripts/run_finished_cut_production.py`，實跑手冊在
+> [`longform-cut/SKILL.md`](../longform-cut/SKILL.md) 的「ADR-066 實跑手冊」節
+> （2026-09-10 蘇予昕 L2/L3 第一次真的跑通，沿路六個坑都寫在裡面）。
+>
+> 語意工作用 `--semantic-worker handoff`：packet 攤在
+> `<runtime-root>/semantic-handoff/<request_id>/`，**停下來交給當下正在跑的 agent**。
+> 不要因為看到某段 code 寫死 Codex 就去派 Codex（`feedback_semantic_work_runs_on_host_agent`）。
+>
+> **2026-09-11 血淚（20260721 呂冠緯）**：`highlight-cut` 與 `longform-cut` 兩份 skill
+> 開頭都掛了這個 ⛔，唯獨本節沒有，於是 agent 照本節跑完了整條 ADR-065 chain——
+> 三支長片的 Director 企劃做完、`accept-director` 才發現它要一份只有
+> `CodexExecDispatcher` 生得出來的執行收據，白工。
+>
+> **當時有三次機會停下來**：三個 Director subagent 各自回報
+> 「work packet 沒有 `long_highlight_contract` v2 marker → **legacy ADR-065 route**」。
+> **subagent 或 code 說「legacy route」是 stop-the-line 訊號，不是註腳。**
+>
+> 還有一條可遷移的判準：**活的流程要求一個死掉的前置條件時，先懷疑自己走錯路線，
+> 不要先去補那個前置條件。** 當時我去問修修「要不要補一個 Claude dispatcher」——
+> 正確的問題是「為什麼活的流程會要求一個死掉的供應商」，那一問就通到答案了。
+>
+> 以下 ADR-065 的描述**只保留給讀舊 receipt／舊 state 時對照**，不是操作指示。
+
+對每個 long winner 依序跑 tightening，再封存 guest identity placement與機位／Timeline 導播。
+Tightening與所有視覺工作都只能使用 Editorial Master media/timebase：
 
 ```powershell
 E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_tighten.py "<episode>" --detect --id <winner-id>
