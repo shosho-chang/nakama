@@ -162,9 +162,6 @@ Orchestrator 必須平行 dispatch 三個互相隔離、不能讀彼此輸出的
       "format": "long|short",
       "t_start": 0.0,
       "t_end": 0.0,
-      "source_ranges": [
-        {"t_start": 0.0, "t_end": 0.0}
-      ],
       "title": "工作代號，不是發布標題",
       "hook": "段內逐字原句",
       "rationale": "為何值得剪",
@@ -175,7 +172,6 @@ Orchestrator 必須平行 dispatch 三個互相隔離、不能讀彼此輸出的
       "sections": [
         {
           "section_id": "section-01",
-          "source_range_index": 0,
           "cue_start": 1,
           "cue_end": 1,
           "start_quote": "第一個 cue 的完整原句",
@@ -195,13 +191,27 @@ identity object；不得刪欄、自行重建，也不得把 `elapsed_sec` 這�
 `source_srt_sha256` raw exact copy 其中的 `master_srt_sha256`。ID 固定以 miner role 開頭，避免
 跨 worker 撞名。`head_trim` 是 cue 內要去除的秒數或 `null`，不是文字。
 
-long candidate 的 `source_ranges` 依原片時間排序、不可重疊；`t_start/t_end` 是第一段起點與最後一段終點，
-只供快速定位，實際片長永遠是 ranges 長度總和。單段足以完成 8–12 分鐘論述時可只有一個 range；不足時
-必須組合 2+ 個語意連貫片段，不能用中間被刪掉的空白時間灌長度。
+⛔ **candidate 是「一個連續區間」，沒有 `source_ranges`。** 上面那 12 個 key 是 exact set，
+section 是 exact 8 個 key，多一個就 `schema drift`——`_MINER_CANDIDATE_FIELDS` 與
+`_LONG_SECTION_FIELDS` 用的是集合相等，不是「至少包含」。
 
-long candidate 的 `sections` 要完整覆蓋論述結構，通常 4–6 段，最多 8 段；worker 應填唯一
-`section_id`、所屬 `source_range_index`、summary 與 explicit `transition_before`，並以首尾 cue 的完整 raw
-text 作錨點。short 固定為 `[]`。`transition_before=true` 僅用於一個觀眾可獨立命名、會寫進 YouTube
+2026-09-11 血淚（20260721 呂冠緯）：本節的 schema 區塊原本帶著 `source_ranges` 與 section 的
+`source_range_index`，那是從上面**已停用的 ADR-065 orchestrator** 契約抄下來的。三個 miner 照著寫，
+13 支長片有 7 支是多段的，`--merge-miners` 第一個 candidate 就死在 `story miner candidate 0
+schema drift`，整輪重做。活的下游（`--validate` 吸附邊界、`--materialize` 建 timeline、
+`run_short_tighten.py`）從頭到尾只認 `t_start`/`t_end` 一個區間，`source_ranges` 在
+`run_highlight_cut.py` 裡出現 **0 次**。
+
+**「中間有一段不要」不是開採階段的事**——那是選段之後 tightening（`run_short_tighten.py
+--detect/--apply`）的工作。開採階段請挑一個能自己站住的連續論述弧。
+
+長度硬容忍帶由 `BANDS` 決定：**long 360–1080 秒**、**short 40–180 秒**。編輯上 long 仍以 8–12
+分鐘為目標，低於 8 分鐘要在 `rationale` 說明為什麼仍然成立。
+
+long candidate 的 `sections` 要完整覆蓋論述結構，**3–8 段**（code 下限是 3），而且必須把
+`cue_start`–`cue_end` **連續鋪滿**：第一段的 `cue_start` 等於 candidate 的 `cue_start`，每段的
+`cue_start` 等於前一段 `cue_end + 1`，最後一段的 `cue_end` 等於 candidate 的 `cue_end`。
+`section_id` 固定 `section-NN` 依序編號，並以首尾 cue 的完整 raw text 作錨點。short 固定為 `[]`。`transition_before=true` 僅用於一個觀眾可獨立命名、會寫進 YouTube
 description 的新 chapter；同章內的列舉、方向一／二、例子、證據、方法步驟保持 false。title 是 6–14
 個中文字的 YouTube chapter／全螢幕 TR 候選文案；第一段不得有 transition。這份 section map 是
 editorial 建議，Director 可因 tight cut 微調精確時間與否決不必要的 TR，但不得新增另一套章節結構。
